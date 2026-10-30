@@ -1,0 +1,105 @@
+// SHA-1 (RFC 3174), one-shot over a bounded byte view. Its only consumer is
+// the WebSocket opening handshake (RFC 6455 section 4.2.2), where SHA-1 of a
+// public key string plus a fixed GUID proves the server read our request.
+// SHA-1 is broken for collision resistance: never use it for signatures,
+// identities, integrity or anything secret. Inputs are capped at 4096 bytes.
+#authority;
+SHA1_MAX_INPUT :: 4096;
+
+#test "RFC 3174 section 7.3 test vectors 1, 2 and 4" {
+  out: [20] u8; hex: [40] u8;
+  #assert sha1_hash("abc", out[..]) && sha1_hex(out[..], hex[..]);
+  #assert cast(string) hex[..] == "a9993e364706816aba3e25717850c26c9cd0d89d";
+  #assert sha1_hash("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq", out[..]) && sha1_hex(out[..], hex[..]);
+  #assert cast(string) hex[..] == "84983e441c3bd26ebaae4aa1f95129e5e54670f1";
+  // vector 4: "0123456701234567012345670123456701234567012345670123456701234567" ten times
+  ten: [640] u8; unit := "0123456701234567012345670123456701234567012345670123456701234567";
+  for i: 0..<640 { ten[i] = unit[i % 64]; }
+  #assert sha1_hash(cast(string) ten[..], out[..]) && sha1_hex(out[..], hex[..]);
+  #assert cast(string) hex[..] == "dea356a2cddd90c7a7ecedc5ebb563934f460452";
+  #assert sha1_hash("", out[..]) && sha1_hex(out[..], hex[..]);
+  #assert cast(string) hex[..] == "da39a3ee5e6b4b0d3255bfef95601890afd80709";
+}
+#test "padding boundaries agree with independent python hashlib values" {
+  // python3 -c 'import hashlib;print(hashlib.sha1(bytes(range(n))).hexdigest())'
+  lengths := [6] int.[55, 56, 63, 64, 65, 119];
+  expected := [6] string.[
+    "8ae2d46729cfe68ff927af5eec9c7d1b66d65ac2",
+    "636e2ec698dac903498e648bd2f3af641d3c88cb",
+    "6d942da0c4392b123528f2905c713a3ce28364bd",
+    "c6138d514ffa2135bfce0ed0b8fac65669917ec7",
+    "69bd728ad6e13cd76ff19751fde427b00e395746",
+    "41c89d06001bab4ab78736b44efe7ce18ce6ae08"];
+  input: [119] u8; for i: 0..<119 { input[i] = cast(u8) i; }
+  out: [20] u8; hex: [40] u8;
+  for k: 0..<6 {
+    #assert sha1_hash(cast(string) input[0..<lengths[k]], out[..]) && sha1_hex(out[..], hex[..]);
+    #assert cast(string) hex[..] == expected[k];
+  }
+}
+#test "the RFC 6455 handshake example digests to its published accept value's bytes" {
+  out: [20] u8; hex: [40] u8;
+  #assert sha1_hash("dGhlIHNhbXBsZSBub25jZQ==258EAFA5-E914-47DA-95CA-C5AB0DC85B11", out[..]) && sha1_hex(out[..], hex[..]);
+  #assert cast(string) hex[..] == "b37a4f2cc0624f1690f64606cf385945b2bec4ea";
+}
+#test "refusals: short output, oversized input, short hex buffer" {
+  out: [20] u8; hex: [40] u8; big: [SHA1_MAX_INPUT + 1] u8;
+  #assert !sha1_hash("abc", out[0..<19]);
+  #assert sha1_hash(cast(string) big[0..<SHA1_MAX_INPUT], out[..]);
+  #assert !sha1_hash(cast(string) big[..], out[..]);
+  #assert !sha1_hex(out[..], hex[0..<39]) && !sha1_hex(out[0..<19], hex[..]);
+}
+
+sha1_padded :: (input: string, at: int, total: int) -> u8 {
+  if at < input.count { return input[at]; }
+  if at == input.count { return 128; }
+  // the 64-bit big-endian bit count: inputs of at most 4096 bytes need its last two bytes
+  if at == total - 2 { return cast,trunc(u8) ((input.count * 8) >> 8); }
+  if at == total - 1 { return cast,trunc(u8) (input.count * 8); }
+  return 0;
+}
+// The digest of input into out[0..<20]; false (out untouched) when input is
+// over SHA1_MAX_INPUT or out is shorter than 20.
+sha1_hash :: (input: string, out: [] u8) -> bool #export_c {
+  if input.count > SHA1_MAX_INPUT || out.count < 20 { return false; }
+  blocks := input.count / 64 + 1;
+  if input.count % 64 >= 56 { blocks += 1; }
+  total := blocks * 64;
+  h := [5] u32.[0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];
+  w: [80] u32;
+  for b: 0..<blocks {
+    for i: 0..<80 {
+      if i < 16 {
+        p := b * 64 + i * 4;
+        w[i] = (cast(u32) sha1_padded(input, p, total) << 24) | (cast(u32) sha1_padded(input, p + 1, total) << 16)
+             | (cast(u32) sha1_padded(input, p + 2, total) << 8) | cast(u32) sha1_padded(input, p + 3, total);
+      } else {
+        w[i] = rotl(w[i - 3] ^ w[i - 8] ^ w[i - 14] ^ w[i - 16], 1);
+      }
+    }
+    a := h[0]; bb := h[1]; c := h[2]; d := h[3]; e := h[4];
+    for i: 0..<80 {
+      f: u32 = ---; k: u32 = ---;
+      if i < 20 { f = (bb & c) | ((bb ^ 0xFFFFFFFF) & d); k = 0x5A827999; }
+      else if i < 40 { f = bb ^ c ^ d; k = 0x6ED9EBA1; }
+      else if i < 60 { f = (bb & c) | (bb & d) | (c & d); k = 0x8F1BBCDC; }
+      else { f = bb ^ c ^ d; k = 0xCA62C1D6; }
+      t := add_wrap(add_wrap(add_wrap(rotl(a, 5), f), add_wrap(e, k)), w[i]);
+      e = d; d = c; c = rotl(bb, 30); bb = a; a = t;
+    }
+    h[0] = add_wrap(h[0], a); h[1] = add_wrap(h[1], bb); h[2] = add_wrap(h[2], c);
+    h[3] = add_wrap(h[3], d); h[4] = add_wrap(h[4], e);
+  }
+  for i: 0..<5 {
+    out[i * 4] = cast,trunc(u8) (h[i] >> 24); out[i * 4 + 1] = cast,trunc(u8) (h[i] >> 16);
+    out[i * 4 + 2] = cast,trunc(u8) (h[i] >> 8); out[i * 4 + 3] = cast,trunc(u8) h[i];
+  }
+  return true;
+}
+// Lowercase hex of a 20-byte digest, for checks and logs.
+sha1_hex :: (digest: [] u8, out: [] u8) -> bool {
+  if digest.count < 20 || out.count < 40 { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<20 { out[i * 2] = digits[digest[i] >> 4]; out[i * 2 + 1] = digits[digest[i] & 15]; }
+  return true;
+}

@@ -1,0 +1,522 @@
+// The Nostr relay client state machine (NIP-01, with the NIP-42 hook): one
+// relay connection's lifecycle, subscriptions, publishes and acknowledgement
+// deadlines. Pure: it does no I/O, reads no clock and draws no randomness.
+// The host connects and moves bytes (coax/platform/socket-native.c through
+// coax/lib/net/ws.coax), passes the time in milliseconds and the backoff
+// jitter, and hands in relay messages already decoded (coax/lib/nostr/
+// message.coax reads them; an EVENT's signature is checked before it comes
+// here, and `verified` says the result). It decides what is admitted.
+//
+// Connections have generations: anything reported for an older one is
+// stale and ignored. Subscription ids name a slot and that slot's serial
+// ("s3.17"), so frames for an old or closed subscription are unknown. EOSE
+// means the relay finished its stored events for that request; it is never
+// a claim that the set is complete. After a drop the machine backs off
+// (capped, jittered) and, on reopen, resubscribes each subscription with
+// `since` set to the newest created_at it delivered (inclusive, so the
+// boundary events come again and are dropped as duplicates) and resends
+// publishes whose OK never came. AUTH: the machine records a challenge and
+// asks for a signed AUTH (RL_OUT_AUTH); a subscription the relay CLOSED with
+// "auth-required:" is retried once after that AUTH is accepted in the same
+// generation. Signing the AUTH event is NIP-42's task (#f426), not this file.
+#authority;
+
+RL_SUBS :: 8; RL_PUBS :: 8; RL_SEEN :: 64;
+// Connection states.
+RL_IDLE :: 0; RL_CONNECTING :: 1; RL_OPEN :: 2; RL_BACKOFF :: 3; RL_SHUT :: 4;
+// Subscription states.
+RS_FREE :: 0; RS_WANT :: 1; RS_LIVE :: 2; RS_CAUGHT :: 3; RS_CLOSING :: 4; RS_REFUSED :: 5; RS_AUTH :: 6;
+// Publish states.
+RP_FREE :: 0; RP_QUEUED :: 1; RP_SENT :: 2; RP_ACCEPTED :: 3; RP_REFUSED :: 4; RP_TIMEOUT :: 5;
+// AUTH states.
+RA_NONE :: 0; RA_CHALLENGED :: 1; RA_SENT :: 2; RA_OK :: 3;
+// Decoded relay messages (the first five match message.coax's NM_ types).
+RL_IN_EVENT :: 1; RL_IN_OK :: 2; RL_IN_EOSE :: 3; RL_IN_CLOSED :: 4; RL_IN_NOTICE :: 5; RL_IN_AUTH :: 6;
+// What rl_input decided.
+RL_DELIVER :: 0; RL_DUPLICATE :: 1; RL_STALE :: 2; RL_UNKNOWN :: 3; RL_FORGED :: 4; RL_EOSE :: 5;
+RL_ACK :: 6; RL_CLOSED :: 7; RL_NOTICE :: 8; RL_AUTH :: 9; RL_NOT_OPEN :: 10; RL_BAD :: 11;
+// What rl_next asks the host to send, and what rl_tick asks it to do.
+RL_OUT_NONE :: 0; RL_OUT_REQ :: 1; RL_OUT_CLOSE :: 2; RL_OUT_EVENT :: 3; RL_OUT_AUTH :: 4;
+RL_DO_NONE :: 0; RL_DO_CONNECT :: 1; RL_DO_TIMEOUT :: 2;
+
+RlSub :: struct { state: int; serial: int; newest: int; has_newest: bool; events: int; auth_retried: bool; }
+RlPub :: struct { state: int; id: [32] u8; deadline: int; }
+RlIn :: struct { kind: int; sub: string; id: [32] u8; accepted: bool; auth_required: bool; created_at: int; verified: bool; }
+// A send request: for RL_OUT_REQ, write REQ with the subscription's id
+// (rl_sub_text) and its filters, with since overridden when has_since.
+RlOut :: struct { kind: int; slot: int; has_since: bool; since: int; }
+Relay :: struct {
+  state: int; gen: int; attempt: int; deadline: int;
+  connect_ms: int = 5000; ack_ms: int = 10000; base_ms: int = 500; cap_ms: int = 30000;
+  auth: int; auth_id: [32] u8;
+  subs: [RL_SUBS] RlSub; pubs: [RL_PUBS] RlPub;
+  seen: [RL_SEEN * 32] u8; seen_count: int; seen_next: int;
+  forged: int; notices: int; timeouts: int;
+}
+
+// ---- check helpers --------------------------------------------------------
+rl_id_of :: (b: int) -> [32] u8 { id: [32] u8; id[0] = cast(u8) b; return id; }
+rl_event :: (sub: string, b: int, at: int) -> RlIn { return RlIn.{kind = RL_IN_EVENT, sub = sub, id = rl_id_of(b), created_at = at, verified = true}; }
+rl_open_at :: (r: [] Relay, now: int) -> int { g := rl_start(r, now); ok := rl_opened(r, g, now); return g; }
+
+#test "connect, subscribe, catch up to EOSE, then live events" {
+  r: [1] Relay;
+  #assert r[0].state == RL_IDLE && rl_next(r[..], 0).kind == RL_OUT_NONE;
+  s := rl_subscribe(r[..]);
+  #assert s == 0 && r[0].subs[0].state == RS_WANT && r[0].subs[0].serial == 1;
+  g := rl_start(r[..], 100);
+  #assert g == 1 && r[0].state == RL_CONNECTING && r[0].deadline == 5100;
+  #assert rl_next(r[..], 100).kind == RL_OUT_NONE;                // nothing goes out before the socket opens
+  #assert rl_start(r[..], 100) == -1;                              // already connecting
+  #assert rl_opened(r[..], g, 200) && r[0].state == RL_OPEN;
+  #assert !rl_opened(r[..], g, 200);
+  o := rl_next(r[..], 200);
+  #assert o.kind == RL_OUT_REQ && o.slot == 0 && !o.has_since && r[0].subs[0].state == RS_LIVE;
+  #assert rl_next(r[..], 200).kind == RL_OUT_NONE;
+  buf: [24] u8; id := rl_sub_text(0, 1, buf[..]);
+  #assert id == "s0.1";
+  #assert rl_input(r[..], g, rl_event(id, 1, 50)) == RL_DELIVER && r[0].subs[0].events == 1;
+  #assert rl_input(r[..], g, rl_event(id, 2, 70)) == RL_DELIVER && r[0].subs[0].newest == 70 && r[0].seen_count == 2;
+  #assert rl_input(r[..], g, rl_event(id, 9, 70)) == RL_DELIVER && rl_input(r[..], g, rl_event(id, 10, 71)) == RL_DELIVER && r[0].subs[0].newest == 71;
+  #assert rl_input(r[..], g, rl_event(id, 3, 60)) == RL_DELIVER && r[0].subs[0].newest == 71 && r[0].subs[0].has_newest;
+  #assert rl_input(r[..], g, rl_event(id, 2, 70)) == RL_DUPLICATE && r[0].subs[0].events == 5;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_EOSE, sub = id}) == RL_EOSE && r[0].subs[0].state == RS_CAUGHT;
+  #assert rl_input(r[..], g, rl_event(id, 4, 80)) == RL_DELIVER && r[0].subs[0].state == RS_CAUGHT && r[0].subs[0].newest == 80;
+  #assert rl_input(r[..], g, rl_event(id, 5, 20)) == RL_DELIVER && r[0].subs[0].newest == 80;
+  #assert rl_input(r[..], g, rl_event(id, 6, 79)) == RL_DELIVER && r[0].subs[0].newest == 80;
+  x := rl_id_of(5); #assert x[0] == 5 && x[1] == 0;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_EOSE, sub = id}) == RL_EOSE && r[0].subs[0].state == RS_CAUGHT;
+}
+#test "stale generations, unknown subscriptions and forged events are refused" {
+  r: [1] Relay; buf: [24] u8;
+  s := rl_subscribe(r[..]); g := rl_open_at(r[..], 0);
+  o := rl_next(r[..], 0);
+  id := rl_sub_text(s, 1, buf[..]);
+  #assert rl_input(r[..], g - 1, rl_event(id, 1, 5)) == RL_STALE && rl_input(r[..], g + 1, rl_event(id, 1, 5)) == RL_STALE;
+  #assert rl_input(r[..], g, rl_event("s0.2", 1, 5)) == RL_UNKNOWN && rl_input(r[..], g, rl_event("s1.1", 1, 5)) == RL_UNKNOWN;
+  #assert rl_input(r[..], g, rl_event("s9.1", 1, 5)) == RL_UNKNOWN && rl_input(r[..], g, rl_event("x", 1, 5)) == RL_UNKNOWN;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_EOSE, sub = "s1.1"}) == RL_UNKNOWN;
+  forged := rl_event(id, 1, 5); forged.verified = false;
+  #assert rl_input(r[..], g, forged) == RL_FORGED && r[0].forged == 1 && r[0].subs[0].events == 0 && r[0].seen_count == 0;
+  #assert rl_input(r[..], g, rl_event(id, 1, 5)) == RL_DELIVER;   // the real one still comes through
+  #assert rl_input(r[..], g, RlIn.{kind = 99}) == RL_BAD && rl_input(r[..], g, RlIn.{kind = 0}) == RL_BAD;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_NOTICE}) == RL_NOTICE && r[0].notices == 1;
+  // an unsubscribed id is unknown at once, and its CLOSE goes out
+  #assert rl_unsubscribe(r[..], s) && r[0].subs[0].state == RS_CLOSING;
+  #assert rl_input(r[..], g, rl_event(id, 7, 5)) == RL_UNKNOWN;
+  o = rl_next(r[..], 0);
+  #assert o.kind == RL_OUT_CLOSE && o.slot == 0 && r[0].subs[0].state == RS_FREE;
+  #assert !rl_unsubscribe(r[..], s) && !rl_unsubscribe(r[..], -1) && !rl_unsubscribe(r[..], RL_SUBS);
+  // the slot's next subscription has a new serial: the old id stays unknown
+  #assert rl_subscribe(r[..]) == 0 && r[0].subs[0].serial == 2 && rl_input(r[..], g, rl_event(id, 8, 5)) == RL_UNKNOWN;
+  // messages while not open
+  r2: [1] Relay;
+  #assert rl_input(r2[..], 0, RlIn.{kind = RL_IN_NOTICE}) == RL_NOT_OPEN;
+}
+#test "publish: OK true, OK false, timeout, late OK and unknown ids" {
+  r: [1] Relay; g := rl_open_at(r[..], 0);
+  a := rl_id_of(10); b := rl_id_of(11); c := rl_id_of(12);
+  #assert rl_publish(r[..], a[..]) == 0 && rl_publish(r[..], b[..]) == 1 && rl_publish(r[..], c[..]) == 2;
+  #assert rl_publish(r[..], a[..]) == 0;                           // the same event is one publish
+  #assert rl_publish(r[..], a[0..<31]) == -1;
+  o := rl_next(r[..], 1000);
+  #assert o.kind == RL_OUT_EVENT && o.slot == 0 && r[0].pubs[0].state == RP_SENT && r[0].pubs[0].deadline == 11000;
+  #assert rl_next(r[..], 2000).slot == 1 && rl_next(r[..], 3000).slot == 2 && rl_next(r[..], 3000).kind == RL_OUT_NONE;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = a, accepted = true}) == RL_ACK && r[0].pubs[0].state == RP_ACCEPTED;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = b, accepted = false}) == RL_ACK && r[0].pubs[1].state == RP_REFUSED;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = a, accepted = false}) == RL_UNKNOWN && r[0].pubs[0].state == RP_ACCEPTED;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = rl_id_of(99), accepted = true}) == RL_UNKNOWN;
+  #assert rl_tick(r[..], 12999) == RL_DO_NONE && r[0].pubs[2].state == RP_SENT;
+  #assert rl_tick(r[..], 13000) == RL_DO_NONE && r[0].pubs[2].state == RP_TIMEOUT && r[0].timeouts == 1;
+  #assert rl_tick(r[..], 99999) == RL_DO_NONE && r[0].timeouts == 1;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = c, accepted = true}) == RL_ACK && r[0].pubs[2].state == RP_ACCEPTED;
+  #assert rl_cancel_publish(r[..], 0) && r[0].pubs[0].state == RP_FREE && !rl_cancel_publish(r[..], 0);
+  #assert !rl_cancel_publish(r[..], -1) && !rl_cancel_publish(r[..], RL_PUBS);
+}
+#test "transitions at slot 0 and from every live state" {
+  r: [1] Relay; buf: [24] u8;
+  s := rl_subscribe(r[..]); a := rl_id_of(1); p := rl_publish(r[..], a[..]);
+  g := rl_open_at(r[..], 0); o := rl_next(r[..], 0); o = rl_next(r[..], 0);
+  #assert s == 0 && p == 0 && o.kind == RL_OUT_EVENT;
+  #assert rl_publish(r[..], a[..]) == 0;                          // sent, not yet acknowledged: the same publish
+  #assert rl_tick(r[..], 10000) == RL_DO_NONE && r[0].pubs[0].state == RP_TIMEOUT;
+  #assert rl_publish(r[..], a[..]) == 0 && r[0].pubs[0].state == RP_QUEUED;   // timed out: a new attempt
+  // a LIVE subscription (no EOSE yet) is requested again after a drop
+  #assert r[0].subs[0].state == RS_LIVE && rl_dropped(r[..], g, 0, 0);
+  g = rl_start(r[..], 500); #assert rl_opened(r[..], g, 500) && r[0].subs[0].state == RS_WANT;
+  o = rl_next(r[..], 500);
+  id := rl_sub_text(0, 1, buf[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_EOSE, sub = id}) == RL_EOSE;
+  // unsubscribing a caught-up subscription sends CLOSE; a drop first frees it
+  #assert rl_unsubscribe(r[..], 0) && r[0].subs[0].state == RS_CLOSING && !rl_unsubscribe(r[..], 0);
+  #assert rl_dropped(r[..], g, 600, 0) && r[0].subs[0].state == RS_FREE;
+  // an auth-waiting subscription is requested again on a new connection
+  t := rl_subscribe(r[..]); g = rl_start(r[..], 2000); #assert rl_opened(r[..], g, 2000);
+  o = rl_next(r[..], 2000); id = rl_sub_text(t, 2, buf[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_CLOSED, sub = id, auth_required = true}) == RL_CLOSED && r[0].subs[0].state == RS_AUTH;
+  #assert rl_dropped(r[..], g, 2000, 0);
+  g = rl_start(r[..], 3000); #assert rl_opened(r[..], g, 3000) && r[0].subs[0].state == RS_WANT;
+  // ids differing only in their last byte are different events
+  b := rl_id_of(1); b[31] = 1; c := rl_id_of(1);
+  #assert !rl_id_eq(b[..], c[..]) && rl_id_eq(c[..], c[..]);
+  b[31] = 0; b[0] = 2; #assert !rl_id_eq(b[..], c[..]);
+}
+#test "queue overflow refuses cleanly" {
+  r: [1] Relay;
+  for k: 0..<RL_SUBS { #assert rl_subscribe(r[..]) == k; }
+  #assert rl_subscribe(r[..]) == -1;
+  for k: 0..<RL_PUBS { id := rl_id_of(k); #assert rl_publish(r[..], id[..]) == k; }
+  x := rl_id_of(200);
+  #assert rl_publish(r[..], x[..]) == -1;
+  // a resolved publish's slot is reused; a pending one is not
+  g := rl_open_at(r[..], 0); o := rl_next(r[..], 0);
+  for k: 0..<RL_SUBS - 1 { o = rl_next(r[..], 0); }
+  o = rl_next(r[..], 0);
+  #assert o.kind == RL_OUT_EVENT && o.slot == 0;
+  #assert rl_publish(r[..], x[..]) == -1;
+  first := rl_id_of(0);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = first, accepted = true}) == RL_ACK;
+  #assert rl_publish(r[..], x[..]) == 0 && r[0].pubs[0].state == RP_QUEUED;
+}
+#test "drop, capped jittered backoff, reconnect and resubscribe with since" {
+  r: [1] Relay; buf: [24] u8;
+  s := rl_subscribe(r[..]); t := rl_subscribe(r[..]);
+  a := rl_id_of(20); p := rl_publish(r[..], a[..]);
+  g := rl_open_at(r[..], 0);
+  o := rl_next(r[..], 0); o = rl_next(r[..], 0); o = rl_next(r[..], 0);
+  #assert o.kind == RL_OUT_EVENT;
+  id := rl_sub_text(s, 1, buf[..]);
+  #assert rl_input(r[..], g, rl_event(id, 1, 500)) == RL_DELIVER && rl_input(r[..], g, RlIn.{kind = RL_IN_EOSE, sub = id}) == RL_EOSE;
+  #assert rl_unsubscribe(r[..], t);   // never sent its CLOSE: the drop frees it
+  #assert !rl_dropped(r[..], g - 1, 1000, 0) && r[0].state == RL_OPEN;
+  #assert rl_dropped(r[..], g, 1000, 0) && r[0].state == RL_BACKOFF && r[0].deadline == 1500 && r[0].attempt == 1;
+  #assert r[0].subs[1].state == RS_FREE && r[0].subs[0].state == RS_CAUGHT;
+  #assert !rl_dropped(r[..], g, 1000, 0);
+  #assert rl_input(r[..], g, rl_event(id, 2, 600)) == RL_NOT_OPEN;
+  #assert rl_next(r[..], 1000).kind == RL_OUT_NONE;
+  #assert rl_tick(r[..], 1499) == RL_DO_NONE && rl_tick(r[..], 1500) == RL_DO_CONNECT;
+  g2 := rl_start(r[..], 1500);
+  #assert g2 == g + 1 && rl_input(r[..], g, rl_event(id, 2, 600)) == RL_STALE;
+  // the connect times out: back off again, longer
+  #assert rl_tick(r[..], 6499) == RL_DO_NONE && rl_tick(r[..], 6500) == RL_DO_TIMEOUT;
+  #assert rl_dropped(r[..], g2, 6500, 7) && r[0].deadline == 6500 + 1000 + 7 && r[0].attempt == 2;
+  g3 := rl_start(r[..], 7507);
+  #assert rl_opened(r[..], g3, 7600) && r[0].attempt == 0;
+  o = rl_next(r[..], 7600);
+  #assert o.kind == RL_OUT_REQ && o.slot == 0 && o.has_since && o.since == 500 && r[0].subs[0].state == RS_LIVE;
+  // the boundary event comes again and is dropped; new ones arrive
+  #assert rl_input(r[..], g3, rl_event(id, 1, 500)) == RL_DUPLICATE && rl_input(r[..], g3, rl_event(id, 3, 700)) == RL_DELIVER;
+  o = rl_next(r[..], 7600);
+  #assert o.kind == RL_OUT_EVENT && o.slot == p && r[0].pubs[p].deadline == 17600;   // the unacknowledged publish goes again
+  #assert rl_next(r[..], 7600).kind == RL_OUT_NONE;
+}
+#test "backoff doubles to its cap and jitter is bounded" {
+  r: [1] Relay;
+  #assert rl_backoff(r[..], 0, 0) == 500 && rl_backoff(r[..], 1, 0) == 1000 && rl_backoff(r[..], 2, 0) == 2000;
+  #assert rl_backoff(r[..], 5, 0) == 16000 && rl_backoff(r[..], 6, 0) == 30000 && rl_backoff(r[..], 60, 0) == 30000;
+  #assert rl_backoff(r[..], 0, 250) == 750 && rl_backoff(r[..], 0, 251) == 500 && rl_backoff(r[..], 0, 252) == 501;
+  #assert rl_backoff(r[..], 6, 15000) == 45000 && rl_backoff(r[..], 0, -251) == 500 + (0x7fffffff - 250) % 251;
+  #assert rl_backoff(r[..], -1, 0) == 30000 && rl_backoff(r[..], 17, 0) == 30000;
+  // with a small base the bounds show: 16 doublings at most, and cap - 1 stays itself
+  r[0].base_ms = 1; r[0].cap_ms = 1 << 20;
+  #assert rl_backoff(r[..], 16, 0) == 65536 && rl_backoff(r[..], 17, 0) == 1 << 20 && rl_backoff(r[..], 0, 0) == 1;
+  r[0].cap_ms = 9;
+  #assert rl_backoff(r[..], 3, 0) == 8 && rl_backoff(r[..], 4, 0) == 9 && rl_backoff(r[..], 2, 0) == 4;
+  r[0].cap_ms = 8; #assert rl_backoff(r[..], 3, 0) == 8; r[0].cap_ms = 7; #assert rl_backoff(r[..], 3, 0) == 7;
+  r[0].base_ms = 500; r[0].cap_ms = 30000;
+  // attempts stop counting at the cap's exponent
+  g := rl_start(r[..], 0);
+  for k: 0..<40 { #assert rl_dropped(r[..], r[0].gen, 0, 0); h := rl_start(r[..], 0); }
+  #assert r[0].attempt == 16 && r[0].gen == 41;
+}
+#test "AUTH: challenge, hook, accepted AUTH retries an auth-required CLOSED once" {
+  r: [1] Relay; buf: [24] u8;
+  s := rl_subscribe(r[..]); g := rl_open_at(r[..], 0);
+  o := rl_next(r[..], 0); id := rl_sub_text(s, 1, buf[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_AUTH}) == RL_AUTH && r[0].auth == RA_CHALLENGED;
+  o = rl_next(r[..], 0);
+  #assert o.kind == RL_OUT_AUTH && rl_next(r[..], 0).kind == RL_OUT_AUTH;   // until the hook reports a signed AUTH
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_CLOSED, sub = id, auth_required = true}) == RL_CLOSED && r[0].subs[0].state == RS_AUTH;
+  #assert rl_input(r[..], g, rl_event(id, 1, 5)) == RL_UNKNOWN;
+  auth := rl_id_of(77);
+  #assert !rl_auth_sent(r[..], auth[0..<31]) && rl_auth_sent(r[..], auth[..]) && r[0].auth == RA_SENT;
+  #assert !rl_auth_sent(r[..], auth[..]);
+  #assert rl_next(r[..], 0).kind == RL_OUT_NONE;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = auth, accepted = true}) == RL_AUTH && r[0].auth == RA_OK;
+  #assert r[0].subs[0].state == RS_WANT && r[0].subs[0].auth_retried;
+  o = rl_next(r[..], 0);
+  #assert o.kind == RL_OUT_REQ && o.slot == 0;
+  // refused again: no second retry in this generation
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_CLOSED, sub = id, auth_required = true}) == RL_CLOSED && r[0].subs[0].state == RS_REFUSED;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_CLOSED, sub = id}) == RL_UNKNOWN;
+  // a refused AUTH falls back to no AUTH; a plain CLOSED is final
+  r2: [1] Relay; s2 := rl_subscribe(r2[..]); g2 := rl_open_at(r2[..], 0); o = rl_next(r2[..], 0);
+  #assert rl_input(r2[..], g2, RlIn.{kind = RL_IN_AUTH}) == RL_AUTH && rl_auth_sent(r2[..], auth[..]);
+  #assert rl_input(r2[..], g2, RlIn.{kind = RL_IN_CLOSED, sub = id, auth_required = true}) == RL_CLOSED && r2[0].subs[0].state == RS_AUTH;
+  #assert rl_input(r2[..], g2, RlIn.{kind = RL_IN_OK, id = rl_id_of(78), accepted = true}) == RL_UNKNOWN && r2[0].auth == RA_SENT;
+  #assert rl_input(r2[..], g2, RlIn.{kind = RL_IN_OK, id = auth, accepted = false}) == RL_AUTH && r2[0].auth == RA_NONE;
+  #assert r2[0].subs[0].state == RS_AUTH && rl_next(r2[..], 0).kind == RL_OUT_NONE;
+  r3: [1] Relay; s3 := rl_subscribe(r3[..]); g3 := rl_open_at(r3[..], 0); o = rl_next(r3[..], 0);
+  #assert rl_input(r3[..], g3, RlIn.{kind = RL_IN_CLOSED, sub = id}) == RL_CLOSED && r3[0].subs[0].state == RS_REFUSED;
+  #assert rl_input(r3[..], g3, RlIn.{kind = RL_IN_EOSE, sub = id}) == RL_UNKNOWN;
+}
+#test "reconnect re-arms AUTH: a new generation needs a new challenge and allows a new retry" {
+  r: [1] Relay; buf: [24] u8; auth := rl_id_of(77);
+  s := rl_subscribe(r[..]); g := rl_open_at(r[..], 0); o := rl_next(r[..], 0); id := rl_sub_text(s, 1, buf[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_AUTH}) == RL_AUTH && rl_auth_sent(r[..], auth[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_CLOSED, sub = id, auth_required = true}) == RL_CLOSED;
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = auth, accepted = true}) == RL_AUTH && r[0].subs[0].auth_retried;
+  #assert rl_dropped(r[..], g, 0, 0) && r[0].auth == RA_NONE;
+  g = rl_start(r[..], 500);
+  #assert rl_opened(r[..], g, 500) && r[0].auth == RA_NONE && !r[0].subs[0].auth_retried && r[0].subs[0].state == RS_WANT;
+  #assert !rl_auth_sent(r[..], auth[..]);                         // no challenge on this connection yet
+  // an OK for the old AUTH id is not an AUTH answer any more
+  o = rl_next(r[..], 500);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = auth, accepted = true}) == RL_UNKNOWN;
+}
+#test "shutdown stops reconnects; refused subscriptions stay refused across reconnect" {
+  r: [1] Relay; buf: [24] u8;
+  s := rl_subscribe(r[..]); g := rl_open_at(r[..], 0); o := rl_next(r[..], 0); id := rl_sub_text(s, 1, buf[..]);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_CLOSED, sub = id}) == RL_CLOSED;
+  #assert rl_dropped(r[..], g, 0, 0);
+  g = rl_start(r[..], 500); #assert rl_opened(r[..], g, 500) && r[0].subs[0].state == RS_REFUSED;
+  #assert rl_next(r[..], 500).kind == RL_OUT_NONE;
+  #assert rl_unsubscribe(r[..], s) && r[0].subs[0].state == RS_FREE;   // nothing to CLOSE: the relay already did
+  rl_shutdown(r[..]);
+  #assert r[0].state == RL_SHUT && rl_start(r[..], 600) == -1 && rl_tick(r[..], 99999) == RL_DO_NONE;
+  #assert !rl_dropped(r[..], g, 600, 0) && !rl_opened(r[..], g, 600);
+  r2: [1] Relay;
+  #assert !rl_opened(r2[..], 0, 0) && rl_tick(r2[..], 0) == RL_DO_NONE && !rl_dropped(r2[..], 0, 0, 0);
+  // unsubscribing before anything was sent needs no CLOSE
+  t := rl_subscribe(r2[..]);
+  #assert rl_unsubscribe(r2[..], t) && r2[0].subs[0].state == RS_FREE;
+}
+#test "the duplicate window is bounded and forgets the oldest" {
+  r: [1] Relay; buf: [24] u8;
+  s := rl_subscribe(r[..]); g := rl_open_at(r[..], 0); o := rl_next(r[..], 0); id := rl_sub_text(s, 1, buf[..]);
+  for k: 0..<RL_SEEN + 1 { #assert rl_input(r[..], g, rl_event(id, k, k)) == RL_DELIVER; }
+  #assert r[0].seen_count == RL_SEEN && r[0].seen_next == 1;
+  #assert rl_input(r[..], g, rl_event(id, 0, 0)) == RL_DELIVER;   // forgotten: the window is the bound
+  #assert rl_input(r[..], g, rl_event(id, 2, 2)) == RL_DUPLICATE && rl_input(r[..], g, rl_event(id, RL_SEEN, 0)) == RL_DUPLICATE;
+  #assert rl_input(r[..], g, rl_event(id, 1, 1)) == RL_DELIVER;
+}
+#test "subscription ids" {
+  buf: [24] u8; small: [3] u8; exact: [4] u8;
+  #assert rl_sub_text(1, 1, exact[..]) == "s1.1" && rl_sub_text(1, 10, exact[..]) == "";
+  #assert rl_sub_text(0, 1, buf[..]) == "s0.1" && rl_sub_text(7, 1234567, buf[..]) == "s7.1234567" && rl_sub_text(3, 10, buf[..]) == "s3.10";
+  #assert rl_sub_text(1, 1, small[..]) == "";
+  r: [1] Relay;
+  #assert rl_sub_find(r[..], "s0.0") == -1;                         // a free slot matches nothing
+  s := rl_subscribe(r[..]);
+  #assert rl_sub_find(r[..], "s0.1") == 0 && rl_sub_find(r[..], "s0.10") == -1 && rl_sub_find(r[..], "") == -1;
+  #assert rl_sub_find(r[..], "s8.1") == -1 && rl_sub_find(r[..], "s0.1x") == -1;
+  t := rl_subscribe(r[..]);
+  #assert rl_sub_find(r[..], "s1.1") == 1;
+}
+
+// ---- subscriptions and publishes --------------------------------------------
+
+// The slot's wire id into out: "s<slot>.<serial>", or "" when it doesn't fit.
+rl_sub_text :: (slot: int, serial: int, out: [] u8) -> string {
+  tmp: [20] u8; k := 0; x := serial;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; if x == 0 { break; } }
+  if out.count < k + 3 { return ""; }
+  out[0] = 's'; out[1] = cast(u8) ('0' + slot); out[2] = '.';
+  for i: 0..<k { out[3 + i] = tmp[k - 1 - i]; }
+  return cast(string) out[0..<k + 3];
+}
+// The slot a wire id names, or -1 when it names no current subscription.
+rl_sub_find :: (r: [] Relay, text: string) -> int {
+  for slot: 0..<RL_SUBS {
+    buf: [24] u8;
+    if r[0].subs[slot].state != RS_FREE && rl_sub_text(slot, r[0].subs[slot].serial, buf[..]) == text { return slot; }
+  }
+  return -1;
+}
+// A new subscription's slot, or -1 when every slot is taken. Its REQ goes
+// out once the connection is open.
+rl_subscribe :: (r: [] Relay) -> int {
+  for slot: 0..<RL_SUBS {
+    if r[0].subs[slot].state == RS_FREE {
+      serial := r[0].subs[slot].serial + 1;
+      r[0].subs[slot] = RlSub.{state = RS_WANT, serial = serial};
+      return slot;
+    }
+  }
+  return -1;
+}
+// Ends a subscription: a CLOSE goes out when the relay has its REQ.
+rl_unsubscribe :: (r: [] Relay, slot: int) -> bool {
+  if slot < 0 || slot >= RL_SUBS || r[0].subs[slot].state == RS_FREE || r[0].subs[slot].state == RS_CLOSING { return false; }
+  live := r[0].subs[slot].state == RS_LIVE || r[0].subs[slot].state == RS_CAUGHT;
+  r[0].subs[slot].state = ifx live && r[0].state == RL_OPEN then RS_CLOSING else RS_FREE;
+  return true;
+}
+rl_id_eq :: (a: [] u8, b: [] u8) -> bool {
+  for i: 0..<32 { if a[i] != b[i] { return false; } }
+  return true;
+}
+// A publish slot for the event with this 32-byte id (the same slot when it
+// is already pending), or -1 when the id is malformed or every slot is
+// pending. The host keeps the event's bytes for RL_OUT_EVENT.
+rl_publish :: (r: [] Relay, id: [] u8) -> int {
+  if id.count != 32 { return -1; }
+  free := -1;
+  for slot: 0..<RL_PUBS {
+    p := r[0].pubs[slot].state;
+    if (p == RP_QUEUED || p == RP_SENT) && rl_id_eq(r[0].pubs[slot].id[..], id) { return slot; }
+    if free < 0 && p != RP_QUEUED && p != RP_SENT { free = slot; }
+  }
+  if free < 0 { return -1; }
+  r[0].pubs[free].state = RP_QUEUED;
+  for i: 0..<32 { r[0].pubs[free].id[i] = id[i]; }
+  return free;
+}
+rl_cancel_publish :: (r: [] Relay, slot: int) -> bool {
+  if slot < 0 || slot >= RL_PUBS || r[0].pubs[slot].state == RP_FREE { return false; }
+  r[0].pubs[slot].state = RP_FREE;
+  return true;
+}
+
+// ---- the connection ---------------------------------------------------------
+
+// Milliseconds to wait before reconnect attempt `attempt` (counted from 0):
+// base doubled per attempt up to the cap, plus jitter mod (half that + 1).
+rl_backoff :: (r: [] Relay, attempt: int, jitter: int) -> int {
+  d := r[0].cap_ms;
+  if attempt >= 0 && attempt <= 16 && (r[0].base_ms << attempt) <= r[0].cap_ms - 1 { d = r[0].base_ms << attempt; }
+  return d + (jitter & 0x7fffffff) % (d / 2 + 1);
+}
+// Starts a connection: the host opens a socket and does the handshake.
+// The new generation, or -1 when one is already under way or shut.
+rl_start :: (r: [] Relay, now: int) -> int {
+  if r[0].state != RL_IDLE && r[0].state != RL_BACKOFF { return -1; }
+  r[0].state = RL_CONNECTING; r[0].gen += 1; r[0].deadline = now + r[0].connect_ms;
+  return r[0].gen;
+}
+// The handshake finished for generation gen.
+rl_opened :: (r: [] Relay, gen: int, now: int) -> bool {
+  if r[0].state != RL_CONNECTING || gen != r[0].gen { return false; }
+  r[0].state = RL_OPEN; r[0].attempt = 0;
+  for slot: 0..<RL_SUBS {
+    st := r[0].subs[slot].state;
+    if st == RS_LIVE || st == RS_CAUGHT || st == RS_AUTH { r[0].subs[slot].state = RS_WANT; }
+    r[0].subs[slot].auth_retried = false;
+  }
+  for slot: 0..<RL_PUBS { if r[0].pubs[slot].state == RP_SENT { r[0].pubs[slot].state = RP_QUEUED; } }
+  return true;
+}
+// Generation gen's socket closed or failed (or rl_tick timed it out).
+rl_dropped :: (r: [] Relay, gen: int, now: int, jitter: int) -> bool {
+  if (r[0].state != RL_CONNECTING && r[0].state != RL_OPEN) || gen != r[0].gen { return false; }
+  r[0].state = RL_BACKOFF; r[0].auth = RA_NONE;
+  r[0].deadline = now + rl_backoff(r, r[0].attempt, jitter);
+  if r[0].attempt < 16 { r[0].attempt += 1; }
+  for slot: 0..<RL_SUBS { if r[0].subs[slot].state == RS_CLOSING { r[0].subs[slot].state = RS_FREE; } }
+  return true;
+}
+// No more reconnects; the host closes the socket.
+rl_shutdown :: (r: [] Relay) { r[0].state = RL_SHUT; }
+// Deadlines: a connect that took too long (RL_DO_TIMEOUT: close it and
+// report rl_dropped), a backoff that ended (RL_DO_CONNECT: call rl_start),
+// and publishes whose OK is overdue (RP_TIMEOUT: outcome unknown).
+rl_tick :: (r: [] Relay, now: int) -> int {
+  if r[0].state == RL_CONNECTING && now >= r[0].deadline { return RL_DO_TIMEOUT; }
+  if r[0].state == RL_BACKOFF && now >= r[0].deadline { return RL_DO_CONNECT; }
+  if r[0].state == RL_OPEN {
+    for slot: 0..<RL_PUBS {
+      if r[0].pubs[slot].state == RP_SENT && now >= r[0].pubs[slot].deadline {
+        r[0].pubs[slot].state = RP_TIMEOUT; r[0].timeouts += 1;
+      }
+    }
+  }
+  return RL_DO_NONE;
+}
+// The next frame to send on the open connection: CLOSEs first, then REQs,
+// then EVENTs, then the AUTH request while a challenge is unanswered.
+rl_next :: (r: [] Relay, now: int) -> RlOut {
+  if r[0].state != RL_OPEN { return RlOut.{}; }
+  for slot: 0..<RL_SUBS {
+    if r[0].subs[slot].state == RS_CLOSING { r[0].subs[slot].state = RS_FREE; return RlOut.{kind = RL_OUT_CLOSE, slot = slot}; }
+  }
+  for slot: 0..<RL_SUBS {
+    if r[0].subs[slot].state == RS_WANT {
+      r[0].subs[slot].state = RS_LIVE;
+      return RlOut.{kind = RL_OUT_REQ, slot = slot, has_since = r[0].subs[slot].has_newest, since = r[0].subs[slot].newest};
+    }
+  }
+  for slot: 0..<RL_PUBS {
+    if r[0].pubs[slot].state == RP_QUEUED {
+      r[0].pubs[slot].state = RP_SENT; r[0].pubs[slot].deadline = now + r[0].ack_ms;
+      return RlOut.{kind = RL_OUT_EVENT, slot = slot};
+    }
+  }
+  if r[0].auth == RA_CHALLENGED { return RlOut.{kind = RL_OUT_AUTH}; }
+  return RlOut.{};
+}
+// The NIP-42 hook: the host sent a signed AUTH event with this id in answer
+// to the current challenge. False when there is no unanswered challenge.
+rl_auth_sent :: (r: [] Relay, id: [] u8) -> bool {
+  if r[0].auth != RA_CHALLENGED || id.count != 32 { return false; }
+  r[0].auth = RA_SENT;
+  for i: 0..<32 { r[0].auth_id[i] = id[i]; }
+  return true;
+}
+rl_seen :: (r: [] Relay, id: [] u8) -> bool {
+  for k: 0..<r[0].seen_count { if rl_id_eq(r[0].seen[k * 32..<k * 32 + 32], id) { return true; } }
+  return false;
+}
+rl_remember :: (r: [] Relay, id: [] u8) {
+  at := r[0].seen_next * 32;
+  for i: 0..<32 { r[0].seen[at + i] = id[i]; }
+  r[0].seen_next = (r[0].seen_next + 1) % RL_SEEN;
+  if r[0].seen_count < RL_SEEN { r[0].seen_count += 1; }
+}
+// Admits one decoded relay message from generation gen's connection.
+rl_input :: (r: [] Relay, gen: int, m: RlIn) -> int {
+  mid := m.id;
+  if gen != r[0].gen { return RL_STALE; }
+  if r[0].state != RL_OPEN { return RL_NOT_OPEN; }
+  if m.kind == RL_IN_NOTICE { r[0].notices += 1; return RL_NOTICE; }
+  if m.kind == RL_IN_AUTH { r[0].auth = RA_CHALLENGED; return RL_AUTH; }
+  if m.kind == RL_IN_OK {
+    if r[0].auth == RA_SENT && rl_id_eq(r[0].auth_id[..], mid[..]) {
+      r[0].auth = ifx m.accepted then RA_OK else RA_NONE;
+      for slot: 0..<RL_SUBS {
+        if m.accepted && r[0].subs[slot].state == RS_AUTH && !r[0].subs[slot].auth_retried {
+          r[0].subs[slot].state = RS_WANT; r[0].subs[slot].auth_retried = true;
+        }
+      }
+      return RL_AUTH;
+    }
+    for slot: 0..<RL_PUBS {
+      p := r[0].pubs[slot].state;
+      if (p == RP_SENT || p == RP_TIMEOUT) && rl_id_eq(r[0].pubs[slot].id[..], mid[..]) {
+        r[0].pubs[slot].state = ifx m.accepted then RP_ACCEPTED else RP_REFUSED;
+        return RL_ACK;
+      }
+    }
+    return RL_UNKNOWN;
+  }
+  if m.kind != RL_IN_EVENT && m.kind != RL_IN_EOSE && m.kind != RL_IN_CLOSED { return RL_BAD; }
+  slot := rl_sub_find(r, m.sub);
+  if slot < 0 { return RL_UNKNOWN; }
+  st := r[0].subs[slot].state;
+  if st != RS_LIVE && st != RS_CAUGHT { return RL_UNKNOWN; }
+  if m.kind == RL_IN_EOSE { r[0].subs[slot].state = RS_CAUGHT; return RL_EOSE; }
+  if m.kind == RL_IN_CLOSED {
+    again := m.auth_required && !r[0].subs[slot].auth_retried;
+    r[0].subs[slot].state = ifx again then RS_AUTH else RS_REFUSED;
+    return RL_CLOSED;
+  }
+  if !m.verified { r[0].forged += 1; return RL_FORGED; }
+  if rl_seen(r, mid[..]) { return RL_DUPLICATE; }
+  rl_remember(r, mid[..]);
+  r[0].subs[slot].events += 1;
+  if !r[0].subs[slot].has_newest || m.created_at >= r[0].subs[slot].newest + 1 {
+    r[0].subs[slot].newest = m.created_at; r[0].subs[slot].has_newest = true;
+  }
+  return RL_DELIVER;
+}
+rl_state :: (r: [] Relay) -> int #export_c { return r[0].state; }
+#test "the exported state reader" { r: [1] Relay; #assert rl_state(r[..]) == RL_IDLE; g := rl_start(r[..], 0); #assert rl_state(r[..]) == RL_CONNECTING; }

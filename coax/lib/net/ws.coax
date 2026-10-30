@@ -1,0 +1,619 @@
+// RFC 6455 WebSocket client protocol over caller-owned byte buffers: the
+// opening handshake (request writing, response admission with
+// Sec-WebSocket-Accept), masked client frames, server frame reading,
+// fragmented message assembly, ping/pong, close codes and size limits. It
+// does no I/O: the host moves bytes (coax/platform/socket-native.c) and the
+// mask keys and handshake nonce come from the entropy contract. No
+// extensions or subprotocols are requested, so a server that selects one is
+// refused. ws:// only: TLS is the transport's business and is not here.
+#load "../crypto/sha1.coax";
+#authority;
+
+WS_GUID :: "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+WS_B64 :: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+WS_HELLO_MAX :: 8192;          // response head bytes we read before refusing
+WS_HOST_MAX :: 253; WS_PATH_MAX :: 2048;
+
+// Handshake results.
+WS_HELLO_OK :: 0; WS_HELLO_MORE :: 1; WS_HELLO_TOO_BIG :: 2; WS_HELLO_STATUS :: 3;
+WS_HELLO_HEADER :: 4; WS_HELLO_UPGRADE :: 5; WS_HELLO_CONNECTION :: 6; WS_HELLO_ACCEPT :: 7;
+WS_HELLO_EXTENSION :: 8;
+WsHello :: struct { status: int; consumed: int; }
+
+// Opcodes.
+WS_OP_CONT :: 0; WS_OP_TEXT :: 1; WS_OP_BINARY :: 2; WS_OP_CLOSE :: 8; WS_OP_PING :: 9; WS_OP_PONG :: 10;
+// Frame read results.
+WS_FRAME_OK :: 0; WS_FRAME_MORE :: 1; WS_FRAME_RSV :: 2; WS_FRAME_OPCODE :: 3; WS_FRAME_MASKED :: 4;
+WS_FRAME_CONTROL :: 5; WS_FRAME_LENGTH :: 6; WS_FRAME_TOO_BIG :: 7;
+WsFrame :: struct { status: int; fin: bool; op: int; header: int; length: int; total: int; }
+
+// Message assembly events.
+WS_EV_PART :: 0; WS_EV_MESSAGE :: 1; WS_EV_PING :: 2; WS_EV_PONG :: 3; WS_EV_CLOSE :: 4;
+WS_EV_CONTINUATION :: 5; WS_EV_INTERLEAVED :: 6; WS_EV_TOO_BIG :: 7; WS_EV_UTF8 :: 8; WS_EV_BAD_CLOSE :: 9;
+WsReader :: struct { open: bool; op: int; used: int; }
+
+// Close codes we send.
+WS_CLOSE_NORMAL :: 1000; WS_CLOSE_GOING_AWAY :: 1001; WS_CLOSE_PROTOCOL :: 1002;
+WS_CLOSE_NO_STATUS :: 1005; WS_CLOSE_INVALID_DATA :: 1007; WS_CLOSE_TOO_BIG :: 1009;
+
+#test "RFC 6455 section 1.3: the sample nonce's key and accept value" {
+  text := "the sample nonce"; nonce: [16] u8; key: [24] u8; accept: [28] u8;
+  for i: 0..<16 { nonce[i] = text[i]; }
+  #assert ws_key(nonce[..], key[..]) && cast(string) key[..] == "dGhlIHNhbXBsZSBub25jZQ==";
+  #assert ws_accept_of(cast(string) key[..], accept[..]) && cast(string) accept[..] == "s3pPLMBiTxaQ9kYGzzhZRbK+xOo=";
+  #assert !ws_key(nonce[0..<15], key[..]) && !ws_key(nonce[..], key[0..<23]);
+  #assert !ws_accept_of(cast(string) key[..], accept[0..<27]) && !ws_accept_of("", accept[..]);
+  long: [100] u8; for i: 0..<100 { long[i] = 'A'; }
+  #assert !ws_accept_of(cast(string) long[0..<65], accept[..]) && ws_accept_of(cast(string) long[0..<64], accept[..]);
+  #assert ws_accept_of("k", accept[..]) && !ws_accept_of(cast(string) long[..], accept[..]);
+}
+#test "base64 of every tail length" {
+  xp: [256] u8;
+  out: [8] u8;
+  #assert ws_b64("", out[..]) == 0;
+  #assert ws_b64("f", out[..]) == 4 && cast(string) out[0..<4] == "Zg==";
+  #assert ws_b64("fo", out[..]) == 4 && cast(string) out[0..<4] == "Zm8=";
+  #assert ws_b64("foo", out[..]) == 4 && cast(string) out[0..<4] == "Zm9v";
+  #assert ws_b64("foob", out[..]) == 8 && cast(string) out[0..<8] == "Zm9vYg==";
+  #assert ws_b64(wx("%ff%fe%fd", xp[0..<256]), out[..]) == 4 && cast(string) out[0..<4] == "//79";
+  #assert ws_b64("foob", out[0..<7]) == -1;
+}
+#test "the opening request is exact and refuses header injection" {
+  xp: [256] u8;
+  out: [512] u8;
+  n := ws_request("relay.example", 80, "/", "dGhlIHNhbXBsZSBub25jZQ==", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "GET / HTTP/1.1\r\nHost: relay.example\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n";
+  n = ws_request("127.0.0.1", 7447, "", "k", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "GET / HTTP/1.1\r\nHost: 127.0.0.1:7447\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: k\r\nSec-WebSocket-Version: 13\r\n\r\n";
+  #assert ws_request("h", 7447, "/", "k", out[0..<n - 8]) > 0 && ws_request("h", 7447, "/", "k", out[0..<n - 9]) == -1;
+  #assert ws_request("h", 7447, "/", "k", out[0..<29]) == -1 && ws_request("h", 7447, "/", "k", out[0..<28]) == -1;
+  n = ws_request("h", 65535, "/a?b=c", "k", out[..]);
+  #assert n > 0 && cast(string) out[0..<34] == "GET /a?b=c HTTP/1.1\r\nHost: h:65535";
+  #assert ws_request("h", 80, "/", "k", out[0..<30]) == -1;
+  #assert ws_request("h", 80, "/", "k", out[0..<ws_request("h", 80, "/", "k", out[..])]) > 0;
+  #assert ws_request("", 80, "/", "k", out[..]) == -1 && ws_request("a b", 80, "/", "k", out[..]) == -1;
+  #assert ws_request("h\r\nX: y", 80, "/", "k", out[..]) == -1 && ws_request("h", 80, "/a b", "k", out[..]) == -1;
+  #assert ws_request("h", 80, "a", "k", out[..]) == -1 && ws_request("h", 0, "/", "k", out[..]) == -1;
+  #assert ws_request("h", 65536, "/", "k", out[..]) == -1 && ws_request("h", 80, wx("/%7f", xp[0..<256]), "k", out[..]) == -1;
+  #assert ws_request("h", 80, "/", "", out[..]) == -1 && ws_request("h", 80, "/", "a\r", out[..]) == -1;
+  #assert ws_request("h", 1, "/", "k", out[..]) > 0;
+  host: [254] u8; for i: 0..<254 { host[i] = 'a'; }
+  #assert ws_request(cast(string) host[..], 80, "/", "k", out[..]) == -1;
+  #assert ws_request(cast(string) host[0..<253], 80, "/", "k", out[..]) > 0;
+  path: [2049] u8; for i: 0..<2049 { path[i] = '/'; }
+  big: [2400] u8;
+  #assert ws_request("h", 80, cast(string) path[..], "k", big[..]) == -1;
+  #assert ws_request("h", 80, cast(string) path[0..<2048], "k", big[..]) > 0;
+  #assert ws_digits(out[..], 0, 0) == 1 && out[0] == '0' && ws_digits(out[0..<2], 0, 123) == -1;
+  #assert ws_digits(out[0..<3], 0, 123) == 3 && out[0] == '1' && out[2] == '3' && ws_digits(out[0..<3], 1, 12) == 3 && ws_digits(out[0..<3], 2, 12) == -1;
+}
+#test "request bytes: printable ASCII only, no space or DEL" {
+  xp: [1024] u8; out: [512] u8;
+  #assert ws_request("h!", 80, "/!", "k!", out[..]) > 0 && ws_request("h~", 80, "/~", "k~", out[..]) > 0;
+  #assert ws_request(wx("h%7f", xp[0..<256]), 80, "/", "k", out[..]) == -1;
+  #assert ws_request("h", 80, "/", wx("k%7f", xp[256..<512]), out[..]) == -1 && ws_request("h", 80, "/", "k k", out[..]) == -1;
+  #assert ws_request(wx("h%80", xp[512..<768]), 80, "/", "k", out[..]) == -1 && ws_request("h", 80, "/", wx("k%80", xp[768..<1024]), out[..]) == -1;
+  #assert ws_request("h", 80, "/\t", "k", out[..]) == -1 && ws_request("h", 80, "/", "k\t", out[..]) == -1;
+}
+#test "a 101 response with the matching accept value is admitted; the rest is left" {
+  xp: [256] u8;
+  key := "dGhlIHNhbXBsZSBub25jZQ==";
+  ok := wx("HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n%81%02hi", xp[0..<256]);
+  h := ws_response(ok, key);
+  #assert h.status == WS_HELLO_OK && h.consumed == ok.count - 4;
+  // header names and tokens are case-insensitive; Connection may be a list
+  h = ws_response("HTTP/1.1 101\r\nupgrade: WebSocket\r\nCONNECTION: keep-alive, upgrade\r\nsec-websocket-accept:s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nServer: x\r\nX: y\r\n\r\n", key);
+  #assert h.status == WS_HELLO_OK;
+  h = ws_response("HTTP/1.1 101 OK\r\nUpgrade: websocket\r\nConnection: Upgrade,x\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=  \r\n\r\n", key);
+  #assert h.status == WS_HELLO_OK;
+}
+#test "the response head limit is exact; colons split once" {
+  key := "dGhlIHNhbXBsZSBub25jZQ==";
+  pre := "HTTP/1.1 101\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nX: ";
+  b: [WS_HELLO_MAX + 8] u8;
+  for i: 0..<pre.count { b[i] = pre[i]; }
+  for i: pre.count..<WS_HELLO_MAX - 4 { b[i] = 'a'; }
+  tail := "\r\n\r\n";
+  for i: 0..<4 { b[WS_HELLO_MAX - 4 + i] = tail[i]; }
+  h := ws_response(cast(string) b[0..<WS_HELLO_MAX], key);
+  #assert h.status == WS_HELLO_OK && h.consumed == WS_HELLO_MAX;
+  b[WS_HELLO_MAX - 4] = 'a';
+  for i: 0..<4 { b[WS_HELLO_MAX - 3 + i] = tail[i]; }
+  #assert ws_response(cast(string) b[0..<WS_HELLO_MAX + 1], key).status == WS_HELLO_TOO_BIG;
+  #assert ws_response("HTTP/1.1 101\r\nUpgrade: websocket\r\nConnection: Upgrade, x:y\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n", key).status == WS_HELLO_OK;
+  #assert ws_response("HTTP/1.1 101\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n:a: b\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n", key).status == WS_HELLO_HEADER;
+  #assert ws_response("HTTP/1.1 101\r\n\r\n", key).status == WS_HELLO_UPGRADE && ws_response("HTTP/1.1 10\r\n\r\n", key).status == WS_HELLO_STATUS;
+  #assert ws_response("\r\n\r\n", key).status == WS_HELLO_STATUS;
+}
+#test "partial, oversized and refused responses" {
+  key := "dGhlIHNhbXBsZSBub25jZQ==";
+  a := "Sec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n";
+  #assert ws_response("HTTP/1.1 101 Switching", key).status == WS_HELLO_MORE;
+  #assert ws_response("", key).status == WS_HELLO_MORE;
+  big: [WS_HELLO_MAX] u8; for i: 0..<WS_HELLO_MAX { big[i] = 'x'; }
+  #assert ws_response(cast(string) big[..], key).status == WS_HELLO_TOO_BIG;
+  #assert ws_response(cast(string) big[0..<WS_HELLO_MAX - 1], key).status == WS_HELLO_MORE;
+  #assert ws_response("HTTP/1.1 200 OK\r\n\r\n", key).status == WS_HELLO_STATUS;
+  #assert ws_response("HTTP/1.1 1010\r\n\r\n", key).status == WS_HELLO_STATUS;
+  #assert ws_response("HTTP/1.0 101 x\r\n\r\n", key).status == WS_HELLO_STATUS;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nnocolon\r\n\r\n", key).status == WS_HELLO_HEADER;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n: v\r\n\r\n", key).status == WS_HELLO_HEADER;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nX: a\nb\r\n\r\n", key).status == WS_HELLO_HEADER;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websockets\r\nConnection: Upgrade\r\n\r\n", key).status == WS_HELLO_UPGRADE;
+  #assert ws_response("HTTP/1.1 101 x\r\nConnection: Upgrade\r\n\r\n", key).status == WS_HELLO_UPGRADE;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: close\r\n\r\n", key).status == WS_HELLO_CONNECTION;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: upgrades\r\n\r\n", key).status == WS_HELLO_CONNECTION;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\n\r\n", key).status == WS_HELLO_CONNECTION;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n", key).status == WS_HELLO_ACCEPT;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo\r\n\r\n", key).status == WS_HELLO_ACCEPT;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n", key).status == WS_HELLO_ACCEPT;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\n\r\n", "").status == WS_HELLO_ACCEPT;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nSec-WebSocket-Extensions: permessage-deflate\r\n\r\n", key).status == WS_HELLO_EXTENSION;
+  #assert ws_response("HTTP/1.1 101 x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: s3pPLMBiTxaQ9kYGzzhZRbK+xOo=\r\nSec-WebSocket-Protocol: chat\r\n\r\n", key).status == WS_HELLO_EXTENSION;
+}
+#test "header helpers: case folding, trimming and tokens" {
+  #assert ws_lower('A') == 'a' && ws_lower('Z') == 'z' && ws_lower('@') == '@' && ws_lower('[') == '[' && ws_lower('a') == 'a';
+  #assert ws_ieq("Upgrade", "uPGRADE") && !ws_ieq("Upgrade", "Upgrad") && !ws_ieq("ab", "ac") && !ws_ieq("xpgrade", "upgrade");
+  #assert ws_trim(" \t a b \t") == "a b" && ws_trim("") == "" && ws_trim("   ") == "";
+  #assert ws_has_token("a, Upgrade ,b", "upgrade") && ws_has_token("upgrade", "upgrade") && !ws_has_token("upgrade2", "upgrade") && !ws_has_token("", "upgrade");
+  #assert ws_has_token(",upgrade", "upgrade") && !ws_has_token("a,", "upgrade");
+  #assert ws_starts("ab", "ab") && ws_starts("abc", "ab") && !ws_starts("a", "ab") && !ws_starts("ac", "ab") && ws_starts("", "");
+  #assert ws_find_end("ab\r\n\r\ncd") == 6 && ws_find_end("ab\r\n\r") == 0 && ws_find_end("\r\n\r\n") == 4;
+  #assert ws_find_end("a\r\nb\r\n\r\n") == 8 && ws_find_end("a\n\r\n\r\n") == 6 && ws_find_end("\r\r\r\n\r\n") == 6 && ws_find_end("\r\n\n\n\r\n") == 0;
+  #assert ws_header_char('a') && ws_header_char(' ') && ws_header_char('~') && !ws_header_char(cast(u8) 127) && !ws_header_char(cast(u8) 31) && ws_header_char('\t');
+}
+
+// Check helper: "%NN" in spec is the byte 0xNN (lowercase hex), every other
+// character stands for itself. Coax strings have no hex escape.
+#test "check byte specs decode" {
+  b: [8] u8;
+  r := wx("a%81%ff%0a", b[..]);
+  #assert r.count == 4 && r[0] == 'a' && r[1] == 129 && r[2] == 255 && r[3] == 10 && wx("", b[..]).count == 0;
+}
+wx_digit :: (c: u8) -> int { return ifx c >= 'a' then cast(int) (c - 'a') + 10 else cast(int) (c - '0'); }
+wx :: (spec: string, out: [] u8) -> string {
+  n := 0; i := 0;
+  while i < spec.count {
+    if spec[i] == '%' { out[n] = cast(u8) (wx_digit(spec[i + 1]) * 16 + wx_digit(spec[i + 2])); i += 3; }
+    else { out[n] = spec[i]; i += 1; }
+    n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- handshake ------------------------------------------------------------
+
+// Standard base64 with padding; -1 when out is too small.
+ws_b64 :: (input: string, out: [] u8) -> int {
+  needed := (input.count + 2) / 3 * 4;
+  if out.count < needed { return -1; }
+  at := 0; w := 0;
+  while at < input.count {
+    word := cast(u32) input[at] << 16;
+    if at + 1 < input.count { word = word | (cast(u32) input[at + 1] << 8); }
+    if at + 2 < input.count { word = word | cast(u32) input[at + 2]; }
+    out[w] = WS_B64[word >> 18]; out[w + 1] = WS_B64[(word >> 12) & 63];
+    out[w + 2] = ifx at + 1 < input.count then WS_B64[(word >> 6) & 63] else '=';
+    out[w + 3] = ifx at + 2 < input.count then WS_B64[word & 63] else '=';
+    at += 3; w += 4;
+  }
+  return needed;
+}
+// Sec-WebSocket-Key: base64 of 16 random bytes (from the entropy contract).
+ws_key :: (nonce: [] u8, out: [] u8) -> bool {
+  return nonce.count == 16 && ws_b64(cast(string) nonce, out) == 24;
+}
+// The Sec-WebSocket-Accept value a server must return for key.
+ws_accept_of :: (key: string, out: [] u8) -> bool {
+  if key.count < 1 || key.count > 64 || out.count < 28 { return false; }
+  buf: [100] u8;
+  for i: 0..<key.count { buf[i] = key[i]; }
+  for i: 0..<WS_GUID.count { buf[key.count + i] = WS_GUID[i]; }
+  digest: [20] u8;
+  ok := sha1_hash(cast(string) buf[0..<key.count + WS_GUID.count], digest[..]);
+  return ok && ws_b64(cast(string) digest[..], out) == 28;
+}
+// A visible ASCII byte, space or tab: what a header value may hold.
+ws_header_char :: (c: u8) -> bool { return c == '\t' || (c >= ' ' && c < cast(u8) 127); }
+ws_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+ws_digits :: (out: [] u8, at: int, v: int) -> int {
+  tmp: [8] u8; k := 0; x := v;
+  while true {
+    tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1;
+    if x == 0 { break; }
+  }
+  if at < 0 || at + k > out.count { return -1; }
+  for i: 0..<k { out[at + i] = tmp[k - 1 - i]; }
+  return at + k;
+}
+// The client's opening request into out; its length, or -1 when an input is
+// refused (empty or oversized host, a path not starting with "/", spaces,
+// controls or non-ASCII anywhere, port outside 1..65535) or out is too small.
+ws_request :: (host: string, port: int, path: string, key: string, out: [] u8) -> int {
+  if host.count < 1 || host.count > WS_HOST_MAX || port < 1 || port > 65535 { return -1; }
+  if path.count > WS_PATH_MAX || (path.count > 0 && path[0] != '/') || key.count < 1 { return -1; }
+  for c: host { if c <= ' ' || c >= cast(u8) 127 { return -1; } }
+  for c: path { if c <= ' ' || c >= cast(u8) 127 { return -1; } }
+  for c: key { if c <= ' ' || c >= cast(u8) 127 { return -1; } }
+  n := ws_put(out, 0, "GET ");
+  n = ws_put(out, n, ifx path.count == 0 then "/" else path);
+  n = ws_put(out, n, " HTTP/1.1\r\nHost: ");
+  n = ws_put(out, n, host);
+  if port != 80 { n = ws_put(out, n, ":"); n = ws_digits(out, n, port); }
+  n = ws_put(out, n, "\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: ");
+  n = ws_put(out, n, key);
+  return ws_put(out, n, "\r\nSec-WebSocket-Version: 13\r\n\r\n");
+}
+ws_lower :: (c: u8) -> u8 { return ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+ws_ieq :: (a: string, b: string) -> bool {
+  if a.count != b.count { return false; }
+  for i: 0..<a.count { if ws_lower(a[i]) != ws_lower(b[i]) { return false; } }
+  return true;
+}
+ws_trim :: (s: string) -> string {
+  from := 0; to := s.count;
+  while from < to && (s[from] == ' ' || s[from] == '\t') { from += 1; }
+  while to > from && (s[to - 1] == ' ' || s[to - 1] == '\t') { to -= 1; }
+  return s[from..<to];
+}
+// A comma-separated header value holds token (case-insensitive).
+ws_has_token :: (value: string, token: string) -> bool {
+  from := 0;
+  for i: 0..<value.count + 1 {
+    if i == value.count || value[i] == ',' {
+      if ws_ieq(ws_trim(value[from..<i]), token) { return true; }
+      from = i + 1;
+    }
+  }
+  return false;
+}
+ws_starts :: (s: string, prefix: string) -> bool { return s.count >= prefix.count && s[0..<prefix.count] == prefix; }
+// The offset just past the first CRLFCRLF, or 0.
+ws_find_end :: (s: string) -> int {
+  i := 3;
+  while i < s.count {
+    if s[i - 3] == '\r' && s[i - 2] == '\n' && s[i - 1] == '\r' && s[i] == '\n' { return i + 1; }
+    i += 1;
+  }
+  return 0;
+}
+// Admits the server's response head from the bytes read so far. consumed is
+// the head's length on WS_HELLO_OK: frames may follow in the same read.
+ws_response :: (bytes: string, key: string) -> WsHello #export_c {
+  end := ws_find_end(bytes);
+  if end == 0 {
+    if bytes.count >= WS_HELLO_MAX { return WsHello.{status = WS_HELLO_TOO_BIG}; }
+    return WsHello.{status = WS_HELLO_MORE};
+  }
+  if end > WS_HELLO_MAX { return WsHello.{status = WS_HELLO_TOO_BIG}; }
+  head := bytes[0..<end];
+  // status line
+  if !ws_starts(head, "HTTP/1.1 101") { return WsHello.{status = WS_HELLO_STATUS}; }
+  line_end := 12;
+  while head[line_end] != '\r' { line_end += 1; }
+  if line_end > 12 && head[12] != ' ' { return WsHello.{status = WS_HELLO_STATUS}; }
+  expected: [28] u8;
+  have_expected := ws_accept_of(key, expected[..]);
+  upgrade := false; connection := false; accepts := 0; good := 0; extension := false;
+  at := line_end + 2;
+  while true {
+    e := at;
+    while head[e] != '\r' { e += 1; }
+    if e == at { break; }
+    line := head[at..<e];
+    colon := -1;
+    for c, i: line {
+      if !ws_header_char(c) { return WsHello.{status = WS_HELLO_HEADER}; }
+      if c == ':' && colon < 0 { colon = i; }
+    }
+    if colon < 1 { return WsHello.{status = WS_HELLO_HEADER}; }
+    name := line[0..<colon]; value := ws_trim(line[colon + 1..<line.count]);
+    if ws_ieq(name, "upgrade") { upgrade = ws_ieq(value, "websocket"); }
+    if ws_ieq(name, "connection") { connection = ws_has_token(value, "upgrade"); }
+    if ws_ieq(name, "sec-websocket-accept") {
+      accepts += 1;
+      if have_expected && value == cast(string) expected[..] { good += 1; }
+    }
+    if ws_ieq(name, "sec-websocket-extensions") || ws_ieq(name, "sec-websocket-protocol") { extension = true; }
+    at = e + 2;
+  }
+  if !upgrade { return WsHello.{status = WS_HELLO_UPGRADE}; }
+  if !connection { return WsHello.{status = WS_HELLO_CONNECTION}; }
+  if accepts != 1 || good != 1 { return WsHello.{status = WS_HELLO_ACCEPT}; }
+  if extension { return WsHello.{status = WS_HELLO_EXTENSION}; }
+  return WsHello.{status = WS_HELLO_OK, consumed = end};
+}
+
+// ---- frames ---------------------------------------------------------------
+
+#test "client frames are masked with the given key and use minimal lengths" {
+  mask := [4] u8.[0x37, 0xfa, 0x21, 0x3d]; out: [70000] u8;
+  // RFC 6455 section 5.7: a masked "Hello"
+  n := ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], out[..]);
+  expect := [11] u8.[0x81, 0x85, 0x37, 0xfa, 0x21, 0x3d, 0x7f, 0x9f, 0x4d, 0x51, 0x58];
+  #assert n == 11;
+  for i: 0..<11 { #assert out[i] == expect[i]; }
+  zero := [4] u8.[0, 0, 0, 0];
+  n = ws_frame_write(WS_OP_PING, true, "", zero[..], out[..]);
+  #assert n == 6 && out[0] == 0x89 && out[1] == 0x80;
+  p125: [125] u8; p126: [126] u8; p65535: [65535] u8; p65536: [65536] u8;
+  n = ws_frame_write(WS_OP_BINARY, false, cast(string) p125[..], zero[..], out[..]);
+  #assert n == 2 + 4 + 125 && out[0] == 0x02 && out[1] == 0x80 + 125;
+  n = ws_frame_write(WS_OP_BINARY, true, cast(string) p126[..], zero[..], out[..]);
+  #assert n == 4 + 4 + 126 && out[1] == 0x80 + 126 && out[2] == 0 && out[3] == 126;
+  n = ws_frame_write(WS_OP_BINARY, true, cast(string) p65535[..], zero[..], out[..]);
+  #assert n == 4 + 4 + 65535 && out[1] == 0xfe && out[2] == 255 && out[3] == 255;
+  n = ws_frame_write(WS_OP_CONT, true, cast(string) p65536[..], zero[..], out[..]);
+  #assert n == 10 + 4 + 65536 && out[1] == 0xff && out[0] == 0x80;
+  for i: 2..<7 { #assert out[i] == 0; }
+  #assert out[7] == 1 && out[8] == 0 && out[9] == 0;
+}
+#test "frame writing refusals" {
+  mask := [4] u8.[1, 2, 3, 4]; out: [200] u8; p126: [126] u8;
+  #assert ws_frame_write(WS_OP_TEXT, true, "Hello", mask[0..<3], out[..]) == -1;
+  #assert ws_frame_write(3, true, "", mask[..], out[..]) == -1 && ws_frame_write(11, true, "", mask[..], out[..]) == -1;
+  #assert ws_frame_write(-1, true, "", mask[..], out[..]) == -1 && ws_frame_write(16, true, "", mask[..], out[..]) == -1;
+  #assert ws_frame_write(WS_OP_PING, true, cast(string) p126[..], mask[..], out[..]) == -1;
+  #assert ws_frame_write(WS_OP_PING, true, cast(string) p126[0..<125], mask[..], out[..]) == 131;
+  #assert ws_frame_write(WS_OP_CLOSE, false, "", mask[..], out[..]) == -1;
+  #assert ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], out[0..<10]) == -1;
+  #assert ws_frame_write(WS_OP_TEXT, true, "Hello", mask[..], out[0..<11]) == 11;
+  #assert ws_op_ok(0) && ws_op_ok(2) && !ws_op_ok(3) && !ws_op_ok(7) && ws_op_ok(8) && ws_op_ok(10) && !ws_op_ok(11);
+}
+#test "server frames read with each length form; partial input asks for more" {
+  xp: [1024] u8;
+  f := ws_frame_read(wx("%81%05Hello", xp[0..<256]), 100);
+  #assert f.status == WS_FRAME_OK && f.fin && f.op == WS_OP_TEXT && f.header == 2 && f.length == 5 && f.total == 7;
+  f = ws_frame_read(wx("%01%03Hel", xp[256..<512]), 100);
+  #assert f.status == WS_FRAME_OK && !f.fin && f.op == WS_OP_TEXT;
+  #assert ws_frame_read("", 100).status == WS_FRAME_MORE && ws_frame_read(wx("%81", xp[512..<768]), 100).status == WS_FRAME_MORE;
+  #assert ws_frame_read(wx("%81%05Hell", xp[768..<1024]), 100).status == WS_FRAME_MORE;
+  b: [200] u8; b[0] = 0x82; b[1] = 126; b[2] = 0; b[3] = 126;
+  #assert ws_frame_read(cast(string) b[0..<3], 1000).status == WS_FRAME_MORE;
+  #assert ws_frame_read(cast(string) b[0..<4], 1000).status == WS_FRAME_MORE && ws_frame_read(cast(string) b[0..<4], 1000).length == 126;
+  b[2] = 1; b[3] = 0;
+  #assert ws_frame_read(cast(string) b[0..<4], 1000).length == 256 && ws_frame_read(cast(string) b[0..<4], 1000).header == 4;
+  b[2] = 0; b[3] = 126;
+  #assert ws_frame_read(cast(string) b[0..<129], 1000).status == WS_FRAME_MORE;
+  f = ws_frame_read(cast(string) b[0..<130], 1000);
+  #assert f.status == WS_FRAME_OK && f.header == 4 && f.length == 126 && f.total == 130;
+  #assert ws_frame_read(cast(string) b[0..<130], 125).status == WS_FRAME_TOO_BIG;
+  #assert ws_frame_read(cast(string) b[0..<130], 126).status == WS_FRAME_OK;
+  b[3] = 125; #assert ws_frame_read(cast(string) b[0..<130], 1000).status == WS_FRAME_LENGTH;
+  b[1] = 127; for i: 2..<10 { b[i] = 0; } b[7] = 1;   // 65536 in eight bytes
+  #assert ws_frame_read(cast(string) b[0..<9], 1 << 20).status == WS_FRAME_MORE;
+  f = ws_frame_read(cast(string) b[0..<10], 1 << 20);
+  #assert f.status == WS_FRAME_MORE && f.header == 10 && f.length == 65536 && f.total == 65546;
+  #assert ws_frame_read(cast(string) b[0..<10], 65535).status == WS_FRAME_TOO_BIG;
+  b[7] = 0; b[8] = 255; b[9] = 255;   // 65535 in eight bytes: not minimal
+  #assert ws_frame_read(cast(string) b[0..<10], 1 << 20).status == WS_FRAME_LENGTH;
+  b[8] = 0; b[9] = 0; b[2] = 0x80;    // most significant bit set
+  #assert ws_frame_read(cast(string) b[0..<10], 1 << 20).status == WS_FRAME_LENGTH;
+  b[2] = 1; #assert ws_frame_read(cast(string) b[0..<10], 1 << 20).status == WS_FRAME_TOO_BIG;   // 2^56
+  b[2] = 0; b[4] = 1;                 // 2^40, admitted only under a huge limit
+  f = ws_frame_read(cast(string) b[0..<10], 1 << 62);
+  #assert f.status == WS_FRAME_MORE && f.length == 1 << 40;
+  #assert ws_frame_read(cast(string) b[0..<10], 1 << 39).status == WS_FRAME_TOO_BIG;
+  b[4] = 0; b[3] = 1;                 // 2^48: beyond any limit we admit
+  #assert ws_frame_read(cast(string) b[0..<10], 1 << 20).status == WS_FRAME_TOO_BIG;
+}
+#test "control frames: unfragmented, at most 125 bytes" {
+  b: [200] u8; b[0] = 0x89; b[1] = 125;
+  #assert ws_frame_read(cast(string) b[0..<127], 1000).status == WS_FRAME_OK;
+  b[0] = 0x08; b[1] = 0; #assert ws_frame_read(cast(string) b[0..<2], 1000).status == WS_FRAME_CONTROL;
+  b[0] = 0x88; b[1] = 126; b[2] = 0; b[3] = 126; #assert ws_frame_read(cast(string) b[0..<200], 1000).status == WS_FRAME_CONTROL;
+  b[0] = 0x07; b[1] = 0; #assert ws_frame_read(cast(string) b[0..<2], 1000).status == WS_FRAME_OPCODE;
+}
+#test "server frame refusals: reserved bits, opcodes, masking and control rules" {
+  xp: [3584] u8;
+  #assert ws_frame_read(wx("%c1%00", xp[0..<256]), 100).status == WS_FRAME_RSV && ws_frame_read(wx("%a1%00", xp[256..<512]), 100).status == WS_FRAME_RSV;
+  #assert ws_frame_read(wx("%91%00", xp[512..<768]), 100).status == WS_FRAME_RSV;
+  #assert ws_frame_read(wx("%83%00", xp[768..<1024]), 100).status == WS_FRAME_OPCODE && ws_frame_read(wx("%8b%00", xp[1024..<1280]), 100).status == WS_FRAME_OPCODE;
+  #assert ws_frame_read(wx("%81%80%00%00%00%00", xp[1280..<1536]), 100).status == WS_FRAME_MASKED;
+  #assert ws_frame_read(wx("%09%00", xp[1536..<1792]), 100).status == WS_FRAME_CONTROL && ws_frame_read(wx("%89%7e%00%7e", xp[1792..<2048]), 1000).status == WS_FRAME_CONTROL;
+  #assert ws_frame_read(wx("%8a%00", xp[2048..<2304]), 100).status == WS_FRAME_OK && ws_frame_read(wx("%88%00", xp[2304..<2560]), 100).status == WS_FRAME_OK;
+  #assert ws_frame_read(wx("%80%00", xp[2560..<2816]), 100).status == WS_FRAME_OK && ws_frame_read(wx("%00%00", xp[2816..<3072]), 100).status == WS_FRAME_OK;
+  #assert ws_frame_read(wx("%82%00", xp[3072..<3328]), -1).status == WS_FRAME_OK && ws_frame_read(wx("%82%01x", xp[3328..<3584]), 0).status == WS_FRAME_TOO_BIG;
+}
+
+ws_op_ok :: (op: int) -> bool { return (op >= 0 && op <= 2) || (op >= 8 && op <= 10); }
+// One masked client frame into out; its length, or -1 when the opcode is
+// unknown, a control frame is fragmented or over 125 bytes, the mask is not
+// four bytes, or out is too small.
+ws_frame_write :: (op: int, fin: bool, payload: string, mask: [] u8, out: [] u8) -> int {
+  if !ws_op_ok(op) || mask.count != 4 { return -1; }
+  if op >= 8 && (!fin || payload.count > 125) { return -1; }
+  n := payload.count;
+  header := 2 + 4;
+  if n > 65535 { header += 8; } else if n > 125 { header += 2; }
+  if out.count < header + n { return -1; }
+  b0 := op; if fin { b0 += 128; }
+  out[0] = cast(u8) b0;
+  if n > 65535 {
+    out[1] = 255;
+    for i: 0..<8 { out[2 + i] = cast,trunc(u8) (n >> ((7 - i) * 8)); }
+  } else if n > 125 {
+    out[1] = 254; out[2] = cast,trunc(u8) (n >> 8); out[3] = cast,trunc(u8) n;
+  } else {
+    out[1] = cast(u8) (128 + n);
+  }
+  for i: 0..<4 { out[header - 4 + i] = mask[i]; }
+  for i: 0..<n { out[header + i] = payload[i] ^ mask[i % 4]; }
+  return header + n;
+}
+// Reads one server frame's header from the bytes buffered so far. On
+// WS_FRAME_OK the payload is bytes[header..<total] (servers do not mask).
+// WS_FRAME_MORE means wait for more bytes (header and length tell how many
+// once the length is known). limit caps one frame's payload.
+ws_frame_read :: (bytes: string, limit: int) -> WsFrame {
+  f: WsFrame; f.status = WS_FRAME_MORE;
+  if bytes.count < 2 { return f; }
+  b0 := cast(int) bytes[0]; b1 := cast(int) bytes[1];
+  f.fin = (b0 & 128) != 0; f.op = b0 & 15;
+  if (b0 & 112) != 0 { f.status = WS_FRAME_RSV; return f; }
+  if !ws_op_ok(f.op) { f.status = WS_FRAME_OPCODE; return f; }
+  if (b1 & 128) != 0 { f.status = WS_FRAME_MASKED; return f; }
+  n := b1 & 127; header := 2;
+  if f.op >= 8 && (!f.fin || n > 125) { f.status = WS_FRAME_CONTROL; return f; }
+  if n == 126 {
+    header = 4;
+    if bytes.count < header { return f; }
+    n = (cast(int) bytes[2] << 8) | cast(int) bytes[3];
+    if n < 126 { f.status = WS_FRAME_LENGTH; return f; }
+  } else if n == 127 {
+    header = 10;
+    if bytes.count < header { return f; }
+    if (bytes[2] & 128) != 0 { f.status = WS_FRAME_LENGTH; return f; }
+    for i: 2..<4 { if bytes[i] != 0 { f.status = WS_FRAME_TOO_BIG; return f; } }
+    n = 0;
+    for i: 4..<10 { n = (n << 8) | cast(int) bytes[i]; }
+    if n < 65536 { f.status = WS_FRAME_LENGTH; return f; }
+  }
+  f.header = header; f.length = n; f.total = header + n;
+  if n > limit && n > 0 { f.status = WS_FRAME_TOO_BIG; return f; }
+  if bytes.count < f.total { return f; }
+  f.status = WS_FRAME_OK;
+  return f;
+}
+
+// ---- messages -------------------------------------------------------------
+
+#test "fragmented text assembles across interleaved control frames" {
+  xp: [2304] u8;
+  r: [1] WsReader; msg: [16] u8;
+  #assert ws_take(r[..], ws_frame_read(wx("%01%03Hel", xp[0..<256]), 100), "Hel", msg[..]) == WS_EV_PART && r[0].open && r[0].used == 3;
+  #assert ws_take(r[..], ws_frame_read(wx("%89%01p", xp[256..<512]), 100), "p", msg[..]) == WS_EV_PING && r[0].used == 3;
+  #assert ws_take(r[..], ws_frame_read(wx("%8a%00", xp[512..<768]), 100), "", msg[..]) == WS_EV_PONG;
+  #assert ws_take(r[..], ws_frame_read(wx("%00%01l", xp[768..<1024]), 100), "l", msg[..]) == WS_EV_PART;
+  #assert ws_take(r[..], ws_frame_read(wx("%80%01o", xp[1024..<1280]), 100), "o", msg[..]) == WS_EV_MESSAGE;
+  #assert !r[0].open && r[0].op == WS_OP_TEXT && cast(string) msg[0..<r[0].used] == "Hello";
+  // the next message starts over
+  #assert ws_take(r[..], ws_frame_read(wx("%82%02%ff%00", xp[1280..<1536]), 100), wx("%ff%00", xp[1536..<1792]), msg[..]) == WS_EV_MESSAGE;
+  #assert r[0].op == WS_OP_BINARY && r[0].used == 2 && msg[0] == 255;
+  #assert ws_take(r[..], ws_frame_read(wx("%81%00", xp[1792..<2048]), 100), "", msg[..]) == WS_EV_MESSAGE && r[0].used == 0;
+  #assert ws_take(r[..], ws_frame_read(wx("%88%00", xp[2048..<2304]), 100), "", msg[..]) == WS_EV_CLOSE;
+}
+#test "message assembly refusals map to close codes" {
+  xp: [3584] u8;
+  r: [1] WsReader; msg: [4] u8;
+  #assert ws_take(r[..], ws_frame_read(wx("%80%01x", xp[0..<256]), 100), "x", msg[..]) == WS_EV_CONTINUATION;
+  #assert ws_take(r[..], ws_frame_read(wx("%01%01x", xp[256..<512]), 100), "x", msg[..]) == WS_EV_PART;
+  #assert ws_take(r[..], ws_frame_read(wx("%81%01x", xp[512..<768]), 100), "x", msg[..]) == WS_EV_INTERLEAVED;
+  r[0] = WsReader.{};
+  #assert ws_take(r[..], ws_frame_read(wx("%01%04abcd", xp[768..<1024]), 100), "abcd", msg[..]) == WS_EV_PART;
+  #assert ws_take(r[..], ws_frame_read(wx("%80%01e", xp[1024..<1280]), 100), "e", msg[..]) == WS_EV_TOO_BIG;
+  r[0] = WsReader.{};
+  #assert ws_take(r[..], ws_frame_read(wx("%81%05abcde", xp[1280..<1536]), 100), "abcde", msg[..]) == WS_EV_TOO_BIG;
+  r[0] = WsReader.{};
+  #assert ws_take(r[..], ws_frame_read(wx("%81%01%ff", xp[1536..<1792]), 100), wx("%ff", xp[1792..<2048]), msg[..]) == WS_EV_UTF8;
+  #assert ws_take(r[..], ws_frame_read(wx("%82%01%ff", xp[2048..<2304]), 100), wx("%ff", xp[2304..<2560]), msg[..]) == WS_EV_MESSAGE;
+  #assert ws_take(r[..], ws_frame_read(wx("%88%01%03", xp[2560..<2816]), 100), wx("%03", xp[2816..<3072]), msg[..]) == WS_EV_BAD_CLOSE;
+  #assert ws_take(r[..], ws_frame_read(wx("%88%02%03%e8", xp[3072..<3328]), 100), wx("%03%e8", xp[3328..<3584]), msg[..]) == WS_EV_CLOSE;
+  #assert ws_error_code(WS_EV_UTF8) == WS_CLOSE_INVALID_DATA && ws_error_code(WS_EV_TOO_BIG) == WS_CLOSE_TOO_BIG;
+  #assert ws_error_code(WS_EV_CONTINUATION) == WS_CLOSE_PROTOCOL && ws_error_code(WS_EV_INTERLEAVED) == WS_CLOSE_PROTOCOL;
+  #assert ws_error_code(WS_EV_BAD_CLOSE) == WS_CLOSE_PROTOCOL && ws_error_code(WS_EV_MESSAGE) == 0 && ws_error_code(WS_EV_CLOSE) == 0;
+  #assert ws_error_code(WS_EV_PART) == 0 && ws_error_code(WS_EV_PING) == 0 && ws_error_code(WS_EV_PONG) == 0;
+}
+#test "strict UTF-8: overlongs, surrogates, range and truncation" {
+  xp: [8192] u8;
+  #assert ws_utf8("") && ws_utf8("abc") && ws_utf8(wx("caf%c3%a9", xp[0..<256])) && ws_utf8(wx("%e2%82%ac", xp[256..<512])) && ws_utf8(wx("%f0%9f%98%80", xp[512..<768]));
+  #assert ws_utf8(wx("%c2%80", xp[768..<1024])) && ws_utf8(wx("%df%bf", xp[1024..<1280])) && ws_utf8(wx("%e0%a0%80", xp[1280..<1536])) && ws_utf8(wx("%ed%9f%bf", xp[1536..<1792])) && ws_utf8(wx("%ee%80%80", xp[1792..<2048]));
+  #assert ws_utf8(wx("%f0%90%80%80", xp[2048..<2304])) && ws_utf8(wx("%f4%8f%bf%bf", xp[2304..<2560])) && ws_utf8(wx("%ef%bf%bf", xp[2560..<2816])) && ws_utf8(wx("%7f", xp[2816..<3072]));
+  #assert !ws_utf8(wx("%80", xp[3072..<3328])) && !ws_utf8(wx("%c0%80", xp[3328..<3584])) && !ws_utf8(wx("%c1%bf", xp[3584..<3840])) && !ws_utf8(wx("%e0%9f%bf", xp[3840..<4096])) && !ws_utf8(wx("%ed%a0%80", xp[4096..<4352]));
+  #assert !ws_utf8(wx("%f0%8f%bf%bf", xp[4352..<4608])) && !ws_utf8(wx("%f4%90%80%80", xp[4608..<4864])) && !ws_utf8(wx("%f5%80%80%80", xp[4864..<5120])) && !ws_utf8(wx("%ff", xp[5120..<5376]));
+  #assert !ws_utf8(wx("%c3", xp[5376..<5632])) && !ws_utf8(wx("%e2%82", xp[5632..<5888])) && !ws_utf8(wx("%f0%9f%98", xp[5888..<6144])) && !ws_utf8(wx("%c3%28", xp[6144..<6400])) && !ws_utf8(wx("%e2%28%a1", xp[6400..<6656]));
+  #assert !ws_utf8(wx("%e2%82%28", xp[6656..<6912])) && !ws_utf8(wx("%f0%9f%28%80", xp[6912..<7168])) && !ws_utf8(wx("%f0%9f%98%28", xp[7168..<7424])) && !ws_utf8(wx("%f0%28%98%80", xp[7424..<7680]));
+  #assert !ws_utf8(wx("%c3%c3", xp[7680..<7936])) && !ws_utf8(wx("%bf", xp[7936..<8192]));
+}
+#test "UTF-8 continuation upper bounds and stepping" {
+  xp: [768] u8;
+  #assert !ws_utf8(wx("%c3%c0", xp[0..<256])) && !ws_utf8(wx("%e2%82%c0", xp[256..<512])) && !ws_utf8(wx("%c3%a9%ff", xp[512..<768]));
+}
+#test "close payloads: codes, reasons and writing" {
+  xp: [1536] u8;
+  #assert ws_close_code("") == WS_CLOSE_NO_STATUS && ws_close_code(wx("%03", xp[0..<256])) == -1;
+  #assert ws_close_code(wx("%03%e8", xp[256..<512])) == 1000 && ws_close_code(wx("%03%e8bye", xp[512..<768])) == 1000 && ws_close_code(wx("%03%e8%ff", xp[768..<1024])) == -1;
+  #assert ws_close_code(wx("%03%e7", xp[1024..<1280])) == -1 && ws_close_code(wx("%0b%b8", xp[1280..<1536])) == 3000;
+  codes := [16] int.[999, 1000, 1003, 1004, 1005, 1006, 1007, 1011, 1012, 1015, 2999, 3000, 4999, 5000, 1001, 1010];
+  ok := [16] bool.[false, true, true, false, false, false, true, true, false, false, false, true, true, false, true, true];
+  for k: 0..<16 { #assert ws_close_code_ok(codes[k]) == ok[k]; }
+  mask := [4] u8.[0, 0, 0, 0]; out: [16] u8;
+  n := ws_close_write(1000, mask[..], out[..]);
+  #assert n == 8 && out[0] == 0x88 && out[1] == 0x82 && out[6] == 3 && out[7] == 0xe8;
+  #assert ws_close_write(1005, mask[..], out[..]) == -1 && ws_close_write(1000, mask[..], out[0..<7]) == -1;
+}
+
+// RFC 3629 UTF-8 with no overlongs, surrogates or values above U+10FFFF.
+ws_utf8 :: (s: string) -> bool {
+  i := 0;
+  while i < s.count {
+    c := s[i]; need: int = ---; lo: u8 = 0x80; hi: u8 = 0xbf;
+    if c < 0x80 { i += 1; continue; }
+    if c >= 0xc2 && c <= 0xdf { need = 1; }
+    else if c >= 0xe0 && c <= 0xef {
+      need = 2;
+      if c == 0xe0 { lo = 0xa0; }
+      if c == 0xed { hi = 0x9f; }
+    } else if c >= 0xf0 && c <= 0xf4 {
+      need = 3;
+      if c == 0xf0 { lo = 0x90; }
+      if c == 0xf4 { hi = 0x8f; }
+    } else { return false; }
+    if i + need >= s.count { return false; }
+    if s[i + 1] < lo || s[i + 1] > hi { return false; }
+    for k: 2..<need + 1 { if s[i + k] < 0x80 || s[i + k] > 0xbf { return false; } }
+    i += need + 1;
+  }
+  return true;
+}
+// Codes a peer may send in a close frame (RFC 6455 section 7.4).
+ws_close_code_ok :: (code: int) -> bool {
+  if code >= 3000 && code <= 4999 { return true; }
+  return (code >= 1000 && code <= 1003) || (code >= 1007 && code <= 1011);
+}
+// The code in a received close payload, WS_CLOSE_NO_STATUS when it has none,
+// or -1 when the payload is malformed (one byte, a bad code, a non-UTF-8 reason).
+ws_close_code :: (payload: string) -> int {
+  if payload.count == 0 { return WS_CLOSE_NO_STATUS; }
+  if payload.count == 1 { return -1; }
+  code := (cast(int) payload[0] << 8) | cast(int) payload[1];
+  if !ws_close_code_ok(code) || !ws_utf8(payload[2..<payload.count]) { return -1; }
+  return code;
+}
+ws_close_write :: (code: int, mask: [] u8, out: [] u8) -> int {
+  if !ws_close_code_ok(code) { return -1; }
+  body := [2] u8.[cast,trunc(u8) (code >> 8), cast,trunc(u8) code];
+  return ws_frame_write(WS_OP_CLOSE, true, cast(string) body[..], mask, out);
+}
+// The close code to send for a refused frame or message, 0 for none.
+ws_error_code :: (event: int) -> int {
+  if event == WS_EV_UTF8 { return WS_CLOSE_INVALID_DATA; }
+  if event == WS_EV_TOO_BIG { return WS_CLOSE_TOO_BIG; }
+  if event >= WS_EV_CONTINUATION { return WS_CLOSE_PROTOCOL; }
+  return 0;
+}
+// Feeds one admitted frame and its payload. Data frames collect into msg
+// (WS_EV_MESSAGE when the final fragment lands: r[0].op and r[0].used say
+// what it is); control frames pass through between fragments untouched.
+ws_take :: (r: [] WsReader, f: WsFrame, payload: string, msg: [] u8) -> int {
+  if f.op == WS_OP_PING { return WS_EV_PING; }
+  if f.op == WS_OP_PONG { return WS_EV_PONG; }
+  if f.op == WS_OP_CLOSE { return ifx ws_close_code(payload) == -1 then WS_EV_BAD_CLOSE else WS_EV_CLOSE; }
+  if f.op == WS_OP_CONT {
+    if !r[0].open { return WS_EV_CONTINUATION; }
+  } else {
+    if r[0].open { return WS_EV_INTERLEAVED; }
+    r[0].open = true; r[0].op = f.op; r[0].used = 0;
+  }
+  if r[0].used + payload.count > msg.count { return WS_EV_TOO_BIG; }
+  for i: 0..<payload.count { msg[r[0].used + i] = payload[i]; }
+  r[0].used += payload.count;
+  if !f.fin { return WS_EV_PART; }
+  r[0].open = false;
+  if r[0].op == WS_OP_TEXT && !ws_utf8(cast(string) msg[0..<r[0].used]) { return WS_EV_UTF8; }
+  return WS_EV_MESSAGE;
+}
