@@ -1,0 +1,3 @@
+ok   #test sample boundaries include none and all without integer rounding (1 case, 204 steps)
+ok   #forall only private pipe descriptors may carry the witness (7 cases, 143 steps)
+2 checks, 2 passed, 0 failed

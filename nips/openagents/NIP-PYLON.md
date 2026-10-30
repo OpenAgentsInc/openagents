@@ -720,7 +720,12 @@ exactly these JCS fields (reason is the checker profile's integer reason code):
 ```
 
 Its protobuf projection is `CheckerObservation` in
-`proto/openagents/psionic/mesh/v1alpha1/observations.proto`.
+`proto/openagents/psionic/mesh/v1alpha1/observations.proto`. Reason codes are:
+0 comparable agreement; 1 unsupported context/backend; 2 invalid request;
+3 invalid original; 4 invalid replica; 5 decision disagreement; 6 excessive
+distance; 7 same reference/original provider; 8 no admitted replay. Codes 2/3
+are pure comparator diagnostics: the native checker rejects unauthenticated
+or misbound originals without publishing a label.
 
 A private replay witness binds original signed request/result events, exact
 plaintexts, receipt and pinned model identity. It moves only through a bounded

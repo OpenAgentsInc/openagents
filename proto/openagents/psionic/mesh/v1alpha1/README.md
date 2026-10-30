@@ -15,3 +15,13 @@ original signed aggregate/input JSON and the public JCS policy. It never
 contains a private witness. `CheckerObservation` names the precise private
 inconclusive envelope whose digest is published when no replay result exists;
 it is not a model result.
+
+The public bundle transport ceiling is 2 MiB. The current generated Coax wire
+runtime has a stricter 1 MiB implementation ceiling; the native reader/writer
+refuse larger messages and never truncate them.
+
+`CheckerObservation` projects the named JCS observation: `version` maps to
+`v`, `receipt_event_id` to lowercase-hex `receipt`, `comparison_profile` to
+`profile`, and present `reference_null` to JSON null. Its reason is the integer
+code defined by the NIP-PYLON profile. The public label commits the exact JCS
+bytes; protobuf serialization is not substituted for that digest.

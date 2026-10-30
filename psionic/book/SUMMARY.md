@@ -26,6 +26,7 @@
 - [18. Make the numbers move](ch018-make-the-numbers-move.md)
 - [19. A Pylon answers decisions](ch019-a-pylon-answers-decisions.md) — first mesh chapter
 - [20. The API fans out](ch020-the-api-fans-out.md)
+- [21. Check the mesh](ch021-check-the-mesh.md)
 - [25. Many questions at once](ch025-many-questions-at-once.md)
 - [70. Learning with arrays](ch070-learning-with-arrays.md) — first learning chapter
 - [71. Gradients as a program](ch071-gradients-as-a-program.md)

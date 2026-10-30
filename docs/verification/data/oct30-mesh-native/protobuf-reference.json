@@ -1,0 +1,10 @@
+{
+  "reference": "official protobuf 5.29.3, protoc 29.3 descriptor",
+  "required_fields": 13,
+  "canonical_roundtrip": true,
+  "opening_lengths": [
+    76,
+    76
+  ],
+  "private_bytes_persisted": false
+}

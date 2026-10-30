@@ -900,6 +900,26 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/mesh-compare.coax",
+      "chapter": "psionic/book/ch021-check-the-mesh.md",
+      "stdout": "psionic/fixtures/mesh-compare.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/mesh-totals.coax",
+      "chapter": "psionic/book/ch021-check-the-mesh.md",
+      "stdout": "psionic/fixtures/mesh-totals.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

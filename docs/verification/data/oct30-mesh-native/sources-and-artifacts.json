@@ -1,0 +1,49 @@
+{
+  "date": "2026-10-30",
+  "sources": {
+    "psionic/lib/fleet/runtime.coax": "c9d5176c87981c0bc7bd9a74d6d3fba30642afb84b00136734c692030ab16ca5",
+    "psionic/lib/fleet/run.coax": "cad1d85811661e33c0455180d7a7f6579c8210f83b3a996e9db9781c9a818960",
+    "psionic/lib/mesh/hooks.coax": "015526d98c47e75c7c0a6ad119cd836b645bd7aff73b655971c3607defcab93c",
+    "psionic/lib/mesh/checker-main.coax": "875adc64ac4440d51b477d707762b311178479133965d6133d6f414db6b5e148",
+    "psionic/lib/mesh/binding.coax": "938d3f66559e5251044e2bebe17e3d21cfca2e7e54c0a04463cd551ce55ca1d7",
+    "psionic/lib/mesh/opening.coax": "a7a342d48e62b8dc8a82e5d963ae7bb16ba4838983c66003189f4dab71739403",
+    "psionic/lib/mesh/witness.coax": "fcbbcf36a386d79a08c61ce3d1afe942b850dd775a24971cbee38090447d8ccb",
+    "psionic/lib/mesh/witness-encode.coax": "ebd83ab361104c14ab6937c8387cc1cf03deaa3dfca816db89073ed06ff18def",
+    "psionic/lib/mesh/selection.coax": "db94910a7d323bceecc33eaa1b2356d7c1e7ba5b3e59fae508ebf9ab7d296b69",
+    "proto/descriptors/mesh-witness.pb": "a3bdc8797fdcf1dcd058adc6e9d44498f9d39fdcc6b9be9b4d890d556a870f67",
+    "psionic/tests/mesh21/protobuf_pipe_reference.py": "9c49399e5fe4564f7f522deb72e6c0132a4743a28a19d9c6f8a7e3104340f012"
+  },
+  "native_codegen_compiler": {
+    "sha256": "df4d78ef4ddc8f788cb4a87da31d538a2ecf174af14085a5f34ab1d868a80fb0"
+  },
+  "mutation_compiler": {
+    "sha256": "1cf5c9a31ef3bcf6d88a718c5ed7ff71f9dbc87ae04f57788f3ee59bfc2641e8"
+  },
+  "new_binding_mutation": {
+    "mutants": 43,
+    "killed": 43,
+    "survivors": 0,
+    "scope": "root-only; imported baseline checks retained"
+  },
+  "native_artifacts": {
+    "/tmp/oct30-ch21-fleet/psionic-fleet": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8",
+    "/tmp/oct30-ch21-checker-guarded/psionic-mesh-check": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b"
+  },
+  "retained_live_adapter": {
+    "pid": 38998,
+    "port": 8799,
+    "metadata": "/tmp/oct30-mesh-public/run.json",
+    "stop": "Verify the recorded command, then kill -TERM 38998; preserve8798 and both Pylons."
+  },
+  "reference_observer": "official protobuf5.29.3 parsed/re-serialized actual native witness in memory; only redacted status persisted",
+  "synthetic_payload": "Water is wet.; a toy choice, not a semantic accuracy claim",
+  "generated_c_sha256": {
+    "/tmp/oct30-ch21-fleet/fleet.c": "3f024f45d7a1e3d43c9441efdd177794dc466cf58cf77e63c7e7e3ba75b0ac6d",
+    "/tmp/oct30-ch21-checker-guarded/mesh-check.c": "c931ff817a436173a69bc69464eedf2fd09e6e6746ab578753c041c1ff7d6a8d"
+  },
+  "later_pool_observer_patch": {
+    "source": "psionic/lib/fleet/runtime.coax",
+    "sha256": "19fd9b980d295dcf430dd84eb5bef6d4f9508e8bf847c21a90b04b717140cc1c",
+    "scope": "Mechanical matching-subscription frame/failure facts; existing producer/checker paths do not consume them. Their original compiled source/artifact hashes above remain unchanged; pool qualifies new path."
+  }
+}
