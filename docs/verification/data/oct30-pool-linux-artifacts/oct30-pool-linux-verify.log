@@ -1,0 +1,7 @@
+PASS Linux plain: signed public bundle independently recomputed from regular-file stdin
+{"verified":true,"current":true,"id":"fa816cfd0f5cf9fb535785f6452b3f5daa910de787780621a80b310b7823c135"}
+PASS Linux sanitized: signed public bundle independently recomputed from regular-file stdin
+{"verified":true,"current":true,"id":"fa816cfd0f5cf9fb535785f6452b3f5daa910de787780621a80b310b7823c135"}
+81217cadd9c1d1d5138b8a9ce901cd48ab5acc89f8d92cc54906ce4ef76a2a51  pool-baseline-public.pb
+cbd0e3f4a8aa6180fc6299e901bd539f3522ff29fa5f2319d211e9a7441daee9  pool-plain
+c2f2ef05fdb862c1d08b4c3741a1a6107fb2f8ccd512c3aaa62122e3099ac205  pool-sanitized

@@ -1,0 +1,4 @@
+PASS Linux v4 sanitizer: actual public2-Pylon capacity snapshot independently verified from regular stdin; no sanitizer errors
+{"verified":true,"current":true,"id":"36669dc4fd9b01ffaa4e66e7df63cc9750404f97d0a59150987fe42bac25f459"}
+78cfdc5dca107c19cba1d0606c15528bd0cba6248e351188fc8df7ca8eed045d  pool.pb
+cf1c4cdb6d1f4dff411bae867dcae58dd7ba448577342d20540c351495802c00  pool-v4-sanitized

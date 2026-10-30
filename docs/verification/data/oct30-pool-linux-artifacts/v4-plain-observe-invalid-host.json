@@ -1,0 +1,10 @@
+{
+  "binary": "./pool-v4-plain",
+  "authenticated": false,
+  "observed": false,
+  "code": 1,
+  "timedOut": false,
+  "elapsedMs": 23,
+  "stdoutBytes": 0,
+  "stderr": "pool: invalid arguments, trust, mode or closed window\n"
+}

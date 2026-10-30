@@ -1,0 +1,8 @@
+	linux-vdso.so.1 (0x0000734082faf000)
+	libssl.so.3 => /nix/store/p26kxyf1s61k1fbfiv1r7fk36mkaj4jp-openssl-3.6.3/lib/libssl.so.3 (0x00007340828e6000)
+	libcrypto.so.3 => /nix/store/p26kxyf1s61k1fbfiv1r7fk36mkaj4jp-openssl-3.6.3/lib/libcrypto.so.3 (0x0000734082200000)
+	libm.so.6 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libm.so.6 (0x0000734082108000)
+	libpthread.so.0 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libpthread.so.0 (0x0000734082fa2000)
+	libc.so.6 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libc.so.6 (0x0000734081e00000)
+	libdl.so.2 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/libdl.so.2 (0x0000734082f9b000)
+	/nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib/ld-linux-x86-64.so.2 => /nix/store/rkiwrqh8g6gs5rws4bf1s3mrdcs15gm9-glibc-2.42-84/lib64/ld-linux-x86-64.so.2 (0x0000734082fb1000)

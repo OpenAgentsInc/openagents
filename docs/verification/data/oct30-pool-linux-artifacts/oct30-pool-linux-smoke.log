@@ -1,0 +1,3 @@
+PASS plain: empty/default and sorted/deduplicated role policies; seven invalid mode/budget/window/key cases; no sanitizer errors
+PASS sanitized: empty/default and sorted/deduplicated role policies; seven invalid mode/budget/window/key cases; no sanitizer errors
+WINDOW from=1793379060 to=1793379120 seconds; all smoke modes offline, no live Pylon touched

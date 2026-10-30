@@ -1,0 +1,10 @@
+{
+  "binary": "./pool-v4-sanitized",
+  "authenticated": true,
+  "observed": true,
+  "code": 1,
+  "timedOut": false,
+  "elapsedMs": 82,
+  "stdoutBytes": 0,
+  "stderr": "pool: unverified, incomplete, unsupported or unavailable input\n"
+}

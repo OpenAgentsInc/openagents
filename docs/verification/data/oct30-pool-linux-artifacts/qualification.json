@@ -1,0 +1,30 @@
+{
+  "date":"2026-10-30",
+  "platform":"Linux 6.18.49 x86_64",
+  "compiler":"GCC 15.2.0",
+  "openssl":"3.6.3 via Nix",
+  "compilerRebuilt":false,
+  "livePylonsModified":false,
+  "v3":{
+    "emittedCSha256":"3339d175e284b6d2dbfd92e7900033a642d11e5504e949626604e4b7864dddde",
+    "plainSha256":"cbd0e3f4a8aa6180fc6299e901bd539f3522ff29fa5f2319d211e9a7441daee9",
+    "sanitizedSha256":"c2f2ef05fdb862c1d08b4c3741a1a6107fb2f8ccd512c3aaa62122e3099ac205",
+    "perArtifactPolicyPositives":2,
+    "perArtifactInvalidRefusals":7,
+    "perArtifactPublicBundleVerifications":1,
+    "publicBundleSha256":"81217cadd9c1d1d5138b8a9ce901cd48ab5acc89f8d92cc54906ce4ef76a2a51",
+    "verifiedId":"fa816cfd0f5cf9fb535785f6452b3f5daa910de787780621a80b310b7823c135"
+  },
+  "v4":{
+    "emittedCSha256":"4f2c8ce08626efb13a2b2b39588c0012efb445cadb5aefa5024b7f03e45af6f2",
+    "plainSha256":"ee80cc83ffa5a212036bf414925550c48e9f628e97cb12f812a75a1c7b1ae63b",
+    "sanitizedSha256":"cf1c4cdb6d1f4dff411bae867dcae58dd7ba448577342d20540c351495802c00",
+    "perArtifactNewMalformedRefusals":1,
+    "actualPublicBundleSanitizerVerifications":1,
+    "actualPublicBundleSha256":"78cfdc5dca107c19cba1d0606c15528bd0cba6248e351188fc8df7ca8eed045d",
+    "verifiedId":"36669dc4fd9b01ffaa4e66e7df63cc9750404f97d0a59150987fe42bac25f459",
+    "unqualifiedInvalidHostFixtureRetained":true
+  },
+  "sanitizerFindings":0,
+  "privateMaterialPersisted":false
+}

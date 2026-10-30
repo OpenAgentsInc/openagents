@@ -1,0 +1,2 @@
+PASS Linux new malformed-observe regression: refused after AUTH/query in 29ms, empty stdout, no sanitizer report
+PASS Linux new malformed-observe regression: refused after AUTH/query in 82ms, empty stdout, no sanitizer report

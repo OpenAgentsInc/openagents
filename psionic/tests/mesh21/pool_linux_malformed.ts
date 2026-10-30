@@ -1,0 +1,12 @@
+import assert from 'node:assert/strict';
+const [binary,out]=process.argv.slice(2);if(!binary||!out)throw Error('BINARY OUT');
+let authenticated=false,observed=false,timedOut=false;
+const server=Bun.serve({hostname:'127.0.0.1',port:0,fetch(req,s){if(s.upgrade(req))return;return new Response('websocket',{status:400});},websocket:{open(ws){ws.send(JSON.stringify(['AUTH','linux-malformed-observe-fixture']));},message(ws,data){const m=JSON.parse(String(data));if(m[0]==='AUTH'){authenticated=true;ws.send(JSON.stringify(['OK',m[1].id,true,'']));}else if(m[0]==='REQ'){if(m[1]==='mesh-inputs'){observed=true;ws.send('["EVENT","mesh-inputs"]');ws.send('["EOSE","mesh-inputs"]');}else ws.send(JSON.stringify(['EOSE',m[1]]));}}}});
+const to=Math.floor(Date.now()/60000)*60;
+const args=['--pool','linux-malformed','--from',String(to-60),'--to',String(to),'--provider','1'.repeat(64),'--relay',`ws://localhost:${server.port}`,'--timeout-ms','6000'];
+const begin=Date.now();const child=Bun.spawn([binary,...args],{stdout:'pipe',stderr:'pipe',env:{...process.env,ASAN_OPTIONS:'detect_leaks=1:abort_on_error=1',UBSAN_OPTIONS:'halt_on_error=1'}});
+const timer=setTimeout(()=>{timedOut=true;child.kill();},12000);
+const [code,stdout,stderr]=await Promise.all([child.exited,new Response(child.stdout).text(),new Response(child.stderr).text()]);clearTimeout(timer);server.stop(true);
+const result={binary,authenticated,observed,code,timedOut,elapsedMs:Date.now()-begin,stdoutBytes:stdout.length,stderr};await Bun.write(out,JSON.stringify(result,null,2)+'\n');
+assert.equal(timedOut,false);assert.equal(authenticated,true);assert.equal(observed,true);assert.notEqual(code,0);assert.equal(stdout,'');assert.match(stderr,/pool:/);assert.doesNotMatch(stderr,/AddressSanitizer|runtime error:|LeakSanitizer/);
+console.log(`PASS Linux new malformed-observe regression: refused after AUTH/query in ${result.elapsedMs}ms, empty stdout, no sanitizer report`);
