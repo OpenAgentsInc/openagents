@@ -184,9 +184,9 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 | 4c | NIP-42 AUTH (`coax/lib/nostr/nip42.coax`): AUTH frames, the kind 22242 template, the relay-side check | claude-nip42 (#f426) | in progress; signing plugs in through `nostr_event_sign_step` |
 | 4d | `wss://`: TLS in the C host socket, certificate verification, the end-to-end test through TLS | claude-tls | landed `604767080e`: OpenSSL 3.6.3 through Nix (`coax/platform/tls-env.sh`), TLS 1.2 minimum, hostname and chain checks, `relay_uri.coax` (0 survivors); the local relay behind TLS and public REQ/EOSE on nos.lol and relay.primal.net pass. The Apple branch is a stub; the relay driver still has to pick TLS from `relay_uri` |
 | 4e | Relay end-to-end test against a local relay, entropy for mask keys, wiring `message.coax` | claude-relay-e2e | landed `32269ea6a4`: connect, REQ/EVENT/EOSE, OK true and false, ping/pong, drop → backoff → resubscribe with `since` → resend, clean close, under ASan/UBSan in 2.2 s; OS entropy for masks and keys. Wiring `message.coax` (one call) waits on #6015; the connect loop moves into `coax/lib/` for the Pylon |
-| 5 | Beacon (kind `30200`) template, checker and lifecycle (`psionic/lib/pylon/`) | claude-pylon | in progress |
-| 6 | Decision jobs: `25910` plaintext to the server's request, the answer to `26910`, `27010` status, cancel onto the server's deadline | claude-pylon | in progress |
-| 7 | NIP-65 relay list (kind `10002`) | claude-pylon | in progress |
+| 5 | Beacon (kind `30200`) template, checker and lifecycle (`psionic/lib/pylon/`) | claude-pylon | landed `2f489e00d9`: writer (JCS content), reader-side checker, lifecycle and republish schedule; 0 survivors |
+| 6 | Decision jobs: `25910` plaintext to the server's request, the answer to `26910`, `27010` status, cancel onto the server's deadline | claude-pylon | landed `2f489e00d9`: built to the deployed wire (`outcome: "answered"`, refusals as `27010`); 2,346 mutants, 0 survivors. The execution receipt is still the caller's |
+| 7 | NIP-65 relay list (kind `10002`) | claude-pylon | landed `2f489e00d9`; 1,237 mutants, 0 survivors |
 
 Owner decisions are in `NEEDS_OWNER.md`: where the Pylon key lives on Linux,
 the owner's `auth` signature over it, and which relays. The owner allowed a
