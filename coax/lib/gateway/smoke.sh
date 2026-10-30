@@ -25,3 +25,8 @@ cat "$work/out"
 if grep -q "$key" "$work/out"; then echo "smoke: the key appeared in the output"; exit 1; fi
 if grep "^plan log:" "$work/out" | grep -q "zebra-prompt"; then echo "smoke: the prompt appeared in the attempt log"; exit 1; fi
 tail -1 "$work/out" | grep -q '^smoke: ok$'
+# Our gateway's NIP-98 signing (ours_smoke.coax), natively: the crypto's compile-time checks need the larger step budget.
+"$coax" c "$here/ours_smoke.coax" --run-steps 250000000 > "$work/ours.c"
+"$cc" -std=c11 -O1 -g -o "$work/ours" "$work/ours.c" "$repo/coax/platform/process-native.c" -lm
+"$work/ours" | tee "$work/ours.out"
+tail -1 "$work/ours.out" | grep -q '^ours: ok$'

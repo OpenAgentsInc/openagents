@@ -57,7 +57,7 @@ coaxial_route :: (state: string, out: [] u8, scratch: [] u8, err: [] u8) -> int 
   buf: [16384] u8;
   b: [1] SoBody;
   route_body(b[..], buf[..], "{\"message\":\"fix the failing test in coax/web\",\"environment\":{\"os\":\"macOS 26.4\",\"agents\":{\"claude_code\":{\"installed\":true},\"codex\":{\"installed\":true}}}}");
-  body := so_finish(b[..]);
+  body := so_body(b[..]);
   #assert b[0].problem.count == 0 && body.count > 0 && b[0].questions == 5;
   #assert json_valid(body);
   ok := "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"claude_code\",\"confidence\":0.8,\"probabilities\":{\"claude_code\":0.85,\"codex\":0.1,\"other\":0.05}},\"difficulty\":{\"type\":\"score\",\"score\":2.4,\"confidence\":0.5,\"legend\":{\"0\":\"a\",\"1\":\"b\",\"2\":\"c\",\"3\":\"d\",\"4\":\"e\"},\"probabilities\":{\"0\":0.05,\"1\":0.1,\"2\":0.3,\"3\":0.4,\"4\":0.15}},\"effort\":{\"type\":\"choice\",\"choice\":\"high\",\"confidence\":0.4,\"probabilities\":{\"low\":0.05,\"medium\":0.2,\"high\":0.5,\"xhigh\":0.2,\"max\":0.05}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-opus-5-5\",\"confidence\":0.6,\"probabilities\":{\"claude-haiku-5-5\":0.05,\"claude-sonnet-5-5\":0.25,\"claude-opus-5-5\":0.7}},\"local_work\":{\"type\":\"noul\",\"noul\":0.97}}}";

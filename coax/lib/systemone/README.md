@@ -26,7 +26,7 @@ if r.problem.count == 0 && so_noul_of(r.body, "refund").value > 0.9 { ... }
 
 | File | What |
 | --- | --- |
-| `request.coax` | The body builder: `so_begin`, `so_state_text` or `so_state_json` (an object, an array, or `{"messages": [...]}` with images), then `so_choice`, `so_noul` and `so_score`, then `so_finish`. It refuses a question shape the API would refuse. |
+| `request.coax` | The body builder: `so_begin`, `so_state_text` or `so_state_json` (an object, an array, or `{"messages": [...]}` with images), then `so_choice`, `so_noul` and `so_score`, then `so_body`. It refuses a question shape the API would refuse. |
 | `answers.coax` | `so_check` holds a response to the request that asked it: every question has an answer of its own type, and the probabilities form a distribution. Readers: `so_choice_of`, `so_noul_of`, `so_score_of`, `so_probability`, `so_usage`, `so_error_of`. |
 | `transport.coax` | `so_post` and `so_decide` run `curl` (8.3 or later) as a child; `so_start` and `so_step` do the same without blocking, for a frame loop (`so_step(call, 0)` reads what has arrived), and `so_cancel` stops one. The key stays in the environment: curl expands it into the header, so it never appears in Coax memory, curl's arguments or a process listing. |
 | `smoke.sh` | A live run against both models, plus a 401 and a 422 refusal, which cost no credit. |

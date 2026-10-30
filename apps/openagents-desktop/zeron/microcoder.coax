@@ -17,8 +17,15 @@
 // service-account key file and a gcloud config of its own set in gcloud's
 // environment only (gw_vertex_token_file). This process's environment, and
 // so every other engine's, is untouched. A Mac without any of them gets an
-// error chip naming what to add. The hosted route (/v1/inference) replaces
-// these before the app ships.
+// error chip naming what to add.
+//
+// Our route (gw-ours): with OA_LAB_INFERENCE_URL set (our /v1/inference,
+// coax/web/api/inference.c) and a Nostr key in OA_LAB_NOSTR_KEY (a file of
+// 64 hex digits; by default ~/Library/Application Support/OpenAgents/lab-nostr.key),
+// the plan asks our route first: no provider key on this Mac at all, the
+// request signed NIP-98 with the key and signed again every 20 s while a run
+// lasts (gw_ours_fresh). The development keys stay behind it as fallbacks.
+// The URL stays opt-in until the route is released to openagents.com.
 //
 // The engine and its buffers are the host's (zeron-face.c allocates one
 // LabMc for the app's life); without it (the checks) the Lab doesn't offer
@@ -27,6 +34,18 @@
 #load "../../../coax/lib/microcoder/run.coax";
 #load "../../../coax/lib/gateway/vertex.coax";
 #load "../../../coax/lib/gateway/openrouter.coax";
+#load "../../../coax/lib/gateway/ours.coax";
+
+zr_random_u64 :: () -> int #foreign;
+zr_lab_unix_s :: () -> int #foreign;   // the time, for signatures (codex.coax has its own; lab.coax is checked without it)
+// The signer (lab-sign.coax) through zeron-face.c, a byte at a time (#foreign passes integers):
+// the key and tags in, the signature out; the host forgets the key after each one.
+zr_sign_reset :: () #foreign;
+zr_sign_key :: (i: int, b: int) #foreign;
+zr_sign_tag :: (b: int) -> bool #foreign;
+zr_sign_run :: (now_s: int, aux0: int, aux1: int, aux2: int, aux3: int) -> int #foreign;
+zr_sign_byte :: (i: int) -> int #foreign;
+LMC_OURS_KEYFILE :: "/Library/Application Support/OpenAgents/lab-nostr.key";   // under $HOME
 
 LMC_SECRETS :: "/work/.secrets/";                       // under $HOME
 LMC_VERTEX_KEYFILE :: "/work/.secrets/vertex-sa-inference.json";
@@ -50,6 +69,7 @@ LabMc :: struct {
   gcloud: [1200] u8; ngc: int;
   config: [1200] u8; ncf: int;
   gurl: [512] u8;
+  ours: [1] GwOurs; ours_on: bool;   // our route, when it is configured
   env: [1024] u8; route: [512] u8;
   v: [1] LmcView;
 }
@@ -91,6 +111,31 @@ lab_mc_keys :: (m: [] LabMc) {
     if lmc_exists(e_str(m[0].gcloud[..], n)) { m[0].ngc = n; break; }
   }
   m[0].ncf = e_set(m[0].config[..], e_set(m[0].config[..], 0, h), LMC_GCLOUD_CONFIG);
+  url: [512] u8; u := cl_getenv("OA_LAB_INFERENCE_URL", url[..]);
+  if u.count > 0 {
+    kp: [1200] u8; k := cl_getenv("OA_LAB_NOSTR_KEY", kp[..]);
+    nk := k.count;
+    if nk == 0 { nk = e_set(kp[..], e_set(kp[..], 0, h), LMC_OURS_KEYFILE); }
+    key: [256] u8; nf2 := ps_read_file(e_str(kp[..], nk), key[..]);
+    m[0].ours_on = gw_ours_set(m[0].ours[..], u, cast(string) key[0..<nf2]).count == 0;
+    for i: 0..<key.count { key[i] = 0; }
+  }
+}
+
+// Signs our route's request again when its signature is 20 s old (or missing): "" or why not.
+lab_mc_ours_fresh :: (m: [] LabMc) -> string {
+  if !gw_ours_stale(m[0].ours[..], zr_lab_unix_s()) { return ""; }
+  now := zr_lab_unix_s();
+  t: [700] u8; nt := gw_ours_tags(m[0].ours[..], t[..]);
+  if nt <= 0 { return "the URL does not fit a signature"; }
+  zr_sign_reset();
+  for i: 0..<32 { zr_sign_key(i, cast(int) m[0].ours[0].key[i]); }
+  for i: 0..<nt { if !zr_sign_tag(cast(int) t[i]) { return "the URL does not fit a signature"; } }
+  n := zr_sign_run(now, zr_random_u64(), zr_random_u64(), zr_random_u64(), zr_random_u64());
+  if n <= 0 || n > 2048 { return "the signature failed"; }
+  b: [2048] u8;
+  for i: 0..<n { b[i] = cast(u8) zr_sign_byte(i); }
+  return gw_ours_take(m[0].ours[..], now, cast(string) b[0..<n]);
 }
 
 // Vertex's token: from this process's environment when it has one (a shell
@@ -110,6 +155,7 @@ lab_mc_vertex :: (m: [] LabMc) -> string {
 lab_mc_plan :: (m: [] LabMc) -> int {
   gw_plan_init(m[0].plan[..], m[0].pb[..]);
   none: [1] string;
+  if m[0].ours_on && lab_mc_ours_fresh(m).count == 0 { x := gw_plan_add(m[0].plan[..], gw_ours(m[0].ours[..]), GW_OURS_FLASH, none[0..<0]); }
   if lab_mc_vertex(m).count == 0 { x := gw_plan_add(m[0].plan[..], gw_vertex(m[0].vx[..]), GW_VERTEX_FLASH, none[0..<0]); }
   if m[0].ngm > 0 {
     g := gw_gemini(GW_GEMINI_FLASH, true, m[0].gurl[..]); g.key_value = e_str(m[0].gm_key[..], m[0].ngm);
@@ -215,6 +261,7 @@ lab_mc_take :: (m: [] LmcView, s: [] Session, ev: [] McRunEvent, n: int) {
 // Each frame: what the run did since the last.
 lab_mc_pump :: (m: [] LabMc, s: [] Session) {
   if !m[0].v[0].running { return; }
+  if m[0].ours_on && gw_ours_stale(m[0].ours[..], zr_lab_unix_s()) { x := lab_mc_ours_fresh(m); }
   ev: [LMC_EVENTS] McRunEvent;
   n := mc_run_poll(m[0].run[..], ev[..]);
   lab_mc_take(m[0].v[..], s, ev[..], n);

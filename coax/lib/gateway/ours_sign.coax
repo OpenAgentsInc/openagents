@@ -1,0 +1,24 @@
+// NIP-98 signing for our gateway (ours.coax): a kind 27235 event with the
+// given tags, signed with key at now_s, as base64. Apart from ours.coax so a
+// host can build it as a unit of its own (the desktop app's lab-sign.coax).
+// Natively it takes milliseconds; compile-time checks would take minutes,
+// so ours_smoke.coax checks it (smoke.sh).
+#load "../nostr/event_sign.coax";
+#load "../nostr/base64.coax";
+
+// The signed event's base64 into out: its length, or -1. aux is 32 fresh random bytes.
+gw_nip98 :: (key: [] u8, aux: [] u8, now_s: int, tags: string, out: [] u8) -> int {
+  if key.count != 32 || aux.count != 32 { return -1; }
+  work: [1] NostrSignWork; scratch: [4096] u8; event: [1536] u8;
+  got := EVENT_MORE;
+  for guard: 0..<64 {
+    got = nostr_event_sign_step(key, aux, now_s, 27235, tags, "", work[..], scratch[..], event[..], false);
+    if got != EVENT_MORE { break; }
+  }
+  if got <= 0 { return -1; }
+  w := base64_encode_checked(cast(string) event[0..<got], out, false);
+  for i: 0..<event.count { event[i] = 0; }
+  fresh: NostrSignWork; work[0] = fresh;
+  if w.error != 0 { return -1; }
+  return w.written;
+}

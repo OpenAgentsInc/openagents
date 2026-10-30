@@ -1,0 +1,9 @@
+// The Lab's NIP-98 signer for our inference route (zeron/microcoder.coax,
+// coax/lib/gateway/ours.coax): a unit of its own, since the crypto's local
+// names clash with Zeron's procedures (hex, lift, selected) in screen.coax's unit.
+#load "../../coax/lib/gateway/ours_sign.coax";
+
+// The signed event's base64 into out: its length, or -1 (gw_nip98).
+coaxial_lab_nip98 :: (key: [] u8, aux: [] u8, now_s: int, tags: string, out: [] u8) -> int #export_c {
+  return gw_nip98(key, aux, now_s, tags, out);
+}

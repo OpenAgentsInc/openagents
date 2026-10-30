@@ -1,0 +1,50 @@
+// Our gateway's signing, natively (smoke.sh runs it; it is too slow for
+// compile-time checks): a NIP-98 event for POST to the URL, base64, that
+// the shared reader verifies; signed again only when stale, at the same
+// length, so a Gateway made before sends the new signature.
+#import "Basic";
+#load "ours.coax";
+#load "ours_sign.coax";
+
+// Signs when stale, as a host does.
+ours_fresh :: (o: [] GwOurs, now_s: int, aux: [] u8) -> string {
+  if !gw_ours_stale(o, now_s) { return ""; }
+  if !o[0].keyed { return "no key"; }
+  t: [700] u8; nt := gw_ours_tags(o, t[..]);
+  b: [2048] u8; n := gw_nip98(o[0].key[..], aux, now_s, cast(string) t[0..<nt], b[..]);
+  if n < 0 { return "the signature failed"; }
+  return gw_ours_take(o, now_s, cast(string) b[0..<n]);
+}
+
+ours_check :: (name: string, ok: bool) -> bool {
+  print("% %\n", ifx ok then "ok  " else "FAIL", name);
+  return ok;
+}
+
+main :: () {
+  o: [1] GwOurs; aux: [32] u8; aux[31] = 1;
+  ok := ours_check("no key, no signature", ours_fresh(o[..], 1790000000, aux[..]) == "no key");
+  ok = ours_check("the URL and key", gw_ours_set(o[..], "http://127.0.0.1:9/v1/inference", GW_OURS_TEST_KEY).count == 0) && ok;
+  ok = ours_check("signed", ours_fresh(o[..], 1790000000, aux[..]).count == 0 && o[0].na > 0 && o[0].signed_s == 1790000000) && ok;
+  plain: [1536] u8;
+  d := base64_decode_checked(cast(string) o[0].auth[0..<o[0].na], plain[..], false);
+  ok = ours_check("base64", d.error == 0) && ok;
+  text := cast(string) plain[0..<d.written];
+  scratch: [4096] u8;
+  e := nostr_event_read(text, scratch[..], false);
+  ok = ours_check("the event verifies", e.error == NE_OK) && ok;
+  ok = ours_check("kind 27235, tags u and method", json_has(text, "\"kind\":27235") && json_has(text, "[\"u\",\"http://127.0.0.1:9/v1/inference\"]")
+                  && json_has(text, "[\"method\",\"POST\"]")) && ok;
+  ok = ours_check("the key's pubkey, the time", json_has(text, "\"pubkey\":\"dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659\"")
+                  && json_has(text, "\"created_at\":1790000000")) && ok;
+  g := gw_ours(o[..]);
+  n := o[0].na;
+  first: [2048] u8;
+  for i: 0..<n { first[i] = o[0].auth[i]; }
+  ok = ours_check("fresh for 19 s", ours_fresh(o[..], 1790000019, aux[..]).count == 0 && o[0].signed_s == 1790000000) && ok;
+  ok = ours_check("signed again at 20 s, the same length", ours_fresh(o[..], 1790000020, aux[..]).count == 0 && o[0].signed_s == 1790000020 && o[0].na == n) && ok;
+  same := true;
+  for i: 0..<n { if first[i] != o[0].auth[i] { same = false; } }
+  ok = ours_check("the Gateway made before sends the new signature", !same && g.key_value.count == n && g.key_value[0] == o[0].auth[0]) && ok;
+  print("ours: %\n", ifx ok then "ok" else "FAILED");
+}

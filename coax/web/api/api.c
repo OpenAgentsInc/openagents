@@ -20,6 +20,7 @@
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
 //   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)
+//   POST /v1/inference             our models for the Mac app, NIP-98 signed, metered (inference.c)
 //   presence and chat in a room    /api/playtest/presence/<room>, /api/playtest/chat/<room> (room.c)
 //   private projects               /projects/<slug> and /api/private/<slug>/*, members only (private.c)
 //   drops for a new project        /api/drops/*, private to who dropped them (drops.c)
@@ -270,6 +271,7 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (!strcmp(q.path, "/api/playtest/old-link") && !strcmp(q.method, "GET")) { old_link(&q); return; }
   if (analytics_route(&q)) return;
   if (npc_route(&q)) return;
+  if (inference_route(&q)) return;
   if (piece_route(&q)) return;
   if (voice_edit_route(&q)) return;
   if (chat_route(&q)) return;   // before the rooms: /api/chat/state etc. are /chat's, any other /api/chat/<room> a room's

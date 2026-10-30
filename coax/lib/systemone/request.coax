@@ -6,7 +6,7 @@
 //   so_begin(b[..], buf[..], SO_ELEPHANT, "default");
 //   so_state_text(b[..], "I was charged twice ...");
 //   so_noul(b[..], "refund", "Is the customer asking for a refund?");
-//   body := so_finish(b[..]);       // "" when it failed; b[0].problem says why
+//   body := so_body(b[..]);       // "" when it failed; b[0].problem says why
 //
 // Calls go in that order: begin, one state, questions, finish. A call out
 // of order, a value that doesn't fit or a question the API would refuse
@@ -149,7 +149,7 @@ so_score :: (b: [] SoBody, name: string, instructions: string, levels: [] string
 }
 
 // The finished body, or "" (b[0].problem says why).
-so_finish :: (b: [] SoBody) -> string {
+so_body :: (b: [] SoBody) -> string {
   if b[0].at < 0 { return ""; }
   if b[0].stage != 2 { so_fail(b, "no state"); return ""; }
   if b[0].questions == 0 { so_fail(b, "no questions"); return ""; }
@@ -172,7 +172,7 @@ so_test_ticket :: (b: [] SoBody, buf: [] u8) -> string {
   so_noul(b, "refund", "Is the customer asking for a refund?");
   levels: [3] string; levels[0] = "Routine request"; levels[1] = "Needs attention today"; levels[2] = "Immediate emergency";
   so_score(b, "urgency", "How urgent is the request?", levels[..]);
-  return so_finish(b);
+  return so_body(b);
 }
 
 #test "the support-ticket example body, byte for byte" {
@@ -187,7 +187,7 @@ so_test_ticket :: (b: [] SoBody, buf: [] u8) -> string {
   so_begin(b[..], buf[..], SO_MAMMOTH, "");
   so_state_json(b[..], "{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}");
   so_noul(b[..], "q\"1", "line\none");
-  body := so_finish(b[..]);
+  body := so_body(b[..]);
   #assert body == "{\"model\":\"decision-models/baseten-mammoth-27b-latest\",\"state\":{\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]},\"questions\":{\"q\\\"1\":{\"type\":\"noul\",\"instructions\":\"line\\none\"}}}";
 }
 
@@ -195,29 +195,29 @@ so_test_ticket :: (b: [] SoBody, buf: [] u8) -> string {
   buf: [512] u8; b: [1] SoBody;
   so_begin(b[..], buf[..], SO_ELEPHANT, "");
   so_noul(b[..], "early", "?");
-  #assert so_finish(b[..]) == "" && b[0].problem == "questions come after the state";
+  #assert so_body(b[..]) == "" && b[0].problem == "questions come after the state";
   so_begin(b[..], buf[..], SO_ELEPHANT, "");
   so_state_json(b[..], "{bad");
-  #assert so_finish(b[..]) == "" && b[0].problem == "the state is not valid JSON";
+  #assert so_body(b[..]) == "" && b[0].problem == "the state is not valid JSON";
   so_begin(b[..], buf[..], SO_ELEPHANT, "");
   so_state_text(b[..], "x");
-  #assert so_finish(b[..]) == "" && b[0].problem == "no questions";
+  #assert so_body(b[..]) == "" && b[0].problem == "no questions";
   so_begin(b[..], buf[..], SO_ELEPHANT, "");
   so_state_text(b[..], "x");
   one: [1] string; one[0] = "only";
   so_score(b[..], "s", "?", one[..]);
-  #assert so_finish(b[..]) == "" && b[0].problem == "a score takes 2 to 10 levels";
+  #assert so_body(b[..]) == "" && b[0].problem == "a score takes 2 to 10 levels";
   so_begin(b[..], buf[..], SO_ELEPHANT, "");
   so_state_text(b[..], "x");
   so_noul(b[..], "a", "?"); so_noul(b[..], "a", "?");
-  #assert so_finish(b[..]) == "" && b[0].problem == "two questions share a name";
+  #assert so_body(b[..]) == "" && b[0].problem == "two questions share a name";
   so_begin(b[..], buf[..], SO_ELEPHANT, "");
   so_state_text(b[..], "x");
   twice: [2] string; twice[0] = "k"; twice[1] = "k";
   so_choice(b[..], "c", "?", twice[..], twice[..]);
-  #assert so_finish(b[..]) == "" && b[0].problem == "two choice options share a key";
+  #assert so_body(b[..]) == "" && b[0].problem == "two choice options share a key";
   small: [40] u8;
   so_begin(b[..], small[..], SO_ELEPHANT, "");
   so_state_text(b[..], "x");
-  #assert so_finish(b[..]) == "" && b[0].problem == "the request does not fit its buffer";
+  #assert so_body(b[..]) == "" && b[0].problem == "the request does not fit its buffer";
 }

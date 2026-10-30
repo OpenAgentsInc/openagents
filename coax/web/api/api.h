@@ -49,6 +49,7 @@ void drops_inspect(const char *object, long long *size, char **head_hex);
 void drops_delete_object(const char *object);
 bool villa_route(const request *q);       // villa.c
 bool realms_route(const request *q);      // realms.c: build your own realm
+bool inference_route(const request *q);   // inference.c: POST /v1/inference, our models for the Mac app
 // The model (npc.c): its generateContent answer into *body (malloc'd, or NULL), the HTTP status (0 unreached).
 long npc_ask_model(const char *url_env, const char *model, const char *request, char **body);
 // A page, list or file written into the site's bucket (drops.c, OA_SITE_BUCKET), no-cache.

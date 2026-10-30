@@ -290,7 +290,7 @@ lab_ask :: (l: [] Lab, s: [] Session) {
   st: [1400] u8;
   mc := l[0].mc.count > 0;
   lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], s_text_of(s, l[0].part), l[0].codex, mc), l[0].codex, mc);
-  body := so_finish(l[0].q[..]);
+  body := so_body(l[0].q[..]);
   l[0].phase = LAB_IDLE; l[0].secs = 0;
   if body.count == 0 { lab_fail(s, l[0].q[0].problem); return; }
   c := SoClient.{url = lab_url(l), key_env = "", timeout_s = LAB_TIMEOUT_S};
@@ -443,13 +443,13 @@ LAB_TEST_BODY :: "{\"model\":\"elephant-1\",\"state\":\"Request: fix the failing
 #test "a Lab message asks Elephant the router's five questions, with the agents this Mac can run" {
   buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
   lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false, false), false, false);
-  body := so_finish(b[..]);
+  body := so_body(b[..]);
   #assert body == LAB_TEST_BODY && json_valid(body) && b[0].questions == 5;
   #assert b[0].names[0] == "harness" && b[0].options[0] == 2 && b[0].kinds[1] == SoKind.score && b[0].options[1] == 5;
   #assert b[0].names[2] == "effort" && b[0].names[3] == "claude_model" && b[0].kinds[4] == SoKind.noul;
   // with Codex installed it is a third choice, and the state says so
   lab_body(b[..], buf[..], lab_state(st[..], "hi", true, false), true, false);
-  body = so_finish(b[..]);
+  body = so_body(b[..]);
   #assert b[0].options[0] == 3 && s_has(body, "\"codex\":\"codex, openai") && s_has(body, "can run: claude code, psionic (gpt-oss-20b), codex\"");
   // a long message is cut on a character boundary
   long: [1300] u8; for i: 0..<1300 { long[i] = ifx i % 2 == 0 then 0xC3 else 0xA9; }
@@ -464,7 +464,7 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
 #test "Elephant's recorded answer becomes the decision, its headline and its distributions" {
   buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
   lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false, false), false, false);
-  body := so_finish(b[..]);
+  body := so_body(b[..]);
   #assert so_check(b[..], LAB_TEST_ANSWER) == "";
   d := lab_read(LAB_TEST_ANSWER);
   #assert d.ok && d.harness == 0 && d.effort == 1 && d.model == 1 && d.level == 2 && d.latency_ms == 1819 && d.local_work > 0.98;
@@ -611,10 +611,10 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
 #test "with Microcoder attached the Lab offers other, and Elephant's other is Microcoder's route" {
   buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
   lab_body(b[..], buf[..], lab_state(st[..], "what is 2+2", false, true), false, true);
-  body := so_finish(b[..]);
+  body := so_body(b[..]);
   #assert b[0].options[0] == 3 && s_has(body, "\"other\":\"microcoder, our small agent") && s_has(body, "can run: claude code, psionic (gpt-oss-20b), microcoder\"");
   lab_body(b[..], buf[..], lab_state(st[..], "what is 2+2", true, true), true, true);
-  body = so_finish(b[..]);
+  body = so_body(b[..]);
   #assert b[0].options[0] == 4 && so_check(b[..], LAB_TEST_OTHER) == "";
   d := lab_read(LAB_TEST_OTHER);
   hb: [256] u8; db: [4096] u8;

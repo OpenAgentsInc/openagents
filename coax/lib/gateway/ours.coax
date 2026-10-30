@@ -1,0 +1,121 @@
+// Our gateway (gw-ours): POST /v1/inference on openagents.com
+// (coax/web/api/inference.c), Chat Completions in and out, which calls
+// Vertex AI with the service's own account and meters the call by the
+// caller's Nostr key. The app holds no provider key: each request carries
+// a NIP-98 signature ("Authorization: Nostr <base64 event>", kind 27235,
+// tags u and method), signed here with the user's key and good for 60
+// seconds, so the caller signs again before it goes stale (gw_ours_stale).
+// The signature goes to curl the way a key does: in its environment only.
+// The signing itself is ours_sign.coax (gw_nip98), apart, so a host can
+// build it as a unit of its own beside code whose names the crypto's clash with.
+#load "gateway.coax";
+
+GW_OURS_URL :: "https://openagents.com/v1/inference";
+GW_OURS_KEY_ENV :: "GW_OURS_AUTH";
+GW_OURS_FLASH :: "google/gemini-3.8-flash";
+GW_OURS_RESIGN_S :: 20;                       // the server takes a signature for 60 s
+
+GwOurs :: struct {
+  url: [512] u8; nu: int;
+  key: [32] u8; keyed: bool;
+  auth: [2048] u8; na: int;                   // the signed event, base64
+  signed_s: int;                              // when, in Unix seconds; 0 never
+}
+
+gw_ours_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  if c >= 'A' && c <= 'F' { return cast(int) (c - 'A') + 10; }
+  return -1;
+}
+
+// The route's URL and the user's key (64 hex digits, as a key file holds it,
+// surrounding whitespace allowed). "" when both are usable, else why not.
+gw_ours_set :: (o: [] GwOurs, url: string, key_hex: string) -> string {
+  o[0].keyed = false; o[0].na = 0; o[0].signed_s = 0;
+  for i: 0..<32 { o[0].key[i] = 0; }
+  if url.count == 0 || url.count > o[0].url.count { return "no URL for our route"; }
+  for c, i: url { o[0].url[i] = c; }
+  o[0].nu = url.count;
+  a := 0; b := key_hex.count;
+  while a < b && key_hex[a] <= 32 { a += 1; }
+  while b > a && key_hex[b - 1] <= 32 { b -= 1; }
+  if b - a != 64 { return "the key is not 64 hex digits"; }
+  for i: 0..<32 {
+    hi := gw_ours_nibble(key_hex[a + 2 * i]); lo := gw_ours_nibble(key_hex[a + 2 * i + 1]);
+    if hi < 0 || lo < 0 { for j: 0..<32 { o[0].key[j] = 0; } return "the key is not 64 hex digits"; }
+    o[0].key[i] = cast(u8) (hi * 16 + lo);
+  }
+  o[0].keyed = true;
+  return "";
+}
+
+// The event's tags for POST to the URL, into out: their length, or -1.
+gw_ours_tags :: (o: [] GwOurs, out: [] u8) -> int {
+  n := json_raw(out, 0, "[[\"u\",");
+  n = json_write_string(out, n, cast(string) o[0].url[0..<o[0].nu]);
+  return json_raw(out, n, "],[\"method\",\"POST\"]]");
+}
+
+// Whether the signature is older than GW_OURS_RESIGN_S (or missing).
+gw_ours_stale :: (o: [] GwOurs, now_s: int) -> bool { return o[0].na == 0 || now_s - o[0].signed_s >= GW_OURS_RESIGN_S; }
+
+// Keeps a signature made at now_s (base64, from gw_nip98): "" or why not.
+// A new signature has the old one's length (the event's fields have fixed
+// widths for a ten-digit time), so a Gateway made earlier by gw_ours, whose
+// key_value views o[0].auth, sends the new one; a different length is refused.
+gw_ours_take :: (o: [] GwOurs, now_s: int, b64: string) -> string {
+  if b64.count == 0 || b64.count > o[0].auth.count { return "the signature failed"; }
+  if o[0].na > 0 && b64.count != o[0].na { return "the signature changed length"; }
+  for c, i: b64 { o[0].auth[i] = c; }
+  o[0].na = b64.count; o[0].signed_s = now_s;
+  return "";
+}
+
+gw_ours :: (o: [] GwOurs) -> Gateway {
+  return Gateway.{name = "ours", url = cast(string) o[0].url[0..<o[0].nu], key_env = GW_OURS_KEY_ENV,
+                  key_value = cast(string) o[0].auth[0..<o[0].na], scheme = "Nostr", wire = GW_WIRE_CHAT};
+}
+
+GW_OURS_TEST_KEY :: "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef";
+
+#test "the URL and key: 64 hex digits with a key file's newline; anything else is refused" {
+  o: [1] GwOurs;
+  #assert gw_ours_set(o[..], "http://127.0.0.1:9/v1/inference", "b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef\n").count == 0 && o[0].keyed;
+  #assert o[0].key[0] == 0xb7 && o[0].key[31] == 0xef;
+  #assert gw_ours_set(o[..], GW_OURS_URL, "b7e1").count > 0 && !o[0].keyed;
+  #assert gw_ours_set(o[..], GW_OURS_URL, "zz e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfef").count > 0 && !o[0].keyed && o[0].key[0] == 0;
+  #assert gw_ours_set(o[..], "", GW_OURS_TEST_KEY).count > 0;
+}
+
+#test "the gateway: Chat Completions to the URL, the signature as a Nostr credential in curl's environment" {
+  o: [1] GwOurs;
+  #assert gw_ours_set(o[..], "http://127.0.0.1:9/v1/inference", GW_OURS_TEST_KEY).count == 0;
+  #assert gw_ours_stale(o[..], 1790000000);
+  o[0].na = 3; o[0].auth[0] = 'a'; o[0].auth[1] = 'b'; o[0].auth[2] = 'c'; o[0].signed_s = 1790000000;
+  #assert !gw_ours_stale(o[..], 1790000019) && gw_ours_stale(o[..], 1790000020);
+  g := gw_ours(o[..]);
+  #assert g.name == "ours" && g.scheme == "Nostr" && g.key_env == GW_OURS_KEY_ENV && g.wire == GW_WIRE_CHAT;
+  #assert g.url == "http://127.0.0.1:9/v1/inference" && g.key_value == "abc";
+}
+#test "a signature is kept with its time; a later one must have its length" {
+  o: [1] GwOurs;
+  #assert gw_ours_set(o[..], "http://127.0.0.1:9/v1/inference", GW_OURS_TEST_KEY).count == 0;
+  t: [128] u8; n := gw_ours_tags(o[..], t[..]);
+  #assert cast(string) t[0..<n] == "[[\"u\",\"http://127.0.0.1:9/v1/inference\"],[\"method\",\"POST\"]]";
+  #assert gw_ours_take(o[..], 1790000000, "").count > 0 && o[0].na == 0;
+  #assert gw_ours_take(o[..], 1790000000, "abcd").count == 0 && o[0].na == 4 && o[0].signed_s == 1790000000;
+  #assert gw_ours_take(o[..], 1790000020, "abcde").count > 0 && o[0].signed_s == 1790000000;
+  #assert gw_ours_take(o[..], 1790000020, "wxyz").count == 0 && o[0].signed_s == 1790000020 && cast(string) o[0].auth[0..<o[0].na] == "wxyz";   // a Gateway viewing auth sends it (ours_smoke.coax)
+}
+// Signing runs natively (too slow for compile-time checks): ours_smoke.coax, run by smoke.sh.
+
+json_has :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<(text.count - part.count + 1) {
+    k := 0;
+    while k < part.count && text[i + k] == part[k] { k += 1; }
+    if k == part.count { return true; }
+  }
+  return false;
+}

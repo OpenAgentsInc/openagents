@@ -157,7 +157,7 @@ so_stderr :: (h: int, out: [] u8) -> string {
 // Finish b, send it, and check the answer against its questions.
 so_decide :: (c: SoClient, b: [] SoBody, out: [] u8, err: [] u8) -> SoResult {
   r: SoResult;
-  body := so_finish(b);
+  body := so_body(b);
   if body.count == 0 { r.problem = b[0].problem; return r; }
   r = so_post(c, body, out, err);
   if r.problem.count > 0 { return r; }

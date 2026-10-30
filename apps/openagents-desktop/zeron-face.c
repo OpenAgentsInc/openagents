@@ -3,6 +3,7 @@
 #include "zeron.h"
 #include "face.h"
 #include <stdlib.h>
+#include <string.h>
 #include <time.h>
 
 static coax_v_t_ZeronState at(void *state) { return (coax_v_t_ZeronState){(coax_t_ZeronState *)state, 1}; }
@@ -95,6 +96,26 @@ void zr_attach(void *state, const uint8_t *cwd, int32_t length) {
 }
 // The clock Codex's usage-limit notices count from (zeron/codex.coax).
 int64_t zr_unix_s(void) { return (int64_t)time(NULL); }
+int64_t zr_random_u64(void) { int64_t v; arc4random_buf(&v, sizeof v); return v; }   // microcoder.coax: aux for our route's signatures
+int64_t zr_lab_unix_s(void) { return (int64_t)time(NULL); }
+
+// The Lab's NIP-98 signer (lab-sign.coax) for microcoder.coax, a byte at a time.
+typedef struct { const char *data; int64_t count; } zr_sign_string;
+typedef struct { uint8_t *data; int64_t count; } zr_sign_bytes;
+int64_t coaxial_lab_nip98(zr_sign_bytes key, zr_sign_bytes aux, int64_t now_s, zr_sign_string tags, zr_sign_bytes out);
+static uint8_t zr_sk[32], zr_st[700], zr_so[2048];
+static int64_t zr_stn, zr_son;
+void zr_sign_reset(void) { memset(zr_sk, 0, sizeof zr_sk); zr_stn = 0; zr_son = 0; }
+void zr_sign_key(int64_t i, int64_t b) { if (i >= 0 && i < 32) zr_sk[i] = (uint8_t)b; }
+_Bool zr_sign_tag(int64_t b) { if (zr_stn >= (int64_t)sizeof zr_st) return 0; zr_st[zr_stn++] = (uint8_t)b; return 1; }
+int64_t zr_sign_run(int64_t now_s, int64_t a0, int64_t a1, int64_t a2, int64_t a3) {
+  uint8_t aux[32]; int64_t a[4] = {a0, a1, a2, a3};
+  memcpy(aux, a, sizeof aux);
+  zr_son = coaxial_lab_nip98((zr_sign_bytes){zr_sk, 32}, (zr_sign_bytes){aux, 32}, now_s, (zr_sign_string){(const char *)zr_st, zr_stn}, (zr_sign_bytes){zr_so, sizeof zr_so});
+  memset(zr_sk, 0, sizeof zr_sk); memset(aux, 0, sizeof aux);
+  return zr_son;
+}
+int64_t zr_sign_byte(int64_t i) { return i >= 0 && i < zr_son ? zr_so[i] : 0; }
 // Attachments (zeron/attachments.coax): a file the host staged, its bytes (up to 5 MB) or a failure.
 void zr_attach_file(void *state, const uint8_t *path, int32_t path_len, const uint8_t *name, int32_t name_len, const uint8_t *bytes, int32_t length, int32_t failure) {
   coaxial_zeron_attach_file(at(state), str(path, path_len), str(name, name_len), (coax_v_u8){(uint8_t *)bytes, bytes ? length : 0}, failure);
