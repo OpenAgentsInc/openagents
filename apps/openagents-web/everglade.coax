@@ -945,6 +945,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
 
 everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if everglade_voice_key(s, key, false) { return true; }
+  if spells_key_up(s, key) { return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }

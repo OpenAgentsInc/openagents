@@ -15,8 +15,12 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
   Thunderbolt, in electric violet)
 - `lorc/frozen-orb.svg` (Water Orb)
 - `lorc/whirlwind.svg` (Wind Wall)
+- `lorc/feather.svg` (Feather Fall)
+- `lorc/wind-slap.svg` (Gust of Wind)
+- `lorc/sonic-boom.svg` (Thunderwave)
 
 Icons made by Delapouite (<https://delapouite.com>):
 
 - `delapouite/house.svg` (Rebuild)
 - `delapouite/gravitation.svg` (Reverse Gravity, drawn upside down)
+- `delapouite/body-height.svg` (Levitate)

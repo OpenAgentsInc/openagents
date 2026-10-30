@@ -62,6 +62,7 @@ WATER = (0.35, 0.72, 1.0)
 OIL = (0.86, 0.7, 0.36)
 TRANSMUTATION = (0.76, 0.62, 1.0)
 WIND = (0.6, 0.95, 0.9)
+STORM = (0.55, 0.75, 1.0)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -88,6 +89,18 @@ SLOTS = [
     ("wind-wall", "lorc/whirlwind.svg", WIND, "6", "Wind Wall",
      "Raises another 30-foot wall of wind 4 m ahead whose updraft throws you upward when you walk into it.",
      [("Key 6", KEY), FREE, ("1 minute", TIME)]),
+    ("levitate", "delapouite/body-height.svg", TRANSMUTATION, "7", "Levitate",
+     "Hold to rise up to 18 m over the ground and let go to hover there; tap while hovering to fall, or hold X to sink.",
+     [("Key 7", KEY), FREE, ("10 minutes", TIME)]),
+    ("feather-fall", "lorc/feather.svg", TRANSMUTATION, "8", "Feather Fall",
+     "Cast while falling to slow your descent, and that of up to five falling townsfolk near you, to a gentle drift until you land; press again to end it.",
+     [("Key 8", KEY), FREE, ("1 minute", TIME)]),
+    ("gust-of-wind", "lorc/wind-slap.svg", WIND, "9", "Gust of Wind",
+     "A line of strong wind 60 feet long blows from you the way you face: it pushes townsfolk 15 feet unless they stand firm, sends loose debris and floats flying, and clears smoke; press again to end it.",
+     [("Key 9", KEY), FREE, ("1 minute", TIME)]),
+    ("thunderwave", "lorc/sonic-boom.svg", STORM, "0", "Thunderwave",
+     "A wave of thunder sweeps out from you through a 15-foot cube ahead: 2d8 thunder, and townsfolk and loose things in it are pushed 10 feet away, with a boom heard 300 feet off.",
+     [("Key 0", KEY), FREE]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),

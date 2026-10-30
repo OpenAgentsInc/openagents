@@ -144,4 +144,8 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Water Orb | `lorc/frozen-orb.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Reverse Gravity | `delapouite/gravitation.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Wind Wall | `lorc/whirlwind.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Levitate | `delapouite/body-height.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Feather Fall | `lorc/feather.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Gust of Wind | `lorc/wind-slap.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Thunderwave | `lorc/sonic-boom.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

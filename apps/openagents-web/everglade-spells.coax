@@ -51,7 +51,7 @@
 #load "everglade-abilities.coax";
 
 SP_SLOTS :: 4;
-SP_MEDIA_BYTES :: 600;
+SP_MEDIA_BYTES :: 1600;
 SP_METEOR :: 0; SP_BOLT :: 1; SP_MEGA :: 2; SP_ORB :: 3; SP_REBUILD :: SP_SLOTS + AB_N;
 SP_BAR :: SP_REBUILD + 1;   // the bar's slots: the four aimed spells, the abilities (everglade-abilities.coax), Rebuild
 SP_SPELL :: [4] int.[SPELL_METEOR_SWARM, SPELL_THUNDERBOLT, SPELL_MEGA_THUNDERBOLT, SPELL_WATER_ORB];
@@ -349,14 +349,20 @@ sp_shapes :: (s: [] Everglade) {
   s[0].sp.ready = true;
 }
 
-// Keys: 1 to 4 pick a spell (again puts it away), 5 and 6 cast an ability, Esc puts a spell away or
+// Keys: 1 to 4 pick a spell (again puts it away), 5 to 0 cast an ability, Esc puts a spell away or
 // stops a cast, R rebuilds.
 spells_key :: (s: [] Everglade, key: int) -> bool {
   if !sp_on(s) || s[0].above || s[0].ev.editing { return false; }
-  if key >= '1' && key < '1' + SP_REBUILD { sp_press(s, key - '1'); return true; }
+  if key >= '1' && key < '1' + SP_SLOTS { sp_press(s, key - '1'); return true; }
+  if ab_key(s, key) { return true; }
   if key == KEY_ESCAPE && (s[0].sp.armed >= 0 || s[0].sp.casting >= 0) { s[0].sp.armed = -1; s[0].sp.casting = -1; return true; }
   if (key == 'r' || key == 'R') && sp_broken(s) { sp_rebuild(s); return true; }
   return false;
+}
+// A key let go: Levitate stops rising, X stops sinking (everglade-abilities.coax).
+spells_key_up :: (s: [] Everglade, key: int) -> bool {
+  if !sp_on(s) { return false; }
+  return ab_key_up(s, key);
 }
 sp_press :: (s: [] Everglade, slot: int) {
   if slot == SP_REBUILD { sp_rebuild(s); return; }
@@ -1744,6 +1750,7 @@ spells_reserve :: (s: [] Everglade) -> f32 {
   un := sp_unit(s);
   return f32(HB_MARGIN + HB_ICON + 2 * HB_PAD) * un + f32(HB_RESERVE) * hi(s[0].dpr, 0.5);
 }
+HB_PHONE_ROW :: 6;         // slots in a row of the tray on a phone
 // Slots shown: the four spells, the abilities, and Rebuild once something broke.
 sp_count :: (s: [] Everglade) -> int { return ifx sp_broken(s) then SP_REBUILD + 1 else SP_REBUILD; }
 
@@ -1799,16 +1806,19 @@ sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   w := s[0].width; h := s[0].height;
   un := sp_unit(s);
   count := sp_count(s);
-  width := (2 * f32(HB_PAD) + f32(HB_STEP) * f32(count - 1) + f32(HB_ICON)) * un;
-  height := (f32(HB_ICON) + 2 * f32(HB_PAD)) * un;
+  // a phone's narrow screen takes the slots in rows of HB_PHONE_ROW, the first on top
+  per := ifx phone(s) then lo_int(count, HB_PHONE_ROW) else count;
+  rows := (count + per - 1) / per;
+  width := (2 * f32(HB_PAD) + f32(HB_STEP) * f32(per - 1) + f32(HB_ICON)) * un;
+  height := (f32(HB_ICON) + 2 * f32(HB_PAD) + f32(HB_STEP) * f32(rows - 1)) * un;
   left := sp_round((w - width) / 2);
   top := sp_round(h - sp_bar_bottom(s) - f32(HB_MARGIN) * un - height);
   sp_plate(s, u, Box.{x0 = left, y0 = top, x1 = left + sp_round(width), y1 = top + sp_round(height)}, PLATE_TRAY, un);
   icon := sp_round(f32(HB_ICON) * un);
   size := sp_icon_size(icon);
   for b: 0..<count {
-    x := sp_round(left + (f32(HB_PAD) + f32(HB_STEP) * f32(b)) * un);
-    y := sp_round(top + f32(HB_PAD) * un);
+    x := sp_round(left + (f32(HB_PAD) + f32(HB_STEP) * f32(b % per)) * un);
+    y := sp_round(top + (f32(HB_PAD) + f32(HB_STEP) * f32(b / per)) * un);
     slot := Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
     s[0].sp.boxes[b] = slot;
     on := (b < SP_SLOTS && (s[0].sp.armed == b || s[0].sp.casting == b)) || (b >= SP_SLOTS && b < SP_REBUILD && ab_active(s, b - SP_SLOTS));
@@ -2286,7 +2296,10 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   p1 := g[0].sp.boxes[SP_BOLT];
   pu := 2 * 844.0f32 / 768;
-  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
+  // in rows of six, the first on top: Thunderbolt's over the bottom row by a step
+  r1 := g[0].sp.boxes[HB_PHONE_ROW];
+  #assert abs(r1.x0 - g[0].sp.boxes[0].x0) < 1 && abs(r1.y0 - g[0].sp.boxes[0].y0 - 42 * pu) < 1.5;
+  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu - 42 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
   // a finger held on the slot shows the card (at 2x) and, lifted, casts nothing
   #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 0, 1, 7);
   for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }

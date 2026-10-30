@@ -1059,7 +1059,7 @@ function bindScene() {
 }
 
 // ---- media: pictures and videos the app names (coaxial_media), each a texture drawn into its box
-const MEDIA_KIND = 607, MEDIA_MAX = 8;
+const MEDIA_KIND = 607, MEDIA_MAX = 24;   // Everglade's spell bar names 12 (its slots and a card)
 const media = new Map();   // "kind url" -> { kind, url, el, texture, w, h, ready, failed, unseen, buffer, group }
 const MEDIA_WGSL = `
 struct M { rect: vec4f, look: vec4f };
