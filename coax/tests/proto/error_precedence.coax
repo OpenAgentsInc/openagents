@@ -1,0 +1,60 @@
+#import_proto "types.pb" as X;
+
+// These checks exercise the real descriptor-generated API; DTO errors are
+// ordinal values and a nonzero carried error precedes any wire parsing.
+#test "carried ordinal wins for generated reads" {
+ bad:=[1]u8.[0];empty:[1]u8;complete:=[2]u8.[40,1];
+ codes:=[8]u32.[1,2,3,4,5,6,7,3735928559];
+ for i:0..<codes.count {
+  for mode:0..<3 {
+   wire:=bad[..];if mode==1 {wire=empty[0..<0];}if mode==2 {wire=complete[..];}
+   msg:=X_Scalars.{wire=wire,error=codes[i]};
+   scalar:=X_Scalars_get_i32(msg);#assert scalar.error==codes[i] && !scalar.present;
+   text:=X_Scalars_get_text(msg);#assert text.error==codes[i] && !text.present;
+   blob:=X_Scalars_get_blob(msg);#assert blob.error==codes[i] && !blob.present;
+   child:=X_Scalars_get_child(msg);#assert child.error==codes[i] && !child.present;
+   values:=X_Scalars_iter_numbers(msg);#assert values.error==codes[i] && values.done && !values.has_value;
+   children:=X_Scalars_iter_children(msg);#assert children.error==codes[i] && children.done && !children.has_value;
+   choice:=X_Scalars_case_choice(msg);#assert choice.error==codes[i] && !choice.present;
+   unknown:=X_Scalars_unknown(msg,0);#assert unknown.error==codes[i] && !unknown.done;
+  }
+ }
+}
+#test "fresh read errors and optional shapes" {
+ bad:=[1]u8.[0];empty:[1]u8;
+ msg:=X_Scalars.{wire=bad[..]};#assert X_Scalars_get_i32(msg).error==X__pb_WIRE;
+ #assert X_Scalars_iter_numbers(msg).error==X__pb_WIRE && X_Scalars_iter_numbers(msg).done;
+ #assert X_Scalars_case_choice(msg).error==X__pb_WIRE;
+ #assert X_Scalars_unknown(msg,0).error==X__pb_WIRE && !X_Scalars_unknown(msg,0).done;
+ good:=X_Scalars.{wire=empty[0..<0]};#assert X_Scalars_get_i32(good).error==0 && !X_Scalars_get_i32(good).present;
+ #assert X_Scalars_iter_numbers(good).done && X_Scalars_iter_numbers(good).error==0;
+ #assert !X_Scalars_case_choice(good).present && X_Scalars_case_choice(good).error==0;
+ #assert X_Scalars_unknown(good,0).done && X_Scalars_unknown(good,0).error==0;
+ old:=X_Scalars_Iter_numbers.{wire=bad[..],error=X__pb_LIMIT,done=false,has_value=true};
+ next:=X_Scalars_next_numbers(old);#assert next.error==X__pb_LIMIT && !next.done && !next.has_value;
+}
+#test "fresh ordinal wire failures stay exact" {
+ malformed:=[1]u8.[0];duplicate:=[4]u8.[40,1,40,2];
+ invalid_text:=[3]u8.[74,1,255];overflow:=[6]u8.[88,128,128,128,128,16];
+ #assert X_Scalars_get_i32(X_Scalars.{wire=malformed[..]}).error==X__pb_WIRE;
+ #assert X_Scalars_get_i32(X_Scalars.{wire=duplicate[..]}).error==X__pb_DUPLICATE;
+ #assert X_Scalars_get_i32(X_Scalars.{wire=invalid_text[..]}).error==X__pb_UTF8;
+ #assert X_Scalars_get_i32(X_Scalars.{wire=overflow[..]}).error==X__pb_VALUE;
+}
+#test "nested writer parent and child precedence" {
+ bad:=[1]u8.[0];empty:[1]u8;out:=[16]u8.[9,9,9,9,9,9,9,9,9,9,9,9,9,9,9,9];
+ codes:=[8]u32.[1,2,3,4,5,6,7,3735928559];
+ for i:0..<codes.count {
+  child:=X_Inner.{wire=bad[..],error=codes[i]};good:=X_Scalars.{wire=empty[0..<0]};
+  #assert X_Scalars_set_child(good,child,out[..]).error==codes[i];
+  #assert X_Scalars_append_children(good,child,out[..]).error==codes[i];
+  failed:=X_Scalars.{wire=bad[..],error=X__pb_UTF8};
+  #assert X_Scalars_set_child(failed,child,out[..]).error==X__pb_UTF8;
+  malformed:=X_Scalars.{wire=bad[..]};
+  #assert X_Scalars_set_child(malformed,child,out[..]).error==X__pb_WIRE;
+  for k:0..<out.count {#assert out[k]==9;}
+ }
+ good:=X_Scalars.{wire=empty[0..<0]};badchild:=X_Inner.{wire=bad[..]};
+ #assert X_Scalars_set_child(good,badchild,out[..]).error==X__pb_WIRE;
+ #assert X_Scalars_append_children(good,badchild,out[..]).error==X__pb_WIRE;
+}

@@ -1,0 +1,16 @@
+#import_proto "types.pb" as X;
+ErrorInput :: struct {wire:[]u8;prior:u32;mode:u32;}
+// Test-only transport. A nonzero carried code must return before touching wire.
+error_precedence_probe :: (input:ErrorInput)->u32 #export_c {
+ m:=X_Scalars.{wire=input.wire,error=input.prior};
+ if input.mode==0 {return X_Scalars_get_i32(m).error;}
+ if input.mode==1 {return X_Scalars_get_text(m).error;}
+ if input.mode==2 {return X_Scalars_get_blob(m).error;}
+ if input.mode==3 {r:=X_Scalars_iter_numbers(m);if !r.done || r.has_value {return 999;}return r.error;}
+ if input.mode==4 {r:=X_Scalars_case_choice(m);if r.present {return 999;}return r.error;}
+ if input.mode==5 {r:=X_Scalars_unknown(m,0);if r.done {return 999;}return r.error;}
+ out:[64]u8;empty:[1]u8;parent:=X_Scalars.{wire=empty[0..<0]};child:=X_Inner.{wire=input.wire,error=input.prior};
+ if input.mode==6 {return X_Scalars_set_child(parent,child,out[..]).error;}
+ if input.mode==7 {return X_Scalars_append_children(parent,child,out[..]).error;}
+ return 998;
+}

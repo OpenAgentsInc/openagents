@@ -8,6 +8,7 @@ import subprocess
 import tempfile
 import unittest
 ROOT=Path(__file__).resolve().parents[1]
+COAX=Path(os.environ.get('COAX_TEST_BIN',str(ROOT/'coax/bin/coax')))
 PROTOC=os.environ.get('PROTOC','protoc')
 RESOURCE=ROOT/'apps/openagents-ios/OpenAgents/Resources/Home.pb'
 
@@ -30,7 +31,7 @@ class HomeTests(unittest.TestCase):
     def setUpClass(cls):
         cls.tmp=tempfile.TemporaryDirectory();d=Path(cls.tmp.name)
         for stem in ('home','light'):
-            p=subprocess.run([str(ROOT/'coax/bin/coax'),'c',str(ROOT/f'verse/{stem}.coax'),'--library'],capture_output=True,check=True)
+            p=subprocess.run([str(COAX),'c',str(ROOT/f'verse/{stem}.coax'),'--library'],capture_output=True,check=True)
             (d/f'{stem}.c').write_bytes(p.stdout)
         subprocess.run([os.environ.get('CC','cc'),'-std=c11','-O2','-shared','-fPIC',str(d/'home.c'),str(d/'light.c'),str(ROOT/'verse/platform/host.c'),'-lm','-o',str(d/'home.dylib')],check=True)
         cls.lib=C.CDLL(str(d/'home.dylib'));l=cls.lib

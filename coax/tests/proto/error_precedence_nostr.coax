@@ -1,0 +1,17 @@
+#import_proto "../../../proto/descriptors/nostr-event.pb" as N;
+// The event descriptor requires core fields and applies exact-byte policy.
+#test "required and bounded event failure precedence" {
+ empty:[1]u8;bad:=[1]u8.[0];limit:=[3]u8.[10,1,0];
+ missing:=N_Event.{wire=empty[0..<0]};
+ #assert N_Event_get_kind(missing).error==N__pb_REQUIRED;
+ #assert N_Event_iter_tags(missing).error==N__pb_REQUIRED && N_Event_iter_tags(missing).done;
+ #assert N_Event_unknown(missing,0).error==N__pb_REQUIRED && !N_Event_unknown(missing,0).done;
+ #assert N_Event_get_kind(N_Event.{wire=bad[..]}).error==N__pb_WIRE;
+ #assert N_Event_get_kind(N_Event.{wire=limit[..]}).error==N__pb_LIMIT;
+ for code:1..<8 {
+  prior:=N_Event.{wire=bad[..],error=cast(u32)code};
+  #assert N_Event_get_kind(prior).error==cast(u32)code;
+  #assert N_Event_iter_tags(prior).error==cast(u32)code && N_Event_iter_tags(prior).done;
+  #assert N_Event_unknown(prior,0).error==cast(u32)code && !N_Event_unknown(prior,0).done;
+ }
+}

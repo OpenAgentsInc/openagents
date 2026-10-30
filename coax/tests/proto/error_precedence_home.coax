@@ -1,0 +1,13 @@
+#import_proto "../../../proto/descriptors/ios-home.pb" as Home;
+// Home uses .done as its unknown-field rejection check; error results must not
+// be mistaken for clean end-of-fields when a DTO already carries an error.
+#test "home unknown errors cannot look like clean exhaustion" {
+ bad:=[1]u8.[0];complete:=[10]u8.[8,1,16,1,24,1,32,1,42,0];
+ for code:1..<8 {
+  config:=Home_HomeConfiguration.{wire=bad[..],error=cast(u32)code};
+  unknown:=Home_HomeConfiguration_unknown(config,0);
+  #assert unknown.error==cast(u32)code && !unknown.done;
+ }
+ valid:=Home_HomeConfiguration.{wire=complete[..]};
+ #assert Home_HomeConfiguration_unknown(valid,0).done;
+}

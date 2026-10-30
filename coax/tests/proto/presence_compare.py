@@ -5,6 +5,7 @@ Usage: presence_compare.py OLD_COMPILER NEW_COMPILER [PROTOC_INCLUDE]
 This is a bounded compatibility check, not a full mutation or security audit.
 """
 import json,re,subprocess,hashlib,pathlib,sys,shutil
+from precedence_transform import transform as precedence_transform
 if not __debug__:raise SystemExit('checks require Python assertions')
 if len(sys.argv) not in (3,4):raise SystemExit(__doc__)
 R=pathlib.Path(__file__).resolve().parents[3];old=sys.argv[1];new=sys.argv[2];include=sys.argv[3] if len(sys.argv)==4 else '/opt/homebrew/include'
@@ -95,10 +96,12 @@ for name,entry in baseline['profiles'].items():
  if a.count(admission)!=len(check.findall(a)) or original in a:raise ValueError(name+' old compiler admission mismatch')
  historic=a.replace(admission,original).replace('N__pb_root_depth(),N__pb_default_fields()','0,N__pb_MAX_FIELDS')
  if hashlib.sha256(historic.encode()).hexdigest()!=entry['declarations_sha256']:raise ValueError(name+' historical fingerprint mismatch')
- expected=transform(a,parse_descriptor(data))
+ types=parse_descriptor(data)
+ expected=transform(a,types)
  # The shared admission guard already enforces 1 MiB. A descriptor explicitly
  # specifying that same ceiling cannot tighten it; omit its duplicate branch.
  expected=expected.replace('if wire.count>1048576 {return N__pb_Check.{error=N__pb_LIMIT};}\n','')
+ expected=precedence_transform(expected,types)
  if expected!=b:
   import difflib
   print('\n'.join(list(difflib.unified_diff(expected.splitlines(),b.splitlines()))[:35]));raise ValueError(name)
@@ -112,7 +115,9 @@ for name,entry in baseline['profiles'].items():
   needle='if f.wt!=5 { return N__pb_Check.{error=N__pb_WIRE}; }';assert needle in a
   tests.append(('wire constraint',a.replace(needle,needle.replace('!=5','!=1'),1)))
   for label,changed in tests:
-   try: matched=transform(changed,parse_descriptor(data))==b
+   try:
+    changed=transform(changed,types).replace('if wire.count>1048576 {return N__pb_Check.{error=N__pb_LIMIT};}\n','')
+    matched=precedence_transform(changed,types)==b
    except ValueError:matched=False
    if matched: raise AssertionError('negative control accepted: '+label)
   print('four structural negative controls rejected')

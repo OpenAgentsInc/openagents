@@ -1,0 +1,17 @@
+#import_proto "../../../proto/descriptors/block-identity.pb" as F;
+// The Block FI consumer uses generated oneof, required child and unknown APIs.
+#test "FI oneof and assertion preserve carried errors" {
+ bad:=[1]u8.[0];empty:[1]u8;
+ for code:1..<8 {
+  e:=cast(u32)code;
+  a:=F_Audience.{wire=bad[..],error=e};
+  #assert F_Audience_case_form(a).error==e && !F_Audience_case_form(a).present;
+  #assert F_Audience_get_single(a).error==e && !F_Audience_get_single(a).present;
+  #assert F_Audience_unknown(a,0).error==e && !F_Audience_unknown(a,0).done;
+  assertion:=F_Assertion.{wire=bad[..],error=e};
+  #assert F_Assertion_get_claims(assertion).error==e && !F_Assertion_get_claims(assertion).present;
+  #assert F_Assertion_unknown(assertion,0).error==e && !F_Assertion_unknown(assertion,0).done;
+ }
+ #assert F_Audience_case_form(F_Audience.{wire=bad[..]}).error==F__pb_WIRE;
+ #assert F_Assertion_get_claims(F_Assertion.{wire=empty[0..<0]}).error==F__pb_REQUIRED;
+}

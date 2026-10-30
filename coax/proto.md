@@ -89,9 +89,17 @@ borrows the output; retain it until all readers finish. Never mutate backing
 storage while a message or iterator is in use. Native C/Swift adapters must
 lend valid pointers with truthful counts; this is not a pointer validator.
 
-Always check `.error` before using a result. On failure the returned view is
-empty. A capacity or alias failure is detected before writing; a schema-policy
-failure can leave output bytes unspecified. No result owns or allocates target
+Always check `.error` before using a result. Errors are ordinal values, not
+flags: an input message's carried error wins before its wire is read. A getter,
+iterator or unknown reader then reports the first decode or lookup failure.
+For nested setters and appenders, parent carried and partial validation errors
+precede child carried and child decode errors, then rewrite and final validation. Unknown readers
+preserve `done=false` on error; failed iterator initialization uses `done=true`.
+This deliberately changes old APIs that returned bitwise-OR combinations when
+both a carried error and decoding failed; names, layouts and successful wire
+bytes stay unchanged. On failure the returned view is empty. A capacity or
+alias failure is detected before writing; a schema-policy failure can leave
+output bytes unspecified. No result owns or allocates target
 memory. Children passed to setters must be complete; only the current builder's
 required-field check is deferred until decode/encode.
 

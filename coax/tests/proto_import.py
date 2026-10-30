@@ -18,7 +18,8 @@ import tempfile
 import unittest
 
 ROOT=Path(__file__).resolve().parents[2]
-COAX=ROOT/'coax/bin/coax'
+COAX=Path(os.environ.get('COAX_TEST_BIN',str(ROOT/'coax/bin/coax')))
+ARTIFACTS=Path(os.environ.get('COAX_PROTO_ARTIFACT_DIR',str(ROOT/'coax/bin')))
 ORACLE='--oracle' in sys.argv
 if ORACLE:sys.argv.remove('--oracle')
 
@@ -328,7 +329,9 @@ main :: () {a:[4] u8;b:[4] u8;
     def test_schema_declaration_characterization(self):
         baseline=json.loads((ROOT/'coax/tests/proto/import-baselines.json').read_text())
         prior=json.loads((ROOT/'coax/tests/proto/presence-baselines.json').read_text())
-        current=json.loads((ROOT/'coax/tests/proto/message-limit-baselines.json').read_text())
+        prior_limit=json.loads((ROOT/'coax/tests/proto/message-limit-baselines.json').read_text())
+        current=json.loads((ROOT/'coax/tests/proto/error-precedence-baselines.json').read_text())
+        self.assertEqual(set(prior_limit['profiles']),set(baseline['profiles']))
         self.assertEqual(set(prior['profiles']),set(baseline['profiles']))
         self.assertEqual(set(current['profiles']),set(baseline['profiles']))
         self.assertEqual(current['reference_prefix'],baseline['prefix'])
@@ -338,7 +341,9 @@ main :: () {a:[4] u8;b:[4] u8;
             source=checked([COAX,'proto',descriptor,'--prefix',baseline['prefix']])
             body=source.split(b'// @proto-descriptor-declarations\n',1)[1]
             # The historical baseline remains frozen. presence_compare.py
-            # independently checks the exact old-to-current transformation.
+            # independently checks earlier transformations. error_precedence_compare.py
+            # checks the descriptor-aware carried-first change against the frozen
+            # message-limit profile and rejects malformed transformations.
             p=baseline['prefix'].encode()+b'__pb_'
             validate_generated_declarations(body,p)
             self.assertEqual(hashlib.sha256(body).hexdigest(),current['profiles'][name],name)
@@ -443,8 +448,8 @@ return 0;}'''
         harness.write_text(code)
         executable=self.d/'native-sanitized'
         native=self.d/'importer.o'
-        checked([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-c',ROOT/'coax/bin/proto_importer.c','-o',native])
-        checked([os.environ.get('CXX','c++'),'-std=c++20','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I',ROOT/'coax/bin',harness,native,'-o',executable])
+        checked([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-c',ARTIFACTS/'proto_importer.c','-o',native])
+        checked([os.environ.get('CXX','c++'),'-std=c++20','-O1','-g','-fsanitize=address,undefined','-fno-omit-frame-pointer','-I',ARTIFACTS,harness,native,'-o',executable])
         descriptors=sorted((ROOT/'proto/descriptors').glob('*.pb'))+[ROOT/'coax/tests/proto/types.pb']
         r=run([executable,*descriptors],env=dict(os.environ,ASAN_OPTIONS='detect_leaks=0',UBSAN_OPTIONS='halt_on_error=1'))
         self.assertEqual(r.returncode,0,r.stderr.decode())

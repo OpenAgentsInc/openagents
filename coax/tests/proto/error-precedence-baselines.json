@@ -1,0 +1,18 @@
+{
+  "description": "Declarations after ordinal carried-first precedence. Prior message-limit fingerprints are unchanged.",
+  "reference_prefix": "N",
+  "profiles": {
+    "proto/descriptors/block-agent.pb": "01411f6856368f18353a37da52b46248859cb089d0fbaf00fa27b64295d2ae92",
+    "proto/descriptors/block-channel.pb": "dc5762d4d183cd0d30fff8293ef9adc6b48e937134f358c81b80e7b325631e8f",
+    "proto/descriptors/block-identity.pb": "f34593d71b8081f1b585f3d06a55020ddbcfc75eddd2b8e47551ce869d8fec95",
+    "proto/descriptors/coax-foundation.pb": "cf52dce4ce8270ca20b7ba47f3651e0f07ce3909de79420d5c1d7e8fa3ca343d",
+    "proto/descriptors/ios-home.pb": "cf855ea5953bd889f564487d848718fed6532bc501179442f4241d77ef348a0a",
+    "proto/descriptors/metareal.pb": "a8feba9cbda01ae040d0b2b111d747b828cdf8471f6b4fbff2b00410816ed7ac",
+    "proto/descriptors/nostr-event.pb": "d691142a47c5f520302ec76c4557ffb6a1498aaf578adb5c8ea8a73bbfe915ac",
+    "proto/descriptors/nostr.pb": "53cac57960dcefa108bdac8bb98b75bb894d6d65918103416098802e39a9fbd4",
+    "proto/descriptors/owned.pb": "32ed3771662fa25f9a9bfa2e260679f27164c55290d8db83479ddd235622459e",
+    "proto/descriptors/phone-agent.pb": "0e807ede42647261ed3698ef83bddfe18392bd4df589b5f5666888af590f21d7",
+    "coax/tests/proto/types.pb": "dbbdafe630492e6a4a88e2b96706fcca24926c31ca31a6e5d7bde6058d5ec306",
+    "proto/descriptors/verse.pb": "fadd7b8d9791d73a27fe6b626a935bc19295b033364b161c27a6e35a3080f483"
+  }
+}
