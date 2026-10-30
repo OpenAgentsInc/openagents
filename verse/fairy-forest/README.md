@@ -49,6 +49,15 @@ it.
   what you have restored.
 - **Day and night:** a real cycle. Some things only happen at night (the
   Lanternwood fruit, moths, the stars over the Old Ring).
+  Built (ff-night, `verse/fairy-forest/night.coax`,
+  `apps/openagents-web/fairynight.coax`): the realm's clock is `real`, the
+  visitor's own time of day; dawn and dusk are warm and low, and the night
+  is moonlit blue with stars. Lanternwood's fruit glows at night (bright once
+  its glade is green, an ember before) and moths gather at the lights. The
+  lantern flower opens only at night; by day E there rests you till night
+  (and in the night till morning). With LIGHT, in the dark, a path of stones
+  shows from the flower to the moon hollow, a ring of glowcaps round a moon
+  pool; find it and two lantern moths keep to your light. Goldens are noon.
 
 ## You: a fairy you make
 
@@ -93,12 +102,13 @@ your first find (berries, acorns and seed pods in each glade, each spot
 growing again the next day; a seed is a seed for your garden, and once you
 gather the finds sparkle); CRAFT the woodcutter's axe in a stump east of your
 home (E: TAKE THE AXE), and then E: CUT clears a fallen log of deadwood;
-LIGHT the lantern flower at Lanternwood's north edge (E: LIGHT), and then you
-carry a little light; WATER the sticks dammed across the stream above the
+LIGHT the lantern flower at Lanternwood's north edge, which opens only at
+night (E: LIGHT; by day E: REST TILL NIGHT), and then you carry a little
+light, a warm pool round you in the dark; WATER the sticks dammed across the stream above the
 pond (E: CLEAR), and then WATER at one bed waters your whole garden. Each one
 learned puts a gem on her upper wings. Kept in the save's tail. Not yet: a
-woodcutter or a night in Lanternwood as the moments, making tools, mending
-broken things, places that only show in the dark, moving water or filling
+woodcutter as the moment, making tools, mending
+broken things, moving water or filling
 the pond.
 
 ## The core: helping people

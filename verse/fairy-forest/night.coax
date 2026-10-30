@@ -1,0 +1,135 @@
+// Fairy Forest's day and night (ff-night, verse/fairy-forest/README.md "Day
+// and night"): the forest's clock, how dark it is, and the places that only
+// show in the dark. The page (apps/openagents-web/fairynight.coax) draws them
+// and fairy.wgsl lights the valley by them.
+//
+// The clock is the realm's (realms.json "clock", the page facts clock=, now=,
+// day=): `real` is the visitor's own time of day, `cycle` a 48-minute day,
+// `fixed:T` always T (0 midnight, 0.5 noon; ?clock=T pins a shot). Resting
+// by the lantern flower moves this visit's clock on to the night or the
+// morning. Goldens are always noon.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000   (these checks run with the page's)
+
+FFN_FIXED :: 0; FFN_CYCLE :: 1; FFN_REAL :: 2;
+FFN_CYCLE_SECONDS :: 2880.0;
+FFN_REST_SPEED :: 0.16;    // of a day a second, while you rest: a night comes in about three seconds
+FFN_NIGHT_AT :: 0.92;      // resting till night wakes you here
+FFN_MORNING_AT :: 0.3;     // and till morning, here
+FFN_DARK :: 0.55;          // night past this: dark enough for the lantern flower and what only LIGHT shows
+
+FfClock :: struct { mode: int; at: f32; from: f64; shift: f32; rest: f32; known: bool; }
+
+// A decimal number at the start of text (none: -1).
+ffn_number :: (text: string) -> f64 {
+  v := 0.0; scale := 1.0; seen_dot := false; digits := 0;
+  for i: 0..<text.count {
+    c := text[i];
+    if c == '.' && !seen_dot { seen_dot = true; continue; }
+    if c < '0' || c > '9' { break; }
+    d := cast(f64) cast(int) (c - '0');
+    if seen_dot { scale *= 0.1; v += d * scale; } else { v = v * 10.0 + d; }
+    digits += 1;
+  }
+  return ifx digits > 0 then v else -1.0;
+}
+ffn_fact :: (facts: string, key: string) -> string {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > key.count && facts[i + key.count] == '=' && facts[i..<i + key.count] == key { return facts[i + key.count + 1..<e]; }
+    i = e + 1;
+  }
+  return "";
+}
+// The page's facts set the clock (when they name one), at `time` on the page's own clock.
+ffn_facts :: (c: [] FfClock, facts: string, time: f64) {
+  clock := ffn_fact(facts, "clock");
+  if clock.count == 0 { return; }
+  c[0].mode = FFN_FIXED; c[0].at = 0.5; c[0].from = time; c[0].known = true;
+  if clock == "cycle" {
+    n := ffn_number(ffn_fact(facts, "now"));
+    if n >= 0 { turns := n / 1000.0 / FFN_CYCLE_SECONDS; c[0].mode = FFN_CYCLE; c[0].at = cast(f32) (turns - floor(turns)); }
+  } else if clock == "real" {
+    d := ffn_number(ffn_fact(facts, "day"));
+    if d >= 0 && d <= 1 { c[0].mode = FFN_REAL; c[0].at = cast(f32) d; }
+  } else if clock.count > 6 && clock[0..<6] == "fixed:" {
+    t := ffn_number(clock[6..<clock.count]);
+    if t >= 0 && t <= 1 { c[0].at = cast(f32) t; }
+  }
+}
+// The time of day (0 midnight, 0.5 noon) at `time`; noon until the page says.
+ffn_time_of_day :: (c: [] FfClock, time: f64) -> f32 {
+  if !c[0].known { return ffn_wrap(0.5 + c[0].shift); }
+  t := c[0].at + c[0].shift;
+  if c[0].mode != FFN_FIXED {
+    day := ifx c[0].mode == FFN_CYCLE then FFN_CYCLE_SECONDS else 86400.0;
+    t += cast(f32) ((time - c[0].from) / day);
+  }
+  return ffn_wrap(t);
+}
+ffn_wrap :: (t: f32) -> f32 { return t - floor(t); }
+ffn_smooth :: (a: f32, b: f32, x: f32) -> f32 { k := clamp((x - a) / (b - a), 0, 1); return k * k * (3 - 2 * k); }
+// How dark it is: 0 by day, 1 in the night, through dawn (0.2 to 0.3) and dusk (0.7 to 0.8).
+ffn_night :: (t: f32) -> f32 { return 1 - ffn_smooth(0.2, 0.3, t) * (1 - ffn_smooth(0.7, 0.8, t)); }
+// The warm low light of dawn and dusk: 1 at 0.25 and 0.75, none by noon or midnight.
+ffn_dusk :: (t: f32) -> f32 {
+  a := 1 - clamp(abs(t - 0.25) / 0.07, 0, 1); b := 1 - clamp(abs(t - 0.75) / 0.07, 0, 1);
+  m := ifx a > b then a else b;
+  return m * m * (3 - 2 * m);
+}
+// Rest till the night (or, in the night, till the morning): the clock runs on fast to it.
+ffn_rest :: (c: [] FfClock, time: f64) {
+  t := ffn_time_of_day(c, time);
+  to := ifx ffn_night(t) > FFN_DARK then f32(FFN_MORNING_AT) else f32(FFN_NIGHT_AT);
+  c[0].rest = ffn_wrap(to - t);
+}
+// One frame of dt seconds: a rest moves the clock on.
+ffn_step :: (c: [] FfClock, dt: f32) {
+  if c[0].rest <= 0 { return; }
+  d := dt * f32(FFN_REST_SPEED);
+  if d > c[0].rest { d = c[0].rest; }
+  c[0].shift = ffn_wrap(c[0].shift + d); c[0].rest -= d;
+  if c[0].rest < 0.0001 { c[0].rest = 0; }
+}
+ffn_resting :: (c: [] FfClock) -> bool { return c[0].rest > 0; }
+
+// ---- Lanternwood by night
+FFN_GLADE_X :: -27.0; FFN_GLADE_Z :: 33.0;
+// The moon hollow, north of the lantern flower: a ring of glowcaps round a little moon pool, only in the dark with LIGHT,
+// and the stones that lead to it from the flower.
+FFN_HOLLOW_X :: -31.5; FFN_HOLLOW_Z :: 49.5;
+FFN_HOLLOW_CLEAR :: 4.5;     // no tree this near it
+FFN_HOLLOW_FIND :: 2.2;      // stand this near its middle to find it
+FFN_STONES :: 6;
+ffn_stone :: (k: int) -> Point {
+  a := v3(-28.2, 0, 44.4); b := v3(f32(FFN_HOLLOW_X) + 1.2, 0, f32(FFN_HOLLOW_Z) - 2.6);
+  f := (f32(k) + 0.5) / f32(FFN_STONES);
+  side := sin(f * 3.1416) * 0.9;
+  return v3(a.x + (b.x - a.x) * f + side, 0, a.z + (b.z - a.z) * f + side * 0.4);
+}
+ffn_near :: (x: f32, z: f32, px: f32, pz: f32, r: f32) -> bool { dx := x - px; dz := z - pz; return dx * dx + dz * dz < r * r; }
+
+#test "the clock: fixed, real and cycle from the facts; dark at night, light at noon, warm at dusk; a rest runs on to the night and back to the morning" {
+  c: [1] FfClock;
+  #assert ffn_time_of_day(c[..], 100) == 0.5;   // nothing said: noon
+  ffn_facts(c[..], "tab=x\nclock=fixed:0.25\nday=0.9", 10);
+  #assert c[0].mode == FFN_FIXED && ffn_time_of_day(c[..], 9999) == 0.25;
+  ffn_facts(c[..], "clock=real\nday=0.5\nnow=5", 10);
+  #assert c[0].mode == FFN_REAL && abs(ffn_time_of_day(c[..], 10 + 43200) - 0.0) < 0.001;
+  ffn_facts(c[..], "clock=cycle\nnow=1440000", 0);
+  #assert c[0].mode == FFN_CYCLE && abs(ffn_time_of_day(c[..], 0) - 0.5) < 0.001;
+  ffn_facts(c[..], "tab=x", 0);   // no clock named: kept
+  #assert c[0].mode == FFN_CYCLE;
+  #assert ffn_night(0.5) == 0 && ffn_dusk(0.5) == 0 && ffn_night(0.0) == 1 && ffn_night(0.95) == 1 && ffn_dusk(0.75) == 1 && ffn_dusk(0.0) == 0;
+  #assert ffn_night(0.75) > 0.3 && ffn_night(0.75) < 0.7;
+  // resting at noon runs on to the night, and in the night to the morning
+  d: [1] FfClock;
+  ffn_facts(d[..], "clock=fixed:0.5", 0);
+  ffn_rest(d[..], 0);
+  #assert ffn_resting(d[..]);
+  for _i: 0..<600 { ffn_step(d[..], 1.0 / 60.0); }
+  #assert !ffn_resting(d[..]) && abs(ffn_time_of_day(d[..], 0) - f32(FFN_NIGHT_AT)) < 0.002 && ffn_night(ffn_time_of_day(d[..], 0)) > f32(FFN_DARK);
+  ffn_rest(d[..], 0);
+  for _i: 0..<600 { ffn_step(d[..], 1.0 / 60.0); }
+  #assert abs(ffn_time_of_day(d[..], 0) - f32(FFN_MORNING_AT)) < 0.002 && ffn_night(ffn_time_of_day(d[..], 0)) == 0;
+}

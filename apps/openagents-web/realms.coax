@@ -14,4 +14,4 @@ PLANET_PATH :: [PLANETS] string.["", "/realms/haunted-house", "", "", "", "/real
 // Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.
 PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2;   // verse/style-preset.coax STYLE_*
 PLANET_STYLE :: [PLANETS] int.[PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_PAINTERLY, PLANET_PAINTERLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_PAINTERLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_PAINTERLY];
-PLANET_CLOCK :: [PLANETS] string.["", "fixed:0.0", "", "", "", "fixed:0.0", "cycle", "fixed:0.5", "cycle", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.0", "fixed:0.5", "fixed:0.0"];
+PLANET_CLOCK :: [PLANETS] string.["", "fixed:0.0", "", "", "", "fixed:0.0", "cycle", "real", "cycle", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.0", "fixed:0.5", "fixed:0.0"];

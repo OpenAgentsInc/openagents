@@ -46,6 +46,8 @@
 #load "fairyvillage.coax"; // creatures moving in
 #load "fairycourse.coax";  // vine hoop courses, shared by link
 #load "fairyskills.coax";  // what you learn, each from a moment
+#load "../../verse/fairy-forest/night.coax";
+#load "fairynight.coax";   // day and night, Lanternwood by night
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -61,7 +63,8 @@ U_BLOOM_INFO :: U_BLOOM + FF_BLOOMS * 4;
 U_PLATE :: U_BLOOM_INFO + 4;
 U_WATER :: U_PLATE + PLATES * 8;
 WATER_FLOATS :: 324;
-UNIFORM_FLOATS :: U_WATER + WATER_FLOATS;
+U_NIGHT :: U_WATER + WATER_FLOATS;   // how dark, dawn or dusk's warmth, her light, the moon's share of the key
+UNIFORM_FLOATS :: U_NIGHT + 4;
 
 CELLS :: FF_CELLS;
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4;
@@ -180,6 +183,7 @@ Fairy :: struct {
   bird_flew: f64;                // when the hurt bird was mended (it flies off)
   now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
   fig_on: bool; fig_at: Point; fig_up: f32; fig_across: f32;   // her body's size, while she is laid out
+  clock: [1] FfClock; tod: f32; night: f32; dusk: f32;          // the time of day (verse/fairy-forest/night.coax), how dark, dusk's warmth
 }
 
 // ---- small things
@@ -297,6 +301,7 @@ open_ground :: (line: [] f32, x: f32, z: f32, room: f32) -> bool {
   if st.d < st.half + 2.5 + room { return false; }
   if sqrt(x * x + z * z) < 17 + room { return false; }
   if ffh_near(x, z, f32(FFH_CLEAR) + room) { return false; }   // your home's clearing
+  if ffn_near(x, z, f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), f32(FFN_HOLLOW_CLEAR) + room) { return false; }   // the moon hollow
   if x > f32(LOG_X0) - 4 - room && x < f32(LOG_X1) + 3 + room && abs(z - f32(LOG_Z)) < 3.5 + room { return false; }
   for g: 0..<FF_GLADES {
     dx := x - FF_GLADE[g * 3]; dz := z - FF_GLADE[g * 3 + 1];
@@ -818,6 +823,7 @@ fairy_typed :: (s: [] Fairy, text: string) #export_c {
 // server tells this visit's words from an earlier visit's.
 fairy_facts :: (s: [] Fairy, facts: string) #export_c {
   ffc_facts(s, facts);
+  ffn_facts(s[0].clock[..], facts, s[0].time);
   i := 0;
   while i < facts.count {
     e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
@@ -929,7 +935,7 @@ heart :: (s: [] Fairy, u: [] f32) {
     on := f[0].awake[r];
     look := ifx on then LOOK_GLOW else LOOK_BARK;
     pulse := ifx on then 0.75f32 + 0.25f32 * sin(t * 2.2 + f32(r)) else 1.0f32;
-    cr := ifx on then 1.0f32 * pulse else 0.4f32; cg := ifx on then 0.78f32 * pulse else 0.3f32; cb := ifx on then 0.42f32 * pulse else 0.22f32;
+    cr := ifx on then 1.0f32 * pulse else 0.4f32; cg := ifx on then 0.78f32 * pulse else 0.3f32; cb := ifx on then 0.42f32 * pulse else 0.07f32;
     limb(s, SHAPE_CYLINDER, look, root, mid, 1.1, cr, cg, cb);
     limb(s, SHAPE_CONE, look, mid, tip, 0.8, cr, cg, cb);
   }
@@ -1009,7 +1015,13 @@ props :: (s: [] Fairy) {
     y := g + 2.2 + hash1(f32(k), 2) * 2.2;
     limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(x, y + 0.6, z), v3(x, y, z), 0.02, 0.3, 0.5, 0.2);
     k2 := 0.35 + 0.65 * lamp;
-    shape(s, SHAPE_SPHERE, ifx lamp > 0.3 then LOOK_GLOW else LOOK_MATTE, v3(x, y, z), 0, 0, 0.28, 0.32, 0.28, 1.0 * k2, 0.8 * k2, 0.4 * k2);
+    if ffn_dark(s) {
+      // by night they glow (fairynight.coax): bright once the glade is back, a faint ember before
+      b := ifx lamp > 0.3 then (0.8 + 0.2 * sin(t * 1.1 + f32(k) * 1.7)) * k2 else 0.07f32;
+      shape(s, SHAPE_SPHERE, LOOK_SPARK, v3(x, y, z), 0, 0, 0.3, 0.34, 0.3, 1.0 * b, 0.72 * b, 0.32 * b);
+    } else {
+      shape(s, SHAPE_SPHERE, ifx lamp > 0.3 then LOOK_GLOW else LOOK_MATTE, v3(x, y, z), 0, 0, 0.28, 0.32, 0.28, 1.0 * k2, 0.8 * k2, 0.4 * k2);
+    }
   }
   for k: 0..<7 {
     st := heart_stone(s, k);
@@ -2186,6 +2198,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   shown := add(v3(feet.x, 0, feet.z), v3(0, ground_at(s, feet.x, feet.z) + feet.y, 0));
   s[0].feet = shown;
   ffq_step(s);
+  ffn_frame(s, t);
   play(s, shown);
   ffb_step(s);
   ffc_step(s);
@@ -2223,6 +2236,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   ferns(s, shot.eye);
   ffc_draw(s, shot.eye);
   ffk_draw(s, shot.eye);
+  ffn_draw(s, shot.eye);
   ffs_others(s, u, shown);   // last: if the shapes run out, they go first
   ph := phone(s);
   for kind: 0..<5 {
@@ -2245,7 +2259,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   view(shot, width, height, u, U_VIEW);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
   u[U_EYE + 3] = ifx ph then 0.006f32 * 1.25f32 else 0.006f32;   // the far haze's density (fairy.wgsl hazed: none nearer than 48 m)
-  sun := unit_or(v3(0.5, 0.62, 0.45), v3(0, 1, 0));
+  sun := ffn_key_dir(s);
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z; u[U_SUN + 3] = ifx ph then 1.0f32 else 0.0f32;
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(FF_CELL); u[U_GROUND + 2] = f32(FF_EDGE); u[U_GROUND + 3] = f32(FF_EDGE);
   // the grass round the camera's ground point, patch-snapped so it doesn't swim
@@ -2258,6 +2272,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   u[U_SUN + 3] = u[U_SUN + 3];
   paths(u);
   blooms(s, u);
+  ffn_uniforms(s, u);
   n := hud(s, out, u, move_on, ox, oy, pad_x, pad_y, shown);
   u[5] = f32(s[0].plate_n);
   u[7] = shown.z;
@@ -2274,7 +2289,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and the shape slots line up with fairy.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_SHADOW == 44 && U_PATH == 108 && U_PATH_INFO == 236 && U_BLOOM == 240 && U_BLOOM_INFO == 336 && U_PLATE == 340 && U_WATER == 468;
+  #assert U_SHADOW == 44 && U_PATH == 108 && U_PATH_INFO == 236 && U_BLOOM == 240 && U_BLOOM_INFO == 336 && U_PLATE == 340 && U_WATER == 468 && U_NIGHT == 792;
   #assert SLOT_AT[4] + SLOTS[4] == OBJECTS;
   for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
   #assert GRASS_BLADES * 3 <= 1024 && SHAPE_VERTICES[2] <= 1024;
@@ -2523,7 +2538,7 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   for at: 0..<2 {
     gl := ifx at == 0 then FF_THORNFALL else FF_OLD_RING;
     x := FF_GLADE[gl * 3]; z := FF_GLADE[gl * 3 + 1] + 4;
-    for k: 0..<60 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+    for k: 0..<30 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.2, false, x, 0, z, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
     #assert g[0].counts[1] < SLOTS[1];
     #assert g[0].counts[2] < SLOTS[2];
     #assert g[0].counts[3] < SLOTS[3];

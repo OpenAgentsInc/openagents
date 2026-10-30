@@ -1,0 +1,149 @@
+// Fairy Forest by night (ff-night, verse/fairy-forest/README.md "Day and
+// night"): night falls on the realm's clock (verse/fairy-forest/night.coax)
+// and fairy.wgsl lights the valley by the moon. Lanternwood's trees bear a
+// fruit that glows in the dark (fairy.coax props), and moths gather to the lights. The lantern
+// flower opens only at night, and that is when it teaches LIGHT (by day,
+// E there rests you till night). With LIGHT, in the dark, a path of stones
+// shows from the flower to the moon hollow; find it and lantern moths
+// follow your light from then on (kept in the save).
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFN_NEWS_HOLLOW :: 200;   // k_news for the moon hollow found
+FFN_SEE :: 60.0;
+
+ffn_dark :: (s: [] Fairy) -> bool { return s[0].night > f32(FFN_DARK); }
+// What only shows in the dark with LIGHT is there.
+ffn_shows :: (s: [] Fairy) -> bool { return ffn_dark(s) && ffk_knows(s[0].life[..], FFK_LIGHT); }
+
+// One frame: the clock runs (a rest runs it on fast); noon in a golden shot.
+ffn_frame :: (s: [] Fairy, dt: f32) {
+  ffn_step(s[0].clock[..], dt);
+  t := ifx s[0].golden then 0.5f32 else ffn_time_of_day(s[0].clock[..], s[0].time);
+  s[0].tod = t; s[0].night = ffn_night(t); s[0].dusk = ffn_dusk(t);
+  l := s[0].life[..];
+  if ffn_shows(s) && !l[0].deeds.hollow && ffn_near(s[0].feet.x, s[0].feet.z, f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), f32(FFN_HOLLOW_FIND)) {
+    l[0].deeds.hollow = true; l[0].changes += 1;
+    s[0].k_news = FFN_NEWS_HOLLOW; s[0].k_news_at = s[0].time;
+  }
+}
+
+// Where the key light comes from: the noon sun, low in the east at dawn and the west at dusk, the moon at night.
+ffn_key_dir :: (s: [] Fairy) -> Point {
+  day := v3(0.5, 0.62, 0.45);
+  low := ifx s[0].tod < 0.5 then v3(-0.8, 0.14, 0.58) else v3(0.86, 0.14, 0.5);
+  moon := v3(-0.42, 0.72, -0.5);
+  d := mix(mix(day, low, s[0].dusk), moon, s[0].night);
+  return unit_or(d, v3(0, 1, 0));
+}
+ffn_uniforms :: (s: [] Fairy, u: [] f32) {
+  u[U_NIGHT] = s[0].night; u[U_NIGHT + 1] = s[0].dusk;
+  u[U_NIGHT + 2] = ifx ffk_knows(s[0].life[..], FFK_LIGHT) then s[0].night else 0.0f32;   // the light she carries
+  u[U_NIGHT + 3] = s[0].feet.y + 2.0;
+}
+
+// A moth at p heading along yaw, its wings at flap.
+ffn_moth :: (s: [] Fairy, p: Point, yaw: f32, flap: f32, bright: f32) {
+  ahead := v3(sin(yaw), 0, cos(yaw)); right := v3(cos(yaw), 0, -sin(yaw));
+  shape(s, SHAPE_SPHERE, LOOK_SPARK, p, yaw, 0, 0.05, 0.05, 0.11, 0.62 * bright, 0.56 * bright, 0.44 * bright);
+  for e: 0..<2 {
+    sg := ifx e == 0 then 1.0f32 else -1.0f32;
+    span := add(times(right, sg * cos(flap) * 0.09), v3(0, sin(flap) * 0.09, 0));
+    up := add(times(right, -sg * sin(flap)), v3(0, cos(flap), 0));
+    oriented(s, SHAPE_BOX, LOOK_SPARK, add(p, span), times(span, 2.0), times(up, 0.008), times(ahead, 0.13),
+             0.86 * bright, 0.8 * bright, 0.62 * bright);
+  }
+}
+// n moths round a light at c.
+ffn_moths :: (s: [] Fairy, c: Point, n: int, r: f32, seed: f32, t: f32) {
+  for m: 0..<n {
+    w := 1.3 + 0.4 * f32(m % 3);
+    a := t * w + seed + f32(m) * 2.4;
+    rr := r * (0.75 + 0.25 * sin(t * 0.7 + f32(m)));
+    p := add(c, v3(cos(a) * rr, 0.25 * sin(t * 1.9 + f32(m) * 1.3), sin(a) * rr));
+    ffn_moth(s, p, -a, sin(t * 26 + f32(m) * 1.7) * 0.9, 1.0);
+  }
+}
+
+ffn_draw :: (s: [] Fairy, eye: Point) {
+  if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 30 { return; }   // the forest first
+  if !ffn_dark(s) || !ffn_near(eye.x, eye.z, f32(FFN_GLADE_X), f32(FFN_GLADE_Z), 30 + f32(FFN_SEE)) { return; }
+  t := effect_time(s);
+  // moths at the lantern flower, and at a few of Lanternwood's fruit once they are lit (fairy.coax props)
+  lx := f32(FFK_LANTERN_X); lz := f32(FFK_LANTERN_Z);
+  ffn_moths(s, v3(lx + 0.2, ground_at(s, lx, lz) + 0.9, lz), 4, 0.7, 1.7, t);
+  for j: 0..<3 {
+    k := j * 7 + 2;
+    a := f32(k) * 2.399;
+    d := 3 + hash1(f32(k), 6) * 8;
+    x := FF_GLADE[6] + cos(a) * d; z := FF_GLADE[7] + sin(a) * d;
+    if ff_restored(s[0].forest[..], x, z, s[0].time) <= 0.3 { continue; }
+    y := ground_at(s, x, z) + 2.2 + hash1(f32(k), 2) * 2.2;
+    ffn_moths(s, v3(x, y, z), 3, 0.8, f32(k), t);
+  }
+  if !ffn_shows(s) { return; }
+  // the stones to the moon hollow, and the hollow: a ring of glowcaps round a little moon pool
+  for k: 0..<FFN_STONES {
+    p := ffn_stone(k);
+    g := ground_at(s, p.x, p.z);
+    b := 0.7 + 0.3 * sin(t * 1.6 - f32(k) * 0.8);
+    shape(s, SHAPE_CYLINDER, LOOK_SPARK, v3(p.x, g + 0.03, p.z), f32(k) * 1.3, 0, 0.75, 0.07, 0.55, 0.42 * b, 0.9 * b, 0.8 * b);
+  }
+  hx := f32(FFN_HOLLOW_X); hz := f32(FFN_HOLLOW_Z);
+  hg := ground_at(s, hx, hz);
+  shape(s, SHAPE_CYLINDER, LOOK_SPARK, v3(hx, hg + 0.02, hz), 0, 0, 2.1, 0.04, 2.1, 0.6, 0.72, 0.95);
+  for c: 0..<7 {
+    a := f32(c) * 0.8976 + 0.3;
+    rr := 1.75 + 0.2 * sin(f32(c) * 2.7);
+    base := v3(hx + cos(a) * rr, hg, hz + sin(a) * rr);
+    tall := 0.35 + 0.18 * f32(c % 3);
+    limb(s, SHAPE_CYLINDER, LOOK_SPARK, base, add(base, v3(0, tall, 0)), 0.06, 0.55, 0.7, 0.66);
+    shape(s, SHAPE_SPHERE, LOOK_SPARK, add(base, v3(0, tall, 0)), a, 0, 0.36, 0.16, 0.36, 0.36, 0.7, 1.0);
+  }
+  if s[0].life[0].deeds.hollow {
+    for k: 0..<3 { shape(s, SHAPE_SPHERE, LOOK_SPARK, v3(hx + 0.5 * cos(t + f32(k) * 2.1), hg + 0.6 + 0.2 * sin(t * 1.5 + f32(k)), hz + 0.5 * sin(t + f32(k) * 2.1)), 0, 0, 0.06, 0.06, 0.06, 0.8, 0.9, 1.0); }
+  }
+}
+
+// Once the moon hollow is found, two lantern moths keep to her light in the dark.
+ffn_carried :: (s: [] Fairy, lantern: Point) {
+  if !ffn_dark(s) || !s[0].life[0].deeds.hollow { return; }
+  ffn_moths(s, lantern, 2, 0.45, 0.5, effect_time(s));
+}
+
+#test "night: a pinned midnight is dark and lights her LIGHT; LIGHT waits for the dark at the lantern flower, a rest brings it; the moon hollow shows only then, is found and kept" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  fairy_facts(s[..], "clock=fixed:0.5");
+  ffn_frame(s[..], 0.016);
+  #assert s[0].night == 0 && !ffn_dark(s[..]);
+  sun := ffn_key_dir(s[..]);
+  #assert abs(sun.x - 0.5f32 / sqrt(0.8369f32)) < 0.0001;   // noon is the day's own sun
+  lantern := v3(f32(FFK_LANTERN_X), 0, f32(FFK_LANTERN_Z));
+  #assert ffk_verb(s[..], lantern) == FFK_V_REST;   // by day the flower is shut: E rests till night
+  #assert ffk_use(s[..], lantern) && ffn_resting(s[0].clock[..]);
+  for _i: 0..<300 { ffn_frame(s[..], 1.0 / 60.0); }
+  #assert ffn_dark(s[..]) && ffk_verb(s[..], lantern) == FFK_V_LANTERN && ffk_use(s[..], lantern) && ffk_knows(s[0].life[..], FFK_LIGHT);
+  #assert ffk_verb(s[..], lantern) == FFK_V_MORNING && FFK_VERB_WORDS[FFK_V_MORNING] == "REST TILL MORNING";
+  // the moon hollow: found standing in it, in the dark, with LIGHT
+  #assert !s[0].life[0].deeds.hollow;
+  s[0].feet = v3(f32(FFN_HOLLOW_X), 0, f32(FFN_HOLLOW_Z));
+  ffn_frame(s[..], 0.016);
+  #assert s[0].life[0].deeds.hollow && s[0].k_news == FFN_NEWS_HOLLOW;
+  who: [1] string; said: [1] string;
+  #assert ffk_news(s[..], who[..], said[..]) && who[0] == "THE MOON HOLLOW";
+  // a frame by night stays in its slots and lights the shader's night
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := fairy_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FFN_HOLLOW_X), 0, f32(FFN_HOLLOW_Z) - 4, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && u[U_NIGHT] > 0.9 && u[U_NIGHT + 2] > 0.9;
+  for k: 1..<5 { #assert s[0].counts[k] <= SLOTS[k]; }
+  // a golden shot is noon
+  fairy_golden(s[..], true);
+  ffn_frame(s[..], 0.016);
+  #assert s[0].night == 0;
+  // the hollow and its stones keep off the trails, the stream, the patches and the creatures, and in bounds
+  #assert sqrt(f32(FFN_HOLLOW_X) * f32(FFN_HOLLOW_X) + f32(FFN_HOLLOW_Z) * f32(FFN_HOLLOW_Z)) < f32(FF_BOUND) - 2;
+  for i: 0..<FF_PATCHES { #assert !ffn_near(FF_PATCH[i * 4], FF_PATCH[i * 4 + 1], f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), 6); }
+  for c: 0..<FF_CREATURES { #assert !ffn_near(FF_CREATURE[c * 4], FF_CREATURE[c * 4 + 1], f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), f32(FF_TALK_NEAR) + 3); }
+  for i: 0..<s[0].tree_n { #assert !ffn_near(s[0].trees[i * TREE_FLOATS], s[0].trees[i * TREE_FLOATS + 1], f32(FFN_HOLLOW_X), f32(FFN_HOLLOW_Z), f32(FFN_HOLLOW_CLEAR)); }
+}

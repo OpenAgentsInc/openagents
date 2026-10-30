@@ -112,7 +112,7 @@
             {"id": "grass", "label": "Wind-swept grass", "says": "the grass swaying in the wind"},
             {"id": "ridges", "label": "The far ridges", "says": "the ridges far round the valley"} ] },
         "style": "painterly",
-        "clock": "fixed:0.5",
+        "clock": "real",
         "title": "Fairy Forest",
         "description": "Fairy Forest, a faded valley round a sleeping heart tree: you are a fairy who wakes in Mossbank. Bloom the grey patches back to colour, help the creatures of the glades and wake the heart tree's roots.",
         "alt": "Fairy Forest: a painted valley round the heart tree",

@@ -31,6 +31,7 @@ struct U {
   bloom_info: vec4f,
   plate: array<vec4f, 32>,
   water: WaterU,
+  night: vec4f,     // how dark (0 day, 1 night), dawn or dusk's warmth, the light she carries, its height
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -45,6 +46,21 @@ const HAZE_KEY = vec3f(1.0, 0.90, 0.68);    // toward the sun: warm cream
 const ZENITH = vec3f(0.14, 0.46, 0.74);     // teal-blue overhead
 const HAZE_FROM = 28.0;                     // m: nothing nearer is hazed
 const RIM_DAY = vec3f(1.0, 0.84, 0.60);
+
+// Through the day (fairy.coax U_NIGHT, verse/fairy-forest/night.coax): the
+// day's numbers above at noon, warm and low at dawn and dusk, and by night a
+// moonlit blue: a cool key from the moon, a deep blue sky with stars, the
+// haze a dark blue so the lights carry.
+fn by_time(day: vec3f, dusk: vec3f, night: vec3f) -> vec3f { return mix(mix(day, dusk, u.night.y), night, u.night.x); }
+fn key_c() -> vec3f { return by_time(KEY, vec3f(1.0, 0.66, 0.40) * 0.9, vec3f(0.45, 0.56, 1.0) * 0.3); }
+fn sky_amb() -> vec3f { return by_time(SKY_AMB, vec3f(0.58, 0.52, 0.60), vec3f(0.12, 0.17, 0.38)); }
+fn ground_amb() -> vec3f { return by_time(GROUND_AMB, vec3f(0.42, 0.34, 0.26), vec3f(0.05, 0.06, 0.10)); }
+fn shadow_tint() -> vec3f { return by_time(SHADOW_TINT, vec3f(0.36, 0.56, 0.66), vec3f(0.34, 0.42, 0.74)); }
+fn haze_c() -> vec3f { return by_time(HAZE, vec3f(0.90, 0.60, 0.38), vec3f(0.05, 0.08, 0.20)); }
+fn haze_far() -> vec3f { return by_time(HAZE_FAR, vec3f(0.62, 0.46, 0.62), vec3f(0.05, 0.06, 0.17)); }
+fn haze_key() -> vec3f { return by_time(HAZE_KEY, vec3f(1.0, 0.62, 0.34), vec3f(0.36, 0.42, 0.66)); }
+fn zenith() -> vec3f { return by_time(ZENITH, vec3f(0.22, 0.30, 0.58), vec3f(0.015, 0.03, 0.10)); }
+fn rim_c() -> vec3f { return by_time(RIM_DAY, vec3f(1.0, 0.62, 0.40), vec3f(0.50, 0.62, 1.0)); }
 const TAU = 6.2831853;
 
 struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
@@ -69,14 +85,25 @@ fn sun_dir() -> vec3f { return normalize(u.sun.xyz); }
 // band lifted toward the haze, the sun with its halo and soft two-tone clouds.
 fn sky_colour(d: vec3f, clouds: bool) -> vec3f {
   let up = d.y;
-  var c = mix(HAZE, ZENITH, verse_paint_sky_mix(max(up, 0.0)));
-  c = mix(c, HAZE * 1.08, verse_paint_sky_band(up));
+  var c = mix(haze_c(), zenith(), verse_paint_sky_mix(max(up, 0.0)));
+  c = mix(c, haze_c() * 1.08, verse_paint_sky_band(up));
   let l = sun_dir();
   let cs = dot(d, l);
   // the horizon warms to cream toward the sun, and a warm bloom rings it
-  c = mix(c, HAZE_KEY * 1.1, pow(max(cs, 0.0), 6.0) * (1.0 - smoothstep(0.0, 0.5, up)) * 0.8);
-  c += mix(HAZE_KEY, vec3f(1.0, 0.97, 0.9), 0.5) * verse_paint_halo(cs) * 0.8;
-  if (cs > 0.99939) { c = vec3f(1.0, 0.97, 0.9) * 4.0; }   // the disc, drawn at 2 degrees
+  c = mix(c, haze_key() * 1.1, pow(max(cs, 0.0), 6.0) * (1.0 - smoothstep(0.0, 0.5, up)) * 0.8);
+  c += mix(haze_key(), vec3f(1.0, 0.97, 0.9), 0.5) * verse_paint_halo(cs) * 0.8 * (1.0 - 0.7 * u.night.x);
+  // the disc, drawn at 2 degrees: the sun, or by night the pale moon
+  if (cs > 0.99939) { c = mix(vec3f(1.0, 0.97, 0.9) * 4.0, vec3f(0.86, 0.9, 1.0) * 1.8, u.night.x); }
+  // the stars, by night: a few bright points on a fine grid of the sky, twinkling
+  if (u.night.x > 0.0 && up > 0.02) {
+    let q = d / max(abs(d.x), max(abs(d.y), abs(d.z))) * 260.0;
+    let cell = floor(q);
+    let h = hash(cell.xy + cell.yz * 7.13 + cell.zx * 3.71);
+    let f = fract(q) - vec3f(0.5);
+    let point = 1.0 - smoothstep(0.08, 0.3, length(f));
+    let twinkle = 0.6 + 0.4 * sin(u.time * (1.0 + h * 3.0) + h * 40.0);
+    c += vec3f(0.9, 0.93, 1.0) * point * step(0.985, h) * twinkle * u.night.x * smoothstep(0.02, 0.25, up) * 1.4;
+  }
   if (clouds && up > 0.01) {
     let drift = vec2f(u.time * 3.0, u.time * 1.2) * (1.0 - u.still);
     let p = d.xz / up * 1500.0 + drift;
@@ -86,7 +113,7 @@ fn sky_colour(d: vec3f, clouds: bool) -> vec3f {
     let cover = verse_style_cloud_cover(n, 0.35, 0.48, 0.62);
     let toward = normalize(l.xz + vec2f(0.0001)) * 260.0;
     let lit = verse_style_cloud_lit(n, verse_style_cloud_field(p.x + toward.x, p.y + toward.y, 1.0 / 2000.0, 1.0 / 700.0, 1.0));
-    let cloud = mix(SHADOW_TINT * 1.4 * 0.9, vec3f(1.0, 0.98, 0.95) * 1.15, lit);
+    let cloud = mix(shadow_tint() * 1.4 * 0.9, by_time(vec3f(1.0, 0.98, 0.95) * 1.15, vec3f(1.0, 0.72, 0.56), vec3f(0.2, 0.24, 0.4)), lit) * (1.0 - 0.55 * u.night.x);
     c = mix(c, cloud, cover * verse_style_cloud_fade(up));
   }
   return c;
@@ -136,8 +163,8 @@ fn faded_at(c: vec3f, r: f32, world: vec3f) -> vec3f {
 // It starts HAZE_FROM past the shared curve's own start, so the near and
 // middle distance stay crisp, and it shifts from teal to blue-violet far off.
 fn haze_colour(d: f32, to_sun: f32) -> vec3f {
-  let far = mix(HAZE, HAZE_FAR, smoothstep(60.0, 220.0, d));
-  return mix(far, HAZE_KEY, verse_paint_haze_sun(to_sun));
+  let far = mix(haze_c(), haze_far(), smoothstep(60.0, 220.0, d));
+  return mix(far, haze_key(), verse_paint_haze_sun(to_sun));
 }
 fn hazed(c: vec3f, world: vec3f) -> vec3f {
   let to = world - u.eye.xyz;
@@ -428,13 +455,21 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
   let w = verse_paint_wrap(ndl, shadow);
   var band = verse_paint_band(w);
   if (character) { band = verse_paint_band2(w); }
-  let ambient = mix(GROUND_AMB, SKY_AMB, n.y * 0.5 + 0.5) * 0.55;
-  var shade = SHADOW_TINT * ambient * 1.25;
+  let ambient = mix(ground_amb(), sky_amb(), n.y * 0.5 + 0.5) * 0.55;
+  var shade = shadow_tint() * ambient * 1.25;
   // a character's shadow side stays warm and light, so she reads against the greens
-  if (character) { shade = mix(shade, KEY * 0.8, 0.5); }
-  var light = c * mix(shade, KEY + ambient, band);
+  if (character) { shade = mix(shade, key_c() * 0.8, 0.5); }
+  var light = c * mix(shade, key_c() + ambient, band);
   let strength = select(0.30, 0.45, character);
-  light += RIM_DAY * verse_paint_rim(abs(dot(n, v)), ndl, strength) * mix(vec3f(0.6), c * 1.6, 0.4);
+  light += rim_c() * verse_paint_rim(abs(dot(n, v)), ndl, strength) * mix(vec3f(0.6), c * 1.6, 0.4);
+  // by night, the light she carries (LIGHT): a warm pool round her
+  if (u.night.z > 0.0) {
+    let to = vec3f(u.grass2.w, u.night.w, u.you_z) - world;
+    let d2 = dot(to, to);
+    let fall = u.night.z * 1.3 / (1.0 + d2 * 0.18) * (1.0 - smoothstep(36.0, 100.0, d2));
+    let face = 0.45 + 0.55 * max(dot(n, to * inverseSqrt(max(d2, 0.0001))), 0.0);
+    light += c * vec3f(1.0, 0.76, 0.44) * fall * face;
+  }
   return light;
 }
 
@@ -810,7 +845,7 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   let l = sun_dir();
   // the bands, lit softly
   var body = mix(mix(W_SHALLOW, W_MID, verse_paint_water_mid(depth)), W_DEEP, verse_paint_water_deep(depth));
-  body *= KEY * 0.85 + SKY_AMB * 0.35;
+  body *= key_c() * 0.85 + sky_amb() * 0.35;
   let r = restored(world.xz);
   body = faded(body, r.x);
   let fresnel = water_fresnel(max(dot(n, v), 0.001));
@@ -832,13 +867,13 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   let rings = clamp(water_ripple_foam(rest) * 1.6, 0.0, 1.0);
   let foam = max(line, rings);
   let alpha = (0.55 + 0.4 * smoothstep(0.05, 0.9, depth)) * smoothstep(-0.05, 0.1, depth);
-  let white = vec3f(1.0, 0.98, 0.94) * (KEY * 0.9 + SKY_AMB * 0.3);
+  let white = vec3f(1.0, 0.98, 0.94) * (key_c() * 0.9 + sky_amb() * 0.3);
   var emit = body * alpha * (1.0 - fresnel) + refl * fresnel * smoothstep(-0.05, 0.1, depth) + vec3f(1.0, 0.97, 0.88) * sparkle * 3.0;
   emit = mix(emit, white, foam);
   // the haze over the water, as over every surface
   let hz = verse_paint_haze(max(dist - HAZE_FROM, 0.0), world.y, u.eye.w) * 0.85;
   let trans = vec3f((1.0 - alpha) * (1.0 - fresnel) * (1.0 - foam));
-  o.emit = emit * (1.0 - hz) + mix(HAZE, HAZE_KEY, verse_paint_haze_sun(dot(-v, l))) * hz * (vec3f(1.0) - trans);
+  o.emit = emit * (1.0 - hz) + mix(haze_c(), haze_key(), verse_paint_haze_sun(dot(-v, l))) * hz * (vec3f(1.0) - trans);
   o.transmit = trans;
   return o;
 }
@@ -899,7 +934,8 @@ fn tone(c: vec3f) -> vec3f {
   let near = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb;
   let far = textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb;
   let mixback = select(0.26, 0.2, u.sun.w > 0.5);
-  let c = light + (near * 0.55 + far * 0.45) * mixback * 3.0;
+  var c = light + (near * 0.55 + far * 0.45) * mixback * 3.0;
+  c *= mix(vec3f(1.0), vec3f(0.78, 0.84, 1.0), u.night.x);   // the night's exposure, a touch blue
   return vec4f(plates(pos.xy, encode(tone(c))), 1.0);
 }
 

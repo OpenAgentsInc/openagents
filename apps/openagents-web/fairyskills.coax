@@ -7,8 +7,9 @@
 //           spot growing again the next day; a seed is a seed for your garden
 //   CRAFT   the woodcutter's axe left in a stump east of your home (E: TAKE
 //           THE AXE); then E: CUT clears a fallen log of deadwood
-//   LIGHT   the lantern flower in Lanternwood (E: LIGHT); then you carry a
-//           light at your side
+//   LIGHT   the lantern flower in Lanternwood, which opens only at night
+//           (E: LIGHT; by day E rests you till night, fairynight.coax); then
+//           you carry a light at your side
 //   WATER   the sticks dammed across the stream above the pond (E: CLEAR);
 //           then WATER at one bed waters every bed in your garden
 // Each one learned puts a gem on her wings. The data and its save are
@@ -16,7 +17,8 @@
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
 FFK_V_MEND :: 1; FFK_V_AXE :: 2; FFK_V_CUT :: 3; FFK_V_LANTERN :: 4; FFK_V_DAM :: 5; FFK_V_GATHER :: 6;
-FFK_VERB_WORDS :: [7] string.["", "MEND", "TAKE THE AXE", "CUT", "LIGHT", "CLEAR", "GATHER"];
+FFK_V_REST :: 7; FFK_V_MORNING :: 8;   // at the lantern flower: rest till night, or in the night till morning
+FFK_VERB_WORDS :: [9] string.["", "MEND", "TAKE THE AXE", "CUT", "LIGHT", "CLEAR", "GATHER", "REST TILL NIGHT", "REST TILL MORNING"];
 FFK_LEARNED :: [7] string.["YOU LEARNED BLOOM", "YOU LEARNED SPEAK", "YOU LEARNED MEND", "YOU LEARNED GATHER",
                            "YOU LEARNED CRAFT", "YOU LEARNED LIGHT", "YOU LEARNED WATER"];
 FFK_FOUND :: [3] string.["A BERRY", "AN ACORN", "A SEED"];
@@ -47,7 +49,10 @@ ffk_verb :: (s: [] Fairy, you: Point) -> int {
   k := s[0].life[0].skills;
   if !k.bird && ffk_at(you, f32(FFK_BIRD_X), f32(FFK_BIRD_Z), f32(FFK_NEAR)) { return FFK_V_MEND; }
   if !k.axe && ffk_at(you, f32(FFK_AXE_X), f32(FFK_AXE_Z), f32(FFK_NEAR)) { return FFK_V_AXE; }
-  if !k.lantern && ffk_at(you, f32(FFK_LANTERN_X), f32(FFK_LANTERN_Z), f32(FFK_NEAR)) { return FFK_V_LANTERN; }
+  if ffk_at(you, f32(FFK_LANTERN_X), f32(FFK_LANTERN_Z), f32(FFK_NEAR)) && !ffn_resting(s[0].clock[..]) {
+    if !k.lantern && ffn_dark(s) { return FFK_V_LANTERN; }
+    return ifx ffn_dark(s) then FFK_V_MORNING else FFK_V_REST;
+  }
   if !k.dam && ffk_at(you, f32(FFK_DAM_X), f32(FFK_DAM_Z), 3.0) { return FFK_V_DAM; }
   if k.learned[FFK_CRAFT] && ffk_log_near(s, you) >= 0 { return FFK_V_CUT; }
   if ffk_find_near(s, you) >= 0 { return FFK_V_GATHER; }
@@ -59,6 +64,7 @@ ffk_use :: (s: [] Fairy, you: Point) -> bool {
   if v == FFK_V_MEND { l[0].skills.bird = true; s[0].bird_flew = s[0].time; ffk_note(s, FFK_MEND); }
   if v == FFK_V_AXE { l[0].skills.axe = true; ffk_note(s, FFK_CRAFT); }
   if v == FFK_V_LANTERN { l[0].skills.lantern = true; ffk_note(s, FFK_LIGHT); }
+  if v == FFK_V_REST || v == FFK_V_MORNING { ffn_rest(s[0].clock[..], s[0].time); return true; }
   if v == FFK_V_DAM { l[0].skills.dam = true; ffk_note(s, FFK_WATER); }
   if v == FFK_V_CUT { l[0].skills.cut[ffk_log_near(s, you)] = true; l[0].changes += 1; }
   if v == FFK_V_GATHER {
@@ -75,6 +81,7 @@ ffk_use :: (s: [] Fairy, you: Point) -> bool {
 ffk_news :: (s: [] Fairy, who: [] string, said: [] string) -> bool {
   n := s[0].k_news;
   if n <= 0 || s[0].time - s[0].k_news_at > f64(FFK_NEWS_TIME) { return false; }
+  if n == FFN_NEWS_HOLLOW { who[0] = "THE MOON HOLLOW"; said[0] = "LANTERN MOTHS FOLLOW YOUR LIGHT"; return true; }
   if n >= 100 && n < 100 + FFK_FIND_KINDS { who[0] = FFK_FOUND[n - 100]; said[0] = FFK_FOR[n - 100]; return true; }
   if n > FFK_SKILLS { return false; }
   who[0] = FFK_LEARNED[n - 1]; said[0] = FFK_LETS[n - 1];
@@ -144,8 +151,16 @@ ffk_draw :: (s: [] Fairy, eye: Point) {
     limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(lx, g, lz), stem_top, 0.05, 0.3, 0.55, 0.28);
     limb(s, SHAPE_CYLINDER, LOOK_LEAVES, stem_top, add(stem_top, v3(0.18, -0.12, 0)), 0.03, 0.3, 0.55, 0.28);
     bell := add(stem_top, v3(0.2, -0.24, 0));
-    if k.lantern { shape(s, SHAPE_SPHERE, LOOK_GLOW, bell, 0, 0, 0.26, 0.3, 0.26, 1.0, 0.82, 0.42); }
-    else { shape(s, SHAPE_SPHERE, LOOK_CLOTH, bell, 0, 0, 0.24, 0.28, 0.24, 0.62, 0.52, 0.4); }
+    // shut by day, a bud hanging; open in the dark, glowing softly until you take its light, then bright
+    if !ffn_dark(s) { shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(bell, v3(0, 0.04, 0)), 0, 0, 0.16, 0.3, 0.16, 0.62, 0.52, 0.4); }
+    else {
+      shape(s, SHAPE_SPHERE, LOOK_SPARK, bell, 0, 0, 0.3, 0.26, 0.3, 1.0, 0.82, 0.42);
+      for j: 0..<5 {
+        a := f32(j) * 1.2566;
+        shape(s, SHAPE_SPHERE, ifx k.lantern then LOOK_SPARK else LOOK_CLOTH, add(bell, v3(cos(a) * 0.2, -0.12, sin(a) * 0.2)), -a, 0.9, 0.12, 0.04, 0.2,
+              0.98, 0.72, 0.42);
+      }
+    }
     for j: 0..<2 { a := f32(j) * 3.1 + 0.6; shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(lx + cos(a) * 0.2, g + 0.25, lz + sin(a) * 0.2), a, 0.6, 0.22, 0.04, 0.12, 0.34, 0.6, 0.3); }
   }
   // sticks dammed across the stream until cleared, piled at the water's surface
@@ -197,6 +212,7 @@ ffk_carried :: (s: [] Fairy, feet: Point, face: f32) {
   p := add(feet, add(times(right, 0.62), v3(0, 2.0 + 0.06 * sin(t * 1.7), 0)));   // over her shoulder, clear of the wings
   shape(s, SHAPE_SPHERE, LOOK_GLOW, p, 0, 0, 0.12, 0.14, 0.12, 1.0, 0.84, 0.46);
   shape(s, SHAPE_SPHERE, LOOK_SPARK, add(p, v3(0, 0.12, 0)), 0, 0, 0.04, 0.04, 0.04, 1.0, 0.95, 0.75);
+  ffn_carried(s, p);
 }
 
 #test "skills: the bird, the axe, the lantern and the dam each teach one; CRAFT cuts deadwood; a find teaches GATHER" {
@@ -216,6 +232,7 @@ ffk_carried :: (s: [] Fairy, feet: Point, face: f32) {
   #assert ffk_verb(s[..], axe) == FFK_V_AXE && ffk_use(s[..], axe) && ffk_knows(l, FFK_CRAFT);
   #assert ffk_verb(s[..], deadwood) == FFK_V_CUT && ffk_use(s[..], deadwood) && l[0].skills.cut[0] && ffk_verb(s[..], deadwood) != FFK_V_CUT;
   lantern := v3(f32(FFK_LANTERN_X), 0, f32(FFK_LANTERN_Z));
+  fairy_facts(s[..], "clock=fixed:0.0"); ffn_frame(s[..], 0.016);   // the flower opens only at night
   #assert ffk_verb(s[..], lantern) == FFK_V_LANTERN && ffk_use(s[..], lantern) && ffk_knows(l, FFK_LIGHT);
   dam := v3(f32(FFK_DAM_X) + 1, 0, f32(FFK_DAM_Z));
   #assert ffk_verb(s[..], dam) == FFK_V_DAM && ffk_use(s[..], dam) && ffk_knows(l, FFK_WATER);
