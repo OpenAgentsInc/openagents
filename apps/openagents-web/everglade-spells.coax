@@ -45,7 +45,7 @@ SP_BLAST :: [4] f32.[4.0, 3.4, 5.8, 3.0];
 SP_THROW :: [4] f32.[17.0, 14.0, 22.0, 10.0];
 SP_RANGE :: 140.0;        // m from you: the old destruction bar reached anything in sight; the city is 127 m across
 SP_METEORS :: 6;
-SP_HEIGHT :: 24.0;        // a meteor falls from this high
+SP_HEIGHT :: 14.0;        // a meteor falls from this high
 SP_FALL :: 1.5;           // s
 SP_STAGGER :: 0.13;       // s between meteors
 SP_BOLT_HEIGHT :: 60.0;
@@ -408,8 +408,8 @@ sp_release :: (s: [] Everglade, slot: int) {
       if m == 0 { gy = to.y; }
       dest := v3(gx, gy, gz);
       lateral := (srd_unit(s[0].sp.dice[..]) - 0.5) * 12;
-      // from beyond the target and off to a side, down toward you at about 45 degrees: in the view behind you
-      from := add(dest, add(times(back, -(20 + 6 * srd_unit(s[0].sp.dice[..]))), add(times(side, lateral * 1.6), v3(0, f32(SP_HEIGHT), 0))));
+      // from beyond the target and off to a side, low (about 22 degrees) and toward you: under the top of the view from behind you
+      from := add(dest, add(times(back, -(32 + 6 * srd_unit(s[0].sp.dice[..]))), add(times(side, lateral * 1.6), v3(0, f32(SP_HEIGHT), 0))));
       s[0].sp.meteors[m] = SpMeteor.{live = true, from = from, to = dest, t = -(f32(m) * f32(SP_STAGGER) + 0.05 * srd_unit(s[0].sp.dice[..])), fall = f32(SP_FALL)};
     }
     return;

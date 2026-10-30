@@ -571,8 +571,8 @@ stood back up, the town's own walls come back. A blast's fireball swells to
 under a third of its radius across (a cart, not the house) and to as little
 as 0.4 of that within 18 m of the camera, so a meteor at your feet doesn't
 fill the view. Each meteor comes in from beyond the target and off to a
-side, about 45 degrees down toward you over 1.5 s, so it crosses the view
-behind you: a dark rock leading a ball of fire, a trail of eleven fading
+side, low (14 m up from 32 to 38 m out, about 22 degrees) toward you over
+1.5 s, so it crosses the view behind you under its top edge: a dark rock leading a ball of fire, a trail of eleven fading
 fire balls and four of smoke. The Water Orb and its drips and splash draw
 with their own look (everglade.wgsl LOOK_ORB, 16): a deep body lit by the
 sun with a moving swirl, the sky along its rim, a hard highlight, and part
