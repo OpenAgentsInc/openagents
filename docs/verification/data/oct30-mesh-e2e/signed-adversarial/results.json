@@ -1,0 +1,170 @@
+{
+  "at": "2026-10-30T16:37:45.946Z",
+  "source_commit": null,
+  "harness_sha256": "f7ac71abeacabe7fc55d48c12407a9a18ab95fe149c153e5ba9c7b0f4d869d86",
+  "binaries": {
+    "psionic-fleet": {
+      "sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8"
+    },
+    "psionic-mesh-check": {
+      "sha256": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b"
+    }
+  },
+  "private_material_leaked": false,
+  "sanitizer_error": false,
+  "results": [
+    {
+      "name": "signed-witness: receipt-signature",
+      "ok": true,
+      "ms": 101,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": false
+    },
+    {
+      "name": "signed-witness: request-signature",
+      "ok": true,
+      "ms": 90,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": false
+    },
+    {
+      "name": "signed-witness: result-signature",
+      "ok": true,
+      "ms": 89,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": false
+    },
+    {
+      "name": "signed-witness: result-author",
+      "ok": true,
+      "ms": 90,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true
+    },
+    {
+      "name": "signed-witness: result-recipient",
+      "ok": true,
+      "ms": 92,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true
+    },
+    {
+      "name": "signed-witness: result-job",
+      "ok": true,
+      "ms": 90,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true
+    },
+    {
+      "name": "signed-witness: request-recipient",
+      "ok": true,
+      "ms": 91,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: result-attempt",
+      "ok": true,
+      "ms": 92,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: result-request",
+      "ok": true,
+      "ms": 92,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: receipt-request-digest",
+      "ok": true,
+      "ms": 91,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: receipt-result-digest",
+      "ok": true,
+      "ms": 90,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: opened-request-preimage",
+      "ok": true,
+      "ms": 91,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: opened-result-preimage",
+      "ok": true,
+      "ms": 90,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: original-model",
+      "ok": true,
+      "ms": 92,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: original-identity",
+      "ok": true,
+      "ms": 93,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: original-door",
+      "ok": true,
+      "ms": 91,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true,
+      "buyer_resigned_claim": true
+    },
+    {
+      "name": "signed-witness: public-receipt-missing",
+      "ok": true,
+      "ms": 132,
+      "checks": 0,
+      "replays": 0,
+      "authentic_signatures": true
+    },
+    {
+      "name": "signed-witness: regular stdin refused before reading",
+      "ok": true,
+      "ms": 63,
+      "refused": true,
+      "network_started": false
+    }
+  ]
+}

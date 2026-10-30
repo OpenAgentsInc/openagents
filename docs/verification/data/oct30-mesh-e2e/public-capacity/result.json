@@ -1,0 +1,11 @@
+{
+  "at": "2026-10-30T16:57:00.798515+00:00",
+  "case": "public live capacity at a closed minute boundary",
+  "returncode": 0,
+  "from": 1793378220,
+  "to": 1793379420,
+  "binary_sha256": "d4cd57c504ea7bee1677af79d37e10c7cee23816d6bfe8a5ffddba022ddeb8f7",
+  "bundle_sha256": "78cfdc5dca107c19cba1d0606c15528bd0cba6248e351188fc8df7ca8eed045d",
+  "public_event_id": "36669dc4fd9b01ffaa4e66e7df63cc9750404f97d0a59150987fe42bac25f459",
+  "private_material": false
+}

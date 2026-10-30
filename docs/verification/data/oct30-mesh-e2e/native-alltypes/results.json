@@ -1,0 +1,31 @@
+{
+  "at": "2026-10-30T16:39:17.026Z",
+  "source_commit": null,
+  "harness_sha256": "fdcae9a5d094d00ff480c880cf6b376eafe16afcdb441b6b96fe377cdc43ad2c",
+  "binaries": {
+    "psionic-fleet": {
+      "sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8"
+    },
+    "psionic-mesh-check": {
+      "sha256": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b"
+    }
+  },
+  "private_material_leaked": false,
+  "sanitizer_error": false,
+  "results": [
+    {
+      "name": "native: two Coax Pylons and engines produce a checked receipt",
+      "ok": true,
+      "ms": 2162,
+      "http": 200,
+      "original_provider": "95b7627b549039c40ec6879d5825f3e77c87001deef4c7dee01b99c54d3ce7d7",
+      "trusted_provider": "25bae4d5d1d3ad9263b3923dd20247bf33bbb9751cf5b95a11bf82442565e2bf",
+      "checker": "c941d346081bb2782eb79c690b029b1fa9aaa99bf53f39d15ff6732a2ec9a660",
+      "receipt": "9b5b20e7ef9099ec45b62705f709f37e1e1f1c7bf37421100fe76c2af230997b",
+      "verdict": "check-pass",
+      "relay_sha256": "46b772b5be9522e1473052494c34a0e0cc77487e28e03b96b32006166eb13c04",
+      "pylon_sha256": "50ee43120f4b05ade56b584e66d68c258306e88875e1b2a054ef27c66a37f1cd",
+      "engine_sha256": "8edef31672b37b874ef9a84c08e55b334af8b38494390895a8f396454f36db04"
+    }
+  ]
+}

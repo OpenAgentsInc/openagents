@@ -1,0 +1,27 @@
+{
+  "at": "2026-10-30T16:28:06.169Z",
+  "source_commit": null,
+  "binaries": {
+    "psionic-fleet": {
+      "sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8"
+    },
+    "psionic-mesh-check": {
+      "sha256": "f9ce337c85808ee3711e6acb1941982d636c644e14c8e2fafc135c6ae936ac7a"
+    }
+  },
+  "private_material_leaked": false,
+  "sanitizer_error": false,
+  "results": [
+    {
+      "name": "API receipt and sampled checker: pass",
+      "ok": true,
+      "ms": 1720,
+      "http": 200,
+      "receipt": "26a8937b0f6624dcc6beceff817b0629b43c0f01f110996eacc8195fb1ea5dda",
+      "checker": "7c1a30f6ee81d0015734e87217a37bcf546e7bcddcac4c337d937ed146888c08",
+      "verdict": "check-pass",
+      "private_plaintext_hashes_bound": true
+    }
+  ],
+  "harness_sha256": "b0e4176f7003fddc1b47d5fadc9a5d769359829b8bcd8178b2ac50497b274134"
+}

@@ -1,0 +1,19 @@
+[
+  "/tmp/oct30-pool-native-v4/psionic-mesh-pool",
+  "--pool",
+  "oct30-current",
+  "--from",
+  "1793378220",
+  "--to",
+  "1793379420",
+  "--provider",
+  "d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f",
+  "--provider",
+  "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+  "--buyer",
+  "a8be3c18f465d5866748bf7e70ba07542f25ce6fc4c738f1aaa9503c583839c3",
+  "--checker",
+  "a2f66bacd908c19de9f0364d850b278e62e7442f5294e020046fe0f378bf4967",
+  "--publish",
+  "--bundle"
+]

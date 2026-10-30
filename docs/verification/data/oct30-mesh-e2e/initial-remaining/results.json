@@ -1,0 +1,166 @@
+{
+  "at": "2026-10-30T16:29:45.927Z",
+  "source_commit": null,
+  "harness_sha256": "408aef71d64f2db88594068da27abaa075d0850e68b778a167dd04a725eb7060",
+  "binaries": {
+    "psionic-fleet": {
+      "sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8"
+    },
+    "psionic-mesh-check": {
+      "sha256": "f9ce337c85808ee3711e6acb1941982d636c644e14c8e2fafc135c6ae936ac7a"
+    }
+  },
+  "private_material_leaked": false,
+  "sanitizer_error": false,
+  "results": [
+    {
+      "name": "API receipt and sampled checker: fail",
+      "ok": true,
+      "ms": 1345,
+      "http": 200,
+      "receipt": "ad8af7e1f843392423a59a0ec41cc0b301bb788f9079dacb143547f26f2728c2",
+      "checker": "359d7e8cafe6310d35434c922f2793ac1c072cb61d5a77bc98b6bd32c0881daf",
+      "verdict": "check-fail",
+      "private_plaintext_hashes_bound": true
+    },
+    {
+      "name": "API receipt and sampled checker: metadata",
+      "ok": true,
+      "ms": 1315,
+      "http": 200,
+      "receipt": "892285b9cde5184797f46b2a4e4c9f64329a74a44a2b3aa493a6670384706a7f",
+      "checker": "859c24e32c559c7f2c3e8fa2ac2cac13709189aca000682a49e1203cddd5149e",
+      "verdict": "check-pass",
+      "private_plaintext_hashes_bound": true
+    },
+    {
+      "name": "API receipt and sampled checker: invalid-replica",
+      "ok": true,
+      "ms": 3320,
+      "http": 200,
+      "receipt": "a2c55853e605b11acedeb4de9b13746773b06015d75d87fd1377fc6883243207",
+      "checker": "0f8e768999bf22a95c67a40eb7ac065beb120eaf8dfbee183075e7c9d6e04ba8",
+      "verdict": "check-inconclusive",
+      "private_plaintext_hashes_bound": true
+    },
+    {
+      "name": "sample zero publishes a receipt without a checker",
+      "ok": true,
+      "ms": 945,
+      "http": 200,
+      "receipts": 1,
+      "checks": 0
+    },
+    {
+      "name": "authenticated context is inconclusive: self-provider",
+      "ok": true,
+      "ms": 802,
+      "http": 200,
+      "verdict": "check-inconclusive",
+      "replays": 0
+    },
+    {
+      "name": "authenticated context is inconclusive: unknown-backend",
+      "ok": true,
+      "ms": 808,
+      "http": 200,
+      "verdict": "check-inconclusive",
+      "replays": 0
+    },
+    {
+      "name": "no remote credit for refused",
+      "ok": true,
+      "ms": 2401,
+      "http": 503,
+      "receipts": 0,
+      "checks": 0
+    },
+    {
+      "name": "no remote credit for fallback",
+      "ok": true,
+      "ms": 2406,
+      "http": 200,
+      "receipts": 0,
+      "checks": 0
+    },
+    {
+      "name": "independent whitespace-varied private witness",
+      "ok": true,
+      "ms": 662,
+      "receipt": "3e479372e353acf18478f4696349de44eab2e9b4c3c65dc3acd1b4079083210d",
+      "verdict": "check-pass",
+      "exact_request_bytes": true,
+      "exact_result_bytes": true
+    },
+    {
+      "name": "authenticated witness refuses request-opening-key",
+      "ok": true,
+      "ms": 94,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses result-opening-key",
+      "ok": true,
+      "ms": 93,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses request-plaintext",
+      "ok": true,
+      "ms": 93,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses result-plaintext",
+      "ok": true,
+      "ms": 92,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses identity",
+      "ok": true,
+      "ms": 71,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses profile",
+      "ok": true,
+      "ms": 71,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses threshold",
+      "ok": true,
+      "ms": 69,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses sample",
+      "ok": true,
+      "ms": 70,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses version",
+      "ok": true,
+      "ms": 71,
+      "checks": 0,
+      "replays": 0
+    },
+    {
+      "name": "authenticated witness refuses missing-field",
+      "ok": true,
+      "ms": 70,
+      "checks": 0,
+      "replays": 0
+    }
+  ]
+}

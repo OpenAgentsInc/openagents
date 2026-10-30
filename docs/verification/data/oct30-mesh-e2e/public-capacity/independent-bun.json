@@ -1,0 +1,55 @@
+{
+  "aggregate": "36669dc4fd9b01ffaa4e66e7df63cc9750404f97d0a59150987fe42bac25f459",
+  "independent_recompute": true,
+  "inputs": {
+    "beacons": {
+      "count": 2,
+      "digest": "84c5152641c13f7e21527fe203f5732ec82627982243e9914ca532757afd0645"
+    },
+    "checks": {
+      "count": 1,
+      "digest": "c4bc51c81d5b9a79fd1ad106bbc0c5f6837dd6d92ead1b7702482033cc03e641"
+    },
+    "receipts": {
+      "count": 1,
+      "digest": "ae6d90b3adbc1a9eb3bdb6cb328d32bd14a6add39ba486784e43b5b2345a74c0"
+    }
+  },
+  "totals": {
+    "by_family": {
+      "cpu": 2,
+      "gpu": 0,
+      "unified-memory": 0
+    },
+    "checks": {
+      "fail": 0,
+      "inconclusive": 0,
+      "pass": 1
+    },
+    "jobs": {
+      "accepted": 1,
+      "failed": 0,
+      "rejected": 0,
+      "timeout": 0
+    },
+    "paid_msat": {
+      "bitcoin": 0,
+      "regtest": 0,
+      "signet": 0,
+      "testnet": 0
+    },
+    "pylons_online": 2,
+    "slots_free": 8,
+    "slots_total": 8,
+    "units": {
+      "jobs": 1,
+      "seconds": 0,
+      "tokens": 0
+    }
+  },
+  "window": {
+    "from": 1793378220,
+    "to": 1793379420
+  },
+  "public_originals": 4
+}

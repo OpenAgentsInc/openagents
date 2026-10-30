@@ -1,0 +1,23 @@
+[
+  "--inputs",
+  "--verify",
+  "fa816cfd0f5cf9fb535785f6452b3f5daa910de787780621a80b310b7823c135",
+  "--pool",
+  "mesh-test",
+  "--from",
+  "1793378940",
+  "--to",
+  "1793379060",
+  "--provider",
+  "697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa",
+  "--provider",
+  "6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb",
+  "--buyer",
+  "6fca67eb54cea548afaa9c2aed2d6216d539dbb374fd42b5fcd58c747793deb4",
+  "--buyer",
+  "df7a150676bc775fab64fa27e411957593e0203480ddb14d59911b97a7b3453a",
+  "--checker",
+  "796f7de18919e53cde6a31f94cc4f502658b027531b50e4f11d5b36331edbcc2",
+  "--checker",
+  "e011b7bc05ab2f1f7f069d80d538fa042738d1fcd960c35ed3276b65a3cc8abb"
+]

@@ -1,0 +1,78 @@
+{
+  "unique_passing_cases": 61,
+  "passing_executions": 64,
+  "expected_red_cases": 1,
+  "compiler_sha256": "df4d78ef4ddc8f788cb4a87da31d538a2ecf174af14085a5f34ab1d868a80fb0",
+  "artifacts": {
+    "fleet": {
+      "binary_sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8",
+      "generated_c_sha256": "3f024f45d7a1e3d43c9441efdd177794dc466cf58cf77e63c7e7e3ba75b0ac6d",
+      "qualification": "Mac ASan/UBSan native artifact; per-phase results identify actual binary"
+    },
+    "checker-initial": {
+      "binary_sha256": "f9ce337c85808ee3711e6acb1941982d636c644e14c8e2fafc135c6ae936ac7a",
+      "generated_c_sha256": "976823980020f6849ff6f0cfae7f2d36c2d92ff6fd0d5304a1f866e478c1b1eb",
+      "qualification": "Mac ASan/UBSan native artifact; per-phase results identify actual binary"
+    },
+    "checker-guarded": {
+      "binary_sha256": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b",
+      "generated_c_sha256": "c931ff817a436173a69bc69464eedf2fd09e6e6746ab578753c041c1ff7d6a8d",
+      "qualification": "Mac ASan/UBSan native artifact; per-phase results identify actual binary"
+    },
+    "pool-v3": {
+      "binary_sha256": "02861c122cc79c4377d5a4f9292546db6345126934ac056fa236483d1073fe67",
+      "generated_c_sha256": "3339d175e284b6d2dbfd92e7900033a642d11e5504e949626604e4b7864dddde",
+      "qualification": "Mac ASan/UBSan native artifact; per-phase results identify actual binary"
+    },
+    "pool-v4": {
+      "binary_sha256": "d4cd57c504ea7bee1677af79d37e10c7cee23816d6bfe8a5ffddba022ddeb8f7",
+      "generated_c_sha256": "4f2c8ce08626efb13a2b2b39588c0012efb445cadb5aefa5024b7f03e45af6f2",
+      "qualification": "Mac ASan/UBSan native artifact; per-phase results identify actual binary"
+    }
+  },
+  "files": {
+    "guarded-scope/harness-source.txt": "027f07979ac5614961fdf06c1c45d8e0a1077964b62612b26cdbafa51021f2b8",
+    "guarded-scope/public-events.json": "53c21e4fd67f5df30bde9a95d978348acf6243cdeac557d2617e76b1e9a8651d",
+    "guarded-scope/results.json": "b38e86d96f5779dfb3061307c9294324feb1decf31c2ca176a3927a2bb6183a8",
+    "initial-pass/harness-source.txt": "b0e4176f7003fddc1b47d5fadc9a5d769359829b8bcd8178b2ac50497b274134",
+    "initial-pass/public-events.json": "76fb5d77fb3d505c8e37a20e1121f8cb36bab2b4e147a3809adf1f2fdd8827f9",
+    "initial-pass/results.json": "0c14960e0beda51aecc8025dcf6b3771cbc86100ff7dba28fb83bb7c14883dd5",
+    "initial-remaining/harness-source.txt": "408aef71d64f2db88594068da27abaa075d0850e68b778a167dd04a725eb7060",
+    "initial-remaining/public-events.json": "bf5922708a3291f07fd3dc035366f2046a7da6a944cc024d1efd830124bd5785",
+    "initial-remaining/results.json": "85bc149b56c566097f21e9a31bc90b1bbf83c496d5739cd597b71339a282cea2",
+    "malformed-v3-red/harness-source.txt": "a692640533a1b7c54cb3dc456f65aea5c180912f5c6fe084970e7f5fad5058db",
+    "malformed-v3-red/public-events.json": "13ca1bfb91964986c66a7920dc190c7e1923433abccea3caccba71804330f257",
+    "malformed-v3-red/results.json": "59e2fedb8db5fd7e5f28552c55ae0ff94daf7235c22d77688c39b37101048b7b",
+    "malformed-v4-green/harness-source.txt": "f5c0f9599a9bd2453a4338abcea76929d967c48a3166ad2a822d68316032abae",
+    "malformed-v4-green/public-events.json": "5c7c8f694a50adc331f48084fd2d64bd0282a75fbc5a97ef3d9e365e178d595f",
+    "malformed-v4-green/results.json": "96c133036622187e45824653c813bb5d98686ac95fc579f69fb708f0ee6d8d7f",
+    "native-alltypes/harness-source.txt": "fdcae9a5d094d00ff480c880cf6b376eafe16afcdb441b6b96fe377cdc43ad2c",
+    "native-alltypes/public-events.json": "526be7070af8d94e56e17642cb2a64a43409d08de1ad948e292b505bff19c793",
+    "native-alltypes/results.json": "f76fbcb4144d89b88e7a885c6d5f88ead5b6265d5c01adeeac9634c564792677",
+    "pool-v3/actual-api-public-bundle.pb": "4617604018cf7a854702b438db60103502358da40b58b6d9162d447f23f988a1",
+    "pool-v3/harness-source.txt": "8233518e5db19d0e668c2ac37338748c7505746ee56b3d24ecb0061bb569e5dd",
+    "pool-v3/offline-args.json": "0bec50e9d40f7464a615c9e93a3dd51906fddbe151d905656bc723d80283e677",
+    "pool-v3/pool-baseline-public.pb": "81217cadd9c1d1d5138b8a9ce901cd48ab5acc89f8d92cc54906ce4ef76a2a51",
+    "pool-v3/public-events.json": "6737ca31c4543d012c908116999d031dbc56a5c032d1abfe495d37fd03c65bd7",
+    "pool-v3/results.json": "eaa5d8d99113910bda8c221bc624ec719ae3a0bec73e327743d100bfafc5df29",
+    "public-capacity/argv.json": "c4a9a15c17c65cd8b6598587e9675766b85f4775b74a5677711935dd8070170e",
+    "public-capacity/cohort.json": "fe4042ec27354d1b009c5f659d0e0eeab895eac4e428b4c2e010edd6c6a50f75",
+    "public-capacity/independent-bun.json": "253f9ebe489d7b0bb15622f4e1080897139109cc569dd859bf7ea63316e2576a",
+    "public-capacity/oracle-source.txt": "20be8ea72dbf14bd481b2433ad44772b23cab520e42780d6876b8144d9a07f8c",
+    "public-capacity/pool.pb": "78cfdc5dca107c19cba1d0606c15528bd0cba6248e351188fc8df7ca8eed045d",
+    "public-capacity/public-events.json": "cf6df3a3d4a438f3b33480742fc5a85207873d751b9efe3fe30743612cbc1468",
+    "public-capacity/publish.stderr": "0c9d24a2ea6fb298a76653c7b5eaa4685e3155c0e5a0ec7660df1e8614cfbf73",
+    "public-capacity/result.json": "2ba23f48063ea963c84e93adabba4992bfb2b0340569787f3aef6415cd4a2e42",
+    "public-capacity/verify-argv.json": "fc529fcafe5693f9102b237147c36cc26d0f99e954601f4747fd1ba956150500",
+    "public-capacity/verify.stdout": "1b94988fdb413bbfbbb58de6705d6eef0cdaab21070d538b0d55f1cf912551d7",
+    "public-pool/harness-source.txt": "f5c0f9599a9bd2453a4338abcea76929d967c48a3166ad2a822d68316032abae",
+    "public-pool/public-cohort-aggregate.json": "05a2d394f38e7c390effce2e76973e9332180981ec84c5926c5b309fd60ea163",
+    "public-pool/public-cohort-pool.pb": "37b74b21df9434d1dc3dcd9dba169cdd08dc89546678174d54e0316ddadf62e4",
+    "public-pool/public-events.json": "f3c88e9d316d9a9936fddec5f89d23afdd9aecb3b4876a6d4b8e8f51372504ae",
+    "public-pool/results.json": "12740acba27ca79990ad392fc985ca3c3bb414d5063edaa5b9b1b1a8133a031e",
+    "signed-adversarial/harness-source.txt": "f7ac71abeacabe7fc55d48c12407a9a18ab95fe149c153e5ba9c7b0f4d869d86",
+    "signed-adversarial/public-events.json": "6eb3b847f3ff20661651e742c0913406f97480b32cae93a2038818d9d0275987",
+    "signed-adversarial/results.json": "155c6f6cba40a75bad4c6b272ad0043bedc00c4e4c920aafe338ff0d51a6b974"
+  },
+  "final_harness_sha256": "93b45d9dc3ec33a3ea57f1aeb916da6510646b45a0536f0aaf12f939af34235d"
+}

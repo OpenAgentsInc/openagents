@@ -1,0 +1,43 @@
+{
+  "at": "2026-10-30T16:35:41.734Z",
+  "source_commit": null,
+  "harness_sha256": "027f07979ac5614961fdf06c1c45d8e0a1077964b62612b26cdbafa51021f2b8",
+  "binaries": {
+    "psionic-fleet": {
+      "sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8"
+    },
+    "psionic-mesh-check": {
+      "sha256": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b"
+    }
+  },
+  "private_material_leaked": false,
+  "sanitizer_error": false,
+  "results": [
+    {
+      "name": "API receipt and sampled checker: pass",
+      "ok": true,
+      "ms": 1432,
+      "http": 200,
+      "receipt": "7e3cde8317e59471dd1ac9ae6ea68079b0a942221a6107d154aaa7f74b6967a9",
+      "checker": "5aa622d93e2dcbbfdf4d158e206bd70a7d02f2c0a3f6cbf70b9f38217d7a887a",
+      "verdict": "check-pass",
+      "private_plaintext_hashes_bound": true
+    },
+    {
+      "name": "authenticated context is inconclusive: self-provider",
+      "ok": true,
+      "ms": 802,
+      "http": 200,
+      "verdict": "check-inconclusive",
+      "replays": 0
+    },
+    {
+      "name": "authenticated context is inconclusive: unknown-backend",
+      "ok": true,
+      "ms": 811,
+      "http": 200,
+      "verdict": "check-inconclusive",
+      "replays": 0
+    }
+  ]
+}

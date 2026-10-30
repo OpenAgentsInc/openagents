@@ -1,0 +1,59 @@
+[
+  {
+    "id": "26a8937b0f6624dcc6beceff817b0629b43c0f01f110996eacc8195fb1ea5dda",
+    "pubkey": "feef1e6be88e53ccf365561f1db2d22151e2561b11da33bf115f0d161b66d0a0",
+    "created_at": 1793377685,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "f3d3e0f0aac6d2d68a29b00a63f9e951d334b5ab443b581485a35a3efa15506c"
+      ],
+      [
+        "a",
+        "30200:f3d3e0f0aac6d2d68a29b00a63f9e951d334b5ab443b581485a35a3efa15506c:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "7f52583012f1051182aafac47897218f050f00e259cac910338cbaaf7b02dcf0"
+      ]
+    ],
+    "content": "{\"buyer\":\"feef1e6be88e53ccf365561f1db2d22151e2561b11da33bf115f0d161b66d0a0\",\"capability\":\"f3d3e0f0aac6d2d68a29b00a63f9e951d334b5ab443b581485a35a3efa15506c:pylon/decision\",\"finished_at\":1793377685,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"f3d3e0f0aac6d2d68a29b00a63f9e951d334b5ab443b581485a35a3efa15506c\",\"pylon\":\"original\",\"request\":\"7d2b1448a4c24287df4728517ecc4c4ef9b61e383975394c431cf04f58ab8171\",\"request_digest\":\"1db962ae115d16ffd6e8c6029419098c6597ca400edd79db379f9a6efd172d18\",\"requires\":[],\"result_digest\":\"83679e8fa27bbd3a666ef6a75a0c44f1c5641d3f969f694e0aeaebd3438d845e\",\"started_at\":1793377685,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "65c2abc10d3113d5f5c21819cb97d50af5c10b530e7725b1cbb6fe3875d872985c1bfbbe23f4b0958b58877411b67661b6cd998c86ad301100585c64bae0bf24"
+  },
+  {
+    "id": "12046649f43cb2b1a512e19685c9f7e5ddb258bd552335d008a7e1f134b8ac25",
+    "pubkey": "7c1a30f6ee81d0015734e87217a37bcf546e7bcddcac4c337d937ed146888c08",
+    "created_at": 1793377686,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-pass",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "26a8937b0f6624dcc6beceff817b0629b43c0f01f110996eacc8195fb1ea5dda"
+      ],
+      [
+        "p",
+        "f3d3e0f0aac6d2d68a29b00a63f9e951d334b5ab443b581485a35a3efa15506c"
+      ],
+      [
+        "x",
+        "ac595ad9ff74f4ddd79661ccb31c30f440f74b56492271489594671979103de0"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=0;reference=nip-dec-result",
+    "sig": "6f1127e4d4c383380bfbe0c0b58969da965b57e2cf9b1be0859cef695fa33a44e5882cb902bf09524f4487017c35de01d6c719a2c0f0f59a857569c9dcaf8ea3"
+  }
+]

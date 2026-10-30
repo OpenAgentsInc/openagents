@@ -1,0 +1,630 @@
+[
+  {
+    "id": "ad8af7e1f843392423a59a0ec41cc0b301bb788f9079dacb143547f26f2728c2",
+    "pubkey": "867fb9d698e9051b3205313102a00f634d5ec8457fe51cb7a5318e57ef218354",
+    "created_at": 1793377771,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "5da08914c3acceebaec69a01f10ecda970ad2301f98d277cae63e777bd5006ab"
+      ],
+      [
+        "a",
+        "30200:5da08914c3acceebaec69a01f10ecda970ad2301f98d277cae63e777bd5006ab:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "208f4c0aad383218d696c7af36ddaca2421987ddc9c6b10a09e57f861a32b2e9"
+      ]
+    ],
+    "content": "{\"buyer\":\"867fb9d698e9051b3205313102a00f634d5ec8457fe51cb7a5318e57ef218354\",\"capability\":\"5da08914c3acceebaec69a01f10ecda970ad2301f98d277cae63e777bd5006ab:pylon/decision\",\"finished_at\":1793377771,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"5da08914c3acceebaec69a01f10ecda970ad2301f98d277cae63e777bd5006ab\",\"pylon\":\"original\",\"request\":\"d9c94d9ab98a92b6ce5d4388d01d79b74d7ba8cb1c9788c1a0b15d950d68ee03\",\"request_digest\":\"a6fb3afc9a47db339470d78db907a9305fc90a81c0e2473f3f0f02609e876d9b\",\"requires\":[],\"result_digest\":\"a21616b9e3da83a72651f86376e16e79ec957b58ff1b3644cc4d9f3686d5f9f9\",\"started_at\":1793377771,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "6d15e4a310b9a5530eab32a43d2d73ca2831e9f2e0d183b001d0f8d9941c08228d04ac9baf6cb75e5b01ec592d97018ce2f6accbe7b1f224db19ff65ac277c5b"
+  },
+  {
+    "id": "d7f54e98808ffec653bbab003eecf712aedcba545b10d2e2f7618f735a897bbd",
+    "pubkey": "359d7e8cafe6310d35434c922f2793ac1c072cb61d5a77bc98b6bd32c0881daf",
+    "created_at": 1793377772,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-fail",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "ad8af7e1f843392423a59a0ec41cc0b301bb788f9079dacb143547f26f2728c2"
+      ],
+      [
+        "p",
+        "5da08914c3acceebaec69a01f10ecda970ad2301f98d277cae63e777bd5006ab"
+      ],
+      [
+        "x",
+        "c044ff822ba850910176bd3b64804c6c434fcd0121f9485630151452fddb768e"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=5;reference=nip-dec-result",
+    "sig": "3a22a5752196aebd18a0073932de874b6068045d1d40131efc784dfbe4972fc1bfcd21e014decd2fd4b710e8654a37c6db8a7a969e90286570e5561b10c768f2"
+  },
+  {
+    "id": "892285b9cde5184797f46b2a4e4c9f64329a74a44a2b3aa493a6670384706a7f",
+    "pubkey": "98d4b1baf2f31cd51e3b7b7c4d146a23b8afd5b87980d9d3a615cc070201c335",
+    "created_at": 1793377773,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "d4f7e81cf220ec727bc36d012ec2218be0ad70bc2fbd49632cea1aec20b9f6b6"
+      ],
+      [
+        "a",
+        "30200:d4f7e81cf220ec727bc36d012ec2218be0ad70bc2fbd49632cea1aec20b9f6b6:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "4892c64a3708b123b68839273c9f1cb2ee186be126bc7591895c66438c1c45e7"
+      ]
+    ],
+    "content": "{\"buyer\":\"98d4b1baf2f31cd51e3b7b7c4d146a23b8afd5b87980d9d3a615cc070201c335\",\"capability\":\"d4f7e81cf220ec727bc36d012ec2218be0ad70bc2fbd49632cea1aec20b9f6b6:pylon/decision\",\"finished_at\":1793377773,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"d4f7e81cf220ec727bc36d012ec2218be0ad70bc2fbd49632cea1aec20b9f6b6\",\"pylon\":\"original\",\"request\":\"26a318bf51b73c94b1ef1f1b323cd93755cc32b921be9aba73ea6f0461920dee\",\"request_digest\":\"5274e587332a62460715f55b38c14131a5d6e4fb5094b11f03f41f68c19cc69a\",\"requires\":[],\"result_digest\":\"9e79be462596a0ff2c1968fa63f09ffeef0122f6da57ee265dd13d90916f86a7\",\"started_at\":1793377773,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "6a799cf0625840983c89f47db0e3fd2f616836cf7e35ed47f7964cb181884c8b725673eee064af0e3a1c7fa2dc09b836852e4e48d2ac1730caf9f44733af8356"
+  },
+  {
+    "id": "89a5e4b69168333585f64eae914d2b7f859954567dbc4febbab4afa39b0e1faa",
+    "pubkey": "859c24e32c559c7f2c3e8fa2ac2cac13709189aca000682a49e1203cddd5149e",
+    "created_at": 1793377773,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-pass",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "892285b9cde5184797f46b2a4e4c9f64329a74a44a2b3aa493a6670384706a7f"
+      ],
+      [
+        "p",
+        "d4f7e81cf220ec727bc36d012ec2218be0ad70bc2fbd49632cea1aec20b9f6b6"
+      ],
+      [
+        "x",
+        "4c77308b7d714237a6effe0895ad1527e583ce528f3bba9431d37b827c945119"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=0;reference=nip-dec-result",
+    "sig": "313348b3ea8f9fd687e447121fccd9a8a4354645b480fe4c5bdf3fa32866a7cffd3804ba4a67f327950de20d254e7207f921218a0cbf9769765aa28d05f30b62"
+  },
+  {
+    "id": "a2c55853e605b11acedeb4de9b13746773b06015d75d87fd1377fc6883243207",
+    "pubkey": "be4f94f37f27a893bbb783534d04bb0128737a421cb0ae2dcc23b779c6bd75ce",
+    "created_at": 1793377774,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "069233bf22ea13a8af7fe0c8f91275356a99bde749540d83eb7ae251a3dda6b7"
+      ],
+      [
+        "a",
+        "30200:069233bf22ea13a8af7fe0c8f91275356a99bde749540d83eb7ae251a3dda6b7:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "2dd22b4a05d97c3db2a9b9eddb8c1934c0f2b26aef05919d27482bf3e788b28e"
+      ]
+    ],
+    "content": "{\"buyer\":\"be4f94f37f27a893bbb783534d04bb0128737a421cb0ae2dcc23b779c6bd75ce\",\"capability\":\"069233bf22ea13a8af7fe0c8f91275356a99bde749540d83eb7ae251a3dda6b7:pylon/decision\",\"finished_at\":1793377774,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"069233bf22ea13a8af7fe0c8f91275356a99bde749540d83eb7ae251a3dda6b7\",\"pylon\":\"original\",\"request\":\"7ccfddfcd7d7846d5d9f567377064dbb3f241ae933295a679f14fa76f1219fc1\",\"request_digest\":\"1ac9fa1f031169a5cf8bc7b918fd4b89667d2e3f255d8478738c3858635ed6cc\",\"requires\":[],\"result_digest\":\"66c72b25376060f2dfd324de9d5edaed14a514c4a10dcd69d26dd575caecc468\",\"started_at\":1793377774,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "9c036c18e5134103d0b9c8f2de553d3e4bb2eaf4bd75c97edad7c13c39399d15d7b94d776489af90ce953ddbcf7911791ebc7453223e3707e4b55798900bcb26"
+  },
+  {
+    "id": "eb5599760661dfc2d94b8e427b597bbdc779a8e3334137607ae914f1338c1b78",
+    "pubkey": "0f8e768999bf22a95c67a40eb7ac065beb120eaf8dfbee183075e7c9d6e04ba8",
+    "created_at": 1793377777,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-inconclusive",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "a2c55853e605b11acedeb4de9b13746773b06015d75d87fd1377fc6883243207"
+      ],
+      [
+        "p",
+        "069233bf22ea13a8af7fe0c8f91275356a99bde749540d83eb7ae251a3dda6b7"
+      ],
+      [
+        "x",
+        "92130364107c323c5bb118037e05660945fedcdde284cf4d65f28607aea7ef29"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=8;reference=checker-inconclusive-v1",
+    "sig": "35f96cabcf6d6bd548cd4291bf033cd08033179c144a2f2369546e1c7a39cae859f50732bac64c862d4ffde0b09953d3427dc1390583ab37f75035869668fb00"
+  },
+  {
+    "id": "f7b5f1031319702dbca0574c7ab32bc1e75fc87c437077be3d6842230ec5ea70",
+    "pubkey": "b1cc57165c5fd59452a499302d10c7f372351e05c37fec6f16b54c53f867d3d1",
+    "created_at": 1793377777,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "37f88a053537f5fabc3b2a58f2bd8490a333644fecbf1027cd9084423fe7d6b1"
+      ],
+      [
+        "a",
+        "30200:37f88a053537f5fabc3b2a58f2bd8490a333644fecbf1027cd9084423fe7d6b1:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "3270f0254076f95783cdc8f5fb2a369239581a9fc9015bdfb66577f074198118"
+      ]
+    ],
+    "content": "{\"buyer\":\"b1cc57165c5fd59452a499302d10c7f372351e05c37fec6f16b54c53f867d3d1\",\"capability\":\"37f88a053537f5fabc3b2a58f2bd8490a333644fecbf1027cd9084423fe7d6b1:pylon/decision\",\"finished_at\":1793377777,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"37f88a053537f5fabc3b2a58f2bd8490a333644fecbf1027cd9084423fe7d6b1\",\"pylon\":\"original\",\"request\":\"c6913cc3d26e063966cd5ed9c99dfcef40b71b0003b301cdeb4b9141f0d5e4c3\",\"request_digest\":\"7d11427927f13804eb5729a7a67c5af546449e69659d3fe828d5e651d5515840\",\"requires\":[],\"result_digest\":\"ace6ed9e2ff801d4061270222d84d13340eed9aed3651c6513ab62e62bb40644\",\"started_at\":1793377777,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "458148358d4971b5d14851c928162621d467c5c2ea8659368dcd03f04ea6fa403538e140f52d1b1498d6d06c634d2ad005adb466131e638421d728ed9b490416"
+  },
+  {
+    "id": "6637800b9dd84d18b794fa025e98c2ff64942f3a40213fab044388e02ebb906b",
+    "pubkey": "7da0c75ca097a06dacc52425dba3c438e009fa2f8607a7660a1fdbacffefd9a2",
+    "created_at": 1793377778,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "14bebbd93f8fdbb355fbb914d160d692e5b9ebf53f89827d098d1e7a6a94d8c2"
+      ],
+      [
+        "a",
+        "30200:14bebbd93f8fdbb355fbb914d160d692e5b9ebf53f89827d098d1e7a6a94d8c2:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "b6844223aa9ca61bed4d5193138a1839a4ebc1a3b38468c9dbf52b770aafd945"
+      ]
+    ],
+    "content": "{\"buyer\":\"7da0c75ca097a06dacc52425dba3c438e009fa2f8607a7660a1fdbacffefd9a2\",\"capability\":\"14bebbd93f8fdbb355fbb914d160d692e5b9ebf53f89827d098d1e7a6a94d8c2:pylon/decision\",\"finished_at\":1793377778,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"14bebbd93f8fdbb355fbb914d160d692e5b9ebf53f89827d098d1e7a6a94d8c2\",\"pylon\":\"original\",\"request\":\"b99a618d53fc46d7e567335089fc4963388256dcb2d40b058d5cc272f3340f3e\",\"request_digest\":\"5d4b8a580ff1bd3b42c85e81f2965bca2d227ddb15a55842257d136933ebc4a5\",\"requires\":[],\"result_digest\":\"64c72ee0628db492c34272c23ee809d8501d91faeb442415dedb3d7aae4c65ee\",\"started_at\":1793377778,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "cb6a493c6dfd1720b10b31e786c41aacc961737128a46b71888cae0d36ec5161b37fe23d9ece788fa80578c0082a433e2c6b33a0bee7e21f08c76a14af8a0c1c"
+  },
+  {
+    "id": "255315e01a06eb5c20a5d39188bdabd371f9ef26d5f436f1ea515bb60ee30f4c",
+    "pubkey": "2dcb42417cb3aa8189bbc8974d2b05fc8581a35bd208d7d8f44901d63a9d2677",
+    "created_at": 1793377778,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-inconclusive",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "6637800b9dd84d18b794fa025e98c2ff64942f3a40213fab044388e02ebb906b"
+      ],
+      [
+        "p",
+        "14bebbd93f8fdbb355fbb914d160d692e5b9ebf53f89827d098d1e7a6a94d8c2"
+      ],
+      [
+        "x",
+        "d026ae75024a19cc3cd10d5cacd695049693be2b3ee3d9530473c8f05040c64a"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=7;reference=checker-inconclusive-v1",
+    "sig": "652de97d4132dd9d609eac8703a302f38aaeca20926dc21323b31b6db6b40e8952d3da7780c57b211c973f025be283cf51d06aebab967ba39b8780bb52656818"
+  },
+  {
+    "id": "a1f1f49fc6547d3e3539e233d6f1e39795b0f1f47079a8e0b9b05bd6d32657ba",
+    "pubkey": "414c6c1be6d909dc6121de25887a2ad8eef734ed851bb5e14d558245b2516c3c",
+    "created_at": 1793377779,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "721121a314993b8386a2a2a6ef1ea937ce5fd73e1cf3db82951f3be00a802c85"
+      ],
+      [
+        "a",
+        "30200:721121a314993b8386a2a2a6ef1ea937ce5fd73e1cf3db82951f3be00a802c85:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "be36619271c490f8755e7120bdfd91a019011c19e8b6208a2cac2ced7cb07dbe"
+      ]
+    ],
+    "content": "{\"buyer\":\"414c6c1be6d909dc6121de25887a2ad8eef734ed851bb5e14d558245b2516c3c\",\"capability\":\"721121a314993b8386a2a2a6ef1ea937ce5fd73e1cf3db82951f3be00a802c85:pylon/decision\",\"finished_at\":1793377779,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"721121a314993b8386a2a2a6ef1ea937ce5fd73e1cf3db82951f3be00a802c85\",\"pylon\":\"original\",\"request\":\"0bd38b2e708f835e9db3c362bbc1f8dfc729603b23276f61f3e02c8e6e80878e\",\"request_digest\":\"764342991f555dca889a14e9b3e04b3b76e1545e757bd2ccc1f4377ea2152861\",\"requires\":[],\"result_digest\":\"0b71b444533a9a3f2319dfe9aa7588969e2f0941e44b86428d89165f49251ce4\",\"started_at\":1793377779,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "4b14430767e94634660002481ce905c5fc68c3ac35c12c704de01ec3ec0d4062ed8c43cd17381bcd284c65f796d8ccd901ddea2cbbea38baf570b1346a0227d4"
+  },
+  {
+    "id": "a0c674867f7d39192583b9256c209174cfb42c869e7666aed59ea6a66d3fe71d",
+    "pubkey": "a54a24dc62b00b6ce20889a0ef852ee5a9bed6173cc9b792f84045a0ef0cfa9c",
+    "created_at": 1793377779,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-inconclusive",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "a1f1f49fc6547d3e3539e233d6f1e39795b0f1f47079a8e0b9b05bd6d32657ba"
+      ],
+      [
+        "p",
+        "721121a314993b8386a2a2a6ef1ea937ce5fd73e1cf3db82951f3be00a802c85"
+      ],
+      [
+        "x",
+        "df046f05b3f4ba6879515aed1e649f1d213581d6eaa8d548d88090085fbd45fd"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=1;reference=checker-inconclusive-v1",
+    "sig": "7d76ce9301c3cb49076bd5e617a22cfc9f488a3e38eb88a4c9611391cc1030ccd35cb231192878ef66b6f472e3a79f109c6b09f401191d84c12545a25dcaf964"
+  },
+  {
+    "id": "3e479372e353acf18478f4696349de44eab2e9b4c3c65dc3acd1b4079083210d",
+    "pubkey": "547dcb3b0a2e5399ab6231aba31499b34cc15cafd5568867512a30fd8e9fe630",
+    "created_at": 1793377784,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "1402cdb19c1f123a85a662599ecc54032a479a12946736e6802aa0c686f3c9a4"
+      ],
+      [
+        "a",
+        "30200:1402cdb19c1f123a85a662599ecc54032a479a12946736e6802aa0c686f3c9a4:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "c6f42e1258e1347869ea73f2723ede9c57018affafd6fec6a3bc13091e48d58c"
+      ]
+    ],
+    "content": "{\"buyer\":\"547dcb3b0a2e5399ab6231aba31499b34cc15cafd5568867512a30fd8e9fe630\",\"capability\":\"1402cdb19c1f123a85a662599ecc54032a479a12946736e6802aa0c686f3c9a4:pylon/decision\",\"finished_at\":1793377784,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"1402cdb19c1f123a85a662599ecc54032a479a12946736e6802aa0c686f3c9a4\",\"pylon\":\"original\",\"request\":\"43e1c3dc1111347894bca388c90555825fa7258ee973c6c4b2d372beb20ee855\",\"request_digest\":\"c8fc011bc9ab911e35b831b122ec2a2660b38d65ac8bea1f549594805f0db0e1\",\"requires\":[],\"result_digest\":\"773ce599cecacb1604e898466a0bd61d644f5cff0966b9d356a3ce51ac7c0e4b\",\"started_at\":1793377783,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "f9a79a3aa0c2f5e32e7d58d3d38e4251dc89f89a128086c697e3e4325e6926a84d3eb120947744e12a4adecaac922dfcf8264cbcfa5d859c03a1e8dac62a5800"
+  },
+  {
+    "id": "f652d03fe65d70806c970ac57b4a1b5280628d359eabbaa2ed47137a559656b5",
+    "pubkey": "5bd6f3b27c26af84961c02b105b823922c7e960cb639fcbd4af2de64ed348141",
+    "created_at": 1793377785,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-pass",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "3e479372e353acf18478f4696349de44eab2e9b4c3c65dc3acd1b4079083210d"
+      ],
+      [
+        "p",
+        "1402cdb19c1f123a85a662599ecc54032a479a12946736e6802aa0c686f3c9a4"
+      ],
+      [
+        "x",
+        "5fb27e3a972da057182156b1db70b7f5d12fb18c52edff5d9a2db6416d5a5e96"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=0;reference=nip-dec-result",
+    "sig": "6f17acde2caa1a37dd4bd5a62dea96353040a34ed6de8ba46cd12cb0a1f56f4adba2eceed546587c9f063b710d5c95ddce0479e837dcec754711625aaffea232"
+  },
+  {
+    "id": "59d1fd4956ee9b13acfd095a524573c3c7521d9866ba134ae53c57ecc3902b40",
+    "pubkey": "69238b4b3761dcaacb4523df2d1c1b36835d8bd9d087c685e990b94f3995023e",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "f4051d398d8befccad2d01511e475403de232d1c240bce14ee7796e83fae815d"
+      ],
+      [
+        "a",
+        "30200:f4051d398d8befccad2d01511e475403de232d1c240bce14ee7796e83fae815d:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "5e743eb31eba484ee8c13498c790623cb350da9f95fd23f5c41737ed0b98142a"
+      ]
+    ],
+    "content": "{\"buyer\":\"69238b4b3761dcaacb4523df2d1c1b36835d8bd9d087c685e990b94f3995023e\",\"capability\":\"f4051d398d8befccad2d01511e475403de232d1c240bce14ee7796e83fae815d:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"f4051d398d8befccad2d01511e475403de232d1c240bce14ee7796e83fae815d\",\"pylon\":\"original\",\"request\":\"e09d847295c4d3c84278a647c8614f80bb1838fbcb8973efea23bd6e4cfb6ee1\",\"request_digest\":\"2a08944091c73d0622a1389cf26e72a7129b3debb8cad469ba680d7972e217e5\",\"requires\":[],\"result_digest\":\"a6440998e302b1e716aab586307eb018118e77be4975d977a16317a39fff5e71\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "dabb3c1b34d2ab4905ab2b9a5053ea174fd02dfc7fe232faa64ff79e9f66bf4a3fcb2b506b32c96013ca6dd203e0ed1e0194da408fbe46da3b8e84bfe213917e"
+  },
+  {
+    "id": "e5e1923236cf5018b7e507efacaa5b2cd0e0a3414615ac985ce8be450ab830b5",
+    "pubkey": "8a727a0f066e91b01a2a3cf5f3107e76e3fee0abecba3c3061bb196cad38b832",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "3d038753e042b9cd9c1eca0e6c51735eefcf614bdd5e1c157f98f119a3d936f6"
+      ],
+      [
+        "a",
+        "30200:3d038753e042b9cd9c1eca0e6c51735eefcf614bdd5e1c157f98f119a3d936f6:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "cac08277bc449b7fe25c450c9cc926b64150b8e2ee866de727ddf9ab6bfaa57e"
+      ]
+    ],
+    "content": "{\"buyer\":\"8a727a0f066e91b01a2a3cf5f3107e76e3fee0abecba3c3061bb196cad38b832\",\"capability\":\"3d038753e042b9cd9c1eca0e6c51735eefcf614bdd5e1c157f98f119a3d936f6:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"3d038753e042b9cd9c1eca0e6c51735eefcf614bdd5e1c157f98f119a3d936f6\",\"pylon\":\"original\",\"request\":\"8a6761e562df4ba837fe3fdf1df98310ab08267af552d3ba7ba4c1eb9069d1cf\",\"request_digest\":\"6e7ad5b8ec1cd87a7bfa20492d2ea9e59e5a3c7d82c3ebc5846641914a7de1a3\",\"requires\":[],\"result_digest\":\"674df09453ef673badd9736f0b65935e90927bf587909cec2803e26fc987891a\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "0708b6373888f792b36083e49e16e61e2ba0d67084772afc5e584f8e9b56282e158ed130bd18e6c58e2639662a663b753812f135da6c4e3b91f36dcd106b9bd1"
+  },
+  {
+    "id": "e39a80985db179549e0c87416591d4bc3215beebaf7a98c2375c18dcfd057b29",
+    "pubkey": "05597b14ad30a69d8227c4b897a6ec32aabbe4f3ddf49469e594b3eb69db8250",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "5e39c521469a41b60f514321b880b5a37311e3d894dd2513cfeef9e3008e38b0"
+      ],
+      [
+        "a",
+        "30200:5e39c521469a41b60f514321b880b5a37311e3d894dd2513cfeef9e3008e38b0:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "62d2a368e12812c642ba305c098167d9843fbf3d8704441f147ad376d2422614"
+      ]
+    ],
+    "content": "{\"buyer\":\"05597b14ad30a69d8227c4b897a6ec32aabbe4f3ddf49469e594b3eb69db8250\",\"capability\":\"5e39c521469a41b60f514321b880b5a37311e3d894dd2513cfeef9e3008e38b0:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"5e39c521469a41b60f514321b880b5a37311e3d894dd2513cfeef9e3008e38b0\",\"pylon\":\"original\",\"request\":\"b628c5e237f0d19a72d3ff98f95f48f3161319234282d71bd99592c0f5619ddb\",\"request_digest\":\"d74c8bccc0517d9efe9607a3cfb6384d856ebd76f9e9b51639881445ff12e95d\",\"requires\":[],\"result_digest\":\"d17321d6683abf162c1cdf728fedba0bc0075cc79ea9dd42d4aa4dc67da39884\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "e4e7e634a22d10a2e5612a9140249585bafa62301e61b1ca9fd3b5cffa96e5cca98e78e01990ebd0f5198d72009402792abfcad82b9848e0d6189af48c705b1e"
+  },
+  {
+    "id": "456ae14b6096fe3d60723df9415924d55ae8102a51510b22b434f7d3400f3107",
+    "pubkey": "7b87616e3d6545397e09b2184b2068ab48510b417bb55485729dac95dcd29090",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "6cddcf9e99be5041ef235b282fe61cc1daed71c993c557dea7640d0a76a04ccc"
+      ],
+      [
+        "a",
+        "30200:6cddcf9e99be5041ef235b282fe61cc1daed71c993c557dea7640d0a76a04ccc:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "5349db3a9898fe824ee2e98918e517ddfaede3ed89d9570d2856c6b7990b04a5"
+      ]
+    ],
+    "content": "{\"buyer\":\"7b87616e3d6545397e09b2184b2068ab48510b417bb55485729dac95dcd29090\",\"capability\":\"6cddcf9e99be5041ef235b282fe61cc1daed71c993c557dea7640d0a76a04ccc:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"6cddcf9e99be5041ef235b282fe61cc1daed71c993c557dea7640d0a76a04ccc\",\"pylon\":\"original\",\"request\":\"a31cde7b172f1d178070eca6fc6dd627f936cba5fe9cf8c4b2e510377543f1c3\",\"request_digest\":\"095f2da71aaef3d08ae1347c772b0517ad716ef822b126d9ba33fe598c5e7fa0\",\"requires\":[],\"result_digest\":\"47a2974a61b47e2b6b63a471681e8825bf7406cbb8973af736165e3d0b5913a2\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "f24cd69eb97f50fa889c142e401c809b8d5202071a98a48adaf4bec1d16f5ede79fd90abbe070cd0c9a04a929f352f1b5400ae68a85f37652fb6671a7d368cd8"
+  },
+  {
+    "id": "bb52ef3fc48a01b4c34f8a203d54f8c917e4a764f482703fb4907b3c0a45548c",
+    "pubkey": "0ec4386fb31dfbf3a2ea52617c0d77ef11a1f1f0502bb2b15eeaa75080970b58",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "2f3704c034e620804ce13ed0ae9cc2904f4bfa32f0543533eaef3dccdc46240c"
+      ],
+      [
+        "a",
+        "30200:2f3704c034e620804ce13ed0ae9cc2904f4bfa32f0543533eaef3dccdc46240c:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "5937a72962250ed0de2873257c09205776f33c1880952e19b605d24f3610477a"
+      ]
+    ],
+    "content": "{\"buyer\":\"0ec4386fb31dfbf3a2ea52617c0d77ef11a1f1f0502bb2b15eeaa75080970b58\",\"capability\":\"2f3704c034e620804ce13ed0ae9cc2904f4bfa32f0543533eaef3dccdc46240c:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"2f3704c034e620804ce13ed0ae9cc2904f4bfa32f0543533eaef3dccdc46240c\",\"pylon\":\"original\",\"request\":\"d575084f468bc84c835a2070ec55c43c06bb99099837ba60096da040f4daf675\",\"request_digest\":\"05ef93b81fdc4ce2a4174e9b30e39746691188e7c87d526aeabb0ff771f146e8\",\"requires\":[],\"result_digest\":\"96739a8509181ba49b2512e34e7e4f104ad1f84809b5c43203928402f443fe8d\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "e7988907f99285f5ed0c20cf5fa2317d06138894ab7fd6130fc650eefff8a38b11af17ce67a79b7a4c93997b0e8429b5f5b75d3fcc1d967571f5dd1a1706eabe"
+  },
+  {
+    "id": "9cb75bbee3f769c7ebe53d4ea97c32096c7548cba1441dbdce25e6958f9c5f56",
+    "pubkey": "cf23c8c3f66e2a63d898d22b13cb87dbec473f3cdddfda7c87ce750c31578aa6",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "014fa7de85f820f20fc26cad18eca92b4db4b70e0da4056b61409e28a442ac40"
+      ],
+      [
+        "a",
+        "30200:014fa7de85f820f20fc26cad18eca92b4db4b70e0da4056b61409e28a442ac40:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "c25b801649f56f3ce63b6c681d6f1dc33284657819c49df9b9d1ac969b319217"
+      ]
+    ],
+    "content": "{\"buyer\":\"cf23c8c3f66e2a63d898d22b13cb87dbec473f3cdddfda7c87ce750c31578aa6\",\"capability\":\"014fa7de85f820f20fc26cad18eca92b4db4b70e0da4056b61409e28a442ac40:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"014fa7de85f820f20fc26cad18eca92b4db4b70e0da4056b61409e28a442ac40\",\"pylon\":\"original\",\"request\":\"3f9ee01899b011b27e047d18a70a1e27a0e8828e6791eab9fe83e2f98ddf4a5a\",\"request_digest\":\"5c926049fe3f77931d85350c6ec994f50eb04dc63454ecec995178a8e8d47316\",\"requires\":[],\"result_digest\":\"a0190a855a4a22ab3ef4cf46bfa8b13a2fb4008676cda939ee5ea33ac801de22\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "a23879cdb477ffbddf7b9a71ec8ccb9e093b0a5c92659280622855fb6423484cd46dee85aab4c0271133e32dd0efa295dbb111b1fd80930ac7cbeba66b3452dd"
+  },
+  {
+    "id": "5379dcc29815b982829ca8de0b63acfc3dbaa9f11242e95c469ba74491ced770",
+    "pubkey": "cf5671836f48720e327ac5f6cdf4bc9709112b505ccc7c9ea9f859fc225008ce",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "7a45472fb3ab8058f5f6a0c11b48bfcb5300f32260b676973494569b609b8e17"
+      ],
+      [
+        "a",
+        "30200:7a45472fb3ab8058f5f6a0c11b48bfcb5300f32260b676973494569b609b8e17:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "509ca03a769a3410ad4899edd7d1255687cb8008af0dd4ca762c46b663af1d67"
+      ]
+    ],
+    "content": "{\"buyer\":\"cf5671836f48720e327ac5f6cdf4bc9709112b505ccc7c9ea9f859fc225008ce\",\"capability\":\"7a45472fb3ab8058f5f6a0c11b48bfcb5300f32260b676973494569b609b8e17:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"7a45472fb3ab8058f5f6a0c11b48bfcb5300f32260b676973494569b609b8e17\",\"pylon\":\"original\",\"request\":\"b39ceec11fa57e6b81cec835cf603f8772dca6cfc6f07a11f2c8488460bc14a2\",\"request_digest\":\"aa42686d22246f3e72633e1d561977c496443ff973015c1cd69600f7027aaa24\",\"requires\":[],\"result_digest\":\"e08ba1cbc11f84a170106f55384458f482e049745d82a14bfd1fd13294eeacd9\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "bedd0cdca476a6a034603bb6a4ac549d43881d8ac91107f563085a81b8edbdb72feb7df73c7046fdd9f041174c63f0a39ad27217165e101cdac11ab572b1ea25"
+  },
+  {
+    "id": "88b20ebdc0a96ea8902d266957e0b8ef41fc46961a2e3839dcaf0f5b361b2532",
+    "pubkey": "b1df85d725400236454fa878f3b57c39de1243b9a4d67178150fb17676dad058",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "ff2e8852522c7f4e9aedee06afcb36f9ac3a8234ab975f8645198dec5ccacc53"
+      ],
+      [
+        "a",
+        "30200:ff2e8852522c7f4e9aedee06afcb36f9ac3a8234ab975f8645198dec5ccacc53:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "e554e790bc3f6c4a4bdb6e0cb2730a33e0fa941da8af7a6f763bbac03c0bf987"
+      ]
+    ],
+    "content": "{\"buyer\":\"b1df85d725400236454fa878f3b57c39de1243b9a4d67178150fb17676dad058\",\"capability\":\"ff2e8852522c7f4e9aedee06afcb36f9ac3a8234ab975f8645198dec5ccacc53:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"ff2e8852522c7f4e9aedee06afcb36f9ac3a8234ab975f8645198dec5ccacc53\",\"pylon\":\"original\",\"request\":\"20c08cb159f12fbf5feb3cf9e37f6d5a88e1e1e6dc0be5f824045254d1d0f3b2\",\"request_digest\":\"17d50b9700ade4caf6a8d8535ed78614584a91005709243c1b096dafa32f3f34\",\"requires\":[],\"result_digest\":\"6131fe1e72c1d73b1bfc5261d754ce24c06c8670bfab63685972a4515abebe3d\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "37de1d42e9daabc4ebfafe34f076566e704f09c51bc3f3e8358e5be6794032f6ec381b46c294f3209ccb751455d64789e53074d996aa25d815f64ac58d017b28"
+  },
+  {
+    "id": "2c8ad413d7b7d8a9d36409ebf93ef65611277585a665d36d3bb38b46df2570b7",
+    "pubkey": "47fe19e0a4881c8e50daf1dde354fa796e7ea5266f63b134116390e0362c3ff8",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "80061eef92463c4bb16a4d6c2894c70e64292ba753a90ec39a221223174a1fe6"
+      ],
+      [
+        "a",
+        "30200:80061eef92463c4bb16a4d6c2894c70e64292ba753a90ec39a221223174a1fe6:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "3452d76382abfb2429ddcc925d2d9a052009ec89737550e5645cba9d2f233cf3"
+      ]
+    ],
+    "content": "{\"buyer\":\"47fe19e0a4881c8e50daf1dde354fa796e7ea5266f63b134116390e0362c3ff8\",\"capability\":\"80061eef92463c4bb16a4d6c2894c70e64292ba753a90ec39a221223174a1fe6:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"80061eef92463c4bb16a4d6c2894c70e64292ba753a90ec39a221223174a1fe6\",\"pylon\":\"original\",\"request\":\"3a447ade822708bbe539d5b0aaa93fc4da041b040c54cb4c61eacf30506b8485\",\"request_digest\":\"62a30c08717278b3e932f894c516ab5b704fbfc340075c86840e17ced1010e55\",\"requires\":[],\"result_digest\":\"10f3aad3ee17ff8321456be784913d973d0028466452e7b55c1cd90566e12936\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "2452b8783dc009b5fcad8de70384625155354185aa7f6e7b235fa931f515da8ce9e0c651f7c1afb274ce0d7f1925c15a4ceff8f32026d947ecdb944315c963a8"
+  },
+  {
+    "id": "e6dfd5c94af3c494d94760d75088a2cb7cfb9a0cda5ed89a92efe9aaa6f47409",
+    "pubkey": "f52a6f99e186761c8d955d3fd3159b259a1ef4c133e133f2be4646287351dcb2",
+    "created_at": 1793377785,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "ce50dbe2246a3b533ac7fd4ca8f39b18c9eb9e07fad7b7f35cd59732e9c3037d"
+      ],
+      [
+        "a",
+        "30200:ce50dbe2246a3b533ac7fd4ca8f39b18c9eb9e07fad7b7f35cd59732e9c3037d:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "249a74af9b178a8998cbe9c413e230247c0ca53c4ebd2865113658e77ad5a044"
+      ]
+    ],
+    "content": "{\"buyer\":\"f52a6f99e186761c8d955d3fd3159b259a1ef4c133e133f2be4646287351dcb2\",\"capability\":\"ce50dbe2246a3b533ac7fd4ca8f39b18c9eb9e07fad7b7f35cd59732e9c3037d:pylon/decision\",\"finished_at\":1793377785,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"ce50dbe2246a3b533ac7fd4ca8f39b18c9eb9e07fad7b7f35cd59732e9c3037d\",\"pylon\":\"original\",\"request\":\"62d62ff797d9603af3440ff6c66142f2d868a467285e8cbeab3548d65688b009\",\"request_digest\":\"4f30f1dd007759aa368b348518864cd0ab9579a6bf6c3f965cc1f33b6164b8f1\",\"requires\":[],\"result_digest\":\"2121b48582e76bbc54b4f4ac2ba6a4e78e54ef21aba8c939b389801779c17b58\",\"started_at\":1793377784,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "2e78daf248d68762743b43dc26df6e9307cef95b2848451343cd79458f12b20f9da843e90dd67fb369ccad994a6cde702dca0406f6517ccbb295ceb6bed9da07"
+  }
+]

@@ -1,0 +1,165 @@
+{
+  "at": "2026-10-30T16:51:34.289Z",
+  "source_commit": null,
+  "harness_sha256": "8233518e5db19d0e668c2ac37338748c7505746ee56b3d24ecb0061bb569e5dd",
+  "binaries": {
+    "psionic-fleet": {
+      "sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8"
+    },
+    "psionic-mesh-check": {
+      "sha256": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b"
+    },
+    "psionic-mesh-pool": {
+      "sha256": "02861c122cc79c4377d5a4f9292546db6345126934ac056fa236483d1073fe67"
+    }
+  },
+  "private_material_leaked": false,
+  "sanitizer_error": false,
+  "results": [
+    {
+      "name": "pool: baseline signed claims and offline recomputation",
+      "ok": true,
+      "ms": 590,
+      "aggregate": "fa816cfd0f5cf9fb535785f6452b3f5daa910de787780621a80b310b7823c135",
+      "jobs": 2,
+      "pass": 1,
+      "fail": 1,
+      "independent_recompute": true
+    },
+    {
+      "name": "pool: public regular-file input verifies",
+      "ok": true,
+      "ms": 128,
+      "verified": true,
+      "regular_public_input": true
+    },
+    {
+      "name": "pool: default empty trust grants no credit",
+      "ok": true,
+      "ms": 63,
+      "jobs": 0,
+      "checks": 0,
+      "providers": 0
+    },
+    {
+      "name": "pool: reordered duplicate originals preserve commitments",
+      "ok": true,
+      "ms": 168,
+      "verified": true,
+      "duplicate_order_invariant": true
+    },
+    {
+      "name": "pool: unknown signed authors cannot consume typed capacities",
+      "ok": true,
+      "ms": 1369,
+      "ignored_receipts": 70,
+      "ignored_labels": 129,
+      "verified": true
+    },
+    {
+      "name": "pool: unlisted provider cannot consume receipt capacity",
+      "ok": true,
+      "ms": 550,
+      "ignored_unlisted_provider_receipts": 65,
+      "verified": true
+    },
+    {
+      "name": "pool: future-created original is excluded at aggregate cutoff",
+      "ok": true,
+      "ms": 127,
+      "future_original_ignored": true
+    },
+    {
+      "name": "pool: unsupported original kind is refused",
+      "ok": true,
+      "ms": 128,
+      "refused": true
+    },
+    {
+      "name": "pool: private witness cannot be a public bundle",
+      "ok": true,
+      "ms": 70,
+      "cross_protocol_refused": true
+    },
+    {
+      "name": "pool: explicit different trust policy refuses",
+      "ok": true,
+      "ms": 63,
+      "different_explicit_trust_refused": true
+    },
+    {
+      "name": "pool: valid signature rejects altered totals",
+      "ok": true,
+      "ms": 127,
+      "valid_signature": true,
+      "refused": true
+    },
+    {
+      "name": "pool: valid signature rejects altered window",
+      "ok": true,
+      "ms": 127,
+      "valid_signature": true,
+      "refused": true
+    },
+    {
+      "name": "pool: valid signature rejects altered policy",
+      "ok": true,
+      "ms": 126,
+      "valid_signature": true,
+      "refused": true
+    },
+    {
+      "name": "pool: valid signature rejects altered input-digest",
+      "ok": true,
+      "ms": 127,
+      "valid_signature": true,
+      "refused": true
+    },
+    {
+      "name": "pool: valid signature rejects altered rate",
+      "ok": true,
+      "ms": 126,
+      "valid_signature": true,
+      "refused": true
+    },
+    {
+      "name": "pool: valid signature rejects altered expiry",
+      "ok": true,
+      "ms": 128,
+      "valid_signature": true,
+      "refused": true
+    },
+    {
+      "name": "pool: missing counted original refuses 30200",
+      "ok": true,
+      "ms": 127,
+      "removed_kind": 30200,
+      "refused": true
+    },
+    {
+      "name": "pool: missing counted original refuses 3201",
+      "ok": true,
+      "ms": 127,
+      "removed_kind": 3201,
+      "refused": true
+    },
+    {
+      "name": "pool: missing counted original refuses 1985",
+      "ok": true,
+      "ms": 126,
+      "removed_kind": 1985,
+      "refused": true
+    },
+    {
+      "name": "pool: actual API receipt joins independently recomputed totals",
+      "ok": true,
+      "ms": 196,
+      "source": "retained qualified native API proof",
+      "receipt": "9b5b20e7ef9099ec45b62705f709f37e1e1f1c7bf37421100fe76c2af230997b",
+      "aggregate": "ac28bcac44ca9e0e18caefe674bb912c1de20cff68d406c2f7412478196b7d76",
+      "jobs": 1,
+      "pass": 1,
+      "independent_recompute": true
+    }
+  ]
+}

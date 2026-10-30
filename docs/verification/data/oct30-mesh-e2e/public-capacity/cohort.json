@@ -1,0 +1,20 @@
+{
+  "receipt": "45ea6e2201172308ca55f3a2de859dabd41b28d6d1276c0a737197e3ea0ada11",
+  "buyer": "a8be3c18f465d5866748bf7e70ba07542f25ce6fc4c738f1aaa9503c583839c3",
+  "original_provider": "d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f",
+  "checker": "a2f66bacd908c19de9f0364d850b278e62e7442f5294e020046fe0f378bf4967",
+  "reference_provider": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+  "from": 1793378220,
+  "observed_at": 1793378305,
+  "http_status": 200,
+  "http_elapsed_ms": 761.808,
+  "verified_parent_verdict": 1,
+  "endpoint": "http://127.0.0.1:8799/v1/systemone",
+  "pid": 38998,
+  "binaries": {
+    "/tmp/oct30-ch21-fleet/psionic-fleet": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8",
+    "/tmp/oct30-ch21-checker-guarded/psionic-mesh-check": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b"
+  },
+  "private_witness_persisted": false,
+  "note": "Wait for a closed minute containing both receipt and check, then independently collect/recompute public records."
+}

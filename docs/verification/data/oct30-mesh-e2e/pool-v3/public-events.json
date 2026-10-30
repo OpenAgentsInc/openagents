@@ -1,0 +1,251 @@
+[
+  {
+    "id": "4b0da6bcee1177d6a8121530512a0337a174221a8685ec1d03221b7179cc99c5",
+    "pubkey": "697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa",
+    "created_at": 1793379050,
+    "kind": 30200,
+    "tags": [
+      [
+        "d",
+        "original"
+      ],
+      [
+        "t",
+        "oa:pylon-beacon:v1"
+      ],
+      [
+        "x",
+        "72e48561bd32e991eeece1278876a238a8e1357d565cb1aea5c4c6d60d5d61c1"
+      ],
+      [
+        "expiration",
+        "1793379350"
+      ]
+    ],
+    "content": "{\"class\":{\"family\":\"cpu\",\"memory_gb\":8,\"tier\":\"small\"},\"generation\":2,\"label\":\"Independent mesh test\",\"observed_at\":1793379050,\"pools\":[],\"provider\":\"697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa\",\"pylon\":\"original\",\"requires\":[],\"services\":[{\"capability\":\"697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793379049,\"slots\":{\"free\":2,\"total\":2},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793379350}",
+    "sig": "c278b86f1884b050cd0977eb881eaa20143dd066d75345fed59ec12e7546cb5702eb459d72000bdd88329f48ebd47e20b57417f22f122bd4cb0b2073386d67ce"
+  },
+  {
+    "id": "cab2b5caba270e62df104b957622548bab92d56bed79c962cb7f3e25809120e7",
+    "pubkey": "df7a150676bc775fab64fa27e411957593e0203480ddb14d59911b97a7b3453a",
+    "created_at": 1793379031,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa"
+      ],
+      [
+        "a",
+        "30200:697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "b183ef7b8063ca6cb136e5b1c08b4cb3e216b259effa77596757fe60b1c74c21"
+      ]
+    ],
+    "content": "{\"buyer\":\"df7a150676bc775fab64fa27e411957593e0203480ddb14d59911b97a7b3453a\",\"capability\":\"697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa:pylon/decision\",\"finished_at\":1793379030,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa\",\"pylon\":\"original\",\"request\":\"90a3dae870b4db15471790c8b5d52a278a17b02e4b2f14886270a1e76cd2cb16\",\"request_digest\":\"bf5cf1ea3171d640dfeb258e9f3d30a60e3b112a2b8c0393bfd1da8b5e18b5f1\",\"requires\":[],\"result_digest\":\"71bfd9e1d3d93be4dc9c0c0153e5d4521bd5ba6d2dcea21d8024b33b2334c00c\",\"started_at\":1793379029,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "df38a77f7c736acf9f1a65052abb8e736162fc79934ed9a323d8e7327f209e8d83adce3402b5efaf520aa156a1d3d3682a5b145bdd007d345b42e9acefe9e800"
+  },
+  {
+    "id": "d94636f071366478fcb2d235c2ef18c41051ab21112d35cf8477024124b153e7",
+    "pubkey": "e011b7bc05ab2f1f7f069d80d538fa042738d1fcd960c35ed3276b65a3cc8abb",
+    "created_at": 1793379032,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-pass",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "cab2b5caba270e62df104b957622548bab92d56bed79c962cb7f3e25809120e7"
+      ],
+      [
+        "p",
+        "697aa88f620cc6ecff7a9c90ac4ebefb797e06889f9c9713754bd04ff8a43caa"
+      ],
+      [
+        "x",
+        "d4b7d2f624bcff7f089be818edd8a0b3003a28b36810b766b1f05efa41bf3da7"
+      ]
+    ],
+    "content": "independent synthetic pool fixture",
+    "sig": "a8a53ad1330289880afcb98b4d731c264d0c5a8c0057b743374bdb7eaec7ffc03116670f40b897ac9d5df702d9bcf439dd59c5c6ee28f192ec13af911f9756df"
+  },
+  {
+    "id": "e1611b45c5cc02db95c23a2b71bc9fe912c997767d3ca06807556bcfdd4a98a7",
+    "pubkey": "6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb",
+    "created_at": 1793379050,
+    "kind": 30200,
+    "tags": [
+      [
+        "d",
+        "trusted"
+      ],
+      [
+        "t",
+        "oa:pylon-beacon:v1"
+      ],
+      [
+        "x",
+        "dca65d259034fa8baef1eda48f3155af6b6b98074e8dfdc2859ce9a0164dea72"
+      ],
+      [
+        "expiration",
+        "1793379350"
+      ]
+    ],
+    "content": "{\"class\":{\"family\":\"cpu\",\"memory_gb\":8,\"tier\":\"small\"},\"generation\":2,\"label\":\"Independent mesh test\",\"observed_at\":1793379050,\"pools\":[],\"provider\":\"6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb\",\"pylon\":\"trusted\",\"requires\":[],\"services\":[{\"capability\":\"6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793379049,\"slots\":{\"free\":2,\"total\":2},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793379350}",
+    "sig": "47e616446e9d93b5b8f67cfded89ead0b04e4cfd4f94d3e126691b2ef59a8ac74b1a0bede1136b65cef18b3913be0456a105bc77c005e67f027ecf282953e7e2"
+  },
+  {
+    "id": "f414a91a399a36839fc71e95d9a25df14a6c39fd07dbd5b4bc7a4147c5ae5763",
+    "pubkey": "6fca67eb54cea548afaa9c2aed2d6216d539dbb374fd42b5fcd58c747793deb4",
+    "created_at": 1793379031,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb"
+      ],
+      [
+        "a",
+        "30200:6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb:trusted"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "41d43b2c06d76e9d56855ed927d555d89df7bbddd591d997ad81faf3862cb8f3"
+      ]
+    ],
+    "content": "{\"buyer\":\"6fca67eb54cea548afaa9c2aed2d6216d539dbb374fd42b5fcd58c747793deb4\",\"capability\":\"6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb:pylon/decision\",\"finished_at\":1793379030,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb\",\"pylon\":\"trusted\",\"request\":\"78c1cd74ad6d0b75933ec1c08df7a80a0609cdfdc948fbf5a9a6e293ec32588d\",\"request_digest\":\"bf5cf1ea3171d640dfeb258e9f3d30a60e3b112a2b8c0393bfd1da8b5e18b5f1\",\"requires\":[],\"result_digest\":\"71bfd9e1d3d93be4dc9c0c0153e5d4521bd5ba6d2dcea21d8024b33b2334c00c\",\"started_at\":1793379029,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "3dfb9515f15e6bbc4cf6ae2ba8b4d52ebf2dbcb85bb9bedb66dd579626447fbd9fd32c2b8935e8c7aa9fe39da5d52c99edce971dd48fcf2e27e4c4dd831af0bc"
+  },
+  {
+    "id": "c86f7701a3cda6b10571434cbdcc6bb940d26b15c6c2f9d0738fef6fabdce507",
+    "pubkey": "796f7de18919e53cde6a31f94cc4f502658b027531b50e4f11d5b36331edbcc2",
+    "created_at": 1793379032,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-fail",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "f414a91a399a36839fc71e95d9a25df14a6c39fd07dbd5b4bc7a4147c5ae5763"
+      ],
+      [
+        "p",
+        "6dca55049864cd1b97dbdd6e4e85d255d8e6eded758ce25d28aaef4df01bcdeb"
+      ],
+      [
+        "x",
+        "d4b7d2f624bcff7f089be818edd8a0b3003a28b36810b766b1f05efa41bf3da7"
+      ]
+    ],
+    "content": "independent synthetic pool fixture",
+    "sig": "47d96b68468d73c4ac6e5195e76e7672c24d54b24f81c77962abd9a3824ae2d84a9a8d266619d140f400dfea2b0071dc86be29c7463ab3cbd63ea8aa83b8a930"
+  },
+  {
+    "id": "33a9a632d892762db27d358cbb6857cd1446c45b225f8bd5211ac786babab572",
+    "pubkey": "d6416a676d45de493882981d8de54cffe7ebef1787867e7f866d09af299bd208",
+    "created_at": 1793379092,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "2fe3056c8e1eebdc756fd237e0b1cdbb19a54d8c0d606dd8c043154ea01da103"
+      ],
+      [
+        "a",
+        "30200:2fe3056c8e1eebdc756fd237e0b1cdbb19a54d8c0d606dd8c043154ea01da103:original"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "9fd56791743c0088a596f14241ab24a61600f8bc0169375ce5b5ec80e56c1728"
+      ]
+    ],
+    "content": "{\"buyer\":\"d6416a676d45de493882981d8de54cffe7ebef1787867e7f866d09af299bd208\",\"capability\":\"2fe3056c8e1eebdc756fd237e0b1cdbb19a54d8c0d606dd8c043154ea01da103:pylon/decision\",\"finished_at\":1793379092,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"2fe3056c8e1eebdc756fd237e0b1cdbb19a54d8c0d606dd8c043154ea01da103\",\"pylon\":\"original\",\"request\":\"7c268da43f2b958df5e8d065c01b56b59b827f20e1b59e4895e56df31e71b8be\",\"request_digest\":\"2c17772f7cbc0add909ef2d93970b5be85998b96384ae960964fd805c79ad4f7\",\"requires\":[],\"result_digest\":\"a6ba40875b96913a078579e74430739c984f459d07f05ee0f897aae715bc1f8a\",\"started_at\":1793379091,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "bbb568aeb5e8e9fd7e9d518172a9207028fd8de3fb9c0cfd545a02e86cdb4da05c7d95f01ca21f3cce7465abc5142b41990f19cbe6b56c97ef8a0a9ee2cd03b5"
+  },
+  {
+    "id": "9b5b20e7ef9099ec45b62705f709f37e1e1f1c7bf37421100fe76c2af230997b",
+    "pubkey": "1c9444288ee3d87dff1901fe3748f43701911698bffac8494714130c3d7c922a",
+    "created_at": 1793378355,
+    "kind": 3201,
+    "tags": [
+      [
+        "p",
+        "95b7627b549039c40ec6879d5825f3e77c87001deef4c7dee01b99c54d3ce7d7"
+      ],
+      [
+        "a",
+        "30200:95b7627b549039c40ec6879d5825f3e77c87001deef4c7dee01b99c54d3ce7d7:mesh-native-0"
+      ],
+      [
+        "t",
+        "oa:pylon-receipt:v2"
+      ],
+      [
+        "x",
+        "3a75be06d22b37f859a6b3fff1637573dac819cb3818168bf3f07444c77f088c"
+      ]
+    ],
+    "content": "{\"buyer\":\"1c9444288ee3d87dff1901fe3748f43701911698bffac8494714130c3d7c922a\",\"capability\":\"95b7627b549039c40ec6879d5825f3e77c87001deef4c7dee01b99c54d3ce7d7:pylon/decision\",\"finished_at\":1793378355,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"95b7627b549039c40ec6879d5825f3e77c87001deef4c7dee01b99c54d3ce7d7\",\"pylon\":\"mesh-native-0\",\"request\":\"7b121b51ff0771eaaafc31a1d544bc24a830f8ae94d5de115b884d550682d70b\",\"request_digest\":\"c91f518cccf277f5ad6a1e6330b27671fb938ee30f879045875d3528c5e3197a\",\"requires\":[],\"result_digest\":\"700a880faa598f1dc3f327b0246d0a95aee0ff2e4f4c8ac7c4c221f89188ed47\",\"started_at\":1793378355,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}",
+    "sig": "62f06954d3fd590b6675843f3c9f3c3a47f526bf0caad1434aa5eea885b075ac5b821b5220d9c796775bf0ba6ab0eaebe1ac337e269fc619fc57392adcafdb0a"
+  },
+  {
+    "id": "2d0ad54c7d710ba3aa856557b6e8b9ac42261dc21da57c6870272deda1c492c6",
+    "pubkey": "c941d346081bb2782eb79c690b029b1fa9aaa99bf53f39d15ff6732a2ec9a660",
+    "created_at": 1793378356,
+    "kind": 1985,
+    "tags": [
+      [
+        "L",
+        "openagents.pylon"
+      ],
+      [
+        "l",
+        "check-pass",
+        "openagents.pylon"
+      ],
+      [
+        "e",
+        "9b5b20e7ef9099ec45b62705f709f37e1e1f1c7bf37421100fe76c2af230997b"
+      ],
+      [
+        "p",
+        "95b7627b549039c40ec6879d5825f3e77c87001deef4c7dee01b99c54d3ce7d7"
+      ],
+      [
+        "x",
+        "5a9de2495ad356a243daee890bc3f4ba83ee5288b563d70cb55ee0c521cb570d"
+      ]
+    ],
+    "content": "psionic-free-mesh-v1;profile=centred-log-f64-max8-v1;limit_ppb=1000000;reason=0;reference=nip-dec-result",
+    "sig": "da2e23990b04cf756e175fb591b2d3b0ff37b1c18165f9678993abb8e6b5a467173873d841b10758a95d4cb21200523a57fdd4ca5ddc93b815e4e00c445ac2f3"
+  }
+]

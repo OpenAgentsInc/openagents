@@ -1,0 +1,25 @@
+{
+  "at": "2026-10-30T16:52:34.815Z",
+  "source_commit": null,
+  "harness_sha256": "a692640533a1b7c54cb3dc456f65aea5c180912f5c6fe084970e7f5fad5058db",
+  "binaries": {
+    "psionic-fleet": {
+      "sha256": "2d9c83dca8e997615bb59084b04362ddb0afc0dffbaeec79d606455c1f4819e8"
+    },
+    "psionic-mesh-check": {
+      "sha256": "39e40d3370b13d7bb0295a27e79e89f38f14775bccb24732092090cc9c008c3b"
+    },
+    "psionic-mesh-pool": {
+      "sha256": "02861c122cc79c4377d5a4f9292546db6345126934ac056fa236483d1073fe67"
+    }
+  },
+  "private_material_leaked": false,
+  "sanitizer_error": false,
+  "results": [
+    {
+      "name": "pool: malformed relay EVENT envelope refuses completion",
+      "ok": false,
+      "ms": 274
+    }
+  ]
+}
