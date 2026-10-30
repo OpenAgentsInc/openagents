@@ -24,6 +24,19 @@ then, or decide whether the Linux host may release. That would need Linux
 goldens or a policy for them, and `COAXIAL_*` set to
 `~/.cache/coax-wasm-toolchain`.
 
+
+Update 2026-10-29 (claude-nip01): the Linux build now works
+(`coax/web/toolchain.sh`, `serve.sh`, `chrome.ts`, `goldens/linux/`), and
+`coderos.desktop.browser` is switched on for coderos-4080 (the grant file is
+there). Headless WebGPU is the remaining blocker. Chromium 152 finds the
+RTX 4080 (`--enable-features=Vulkan --use-angle=vulkan --ignore-gpu-blocklist
+--disable-vulkan-surface` reports an nvidia/lovelace adapter), but its GPU
+process dies once a page configures a canvas ("Failed to send
+GpuControl.CreateCommandBuffer"). With ANGLE left at its default it falls
+back to SwiftShader, which draws but captures blank. Until that's solved,
+release from the Mac. The switch also started `coder-claim.service`, which
+fails because `~/coder/target/release/coder-runner` isn't built.
+
 ## GPU profiling counters for Psionic CUDA work
 
 Nsight Compute (`~/cuda-13.2/bin/ncu`) refuses this user with
