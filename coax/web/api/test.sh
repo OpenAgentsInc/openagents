@@ -5,6 +5,7 @@
 #   coax/web/api/test.sh
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+"$here/test-deploy-command.sh"
 pg=/opt/homebrew/opt/postgresql@16
 work="$(mktemp -d)"; trap 'kill ${api_pid:-} 2>/dev/null || true; "$pg/bin/pg_ctl" -D "$work/db" -m immediate stop >/dev/null 2>&1 || true; rm -rf "$work"' EXIT
 cc=/usr/bin/clang

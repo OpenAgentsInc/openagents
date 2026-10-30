@@ -21,6 +21,8 @@
 # key; while one is missing that environment's PUBLISH only freezes the draft.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=deploy-command.sh
+source "$here/deploy-command.sh"
 prod=true; [[ "${1:-}" == --staging ]] && prod=false
 project=openagentsgemini region=us-central1
 instance="$project:$region:openagents-production-pg"
@@ -52,11 +54,11 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
   fi
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"
-  gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \
+  api_run_deploy gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \
     --allow-unauthenticated --ingress internal-and-cloud-load-balancing \
     --port 8080 --cpu 1 --memory 256Mi --min-instances 0 --max-instances 4 --concurrency 40 \
     --add-cloudsql-instances "$instance" --set-secrets "$secrets" \
-    --set-env-vars "$env" --quiet 2>&1 | grep -E "ERROR|revision" || true
+    --set-env-vars "$env" --quiet || return 1
   for _ in $(seq 20); do
     body="$(curl -s "https://$3/api/playtest/health" || true)"
     [[ "$body" == *'"ok":true'* ]] && { echo "  ok    https://$3/api/playtest/health $body"; return 0; }
