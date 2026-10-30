@@ -5,6 +5,7 @@
 # propose. test.py runs this file with its helpers (call, check, sql).
 import http.server
 import threading
+import time
 
 builder_seen = []
 builder_mode = {"status": 200, "text": "{}"}
@@ -14,6 +15,9 @@ class FakeBuilderModel(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         builder_seen.append(body)
+        if builder_mode.get("stall", 0) > 0:   # a stalled try: answered only after the server has given up on it
+            builder_mode["stall"] -= 1
+            time.sleep(3)
         if builder_mode["status"] != 200:
             out = json.dumps({"error": {"code": builder_mode["status"]}}).encode()
         else:
@@ -91,6 +95,8 @@ def realm_builder_checks():
           schema["properties"]["ground"]["enum"][0] == "meadow" and "photoreal" not in schema["properties"]["style"]["enum"]
           and "character" in schema["properties"]["features"]["items"]["properties"]["feature"]["enum"], schema["properties"]["style"])
     check("the prompt is what was said", seen["contents"][0]["parts"][0]["text"].startswith("a dark marsh"))
+    check("the model is asked with its thinking off, for a fast board (0060)", seen["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0}
+          and plan.get("model") == "gemini-2.5-flash", (seen["generationConfig"].get("thinkingConfig"), plan.get("model")))
 
     # talking again revises the board: the current board goes with the new words
     import time
@@ -249,6 +255,24 @@ def realm_builder_checks():
     builder_mode["status"] = 500
     check("the model's error on a pick is a 503", b_call("POST", "/api/playtest/realms/pick", {"field": "dims", "words": "flat"})[0] == 503)
     builder_mode["status"] = 200
+    check("SAY IT's pick is asked with its thinking off too", builder_seen[-1]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0})
+
+    # the slow tail (byo-plan-speed): a stalled try is cut off at OA_BUILDER_TIMEOUT_MS and tried once more
+    time.sleep(2.1)
+    builder_mode["text"] = json.dumps({"name": "Quick Fen", "features": [{"feature": "rocks", "on": True, "count": 4}]})
+    builder_mode["stall"] = 1
+    n0 = len(builder_seen)
+    t0 = time.time()
+    st, quick = b_call("POST", "/api/playtest/realms/plan", {"prompt": "a quick fen"}, b_player())
+    took = time.time() - t0
+    check("a stalled try is cut off and tried again: the board still comes, before the stalled one would have",
+          st == 200 and quick["board"]["name"] == "Quick Fen" and len(builder_seen) - n0 == 2 and took < 2.9, (st, quick, len(builder_seen) - n0, took))
+    time.sleep(2.1)
+    builder_mode["stall"] = 2
+    st, _ = b_call("POST", "/api/playtest/realms/plan", {"prompt": "a quick fen"}, b_player())
+    check("two stalled tries are a 503, not a wait", st == 503, st)
+    builder_mode["stall"] = 0
+    time.sleep(3.2)
     gcs_server.shutdown()
     builder_fake.shutdown()
 

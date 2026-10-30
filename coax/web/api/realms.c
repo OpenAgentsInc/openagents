@@ -26,7 +26,8 @@
 // another site's page (Origin) is refused. As a question is, the model call and the page's writes
 // are made by a child with its own database connection.
 //   OA_BUILDER_URL        the generateContent URL (tests point it at a fake)
-//   OA_BUILDER_MODEL      the model (gemini-3.8-flash)
+//   OA_BUILDER_MODEL      the model (gemini-2.5-flash, its thinking off: migrations/0060_builder_fast.sql)
+//   OA_BUILDER_TIMEOUT_MS how long one try may take (3500); an unanswered or failed try is tried once more
 //   OA_BUILDER_DAILY_CAP  plans a day across the server (3000)
 //   OA_BUILDER_PER_DAY    realms a player makes a day (12)
 #include "api.h"
@@ -70,6 +71,10 @@ static void text_answer(int fd, PGresult *r) {
 }
 
 // ---- the plan
+static long ask_builder(const char *model, const char *request, char **got) {
+  long limit = atol(env_or("OA_BUILDER_TIMEOUT_MS", "3500"));
+  return npc_ask_model_twice("OA_BUILDER_URL", model, request, limit > 0 ? limit : 3500, got);
+}
 // ?as=lines (a page that reads lines, builder.coax): the board's lines as text/plain, or the error alone.
 static bool as_lines(const request *q) { char v[16]; return api_query(q, "as", v, sizeof v) && !strcmp(v, "lines"); }
 static void answer_lines(int fd, int status, const char *json_text, const char *lines) {
@@ -82,10 +87,10 @@ static void answer_lines(int fd, int status, const char *json_text, const char *
 
 // The model's answer, held by SQL: builder_answer for a plan, builder_pick_answer for a pick.
 static void plan_answer(int fd, const char *asked, const char *request, bool lines, bool pick) {
-  const char *model = env_or("OA_BUILDER_MODEL", "gemini-3.8-flash");
+  const char *model = env_or("OA_BUILDER_MODEL", "gemini-2.5-flash");
   char *got = NULL;
   double t0 = api_now_ms();
-  long status = npc_ask_model("OA_BUILDER_URL", model, request, &got);
+  long status = ask_builder(model, request, &got);
   char http[16], taken[16];
   snprintf(http, sizeof http, "%ld", status);
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
@@ -227,10 +232,10 @@ static void make(const request *q, PGconn *db, const char *key) {
 // ---- talking revises a realm's board (migrations/0050_realm_edit.sql): asked here, the model's
 // answer kept by a child, as a plan is. ?as=lines answers the board's rows as lines.
 static void revise_answer(int fd, const char *asked, const char *request, bool lines) {
-  const char *model = env_or("OA_BUILDER_MODEL", "gemini-3.8-flash");
+  const char *model = env_or("OA_BUILDER_MODEL", "gemini-2.5-flash");
   char *got = NULL;
   double t0 = api_now_ms();
-  long status = npc_ask_model("OA_BUILDER_URL", model, request, &got);
+  long status = ask_builder(model, request, &got);
   char http[16], taken[16];
   snprintf(http, sizeof http, "%ld", status);
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));

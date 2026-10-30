@@ -106,6 +106,20 @@ long npc_ask_model(const char *url_env, const char *model, const char *request, 
   return status;
 }
 
+// As npc_ask_model, each try cut off at timeout_ms; an unanswered or failed try (the slow tail) is tried
+// once more, as voice edits are.
+long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body) {
+  buf b = {0};
+  long status = ask_model_in(url_env, model, request, &b, timeout_ms);
+  if (status == 0 || status == 429 || status >= 500) {
+    api_log("npc: %s answered %ld, trying again", model, status);
+    free(b.p); b = (buf){0};
+    status = ask_model_in(url_env, model, request, &b, timeout_ms);
+  }
+  *body = b.p;
+  return status;
+}
+
 // In the child: asks the model, keeps the answer, answers the page.
 static void answer(int fd, const char *asked, const char *request) {
   const char *model = getenv("OA_NPC_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";

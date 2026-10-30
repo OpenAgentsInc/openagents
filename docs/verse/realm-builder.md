@@ -30,7 +30,7 @@ and takes them into it.
    keep push to talk). The page's `data-voice="haunted-house"` reuses that route of the
    voice host, facing "Realm builder" so the host leaves the turn to the page). The heard words, or
    typed ones (TYPE IT), go to `POST /api/playtest/realms/plan?as=lines`.
-2. **Board.** The server asks Gemini (`OA_BUILDER_MODEL`, default `gemini-3.8-flash`, Vertex first,
+2. **Board.** The server asks Gemini (`OA_BUILDER_MODEL`, default `gemini-2.5-flash` with its thinking off (0060: a board in 1 to 2 s; a try cut off at 3.5 s is tried once more), Vertex first,
    like the NPCs) under a fixed JSON schema built from the catalogue. It keeps only catalogue
    features with catalogue values and writes each row's words itself (`verse.builder_label`), so the
    board says only what the engine will build. No keyword matching: the model picks, the schema and
