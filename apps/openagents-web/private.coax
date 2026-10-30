@@ -28,6 +28,14 @@
 // in and their projects. The QR's poll token stays in this page. The QR's
 // module grid comes from coax/lib/qr (qr_encode, its own library), which
 // private-face.c calls when qr_want is set.
+//
+// /login's words account (docs/web-log-in.md, owner 2026-10-30): on the first
+// visit the face makes 16 bytes of entropy (crypto.getRandomValues) and the page
+// keeps them in this browser as hex (host action 4: IndexedDB, else localStorage;
+// never a cookie, log, analytics event or URL). Coax derives the 12 words and the
+// NIP-06 key (coax/lib/nostr/weblogin.coax), signs a NIP-98 login and posts it to
+// /api/auth/key, unless a session already exists (the phone's stays, and the
+// page offers SWITCH TO MY WORDS ACCOUNT). The key lives only while a call signs.
 
 #load "projects.coax";
 
@@ -61,6 +69,21 @@ H_KEYOPEN :: 15; H_KFIELD :: 16; H_KSAVE :: 17; H_KREPLACE :: 18; H_KREMOVE :: 1
 PV_KEY :: 400;             // a pasted credential's most
 H_UNDO :: 100; H_STOP :: 140; H_AGREE :: 200;   // + the turn's (or goal's) index
 H_MINE :: 300;                                  // + a project's index on /signin
+H_WSHOW :: 20; H_WCOPY :: 21; H_SWFIELD :: 22; H_SWAP :: 23; H_SWYES :: 24; H_SWNO :: 25; H_WORDS_IN :: 26;   // /login's words account
+POST_WORDS :: 14;          // /api/auth/key: the words' key logs in (a NIP-98 signed event)
+// The words account (docs/web-log-in.md, owner 2026-10-30): 16 bytes of entropy made on
+// this device and kept in this browser (action 4), as 12 BIP-39 words; their NIP-06 key
+// logs in. The face (private-face.c) does the work the page asks for in acct_want:
+WANT_NEW :: 1;             // make 16 bytes of entropy (the browser's crypto.getRandomValues), then WANT_DERIVE
+WANT_DERIVE :: 2;          // acct_hex: the words, the npub and the key (in memory only)
+WANT_SIGN :: 3;            // acct_key: the NIP-98 Authorization for POST acct_url with body PV_LOGIN_BODY
+WANT_CHECK :: 4;           // swap: the typed words' checksum, their entropy into swap_hex
+ACCT_NONE :: 0; ACCT_READY :: 2; ACCT_FAILED :: 3;
+PV_LOGIN_BODY :: "{\"kind\":\"login\"}";
+PV_KEPT :: 4; PV_KEEP :: 4;   // the host's kept text (action 4 keeps it; message 4 at the next visit)
+PV_FACTS :: 600;
+PV_WORDS :: 160;           // 12 words, the longest 8 letters
+PV_AUTH :: 1024;           // "Nostr " and a base64 kind-27235 event
 K_BACK :: -3; K_ESC :: -1;
 
 PrivateState :: struct {
@@ -103,6 +126,21 @@ PrivateState :: struct {
   qr: [PV_QR] u8; qr_size: int; qr_want: bool;
   linking: bool;                 // page 0: LINK A PHONE is open
   me_status: int; me_at: f32;    // page 2: -1 not asked, 0 waiting, 200 signed in, 401 not, else offline
+  // the words account (page 2); secrets stay in this memory and are zeroed when done
+  acct: int; acct_want: int; acct_note: [PV_NOTE] u8; acct_note_n: int; acct_note_at: f32;
+  acct_hex: [32] u8; acct_hex_n: int;          // the entropy, hex: what this browser keeps
+  acct_words: [PV_WORDS] u8; acct_words_n: int;
+  acct_npub: [72] u8; acct_npub_n: int;
+  acct_key: [32] u8;                           // the NIP-06 private key
+  acct_auth: [PV_AUTH] u8; acct_auth_n: int;   // the signed login's Authorization, until posted
+  acct_url: [PV_URL] u8; acct_url_n: int;      // https://<this site>/api/auth/key (the event's u)
+  acct_show: bool;               // the words are shown
+  acct_out: bool;                // logged out here: no automatic login until asked
+  acct_force: bool;              // log in with the words even over another session (SWITCH, SWAP)
+  acct_tried: bool;              // the automatic login was sent once
+  acct_keep: bool;               // acct_hex is new: keep it in this browser (action 4)
+  kept_seen: bool;               // the first frame has passed (a kept text comes before it)
+  swap: [PV_WORDS] u8; swap_n: int; swap_ok: bool; swap_hex: [32] u8;
   inbox: [] u8;                  // PrivateHost's
 }
 
@@ -358,6 +396,11 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     else if code == 200 && pv_has(bytes, "linked") { s[0].code_state = CODE_DONE; }
     return;
   }
+  if kind == POST_WORDS {
+    if code == 200 { s[0].me_status = -1; s[0].acct_note_n = 0; pv_keep_player(s, bytes, i); }
+    else { pv_acct_say(s, ifx code == 429 then "SLOW DOWN: TRY AGAIN IN A MINUTE" else "COULDN'T LOG IN"); }
+    return;
+  }
   if kind == POST_SITE_OUT { s[0].me_status = -1; s[0].code_state = CODE_NONE; s[0].data_n = 0; s[0].line_n = 0; return; }
   if kind == POST_MESSAGE {
     if code == 200 { s[0].text_n = 0; pv_say(s, "SENT"); pv_ask(s); }
@@ -436,7 +479,8 @@ pv_keep_player :: (s: [] PrivateState, bytes: string, from: int) {
 // sends the browser's playtest player key (8), which a signed-in poll moves to the phone's key.
 coaxial_private_post_flags :: (s: [] PrivateState) -> int #export_c {
   if s.count < 1 { return 5; }
-  return ifx s[0].post_kind == POST_POLL then 13 else 5;
+  // the words' login: 16, the body's first line is its Authorization (NIP-98), and the player key moves too
+  return ifx s[0].post_kind == POST_POLL then 13 else ifx s[0].post_kind == POST_WORDS then 29 else 5;
 }
 // The challenge's answer: its URL into the QR, its poll token kept for polling.
 pv_got_code :: (s: [] PrivateState, code: int, bytes: string, i: int) {
@@ -561,58 +605,220 @@ pv_crumbs :: (s: [] PrivateState, out: [] f32, v0: int, where: string, p: Pen) -
   px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
   return put(out, v, where, px, cy, 7 * d, pv_chrome(p, INK_ORANGE));
 }
-// /signin.
-pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
-  d := p.d; w := s[0].width; h := s[0].height;
-  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM);
-  v := pv_crumbs(s, out, 0, "LOG IN", p);
-  cx := w * 0.5;
-  if s[0].me_status == 200 {
-    k := pv_first(s, 'K');
-    npub := ifx k >= 0 then pv_cell(s, k, 1) else "";
-    y := h * 0.32;
-    v = put(out, v, "SIGNED IN", cx - text_width("SIGNED IN", 12 * d) * 0.5, y, 12 * d, white);
-    short: [40] u8;
-    q := 0;
-    if npub.count > 24 { q = pv_put(short[..], 0, npub[0..<14]); q = pv_put(short[..], q, "..."); q = pv_put(short[..], q, npub[npub.count - 8..<npub.count]); }
-    else { q = pv_put(short[..], 0, npub); }
-    t := cast(string) short[0..<q];
-    v = put(out, v, t, cx - text_width(t, 7 * d) * 0.5, y + 26 * d, 7 * d, ink(p, INK_DIM));
-    n := pv_count(s, 'J');
-    y2 := y + 64 * d;
-    if n == 0 {
-      a := "THIS KEY ISN'T IN A PROJECT YET";
-      v = put(out, v, a, cx - text_width(a, 6.5 * d) * 0.5, y2, 6.5 * d, dim);
-      b := "ON YOUR PROJECT'S PAGE, LINK A PHONE ADDS IT";
-      v = put(out, v, b, cx - text_width(b, 6 * d) * 0.5, y2 + 18 * d, 6 * d, pv_chrome(p, INK_FAINT));
-      y2 += 40 * d;
-    } else {
-      v = put(out, v, "YOUR PROJECTS", cx - text_width("YOUR PROJECTS", 6.5 * d) * 0.5, y2, 6.5 * d, dim);
-      y2 += 26 * d;
-      for j: 0..<n {
-        if j >= 12 { break; }
-        slug := pv_cell(s, pv_nth(s, 'J', j), 1);
-        buf: [80] u8;
-        m := pv_upper(buf[..], 0, slug);
-        label := cast(string) buf[0..<m];
-        cw := chip_width(label, 7 * d, p);
-        v = pv_chip(s, out, v, label, cx - cw * 0.5, y2, H_MINE + j, false, p, true, 0);
-        y2 += 26 * d;
+// ---------------------------------------------------------------- the words account
+
+pv_acct_say :: (s: [] PrivateState, word: string) { s[0].acct_note_n = pv_put(s[0].acct_note[..], 0, word); s[0].acct_note_at = s[0].time; }
+pv_npub :: (s: [] PrivateState) -> string { return cast(string) s[0].acct_npub[0..<s[0].acct_npub_n]; }
+// The signed-in key's npub (/api/auth/me's K line), or "".
+pv_me_npub :: (s: [] PrivateState) -> string { k := pv_first(s, 'K'); return ifx k >= 0 then pv_cell(s, k, 1) else ""; }
+// Who is logged in: 0 nobody (or not known yet), 1 the words' key, 2 another key (the phone's).
+pv_active :: (s: [] PrivateState) -> int {
+  if s[0].me_status != 200 { return 0; }
+  me := pv_me_npub(s);
+  return ifx s[0].acct == ACCT_READY && me.count > 0 && me == pv_npub(s) then 1 else 2;
+}
+pv_hex_ok :: (t: string) -> bool {
+  if t.count != 32 { return false; }
+  for c: t { if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) { return false; } }
+  return true;
+}
+pv_wipe :: (b: [] u8) { for i: 0..<b.count { b[i] = 0; } }
+pv_wipe_swap :: (s: [] PrivateState) { pv_wipe(s[0].swap[..]); s[0].swap_n = 0; pv_wipe(s[0].swap_hex[..]); s[0].swap_ok = false; }
+// The login URL (the event's u): this site's origin, from the page facts' url.
+pv_facts :: (s: [] PrivateState, text: string) {
+  at := 0;
+  while at < text.count {
+    stop := at;
+    while stop < text.count && text[stop] != '\n' { stop += 1; }
+    line := text[at..<stop];
+    if line.count > 12 && line[0..<4] == "url=" {
+      u := line[4..<line.count];
+      k := 0; slashes := 0;
+      while k < u.count { if u[k] == '/' { slashes += 1; if slashes == 3 { break; } } k += 1; }
+      origin := u[0..<k];
+      if (origin.count > 8 && origin[0..<8] == "https://") || (origin.count > 7 && origin[0..<7] == "http://") {
+        n := pv_put(s[0].acct_url[..], 0, origin);
+        s[0].acct_url_n = pv_put(s[0].acct_url[..], n, "/api/auth/key");
       }
     }
-    so := chip_width("SIGN OUT", 7 * d, p);
-    return pv_chip(s, out, v, "SIGN OUT", cx - so * 0.5, y2 + 14 * d, H_SITE_OUT, false, p, true, 0);
+    at = stop + 1;
   }
-  if s[0].me_status != 401 {
-    word := ifx s[0].me_status == 599 then "OFFLINE" else "LOADING";
-    return put(out, v, word, cx - text_width(word, 10 * d) * 0.5, h * 0.5, 10 * d, dim);
+}
+// What the face did with acct_want: ok, or not.
+coaxial_private_acct_done :: (s: [] PrivateState, ok: bool) #export_c {
+  if s.count < 1 { return; }
+  want := s[0].acct_want; s[0].acct_want = 0;
+  pv_wipe(s[0].acct_key[..]);    // the key lives only while the face signs
+  if want == WANT_NEW || want == WANT_DERIVE {
+    if !ok { s[0].acct = ACCT_FAILED; pv_acct_say(s, "COULDN'T MAKE YOUR ACCOUNT HERE"); return; }
+    s[0].acct = ACCT_READY;
+    if want == WANT_NEW { s[0].acct_keep = true; }
+  } else if want == WANT_SIGN {
+    if !ok { s[0].acct_auth_n = 0; pv_acct_say(s, "COULDN'T SIGN THE LOGIN"); }
+  } else if want == WANT_CHECK {
+    if ok { s[0].swap_ok = true; s[0].typing = false; }
+    else { pv_wipe(s[0].swap_hex[..]); pv_acct_say(s, "THOSE WORDS DON'T CHECK OUT"); }
   }
-  side := pv_side(s);
-  title := "LOG IN WITH YOUR PHONE";
-  tcap := ifx w / d < 520 then 10 * d else 12 * d;
-  top := hi((h - side) * 0.5 - 30 * d, 70 * d);
-  v = put(out, v, title, cx - text_width(title, tcap) * 0.5, top - 18 * d, tcap, white);
-  return pv_code_panel(s, out, v, cx, top, side, "SCAN THIS WITH THE OPENAGENTS APP ON YOUR PHONE", "SIGNED IN", p);
+}
+// Each frame on /login: keep new entropy, log in with the words when no one is, post a signed login.
+pv_acct_due :: (s: [] PrivateState) {
+  if s[0].acct_keep && s[0].action == 0 && s[0].acct_hex_n == 32 {
+    s[0].acct_keep = false;
+    s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].acct_hex[0..<32]); s[0].action = PV_KEEP;
+  }
+  if s[0].acct == ACCT_READY && s[0].acct_want == 0 && s[0].post_kind == 0 && s[0].acct_auth_n == 0 {
+    auto := s[0].me_status == 401 && !s[0].acct_out && !s[0].acct_tried;
+    if auto || s[0].acct_force {
+      s[0].acct_tried = true; s[0].acct_force = false;
+      if s[0].acct_url_n == 0 { s[0].acct_url_n = pv_put(s[0].acct_url[..], 0, "https://openagents.com/api/auth/key"); }
+      s[0].acct_want = WANT_SIGN;
+    }
+  }
+  if s[0].acct_auth_n > 0 && s[0].post_kind == 0 {
+    s[0].post_n = pv_put(s[0].post[..], 0, "/api/auth/key");
+    b := pv_put(s[0].body[..], 0, cast(string) s[0].acct_auth[0..<s[0].acct_auth_n]);
+    b = pv_put(s[0].body[..], b, "\n");
+    s[0].body_n = pv_put(s[0].body[..], b, PV_LOGIN_BODY);
+    pv_wipe(s[0].acct_auth[..]); s[0].acct_auth_n = 0;
+    s[0].post_kind = POST_WORDS; s[0].post_id = -1;
+  }
+}
+pv_swap_check :: (s: [] PrivateState) {
+  if s[0].swap_n == 0 || s[0].acct_want != 0 { return; }
+  s[0].acct_want = WANT_CHECK;
+}
+pv_swap_yes :: (s: [] PrivateState) {
+  if !s[0].swap_ok || s[0].acct_want != 0 { return; }
+  for i: 0..<32 { s[0].acct_hex[i] = s[0].swap_hex[i]; }
+  s[0].acct_hex_n = 32;
+  pv_wipe_swap(s);
+  pv_wipe(s[0].acct_words[..]); s[0].acct_words_n = 0; s[0].acct_npub_n = 0;
+  s[0].acct = ACCT_NONE; s[0].acct_want = WANT_DERIVE; s[0].acct_keep = true;
+  s[0].acct_force = true; s[0].acct_out = false; s[0].acct_show = false;
+}
+
+// ---------------------------------------------------------------- /login
+
+pv_center :: (out: [] f32, v: int, t: string, cx: f32, y: f32, cap: f32, k: Ink) -> int { return put(out, v, t, cx - text_width(t, cap) * 0.5, y, cap, k); }
+pv_short_npub :: (buf: [] u8, npub: string) -> int {
+  if npub.count > 24 { q := pv_put(buf, 0, npub[0..<14]); q = pv_put(buf, q, "..."); return pv_put(buf, q, npub[npub.count - 8..<npub.count]); }
+  return pv_put(buf, 0, npub);
+}
+// YOUR ACCOUNT: the words' npub, the words behind SHOW WORDS, COPY, who is logged in,
+// the projects, SWAP ACCOUNT. x0..x1 the column; returns where it ends.
+pv_account :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: Pen) -> PvFlow {
+  d := p.d; r := f; top := 0.0f32;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE); faint := pv_chrome(p, INK_FAINT);
+  r.v = put(out, r.v, "YOUR ACCOUNT", x0, r.y, 12 * d, white);
+  r.y += 22 * d;
+  active := pv_active(s);
+  state := ifx s[0].acct == ACCT_FAILED then "NO ACCOUNT ON THIS DEVICE"
+    else ifx s[0].acct != ACCT_READY then "MAKING YOUR ACCOUNT"
+    else ifx active == 1 then "LOGGED IN WITH YOUR WORDS"
+    else ifx active == 2 then "LOGGED IN WITH YOUR PHONE'S KEY"
+    else ifx s[0].me_status == 401 && s[0].acct_out then "LOGGED OUT"
+    else "LOGGING IN";
+  r.v = put(out, r.v, state, x0, r.y, 6.5 * d, ifx active != 0 then orange else dim);
+  r.y += 20 * d;
+  if s[0].acct == ACCT_READY {
+    short: [40] u8;
+    q := pv_short_npub(short[..], pv_npub(s));
+    r.v = put(out, r.v, cast(string) short[0..<q], x0, r.y, 7 * d, white);
+    r.y += 22 * d;
+    // the 12 words, hidden until SHOW WORDS: three rows of four, numbered
+    if s[0].acct_show {
+      words := cast(string) s[0].acct_words[0..<s[0].acct_words_n];
+      col_w := (x1 - x0) / 4;
+      k := 0; at := 0;
+      while at < words.count && k < 12 {
+        e := at;
+        while e < words.count && words[e] != ' ' { e += 1; }
+        buf: [24] u8;
+        n := pv_number(buf[..], 0, k + 1); n = pv_put(buf[..], n, " "); n = pv_put(buf[..], n, words[at..<e]);
+        r.v = put(out, r.v, cast(string) buf[0..<n], x0 + col_w * cast(f32) (k % 4), r.y + 18 * d * cast(f32) (k / 4), 7 * d, white);
+        k += 1; at = e + 1;
+      }
+      r.y += 18 * d * 3 + 4 * d;
+    } else {
+      r.v = put(out, r.v, "12 WORDS, HIDDEN", x0, r.y, 7 * d, faint);
+      r.y += 22 * d;
+    }
+    lab := ifx s[0].acct_show then "HIDE WORDS" else "SHOW WORDS";
+    r.v = pv_chip(s, out, r.v, lab, x0, r.y, H_WSHOW, false, p, true, top);
+    r.v = pv_chip(s, out, r.v, "COPY", x0 + chip_width(lab, 7 * d, p) + 10 * d, r.y, H_WCOPY, false, p, true, top);
+    r.y += 26 * d;
+    r.y -= 12 * d;   // pv_text's y is the top of its first line; the rest here are baselines
+    r = pv_text(s, out, r, "YOUR ACCOUNT IS MADE FOR YOU ON THIS DEVICE. KEEP YOUR 12 WORDS TO USE IT ELSEWHERE.", x0, x1 - x0, 6, dim, 3, true, top);
+    r.y += 24 * d;
+    if active == 2 || (active == 0 && s[0].acct_out) {
+      lab2 := ifx active == 2 then "SWITCH TO MY WORDS ACCOUNT" else "LOG IN WITH MY WORDS";
+      r.v = pv_chip(s, out, r.v, lab2, x0, r.y, H_WORDS_IN, true, p, true, top);
+      r.y += 30 * d;
+    }
+  }
+  if active != 0 {
+    n := pv_count(s, 'J');
+    if n > 0 {
+      r.v = put(out, r.v, "YOUR PROJECTS", x0, r.y, 6.5 * d, dim);
+      r.y += 22 * d;
+      for j: 0..<n {
+        if j >= 6 { break; }
+        buf: [80] u8;
+        m := pv_upper(buf[..], 0, pv_cell(s, pv_nth(s, 'J', j), 1));
+        r.v = pv_chip(s, out, r.v, cast(string) buf[0..<m], x0, r.y, H_MINE + j, false, p, true, top);
+        r.y += 26 * d;
+      }
+    }
+    r.v = pv_chip(s, out, r.v, "LOG OUT", x0, r.y, H_SITE_OUT, false, p, true, top);
+    r.y += 34 * d;
+  }
+  if s[0].acct_note_n > 0 && s[0].time - s[0].acct_note_at < 6 {
+    r.v = put(out, r.v, cast(string) s[0].acct_note[0..<s[0].acct_note_n], x0, r.y, 6 * d, orange);
+    r.y += 18 * d;
+  }
+  // SWAP ACCOUNT: other words in place of these, after a warning
+  r.y += 10 * d;
+  r.v = put(out, r.v, "SWAP ACCOUNT", x0, r.y, 8 * d, white);
+  r.y += 4 * d;
+  r = pv_text(s, out, r, "DON'T PASTE WORDS FOR A KEY YOU USE ELSEWHERE: THIS DEVICE KEEPS THEM.", x0, x1 - x0, 6, dim, 3, true, top);
+  if s[0].swap_ok {
+    r.y += 4 * d;
+    r = pv_text(s, out, r, "THIS DEVICE FORGETS THE CURRENT WORDS. WRITE THEM DOWN FIRST.", x0, x1 - x0, 6.5, orange, 3, true, top);
+    r.y += 16 * d;
+    r.v = pv_chip(s, out, r.v, "SWAP ACCOUNT", x0, r.y, H_SWYES, true, p, true, top);
+    r.v = pv_chip(s, out, r.v, "CANCEL", x0 + chip_width("SWAP ACCOUNT", 7 * d, p) + 10 * d, r.y, H_SWNO, false, p, true, top);
+    r.y += 26 * d;
+  } else {
+    r = pv_field(s, out, r, x0, x1, p, true, top, 3, "Paste 12 other words", "SWAP", H_SWFIELD, H_SWAP);
+  }
+  return r;
+}
+// /login: the words account and, beside it (below on a phone), the phone app's QR.
+pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
+  d := p.d; w := s[0].width;
+  white := pv_chrome(p, INK_WHITE); orange := pv_chrome(p, INK_ORANGE);
+  v := pv_crumbs(s, out, 0, "LOG IN", p);
+  wide := w / d >= 900;
+  m := ifx w / d < 700 then 16.0f32 else 40.0f32;
+  colw := ifx wide then lo((w - 2 * m * d - 60 * d) * 0.5, 460 * d) else lo(w - 2 * m * d, 520 * d);
+  left := ifx wide then w * 0.5 - 30 * d - colw else (w - colw) * 0.5;
+  y0 := 110 * d - s[0].scroll;
+  f := pv_account(s, out, PvFlow.{y = y0, v = v}, left, left + colw, p);
+  v = f.v;
+  // LOG IN WITH THE PHONE APP: today's QR, approval and poll, unchanged
+  px := ifx wide then w * 0.5 + 30 * d else left;
+  py := ifx wide then y0 else f.y + 36 * d;
+  cx := px + colw * 0.5;
+  v = put(out, v, "LOG IN WITH THE PHONE APP", px, py, ifx w / d < 520 then 10 * d else 12 * d, white);
+  if pv_active(s) == 2 {
+    v = put(out, v, "YOUR PHONE APPROVED THIS LOGIN", px, py + 24 * d, 6.5 * d, orange);
+    s[0].content = py + 60 * d + s[0].scroll;
+    return v;
+  }
+  side := lo(colw, 300 * d);
+  v = pv_code_panel(s, out, v, cx, py + 30 * d, side, "SCAN THIS WITH THE OPENAGENTS APP ON YOUR PHONE", "LOGGED IN", p);
+  s[0].content = py + 30 * d + side + 90 * d + s[0].scroll;
+  return v;
 }
 // LINK A PHONE, over a member's page.
 pv_link_panel :: (s: [] PrivateState, out: [] f32, v0: int, top: f32, p: Pen) -> int {
@@ -897,6 +1103,7 @@ pv_messages :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p:
 pv_typed :: (s: [] PrivateState, which: int) -> string {
   if which == 1 { return cast(string) s[0].atext[0..<s[0].atext_n]; }
   if which == 2 { return cast(string) s[0].kkey[0..<s[0].kkey_n]; }
+  if which == 3 { return cast(string) s[0].swap[0..<s[0].swap_n]; }
   return cast(string) s[0].text[0..<s[0].text_n];
 }
 // A field: what's typed, drawn here; the host's keyboard field sits over the focused one.
@@ -1217,9 +1424,14 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
     s[0].token_n = 0;
   }
   if s[0].page == 2 {
+    // a kept account comes before the first frame; none kept: make one
+    if !s[0].kept_seen { s[0].kept_seen = true; if s[0].acct == ACCT_NONE && s[0].acct_want == 0 { s[0].acct_want = WANT_NEW; } }
     if s[0].me_status == -1 || (s[0].me_status == 599 && s[0].time - s[0].me_at > 10) { pv_ask_me(s); }
-    if s[0].me_status == 401 && s[0].code_state == CODE_NONE { pv_new_code(s); }
-    if s[0].me_status == 401 { pv_poll_due(s); }
+    // the phone's QR stays up beside the words account, until the phone's key is the one logged in
+    phone_ok := s[0].me_status == 401 || (s[0].me_status == 200 && pv_active(s) == 1);
+    if phone_ok && s[0].code_state == CODE_NONE { pv_new_code(s); }
+    if phone_ok { pv_poll_due(s); }
+    pv_acct_due(s);
   }
   if s[0].page == 0 && s[0].linking { pv_poll_due(s); }
   if s[0].page == 0 && s[0].post_kind != POST_REDEEM && s[0].status != 404 && s[0].status != 401 && s[0].status != 403 &&
@@ -1233,7 +1445,10 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
   uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = p.fade;
   uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
   for k: 0..<PANELS { glass(uniforms, k, Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}, 0, 0); }
-  if s[0].page == 2 { s[0].typing = false; return pv_signin(s, out, p); }
+  if s[0].page == 2 {
+    s[0].scroll = clamp(s[0].scroll, 0, hi(s[0].content - height + 40 * d, 0));
+    return pv_signin(s, out, p);
+  }
   if !pv_shows_project(s) {
     s[0].typing = false;
     if s[0].page == 0 && (s[0].status <= 0) {
@@ -1294,6 +1509,7 @@ pv_hit_at :: (s: [] PrivateState, x: f32, y: f32) -> int {
   return -1;
 }
 pv_send :: (s: [] PrivateState) {
+  if s[0].focus == 3 { pv_swap_check(s); return; }
   if s[0].focus == 2 { pv_save_key(s); return; }
   if s[0].focus == 1 { pv_ask_agent(s); return; }
   if s[0].text_n == 0 || s[0].post_kind != 0 { return; }
@@ -1326,7 +1542,14 @@ pv_turn_post :: (s: [] PrivateState, op: string, kind: int, k: int) {
 trim_lead :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
 pv_act :: (s: [] PrivateState, target: int) {
   s[0].all = 0;
-  if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK && target != H_KFIELD && target != H_KSAVE { s[0].typing = false; }
+  if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK && target != H_KFIELD && target != H_KSAVE && target != H_SWFIELD && target != H_SWAP { s[0].typing = false; }
+  if target == H_WSHOW { s[0].acct_show = !s[0].acct_show; }
+  else if target == H_WCOPY && s[0].acct_words_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].acct_words[0..<s[0].acct_words_n]); s[0].action = TK_ACT_COPY; pv_acct_say(s, "COPIED"); }
+  else if target == H_SWFIELD { s[0].typing = true; s[0].focus = 3; }
+  else if target == H_SWAP { s[0].focus = 3; pv_swap_check(s); }
+  else if target == H_SWYES { pv_swap_yes(s); }
+  else if target == H_SWNO { pv_wipe_swap(s); }
+  else if target == H_WORDS_IN { s[0].acct_force = true; s[0].acct_out = false; }
   if target == H_KEYOPEN || target == H_KREPLACE { s[0].keying = true; s[0].typing = true; s[0].focus = 2; pv_wipe_key(s); }
   else if target == H_KFIELD { s[0].typing = true; s[0].focus = 2; }
   else if target == H_KSAVE { s[0].focus = 2; pv_save_key(s); }
@@ -1335,7 +1558,7 @@ pv_act :: (s: [] PrivateState, target: int) {
   else if target == H_LINKPHONE { if !s[0].linking { s[0].linking = true; s[0].code_state = CODE_NONE; s[0].scroll = 0; pv_new_code(s); } }
   else if target == H_CLOSE { s[0].linking = false; s[0].code_state = CODE_NONE; s[0].qr_size = 0; s[0].poll_n = 0; }
   else if target == H_NEWCODE { pv_new_code(s); }
-  else if target == H_SITE_OUT { if s[0].post_kind == 0 { pv_post_auth(s, "logout", POST_SITE_OUT, "", ""); } }
+  else if target == H_SITE_OUT { if s[0].post_kind == 0 { s[0].acct_out = true; pv_post_auth(s, "logout", POST_SITE_OUT, "", ""); } }
   else if target >= H_MINE && target < H_MINE + 12 {
     j := pv_nth(s, 'J', target - H_MINE);
     if j >= 0 { n := pv_put(s[0].outbox[..], 0, "/projects/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_cell(s, j, 1)); s[0].action = PV_NAVIGATE; }
@@ -1393,7 +1616,10 @@ pv_type :: (s: [] PrivateState, text: string) {
   if pv_all(s) { pv_set_n(s, 0); }
   for c: text {
     t := ifx c == '\n' || c == '\r' || c == '\t' then ' ' else c;
-    if s[0].focus == 2 {
+    if s[0].focus == 3 {
+      if s[0].swap_n >= PV_WORDS { return; }
+      s[0].swap[s[0].swap_n] = ifx t >= 'A' && t <= 'Z' then t + 32 else t; s[0].swap_n += 1;
+    } else if s[0].focus == 2 {
       if c <= ' ' { continue; }   // a key has no spaces or line breaks
       if s[0].kkey_n >= PV_KEY { return; }
       s[0].kkey[s[0].kkey_n] = c; s[0].kkey_n += 1;
@@ -1410,7 +1636,8 @@ pv_type :: (s: [] PrivateState, text: string) {
 pv_all :: (s: [] PrivateState) -> bool { return s[0].typing && s[0].all == s[0].focus + 1 && pv_typed(s, s[0].focus).count > 0; }
 // The focused field cut to its first n bytes (a key's cut bytes wiped); the selection goes.
 pv_set_n :: (s: [] PrivateState, n: int) {
-  if s[0].focus == 2 { for i: n..<s[0].kkey_n { s[0].kkey[i] = 0; } s[0].kkey_n = n; }
+  if s[0].focus == 3 { for i: n..<s[0].swap_n { s[0].swap[i] = 0; } s[0].swap_n = n; }
+  else if s[0].focus == 2 { for i: n..<s[0].kkey_n { s[0].kkey[i] = 0; } s[0].kkey_n = n; }
   else if s[0].focus == 1 { s[0].atext_n = n; } else { s[0].text_n = n; }
   s[0].all = 0;
 }
@@ -1422,7 +1649,7 @@ coaxial_private_key :: (s: [] PrivateState, key: int, mods: int) -> bool #export
   if s[0].typing {
     if cmd == TK_ALL { s[0].all = s[0].focus + 1; return true; }
     if cmd == TK_COPY || cmd == TK_CUT {
-      if !pv_all(s) || s[0].focus == 2 { return true; }   // a key never leaves in clear
+      if !pv_all(s) || s[0].focus >= 2 { return true; }   // a key (or other words) never leaves in clear
       s[0].out_n = tk_copy(s[0].outbox[..], pv_typed(s, s[0].focus)); s[0].action = TK_ACT_COPY;
       if cmd == TK_CUT { pv_set_n(s, 0); }
       return true;
@@ -1467,6 +1694,12 @@ coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_
     return;
   }
   if kind == PV_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
+  if kind == PV_FACTS { pv_facts(s, text); return; }
+  // this browser's account (only /login reads it): 16 bytes as hex
+  if kind == PV_KEPT && s[0].page == 2 && pv_hex_ok(text) && s[0].acct_want == 0 {
+    for i: 0..<32 { s[0].acct_hex[i] = text[i]; }
+    s[0].acct_hex_n = 32; s[0].acct_want = WANT_DERIVE;
+  }
 }
 // The location's hash: a sign-in link's "invite=<token>". It's cleared at once.
 coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
@@ -1480,7 +1713,7 @@ coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
   s[0].out_n = 0; s[0].action = PV_SET_HASH;
 }
 coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 then page else 1; } }
-coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && pv_shows_project(s); }
+coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && (pv_shows_project(s) || s[0].page == 2); }
 coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
 coaxial_private_action :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
 coaxial_private_action_done :: (s: [] PrivateState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
@@ -1886,4 +2119,99 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   #assert ta_cell(s[..], ta_nth(s[..], 'U', 0), 15) == "own";
   pv_act(s[..], H_KREMOVE);
   #assert cast(string) s[0].post[0..<s[0].post_n] == "/projects/proj/api/key_remove" && cast(string) s[0].body[0..<s[0].body_n] == "{}";
+}
+
+// The words account (the face's work faked: fixed entropy, words and npub).
+pv_fake_derived :: (s: [] PrivateState, npub: string) {
+  s[0].acct_hex_n = pv_put(s[0].acct_hex[..], 0, "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f");
+  s[0].acct_words_n = pv_put(s[0].acct_words[..], 0, "legal winner thank year wave sausage worth useful legal winner thank yellow");
+  s[0].acct_npub_n = pv_put(s[0].acct_npub[..], 0, npub);
+}
+#test "/login makes a words account on this device, keeps it, and logs in with a signed event" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 2);
+  n := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  // nothing kept: the face is asked for new entropy
+  #assert s[0].acct_want == WANT_NEW && n > 0;
+  pv_fake_derived(s[..], "npub1words");
+  coaxial_private_acct_done(s[..], true);
+  #assert s[0].acct == ACCT_READY && s[0].acct_keep;
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "401\n{}");
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  // the entropy (hex only) is kept in this browser (action 4)
+  #assert s[0].action == PV_KEEP && cast(string) s[0].outbox[0..<s[0].out_n] == "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f";
+  coaxial_private_action_done(s[..]);
+  // the phone's QR is asked for first; then the words' login
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/challenge";
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, PV_CODE_ANSWER);
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].acct_want == WANT_SIGN;
+  s[0].acct_auth_n = pv_put(s[0].acct_auth[..], 0, "Nostr ZXZlbnQ=");
+  coaxial_private_acct_done(s[..], true);
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/key" && coaxial_private_post_flags(s[..]) == 29;
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "Nostr ZXZlbnQ=\n{\"kind\":\"login\"}" && s[0].acct_auth_n == 0;
+  coaxial_private_posted(s[..], 3);
+  #assert s[0].body[0] == 0;   // the posted body is wiped
+  pv_answer(s[..], 3, "200\n{\"state\": \"signed-in\", \"npub\": \"npub1words\"}");
+  #assert s[0].me_status == -1;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  coaxial_private_asked(s[..], 4);
+  pv_answer(s[..], 4, "200\nK|npub1words\n");
+  #assert pv_active(s[..]) == 1;
+  // SHOW WORDS, COPY; LOG OUT stops the automatic login until asked
+  pv_act(s[..], H_WSHOW); #assert s[0].acct_show;
+  pv_act(s[..], H_WCOPY); #assert s[0].action == TK_ACT_COPY && s[0].out_n == s[0].acct_words_n;
+  coaxial_private_action_done(s[..]);
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  pv_act(s[..], H_SITE_OUT);
+  #assert s[0].acct_out && cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/logout";
+}
+#test "/login: a kept account, the phone's key logged in, SWITCH and SWAP" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 2);
+  // the kept entropy comes before the first frame: derive it, never make new
+  k := pv_put(s[0].inbox, 0, "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f");
+  coaxial_private_message(s[..], PV_KEPT, k);
+  #assert s[0].acct_want == WANT_DERIVE;
+  k = pv_put(s[0].inbox, 0, "tab=1\nurl=https://staging.openagents.com/login/\nlang=en");
+  coaxial_private_message(s[..], PV_FACTS, k);
+  #assert cast(string) s[0].acct_url[0..<s[0].acct_url_n] == "https://staging.openagents.com/api/auth/key";
+  n := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].acct_want == WANT_DERIVE;
+  pv_fake_derived(s[..], "npub1words");
+  coaxial_private_acct_done(s[..], true);
+  #assert !s[0].acct_keep;
+  // the phone's session exists: no automatic login, the stored words stay
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "200\nK|npub1phone\n");
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert pv_active(s[..]) == 2 && s[0].acct_want == 0 && s[0].post_n == 0;
+  // SWITCH TO MY WORDS ACCOUNT signs the words' login over it
+  pv_act(s[..], H_WORDS_IN);
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].acct_want == WANT_SIGN;
+  coaxial_private_acct_done(s[..], false);
+  // SWAP: bad words are refused; good ones ask first, then replace and log in
+  pv_act(s[..], H_SWFIELD);
+  #assert coaxial_private_wants_text(s[..]) && s[0].focus == 3;
+  pv_type(s[..], "Legal Winner");
+  #assert cast(string) s[0].swap[0..<s[0].swap_n] == "legal winner";
+  pv_act(s[..], H_SWAP);
+  #assert s[0].acct_want == WANT_CHECK;
+  coaxial_private_acct_done(s[..], false);
+  #assert !s[0].swap_ok && s[0].acct_note_n > 0;
+  pv_act(s[..], H_SWAP);
+  s[0].swap_hex = s[0].acct_hex; s[0].swap_hex[0] = '0';
+  coaxial_private_acct_done(s[..], true);
+  #assert s[0].swap_ok;
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  pv_act(s[..], H_SWYES);
+  #assert s[0].acct_hex[0] == '0' && s[0].acct_want == WANT_DERIVE && s[0].acct_force && s[0].acct_keep && s[0].swap_n == 0 && s[0].acct_npub_n == 0;
+  pv_act(s[..], H_SWNO);
+  #assert !s[0].swap_ok;
 }

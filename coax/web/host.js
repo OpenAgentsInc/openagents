@@ -56,7 +56,8 @@
 //                             outlives a page being left; nothing comes back), 4 the answer is wanted:
 //                             id 0..7, its answer comes as message 512 + id, "STATUS\n" then the body
 //                             (status 0: no answer); 8 sends the browser's playtest player key
-//                             (X-Verse-Player); -1 when 8 are waiting or the URL isn't this site's
+//                             (X-Verse-Player); 16 the body's first line is its Authorization header (NIP-98);
+//                             -1 when 8 are waiting or the URL isn't this site's
 // and optional opaque byte storage: env.coaxial_storage_put/get/delete/cancel, replies at 768 + slot.
 // The bounded ABI, raw inbox header and cancellation semantics are in STORAGE.md. No key, event,
 // account or cache policy lives in this host; nothing is persisted without an explicit app request.
@@ -378,14 +379,18 @@ const httpImports = {
   coaxial_http(urlPtr, urlLen, bodyPtr, bodyLen, flags) {
     const url = utf8(urlPtr, urlLen);
     if (!url.startsWith("/") || url.startsWith("//")) return -1;   // this site only
-    const body = bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen).slice() : null;
+    let body = bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen).slice() : null;
     const post = (flags & 1) !== 0, wanted = (flags & 4) !== 0;
+    // 16: the body's first line is the request's Authorization (a NIP-98 login), the rest its body
+    let auth = "";
+    if ((flags & 16) && body) { const nl = body.indexOf(10); if (nl < 0) return -1; auth = new TextDecoder().decode(body.subarray(0, nl)); body = body.slice(nl + 1); }
     if ((flags & 2) && navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body || ""], { type: "application/json" }))) return 0;
     let id = 0;
     if (wanted) { id = waiting.indexOf(false); if (id < 0) return -1; waiting[id] = true; }
     const headers = post ? { "Content-Type": "application/json" } : {};
     const who = flags & 8 ? player() : null;
     if (who) headers["X-Verse-Player"] = who.key;
+    if (auth) headers.Authorization = auth;
     fetch(url, { method: post ? "POST" : "GET", body: post ? body : undefined, credentials: "same-origin", cache: "no-store",
       keepalive: !wanted && bodyLen < 60000, headers })
       .then(async (r) => { const t = await r.text(); if (wanted) { waiting[id] = false; answer(id, `${r.status}\n${t}`); } })

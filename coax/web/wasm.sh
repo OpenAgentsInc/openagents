@@ -19,7 +19,10 @@ work_root="$(dirname "$out")/.c"
 mkdir -p "$work_root"
 work="$(mktemp -d "$work_root/$name.XXXXXXXX")"
 trap 'rm -rf "$work"' EXIT
-"$repo/coax/bin/coax" c "$coax_file" --library --header "$work/$name.h" > "$work/$name.c"
+# COAXIAL_RUN_STEPS: a larger compile-time budget (coax --run-steps) for libraries whose
+# tables are computed at compile time (secp256k1 signing, for /login's words account).
+run_steps=(); [[ -n "${COAXIAL_RUN_STEPS:-}" ]] && run_steps=(--run-steps "$COAXIAL_RUN_STEPS")
+"$repo/coax/bin/coax" c "$coax_file" --library --header "$work/$name.h" ${run_steps[@]+"${run_steps[@]}"} > "$work/$name.c"
 # No fast math and no contraction: the browser computes what the checks computed.
 # COAXIAL_MODE=dev (what coax serve uses) compiles at -O1 in parallel and
 # links without the optimizer pass, for the fastest edit-to-screen loop;
@@ -34,7 +37,7 @@ objects=("$work/$name.o" "$work/$name.face.o")
 pids=()
 for library in ${libraries[@]+"${libraries[@]}"}; do
   base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
-  "$repo/coax/bin/coax" c "$library" --library --header "$work/$base.h" > "$work/$base.c"
+  "$repo/coax/bin/coax" c "$library" --library --header "$work/$base.h" ${run_steps[@]+"${run_steps[@]}"} > "$work/$base.c"
   "$clang" "${cflags[@]}" -c "$work/$base.c" -o "$work/$base.o" & pids+=($!)
   objects+=("$work/$base.o")
 done

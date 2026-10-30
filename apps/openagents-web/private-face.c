@@ -5,10 +5,21 @@
 #include "private.h"
 #include "Qr-memory.h"
 #include <stddef.h>
+#include <string.h>
+// coax/lib/nostr/weblogin.coax (its own header repeats types private.h already has)
+_Bool weblogin_hex(coax_v_u8 entropy, coax_v_u8 out);
+int64_t weblogin_derive(coax_string hex, coax_v_u8 words, coax_v_u8 npub);
+_Bool weblogin_check(coax_string typed, coax_v_u8 hex);
+int64_t weblogin_sign(coax_string hex, coax_string url, int64_t created_at, coax_string body, coax_v_u8 aux, coax_v_u8 out);
 
 #define EXPORT(name) __attribute__((export_name(name)))
 #define IMPORT(name) __attribute__((import_module("env"), import_name(name)))
 IMPORT("coaxial_http") int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags);
+IMPORT("coaxial_now_seconds") int64_t coaxial_now_seconds(void);
+// The browser's secure random (crypto.getRandomValues) under the shared Coax entropy policy (coax/lib/crypto/entropy.coax).
+#define COAX_ENTROPY_HEADER "Entropy.h"
+#include "../../coax/platform/entropy-wasm.c"
+IMPORT("coaxial_random") uint32_t coaxial_random(uint32_t out, int32_t length);
 
 // The host keeps one PrivateHost: the PrivateState and the buffers it sees, bound again before every call.
 static coax_v_t_PrivateState at(uint32_t state) {
@@ -17,8 +28,43 @@ static coax_v_t_PrivateState at(uint32_t state) {
   return (coax_v_t_PrivateState){h->s.e, 1};
 }
 
+static void wipe(volatile uint8_t *p, size_t n) { while (n--) *p++ = 0; }
+// /login's words account: what private.coax asks for in acct_want (WANT_*), done in Coax
+// (coax/lib/nostr/weblogin.coax). The entropy, words and key never leave this memory.
+static void do_account(uint32_t state) {
+  coax_t_PrivateState *s = at(state).data;
+  int64_t want = s->acct_want;
+  if (!want) return;
+  int ok = 0;
+  if (want == 1) {   // WANT_NEW: 16 bytes from the browser, as hex, then derive
+    uint8_t e[16];
+    if (coaxial_random((uint32_t)(uintptr_t)e, 16) == 0 && weblogin_hex((coax_v_u8){e, 16}, (coax_v_u8){s->acct_hex.e, 32})) { s->acct_hex_n = 32; want = 2; }
+    wipe(e, sizeof e);
+    if (want == 1) { coaxial_private_acct_done(at(state), 0); return; }
+  }
+  if (want == 2) {   // WANT_DERIVE
+    int64_t both = s->acct_hex_n != 32 ? -1 : weblogin_derive((coax_string){(const char *)s->acct_hex.e, 32}, (coax_v_u8){s->acct_words.e, (int64_t)sizeof s->acct_words.e},
+                                                          (coax_v_u8){s->acct_npub.e, (int64_t)sizeof s->acct_npub.e});
+    ok = both > 0;
+    if (ok) { s->acct_words_n = both / 256; s->acct_npub_n = both % 256; }
+  } else if (want == 3) {   // WANT_SIGN
+    uint8_t aux[32];
+    if (coaxial_random((uint32_t)(uintptr_t)aux, 32) != 0) memset(aux, 0, sizeof aux);
+    static const char body[] = "{\"kind\":\"login\"}";
+    int64_t n = s->acct_hex_n != 32 ? -1 : weblogin_sign((coax_string){(const char *)s->acct_hex.e, 32}, (coax_string){(const char *)s->acct_url.e, s->acct_url_n}, coaxial_now_seconds(),
+                                                         (coax_string){body, (int64_t)sizeof body - 1}, (coax_v_u8){aux, 32},
+                                                         (coax_v_u8){s->acct_auth.e, (int64_t)sizeof s->acct_auth.e});
+    wipe(aux, sizeof aux);
+    ok = n > 0; s->acct_auth_n = ok ? n : 0;
+  } else if (want == 4) {   // WANT_CHECK
+    ok = weblogin_check((coax_string){(const char *)s->swap.e, s->swap_n}, (coax_v_u8){s->swap_hex.e, 32});
+  }
+  coaxial_private_acct_done(at(state), ok != 0);
+}
+
 // What private.coax asks for, once there's a free slot (flag 4: answer wanted; 1: POST; 8: the player key).
 static void send_asks(uint32_t state) {
+  do_account(state);
   coax_t_PrivateState *s = at(state).data;
   if (s->qr_want) {   // a phone code's URL: its QR module grid (coax/lib/qr)
     coax_t_QrResult r = qr_encode((coax_v_u8){s->code_url.e, s->code_n}, (coax_v_u8){s->qr.e, (int64_t)sizeof s->qr.e});

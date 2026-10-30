@@ -146,8 +146,8 @@ cp "$here/../shared/zeron/fonts/"*.ttf "$here/../shared/zeron/fonts/Geist-OFL.tx
 python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.join(d,f)).read() for f in sorted(os.listdir(d)) if f.endswith(".svg")}, open(sys.argv[2],"w"))' \
   "$here/../shared/zeron/icons" "$here/build/zeron/icons.json"
 # A private project's page (/projects/<slug>, served by oa-api to members).
-"$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm" \
-  "$here/../../coax/lib/qr/qr-memory.coax"
+COAXIAL_RUN_STEPS=250000000 "$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm" \
+  "$here/../../coax/lib/qr/qr-memory.coax" "$here/../../coax/lib/nostr/weblogin.coax" "$here/../../coax/lib/crypto/entropy.coax"
 wait "$admin"
 wait "$chat"
 wait "$nip01"
