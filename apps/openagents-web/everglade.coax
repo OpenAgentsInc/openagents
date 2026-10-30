@@ -325,7 +325,7 @@ Everglade :: struct {
   lathe_n: int;
   draws: [DRAWS * 4] u32;
   walls: [WALLS * 6] f32; wall_n: int;   // and after wall_n the bridge's two rails
-  bodies: [BODIES * 7] f32;
+  bodies: [(BODIES + AB_STONES * AB_ST_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax)
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;
@@ -794,7 +794,10 @@ everglade_grass_instances :: (s: [] Everglade) -> int #export_c { return s[0].gr
 everglade_walls :: (s: [] Everglade) -> int #export_c { if !s[0].started { everglade_start(s); } return s[0].wall_n; }
 // The walls and bodies in your way: on the bridge's deck its rails too, off it the piles too.
 everglade_walls_on :: (s: [] Everglade, deck: bool) -> int #export_c { return everglade_walls(s) + (ifx deck then 2 else 0); }
-everglade_bodies_on :: (s: [] Everglade, deck: bool) -> int #export_c { if !s[0].started { everglade_start(s); } return ifx deck then 1 else BODIES; }
+everglade_bodies_on :: (s: [] Everglade, deck: bool) -> int #export_c {
+  if !s[0].started { everglade_start(s); }
+  return ifx deck then 1 else BODIES + ab_stone_bodies(s, s[0].bodies[..], BODIES);
+}
 everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
 everglade_spawn_face :: (s: [] Everglade) -> f32 #export_c { return s[0].spawn_face; }
 // True once when the face should put you at the spawn again.

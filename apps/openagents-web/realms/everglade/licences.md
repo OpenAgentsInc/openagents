@@ -148,4 +148,5 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Feather Fall | `lorc/feather.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Gust of Wind | `lorc/wind-slap.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Thunderwave | `lorc/sonic-boom.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Wall of Stone | `delapouite/stone-wall.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

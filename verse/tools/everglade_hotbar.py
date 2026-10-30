@@ -63,6 +63,7 @@ OIL = (0.86, 0.7, 0.36)
 TRANSMUTATION = (0.76, 0.62, 1.0)
 WIND = (0.6, 0.95, 0.9)
 STORM = (0.55, 0.75, 1.0)
+STONE = (0.82, 0.76, 0.66)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -101,6 +102,9 @@ SLOTS = [
     ("thunderwave", "lorc/sonic-boom.svg", STORM, "0", "Thunderwave",
      "A wave of thunder sweeps out from you through a 15-foot cube ahead: 2d8 thunder, and townsfolk and loose things in it are pushed 10 feet away, with a boom heard 300 feet off.",
      [("Key 0", KEY), FREE]),
+    ("wall-of-stone", "delapouite/stone-wall.svg", STONE, "!", "Wall of Stone",
+     "Raises another pair of granite panels 4 m ahead that block your way for ten minutes.",
+     [("Shift+1", KEY), FREE, ("10 minutes", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),

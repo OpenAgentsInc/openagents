@@ -37,6 +37,9 @@
 //                      a failure is pushed 10 feet away; the loose things wholly in it and the props it
 //                      frees are pushed 10 feet (5.5 m/s), the floats with them, and the boom is heard
 //                      300 feet off.
+//   ! WALL OF STONE    (Shift+1, the bar's second row) Another pair of granite panels, each 10 feet
+//                      square and 6 inches thick, side by side across your way 4 m ahead on level
+//                      ground, for ten minutes (the oldest of 4 goes): they stop you as a wall does.
 //
 // No cooldown, as the old bar. They draw as the old engine drew them: Reverse Gravity only its
 // particles (motes.rs: dust, violet sparks, pebbles and leaves falling upward and gathering under its
@@ -44,8 +47,8 @@
 // at its base and its top); a Wind Wall its grounded outline and the updraft's streaks rising through
 // it (wind_wall.rs wall_lines), in the old guide lines' cyan.
 
-AB_N :: 6;                 // abilities on the bar, after the four aimed spells
-AB_REVERSE :: 0; AB_WIND :: 1; AB_LEVITATE :: 2; AB_FEATHER :: 3; AB_GUST :: 4; AB_THUNDER :: 5;
+AB_N :: 7;                 // abilities on the bar, after the four aimed spells
+AB_REVERSE :: 0; AB_WIND :: 1; AB_LEVITATE :: 2; AB_FEATHER :: 3; AB_GUST :: 4; AB_THUNDER :: 5; AB_STONE :: 6;
 AB_FOOT :: 0.3048;
 // Reverse Gravity (SRD 5.2.1, level 7): a 50-foot-radius, 100-foot-high cylinder, a minute.
 AB_RG_R :: 15.24; AB_RG_H :: 30.48; AB_RG_LIFE :: 60.0;
@@ -69,9 +72,12 @@ AB_GUST_LEN :: 18.288; AB_GUST_WIDE :: 3.048; AB_GUST_PUSH :: 4.572; AB_GUST_ROU
 AB_GUST_FORCE :: 60.0;     // N it pushes a loose thing with (a 3 kg chunk 20 m/s², a 60 kg barrel 1)
 AB_HEAR_GUST :: 20.0;
 // Thunderwave: a 15-foot cube, 10 feet a push, 2d8, heard 300 feet off.
+// Wall of Stone: two 10-foot panels, 6 inches thick, ten minutes; each pair two of your bodies
+// (everglade.coax bodies, verse/player.coax capsules) at knee and head height.
+AB_ST_PANEL :: 3.048; AB_ST_THICK :: 0.1524; AB_ST_LIFE :: 600.0; AB_STONES :: 4; AB_ST_BODIES :: 2;
 AB_TW_CUBE :: 4.572; AB_TW_PUSH :: 3.048; AB_TW_SPEED :: 5.5; AB_HEAR_TW :: 91.44;
 
-AbWall :: struct { live: bool; ax: f32; az: f32; bx: f32; bz: f32; base: f32; t: f32; seed: f32; }
+AbWall :: struct { live: bool; ax: f32; az: f32; bx: f32; bz: f32; base: f32; t: f32; seed: f32; }   // a Wind Wall's, or a Wall of Stone's
 Abilities :: struct {
   rg_on: bool; rg_at: Point; rg_t: f32;
   walls: [AB_WALLS] AbWall;
@@ -85,6 +91,7 @@ Abilities :: struct {
   ff_on: bool; ff_t: f32; ff_air: bool; feather: [WATCH_ACTORS] bool;
   gust_on: bool; gust_t: f32; gust_at: Point; gust_dir: Point; gust_in: [WATCH_ACTORS] bool; gust_next: [WATCH_ACTORS] f32;
   tw_t: f32; tw_at: Point; tw_dir: Point;   // the last Thunderwave: since when, from where, which way
+  stones: [AB_STONES] AbWall;
 }
 AB_FIELD_FLOATS :: 10;
 
@@ -96,6 +103,7 @@ ab_start :: (s: [] Everglade) {
   for k: 0..<AB_N { a[0].keys[k] = false; }
   for i: 0..<WATCH_ACTORS { a[0].feather[i] = false; a[0].gust_in[i] = false; a[0].gust_next[i] = 0; }
   for k: 0..<AB_WALLS { a[0].walls[k].live = false; }
+  for k: 0..<AB_STONES { a[0].stones[k].live = false; }
   for i: 0..<WATCH_ACTORS { a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].up[i] = false; a[0].held[i] = false; a[0].saved[i] = false; }
 }
 // Whether slot `k` (an ability's) shows as on: Reverse Gravity holding, a Wind Wall standing.
@@ -107,6 +115,7 @@ ab_active :: (s: [] Everglade, k: int) -> bool {
   if k == AB_FEATHER { return a[0].ff_on; }
   if k == AB_GUST { return a[0].gust_on; }
   if k == AB_THUNDER { return a[0].tw_t < 0.4; }
+  if k == AB_STONE { for q: 0..<AB_STONES { if a[0].stones[q].live { return true; } } }
   return false;
 }
 ab_forward :: (s: [] Everglade) -> Point { return v3(sin(s[0].face), 0, cos(s[0].face)); }
@@ -122,6 +131,7 @@ ab_press :: (s: [] Everglade, k: int) {
   if k == AB_FEATHER { ab_feather(s); return; }
   if k == AB_GUST { ab_gust(s); return; }
   if k == AB_THUNDER { ab_thunder(s); return; }
+  if k == AB_STONE { ab_stone(s); return; }
 }
 // The abilities' keys (everglade-spells.coax spells_key and spells_key_up): 5 to 0 press their slot
 // once a hold (Levitate rises while 7 is held), X sinks while levitating.
@@ -146,9 +156,10 @@ ab_key_up :: (s: [] Everglade, key: int) -> bool {
   if (key == 'x' || key == 'X') && a[0].lev_sink { a[0].lev_sink = false; a[0].lev_hold = ab_you(s).y; return true; }
   return false;
 }
-// Ability k's key: 5 to 9, then 0.
+// Ability k's key: 5 to 9, then 0, then the second row's Shift+1.
 ab_slot_of :: (key: int) -> int {
   if key == '0' { return ifx AB_N > 5 then 5 else -1; }
+  if key == '!' { return ifx AB_N > 6 then 6 else -1; }
   k := key - ('1' + SP_SLOTS);
   return ifx k >= 0 && k < AB_N && k < 5 then k else -1;
 }
@@ -312,6 +323,51 @@ ab_off_wall :: (q: AbWall, x: f32, z: f32) -> f32 {
   u := clamp(((x - q.ax) * ex + (z - q.az) * ez) / l2, 0, 1);
   dx := x - (q.ax + ex * u); dz := z - (q.az + ez * u);
   return sqrt(dx * dx + dz * dz);
+}
+
+// ---- Wall of Stone
+
+ab_stone :: (s: [] Everglade) {
+  a := ab_of(s);
+  you := ab_you(s);
+  f := ab_forward(s);
+  side := v3(-f.z, 0, f.x);
+  mid := add(you, times(f, f32(AB_WW_AHEAD)));
+  half := f32(AB_ST_PANEL);
+  ax := mid.x - side.x * half; az := mid.z - side.z * half;
+  bx := mid.x + side.x * half; bz := mid.z + side.z * half;
+  base := ground_at(s, mid.x, mid.z);
+  for k: 0..<25 {
+    u := f32(k) / 24;
+    if abs(ground_at(s, lerp(ax, bx, u), lerp(az, bz, u)) - base) > f32(AB_WW_LEVEL) { sp_say(s, "WALL OF STONE NEEDS LEVEL GROUND AHEAD", -1, ""); return; }
+  }
+  k := 0;
+  for i: 0..<AB_STONES { if !a[0].stones[i].live { k = i; break; } if a[0].stones[i].t > a[0].stones[k].t { k = i; } }
+  a[0].stones[k] = AbWall.{live = true, ax = ax, az = az, bx = bx, bz = bz, base = base, t = 0, seed = sp_rand(s)};
+  // the ground's dust where it rises
+  for q: 0..<6 {
+    u := (f32(q) + 0.5) / 6;
+    at := v3(lerp(ax, bx, u), base + 0.2, lerp(az, bz, u));
+    sp_add_puff(s, at, v3(0, 0.5, 0), 0.7, 1.5, 0.66);
+  }
+  sp_say(s, "WALL OF STONE", -1, "");
+}
+// The panels standing in your way as your bodies (capsules: one end, the other, the radius), after the
+// page's own at `at` in `out`; how many.
+ab_stone_bodies :: (s: [] Everglade, out: [] f32, at: int) -> int {
+  if !sp_on(s) { return 0; }
+  a := ab_of(s);
+  n := 0;
+  for k: 0..<AB_STONES {
+    q := a[0].stones[k];
+    if !q.live || (at + n + AB_ST_BODIES) * 7 > out.count { continue; }
+    for h: 0..<AB_ST_BODIES {
+      y := ifx h == 0 then 0.75f32 else 2.25f32;
+      put7(out, at + n, q.ax, y, q.az, q.bx, y, q.bz, f32(AB_ST_THICK) * 0.5);
+      n += 1;
+    }
+  }
+  return n;
 }
 
 // ---- Levitate, Feather Fall
@@ -485,6 +541,7 @@ ab_in_cube :: (you: Point, f: Point, x: f32, z: f32, y: f32) -> bool {
 ab_frame_more :: (s: [] Everglade, dt: f32) {
   a := ab_of(s);
   a[0].tw_t += dt;
+  for k: 0..<AB_STONES { if a[0].stones[k].live { a[0].stones[k].t += dt; if a[0].stones[k].t >= f32(AB_ST_LIFE) { a[0].stones[k].live = false; } } }
   if a[0].lev_on { a[0].lev_t += dt; if a[0].lev_t >= f32(AB_LEV_LIFE) { a[0].lev_on = false; } }
   if a[0].ff_on { a[0].ff_t += dt; if a[0].ff_t >= f32(AB_FF_LIFE) { a[0].ff_on = false; } }
   if !a[0].ff_on { for i: 0..<WATCH_ACTORS { if !a[0].up[i] { a[0].feather[i] = false; } } }
@@ -737,7 +794,7 @@ ab_mote :: (a: [] Abilities, seed: f32, i: int, age: f32, lift: f32) -> AbMote {
 }
 // motes.rs's counts (448 particles, 46 streaks, two rings of 64), a phone half of each.
 AB_MOTE_DUST :: 150; AB_MOTE_SPARKS :: 60; AB_PEBBLES :: 50; AB_LEAVES :: 60; AB_EDGE :: 128; AB_STREAKS :: 46; AB_RING :: 64;
-AB_STONES :: [9] f32.[0.42, 0.4, 0.37, 0.52, 0.47, 0.4, 0.33, 0.31, 0.3];
+AB_PEBBLE_RGB :: [9] f32.[0.42, 0.4, 0.37, 0.52, 0.47, 0.4, 0.33, 0.31, 0.3];
 AB_FOLIAGE :: [12] f32.[0.26, 0.42, 0.12, 0.4, 0.5, 0.14, 0.6, 0.48, 0.16, 0.46, 0.3, 0.13];
 // The old engine's luminances over our bloom: a glow of `level` there.
 AB_GLOW :: 0.16;
@@ -746,6 +803,21 @@ ab_draw :: (s: [] Everglade) {
   a := ab_of(s);
   eye := s[0].sp.shot.eye;
   ab_draw_more(s, eye);
+  // each Wall of Stone: its two granite panels, rising out of the ground over a third of a second
+  for q: 0..<AB_STONES {
+    st := a[0].stones[q];
+    if !st.live { continue; }
+    rise := clamp(st.t / 0.35, 0, 1);
+    hh := f32(AB_ST_PANEL) * 0.5;
+    ex := (st.bx - st.ax) * 0.25; ez := (st.bz - st.az) * 0.25;
+    l := hi(sqrt(ex * ex + ez * ez), 0.01);
+    n := v3(-ez / l * f32(AB_ST_THICK) * 0.5, 0, ex / l * f32(AB_ST_THICK) * 0.5);
+    for p: 0..<2 {
+      c := v3(st.ax + ex * f32(1 + 2 * p), st.base + hh * (2 * rise - 1) - 0.02, st.az + ez * f32(1 + 2 * p));
+      tone := 0.46 + 0.05 * f32(p) + 0.04 * st.seed;
+      sp_shape(s, SHAPE_BOX, LOOK_STONE, c, v3(ex * 1.99, 0, ez * 1.99), v3(0, 2 * hh, 0), times(n, 2), v3(tone, tone * 0.96, tone * 0.9));   // sp_shape takes whole sizes
+    }
+  }
   few := phone(s);
   div := ifx few then 2 else 1;
   if a[0].rg_on {
@@ -794,7 +866,7 @@ ab_draw :: (s: [] Everglade) {
       y := v3(-sin(spin) * size * 0.4, cos(spin) * size * 0.75, 0);
       z := times(unit_or(cross(x, y), v3(0, 0, 1)), size * 0.9);
       k := (i % 3) * 3;
-      sp_shape(s, SHAPE_BOX, LOOK_STONE, m.at, x, y, z, v3(AB_STONES[k], AB_STONES[k + 1], AB_STONES[k + 2]));
+      sp_shape(s, SHAPE_BOX, LOOK_STONE, m.at, x, y, z, v3(AB_PEBBLE_RGB[k], AB_PEBBLE_RGB[k + 1], AB_PEBBLE_RGB[k + 2]));
     }
     for i: 0..<AB_LEAVES / div {
       m := ab_mote(a, 43.0, i * div, age, 1.2);
@@ -1027,4 +1099,18 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert w[0].pieces[prop].state == DP_LOOSE;
   b := w[0].pieces[prop].body;
   #assert demo_body(w, b).vel.x > 4.0;
+}
+
+#test "abilities: a Wall of Stone's two panels stand 4 m ahead across your way as two of your bodies, for ten minutes" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].feet = v3(0, 0, -30); g[0].face = 0;
+  #assert everglade_bodies_on(g[..], false) == BODIES;
+  #assert spells_key(g[..], '!');
+  #assert everglade_bodies_on(g[..], false) == BODIES + AB_ST_BODIES;
+  b := g[0].bodies[BODIES * 7..<(BODIES + 1) * 7];
+  #assert near(b[2], -26, 0.01) && near(b[5], -26, 0.01) && near(abs(b[3] - b[0]), 2 * f32(AB_ST_PANEL), 0.01);
+  for k: 0..<601 { ab_frame(g[..], 1.0); }
+  #assert everglade_bodies_on(g[..], false) == BODIES;
 }

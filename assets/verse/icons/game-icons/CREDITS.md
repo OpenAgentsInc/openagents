@@ -24,3 +24,4 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/house.svg` (Rebuild)
 - `delapouite/gravitation.svg` (Reverse Gravity, drawn upside down)
 - `delapouite/body-height.svg` (Levitate)
+- `delapouite/stone-wall.svg` (Wall of Stone)
