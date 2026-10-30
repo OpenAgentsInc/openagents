@@ -61,7 +61,22 @@ class Measures(unittest.TestCase):
         self.assertIsNone(P.layer_refusal("ok", flat((120, 160, 60))))
 
 
+    def test_a_neutral_layer_has_no_saturation_floor_or_value_ceiling(self):
+        grey, white = flat((128, 128, 130)), flat((255, 255, 255))
+        self.assertIsNotNone(P.layer_refusal("grey", grey))
+        self.assertIsNotNone(P.layer_refusal("white", white))
+        self.assertIsNone(P.layer_refusal("grey", grey, neutral=True))
+        self.assertIsNone(P.layer_refusal("white", white, neutral=True))
+        self.assertIsNotNone(P.layer_refusal("grainy", grainy(), neutral=True))   # the fine detail still counts
+
+
 class PaintPass(unittest.TestCase):
+    def test_paint_keeps_a_neutral_layer_grey(self):
+        e, s, v = P.layer_measures(P.paint(flat((120, 120, 122)), neutral=True))
+        self.assertLess(s, 0.05)
+        e, s, v = P.layer_measures(P.paint(flat((120, 120, 122))))
+        self.assertGreaterEqual(s, 0.2)
+
     def test_paint_makes_a_grainy_layer_pass(self):
         before = grainy(128)
         self.assertIsNotNone(P.layer_refusal("grain", before))

@@ -713,6 +713,15 @@ storm they fade with the far trees in front of them instead of standing dark beh
 the names over the world are placed nearest first: one that would overlap a name already drawn moves up
 a line or is left out.
 
+**Built** (October 29, eg-paint-pack): Everglade's pack is `"style": "painterly"`, and every layer
+passes the texture rules. Seven are painted at pack time (`"paint"`: the props' trim and decal atlases,
+the iron, the roof tiles and the three leaf cutouts, which come down from full saturation to 0.7), a
+hard-edged decal softened half a texel at a time until its fine detail passes. Six are `"neutral"`
+(stone, plaster, iron and the white base the voice edits dye): greys keep their low saturation, as the
+paint pass would otherwise tint them with whatever hue their noise has, and the dye base stays white.
+The people's layers are 256 texels (`"people": {"texture_size": 256}`), as the characters sample two
+mips coarser anyway. 8,296,120 bytes of the 8,700,000 budget (from 8,634,456).
+
 ## Order of the work
 
 1. The style field and presets, and the style fixture, which everything else

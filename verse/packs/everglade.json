@@ -1,6 +1,9 @@
 {
   "pack": "everglade",
   "title": "Everglade",
+  "style": "painterly",
+  "paint": [2, 3, 19, 23, 32, 33, 35],
+  "neutral": [0, 3, 4, 19, 22, 27],
   "budget": 8700000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
@@ -123,6 +126,7 @@
     "prefix": "RANGER"
   },
   "people": {
+    "texture_size": 256,
     "licence": "quaternius-standard-characters",
     "rig": "verse/everglade/people-rig.coax",
     "prefix": "PEOPLE",

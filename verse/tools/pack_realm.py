@@ -47,9 +47,12 @@ A painterly pack's layers must pass the style's texture rules
 side (256 when the manifest names no texture_size), no normal, roughness or
 detail maps, fine-detail energy at most 0.035 (the RMS of the luminance less
 its own 4x-down-then-up copy over opaque texels, sRGB 0..1), and mean HSV
-saturation 0.20 to 0.70 and value 0.18 to 0.92. "paint": true (or a list of
+saturation 0.20 to 0.70 and value 0.18 to 0.92 ("neutral": a list of
+SCN4 layer numbers of greys, such as stone, iron or a white base the shader
+dyes, waives the saturation floor and the value ceiling). "paint": true (or a list of
 SCN4 layer numbers) runs the paint pass first: a Kuwahara filter (radius 4
-at 512, 2 below), 24 colours, saturation and value pulled into range. A
+at 512, 2 below), 24 colours, saturation and value pulled into range, then a
+hard-edged decal softened by half texels (at most 3) until its fine detail passes. A
 layer that still fails is refused with its numbers; the source stays as it
 was.
 
@@ -145,15 +148,16 @@ def layer_measures(im):
     return (e / n) ** 0.5, sat / n / 255.0, val / n / 255.0
 
 
-def layer_refusal(name, im):
-    """Why a layer fails the painterly rules, or None."""
+def layer_refusal(name, im, neutral=False):
+    """Why a layer fails the painterly rules, or None. A neutral layer (greys: stone, iron, plaster,
+    a white base the shader dyes) has no saturation floor and no value ceiling."""
     e, sat, val = layer_measures(im)
     why = []
     if e > FINE_MAX:
         why.append(f"fine-detail energy {e:.3f} (at most {FINE_MAX})")
-    if not SAT_RANGE[0] <= sat <= SAT_RANGE[1]:
+    if not (0.0 if neutral else SAT_RANGE[0]) <= sat <= SAT_RANGE[1]:
         why.append(f"mean saturation {sat:.2f} (from {SAT_RANGE[0]} to {SAT_RANGE[1]})")
-    if not VAL_RANGE[0] <= val <= VAL_RANGE[1]:
+    if not VAL_RANGE[0] <= val <= (1.0 if neutral else VAL_RANGE[1]):
         why.append(f"mean value {val:.2f} (from {VAL_RANGE[0]} to {VAL_RANGE[1]})")
     return f"{name}: " + "; ".join(why) if why else None
 
@@ -199,9 +203,10 @@ def kuwahara(rgb, r):
     return Image.frombytes("RGB", (w, h), bytes(out))
 
 
-def paint(im):
+def paint(im, neutral=False):
     """The paint pass: Kuwahara (radius 4 at 512, 2 below), 24 colours, then each opaque texel's
-    saturation and value pulled into the albedo rules. Keeps the alpha (cutouts)."""
+    saturation and value pulled into the albedo rules (a neutral layer's only down, never up, so its
+    greys stay grey). Keeps the alpha (cutouts)."""
     from PIL import Image
     im = im.convert("RGBA")
     alpha = im.getchannel("A")
@@ -210,6 +215,8 @@ def paint(im):
     hsv = bytearray(rgb.convert("HSV").tobytes())
     lo_s, hi_s = round(SAT_RANGE[0] * 255) + 1, round(SAT_RANGE[1] * 255) - 1
     lo_v, hi_v = round(VAL_RANGE[0] * 255) + 1, round(VAL_RANGE[1] * 255) - 1
+    if neutral:
+        lo_s, hi_v = 0, 255
     for i in range(1, len(hsv), 3):
         hsv[i] = min(hi_s, max(lo_s, hsv[i]))
         hsv[i + 1] = min(hi_v, max(lo_v, hsv[i + 1]))
@@ -218,7 +225,7 @@ def paint(im):
     return out
 
 
-def image(stem, size, style="lowpoly", painted=False):
+def image(stem, size, style="lowpoly", painted=False, neutral=False):
     """A texture layer at size x size (PIL): JPEG, or PNG where the source has a cutout.
     A painterly pack's layer is painted first when asked, then must pass the rules."""
     from PIL import Image
@@ -232,8 +239,14 @@ def image(stem, size, style="lowpoly", painted=False):
         im = im.resize((size, size), Image.LANCZOS)
     if style == "painterly":
         if painted:
-            im = paint(im).convert("RGBA" if cutout else "RGB")
-        why = layer_refusal(path.name + (" (painted)" if painted else ""), im)
+            im = paint(im, neutral).convert("RGBA" if cutout else "RGB")
+            # hard-edged decals (icons, trim) keep their edges through the filter: softened a half
+            # texel at a time, at most 3, until the fine detail passes
+            from PIL import ImageFilter
+            r = 0.5
+            while layer_measures(im)[0] > FINE_MAX and r <= 3.0:
+                im = im.filter(ImageFilter.GaussianBlur(r)); r += 0.5
+        why = layer_refusal(path.name + (" (painted)" if painted else ""), im, neutral)
         if why:
             raise SystemExit(f"painterly layer refused: {why}" + ("" if painted else '; "paint": true runs the paint pass'))
     buf = io.BytesIO()
@@ -607,7 +620,7 @@ def build(manifest_path):
         if lic == 255:
             raise SystemExit(f"layer {layer} is used by meshes of two licences; split them")
         painted = paint_what is True or (isinstance(paint_what, list) and layer in paint_what)
-        src, data = image(home(m["layers"].format(n=layer)), size, style, painted)
+        src, data = image(home(m["layers"].format(n=layer)), size, style, painted, layer in m.get("neutral", []))
         layer_images.append(data)
         entries.append((KIND_LAYER, lic, f"layer{k}", data))
         layer_lines.append(f"T {k} {src.name} {lic}")
@@ -648,7 +661,7 @@ def build(manifest_path):
         import people
         spec = m["people"]
         lic = licence_of(spec.get("licence"), "people")
-        parts, extra, prig = people.build(spec, size, len(layer_lines))
+        parts, extra, prig = people.build(spec, int(spec.get("texture_size", size)), len(layer_lines))
         for source, data in extra:
             entries.append((KIND_LAYER, lic, f"layer{len(layer_lines)}", data))
             layer_lines.append(f"T {len(layer_lines)} {source.replace(' ', '_')} {lic}")
