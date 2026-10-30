@@ -1,0 +1,122 @@
+// NIP-01 kind 0 user metadata: the event's content is a stringified JSON
+// object {name, about, picture}; other fields (NIP-24's among them) are kept
+// in the original and not read here. Metadata describes what its signer
+// says about themselves; it proves nothing about who they are.
+#load "event.coax";
+#authority;
+
+NMD_OK :: 0; NMD_EVENT :: 1; NMD_KIND :: 2; NMD_JSON :: 3; NMD_SHAPE :: 4;
+NMD_DUPLICATE :: 5; NMD_FIELD :: 6; NMD_OUTPUT :: 7;
+NMD_NAME :: 0; NMD_ABOUT :: 1; NMD_PICTURE :: 2;
+NMD_MAX_CONTENT :: 65536;
+
+NmdSpan :: struct {from:int;to:int;}
+NostrMetadata :: struct {
+  error:int=NMD_SHAPE; content:string;      // the decoded content, in the caller's buffer
+  has:[3]bool; field:[3]NmdSpan;            // raw JSON string bytes of name/about/picture
+}
+
+#test "a kind 0 event's content reads as name, about and picture" {
+  e:=ne_parse(NMD_FIXTURE);#assert e.error==NE_OK && e.kind==0;
+  buf:[1024]u8;m:=nostr_metadata_read(e,buf[..],false);
+  #assert m.error==NMD_OK && m.has[NMD_NAME] && m.has[NMD_ABOUT] && m.has[NMD_PICTURE];
+  #assert nmd_text(m,NMD_NAME)=="Ada" && nmd_text(m,NMD_ABOUT)=="writes \\\"proofs\\\"" && nmd_text(m,NMD_PICTURE)=="https://example.com/a.png";
+  out:[64]u8;#assert nmd_decoded(m,NMD_ABOUT,out[..])==15 && cast(string)out[0..<15]=="writes \"proofs\"";
+  #assert nmd_decoded(m,NMD_ABOUT,out[0..<14])== -1;
+  #assert nmd_decoded(m,NMD_NAME,out[..])==3 && nmd_decoded(m,NMD_PICTURE,out[..])==25;
+  #assert nostr_metadata_read(e,buf[0..<10],false).error==NMD_OUTPUT && nostr_metadata_read(e,buf[..],true).error==NMD_OUTPUT;
+}
+#test "fields are optional, others are ignored, nested values are skipped" {
+  m:=nostr_metadata_parse("{}");#assert m.error==NMD_OK && !m.has[0] && !m.has[1] && !m.has[2];
+  out:[8]u8;#assert nmd_decoded(m,NMD_NAME,out[..])== -1 && nmd_text(m,NMD_NAME)=="";
+  m=nostr_metadata_parse("{\"display_name\":\"A\",\"bot\":true,\"nip05\":{\"x\":[1,\"name\"]},\"name\":\"n\"}");
+  #assert m.error==NMD_OK && m.has[NMD_NAME] && !m.has[NMD_ABOUT] && nmd_text(m,NMD_NAME)=="n";
+  m=nostr_metadata_parse(" { \"\\u006eame\" : \"esc\" } ");#assert m.error==NMD_OK && nmd_text(m,NMD_NAME)=="esc";
+  m=nostr_metadata_parse("{\"about\":\"\",\"picture\":\"p\"}");#assert m.error==NMD_OK && m.has[NMD_ABOUT] && nmd_text(m,NMD_ABOUT)=="" && nmd_text(m,NMD_PICTURE)=="p";
+  // A value that spells a field name is a value, not the next key.
+  m=nostr_metadata_parse("{\"name\":\"about\",\"x\":\"y\"}");#assert m.error==NMD_OK && m.has[NMD_NAME] && !m.has[NMD_ABOUT];
+  #assert nmd_decoded(m,3,out[..])== -1 && nmd_decoded(m,-1,out[..])== -1 && nmd_text(m,3)=="";
+}
+#test "content of exactly the bound reads; one byte over refuses even as valid JSON" {
+  big:[NMD_MAX_CONTENT+1]u8;
+  n:=json_raw(big[..],0,"{\"about\":\"");while n<NMD_MAX_CONTENT-2 {big[n]='x';n+=1;}n=json_raw(big[..],n,"\"}");
+  #assert n==NMD_MAX_CONTENT && nostr_metadata_parse(cast(string)big[0..<n]).error==NMD_OK;
+}
+#test "valid JSON one byte over the content bound refuses" {
+  big:[NMD_MAX_CONTENT+1]u8;
+  n:=json_raw(big[..],0,"{\"about\":\"");while n<NMD_MAX_CONTENT-1 {big[n]='x';n+=1;}n=json_raw(big[..],n,"\"}");
+  #assert n==NMD_MAX_CONTENT+1 && nostr_metadata_parse(cast(string)big[0..<n]).error==NMD_JSON;
+}
+#test "content that is not one object, or has duplicate keys, refuses" {
+  #assert nostr_metadata_parse("").error==NMD_JSON && nostr_metadata_parse("{").error==NMD_JSON;
+  #assert nostr_metadata_parse("[]").error==NMD_SHAPE && nostr_metadata_parse("\"x\"").error==NMD_SHAPE;
+  #assert nostr_metadata_parse("{} {}").error==NMD_JSON;
+  #assert nostr_metadata_parse("{\"name\":\"a\",\"name\":\"b\"}").error==NMD_DUPLICATE;
+  #assert nostr_metadata_parse("{\"name\":\"a\",\"n\\u0061me\":\"b\"}").error==NMD_DUPLICATE;
+  #assert nostr_metadata_parse("{\"x\":{\"name\":1},\"name\":\"a\"}").error==NMD_OK;
+  #assert nostr_metadata_parse("{\"name\":1}").error==NMD_FIELD && nostr_metadata_parse("{\"about\":null}").error==NMD_FIELD;
+  #assert nostr_metadata_parse("{\"picture\":[\"p\"]}").error==NMD_FIELD;
+  // The shared policy also requires kind/created_at to be safe integers.
+  #assert nostr_metadata_parse("{\"kind\":\"x\"}").error==NMD_JSON && nostr_metadata_parse("{\"kind\":1}").error==NMD_OK;
+  big:[NMD_MAX_CONTENT+1]u8;big[0]='{';#assert nostr_metadata_parse(cast(string)big[..]).error==NMD_JSON;
+}
+#test "only a parsed kind 0 event is read" {
+  buf:[1024]u8;e:NostrEvent;#assert nostr_metadata_read(e,buf[..],false).error==NMD_EVENT;
+  e=ne_parse(NMD_FIXTURE);e.kind=1;#assert nostr_metadata_read(e,buf[..],false).error==NMD_KIND;
+  e=ne_parse(NMD_FIXTURE);e.content_to=e.original.count+1;#assert nostr_metadata_read(e,buf[..],false).error==NMD_EVENT;
+  e=ne_parse(NMD_FIXTURE);e.content_from= -1;#assert nostr_metadata_read(e,buf[..],false).error==NMD_EVENT;
+  e=ne_parse(NMD_FIXTURE);e.content_from=e.content_to+1;#assert nostr_metadata_read(e,buf[..],false).error==NMD_EVENT;
+  // A content span may start at byte 0 of the record's original.
+  e=ne_parse(NMD_FIXTURE);e.original="{\\\"name\\\":\\\"x\\\"}";e.content_from=0;e.content_to=e.original.count;
+  z:=nostr_metadata_read(e,buf[..],false);#assert z.error==NMD_OK && nmd_text(z,NMD_NAME)=="x";
+  e=ne_parse(NMD_FIXTURE);e.content_from=e.content_to;m:=nostr_metadata_read(e,buf[..],false);#assert m.error==NMD_JSON;
+}
+
+NMD_FIXTURE :: "{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"created_at\":1,\"kind\":0,\"tags\":[],\"content\":\"{\\\"name\\\":\\\"Ada\\\",\\\"about\\\":\\\"writes \\\\\\\"proofs\\\\\\\"\\\",\\\"picture\\\":\\\"https://example.com/a.png\\\",\\\"website\\\":\\\"x\\\"}\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+
+nmd_fail :: (m:NostrMetadata,error:int)->NostrMetadata {r:=m;r.error=error;return r;}
+nmd_text :: (m:NostrMetadata,field:int)->string {
+  if field<0 || field>2 || !m.has[field] {return "";}
+  return m.content[m.field[field].from..<m.field[field].to];
+}
+// A field's decoded value into out: its length, or -1 when absent or it doesn't fit.
+nmd_decoded :: (m:NostrMetadata,field:int,out:[]u8)->int #export_c {
+  if field<0 || field>2 || !m.has[field] {return -1;}
+  return json_unescape(nmd_text(m,field),out);
+}
+nmd_field :: (raw:string)->int {
+  if json_is(raw,"name") {return NMD_NAME;}if json_is(raw,"about") {return NMD_ABOUT;}if json_is(raw,"picture") {return NMD_PICTURE;}
+  return -1;
+}
+// The decoded content of a kind 0 event. Spans point into content.
+nostr_metadata_parse :: (content:string)->NostrMetadata #export_c {
+  m:NostrMetadata;
+  if content.count>NMD_MAX_CONTENT || !json_valid(content) {return nmd_fail(m,NMD_JSON);}
+  m.content=content;
+  // The shared policy's duplicate-key rule; other refusals are JSON ones.
+  admitted:=ja_admit(content,ja_policy(0),content.count,0);
+  if admitted==JA_DUPLICATE {return nmd_fail(m,NMD_DUPLICATE);}
+  if admitted!=JA_OK {return nmd_fail(m,NMD_JSON);}
+  j:[1]Json;json_start(j[..],content);
+  if json_next(j[..])!=JSON_OBJECT {return m;}
+  t:=json_next(j[..]);
+  while t!=JSON_OBJECT_END {
+    field:=nmd_field(json_text(j[..]));t=json_next(j[..]);
+    if field>=0 {
+      if t!=JSON_STRING {return nmd_fail(m,NMD_FIELD);}
+      m.has[field]=true;m.field[field]=NmdSpan.{from=j[0].from,to=j[0].to};
+    } else {skipped:=json_skip(j[..]);}
+    t=json_next(j[..]);
+  }
+  return nmd_fail(m,NMD_OK);
+}
+// A parsed kind 0 event's metadata. buf receives the decoded content and
+// must outlive the result; overlap reports that buf aliases the event.
+nostr_metadata_read :: (e:NostrEvent,buf:[]u8,overlap:bool)->NostrMetadata #export_c {
+  m:NostrMetadata;
+  if e.error!=NE_OK || e.content_from<0 || e.content_to>e.original.count || e.content_from>e.content_to {return nmd_fail(m,NMD_EVENT);}
+  if e.kind!=0 {return nmd_fail(m,NMD_KIND);}
+  if overlap {return nmd_fail(m,NMD_OUTPUT);}
+  n:=json_unescape(e.original[e.content_from..<e.content_to],buf);if n<0 {return nmd_fail(m,NMD_OUTPUT);}
+  return nostr_metadata_parse(cast(string)buf[0..<n]);
+}
