@@ -1,0 +1,249 @@
+// What you learn (ff-skills, verse/fairy-forest/README.md "What you learn:
+// skills"): seven skills, each learned once, from a moment.
+//   BLOOM   your first bloom
+//   SPEAK   a creature answering you for the first time
+//   MEND    the hurt bird in Mossbank (E: MEND), which flies off well
+//   GATHER  your first find (E: GATHER): berries, acorns and seed pods, each
+//           spot growing again the next day; a seed is a seed for your garden
+//   CRAFT   the woodcutter's axe left in a stump east of your home (E: TAKE
+//           THE AXE); then E: CUT clears a fallen log of deadwood
+//   LIGHT   the lantern flower in Lanternwood (E: LIGHT); then you carry a
+//           light at your side
+//   WATER   the sticks dammed across the stream above the pond (E: CLEAR);
+//           then WATER at one bed waters every bed in your garden
+// Each one learned puts a gem on her wings. The data and its save are
+// verse/fairy-forest/life.coax's.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFK_V_MEND :: 1; FFK_V_AXE :: 2; FFK_V_CUT :: 3; FFK_V_LANTERN :: 4; FFK_V_DAM :: 5; FFK_V_GATHER :: 6;
+FFK_VERB_WORDS :: [7] string.["", "MEND", "TAKE THE AXE", "CUT", "LIGHT", "CLEAR", "GATHER"];
+FFK_LEARNED :: [7] string.["YOU LEARNED BLOOM", "YOU LEARNED SPEAK", "YOU LEARNED MEND", "YOU LEARNED GATHER",
+                           "YOU LEARNED CRAFT", "YOU LEARNED LIGHT", "YOU LEARNED WATER"];
+FFK_FOUND :: [3] string.["A BERRY", "AN ACORN", "A SEED"];
+FFK_FOR :: [3] string.["SOMEONE HUNGRY WOULD LIKE IT", "KEPT ON YOUR SHELVES", "PLANT IT IN YOUR GARDEN"];
+FFK_NEWS_TIME :: 4.5;
+FFK_SEE :: 60.0;
+
+ffk_at :: (you: Point, x: f32, z: f32, r: f32) -> bool { dx := you.x - x; dz := you.z - z; return dx * dx + dz * dz < r * r; }
+ffk_find_near :: (s: [] Fairy, you: Point) -> int {
+  for i: 0..<FFK_FINDS {
+    if ffk_at(you, FFK_FIND[i * 3], FFK_FIND[i * 3 + 1], f32(FFK_NEAR)) && ffk_find_here(s[0].life[..], i, s[0].now_min) { return i; }
+  }
+  return -1;
+}
+ffk_log_near :: (s: [] Fairy, you: Point) -> int {
+  for i: 0..<FFK_LOGS {
+    if !s[0].life[0].skills.cut[i] && ffk_at(you, FFK_LOG[i * 3], FFK_LOG[i * 3 + 1], 2.4) { return i; }
+  }
+  return -1;
+}
+// Learned now: it shows for a moment.
+ffk_note :: (s: [] Fairy, k: int) {
+  if ffk_learn(s[0].life[..], k) { s[0].k_news = k + 1; s[0].k_news_at = s[0].time; }
+}
+
+// What E does here (FFK_V_*), or 0.
+ffk_verb :: (s: [] Fairy, you: Point) -> int {
+  k := s[0].life[0].skills;
+  if !k.bird && ffk_at(you, f32(FFK_BIRD_X), f32(FFK_BIRD_Z), f32(FFK_NEAR)) { return FFK_V_MEND; }
+  if !k.axe && ffk_at(you, f32(FFK_AXE_X), f32(FFK_AXE_Z), f32(FFK_NEAR)) { return FFK_V_AXE; }
+  if !k.lantern && ffk_at(you, f32(FFK_LANTERN_X), f32(FFK_LANTERN_Z), f32(FFK_NEAR)) { return FFK_V_LANTERN; }
+  if !k.dam && ffk_at(you, f32(FFK_DAM_X), f32(FFK_DAM_Z), 3.0) { return FFK_V_DAM; }
+  if k.learned[FFK_CRAFT] && ffk_log_near(s, you) >= 0 { return FFK_V_CUT; }
+  if ffk_find_near(s, you) >= 0 { return FFK_V_GATHER; }
+  return 0;
+}
+ffk_use :: (s: [] Fairy, you: Point) -> bool {
+  v := ffk_verb(s, you);
+  l := s[0].life[..];
+  if v == FFK_V_MEND { l[0].skills.bird = true; s[0].bird_flew = s[0].time; ffk_note(s, FFK_MEND); }
+  if v == FFK_V_AXE { l[0].skills.axe = true; ffk_note(s, FFK_CRAFT); }
+  if v == FFK_V_LANTERN { l[0].skills.lantern = true; ffk_note(s, FFK_LIGHT); }
+  if v == FFK_V_DAM { l[0].skills.dam = true; ffk_note(s, FFK_WATER); }
+  if v == FFK_V_CUT { l[0].skills.cut[ffk_log_near(s, you)] = true; l[0].changes += 1; }
+  if v == FFK_V_GATHER {
+    knew := ffk_knows(l, FFK_GATHER);
+    kind := ffk_gather(l, ffk_find_near(s, you), s[0].now_min);
+    if !knew { s[0].k_news = FFK_GATHER + 1; } else { s[0].k_news = 100 + kind; }
+    s[0].k_news_at = s[0].time;
+  }
+  if v != 0 { l[0].changes += 1; }
+  return v != 0;
+}
+
+// The news over the foot: a skill learned (its name, what it lets you do), or a find (what it is for).
+ffk_news :: (s: [] Fairy, who: [] string, said: [] string) -> bool {
+  n := s[0].k_news;
+  if n <= 0 || s[0].time - s[0].k_news_at > f64(FFK_NEWS_TIME) { return false; }
+  if n >= 100 && n < 100 + FFK_FIND_KINDS { who[0] = FFK_FOUND[n - 100]; said[0] = FFK_FOR[n - 100]; return true; }
+  if n > FFK_SKILLS { return false; }
+  who[0] = FFK_LEARNED[n - 1]; said[0] = FFK_LETS[n - 1];
+  return true;
+}
+
+// ---- drawing
+
+ffk_draw :: (s: [] Fairy, eye: Point) {
+  if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 90 { return; }   // the forest first
+  k := s[0].life[0].skills;
+  t := effect_time(s);
+  see := f32(FFK_SEE);
+  // the hurt bird: a bluebird on the ground, a wing hanging; mended, it flies off and is gone
+  bx := f32(FFK_BIRD_X); bz := f32(FFK_BIRD_Z);
+  flown := s[0].time - s[0].bird_flew;
+  if (!k.bird || (s[0].bird_flew > 0 && flown < 3.0)) && ffk_at(eye, bx, bz, see) {
+    up := ifx k.bird then f32(flown) * f32(flown) * 2.2 else 0.0f32;
+    sc := 1.6f32;   // a little larger than life, so it is seen
+    at := v3(bx + up * 0.8, ground_at(s, bx, bz) + 0.14 * sc + up, bz + up * 0.5);
+    face := 2.4f32;
+    ahead := v3(sin(face), 0, cos(face)); right := v3(cos(face), 0, -sin(face));
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, at, face, 0, 0.16 * sc, 0.13 * sc, 0.22 * sc, 0.32, 0.52, 0.86);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, add(times(ahead, 0.1 * sc), v3(0, 0.03 * sc, 0))), face, 0, 0.13 * sc, 0.08 * sc, 0.1 * sc, 0.92, 0.62, 0.42);   // its breast
+    head := add(at, add(times(ahead, 0.13 * sc), v3(0, 0.1 * sc, 0)));
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, head, face, 0, 0.1 * sc, 0.1 * sc, 0.1 * sc, 0.32, 0.52, 0.86);
+    limb(s, SHAPE_CONE, LOOK_MATTE, add(head, times(ahead, 0.04 * sc)), add(head, times(ahead, 0.11 * sc)), 0.03 * sc, 0.95, 0.7, 0.25);
+    for e: 0..<2 {
+      sg := ifx e == 0 then 1.0f32 else -1.0f32;
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, add(head, add(times(ahead, 0.04 * sc), add(times(right, sg * 0.04 * sc), v3(0, 0.02 * sc, 0)))), 0, 0, 0.02 * sc, 0.02 * sc, 0.02 * sc, 0.06, 0.05, 0.05);
+      // wings: one folded; the hurt one hangs to the ground until mended, then both beat
+      beat := ifx k.bird then sin(t * 22 + f32(e)) * 0.7 else (ifx e == 0 then -0.9f32 else 0.0f32);
+      root := add(at, add(times(right, sg * 0.09 * sc), v3(0, 0.03 * sc, 0)));
+      tip := add(root, times(add(times(right, sg * 0.16 * cos(beat)), add(times(ahead, -0.08), v3(0, 0.16 * sin(beat), 0))), sc));
+      limb(s, SHAPE_SPHERE, LOOK_CLOTH, root, tip, 0.08 * sc, 0.26, 0.44, 0.78);
+    }
+    limb(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, times(ahead, -0.08 * sc)), add(at, add(times(ahead, -0.28 * sc), v3(0, 0.05 * sc, 0))), 0.07 * sc, 0.26, 0.44, 0.78);   // its tail
+  }
+  // the stump east of your home, and the axe in it until taken
+  ax := f32(FFK_AXE_X); az := f32(FFK_AXE_Z);
+  if ffk_at(eye, ax, az, see) {
+    g := ground_at(s, ax, az);
+    shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(ax, g + 0.3, az), 0.3, 0, 0.75, 0.6, 0.75, 0.46, 0.34, 0.22);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(ax, g + 0.61, az), 0.3, 0, 0.66, 0.03, 0.66, 0.78, 0.64, 0.44);   // its rings
+    if !k.axe {
+      top := v3(ax + 0.08, g + 0.62, az);
+      limb(s, SHAPE_CYLINDER, LOOK_BARK, add(top, v3(0, 0.05, 0)), add(top, v3(0.28, 0.62, 0.1)), 0.05, 0.58, 0.4, 0.24);
+      shape(s, SHAPE_BOX, LOOK_STONE, add(top, v3(0.02, 0.08, 0)), 1.24, 0, 0.26, 0.16, 0.04, 0.7, 0.72, 0.76);
+    }
+  }
+  // deadwood: grey fallen logs until cut
+  for i: 0..<FFK_LOGS {
+    if k.cut[i] { continue; }
+    x := FFK_LOG[i * 3]; z := FFK_LOG[i * 3 + 1]; yaw := FFK_LOG[i * 3 + 2];
+    if !ffk_at(eye, x, z, see) { continue; }
+    d := v3(sin(yaw) * 1.3, 0, cos(yaw) * 1.3);
+    g := ground_at(s, x, z) + 0.26;
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, v3(x - d.x, g, z - d.z), v3(x + d.x, g, z + d.z), 0.48, 0.5, 0.46, 0.42);
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, v3(x + d.x * 0.3, g + 0.1, z + d.z * 0.3), v3(x + d.x * 0.3 + d.z * 0.4, g + 0.6, z + d.z * 0.3 - d.x * 0.4), 0.12, 0.48, 0.44, 0.4);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x - d.x * 0.4, g + 0.22, z - d.z * 0.4), yaw, 0, 0.5, 0.16, 0.4, 0.4, 0.6, 0.3);   // moss on it
+  }
+  // the lantern flower: a bell on a stem, dim until lit
+  lx := f32(FFK_LANTERN_X); lz := f32(FFK_LANTERN_Z);
+  if ffk_at(eye, lx, lz, see) {
+    g := ground_at(s, lx, lz);
+    stem_top := v3(lx, g + 0.9, lz);
+    limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(lx, g, lz), stem_top, 0.05, 0.3, 0.55, 0.28);
+    limb(s, SHAPE_CYLINDER, LOOK_LEAVES, stem_top, add(stem_top, v3(0.18, -0.12, 0)), 0.03, 0.3, 0.55, 0.28);
+    bell := add(stem_top, v3(0.2, -0.24, 0));
+    if k.lantern { shape(s, SHAPE_SPHERE, LOOK_GLOW, bell, 0, 0, 0.26, 0.3, 0.26, 1.0, 0.82, 0.42); }
+    else { shape(s, SHAPE_SPHERE, LOOK_CLOTH, bell, 0, 0, 0.24, 0.28, 0.24, 0.62, 0.52, 0.4); }
+    for j: 0..<2 { a := f32(j) * 3.1 + 0.6; shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(lx + cos(a) * 0.2, g + 0.25, lz + sin(a) * 0.2), a, 0.6, 0.22, 0.04, 0.12, 0.34, 0.6, 0.3); }
+  }
+  // sticks dammed across the stream until cleared, piled at the water's surface
+  dx := f32(FFK_DAM_X); dz := f32(FFK_DAM_Z);
+  if !k.dam && ffk_at(eye, dx, dz, see) {
+    wy := hi(ground_at(s, dx, dz), f32(FF_LEVEL) - 0.2);
+    flow := yaw_of(6, -18);
+    across := v3(cos(flow), 0, -sin(flow));
+    for j: 0..<10 {
+      off := f32(j % 5) * 0.35 - 0.7;
+      c := v3(dx + sin(flow) * off, wy + 0.12 + f32(j / 5) * 0.2, dz + cos(flow) * off);
+      tw := 0.25 * sin(f32(j) * 2.3);
+      half := 3.0 + 0.6 * sin(f32(j) * 1.7);
+      a := add(c, add(times(across, -half), v3(0, tw, 0))); b := add(c, add(times(across, half), v3(0, -tw, 0)));
+      limb(s, SHAPE_CYLINDER, LOOK_BARK, a, b, 0.1 + 0.04 * f32(j % 2), 0.44, 0.33, 0.22);
+    }
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(dx, wy + 0.3, dz), flow, 0, 1.6, 0.25, 0.7, 0.4, 0.44, 0.26);   // leaves caught in it
+  }
+  // the finds, while they are there: a berry bush, acorns, a seed pod; once you Gather, they sparkle
+  for i: 0..<FFK_FINDS {
+    x := FFK_FIND[i * 3]; z := FFK_FIND[i * 3 + 1]; kind := cast(int) FFK_FIND[i * 3 + 2];
+    if !ffk_at(eye, x, z, see) || !ffk_find_here(s[0].life[..], i, s[0].now_min) { continue; }
+    g := ground_at(s, x, z);
+    if kind == 0 {
+      shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + 0.3, z), 0, 0, 0.7, 0.55, 0.7, 0.28, 0.5, 0.24);
+      for j: 0..<6 { a := f32(j) * 1.05; shape(s, SHAPE_SPHERE, LOOK_CLOTH, v3(x + cos(a) * 0.3, g + 0.35 + 0.12 * sin(a * 2), z + sin(a) * 0.3), 0, 0, 0.09, 0.09, 0.09, 0.85, 0.16, 0.3); }
+    } else if kind == 1 {
+      for j: 0..<3 {
+        a := f32(j) * 2.1;
+        p := v3(x + cos(a) * 0.16, g + 0.07, z + sin(a) * 0.16);
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, p, a, 0.3, 0.1, 0.13, 0.1, 0.62, 0.42, 0.2);
+        shape(s, SHAPE_SPHERE, LOOK_BARK, add(p, v3(0, 0.07, 0)), a, 0, 0.12, 0.06, 0.12, 0.4, 0.28, 0.16);
+      }
+    } else {
+      limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(x, g, z), v3(x, g + 0.55, z), 0.03, 0.4, 0.62, 0.3);
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, v3(x, g + 0.62, z), 0, 0, 0.22, 0.22, 0.22, 0.95, 0.94, 0.86);
+    }
+    if ffk_knows(s[0].life[..], FFK_GATHER) {
+      shape(s, SHAPE_SPHERE, LOOK_SPARK, v3(x, g + 1.0 + 0.12 * sin(t * 2 + f32(i)), z), 0, 0, 0.07, 0.07, 0.07, 1.0, 0.92, 0.6);
+    }
+  }
+}
+
+// What she carries: once she has LIGHT, a little lantern at her side.
+ffk_carried :: (s: [] Fairy, feet: Point, face: f32) {
+  if !ffk_knows(s[0].life[..], FFK_LIGHT) { return; }
+  t := effect_time(s);
+  right := v3(cos(face), 0, -sin(face));
+  p := add(feet, add(times(right, 0.62), v3(0, 2.0 + 0.06 * sin(t * 1.7), 0)));   // over her shoulder, clear of the wings
+  shape(s, SHAPE_SPHERE, LOOK_GLOW, p, 0, 0, 0.12, 0.14, 0.12, 1.0, 0.84, 0.46);
+  shape(s, SHAPE_SPHERE, LOOK_SPARK, add(p, v3(0, 0.12, 0)), 0, 0, 0.04, 0.04, 0.04, 1.0, 0.95, 0.75);
+}
+
+#test "skills: the bird, the axe, the lantern and the dam each teach one; CRAFT cuts deadwood; a find teaches GATHER" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  fairy_clock(s[..], 29000000.0 * 60000);
+  l := s[0].life[..];
+  bird := v3(f32(FFK_BIRD_X) + 0.5, 0, f32(FFK_BIRD_Z));
+  #assert ffk_verb(s[..], bird) == FFK_V_MEND && ffk_use(s[..], bird);
+  #assert ffk_knows(l, FFK_MEND) && l[0].skills.bird && ffk_verb(s[..], bird) == 0;
+  who: [1] string; said: [1] string;
+  #assert ffk_news(s[..], who[..], said[..]) && who[0] == "YOU LEARNED MEND";
+  // deadwood waits for the axe
+  deadwood := v3(FFK_LOG[0], 0, FFK_LOG[1]);
+  #assert ffk_verb(s[..], deadwood) != FFK_V_CUT;
+  axe := v3(f32(FFK_AXE_X), 0, f32(FFK_AXE_Z));
+  #assert ffk_verb(s[..], axe) == FFK_V_AXE && ffk_use(s[..], axe) && ffk_knows(l, FFK_CRAFT);
+  #assert ffk_verb(s[..], deadwood) == FFK_V_CUT && ffk_use(s[..], deadwood) && l[0].skills.cut[0] && ffk_verb(s[..], deadwood) != FFK_V_CUT;
+  lantern := v3(f32(FFK_LANTERN_X), 0, f32(FFK_LANTERN_Z));
+  #assert ffk_verb(s[..], lantern) == FFK_V_LANTERN && ffk_use(s[..], lantern) && ffk_knows(l, FFK_LIGHT);
+  dam := v3(f32(FFK_DAM_X) + 1, 0, f32(FFK_DAM_Z));
+  #assert ffk_verb(s[..], dam) == FFK_V_DAM && ffk_use(s[..], dam) && ffk_knows(l, FFK_WATER);
+  // a seed pod: GATHER, learned with it; the second find says what it is for
+  seed := v3(FFK_FIND[2 * 3], 0, FFK_FIND[2 * 3 + 1]);
+  #assert ffk_verb(s[..], seed) == FFK_V_GATHER && ffk_use(s[..], seed) && ffk_knows(l, FFK_GATHER) && ffk_verb(s[..], seed) == 0;
+  berry := v3(FFK_FIND[0], 0, FFK_FIND[1]);
+  #assert ffk_use(s[..], berry) && ffk_news(s[..], who[..], said[..]) && who[0] == "A BERRY";
+  // E in play does them too: the bloom you make teaches BLOOM
+  #assert ffk_count(l) == 5;
+  for i: 0..<FF_PATCHES { if !s[0].forest[0].bloomed[i] { p := v3(FF_PATCH[i * 4], 0, FF_PATCH[i * 4 + 1]); s[0].use = true; play(s[..], p); break; } }
+  #assert ffk_knows(l, FFK_BLOOM);
+  // none of the places sits on a patch, a creature, the home's rooms or another
+  for i: 0..<FF_PATCHES {
+    px := FF_PATCH[i * 4]; pz := FF_PATCH[i * 4 + 1];
+    reach := f32(FF_BLOOM_NEAR) + f32(FFK_NEAR);
+    #assert !ffk_at(v3(px, 0, pz), f32(FFK_BIRD_X), f32(FFK_BIRD_Z), reach) && !ffk_at(v3(px, 0, pz), f32(FFK_AXE_X), f32(FFK_AXE_Z), reach);
+    #assert !ffk_at(v3(px, 0, pz), f32(FFK_LANTERN_X), f32(FFK_LANTERN_Z), reach);
+    for j: 0..<FFK_FINDS { #assert !ffk_at(v3(px, 0, pz), FFK_FIND[j * 3], FFK_FIND[j * 3 + 1], f32(FF_BLOOM_NEAR) + f32(FFK_NEAR)); }
+  }
+  #assert ffh_room_at(f32(FFK_AXE_X), f32(FFK_AXE_Z), 4) < 0;
+  // nor in talking reach of a creature (E would talk instead)
+  for c: 0..<FF_CREATURES {
+    cp := v3(FF_CREATURE[c * 4], 0, FF_CREATURE[c * 4 + 1]);
+    reach := f32(FF_TALK_NEAR) + f32(FFK_NEAR);
+    #assert !ffk_at(cp, f32(FFK_BIRD_X), f32(FFK_BIRD_Z), reach) && !ffk_at(cp, f32(FFK_AXE_X), f32(FFK_AXE_Z), reach);
+    #assert !ffk_at(cp, f32(FFK_LANTERN_X), f32(FFK_LANTERN_Z), reach) && !ffk_at(cp, f32(FFK_DAM_X), f32(FFK_DAM_Z), f32(FF_TALK_NEAR) + 3);
+    for j: 0..<FFK_FINDS { #assert !ffk_at(cp, FFK_FIND[j * 3], FFK_FIND[j * 3 + 1], reach); }
+    for j: 0..<FFK_LOGS { #assert !ffk_at(cp, FFK_LOG[j * 3], FFK_LOG[j * 3 + 1], f32(FF_TALK_NEAR) + 2.4); }
+  }
+}

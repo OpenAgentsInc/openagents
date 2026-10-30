@@ -9,7 +9,7 @@
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000   (these checks run with the page's)
 
 FFL_MAGIC :: 76;           // 'L'
-FFL_TAG_LOOK :: 1; FFL_TAG_HOME :: 2; FFL_TAG_GARDEN :: 3; FFL_TAG_VILLAGE :: 4; FFL_TAG_COURSE :: 5;
+FFL_TAG_LOOK :: 1; FFL_TAG_HOME :: 2; FFL_TAG_GARDEN :: 3; FFL_TAG_VILLAGE :: 4; FFL_TAG_COURSE :: 5; FFL_TAG_SKILLS :: 6;
 FFL_BYTES :: 1024;         // the most the tail takes
 
 // ---- your fairy (ff-maker): each part an index into its choices
@@ -138,12 +138,69 @@ ffc_undo :: (l: [] Life) -> bool {
   return true;
 }
 
+// ---- what you learn (ff-skills): seven skills, each from a moment.
+FFK_SKILLS :: 7;
+FFK_BLOOM :: 0; FFK_SPEAK :: 1; FFK_MEND :: 2; FFK_GATHER :: 3; FFK_CRAFT :: 4; FFK_LIGHT :: 5; FFK_WATER :: 6;
+FFK_NAMES :: [7] string.["BLOOM", "SPEAK", "MEND", "GATHER", "CRAFT", "LIGHT", "WATER"];
+FFK_LETS :: [7] string.["MAKE PLANTS GROW AND FLOWER", "TALK WITH ANIMALS", "HEAL CREATURES", "FIND MORE, AND KNOW WHAT IT IS FOR",
+                        "CUT DEADWOOD", "CARRY LIGHT", "WATER YOUR WHOLE GARDEN AT ONCE"];
+// The finds (Gather): berries, acorns and seed pods, each spot growing again the next day.
+FFK_FINDS :: 9;
+FFK_FIND_KINDS :: 3;
+FFK_FIND_WORDS :: [3] string.["BERRY", "ACORN", "SEED"];
+FFK_FIND :: [27] f32.[-30.0, -46.0, 0,   -43.0, -33.0, 1,   -21.0, -35.0, 2,
+                      14.0, -23.0, 0,   28.0, -5.0, 1,   -36.0, 30.0, 2,
+                      -16.0, 36.0, 0,   12.0, 40.0, 1,   -9.0, -43.0, 2];
+// The deadwood Craft cuts: x, z, yaw.
+FFK_LOGS :: 4;
+FFK_LOG :: [12] f32.[-22.0, -26.0, 0.4,   -39.5, -24.5, 1.9,   -21.0, -45.5, 2.6,   -29.0, -51.0, 0.9];
+FFK_BIRD_X :: -35.5; FFK_BIRD_Z :: -44.5;      // the hurt bird, in Mossbank
+FFK_AXE_X :: -36.5; FFK_AXE_Z :: -47.0;        // the woodcutter's axe, in a stump east of your home
+FFK_LANTERN_X :: -27.5; FFK_LANTERN_Z :: 43.0; // the lantern flower, in Lanternwood
+FFK_DAM_X :: 29.0; FFK_DAM_Z :: 11.0;          // sticks across the stream, above the pond
+FFK_NEAR :: 1.8;
+
+Skills :: struct {
+  learned: [FFK_SKILLS] bool;
+  bird: bool; axe: bool; lantern: bool; dam: bool;   // the moments done
+  cut: [FFK_LOGS] bool;
+  finds: [FFK_FIND_KINDS] int;
+  found_day: [FFK_FINDS] int;                         // the day (since 1970) each was last found
+}
+ffk_count :: (l: [] Life) -> int { n := 0; for k: 0..<FFK_SKILLS { if l[0].skills.learned[k] { n += 1; } } return n; }
+// Learns skill k; true the first time.
+ffk_learn :: (l: [] Life, k: int) -> bool {
+  if k < 0 || k >= FFK_SKILLS || l[0].skills.learned[k] { return false; }
+  l[0].skills.learned[k] = true;
+  l[0].changes += 1;
+  return true;
+}
+ffk_knows :: (l: [] Life, k: int) -> bool { return k >= 0 && k < FFK_SKILLS && l[0].skills.learned[k]; }
+ffk_day :: (now_min: f64) -> int { return ifx now_min > 0 then cast(int) (now_min / 1440) else 0; }
+// A find is there to gather unless found today (or the clock isn't known and it was found ever).
+ffk_find_here :: (l: [] Life, i: int, now_min: f64) -> bool {
+  d := l[0].skills.found_day[i];
+  return d == 0 || (ffk_day(now_min) > 0 && d < ffk_day(now_min));
+}
+// Gathers find i: its kind, or -1. The first forage teaches Gather; a seed is a seed for your garden.
+ffk_gather :: (l: [] Life, i: int, now_min: f64) -> int {
+  if i < 0 || i >= FFK_FINDS || !ffk_find_here(l, i, now_min) { return -1; }
+  kind := cast(int) FFK_FIND[i * 3 + 2];
+  l[0].skills.found_day[i] = ifx ffk_day(now_min) > 0 then ffk_day(now_min) else 1;
+  l[0].skills.finds[kind] += 1;
+  if kind == 2 { l[0].garden.gifts += 1; }
+  _ := ffk_learn(l, FFK_GATHER);
+  l[0].changes += 1;
+  return kind;
+}
+
 Life :: struct {
   look: FairyLook;
   home: Home;
   garden: Garden;
   village: Village;
   course: HoopCourse;
+  skills: Skills;
   changes: int;      // grows with every change, so the face keeps it (not saved)
 }
 
@@ -356,6 +413,7 @@ ffv_built :: (l: [] Life, c: int, now_min: f64) -> f32 {
   return cast(f32) clamp01(cast(f32) ((now_min - m) / FFV_BUILD));
 }
 
+ffl_lo :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 ffl_put32 :: (out: [] u8, at: int, v: int) { for k: 0..<4 { out[at + k] = cast(u8) ((v >> (8 * k)) & 255); } }
 ffl_get32 :: (b: [] u8, at: int) -> int { v := 0; for k: 0..<4 { v = v | (cast(int) b[at + k] << (8 * k)); } return v; }
 
@@ -402,6 +460,18 @@ ffl_save :: (l: [] Life, out: [] u8) -> int {
   if n + 2 + 25 > out.count { return n; }
   out[n] = cast(u8) FFL_TAG_VILLAGE; out[n + 1] = 25; n += 2;
   for c: 0..<5 { out[n] = cast(u8) l[0].village.plot[c]; ffl_put32(out, n + 1, cast(int) l[0].village.moved[c]); n += 5; }
+  // the skills: learned (a bit each), the moments done, the logs cut, the finds and each spot's day
+  if n + 2 + 27 > out.count { return n; }
+  sk := l[0].skills;
+  out[n] = cast(u8) FFL_TAG_SKILLS; out[n + 1] = 27; n += 2;
+  bits := 0;
+  for q: 0..<FFK_SKILLS { if sk.learned[q] { bits = bits | (1 << q); } }
+  moments := (ifx sk.bird then 1 else 0) | (ifx sk.axe then 2 else 0) | (ifx sk.lantern then 4 else 0) | (ifx sk.dam then 8 else 0);
+  logs := 0;
+  for q: 0..<FFK_LOGS { if sk.cut[q] { logs = logs | (1 << q); } }
+  out[n] = cast(u8) bits; out[n + 1] = cast(u8) moments; out[n + 2] = cast(u8) logs; n += 3;
+  for q: 0..<FFK_FIND_KINDS { v := ffl_lo(sk.finds[q], 65535); out[n] = cast(u8) (v & 255); out[n + 1] = cast(u8) ((v >> 8) & 255); n += 2; }
+  for q: 0..<FFK_FINDS { v := ffl_lo(sk.found_day[q], 65535); out[n] = cast(u8) (v & 255); out[n + 1] = cast(u8) ((v >> 8) & 255); n += 2; }
   // the course: its id, its best, then each hoop (x, y, z in cm, yaw)
   co := l[0].course;
   csize := 1 + co.id_n + 4 + 1 + co.n * 7;
@@ -462,6 +532,15 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
         l[0].village.plot[c] = ifx pl <= FFV_PLOTS then pl else 0;
         l[0].village.moved[c] = f64(ffl_get32(b, i + c * 5 + 1));
       }
+    }
+    if tag == FFL_TAG_SKILLS && size >= 27 {
+      bits := cast(int) b[i]; moments := cast(int) b[i + 1]; logs := cast(int) b[i + 2];
+      for q: 0..<FFK_SKILLS { l[0].skills.learned[q] = (bits >> q) & 1 == 1; }
+      l[0].skills.bird = moments & 1 != 0; l[0].skills.axe = moments & 2 != 0;
+      l[0].skills.lantern = moments & 4 != 0; l[0].skills.dam = moments & 8 != 0;
+      for q: 0..<FFK_LOGS { l[0].skills.cut[q] = (logs >> q) & 1 == 1; }
+      for q: 0..<FFK_FIND_KINDS { l[0].skills.finds[q] = cast(int) b[i + 3 + q * 2] + cast(int) b[i + 4 + q * 2] * 256; }
+      for q: 0..<FFK_FINDS { l[0].skills.found_day[q] = cast(int) b[i + 9 + q * 2] + cast(int) b[i + 10 + q * 2] * 256; }
     }
     if tag == FFL_TAG_COURSE && size >= 6 {
       idn := cast(int) b[i];
@@ -604,4 +683,23 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
   m := ffl_save(l[..], b[..]);
   d: [1] Life;
   #assert ffl_open(d[..], b[0..<m]) && d[0].course.n == FFC_HOOPS - 1 && m < FFL_BYTES;
+}
+
+#test "skills: each learned once, finds gathered once a day (a seed is a garden seed), and all of it kept" {
+  l: [1] Life;
+  #assert ffk_count(l[..]) == 0 && ffk_learn(l[..], FFK_MEND) && !ffk_learn(l[..], FFK_MEND) && ffk_knows(l[..], FFK_MEND);
+  day := 20390.0 * 1440 + 30;
+  #assert ffk_gather(l[..], 2, day) == 2 && ffk_knows(l[..], FFK_GATHER) && l[0].garden.gifts == 1;
+  #assert ffk_gather(l[..], 2, day + 60) == -1;   // found today
+  #assert ffk_gather(l[..], 2, day + 1440) == 2 && l[0].skills.finds[2] == 2;
+  #assert ffk_gather(l[..], 0, day) == 0 && l[0].skills.finds[0] == 1;
+  l[0].skills.bird = true; l[0].skills.dam = true; l[0].skills.cut[2] = true;
+  b: [FFL_BYTES] u8;
+  n := ffl_save(l[..], b[..]);
+  c: [1] Life;
+  #assert ffl_open(c[..], b[0..<n]);
+  #assert ffk_count(c[..]) == 2 && ffk_knows(c[..], FFK_GATHER) && c[0].skills.bird && c[0].skills.dam && !c[0].skills.axe;
+  #assert c[0].skills.cut[2] && !c[0].skills.cut[1] && c[0].skills.finds[2] == 2 && c[0].skills.found_day[2] == 20391;
+  #assert !ffk_find_here(c[..], 2, day + 1440) && ffk_find_here(c[..], 1, day);
+  for k: 0..<FFK_SKILLS { #assert FFK_NAMES[k].count > 0 && FFK_LETS[k].count > 0; }
 }

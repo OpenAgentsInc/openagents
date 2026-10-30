@@ -30,7 +30,12 @@ ffg_use :: (s: [] Fairy, you: Point) -> bool {
   l := s[0].life[..];
   i := ffg_bed_near(you.x, you.z);
   if v == FFG_PLANT { return ffg_plant(l, i, ffg_bloomed(s), s[0].now_min); }
-  return ffg_care(l, i, v == FFG_SING, s[0].now_min);
+  cared := ffg_care(l, i, v == FFG_SING, s[0].now_min);
+  // WATER: one bed watered waters them all
+  if cared && v == FFG_WATER && ffk_knows(l, FFK_WATER) {
+    for j: 0..<FFG_BEDS { if j != i && l[0].garden.bed[j].kind != 0 { _ := ffg_care(l, j, false, s[0].now_min); } }
+  }
+  return cared;
 }
 ffg_word :: (v: int) -> string { return ifx v == FFG_PLANT then "PLANT" else ifx v == FFG_WATER then "WATER" else "SING"; }
 

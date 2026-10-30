@@ -45,6 +45,7 @@
 #load "fairygarden.coax";  // your garden, by real days
 #load "fairyvillage.coax"; // creatures moving in
 #load "fairycourse.coax";  // vine hoop courses, shared by link
+#load "fairyskills.coax";  // what you learn, each from a moment
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -175,6 +176,8 @@ Fairy :: struct {
   maker: [1] Maker;     // making your fairy (fairymaker.coax)
   build: [1] Build;     // building in your home (fairyhome.coax)
   race: [1] Race;       // a course of hoops, made or opened by link (fairycourse.coax)
+  k_news: int; k_news_at: f64;   // a skill just learned (1 + it) or a find (100 + its kind) (fairyskills.coax)
+  bird_flew: f64;                // when the hurt bird was mended (it flies off)
   now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
   fig_on: bool; fig_at: Point; fig_up: f32; fig_across: f32;   // her body's size, while she is laid out
 }
@@ -792,6 +795,7 @@ fairy_ask_sent :: (s: [] Fairy) #export_c { s[0].ask_n = 0; }
 fairy_answer :: (s: [] Fairy, reply: string) #export_c {
   if s[0].talk <= 0 || !s[0].waiting { return; }
   s[0].waiting = false;
+  ffk_note(s, FFK_SPEAK);   // answered for the first time
   ok := reply.count > 4 && reply[0..<4] == "200\n";
   text: [LINE_BYTES] u8;
   n := ifx ok then ff_answer_text(reply[4..<reply.count], text[..]) else 0;
@@ -1683,6 +1687,15 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
         jewel = times(jewel, gain);
         oriented(s, SHAPE_SPHERE, LOOK_WING, inner, times(w.across, w.wide * 0.55), times(w.along, w.reach * 0.62), times(w.flat, 0.02), jewel.x, jewel.y, jewel.z);
       }
+      // grows with you: a gem on each upper wing for every skill learned
+      if pair == 0 && s[0].mine {
+        gems := ffk_count(l);
+        for g: 0..<gems {
+          gem := add(w.root, add(times(w.along, w.reach * (0.3 + 0.09 * f32(g))), times(w.flat, -0.03)));
+          gc := ffl_rgb(wing_t[..], ((hue + g) % 5) * 3 + 2);
+          shape(s, SHAPE_SPHERE, LOOK_SPARK, gem, face, 0, 0.035, 0.035, 0.035, 0.6 + gc.x * 0.4, 0.6 + gc.y * 0.4, 0.6 + gc.z * 0.4);
+        }
+      }
     }
   }
   shadow(s, u, feet.x, feet.z, lo(0.45 + air * 0.08, 0.9), clamp(0.6 - air * 0.12, 0.15, 0.6));
@@ -1800,9 +1813,10 @@ play :: (s: [] Fairy, you: Point) {
   if s[0].maker[0].open { s[0].use = false; }
   if s[0].use {
     i := ff_patch_near(f, you.x, you.z);
-    if i >= 0 { done := ff_bloom(f, i, s[0].time); }
+    if i >= 0 { done := ff_bloom(f, i, s[0].time); ffk_note(s, FFK_BLOOM); }
     else if s[0].near_creature >= 0 && ffv_can_invite(s, s[0].near_creature) { _ := ffv_invite(s[0].life[..], s[0].near_creature, s[0].now_min); }
     else if s[0].near_creature >= 0 && s[0].talk == 0 { talk_to(s, s[0].near_creature); }
+    else if ffk_verb(s, you) != 0 { _ := ffk_use(s, you); }
     else if ffg_verb(s, you) != 0 { _ := ffg_use(s, you); }
     else if ffm_near_pool(you) { ffm_open(s, false); }
     else if ffh_near(you.x, you.z, f32(FFB_HOME_NEAR)) && !s[0].build[0].open { ffb_open(s); }
@@ -1973,6 +1987,8 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   else if s[0].remark_creature >= 0 { said = ff_remark(f, s[0].remark_creature, s[0].remark_turn); who = FF_CREATURE_NAMES[s[0].remark_creature]; }
   if f[0].news >= 0 && f[0].news < FF_ROOTS && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
   if f[0].news == FF_NEWS_HEART && s[0].time - f[0].news_at < f64(HEART_NEWS_TIME) { said = "THE FOREST IS AWAKE, AND IT IS YOURS TO WANDER"; who = "THE HEART TREE BLOOMS"; }
+  kw: [1] string; ks: [1] string;
+  if ffk_news(s, kw[..], ks[..]) { who = kw[0]; said = ks[0]; }
   if said.count > 0 {
     sc := 8.5 * k;
     sw := text_width(said, sc);
@@ -1991,6 +2007,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   pool := ffm_near_pool(you);
   home := ffh_near(you.x, you.z, f32(FFB_HOME_NEAR)) && !s[0].build[0].open;
   garden := ffg_verb(s, you);
+  skill := ffk_verb(s, you);
   if s[0].build[0].open {
     n = ffb_hud(s, out, u, n, above - 8 * k);
     above = s[0].build[0].panel.y0; foot_x0 = lo(foot_x0, s[0].build[0].panel.x0);
@@ -2000,10 +2017,10 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     above = s[0].race[0].panel.y0; foot_x0 = lo(foot_x0, s[0].race[0].panel.x0);
   }
   n = ffc_note_hud(s, out, u, n, above);
-  if (near_patch >= 0 || s[0].near_creature >= 0 || pool || home || garden != 0) && s[0].air <= f32(FLYING) && !s[0].race[0].making {
+  if (near_patch >= 0 || s[0].near_creature >= 0 || pool || home || garden != 0 || skill != 0) && s[0].air <= f32(FLYING) && !s[0].race[0].making {
     bc := 9 * k;
     // the Old Ring's stones are lit, not bloomed; the mirror pool makes your fairy; at home you build
-    verb := ifx near_patch < 0 && s[0].near_creature < 0 then (ifx garden != 0 then ffg_word(garden) else ifx pool then "MIRROR" else "BUILD")
+    verb := ifx near_patch < 0 && s[0].near_creature < 0 then (ifx skill != 0 then FFK_VERB_WORDS[skill] else ifx garden != 0 then ffg_word(garden) else ifx pool then "MIRROR" else "BUILD")
             else ifx near_patch < 0 && ffv_can_invite(s, s[0].near_creature) then (ifx phone(s) then "INVITE" else FFV_INVITE[s[0].near_creature])
             else ifx near_patch < 0 then (ifx phone(s) then "TALK" else FF_TALK_TO[s[0].near_creature])
             else ifx cast(int) FF_PATCH[near_patch * 4 + 3] == FF_OLD_RING then "LIGHT" else "BLOOM";
@@ -2188,6 +2205,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].fig_on = true; s[0].fig_at = shown; s[0].fig_up = ups[body]; s[0].fig_across = acrosses[body];
   fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap);
   s[0].fig_on = false;
+  ffk_carried(s, shown, face);
   s[0].mine = false;
   if ffh_near(shot.eye.x, shot.eye.z, 48) { ffm_pool(s); ffg_draw(s); }
   ffb_home(s, shot.eye);
@@ -2204,6 +2222,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   if redit_row_on(s[0].ed[..], "ridges") { ridges(s); }
   ferns(s, shot.eye);
   ffc_draw(s, shot.eye);
+  ffk_draw(s, shot.eye);
   ffs_others(s, u, shown);   // last: if the shapes run out, they go first
   ph := phone(s);
   for kind: 0..<5 {

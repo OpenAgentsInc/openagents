@@ -64,7 +64,8 @@ it.
   again. The look is kept in the save's tail, so a reload or another device
   with an account keeps it.
 - **Grows with you:** wings and outfit gain detail as you learn skills, so
-  how you look says how far you have come.
+  how you look says how far you have come. Built so far: a gem on her upper
+  wings for each skill (ff-skills).
 - **Moving:** walk, run, and fly in short hops that get longer as your wings
   grow; glide down from heights. The same controller as every realm
   (`verse/player.coax`), with flight added.
@@ -83,6 +84,22 @@ each opens new ways to help:
 | **Craft** | Being given an axe by a woodcutter | Cut deadwood, build and make tools |
 | **Light** | A night in Lanternwood | Carry light; open places that only show in the dark |
 | **Water** | Clearing the stream | Move water, fill the pond, water a whole glade |
+
+Built (ff-skills, `apps/openagents-web/fairyskills.coax`): each skill is
+learned once and named over the foot with what it lets you do. BLOOM is your
+first bloom; SPEAK the first time a creature answers you; MEND the hurt
+bluebird in Mossbank's south-west (E: MEND, and it flies off well); GATHER
+your first find (berries, acorns and seed pods in each glade, each spot
+growing again the next day; a seed is a seed for your garden, and once you
+gather the finds sparkle); CRAFT the woodcutter's axe in a stump east of your
+home (E: TAKE THE AXE), and then E: CUT clears a fallen log of deadwood;
+LIGHT the lantern flower at Lanternwood's north edge (E: LIGHT), and then you
+carry a little light; WATER the sticks dammed across the stream above the
+pond (E: CLEAR), and then WATER at one bed waters your whole garden. Each one
+learned puts a gem on her upper wings. Kept in the save's tail. Not yet: a
+woodcutter or a night in Lanternwood as the moments, making tools, mending
+broken things, places that only show in the dark, moving water or filling
+the pond.
 
 ## The core: helping people
 
