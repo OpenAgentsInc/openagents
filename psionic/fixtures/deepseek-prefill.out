@@ -1,0 +1,5 @@
+prefill chunk: 6 tokens, 1750 ns predicted
+layer routes: 8 uses grouped into 3 expert fetches
+two layers: 15 receipts before epoch 1 completes
+grouped expert: 192 outputs, 6144 coefficient decodes for 18432 products
+insufficient grouped budget refuses; serial mode is explicit

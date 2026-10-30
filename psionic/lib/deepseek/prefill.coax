@@ -1,0 +1,2 @@
+// Layer-major chunks, stable expert groups and shared CPU/CUDA wide products.
+#load "prefill-plan.coax";

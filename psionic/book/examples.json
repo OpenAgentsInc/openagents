@@ -670,6 +670,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-prefill.coax",
+      "chapter": "psionic/book/ch065-prefill-layer-by-layer.md",
+      "stdout": "psionic/fixtures/deepseek-prefill.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

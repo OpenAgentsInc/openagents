@@ -1,0 +1,64 @@
+// DEEPSEEK-GROUPED-WIDE-v1: exact scalar FP4/FP8 decode, compensated f64
+// products in increasing K order, one f32 narrowing. Eight tokens share decode.
+#authority;
+#test "device scalar helpers preserve both format grids signs and limits" {
+    #assert dpkg_fp4(0,127)==0 && f64_bits(dpkg_fp4(8,127))==0x8000000000000000;
+    #assert dpkg_fp4(1,127)==0.5 && dpkg_fp4(7,128)==12 && dpkg_fp4(15,126)==-3;
+    #assert dpkg_fp8(1,127)==1.0/512 && dpkg_fp8(0x38,128)==2 && dpkg_fp8(0xfe,127)==-448 && dpkg_fp8(0x81,127)==-1.0/512 && dpkg_fp8(0x41,127)==2.25;
+    #assert dpkg_finite(0) && dpkg_finite(3.4028234663852886e38) && !dpkg_finite_bits(0x7ff0000000000000) && !dpkg_finite_bits(0x7ff0000000000001);
+    #assert dpkg_fit(3.4028234663852886e38) && dpkg_fit(-3.4028234663852886e38) && !dpkg_fit(3.402823466385289e38);
+}
+#test "eight-token products and ragged tiles retain ordered compensation and spare tails" {
+    weights:[32]u8;scales:=[2]u8.[127,128];for i:0..<32 {weights[i]=0x32;}
+    input:[288]f64;for i:0..<288 {input[i]=f64(i%9-4)/4;}out:[19]f32;flags:[19]u8;out[18]=77;flags[18]=88;
+    for item:0..<4 {dpkg_project(item,0,2,32,9,weights[..],scales[..],input[..],out[..],flags[..]);}
+    for t:0..<9 {reference:f64=0;for col:0..<32 {reference+=(ifx col%2==0 then 1 else 1.5)*input[t*32+col];}#assert out[t*2]==f32(reference) && out[t*2+1]==f32(reference*2) && flags[t*2]==0 && flags[t*2+1]==0;}#assert out[18]==77 && flags[18]==88;
+    scales[1]=255;dpkg_project(1,0,2,32,9,weights[..],scales[..],input[..],out[..],flags[..]);for t:0..<8 {#assert flags[t*2+1]==1;}
+}
+#test "FP8 block scales and whole-result flags gate publication" {
+    weights:[64]u8;for i:0..<64 {weights[i]=0x38;}scales:[1]u8;scales[0]=127;x:[64]f64;for i:0..<64 {x[i]=1;}out:[4]f32;flags:[4]u8;
+    for item:0..<2 {dpkg_project(item,1,2,32,2,weights[..],scales[..],x[..],out[..],flags[..]);}for y:out {#assert y==32;}
+    weights[63]=127;dpkg_project(1,1,2,32,2,weights[..],scales[..],x[..],out[..],flags[..]);#assert flags[1]==1 && flags[3]==1;
+    summary:[1]u8;dpkg_flags(0,flags[..],summary[..]);#assert summary[0]==1;published:=[5]f32.[77,77,77,77,88];for i:0..<4 {dpkg_publish(i,summary[..],out[..],published[..]);}for i:0..<4 {#assert published[i]==77;}#assert published[4]==88;
+    flags[1]=0;flags[3]=0;dpkg_flags(0,flags[..],summary[..]);for i:0..<4 {dpkg_publish(i,summary[..],out[..],published[..]);#assert published[i]==out[i];}
+}
+
+#test "wide cancellation retains small terms and overflow refuses before narrowing" {
+    data:[48]u8;for i:0..<48 {data[i]=0x22;}scales:=[3]u8.[127,127,127];x:[96]f64;x[0]=1180591620717411303424.0;x[32]=1;x[64]=-1180591620717411303424.0;out:[1]f32;flags:[1]u8;
+    dpkg_project(0,0,1,96,1,data[..],scales[..],x[..],out[..],flags[..]);#assert out[0]==1 && flags[0]==0;
+    x[0]=1;x[32]=1180591620717411303424.0;dpkg_project(0,0,1,96,1,data[..],scales[..],x[..],out[..],flags[..]);#assert out[0]==1 && flags[0]==0;
+    for i:0..<96 {x[i]=0;}x[0]=3.4028234663852886e38;data[0]=0x77;
+    dpkg_project(0,0,1,96,1,data[..],scales[..],x[..],out[..],flags[..]);#assert flags[0]==2 && out[0]==1;
+}
+#test "scale blocks distinguish both row and K axes and packed byte positions" {
+    data:[4096]u8;for i:0..<4096 {data[i]=0x38;}scales:=[4]u8.[126,127,128,129];x:[128]f64;for i:0..<128 {x[i]=1;}out:[128]f32;flags:[128]u8;
+    for row:0..<64 {dpkg_project(row,1,64,64,2,data[..],scales[..],x[..],out[..],flags[..]);}
+    for t:0..<2 {for row:0..<64 {#assert out[t*64+row]==(ifx row<32 then 48.0f32 else 192.0f32) && flags[t*64+row]==0;}}
+    packed:[16]u8;for i:0..<16 {packed[i]=ifx i%2==0 then 0x32 else 0x76;}scale:=[1]u8.[127];one:[1]f32;f:[1]u8;
+    for i:0..<32 {x[i]=f64(i+1);}
+    dpkg_project(0,0,1,32,1,packed[..],scale[..],x[0..<32],one[..],f[..]);#assert one[0]==1720 && f[0]==0;
+}
+
+dpkg_power :: (scale:u8)->f64 {return f64_from_bits((u64(scale)+896)<<52);}
+dpkg_fp4 :: (code:u8,scale:u8)->f64 {values:=[8]f64.[0,0.5,1,1.5,2,3,4,6];value:=values[cast(int)(code&7)]*dpkg_power(scale);return f64_from_bits(f64_bits(value)|((u64(code)&8)<<60));}
+dpkg_fp8 :: (code:u8,scale:u8)->f64 {e:=(code>>3)&15;f:=code&7;value:=f64(f)/512;if e!=0 {value=(1+f64(f)/8)*f64_from_bits((u64(e)+1016)<<52);}value*=dpkg_power(scale);return f64_from_bits(f64_bits(value)|((u64(code)&128)<<56));}
+dpkg_finite_bits :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+dpkg_finite :: (x:f64)->bool {return dpkg_finite_bits(f64_bits(x));}
+dpkg_fit :: (x:f64)->bool {return dpkg_finite(x) && x<=3.4028234663852886e38 && x>=-3.4028234663852886e38;}
+// Host admission owns kind/shapes/spans and the quantized-input identity.
+// The output and flags are private until the separate publication pass.
+// book:begin product
+dpkg_project :: (item:int,kind:int,rows:int,columns:int,batch:int,data:[]u8,scales:[]u8,input:[]f64,out:[]f32,flags:[]u8) #export_c {
+    row:=item%rows;first:=(item/rows)*8;sums:[8]f64;errors:[8]f64;bad:u8=0;
+    for col:0..<columns {at:=row*columns+col;
+        code:=data[ifx kind==0 then at/2 else at];scale:=scales[ifx kind==0 then at/32 else (row/32)*(columns/32)+col/32];
+        if kind==0 {code=(code>>cast(u8)(4*(at%2)))&15;}else if (code&127)==127 {bad=1;}
+        if scale==255 {bad=1;}weight:=ifx kind==0 then dpkg_fp4(code,scale) else dpkg_fp8(code,scale);
+        for t:0..<8 {token:=first+t;if token<batch {x:=input[token*columns+col];product:=weight*x;total:=sums[t]+product;
+            virtual_value:=total-sums[t];error:=(sums[t]-(total-virtual_value))+(product-virtual_value);errors[t]+=error;sums[t]=total;}}
+    }
+    for t:0..<8 {token:=first+t;if token<batch {at:=token*rows+row;total:=sums[t]+errors[t];flag:=bad;if !dpkg_fit(total) && flag==0 {flag=2;}flags[at]=flag;if flag==0 {out[at]=f32(total);}}}
+}
+// book:end product
+dpkg_flags :: (item:int,flags:[]u8,summary:[]u8) #export_c {value:u8=0;for flag:flags {value|=flag;}summary[item]=value;}
+dpkg_publish :: (item:int,summary:[]u8,stage:[]f32,out:[]f32) #export_c {if summary[0]==0 {out[item]=stage[item];}}

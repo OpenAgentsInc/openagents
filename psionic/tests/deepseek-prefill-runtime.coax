@@ -1,0 +1,18 @@
+#load "../lib/deepseek/prefill.coax";
+#load "../lib/deepseek/hot.coax";
+#load "../lib/deepseek/router.coax";
+// Owned causal-prefix fixture, not V4.1's learned attention.
+dp_test_packet :: (which:int,out:[]u8)->DeExpert #export_c {if which==0 {return de_fixture_0(out);}if which==1 {return de_fixture_1(out);}return de_fixture_2(out);}
+dp_test_shared :: (out:[]u8)->DeExpert #export_c {return de_fixture_3(out);}
+dp_test_input :: (first:int,count:int,out:[]f32) #export_c {for t:0..<count {for j:0..<64 {out[t*64+j]=DEG_INPUT[j]+f32((first+t)*3%11-5)/32;}}}
+dp_test_attention :: (first:int,count:int,layer:int,input:[]f32,state:[]PsionicAccumulator,out:[]f32) #export_c {
+    for t:0..<count {for j:0..<64 {at:=layer*64+j;state[at]=psionic_ops_accumulate(state[at],f64(input[t*64+j]));out[t*64+j]=f32(f64(input[t*64+j])+0.125*psionic_ops_total(state[at])/f64(first+t+1));}}
+}
+dp_test_routes :: (first:int,count:int,layer:int,input:[]f32,ids:[]int,weights:[]f32) #export_c {
+    for t:0..<count {logits:[3]f32;bias:[3]f32;raw:[3]f64;ranked:[3]f64;
+        for j:0..<3 {value:=input[t*64+j*17];logits[j]=(value/(1+abs(value)))/16+f32((first+t+layer+j*3)%7-3)/2;}
+        r:=dr_route(DrConfig.{profile=DrProfile.v41,k=2,scale=1.5},logits[..],bias[..],raw[..],ranked[..],false);#assert r.status==DrStatus.ok;
+        for j:0..<2 {ids[t*2+j]=r.ids[j];weights[t*2+j]=f32(r.weights[j]);}}
+}
+dp_test_residual :: (count:int,attention:[]f32,mlp:[]f32,out:[]f32) #export_c {for i:0..<count*64 {out[i]=attention[i]+mlp[i];}}
+#load "deepseek-expert-runtime.coax";

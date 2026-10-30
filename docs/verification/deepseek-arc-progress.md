@@ -1,7 +1,7 @@
 # DeepSeek arc completion ledger
 
-The active objective is to complete every DeepSeek chapter, including the
-cross-stage chapter 141. A runnable component does not prove whole-model
+This ledger tracks every DeepSeek chapter, including the cross-stage
+chapter 141. A runnable component does not prove whole-model
 execution, numerical qualification, device performance or recovery. Planned
 rows stay planned until their full acceptance gates have evidence.
 
@@ -16,7 +16,7 @@ rows stay planned until their full acceptance gates have evidence.
 | 62 | Exact normalized/compressed n-gram history, reference prime layouts/multipliers, mapped/disk lookup without eager tables | Implemented exact original tokenizer/map and hash layout/history, with bounded mmap/pread and BF16 row decoding at original shard sizes/offsets; [record](psionic-ch62-2026-10-29.md). Full original table payload and learned projection/gate execution remain in 68. |
 | 63 | All FP4 E2M1/UE8M0 codes/scales, layout, NaN rejection, clamped SwiGLU and pre-down route weights | Implemented exact original FP4/FP8 formats, grids, FFNs and 384/6 plus shared mixture; original layer-0 MoE qualifies against an independent reference; [record](psionic-ch63-2026-10-29.md). Shared FP8 and low-first packing reconcile the pinned source/header. Whole-model/device/BF16 parity remains in 68. |
 | 64 | Exact cache residency/heat/swap, host/mapped miss lane, between-step copies and next-layer prefetch | Implemented the CPU cache transaction/reference core: recorded-profile heat, deterministic swaps, private gate prefetch and host/mapped/pread/resident exact expert parity, including an original 5120x2304 expert; [record](psionic-ch64-2026-10-29.md). GPU arenas/expert arithmetic, event fences, overlapped misses and measured performance remain open in 67/68/68a; this does not complete that device scope. |
-| 65 | Layer-major expert reuse, grouped block-scaled products, time-budget chunks and no silent disablement | Planned. |
+| 65 | Layer-major expert reuse, grouped block-scaled products, time-budget chunks and no silent disablement | Implemented CPU layer-major chunk cursor, calibrated time/work choice, stable expert groups and grouped block-scaled products; owned causal stack and original 384/6 plus shared batch are bit-identical to serial; [record](psionic-ch65-2026-10-29.md). Generated CUDA products execute with exact CPU parity, including original projection shapes. Complete GPU expert/model prefill remains open. |
 | 66 | Exact FP8/FP4 cache grids, reference bit checks, separately bounded chunk step buffers | Implemented CPU BF16 source-equation codec; every BF16 pattern in three group forms and all code/scale pairs qualify against an independent oracle, with pinned ownership/work budgets; [record](psionic-ch66-2026-10-29.md). Original device capture and attention integration remain in 60/67/68. |
 | 67 | Recorded device decode, device expert IDs/sampling, one-step-ahead host scheduling and lifetime checks | Planned. |
 | 68 | Complete original V4.1 Flash on one machine, frozen reference qualification, TTFT/tokens/s/memory | Planned; current host has 16 GiB GPU memory and about 189 GiB free disk at initial inspection, less than the 510.3 GB original artifact set. |

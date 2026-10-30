@@ -1,0 +1,217 @@
+{
+  "schema": 1,
+  "profile": "deepseek-prefill-cpu-wide-v1",
+  "base_commit": "e43a6d23db0bfb40db17fed72083893f7308b1fc",
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93"
+  },
+  "host_cc": {
+    "version": "gcc (GCC) 15.2.0",
+    "sha256": "de18d4626aecd4386163e674e3c40937427ac1deb18653c049edcf03994af9b6"
+  },
+  "nvrtc": {
+    "version": "13.2.51",
+    "path": "/nix/store/1wa1ydsr2al05m744m6n1ha91hn0q761-cuda13.2-cuda_nvrtc-13.2.51-lib/lib/libnvrtc.so",
+    "sha256": "058fb69f41cb8691359f6414a5dae4e044dbc4bb04469e4c67a301f48f16a652",
+    "options": [
+      "--gpu-architecture=compute_89",
+      "--fmad=false",
+      "--prec-div=true",
+      "--prec-sqrt=true",
+      "--ftz=false",
+      "--std=c++17"
+    ]
+  },
+  "cuda_execution": {
+    "status": "qualified product primitive only",
+    "observed_device": "NVIDIA GeForce RTX 4080",
+    "driver": "595.71.05",
+    "driver_api_version": 13020,
+    "free_vram_bytes": 16044654592,
+    "services_interrupted_by_agent": false,
+    "synthetic_cases": 8,
+    "original_projection_shapes": [
+      [
+        2304,
+        5120
+      ],
+      [
+        2304,
+        5120
+      ],
+      [
+        5120,
+        2304
+      ]
+    ],
+    "original_batch": 9,
+    "original_packet_sha256": "d1c709b803465fefae9846441e8e7829d955651ea84e7c54c6f34797446467b7",
+    "exact_output_and_flags": true,
+    "publication_failure_atomic": true,
+    "nvrtc_seconds": 0.169488,
+    "excludes": [
+      "GPU activation/quantization and complete expert pipeline",
+      "full-model GPU prefill",
+      "device performance"
+    ]
+  },
+  "sources": {
+    "psionic/fixtures/deepseek/prefill-device-source.cu.gz": "179b4bd01da9806926c3b4ecc5f2cb56f40c6388003a39a409ff98fa5ab5c1cd",
+    "psionic/fixtures/deepseek/prefill-device.ptx.gz": "d199cf9d7c7e9e93780ce4dab73a672754a26ae811ba9c801781d6c26d99c6e6",
+    "psionic/fixtures/deepseek/prefill-goldens.json.gz": "9bd7c2561fe669f5fe8b152aca036c424ef1f045d52e96d2929f74542195925c",
+    "psionic/fixtures/deepseek/prefill-original/executed.c.gz": "37017bc57439083f3693353e5e32ec17bfcf6be61a3294bc673f37f18380c443",
+    "psionic/fixtures/deepseek/prefill-original/executed.h.gz": "2adbf782a710c0782aef70d9b01de035fec1d79da4708001fae9d04ca797dd4f",
+    "psionic/fixtures/deepseek/prefill-original/host.c.gz": "57b19eb066365a046e97cffee6ced4f90cccd7b1010a3f425160a37d97b70190",
+    "psionic/fixtures/deepseek/prefill-original/output.f32.gz": "b11b3c20f508e86911a589672cad4ff186af9b52b33458387b2f930de3fab5c9",
+    "psionic/fixtures/deepseek/prefill-original/run.log": "f6abf2d57d12de04d5aec842d707473718dc5670bdd5ad870d5b8f65b335a6fe",
+    "psionic/fixtures/deepseek/prefill-original/validation.json": "78e8d8c3b4fc57e14c6b5303b080d8536fd4f82c587a987917d042a6e60673ab",
+    "coax/lib/crypto/bytes.coax": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "psionic/examples/deepseek-prefill.coax": "d13e1b33543423882ecd3433feb6eefbaf95666dd7ed078106612994b7af80e4",
+    "psionic/fixtures/deepseek-prefill.out": "87b173730ffe6c0bd9275febfb79b62f0f5068dc9ea7b52fc456d668b3266bf6",
+    "psionic/fixtures/deepseek/expert-goldens.coax": "ce19521b85ab70baf355d6211a8838a5bb7b646e6023c70236b685690e5ffaff",
+    "psionic/fixtures/deepseek/expert-original-targets.coax": "f627888c40ce52e1e8e7ef64e69912b18b54182bfbfba2fe14db01dabc8c8788",
+    "psionic/fixtures/deepseek/router-goldens.coax": "a1f4fa2733944a453c540c539b9ce7368deee24aeb371cc1d516f5868962a3b4",
+    "psionic/lib/deepseek/expert-types.coax": "39215d2264d4ad03644916cbf248598529e754e4c4d1c7c1b52b88c24947ca67",
+    "psionic/lib/deepseek/expert.coax": "86988f1543724287d091ee5dbea1ba7ec710c20d11963a3f65bead82d50a44ed",
+    "psionic/lib/deepseek/hot-cache.coax": "5981a30b125781cfe24fdd4a5eef648c8a01578e56e8f119aa78980a597da302",
+    "psionic/lib/deepseek/hot-io.coax": "1f3a0ae984158f1592719eb914ede36832a8cd6a904295377b70b53a190516aa",
+    "psionic/lib/deepseek/hot-swap.coax": "b247a0551c04faad06e95abc7584b1fe87b86add10506284d6d54e1e364c1eb9",
+    "psionic/lib/deepseek/hot-types.coax": "3db3e974041c31b8cfe622ca3c6523081efb723b74563e2f8a773ad97dfa5506",
+    "psionic/lib/deepseek/hot-weights.coax": "056dc692f3c7574073fc6f77a4a7ccff7ad7ccd6c678238be90a1189dd0c3486",
+    "psionic/lib/deepseek/hot.coax": "9d79824b0f911eebb32a544220cddedadea0de5f30ee6525b2764f4b7a49e91a",
+    "psionic/lib/deepseek/prefill-groups.coax": "98a46ae192f544886266d745c0327f582fad04ea89ea5ff9bbe483e72f817153",
+    "psionic/lib/deepseek/prefill-kernels.coax": "d3e1fb08abe96ae04e5527b86870a6ad23bd0497d3ee2180fe68ec7a6ef04cf5",
+    "psionic/lib/deepseek/prefill-plan.coax": "817a31ad672f0b7755fd2aa656375c436be1319d09b4e18a9f25ef03056074c1",
+    "psionic/lib/deepseek/prefill-products.coax": "8ada27de0fd90d2684cb67ad90aa97ccea1ec2b51344b1f170569a53ed2d4537",
+    "psionic/lib/deepseek/prefill-types.coax": "9def063945b664c76cb9e3a5b2d81170515182595484aec9e4bb84cf60023ad1",
+    "psionic/lib/deepseek/prefill.coax": "428443b6bde451bc36d92581cb53b1b67ad5e249b530732baa4fc9d862b223b5",
+    "psionic/lib/deepseek/router.coax": "15f140310b242b0bca7a3ff841ad02e1ef20d00637fa7c186772d143e16ceb16",
+    "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+    "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+    "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/platform/cuda-host.c": "fa8b9dedbc70adf2272969e80d07f1d013d270d4255be821c97ece7a75691ef6",
+    "psionic/platform/cuda-host.h": "515b5b33e596efb0962db60e78e989d2cfdac8d30508205424e594d2bcc3b86c",
+    "psionic/platform/deepseek-expert-memory.c": "4422f2a36c4333587e9fbdbb7fe86f5370e92cc65f72f21e09e69c9afeb57423",
+    "psionic/platform/deepseek-expert-memory.h": "8c260bc8ff2fc54f59496cf9fd1cd332ede8bfe537dc6e2ae798f4c21b722ebe",
+    "psionic/platform/deepseek-hot-memory.c": "1452aa65078d6b74ac3c8ae04402aaf99a132b90647faa93ae39f7c5e9778d07",
+    "psionic/platform/deepseek-hot-memory.h": "5f0e29559d5414464e953645040decf46dd61b9d7f5ff91fcb3851319a53ce58",
+    "psionic/platform/deepseek-prefill-memory.c": "88654a498a035154c1ee76129eb74000c956cf0753a7e64bf2256935612c5033",
+    "psionic/platform/deepseek-prefill-memory.h": "a3152e88fe0056a09a2ad03639ccc25de3cf4176c9cc1630c0647ebef8bb67fc",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/check_deepseek_prefill.sh": "b941307ed0ebeb0cb5e7949773cea799f7c423b000d05553d4c1dd20bdaace8f",
+    "psionic/tests/deepseek-expert-runtime.coax": "a8ecf760a6a73784c9b6e3b874777df60b9e00d7e6448bff80ab20698d7179d9",
+    "psionic/tests/deepseek-prefill-runtime.coax": "0a51181271089798c5a99b4ff42b5ab4e4c36c6392233c76352e9acd3b0bab46",
+    "psionic/tests/deepseek_prefill_device.c": "c1594ef88c1331db20707c6539e191d66453e677b40791b1a303ea5a79bef34d",
+    "psionic/tests/deepseek_prefill_native.c": "a9714a969b8d329230b7c70b4a5abd963cc72b02b128f6d6b35b3a0589674dbe",
+    "psionic/tests/deepseek_prefill_nvrtc.c": "24420bc6db45f1e17d3052c443f5ba1624fbadd83dedc0dd09d4cc3ace2a79a2",
+    "psionic/tests/deepseek_prefill_oracle.py": "20812d30986bf98f4420371404e0dd9fa247bb1bed18e75466c56176a0955795",
+    "psionic/tests/deepseek_prefill_original.c": "dfe332ca23555695f92e92e2c33463dcc1c8531d16c7d53ee55bb1f805c24a3d",
+    "psionic/tests/deepseek_prefill_record.py": "d879494ccc9d8c3589253a5f944be435da0dea80d1cc15d3179881114c7a1306",
+    "psionic/tests/run_deepseek_prefill_cuda.sh": "2ee71d9639d7c43aa586dbfbc24ac22f8f5a6ce39d4c9dbc5fa8bb8d19c0c1fd"
+  },
+  "artifacts": {
+    "deepseek-prefill-debug.c": {
+      "bytes": 1147080,
+      "sha256": "f21cc1179326dba0337e1c2c12a9211c0770d3d1eb5ff4b8b2dde1e6eddd7150"
+    },
+    "deepseek-prefill-debug.h": {
+      "bytes": 44548,
+      "sha256": "3e23542e418741058d907774162c5b6a88f51dafe8a0db70d860ec2618bc5d2b"
+    },
+    "deepseek-prefill-release.c": {
+      "bytes": 1145119,
+      "sha256": "ff9fa976e0c4ebb9d7b081b47c51c6fd173f638fdd17f6c76a3580c079c11fa5"
+    },
+    "deepseek-prefill-release.h": {
+      "bytes": 44548,
+      "sha256": "3e23542e418741058d907774162c5b6a88f51dafe8a0db70d860ec2618bc5d2b"
+    },
+    "kernels.cu": {
+      "bytes": 20507,
+      "sha256": "7c16b7a09e28b709fd667d8fc4c1c0ca5612a4f585a44093a92642be69e398c7"
+    },
+    "kernels.c": {
+      "bytes": 25275,
+      "sha256": "56dfbc8ad49192a12e5814dfe814dd4d5d966f4314abfc251e10e782e0600452"
+    },
+    "kernels.h": {
+      "bytes": 1513,
+      "sha256": "a78309118bc45859bb99c6f6c7d50e73ba609af0e9e4166a43811fe3e7b036f8"
+    },
+    "kernels.ptx": {
+      "bytes": 28749,
+      "sha256": "e822bcf9f565fd746f73609ef76be13919bc05df0e88cf0e2a98de4ca9fef508"
+    },
+    "device": {
+      "bytes": 152752,
+      "sha256": "c0f28c04938ae688bb0211ae2149017e09cd55904b8e2db63a46ece48b4e196f"
+    },
+    "nvrtc": {
+      "bytes": 16920,
+      "sha256": "3f1e6e87c82b509cb846195d7c6fd1ce5e0f3c48c162b61e7a3985bc42392fd9"
+    },
+    "original": {
+      "bytes": 1045456,
+      "sha256": "81cdb032d51527cb82b32a2604928c7f513efc3fe032cf64c6d00b64070cf10d"
+    },
+    "native-debug-plain": {
+      "bytes": 585136,
+      "sha256": "ee31c305f4cc2413e3b8847c86288b12ffbef0c76c585feb4376ded332ad547e"
+    },
+    "native-debug-sanitized": {
+      "bytes": 2340112,
+      "sha256": "fe3556d9cf8fc8ee8187c03cbb4fea8c36a603ab1a815a19bf984003ee63de0b"
+    },
+    "native-release-plain": {
+      "bytes": 1060280,
+      "sha256": "e25d12a8636894de3e026503b42a2edb7a9d40ffe81390ef89ff6d1c0c7f492b"
+    },
+    "native-release-sanitized": {
+      "bytes": 2805680,
+      "sha256": "c5be7bd024c41005c36c398cbaa62fcbd4d987d2bd031ada77f1f32aa5b7bb7a"
+    }
+  },
+  "logs": {
+    "debug-unit": "ok   #test time and workspace budgets choose largest chunks and never silently select serial (1 case, 5025 steps)\nok   #test layer-major cursor requires every attention route group and combine receipt before commit (1 case, 7739 steps)\nok   #test remaining tails serial requests cursor phases and all key-count bounds are exact (1 case, 4625 steps)\nok   #test stable expert buckets preserve every token and original route ordinal (1 case, 8615 steps)\nok   #test gather and scatter keep routing weights attached to their exact source token (1 case, 5895 steps)\nok   #test canonical route-order combine rounds before adding the shared expert once (1 case, 19916 steps)\nok   #test dirty work exact capacities missing experts and first invalid routes are checked (1 case, 30395 steps)\nok   #test route order preserves cancellation and shared addition follows F32 routed narrowing (1 case, 17960 steps)\nok   #test grouped projections retain serial bits and exact capacities with both formats (1 case, 2891590 steps)\nok   #test batched expert layout activation and final output match three serial routed FFNs (1 case, 8036072 steps)\nok   #test tiles exact workspace slices and first-index numeric failures are observed (1 case, 110949 steps)\nok   #test a second token tile writes all ragged outputs and clears dirty flags (1 case, 382331 steps)\nok   #test BF16 and F32 original rows produce the same rectangular projection (1 case, 1553 steps)\nok   #test non-finite original bits and malformed sizes refuse atomically (1 case, 455 steps)\nok   #test large matrix endpoints and all little-endian byte positions are explicit (1 case, 251 steps)\nok   #test every encoded weight is checked, including first and final matrix elements (1 case, 637 steps)\nok   #test compensation retains small terms in either order (1 case, 257 steps)\nok   #test maximum selection keeps the first allowed index on ties (1 case, 376 steps)\nok   #test rectangular matrices and matrix vectors have exact integer oracles (1 case, 3470 steps)\nok   #test addition, row sums and row dots reuse the same admitted storage (1 case, 2826 steps)\nok   #forall signed dot products agree with their derived polynomial (5 cases, 3877 steps)\nok   #test wide reductions retain cancellation and avoid f32 product overflow (1 case, 2103 steps)\nok   #test gather follows requested rows, including repeats (1 case, 2607 steps)\nok   #test masked softmax is stable, shift invariant and never substitutes for an empty row (1 case, 4996 steps)\nok   #test RMSNorm and LayerNorm use population statistics and epsilon inside the root (1 case, 3105 steps)\nok   #test arithmetic failure keeps the destination and exposes only staged scratch (1 case, 1123 steps)\nok   #test request and alias refusal precede data reads and all writes (1 case, 864 steps)\nok   #test each operation has an explicit storage plan (1 case, 3167 steps)\nok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)\nok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)\nok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)\nok   #test a scalar has one element and no axes (1 case, 334 steps)\nok   #test row-major layouts for every supported rank (1 case, 1298 steps)\nok   #forall rank endpoints (7 cases, 1598 steps)\nok   #forall active axes must be positive (20 cases, 3908 steps)\nok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)\nok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)\nok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)\nok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)\nok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)\nok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)\nok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)\nok   #test scalar storage is one real float (1 case, 215 steps)\nok   #test all FP4 codes and UE8M0 scales preserve exact wide values and signed zero (1 case, 323844 steps)\nok   #test all FP8 scalar codes and nearest-even midpoints match independent bit vectors (1 case, 1535421 steps)\nok   #test original matrix layouts have exact independent endpoints and safe products (1 case, 619 steps)\nok   #test packed FP4 is low-first and FP8 scales span 32 rows and 32 columns (1 case, 10479 steps)\nok   #test expert plans and every private view retain unequal original matrix roles (1 case, 79481 steps)\nok   #test clamped SwiGLU keeps the gate lower side open and rounds before route weighting (1 case, 2032 steps)\nok   #test all scalar matrix quantizer and activation refusal extents are independent (1 case, 18757 steps)\nok   #test matrix projection and complete expert workspaces reject each short span (1 case, 48604 steps)\nok   #test route policies distinguish count weights IDs and duplicate selections (1 case, 1629 steps)\nok   #test quantizer and activation count policies expose their exact maximum and minimum (1 case, 232 steps)\nok   #test mixture validates every independent public workspace and unselected expert shape (1 case, 128420 steps)\nok   #test expert activation grid 0 matches independent codes scales and wide values (1 case, 70268 steps)\nok   #test expert activation grid 1 matches independent codes scales and wide values (1 case, 29420 steps)\nok   #test expert activation grid 2 matches independent codes scales and wide values (1 case, 30020 steps)\nok   #test expert activation grid 3 matches independent codes scales and wide values (1 case, 29820 steps)\nok   #test complete quantized expert 0 matches independent pre-down weighted FFN (1 case, 1094974 steps)\nok   #test expert fixture 0 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 1 matches independent pre-down weighted FFN (1 case, 1095109 steps)\nok   #test expert fixture 1 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 2 matches independent pre-down weighted FFN (1 case, 1095176 steps)\nok   #test expert fixture 2 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 3 matches independent pre-down weighted FFN (1 case, 1290782 steps)\nok   #test expert fixture 3 copies every packed byte and paired scale exactly (1 case, 186620 steps)\nok   #test complete quantized expert 4 matches independent pre-down weighted FFN (1 case, 1069329 steps)\nok   #test expert fixture 4 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test routed FP4 experts plus one shared FP8 expert match the independent mixture (1 case, 3383728 steps)\nok   #test mixture reports routed and shared clamping counts (1 case, 3341520 steps)\nok   #test device scalar helpers preserve both format grids signs and limits (1 case, 669 steps)\nok   #test eight-token products and ragged tiles retain ordered compensation and spare tails (1 case, 78982 steps)\nok   #test FP8 block scales and whole-result flags gate publication (1 case, 29400 steps)\nok   #test wide cancellation retains small terms and overflow refuses before narrowing (1 case, 64730 steps)\nok   #test scale blocks distinguish both row and K axes and packed byte positions (1 case, 1224199 steps)\n75 checks, 75 passed, 0 failed\n",
+    "release-unit": "ok   #test time and workspace budgets choose largest chunks and never silently select serial (1 case, 5025 steps)\nok   #test layer-major cursor requires every attention route group and combine receipt before commit (1 case, 7739 steps)\nok   #test remaining tails serial requests cursor phases and all key-count bounds are exact (1 case, 4625 steps)\nok   #test stable expert buckets preserve every token and original route ordinal (1 case, 8615 steps)\nok   #test gather and scatter keep routing weights attached to their exact source token (1 case, 5895 steps)\nok   #test canonical route-order combine rounds before adding the shared expert once (1 case, 19916 steps)\nok   #test dirty work exact capacities missing experts and first invalid routes are checked (1 case, 30395 steps)\nok   #test route order preserves cancellation and shared addition follows F32 routed narrowing (1 case, 17960 steps)\nok   #test grouped projections retain serial bits and exact capacities with both formats (1 case, 2891590 steps)\nok   #test batched expert layout activation and final output match three serial routed FFNs (1 case, 8036072 steps)\nok   #test tiles exact workspace slices and first-index numeric failures are observed (1 case, 110949 steps)\nok   #test a second token tile writes all ragged outputs and clears dirty flags (1 case, 382331 steps)\nok   #test BF16 and F32 original rows produce the same rectangular projection (1 case, 1553 steps)\nok   #test non-finite original bits and malformed sizes refuse atomically (1 case, 455 steps)\nok   #test large matrix endpoints and all little-endian byte positions are explicit (1 case, 251 steps)\nok   #test every encoded weight is checked, including first and final matrix elements (1 case, 637 steps)\nok   #test compensation retains small terms in either order (1 case, 257 steps)\nok   #test maximum selection keeps the first allowed index on ties (1 case, 376 steps)\nok   #test rectangular matrices and matrix vectors have exact integer oracles (1 case, 3470 steps)\nok   #test addition, row sums and row dots reuse the same admitted storage (1 case, 2826 steps)\nok   #forall signed dot products agree with their derived polynomial (5 cases, 3877 steps)\nok   #test wide reductions retain cancellation and avoid f32 product overflow (1 case, 2103 steps)\nok   #test gather follows requested rows, including repeats (1 case, 2607 steps)\nok   #test masked softmax is stable, shift invariant and never substitutes for an empty row (1 case, 4996 steps)\nok   #test RMSNorm and LayerNorm use population statistics and epsilon inside the root (1 case, 3105 steps)\nok   #test arithmetic failure keeps the destination and exposes only staged scratch (1 case, 1123 steps)\nok   #test request and alias refusal precede data reads and all writes (1 case, 864 steps)\nok   #test each operation has an explicit storage plan (1 case, 3167 steps)\nok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)\nok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)\nok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)\nok   #test a scalar has one element and no axes (1 case, 334 steps)\nok   #test row-major layouts for every supported rank (1 case, 1298 steps)\nok   #forall rank endpoints (7 cases, 1598 steps)\nok   #forall active axes must be positive (20 cases, 3908 steps)\nok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)\nok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)\nok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)\nok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)\nok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)\nok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)\nok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)\nok   #test scalar storage is one real float (1 case, 215 steps)\nok   #test all FP4 codes and UE8M0 scales preserve exact wide values and signed zero (1 case, 323844 steps)\nok   #test all FP8 scalar codes and nearest-even midpoints match independent bit vectors (1 case, 1535421 steps)\nok   #test original matrix layouts have exact independent endpoints and safe products (1 case, 619 steps)\nok   #test packed FP4 is low-first and FP8 scales span 32 rows and 32 columns (1 case, 10479 steps)\nok   #test expert plans and every private view retain unequal original matrix roles (1 case, 79481 steps)\nok   #test clamped SwiGLU keeps the gate lower side open and rounds before route weighting (1 case, 2032 steps)\nok   #test all scalar matrix quantizer and activation refusal extents are independent (1 case, 18757 steps)\nok   #test matrix projection and complete expert workspaces reject each short span (1 case, 48604 steps)\nok   #test route policies distinguish count weights IDs and duplicate selections (1 case, 1629 steps)\nok   #test quantizer and activation count policies expose their exact maximum and minimum (1 case, 232 steps)\nok   #test mixture validates every independent public workspace and unselected expert shape (1 case, 128420 steps)\nok   #test expert activation grid 0 matches independent codes scales and wide values (1 case, 70268 steps)\nok   #test expert activation grid 1 matches independent codes scales and wide values (1 case, 29420 steps)\nok   #test expert activation grid 2 matches independent codes scales and wide values (1 case, 30020 steps)\nok   #test expert activation grid 3 matches independent codes scales and wide values (1 case, 29820 steps)\nok   #test complete quantized expert 0 matches independent pre-down weighted FFN (1 case, 1094974 steps)\nok   #test expert fixture 0 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 1 matches independent pre-down weighted FFN (1 case, 1095109 steps)\nok   #test expert fixture 1 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 2 matches independent pre-down weighted FFN (1 case, 1095176 steps)\nok   #test expert fixture 2 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 3 matches independent pre-down weighted FFN (1 case, 1290782 steps)\nok   #test expert fixture 3 copies every packed byte and paired scale exactly (1 case, 186620 steps)\nok   #test complete quantized expert 4 matches independent pre-down weighted FFN (1 case, 1069329 steps)\nok   #test expert fixture 4 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test routed FP4 experts plus one shared FP8 expert match the independent mixture (1 case, 3383728 steps)\nok   #test mixture reports routed and shared clamping counts (1 case, 3341520 steps)\nok   #test device scalar helpers preserve both format grids signs and limits (1 case, 669 steps)\nok   #test eight-token products and ragged tiles retain ordered compensation and spare tails (1 case, 78982 steps)\nok   #test FP8 block scales and whole-result flags gate publication (1 case, 29400 steps)\nok   #test wide cancellation retains small terms and overflow refuses before narrowing (1 case, 64730 steps)\nok   #test scale blocks distinguish both row and K axes and packed byte positions (1 case, 1224199 steps)\n75 checks, 75 passed, 0 failed\n",
+    "mutation": "1777 mutants, 1777 killed, 0 survived\n",
+    "oracle": "Prefill: independent gate IDs, stable assignment buckets, offsets and one-fetch-per-expert counts for chunks 2/4/7/13 agree\n",
+    "book": "book structure: 63 programs, 253 source-linked listings, local links pass\n",
+    "nvrtc-compile": "NVRTC: generated grouped product, flag reduction and guarded publication compile for compute_89 (28749 PTX bytes); no device execution claim\n",
+    "cuda-attempt": "pc_open(&info): cuDevicePrimaryCtxRetain failed: CUDA error 2 (out of memory)\n",
+    "native-debug-plain": "Prefill calibration: serial 13-token two-layer reference 24767196 ns; per-token bound 1905169 ns, per-expert two-layer file cost 76798 ns\nPrefill: chunk 2, 7 chunks, 33 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 25791661 ns, budget estimate 26303157 ns\nPrefill: chunk 4, 4 chunks, 22 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 20392443 ns, budget estimate 25611975 ns\nPrefill: chunk 7, 2 chunks, 12 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 16027465 ns, budget estimate 25227985 ns\nPrefill: chunk 13, 1 chunks, 6 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 14697071 ns, budget estimate 24997591 ns\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: native aliases, measured-cost chunks, file reuse and layer-major transaction boundaries pass\n",
+    "native-debug-sanitized": "Prefill calibration: serial 13-token two-layer reference 123675531 ns; per-token bound 9513503 ns, per-expert two-layer file cost 215930 ns\nPrefill: chunk 2, 7 chunks, 33 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 132805584 ns, budget estimate 127994139 ns\nPrefill: chunk 4, 4 chunks, 22 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 101610752 ns, budget estimate 126050769 ns\nPrefill: chunk 7, 2 chunks, 12 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 75847246 ns, budget estimate 124971119 ns\nPrefill: chunk 13, 1 chunks, 6 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 68137675 ns, budget estimate 124323329 ns\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: native aliases, measured-cost chunks, file reuse and layer-major transaction boundaries pass\n",
+    "native-release-plain": "Prefill calibration: serial 13-token two-layer reference 2775890 ns; per-token bound 213530 ns, per-expert two-layer file cost 17872 ns\nPrefill: chunk 2, 7 chunks, 33 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 3195581 ns, budget estimate 3133330 ns\nPrefill: chunk 4, 4 chunks, 22 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 2554331 ns, budget estimate 2972482 ns\nPrefill: chunk 7, 2 chunks, 12 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 1957630 ns, budget estimate 2883122 ns\nPrefill: chunk 13, 1 chunks, 6 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 2167962 ns, budget estimate 2829506 ns\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: native aliases, measured-cost chunks, file reuse and layer-major transaction boundaries pass\n",
+    "native-release-sanitized": "Prefill calibration: serial 13-token two-layer reference 9414733 ns; per-token bound 724211 ns, per-expert two-layer file cost 53202 ns\nPrefill: chunk 2, 7 chunks, 33 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 5471215 ns, budget estimate 10478783 ns\nPrefill: chunk 4, 4 chunks, 22 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 4837143 ns, budget estimate 9999965 ns\nPrefill: chunk 7, 2 chunks, 12 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 3512983 ns, budget estimate 9733955 ns\nPrefill: chunk 13, 1 chunks, 6 expert fetches versus 52 token-major fetches; all 832 outputs, every route/weight and complete causal cache bit-identical; elapsed 3216234 ns, budget estimate 9574349 ns\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: late final-layer expert failure preserves the complete public prefix and every output word\nPrefill: native aliases, measured-cost chunks, file reuse and layer-major transaction boundaries pass\n",
+    "cuda-execution": "CUDA: NVIDIA GeForce RTX 4080, driver 13020, 16044654592 free bytes\nCUDA grouped kind 0, 64x96, batch 1, failure 0: 64 exact output/flag words; publication atomic\nCUDA grouped kind 0, 64x96, batch 9, failure 0: 576 exact output/flag words; publication atomic\nCUDA grouped kind 0, 64x96, batch 17, failure 1: 1088 exact output/flag words; publication atomic\nCUDA grouped kind 0, 32x32, batch 2, failure 2: 64 exact output/flag words; publication atomic\nCUDA grouped kind 1, 64x96, batch 1, failure 0: 64 exact output/flag words; publication atomic\nCUDA grouped kind 1, 64x96, batch 9, failure 0: 576 exact output/flag words; publication atomic\nCUDA grouped kind 1, 64x96, batch 17, failure 1: 1088 exact output/flag words; publication atomic\nCUDA grouped kind 1, 32x32, batch 2, failure 2: 64 exact output/flag words; publication atomic\nCUDA grouped kind 0, 2304x5120, batch 9, failure 0: 20736 exact output/flag words; publication atomic\nCUDA grouped kind 0, 2304x5120, batch 9, failure 0: 20736 exact output/flag words; publication atomic\nCUDA grouped kind 0, 5120x2304, batch 9, failure 0: 46080 exact output/flag words; publication atomic\nCUDA grouped: generated source compiled in 0.169488 s; all requested exact checks passed\n",
+    "book-publication": "book structure: 68 programs, 265 source-linked listings, local links pass\n"
+  },
+  "example_stdout": "prefill chunk: 6 tokens, 1750 ns predicted\nlayer routes: 8 uses grouped into 3 expert fetches\ntwo layers: 15 receipts before epoch 1 completes\ngrouped expert: 192 outputs, 6144 coefficient decodes for 18432 products\ninsufficient grouped budget refuses; serial mode is explicit\n",
+  "commands": [
+    "python3 -I psionic/tests/deepseek_prefill_oracle.py [--header]",
+    "python3 -I psionic/tests/deepseek_prefill_record.py",
+    "coax/bin/coax test psionic/lib/deepseek/prefill.coax --run-steps 32000000 [--release]",
+    "coax/bin/coax mutate psionic/lib/deepseek/prefill.coax --jobs 8 --run-steps 32000000",
+    "coax/bin/coax c psionic/tests/deepseek-prefill-runtime.coax --library --header HEADER --run-steps 32000000 [--release]",
+    "cc -std=c11 -O0/-O3 -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter -Wno-unknown-pragmas -Wno-misleading-indentation [-fsanitize=address,undefined -fno-omit-frame-pointer] generated.c psionic/platform/deepseek-{prefill,hot,expert}-memory.c psionic/tests/deepseek_prefill_native.c -lm",
+    "coax/bin/coax run psionic/examples/deepseek-prefill.coax --run-steps 32000000 [--release]",
+    "coax/bin/coax cuda psionic/lib/deepseek/prefill-kernels.coax --release",
+    "nvrtc LIB kernels.cu kernels.ptx (offline compilation, no context)",
+    "device kernels.cu /tmp/deepseek-hot-original/packet.bin (attempt failed at context creation)",
+    "python3 -I psionic/tests/book.py"
+  ],
+  "scope": "CPU layer-major chunks and original MoE batch; exact CUDA grouped product primitive; no complete GPU prefill claim",
+  "publication_base": "edab4a2ecd1db9f5e74c2b33a5635add4e513f1c",
+  "publication_input_audit": {
+    "qualification_input_count": 58,
+    "changed_after_rebase": [],
+    "prior_passing_results_reused": true
+  }
+}

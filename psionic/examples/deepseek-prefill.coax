@@ -1,0 +1,21 @@
+#import "Basic";
+#load "../lib/deepseek/prefill.coax";
+// book:begin example
+main :: () {
+    config:=DpChunkConfig.{max_chunk=8,workspace=32768,bytes_per_token=4096,fixed_ns=1000,token_ns=100,expert_ns=50,experts=3,k=2,target_ns=1750};
+    chunk:=dp_chunk(config,13);#assert chunk.status==DsStatus.ok && chunk.count==6 && chunk.predicted_ns==1750;
+    print("prefill chunk: % tokens, % ns predicted\n",chunk.count,chunk.predicted_ns);
+    ids:=[8]int.[2,0,1,2,0,1,2,1];weights:=[8]f32.[0.2f32,0.8f32,0.3f32,0.7f32,0.4f32,0.6f32,0.5f32,0.5f32];order:[8]int;offsets:[4]int;keys:[3]int;so:[8]int;sf:[4]int;sk:[3]int;
+    grouped:=dp_groups(3,4,2,ids[..],weights[..],order[..],offsets[..],keys[..],so[..],sf[..],sk[..],false);#assert grouped.status==DsStatus.ok;
+    print("layer routes: % uses grouped into % expert fetches\n",grouped.written,grouped.groups);
+    cursor:=dp_start(0,4,2,3,2,0).value;empty:[1]int;steps:=0;
+    while cursor.phase!=DpPhase.done {receipt:=DpReceipt.{epoch=cursor.epoch,layer=cursor.layer,phase=cursor.phase,group=cursor.group,ok=true};selected:=empty[0..<0];if cursor.phase==DpPhase.route {selected=keys[..];}
+        advanced:=dp_advance(cursor,receipt,selected);#assert advanced.status==DsStatus.ok;cursor=advanced.value;steps+=1;}
+    print("two layers: % receipts before epoch % completes\n",steps,cursor.epoch);
+    data:[3264]u8;e:=de_fixture_0(data[..]);x:[192]f32;for t:0..<3 {for j:0..<64 {x[t*64+j]=DEG_INPUT[j]+f32(t)/16;}}routes:=[3]f32.[0.137f32,0.75f32,0];out:[192]f32;work_f:[672]f32;work_q:[192]f64;flags:[192]u8;
+    r:=dp_expert(e,3,x[..],routes[..],10,out[..],DpWork.{floats=work_f[..],wide=work_q[..],flags=flags[..]},false);#assert r.status==DsStatus.ok;
+    print("grouped expert: % outputs, % coefficient decodes for % products\n",r.written,r.coefficients,r.products);
+    config.target_ns=1000;#assert dp_chunk(config,13).status==DsStatus.budget;
+    print("insufficient grouped budget refuses; serial mode is explicit\n");
+}
+// book:end example

@@ -1,5 +1,48 @@
 # Invariants
 
+## Psionic layer-major prefill preserves route order and complete chunk publication
+
+`psionic/lib/deepseek/prefill*.coax` owns `deepseek-prefill-cpu-wide-v1`.
+Stable expert groups retain original token/route ordinals and their weights.
+Each active expert packet is staged once per layer/chunk; gather/expert/scatter
+restore those ordinals. Eight-row matrix tiles share decode while every output
+keeps chapter 63's increasing-K TwoSum/correction reduction and final F32 cast.
+Activation grids, clamp/SiLU and pre-down route weighting remain unchanged.
+Combine narrows the routed sum before adding the shared result exactly once.
+
+Grouping/FFN/combine outputs stage before publication. The cursor orders
+attention, routing, all expert groups, shared and combine for each layer before
+chunk commit; wrong/failed/stale receipts refuse. It does not authenticate
+model/history identity or synchronize callers. Intermediate hidden/contribution/
+cache state stays private until the integrating engine publishes the chunk.
+Native effects observe spans and read files; all arithmetic/decisions are Coax.
+
+Chunk size is the largest count fitting an explicit measured-cost estimate and
+workspace inventory. Grouped mode rejects a maximum of one and refuses a
+singleton budget while multiple tokens remain. Only a final tail or explicitly
+requested serial mode uses one. Cost estimates are not hard deadlines; actual
+elapsed time, calibration/context drift and other live memory need accounting.
+
+Caller duties include valid immutable typed allocations/extents and source/model/
+recipe identities, successful unmodified plans/borrowed keys, truthful receipts,
+correct live-memory/calibration inputs, linear cursor ownership and exclusive
+disjoint writes. Whole-model request fencing, cancellation and publication remain
+engine work. Owned causal-stack and original layer-0 MoE batch qualify CPU
+components, not complete original-model prefill or learned attention.
+
+Generated CUDA products/flags/publication execute on the RTX 4080 with exact
+CPU parity: FP4/FP8 ragged tiles, numerical refusal and all three original routed
+projection shapes. This qualifies the product primitive, not a complete GPU
+expert FFN, model prefill or device performance.
+`psionic/tests/run_deepseek_prefill_cuda.sh` is the strict device gate;
+`--compile-only` does not imply execution.
+
+Check: `psionic/tests/check_deepseek_prefill.sh` covers independent grouping,
+measured-cost chunks, exact serial/layer-major causal state, bounded file reuse,
+native debug/release plain/ASan/UBSan and original MoE evidence replay.
+`psionic/check.sh --only deepseek/prefill --jobs 8` adds zero-survivor mutation.
+Evidence and scope: [chapter 65 record](docs/verification/psionic-ch65-2026-10-29.md).
+
 ## Psionic exact hot-expert residency changes only between steps
 
 `psionic/lib/deepseek/hot*.coax` owns `deepseek-hot-exact-cpu-v1`:

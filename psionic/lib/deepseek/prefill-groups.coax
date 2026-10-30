@@ -1,0 +1,106 @@
+#load "prefill-products.coax";
+#authority;
+
+#test "stable expert buckets preserve every token and original route ordinal" {
+    ids:=[8]int.[2,0,1,2,0,1,2,1];weights:=[8]f32.[1,1,1,1,1,1,1,1];order:[9]int;offsets:[5]int;keys:[4]int;so:[8]int;sf:[4]int;sk:[3]int;for i:0..<9 {order[i]=77;}for i:0..<5 {offsets[i]=88;}for i:0..<4 {keys[i]=99;sf[i]=55;}for i:0..<3 {sk[i]=66;}
+    r:=dp_groups(3,4,2,ids[..],weights[..],order[..],offsets[..],keys[..],so[..],sf[..],sk[..],false);#assert r.status==DsStatus.ok && r.groups==3 && r.written==8;
+    expected:=[8]int.[1,4,2,5,7,0,3,6];starts:=[4]int.[0,2,5,8];for i:0..<8 {#assert order[i]==expected[i];}for i:0..<4 {#assert offsets[i]==starts[i];}for i:0..<3 {#assert keys[i]==i;}#assert order[8]==77 && offsets[4]==88 && keys[3]==99;
+    ids[7]=2;#assert dp_groups(3,4,2,ids[..],weights[..],order[..],offsets[..],keys[..],so[..],sf[..],sk[..],false).status==DsStatus.token;ids[7]=1;
+    for field:0..<7 {o:=order[..];f:=offsets[..];k:=keys[..];a:=so[..];b:=sf[..];c:=sk[..];alias:=false;if field==0 {o=order[0..<7];}else if field==1 {f=offsets[0..<3];}else if field==2 {k=keys[0..<2];}else if field==3 {a=so[0..<7];}else if field==4 {b=sf[0..<3];}else if field==5 {c=sk[0..<2];}else {alias=true;}
+        #assert dp_groups(3,4,2,ids[..],weights[..],o,f,k,a,b,c,alias).status==(ifx alias then DsStatus.alias else DsStatus.capacity);}
+    #assert !dp_route_shape(0,1,1) && !dp_route_shape(385,1,1) && !dp_route_shape(2,0,1) && !dp_route_shape(2,513,1) && !dp_route_shape(2,1,0) && !dp_route_shape(9,1,9) && !dp_route_shape(1,1,2);
+    #assert dp_route_shape(1,1,1) && dp_route_shape(384,512,8);
+}
+#test "gather and scatter keep routing weights attached to their exact source token" {
+    ids:=[4]int.[1,0,0,1];weights:=[4]f32.[0.1f32,0.2f32,0.3f32,0.4f32];order:=[4]int.[1,2,0,3];offsets:=[3]int.[0,2,4];x:[64]f32;for i:0..<64 {x[i]=f32(i+1);}g:[64]f32;routes:[2]f32;
+    r:=dp_gather(2,2,2,32,1,ids[..],weights[..],order[..],offsets[..],x[..],g[..],routes[..],false);#assert r.status==DsStatus.ok && r.written==64 && g[0]==1 && g[63]==64 && routes[0]==weights[0] && routes[1]==weights[3];
+    contribution:[129]f32;contribution[128]=77;r=dp_scatter(2,2,2,32,1,ids[..],order[..],offsets[..],g[..],contribution[..],false);#assert r.status==DsStatus.ok && r.written==64 && contribution[0]==1 && contribution[127]==64 && contribution[128]==77;
+    order[3]=0;#assert dp_gather(2,2,2,32,1,ids[..],weights[..],order[..],offsets[..],x[..],g[..],routes[..],false).status==DsStatus.state;
+    #assert dp_gather(2,2,2,32,-1,ids[..],weights[..],order[..],offsets[..],x[..],g[..],routes[..],false).status==DsStatus.shape;
+    #assert dp_gather(2,2,2,32,2,ids[..],weights[..],order[..],offsets[..],x[..],g[..],routes[..],false).status==DsStatus.shape;
+    order[3]=3;#assert dp_gather(2,2,2,32,1,ids[..],weights[..],order[..],offsets[..],x[..],g[0..<63],routes[..],false).status==DsStatus.capacity;
+    #assert dp_gather(2,2,2,32,1,ids[..],weights[..],order[..],offsets[..],x[..],g[..],routes[0..<1],false).status==DsStatus.capacity && dp_gather(2,2,2,32,1,ids[..],weights[..],order[..],offsets[..],x[..],g[..],routes[..],true).status==DsStatus.alias;
+    #assert dp_scatter(2,2,2,32,1,ids[..],order[..],offsets[..],g[0..<63],contribution[..],false).status==DsStatus.capacity && dp_scatter(2,2,2,32,1,ids[..],order[..],offsets[..],g[..],contribution[0..<127],false).status==DsStatus.capacity && dp_scatter(2,2,2,32,1,ids[..],order[..],offsets[..],g[..],contribution[..],true).status==DsStatus.alias;
+}
+#test "canonical route-order combine rounds before adding the shared expert once" {
+    ids:=[4]int.[1,0,0,1];weights:=[4]f32.[1,1,1,1];contrib:[128]f32;shared:[64]f32;for i:0..<128 {contrib[i]=f32(i/32+1);}for i:0..<64 {shared[i]=10;}
+    receipts:=[2]u8.[1,1];out:[65]f32;stage:[64]f32;out[64]=77;
+    r:=dp_combine(2,2,2,32,ids[..],weights[..],receipts[..],true,contrib[..],shared[..],out[..],stage[..],false);#assert r.status==DsStatus.ok && r.written==64 && out[0]==13 && out[63]==17 && out[64]==77;
+    receipts[1]=0;#assert dp_combine(2,2,2,32,ids[..],weights[..],receipts[..],true,contrib[..],shared[..],out[..],stage[..],false).status==DsStatus.state;receipts[1]=2;#assert dp_combine(2,2,2,32,ids[..],weights[..],receipts[..],true,contrib[..],shared[..],out[..],stage[..],false).status==DsStatus.state;receipts[1]=1;
+    #assert dp_combine(2,2,2,32,ids[..],weights[..],receipts[..],false,contrib[..],shared[..],out[..],stage[..],false).status==DsStatus.state;
+    for field:0..<6 {receipts_view:=receipts[..];c:=contrib[..];s:=shared[..];o:=out[..];w:=stage[..];alias:=false;if field==0 {receipts_view=receipts[0..<1];}else if field==1 {c=contrib[0..<127];}else if field==2 {s=shared[0..<63];}else if field==3 {o=out[0..<63];}else if field==4 {w=stage[0..<63];}else {alias=true;}
+        #assert dp_combine(2,2,2,32,ids[..],weights[..],receipts_view,true,c,s,o,w,alias).status==(ifx alias then DsStatus.alias else DsStatus.capacity);}
+}
+
+#test "dirty work exact capacities missing experts and first invalid routes are checked" {
+    ids:=[6]int.[0,2,2,1,0,1];weights:=[6]f32.[1,1,1,1,1,1];order:[6]int;offsets:[5]int;keys:[4]int;so:[6]int;sf:[5]int;sk:[4]int;
+    for i:0..<5 {sf[i]=77;}for i:0..<4 {keys[i]=88;}for i:0..<6 {so[i]=99;}
+    r:=dp_groups(4,3,2,ids[..],weights[..],order[..],offsets[..],keys[..],so[..],sf[..],sk[..],false);#assert r.status==DsStatus.ok && r.groups==3 && offsets[0]==0 && offsets[1]==2 && offsets[2]==4 && offsets[3]==6 && offsets[4]==6 && keys[3]==88;
+    #assert dp_groups(4,3,2,ids[..],weights[..],order[..],offsets[..],keys[..],so[..],sf[..],sk[..],false).status==DsStatus.ok;
+    #assert dp_routes(4,3,2,ids[0..<5],weights[..])==DsStatus.capacity && dp_routes(4,3,2,ids[..],weights[0..<5])==DsStatus.capacity;
+    ids[0]=4;#assert dp_routes(4,3,2,ids[..],weights[..])==DsStatus.token;ids[0]=0;
+    #assert dp_group_dimensions(2,1,1,32,0) && !dp_group_dimensions(0,1,1,32,0) && !dp_group_dimensions(2,1,1,31,0) && !dp_group_dimensions(2,1,1,32,-1) && !dp_group_dimensions(2,1,1,32,2);
+    #assert dp_group_counts(6,6,5,6,4) && !dp_group_counts(5,6,5,6,4) && !dp_group_counts(6,5,5,6,4) && !dp_group_counts(6,6,4,6,4);
+    #assert dp_extent(0,0,1,1) && dp_extent(0,1,1,1) && dp_extent(1,1,1,1) && !dp_extent(-1,0,2,1) && !dp_extent(1,0,2,1) && !dp_extent(0,3,2,3) && !dp_extent(0,2,2,1);
+    #assert dp_assignment(0,-1,1) && dp_assignment(1,0,2) && !dp_assignment(-1,-1,2) && !dp_assignment(0,0,2) && !dp_assignment(1,0,1);
+    #assert dp_group_span(4,3,2,32,3,ids[..],order[..],offsets[..]).written==0;
+    x:[96]f32;for i:0..<96 {x[i]=f32(i+1);}g:[96]f32;routes:[3]f32;contrib:[192]f32;for i:0..<192 {contrib[i]=77;}
+    #assert dp_gather(4,3,2,32,0,ids[..],weights[..],order[..],offsets[..],x[..],g[..],routes[..],false).status==DsStatus.ok;
+    #assert dp_gather(4,3,2,32,0,ids[..],weights[0..<5],order[..],offsets[..],x[..],g[..],routes[..],false).status==DsStatus.capacity;
+    #assert dp_gather(4,3,2,32,0,ids[..],weights[..],order[..],offsets[..],x[0..<95],g[..],routes[..],false).status==DsStatus.capacity;
+    #assert dp_scatter(4,3,2,32,0,ids[..],order[..],offsets[..],g[0..<64],contrib[..],false).status==DsStatus.ok && contrib[0]==1 && contrib[32*4]==65;
+    #assert dp_scatter(4,3,2,32,0,ids[..],order[..],offsets[..],g[0..<64],contrib[0..<191],false).status==DsStatus.capacity;
+    shared:[96]f32;out:[96]f32;stage:[96]f32;receipts:=[4]u8.[1,1,1,0];#assert dp_combine(4,3,2,32,ids[..],weights[..],receipts[..],true,contrib[..],shared[..],out[..],stage[..],false).status==DsStatus.ok;
+}
+#test "route order preserves cancellation and shared addition follows F32 routed narrowing" {
+    ids:=[3]int.[2,0,1];weights:=[3]f32.[1,1,1];c:[96]f32;for i:0..<32 {c[i]=1e20f32;c[32+i]=1;c[64+i]=-1e20f32;}shared:[32]f32;for i:0..<32 {shared[i]=0.5f32;}receipts:=[3]u8.[1,1,1];out:[32]f32;stage:[32]f32;
+    #assert dp_combine(3,1,3,32,ids[..],weights[..],receipts[..],true,c[..],shared[..],out[..],stage[..],false).status==DsStatus.ok;for value:out {#assert value==1.5f32;}
+    for i:0..<32 {c[i]=1;c[32+i]=5.960464477539063e-8f32;shared[i]=5.960464477539063e-8f32;}
+    #assert dp_combine(3,1,2,32,ids[0..<2],weights[0..<2],receipts[..],true,c[0..<64],shared[..],out[..],stage[..],false).status==DsStatus.ok;for value:out {#assert value==1;}
+    c[0]=3.4028234663852886e38f32;c[32]=3.4028234663852886e38f32;#assert dp_combine(3,1,2,32,ids[0..<2],weights[0..<2],receipts[..],true,c[0..<64],shared[..],out[..],stage[..],false).status==DsStatus.arithmetic;
+}
+
+dp_group_dimensions :: (experts:int,batch:int,k:int,width:int,expert:int)->bool {return dp_route_shape(experts,batch,k) && de_quant_count(width) && expert>=0 && expert<experts;}
+dp_group_counts :: (ids:int,order:int,offsets:int,n:int,experts:int)->bool {return ids==n && order==n && offsets==experts+1;}
+dp_extent :: (begin:int,end:int,n:int,batch:int)->bool {return begin>=0 && end>=begin && end<=n && end-begin<=batch;}
+dp_assignment :: (a:int,previous:int,n:int)->bool {return a>previous && a<n;}
+dp_route_shape :: (experts:int,batch:int,k:int)->bool {return experts>=1 && experts<=384 && dp_batch(batch) && k>=1 && k<=8 && k<=experts;}
+dp_routes :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32)->DsStatus {
+    if !dp_route_shape(experts,batch,k) {return DsStatus.shape;}if ids.count!=batch*k || weights.count!=batch*k {return DsStatus.capacity;}
+    for t:0..<batch {s:=de_routes(experts,ids[t*k..<(t+1)*k],weights[t*k..<(t+1)*k]);if s!=DsStatus.ok {return s;}}return DsStatus.ok;
+}
+// book:begin group
+dp_groups :: (experts:int,batch:int,k:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,keys:[]int,order_stage:[]int,offset_stage:[]int,key_stage:[]int,overlap:bool)->DpResult #export_c {
+    status:=dp_routes(experts,batch,k,ids,weights);if status!=DsStatus.ok {return DpResult.{status=status};}n:=batch*k;
+    if order.count<n || offsets.count<experts+1 || keys.count<experts || order_stage.count<n || offset_stage.count<experts+1 || key_stage.count<experts {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
+    for i:0..<experts+1 {offset_stage[i]=0;}for id:ids {offset_stage[id+1]+=1;}for e:1..<experts {offset_stage[e+1]+=offset_stage[e];}
+    cursors:[384]int;groups:=0;for e:0..<experts {cursors[e]=offset_stage[e];if offset_stage[e+1]>offset_stage[e] {key_stage[groups]=e;groups+=1;}}
+    for a:0..<n {e:=ids[a];order_stage[cursors[e]]=a;cursors[e]+=1;}
+    for i:0..<n {order[i]=order_stage[i];}for i:0..<experts+1 {offsets[i]=offset_stage[i];}for i:0..<groups {keys[i]=key_stage[i];}return DpResult.{written=n,groups=groups};
+}
+// book:end group
+dp_group_span :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,order:[]int,offsets:[]int)->DpResult {
+    if !dp_group_dimensions(experts,batch,k,width,expert) {return DpResult.{status=DsStatus.shape};}n:=batch*k;
+    if !dp_group_counts(ids.count,order.count,offsets.count,n,experts) {return DpResult.{status=DsStatus.capacity};}
+    begin:=offsets[expert];end:=offsets[expert+1];if !dp_extent(begin,end,n,batch) {return DpResult.{status=DsStatus.state};}
+    previous:=-1;for i:begin..<end {a:=order[i];if !dp_assignment(a,previous,n) {return DpResult.{status=DsStatus.state};}if ids[a]!=expert {return DpResult.{status=DsStatus.state};}previous=a;}
+    return DpResult.{written=end-begin};
+}
+dp_gather :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,weights:[]f32,order:[]int,offsets:[]int,x:[]f32,out:[]f32,routes:[]f32,overlap:bool)->DpResult #export_c {
+    r:=dp_group_span(experts,batch,k,width,expert,ids,order,offsets);if r.status!=DsStatus.ok {return r;}n:=r.written;
+    if weights.count!=batch*k || x.count!=batch*width || out.count<n*width || routes.count<n {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
+    for j:0..<n {a:=order[offsets[expert]+j];routes[j]=weights[a];for d:0..<width {out[j*width+d]=x[(a/k)*width+d];}}return DpResult.{written=n*width,groups=n};
+}
+dp_scatter :: (experts:int,batch:int,k:int,width:int,expert:int,ids:[]int,order:[]int,offsets:[]int,input:[]f32,out:[]f32,overlap:bool)->DpResult #export_c {
+    r:=dp_group_span(experts,batch,k,width,expert,ids,order,offsets);if r.status!=DsStatus.ok {return r;}n:=r.written;
+    if input.count!=n*width || out.count<batch*k*width {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
+    for j:0..<n {a:=order[offsets[expert]+j];for d:0..<width {out[a*width+d]=input[j*width+d];}}return DpResult.{written=n*width};
+}
+dp_combine :: (experts:int,batch:int,k:int,width:int,ids:[]int,weights:[]f32,receipts:[]u8,shared_ready:bool,contribution:[]f32,shared:[]f32,out:[]f32,stage:[]f32,overlap:bool)->DpResult #export_c {
+    status:=dp_routes(experts,batch,k,ids,weights);if status!=DsStatus.ok {return DpResult.{status=status};}if !de_quant_count(width) {return DpResult.{status=DsStatus.shape};}n:=batch*width;
+    if receipts.count!=experts || contribution.count!=batch*k*width || shared.count!=n || out.count<n || stage.count<n {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
+    if !shared_ready {return DpResult.{status=DsStatus.state};}for id:ids {if receipts[id]!=1 {return DpResult.{status=DsStatus.state};}}
+    for t:0..<batch {for d:0..<width {acc:PsionicAccumulator;for j:0..<k {v:=contribution[(t*k+j)*width+d];if !psionic_tensor_finite_bits(f32_bits(v)) {return DpResult.{status=DsStatus.number};}acc=psionic_ops_accumulate(acc,f64(v));}
+        routed:=psionic_ops_total(acc);if !psionic_ops_fits_f32(routed) {return DpResult.{status=DsStatus.arithmetic};}v:=shared[t*width+d];if !psionic_tensor_finite_bits(f32_bits(v)) {return DpResult.{status=DsStatus.number};}sum:=f64(f32(routed))+f64(v);if !psionic_ops_fits_f32(sum) {return DpResult.{status=DsStatus.arithmetic};}stage[t*width+d]=f32(sum);}}
+    for i:0..<n {out[i]=stage[i];}return DpResult.{written=n};
+}

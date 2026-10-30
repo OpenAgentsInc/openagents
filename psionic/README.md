@@ -64,6 +64,11 @@ independently qualified original 384/6 MoE component.
 expert-cache core: profile heat, between-step transactions, private prefetch
 and host/file/resident coefficient parity, including an original expert.
 Device residency and execution remain integration work.
+[Chapter 65](book/ch065-prefill-layer-by-layer.md) adds layer-major CPU
+chunks, stable routed groups and grouped block-scaled products, with exact
+owned causal-stack and original MoE-batch parity. Generated CUDA products match
+CPU words exactly on the RTX 4080, including original routed projection shapes;
+complete GPU prefill remains integration work.
 [Chapter 66](book/ch066-pack-the-cache-exactly.md) retains the original KV/index
 grids as packed codes/scales, reconstructs their BF16 bits and admits persistent
 cache payload and chunk codec work against separate limits.

@@ -1,0 +1,74 @@
+#load "prefill-types.coax";
+#load "expert.coax";
+#load "prefill-kernels.coax";
+#authority;
+
+#test "grouped projections retain serial bits and exact capacities with both formats" {
+    bytes:[3264]u8;e:=de_fixture_0(bytes[..]);input:[192]f32;for t:0..<3 {for j:0..<64 {input[t*64+j]=DEG_INPUT[j]+f32(t)/16;}}
+    output:[97]f32;stage:[96]f32;quant:[192]f64;flags:[96]u8;output[96]=77;
+    r:=dp_project(e.gate,3,input[..],output[..],quant[..],stage[..],flags[..],false);#assert r.status==DsStatus.ok && r.written==96 && r.coefficients==2048 && r.products==6144;
+    one:[32]f32;q:[64]f64;s:[32]f32;for t:0..<3 {#assert de_project(e.gate,input[t*64..<(t+1)*64],one[..],q[..],s[..],false).status==DsStatus.ok;for j:0..<32 {#assert f32_bits(output[t*32+j])==f32_bits(one[j]);}}#assert output[96]==77;
+    #assert dp_project(e.gate,0,input[..],output[..],quant[..],stage[..],flags[..],false).status==DsStatus.shape;
+    for field:0..<6 {x:=input[..];o:=output[..];w:=quant[..];s2:=stage[..];f:=flags[..];alias:=false;if field==0 {x=input[0..<191];}else if field==1 {o=output[0..<95];}else if field==2 {w=quant[0..<191];}else if field==3 {s2=stage[0..<95];}else if field==4 {f=flags[0..<95];}else {alias=true;}
+        #assert dp_project(e.gate,3,x,o,w,s2,f,alias).status==(ifx alias then DsStatus.alias else DsStatus.capacity);}
+    #assert dp_batch(1) && dp_batch(512) && !dp_batch(0) && !dp_batch(513);
+    bytes2:[8192]u8;shared:=de_fixture_3(bytes2[..]);#assert dp_project(shared.gate,3,input[..],output[0..<96],quant[..],stage[..],flags[..],false).status==DsStatus.ok;
+    shared.gate.rows=0;#assert dp_project(shared.gate,3,input[..],output[..],quant[..],stage[..],flags[..],false).status==DsStatus.shape;
+}
+#test "batched expert layout activation and final output match three serial routed FFNs" {
+    bytes:[3264]u8;e:=de_fixture_0(bytes[..]);p:=dp_plan(e,3);#assert p.status==DsStatus.ok && p.width==64 && p.hidden==32 && p.batch==3 && p.floats==672 && p.wide==192 && p.flags==192;
+    expected:=[6]int.[0,96,192,288,480,672];for i:0..<6 {#assert p.begin[i]==expected[i];}
+    input:[192]f32;for t:0..<3 {for j:0..<64 {input[t*64+j]=DEG_INPUT[j]+f32(t)/16;}}routes:=[3]f32.[0.137f32,0.75f32,0];out:[193]f32;out[192]=77;floats:[672]f32;wide:[192]f64;flags:[192]u8;work:=DpWork.{floats=floats[..],wide=wide[..],flags=flags[..]};
+    r:=dp_expert(e,3,input[..],routes[..],10,out[0..<192],work,false);#assert r.status==DsStatus.ok && r.written==192 && r.coefficients==6144 && r.products==18432;
+    one:[64]f32;f:[224]f32;q:[64]f64;gc:=0;uc:=0;for t:0..<3 {s:=de_expert(e,input[t*64..<(t+1)*64],routes[t],10,one[..],DeWork.{floats=f[..],wide=q[..]},false);#assert s.status==DsStatus.ok;gc+=s.gate_clamped;uc+=s.up_clamped;for j:0..<64 {#assert f32_bits(out[t*64+j])==f32_bits(one[j]);}}#assert gc==r.gate_clamped && uc==r.up_clamped && out[192]==77;
+    bytes[3263]=255;#assert dp_expert(e,3,input[..],routes[..],10,out[..],work,false).status==DsStatus.number && out[192]==77;
+    bytes[3263]=127;routes[2]=-1;#assert dp_expert(e,3,input[..],routes[..],10,out[..],work,false).status==DsStatus.number;routes[2]=1;
+    for field:0..<7 {x:=input[..];weights:=routes[..];o:=out[..];w:=work;alias:=false;if field==0 {x=input[0..<191];}else if field==1 {weights=routes[0..<2];}else if field==2 {o=out[0..<191];}else if field==3 {w.floats=floats[0..<671];}else if field==4 {w.wide=wide[0..<191];}else if field==5 {w.flags=flags[0..<191];}else {alias=true;}
+        #assert dp_expert(e,3,x,weights,10,o,w,alias).status==(ifx alias then DsStatus.alias else DsStatus.capacity);}
+    #assert dp_plan(e,513).status==DsStatus.shape;bad:=e;bad.gate.rows=0;#assert dp_plan(bad,1).status==DsStatus.shape;
+}
+
+#test "tiles exact workspace slices and first-index numeric failures are observed" {
+    #assert dp_tiles(1)==1 && dp_tiles(8)==1 && dp_tiles(9)==2 && dp_tiles(512)==64;
+    bytes:[3264]u8;e:=de_fixture_0(bytes[..]);p:=dp_plan(e,2);work:[448]f32;for i:0..<448 {work[i]=f32(i);}v:=dp_views(work[..],p);
+    views:=[5][]f32.[v.gate,v.up,v.activation,v.pending,v.stage];for i:0..<5 {#assert views[i].count==p.begin[i+1]-p.begin[i] && views[i][0]==f32(p.begin[i]) && views[i][views[i].count-1]==f32(p.begin[i+1]-1);}
+    data:[16]u8;for i:0..<16 {data[i]=0x22;}scales:=[1]u8.[255];m:=DeMatrix.{rows=1,columns=32,data=data[..],scales=scales[..]};x:[32]f32;out:=[1]f32.[77];stage:[1]f32;quant:[32]f64;flags:[1]u8;
+    #assert dp_project(m,1,x[..],out[..],quant[..],stage[..],flags[..],false).status==DsStatus.number && out[0]==77;
+    scales[0]=127;x[0]=3.4028234663852886e38f32;#assert dp_project(m,1,x[..],out[..],quant[..],stage[..],flags[..],false).status==DsStatus.arithmetic && out[0]==77;
+}
+
+#test "a second token tile writes all ragged outputs and clears dirty flags" {
+    data:[48]u8;for i:0..<48 {data[i]=0x22;}scales:=[3]u8.[127,128,129];m:=DeMatrix.{rows=3,columns=32,data=data[..],scales=scales[..]};x:[288]f32;for t:0..<9 {for j:0..<32 {x[t*32+j]=f32(t+1);}}
+    out:[27]f32;stage:[27]f32;flags:[27]u8;quant:[288]f64;for i:0..<27 {flags[i]=99;stage[i]=-7;}
+    r:=dp_project(m,9,x[..],out[..],quant[..],stage[..],flags[..],false);#assert r.status==DsStatus.ok && r.coefficients==192 && r.products==864;
+    for t:0..<9 {#assert out[3*t]==f32(32*(t+1)) && out[3*t+1]==f32(64*(t+1)) && out[3*t+2]==f32(128*(t+1));}
+}
+
+dp_tiles :: (n:int)->int {return (n+7)/8;}
+dp_views :: (work:[]f32,p:DpPlan)->DpViews {b:=p.begin;return DpViews.{gate=work[b[0]..<b[1]],up=work[b[1]..<b[2]],activation=work[b[2]..<b[3]],pending=work[b[3]..<b[4]],stage=work[b[4]..<b[5]]};}
+dp_batch :: (n:int)->bool {return n>=1 && n<=512;}
+dp_project :: (m:DeMatrix,batch:int,x:[]f32,out:[]f32,quant:[]f64,stage:[]f32,flags:[]u8,overlap:bool)->DpResult #export_c {
+    status:=de_storage(m);if status!=DsStatus.ok {return DpResult.{status=status};}if !dp_batch(batch) {return DpResult.{status=DsStatus.shape};}n:=batch*m.rows;
+    if x.count!=batch*m.columns || out.count<n || quant.count<batch*m.columns || stage.count<n || flags.count<n {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
+    status=de_quant_values(x,quant);if status!=DsStatus.ok {return DpResult.{status=status};}tiles:=dp_tiles(batch);
+    for item:0..<m.rows*tiles {dpkg_project(item,cast(int)(cast(u8)m.kind),m.rows,m.columns,batch,m.data,m.scales,quant,stage,flags);}
+    for i:0..<n {if flags[i]!=0 {return DpResult.{status=ifx flags[i]==1 then DsStatus.number else DsStatus.arithmetic};}}
+    for i:0..<n {out[i]=stage[i];}return DpResult.{written=n,coefficients=m.rows*m.columns*tiles,products=batch*m.rows*m.columns};
+}
+dp_plan :: (e:DeExpert,batch:int)->DpPlan #export_c {
+    p:=de_plan(e);if p.status!=DsStatus.ok {return DpPlan.{status=p.status};}if !dp_batch(batch) {return DpPlan.{status=DsStatus.shape};}
+    h:=batch*p.hidden;d:=batch*p.width;m:=batch*p.wide;return DpPlan.{width=p.width,hidden=p.hidden,batch=batch,floats=3*h+d+m,wide=m,flags=m,begin=[6]int.[0,h,2*h,3*h,3*h+d,3*h+d+m]};
+}
+// book:begin expert
+dp_expert :: (e:DeExpert,batch:int,x:[]f32,routes:[]f32,limit:f32,out:[]f32,work:DpWork,overlap:bool)->DpResult #export_c {
+    p:=dp_plan(e,batch);if p.status!=DsStatus.ok {return DpResult.{status=p.status};}n:=batch*p.width;
+    if x.count!=n || routes.count!=batch || out.count<n || work.floats.count<p.floats || work.wide.count<p.wide || work.flags.count<p.flags {return DpResult.{status=DsStatus.capacity};}if overlap {return DpResult.{status=DsStatus.alias};}
+    if !de_control(limit) {return DpResult.{status=DsStatus.number};}for route:routes {if !de_control(route) {return DpResult.{status=DsStatus.number};}}
+    v:=dp_views(work.floats,p);
+    g:=dp_project(e.gate,batch,x,v.gate,work.wide,v.stage,work.flags,false);if g.status!=DsStatus.ok {return g;}
+    u:=dp_project(e.up,batch,x,v.up,work.wide,v.stage,work.flags,false);if u.status!=DsStatus.ok {return u;}
+    r:DpResult;for token:0..<batch {for j:0..<p.hidden {at:=token*p.hidden+j;lane:=de_activation(v.gate[at],v.up[at],routes[token],limit);if lane.status!=DsStatus.ok {return DpResult.{status=lane.status};}v.activation[at]=lane.value;r.gate_clamped+=lane.gate_clamped;r.up_clamped+=lane.up_clamped;}}
+    d:=dp_project(e.down,batch,v.activation,v.pending,work.wide,v.stage,work.flags,false);if d.status!=DsStatus.ok {return d;}
+    for i:0..<n {out[i]=v.pending[i];}r.written=n;r.coefficients=g.coefficients+u.coefficients+d.coefficients;r.products=g.products+u.products+d.products;return r;
+}
+// book:end expert

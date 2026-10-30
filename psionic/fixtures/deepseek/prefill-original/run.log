@@ -1,0 +1,7 @@
+Original prefill: expert 83 packet 18800640 bytes staged once for 4 routed rows
+Original prefill: expert 156 packet 18800640 bytes staged once for 4 routed rows
+Original prefill: expert 197 packet 18800640 bytes staged once for 4 routed rows
+Original prefill: expert 258 packet 18800640 bytes staged once for 4 routed rows
+Original prefill: expert 290 packet 18800640 bytes staged once for 4 routed rows
+Original prefill: expert 339 packet 18800640 bytes staged once for 4 routed rows
+Original prefill: full 384/6 routed plus shared, 4 tokens, 6 routed packet stages for 24 routed uses, 247726080 coefficient decodes versus 990904320 serial; all 20480 output words bit-identical to serial and retained independent reference; serial 2612193786 ns, grouped 1331825214 ns

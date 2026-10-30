@@ -1,0 +1,11 @@
+#load "expert-types.coax";
+DpResult :: struct {status:DsStatus;written:int;groups:int;coefficients:int;products:int;gate_clamped:int;up_clamped:int;}
+DpWork :: struct {floats:[]f32;wide:[]f64;flags:[]u8;}
+DpViews :: struct {gate:[]f32;up:[]f32;activation:[]f32;pending:[]f32;stage:[]f32;}
+DpPlan :: struct {status:DsStatus;width:int;hidden:int;batch:int;floats:int;wide:int;flags:int;begin:[6]int;}
+DpChunkConfig :: struct {max_chunk:int;workspace:int;bytes_per_token:int;fixed_ns:int;token_ns:int;expert_ns:int;experts:int;k:int;target_ns:int;serial:bool;}
+DpChunk :: struct {status:DsStatus;count:int;predicted_ns:int;tail:bool;serial:bool;}
+DpPhase :: enum u8 {attention;route;expert;shared;combine;commit;done;}
+DpCursor :: struct {first:int;count:int;layers:int;layer:int;experts:int;k:int;phase:DpPhase;group:int;epoch:int;keys:[]int;}
+DpReceipt :: struct {epoch:int;layer:int;phase:DpPhase;group:int;ok:bool;}
+DpNext :: struct {status:DsStatus;value:DpCursor;}
