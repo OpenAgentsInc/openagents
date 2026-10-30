@@ -1,0 +1,60 @@
+// Chapter 19: the host's one-call entries. Nothing here decides: it hashes
+// with coax/lib/crypto/sha256.coax and calls the checked units (beacon,
+// relays and decision are #authority, mutation-gated on their own). Its
+// checks tie those units to the real SHA-256 and to chapter 16's server.
+#load "decision.coax";
+#load "relays.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#load "../serve-request.coax";
+
+#test "SHA-256 of content is the x tag" {
+    hex:[64]u8;#assert ph_digest("",hex[..]) && cast(string)hex[..]=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" && !ph_digest("",hex[0..<63]);
+    long:[600]u8;for i:0..<600 {long[i]='a';}
+    #assert ph_digest(cast(string)long[..],hex[..]) && cast(string)hex[..]=="ba35c170729417f1499e0886e7e12fcdb4ab00ad411110ae1e888c766d4ed70d";
+}
+#test "the beacon goes out with its real digest and comes back admitted" {
+    lanes:[1]string;services:[1]PbService;settlement:[1]string;b:=pb_fixture(lanes[..],services[..],settlement[..]);
+    scratch:[4096]u8;out:[8192]u8;n:=ph_beacon(b,PbAuth.{},scratch[..],out[..]);#assert n>0;
+    hex:[64]u8;ok:=ph_digest(PB_CONTENT,hex[..]);
+    expect:[8192]u8;tags:[512]u8;t:=json_raw(tags[..],0,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"");t=json_raw(tags[..],t,cast(string)hex[..]);
+    t=json_raw(tags[..],t,"\"],[\"expiration\",\"1791400300\"]]");
+    m:=pt_template(expect[..],PB_KEY,1791400000,30200,cast(string)tags[0..<t],PB_CONTENT);#assert ok && cast(string)out[0..<n]==cast(string)expect[0..<m];
+    r:=ph_read_beacon(30200,PB_KEY,cast(string)tags[0..<t],PB_CONTENT);#assert r.code==PbCode.ok && r.decision && r.identity==PB_IDENTITY;
+    c:[2048]u8;other:=pb_case(c[..],"\"generation\":7","\"generation\":8");
+    #assert ph_read_beacon(30200,PB_KEY,cast(string)tags[0..<t],other).code==PbCode.digest;
+    #assert ph_beacon(b,PbAuth.{},scratch[0..<100],out[..])==-1;
+}
+#test "the server takes the body a decision job becomes" {
+    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(cast(string)body[0..<jb.body],pools);
+    #assert jb.code==PdCode.none && r.code==SvCode.none && r.model=="elephant-1" && r.questions==1 && pools.questions[0].id=="refund";
+    #assert pools.questions[0].kind==PtQuestionKind.noul && r.state.value=="{\"ticket\":\"I was billed twice\"}";
+    empty:=pd_admit(pd_env("{\"v\":\"openagents.systemone.v1\",\"type\":\"systemone\",\"request\":\"r\",\"attempt\":1,\"model\":\"m\",\"state\":\"s\",\"questions\":{}}"),PD_WORKER,1791400000,body[..]);
+    #assert empty.code==PdCode.none && pd_code(sv_code_name(sv_decode(cast(string)body[0..<empty.body],pools).code))==PdCode.invalid_request;
+    for c:0..<14 {code:=cast(SvCode)c;#assert pd_code_name(pd_code(sv_code_name(code)))==sv_code_name(code) || pd_code(sv_code_name(code))==PdCode.internal;}
+}
+
+// The lowercase SHA-256 of content into hex (64 bytes).
+ph_digest :: (content:string,hex:[]u8)->bool #export_c {
+    if hex.count!=64 {return false;}
+    state:[SHA_STATE_BYTES]u8;status:=sha256_init(state[..]);chunk:[256]u8;at:=0;
+    while at<content.count {
+        n:=content.count-at;if n>256 {n=256;}
+        for i:0..<n {chunk[i]=content[at+i];}
+        status|=sha256_update_checked(state[..],chunk[0..<n],false);at+=n;
+    }
+    sum:[32]u8;status|=sha256_final_checked(state[..],sum[..],false);if status!=SHA_OK {return false;}
+    digits:="0123456789abcdef";for i:0..<32 {hex[2*i]=digits[sum[i]>>4];hex[2*i+1]=digits[sum[i]&15];}
+    return true;
+}
+// The unsigned 30200 template for b: content into scratch, its digest, pb_write.
+ph_beacon :: (b:PbBeacon,auth:PbAuth,scratch:[]u8,out:[]u8)->int #export_c {
+    n:=pb_content(b,scratch);if n<0 {return -1;}
+    hex:[64]u8;if !ph_digest(cast(string)scratch[0..<n],hex[..]) {return -1;}
+    return pb_write(b,auth,cast(string)scratch[0..<n],cast(string)hex[..],out);
+}
+// pb_read with the content's real digest.
+ph_read_beacon :: (kind:int,signer:string,tags:string,content:string)->PbRead #export_c {
+    hex:[64]u8;if !ph_digest(content,hex[..]) {return PbRead.{code=PbCode.digest};}
+    return pb_read(kind,signer,tags,content,cast(string)hex[..]);
+}

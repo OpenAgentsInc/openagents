@@ -1,0 +1,98 @@
+// Chapter 19: the unsigned event template every Pylon record is written as,
+// and the tag reader its checkers share. A template is the NIP-01 event
+// without id and sig: {"pubkey","created_at","kind","tags","content"}.
+// Signing (coax/lib/nostr/event_sign.coax) computes the id over exactly
+// these fields and adds id and sig; for an encrypted job answer the content
+// passed here is already NIP-44 ciphertext. Nothing here signs or encrypts.
+#load "../../../coax/lib/nostr/json.coax";
+#authority;
+
+PT_MAX_TAG_VALUES :: 4;
+PtTag :: struct {ok:bool;count:int;size:int;v:[4]string;}
+
+#test "a template is the five unsigned fields in NIP-01 order" {
+    out:[256]u8;key:="f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+    n:=pt_template(out[..],key,1791400000,30200,"[[\"d\",\"a\"]]","x\"y");
+    #assert cast(string)out[0..<n]=="{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791400000,\"kind\":30200,\"tags\":[[\"d\",\"a\"]],\"content\":\"x\\\"y\"}";
+    #assert pt_template(out[..],key,0,0,"[]","")>0 && pt_template(out[..],key,0,65535,"[]","")>0;
+    #assert pt_template(out[..],key,-1,1,"[]","")==-1 && pt_template(out[..],key,0,-1,"[]","")==-1 && pt_template(out[..],key,0,65536,"[]","")==-1;
+    #assert pt_template(out[..],key[0..<63],0,1,"[]","")==-1 && pt_template(out[..],key,0,1,"{}","")==-1 && pt_template(out[..],key,0,1,"[","")==-1;
+    #assert pt_template(out[..],key,0,1,"","")==-1 && pt_template(out[0..<100],key,0,1,"[]","")==-1;
+}
+#test "hex keys are exactly 64 lowercase digits" {
+    #assert pt_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !pt_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeF");
+    #assert !pt_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg");
+    #assert !pt_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde/");
+    #assert !pt_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde:");
+    #assert !pt_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde`");
+    #assert !pt_hex64("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde");
+}
+#test "the tag reader counts a name and returns its first tag's values" {
+    tags:="[[\"d\",\"studio-mac\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"ab\"],[\"t\",\"other\"],[\"auth\",\"k\",\"kind=30200\",\"s\"]]";
+    d:=pt_tag(tags,"d");#assert d.ok && d.count==1 && d.size==2 && d.v[0]=="d" && d.v[1]=="studio-mac";
+    t:=pt_tag(tags,"t");#assert t.ok && t.count==2 && t.v[1]=="oa:pylon-beacon:v1";
+    a:=pt_tag(tags,"auth");#assert a.ok && a.count==1 && a.size==4 && a.v[3]=="s" && a.v[2]=="kind=30200";
+    none:=pt_tag(tags,"e");#assert none.ok && none.count==0 && none.size==0;
+    #assert pt_tag("[[\"d\"]]","d").count==1 && pt_tag("[[\"d\"]]","d").size==1 && pt_tag("[[]]","").count==0;
+    #assert pt_tag("[]","d").ok && pt_tag("[[]]","d").ok && pt_tag("[[]]","d").count==0;
+    #assert !pt_tag("{}","d").ok && !pt_tag("[1]","d").ok && !pt_tag("[[1]]","d").ok && !pt_tag("[[\"d\"]","d").ok && !pt_tag("","d").ok;
+    #assert !pt_tag("[[\"d\",\"a\\\"b\"]]","d").ok && pt_tag("[[\"d\",\"a\",\"b\",\"c\",\"e\"]]","d").size==5 && pt_tag("[[\"d\",\"a\",\"b\",\"c\",\"e\"]]","d").v[3]=="c";
+    #assert pt_tag("[[\"d\",\"a\",\"b\",\"c\"]]","d").size==4 && pt_tag("[[\"d\",\"a\",\"b\",\"c\",\"e\"]]","x").ok;
+    #assert !pt_tag("[[\"d\",\"a\"]] x","d").ok && !pt_tag("[[\"d\",\"a\"],[\"d\",1]]","d").ok;
+    two:=pt_tag("[[\"d\",\"a\"],[\"d\",\"b\",\"c\"]]","d");#assert two.count==2 && two.size==2 && two.v[1]=="a";
+    #assert pt_tag("[[\"\\u0064\",\"a\"]]","d").ok==false;
+}
+#test "a raw value is the exact bytes of one value and the reader moves past it" {
+    j:[1]Json;json_start(j[..],"[\"a\\\"b\",{\"k\":[1,2]},[],null,12,true]");t:=json_next(j[..]);
+    t=json_next(j[..]);#assert pt_raw(j[..],t)=="\"a\\\"b\"";
+    t=json_next(j[..]);#assert pt_raw(j[..],t)=="{\"k\":[1,2]}";
+    t=json_next(j[..]);#assert pt_raw(j[..],t)=="[]";
+    t=json_next(j[..]);#assert pt_raw(j[..],t)=="null";
+    t=json_next(j[..]);#assert pt_raw(j[..],t)=="12";
+    t=json_next(j[..]);#assert pt_raw(j[..],t)=="true";
+    #assert json_next(j[..])==JSON_ARRAY_END;
+    json_start(j[..],"[{\"a\":}]");t=json_next(j[..]);t=json_next(j[..]);#assert pt_raw(j[..],t)=="";
+}
+
+pt_hex64 :: (s:string)->bool {
+    if s.count!=64 {return false;}
+    for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+    return true;
+}
+// The exact bytes of the value whose first token was just read; the reader
+// ends past it. Empty when the text is refused on the way.
+pt_raw :: (j:[]Json,t:int)->string {
+    if t==JSON_STRING {return j[0].text[j[0].from-1..<j[0].to+1];}
+    if t==JSON_OBJECT || t==JSON_ARRAY {from:=j[0].from;if !json_skip(j) {return "";}return j[0].text[from..<j[0].at];}
+    return json_text(j);
+}
+// The unsigned template. tags is a JSON array the caller wrote; content is
+// the record's text, escaped here. -1 when a field is out of range or out is short.
+pt_template :: (out:[]u8,pubkey:string,created_at:int,kind:int,tags:string,content:string)->int #export_c {
+    if !pt_hex64(pubkey) || created_at<0 || kind<0 || kind>65535 || tags.count==0 || tags[0]!='[' || !json_valid(tags) {return -1;}
+    n:=json_raw(out,0,"{\"pubkey\":\"");n=json_raw(out,n,pubkey);n=json_raw(out,n,"\",\"created_at\":");n=json_write_int(out,n,created_at);
+    n=json_raw(out,n,",\"kind\":");n=json_write_int(out,n,kind);n=json_raw(out,n,",\"tags\":");n=json_raw(out,n,tags);
+    n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,content);return json_raw(out,n,"}");
+}
+// Every tag named name: how many there are, the first one's size and its
+// first four values. A
+// tag value with an escape is refused: no Pylon tag needs one.
+pt_tag :: (tags:string,name:string)->PtTag #export_c {
+    r:PtTag;bad:PtTag;j:[1]Json;json_start(j[..],tags);
+    if json_next(j[..])!=JSON_ARRAY {return bad;}
+    t:=json_next(j[..]);
+    while t!=JSON_ARRAY_END {
+        if t!=JSON_ARRAY {return bad;}
+        values:[4]string;size:=0;v:=json_next(j[..]);
+        while v!=JSON_ARRAY_END {
+            if v!=JSON_STRING {return bad;}
+            text:=json_text(j[..]);for c:text {if c=='\\' {return bad;}}
+            if size<PT_MAX_TAG_VALUES {values[size]=text;}size+=1;v=json_next(j[..]);
+        }
+        if size>0 && values[0]==name {r.count+=1;if r.count==1 {r.size=size;r.v=values;}}
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return bad;}
+    r.ok=true;return r;
+}

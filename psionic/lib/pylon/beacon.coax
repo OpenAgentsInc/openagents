@@ -1,0 +1,600 @@
+// Chapter 19: the Pylon beacon, NIP-PYLON kind 30200 version 1. The writer
+// turns a pylon's state into the unsigned template (JCS-ordered content,
+// its d/t/x/expiration tags and an optional owner auth tag); the reader
+// admits or refuses a beacon exactly as NIP-PYLON's Validation and Freshness
+// say, for a buyer (chapter 20). The lifecycle and the republish schedule are
+// pure functions of the clock. The auth tag's NIP-OA signature is carried,
+// not verified: verifying it waits on the signer (see the record). The x
+// digest (SHA-256 of the content) comes from the caller, so this unit's
+// checks never mutate the hash; host.coax computes it in one call.
+#load "template.coax";
+#authority;
+
+PbStatus :: enum u8 {online;draining;offline;}
+PbCode :: enum u8 {ok;kind;tags;marker;digest;json;version;field;provider;slug;label;status;times;expiration;class;slots;services;lanes;identity;settlement;pools;auth;}
+PbClass :: struct {family:string;tier:string;memory_gb:int;}
+PbService :: struct {capability:string;model:string;lanes:[]string;offering:string;price:int=-1;}
+PbBeacon :: struct {provider:string;pylon:string;label:string;status:PbStatus;generation:int;since:int;observed_at:int;valid_until:int;hardware:PbClass;total:int;free:int;services:[]PbService;settlement:[]string;pools:[]string;meta:string;}
+PbAuth :: struct {owner:string;signature:string;}
+PbRead :: struct {code:PbCode;status:PbStatus;generation:int;since:int;observed_at:int;valid_until:int;total:int;free:int;services:int;decision:bool;identity:string;pylon:string;family:string;tier:string;memory_gb:int;auth:bool;owner:string;auth_signature:string;}
+PbFresh :: enum u8 {fresh;future;stale;rollback;not_newer;}
+PbShow :: enum u8 {online;draining;offline;unknown;}
+PbHeld :: struct {present:bool;generation:int;observed_at:int;}
+PbSnap :: struct {status:PbStatus;generation:int;free:int;services:int;}
+PbLife :: struct {status:PbStatus=PbStatus.offline;generation:int;since:int;published:int=-1;sent:PbSnap;}
+
+PB_KIND :: 30200;
+PB_VERSION :: "openagents.pylon-beacon.v1";
+PB_MARKER :: "oa:pylon-beacon:v1";
+PB_WINDOW :: 300;      // valid_until - observed_at at most
+PB_FUTURE :: 30;       // observed_at past the reader's clock at most
+PB_SLOTS :: 64;
+PB_SERVICES :: 16;
+PB_POOLS :: 8;
+PB_SETTLEMENTS :: 16;
+PB_MODEL :: 128;
+PB_LABEL :: 64;
+PB_SLUG :: 64;
+PB_SPACING :: 10;      // a relay may refuse a beacon sooner than this after the last
+PB_REFRESH_MIN :: 60;
+PB_REFRESH_MAX :: 240;
+
+// ---- fixtures: the chapter-19 Elephant pylon
+PB_KEY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+PB_OWNER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+PB_IDENTITY :: "elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+PB_CAPABILITY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision";
+PB_CONTENT :: "{\"class\":{\"family\":\"gpu\",\"memory_gb\":16,\"tier\":\"medium\"},\"generation\":7,\"label\":\"Studio GPU\",\"observed_at\":1791400000,\"pools\":[],\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"pylon\":\"studio-gpu\",\"requires\":[],\"services\":[{\"capability\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1791380000,\"slots\":{\"free\":1,\"total\":1},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1791400300}";
+
+pb_fixture :: (lanes:[]string,services:[]PbService,settlement:[]string)->PbBeacon {
+    lanes[0]="cj-decision";settlement[0]="free-v1";
+    services[0]=PbService.{capability=PB_CAPABILITY,model=PB_IDENTITY,lanes=lanes[0..<1]};
+    return PbBeacon.{provider=PB_KEY,pylon="studio-gpu",label="Studio GPU",status=PbStatus.online,generation=7,since=1791380000,observed_at=1791400000,valid_until=1791400300,
+        hardware=PbClass.{family="gpu",tier="medium",memory_gb=16},total=1,free=1,services=services[0..<1],settlement=settlement[0..<1]};
+}
+// A content's x tag, from the writer itself so the fixtures carry no hand-copied digest.
+// The tests stand a fixed digest in for SHA-256; host.coax checks the real one.
+PB_X :: "1111111111111111111111111111111111111111111111111111111111111111";
+PB_Y :: "2222222222222222222222222222222222222222222222222222222222222222";
+pb_tags_for :: (out:[]u8,content:string,expiration:string,extra:string)->string {
+    n:=json_raw(out,0,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"");n=json_raw(out,n,PB_X);
+    n=json_raw(out,n,"\"],[\"expiration\",\"");n=json_raw(out,n,expiration);n=json_raw(out,n,"\"]");n=json_raw(out,n,extra);n=json_raw(out,n,"]");
+    return cast(string)out[0..<n];
+}
+
+#test "the chapter-19 beacon content is JCS-ordered and exact" {
+    lanes:[1]string;services:[1]PbService;settlement:[1]string;b:=pb_fixture(lanes[..],services[..],settlement[..]);
+    out:[2048]u8;n:=pb_content(b,out[..]);#assert cast(string)out[0..<n]==PB_CONTENT;
+    b.meta="{\"deadline_secs\":8}";n=pb_content(b,out[..]);c:[2048]u8;
+    #assert cast(string)out[0..<n]==pb_case(c[..],"\"label\":\"Studio GPU\",","\"label\":\"Studio GPU\",\"meta\":{\"deadline_secs\":8},");
+    two:[2]PbService;two[0]=services[0];two[1]=services[0];twos:=[2]string.["free-v1","x402-exact"];
+    w:=b;w.services=two[..];w.settlement=twos[..];w.pools=twos[..];n=pb_content(w,out[..]);text2:=cast(string)out[0..<n];
+    #assert pb_find(text2,"\"price_hint_msat\":null},{\"capability\"") && pb_find(text2,"\"settlement\":[\"free-v1\",\"x402-exact\"]") && pb_find(text2,"\"pools\":[\"free-v1\",\"x402-exact\"]");
+    b=pb_fixture(lanes[..],services[..],settlement[..]);services[0].price=0;n=pb_content(b,out[..]);#assert pb_find(cast(string)out[0..<n],"\"price_hint_msat\":0}");
+    b=pb_fixture(lanes[..],services[..],settlement[..]);services[0].offering="30192:k:text";services[0].price=2000;b.status=PbStatus.draining;
+    n=pb_content(b,out[..]);text:=cast(string)out[0..<n];
+    #assert pb_find(text,"\"offering\":\"30192:k:text\",\"price_hint_msat\":2000}") && pb_find(text,"\"status\":\"draining\"");
+    b.status=PbStatus.offline;n=pb_content(b,out[..]);#assert pb_find(cast(string)out[0..<n],"\"status\":\"offline\"");
+    #assert pb_content(b,out[0..<100])==-1;
+}
+#test "the template carries d, t, x, expiration and the owner's auth" {
+    lanes:[1]string;services:[1]PbService;settlement:[1]string;b:=pb_fixture(lanes[..],services[..],settlement[..]);
+    out:[4096]u8;tags:[512]u8;
+    n:=pb_write(b,PbAuth.{},PB_CONTENT,PB_X,out[..]);#assert n>0;
+    expect:[4096]u8;m:=pt_template(expect[..],PB_KEY,1791400000,30200,pb_tags_for(tags[..],PB_CONTENT,"1791400300",""),PB_CONTENT);
+    #assert cast(string)out[0..<n]==cast(string)expect[0..<m];
+    sig:="ab";n=pb_write(b,PbAuth.{owner=PB_OWNER,signature=sig},PB_CONTENT,PB_X,out[..]);
+    m=pt_template(expect[..],PB_KEY,1791400000,30200,pb_tags_for(tags[..],PB_CONTENT,"1791400300",",[\"auth\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"kind=30200\",\"ab\"]"),PB_CONTENT);
+    #assert cast(string)out[0..<n]==cast(string)expect[0..<m];
+    #assert pb_write(b,PbAuth.{owner=PB_OWNER},PB_CONTENT,PB_X,out[..])==-1 && pb_write(b,PbAuth.{owner="x",signature=sig},PB_CONTENT,PB_X,out[..])==-1;
+    #assert pb_write(b,PbAuth.{signature=sig},PB_CONTENT,PB_X,out[..])==-1 && pb_write(b,PbAuth.{owner=PB_OWNER,signature="a"},PB_CONTENT,PB_X,out[..])>0;
+    #assert pb_write(b,PbAuth.{},PB_CONTENT,"x",out[..])==-1 && pb_write(b,PbAuth.{},PB_CONTENT,PB_X,out[0..<100])==-1;
+    c:[2048]u8;#assert pb_write(b,PbAuth.{},pb_case(c[..],"\"free\":1","\"free\":2"),PB_X,out[..])==-1;other:=b;
+    other=b;other.pylon="studio-gpx";#assert pb_write(other,PbAuth.{},PB_CONTENT,PB_X,out[..])==-1;
+    long:[1100]u8;for i:0..<1100 {long[i]='a';}other=b;other.pylon=cast(string)long[..];#assert pb_write(other,PbAuth.{},PB_CONTENT,PB_X,out[..])==-1;
+}
+#test "the reader admits the written beacon and reports what routes on it" {
+    tags:[512]u8;t:=pb_tags_for(tags[..],PB_CONTENT,"1791400300","");
+    r:=pb_read(30200,PB_KEY,t,PB_CONTENT,PB_X);
+    #assert r.code==PbCode.ok && r.status==PbStatus.online && r.generation==7 && r.since==1791380000 && r.observed_at==1791400000 && r.valid_until==1791400300;
+    #assert r.total==1 && r.free==1 && r.services==1 && r.decision && r.identity==PB_IDENTITY && r.pylon=="studio-gpu";
+    #assert r.family=="gpu" && r.tier=="medium" && r.memory_gb==16 && !r.auth;
+    a:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"1791400300",",[\"auth\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"kind=30200\",\"ab\"]"),PB_CONTENT,PB_X);
+    #assert a.code==PbCode.ok && a.auth && a.owner==PB_OWNER && a.auth_signature=="ab";
+}
+#test "the envelope refusals: kind, tags, marker, digest, expiration and auth" {
+    tags:[512]u8;good:=pb_tags_for(tags[..],PB_CONTENT,"1791400300","");
+    #assert pb_read(30201,PB_KEY,good,PB_CONTENT,PB_X).code==PbCode.kind;
+    #assert pb_read(30200,PB_OWNER,good,PB_CONTENT,PB_X).code==PbCode.provider;
+    #assert pb_read(30200,PB_KEY,"[]",PB_CONTENT,PB_X).code==PbCode.tags && pb_read(30200,PB_KEY,"{",PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"1791400300",",[\"d\",\"studio-gpu\"]"),PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"1791400300",",[\"t\",\"oa:pylon-beacon:v1\"]"),PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"1791400300",",[\"x\",\"00\"]"),PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"1791400300",",[\"expiration\",\"1\"]"),PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"studio-gpu\",\"x\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"0\"],[\"expiration\",\"1791400300\"]]",PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\",\"x\"],[\"x\",\"0\"],[\"expiration\",\"1791400300\"]]",PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"0\",\"y\"],[\"expiration\",\"1791400300\"]]",PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"0\"],[\"expiration\",\"1791400300\",\"y\"]]",PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v2\"],[\"x\",\"0\"],[\"expiration\",\"1791400300\"]]",PB_CONTENT,PB_X).code==PbCode.marker;
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"0\"],[\"expiration\",\"1791400300\"]]",PB_CONTENT,PB_X).code==PbCode.digest;
+    #assert pb_read(30200,PB_KEY,good,PB_CONTENT,PB_Y).code==PbCode.digest && pb_read(30200,PB_KEY,good,PB_CONTENT,"1111").code==PbCode.digest;
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"studio-gpu\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"1111\"],[\"expiration\",\"1791400300\"]]",PB_CONTENT,"1111").code==PbCode.digest;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"1791400299",""),PB_CONTENT,PB_X).code==PbCode.expiration;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"x",""),PB_CONTENT,PB_X).code==PbCode.tags;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"-1",""),PB_CONTENT,PB_X).code==PbCode.tags;
+    for extra:[5]string.[",[\"auth\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"kind=30201\",\"ab\"]",
+        ",[\"auth\",\"5cbdf\",\"kind=30200\",\"ab\"]",",[\"auth\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"kind=30200\"]",
+        ",[\"auth\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"kind=30200\",\"\"]",
+        ",[\"auth\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"kind=30200\",\"a\"],[\"auth\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"kind=30200\",\"a\"]"] {
+        #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"1791400300",extra),PB_CONTENT,PB_X).code==PbCode.auth;
+    }
+    c:[2048]u8;other:=pb_case(c[..],"\"pylon\":\"studio-gpu\"","\"pylon\":\"studio-gpx\"");
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],other,"1791400300",""),other,PB_X).code==PbCode.slug;
+}
+// Each case replaces one exact piece of the fixture's content.
+pb_case :: (out:[]u8,from:string,to:string)->string {
+    at:=pb_index(PB_CONTENT,from);
+    n:=json_raw(out,0,PB_CONTENT[0..<at]);n=json_raw(out,n,to);n=json_raw(out,n,PB_CONTENT[at+from.count..<PB_CONTENT.count]);
+    return cast(string)out[0..<n];
+}
+pb_code :: (content:string)->PbCode {
+    tags:[512]u8;return pb_read(30200,PB_KEY,pb_tags_for(tags[..],content,"1791400300",""),content,PB_X).code;
+}
+pb_cases :: (lo:int,hi:int) {
+    c:[2048]u8;
+    froms:=[50]string.["\"v\":\"openagents.pylon-beacon.v1\"","\"v\":\"openagents.pylon-beacon.v1\"","\"requires\":[]","\"requires\":[]","\"pylon\":\"studio-gpu\"","\"pylon\":\"studio-gpu\"",
+        "\"label\":\"Studio GPU\"","\"label\":\"Studio GPU\"","\"status\":\"online\"","\"status\":\"online\"","\"generation\":7","\"generation\":7","\"since\":1791380000","\"since\":1791380000",
+        "\"valid_until\":1791400300","\"valid_until\":1791400300","\"family\":\"gpu\"","\"tier\":\"medium\"","\"memory_gb\":16","\"memory_gb\":16",
+        "\"slots\":{\"free\":1,\"total\":1}","\"slots\":{\"free\":1,\"total\":1}","\"slots\":{\"free\":1,\"total\":1}","\"slots\":{\"free\":1,\"total\":1}","\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-decision\"]",
+        "\"lanes\":[\"cj-decision\"]","\"offering\":null","\"price_hint_msat\":null","\"price_hint_msat\":null","\"model\":\"elephant-1@sha256:","\"settlement\":[\"free-v1\"]","\"settlement\":[\"free-v1\"]","\"settlement\":[\"free-v1\"]",
+        "\"pools\":[]","\"pools\":[]","\"pools\":[]","\"class\":{\"family\":\"gpu\",","\"services\":[{","\"services\":[{","\"capability\":\"f9308a","\"lanes\":[\"cj-decision\"],","\"label\":\"Studio GPU\"",
+        "\"class\":{","\"slots\":{","\"class\":{\"family\":\"gpu\",\"memory_gb\":16,\"tier\":\"medium\"}","\"since\":1791380000","\"generation\":7","\"pools\":[]","\"status\":\"online\""];
+    tos:=[50]string.["\"v\":\"openagents.pylon-beacon.v2\"","\"v\":1","\"requires\":[\"x\"]","\"requires\":{}","\"pylon\":\"Studio\"","\"pylon\":7",
+        "\"label\":\"0123456789012345678901234567890123456789012345678901234567890123x\"","\"label\":null","\"status\":\"busy\"","\"status\":1","\"generation\":-1","\"generation\":\"7\"","\"since\":1791400001","\"since\":1.5",
+        "\"valid_until\":1791400301","\"valid_until\":1791399999","\"family\":\"tpu\"","\"tier\":\"huge\"","\"memory_gb\":24","\"memory_gb\":\"16\"",
+        "\"slots\":{\"free\":2,\"total\":1}","\"slots\":{\"free\":65,\"total\":65}","\"slots\":{\"free\":-1,\"total\":1}","\"slots\":{\"free\":1}","\"lanes\":[]","\"lanes\":[\"cj-decision\",\"cj-decision\"]",
+        "\"lanes\":[\"cj-agents\"]","\"offering\":7","\"price_hint_msat\":-1","\"price_hint_msat\":\"1\"","\"model\":\"elephant-1@sha257:","\"settlement\":[]","\"settlement\":[\"free-v1\",\"free-v1\"]","\"settlement\":[1]",
+        "\"pools\":[\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\"]","\"pools\":[\"A\"]","\"pools\":[],\"pools\":[]","\"class\":{\"family\":\"gpu\",\"family\":\"gpu\",","\"services\":[","\"services\":[{\"x\":1,","\"capability\":\"e9308a","\"lanes\":[\"cj-decision\"],\"lanes\":[\"cj-decision\"],","\"group\":{},\"label\":\"Studio GPU\"",
+        "\"class\":{\"x\":1,","\"slots\":{\"x\":1,","\"class\":7","\"since\":-1","\"generation\":1.0","\"pools\":7","\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"x\":1"];
+    codes:=[50]PbCode.[PbCode.version,PbCode.version,PbCode.version,PbCode.version,PbCode.slug,PbCode.slug,PbCode.label,PbCode.label,PbCode.status,PbCode.status,PbCode.times,PbCode.times,PbCode.times,PbCode.times,
+        PbCode.times,PbCode.times,PbCode.class,PbCode.class,PbCode.class,PbCode.class,PbCode.slots,PbCode.slots,PbCode.slots,PbCode.slots,PbCode.lanes,PbCode.lanes,
+        PbCode.lanes,PbCode.services,PbCode.services,PbCode.services,PbCode.identity,PbCode.settlement,PbCode.settlement,PbCode.settlement,
+        PbCode.pools,PbCode.pools,PbCode.field,PbCode.class,PbCode.services,PbCode.services,PbCode.identity,PbCode.lanes,PbCode.field,
+        PbCode.class,PbCode.slots,PbCode.class,PbCode.times,PbCode.times,PbCode.pools,PbCode.field];
+    for i:lo..<hi {#assert pb_code(pb_case(c[..],froms[i],tos[i]))==codes[i];}
+}
+#test "content fields 0-9 refuse out of range values" {pb_cases(0,10);}
+#test "content fields 10-19 refuse out of range values" {pb_cases(10,20);}
+#test "content fields 20-29 refuse out of range values" {pb_cases(20,30);}
+#test "content fields 30-39 refuse out of range values" {pb_cases(30,40);}
+#test "content fields 40-49 refuse out of range values" {pb_cases(40,50);}
+#test "content that is not one object, or lacks a field" {
+    c:[2048]u8;
+    #assert pb_code("[]")==PbCode.json && pb_code("{")==PbCode.json && pb_code(pb_case(c[..],"\"valid_until\":1791400300}","\"valid_until\":1791400300} x"))==PbCode.json;
+    #assert pb_code(pb_case(c[..],",\"status\":\"online\"",""))==PbCode.field;
+    more:=[12]string.["{\"aaa\":\"x\",\"class\"","\"family\":7","\"tier\":7","\"family\":\"gpu\",\"x\":1","\"total\":1}","\"capability\":7","\"capability\":\"\"","\"model\":\"\"",
+        "\"lanes\":[7]","\"lanes\":7","\"services\":[1]","\"settlement\":[\"\"]"];
+    from:=[12]string.["{\"class\"","\"family\":\"gpu\"","\"tier\":\"medium\"","\"family\":\"gpu\"","\"total\":1}","\"capability\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\"",
+        "\"capability\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\"","\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"",
+        "\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-decision\"]","\"services\":[{","\"settlement\":[\"free-v1\"]"];
+    want:=[12]PbCode.[PbCode.field,PbCode.class,PbCode.class,PbCode.class,PbCode.slots,PbCode.services,PbCode.services,PbCode.services,PbCode.lanes,PbCode.lanes,PbCode.services,PbCode.settlement];
+    more[4]="\"total\":1,\"total\":1}";
+    for i:0..<12 {#assert pb_code(pb_case(c[..],from[i],more[i]))==want[i];}
+    dups:=[5]string.["\"tier\":\"medium\",\"tier\":\"medium\"","\"memory_gb\":16,\"memory_gb\":16","\"slots\":{\"free\":1,\"free\":1,\"total\":1}","\"slots\":{\"total\":1}","\"tier\":\"medium\",\"x\":1"];
+    dfrom:=[5]string.["\"tier\":\"medium\"","\"memory_gb\":16","\"slots\":{\"free\":1,\"total\":1}","\"slots\":{\"free\":1,\"total\":1}","\"tier\":\"medium\""];
+    dwant:=[5]PbCode.[PbCode.class,PbCode.class,PbCode.slots,PbCode.slots,PbCode.class];
+    for i:0..<5 {#assert pb_code(pb_case(c[..],dfrom[i],dups[i]))==dwant[i];}
+    #assert pb_code(pb_case(c[..],"\"services\":[{","\"services\":[1,{"))==PbCode.services;
+}
+// A content with n copies of the fixture's service, or n settlement or pool entries.
+pb_many :: (out:[]u8,what:int,n:int)->string {
+    svc:="{\"capability\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"offering\":null,\"price_hint_msat\":null}";
+    keys:=[3]string.["\"services\":[","\"settlement\":[","\"pools\":["];
+    cut:=[3]string.["],\"settlement\"","],\"since\"","],\"provider\""];
+    a:=pb_index(PB_CONTENT,keys[what])+keys[what].count;b:=pb_index(PB_CONTENT,cut[what]);
+    m:=json_raw(out,0,PB_CONTENT[0..<a]);
+    for i:0..<n {
+        if i>0 {m=json_raw(out,m,",");}
+        if what==0 {m=json_raw(out,m,svc);}else {m=json_raw(out,m,"\"p");m=json_write_int(out,m,i);m=json_raw(out,m,"\"");}
+    }
+    m=json_raw(out,m,PB_CONTENT[b..<PB_CONTENT.count]);return cast(string)out[0..<m];
+}
+#test "list bounds: 16 services, 16 settlements, 8 pools" {
+    c:[8192]u8;
+    #assert pb_code(pb_many(c[..],0,16))==PbCode.ok && pb_code(pb_many(c[..],0,17))==PbCode.services;
+    #assert pb_code(pb_many(c[..],1,16))==PbCode.ok && pb_code(pb_many(c[..],1,17))==PbCode.settlement;
+    #assert pb_code(pb_many(c[..],2,8))==PbCode.ok && pb_code(pb_many(c[..],2,9))==PbCode.pools;
+}
+#test "slugs, models, labels and the signer at their byte bounds" {
+    c:[2048]u8;long:[200]u8;for i:0..<200 {long[i]='a';}
+    pool:[80]u8;n:=json_raw(pool[..],0,"\"pools\":[\"");n=json_raw(pool[..],n,cast(string)long[0..<64]);n=json_raw(pool[..],n,"\"]");
+    #assert pb_code(pb_case(c[..],"\"pools\":[]",cast(string)pool[0..<n]))==PbCode.ok;
+    n=json_raw(pool[..],n-2,"a\"]");#assert pb_code(pb_case(c[..],"\"pools\":[]",cast(string)pool[0..<n]))==PbCode.pools;
+    #assert pb_code(pb_case(c[..],"\"settlement\":[\"free-v1\"]","\"settlement\":[\"a\"]"))==PbCode.ok;
+    m:[200]u8;k:=json_raw(m[..],0,"\"lanes\":[\"cj-execution\"],\"model\":\"");k=json_raw(m[..],k,cast(string)long[0..<128]);k=json_raw(m[..],k,"\"");
+    #assert pb_code(pb_case(c[..],"\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"",cast(string)m[0..<k]))==PbCode.ok;
+    k=json_raw(m[..],k-1,"a\"");
+    #assert pb_code(pb_case(c[..],"\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"",cast(string)m[0..<k]))==PbCode.services;
+    #assert pb_code(pb_case(c[..],"\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"","\"lanes\":[\"cj-execution\"],\"model\":\"a\""))==PbCode.ok;
+    #assert pb_code(pb_case(c[..],"\"label\":\"Studio GPU\"","\"label\":\"\\u00e9\""))==PbCode.ok;
+    tags:[512]u8;
+    #assert pb_read(30200,"x",pb_tags_for(tags[..],PB_CONTENT,"1791400300",""),PB_CONTENT,PB_X).code==PbCode.provider;
+    slug:[160]u8;sq:=json_raw(slug[..],0,"\"pylon\":\"");for i:0..<65 {slug[sq+i]='p';}sq=json_raw(slug[..],sq+65,"\"");
+    big:=pb_case(c[..],"\"pylon\":\"studio-gpu\"",cast(string)slug[0..<sq]);
+    dt:[400]u8;w:=json_raw(dt[..],0,"[[\"d\",\"");w=json_raw(dt[..],w,cast(string)slug[9..<74]);
+    w=json_raw(dt[..],w,"\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"expiration\",\"1791400300\"]]");
+    #assert pb_read(30200,PB_KEY,cast(string)dt[0..<w],big,PB_X).code==PbCode.slug;
+    c2:[2048]u8;seven:=pb_case(c2[..],"\"pylon\":\"studio-gpu\"","\"pylon\":7");
+    #assert pb_read(30200,PB_KEY,"[[\"d\",\"7\"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",\"1111111111111111111111111111111111111111111111111111111111111111\"],[\"expiration\",\"1791400300\"]]",seven,PB_X).code==PbCode.slug;
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],PB_CONTENT,"0",""),PB_CONTENT,PB_X).code==PbCode.expiration;
+    for fam:[3]string.["unified-memory","cpu","gpu"] {
+        cls:[96]u8;q:=json_raw(cls[..],0,"\"family\":\"");q=json_raw(cls[..],q,fam);q=json_raw(cls[..],q,"\"");
+        #assert pb_code(pb_case(c[..],"\"family\":\"gpu\"",cast(string)cls[0..<q]))==PbCode.ok;
+    }
+    #assert pb_code(pb_case(c[..],"\"memory_gb\":16","\"memory_gb\":8"))==PbCode.ok && pb_code(pb_case(c[..],"\"memory_gb\":16","\"memory_gb\":512"))==PbCode.ok;
+    #assert pb_code(pb_case(c[..],"\"memory_gb\":16","\"memory_gb\":7"))==PbCode.class && pb_code(pb_case(c[..],"\"memory_gb\":16","\"memory_gb\":1024"))==PbCode.class;
+    #assert pb_code(pb_case(c[..],"\"status\":\"online\"","\"status\":\"draining\""))==PbCode.ok;
+    r:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],pb_case(c[..],"\"status\":\"online\"","\"status\":\"offline\""),"1791400300",""),pb_case(c[..],"\"status\":\"online\"","\"status\":\"offline\""),PB_X);
+    #assert r.code==PbCode.ok && r.status==PbStatus.offline;
+    d:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],pb_case(c[..],"\"status\":\"online\"","\"status\":\"draining\""),"1791400300",""),pb_case(c[..],"\"status\":\"online\"","\"status\":\"draining\""),PB_X);
+    #assert d.status==PbStatus.draining;
+}
+#test "content edges that a beacon may carry" {
+    c:[2048]u8;
+    oks:=[12]string.["\"label\":\"0123456789012345678901234567890123456789012345678901234567890123\"","\"label\":\"\"","\"pools\":[\"everglade\",\"a-b_9\"]","\"slots\":{\"free\":64,\"total\":64}",
+        "\"slots\":{\"total\":1,\"free\":0}","\"generation\":0","\"since\":1791400000","\"valid_until\":1791400000","\"offering\":\"30192:k:t\"","\"price_hint_msat\":0",
+        "\"settlement\":[\"free-v1\",\"x402-exact\"]","\"requires\":[],\"meta\":{\"deadline_secs\":8,\"max_input_bytes\":98304}"];
+    froms:=[12]string.["\"label\":\"Studio GPU\"","\"label\":\"Studio GPU\"","\"pools\":[]","\"slots\":{\"free\":1,\"total\":1}","\"slots\":{\"free\":1,\"total\":1}","\"generation\":7","\"since\":1791380000",
+        "\"valid_until\":1791400300","\"offering\":null","\"price_hint_msat\":null","\"settlement\":[\"free-v1\"]","\"requires\":[]"];
+    for i:0..<12 {
+        content:=pb_case(c[..],froms[i],oks[i]);tags:[512]u8;
+        e:="1791400300";if i==7 {e="1791400000";}
+        #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],content,e,""),content,PB_X).code==PbCode.ok;
+    }
+    tags:[512]u8;
+    nopool:=pb_case(c[..],"\"pools\":[],","");#assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],nopool,"1791400300",""),nopool,PB_X).code==PbCode.ok;
+    exec:=pb_case(c[..],"\"lanes\":[\"cj-decision\"]","\"lanes\":[\"cj-execution\",\"cj-conversation\",\"nip90-5050\"]");
+    r:=pb_read(30200,PB_KEY,pb_tags_for(tags[..],exec,"1791400300",""),exec,PB_X);#assert r.code==PbCode.ok && !r.decision && r.identity=="";
+    plain:=pb_case(c[..],"\"model\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"","\"model\":\"open-weights-8b-q4\"");
+    #assert pb_read(30200,PB_KEY,pb_tags_for(tags[..],plain,"1791400300",""),plain,PB_X).code==PbCode.identity;
+}
+#test "served identities: a name, then sha256 or gguf-tensors digests" {
+    #assert pb_identity(PB_IDENTITY) && pb_identity("clef-flash@gguf-tensors:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !pb_identity("@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !pb_identity("elephant-1");
+    #assert !pb_identity("elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeF");
+    #assert pb_identity("a@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !pb_identity("a@sha256;0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !pb_identity("a@gguf-tensors:sha256;0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !pb_identity("a@gguf-tensors:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdeg");
+    long:[160]u8;for i:0..<160 {long[i]='a';}tail:="@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    for i:0..<tail.count {long[56+i]=tail[i];}#assert pb_identity(cast(string)long[0..<128]);
+    long[56]='a';for i:0..<tail.count {long[57+i]=tail[i];}#assert !pb_identity(cast(string)long[0..<129]);
+    #assert !pb_identity("elephant-1@md5:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef") && !pb_identity("a@b@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert pb_identity_name(PB_IDENTITY)=="elephant-1" && pb_identity_name("x")=="x" && pb_identity_name("@a")=="";
+    out:[128]u8;n:=pb_capability(out[..],PB_KEY);#assert cast(string)out[0..<n]==PB_CAPABILITY && pb_capability(out[..],"x")==-1 && pb_capability(out[0..<78],PB_KEY)==-1;
+}
+#test "hardware classes follow NIP-PYLON's bands" {
+    #assert pb_tier("unified-memory",15)=="small" && pb_tier("unified-memory",16)=="medium" && pb_tier("unified-memory",31)=="medium" && pb_tier("unified-memory",32)=="large" && pb_tier("unified-memory",95)=="large" && pb_tier("unified-memory",96)=="xl";
+    #assert pb_tier("gpu",11)=="small" && pb_tier("gpu",12)=="medium" && pb_tier("gpu",23)=="medium" && pb_tier("gpu",24)=="large" && pb_tier("gpu",47)=="large" && pb_tier("gpu",48)=="xl";
+    #assert pb_tier("cpu",7)=="small" && pb_tier("cpu",8)=="medium" && pb_tier("cpu",15)=="medium" && pb_tier("cpu",16)=="large" && pb_tier("cpu",63)=="large" && pb_tier("cpu",64)=="xl";
+    #assert pb_tier("tpu",64)=="" && pb_tier("gpu",-1)=="" && pb_tier("gpu",0)=="small";
+    #assert pb_memory_gb(7)==-1 && pb_memory_gb(8)==8 && pb_memory_gb(15)==8 && pb_memory_gb(16)==16 && pb_memory_gb(24)==16 && pb_memory_gb(511)==256 && pb_memory_gb(512)==512 && pb_memory_gb(4096)==512;
+}
+#forall "freshness: future, stale, rollback and newer by the reader's clock" lag: -32..<-28, held: 0..<3 {
+    r:=PbRead.{generation=7,observed_at=1000,valid_until=1300};
+    h:=PbHeld.{present=held>0,generation=ifx held==2 then 8 else 7,observed_at=ifx held==2 then 0 else 999};
+    f:=pb_fresh(r,1000+lag,h);
+    if lag< -30 {#assert f==PbFresh.future;}else if held==2 {#assert f==PbFresh.rollback;}else {#assert f==PbFresh.fresh;}
+}
+#test "freshness at its exact edges" {
+    r:=PbRead.{generation=7,observed_at=1000,valid_until=1300};none:=PbHeld.{};
+    #assert pb_fresh(r,1300,none)==PbFresh.fresh && pb_fresh(r,1301,none)==PbFresh.stale;
+    short:=r;short.valid_until=1100;#assert pb_fresh(short,1100,none)==PbFresh.fresh && pb_fresh(short,1101,none)==PbFresh.stale;
+    long:=r;long.valid_until=1400;#assert pb_fresh(long,1300,none)==PbFresh.fresh && pb_fresh(long,1301,none)==PbFresh.stale;
+    #assert pb_fresh(r,1000,PbHeld.{present=true,generation=7,observed_at=1000})==PbFresh.not_newer;
+    #assert pb_fresh(r,1000,PbHeld.{present=true,generation=6,observed_at=2000})==PbFresh.fresh;
+    #assert pb_fresh(r,1000,PbHeld.{present=false,generation=9,observed_at=2000})==PbFresh.fresh;
+    #assert pb_show(PbRead.{status=PbStatus.online},PbFresh.fresh)==PbShow.online && pb_show(PbRead.{status=PbStatus.draining},PbFresh.fresh)==PbShow.draining;
+    #assert pb_show(PbRead.{status=PbStatus.offline},PbFresh.fresh)==PbShow.offline && pb_show(PbRead.{status=PbStatus.online},PbFresh.stale)==PbShow.unknown;
+    #assert pb_show(PbRead.{status=PbStatus.online},PbFresh.future)==PbShow.unknown;
+    ok:=PbRead.{status=PbStatus.online,free=1,total=1,decision=true};
+    #assert pb_routable(ok,PbFresh.fresh) && !pb_routable(ok,PbFresh.stale);
+    busy:=ok;busy.free=0;#assert !pb_routable(busy,PbFresh.fresh);
+    drain:=ok;drain.status=PbStatus.draining;#assert !pb_routable(drain,PbFresh.fresh);
+    text:=ok;text.decision=false;#assert !pb_routable(text,PbFresh.fresh);
+    bad:=ok;bad.code=PbCode.slots;#assert !pb_routable(bad,PbFresh.fresh);
+}
+#test "the lifecycle: start, drain, stop, restart" {
+    life:PbLife;#assert life.status==PbStatus.offline && life.published==-1;
+    on:=pb_start(life,100);#assert on.status==PbStatus.online && on.generation==1 && on.since==100;
+    again:=pb_start(on,200);#assert again.status==PbStatus.online && again.generation==1 && again.since==100;
+    d:=pb_drain(on);#assert d.status==PbStatus.draining && d.generation==1 && d.since==100;
+    #assert pb_drain(life).status==PbStatus.offline && pb_start(d,300).status==PbStatus.draining;
+    off:=pb_stop(d);#assert off.status==PbStatus.offline && off.generation==1;
+    back:=pb_start(off,400);#assert back.status==PbStatus.online && back.generation==2 && back.since==400;
+    #assert pb_snap(back,3,5).status==PbStatus.online && pb_snap(back,3,5).generation==2 && pb_snap(back,3,5).free==3 && pb_snap(back,3,5).services==5;
+}
+#test "the republish schedule: changes at once, refreshes inside 60..240 s, never after offline" {
+    life:=pb_start(PbLife.{},100);now:=pb_snap(life,1,1);
+    #assert pb_next(life,now,180)==0 && pb_due(life,now,180,0);
+    sent:=pb_sent(life,now,100);#assert sent.published==100 && sent.sent.free==1;
+    #assert pb_next(sent,now,180)==280 && !pb_due(sent,now,180,279) && pb_due(sent,now,180,280);
+    #assert pb_next(sent,now,59)==-2 && pb_next(sent,now,241)==-2 && pb_next(sent,now,60)==160 && pb_next(sent,now,240)==340 && !pb_due(sent,now,59,100000);
+    zero:=pb_sent(life,now,0);#assert pb_next(zero,now,180)==180;
+    busy:=now;busy.free=0;#assert pb_next(sent,busy,180)==110 && pb_due(sent,busy,180,110) && !pb_due(sent,busy,180,109);
+    up:=now;up.generation=2;#assert pb_next(sent,up,180)==110;
+    more:=now;more.services=2;#assert pb_next(sent,more,180)==110;
+    gone:=pb_stop(sent);last:=pb_snap(gone,0,1);#assert pb_next(gone,last,180)==110;
+    after:=pb_sent(gone,last,110);#assert pb_next(after,last,180)==-1 && !pb_due(after,last,180,100000);
+    drain:=pb_sent(pb_drain(sent),pb_snap(pb_drain(sent),1,1),120);#assert pb_next(drain,pb_snap(drain,1,1),180)==300;
+    #assert pb_valid_until(1000,300)==1300 && pb_valid_until(1000,301)==-1 && pb_valid_until(1000,0)==-1 && pb_valid_until(1000,1)==1001;
+}
+#test "small helpers" {
+    #assert pb_find("abc","ab") && pb_index("abcab","ab")==0 && pb_index("xab","ab")==1 && pb_index("a","ab")==-1 && pb_find("abc","bc") && !pb_find("abc","cb");
+    #assert pb_slug("a",64) && pb_slug("a-b_09z",64) && !pb_slug("",64) && !pb_slug("A",64) && !pb_slug("a b",64) && !pb_slug("ab",1) && pb_slug("ab",2);
+    #assert !pb_slug("/",64) && !pb_slug(":",64) && !pb_slug("`",64) && !pb_slug("{",64) && pb_slug("09",64) && pb_slug("az",64);
+    #assert pb_status_name(PbStatus.online)=="online" && pb_status_name(PbStatus.draining)=="draining" && pb_status_name(PbStatus.offline)=="offline";
+}
+
+pb_index :: (text:string,needle:string)->int {
+    i:=0;while i+needle.count<=text.count {if text[i..<i+needle.count]==needle {return i;}i+=1;}return -1;
+}
+pb_find :: (text:string,needle:string)->bool {return pb_index(text,needle)>=0;}
+pb_slug :: (s:string,most:int)->bool {
+    if s.count<1 || s.count>most {return false;}
+    for c:s {if !((c>='a' && c<='z') || (c>='0' && c<='9') || c=='-' || c=='_') {return false;}}
+    return true;
+}
+pb_status_name :: (s:PbStatus)->string {names:=[3]string.["online","draining","offline"];return names[cast(int)s];}
+// <name>@sha256:<64 hex> or <name>@gguf-tensors:sha256:<64 hex>, at most 128 bytes.
+pb_identity :: (model:string)->bool {
+    if model.count>PB_MODEL {return false;}
+    at:=pb_index(model,"@");if at<1 {return false;}
+    rest:=model[at+1..<model.count];
+    if rest.count==71 && rest[0..<7]=="sha256:" {return pt_hex64(rest[7..<71]);}
+    if rest.count==84 && rest[0..<20]=="gguf-tensors:sha256:" {return pt_hex64(rest[20..<84]);}
+    return false;
+}
+// A response's model: the identity's name before '@'.
+pb_identity_name :: (identity:string)->string {at:=pb_index(identity,"@");if at<0 {return identity;}return identity[0..<at];}
+pb_capability :: (out:[]u8,provider:string)->int {
+    if !pt_hex64(provider) {return -1;}n:=json_raw(out,0,provider);return json_raw(out,n,":pylon/decision");
+}
+// tier from the family's measure: unified-memory and gpu in GB, cpu in cores.
+pb_tier :: (family:string,amount:int)->string {
+    bands:=[3]int.[16,32,96];
+    if family=="gpu" {bands=[3]int.[12,24,48];}else if family=="cpu" {bands=[3]int.[8,16,64];}else if family!="unified-memory" {return "";}
+    if amount<0 {return "";}if amount<bands[0] {return "small";}if amount<bands[1] {return "medium";}if amount<bands[2] {return "large";}return "xl";
+}
+// memory_gb: 8 to 512 in powers of two, rounded down; -1 under 8.
+pb_memory_gb :: (gb:int)->int {
+    if gb<8 {return -1;}v:=8;while v<512 && v*2<=gb {v*=2;}return v;
+}
+pb_memory_ok :: (gb:int)->bool {return pb_memory_gb(gb)==gb;}
+
+// ---- the writer
+pb_strings :: (out:[]u8,at:int,values:[]string)->int {
+    n:=json_raw(out,at,"[");for i:0..<values.count {if i>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,values[i]);}return json_raw(out,n,"]");
+}
+// The content, keys in JCS order. meta is the caller's JCS object or empty.
+pb_content :: (b:PbBeacon,out:[]u8)->int {
+    n:=json_raw(out,0,"{\"class\":{\"family\":");n=json_write_string(out,n,b.hardware.family);n=json_raw(out,n,",\"memory_gb\":");n=json_write_int(out,n,b.hardware.memory_gb);
+    n=json_raw(out,n,",\"tier\":");n=json_write_string(out,n,b.hardware.tier);n=json_raw(out,n,"},\"generation\":");n=json_write_int(out,n,b.generation);
+    n=json_raw(out,n,",\"label\":");n=json_write_string(out,n,b.label);
+    if b.meta.count!=0 {n=json_raw(out,n,",\"meta\":");n=json_raw(out,n,b.meta);}
+    n=json_raw(out,n,",\"observed_at\":");n=json_write_int(out,n,b.observed_at);n=json_raw(out,n,",\"pools\":");n=pb_strings(out,n,b.pools);
+    n=json_raw(out,n,",\"provider\":");n=json_write_string(out,n,b.provider);n=json_raw(out,n,",\"pylon\":");n=json_write_string(out,n,b.pylon);
+    n=json_raw(out,n,",\"requires\":[],\"services\":[");
+    for i:0..<b.services.count {
+        s:=b.services[i];if i>0 {n=json_raw(out,n,",");}
+        n=json_raw(out,n,"{\"capability\":");n=json_write_string(out,n,s.capability);n=json_raw(out,n,",\"lanes\":");n=pb_strings(out,n,s.lanes);
+        n=json_raw(out,n,",\"model\":");n=json_write_string(out,n,s.model);n=json_raw(out,n,",\"offering\":");
+        if s.offering.count!=0 {n=json_write_string(out,n,s.offering);}else {n=json_raw(out,n,"null");}
+        n=json_raw(out,n,",\"price_hint_msat\":");if s.price>=0 {n=json_write_int(out,n,s.price);}else {n=json_raw(out,n,"null");}
+        n=json_raw(out,n,"}");
+    }
+    n=json_raw(out,n,"],\"settlement\":");n=pb_strings(out,n,b.settlement);n=json_raw(out,n,",\"since\":");n=json_write_int(out,n,b.since);
+    n=json_raw(out,n,",\"slots\":{\"free\":");n=json_write_int(out,n,b.free);n=json_raw(out,n,",\"total\":");n=json_write_int(out,n,b.total);
+    n=json_raw(out,n,"},\"status\":\"");n=json_raw(out,n,pb_status_name(b.status));n=json_raw(out,n,"\",\"v\":\"");n=json_raw(out,n,PB_VERSION);
+    n=json_raw(out,n,"\",\"valid_until\":");n=json_write_int(out,n,b.valid_until);return json_raw(out,n,"}");
+}
+// The unsigned 30200 template, created_at = observed_at, for content (what
+// pb_content wrote for b) and digest (its lowercase SHA-256). The writer
+// emits only what its own reader admits; -1 otherwise.
+pb_write :: (b:PbBeacon,auth:PbAuth,content:string,digest:string,out:[]u8)->int #export_c {
+    tags:[1024]u8;t:=json_raw(tags[..],0,"[[\"d\",");t=json_write_string(tags[..],t,b.pylon);
+    t=json_raw(tags[..],t,"],[\"t\",\"oa:pylon-beacon:v1\"],[\"x\",");t=json_write_string(tags[..],t,digest);
+    t=json_raw(tags[..],t,"],[\"expiration\",\"");t=json_write_int(tags[..],t,b.valid_until);t=json_raw(tags[..],t,"\"]");
+    if auth.owner.count!=0 || auth.signature.count!=0 {
+        t=json_raw(tags[..],t,",[\"auth\",");t=json_write_string(tags[..],t,auth.owner);t=json_raw(tags[..],t,",\"kind=30200\",");t=json_write_string(tags[..],t,auth.signature);t=json_raw(tags[..],t,"]");
+    }
+    t=json_raw(tags[..],t,"]");
+    if t==-1 {return -1;}
+    if pb_read(PB_KIND,b.provider,cast(string)tags[0..<t],content,digest).code!=PbCode.ok {return -1;}
+    return pt_template(out,b.provider,b.observed_at,PB_KIND,cast(string)tags[0..<t],content);
+}
+
+// ---- the reader
+PbInt :: struct {ok:bool;value:int;}
+pb_uint :: (j:[]Json,t:int)->PbInt {
+    if t!=JSON_NUMBER {return PbInt.{};}v:=json_int(json_text(j));if !v.ok || v.value<0 {return PbInt.{};}return PbInt.{ok=true,value=v.value};
+}
+pb_field :: (key:string)->int {
+    names:=[17]string.["v","requires","provider","pylon","label","status","generation","since","observed_at","valid_until","class","slots","services","settlement","pools","meta","group"];
+    for i:0..<17 {if json_is(key,names[i]) {return i+1;}}return -1;
+}
+pb_class :: (j:[]Json,r:[]PbRead)->bool {
+    family:=false;tiered:=false;memory:=false;
+    while true {
+        t:=json_next(j);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j);t=json_next(j);
+        // family and tier are checked against their names below, which a
+        // number's text never matches; a pb_uint that is not ok is 0, not a size.
+        if json_is(key,"family") {if family {return false;}family=true;r[0].family=json_text(j);}
+        else if json_is(key,"tier") {if tiered {return false;}tiered=true;r[0].tier=json_text(j);}
+        else if json_is(key,"memory_gb") {if memory || !pb_memory_ok(pb_uint(j,t).value) {return false;}memory=true;r[0].memory_gb=pb_uint(j,t).value;}
+        else {return false;}
+    }
+    f:=r[0].family;tier:=r[0].tier;
+    if !memory || !(f=="unified-memory" || f=="gpu" || f=="cpu") {return false;}
+    return tier=="small" || tier=="medium" || tier=="large" || tier=="xl";
+}
+pb_slots :: (j:[]Json,r:[]PbRead)->bool {
+    free:=false;total:=false;
+    while true {
+        t:=json_next(j);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j);t=json_next(j);v:=pb_uint(j,t);if !v.ok {return false;}
+        if json_is(key,"free") {if free {return false;}free=true;r[0].free=v.value;}
+        else if json_is(key,"total") {if total {return false;}total=true;r[0].total=v.value;}
+        else {return false;}
+    }
+    return free && total && r[0].free<=r[0].total && r[0].total<=PB_SLOTS;
+}
+pb_lane :: (raw:string)->int {
+    names:=[4]string.["cj-execution","cj-conversation","cj-decision","nip90-5050"];
+    for i:0..<4 {if json_is(raw,names[i]) {return i;}}return -1;
+}
+// One service object; the code it refuses with, or ok.
+pb_service :: (j:[]Json,signer:string,r:[]PbRead)->PbCode {
+    seen:=0;lanes:=0;model:="";capability:="";
+    while true {
+        t:=json_next(j);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j);t=json_next(j);bit:int;
+        if json_is(key,"capability") {bit=1;if t!=JSON_STRING || json_text(j).count==0 {return PbCode.services;}capability=json_text(j);}
+        else if json_is(key,"model") {bit=2;if t!=JSON_STRING || json_text(j).count==0 || json_text(j).count>PB_MODEL {return PbCode.services;}model=json_text(j);}
+        else if json_is(key,"lanes") {
+            bit=4;if t!=JSON_ARRAY {return PbCode.lanes;}
+            v:=json_next(j);while v!=JSON_ARRAY_END {
+                if v!=JSON_STRING {return PbCode.lanes;}lane:=pb_lane(json_text(j));
+                if lane<0 || (lanes&(1<<lane))!=0 {return PbCode.lanes;}lanes|=1<<lane;v=json_next(j);
+            }
+            if lanes==0 {return PbCode.lanes;}
+        }
+        else if json_is(key,"offering") {bit=8;if t!=JSON_STRING && t!=JSON_NULL {return PbCode.services;}}
+        else if json_is(key,"price_hint_msat") {bit=16;if t!=JSON_NULL && !pb_uint(j,t).ok {return PbCode.services;}}
+        else {return PbCode.services;}
+        if (seen&bit)!=0 {return PbCode.services;}seen|=bit;
+    }
+    if seen!=31 {return PbCode.services;}
+    if (lanes&4)!=0 {
+        cap:[96]u8;n:=pb_capability(cap[..],signer);
+        if !pb_identity(model) || capability!=cast(string)cap[0..<n] {return PbCode.identity;}
+        if !r[0].decision {r[0].decision=true;r[0].identity=model;}
+    }
+    return PbCode.ok;
+}
+pb_list :: (j:[]Json,t:int,most:int,slugs:bool)->bool {
+    if t!=JSON_ARRAY {return false;}
+    seen:[16]string;count:=0;v:=json_next(j);
+    while v!=JSON_ARRAY_END {
+        if v!=JSON_STRING || count==most {return false;}s:=json_text(j);
+        if s.count==0 || (slugs && !pb_slug(s,PB_SLUG)) {return false;}
+        for i:0..<count {if seen[i]==s {return false;}}
+        seen[count]=s;count+=1;v=json_next(j);
+    }
+    return slugs || count>0;
+}
+pb_body :: (content:string,signer:string,r:[]PbRead)->PbCode {
+    j:[1]Json;json_start(j[..],content);if json_next(j[..])!=JSON_OBJECT {return PbCode.json;}
+    seen:=0;
+    while true {
+        t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}if t==JSON_ERROR {return PbCode.json;}
+        f:=pb_field(json_text(j[..]));t=json_next(j[..]);
+        if f==-1 || f==17 || (seen&(1<<(f-1)))!=0 {return PbCode.field;}seen|=1<<(f-1);
+        if f==1 {if t!=JSON_STRING || !json_is(json_text(j[..]),PB_VERSION) {return PbCode.version;}}
+        else if f==2 {if t!=JSON_ARRAY || json_next(j[..])!=JSON_ARRAY_END {return PbCode.version;}}
+        else if f==3 {if t!=JSON_STRING || json_text(j[..])!=signer {return PbCode.provider;}}
+        else if f==4 {if t!=JSON_STRING || !pb_slug(json_text(j[..]),PB_SLUG) {return PbCode.slug;}r[0].pylon=json_text(j[..]);}
+        else if f==5 {
+            if t!=JSON_STRING {return PbCode.label;}buf:[65]u8;n:=json_unescape(json_text(j[..]),buf[..]);if n<0 || n>PB_LABEL {return PbCode.label;}
+        }
+        else if f==6 {
+            k:=-1;if t==JSON_STRING {for i:0..<3 {if json_is(json_text(j[..]),pb_status_name(cast(PbStatus)i)) {k=i;}}}
+            if k==-1 {return PbCode.status;}r[0].status=cast(PbStatus)k;
+        }
+        else if f>=7 && f<=10 {
+            v:=pb_uint(j[..],t);if !v.ok {return PbCode.times;}
+            if f==7 {r[0].generation=v.value;}else if f==8 {r[0].since=v.value;}else if f==9 {r[0].observed_at=v.value;}else {r[0].valid_until=v.value;}
+        }
+        else if f==11 {if t!=JSON_OBJECT || !pb_class(j[..],r) {return PbCode.class;}}
+        else if f==12 {if t!=JSON_OBJECT || !pb_slots(j[..],r) {return PbCode.slots;}}
+        else if f==13 {
+            if t!=JSON_ARRAY {return PbCode.services;}
+            v:=json_next(j[..]);
+            while v!=JSON_ARRAY_END {
+                if v!=JSON_OBJECT || r[0].services==PB_SERVICES {return PbCode.services;}
+                code:=pb_service(j[..],signer,r);if code!=PbCode.ok {return code;}r[0].services+=1;v=json_next(j[..]);
+            }
+            if r[0].services==0 {return PbCode.services;}
+        }
+        else if f==14 {if !pb_list(j[..],t,PB_SETTLEMENTS,false) {return PbCode.settlement;}}
+        else if f==15 {if !pb_list(j[..],t,PB_POOLS,true) {return PbCode.pools;}}
+        else {if t!=JSON_OBJECT || !json_skip(j[..]) {return PbCode.json;}}
+    }
+    if json_next(j[..])!=JSON_END {return PbCode.json;}
+    if (seen&16383)!=16383 {return PbCode.field;}
+    if r[0].since>r[0].observed_at || r[0].valid_until<r[0].observed_at || r[0].valid_until>r[0].observed_at+PB_WINDOW {return PbCode.times;}
+    return PbCode.ok;
+}
+// signer is the verified event's pubkey; content its unescaped content;
+// digest the lowercase SHA-256 of content.
+pb_read :: (kind:int,signer:string,tags:string,content:string,digest:string)->PbRead #export_c {
+    r:=[1]PbRead.[PbRead.{}];
+    if kind!=PB_KIND {return PbRead.{code=PbCode.kind};}
+    if !pt_hex64(signer) {return PbRead.{code=PbCode.provider};}
+    d:=pt_tag(tags,"d");t:=pt_tag(tags,"t");x:=pt_tag(tags,"x");e:=pt_tag(tags,"expiration");a:=pt_tag(tags,"auth");
+    if !d.ok || d.count!=1 || d.size!=2 || t.count!=1 || t.size!=2 || x.count!=1 || x.size!=2 || e.count!=1 || e.size!=2 {return PbRead.{code=PbCode.tags};}
+    if t.v[1]!=PB_MARKER {return PbRead.{code=PbCode.marker};}
+    if !pt_hex64(digest) || x.v[1]!=digest {return PbRead.{code=PbCode.digest};}
+    expiration:=json_int(e.v[1]);if !expiration.ok || expiration.value<0 {return PbRead.{code=PbCode.tags};}
+    if a.count>1 || (a.count==1 && (a.size!=4 || !pt_hex64(a.v[1]) || a.v[2]!="kind=30200" || a.v[3].count==0)) {return PbRead.{code=PbCode.auth};}
+    code:=pb_body(content,signer,r[..]);if code!=PbCode.ok {return PbRead.{code=code};}
+    if r[0].pylon!=d.v[1] {return PbRead.{code=PbCode.slug};}
+    if r[0].valid_until!=expiration.value {return PbRead.{code=PbCode.expiration};}
+    if a.count==1 {r[0].auth=true;r[0].owner=a.v[1];r[0].auth_signature=a.v[3];}
+    return r[0];
+}
+
+// ---- freshness, by the reader's receipt time
+pb_fresh :: (r:PbRead,received:int,held:PbHeld)->PbFresh #export_c {
+    if r.observed_at>received+PB_FUTURE {return PbFresh.future;}
+    if held.present {
+        if r.generation<held.generation {return PbFresh.rollback;}
+        if r.generation==held.generation && r.observed_at<=held.observed_at {return PbFresh.not_newer;}
+    }
+    if received>r.valid_until || received>r.observed_at+PB_WINDOW {return PbFresh.stale;}
+    return PbFresh.fresh;
+}
+pb_show :: (r:PbRead,f:PbFresh)->PbShow {
+    if f!=PbFresh.fresh {return PbShow.unknown;}return cast(PbShow)cast(int)r.status;
+}
+// Whether a buyer may send this pylon a decision job now.
+pb_routable :: (r:PbRead,f:PbFresh)->bool #export_c {
+    return r.code==PbCode.ok && f==PbFresh.fresh && r.status==PbStatus.online && r.free>0 && r.decision;
+}
+
+// ---- the provider's lifecycle and republish schedule
+pb_start :: (life:PbLife,now:int)->PbLife #export_c {
+    l:=life;if l.status!=PbStatus.offline {return l;}
+    l.status=PbStatus.online;l.generation+=1;l.since=now;return l;
+}
+pb_drain :: (life:PbLife)->PbLife #export_c {l:=life;if l.status==PbStatus.online {l.status=PbStatus.draining;}return l;}
+pb_stop :: (life:PbLife)->PbLife #export_c {l:=life;l.status=PbStatus.offline;return l;}
+// services is the caller's revision number of its service list.
+pb_snap :: (life:PbLife,free:int,services:int)->PbSnap #export_c {return PbSnap.{status=life.status,generation=life.generation,free=free,services=services};}
+pb_sent :: (life:PbLife,snap:PbSnap,now:int)->PbLife #export_c {l:=life;l.published=now;l.sent=snap;return l;}
+// When the next beacon is due: 0 for at once, -1 for never (offline and
+// already said so), -2 for a refresh outside 60..240. A change goes out no
+// sooner than 10 s after the last; an unchanged online or draining beacon
+// every refresh seconds.
+pb_next :: (life:PbLife,now:PbSnap,refresh:int)->int #export_c {
+    if life.published==-1 {return 0;}
+    s:=life.sent;
+    if now.status!=s.status || now.generation!=s.generation || now.free!=s.free || now.services!=s.services {return life.published+PB_SPACING;}
+    if now.status==PbStatus.offline {return -1;}
+    if refresh<PB_REFRESH_MIN || refresh>PB_REFRESH_MAX {return -2;}
+    return life.published+refresh;
+}
+pb_due :: (life:PbLife,now:PbSnap,refresh:int,clock:int)->bool #export_c {next:=pb_next(life,now,refresh);return next>=0 && clock>=next;}
+// observed_at+ttl for a ttl of 1 to 300 seconds; -1 otherwise.
+pb_valid_until :: (observed_at:int,ttl:int)->int #export_c {
+    if ttl<1 || ttl>PB_WINDOW {return -1;}return observed_at+ttl;
+}

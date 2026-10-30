@@ -1,0 +1,118 @@
+// Chapter 19: the Pylon's NIP-65 relay list, kind 10002 (NIP-PYLON, "Relay
+// list"). One r tag per relay; no marker means the pylon reads requests and
+// writes results there, read or write means only that. The content is empty.
+// A buyer sends jobs to the read relays; a reader with no list falls back to
+// the relay the beacon arrived on.
+#load "template.coax";
+#authority;
+
+PR_KIND :: 10002;
+PR_MOST :: 16;         // relays one list may name: this profile's bound
+PR_URL_MOST :: 256;
+PrMode :: enum u8 {both;read;write;}
+PrRelay :: struct {url:string;mode:PrMode;}
+PrCode :: enum u8 {ok;kind;content;tags;url;marker;duplicate;count;}
+PrList :: struct {code:PrCode;count:int;read:int;write:int;}
+
+PR_KEY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+
+#test "the NIP-PYLON example list is one unmarked relay" {
+    relays:=[1]PrRelay.[PrRelay.{url="wss://relay.openagents.com"}];out:[512]u8;
+    n:=pr_write(out[..],PR_KEY,1791400000,relays[..]);
+    #assert cast(string)out[0..<n]=="{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791400000,\"kind\":10002,\"tags\":[[\"r\",\"wss://relay.openagents.com\"]],\"content\":\"\"}";
+    reads:[16]string;l:=pr_read(10002,"[[\"r\",\"wss://relay.openagents.com\"]]","",reads[..]);
+    #assert l.code==PrCode.ok && l.count==1 && l.read==1 && l.write==1 && reads[0]=="wss://relay.openagents.com";
+}
+#test "markers, read relays and the writer's refusals" {
+    relays:=[3]PrRelay.[PrRelay.{url="wss://a.example"},PrRelay.{url="ws://100.64.0.1:7777",mode=PrMode.read},PrRelay.{url="wss://b.example/x",mode=PrMode.write}];out:[1024]u8;
+    n:=pr_write(out[..],PR_KEY,5,relays[..]);
+    #assert cast(string)out[0..<n]=="{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":5,\"kind\":10002,\"tags\":[[\"r\",\"wss://a.example\"],[\"r\",\"ws://100.64.0.1:7777\",\"read\"],[\"r\",\"wss://b.example/x\",\"write\"]],\"content\":\"\"}";
+    reads:[16]string;l:=pr_read(10002,"[[\"r\",\"wss://a.example\"],[\"r\",\"ws://100.64.0.1:7777\",\"read\"],[\"r\",\"wss://b.example/x\",\"write\"]]","",reads[..]);
+    #assert l.code==PrCode.ok && l.count==3 && l.read==2 && l.write==2 && reads[0]=="wss://a.example" && reads[1]=="ws://100.64.0.1:7777";
+    #assert pr_write(out[..],PR_KEY,5,relays[0..<0])==-1;
+    dup:=[2]PrRelay.[PrRelay.{url="wss://a.example"},PrRelay.{url="wss://a.example",mode=PrMode.read}];#assert pr_write(out[..],PR_KEY,5,dup[..])==-1;
+    bad:=[1]PrRelay.[PrRelay.{url="https://a.example"}];#assert pr_write(out[..],PR_KEY,5,bad[..])==-1;
+    many:[17]PrRelay;names:="abcdefghijklmnopq";urls:[153]u8;
+    for i:0..<17 {u:="wss://x.a";for k:0..<9 {urls[9*i+k]=u[k];}urls[9*i+6]=names[i];many[i]=PrRelay.{url=cast(string)urls[9*i..<9*i+9]};}
+    #assert pr_write(out[..],PR_KEY,5,many[0..<16])>0 && pr_write(out[..],PR_KEY,5,many[..])==-1;
+    #assert pr_write(out[0..<20],PR_KEY,5,relays[..])==-1 && pr_write(out[..],"x",5,relays[..])==-1;
+}
+#test "the reader refuses every malformed list" {
+    reads:[16]string;
+    #assert pr_read(10001,"[[\"r\",\"wss://a.b\"]]","",reads[..]).code==PrCode.kind;
+    #assert pr_read(10002,"[[\"r\",\"wss://a.b\"]]","x",reads[..]).code==PrCode.content;
+    #assert pr_read(10002,"[]","",reads[..]).code==PrCode.count;
+    #assert pr_read(10002,"{}","",reads[..]).code==PrCode.tags && pr_read(10002,"[[1]]","",reads[..]).code==PrCode.tags && pr_read(10002,"[1]","",reads[..]).code==PrCode.tags;
+    #assert pr_read(10002,"[[\"r\"]]","",reads[..]).code==PrCode.tags && pr_read(10002,"[[\"r\",\"wss://a.b\",\"read\",\"x\"]]","",reads[..]).code==PrCode.tags;
+    #assert pr_read(10002,"[[\"r\",\"wss://a.b\"]] x","",reads[..]).code==PrCode.tags && pr_read(10002,"[[\"r\",\"wss://a\\u002eb\"]]","",reads[..]).code==PrCode.tags;
+    #assert pr_read(10002,"[[\"r\",\"wss://a.b\",\"both\"]]","",reads[..]).code==PrCode.marker;
+    #assert pr_read(10002,"[[\"r\",\"http://a.b\"]]","",reads[..]).code==PrCode.url;
+    #assert pr_read(10002,"[[\"r\",\"wss://a.b\"],[\"r\",\"wss://a.b\",\"write\"]]","",reads[..]).code==PrCode.duplicate;
+    l:=pr_read(10002,"[[\"r\",\"wss://a.b\",\"write\"],[\"p\",\"x\"],[]]","",reads[..]);#assert l.code==PrCode.ok && l.count==1 && l.read==0 && l.write==1;
+    #assert pr_read(10002,"[[\"r\",\"wss://a.b\"]]","",reads[0..<0]).code==PrCode.count;
+    buf:[2048]u8;n:=json_raw(buf[..],0,"[");
+    for i:0..<17 {if i>0 {n=json_raw(buf[..],n,",");}n=json_raw(buf[..],n,"[\"r\",\"wss://");n=json_write_int(buf[..],n,i);n=json_raw(buf[..],n,".a\"]");}
+    n=json_raw(buf[..],n,"]");#assert pr_read(10002,cast(string)buf[0..<n],"",reads[..]).code==PrCode.count;
+}
+#test "relay URLs are ws or wss with a host and visible bytes" {
+    #assert pr_url("wss://a") && pr_url("ws://a") && pr_url("wss://relay.openagents.com/") && !pr_url("wss://") && !pr_url("ws://") && !pr_url("ws:/a");
+    #assert !pr_url("wss://a b") && !pr_url("wss://a\"b") && !pr_url("wss://a\\b") && !pr_url("wss://a\tb") && !pr_url("wsss://a") && !pr_url("");
+    del:=[7]u8.['w','s','s',':','/','/',127];#assert !pr_url(cast(string)del[..]);
+    edge:=[7]u8.['w','s','s',':','/','/','!'];#assert pr_url(cast(string)edge[..]);
+    tilde:=[7]u8.['w','s','s',':','/','/','~'];#assert pr_url(cast(string)tilde[..]);
+    long:[257]u8;start:="wss://";for i:0..<257 {long[i]='a';}for i:0..<6 {long[i]=start[i];}
+    #assert pr_url(cast(string)long[0..<256]) && !pr_url(cast(string)long[..]);
+}
+
+pr_url :: (url:string)->bool {
+    if url.count>PR_URL_MOST {return false;}
+    if !(url.count>6 && url[0..<6]=="wss://") && !(url.count>5 && url[0..<5]=="ws://") {return false;}
+    for c:url {if c<33 || c>126 || c=='"' || c=='\\' {return false;}}
+    return true;
+}
+pr_write :: (out:[]u8,pubkey:string,created_at:int,relays:[]PrRelay)->int #export_c {
+    if relays.count<1 || relays.count>PR_MOST {return -1;}
+    tags:[4608]u8;n:=json_raw(tags[..],0,"[");
+    for i:0..<relays.count {
+        r:=relays[i];if !pr_url(r.url) {return -1;}
+        for k:0..<i {if relays[k].url==r.url {return -1;}}
+        if i>0 {n=json_raw(tags[..],n,",");}
+        n=json_raw(tags[..],n,"[\"r\",\"");n=json_raw(tags[..],n,r.url);n=json_raw(tags[..],n,"\"");
+        if r.mode==PrMode.read {n=json_raw(tags[..],n,",\"read\"");}else if r.mode==PrMode.write {n=json_raw(tags[..],n,",\"write\"");}
+        n=json_raw(tags[..],n,"]");
+    }
+    n=json_raw(tags[..],n,"]");
+    return pt_template(out,pubkey,created_at,PR_KIND,cast(string)tags[0..<n],"");
+}
+// The read relays (unmarked or read) go into reads, in list order.
+pr_read :: (kind:int,tags:string,content:string,reads:[]string)->PrList #export_c {
+    if kind!=PR_KIND {return PrList.{code=PrCode.kind};}
+    if content.count!=0 {return PrList.{code=PrCode.content};}
+    l:PrList;seen:[16]string;j:[1]Json;json_start(j[..],tags);
+    if json_next(j[..])!=JSON_ARRAY {return PrList.{code=PrCode.tags};}
+    t:=json_next(j[..]);
+    while t!=JSON_ARRAY_END {
+        if t!=JSON_ARRAY {return PrList.{code=PrCode.tags};}
+        values:[3]string;size:=0;v:=json_next(j[..]);
+        while v!=JSON_ARRAY_END {
+            if v!=JSON_STRING {return PrList.{code=PrCode.tags};}
+            if size<3 {values[size]=json_text(j[..]);}size+=1;v=json_next(j[..]);
+        }
+        if values[0]=="r" {
+            if size<2 || size>3 {return PrList.{code=PrCode.tags};}
+            url:=values[1];for c:url {if c=='\\' {return PrList.{code=PrCode.tags};}}
+            read:=true;write:=true;
+            if size==3 {if values[2]=="read" {write=false;}else if values[2]=="write" {read=false;}else {return PrList.{code=PrCode.marker};}}
+            if !pr_url(url) {return PrList.{code=PrCode.url};}
+            for k:0..<l.count {if seen[k]==url {return PrList.{code=PrCode.duplicate};}}
+            if l.count==PR_MOST {return PrList.{code=PrCode.count};}
+            seen[l.count]=url;l.count+=1;
+            if read {if l.read==reads.count {return PrList.{code=PrCode.count};}reads[l.read]=url;l.read+=1;}
+            if write {l.write+=1;}
+        }
+        t=json_next(j[..]);
+    }
+    if json_next(j[..])!=JSON_END {return PrList.{code=PrCode.tags};}
+    if l.count==0 {return PrList.{code=PrCode.count};}
+    return l;
+}

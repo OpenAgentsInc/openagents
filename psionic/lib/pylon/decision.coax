@@ -1,0 +1,407 @@
+// Chapter 19: NIP-DEC decision jobs at a Pylon. A verified, decrypted 25910
+// becomes the exact {model, state, questions} body chapter 16's server
+// decodes (sv_decode, sv_admit), or a typed refusal (host.coax checks the
+// server takes it, so this unit's mutation never reaches the server's); the server's 200 body
+// becomes the 26910 result naming the pylon's served identity; refusals and
+// progress are 27010 status bodies; a cancel maps onto the server slot. The
+// wire is the deployed one (crates/nostr decision.rs and crates/pylon
+// provider.rs at 0b401561a0^): outcome "answered", refusals as 27010 errors.
+// Signing, NIP-44 and the relay are other units: the host verifies the event,
+// decrypts its content, calls pd_admit, and encrypts and signs what
+// pd_template returns.
+#load "beacon.coax";
+#authority;
+
+PD_REQUEST :: 25910;
+PD_RESULT :: 26910;
+PD_STATUS :: 27010;
+PD_VERSION :: "openagents.systemone.v1";
+PD_PAST :: 120;        // a request's created_at at most this far behind the clock
+PD_AHEAD :: 30;        // and this far ahead (the deployed pylon's RequestWindow)
+PD_PAYLOAD :: 262144;
+PD_ID_MOST :: 128;
+PD_ATTEMPT_MOST :: 4294967295;
+PdCode :: enum u8 {none;malformed;not_addressed;unsupported_version;unsupported_feature;invalid_request;too_many_questions;too_many_options;not_admitted;limit_exceeded;unsupported_input;stale;busy;timeout;cancelled;identity_mismatch;internal;}
+PdType :: enum u8 {none;call;cancel;}
+// What the host hands over: a verified event's fields and its decrypted content.
+PdEnvelope :: struct {kind:int;id:string;pubkey:string;created_at:int;tags:string;plaintext:string;}
+// answerable: the refusal can go back as a 27010 (signer, addressee and correlation known).
+PdJob :: struct {code:PdCode;type:PdType;answerable:bool;id:string;caller:string;request:string;attempt:int;deadline:int=-1;target:string;body:int;}
+PdStatus :: enum u8 {queued;processing;error;}
+PdOut :: struct {code:PdCode;written:int;}
+PdCancel :: enum u8 {ignore;drop;stop;}
+PdFields :: struct {json:PdCode;versioned:bool;features:int;type:PdType;request:string;requested:bool;attempt:int;deadline:int=-1;undated:bool;model:string;state:string;questions:string;credential:bool;}
+
+PD_WORKER :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+PD_CALLER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+PD_EVENT :: "b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f";
+PD_TAGS :: "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"expiration\",\"1791400060\"]]";
+PD_CALL :: "{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"systemone\",\"request\":\"r-1\",\"attempt\":1,\"model\":\"elephant-1\",\"state\":{\"ticket\":\"I was billed twice\"},\"questions\":{\"refund\":{\"type\":\"noul\",\"instructions\":\"Does the customer ask for money back?\"}},\"deadline\":1791400060}";
+PD_BODY :: "{\"model\":\"elephant-1\",\"state\":{\"ticket\":\"I was billed twice\"},\"questions\":{\"refund\":{\"type\":\"noul\",\"instructions\":\"Does the customer ask for money back?\"}}}";
+PD_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"refund\":{\"type\":\"noul\",\"noul\":0.93}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"},\"latency_ms\":412}";
+
+pd_env :: (plaintext:string)->PdEnvelope {return PdEnvelope.{kind=25910,id=PD_EVENT,pubkey=PD_CALLER,created_at=1791400000,tags=PD_TAGS,plaintext=plaintext};}
+pd_swap :: (out:[]u8,text:string,from:string,to:string)->string {
+    at:=pb_index(text,from);
+    n:=json_raw(out,0,text[0..<at]);n=json_raw(out,n,to);n=json_raw(out,n,text[at+from.count..<text.count]);return cast(string)out[0..<n];
+}
+
+#test "a decision request becomes the server's exact body, which the server decodes" {
+    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);
+    #assert jb.code==PdCode.none && jb.type==PdType.call && jb.answerable && jb.request=="r-1" && jb.attempt==1 && jb.deadline==1791400060;
+    #assert jb.id==PD_EVENT && jb.caller==PD_CALLER && cast(string)body[0..<jb.body]==PD_BODY;
+    t:[4096]u8;plain:=pd_swap(t[..],PD_CALL,",\"deadline\":1791400060","");j2:=pd_admit(pd_env(plain),PD_WORKER,1791400000,body[..]);
+    #assert j2.code==PdCode.none && j2.deadline==-1;
+    t2:[4096]u8;nul:=pd_swap(t2[..],PD_CALL,"\"deadline\":1791400060","\"deadline\":null");#assert pd_admit(pd_env(nul),PD_WORKER,1791400000,body[..]).deadline==-1;
+    t3:[4096]u8;old:=pd_swap(t3[..],PD_CALL,"\"requires\":[],","\"meta\":{\"x\":[1]},");#assert pd_admit(pd_env(old),PD_WORKER,1791400000,body[..]).code==PdCode.none;
+    noexp:=pd_env(PD_CALL);noexp.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";#assert pd_admit(noexp,PD_WORKER,1791400000,body[..]).code==PdCode.none;
+    spaced:=pd_env("{\"v\":\"openagents.systemone.v1\",\"requires\":[ ],\"type\":\"systemone\",\"request\":\"r\",\"attempt\":4294967295,\"model\":\"m\",\"state\":\"s\",\"questions\":{}}");
+    sj:=pd_admit(spaced,PD_WORKER,1791400000,body[..]);#assert sj.code==PdCode.none && sj.attempt==4294967295 && cast(string)body[0..<sj.body]=="{\"model\":\"m\",\"state\":\"s\",\"questions\":{}}";
+    missing:=pd_env("{\"v\":\"openagents.systemone.v1\",\"type\":\"systemone\",\"request\":\"r\",\"attempt\":1,\"questions\":{}}");
+    mj:=pd_admit(missing,PD_WORKER,1791400000,body[..]);#assert mj.code==PdCode.none && cast(string)body[0..<mj.body]=="{\"questions\":{}}";
+    #assert pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[0..<20]).code==PdCode.internal;
+}
+#test "events the pylon cannot answer: wrong kind, signer, addressee or text" {
+    body:[4096]u8;e:=pd_env(PD_CALL);e.kind=25900;j:=pd_admit(e,PD_WORKER,1791400000,body[..]);#assert j.code==PdCode.malformed && !j.answerable;
+    e=pd_env(PD_CALL);e.id="x";#assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    e=pd_env(PD_CALL);e.pubkey="x";#assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    #assert pd_admit(pd_env(PD_CALL),PD_CALLER,1791400000,body[..]).code==PdCode.not_addressed;
+    e=pd_env(PD_CALL);e.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+    #assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.not_addressed;
+    e.tags="[[\"p\"]]";#assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.not_addressed;
+    e.tags="{";#assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.not_addressed;
+    e=pd_env(PD_CALL);e.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"expiration\",\"1\"],[\"expiration\",\"2\"]]";
+    #assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    e.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"expiration\",\"x\"]]";#assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    e.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"expiration\"]]";#assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    #assert pd_admit(pd_env("[1]"),PD_WORKER,1791400000,body[..]).code==PdCode.malformed && pd_admit(pd_env("{\"v\":"),PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    #assert !pd_admit(pd_env("{} {}"),PD_WORKER,1791400000,body[..]).answerable && pd_admit(pd_env("{} {}"),PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    deep:[64]u8;n:=json_raw(deep[..],0,"{\"state\":");for i:0..<16 {n=json_raw(deep[..],n,"[");}
+    #assert pd_admit(pd_env(cast(string)deep[0..<n]),PD_WORKER,1791400000,body[..]).code==PdCode.unsupported_input;
+    big:[262145]u8;#assert pd_admit(pd_env(cast(string)big[..]),PD_WORKER,1791400000,body[..]).code==PdCode.limit_exceeded;
+}
+#test "refusals the pylon answers with a status: version, feature, type, fields, freshness" {
+    body:[4096]u8;t:[4096]u8;
+    froms:=[17]string.["\"v\":\"openagents.systemone.v1\"","\"v\":\"openagents.systemone.v1\"","\"requires\":[]","\"requires\":[]","\"type\":\"systemone\"","\"type\":\"systemone\"","\"attempt\":1","\"attempt\":1","\"attempt\":1",
+        "\"deadline\":1791400060","\"deadline\":1791400060","\"deadline\":1791400060","\"model\":","\"model\":","\"v\":\"openagents.systemone.v1\",","\"type\":\"systemone\",","\"requires\":[]"];
+    tos:=[17]string.["\"v\":\"openagents.systemone.v2\"","\"v\":1","\"requires\":[\"pylon.deadline.v1\"]","\"requires\":{}","\"type\":\"execute\"","\"type\":7","\"attempt\":0","\"attempt\":4294967296","\"attempt\":\"1\"",
+        "\"deadline\":1791400061","\"deadline\":\"x\"","\"deadline\":-1","\"Api_Key\":\"s\",\"model\":","\"token\":1,\"model\":","","","\"requires\":[[]]"];
+    codes:=[17]PdCode.[PdCode.unsupported_version,PdCode.unsupported_version,PdCode.unsupported_feature,PdCode.malformed,PdCode.malformed,PdCode.malformed,PdCode.invalid_request,PdCode.invalid_request,PdCode.invalid_request,
+        PdCode.invalid_request,PdCode.invalid_request,PdCode.invalid_request,PdCode.malformed,PdCode.malformed,PdCode.unsupported_version,PdCode.malformed,PdCode.unsupported_feature];
+    for i:0..<17 {
+        j:=pd_admit(pd_env(pd_swap(t[..],PD_CALL,froms[i],tos[i])),PD_WORKER,1791400000,body[..]);
+        #assert j.code==codes[i] && j.answerable==(i!=6 && i!=7 && i!=8) && j.body==0;
+    }
+    for r:[4]string.["\"request\":\"\"","\"request\":\"a b\"","\"request\":\"a\\u0020b\"","\"request\":7"] {
+        j:=pd_admit(pd_env(pd_swap(t[..],PD_CALL,"\"request\":\"r-1\"",r)),PD_WORKER,1791400000,body[..]);#assert j.code==PdCode.invalid_request && !j.answerable;
+    }
+    long:[200]u8;n:=json_raw(long[..],0,"\"request\":\"");for i:0..<128 {long[n+i]='r';}n+=128;n=json_raw(long[..],n,"\"");
+    #assert pd_admit(pd_env(pd_swap(t[..],PD_CALL,"\"request\":\"r-1\"",cast(string)long[0..<n])),PD_WORKER,1791400000,body[..]).code==PdCode.none;
+    n=json_raw(long[..],n-1,"r\"");#assert pd_admit(pd_env(pd_swap(t[..],PD_CALL,"\"request\":\"r-1\"",cast(string)long[0..<n])),PD_WORKER,1791400000,body[..]).code==PdCode.invalid_request;
+    #assert pd_admit(pd_env(PD_CALL),PD_WORKER,1791400060,body[..]).code==PdCode.stale && pd_admit(pd_env(PD_CALL),PD_WORKER,1791400059,body[..]).code==PdCode.none;
+    late:=pd_env(pd_swap(t[..],PD_CALL,",\"deadline\":1791400060",""));late.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+    #assert pd_admit(late,PD_WORKER,1791400120,body[..]).code==PdCode.none && pd_admit(late,PD_WORKER,1791400121,body[..]).code==PdCode.stale;
+    #assert pd_admit(late,PD_WORKER,1791399970,body[..]).code==PdCode.none && pd_admit(late,PD_WORKER,1791399969,body[..]).code==PdCode.stale;
+    #assert pd_admit(late,PD_WORKER,1791399969,body[..]).answerable;
+    noexp:=pd_env(pd_swap(t[..],PD_CALL,"\"deadline\":1791400060","\"deadline\":1791400000"));noexp.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";
+    #assert pd_admit(noexp,PD_WORKER,1791400000,body[..]).code==PdCode.stale && pd_admit(noexp,PD_WORKER,1791399999,body[..]).code==PdCode.none;
+    untyped:=pd_admit(pd_env("{\"v\":\"openagents.systemone.v1\",\"request\":\"r\",\"attempt\":1}"),PD_WORKER,1791400000,body[..]);#assert untyped.code==PdCode.malformed && untyped.answerable;
+    nov:=pd_admit(pd_env("{\"type\":\"systemone\",\"request\":\"r\",\"attempt\":1}"),PD_WORKER,1791400000,body[..]);#assert nov.code==PdCode.unsupported_version;
+}
+#test "a cancel names the request and the one event it stops" {
+    body:[4096]u8;c:=pd_env("{\"v\":\"openagents.systemone.v1\",\"type\":\"cancel\",\"request\":\"r-1\"}");
+    c.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"]]";c.id=PD_WORKER;
+    j:=pd_admit(c,PD_WORKER,1791400000,body[..]);#assert j.code==PdCode.none && j.type==PdType.cancel && j.target==PD_EVENT && j.request=="r-1" && j.body==0 && !j.answerable;
+    call:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);
+    #assert pd_cancel(call,false,j)==PdCancel.drop && pd_cancel(call,true,j)==PdCancel.stop;
+    other:=j;other.caller=PD_WORKER;#assert pd_cancel(call,true,other)==PdCancel.ignore;
+    other=j;other.target=PD_CALLER;#assert pd_cancel(call,true,other)==PdCancel.ignore;
+    other=j;other.request="r-2";#assert pd_cancel(call,true,other)==PdCancel.ignore;
+    other=j;other.code=PdCode.malformed;#assert pd_cancel(call,true,other)==PdCancel.ignore;
+    other=j;other.type=PdType.call;#assert pd_cancel(call,true,other)==PdCancel.ignore;
+    #assert pd_cancel(j,true,j)==PdCancel.ignore;
+    c2:=c;c2.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";#assert pd_admit(c2,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    c2.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"e\",\"b0\"]]";#assert pd_admit(c2,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    c2.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"]]";
+    #assert pd_admit(c2,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    c2=c;c2.plaintext="{\"v\":\"openagents.systemone.v1\",\"type\":\"cancel\",\"request\":\"\"}";#assert pd_admit(c2,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    c2.plaintext="{\"v\":\"openagents.systemone.v1\",\"type\":\"cancel\"}";#assert pd_admit(c2,PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+}
+#test "status bodies: queued, processing and typed errors" {
+    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);out:[512]u8;
+    n:=pd_status(out[..],jb,PdStatus.processing,PdCode.none,-1);
+    #assert cast(string)out[0..<n]=="{\"attempt\":1,\"request\":\"r-1\",\"requires\":[],\"status\":\"processing\",\"type\":\"status\",\"v\":\"openagents.systemone.v1\"}";
+    n=pd_status(out[..],jb,PdStatus.queued,PdCode.none,-1);#assert pb_find(cast(string)out[0..<n],"\"status\":\"queued\"");
+    n=pd_status(out[..],jb,PdStatus.error,PdCode.busy,1000);
+    #assert cast(string)out[0..<n]=="{\"attempt\":1,\"code\":\"busy\",\"message\":\"the pylon is answering another decision; retry later\",\"request\":\"r-1\",\"requires\":[],\"retry_after_ms\":1000,\"status\":\"error\",\"type\":\"status\",\"v\":\"openagents.systemone.v1\"}";
+    n=pd_status(out[..],jb,PdStatus.error,PdCode.cancelled,-1);#assert pb_find(cast(string)out[0..<n],"\"code\":\"cancelled\",\"message\":") && !pb_find(cast(string)out[0..<n],"retry");
+    #assert pd_status(out[..],jb,PdStatus.queued,PdCode.none,0)==-1;
+    n=pd_status(out[..],jb,PdStatus.error,PdCode.busy,0);#assert pb_find(cast(string)out[0..<n],"\"retry_after_ms\":0,");
+    #assert pd_status(out[..],jb,PdStatus.error,PdCode.none,-1)==-1 && pd_status(out[..],jb,PdStatus.queued,PdCode.busy,-1)==-1 && pd_status(out[..],jb,PdStatus.queued,PdCode.none,5)==-1;
+    #assert pd_status(out[..],jb,PdStatus.error,PdCode.not_addressed,-1)==-1 && pd_status(out[0..<40],jb,PdStatus.queued,PdCode.none,-1)==-1;
+    bad:=jb;bad.answerable=false;#assert pd_status(out[..],bad,PdStatus.queued,PdCode.none,-1)==-1;
+    for c:1..<17 {code:=cast(PdCode)c;if code!=PdCode.not_addressed {#assert pd_status(out[..],jb,PdStatus.error,code,-1)>0 && pd_message(code).count>0;}}
+    names:=[17]string.["","malformed","not_addressed","unsupported_version","unsupported_feature","invalid_request","too_many_questions","too_many_options","not_admitted","limit_exceeded","unsupported_input","stale","busy","timeout","cancelled","identity_mismatch","internal"];
+    for c:0..<17 {#assert pd_code_name(cast(PdCode)c)==names[c];}
+    #assert pd_message(PdCode.none)=="";
+}
+#test "the server's code names map onto the wire's" {
+    names:=[14]string.["","malformed","invalid_request","too_many_questions","too_many_options","not_admitted","not_found","method_not_allowed","limit_exceeded","unsupported_input","request_timeout","busy","timeout","internal"];
+    want:=[14]PdCode.[PdCode.none,PdCode.malformed,PdCode.invalid_request,PdCode.too_many_questions,PdCode.too_many_options,PdCode.not_admitted,PdCode.internal,PdCode.internal,PdCode.limit_exceeded,PdCode.unsupported_input,PdCode.internal,PdCode.busy,PdCode.timeout,PdCode.internal];
+    for c:0..<14 {#assert pd_code(names[c])==want[c];}
+    #assert pd_code("stale")==PdCode.internal && pd_code("cancelled")==PdCode.internal;
+}
+#test "the result carries the server's answers under the pylon's own door" {
+    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);out:[2048]u8;rc:="{\"v\":\"openagents.receipt.execution.v1\"}";
+    r:=pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"psionic-pylon-v1",PB_IDENTITY,rc);
+    #assert r.code==PdCode.none && cast(string)out[0..<r.written]=="{\"attempt\":1,\"outcome\":\"answered\",\"receipt\":{\"v\":\"openagents.receipt.execution.v1\"},\"request\":\"r-1\",\"requires\":[],\"response\":{\"answers\":{\"refund\":{\"type\":\"noul\",\"noul\":0.93}},\"latency_ms\":412,\"model\":\"elephant-1\",\"service\":{\"door\":\"pylon:studio-gpu\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"version\":\"psionic-pylon-v1\"},\"usage\":null},\"type\":\"result\",\"v\":\"openagents.systemone.v1\"}";
+    t:[2048]u8;
+    plain:=pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,",\"latency_ms\":412",""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc);
+    #assert plain.code==PdCode.none && pb_find(cast(string)out[0..<plain.written],"},\"model\":\"elephant-1\"") && !pb_find(cast(string)out[0..<plain.written],"latency");
+    used:=pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"usage\":null","\"usage\":{\"digest\":\"x\"},\"extra\":[1]"),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc);
+    #assert used.code==PdCode.none && pb_find(cast(string)out[0..<used.written],"\"usage\":{\"digest\":\"x\"}}") && !pb_find(cast(string)out[0..<used.written],"extra");
+    nousage:=pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"usage\":null,",""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc);#assert pb_find(cast(string)out[0..<nousage.written],"\"usage\":null}");
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"model\":\"elephant-1\"","\"model\":\"clef-flash\""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.identity_mismatch;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"identity\":\"elephant-1@sha256:0","\"identity\":\"elephant-1@sha256:1"),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.identity_mismatch;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"",""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.identity_mismatch;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"identity\":\"","\"identity\":7,\"x\":\""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.identity_mismatch;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"model\":\"elephant-1\",",""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"answers\":{","\"answers\":[{"),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"service\":{","\"service\":[{"),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"latency_ms\":412","\"latency_ms\":\"x\""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"model\":\"elephant-1\"","\"model\":1"),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.identity_mismatch;
+    #assert pd_result(out[..],jb,"[]","studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal && pd_result(out[..],jb,"{\"model\":","studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,PD_ANSWER,"Studio",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal && pd_result(out[..],jb,PD_ANSWER,"studio-gpu","x","v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"v","elephant-1",rc).code==PdCode.internal && pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"v",PB_IDENTITY,"[]").code==PdCode.internal;
+    #assert pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"v",PB_IDENTITY,"{").code==PdCode.internal && pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"v\"",PB_IDENTITY,rc).code==PdCode.none;
+    #assert pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"answers\":{\"refund\":{\"type\":\"noul\",\"noul\":0.93}},",""),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    seven:=pd_result(out[..],jb,pd_swap(t[..],PD_ANSWER,"\"latency_ms\":412","\"latency_ms\":7"),"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc);#assert pb_find(cast(string)out[0..<seven.written],"\"latency_ms\":7,");
+    slug:[65]u8;for i:0..<65 {slug[i]='s';}
+    #assert pd_result(out[..],jb,PD_ANSWER,cast(string)slug[0..<64],PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.none && pd_result(out[..],jb,PD_ANSWER,cast(string)slug[..],PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"v",PB_IDENTITY,"").code==PdCode.internal;
+    bad:=jb;bad.answerable=false;#assert pd_result(out[..],bad,PD_ANSWER,"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    bad=jb;bad.code=PdCode.stale;#assert pd_result(out[..],bad,PD_ANSWER,"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+    #assert pd_result(out[0..<100],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"v",PB_IDENTITY,rc).code==PdCode.internal;
+}
+#test "answer templates are addressed to the caller and bound to the request" {
+    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);out:[1024]u8;
+    n:=pd_template(out[..],PD_WORKER,1791400002,PD_RESULT,jb,"Ag==");
+    #assert cast(string)out[0..<n]=="{\"pubkey\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"created_at\":1791400002,\"kind\":26910,\"tags\":[[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"]],\"content\":\"Ag==\"}";
+    #assert pd_template(out[..],PD_WORKER,1791400002,PD_STATUS,jb,"x")>0 && pd_template(out[..],PD_WORKER,1,PD_REQUEST,jb,"x")==-1;
+    bad:=jb;bad.answerable=false;#assert pd_template(out[..],PD_WORKER,1,PD_STATUS,bad,"x")==-1;
+}
+#test "the time left before the deadline" {
+    j:=PdJob.{deadline=100};
+    #assert pd_left_ms(j,90)==10000 && pd_left_ms(j,99)==1000 && pd_left_ms(j,100)==-1 && pd_left_ms(j,101)==-1 && pd_left_ms(PdJob.{},90)==-2;
+    #assert pd_left_ms(PdJob.{deadline=0},0)==-1 && pd_left_ms(PdJob.{deadline=1},0)==1000;
+}
+#test "edges of the request window, expiration and deadline" {
+    body:[4096]u8;t:[4096]u8;
+    nodl:=pd_swap(t[..],PD_CALL,",\"deadline\":1791400060","");
+    e:=pd_env(nodl);e.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"expiration\",\"1791400030\"]]";
+    #assert pd_admit(e,PD_WORKER,1791400030,body[..]).code==PdCode.stale && pd_admit(e,PD_WORKER,1791400029,body[..]).code==PdCode.none;
+    e.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"expiration\",\"0\"]]";#assert pd_admit(e,PD_WORKER,1791400000,body[..]).code==PdCode.stale;
+    zero:=pd_env(pd_swap(t[..],PD_CALL,"\"deadline\":1791400060","\"deadline\":0"));
+    #assert pd_admit(zero,PD_WORKER,1791400000,body[..]).code==PdCode.invalid_request;
+    zero.tags="[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]]";#assert pd_admit(zero,PD_WORKER,1791400000,body[..]).code==PdCode.stale;
+    half:=pd_env(pd_swap(t[..],PD_CALL,"\"deadline\":1791400060","\"deadline\":1.5"));half.tags=zero.tags;#assert pd_admit(half,PD_WORKER,1791400000,body[..]).code==PdCode.invalid_request;
+    nul:=pd_env(pd_swap(t[..],PD_CALL,"\"deadline\":1791400060","\"deadline\":null"));#assert pd_admit(nul,PD_WORKER,1791400000,body[..]).code==PdCode.none;
+    fa:=pd_env(pd_swap(t[..],PD_CALL,"\"attempt\":1","\"attempt\":1.5"));#assert pd_admit(fa,PD_WORKER,1791400000,body[..]).code==PdCode.invalid_request;
+    one:=pd_env(pd_swap(t[..],PD_CALL,"\"state\":{\"ticket\":\"I was billed twice\"}","\"state\":1"));j:=pd_admit(one,PD_WORKER,1791400000,body[..]);
+    #assert j.code==PdCode.none && pb_find(cast(string)body[0..<j.body],"\"state\":1,");
+    full:[262144]u8;#assert pd_admit(pd_env(cast(string)full[..]),PD_WORKER,1791400000,body[..]).code==PdCode.malformed;
+    err:=pd_admit(pd_env("{\"v\":\"openagents.systemone.v1\",1}"),PD_WORKER,1791400000,body[..]);#assert err.code==PdCode.malformed;
+}
+#test "helpers: visible ids and credential names" {
+    #assert pd_id("r") && pd_id("!~") && !pd_id("") && !pd_id("a b") && !pd_id("a\"b") && !pd_id("a\\b");
+    del:=[1]u8.[127];#assert !pd_id(cast(string)del[..]);
+    for k:[9]string.["key","secret","authorization","credential","credentials","api_key","apikey","bearer","token"] {#assert pd_credential(k);}
+    #assert pd_credential("API_KEY") && pd_credential("Token") && !pd_credential("tokens") && !pd_credential("model") && !pd_credential("ke") && pd_credential("ZKEY")==false;
+    #assert pd_credential("BEARER") && pd_credential("Authorization") && !pd_credential("[ey");
+    #assert pd_same("AZ","az") && !pd_same("@","`") && !pd_same("[","{") && !pd_same("a","ab") && !pd_same("ab","ac") && pd_same("","");
+}
+
+pd_id :: (s:string)->bool {
+    if s.count<1 || s.count>PD_ID_MOST {return false;}
+    for c:s {if c<33 || c>126 || c=='"' || c=='\\' {return false;}}
+    return true;
+}
+// A payload field a credential could hide behind (case-insensitive): refused malformed.
+pd_credential :: (key:string)->bool {
+    names:=[9]string.["key","secret","authorization","credential","credentials","api_key","apikey","bearer","token"];
+    for n:names {if pd_same(key,n) {return true;}}
+    return false;
+}
+pd_lower :: (c:u8)->u8 {if c>='A' && c<='Z' {return c+32;}return c;}
+pd_same :: (a:string,b:string)->bool {
+    if a.count!=b.count {return false;}for i:0..<a.count {if pd_lower(a[i])!=pd_lower(b[i]) {return false;}}return true;
+}
+pd_code_name :: (c:PdCode)->string {
+    names:=[17]string.["","malformed","not_addressed","unsupported_version","unsupported_feature","invalid_request","too_many_questions","too_many_options","not_admitted","limit_exceeded","unsupported_input","stale","busy","timeout","cancelled","identity_mismatch","internal"];
+    return names[cast(int)c];
+}
+pd_message :: (c:PdCode)->string {
+    messages:=[17]string.["","the payload is not a decision request","","this pylon reads openagents.systemone.v1 only","this pylon supports no request features","the request breaks a NIP-DEC bound",
+        "a request has 1 to 64 questions","a choice has 1 to 255 options and a score 2 to 10 levels","this pylon does not serve that model","the request exceeds a size or token bound",
+        "the request is valid but outside this model's text profile","the request is outside its time window","the pylon is answering another decision; retry later",
+        "the decision did not finish before its deadline","the decision was cancelled","the model server answered as another identity","the decision failed"];
+    return messages[cast(int)c];
+}
+// The server's refusal by its name (sv_code_name of sv_decode, sv_admit or
+// sv_answers) as the wire's code. A name only HTTP uses is internal here.
+pd_code :: (name:string)->PdCode #export_c {
+    if name=="" {return PdCode.none;}
+    wire:=[9]PdCode.[PdCode.malformed,PdCode.invalid_request,PdCode.too_many_questions,PdCode.too_many_options,PdCode.not_admitted,PdCode.limit_exceeded,PdCode.unsupported_input,PdCode.busy,PdCode.timeout];
+    for c:wire {if pd_code_name(c)==name {return c;}}
+    return PdCode.internal;
+}
+// One pass over the payload's top level. Values the server reads are kept as exact bytes.
+pd_fields :: (text:string)->PdFields {
+    f:PdFields;j:[1]Json;json_start(j[..],text);
+    if json_next(j[..])!=JSON_OBJECT {f.json=PdCode.malformed;return f;}
+    while true {
+        t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j[..]);t=json_next(j[..]);
+        if json_is(key,"v") {f.versioned=t==JSON_STRING && json_is(json_text(j[..]),PD_VERSION);}
+        else if json_is(key,"requires") {
+            raw:=pt_raw(j[..],t);
+            if t!=JSON_ARRAY {f.features=2;}else {k:[1]Json;json_start(k[..],raw);open:=json_next(k[..]);f.features=ifx json_next(k[..])==JSON_ARRAY_END then 1 else 3;}
+        }
+        else if json_is(key,"type") {
+            if t==JSON_STRING && json_is(json_text(j[..]),"systemone") {f.type=PdType.call;}else if t==JSON_STRING && json_is(json_text(j[..]),"cancel") {f.type=PdType.cancel;}
+        }
+        else if json_is(key,"request") {if t==JSON_STRING {f.requested=true;f.request=json_text(j[..]);}}
+        else if json_is(key,"attempt") {if t==JSON_NUMBER {v:=json_int(json_text(j[..]));if v.value>=1 && v.value<=PD_ATTEMPT_MOST {f.attempt=v.value;}}}
+        else if json_is(key,"deadline") {
+            v:=json_int(json_text(j[..]));
+            if t==JSON_NUMBER && v.ok && v.value>=0 {f.deadline=v.value;}else if t!=JSON_NULL {f.undated=true;}
+        }
+        else if json_is(key,"model") {f.model=pt_raw(j[..],t);}
+        else if json_is(key,"state") {f.state=pt_raw(j[..],t);}
+        else if json_is(key,"questions") {f.questions=pt_raw(j[..],t);}
+        else {if pd_credential(key) {f.credential=true;}raw:=pt_raw(j[..],t);}
+        if j[0].tok==JSON_ERROR {break;}
+    }
+    if json_next(j[..])!=JSON_END {f.json=ifx j[0].depth==JSON_DEPTH then PdCode.unsupported_input else PdCode.malformed;}
+    return f;
+}
+pd_refuse :: (jb:PdJob,code:PdCode)->PdJob {j:=jb;j.code=code;return j;}
+pd_body :: (out:[]u8,f:PdFields)->int {
+    n:=json_raw(out,0,"{");first:=true;
+    names:=[3]string.["model","state","questions"];values:=[3]string.[f.model,f.state,f.questions];
+    for i:0..<3 {
+        if values[i].count!=0 {
+            if !first {n=json_raw(out,n,",");}first=false;
+            n=json_raw(out,n,"\"");n=json_raw(out,n,names[i]);n=json_raw(out,n,"\":");n=json_raw(out,n,values[i]);
+        }
+    }
+    return json_raw(out,n,"}");
+}
+// A verified 25910 at now, for this worker key. On none and a call, body
+// holds the server's request ({model, state, questions}, exact bytes) and
+// the job's body field its length; the host then runs
+// pd_code(sv_code_name(sv_admit(engine, sv_decode(body, pools), pools))).
+pd_admit :: (env:PdEnvelope,worker:string,now:int,body:[]u8)->PdJob #export_c {
+    jb:=PdJob.{id=env.id,caller=env.pubkey};
+    if env.kind!=PD_REQUEST || !pt_hex64(env.id) || !pt_hex64(env.pubkey) {return pd_refuse(jb,PdCode.malformed);}
+    p:=pt_tag(env.tags,"p");if !p.ok || p.count!=1 || p.size<2 || p.v[1]!=worker {return pd_refuse(jb,PdCode.not_addressed);}
+    x:=pt_tag(env.tags,"expiration");expiration:=-1;
+    if x.count>1 {return pd_refuse(jb,PdCode.malformed);}
+    if x.count==1 {v:=json_int(x.v[1]);if !v.ok || v.value<0 {return pd_refuse(jb,PdCode.malformed);}expiration=v.value;}
+    if env.plaintext.count>PD_PAYLOAD {return pd_refuse(jb,PdCode.limit_exceeded);}
+    f:=pd_fields(env.plaintext);if f.json!=PdCode.none {return pd_refuse(jb,f.json);}
+    jb.type=f.type;jb.request=f.request;jb.attempt=f.attempt;jb.deadline=f.deadline;
+    if f.type==PdType.cancel {
+        if !f.requested || !pd_id(f.request) {return pd_refuse(jb,PdCode.malformed);}
+        e:=pt_tag(env.tags,"e");if e.count!=1 || e.size<2 || !pt_hex64(e.v[1]) {return pd_refuse(jb,PdCode.malformed);}
+        jb.target=e.v[1];
+    }else {jb.answerable=f.requested && pd_id(f.request) && f.attempt>=1;}
+    if now-env.created_at>PD_PAST || env.created_at-now>PD_AHEAD || (expiration!=-1 && expiration<=now) {return pd_refuse(jb,PdCode.stale);}
+    if !f.versioned {return pd_refuse(jb,PdCode.unsupported_version);}
+    if f.credential || f.features==2 || f.type==PdType.none {return pd_refuse(jb,PdCode.malformed);}
+    if f.type==PdType.cancel {return jb;}
+    if !jb.answerable || f.undated || (f.deadline!=-1 && expiration!=-1 && f.deadline!=expiration) {return pd_refuse(jb,PdCode.invalid_request);}
+    if f.features==3 {return pd_refuse(jb,PdCode.unsupported_feature);}
+    if f.deadline!=-1 && f.deadline<=now {return pd_refuse(jb,PdCode.stale);}
+    n:=pd_body(body,f);if n==-1 {return pd_refuse(jb,PdCode.internal);}
+    jb.body=n;return jb;
+}
+// The milliseconds left before the job's deadline: -2 for no deadline, -1
+// when it has passed. The host gives the server the smaller of this and its
+// own decide limit.
+pd_left_ms :: (jb:PdJob,now:int)->int #export_c {
+    if jb.deadline==-1 {return -2;}if jb.deadline<=now {return -1;}return (jb.deadline-now)*1000;
+}
+// What a cancel does to a pending call: nothing unless the same signer names
+// the same request and event; before dispatch the job is dropped, after it
+// the host stops the child (sv_closed gives cancel_close) and sends a
+// 27010 error "cancelled". The cancel's receipt is not proof of stop.
+pd_cancel :: (pending:PdJob,dispatched:bool,cancel:PdJob)->PdCancel #export_c {
+    if cancel.code!=PdCode.none || cancel.type!=PdType.cancel || pending.type!=PdType.call {return PdCancel.ignore;}
+    if cancel.caller!=pending.caller || cancel.target!=pending.id || cancel.request!=pending.request {return PdCancel.ignore;}
+    if dispatched {return PdCancel.stop;}return PdCancel.drop;
+}
+pd_head :: (out:[]u8,jb:PdJob)->int {
+    n:=json_raw(out,0,"{\"attempt\":");return json_write_int(out,n,jb.attempt);
+}
+pd_tail :: (out:[]u8,at:int,jb:PdJob,after:string)->int {
+    n:=json_raw(out,at,",\"request\":\"");n=json_raw(out,n,jb.request);n=json_raw(out,n,"\",\"requires\":[]");return json_raw(out,n,after);
+}
+// A 27010 body, keys in JCS order. An error names a code (and, for busy, a
+// retry); queued and processing name none.
+pd_status :: (out:[]u8,jb:PdJob,status:PdStatus,code:PdCode,retry_ms:int)->int #export_c {
+    if !jb.answerable || (status==PdStatus.error)!=(code!=PdCode.none) || code==PdCode.not_addressed || (status!=PdStatus.error && retry_ms>=0) {return -1;}
+    n:=pd_head(out,jb);
+    if status==PdStatus.error {n=json_raw(out,n,",\"code\":\"");n=json_raw(out,n,pd_code_name(code));n=json_raw(out,n,"\",\"message\":");n=json_write_string(out,n,pd_message(code));}
+    n=pd_tail(out,n,jb,"");
+    if retry_ms>=0 {n=json_raw(out,n,",\"retry_after_ms\":");n=json_write_int(out,n,retry_ms);}
+    names:=[3]string.["queued","processing","error"];
+    n=json_raw(out,n,",\"status\":\"");n=json_raw(out,n,names[cast(int)status]);return json_raw(out,n,"\",\"type\":\"status\",\"v\":\"openagents.systemone.v1\"}");
+}
+// The 26910 body from the server's 200 body: the server's answers, its model
+// checked against the beacon's identity, and service naming this pylon.
+// receipt is the caller's execution receipt object (see the record).
+pd_result :: (out:[]u8,jb:PdJob,answer:string,slug:string,provider:string,version:string,identity:string,receipt:string)->PdOut #export_c {
+    fail:=PdOut.{code=PdCode.internal};
+    if jb.code!=PdCode.none || !jb.answerable || !pb_slug(slug,64) || !pt_hex64(provider) || version.count==0 || !pb_identity(identity) {return fail;}
+    if !json_valid(receipt) || receipt[0]!='{' || !json_valid(answer) {return fail;}
+    j:[1]Json;json_start(j[..],answer);if json_next(j[..])!=JSON_OBJECT {return fail;}
+    model:="";answers:="";usage:="null";latency:="";served:=false;named:=false;answered:=false;
+    while true {
+        t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+        key:=json_text(j[..]);t=json_next(j[..]);
+        if json_is(key,"model") {named=true;if t==JSON_STRING {model=json_text(j[..]);}}
+        else if json_is(key,"answers") {if t!=JSON_OBJECT {return fail;}answered=true;answers=pt_raw(j[..],t);}
+        else if json_is(key,"usage") {usage=pt_raw(j[..],t);}
+        else if json_is(key,"latency_ms") {if t!=JSON_NUMBER {return fail;}latency=json_text(j[..]);}
+        else if json_is(key,"service") {
+            if t!=JSON_OBJECT {return fail;}
+            while true {
+                s:=json_next(j[..]);if s==JSON_OBJECT_END {break;}
+                k:=json_text(j[..]);s=json_next(j[..]);
+                if json_is(k,"identity") && s==JSON_STRING && json_text(j[..])==identity {served=true;}
+                raw:=pt_raw(j[..],s);
+            }
+        }
+        else {raw:=pt_raw(j[..],t);}
+    }
+    if !named || !answered {return fail;}
+    if model!=pb_identity_name(identity) || !served {return PdOut.{code=PdCode.identity_mismatch};}
+    n:=pd_head(out,jb);n=json_raw(out,n,",\"outcome\":\"answered\",\"receipt\":");n=json_raw(out,n,receipt);
+    n=pd_tail(out,n,jb,",\"response\":{\"answers\":");n=json_raw(out,n,answers);
+    if latency.count!=0 {n=json_raw(out,n,",\"latency_ms\":");n=json_raw(out,n,latency);}
+    n=json_raw(out,n,",\"model\":\"");n=json_raw(out,n,model);n=json_raw(out,n,"\",\"service\":{\"door\":\"pylon:");n=json_raw(out,n,slug);
+    n=json_raw(out,n,"\",\"identity\":\"");n=json_raw(out,n,identity);n=json_raw(out,n,"\",\"provider\":\"");n=json_raw(out,n,provider);
+    n=json_raw(out,n,"\",\"version\":");n=json_write_string(out,n,version);n=json_raw(out,n,"},\"usage\":");n=json_raw(out,n,usage);
+    n=json_raw(out,n,"},\"type\":\"result\",\"v\":\"openagents.systemone.v1\"}");
+    if n==-1 {return fail;}
+    return PdOut.{written=n};
+}
+// The unsigned 26910 or 27010 template answering the job: one p naming the
+// caller, one e naming the request event. content is the NIP-44 ciphertext.
+pd_template :: (out:[]u8,worker:string,now:int,kind:int,jb:PdJob,content:string)->int #export_c {
+    if (kind!=PD_RESULT && kind!=PD_STATUS) || !jb.answerable {return -1;}
+    tags:[192]u8;n:=json_raw(tags[..],0,"[[\"p\",\"");n=json_raw(tags[..],n,jb.caller);n=json_raw(tags[..],n,"\"],[\"e\",\"");n=json_raw(tags[..],n,jb.id);n=json_raw(tags[..],n,"\"]]");
+    return pt_template(out,worker,now,kind,cast(string)tags[0..<n],content);
+}
