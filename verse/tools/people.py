@@ -32,6 +32,17 @@ layer after it, which a realm picks per person. "kinds" names what each
 material's texels are (KINDS below), so a realm can tint skin and hair and dye
 cloth per person without more layers.
 
+A part's "plain" lists meshes whose texels are taken as they are whatever
+their material's kind (a ranger's metal pauldron, never dyed with the cloth).
+
+A part with "robe" is not loaded from a file: it is a long robe skirt made
+here (robe_mesh(), OpenAgents' own shape), a ring of the body's waist down to
+its ankles, fitted round the meshes named in its "fit" ([{file, meshes}]) and
+flaring toward the hem, skinned to the pelvis, thighs and calves. Its every
+vertex samples one texel of the first fitted MI_Peasant image (robe_texel()):
+pale cloth in the image and its variant, so the person's dye takes it whole.
+Its "licence" names the manifest's licence for it when it differs.
+
 A vertex is 24 bytes (vertex() below). A material named in "clamp" may have
 UVs past the image's edge (the base bodies' eyes); they keep to its edge.
 """
@@ -204,6 +215,7 @@ def part_file(spec, path, meshes, skeletons):
     to_target = [mmul(target.world[remap[k]], own.ib[k]) for k in range(len(own.names))]
     keep_joints = {target.index(n) for n in spec.get("cut", [])}
     prims = []
+    plain = set(spec.get("plain", []))
     for mesh in g["meshes"]:
         if meshes and mesh["name"] not in meshes:
             continue
@@ -227,7 +239,8 @@ def part_file(spec, path, meshes, skeletons):
                 # the four, heaviest first; unused slots point at joint 0 with no weight
                 pairs = sorted(zip(ws, js), reverse=True)
                 verts.append({"p": p, "n": n, "uv": uv[i], "j": [jj if w > 0 else 0 for w, jj in pairs],
-                              "w": quantize_weights([w for w, _ in pairs]), "head": sum(w for w, jj in pairs if jj in keep_joints)})
+                              "w": quantize_weights([w for w, _ in pairs]), "head": sum(w for w, jj in pairs if jj in keep_joints),
+                              "plain": mesh["name"] in plain})
             tris = [tuple(idx[k:k + 3]) for k in range(0, len(idx), 3)]
             if keep_joints:
                 tris = [t for t in tris if all(verts[v]["head"] >= spec.get("cut_share", 0.5) for v in t)]
@@ -244,6 +257,110 @@ def part_file(spec, path, meshes, skeletons):
     if not prims:
         raise SystemExit(f"{spec['name']}: nothing left of {path}")
     return prims
+
+
+# ---- a robe
+
+ROBE_SEGMENTS = 20     # round the body
+ROBE_RINGS = 9         # waist to hem
+ROBE_BAND = 0.06       # metres either side of a ring's height the fitted meshes are measured in
+ROBE_MARGIN = 0.035    # metres of cloth clear of what it covers
+
+
+def robe_texel(prims, variants):
+    """The uv of a texel the dye takes whole (everglade.wgsl person_dye, its pale rule) in the first
+    MI_Peasant image and its variant, judged where the realm samples a character: two mip levels
+    under a 256 layer, and once more for safety, so 32 texels a side."""
+    from PIL import Image
+    pr = next(p for p in prims if p["material"] == "MI_Peasant")
+    paths = [pr["image"]] + ([variants[pr["image"].name]] if pr["image"].name in variants else [])
+    R = 32
+    ims = [Image.open(x).convert("RGB").resize((256, 256), Image.BOX).resize((R, R), Image.BOX) for x in paths]
+    def smooth(a, b, t):
+        t = min(1.0, max(0.0, (t - a) / (b - a))); return t * t * (3 - 2 * t)
+    def mask(im, x, y):
+        c = [(k / 255) ** 2.2 for k in im.getpixel((x, y))]
+        hi, lo = max(c), min(c)
+        return smooth(0.12, 0.3, hi) * (1 - smooth(0.22, 0.42, (hi - lo) / max(hi, 1e-4)))
+    best = max((min(mask(im, x, y) for im in ims), -y, -x) for y in range(R) for x in range(R))
+    if best[0] < 0.95:
+        raise SystemExit("people: no pale cloth on the peasant for a robe")
+    return pr["image"], ((-best[2] + 0.5) / R, (-best[1] + 0.5) / R)
+
+
+def robe_mesh(spec, skeletons, variants):
+    """A long robe skirt for spec's body: ROBE_RINGS rings from "top" (metres) down to "hem", each an
+    ellipse round the fitted meshes at its height plus ROBE_MARGIN, never narrower than the ring above,
+    widened by "flare" metres at the hem; outside and inside faces. Skinned: the waist to the pelvis,
+    down to the knee more and more to the thigh on its side, below the knee part to the calf."""
+    sk = skeletons[spec["body"]]
+    rb = spec["robe"]
+    fitted = []
+    for f in rb["fit"]:
+        fitted += part_file({"name": spec["name"], "body": spec["body"]}, f["file"], f.get("meshes"), skeletons)
+    points = [v["p"] for pr in fitted for v in pr["verts"]]
+    image, uv = robe_texel(fitted, variants)
+    J = {n: sk.index(n) for n in ("pelvis", "thigh_l", "thigh_r", "calf_l", "calf_r")}
+    hip = sk.world[J["thigh_l"]][1][3]; knee = sk.world[J["calf_l"]][1][3]
+    top, hem, flare = rb["top"], rb["hem"], rb.get("flare", 0.0)
+    rings = []
+    rx_prev = rz_prev = 0.0
+    for i in range(ROBE_RINGS):
+        t = i / (ROBE_RINGS - 1)
+        y = top + (hem - top) * t
+        band = [p for p in points if abs(p[1] - y) < ROBE_BAND]
+        if not band:
+            raise SystemExit(f"{spec['name']}: nothing fitted at {y:.2f} m")
+        z0 = min(p[2] for p in band); z1 = max(p[2] for p in band)
+        cz = (z0 + z1) / 2
+        rx = max(max(abs(p[0]) for p in band) + ROBE_MARGIN, rx_prev)
+        rz = max((z1 - z0) / 2 + ROBE_MARGIN, rz_prev)
+        rx_prev, rz_prev = rx, rz
+        rings.append((y, cz, rx + flare * t * t, rz + flare * t * t))
+    def skin(x, y, rx):
+        side = min(1.0, max(0.0, 0.5 + 0.75 * x / rx))      # 1 on the left (+x), the thigh_l side
+        ws = {}
+        if y >= knee:
+            a = min(1.0, max(0.0, (hip + 0.04 - y) / (hip + 0.04 - knee)))
+            ws = {J["pelvis"]: 1 - a, J["thigh_l"]: a * side, J["thigh_r"]: a * (1 - side)}
+        else:
+            b = 0.45 * min(1.0, max(0.0, (knee - y) / max(knee - hem, 1e-3)))
+            ws = {J["thigh_l"]: (1 - b) * side, J["thigh_r"]: (1 - b) * (1 - side), J["calf_l"]: b * side, J["calf_r"]: b * (1 - side)}
+        pairs = sorted(((w, j) for j, w in ws.items() if w > 1e-4), reverse=True)[:4]
+        pairs += [(0.0, 0)] * (4 - len(pairs))
+        return [j if w > 0 else 0 for w, j in pairs], quantize_weights([w for w, _ in pairs])
+    verts, tris = [], []
+    S = ROBE_SEGMENTS
+    for face in (1, -1):                 # outside, then inside
+        base = len(verts)
+        for i, (y, cz, rx, rz) in enumerate(rings):
+            # the cloth's slope here (outward metres per metre down), tilting its normal up a little
+            lo_i = min(i + 1, len(rings) - 1); hi_i = lo_i - 1
+            slope = max(0.0, (rings[lo_i][2] - rings[hi_i][2]) / max(rings[hi_i][0] - rings[lo_i][0], 1e-3))
+            for k in range(S):
+                a = 2 * math.pi * k / S
+                c, s_ = math.cos(a), math.sin(a)
+                x, z = rx * c, cz + rz * s_
+                n = (c / rx, slope / max(rx, 1e-3) * 0.5, s_ / rz)
+                l = math.sqrt(sum(q * q for q in n)) or 1.0
+                n = tuple(face * q / l for q in n)
+                j, w = skin(x, y, rx)
+                verts.append({"p": (x, y, z), "n": n, "uv": uv, "j": j, "w": w, "head": 0.0, "plain": False})
+        for i in range(ROBE_RINGS - 1):
+            for k in range(S):
+                a = base + i * S + k; b = base + i * S + (k + 1) % S
+                c = a + S; d = b + S
+                tri = [(a, b, c), (b, d, c)]
+                if face < 0:
+                    tri = [(a, c, b), (b, c, d)]
+                tris += tri
+    # wind the outside so its faces point out (counter-clockwise seen from outside)
+    p0, p1, p2 = (verts[x]["p"] for x in tris[0])
+    e1 = [p1[q] - p0[q] for q in range(3)]; e2 = [p2[q] - p0[q] for q in range(3)]
+    cr = (e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0])
+    if sum(cr[q] * verts[tris[0][0]]["n"][q] for q in range(3)) < 0:
+        tris = [(t[0], t[2], t[1]) for t in tris]
+    return [{"image": image, "material": "MI_Peasant", "verts": verts, "tris": tris}]
 
 
 # ---- fewer triangles
@@ -518,7 +635,7 @@ def build(spec, size, first_layer):
     quality = int(spec.get("quality", 80))
     kinds = spec.get("kinds", {})
     for ps in spec["parts"]:
-        prims = part_mesh(ps, skeletons)
+        prims = robe_mesh(ps, skeletons, variants) if "robe" in ps else part_mesh(ps, skeletons)
         vb = bytearray(); tris = []; count = 0
         for pr in prims:
             crop = ps.get("crop", {}).get(pr["material"])
@@ -535,10 +652,11 @@ def build(spec, size, first_layer):
                 raise SystemExit("people: more than 256 layers")
             kind = KINDS[kinds.get(pr["material"], "plain")]
             for v in pr["verts"]:
-                vb += vertex(v, layer, kind, box, pr["material"] in spec.get("clamp", []))
+                vb += vertex(v, layer, 0 if v.get("plain") else kind, box, pr["material"] in spec.get("clamp", []))
             tris += [count + k for t in pr["tris"] for k in t]
             count += len(pr["verts"])
-        parts.append({"name": ps["name"], "vertices": bytes(vb), "indices": tris, "count": count, "body": ps["body"]})
+        parts.append({"name": ps["name"], "vertices": bytes(vb), "indices": tris, "count": count, "body": ps["body"],
+                      "licence": ps.get("licence")})
     library_rest = Skeleton(load(next(iter(spec["libraries"].values())))).t
     cl = clips(spec, skeletons, library_rest)
     return parts, layers, (skeletons, cl)

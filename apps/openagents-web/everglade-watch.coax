@@ -60,7 +60,7 @@ watch_parts :: (k: int, out: [] int) -> int {
 // Which new guard's face, skin and hair person i (a new guard, or a reinforcement) wears.
 watch_look :: (i: int) -> int { return ifx watch_is_rein(i) then (i - WATCH_FIRST_REIN) % WATCH_NEW else i - EG_SPOTS; }
 // The parts reinforcement i wears by their rank: the kit's leathers (a Gladiator's bare peasant's
-// cloth), a head, hair, a beard, and a caster's hood.
+// cloth), a head, hair, a beard, a caster's hood, and the Priest's and the Archmage's robe.
 watch_rein_parts :: (s: [] Everglade, i: int, out: [] int) -> int {
   if !watch_is_rein(i) || out.count < FOLK_PARTS_MAX { return 0; }
   k := watch_look(i);
@@ -72,6 +72,7 @@ watch_rein_parts :: (s: [] Everglade, i: int, out: [] int) -> int {
   n := 3;
   if WATCH_BEARD[k] && !f { out[n] = PART_BEARD; n += 1; }
   if RANK_HOOD[r] { out[n] = ifx f then PART_FEMALE_HOOD else PART_MALE_HOOD; n += 1; }
+  if RANK_ROBE[r] { out[n] = ifx f then PART_FEMALE_ROBE else PART_MALE_ROBE; n += 1; }
   return n;
 }
 

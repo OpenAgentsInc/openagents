@@ -170,6 +170,7 @@ RANK_DYE :: [28] f32.[
 ];
 RANK_HOOD :: [7] bool.[false, false, true, false, true, true, false];
 RANK_BARE :: [7] bool.[false, false, false, false, false, false, true];
+RANK_ROBE :: [7] bool.[false, false, false, false, true, true, false];   // the Priest and the Archmage wear robes over the leathers
 Missile :: struct {
   live: bool; kind: int; caster: int;
   ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32;   // from and to

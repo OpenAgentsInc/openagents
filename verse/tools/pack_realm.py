@@ -669,7 +669,8 @@ def build(manifest_path):
             first, word = len(indices), len(vertices) // 4
             vertices += part["vertices"]
             indices += part["indices"]
-            character_lines.append(f"C people/{part['name']} {first} {len(part['indices'])} {lic} {word} {part['count']} {len(prig[0]['male'].names)}")
+            plic = licence_of(part["licence"], f"people/{part['name']}") if part.get("licence") else lic
+            character_lines.append(f"C people/{part['name']} {first} {len(part['indices'])} {plic} {word} {part['count']} {len(prig[0]['male'].names)}")
         rigs.append((spec["rig"], people.rig_coax(m, prig, parts, spec.get("prefix", "PEOPLE"))))
     for s in m.get("sounds", []):
         lic = licence_of(s.get("licence"), f"sound {s['name']}")

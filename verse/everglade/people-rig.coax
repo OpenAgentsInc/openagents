@@ -28,10 +28,10 @@ PEOPLE_RUN :: 8;
 PEOPLE_DIE :: 9;
 PEOPLE_KNOCK :: 10;
 PEOPLE_COWER :: 11;
-PEOPLE_PARTS :: 14;
-PEOPLE_PART_NAME :: [14] string.["people/male-peasant", "people/male-ranger", "people/male-hood", "people/female-peasant", "people/female-ranger", "people/female-hood", "people/male-head", "people/female-head", "people/hair-parted", "people/hair-buzzed", "people/hair-beard", "people/hair-long", "people/hair-buns", "people/hair-buzzed-female"];
-PEOPLE_PART_FEMALE :: [14] bool.[false, false, false, true, true, true, false, true, false, false, false, true, true, true];
-PEOPLE_PART_TRIANGLES :: [14] int.[6686, 10870, 1068, 6474, 11344, 1068, 2756, 3160, 779, 498, 620, 2866, 3244, 498];
+PEOPLE_PARTS :: 16;
+PEOPLE_PART_NAME :: [16] string.["people/male-peasant", "people/male-ranger", "people/male-hood", "people/female-peasant", "people/female-ranger", "people/female-hood", "people/male-head", "people/female-head", "people/hair-parted", "people/hair-buzzed", "people/hair-beard", "people/hair-long", "people/hair-buns", "people/hair-buzzed-female", "people/male-robe", "people/female-robe"];
+PEOPLE_PART_FEMALE :: [16] bool.[false, false, false, true, true, true, false, true, false, false, false, true, true, true, false, true];
+PEOPLE_PART_TRIANGLES :: [16] int.[6686, 10870, 1068, 6474, 11344, 1068, 2756, 3160, 779, 498, 620, 2866, 3244, 498, 640, 640];
 PEOPLE_DURATION :: [12] f32.[
   2.5, 1.33333337, 2.9333334, 2.5, 2.5, 2.5, 2.0999999, 1.5333333,
   0.933333337, 2.4000001, 0.833333313, 2.9333334

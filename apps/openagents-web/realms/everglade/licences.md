@@ -1,6 +1,6 @@
 # Licences: the Everglade pack
 
-Every asset in `everglade.pack` (8,332,776 bytes of its 8,700,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
+Every asset in `everglade.pack` (8,365,576 bytes of its 8,700,000-byte budget) and its licence. Written by `verse/tools/pack_realm.py` from `verse/packs/everglade.json`.
 
 ## Sources
 
@@ -9,7 +9,7 @@ Every asset in `everglade.pack` (8,332,776 bytes of its 8,700,000-byte budget) a
 - Quaternius Fantasy Props MegaKit: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library: CC0 1.0 Universal, https://quaternius.com/
 - Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard]: CC0 1.0 Universal (each pack's License_Standard.txt or License.txt), https://quaternius.com/
-- OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse: CC0 1.0 Universal, https://openagents.com/
+- OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse: CC0 1.0 Universal, https://openagents.com/
 
 ## Assets
 
@@ -76,10 +76,10 @@ Every asset in `everglade.pack` (8,332,776 bytes of its 8,700,000-byte budget) a
 | Coin_Pile | mesh | Quaternius Fantasy Props MegaKit |
 | Flower_3_Single | mesh | Quaternius Stylized Nature MegaKit |
 | Plant_7 | mesh | Quaternius Stylized Nature MegaKit |
-| Custom_Pumpkin | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse |
-| Custom_Rock | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse |
-| Custom_Bush | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse |
-| Custom_Cat | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse |
+| Custom_Pumpkin | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Rock | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Bush | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| Custom_Cat | mesh | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
 | player/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | people/male-peasant | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/male-ranger | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
@@ -95,6 +95,8 @@ Every asset in `everglade.pack` (8,332,776 bytes of its 8,700,000-byte budget) a
 | people/hair-long | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/hair-buns | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | people/hair-buzzed-female | character | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+| people/male-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| people/female-robe | character | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
 | texture 0 (layer29.jpg) | texture | Quaternius Stylized Nature MegaKit |
 | texture 1 (layer33.png) | texture | Quaternius Stylized Nature MegaKit |
 | texture 2 (layer32.png) | texture | Quaternius Stylized Nature MegaKit |
@@ -113,8 +115,8 @@ Every asset in `everglade.pack` (8,332,776 bytes of its 8,700,000-byte budget) a
 | texture 15 (layer3.jpg) | texture | Quaternius Fantasy Props MegaKit |
 | texture 16 (layer2.jpg) | texture | Quaternius Fantasy Props MegaKit |
 | texture 17 (layer4.jpg) | texture | Quaternius Fantasy Props MegaKit |
-| texture 18 (layer27.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse |
-| texture 19 (layer28.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse |
+| texture 18 (layer27.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
+| texture 19 (layer28.jpg) | texture | OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse |
 | texture 20 (player/846ef2170b04ee58) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | texture 21 (player/b4dcc0f4139aab54) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |
 | texture 22 (player/bc7aa863bd22ab0a) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library |

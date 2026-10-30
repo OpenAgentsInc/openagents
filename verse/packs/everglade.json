@@ -36,7 +36,7 @@
       "url": "https://quaternius.com/"
     },
     "openagents-custom-models": {
-      "name": "OpenAgents' own low-poly models (pumpkin, rock, bush), made for the Verse",
+      "name": "OpenAgents' own low-poly models (pumpkin, rock, bush, cat, and the people's robes on the Quaternius peasant's cloth), made for the Verse",
       "licence": "CC0 1.0 Universal",
       "url": "https://openagents.com/"
     }
@@ -260,7 +260,8 @@
             ]
           }
         ],
-        "drop_small": 0.025
+        "drop_small": 0.025,
+        "plain": ["Male_Ranger_Acc_Pauldron"]
       },
       {
         "name": "male-hood",
@@ -300,7 +301,8 @@
             ]
           }
         ],
-        "drop_small": 0.025
+        "drop_small": 0.025,
+        "plain": ["Female_Ranger_Acc_Pauldrons"]
       },
       {
         "name": "female-hood",
@@ -372,6 +374,24 @@
         "body": "female",
         "file": "~/Downloads/Universal Base Characters[Standard]/Hairstyles/Rigged to Head Bone/glTF (Godot -Unreal)/Hair_BuzzedFemale.gltf",
         "keep": 0.6
+      },
+      {
+        "name": "male-robe",
+        "body": "male",
+        "licence": "openagents-custom-models",
+        "robe": {"top": 1.02, "hem": 0.14, "flare": 0.07, "fit": [
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Peasant.gltf", "meshes": ["Male_Peasant_Body", "Male_Peasant_Legs", "Male_Peasant_Feet"]},
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Male_Ranger.gltf", "meshes": ["Male_Ranger_Body", "Male_Ranger_Legs", "Male_Ranger_Body_Belt_1"]}
+        ]}
+      },
+      {
+        "name": "female-robe",
+        "body": "female",
+        "licence": "openagents-custom-models",
+        "robe": {"top": 1.0, "hem": 0.14, "flare": 0.07, "fit": [
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Peasant.gltf", "meshes": ["Female_Peasant_Body", "Female_Peasant_Legs", "Female_Peasant_Feet"]},
+          {"file": "~/Downloads/Modular Character Outfits - Fantasy[Standard]/Exports/glTF (Godot-Unreal)/Outfits/Female_Ranger.gltf", "meshes": ["Female_Ranger_Body", "Female_Ranger_Legs", "Female_Ranger_Body_Belt_1"]}
+        ]}
       }
     ],
     "clamp": [

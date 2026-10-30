@@ -35,7 +35,8 @@ PART_FEMALE_PEASANT :: 3; PART_FEMALE_RANGER :: 4; PART_FEMALE_HOOD :: 5;
 PART_MALE_HEAD :: 6; PART_FEMALE_HEAD :: 7;
 PART_HAIR_PARTED :: 8; PART_HAIR_BUZZED :: 9; PART_BEARD :: 10;
 PART_HAIR_LONG :: 11; PART_HAIR_BUNS :: 12; PART_HAIR_BUZZED_FEMALE :: 13;
-FOLK_PARTS_MAX :: 5;      // a person's parts at most: outfit, head, hair, beard, hood
+PART_MALE_ROBE :: 14; PART_FEMALE_ROBE :: 15;   // a long robe over the outfit (verse/tools/people.py robe_mesh)
+FOLK_PARTS_MAX :: 6;      // a person's parts at most: outfit, head, hair, beard, hood, robe
 
 FOLK_FACE :: 4.0;         // metres: nearer than this they turn to face you
 FOLK_FACE_OFF :: 5.0;     // and further than this they turn back to their own way
@@ -93,6 +94,11 @@ FOLK_HAIR :: [22] int.[
 FOLK_BEARD :: [22] bool.[
   true, false, false,  true, false,  false, false,  true, false, false, false,
   true, false,  true, false,  false, false,  false, false,  true, true, false
+];
+// Who wears a robe over their clothes, dyed with them: the archmage, the priest and the astronomer.
+FOLK_ROBE :: [22] bool.[
+  false, false, false,  false, false,  false, false,  false, false, false, false,
+  false, false,  false, false,  true, false,  true, true,  false, false, false
 ];
 FOLK_VARIANT :: [22] int.[
   0, 0, 1,  0, 0,  0, 0,  1, 0, 0, 0,  1, 0,  1, 0,  1, 0,  0, 0,  1, 1, 0
@@ -162,6 +168,7 @@ folk_parts :: (i: int, out: [] int) -> int {
   if FOLK_HAIR[i] >= 0 { out[n] = FOLK_HAIR[i]; n += 1; }
   if FOLK_BEARD[i] && !f { out[n] = PART_BEARD; n += 1; }
   if FOLK_HOOD[i] { out[n] = ifx f then PART_FEMALE_HOOD else PART_MALE_HOOD; n += 1; }
+  if FOLK_ROBE[i] { out[n] = ifx f then PART_FEMALE_ROBE else PART_MALE_ROBE; n += 1; }
   return n;
 }
 
@@ -310,7 +317,8 @@ folk_pose :: (r: SkinRig, f: [] Folk, sk: [] Skin, dt: f32, out: [] f32) {
 // ---- checks
 
 #test "the parts are the pack's, in its order, and each person wears their own body's" {
-  #assert PEOPLE_PARTS == 14 && PEOPLE_PART_NAME[PART_MALE_PEASANT] == "people/male-peasant";
+  #assert PEOPLE_PARTS == 16 && PEOPLE_PART_NAME[PART_MALE_PEASANT] == "people/male-peasant";
+  #assert PEOPLE_PART_NAME[PART_MALE_ROBE] == "people/male-robe" && PEOPLE_PART_NAME[PART_FEMALE_ROBE] == "people/female-robe";
   #assert PEOPLE_PART_NAME[PART_FEMALE_RANGER] == "people/female-ranger" && PEOPLE_PART_NAME[PART_MALE_HEAD] == "people/male-head";
   #assert PEOPLE_PART_NAME[PART_BEARD] == "people/hair-beard" && PEOPLE_PART_NAME[PART_HAIR_BUZZED_FEMALE] == "people/hair-buzzed-female";
   dressed := 0;
