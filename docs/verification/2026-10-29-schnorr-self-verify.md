@@ -7,8 +7,9 @@ candidate-derived value. It is built to replace the signer's call to
 `schnorr_fast_verify_vartime` on a secret candidate. Status (2026-10-30): on
 main, with its zero-survivor mutation gate passed (below). The signer
 calls it, staged over three calls, from 2026-10-30
-(`2026-10-30-schnorr-sign.md`). Independent review and iOS targets are still
-open.
+(`2026-10-30-schnorr-sign.md`). Through the signer it runs natively, as
+Wasm and in the iOS Simulator (arm64), and agrees with native on every
+request. Independent review is still open.
 
 ## API
 
@@ -148,11 +149,13 @@ clang 21.1.8 (wasm32-wasip1), Node v24.19.0.
   not admit arrays, aggregates, loops or `cb_mask` anyway. There is no
   tool-backed source-flow evidence for this closure; the classification above
   is a manual source reading, to be checked by the independent review.
-- **iOS:** not run. This Linux machine cannot build the iOS targets.
+- **iOS:** the release build runs in the iOS Simulator (arm64, iOS 26.5)
+  through the signer harness (`coax/tests/nostr/schnorr_sign.py` with
+  `COAX_IOS_SIMULATOR`), and agrees with native on all 44 requests.
 
 ## Open
 
 - Independent review of the source, the path table and the staged binding.
-- iOS checked/release targets.
+- The iOS checked build: only release ran in the Simulator.
 - Object-code and JIT timing, address-trace probes and production-secret
   approval remain separate gates, as for `secp_mult_const.coax`.

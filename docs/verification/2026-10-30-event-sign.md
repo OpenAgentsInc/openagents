@@ -62,7 +62,8 @@ also clears `out`.
 
 ## Not done
 
-- **iOS:** not run.
+- **iOS:** the release build passes in the iOS Simulator through the same
+  harness (`2026-10-30-schnorr-sign.md`).
 - **Real keys:** test keys only until the signer's open gates close
   (`2026-10-30-schnorr-sign.md`: #89db, #4828, review), plus the owner's
   approval.
