@@ -222,3 +222,19 @@ and E. Then F. G about an hour before the talk.
   label creation, public output and stop/cleanup. Linux/macOS public join
   qualification is pending. `python3` is also required for the existing
   engine build tooling; the Wasm toolchain and Bun are not join dependencies.
+
+- **A passed, 2026-10-30 14:55–14:58 UTC (09:55–09:58 CDT).** Native
+  Mac Pylon built from `a944bfbaaacfea649c473a32243943d3f5475956`, using
+  the qualified Coax compiler and system TLS trust, served
+  `oct30-mac-8d6f69` on `wss://relay.openagents.com` for 164.8 seconds.
+  Its two-case reference self-check passed; NIP-42 authentication and relay
+  list/beacon publication succeeded. A second fresh-key buyer retrieved and
+  verified its beacon, authenticated, sent an encrypted 25910 job and
+  verified/decrypted the matching 26910 answer (233 ms round trip, 45 ms
+  provider execution). No relay policy changes were needed. Clean shutdown
+  published an offline beacon: 0 refused, 0 drops, 1 answered. This supersedes
+  the earlier stopped attempt above. No real identity was used.
+  Evidence: [`data/oct30-pylon-public-a`](verification/data/oct30-pylon-public-a/)
+  (public log, observed interval, source/compiler/binary hashes); buyer evidence
+  is recorded separately with F. These exact inputs passed; unrelated main
+  commits do not call for rerunning A.

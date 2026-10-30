@@ -1,0 +1,21 @@
+pylon: TEST-ONLY key, signed in Coax; pubkey b2aba93624c98f04505eb7fac836a78ed3579357fd566466ef3c171bf0151470
+pylon: engine psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 answered the probe in 34 ms
+doctor: engine psionic-toy answered as psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+doctor: identity: first start (last served: none)
+doctor: reference set /tmp/oct30-pylon-demo/psionic/fixtures/pylon/psionic-toy.selfcheck: 2 cases for psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+doctor: self-check passed: 2 cases in 97 ms, largest error 0 billionths (tolerance 500000)
+pylon: relay list of 1
+pylon: connection 1 open to wss://relay.openagents.com
+pylon: authenticated to wss://relay.openagents.com as b2aba93624c98f04505eb7fac836a78ed3579357fd566466ef3c171bf0151470 (connection 1)
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: REQ s0.1 since 1793371999 (connection 1)
+pylon: caught up on s0.1 (connection 1)
+pylon: online, waiting for jobs
+pylon: event bca9a1c8626f kind 25910 -> queue (none)
+pylon: beacon online generation 1 free 3 of 4 (connection 1)
+pylon: job bca9a1c8626f -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 45 ms
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: beacon offline generation 1 free 0 of 4 (connection 1)
+pylon: offline. sent 9, accepted 8, refused 0, answered 1, refusals 0, cancelled 0, forged 0, duplicates 0, ignored 0, beacons 6, connections 1, drops 0, auths 1, catch-ups 1

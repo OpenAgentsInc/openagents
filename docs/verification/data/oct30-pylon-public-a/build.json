@@ -1,0 +1,14 @@
+{
+  "source_commit": "a944bfbaaacfea649c473a32243943d3f5475956",
+  "compiler_input_fingerprint": "79ce85ed9bdde9eb75b1f8a24d3227990f57506709ad8729af7bcd9758a926e2",
+  "build_mode": "plain, system TLS trust; no --test-trust",
+  "platform": "macOS arm64",
+  "sha256": {
+    "compiler": "df4d78ef4ddc8f788cb4a87da31d538a2ecf174af14085a5f34ab1d868a80fb0",
+    "pylon": "f671202534cb104d711ee4dd3155374a2684b5bc9a21af202ec2db17ebba66ba",
+    "psionic_serve": "247e9ba43bc00b7901f14d85d6940296340d4dd5128b2c227ff5cce0eca456a8",
+    "pylon_generated_c": "07239b7e260d2f415e82f376c073969bcf071d6caf1ee04c05a4d05d27f578a9"
+  },
+  "public_pubkey": "b2aba93624c98f04505eb7fac836a78ed3579357fd566466ef3c171bf0151470",
+  "model_identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573"
+}

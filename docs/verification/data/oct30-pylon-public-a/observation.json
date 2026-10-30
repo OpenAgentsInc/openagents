@@ -1,0 +1,9 @@
+{
+  "port": 62007,
+  "slug": "oct30-mac-8d6f69",
+  "relay": "wss://relay.openagents.com",
+  "root": "/tmp/oct30-pylon-demo",
+  "started_at": "2026-10-30T14:55:18.567624+00:00",
+  "observed_at": "2026-10-30T14:58:03.394106+00:00",
+  "observed_seconds": 164.8
+}
