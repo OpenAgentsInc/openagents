@@ -13,9 +13,11 @@ answer to the next step:
 
 Tooling only: standard library, plus the gh and git commands. Usage:
 
-  PSIONIC_API_KEY=... python3 psionic/examples/clients/issue_files.py 12608
+  python3 psionic/examples/clients/issue_files.py 12608
 
-PSIONIC_API_KEY is the gpt-oss server's key (psionic/docs/serving/responses.md).
+The gpt-oss server's key (psionic/docs/serving/responses.md) comes from
+PSIONIC_API_KEY, or, for a server on this machine run by this user, from that
+server's own environment. It is never printed.
 --no-gptoss skips both gpt-oss steps: the issue's own words become the search
 terms and the report is the ranked list.
 """
@@ -39,6 +41,26 @@ def say(step, text):
     print(f"\n== {step}\n{text}", flush=True)
 
 
+def local_key(base):
+    """PSIONIC_API_KEY of the process listening on base's port, if base is this
+    machine and the process is this user's (Linux: ss and /proc)."""
+    match = re.match(r"https?://(127\.0\.0\.1|localhost|\[::1\]):(\d+)", base)
+    if not match:
+        return None
+    out = subprocess.run(["ss", "-ltnpH", f"sport = :{match.group(2)}"], capture_output=True, text=True).stdout
+    for pid in re.findall(r"pid=(\d+)", out):
+        try:
+            if os.stat(f"/proc/{pid}").st_uid != os.getuid():
+                continue
+            with open(f"/proc/{pid}/environ", "rb") as f:
+                for entry in f.read().split(b"\0"):
+                    if entry.startswith(b"PSIONIC_API_KEY="):
+                        return entry.split(b"=", 1)[1].decode()
+        except OSError:
+            continue
+    return None
+
+
 def post(url, body, key=None, timeout=300):
     headers = {"Content-Type": "application/json"}
     if key:
@@ -56,7 +78,7 @@ def post(url, body, key=None, timeout=300):
 
 
 def gptoss(base, key, prompt, max_tokens):
-    data, seconds = post(f"{base}/v1/responses", {"model": "gpt-oss-20b", "input": prompt, "max_output_tokens": max_tokens}, key)
+    data, seconds = post(f"{base}/v1/responses", {"model": "gpt-oss-20b", "input": prompt, "max_output_tokens": max_tokens, "reasoning": {"effort": "low"}}, key)
     text = "".join(part.get("text", "") for item in data.get("output", []) if item.get("type") == "message"
                    for part in item.get("content", []) if part.get("type") == "output_text")
     if not text:
@@ -109,12 +131,12 @@ def main():
     ap.add_argument("--elephant", default="http://127.0.0.1:8797")
     ap.add_argument("--gptoss", default="http://127.0.0.1:8080")
     ap.add_argument("--top", type=int, default=10, help="candidate files Elephant judges")
-    ap.add_argument("--max-tokens", type=int, default=1200)
+    ap.add_argument("--max-tokens", type=int, default=512, help="per gpt-oss call; the server allows at most 512")
     ap.add_argument("--no-gptoss", action="store_true")
     args = ap.parse_args()
-    key = os.environ.get("PSIONIC_API_KEY")
+    key = os.environ.get("PSIONIC_API_KEY") or (None if args.no_gptoss else local_key(args.gptoss))
     if not args.no_gptoss and not key:
-        sys.exit("set PSIONIC_API_KEY to the gpt-oss server's key, or pass --no-gptoss")
+        sys.exit(f"no key for {args.gptoss}: set PSIONIC_API_KEY, or pass --no-gptoss")
 
     # 1. The issue.
     view = ["gh", "issue", "view", str(args.issue), "--json", "number,title,body,url,state"]
