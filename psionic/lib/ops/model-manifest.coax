@@ -1,0 +1,72 @@
+// Download metadata comes from the same pinned target that admits execution.
+// The shell moves bytes; it cannot substitute a host-maintained model pin.
+#load "../decision-models.coax";
+#load "../../../coax/lib/nostr/json.coax";
+#authority;
+PmdAsset :: struct {ok:bool;name:string;sha256:string;bytes:int;}
+#test "the download plan shares its serving target and bounded context" {
+    t:=pmd_target();#assert t.status==PsStatus.ok && t.kind==PsKind.elephant && t.shape.state.capacity==512;
+    #assert t.origin=="baselabs/elephant-1" && t.revision=="b3f8a93462fb1051a9de031e94a7ff380e254072";
+}
+#test "downloadable Elephant assets are the exact execution registry pins" {
+    a:=pmd_asset("elephant-1",0);#assert a.ok && a.name=="config.json" && a.sha256=="f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab" && a.bytes==0;
+    a=pmd_asset("elephant-1",1);#assert a.ok && a.name=="tokenizer.json" && a.sha256=="a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f" && a.bytes==0;
+    a=pmd_asset("elephant-1",2);#assert a.ok && a.name=="readout.json" && a.sha256=="96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba" && a.bytes==0;
+    a=pmd_asset("elephant-1",3);#assert a.ok && a.name=="model.safetensors" && a.sha256=="682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba" && a.bytes==18819722392;
+    for i:[3]int.[-1,4,100] {#assert !pmd_asset("elephant-1",i).ok;}
+    for model:[4]string.["","psionic-toy","mammoth-1","../elephant-1"] {#assert !pmd_asset(model,0).ok;}
+}
+#test "download URLs and identity use the pinned original revision" {
+    out:[512]u8;n:=pmd_url("elephant-1",0,out[..]);
+    #assert n>0 && cast(string)out[0..<n]=="https://huggingface.co/baselabs/elephant-1/resolve/b3f8a93462fb1051a9de031e94a7ff380e254072/config.json";
+    n=pmd_url("elephant-1",3,out[..]);#assert n>0 && cast(string)out[0..<n]=="https://huggingface.co/baselabs/elephant-1/resolve/b3f8a93462fb1051a9de031e94a7ff380e254072/model.safetensors";
+    #assert pmd_url("unknown",0,out[..])==-1 && pmd_url("elephant-1",4,out[..])==-1 && pmd_url("elephant-1",0,out[0..<1])==-1;
+    n=pmd_identity("elephant-1",out[..]);#assert n>0 && cast(string)out[0..<n]=="elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+    #assert pmd_identity("unknown",out[..])==-1 && pmd_identity("elephant-1",out[0..<1])==-1;
+}
+#test "the manifest is complete JSON and never emits a truncated download plan" {
+    out:[8192]u8;n:=pmd_manifest("elephant-1",out[..]);#assert n>0 && json_valid(cast(string)out[0..<n]);
+    first:="{\"model\":\"elephant-1\",\"origin\":\"baselabs/elephant-1\",\"revision\":\"b3f8a93462fb1051a9de031e94a7ff380e254072\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"capacity\":512,\"files\":[";
+    #assert n>=first.count && cast(string)out[0..<first.count]==first;
+    last:=",{\"name\":\"model.safetensors\",\"sha256\":\"682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"bytes\":18819722392,\"url\":\"https://huggingface.co/baselabs/elephant-1/resolve/b3f8a93462fb1051a9de031e94a7ff380e254072/model.safetensors\"}]}";
+    #assert n>=last.count && cast(string)out[n-last.count..<n]==last;
+    #assert pmd_manifest("unknown",out[..])==-1 && pmd_manifest("psionic-toy",out[..])==-1;
+    #assert pmd_manifest("elephant-1",out[0..<n])==n;
+    #assert pmd_manifest("elephant-1",out[0..<n-1])==-1 && pmd_manifest("elephant-1",out[0..<0])==-1;
+}
+pmd_target :: ()->PsTarget {return ps_target(0,512);}
+pmd_asset :: (model:string,index:int)->PmdAsset {
+    if model!="elephant-1" || index<0 || index>=4 {return PmdAsset.{};}
+    t:=pmd_target();
+    if index==0 {return PmdAsset.{ok=true,name="config.json",sha256=t.config_sha};}
+    if index==1 {return PmdAsset.{ok=true,name="tokenizer.json",sha256=t.tokenizer_sha};}
+    if index==2 {return PmdAsset.{ok=true,name="readout.json",sha256=t.readout_sha};}
+    return PmdAsset.{ok=true,name=t.shard[0].name,sha256=t.shard[0].sha,bytes=t.shard[0].bytes};
+}
+pmd_identity :: (model:string,out:[]u8)->int {
+    if model!="elephant-1" {return -1;}
+    t:=pmd_target();n:=json_raw(out,0,model);n=json_raw(out,n,"@sha256:");return json_raw(out,n,t.shard[0].sha);
+}
+pmd_url :: (model:string,index:int,out:[]u8)->int {
+    a:=pmd_asset(model,index);if !a.ok {return -1;}
+    t:=pmd_target();n:=json_raw(out,0,"https://huggingface.co/");n=json_raw(out,n,t.origin);n=json_raw(out,n,"/resolve/");
+    n=json_raw(out,n,t.revision);n=json_raw(out,n,"/");return json_raw(out,n,a.name);
+}
+pmd_manifest :: (model:string,out:[]u8)->int #export_c {
+    if model!="elephant-1" {return -1;}
+    t:=pmd_target();buf:[512]u8;
+    n:=json_raw(out,0,"{\"model\":");n=json_write_string(out,n,model);n=json_raw(out,n,",\"origin\":");n=json_write_string(out,n,t.origin);
+    n=json_raw(out,n,",\"revision\":");n=json_write_string(out,n,t.revision);n=json_raw(out,n,",\"identity\":");
+    // Known registry strings fit this fixed scratch span, proved above. The
+    // caller's output remains fallible through every json_* write below.
+    size:=pmd_identity(model,buf[..]);n=json_write_string(out,n,cast(string)buf[0..<size]);
+    n=json_raw(out,n,",\"capacity\":");n=json_write_int(out,n,t.shape.state.capacity);n=json_raw(out,n,",\"files\":[");
+    for i:0..<4 {
+        a:=pmd_asset(model,i);
+        if i>0 {n=json_raw(out,n,",");}
+        n=json_raw(out,n,"{\"name\":");n=json_write_string(out,n,a.name);n=json_raw(out,n,",\"sha256\":");n=json_write_string(out,n,a.sha256);
+        n=json_raw(out,n,",\"bytes\":");n=json_write_int(out,n,a.bytes);n=json_raw(out,n,",\"url\":");
+        size=pmd_url(model,i,buf[..]);n=json_write_string(out,n,cast(string)buf[0..<size]);n=json_raw(out,n,"}");
+    }
+    return json_raw(out,n,"]}");
+}
