@@ -1,7 +1,7 @@
 # Nostr projections for Coax
 
-This first slice has **16 alpha schemas**: shared NIP-01 event/filter types,
-NIP-42 authentication, and 14 external agent, identity and channel projections.
+This mirror has **17 alpha schemas**: shared NIP-01 event/filter types,
+NIP-42 authentication, and 15 external agent, identity, channel and project projections.
 All live under root `proto/nostr/`, with one versioned namespace per source.
 They mirror the current pins in [`nips/`](../../nips/README.md); the original
 Nostr/HTTP/JWS protocols remain unchanged.
@@ -12,6 +12,7 @@ Nostr/HTTP/JWS protocols remain unchanged.
 | `block-agent` | `nostr.block.{aa,ae,ao,am,ap}.v1alpha1`, plus shared/OA dependencies |
 | `block-identity` | `nostr.block.{oa,fi,fa,ia}.v1alpha1`, plus shared dependencies |
 | `block-channel` | `nostr.block.{cl,ar,cw,dv,wp}.v1alpha1`, plus shared dependencies |
+| `block-project` | `nostr.block.mp.v1alpha1`, plus shared event/options dependencies |
 
 [MANIFEST.json](MANIFEST.json) binds every schema to exact source commits and
 SHA-256s. [MAPPING.md](MAPPING.md) records field/authority boundaries. The full
@@ -93,5 +94,5 @@ without approval.
 The original 191-file pre-reset NIP recovery remains recorded in
 [recovery.json](recovery.json). Current official/external pins advance separately;
 the OpenAgents-authored NIPs remain outside this mirror. Next slices include
-GS, MP, PL, RS, ER and PMA, and additional official NIPs. PMA remains reserved;
-no runtime support is implied by its specification being present.
+GS, PL, RS and additional official NIPs. ER and PMA remain reserved;
+no runtime support is implied by their specifications being present.

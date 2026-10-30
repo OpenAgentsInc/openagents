@@ -156,6 +156,28 @@
       ]
     },
     {
+      "package": "nostr.block.mp.v1alpha1",
+      "proto": "nostr/block/mp/v1alpha1/project.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/block/NIP-MP.md",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "e1645ab34f9a6720361c38922e55beca09d68ebb39794fc2ff7e5795ef698442"
+        },
+        {
+          "path": "nips/block/NIP-MP.fixtures.json",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "bda8cb81410c65511d4bce1c6f3d05e82337bb481c67b3398d3abc60bc8b1848"
+        },
+        {
+          "path": "nips/block/NIP-MP.fold-fixtures.json",
+          "commit": "24a370606044c0c7be787cc2fd98ec0bfe1d606b",
+          "sha256": "aff4fd713e0ceadf691547d028cc47dbb70ca3c082dae926057364393e6a3ac6"
+        }
+      ]
+    },
+    {
       "package": "nostr.block.oa.v1alpha1",
       "proto": "nostr/block/oa/v1alpha1/owner.proto",
       "status": "alpha",

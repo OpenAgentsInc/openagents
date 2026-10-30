@@ -98,13 +98,22 @@ def compile_set(command, name, files, includes, output, python=False):
     return target
 
 
+def module_paths(name, module):
+    files = sorted(str(p.relative_to(ROOT)) for directory in module['roots']
+                   for p in (ROOT/directory).rglob('*.proto'))
+    excluded = set(module.get('exclude', []))
+    if not excluded.issubset(files):
+        raise ValueError('Missing excluded module schema: ' + name)
+    files = [path for path in files if path not in excluded]
+    if not files:
+        raise ValueError('Empty module: ' + name)
+    return files
+
+
 def build_sets(command, output):
     artifacts = {}
     for name, module in CONFIG['modules'].items():
-        files = sorted(str(p.relative_to(ROOT)) for directory in module['roots']
-                       for p in (ROOT/directory).rglob('*.proto'))
-        if not files:
-            raise ValueError('Empty module: ' + name)
+        files = module_paths(name, module)
         path = compile_set(command, name, files, module['includes'], output, python=name in ('owned', 'nostr'))
         if name in ('owned', 'nostr'):
             from google.protobuf import descriptor_pb2

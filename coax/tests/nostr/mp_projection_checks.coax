@@ -1,0 +1,33 @@
+// Codec checks for the NIP-MP project profile. A projected value is not a
+// signature check, membership decision or permission to mutate a repository.
+#import_proto "../../../proto/descriptors/block-project.pb" as MP;
+main :: () {}
+#test "MP missing required event and slug are refused" {
+  empty:[1]u8;
+  #assert MP_Project_decode(empty[0..<0]).error==MP__pb_REQUIRED;
+  only_d:=[3]u8.[18,1,120];
+  #assert MP_Project_decode(only_d[..]).error==MP__pb_REQUIRED;
+}
+#test "repository hint keeps absence distinct from an empty hint" {
+  missing:=[3]u8.[10,1,120];present:=[5]u8.[10,1,120,18,0];
+  a:=MP_RepositoryMember_decode(missing[..]);b:=MP_RepositoryMember_decode(present[..]);
+  #assert a.error==0 && b.error==0;
+  #assert !MP_RepositoryMember_get_relay_hint(a).present;
+  h:=MP_RepositoryMember_get_relay_hint(b);#assert h.present && h.value.count==0;
+}
+
+// Native/Wasm test bridge over the actual descriptor-generated reader/writer.
+mp_read :: (wire:[]u8,op:int)->s64 #export_c {
+  p:=MP_Project_decode(wire);
+  if op==0 {return cast(s64)p.error;}
+  if p.error!=0 {return -cast(s64)p.error;}
+  if op==1 {return cast(s64)MP_Project_get_identifier(p).value.count;}
+  if op==2 {n:s64=0;members:=MP_Project_iter_members(p);while members.has_value {n+=1;members=MP_Project_next_members(members);}return n;}
+  if op==3 {members:=MP_Project_iter_members(p);if !members.has_value {return -1;}if MP_RepositoryMember_get_relay_hint(members.value).present {return 1;}return 0;}
+  if op==4 {return cast(s64)MP_Project_unknown(p,0).number;}
+  return -99;
+}
+mp_copy :: (wire:[]u8,out:[]u8)->s64 #export_c {
+  p:=MP_Project_encode(MP_Project_decode(wire),out);
+  if p.error!=0 {return -cast(s64)p.error;}return cast(s64)p.wire.count;
+}

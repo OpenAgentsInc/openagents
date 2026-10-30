@@ -22,6 +22,7 @@ helpers; no new Nostr kinds or wire protocols are allocated.
 | CW | Cursor, ChannelRequest, ThreadRequest, ThreadSummary, Bounds | Composite timestamp+ID cursor, row/depth budgets, summary counts, nullable last reply, participant order, explicit exhaustion/next cursor, request binding and relay signer evidence. Missing bounds never prove exhaustion. |
 | DV | VisibilitySnapshot | 30622 viewer d=p and hidden-channel h set; original duplicates/order retained in the envelope. This is owner-private relay projection, not membership removal. |
 | WP | WorkspaceProfileCommand | 9033 icon value; absent/empty clears, validated http(s)/image data URL sets. Live relay admin/owner authorization is required; NIP-11 presentation remains public. |
+| MP | Project, RepositoryMember | Kind 30621 source event retained byte-for-byte; project `d` and optional metadata retain presence; ordered `a` coordinates and optional relay hints preserve their original strings. Shape/bounds alone do not verify the signer, compare projections with original tags, validate repository coordinates, determine listing visibility, or grant repository/channel authority. |
 
 ## Boundaries and limits
 

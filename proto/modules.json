@@ -58,7 +58,10 @@
       "includes": [
         "."
       ],
-      "namespace": "nostr."
+      "namespace": "nostr.",
+      "exclude": [
+        "nostr/block/mp/v1alpha1/project.proto"
+      ]
     }
   },
   "profiles": {
@@ -116,6 +119,9 @@
     ],
     "systemone": [
       "openagents/decision/v1alpha1/systemone.proto"
+    ],
+    "block-project": [
+      "nostr/block/mp/v1alpha1/project.proto"
     ]
   },
   "profile_namespaces": {
@@ -185,6 +191,11 @@
     "systemone": [
       "openagents.decision.v1alpha1",
       "openagents.options.v1alpha1"
+    ],
+    "block-project": [
+      "nostr.event.",
+      "nostr.block.mp.",
+      "openagents.options."
     ]
   }
 }

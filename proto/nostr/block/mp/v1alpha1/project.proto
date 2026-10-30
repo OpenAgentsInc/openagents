@@ -1,0 +1,28 @@
+syntax = "proto3";
+package nostr.block.mp.v1alpha1;
+
+import "openagents/options/v1alpha1/options.proto";
+import "nostr/event/v1alpha1/event.proto";
+
+// NIP-MP kind 30621: an unverified project-event projection. The original
+// event and its ordered tags are retained; wire decoding does not verify the
+// signature, prove listing eligibility, or grant authority over repositories.
+message Project {
+  nostr.event.v1alpha1.SignedEvent original = 1 [(openagents.options.v1alpha1.required_value)=true];
+  // d must be nonempty in the source protocol; required presence alone does
+  // not enforce that semantic rule. Its bound is the source relay's d limit.
+  optional string identifier = 2 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=1024];
+  optional string name = 3 [(openagents.options.v1alpha1.max_bytes)=256];
+  optional string description = 4 [(openagents.options.v1alpha1.max_bytes)=2048];
+  repeated RepositoryMember members = 5 [(openagents.options.v1alpha1.max_count)=64];
+  optional string channel = 6 [(openagents.options.v1alpha1.max_bytes)=256];
+  optional string visibility = 7 [(openagents.options.v1alpha1.max_bytes)=256];
+}
+
+// The coordinate is retained verbatim; a relay hint is advisory. The source's
+// exact tag arity, coordinate grammar, duplicate rules and tag cardinality
+// must be checked against original event bytes by a domain consumer.
+message RepositoryMember {
+  optional string coordinate = 1 [(openagents.options.v1alpha1.required_value)=true];
+  optional string relay_hint = 2;
+}

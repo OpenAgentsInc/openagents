@@ -7,11 +7,19 @@ from openagents.engine.v1.assets_pb2 import AssetProfileCatalog
 from openagents.verse.presence.v1alpha1.presence_pb2 import PresenceSnapshot
 from openagents.metareal.home.v1alpha1.home_pb2 import HomeConfiguration
 from compatibility import check, parse
-from protocol import ROOT, REGISTRY, CONFIG, canonical_id, migrate_catalog, check_profile
+from protocol import ROOT, REGISTRY, CONFIG, canonical_id, migrate_catalog, check_profile, module_paths
 from validate import decode_presence, validate
 
 
 class ProtocolTests(unittest.TestCase):
+    def test_module_exclusions_keep_legacy_and_reject_missing_paths(self):
+        nostr = module_paths('nostr', CONFIG['modules']['nostr'])
+        self.assertIn('nostr/event/v1alpha1/event.proto', nostr)
+        self.assertNotIn('nostr/block/mp/v1alpha1/project.proto', nostr)
+        self.assertIn('nostr/block/mp/v1alpha1/project.proto', CONFIG['profiles']['block-project'])
+        with self.assertRaises(ValueError):
+            module_paths('broken', {'roots': ['nostr'], 'exclude': ['missing.proto']})
+
     def test_home_profile_and_explicit_zero(self):
         value = HomeConfiguration(schema_version=1, seed=42727, mote_count=0, satellite_count=0)
         value.start.id = 'home.start'
