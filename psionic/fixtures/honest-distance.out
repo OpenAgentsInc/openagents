@@ -1,0 +1,15 @@
+400 fresh items, no answer key; each backend against the reference:
+  CPU: median 0.0002, p90 0.0003, p99 0.0005, max 0.0005; top answer agrees on 400 of 400
+  GPU, f16: median 0.004, p90 0.0072, p99 0.0097, max 0.0108; top answer agrees on 400 of 400
+  quantized copy: median 0.1454, p90 0.245, p99 0.3092, max 0.3303; top answer agrees on 382 of 400
+  another runtime: median 0.0017, p90 0.3684, p99 0.4703, max 0.5005; top answer agrees on 387 of 400
+  sibling model: median 0.7553, p90 1.3257, p99 1.7687, max 2.0316; top answer agrees on 316 of 400
+worst honest round 0.0073, worst honest item 0.0108: a round is lost above 0.0145, struck above 0.0436 or with one item above 0.0217
+  CPU: of 20,000 rounds 20000 passed, 0 lost, 0 struck
+  GPU, f16: of 20,000 rounds 20000 passed, 0 lost, 0 struck
+  quantized copy: of 20,000 rounds 0 passed, 0 lost, 20000 struck
+  another runtime: of 20,000 rounds 111 passed, 0 lost, 19889 struck
+  sibling model: of 20,000 rounds 0 passed, 0 lost, 20000 struck
+the limits separate the pairs: true
+  a live round with the GPU, f16: items 7, 1 and 3 checked; mean 0.0055, worst 0.0081 -> passed
+  a live round with the quantized copy: items 7, 0 and 2 checked; mean 0.2061, worst 0.2738 -> struck

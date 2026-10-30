@@ -600,6 +600,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/honest-distance.coax",
+      "chapter": "psionic/book/ch160-how-far-apart-may-two-honest-answers-be.md",
+      "stdout": "psionic/fixtures/honest-distance.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

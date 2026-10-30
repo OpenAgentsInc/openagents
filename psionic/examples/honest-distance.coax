@@ -1,0 +1,51 @@
+#import "Basic";
+#load "../lib/distance.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+NAMES :: [6]string.["reference","CPU","GPU, f16","quantized copy","another runtime","sibling model"];
+VERDICT :: [3]string.["passed","lost","struck"];
+
+// book:begin example
+main :: () {
+    backends:=[6]DdBackend.[DdBackend.{seed=1,mix=1},DdBackend.{seed=2,mix=1,noise=0.0005},DdBackend.{seed=3,mix=1,noise=0.01},
+        DdBackend.{seed=4,mix=1,grid=0.25},DdBackend.{seed=5,mix=1,noise=0.002,share=0.5,shift=0.4},DdBackend.{seed=6,mix=0.6}];
+    items:[400]DdItem;#assert dd_items(160,items[..])==DdStatus.ok;
+    answers:[6][3200]f64;
+    for b,k:backends {#assert dd_answer(160,items[..],b,answers[k][..])==DdStatus.ok;}
+    print("400 fresh items, no answer key; each backend against the reference:\n");
+    d:[6][400]f64;
+    for k:1..<6 {
+        c:=dd_compare(items[..],answers[0][..],answers[k][..],d[k][..]);#assert c.status==DdStatus.ok;
+        s:=dd_summary(d[k][..]);
+        print("  %: median %, p90 %, p99 %, max %; top answer agrees on % of 400\n",NAMES[k],r4(s.median),r4(s.p90),r4(s.p99),
+            r4(s.max),c.agree);
+    }
+    // The limits come from the honest pairs only: the worst of 20,000
+    // simulated rounds of 8 checked items, and the worst item.
+    worst:=0.0;item:=0.0;
+    for k:1..<3 {
+        r:=dd_simulate(d[k][..],DD_NONE,1601,20000,8);#assert r.status==DdStatus.ok;
+        if r.worst>worst {worst=r.worst;}
+        m:=dd_summary(d[k][..]).max;if m>item {item=m;}
+    }
+    l:=dd_limits(worst,item);
+    print("worst honest round %, worst honest item %: a round is lost above %, struck above % or with one item above %\n",
+        r4(worst),r4(item),r4(l.lost),r4(l.strike),r4(l.item));
+    rounds:[6]DdRounds;
+    for k:1..<6 {
+        rounds[k]=dd_simulate(d[k][..],l,1601,20000,8);
+        print("  %: of 20,000 rounds % passed, % lost, % struck\n",NAMES[k],rounds[k].pass,rounds[k].lost,rounds[k].strike);
+    }
+    print("the limits separate the pairs: %\n",dd_gap(rounds[1..<3],rounds[3..<6],20000));
+
+    // A live round: eight new items, three checked, chosen after the answers.
+    live:[8]DdItem;#assert dd_items(9160,live[..])==DdStatus.ok;
+    ref:[64]f64;#assert dd_answer(9160,live[..],backends[0],ref[..])==DdStatus.ok;
+    for k:2..<4 {
+        got:[64]f64;#assert dd_answer(9160,live[..],backends[k],got[..])==DdStatus.ok;
+        checked:[3]int;x:=dd_round(live[..],ref[..],got[..],0x5ec12e7,3,l,checked[..]);#assert x.status==DdStatus.ok;
+        print("  a live round with the %: items %, % and % checked; mean %, worst % -> %\n",NAMES[k],checked[0],checked[1],checked[2],
+            r4(x.mean),r4(x.worst),VERDICT[cast(int)x.verdict]);
+    }
+}
+// book:end example
