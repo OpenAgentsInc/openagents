@@ -133,7 +133,7 @@ the "below 128" form.
   over a test-only in-memory double, so a restart forgets everything. The
   append-only fsync'd log, replay with re-verification and the indexes are
   that task's job, not a second store here.
-- **NIP-42.** It waits on nip42.coax (#f426). `rs_admit_policy` takes
+- **NIP-42.** nip42.coax (#f426) reached main at `9a655d3736` during this task's last minutes and is not wired yet. Next: a Nip42 record per connection, a challenge from host entropy sent on connect, `nip42_admit` on AUTH, and `authed` passed to `rs_admit_policy`. The program's `rl_` prefix must be renamed first, because nip42.coax loads the client `relay.coax`, which uses `rl_`. `rs_admit_policy` takes
   `auth_required` and `authed`, and the program passes false and false. AUTH
   is answered "restricted: NIP-42 is not configured on this relay". NIP-42
   is not advertised.
