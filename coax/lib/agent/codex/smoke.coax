@@ -1,0 +1,75 @@
+// Live smoke against the installed codex CLI, on the owner's own ChatGPT
+// login (no API key reaches the child) with no browser: initialize, the
+// model list, a thread in a scratch folder, one turn that runs a command
+// (full access), then a supervised turn whose command the host declines,
+// checked by the file the command would have made not being there, then a
+// turn interrupted mid-answer. Run it with smoke.sh.
+
+#import "Basic";
+#load "codex.coax";
+
+Buffers :: struct { line: [] u8; arena: [] u8; out: [] u8; }
+
+// Polls until the turn in flight ends (turn/completed, or the interrupt's
+// answer); prints what came. approve: the host's answer to approvals.
+run_turn :: (c: [] CxClient, p: [] ClProcess, approve: bool, interrupt_after: int) -> int {
+  deltas := 0; items := 0; asked := 0; sent := false;
+  while true {
+    ev := cx_poll(c, p, 1000);
+    if ev.kind == CxEventKind.idle { continue; }
+    if ev.kind == CxEventKind.end || ev.kind == CxEventKind.failed { print("ended: %\n", cx_error(c)); return -1; }
+    if ev.kind == CxEventKind.invalid { print("invalid line\n"); continue; }
+    if ev.kind == CxEventKind.refused { print("refused: %\n", ev.message); return -1; }
+    if ev.kind == CxEventKind.approval { asked += 1; print("approval: % -> %\n", ev.method, ifx approve then "accept" else "decline"); cx_approve(c, approve); continue; }
+    if ev.kind == CxEventKind.answered && ev.of == CX_TURN_INTERRUPT { print("interrupted after % deltas\n", deltas); return asked; }
+    if ev.kind != CxEventKind.notification { continue; }
+    if ev.method == "item/agentMessage/delta" {
+      deltas += 1;
+      if interrupt_after > 0 && deltas >= interrupt_after && !sent { r := cx_interrupt(c); sent = true; }
+    }
+    if ev.method == "item/completed" {
+      items += 1;
+      ty := cl_str(c[0].ar[..], ev.params, "item.type");
+      if ty == "commandExecution" { print("command: % -> exit % (%)\n", cl_str(c[0].ar[..], ev.params, "item.command"), cl_int(ev.params, "item.exitCode").value, cl_str(c[0].ar[..], ev.params, "item.status")); }
+      if ty == "agentMessage" { print("agent: %\n", cl_str(c[0].ar[..], ev.params, "item.text")); }
+    }
+    if ev.method == "turn/completed" { print("turn: % (% deltas, % items)\n", cl_str(c[0].ar[..], ev.params, "turn.status"), deltas, items); return asked; }
+  }
+  return -1;
+}
+
+main :: () {
+  line: [CL_LINE_MAX] u8; arena: [262144] u8; out: [262144] u8;
+  b := Buffers.{line = line[..], arena = arena[..], out = out[..]};
+  program: [4096] u8; pn := cl_getenv("SMOKE_CODEX", program[..]).count;
+  dir: [4096] u8; dn := cl_getenv("SMOKE_DIR", dir[..]).count;
+  model := "gpt-6-luna";
+  c: [1] CxClient; cx_init(c[..], b.line, b.arena, b.out);
+  p: [1] ClProcess;
+  l: [1] CxLaunch; l[0].program = cast(string) program[0..<pn]; l[0].cwd = cast(string) dir[0..<dn];
+  why := cx_start(c[..], p[..], l[0]);
+  if why.count > 0 { print("start: %\n", why); print("smoke: failed\n"); return; }
+  defer cx_close_process(p[..]);
+  r := cx_initialize(c[..], "openagents-desktop", "OpenAgents", "0.1.0");
+  r = cx_model_list(c[..], "");
+  st := CxSettings.{cwd = l[0].cwd, model = model, effort = "low", approval_policy = "never", sandbox = "danger-full-access"};
+  r = cx_thread_start(c[..], st);
+  thread := false;
+  while !thread {
+    ev := cx_poll(c[..], p[..], 1000);
+    if ev.kind == CxEventKind.end || ev.kind == CxEventKind.failed { print("failed: %\n", cx_error(c[..])); print("smoke: failed\n"); return; }
+    if ev.kind == CxEventKind.initialized { print("initialize: ok (%)\n", cx_user_agent(c[..])); }
+    if ev.kind == CxEventKind.answered && ev.of == CX_MODEL_LIST { print("models: %\n", cl_count(cl_raw(ev.result, "data"))); }
+    if ev.kind == CxEventKind.answered && ev.of == CX_THREAD_START { print("thread: %\n", cx_thread_id(c[..])); thread = true; }
+    if ev.kind == CxEventKind.refused { print("refused: %\n", ev.message); print("smoke: failed\n"); return; }
+  }
+  none: [1] string;
+  r = cx_turn_start(c[..], "Run the shell command `ls` and tell me the file names.", none[0..<0], st);
+  if run_turn(c[..], p[..], true, 0) < 0 { print("smoke: failed\n"); return; }
+  st.approval_policy = "untrusted"; st.sandbox = "read-only"; st.ask_person = true;
+  r = cx_turn_start(c[..], "Run exactly this shell command: touch smoke-denied.txt", none[0..<0], st);
+  if run_turn(c[..], p[..], false, 0) < 1 { print("no approval was asked\n"); print("smoke: failed\n"); return; }
+  r = cx_turn_start(c[..], "Write a 1500-word story about a lighthouse. No tools.", none[0..<0], st);
+  if run_turn(c[..], p[..], false, 20) < 0 { print("smoke: failed\n"); return; }
+  print("smoke: ok\n");
+}

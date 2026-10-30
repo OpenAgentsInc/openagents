@@ -1,0 +1,80 @@
+// The process transport: `codex app-server` as a child in its own process
+// group, JSON-RPC on stdin and stdout, stderr kept. The effects are
+// coax/platform/process-native.c, shared with the Claude SDK
+// (../claude/transport.coax: cxproc_*, cl_push, ClProcess).
+
+#load "client.coax";
+
+// What to start: the codex executable, the environment entries set on the
+// inherited environment ("NAME=value"), the names removed from it, the cwd.
+CX_ENV :: 8;
+CxLaunch :: struct {
+  program: string;                 // a path, or "codex" (looked up on the host's PATH)
+  env: [CX_ENV] string; env_n: int;
+  unset: [CX_ENV] string; unset_n: int;
+  cwd: string;
+}
+cx_add_env :: (l: [] CxLaunch, entry: string) { if l[0].env_n < CX_ENV { l[0].env[l[0].env_n] = entry; l[0].env_n += 1; } }
+cx_remove_env :: (l: [] CxLaunch, name: string) { if l[0].unset_n < CX_ENV { l[0].unset[l[0].unset_n] = name; l[0].unset_n += 1; } }
+
+// Spawn `codex app-server`. The child never gets an API key from here
+// (OPENAI_API_KEY and CODEX_API_KEY are removed: the CLI's own login is
+// used) and never opens a browser (BROWSER=/usr/bin/true, NO_OPEN_BROWSER=1).
+// Returns what went wrong, or "".
+cx_start :: (c: [] CxClient, p: [] ClProcess, l: CxLaunch) -> string {
+  h := cxproc_new();
+  if h < 0 { return "no process slot is free"; }
+  ok := cl_push(h, CL_FIELD_ARG, ifx l.program.count > 0 then l.program else "codex") && cl_push(h, CL_FIELD_ARG, "app-server");
+  ok = ok && cl_push(h, CL_FIELD_UNSET, "OPENAI_API_KEY") && cl_push(h, CL_FIELD_UNSET, "CODEX_API_KEY");
+  for i: 0..<l.unset_n { ok = ok && cl_push(h, CL_FIELD_UNSET, l.unset[i]); }
+  ok = ok && cl_push(h, CL_FIELD_ENV, "BROWSER=/usr/bin/true") && cl_push(h, CL_FIELD_ENV, "NO_OPEN_BROWSER=1");
+  for i: 0..<l.env_n { ok = ok && cl_push(h, CL_FIELD_ENV, l.env[i]); }
+  if l.cwd.count > 0 { ok = ok && cl_push(h, CL_FIELD_CWD, l.cwd); }
+  if !ok { r := cxproc_release(h); return "an argument holds a zero byte or does not fit"; }
+  e := cxproc_spawn(h);
+  if e != 0 { r := cxproc_release(h); return ifx e == 2 then "codex executable not found" else "failed to spawn codex app-server"; }
+  p[0].handle = h; p[0].pid = cxproc_pid(h);
+  c[0].completed = false;
+  return "";
+}
+
+// Write what the client owes the server. False when stdin is gone.
+cx_flush :: (c: [] CxClient, p: [] ClProcess) -> bool {
+  out := cx_outbox(c);
+  if out.count == 0 { return true; }
+  if c[0].out[0].failed { cx_outbox_clear(c); return false; }
+  for b: out { if cxproc_write(p[0].handle, cast(int) b) != 0 { cx_outbox_clear(c); return false; } }
+  cx_outbox_clear(c);
+  return cxproc_flush(p[0].handle) == 0;
+}
+
+CX_INIT_TIMEOUT_MS :: 60000;
+
+// The next event for a host that must not block: an unanswered approval is
+// declined, what is owed is written, then a line if one comes within
+// timeout_ms (0 takes only what is already there), else idle. initialize
+// unanswered for a minute fails the client.
+cx_poll :: (c: [] CxClient, p: [] ClProcess, timeout_ms: int) -> CxEvent {
+  cx_settle(c);
+  if !cx_flush(c, p) { return cx_fail(c, "failed to write to codex app-server: ", "broken pipe"); }
+  if c[0].completed { return CxEvent.{kind = CxEventKind.end}; }
+  if c[0].init_wait && c[0].init_since == 0 { c[0].init_since = cxproc_now_ms(); }
+  if c[0].init_wait && cxproc_now_ms() - c[0].init_since > CX_INIT_TIMEOUT_MS { return cx_fail(c, "codex app-server did not answer initialize", ""); }
+  n := cxproc_read_line(p[0].handle, ifx timeout_ms < 0 then 0 else timeout_ms);
+  if n == CL_TIMEOUT { return CxEvent.{kind = CxEventKind.idle}; }
+  if n == CL_EOF { c[0].completed = true; return CxEvent.{kind = CxEventKind.end}; }
+  if n == CL_TOO_LONG || n > c[0].line.count { return CxEvent.{kind = CxEventKind.invalid}; }
+  if n < 0 { return cx_fail(c, "failed to read from codex app-server", ""); }
+  for i: 0..<n { c[0].line[i] = cast(u8) cxproc_line_byte(p[0].handle, i); }
+  c[0].line_len = n;
+  return cx_feed(c, cast(string) c[0].line[0..<n]);
+}
+
+// Stop the server's whole process group and free the child.
+cx_close_process :: (p: [] ClProcess) {
+  if p[0].handle < 0 { return; }
+  k := cxproc_kill(p[0].handle, CL_SIGKILL);
+  w := cxproc_wait(p[0].handle, 2000);
+  r := cxproc_release(p[0].handle);
+  p[0].handle = -1;
+}

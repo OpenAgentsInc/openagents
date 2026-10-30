@@ -1,0 +1,351 @@
+// A client of `codex app-server` (JSON-RPC 2.0, one JSON object a line, on
+// the server's stdin and stdout) as a state machine over lines: cx_feed
+// takes one stdout line and returns what it was, writing what the client
+// owes the server (the `initialized` notification, its own answers to
+// server requests) into its output. Nothing here touches the process;
+// transport.coax moves the bytes. Like the Claude SDK it pulls: a server
+// request the host must answer (an approval) is an event, answered with
+// cx_approve before the next line; one left unanswered is declined.
+//
+// The requests follow Zeron's Codex harness (harness/src/codex/mod.rs):
+// initialize with experimentalApi and the high-volume notifications opted
+// out, then `initialized`; thread/start or thread/resume with the cwd, the
+// approval policy and sandbox, the person as approvals reviewer when they
+// are asked, the model; turn/start with the input, the policy and sandbox
+// policy again, summary "auto" (without it reasoning streams nothing), the
+// model, the effort and, once plan mode has been asked for, the
+// collaboration mode; turn/interrupt with the thread and turn; model/list
+// paginated. What a CxEvent borrows lives in the client's line and arena
+// and is valid until the next cx_feed.
+
+#load "../claude/transport.coax";
+
+CX_PENDING :: 16;
+CX_ID :: 128;
+
+// What a request the client sent was (an answer's ev.of).
+CX_INITIALIZE :: 1; CX_THREAD_START :: 2; CX_THREAD_RESUME :: 3; CX_TURN_START :: 4;
+CX_TURN_INTERRUPT :: 5; CX_MODEL_LIST :: 6; CX_OTHER :: 7;
+// What an approval asks (ev.of on an approval): a command, a file change, more permissions.
+CX_ASK_EXEC :: 1; CX_ASK_PATCH :: 2; CX_ASK_PERMISSIONS :: 3; CX_ASK_EXEC_V1 :: 4; CX_ASK_PATCH_V1 :: 5;
+
+// Notifications nothing reads: the turn's running diff and each patch's
+// output stream (Zeron's OPTED_OUT_NOTIFICATIONS, less the command output:
+// a command's chip shows its aggregatedOutput when it completes).
+CX_OPT_OUT :: "[\"turn/diff/updated\",\"item/commandExecution/outputDelta\",\"item/fileChange/outputDelta\"]";
+
+CxEventKind :: enum u8 {
+  none;           // handled inside: an answer nobody waits for, a request the client answered itself
+  initialized;    // initialize was answered and `initialized` sent: ev.result is the answer
+  answered;       // a request the host sent was answered: ev.of (CX_*), ev.result (JSON)
+  refused;        // ... with an error: ev.of, ev.message
+  notification;   // ev.method, ev.params (JSON)
+  approval;       // a server request for the host: ev.of (CX_ASK_*), ev.method, ev.params; answer with cx_approve
+  invalid;        // a line that isn't a JSON-RPC message; the stream goes on
+  failed;         // the client is over; cx_error says why
+  end;            // the server closed its output
+  idle;           // cx_poll: no line came within its timeout
+}
+
+CxEvent :: struct {
+  kind: CxEventKind;
+  of: int;
+  method: string;
+  params: string;
+  result: string;
+  message: string;
+  line: string;
+}
+
+// The settings a thread and its turns run with.
+CxSettings :: struct {
+  cwd: string;
+  model: string;              // "" for Codex's default
+  effort: string;             // "" for the model's default
+  approval_policy: string;    // "never", "untrusted", "on-request"
+  sandbox: string;            // "read-only", "workspace-write", "danger-full-access"
+  ask_person: bool;           // approvalsReviewer "user": approvals reach the person, never an AI reviewer
+  plan: bool;                 // the collaboration mode is plan
+  name_mode: bool;            // name the collaboration mode on each turn (once plan was ever on)
+}
+
+CxClient :: struct {
+  line: [] u8; line_len: int;
+  ar: [1] ClArena;
+  out: [1] ClOut;
+  next_id: int;
+  pend_id: [CX_PENDING] int; pend_of: [CX_PENDING] int; npend: int;
+  initialized: bool;
+  init_wait: bool;            // initialize went and is not answered yet
+  init_since: int;            // when the transport saw it go (ms), for its timeout
+  thread: [CX_ID] u8; thread_n: int;
+  turn: [CX_ID] u8; turn_n: int;     // the turn in flight (turn/start's answer or turn/started)
+  agent: [256] u8; agent_n: int;     // the server's userAgent
+  // a server request the host has not answered yet
+  asking: int;                // CX_ASK_*, 0 none
+  ask_id: [CX_ID] u8; ask_id_n: int; // its id, as JSON
+  ask_grant: [4096] u8; ask_grant_n: int;   // a permissions request's permissions, as JSON
+  completed: bool;
+  error: [512] u8; error_len: int;
+}
+
+cx_init :: (c: [] CxClient, line: [] u8, arena: [] u8, out: [] u8) {
+  c[0].line = line; c[0].ar[0].buf = arena; c[0].out[0].buf = out;
+  c[0].next_id = 1;
+}
+cx_thread_id :: (c: [] CxClient) -> string { return cast(string) c[0].thread[0..<c[0].thread_n]; }
+cx_turn_id :: (c: [] CxClient) -> string { return cast(string) c[0].turn[0..<c[0].turn_n]; }
+cx_error :: (c: [] CxClient) -> string { return cast(string) c[0].error[0..<c[0].error_len]; }
+cx_user_agent :: (c: [] CxClient) -> string { return cast(string) c[0].agent[0..<c[0].agent_n]; }
+cx_outbox :: (c: [] CxClient) -> string { return cast(string) c[0].out[0].buf[0..<c[0].out[0].len]; }
+cx_outbox_clear :: (c: [] CxClient) { c[0].out[0].len = 0; c[0].out[0].failed = false; }
+
+cx_fail :: (c: [] CxClient, a: string, b: string) -> CxEvent {
+  n := cl_copy(c[0].error[..], a);
+  n += cl_copy(c[0].error[n..<c[0].error.count], b);
+  c[0].error_len = n; c[0].completed = true;
+  return CxEvent.{kind = CxEventKind.failed};
+}
+
+// ---------------------------------------------------------------- requests
+
+// {"jsonrpc":"2.0","id":N,"method":M,"params":<params>}: the id, remembered as what it asks.
+cx_open :: (c: [] CxClient, of: int, method: string) -> int {
+  id := c[0].next_id; c[0].next_id += 1;
+  if c[0].npend < CX_PENDING { c[0].pend_id[c[0].npend] = id; c[0].pend_of[c[0].npend] = of; c[0].npend += 1; }
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put_int(o, id);
+  cl_put(o, ",\"method\":"); cl_put_string(o, method); cl_put(o, ",\"params\":");
+  return id;
+}
+cx_close :: (c: [] CxClient) { cl_put(c[0].out[..], "}\n"); }
+
+// Any request with its params as JSON ("" sends {}). Its id.
+cx_request :: (c: [] CxClient, method: string, params: string) -> int {
+  id := cx_open(c, CX_OTHER, method);
+  cl_put(c[0].out[..], ifx params.count > 0 then params else "{}");
+  cx_close(c);
+  return id;
+}
+
+// initialize, sent first; the answer sends `initialized` and is ev.kind initialized.
+cx_initialize :: (c: [] CxClient, name: string, title: string, version: string) -> int {
+  id := cx_open(c, CX_INITIALIZE, "initialize");
+  o := c[0].out[..];
+  cl_put(o, "{\"clientInfo\":{\"name\":"); cl_put_string(o, name);
+  cl_put(o, ",\"title\":"); cl_put_string(o, title);
+  cl_put(o, ",\"version\":"); cl_put_string(o, version);
+  cl_put(o, "},\"capabilities\":{\"experimentalApi\":true,\"optOutNotificationMethods\":"); cl_put(o, CX_OPT_OUT);
+  cl_put(o, "}}");
+  cx_close(c);
+  c[0].init_wait = true;
+  return id;
+}
+
+// "workspace-write" -> "workspaceWrite" (turn/start's sandboxPolicy.type).
+cx_policy_type :: (sandbox: string) -> string {
+  if sandbox == "read-only" { return "readOnly"; }
+  if sandbox == "workspace-write" { return "workspaceWrite"; }
+  if sandbox == "danger-full-access" { return "dangerFullAccess"; }
+  return sandbox;
+}
+cx_put_member :: (o: [] ClOut, key: string, value: string) {
+  cl_put(o, ",\""); cl_put(o, key); cl_put(o, "\":"); cl_put_string(o, value);
+}
+cx_put_thread_settings :: (o: [] ClOut, st: CxSettings) {
+  cl_put(o, "\"cwd\":"); cl_put_string(o, st.cwd);
+  if st.approval_policy.count > 0 { cx_put_member(o, "approvalPolicy", st.approval_policy); }
+  if st.sandbox.count > 0 { cx_put_member(o, "sandbox", st.sandbox); }
+  if st.ask_person { cx_put_member(o, "approvalsReviewer", "user"); }
+  if st.model.count > 0 { cx_put_member(o, "model", st.model); }
+}
+// thread/start; its answer's thread id is kept (cx_thread_id).
+cx_thread_start :: (c: [] CxClient, st: CxSettings) -> int {
+  id := cx_open(c, CX_THREAD_START, "thread/start");
+  o := c[0].out[..];
+  cl_put(o, "{"); cx_put_thread_settings(o, st); cl_put(o, "}");
+  cx_close(c);
+  return id;
+}
+// thread/resume of an earlier thread, with the same settings.
+cx_thread_resume :: (c: [] CxClient, thread: string, st: CxSettings) -> int {
+  id := cx_open(c, CX_THREAD_RESUME, "thread/resume");
+  o := c[0].out[..];
+  cl_put(o, "{\"threadId\":"); cl_put_string(o, thread); cl_put(o, ",");
+  cx_put_thread_settings(o, st); cl_put(o, "}");
+  cx_close(c);
+  return id;
+}
+// turn/start on the thread: the text, then each image path as a localImage
+// item; the settings ride every turn (each sticks for later turns).
+cx_turn_start :: (c: [] CxClient, text: string, images: [] string, st: CxSettings) -> int {
+  id := cx_open(c, CX_TURN_START, "turn/start");
+  o := c[0].out[..];
+  cl_put(o, "{\"threadId\":"); cl_put_string(o, cx_thread_id(c));
+  cl_put(o, ",\"input\":[{\"type\":\"text\",\"text\":"); cl_put_string(o, text); cl_put(o, "}");
+  for p: images { cl_put(o, ",{\"type\":\"localImage\",\"path\":"); cl_put_string(o, p); cl_put(o, "}"); }
+  cl_put(o, "]");
+  if st.approval_policy.count > 0 { cx_put_member(o, "approvalPolicy", st.approval_policy); }
+  if st.sandbox.count > 0 {
+    cl_put(o, ",\"sandboxPolicy\":{\"type\":"); cl_put_string(o, cx_policy_type(st.sandbox));
+    // workspace-write keeps the network (catalog.rs sandbox_policy_value)
+    if st.sandbox == "workspace-write" { cl_put(o, ",\"networkAccess\":true"); }
+    cl_put(o, "}");
+  }
+  if st.ask_person { cx_put_member(o, "approvalsReviewer", "user"); }
+  cx_put_member(o, "summary", "auto");
+  if st.model.count > 0 { cx_put_member(o, "model", st.model); }
+  if st.effort.count > 0 { cx_put_member(o, "effort", st.effort); }
+  if (st.name_mode || st.plan) && st.model.count > 0 {
+    cl_put(o, ",\"collaborationMode\":{\"mode\":"); cl_put_string(o, ifx st.plan then "plan" else "default");
+    cl_put(o, ",\"settings\":{\"model\":"); cl_put_string(o, st.model);
+    cl_put(o, ",\"reasoning_effort\":");
+    if st.effort.count > 0 { cl_put_string(o, st.effort); } else { cl_put(o, "null"); }
+    cl_put(o, ",\"developer_instructions\":null}}");
+  }
+  cl_put(o, "}");
+  cx_close(c);
+  return id;
+}
+// turn/interrupt of the turn in flight (0 when none is known).
+cx_interrupt :: (c: [] CxClient) -> int {
+  if c[0].turn_n == 0 || c[0].thread_n == 0 { return 0; }
+  id := cx_open(c, CX_TURN_INTERRUPT, "turn/interrupt");
+  o := c[0].out[..];
+  cl_put(o, "{\"threadId\":"); cl_put_string(o, cx_thread_id(c));
+  cl_put(o, ",\"turnId\":"); cl_put_string(o, cx_turn_id(c)); cl_put(o, "}");
+  cx_close(c);
+  return id;
+}
+// model/list, one page (cursor "" for the first): visible models only.
+cx_model_list :: (c: [] CxClient, cursor: string) -> int {
+  id := cx_open(c, CX_MODEL_LIST, "model/list");
+  o := c[0].out[..];
+  cl_put(o, "{\"limit\":50,\"includeHidden\":false");
+  if cursor.count > 0 { cx_put_member(o, "cursor", cursor); }
+  cl_put(o, "}");
+  cx_close(c);
+  return id;
+}
+
+// ---------------------------------------------------------------- answers to the server
+
+cx_respond :: (c: [] CxClient, id_json: string, result: string) {
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id_json); cl_put(o, ",\"result\":"); cl_put(o, result); cl_put(o, "}\n");
+}
+cx_respond_error :: (c: [] CxClient, id_json: string, code: int, message: string) {
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id_json); cl_put(o, ",\"error\":{\"code\":"); cl_put_int(o, code);
+  cl_put(o, ",\"message\":"); cl_put_string(o, message); cl_put(o, "}}\n");
+}
+// The host's answer to the approval it was asked (handle_server_request's
+// replies): a command or a file change accept or decline, the v1 requests
+// approved or denied, permissions granted as asked for the turn or not at all.
+cx_approve :: (c: [] CxClient, accept: bool) {
+  k := c[0].asking;
+  if k == 0 { return; }
+  c[0].asking = 0;
+  id := cast(string) c[0].ask_id[0..<c[0].ask_id_n];
+  if k == CX_ASK_EXEC || k == CX_ASK_PATCH { cx_respond(c, id, ifx accept then "{\"decision\":\"accept\"}" else "{\"decision\":\"decline\"}"); return; }
+  if k == CX_ASK_EXEC_V1 || k == CX_ASK_PATCH_V1 { cx_respond(c, id, ifx accept then "{\"decision\":\"approved\"}" else "{\"decision\":\"denied\"}"); return; }
+  o := c[0].out[..];
+  cl_put(o, "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(o, id); cl_put(o, ",\"result\":{\"permissions\":");
+  cl_put(o, ifx accept && c[0].ask_grant_n > 0 then cast(string) c[0].ask_grant[0..<c[0].ask_grant_n] else "{}");
+  cl_put(o, ",\"scope\":\"turn\"}}\n");
+}
+// An approval left unanswered is declined before the next line (never allowed silently).
+cx_settle :: (c: [] CxClient) { if c[0].asking != 0 { cx_approve(c, false); } }
+
+// ---------------------------------------------------------------- the server's lines
+
+cx_keep :: (dst: [] u8, s: string) -> int { return cl_copy(dst, s); }
+
+cx_take_pending :: (c: [] CxClient, id: int) -> int {
+  for k: 0..<c[0].npend {
+    if c[0].pend_id[k] == id {
+      of := c[0].pend_of[k];
+      for j: k..<c[0].npend - 1 { c[0].pend_id[j] = c[0].pend_id[j + 1]; c[0].pend_of[j] = c[0].pend_of[j + 1]; }
+      c[0].npend -= 1;
+      return of;
+    }
+  }
+  return 0;
+}
+
+cx_ask_kind :: (method: string) -> int {
+  if method == "item/commandExecution/requestApproval" { return CX_ASK_EXEC; }
+  if method == "item/fileChange/requestApproval" { return CX_ASK_PATCH; }
+  if method == "item/permissions/requestApproval" { return CX_ASK_PERMISSIONS; }
+  if method == "execCommandApproval" { return CX_ASK_EXEC_V1; }
+  if method == "applyPatchApproval" { return CX_ASK_PATCH_V1; }
+  return 0;
+}
+
+// One line from the server's stdout.
+cx_feed :: (c: [] CxClient, line: string) -> CxEvent {
+  c[0].ar[0].at = 0; c[0].ar[0].full = false;
+  root := cl_root(line);
+  if !root.ok || root.tok != JSON_OBJECT { return CxEvent.{kind = CxEventKind.invalid, line = line}; }
+  ar := c[0].ar[..];
+  m := cl_find(line, "method");
+  idv := cl_find(line, "id");
+  if m.ok && m.tok == JSON_STRING {
+    method := cl_text(ar, line, m);
+    params := cl_raw(line, "params");
+    if !idv.ok {
+      // the turn in flight, as the server announces it
+      if method == "turn/started" {
+        t := cl_str(ar, line, "params.turn.id");
+        if t.count > 0 { c[0].turn_n = cx_keep(c[0].turn[..], t); }
+      }
+      return CxEvent.{kind = CxEventKind.notification, method = method, params = params, line = line};
+    }
+    // a request from the server
+    id_json := cl_json(line, idv);
+    kind := cx_ask_kind(method);
+    if kind != 0 {
+      if id_json.count > CX_ID { cx_respond_error(c, id_json, -32000, "request id too long"); return CxEvent.{kind = CxEventKind.none, line = line}; }
+      c[0].asking = kind;
+      c[0].ask_id_n = cx_keep(c[0].ask_id[..], id_json);
+      c[0].ask_grant_n = 0;
+      if kind == CX_ASK_PERMISSIONS {
+        grant := cl_raw(line, "params.permissions");
+        if grant.count <= c[0].ask_grant.count { c[0].ask_grant_n = cx_keep(c[0].ask_grant[..], grant); }
+      }
+      return CxEvent.{kind = CxEventKind.approval, of = kind, method = method, params = params, line = line};
+    }
+    // questions and elicitations Zeron's way when nothing can ask them: no answers, declined
+    if method == "item/tool/requestUserInput" { cx_respond(c, id_json, "{\"answers\":{}}"); }
+    else if method == "mcpServer/elicitation/request" { cx_respond(c, id_json, "{\"action\":\"decline\"}"); }
+    else { buf: [160] u8; n := cl_copy(buf[..], "unsupported method: "); n += cl_copy(buf[n..<buf.count], method); cx_respond_error(c, id_json, -32601, cast(string) buf[0..<n]); }
+    return CxEvent.{kind = CxEventKind.none, method = method, line = line};
+  }
+  if !idv.ok || idv.tok != JSON_NUMBER { return CxEvent.{kind = CxEventKind.invalid, line = line}; }
+  of := cx_take_pending(c, json_int(line[idv.from..<idv.to]).value);
+  e := cl_find(line, "error");
+  if e.ok && e.tok == JSON_OBJECT {
+    msg := cl_text(ar, line, cl_member(line, e, "message"));
+    if of == CX_INITIALIZE { return cx_fail(c, "initialize: ", msg); }
+    if of == 0 { return CxEvent.{kind = CxEventKind.none, line = line}; }
+    return CxEvent.{kind = CxEventKind.refused, of = of, message = msg, line = line};
+  }
+  r := cl_find(line, "result");
+  result := cl_json(line, r);
+  if of == CX_INITIALIZE {
+    c[0].initialized = true; c[0].init_wait = false;
+    c[0].agent_n = cx_keep(c[0].agent[..], cl_text(ar, line, cl_member(line, r, "userAgent")));
+    cl_put(c[0].out[..], "{\"jsonrpc\":\"2.0\",\"method\":\"initialized\"}\n");
+    return CxEvent.{kind = CxEventKind.initialized, of = of, result = result, line = line};
+  }
+  if of == CX_THREAD_START || of == CX_THREAD_RESUME {
+    t := cl_str(ar, line, "result.thread.id");
+    if t.count > 0 { c[0].thread_n = cx_keep(c[0].thread[..], t); }
+  }
+  if of == CX_TURN_START {
+    t := cl_str(ar, line, "result.turn.id");
+    if t.count > 0 { c[0].turn_n = cx_keep(c[0].turn[..], t); }
+  }
+  if of == 0 { return CxEvent.{kind = CxEventKind.none, line = line}; }
+  return CxEvent.{kind = CxEventKind.answered, of = of, result = result, line = line};
+}

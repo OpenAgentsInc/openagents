@@ -1,0 +1,8 @@
+// The Coax Codex client: `codex app-server` over JSON-RPC 2.0 on stdio,
+// pull-based like the Claude Agent SDK (../claude), tracking codex-cli
+// 0.163.0 (see PARITY.md). Load this file and link
+// coax/platform/process-native.c.
+
+#load "transport.coax";
+
+CX_UPSTREAM_CODEX_VERSION :: "0.163.0";

@@ -1,0 +1,148 @@
+// The client against recorded `codex app-server` 0.163.0 sessions
+// (fixture.coax): every line classifies, the answers reach the requests
+// that asked, the thread and turn ids are kept, approvals wait for the host
+// and its answers go out as Zeron's harness writes them.
+
+#load "codex.coax";
+#load "fixture.coax";
+
+CxTest :: struct { line: [8] u8; arena: [65536] u8; out: [16384] u8; }
+
+cx_test_client :: (c: [] CxClient, b: [] CxTest) { cx_init(c, b[0].line[..], b[0].arena[..], b[0].out[..]); }
+
+#test "the requests are the JSON-RPC Zeron's harness sends" {
+  c: [1] CxClient; b: [1] CxTest; cx_test_client(c[..], b[..]);
+  #assert cx_initialize(c[..], "openagents-desktop", "OpenAgents", "0.1.0") == 1;
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"clientInfo\":{\"name\":\"openagents-desktop\",\"title\":\"OpenAgents\",\"version\":\"0.1.0\"},\"capabilities\":{\"experimentalApi\":true,\"optOutNotificationMethods\":[\"turn/diff/updated\",\"item/commandExecution/outputDelta\",\"item/fileChange/outputDelta\"]}}}\n";
+  cx_outbox_clear(c[..]);
+  st := CxSettings.{cwd = "/tmp/demo", model = "gpt-6-luna", effort = "high", approval_policy = "untrusted", sandbox = "workspace-write", ask_person = true};
+  #assert cx_thread_start(c[..], st) == 2;
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"thread/start\",\"params\":{\"cwd\":\"/tmp/demo\",\"approvalPolicy\":\"untrusted\",\"sandbox\":\"workspace-write\",\"approvalsReviewer\":\"user\",\"model\":\"gpt-6-luna\"}}\n";
+  cx_outbox_clear(c[..]);
+  c[0].thread_n = cx_keep(c[0].thread[..], "t1");
+  none: [1] string;
+  #assert cx_turn_start(c[..], "hi \"there\"", none[0..<0], st) == 3;
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"turn/start\",\"params\":{\"threadId\":\"t1\",\"input\":[{\"type\":\"text\",\"text\":\"hi \\\"there\\\"\"}],\"approvalPolicy\":\"untrusted\",\"sandboxPolicy\":{\"type\":\"workspaceWrite\",\"networkAccess\":true},\"approvalsReviewer\":\"user\",\"summary\":\"auto\",\"model\":\"gpt-6-luna\",\"effort\":\"high\"}}\n";
+  cx_outbox_clear(c[..]);
+  // plan mode names the collaboration mode, repeating the model and effort
+  st.plan = true; st.sandbox = "danger-full-access"; st.approval_policy = "never"; st.ask_person = false;
+  imgs := [1] string.["/tmp/a.png"];
+  r := cx_turn_start(c[..], "x", imgs[..], st);
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":4,\"method\":\"turn/start\",\"params\":{\"threadId\":\"t1\",\"input\":[{\"type\":\"text\",\"text\":\"x\"},{\"type\":\"localImage\",\"path\":\"/tmp/a.png\"}],\"approvalPolicy\":\"never\",\"sandboxPolicy\":{\"type\":\"dangerFullAccess\"},\"summary\":\"auto\",\"model\":\"gpt-6-luna\",\"effort\":\"high\",\"collaborationMode\":{\"mode\":\"plan\",\"settings\":{\"model\":\"gpt-6-luna\",\"reasoning_effort\":\"high\",\"developer_instructions\":null}}}}\n";
+  cx_outbox_clear(c[..]);
+  #assert cx_interrupt(c[..]) == 0;   // no turn known yet
+  c[0].turn_n = cx_keep(c[0].turn[..], "u9");
+  #assert cx_interrupt(c[..]) == 5 && cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":5,\"method\":\"turn/interrupt\",\"params\":{\"threadId\":\"t1\",\"turnId\":\"u9\"}}\n";
+}
+
+// Feeds a session as the server wrote it, with the requests the recorder
+// sent at their places (ids 1 initialize, 2 model/list when it was asked, then thread/start,
+// then a turn/start before each turn and the interrupt). Counts what came.
+CxTally :: struct {
+  notes: int; deltas: int; items: int; answered: int; refused: int; approvals: int; invalid: int;
+  initialized: bool; thread_answered: bool; interrupted: bool;
+  completed: int; failed_turns: int;
+}
+cx_test_replay :: (c: [] CxClient, lines: [] string, approve: [] bool, models: bool) -> CxTally {
+  t: CxTally;
+  r := cx_initialize(c, "openagents-desktop", "OpenAgents", "0.1.0");
+  if models { r = cx_model_list(c, ""); }
+  st := CxSettings.{cwd = "/tmp/demo/work", model = "gpt-6-luna", approval_policy = "never", sandbox = "danger-full-access"};
+  r = cx_thread_start(c, st);
+  none: [1] string;
+  turns := 0; asked := 0; mark := 0;
+  for l: lines {
+    // the recorder sent the next turn/start once the last turn ended, and the interrupt mid-story
+    if c[0].thread_n > 0 && turns == t.completed && turns < 3 { r = cx_turn_start(c, "next", none[0..<0], st); turns += 1; mark = t.deltas; }
+    if turns == 3 && !t.interrupted && t.deltas > mark + 30 && c[0].turn_n > 0 { r = cx_interrupt(c); t.interrupted = true; }
+    cx_outbox_clear(c);
+    ev := cx_feed(c, l);
+    if ev.kind == CxEventKind.initialized { t.initialized = true; }
+    else if ev.kind == CxEventKind.answered {
+      t.answered += 1;
+      if ev.of == CX_THREAD_START { t.thread_answered = true; }
+    }
+    else if ev.kind == CxEventKind.refused { t.refused += 1; }
+    else if ev.kind == CxEventKind.approval {
+      t.approvals += 1;
+      cx_approve(c, asked < approve.count && approve[asked]);
+      asked += 1;
+    }
+    else if ev.kind == CxEventKind.invalid { t.invalid += 1; }
+    else if ev.kind == CxEventKind.notification {
+      t.notes += 1;
+      if ev.method == "item/agentMessage/delta" { t.deltas += 1; }
+      if ev.method == "item/started" || ev.method == "item/completed" { t.items += 1; }
+      if ev.method == "turn/completed" {
+        t.completed += 1;
+        if cl_str(c[0].ar[..], ev.line, "params.turn.status") == "failed" { t.failed_turns += 1; }
+      }
+    }
+  }
+  return t;
+}
+
+#test "a recorded full-access session: initialize, the model list, the thread, two turns" {
+  c: [1] CxClient; b: [1] CxTest;
+  big: [65536] u8;
+  cx_init(c[..], b[0].line[..], b[0].arena[..], big[..]);
+  fx := CX_FIXTURE_FULL;
+  no: [1] bool;
+  t := cx_test_replay(c[..], fx[..], no[0..<0], true);
+  #assert t.initialized && c[0].initialized && t.thread_answered && t.invalid == 0 && t.refused == 0;
+  #assert cx_user_agent(c[..]).count > 20 && cx_thread_id(c[..]) == "01a18a24-f0c2-79a0-9871-f63b21f8ac2a";
+  // the model list and thread/start, then two turn/starts
+  #assert t.answered == 4 && t.completed == 2 && t.failed_turns == 0 && t.items >= 16;
+  #assert cx_turn_id(c[..]) == "01a18a25-07cd-7e82-86ec-b76d16214cc8" && c[0].npend == 0;
+}
+
+#test "a recorded supervised session: the patch approval accepted, the command declined, the story interrupted" {
+  c: [1] CxClient; b: [1] CxTest;
+  big: [65536] u8;
+  cx_init(c[..], b[0].line[..], b[0].arena[..], big[..]);
+  fx := CX_FIXTURE_SUPERVISED;
+  decisions := [2] bool.[true, false];
+  // record the answers as they go out
+  t := cx_test_replay(c[..], fx[..], decisions[..], false);
+  #assert t.approvals == 2; #assert t.completed == 2; #assert t.interrupted; #assert t.invalid == 0;
+  // the interrupt's answer came: nothing waits
+  #assert c[0].npend == 0 && c[0].asking == 0;
+}
+
+#test "approvals: each kind's answer, an unanswered one declined, other server requests answered inside" {
+  c: [1] CxClient; b: [1] CxTest; cx_test_client(c[..], b[..]);
+  ev := cx_feed(c[..], "{\"method\":\"item/fileChange/requestApproval\",\"id\":0,\"params\":{\"threadId\":\"t\",\"turnId\":\"u\",\"itemId\":\"exec-1\",\"reason\":null,\"grantRoot\":null}}");
+  #assert ev.kind == CxEventKind.approval && ev.of == CX_ASK_PATCH && cl_str(c[0].ar[..], ev.params, "itemId") == "exec-1";
+  cx_approve(c[..], true);
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":0,\"result\":{\"decision\":\"accept\"}}\n";
+  cx_outbox_clear(c[..]);
+  ev = cx_feed(c[..], "{\"method\":\"item/commandExecution/requestApproval\",\"id\":\"r-7\",\"params\":{\"command\":\"/bin/zsh -lc 'touch denied.txt'\"}}");
+  #assert ev.kind == CxEventKind.approval && ev.of == CX_ASK_EXEC;
+  cx_settle(c[..]);
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":\"r-7\",\"result\":{\"decision\":\"decline\"}}\n";
+  cx_outbox_clear(c[..]);
+  ev = cx_feed(c[..], "{\"method\":\"item/permissions/requestApproval\",\"id\":4,\"params\":{\"permissions\":{\"network\":{\"enabled\":true}}}}");
+  cx_approve(c[..], true);
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":4,\"result\":{\"permissions\":{\"network\":{\"enabled\":true}},\"scope\":\"turn\"}}\n";
+  cx_outbox_clear(c[..]);
+  ev = cx_feed(c[..], "{\"method\":\"execCommandApproval\",\"id\":5,\"params\":{}}");
+  cx_approve(c[..], false);
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":5,\"result\":{\"decision\":\"denied\"}}\n";
+  cx_outbox_clear(c[..]);
+  ev = cx_feed(c[..], "{\"method\":\"mcpServer/elicitation/request\",\"id\":6,\"params\":{}}");
+  #assert ev.kind == CxEventKind.none && cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":6,\"result\":{\"action\":\"decline\"}}\n";
+  cx_outbox_clear(c[..]);
+  ev = cx_feed(c[..], "{\"method\":\"item/tool/call\",\"id\":7,\"params\":{}}");
+  #assert cx_outbox(c[..]) == "{\"jsonrpc\":\"2.0\",\"id\":7,\"error\":{\"code\":-32601,\"message\":\"unsupported method: item/tool/call\"}}\n";
+  #assert cx_feed(c[..], "not json").kind == CxEventKind.invalid && cx_feed(c[..], "[1]").kind == CxEventKind.invalid;
+}
+
+#test "a refused request and a refused initialize" {
+  c: [1] CxClient; b: [1] CxTest; cx_test_client(c[..], b[..]);
+  r := cx_initialize(c[..], "a", "b", "c");
+  r = cx_request(c[..], "thread/resume", "{\"threadId\":\"gone\"}");
+  ev := cx_feed(c[..], "{\"id\":2,\"error\":{\"code\":-32600,\"message\":\"no rollout found for thread id gone\"}}");
+  #assert ev.kind == CxEventKind.refused && ev.of == CX_OTHER && ev.message == "no rollout found for thread id gone";
+  ev = cx_feed(c[..], "{\"id\":1,\"error\":{\"code\":-32600,\"message\":\"bad\"}}");
+  #assert ev.kind == CxEventKind.failed && cx_error(c[..]) == "initialize: bad" && c[0].completed;
+}
