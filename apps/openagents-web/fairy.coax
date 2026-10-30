@@ -19,8 +19,8 @@
 //
 // The look (fairy.wgsl, verse/paint.coax): three soft toon bands with a warm
 // rim, shadows tinted blue, blue-cyan haze that steps the ridges back, a
-// painted sky with a sun and soft clouds, wind-swept grass instanced on the
-// GPU, blob canopies, and a post pass with gentle bloom, a soft tone curve
+// painted sky with a sun and soft clouds, blob canopies (no grass in the park),
+// and a post pass with gentle bloom, a soft tone curve
 // and lifted blacks. Everything is drawn from the engine's five shapes in
 // code: a ground of cells (store 0), every object as a shape (store 1), the
 // stream's nodes (store 2), the grass from a hash of its cell.
@@ -2260,7 +2260,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   // the grass round the camera's ground point, patch-snapped so it doesn't swim
   // the grass round your feet (the camera's look point is up in the air when you fly), and none once the eye is 30 m up
   gx := floor(shown.x / 2) * 2 - f32(side); gz := floor(shown.z / 2) * 2 - f32(side);
-  if shot.eye.y - ground_at(s, shot.eye.x, shot.eye.z) > 30 || !redit_row_on(s[0].ed[..], "grass") { s[0].draws[g + 3] = 0; }
+  if shot.eye.y - ground_at(s, shot.eye.x, shot.eye.z) > 30 { s[0].draws[g + 3] = 0; }
   u[U_GRASS] = gx; u[U_GRASS + 1] = gz; u[U_GRASS + 2] = f32(side); u[U_GRASS + 3] = f32(blades);
   u[U_GRASS2] = f32(side) - 1; u[U_GRASS2 + 1] = f32(FF_LEVEL); u[U_GRASS2 + 2] = f32(FF_PATH_HALF); u[U_GRASS2 + 3] = shown.x;
   // you part the grass where you stand
@@ -2561,14 +2561,14 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   boxes := g[0].counts[SHAPE_BOX];
   #assert g[0].draws[GRASS_DRAW * 4 + 3] == 0 && fairy_may_fly(g[..]);
   redit_requested(g[0].ed[..], 5);
-  used := redit_message(g[0].ed[..], HTTP_KIND + 5, "200\nrealm fairy-forest\nrole visitor\nowner 0\ntool fly 0\nrow sparkles 1 Sparkles\nrow grass 0 Grass\nrow ridges 0 Ridges\n");
+  used := redit_message(g[0].ed[..], HTTP_KIND + 5, "200\nrealm fairy-forest\nrole visitor\nowner 0\ntool fly 0\nrow sparkles 1 Sparkles\nrow ridges 0 The city round the park\n");
   n = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].counts[SHAPE_BOX] == boxes - g[0].block_n && g[0].counts[SHAPE_SPHERE] == spheres;   // the skyline off
   #assert !fairy_may_fly(g[..]) && !g[0].ed[0].shown[RB_EDIT];   // a visitor: no flight, no EDIT
   a: [1] Fairy;
   n = fairy_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   redit_requested(a[0].ed[..], 6);
-  used = redit_message(a[0].ed[..], HTTP_KIND + 6, "200\nrealm fairy-forest\nrole owner\nowner 1\ntool fly 0\nrow grass 1 Grass\nwaiting 0\n");
+  used = redit_message(a[0].ed[..], HTTP_KIND + 6, "200\nrealm fairy-forest\nrole owner\nowner 1\ntool fly 0\nrow sparkles 1 Sparkles\nwaiting 0\n");
   n = fairy_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert a[0].ed[0].shown[RB_EDIT] && fairy_may_fly(a[..]);   // its owner flies, settings or not
   e := a[0].ed[0].boxes[RB_EDIT];

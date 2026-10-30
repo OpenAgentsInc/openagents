@@ -109,8 +109,7 @@
         "edit": { "owner": "n-9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a", "admins": ["n-1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"], "tools": ["fly"], "things": [],
           "rows": [
             {"id": "sparkles", "label": "Fairy dust sparkles", "says": "the fairy dust sparkling behind you"},
-            {"id": "grass", "label": "Wind-swept grass", "says": "the grass swaying in the wind"},
-            {"id": "ridges", "label": "The far ridges", "says": "the ridges far round the valley"} ] },
+            {"id": "ridges", "label": "The city round the park", "says": "the city blocks and towers round the park"} ] },
         "style": "flat",
         "clock": "real",
         "title": "Fairy Forest",
