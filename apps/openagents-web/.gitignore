@@ -1,1 +1,4 @@
 build/
+
+# Served verbatim from scripts/join-pylon.sh by build.sh.
+pylon/join.sh

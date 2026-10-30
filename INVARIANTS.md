@@ -1827,6 +1827,29 @@ and `verse/test_haunt.sh`. The actual app's buffer admission consumes the
 reflected Haunted House stride, layer offset and compile-time scalar table.
 Metal packing and source binary compatibility remain explicit native checks.
 
+## The public Pylon board verifies original events and labels live observation
+
+`apps/openagents-web/pylon.coax` displays read-only Pylon state. Its private
+C byte bridge passes the identical original event to the shared Coax
+`landing-nostr.coax` reader: beacon projection requires the event ID,
+BIP-340 signature, decoded-content SHA-256, provider binding, schema and
+freshness checks. Activity requires the same original event verification.
+No public Wasm export accepts an admitted flag or a projected machine.
+Owner authorization, hardware claims and encrypted outcomes are not proved
+by a self-signed beacon. The agent guide states these limits.
+
+Kinds 26910/27010 are ephemeral. The board counts only live observations
+from its opening time, for keys with an admitted beacon, with duplicate IDs
+suppressed. Its bounded 64-ID window freezes explicitly when full; it never
+evicts IDs and silently recounts replays. Expired/non-online beacons are
+labelled offline. Newer generations cannot be replaced by older ones.
+`pylon-policy.coax` is an authority-marked display-policy unit with a
+zero-survivor mutation gate. `coax/web/tests/pylon_page.test.ts` exercises
+the actual page Wasm and C bridge with independent signed fixtures, including
+tampered signatures/content, invalid beacons, old activity and duplicates.
+Desktop/phone page-start and golden checks cover `/pylon`; release smoke
+also requires its Markdown guide and the verbatim audience join script.
+
 ## Coaxial pages draw everything in Coax; TypeScript only for browser crypto
 
 Everything a person sees on a Coaxial page (`apps/openagents-web/`, any app

@@ -132,6 +132,12 @@ nip01=$!
 cp "$here/nip01.wgsl" "$here/nip-guide.wgsl"
 "$here/../../coax/web/wasm.sh" "$here/nip-guide.coax" "$here/nip-guide-face.c" "$here/build/nip-guide.wasm" "$here/nip-guide-observe.coax" &
 nip_guide=$!
+# /pylon: read-only live Pylon network, shared checked Coax verifier.
+cp "$here/nip01.wgsl" "$here/pylon.wgsl"
+"$here/../../coax/web/wasm.sh" "$here/pylon.coax" "$here/pylon-face.c" "$here/build/pylon.wasm" "$here/../../coax/web/project/landing-nostr.coax" &
+pylon=$!
+# Keep the public join command identical to the tested source, never a fork.
+cp "$here/../../scripts/join-pylon.sh" "$here/pylon/join.sh"
 # /admin/analytics: the projects list's HUD over the admins' numbers.
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" &
 admin=$!
@@ -151,6 +157,7 @@ wait "$admin"
 wait "$chat"
 wait "$nip01"
 wait "$nip_guide"
+wait "$pylon"
 wait "$splash"
 wait "$realm"
 wait "$voice"

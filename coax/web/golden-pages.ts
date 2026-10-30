@@ -47,6 +47,8 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
   const byAddress: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
     "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
+  byAddress["pylon"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon"}
+  byAddress["pylon-phone"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon",size:[390,844]}
   // NIP guides are public Coaxial pages too. Every route must start and draw
   // during staging and production checks, with its own reviewed golden.
   const nipCatalog = join(ROOT, APP, "nip/catalog.json")

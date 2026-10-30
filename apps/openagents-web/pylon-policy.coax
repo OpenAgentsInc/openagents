@@ -1,0 +1,30 @@
+// Display policy only. Signed event and beacon admission use landing-nostr.coax.
+#authority;
+pl_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool {
+  return generation>held_generation || (generation==held_generation && observed>held_observed);
+}
+pl_live_time :: (created:int,opened:int,now:int)->bool {
+  return created>=opened && created<=now+30;
+}
+pl_current :: (until:int,now:int,status:string)->bool {return until>now && status=="online";}
+#test "beacon replacements never roll a generation or observation back" {
+  #assert pl_newer(2,0,1,9);
+  #assert pl_newer(1,2,1,1);
+  #assert !pl_newer(1,1,1,1);
+  #assert !pl_newer(1,0,1,1);
+  #assert !pl_newer(0,9,1,1);
+}
+#test "live activity is bounded to this page session and future tolerance" {
+  #assert pl_live_time(100,100,100);
+  #assert !pl_live_time(99,100,100);
+  #assert pl_live_time(130,100,100);
+  #assert !pl_live_time(131,100,100);
+  #assert pl_live_time(129,100,100);
+}
+#test "expired and non-online beacons are not live machines" {
+  #assert pl_current(101,100,"online");
+  #assert !pl_current(100,100,"online");
+  #assert !pl_current(99,100,"online");
+  #assert !pl_current(101,100,"draining");
+  #assert !pl_current(101,100,"");
+}

@@ -152,7 +152,8 @@ if not coder:
 agent = [("/llms.txt", "text/plain", b"# OpenAgents"), ("/llms-full.txt", "text/plain", b"# OpenAgents"),
          ("/robots.txt", "text/plain", b"User-agent"), ("/sitemap.xml", "application/xml", b"<urlset"),
          ("/.well-known/nostr.json", "application/json", b'"coax"'), ("/.well-known/security.txt", "text/plain", b"Contact:"),
-         ("/cli/install.sh", "text/plain", b"#!/")]
+         ("/cli/install.sh", "text/plain", b"#!/"),
+         ("/pylon/index.md", "text/markdown", b"# Pylon"), ("/pylon/join.sh", "text/plain", b"#!/")]
 for (path, kind, start), (s, h, body) in zip(agent, fetch([p for p, _, _ in agent])):
     check(s == 200 and h.get("content-type", "").startswith(kind) and start in body[:4000], f"{path} ({s}, {h.get('content-type')})")
 # Signing in with the phone (docs/phone-sign-in.md): the page, the app's universal links, the API.
