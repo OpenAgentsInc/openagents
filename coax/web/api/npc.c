@@ -71,7 +71,11 @@ static bool token(char *out, size_t cap) {
 
 // Asks the model (its generateContent URL from url_env, else Vertex's for
 // model): the HTTP status (0 unreached) and the body into b.
+static long ask_model_in(const char *url_env, const char *model, const char *request, buf *b, long timeout_ms);
 static long ask_model(const char *url_env, const char *model, const char *request, buf *b) {
+  return ask_model_in(url_env, model, request, b, 25000);
+}
+static long ask_model_in(const char *url_env, const char *model, const char *request, buf *b, long timeout_ms) {
   char url[512];
   const char *given = getenv(url_env);
   if (given && *given) snprintf(url, sizeof url, "%s", given);
@@ -88,7 +92,7 @@ static long ask_model(const char *url_env, const char *model, const char *reques
     curl_easy_setopt(h, CURLOPT_POSTFIELDS, request);
     curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, take);
     curl_easy_setopt(h, CURLOPT_WRITEDATA, b);
-    curl_easy_setopt(h, CURLOPT_TIMEOUT, 25L);
+    curl_easy_setopt(h, CURLOPT_TIMEOUT_MS, timeout_ms);
     if (curl_easy_perform(h) == CURLE_OK) curl_easy_getinfo(h, CURLINFO_RESPONSE_CODE, &status);
     curl_slist_free_all(hd); curl_easy_cleanup(h);
   } else api_log("npc: no token");
@@ -243,13 +247,21 @@ bool piece_route(const request *q) {
 // Gemini picks one edit from the realm's catalogue (migrations/0045_realm_voice_edit.sql) and SQL holds
 // the answer to it; the page does the edit and publishes the realm's world (an admin's write, checked there).
 //   OA_EDIT_URL    the generateContent URL (tests point it at a fake)
-//   OA_EDIT_MODEL  the model (gemini-3.8-flash)
+//   OA_EDIT_MODEL  the model (gemini-2.5-flash, its thinking off: migrations/0054_voice_edit_fast.sql)
+//   OA_EDIT_TIMEOUT_MS  how long one try may take (4000); an unanswered or failed try is tried once more
 //   OA_EDIT_DAILY_CAP  voice edits a day across the server (2000)
 static void voice_edit_answer(int fd, const char *asked, const char *request) {
-  const char *model = getenv("OA_EDIT_MODEL"); if (!model || !*model) model = "gemini-3.8-flash";
+  const char *model = getenv("OA_EDIT_MODEL"); if (!model || !*model) model = "gemini-2.5-flash";
+  const char *limit = getenv("OA_EDIT_TIMEOUT_MS");
+  long timeout_ms = limit && atol(limit) > 0 ? atol(limit) : 4000;
   buf b = {0};
   double t0 = api_now_ms();
-  long status = ask_model("OA_EDIT_URL", model, request, &b);
+  long status = ask_model_in("OA_EDIT_URL", model, request, &b, timeout_ms);
+  if (status == 0 || status == 429 || status >= 500) {   // once more, as fast: a stalled call is the slow tail
+    api_log("voice edit: model answered %ld, trying again", status);
+    free(b.p); b = (buf){0};
+    status = ask_model_in("OA_EDIT_URL", model, request, &b, timeout_ms);
+  }
   char http[16], taken[16];
   snprintf(http, sizeof http, "%ld", status);
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));

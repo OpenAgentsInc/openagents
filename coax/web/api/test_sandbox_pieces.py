@@ -14,12 +14,15 @@ class FakePieceModel(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
         piece_seen.append({"auth": self.headers.get("Authorization"), "body": body})
-        if piece_mode["status"] != 200:
-            out = json.dumps({"error": {"code": piece_mode["status"]}}).encode()
+        once = piece_mode.pop("once", None)   # a first try that fails ("503") or stalls ("stall") before the real answer
+        if once == "stall":
+            time.sleep(2.5)
+        if once == "503" or piece_mode["status"] != 200:
+            out = json.dumps({"error": {"code": 503 if once == "503" else piece_mode["status"]}}).encode()
         else:
             out = json.dumps({"candidates": [{"content": {"role": "model", "parts": [
                 {"text": "thinking about it", "thought": True}, {"text": piece_mode["text"]}]}, "finishReason": "STOP"}]}).encode()
-        self.send_response(piece_mode["status"])
+        self.send_response(503 if once == "503" else piece_mode["status"])
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
@@ -113,19 +116,19 @@ for tok, pk in (("9" * 64, admin_hex), ("8" * 64, "7" * 64)):
     sql(f"insert into signin.sessions (token_sha256, pubkey, created_ms, expires_ms) values (encode(sha256('{tok}'), 'hex'), '{pk}', 0, 9999999999999) on conflict do nothing")
 
 
-def voice_edit(sentence, answer=None, cookie="9" * 64, realm="everglade", origin=API):
+def voice_edit(sentence, answer=None, cookie="9" * 64, realm="everglade", origin=API, wait=True):
     if answer is not None:
         piece_mode["text"] = answer if isinstance(answer, str) else json.dumps(answer)
     h = {"Content-Type": "application/json"}
     if cookie: h["Cookie"] = "oa_session=" + cookie
     if origin: h["Origin"] = origin
-    time.sleep(1.6)   # one edit at a time per admin
+    if wait: time.sleep(0.05)
     s, raw, _ = call("POST", f"/api/playtest/realm/{realm}/edit", json.dumps({"sentence": sentence}).encode(), h)
     return s, json.loads(raw)
 
 
 import time
-M = {"model": "gemini-3.8-flash"}
+M = {"model": "gemini-2.5-flash"}   # its thinking off (migrations/0054_voice_edit_fast.sql)
 def said(**kw):   # a whole answer as the model gives it: every field, "not said" values for the rest
     a = {"edit": "none", "item": "something", "name": "", "count": 1, "arrange": "front", "onto": "ground", "colour": "unsaid", "size": 1,
          "direction": "here", "metres": 0, "turn": 0, "all": False, "who": "nobody", "building": "unnamed"}
@@ -133,6 +136,24 @@ def said(**kw):   # a whole answer as the model gives it: every field, "not said
     return a
 s, a = voice_edit("put two barrels here", said(edit="place", item="barrel", count=2))
 check("voice edit: an admin's sentence becomes the edit the model picked, without its not-said fields", s == 200 and a == {"edit": "place", "item": "barrel", "count": 2, **M}, (s, a))
+gc = piece_seen[-1]["body"]["generationConfig"]
+check("voice edit: the planner is asked with its thinking off, for a fast answer", gc.get("thinkingConfig") == {"thinkingBudget": 0}, gc)
+s, a = voice_edit("put a crate here", said(edit="place", item="crate"), wait=False)
+check("voice edit: the next sentence goes the moment the last is answered", s == 200 and a.get("item") == "crate", (s, a))
+sql("insert into verse.voice_edits (ms, realm, pubkey, sentence) values (verse.now_ms(), 'everglade', '" + admin_hex + "', 'still with the model')")
+s, a = voice_edit("put a crate here", said(edit="place", item="crate"))
+check("voice edit: one at a time: not while another is with the model", s == 429, (s, a))
+sql("update verse.voice_edits set ms_taken = 1 where sentence = 'still with the model'")
+piece_mode["once"] = "503"
+n = len(piece_seen)
+s, a = voice_edit("put two barrels here", said(edit="place", item="barrel", count=2))
+check("voice edit: a failed try is tried once more", s == 200 and a.get("item") == "barrel" and len(piece_seen) == n + 2, (s, a, len(piece_seen) - n))
+piece_mode["once"] = "stall"
+n = len(piece_seen)
+s, a = voice_edit("put two barrels here", said(edit="place", item="barrel", count=2))
+taken = sql("select ms_taken from verse.voice_edits order by id desc limit 1")
+check("voice edit: a stalled try is cut off and tried again, and the time both took is kept",
+      s == 200 and a.get("item") == "barrel" and len(piece_seen) == n + 2 and 1500 <= int(taken) < 2500, (s, a, len(piece_seen) - n, taken))
 sent = piece_seen[-1]["body"]
 check("voice edit: the words are the model's only input from the admin", sent["contents"] == [{"role": "user", "parts": [{"text": "put two barrels here"}]}])
 schema = sent["generationConfig"]["responseSchema"]
@@ -226,5 +247,5 @@ check("voice edit: another site's page is refused", s == 403, (s, a))
 s, a = voice_edit("put a crate here", said(edit="place", item="crate"), realm="ice-cream-man")
 check("voice edit: a realm without voice edits says so", s == 400, (s, a))
 check("voice edit: every sentence is kept with the admin who said it",
-      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "42" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0",
+      sql("select count(*) from verse.voice_edits where pubkey = '" + admin_hex + "'") == "46" and sql("select count(*) from verse.voice_edits where pubkey <> '" + admin_hex + "'") == "0",
       sql("select count(*) from verse.voice_edits"))
