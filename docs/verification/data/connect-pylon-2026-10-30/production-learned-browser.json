@@ -1,0 +1,600 @@
+{
+  "recorded_at": "2026-10-30T20:11:43.688711+00:00",
+  "production": {
+    "source": "af709b146ae970b1c38f22a04d77df56b07ab710",
+    "stamp": "20261030T200725Z",
+    "normal_release": "68393 / af709b146a",
+    "held_pages": [],
+    "qualification": "Normal staging HTTP/live-home, visual goldens, performance, production start/HTTP/live-home gates passed; no native/model requalification for this visual correction."
+  },
+  "canonical_guide": {
+    "url": "https://openagents.com/docs/connect-a-pylon",
+    "markdown_url": "https://openagents.com/docs/connect-a-pylon/index.md",
+    "markdown_bytes": 13933,
+    "sha256": "00afd08fd327acbfef45ebaa580ce0dfe9834b4b18172e21b7a3ba5e05c1221c",
+    "feedback_url": "https://github.com/OpenAgentsInc/openagents/issues"
+  },
+  "installer": {
+    "url": "https://openagents.com/pylon/join.sh",
+    "sha256": "f7490fb022bdd8d3d035ae8fedf495687bc4c4b2ad47cb1defee11ef3ca61f9f",
+    "copied_command_bytes": 127
+  },
+  "native_qualification_receipts": [
+    "psionic/fixtures/pylon/learned-selfserve/2026-10-30/checks.json",
+    "psionic/fixtures/pylon/learned-selfserve/2026-10-30/linux.json",
+    "psionic/fixtures/pylon/learned-selfserve/2026-10-30/mac.json",
+    "psionic/fixtures/pylon/learned-selfserve/2026-10-30/production-api.json"
+  ],
+  "homepage": {
+    "base": "https://openagents.com",
+    "at": "2026-10-30T20:08:35.264Z",
+    "job_api": null,
+    "scenarios": [
+      {
+        "viewport": {
+          "name": "desktop",
+          "width": 1440,
+          "height": 900,
+          "touch": false
+        },
+        "errors": [],
+        "sockets": 2,
+        "received_frames": 246,
+        "sent_frames": 20,
+        "documents": [
+          "https://openagents.com/",
+          "https://openagents.com/docs/connect-a-pylon"
+        ],
+        "document_responses": [
+          {
+            "url": "https://openagents.com/",
+            "status": 200
+          },
+          {
+            "url": "https://openagents.com/docs/connect-a-pylon",
+            "status": 200
+          }
+        ],
+        "home": {
+          "ready": true,
+          "sceneReady": false,
+          "probe": 394751,
+          "ready_projects": 63,
+          "beacons": 5,
+          "refreshes": 6,
+          "refused": 0,
+          "count": 5,
+          "online": 5,
+          "free": 15,
+          "open": 0,
+          "scroll": 0,
+          "controls": [
+            [
+              1104,
+              28,
+              1254,
+              68
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "rows": [
+            {
+              "status": 0,
+              "free": 2,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 1,
+              "answers": 0,
+              "updates": 0
+            }
+          ]
+        },
+        "browser": {
+          "width": 1440,
+          "height": 900,
+          "dpr": 1
+        },
+        "home_screenshot": "/tmp/connect-pylon-learned-production-home-desktop-home.png",
+        "panel": {
+          "ready": true,
+          "sceneReady": false,
+          "probe": 460287,
+          "ready_projects": 63,
+          "beacons": 5,
+          "refreshes": 7,
+          "refused": 0,
+          "count": 5,
+          "online": 5,
+          "free": 15,
+          "open": 1,
+          "scroll": 0,
+          "controls": [
+            [
+              1104,
+              28,
+              1254,
+              68
+            ],
+            [
+              44,
+              156,
+              263,
+              196
+            ],
+            [
+              273,
+              156,
+              492,
+              196
+            ],
+            [
+              464,
+              92,
+              500,
+              128
+            ]
+          ],
+          "rows": [
+            {
+              "status": 0,
+              "free": 2,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 1,
+              "answers": 0,
+              "updates": 0
+            }
+          ]
+        },
+        "panel_screenshot": "/tmp/connect-pylon-learned-production-home-desktop-panel.png",
+        "clipboard": {
+          "matches": true,
+          "bytes": 127
+        },
+        "guide": "https://openagents.com/docs/connect-a-pylon",
+        "elapsed_ms": 6292
+      },
+      {
+        "viewport": {
+          "name": "phone",
+          "width": 390,
+          "height": 844,
+          "touch": true
+        },
+        "errors": [],
+        "sockets": 2,
+        "received_frames": 246,
+        "sent_frames": 20,
+        "documents": [
+          "https://openagents.com/",
+          "https://openagents.com/docs/connect-a-pylon"
+        ],
+        "document_responses": [
+          {
+            "url": "https://openagents.com/",
+            "status": 200
+          },
+          {
+            "url": "https://openagents.com/docs/connect-a-pylon",
+            "status": 200
+          }
+        ],
+        "home": {
+          "ready": true,
+          "sceneReady": false,
+          "probe": 394751,
+          "ready_projects": 63,
+          "beacons": 5,
+          "refreshes": 6,
+          "refused": 0,
+          "count": 5,
+          "online": 5,
+          "free": 15,
+          "open": 0,
+          "scroll": 0,
+          "controls": [
+            [
+              16,
+              636,
+              131.33334350585938,
+              684
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              0,
+              0,
+              0,
+              0
+            ]
+          ],
+          "rows": [
+            {
+              "status": 0,
+              "free": 2,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 1,
+              "answers": 0,
+              "updates": 0
+            }
+          ]
+        },
+        "browser": {
+          "width": 390,
+          "height": 844,
+          "dpr": 1
+        },
+        "home_screenshot": "/tmp/connect-pylon-learned-production-home-phone-home.png",
+        "panel": {
+          "ready": true,
+          "sceneReady": false,
+          "probe": 460287,
+          "ready_projects": 63,
+          "beacons": 5,
+          "refreshes": 7,
+          "refused": 0,
+          "count": 5,
+          "online": 5,
+          "free": 15,
+          "open": 1,
+          "scroll": 0,
+          "controls": [
+            [
+              0,
+              0,
+              0,
+              0
+            ],
+            [
+              32,
+              176,
+              190,
+              216
+            ],
+            [
+              200,
+              176,
+              358,
+              216
+            ],
+            [
+              330,
+              112,
+              366,
+              148
+            ]
+          ],
+          "rows": [
+            {
+              "status": 0,
+              "free": 2,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 4,
+              "answers": 0,
+              "updates": 0
+            },
+            {
+              "status": 0,
+              "free": 1,
+              "answers": 0,
+              "updates": 0
+            }
+          ]
+        },
+        "panel_screenshot": "/tmp/connect-pylon-learned-production-home-phone-panel.png",
+        "clipboard": {
+          "matches": true,
+          "bytes": 127
+        },
+        "guide": "https://openagents.com/docs/connect-a-pylon",
+        "elapsed_ms": 4084
+      }
+    ],
+    "passed": true
+  },
+  "guide_browser": {
+    "base": "https://openagents.com",
+    "at": "2026-10-30T20:08:46.325Z",
+    "scenarios": [
+      {
+        "viewport": {
+          "name": "desktop",
+          "w": 1440,
+          "h": 900,
+          "d": 1,
+          "touch": false
+        },
+        "errors": [],
+        "initial": {
+          "ready": true,
+          "scroll": 0,
+          "limit": 4786.5234375,
+          "action": 0,
+          "controls": [
+            [
+              320,
+              104,
+              714,
+              146
+            ],
+            [
+              726,
+              104,
+              1120,
+              146
+            ],
+            [
+              1056,
+              22,
+              1120,
+              58
+            ],
+            [
+              320,
+              164,
+              1120,
+              880
+            ]
+          ]
+        },
+        "screenshot": "/tmp/connect-pylon-learned-production-guide-desktop.png",
+        "markdown_bytes": 13933,
+        "command_bytes": 127,
+        "scrolled": {
+          "ready": true,
+          "scroll": 160,
+          "limit": 4786.5234375,
+          "action": 0,
+          "controls": [
+            [
+              320,
+              104,
+              714,
+              146
+            ],
+            [
+              726,
+              104,
+              1120,
+              146
+            ],
+            [
+              1056,
+              22,
+              1120,
+              58
+            ],
+            [
+              320,
+              164,
+              1120,
+              880
+            ]
+          ]
+        }
+      },
+      {
+        "viewport": {
+          "name": "phone",
+          "w": 390,
+          "h": 844,
+          "d": 2,
+          "touch": true
+        },
+        "errors": [],
+        "initial": {
+          "ready": true,
+          "scroll": 0,
+          "limit": 8916.921875,
+          "action": 0,
+          "controls": [
+            [
+              16,
+              104,
+              189,
+              146
+            ],
+            [
+              201,
+              104,
+              374,
+              146
+            ],
+            [
+              310,
+              22,
+              374,
+              58
+            ],
+            [
+              16,
+              164,
+              374,
+              824
+            ]
+          ]
+        },
+        "screenshot": "/tmp/connect-pylon-learned-production-guide-phone.png",
+        "markdown_bytes": 13933,
+        "command_bytes": 127,
+        "scrolled": {
+          "ready": true,
+          "scroll": 160,
+          "limit": 8916.921875,
+          "action": 0,
+          "controls": [
+            [
+              16,
+              104,
+              189,
+              146
+            ],
+            [
+              201,
+              104,
+              374,
+              146
+            ],
+            [
+              310,
+              22,
+              374,
+              58
+            ],
+            [
+              16,
+              164,
+              374,
+              824
+            ]
+          ]
+        }
+      }
+    ]
+  },
+  "legacy_pylon": {
+    "base": "https://openagents.com",
+    "at": "2026-10-30T20:10:05.805Z",
+    "scenarios": [
+      {
+        "viewport": {
+          "name": "desktop",
+          "width": 1440,
+          "height": 900,
+          "dpr": 1,
+          "touch": false
+        },
+        "errors": [],
+        "command_bytes": 127,
+        "clipboard_matches": true,
+        "guide": "https://openagents.com/docs/connect-a-pylon"
+      },
+      {
+        "viewport": {
+          "name": "phone",
+          "width": 390,
+          "height": 844,
+          "dpr": 2,
+          "touch": true
+        },
+        "errors": [],
+        "command_bytes": 127,
+        "clipboard_matches": true,
+        "guide": "https://openagents.com/docs/connect-a-pylon"
+      }
+    ]
+  },
+  "notes": [
+    "All browser interactions ran muted/headless with ordinary mouse/touch input and actual platform clipboard/navigation effects.",
+    "Legacy copy started with a distinct public clipboard sentinel; readiness observed real submitted GPU work rather than the3D-only sceneReady flag.",
+    "The earlier production-browser.json10374-byte capture is historical and remains unchanged.",
+    "The original Walk Around author provided desktop/phone golden approval af709b146a; our redundant golden commit was dropped."
+  ]
+}
