@@ -13,7 +13,7 @@ fi
 out=$(mktemp -d "${TMPDIR:-/tmp}/psionic-device.XXXXXX")
 trap 'rm -rf "$out"' EXIT
 "$coax" version
-for unit in project layer warp plan; do
+for unit in project layer warp tile plan; do
     "$coax" test "psionic/lib/device/$unit.coax"
     "$coax" test "psionic/lib/device/$unit.coax" --release
 done
@@ -34,5 +34,5 @@ done
 "$cc" -std=c11 -O2 -Wall -Wextra -Werror -Ipsionic/platform -c psionic/platform/cuda-host.c -o "$out/cuda-host.o"
 psionic/tests/run_device_project.sh quick
 psionic/tests/run_device_warp.sh
-for unit in project layer warp plan; do "$coax" mutate "psionic/lib/device/$unit.coax"; done
+for unit in project layer warp tile plan; do "$coax" mutate "psionic/lib/device/$unit.coax"; done
 echo "Device chapters pass: debug/release checks, CUDA emission, examples, host build, device projection and zero-survivor mutation"

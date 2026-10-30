@@ -36,7 +36,7 @@ if [[ $gpu == gpu ]]; then
         "$out/plan.o" "$out/elephant-gpu.o" "$out/cuda-host.o" -ldl -lm -o "$out/psionic-serve"
 elif [[ $gpu == metal ]]; then
     "$coax" c psionic/lib/device/plan.coax --library --release --header "$out/plan.h" > "$out/plan.c"
-    for unit in project layer warp; do "$coax" metal-compute "psionic/lib/device/$unit.coax" --release > "$out/$unit.metal"; done
+    for unit in project layer warp tile; do "$coax" metal-compute "psionic/lib/device/$unit.coax" --release > "$out/$unit.metal"; done
     "$cc" "${common[@]}" -Wno-missing-field-initializers -c "$out/plan.c" -o "$out/plan.o"
     "$cc" "${common[@]}" -Wno-missing-field-initializers -c psionic/platform/elephant-metal.c -o "$out/elephant-metal.o"
     "$cc" -fobjc-arc -mmacosx-version-min=15.0 "$opt" -g -Wall -Wextra -Werror "${sanitizers[@]}" -c psionic/platform/metal-host.m -o "$out/metal-host.o"

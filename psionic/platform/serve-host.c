@@ -26,7 +26,7 @@
  *
  * --elephant-metal answers on an Apple GPU (psionic/platform/elephant-metal.c,
  * built with PSIONIC_SERVE_METAL) the same way, with project.metal,
- * layer.metal and warp.metal next to this binary. */
+ * layer.metal, warp.metal and tile.metal next to this binary. */
 #define _GNU_SOURCE
 #include "serve.h"
 #include "spans.h"
@@ -38,12 +38,14 @@
 #define PSIONIC_SERVE_GPU 1 /* the same in-process device path */
 #define DEVICE_FLAG "--elephant-metal"
 #define DEVICE_KIND "Metal"
-static const char *kernel_names[3] = {"project.metal", "layer.metal", "warp.metal"};
+#define KERNEL_FILES 4
+static const char *kernel_names[KERNEL_FILES] = {"project.metal", "layer.metal", "warp.metal", "tile.metal"};
 #elif defined(PSIONIC_SERVE_GPU)
 #include "elephant-gpu.h"
 #define DEVICE_FLAG "--elephant-gpu"
 #define DEVICE_KIND "CUDA"
-static const char *kernel_names[3] = {"project.cu", "layer.cu", "warp.cu"};
+#define KERNEL_FILES 3
+static const char *kernel_names[KERNEL_FILES] = {"project.cu", "layer.cu", "warp.cu"};
 #endif
 #include <arpa/inet.h>
 #include <errno.h>
@@ -297,7 +299,7 @@ static void open_gpu(Server *s) {
     if (n <= 0) { fprintf(stderr, "psionic-serve: cannot find the kernels\n"); exit(2); }
     exe[n] = 0; char *slash = strrchr(exe, '/'); if (slash) *slash = 0;
     EgSources src;
-    for (int i = 0; i < 3; i++) { coax_v_u8 text = map_named(exe, kernel_names[i]); src.text[i] = (const char *)text.data; src.length[i] = (size_t)text.count; }
+    for (int i = 0; i < KERNEL_FILES; i++) { coax_v_u8 text = map_named(exe, kernel_names[i]); src.text[i] = (const char *)text.data; src.length[i] = (size_t)text.count; }
     s->gpu = zalloc(1, sizeof *s->gpu);
     int64_t t0 = now_ms();
     int r = eg_compile(s->gpu, &src);

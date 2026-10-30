@@ -7,6 +7,7 @@
    Usage: elephant-metal ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.metal LAYER.metal WARP.metal [REPEAT]
    Prints SKIP and exits 0 without a Metal device. */
 #include "elephant-metal.h"
+#include "verified-file.h"
 #include "elephant-inventory.h"
 #include "elephant-request.h"
 #include <fcntl.h>
@@ -20,7 +21,7 @@
 #include <unistd.h>
 
 /* The plan's constants (psionic/lib/device/plan.coax). */
-#define DP_KERNELS 19
+#define DP_KERNELS 21
 #define DP_WEIGHTS 514
 #define DP_WIDTH 4096
 #define DP_VOCAB 248320
@@ -94,6 +95,8 @@ static void cpu_launch(CpuLaunch *c) {
         case 16: dl_attend(i, I(0), I(1), I(2), VD(3), VF(4), VF(5), VF(6)); break;
         case 17: dw_split(i, I(0), I(1), VF(2), VW(3), VW(4)); break;
         case 18: dw_project(i, I(0), I(1), I(2), I(3), VW(4), VW(5), VW(6), VF(7)); break;
+        case 19: dt_project_16x32(i, I(0), I(1), I(2), VW(3), VF(4), VF(5)); break;
+        case 20: dt_project_16x64(i, I(0), I(1), I(2), VW(3), VF(4), VF(5)); break;
         default: fprintf(stderr, "unknown kernel %u\n", c->op->kernel); exit(1);
     }
 }
@@ -122,11 +125,11 @@ static int is_f64_view(coax_t_DpOp *op, int64_t k) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 6) { fprintf(stderr, "usage: elephant-metal ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.metal LAYER.metal WARP.metal [REPEAT]\n"); return 2; }
-    int repeat = argc > 6 ? atoi(argv[6]) : 3;
+    if (argc < 7) { fprintf(stderr, "usage: elephant-metal ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.metal LAYER.metal WARP.metal TILE.metal [REPEAT]\n"); return 2; }
+    int repeat = argc > 7 ? atoi(argv[7]) : 3;
     double t0 = now();
     EgSources src;
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 4; i++) {
         size_t n;
         char *text = read_text(argv[3 + i], &n);
         if (!text) { fprintf(stderr, "cannot read %s\n", argv[3 + i]); return 2; }
@@ -146,6 +149,8 @@ int main(int argc, char **argv) {
     /* The CPU session authenticates and binds the original files (chapter 10). */
     coax_v_u8 config = named(argv[1], "config.json"), tokenizer = named(argv[1], "tokenizer.json"), readout = named(argv[1], "readout.json"), index = {NULL, 0}, table = map_file(argv[2]);
     coax_t_PaFile file = {named(argv[1], "model.safetensors")};
+    char weights_path[4096]; snprintf(weights_path, sizeof weights_path, "%s/model.safetensors", argv[1]);
+    static VfEntry verified; vf_attach(&verified, weights_path, &file);
     size_t count = sizeof(elephant_specs) / sizeof(*elephant_specs);
     coax_t_P5Spec *specs = calloc(count, sizeof(*specs));
     coax_t_P5Tensor *inventory = calloc(count, sizeof(*inventory)), *draft = calloc(count, sizeof(*draft));
@@ -166,6 +171,8 @@ int main(int argc, char **argv) {
     coax_t_PsSession session = psionic_session_open(0, 86, config, tokenizer, readout, index, (coax_v_t_PaFile){&file, 1}, (coax_v_t_P5Spec){specs, (int64_t)count}, table, memory);
     if (session.status) { fprintf(stderr, "session status=%u cause=%lld\n", session.status, (long long)session.cause); return 1; }
     double authenticated = now() - ta;
+    if (vf_keep(&verified, 0, 86, 0) == 1) printf("kept a verified-file record at %s\n", verified.path);
+    if (file.record.count) puts("a verified-file record named the checkpoint; its hash was skipped");
     unsigned char *prompt = calloc(65536, 1), *render_work = calloc(65536, 1), *normal = calloc(262144, 1);
     int64_t *candidate = calloc(16384, 8), *full = calloc(16384, 8), *token_stage = calloc(16384, 8), *scalars = calloc(262144, 8), *symbols = calloc(1024, 8), *tokens = calloc(16384, 8);
     coax_t_PrWorkspace prep = {{prompt, 65536}, {render_work, 65536}, {candidate, 16384}, {full, 16384}, {token_stage, 16384}, {normal, 262144}, {scalars, 262144}, {symbols, 1024}};

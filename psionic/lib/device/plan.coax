@@ -5,13 +5,15 @@
 #load "project.coax";
 #load "layer.coax";
 #load "warp.coax";
+#load "tile.coax";
 #authority;
 
 // Kernels in the order the host looks them up by name.
-DpKernel :: enum u8 {project;matvec;reduce;squares;add_squares;scale;add;swiglu;conv;gates;qk;scan;gate_norm;prepare;scores;softmax;attend;split;mma_project;}
-DP_KERNELS :: 19;
+DpKernel :: enum u8 {project;matvec;reduce;squares;add_squares;scale;add;swiglu;conv;gates;qk;scan;gate_norm;prepare;scores;softmax;attend;split;mma_project;tile_narrow;tile_wide;}
+// The CUDA engine loads the first 19; Metal loads all of them.
+DP_KERNELS :: 21;
 dp_kernel_name :: (id:int)->string #export_c {
-    names:=[19] string.["dv_project","dv_matvec","dv_reduce","dl_squares","dl_add_squares","dl_scale","dl_add","dl_swiglu","dl_conv","dl_gates","dl_qk","dl_scan","dl_gate_norm","dl_prepare","dl_scores","dl_softmax","dl_attend","dw_split","dw_project"];
+    names:=[21] string.["dv_project","dv_matvec","dv_reduce","dl_squares","dl_add_squares","dl_scale","dl_add","dl_swiglu","dl_conv","dl_gates","dl_qk","dl_scan","dl_gate_norm","dl_prepare","dl_scores","dl_softmax","dl_attend","dw_split","dw_project","dt_project_16x32","dt_project_16x64"];
     if id<0 || id>=DP_KERNELS {return "";}
     return names[id];
 }
@@ -25,10 +27,12 @@ DpOpKind :: enum u8 {launch;copy;wait;release;}
 // A view names a buffer (0 workspace, 1 and 2 the streaming slots, 3+id a
 // resident weight), a byte offset and an element count.
 DpArg :: struct {kind:u8;value:int;real:f64;buffer:int;offset:int;count:int;}
-// lanes is 32 for a warp kernel, whose items are warps of 32 threads.
+// lanes is 32 for a warp kernel, whose items are warps of 32 threads, and
+// the group size (128) for a group kernel, whose items are threadgroups.
 DpOp :: struct {kind:DpOpKind;kernel:u8;items:int;block:int;lanes:int;count:int;tensor:int;slot:int;args:[12]DpArg;}
 DpStatus :: enum u8 {ok;shape;capacity;memory;}
-DpPlan :: struct {status:DpStatus;ops:int;workspace:int;resident:int;streamed:int;slot:int;streamed_tensors:int;}
+// metal: projections use the Apple matrix-unit tiles (tile.coax).
+DpPlan :: struct {status:DpStatus;ops:int;workspace:int;resident:int;streamed:int;slot:int;streamed_tensors:int;metal:bool;}
 
 // Elephant's decision shape. Weight ids per layer: linear 0 input_norm,
 // 1 post_norm, 2 conv, 3 A_log, 4 dt_bias, 5 delta norm, 6 qkv, 7 z, 8 a, 9 b,
@@ -197,7 +201,7 @@ dp_matrix :: (w:int)->DpArg {return DpArg.{kind=4,buffer=3+w};}
 
 // The builder also tracks streaming: the streaming indices in schedule order,
 // how many there are and how many have been used.
-DpBuilder :: struct {ops:[]DpOp;n:int;ok:bool;stream:[]bool;order:[]int;count:int;at:int;}
+DpBuilder :: struct {ops:[]DpOp;n:int;ok:bool;stream:[]bool;order:[]int;count:int;at:int;metal:bool;}
 dp_push :: (b:DpBuilder,op:DpOp)->DpBuilder {
     r:=b;
     if b.n>=b.ops.count {r.ok=false;return r;}
@@ -244,7 +248,21 @@ dp_mma :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,inpu
 }
 // book:end tensor
 DP_MMA_TOKENS :: 16; // from this many tokens, projections use the tensor cores
+// book:begin apple
+// On Metal every projection is one launch of matrix-unit tiles of 16 tokens
+// by 64 rows (32 for the 32-row a and b), written straight to the output:
+// no split, slices or reduce.
+dp_tile :: (b:DpBuilder,weight:DpArg,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
+    a:[12]DpArg;w:=weight;w.count=rows*cols/2;
+    a[0]=dp_int(rows);a[1]=dp_int(cols);a[2]=dp_int(tokens);a[3]=w;a[4]=dp_ws(input,tokens*cols);a[5]=dp_ws(output,tokens*rows);
+    // Up to 32 rows are one row tile of either width.
+    kernel:=DpKernel.tile_wide;if rows<=32 {kernel=DpKernel.tile_narrow;}
+    op:=dp_launch(kernel,dt_items(rows,tokens,16,64),a,6);op.lanes=DT_THREADS;
+    return dp_push(b,op);
+}
+// book:end apple
 dp_project :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
+    if b.metal {return dp_tile(b,weight,rows,cols,tokens,input,output);}
     if tokens>=DP_MMA_TOKENS {return dp_mma(b,p,weight,rows,cols,tokens,input,output);}
     a:[12]DpArg;w:=weight;w.count=rows*cols/4;s:=dp_slices(rows,cols,p.partial_rows);
     a[0]=dp_int(rows);a[1]=dp_int(cols);a[2]=dp_int(tokens);a[3]=dp_int(s);a[4]=w;a[5]=dp_ws(input,tokens*cols);a[6]=dp_ws(p.partial,s*tokens*rows);
@@ -346,14 +364,22 @@ DP_MAX_TOKENS :: 512;
 // gathered embedding rows at x0 and rotary coefficients at rope; the result
 // is the last token's vocabulary logits at logits.
 dp_plan :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+    return dp_plan_on(false,tokens,prefix,budget,stream,ops);
+}
+// The same decision for an Apple GPU: projections on the matrix units.
+dp_plan_metal :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+    return dp_plan_on(true,tokens,prefix,budget,stream,ops);
+}
+dp_plan_on :: (metal:bool,tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan {
     if tokens<1 || tokens>DP_MAX_TOKENS || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
     plan:=dp_residency(budget,dp_layout(tokens).total,stream);
     if plan.status!=DpStatus.ok {return plan;}
+    plan.metal=metal;
     return dp_schedule(tokens,prefix,plan,stream,ops);
 }
 // book:end plan
 // A later decision on weights already placed by an opened plan: the same
-// streamed set and the opened workspace, which must hold this layout.
+// streamed set, backend and the opened workspace, which must hold this layout.
 dp_replan :: (tokens:int,prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
     if opened.status!=DpStatus.ok || stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
     if tokens<1 || tokens>DP_MAX_TOKENS || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
@@ -368,7 +394,7 @@ dp_stop_point :: (op:DpOp)->bool #export_c {return op.kind==DpOpKind.launch && o
 dp_schedule :: (tokens:int,prefix:int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
     p:=dp_layout(tokens);plan:=placed;
     order:[DP_STREAMABLE]int;
-    b:=DpBuilder.{ops=ops,ok=true,stream=stream,order=order[..]};
+    b:=DpBuilder.{ops=ops,ok=true,stream=stream,order=order[..],metal=placed.metal};
     // Streaming indices in schedule order: each layer's mixer matrices, then
     // its gate, up and down; then the head chunks.
     for layer:0..<DP_LAYERS {
@@ -438,8 +464,9 @@ dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
 #test "kernel names follow the host's lookup order" {
     #assert dp_kernel_name(0)=="dv_project" && dp_kernel_name(1)=="dv_matvec" && dp_kernel_name(2)=="dv_reduce";
     #assert dp_kernel_name(3)=="dl_squares" && dp_kernel_name(5)=="dl_scale" && dp_kernel_name(11)=="dl_scan" && dp_kernel_name(16)=="dl_attend";
-    #assert dp_kernel_name(-1)=="" && dp_kernel_name(19)=="" && dp_kernel_name(17)=="dw_split" && dp_kernel_name(18)=="dw_project";
-    #assert cast(int)DpKernel.attend==16 && cast(int)DpKernel.mma_project==18 && DP_KERNELS==19;
+    #assert dp_kernel_name(-1)=="" && dp_kernel_name(21)=="" && dp_kernel_name(17)=="dw_split" && dp_kernel_name(18)=="dw_project";
+    #assert dp_kernel_name(19)=="dt_project_16x32" && dp_kernel_name(20)=="dt_project_16x64";
+    #assert cast(int)DpKernel.attend==16 && cast(int)DpKernel.mma_project==18 && cast(int)DpKernel.tile_wide==20 && DP_KERNELS==21;
 }
 #forall "every fourth layer is full attention" layer:0..<32 {
     #assert dp_full(layer)==(layer==3 || layer==7 || layer==11 || layer==15 || layer==19 || layer==23 || layer==27 || layer==31);
@@ -743,4 +770,42 @@ dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int {
     #assert !dp_embed(bad[..],4,table[..],out[0..<4]);
     table[19]=0xff;table[18]=0x80;#assert !dp_embed(bad[..],4,table[..],out[0..<4]);
     table[18]=0x7f;table[19]=0x7f;#assert dp_embed(bad[..],4,table[..],out[0..<4]) && out[1]==f32_from_bits(0x7f7f0000);
+}
+#test "the Metal plan projects on matrix-unit tiles, one launch per projection" {
+    ops:[1500]DpOp;stream:[DP_STREAMABLE]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    plan:=dp_plan_metal(86,49,w+all,stream[..],ops[..]);
+    // 248 projections each lose split and reduce.
+    #assert plan.status==DpStatus.ok && plan.metal && plan.ops==1092-2*248 && plan.streamed==0;
+    tiles:=0;narrow:=0;
+    for i:0..<plan.ops {
+        op:=ops[i];
+        #assert op.kernel!=cast(u8)DpKernel.split && op.kernel!=cast(u8)DpKernel.mma_project && op.kernel!=cast(u8)DpKernel.project;
+        if op.kernel==cast(u8)DpKernel.tile_wide || op.kernel==cast(u8)DpKernel.tile_narrow {
+            tiles+=1;#assert op.lanes==128 && op.count==6;
+            rows:=op.args[0].value;tn:=64;
+            if op.kernel==cast(u8)DpKernel.tile_narrow {narrow+=1;tn=32;#assert rows==32;} else {#assert rows>32;}
+            #assert op.items==6*((rows+tn-1)/tn) && op.args[2].value==86 && op.args[3].count==rows*op.args[1].value/2;
+            #assert op.args[4].count==86*op.args[1].value && op.args[5].count==86*rows;
+        }
+    }
+    #assert tiles==248 && narrow==48;
+    // Layer 0: norm (2 launches), then qkv straight into its region.
+    p:=dp_layout(86);
+    #assert ops[2].kernel==cast(u8)DpKernel.tile_wide && ops[2].items==6*128 && ops[2].args[0].value==8192 && ops[2].args[4].offset==p.norm && ops[2].args[5].offset==p.qkv;
+    #assert ops[2].args[3].buffer==3+dp_weight(0,6);
+    // Short prompts and the readout keep their kernels; a later decision keeps the backend.
+    one:=dp_plan_metal(1,0,w+all,stream[..],ops[..]);
+    #assert one.ops==596 && ops[2].kernel==cast(u8)DpKernel.tile_wide && ops[2].items==128 && ops[595].kernel==cast(u8)DpKernel.reduce && ops[594].kernel==cast(u8)DpKernel.matvec;
+    again:[1500]DpOp;
+    later:=dp_replan(86,49,dp_plan_metal(128,0,dp_workspace_bytes(128)+all,stream[..],ops[..]),stream[..],again[..]);
+    direct:=dp_plan_metal(86,49,w+all,stream[..],ops[..]);
+    #assert later.metal && later.ops==direct.ops && dp_digest(again[..],later.ops)==dp_digest(ops[..],direct.ops);
+    #assert dp_plan_metal(0,0,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan_metal(86,49,100,stream[..],ops[..]).status==DpStatus.memory;
+    #assert !dp_plan(86,49,w+all,stream[..],ops[..]).metal;
+}
+#test "matrix-unit tiles: 16 tokens by 64 rows, the narrow tile up to 32 rows" {
+    ops:[4]DpOp;b:=DpBuilder.{ops=ops[..],ok=true,metal=true};
+    r:=dp_tile(b,dp_matrix(6),32,4096,17,256,1024);r=dp_tile(r,dp_matrix(6),33,4096,17,256,1024);r=dp_tile(r,dp_matrix(6),129,64,16,256,1024);
+    #assert r.n==3 && ops[0].kernel==cast(u8)DpKernel.tile_narrow && ops[0].items==2 && ops[1].kernel==cast(u8)DpKernel.tile_wide && ops[1].items==2;
+    #assert ops[2].items==3 && ops[2].args[3].count==129*32 && ops[2].args[4].count==16*64 && ops[2].args[5].offset==1024 && ops[0].args[2].value==17;
 }

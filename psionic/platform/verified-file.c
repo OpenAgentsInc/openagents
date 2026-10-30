@@ -10,6 +10,16 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* Nanosecond mtime and ctime: Linux names them st_mtim/st_ctim, macOS
+   st_mtimespec/st_ctimespec. */
+#if defined(__APPLE__)
+#define VF_MTIME(st) ((int64_t)(st).st_mtimespec.tv_sec * 1000000000 + (st).st_mtimespec.tv_nsec)
+#define VF_CTIME(st) ((int64_t)(st).st_ctimespec.tv_sec * 1000000000 + (st).st_ctimespec.tv_nsec)
+#else
+#define VF_MTIME(st) ((int64_t)(st).st_mtim.tv_sec * 1000000000 + (st).st_mtim.tv_nsec)
+#define VF_CTIME(st) ((int64_t)(st).st_ctim.tv_sec * 1000000000 + (st).st_ctim.tv_nsec)
+#endif
+
 int64_t ps_shard_record(uint8_t kind, int64_t capacity, int64_t i, coax_t_PaStat st, coax_v_u8 out);
 
 static int record_dir(char *out, size_t size) {
@@ -40,7 +50,7 @@ void vf_attach(VfEntry *e, const char *path, coax_t_PaFile *f) {
     char dir[3800];
     if (stat(path, &st) || record_dir(dir, sizeof dir)) return;
     e->stat = (coax_t_PaStat){(int64_t)st.st_dev, (int64_t)st.st_ino, (int64_t)st.st_size,
-        (int64_t)st.st_mtim.tv_sec * 1000000000 + st.st_mtim.tv_nsec, (int64_t)st.st_ctim.tv_sec * 1000000000 + st.st_ctim.tv_nsec};
+        VF_MTIME(st), VF_CTIME(st)};
     f->stat = e->stat;
     snprintf(e->path, sizeof e->path, "%s/%llu-%llu.rec", dir, (unsigned long long)st.st_dev, (unsigned long long)st.st_ino);
     FILE *in = fopen(e->path, "rb");

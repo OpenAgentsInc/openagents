@@ -1,0 +1,85 @@
+// Apple matrix kernels: whole-prompt BF16 projections on an Apple GPU's
+// matrix units (Metal 4 tensor ops, coax/lib/compute/apple.coax). One work
+// item is one tile of TM tokens by TN rows of out = x W^T; every product of
+// a BF16 weight and an f32 activation is accumulated in f32 in one pass over
+// all columns, so there are no split activations, slices or reduce launch.
+// Metal only: the CUDA engine keeps warp.coax's tensor-core projection.
+#load "../../../coax/lib/compute/apple.coax";
+#authority;
+
+// book:begin tiles
+// Work item i of a TM x TN tiling: token tile i % tiles(tokens), row tile
+// i / tiles(tokens), so neighbouring threadgroups share one weight tile.
+DT_THREADS :: 128;
+dt_tiles :: (n:int,tile:int)->int {return (n+tile-1)/tile;}
+dt_items :: (rows:int,tokens:int,tm:int,tn:int)->int {return dt_tiles(tokens,tm)*dt_tiles(rows,tn);}
+dt_project_16x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+    t:=dt_tiles(tokens,16);
+    am_matmul_bf16(128,16,32,rows,cols,tokens,item/t*32,item%t*16,w,x,out);
+}
+dt_project_32x32 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+    t:=dt_tiles(tokens,32);
+    am_matmul_bf16(128,32,32,rows,cols,tokens,item/t*32,item%t*32,w,x,out);
+}
+dt_project_16x64 :: (item:int,rows:int,cols:int,tokens:int,w:[]u32,x:[]f32,out:[]f32) #export_c {
+    t:=dt_tiles(tokens,16);
+    am_matmul_bf16(128,16,64,rows,cols,tokens,item/t*64,item%t*16,w,x,out);
+}
+// book:end tiles
+
+#test "tiles round up and count token tiles times row tiles" {
+    #assert dt_tiles(86,16)==6 && dt_tiles(96,16)==6 && dt_tiles(97,16)==7 && dt_tiles(1,32)==1 && dt_tiles(32,32)==1 && dt_tiles(33,32)==2;
+    #assert dt_items(8192,86,16,32)==6*256 && dt_items(32,86,32,32)==3 && dt_items(100,17,16,64)==2*2;
+}
+#test "each tiling writes every token and row of a ragged projection once" {
+    // 70 rows by 8 columns, 33 tokens: every tile shape clips at both edges.
+    rows:=70;cols:=8;tokens:=33;half:=4;
+    w:[280]u32;x:[264]f32;out:[2310]f32;ref:[2310]f64;
+    for t:0..<tokens {for c:0..<cols {x[t*cols+c]=f32((t+c)%7)-3+f32(c+1)*0.0137;}}
+    for r:0..<rows {for p:0..<half {
+        a:=f32((r+3*p)%5)-2;b:=f32((2*r+p)%3)-1;
+        w[r*half+p]=(f32_bits(a)>>16)|((f32_bits(b)>>16)<<16);
+        for t:0..<tokens {ref[t*rows+r]+=f64(a)*f64(x[t*cols+2*p])+f64(b)*f64(x[t*cols+2*p+1]);}
+    }}
+    for shape:0..<3 {
+        for i:0..<2310 {out[i]=-99;}
+        if shape==0 {for i:0..<dt_items(rows,tokens,16,32) {dt_project_16x32(i,rows,cols,tokens,w[..],x[..],out[..]);}}
+        if shape==1 {for i:0..<dt_items(rows,tokens,32,32) {dt_project_32x32(i,rows,cols,tokens,w[..],x[..],out[..]);}}
+        if shape==2 {for i:0..<dt_items(rows,tokens,16,64) {dt_project_16x64(i,rows,cols,tokens,w[..],x[..],out[..]);}}
+        for i:0..<2310 {#assert out[i]==f32(ref[i]);}
+    }
+}
+#test "item order: token tiles first, then row tiles" {
+    rows:=64;cols:=4;tokens:=40;half:=2;
+    w:[128]u32;x:[160]f32;out:[2560]f32;ref:[2560]f64;
+    for i:0..<160 {x[i]=f32(i%9)-4;}
+    for r:0..<rows {for p:0..<half {
+        a:=f32((r+3*p)%5)-2;b:=f32((2*r+p)%3)-1;
+        w[r*half+p]=(f32_bits(a)>>16)|((f32_bits(b)>>16)<<16);
+        for t:0..<tokens {ref[t*rows+r]+=f64(a)*f64(x[t*cols+2*p])+f64(b)*f64(x[t*cols+2*p+1]);}
+    }}
+    // 16x32: three token tiles; item 4 is token tile 1 of row tile 1.
+    for i:0..<2560 {out[i]=-99;}
+    dt_project_16x32(4,rows,cols,tokens,w[..],x[..],out[..]);
+    for t:0..<tokens {for r:0..<rows {
+        inside:=t>=16 && t<32 && r>=32;
+        expected:f32=-99;if inside {expected=f32(ref[t*rows+r]);}
+        #assert out[t*rows+r]==expected;
+    }}
+    // 32x32: two token tiles; item 1 is token tile 1 (tokens 32..39) of row tile 0.
+    for i:0..<2560 {out[i]=-99;}
+    dt_project_32x32(1,rows,cols,tokens,w[..],x[..],out[..]);
+    for t:0..<tokens {for r:0..<rows {
+        inside:=t>=32 && r<32;
+        expected:f32=-99;if inside {expected=f32(ref[t*rows+r]);}
+        #assert out[t*rows+r]==expected;
+    }}
+    // 16x64: three token tiles, one row tile; item 2 is tokens 32..39.
+    for i:0..<2560 {out[i]=-99;}
+    dt_project_16x64(2,rows,cols,tokens,w[..],x[..],out[..]);
+    for t:0..<tokens {for r:0..<rows {
+        inside:=t>=32;
+        expected:f32=-99;if inside {expected=f32(ref[t*rows+r]);}
+        #assert out[t*rows+r]==expected;
+    }}
+}

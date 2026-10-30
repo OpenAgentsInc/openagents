@@ -226,6 +226,68 @@ static int mma_projections(int quick) {
     return ok;
 }
 
+/* ---- Apple matrix tiles (tile.coax) against dw_project and the chip ----
+   Each Elephant shape at 86 tokens through each Metal 4 tensor-op tiling:
+   one pass, f32 accumulation of BF16 x f32 products, written straight to
+   out. Frozen before measuring: within 2^-20 of sum|wx| of the binary64
+   product (f32 accumulation over 12288 columns, no BF16 split). */
+static const double TILE_BOUND = 1.0 / 1048576.0;
+static PmKernel k_tiles[3];
+static const char *tile_names[3] = {"dt_project_16x32", "dt_project_32x32", "dt_project_16x64"};
+static const int tile_tm[3] = {16, 32, 16}, tile_tn[3] = {32, 32, 64};
+static int tile_projections(int quick) {
+    struct { int rows, cols, tokens; const char *what; } shapes[] = {
+        {8192, 4096, 86, "qkv, q"}, {12288, 4096, 86, "gate, up"}, {4096, 12288, 86, "down"},
+        {4096, 4096, 86, "z, out"}, {1024, 4096, 86, "k, v"}, {32, 4096, 86, "a, b"}, {12288, 4096, 9, "gate, 9 tokens"}};
+    int ok = 1, count = quick ? 1 : (int)(sizeof shapes / sizeof *shapes);
+    for (int i = 0; i < count; i++) {
+        int rows = shapes[i].rows, cols = shapes[i].cols, T = shapes[i].tokens, half = cols / 2;
+        size_t wn = (size_t)rows * half, xn = (size_t)T * cols, on = (size_t)T * rows;
+        PmBuffer dw = alloc(wn * 4), dx = alloc(xn * 4), dout = alloc(on * 4);
+        uint32_t *w = pm_contents(dw);
+        float *x = pm_contents(dx), *out = pm_contents(dout);
+        double *ref = malloc(on * 8), *scale = malloc(on * 8);
+        for (size_t k = 0; k < wn; k++) w[k] = wide_bf16() | wide_bf16() << 16;
+        for (size_t k = 0; k < xn; k++) x[k] = random_x();
+        for (int t = 0; t < T; t++)
+            for (int r = 0; r < rows; r++) {
+                double sum = 0, mag = 0;
+                for (int c = 0; c < cols; c++) {
+                    uint32_t word = w[(size_t)r * half + c / 2];
+                    double p = (double)bf16(c % 2 ? word >> 16 : word & 0xffff) * x[(size_t)t * cols + c];
+                    sum += p; mag += fabs(p);
+                }
+                ref[(size_t)t * rows + r] = sum; scale[(size_t)t * rows + r] = mag;
+            }
+        PmArg a[] = {I(rows), I(cols), I(T), V(dw, (int64_t)wn), V(dx, (int64_t)xn), V(dout, (int64_t)on)};
+        double best = 1e9; int pick = 0;
+        char line[512]; int at = snprintf(line, sizeof line, "%-14s %5d x %5d x %3d:", shapes[i].what, rows, cols, T);
+        for (int v = 0; v < 3; v++) {
+            int64_t items = (int64_t)((T + tile_tm[v] - 1) / tile_tm[v]) * ((rows + tile_tn[v] - 1) / tile_tn[v]);
+            memset(out, 0, on * 4);
+            double t = 0;
+            for (int pass = 0; pass < 2; pass++) {
+                int repeat = pass ? 20 : 1;
+                PmBatch b;
+                TRY(pm_begin(&b)); for (int r = 0; r < repeat; r++) TRY(pm_launch(b, k_tiles[v], items, 128, 128, a, 6)); TRY(pm_wait(b, &t)); t /= repeat;
+            }
+            double worst = 0;
+            for (size_t k = 0; k < on; k++) {
+                double e = fabs((double)out[k] - ref[k]) / (scale[k] > 0 ? scale[k] : 1);
+                if (e > worst) worst = e;
+            }
+            int good = worst <= TILE_BOUND;
+            ok &= good;
+            if (t < best) { best = t; pick = v; }
+            at += snprintf(line + at, sizeof line - at, "  %s %.3f ms %5.2f TFLOP/s err %.2g%s", tile_names[v] + 11, t * 1e3, 2.0 * rows * cols * T / t / 1e12, worst, good ? "" : " FAIL");
+        }
+        printf("%s  -> %s\n", line, tile_names[pick] + 11);
+        pm_free(dw); pm_free(dx); pm_free(dout); free(ref); free(scale);
+    }
+    printf("Apple matrix tiles: every output within %.3g of sum|wx| of binary64 %s\n", TILE_BOUND, ok ? "ok" : "FAIL");
+    return ok;
+}
+
 /* ---- APPLE-FF-v1 against binary64 ---- */
 static double pair(const float *p) { return (double)p[0] + (double)p[1]; }
 static double rel(double got, double want) {
@@ -330,8 +392,9 @@ static int ff_math_check(int quick) {
 }
 
 int main(int argc, char **argv) {
-    if (argc < 4) { fprintf(stderr, "usage: metal-kernels PROJECT.metal WARP.metal FF.metal [quick]\n"); return 2; }
-    int quick = argc > 4 && !strcmp(argv[4], "quick"), ok = 1;
+    if (argc < 5) { fprintf(stderr, "usage: metal-kernels PROJECT.metal WARP.metal FF.metal TILE.metal [quick|tiles]\n"); return 2; }
+    /* "tiles": only the whole-prompt projections, for per-shape timing. */
+    int quick = argc > 5 && !strcmp(argv[5], "quick"), tiles = argc > 5 && !strcmp(argv[5], "tiles"), ok = 1;
     PmDeviceInfo info;
     PmStatus s = pm_open(&info);
     if (s == PM_ABSENT) { printf("SKIP: no Metal device\n"); return 0; }
@@ -342,6 +405,14 @@ int main(int argc, char **argv) {
     TRY(pm_kernel(project, "dv_project", &k_project)); TRY(pm_kernel(project, "dv_matvec", &k_matvec)); TRY(pm_kernel(project, "dv_reduce", &k_reduce));
     TRY(pm_kernel(warp, "dw_split", &k_split)); TRY(pm_kernel(warp, "dw_project", &k_mma_project)); TRY(pm_kernel(warp, "dw_mma_tile", &k_tile));
     TRY(pm_kernel(ff, "ff_math", &k_math)); TRY(pm_kernel(ff, "ff_arith", &k_arith));
+    PmModule tile = compile(argv[4], "tile.metal");
+    for (int v = 0; v < 3; v++) TRY(pm_kernel(tile, tile_names[v], &k_tiles[v]));
+    if (tiles) {
+        ok &= mma_projections(0);
+        ok &= tile_projections(0);
+        puts(ok ? "projections qualify" : "projections FAILED");
+        return ok ? 0 : 1;
+    }
     Shape small[] = {{4, 4, 1, 1, "smallest"}, {16, 260, 9, 1, "ragged tokens"}, {64, 1024, 17, 2, "two slices"},
                      {32, 4096, 1, 0, "one token, lanes"}, {64, 12288, 3, 3, "three slices"}};
     for (size_t i = 0; i < sizeof small / sizeof *small; i++) ok &= project_shape(small[i], 0);
@@ -353,6 +424,7 @@ int main(int argc, char **argv) {
     }
     ok &= mma_tiles();
     ok &= mma_projections(quick);
+    ok &= tile_projections(quick);
     ok &= ff_arith_check();
     ok &= ff_math_check(quick);
     /* A bounds check that fails inside a kernel voids the launch: slice 1 of 2

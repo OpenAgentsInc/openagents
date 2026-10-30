@@ -29,8 +29,8 @@ int eg_compile(EgEngine *e, const EgSources *src) {
     PmStatus s = pm_open(&e->device);
     if (s == PM_ABSENT) return EG_SKIP;
     if (s) return EG_FAILED;
-    static const char *names[3] = {"project.metal", "layer.metal", "warp.metal"};
-    for (int i = 0; i < 3; i++) {
+    static const char *names[4] = {"project.metal", "layer.metal", "warp.metal", "tile.metal"};
+    for (int i = 0; i < 4; i++) {
         double seconds = 0;
         CHECK(pm_compile(src->text[i], src->length[i], names[i], &e->modules[i], &seconds));
         e->compile_seconds += seconds;
@@ -39,7 +39,7 @@ int eg_compile(EgEngine *e, const EgSources *src) {
         coax_string name = dp_kernel_name(k);
         char text[64];
         snprintf(text, sizeof text, "%.*s", (int)name.count, name.data);
-        CHECK(pm_kernel(e->modules[k < 3 ? 0 : k < 17 ? 1 : 2], text, &e->kernels[k]));
+        CHECK(pm_kernel(e->modules[k < 3 ? 0 : k < 17 ? 1 : k < 19 ? 2 : 3], text, &e->kernels[k]));
     }
     return EG_OK;
 }
@@ -53,7 +53,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     e->op_cap = 4096;
     e->ops = calloc((size_t)e->op_cap, sizeof *e->ops);
     if (!e->ops) return EG_FAILED;
-    e->placed = dp_plan(max_tokens, 0, e->budget, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    e->placed = dp_plan_metal(max_tokens, 0, e->budget, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->placed.status) { eg_note("the plan refused %lld tokens in %lld bytes: status %u", (long long)max_tokens, (long long)e->budget, e->placed.status); return EG_REFUSED; }
     if (e->placed.streamed_tensors) { eg_note("the plan streams %lld weights; unified memory keeps every weight resident", (long long)e->placed.streamed_tensors); return EG_REFUSED; }
     double t0 = seconds_now();
@@ -106,7 +106,7 @@ int eg_encode(EgEngine *e, PmBatch batch, int64_t from, int64_t to) {
                 else { eg_note("operation %lld names buffer %lld", (long long)i, (long long)a->buffer); return EG_FAILED; }
             }
         }
-        PmStatus s = pm_launch(batch, e->kernels[op->kernel], op->items, op->lanes == 32 ? 32 : 1, (int)op->block, args, (int)op->count);
+        PmStatus s = pm_launch(batch, e->kernels[op->kernel], op->items, op->lanes > 1 ? (int)op->lanes : 1, (int)op->block, args, (int)op->count);
         if (s) { note_text[0] = 0; return EG_FAILED; }
     }
     return EG_OK;

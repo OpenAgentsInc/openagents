@@ -11,7 +11,7 @@
 #include "decision-answer.h"
 #include "plan.h"
 
-#define EG_KERNELS 19   /* DP_KERNELS */
+#define EG_KERNELS 21   /* DP_KERNELS: the CUDA engine's 19 and the two matrix-unit tiles */
 #define EG_WEIGHTS 514  /* DP_WEIGHTS */
 #define EG_STREAMABLE 277 /* DP_STREAMABLE */
 #define EG_WIDTH 4096   /* DP_WIDTH */
@@ -19,14 +19,14 @@
 
 enum { EG_OK = 0, EG_SKIP = 1, EG_FAILED = 2, EG_STOPPED = 3, EG_REFUSED = 4 };
 
-/* The three generated Metal modules: coax metal-compute of project, layer and warp.coax. */
-typedef struct { const char *text[3]; size_t length[3]; } EgSources;
+/* The four generated Metal modules: coax metal-compute of project, layer, warp and tile.coax. */
+typedef struct { const char *text[4]; size_t length[4]; } EgSources;
 
 typedef struct {
     coax_t_QxModel model;
     int64_t max_tokens, budget, op_cap;
     PmDeviceInfo device;
-    PmModule modules[3];
+    PmModule modules[4];
     PmKernel kernels[EG_KERNELS];
     coax_t_DpPlan placed, plan;
     _Bool stream[EG_STREAMABLE];
