@@ -157,7 +157,9 @@ static void pet_requests(uint32_t state) {
   float dx = dog.pos.x - villa(state)->feet.x, dz = dog.pos.z - villa(state)->feet.z;
   if (q->stop_ask || (!q->stay && q->dig_t <= 0 && dx * dx + dz * dz > 9.0f && vf_still(fv(), 1))) { vf_stop(fv(), 1); q->stop_ask = false; }
   pet_action(state);
-  if (mint_n && !action_kind) { memcpy(action_out, mint_record, mint_n); action_n = mint_n; action_kind = 5; mint_n = 0; has_player = true; }
+  // A new player's key goes to the host as action 5, which keeps it after this frame: the pets and
+  // presence wait a frame (and presence its second), or they go without the key, get 403 and mint again.
+  if (mint_n && !action_kind) { memcpy(action_out, mint_record, mint_n); action_n = mint_n; action_kind = 5; mint_n = 0; has_player = true; room_at = now; return; }
   if (!facts_seen) return;
   if (!has_player) {
     if (!minted) { minted = true; mint_ask = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4); }
