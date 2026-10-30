@@ -17,6 +17,10 @@
 //   POST /api/playtest/realms/<slug>/place {thing, x, z, yaw}   -> 200 {placed} | {proposed}; 403
 //   GET  /api/playtest/realms/<slug>/proposals         -> text/plain, the owner's cards ("" for anyone else)
 //   POST /api/playtest/realms/<slug>/proposals/<id>/accept|decline   -> 200 {state}; 403, 404, 409
+// The panes edit mode brings up (migrations/0055_realm_panes.sql): a character's lore and a quest's form.
+//   GET  /api/playtest/realms/<slug>/panes             -> text/plain: "lore WHO|TEXT", "quest GIVER|ASK|S|S|S|REWARD"
+//   POST /api/playtest/realms/<slug>/lore {who, text}  -> 200 {who, saved}; 400, 403, 409
+//   POST /api/playtest/realms/<slug>/quest {giver, ask, steps, reward}   -> 200 {giver, saved}; 400, 403, 409
 //
 // Who asks: the X-Verse-Player key (a logged-in player's key carries its account). A write from
 // another site's page (Origin) is refused. As a question is, the model call and the page's writes
@@ -323,6 +327,16 @@ bool realms_route(const request *q) {
     PQclear(r);
     return true;
   }
+  if (!strcmp(what, "panes")) {
+    if (post) { api_json(q->fd, 405, "{\"error\":\"GET the panes\"}"); return true; }
+    const char *v[3] = {slug, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT verse.edit_panes($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
+    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"no such realm\"}");
+    else { api_log("realms: panes: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    PQclear(r);
+    return true;
+  }
   if (!strcmp(what, "proposals")) {
     if (post) { api_json(q->fd, 405, "{\"error\":\"GET the proposals\"}"); return true; }
     const char *v[3] = {slug, key, admin};
@@ -334,6 +348,16 @@ bool realms_route(const request *q) {
   }
   if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
   if (!strcmp(what, "revise")) { revise(q, db, slug, key, admin); return true; }
+  if (!strcmp(what, "lore") || !strcmp(what, "quest")) {
+    char *body = body_of(q);
+    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    const char *v[4] = {slug, body, key, admin};
+    sql_json(q, db, !strcmp(what, "lore") ? "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.edit_lore($1, $2::jsonb, $3, $4::boolean) x"
+                                          : "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.edit_quest($1, $2::jsonb, $3, $4::boolean) x",
+             4, v, what);
+    free(body);
+    return true;
+  }
   if (!strcmp(what, "settings") || !strcmp(what, "place") || !strcmp(what, "switch")) {
     char *body = body_of(q);
     if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
