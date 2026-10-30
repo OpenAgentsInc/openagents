@@ -135,7 +135,7 @@ fn sky(d: vec3f, l: vec3f) -> vec3f {
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let d = pixel_ray(pos.xy);
   let l = st(1u).xyz;
-  let c = sky(d, l);
+  let c = water_under_view(sky(d, l), u.eye.xyz + d * 1000.0, d);   // diving: the underwater look (W7)
   let b = st(19u);
   return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(d, l)), 0.0, 0.0, 0.0));
 }
@@ -752,6 +752,7 @@ fn paint(base: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bo
   let d = length(u.eye.xyz - world);
   let fog = haze_share(d, world.y);
   c = mix(c, haze_colour(fog, v), fog);
+  c = water_under_view(c, world, v);   // diving: the underwater look (W7)
   let b = st(19u);
   return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(v, l)) * fog, 0.0, 0.0, 0.0));
 }
@@ -953,6 +954,73 @@ fn water_caustics(p: vec3f, n: vec3f) -> f32 {
   if (depth <= 0.0) { return 0.0; }
   let up = smoothstep(-0.2, 0.6, n.y);
   return water_caustic_pattern(p.xz, u.water.params.x) * smoothstep(0.0, 0.1, depth) * exp(-depth * 0.7) * up * 1.4;
+}
+
+// ---- under the water (phase W7, verse/water-under.coax): the eye's height over the river (the
+// block's control.w, river.coax; large when not over it) splits each pixel at the near plane
+// (the waterline is affine across the screen: here with the surface taken flat at the eye), and
+// what lies under it takes the painted underwater look: per-channel Beer-Lambert fog toward a
+// teal in-scatter (the same absorption keeps the look continuous across the surface, which
+// water_below draws from beneath through Snell's window), caustics on everything submerged
+// (water_caustics), drifting motes and, on a desktop, 16 samples of sun shafts.
+const WATER_NEAR: f32 = 0.1;
+const WATER_UNDER_ABSORB = vec3f(0.42, 0.12, 0.09);   // 1/m: a clear green river
+const WATER_UNDER_SCATTER = vec3f(0.05, 0.30, 0.33);
+const WATER_UNDER_TINT = vec3f(0.52, 0.84, 0.95);      // what the water does to a colour at once: reds go first
+fn water_eye_over() -> f32 { return select(100.0, u.water.control.w, u.water.grid.x >= 2.0); }
+fn water_pixel_under(d: vec3f) -> bool { return water_eye_over() + WATER_NEAR * d.y < 0.0; }
+fn water_mote_hash(c: vec3f) -> vec4f {
+  let h = vec4f(water_hash(c), water_hash(c + vec3f(17.0, 3.0, 5.0)), water_hash(c + vec3f(7.0, 29.0, 11.0)), water_hash(c + vec3f(2.0, 13.0, 31.0)));
+  return h;
+}
+// Motes along the view in the first `reach` m: one at most in each 1 m cell, a quarter of them there.
+fn water_motes(o: vec3f, d: vec3f, reach: f32) -> f32 {
+  var a = 0.0;
+  let n = select(6, 3, u.water.control.x < 8.0);
+  for (var i = 0; i < n; i++) {
+    let t = (f32(i) + 0.5) * reach / f32(n);
+    let c = floor(o + d * t);
+    let h = water_mote_hash(c);
+    if (h.w > 0.25) { continue; }
+    let drift = vec3f(sin(u.water.params.x * 0.3 + h.x * 6.0), cos(u.water.params.x * 0.23 + h.y * 6.0), 0.0) * 0.08;
+    let m = c + h.xyz + drift;
+    let along = max(dot(m - o, d), 0.05);
+    if (along > reach) { continue; }
+    let off = length(m - (o + d * along));
+    let size = 0.012 * along + 0.004;
+    a += (1.0 - smoothstep(size * 0.4, size, off)) * 0.5 * exp(-along * 0.25);
+  }
+  return a;
+}
+// Sun shafts: the caustic field above each sample along the view, dimmed by the water over it and
+// by the way back to the eye (desktop only).
+fn water_shafts(o: vec3f, d: vec3f, path: f32, level: f32) -> f32 {
+  if (u.water.control.x < 8.0) { return 0.0; }
+  var sum = 0.0;
+  let reach = min(path, 8.0);
+  for (var i = 0; i < 16; i++) {
+    let t = (f32(i) + 0.5) / 16.0 * reach;
+    let q = o + d * t;
+    let below = max(level - q.y, 0.0);
+    sum += water_caustic_pattern(q.xz + st(1u).xz * below * 0.6, u.water.params.x) * exp(-below * 0.5 - t * 0.3);
+  }
+  return sum / 16.0 * reach * 0.35;
+}
+// What lies at `world` seen from the eye under the water.
+fn water_under_view(c: vec3f, world: vec3f, d: vec3f) -> vec3f {
+  if (!water_pixel_under(d)) { return c; }
+  let o = u.eye.xyz;
+  let level = o.y - water_eye_over();
+  let dist = length(world - o);
+  // above the surface the water's own pass dims the way through it (water_below)
+  var path = dist;
+  if (world.y > level && d.y > 0.0) { path = min(dist, (level - o.y) / d.y); }
+  let tr = exp(-WATER_UNDER_ABSORB * path);
+  let key = st(0u).xyz * st(0u).w;
+  let light = WATER_UNDER_SCATTER * (0.35 + 0.65 * verse_style_luma(key.x, key.y, key.z));
+  var col = c * WATER_UNDER_TINT * tr + light * (vec3f(1.0) - tr);
+  col += (vec3f(1.0, 0.97, 0.85) * key) * (water_motes(o, d, min(path, 6.0)) * 0.6 + water_shafts(o, d, path, level));
+  return col;
 }
 
 fn water_shoal(k: f32, depth: f32) -> f32 { return sqrt(tanh(clamp(k * depth, 0.0, 10.0))); }

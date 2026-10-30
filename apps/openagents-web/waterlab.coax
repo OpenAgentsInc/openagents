@@ -18,8 +18,9 @@
 // (UW_*): cascade 0's height and foam, its slopes; the fine slopes.
 //
 // The URL: ?wind=M/S (8), ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=,
-// ?dist= (the camera's orbit), ?tier=phone (the phone's cascades on any
-// screen). Drag or the arrows turn the camera, the wheel or W/S zooms.
+// ?dist= (the camera's orbit), ?depth= (its target under the water, m),
+// ?tier=phone (the phone's cascades on any screen). Drag or the arrows turn
+// the camera, the wheel or W/S zooms, Q dives and E rises.
 
 #load "../../verse/water-spectrum.coax";
 
@@ -52,6 +53,7 @@ Waterlab :: struct {
   golden: bool;
   phone_forced: bool;
   yaw: f32; pitch: f32; dist: f32;
+  sink: f32;            // how far under the still water the camera's target is (m; ?depth=, Q and E)
   held: int;            // arrows held, bits
   dragging: bool; last_x: f32; last_y: f32;
   wind: f64;
@@ -134,14 +136,19 @@ waterlab_frame :: (s: [] Waterlab, out: [] f32, u: [] f32, width: f32, height: f
   if s[0].held & 2 != 0 { s[0].yaw += turn; }
   if s[0].held & 4 != 0 { s[0].dist = clamp_f(s[0].dist * (1 - step), 3, 120); }
   if s[0].held & 8 != 0 { s[0].dist = clamp_f(s[0].dist * (1 + step), 3, 120); }
+  if s[0].held & 16 != 0 { s[0].sink = clamp_f(s[0].sink + step, 0, 12); }
+  if s[0].held & 32 != 0 { s[0].sink = clamp_f(s[0].sink - step, 0, 12); }
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   u[U_SIZE] = width; u[U_SIZE + 1] = height; u[U_SIZE + 2] = f32(s[0].time); u[U_SIZE + 3] = 1;
   u[U_MODE] = ifx still then 1.0f32 else 0.0f32; u[U_MODE + 1] = ifx phone then 1.0f32 else 0.0f32; u[U_MODE + 3] = dpr;
   // The camera orbits a point on the water just off the beach, looking out to sea (-z).
   cy := cos(s[0].pitch); sy := sin(s[0].pitch);
   fx := -sin(s[0].yaw) * cy; fz := -cos(s[0].yaw) * cy; fy := -sy;
-  tx := 0.0f32; ty := 0.0f32; tz := -6.0f32;
-  ex := tx - fx * s[0].dist; ey := hi_f32(ty - fy * s[0].dist, 0.6); ez := tz - fz * s[0].dist;
+  tx := 0.0f32; ty := -s[0].sink; tz := ifx s[0].sink > 0 then 2.0f32 - (s[0].sink + 1.5f32) / 0.035f32 else -6.0f32;   // under, over sand 1.5 m below
+  ex := tx - fx * s[0].dist; ey := ty - fy * s[0].dist; ez := tz - fz * s[0].dist;
+  if s[0].sink <= 0 { ey = hi_f32(ey, 0.6); }
+  // never under the sand (waterlab.wgsl ground, without its small wobble)
+  ey = hi_f32(ey, (ez - 2.0f32) * 0.035f32 + hi_f32(ez - 2.0f32, 0) * 0.09f32 + 0.6f32);
   u[U_EYE] = ex; u[U_EYE + 1] = ey; u[U_EYE + 2] = ez; u[U_EYE + 3] = 0.55;
   u[U_FWD] = fx; u[U_FWD + 1] = fy; u[U_FWD + 2] = fz;
   rl := sqrt(fx * fx + fz * fz);
@@ -212,13 +219,15 @@ key_bit :: (key: int) -> int {
   if key == KEY_RIGHT || key == 'd' || key == 'D' { return 2; }
   if key == KEY_UP || key == 'w' || key == 'W' { return 4; }
   if key == KEY_DOWN || key == 's' || key == 'S' { return 8; }
+  if key == 'q' || key == 'Q' { return 16; }
+  if key == 'e' || key == 'E' { return 32; }
   return 0;
 }
 waterlab_key :: (s: [] Waterlab, key: int, down: bool) -> bool #export_c {
   if !s[0].started { waterlab_reset(s); }
   b := key_bit(key);
   if b == 0 { return false; }
-  if down { s[0].held |= b; } else { s[0].held = s[0].held & (15 - b); }
+  if down { s[0].held |= b; } else { s[0].held = s[0].held & (63 - b); }
   return true;
 }
 waterlab_blur :: (s: [] Waterlab) #export_c { s[0].held = 0; s[0].dragging = false; }
@@ -292,6 +301,7 @@ waterlab_message :: (s: [] Waterlab, kind: int, text: string) #export_c {
   s[0].pitch = f32(fclamp(query_number(url, "pitch", 0.16), -0.6, 1.2));
   s[0].dist = f32(fclamp(query_number(url, "dist", 14), 3, 120));
   s[0].phone_forced = query_word(url, "tier=phone");
+  s[0].sink = f32(fclamp(query_number(url, "depth", 0), 0, 12));
   s[0].built = false;
 }
 

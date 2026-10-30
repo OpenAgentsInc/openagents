@@ -251,6 +251,120 @@ fn trace(o: vec3f, d: vec3f, t0: f32) -> Hit {
   return hit;
 }
 
+
+// ---- under the water (phase W7; verse/water-under.coax holds the CPU half and its checks).
+// Each pixel's near-plane point is tested against the surface over it, so the view splits
+// exactly where the near plane straddles the waves (the split waterline). Under it: per-channel
+// Beer-Lambert fog toward a painted teal, the surface from below through Snell's window (the sky
+// bent through it inside 48.6 degrees of straight up, the water's own colour mirrored past it),
+// caustics on the sand, drifting motes; on a desktop also the view's wavering, 16 samples of sun
+// shafts and the meniscus where the surface crosses the lens.
+const UNDER_ABSORB = vec3f(0.30, 0.075, 0.06);
+const UNDER_SCATTER = vec3f(0.05, 0.33, 0.42);
+fn caustic_pattern(p: vec2f, t: f32) -> f32 {
+  let a = noise(p * 1.1 + vec2f(t * 0.25, t * 0.1));
+  let b = noise(p * 1.9 + vec2f(3.1, 7.7) - vec2f(t * 0.18, t * 0.3));
+  let ra = 1.0 - abs(2.0 * a - 1.0);
+  let rb = 1.0 - abs(2.0 * b - 1.0);
+  return pow(ra, 7.0) * 0.8 + pow(rb, 7.0) * 0.55;
+}
+fn surface_normal(p: vec2f, t: f32) -> vec3f {
+  let c = coarse(p);
+  let sl = c.zw + fine(p + vec2f(u.wind.x, u.wind.y) * t * 0.3);
+  return normalize(vec3f(-sl.x, 1.0, -sl.y));
+}
+fn hash3(c: vec3f) -> f32 { return fract(sin(dot(c, vec3f(127.1, 311.7, 74.7))) * 43758.5453); }
+fn motes(o: vec3f, d: vec3f, reach: f32, t: f32) -> f32 {
+  var a = 0.0;
+  let n = select(8, 4, u.mode.y > 0.5);
+  for (var i = 0; i < n; i++) {
+    let c = floor(o + d * ((f32(i) + 0.5) * reach / f32(n)));
+    if (hash3(c + 0.31) > 0.25) { continue; }
+    let m = c + vec3f(hash3(c), hash3(c + 7.0), hash3(c + 13.0)) + vec3f(sin(t * 0.3 + hash3(c) * 6.0), cos(t * 0.21), 0.0) * 0.08;
+    let along = max(dot(m - o, d), 0.05);
+    if (along > reach) { continue; }
+    let size = 0.0025 * along * u.size.y / 900.0 * 4.0 + 0.004;
+    a += (1.0 - smoothstep(size * 0.4, size, length(m - (o + d * along)))) * 0.5 * exp(-along * 0.2);
+  }
+  return a;
+}
+fn shafts(o: vec3f, d: vec3f, path: f32, t: f32) -> f32 {
+  if (u.mode.y > 0.5) { return 0.0; }
+  var sum = 0.0;
+  let reach = min(path, 14.0);
+  for (var i = 0; i < 16; i++) {
+    let q = o + d * ((f32(i) + 0.5) / 16.0 * reach);
+    let below = max(u.sea.x - q.y, 0.0);
+    sum += caustic_pattern((q.xz + u.sun.xz * below * 0.75) * 0.5, t) * exp(-below * 0.12 - length(q - o) * 0.08);
+  }
+  return sum / 16.0 * reach * 0.12;
+}
+fn under_view(o: vec3f, d: vec3f, t: f32) -> vec3f {
+  // the sand
+  var tg = 1e9;
+  var s = 0.0;
+  var prev = o.y - ground(o.xz);
+  for (var i = 0; i < 48; i++) {
+    let step = 0.3 + s * 0.08;
+    let q = o + d * (s + step);
+    let gap = q.y - ground(q.xz);
+    if (gap < 0.0) { tg = s + step * prev / max(prev - gap, 1e-4); break; }
+    prev = gap; s += step;
+    if (s > 120.0) { break; }
+  }
+  // the surface from below
+  var ts = 1e9;
+  if (d.y > 0.0) {
+    let amp = u.wind.w * 1.3 + 0.4;
+    let top = (u.sea.x + amp - o.y) / d.y;
+    var a = 0.0;
+    var fa = sea_height(o.xz, t) - o.y;
+    for (var i = 1; i <= 16; i++) {
+      let b = top * f32(i) / 16.0;
+      let q = o + d * b;
+      let fb = sea_height(q.xz, t) - q.y;
+      if (fb < 0.0) { ts = a + (b - a) * fa / max(fa - fb, 1e-5); break; }
+      a = b; fa = fb;
+    }
+  }
+  let depth_eye = max(u.sea.x - o.y, 0.0);
+  let light = UNDER_SCATTER * (0.55 + 0.45 * exp(-depth_eye * 0.08)) * (0.6 + 0.4 * u.sun.w);
+  var col = light;
+  var path = 160.0;
+  if (ts < tg && ts < 1e8) {
+    path = ts;
+    let w = o + d * ts;
+    let n = surface_normal(w.xz, t);
+    let up = dot(d, n);
+    let r = refract(d, -n, 1.33);
+    let mirrored = light * 0.8;
+    if (dot(r, r) < 1e-6) {
+      col = mirrored;           // past the critical angle: the surface mirrors the water
+    } else {
+      let f0 = 0.0200593;
+      let tr = 1.0 - (f0 + (1.0 - f0) * pow(1.0 - clamp(up, 0.0, 1.0), 5.0));
+      col = mix(mirrored, sky(r) * 1.05, tr * smoothstep(0.0, 0.08, up));
+      col += vec3f(1.0, 0.95, 0.8) * pow(max(dot(r, u.sun.xyz), 0.0), 300.0) * 2.0 * tr;
+    }
+    // foam floating over the eye
+    col = mix(col, vec3f(0.9, 0.95, 0.94), coarse(w.xz).y * 0.6);
+  } else if (tg < 1e8) {
+    path = tg;
+    let w = o + d * tg;
+    let e = 0.05;
+    let n = normalize(vec3f(ground(w.xz - vec2f(e, 0.0)) - ground(w.xz + vec2f(e, 0.0)), 2.0 * e,
+                            ground(w.xz - vec2f(0.0, e)) - ground(w.xz + vec2f(0.0, e))));
+    let below = max(u.sea.x - w.y, 0.0);
+    var c = sand(w.xz, n, 1.0) * exp(-UNDER_ABSORB * below);
+    c += vec3f(1.0, 0.96, 0.82) * caustic_pattern(w.xz * 0.9, t) * exp(-below * 0.15) * smoothstep(0.0, 0.3, below) * 0.9 * max(n.y, 0.0);
+    col = c;
+  }
+  let tr = exp(-UNDER_ABSORB * path);
+  col = col * tr + light * (vec3f(1.0) - tr);
+  col += vec3f(0.95, 0.97, 0.85) * (motes(o, d, min(path, 7.0), t) * 0.7 + shafts(o, d, path, t));
+  return col;
+}
+
 @vertex fn bg_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = array(vec2f(-1.0, -3.0), vec2f(-1.0, 1.0), vec2f(3.0, 1.0));
   return vec4f(p[i], 0.0, 1.0);
@@ -261,6 +375,17 @@ fn trace(o: vec3f, d: vec3f, t0: f32) -> Hit {
   let d = normalize(u.fwd.xyz + u.right.xyz * ndc.x * u.eye.w * aspect + u.up.xyz * ndc.y * u.eye.w);
   let o = u.eye.xyz;
   let t = u.size.z;
+  // the split waterline: is this pixel's point on the near plane under the waves?
+  let near = o + d * 0.1;
+  let line = near.y - sea_height(near.xz, t);
+  if (line < 0.0) {
+    // on a desktop the view wavers a little under the water
+    let waver = select(vec3f(sin(frag.y * 0.02 + t * 1.7), cos(frag.x * 0.017 + t * 1.3), 0.0) * 0.004, vec3f(0.0), u.mode.y > 0.5);
+    var c = under_view(o, normalize(d + waver.x * u.right.xyz + waver.y * u.up.xyz), t);
+    // the meniscus: a bright edge where the surface crosses the lens
+    if (u.mode.y < 0.5) { c = mix(c, vec3f(0.85, 0.95, 0.95), (1.0 - smoothstep(0.0, 0.006, -line)) * 0.7); }
+    return vec4f(c, 1.0);
+  }
   let hit = trace(o, d, t);
   var c: vec3f;
   if (hit.t > 1e8) {

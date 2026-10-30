@@ -46,7 +46,7 @@ W_ABSORB :: 292;            // absorption rgb (1/m), 1 for the painted look (art
 W_SCATTER :: 296;           // in-scatter rgb, foam amount
 W_BODY :: 300;              // roughness, swell gain, 1 when the eye is in the water, crest scattering
 W_REST :: 304;              // shore band (m), the pixel's angle (rad), the sun's disc (rad), metres along a node
-W_CONTROL :: 308;           // the tier: detail waves, glint fade (m), foam octaves, 1
+W_CONTROL :: 308;           // the tier: detail waves, glint fade (m), foam octaves; the eye's height over the water (river.coax; 1 otherwise)
 W_GRID :: 312;              // nodes across, nodes along, quads across a patch, quads along a patch
 W_GRID2 :: 316;             // nodes along a patch, patches, 0, 0
 W_FRAME :: 320;             // where the nodes lie: the first node's x, z, the way along (rad about +Y from +z), metres across a node

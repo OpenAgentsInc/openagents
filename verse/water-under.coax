@@ -1,0 +1,211 @@
+// Water for Verse, phase W7: under the water. The CPU half of the old
+// `verse_pbr::water::under` and `verse_engine::audio::Underwater` (`git show
+// 0b401561a0^:crates/verse-pbr/src/water/under.rs`; the design is
+// verse/everglade/previous/water.md, "Shaders per tier", W7's status):
+//
+// - The waterline. The surface over the eye, as a tangent plane, turned into
+//   each near-plane point's height over the water. That height is affine
+//   across the screen, so three numbers (WaterLine) split every pixel into
+//   air and water where the near plane straddles the surface, on every tier
+//   with no extra pass.
+// - Submersion: how much of the view is under water, eased over a few frames
+//   (for the fog's onset, the motes and the sound).
+// - The fog: per-channel Beer-Lambert from the water's absorption, the same
+//   numbers the surface's absorption uses, so the look is continuous across
+//   the waterline.
+// - Snell's window: from below, the sky shows inside the cone of
+//   asin(1 / 1.33) about straight up; outside it the surface reflects the
+//   water (total internal reflection).
+// - The tiers: the phone draws fog, the split waterline, Snell's window,
+//   caustics and motes; the desktop adds the view's wavering, 16 samples of
+//   sun shafts and the meniscus.
+// - Motes: stateless, from a hash of 1 m cells round the eye, so they stay
+//   put in the water as the eye moves.
+// - The sound: a two-pole 450 Hz low-pass on the mix (RBJ's cookbook
+//   biquad). Computed only: no realm plays it, and checks never play sound.
+//   A realm shows it as the muffled share (water_under_muffle) if anything.
+//   coax/bin/coax test --library verse/water-under.coax
+
+#load "rigid.coax";
+
+WATER_IOR_D :: 1.33;
+// The cone of Snell's window: rays from below within this of straight up
+// leave the water, rad (asin(1 / 1.33)).
+water_snell_angle :: () -> f64 { return asin_d(1.0 / WATER_IOR_D); }
+asin_d :: (x: f64) -> f64 { return PI_D / 2.0 - acos_d(x); }
+
+// Whether a ray from below whose angle off straight up has cosine `c`
+// leaves through the surface, and how much of it (Schlick's Fresnel inside
+// the window, none past it).
+water_snell_transmit :: (c: f64) -> f64 {
+  // the refracted ray's cosine in air; none past the critical angle
+  s2 := WATER_IOR_D * WATER_IOR_D * (1.0 - c * c);
+  if s2 >= 1.0 { return 0.0; }
+  f0 := (WATER_IOR_D - 1.0) * (WATER_IOR_D - 1.0) / ((WATER_IOR_D + 1.0) * (WATER_IOR_D + 1.0));
+  ct := sqrt(1.0 - s2);
+  m := 1.0 - ct;
+  return 1.0 - (f0 + (1.0 - f0) * m * m * m * m * m);
+}
+
+// The camera, for the line: the eye, its unit forward, right and up, the
+// near plane's distance and the tangents of half the field.
+LineCamera :: struct { eye: D3; forward: D3; right: D3; up: D3; near: f64; tan_x: f64; tan_y: f64; }
+
+// The near-plane point at (x, y) in [-1, 1]^2 has height over the water
+// a + b x + c y (m): above the water where positive.
+WaterLine :: struct { a: f64; b: f64; c: f64; }
+
+// The surface over the eye as a tangent plane: its height there and its
+// slopes dh/dx, dh/dz.
+water_under_line :: (cam: LineCamera, surface: f64, slope_x: f64, slope_z: f64) -> WaterLine {
+  centre := d3_add(cam.eye, d3_scale(cam.forward, cam.near));
+  h0 := centre.y - (surface + slope_x * (centre.x - cam.eye.x) + slope_z * (centre.z - cam.eye.z));
+  rx := d3_scale(cam.right, cam.near * cam.tan_x);
+  uy := d3_scale(cam.up, cam.near * cam.tan_y);
+  return WaterLine.{a = h0, b = rx.y - slope_x * rx.x - slope_z * rx.z, c = uy.y - slope_x * uy.x - slope_z * uy.z};
+}
+water_line_at :: (l: WaterLine, x: f64, y: f64) -> f64 { return l.a + l.b * x + l.c * y; }
+
+// The view's submersion, eased: `tau` s to close most of the way.
+water_submersion :: (now: f64, target: f64, dt: f64, tau: f64) -> f64 {
+  if tau <= 0.0 { return target; }
+  return now + (target - now) * (1.0 - exp(-dt / tau));
+}
+// The share of the view under water, from the line: the fraction of the
+// screen where the near plane lies below the surface (sampled 16 by 16).
+water_under_share :: (l: WaterLine) -> f64 {
+  n := 0;
+  for j: 0..<16 {
+    for i: 0..<16 {
+      if water_line_at(l, (f64(i) + 0.5) / 8.0 - 1.0, (f64(j) + 0.5) / 8.0 - 1.0) < 0.0 { n += 1; }
+    }
+  }
+  return f64(n) / 256.0;
+}
+
+// The fog: the transmittance of `distance` m of water with absorption
+// (1/m) per channel; the light scattered in is the water's colour times
+// what was lost.
+water_fog :: (absorb: f64, distance: f64) -> f64 { return exp(-absorb * fmax(distance, 0.0)); }
+
+// What a tier draws.
+UnderTier :: struct {
+  shafts: int;          // samples along the view; 0 none
+  waver: f64;           // how far the view wavers, screen fractions
+  meniscus: bool;
+  motes: int;
+}
+water_under_tier :: (phone: bool) -> UnderTier {
+  if phone { return UnderTier.{shafts = 0, waver = 0.0, meniscus = false, motes = 48}; }
+  return UnderTier.{shafts = 16, waver = 0.004, meniscus = true, motes = 160};
+}
+
+// The motes: in each 1 m cell round the eye a mote at a hashed place (some
+// cells empty), so they stay still in the water as the eye moves.
+water_mote_hash :: (x: int, y: int, z: int) -> u64 {
+  h := mul_wrap(cast,trunc(u64) x, 0x9e3779b97f4a7c15) ^ mul_wrap(cast,trunc(u64) y, 0xc2b2ae3d27d4eb4f) ^ mul_wrap(cast,trunc(u64) z, 0x165667b19e3779f9);
+  h = mul_wrap(h ^ (h >> 31), 0xbf58476d1ce4e5b9);
+  return h ^ (h >> 29);
+}
+MoteAt :: struct { here: bool; p: D3; }
+water_mote :: (x: int, y: int, z: int) -> MoteAt {
+  h := water_mote_hash(x, y, z);
+  if h % 4 != 0 { return MoteAt.{here = false}; }
+  return MoteAt.{here = true, p = d3(f64(x) + f64((h >> 8) & 1023) / 1024.0, f64(y) + f64((h >> 18) & 1023) / 1024.0, f64(z) + f64((h >> 28) & 1023) / 1024.0)};
+}
+
+// The sound: RBJ's two-pole low-pass at `cutoff` Hz (Q = 1 / sqrt 2) for a
+// `rate` Hz mix: y = b0 x + b1 x1 + b2 x2 - a1 y1 - a2 y2.
+Biquad :: struct { b0: f64; b1: f64; b2: f64; a1: f64; a2: f64; }
+water_under_lowpass :: (cutoff: f64, rate: f64) -> Biquad {
+  w := TAU_D * cutoff / rate;
+  alpha := sin(w) / (2.0 * 0.7071067811865476);
+  c := cos(w);
+  a0 := 1.0 + alpha;
+  return Biquad.{b0 = (1.0 - c) / 2.0 / a0, b1 = (1.0 - c) / a0, b2 = (1.0 - c) / 2.0 / a0, a1 = -2.0 * c / a0, a2 = (1.0 - alpha) / a0};
+}
+// The filter's gain at `f` Hz.
+water_biquad_gain :: (q: Biquad, f: f64, rate: f64) -> f64 {
+  w := TAU_D * f / rate;
+  // |B(e^{iw})| / |A(e^{iw})|
+  br := q.b0 + q.b1 * cos(w) + q.b2 * cos(2.0 * w); bi := -(q.b1 * sin(w) + q.b2 * sin(2.0 * w));
+  ar := 1.0 + q.a1 * cos(w) + q.a2 * cos(2.0 * w); ai := -(q.a1 * sin(w) + q.a2 * sin(2.0 * w));
+  return sqrt((br * br + bi * bi) / (ar * ar + ai * ai));
+}
+// How muffled the mix is, 0 to 1: the submersion past its first tenth.
+water_under_muffle :: (submersion: f64) -> f64 { return fclamp((submersion - 0.1) / 0.9, 0.0, 1.0); }
+
+// ---- checks
+
+#test "the waterline is affine across the screen and splits it where the near plane meets the surface" {
+  cam := LineCamera.{eye = d3(3.0, 0.05, -2.0), forward = d3_unit(d3(0.0, -0.2, -1.0)), right = d3(1.0, 0.0, 0.0), near = 0.1, tan_x = 0.9, tan_y = 0.55};
+  cam.up = d3_cross(cam.right, cam.forward);
+  l := water_under_line(cam, 0.02, 0.1, -0.05);
+  for j: 0..<5 {
+    for i: 0..<5 {
+      x := f64(i) / 2.0 - 1.0; y := f64(j) / 2.0 - 1.0;
+      p := d3_add(d3_add(d3_add(cam.eye, d3_scale(cam.forward, cam.near)), d3_scale(cam.right, cam.near * cam.tan_x * x)), d3_scale(cam.up, cam.near * cam.tan_y * y));
+      plane := 0.02 + 0.1 * (p.x - cam.eye.x) - 0.05 * (p.z - cam.eye.z);
+      #assert abs(water_line_at(l, x, y) - (p.y - plane)) < 0.000000000001;
+    }
+  }
+  // the eye 5 cm over still water looking down a little: the line crosses the screen
+  share := water_under_share(water_under_line(cam, 0.0, 0.0, 0.0));
+  #assert share > 0.0 && share < 1.0;
+  deep := cam; deep.eye.y = -2.0;
+  #assert water_under_share(water_under_line(deep, 0.0, 0.0, 0.0)) == 1.0;
+  high := cam; high.eye.y = 2.0;
+  #assert water_under_share(water_under_line(high, 0.0, 0.0, 0.0)) == 0.0;
+}
+
+#test "submersion eases and settles" {
+  s := 0.0;
+  for i: 0..<120 { s = water_submersion(s, 1.0, 1.0 / 60.0, 0.25); #assert s <= 1.0; }
+  #assert s > 0.99;
+  t := water_submersion(0.0, 1.0, 0.25, 0.25);
+  #assert abs(t - (1.0 - exp(-1.0))) < 0.000000000001;
+  #assert water_submersion(0.3, 1.0, 1.0, 0.0) == 1.0;
+}
+
+#test "Snell's window and total internal reflection" {
+  a := water_snell_angle();
+  #assert abs(a - 0.8507) < 0.0005;    // 48.75 degrees
+  #assert water_snell_transmit(cos(a - 0.01)) > 0.0 && water_snell_transmit(cos(a + 0.01)) == 0.0;
+  #assert abs(water_snell_transmit(1.0) - (1.0 - 0.0200593)) < 0.0001;
+  #assert water_snell_transmit(cos(0.6)) < water_snell_transmit(1.0);
+}
+
+#test "the fog is Beer-Lambert and continuous at the waterline" {
+  #assert water_fog(0.4, 0.0) == 1.0;
+  #assert abs(water_fog(0.4, 2.5) - exp(-1.0)) < 0.000000000001;
+  #assert water_fog(0.4, 5.0) < water_fog(0.2, 5.0);
+  #assert water_fog(0.4, -1.0) == 1.0;
+}
+
+#test "the tiers" {
+  p := water_under_tier(true); d := water_under_tier(false);
+  #assert p.shafts == 0 && p.waver == 0.0 && !p.meniscus && p.motes > 0;
+  #assert d.shafts == 16 && d.waver > 0.0 && d.meniscus && d.motes > p.motes;
+}
+
+#test "motes stay put as the eye moves" {
+  a := water_mote(3, -2, 7); b := water_mote(3, -2, 7);
+  #assert a.here == b.here;
+  n := 0;
+  for z: 0..<10 { for y: 0..<10 { for x: 0..<10 {
+    m := water_mote(x, y, z);
+    if m.here {
+      n += 1;
+      #assert m.p.x >= f64(x) && m.p.x < f64(x + 1) && m.p.y >= f64(y) && m.p.y < f64(y + 1) && m.p.z >= f64(z) && m.p.z < f64(z + 1);
+    }
+  } } }
+  #assert n > 150 && n < 350;   // about a quarter of the cells
+}
+
+#test "the underwater low-pass" {
+  q := water_under_lowpass(450.0, 48000.0);
+  #assert abs(water_biquad_gain(q, 0.0, 48000.0) - 1.0) < 0.000001;
+  #assert abs(water_biquad_gain(q, 450.0, 48000.0) - 0.7071067811865476) < 0.001;   // -3 dB at the cutoff
+  #assert water_biquad_gain(q, 4500.0, 48000.0) < 0.012;                           // two poles: -40 dB a decade
+  #assert water_under_muffle(0.0) == 0.0 && water_under_muffle(1.0) == 1.0;
+}

@@ -270,6 +270,7 @@ Everglade :: struct {
   feet: Point; face: f32; act: int;
   above: bool;              // the map view: the camera over the city
   lift: f32;                // eased toward 1 in the map view, 0 at your shoulder
+  sink: f32;                // eased toward 1 while you dive: the camera follows you under
   warp: bool;               // the face should put you at spawn (a hash named a place)
   spawn: Point; spawn_face: f32;
   map_button: Box; map_finger: int;
@@ -2048,6 +2049,15 @@ camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Sho
   o = verse_orbit_limit(o, room, dt);
   s[0].orbit = o;
   shot := verse_orbit_shot(o);
+  // Diving, the camera comes down with you to about your head, so the view
+  // goes under the water (verse/water-under.coax) instead of staying on top.
+  s[0].sink += ((ifx s[0].water == WATER_DIVING then 1.0f32 else 0.0f32) - s[0].sink) * settle(2.5, dt);
+  if s[0].sink > 0.001 {
+    low := hi(feet.y + 1.1, ground_at(s, shot.eye.x, shot.eye.z) + 0.35);
+    k := s[0].sink * s[0].sink * (3 - 2 * s[0].sink);
+    shot.eye.y += lo(low - shot.eye.y, 0) * k;
+    shot.at.y += (feet.y + 0.9 - shot.at.y) * k;   // and looks level along the river, not down at the bed
+  }
   s[0].lift += ((ifx s[0].above then 1.0f32 else 0.0f32) - s[0].lift) * settle(3.0, dt);
   if s[0].lift < 0.001 { return shot; }
   e := ABOVE_EYE; a := ABOVE_AT;

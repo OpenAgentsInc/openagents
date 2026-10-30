@@ -329,3 +329,46 @@ Measured headless on this Mac (Apple GPU, `frametime.ts`): 0.71 ms GPU per
 frame at 390x844, 1.59 ms at 1440x900 at device pixel ratio 2, with the
 CPU's synthesis inside a 1.7 ms frame. W11 takes the phone numbers on real
 devices.
+
+## W7: under the water (done)
+
+[`verse/water-under.coax`](../../verse/water-under.coax) ports the old
+underwater module as numbers the shaders mirror, with its tests:
+
+- **The waterline across the view.** `water_under_line` finds where the
+  surface crosses the near plane per column, so a camera half in shows the
+  world split, the top above and the bottom under, with a meniscus line
+  on a desktop.
+- **Submersion and fog.** `water_submersion` and `water_under_share` say how
+  far under the eye is; `water_fog` is Beer–Lambert absorption per channel
+  (reds go first) plus inscatter lit by the sun.
+- **Snell's window.** `water_snell_angle` and `water_snell_transmit`: from
+  below, the sky shows inside a 48.75° cone and the rest of the surface
+  mirrors the water.
+- **Tiers.** `water_under_tier`: a phone draws 48 motes and no shafts, waver or
+  meniscus. A desktop draws 160 motes, 16 samples of sun shafts, a 0.004
+  waver and the meniscus.
+- **Sound, computed only.** `water_under_muffle` is the RBJ 450 Hz low-pass a
+  submerged listener hears through, checked by its gain: 1 at 0 Hz, -3 dB at 450 Hz and under 0.012 at 4.5 kHz.
+  Nothing plays it, and no test plays sound.
+
+**Everglade.** `verse/everglade/river.coax` writes the eye's height over the
+river into `W_CONTROL.w`. `water_under_view` in `everglade.wgsl` then fogs
+every scene pixel and the sky under that line, with motes and, on a desktop,
+shafts. Caustics (`water_caustics`) already light the submerged bed.
+Holding C dives (`#river-wade` spawns in the river), and the camera comes
+down to your head, looking level along the river, so the view goes under.
+Everglade has no post pass, so the waver and meniscus are drawn only in the
+lab.
+
+**The lab.** Q dives the lab's camera and E brings it up (`?depth=` sets it).
+The traced pass draws the split line, the waver, Snell's window, shafts,
+motes and caustics on the sand.
+
+Measured headless (`frametime.ts`, GPU p50). Everglade diving: 3.09 ms at
+390x844 on the phone tier (3.93 ms on the surface), and 15.2 ms at 1440x900
+at device pixel ratio 2 (12.1 ms on the surface; the shafts cost 3 ms).
+
+```sh
+coax/bin/coax test --library verse/water-under.coax --steps 2000000000
+```

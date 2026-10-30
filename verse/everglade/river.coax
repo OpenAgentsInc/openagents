@@ -228,6 +228,9 @@ everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f3
   water_look_body(u, 0, b.waves, time, r[0].preset, 1, inside);
   water_look_detail(u, 0, 3.0, 0.12, 2.4, 0.016);
   water_look_control(u, 0, phone);
+  // the eye's height over the water (m; 100 when not over it): everglade.wgsl splits the view
+  // at the near plane with it and draws what lies under in the underwater look (W7)
+  u[W_CONTROL + 3] = ifx s.found then ey - f32(s.height) else 100.0f32;
   water_look_ripples(u, 0, r[0].ripples[..], cast(f32) u[W_PARAMS]);
   u[W_REST + 1] = pixel_angle;
   u[W_GRID] = f32(RIVER_COLS); u[W_GRID + 1] = f32(RIVER_ROWS);
