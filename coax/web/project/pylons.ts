@@ -3,9 +3,9 @@
 // psionic/lib/pylon/beacon.coax writes and reads) plus what a reader counts
 // from the Pylon's own events (26910 answers and 27010 status) on the relay.
 //
-// THE REAL FEED PLUGS IN HERE: landing.ts calls `pylons()`. Today that returns
-// DEMO_PYLONS (every row demo: true). When chapter 19's Pylons publish beacons
-// to the relay, set PYLON_SOURCE to "relay": `readPylons` reads the 30200
+// THE REAL FEED PLUGS IN HERE: landing.ts calls `pylons()`. PYLON_SOURCE is
+// "relay" since 2026-10-30 (real Pylons publish beacons there; "demo" brings
+// back DEMO_PYLONS, every row demo: true): `readPylons` reads the 30200
 // beacons (verified, admitted as NIP-PYLON's Validation says, newest
 // generation per pylon) and the 26910/27010 counts, and the page draws those
 // instead. Nothing in newland.coax changes: it draws whatever LAND_PYLONS holds.
@@ -14,7 +14,7 @@ import { npubEncode } from "nostr-effect/nip19"
 import { verifyEvent, type Event } from "nostr-effect/pure"
 import type { Relay } from "./relay"
 
-export const PYLON_SOURCE: "demo" | "relay" = "demo"
+export const PYLON_SOURCE: "demo" | "relay" = "relay"
 
 export const PB_KIND = 30200
 export const PB_MARKER = "oa:pylon-beacon:v1"
@@ -148,8 +148,9 @@ export async function readPylons(relay: Relay, now = Math.floor(Date.now() / 100
     // a 27010 is a refusal, an error or a cancel (its body is encrypted to the buyer; the count is public)
     const failed = work.filter((e) => e.kind === KIND_STATUS).length
     // a job's time: from the request it answers (its e tag) to the answer
-    const asks = new Map((await relay.all([{ ids: answers.flatMap((a) => tag(a, "e").map((x) => x[1])).slice(0, 500) }]))
-      .map((r) => [r.id, r.created_at] as const))
+    // (no answers: no lookup, since the relay refuses an empty ids filter)
+    const ids = answers.flatMap((a) => tag(a, "e").map((x) => x[1])).slice(0, 500)
+    const asks = new Map((ids.length ? await relay.all([{ ids }]) : []).map((r) => [r.id, r.created_at] as const))
     const spans = answers.map((a) => a.created_at - (asks.get(tag(a, "e")[0]?.[1] ?? "") ?? a.created_at)).filter((s) => s >= 0)
     out.push({ ...p, jobs_24h: answers.length, failed_24h: failed,
       avg_job_s: spans.length ? Math.round(spans.reduce((a, b) => a + b, 0) / spans.length) : 0,
@@ -158,7 +159,7 @@ export async function readPylons(relay: Relay, now = Math.floor(Date.now() / 100
   return out
 }
 
-/** The Pylons landing.ts writes: the demo today, the relay's once PYLON_SOURCE says so. */
+/** The Pylons landing.ts writes: the relay's, or the demo when PYLON_SOURCE says so. */
 export async function pylons(relayUrl: string, open: (url: string) => Promise<Relay>): Promise<Pylon[]> {
   if (PYLON_SOURCE === "demo") return DEMO_PYLONS
   const relay = await open(relayUrl)

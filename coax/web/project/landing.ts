@@ -131,7 +131,7 @@ const people = NAMES.map((n) => {
   const npub = npubEncode(createHash("sha256").update(`new-land person ${n}`).digest("hex"))
   return `${n}|${npub.slice(0, 9)}...${npub.slice(-4)}`
 })
-// The Pylons: demo machines until pylons.ts reads the real beacons (its PYLON_SOURCE).
+// The Pylons: the real beacons on the relay (pylons.ts PYLON_SOURCE; "demo" for the made-up machines).
 const places = new Map(PLACES.map(([slug, , x, z], k) => [slug, [k, x, z] as [number, number, number]]))
 const pylonList = await pylons("wss://relay.openagents.com", (url) => Relay.open(url, null))
 const pylonTable = pylonRows(pylonList, places, pylonNow(pylonList))

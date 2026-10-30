@@ -17,9 +17,9 @@
 // and where they walk (a function of the clock, so every visit is the same).
 // The Pylons stand in bays by the projects they serve, drawn as the old Grid's
 // Pylon Bay drew them; LAND_PYLONS holds a row per Pylon in its NIP-PYLON
-// beacon's terms. Today every row is a demo (its first field says demo): the
-// real feed plugs in at coax/web/project/pylons.ts (PYLON_SOURCE "relay"
-// reads the 30200 beacons), and nothing here changes.
+// beacon's terms, read from the 30200 beacons on the relay by
+// coax/web/project/pylons.ts (PYLON_SOURCE "relay"; with "demo" every row is
+// a made-up machine and its first field says demo).
 //
 // Checks: coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000
 
@@ -1959,7 +1959,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
 #test "the Pylons read: each in its project's bay, off the places and apart" {
   s: [1] LandState;
   read_tables(s[..]);
-  #assert s[0].pylons == rows(LAND_PYLONS) && s[0].pylons >= 6;
+  #assert s[0].pylons == rows(LAND_PYLONS);   // the relay's Pylons at capture: any number, none too
   for i: 0..<s[0].pylons {
     q := s[0].pyl[i];
     #assert q.plot >= 0 && q.plot < s[0].plots && q.total >= q.free && q.free >= 0;
