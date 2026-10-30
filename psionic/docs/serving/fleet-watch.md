@@ -157,3 +157,24 @@ These temporary operational tools are not a portable product installer.
 Inspect structured Cloud Run cycle logs with a sufficiently large result
 limit (200 entries per execution); the confidential summary spans many
 lines, so a 30-entry limit can omit a later successful cycle record.
+
+The [local backend watcher](backend-watch.md) is also installed and enabled on
+the RTX host with the same fixed window. Its first check at `21:20:49Z` and
+automatic timer-owned checks at `21:22:49Z` and `21:24:50Z` found all three
+backends healthy, with zero failures and no restart. Source and scoped
+qualification landed in `7f687d5b13`; the [installation/followup proof](../../../docs/verification/2026-10-30-backend-watch.md)
+records unchanged backend InvocationIDs. Busy429, warmup and indeterminate
+responses cannot trigger restart; actual inference remains the managed job's
+separate responsibility.
+
+At the end audit, also disable this watch's own local timer and drain its
+oneshot on `psionic-rtx6000-pylon`:
+
+```sh
+sudo systemctl disable --now openagents-backend-watch.timer
+sudo systemctl stop openagents-backend-watch.service
+```
+
+Keep the three model services, three Pylons, confidential worker and standing
+RTX recovery controller running. The local policy already refuses observation
+or restart after the fixed end, even before the timer is disabled.
