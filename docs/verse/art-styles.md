@@ -141,6 +141,11 @@ colour += rim * rim_colour
 - Not on the ground: terrain has no silhouette, and a rim on it lights the
   whole grazing meadow (at night a silver sheen between the grass blades).
 - It is a light term, so it fogs with the surface and never draws over the sky.
+- A realm may draw with no outlines at all: `verse_style_no_outlines`
+  (`verse/style-preset.coax`) sets the rim strengths and `outline_max` to 0
+  on every key and both tiers. Everglade draws so since October 29 (the
+  owner: "remove the toon outlines from everglade"): the bright line the
+  rim drew round every person, prop, roof and crown read as a toon outline.
 
 ### 3. Shadows and ambient
 
@@ -381,6 +386,7 @@ the sky without a seam.
   pale edge brighter than the surface it borders, at no more than 0.35
   strength, fading with haze. Hecate's moonlit edges are this form (below).
   A dark outline fails the style check.
+  Everglade has neither the outline pass nor the rim (section 2).
 
 ### 10. Textures and packs
 

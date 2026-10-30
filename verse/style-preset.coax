@@ -239,6 +239,15 @@ verse_style_preset :: (style: int, tier: int) -> StylePreset {
   return p;
 }
 
+/** `p` with no toon outlines: no outline pass (outline_max 0) and no rim line along silhouettes,
+ *  on the world and on characters, at every key and on both tiers. Everglade draws so (the owner,
+ *  October 29: "remove the toon outlines from everglade"); the other painterly realms keep theirs. */
+verse_style_no_outlines :: (p: StylePreset) -> StylePreset {
+  q := p;
+  q.outline_max = 0; q.rim_world = 0; q.rim_char = 0;
+  return q;
+}
+
 // The sun's elevation at `clock` (0 midnight, 0.5 noon): sun_low at midnight to sun_high at noon.
 verse_style_sun_elevation :: (p: StylePreset, clock: f32) -> f32 {
   return 0.5 * (p.sun_low + p.sun_high) - 0.5 * (p.sun_high - p.sun_low) * cos(6.2831853 * clock);
@@ -406,6 +415,17 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert sp_near(o[SU_RIM], 1.00) && sp_near(o[SU_RIM + 1], 0.62) && sp_near(o[SU_RIM + 2], 0.40);
   #assert verse_style_at(day, 0.0, o[..]);
   #assert sp_near(o[SU_RIM], 0.34) && sp_near(o[SU_RIM + 1], 0.42) && sp_near(o[SU_RIM + 2], 0.70) && sp_near(o[SU_RIM + 3], 0.105) && sp_near(o[SU_RIM2], 0.1575);
+}
+#test "a realm with no outlines draws no outline and no rim, by day and night, desktop and phone" {
+  for tier: 0..<2 {
+    q := verse_style_no_outlines(verse_style_preset(STYLE_PAINTERLY, ifx tier == 0 then STYLE_DESKTOP else STYLE_PHONE));
+    #assert q.ok && q.outline_max == 0 && q.rim_world == 0 && q.rim_char == 0 && q.band_e0 == 0.20;
+    o: [STYLE_FLOATS] f32;
+    for c: 0..<4 {
+      #assert verse_style_at(q, 0.25 * cast(f32) c, o[..]);
+      #assert o[SU_RIM + 3] == 0 && o[SU_RIM2] == 0 && o[SU_STYLE] == 0;
+    }
+  }
 }
 #test "the painterly preset holds the spec's shading numbers" {
   p := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
