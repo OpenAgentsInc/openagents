@@ -1,0 +1,30 @@
+// Native check for message.coax's verified EVENT path, which exceeds the
+// interpreter's step budget: every EVENT frame of the captured relay
+// transcript verifies through nostr_message_event_verify_vartime, and a
+// changed signature byte refuses. Run: coax run coax/tests/nostr/message_native.coax
+#import "Basic";
+#load "../../lib/nostr/message.coax";
+
+main :: () {
+  from:=0;frames:=0;events:=0;verified:=0;eoses:=0;refused:=0;out:[262144]u8;
+  for i:0..<COAX_RELAY.count+1 {
+    if i==COAX_RELAY.count || COAX_RELAY[i]==10 {
+      if i>from {
+        frame:=COAX_RELAY[from..<i];frames+=1;m:=nostr_message_read(frame);
+        if m.error==NM_OK && m.type==NM_EVENT {
+          events+=1;e:=nostr_message_event_verify_vartime(frame,out[..],false);
+          if e.error==NE_OK && e.verified {verified+=1;}
+        } else if m.error==NM_OK && m.type==NM_EOSE {eoses+=1;}
+      }
+      from=i+1;
+    }
+  }
+  // One changed signature digit in the first EVENT frame (line 1).
+  line:=nm_line(COAX_RELAY,1);buf:[1024]u8;n:=line.to-line.from;
+  for k:0..<n {buf[k]=COAX_RELAY[line.from+k];}
+  buf[n-4]=ifx buf[n-4]=='b' then cast(u8)'c' else cast(u8)'b';
+  e:=nostr_message_event_verify_vartime(cast(string)buf[0..<n],out[..],false);
+  if e.error==NE_SIGNATURE && !e.verified {refused+=1;}
+  ok:=frames==COAX_RELAY_FRAMES && events==verified && events+eoses==frames-1 && refused==1;
+  print("frames % events % verified % eose % tampered-refused % %\n",frames,events,verified,eoses,refused,ifx ok then "PASS" else "FAIL");
+}

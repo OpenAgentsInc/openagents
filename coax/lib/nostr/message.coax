@@ -1,0 +1,308 @@
+// NIP-01 relay messages: reads the five relay-to-client frames and writes the
+// three client-to-relay frames. Spans point into the caller's original frame
+// and stay valid only while it does. A parsed EVENT frame is not a verified
+// event; nostr_message_event_verify_vartime verifies the event it carries,
+// and even that grants no author, subscription or freshness authority.
+#load "filter.coax";
+#authority;
+
+NM_OK :: 0; NM_JSON :: 1; NM_SHAPE :: 2; NM_TYPE :: 3; NM_SUB :: 4;
+NM_ID :: 5; NM_MESSAGE :: 6; NM_LIMIT :: 7; NM_OUTPUT :: 8; NM_ALIAS :: 9;
+NM_EVENT :: 1; NM_ACCEPT :: 2; NM_EOSE :: 3; NM_CLOSED :: 4; NM_NOTICE :: 5;
+// Machine-readable OK/CLOSED prefixes: none (an empty accepted message), the
+// eight NIP-01 words in order, or another single word.
+NM_PREFIX_NONE :: 0; NM_PREFIX_OTHER :: 9;
+NM_PREFIXES :: [8]string.["duplicate","pow","blocked","rate-limited","invalid","restricted","mute","error"];
+NM_MAX_FRAME :: 270336; NM_MAX_SUB :: 64; NM_MAX_FILTERS :: 16;
+// The deployed relay appends bounded metadata such as ["finish"] to EOSE.
+NM_MAX_EOSE_EXTRA :: 4;
+
+NmSpan :: struct {from:int;to:int;}
+NostrMessage :: struct {
+  error:int=NM_SHAPE; type:int; original:string;
+  sub:NmSpan; event:NmSpan; message:NmSpan;   // sub and message are raw JSON string bytes
+  id:[32]u8; accepted:bool; prefix:int; extra:int;
+}
+
+#test "the captured relay transcript's first frames read as AUTH, EVENT and EOSE" {
+  #assert nostr_message_read(COAX_RELAY[nm_line(COAX_RELAY,0).from..<nm_line(COAX_RELAY,0).to]).error==NM_TYPE;
+  types:=[6]int.[NM_EVENT,NM_EOSE,NM_EVENT,NM_EVENT,NM_EOSE,NM_EVENT];
+  for k:0..<6 {
+    line:=nm_line(COAX_RELAY,k+1);m:=nostr_message_read(COAX_RELAY[line.from..<line.to]);
+    #assert m.error==NM_OK && m.type==types[k];
+  }
+  #assert nm_line(COAX_RELAY,99999).from==0 && nm_line(COAX_RELAY,99999).to==0;
+  #assert nm_line("a\nbc",1).from==2 && nm_line("a\nbc",1).to==4 && nm_line("a\nbc",0).to==1;
+  #assert nm_line("\nb",0).to==0 && nm_line("\nb",1).from==1 && nm_line("\nb",1).to==2;
+}
+#test "an EVENT frame's object span is the original event the reader accepts" {
+  line:=nm_line(COAX_RELAY,1);frame:=COAX_RELAY[line.from..<line.to];
+  m:=nostr_message_read(frame);
+  #assert m.error==NM_OK && m.type==NM_EVENT && nm_text(m,m.sub)=="repo";
+  #assert frame[m.event.from]=='{' && frame[m.event.to-1]=='}' && m.event.to==frame.count-1;
+  out:[2048]u8;e:=nostr_event_read(frame[m.event.from..<m.event.to],out[..],false);
+  #assert e.error==NE_OK && e.kind==30617 && e.id[0]==0x81;
+  #assert nostr_message_event_verify_vartime(frame,out[..],true).error==NE_ALIAS;
+  eose:=nm_line(COAX_RELAY,2);m=nostr_message_read(COAX_RELAY[eose.from..<eose.to]);
+  #assert m.error==NM_OK && m.type==NM_EOSE && m.extra==1 && nm_text(m,m.sub)=="repo";
+  #assert nostr_message_event_verify_vartime(COAX_RELAY[eose.from..<eose.to],out[..],false).error==NE_SHAPE;
+  #assert nostr_message_event_verify_vartime("[\"EVENT\"]",out[..],false).error==NE_SHAPE;
+}
+#test "a tampered id reaches the shared verifier and is refused before the signature" {
+  line:=nm_line(COAX_RELAY,1);buf:[1024]u8;n:=line.to-line.from;
+  for i:0..<n {buf[i]=COAX_RELAY[line.from+i];}
+  // The id's first hex digit: ["EVENT","repo",{"id":"8...
+  #assert buf[23]=='8';buf[23]='9';
+  m:=nostr_message_read(cast(string)buf[0..<n]);#assert m.error==NM_OK && m.type==NM_EVENT;
+  out:[2048]u8;e:=nostr_message_event_verify_vartime(cast(string)buf[0..<n],out[..],false);
+  #assert e.error==NE_ID && !e.verified;
+}
+#test "OK frames carry the id, the verdict and a machine prefix" {
+  id:="b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30";
+  m:=nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\"]");
+  #assert m.error==NM_OK && m.type==NM_ACCEPT && m.accepted && m.prefix==NM_PREFIX_NONE && m.id[0]==0xb1 && m.id[31]==0x30;
+  m=nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"duplicate: already have this event\"]");
+  #assert m.error==NM_OK && m.accepted && m.prefix==1 && nm_text(m,m.message)=="duplicate: already have this event";
+  m=nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"blocked: you are banned from posting here\"]");
+  #assert m.error==NM_OK && !m.accepted && m.prefix==3;
+  m=nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"rate-limited: slow down there chief\"]");
+  #assert m.error==NM_OK && m.prefix==4;
+  m=nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"auth-required: sign in\"]");
+  #assert m.error==NM_OK && m.prefix==NM_PREFIX_OTHER;
+  // A refusal must say why with a prefix; an empty one is malformed.
+  #assert nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"\"]").error==NM_MESSAGE;
+  #assert nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"no prefix here\"]").error==NM_MESSAGE;
+  #assert nostr_message_read("[\"OK\",\"B1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\"]").error==NM_ID;
+  #assert nostr_message_read("[\"OK\",\"b1a649\",true,\"\"]").error==NM_ID;
+  #assert nostr_message_read("[\"OK\",1,true,\"\"]").error==NM_SHAPE && nostr_message_read("[\"NOTICE\",1]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",1,\"\"]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\",\"x\"]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,7]").error==NM_SHAPE;
+  #assert id.count==64;
+}
+#test "every standard prefix is recognised and a prefix is one word" {
+  for k:0..<8 {
+    buf:[64]u8;n:=json_raw(buf[..],0,NM_PREFIXES[k]);n=json_raw(buf[..],n,": x");
+    #assert nm_prefix(cast(string)buf[0..<n])==k+1;
+  }
+  #assert nm_prefix("")==NM_PREFIX_NONE && nm_prefix(":x")== -1 && nm_prefix("two words: x")== -1;
+  #assert nm_prefix("x")== -1 && nm_prefix("dup:")==NM_PREFIX_OTHER && nm_prefix("error:")==8;
+  #assert nm_prefix("errors: x")==NM_PREFIX_OTHER && nm_prefix("Error: x")==NM_PREFIX_OTHER && nm_prefix("a_b-9: x")==NM_PREFIX_OTHER;
+  #assert nm_prefix("a.b: x")== -1 && nm_prefix("é: x")== -1;
+}
+#forall "prefix words admit exactly letters, digits, hyphen and underscore" c:0..<256 {
+  buf:[3]u8;buf[0]=cast(u8)c;buf[1]=':';buf[2]='x';
+  word:=(c>=48 && c<=57) || (c>=65 && c<=90) || (c>=97 && c<=122) || c==45 || c==95;
+  #assert (nm_prefix(cast(string)buf[..])==NM_PREFIX_OTHER)==word;
+}
+#test "EOSE, CLOSED and NOTICE frames" {
+  m:=nostr_message_read("[\"EOSE\",\"sub1\"]");#assert m.error==NM_OK && m.type==NM_EOSE && nm_text(m,m.sub)=="sub1" && m.extra==0;
+  m=nostr_message_read("[\"EOSE\",\"sub1\",[\"finish\"],{},1,\"x\"]");#assert m.error==NM_OK && m.extra==4;
+  #assert nostr_message_read("[\"EOSE\",\"sub1\",1,2,3,4,5]").error==NM_LIMIT;
+  m=nostr_message_read("[\"EOSE\",\"x\"]");#assert m.error==NM_OK && nm_text(m,m.sub)=="x";
+  m=nostr_message_read("[\"CLOSED\",\"sub1\",\"unsupported: filter contains unknown elements\"]");
+  #assert m.error==NM_OK && m.type==NM_CLOSED && m.prefix==NM_PREFIX_OTHER && nm_text(m,m.message)=="unsupported: filter contains unknown elements";
+  m=nostr_message_read("[\"CLOSED\",\"sub1\",\"error: shutting down idle subscription\"]");#assert m.error==NM_OK && m.prefix==8;
+  #assert nostr_message_read("[\"CLOSED\",\"sub1\",\"\"]").error==NM_MESSAGE;
+  #assert nostr_message_read("[\"CLOSED\",\"sub1\"]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"CLOSED\",\"sub1\",\"error: x\",1]").error==NM_SHAPE;
+  m=nostr_message_read("[\"NOTICE\",\"anything at all, even no prefix\"]");
+  #assert m.error==NM_OK && m.type==NM_NOTICE && nm_text(m,m.message)=="anything at all, even no prefix";
+  #assert nostr_message_read("[\"NOTICE\"]").error==NM_SHAPE && nostr_message_read("[\"NOTICE\",\"a\",\"b\"]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"NOTICE\",3]").error==NM_SHAPE;
+}
+#test "frames refuse other shapes, labels and subscription ids" {
+  #assert nostr_message_read("").error==NM_JSON && nostr_message_read("[\"EOSE\",\"a\"").error==NM_JSON;
+  #assert nostr_message_read("[\"EOSE\",\"a\"] x").error==NM_JSON;
+  #assert nostr_message_read("{}").error==NM_SHAPE && nostr_message_read("[]").error==NM_SHAPE && nostr_message_read("[1]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"AUTH\",\"x\"]").error==NM_TYPE && nostr_message_read("[\"eose\",\"a\"]").error==NM_TYPE;
+  #assert nostr_message_read("[\"REQ\",\"a\",{}]").error==NM_TYPE;
+  #assert nostr_message_read("[\"\\u0045OSE\",\"a\"]").error==NM_OK;
+  #assert nostr_message_read("[\"EOSE\",\"\"]").error==NM_SUB && nostr_message_read("[\"EOSE\",1]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"EOSE\"]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"EVENT\",\"a\"]").error==NM_SHAPE && nostr_message_read("[\"EVENT\",\"a\",[]]").error==NM_SHAPE;
+  #assert nostr_message_read("[\"EVENT\",\"a\",{},{}]").error==NM_SHAPE && nostr_message_read("[\"EVENT\",\"\",{}]").error==NM_SUB;
+  m:=nostr_message_read("[\"EVENT\",\"a\",{\"k\":[1,{}]}]");#assert m.error==NM_OK && m.event.from==13 && m.event.to==25;
+  sub:[66]u8;sub[0]='"';for i:1..<65 {sub[i]='s';}sub[65]='"';
+  frame:[80]u8;n:=json_raw(frame[..],0,"[\"EOSE\",");n=json_raw(frame[..],n,cast(string)sub[..]);n=json_raw(frame[..],n,"]");
+  #assert nostr_message_read(cast(string)frame[0..<n]).error==NM_OK;
+  n=json_raw(frame[..],0,"[\"EOSE\",");n=json_raw(frame[..],n,cast(string)sub[0..<65]);n=json_raw(frame[..],n,"s\"]");
+  #assert nostr_message_read(cast(string)frame[0..<n]).error==NM_SUB;
+  // 64 characters, not bytes: two-byte é counts once.
+  #assert nm_sub_ok("é") && !nm_sub_ok("") && nm_chars("éa")==2;
+}
+#test "an OK or CLOSED message at the JSON string bound reads" {
+  frame:[65600]u8;n:=json_raw(frame[..],0,"[\"CLOSED\",\"s\",\"");
+  start:=n;n=json_raw(frame[..],n,"error: ");while n<start+JSON_MAX_STRING {frame[n]='x';n+=1;}n=json_raw(frame[..],n,"\"]");
+  m:=nostr_message_read(cast(string)frame[0..<n]);#assert m.error==NM_OK && m.prefix==8 && m.message.to-m.message.from==JSON_MAX_STRING;
+  frame[n-2]='x';frame[n-1]='"';n=json_raw(frame[..],n,"]");#assert nostr_message_read(cast(string)frame[0..<n]).error==NM_JSON;
+}
+#test "a frame over the input bound refuses before parsing" {
+  big:[NM_MAX_FRAME+1]u8;big[0]='[';
+  #assert nostr_message_read(cast(string)big[..]).error==NM_LIMIT;
+  #assert nostr_message_read(cast(string)big[0..<NM_MAX_FRAME]).error==NM_JSON;
+}
+#test "client frames: EVENT wraps a parsed event, REQ carries filters, CLOSE a sub" {
+  out:[4096]u8;
+  n:=nostr_message_write_event(NE_FIXTURE,out[..],false);#assert n==NE_FIXTURE.count+10;
+  #assert cast(string)out[0..<9]=="[\"EVENT\"," && out[n-1]==']';
+  #assert cast(string)out[9..<n-1]==NE_FIXTURE;
+  #assert nostr_message_write_event("{}",out[..],false)== -1 && nostr_message_write_event(NE_FIXTURE,out[..],true)== -1;
+  #assert nostr_message_write_event(NE_FIXTURE,out[0..<NE_FIXTURE.count+9],false)== -1;
+  f:NostrFilter;f.has_kinds=true;kinds:=[1]int.[1];f.kinds=kinds[..];f.has_limit=true;f.limit=10;
+  g:NostrFilter;g.has_since=true;g.since=5;filters:=[2]NostrFilter.[f,g];
+  n=nostr_message_write_req("feed",filters[..],out[..],false);
+  #assert cast(string)out[0..<n]=="[\"REQ\",\"feed\",{\"kinds\":[1],\"limit\":10},{\"since\":5}]";
+  n=nostr_message_write_req("q\"1",filters[0..<1],out[..],false);
+  #assert cast(string)out[0..<n]=="[\"REQ\",\"q\\\"1\",{\"kinds\":[1],\"limit\":10}]";
+  #assert nostr_message_write_req("feed",filters[0..<0],out[..],false)== -1;
+  #assert nostr_message_write_req("",filters[..],out[..],false)== -1 && nostr_message_write_req("feed",filters[..],out[..],true)== -1;
+  #assert nostr_message_write_req("feed",filters[..],out[0..<20],false)== -1;
+  // Out of room at a filter's comma, and inside the filter.
+  #assert nostr_message_write_req("feed",filters[..],out[0..<13],false)== -1 && nostr_message_write_req("feed",filters[..],out[0..<14],false)== -1;
+  bad:NostrFilter;bad.has_limit=true;bad.limit= -1;filters[1]=bad;#assert nostr_message_write_req("feed",filters[..],out[..],false)== -1;
+  many:[17]NostrFilter;#assert nostr_message_write_req("m",many[0..<16],out[..],false)>0 && nostr_message_write_req("m",many[..],out[..],false)== -1;
+  n=nostr_message_write_close("feed",out[..],false);#assert cast(string)out[0..<n]=="[\"CLOSE\",\"feed\"]";
+  #assert nostr_message_write_close("",out[..],false)== -1 && nostr_message_write_close("feed",out[..],true)== -1;
+  #assert nostr_message_write_close("feed",out[0..<15],false)== -1 && nostr_message_write_close("feed",out[0..<16],false)==16;
+  bytes:=[1]u8.[255];#assert nostr_message_write_close(cast(string)bytes[..],out[..],false)== -1;
+}
+#test "a written REQ and CLOSE read back as JSON a relay can parse" {
+  out:[512]u8;f:NostrFilter;f.has_kinds=true;kinds:=[1]int.[0];f.kinds=kinds[..];filters:=[1]NostrFilter.[f];
+  n:=nostr_message_write_req("é",filters[..],out[..],false);#assert n>0 && json_valid(cast(string)out[0..<n]);
+  n=nostr_message_write_close("é",out[..],false);#assert n>0 && json_valid(cast(string)out[0..<n]);
+}
+
+// The line'th line of text (0-based), without its newline.
+nm_line :: (text:string,line:int)->NmSpan {
+  at:=0;k:=0;from:=0;
+  while at<=text.count {
+    if at==text.count || text[at]==10 {if k==line {return NmSpan.{from=from,to=at};}k+=1;from=at+1;}
+    at+=1;
+  }
+  return NmSpan.{from=0,to=0};
+}
+nm_text :: (m:NostrMessage,s:NmSpan)->string {return m.original[s.from..<s.to];}
+// Characters (UTF-8 scalar values) in a valid UTF-8 string.
+nm_chars :: (s:string)->int {n:=0;for c:s {if (c&0xC0)!=0x80 {n+=1;}}return n;}
+nm_sub_ok :: (s:string)->bool {
+  i:=0;while i<s.count {k:=json_utf8(s,i);if k==0 {return false;}i+=k;}
+  n:=nm_chars(s);return n>=1 && n<=NM_MAX_SUB;
+}
+// A decoded OK/CLOSED message's prefix: NM_PREFIX_NONE when empty, 1..8 for
+// a NIP-01 word, NM_PREFIX_OTHER for another word, -1 when there is none.
+nm_word :: (c:u8)->bool {return (c>='0' && c<='9') || (c>='A' && c<='Z') || (c>='a' && c<='z') || c=='-' || c=='_';}
+nm_prefix :: (s:string)->int {
+  if s.count==0 {return NM_PREFIX_NONE;}
+  for i:0..<s.count {
+    if !nm_word(s[i]) {
+      if s[i]!=':' || i==0 {return -1;}
+      for k:0..<8 {if s[0..<i]==NM_PREFIXES[k] {return k+1;}}
+      return NM_PREFIX_OTHER;
+    }
+  }
+  return -1;
+}
+// A string token's decoded bytes into buf; -1 when it doesn't fit.
+nm_decode :: (j:[]Json,buf:[]u8)->int {return json_unescape(json_text(j),buf);}
+nm_span :: (j:[]Json)->NmSpan {return NmSpan.{from=j[0].from,to=j[0].to};}
+nm_fail :: (m:NostrMessage,error:int)->NostrMessage {r:=m;r.error=error;return r;}
+// Readers below run on text json_valid accepted, so the parser can't refuse
+// it; each step keeps NM_PENDING until the frame is complete.
+NM_PENDING :: -1;
+nm_sub :: (j:[]Json,m:NostrMessage)->NostrMessage {
+  if json_next(j)!=JSON_STRING {return nm_fail(m,NM_SHAPE);}
+  buf:[1024]u8;n:=nm_decode(j,buf[..]);if n<1 || !nm_sub_ok(cast(string)buf[0..<n]) {return nm_fail(m,NM_SUB);}
+  r:=m;r.sub=nm_span(j);return r;
+}
+// A message string that must carry a prefix (required unless accepted).
+nm_message :: (j:[]Json,m:NostrMessage,required:bool)->NostrMessage {
+  if json_next(j)!=JSON_STRING {return nm_fail(m,NM_SHAPE);}
+  // json_valid bounds a string at JSON_MAX_STRING bytes and decoding never
+  // lengthens one, so the decoded message always fits.
+  buf:[JSON_MAX_STRING]u8;n:=nm_decode(j,buf[..]);
+  r:=m;r.prefix=nm_prefix(cast(string)buf[0..<n]);r.message=nm_span(j);
+  if r.prefix<0 || (required && r.prefix==NM_PREFIX_NONE) {return nm_fail(r,NM_MESSAGE);}
+  return r;
+}
+nm_end :: (j:[]Json,m:NostrMessage)->NostrMessage {
+  if m.error!=NM_PENDING {return m;}
+  if json_next(j)!=JSON_ARRAY_END {return nm_fail(m,NM_SHAPE);}
+  return nm_fail(m,NM_OK);
+}
+nm_label :: (raw:string)->int {
+  labels:=[5]string.["EVENT","OK","EOSE","CLOSED","NOTICE"];
+  for k:0..<5 {if json_is(raw,labels[k]) {return k+1;}}
+  return 0;
+}
+// Every frame is one complete JSON value. JSON errors are reported before
+// shape errors, so a truncated frame never reads as a shorter valid one.
+nostr_message_read :: (text:string)->NostrMessage #export_c {
+  m:NostrMessage;
+  if text.count>NM_MAX_FRAME {return nm_fail(m,NM_LIMIT);}
+  if !json_valid(text) {return nm_fail(m,NM_JSON);}
+  m.original=text;
+  j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_ARRAY || json_next(j[..])!=JSON_STRING {return m;}
+  m.type=nm_label(json_text(j[..]));if m.type==0 {return nm_fail(m,NM_TYPE);}
+  m.error=NM_PENDING;
+  if m.type==NM_NOTICE {
+    if json_next(j[..])!=JSON_STRING {return nm_fail(m,NM_SHAPE);}
+    m.message=nm_span(j[..]);return nm_end(j[..],m);
+  }
+  if m.type==NM_ACCEPT {
+    if json_next(j[..])!=JSON_STRING {return nm_fail(m,NM_SHAPE);}
+    buf:[128]u8;n:=nm_decode(j[..],buf[..]);
+    if n!=64 || !ne_lower_hex(cast(string)buf[0..<n],m.id[..]) {return nm_fail(m,NM_ID);}
+    verdict:=json_next(j[..]);if verdict!=JSON_TRUE && verdict!=JSON_FALSE {return nm_fail(m,NM_SHAPE);}
+    m.accepted=verdict==JSON_TRUE;
+    return nm_end(j[..],nm_message(j[..],m,!m.accepted));
+  }
+  m=nm_sub(j[..],m);if m.error!=NM_PENDING {return m;}
+  if m.type==NM_EVENT {
+    if json_next(j[..])!=JSON_OBJECT {return nm_fail(m,NM_SHAPE);}
+    from:=j[0].from;skipped:=json_skip(j[..]);
+    m.event=NmSpan.{from=from,to=j[0].to};return nm_end(j[..],m);
+  }
+  if m.type==NM_CLOSED {return nm_end(j[..],nm_message(j[..],m,true));}
+  // EOSE, with the deployed relay's bounded trailing metadata.
+  t:=json_next(j[..]);
+  while t!=JSON_ARRAY_END {
+    if m.extra>=NM_MAX_EOSE_EXTRA {return nm_fail(m,NM_LIMIT);}
+    skipped:=json_skip(j[..]);m.extra+=1;t=json_next(j[..]);
+  }
+  return nm_fail(m,NM_OK);
+}
+// Reads an EVENT frame and verifies the event it carries with the shared
+// raw-event verifier. out is ID-preimage scratch, as for that verifier.
+nostr_message_event_verify_vartime :: (text:string,out:[]u8,overlap:bool)->NostrEvent #export_c {
+  e:NostrEvent;if overlap {e.error=NE_ALIAS;return e;}
+  m:=nostr_message_read(text);if m.error!=NM_OK || m.type!=NM_EVENT {return e;}
+  return nostr_event_verify_vartime(text[m.event.from..<m.event.to],out,false);
+}
+
+// ---- client to relay. Each returns the frame's length, or -1 when an
+// input is refused or it doesn't fit; out may hold partial bytes then.
+// overlap is the host's truthful observation that out aliases an input.
+
+// ["EVENT",<event>]: the event's original bytes, which must parse as an
+// event. The relay, not this writer, verifies its id and signature.
+nostr_message_write_event :: (event:string,out:[]u8,overlap:bool)->int #export_c {
+  if ne_io(event.count,event.count,overlap)!=NE_OK || ne_parse(event).error!=NE_OK {return -1;}
+  n:=json_raw(out,0,"[\"EVENT\",");n=json_raw(out,n,event);return json_raw(out,n,"]");
+}
+nostr_message_write_req :: (sub:string,filters:[]NostrFilter,out:[]u8,overlap:bool)->int #export_c {
+  if overlap || !nm_sub_ok(sub) || filters.count<1 || filters.count>NM_MAX_FILTERS {return -1;}
+  n:=json_raw(out,0,"[\"REQ\",");n=json_write_string(out,n,sub);
+  for f:filters {
+    n=json_raw(out,n,",");if n== -1 {return -1;}
+    w:=nf_write(f,out[n..<out.count],false);if w== -1 {return -1;}
+    n+=w;
+  }
+  return json_raw(out,n,"]");
+}
+nostr_message_write_close :: (sub:string,out:[]u8,overlap:bool)->int #export_c {
+  if overlap || !nm_sub_ok(sub) {return -1;}
+  n:=json_raw(out,0,"[\"CLOSE\",");n=json_write_string(out,n,sub);return json_raw(out,n,"]");
+}
