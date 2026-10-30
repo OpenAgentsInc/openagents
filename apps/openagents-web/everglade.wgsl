@@ -1054,9 +1054,12 @@ fn water_host_sky(dir: vec3f, level: f32) -> vec3f {
 }
 fn water_host_sun() -> vec4f { return vec4f(st(1u).xyz, select(1.0, 0.0, st(0u).w <= 0.0)); }
 fn water_host_sun_light() -> vec3f { return st(0u).xyz * st(0u).w * WATER_SUN_E; }
-fn water_host_light(world: vec3f, n: vec3f) -> vec3f {
+fn water_host_light(world: vec3f, n: vec3f) -> vec3f { return water_host_light_shaded(world, n, shade_shadows(world.xz)); }
+// The same with the soft shadows at world already worked out (sh), so a caller that needs them twice
+// sums the 16 of them once.
+fn water_host_light_shaded(world: vec3f, n: vec3f, sh: f32) -> vec3f {
   let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
-  return amb + st(0u).xyz * st(0u).w * max(dot(n, st(1u).xyz), 0.0) * map_lit(world, n) * shade_shadows(world.xz);
+  return amb + st(0u).xyz * st(0u).w * max(dot(n, st(1u).xyz), 0.0) * map_lit(world, n) * sh;
 }
 
 fn water_node(k: u32, f: u32) -> f32 { return water_nodes[k * 8u + f]; }
@@ -2127,7 +2130,10 @@ fn water_painted_teal(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore:
   let l = water_host_sun().xyz;
   // the bands, in the light the land has (its shadows fall on the water too)
   let band = mix(mix(mix(W_SHALLOW, W_MID, water_paint_ramp(0.4, depth)), W_DEEP, water_paint_ramp(1.5, depth)), W_TEAL, teal);
-  let light = water_host_light(world, vec3f(0.0, 1.0, 0.0));
+  // (each term below that comes out nothing for this pixel, still water's streaks, foam where nothing
+  // churns, the shore line far from the shore, is skipped rather than worked out: a phone at a pond)
+  let sh = shade_shadows(world.xz);
+  let light = water_host_light_shaded(world, vec3f(0.0, 1.0, 0.0), sh);
   var body = pow(band, vec3f(2.2)) * (light * 0.82 + vec3f(0.05));
   // a painted surface is calmer than the optics': the waves bend its reflection a third as much,
   // and the sky never takes more than half of it, so the bands still show at a grazing look
@@ -2143,21 +2149,30 @@ fn water_painted_teal(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore:
   let twinkle = 0.5 + 0.5 * sin(u.time * (1.0 - u.still) * 21.0 + water_hash(vec3f(cell, 3.0)) * 6.28);
   let centre = (cell + vec2f(0.5) + jitter * 0.5) * grid;
   let dot_ = 1.0 - smoothstep(footprint * 1.2, footprint * 2.2, distance(rest, centre));
-  let sparkle = water_paint_sparkle(rdl) * twinkle * dot_ * water_host_sun().w * shade_shadows(world.xz);
+  let sparkle = water_paint_sparkle(rdl) * twinkle * dot_ * water_host_sun().w * sh;
   // the shore line (0.25 m, its inner edge broken), white water, the rings, streaks along the current
-  let broken = (water_noise(vec3f(rest * 3.0, u.time * 0.3)) - 0.5) * 0.12;
-  let line = (1.0 - smoothstep(0.17 + broken, 0.27 + broken, shore)) * smoothstep(-0.02, 0.04, depth);
-  let noise = water_foam_noise(rest, flow);
-  let churn = clamp(white, 0.0, 1.0) * smoothstep(0.3, 0.6, noise + 0.3 * white);
+  var line = 0.0;
+  if (shore < 0.34 && depth > -0.02) {
+    let broken = (water_noise(vec3f(rest * 3.0, u.time * 0.3)) - 0.5) * 0.12;
+    line = (1.0 - smoothstep(0.17 + broken, 0.27 + broken, shore)) * smoothstep(-0.02, 0.04, depth);
+  }
+  var churn = 0.0;
+  if (white > 0.0) {
+    let noise = water_foam_noise(rest, flow);
+    churn = clamp(white, 0.0, 1.0) * smoothstep(0.3, 0.6, noise + 0.3 * white);
+  }
   let rings = clamp(water_ripple_foam(rest) * 1.6, 0.0, 1.0);
   // streaks: thin lines stretched along the current, carried down it at its speed
   let speed = length(flow);
-  let along = flow / max(speed, 1e-3);
-  let q = vec2f(dot(rest, vec2f(-along.y, along.x)) * 2.4, dot(rest, along) * 0.3 - u.water.params.x * speed * 0.3);
-  let ridge = 1.0 - abs(2.0 * water_noise(vec3f(q, u.water.params.x * 0.15)) - 1.0);
-  let broken_by = smoothstep(0.4, 0.7, water_noise(vec3f(rest * 0.6, u.water.params.x * 0.1)));
-  let streak = smoothstep(0.95, 0.995, ridge) * broken_by * smoothstep(0.05, 0.4, speed) * 0.35 * smoothstep(0.1, 0.5, depth)
-    * (1.0 - smoothstep(0.08, 0.25, footprint));
+  var streak = 0.0;
+  if (speed > 0.05 && depth > 0.1 && footprint < 0.25) {
+    let along = flow / max(speed, 1e-3);
+    let q = vec2f(dot(rest, vec2f(-along.y, along.x)) * 2.4, dot(rest, along) * 0.3 - u.water.params.x * speed * 0.3);
+    let ridge = 1.0 - abs(2.0 * water_noise(vec3f(q, u.water.params.x * 0.15)) - 1.0);
+    let broken_by = smoothstep(0.4, 0.7, water_noise(vec3f(rest * 0.6, u.water.params.x * 0.1)));
+    streak = smoothstep(0.95, 0.995, ridge) * broken_by * smoothstep(0.05, 0.4, speed) * 0.35 * smoothstep(0.1, 0.5, depth)
+      * (1.0 - smoothstep(0.08, 0.25, footprint));
+  }
   let foam = clamp(max(max(line, churn), rings) + streak, 0.0, 1.0);
   let alpha = (0.5 + 0.2 * teal + 0.42 * smoothstep(0.05, 1.2, depth)) * smoothstep(-0.05, 0.1, depth);
   let edge = smoothstep(-0.05, 0.1, depth);
@@ -2323,11 +2338,16 @@ fn water_whole(i: WaterOut) -> vec3f {
   if (u.eye.y > world.y) {
     let bed = i.world_depth.w / max(v.y, 0.08);
     let near = (1.0 - smoothstep(0.03, 0.2, thick)) * (1.0 - smoothstep(0.35, 0.7, thick / max(bed, 0.02)));
-    let t = u.water.params.x;
-    let broken = smoothstep(0.25, 0.6, water_noise(vec3f(i.rest_flow.xy * 5.0, t * 0.8)) + 0.5 * near - 0.2);
-    let foam = clamp(near * broken * 1.4, 0.0, 1.0) * select(0.0, 1.0, water_surface_part(part));
-    let foam_rgb = vec3f(0.95, 0.97, 0.96) * (water_host_light(world, vec3f(0.0, 1.0, 0.0)) * 0.9 + vec3f(0.06));
-    out = mix(out, foam_rgb, foam);
+    // most of the surface stands in nothing: no noise, no second lighting there
+    if (near > 0.0 && water_surface_part(part)) {
+      let t = u.water.params.x;
+      let broken = smoothstep(0.25, 0.6, water_noise(vec3f(i.rest_flow.xy * 5.0, t * 0.8)) + 0.5 * near - 0.2);
+      let foam = clamp(near * broken * 1.4, 0.0, 1.0);
+      if (foam > 0.0) {
+        let foam_rgb = vec3f(0.95, 0.97, 0.96) * (water_host_light(world, vec3f(0.0, 1.0, 0.0)) * 0.9 + vec3f(0.06));
+        out = mix(out, foam_rgb, foam);
+      }
+    }
   }
   // the soft edge: where the water thins to nothing against what stands in it, what is behind shows whole
   out = mix(water_scene_at(px), out, smoothstep(0.0, 0.06, thick));

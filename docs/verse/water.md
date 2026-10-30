@@ -341,6 +341,18 @@ noise: a still swimmer's faded wake is skipped). `#rowboat` 13.9 ms and 5.5
 ms. No allocation a frame: the particles are a fixed ring in the River and
 the trails a fixed 66 floats.
 
+Ponds on a phone (October 29): the painted water now skips what comes out
+nothing for a pixel (a pond's still water has no current streaks, nothing
+churns white, most of it is far from the shore line, and almost none of it
+touches something standing in it), sums the soft shadows once instead of
+twice, and lights the contact foam only where there is some; the picture is
+the same. Measured at `#lantern-pond` on the phone tier with this machine's
+load near 30: drawing no pond at all saves 0.7 ms of the summed pass times
+(7.6 to 6.8 ms) and 0.1 ms of the frame's span (1.4 to 1.3 ms), so most of
+that view's cost is the Deep Wood around the pond, not its water; the
+build before and after differ by less than the run-to-run noise (6.3 to 6.6
+ms either way).
+
 ```sh
 coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
 coax/bin/coax test --library verse/demolish.coax --steps 2000000000
