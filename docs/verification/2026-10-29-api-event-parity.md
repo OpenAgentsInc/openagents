@@ -4,13 +4,13 @@ This is a partial prerequisite for `web-nostr-api-verifier-parity`. It compares
 `coax/web/api/nostr.c`'s `nostr_verify_event` with checked and release native
 builds of `coax/lib/nostr/event.coax`'s `nostr_event_verify_vartime`. Both
 consume the same original public JSON. Neither result grants authority here.
-A separate small check calls the current `nip98_check` directly with the
-fixed fixture; this is **not** a comparison with a Coax request adapter. It
-does not cover payload matching, replay protection, deployed routes, or an
-actual Coax API adapter. No production code or authorization behavior changed.
+A separate small check calls the current `nip98_check` directly with
+fixed fixtures; this is **not** a comparison with a Coax request adapter. It
+does not cover replay protection, deployed routes, or an actual Coax API
+adapter. No production code or authorization behavior changed.
 
 Run `python3 coax/tests/nostr/api_event_parity.py` with a built Coax compiler
-and `pkg-config` packages `libsecp256k1` and `openssl`. Five fixtures in
+and `pkg-config` packages `libsecp256k1` and `openssl`. Eight fixtures in
 `coax/tests/nostr/data/api-public-events.json` use an explicitly throwaway test
 key. An independent bigint BIP-340 verifier and Python SHA-256 validate their
 signatures and NIP-01 preimages. The fixture-only independent check is
@@ -33,11 +33,16 @@ judgment that either acceptance policy is suitable for HTTP authentication:
 | 17 tags | Refuses at its 16-tag bound | Accepts |
 | Negative timestamp | Accepts at the event layer | Refuses |
 
-The direct `nip98_check` fixture also accepts the duplicate identical `kind`
-when the URL, method and timestamp match; it refuses wrong URL, wrong method
-and a timestamp 61 seconds old. This is a local function test, not a deployed
-request or a demonstrated exploit. The request path applies additional rules;
-the negative timestamp observation by itself says nothing about whether an
-HTTP request is accepted. These fixtures prevent silent policy drift while the
+The direct `nip98_check` fixtures accept both identical and conflicting
+repeated `kind` members if the final kind is 27235 and the signed event uses
+that value. Repeated `u` tags also take the final value. The test checks a
+matching payload hash, refuses mismatched and empty bodies, accepts timestamps
+at both 60-second boundaries, and refuses timestamps 61 seconds away. It also
+checks the existing method case-insensitivity and wrong URL/method rejection.
+These are local function observations, not deployed requests, a claim of
+protocol conformance, or a demonstrated exploit. The request path applies
+additional rules; the negative timestamp observation by itself says nothing
+about whether an HTTP request is accepted. These fixtures prevent silent
+policy drift while the
 full request-level comparison and an explicit compatibility/security review
 are designed. They do not authorize migration or replace independent review.

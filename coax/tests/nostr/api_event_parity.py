@@ -108,20 +108,35 @@ class PublicApiEventParity(unittest.TestCase):
                         self.assertEqual(event.created_at, api_event.created_at, name)
 
     def test_current_nip98_request_guards(self):
-        basic = encoded(json.loads(DATA.read_text())['basic'])
+        fixtures = json.loads(DATA.read_text())
+        basic = encoded(fixtures['basic'])
         duplicate = basic.replace('"kind":27235', '"kind":27235,"kind":27235')
+        conflict = basic.replace('"kind":27235', '"kind":1,"kind":27235')
+        self.assertNotEqual(duplicate, basic)
+        self.assertNotEqual(conflict, basic)
+        # These are observations of the current API only, not Coax parity.
         cases = [
-            ('valid', basic, b'POST', b'https://example.test/api', 1761750000, True),
-            ('duplicate_field', duplicate, b'POST', b'https://example.test/api', 1761750000, True),
-            ('wrong_method', basic, b'GET', b'https://example.test/api', 1761750000, False),
-            ('wrong_url', basic, b'POST', b'https://example.test/other', 1761750000, False),
-            ('too_old', basic, b'POST', b'https://example.test/api', 1761750061, False),
+            ('valid', basic, b'POST', b'https://example.test/api', b'', 1761750000, True),
+            ('duplicate_field', duplicate, b'POST', b'https://example.test/api', b'', 1761750000, True),
+            ('conflicting_kind_last_wins', conflict, b'POST', b'https://example.test/api', b'', 1761750000, True),
+            ('wrong_method', basic, b'GET', b'https://example.test/api', b'', 1761750000, False),
+            ('lowercase_method', basic, b'post', b'https://example.test/api', b'', 1761750000, True),
+            ('wrong_url', basic, b'POST', b'https://example.test/other', b'', 1761750000, False),
+            ('old_boundary', basic, b'POST', b'https://example.test/api', b'', 1761750060, True),
+            ('too_old', basic, b'POST', b'https://example.test/api', b'', 1761750061, False),
+            ('future_boundary', basic, b'POST', b'https://example.test/api', b'', 1761749940, True),
+            ('too_future', basic, b'POST', b'https://example.test/api', b'', 1761749939, False),
+            ('payload_match', encoded(fixtures['payload']), b'POST', b'https://example.test/api', b'hello', 1761750000, True),
+            ('payload_mismatch', encoded(fixtures['payload']), b'POST', b'https://example.test/api', b'other', 1761750000, False),
+            ('payload_empty', encoded(fixtures['payload']), b'POST', b'https://example.test/api', b'', 1761750000, False),
+            ('repeated_url_last_correct', encoded(fixtures['url_last_correct']), b'POST', b'https://example.test/api', b'', 1761750000, True),
+            ('repeated_url_last_wrong', encoded(fixtures['url_last_wrong']), b'POST', b'https://example.test/api', b'', 1761750000, False),
         ]
-        for name, text, method, url, now, expected in cases:
+        for name, text, method, url, body_data, now, expected in cases:
             with self.subTest(case=name):
                 auth = b'Nostr ' + base64.b64encode(text.encode('utf-8'))
-                result = ApiEvent(); error = C.create_string_buffer(256); body = C.create_string_buffer(b'')
-                ok = self.api.nip98_check(auth, method, url, C.cast(body, C.c_void_p), 0, now,
+                result = ApiEvent(); error = C.create_string_buffer(256); body = C.create_string_buffer(body_data)
+                ok = self.api.nip98_check(auth, method, url, C.cast(body, C.c_void_p), len(body_data), now,
                                           C.byref(result), error, len(error))
                 self.assertEqual(ok, expected, (name, error.value))
 

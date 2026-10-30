@@ -53,6 +53,28 @@
       ]
     ]
   },
+  "payload": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "aee062570e84588eaef83e610fd31f00c4bcf597ccf14de67b8c8465b0181210",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "db033af7257eca9ea2916e408d2537b27b654320c493afd39155b0cbf7bd5c897bea6cd8f552bd8de67e6f5e5e5f8dfcaff6c9ee7d32b2d62f1b6ad784cfbeb8",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "POST"
+      ],
+      [
+        "payload",
+        "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+      ]
+    ]
+  },
   "tags17": {
     "content": "",
     "created_at": 1761750000,
@@ -128,6 +150,50 @@
       [
         "x",
         "16"
+      ]
+    ]
+  },
+  "url_last_correct": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "99734c36875c57a042bea72fd582ee8d5632fc93d474a2a281547d9a99786201",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "63b99c0514b905d5f00ecac461f313d30f21af9d9df9454e8d69276c74b4155aa10713076ff35c72ef4b051f8f9430233d9575909d6df9bc86102b31bdecba8f",
+    "tags": [
+      [
+        "u",
+        "https://example.test/other"
+      ],
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "POST"
+      ]
+    ]
+  },
+  "url_last_wrong": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "ad0ffe959e407df2f6e989d684f17124467d803a09f60bb827b49d978e51bc87",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "de07d688e76406d18029d93518fe3e0c90794fa75b147e1b0feffa7cfbdb042584b2c5fde46466f3e5d522b979a0315bd1f0e3b12c3143f9d5ea3d0df7b22491",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "u",
+        "https://example.test/other"
+      ],
+      [
+        "method",
+        "POST"
       ]
     ]
   },
