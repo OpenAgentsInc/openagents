@@ -81,6 +81,19 @@ framing whitespace and hands the remaining header to the existing strict
 Harmony parser; other format labels refuse. A synthetic parser closing control lets us inspect
 a partial body, but cannot become a claim that the model completed it.
 
+GPT-OSS was trained with built-in `browser` and `python` tools, and in a long
+tool loop it sometimes addresses a call from the analysis channel or to one of
+those built-ins. Like the GPT-OSS reference, we treat every addressed record as
+a function call: `functions.NAME` or a bare `NAME` becomes `NAME`, and a dotted
+built-in such as `browser.search` keeps its name. An admitted tool's arguments
+must still satisfy its schema. Any other name reaches the client as an
+ordinary call it can answer with "no such tool", so the model can continue
+instead of losing the whole conversation to a 502. Nothing is granted by the
+name; the application decides what runs. When tools are offered, the system
+message also says `Calls to these tools must go to the commentary channel:
+'functions'.`, the line the Harmony reference renders, and the developer
+message starts with `# Instructions`.
+
 [wire.coax](../lib/responses/wire.coax) assigns stable response, message,
 reasoning and call IDs from host-provided random bytes. It emits creation and
 progress, item/part addition, body deltas, item closure and a terminal response.

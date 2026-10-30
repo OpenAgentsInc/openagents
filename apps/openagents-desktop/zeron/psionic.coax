@@ -457,6 +457,7 @@ ps_explain :: (code: string) -> string {
   if code == "request_deadline_exceeded" { return "Psionic stopped this answer at its 120-second limit."; }
   if code == "device_failed" { return "Psionic's GPU worker failed. Restart it on coderos-4080: ssh coderos-4080 'systemctl --user restart psionic-gpu-switch'"; }
   if code == "model_arithmetic_refused" { return "Psionic refused this answer: the model's arithmetic left its checked range."; }
+  if code == "invalid_tool_recipient" { return "gpt-oss-20b addressed a tool call Psionic couldn't read, so it stopped the answer. Send again."; }
   if code == "invalid_tool_arguments" || code == "invalid_tool_call" { return "gpt-oss-20b called a tool with arguments that don't fit it, so Psionic stopped the answer. Send again, or ask without needing files or commands."; }
   if code.count == 0 { return "Psionic failed to answer."; }
   return code;
@@ -481,6 +482,13 @@ ps_call_part :: (p: [] PsEngine, s: [] Session, item_json: string) -> int {
   p[0].call_part = k;
   s[0].changed = true;
   return k;
+}
+// The answer to a call of a tool we don't offer.
+ps_no_tool :: (out: [] u8, name: string) -> string {
+  k := e_set(out, 0, "There is no tool named ");
+  k = e_set(out, k, ifx name.count > 0 && name.count <= 64 then name else "that");
+  k = e_set(out, k, ". The tools are read_file, list_folder and run_command; call one of them, or answer without a tool.");
+  return e_str(out, k);
 }
 // Whether the access chip lets a call run without asking.
 ps_may_run :: (access: int, kind: int) -> bool {
@@ -613,7 +621,13 @@ ps_finish :: (p: [] PsEngine, s: [] Session, call: int) {
 ps_call :: (p: [] PsEngine, s: [] Session, item: int) {
   k := ps_call_part(p, s, ps_item(p, item));
   if k < 0 { s_turn_end(s, true, "The transcript is full."); return; }
-  if p[0].call_kind < 0 { ps_call_done(p, s, "There is no such tool.", true); return; }
+  if p[0].call_kind < 0 {
+    // A name we don't offer (gpt-oss reaches for its trained browser.search
+    // or python): nothing runs; the model hears what it can call and goes on.
+    nb: [400] u8;
+    ps_call_done(p, s, ps_no_tool(nb[..], s[0].parts[k].detail), true);
+    return;
+  }
   if ps_may_run(p[0].access, p[0].call_kind) { ps_run(p, s); return; }
   buf: [600] u8;
   names := [3] string.["read_file", "list_folder", "run_command"];
@@ -824,7 +838,7 @@ ps_contains :: (text: string, needle: string) -> int {
   p[0].access = ACC_SUPERVISED;
   ps_test_end(p[..], s[..], 200, "", call);
   k := s[0].n - 1;
-  #assert s[0].parts[k].kind == P_TOOL && s[0].parts[k].tk == TK_TOOL && s[0].parts[k].detail == "weather" && s[0].parts[k].failed && s[0].parts[k].output == "There is no such tool.";
+  #assert s[0].parts[k].kind == P_TOOL && s[0].parts[k].tk == TK_TOOL && s[0].parts[k].detail == "weather" && s[0].parts[k].failed && s[0].parts[k].output == "There is no tool named weather. The tools are read_file, list_folder and run_command; call one of them, or answer without a tool.";
   #assert p[0].items[p[0].ni - 1].kind == PI_CALL_OUTPUT && s[0].live;
   q = ps_body(p[..], body[..]);
   p[0].ar[0].at = 0;
@@ -845,6 +859,18 @@ ps_contains :: (text: string, needle: string) -> int {
   #assert s[0].asking < 0 && s[0].parts[k].resolved && s[0].parts[k].failed && s[0].parts[k].output == "The user denied this.";
   q = ps_body(p[..], body[..]);
   #assert ps_contains(q, "\"call_id\":\"call_7\"") == 2 && ps_contains(q, "The user denied this.") == 1;
+  // gpt-oss reaching for its trained browser.search (even under Full access): nothing runs, the
+  // call goes back answered with the tools it has, and the turn goes on
+  p[0].access = ACC_FULL;
+  web := "{\"id\":\"fc_2\",\"type\":\"function_call\",\"status\":\"completed\",\"name\":\"browser.search\",\"call_id\":\"call_8\",\"arguments\":\"{\\\"query\\\":\\\"demo\\\"}\"}";
+  ok = ps_hist_put(p[..], PI_OUTPUT, web);
+  ps_call(p[..], s[..], p[0].ni - 1);
+  k = s[0].n - 1;
+  #assert s[0].live && s[0].asking < 0 && p[0].call_h < 0 && s[0].parts[k].tk == TK_TOOL && s[0].parts[k].detail == "browser.search" && s[0].parts[k].failed;
+  #assert s_has(s[0].parts[k].output, "no tool named browser.search") && s_has(s[0].parts[k].output, "read_file, list_folder and run_command");
+  q = ps_body(p[..], body[..]);
+  #assert ps_contains(q, "\"call_id\":\"call_8\"") == 2 && ps_contains(q, "\"name\":\"browser.search\"") == 1;
+  #assert ps_explain("invalid_tool_recipient") != "invalid_tool_recipient";
   // the access chip's rule
   #assert ps_may_run(ACC_FULL, PT_RUN) && ps_may_run(ACC_EDITS, PT_LIST) && !ps_may_run(ACC_EDITS, PT_RUN) && !ps_may_run(ACC_SUPERVISED, PT_READ);
 }

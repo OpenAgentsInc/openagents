@@ -70,9 +70,13 @@ Strict/schema-constrained decoding, parallel tools, built-in tools, nonzero
 sampling, summaries, encrypted reasoning, images/audio/video, compaction,
 background jobs and stored-response endpoints are unsupported. Tool arguments
 are checked against the admitted schema at a complete handoff; generation is
-not masked to guarantee that schema. Invalid arguments fail the response. Clients
-must execute only a completed authorized function call, never an argument delta
-or an incomplete item. A successful API handoff does not authorize any payment,
+not masked to guarantee that schema. Invalid arguments fail the response. A
+call addressed from any channel, or to a name the request did not list (the
+model's trained `browser.search` or `python`), is still returned as a
+`function_call` item so the client can answer it with an error output and
+continue; its arguments are not schema-checked and it authorizes nothing. Clients
+must execute only a completed authorized function call, never an argument delta,
+an incomplete item or a name they did not offer. A successful API handoff does not authorize any payment,
 network action or other application effect.
 
 Replay the complete output item array, then a `function_call_output` whose

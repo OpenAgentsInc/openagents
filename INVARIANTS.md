@@ -225,9 +225,14 @@ Raw reasoning is transported as a typed reasoning item, separately from final
 text. Current tool-turn analysis survives replay; completed prior analysis is
 removed. Provisional typed API text is streamable, while the CLI's complete-final
 display gate remains unchanged. Argument deltas and incomplete calls grant
-nothing. A complete function handoff must name an admitted tool and satisfy its
-schema. Unsupported capabilities refuse before model effects; malformed model
-output fails rather than fabricating success. This profile is not universal
+nothing. Every well-formed addressed record is a function-call item, whichever
+channel carried it (`functions.NAME` and bare `NAME` name `NAME`; a dotted
+built-in such as `browser.search` keeps its name and replays verbatim). A call
+naming an admitted tool must satisfy its schema; any other name is surfaced
+for the client to refuse and is never granted or run here. With function tools
+the system message names the commentary channel, as the Harmony reference does.
+Unsupported capabilities refuse before model effects; malformed model output
+fails rather than fabricating success. This profile is not universal
 Open Responses compliance or constrained GPU decoding.
 
 HTTP bytes, item/node/UTF-8 work and event buffers are bounded. Serialization

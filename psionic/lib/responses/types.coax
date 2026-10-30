@@ -16,10 +16,17 @@ rs_int :: (w:[]RsWriter,n:int) {if n<0 || n>9007199254740991 {w[0].at= -1;return
 rs_bad :: (code:string,param:string)->RsRequest {return RsRequest.{status=400,code=code,param=param};}
 rs_flag :: (nodes:[]RsNode,index:int,value:bool)->bool {return index<0 || nodes[index].kind==(ifx value then JSON_TRUE else JSON_FALSE) || nodes[index].kind==JSON_NULL;}
 rs_name :: (s:string)->bool {if s.count<1 || s.count>48 {return false;}for i:0..<s.count {c:=s[i];if !((c>='a'&&c<='z')||(c>='A'&&c<='Z')||c=='_'||(i>0&&c>='0'&&c<='9')) {return false;}}return true;}
+// A call name: a function name, or a dotted built-in recipient such as
+// browser.search. functions.NAME replays as itself; a dotted name verbatim.
+rs_recipient :: (s:string)->bool {if s.count<1 || s.count>64 {return false;}begin:=0;for i:0..<s.count+1 {if i==s.count || s[i]=='.' {if !rs_name(s[begin..<i]) {return false;}begin=i+1;}}return true;}
+rs_call_name :: (recipient:string)->string {if recipient.count>10 && recipient[0..<10]=="functions." {return recipient[10..<recipient.count];}return recipient;}
+rs_dotted :: (s:string)->bool {for c:s {if c=='.' {return true;}}return false;}
 rs_zero :: (s:string)->bool {for c:s {if c=='e' || c=='E' {break;}if c>='1' && c<='9' {return false;}}return s.count>0;}
 rs_null :: (nodes:[]RsNode,index:int)->bool {return index<0 || nodes[index].kind==JSON_NULL;}
 #test "identifiers and numeric zero have no approximate admission" {
     #assert rs_name("lookup_weather") && !rs_name("functions.x") && !rs_name("9x") && !rs_name("");
+    #assert rs_recipient("read_file") && rs_recipient("browser.search") && rs_recipient("python") && !rs_recipient("a..b") && !rs_recipient(".x") && !rs_recipient("x.") && !rs_recipient("") && !rs_recipient("x-y");
+    #assert rs_call_name("functions.read_file")=="read_file" && rs_call_name("browser.open")=="browser.open" && rs_call_name("functions.")=="functions." && rs_dotted("a.b") && !rs_dotted("ab");
     #assert rs_zero("0.0e100") && rs_zero("-0") && !rs_zero("1e-9999");
     out:[64]u8;w:=[1]RsWriter.[RsWriter.{data=out[..]}];rs_put(w[..],"[");rs_quote(w[..],"a\n");rs_put(w[..],",");rs_int(w[..],123);rs_put(w[..],"]");#assert cast(string)out[0..<w[0].at]=="[\"a\\n\",123]";
 }

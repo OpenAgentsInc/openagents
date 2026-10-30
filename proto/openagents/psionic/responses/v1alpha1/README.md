@@ -18,6 +18,9 @@ optional string enums; strict decoding and arbitrary JSON Schema refuse.
 The Responses adapter also accepts the original model’s optional
 `<|constrain|>json` function-header label; other format labels refuse.
 No tool executes in this process. Listed tools authorize only a handoff.
+A call to an unlisted name (including the model's trained `browser.*` and
+`python` built-ins) is returned as a function call for the client to refuse;
+it replays under its own name and authorizes nothing.
 
 Input supports text messages and text parts, raw `reasoning_text` replay,
 function calls and matched string tool outputs. Analysis is kept through the

@@ -35,8 +35,13 @@ rs_snapshot :: (table:[]u8,generated:[]int,terminal:bool,tools:[]RsTool,nodes:[]
     }
     if p.written>out.count {return RsOutput.{status=502,code="output_capacity"};}r:=RsOutput.{count=p.written};
     for i:0..<p.written {record:=records[i];if record.role!=HmRole.assistant {return RsOutput.{status=502,code="invalid_model_role"};}text:=cast(string)bytes[record.body_begin..<record.body_end];recipient:=cast(string)bytes[record.recipient_begin..<record.recipient_end];open:=synthetic && i==p.written-1;item:=RsItem.{role="assistant",text=text,status=ifx open then (ifx terminal then 2 else 0) else 1};
-        if recipient.count>0 {if recipient.count<11 || recipient[0..<10]!="functions." || record.channel!=HmChannel.commentary {return RsOutput.{status=502,code="invalid_tool_recipient"};}item.kind=3;item.name=recipient[10..<recipient.count];item.arguments=text;found:= -1;for k:0..<tools.count {if tools[k].name==item.name {found=k;}}if found<0 {return RsOutput.{status=502,code="unlisted_tool"};}
-            if !open {an:[256]RsNode;aa:[8192]u8;if !rs_arguments(nodes,tools[found].schema,text,an[..],aa[..]) {return RsOutput.{status=502,code="invalid_tool_arguments"};}}
+        // Any addressed record is a handoff, whichever channel carried it (the
+        // GPT-OSS reference does the same): functions.NAME and a bare NAME name a
+        // function; a built-in recipient (browser.search, python) keeps its name.
+        // An admitted tool's arguments must satisfy its schema. An unadmitted name
+        // is surfaced as a call the client refuses; nothing here grants or runs it.
+        if recipient.count>0 && recipient!="assistant" {item.kind=3;item.name=rs_call_name(recipient);item.arguments=text;if !rs_recipient(item.name) {return RsOutput.{status=502,code="invalid_tool_recipient"};}found:= -1;for k:0..<tools.count {if tools[k].name==item.name {found=k;}}
+            if !open && found>=0 {an:[256]RsNode;aa:[8192]u8;if !rs_arguments(nodes,tools[found].schema,text,an[..],aa[..]) {return RsOutput.{status=502,code="invalid_tool_arguments"};}}
         }else if record.channel==HmChannel.analysis {item.kind=2;}
         else {item.kind=1;item.phase=ifx record.channel==HmChannel.commentary then "commentary" else "final_answer";}
         if formats[i] && item.kind!=3 {return RsOutput.{status=502,code="unsupported_model_format"};}
@@ -47,7 +52,7 @@ rs_snapshot :: (table:[]u8,generated:[]int,terminal:bool,tools:[]RsTool,nodes:[]
     for k:base..<raw_count {id:=raw[k];if id==200006 {header=true;ha=0;channel="";}else if header && id==200005 {ha=0;channel="channel";}else if header && id==200008 {header=false;body_analysis=channel=="channel" && cast(string)hb[0..<ha]=="analysis";}else if header {if channel=="channel" && id<199998 {c:=hm_copy_token(table,t,id,hb[..],ha);if c.status==PtStatus.ok {ha+=c.written;}}}else if id==200007 || id==200002 || id==200012 {body_analysis=false;}else if body_analysis {r.reasoning+=1;}}
     return r;
 }
-#test "UTF-8 is held across token splits and tool arguments require a listed schema" {
+#test "UTF-8 is held across token splits and listed tool arguments require their schema" {
     table:=HS_TOY;out:[64]RsItem;bytes:[65536]u8;nodes:[64]RsNode;arena:[1024]u8;tools:[1]RsTool;
     ids:=[10]int.[200005,102,105,110,97,108,200008,195,169,200002];
     r:=rs_snapshot(table[..],ids[0..<8],false,tools[0..<0],nodes[..],out[..],bytes[..]);#assert r.status==200 && r.count==1 && out[0].text=="" && out[0].status==0;
@@ -56,7 +61,7 @@ rs_snapshot :: (table:[]u8,generated:[]int,terminal:bool,tools:[]RsTool,nodes:[]
     #assert rs_json("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",nodes[..],arena[..]).ok;tools[0]=RsTool.{name="weather",schema=0};
     m:=[1]HmMessage.[HmMessage.{role=HmRole.assistant,channel=HmChannel.commentary,recipient="functions.weather",ending=HmEnd.call,body="{}"}];tokens:[128]int;stage:[128]int;symbols:[1024]int;p:=hm_render_checked(table[..],m[..],false,tokens[..],stage[..],symbols[..],false);
     #assert p.status==HmStatus.ok;r=rs_snapshot(table[..],tokens[10..<p.written],true,tools[..],nodes[..],out[..],bytes[..]);#assert r.status==200 && out[0].kind==3 && out[0].arguments=="{}";
-    #assert rs_snapshot(table[..],tokens[10..<p.written],true,tools[0..<0],nodes[..],out[..],bytes[..]).status==502;
+    r=rs_snapshot(table[..],tokens[10..<p.written],true,tools[0..<0],nodes[..],out[..],bytes[..]);#assert r.status==200 && out[0].kind==3 && out[0].name=="weather";
 }
 
 // GPT-OSS may attach <|constrain|>json to a function header. This separate
@@ -91,4 +96,17 @@ rs_format_headers :: (table:[]u8,raw:[]int,out:[]int,formats:[]bool)->int {
     tools:=[1]RsTool.[RsTool.{name="weather",schema=0}];items:[64]RsItem;bytes:[65536]u8;
     r:=rs_snapshot(table[..],raw[10..<at],true,tools[..],nodes[..],items[..],bytes[..]);#assert r.status==200 && r.count==1 && items[0].arguments=="{}";
     for k:0..<at {if raw[k]==200003 {raw[k+1]=120;}}#assert rs_format_headers(table[..],raw[0..<at],normalized[..],formats[..])== -1;
+}
+#test "every addressed record becomes a typed call; only admitted tools are schema checked" {
+    table:=HS_TOY;nodes:[64]RsNode;arena:[1024]u8;out:[64]RsItem;bytes:[65536]u8;tokens:[256]int;stage:[256]int;symbols:[1024]int;
+    #assert rs_json("{\"type\":\"object\",\"properties\":{},\"additionalProperties\":false}",nodes[..],arena[..]).ok;tools:=[1]RsTool.[RsTool.{name="read_file",schema=0}];
+    // channel, recipient, body -> expected status and call name (the shapes GPT-OSS emits in a tool loop).
+    channels:=[8]HmChannel.[HmChannel.analysis,HmChannel.commentary,HmChannel.analysis,HmChannel.commentary,HmChannel.commentary,HmChannel.commentary,HmChannel.commentary,HmChannel.analysis];
+    recipients:=[8]string.["functions.read_file","read_file","browser.search","python","functions.unknown_tool","functions.read_file","functions.","functions.read_file"];
+    bodies:=[8]string.["{}","{}","{\"query\":\"x\"}","print(1)","{\"a\":1}","{\"x\":1}","{}","nope"];
+    statuses:=[8]int.[200,200,200,200,200,502,502,502];names:=[8]string.["read_file","read_file","browser.search","python","unknown_tool","","",""];
+    for c:0..<8 {m:=[1]HmMessage.[HmMessage.{role=HmRole.assistant,channel=channels[c],recipient=recipients[c],ending=HmEnd.call,body=bodies[c]}];p:=hm_render_checked(table[..],m[..],false,tokens[..],stage[..],symbols[..],false);#assert p.status==HmStatus.ok;
+        r:=rs_snapshot(table[..],tokens[10..<p.written],true,tools[..],nodes[..],out[..],bytes[..]);#assert r.status==statuses[c];
+        if r.status==200 {#assert r.count==1 && out[0].kind==3 && out[0].name==names[c] && out[0].arguments==bodies[c] && out[0].status==1;}
+    }
 }
