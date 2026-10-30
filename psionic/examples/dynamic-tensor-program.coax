@@ -1,0 +1,15 @@
+#load "../lib/tensor-template.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    model:=tg_fixture();#assert tg_validate(model,TiTarget.{})==TiStatus.ok;
+    batches:=[4]int.[1,2,4,8];cache:=tg_cache(525,65536);
+    for batch:batches {
+        binding:=TgBinding.{symbols=[4]int.[batch,0,0,0]};bound:=tg_bind(model,binding);plan:=ti_compile(bound.program,TiTarget.{},true);
+        selected:=tg_select(cache,binding,plan.bytes);cache=tg_install(selected.next,selected.slot,binding,plan.bytes);
+        hit:=tg_select(cache,binding,plan.bytes);#assert hit.hit;cache=hit.next;
+        print("batch %: % input floats, % output floats; repeat is a cache hit: %\n",batch,plan.input_elements,plan.output_elements,hit.hit);
+    }
+    print("One backend module; shape misses lower plans, not new kernels.\n");
+}
+// book:end example

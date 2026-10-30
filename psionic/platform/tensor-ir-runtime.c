@@ -19,7 +19,7 @@ struct Pti {
 #ifdef __APPLE__
     PmModule metal;PmKernel mk;
 #endif
-    PtiStats stats;
+    PtiStats stats;struct Pti *module_owner;
 };
 static coax_v_u8 ti_bytes(const void *p,int64_t n){return(coax_v_u8){(uint8_t*)p,n};}
 static coax_v_f32 ti_floats(const void *p,int64_t n){return(coax_v_f32){(float*)p,n};}
@@ -46,11 +46,22 @@ static void ti_free(Pti *p,PcBuffer b){if(!b)return;if(p->plan.target.device==DE
 #endif
 }
 static void ti_dispose(Pti *p){if(!p)return;ti_free(p,p->input);ti_free(p,p->workspace);ti_free(p,p->stage);ti_free(p,p->flags);ti_free(p,p->meta);
-    if(p->plan.target.device==DEVICE(cuda)){if(p->stream)pc_destroy_stream(p->stream);if(p->module)pc_unload(p->module);}
+    if(p->plan.target.device==DEVICE(cuda)){if(p->stream)pc_destroy_stream(p->stream);if(p->module && !p->module_owner)pc_unload(p->module);}
 #ifdef __APPLE__
-    if(p->plan.target.device==DEVICE(metal)){if(p->mk)pm_kernel_free(p->mk);if(p->metal)pm_unload(p->metal);}
+    if(p->plan.target.device==DEVICE(metal)){if(!p->module_owner){if(p->mk)pm_kernel_free(p->mk);if(p->metal)pm_unload(p->metal);}}
 #endif
+    if(p->module_owner){coax_t_TiLifeResult returned=ti_module_return(p->module_owner->life);if(!returned.status)p->module_owner->life=returned.state;}
     free(p->readback);free(p->host_flags);free(p->metadata);free(p->launches);free(p);
+}
+static coax_t_TiStatus ti_allocate_plan(Pti *p){
+    p->launches=calloc((size_t)p->plan.launches,sizeof *p->launches);p->metadata=malloc((size_t)p->sizes.metadata);p->readback=malloc((size_t)p->sizes.stage);p->host_flags=malloc((size_t)p->sizes.flags);
+    if(!p->launches || !p->metadata || !p->readback || !p->host_flags){return TI(capacity);}
+    for(int64_t i=0;i<p->plan.launches;i++){p->launches[i]=ti_lower(p->plan,i);memcpy(p->metadata+64*i,p->launches[i].meta.e,64*sizeof(int64_t));}
+    PcBuffer *buffers[]={&p->input,&p->workspace,&p->stage,&p->flags,&p->meta};int64_t sizes[]={p->sizes.input,p->sizes.workspace,p->sizes.stage,p->sizes.flags,p->sizes.metadata};
+    for(int i=0;i<5;i++){coax_t_TiStatus z=ti_alloc(p,sizes[i],buffers[i]);if(z){return z;}}
+    if(p->plan.target.device==DEVICE(cuda)){PcStatus copied=pc_upload(p->meta,p->metadata,(size_t)p->sizes.metadata,p->stream);PcStatus waited=pc_sync_stream(p->stream);if(copied!=PC_OK || waited!=PC_OK){return TI(driver);}}
+    else memcpy(ti_pointer(p,p->meta),p->metadata,(size_t)p->sizes.metadata);
+    return TI(ok);
 }
 coax_t_TiStatus pti_open(coax_t_TiProgram graph,coax_t_TiTarget target,bool reference,const char *source,size_t bytes,Pti **out){
     if(!out || bytes>INT64_MAX)return TI(state);
@@ -72,14 +83,22 @@ coax_t_TiStatus pti_open(coax_t_TiProgram graph,coax_t_TiTarget target,bool refe
 #endif
     target.backend=ti_identity_words(ti_bytes(backend,(int64_t)strlen(backend)));target.kernel=ti_identity_words(ti_bytes(source,(int64_t)bytes));p->plan=ti_compile(graph,target,!reference);p->sizes=ti_buffers(p->plan);
 
-    p->launches=calloc((size_t)p->plan.launches,sizeof *p->launches);p->metadata=malloc((size_t)p->sizes.metadata);p->readback=malloc((size_t)p->sizes.stage);p->host_flags=malloc((size_t)p->sizes.flags);
-    if(!p->launches || !p->metadata || !p->readback || !p->host_flags){ti_dispose(p);return TI(capacity);}
-    for(int64_t i=0;i<p->plan.launches;i++){p->launches[i]=ti_lower(p->plan,i);memcpy(p->metadata+64*i,p->launches[i].meta.e,64*sizeof(int64_t));}
-    PcBuffer *buffers[]={&p->input,&p->workspace,&p->stage,&p->flags,&p->meta};int64_t sizes[]={p->sizes.input,p->sizes.workspace,p->sizes.stage,p->sizes.flags,p->sizes.metadata};
-    for(int i=0;i<5;i++){z=ti_alloc(p,sizes[i],buffers[i]);if(z){ti_dispose(p);return z;}}
-    if(target.device==DEVICE(cuda)){PcStatus copied=pc_upload(p->meta,p->metadata,(size_t)p->sizes.metadata,p->stream);PcStatus waited=pc_sync_stream(p->stream);if(copied!=PC_OK || waited!=PC_OK){ti_dispose(p);return TI(driver);}}
-    else memcpy(ti_pointer(p,p->meta),p->metadata,(size_t)p->sizes.metadata);
+    if(target.device!=DEVICE(cpu))p->stats.module_compiles++;
+    z=ti_allocate_plan(p);if(z){ti_dispose(p);return z;}
     *out=p;return TI(ok);
+}
+coax_t_TiStatus pti_derive(Pti *parent,coax_t_TiProgram graph,Pti **out){
+    if(!parent || !out || *out)return TI(state);
+    if(!ti_cache_ready(parent->life))return TI(state);
+    Pti *owner=parent->module_owner?parent->module_owner:parent;
+    coax_t_TiPlan plan=ti_compile(graph,owner->plan.target,true);if(plan.status)return plan.status;
+    coax_t_TiLifeResult lease=ti_module_borrow(owner->life);if(lease.status)return lease.status;
+    Pti *p=calloc(1,sizeof *p);if(!p)return TI(capacity);owner->life=lease.state;p->module_owner=owner;p->plan=plan;p->sizes=ti_buffers(plan);p->life=ti_initial_life();p->module=owner->module;p->kernel=owner->kernel;
+#ifdef __APPLE__
+    p->metal=owner->metal;p->mk=owner->mk;
+#endif
+    if(plan.target.device==DEVICE(cuda) && pc_stream(&p->stream)!=PC_OK){ti_dispose(p);return TI(driver);}
+    coax_t_TiStatus z=ti_allocate_plan(p);if(z){ti_dispose(p);return z;}*out=p;return TI(ok);
 }
 coax_t_TiPlan pti_info(const Pti *p){return p?p->plan:(coax_t_TiPlan){.status=TI(state)};}
 PtiStats pti_stats(const Pti *p){return p?p->stats:(PtiStats){0};}

@@ -4,8 +4,13 @@
 #load "../../coax/lib/crypto/sha256.coax";
 #authority;
 TiBuffers :: struct {input:int;workspace:int;stage:int;flags:int;metadata:int;total:int;}
-TiLife :: struct {live:bool=true;running:bool;poisoned:bool;}
+TiLife :: struct {live:bool=true;running:bool;poisoned:bool;modules:int;}
 TiLifeResult :: struct {status:TiStatus;state:TiLife;}
+#test "a shared module cannot close while any specialization holds its lease" {
+    a:=ti_module_borrow(ti_initial_life());#assert a.status==TiStatus.ok && a.state.modules==1 && ti_close_admit(a.state)==TiStatus.state;
+    b:=ti_module_return(a.state);#assert b.status==TiStatus.ok && b.state.modules==0 && ti_close_admit(b.state)==TiStatus.ok;
+    #assert ti_module_return(b.state).status==TiStatus.state;
+}
 #test "native open is bounded and driver failures poison further replays" {
     p:=ti_fixture();t:=TiTarget.{};#assert ti_open_admit(p,t,false,0,false,true)==TiStatus.identity;t.compiler[0]=1;
     #assert ti_open_admit(p,t,false,0,false,true)==TiStatus.ok && ti_open_admit(p,t,false,0,false,false)==TiStatus.state;
@@ -65,4 +70,7 @@ ti_end :: (s:TiLife,status:TiStatus)->TiLife #export_c {next:=s;next.running=fal
 
 ti_initial_life :: ()->TiLife #export_c {return TiLife.{};}
 ti_cache_ready :: (s:TiLife)->bool #export_c {return s.live && !s.running && !s.poisoned;}
-ti_close_admit :: (s:TiLife)->TiStatus #export_c {if !s.live || s.running {return TiStatus.state;}return TiStatus.ok;}
+ti_close_admit :: (s:TiLife)->TiStatus #export_c {if !s.live || s.running || s.modules!=0 {return TiStatus.state;}return TiStatus.ok;}
+
+ti_module_borrow :: (s:TiLife)->TiLifeResult #export_c {if !ti_cache_ready(s) || s.modules<0 || s.modules>=32 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules+=1;return TiLifeResult.{state=next};}
+ti_module_return :: (s:TiLife)->TiLifeResult #export_c {if !s.live || s.running || s.modules<1 {return TiLifeResult.{status=TiStatus.state};}next:=s;next.modules-=1;return TiLifeResult.{state=next};}

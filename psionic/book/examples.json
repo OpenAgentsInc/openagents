@@ -530,6 +530,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/dynamic-tensor-program.coax",
+      "chapter": "psionic/book/ch026b-compile-a-general-tensor-program.md",
+      "stdout": "psionic/fixtures/dynamic-tensor-program.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

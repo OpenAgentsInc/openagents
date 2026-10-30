@@ -9,8 +9,11 @@
    Module bytes and observed backend identity are hashed by Coax at open. */
 typedef struct Pti Pti;
 /* Tracks this object's five owned payload buffers; driver scratch is separate. */
-typedef struct {uint64_t allocations,runs;int64_t buffer_bytes,workspace_bytes;} PtiStats;
+typedef struct {uint64_t allocations,runs,module_compiles;int64_t buffer_bytes,workspace_bytes;} PtiStats;
 coax_t_TiStatus pti_open(coax_t_TiProgram program,coax_t_TiTarget target,bool reference,const char *module,size_t bytes,Pti **out);
+/* Specializations share immutable code; closing its owner is refused until
+   every derived handle has closed. Each derived plan owns independent buffers. */
+coax_t_TiStatus pti_derive(Pti *owner,coax_t_TiProgram program,Pti **out);
 coax_t_TiStatus pti_run(Pti *program,const float *input,int64_t count,float *out,int64_t capacity);
 coax_t_TiPlan pti_info(const Pti *program);
 PtiStats pti_stats(const Pti *program);

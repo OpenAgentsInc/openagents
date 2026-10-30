@@ -439,6 +439,23 @@ Coax checks, zero-survivor mutation, independent scalar bit fixtures and
 native debug/release plus sanitizer checks. See the
 [chapter 34 record](docs/verification/psionic-ch34-2026-10-29.md).
 
+## Psionic symbolic templates share code and specialize guarded plans
+
+`psionic/lib/tensor-template.coax` resolves up to four guarded integer symbols,
+a declared two-way branch and bounded unary unrolling, admitting at most 64
+variants including control bindings. Every variant is checked at open. Input
+storage/strides/offsets are derived as packed bindings; explicit view nodes own
+striding semantics. Cached keys include shape and control bindings inside a
+copied template and fixed compiler/backend/module identity. Coax chooses four
+LRU slots and aggregate payload-budget evictions, and installs only successful
+native specializations. Evictions can survive an allocation failure; outputs
+remain unpublished. CUDA/Metal specializations borrow one compiled module;
+Coax leases refuse unloading its owner before children close. No new backend
+compilation occurs on a shape miss. Synchronous execution and numerical/driver
+failure rules remain 26a's. See the focused `tensor-template` runner and
+[chapter 26b evidence](docs/verification/psionic-ch26b-2026-10-29.md). Full
+mutation runs are omitted under the owner's explicit instruction.
+
 ## Psionic tensor IR plans preserve SSA roots and publish whole results
 
 `psionic/lib/tensor-ir*.coax` owns `tensor-ir-f32-v1`: an explicitly authored,

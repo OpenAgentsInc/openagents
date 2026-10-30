@@ -30,6 +30,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == tensor-ops || $chapter == tensor-ops-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ops.sh
     fi
+    if [[ $chapter == tensor-template || $chapter == tensor-template-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_template.sh
+    fi
     if [[ $chapter == tensor-ir || $chapter == tensor-ir-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ir.sh
     fi
@@ -230,19 +233,22 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; tensor_template=0
+picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_tensor_ir() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-ir || $n == tensor-ir-* ]]; }
 picks_tensor_device() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-device || $n == tensor-placement || $n == tensor-device-* ]]; }
 picks_deepseek() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == deepseek || $n == deepseek/* ]]; }
 picks_qualify() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == qualify || $n == qualify-elephant ]]; }
 picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n == gptoss/* ]]; }
 if [[ ${#only[@]} -eq 0 ]]; then
+    tensor_template=1
     selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1; deepseek=1; qualify=1; tensor_device=1; tensor_ir=1
 else
     for unit in "${coax_units[@]}"; do if picks_coax "$unit" "${only[@]}"; then selected_coax+=("$unit"); fi; done
     for unit in "${native_units[@]}"; do if picks_native "$unit" "${only[@]}"; then selected_native+=("$unit"); fi; done
     for n in "${only[@]}"; do
         hit=0
+        if picks_tensor_template "$n"; then hit=1; tensor_template=1; fi
         if picks_tensor_ir "$n"; then hit=1; tensor_ir=1; fi
         if picks_tensor_device "$n"; then hit=1; tensor_device=1; fi
         if picks_gptoss "$n"; then hit=1; gptoss=1; fi
@@ -333,6 +339,11 @@ if [[ $tensor_ir == 1 ]]; then
     phase "tensor-ir-f32-v1 (focused gate, no full mutation claim)"
 fi
 
+if [[ $tensor_template == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_template.sh
+    phase "tensor-template (focused gate, no full mutation claim)"
+fi
+
 # Chapter 13's qualification gate has its own runner; --only qualify selects it.
 if [[ $qualify == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/qualify.sh
@@ -380,4 +391,7 @@ if [[ $tensor_device == 1 ]]; then
 fi
 if [[ $tensor_ir == 1 ]]; then
     echo "tensor-ir-f32-v1 uses its focused gate; full mutation runs are not claimed"
+fi
+if [[ $tensor_template == 1 ]]; then
+    echo "tensor-template: focused gate; full mutation runs not claimed"
 fi

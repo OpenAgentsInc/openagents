@@ -1,0 +1,5 @@
+batch 1: 29 input floats, 2 output floats; repeat is a cache hit: true
+batch 2: 32 input floats, 4 output floats; repeat is a cache hit: true
+batch 4: 38 input floats, 8 output floats; repeat is a cache hit: true
+batch 8: 50 input floats, 16 output floats; repeat is a cache hit: true
+One backend module; shape misses lower plans, not new kernels.
