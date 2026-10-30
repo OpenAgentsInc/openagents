@@ -357,7 +357,8 @@ has the commands and results.
   calibration set drawn from logged traffic, which
   [chapter 158](ch158-record-readings-join-outcomes-watch-drift.md) records.
 - **One draw per split.** No interval on the calibration error, and the gate
-  compares point estimates. Chapter 180's gates can say "unverifiable".
+  compares point estimates. [Chapter 180](ch180-gates-that-can-say-unverifiable.md)'s
+  probability gate fails question 1's binned map, for its 23 confident errors.
 - **Identity by number.** A map names a model and a question set by number. A
   content hash of the weights and the question text would be stronger.
 - **Yes-or-no questions only.** Multi-way answers need a map per answer, or a

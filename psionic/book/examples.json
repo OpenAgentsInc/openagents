@@ -480,6 +480,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/verdicts.coax",
+      "chapter": "psionic/book/ch180-gates-that-can-say-unverifiable.md",
+      "stdout": "psionic/fixtures/verdicts.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

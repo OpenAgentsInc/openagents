@@ -1,0 +1,4 @@
+// Chapter 180's native harness reports chapter 157 through the gates, so its
+// library also carries chapter 157's thresholds. The gates load neither.
+#load "../lib/verdict.coax";
+#load "../lib/threshold.coax";

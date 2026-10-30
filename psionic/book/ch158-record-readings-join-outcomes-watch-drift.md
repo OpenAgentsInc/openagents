@@ -253,7 +253,7 @@ when an alert fires is not done here.
 The gate needs both a lower calibration error and a lower log loss. One check
 shows the cost of that. A map that answers the base rate for everything has no
 calibration error at all, so a sharper map that would lower the log loss is
-refused. Chapter 180's gates rank the two.
+refused. [Chapter 180's](ch180-gates-that-can-say-unverifiable.md) gates rank the two.
 
 ## Other thresholds, from the log
 

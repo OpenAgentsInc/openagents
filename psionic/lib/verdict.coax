@@ -1,0 +1,286 @@
+// Chapter 180: gates that can say unverifiable. A decision gate passes a gain
+// only beyond chapter 179's noise floor, on a partition with headroom, with
+// whole tasks drawn again; a probability gate ranks log loss and confident
+// errors above calibration error and accuracy; an evaluation gate lets cost
+// and time block a result but never earn one. Every verdict is passed, failed
+// or unverifiable, with the reason.
+// Profile cpu-f64-verdict-v1: binary64, chapter 3's compensated accumulator
+// for every sum, chapter 179's bootstrap and headroom, chapter 156's
+// measures, at least 10 tasks, and "clear" meaning at most 1 in 40 replicates
+// on the other side.
+#load "noise.coax";
+#load "calibrate.coax";
+#authority;
+
+VdStatus :: enum u8 {ok;shape;number;}
+// The zero values mean no verdict yet.
+VdVerdict :: enum u8 {unverifiable;passed;failed;}
+VdReason :: enum u8 {
+    none;beyond_floor;within_floor;near_floor;no_headroom;no_floor;few_tasks;
+    loss_lower;loss_higher;more_confident_errors;loss_unclear;
+    over_cost;over_time;unmeasured;
+}
+VdResult :: struct {verdict:VdVerdict;reason:VdReason;}
+VdDecision :: struct {status:VdStatus;result:VdResult;room:NsRoom;gain:NsBoot;}
+// Index 0 is the baseline, 1 the candidate. lower: the candidate's log loss
+// gain; higher: the baseline's; confident: the baseline's confident-error gain.
+VdProbability :: struct {
+    status:VdStatus;result:VdResult;items:int;
+    loss:[2]f64;errors:[2]int;ece:[2]f64;correct:[2]int;
+    lower:NsBoot;higher:NsBoot;confident:NsBoot;
+}
+
+VD_MIN_TASKS :: 10;
+// Clear: at most 1 replicate in 40 (2.5 percent) on the other side.
+VD_CLEAR :: 40;
+
+// Checks precede the implementation. Expected values are derived in chapter 180.
+vd_is :: (r:VdResult,v:VdVerdict,why:VdReason)->bool {return r.verdict==v && r.reason==why;}
+
+#test "clear means at most 1 replicate in 40" {
+    #assert vd_side(25,1000)==1 && vd_side(26,1000)==0 && vd_side(974,1000)==0 && vd_side(975,1000)==-1;
+    #assert vd_side(0,2)==1 && vd_side(1,2)==0 && vd_side(2,2)==-1;
+    #assert vd_side(0,40)==1 && vd_side(1,40)==1 && vd_side(2,40)==0 && vd_side(38,40)==0 && vd_side(39,40)==-1;
+    #assert vd_side(1,39)==0 && vd_side(38,39)==0 && vd_side(0,39)==1 && vd_side(39,39)==-1;
+    r:=vd(VdVerdict.passed,VdReason.beyond_floor);
+    #assert vd_is(r,VdVerdict.passed,VdReason.beyond_floor) && !vd_is(r,VdVerdict.passed,VdReason.loss_lower) && !vd_is(r,VdVerdict.failed,VdReason.beyond_floor);
+    none:VdResult;#assert vd_is(none,VdVerdict.unverifiable,VdReason.none);
+}
+
+// Twelve tasks of two items; the candidate gains 0.5 on task 0 to 5 items.
+grid :: (gain:f64,a:[]f64,b:[]f64,task:[]int,part:[]int) {
+    for i:0..<24 {a[i]=0.25;b[i]=0.25+gain*f64(1-i%2);task[i]=i/2;}
+}
+
+#test "a decision gate by hand" {
+    a:[24]f64;b:[24]f64;task:[24]int;part:[24]int;grid(0.5,a[..],b[..],task[..],part[..]);
+    f:=NsFloor.{blocks=2,floor=0.1};
+    // Every task gains 0.25 on average: every replicate is 0.25, beyond 0.1.
+    d:=vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100);
+    #assert d.status==VdStatus.ok && vd_is(d.result,VdVerdict.passed,VdReason.beyond_floor);
+    #assert d.gain.gain==0.25 && d.gain.below==0 && d.gain.tasks==12 && d.room.room==0.75 && !d.room.refused;
+    // A floor of 0.25 is reached by every replicate: clearly within it.
+    f.floor=0.25;d=vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100);
+    #assert vd_is(d.result,VdVerdict.failed,VdReason.within_floor) && d.gain.below==100;
+    // Half the tasks gain 0.5 per item, half lose 0.5: near the floor.
+    for i:0..<24 {b[i]=0.25+ifx i<12 then 0.5 else -0.2;}
+    f.floor=0.1;d=vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100);
+    #assert vd_is(d.result,VdVerdict.unverifiable,VdReason.near_floor) && d.gain.below>2 && d.gain.below<98;
+    // No headroom: the baseline sits within the floor of the ceiling.
+    grid(0.5,a[..],b[..],task[..],part[..]);
+    d=vd_decision(a[..],b[..],task[..],part[..],0,f,0.35,3,100);
+    #assert vd_is(d.result,VdVerdict.unverifiable,VdReason.no_headroom) && d.room.room==0.35-0.25 && d.room.refused;
+    #assert vd_is(vd_decision(a[..],b[..],task[..],part[..],0,f,0.3501,3,100).result,VdVerdict.passed,VdReason.beyond_floor);
+    // Fewer than two blocks: no floor. With no floor, headroom uses 0.
+    none:NsFloor;d=vd_decision(a[..],b[..],task[..],part[..],0,none,1,3,100);
+    #assert vd_is(d.result,VdVerdict.unverifiable,VdReason.no_floor) && !d.room.refused;
+    none.blocks=1;#assert vd_is(vd_decision(a[..],b[..],task[..],part[..],0,none,1,3,100).result,VdVerdict.unverifiable,VdReason.no_floor);
+    full:[24]f64;for i:0..<24 {full[i]=1;}
+    none.blocks=0;d=vd_decision(full[..],b[..],task[..],part[..],0,none,1,3,100);
+    #assert vd_is(d.result,VdVerdict.unverifiable,VdReason.no_headroom) && d.room.room==0;
+    // A refused floor is no floor either.
+    bad:=NsFloor.{status=NsStatus.shape,blocks=4,floor=0.1};
+    #assert vd_is(vd_decision(a[..],b[..],task[..],part[..],0,bad,1,3,100).result,VdVerdict.unverifiable,VdReason.no_floor);
+    // Nine tasks are too few; ten are enough.
+    for i:0..<24 {task[i]=i%9;}
+    #assert vd_is(vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100).result,VdVerdict.unverifiable,VdReason.few_tasks);
+    for i:0..<24 {task[i]=i%10;}
+    #assert vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100).result.reason!=VdReason.few_tasks;
+}
+
+#test "decision gate refusals" {
+    a:[24]f64;b:[24]f64;task:[24]int;part:[24]int;grid(0.5,a[..],b[..],task[..],part[..]);f:=NsFloor.{blocks=2,floor=0.1};
+    #assert vd_decision(a[..],b[0..<23],task[..],part[..],0,f,1,3,100).status==VdStatus.shape;
+    #assert vd_decision(a[..],b[..],task[..],part[..],1,f,1,3,100).status==VdStatus.shape;
+    #assert vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,1).status==VdStatus.shape;
+    #assert vd_decision(a[..],b[..],task[..],part[..],0,f,0.2,3,100).status==VdStatus.number;
+    nan:=0.0/0.0;b[3]=nan;
+    #assert vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100).status==VdStatus.number;
+    b[3]=0.25;f.floor=nan;
+    #assert vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100).status==VdStatus.number;
+    f.floor=-0.1;#assert vd_decision(a[..],b[..],task[..],part[..],0,f,1,3,100).status==VdStatus.number;
+}
+
+#test "a probability gate by hand" {
+    // Twelve tasks of four items, two yes and two no. The baseline says 0.5
+    // everywhere; a candidate leaning the right way lowers log loss.
+    a:[48]f64;b:[48]f64;y:[48]f64;task:[48]int;
+    for i:0..<48 {y[i]=f64(i%2);a[i]=0.5;b[i]=ifx y[i]==1 then 0.7 else 0.3;task[i]=i/4;}
+    r:=vd_probability(a[..],b[..],y[..],task[..],5,200);
+    #assert r.status==VdStatus.ok && r.items==48 && vd_is(r.result,VdVerdict.passed,VdReason.loss_lower);
+    #assert r.loss[0]==-log(0.5) && r.loss[1]==-log(0.7) && r.errors[0]==0 && r.errors[1]==0;
+    #assert r.correct[0]==24 && r.correct[1]==48 && r.lower.below==0 && r.higher.below==200 && r.confident.below==200;
+    // Swapped, the candidate is clearly worse.
+    s:=vd_probability(b[..],a[..],y[..],task[..],5,200);
+    #assert vd_is(s.result,VdVerdict.failed,VdReason.loss_higher) && s.higher.below==0;
+    // Equal: unclear.
+    #assert vd_is(vd_probability(a[..],a[..],y[..],task[..],5,200).result,VdVerdict.unverifiable,VdReason.loss_unclear);
+    // Sharper, so lower log loss, but confidently wrong on one item of every
+    // task: confident errors block the pass. Its calibration error is lower.
+    c:[48]f64;for i:0..<48 {c[i]=ifx y[i]==1 then 0.99 else 0.01;if i%4==0 {c[i]=0.92;}}
+    u:=vd_probability(a[..],c[..],y[..],task[..],5,200);
+    #assert u.loss[1]<u.loss[0] && u.lower.below==0 && u.errors[1]==12 && u.confident.below==0;
+    #assert vd_is(u.result,VdVerdict.failed,VdReason.more_confident_errors);
+    // The base rate: no calibration error at all, yet the gate does not pass it.
+    base:[48]f64;for i:0..<48 {base[i]=0.5;}
+    v:=vd_probability(b[..],base[..],y[..],task[..],5,200);
+    #assert v.ece[1]==0 && v.ece[0]>0 && vd_is(v.result,VdVerdict.failed,VdReason.loss_higher);
+    // Nine tasks are too few.
+    for i:0..<48 {task[i]=i%9;}
+    #assert vd_is(vd_probability(a[..],b[..],y[..],task[..],5,200).result,VdVerdict.unverifiable,VdReason.few_tasks);
+    for i:0..<48 {task[i]=i%10;}
+    #assert vd_is(vd_probability(a[..],b[..],y[..],task[..],5,200).result,VdVerdict.passed,VdReason.loss_lower);
+}
+
+#test "the probability gate agrees with chapter 156's measures" {
+    v1:=[4]f64.[2,0,0.6,-0.6];q:[400]int;p:[400]f64;y:[400]f64;
+    #assert cf_simulate(9,v1[..],q[..],p[..],y[..],false)==CfStatus.ok;
+    m:=cf_fit(CfKind.temperature,1,1,0,q[..],p[..],y[..],q[..]);
+    out:[400]f64;task:[400]int;rows:[400]int;
+    for i:0..<400 {out[i]=cf_map(m,p[i]);task[i]=i/8;rows[i]=i;}
+    r:=vd_probability(p[..],out[..],y[..],task[..],2,50);
+    a:=cf_measure(p[..],y[..],rows[..]);b:=cf_measure(out[..],y[..],rows[..]);
+    #assert r.status==VdStatus.ok && r.ece[0]==a.ece && r.ece[1]==b.ece && r.errors[0]==a.confident_errors && r.errors[1]==b.confident_errors;
+    #assert abs(r.loss[0]-a.log_loss)<0.000000000001*a.log_loss && abs(r.loss[1]-b.log_loss)<0.000000000001*b.log_loss;
+}
+
+#test "probability gate refusals" {
+    a:=[3]f64.[0.5,0.5,0.5];b:=[3]f64.[0.6,0.4,0.6];y:=[3]f64.[1,0,1];task:=[3]int.[0,1,2];
+    #assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.ok;
+    #assert vd_probability(a[..],b[..],y[..],task[..],1,2).result.reason==VdReason.few_tasks;
+    #assert vd_probability(a[0..<2],b[..],y[..],task[..],1,2).status==VdStatus.shape;
+    #assert vd_probability(a[..],b[0..<2],y[..],task[..],1,2).status==VdStatus.shape;
+    #assert vd_probability(a[..],b[..],y[..],task[0..<2],1,2).status==VdStatus.shape;
+    #assert vd_probability(a[0..<0],b[0..<0],y[0..<0],task[0..<0],1,2).status==VdStatus.shape;
+    #assert vd_probability(a[..],b[..],y[..],task[..],1,1).status==VdStatus.shape;
+    #assert vd_probability(a[..],b[..],y[..],task[..],1,10001).status==VdStatus.shape;
+    task[1]=1024;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.shape;
+    task[1]=-1;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.shape;
+    task[1]=1;y[1]=0.5;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.number;
+    y[1]=0;a[1]=1.5;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.number;
+    a[1]=0.5;b[1]=-0.5;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.number;
+    b[1]=0.0/0.0;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.number;
+    b[1]=1;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.ok;
+    #assert vd_probability(a[..],b[..],y[..],task[..],1,10000).status==VdStatus.ok;
+    a[0]=1.5;#assert vd_probability(a[..],b[..],y[..],task[..],1,2).status==VdStatus.number;a[0]=0.5;
+    one:=vd_probability(a[0..<1],b[0..<1],y[0..<1],task[0..<1],1,2);
+    #assert one.status==VdStatus.ok && one.items==1 && vd_is(one.result,VdVerdict.unverifiable,VdReason.few_tasks);
+    // At exactly 0.5 the answer is yes; at exactly 0.9 a top label is confident.
+    half:=[3]f64.[0.5,0.5,0.9];yes:=[3]f64.[1,1,0];
+    h:=vd_probability(half[..],half[..],yes[..],task[..],1,2);#assert h.correct[0]==2 && h.errors[0]==1;
+    big:[4097]f64;by:[4097]f64;bt:[4097]int;
+    #assert vd_probability(big[0..<4096],big[0..<4096],by[0..<4096],bt[0..<4096],1,2).items==4096;
+    #assert vd_probability(big[..],big[..],by[..],bt[..],1,2).status==VdStatus.shape;
+}
+
+#test "an evaluation gate blocks but never earns" {
+    pass:=VdResult.{verdict=VdVerdict.passed,reason=VdReason.beyond_floor};
+    open:=VdResult.{verdict=VdVerdict.unverifiable,reason=VdReason.near_floor};
+    fail:=VdResult.{verdict=VdVerdict.failed,reason=VdReason.within_floor};
+    nan:=0.0/0.0;
+    #assert vd_is(vd_evaluate(pass,1,2,1,2),VdVerdict.passed,VdReason.beyond_floor);
+    #assert vd_is(vd_evaluate(pass,1.0001,2,1,2),VdVerdict.failed,VdReason.over_cost);
+    #assert vd_is(vd_evaluate(pass,1,2.0001,1,2),VdVerdict.failed,VdReason.over_time);
+    #assert vd_is(vd_evaluate(pass,5,5,1,2),VdVerdict.failed,VdReason.over_cost);
+    #assert vd_is(vd_evaluate(open,0,0,1,2),VdVerdict.unverifiable,VdReason.near_floor);
+    #assert vd_is(vd_evaluate(open,3,0,1,2),VdVerdict.failed,VdReason.over_cost);
+    #assert vd_is(vd_evaluate(fail,0,0,1,2),VdVerdict.failed,VdReason.within_floor);
+    #assert vd_is(vd_evaluate(fail,3,3,1,2),VdVerdict.failed,VdReason.within_floor);
+    #assert vd_is(vd_evaluate(pass,nan,0,1,2),VdVerdict.unverifiable,VdReason.unmeasured);
+    #assert vd_is(vd_evaluate(pass,0,nan,1,2),VdVerdict.unverifiable,VdReason.unmeasured);
+    #assert vd_is(vd_evaluate(pass,-0.001,0,1,2),VdVerdict.unverifiable,VdReason.unmeasured);
+    #assert vd_is(vd_evaluate(pass,0,-0.001,1,2),VdVerdict.unverifiable,VdReason.unmeasured);
+    #assert vd_is(vd_evaluate(pass,1.0e301,0,1.0e300,2),VdVerdict.unverifiable,VdReason.unmeasured);
+    #assert vd_is(vd_evaluate(pass,1.0e300,0,1.0e300,2),VdVerdict.passed,VdReason.beyond_floor);
+    #assert vd_is(vd_evaluate(fail,nan,0,1,2),VdVerdict.failed,VdReason.within_floor);
+    // An unmeasured cost with a measured time over its limit still fails.
+    #assert vd_is(vd_evaluate(pass,nan,3,1,2),VdVerdict.failed,VdReason.over_time);
+    // Limits must be numbers; an unlimited budget is written as 1e300.
+    #assert vd_is(vd_evaluate(pass,0,0,nan,2),VdVerdict.unverifiable,VdReason.unmeasured);
+    #assert vd_is(vd_evaluate(pass,0,0,1,-1),VdVerdict.unverifiable,VdReason.unmeasured);
+}
+
+// book:begin side
+vd :: (verdict:VdVerdict,reason:VdReason)->VdResult {return VdResult.{verdict=verdict,reason=reason};}
+// 1 when at most 1 in 40 replicates fall at or below the line, -1 when at
+// most 1 in 40 fall above it, 0 otherwise.
+vd_side :: (below:int,replicates:int)->int {
+    if below*VD_CLEAR<=replicates {return 1;}
+    if (replicates-below)*VD_CLEAR<=replicates {return -1;}
+    return 0;
+}
+// book:end side
+
+// book:begin decision
+// A candidate's per-item scores b against a baseline's a (higher is better),
+// on one partition, with the floor measured for the baseline's blocks.
+vd_decision :: (a:[]f64,b:[]f64,task:[]int,part:[]int,which:int,seeds:NsFloor,ceiling:f64,seed:u64,replicates:int)->VdDecision #export_c {
+    measured:=seeds.status==NsStatus.ok && seeds.blocks>=2;
+    noise:=ifx measured then seeds.floor else 0.0;
+    d:=VdDecision.{room=ns_headroom(a,part,which,ceiling,noise),gain=ns_boot(a,b,task,part,which,noise,seed,replicates)};
+    if d.room.status==NsStatus.shape || d.gain.status==NsStatus.shape {return VdDecision.{status=VdStatus.shape};}
+    if d.room.status!=NsStatus.ok || d.gain.status!=NsStatus.ok {return VdDecision.{status=VdStatus.number};}
+    if d.room.refused {d.result=vd(VdVerdict.unverifiable,VdReason.no_headroom);return d;}
+    if !measured {d.result=vd(VdVerdict.unverifiable,VdReason.no_floor);return d;}
+    if d.gain.tasks<VD_MIN_TASKS {d.result=vd(VdVerdict.unverifiable,VdReason.few_tasks);return d;}
+    side:=vd_side(d.gain.below,replicates);
+    if side==1 {d.result=vd(VdVerdict.passed,VdReason.beyond_floor);}
+    else if side==-1 {d.result=vd(VdVerdict.failed,VdReason.within_floor);}
+    else {d.result=vd(VdVerdict.unverifiable,VdReason.near_floor);}
+    return d;
+}
+// book:end decision
+
+// book:begin probability
+// Yes-or-no probabilities of a baseline a and a candidate b on the same
+// labelled items. Log loss decides; more confident errors block a pass;
+// calibration error and accuracy are reported and decide nothing.
+vd_probability :: (a:[]f64,b:[]f64,y:[]f64,task:[]int,seed:u64,replicates:int)->VdProbability #export_c {
+    n:=y.count;
+    if n<1 || n>NS_ITEMS_MAX || a.count!=n || b.count!=n || task.count!=n {return VdProbability.{status=VdStatus.shape};}
+    if replicates<2 || replicates>NS_REPLICATES_MAX {return VdProbability.{status=VdStatus.shape};}
+    for t:task {if t<0 || t>=NS_TASKS_MAX {return VdProbability.{status=VdStatus.shape};}}
+    for i:0..<n {
+        if !tb_in(a[i],0,1) || !tb_in(b[i],0,1) || (y[i]!=0 && y[i]!=1) {return VdProbability.{status=VdStatus.number};}
+    }
+    // Per item, higher is better: negated log loss and negated confident error.
+    loss:[2][NS_ITEMS_MAX]f64;wrong:[2][NS_ITEMS_MAX]f64;part:[NS_ITEMS_MAX]int;rows:[NS_ITEMS_MAX]int;
+    r:=VdProbability.{items=n};
+    for k:0..<2 {
+        p:=ifx k==0 then a else b;total:PsionicAccumulator;
+        for i:0..<n {
+            c:=cf_clamp(p[i]);if y[i]==0 {c=1-c;}
+            loss[k][i]=log(c);total=psionic_ops_accumulate(total,-loss[k][i]);
+            right:=(p[i]>=0.5)==(y[i]==1);top:=0.5+abs(p[i]-0.5);
+            if right {r.correct[k]+=1;}
+            if top>=0.9 && !right {wrong[k][i]=-1;r.errors[k]+=1;}
+            rows[i]=i;
+        }
+        r.loss[k]=psionic_ops_total(total)/f64(n);r.ece[k]=cf_measure(p,y,rows[0..<n]).ece;
+    }
+    r.lower=ns_boot(loss[0][0..<n],loss[1][0..<n],task,part[0..<n],0,0,seed,replicates);
+    r.higher=ns_boot(loss[1][0..<n],loss[0][0..<n],task,part[0..<n],0,0,seed,replicates);
+    r.confident=ns_boot(wrong[1][0..<n],wrong[0][0..<n],task,part[0..<n],0,0,seed,replicates);
+    if r.lower.tasks<VD_MIN_TASKS {r.result=vd(VdVerdict.unverifiable,VdReason.few_tasks);}
+    else if vd_side(r.higher.below,replicates)==1 {r.result=vd(VdVerdict.failed,VdReason.loss_higher);}
+    else if vd_side(r.confident.below,replicates)==1 {r.result=vd(VdVerdict.failed,VdReason.more_confident_errors);}
+    else if vd_side(r.lower.below,replicates)==1 {r.result=vd(VdVerdict.passed,VdReason.loss_lower);}
+    else {r.result=vd(VdVerdict.unverifiable,VdReason.loss_unclear);}
+    return r;
+}
+// book:end probability
+
+// book:begin evaluate
+// Cost and seconds per decision against limits written before the run. Over
+// a limit fails; unmeasured makes a pass unverifiable; a failure stays.
+vd_measured :: (v:f64)->bool {return tb_in(v,0,NS_BIG);}
+vd_evaluate :: (quality:VdResult,cost:f64,seconds:f64,cost_limit:f64,seconds_limit:f64)->VdResult #export_c {
+    if quality.verdict==VdVerdict.failed {return quality;}
+    if vd_measured(cost) && vd_measured(cost_limit) && cost>cost_limit {return vd(VdVerdict.failed,VdReason.over_cost);}
+    if vd_measured(seconds) && vd_measured(seconds_limit) && seconds>seconds_limit {return vd(VdVerdict.failed,VdReason.over_time);}
+    if !vd_measured(cost) || !vd_measured(seconds) || !vd_measured(cost_limit) || !vd_measured(seconds_limit) {
+        return vd(VdVerdict.unverifiable,VdReason.unmeasured);
+    }
+    return quality;
+}
+// book:end evaluate

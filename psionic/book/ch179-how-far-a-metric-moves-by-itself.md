@@ -211,7 +211,7 @@ The candidate that is 0.5 logits better shows the trap:
 
 The candidate that is 1.5 logits better clears the floor. Even so, 58 of 1,000
 task replicates fall back to it. Turning these numbers into a verdict is
-[chapter 180's](PLAN.md) job; this chapter only measures.
+[chapter 180's](ch180-gates-that-can-say-unverifiable.md) job; this chapter only measures.
 
 ## Headroom
 

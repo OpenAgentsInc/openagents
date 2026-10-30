@@ -1,0 +1,105 @@
+#import "Basic";
+#load "../lib/verdict.coax";
+#load "../lib/threshold.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+r2 :: (v:f64)->f64 {return floor(v*100+0.5)/100;}
+verdicts :: [3]string.["unverifiable","passed","failed"];
+reasons :: [14]string.["none","beyond the floor","within the floor","near the floor","no headroom","no floor",
+    "too few tasks","lower log loss","higher log loss","more confident errors","log loss unclear",
+    "over cost","over time","unmeasured"];
+say :: (r:VdResult) {print("% (%)\n",verdicts[cast(int)r.verdict],reasons[cast(int)r.reason]);}
+
+ELEPHANT_GOLD :: [12]int.[1,0,2,2,1,1,0,1,0,0,1,2];
+ELEPHANT_START :: [13]int.[0,3,6,9,13,16,18,20,22,24,27,30,33];
+ELEPHANT_P :: [33]f64.[
+    0.002928807,0.993571220,0.003499973, 0.999760347,0.000120185,0.000119469,
+    0.004286453,0.007238023,0.988475524, 0.000022106,0.000147891,0.999662403,0.000167600,
+    0.000654594,0.999191446,0.000153959, 0.000371329,0.999628671, 0.999669108,0.000330892,
+    0.000142345,0.999857655, 0.988583238,0.011416762, 0.999912545,0.000062176,0.000025279,
+    0.008296165,0.991150862,0.000552973, 0.000428897,0.000749283,0.998821820];
+
+// Chapter 156's splits for model 1, and the rows of question k packed together.
+Split :: struct {q:[4000]int;p:[4000]f64;y:[4000]f64;}
+pack :: (s:Split,k:int,p:[]f64,y:[]f64)->int {
+    n:=0;for i:0..<4000 {if s.q[i]==k {p[n]=s.p[i];y[n]=s.y[i];n+=1;}}
+    return n;
+}
+
+// book:begin example
+main :: () {
+    // Chapter 179's suite: the baseline's 64 runs give the floor of each part.
+    task:[400]int;part:[400]int;
+    for i:0..<400 {task[i]=ns_task(i);part[i]=ns_part(i);}
+    scores:[25600]f64;
+    for r:0..<64 {#assert ns_run(179,r,0,scores[r*400..<(r+1)*400])==NsStatus.ok;}
+    floors:=[2]NsFloor.[ns_floor(scores[..],part[..],0,64,4),ns_floor(scores[..],part[..],1,64,4)];
+    a:[400]f64;b:[400]f64;c:[1600]f64;
+    #assert ns_means(scores[..],400,0,4,a[..],false)==NsStatus.ok;
+    print("chapter 179's suite, candidates with 4 seeds against the baseline's first 4:\n");
+    skills:=[4]f64.[-0.5,0.5,1.5,2.5];firsts:=[4]int.[4000,2000,3000,5000];
+    for k:0..<4 {
+        for q:0..<4 {#assert ns_run(179,firsts[k]+q,skills[k],c[q*400..<(q+1)*400])==NsStatus.ok;}
+        #assert ns_means(c[..],400,0,4,b[..],false)==NsStatus.ok;
+        for w:0..<2 {
+            d:=vd_decision(a[..],b[..],task[..],part[..],w,floors[w],1,7,1000);#assert d.status==VdStatus.ok;
+            print("  % logits, % tasks: gain %, floor %, % of 1000 at or below it -> ",skills[k],
+                ifx w==0 then "open" else "saturated",r4(d.gain.gain),r4(floors[w].floor),d.gain.below);say(d.result);
+        }
+    }
+
+    // Chapter 12: Elephant's twelve items, each its own task, no seeds.
+    correct:[12]f64;each:[12]int;none:[12]int;
+    for i:0..<12 {
+        p:=ELEPHANT_P;correct[i]=ns_correct(p[ELEPHANT_START[i]..<ELEPHANT_START[i+1]],ELEPHANT_GOLD[i]);each[i]=i;
+    }
+    unmeasured:NsFloor;e:=vd_decision(correct[..],correct[..],each[..],none[..],0,unmeasured,1,7,1000);
+    print("chapter 12, Elephant's accuracy, any candidate: ");say(e.result);
+
+    // Chapter 156: model 1's test split, raw against the maps it chose.
+    split:[3]Split;v1:=[4]f64.[2,0,0.6,-0.6];
+    for k:0..<3 {#assert cf_simulate(cast(u64)(156+k),v1[..],split[k].q[..],split[k].p[..],split[k].y[..],false)==CfStatus.ok;}
+    kinds:=[2]CfKind.[CfKind.temperature,CfKind.binned];names:=[2]string.["temperature","binned"];
+    print("chapter 156, test split, raw -> calibrated:\n");
+    for k:0..<2 {
+        fp:[4000]f64;fy:[4000]f64;n:=pack(split[0],k,fp[..],fy[..]);rows:[4000]int;q:[4000]int;
+        for i:0..<n {rows[i]=i;q[i]=k;}
+        m:=cf_fit(kinds[k],1,1,k,q[0..<n],fp[0..<n],fy[0..<n],rows[0..<n]);#assert m.status==CfStatus.ok;
+        tp:[4000]f64;ty:[4000]f64;t:=pack(split[2],k,tp[..],ty[..]);mapped:[4000]f64;groups:[4000]int;
+        for i:0..<t {mapped[i]=cf_map(m,tp[i]);groups[i]=i/4;}
+        r:=vd_probability(tp[0..<t],mapped[0..<t],ty[0..<t],groups[0..<t],7,1000);#assert r.status==VdStatus.ok;
+        print("  question % (%): log loss % -> %, confident errors % -> %, calibration error % -> %, right % -> % of %\n",
+            k,names[k],r4(r.loss[0]),r4(r.loss[1]),r.errors[0],r.errors[1],r4(r.ece[0]),r4(r.ece[1]),r.correct[0],r.correct[1],t);
+        print("    replicates of 1000 at or below 0: candidate ahead on log loss %, baseline ahead %, baseline ahead on confident errors % -> ",
+            r.lower.below,r.higher.below,r.confident.below);say(r.result);
+    }
+
+    // Chapter 157: the threshold record against the best fixed policy, with
+    // the floor from 16 validation draws, then each consumer's time limit.
+    ce:[4000]f64;cm:[4000]f64;cy:[4000]f64;groups:[4000]int;zero:[4000]int;
+    #assert th_simulate(158,0.9,ce[..],cm[..],cy[..],false)==ThStatus.ok;
+    for i:0..<4000 {groups[i]=i/4;}
+    costs:=[2]ThCosts.[th_voice(),th_background()];baseline:=[2]ThPolicy.[ThPolicy.elephant,ThPolicy.mammoth];
+    consumers:=[2]string.["voice interruption","background classification"];limits:=[2]f64.[0.5,30];
+    print("chapter 157, the record against % and %:\n","always Elephant (voice)","always Mammoth (background)");
+    for k:0..<2 {
+        runs:[64000]f64;cost:[4000]f64;report:ThReport;
+        for s:0..<16 {
+            ve:[2000]f64;vm:[2000]f64;vy:[2000]f64;seed:=ifx s==0 then 157 else 1000+s;
+            #assert th_simulate(cast(u64)seed,0.9,ve[..],vm[..],vy[..],false)==ThStatus.ok;
+            record:=th_record(costs[k],th_rho(ve[..],vm[..],vy[..]).value);
+            x:=th_run(costs[k],ThPolicy.record,record,ce[..],cm[..],cy[..],cost[..],false);#assert x.status==ThStatus.ok;
+            if s==0 {report=x;}
+            for i:0..<4000 {runs[s*4000+i]=-cost[i];}
+        }
+        f:=ns_floor(runs[..],zero[..],0,16,1);
+        base:=th_run(costs[k],baseline[k],th_record(costs[k],0.9),ce[..],cm[..],cy[..],cost[..],false);
+        a4:[4000]f64;b4:[4000]f64;for i:0..<4000 {a4[i]=-cost[i];b4[i]=runs[i];}
+        d:=vd_decision(a4[..],b4[..],groups[..],zero[..],0,f,0,7,1000);#assert d.status==VdStatus.ok;
+        v:=vd_evaluate(d.result,report.mean,report.seconds,1,limits[k]);
+        print("  %: cost % -> %, gain %, floor %, % of 1000 at or below it -> ",consumers[k],r4(base.mean),r4(report.mean),
+            r4(d.gain.gain),r4(f.floor),d.gain.below);say(d.result);
+        print("    % s per decision, limit % s -> ",r2(report.seconds),limits[k]);say(v);
+    }
+}
+// book:end example
