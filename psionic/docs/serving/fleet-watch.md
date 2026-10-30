@@ -75,6 +75,15 @@ decision answers. The job was then activated with DRY0 and the exact window;
 Scheduler ENABLED and its runtime image/config were independently read back.
 See [activation and bootstrap receipts](../../fixtures/fleet-watch/2026-10-30/).
 
+The first active Scheduler execution, `pylon-fleet-watch-h4t5q`, completed
+successfully at `21:12:00Z`. Both hosts were RUNNING; Elephant and Mammoth
+returned checked decisions, GPT-OSS returned a verified PONG in 609 ms, and
+the fresh TDX sealed round took 8,709 ms (8,598 ms model inference).
+The [four-role cycle receipt](../../fixtures/fleet-watch/2026-10-30/first-active-cycle.json)
+is an observation within the fixed window, not a six-hour completion claim.
+The GPT-OSS implementation and its focused qualification are on main in
+`598d0677ee`; see the [source and model proof](../../../docs/verification/gptoss-cloud-nip90-2026-10-30.md).
+
 Runtime grants are scoped to GET on the two hosts, START on the TDX host,
 dispatch of the existing fixed RTX recovery job, and invocation of the two
 private model fleets. The Scheduler identity can invoke only this watcher.
