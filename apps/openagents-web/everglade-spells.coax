@@ -55,6 +55,7 @@
 #load "everglade-wild.coax";
 #load "everglade-circle.coax";
 #load "everglade-storm.coax";
+#load "everglade-polar.coax";
 
 SP_SLOTS :: 4;
 SP_MEDIA_BYTES :: 5600;
@@ -195,6 +196,7 @@ Spells :: struct {
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // the row a phone's bar shows
+  po: [1] Polar;               // and the last four: Ray of Frost, Fog Cloud, Hold Person, Cone of Cold (everglade-polar.coax)
   st: [1] Storm;               // and after those: Sunburst, Storm of Vengeance, Shapechange, Speak with Animals, Wild Resurgence (everglade-storm.coax)
   ci: [1] Circle;              // the circle spells after it: Conjure Animals, Polymorph, Mass Cure Wounds, Sunbeam, Wall of Thorns, Fire Storm (everglade-circle.coax)
   wd: [1] Wild;                // the rest of its third row: Faerie Fire, Healing Word, Spike Growth, Call Lightning, Wall of Fire, and fire on the grass (everglade-wild.coax)
@@ -2433,10 +2435,11 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   p1 := g[0].sp.boxes[SP_BOLT];
   pu := 2 * 844.0f32 / 768;
-  // in rows of six, the first on top: Thunderbolt's over the bottom row by a step
+  // in rows of six, the first on top: the first row's twelve and its switcher make three, Thunderbolt's
+  // over the bottom one by two steps
   r1 := g[0].sp.boxes[HB_PHONE_ROW];
   #assert abs(r1.x0 - g[0].sp.boxes[0].x0) < 1 && abs(r1.y0 - g[0].sp.boxes[0].y0 - 42 * pu) < 1.5;
-  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu - 42 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
+  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu - 2 * 42 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
   // a finger held on the slot shows the card (at 2x) and, lifted, casts nothing
   #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 0, 1, 7);
   for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }

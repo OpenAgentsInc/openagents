@@ -62,8 +62,10 @@ st_start :: (s: [] Everglade) {
   v[0].sv_on = false; v[0].sv_round = 0; v[0].you_deaf = false; v[0].bolt_t = 100; v[0].bolt_n = 0;
   v[0].sc_on = false; v[0].sa_on = false;
   for i: 0..<WATCH_ACTORS { v[0].su_save[i] = false; v[0].su_next[i] = 0; v[0].deaf[i] = false; }
+  po_start(s);
 }
 st_active :: (s: [] Everglade, k: int) -> bool {
+  if k >= AB_RAYFROST { return po_active(s, k); }
   v := st_of(s);
   if k == AB_SUNBURST { return v[0].su_t < f32(ST_SU_SHOW); }
   if k == AB_VENGEANCE { return v[0].sv_on; }
@@ -73,6 +75,7 @@ st_active :: (s: [] Everglade, k: int) -> bool {
   return false;
 }
 st_press :: (s: [] Everglade, k: int) {
+  if k >= AB_RAYFROST { po_press(s, k); return; }
   v := st_of(s);
   c := ci_of(s);
   b := SP_SLOTS + k;
@@ -100,11 +103,13 @@ st_cast :: (s: [] Everglade, k: int) {
   if k == AB_SUNBURST { st_su_cast(s); return; }
   if k == AB_VENGEANCE { st_sv_cast(s); return; }
   if k == AB_SHAPECHANGE { st_sc_on(s); return; }
+  po_cast(s, k);
 }
 st_concentration_lost :: (s: [] Everglade) {
   v := st_of(s);
   if v[0].sv_on { st_sv_end(s); }
   if v[0].sc_on { v[0].sc_on = false; if ci_of(s)[0].form_by == AB_SHAPECHANGE { ci_leave_shape(s); } }
+  po_concentration_lost(s);
 }
 st_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
   v := st_of(s);
@@ -113,6 +118,7 @@ st_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
 // Whether the sight line from p to q runs through the freezing rain (Heavily Obscured) for more than a metre.
 st_hides :: (s: [] Everglade, p: Point, q: Point) -> bool {
   if !sp_on(s) { return false; }
+  if po_hides(s, p, q) { return true; }   // and through the Fog Cloud (everglade-polar.coax)
   v := st_of(s);
   if !v[0].sv_on || v[0].sv_round < 5 { return false; }
   inside := 0;
@@ -403,6 +409,7 @@ st_frame :: (s: [] Everglade, dt: f32) {
   st_sv_frame(s, dt);
   st_sc_frame(s, dt);
   if v[0].sa_on { v[0].sa_t += dt; if v[0].sa_t >= f32(ST_SA_LIFE) { v[0].sa_on = false; sp_say(s, "SPEAK WITH ANIMALS ENDS", -1, ""); } }
+  po_frame(s, dt);
 }
 st_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
   v := st_of(s);
@@ -418,9 +425,10 @@ st_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
   if v[0].sv_on && sp_noise(floor(v[0].sv_t * 4), 3.3) > 0.86 {
     n = sp_lamp(u, n, most, add(ab_you(s), v3(0, 12, 0)), 50, ST_BOLT_RGB, 1.4);
   }
-  return n;
+  return po_lamps(s, u, n, most);
 }
 st_draw :: (s: [] Everglade) {
+  po_draw(s);
   v := st_of(s);
   few := phone(s);
   // Sunburst: a ball of sunlight swelling to its 60 feet and fading, rays thrown off it
@@ -496,6 +504,7 @@ st_draw :: (s: [] Everglade) {
   }
 }
 st_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
+  if k >= AB_RAYFROST { return po_hint(s, k, phone_, far); }
   v := st_of(s);
   if k == AB_SUNBURST {
     if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(ST_SU_RANGE) { return "TOO FAR · 150 FEET AT MOST"; }
@@ -516,6 +525,7 @@ st_shape_hint :: (s: [] Everglade, phone_: bool) -> string {
   return ifx phone_ then "TAP SOMEONE IN REACH TO BITE · TAP ITS SLOT TO END THE SHAPE" else "CLICK SOMEONE IN REACH TO BITE · ALT+8 ENDS THE SHAPE";
 }
 st_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
+  if k >= AB_RAYFROST { return po_aim_ring(s, out, u, n, k, pulse); }
   if k == AB_SUNBURST { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(ST_SU_R), ST_SUN_RGB, pulse); }
   if k == AB_VENGEANCE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(ST_SV_R), ST_BOLT_RGB, pulse); }
   return n;

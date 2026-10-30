@@ -40,6 +40,9 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/dragon-spiral.svg` (Shapechange)
 - `lorc/parrot-head.svg` (Speak with Animals)
 - `lorc/cycle.svg` (Wild Resurgence)
+- `lorc/fire-ray.svg` (Ray of Frost)
+- `lorc/dust-cloud.svg` (Fog Cloud)
+- `lorc/icicles-aura.svg` (Cone of Cold)
 
 Icons made by Delapouite (<https://delapouite.com>):
 
@@ -54,6 +57,7 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/fairy.svg` (Faerie Fire)
 - `delapouite/frog-prince.svg` (Polymorph)
 - `delapouite/healing.svg` (Mass Cure Wounds)
+- `delapouite/frozen-body.svg` (Hold Person)
 - `delapouite/plain-arrow.svg` (a phone bar's next row, drawn upside down)
 
 Icons made by Carl Olsen (<https://twitter.com/unstoppableCarl>):

@@ -109,12 +109,13 @@ wd_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
   v := wd_of(s);
   return (v[0].sg_on && flat_gap(v3(x, 0, z), v[0].sg_at) <= f32(WD_SG_R)) || ci_rough(s, x, z);
 }
-// A d20 for an attack at person i: two, the higher, while Faerie Fire outlines them; the lower while you are Blinded.
+// A d20 for an attack at person i: two, the higher, while Faerie Fire outlines them or they are Paralyzed; the lower
+// while you are Blinded.
 wd_d20 :: (s: [] Everglade, i: int) -> int {
   d := s[0].sp.dice[..];
   roll := srd_roll(d, 20);
   v := wd_of(s);
-  up := v[0].ff_on && i >= 0 && i < WATCH_ACTORS && v[0].lit[i];
+  up := (v[0].ff_on && i >= 0 && i < WATCH_ACTORS && v[0].lit[i]) || po_held(s, i);   // outlined, or Paralyzed (everglade-polar.coax)
   down := st_you_blind(s);   // you Blinded (everglade-storm.coax Sunburst): Disadvantage; both cancel
   if up && !down { other := srd_roll(d, 20); if other > roll { roll = other; } }
   if down && !up { other := srd_roll(d, 20); if other < roll { roll = other; } }
@@ -160,9 +161,9 @@ wd_ff_at :: (s: [] Everglade, at: Point) {
   hue := wd_ff_rgb(v[0].ff_hue);
   side := f32(WD_FF_SIDE);
   // the cube fills with motes of light a moment
-  for q: 0..<(ifx phone(s) then 18 else 36) {
+  for q: 0..<(ifx phone(s) then 30 else 60) {
     p := add(c, v3((sp_rand(s) - 0.5) * side, sp_rand(s) * side * 0.6, (sp_rand(s) - 0.5) * side));
-    sp_add_spark(s, p, times(sp_spray(s, 0), 0.3), 0.8 + 0.8 * sp_rand(s), 0.025, times(hue, 1.4), -0.2);
+    sp_add_spark(s, p, times(sp_spray(s, 0), 0.3), 1.0 + 0.9 * sp_rand(s), 0.035 + 0.03 * sp_rand(s), times(hue, 1.7), -0.2);
   }
   n := 0; tried := 0;
   if watch_on(s) {
@@ -632,6 +633,18 @@ wd_draw :: (s: [] Everglade) {
   // Faerie Fire: the outlined ringed in motes of light
   if v[0].ff_on {
     hue := wd_ff_rgb(v[0].ff_hue);
+    // as it is cast, the cube shimmers with a swirl of bright motes, fading
+    if v[0].ff_t < 1.4 {
+      f := v[0].ff_t / 1.4;
+      side := f32(WD_FF_SIDE);
+      sp_glow(s, add(v[0].ff_at, v3(0, side * 0.3, 0)), side * 0.55, times(hue, 0.18 * (1 - f)));
+      for q: 0..<(ifx few then 12 else 24) {
+        a := f32(TAU) * ab_h(87.0, q, 0) + v[0].ff_t * (1.5 + ab_h(87.0, q, 1));
+        rr := side * 0.45 * ab_h(87.0, q, 2);
+        y := side * 0.6 * ab_h(87.0, q, 3) + 0.6 * f;
+        sp_glow(s, add(v[0].ff_at, v3(cos(a) * rr, y, sin(a) * rr)), 0.16, times(hue, 1.6 * (1 - f)));
+      }
+    }
     drawn := 0;
     for i: 0..<WATCH_ACTORS {
       if !v[0].lit[i] || drawn >= 8 { continue; }
@@ -690,28 +703,36 @@ wd_wf_draw :: (s: [] Everglade, few: bool) {
   if !v[0].wf_on { return; }
   on := wd_wf_rise(s);
   t := v[0].wf_t;
-  cols := ifx few then 18 else 34;
+  cols := ifx few then 14 else 24;
   H := f32(WD_WF_TALL) * on;
   for q: 0..<cols {
     u := (f32(q) + 0.5) / f32(cols);
     base := mix(v[0].wf_a, v[0].wf_b, u);
     base.y = ground_at(s, base.x, base.z);
-    tall := H * (0.75 + 0.25 * sin(t * 2.1 + f32(q) * 1.9) * sin(t * 1.3 + f32(q) * 0.7));
+    // its crest rolls along the wall in long waves, neighbours rising together (a ragged top of
+    // separate puffs read as popcorn)
+    tall := H * (0.84 + 0.09 * sin(t * 2.1 + u * 23) + 0.07 * sin(t * 3.4 - u * 47));
     rows := ifx few then 3 else 5;
     for r: 0..<rows {
       k := (f32(r) + 0.5) / f32(rows);
       // tongues narrowing as they climb, each one licking sideways a little
-      size := lerp(0.62, 0.3, k) * (0.85 + 0.15 * sin(t * 9 + f32(q * 3 + r)));
-      sway := 0.12 * k * sin(t * 4.3 + f32(q) * 2.1 + f32(r));
-      sp_fx(s, FX_FIRE, add(base, add(times(v[0].wf_n, sway), v3(0, tall * k, 0))), size, sp_flame_rgb(0.12 + 0.5 * k), lerp(0.5, 0.15, k), v3(lerp(0.85, 0.55, k), 0, 0), t * 2.3 + f32(q * 7 + r) * 0.37);
+      // big soft tongues overlapping one another, so the sheet reads as one fire, not separate puffs
+      size := lerp(1.35, 0.85, k) * (0.9 + 0.1 * sin(t * 9 + f32(q * 3 + r)));
+      sway := 0.15 * k * sin(t * 4.3 + f32(q) * 2.1 + f32(r));
+      sp_fx(s, FX_FIRE, add(base, add(times(v[0].wf_n, sway), v3(0, tall * k * 0.92, 0))), size, sp_flame_rgb(0.12 + 0.5 * k), lerp(0.32, 0.08, k), v3(lerp(0.8, 0.62, k), 0, 0), t * 2.3 + f32(q * 7 + r) * 0.37);
+      // the crest: a second tongue between each two, so its top is a run of flame, not a row of balls
+      if r >= rows - 2 && q + 1 < cols {
+        mid := mix(v[0].wf_a, v[0].wf_b, (f32(q) + 1) / f32(cols)); mid.y = ground_at(s, mid.x, mid.z);
+        sp_fx(s, FX_FIRE, add(mid, v3(0, tall * k * 0.88, 0)), size * 0.9, sp_flame_rgb(0.12 + 0.5 * k), 0.1, v3(0.6, 0, 0), t * 2.9 + f32(q * 5 + r) * 0.53);
+      }
     }
     if q % 4 == 0 { sp_glow(s, add(base, v3(0, 0.6, 0)), 1.8 * on, v3(0.35, 0.13, 0.03)); }
   }
   // billows climbing off its top, embers, a pall of smoke
   if on > 0.5 {
     for q: 0..<(ifx few then 1 else 3) {
-      p := mix(v[0].wf_a, v[0].wf_b, sp_rand(s)); p.y = ground_at(s, p.x, p.z) + sp_rand(s) * H;
-      sp_add_flame(s, p, v3(0, 1.0, 0), 0.5 + 0.3 * sp_rand(s), 1.7, 0.45 + 0.3 * sp_rand(s), 3.5, 0.15);
+      p := mix(v[0].wf_a, v[0].wf_b, sp_rand(s)); p.y = ground_at(s, p.x, p.z) + (0.15 + 0.45 * sp_rand(s)) * H;
+      sp_add_flame(s, p, v3(0, 1.4, 0), 0.4 + 0.2 * sp_rand(s), 1.2, 0.3 + 0.2 * sp_rand(s), 3.0, 0.1);   // they burn out inside it, not over its top
     }
     if sp_rand(s) < 0.5 { p := mix(v[0].wf_a, v[0].wf_b, sp_rand(s)); p.y = ground_at(s, p.x, p.z) + H; sp_add_spark(s, p, add(v3(0, 2.5, 0), times(sp_spray(s, 0), 1.2)), 1.2 + sp_rand(s), 0.02, v3(1.4, 0.6, 0.15), -0.5); }
     if sp_rand(s) < 0.12 { p := mix(v[0].wf_a, v[0].wf_b, sp_rand(s)); p.y = ground_at(s, p.x, p.z) + H; sp_add_smoke(s, p, v3(0, 1.0, 0), 1.4, 4.5, 0.25, 0.4, 0.5, 0.3); }

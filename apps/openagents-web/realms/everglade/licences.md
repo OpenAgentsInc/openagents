@@ -183,5 +183,9 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Shapechange | `lorc/dragon-spiral.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Speak with Animals | `lorc/parrot-head.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Wild Resurgence | `lorc/cycle.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Ray of Frost | `lorc/fire-ray.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Fog Cloud | `lorc/dust-cloud.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Hold Person | `delapouite/frozen-body.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Cone of Cold | `lorc/icicles-aura.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

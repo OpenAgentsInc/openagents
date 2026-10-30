@@ -1,0 +1,395 @@
+// The bar's last four (the old Grove's polar spells; the watch's casters cast the same at you,
+// verse/everglade/watch.coax), loaded by everglade-spells.coax after everglade-storm.coax, whose st_*
+// hand these on (SRD 5.2.1: DC 15, spell attack +7, a caster of level 9 for a cantrip's dice):
+//
+//  A- RAY OF FROST  (cantrip) Click someone within 60 feet: a spell attack, 2d8 cold on a hit (the dice
+//                   doubled on a 20), and their Speed is 10 feet less until your next turn. It stays
+//                   picked, a ray each second.
+//  A= FOG CLOUD     (level 1, Concentration up to an hour) Click a point within 120 feet: a sphere of fog
+//                   20 feet in radius, Heavily Obscured: no one sees through it, the watch neither (you
+//                   in it, they lose you; they in it, you them). Alt+= with it picked ends it.
+//   = HOLD PERSON   (level 2, Concentration up to a minute) Click someone within 60 feet: a Wisdom save or
+//                   Paralyzed: they stand stock still, strike and cast nothing, and your attacks at them
+//                   have Advantage. They save again at the end of each of their turns (each 6 seconds),
+//                   and it ends on a success. = with it picked ends it.
+//  S= CONE OF COLD  (level 5) A 60-foot cone of frost from you the way you point: each creature in it
+//                   makes a Constitution save, 8d8 cold, half on a success. It starts at you, so you are
+//                   never in it.
+//
+// Every save or blow on a person is a crime the watch answers (the fog is not).
+
+AB_RAYFROST :: 39; AB_FOG :: 40; AB_HOLD :: 41; AB_CONE :: 42;
+
+PO_RF_RANGE :: 18.288; PO_RF_SLOW :: 6.0; PO_RF_PACE :: 0.667; PO_RF_COOL :: 1.0; PO_RF_SHOW :: 0.4; PO_HEAR_RF :: 12.0;
+PO_FOG_RANGE :: 36.576; PO_FOG_R :: 6.096; PO_FOG_LIFE :: 3600.0;
+PO_HP_RANGE :: 18.288; PO_HP_LIFE :: 60.0; PO_HEAR_HP :: 15.0;
+PO_CC_LONG :: 18.288; PO_CC_SHOW :: 1.0; PO_HEAR_CC :: 40.0;
+PO_ROUND :: 6.0;
+
+PO_FROST_RGB :: Point.{x = 0.72, y = 0.9, z = 1.0};
+PO_HOLD_RGB :: Point.{x = 0.72, y = 0.45, z = 1.0};
+
+Polar :: struct {
+  time: f32;
+  rf_cool: f32; rf_t: f32; rf_a: Point; rf_b: Point; rf_hit: bool;   // Ray of Frost: the last ray
+  slow: [WATCH_ACTORS] f32; slow_x: [WATCH_ACTORS] f32; slow_z: [WATCH_ACTORS] f32;   // its slowing (s left), where each was last frame
+  fog_on: bool; fog_t: f32; fog_at: Point;            // Fog Cloud: its middle
+  hp_on: bool; hp_t: f32;                             // Hold Person
+  held: [WATCH_ACTORS] bool; held_next: [WATCH_ACTORS] f32; held_x: [WATCH_ACTORS] f32; held_z: [WATCH_ACTORS] f32;
+  cc_t: f32; cc_at: Point; cc_dir: Point;             // Cone of Cold: since, from, which way
+}
+po_of :: (s: [] Everglade) -> [] Polar { return s[0].sp.po[..]; }
+po_start :: (s: [] Everglade) {
+  v := po_of(s);
+  v[0].time = 0; v[0].rf_cool = 0; v[0].rf_t = 100; v[0].fog_on = false; v[0].hp_on = false; v[0].cc_t = 100;
+  for i: 0..<WATCH_ACTORS { v[0].slow[i] = 0; v[0].held[i] = false; v[0].held_next[i] = 0; }
+}
+po_active :: (s: [] Everglade, k: int) -> bool {
+  v := po_of(s);
+  if k == AB_RAYFROST { return v[0].rf_t < f32(PO_RF_SHOW); }
+  if k == AB_FOG { return v[0].fog_on; }
+  if k == AB_HOLD { return v[0].hp_on; }
+  if k == AB_CONE { return v[0].cc_t < f32(PO_CC_SHOW); }
+  return false;
+}
+po_press :: (s: [] Everglade, k: int) {
+  v := po_of(s);
+  b := SP_SLOTS + k;
+  picked := s[0].sp.armed == b;
+  if picked {
+    if k == AB_FOG && v[0].fog_on { v[0].fog_on = false; sp_say(s, "FOG CLOUD ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_HOLD && v[0].hp_on { po_hp_end(s); sp_say(s, "HOLD PERSON ENDS", -1, ""); s[0].sp.armed = -1; return; }
+  }
+  s[0].sp.armed = ifx picked then -1 else b;
+}
+po_cast :: (s: [] Everglade, k: int) {
+  if k == AB_RAYFROST { po_rf_cast(s); return; }
+  if k == AB_FOG { po_fog_cast(s); return; }
+  if k == AB_HOLD { po_hp_cast(s); return; }
+  if k == AB_CONE { po_cc_cast(s); return; }
+}
+po_concentration_lost :: (s: [] Everglade) {
+  v := po_of(s);
+  v[0].fog_on = false;
+  if v[0].hp_on { po_hp_end(s); }
+}
+// Whether the sight line from p to q runs more than a metre through the fog.
+po_hides :: (s: [] Everglade, p: Point, q: Point) -> bool {
+  if !sp_on(s) { return false; }
+  v := po_of(s);
+  if !v[0].fog_on { return false; }
+  inside := 0;
+  for k: 0..<16 { if length(sub(mix(p, q, (f32(k) + 0.5) / 16), v[0].fog_at)) <= f32(PO_FOG_R) { inside += 1; } }
+  return f32(inside) / 16 * length(sub(q, p)) > 1.0;
+}
+// Whether your attacks at person i have Advantage (Paralyzed).
+po_held :: (s: [] Everglade, i: int) -> bool { return sp_on(s) && i >= 0 && i < WATCH_ACTORS && po_of(s)[0].held[i]; }
+
+// ---- Ray of Frost
+
+po_rf_cast :: (s: [] Everglade) {
+  v := po_of(s);
+  if v[0].rf_cool > 0 { return; }
+  pick := ab_tk_pick(s);
+  if pick.kind != 2 { sp_say(s, "CLICK SOMEONE FOR RAY OF FROST", -1, ""); return; }
+  i := pick.idx;
+  if flat_gap(ab_person_at(s, i), ab_you(s)) > f32(PO_RF_RANGE) { sp_say(s, "TOO FAR · 60 FEET AT MOST", -1, ""); return; }
+  po_rf_at(s, i);
+}
+po_rf_at :: (s: [] Everglade, i: int) {
+  v := po_of(s);
+  v[0].rf_cool = f32(PO_RF_COOL); v[0].rf_t = 0;
+  at := add(wd_feet(s, i), v3(0, 1.1, 0));
+  v[0].rf_a = gv_hand(s); v[0].rf_b = at;
+  v[0].rf_hit = false;
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  roll := wd_d20(s, i);
+  crit := roll == 20;
+  ci_crime(s, at, f32(PO_HEAR_RF));
+  if roll == 1 || (!crit && roll + GV_ATTACK < watch_block(i).ac) { sp_say(s, "RAY OF FROST MISSES", -1, ""); return; }
+  took := srd_sum(d, ifx crit then GV_CANTRIP * 2 else GV_CANTRIP, 8);
+  watch_harm(w, i, took, ab_you(s));
+  v[0].rf_hit = true;
+  v[0].slow[i] = f32(PO_RF_SLOW);
+  pl := person_place(s, i); v[0].slow_x[i] = pl.x; v[0].slow_z[i] = pl.z;
+  sp_say(s, ifx crit then "RAY OF FROST · A CRITICAL HIT · SLOWED" else "RAY OF FROST · SLOWED", took, "COLD");
+}
+
+// ---- Fog Cloud
+
+po_fog_cast :: (s: [] Everglade) {
+  if wd_aim_far(s, f32(PO_FOG_RANGE), "POINT WHERE THE FOG GATHERS") { return; }
+  s[0].sp.armed = -1;
+  po_fog_at(s, s[0].sp.aim);
+}
+po_fog_at :: (s: [] Everglade, at: Point) {
+  v := po_of(s);
+  v[0].fog_on = true; v[0].fog_t = 0;
+  v[0].fog_at = v3(at.x, hi(at.y, ground_at(s, at.x, at.z)) + 1.5, at.z);
+  sp_say(s, "FOG CLOUD", -1, "");
+}
+
+// ---- Hold Person
+
+po_hp_cast :: (s: [] Everglade) {
+  pick := ab_tk_pick(s);
+  if pick.kind != 2 { sp_say(s, "CLICK SOMEONE TO HOLD", -1, ""); return; }
+  i := pick.idx;
+  if flat_gap(ab_person_at(s, i), ab_you(s)) > f32(PO_HP_RANGE) { sp_say(s, "TOO FAR · 60 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  po_hp_on(s, i);
+}
+po_hp_on :: (s: [] Everglade, i: int) {
+  v := po_of(s);
+  if v[0].hp_on { po_hp_end(s); }
+  at := wd_feet(s, i);
+  sp_add_shock(s, add(at, v3(0, 0.05, 0)), 1.1, 0.7, PO_HOLD_RGB);
+  ci_crime(s, at, f32(PO_HEAR_HP));
+  if srd_save(s[0].sp.dice[..], 0, GV_DC).success { sp_say(s, "HOLD PERSON · THEY RESIST", -1, ""); return; }
+  v[0].hp_on = true; v[0].hp_t = 0;
+  v[0].held[i] = true; v[0].held_next[i] = v[0].time + f32(PO_ROUND);
+  pl := person_place(s, i); v[0].held_x[i] = pl.x; v[0].held_z[i] = pl.z;
+  sp_say(s, "HOLD PERSON · PARALYZED", -1, "");
+}
+po_hp_end :: (s: [] Everglade) {
+  v := po_of(s);
+  v[0].hp_on = false;
+  for i: 0..<WATCH_ACTORS { v[0].held[i] = false; }
+}
+
+// ---- Cone of Cold
+
+po_cc_cast :: (s: [] Everglade) {
+  if !s[0].sp.aim_ok { sp_say(s, "POINT THE WAY IT BLOWS", -1, ""); return; }
+  s[0].sp.armed = -1;
+  you := ab_you(s);
+  po_cc_at(s, you, sub(s[0].sp.aim, you));
+}
+// The cone from `from` along `way`: 60 feet long, as wide at its end.
+po_cc_at :: (s: [] Everglade, from: Point, way: Point) {
+  v := po_of(s);
+  d := unit_or(v3(way.x, 0, way.z), ab_forward(s));
+  v[0].cc_t = 0; v[0].cc_at = from; v[0].cc_dir = d;
+  hurt := 0; total := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    dice := s[0].sp.dice[..];
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) || !po_in_cone(from, d, wd_feet(s, i)) { continue; }
+      amount := srd_sum(dice, 8, 8);
+      took := ifx ci_con(s, i) then amount / 2 else amount;
+      watch_harm(w, i, took, ab_you(s));
+      hurt += 1; total += took;
+    }
+    if hurt > 0 { ci_crime(s, add(from, times(d, 9)), f32(PO_HEAR_CC)); }
+  }
+  if hurt > 0 { sp_say(s, "CONE OF COLD · 8D8 COLD", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  else { sp_say(s, "CONE OF COLD", -1, ""); }
+  hand := gv_hand(s);
+  for q: 0..<(ifx phone(s) then 24 else 48) {
+    spray := unit_or(add(d, times(sp_spray(s, 0), 0.45)), d);
+    sp_add_spark(s, hand, times(spray, 14 + 12 * sp_rand(s)), 0.9, 0.12, v3(0.85, 0.95, 1.1), 1);
+  }
+  // the frost's breath filling the cone, wider as it goes
+  side := v3(-d.z, 0, d.x);
+  for q: 0..<(ifx phone(s) then 6 else 11) {
+    along := 2.5 + f32(PO_CC_LONG) * 0.85 * (f32(q) + 0.5) / 11 * (ifx phone(s) then 11.0f32 / 6 else 1.0f32);
+    lat := (sp_rand(s) - 0.5) * along * 0.8;
+    at := add(from, add(times(d, along), add(times(side, lat), v3(0, 0.9 + 0.4 * sp_rand(s), 0))));
+    sp_add_puff(s, at, add(times(d, 3), times(side, lat * 0.15)), 1.0 + along * 0.12, 1.6 + 0.4 * sp_rand(s), 0.97);
+  }
+  s[0].sp.shake = hi(s[0].sp.shake, 0.15f32);
+}
+po_in_cone :: (from: Point, d: Point, p: Point) -> bool {
+  rel := v3(p.x - from.x, 0, p.z - from.z);
+  along := dot(rel, d);
+  off := length(sub(rel, times(d, along)));
+  return along > 0.3 && along <= f32(PO_CC_LONG) + f32(BLAST_PAD) && off <= along * 0.5 + f32(BLAST_PAD) && abs(p.y - from.y) < 6;
+}
+
+// ---- each frame, the light, the drawing, the words
+
+po_frame :: (s: [] Everglade, dt: f32) {
+  v := po_of(s);
+  v[0].time += dt;
+  v[0].rf_t += dt; v[0].cc_t += dt;
+  if v[0].rf_cool > 0 { v[0].rf_cool = hi(v[0].rf_cool - dt, 0); }
+  if v[0].fog_on { v[0].fog_t += dt; if v[0].fog_t >= f32(PO_FOG_LIFE) { v[0].fog_on = false; sp_say(s, "FOG CLOUD ENDS", -1, ""); } }
+  if v[0].hp_on { v[0].hp_t += dt; if v[0].hp_t >= f32(PO_HP_LIFE) { po_hp_end(s); sp_say(s, "HOLD PERSON ENDS", -1, ""); } }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  held := 0;
+  for i: 0..<WATCH_ACTORS {
+    act := w[0].actors[i..<i + 1];
+    // slowed: what they walk this frame, two thirds of it
+    if v[0].slow[i] > 0 {
+      v[0].slow[i] = hi(v[0].slow[i] - dt, 0);
+      if !ab_person_ok(s, i) { v[0].slow[i] = 0; }
+      else {
+        x := v[0].slow_x[i] + (act[0].x - v[0].slow_x[i]) * f32(PO_RF_PACE);
+        z := v[0].slow_z[i] + (act[0].z - v[0].slow_z[i]) * f32(PO_RF_PACE);
+        act[0].x = x; act[0].z = z;
+        if i < EG_SPOTS { s[0].folk[i].x = x; s[0].folk[i].z = z; }
+        v[0].slow_x[i] = x; v[0].slow_z[i] = z;
+      }
+    }
+    if !v[0].held[i] { continue; }
+    if !ab_person_ok(s, i) { v[0].held[i] = false; continue; }
+    // the Wisdom save again at the end of each of their turns
+    if v[0].time >= v[0].held_next[i] {
+      v[0].held_next[i] = v[0].time + f32(PO_ROUND);
+      if srd_save(s[0].sp.dice[..], 0, GV_DC).success { v[0].held[i] = false; sp_say(s, "HOLD PERSON · THEY BREAK FREE", -1, ""); continue; }
+    }
+    act[0].x = v[0].held_x[i]; act[0].z = v[0].held_z[i];
+    if i < EG_SPOTS { s[0].folk[i].x = act[0].x; s[0].folk[i].z = act[0].z; }
+    ci_still(s, i);
+    held += 1;
+  }
+  if v[0].hp_on && held == 0 { v[0].hp_on = false; }
+}
+po_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  v := po_of(s);
+  n := k;
+  if v[0].rf_t < f32(PO_RF_SHOW) { n = sp_lamp(u, n, most, v[0].rf_b, 6, PO_FROST_RGB, 1.6 * (1 - v[0].rf_t / f32(PO_RF_SHOW))); }
+  if v[0].cc_t < f32(PO_CC_SHOW) { n = sp_lamp(u, n, most, add(v[0].cc_at, add(times(v[0].cc_dir, 8), v3(0, 1.5, 0))), 16, PO_FROST_RGB, 2.0 * (1 - v[0].cc_t / f32(PO_CC_SHOW))); }
+  return n;
+}
+po_draw :: (s: [] Everglade) {
+  v := po_of(s);
+  few := phone(s);
+  t := v[0].time;
+  // Ray of Frost: a pale beam, frost bursting where it lands
+  if v[0].rf_t < f32(PO_RF_SHOW) {
+    f := v[0].rf_t / f32(PO_RF_SHOW);
+    k := 1 - f;
+    sp_rod(s, v[0].rf_a, v[0].rf_b, 0.03 + 0.06 * k, times(PO_FROST_RGB, 1.3 * k));
+    for q: 0..<(ifx few then 4 else 8) { sp_glow(s, mix(v[0].rf_a, v[0].rf_b, (f32(q) + 0.5) / 8), 0.35 * k, times(PO_FROST_RGB, 0.3)); }
+    if v[0].rf_hit { sp_glow(s, v[0].rf_b, 0.9 * k, times(PO_FROST_RGB, 0.6)); }
+  }
+  // the slowed: rime about their feet
+  if watch_on(s) {
+    for i: 0..<WATCH_ACTORS {
+      if v[0].slow[i] <= 0 && !v[0].held[i] { continue; }
+      if !ab_person_ok(s, i) { continue; }
+      p := wd_feet(s, i);
+      if v[0].slow[i] > 0 { sp_glow(s, add(p, v3(0, 0.15, 0)), 0.6, times(PO_FROST_RGB, 0.25)); }
+      if v[0].held[i] {
+        // Paralyzed: violet bands turning about them
+        for e: 0..<3 {
+          y := 0.35 + 0.55 * f32(e) + 0.08 * sin(t * 2 + f32(e));
+          for q: 0..<(ifx few then 5 else 9) {
+            a := f32(TAU) * f32(q) / 9 + t * (1.2 + 0.3 * f32(e)) * (ifx e % 2 == 0 then 1.0f32 else -1.0f32);
+            sp_glow(s, add(p, v3(cos(a) * 0.42, y, sin(a) * 0.42)), 0.07, times(PO_HOLD_RGB, 1.4));
+          }
+        }
+      }
+    }
+  }
+  // Fog Cloud: a ball of grey-white fog, rolling slowly
+  if v[0].fog_on {
+    on := clamp(v[0].fog_t / 1.5, 0, 1);
+    c := v[0].fog_at;
+    R := f32(PO_FOG_R);
+    for q: 0..<(ifx few then 12 else 24) {
+      a := f32(TAU) * ab_h(53.0, q, 0) + t * 0.08 * (ifx q % 2 == 0 then 1.0f32 else -1.0f32);
+      e := (ab_h(53.0, q, 1) - 0.5) * 2.2;
+      rr := R * (0.25 + 0.6 * ab_h(53.0, q, 2));
+      p := add(c, v3(cos(a) * cos(e) * rr, sin(e) * rr * 0.6, sin(a) * cos(e) * rr));
+      p.y = hi(p.y, ground_at(s, p.x, p.z) + 0.8);
+      sp_fx(s, FX_SMOKE, p, 3.6 + 1.6 * ab_h(53.0, q, 3), v3(0.78, 0.8, 0.82), 0.95 * on, v3(0, 0, 0), f32(q) * 0.29);
+    }
+  }
+  // picked: Fog Cloud's sphere, Cone of Cold's cone
+  armed := s[0].sp.armed - SP_SLOTS;
+  if s[0].sp.aim_ok && armed == AB_CONE {
+    pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+    you := ab_you(s);
+    d := unit_or(v3(s[0].sp.aim.x - you.x, 0, s[0].sp.aim.z - you.z), ab_forward(s));
+    side := v3(-d.z, 0, d.x);
+    L := f32(PO_CC_LONG);
+    tip := add(you, v3(0, 0.08, 0));
+    e0 := add(tip, add(times(d, L), times(side, L * 0.5))); e1 := add(tip, add(times(d, L), times(side, -L * 0.5)));
+    e0.y = ground_at(s, e0.x, e0.z) + 0.08; e1.y = ground_at(s, e1.x, e1.z) + 0.08;
+    c := times(PO_FROST_RGB, 0.7 * pulse);
+    ab_line(s, tip, e0, c); ab_line(s, tip, e1, c); ab_line(s, e0, e1, c);
+  }
+}
+po_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
+  v := po_of(s);
+  if k == AB_RAYFROST { return ifx phone_ then "TAP SOMEONE FOR RAY OF FROST · TAP ITS SLOT TO CANCEL" else "CLICK SOMEONE FOR RAY OF FROST · ESC CANCELS"; }
+  if k == AB_FOG {
+    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(PO_FOG_RANGE) { return "TOO FAR · 120 FEET AT MOST"; }
+    if v[0].fog_on { return ifx phone_ then "TAP TO GATHER IT ELSEWHERE · TAP ITS SLOT TO END IT" else "CLICK TO GATHER IT ELSEWHERE · ALT+= ENDS IT"; }
+    return ifx phone_ then "TAP WHERE THE FOG GATHERS · TAP ITS SLOT TO CANCEL" else "CLICK WHERE THE FOG GATHERS · ESC CANCELS";
+  }
+  if k == AB_HOLD {
+    if v[0].hp_on { return ifx phone_ then "TAP SOMEONE ELSE TO HOLD · TAP ITS SLOT TO END IT" else "CLICK SOMEONE ELSE TO HOLD · = ENDS IT"; }
+    return ifx phone_ then "TAP SOMEONE TO HOLD · TAP ITS SLOT TO CANCEL" else "CLICK SOMEONE TO HOLD · ESC CANCELS";
+  }
+  if k == AB_CONE { return ifx phone_ then "TAP THE WAY THE CONE OF COLD BLOWS · TAP ITS SLOT TO CANCEL" else "CLICK THE WAY THE CONE OF COLD BLOWS · ESC CANCELS"; }
+  return "";
+}
+po_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
+  if k == AB_FOG { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(PO_FOG_R), v3(0.8, 0.82, 0.85), pulse); }
+  if k == AB_RAYFROST || k == AB_HOLD { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, ifx k == AB_HOLD then PO_HOLD_RGB else PO_FROST_RGB, pulse); }
+  return n;
+}
+
+// ---- checks
+
+#test "polar: Ray of Frost hits for 2d8 and slows, Fog Cloud hides who is in it, Hold Person paralyzes (your blows at Advantage) until a save, Cone of Cold freezes the 60-foot cone and never you" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := po_of(g[..]);
+  w := watch_w(g[..]);
+  #assert sp_key_place('-', 4) == 46 && sp_key_place('=', 4) == 47 && sp_key_place('=', 0) == 11 && sp_key_place('+', 1) == 23;
+  #assert spells_key(g[..], '=', 0) && g[0].sp.armed == SP_SLOTS + AB_HOLD;
+  ku := spells_key_up(g[..], '=', 0);
+  g[0].sp.armed = -1;
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x + 6, 0, pl.z);
+  // Ray of Frost: in time a hit, and they are slowed
+  for k: 0..<40 {
+    if v[0].slow[who] > 0 { break; }
+    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;
+    po_rf_at(g[..], who);
+  }
+  #assert v[0].slow[who] > 0 && w[0].actors[who].hp < 500 && w[0].crimes > 0;
+  x0 := w[0].actors[who].x;
+  w[0].actors[who].x = x0 + 3;
+  po_frame(g[..], 1.0 / 30);
+  #assert abs(w[0].actors[who].x - (x0 + 2.0)) < 0.05;   // two thirds of the step
+  // Fog Cloud: a line through it is hidden, one past it is not
+  at := wd_feet(g[..], who);
+  po_fog_at(g[..], at);
+  #assert v[0].fog_on && po_hides(g[..], add(at, v3(-12, 1.5, 0)), add(at, v3(12, 1.5, 0))) && !po_hides(g[..], add(at, v3(-12, 1.5, 20)), add(at, v3(12, 1.5, 20)));
+  #assert ab_stone_hides(g[..], add(at, v3(-12, 1.5, 0)), add(at, v3(12, 1.5, 0)));
+  // Hold Person: Paralyzed, still, your d20 the higher of two
+  v[0].slow[who] = 0;
+  for k: 0..<30 { if v[0].held[who] { break; } po_hp_on(g[..], who); }
+  #assert v[0].hp_on && v[0].held[who] && po_held(g[..], who);
+  hx := v[0].held_x[who];
+  w[0].actors[who].x = hx + 4;
+  po_frame(g[..], 1.0 / 30);
+  #assert w[0].actors[who].x == hx && w[0].actors[who].swing < 0;
+  sum := 0;
+  for k: 0..<400 { sum += wd_d20(g[..], who); }
+  #assert sum > 400 * 12;
+  for k: 0..<200 { po_frame(g[..], 0.5); }
+  #assert !v[0].held[who] && !v[0].hp_on;
+  // Cone of Cold: them in it, you never
+  w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;
+  hp := w[0].actors[who].hp; mine := w[0].hp;
+  you := ab_you(g[..]);
+  po_cc_at(g[..], you, sub(wd_feet(g[..], who), you));
+  #assert w[0].actors[who].hp < hp && w[0].hp == mine && ab_active(g[..], AB_CONE);
+  #assert !po_in_cone(you, v3(1, 0, 0), add(you, v3(-5, 0, 0))) && po_in_cone(you, v3(1, 0, 0), add(you, v3(10, 0, 3)));
+}
