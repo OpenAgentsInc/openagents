@@ -41,7 +41,7 @@ Fm :: struct {
     job_event:[FM_BUFFER]u8;job_event_n:int;job_plain:[FM_BUFFER]u8;job_plain_n:int;
     result_event:[FM_BUFFER]u8;result_event_n:int;result_plain:[FM_BUFFER]u8;result_plain_n:int;
     finished:int;capture:bool;remote_completed:bool;record_pending:bool;receipt_event:[16384]u8;receipt_event_n:int;receipt_id:[64]u8;receipt_ack:int;
-    observe_sub:string;observed:[FM_BUFFER]u8;observed_n:int;observed_eose:bool;
+    observe_sub:string;observe_frames:int;observe_failed:bool;observed:[FM_BUFFER]u8;observed_n:int;observed_eose:bool;
     children:[4]int;child_receipts:[4][64]u8;child_keys:[4][64]u8;child_key_present:[4]bool;child_providers:[4][64]u8;child_deadlines:[4]int;child_count:int;
 }
 fm_hex :: (bytes:[]u8,out:[]u8)->string {digits:="0123456789abcdef";for i:0..<bytes.count {out[2*i]=digits[bytes[i]>>4];out[2*i+1]=digits[bytes[i]&15];}return cast(string)out[0..<2*bytes.count];}
@@ -165,8 +165,10 @@ fm_frame :: (f:[]Fm,text:string) {
     if m.type==NM_EOSE && nm_text(m,m.sub)==f[0].observe_sub {f[0].observed_eose=true;return;}
     if m.type==NM_CLOSED {fm_drop(f);return;}
     if m.type!=NM_EVENT {return;}
-    scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_verify_vartime(text[m.event.from..<m.event.to],scratch[..],false);if e.error!=NE_OK || !e.verified {return;}
-    if f[0].observe_sub.count>0 && nm_text(m,m.sub)==f[0].observe_sub {for i:0..<e.original.count {f[0].observed[i]=e.original[i];}f[0].observed_n=e.original.count;}
+    observing:=f[0].observe_sub.count>0 && nm_text(m,m.sub)==f[0].observe_sub;
+    if observing {f[0].observe_frames+=1;}
+    scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_verify_vartime(text[m.event.from..<m.event.to],scratch[..],false);if e.error!=NE_OK || !e.verified {if observing {f[0].observe_failed=true;}return;}
+    if observing {for i:0..<e.original.count {f[0].observed[i]=e.original[i];}f[0].observed_n=e.original.count;}
     key:[64]u8;provider:=fm_hex(e.public_key[..],key[..]);content:[FM_BUFFER]u8;n:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);if n<0 {return;}
     tags:=e.original[e.tags_from..<e.tags_to];
     if e.kind==PB_KIND {fm_offer(f,e,provider,tags,cast(string)content[0..<n]);}
