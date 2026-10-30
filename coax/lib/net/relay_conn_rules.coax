@@ -147,6 +147,18 @@ rc_read :: (n: int) -> int {
   if n == -1 { return RC_CLOSED; }
   return RC_FAIL;
 }
+
+#test "opaque TLS completion is orderly only after a complete authenticated WebSocket close" {
+  #assert rc_closed_stream(-1,0) && !rc_closed_stream(-12,0);
+  #assert rc_closed_stream(-12,1000) && rc_closed_stream(-12,1005);
+  #assert !rc_closed_stream(-3,1000) && !rc_closed_stream(-2,1000) && !rc_closed_stream(10,1000);
+  #assert rc_read(-12)==RC_FAIL;
+}
+// -12 is Apple's explicit uncertainty about TLS close_notify. A parsed close
+// frame is authenticated application framing; raw EOF cannot replace it.
+rc_closed_stream :: (n:int,close_code:int)->bool {
+  return n==-1 || (n==-12 && close_code!=0);
+}
 // How long the next read may wait: for ever (-1) when timeout_ms is
 // negative, else what is left until deadline, never below 0.
 rc_wait :: (timeout_ms: int, deadline: int, now: int) -> int {

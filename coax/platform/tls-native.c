@@ -7,21 +7,7 @@
 #include <string.h>
 
 #if defined(__APPLE__)
-/* Apple: not implemented. The platform TLS there is Network.framework
-   (nw_connection with nw_protocol_options for TLS); SecureTransport is
-   deprecated. Network.framework owns the TCP connection itself, so it cannot
-   wrap a socket-native descriptor: the Apple branch needs its own connect
-   and a dispatch queue bridged to these blocking calls, and is a separate
-   piece of work. Until then wss:// is unavailable on Apple native builds and
-   the driver sees CXTLS_UNSUPPORTED. */
-int64_t cxtls_host_push(int64_t byte) { (void)byte; return CXTLS_UNSUPPORTED; }
-int64_t cxtls_start(int64_t h, int64_t timeout_ms) { (void)h; (void)timeout_ms; return CXTLS_UNSUPPORTED; }
-int64_t cxtls_write(int64_t h, int64_t byte) { (void)h; (void)byte; return CXTLS_UNSUPPORTED; }
-int64_t cxtls_flush(int64_t h, int64_t timeout_ms) { (void)h; (void)timeout_ms; return CXTLS_UNSUPPORTED; }
-int64_t cxtls_read(int64_t h, int64_t timeout_ms) { (void)h; (void)timeout_ms; return CXTLS_UNSUPPORTED; }
-int64_t cxtls_byte(int64_t h, int64_t i) { (void)h; (void)i; return CXTLS_UNSUPPORTED; }
-int64_t cxtls_version(int64_t h) { (void)h; return CXTLS_UNSUPPORTED; }
-int64_t cxtls_close(int64_t h) { (void)h; return CXTLS_UNSUPPORTED; }
+#include "tls-apple.inc"
 #else
 
 #include <errno.h>
@@ -154,6 +140,22 @@ int64_t cxtls_start(int64_t h, int64_t timeout_ms) {
   if (result != 0) { SSL_free(ssl); return result; }
   s->ssl = ssl; s->fd = fd; s->in_count = 0; s->out_count = 0;
   return 0;
+}
+
+/* Portable entry: one deadline covers TCP plus the TLS handshake. */
+int64_t cxtls_connect(int64_t port, int64_t timeout_ms) {
+  if (cxtls_host_bad || cxtls_host_len == 0 || timeout_ms < 0 ||
+      timeout_ms > INT64_MAX - cxsock_now_ms()) {
+    cxtls_host_len = 0; cxtls_host_bad = 0; return CXTLS_ERROR;
+  }
+  int64_t deadline = cxsock_now_ms() + timeout_ms;
+  cxtls_host[cxtls_host_len] = 0;
+  int64_t h = cxsock_connect_host(cxtls_host, port, timeout_ms);
+  if (h < 0) { cxtls_host_len = 0; cxtls_host_bad = 0; return h; }
+  int64_t left = deadline - cxsock_now_ms();
+  int64_t result = cxtls_start(h, left < 0 ? 0 : left);
+  if (result != 0) { cxsock_close(h); return result; }
+  return h;
 }
 
 int64_t cxtls_write(int64_t h, int64_t byte) {

@@ -151,7 +151,11 @@ rx_step :: (s: [] RxStats, r: [] Relay, c: [] RelayConn, wait_ms: int) {
   if ev == RC_NONE { return; }
   if ev == RC_TEXT { rx_take(s, r, c); return; }
   if ev == RC_CLOSED && c[0].close_code != 0 { s[0].close_seen = true; s[0].close_code = c[0].close_code; }
-  if ev != RC_CLOSED { s[0].bad += 1; print("relay e2e: socket or frame refused: %\n", ev); }
+  // The fixture deliberately drops the first TLS connection before an ACK.
+  // Network.framework cannot attest close_notify: that is a connection loss
+  // to reconnect from, never a completed WebSocket exchange.
+  opaque_drop := ev==RC_FAIL && c[0].last_read == -12;
+  if ev != RC_CLOSED && !opaque_drop { s[0].bad += 1; print("relay e2e: socket or frame refused: %\n", ev); }
   rx_drop(s, r, c);
 }
 

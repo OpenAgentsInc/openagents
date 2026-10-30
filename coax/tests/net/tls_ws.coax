@@ -14,7 +14,7 @@ cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
 cxsock_byte :: (h: int, i: int) -> int #foreign;
 cxsock_close :: (h: int) -> int #foreign;
 cxtls_host_push :: (byte: int) -> int #foreign;
-cxtls_start :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
 cxtls_write :: (h: int, byte: int) -> int #foreign;
 cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
 cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
@@ -34,14 +34,9 @@ tw_open :: (url: string) -> Conn {
   if !r.ok { return Conn.{h = TW_URL}; }
   host := url[r.host_from..<r.host_to];
   // A refused byte makes the connect itself fail (the effect remembers it).
-  for b: host { pushed := cxsock_host_push(cast(int) b); if pushed != 0 { break; } }
-  h := cxsock_connect(r.port, TW_TIMEOUT_MS);
+  for b: host { pushed := ifx r.tls then cxtls_host_push(cast(int) b) else cxsock_host_push(cast(int) b); if pushed != 0 { break; } }
+  h := ifx r.tls then cxtls_connect(r.port, TW_TIMEOUT_MS) else cxsock_connect(r.port, TW_TIMEOUT_MS);
   if h < 0 { return Conn.{h = h}; }
-  if r.tls {
-    for b: host { pushed := cxtls_host_push(cast(int) b); if pushed != 0 { break; } }
-    e := cxtls_start(h, TW_TIMEOUT_MS);
-    if e != 0 { return Conn.{h = tw_fail(Conn.{h = h}, e)}; }
-  }
   return Conn.{h = h, tls = r.tls};
 }
 tw_write :: (c: Conn, bytes: string) -> int {

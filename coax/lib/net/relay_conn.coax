@@ -16,7 +16,7 @@
 // the caller's, through coax/lib/nostr/relay.coax (rl_start, rl_opened,
 // rl_dropped).
 //
-// Link socket-native.c, tls-native.c (with OpenSSL: coax/platform/tls-env.sh),
+// Link socket-native.c, tls-native.c (platform flags: coax/platform/tls-env.sh),
 // entropy-native.c, entropy-foreign.c and the entropy policy (load
 // coax/lib/crypto/entropy.coax in the program). Example:
 //   c: [1] RelayConn;
@@ -37,7 +37,7 @@ cxsock_byte :: (h: int, i: int) -> int #foreign;
 cxsock_close :: (h: int) -> int #foreign;
 cxsock_now_ms :: () -> int #foreign;
 cxtls_host_push :: (byte: int) -> int #foreign;
-cxtls_start :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_connect :: (port: int, timeout_ms: int) -> int #foreign;
 cxtls_write :: (h: int, byte: int) -> int #foreign;
 cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
 cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
@@ -58,8 +58,9 @@ RC_CLOSE_MS :: 2000;                     // how long relay_conn_close waits for 
 // pings and pongs count over the RelayConn's life (relay_conn_open does not
 // reset them); pong holds the last pong's payload. close_code is the peer's
 // close code (WS_CLOSE_NO_STATUS for an empty close frame, 0 when none
-// came), eof whether the peer ended the stream cleanly; both are reset by
-// relay_conn_open.
+// came), eof whether stream end was accepted (on Apple TLS, only after a
+// complete WebSocket close). last_read retains the native result, including
+// -12 for Network.framework's unverified end. All reset on open.
 RelayConn :: struct {
   h: int = -1; tls: bool;
   rd: [1] WsReader;
@@ -67,7 +68,7 @@ RelayConn :: struct {
   text: [RC_MSG_MAX] u8; text_n: int;
   pong: [125] u8; pong_n: int;
   pings: int; pongs: int;
-  close_code: int; eof: bool; sent_close: bool;
+  close_code: int; eof: bool; sent_close: bool; last_read: int;
   out: [RC_OUT] u8;
 }
 
@@ -114,6 +115,7 @@ rc_close_frame :: (c: [] RelayConn, code: int) -> bool {
 // (CXSOCK_* and CXTLS_* agree: -1 end of stream, -2 timeout, below that failure).
 rc_fill :: (c: [] RelayConn, wait_ms: int) -> int {
   n := ifx c[0].tls then cxtls_read(c[0].h, wait_ms) else cxsock_read(c[0].h, wait_ms);
+  c[0].last_read = n;
   if n <= 0 { return n; }
   if !rc_room(c[0].used, n, RC_IN) { return -3; }
   for i: 0..<n {
@@ -134,21 +136,20 @@ rc_drop_front :: (c: [] RelayConn, k: int) {
 // is dropped first.
 relay_conn_open :: (c: [] RelayConn, uri: string) -> bool {
   rc_shut(c);
-  c[0].close_code = 0; c[0].eof = false; c[0].sent_close = false; c[0].text_n = 0;
+  c[0].close_code = 0; c[0].eof = false; c[0].sent_close = false; c[0].text_n = 0; c[0].last_read = 0;
   r := relay_uri(uri);
   if !r.ok { return false; }
   host := uri[r.host_from..<r.host_to];
   deadline := cxsock_now_ms() + RC_IO_MS;
   // A refused byte makes the connect itself fail (the effect remembers it).
-  for b: host { if cxsock_host_push(cast(int) b) != 0 { break; } }
-  h := cxsock_connect(r.port, RC_IO_MS);
+  for b: host {
+    pushed := ifx r.tls then cxtls_host_push(cast(int) b) else cxsock_host_push(cast(int) b);
+    if pushed != 0 { break; }
+  }
+  h := ifx r.tls then cxtls_connect(r.port, RC_IO_MS) else cxsock_connect(r.port, RC_IO_MS);
   if h < 0 { return false; }
   c[0].h = h;
-  if r.tls {
-    for b: host { if cxtls_host_push(cast(int) b) != 0 { break; } }
-    if cxtls_start(h, rc_wait(RC_IO_MS, deadline, cxsock_now_ms())) != 0 { rc_shut(c); return false; }
-    c[0].tls = true;
-  }
+  c[0].tls = r.tls;
   nonce: [16] u8; key: [24] u8; target: [2049] u8; req: [2600] u8;
   if !rc_draw(16, nonce[..]) || !ws_key(nonce[..], key[..]) { rc_shut(c); return false; }
   tn := rc_target(uri[r.target_from..<r.target_to], target[..]);
@@ -249,8 +250,9 @@ relay_conn_close :: (c: [] RelayConn, code: int) -> bool {
     if s.kind != RC_S_MORE { continue; }
     wait := rc_wait(RC_CLOSE_MS, deadline, cxsock_now_ms());
     if wait == 0 { break; }
-    k := rc_read(rc_fill(c, wait));
-    if k == RC_CLOSED { c[0].eof = true; }
+    observed := rc_fill(c, wait);
+    k := rc_read(observed);
+    if rc_closed_stream(observed,c[0].close_code) { c[0].eof = true; }
     if k != RC_GOT { break; }
   }
   rc_shut(c);

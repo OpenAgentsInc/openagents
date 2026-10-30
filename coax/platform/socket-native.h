@@ -9,7 +9,8 @@ extern "C" {
    effects only: name resolution, connect, read, write, close and a monotonic
    clock. The WebSocket protocol, the relay policy and every limit beyond
    these buffers are Coax (coax/lib/net/ws.coax, coax/lib/nostr/relay.coax).
-   TLS for wss:// is coax/platform/tls-native.c, layered on these handles.
+   TLS for wss:// is coax/platform/tls-native.c. Use cxtls_connect for portable
+   TCP + TLS; Apple TLS owns a separate Network.framework connection.
 
    Connect: cxsock_host_push the host name's bytes (at most CXSOCK_MAX_HOST),
    then cxsock_connect(port, timeout_ms) resolves it (getaddrinfo, blocking),
@@ -47,6 +48,9 @@ int64_t cxsock_now_ms(void);
    file descriptor, or -1. TLS reads and writes the descriptor directly and
    leaves these buffers unused; cxsock_close still releases it. */
 int cxsock_fd(int64_t h);
+/* TLS's portable connect uses its own name builder. This private C effect
+   avoids appending a TLS name to a pending scalar TCP builder. */
+int64_t cxsock_connect_host(const char *host, int64_t port, int64_t timeout_ms);
 #ifdef __cplusplus
 }
 #endif

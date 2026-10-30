@@ -72,7 +72,10 @@ these four choices are yours:
    Rust relay) and every Coax relay we run (coax/nostr.md section 17) as it
    comes up. Both go in the Pylon's NIP-65 list.
 4. ~~**TLS for `wss://`.**~~ Decided 2026-10-29: the C host may link a TLS
-   library (AGENTS.md, Rules). Being built.
+   library (AGENTS.md, Rules). Linux and Apple are now implemented; macOS
+   TLS/relay operation and iOS compilation are checked in the
+   [Apple TLS record](docs/verification/2026-10-30-apple-tls.md). Adopting the
+   reusable connection in the Pylon remains implementation work.
 
 Signing with a real key also waits on the #4828 secret audit and the review
 gate in coax/nostr.md.

@@ -16,6 +16,8 @@ import socket
 import ssl
 import sys
 import threading
+import time
+import os
 
 GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
@@ -75,12 +77,26 @@ def websocket(conn):
             conn.sendall(frame(op, data))
 
 
-def serve(conn, ctx, ws):
+def serve(conn, ctx, ws, mode):
     try:
+        if mode == 'stall':
+            time.sleep(2)
+            conn.close()
+            return
         with ctx.wrap_socket(conn, server_side=True) as tls:
             print(f"handshake {tls.version()}", file=sys.stderr, flush=True)
             if ws:
                 websocket(tls)
+            elif mode == 'stream':
+                while True:
+                    data = tls.recv(16384)
+                    if not data:
+                        break
+                    time.sleep(.03)
+                    tls.sendall(data)
+            elif mode == 'truncate':
+                os.close(tls.detach())
+                return
             try:
                 tls.unwrap()
             except (OSError, ssl.SSLError, ValueError):
@@ -95,6 +111,7 @@ def main():
     ap.add_argument("--key", required=True)
     ap.add_argument("--ws", action="store_true")
     ap.add_argument("--max", choices=["1.1", "1.2"])
+    ap.add_argument("--mode", choices=['close', 'stream', 'truncate', 'stall'], default='close')
     a = ap.parse_args()
     ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
     if a.max == "1.1":
@@ -111,7 +128,7 @@ def main():
     print(f"PORT {srv.getsockname()[1]}", flush=True)
     while True:
         conn, _ = srv.accept()
-        threading.Thread(target=serve, args=(conn, ctx, a.ws), daemon=True).start()
+        threading.Thread(target=serve, args=(conn, ctx, a.ws, a.mode), daemon=True).start()
 
 
 if __name__ == "__main__":

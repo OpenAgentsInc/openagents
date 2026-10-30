@@ -2,8 +2,8 @@
 """The native relay client end to end, under ASan and UBSan, in seconds.
 
 Builds coax/tests/net/relay_e2e.coax (the driver, over
-coax/lib/net/relay_conn.coax) with socket-native.c, tls-native.c (OpenSSL
-from Nix through coax/platform/tls-env.sh, built with -DCXTLS_TEST_TRUST),
+coax/lib/net/relay_conn.coax) with socket-native.c, tls-native.c (platform
+flags through coax/platform/tls-env.sh, built with -DCXTLS_TEST_TRUST),
 entropy-native.c (through entropy-foreign.c) and process-native.c (for
 $RX_PORT and $RX_TLS), starts the local fixture relay (relay_fixture.py,
 127.0.0.1 only, standard library), runs the driver against it and checks

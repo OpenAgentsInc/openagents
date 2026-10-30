@@ -5,8 +5,7 @@
 #          nothing is installed system-wide. Set OPENSSL_DEV (the .dev output,
 #          headers) and OPENSSL_LIB (the out output, libssl/libcrypto) to
 #          choose another build. The binary gets an rpath to that store path.
-#   macOS: tls-native.c's Apple branch is a stub (CXTLS_UNSUPPORTED) and needs
-#          no library yet.
+#   macOS: Network.framework + Security, with dispatch blocks in the C host.
 case "$(uname -s)" in
   Linux)
     if [[ -z "${CXTLS_CFLAGS:-}" || -z "${CXTLS_LIBS:-}" ]]; then
@@ -24,8 +23,8 @@ case "$(uname -s)" in
     fi
     ;;
   Darwin)
-    CXTLS_CFLAGS="${CXTLS_CFLAGS:-}"
-    CXTLS_LIBS="${CXTLS_LIBS:-}"
+    CXTLS_CFLAGS="${CXTLS_CFLAGS:--fblocks}"
+    CXTLS_LIBS="${CXTLS_LIBS:--framework Network -framework Security -framework CoreFoundation}"
     ;;
 esac
 export CXTLS_CFLAGS CXTLS_LIBS

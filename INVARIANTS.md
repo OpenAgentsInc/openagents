@@ -327,6 +327,31 @@ probabilities and near ties, exact boundary checks, native debug/release
 plain/ASan/UBSan and exact book output. See the
 [chapter 59 record](docs/verification/psionic-ch59-2026-10-29.md).
 
+## Native relay TLS verifies the peer before exposing plaintext
+
+`coax/platform/tls-native.c` is the owner-approved TLS effect: OpenSSL 3 on
+Linux, Network.framework and Security on Apple. `cxtls_connect` owns TCP and
+TLS under one deadline, with TLS 1.2 minimum, SNI, chain and DNS-name checks.
+There is no verification bypass or plaintext fallback. Test anchors require
+a separate build macro; production ignores that environment variable.
+The scalar bridge has one caller thread per process. Apple callback state is
+serialized and generation-fenced, including pending reads after timeout and
+callbacks delivered after cancellation. Buffers and connection slots are bounded.
+
+Apple reports `CXTLS_END_UNVERIFIED` rather than claiming that opaque receive
+completion proves TLS close_notify. `relay_conn_rules.coax` refuses that end
+during ordinary polling; only a parsed authenticated WebSocket close permits
+it during the closing handshake. `last_read` preserves the native evidence.
+Coax owns URL/transport choice, framing, entropy policy and relay behavior;
+the host owns encryption, trust evaluation, clocks and platform effects.
+
+Checks: `coax/tests/net/tls.sh` and `relay_e2e.py` cover certificates, version
+floor, exact stream bytes, timeouts/reuse and actual relay sessions under
+ASan/UBSan. Apple pending-callback reuse also passes ThreadSanitizer. iOS
+compilation is separate from runtime qualification. Producer hashes, actual
+results, Linux regression and the owner-requested focused-check scope are in
+the [Apple TLS record](docs/verification/2026-10-30-apple-tls.md).
+
 ## Psionic resident decisions have bounded lifecycle and private measurements
 
 `psionic/lib/serve-run.coax` owns Part III's execution-payload admission,

@@ -8,12 +8,13 @@
 #   coax/tests/net/tls.sh --public [URL]   also one read-only REQ (kind 0,
 #       limit 2) until EOSE at a public relay, default wss://nos.lol, through
 #       the system trust store
-# Needs python3, openssl and OpenSSL headers (coax/platform/tls-env.sh).
+# Needs python3 and openssl for ephemeral fixtures. Linux links OpenSSL;
+# Apple links only platform frameworks (coax/platform/tls-env.sh).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../../.." && pwd)"
 . "$repo/coax/platform/tls-env.sh"
 coax="${COAX:-$repo/coax/bin/coax}"
-cc="${COAX_CC:-gcc}"
+cc="${COAX_CC:-cc}"
 work="$(mktemp -d "${TMPDIR:-/tmp}/coax-tls.XXXXXX")"
 pids=()
 cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; rm -rf "$work"; }
@@ -22,12 +23,20 @@ trap cleanup EXIT
 "$coax" test "$repo/coax/lib/net/relay_uri.coax" | tail -1
 "$coax" c "$here/tls_ws.coax" --library --header "$work/tls_ws.h" > "$work/tls_ws.c"
 san=(-fsanitize=address,undefined -fno-sanitize-recover=undefined -fno-omit-frame-pointer)
+for kind in test prod;do
+  define=();if [[ $kind == test ]];then define=(-DCXTLS_TEST_TRUST);fi
+  # shellcheck disable=SC2086
+  "$cc" -std=c11 -g -O1 -Wall -Wextra -Werror -Wno-unknown-pragmas -Wno-unused-function -Wno-unused-parameter -Wno-unused-variable \
+    "${san[@]}" "${define[@]}" $CXTLS_CFLAGS -I"$work" -I"$repo/coax/platform" \
+    "$work/tls_ws.c" "$repo/coax/platform/socket-native.c" "$repo/coax/platform/tls-native.c" "$here/tls_test.c" \
+    -o "$work/tls_$kind" $CXTLS_LIBS -lm
+done
 # shellcheck disable=SC2086
-"$cc" -std=c11 -g -O1 -Wall -Wextra -Werror -Wno-unknown-pragmas -Wno-unused-function -Wno-unused-parameter -Wno-unused-variable \
-  "${san[@]}" -DCXTLS_TEST_TRUST $CXTLS_CFLAGS -I"$work" -I"$repo/coax/platform" \
-  "$work/tls_ws.c" "$repo/coax/platform/socket-native.c" "$repo/coax/platform/tls-native.c" "$here/tls_test.c" \
-  -o "$work/tls_test" $CXTLS_LIBS -lm
-export ASAN_OPTIONS=detect_leaks=1:abort_on_error=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
+"$cc" -std=c11 -g -O1 -Wall -Wextra -Werror "${san[@]}" -DCXTLS_TEST_TRUST $CXTLS_CFLAGS -I"$repo/coax/platform" \
+  "$repo/coax/platform/socket-native.c" "$repo/coax/platform/tls-native.c" "$here/tls_stream.c" \
+  -o "$work/tls_stream" $CXTLS_LIBS -lm
+leaks=1;if [[ $(uname -s) == Darwin ]];then leaks=0;fi # LSan is unavailable on Apple arm64.
+export ASAN_OPTIONS=detect_leaks=$leaks:abort_on_error=1 UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1
 "$cc" --version | head -1
 openssl version
 
@@ -42,11 +51,32 @@ leaf() {
   openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 -nodes \
     -keyout "$work/$1.key" -out "$work/$1.csr" -subj "/CN=$3" 2>/dev/null
   printf 'subjectAltName=DNS:%s\nbasicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n' "$3" > "$work/$1.ext"
-  openssl x509 -req -in "$work/$1.csr" -CA "$work/$2.pem" -CAkey "$work/$2.key" -set_serial "0x$(openssl rand -hex 8)" \
-    -days 1 -extfile "$work/$1.ext" -out "$work/$1.pem" 2>/dev/null
+  if [[ ${4:-} == expired ]];then
+    touch "$work/index";printf '01\n' > "$work/serial"
+    cat > "$work/ca.conf" <<EOF
+[ca]
+default_ca=issuer
+[issuer]
+database=$work/index
+serial=$work/serial
+new_certs_dir=$work
+private_key=$work/$2.key
+certificate=$work/$2.pem
+default_md=sha256
+policy=names
+[names]
+commonName=supplied
+EOF
+    openssl ca -batch -notext -config "$work/ca.conf" -startdate 20000101000000Z -enddate 20000102000000Z \
+      -in "$work/$1.csr" -extfile "$work/$1.ext" -out "$work/$1.pem" 2>/dev/null
+  else
+    openssl x509 -req -in "$work/$1.csr" -CA "$work/$2.pem" -CAkey "$work/$2.key" -set_serial "0x$(openssl rand -hex 8)" \
+      -days 1 -extfile "$work/$1.ext" -out "$work/$1.pem" 2>/dev/null
+  fi
 }
 ca testca; ca rogue
 leaf good testca localhost; leaf wrong testca other.test; leaf stray rogue localhost
+leaf expired testca localhost expired
 export CXTLS_TEST_CA="$work/testca.pem"
 
 # serve NAME CERT [fixture flags]: start a fixture, set port_NAME.
@@ -62,6 +92,11 @@ serve tls12 good --ws --max 1.2
 serve wrong wrong
 serve stray stray
 serve old good --max 1.1
+serve expired expired
+serve stream good --mode stream
+serve end good
+serve truncate good --mode truncate
+serve stall good --mode stall
 
 fail=0
 t() { "$work/tls_test" "$@" || fail=1; }
@@ -70,15 +105,20 @@ t echo "wss://localhost:$port_good/echo?x=1" 0x0304            # WebSocket upgra
 t echo "wss://localhost:$port_tls12" 0x0303                    # TLS 1.2 still admitted, echo works
 t connect "wss://localhost:$port_wrong/" -10                   # CXTLS_NAME: cert is for other.test
 t connect "wss://localhost:$port_stray/" -9                    # CXTLS_UNTRUSTED: rogue CA
+t connect "wss://localhost:$port_expired/" -9                  # expired leaf, even with its CA trusted
 t connect "wss://localhost:$port_old/" -11                     # CXTLS_VERSION: server tops out at TLS 1.1
 t echo "ws://localhost:$port_good/" neg                        # plain WebSocket at a TLS port fails
 t connect "https://localhost:$port_good/" -20                  # relay_uri refuses non-ws schemes
 # Control: the TLS 1.1 server really completes a TLS 1.1 handshake with a
 # client that allows it, so the refusal above is the client's minimum.
-if echo | openssl s_client -connect "127.0.0.1:$port_old" -tls1_1 -cipher 'DEFAULT:@SECLEVEL=0' >"$work/old.out" 2>&1 \
-   && grep -q 'Protocol *: TLSv1.1' "$work/old.out"; then
+echo | openssl s_client -connect "127.0.0.1:$port_old" -tls1_1 -cipher 'DEFAULT:@SECLEVEL=0' >"$work/old.out" 2>&1 || true
+# Some OpenSSL builds exit nonzero when stdin/peer closes after the completed
+# handshake. Prove the negotiated version from BOTH sides, not that CLI exit.
+for _ in $(seq 50);do grep -q 'handshake TLSv1.1' "$work/old.log" && break;sleep .02;done
+if grep -q 'Protocol *: TLSv1.1' "$work/old.out" && grep -q 'handshake TLSv1.1' "$work/old.log";then
   echo "PASS control: openssl s_client completes TLS 1.1 with the old server"
 else
+  cat "$work/old.out" "$work/old.log"
   echo "FAIL control: the TLS 1.1 server did not complete a TLS 1.1 handshake"; fail=1
 fi
 # The relay e2e's scripted fixture (relay_fixture.py, unchanged) behind TLS:
@@ -92,8 +132,14 @@ t eose "wss://localhost:$port_relay" "[\"REQ\",\"coax-tls\",{\"kinds\":[$kinds]}
 if wait "$relay_pid"; then grep '^RELAY' "$work/relay.out"; else cat "$work/relay.out" "$work/relay.log"; fail=1; fi
 # Without the test CA the system store applies, and it does not trust the test CA.
 CXTLS_TEST_CA= t connect "wss://localhost:$port_good/" -9
+# Production binaries cannot activate test anchors through the environment.
+"$work/tls_prod" connect "wss://localhost:$port_good/" -9 || fail=1
+for pair in "stream $port_stream" "eof $port_end" "truncate $port_truncate" "stall $port_stall";do
+  read -r mode port <<< "$pair"
+  "$work/tls_stream" "$mode" "$port" || fail=1
+done
 
 if [[ "${1:-}" == "--public" ]]; then
-  CXTLS_TEST_CA= timeout 20 "$work/tls_test" eose "${2:-wss://nos.lol}" || echo "NOTE public relay check failed (network policy or relay); not a local failure"
+  CXTLS_TEST_CA= timeout 20 "$work/tls_prod" eose "${2:-wss://nos.lol}" || echo "NOTE public relay check failed (network policy or relay); not a local failure"
 fi
 [[ $fail == 0 ]] && echo "tls.sh: all local checks pass" || { echo "tls.sh: failures"; exit 1; }

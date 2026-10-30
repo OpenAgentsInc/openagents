@@ -77,6 +77,12 @@ int64_t cxsock_connect(int64_t port, int64_t timeout_ms) {
   memcpy(host, cxsock_host, sizeof host);
   cxsock_host_len = 0; cxsock_host_bad = 0;
   if (bad) return CXSOCK_ERROR;
+  return cxsock_connect_host(host, port, timeout_ms);
+}
+
+int64_t cxsock_connect_host(const char *host, int64_t port, int64_t timeout_ms) {
+  cxsock_init();
+  if (!host || !*host || strlen(host) > CXSOCK_MAX_HOST || port < 1 || port > 65535 || timeout_ms < 0) return CXSOCK_ERROR;
   int slot = -1;
   for (int i = 0; i < CXSOCK_MAX; i++) if (cxsock_slots[i].fd < 0) { slot = i; break; }
   if (slot < 0) return CXSOCK_FULL;

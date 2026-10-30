@@ -56,3 +56,20 @@ data with 1003, violations with ws.coax's close codes, frames or messages over
 caller, through `coax/lib/nostr/relay.coax`. `coax/tests/net/relay_e2e.py`
 runs the whole client against the scripted fixture over both transports.
 Evidence: [docs/verification/2026-10-30-relay-conn.md](../../../docs/verification/2026-10-30-relay-conn.md).
+
+Apple TLS now uses Network.framework and Security through the same
+`relay_conn` interface. Source `coax/platform/tls-env.sh` for native flags:
+Apple links platform frameworks with `-fblocks`; Linux links OpenSSL 3.
+`cxtls_connect` owns TCP and TLS under one deadline, verifies the chain and
+DNS name, and returns an opaque TLS handle. The old descriptor upgrade
+`cxtls_start` remains Linux-only. No plaintext fallback occurs for `wss://`.
+
+Apple's receive completion does not reveal whether TLS close_notify arrived.
+The native effect reports `CXTLS_END_UNVERIFIED` (-12), which ordinary polling
+treats as failure. A complete authenticated WebSocket close frame is required
+before the closing handshake can accept that stream end. `last_read` keeps
+the native result for reconnect diagnostics. A timed-out read retains its
+pending receive, and cancelled callbacks cannot affect a reused slot.
+The [Apple TLS record](../../../docs/verification/2026-10-30-apple-tls.md)
+retains macOS sanitizer, Linux regression, certificate-refusal and read-only
+public-relay evidence. iOS compilation is checked; iOS runtime is unqualified.
