@@ -31,6 +31,8 @@ EVENTS = [
     ("RST_EXPIRED", event(1, 900, [["expiration", "1000"]], "")),
     ("RST_LIVE", event(1, 900, [["expiration", "1001"]], "")),
     ("RST_ADDR", event(30617, 1000, [["t", "x"], ["d", "re\"po"], ["d", "second"]], "")),
+    ("RST_ADDR_NOD", event(30000, 1000, [["t", "x"]], "")),
+    ("RST_ADDR_LONG", event(30000, 1000, [["d", "x" * 257]], "")),
     ("RST_TAGS", event(1, 1000, [["t", "x"]] * 257, "")),
     ("RST_TAGS256", event(1, 1000, [["t", "x"]] * 256, "")),
 ]

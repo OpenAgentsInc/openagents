@@ -635,3 +635,4 @@ R1 is useful on its own: chapter 19's Pylon and the queue tools can use a
 Coax relay on the tailnet while relay.openagents.com is unchanged. Nothing in
 R1 or R2 touches the production relay or its database.
 
+Status 2026-10-29 (claude-relay-server): R1 part landed, ahead of #6015, #f426 and #8eb5. It adds ws_server, message_server, filter_read and relay_server, plus a ws:// host in `coax/relay/`. The store is a test-only in-memory double and NIP-42 is a hook. Sessions pass under ASan/UBSan, and the five project REQs match relay.openagents.com's recording. Durable storage, NIP-42 and the Rust sandbox differential remain. Record: [docs/verification/2026-10-29-coax-relay-r1.md](../docs/verification/2026-10-29-coax-relay-r1.md).

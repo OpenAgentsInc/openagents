@@ -87,8 +87,9 @@ rl_fanout :: (conns: [] RlConn, w: [] RlWork, e: NostrEvent) {
 rl_event :: (conns: [] RlConn, at: int, w: [] RlWork, store: [] RsdStore, text: string, m: MsMsg) {
   c := conns[at..<at + 1];
   event := text[m.event_from..<m.event_to];
-  r := rs_admit(event, cxsrv_now_s(), false, false, w[0].scratch[..]);
+  r := rs_admit_read(event, cxsrv_now_s(), false, false, w[0].scratch[..]);
   if r.reason == RS_BAD_EVENT { ok := rl_notice(c, w, RS_BAD_EVENT); return; }
+  if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
   reason := r.reason;
   if reason == RS_ACCEPT { reason = rsd_admit(store, r, event); }
   id := r.e.id;

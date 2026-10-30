@@ -197,8 +197,14 @@ def session(port, now):
         check({e['id'] for e in got} == want and end == ['EOSE', sub], 'REQ %s %s' % (sub, json.dumps(flt)[:60]))
     # NIP-40 and created_at
     check(publish(b, ev[11]) == ['OK', ev[11]['id'], False, 'invalid: event has expired'], 'an expired event is refused')
+    # signed now, so a loaded machine cannot eat the window
+    soon_at = int(time.time()) + 8
+    ev[12] = sign([{"kind": 1, "created_at": T, "tags": [["expiration", str(soon_at)]], "content": "soon"}])[0]
     r = publish(b, ev[12])
-    check(r[2] is True, 'an event that expires in 15 s is accepted %r' % (r,))
+    check(r[2] is True, 'an event that expires in 8 s is accepted %r' % (r,))
+    b.send(['REQ', 'soon', {'ids': [ev[12]['id']]}])
+    got, _ = b.until_eose('soon')
+    check([e['id'] for e in got] == [ev[12]['id']], 'and served before it expires')
     check(publish(b, ev[13]) == ['OK', ev[13]['id'], False, "invalid: the event's created_at timestamp is too far in the past or the future for this relay"],
           'created_at 1000 s ahead is refused')
     # CLOSE and live delivery
@@ -237,7 +243,7 @@ def session(port, now):
     check(a.recv() == ['NOTICE', 'invalid: binary messages are not supported'], 'binary: NOTICE')
     # expiration at read time
     print('  note session reached the expiry wait %.1f s after start' % (time.time() - now))
-    time.sleep(max(0.0, now + 16 - time.time()))
+    time.sleep(max(0.0, soon_at + 1 - time.time()))
     b.send(['REQ', 'exp', {'ids': [ev[12]['id']]}])
     got, _ = b.until_eose('exp')
     check(got == [], 'an expired event is no longer served')

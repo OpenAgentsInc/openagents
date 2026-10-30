@@ -88,6 +88,8 @@ rs_accepted :: (r: int) -> bool { return r == RS_ACCEPT || r == RS_DUP || r == R
   #assert rs_newer(10, a[..], 10, b[..]) && !rs_newer(10, b[..], 10, a[..]) && !rs_newer(10, a[..], 10, a[..]);
   b[31] = 0; b[0] = 1; a[1] = 255;
   #assert rs_id_less(a[..], b[..]) && !rs_id_less(b[..], a[..]);
+  x: [32] u8; y: [32] u8; x[0] = 5; y[0] = 5; x[1] = 1; y[1] = 2;
+  #assert rs_id_less(x[..], y[..]) && !rs_id_less(y[..], x[..]) && !rs_id_less(x[..], x[..]);
 }
 rs_class :: (kind: int) -> int {
   if kind == 0 || kind == 3 || (kind >= 10000 && kind < 20000) { return RS_REPLACEABLE; }
@@ -96,13 +98,17 @@ rs_class :: (kind: int) -> int {
   return RS_REGULAR;
 }
 rs_id_less :: (a: [] u8, b: [] u8) -> bool {
-  for i: 0..<32 { if a[i] != b[i] { return a[i] < b[i]; } }
+  for i: 0..<32 {
+    if a[i] < b[i] { return true; }
+    if a[i] > b[i] { return false; }
+  }
   return false;
 }
 // Whether the new version (created, id) replaces the old one: newer wins;
 // on the same second the lowest id wins (NIP-01).
 rs_newer :: (created: int, id: [] u8, old_created: int, old_id: [] u8) -> bool {
-  if created != old_created { return created > old_created; }
+  if created > old_created { return true; }
+  if created < old_created { return false; }
   return rs_id_less(id, old_id);
 }
 
@@ -124,6 +130,10 @@ rs_newer :: (created: int, id: [] u8, old_created: int, old_id: [] u8) -> bool {
   e.original = "[[\"expiration\",\"/\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == -1;
   e.original = "[[\"expiration\",\":\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == -1;
   e.original = "[[\"expiration\",\"9\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == 9;
+  #assert rs_d(e, out[..]) == 0 && rs_tag(e, 'd', out[..]) == -1;
+  e.original = "[[\"d\",\"\"]]"; e.tags_to = e.original.count; #assert rs_tag(e, 'd', out[..]) == 0 && rs_d(e, out[..]) == 0;
+  e.original = "[[\"d\",\"abc\"]]"; e.tags_to = e.original.count; #assert rs_d(e, out[..]) == 3 && rs_d(e, out[0..<2]) == -2;
+  e.original = "{}"; e.tags_to = 2; #assert rs_tag(e, 'd', out[..]) == -1;
 }
 // Decodes into out the first value of the first tag named name (one
 // letter, or the whole name when long is given): its length, -1 when there
@@ -133,7 +143,7 @@ rs_tag_named :: (e: NostrEvent, name: string, out: [] u8) -> int {
   if json_next(j[..]) != JSON_ARRAY { return -1; }
   t := json_next(j[..]);
   while t == JSON_ARRAY {
-    v := json_next(j[..]); index := 0; named := false;
+    v := json_next(j[..]); index := 0; named: bool;
     while v == JSON_STRING {
       if index == 0 { named = json_is(json_text(j[..]), name); }
       if index == 1 && named {
@@ -145,6 +155,13 @@ rs_tag_named :: (e: NostrEvent, name: string, out: [] u8) -> int {
     t = json_next(j[..]);
   }
   return -1;
+}
+// The d tag's value for an addressable event: "" when there is none, -2
+// when it does not fit out.
+rs_d :: (e: NostrEvent, out: [] u8) -> int {
+  n := rs_tag(e, 'd', out);
+  if n == -1 { return 0; }
+  return n;
 }
 rs_tag :: (e: NostrEvent, name: u8, out: [] u8) -> int {
   n: [1] u8; n[0] = name;
@@ -170,27 +187,43 @@ rs_live :: (expiration: int, now: int) -> bool { return expiration < 0 || expira
 
 #test "admission refusals, cheapest first, before the signature" {
   out: [65536] u8;
-  #assert rs_admit("{", 1000, false, false, out[..]).reason == RS_BAD_EVENT;
-  #assert rs_admit("{}", 1000, false, false, out[..]).reason == RS_BAD_EVENT;
-  r := rs_admit(RST_PLAIN, 1000, false, false, out[..]);
-  #assert r.reason == RS_BAD_SIG && r.e.kind == 1 && r.e.created_at == 1000 && !r.e.verified;
+  #assert rs_admit_read("{", 1000, false, false, out[..]).reason == RS_BAD_EVENT;
+  #assert rs_admit_read("{}", 1000, false, false, out[..]).reason == RS_BAD_EVENT;
+  r := rs_admit_read(RST_PLAIN, 1000, false, false, out[..]);
+  #assert r.reason == RS_ACCEPT && r.e.kind == 1 && r.e.created_at == 1000 && !r.e.verified;
   bad: [512] u8; for i: 0..<RST_PLAIN.count { bad[i] = RST_PLAIN[i]; }
   for i: 0..<RST_PLAIN.count - 4 { if bad[i] == 'h' && bad[i + 1] == 'i' && bad[i + 2] == '"' { bad[i] = 'H'; } }
-  r = rs_admit(cast(string) bad[0..<RST_PLAIN.count], 1000, false, false, out[..]);
+  r = rs_admit_read(cast(string) bad[0..<RST_PLAIN.count], 1000, false, false, out[..]);
   #assert r.reason == RS_BAD_ID && r.e.id[0] == 0x18 && r.e.id[31] == 0x53;
-  #assert rs_admit(RST_AUTH, 1000, false, false, out[..]).reason == RS_AUTH_KIND;
-  #assert rs_admit(RST_FUTURE, 1000, false, false, out[..]).reason == RS_TIME;
-  #assert rs_admit(RST_EDGE, 1000, false, false, out[..]).reason == RS_BAD_SIG;
-  #assert rs_admit(RST_EXPIRED, 1000, false, false, out[..]).reason == RS_EXPIRED;
-  r = rs_admit(RST_LIVE, 1000, false, false, out[..]);
-  #assert r.reason == RS_BAD_SIG && r.expiration == 1001;
-  #assert rs_admit(RST_TAGS, 1000, false, false, out[..]).reason == RS_TAGS;
-  #assert rs_admit(RST_TAGS256, 1000, false, false, out[..]).reason == RS_BAD_SIG;
-  #assert rs_admit(RST_PLAIN, 1000, true, false, out[..]).reason == RS_AUTH_REQUIRED;
-  #assert rs_admit(RST_PLAIN, 1000, true, true, out[..]).reason == RS_BAD_SIG;
-  r = rs_admit(RST_ADDR, 1000, false, false, out[..]);
-  #assert r.reason == RS_BAD_SIG && r.kclass == RS_ADDRESSABLE && cast(string) r.d[0..<r.d_n] == "re\"po";
-  #assert rs_admit(RST_PLAIN, 1000, false, false, out[0..<10]).reason == RS_BAD_EVENT;
+  #assert rs_admit_read(RST_AUTH, 1000, false, false, out[..]).reason == RS_AUTH_KIND;
+  #assert rs_admit_read(RST_FUTURE, 1000, false, false, out[..]).reason == RS_TIME;
+  #assert rs_admit_read(RST_EDGE, 1000, false, false, out[..]).reason == RS_ACCEPT;
+  #assert rs_admit_read(RST_EXPIRED, 1000, false, false, out[..]).reason == RS_EXPIRED;
+  r = rs_admit_read(RST_LIVE, 1000, false, false, out[..]);
+  #assert r.reason == RS_ACCEPT && r.expiration == 1001;
+  #assert rs_admit_read(RST_TAGS, 1000, false, false, out[..]).reason == RS_TAGS;
+  #assert rs_admit_read(RST_TAGS256, 1000, false, false, out[..]).reason == RS_ACCEPT;
+  #assert rs_admit_read(RST_PLAIN, 1000, true, false, out[..]).reason == RS_AUTH_REQUIRED;
+  #assert rs_admit_read(RST_PLAIN, 1000, true, true, out[..]).reason == RS_ACCEPT;
+  r = rs_admit_read(RST_ADDR, 1000, false, false, out[..]);
+  #assert r.reason == RS_ACCEPT && r.kclass == RS_ADDRESSABLE && cast(string) r.d[0..<r.d_n] == "re\"po";
+  r = rs_admit_read(RST_ADDR_NOD, 1000, false, false, out[..]);
+  #assert r.reason == RS_ACCEPT && r.d_n == 0 && r.kclass == RS_ADDRESSABLE;
+  #assert rs_admit_read(RST_ADDR_LONG, 1000, false, false, out[..]).reason == RS_BAD_EVENT;
+  // the all-f signature fails the real check cheaply (s >= n)
+  r = rs_admit_read(RST_PLAIN, 1000, false, false, out[..]);
+  #assert rs_admit_verified(r, nostr_event_verify_vartime(RST_PLAIN, out[..], false)).reason == RS_BAD_SIG;
+  #assert rs_admit_read(RST_PLAIN, 1000, false, false, out[0..<10]).reason == RS_BAD_EVENT;
+}
+#test "only a verified result for the same event admits" {
+  r: RsAdmit; r.reason = RS_ACCEPT; r.e.error = NE_OK; r.e.id[0] = 7; r.e.verified = false;
+  v: NostrEvent; v.error = NE_OK; v.verified = true; v.id[0] = 7; v.kind = 3;
+  a := rs_admit_verified(r, v);
+  #assert a.reason == RS_ACCEPT && a.e.verified && a.e.kind == 3;
+  v.id[31] = 1; #assert rs_admit_verified(r, v).reason == RS_BAD_SIG; v.id[31] = 0;
+  v.verified = false; #assert rs_admit_verified(r, v).reason == RS_BAD_SIG; v.verified = true;
+  v.error = NE_SIGNATURE; #assert rs_admit_verified(r, v).reason == RS_BAD_SIG; v.error = NE_OK;
+  r.reason = RS_TIME; #assert rs_admit_verified(r, v).reason == RS_TIME && !rs_admit_verified(r, v).e.verified;
 }
 #test "admission policy on a read event" {
   e: NostrEvent; e.error = NE_OK; e.kind = 1; e.created_at = 1900; e.tags = 256;
@@ -217,22 +250,31 @@ rs_admit_policy :: (e: NostrEvent, expiration: int, now: int, auth_required: boo
   if auth_required && !authed { return RS_AUTH_REQUIRED; }
   return RS_ACCEPT;
 }
-// Reads, checks and verifies an EVENT's object text. scratch holds the id
-// preimage. On RS_ACCEPT, r.e is verified and r.e.original is text.
-rs_admit :: (text: string, now: int, auth_required: bool, authed: bool, scratch: [] u8) -> RsAdmit {
+// Reads and checks an EVENT's object text (id, then policy), cheapest
+// first; scratch holds the id preimage. RS_ACCEPT here means "verify the
+// signature next": only rs_admit_verified admits.
+rs_admit_read :: (text: string, now: int, auth_required: bool, authed: bool, scratch: [] u8) -> RsAdmit {
   r: RsAdmit; r.reason = RS_BAD_EVENT;
   e := nostr_event_read(text, scratch, false);
   if e.error == NE_ID { r.reason = RS_BAD_ID; r.e = e; return r; }
   if e.error != NE_OK { return r; }
   r.e = e; r.kclass = rs_class(e.kind); r.expiration = rs_expiration(e);
   if r.kclass == RS_ADDRESSABLE {
-    n := rs_tag(e, 'd', r.d[..]);
-    r.d_n = ifx n < 0 then 0 else n;
+    n := rs_d(e, r.d[..]);
+    if n < 0 { return r; }
+    r.d_n = n;
   }
   r.reason = rs_admit_policy(e, r.expiration, now, auth_required, authed);
+  return r;
+}
+// Completes admission with the signature check's result v (event.coax's
+// nostr_event_verify_vartime over the same text): RS_ACCEPT only when v is
+// verified and is the event that was read.
+rs_admit_verified :: (read: RsAdmit, v: NostrEvent) -> RsAdmit {
+  r := read;
   if r.reason != RS_ACCEPT { return r; }
-  v := nostr_event_verify_vartime(text, scratch, false);
-  if v.error != NE_OK || !v.verified { r.reason = RS_BAD_SIG; return r; }
+  rid := r.e.id; vid := v.id;
+  if v.error != NE_OK || !v.verified || cast(string) rid[..] != cast(string) vid[..] { r.reason = RS_BAD_SIG; return r; }
   r.e = v;
   return r;
 }
@@ -278,11 +320,17 @@ rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int 
   #assert rs_req(ms_read(cast(string) b[0..<n + 1]), cast(string) b[0..<n + 1]) == RS_COST;
   b[n - 3] = ']';
   #assert rs_req(ms_read(cast(string) b[0..<n - 2]), cast(string) b[0..<n - 2]) == RS_ACCEPT;
+  // exactly at the cost limit, and one past it: 7 x 12700 + 11000 + (99 + 1) or (100 + 1)
+  at := "[\"REQ\",\"s\",{},{},{},{},{},{},{},{\"limit\":110},{\"ids\":[\"0000000000000000000000000000000000000000000000000000000000000000\"],\"limit\":99}]";
+  #assert rs_req(ms_read(at), at) == RS_ACCEPT;
+  past := "[\"REQ\",\"s\",{},{},{},{},{},{},{},{\"limit\":110},{\"ids\":[\"0000000000000000000000000000000000000000000000000000000000000000\"],\"limit\":100}]";
+  #assert rs_req(ms_read(past), past) == RS_COST;
 }
 #test "filter cost factors and the effective limit" {
   f: NostrFilter;
   #assert rs_limit(f) == 127 && rs_cost(f) == 12700;
   f.has_limit = true; f.limit = 500; #assert rs_limit(f) == 127;
+  f.limit = 128; #assert rs_limit(f) == 127; f.limit = 127; #assert rs_limit(f) == 127; f.limit = 126; #assert rs_limit(f) == 126;
   f.limit = 0; #assert rs_limit(f) == 0 && rs_cost(f) == 0;
   f.limit = 10; f.has_since = true; #assert rs_cost(f) == 500;
   f.has_since = false; f.has_until = true; #assert rs_cost(f) == 500;
@@ -297,8 +345,9 @@ rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int 
 }
 
 rs_limit :: (f: NostrFilter) -> int {
-  if !f.has_limit || f.limit > RS_MAX_LIMIT { return RS_MAX_LIMIT; }
-  return f.limit;
+  // stated as "below 128" so that every boundary mutant is observable
+  if f.has_limit && f.limit < RS_MAX_LIMIT + 1 { return f.limit; }
+  return RS_MAX_LIMIT;
 }
 // The Rust relay's query cost for one filter (its search factor aside).
 rs_cost :: (f: NostrFilter) -> int {
@@ -380,6 +429,13 @@ RsSub :: struct {
   for i: 0..<4 { big[n + RS_SUB_TEXT - 11 + i] = tail[i]; }
   bt = cast(string) big[0..<n + RS_SUB_TEXT - 7];
   #assert rs_sub_open(subs[..], ms_read(bt), bt, 3) == 2 && subs[2].to[0] == RS_SUB_TEXT;
+  big[n + RS_SUB_TEXT - 11] = 'x'; for i: 0..<4 { big[n + RS_SUB_TEXT - 10 + i] = tail[i]; }
+  bt = cast(string) big[0..<n + RS_SUB_TEXT - 6];
+  #assert rs_sub_open(subs[..], ms_read(bt), bt, 3) == -RS_SUB_SPACE;
+  // a stored filter that does not read matches nothing; a closed slot matches nothing
+  one: [2] RsSub;
+  t = "[\"REQ\",\"bad\",{\"kinds\":\"x\"}]";
+  #assert rs_sub_open(one[..], ms_read(t), t, 2) == 0 && !rs_sub_matches(one[..], 0, e) && !rs_sub_matches(one[..], 1, e);
 }
 rs_subs_live :: (subs: [] RsSub) -> int {
   n := 0;

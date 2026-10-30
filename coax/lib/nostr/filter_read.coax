@@ -59,6 +59,9 @@ FrSpace :: struct { strs: []string; ints: []int; tags: []NostrTagFilter; bytes: 
   #assert filter_read("{\"kinds\":[65536]}", f[..], sp[..]) == FR_INVALID && filter_read("{\"#p\":[\"AA\"]}", f[..], sp[..]) == FR_INVALID;
   #assert filter_read("{\"authors\":[\"000000000000000000000000000000000000000000000000000000000000000A\"]}", f[..], sp[..]) == FR_INVALID;
   #assert filter_read("{\"kinds\":[0,65535]}", f[..], sp[..]) == FR_OK;
+  #assert filter_read("{\"kinds\":x}", f[..], sp[..]) == FR_JSON && filter_read("{\"since\":x}", f[..], sp[..]) == FR_JSON;
+  #assert filter_read("{\"#t\":[\"\"]}", f[..], sp[..]) == FR_OK && f[0].tags[0].values[0].count == 0;
+  #assert filter_read("{\"limitless\":1}", f[..], sp[..]) == FR_FIELD;
 }
 #test "storage limits refuse instead of truncating" {
   strs: [2] string; ints: [1] int; tags: [1] NostrTagFilter; bytes: [4] u8;
@@ -115,7 +118,7 @@ filter_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> int {
   j: [1] Json; json_start(j[..], text);
   if json_next(j[..]) != JSON_OBJECT { return FR_JSON; }
   seen := 0; tag_from := sp[0].tags_used;
-  names := [7] string.["ids", "authors", "kinds", "since", "until", "limit", ""];
+  names := [6] string.["ids", "authors", "kinds", "since", "until", "limit"];
   while true {
     t := json_next(j[..]);
     if t == JSON_OBJECT_END { break; }
@@ -123,7 +126,7 @@ filter_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> int {
     key: [8] u8;
     kn := json_unescape(json_text(j[..]), key[..]);
     field := 6;
-    for i: 0..<6 { if kn >= 0 && cast(string) key[0..<kn] == names[i] { field = i; } }
+    for i: 0..<names.count { if json_is(json_text(j[..]), names[i]) { field = i; } }
     tag := kn == 2 && key[0] == '#' && fr_letter(key[1]);
     if field == 6 && !tag { return FR_FIELD; }
     if field < 6 {
