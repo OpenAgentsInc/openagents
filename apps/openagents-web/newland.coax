@@ -1860,7 +1860,7 @@ go_project :: (s: [] LandState, k: int) {
   for i: 0..<lo_int(slug.count, 60) { buf[n] = slug[i]; n += 1; }
   go(s, cast(string) buf[0..<n]);
 }
-// A click: the card's buttons and PLAYTEST navigate; a place,
+// A click: the card's buttons and TUTORIAL navigate; a place,
 // person, agent or Pylon opens its card (never navigates); anywhere else closes it.
 click :: (s: [] LandState, x: f32, y: f32) -> bool {
   if inside(s[0].network_box,x,y) {if s[0].card==CARD_NETWORK {close_card(s);}else {open_card(s,CARD_NETWORK,-1);}return true;}
@@ -2060,7 +2060,7 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   if !sheet && l.phone {v=xp_panel(out,v,s,l,p,width,height,hud);}
   feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
   if !sheet {
-    v = button(out, v, l.playtest, "PLAYTEST", true, hover && inside(l.playtest, s[0].px, s[0].py), false, p, hud);
+    v = button(out, v, l.playtest, "TUTORIAL", true, hover && inside(l.playtest, s[0].px, s[0].py), false, p, hud);
     v = button(out, v, l.walk, "WALK AROUND", true, hover && inside(l.walk, s[0].px, s[0].py), false, p, hud);
     glass(uniforms, 4, l.walk, 7 * d, 0.95 * hud, 1);
     counts:=network_counts(s);label:[48]u8;ln:=app(label[..],0,"PYLONS ");ln=app_int(label[..],ln,counts.online);

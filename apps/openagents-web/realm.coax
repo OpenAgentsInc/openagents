@@ -392,6 +392,7 @@ realm_do :: (r: [] Realm, v: RealmView, b: int) {
   if b == BTN_USE { r[0].asks |= ifx v.target.count > 0 then ASK_USE else ASK_GOAL; }
   if b == BTN_HINT { r[0].asks |= ASK_HINT; }
   if b == BTN_BYE { r[0].asks |= ASK_BYE; }
+  if b == BTN_EXIT && r[0].action == 0 { r[0].out_n = put(r[0].outbox[..], 0, "/verse/galaxy"); r[0].action = ACT_NAVIGATE; }
   if b == BTN_MAP { r[0].map = !r[0].map && redit_tool(r[0].ed[..], "map"); }   // SETTINGS can keep the big map from visitors
   if b == BTN_SEND && r[0].typed_n > 0 { r[0].asks |= ASK_SEND; }
   if b == BTN_CANCEL { r[0].typing = false; }
@@ -1373,6 +1374,11 @@ realm_hud :: (r: [] Realm, v: RealmView, out: [] f32, uniforms: [] f32, width: f
   vertices = draw_name(r, v, out, vertices);
   if redit_row_on(r[0].ed[..], "others") { vertices = draw_others(r, v, out, vertices); }
   vertices = draw_map(r, v, out, vertices, uniforms);
+  // GALAXY, under the minimap: back to the galaxy (a way out without the browser's back)
+  if !r[0].map && !(phone(r) && chat_shown(r, v)) {   // a phone's chat spans the width under the minimap
+    mb := minimap_box(r);
+    vertices = hud_button(r, out, vertices, BTN_EXIT, Box.{x0 = mb.x0, y0 = mb.y1 + 8 * k, x1 = mb.x1, y1 = mb.y1 + 8 * k + (ifx phone(r) then 34 * k else 30 * k)}, "GALAXY", "", false);
+  }
   if !v.no_voice && redit_tool(r[0].ed[..], "voice") { vertices = draw_voice_button(r, out, vertices); }
   vertices = redit_hud(r[0].ed[..], out, vertices, edit_box(r));
   for i: 0..<r[0].ed[0].plate_n {
@@ -1901,14 +1907,19 @@ view :: () -> RealmView { v: RealmView; v.ready = true; v.title = "Foyer"; v.que
   #assert r[0].quality == 0;
 }
 
-#test "on screen while walking: your name, the minimap, VOICE and the hotbar, and no other button" {
+#test "on screen while walking: your name, the minimap, GALAXY, VOICE and the hotbar, and no other button" {
   r: [1] Realm; desk(r[..]); v := items(view());
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   _ := realm_draw(r[..], v, out[..], u[..], 1440, 900, 2, 0.016);
   shown := 0;
   for i: 0..<BUTTONS { if r[0].shown[i] { shown += 1; } }
-  #assert shown == 2 + v.item_n && r[0].shown[BTN_MAP] && r[0].shown[BTN_VOICE];
-  #assert !r[0].shown[BTN_VIEW] && !r[0].shown[BTN_EDIT] && !r[0].shown[BTN_EXIT] && !r[0].shown[BTN_CHAT] && !r[0].shown[BTN_GFX];
+  #assert shown == 3 + v.item_n && r[0].shown[BTN_MAP] && r[0].shown[BTN_VOICE] && r[0].shown[BTN_EXIT];
+  // GALAXY, pressed and lifted on it, goes to the galaxy
+  g := r[0].boxes[BTN_EXIT]; gx := (g.x0 + g.x1) * 0.5; gy := (g.y0 + g.y1) * 0.5;
+  #assert g.y0 > minimap_box(r[..]).y1 && g.x1 <= 1440 * 2;
+  #assert realm_pointer(r[..], v, gx, gy, POINTER_DOWN, 0, 1) && realm_pointer(r[..], v, gx, gy, POINTER_UP, 0, 1);
+  #assert r[0].action == ACT_NAVIGATE && cast(string) r[0].outbox[0..<r[0].out_n] == "/verse/galaxy";
+  #assert !r[0].shown[BTN_VIEW] && !r[0].shown[BTN_EDIT] && !r[0].shown[BTN_CHAT] && !r[0].shown[BTN_GFX];
   // the hotbar's slots act on release over them: one takes its item in hand, again puts it away
   b := slot_box(r[..], 1);
   x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
@@ -2384,9 +2395,9 @@ plated :: (u: [] f32, b: Box) -> f32 {
   r[0].touch = true; r[0].chat = true;
   v.lines = 1; v.line_name[0] = "Kiki"; v.line_text[0] = "Is anyone else in the cellar? I hear footsteps and somebody laughing.";
   _ := realm_draw(r[..], v, out[..], u[..], 1125, 2436, 3, 0.016) > 0;
-  #assert slot_box(r[..], 0).x0 >= 48 && slot_box(r[..], SLOTS - 1).x1 <= 1125 - 48 && !r[0].shown[BTN_CHAT] && !r[0].shown[BTN_EXIT];
+  #assert slot_box(r[..], 0).x0 >= 48 && slot_box(r[..], SLOTS - 1).x1 <= 1125 - 48 && !r[0].shown[BTN_CHAT];
   c := chat_box(r[..]);
-  #assert c.x0 >= 48 && c.x1 <= 1125 - 48 && c.y0 > minimap_box(r[..]).y1 && c.y1 < slot_box(r[..], 0).y0 && r[0].shown[BTN_SAY];
+  #assert c.x0 >= 48 && c.x1 <= 1125 - 48 && c.y0 > minimap_box(r[..]).y1 && (!r[0].shown[BTN_EXIT] || c.y0 > r[0].boxes[BTN_EXIT].y1) && c.y1 < slot_box(r[..], 0).y0 && r[0].shown[BTN_SAY];
 }
 
 #test "the room's events: a line said, with its words, and who is here" {

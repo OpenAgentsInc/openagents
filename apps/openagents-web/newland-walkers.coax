@@ -1,6 +1,6 @@
 // The Grid's walkers on the homepage, and the way in (grid-walk).
 //
-// WALK AROUND, a button by PYLONS and PLAYTEST: one click and the camera dives into the middle of
+// WALK AROUND, a button by PYLONS and TUTORIAL: one click and the camera dives into the middle of
 // the homepage's grid, then the page goes on to the Grid (/realms/the-grid?from=home), whose camera
 // comes down the rest of the way onto you at the start spot (thegrid-people.coax). The click is
 // counted (analytics "walk-around").

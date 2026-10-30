@@ -25,7 +25,7 @@ or a complete daily accounting. Worker names come from signed project claims,
 not independently authenticated identities. Optional beacon owner auth does
 not establish verified ownership here. The page never requests a signing key.
 
-Open **PYLONS** beside **PLAYTEST** for a live, scrollable board of online
+Open **PYLONS** beside **TUTORIAL** for a live, scrollable board of online
 providers, free slots and current advertised capacity. Multiple Pylons can
 share one physical host. Inspect a provider for
 its full npub, model identities and beacon details.

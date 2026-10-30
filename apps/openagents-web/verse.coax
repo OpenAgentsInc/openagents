@@ -1248,11 +1248,12 @@ draw_galaxy :: (s: [] VerseState, out: [] f32, at: int) -> int {
   // the world under the pointer: its name and whether it opens
   if s[0].over >= 0 && !s[0].setup {
     p := s[0].over; q := project(s, p);
-    name := realm_name_at(s, p);
+    // a player's realm opens their own Haunted House, whatever its kind: it says so, not "Forest"
+    name := ifx p >= PLANETS then "HAUNTED HOUSE" else realm_name_at(s, p);
     state := "LOCKED";
     if realm_kind_at(s, p) == KIND_SOON { state = "COMING SOON"; }
     if realm_kind_at(s, p) == KIND_OPEN { state = ifx phone then "OPEN · TAP AGAIN TO ENTER" else "OPEN"; }
-    if p >= PLANETS { state = ifx phone then "A PLAYER'S REALM · TAP AGAIN TO ENTER" else "A PLAYER'S REALM · OPEN"; }
+    if p >= PLANETS { state = ifx phone then "A PLAYER'S COPY · TAP AGAIN TO ENTER" else "A PLAYER'S COPY · OPEN"; }
     lw := hi(measure(name, GAP, SPACE, false) * 9 * k, measure(state, GAP, SPACE, false) * 7 * k) + 28 * k;
     bottom := q.y - q.r - 10 * k;
     b := Box.{x0 = q.x - lw * 0.5, y0 = bottom - 46 * k, x1 = q.x + lw * 0.5, y1 = bottom};
