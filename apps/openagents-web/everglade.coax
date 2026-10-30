@@ -3576,6 +3576,8 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   y1 -= breathing;
   // the spell bar (everglade-spells.coax), with the ruleset: over the hint
   n = spells_hud(s, out, u, n, y1 - hs - 28 * k);
+  // the damage numbers over who was hit (everglade-watch.coax), their shades from the plates the bar left
+  if sp_on(s) && !s[0].above && s[0].wv.started { n = watch_pops_draw(s, out, u, n); }
   y1 -= s[0].sp.lift;
   // An admin's EDIT and edit mode (everglade-edit.coax) and TALK TO EDIT (everglade-voice.coax), over the hint; whoever is near is asked above it.
   lift := 0.0f32;

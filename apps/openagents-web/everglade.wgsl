@@ -62,6 +62,12 @@ fn hud_rect(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   let e = min(min(p.x - r.x, r.z - p.x), min(p.y - r.y, r.w - p.y));   // to the nearest edge
   let t = max(s.w, 1.0);
   let look = s.y;
+  if (look > 7.5) {
+    // a damage number's shade (everglade-watch.coax watch_pops_draw): a soft dark oval under its digits
+    let h = max((r.zw - r.xy) * 0.5, vec2f(1.0));
+    let d = length((p - (r.xy + h)) / h);
+    return mix(under, vec3f(0.03, 0.0, 0.0), clamp(s.x, 0.0, 1.0) * (1.0 - smoothstep(0.4, 1.0, d)));
+  }
   if (look < 3.5) {
     // the tray (the owner, October 30: as the HUD's other plates, chamfered, grey, no bronze): a
     // dark see-through well, a thin grey line, its corners cut at 45 degrees

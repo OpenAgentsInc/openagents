@@ -1822,7 +1822,7 @@ HB_PHONE_BOTTOM :: 136.0;    // CSS px: the old phone app's hotbar_bottom, over 
 HB_RESERVE :: 22.0;          // CSS px over the tray for its line
 HB_URL :: "/realms/everglade/hotbar/";
 // everglade.wgsl hud_rect's looks: the tray's bevel, a slot's frame, a picked slot's, a meter and its fill
-PLATE_TRAY :: 3.0; PLATE_SLOT :: 4.0; PLATE_SLOT_ON :: 5.0; PLATE_METER :: 6.0; PLATE_FILL :: 7.0;
+PLATE_TRAY :: 3.0; PLATE_SLOT :: 4.0; PLATE_SLOT_ON :: 5.0; PLATE_METER :: 6.0; PLATE_FILL :: 7.0; PLATE_SHADE :: 8.0;
 // the old help line's green and the cast bar's title (demolition/hotbar.rs HINT, CAST_TEXT), sRGB
 HB_HINT :: Point.{x = 0.88, y = 0.95, z = 0.77};
 HB_CAST_TEXT :: Point.{x = 1.0, y = 0.94, z = 0.80};

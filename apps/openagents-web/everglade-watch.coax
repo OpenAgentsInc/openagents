@@ -523,8 +523,11 @@ watch_pops_draw :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
     tw := text_width(line, cap);
     fade := clamp01((f32(POP_LIFE) - p.t) / 0.35);
     x := sc.x - tw / 2 + p.dx * 18 * k;
-    halo := Ink.{core = 0.0, light = 0.55 * fade, glow = 3.2 * k, red = 0.45, green = 0.02, blue = 0.02, mode = 0, scale = k};
-    n = draw_text(out, n, line, x, sc.y, cap, GAP, SPACE, halo, false, false);
+    // a soft dark shade under the digits (everglade.wgsl hud_rect, PLATE_SHADE), so red reads over fire
+    // and snow alike, while plates are left over after the bar's (a few kept for what follows)
+    if s[0].plate_n < PLATES - 6 {
+      plate(s, u, Box.{x0 = x - cap * 0.55, y0 = sc.y - cap * 1.45, x1 = x + tw + cap * 0.55, y1 = sc.y + cap * 0.45}, 0.72 * fade, PLATE_SHADE);
+    }
     body := Ink.{core = (ifx p.big then 1.5f32 else 1.05f32) * k, light = fade, glow = 0.9 * k, red = 1.0, green = 0.16, blue = 0.1, mode = 0, scale = k};
     n = draw_text(out, n, line, x, sc.y, cap, GAP, SPACE, body, false, false);
   }
@@ -571,7 +574,6 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
       }
     }
   }
-  n = watch_pops_draw(s, out, u, n);
   // the shouts: one that would cross a shout already drawn goes above it, so none overlap
   placed: [WATCH_ACTORS] Box; placed_n := 0;
   for i: 0..<WATCH_ACTORS {
