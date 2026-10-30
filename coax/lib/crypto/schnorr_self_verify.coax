@@ -276,8 +276,11 @@ ssv_clear :: (work:[]SsvWork)->u64 {fresh:SsvWork;work[0]=fresh;return 0;}
 // or the result is refused.
 ssv_prepare :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
   point:=sg_lift_x_public(public_key);cleared:=ssv_clear(work);if !point.ok {return cleared;}
+  // The lifted public key is stored before the copy loops, so the audit's
+  // loop rule doesn't taint it with the candidate.
+  work[0].peer=point.value;
   for i:0..<32 {work[0].key[i]=public_key[i];}for j:0..<64 {work[0].candidate[j]=candidate[j];}
-  work[0].peer=point.value;work[0].bound=cb_ct_equal(r,candidate[0..<32]);
+  work[0].bound=cb_ct_equal(r,candidate[0..<32]);
   if !ssv_challenge(message,public_key,r,work) {return ssv_clear(work);}
   work[0].r[0]=ssv_load_field(candidate);work[0].s[0]=ssv_load_scalar(candidate[32..<64]);
   work[0].stage=1;return SSV_MORE;

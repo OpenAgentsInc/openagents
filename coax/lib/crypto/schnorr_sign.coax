@@ -197,6 +197,8 @@ sw_views :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:boo
 sw_valid_declassify :: (valid:u64)->bool {return valid==1;}
 // The public key and R are published inside every signature.
 sw_bytes_declassify :: (bytes:[]u8)->bool {return bytes.count==32;}
+// The self-check status: whether to continue, then the publication verdict.
+sw_status_declassify :: (r:u64)->u64 {return r;}
 // The BIP-340 challenge hash over public R, public key and message, through
 // the fixed-flow SHA-256 workspace, so the audit checks it with public inputs.
 sw_challenge_public :: (message:[]u8,pub:[]u8,r:[]u8,sha:[]ShaOwned,tag:[]u8,out:[]u8)->bool {
@@ -235,7 +237,7 @@ sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int {
 // its stages per call, and only its final mask decides publication.
 sw_check :: (message:[]u8,work:[]SignWork)->int {
   r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],work[0].sig[..],work[0].check[..],false);
-  if r!=cast(u64)SSV_MORE {return sw_clear(work);}
+  if sw_status_declassify(r)!=cast(u64)SSV_MORE {return sw_clear(work);}
   work[0].stage+=1;return SIGN_MORE;
 }
 // The nonce came from stage 1's message, so the scalar equation must use the
@@ -252,7 +254,7 @@ sw_same_message :: (message:[]u8,work:[]SignWork)->bool {
 sw_publish :: (message:[]u8,work:[]SignWork,out:[]u8)->int {
   r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],work[0].sig[..],work[0].check[..],false);
   valid:=work[0].prep[0].valid & work[0].nonce[0].valid & work[0].math[0].valid;
-  if valid!=1 || r!=SSV_VALID {return sw_clear(work);}
+  if !sw_valid_declassify(valid) || sw_status_declassify(r)!=SSV_VALID {return sw_clear(work);}
   for i:0..<64 {out[i]=work[0].sig[i];}
   cleared:=sw_clear(work);return SIGN_DONE;
 }
