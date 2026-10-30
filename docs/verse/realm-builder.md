@@ -15,7 +15,7 @@ and takes them into it.
    - 2D (side-on) or 3D;
    - the camera, 3D only: third person, first person or top-down. The owner asked for "first,
      second or third person"; second person isn't a game camera, so it's top-down instead;
-   - the art style: low poly or painterly;
+   - the art style: low poly, painterly or flat;
    - the ground: meadow, forest, desert, snow, stone, beach;
    - the time of day: day, dawn, dusk, night.
    What you do there (explore, build, quest) isn't asked: there are no quests yet, and building is
@@ -71,7 +71,11 @@ Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coa
 | side | 2D: side-on, orthographic (12 m tall, tilted 8° so the ground shows), a lane through the realm | A/D walk, W or Space jumps (always); trees and characters stop you, and you jump onto rocks, crates and barrels |
 
 Grounds: meadow, forest, desert, snow, stone, beach. Times: day, dawn, dusk, night. Styles:
-lowpoly and painterly (photoreal is not built yet, so it is not offered).
+lowpoly, painterly and flat (photoreal is not built yet, so it is not offered). A painterly or flat
+realm draws with `verse/style-preset.coax`: painterly is `STYLE_PAINTERLY`, flat is
+`verse_style_flat(FLAT_GARDEN, tier)`, each at the realm's time of day (`verse_style_at`) and the
+phone tier under 600 CSS pixels wide; `myrealm.wgsl` carries `verse/style.coax`'s functions
+(`build.sh` splices them). Low poly draws as before.
 
 ## Ownership and settings
 

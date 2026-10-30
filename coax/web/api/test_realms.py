@@ -112,3 +112,19 @@ def talk_checks():
 
 
 talk_checks()
+
+
+# A made realm may be flat (byo-painterly; migrations/0062_realm_flat.sql): the style question offers
+# it, the planner is told what it looks like, and a board asking for it makes a flat realm.
+def flat_checks():
+    check("the style question offers low poly, painterly and flat",
+          sql("select verse.builder_questions()->'style'->>'words'") == '["lowpoly", "painterly", "flat"]'
+          and "flat (bold flat shapes" in sql("select verse.builder_questions()->'style'->>'asks'"))
+    check("the planner is told what flat looks like", "painterly (soft, painted), flat (bold flat shapes" in sql("select verse.builder_prompt()"))
+    owner = b_player()
+    st, made = b_call("POST", "/api/playtest/realms", {"board": {"name": "Flat Fields", "style": "flat", "features": [{"feature": "rocks", "on": True, "count": 2}]}}, owner)
+    st, spec = b_call("GET", "/api/playtest/realms/" + made.get("slug", "flat-fields"))
+    check("a board asking for flat makes a flat realm", "style flat" in spec, spec)
+
+
+flat_checks()

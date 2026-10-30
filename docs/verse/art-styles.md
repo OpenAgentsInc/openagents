@@ -153,6 +153,12 @@ stage (0.8; half for what glows and for her skin and clothes).
   tones by the depth of the bed under them (deep, open, and two light bands
   along the shore) with slow broken ripple lines drifting across the open
   water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`).
+- **Made realms** (`/realms/new`, style flat) take `FLAT_GARDEN` at their
+  own time of day: three hard tones on their shapes (by the realm's own
+  colours, drawn toward the palette), the flat sky and disc, two water
+  bands with a flat shore line, the one fade, and lantern pools in two flat
+  rings (`apps/openagents-web/myrealm.wgsl`). A made realm may be painterly
+  instead, with `STYLE_PAINTERLY`; see [realm-builder.md](realm-builder.md).
 
 ## Painterly
 

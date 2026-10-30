@@ -95,15 +95,15 @@ REQ_PICK :: 4;
 Q_DIMS :: 0; Q_CAMERA :: 1; Q_STYLE :: 2; Q_GROUND :: 3; Q_TIME :: 4; QUESTIONS :: 5; CHOICES :: 6;
 Q_FIELD :: [QUESTIONS] string.["dims", "camera", "style", "ground", "time"];
 Q_ASK :: [QUESTIONS] string.["2D OR 3D?", "WHICH CAMERA?", "WHICH ART STYLE?", "WHAT GROUND?", "WHAT TIME OF DAY?"];
-Q_COUNT :: [QUESTIONS] int.[2, 3, 2, 6, 4];
+Q_COUNT :: [QUESTIONS] int.[2, 3, 3, 6, 4];
 Q_WORDS :: [QUESTIONS * CHOICES] string.["3d", "2d", "", "", "", "",
                                           "third", "first", "top", "", "", "",
-                                          "lowpoly", "painterly", "", "", "", "",
+                                          "lowpoly", "painterly", "flat", "", "", "",
                                           "meadow", "forest", "desert", "snow", "stone", "beach",
                                           "day", "dawn", "dusk", "night", "", ""];
 Q_SHOWN :: [QUESTIONS * CHOICES] string.["3D", "2D, SIDE-ON", "", "", "", "",
                                           "THIRD PERSON", "FIRST PERSON", "TOP-DOWN", "", "", "",
-                                          "LOW POLY", "PAINTERLY", "", "", "", "",
+                                          "LOW POLY", "PAINTERLY", "FLAT", "", "", "",
                                           "MEADOW", "FOREST", "DESERT", "SNOW", "STONE", "BEACH",
                                           "DAY", "DAWN", "DUSK", "NIGHT", "", ""];
 FEATS :: 28; KIND :: 12; LABEL :: 48; NAME :: 40; WORD :: 16;
@@ -665,7 +665,7 @@ checkbox :: (s: [] Builder, out: [] f32, at: int, x: f32, y: f32, size: f32, on:
   return n;
 }
 
-style_words :: (style: string) -> string { if style == "painterly" { return "PAINTERLY"; } return "LOW POLY"; }
+style_words :: (style: string) -> string { if style == "painterly" { return "PAINTERLY"; } if style == "flat" { return "FLAT"; } return "LOW POLY"; }
 camera_words :: (cam: string) -> string {
   if cam == "first" { return "3D · FIRST PERSON"; } if cam == "top" { return "3D · TOP-DOWN"; } if cam == "side" { return "2D · SIDE-ON"; }
   return "3D · THIRD PERSON";
@@ -1222,6 +1222,20 @@ answer :: (s: [] Builder, t: [] Track, text: string) { id := 3; builder_requeste
   builder_message(s[..], t[..], MSG_VOICE, "heard|soft");
   answer(s[..], t[..], "503\nno answer");
   #assert s[0].phase == PH_SETUP && s[0].q == Q_STYLE && note_text(s[..]) == "No answer.";
+}
+
+#test "a flat realm: the style question has FLAT third, and the board names it" {
+  s: [1] Builder; t: [1] Track;
+  ready(s[..], t[..], true);
+  n := frame_of(s[..], t[..], 2560, 1600, 2);
+  #assert Q_COUNT[Q_STYLE] == 3 && Q_WORDS[Q_STYLE * CHOICES + 2] == "flat" && Q_SHOWN[Q_STYLE * CHOICES + 2] == "FLAT";
+  builder_message(s[..], t[..], MSG_VOICE, "heard|a picture book meadow");
+  answer(s[..], t[..], "200\nplan 42\nname Book Meadow\nstyle flat\nground meadow\ntime day\ncamera third\nf water 1 Large pond\n");
+  m := frame_of(s[..], t[..], 2560, 1600, 2);
+  sb: [140] u8; sm := put_summary(s[..], sb[..], true);
+  #assert cast(string) sb[0..<sm] == "3D · THIRD PERSON · FLAT · MEADOW · DAY";
+  tap(s[..], t[..], s[0].boxes[BTN_SETUP]);
+  #assert s[0].chosen[Q_STYLE] == 2;
 }
 
 #test "the board shows the setup and CHANGE goes through it again; the change goes with MAKE IT" {

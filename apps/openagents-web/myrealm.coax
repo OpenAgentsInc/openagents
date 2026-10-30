@@ -36,6 +36,7 @@
 #load "ui.coax";
 #load "analytics.coax";
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
+#load "../../verse/style-preset.coax";   // a painterly or flat realm's look (docs/verse/art-styles.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -49,7 +50,11 @@ VIEW_AT :: 8; LAMP_AT :: 24; EYE_AT :: 28; RAY_AT :: 32;
 SKY_AT :: 44; HORIZON_AT :: 48; GROUND_AT :: 52; SUN_AT :: 56; WATER_AT :: 60;
 PANEL_AT :: 64;
 POOL_AT :: PANEL_AT + PLATES * 8;   // per lantern x, y, z, on (16), then their colour and strength
-UNIFORM_FLOATS :: POOL_AT + LANTERNS * 4 + 4;
+// a painterly or flat realm's style block (verse_style_at at its time of day); all 0 for low poly,
+// which keeps its own sky and light
+STYLE_AT :: POOL_AT + LANTERNS * 4 + 4;
+UNIFORM_FLOATS :: STYLE_AT + STYLE_FLOATS;
+TOD_CLOCK :: [4] f32.[0.5, 0.25, 0.75, 0.0];   // day, dawn, dusk and night on the style clock (noon, dawn, dusk, midnight)
 
 MODE_STROKE :: 0.0;
 MODE_BAR :: 4.0;   // ui.coax's
@@ -716,7 +721,7 @@ realm_object_count :: (s: [] MyRealm) -> int #export_c { return ifx s[0].laid th
 Spot :: struct { x: f32; z: f32; }
 walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
   p := Spot.{x = x + dx, z = z + dz};
-  if s[0].flying || s[0].y > 1.2 { return edge(p); }
+  if s[0].flying || s[0].y > 1.2 { return kept_in(p); }
   for pass: 0..<2 {
     for i: 0..<s[0].solid_n {
       ox := p.x - s[0].solid_x[i]; oz := p.z - s[0].solid_z[i];
@@ -725,11 +730,11 @@ walk_to :: (s: [] MyRealm, x: f32, z: f32, dx: f32, dz: f32) -> Spot {
       if d < 0.0001 { ox = 0; oz = 1; d = 1; }
       p.x = s[0].solid_x[i] + ox / d * room; p.z = s[0].solid_z[i] + oz / d * room;
     }
-    p = edge(p);
+    p = kept_in(p);
   }
   return p;
 }
-edge :: (p: Spot) -> Spot {
+kept_in :: (p: Spot) -> Spot {
   r := sqrt(p.x * p.x + p.z * p.z); e: f32 = GROUND_R - BODY_R;
   if r > e { return Spot.{x = p.x * e / r, z = p.z * e / r}; }
   return p;
@@ -1611,7 +1616,13 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   uniforms[EYE_AT + 3] = GROUND_R;
   uniforms[RAY_AT + 3] = ifx s[0].ortho then 1.0f32 else 0.0f32;   // 2D: every pixel's ray is the same, from its own place
   uniforms[RAY_AT + 7] = HAZE_FROM[s[0].camera];
-  uniforms[SKY_AT + 3] = ifx cast(string) s[0].style[0..<s[0].style_n] == "painterly" then 1.0f32 else 0.0f32;
+  style := cast(string) s[0].style[0..<s[0].style_n];
+  uniforms[SKY_AT + 3] = ifx style == "painterly" then 1.0f32 else 0.0f32;
+  if s[0].spec_ready && (style == "painterly" || style == "flat") {
+    tier := ifx width < 600 * s[0].dpr then STYLE_PHONE else STYLE_DESKTOP;
+    p := ifx style == "flat" then verse_style_flat(FLAT_GARDEN, tier) else verse_style_preset(STYLE_PAINTERLY, tier);
+    done := verse_style_at(p, TOD_CLOCK[tod], uniforms[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
+  }
   uniforms[HORIZON_AT + 3] = STARS[tod];
   uniforms[GROUND_AT + 3] = LAMP_SHARE[tod];
   uniforms[SUN_AT + 3] = SUN[tod * 4 + 3];

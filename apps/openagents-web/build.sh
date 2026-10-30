@@ -33,6 +33,8 @@ done
 # The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.
 flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 verse_style_flat_sky verse_style_flat_shadow verse_style_flat_fade verse_style_bayer verse_style_flat_dither verse_style_flat_hem verse_style_flat_srgb verse_style_flat_colour verse_style_flat_time"
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/villa.wgsl)
+# A made realm (myrealm.wgsl) is painterly or flat when its maker picked that (low poly keeps its own look).
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
 # Fairy Forest draws in the flat style only: no painterly or grass functions.
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/fairy.wgsl)
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
