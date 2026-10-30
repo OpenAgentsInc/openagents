@@ -1,0 +1,261 @@
+// A client connection to a Nostr relay over ws:// or wss://: TCP (and TLS
+// for wss://), the RFC 6455 opening handshake, masked text frames out, and
+// text messages in, with pings answered, fragments reassembled and protocol
+// violations refused. One RelayConn is one connection at a time; reopen it
+// with relay_conn_open after a drop.
+//
+// It decides nothing itself. relay_uri.coax picks plain or TLS, the host and
+// port; ws.coax writes the request, admits the 101 response (its
+// Sec-WebSocket-Accept) and frames; relay_conn_rules.coax (#authority) says
+// what each server frame asks for and what a read result means. This file
+// moves bytes through the foreign effects and carries those answers out:
+// coax/platform/socket-native.c (TCP), coax/platform/tls-native.c (TLS,
+// verifying the chain and the host name; no switch to skip it) and
+// coax/platform/entropy-foreign.c (the handshake nonce and every mask key,
+// from the OS). Reconnecting, backoff, generations and resubscription are
+// the caller's, through coax/lib/nostr/relay.coax (rl_start, rl_opened,
+// rl_dropped).
+//
+// Link socket-native.c, tls-native.c (with OpenSSL: coax/platform/tls-env.sh),
+// entropy-native.c, entropy-foreign.c and the entropy policy (load
+// coax/lib/crypto/entropy.coax in the program). Example:
+//   c: [1] RelayConn;
+//   if relay_conn_open(c[..], "wss://relay.example") {
+//     ok := relay_conn_send(c[..], "[\"REQ\",\"s\",{\"limit\":1}]");
+//     while relay_conn_poll(c[..], 1000) == RC_TEXT { use(cast(string) c[0].text[0..<c[0].text_n]); }
+//     relay_conn_close(c[..], WS_CLOSE_NORMAL);
+//   }
+#load "relay_uri.coax";
+#load "relay_conn_rules.coax";
+
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+cxsock_now_ms :: () -> int #foreign;
+cxtls_host_push :: (byte: int) -> int #foreign;
+cxtls_start :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_write :: (h: int, byte: int) -> int #foreign;
+cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_byte :: (h: int, i: int) -> int #foreign;
+cxtls_close :: (h: int) -> int #foreign;
+cxrand_fill :: (n: int) -> int #foreign;
+cxrand_byte :: (i: int) -> int #foreign;
+
+RC_MSG_MAX :: 131072;                    // the largest message (and frame) taken from a relay, 128 KiB
+RC_READ_MAX :: 65536;                    // the most one transport read returns (CXSOCK_MAX_IN)
+RC_IN :: RC_MSG_MAX + 14 + RC_READ_MAX;  // one partial frame plus one read
+RC_OUT :: RC_MSG_MAX + 14;               // the largest frame we send
+RC_IO_MS :: 5000;                        // connect, TLS, the whole opening handshake, each flush
+RC_CLOSE_MS :: 2000;                     // how long relay_conn_close waits for the peer's close and end of stream
+
+// h: the transport handle (-1 when closed); tls: whether it is a TLS stream.
+// After RC_TEXT the message is text[0..<text_n], valid until the next call.
+// pings and pongs count over the RelayConn's life (relay_conn_open does not
+// reset them); pong holds the last pong's payload. close_code is the peer's
+// close code (WS_CLOSE_NO_STATUS for an empty close frame, 0 when none
+// came), eof whether the peer ended the stream cleanly; both are reset by
+// relay_conn_open.
+RelayConn :: struct {
+  h: int = -1; tls: bool;
+  rd: [1] WsReader;
+  inb: [RC_IN] u8; used: int;
+  text: [RC_MSG_MAX] u8; text_n: int;
+  pong: [125] u8; pong_n: int;
+  pings: int; pongs: int;
+  close_code: int; eof: bool; sent_close: bool;
+  out: [RC_OUT] u8;
+}
+
+// n bytes from the OS into out, through the entropy contract.
+rc_draw :: (n: int, out: [] u8) -> bool {
+  if out.count < n || cxrand_fill(n) != 0 { return false; }
+  for i: 0..<n {
+    b := cxrand_byte(i);
+    if b < 0 || b > 255 { return false; }
+    out[i] = cast(u8) b;
+  }
+  return true;
+}
+// Closes the transport at once (no closing handshake) and clears the stream state.
+rc_shut :: (c: [] RelayConn) {
+  if c[0].h >= 0 {
+    r := ifx c[0].tls then cxtls_close(c[0].h) else cxsock_close(c[0].h);
+  }
+  c[0].h = -1; c[0].tls = false; c[0].used = 0; c[0].rd[0] = WsReader.{};
+}
+rc_put :: (c: [] RelayConn, bytes: string) -> bool {
+  for b: bytes {
+    e := ifx c[0].tls then cxtls_write(c[0].h, cast(int) b) else cxsock_write(c[0].h, cast(int) b);
+    if e != 0 { return false; }
+  }
+  e := ifx c[0].tls then cxtls_flush(c[0].h, RC_IO_MS) else cxsock_flush(c[0].h, RC_IO_MS);
+  return e == 0;
+}
+// One masked frame with a fresh mask key.
+rc_frame :: (c: [] RelayConn, op: int, payload: string) -> bool {
+  mask: [4] u8;
+  if c[0].h < 0 || !rc_draw(4, mask[..]) { return false; }
+  n := ws_frame_write(op, true, payload, mask[..], c[0].out[..]);
+  return n > 0 && rc_put(c, cast(string) c[0].out[0..<n]);
+}
+rc_close_frame :: (c: [] RelayConn, code: int) -> bool {
+  mask: [4] u8; out: [16] u8;
+  if c[0].h < 0 || !rc_draw(4, mask[..]) { return false; }
+  n := ws_close_write(code, mask[..], out[..]);
+  c[0].sent_close = true;
+  return n > 0 && rc_put(c, cast(string) out[0..<n]);
+}
+// Bytes from the transport appended to inb: the count, or the effect's code
+// (CXSOCK_* and CXTLS_* agree: -1 end of stream, -2 timeout, below that failure).
+rc_fill :: (c: [] RelayConn, wait_ms: int) -> int {
+  n := ifx c[0].tls then cxtls_read(c[0].h, wait_ms) else cxsock_read(c[0].h, wait_ms);
+  if n <= 0 { return n; }
+  if !rc_room(c[0].used, n, RC_IN) { return -3; }
+  for i: 0..<n {
+    b := ifx c[0].tls then cxtls_byte(c[0].h, i) else cxsock_byte(c[0].h, i);
+    c[0].inb[c[0].used + i] = cast,trunc(u8) b;
+  }
+  c[0].used += n;
+  return n;
+}
+rc_drop_front :: (c: [] RelayConn, k: int) {
+  for i: k..<c[0].used { c[0].inb[i - k] = c[0].inb[i]; }
+  c[0].used -= k;
+}
+
+// Connects to uri (ws:// or wss://), runs TLS for wss:// and the opening
+// handshake with a fresh 16-byte nonce, and checks Sec-WebSocket-Accept.
+// False on any failure, with the connection left closed. An open connection
+// is dropped first.
+relay_conn_open :: (c: [] RelayConn, uri: string) -> bool {
+  rc_shut(c);
+  c[0].close_code = 0; c[0].eof = false; c[0].sent_close = false; c[0].text_n = 0;
+  r := relay_uri(uri);
+  if !r.ok { return false; }
+  host := uri[r.host_from..<r.host_to];
+  deadline := cxsock_now_ms() + RC_IO_MS;
+  // A refused byte makes the connect itself fail (the effect remembers it).
+  for b: host { if cxsock_host_push(cast(int) b) != 0 { break; } }
+  h := cxsock_connect(r.port, RC_IO_MS);
+  if h < 0 { return false; }
+  c[0].h = h;
+  if r.tls {
+    for b: host { if cxtls_host_push(cast(int) b) != 0 { break; } }
+    if cxtls_start(h, rc_wait(RC_IO_MS, deadline, cxsock_now_ms())) != 0 { rc_shut(c); return false; }
+    c[0].tls = true;
+  }
+  nonce: [16] u8; key: [24] u8; target: [2049] u8; req: [2600] u8;
+  if !rc_draw(16, nonce[..]) || !ws_key(nonce[..], key[..]) { rc_shut(c); return false; }
+  tn := rc_target(uri[r.target_from..<r.target_to], target[..]);
+  if tn < 0 { rc_shut(c); return false; }
+  n := ws_request(host, r.port, cast(string) target[0..<tn], cast(string) key[..], req[..]);
+  if n < 0 || !rc_put(c, cast(string) req[0..<n]) { rc_shut(c); return false; }
+  while true {
+    hello := ws_response(cast(string) c[0].inb[0..<c[0].used], cast(string) key[..]);
+    if hello.status == WS_HELLO_OK { rc_drop_front(c, hello.consumed); return true; }
+    wait := rc_wait(RC_IO_MS, deadline, cxsock_now_ms());
+    if hello.status != WS_HELLO_MORE || wait == 0 || rc_fill(c, wait) <= 0 { rc_shut(c); return false; }
+  }
+  return false;
+}
+
+// One masked text frame with a fresh mask key. False when the connection is
+// closed, closing, the text is over RC_MSG_MAX, or the write failed (the
+// connection is then closed).
+relay_conn_send :: (c: [] RelayConn, text: string) -> bool {
+  if c[0].h < 0 || c[0].sent_close || text.count > RC_MSG_MAX { return false; }
+  if rc_frame(c, WS_OP_TEXT, text) { return true; }
+  rc_shut(c);
+  return false;
+}
+// A ping with payload (at most 125 bytes); the pong shows in pongs and pong.
+relay_conn_ping :: (c: [] RelayConn, payload: string) -> bool {
+  if c[0].h < 0 || c[0].sent_close || payload.count > 125 { return false; }
+  if rc_frame(c, WS_OP_PING, payload) { return true; }
+  rc_shut(c);
+  return false;
+}
+
+// Waits at most timeout_ms (0: only what is buffered or ready, negative:
+// for ever) for the next text message. RC_TEXT: it is in
+// c[0].text[0..<c[0].text_n]. RC_NONE: nothing yet. RC_CLOSED: the peer
+// closed (close_code says whether with a close frame, which was echoed) or
+// the connection was already closed. RC_FAIL: a transport failure, or a
+// frame refused by relay_conn_rules.coax, which was answered with its close
+// code. After RC_CLOSED and RC_FAIL the connection is closed. Pings are
+// answered with pongs on the way.
+relay_conn_poll :: (c: [] RelayConn, timeout_ms: int) -> int {
+  if c[0].h < 0 { return RC_CLOSED; }
+  deadline := cxsock_now_ms() + (ifx timeout_ms > 0 then timeout_ms else 0);
+  while true {
+    s := rc_scan(c[0].rd[..], cast(string) c[0].inb[0..<c[0].used], c[0].text[..]);
+    if s.kind == RC_S_TEXT {
+      rc_drop_front(c, s.consumed); c[0].text_n = c[0].rd[0].used;
+      return RC_TEXT;
+    }
+    if s.kind == RC_S_PING {
+      ctl: [125] u8; k := s.to - s.from;
+      for i: 0..<k { ctl[i] = c[0].inb[s.from + i]; }
+      rc_drop_front(c, s.consumed);
+      c[0].pings += 1;
+      if !rc_frame(c, WS_OP_PONG, cast(string) ctl[0..<k]) { rc_shut(c); return RC_FAIL; }
+      continue;
+    }
+    if s.kind == RC_S_PONG {
+      c[0].pong_n = s.to - s.from;
+      for i: 0..<c[0].pong_n { c[0].pong[i] = c[0].inb[s.from + i]; }
+      rc_drop_front(c, s.consumed);
+      c[0].pongs += 1;
+      continue;
+    }
+    if s.kind == RC_S_CLOSE {
+      c[0].close_code = s.code;
+      if !c[0].sent_close { sent := rc_close_frame(c, rc_close_reply(s.code)); }
+      rc_shut(c);
+      return RC_CLOSED;
+    }
+    if s.kind == RC_S_REFUSE {
+      if !c[0].sent_close { sent := rc_close_frame(c, s.code); }
+      rc_shut(c);
+      return RC_FAIL;
+    }
+    rc_drop_front(c, s.consumed);
+    k := rc_read(rc_fill(c, rc_wait(timeout_ms, deadline, cxsock_now_ms())));
+    if k == RC_CLOSED { c[0].eof = true; rc_shut(c); return RC_CLOSED; }
+    if k == RC_FAIL { rc_shut(c); return RC_FAIL; }
+    if k == RC_NONE { return RC_NONE; }
+  }
+  return RC_FAIL;
+}
+
+// The closing handshake: sends close with code, then waits at most
+// RC_CLOSE_MS for the peer's close frame and its end of stream (text that
+// arrives meanwhile is discarded) and closes the transport. close_code and
+// eof then say what the peer did. True when our close frame was sent.
+relay_conn_close :: (c: [] RelayConn, code: int) -> bool {
+  if c[0].h < 0 { return false; }
+  sent := !c[0].sent_close && rc_close_frame(c, code);
+  deadline := cxsock_now_ms() + RC_CLOSE_MS;
+  while sent {
+    s := rc_scan(c[0].rd[..], cast(string) c[0].inb[0..<c[0].used], c[0].text[..]);
+    rc_drop_front(c, s.consumed);
+    if s.kind == RC_S_CLOSE { c[0].close_code = s.code; continue; }
+    if s.kind == RC_S_REFUSE { break; }
+    if s.kind != RC_S_MORE { continue; }
+    wait := rc_wait(RC_CLOSE_MS, deadline, cxsock_now_ms());
+    if wait == 0 { break; }
+    k := rc_read(rc_fill(c, wait));
+    if k == RC_CLOSED { c[0].eof = true; }
+    if k != RC_GOT { break; }
+  }
+  rc_shut(c);
+  return sent;
+}
+// Drops the connection at once, without the closing handshake (for an
+// acknowledgement timeout or a caller that is giving up).
+relay_conn_drop :: (c: [] RelayConn) { rc_shut(c); }

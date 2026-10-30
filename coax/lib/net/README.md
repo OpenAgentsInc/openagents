@@ -39,3 +39,20 @@ artifact hashes are in `coax/tests/net/uri-evidence-2026-10-28.json`.
 On this Mac the optional Wasm test uses Homebrew LLVM, wasi-libc and
 wasi-runtimes; add `/opt/homebrew/opt/lld/bin` to PATH. Python and Bun are
 verification tools only. The shipped policy and ordinary builds need neither.
+
+# Relay connections
+
+`relay_conn.coax` is the reusable client connection to a Nostr relay over
+`ws://` or `wss://`: `relay_conn_open(c, uri)`, `relay_conn_send(c, text)`,
+`relay_conn_poll(c, timeout_ms)` (`RC_TEXT` with the message in
+`c[0].text[0..<c[0].text_n]`, or `RC_NONE`, `RC_CLOSED`, `RC_FAIL`),
+`relay_conn_ping`, `relay_conn_close(c, code)` and `relay_conn_drop(c)`. It
+does the I/O only, through `socket-native.c`, `tls-native.c` and the entropy
+bridge. `relay_uri.coax` picks the transport, `ws.coax` frames and checks the
+handshake, and `relay_conn_rules.coax` (`#authority`) decides what each server
+frame asks for: deliver text, answer a ping, echo a close, or refuse (binary
+data with 1003, violations with ws.coax's close codes, frames or messages over
+128 KiB with 1009). Reconnecting, backoff and resubscription belong to the
+caller, through `coax/lib/nostr/relay.coax`. `coax/tests/net/relay_e2e.py`
+runs the whole client against the scripted fixture over both transports.
+Evidence: [docs/verification/2026-10-30-relay-conn.md](../../../docs/verification/2026-10-30-relay-conn.md).

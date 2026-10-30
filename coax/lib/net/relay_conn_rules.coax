@@ -1,0 +1,170 @@
+// The decisions behind relay_conn.coax, the client connection to a Nostr
+// relay: which server frames are admitted, what each one asks the
+// connection to do (deliver a text message, answer a ping, note a pong,
+// echo a close, refuse with a close code), the request target sent in the
+// opening request, what a transport read result means, and how long the
+// next read may wait. Pure: no I/O, clock or randomness. relay_conn.coax
+// moves the bytes and carries out exactly what these return; ws.coax
+// (RFC 6455 framing, the handshake check) does the frame-level work.
+//
+// Nostr (NIP-01) speaks text messages only, so a complete binary message is
+// refused with 1003 like any other protocol violation. A refusal ends the
+// connection: relay_conn sends the close code given here and closes.
+#load "ws.coax";
+#authority;
+
+// relay_conn_poll results.
+RC_NONE :: 0; RC_TEXT :: 1; RC_CLOSED :: 2; RC_FAIL :: 3;
+// rc_read's answer for a read that delivered bytes (internal to the poll loop).
+RC_GOT :: 4;
+// What rc_scan found at the front of the buffered bytes.
+RC_S_MORE :: 0; RC_S_TEXT :: 1; RC_S_PING :: 2; RC_S_PONG :: 3; RC_S_CLOSE :: 4; RC_S_REFUSE :: 5;
+// Close code for data we do not take (RFC 6455 section 7.4.1).
+RC_CLOSE_UNSUPPORTED :: 1003;
+// kind: RC_S_*. consumed: bytes at the front that are done with (drop them,
+// whatever the kind). code: the close code to send for RC_S_REFUSE, or the
+// peer's close code for RC_S_CLOSE (WS_CLOSE_NO_STATUS when it gave none).
+// from, to: the control payload's range in the bytes for PING, PONG, CLOSE.
+RcScan :: struct { kind: int; code: int; consumed: int; from: int; to: int; }
+
+#test "a text message: whole, or reassembled across fragments and a ping" {
+  xp: [1024] u8; rd: [1] WsReader; msg: [16] u8;
+  s := rc_scan(rd[..], wx("%81%02hi%81%01x", xp[0..<256]), msg[..]);
+  #assert s.kind == RC_S_TEXT && s.consumed == 4 && rd[0].used == 2 && cast(string) msg[0..<2] == "hi";
+  // first fragment, then a ping between fragments: the ping is reported with its payload
+  b := wx("%01%03Hel%89%02pq%80%02lo", xp[256..<512]);
+  s = rc_scan(rd[..], b, msg[..]);
+  #assert s.kind == RC_S_PING && s.consumed == 9 && s.from == 7 && s.to == 9 && b[s.from..<s.to] == "pq" && rd[0].open;
+  s = rc_scan(rd[..], b[9..<b.count], msg[..]);
+  #assert s.kind == RC_S_TEXT && s.consumed == 4 && cast(string) msg[0..<rd[0].used] == "Hello";
+  // a fragment then nothing more yet: MORE, with the fragment consumed into the reader
+  rd[0] = WsReader.{};
+  s = rc_scan(rd[..], wx("%01%02ab%80", xp[512..<768]), msg[..]);
+  #assert s.kind == RC_S_MORE && s.consumed == 4 && rd[0].open && rd[0].used == 2;
+  s = rc_scan(rd[..], "", msg[..]);
+  #assert s.kind == RC_S_MORE && s.consumed == 0;
+  // an empty text message
+  rd[0] = WsReader.{};
+  s = rc_scan(rd[..], wx("%81%00", xp[768..<1024]), msg[..]);
+  #assert s.kind == RC_S_TEXT && s.consumed == 2 && rd[0].used == 0;
+}
+#test "pongs and closes carry their payload range and code" {
+  xp: [1024] u8; rd: [1] WsReader; msg: [16] u8;
+  b := wx("x%8a%03abc", xp[0..<256]);
+  s := rc_scan(rd[..], b[1..<b.count], msg[..]);
+  #assert s.kind == RC_S_PONG && s.consumed == 5 && s.from == 2 && s.to == 5 && s.code == 0;
+  s = rc_scan(rd[..], wx("%88%04%03%e8ok", xp[256..<512]), msg[..]);
+  #assert s.kind == RC_S_CLOSE && s.code == 1000 && s.consumed == 6 && s.from == 2 && s.to == 6;
+  s = rc_scan(rd[..], wx("%88%00", xp[512..<768]), msg[..]);
+  #assert s.kind == RC_S_CLOSE && s.code == WS_CLOSE_NO_STATUS && s.consumed == 2 && s.from == 2 && s.to == 2;
+  s = rc_scan(rd[..], wx("%89%00", xp[768..<1024]), msg[..]);
+  #assert s.kind == RC_S_PING && s.from == 2 && s.to == 2 && s.consumed == 2;
+}
+#test "refusals: frame headers, message assembly, binary data, size" {
+  xp: [3072] u8; rd: [1] WsReader; msg: [4] u8;
+  s := rc_scan(rd[..], wx("%c1%00", xp[0..<256]), msg[..]);            // RSV1 set
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_PROTOCOL && s.consumed == 0;
+  s = rc_scan(rd[..], wx("%81%81abcdx", xp[256..<512]), msg[..]);       // a masked server frame
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_PROTOCOL;
+  s = rc_scan(rd[..], wx("%81%05", xp[512..<768]), msg[..]);            // one frame over the limit
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_TOO_BIG;
+  s = rc_scan(rd[..], wx("%81%04abcd", xp[768..<1024]), msg[..]);       // exactly the limit is fine
+  #assert s.kind == RC_S_TEXT && rd[0].used == 4;
+  s = rc_scan(rd[..], wx("%82%01x", xp[1024..<1280]), msg[..]);         // binary
+  #assert s.kind == RC_S_REFUSE && s.code == RC_CLOSE_UNSUPPORTED && s.consumed == 3;
+  rd[0] = WsReader.{};
+  s = rc_scan(rd[..], wx("%80%01x", xp[1280..<1536]), msg[..]);         // continuation with nothing open
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_PROTOCOL && s.consumed == 3;
+  rd[0] = WsReader.{};
+  s = rc_scan(rd[..], wx("%81%01%ff", xp[1536..<1792]), msg[..]);       // text that is not UTF-8
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_INVALID_DATA;
+  rd[0] = WsReader.{};
+  s = rc_scan(rd[..], wx("%01%03abc%80%02de", xp[1792..<2048]), msg[..]); // fragments past the message limit
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_TOO_BIG && s.consumed == 9;
+  rd[0] = WsReader.{};
+  s = rc_scan(rd[..], wx("%88%01%03", xp[2048..<2304]), msg[..]);       // a malformed close payload
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_PROTOCOL;
+  s = rc_scan(rd[..], wx("%89%7e%00%7e", xp[2304..<2560]), msg[..]);    // a control frame over 125
+  #assert s.kind == RC_S_REFUSE && s.code == WS_CLOSE_PROTOCOL;
+}
+#test "close replies, read results and waits" {
+  #assert rc_close_reply(WS_CLOSE_NO_STATUS) == WS_CLOSE_NORMAL && rc_close_reply(1001) == 1001 && rc_close_reply(4000) == 4000;
+  #assert rc_read(1) == RC_GOT && rc_read(65536) == RC_GOT && rc_read(0) == RC_NONE && rc_read(-2) == RC_NONE;
+  #assert rc_read(-1) == RC_CLOSED && rc_read(-3) == RC_FAIL && rc_read(-6) == RC_FAIL && rc_read(-11) == RC_FAIL;
+  #assert rc_wait(-1, 100, 50) == -1 && rc_wait(100, 150, 50) == 100 && rc_wait(100, 150, 149) == 1;
+  #assert rc_wait(100, 150, 150) == 0 && rc_wait(100, 150, 400) == 0 && rc_wait(0, 50, 50) == 0;
+  #assert rc_room(10, 6, 16) && !rc_room(10, 7, 16) && rc_room(0, 0, 0);
+}
+#test "the request target: the URL's path and query, with a leading slash" {
+  out: [8] u8;
+  #assert rc_target("", out[..]) == 1 && out[0] == '/';
+  n := rc_target("/a?b", out[..]); #assert n == 4 && cast(string) out[0..<n] == "/a?b";
+  n = rc_target("?x=1", out[..]); #assert n == 5 && cast(string) out[0..<n] == "/?x=1";
+  n = rc_target("/1234567", out[..]); #assert n == 8 && cast(string) out[0..<n] == "/1234567";
+  #assert rc_target("/12345678", out[..]) == -1 && rc_target("?1234567", out[..]) == -1 && rc_target("", out[0..<0]) == -1;
+  #assert rc_target("", out[0..<1]) == 1 && rc_target("?", out[0..<2]) == 2 && rc_target("?", out[0..<1]) == -1;
+}
+
+// The first event in bytes, after any complete non-final fragments (those
+// collect into msg through the reader and count as consumed). One frame's
+// payload and one message are both capped at msg.count.
+rc_scan :: (rd: [] WsReader, bytes: string, msg: [] u8) -> RcScan {
+  s: RcScan;
+  while true {
+    f := ws_frame_read(bytes[s.consumed..<bytes.count], msg.count);
+    if f.status == WS_FRAME_MORE { return s; }
+    if f.status != WS_FRAME_OK {
+      s.kind = RC_S_REFUSE;
+      s.code = ifx f.status == WS_FRAME_TOO_BIG then WS_CLOSE_TOO_BIG else WS_CLOSE_PROTOCOL;
+      return s;
+    }
+    at := s.consumed;
+    s.consumed = at + f.total;
+    ev := ws_take(rd, f, bytes[at + f.header..<s.consumed], msg);
+    if ev == WS_EV_MESSAGE {
+      if rd[0].op == WS_OP_TEXT { s.kind = RC_S_TEXT; } else { s.kind = RC_S_REFUSE; s.code = RC_CLOSE_UNSUPPORTED; }
+      return s;
+    }
+    if ev == WS_EV_PING || ev == WS_EV_PONG || ev == WS_EV_CLOSE {
+      s.from = at + f.header; s.to = s.consumed;
+      if ev == WS_EV_PING { s.kind = RC_S_PING; }
+      else if ev == WS_EV_PONG { s.kind = RC_S_PONG; }
+      else { s.kind = RC_S_CLOSE; s.code = ws_close_code(bytes[s.from..<s.to]); }
+      return s;
+    }
+    if ev != WS_EV_PART { s.kind = RC_S_REFUSE; s.code = ws_error_code(ev); return s; }
+  }
+  return s;
+}
+// The code to echo for a peer's close (RFC 6455 section 5.5.1): its own, or
+// 1000 when it gave none (1005 may not be sent).
+rc_close_reply :: (code: int) -> int { return ifx code == WS_CLOSE_NO_STATUS then WS_CLOSE_NORMAL else code; }
+// A transport read result (cxsock_read or cxtls_read): bytes, nothing yet
+// (timeout), the peer's clean end of stream, or a failure.
+rc_read :: (n: int) -> int {
+  if n > 0 { return RC_GOT; }
+  if n == 0 || n == -2 { return RC_NONE; }
+  if n == -1 { return RC_CLOSED; }
+  return RC_FAIL;
+}
+// How long the next read may wait: for ever (-1) when timeout_ms is
+// negative, else what is left until deadline, never below 0.
+rc_wait :: (timeout_ms: int, deadline: int, now: int) -> int {
+  if timeout_ms < 0 { return -1; }
+  left := deadline - now;
+  return ifx left >= 1 then left else 0;
+}
+// Whether n more bytes fit after used in a buffer of cap.
+rc_room :: (used: int, n: int, cap: int) -> bool { return used + n <= cap; }
+// The opening request's target from the URL's path-and-query range: "/" in
+// front of an empty one or a bare query. Its length, or -1 when out is too small.
+rc_target :: (path: string, out: [] u8) -> int {
+  n := 0;
+  if path.count == 0 || path[0] != '/' {
+    if out.count < 1 { return -1; }
+    out[0] = '/'; n = 1;
+  }
+  if n + path.count > out.count { return -1; }
+  for i: 0..<path.count { out[n + i] = path[i]; }
+  return n + path.count;
+}
