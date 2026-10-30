@@ -46,6 +46,12 @@
       "title": "Fairy Forest",
       "body": "The painterly valley round the heart tree: restore the faded forest with Bloom, help its creatures, wake the heart tree's roots.",
       "parent": "realms-port"
+    },
+    {
+      "slug": "ff-life",
+      "title": "Fairy Forest: a life in the forest",
+      "body": "After the story: moods you can read, your own fairy, a home and garden that grow, neighbours, courses, and the skills table.",
+      "parent": "realms-port"
     }
   ],
   "tasks": [
@@ -1285,6 +1291,161 @@
         "eg-voice-catalogue",
         "eg-voice-fallback"
       ],
+      "blocks": []
+    },
+    {
+      "slug": "ff-moods",
+      "parent": "ff-life",
+      "title": "Fairy Forest: creature moods at a glance and passing remarks",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Every creature shows its mood at a glance: a small expression on its face and a mood glyph over its head (happy, worried, lost, hungry, tired), changing as you help. Passing close, it says a short line in a bubble, never twice in a row.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "Each creature's glyph and face match its mood; helping it turns both happy",
+        "Passing a creature shows a short remark bubble",
+        "Desktop and phone shots"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ff-maker",
+      "parent": "ff-life",
+      "title": "Make your fairy, and the mirror pool",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Before you wake, make your fairy: body, skin, hair, face, outfit and wings (shape, colour, glow), each a row of choices with a live preview. The look is saved per player. A mirror pool in Mossbank brings the maker back any time.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "First visit opens the maker; DONE wakes you with that look",
+        "Reload keeps the look",
+        "The mirror pool opens the maker again"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ff-home",
+      "parent": "ff-life",
+      "title": "Your home grows room by room",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Your home starts as a hollow under a root in Mossbank. Rooms open one by one as you restore the forest (bed of moss, table, shelves, garden, mirror pool), and you place, move, turn and size its pieces with the shared edit tools (verse/edit). Saved per player.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/",
+        "verse/edit/"
+      ],
+      "acceptance": [
+        "Restoring a glade opens a new room",
+        "Pieces placed in the home stay after reload"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ff-garden",
+      "parent": "ff-life",
+      "title": "A garden that grows over real days",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Plant seeds in your garden plot; water and sing to them. Plants grow over real days from the time planted, and the one you care for most changes into something rarer (a sapling into a glowing tree, a flower into a moon flower). Saved on the server.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A planted seed shows a sprout, then grows by real time",
+        "Care moves a plant toward its rare form",
+        "Reload keeps the garden"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ff-village",
+      "parent": "ff-life",
+      "title": "Creatures move in and build homes near yours",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Creatures you help can move in near your home: each one picks a plot and builds its own small home, then comes by to visit. The village grows with how much you have helped.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "A helped creature moves to a plot by your home and builds a house",
+        "Its house stays after reload"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ff-courses",
+      "parent": "ff-life",
+      "title": "Timed courses with share links and friends' times",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Build a course of vine hoops with the edit tools, fly it against the clock, and share a link. Friends who open the link fly your course; their best times show on it.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "A course of hoops times a run from first hoop to last",
+        "A share link opens the course for another player",
+        "Their best time shows on the course"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "ff-skills",
+      "parent": "ff-life",
+      "title": "Learned skills: Speak, Mend, Gather, Craft, Light, Water",
+      "size": "L",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "The README's skills table: each skill is learned from its moment (a creature answering, a hurt bird, a first forage, a woodcutter's axe, a night in Lanternwood, clearing the stream) and opens its own help. Skills show as glyphs on screen and are saved.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "Each of the six skills can be learned from its moment",
+        "Learned skills show on screen and stay after reload"
+      ],
+      "blocked_by": [],
       "blocks": []
     }
   ]
