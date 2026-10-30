@@ -1,0 +1,63 @@
+#import "Basic";
+#load "../lib/shadow.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+VERDICT :: [4]string.["wait","promote","hold: disagreement","hold: regression"];
+STATUS :: [7]string.["ok","shape","capacity","immutable","digest","approval","version"];
+// The first six bytes of a digest, in hex.
+dig :: (d:[32]u8) {
+    digits:="0123456789abcdef";
+    for i:0..<6 {t:=[2]u8.[digits[cast(int)(d[i]>>4)],digits[cast(int)(d[i]&15)]];print("%",cast(string)t[..]);}
+}
+blob_of :: (m:ShModel)->[SH_BLOB]u8 {b:[SH_BLOB]u8;#assert sh_blob(m,b[..])==SH_BLOB;return b;}
+show :: (m:ShModel,r:ShReport) {
+    print("  % (",m.name);dig(r.candidate);
+    print("): disagrees on % of % requests, % + 2 SE = % (limit 0.12)\n",r.disagree,r.requests,r4(r.rate),r4(r.rate_bound));
+    print("    errors on % joined: active %, candidate %; extra error % + 2 SE = % (margin 0.005) -> %\n",
+        r.joined,r.active_wrong,r.candidate_wrong,r4(r.difference),r4(r.difference_bound),VERDICT[cast(int)r.verdict]);
+}
+
+// book:begin example
+main :: () {
+    world:=cast(u64)164;limits:=ShLimits.{disagreement=0.12,margin=0.005,joined=1000};
+    v3:=ShModel.{name="router-v3",skill=0.85,weight=0.2,seed=31};
+    models:=[3]ShModel.[
+        ShModel.{name="router-v4",skill=0.89,weight=0.2,seed=41},
+        ShModel.{name="router-small",skill=0.83,weight=0.2,seed=51},
+        ShModel.{name="router-other",skill=0.9,weight=0.9,seed=61}];
+    reg:ShRegistry;b:=blob_of(v3);reg=sh_register(reg,b[..]);
+    for m:models {b=blob_of(m);reg=sh_register(reg,b[..]);#assert reg.status==ShStatus.ok;}
+    b=blob_of(v3);active:=ShActive.{digest=sh_digest(b[..]),version=1};
+    print("active: router-v3 (");dig(active.digest);print("), version 1; % models registered\n",reg.count);
+
+    records:[4000]ShRecord;reports:[3]ShReport;
+    print("shadowed beside router-v3 on 4000 requests:\n");
+    for m,k:models {
+        #assert sh_log(world,v3,m,records[..])==ShStatus.ok;
+        c:=blob_of(m);reports[k]=sh_report(active.digest,sh_digest(c[..]),records[..],limits);show(m,reports[k]);
+    }
+    early:=sh_report(active.digest,reports[2].candidate,records[0..<1000],limits);
+    print("  router-other after its first 1000 requests: % joined -> %\n",early.joined,VERDICT[cast(int)early.verdict]);
+
+    // The owner approves router-v4's report; activation is one compare-and-swap.
+    v4:=blob_of(models[0]);ok:=ShApproval.{candidate=reports[0].candidate,report=sh_report_digest(reports[0])};
+    print("approval: router-v4 ");dig(ok.candidate);print(" with report ");dig(ok.report);print("\n");
+    next:=sh_activate(active,reg,1,v4[..],reports[0],ok);#assert next.status==ShStatus.ok;
+    e:=reg.entries[next.entry];
+    print("activate router-v4 expecting version 1: active is now % (",cast(string)e.name[0..<e.length]);dig(next.digest);print("), version %\n",next.version);
+
+    print("refused, each leaving the active model unchanged:\n");
+    small:=blob_of(models[1]);forged:=ShApproval.{candidate=reports[1].candidate,report=sh_report_digest(reports[1])};
+    x:=sh_activate(next,reg,2,small[..],reports[1],forged);#assert sh_same(x.digest,next.digest) && x.version==next.version;
+    print("  router-small, whose report holds, with an approval of it: %\n",STATUS[cast(int)x.status]);
+    x=sh_activate(next,reg,1,v4[..],reports[0],ok);#assert sh_same(x.digest,next.digest) && x.version==next.version;
+    print("  router-v4 again, by a caller who still expects version 1: %\n",STATUS[cast(int)x.status]);
+    changed:=v4;changed[SH_NAME_MAX]^=1;
+    x=sh_activate(active,reg,1,changed[..],reports[0],ok);#assert sh_same(x.digest,active.digest) && x.version==active.version;
+    print("  router-v4's bytes with one bit changed after approval: %\n",STATUS[cast(int)x.status]);
+    x=sh_activate(next,reg,2,v4[..],reports[0],ok);#assert sh_same(x.digest,next.digest) && x.version==next.version;
+    print("  router-v4's report again, now that router-v4 itself is active: %\n",STATUS[cast(int)x.status]);
+    edited:=models[0];edited.skill=0.9;eb:=blob_of(edited);again:=sh_register(reg,eb[..]);
+    print("  registering router-v4 again with other bytes: %\n",STATUS[cast(int)again.status]);
+}
+// book:end example

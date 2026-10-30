@@ -1,0 +1,17 @@
+active: router-v3 (d011bf535170), version 1; 4 models registered
+shadowed beside router-v3 on 4000 requests:
+  router-v4 (aa8225ec8987): disagrees on 309 of 4000 requests, 0.0773 + 2 SE = 0.0857 (limit 0.12)
+    errors on 3193 joined: active 202, candidate 121; extra error -0.0254 + 2 SE = -0.0165 (margin 0.005) -> promote
+  router-small (8b12cc2371a5): disagrees on 406 of 4000 requests, 0.1015 + 2 SE = 0.111 (limit 0.12)
+    errors on 3193 joined: active 202, candidate 284; extra error 0.0257 + 2 SE = 0.0352 (margin 0.005) -> hold: regression
+  router-other (991c711383f3): disagrees on 474 of 4000 requests, 0.1185 + 2 SE = 0.1287 (limit 0.12)
+    errors on 3193 joined: active 202, candidate 204; extra error 0.0006 + 2 SE = 0.0123 (margin 0.005) -> hold: disagreement
+  router-other after its first 1000 requests: 801 joined -> wait
+approval: router-v4 aa8225ec8987 with report 421ab852e405
+activate router-v4 expecting version 1: active is now router-v4 (aa8225ec8987), version 2
+refused, each leaving the active model unchanged:
+  router-small, whose report holds, with an approval of it: approval
+  router-v4 again, by a caller who still expects version 1: version
+  router-v4's bytes with one bit changed after approval: digest
+  router-v4's report again, now that router-v4 itself is active: approval
+  registering router-v4 again with other bytes: immutable

@@ -1,0 +1,315 @@
+// Chapter 164: shadow a new model, then promote it. A candidate answers every
+// request beside the active model; only the active model's answer is used,
+// both are logged, and each record is joined to its outcome when the outcome
+// arrives. A report over the log promotes the candidate only if the two agree
+// often enough and the candidate's errors on joined outcomes are not shown to
+// be worse. Candidates are immutable, named by the SHA-256 of their bytes, and
+// activation is one compare-and-swap that needs an approval naming both the
+// candidate's digest and the report's; anything else leaves the active model
+// as it was. Chapter 122 rolls out new builds of one model; this rolls out a
+// different model.
+// Profile shadow-sim-v1: a simulated three-way decision with label outcomes,
+// binary64 statistics with a margin of two standard errors, and up to 16
+// registered models.
+#load "../../coax/lib/crypto/sha256.coax";
+#authority;
+
+ShStatus :: enum u8 {ok;shape;capacity;immutable;digest;approval;version;}
+ShVerdict :: enum u8 {wait;promote;disagreement;regression;}
+// A simulated model: correct when (1-w)*difficulty + w*own draw <= skill.
+ShModel :: struct {name:string;skill:f64;weight:f64;seed:u64;}
+ShRecord :: struct {request:int;active:u8;candidate:u8;outcome:int;}
+ShLimits :: struct {disagreement:f64;margin:f64;joined:int;}
+ShReport :: struct {
+    status:ShStatus;active:[32]u8;candidate:[32]u8;
+    requests:int;joined:int;disagree:int;active_wrong:int;candidate_wrong:int;
+    rate:f64;rate_bound:f64;difference:f64;difference_bound:f64;verdict:ShVerdict;
+}
+ShEntry :: struct {name:[32]u8;length:int;digest:[32]u8;}
+ShRegistry :: struct {status:ShStatus;entries:[SH_MODELS_MAX]ShEntry;count:int;}
+ShActive :: struct {status:ShStatus;digest:[32]u8;version:int;entry:int;}
+ShApproval :: struct {candidate:[32]u8;report:[32]u8;}
+
+SH_MODELS_MAX :: 16;
+SH_NAME_MAX :: 32;
+SH_BLOB :: 56;
+SH_JOIN :: 0.8;
+SH_GOLDEN :: (cast(u64)0x9e3779b97f4a7c15);
+SH_WRONG :: (cast(u64)1048576);
+
+// Checks precede the implementation. Pinned values come from
+// psionic/tests/shadow_oracle.py --tests, which uses Python's hashlib.
+sh_t_is :: (d:[32]u8,text:string)->bool {b:=d;return sh_t_hex(b[..],text);}
+sh_t_hex :: (bytes:[]u8,text:string)->bool {
+    if text.count!=2*bytes.count {return false;}
+    digits:="0123456789abcdef";
+    for b,i:bytes {if text[2*i]!=digits[cast(int)(b>>4)] || text[2*i+1]!=digits[cast(int)(b&15)] {return false;}}
+    return true;
+}
+sh_t_digest :: (first:int)->[32]u8 {d:[32]u8;for i:0..<32 {d[i]=cast(u8)(first+i);}return d;}
+sh_t_records :: ()->[6]ShRecord {
+    r:[6]ShRecord;
+    rows:=[18]int.[0,0,0, 1,2,1, 2,2,-1, 0,1,2, 1,1,1, 2,0,0];
+    for k:0..<6 {r[k]=ShRecord.{request=10+k,active=cast(u8)rows[3*k],candidate=cast(u8)rows[3*k+1],outcome=rows[3*k+2]};}
+    return r;
+}
+sh_t_blob :: (m:ShModel)->[SH_BLOB]u8 {b:[SH_BLOB]u8;#assert sh_blob(m,b[..])==SH_BLOB;return b;}
+SH_T_A :: ShModel.{name="a",skill=0.8,weight=0.2,seed=1};
+
+#test "the test helpers" {
+    a:=[2]u8.[0x1f,0xa0];
+    #assert sh_t_hex(a[..],"1fa0") && !sh_t_hex(a[..],"1fa") && !sh_t_hex(a[..],"0fa0") && !sh_t_hex(a[..],"1fa1");
+    #assert sh_t_digest(3)[0]==3 && sh_t_digest(3)[31]==34;
+    r:=sh_t_records();want:=[18]int.[0,0,0, 1,2,1, 2,2,-1, 0,1,2, 1,1,1, 2,0,0];
+    for k:0..<6 {#assert r[k].request==10+k && cast(int)r[k].active==want[3*k] && cast(int)r[k].candidate==want[3*k+1] && r[k].outcome==want[3*k+2];}
+    x:=ShActive.{digest=sh_t_digest(0),version=2,entry=1};#assert sh_t_same(x,x,ShStatus.ok) && !sh_t_same(x,x,ShStatus.shape);
+    y:=x;y.digest[5]=0;#assert !sh_t_same(y,x,ShStatus.ok);y=x;y.version=3;#assert !sh_t_same(y,x,ShStatus.ok);
+    y=x;y.entry=0;#assert !sh_t_same(y,x,ShStatus.ok);
+}
+
+#test "draws, the world and two models" {
+    #assert sh_bits(1,0)==10451216379200822465 && sh_uniform(7,3)==0.5829302930280781;
+    truths:=[8]u8.[2,2,0,2,2,2,0,2];joins:=[8]bool.[true,false,true,false,true,true,true,true];
+    for i:0..<8 {#assert sh_truth(164,i)==truths[i] && sh_joined(164,i)==joins[i];}
+    x:=ShModel.{name="x",skill=0.85,weight=0.2,seed=31};y:=ShModel.{name="y",skill=0.3,weight=0.5,seed=9};
+    ax:=[12]u8.[2,2,0,2,2,2,0,2,2,2,1,1];ay:=[12]u8.[1,1,2,1,0,2,2,1,2,0,2,1];
+    for i:0..<12 {#assert sh_answer(x,164,i)==ax[i] && sh_answer(y,164,i)==ay[i];}
+    // The log: both answers, and the outcome once joined.
+    kept:[8]ShRecord;#assert sh_log(164,x,y,kept[..])==ShStatus.ok;
+    want:=[24]int.[2,1,2, 2,1,-1, 0,2,0, 2,1,-1, 2,0,2, 2,2,2, 0,2,0, 2,1,2];
+    for k:0..<8 {r:=kept[k];#assert r.request==k && cast(int)r.active==want[3*k] && cast(int)r.candidate==want[3*k+1] && r.outcome==want[3*k+2];}
+    #assert sh_log(164,x,y,kept[0..<0])==ShStatus.shape;
+}
+
+#test "a model's bytes and identity" {
+    b:[SH_BLOB+1]u8;for i:0..<SH_BLOB+1 {b[i]=0xff;}
+    #assert sh_blob(SH_T_A,b[..])==SH_BLOB && b[SH_BLOB]==0xff;
+    #assert sh_t_hex(b[0..<SH_BLOB],"61000000000000000000000000000000000000000000000000000000000000009a9999999999e93f9a9999999999c93f0100000000000000");
+    #assert sh_t_is(sh_digest(b[0..<SH_BLOB]),"a9e77e5ad5d93bde6553886f31b4cf206688dddbc7049fb44c333bbcb6f92b9c");
+    #assert sh_blob(SH_T_A,b[0..<SH_BLOB-1])==0;
+    m:=SH_T_A;m.name="";#assert sh_blob(m,b[..])==0;
+    m.name="abcdefghijklmnopqrstuvwxyzabcdef";#assert sh_blob(m,b[..])==SH_BLOB && b[31]=='f';
+    m.name="abcdefghijklmnopqrstuvwxyzabcdefg";#assert sh_blob(m,b[..])==0;
+    #assert sh_same(sh_t_digest(0),sh_t_digest(0)) && !sh_same(sh_t_digest(0),sh_t_digest(1));
+    d:=sh_t_digest(0);d[31]=0;#assert !sh_same(sh_t_digest(0),d);d=sh_t_digest(0);d[0]=9;#assert !sh_same(d,sh_t_digest(0));
+}
+
+#test "a registry never edits a model in place" {
+    r:ShRegistry;a:=sh_t_blob(SH_T_A);
+    r=sh_register(r,a[..]);#assert r.status==ShStatus.ok && r.count==1 && r.entries[0].length==1 && r.entries[0].name[0]=='a';
+    #assert sh_same(r.entries[0].digest,sh_digest(a[..]));
+    // The same bytes again change nothing; other bytes under the name are refused.
+    r=sh_register(r,a[..]);#assert r.status==ShStatus.ok && r.count==1;
+    other:=SH_T_A;other.seed=2;o:=sh_t_blob(other);
+    x:=sh_register(r,o[..]);#assert x.status==ShStatus.immutable && x.count==1 && sh_same(x.entries[0].digest,sh_digest(a[..]));
+    // A name that extends another is a different name.
+    longer:=SH_T_A;longer.name="ab";l:=sh_t_blob(longer);
+    r=sh_register(r,l[..]);#assert r.status==ShStatus.ok && r.count==2 && r.entries[1].length==2 && r.entries[1].name[1]=='b';
+    shorter:=SH_T_A;shorter.name="b";s:=sh_t_blob(shorter);r=sh_register(r,s[..]);#assert r.status==ShStatus.ok && r.count==3;
+    #assert sh_register(r,a[0..<SH_BLOB-1]).status==ShStatus.shape;
+    nameless:=a;nameless[0]=0;x=sh_register(r,nameless[..]);#assert x.status==ShStatus.shape && x.count==3;
+    // A failed registration clears on the next.
+    #assert sh_register(x,a[..]).status==ShStatus.ok;
+    // Sixteen models fit; a seventeenth doesn't, but a known one still answers.
+    full:ShRegistry;
+    letters:="abcdefghijklmnop";
+    for k:0..<SH_MODELS_MAX {m:=SH_T_A;m.name=letters[k..<k+1];m.seed=cast(u64)k;b:=sh_t_blob(m);full=sh_register(full,b[..]);}
+    #assert full.status==ShStatus.ok && full.count==SH_MODELS_MAX;
+    m:=SH_T_A;m.name="z";z:=sh_t_blob(m);#assert sh_register(full,z[..]).status==ShStatus.capacity;
+    m=SH_T_A;m.seed=3;z=sh_t_blob(m);#assert sh_register(full,z[..]).status==ShStatus.immutable;
+}
+
+#test "a report, counted and bounded by hand" {
+    recs:=sh_t_records();a:=sh_t_digest(0);c:=sh_t_digest(32);
+    r:=sh_report(a,c,recs[..],ShLimits.{disagreement=0.9,margin=0.5,joined=5});
+    #assert r.status==ShStatus.ok && r.requests==6 && r.joined==5 && r.disagree==3 && r.active_wrong==2 && r.candidate_wrong==2;
+    #assert r.rate==0.5 && r.rate_bound==0.908248290463863 && r.difference==0 && r.difference_bound==0.6324555320336759;
+    #assert r.verdict==ShVerdict.disagreement && sh_same(r.active,a) && sh_same(r.candidate,c);
+    #assert sh_t_is(sh_report_digest(r),"c2e74e0345095b618f6b3885dda50cc1406f3dc111dc6f026344f3019d5c0512");
+    // Six joined needed, five arrived: wait, with the disagreement still measured.
+    w:=sh_report(a,c,recs[..],ShLimits.{disagreement=0.9,margin=0.5,joined=6});
+    #assert w.verdict==ShVerdict.wait && w.rate_bound==0.908248290463863 && w.difference_bound==0;
+    #assert sh_t_is(sh_report_digest(w),"f11d2ab8ea5b8aeada7f52d5979ae297476946e7fdfb80f114b70a317344e070");
+    big:=ShReport.{active=a,candidate=c,requests=70000,joined=65537,disagree=300,active_wrong=258,candidate_wrong=1,verdict=ShVerdict.regression};
+    #assert sh_t_is(sh_report_digest(big),"5087a7ddaa41e4b572ef127f72623efb3ab1b171d688c907810eec147234c058");
+    #assert sh_report(a,c,recs[..],ShLimits.{disagreement=1,margin=0.6324,joined=5}).verdict==ShVerdict.regression;
+    #assert sh_report(a,c,recs[..],ShLimits.{disagreement=1,margin=0.6324555320336759,joined=5}).verdict==ShVerdict.promote;
+    #assert sh_report(a,c,recs[..],ShLimits.{disagreement=0.908248290463863,margin=1,joined=5}).verdict==ShVerdict.promote;
+    // Two joined is the least a standard error needs.
+    #assert sh_report(a,c,recs[..],ShLimits.{joined=1}).status==ShStatus.shape;
+    #assert sh_report(a,c,recs[..],ShLimits.{disagreement=1,margin=1,joined=2}).status==ShStatus.ok;
+    #assert sh_report(a,c,recs[0..<0],ShLimits.{joined=2}).status==ShStatus.shape;
+    // A better candidate: -0.25 + 2 x 0.25 = 0.25 exactly.
+    better:=sh_t_records();better[0]=ShRecord.{active=1,candidate=0,outcome=0};better[1]=ShRecord.{outcome=0};
+    better[2]=ShRecord.{active=1,candidate=1,outcome=1};better[3]=ShRecord.{active=2,candidate=2,outcome=2};
+    b:=sh_report(a,c,better[0..<4],ShLimits.{disagreement=1,margin=0.25,joined=2});
+    #assert b.verdict==ShVerdict.promote && b.difference==-0.25 && b.difference_bound==0.25 && b.rate==0.25 && b.candidate_wrong==0 && b.active_wrong==1;
+    #assert sh_report(a,c,better[0..<4],ShLimits.{disagreement=1,margin=0.2499,joined=2}).verdict==ShVerdict.regression;
+}
+
+sh_t_world :: ()->ShRegistry {
+    r:ShRegistry;a:=sh_t_blob(SH_T_A);r=sh_register(r,a[..]);
+    m:=SH_T_A;m.name="b";b:=sh_t_blob(m);r=sh_register(r,b[..]);
+    m.name="c";c:=sh_t_blob(m);return sh_register(r,c[..]);
+}
+sh_t_same :: (x:ShActive,y:ShActive,s:ShStatus)->bool {return x.status==s && sh_same(x.digest,y.digest) && x.version==y.version && x.entry==y.entry;}
+#test "activation is one compare-and-swap" {
+    reg:=sh_t_world();a:=sh_t_blob(SH_T_A);m:=SH_T_A;m.name="b";b:=sh_t_blob(m);
+    now:=ShActive.{digest=sh_digest(a[..]),version=4,entry=0};
+    rep:=ShReport.{active=now.digest,candidate=sh_digest(b[..]),verdict=ShVerdict.promote};
+    ok:=ShApproval.{candidate=rep.candidate,report=sh_report_digest(rep)};
+    next:=sh_activate(now,reg,4,b[..],rep,ok);
+    #assert next.status==ShStatus.ok && next.version==5 && next.entry==1 && sh_same(next.digest,rep.candidate);
+    // Each refusal returns the record it was given.
+    #assert sh_t_same(sh_activate(now,reg,5,b[..],rep,ok),now,ShStatus.version) && sh_t_same(sh_activate(now,reg,3,b[..],rep,ok),now,ShStatus.version);
+    m.name="d";d:=sh_t_blob(m);#assert sh_t_same(sh_activate(now,reg,4,d[..],rep,ok),now,ShStatus.digest);
+    c:=a;c[0]='c';#assert sh_t_same(sh_activate(now,reg,4,c[..],rep,ok),now,ShStatus.digest);
+    for v:[3]ShVerdict.[ShVerdict.wait,ShVerdict.disagreement,ShVerdict.regression] {
+        x:=rep;x.verdict=v;#assert sh_t_same(sh_activate(now,reg,4,b[..],x,ShApproval.{candidate=ok.candidate,report=sh_report_digest(x)}),now,ShStatus.approval);
+    }
+    x:=rep;x.candidate=sh_digest(c[..]);#assert sh_t_same(sh_activate(now,reg,4,b[..],x,ShApproval.{candidate=ok.candidate,report=sh_report_digest(x)}),now,ShStatus.approval);
+    x=rep;x.active=sh_digest(c[..]);#assert sh_t_same(sh_activate(now,reg,4,b[..],x,ShApproval.{candidate=ok.candidate,report=sh_report_digest(x)}),now,ShStatus.approval);
+    x=rep;x.joined=1;#assert sh_t_same(sh_activate(now,reg,4,b[..],x,ok),now,ShStatus.approval);
+    // Bytes nobody registered are refused even when the approval names them.
+    unknown:=ShReport.{active=now.digest,candidate=sh_digest(d[..]),verdict=ShVerdict.promote};
+    #assert sh_t_same(sh_activate(now,reg,4,d[..],unknown,ShApproval.{candidate=unknown.candidate,report=sh_report_digest(unknown)}),now,ShStatus.digest);
+    // The first entry, and the entry found is the one with the digest, wherever it is.
+    back:=ShReport.{active=next.digest,candidate=now.digest,verdict=ShVerdict.promote};
+    first:=sh_activate(next,reg,5,a[..],back,ShApproval.{candidate=now.digest,report=sh_report_digest(back)});#assert first.status==ShStatus.ok && first.entry==0 && first.version==6;
+    #assert sh_activate(now,reg,4,c[..],ShReport.{active=now.digest,candidate=sh_digest(c[..]),verdict=ShVerdict.promote},
+        ShApproval.{candidate=sh_digest(c[..]),report=sh_report_digest(ShReport.{active=now.digest,candidate=sh_digest(c[..]),verdict=ShVerdict.promote})}).entry==2;
+}
+
+// book:begin world
+// SplitMix64 draws. Request i has its true answer (one of three), a
+// difficulty, and whether its outcome ever arrives; a model's own draws come
+// from its seed.
+sh_bits :: (seed:u64,counter:u64)->u64 {
+    z:=add_wrap(seed,mul_wrap(SH_GOLDEN,add_wrap(counter,1)));
+    z=mul_wrap(z^(z>>30),0xbf58476d1ce4e5b9);z=mul_wrap(z^(z>>27),0x94d049bb133111eb);
+    return z^(z>>31);
+}
+sh_uniform :: (seed:u64,counter:u64)->f64 {return f64(sh_bits(seed,counter)>>11)/9007199254740992.0;}
+sh_truth :: (world:u64,i:int)->u8 {return cast(u8)cast(int)(3*sh_uniform(world,cast(u64)(3*i)));}
+// A draw u reaches a probability p when u + p >= 1.
+sh_joined :: (world:u64,i:int)->bool {return cast(int)(sh_uniform(world,cast(u64)(3*i+2))+SH_JOIN)>0;}
+sh_answer :: (m:ShModel,world:u64,i:int)->u8 {
+    truth:=sh_truth(world,i);
+    score:=(1-m.weight)*sh_uniform(world,cast(u64)(3*i+1))+m.weight*sh_uniform(m.seed,cast(u64)i);
+    if cast(int)(1+m.skill-score)>0 {return truth;}
+    return cast(u8)((cast(int)truth+1+cast(int)(2*sh_uniform(m.seed,SH_WRONG+cast(u64)i)))%3);
+}
+// book:end world
+
+// book:begin identity
+// A model's bytes: its name, then skill, weight and seed as little-endian
+// words. The digest of those bytes is the model's identity.
+sh_blob :: (m:ShModel,out:[]u8)->int {
+    if m.name.count==0 || m.name.count>SH_NAME_MAX || out.count<SH_BLOB {return 0;}
+    words:=[3]u64.[f64_bits(m.skill),f64_bits(m.weight),m.seed];
+    for w,k:words {for b:0..<8 {out[SH_NAME_MAX+8*k+b]=cast,trunc(u8)(w>>cast(u64)(8*b));}}
+    for i:0..<SH_NAME_MAX {out[i]=ifx i<m.name.count then m.name[i] else 0;}
+    return SH_BLOB;
+}
+sh_digest :: (bytes:[]u8)->[32]u8 {out:[32]u8;#assert sha256_hash_checked(bytes,out[..],false)==SHA_OK;return out;}
+sh_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}} return true;}
+// Registering a name again with the same bytes changes nothing; with other
+// bytes it is refused. A model is never edited in place.
+sh_register :: (r:ShRegistry,blob:[]u8)->ShRegistry {
+    out:=r;out.status=ShStatus.ok;
+    if blob.count!=SH_BLOB {out.status=ShStatus.shape;return out;}
+    digest:=sh_digest(blob);length:=0;
+    for i:0..<SH_NAME_MAX {if blob[i]!=0 {length=i+1;}}
+    if length==0 {out.status=ShStatus.shape;return out;}
+    entries:=r.entries;
+    for e:entries[0..<r.count] {
+        if e.length==length && sh_name(e,blob) {
+            if !sh_same(e.digest,digest) {out.status=ShStatus.immutable;}
+            return out;
+        }
+    }
+    if r.count==SH_MODELS_MAX {out.status=ShStatus.capacity;return out;}
+    e:=ShEntry.{length=length,digest=digest};
+    for i:0..<length {e.name[i]=blob[i];}
+    out.entries[r.count]=e;out.count+=1;
+    return out;
+}
+sh_name :: (e:ShEntry,blob:[]u8)->bool {for i:0..<e.length {if e.name[i]!=blob[i] {return false;}} return true;}
+// book:end identity
+
+// book:begin shadow
+// Both models answer every request; only the active answer is acted on. A
+// record holds the two answers and, once it arrives, the outcome (-1 while
+// it is pending). No request content is logged.
+sh_log :: (world:u64,active:ShModel,candidate:ShModel,records:[]ShRecord)->ShStatus {
+    if records.count==0 {return ShStatus.shape;}
+    for i:0..<records.count {
+        r:=ShRecord.{request=i,active=sh_answer(active,world,i),candidate=sh_answer(candidate,world,i),outcome=-1};
+        if sh_joined(world,i) {r.outcome=cast(int)sh_truth(world,i);}
+        records[i]=r;
+    }
+    return ShStatus.ok;
+}
+// book:end shadow
+
+// book:begin report
+// Disagreement is measured over every request, errors only over joined ones,
+// paired request by request. The candidate is promoted when enough outcomes
+// have joined, the disagreement rate plus two standard errors is within the
+// limit, and the mean extra error (candidate minus active) plus two standard
+// errors is within the margin.
+sh_report :: (active:[32]u8,candidate:[32]u8,records:[]ShRecord,limits:ShLimits)->ShReport {
+    r:=ShReport.{active=active,candidate=candidate,requests=records.count};
+    if records.count==0 || limits.joined<2 {r.status=ShStatus.shape;return r;}
+    for x:records {
+        if x.active!=x.candidate {r.disagree+=1;}
+        if x.outcome==-1 {continue;}
+        r.joined+=1;
+        if cast(int)x.active!=x.outcome {r.active_wrong+=1;}
+        if cast(int)x.candidate!=x.outcome {r.candidate_wrong+=1;}
+    }
+    n:=f64(records.count);r.rate=f64(r.disagree)/n;r.rate_bound=r.rate+2*sqrt(r.rate*(1-r.rate)/n);
+    if r.joined<limits.joined {return r;}
+    // d is -1, 0 or 1 per joined request.
+    j:=f64(r.joined);sum:=0.0;squares:=0.0;
+    for x:records {
+        if x.outcome==-1 {continue;}
+        d:=f64(ifx cast(int)x.candidate!=x.outcome then 1 else 0)-f64(ifx cast(int)x.active!=x.outcome then 1 else 0);
+        sum+=d;squares+=d*d;
+    }
+    r.difference=sum/j;
+    r.difference_bound=r.difference+2*sqrt((squares-sum*sum/j)/(j-1)/j);
+    if r.rate_bound>limits.disagreement {r.verdict=ShVerdict.disagreement;}
+    else if r.difference_bound>limits.margin {r.verdict=ShVerdict.regression;}
+    else {r.verdict=ShVerdict.promote;}
+    return r;
+}
+// The report's digest: both identities, the counts and the verdict.
+sh_report_digest :: (r:ShReport)->[32]u8 {
+    bytes:[105]u8;
+    for i:0..<32 {bytes[i]=r.active[i];bytes[32+i]=r.candidate[i];}
+    counts:=[5]int.[r.requests,r.joined,r.disagree,r.active_wrong,r.candidate_wrong];
+    for c,k:counts {for b:0..<8 {bytes[64+8*k+b]=cast,trunc(u8)(cast(u64)c>>cast(u64)(8*b));}}
+    bytes[104]=cast(u8)r.verdict;
+    return sh_digest(bytes[..]);
+}
+// book:end report
+
+// book:begin activate
+// One compare-and-swap. The caller names the version it expects (checked
+// first), the bytes it wants active, and an approval; the bytes must hash to the approved
+// digest, be registered, and have a promoting report, shadowed against the
+// model active now, whose digest the approval names. On any refusal the
+// active record is returned unchanged.
+sh_activate :: (now:ShActive,r:ShRegistry,expected:int,blob:[]u8,report:ShReport,approval:ShApproval)->ShActive {
+    out:=now;
+    if expected!=now.version {out.status=ShStatus.version;return out;}
+    digest:=sh_digest(blob);entry:=-1;
+    entries:=r.entries;
+    for e,k:entries[0..<r.count] {if sh_same(e.digest,digest) {entry=k;}}
+    if entry==-1 || !sh_same(digest,approval.candidate) {out.status=ShStatus.digest;return out;}
+    if report.verdict!=ShVerdict.promote || !sh_same(report.candidate,digest)
+        || !sh_same(report.active,now.digest) || !sh_same(sh_report_digest(report),approval.report) {out.status=ShStatus.approval;return out;}
+    return ShActive.{digest=digest,version=now.version+1,entry=entry};
+}
+// book:end activate

@@ -832,6 +832,16 @@
       ]
     },
     {
+      "source": "psionic/examples/shadow.coax",
+      "chapter": "psionic/book/ch164-shadow-a-new-model-then-promote-it.md",
+      "stdout": "psionic/fixtures/shadow.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/interpreter-weights.coax",
       "chapter": "psionic/book/ch170-an-interpreter-in-weights-or-one-program-in-weights.md",
       "stdout": "psionic/fixtures/interpreter-weights.out",
