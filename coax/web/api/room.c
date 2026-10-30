@@ -5,7 +5,8 @@
 //   POST /api/playtest/presence/<room>   {x, y, z, yaw, after}: here now -> {you, others, messages
 //                                        after the number `after`, last}
 //   GET  /api/playtest/chat/<room>?after=N   the lines after N (the last 50) -> {messages, last}
-//   POST /api/playtest/chat/<room>       {text, sid} -> {n}
+//   POST /api/playtest/chat/<room>       {text, sid} -> {n}; a line from automation is shown only to
+//                                        who said it (migrations/0064_room_chat_automation.sql)
 //   POST /api/playtest/chat/<room>/remove   {n}: an admin takes a line out
 //   GET/POST /api/playtest/inbox, POST /api/playtest/inbox/read, POST /api/playtest/block
 //                                        messages between players who have met, and blocks
@@ -103,9 +104,16 @@ bool room_route(const request *q) {
   char *body = malloc(q->body_len + 3);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");
-  const char *v[6] = {q->method, kind, room, body, key, after};
-  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.room($1, $2, $3, $4::jsonb, $5, $6::int) x",
-                             6, NULL, v, NULL, NULL, 0);
+  // a line from automation (its mark, a headless or robot User-Agent) is shown only to who said it
+  char mark[64] = "", cookies[2048], ua[512] = "";
+  if (!api_header(q, "X-Verse-Automation", mark, sizeof mark) && api_header(q, "Cookie", cookies, sizeof cookies)) {
+    const char *c = strstr(cookies, "verse-automation=");
+    if (c) { c += strlen("verse-automation="); size_t i = 0; while (c[i] && c[i] != ';' && c[i] != ' ' && i + 1 < sizeof mark) { mark[i] = c[i]; i++; } mark[i] = 0; }
+  }
+  api_header(q, "User-Agent", ua, sizeof ua);
+  const char *v[8] = {q->method, kind, room, body, key, after, mark, ua};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x->'body')::text FROM verse.room($1, $2, $3, $4::jsonb, $5, $6::int, $7, $8) x",
+                             8, NULL, v, NULL, NULL, 0);
   free(body);
   if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
     const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);

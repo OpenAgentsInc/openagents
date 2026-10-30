@@ -89,3 +89,27 @@ check("social: an admin removes a line", status == 200 and rm["removed"] == w["n
 p = soc("POST", FF, {"after": w["n"] - 1}, fern["key"])[1]
 check("social: it is gone for everyone, and the room says so", p["messages"] == [] and w["n"] in p["removed"], p)
 check("social: removing needs a line", soc("POST", R, {"n": 999999}, cookie=scookie)[0] == 404 and soc("POST", R, {}, cookie=scookie)[0] == 400)
+
+# A line from automation is its sender's only (0064_room_chat_automation.sql): a headless browser's,
+# one with the automation mark, one from a player automation minted; a real browser's line is everyone's
+HC = "/api/playtest/chat/hecates-cemetery"
+HEADLESS = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/156.0.0.0 Safari/537.36"
+REAL = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+bot, visitor = mint(), mint()
+sql(f"update verse.players set auto = 'drive' where id = '{fern['id']}'")
+def say(text, key, extra):
+    h = {"Content-Type": "application/json", "X-Verse-Player": key, **extra}
+    status, raw, _ = call("POST", HC, json.dumps({"text": text}).encode(), h)
+    return status, json.loads(raw)
+said = [say("evening all", bot["key"], {"User-Agent": HEADLESS}), say("marked", bot["key"], {"User-Agent": REAL, "X-Verse-Automation": "goldens"}),
+        say("cookie", bot["key"], {"User-Agent": REAL, "Cookie": "a=1; verse-automation=shot"}), say("minted", fern["key"], {"User-Agent": REAL})]
+status, real = say("good evening", visitor["key"], {"User-Agent": REAL})
+check("automation: every line is kept", all(s == 200 for s, _ in said) and status == 200, said)
+check("automation: kept with its mark", sql(f"select string_agg(coalesce(auto, '-'), ',' order by n) from verse.room_chat where room = 'hecates-cemetery'")
+      == "headlesschrome,goldens,shot,drive,-", sql("select string_agg(coalesce(auto, '-'), ',' order by n) from verse.room_chat where room = 'hecates-cemetery'"))
+seen = [m["text"] for m in soc("GET", HC + "?after=0", key=visitor["key"])[1]["messages"]]
+anon = [m["text"] for m in soc("GET", HC + "?after=0")[1]["messages"]]
+pres = [m["text"] for m in soc("POST", "/api/playtest/presence/hecates-cemetery", {"after": 0}, visitor["key"])[1]["messages"]]
+check("automation: a visitor sees only the real line, read or in the room", seen == ["good evening"] and anon == ["good evening"] and pres == ["good evening"], (seen, anon, pres))
+mine = [m["text"] for m in soc("GET", HC + "?after=0", key=bot["key"])[1]["messages"]]
+check("automation: its sender still sees its own lines", mine == ["evening all", "marked", "cookie", "good evening"], mine)
