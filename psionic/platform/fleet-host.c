@@ -1,6 +1,7 @@
 /* Fleet's platform effects only. Coax owns HTTP, routing, discovery and replies.
    Socket handles belong to this single Coax worker; they are not OS descriptors.
-   Listen is IPv4 loopback only. Read exposes the last <=64KiB recv until the
+   Listen defaults to IPv4 loopback; the explicit platform flag
+   --listen-host 0.0.0.0 is for an authenticated private service container. Read exposes the last <=64KiB recv until the
    next read/owning close. Each stream stages <=1MiB; flush retains its unsent
    offset after timeout, and close discards pending bytes. Return -2 for a
    deadline, -1 for read EOF, -3 for an invalid handle/argument or syscall error.
@@ -16,6 +17,7 @@
 #include <poll.h>
 #include <pthread.h>
 #include <signal.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +40,7 @@ typedef struct {
 static fh_slot fh_slots[FH_MAX_SOCKETS];
 static int fh_ready, fh_argc_value, fh_exit_status;
 static char **fh_argv;
+static uint32_t fh_bind_address = INADDR_LOOPBACK;
 static volatile sig_atomic_t fh_stopping;
 static unsigned char fh_input[FH_MAX_IN];
 static size_t fh_input_used;
@@ -111,7 +114,7 @@ int64_t fh_listen(int64_t port) {
   int one = 1;
   struct sockaddr_in address; memset(&address, 0, sizeof address);
   address.sin_family = AF_INET; address.sin_port = htons((uint16_t)port);
-  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+  address.sin_addr.s_addr = htonl(fh_bind_address);
   if (fh_prepare(fd) != 0 || setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof one) != 0 ||
       bind(fd, (struct sockaddr *)&address, sizeof address) != 0 || listen(fd, 16) != 0) {
     close(fd); return -3;
@@ -178,7 +181,25 @@ static void *fh_run(void *arg) {
   sigaddset(&signals, SIGTERM); sigaddset(&signals, SIGINT);
   pthread_sigmask(SIG_BLOCK, &signals, NULL); coax_fleet_main(); return NULL;
 }
+// Listening interface is a socket effect, separate from Coax request admission.
+// Strip this host-only flag before exposing argv to the unchanged Coax CLI.
+static int fh_platform_args(int argc, char **argv) {
+  int out = 1; bool seen = false; fh_bind_address = INADDR_LOOPBACK;
+  for (int i = 1; i < argc; i++) {
+    if (!strcmp(argv[i], "--listen-host")) {
+      if (seen || ++i >= argc) return -1;
+      seen = true;
+      if (!strcmp(argv[i], "0.0.0.0")) fh_bind_address = INADDR_ANY;
+      else if (strcmp(argv[i], "127.0.0.1")) return -1;
+    } else argv[out++] = argv[i];
+  }
+  argv[out] = NULL;
+  return out;
+}
+
 int main(int argc, char **argv) {
+  argc = fh_platform_args(argc, argv);
+  if (argc < 0) { fputs("fleet: --listen-host requires 127.0.0.1 or 0.0.0.0, once\n", stderr); return 2; }
   fh_argc_value = argc; fh_argv = argv; fh_stopping = 0; fh_exit_status = 0; fh_init();
   setvbuf(stdout, NULL, _IOLBF, 0);
   struct sigaction action; memset(&action, 0, sizeof action);

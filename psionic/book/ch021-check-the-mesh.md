@@ -196,3 +196,8 @@ The [private foundation](../../docs/verification/psionic-mesh-private-foundation
 and [native/public verification record](../../docs/verification/psionic-mesh-native-2026-10-30.md)
 identify exact source/artifact hashes,
 synthetic cases and the real Mac/Linux public-relay rehearsal separately.
+
+
+[Chapter 21a](ch021a-a-public-mesh.md) places the native buyer behind the site's
+authenticated public edge, preserving the same model/provider pins and keeping
+public API admission separate from private fleet IAM and Pylon transport.

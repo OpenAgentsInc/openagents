@@ -1,0 +1,5 @@
+# Qualified compiler SHA-256: f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca
+7020a3b88470ed3d38096610f62223650a9bb041838f1ccee2272fb203ca693c  coax/web/api/mesh-policy.coax
+87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f  coax/lib/nostr/json.coax
+34b5695d8dc1f566569828984d96f19c3df251a20f45a83f617ef9c768dcb26e  coax/web/api/mesh-policy.generated.c
+8a6b945492c3262df420744470a8e361f0e45b2ffa00fe85a4fc6856d4e117b3  coax/web/api/mesh-policy.generated.h

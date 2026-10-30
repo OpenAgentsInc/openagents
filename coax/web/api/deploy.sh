@@ -68,6 +68,10 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
     env+="@OA_PUBLISH_RELAY=wss://relay.openagents.com@OA_SITE_BUCKET=$site@OA_PUBLISH_VISIBILITY=$vis"
   fi
   # Inference credit (inference.c): our Spark wallet, oa-spark (coax/web/api/spark/deploy.sh), when deployed.
+  # Authenticated free SystemOne mesh routes are deployment-owned pinned JSON.
+  # Secret Manager avoids separator/escaping drift and survives future deploys.
+  local mesh="oa-mesh-routes-$6"
+  if gcloud secrets describe "$mesh" --project "$project" >/dev/null 2>&1; then secrets+=",OA_MESH_ROUTES=$mesh:latest"; fi
   local spark
   spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$spark" ]] && env+="@OA_SPARK_URL=$spark"

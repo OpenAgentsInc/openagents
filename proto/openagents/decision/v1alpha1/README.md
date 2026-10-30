@@ -22,3 +22,11 @@ refuses. It answers in protobuf when `Accept: application/x-protobuf`.
 text format accepts; probabilities carry the JSON answer's values (at most
 nine decimals), parsed back exactly. The descriptor is
 `proto/descriptors/systemone.pb`, profile `systemone` in `modules.json`.
+
+
+The authenticated public mesh edge, `/api/v1/systemone`, preserves the same
+JSON contract and checkpoint/provider service identity. Its NIP-98/site-session
+authentication, free demo bounds and private fleet routing are specified in
+[the public mesh profile](../../../../docs/protocol/systemone-public-mesh.md).
+The public edge currently accepts JSON only; protobuf support of the native
+loopback server does not imply protobuf negotiation on this edge.

@@ -89,6 +89,34 @@ static bool first_use(PGconn *db, const nostr_event *ev) {
   return ok;
 }
 
+// Existing site identity for other authenticated same-origin product routes.
+// Verification/cookie/database effects only: the caller's Coax policy decides
+// whether these observations admit the operation. An explicit bad signature
+// never falls back to a cookie. Signed writes must additionally bind their body.
+bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen) {
+  char auth[4096]; who[0] = 0; *payload = false; *unseen = false;
+  const char *header = api_header(q, "Authorization", auth, sizeof auth);
+  *signed_req = header != NULL;
+  if (header) {
+    if (strncmp(auth, "Nostr ", 6)) return false;
+    char url[4300]; snprintf(url, sizeof url, "%s%s", origin(), q->target);
+    nostr_event ev; char err[160];
+    if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err)) return false;
+    *payload = ev.payload[0] != 0;
+    if (*payload) *unseen = first_use(db, &ev);
+    memcpy(who, ev.pubkey, 65);
+    return true;
+  }
+  char token[65]; cookie_named(q, SITE_COOKIE, token);
+  if (!token[0]) return false;
+  const char *v[1] = {token};
+  PGresult *r = PQexecParams(db, "SELECT signin.session($1)", 1, NULL, v, NULL, NULL, 0);
+  bool ok = PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0);
+  if (ok) snprintf(who, 65, "%s", PQgetvalue(r, 0, 0));
+  PQclear(r);
+  return ok;
+}
+
 static void no(const request *q) { api_respond(q->fd, 404, "application/json", PRIVATE_HEADERS, NO, strlen(NO)); }
 
 // The page. Both shells name nothing: the slug is already in the address.

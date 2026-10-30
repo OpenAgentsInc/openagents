@@ -1,0 +1,253 @@
+// Public SystemOne admission. The host supplies verified identity observations,
+// atomic database counts and bytes from a deployment-owned native fleet route.
+// No caller can select an upstream, provider or checkpoint. This is a free,
+// bounded demo profile; it does not grant paid inference credit or attestation.
+#load "../../lib/nostr/json.coax";
+#authority;
+
+MgField :: struct {ok:bool;kind:int;value:string;}
+MgRoute :: struct {status:int;url:string;identity:string;provider:string;}
+MG_BODY_MAX :: 262144;
+MG_ROUTES :: "{\"elephant-1\":{\"url\":\"http://127.0.0.1:8801/v1/systemone\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
+MG_BODY :: "{\"model\":\"elephant-1\",\"state\":\"water\",\"questions\":{\"wet\":{\"type\":\"choice\",\"criteria\":{\"yes\":null,\"no\":null}}}}";
+MG_GOOD :: "{\"model\":\"elephant-1\",\"answers\":{},\"service\":{\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
+
+#test "HTTP admission precedes authentication and has fixed byte bounds" {
+    #assert mg_http("POST","application/json",1)==200;
+    #assert mg_http("POST","application/json; charset=utf-8",MG_BODY_MAX)==200;
+    #assert mg_http("GET","application/json",1)==405;
+    #assert mg_http("POST","text/plain",1)==415;
+    #assert mg_http("POST","application/jsonx",1)==415;
+    #assert mg_http("POST","application/json ",1)==415;
+    #assert mg_http("POST","application/json",0)==413;
+    #assert mg_http("POST","application/json",MG_BODY_MAX+1)==413;
+    #assert mg_http("POST","application/json",-1)==413;
+}
+mg_http :: (method:string,content_type:string,bytes:int)->int #export_c {
+    if method!="POST" {return 405;}
+    if bytes<1 || bytes>MG_BODY_MAX {return 413;}
+    if content_type!="application/json" && content_type!="application/json; charset=utf-8" {return 415;}
+    return 200;
+}
+
+#test "signed requests require body binding and first use; cookie writes require same origin" {
+    #assert mg_auth(true,true,true,true,false,false)==200;
+    #assert mg_auth(true,true,true,true,true,true)==200;
+    #assert mg_auth(true,false,false,false,true,true)==200;
+    #assert mg_auth(false,true,true,true,false,false)==401;
+    #assert mg_auth(false,false,false,false,true,true)==401;
+    #assert mg_auth(true,true,false,true,false,false)==401;
+    #assert mg_auth(true,true,true,false,false,false)==401;
+    #assert mg_auth(true,false,true,true,false,false)==403;
+    #assert mg_auth(true,false,true,true,false,true)==403;
+    #assert mg_auth(true,false,true,true,true,false)==403;
+    #assert mg_auth(true,true,true,true,true,false)==403;
+}
+mg_auth :: (authenticated:bool,signed_request:bool,payload_bound:bool,first_use:bool,has_origin:bool,same_origin:bool)->int #export_c {
+    if !authenticated {return 401;}
+    if has_origin && !same_origin {return 403;}
+    if signed_request {if !payload_bound || !first_use {return 401;}}
+    else if !has_origin || !same_origin {return 403;}
+    return 200;
+}
+
+#test "limits apply to all identities and count only admitted in-flight leases" {
+    #assert mg_budget(0,0,0,0,0)==200;
+    #assert mg_budget(11,119,1199,0,3)==200;
+    #assert mg_budget(12,0,0,0,0)==429;
+    #assert mg_budget(0,120,0,0,0)==429;
+    #assert mg_budget(0,0,1200,0,0)==429;
+    #assert mg_budget(0,0,0,1,0)==429;
+    #assert mg_budget(0,0,0,0,4)==429;
+    #assert mg_budget(-1,0,0,0,0)==503;
+    #assert mg_budget(0,-1,0,0,0)==503;
+    #assert mg_budget(0,0,-1,0,0)==503;
+    #assert mg_budget(0,0,0,-1,0)==503;
+    #assert mg_budget(0,0,0,0,-1)==503;
+}
+mg_budget :: (minute:int,day:int,global_day:int,active:int,global_active:int)->int #export_c {
+    if minute<0 || day<0 || global_day<0 || active<0 || global_active<0 {return 503;}
+    if minute>=12 || day>=120 || global_day>=1200 || active>=1 || global_active>=4 {return 429;}
+    return 200;
+}
+
+#test "field extraction consumes a whole valid object and refuses duplicate decoded keys" {
+    f:=mg_field("{\"x\":\"abc\",\"other\":[{}]}","x");#assert f.ok && f.kind==JSON_STRING && f.value=="abc";
+    #assert !mg_field("[]","x").ok && !mg_field("{}","x").ok;
+    #assert !mg_field("{\"x\":1,\"x\":2}","x").ok;
+    #assert !mg_field("{\"x\":1,\"\\u0078\":2}","x").ok;
+    #assert !mg_field("{\"x\":\"abc\"} trailing","x").ok;
+    #assert !mg_field("{\"x\":]}","x").ok;
+    #assert mg_field("{\"x\":{\"n\":2}}","x").value=="{\"n\":2}";
+    #assert mg_field("{\"other\":[{}],\"\\u0078\":true}","x").kind==JSON_TRUE;
+}
+mg_field :: (text:string,name:string)->MgField {
+    if !json_valid(text) {return MgField.{};}
+    j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return MgField.{};}
+    f:MgField;
+    while true {
+        t:=json_next(j[..]);if t==JSON_OBJECT_END {return f;}
+        match:=json_is(json_text(j[..]),name);t=json_next(j[..]);from:=j[0].from;to:=j[0].to;
+        ok:=json_skip(j[..]);
+        if match {
+            if f.ok {return MgField.{};}
+            f=MgField.{ok=true,kind=t,value=ifx t==JSON_STRING then text[from..<to] else text[from..<j[0].at]};
+        }
+    }
+    return MgField.{};
+}
+
+#test "checkpoint and provider identifiers are exact lowercase 32-byte hex" {
+    #assert mg_hex("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !mg_hex("") && !mg_hex("0123456789abcdef");
+    #assert !mg_hex("g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !mg_hex("/123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !mg_hex(":123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !mg_hex("`123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    #assert !mg_hex("A123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+}
+mg_hex :: (text:string)->bool {
+    if text.count!=64 {return false;}
+    for c:text {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+    return true;
+}
+
+#test "deployment routes alone bind the model, checkpoint, provider and upstream" {
+    r:=mg_route(MG_BODY,MG_ROUTES);#assert r.status==200 && r.url=="http://127.0.0.1:8801/v1/systemone";
+    #assert r.identity=="elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" && r.provider=="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    #assert mg_route("{}",MG_ROUTES).status==400;
+    #assert mg_route("{\"model\":3}",MG_ROUTES).status==400;
+    #assert mg_route("{\"model\":\"\"}",MG_ROUTES).status==400;
+    #assert mg_route("{\"model\":\"other\"}",MG_ROUTES).status==400;
+    #assert mg_route(MG_BODY,"{}").status==400;
+    #assert mg_route(MG_BODY,"{\"elephant-1\":null}").status==503;
+    #assert mg_route(MG_BODY,"{\"elephant-1\":{}}").status==503;
+    #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":1,\"identity\":\"x\",\"provider\":\"x\"}}").status==503;
+    #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":\"x\",\"identity\":1,\"provider\":\"x\"}}").status==503;
+    #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":\"x\",\"identity\":\"x\",\"provider\":1}}").status==503;
+}
+mg_route :: (body:string,routes:string)->MgRoute #export_c {
+    model:=mg_field(body,"model");
+    if model.kind!=JSON_STRING || model.value.count<1 || model.value.count>128 {return MgRoute.{status=400};}
+    row:=mg_field(routes,model.value);if !row.ok {return MgRoute.{status=400};}
+    if row.kind!=JSON_OBJECT {return MgRoute.{status=503};}
+    url:=mg_field(row.value,"url");identity:=mg_field(row.value,"identity");provider:=mg_field(row.value,"provider");
+    if provider.kind!=JSON_STRING {return MgRoute.{status=503};}
+    if !mg_identity(model.value,identity.value,provider.value) || !mg_url(url.value) {return MgRoute.{status=503};}
+    return MgRoute.{status=200,url=url.value,identity=identity.value,provider=provider.value};
+}
+
+#test "the public response cannot substitute a model, checkpoint or provider" {
+    r:=mg_route(MG_BODY,MG_ROUTES);#assert mg_response(MG_BODY,MG_GOOD,r);
+    #assert !mg_response(MG_BODY,"{}",r);
+    #assert !mg_response(MG_BODY,"{\"model\":\"other\"}",r);
+    #assert !mg_response(MG_BODY,"{\"model\":\"elephant-1\",\"service\":{}}",r);
+    #assert !mg_response(MG_BODY,"{\"model\":\"elephant-1\",\"service\":null}",r);
+    #assert !mg_response(MG_BODY,"{\"model\":\"elephant-1\",\"service\":{\"identity\":1,\"provider\":\"x\"}}",r);
+    #assert !mg_response(MG_BODY,"{\"model\":\"elephant-1\",\"service\":{\"identity\":\"x\",\"provider\":1}}",r);
+    #assert !mg_response(MG_BODY,MG_GOOD,MgRoute.{status=503});
+}
+mg_response :: (body:string,response:string,route:MgRoute)->bool #export_c {
+    if route.status!=200 {return false;}
+    wanted:=mg_field(body,"model");model:=mg_field(response,"model");service:=mg_field(response,"service");
+    if wanted.kind!=JSON_STRING || model.kind!=JSON_STRING || model.value!=wanted.value {return false;}
+    identity:=mg_field(service.value,"identity");provider:=mg_field(service.value,"provider");
+    return identity.kind==JSON_STRING && identity.value==route.identity && provider.kind==JSON_STRING && provider.value==route.provider;
+}
+
+
+#test "identity binding has no alias, separator, digest or provider substitutions" {
+    hash:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    good:="m@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+    #assert mg_identity("m",good,hash);
+    #assert !mg_identity("m",good[0..<good.count-1],hash);
+    #assert !mg_identity("n",good,hash);
+    #assert !mg_identity("m","m@sha257:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",hash);
+    #assert !mg_identity("m","m@sha256:g123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",hash);
+    #assert !mg_identity("m",good,"bad");
+    #assert mg_route("{\"model\":\"elephant-1\"}","{\"elephant-1\":{\"url\":\"http://x/v1/systemone\",\"identity\":\"bad\",\"provider\":\"bad\"}}").status==503;
+}
+mg_identity :: (model:string,identity:string,provider:string)->bool {
+    prefix:=model.count;
+    if identity.count!=prefix+72 {return false;}
+    return identity[0..<prefix]==model && identity[prefix..<prefix+8]=="@sha256:" && mg_hex(identity[prefix+8..<identity.count]) && mg_hex(provider);
+}
+
+#test "upstream URLs use only HTTP(S) and the fixed SystemOne route" {
+    #assert mg_url("http://x/v1/systemone") && mg_url("https://x/v1/systemone");
+    #assert !mg_url("http://x/v1/systemon") && !mg_url("https://x/v1/other") && !mg_url("file:///v1/systemone");
+    #assert !mg_url("ftp://xxxx/v1/systemone") && !mg_url("http://x/v1/systemone?x=1");
+    long:[1025]u8;for i:0..<1025 {long[i]='a';}head:="http://";for i:0..<head.count {long[i]=head[i];}
+    tail:="/v1/systemone";for n:[3]int.[1023,1024,1025] {for i:0..<tail.count {long[n-tail.count+i]=tail[i];}#assert mg_url(cast(string)long[0..<n])==(n<=1024);}
+    #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":\"bad\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}").status==503;
+}
+#forall "URL byte classes" byte:0..<256 {
+    c:=cast(u8)byte;
+    allowed:="!#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[]^_`abcdefghijklmnopqrstuvwxyz{|}~";
+    expected:=false;for v:allowed {if v==c {expected=true;}}
+    raw:[22]u8;source:="http://x/v1/systemone";for i:0..<source.count {raw[i]=source[i];}raw[7]=c;
+    #assert mg_url(cast(string)raw[0..<source.count])==expected;
+}
+mg_url :: (url:string)->bool {
+    if url.count>1024 {return false;}
+    http:=mg_starts(url,"http://");https:=mg_starts(url,"https://");
+    if !http && !https {return false;}
+    start:=ifx http then 7 else 8;
+    if url.count<=start+13 {return false;}
+    if !mg_ends(url,"/v1/systemone") {return false;}
+    for c:url {if c<=32 || c>=127 || c=='\\' || c=='"' {return false;}}
+    return true;
+}
+
+#test "route model length boundaries are checked before lookup" {
+    name:[129]u8;for i:0..<129 {name[i]='m';}
+    for size:[3]int.[1,128,129] {
+        body:[256]u8;at:=json_raw(body[..],0,"{\"model\":");at=json_write_string(body[..],at,cast(string)name[0..<size]);at=json_raw(body[..],at,"}");
+        routes:[1024]u8;n:=json_raw(routes[..],0,"{");n=json_write_string(routes[..],n,cast(string)name[0..<size]);
+        n=json_raw(routes[..],n,":{\"url\":\"http://x/v1/systemone\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"identity\":\"");
+        n=json_raw(routes[..],n,cast(string)name[0..<size]);n=json_raw(routes[..],n,"@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}");
+        #assert mg_route(cast(string)body[0..<at],cast(string)routes[0..<n]).status==(ifx size<=128 then 200 else 400);
+    }
+    #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":\"http://x/v1/systemone\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":1}}").status==503;
+}
+
+#test "response fields each independently enforce their type and equality" {
+    r:=MgRoute.{status=200,identity="i",provider="p"};
+    yes:="{\"model\":\"m\",\"service\":{\"identity\":\"i\",\"provider\":\"p\"}}";
+    #assert mg_response("{\"model\":\"m\"}",yes,r);
+    #assert !mg_response("{\"model\":3}","{\"model\":\"3\",\"service\":{\"identity\":\"i\",\"provider\":\"p\"}}",r);
+    #assert !mg_response("{\"model\":\"3\"}","{\"model\":3,\"service\":{\"identity\":\"i\",\"provider\":\"p\"}}",r);
+    #assert !mg_response("{\"model\":\"n\"}",yes,r);
+    #assert !mg_response("{}","{\"model\":\"\",\"service\":{\"identity\":\"i\",\"provider\":\"p\"}}",r);
+    #assert !mg_response("{\"model\":\"m\"}","{\"model\":\"m\",\"service\":{\"identity\":\"j\",\"provider\":\"p\"}}",r);
+    #assert !mg_response("{\"model\":\"m\"}","{\"model\":\"m\",\"service\":{\"identity\":\"i\",\"provider\":\"q\"}}",r);
+    r.identity="1";#assert !mg_response("{\"model\":\"m\"}","{\"model\":\"m\",\"service\":{\"identity\":1,\"provider\":\"p\"}}",r);
+    r.identity="i";r.provider="1";#assert !mg_response("{\"model\":\"m\"}","{\"model\":\"m\",\"service\":{\"identity\":\"i\",\"provider\":1}}",r);
+}
+
+
+#test "prefix and suffix probes are bounded and preserve equal-length matches" {
+    #assert mg_starts("http://x","http://") && mg_starts("http://","http://");
+    #assert !mg_starts("http:/","http://") && !mg_starts("","http://") && !mg_starts("https:/","http://");
+    #assert mg_starts("abc","");
+    #assert !mg_starts("xttp://x","http://");
+    #assert mg_ends("x/v1/systemone","/v1/systemone") && mg_ends("/v1/systemone","/v1/systemone");
+    #assert !mg_ends("v1/systemone","/v1/systemone") && !mg_ends("x/v1/systemoneX","/v1/systemone") && mg_ends("abc","");
+    #assert !mg_url("http:///v1/systemone") && !mg_url("https:///v1/systemone");
+    #assert !mg_url("http:/") && !mg_url("");
+}
+mg_starts :: (value:string,prefix:string)->bool {
+    for i:0..<prefix.count {if i>=value.count || value[i]!=prefix[i] {return false;}}
+    return true;
+}
+mg_ends :: (value:string,suffix:string)->bool {
+    if value.count<suffix.count {return false;}
+    return value[value.count-suffix.count..<value.count]==suffix;
+}
+
+#test "numeric model and provider tokens cannot impersonate canonical strings" {
+    row:="{\"3\":{\"url\":\"http://x/v1/systemone\",\"identity\":\"3@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
+    #assert mg_route("{\"model\":\"3\"}",row).status==200;
+    #assert mg_route("{\"model\":3}",row).status==400;
+    #assert mg_route(MG_BODY,"{\"elephant-1\":{\"url\":\"http://x/v1/systemone\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":1234567890123456789012345678901234567890123456789012345678901234}}").status==503;
+}
