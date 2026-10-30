@@ -41,6 +41,9 @@ class Probe(unittest.TestCase):
    self.assertTrue(pathlib.Path(self.env['ARGS']).exists());start=time.monotonic();p.send_signal(signal.SIGTERM);p.communicate(timeout=3);self.assertLess(time.monotonic()-start,3);self.assertNotEqual(p.returncode,0)
   finally:
    if p.poll() is None:p.kill();p.wait()
+ def test_unset_home_never_blocks_an_explicit_or_packaged_oracle(self):
+  for name in ('HOME','XDG_CACHE_HOME','OA_ATT_ORACLE_TARGET','OA_ATT_ORACLE_BIN'):self.env.pop(name,None)
+  self.assertTrue(self.run_probe()['ok'])
  def test_bad_timeout_never_runs_oracle(self):
   self.assertFalse(self.run_probe(False,('--timeout-seconds','0'))['ok']);self.assertFalse(pathlib.Path(self.env['ARGS']).exists())
 if __name__=='__main__':unittest.main()

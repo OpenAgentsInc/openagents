@@ -3,7 +3,7 @@
 set -eu
 umask 077
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-oracle_bin=${OA_ATT_ORACLE_BIN:-${OA_ATT_ORACLE_TARGET:-${XDG_CACHE_HOME:-$HOME/.cache}/openagents/att-oracle-853417f290e7cae1df18c081b89b0818432e60af}/debug/oa-att}
+oracle_bin=${OA_ATT_ORACLE_BIN:-${OA_ATT_ORACLE_TARGET:-${XDG_CACHE_HOME:-${HOME:-/tmp}/.cache}/openagents/att-oracle-853417f290e7cae1df18c081b89b0818432e60af}/debug/oa-att}
 if [ -z "${OA_ATT_ORACLE_BIN:-}" ] && [ -x "$script_dir/oa-att" ]; then oracle_bin=$script_dir/oa-att; fi
 evidence_base=${TMPDIR:-/tmp}
 seconds=120

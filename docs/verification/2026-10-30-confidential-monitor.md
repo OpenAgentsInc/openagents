@@ -80,9 +80,14 @@ A fleet-watch image with `sh`, `jq`, `timeout` and core utilities can copy that
 directory from the component and invoke:
 
 ```sh
+OA_ATT_ORACLE_BIN=/opt/oa-confidential/oa-att \
 /opt/oa-confidential/probe-confidential-pylon.sh \
   --evidence-dir /tmp/confidential-proofs --timeout-seconds 120
 ```
+
+Set that explicit oracle path in the watcher environment. The current source
+also handles an absent HOME before its default-cache lookup; the published
+component was qualified with HOME absent and the explicit oracle environment.
 
 The image itself defaults to the bare oracle executable, so direct
 `docker run --rm IMAGE verify --publisher HEX` remains available. Scheduling,
@@ -119,7 +124,25 @@ the independent sealed probe supplies the vendor-verification evidence.
   lock closure, portable component permissions, and refusal to overwrite output.
 - A fresh Mac shell-wrapper round passed: 8,506 ms native CPU inference,
   8,898 ms relay round, score `0.9681498647087364`, and a checked sealed receipt.
-- Linux component build and its real probe are recorded below after completion.
+- The additional unset-HOME check was red before the one-line default-cache
+  guard and green afterward; the earlier six unchanged paths were not rerun.
+- Component build `68785d7f-b551-4ba2-99f5-2f6677b9b122` succeeded. Its immutable
+  image is
+  `us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-confidential-oracle@sha256:e3b3f619c73fea64f30e0a2caea9e21d0898d00aa313f8151ed527e8a1319a3f`.
+- One actual Linux static-component round passed in Cloud Build
+  `1be2b122-e403-480a-bfe5-8470162c6286`, with the packaged wrapper, HOME absent
+  and explicit oracle path. It reported 8,530 ms CPU inference, 8,714 ms relay
+  round, score `0.967501235641538` and a checked sealed receipt. No component
+  rebuild or oracle regression suite was run.
+- The static binary SHA-256 is
+  `33cd41b1021ef81e248e76ca52cc3e134319d9594f387bbc7005e0fe7dba31e2`.
+
+Public reports: [Mac round](data/oct30-confidential-monitor/mac-round.json),
+[Linux round](data/oct30-confidential-monitor/linux-round.json),
+[Linux summary](data/oct30-confidential-monitor/linux-summary.json), and
+[source/lock provenance](data/oct30-confidential-monitor/oracle-source.json).
+The source and binary pins describe the optional historical oracle; the
+current shell monitor/controller remains separately versioned.
 
 The existing oracle's unchanged cryptographic suite, ordinary API, model kernels,
 web release and unrelated compiler gates were not rerun for this tooling change.
