@@ -586,6 +586,7 @@ ffs_chat :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
     return n;
   }
   // the full box: who's here, the last six lines, and the line you type
+  if ph { row = 21 * k; }   // a finger's room between the lines' buttons
   bw := ifx ph then w - 32 * k else lo(400 * k, w * 0.34);
   lines := r[0].lines;
   bh := pad * 2 + f32(lines + 1) * row + 30 * k;
@@ -612,7 +613,7 @@ ffs_chat :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
   } else if o > 0 {
     n = draw_text(out, n, cast(string) head[0..<o], x0 + pad, base, cap * 0.9, GAP, SPACE, ink(k, 0.6, CREAM_R, CREAM_G, CREAM_B), false, false);
   }
-  base += row + 4 * k;
+  base += row + (ifx ph then 0.0f32 else 4 * k);
   room := bw - 2 * pad;
   open := g[0].typing || ph;   // the lines' buttons show while you type (always on a phone's open box)
   for j: 0..<lines {
@@ -624,12 +625,12 @@ ffs_chat :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
     n = draw_text(out, n, ls, x0 + pad, base, cap, GAP, SPACE, ink(k, 0.85, GOLD_R, GOLD_G, GOLD_B), false, false);
     bx := x0 + bw - pad * 0.5;
     if open && g[0].admin && room_line_num(r, j) > 0 {
-      rb := Box.{x0 = bx - text_width("REMOVE", cap * 0.8) - 14 * k, y0 = base - cap - 4 * k, x1 = bx, y1 = base + 4 * k};
+      rb := Box.{x0 = bx - text_width("REMOVE", cap * 0.8) - 14 * k, y0 = base - cap - 4 * k, x1 = bx, y1 = base + 3 * k};
       n = ffs_btn(s, out, n, rb, "REMOVE", SB_REMOVE_LINE, room_line_num(r, j), cap * 0.8);
       bx = rb.x0 - 4 * k;
     }
     if open && !room_line_mine(r, j) && room_line_from(r, j).count > 0 {
-      bb := Box.{x0 = bx - text_width("BLOCK", cap * 0.8) - 14 * k, y0 = base - cap - 4 * k, x1 = bx, y1 = base + 4 * k};
+      bb := Box.{x0 = bx - text_width("BLOCK", cap * 0.8) - 14 * k, y0 = base - cap - 4 * k, x1 = bx, y1 = base + 3 * k};
       n = ffs_btn(s, out, n, bb, "BLOCK", SB_BLOCK_LINE, j, cap * 0.8);
       bx = bb.x0 - 4 * k;
     }
