@@ -57,9 +57,42 @@ its current launch/PID/stop details are in `/tmp/oct30-fleet-live/run.json`
 and its log is `/tmp/oct30-fleet-live/fleet.log`. The guarded successor
 started as PID 48404; its recorded stop command is `kill -TERM 48404`.
 
+## Use Chapter 21 receipts and replay
+
+A separate adapter is retained on `http://127.0.0.1:8799/v1/systemone`.
+Send the same JSON request shown above to port 8799. It pins the original
+Linux Pylon, publishes an accepted-work receipt, and selects every result
+for an independent replay on the Mac. The configured toy CPU comparison
+then publishes a signed pass/fail/inconclusive label. This remains free,
+with throwaway keys and synthetic prompts.
+
+Its current command, binary hashes, log and recorded stop target are in
+`/tmp/oct30-mesh-public/run.json`; the retained PID is 38998. Check that
+metadata before stopping a historical PID. Stop this adapter with
+`kill -TERM 38998` before shutting down its Pylons. Port 8798 remains the
+ordinary Chapter 20 adapter.
+
+[Chapter 21](../psionic/book/ch021-check-the-mesh.md) gives the source build,
+explicit trust flags, pool publication and independent verification commands.
+The retained pool binary is `/tmp/oct30-pool-native-v4/psionic-mesh-pool`.
+The public capacity proof is in `/tmp/oct30-mesh-public-capacity/`: exact
+argv, signed public inputs, generated protobuf bundle and independent
+recomputation. That snapshot has **2 Pylons, 8 total/free slots, 1 accepted job
+and 1 check-pass**. Its aggregate ID is
+`36669dc4fd9b01ffaa4e66e7df63cc9750404f97d0a59150987fe42bac25f459`.
+
+Use a closed minute window containing both work and check, with explicit
+provider/buyer/checker keys. Capture close to a minute boundary if current
+capacity is part of the demonstration: relays can replace older addressable
+beacons before a historical query reads them. Keep the public bundle for
+stable offline verification. The aggregate expires after five minutes;
+offline historical verification still reports `verified:true` with
+`current:false`. A missing historical beacon does not show a machine was
+offline. Recomputing a snapshot does not prove global relay completeness.
+
 ## Stop the retained nodes
 
-Stop the adapter first if ending the whole demonstration. Then stop the
+Stop both HTTP adapters first if ending the whole demonstration. Then stop the
 script-owned Pylon/engine pairs:
 
 ```sh
@@ -77,3 +110,12 @@ proof, source/compiler/binary identities, both native joins, deployed
 page/browser proof and the guarded Chapter 20 successor. Chapter 20's 419
 authority mutants were all killed; prior and successor end-to-end records
 retain their distinct source hashes.
+
+Chapter 21 adds 1,268 killed authority mutants with zero survivors, real
+Linux→Mac public replay, and independently recomputed signed pool/bundle
+proofs. Exact policy inputs and scope are in
+[the pool policy record](verification/psionic-mesh-pool-policy-2026-10-30.md)
+and [the native mesh record](verification/psionic-mesh-native-2026-10-30.md).
+
+The [independent end-to-end record](verification/2026-10-30-mesh-e2e.md)
+retains the actual signed public capacity bundle and exact replay arguments.

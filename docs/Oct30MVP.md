@@ -12,13 +12,18 @@ item lands, and record them in §4.
 
 ---
 
-**Demo status — 2026-10-30 15:41 UTC:** the public Pylon page/join flow and
-Mac/Linux rehearsal have passed. The guarded native Chapter 20 API is also
-running on the operator Mac. [Operator runbook](Oct30-demo-runbook.md);
-exact source/artifact evidence is in §4. Source builds are used; optional
-prebuilt bundles (C) are not needed for the rehearsed path.
+**Demo status — 2026-10-30 16:57 UTC:** the public Pylon page/join flow,
+Mac/Linux rehearsal and native Chapter 20 API are ready. Chapter 21 adds
+real Linux work, independent Mac replay, signed receipts/checks and a public
+pool snapshot independently reproduced as 2 Pylons, 8 slots, 1 job and 1 pass.
+[Operator runbook](Oct30-demo-runbook.md); exact source/artifact evidence is
+in §4. Source builds are used; optional prebuilt bundles (C) are not needed
+for the rehearsed path.
 
-## 1. What exists and works today (on `main`)
+## 1. Original planning inventory
+
+This section preserves the starting inventory; current verified status is
+recorded above and in §4.
 
 ### The Pylon program
 
@@ -404,3 +409,44 @@ and E. Then F. G about an hour before the talk.
   [`data/oct30-pylon-full-identity`](verification/data/oct30-pylon-full-identity/).
   No overlapping manual site promotion was needed, and no unrelated
   Everglade visual change was approved.
+
+- **Chapter 21 complete, 2026-10-30 16:57 UTC.** Source schemas, memory-only
+  protobuf witnesses, native producer/checker, strict receipt/label readers,
+  bounded pool reduction, public bundle codecs, CLI and runnable book are
+  on main through `ab182d2bb1` (pool source `0123d447f4`). All 11 authority
+  roots close with **1,268 mutants killed, zero survivors**, retaining their
+  exact historical input records. Signed native/adversarial tests include
+  actual Coax relay/Pylons/toy engines, all three decision types, private
+  pipe transport, original ciphertext/plaintext binding, explicit backend
+  trust and independent protobuf interoperability. The pool's 20-case
+  v3 record stays distinct from the independently reproduced malformed
+  envelope failure and its v4 fix. Passing inputs were not retested for
+  unrelated main commits.
+
+  The actual public path returned HTTP 200 through Linux in 761.808 ms,
+  published receipt `45ea6e2201172308ca55f3a2de859dabd41b28d6d1276c0a737197e3ea0ada11`,
+  and independently replayed on the Mac to a signed check-pass. A first
+  historical-window pool correctly had no retained historical beacons.
+  A separate minute-boundary capacity snapshot was ACKed as
+  `36669dc4fd9b01ffaa4e66e7df63cc9750404f97d0a59150987fe42bac25f459`:
+  **2 Pylons, 8 total/free slots, 1 accepted job, 1 check-pass, zero paid**.
+  Native offline verification and a separate Bun oracle reproduced its
+  complete body and every input commitment without another job or publish.
+  Current beacons remain replaceable; retained public bundles make historical
+  input cohorts reproducible. Totals remain observed/provider/buyer claims,
+  not global completeness or model-execution attestation.
+
+  The extra loopback adapter remains on port 8799 with its run metadata in
+  `/tmp/oct30-mesh-public/run.json`. Existing 8798 and both retained Pylons
+  were preserved. Builds remain Python-free; official protobuf is an optional
+  independent test oracle. See the [Chapter 21 book](../psionic/book/ch021-check-the-mesh.md),
+  [native record](verification/psionic-mesh-native-2026-10-30.md) and
+  [pool policy record](verification/psionic-mesh-pool-policy-2026-10-30.md).
+  Independent integration cases and retained public bundles are in the
+  [end-to-end record](verification/2026-10-30-mesh-e2e.md).
+
+  Independent integration evidence is on main `9306a96a5d`: 61 distinct Mac
+  cases, preserving separate source/artifact versions. Linux GCC plain and
+  sanitized builds also qualify; v4 adds the new malformed-envelope refusal
+  and verifies the same actual two-Pylon public bundle under ASan/UBSan.
+  See [Linux portability](verification/2026-10-30-pool-linux-artifacts.md).
