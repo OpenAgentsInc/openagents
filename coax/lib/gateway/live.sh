@@ -31,4 +31,11 @@ if [ "$want" = all ] || [ "$want" = vertex ]; then
     echo "vertex: skipped (no VERTEX_ACCESS_TOKEN, GOOGLE_APPLICATION_CREDENTIALS or $secrets/vertex-sa-inference.json)"
   fi
 fi
+if [ "$want" = all ] || [ "$want" = gemini ]; then
+  if [ -z "${GEMINI_API_KEY:-}" ] && [ -f "$secrets/openagents-gemini-provider.env" ]; then
+    set -a; . "$secrets/openagents-gemini-provider.env"; set +a
+  fi
+  if [ -n "${GEMINI_API_KEY:-}" ]; then run gemini "$GEMINI_API_KEY"
+  else echo "gemini: skipped (no GEMINI_API_KEY or $secrets/openagents-gemini-provider.env)"; fi
+fi
 [ "$failed" = 0 ] && echo "live: ok" || { echo "live: FAILED"; exit 1; }

@@ -68,6 +68,12 @@ main :: () {
     g := gw_vertex(v[..]);
     ok = live_count(g, GW_VERTEX_FLASH);
     ok = live_schema(g, GW_VERTEX_FLASH) && ok;
+    native := gw_vertex_native(v[..], GW_VERTEX_FLASH);
+    ok = live_count(native, GW_VERTEX_FLASH) && ok;
+  } else if name == "gemini" {
+    ub: [512] u8; ub2: [512] u8;
+    ok = live_count(gw_gemini(GW_GEMINI_FLASH, true, ub[..]), GW_GEMINI_FLASH);
+    ok = live_schema(gw_gemini(GW_GEMINI_FLASH, false, ub2[..]), GW_GEMINI_FLASH) && ok;
   } else {
     print("GW_LIVE names no gateway this smoke knows: %\n", name);
   }

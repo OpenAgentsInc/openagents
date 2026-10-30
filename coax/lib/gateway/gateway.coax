@@ -10,9 +10,9 @@
 //   Gateway    { name, url, key_env, key_header, scheme, wire }
 //
 // A Gateway's translate and parse are chosen by its wire (gw_translate,
-// gw_parse, gw_parse_whole): Open Responses and Gemini's native stream live
-// here, Chat Completions in chat.coax; Anthropic's Messages joins as its
-// task lands.
+// gw_parse, gw_parse_whole): Open Responses and the Gemini stream's parser
+// live here, Chat Completions in chat.coax, the Gemini request in
+// gemini.coax; Anthropic's Messages joins as its task lands.
 // GwCall runs one request through the streaming curl transport
 // (transport.coax) and the SSE reader (sse.coax) and hands back GwEvents as
 // they arrive, without blocking, for a frame loop or a plan to poll.
@@ -134,6 +134,7 @@ gw_translate :: (g: Gateway, req: GwRequest, out: [] u8, why: [] string) -> stri
   n := -1;
   if g.wire == GW_WIRE_RESPONSES { n = gw_responses_body(req, out); }
   else if g.wire == GW_WIRE_CHAT { n = gw_chat_body(req, g.flags, out); }
+  else if g.wire == GW_WIRE_GEMINI { n = gw_gemini_body(req, g.flags, out); }
   else { why[0] = "this gateway's wire has no translator yet"; return ""; }
   if n < 0 { why[0] = "the request does not fit its buffer"; return ""; }
   return cast(string) out[0..<n];
@@ -487,6 +488,7 @@ gw_call_close :: (call: [] GwCall) { gw_close(call[0].st[..]); call[0].finished 
 // ---------------------------------------------------------------- checks
 
 #load "chat.coax";
+#load "gemini.coax";
 #load "fixtures.coax";
 
 GwReplay :: struct {

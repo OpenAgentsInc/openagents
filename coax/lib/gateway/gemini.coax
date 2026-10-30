@@ -1,0 +1,138 @@
+// Gemini's native API (docs/coder/microcoder.md, row 4): the request
+// translator for generateContent and streamGenerateContent, shared by the
+// Gemini Developer API (the caller's key, x-goog-api-key) and Vertex's
+// native endpoint (vertex.coax, gw_vertex_native). The stream is read by
+// gw_parse_gemini in gateway.coax. From the old crates/inference
+// upstream/vertex.rs (body, the codec both used) and upstream/gemini.rs.
+//
+// Mapping: system becomes systemInstruction; user and assistant messages
+// become user and model contents (neighbours of one role merge into one
+// turn); a schema becomes responseMimeType application/json with
+// responseJsonSchema; the effort becomes a thinkingLevel (Gemini 3), or a
+// thinkingBudget with GW_GEMINI_BUDGET (Gemini 2.5), always with thought
+// summaries on so reasoning streams as reasoning. Loaded by gateway.coax,
+// which dispatches to it on GW_WIRE_GEMINI.
+
+
+GW_GEMINI_BUDGET :: 4;           // Gateway.flags: a Gemini 2.5 model takes a token budget, not a level
+GW_GEMINI_KEY_ENV :: "GEMINI_API_KEY";
+GW_GEMINI_HOST :: "https://generativelanguage.googleapis.com";
+GW_GEMINI_FLASH :: "gemini-3.8-flash";
+
+gw_gemini_model :: (model: string) -> string {
+  if model.count > 7 && model[0..<7] == "google/" { return cast(string) model[7..<model.count]; }
+  return model;
+}
+
+gw_gemini_body :: (req: GwRequest, flags: int, out: [] u8) -> int {
+  n := json_raw(out, 0, "{\"contents\":[");
+  last := "";
+  for m: req.messages {
+    role := ifx m.role == "assistant" then "model" else "user";
+    if m.text.count == 0 && role == "model" { continue; }
+    if role == last { n = json_raw(out, n, ",{\"text\":"); }
+    else {
+      if last.count > 0 { n = json_raw(out, n, "]},"); }
+      n = json_raw(out, n, "{\"role\":\""); n = json_raw(out, n, role); n = json_raw(out, n, "\",\"parts\":[{\"text\":");
+      last = role;
+    }
+    n = json_write_string(out, n, m.text);
+    n = json_raw(out, n, "}");
+  }
+  if last.count > 0 { n = json_raw(out, n, "]}"); }
+  n = json_raw(out, n, "]");
+  if req.system.count > 0 {
+    n = json_raw(out, n, ",\"systemInstruction\":{\"parts\":[{\"text\":");
+    n = json_write_string(out, n, req.system);
+    n = json_raw(out, n, "}]}");
+  }
+  n = json_raw(out, n, ",\"generationConfig\":{");
+  comma := false;
+  if req.max_tokens > 0 { n = json_raw(out, n, "\"maxOutputTokens\":"); n = json_write_int(out, n, req.max_tokens); comma = true; }
+  if req.schema.count > 0 {
+    if comma { n = json_raw(out, n, ","); }
+    n = json_raw(out, n, "\"responseMimeType\":\"application/json\",\"responseJsonSchema\":");
+    n = json_raw(out, n, req.schema);
+    comma = true;
+  }
+  budget := (flags & GW_GEMINI_BUDGET) != 0;
+  // A budget model asked for no effort keeps its own default: Vertex refuses
+  // includeThoughts on Flash-Lite, which doesn't think without a budget.
+  if !budget || req.effort.count > 0 {
+    if comma { n = json_raw(out, n, ","); }
+    if budget {
+      b := gw_gemini_budget_of(req.effort);
+      n = json_raw(out, n, ifx b == 0 then "\"thinkingConfig\":{\"includeThoughts\":false,\"thinkingBudget\":" else "\"thinkingConfig\":{\"includeThoughts\":true,\"thinkingBudget\":");
+      n = json_write_int(out, n, b);
+      n = json_raw(out, n, "}");
+    } else {
+      n = json_raw(out, n, "\"thinkingConfig\":{\"includeThoughts\":true");
+      if req.effort.count > 0 { n = json_raw(out, n, ",\"thinkingLevel\":"); n = json_write_string(out, n, gw_gemini_level_of(req.effort)); }
+      n = json_raw(out, n, "}");
+    }
+  }
+  n = json_raw(out, n, "}");
+  return json_raw(out, n, "}");
+}
+
+gw_gemini_level_of :: (effort: string) -> string {
+  if effort == "none" || effort == "minimal" { return "minimal"; }
+  if effort == "low" { return "low"; }
+  if effort == "medium" { return "medium"; }
+  return "high";
+}
+
+gw_gemini_budget_of :: (effort: string) -> int {
+  if effort == "none" { return 0; }
+  if effort == "minimal" { return 512; }
+  if effort == "low" { return 1024; }
+  if effort == "medium" { return 8192; }
+  return 24576;
+}
+
+// The Gemini API gateway for model on the key in GEMINI_API_KEY (or key_env):
+// streamGenerateContent?alt=sse, or generateContent when stream is false.
+gw_gemini :: (model: string, stream: bool, url_buf: [] u8) -> Gateway {
+  n := json_raw(url_buf, 0, GW_GEMINI_HOST);
+  n = json_raw(url_buf, n, "/v1beta/models/");
+  n = json_raw(url_buf, n, gw_gemini_model(model));
+  n = json_raw(url_buf, n, ifx stream then ":streamGenerateContent?alt=sse" else ":generateContent");
+  url := ifx n < 0 then "" else cast(string) url_buf[0..<n];
+  return Gateway.{name = "gemini", url = url, key_env = GW_GEMINI_KEY_ENV, key_header = "x-goog-api-key", scheme = "", wire = GW_WIRE_GEMINI};
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a Gemini body: system instruction, merged turns, a JSON schema and a thinking level" {
+  out: [2048] u8; why: [1] string; ub: [256] u8;
+  msgs: [3] GwMessage;
+  msgs[0] = GwMessage.{role = "user", text = "Count from one to five."};
+  msgs[1] = GwMessage.{role = "user", text = "One word per line."};
+  msgs[2] = GwMessage.{role = "assistant", text = "One"};
+  g := gw_gemini("google/gemini-3.8-flash", true, ub[..]);
+  #assert g.url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:streamGenerateContent?alt=sse";
+  #assert g.key_header == "x-goog-api-key" && g.scheme == "" && g.key_env == "GEMINI_API_KEY" && g.wire == GW_WIRE_GEMINI;
+  req := GwRequest.{model = "gemini-3.8-flash", system = "You are terse.", messages = msgs[..], max_tokens = 100, effort = "low", schema = "{\"type\":\"object\"}"};
+  body := gw_translate(g, req, out[..], why[..]);
+  #assert body == "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"Count from one to five.\"},{\"text\":\"One word per line.\"}]},{\"role\":\"model\",\"parts\":[{\"text\":\"One\"}]}],\"systemInstruction\":{\"parts\":[{\"text\":\"You are terse.\"}]},\"generationConfig\":{\"maxOutputTokens\":100,\"responseMimeType\":\"application/json\",\"responseJsonSchema\":{\"type\":\"object\"},\"thinkingConfig\":{\"includeThoughts\":true,\"thinkingLevel\":\"low\"}}}";
+  #assert json_valid(body);
+  #assert gw_gemini("gemini-3.8-flash", false, ub[..]).url == "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent";
+}
+
+#test "Gemini 2.5 budgets: none turns thoughts off, no effort keeps the model's default" {
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "hi"};
+  g := Gateway.{name = "gemini", url = "x", key_env = "GEMINI_API_KEY", wire = GW_WIRE_GEMINI, flags = GW_GEMINI_BUDGET};
+  #assert gw_translate(g, GwRequest.{model = "gemini-2.5-flash-lite", messages = msgs[..], effort = "none"}, out[..], why[..]) == "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hi\"}]}],\"generationConfig\":{\"thinkingConfig\":{\"includeThoughts\":false,\"thinkingBudget\":0}}}";
+  #assert gw_translate(g, GwRequest.{model = "gemini-2.5-flash-lite", messages = msgs[..], effort = "medium"}, out[..], why[..]) == "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hi\"}]}],\"generationConfig\":{\"thinkingConfig\":{\"includeThoughts\":true,\"thinkingBudget\":8192}}}";
+  #assert gw_translate(g, GwRequest.{model = "gemini-2.5-flash-lite", messages = msgs[..]}, out[..], why[..]) == "{\"contents\":[{\"role\":\"user\",\"parts\":[{\"text\":\"hi\"}]}],\"generationConfig\":{}}";
+}
+
+#test "the recorded Google streams parse: Gemini through the Vercel gateway, and Vertex's native stream" {
+  r: [1] GwReplay; fx := GW_FX_GOOGLE_GEMINI_3_8_FLASH;
+  gw_replay(GW_WIRE_RESPONSES, fx[..], r[..]);
+  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive" && r[0].done == 1;
+  v: [1] GwReplay; vx := GW_FX_VERTEX_GEMINI_3_8_FLASH;
+  gw_replay(GW_WIRE_GEMINI, vx[..], v[..]);
+  #assert gw_replay_text(v[..]) == "One\nTwo\nThree\nFour\nFive" && v[0].done == 1;
+}
