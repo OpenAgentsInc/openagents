@@ -5,8 +5,8 @@
 // trusted: replay re-reads, re-verifies and re-admits each original, and
 // admission is order-independent (lowest original per id, newest version per
 // address), so replaying the whole file rebuilds the store. A crash can
-// leave a partial last frame; replay stops there and the host truncates the
-// file to the whole frames before it. This is not trusted recovery (#966b):
+// leave a partial last frame; store_recover.coax decides whether replay cuts
+// it off or refuses the file. This is not trusted recovery (#966b):
 // an older copy of the file replays as a valid, older store, and nothing
 // here can tell.
 #load "store_snapshot.coax";

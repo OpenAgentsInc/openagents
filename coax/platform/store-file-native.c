@@ -17,6 +17,7 @@ static unsigned char *loaded;
 static int64_t loaded_n;
 static unsigned char pending[CXSTORE_PENDING];
 static int64_t pending_n;
+static int broken;
 
 int cxstore_set_path(const char *path) {
   size_t n = strlen(path);
@@ -25,12 +26,31 @@ int cxstore_set_path(const char *path) {
   return 0;
 }
 
+/* fsyncs the directory that holds path_buf: 0, or -1. */
+static int sync_parent(void) {
+  char dir[sizeof path_buf];
+  memcpy(dir, path_buf, sizeof dir);
+  char *slash = strrchr(dir, '/');
+  if (!slash) { dir[0] = '.'; dir[1] = 0; }
+  else if (slash == dir) dir[1] = 0;
+  else *slash = 0;
+  int d = open(dir, O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+  if (d < 0) return -1;
+  int r = fsync(d);
+  close(d);
+  return r;
+}
+
 int64_t cxstore_load(void) {
   if (!path_buf[0]) return -1;
   if (fd < 0) {
-    fd = open(path_buf, O_RDWR | O_CREAT | O_CLOEXEC, 0600);
+    int created = 1;
+    fd = open(path_buf, O_RDWR | O_CREAT | O_EXCL | O_CLOEXEC, 0600);
+    if (fd < 0 && errno == EEXIST) { created = 0; fd = open(path_buf, O_RDWR | O_CLOEXEC); }
     if (fd < 0) return -1;
     if (flock(fd, LOCK_EX | LOCK_NB) != 0) { close(fd); fd = -1; return -1; }
+    /* A new file's name is durable only once its directory is synced. */
+    if (created && sync_parent() != 0) { close(fd); fd = -1; return -1; }
   }
   struct stat st;
   if (fstat(fd, &st) != 0 || st.st_size < 0) return -1;
@@ -64,7 +84,7 @@ int64_t cxstore_put(int64_t b) {
 int64_t cxstore_commit(void) {
   int64_t n = pending_n;
   pending_n = 0;
-  if (fd < 0) return -1;
+  if (fd < 0 || broken) return -1;
   off_t end = lseek(fd, 0, SEEK_END);
   if (end < 0) return -1;
   int64_t done = 0;
@@ -75,7 +95,10 @@ int64_t cxstore_commit(void) {
     done += w;
   }
   if (done == n && fsync(fd) == 0) return 0;
-  if (ftruncate(fd, end) == 0) (void)fsync(fd);
+  /* Cut the failed append back. If even that fails, stop writing: a later
+     append after a partial frame would put damage in the middle of the file,
+     which replay refuses (store_recover.coax). */
+  if (ftruncate(fd, end) != 0 || fsync(fd) != 0) broken = 1;
   return -1;
 }
 

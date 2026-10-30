@@ -5,14 +5,16 @@
 // failed write applies nothing and answers RS_FULL ("error: ..."). On start,
 // rsd_replay reads the file, re-reads and re-verifies every original exactly
 // as live admission does (except that an event expired since it was stored
-// is kept, store_file.coax), re-admits it, and cuts a torn or bad tail off
-// the file. The framing and replay rules are store_file.coax's (#authority);
+// is kept, store_file.coax), re-admits it, and cuts a crash's partial last
+// append off the file. The framing and replay rules are store_file.coax's (#authority);
 // this file is the glue to the C effects in coax/platform/store-file-native.c
 // (the host calls cxstore_set_path first, and holds an exclusive lock on the
-// file). Not trusted recovery (#966b): an older copy of the file replays as
-// a valid, older store.
+// file). Crash recovery is store_recover.coax's (#966b, the relay's part): a
+// partial last append is cut, any other damage refuses to start. Not trusted
+// freshness: an older copy of the file replays as a valid, older store.
 #load "store.coax";
 #load "store_file.coax";
+#load "store_recover.coax";
 
 cxstore_load :: () -> int #foreign;
 cxstore_byte :: (i: int) -> int #foreign;
@@ -20,10 +22,15 @@ cxstore_put :: (b: int) -> int #foreign;
 cxstore_commit :: () -> int #foreign;
 cxstore_truncate :: (n: int) -> int #foreign;
 
-RsdReplay :: struct { ok: bool; frames: int; stored: int; refused: int; kept: int; cut: bool; }
+// A replay: ok, how many frames it read, stored and kept (a duplicate or a
+// replaced version), whether it cut a partial append, and when refused, the
+// frame's offset and why (an admission reason, or -1 - its frame status).
+RsdReplay :: struct { ok: bool; frames: int; stored: int; kept: int; cut: bool; refused: bool; at: int; reason: int; }
 
 #test "the file's reasons are the relay's" {
   #assert NSF_RS_ACCEPT == RS_ACCEPT && NSF_RS_EXPIRED == RS_EXPIRED;
+  #assert NSR_RS_ACCEPT == RS_ACCEPT && NSR_RS_DUP == RS_DUP && NSR_RS_SUPERSEDED == RS_SUPERSEDED;
+  #assert NSR_F_OK == NSF_OK && NSR_F_END == NSF_END && NSR_F_TORN == NSF_TORN && NSR_F_BAD == NSF_BAD;
 }
 #test "replay reads like admission, but keeps events expired since" {
   scratch: [4096] u8;
@@ -70,7 +77,11 @@ rsd_admit_saved :: (s: [] RsdStore, r: RsAdmit, text: string) -> int {
 }
 // Rebuilds s from the file at time now. text holds one original
 // (NS_FRAME_MAX_ORIGINAL bytes); scratch is the verifier's (the relay's
-// 262144). ok is false when the file cannot be read or cut.
+// 262144). Each frame's fate is store_recover.coax's: a crash's partial
+// last append is cut off; any other damage refuses the whole replay
+// (refused, with the frame's offset and its frame status or admission
+// reason) and leaves the file as it is. ok is false when the file cannot be
+// read or cut, or the replay is refused.
 rsd_replay :: (s: [] RsdStore, now: int, text: [] u8, scratch: [] u8) -> RsdReplay {
   out: RsdReplay;
   total := cxstore_load();
@@ -80,12 +91,19 @@ rsd_replay :: (s: [] RsdStore, now: int, text: [] u8, scratch: [] u8) -> RsdRepl
     head: [4] u8; k := 0;
     while k < 4 && at + k < total { head[k] = cast(u8) cxstore_byte(at + k); k += 1; }
     f := ns_file_next(head[0..<k], at, total);
-    if f.status == NSF_END { break; }
-    if f.status != NSF_OK || f.to - f.from > text.count {
+    // a whole frame's body is [from, to); a torn or bad one has none
+    to := ifx f.status == NSF_OK then f.to else at;
+    p := nsr_region(f.status, at, f.from, to, total);
+    zero := p; while zero < total && cxstore_byte(zero) != 0 { zero += 1; }
+    nonzero := zero; while nonzero < total && cxstore_byte(nonzero) == 0 { nonzero += 1; }
+    d := nsr_frame(NsrFrame.{status = f.status, at = at, from = f.from, to = to, total = total, zero = zero, nonzero = nonzero});
+    if d == NSR_DONE { break; }
+    if d == NSR_CUT {
       out.cut = true;
       if cxstore_truncate(at) != 0 { return out; }
       break;
     }
+    if d != NSR_NEXT || f.to - f.from > text.count { out.refused = true; out.at = at; out.reason = -1 - f.status; return out; }
     for i: f.from..<f.to { text[i - f.from] = cast(u8) cxstore_byte(i); }
     t := cast(string) text[0..<f.to - f.from];
     out.frames += 1;
@@ -93,9 +111,8 @@ rsd_replay :: (s: [] RsdStore, now: int, text: [] u8, scratch: [] u8) -> RsdRepl
     if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(t, scratch, false)); }
     reason := r.reason;
     if reason == RS_ACCEPT { reason = rsd_admit(s, r, t); }
-    if reason == RS_ACCEPT { out.stored += 1; }
-    else if reason == RS_DUP || reason == RS_SUPERSEDED { out.kept += 1; }
-    else { out.refused += 1; }
+    if nsr_replayed(reason) != NSR_NEXT { out.refused = true; out.at = at; out.reason = reason; return out; }
+    if reason == RS_ACCEPT { out.stored += 1; } else { out.kept += 1; }
     at = f.to;
   }
   out.ok = true;

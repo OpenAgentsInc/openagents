@@ -116,9 +116,13 @@ should reuse it.
   valid older store and brings back replaced events (and, once NIP-09
   lands, deleted ones). Nothing here can detect that. Restore stays
   incomplete until #966b supplies a trusted monotonic checkpoint.
+  Update 2026-10-30: crash recovery of the file landed
+  ([2026-10-30-nostr-store-recovery.md](2026-10-30-nostr-store-recovery.md)):
+  a crash's partial last write is cut, other damage refuses to start, and a
+  SIGKILL crash test passes. The trusted checkpoint is still missing.
 - **File compaction.** The file is append-only and never compacted. Also
-  missing: a file format version or migration, and a durability test that
-  kills the process mid-write (the torn tail is simulated by appending bytes).
+  missing: a file format version or migration. (The kill-mid-write test is
+  now `store_crash.py`, see the recovery record.)
 - **NIP-09 deletion and tombstones** (R2, and #f539's acceptance item on
   "later deletion ... preserve tombstones").
 - **#f539 acceptance not met in full:** checked and release native and Wasm

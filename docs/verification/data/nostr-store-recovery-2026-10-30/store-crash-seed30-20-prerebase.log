@@ -1,0 +1,33 @@
+seed 30, 20 rounds
+build 27.1 s
+  ok   a missing file starts empty and is created mode 0600
+  ok   round 0: 0 acknowledged, 0 served, heads ok, 0 whole frames (relay: replayed 0 saved events: 0 stored, 0 duplicates or replaced) [0.1 s]
+  ok   round 1: 3 acknowledged, 3 served, heads ok, 3 whole frames (relay: replayed 3 saved events: 3 stored, 0 duplicates or replaced, a partial last write cut) [1.3 s]
+  ok   round 2: 3 acknowledged, 3 served, heads ok, 3 whole frames (relay: replayed 3 saved events: 3 stored, 0 duplicates or replaced, a partial last write cut) [1.1 s]
+  ok   round 3: 4 acknowledged, 4 served, heads ok, 4 whole frames (relay: replayed 4 saved events: 4 stored, 0 duplicates or replaced, a partial last write cut) [1.7 s]
+  ok   round 4: 8 acknowledged, 8 served, heads ok, 8 whole frames (relay: replayed 8 saved events: 8 stored, 0 duplicates or replaced, a partial last write cut) [3.5 s]
+  ok   round 5: 8 acknowledged, 8 served, heads ok, 8 whole frames (relay: replayed 8 saved events: 8 stored, 0 duplicates or replaced) [3.0 s]
+  ok   round 6: 11 acknowledged, 11 served, heads ok, 11 whole frames (relay: replayed 11 saved events: 11 stored, 0 duplicates or replaced, a partial last write cut) [4.0 s]
+  ok   round 7: 14 acknowledged, 14 served, heads ok, 14 whole frames (relay: replayed 14 saved events: 14 stored, 0 duplicates or replaced) [4.9 s]
+  ok   round 8: 16 acknowledged, 15 served, heads ok, 16 whole frames (relay: replayed 16 saved events: 16 stored, 0 duplicates or replaced, a partial last write cut) [6.0 s]
+  ok   round 9: 20 acknowledged, 18 served, heads ok, 20 whole frames (relay: replayed 20 saved events: 20 stored, 0 duplicates or replaced) [9.6 s]
+  ok   round 10: 21 acknowledged, 18 served, heads ok, 21 whole frames (relay: replayed 21 saved events: 21 stored, 0 duplicates or replaced, a partial last write cut) [6.9 s]
+  ok   round 11: 25 acknowledged, 20 served, heads ok, 25 whole frames (relay: replayed 25 saved events: 25 stored, 0 duplicates or replaced) [8.8 s]
+  ok   round 12: 30 acknowledged, 24 served, heads ok, 30 whole frames (relay: replayed 30 saved events: 30 stored, 0 duplicates or replaced, a partial last write cut) [9.7 s]
+  ok   round 13: 34 acknowledged, 26 served, heads ok, 34 whole frames (relay: replayed 34 saved events: 34 stored, 0 duplicates or replaced, a partial last write cut) [12.2 s]
+  ok   round 14: 37 acknowledged, 29 served, heads ok, 38 whole frames (relay: replayed 38 saved events: 38 stored, 0 duplicates or replaced, a partial last write cut) [12.7 s]
+  ok   round 15: 37 acknowledged, 29 served, heads ok, 38 whole frames (relay: replayed 38 saved events: 38 stored, 0 duplicates or replaced) [13.8 s]
+  ok   round 16: 39 acknowledged, 31 served, heads ok, 40 whole frames (relay: replayed 40 saved events: 40 stored, 0 duplicates or replaced) [15.2 s]
+  ok   round 17: 41 acknowledged, 32 served, heads ok, 42 whole frames (relay: replayed 42 saved events: 42 stored, 0 duplicates or replaced) [15.0 s]
+  ok   round 18: 45 acknowledged, 35 served, heads ok, 46 whole frames (relay: replayed 46 saved events: 46 stored, 0 duplicates or replaced, a partial last write cut) [15.4 s]
+  ok   round 19: 50 acknowledged, 39 served, heads ok, 51 whole frames (relay: replayed 51 saved events: 51 stored, 0 duplicates or replaced, a partial last write cut) [16.5 s]
+damage: {'zero-body': 5, 'torn': 5, 'none (last acknowledged)': 4, 'zeros': 2, 'none': 4}; restarts that cut a partial write: 12
+  ok   at least 3 frames to damage (53)
+  ok   damaged a byte of a middle frame's signature: the relay refuses and the file is unchanged
+  ok   damaged a middle frame's length: the relay refuses and the file is unchanged
+  ok   damaged a middle frame's length made impossible: the relay refuses and the file is unchanged
+  ok   damaged a zero byte inside a middle frame: the relay refuses and the file is unchanged
+  ok   damaged a byte of the last frame's signature: the relay refuses and the file is unchanged
+  ok   the file restored: the relay starts and serves all 38 acknowledged notes
+  ok   no sanitizer report
+store_crash: 52 acknowledged, 69 sent; ok

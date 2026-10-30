@@ -32,8 +32,9 @@ main :: () {
   arena: [65536] u8; recs: [64] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
   text: [262144] u8; scratch: [262144] u8;
   rp := rsd_replay(s[..], SFM_NOW, text[..], scratch[..]);
-  sfm_put(ifx rp.ok then 1 else 0); sfm_put(rp.frames); sfm_put(rp.stored); sfm_put(rp.kept); sfm_put(rp.refused); sfm_put(ifx rp.cut then 1 else 0);
+  sfm_put(ifx rp.ok then 1 else 0); sfm_put(rp.frames); sfm_put(rp.stored); sfm_put(rp.kept); sfm_put(ifx rp.refused then 1 else 0); sfm_put(ifx rp.cut then 1 else 0);
   sfm_put(sfm_which(s[..]));
+  if rp.refused { sfm_put(rp.at); sfm_put(rp.reason); return; }
   phase := sfm_phase();
   if phase == 1 {
     sfm_put(sfm_admit(s[..], NS_VALID_TEST, scratch[..]));      // stored and saved

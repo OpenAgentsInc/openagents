@@ -8,8 +8,10 @@
 // STORE: the verified store (coax/lib/nostr/store_saved.coax, #8eb5). With
 // --store FILE every stored original is appended to FILE and synced before
 // it is stored, and a restart replays FILE, verifying every event again.
-// Without --store the store is in memory only. Not trusted recovery (#966b):
-// an older copy of FILE replays as an older store. TLS: with --tls-cert and
+// Without --store the store is in memory only. A crash's partial last write
+// is cut on restart; other damage to FILE stops the relay before it listens
+// (store_recover.coax, #966b). Not trusted freshness: an older copy of FILE
+// replays as an older store. TLS: with --tls-cert and
 // --tls-key the host makes every connection TLS (tls-native.c's server mode,
 // under socket-server-native.c), so this file reads and writes the same
 // plaintext bytes; only the default relay URL's scheme (wss://) and the
@@ -317,8 +319,9 @@ main :: () {
   if ry_host_store() == 1 {
     text: [NS_FRAME_MAX_ORIGINAL] u8;
     rp := rsd_replay(store[..], cxsrv_now_s(), text[..], w[0].scratch[..]);
+    if rp.refused { print("relay: refusing to start: the --store file is damaged at byte % (reason %); it was not changed\n", rp.at, rp.reason); return; }
     if !rp.ok { print("relay: cannot open, lock or read the --store file\n"); return; }
-    print("relay: replayed % saved events: % stored, % duplicates or replaced, % refused%\n", rp.frames, rp.stored, rp.kept, rp.refused, ifx rp.cut then ", torn tail cut" else "");
+    print("relay: replayed % saved events: % stored, % duplicates or replaced%\n", rp.frames, rp.stored, rp.kept, ifx rp.cut then ", a partial last write cut" else "");
   }
   print("relay: listening on port %\n", cxsrv_bound_port());
   ry_serve(conns[..], w[..], store[..]);

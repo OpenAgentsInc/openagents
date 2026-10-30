@@ -1,0 +1,166 @@
+// Crash recovery of the verified store's append-only file (#966b, the
+// relay's part): what replay does at each frame. store_file.coax frames the
+// file; store_saved.coax reads it and calls these decisions; the C host only
+// reads, appends with fsync and truncates.
+//
+// Every append is one frame written and fsynced before the relay answers OK
+// true, so a crash can damage only the last frame, and only in the way an
+// interrupted append does: the file ends inside it (TORN), or the file grew
+// but some of the new bytes are still zero. A JSON event never holds a zero
+// byte, and every frame header begins with one (lengths are at most
+// 262144), so a crash's damage has one shape: non-zero bytes, then zero
+// bytes to the end of the file. Replay cuts that shape off. Anything else is
+// corruption of committed bytes (a bad length in the middle, a frame that
+// no longer verifies, a stored event replay would refuse): replay refuses to
+// start and leaves the file untouched, because skipping a record could lose
+// an acknowledged event or bring back a version it replaced.
+//
+// This is crash safety, not trusted freshness: an older copy of the whole
+// file is still a valid older store (the rollback-resistant checkpoint of
+// the #966b board task is an owner decision, see
+// docs/verification/2026-10-30-nostr-store-recovery.md).
+#authority;
+
+// What replay does at a frame.
+NSR_NEXT :: 0;    // verify and re-admit it, then read on
+NSR_DONE :: 1;    // the end of the file: recovered
+NSR_CUT :: 2;     // a crash's partial append: cut the file at the frame, recovered
+NSR_REFUSE :: 3;  // committed bytes are damaged: refuse, change nothing
+
+// store_file.coax's frame statuses and the relay's admission reasons
+// (store_saved.coax checks that they agree).
+NSR_F_OK :: 0; NSR_F_END :: 1; NSR_F_TORN :: 2; NSR_F_BAD :: 3;
+NSR_RS_ACCEPT :: 0; NSR_RS_DUP :: 1; NSR_RS_SUPERSEDED :: 2;
+
+// A frame as the glue sees it: its status, where it starts (at), its body
+// [from, to) when it is whole, and the file's size. zero and nonzero
+// describe the bytes from nsr_region(...) to the end of the file: zero is
+// the first zero byte at or after the region's start (total when none),
+// nonzero the first non-zero byte at or after zero (total when none).
+NsrFrame :: struct { status: int; at: int; from: int; to: int; total: int; zero: int; nonzero: int; }
+
+#test "the end of the file is recovered" {
+  #assert nsr_frame(NsrFrame.{status = NSR_F_END, at = 0, from = 0, to = 0, total = 0, zero = 0, nonzero = 0}) == NSR_DONE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_END, at = 40, from = 40, to = 40, total = 40, zero = 40, nonzero = 40}) == NSR_DONE;
+  // an end that is not the file's end is not believed
+  #assert nsr_frame(NsrFrame.{status = NSR_F_END, at = 39, from = 39, to = 39, total = 40, zero = 40, nonzero = 40}) == NSR_REFUSE;
+}
+#test "a torn tail is cut: a partial header, or a prefix then zeros" {
+  // file of 42 bytes: the last frame starts at 40 with two header bytes
+  // (the glue's scan from 44 finds nothing: zero and nonzero stay 44)
+  #assert nsr_region(NSR_F_TORN, 40, 40, 40, 42) == 44;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 42, zero = 44, nonzero = 44}) == NSR_CUT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 43, zero = 44, nonzero = 44}) == NSR_CUT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 0, from = 0, to = 0, total = 1, zero = 4, nonzero = 4}) == NSR_CUT;
+  // a whole header is scanned after: an inconsistent scan is refused
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 44, zero = 43, nonzero = 44}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 0, from = 0, to = 0, total = 9, zero = 9, nonzero = 9}) == NSR_CUT;
+  // header at 40, body from 44: 10 written bytes, then 6 zeros
+  #assert nsr_region(NSR_F_TORN, 40, 40, 40, 60) == 44;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 60, zero = 54, nonzero = 60}) == NSR_CUT;
+  // the header and no body, or a body with no zeros at all
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 44, zero = 44, nonzero = 44}) == NSR_CUT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 60, zero = 60, nonzero = 60}) == NSR_CUT;
+}
+#test "a torn-looking frame with whole frames after it is refused" {
+  // a length damaged in the middle runs past the end: the bytes after it
+  // hold later frames (a zero header byte, then non-zero bytes)
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 300, zero = 120, nonzero = 122}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 300, zero = 120, nonzero = 299}) == NSR_REFUSE;
+}
+#test "a bad length is cut only when the rest of the file is zeros" {
+  #assert nsr_region(NSR_F_BAD, 40, 40, 40, 48) == 40;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 40, from = 40, to = 40, total = 48, zero = 40, nonzero = 48}) == NSR_CUT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 40, from = 40, to = 40, total = 44, zero = 40, nonzero = 44}) == NSR_CUT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 0, from = 0, to = 0, total = 4, zero = 0, nonzero = 4}) == NSR_CUT;
+  // a damaged length with frames after it, or a non-zero bad header
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 40, from = 40, to = 40, total = 300, zero = 40, nonzero = 42}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 40, from = 40, to = 40, total = 300, zero = 40, nonzero = 299}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 40, from = 40, to = 40, total = 48, zero = 41, nonzero = 48}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 40, from = 40, to = 40, total = 48, zero = 48, nonzero = 48}) == NSR_REFUSE;
+  // a bad position is never cut
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 49, from = 49, to = 49, total = 48, zero = 48, nonzero = 48}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = 48, from = 48, to = 48, total = 48, zero = 48, nonzero = 48}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_BAD, at = -1, from = -1, to = -1, total = 48, zero = -1, nonzero = 48}) == NSR_REFUSE;
+}
+#test "a whole last frame ending in zeros is a partial append" {
+  // frame at 40, body [44, 140): 50 written bytes then zeros
+  #assert nsr_region(NSR_F_OK, 40, 44, 140, 140) == 44;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_OK, at = 40, from = 44, to = 140, total = 140, zero = 94, nonzero = 140}) == NSR_CUT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_OK, at = 40, from = 44, to = 140, total = 140, zero = 44, nonzero = 140}) == NSR_CUT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_OK, at = 40, from = 44, to = 140, total = 140, zero = 139, nonzero = 140}) == NSR_CUT;
+  // no zero: read and verify it; a zero then more bytes: verify it (it fails)
+  #assert nsr_frame(NsrFrame.{status = NSR_F_OK, at = 40, from = 44, to = 140, total = 140, zero = 140, nonzero = 140}) == NSR_NEXT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_OK, at = 40, from = 44, to = 140, total = 140, zero = 94, nonzero = 95}) == NSR_NEXT;
+}
+#test "a whole frame in the middle is read, whatever it holds" {
+  #assert nsr_region(NSR_F_OK, 40, 44, 140, 300) == 300;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_OK, at = 40, from = 44, to = 140, total = 300, zero = 300, nonzero = 300}) == NSR_NEXT;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_OK, at = 40, from = 44, to = 140, total = 300, zero = 94, nonzero = 300}) == NSR_REFUSE;
+}
+#test "inconsistent scans and unknown statuses are refused" {
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 60, zero = 43, nonzero = 60}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 60, zero = 55, nonzero = 54}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 60, zero = 54, nonzero = 61}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = NSR_F_TORN, at = 40, from = 40, to = 40, total = 60, zero = 61, nonzero = 61}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = 4, at = 40, from = 40, to = 40, total = 60, zero = 60, nonzero = 60}) == NSR_REFUSE;
+  #assert nsr_frame(NsrFrame.{status = -1, at = 40, from = 40, to = 40, total = 60, zero = 60, nonzero = 60}) == NSR_REFUSE;
+  #assert nsr_region(4, 40, 44, 140, 300) == 300 && nsr_region(NSR_F_END, 40, 44, 140, 300) == 300;
+}
+#test "a read frame continues only when the store takes it again" {
+  #assert nsr_replayed(NSR_RS_ACCEPT) == NSR_NEXT;
+  #assert nsr_replayed(NSR_RS_DUP) == NSR_NEXT;           // a duplicate record
+  #assert nsr_replayed(NSR_RS_SUPERSEDED) == NSR_NEXT;    // an older version saved before a newer one
+  for reason: 3..<27 { #assert nsr_replayed(reason) == NSR_REFUSE; }
+  #assert nsr_replayed(-1) == NSR_REFUSE;
+}
+// Every cut removes only a crash's shape: from the frame to the end, the
+// region holds non-zero bytes and then only zeros, and it never starts
+// before the frame.
+#forall "a cut is only ever a crash's shape" status: -1..<5, at: -1..<7, to: 3..<8, total: 0..<7, zero: 0..<8, nonzero: 0..<8 {
+  from := ifx status == NSR_F_OK then at + 4 else at;
+  d := nsr_frame(NsrFrame.{status = status, at = at, from = from, to = to, total = total, zero = zero, nonzero = nonzero});
+  p := nsr_region(status, at, from, to, total);
+  if d == NSR_CUT {
+    #assert at >= 0 && at < total && p >= at;
+    #assert (status == NSR_F_TORN && total - at < 4) || (p <= zero && zero <= nonzero && nonzero == total);
+    #assert status == NSR_F_TORN || (status == NSR_F_BAD && zero == at) || (status == NSR_F_OK && to == total && zero < total);
+  }
+  if d == NSR_DONE { #assert status == NSR_F_END && at == total; }
+  if d == NSR_NEXT { #assert status == NSR_F_OK; }
+  #assert d >= NSR_NEXT && d <= NSR_REFUSE;
+}
+
+// Where the glue scans for zeros: a torn frame's bytes after its header
+// (past the end, scanning nothing, when the header itself is torn), a bad
+// header's own bytes, a whole last frame's body; nothing (total) for a
+// whole frame in the middle, the end, or an unknown status.
+nsr_region :: (status: int, at: int, from: int, to: int, total: int) -> int {
+  if status == NSR_F_TORN { return at + 4; }
+  if status == NSR_F_BAD { return at; }
+  if status == NSR_F_OK && to == total { return from; }
+  return total;
+}
+// What replay does at the frame f.
+nsr_frame :: (f: NsrFrame) -> int {
+  if f.status == NSR_F_END { return ifx f.at == f.total then NSR_DONE else NSR_REFUSE; }
+  if f.at < 0 || f.at >= f.total { return NSR_REFUSE; }
+  // the file ends inside a header: nothing after it to damage
+  if f.status == NSR_F_TORN && f.total - f.at < 4 { return NSR_CUT; }
+  p := nsr_region(f.status, f.at, f.from, f.to, f.total);
+  if f.zero < p || f.nonzero < f.zero || f.nonzero > f.total { return NSR_REFUSE; }
+  tail := f.nonzero == f.total;   // after the first zero, only zeros
+  if f.status == NSR_F_TORN { return ifx tail then NSR_CUT else NSR_REFUSE; }
+  if f.status == NSR_F_BAD { return ifx tail && f.zero == f.at then NSR_CUT else NSR_REFUSE; }
+  // a whole frame in the middle scans nothing (zero == total); a whole last
+  // frame is cut when its body ends in zeros, and read otherwise
+  if f.status == NSR_F_OK { return ifx f.zero < f.total && tail then NSR_CUT else NSR_NEXT; }
+  return NSR_REFUSE;
+}
+// After a whole frame was read, verified and re-admitted with reason: read
+// on when the store took it (stored, a duplicate, or an older version),
+// otherwise refuse.
+nsr_replayed :: (reason: int) -> int {
+  if reason == NSR_RS_ACCEPT || reason == NSR_RS_DUP || reason == NSR_RS_SUPERSEDED { return NSR_NEXT; }
+  return NSR_REFUSE;
+}

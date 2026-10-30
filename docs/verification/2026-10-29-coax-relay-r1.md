@@ -266,3 +266,14 @@ with `--store` that brings back the same events. relay_differential.py passes
 13/13. Both run under ASan/UBSan. Record:
 [2026-10-29-nostr-store-r1.md](2026-10-29-nostr-store-r1.md). Trusted
 recovery (#966b) is still missing.
+
+## Update: crash recovery of the store file (#966b, relay part, 2026-10-30)
+
+On restart the relay cuts a crash's partial last write off its `--store`
+file and refuses to start on any other damage, leaving the file unchanged
+(`coax/lib/nostr/store_recover.coax`, `#authority`, 72/72 mutants killed).
+OK true is still sent only after the fsync. A SIGKILL crash test
+(`store_crash.py`) and store_file.py pass under ASan/UBSan. Record:
+[2026-10-30-nostr-store-recovery.md](2026-10-30-nostr-store-recovery.md).
+Trusted recovery (#966b) is still missing: an older copy of the whole file
+replays as an older store until a rollback-resistant checkpoint exists.
