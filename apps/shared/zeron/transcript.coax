@@ -54,6 +54,8 @@ H_GROUP :: 1; H_CHIP :: 2; H_WRAP :: 3; H_COPY :: 4; H_ACTION :: 5;
 N_ERROR :: 0; N_SIGNED_OUT :: 1; N_LIMIT :: 2; N_INSTALL :: 3; N_STOPPED :: 4; N_ASK :: 5;
 // Psionic's (psionic.coax): its one worker is busy; its server can't be reached.
 N_BUSY :: 6; N_OFFLINE :: 7;
+// openagents.com/chat's line under an answer: who wrote it, on whose key, what it cost (quiet, no tile).
+N_META :: 8;
 TNotice :: struct { kind: int; text: string; }
 T_NOTICES :: 64;
 // What a notice's button asks of the screen (t.action, until it takes it).
@@ -588,6 +590,10 @@ t_notice_button :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, which: int
 }
 lay_notice :: (t: [] Transcript, a: [] Atlas, th: Theme, k: int, x: f32, y: f32, w: f32) -> f32 {
   n := t[0].notices[k];
+  if n.kind == N_META {
+    q := t_plain(t, a, x + 1, y, 18, FONT_TOOL, th.faint, n.text, true);
+    return 18;
+  }
   if n.kind == N_STOPPED {
     t_icon(t, ICON_STOP, x + 1, y + (18 - 11) / 2, 11, th.faint);
     q := t_plain(t, a, x + 1 + 11 + 8, y, 18, FONT_TOOL, th.faint, "Stopped", true);

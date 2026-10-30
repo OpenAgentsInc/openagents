@@ -103,6 +103,9 @@ Atlas :: struct {
   color_cols: int; color_width: f32; color_height: f32;
   chips: [GP_CHIPS] GpChip;
   chip_inset: f32;          // a chip's pill inset from its row, top and bottom
+  // How many dilation levels the host rasterized: 0 is all of GP_DILATIONS
+  // (CoreText's, the Mac); a browser draws fewer (gp_level folds them).
+  levels: int;
 }
 
 // ---------------------------------------------------------------- colors
@@ -126,6 +129,16 @@ dilation :: (c: Rgba) -> int {
   if level < 0 { return 0; }
   if level > 4 { return 4; }
   return level;
+}
+
+// The dilation level whose cells hold a color's glyphs: dilation(c), folded
+// onto the levels the host drew (the darkest level alone when it drew one).
+gp_level :: (a: [] Atlas, c: Rgba) -> int {
+  level := dilation(c);
+  n := a[0].levels;
+  if n <= 0 || n >= GP_DILATIONS { return level; }
+  k := level * n / GP_DILATIONS;
+  return ifx k >= n then n - 1 else k;
 }
 
 // ---------------------------------------------------------------- snapping
@@ -609,7 +622,7 @@ text_offset :: (a: [] Atlas, font: int, text: string, x: f32) -> int {
 paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: string, x: f32, top: f32, line_height: f32, color: Rgba) -> int {
   if font < 0 || font >= GP_FONTS || !a[0].ready { return at; }
   baseline := top + (line_height - a[0].fonts[font].ascent - a[0].fonts[font].descent) / 2 + a[0].fonts[font].ascent;
-  level := dilation(color);
+  level := gp_level(a, color);
   v := at; pen := x; prev := -1; i := 0;
   sub := cast(f32) GP_SUBPIXEL;
   cols := a[0].fonts[font].cols; size := a[0].fonts[font].cell;
@@ -645,8 +658,80 @@ paint_text :: (out: [] f32, at: int, a: [] Atlas, d: f32, font: int, text: strin
   }
   return v;
 }
+// ---------------------------------------------------------------- the host's side of the atlas
+//
+// What a host (the Mac's Swift, the browser's coax/web/gpui.js) calls
+// through its app's C face to fill the atlas: each font's measurements, each
+// icon's tile, the atlas's size, and the glyph cache's requests and answers.
+
+// header: ascent, descent, cell, pen x, pen y, first cell's y, columns.
+gp_set_font :: (a: [] Atlas, slot: int, size: f32, header: [] f32, advance: [] f32, kern: [] f32) {
+  if slot < 0 || slot >= GP_FONTS || header.count < 7 || advance.count < GP_GLYPHS || kern.count < GP_GLYPHS * GP_GLYPHS { return; }
+  a[0].fonts[slot].size = size;
+  a[0].fonts[slot].ascent = header[0]; a[0].fonts[slot].descent = header[1];
+  a[0].fonts[slot].cell = header[2]; a[0].fonts[slot].pen_x = header[3]; a[0].fonts[slot].pen_y = header[4];
+  a[0].fonts[slot].y0 = header[5]; a[0].fonts[slot].cols = cast(int) header[6];
+  for g: 0..<GP_GLYPHS { a[0].fonts[slot].advance[g] = advance[g]; }
+  for k: 0..<GP_GLYPHS * GP_GLYPHS { a[0].fonts[slot].kern[k] = kern[k]; }
+}
+gp_set_icon :: (a: [] Atlas, i: int, x: f32, y: f32, w: f32, h: f32) {
+  if i >= 0 && i < GP_ICONS { a[0].icons[i] = GpIcon.{x = x, y = y, w = w, h = h}; }
+}
+gp_set_atlas :: (a: [] Atlas, width: f32, height: f32, levels: int) {
+  a[0].width = width; a[0].height = height; a[0].levels = levels; a[0].ready = width > 0 && height > 0;
+}
+// The glyph cache's part of the atlas; a new atlas draws every cell again.
+gp_set_dynamic :: (a: [] Atlas, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) {
+  a[0].dyn_size = size; a[0].dyn_pen_x = pen_x; a[0].dyn_pen_y = pen_y;
+  a[0].dyn_y0 = y0; a[0].dyn_cols = cols;
+  a[0].color_cols = color_cols; a[0].color_width = color_width; a[0].color_height = color_height;
+  for k: 0..<GP_DYN_CELLS { dyn_free_cell(a, k); }
+}
+// The next grapheme waiting to be measured, or -1.
+gp_next_cluster :: (a: [] Atlas) -> int {
+  for k: 0..<GP_DYN_SLOTS { if a[0].clusters[k].state == 1 { return k; } }
+  return -1;
+}
+// A slot's bytes into out; font * 256 + their count.
+gp_cluster :: (a: [] Atlas, slot: int, out: [] u8) -> int {
+  if slot < 0 || slot >= GP_DYN_SLOTS { return 0; }
+  n := a[0].clusters[slot].n;
+  if n > out.count { return 0; }
+  for k: 0..<n { out[k] = a[0].clusters[slot].bytes[k]; }
+  return a[0].clusters[slot].font * 256 + n;
+}
+gp_measured :: (a: [] Atlas, slot: int, advance: f32, color: bool) {
+  if slot < 0 || slot >= GP_DYN_SLOTS { return; }
+  a[0].clusters[slot].advance = advance; a[0].clusters[slot].color = color; a[0].clusters[slot].state = 2;
+}
+// The next cell waiting to be drawn, or -1.
+gp_next_cell :: (a: [] Atlas) -> int {
+  for k: 0..<GP_DYN_CELLS { if a[0].cells[k].state == 1 { return k; } }
+  return -1;
+}
+// A wanted cell: its slot, level, subpixel, whether color, and its texel origin.
+gp_cell :: (a: [] Atlas, cell: int, out: [] f32) -> bool {
+  if cell < 0 || cell >= GP_DYN_CELLS || out.count < 6 { return false; }
+  g := a[0].cells[cell];
+  out[0] = cast(f32) g.slot; out[1] = cast(f32) g.level; out[2] = cast(f32) g.variant;
+  out[3] = ifx cell >= GP_DYN_MONO then 1.0f32 else 0.0f32;
+  out[4] = dyn_cell_x(a, cell); out[5] = dyn_cell_y(a, cell);
+  return true;
+}
+gp_cell_ready :: (a: [] Atlas, cell: int) {
+  if cell >= 0 && cell < GP_DYN_CELLS && a[0].cells[cell].state == 1 { a[0].cells[cell].state = 2; }
+}
+
 // ---------------------------------------------------------------- checks
 
+#test "a browser's fewer dilation levels fold the five" {
+  a: [1] Atlas;
+  #assert gp_level(a[..], hex(0xe8e8ea, 1)) == 4;           // 0: the Mac's five
+  a[0].levels = 2;
+  #assert gp_level(a[..], hex(0xe8e8ea, 1)) == 1 && gp_level(a[..], hex(0x060606, 1)) == 0 && gp_level(a[..], hex(0xa9a9ae, 1)) == 1;
+  a[0].levels = 1;
+  #assert gp_level(a[..], hex(0xe8e8ea, 1)) == 0;
+}
 #test "colors, opacity and flattening are GPUI's" {
   c := hex(0xe8e8ea, 1);
   #assert abs(c.r - 232.0 / 255.0) < 0.0001 && c.a == 1;

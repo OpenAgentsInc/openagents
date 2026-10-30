@@ -172,6 +172,10 @@ Composer :: struct {
   // the composer: "Error", the message; a press dismisses it)
   failure: [256] u8; failure_n: int;
   failure_y: f32; failure_h: f32;
+  // A host whose chat takes neither files nor an access mode (openagents.com/chat):
+  // no paperclip, no access chip, and its own words when empty ("" is Zeron's).
+  no_attach: bool; no_access: bool;
+  placeholder: string;
 }
 CH_SEND :: 0; CH_MODEL :: 1; CH_EFFORT :: 2; CH_ACCESS :: 3; CH_ATTACH :: 4;
 CH_COUNT :: 5;
@@ -207,6 +211,9 @@ paint_send :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: 
 }
 
 typed :: (c: [] Composer) -> string { return cast(string) c[0].text[0..<c[0].n]; }
+placeholder_of :: (c: [] Composer) -> string { return ifx c[0].placeholder.count > 0 then c[0].placeholder else PLACEHOLDER; }
+// The paperclip's slot in the compact row (none without the paperclip).
+attach_slot :: (c: [] Composer) -> f32 { return ifx c[0].no_attach then 0.0f32 else SEND_SIZE; }
 sel_lo :: (c: [] Composer) -> int { return ifx c[0].anchor < c[0].caret then c[0].anchor else c[0].caret; }
 sel_hi :: (c: [] Composer) -> int { return ifx c[0].anchor > c[0].caret then c[0].anchor else c[0].caret; }
 selected :: (c: [] Composer) -> string { return cast(string) c[0].text[sel_lo(c)..<sel_hi(c)]; }
@@ -838,7 +845,7 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
     }
   }
   if c[0].n == 0 {
-    v = paint_text(out, v, a, d, FONT_INPUT, PLACEHOLDER, left, top, lh, th.faint);
+    v = paint_text(out, v, a, d, FONT_INPUT, placeholder_of(c), left, top, lh, th.faint);
   } else {
     fi := a[0].fonts[FONT_INPUT].ascent; fd := a[0].fonts[FONT_INPUT].descent;
     for k: 0..<c[0].lines {
@@ -877,6 +884,7 @@ paint_composer :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme,
 
 // The paperclip (Zeron's attach button: a 28px ghost icon button).
 paint_attach :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, d: f32, x: f32, row_mid: f32) -> int {
+  if c[0].no_attach { chip_at(c, CH_ATTACH, 0, 0, 0, 0); return at; }
   chip_at(c, CH_ATTACH, x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE);
   return paint_icon(out, at, a, d, ICON_PAPERCLIP, x, row_mid - SEND_SIZE / 2, SEND_SIZE, SEND_SIZE, th.muted);
 }
@@ -904,6 +912,7 @@ paint_pickers :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme, 
   if el.count > 0 { v = paint_text(out, v, a, d, FONT_CHIP, el, lx + chip_label_width(a, ml) + CHIP_GAP, cly, clh, opacity(th.muted, 0.7)); }
   chip_at(c, CH_MODEL, mx, chip_top, model_w, CHIP_HEIGHT);
   chip_at(c, CH_EFFORT, 0, 0, 0, 0);
+  if c[0].no_access { chip_at(c, CH_ACCESS, 0, 0, 0, 0); return v; }
   // the access chip
   access_w := 2 * CHIP_PAD + text_width(a, FONT_CHIP, al);
   if c[0].plan { access_w += CHIP_GAP + text_width(a, FONT_CHIP, "Plan"); }
@@ -920,6 +929,7 @@ pickers_width :: (c: [] Composer, a: [] Atlas) -> f32 {
   el := effort_label_of(c);
   model_w := 2 * MODEL_CHIP_PAD + CHIP_ICON + CHIP_GAP + chip_label_width(a, model_label_of(c));
   if el.count > 0 { model_w += CHIP_GAP + chip_label_width(a, el); }
+  if c[0].no_access { return model_w; }
   access_w := 2 * CHIP_PAD + text_width(a, FONT_CHIP, access_label_of(c));
   if c[0].plan { access_w += CHIP_GAP + text_width(a, FONT_CHIP, "Plan"); }
   return model_w + PICKERS_GAP + access_w;
@@ -958,7 +968,7 @@ paint_chat_chip :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th: Theme
 // composer carries both pickers, as the new chat's does.
 docked_chips_width :: (c: [] Composer, a: [] Atlas) -> f32 { return ifx c[0].model_label.count == 0 then chat_chip_width(c, a) else pickers_width(c, a); }
 compact_text_width :: (c: [] Composer, a: [] Atlas, w: f32) -> f32 {
-  return w - 2 - COMPACT_INSET - SEND_SIZE - 2 * COMPACT_TEXT_PAD - docked_chips_width(c, a) - ACTION_PRIMARY_GAP - SEND_SIZE - COMPACT_INSET;
+  return w - 2 - COMPACT_INSET - attach_slot(c) - 2 * COMPACT_TEXT_PAD - docked_chips_width(c, a) - ACTION_PRIMARY_GAP - SEND_SIZE - COMPACT_INSET;
 }
 composer_fits_compact :: (c: [] Composer, a: [] Atlas, w: f32) -> bool {
   t := typed(c);
@@ -987,7 +997,7 @@ paint_composer_docked :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th:
   c[0].compact = true;
   h: f32 = COMPACT_TOTAL_HEIGHT; y := bottom - h;
   text_w := compact_text_width(c, a, w);
-  left := x + 1 + COMPACT_INSET + SEND_SIZE + COMPACT_TEXT_PAD;
+  left := x + 1 + COMPACT_INSET + attach_slot(c) + COMPACT_TEXT_PAD;
   lh: f32 = INPUT_LINE_HEIGHT;
   top := y + 1 + (h - PILL_BORDER_V - lh) / 2;
   composer_wrap(c, a, 100000);
@@ -1005,7 +1015,7 @@ paint_composer_docked :: (out: [] f32, at: int, c: [] Composer, a: [] Atlas, th:
     v = paint_quad(out, v, d, left + sx, top, ex - sx, lh, 0, 0, th.selection, th.selection);
   }
   if c[0].n == 0 {
-    v = paint_text(out, v, a, d, FONT_INPUT, PLACEHOLDER, left, top, lh, th.faint);
+    v = paint_text(out, v, a, d, FONT_INPUT, placeholder_of(c), left, top, lh, th.faint);
   } else {
     v = paint_text(out, v, a, d, FONT_INPUT, t, left, top, lh, th.text);
   }
