@@ -539,6 +539,13 @@ static const struct { const char *route; const char *instruction; } ROUTES[] = {
      "by voice. Speak briefly: at most 20 words, in plain spoken English, with no lists, markdown, emoji or "
      "code. You can't see the city or change it yourself, so never claim to have done something; say they can "
      "ask to place crates, barrels, benches, fences or stalls, remove one, or undo."},
+    // A realm someone built at /realms/new (byo-talk; apps/openagents-web/myrealm.coax): HOLD TO TALK faces
+    // the character you talk with (or the owner's board), so the page answers every turn; this agent only
+    // speaks if a turn reaches it.
+    {"made-realm",
+     "You are the voice of a realm on OpenAgents' Verse that a visitor built from one prompt. Speak briefly: "
+     "at most 20 words, in plain spoken English, with no lists, markdown, emoji or code. You can't see the realm "
+     "or change it, so never claim to have done something; say they can walk up to a character and talk to them."},
 };
 
 bool speech_route_known(const char *route) {

@@ -27,7 +27,8 @@
 //   side   2D: side-on with an orthographic camera; A and D walk left and right, W or Space jumps
 //          (always, as a 2D realm needs); what stands in your lane stops you: trees and the characters
 //          are walls, and you jump onto rocks, crates and barrels (their tops, 1.1 m at most)
-// JUMP, FLY, MAP and BUILD are there only when the owner gives them.
+// JUMP, FLY, MAP and BUILD are there only when the owner gives them. With TALK, E by a character (or a
+// tap on one) talks with it: type and press Enter; with VOICE too, HOLD TO TALK says it out loud.
 // myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
 //   coax/bin/coax test apps/openagents-web/myrealm.coax
 
@@ -102,7 +103,7 @@ MSG_DATA_TEXT :: 2;      // the page's data-text: the slug
 HOST_FACTS :: 600;
 MSG_PACK :: 605;
 HTTP_ANSWER_KIND :: 512;
-OUTBOX :: 256; URL :: 160; BODY :: 512; SLUG :: 64; TITLE :: 64; WORD :: 16; NOTE :: 100;
+OUTBOX :: 640; URL :: 160; BODY :: 4096; SLUG :: 64; TITLE :: 64; WORD :: 16; NOTE :: 100;
 HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
 MESHES :: 24; NAME :: 32;
 PIECES :: 460;           // meshes drawn: features and placed things (a tree is two), then the actors each frame
@@ -127,10 +128,16 @@ GRAVITY :: 14.0; JUMP_SPEED :: 6.0; FLY_HEIGHT :: 7.0;
 WAIT :: 30.0;
 // buttons
 BTN_BACK :: 0; BTN_BUILD :: 3; BTN_MAP :: 4; BTN_FLY :: 5; BTN_JUMP :: 6;
-BTN_CLOSE :: 9; BTN_NEW :: 10;
-BUTTONS :: 11;
+BTN_CLOSE :: 9; BTN_NEW :: 10; BTN_BYE :: 11; BTN_HOLD :: 12;
+BUTTONS :: 13;
 PANE_NONE :: 0; PANE_BUILD :: 3;
-REQ_NONE :: 0; REQ_SPEC :: 1; REQ_PLACE :: 3;
+REQ_NONE :: 0; REQ_SPEC :: 1; REQ_PLACE :: 3; REQ_TALK :: 4;
+// talking with a character: E or a tap by one, within TALK_NEAR metres; the talk ends past TALK_FAR
+MSG_VOICE :: 50;                           // coax/web/voice.js: "phase|words" (ui.coax's MSG_TEXT: typed text)
+ACT_VOICE :: 7; ACT_VOICE_TO :: 8; ACT_VOICE_SAY :: 9;   // coax/web/voice.js: on/end, whom you face, the answer to speak
+TALK_NEAR :: 3.5; TALK_FAR :: 8.0;
+TALK_LINES :: 6; TALK_LINE :: 400; TYPED :: 200; VISIT :: 64;
+NPC_URL :: "/api/playtest/npc/ask";
 
 MyRealm :: struct {
   started: bool;
@@ -185,11 +192,21 @@ MyRealm :: struct {
   spec_due: bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
   ed: [1] RealmEdit; ed_seen: int;   // the shared edit layer, and its version this realm laid out
+  // the talk: with whom (-1 none), what was said (oldest first), what you are typing, the one question waiting
+  talk_p: int; talk_n: int; talk_npc: [TALK_LINES] bool; talk_line: [TALK_LINES * TALK_LINE] u8; talk_line_n: [TALK_LINES] int;
+  typed: [TYPED] u8; typed_n: int; asked: [TYPED] u8; asked_n: int; ask_due: bool; talk_wait: bool; spoken: bool;
+  // the voice (the page's data-voice; HOLD TO TALK): held, its words awaited, what to tell the host next
+  voice: bool; voice_held: bool; heard_due: bool; want_voice: int; faced: bool; face_due: bool;
+  caption: [TYPED] u8; caption_n: int; say: [TALK_LINE] u8; say_n: int;
+  visit: [VISIT] u8; visit_n: int;
+  type_box: Box; field: [4] f32;
 }
 
 realm_reset :: (s: [] MyRealm) {
   s[0].started = true; s[0].press = -1; s[0].hover = -1; s[0].stick_id = -1; s[0].turn_id = -1;
-  s[0].row_press = -1; s[0].cell_press = -1; s[0].req_id = -1; s[0].z = 6;
+  s[0].row_press = -1; s[0].cell_press = -1; s[0].req_id = -1; s[0].z = 6; s[0].talk_p = -1;
+  // the edit layer's request and presses are none until it starts (a realm with no slug never starts it)
+  s[0].ed[0].req_id = -1; s[0].ed[0].press = -1; s[0].ed[0].row_press = -1; s[0].ed[0].finger = -1; s[0].ed[0].switch_row = -1;
 }
 begin :: (s: [] MyRealm) { if !s[0].started { realm_reset(s); } }
 
@@ -354,8 +371,15 @@ realm_message :: (s: [] MyRealm, t: [] Track, kind: int, text: string) #export_c
     url := fact_of(text, "url");
     hash := 0; while hash < url.count && url[hash] != '#' { hash += 1; }
     if s[0].slug_n == 0 && hash + 1 < url.count && slug_ok(url[hash + 1..<url.count]) { s[0].slug_n = copy_into(s[0].slug[..], url[hash + 1..<url.count]); }
+    s[0].voice = fact_of(text, "voice").count > 0;
+    s[0].visit_n = copy_into(s[0].visit[..], fact_of(text, "tab"));
     return;
   }
+  if kind == MSG_TEXT && s[0].talk_p >= 0 && !s[0].voice_held {
+    for i: 0..<text.count { if s[0].typed_n < TYPED && text[i] >= 32 { s[0].typed[s[0].typed_n] = text[i]; s[0].typed_n += 1; } }
+    return;
+  }
+  if kind == MSG_VOICE && (s[0].voice_held || s[0].heard_due) { talk_heard(s, t, text); return; }
   if kind >= HTTP_ANSWER_KIND && kind < HTTP_ANSWER_KIND + 8 && kind - HTTP_ANSWER_KIND == s[0].req_id { take_answer(s, t, text); }
 }
 
@@ -373,6 +397,7 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
     } else if !s[0].spec_ready { s[0].spec_failed = true; }
     return;
   }
+  if what == REQ_TALK { talk_answered(s, status, body); return; }
   if what == REQ_PLACE {
     if status != 200 { set_note(s, ifx status == 403 then "The owner hasn't let visitors build." else "Not placed. Try again."); return; }
     if s[0].owner { ask_spec(s); } else { set_note(s, "Sent to the owner."); }
@@ -387,19 +412,33 @@ busy :: (s: [] MyRealm) -> bool { return s[0].req_ready || s[0].req_id >= 0; }
 realm_requested :: (s: [] MyRealm, id: int) #export_c {
   s[0].req_ready = false; s[0].req_id = id;
   if id < 0 && s[0].req_what == REQ_SPEC && !s[0].spec_ready { s[0].spec_failed = true; }
+  if id < 0 && s[0].req_what == REQ_TALK { s[0].talk_wait = false; }
   if id < 0 { s[0].req_what = REQ_NONE; }
 }
 ask :: (s: [] MyRealm, what: int, tail: string, body_n: int, post: bool) {
   n := put(s[0].req_url[..], 0, "/api/playtest/realms/");
   n = put(s[0].req_url[..], n, slug_text(s)); n = put(s[0].req_url[..], n, tail);
-  s[0].req_url_n = n; s[0].req_body_n = body_n;
+  ask_url(s, what, n, body_n, post);
+}
+ask_url :: (s: [] MyRealm, what: int, url_n: int, body_n: int, post: bool) {
+  s[0].req_url_n = url_n; s[0].req_body_n = body_n;
   s[0].req_flags = (ifx post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
   s[0].req_what = what; s[0].req_ready = true; s[0].req_at = s[0].time;
 }
 ask_spec :: (s: [] MyRealm) { if s[0].slug_n > 0 { s[0].spec_due = true; } }
 // the next request, when none is in flight
 next_request :: (s: [] MyRealm) {
-  if busy(s) || s[0].slug_n == 0 { return; }
+  if busy(s) { return; }
+  if s[0].ask_due && s[0].talk_p >= 0 {
+    s[0].ask_due = false;
+    n := talk_body(s, s[0].req_body[..]);
+    if n == 0 { set_note(s, "That was too long. Try a shorter one."); return; }
+    talk_add(s, false, cast(string) s[0].asked[0..<s[0].asked_n]);
+    s[0].talk_wait = true;
+    ask_url(s, REQ_TALK, put(s[0].req_url[..], 0, NPC_URL), n, true);
+    return;
+  }
+  if s[0].slug_n == 0 { return; }
   if !s[0].asked_spec || s[0].spec_due { s[0].asked_spec = true; s[0].spec_due = false; ask(s, REQ_SPEC, "", 0, false); return; }
 }
 
@@ -878,17 +917,26 @@ realm_key :: (s: [] MyRealm, t: [] Track, key: int, down: bool) -> bool #export_
   begin(s);
   used := redit_key(s[0].ed[..], key, down);
   if used > 0 { return used == 1; }
+  if s[0].talk_p >= 0 && !s[0].voice_held {
+    // talking: the keys type; Enter says it, Esc or BYE ends the talk
+    if !down { h0 := hold_of(key); if h0 != 0 { s[0].held = s[0].held & (15 - h0); } return false; }
+    if key == KEY_ENTER { talk_say(s, t, cast(string) s[0].typed[0..<s[0].typed_n], false); s[0].typed_n = 0; return true; }
+    if key == KEY_ESCAPE { talk_close(s); return true; }
+    if key == KEY_BACKSPACE { if s[0].typed_n > 0 { s[0].typed_n -= 1; while s[0].typed_n > 0 && (s[0].typed[s[0].typed_n] & 0xC0) == 0x80 { s[0].typed_n -= 1; } } return true; }
+    if key >= 32 { return false; }   // the host sends it as text
+  }
+  if down && (key == 'e' || key == 'E') && s[0].talk_p < 0 && may_talk(s) { p := near_person(s); if p >= 0 { talk_open(s, t, p); return true; } }
   h := hold_of(key);
   if h != 0 { s[0].held = ifx down then s[0].held | h else s[0].held & (15 - h); return true; }
   if !down { return key == ' '; }
   if key == ' ' { jump(s); return true; }
   if key == 'f' || key == 'F' { fly(s); return true; }
   if (key == 'm' || key == 'M') && s[0].tools[TOOL_MAP] { s[0].map_open = !s[0].map_open; return true; }
-  if (key == 'b' || key == 'B') && can_build(s) { toggle_pane(s, PANE_BUILD); return true; }
+  if (key == 'b' || key == 'B') && can_build(s) { talk_close(s); toggle_pane(s, PANE_BUILD); return true; }
   if key == KEY_ESCAPE { if s[0].pane != PANE_NONE || s[0].map_open { s[0].pane = PANE_NONE; s[0].map_open = false; } else { leave(s); } return true; }
   return false;
 }
-realm_blur :: (s: [] MyRealm) #export_c { s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
+realm_blur :: (s: [] MyRealm) #export_c { talk_let_go(s); s[0].held = 0; s[0].stick = false; s[0].turning = false; s[0].press = -1; s[0].row_press = -1; s[0].cell_press = -1; }
 can_build :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].slug_n > 0 && (s[0].owner || s[0].tools[TOOL_BUILD]); }
 leave :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
 go_new :: (s: [] MyRealm) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/realms/new"); s[0].action = ACT_NAVIGATE; } }
@@ -915,6 +963,233 @@ put_cm :: (buf: [] u8, at: int, v: f32) -> int {
   return put_int(buf, n, r);
 }
 
+// ---- talking with the characters (the chat and memory Everglade's people use: POST
+// /api/playtest/npc/ask, migrations/0031_npc_memory.sql; 0061_realm_talk.sql refuses a visitor
+// when the owner has TALK off). E by a character, or a tap on one, opens the talk: type and press
+// Enter; with VOICE on (and a page with a voice) HOLD TO TALK says it out loud and the answer is
+// spoken back. BYE or Esc ends it, as walking away does. A character knows the realm and the lore
+// its owner wrote in EDIT.
+
+may_talk :: (s: [] MyRealm) -> bool { return s[0].spec_ready && s[0].people > 0 && (s[0].owner || s[0].tools[TOOL_TALK]); }
+may_voice :: (s: [] MyRealm) -> bool { return may_talk(s) && s[0].voice && (s[0].owner || s[0].tools[TOOL_VOICE]); }
+// The character within TALK_NEAR of you, nearest first (-1 none).
+near_person :: (s: [] MyRealm) -> int {
+  best := -1; bd: f32 = TALK_NEAR;
+  for p: 0..<s[0].people {
+    dx := s[0].person_x[p] - s[0].x; dz := s[0].person_z[p] - s[0].z;
+    d := sqrt(dx * dx + dz * dz);
+    if d < bd { bd = d; best = p; }
+  }
+  return best;
+}
+// A character's key for its lore: its name, lower case, a dash for each space.
+who_of :: (s: [] MyRealm, p: int, buf: [] u8) -> int {
+  nm := person_name(s, p); n := 0;
+  for i: 0..<nm.count {
+    if n >= buf.count { break; }
+    c := nm[i];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    if c == ' ' { c = '-'; }
+    if (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-' { buf[n] = c; n += 1; }
+  }
+  return n;
+}
+talk_text :: (s: [] MyRealm, i: int) -> string { return cast(string) s[0].talk_line[i * TALK_LINE..<i * TALK_LINE + s[0].talk_line_n[i]]; }
+talk_add :: (s: [] MyRealm, npc: bool, text: string) {
+  if s[0].talk_n == TALK_LINES {
+    for i: 1..<TALK_LINES {
+      s[0].talk_npc[i - 1] = s[0].talk_npc[i];
+      s[0].talk_line_n[i - 1] = copy_into(s[0].talk_line[(i - 1) * TALK_LINE..<i * TALK_LINE], talk_text(s, i));
+    }
+    s[0].talk_n = TALK_LINES - 1;
+  }
+  k := s[0].talk_n;
+  s[0].talk_npc[k] = npc; s[0].talk_line_n[k] = copy_into(s[0].talk_line[k * TALK_LINE..<(k + 1) * TALK_LINE], text);
+  s[0].talk_n = k + 1;
+}
+talk_open :: (s: [] MyRealm, t: [] Track, p: int) {
+  if !may_talk(s) || p < 0 || p >= s[0].people { return; }
+  if s[0].talk_p != p { s[0].talk_n = 0; s[0].talk_wait = false; s[0].ask_due = false; }
+  s[0].talk_p = p; s[0].typed_n = 0; s[0].caption_n = 0;
+  s[0].pane = PANE_NONE; s[0].map_open = false; s[0].ed[0].pane = REDIT_SHUT; s[0].ed[0].typing = false;
+  s[0].held = 0;   // the keys now type
+  redit_read_panes_too(s[0].ed[..]);   // its lore
+  if track_begin(t, "realm-talk-open") { track_bool(t, "owner", s[0].owner); track_end(t); }
+}
+talk_close :: (s: [] MyRealm) {
+  if s[0].talk_p < 0 { return; }
+  talk_let_go(s);
+  s[0].talk_p = -1; s[0].typed_n = 0;
+  if s[0].faced { s[0].faced = false; s[0].face_due = true; }   // the voice host answers its own route again
+}
+// Say something to the character: it waits for the one request there is.
+talk_say :: (s: [] MyRealm, t: [] Track, words: string, spoken: bool) {
+  w := words[trim_from(words)..<trim_to(words)];
+  if s[0].talk_p < 0 || w.count == 0 || s[0].ask_due || s[0].talk_wait { return; }
+  s[0].asked_n = copy_into(s[0].asked[..], w); s[0].ask_due = true; s[0].spoken = spoken;
+  if track_begin(t, "realm-talk") { track_bool(t, "owner", s[0].owner); track_bool(t, "voice", spoken); track_end(t); }
+}
+talk_down :: (s: [] MyRealm) {
+  if !may_voice(s) || s[0].talk_p < 0 || s[0].voice_held || s[0].talk_wait || s[0].ask_due { return; }
+  s[0].voice_held = true; s[0].want_voice = 1; s[0].caption_n = 0; s[0].faced = false; s[0].face_due = true;
+}
+talk_let_go :: (s: [] MyRealm) {
+  if !s[0].voice_held { return; }
+  s[0].voice_held = false; s[0].heard_due = true; s[0].want_voice = 2;
+}
+
+// a JSON string's inside: quotes and backslashes escaped, control bytes as spaces
+json_in :: (out: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count {
+    c := text[i];
+    if n + 2 >= out.count { return n; }
+    if c == '"' || c == '\\' { out[n] = '\\'; out[n + 1] = c; n += 2; continue; }
+    out[n] = ifx c < 32 then cast(u8) ' ' else c; n += 1;
+  }
+  return n;
+}
+json_field :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> int {
+  n := put(out, at, ifx comma then ",\"" else "\""); n = put(out, n, name); n = put(out, n, "\":\"");
+  n = json_in(out, n, text); return put(out, n, "\"");
+}
+TREE_WORDS :: [4] string.["round trees", "pines", "dead trees", "trees of every kind"];
+PROP_WORDS :: [5] string.["crates", "barrels", "a wagon", "a fence", "a camp"];
+CAMERA_CONTROLS :: [4] string.[
+  "W and S or the arrows walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns.",
+  "W and S walk, A and D turn, a drag looks round; on a phone the left thumb walks and the right looks.",
+  "W, A, S and D walk that way, as a thumb or a drag does; the realm is seen from above.",
+  "A and D walk left and right, W or Space jumps; on a phone drag left or right, and up to jump."];
+// What the character knows: the realm, the others in it and its owner's lore.
+knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
+  n := json_in(out, at, "You live in "); n = json_in(out, n, name_text(s));
+  n = json_in(out, n, ", a realm on the Verse that someone built from one prompt. It is ");
+  n = json_in(out, n, TIMES[s[0].tod]); n = json_in(out, n, " here, on "); n = json_in(out, n, GROUNDS[s[0].ground]); n = json_in(out, n, " ground.");
+  if s[0].water > 0 { n = json_in(out, n, " There is water."); }
+  if s[0].trees > 0 { n = json_in(out, n, " There are "); n = json_in(out, n, TREE_WORDS[s[0].tree_kind]); n = json_in(out, n, "."); }
+  if s[0].rocks > 0 { n = json_in(out, n, " There are rocks."); }
+  if s[0].lanterns > 0 { n = json_in(out, n, " Lanterns stand about."); }
+  if s[0].birds > 0 { n = json_in(out, n, ifx s[0].bats then " Bats circle overhead." else " Birds circle overhead."); }
+  for i: 0..<s[0].prop_n { n = json_in(out, n, " There is "); n = json_in(out, n, PROP_WORDS[s[0].props[i]]); n = json_in(out, n, "."); }
+  for q: 0..<s[0].people {
+    if q == p { continue; }
+    n = json_in(out, n, " "); n = json_in(out, n, person_name(s, q));
+    if s[0].role_n[q] > 0 { n = json_in(out, n, ", "); n = json_in(out, n, person_role(s, q)); n = json_in(out, n, ","); }
+    n = json_in(out, n, " lives here too.");
+  }
+  who: [PERSON] u8; wn := who_of(s, p, who[..]);
+  lore := redit_lore(s[0].ed[..], cast(string) who[0..<wn]);
+  if lore.count > 0 { n = json_in(out, n, " Your story, as the realm's owner wrote it: "); n = json_in(out, n, lore); }
+  return n;
+}
+// The question's body (the talk so far, oldest first, then the question); 0 when it didn't fit.
+talk_body :: (s: [] MyRealm, out: [] u8) -> int {
+  p := s[0].talk_p;
+  n := put(out, 0, "{\"npc\":{");
+  n = json_field(out, n, "name", person_name(s, p), false);
+  n = json_field(out, n, "role", person_role(s, p), true);
+  n = put(out, n, ",\"knowledge\":\""); n = knows_of(s, out, n, p); n = put(out, n, "\"}");
+  n = json_field(out, n, "world", name_text(s), true);
+  if s[0].slug_n > 0 { n = json_field(out, n, "realm", slug_text(s), true); }
+  cn: [600] u8;
+  c := put(cn[..], 0, CAMERA_CONTROLS[s[0].camera]);
+  c = put(cn[..], c, " E near a character, or a tap on one, talks to them: type and press Enter");
+  if may_voice(s) { c = put(cn[..], c, ", or hold HOLD TO TALK and speak"); }
+  c = put(cn[..], c, "; BYE or Esc ends the talk.");
+  n = json_field(out, n, "controls", cast(string) cn[0..<c], true);
+  n = json_field(out, n, "visit", cast(string) s[0].visit[0..<s[0].visit_n], true);
+  n = put(out, n, ",\"history\":[");
+  for k: 0..<s[0].talk_n {
+    n = put(out, n, ifx k > 0 then ",{\"from\":\"" else "{\"from\":\"");
+    n = put(out, n, ifx s[0].talk_npc[k] then "npc\"" else "player\"");
+    n = json_field(out, n, "text", talk_text(s, k), true);
+    n = put(out, n, "}");
+  }
+  n = put(out, n, "]");
+  n = json_field(out, n, "question", cast(string) s[0].asked[0..<s[0].asked_n], true);
+  n = put(out, n, "}");
+  return ifx n >= out.count - 1 then 0 else n;
+}
+// The "text" of the server's answer, unescaped, into out; its length.
+answer_text :: (body: string, out: [] u8) -> int {
+  key := "\"text\""; i := 0; found := -1;
+  while i + key.count <= body.count {
+    if body[i..<i + key.count] == key {
+      j := i + key.count;
+      while j < body.count && body[j] == ' ' { j += 1; }
+      if j < body.count && body[j] == ':' {
+        j += 1; while j < body.count && body[j] == ' ' { j += 1; }
+        if j < body.count && body[j] == '"' { found = j + 1; break; }
+      }
+    }
+    i += 1;
+  }
+  if found < 0 { return 0; }
+  n := 0; i = found;
+  while i < body.count && body[i] != '"' && n < out.count {
+    c := body[i];
+    if c == '\\' && i + 1 < body.count {
+      e := body[i + 1];
+      if e == 'u' { out[n] = '\''; n += 1; i += 6; continue; }
+      out[n] = ifx e == 'n' || e == 't' || e == 'r' then cast(u8) ' ' else e; n += 1; i += 2; continue;
+    }
+    out[n] = c; n += 1; i += 1;
+  }
+  return n;
+}
+talk_answered :: (s: [] MyRealm, status: int, body: string) {
+  s[0].talk_wait = false;
+  if s[0].talk_p < 0 { return; }
+  if status == 200 {
+    buf: [TALK_LINE] u8; m := answer_text(body, buf[..]);
+    if m > 0 {
+      talk_add(s, true, cast(string) buf[0..<m]);
+      if s[0].spoken { s[0].say_n = copy_into(s[0].say[..], cast(string) buf[0..<m]); }
+      return;
+    }
+  }
+  set_note(s, ifx status == 403 then "The owner hasn't let visitors talk here." else ifx status == 429 then "One at a time." else "No answer. Try again.");
+}
+// The voice's "phase|words", while HOLD TO TALK is held or its words are awaited.
+talk_heard :: (s: [] MyRealm, t: [] Track, text: string) {
+  cut := 0; while cut < text.count && text[cut] != '|' { cut += 1; }
+  said := ifx cut + 1 <= text.count then text[cut + 1..<text.count] else "";
+  phase := text[0..<cut];
+  if phase == "off" || phase == "notice" { s[0].heard_due = false; if phase == "notice" && said.count > 0 { set_note(s, said); } return; }
+  s[0].caption_n = copy_into(s[0].caption[..], said);
+  if phase == "heard" && said.count > 0 && s[0].heard_due { s[0].heard_due = false; s[0].caption_n = 0; talk_say(s, t, said, true); }
+}
+// What the voice host is told next: whom you face, on or end, the answer to speak (0 nothing).
+talk_action :: (s: [] MyRealm) -> int {
+  if s[0].face_due {
+    s[0].face_due = false;
+    if s[0].voice_held || s[0].want_voice == 1 { s[0].faced = true; s[0].out_n = put(s[0].outbox[..], 0, person_name(s, s[0].talk_p)); }
+    else { s[0].out_n = 0; }
+    return ACT_VOICE_TO;
+  }
+  if s[0].want_voice != 0 {
+    w := s[0].want_voice; s[0].want_voice = 0;
+    s[0].out_n = put(s[0].outbox[..], 0, ifx w == 1 then "on" else "end");
+    return ACT_VOICE;
+  }
+  if s[0].say_n > 0 { s[0].out_n = put(s[0].outbox[..], 0, cast(string) s[0].say[0..<s[0].say_n]); s[0].say_n = 0; return ACT_VOICE_SAY; }
+  return 0;
+}
+// Is (x, y) on a character on screen? Which (-1 none).
+person_at :: (s: [] MyRealm, x: f32, y: f32) -> int {
+  k := s[0].dpr;
+  for p: 0..<s[0].people {
+    dx := s[0].person_x[p] - s[0].x; dz := s[0].person_z[p] - s[0].z;
+    if sqrt(dx * dx + dz * dz) > 14 { continue; }
+    foot := seen(s, s[0].person_x[p], 0, s[0].person_z[p]); top := seen(s, s[0].person_x[p], 2.4, s[0].person_z[p]);
+    if !foot.ok || !top.ok { continue; }
+    half := hi(28 * k, (foot.y - top.y) * 0.4);
+    y0 := lo(top.y, foot.y) - 36 * k; y1 := hi(top.y, foot.y) + 8 * k;
+    if abs(x - (foot.x + top.x) * 0.5) < half && y >= y0 && y <= y1 { return p; }
+  }
+  return -1;
+}
+
 button_at :: (s: [] MyRealm, x: f32, y: f32) -> int {
   for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes[i], x, y) { return i; } }
   return -1;
@@ -925,13 +1200,15 @@ realm_label :: (s: [] MyRealm, x: f32, y: f32) -> string #export_c {
   if b == BTN_BACK { return "galaxy"; }
   if b == BTN_BUILD { return "build"; } if b == BTN_MAP { return "map"; } if b == BTN_FLY { return "fly"; } if b == BTN_JUMP { return "jump"; }
   if b == BTN_CLOSE { return "close"; } if b == BTN_NEW { return "new"; }
+  if b == BTN_BYE { return "bye"; } if b == BTN_HOLD { return "hold-to-talk"; }
   if cell_at(s, x, y) >= 0 { return "thing"; }
   return "";
 }
 press_button :: (s: [] MyRealm, t: [] Track, b: int) {
   if b == BTN_BACK { leave(s); }
   if b == BTN_NEW { go_new(s); }
-  if b == BTN_BUILD { toggle_pane(s, PANE_BUILD); s[0].ed[0].pane = REDIT_SHUT; }
+  if b == BTN_BUILD { talk_close(s); toggle_pane(s, PANE_BUILD); s[0].ed[0].pane = REDIT_SHUT; }
+  if b == BTN_BYE { talk_close(s); }
   if b == BTN_CLOSE { s[0].pane = PANE_NONE; }
   if b == BTN_MAP { s[0].map_open = !s[0].map_open; }
   if b == BTN_FLY { fly(s); }
@@ -940,14 +1217,16 @@ press_button :: (s: [] MyRealm, t: [] Track, b: int) {
 realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   begin(s);
   if s[0].press < 0 && s[0].cell_press < 0 && redit_pointer(s[0].ed[..], x, y, phase, id) {
-    if redit_open(s[0].ed[..]) { s[0].pane = PANE_NONE; }   // one pane at a time
+    if redit_open(s[0].ed[..]) { s[0].pane = PANE_NONE; talk_close(s); }   // one pane at a time
     return true;
   }
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
   if phase == POINTER_DOWN {
-    if b >= 0 { s[0].press = b; return true; }
+    if b >= 0 { s[0].press = b; if b == BTN_HOLD { talk_down(s); } return true; }
     c := cell_at(s, x, y); if c >= 0 { s[0].cell_press = c; return true; }
+    if s[0].talk_p >= 0 && inside(s[0].type_box, x, y) { return true; }   // the keyboard comes up
+    if may_talk(s) { p := person_at(s, x, y); if p >= 0 { talk_open(s, t, p); return true; } }
     // a mouse drag turns (first person: looks round, up and down); with a fixed camera it walks, as a thumb does.
     // First person on a phone: a thumb on the right half looks round, up and down; on the left it walks.
     looks := s[0].camera == CAM_FIRST && kind != 0 && x > s[0].width * 0.5;
@@ -956,6 +1235,7 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
     return true;
   }
   if s[0].press >= 0 {
+    if s[0].press == BTN_HOLD && phase != POINTER_MOVE { talk_let_go(s); }
     if phase == POINTER_UP && b == s[0].press { press_button(s, t, b); }
     if phase != POINTER_MOVE { s[0].press = -1; }
     return true;
@@ -985,10 +1265,11 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
 }
 realm_cursor :: (s: [] MyRealm) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
 realm_action :: (s: [] MyRealm) -> int #export_c {
+  if s[0].action == 0 { v := talk_action(s); if v != 0 { return v; } }
   if s[0].action == 0 { e := redit_take_action(s[0].ed[..], s[0].outbox[..]); if e.kind != 0 { s[0].out_n = e.n; return e.kind; } }
   a := s[0].action; s[0].action = 0; return a;
 }
-realm_wants_text :: (s: [] MyRealm) -> bool #export_c { return redit_typing(s[0].ed[..]); }
+realm_wants_text :: (s: [] MyRealm) -> bool #export_c { return redit_typing(s[0].ed[..]) || (s[0].talk_p >= 0 && !s[0].voice_held); }
 realm_action_done :: (s: [] MyRealm) #export_c { s[0].out_n = 0; }
 
 // ---- the look
@@ -1130,11 +1411,20 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     bx += tw2 + gap;
   }
   // what to do, until you have walked a little; or a note
+  near := ifx s[0].talk_p < 0 && may_talk(s) && s[0].pane == PANE_NONE && !redit_open(s[0].ed[..]) then near_person(s) else -1;
+  if s[0].talk_p >= 0 { n = draw_talk(s, out, n, by - 10 * k); }
   if s[0].note_n > 0 && s[0].time - s[0].note_at < 4 {
     nb: [NOTE] u8; nn := put(nb[..], 0, cast(string) s[0].note[0..<s[0].note_n]); upper(nb[..], nn);
     line := cast(string) nb[0..<nn];
     n = centred(d, out, n, line, w * 0.5, by - 16 * k, fit_cap(line, 8 * k, w - 2 * g), ember(k, 0.95));
-  } else if s[0].walked < 6 && s[0].spec_ready && s[0].pane == PANE_NONE {
+  } else if near >= 0 {
+    hb: [PERSON + 24] u8;
+    hn := put(hb[..], 0, ifx phone then "TAP " else "E TALKS TO "); hn = put(hb[..], hn, person_name(s, near));
+    if phone { hn = put(hb[..], hn, " TO TALK"); }
+    upper(hb[..], hn);
+    line := cast(string) hb[0..<hn];
+    n = centred(d, out, n, line, w * 0.5, by - 16 * k, fit_cap(line, 8 * k, w - 2 * g), ember(k, 0.95));
+  } else if s[0].walked < 6 && s[0].spec_ready && s[0].pane == PANE_NONE && s[0].talk_p < 0 {
     hint := ifx phone then "DRAG A THUMB TO WALK AND TURN" else "W AND S WALK, A AND D TURN, OR DRAG TO TURN";
     if s[0].camera == CAM_FIRST { hint = ifx phone then "LEFT THUMB WALKS, RIGHT THUMB LOOKS" else "W AND S WALK, A AND D TURN, DRAG TO LOOK"; }
     if s[0].camera == CAM_TOP { hint = ifx phone then "DRAG A THUMB TO WALK" else "W, A, S AND D WALK, OR DRAG"; }
@@ -1143,6 +1433,77 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   }
   if s[0].pane != PANE_NONE { n = draw_pane(s, out, n, right, by - 10 * k); }
   if s[0].map_open { n = draw_map(s, out, n); }
+  return n;
+}
+
+// A text's lines, at most firsts.count of them, each at most width (measure's units) wide; how many.
+talk_wrap :: (text: string, width: f32, firsts: [] int, lasts: [] int) -> int {
+  i := 0; m := 0;
+  while i < text.count && m < firsts.count {
+    while i < text.count && text[i] == ' ' { i += 1; }
+    if i >= text.count { break; }
+    nx: [1] int;
+    e := wrap(text, i, width, GAP, SPACE, false, nx[..]);
+    firsts[m] = i; lasts[m] = e; m += 1;
+    if nx[0] <= i { break; }
+    i = nx[0];
+  }
+  return m;
+}
+// The talk, over the tools: the character's name, what you said and its answer, what you type,
+// and BYE (with HOLD TO TALK when the owner gives VOICE).
+draw_talk :: (s: [] MyRealm, out: [] f32, at: int, bottom: f32) -> int {
+  k := s[0].dpr; w := s[0].width; d := k; n := at; g := 16 * k;
+  pw := lo(w - 2 * g, 520 * k); x0 := (w - pw) * 0.5; room := pw - 28 * k;
+  cap := 7.5 * k; lh := cap * 1.8;
+  // the last thing you said (two lines at most), then its answer from its start (or ... while it comes)
+  you := -1; them := -1;
+  for i: 0..<s[0].talk_n { if s[0].talk_npc[i] { them = i; } else { you = i; } }
+  if them >= 0 && you > them { them = -1; }
+  yb: [TALK_LINE + 8] u8; ym := 0;
+  if you >= 0 { ym = put(yb[..], 0, "YOU: "); ym = put(yb[..], ym, talk_text(s, you)); }
+  ys: [2] int; ye: [2] int; yl := talk_wrap(cast(string) yb[0..<ym], room / cap, ys[..], ye[..]);
+  af: [9] int; at_: [9] int; al := ifx them >= 0 then talk_wrap(talk_text(s, them), room / cap, af[..], at_[..]) else 0;
+  shown := yl + hi_int(al, ifx s[0].talk_wait then 1 else 0);
+  ph := 136 * k + lh * cast(f32) hi_int(shown, 1);
+  b := Box.{x0 = x0, y0 = bottom - ph, x1 = x0 + pw, y1 = bottom};
+  if !plate(s, b, 0.95, LOOK_PLAIN) { return n; }
+  p := s[0].talk_p;
+  nb: [PERSON] u8; nn := put(nb[..], 0, person_name(s, p)); upper(nb[..], nn);
+  nm := cast(string) nb[0..<nn];
+  n = write(d, out, n, nm, b.x0 + 14 * k, b.y0 + 24 * k, fit_cap(nm, 9 * k, room), GAP, SPACE, bronze(k, 0.95), false, false);
+  y := b.y0 + 36 * k + cap;
+  you_text := cast(string) yb[0..<ym];
+  for l: 0..<yl { n = write(d, out, n, you_text[ys[l]..<ye[l]], b.x0 + 14 * k, y, cap, GAP, SPACE, white(k, 0.6), false, false); y += lh; }
+  if them >= 0 {
+    said := talk_text(s, them);
+    for l: 0..<al { n = write(d, out, n, said[af[l]..<at_[l]], b.x0 + 14 * k, y, cap, GAP, SPACE, white(k, 0.97), false, false); y += lh; }
+  } else if s[0].talk_wait { n = write(d, out, n, "...", b.x0 + 14 * k, y, cap, GAP, SPACE, white(k, 0.8), false, false); }
+  // what you type (or what the voice hears)
+  fb := Box.{x0 = b.x0 + 12 * k, y0 = b.y1 - 88 * k, x1 = b.x1 - 12 * k, y1 = b.y1 - 54 * k};
+  s[0].type_box = fb;
+  s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1;
+  n = redit_frame(out, n, RBox.{x0 = fb.x0, y0 = fb.y0, x1 = fb.x1, y1 = fb.y1}, !s[0].voice_held, k);
+  if s[0].voice_held || s[0].heard_due {
+    words := ifx s[0].caption_n > 0 then cast(string) s[0].caption[0..<s[0].caption_n] else "LISTENING";
+    n = redit_wrap(s[0].ed[..], out, n, words, fb.x0 + 8 * k, fb.y0 + 6 * k, cap, fb.x1 - fb.x0 - 16 * k, 1, ember(k, 0.95));
+  } else if s[0].typed_n > 0 {
+    tb: [TYPED + 1] u8; tm := copy_into(tb[..], cast(string) s[0].typed[0..<s[0].typed_n]); tb[tm] = '_'; tm += 1;
+    n = redit_wrap(s[0].ed[..], out, n, cast(string) tb[0..<tm], fb.x0 + 8 * k, fb.y0 + 6 * k, cap, fb.x1 - fb.x0 - 16 * k, 1, white(k, 0.95));
+  } else {
+    hb: [PERSON + 24] u8; hm := put(hb[..], 0, "SAY SOMETHING TO "); hm = put(hb[..], hm, person_name(s, p)); upper(hb[..], hm);
+    hint := cast(string) hb[0..<hm];
+    n = write(d, out, n, hint, fb.x0 + 8 * k, fb.y0 + 6 * k + cap * 1.25, fit_cap(hint, cap, fb.x1 - fb.x0 - 16 * k), GAP, SPACE, white(k, 0.45), false, false);
+  }
+  // BYE, and HOLD TO TALK
+  by := b.y1 - 46 * k; bh := 36 * k;
+  if may_voice(s) {
+    half := (pw - 24 * k - 8 * k) * 0.5;
+    n = pill(s, out, n, BTN_HOLD, Box.{x0 = b.x0 + 12 * k, y0 = by, x1 = b.x0 + 12 * k + half, y1 = by + bh}, "HOLD TO TALK", s[0].voice_held);
+    n = pill(s, out, n, BTN_BYE, Box.{x0 = b.x1 - 12 * k - half, y0 = by, x1 = b.x1 - 12 * k, y1 = by + bh}, "BYE", false);
+  } else {
+    n = pill(s, out, n, BTN_BYE, Box.{x0 = b.x0 + 12 * k, y0 = by, x1 = b.x1 - 12 * k, y1 = by + bh}, "BYE", false);
+  }
   return n;
 }
 
@@ -1218,6 +1579,16 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
   realm_step(s, dt);
   if s[0].laid { actors(s); }
+  // the talk ends when you walk away, or when the owner takes TALK away
+  if s[0].talk_p >= 0 {
+    dx := s[0].person_x[s[0].talk_p] - s[0].x; dz := s[0].person_z[s[0].talk_p] - s[0].z;
+    if s[0].talk_p >= s[0].people || !may_talk(s) || sqrt(dx * dx + dz * dz) > TALK_FAR { talk_close(s); }
+  }
+  if !may_voice(s) { talk_let_go(s); }
+  // the owner's EDIT brings up the lore of the character you are by
+  np := near_person(s);
+  if np >= 0 { who: [PERSON] u8; wn := who_of(s, np, who[..]); redit_near(s[0].ed[..], cast(string) who[0..<wn], person_name(s, np)); }
+  else { redit_near(s[0].ed[..], "", ""); }
   s[0].plate_n = 0;
   for i: 0..<BUTTONS { s[0].shown[i] = false; }
   for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
@@ -1283,9 +1654,11 @@ frame_of :: (s: [] MyRealm, t: [] Track, w: f32, h: f32) -> int {
   return realm_frame(s, t, out[..], u[..], w, h, 2, 0.016, false);
 }
 opened :: (s: [] MyRealm, t: [] Track, slug: string, spec: string) {
+  opened_with(s, t, slug, spec, "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\n");
+}
+opened_with :: (s: [] MyRealm, t: [] Track, slug: string, spec: string, f: string) {
   track_init(t, "realm");
   realm_message(s, t, MSG_DATA_TEXT, slug);
-  f := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\n";
   t0 := track_message(t, HOST_FACTS, f);
   realm_message(s, t, HOST_FACTS, f);
   realm_catalog(s, PACK);
@@ -1613,4 +1986,150 @@ SIDE :: "realm flat\nname Flat\nstyle painterly\nground desert\ntime dusk\ncamer
   // the left half is the stick
   d2 := realm_pointer(s[..], t[..], 150, 1300, POINTER_DOWN, 1, 8);
   #assert s[0].stick && !s[0].turning;
+}
+
+// ---- talking
+
+TALKS :: "realm moonlit-marsh\nname Moonlit Marsh\nstyle lowpoly\nground forest\ntime day\nowner 0\ntool talk 1\ntool voice 1\ncharacter Old Mott|keeps the bridge\n";
+MUTE :: "realm hush\nname Hush\nstyle lowpoly\nground forest\ntime day\nowner 0\ntool talk 0\ntool voice 1\ncharacter Old Mott|keeps the bridge\n";
+VOICED :: "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\nvoice=made-realm\n";
+has_text :: (text: string, part: string) -> bool {
+  if part.count > text.count { return false; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+by_mott :: (s: [] MyRealm) { s[0].x = s[0].person_x[0]; s[0].z = s[0].person_z[0] + 2; s[0].yaw = 0; }
+action_text :: (s: [] MyRealm) -> string { return cast(string) s[0].outbox[0..<s[0].out_n]; }
+
+#test "E by a character talks: the question goes to the character chat with the realm, its answer shows, Esc ends it" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", TALKS);
+  by_mott(s[..]);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert !realm_wants_text(s[..]);
+  k := realm_key(s[..], t[..], 'e', true);
+  #assert k && s[0].talk_p == 0 && realm_wants_text(s[..]);
+  // the keys type now: W doesn't walk
+  #assert !realm_key(s[..], t[..], 'w', true) && s[0].held == 0;
+  realm_message(s[..], t[..], MSG_TEXT, "who are you?");
+  e := realm_key(s[..], t[..], KEY_ENTER, true);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  body := cast(string) s[0].req_body[0..<s[0].req_body_n];
+  #assert url_is(s[..], NPC_URL) && (s[0].req_flags & TRACK_KEY) != 0;
+  #assert has_text(body, "\"name\":\"Old Mott\"") && has_text(body, "\"role\":\"keeps the bridge\"") && has_text(body, "\"realm\":\"moonlit-marsh\"");
+  #assert has_text(body, "\"world\":\"Moonlit Marsh\"") && has_text(body, "\"question\":\"who are you?\"") && has_text(body, "\"visit\":\"t1\"");
+  #assert s[0].talk_wait && s[0].talk_n == 1 && !s[0].talk_npc[0];
+  realm_requested(s[..], 3);
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 3, "200\n{\"text\":\"I keep the bridge, friend.\",\"model\":\"m\"}");
+  #assert !s[0].talk_wait && s[0].talk_n == 2 && s[0].talk_npc[1] && talk_text(s[..], 1) == "I keep the bridge, friend." && s[0].say_n == 0;
+  f := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].shown[BTN_BYE] && !s[0].shown[BTN_HOLD];   // no voice on this page
+  // the next question carries the talk so far
+  realm_message(s[..], t[..], MSG_TEXT, "and the river?");
+  e2 := realm_key(s[..], t[..], KEY_ENTER, true);
+  g := frame_of(s[..], t[..], 2560, 1600);
+  #assert has_text(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"history\":[{\"from\":\"player\",\"text\":\"who are you?\"},{\"from\":\"npc\",\"text\":\"I keep the bridge, friend.\"}]");
+  x := realm_key(s[..], t[..], KEY_ESCAPE, true);
+  #assert s[0].talk_p < 0 && !realm_wants_text(s[..]);
+  // walking away ends it too
+  k2 := realm_key(s[..], t[..], 'e', true);
+  #assert s[0].talk_p == 0;
+  s[0].z += 20;
+  h := frame_of(s[..], t[..], 2560, 1600);
+  #assert s[0].talk_p < 0;
+}
+
+#test "/realms/built's own realm talks too: its answer on the first id is the realm's, not the edit layer's" {
+  s: [1] MyRealm; t: [1] Track;
+  track_init(t[..], "realm");
+  g := "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/built\nplayer=p-1\n";
+  realm_message(s[..], t[..], HOST_FACTS, g);
+  realm_catalog(s[..], PACK);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  by_mott(s[..]);
+  k := realm_key(s[..], t[..], 'e', true);
+  realm_message(s[..], t[..], MSG_TEXT, "hello");
+  e := realm_key(s[..], t[..], KEY_ENTER, true);
+  m := frame_of(s[..], t[..], 2560, 1600);
+  #assert url_is(s[..], NPC_URL) && !has_text(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"realm\"");
+  realm_requested(s[..], 0);
+  a := "200\n{\"text\": \"Mint, mostly.\", \"model\": \"m\"}";
+  #assert !redit_message(s[0].ed[..], HTTP_ANSWER_KIND, a);   // the face asks the edit layer first
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND, a);
+  #assert s[0].talk_n == 2 && talk_text(s[..], 1) == "Mint, mostly.";
+}
+
+#test "a tap on a character talks; the talk fits a 390 px phone" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "moonlit-marsh", TALKS);
+  by_mott(s[..]);
+  n := frame_of(s[..], t[..], 780, 1688);
+  c := seen(s[..], s[0].person_x[0], 1.0, s[0].person_z[0]);
+  #assert c.ok && person_at(s[..], c.x, c.y) == 0;
+  d := realm_pointer(s[..], t[..], c.x, c.y, POINTER_DOWN, 1, 3);
+  #assert s[0].talk_p == 0 && !s[0].stick;
+  m := frame_of(s[..], t[..], 780, 1688);
+  for i: 0..<s[0].plate_n { #assert s[0].plates[i].x0 >= 0 && s[0].plates[i].x1 <= 780; }
+  #assert s[0].field[2] > s[0].field[0] && s[0].field[2] <= 780;
+  tap_box(s[..], t[..], s[0].boxes[BTN_BYE]);
+  #assert s[0].talk_p < 0;
+}
+
+#test "with TALK off a visitor gets no talk; the owner still does, and the server's no is said" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "hush", MUTE);
+  by_mott(s[..]);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  k := realm_key(s[..], t[..], 'e', true);
+  #assert !may_talk(s[..]) && s[0].talk_p < 0;
+  c := seen(s[..], s[0].person_x[0], 1.0, s[0].person_z[0]);
+  d := realm_pointer(s[..], t[..], c.x, c.y, POINTER_DOWN, 0, 3);
+  #assert s[0].talk_p < 0;
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "hush", "realm hush\nname Hush\nstyle lowpoly\nground forest\ntime day\nowner 1\ntool talk 0\ncharacter Old Mott|keeps the bridge\n");
+  by_mott(q[..]);
+  k2 := realm_key(q[..], u[..], 'E', true);
+  #assert q[0].talk_p == 0;
+  realm_message(q[..], u[..], MSG_TEXT, "hello");
+  e := realm_key(q[..], u[..], KEY_ENTER, true);
+  m := frame_of(q[..], u[..], 2560, 1600);
+  realm_requested(q[..], 2);
+  realm_message(q[..], u[..], HTTP_ANSWER_KIND + 2, "403\n{\"error\":\"the owner hasn't let visitors talk here\"}");
+  #assert cast(string) q[0].note[0..<q[0].note_n] == "The owner hasn't let visitors talk here." && !q[0].talk_wait;
+}
+
+#test "HOLD TO TALK: only with VOICE on a page with a voice; it faces the character, asks what was heard and speaks the answer" {
+  s: [1] MyRealm; t: [1] Track;
+  opened_with(s[..], t[..], "moonlit-marsh", TALKS, VOICED);
+  by_mott(s[..]);
+  k := realm_key(s[..], t[..], 'e', true);
+  n := frame_of(s[..], t[..], 2560, 1600);
+  #assert may_voice(s[..]) && s[0].shown[BTN_HOLD];
+  b := s[0].boxes[BTN_HOLD]; x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+  d := realm_pointer(s[..], t[..], x, y, POINTER_DOWN, 1, 5);
+  #assert s[0].voice_held && !realm_wants_text(s[..]);
+  #assert realm_action(s[..]) == ACT_VOICE_TO && action_text(s[..]) == "Old Mott";
+  #assert realm_action(s[..]) == ACT_VOICE && action_text(s[..]) == "on";
+  realm_message(s[..], t[..], MSG_VOICE, "hearing|where is the");
+  #assert cast(string) s[0].caption[0..<s[0].caption_n] == "where is the";
+  u := realm_pointer(s[..], t[..], x, y, POINTER_UP, 1, 5);
+  #assert !s[0].voice_held && realm_action(s[..]) == ACT_VOICE && action_text(s[..]) == "end";
+  realm_message(s[..], t[..], MSG_VOICE, "heard|where is the bridge");
+  m := frame_of(s[..], t[..], 2560, 1600);
+  #assert url_is(s[..], NPC_URL) && has_text(cast(string) s[0].req_body[0..<s[0].req_body_n], "\"question\":\"where is the bridge\"");
+  realm_requested(s[..], 4);
+  realm_message(s[..], t[..], HTTP_ANSWER_KIND + 4, "200\n{\"text\":\"Right behind you.\",\"model\":\"m\"}");
+  #assert realm_action(s[..]) == ACT_VOICE_SAY && action_text(s[..]) == "Right behind you.";
+  // BYE: the voice host faces its own route again
+  tap_box(s[..], t[..], s[0].boxes[BTN_BYE]);
+  #assert realm_action(s[..]) == ACT_VOICE_TO && s[0].out_n == 0;
+  // no voice on the page, or VOICE off: no HOLD TO TALK
+  q: [1] MyRealm; v: [1] Track;
+  opened_with(q[..], v[..], "moonlit-marsh", "realm moonlit-marsh\nname Moonlit Marsh\nstyle lowpoly\nground forest\ntime day\nowner 0\ntool talk 1\ntool voice 0\ncharacter Old Mott|keeps the bridge\n", VOICED);
+  by_mott(q[..]);
+  k2 := realm_key(q[..], v[..], 'e', true);
+  f := frame_of(q[..], v[..], 2560, 1600);
+  #assert q[0].talk_p == 0 && !may_voice(q[..]) && !q[0].shown[BTN_HOLD];
+  talk_down(q[..]);
+  #assert !q[0].voice_held;
 }

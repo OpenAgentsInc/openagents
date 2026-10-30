@@ -84,8 +84,16 @@ lowpoly and painterly (photoreal is not built yet, so it is not offered).
 - BUILD: the owner's thing goes in at once. A visitor's (only while build is on) becomes a proposal.
   The owner sees N WAITING, and each card shows who, what, where and the count before and after,
   with ACCEPT and DECLINE (`POST .../proposals/<id>/accept|decline`; decided once).
-- Talk and voice are owner settings in v1. Characters show their name and role; talking to them
-  comes next.
+- TALK: E by a character (within 3.5 m), or a tap on one, opens the talk: type and press Enter,
+  BYE or Esc ends it, as walking 8 m away does. The question goes to the character chat Everglade's
+  people use (`POST /api/playtest/npc/ask` with `realm` the slug; its memory of the player across
+  visits), and the character knows the realm (its ground, time, features, the other characters) and
+  the lore its owner wrote in EDIT. With TALK off a visitor gets no talk, and the server refuses them
+  too (403, `migrations/0061_realm_talk.sql`); the owner always talks.
+- VOICE (with TALK): HOLD TO TALK in the talk. The page's `data-voice="made-realm"` (realms.json's
+  built, copied onto every made realm's page) is the voice host's route; holding faces the
+  character, so the host leaves the turn to the page, which asks the character and hands the answer
+  back to be spoken (`coax/web/voice.js` actions 7, 8 and 9).
 
 ## Limits
 
@@ -97,7 +105,7 @@ Made-realm slugs never take a built-in realm's address (`verse.builder_reserved`
 
 The builder's page is `realm-builder`: `builder-prompt` (via voice or typed, its length only,
 revise), `builder-board` (rows, rows on), `builder-toggle` (feature, on), `builder-make`,
-`realm-made` (slug, page). The made realm's page is `realm-made`: `realm-enter` (slug, owner),
+`realm-made` (slug, page). The made realm's page is `realm-made`: `realm-enter` (slug, owner), `realm-talk-open` (owner), `realm-talk` (owner, voice),
 `realm-setting`, `realm-place`, `realm-decide`. The team and admins are filtered out as on every
 playtest page.
 

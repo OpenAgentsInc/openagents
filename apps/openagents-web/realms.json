@@ -187,6 +187,7 @@
         "alt": "Enter the Verse",
         "module": "myrealm",
         "slot": "built",
+        "voice": "made-realm",
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
