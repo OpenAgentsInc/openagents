@@ -1,6 +1,7 @@
 # A local stand-in for a provider, for smoke.sh: POST / streams an Open
 # Responses answer in three deltas a gap apart, then response.completed;
-# POST /refuse answers 401. Each request checks the key header curl sent
+# POST /refuse answers 401; POST /whole answers one chat.completion
+# after OpenRouter's keep-alive whitespace. Each request checks the key header curl sent
 # against GW_SMOKE_EXPECT and, while curl is still running, that no
 # process's arguments hold the key. Prints its port, then serves forever.
 import http.server, os, subprocess, sys, time
@@ -22,6 +23,12 @@ class H(http.server.BaseHTTPRequestHandler):
         auth = self.headers.get("Authorization", "")
         ok_key = auth == "Bearer " + EXPECT
         in_args = leaked()
+        if self.path == "/whole":
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'\n   \n{"choices":[{"message":{"role":"assistant","content":"Four"},"finish_reason":"stop"}],"usage":{"prompt_tokens":5,"completion_tokens":1}}')
+            return
         if self.path == "/refuse":
             self.send_response(401)
             self.send_header("Content-Type", "application/json")

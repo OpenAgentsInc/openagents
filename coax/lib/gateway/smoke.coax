@@ -56,6 +56,26 @@ refuse :: (url: string) -> bool {
   return count == 1 && got.kind == GW_EV_REFUSED && got.status == 401 && got.reason == "bad key" && !call[0].first;
 }
 
+whole_call :: (url: string) -> bool {
+  b: [1] GwCallBuffers; call: [1] GwCall;
+  gw_call_init(call[..], b[..]);
+  g := Gateway.{name = "local", url = url, key_env = KEY_ENV, wire = GW_WIRE_CHAT};
+  none: [1] string;
+  e := gw_call_start(call[..], g, "{\"model\":\"local\",\"stream\":false}", none[0..<0]);
+  if e.count > 0 { print("start: %\n", e); return false; }
+  ev: [8] GwEvent; text := ""; done := false;
+  while !call[0].finished {
+    n := gw_call_poll(call[..], ev[..]);
+    for i: 0..<n {
+      if ev[i].kind == GW_EV_TEXT { text = ev[i].text; }
+      if ev[i].kind == GW_EV_DONE { done = ev[i].usage.input_tokens == 5; }
+      if ev[i].kind == GW_EV_REFUSED { print("whole refused: %\n", ev[i].reason); }
+    }
+    if n > 0 && text.count > 0 { print("whole: text %, done %\n", text, done); }
+  }
+  return text == "Four" && done;
+}
+
 unreachable :: () -> bool {
   b: [1] GwCallBuffers; call: [1] GwCall;
   gw_call_init(call[..], b[..]);
@@ -84,6 +104,10 @@ main :: () {
   for i: 0..<n { ru[i] = url[i]; }
   for c, i: "refuse" { ru[n + i] = c; }
   ok = refuse(cast(string) ru[0..<n + 6]) && ok;
+  wu: [300] u8;
+  for i: 0..<n { wu[i] = url[i]; }
+  for c, i: "whole" { wu[n + i] = c; }
+  ok = whole_call(cast(string) wu[0..<n + 5]) && ok;
   ok = unreachable() && ok;
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

@@ -10,8 +10,9 @@
 //   Gateway    { name, url, key_env, key_header, scheme, wire }
 //
 // A Gateway's translate and parse are chosen by its wire (gw_translate,
-// gw_parse): Open Responses and Gemini's native stream live here; Chat
-// Completions (chat.coax) and Anthropic's Messages join as their tasks land.
+// gw_parse, gw_parse_whole): Open Responses and Gemini's native stream live
+// here, Chat Completions in chat.coax; Anthropic's Messages joins as its
+// task lands.
 // GwCall runs one request through the streaming curl transport
 // (transport.coax) and the SSE reader (sse.coax) and hands back GwEvents as
 // they arrive, without blocking, for a frame loop or a plan to poll.
@@ -72,6 +73,20 @@ Gateway :: struct {
   key_header: string = "Authorization";
   scheme: string = "Bearer";     // "" sends the key alone in key_header
   wire: int;
+  flags: int;                    // the wire's dialect: GW_CHAT_* for Chat Completions
+}
+
+// What a stream's parser carries between events (Chat Completions says how
+// it finished in one chunk and its usage in a later one, then [DONE]).
+GW_FIN_NONE :: 0;
+GW_FIN_STOP :: 1;
+GW_FIN_LENGTH :: 2;
+GW_FIN_TOOLS :: 3;
+GW_FIN_FILTER :: 4;
+
+GwParse :: struct {
+  finish: int;
+  usage: GwUsage;
 }
 
 gw_client :: (g: Gateway) -> GwClient {
@@ -88,6 +103,7 @@ gw_translate :: (g: Gateway, req: GwRequest, out: [] u8, why: [] string) -> stri
   if req.schema.count > 0 && !json_valid(req.schema) { why[0] = "the schema is not JSON"; return ""; }
   n := -1;
   if g.wire == GW_WIRE_RESPONSES { n = gw_responses_body(req, out); }
+  else if g.wire == GW_WIRE_CHAT { n = gw_chat_body(req, g.flags, out); }
   else { why[0] = "this gateway's wire has no translator yet"; return ""; }
   if n < 0 { why[0] = "the request does not fit its buffer"; return ""; }
   return cast(string) out[0..<n];
@@ -124,6 +140,11 @@ gw_responses_body :: (req: GwRequest, out: [] u8) -> int {
 
 // ---------------------------------------------------------------- parse
 
+gw_blank :: (s: string) -> bool {
+  for c: s { if c != ' ' && c != '\t' && c != '\r' { return false; } }
+  return true;
+}
+
 gw_put :: (out: [] GwEvent, n: int, e: GwEvent) -> int {
   if n >= out.count { return n; }
   out[n] = e;
@@ -131,10 +152,29 @@ gw_put :: (out: [] GwEvent, n: int, e: GwEvent) -> int {
 }
 
 // One dispatched SSE event (its name and data) as GwEvents into out; how
-// many. Strings borrow data and ar.
-gw_parse :: (wire: int, ar: [] ClArena, name: string, data: string, out: [] GwEvent) -> int {
+// many. Strings borrow data and ar. ps carries what the wire needs between
+// events (start each stream with a cleared one).
+gw_parse :: (wire: int, ps: [] GwParse, ar: [] ClArena, name: string, data: string, out: [] GwEvent) -> int {
   if wire == GW_WIRE_RESPONSES { return gw_parse_responses(ar, name, data, out); }
   if wire == GW_WIRE_GEMINI { return gw_parse_gemini(ar, data, out); }
+  if wire == GW_WIRE_CHAT { return gw_chat_chunk(ps, ar, data, out); }
+  return 0;
+}
+
+// The stream ended without its wire's own last word: what it adds (a Chat
+// Completions stream that said how it finished but sent no [DONE] is done).
+gw_parse_end :: (wire: int, ps: [] GwParse, out: [] GwEvent) -> int {
+  if wire == GW_WIRE_CHAT { return gw_chat_end(ps, out); }
+  return 0;
+}
+
+// A whole (unstreamed) response body as GwEvents: its text, its reasoning,
+// then done or refused.
+gw_parse_whole :: (wire: int, ar: [] ClArena, body: string, out: [] GwEvent) -> int {
+  if !json_valid(body) { return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "the response is not JSON"}); }
+  if wire == GW_WIRE_CHAT { return gw_chat_whole(ar, body, out); }
+  if wire == GW_WIRE_GEMINI { return gw_parse_gemini(ar, body, out); }
+  if wire == GW_WIRE_RESPONSES { return gw_responses_whole(ar, body, out); }
   return 0;
 }
 
@@ -183,17 +223,48 @@ gw_parse_responses :: (ar: [] ClArena, name: string, data: string, out: [] GwEve
   return 0;
 }
 
-gw_responses_usage :: (data: string) -> GwUsage {
+gw_responses_usage :: (data: string) -> GwUsage { return gw_responses_usage_of(cl_raw(data, "response.usage")); }
+
+gw_responses_usage_of :: (usage: string) -> GwUsage {
   u: GwUsage;
-  i := cl_int(data, "response.usage.input_tokens");
-  o := cl_int(data, "response.usage.output_tokens");
+  if usage.count == 0 { return u; }
+  i := cl_int(usage, "input_tokens");
+  o := cl_int(usage, "output_tokens");
   if !i.ok || !o.ok { return u; }
   u = GwUsage.{ok = true, input_tokens = i.value, output_tokens = o.value};
-  c := cl_int(data, "response.usage.input_tokens_details.cached_tokens");
+  c := cl_int(usage, "input_tokens_details.cached_tokens");
   if c.ok { u.cached_tokens = c.value; }
-  r := cl_int(data, "response.usage.output_tokens_details.reasoning_tokens");
+  r := cl_int(usage, "output_tokens_details.reasoning_tokens");
   if r.ok { u.reasoning_tokens = r.value; }
   return u;
+}
+
+// A whole Open Responses response object: its message text and reasoning
+// text in order, then done (incomplete: cut for length) or refused (failed).
+gw_responses_whole :: (ar: [] ClArena, body: string, out: [] GwEvent) -> int {
+  n := 0;
+  status := cl_str(ar, body, "status");
+  if status == "failed" {
+    why := cl_str(ar, body, "error.message");
+    if why.count == 0 { why = "the response failed"; }
+    return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = why});
+  }
+  items := cl_raw(body, "output");
+  for i: 0..<cl_count(items) {
+    item := cl_json(items, cl_item(items, i));
+    ty := cl_str(ar, item, "type");
+    parts := cl_raw(item, "content");
+    for k: 0..<cl_count(parts) {
+      part := cl_json(parts, cl_item(parts, k));
+      pt := cl_str(ar, part, "type");
+      t := cl_str(ar, part, "text");
+      if t.count == 0 { continue; }
+      if ty == "message" && pt == "output_text" { n = gw_put(out, n, GwEvent.{kind = GW_EV_TEXT, text = t}); }
+      else if ty == "message" && pt == "refusal" { return gw_put(out, n, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = cl_str(ar, part, "refusal")}); }
+      else if ty == "reasoning" { n = gw_put(out, n, GwEvent.{kind = GW_EV_REASONING, text = t}); }
+    }
+  }
+  return gw_put(out, n, GwEvent.{kind = GW_EV_DONE, usage = gw_responses_usage_of(cl_raw(body, "usage")), reason = ifx status == "incomplete" then "length" else "stop"});
 }
 
 // Gemini's native stream (the Gemini API and Vertex): each chunk's parts
@@ -274,6 +345,11 @@ GwCall :: struct {
   first: bool;                   // a delta has been handed back
   finished: bool;                // done or refused has been handed back
   started_ms: int;
+  ps: [1] GwParse;
+  seen: bool;                    // a body line that isn't blank has come
+  whole: bool;                   // the body is one JSON document, not an event stream
+  wbuf: [] u8; nw: int;          // that document (the SSE data buffer, unused then)
+  wfull: bool;
 }
 
 GwCallBuffers :: struct {
@@ -285,7 +361,7 @@ GwCallBuffers :: struct {
 }
 
 gw_call_init :: (call: [] GwCall, b: [] GwCallBuffers) {
-  call[0] = GwCall.{line = b[0].line[..], errbody = b[0].errbody[..]};
+  call[0] = GwCall.{line = b[0].line[..], errbody = b[0].errbody[..], wbuf = b[0].data[..]};
   call[0].ar[0] = ClArena.{buf = b[0].arena[..]};
   gw_sse_init(call[0].sse[..], b[0].name[..], b[0].data[..]);
 }
@@ -293,6 +369,7 @@ gw_call_init :: (call: [] GwCall, b: [] GwCallBuffers) {
 // Sends body to g. What went wrong before anything was sent, or "".
 gw_call_start :: (call: [] GwCall, g: Gateway, body: string, headers: [] string) -> string {
   call[0].wire = g.wire; call[0].nerr = 0; call[0].first = false; call[0].finished = false;
+  call[0].ps[0] = GwParse.{}; call[0].whole = false; call[0].seen = false; call[0].nw = 0; call[0].wfull = false;
   gw_sse_clear(call[0].sse[..]);
   call[0].started_ms = cxproc_now_ms();
   why := gw_start(gw_client(g), body, headers, call[0].st[..]);
@@ -315,13 +392,24 @@ gw_call_poll :: (call: [] GwCall, out: [] GwEvent) -> int {
       for c: r.text { if call[0].nerr < call[0].errbody.count { call[0].errbody[call[0].nerr] = c; call[0].nerr += 1; } }
       continue;
     }
+    // A body that opens with a JSON document is a whole response (stream:
+    // false, or a provider that answers so): collect it, parse it at the end.
+    if !call[0].seen && !gw_blank(r.text) {
+      call[0].seen = true;
+      call[0].whole = r.text[0] == '{' || r.text[0] == '[';
+    }
+    if call[0].whole {
+      if call[0].nw > 0 && call[0].nw < call[0].wbuf.count { call[0].wbuf[call[0].nw] = '\n'; call[0].nw += 1; }
+      for c: r.text { if call[0].nw < call[0].wbuf.count { call[0].wbuf[call[0].nw] = c; call[0].nw += 1; } else { call[0].wfull = true; } }
+      continue;
+    }
     ev := gw_sse_line(call[0].sse[..], r.text);
     if !ev.ready { continue; }
     if ev.truncated {
       call[0].finished = true; gw_close(st);
       return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "a stream event did not fit its buffer"});
     }
-    n := gw_parse(call[0].wire, call[0].ar[..], ev.name, ev.data, out);
+    n := gw_parse(call[0].wire, call[0].ps[..], call[0].ar[..], ev.name, ev.data, out);
     if n == 0 { continue; }
     for i: 0..<n {
       k := out[i].kind;
@@ -341,6 +429,17 @@ gw_call_end :: (call: [] GwCall, out: [] GwEvent) -> int {
   st := call[0].st[..];
   call[0].finished = true;
   e: GwEvent;
+  if st[0].status == 200 && call[0].whole {
+    gw_close(st);
+    if call[0].wfull { return gw_put(out, 0, GwEvent.{kind = GW_EV_REFUSED, status = 200, reason = "the response does not fit its buffer"}); }
+    n := gw_parse_whole(call[0].wire, call[0].ar[..], cast(string) call[0].wbuf[0..<call[0].nw], out);
+    for i: 0..<n { if out[i].kind == GW_EV_TEXT || out[i].kind == GW_EV_REASONING { call[0].first = true; } }
+    return n;
+  }
+  if st[0].status == 200 && st[0].exit == 0 {
+    n := gw_parse_end(call[0].wire, call[0].ps[..], out);
+    if n > 0 { gw_close(st); return n; }
+  }
   if st[0].status == 0 {
     e = GwEvent.{kind = GW_EV_REFUSED, reason = ifx gw_unreachable(st) then "the server is unreachable" else ifx st[0].exit == 28 then "the request timed out" else "the request failed before any response"};
   } else if st[0].status != 200 {
@@ -357,6 +456,7 @@ gw_call_close :: (call: [] GwCall) { gw_close(call[0].st[..]); call[0].finished 
 
 // ---------------------------------------------------------------- checks
 
+#load "chat.coax";
 #load "fixtures.coax";
 
 GwReplay :: struct {
@@ -375,22 +475,28 @@ gw_replay :: (wire: int, lines: [] string, r: [] GwReplay) {
   arena: [65536] u8; ar: [1] ClArena;
   ar[0] = ClArena.{buf = arena[..]};
   gw_sse_init(s[..], name[..], data[..]);
-  ev: [8] GwEvent;
+  ev: [8] GwEvent; ps: [1] GwParse;
   for l: lines {
     e := gw_sse_line(s[..], l);
     if !e.ready { continue; }
     #assert !e.truncated;
     ar[0].at = 0;
-    n := gw_parse(wire, ar[..], e.name, e.data, ev[..]);
+    n := gw_parse(wire, ps[..], ar[..], e.name, e.data, ev[..]);
+    gw_replay_take(r, ev[..], n);
+  }
+  n := gw_parse_end(wire, ps[..], ev[..]);
+  gw_replay_take(r, ev[..], n);
+}
+
+gw_replay_take :: (r: [] GwReplay, ev: [] GwEvent, n: int) {
     for i: 0..<n {
       x := ev[i];
       r[0].done_at_end = false;
       if x.kind == GW_EV_TEXT { r[0].deltas += 1; for c: x.text { r[0].text[r[0].nt] = c; r[0].nt += 1; } }
       if x.kind == GW_EV_REASONING { r[0].thoughts += 1; for c: x.text { r[0].reasoning[r[0].nr] = c; r[0].nr += 1; } }
       if x.kind == GW_EV_DONE { r[0].done += 1; r[0].usage = x.usage; r[0].reason = x.reason; r[0].done_at_end = true; }
-      if x.kind == GW_EV_REFUSED { r[0].refused += 1; }
+      if x.kind == GW_EV_REFUSED { r[0].refused += 1; r[0].reason = x.reason; }
     }
-  }
 }
 
 gw_replay_text :: (r: [] GwReplay) -> string { return cast(string) r[0].text[0..<r[0].nt]; }
@@ -434,32 +540,32 @@ gw_replay_text :: (r: [] GwReplay) -> string { return cast(string) r[0].text[0..
 
 #test "Gemini: thoughts are reasoning, MAX_TOKENS is a done cut for length, SAFETY and errors refuse" {
   arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
-  ev: [8] GwEvent;
-  n := gw_parse(GW_WIRE_GEMINI, ar[..], "message", "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hmm\",\"thought\":true},{\"text\":\"Hi\"}]},\"finishReason\":\"MAX_TOKENS\"}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":4,\"cachedContentTokenCount\":2}}", ev[..]);
+  ev: [8] GwEvent; ps: [1] GwParse;
+  n := gw_parse(GW_WIRE_GEMINI, ps[..], ar[..], "message", "{\"candidates\":[{\"content\":{\"parts\":[{\"text\":\"hmm\",\"thought\":true},{\"text\":\"Hi\"}]},\"finishReason\":\"MAX_TOKENS\"}],\"usageMetadata\":{\"promptTokenCount\":3,\"candidatesTokenCount\":1,\"thoughtsTokenCount\":4,\"cachedContentTokenCount\":2}}", ev[..]);
   #assert n == 3 && ev[0].kind == GW_EV_REASONING && ev[0].text == "hmm" && ev[1].kind == GW_EV_TEXT && ev[1].text == "Hi";
   #assert ev[2].kind == GW_EV_DONE && ev[2].reason == "length" && ev[2].usage.output_tokens == 5 && ev[2].usage.reasoning_tokens == 4 && ev[2].usage.cached_tokens == 2;
-  n = gw_parse(GW_WIRE_GEMINI, ar[..], "message", "{\"candidates\":[{\"finishReason\":\"SAFETY\"}]}", ev[..]);
+  n = gw_parse(GW_WIRE_GEMINI, ps[..], ar[..], "message", "{\"candidates\":[{\"finishReason\":\"SAFETY\"}]}", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "SAFETY";
-  n = gw_parse(GW_WIRE_GEMINI, ar[..], "message", "{\"promptFeedback\":{\"blockReason\":\"PROHIBITED_CONTENT\"}}", ev[..]);
+  n = gw_parse(GW_WIRE_GEMINI, ps[..], ar[..], "message", "{\"promptFeedback\":{\"blockReason\":\"PROHIBITED_CONTENT\"}}", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "PROHIBITED_CONTENT";
-  n = gw_parse(GW_WIRE_GEMINI, ar[..], "message", "{\"error\":{\"code\":429,\"message\":\"Resource exhausted\"}}", ev[..]);
+  n = gw_parse(GW_WIRE_GEMINI, ps[..], ar[..], "message", "{\"error\":{\"code\":429,\"message\":\"Resource exhausted\"}}", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].status == 429 && ev[0].reason == "Resource exhausted";
 }
 
 #test "Responses: incomplete is a done cut for length; failed, error and refusal refuse; unknown types are ignored" {
   arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
-  ev: [8] GwEvent;
-  n := gw_parse(GW_WIRE_RESPONSES, ar[..], "response.incomplete", "{\"type\":\"response.incomplete\",\"response\":{\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"usage\":{\"input_tokens\":5,\"output_tokens\":9}}}", ev[..]);
+  ev: [8] GwEvent; ps: [1] GwParse;
+  n := gw_parse(GW_WIRE_RESPONSES, ps[..], ar[..], "response.incomplete", "{\"type\":\"response.incomplete\",\"response\":{\"incomplete_details\":{\"reason\":\"max_output_tokens\"},\"usage\":{\"input_tokens\":5,\"output_tokens\":9}}}", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_DONE && ev[0].reason == "length" && ev[0].usage.output_tokens == 9;
-  n = gw_parse(GW_WIRE_RESPONSES, ar[..], "response.failed", "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_error\",\"message\":\"upstream \\\"busy\\\"\"}}}", ev[..]);
+  n = gw_parse(GW_WIRE_RESPONSES, ps[..], ar[..], "response.failed", "{\"type\":\"response.failed\",\"response\":{\"error\":{\"code\":\"server_error\",\"message\":\"upstream \\\"busy\\\"\"}}}", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "upstream \"busy\"";
-  n = gw_parse(GW_WIRE_RESPONSES, ar[..], "error", "{\"type\":\"error\",\"code\":\"rate_limited\",\"message\":\"slow down\"}", ev[..]);
+  n = gw_parse(GW_WIRE_RESPONSES, ps[..], ar[..], "error", "{\"type\":\"error\",\"code\":\"rate_limited\",\"message\":\"slow down\"}", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "slow down";
-  n = gw_parse(GW_WIRE_RESPONSES, ar[..], "message", "{\"type\":\"response.refusal.done\",\"refusal\":\"I can't help with that.\"}", ev[..]);
+  n = gw_parse(GW_WIRE_RESPONSES, ps[..], ar[..], "message", "{\"type\":\"response.refusal.done\",\"refusal\":\"I can't help with that.\"}", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "I can't help with that.";
-  n = gw_parse(GW_WIRE_RESPONSES, ar[..], "response.output_item.added", "{\"type\":\"response.output_item.added\"}", ev[..]);
+  n = gw_parse(GW_WIRE_RESPONSES, ps[..], ar[..], "response.output_item.added", "{\"type\":\"response.output_item.added\"}", ev[..]);
   #assert n == 0;
-  n = gw_parse(GW_WIRE_RESPONSES, ar[..], "message", "{\"type\":\"response.output_text.delta\",\"delta\":\"\"}", ev[..]);
+  n = gw_parse(GW_WIRE_RESPONSES, ps[..], ar[..], "message", "{\"type\":\"response.output_text.delta\",\"delta\":\"\"}", ev[..]);
   #assert n == 0;
 }
 
