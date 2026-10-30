@@ -6,15 +6,16 @@
 <title>Chat · OpenAgents</title>
 <meta name="description" content="A direct chat with the OpenAgents agent. Admins only.">
 <meta name="robots" content="noindex">
-<meta name="theme-color" content="#000000">
+<meta name="theme-color" content="#0d0d0d">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/chat/index.md">
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
 <style>
-html,body{margin:0;height:100%;background:#000;color:#ededed}
+html,body{margin:0;height:100%;background:#0d0d0d;color:#ededed}
 body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
 canvas{position:fixed;inset:0;width:100%;height:100%}
 canvas[data-cursor=pointer]{cursor:pointer}
+canvas[data-cursor=text]{cursor:text}
 main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
 html:not(.gpu) body{overflow:auto}
 a{color:#ff8c1f}
@@ -27,6 +28,6 @@ a{color:#ff8c1f}
 <h1>Chat</h1>
 <p><a href="/chat/index.md">Chat</a></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="chat"></script>
+<script type="module" src="/coaxial/host.js" data-app="chat" data-assets="font:/build/zeron/Geist.ttf font:/build/zeron/Geist-Medium.ttf font:/build/zeron/Geist-SemiBold.ttf font:/build/zeron/GeistMono.ttf icons:/build/zeron/icons.json licence:/build/zeron/Geist-OFL.txt"></script>
 </body>
 </html>

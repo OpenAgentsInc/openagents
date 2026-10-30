@@ -26,7 +26,7 @@
 //                             others the page's own
 //   coaxial_wants_text(state) focus the keyboard field (a phone's keyboard)
 //   coaxial_field(state)      where the app draws that field: 4 floats, device pixels
-//   coaxial_cursor(state)     0 the default, 1 a link, 2 a crosshair
+//   coaxial_cursor(state)     0 the default, 1 a link, 2 a crosshair, 3 text
 //   coaxial_hash(state, length) the location's hash (without '#') in the inbox, at load and on every change
 //   coaxial_action(state), coaxial_outbox(state), coaxial_outbox_len(state), coaxial_action_done(state)
 //                             out: 1 navigates to the outbox's URL (under data-root, if the page has one; or an https:// URL), 2 copies its text, 3 makes it the
@@ -94,6 +94,8 @@
 //                 streamed, that stands for four assets in its place, its catalog (data), vertices
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
+//   font:URL, icons:URL, licence:URL  GPUI's atlas (gpui.js, a WGSL with gpui_atlas): Geist's four
+//                 faces in weight order, Zeron's icons ({name: svg}), and the fonts' licence, served beside them
 // and each one that arrives (or fails, bytes 0) is told: coaxial_asset_ready(state, i, bytes), i its
 // place in the list. The app's scene, drawn between bg and fx with a depth buffer once every GPU asset is in:
 //   coaxial_draws(state), coaxial_draw_count(state)   u32 [first, count, base instance, instances] each,
@@ -131,6 +133,7 @@ import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
+import { startGpui } from "./gpui.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -559,6 +562,7 @@ function makeBuffers() {
   gpu.layout = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} }] });
   gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [{ binding: 0, resource: { buffer: gpu.uniformBuffer } }] });
   if (gpu.sans) useSans();
+  if (gpu.gpuiOn) useGpui();
 }
 
 // The sans atlas: a page whose shader declares sans_atlas (binding 1) and
@@ -600,6 +604,41 @@ function useSans() {
     { binding: 2, resource: device.createSampler({ magFilter: "linear", minFilter: "linear", mipmapFilter: "linear" }) }] });
 }
 
+// GPUI's atlas (coax/web/gpui.js): a page whose shader declares gpui_atlas
+// (binding 1, r8 glyphs and icons), gpui_color (2, color glyphs) and
+// gpui_sampler (3) draws the shared Zeron components (apps/shared/zeron/,
+// /chat); its vertices blend source-over, as GPUI's do. The atlas is built
+// for the device pixel ratio once the app's engine and the GPU are up, and
+// again when the ratio changes; the glyph cache is served after each frame.
+function useGpui() {
+  const { device } = gpu;
+  gpu.gpuiOn = true;
+  gpu.gpui ||= startGpui({ device, memory, assets, say });
+  const both = GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, f = GPUShaderStage.FRAGMENT;
+  gpu.layout = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: both, buffer: {} },
+    { binding: 1, visibility: f, texture: {} }, { binding: 2, visibility: f, texture: {} }, { binding: 3, visibility: f, sampler: {} }] });
+  gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [
+    { binding: 0, resource: { buffer: gpu.uniformBuffer } },
+    { binding: 1, resource: gpu.gpui.g.mono.createView() }, { binding: 2, resource: gpu.gpui.g.color.createView() },
+    { binding: 3, resource: device.createSampler({ magFilter: "linear", minFilter: "linear" }) }] });
+}
+function gpuiFrame(dpr) {
+  const x = engine?.exports, k = gpu?.gpui;
+  if (!x?.coaxial_gpui_set_atlas || !k) return;
+  if (k.engine !== engine || k.dpr !== dpr) {
+    if (k.building) return;
+    k.building = true; k.engine = engine; k.dpr = dpr;
+    const at = engine;
+    k.build(x, arena.state, dpr)
+      .then(() => { if (engine === at) useGpui(); else k.engine = null; })
+      .catch((e) => { say(`${app}: atlas: ${e.message}`, true); })
+      .finally(() => { k.building = false; });
+    return;
+  }
+  if (!k.building) k.serve(x, arena.state);
+}
+
 async function loadShaders() {
   shaderLoads += 1;
   invalidateScene();
@@ -607,6 +646,7 @@ async function loadShaders() {
   const { device, format } = gpu;
   const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
   if (/var\s+sans_atlas\b/.test(code)) useSans();
+  if (/var\s+gpui_atlas\b/.test(code)) useGpui();
   const module = device.createShaderModule({ code });
   const info = await module.getCompilationInfo();
   const errors = info.messages.filter((m) => m.type === "error");
@@ -636,8 +676,9 @@ async function loadShaders() {
       // one vec4f attribute per four floats of the app's vertex, in order
       vertex: { module, entryPoint: "fx_vs", buffers: [{ arrayStride: stride, attributes:
         Array.from({ length: Math.ceil(arena.floats / 4) }, (_, i) => ({ shaderLocation: i, offset: i * 16, format: "float32x4" })) }] },
-      // max, not add: where strokes meet, their glow doesn't double
-      fragment: { module, entryPoint: "fx_fs", targets: [{ format, blend: {
+      // max, not add: where strokes meet, their glow doesn't double (GPUI's straight alpha, source over)
+      fragment: { module, entryPoint: "fx_fs", targets: [{ format, blend: gpu.gpuiOn ? {
+        color: { operation: "add", srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha" }, alpha: { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" } } : {
         color: { operation: "max", srcFactor: "one", dstFactor: "one" }, alpha: { operation: "max", srcFactor: "one", dstFactor: "one" } } }] },
     }),
     scene ? device.createRenderPipelineAsync({
@@ -1151,6 +1192,7 @@ function frame(now) {
       engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, 0.1, 0);
     if (probeDo && !gpu.probed) runProbe(w, h, dpr);
     n = engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
+    if (gpu.gpuiOn) gpuiFrame(dpr);
   } catch (e) { say(`${app} trapped: ${e.message}`, true); engine = null; return; }
   n = Math.min(n, arena.maxVertices);
   const { device, context } = gpu;
@@ -1263,7 +1305,7 @@ function frame(now) {
 
 // ---- input: keys, the pointer and typed text go to the app; its actions come out
 const KEYS = { Escape: -1, Enter: -2, Backspace: -3, ArrowLeft: -4, ArrowRight: -5, ArrowUp: -6, ArrowDown: -7,
-  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13, Control: -14 };
+  Home: -8, End: -9, PageUp: -10, PageDown: -11, Delete: -12, Shift: -13, Control: -14, Tab: -15 };
 const call = (name, ...args) => (engine && engine.exports[name] ? engine.exports[name](arena.state, ...args) : 0);
 let field = null;   // INVARIANTS.md: the keyboard field, an invisible input over the app's drawn field (keyboard, paste, context menu)
 let touched = false;
@@ -1368,7 +1410,7 @@ function after(gesture, tap = false) {
     else if (code === 5) { try { const p = JSON.parse(text); if (p && typeof p.key === "string") localStorage.setItem("verse.player", text); } catch {} }
     else dispatchEvent(new CustomEvent("coaxial", { detail: { code, text } }));
   }
-  const cursor = ["", "pointer", "crosshair"][call("coaxial_cursor")] || "";
+  const cursor = ["", "pointer", "crosshair", "text"][call("coaxial_cursor")] || "";
   if ((canvas.dataset.cursor || "") !== cursor) canvas.dataset.cursor = cursor;
 }
 
@@ -1539,7 +1581,8 @@ async function main() {
     observeSize();
     requestAnimationFrame(frame);
     // The heavy ones first; sounds are fetched when first played.
-    for (const a of assets) if (!a.pack && !["sound", "loop", "particles"].includes(a.kind)) loadAsset(a);
+    // (fonts, icons and their licence are gpui.js's)
+    for (const a of assets) if (!a.pack && !["sound", "loop", "particles", "font", "icons", "licence"].includes(a.kind)) loadAsset(a);
     for (const pack of new Set(assets.filter((a) => a.pack).map((a) => a.pack))) loadPack(pack);
   } catch (e) {
     document.documentElement.classList.remove("gpu");

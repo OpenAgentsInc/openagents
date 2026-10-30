@@ -114,9 +114,15 @@ wait "$list"
 # /admin/analytics: the projects list's HUD over the admins' numbers.
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" &
 admin=$!
-# /chat: a direct chat with the OpenAgents agent (docs/chat.md), admins only.
+# /chat: a direct chat with the OpenAgents agent (docs/chat.md), admins only,
+# drawn with the Zeron components (apps/shared/zeron/): Geist, its OFL and
+# Zeron's icons (as one JSON, name to SVG) beside it for coax/web/gpui.js.
 "$here/../../coax/web/wasm.sh" "$here/chat.coax" "$here/chat-face.c" "$here/build/chat.wasm" &
 chat=$!
+mkdir -p "$here/build/zeron"
+cp "$here/../shared/zeron/fonts/"*.ttf "$here/../shared/zeron/fonts/Geist-OFL.txt" "$here/build/zeron/"
+python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.join(d,f)).read() for f in sorted(os.listdir(d)) if f.endswith(".svg")}, open(sys.argv[2],"w"))' \
+  "$here/../shared/zeron/icons" "$here/build/zeron/icons.json"
 # A private project's page (/projects/<slug>, served by oa-api to members).
 "$here/../../coax/web/wasm.sh" "$here/private.coax" "$here/private-face.c" "$here/build/private.wasm" \
   "$here/../../coax/lib/qr/qr-memory.coax"

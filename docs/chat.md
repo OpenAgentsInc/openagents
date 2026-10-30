@@ -9,21 +9,23 @@ anything. Admins only for now.
 
 ## Who gets in
 
-- An admin signs in with the NIP-98 admin sign-in: `coax/web/api/admin.sh chat`
+- An admin logs in with the NIP-98 admin login: `coax/web/api/admin.sh chat`
   opens `/api/admin/login?...&next=chat`, which sets the admin cookie (its
-  third copy has `Path=/api/chat`) and goes to `/chat`. A phone sign-in
-  (`/signin`, the `oa_session` cookie, [phone-sign-in.md](phone-sign-in.md))
+  third copy has `Path=/api/chat`) and goes to `/chat`. A phone login
+  (`/login`, the `oa_session` cookie, [phone-sign-in.md](phone-sign-in.md))
   is accepted too when its key is in `admins.conf`.
 - Anyone else gets the dashboard's answers: 401 `sign in as an admin` with
   no session, 403 `admins only` with one that isn't an admin's. The page
-  then draws only SIGN IN (to `/signin`).
+  then draws only a Log in button (to `/login`).
 - Cookie writes need the site's `Origin` (a write from another site is 403).
 
 ## The pieces
 
 | Piece | Where |
 | --- | --- |
-| The page, drawn in Coax | `apps/openagents-web/chat.coax`, `chat-face.c`, `chat/index.html` |
+| The page, drawn in Coax | `apps/openagents-web/chat.coax`, `chat-face.c`, `chat.wgsl`, `chat/index.html` |
+| The Zeron components it draws with | `apps/shared/zeron/` (shared with the Mac app) |
+| The atlas host | `coax/web/gpui.js` (used by `coax/web/host.js`) |
 | The API | `coax/web/api/chat.c`, `migrations/0021_chat.sql` (schema `chat`) |
 | The runner's general mode | `coax/web/agent/chat-runner.c` (included by `runner.c`) |
 | The engine | `coax/web/agent/chat.coax` (Coax Claude Agent SDK) |
@@ -39,7 +41,7 @@ with the CLI session id its turns resume, `chat.turns` each message, and
 `/api/chat/state?c=ID` answers lines (`Z C S U T`, see the migration); the
 page reads it every 2 s while a turn waits or runs, else every 30 s.
 `send {c, text, model}` makes a turn and wakes the runner; `model {c, model}`
-changes the model the next turn uses; `stop {c}` is STOP; `key` and
+changes the model the next turn uses; `stop {c}` is the Stop button (or Escape); `key` and
 `key_remove` are the credential. Other `/api/chat/<room>` paths stay the
 Verse demo's room chat (`room.c`).
 
@@ -59,7 +61,7 @@ Haiku.
 
 ## Your own key
 
-KEY on the page takes an Anthropic API key (`sk-ant-api...`) or a Claude
+Key on the page takes an Anthropic API key (`sk-ant-api...`) or a Claude
 subscription token (`claude setup-token`, `sk-ant-oat...`).
 
 - **Checked before it is kept.** oa-api hands it to the runner's
@@ -83,11 +85,11 @@ subscription token (`claude setup-token`, `sk-ant-oat...`).
   CLI's credential order. `--bare` is never passed.
 - **Expired tokens.** "Login expired" / "Please run /login" becomes "Your
   token expired. Make a new one with claude setup-token and save it under
-  KEY.", and the saved credential is marked expired; turns go back to our key
+  KEY." (the runner's wording), and the saved credential is marked expired; turns go back to our key
   until it is replaced.
 - **Never shown.** The page sends it once and wipes it from its memory;
   answers carry only the kind and last four. It is never logged or put in an
-  event. REMOVE deletes it. Each answer says "YOUR KEY" or "OPENAGENTS KEY".
+  event. Remove deletes it. Each answer's meta line says "Your key" or "OpenAgents key".
 - **One store for /chat and projects.** The credential is kept per signed-in
   pubkey, and the same KEY item sits on each project page under the agent's
   field (`/projects/SLUG/api/key`, `key_remove`; only a member can save one).
@@ -98,6 +100,45 @@ subscription token (`claude setup-token`, `sk-ant-oat...`).
   sealed credential, and the turn header says "CHRIS'S KEY" or
   "OPENAGENTS KEY". An expired token fails that turn with the same message
   and marks the credential expired.
+
+## How the page is drawn
+
+Since 2026-10-29 the page draws everything with the Zeron/GPUI components the
+Mac app uses (`apps/shared/zeron/`: `gpui.coax`, `composer.coax`,
+`markdown.coax`, `transcript.coax`, `picker.coax`, the icons and Geist under
+its OFL), compiled to wasm and drawn on WebGPU. The old HUD chat is
+`apps/openagents-web/chat-hud.coax`, kept for the Mac app's unshown HUD.
+
+- **Shaders.** `chat.wgsl` is a WGSL port of `Zeron.metal` (quads, shadows,
+  underlines, mono and polychrome sprites).
+- **Glyphs.** `coax/web/gpui.js` rasterizes Geist and Geist Mono in the
+  browser (FontFace into an OffscreenCanvas) at the device pixel ratio, four
+  quarter-pixel subpixel positions per glyph, with two weight levels, into an
+  r8 atlas; color glyphs (emoji) go to a dynamic rgba cache measured on
+  first use. Zeron's icons are drawn from their SVGs into the same atlas.
+  Advances and kerning come from the browser's measurement of the same font
+  files, so line breaks match the Mac's.
+- **Layout.** At 860 px and up: a 260 px sidebar (New chat, the chat list,
+  the credential and Key) beside the transcript. Narrower: Chats, New and Key
+  sit in the titlebar, the list opens over the page, the composer docks at
+  the bottom with 16 px sides and the page never scrolls sideways.
+- **Transcript.** Each turn is a user bubble, a tool group (`T` lines:
+  Read, Grep, Glob, WebSearch, WebFetch as Zeron tool chips, open while the
+  turn runs), the answer as Markdown, then a meta line (model, whose key,
+  cost, time). A running turn shows Zeron's thinking trailer; the composer's
+  send button becomes Stop.
+- **Composer.** Zeron's composer: selection, double and triple click,
+  copy and cut, paste and IME through host.js's hidden text field. The model
+  pill opens Zeron's picker with Haiku 5.5, Sonnet 5.5 and Opus 5.5. The
+  paperclip is hidden and no effort levels are shown: the API takes no
+  attachments and has no effort setting.
+- **Against the Mac.** The `#demo` hash draws Zeron's demo conversation;
+  against the Mac app's `--shot` of the same (1320x880 at scale 2), the mean
+  per-channel difference is 0.17 over the page (0.66% of pixels differ by
+  more than 8), 0.47 in the user bubble, 0.98 in the tool group header, 0.73
+  in the Markdown answer, 0.29 in the code block and 0.46 in the composer.
+  The rest is the browser's text rasterizer against CoreText's, at glyph
+  edges.
 
 ## The checkout and the runner's size
 

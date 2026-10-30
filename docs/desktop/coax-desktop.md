@@ -225,8 +225,10 @@ How it works:
   `PSIONIC_SYSTEMONE_URL` and `PSIONIC_SYSTEMONE_HOST=local` (Elephant on
   this Mac: no tunnel, no swap) come from the environment or
   `~/work/.secrets/psionic-responses.env`.
-- The HUD chat, its LAB and the Mammoth router (`chat.coax`, `router.coax`,
-  `Router.swift`) stay in the tree and build, unshown.
+- The HUD chat, its LAB and the Mammoth router (`apps/openagents-web/chat-hud.coax`,
+  `router.coax`, `Router.swift`) stay in the tree and build, unshown.
+  `apps/openagents-web/chat.coax` is now openagents.com/chat drawn with the
+  shared Zeron components on WebGPU ([../chat.md](../chat.md#how-the-page-is-drawn)).
 - Licenses and attribution: `apps/openagents-desktop/zeron/NOTICE`.
 
 Component one, the composer, against Zeron's own render (1320x880 at scale 2,
@@ -285,8 +287,8 @@ What we already have in Coax:
   stream-json protocol, the control protocol, in-process MCP servers), with
   `coax/platform/process-native.c` for child processes.
 - `apps/openagents-web/ui.coax` and `font.coax`: the HUD components and the
-  vector font. `chat.coax` already draws a conversation, a composer and model
-  chips.
+  vector font. `chat-hud.coax` draws the old HUD conversation, composer and
+  model chips.
 - The iOS app's Metal host (`apps/openagents-ios/OpenAgents/Platform/`), which
   draws Coax output natively.
 

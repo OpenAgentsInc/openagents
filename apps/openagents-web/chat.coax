@@ -1,115 +1,142 @@
-// openagents.com/chat, drawn by Coax: a direct chat with a Claude agent for
-// general questions, admins only for now (docs/chat.md). The page holds
-// nothing until oa-api answers /api/chat/state with the admin's session
-// cookie; anyone else sees only SIGN IN.
+// openagents.com/chat, drawn with the Zeron components the Mac app draws
+// its chat with (apps/shared/zeron/: Zeron's composer, transcript,
+// Markdown, tool chips and model menu, GPUI's primitives), on WebGPU by
+// chat.wgsl (Zeron.metal's port) with the atlas coax/web/gpui.js
+// rasterizes in the browser. A direct chat with the OpenAgents agent,
+// admins only for now (docs/chat.md): the page holds nothing until oa-api
+// answers /api/chat/state with the admin's session cookie; anyone else sees
+// only Log in.
 //
-// What it draws: the asker's conversations and NEW CHAT (a column on a wide
-// screen, CHATS over the conversation on a phone); the conversation shown,
-// each message and the agent's answer (its Markdown drawn cleanly: headings,
-// lists, quotes and code blocks), the model and the credential each answer
-// used, and while a turn runs what tool it is using, with STOP; under it the
-// models (HAIKU 5.5, SONNET 5.5, OPUS 5.5: the conversation keeps its own,
-// and a change takes the next turn), the text box and SEND. KEY opens the
-// asker's own credential: an Anthropic API key or a Claude subscription
-// token, shown once saved only as its kind and last four, with REPLACE and
-// REMOVE. The state comes every 2 s while a turn waits or runs, else every 30 s.
-//
-// The state is lines (coax/web/api/migrations/0021_chat.sql, chat.lines):
-//   Z|spent|cap|kind|last4|expired|busy|shown
-//   C|id|title|model|updated|busy
-//   S|id|title|model|resumes
-//   U|id|status|at|model|credential|text|answer|error|working|cost   (text and answer: \n \\ \p escaped)
-//   T|turn|tool|detail
+// What it draws: the conversations (a sidebar on a wide window, Chats over
+// the page on a phone) and New chat; the conversation shown, its messages
+// as Zeron's bubbles, the agent's answers as Markdown, the tools it used as
+// Zeron's tool group and chips, the model and credential under each answer;
+// Zeron's composer (its own selection, undo and IME, no paperclip: the API
+// takes no files), whose model chip opens Zeron's menu of the three models
+// oa-api runs, and whose Send becomes Stop while a turn runs; KEY, the
+// asker's own Anthropic key or Claude subscription token. A `#demo` hash
+// shows Zeron's demo conversation as the Mac app's --demo does, for
+// comparing the two renders. Based on Zeron by Wing, MIT.
 
-#load "projects.coax";
+#load "../shared/zeron/picker.coax";
 
-CH_MAX_VERTICES :: 240000;
-CH_INBOX :: 1048576;
-CH_DATA :: 1048576;        // the last answer's lines (ChatHost holds both; ChatState sees them)
-CH_LINES :: 4096;
-CH_URL :: 128;
-CH_TEXT :: 8000;           // what a message may hold (chat.api keeps 8000)
-CH_KEY :: 400;             // a pasted credential's most
-CH_BODY :: 24600;          // a post's JSON: a message escaped, or a credential
-CH_MD :: 32768;            // one decoded text
-CH_HITS :: 128;
-CH_NOTE :: 300;
-CH_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
-CH_TYPED :: 1; CH_SHOWN :: 602;
-CH_PUSHED :: 603;          // the Mac app: the state pushed as it changes (a turn streaming), for the conversation shown
-CH_NAVIGATE :: 1;
-CH_BUSY :: 2.0;            // seconds between reads while a turn waits or runs
-CH_REFRESH :: 30.0;        // else
+WC_MAX_VERTICES :: 120000;
+WC_INBOX :: 1048576;
+WC_DATA :: 1048576;        // the last state's lines (WcHost holds them; WcState sees them)
+WC_POOL :: 1048576;        // the decoded texts the transcript points into
+WC_LINES :: 4096;
+WC_URL :: 128;
+WC_KEY :: 400;             // a pasted credential's most
+WC_BODY :: 24600;          // a post's JSON: a message escaped, or a credential
+WC_NOTE :: 300;
+WC_HTTP :: 512;            // + id: an HTTP answer (coax/web/host.js)
+WC_TYPED :: 1; WC_SHOWN :: 602;
+WC_NAVIGATE :: 1; WC_COPY :: 2;
+WC_BUSY :: 2.0;            // seconds between reads while a turn waits or runs
+WC_REFRESH :: 30.0;        // else
 POST_SEND :: 1; POST_MODEL :: 2; POST_STOP :: 3; POST_KEY :: 4; POST_KEY_REMOVE :: 5;
-H_HOME :: 1; H_SIGNIN :: 2; H_NEW :: 3; H_CHATS :: 4; H_KEY :: 5; H_FIELD :: 6; H_SEND :: 7; H_STOP :: 8;
-H_KFIELD :: 9; H_KSAVE :: 10; H_REPLACE :: 11; H_REMOVE :: 12; H_CLOSE :: 13;
-H_LAB :: 14; H_BACK :: 15;  // the Mac app's Lab: one thread, one field, BACK
-H_MODEL :: 20;             // + the model's index
-H_CONV :: 100;             // + a conversation's index in the list
-K_BACK :: -3; K_ESC :: -1;
-MODELS :: [3] string.["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"];
-MODEL_NAMES :: [3] string.["HAIKU 5.5", "SONNET 5.5", "OPUS 5.5"];
-MODEL_DEFAULT :: 2;
-EFFORTS :: [5] string.["low", "medium", "high", "xhigh", "max"];
-EFFORT_NAMES :: [5] string.["LOW", "MEDIUM", "HIGH", "XHIGH", "MAX"];
-EFFORT_DEFAULT :: 2;
-H_EFFORT :: 30;            // + the effort's index (the Mac app)
-POST_EFFORT :: 6;
+// The host's named keys beyond composer.coax's: Shift and Control held, Tab.
+WK_SHIFT :: -13; WK_CONTROL :: -14; WK_TAB :: -15;
+// What oa-api runs (chat.api: Opus by default), in Zeron's order, and the menu's words.
+WC_MODELS :: [3] string.["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+WC_MODEL_NAMES :: [3] string.["Opus 5.5", "Sonnet 5.5", "Haiku 5.5"];
+WC_MODEL_DESCS :: [3] string.["For complex work and everyday tasks", "Most efficient for simpler tasks", "Fastest for quick answers"];
+WC_MODEL_DEFAULT :: 0;
+WC_CLAUDE_TINT :: Rgba.{r = 0.851, g = 0.467, b = 0.341, a = 1};   // #d97757 (claude.coax CLAUDE_TINT)
+// The layout: the sidebar from this wide, its width; Zeron's column padding
+// (the phone's 16px gutters); the docked composer's bottom margin.
+WC_WIDE :: 860.0;
+WC_SIDEBAR :: 260.0;
+WC_PAD :: 16.0;
+WC_DOCK_BOTTOM :: 40.0;
+WC_DOCK_BOTTOM_PHONE :: 16.0;
+WC_HERO_LIFT :: 12.0;
+WC_ROW :: 52.0;            // a conversation's row in the list
+WC_BUTTON_H :: 28.0;
+WC_INTRO :: "Ask anything about OpenAgents. The agent reads a fresh copy of the public openagents repository (main) and the web, and says which files it read. It can't change anything.";
+// The chrome's presses (WcState.hits): the list's rows are WH_CONV + index.
+WH_NONE :: -1; WH_LOGIN :: 1; WH_NEW :: 2; WH_CHATS :: 3; WH_KEY :: 4; WH_KFIELD :: 5; WH_KSAVE :: 6;
+WH_REPLACE :: 7; WH_REMOVE :: 8; WH_CLOSE :: 9; WH_HOME :: 10; WH_SHADE :: 11;
+WH_CONV :: 100;
+WC_HITS :: 96;
 
-ChatState :: struct {
-  time: f32; ready: bool;
+WcHit :: struct { x: f32; y: f32; w: f32; h: f32; id: int; }
+// A painted button: the vertices so far and its width.
+WcB :: struct { v: int; w: f32; }
+
+WcState :: struct {
+  ready: bool; time: f32;
   width: f32; height: f32; d: f32;
+  golden: bool;
+  atlas: [1] Atlas;
+  composer: [1] Composer;
+  transcript: [1] Transcript;
+  picker: [1] Picker;
+  cat: [1] PkCatalog;
+  // the host's side of the atlas: what coax/web/gpui.js hands over (a font's
+  // header, advances and kerning; a cluster's bytes; a cell's six numbers)
+  scratch: [9800] f32;
+  sbytes: [64] u8;
+  // asking oa-api
   status: int;                   // -1 nothing asked, 0 waiting for the first answer, else its HTTP status
   asked_at: f32;
-  ask: [CH_URL] u8; ask_n: int; ask_id: int;
-  post: [CH_URL] u8; post_n: int; post_id: int; post_kind: int;
-  body: [CH_BODY] u8; body_n: int;
-  lab: bool;                     // the Mac app: in the Lab (its own thread, /api/lab/)
-  ask_lab: bool;                 // the state asked for was the Lab's
-  effort: int;                   // the Mac app: the effort chosen here, its index + 1; 0 the backend's own
+  ask: [WC_URL] u8; ask_n: int; ask_id: int;
+  post: [WC_URL] u8; post_n: int; post_id: int; post_kind: int;
+  body: [WC_BODY] u8; body_n: int;
   shown: int;                    // the conversation shown: its id, 0 a new one, -1 the newest
   model: int;                    // the model chosen here, -1 the conversation's own
-  note: [CH_NOTE] u8; note_n: int; note_at: f32;    // a word under the field: NOT SENT, the cap
-  knote: [CH_NOTE] u8; knote_n: int;                // the same in KEY: why a key didn't work
-  back: f32; content: f32;       // device pixels the conversation is scrolled up from its end; its height
-  hot: int; press: int; press_x: f32; press_y: f32; drag_y: f32; dragged: bool;
-  typing: bool; focus: int;      // the field typed into: 0 the message, 1 the key
-  all: int;                      // Cmd+A: the field (focus + 1) whose text is all selected; 0 none (textkeys.coax)
-  text: [CH_TEXT] u8; text_n: int;
-  key: [CH_KEY] u8; key_n: int;
-  listing: bool;                 // a phone: CHATS is open
+  gen: int; built: int;          // states taken; the one the transcript was built from
+  pending: [COMPOSER_TEXT] u8; pending_n: int;   // a message sent and not yet in the state
+  first: int;                    // the turns the transcript skips (more than it holds)
+  g_set: [T_GROUPS] bool; g_user: [T_GROUPS] int;   // a group's open as built, and as the reader left it (0 auto, 1 open, 2 closed)
+  t_set: [T_TOOLS] bool; t_user: [T_TOOLS] int;
+  built_groups: int; built_tools: int;
+  work: f32;                     // seconds the shown turn has run, counted here
+  seen_sent: int;
+  note: [WC_NOTE] u8; note_n: int;                  // why the last message or Stop didn't go (Zeron's failure notice)
+  knote: [WC_NOTE] u8; knote_n: int;                // the same in KEY
+  // the chrome
+  lx: f32; ly: f32;
+  cursor: int;                   // 0 arrow, 1 a link, 3 text (host.js)
+  on_composer: bool; swallow: bool;
+  shift: bool;
+  down_at: f32; down_x: f32; down_y: f32; clicks: int;
+  hits: [WC_HITS] WcHit; nhit: int; hot: int; press: int;
+  side_scroll: f32; side_h: f32;
+  listing: bool;                 // a phone: Chats is over the page
   keying: bool;                  // KEY is open
   replacing: bool;               // KEY: the field is out over a saved credential
-  clip0: f32; clip1: f32;        // what's drawn is between these
+  key_focus: bool;
+  key: [WC_KEY] u8; key_n: int;
+  demo: bool;
   field: [4] f32;
-  hit_box: [CH_HITS] Box; hit_id: [CH_HITS] int; hit_n: int;
-  outbox: [CH_TEXT] u8; out_n: int; action: int;   // a URL, or a copy (TK_ACT_COPY) of what's typed
-  md: [CH_MD] u8; md_n: int;
-  data: [] u8; data_n: int;   // ChatHost's (a #test's own short buffer)
-  line_at: [CH_LINES] int; line_end: [CH_LINES] int; line_n: int;
-  inbox: [] u8;                // ChatHost's
+  outbox: [COMPOSER_TEXT] u8; out_n: int; action: int;
+  // WcHost's buffers (a #test's own short ones)
+  data: [] u8; data_n: int;
+  line_at: [WC_LINES] int; line_end: [WC_LINES] int; line_n: int;
+  inbox: [] u8;
+  pool: [] u8; pool_n: int;
 }
 
-// What the host keeps (chat-face.c): the state and the two megabyte buffers it
-// sees. They live here, outside ChatState, so a #test's state is small: the
-// compiler's aggregate storage limit (coax/spec.md, E0400) is well under the
-// two megabytes the page holds.
-ChatHost :: struct {
-  s: [1] ChatState;
-  data: [CH_DATA] u8;
-  inbox: [CH_INBOX] u8;
+// What the host keeps (chat-face.c): the state and its buffers, outside
+// WcState so the state's own size stays the compiler's to check.
+WcHost :: struct {
+  s: [1] WcState;
+  data: [WC_DATA] u8;
+  inbox: [WC_INBOX] u8;
+  pool: [WC_POOL] u8;
 }
-// Before every call: the state sees the host's buffers (they move with it).
-coaxial_chat_bind :: (h: [] ChatHost) #export_c {
+coaxial_chat_bind :: (h: [] WcHost) #export_c {
   if h.count < 1 { return; }
   h[0].s[0].data = h[0].data[..];
   h[0].s[0].inbox = h[0].inbox[..];
+  h[0].s[0].pool = h[0].pool[..];
 }
 
 // ---------------------------------------------------------------- the lines
 
-ch_kind :: (s: [] ChatState, i: int) -> u8 { return s[0].data[s[0].line_at[i]]; }
-ch_cell :: (s: [] ChatState, i: int, col: int) -> string {
+wc_kind :: (s: [] WcState, i: int) -> u8 { return s[0].data[s[0].line_at[i]]; }
+wc_cell :: (s: [] WcState, i: int, col: int) -> string {
   from := s[0].line_at[i]; to := s[0].line_end[i];
   k := from; c := 0;
   while c < col && k < to { if s[0].data[k] == '|' { c += 1; } k += 1; }
@@ -118,44 +145,41 @@ ch_cell :: (s: [] ChatState, i: int, col: int) -> string {
   while j < to && s[0].data[j] != '|' { j += 1; }
   return cast(string) s[0].data[k..<j];
 }
-ch_index :: (s: [] ChatState) {
+wc_index :: (s: [] WcState) {
   s[0].line_n = 0;
   at := 0; n := s[0].data_n;
   while at < n {
     stop := at;
     while stop < n && s[0].data[stop] != '\n' { stop += 1; }
-    if stop > at + 1 && s[0].data[at + 1] == '|' && s[0].line_n < CH_LINES {
+    if stop > at + 1 && s[0].data[at + 1] == '|' && s[0].line_n < WC_LINES {
       s[0].line_at[s[0].line_n] = at; s[0].line_end[s[0].line_n] = stop; s[0].line_n += 1;
     }
     at = stop + 1;
   }
 }
-ch_first :: (s: [] ChatState, kind: u8) -> int {
-  for i: 0..<s[0].line_n { if ch_kind(s, i) == kind { return i; } }
+wc_first :: (s: [] WcState, kind: u8) -> int {
+  for i: 0..<s[0].line_n { if wc_kind(s, i) == kind { return i; } }
   return -1;
 }
-ch_count :: (s: [] ChatState, kind: u8) -> int {
+wc_count :: (s: [] WcState, kind: u8) -> int {
   n := 0;
-  for i: 0..<s[0].line_n { if ch_kind(s, i) == kind { n += 1; } }
+  for i: 0..<s[0].line_n { if wc_kind(s, i) == kind { n += 1; } }
   return n;
 }
-ch_nth :: (s: [] ChatState, kind: u8, k: int) -> int {
+wc_nth :: (s: [] WcState, kind: u8, k: int) -> int {
   n := 0;
-  for i: 0..<s[0].line_n { if ch_kind(s, i) == kind { if n == k { return i; } n += 1; } }
+  for i: 0..<s[0].line_n { if wc_kind(s, i) == kind { if n == k { return i; } n += 1; } }
   return -1;
 }
-ch_z :: (s: [] ChatState, col: int) -> string { z := ch_first(s, 'Z'); return ifx z < 0 then "" else ch_cell(s, z, col); }
-ch_busy :: (s: [] ChatState) -> bool { return s[0].post_kind == POST_SEND || ch_z(s, 6) == "1"; }
-ch_has_key :: (s: [] ChatState) -> bool { return ch_z(s, 3).count > 0; }
-// The Mac app (apps/openagents-desktop): turns run the user's own Claude Code on that Mac, so no key, cap or KEY.
-ch_local :: (s: [] ChatState) -> bool { return ch_z(s, 3) == "local"; }
+wc_z :: (s: [] WcState, col: int) -> string { z := wc_first(s, 'Z'); return ifx z < 0 then "" else wc_cell(s, z, col); }
+wc_has_key :: (s: [] WcState) -> bool { return wc_z(s, 3).count > 0; }
 // Today's spend on OpenAgents' key has reached the cap, and no key of the asker's is saved.
-ch_capped :: (s: [] ChatState) -> bool {
-  if ch_has_key(s) || ch_first(s, 'Z') < 0 { return false; }
-  return ch_cents(ch_z(s, 1)) >= ch_cents(ch_z(s, 2)) && ch_cents(ch_z(s, 2)) >= 0;
+wc_capped :: (s: [] WcState) -> bool {
+  if wc_has_key(s) || wc_first(s, 'Z') < 0 { return false; }
+  return wc_cents(wc_z(s, 1)) >= wc_cents(wc_z(s, 2)) && wc_cents(wc_z(s, 2)) >= 0;
 }
 // "1.07" as 107; -1 for nothing.
-ch_cents :: (t: string) -> int {
+wc_cents :: (t: string) -> int {
   if t.count == 0 { return -1; }
   n := 0; frac := -1;
   for c: t {
@@ -169,52 +193,63 @@ ch_cents :: (t: string) -> int {
   while frac < 2 { n *= 10; frac += 1; }
   return n;
 }
-ch_model_index :: (id: string) -> int {
-  for k: 0..<3 { if MODELS[k] == id { return k; } }
+wc_model_index :: (id: string) -> int {
+  ids := WC_MODELS;
+  for k: 0..<3 { if ids[k] == id { return k; } }
   return -1;
 }
+wc_model_name :: (id: string) -> string { k := wc_model_index(id); names := WC_MODEL_NAMES; return ifx k < 0 then id else names[k]; }
+wc_shown_id :: (s: [] WcState) -> string { si := wc_first(s, 'S'); return ifx si < 0 then "" else wc_cell(s, si, 1); }
+wc_showing :: (s: [] WcState) -> bool { return s[0].shown != 0 && wc_shown_id(s).count > 0; }
 // The model the next turn uses: the one chosen here, else the conversation's, else Opus.
-ch_model :: (s: [] ChatState) -> int {
+wc_model :: (s: [] WcState) -> int {
   if s[0].model >= 0 && s[0].model < 3 { return s[0].model; }
-  si := ch_first(s, 'S');
-  if si >= 0 && s[0].shown != 0 { k := ch_model_index(ch_cell(s, si, 3)); if k >= 0 { return k; } }
-  return MODEL_DEFAULT;
+  si := wc_first(s, 'S');
+  if si >= 0 && wc_showing(s) { k := wc_model_index(wc_cell(s, si, 3)); if k >= 0 { return k; } }
+  return WC_MODEL_DEFAULT;
 }
-// The Mac app's reasoning effort: the one chosen here, else the backend's setting (Z column 8).
-ch_effort :: (s: [] ChatState) -> int {
-  if s[0].effort > 0 && s[0].effort <= 5 { return s[0].effort - 1; }
-  z := ch_z(s, 8);
-  for k: 0..<5 { if EFFORTS[k] == z { return k; } }
-  return EFFORT_DEFAULT;
+// The shown conversation's last turn waits or runs (or a message is on its way).
+wc_busy :: (s: [] WcState) -> bool {
+  if s[0].post_kind == POST_SEND || s[0].pending_n > 0 { return true; }
+  if !wc_showing(s) { return false; }
+  n := wc_count(s, 'U');
+  if n == 0 { return false; }
+  st := wc_cell(s, wc_nth(s, 'U', n - 1), 2);
+  return st == "running" || st == "queued";
 }
-ch_model_name :: (id: string) -> string { k := ch_model_index(id); return ifx k < 0 then "" else MODEL_NAMES[k]; }
-// The conversation the lines show: its id, or 0.
-ch_shown_id :: (s: [] ChatState) -> string { si := ch_first(s, 'S'); return ifx si < 0 then "" else ch_cell(s, si, 1); }
 
-// A long text's escapes (\n, \\, \p) undone into md.
-ch_decode :: (s: [] ChatState, text: string) -> string {
-  n := 0; i := 0;
-  while i < text.count && n < CH_MD {
+// A long text's escapes (\n, \\, \p) undone, into the pool; "" once it is full.
+wc_decode :: (s: [] WcState, text: string) -> string {
+  from := s[0].pool_n; n := from; i := 0;
+  while i < text.count {
+    if n >= s[0].pool.count { s[0].pool_n = from; return ""; }
     c := text[i];
     if c == '\\' && i + 1 < text.count {
       e := text[i + 1];
-      s[0].md[n] = ifx e == 'n' then '\n' else ifx e == 'p' then '|' else e;
+      s[0].pool[n] = ifx e == 'n' then '\n' else ifx e == 'p' then '|' else e;
       n += 1; i += 2; continue;
     }
-    s[0].md[n] = c; n += 1; i += 1;
+    s[0].pool[n] = c; n += 1; i += 1;
   }
-  s[0].md_n = n;
-  return cast(string) s[0].md[0..<n];
+  s[0].pool_n = n;
+  return cast(string) s[0].pool[from..<n];
+}
+wc_keep :: (s: [] WcState, text: string) -> string {
+  from := s[0].pool_n;
+  if from + text.count > s[0].pool.count { return ""; }
+  for k: 0..<text.count { s[0].pool[from + k] = text[k]; }
+  s[0].pool_n = from + text.count;
+  return cast(string) s[0].pool[from..<s[0].pool_n];
 }
 
 // ---------------------------------------------------------------- asking oa-api
 
-ch_put :: (buf: [] u8, at: int, text: string) -> int {
+wc_put :: (buf: [] u8, at: int, text: string) -> int {
   n := at;
   for c: text { if n < buf.count { buf[n] = c; n += 1; } }
   return n;
 }
-ch_number :: (buf: [] u8, at: int, n: int) -> int {
+wc_number :: (buf: [] u8, at: int, n: int) -> int {
   digits: [20] u8; k := 0; x := n;
   if x < 0 { x = 0; }
   if x == 0 { digits[0] = '0'; k = 1; }
@@ -223,17 +258,16 @@ ch_number :: (buf: [] u8, at: int, n: int) -> int {
   while k > 0 && m < buf.count { k -= 1; buf[m] = digits[k]; m += 1; }
   return m;
 }
-ch_ask :: (s: [] ChatState) {
+wc_ask :: (s: [] WcState) {
   if s[0].ask_id >= 0 || s[0].ask_n > 0 { return; }
-  s[0].ask_lab = s[0].lab;
-  n := ch_put(s[0].ask[..], 0, ifx s[0].lab then "/api/lab/state" else "/api/chat/state");
-  if s[0].shown >= 0 && !s[0].lab { n = ch_put(s[0].ask[..], n, "?c="); n = ch_number(s[0].ask[..], n, s[0].shown); }
+  n := wc_put(s[0].ask[..], 0, "/api/chat/state");
+  if s[0].shown >= 0 { n = wc_put(s[0].ask[..], n, "?c="); n = wc_number(s[0].ask[..], n, s[0].shown); }
   s[0].ask_n = n;
   s[0].asked_at = s[0].time;
   if s[0].status == -1 { s[0].status = 0; }
 }
 // A JSON string's contents into buf.
-ch_json :: (buf: [] u8, at: int, text: string) -> int {
+wc_json :: (buf: [] u8, at: int, text: string) -> int {
   n := at;
   for c: text {
     if n + 8 >= buf.count { return n; }
@@ -245,56 +279,41 @@ ch_json :: (buf: [] u8, at: int, text: string) -> int {
   return n;
 }
 // A post: {"key": "value", ...} from up to three pairs (an empty key is left out).
-ch_post :: (s: [] ChatState, op: string, kind: int, k1: string, v1: string, k2: string, v2: string, k3: string, v3: string) {
-  n := ch_put(s[0].post[..], 0, ifx s[0].lab then "/api/lab/" else "/api/chat/");
-  s[0].post_n = ch_put(s[0].post[..], n, op);
-  b := ch_put(s[0].body[..], 0, "{");
+wc_post :: (s: [] WcState, op: string, kind: int, k1: string, v1: string, k2: string, v2: string, k3: string, v3: string) {
+  n := wc_put(s[0].post[..], 0, "/api/chat/");
+  s[0].post_n = wc_put(s[0].post[..], n, op);
+  b := wc_put(s[0].body[..], 0, "{");
   keys := [3] string.[k1, k2, k3]; values := [3] string.[v1, v2, v3];
   first := true;
   for j: 0..<3 {
     if keys[j].count == 0 { continue; }
-    if !first { b = ch_put(s[0].body[..], b, ","); }
+    if !first { b = wc_put(s[0].body[..], b, ","); }
     first = false;
-    b = ch_put(s[0].body[..], b, "\""); b = ch_put(s[0].body[..], b, keys[j]); b = ch_put(s[0].body[..], b, "\":\"");
-    b = ch_json(s[0].body[..], b, values[j]);
-    b = ch_put(s[0].body[..], b, "\"");
+    b = wc_put(s[0].body[..], b, "\""); b = wc_put(s[0].body[..], b, keys[j]); b = wc_put(s[0].body[..], b, "\":\"");
+    b = wc_json(s[0].body[..], b, values[j]);
+    b = wc_put(s[0].body[..], b, "\"");
   }
-  s[0].body_n = ch_put(s[0].body[..], b, "}");
+  s[0].body_n = wc_put(s[0].body[..], b, "}");
   s[0].post_kind = kind; s[0].post_id = -1;
 }
-// A pushed state is the Lab's: its Z line's column 7 is "lab".
-ch_pushed_lab :: (text: string) -> bool {
-  col := 0; k := 0;
-  while k < text.count && text[k] != '\n' {
-    if text[k] == '|' { col += 1; if col == 7 { return k + 3 < text.count && text[k + 1] == 'l' && text[k + 2] == 'a' && text[k + 3] == 'b'; } }
-    k += 1;
-  }
-  return false;
-}
-// The conversation a pushed state shows: its Z line's column 7.
-ch_pushed_for :: (text: string) -> int {
-  if text.count < 2 || text[0] != 'Z' { return -1; }
-  col := 0; k := 0; at := 0;
-  while k < text.count && text[k] != '\n' { if text[k] == '|' { col += 1; if col == 7 { at = k + 1; } } k += 1; }
-  if at == 0 { return -1; }
-  v := 0; j := at;
-  while j < k && text[j] >= '0' && text[j] <= '9' { v = v * 10 + cast(int) (text[j] - '0'); j += 1; }
-  return v;
-}
 // The face sent them. A post's body is wiped once sent: a credential stays in the page no longer than that.
-coaxial_chat_asked :: (s: [] ChatState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
-coaxial_chat_posted :: (s: [] ChatState, id: int) #export_c {
+coaxial_chat_asked :: (s: [] WcState, id: int) #export_c { if s.count > 0 { s[0].ask_n = 0; s[0].ask_id = id; } }
+coaxial_chat_posted :: (s: [] WcState, id: int) #export_c {
   if s.count < 1 { return; }
   for i: 0..<s[0].body_n { s[0].body[i] = 0; }
   s[0].post_n = 0; s[0].body_n = 0; s[0].post_id = id;
 }
-ch_say :: (s: [] ChatState, word: string) { s[0].note_n = ch_put(s[0].note[..], 0, word); s[0].note_at = s[0].time; }
-ch_say_key :: (s: [] ChatState, word: string) { s[0].knote_n = ch_put(s[0].knote[..], 0, word); }
-ch_go :: (s: [] ChatState, url: string) { s[0].out_n = ch_put(s[0].outbox[..], 0, url); s[0].action = CH_NAVIGATE; }
-ch_wipe_key :: (s: [] ChatState) { for i: 0..<CH_KEY { s[0].key[i] = 0; } s[0].key_n = 0; }
+wc_say :: (s: [] WcState, word: string) { s[0].note_n = wc_put(s[0].note[..], 0, word); }
+wc_say_key :: (s: [] WcState, word: string) { s[0].knote_n = wc_put(s[0].knote[..], 0, word); }
+wc_go :: (s: [] WcState, url: string) { s[0].out_n = wc_put(s[0].outbox[..], 0, url); s[0].action = WC_NAVIGATE; }
+wc_copy :: (s: [] WcState, text: string) {
+  if text.count == 0 || text.count > s[0].outbox.count { return; }
+  s[0].out_n = wc_put(s[0].outbox[..], 0, text); s[0].action = WC_COPY;
+}
+wc_wipe_key :: (s: [] WcState) { for i: 0..<WC_KEY { s[0].key[i] = 0; } s[0].key_n = 0; }
 
 // A JSON answer's value for key, as text: a string's contents, or a number's digits.
-ch_value :: (bytes: string, from: int, key: string) -> string {
+wc_value :: (bytes: string, from: int, key: string) -> string {
   k := from;
   while k + key.count + 2 <= bytes.count {
     if bytes[k] == '"' && bytes[k + 1..<k + 1 + key.count] == key && bytes[k + 1 + key.count] == '"' {
@@ -315,1062 +334,994 @@ ch_value :: (bytes: string, from: int, key: string) -> string {
   }
   return "";
 }
-ch_int :: (t: string) -> int {
+wc_int :: (t: string) -> int {
   n := 0;
   for c: t { if c < '0' || c > '9' { return -1; } n = n * 10 + cast(int) (c - '0'); }
   return ifx t.count == 0 then -1 else n;
 }
 
-// An answer: "STATUS\n" then the body.
-// The state's lines, from an answer or pushed (CH_PUSHED).
-ch_take :: (s: [] ChatState, bytes: string, from: int) {
+// The state's lines from an answer.
+wc_take :: (s: [] WcState, bytes: string, from: int) {
+  was := wc_shown_id(s);
   n := 0; i := from;
   while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
-  s[0].data_n = n; ch_index(s); s[0].status = 200;
+  s[0].data_n = n; wc_index(s); s[0].status = 200;
   // the newest conversation, shown when none was chosen
-  if s[0].shown < 0 { k := ch_int(ch_shown_id(s)); if k > 0 { s[0].shown = k; } }
+  if s[0].shown < 0 { k := wc_int(wc_shown_id(s)); s[0].shown = ifx k > 0 then k else 0; }
+  if wc_shown_id(s) != was { wc_forget_view(s); }
+  // the message on its way is in the state once its turn is
+  if s[0].pending_n > 0 && s[0].post_kind != POST_SEND { s[0].pending_n = 0; }
+  s[0].gen += 1;
 }
-ch_answer :: (s: [] ChatState, id: int, bytes: string) {
+// Another conversation: its own scroll, and nothing the reader opened in the last.
+wc_forget_view :: (s: [] WcState) {
+  s[0].first = 0;
+  for g: 0..<T_GROUPS { s[0].g_user[g] = 0; }
+  for q: 0..<T_TOOLS { s[0].t_user[q] = 0; }
+  s[0].built_groups = 0; s[0].built_tools = 0;
+  s[0].transcript[0].pinned = true; s[0].transcript[0].has_sel = false;
+}
+// An answer: "STATUS\n" then the body.
+wc_answer :: (s: [] WcState, id: int, bytes: string) {
   i := 0; code := 0;
   while i < bytes.count && bytes[i] >= '0' && bytes[i] <= '9' { code = code * 10 + cast(int) (bytes[i] - '0'); i += 1; }
   if i < bytes.count && bytes[i] == '\n' { i += 1; }
   if id == s[0].ask_id {
     s[0].ask_id = -1;
-    if s[0].ask_lab != s[0].lab { s[0].asked_at = -1000; return; }   // asked before switching: ask again
-    if code == 200 {
-      ch_take(s, bytes, i);
-    } else if code == 0 || code >= 500 {
-      if s[0].status <= 0 { s[0].status = 599; }      // offline: what was shown stays
-    } else {
-      s[0].status = code; s[0].data_n = 0; s[0].line_n = 0;   // signed out, or not an admin: nothing stays
-    }
+    if code == 200 { wc_take(s, bytes, i); }
+    else if code == 0 || code >= 500 { if s[0].status <= 0 { s[0].status = 599; } }   // offline: what was shown stays
+    else { s[0].status = code; s[0].data_n = 0; s[0].line_n = 0; s[0].gen += 1; }   // signed out, or not an admin: nothing stays
     return;
   }
   if id != s[0].post_id { return; }
   s[0].post_id = -1;
   kind := s[0].post_kind; s[0].post_kind = 0;
-  err := ch_value(bytes, i, "error");
-  if code == 401 || code == 403 { s[0].status = code; s[0].data_n = 0; s[0].line_n = 0; return; }
+  err := wc_value(bytes, i, "error");
+  if code == 401 || code == 403 { s[0].status = code; s[0].data_n = 0; s[0].line_n = 0; s[0].pending_n = 0; s[0].gen += 1; return; }
   if kind == POST_SEND {
     if code == 200 {
-      for k: 0..<s[0].text_n { s[0].text[k] = 0; }
-      s[0].text_n = 0; s[0].note_n = 0; s[0].back = 0;
-      c := ch_int(ch_value(bytes, i, "c"));
-      if c > 0 { s[0].shown = c; }
+      s[0].note_n = 0;
+      c := wc_int(wc_value(bytes, i, "c"));
+      if c > 0 && c != s[0].shown { s[0].shown = c; }
       s[0].model = -1;
-    } else if code == 429 && err.count > 0 { ch_say(s, err); }
-    else if code == 409 { ch_say(s, "A TURN IS STILL RUNNING"); }
-    else { ch_say(s, ifx err.count > 0 then err else "NOT SENT"); }
+      s[0].transcript[0].pinned = true;
+    } else {
+      // nothing went: the message comes back to the composer, with why
+      composer_insert(s[0].composer[..], cast(string) s[0].pending[0..<s[0].pending_n]);
+      s[0].pending_n = 0; s[0].gen += 1;
+      if code == 429 && err.count > 0 { wc_say(s, err); }
+      else if code == 409 { wc_say(s, "A turn is still running."); }
+      else { wc_say(s, ifx err.count > 0 then err else "Not sent."); }
+    }
   } else if kind == POST_MODEL {
-    if code == 200 { s[0].model = -1; } else { ch_say(s, ifx err.count > 0 then err else "THE MODEL DIDN'T CHANGE"); }
+    if code != 200 { s[0].model = -1; wc_say(s, ifx err.count > 0 then err else "The model didn't change."); }
   } else if kind == POST_STOP {
-    if code == 200 { ch_say(s, "STOPPING"); } else { ch_say(s, ifx err.count > 0 then err else "NOT STOPPED"); }
+    if code != 200 { wc_say(s, ifx err.count > 0 then err else "Not stopped."); }
   } else if kind == POST_KEY {
-    if code == 200 { s[0].replacing = false; s[0].knote_n = 0; s[0].typing = false; }
-    else { ch_say_key(s, ifx err.count > 0 then err else "That key didn't work: no answer"); }
+    if code == 200 { s[0].replacing = false; s[0].knote_n = 0; s[0].key_focus = false; }
+    else { wc_say_key(s, ifx err.count > 0 then err else "That key didn't work: no answer"); }
   } else if kind == POST_KEY_REMOVE {
-    if code == 200 { s[0].replacing = false; s[0].knote_n = 0; ch_say_key(s, "Removed."); }
+    if code == 200 { s[0].replacing = false; s[0].knote_n = 0; wc_say_key(s, "Removed."); }
   }
   s[0].asked_at = -1000;   // read the state again now
 }
 
-// ---------------------------------------------------------------- text
+// ---------------------------------------------------------------- the transcript from the state
 
-ChFlow :: struct { y: f32; v: int; }
-ch_chrome :: (p: Pen, kind: int) -> Ink { k := ink(p, kind); k.sans = false; return k; }
-BODY :: 7.5;     // small text's cap, CSS pixels (the sans)
-STEP :: 15.0;    // its line
-
-ch_shows :: (s: [] ChatState, base: f32, step: f32) -> bool { return base > s[0].clip0 && base - step < s[0].clip1; }
-// Wrapped text, at most lines lines, drawn when draw and inside the clip.
-ch_text :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x: f32, width: f32, cap: f32, k: Ink, lines: int, draw: bool) -> ChFlow {
-  d := s[0].d; step := STEP * d * cap / BODY;
-  r := f; from := 0; n := 0;
-  next: [1] int;
-  while from < text.count && n < lines {
-    end := wrap_ink(text, from, width, cap * d, GAP, SPACE, k, next[..]);
-    base := r.y + step * 0.8;
-    show := draw && ch_shows(s, base, step);
-    if n == lines - 1 && next[0] < text.count && next[0] > from {
-      if show { r.v = put_fit(out, r.v, text[from..<text.count], x, base, cap * d, k, width); }
-      r.y += step; n += 1; break;
+// The tool oa-api's agent named, as Zeron's chip (Read, Glob, Grep, WebSearch, WebFetch; others by name).
+wc_tool_kind :: (name: string) -> int {
+  if name == "Read" { return TK_READ; }
+  if name == "Grep" { return TK_SEARCH; }
+  if name == "Glob" { return TK_GLOB; }
+  if name == "WebSearch" { return TK_WEB; }
+  if name == "WebFetch" { return TK_FETCH; }
+  if name == "Bash" { return TK_EXEC; }
+  if name == "Edit" { return TK_EDIT; }
+  if name == "Write" { return TK_WRITE; }
+  if name == "TodoWrite" { return TK_TODO; }
+  if name == "Task" || name == "Agent" { return TK_AGENT; }
+  return TK_TOOL;
+}
+wc_word :: (out: [] u8, k: int, w: string) -> int { j := k; for c: w { if j < out.count { out[j] = c; j += 1; } } return j; }
+wc_sep :: (out: [] u8, k: int) -> int { return ifx k == 0 then 0 else wc_word(out, k, " · "); }
+wc_plural :: (out: [] u8, k: int, verb: string, n: int, one: string, many: string) -> int {
+  j := wc_sep(out, k);
+  j = wc_word(out, j, verb); j = wc_number(out, j, n); j = wc_word(out, j, " ");
+  return wc_word(out, j, ifx n == 1 then one else many);
+}
+// A group's summary as Zeron words it (tool_group_summary): "Read 2 files · searched 3 times".
+wc_summary :: (kinds: [] int, n: int, out: [] u8) -> int {
+  reads := 0; searches := 0; fetches := 0; commands := 0; edits := 0; other := 0;
+  for k: 0..<n {
+    q := kinds[k];
+    if q == TK_READ { reads += 1; }
+    else if q == TK_SEARCH || q == TK_GLOB || q == TK_WEB { searches += 1; }
+    else if q == TK_FETCH { fetches += 1; }
+    else if q == TK_EXEC { commands += 1; }
+    else if q == TK_EDIT || q == TK_WRITE { edits += 1; }
+    else { other += 1; }
+  }
+  k := 0;
+  if commands > 0 { k = wc_plural(out, k, "ran ", commands, "command", "commands"); }
+  if edits > 0 { k = wc_plural(out, k, "edited ", edits, "file", "files"); }
+  if reads > 0 { k = wc_plural(out, k, "read ", reads, "file", "files"); }
+  if searches > 0 { k = wc_plural(out, k, "searched ", searches, "time", "times"); }
+  if fetches > 0 { k = wc_plural(out, k, "fetched ", fetches, "page", "pages"); }
+  if other > 0 { k = wc_plural(out, k, "called ", other, "tool", "tools"); }
+  if k > 0 && out[0] >= 'a' && out[0] <= 'z' { out[0] = out[0] - 32; }
+  return k;
+}
+// Under an answer: the model, the credential and what it cost ("Opus 5.5 · OpenAgents key · $0.0123").
+wc_meta :: (s: [] WcState, i: int, out: [] u8) -> int {
+  k := wc_word(out, 0, wc_model_name(wc_cell(s, i, 4)));
+  cred := wc_cell(s, i, 5);
+  if cred == "own" { k = wc_word(out, k, " · Your key"); }
+  else if cred == "openagents" {
+    k = wc_word(out, k, " · OpenAgents key");
+    cost := wc_cell(s, i, 10);
+    if cost.count > 0 { k = wc_word(out, k, " · $"); k = wc_word(out, k, cost); }
+  }
+  at := wc_cell(s, i, 3);
+  if at.count > 0 { k = wc_word(out, k, " · "); k = wc_word(out, k, at); }
+  return k;
+}
+// Rebuilds the transcript from the state's turns (from s.first on), keeping
+// what the reader opened or closed (s_build's bookkeeping, claude.coax).
+wc_build :: (s: [] WcState) {
+  t := s[0].transcript[..];
+  for g: 0..<t[0].ng { if g < s[0].built_groups && t[0].groups[g].open != s[0].g_set[g] { s[0].g_user[g] = ifx t[0].groups[g].open then 1 else 2; } }
+  for k: 0..<t[0].nt { if k < s[0].built_tools && t[0].tools[k].open != s[0].t_set[k] { s[0].t_user[k] = ifx t[0].tools[k].open then 1 else 2; } }
+  t_reset(t);
+  s[0].pool_n = 0;
+  n := ifx wc_showing(s) then wc_count(s, 'U') else 0;
+  live := false;
+  for k: s[0].first..<n {
+    i := wc_nth(s, 'U', k);
+    id := wc_cell(s, i, 1);
+    status := wc_cell(s, i, 2);
+    running := status == "running" || status == "queued";
+    live = running && k + 1 == n;
+    t_user(t, wc_decode(s, wc_cell(s, i, 6)));
+    t_entry(t);
+    // its tools, newest first in the state (the last 12): one group, oldest first
+    tl: [16] int; nt := 0;
+    j := i + 1;
+    while j < s[0].line_n && wc_kind(s, j) == 'T' { if wc_cell(s, j, 1) == id && nt < 16 { tl[nt] = j; nt += 1; } j += 1; }
+    if nt > 0 {
+      kinds: [16] int;
+      for q: 0..<nt { kinds[q] = wc_tool_kind(wc_cell(s, tl[nt - 1 - q], 2)); }
+      words: [256] u8;
+      wn := wc_summary(kinds[..], nt, words[..]);
+      g := t_group(t, t_pool(t, cast(string) words[0..<wn]));
+      if g < 0 { break; }
+      for q: 0..<nt {
+        line := tl[nt - 1 - q];
+        name := wc_decode(s, wc_cell(s, line, 2));
+        detail := wc_decode(s, wc_cell(s, line, 3));
+        tool := Tool.{kind = kinds[q], arg = ifx detail.count > 0 then detail else name, name = name, resolved = !(live && q + 1 == nt)};
+        ti := t_tool(t, g, tool);
+        if ti < 0 { break; }
+        u := ifx ti < T_TOOLS then s[0].t_user[ti] else 0;
+        t[0].tools[ti].open = u == 1;
+        if ti < T_TOOLS { s[0].t_set[ti] = t[0].tools[ti].open; }
+      }
+      // the running turn's group stays open, as a streaming entry's trailing group does
+      u := s[0].g_user[g];
+      t[0].groups[g].open = ifx u == 0 then live else u == 1;
+      s[0].g_set[g] = t[0].groups[g].open;
     }
-    if show { r.v = put(out, r.v, text[from..<end], x, base, cap * d, k); }
-    r.y += step; n += 1;
-    if next[0] <= from { break; }
-    from = next[0];
+    answer := wc_cell(s, i, 7);
+    if answer.count > 0 { t_text(t, wc_decode(s, answer)); }
+    err := wc_decode(s, wc_cell(s, i, 8));
+    if status == "stopped" { q := t_notice(t, N_STOPPED, err); }
+    else if status == "failed" { q := t_notice(t, N_ERROR, ifx err.count > 0 then err else "Failed."); }
+    else if status == "refused" { q := t_notice(t, N_ERROR, ifx err.count > 0 then err else "Not run."); }
+    if !running {
+      mb: [200] u8;
+      mn := wc_meta(s, i, mb[..]);
+      q := t_notice(t, N_META, wc_keep(s, cast(string) mb[0..<mn]));
+    }
+  }
+  // the message on its way: its bubble, and the trailer while oa-api takes it
+  if s[0].pending_n > 0 { t_user(t, wc_keep(s, cast(string) s[0].pending[0..<s[0].pending_n])); live = true; }
+  s[0].built_groups = t[0].ng; s[0].built_tools = t[0].nt;
+  t[0].working = live;
+  t[0].pinned = t[0].pinned || live;
+  s[0].built = s[0].gen;
+}
+// Whether the last build ran out of the transcript's room (claude.coax s_overflowed).
+wc_overflowed :: (t: [] Transcript) -> bool {
+  return t[0].nr >= T_ROWS || t[0].ng >= T_GROUPS || t[0].nt >= T_TOOLS || t[0].nn >= T_NOTICES
+      || t[0].md[0].nb >= MD_BLOCKS || t[0].md[0].n >= MD_TEXT || t[0].md[0].nr >= MD_RUNS || t[0].md[0].ni >= MD_ITEMS
+      || t[0].ntext >= T_TEXTS || t[0].nbox >= T_BOXES || t[0].nsel >= T_SELS || t[0].nhit >= T_HITS;
+}
+
+// ---------------------------------------------------------------- the composer and the menu
+
+wc_catalog :: () -> PkCatalog {
+  c := PkCatalog.{provider = "Claude", icon = ICON_CLAUDE_14, tint = WC_CLAUDE_TINT, levels = 0, default_level = 0, access = 0, full_access = 0, plan = false};
+  ids := WC_MODELS; names := WC_MODEL_NAMES; descs := WC_MODEL_DESCS;
+  c.n = 3;
+  for k: 0..<3 { c.id[k] = ids[k]; c.label[k] = names[k]; c.desc[k] = descs[k]; c.ladder[k] = 0; }
+  return c;
+}
+wc_sel :: (s: [] WcState) -> PkSel { return PkSel.{model = wc_model(s), level = -1, access = 0, plan = false}; }
+wc_empty :: (s: [] WcState) -> bool { return !s[0].demo && s[0].pending_n == 0 && (!wc_showing(s) || wc_count(s, 'U') == 0); }
+wc_labels :: (s: [] WcState) {
+  c := s[0].composer[..];
+  if s[0].demo { c[0].model_label = ""; c[0].no_effort = false; c[0].placeholder = ""; c[0].no_attach = false; c[0].no_access = false; return; }
+  names := WC_MODEL_NAMES;
+  c[0].model_label = names[wc_model(s)];
+  c[0].effort_label = ""; c[0].no_effort = true;
+  c[0].brand = 0; c[0].access_set = false; c[0].plan = false;
+  c[0].no_attach = true; c[0].no_access = true;
+  c[0].placeholder = ifx wc_showing(s) && wc_count(s, 'U') > 0 then "Ask a follow-up" else "Ask the OpenAgents agent";
+}
+wc_open_menu :: (s: [] WcState) {
+  p := s[0].picker[..]; c := s[0].composer[..];
+  if p[0].kind == PK_MODEL { pk_close(p); c[0].open = -1; return; }
+  d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  pk_open(p, PK_MODEL, s[0].cat[..], wc_sel(s), c[0].chip_x[CH_MODEL], c[0].chip_y[CH_MODEL], c[0].chip_w[CH_MODEL], c[0].chip_h[CH_MODEL], s[0].height / d, wc_empty(s));
+  pk_tabs(p, 1, 0);
+  pk_tab(p, 0, ICON_CLAUDE, WC_CLAUDE_TINT);
+  // three models and no effort: the panel would be a header alone, so the menu opens on its list
+  pk_show_list(p, s[0].cat[..], wc_sel(s), 0);
+  c[0].open = CH_MODEL;
+}
+// What the menu picked: the model, for the conversation shown (oa-api keeps it) or the next new one.
+wc_take_picks :: (s: [] WcState) {
+  p := s[0].picker[..];
+  // a pick closes the menu (its panel would hold only the model's name)
+  if p[0].pick_model >= 0 { pk_close(p); }
+  if p[0].pick_model >= 0 && p[0].pick_model < 3 && p[0].pick_model != wc_model(s) {
+    s[0].model = p[0].pick_model;
+    if wc_showing(s) && s[0].post_n == 0 && s[0].post_id < 0 {
+      ids := WC_MODELS;
+      wc_post(s, "model", POST_MODEL, "c", wc_shown_id(s), "model", ids[s[0].model], "", "");
+    }
+  }
+  p[0].pick_model = -1; p[0].pick_level = -1; p[0].pick_access = -1; p[0].flip_plan = false;
+  if !pk_is_open(p) { s[0].composer[0].open = -1; }
+  wc_labels(s);
+}
+wc_stop :: (s: [] WcState) {
+  if !wc_showing(s) || s[0].post_n > 0 || s[0].post_id >= 0 { return; }
+  wc_post(s, "stop", POST_STOP, "c", wc_shown_id(s), "", "", "", "");
+}
+wc_chip :: (s: [] WcState, which: int) {
+  c := s[0].composer[..];
+  if which == CH_SEND {
+    if c[0].running && c[0].n == 0 { wc_stop(s); } else { composer_submit(c); }
+  } else if which == CH_MODEL && !s[0].demo { wc_open_menu(s); }
+  wc_labels(s);
+}
+// A message, trimmed, to oa-api (the shown conversation, or a new one).
+wc_send :: (s: [] WcState, raw: string) {
+  lo := 0; hi := raw.count;
+  while lo < hi && (raw[lo] == ' ' || raw[lo] == '\n') { lo += 1; }
+  while hi > lo && (raw[hi - 1] == ' ' || raw[hi - 1] == '\n') { hi -= 1; }
+  text := cast(string) raw[lo..<hi];
+  if text.count == 0 { return; }
+  if s[0].post_n > 0 || s[0].post_id >= 0 || wc_busy(s) {
+    composer_insert(s[0].composer[..], raw);
+    wc_say(s, ifx wc_busy(s) then "A turn is still running." else "Not sent.");
+    return;
+  }
+  ids := WC_MODELS;
+  wc_post(s, "send", POST_SEND, "c", ifx wc_showing(s) then wc_shown_id(s) else "", "text", text, "model", ids[wc_model(s)]);
+  s[0].pending_n = wc_put(s[0].pending[..], 0, text);
+  s[0].note_n = 0; s[0].work = 0;
+  s[0].gen += 1;
+}
+wc_new :: (s: [] WcState) {
+  s[0].shown = 0; s[0].model = -1; s[0].listing = false;
+  s[0].data_n = 0; s[0].line_n = 0;   // until the state says otherwise, nothing shown
+  wc_forget_view(s);
+  s[0].asked_at = -1000; s[0].gen += 1;
+  s[0].composer[0].focused = true;
+  wc_labels(s);
+}
+wc_open_conv :: (s: [] WcState, k: int) {
+  i := wc_nth(s, 'C', k);
+  if i < 0 { return; }
+  id := wc_int(wc_cell(s, i, 1));
+  s[0].listing = false;
+  if id == s[0].shown { return; }
+  s[0].shown = id; s[0].model = -1;
+  wc_forget_view(s);
+  s[0].asked_at = -1000;
+}
+
+// ---------------------------------------------------------------- painting the chrome
+
+wc_hit :: (s: [] WcState, id: int, x: f32, y: f32, w: f32, h: f32) {
+  if s[0].nhit >= WC_HITS { return; }
+  s[0].hits[s[0].nhit] = WcHit.{x = x, y = y, w = w, h = h, id = id};
+  s[0].nhit += 1;
+}
+wc_hit_at :: (s: [] WcState, x: f32, y: f32) -> int {
+  k := s[0].nhit - 1;
+  while k >= 0 {
+    b := s[0].hits[k];
+    if x >= b.x && x < b.x + b.w && y >= b.y && y < b.y + b.h { return b.id; }
+    k -= 1;
+  }
+  return WH_NONE;
+}
+// A text button as Zeron's trigger chips are: the label in the muted tone, the wash under the pointer.
+wc_button :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: string, x: f32, y: f32, id: int, on: bool) -> WcB {
+  a := s[0].atlas[..];
+  w := round_layout(text_width(a, FONT_CHIP, label)) + 2 * CHIP_PAD;
+  v := at;
+  if on || s[0].hot == id { v = paint_quad(out, v, d, x, y, w, WC_BUTTON_H, CHIP_RADIUS, 0, CHIP_WASH, CHIP_WASH); }
+  v = paint_text(out, v, a, d, FONT_CHIP, label, x + CHIP_PAD, y, WC_BUTTON_H, ifx on || s[0].hot == id then th.text else th.muted);
+  wc_hit(s, id, x, y, w, WC_BUTTON_H);
+  return WcB.{v = v, w = w};
+}
+// A filled button (Zeron's primary: the text tone's pill, the shell's label).
+wc_primary :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, label: string, x: f32, y: f32, id: int) -> WcB {
+  a := s[0].atlas[..];
+  w := round_layout(text_width(a, FONT_CHIP, label)) + 2 * 14;
+  fill := ifx s[0].hot == id then th.text else opacity(th.text, 0.9);
+  v := paint_quad(out, at, d, x, y, w, 32, CHIP_RADIUS, 0, fill, fill);
+  v = paint_text(out, v, a, d, FONT_CHIP, label, x + 14, y, 32, th.bg);
+  wc_hit(s, id, x, y, w, 32);
+  return WcB.{v = v, w = w};
+}
+WcFlow :: struct { v: int; y: f32; }
+// Words wrapped to w (12px, or 14 when not small), a line each lh.
+wc_words :: (out: [] f32, f: WcFlow, s: [] WcState, d: f32, text: string, x: f32, w: f32, small: bool, lh: f32, color: Rgba, max: int) -> WcFlow {
+  a := s[0].atlas[..];
+  no_runs: [1] MdRun;
+  lines: [24] MdLine;
+  nl := md_wrap(a, text, no_runs[0..<0], w, small, lines[..]);
+  if nl > max { nl = max; }
+  r := f;
+  for q: 0..<nl {
+    r.v = paint_text(out, r.v, a, d, ifx small then FONT_TOOL else FONT_INPUT, cast(string) text[lines[q].from..<lines[q].to], x, r.y, lh, color);
+    r.y += lh;
   }
   return r;
 }
-ch_hit :: (s: [] ChatState, b: Box, id: int) {
-  if s[0].hit_n >= CH_HITS { return; }
-  s[0].hit_box[s[0].hit_n] = b; s[0].hit_id[s[0].hit_n] = id; s[0].hit_n += 1;
-}
-ch_chip :: (s: [] ChatState, out: [] f32, v: int, label: string, x: f32, y: f32, id: int, on: bool, p: Pen) -> int {
-  cap := 7 * p.d;
-  b := chip_box(label, x, y, cap, p);
-  ch_hit(s, b, id);
-  k := ifx on then ch_chrome(p, INK_ORANGE) else ifx s[0].hot == id then ch_chrome(p, INK_WHITE) else ch_chrome(p, INK_DIM);
-  return chip(out, v, label, x, y, cap, k, p);
-}
-ch_upper :: (buf: [] u8, at: int, text: string) -> int {
-  n := at;
-  for c: text {
-    if n >= buf.count { return n; }
-    buf[n] = ifx c >= 'a' && c <= 'z' then c - 32 else c; n += 1;
+// Zeron's failure notice above the composer (screen.coax zr_paint_failure): why a message or Stop didn't go, or the cap.
+wc_paint_failure :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32, composer_y: f32, cw: f32, msg: string) -> int {
+  c := s[0].composer[..]; a := s[0].atlas[..];
+  if msg.count == 0 { c[0].failure_h = 0; return at; }
+  accent := hex(DANGER, 1); muted := hex(DANGER_MUTED, 1);
+  w := cw - 8;
+  no_runs: [1] MdRun;
+  lines: [16] MdLine;
+  nl := md_wrap(a, msg, no_runs[0..<0], w - 2 * NOTICE_PAD, true, lines[..]);
+  h := NOTICE_PY + NOTICE_TILE + NOTICE_GAP + cast(f32) nl * NOTICE_LINE + NOTICE_PY;
+  y := composer_y - 6 - h;
+  c[0].failure_y = y; c[0].failure_h = h;
+  v := paint_quad(out, at, d, x + 4, y, w, h, 10, 0, flatten(opacity(accent, 0.1), th.shell), flatten(opacity(accent, 0.1), th.shell));
+  hy := y + NOTICE_PY;
+  v = paint_quad(out, v, d, x + 4 + NOTICE_PAD, hy, NOTICE_TILE, NOTICE_TILE, 6, 0, opacity(accent, 0.12), opacity(accent, 0.12));
+  v = paint_icon(out, v, a, d, ICON_DANGER, x + 4 + NOTICE_PAD + 4, hy + 4, 12, 12, opacity(muted, 0.8));
+  v = paint_text(out, v, a, d, FONT_CHIP, ifx wc_capped(s) && s[0].note_n == 0 then "Limit reached" else "Error", x + 4 + NOTICE_PAD + NOTICE_TILE + 8, hy + (NOTICE_TILE - NOTICE_LINE) / 2, NOTICE_LINE, opacity(muted, 0.8));
+  my := hy + NOTICE_TILE + NOTICE_GAP;
+  for q: 0..<nl {
+    v = paint_text(out, v, a, d, FONT_TOOL, cast(string) msg[lines[q].from..<lines[q].to], x + 4 + NOTICE_PAD, my + cast(f32) q * NOTICE_LINE, NOTICE_LINE, muted);
   }
-  return n;
+  return v;
 }
-ch_starts :: (t: string, with: string) -> bool { return t.count >= with.count && t[0..<with.count] == with; }
-ch_lead :: (t: string) -> int { i := 0; while i < t.count && (t[i] == ' ' || t[i] == '\t') { i += 1; } return i; }
+// What stands above the composer: a note, else the cap (Today's $5.00 for /chat is used up…).
+wc_failure_text :: (s: [] WcState, buf: [] u8) -> int {
+  if s[0].note_n > 0 { return wc_put(buf, 0, cast(string) s[0].note[0..<s[0].note_n]); }
+  if wc_capped(s) {
+    m := wc_put(buf, 0, "Today's $"); m = wc_put(buf, m, wc_z(s, 2));
+    return wc_put(buf, m, " for /chat is used up. Save your own key under Key, or come back tomorrow.");
+  }
+  return 0;
+}
+// Whose key the next turn runs on (the sidebar's foot, and KEY's).
+wc_credential :: (s: [] WcState, buf: [] u8) -> int {
+  if wc_first(s, 'Z') < 0 { return 0; }
+  if wc_has_key(s) {
+    m := wc_put(buf, 0, "Your key · ");
+    m = wc_put(buf, m, ifx wc_z(s, 3) == "oauth" then "Claude subscription" else "Anthropic API key");
+    if wc_z(s, 5) == "1" { m = wc_put(buf, m, " · expired: make a new one under Key"); }
+    return m;
+  }
+  m := wc_put(buf, 0, "OpenAgents key · $"); m = wc_put(buf, m, wc_z(s, 1)); m = wc_put(buf, m, " of $"); m = wc_put(buf, m, wc_z(s, 2));
+  return wc_put(buf, m, " today");
+}
 
-// A Markdown line's inline marks taken out: ** __ ` go, a link [text](url) is "text (url)".
-ch_inline :: (line: string, buf: [] u8) -> string {
+// The conversations: New chat, then each with its model, when and whether it works, the shown one washed.
+wc_paint_list :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x: f32, top: f32, w: f32, bottom: f32) -> int {
+  a := s[0].atlas[..];
+  v := at;
+  // New chat
+  ny := top + 8;
+  hot := s[0].hot == WH_NEW;
+  if hot || !wc_showing(s) { v = paint_quad(out, v, d, x + 8, ny, w - 16, 32, CHIP_RADIUS, 0, rgba(1, 1, 1, ifx hot then 0.07f32 else 0.05f32), rgba(1, 1, 1, 0)); }
+  v = paint_icon(out, v, a, d, ICON_PEN, x + 18, ny + 8, 16, 16, th.muted);
+  v = paint_text(out, v, a, d, FONT_MENU, "New chat", x + 42, ny, 32, th.text);
+  wc_hit(s, WH_NEW, x + 8, ny, w - 16, 32);
+  // Chats and their count
+  hy := ny + 32 + 14;
+  n := wc_count(s, 'C');
+  cb: [24] u8; cn := wc_number(cb[..], 0, n);
+  v = paint_text(out, v, a, d, FONT_MENU_SMALL, "Chats", x + 18, hy, 20, th.faint);
+  v = paint_text(out, v, a, d, FONT_MENU_SMALL, cast(string) cb[0..<cn], x + w - 18 - text_width(a, FONT_MENU_SMALL, cast(string) cb[0..<cn]), hy, 20, th.faint);
+  ly := hy + 24;
+  room := bottom - ly;
+  s[0].side_h = cast(f32) n * WC_ROW;
+  most := s[0].side_h - room;
+  if s[0].side_scroll > most { s[0].side_scroll = most; }
+  if s[0].side_scroll < 0 { s[0].side_scroll = 0; }
+  for k: 0..<n {
+    y := ly + cast(f32) k * WC_ROW - s[0].side_scroll;
+    if y + WC_ROW <= ly || y >= bottom { continue; }
+    i := wc_nth(s, 'C', k);
+    on := wc_int(wc_cell(s, i, 1)) == s[0].shown;
+    h := s[0].hot == WH_CONV + k;
+    if (on || h) && y >= ly - 1 && y + WC_ROW - 4 <= bottom + 1 { v = paint_quad(out, v, d, x + 8, y, w - 16, WC_ROW - 4, CHIP_RADIUS, 0, rgba(1, 1, 1, ifx on then 0.07f32 else 0.04f32), rgba(1, 1, 1, 0)); }
+    title := wc_cell(s, i, 2);
+    tb: [400] u8;
+    title = wc_decode_into(title, tb[..]);
+    if title.count == 0 { title = "(no words)"; }
+    fb: [400] u8;
+    if y >= ly - 2 { v = paint_text(out, v, a, d, FONT_MENU, pk_fit(a, FONT_MENU, title, w - 36, fb[..]), x + 18, y + 6, 20, ifx on then th.text else th.muted); }
+    mb: [120] u8;
+    m := wc_put(mb[..], 0, wc_model_name(wc_cell(s, i, 3)));
+    m = wc_put(mb[..], m, " · "); m = wc_put(mb[..], m, wc_cell(s, i, 4));
+    if wc_cell(s, i, 5) == "1" { m = wc_put(mb[..], m, " · Working"); }
+    gb: [160] u8;
+    if y + 26 + 18 <= bottom + 2 { v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, cast(string) mb[0..<m], w - 36, gb[..]), x + 18, y + 26, 18, th.faint); }
+    wc_hit(s, WH_CONV + k, x + 8, ifx y < ly then ly else y, w - 16, WC_ROW - 4);
+  }
+  return v;
+}
+wc_decode_into :: (text: string, buf: [] u8) -> string {
   n := 0; i := 0;
-  while i < line.count && n < buf.count {
-    c := line[i];
-    if (c == '*' || c == '_') && i + 1 < line.count && line[i + 1] == c { i += 2; continue; }
-    if c == '`' { i += 1; continue; }
-    if c == '[' {
-      close := i + 1;
-      while close < line.count && line[close] != ']' { close += 1; }
-      if close + 1 < line.count && line[close + 1] == '(' {
-        end := close + 2;
-        while end < line.count && line[end] != ')' { end += 1; }
-        if end < line.count {
-          n = ch_put(buf, n, ch_inline_plain(line[i + 1..<close]));
-          url := line[close + 2..<end];
-          if url != line[i + 1..<close] && ch_starts(url, "http") { n = ch_put(buf, n, " ("); n = ch_put(buf, n, url); n = ch_put(buf, n, ")"); }
-          i = end + 1; continue;
-        }
-      }
-    }
+  while i < text.count && n < buf.count {
+    c := text[i];
+    if c == '\\' && i + 1 < text.count { e := text[i + 1]; buf[n] = ifx e == 'n' then ' ' else ifx e == 'p' then '|' else e; n += 1; i += 2; continue; }
     buf[n] = c; n += 1; i += 1;
   }
   return cast(string) buf[0..<n];
 }
-ch_inline_plain :: (t: string) -> string { return t; }
-ch_is_rule :: (t: string) -> bool {
-  if t.count < 3 { return false; }
-  c := t[0];
-  if c != '-' && c != '*' && c != '_' { return false; }
-  for x: t { if x != c && x != ' ' { return false; } }
-  return true;
+// The sidebar (a wide window): the list, then whose key the turns run on and Key.
+wc_paint_sidebar :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, h: f32) -> int {
+  a := s[0].atlas[..];
+  w: f32 = WC_SIDEBAR;
+  side := hex(0x121212, 1);
+  v := paint_quad(out, at, d, 0, 0, w, h, 0, 0, side, side);
+  v = paint_quad(out, v, d, w - 1, 0, 1, h, 0, 0, th.border, th.border);
+  // the name, home
+  v = paint_text(out, v, a, d, FONT_MENU, "OpenAgents", 18, 8, 22, ifx s[0].hot == WH_HOME then th.text else th.muted);
+  wc_hit(s, WH_HOME, 10, 8, text_width(a, FONT_MENU, "OpenAgents") + 16, 22);
+  foot := h - 96;
+  v = wc_paint_list(out, v, s, th, d, 0, TITLEBAR_HEIGHT - 6, w, foot - 8);
+  v = paint_quad(out, v, d, 12, foot, w - 24, 1, 0, 0, th.border, th.border);
+  cb: [200] u8; cn := wc_credential(s, cb[..]);
+  r := wc_words(out, WcFlow.{v = v, y = foot + 10}, s, d, cast(string) cb[0..<cn], 18, w - 36, true, 18, ifx wc_has_key(s) && wc_z(s, 5) == "1" then hex(DANGER_MUTED, 1) else th.faint, 2);
+  return wc_button(out, r.v, s, th, d, "Key", 10, h - 40, WH_KEY, s[0].keying).v;
 }
-// A table's |---|---| line.
-ch_is_sep :: (t: string) -> bool {
-  if t.count < 3 || t[0] != '|' { return false; }
-  for x: t { if x != '|' && x != '-' && x != ':' && x != ' ' { return false; } }
-  return true;
-}
-
-// An answer's Markdown, drawn cleanly.
-ch_markdown :: (s: [] ChatState, out: [] f32, f: ChFlow, text: string, x0: f32, x1: f32, p: Pen, draw: bool) -> ChFlow {
-  d := p.d; r := f;
-  pale := ink(p, INK_PALE); white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
-  code := false; code_y := 0.0f32;
-  i := 0;
-  buf: [4096] u8;
-  while i < text.count {
-    j := i;
-    while j < text.count && text[j] != '\n' { j += 1; }
-    raw := text[i..<j];
-    i = j + 1;
-    lead := ch_lead(raw);
-    line := raw[lead..<raw.count];
-    if ch_starts(line, "```") {
-      if !code { code = true; r.y += 3 * d; code_y = r.y; }
-      else {
-        code = false;
-        if draw && r.y > s[0].clip0 && code_y < s[0].clip1 {
-          r.v = rule(out, r.v, x0 + 2 * d, hi(code_y, s[0].clip0), x0 + 2 * d, lo(r.y, s[0].clip1), ink(p, INK_ORANGE), 0.45 * p.fade);
-        }
-        r.y += 5 * d;
-      }
-      continue;
-    }
-    if code {
-      if raw.count == 0 { r.y += 9 * d; continue; }
-      r = ch_text(s, out, r, raw, x0 + 12 * d, x1 - x0 - 12 * d, 6.5, ink(p, INK_DIM), 60, draw);
-      continue;
-    }
-    if line.count == 0 { r.y += 6 * d; continue; }
-    if ch_is_sep(line) { continue; }
-    if ch_is_rule(line) {
-      if draw && ch_shows(s, r.y + 8 * d, 8 * d) { r.v = rule(out, r.v, x0, r.y + 6 * d, x1, r.y + 6 * d, dim, 0.3 * p.fade); }
-      r.y += 12 * d; continue;
-    }
-    hashes := 0;
-    while hashes < line.count && hashes < 6 && line[hashes] == '#' { hashes += 1; }
-    if hashes > 0 && hashes < line.count && line[hashes] == ' ' {
-      r.y += 5 * d;
-      cap := ifx hashes == 1 then 10.0f32 else ifx hashes == 2 then 9.0f32 else 8.0f32;
-      r = ch_text(s, out, r, ch_inline(line[hashes + 1..<line.count], buf[..]), x0, x1 - x0, cap, white, 4, draw);
-      r.y += 2 * d;
-      continue;
-    }
-    if ch_starts(line, "> ") || line == ">" {
-      y0 := r.y;
-      body := ifx line.count > 2 then line[2..<line.count] else "";
-      r = ch_text(s, out, r, ch_inline(body, buf[..]), x0 + 12 * d, x1 - x0 - 12 * d, BODY, dim, 40, draw);
-      if draw && r.y > s[0].clip0 && y0 < s[0].clip1 { r.v = rule(out, r.v, x0 + 3 * d, hi(y0 + 3 * d, s[0].clip0), x0 + 3 * d, lo(r.y - 2 * d, s[0].clip1), dim, 0.4 * p.fade); }
-      continue;
-    }
-    indent := cast(f32) (lead / 2) * 12 * d;
-    if indent > 48 * d { indent = 48 * d; }
-    if (ch_starts(line, "- ") || ch_starts(line, "* ") || ch_starts(line, "+ ")) {
-      by := r.y + STEP * d * 0.8 - 3.5 * d;
-      if draw && ch_shows(s, by + 3 * d, STEP * d) { r.v = diamond(out, r.v, x0 + indent + 4 * d, by, 2.2 * d, ink(p, INK_ORANGE), 0.8 * p.fade); }
-      r = ch_text(s, out, r, ch_inline(line[2..<line.count], buf[..]), x0 + indent + 14 * d, x1 - x0 - indent - 14 * d, BODY, pale, 40, draw);
-      continue;
-    }
-    digits := 0;
-    while digits < line.count && digits < 3 && line[digits] >= '0' && line[digits] <= '9' { digits += 1; }
-    if digits > 0 && digits + 1 < line.count && (line[digits] == '.' || line[digits] == ')') && line[digits + 1] == ' ' {
-      base := r.y + STEP * d * 0.8;
-      if draw && ch_shows(s, base, STEP * d) { r.v = put(out, r.v, line[0..<digits + 1], x0 + indent, base, 6.5 * d, ch_chrome(p, INK_ORANGE)); }
-      r = ch_text(s, out, r, ch_inline(line[digits + 2..<line.count], buf[..]), x0 + indent + 18 * d, x1 - x0 - indent - 18 * d, BODY, pale, 40, draw);
-      continue;
-    }
-    r = ch_text(s, out, r, ch_inline(line, buf[..]), x0, x1 - x0, BODY, pale, 200, draw);
-  }
-  if code && draw && r.y > s[0].clip0 && code_y < s[0].clip1 {
-    r.v = rule(out, r.v, x0 + 2 * d, hi(code_y, s[0].clip0), x0 + 2 * d, lo(r.y, s[0].clip1), ink(p, INK_ORANGE), 0.45 * p.fade);
-  }
-  return r;
-}
-
-// ---------------------------------------------------------------- the conversation
-
-// What a running turn is doing now: "READING COAX/WEB/RELEASE.SH".
-ch_working :: (s: [] ChatState, i: int, buf: [] u8) -> int {
-  w := ch_cell(s, i, 9);
-  if w.count == 0 { return ch_put(buf, 0, "THINKING"); }
-  return ch_upper(buf, 0, w);
-}
-// Each turn: the message, the answer, what it used, and STOP while it runs.
-ch_turns :: (s: [] ChatState, out: [] f32, f: ChFlow, x0: f32, x1: f32, p: Pen, draw: bool) -> ChFlow {
-  d := p.d; r := f;
-  n := ch_count(s, 'U');
-  if n == 0 && (ch_local(s) || s[0].lab) { return r; }
-  if n == 0 {
-    r = ch_text(s, out, r, "Ask anything about OpenAgents. The agent reads a fresh copy of the public openagents repository (main) and the web, and says which files it read. It can't change anything.",
-                x0, x1 - x0, BODY, ink(p, INK_FAINT), 6, draw);
-    return r;
-  }
-  for k: 0..<n {
-    i := ch_nth(s, 'U', k);
-    status := ch_cell(s, i, 2);
-    // the message
-    base := r.y + 10 * d;
-    if draw && ch_shows(s, base, 12 * d) {
-      r.v = put(out, r.v, "YOU", x0, base, 6 * d, ch_chrome(p, INK_DIM));
-      r.v = put_right(out, r.v, ch_cell(s, i, 3), x1, base, 6.5 * d, ink(p, INK_FAINT));
-    }
-    r.y += 13 * d;
-    r = ch_text(s, out, r, ch_decode(s, ch_cell(s, i, 6)), x0, x1 - x0, BODY, ink(p, INK_WHITE), 120, draw);
-    r.y += 10 * d;
-    // who answered, on what
-    buf: [160] u8;
-    m := ch_put(buf[..], 0, ch_model_name(ch_cell(s, i, 4)));
-    cred := ch_cell(s, i, 5);
-    if cred == "own" { m = ch_put(buf[..], m, " · YOUR KEY"); }
-    else if cred == "openagents" { m = ch_put(buf[..], m, " · OPENAGENTS KEY"); }
-    cost := ch_cell(s, i, 10);
-    if cred == "openagents" && cost.count > 0 && status != "queued" && status != "running" { m = ch_put(buf[..], m, " · $"); m = ch_put(buf[..], m, cost); }
-    base = r.y + 10 * d;
-    if draw && ch_shows(s, base, 12 * d) { r.v = put_fit(out, r.v, cast(string) buf[0..<m], x0, base, 6 * d, ch_chrome(p, INK_ORANGE), x1 - x0); }
-    r.y += 13 * d;
-    // the tools it used
-    tools := 0;
-    for j: 0..<s[0].line_n {
-      if ch_kind(s, j) != 'T' || ch_cell(s, j, 1) != ch_cell(s, i, 1) { continue; }
-      tb: [260] u8;
-      q := ch_put(tb[..], 0, ch_cell(s, j, 2));
-      det := ch_cell(s, j, 3);
-      if det.count > 0 { q = ch_put(tb[..], q, " "); q = ch_put(tb[..], q, det); }
-      y0 := r.y;
-      r = ch_text(s, out, r, cast(string) tb[0..<q], x0 + 10 * d, x1 - x0 - 10 * d, 6.5, ink(p, INK_DIM), 1, draw);
-      if draw && ch_shows(s, r.y, 12 * d) { r.v = rule(out, r.v, x0 + 3 * d, y0 + 4 * d, x0 + 3 * d, r.y - 2 * d, ink(p, INK_ORANGE), 0.4 * p.fade); }
-      tools += 1;
-    }
-    if tools > 0 { r.y += 4 * d; }
-    answer := ch_cell(s, i, 7);
-    if answer.count > 0 { r = ch_markdown(s, out, r, ch_decode(s, answer), x0, x1, p, draw); }
-    err := ch_cell(s, i, 8);
-    if err.count > 0 && (status == "failed" || status == "refused" || status == "stopped") {
-      r.y += 2 * d;
-      r = ch_text(s, out, r, err, x0, x1 - x0, 6.5, ch_chrome(p, INK_ORANGE), 4, draw);
-    }
-    if status == "running" || status == "queued" {
-      wb: [200] u8;
-      w := ifx status == "queued" then ch_put(wb[..], 0, "WAITING") else ch_working(s, i, wb[..]);
-      y := r.y + 14 * d;
-      sw := chip_width("STOP", 7 * d, p);
-      if draw && ch_shows(s, y, 14 * d) {
-        pulse := 0.6 + 0.4 * ease(0.5 + 0.5 * sin(s[0].time * 4));
-        wk := ch_chrome(p, INK_ORANGE); wk.light *= pulse;
-        r.v = put_fit(out, r.v, cast(string) wb[0..<w], x0, y, 6 * d, wk, x1 - x0 - sw - 12 * d);
-        r.v = ch_chip(s, out, r.v, "STOP", x1 - sw, y, H_STOP, false, p);
-      }
-      r.y = y + 8 * d;
-    } else if status == "stopped" || status == "failed" || status == "refused" {
-      word := ifx status == "stopped" then "STOPPED" else ifx status == "refused" then "NOT RUN" else "FAILED";
-      y := r.y + 12 * d;
-      if draw && ch_shows(s, y, 12 * d) { r.v = put(out, r.v, word, x0, y, 6 * d, ch_chrome(p, INK_DIM)); }
-      r.y = y + 4 * d;
-    }
-    r.y += 18 * d;
-  }
-  return r;
-}
-
-// ---------------------------------------------------------------- the field, the models, KEY
-
-ch_typed :: (s: [] ChatState, which: int) -> string {
-  if which == 1 { return cast(string) s[0].key[0..<s[0].key_n]; }
-  return cast(string) s[0].text[0..<s[0].text_n];
-}
-// A field; the host's keyboard field sits over the focused one. The key's is drawn masked.
-ch_field :: (s: [] ChatState, out: [] f32, v0: int, fb: Box, p: Pen, which: int, hint: string, hfield: int) -> int {
-  d := p.d; v := v0;
-  on := s[0].typing && s[0].focus == which;
-  typed := ch_typed(s, which);
-  k := ifx on then ink(p, INK_ORANGE) else ink(p, INK_DIM);
-  v = rule(out, v, fb.x0, fb.y1, fb.x1, fb.y1, k, ifx on then 0.9 * p.fade else 0.45 * p.fade);
-  v = rule(out, v, fb.x0, fb.y0 + 8 * d, fb.x0, fb.y1, k, 0.3 * p.fade);
-  tx := fb.x0 + 8 * d; base := fb.y1 - 10 * d; room := box_w(fb) - 20 * d;
-  white := ink(p, INK_WHITE);
-  caret_x := tx;
-  if typed.count == 0 {
-    if !on { v = put_fit(out, v, hint, tx, base, BODY * d, ink(p, INK_FAINT), room); }
-  } else if which == 1 {
-    stars: [64] u8;
-    n := ifx typed.count < 40 then typed.count else 40;
-    for q: 0..<n { stars[q] = '*'; }
-    v = put_fit(out, v, cast(string) stars[0..<n], tx, base, BODY * d, white, room);
-    caret_x = tx + lo(ink_width(cast(string) stars[0..<n], BODY * d, GAP, SPACE, white), room) + 1.5 * d;
+// KEY: the asker's own Anthropic API key or Claude subscription token, a card over the conversation.
+wc_paint_key :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, x0: f32, w0: f32, h: f32) -> int {
+  a := s[0].atlas[..];
+  v := paint_quad(out, at, d, x0, 0, w0, h, 0, 0, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+  wc_hit(s, WH_SHADE, x0, 0, w0, h);
+  cw := ifx w0 - 2 * WC_PAD < 480 then w0 - 2 * WC_PAD else 480.0f32;
+  x := round_layout(x0 + (w0 - cw) / 2);
+  y := round_layout(ifx h > 640 then h * 0.16 else 56.0f32);
+  ix := x + 20; iw := cw - 40;
+  // measure first: the card's height
+  card := flatten(rgba(1, 1, 1, 0.04), th.shell);
+  top := y;
+  // the card is drawn under what follows once its height is known: reserve a quad, fill it after
+  qi := v;
+  v = paint_quad(out, v, d, x, y, cw, 10, 12, 1, card, th.border);
+  wc_hit(s, WH_KFIELD - 1000, x, y, cw, 10);
+  hi := s[0].nhit - 1;
+  r := WcFlow.{v = v, y = y + 18};
+  r.v = paint_text(out, r.v, a, d, FONT_BOLD, "Key", ix, r.y, 22, th.text);
+  r.v = paint_text(out, r.v, a, d, FONT_TOOL, "Yours, not ours", ix + text_width(a, FONT_BOLD, "Key") + 10, r.y + 2, 20, th.faint);
+  r.v = wc_button(out, r.v, s, th, d, "Close", x + cw - 12 - (round_layout(text_width(a, FONT_CHIP, "Close")) + 2 * CHIP_PAD), r.y - 3, WH_CLOSE, false).v;
+  r.y += 32;
+  r = wc_words(out, r, s, d, "Use your own Anthropic API key or Claude subscription. Turns on it cost you, not us, and have no daily limit here. It is checked, then kept encrypted; only the agent's runner can open it, and it is never shown again.", ix, iw, true, 19.416408, th.muted, 8);
+  r.y += 12;
+  if wc_has_key(s) && !s[0].replacing {
+    kind := wc_z(s, 3);
+    kb: [120] u8;
+    m := wc_put(kb[..], 0, ifx kind == "oauth" then "Claude subscription token" else "Anthropic API key");
+    m = wc_put(kb[..], m, " …"); m = wc_put(kb[..], m, wc_z(s, 4));
+    r.v = paint_text(out, r.v, a, d, FONT_INPUT, cast(string) kb[0..<m], ix, r.y, 22, th.text);
+    r.y += 26;
+    if wc_z(s, 5) == "1" { r = wc_words(out, r, s, d, "Expired: make a new one with claude setup-token and replace it.", ix, iw, true, 19.416408, hex(DANGER_MUTED, 1), 2); }
+    r.y += 6;
+    b1 := wc_button(out, r.v, s, th, d, "Replace", ix - CHIP_PAD, r.y, WH_REPLACE, false);
+    r.v = wc_button(out, b1.v, s, th, d, "Remove", ix - CHIP_PAD + b1.w + 4, r.y, WH_REMOVE, false).v;
+    r.y += WC_BUTTON_H + 4;
   } else {
-    from := 0;
-    while from < typed.count && ink_width(typed[from..<typed.count], BODY * d, GAP, SPACE, white) > room {
-      from += decode(typed, from).len;
-    }
-    v = put(out, v, typed[from..<typed.count], tx, base, BODY * d, white);
-    caret_x = tx + ink_width(typed[from..<typed.count], BODY * d, GAP, SPACE, white) + 1.5 * d;
+    r = wc_words(out, r, s, d, "Anthropic API key (sk-ant-api...), or Claude subscription token (from claude setup-token)", ix, iw, true, 19.416408, th.faint, 3);
+    r.y += 8;
+    // the field: the composer's surface, the key as dots (never its characters)
+    fh := 40.0f32;
+    edge := ifx s[0].key_focus then opacity(th.accent, 0.6) else th.border;
+    r.v = paint_quad(out, r.v, d, ix, r.y, iw, fh, 10, 1, th.surface, edge);
+    wc_hit(s, WH_KFIELD, ix, r.y, iw, fh);
+    dots: [WC_KEY * 3] u8; dn := 0;
+    shown := ifx s[0].key_n > 48 then 48 else s[0].key_n;
+    for k: 0..<shown { dot := "•"; for b: dot { dots[dn] = b; dn += 1; } }
+    tx := ix + 12;
+    if dn == 0 { r.v = paint_text(out, r.v, a, d, FONT_INPUT, "Paste it here", tx, r.y + (fh - INPUT_LINE_HEIGHT) / 2, INPUT_LINE_HEIGHT, th.faint); }
+    else { r.v = paint_text(out, r.v, a, d, FONT_INPUT, cast(string) dots[0..<dn], tx, r.y + (fh - INPUT_LINE_HEIGHT) / 2, INPUT_LINE_HEIGHT, th.text); }
+    cx := tx + ifx dn == 0 then 0.0f32 else text_width(a, FONT_INPUT, cast(string) dots[0..<dn]);
+    blink := s[0].golden || cast(int) floor(s[0].time / CARET_BLINK) % 2 == 0;
+    if s[0].key_focus && blink { r.v = paint_quad(out, r.v, d, cx, r.y + (fh - 18) / 2, 2, 18, 0, 0, th.accent, th.accent); }
+    s[0].field[0] = ix * s[0].d; s[0].field[1] = r.y * s[0].d; s[0].field[2] = (ix + iw) * s[0].d; s[0].field[3] = (r.y + fh) * s[0].d;
+    r.y += fh + 10;
+    r.v = wc_primary(out, r.v, s, th, d, ifx s[0].post_kind == POST_KEY then "Checking" else "Save", ix, r.y, WH_KSAVE).v;
+    r.y += 32 + 12;
+    r = wc_words(out, r, s, d, "For a subscription: run claude setup-token, approve in the browser, and paste the token it prints here.", ix, iw, true, 19.416408, th.faint, 3);
   }
-  if on && ch_all(s) && caret_x > tx + 2 * d && lit(out, v, tx - 1 * d, base - 4 * d, caret_x - 1 * d, base - 4 * d, 15 * d, 0.42 * p.fade, 2 * d,
-                                                    ink(p, INK_ORANGE).red, ink(p, INK_ORANGE).green, ink(p, INK_ORANGE).blue, MODE_STROKE) { v += 6; }
-  else if on && (cast(int) (s[0].time * 2)) % 2 == 0 {
-    v = rule(out, v, caret_x, base - 11 * d, caret_x, base + 3 * d, ink(p, INK_ORANGE), p.fade);
-  }
-  ch_hit(s, fb, hfield);
-  if on || !s[0].typing { s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1; }
-  return v;
+  if s[0].knote_n > 0 { r.y += 4; r = wc_words(out, r, s, d, cast(string) s[0].knote[0..<s[0].knote_n], ix, iw, true, 19.416408, hex(DANGER_MUTED, 1), 3); }
+  ch := r.y + 16 - top;
+  // the card's quad, now its height is known (the same quad, so the same vertices)
+  vq := paint_quad(out, qi, d, x, y, cw, ch, 12, 1, card, th.border);
+  s[0].hits[hi].h = ch;
+  return r.v;
 }
-// On a phone the line above the models may take two lines.
-ch_composer_h :: (s: [] ChatState) -> f32 { return ifx s[0].width / s[0].d < 700 then 104 * s[0].d else 92 * s[0].d; }
-// Under the conversation: what the next turn spends, the cap, the models, the field and SEND.
-ch_composer :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
-  d := p.d; v := v0;
-  x0 := b.x0 + 14 * d; x1 := b.x1 - 14 * d;
-  // the line above: the note, the cap, or what the turn will use
-  y := b.y0 + 16 * d;
-  buf: [320] u8;
-  m := 0;
-  orange := false;
-  if s[0].note_n > 0 && s[0].time - s[0].note_at < 12 { m = ch_put(buf[..], 0, cast(string) s[0].note[0..<s[0].note_n]); orange = true; }
-  else if ch_local(s) { }
-  else if ch_capped(s) {
-    m = ch_put(buf[..], 0, "TODAY'S $"); m = ch_put(buf[..], m, ch_z(s, 2)); m = ch_put(buf[..], m, " FOR /CHAT IS USED UP. SAVE YOUR OWN KEY UNDER KEY, OR COME BACK TOMORROW.");
-    orange = true;
-  } else if ch_has_key(s) {
-    m = ch_put(buf[..], 0, "YOUR KEY · ");
-    m = ch_put(buf[..], m, ifx ch_z(s, 3) == "oauth" then "CLAUDE SUBSCRIPTION" else "ANTHROPIC API KEY");
-    if ch_z(s, 5) == "1" { m = ch_put(buf[..], m, " · EXPIRED: MAKE A NEW ONE UNDER KEY"); orange = true; }
-  } else if ch_first(s, 'Z') >= 0 {
-    m = ch_put(buf[..], 0, "OPENAGENTS KEY · $"); m = ch_put(buf[..], m, ch_z(s, 1)); m = ch_put(buf[..], m, " OF $"); m = ch_put(buf[..], m, ch_z(s, 2)); m = ch_put(buf[..], m, " TODAY");
-  }
-  two := s[0].width / d < 700;
-  if m > 0 {
-    s[0].clip0 = 0; s[0].clip1 = s[0].height;
-    r := ch_text(s, out, ChFlow.{y = y - 9 * d, v = v}, cast(string) buf[0..<m], x0, x1 - x0, 6.5, ch_chrome(p, ifx orange then INK_ORANGE else INK_DIM), ifx two then 2 else 1, true);
-    v = r.v;
-  }
-  // the models
-  cy := b.y0 + (ifx ch_local(s) then 26.0f32 else ifx two then 50.0f32 else 38.0f32) * d;
-  cx := x0;
-  chosen := ch_model(s);
-  for k: 0..<3 {
-    v = ch_chip(s, out, v, MODEL_NAMES[k], cx, cy, H_MODEL + k, k == chosen, p);
-    cx += chip_width(MODEL_NAMES[k], 7 * d, p) + 6 * d;
-  }
-  // the Mac app: the reasoning effort the CLI takes (--effort)
-  if ch_local(s) {
-    cx += 12 * d;
-    v = put(out, v, "EFFORT", cx, cy, 7 * d, ch_chrome(p, INK_DIM));
-    cx += text_width("EFFORT", 7 * d) + 8 * d;
-    picked := ch_effort(s);
-    for k: 0..<5 {
-      v = ch_chip(s, out, v, EFFORT_NAMES[k], cx, cy, H_EFFORT + k, k == picked, p);
-      cx += chip_width(EFFORT_NAMES[k], 7 * d, p) + 6 * d;
-    }
-  }
-  // the field, and SEND or STOP
-  busy := ch_busy(s);
-  word := ifx busy then "STOP" else "SEND";
-  sw := chip_width(word, 7 * d, p);
-  fb := Box.{x0 = x0, y0 = b.y1 - 40 * d, x1 = x1 - sw - 10 * d, y1 = b.y1 - 10 * d};
-  v = ch_field(s, out, v, fb, p, 0, ifx ch_shown_id(s).count > 0 && s[0].shown != 0 then "Ask a follow-up" else ifx ch_local(s) then "Ask Claude Code" else "Ask the OpenAgents agent", H_FIELD);
-  v = ch_chip(s, out, v, word, x1 - sw, fb.y1 - 6 * d, ifx busy then H_STOP else H_SEND, !busy && s[0].text_n > 0 && s[0].typing && s[0].focus == 0, p);
-  return v;
-}
-// KEY: the saved credential (its kind and last four, REPLACE, REMOVE), or the field to paste one.
-ch_key_panel :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
-  d := p.d; v := v0;
-  x0 := b.x0 + 14 * d; x1 := b.x1 - 14 * d;
-  v = titled(out, v, b, "KEY", "YOURS, NOT OURS", p);
-  r := ChFlow.{y = b.y0 + title_room(p) + 6 * d, v = v};
-  s[0].clip0 = b.y0; s[0].clip1 = b.y1;
-  r = ch_text(s, out, r, "Use your own Anthropic API key or Claude subscription. Turns on it cost you, not us, and have no daily limit here. It is checked, then kept encrypted; only the agent's runner can open it, and it is never shown again.",
-              x0, x1 - x0, BODY, ink(p, INK_DIM), 6, true);
-  r.y += 10 * d;
-  kind := ch_z(s, 3);
-  if kind.count > 0 && !s[0].replacing {
-    buf: [120] u8;
-    m := ch_put(buf[..], 0, ifx kind == "oauth" then "Claude subscription token" else "Anthropic API key");
-    m = ch_put(buf[..], m, " ending ");
-    m = ch_put(buf[..], m, ch_z(s, 4));
-    r = ch_text(s, out, r, cast(string) buf[0..<m], x0, x1 - x0, 8.5, ink(p, INK_WHITE), 2, true);
-    if ch_z(s, 5) == "1" { r = ch_text(s, out, r, "EXPIRED: make a new one with claude setup-token and REPLACE it.", x0, x1 - x0, 6.5, ch_chrome(p, INK_ORANGE), 2, true); }
-    y := r.y + 18 * d;
-    v = r.v;
-    v = ch_chip(s, out, v, "REPLACE", x0, y, H_REPLACE, false, p);
-    v = ch_chip(s, out, v, "REMOVE", x0 + chip_width("REPLACE", 7 * d, p) + 8 * d, y, H_REMOVE, false, p);
-    r.v = v; r.y = y + 16 * d;
-  } else {
-    r = ch_text(s, out, r, "Anthropic API key (sk-ant-api...), or Claude subscription token (from claude setup-token)", x0, x1 - x0, 6.5, ch_chrome(p, INK_DIM), 3, true);
-    word := ifx s[0].post_kind == POST_KEY then "CHECKING" else "SAVE";
-    sw := chip_width(word, 7 * d, p);
-    fb := Box.{x0 = x0, y0 = r.y + 2 * d, x1 = x1 - sw - 10 * d, y1 = r.y + 32 * d};
-    r.v = ch_field(s, out, r.v, fb, p, 1, "Paste it here", H_KFIELD);
-    r.v = ch_chip(s, out, r.v, word, x1 - sw, fb.y1 - 6 * d, H_KSAVE, s[0].key_n > 0 && s[0].post_kind != POST_KEY, p);
-    r.y = fb.y1 + 12 * d;
-    r = ch_text(s, out, r, "For a subscription: run claude setup-token, approve in the browser, and paste the token it prints here.", x0, x1 - x0, 6.5, ink(p, INK_FAINT), 3, true);
-  }
-  if s[0].knote_n > 0 { r.y += 4 * d; r = ch_text(s, out, r, cast(string) s[0].knote[0..<s[0].knote_n], x0, x1 - x0, 7, ch_chrome(p, INK_ORANGE), 4, true); }
-  cw := chip_width("CLOSE", 7 * d, p);
-  r.v = ch_chip(s, out, r.v, "CLOSE", x1 - cw, b.y0 + 17 * d, H_CLOSE, false, p);
-  return frame(out, r.v, b, 10 * d, p);
-}
-
-// The conversations, newest first, and NEW CHAT.
-ch_list :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen) -> int {
-  d := p.d; v := v0;
-  x0 := b.x0 + 14 * d; x1 := b.x1 - 14 * d;
-  n := ch_count(s, 'C');
-  note: [32] u8;
-  q := ch_number(note[..], 0, n);
-  v = titled(out, v, b, "CHATS", cast(string) note[0..<q], p);
-  y := b.y0 + title_room(p) + 14 * d;
-  v = ch_chip(s, out, v, "NEW CHAT", x0, y, H_NEW, s[0].shown == 0, p);
-  y += 22 * d;
-  white := ink(p, INK_WHITE);
-  for k: 0..<n {
-    if y + 30 * d > b.y1 - 8 * d || k >= 28 { break; }
-    i := ch_nth(s, 'C', k);
-    on := ch_int(ch_cell(s, i, 1)) == s[0].shown;
-    hot := s[0].hot == H_CONV + k;
-    title := ch_cell(s, i, 2);
-    if title.count == 0 { title = "(no words)"; }
-    v = put_fit(out, v, title, x0, y + 10 * d, BODY * d, ifx on then ch_chrome(p, INK_ORANGE) else ifx hot then white else ink(p, INK_PALE), x1 - x0);
-    meta: [80] u8;
-    m := ch_put(meta[..], 0, ch_model_name(ch_cell(s, i, 3)));
-    m = ch_put(meta[..], m, " · "); m = ch_upper(meta[..], m, ch_cell(s, i, 4));
-    if ch_cell(s, i, 5) == "1" { m = ch_put(meta[..], m, " · WORKING"); }
-    v = put_fit(out, v, cast(string) meta[0..<m], x0, y + 24 * d, 5.5 * d, ch_chrome(p, INK_DIM), x1 - x0);
-    ch_hit(s, Box.{x0 = b.x0 + 4 * d, y0 = y - 2 * d, x1 = b.x1 - 4 * d, y1 = y + 30 * d}, H_CONV + k);
-    y += 38 * d;
-  }
-  return frame(out, v, b, 10 * d, p);
+// Signed out, or not an admin: the name, and Log in (/login).
+wc_paint_login :: (out: [] f32, at: int, s: [] WcState, th: Theme, d: f32, w: f32, h: f32) -> int {
+  a := s[0].atlas[..];
+  v := paint_text(out, at, a, d, FONT_MENU, "OpenAgents", 18, 8, 22, ifx s[0].hot == WH_HOME then th.text else th.muted);
+  wc_hit(s, WH_HOME, 10, 8, text_width(a, FONT_MENU, "OpenAgents") + 16, 22);
+  bw := round_layout(text_width(a, FONT_CHIP, "Log in")) + 28;
+  bx := round_layout((w - bw) / 2); by := round_layout(h / 2 - 16);
+  return wc_primary(out, v, s, th, d, "Log in", bx, by, WH_LOGIN).v;
 }
 
 // ---------------------------------------------------------------- the frame
 
-ch_header :: (s: [] ChatState, out: [] f32, v0: int, b: Box, p: Pen, wide: bool) -> int {
-  d := p.d; v := v0;
-  white := ch_chrome(p, INK_WHITE); dim := ch_chrome(p, INK_DIM);
-  x := b.x0 + 18 * d; right := b.x1 - 14 * d;
-  cy := b.y0 + 26 * d;
-  v = put(out, v, "OPENAGENTS", x, cy, 7 * d, ifx s[0].hot == H_HOME then white else dim);
-  w1 := text_width("OPENAGENTS", 7 * d);
-  ch_hit(s, Box.{x0 = x - 4 * d, y0 = cy - 14 * d, x1 = x + w1 + 4 * d, y1 = cy + 6 * d}, H_HOME);
-  crumb := x + w1 + SPACE * 7 * d;
-  v = put(out, v, "/", crumb, cy, 7 * d, dim);
-  px := crumb + text_width("/", 7 * d) + SPACE * 7 * d;
-  v = put(out, v, "CHAT", px, cy, 7 * d, ch_chrome(p, INK_ORANGE));
-  kw := chip_width("KEY", 7 * d, p);
-  if !ch_local(s) { v = ch_chip(s, out, v, "KEY", right - kw, cy, H_KEY, s[0].keying, p); }
-  else { kw = chip_width("LAB", 7 * d, p); v = ch_chip(s, out, v, "LAB", right - kw, cy, H_LAB, false, p); }
-  if !wide {
-    nw := chip_width("NEW", 7 * d, p); cw := chip_width("CHATS", 7 * d, p);
-    v = ch_chip(s, out, v, "NEW", right - kw - nw - 8 * d, cy, H_NEW, false, p);
-    v = ch_chip(s, out, v, "CHATS", right - kw - nw - cw - 16 * d, cy, H_CHATS, s[0].listing, p);
+wc_init :: (s: [] WcState) {
+  s[0].ready = true;
+  c := s[0].composer[..];
+  c[0].focused = true; c[0].clicked = -1; c[0].hover = -1; c[0].open = -1;
+  s[0].cat[0] = wc_catalog();
+  s[0].status = -1; s[0].shown = -1; s[0].model = -1;
+  s[0].ask_id = -1; s[0].post_id = -1; s[0].asked_at = -1000;
+  s[0].hot = WH_NONE; s[0].press = WH_NONE;
+  s[0].transcript[0].seed = 1; s[0].transcript[0].pinned = true;
+  s[0].built = -1;
+  wc_labels(s);
+}
+// The demo conversation, as the Mac app's --demo opens it (zr_demo).
+wc_demo :: (s: [] WcState) {
+  if s[0].demo { return; }
+  s[0].demo = true;
+  t := s[0].transcript[..];
+  t_reset(t);
+  t[0].working = false;
+  t_demo(t);
+  s[0].composer[0].docked = true;
+  wc_labels(s);
+}
+wc_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int {
+  if !s[0].ready { wc_init(s); }
+  t := s[0].transcript[..]; c := s[0].composer[..]; a := s[0].atlas[..];
+  d := ifx dpr < 1 then 1.0f32 else dpr;
+  s[0].width = width; s[0].height = height; s[0].d = d;
+  if uniforms.count >= 2 { uniforms[0] = width; uniforms[1] = height; }
+  dt1 := ifx dt < 0 then 0.0f32 else ifx dt > 0.1 then 0.1f32 else dt;
+  s[0].time += dt1;
+  c[0].since += dt1; c[0].clock += dt1;
+  if s[0].golden { c[0].since = 0; }
+  s[0].picker[0].since += dt1;
+  a[0].frame += 1;
+  s[0].field[0] = 0; s[0].field[1] = 0; s[0].field[2] = 0; s[0].field[3] = 0;
+  // oa-api: read the state now and then (often while a turn runs)
+  if !s[0].demo && s[0].status != 401 && s[0].status != 403 && s[0].status != 404 {
+    every: f32 = ifx wc_busy(s) then WC_BUSY else WC_REFRESH;
+    if s[0].status == 599 { every = 5.0; }
+    if s[0].time - s[0].asked_at >= every { wc_ask(s); }
+  }
+  // Send, Stop and the model chip
+  if c[0].clicked >= 0 { k := c[0].clicked; c[0].clicked = -1; wc_chip(s, k); }
+  if c[0].sent != s[0].seen_sent {
+    s[0].seen_sent = c[0].sent;
+    text := cast(string) c[0].last[0..<c[0].last_n];
+    if s[0].demo { t_user(t, t_pool(t, text)); } else { wc_send(s, text); }
+    t[0].pinned = true;
+  }
+  // a notice's Log in, a code block's or notice's copy
+  if t[0].action == A_LOGIN { wc_go(s, "/login"); }
+  t[0].action = A_NONE;
+  if t[0].copy_notice > 0 { wc_copy(s, t[0].notices[t[0].copy_notice - 1].text); t[0].copy_notice = 0; }
+  if t[0].copy_code > 0 { wc_copy(s, md_block_text(t[0].md[..], t[0].copy_code - 1)); t[0].copy_code = 0; }
+  // the transcript follows the state
+  if !s[0].demo && s[0].built != s[0].gen { wc_build(s); wc_labels(s); }
+  busy := !s[0].demo && wc_busy(s);
+  if busy { s[0].work += dt1; } else { s[0].work = 0; }
+  t[0].work_secs = s[0].work; t[0].spin += dt1;
+  c[0].running = busy && s[0].pending_n == 0;
+  th := zeron_dark();
+  w := width / d; h := height / d;
+  s[0].nhit = 0;
+  v := paint_quad(out, 0, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
+  if !a[0].ready { return v; }
+  signed_out := s[0].status == 401 || s[0].status == 403 || s[0].status == 404;
+  if !s[0].demo && signed_out { s[0].keying = false; s[0].listing = false; return wc_paint_login(out, v, s, th, d, w, h); }
+  if !s[0].demo && s[0].status <= 0 {
+    lw := text_width(a, FONT_TOOL, "Loading");
+    return paint_text(out, v, a, d, FONT_TOOL, "Loading", round_layout((w - lw) / 2), round_layout(h / 2 - 9), 18, th.faint);
+  }
+  wide := w >= WC_WIDE;
+  side := wide && !s[0].demo;
+  mx := ifx side then WC_SIDEBAR else 0.0f32;
+  mw := w - mx;
+  phone := mw < 640;
+  if side { v = wc_paint_sidebar(out, v, s, th, d, h); }
+  column := ifx mw < COMPOSER_MAX_WIDTH then mw else COMPOSER_MAX_WIDTH;
+  cw := column - 2 * WC_PAD;
+  x := round_layout(mx + (mw - cw) / 2);
+  fb: [600] u8; fn := ifx s[0].demo then 0 else wc_failure_text(s, fb[..]);
+  if wc_empty(s) {
+    // Zeron's new chat: the expanded composer, centered a little high, the intro above it
+    c[0].docked = false;
+    composer_wrap(c, a, cw - 34);
+    y := round_layout((h - composer_height(c[0].lines)) / 2 - WC_HERO_LIFT);
+    t[0].nr = 0; t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
+    r := wc_words(out, WcFlow.{v = v, y = y - 24 - 3 * 19.416408}, s, d, WC_INTRO, x + 4, cw - 8, true, 19.416408, th.faint, 3);
+    v = paint_composer(out, r.v, c, a, th, d, x, y, cw);
+    v = wc_paint_failure(out, v, s, th, d, x, y, cw, cast(string) fb[0..<fn]);
   } else {
-    si := ch_first(s, 'S');
-    if si >= 0 && s[0].shown != 0 {
-      t0 := px + text_width("CHAT", 7 * d) + 24 * d;
-      v = put_fit(out, v, ch_cell(s, si, 2), t0, cy, BODY * d, ink(p, INK_PALE), right - kw - 24 * d - t0);
+    bottom_gap: f32 = ifx phone then WC_DOCK_BOTTOM_PHONE else WC_DOCK_BOTTOM;
+    ch := docked_height(c, a, cw);
+    stack := STATUS_STRIP_HEIGHT + ch + bottom_gap;
+    t[0].view_h = h;
+    t_layout(t, a, th, x, cw, stack + TRANSCRIPT_FADE_BAND + SPACE_SM);
+    // a chat longer than the transcript holds starts at a later turn
+    if !s[0].demo && wc_overflowed(t) && s[0].first + 1 < wc_count(s, 'U') { s[0].first += 1; s[0].gen += 1; }
+    t_clamp(t);
+    v = t_paint(out, v, t, a, th, d, h, stack - STATUS_STRIP_HEIGHT);
+    v = paint_composer_docked(out, v, c, a, th, d, x, h - bottom_gap, cw);
+    v = wc_paint_failure(out, v, s, th, d, x, c[0].y, cw, cast(string) fb[0..<fn]);
+  }
+  // the composer's caret: where the keyboard field (the IME's) goes
+  if c[0].focused && !s[0].keying {
+    s[0].field[0] = c[0].text_x * d; s[0].field[1] = c[0].text_y * d;
+    s[0].field[2] = (c[0].text_x + c[0].text_w) * d; s[0].field[3] = (c[0].text_y + c[0].view_h) * d;
+  }
+  if !s[0].demo {
+    // the titlebar's buttons: Chats and New on a narrow window, Key
+    if !wide {
+      b1 := wc_button(out, v, s, th, d, "Chats", WC_PAD - CHIP_PAD + 2, 5, WH_CHATS, s[0].listing);
+      b2 := wc_button(out, b1.v, s, th, d, "New", WC_PAD - CHIP_PAD + 2 + b1.w + 2, 5, WH_NEW, false);
+      kw := round_layout(text_width(a, FONT_CHIP, "Key")) + 2 * CHIP_PAD;
+      v = wc_button(out, b2.v, s, th, d, "Key", w - WC_PAD + CHIP_PAD - 2 - kw, 5, WH_KEY, s[0].keying).v;
+    }
+    if s[0].keying { v = wc_paint_key(out, v, s, th, d, mx, mw, h); }
+    if s[0].listing && !wide {
+      v = paint_quad(out, v, d, 0, 0, w, h, 0, 0, th.shell, th.shell);
+      wc_hit(s, WH_SHADE, 0, 0, w, h);
+      v = wc_button(out, v, s, th, d, "Chats", WC_PAD - CHIP_PAD + 2, 5, WH_CHATS, true).v;
+      v = wc_paint_list(out, v, s, th, d, WC_PAD - 8, TITLEBAR_HEIGHT, w - 2 * (WC_PAD - 8), h - 70);
+      cb: [200] u8; cn := wc_credential(s, cb[..]);
+      r := wc_words(out, WcFlow.{v = v, y = h - 56}, s, d, cast(string) cb[0..<cn], WC_PAD + 10, w - 2 * WC_PAD - 20, true, 18, th.faint, 2);
+      v = r.v;
     }
   }
-  return frame(out, v, b, 10 * d, p);
-}
-
-// Signed out, or not an admin: LOG IN and nothing else.
-ch_locked :: (s: [] ChatState, out: [] f32, p: Pen) -> int {
-  d := p.d; w := s[0].width; h := s[0].height;
-  white := ch_chrome(p, INK_WHITE); dim := ch_chrome(p, INK_DIM);
-  m := ifx w / d < 700 then 12.0f32 else 24.0f32;
-  x := (m + 18) * d; cy := (m + 22) * d;
-  v := put(out, 0, "OPENAGENTS", x, cy, 7 * d, ifx s[0].hot == H_HOME then white else dim);
-  w1 := text_width("OPENAGENTS", 7 * d);
-  ch_hit(s, Box.{x0 = x - 4 * d, y0 = cy - 14 * d, x1 = x + w1 + 4 * d, y1 = cy + 6 * d}, H_HOME);
-  cap := 9 * d;
-  sw := chip_width("LOG IN", cap, p);
-  b := chip_box("LOG IN", (w - sw) * 0.5, h * 0.5, cap, p);
-  ch_hit(s, b, H_SIGNIN);
-  return chip(out, v, "LOG IN", (w - sw) * 0.5, h * 0.5, cap, ifx s[0].hot == H_SIGNIN then ch_chrome(p, INK_ORANGE) else white, p);
-}
-
-ch_signed_out :: (s: [] ChatState) -> bool { return s[0].status == 401 || s[0].status == 403 || s[0].status == 404; }
-
-coaxial_chat_frame :: (s: [] ChatState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
-  if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
-  if !s[0].ready { s[0].ready = true; s[0].hot = -1; s[0].press = -1; s[0].status = -1; s[0].ask_id = -1; s[0].post_id = -1; s[0].shown = -1; s[0].model = -1; }
-  s[0].time += clamp(dt, 0, 0.1);
-  if !ch_signed_out(s) {
-    wait := ifx ch_busy(s) then 2.0f32 else 30.0f32;   // CH_BUSY, CH_REFRESH
-    if s[0].status == -1 || s[0].time - s[0].asked_at >= wait { ch_ask(s); }
-  }
-  time := ifx still then 20.0f32 else s[0].time;
-  d := hi(dpr, 1);
-  s[0].width = width; s[0].height = height; s[0].d = d;
-  s[0].hit_n = 0;
-  p := Pen.{d = d, fade = ifx still then 1.0f32 else ease(time / 0.6), time = time};
-  uniforms[0] = width; uniforms[1] = height; uniforms[2] = 20 + time; uniforms[3] = p.fade;
-  uniforms[4] = ifx still then 1.0f32 else 0.0f32; uniforms[5] = 2; uniforms[6] = 0; uniforms[7] = 0;
-  for k: 0..<PANELS { glass(uniforms, k, Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}, 0, 0); }
-  if ch_signed_out(s) { s[0].typing = false; return ch_locked(s, out, p); }
-  if s[0].status <= 0 || (s[0].status == 599 && s[0].line_n == 0) {
-    s[0].typing = false;
-    word := ifx s[0].status == 599 then "OFFLINE" else "LOADING";
-    return put(out, 0, word, (width - text_width(word, 10 * d)) * 0.5, height * 0.5, 10 * d, ch_chrome(p, INK_DIM));
-  }
-  w := width / d;
-  m := ifx w < 700 then 12.0f32 else 24.0f32;
-  g := 10 * d;
-  if s[0].lab { return ch_lab(s, out, uniforms, p, m * d, g); }
-  wide := w >= 900;
-  head := Box.{x0 = m * d, y0 = m * d, x1 = width - m * d, y1 = m * d + 44 * d};
-  glass(uniforms, 0, head, 10 * d, 0.92);
-  v := ch_header(s, out, 0, head, p, wide);
-  top := head.y1 + g; bottom := height - m * d;
-  left := m * d;
-  if wide {
-    lb := Box.{x0 = m * d, y0 = top, x1 = m * d + 270 * d, y1 = bottom};
-    glass(uniforms, 1, lb, 10 * d, 0.92);
-    v = ch_list(s, out, v, lb, p);
-    left = lb.x1 + g;
-  }
-  area := Box.{x0 = left, y0 = top, x1 = width - m * d, y1 = bottom};
-  if s[0].keying {
-    glass(uniforms, 2, area, 10 * d, 0.92);
-    return ch_key_panel(s, out, v, area, p);
-  }
-  if !wide && s[0].listing {
-    if s[0].typing && s[0].focus == 0 { s[0].typing = false; }
-    glass(uniforms, 2, area, 10 * d, 0.92);
-    return ch_list(s, out, v, area, p);
-  }
-  comp := Box.{x0 = area.x0, y0 = bottom - ch_composer_h(s), x1 = area.x1, y1 = bottom};
-  conv := Box.{x0 = area.x0, y0 = top, x1 = area.x1, y1 = comp.y0 - g};
-  glass(uniforms, 2, conv, 10 * d, 0.92);
-  glass(uniforms, 3, comp, 10 * d, 0.92);
-  inner := ifx w < 700 then 14 * d else 22 * d;
-  x0 := conv.x0 + inner; x1 := conv.x1 - inner;
-  // measured, then drawn from the end up: the newest at the bottom unless scrolled back
-  view0 := conv.y0 + 10 * d; view1 := conv.y1 - 8 * d;
-  measured := ch_turns(s, out, ChFlow.{y = 0, v = v}, x0, x1, p, false);
-  s[0].content = measured.y;
-  room := view1 - view0;
-  s[0].back = clamp(s[0].back, 0, hi(0, s[0].content - room));
-  start := ifx s[0].content <= room then view0 else view1 - s[0].content + s[0].back;
-  s[0].clip0 = view0 - 2 * d; s[0].clip1 = view1;
-  drawn := ch_turns(s, out, ChFlow.{y = start, v = v}, x0, x1, p, true);
-  v = drawn.v;
-  v = frame(out, v, conv, 10 * d, p);
-  v = ch_composer(s, out, v, comp, p);
-  return frame(out, v, comp, 10 * d, p);
-}
-
-// The Lab (the Mac app): BACK, one transcript and one field, nothing else.
-ch_lab :: (s: [] ChatState, out: [] f32, uniforms: [] f32, p: Pen, m: f32, g: f32) -> int {
-  d := p.d; width := s[0].width; height := s[0].height;
-  head := Box.{x0 = m, y0 = m, x1 = width - m, y1 = m + 44 * d};
-  glass(uniforms, 0, head, 10 * d, 0.92);
-  cy := head.y0 + 26 * d;
-  v := ch_chip(s, out, 0, "BACK", head.x0 + 14 * d, cy, H_BACK, false, p);
-  lx := head.x0 + 14 * d + chip_width("BACK", 7 * d, p) + 16 * d;
-  v = put(out, v, "LAB", lx, cy, 7 * d, ch_chrome(p, INK_ORANGE));
-  v = frame(out, v, head, 10 * d, p);
-  bottom := height - m;
-  comp := Box.{x0 = m, y0 = bottom - 56 * d, x1 = width - m, y1 = bottom};
-  conv := Box.{x0 = m, y0 = head.y1 + g, x1 = width - m, y1 = comp.y0 - g};
-  glass(uniforms, 1, conv, 10 * d, 0.92);
-  glass(uniforms, 2, comp, 10 * d, 0.92);
-  inner := 22 * d;
-  x0 := conv.x0 + inner; x1 := conv.x1 - inner;
-  view0 := conv.y0 + 10 * d; view1 := conv.y1 - 8 * d;
-  measured := ch_turns(s, out, ChFlow.{y = 0, v = v}, x0, x1, p, false);
-  s[0].content = measured.y;
-  room := view1 - view0;
-  s[0].back = clamp(s[0].back, 0, hi(0, s[0].content - room));
-  start := ifx s[0].content <= room then view0 else view1 - s[0].content + s[0].back;
-  s[0].clip0 = view0 - 2 * d; s[0].clip1 = view1;
-  v = ch_turns(s, out, ChFlow.{y = start, v = v}, x0, x1, p, true).v;
-  v = frame(out, v, conv, 10 * d, p);
-  s[0].clip0 = 0; s[0].clip1 = height;
-  busy := ch_busy(s);
-  word := ifx busy then "STOP" else "SEND";
-  sw := chip_width(word, 7 * d, p);
-  fx1 := comp.x1 - 14 * d;
-  fb := Box.{x0 = comp.x0 + 14 * d, y0 = comp.y1 - 44 * d, x1 = fx1 - sw - 10 * d, y1 = comp.y1 - 12 * d};
-  v = ch_field(s, out, v, fb, p, 0, "", H_FIELD);
-  v = ch_chip(s, out, v, word, fx1 - sw, fb.y1 - 6 * d, ifx busy then H_STOP else H_SEND, !busy && s[0].text_n > 0 && s[0].typing, p);
-  return frame(out, v, comp, 10 * d, p);
+  v = pk_paint(out, v, s[0].picker[..], s[0].cat[..], wc_sel(s), a, th, d, w, h);
+  wc_update_cursor(s);
+  return v;
 }
 
 // ---------------------------------------------------------------- input
 
-ch_hit_at :: (s: [] ChatState, x: f32, y: f32) -> int {
-  for i: 0..<s[0].hit_n { if inside(s[0].hit_box[i], x, y) { return s[0].hit_id[i]; } }
-  return -1;
+wc_abs :: (x: f32) -> f32 { return ifx x < 0 then -x else x; }
+wc_on_composer :: (s: [] WcState, x: f32, y: f32) -> bool {
+  c := s[0].composer[..];
+  return !s[0].keying && !s[0].listing && x >= c[0].x && x < c[0].x + c[0].w && y >= c[0].y && y < c[0].y + c[0].h;
 }
-ch_trim :: (text: string) -> string {
-  a := 0; b := text.count;
-  while a < b && (text[a] == ' ' || text[a] == '\n') { a += 1; }
-  while b > a && (text[b - 1] == ' ' || text[b - 1] == '\n') { b -= 1; }
-  return text[a..<b];
+wc_main_x :: (s: [] WcState) -> f32 { d := ifx s[0].d < 1 then 1.0f32 else s[0].d; return ifx s[0].width / d >= WC_WIDE && !s[0].demo then WC_SIDEBAR else 0.0f32; }
+wc_on_transcript :: (s: [] WcState, x: f32, y: f32) -> bool {
+  return !s[0].keying && !s[0].listing && !wc_empty(s) && x >= wc_main_x(s) && y >= TITLEBAR_HEIGHT && y < s[0].composer[0].y - STATUS_STRIP_HEIGHT;
 }
-ch_send :: (s: [] ChatState) {
-  if s[0].post_kind != 0 || ch_busy(s) { return; }
-  text := ch_trim(cast(string) s[0].text[0..<s[0].text_n]);
-  if text.count == 0 { return; }
-  c: [24] u8;
-  cn := 0;
-  if s[0].lab { ch_post(s, "send", POST_SEND, "text", text, "", "", "", ""); return; }
-  if s[0].shown > 0 { cn = ch_number(c[..], 0, s[0].shown); }
-  ch_post(s, "send", POST_SEND, ifx cn > 0 then "c" else "", cast(string) c[0..<cn], "text", text, "model", MODELS[ch_model(s)]);
-}
-ch_save_key :: (s: [] ChatState) {
-  if s[0].post_kind != 0 { return; }
-  key := ch_trim(cast(string) s[0].key[0..<s[0].key_n]);
-  if key.count == 0 { return; }
-  ch_say_key(s, "Checking the key...");
-  ch_post(s, "key", POST_KEY, "credential", key, "", "", "", "");
-  ch_wipe_key(s);
-}
-ch_choose_model :: (s: [] ChatState, k: int) {
-  if k < 0 || k >= 3 { return; }
-  s[0].model = k;
-  // a conversation shown keeps it: the next turn uses it
-  if s[0].shown > 0 && s[0].post_kind == 0 {
-    c: [24] u8;
-    cn := ch_number(c[..], 0, s[0].shown);
-    ch_post(s, "model", POST_MODEL, "c", cast(string) c[0..<cn], "model", MODELS[k], "", "");
+wc_update_cursor :: (s: [] WcState) {
+  c := s[0].composer[..];
+  x := s[0].lx; y := s[0].ly;
+  s[0].cursor = 0;
+  if pk_is_open(s[0].picker[..]) && pk_inside(s[0].picker[..], x, y) { s[0].cursor = 1; return; }
+  h := wc_hit_at(s, x, y);
+  if h == WH_KFIELD { s[0].cursor = 3; return; }
+  if h != WH_NONE && h != WH_SHADE && h != WH_KFIELD - 1000 { s[0].cursor = 1; return; }
+  if wc_on_composer(s, x, y) {
+    if composer_chip_hit(c, x, y) >= 0 { s[0].cursor = 1; return; }
+    if c[0].compact { s[0].cursor = ifx x >= c[0].text_x - COMPACT_TEXT_PAD && x < c[0].text_x + c[0].text_w + COMPACT_TEXT_PAD then 3 else 0; }
+    else { s[0].cursor = ifx x >= c[0].text_x - 16 && y < c[0].y + c[0].h - ACTIONS_ROW_HEIGHT then 3 else 0; }
+  } else if wc_on_transcript(s, x, y) {
+    k := t_cursor(s[0].transcript[..], x, y);
+    s[0].cursor = ifx k == 1 then 3 else ifx k == 2 then 1 else 0;
   }
 }
-// Into the Lab or back: the other screen's lines are dropped and asked for afresh.
-ch_switch :: (s: [] ChatState, lab: bool) {
-  s[0].lab = lab; s[0].data_n = 0; s[0].line_n = 0; s[0].back = 0;
-  s[0].listing = false; s[0].keying = false; s[0].typing = lab; s[0].focus = 0;
-  s[0].asked_at = -1000;
+// A chrome press, acted on at its release over the same target.
+wc_act :: (s: [] WcState, id: int) {
+  if id == WH_LOGIN { wc_go(s, "/login"); return; }
+  if id == WH_HOME { wc_go(s, "/"); return; }
+  if id == WH_NEW { wc_new(s); return; }
+  if id == WH_CHATS { s[0].listing = !s[0].listing; s[0].keying = false; return; }
+  if id == WH_KEY { s[0].keying = !s[0].keying; s[0].listing = false; s[0].key_focus = s[0].keying && !wc_has_key(s); s[0].composer[0].focused = !s[0].keying; s[0].knote_n = 0; return; }
+  if id == WH_CLOSE || id == WH_SHADE { if s[0].keying { wc_close_key(s); } s[0].listing = false; return; }
+  if id == WH_KFIELD { s[0].key_focus = true; return; }
+  if id == WH_KSAVE { wc_save_key(s); return; }
+  if id == WH_REPLACE { s[0].replacing = true; s[0].key_focus = true; wc_wipe_key(s); return; }
+  if id == WH_REMOVE { if s[0].post_n == 0 && s[0].post_id < 0 { wc_post(s, "key_remove", POST_KEY_REMOVE, "", "", "", "", "", ""); } return; }
+  if id >= WH_CONV { wc_open_conv(s, id - WH_CONV); }
 }
-ch_act :: (s: [] ChatState, target: int) {
-  s[0].all = 0;
-  if target != H_FIELD && target != H_SEND && target != H_KFIELD && target != H_KSAVE && (target < H_MODEL || target >= H_MODEL + 3) && (target < H_EFFORT || target >= H_EFFORT + 5) { s[0].typing = false; }
-  if target == H_HOME { ch_go(s, "/"); }
-  else if target == H_SIGNIN { ch_go(s, "/login"); }
-  else if target == H_LAB || target == H_BACK { ch_switch(s, target == H_LAB); }
-  else if target == H_NEW { s[0].shown = 0; s[0].listing = false; s[0].keying = false; s[0].back = 0; s[0].asked_at = -1000; s[0].typing = true; s[0].focus = 0; }
-  else if target == H_CHATS { s[0].listing = !s[0].listing; s[0].keying = false; }
-  else if target == H_KEY { s[0].keying = !s[0].keying; s[0].listing = false; s[0].knote_n = 0; s[0].replacing = false; ch_wipe_key(s); }
-  else if target == H_CLOSE { s[0].keying = false; s[0].replacing = false; ch_wipe_key(s); }
-  else if target == H_FIELD { s[0].typing = true; s[0].focus = 0; }
-  else if target == H_SEND { s[0].focus = 0; ch_send(s); }
-  else if target == H_STOP && s[0].lab { if s[0].post_kind == 0 { ch_post(s, "stop", POST_STOP, "", "", "", "", "", ""); } }
-  else if target == H_STOP {
-    if s[0].shown > 0 && s[0].post_kind == 0 {
-      c: [24] u8;
-      cn := ch_number(c[..], 0, s[0].shown);
-      ch_post(s, "stop", POST_STOP, "c", cast(string) c[0..<cn], "", "", "", "");
-    }
+wc_close_key :: (s: [] WcState) {
+  s[0].keying = false; s[0].key_focus = false; s[0].replacing = false; s[0].knote_n = 0;
+  wc_wipe_key(s);
+  s[0].composer[0].focused = true;
+}
+wc_save_key :: (s: [] WcState) {
+  if s[0].key_n == 0 || s[0].post_n > 0 || s[0].post_id >= 0 { return; }
+  lo := 0; hi := s[0].key_n;
+  while lo < hi && (s[0].key[lo] == ' ' || s[0].key[lo] == '\n') { lo += 1; }
+  while hi > lo && (s[0].key[hi - 1] == ' ' || s[0].key[hi - 1] == '\n') { hi -= 1; }
+  wc_post(s, "key", POST_KEY, "key", cast(string) s[0].key[lo..<hi], "", "", "", "");
+  wc_wipe_key(s);
+  wc_say_key(s, "");
+}
+// The keyboard field's text: typed or pasted.
+wc_typed :: (s: [] WcState, text: string) {
+  if pk_is_open(s[0].picker[..]) { b := pk_text(s[0].picker[..], s[0].cat[..], text); wc_take_picks(s); return; }
+  if s[0].keying {
+    if !s[0].key_focus { return; }
+    for ch: text { if ch >= 32 && ch < 127 && s[0].key_n < WC_KEY { s[0].key[s[0].key_n] = ch; s[0].key_n += 1; } }
+    return;
   }
-  else if target == H_KFIELD { s[0].typing = true; s[0].focus = 1; }
-  else if target == H_KSAVE { s[0].focus = 1; ch_save_key(s); }
-  else if target == H_REPLACE { s[0].replacing = true; s[0].knote_n = 0; s[0].typing = true; s[0].focus = 1; }
-  else if target == H_REMOVE { if s[0].post_kind == 0 { ch_post(s, "key_remove", POST_KEY_REMOVE, "", "", "", "", "", ""); } }
-  else if target >= H_MODEL && target < H_MODEL + 3 { ch_choose_model(s, target - H_MODEL); }
-  else if target >= H_EFFORT && target < H_EFFORT + 5 {
-    s[0].effort = target - H_EFFORT + 1;
-    if s[0].post_kind == 0 { ch_post(s, "effort", POST_EFFORT, "effort", EFFORTS[target - H_EFFORT], "", "", "", ""); }
-  }
-  else if target >= H_CONV && target < H_CONV + 60 {
-    i := ch_nth(s, 'C', target - H_CONV);
-    if i >= 0 { s[0].shown = ch_int(ch_cell(s, i, 1)); s[0].model = -1; s[0].listing = false; s[0].back = 0; s[0].asked_at = -1000; }
-  }
+  c := s[0].composer[..];
+  if !c[0].focused { return; }
+  if text.count > 1 { composer_paste(c, text); } else { composer_insert(c, text); }
 }
 
-coaxial_chat_pointer :: (s: [] ChatState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
+coaxial_chat_frame :: (s: [] WcState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32) -> int #export_c {
+  if s.count < 1 || width < 1 || height < 1 { return 0; }
+  return wc_frame(s, out, uniforms, width, height, dpr, dt);
+}
+// phase 0 down, 1 move, 2 up, 3 cancel; device pixels. The click count is
+// counted here (presses close in time and place), as AppKit counts it.
+coaxial_chat_pointer :: (s: [] WcState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
   if s.count < 1 { return false; }
-  d := hi(s[0].d, 1);
-  if phase == P_DOWN {
-    s[0].press = ch_hit_at(s, x, y); s[0].press_x = x; s[0].press_y = y; s[0].drag_y = y; s[0].dragged = false;
-    s[0].hot = ifx kind == 0 then s[0].press else -1;
-    return true;
-  }
-  if phase == P_MOVE {
-    if kind == 0 { s[0].hot = ch_hit_at(s, x, y); }
-    if kind != 0 || s[0].press != -1 {
-      if absf(y - s[0].press_y) > 10 * d || absf(x - s[0].press_x) > 10 * d { s[0].dragged = true; }
-      if s[0].dragged && kind != 0 { s[0].back += y - s[0].drag_y; }
-      s[0].drag_y = y;
+  d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  c := s[0].composer[..]; t := s[0].transcript[..]; p := s[0].picker[..]; a := s[0].atlas[..];
+  lx := x / d; ly := y / d;
+  s[0].lx = lx; s[0].ly = ly;
+  if phase == 0 {
+    near := s[0].time - s[0].down_at < 0.45 && wc_abs(lx - s[0].down_x) < 5 && wc_abs(ly - s[0].down_y) < 5;
+    s[0].clicks = ifx near then (ifx s[0].clicks >= 3 then 1 else s[0].clicks + 1) else 1;
+    s[0].down_at = s[0].time; s[0].down_x = lx; s[0].down_y = ly;
+    s[0].swallow = false;
+    if pk_is_open(p) {
+      opened := c[0].open;
+      took := pk_press(p, s[0].cat[..], wc_sel(s), lx, ly);
+      wc_take_picks(s);
+      if took { return true; }
+      if opened >= 0 && composer_chip_hit(c, lx, ly) == opened { s[0].swallow = true; return true; }
     }
-    return true;
-  }
-  if phase == P_UP {
-    target := ch_hit_at(s, x, y);
-    if !s[0].dragged {
-      if target == s[0].press && target != -1 { ch_act(s, target); }
-      else if target == -1 { s[0].typing = false; }
-    }
-    s[0].press = -1;
-    if kind != 0 { s[0].hot = -1; }
-    return true;
-  }
-  s[0].press = -1;
-  return true;
-}
-
-// Typed or pasted text into the focused field; the key's takes no spaces or line breaks.
-ch_type :: (s: [] ChatState, text: string) {
-  if ch_all(s) { ch_set_n(s, 0); }
-  for c: text {
-    if s[0].focus == 1 {
-      if c <= ' ' { continue; }
-      if s[0].key_n >= CH_KEY { return; }
-      s[0].key[s[0].key_n] = c; s[0].key_n += 1;
-    } else {
-      t := ifx c == '\r' || c == '\t' then ' ' else c;
-      if s[0].text_n >= CH_TEXT { return; }
-      s[0].text[s[0].text_n] = t; s[0].text_n += 1;
-    }
-  }
-}
-// Whether everything typed in the focused field is selected.
-ch_all :: (s: [] ChatState) -> bool { return s[0].typing && s[0].all == s[0].focus + 1 && ch_typed(s, s[0].focus).count > 0; }
-// The focused field cut to its first n bytes (a key's cut bytes wiped); the selection goes.
-ch_set_n :: (s: [] ChatState, n: int) {
-  if s[0].focus == 1 { for i: n..<s[0].key_n { s[0].key[i] = 0; } s[0].key_n = n; } else { s[0].text_n = n; }
-  s[0].all = 0;
-}
-coaxial_chat_key :: (s: [] ChatState, key: int, mods: int) -> bool #export_c {
-  if s.count < 1 { return false; }
-  d := hi(s[0].d, 1);
-  cmd := tk_command(key, mods);
-  if cmd == TK_BROWSER { return false; }
-  if s[0].typing {
-    if cmd == TK_ALL { s[0].all = s[0].focus + 1; return true; }
-    if cmd == TK_COPY || cmd == TK_CUT {
-      if !ch_all(s) || s[0].focus == 1 { return true; }   // a key never leaves in clear
-      s[0].out_n = tk_copy(s[0].outbox[..], ch_typed(s, s[0].focus)); s[0].action = TK_ACT_COPY;
-      if cmd == TK_CUT { ch_set_n(s, 0); }
+    // the failure notice: a press dismisses its note
+    if c[0].failure_h > 0 && ly >= c[0].failure_y && ly < c[0].failure_y + c[0].failure_h && lx >= c[0].x && lx < c[0].x + c[0].w { s[0].note_n = 0; return true; }
+    h := wc_hit_at(s, lx, ly);
+    s[0].press = h;
+    if h != WH_NONE {
+      if h == WH_KFIELD { s[0].key_focus = true; }
+      else if s[0].keying && h != WH_KSAVE { s[0].key_focus = false; }
+      c[0].focused = false;
       return true;
     }
-    if key == K_BACK { ch_set_n(s, ifx ch_all(s) then 0 else tk_back(ch_typed(s, s[0].focus), mods)); return true; }
-    if key < 32 { s[0].all = 0; }   // a named key lets the selection go; typing replaces it
-    if key == K_ENTER { if s[0].focus == 1 { ch_save_key(s); } else { ch_send(s); } return true; }
-    if key == K_ESC { s[0].typing = false; return true; }
-    if key >= 32 && cmd == TK_KEY {
-      buf: [4] u8;
-      n := encode(cast(u32) key, buf[..], 0);
-      ch_type(s, cast(string) buf[0..<n]);
+    s[0].on_composer = wc_on_composer(s, lx, ly);
+    if s[0].on_composer { t[0].has_sel = false; t_hover(t, -1, -1); }
+    took := composer_press(c, a, lx, ly, s[0].clicks, s[0].shift);
+    if !s[0].on_composer && wc_on_transcript(s, lx, ly) { t_pointer(t, a, lx, ly, 0, s[0].clicks, s[0].shift); }
+    wc_update_cursor(s);
+    return took;
+  }
+  if phase == 1 {
+    if pk_is_open(p) { pk_move(p, s[0].cat[..], wc_sel(s), lx, ly); wc_take_picks(s); }
+    s[0].hot = wc_hit_at(s, lx, ly);
+    hc := composer_chip_hit(c, lx, ly);
+    c[0].hover = ifx (hc == CH_MODEL) && !s[0].keying && !s[0].listing then hc else -1;
+    if pk_is_open(p) && pk_inside(p, lx, ly) { c[0].hover = -1; s[0].hot = WH_NONE; }
+    if c[0].selecting { composer_drag(c, a, lx, ly); wc_update_cursor(s); return true; }
+    if t[0].selecting || t[0].press_kind != 0 || wc_on_transcript(s, lx, ly) { t_pointer(t, a, lx, ly, 1, s[0].clicks, s[0].shift); }
+    else { t_hover(t, -1, -1); }
+    wc_update_cursor(s);
+    return false;
+  }
+  if pk_is_open(p) { pk_release(p); }
+  if s[0].swallow { s[0].swallow = false; return false; }
+  pressed := s[0].press; s[0].press = WH_NONE;
+  if pressed != WH_NONE {
+    if phase == 2 && wc_hit_at(s, lx, ly) == pressed { wc_act(s, pressed); }
+    // a touch has no hover: its wash goes with it
+    if kind != 0 { s[0].hot = WH_NONE; }
+    wc_update_cursor(s);
+    return true;
+  }
+  composer_release(c);
+  if t[0].selecting || t[0].press_kind != 0 { t_pointer(t, a, lx, ly, 2, s[0].clicks, s[0].shift); }
+  if kind != 0 { t_hover(t, -1, -1); c[0].hover = -1; }
+  wc_update_cursor(s);
+  return false;
+}
+// The wheel, CSS pixels down: the open menu's list, the sidebar, the composer's text, else the transcript.
+coaxial_chat_wheel :: (s: [] WcState, dy: f32) #export_c {
+  if s.count < 1 { return; }
+  if pk_is_open(s[0].picker[..]) { b := pk_wheel(s[0].picker[..], s[0].cat[..], -dy); return; }
+  d := ifx s[0].d < 1 then 1.0f32 else s[0].d;
+  if s[0].listing || (s[0].width / d >= WC_WIDE && s[0].lx < WC_SIDEBAR && !s[0].demo) { s[0].side_scroll += dy; return; }
+  if s[0].keying { return; }
+  if wc_on_composer(s, s[0].lx, s[0].ly) && composer_wheel(s[0].composer[..], -dy) { return; }
+  moved := t_wheel(s[0].transcript[..], -dy);
+  t_hover(s[0].transcript[..], s[0].lx, s[0].ly);
+}
+coaxial_chat_key :: (s: [] WcState, key: int, mods: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  if key == WK_SHIFT { s[0].shift = true; return false; }
+  if key == WK_CONTROL { return false; }
+  s[0].shift = (mods & MOD_SHIFT) != 0;
+  c := s[0].composer[..]; t := s[0].transcript[..];
+  cmd := (mods & (MOD_CMD | MOD_CTRL)) != 0;
+  // an open menu holds the keyboard
+  p := s[0].picker[..];
+  if pk_is_open(p) {
+    took := pk_key(p, s[0].cat[..], wc_sel(s), ifx key == WK_TAB then KEY_TAB else key, mods);
+    wc_take_picks(s);
+    return took;
+  }
+  if key == WK_TAB { return false; }
+  if s[0].keying {
+    if key == KEY_ESCAPE { wc_close_key(s); return true; }
+    if !s[0].key_focus { return false; }
+    if key == KEY_ENTER { wc_save_key(s); return true; }
+    if key == KEY_BACKSPACE { if s[0].key_n > 0 { s[0].key_n -= 1; s[0].key[s[0].key_n] = 0; } return true; }
+    if cmd && (key == 'a' || key == 'A' || key == 'c' || key == 'x') { return true; }   // a key is never copied
+    return false;
+  }
+  if s[0].listing && key == KEY_ESCAPE { s[0].listing = false; return true; }
+  // copy and cut: the composer's selection, else the transcript's (the host puts it on the clipboard)
+  if cmd && (key == 'c' || key == 'C' || key == 'x' || key == 'X') {
+    if c[0].focused && sel_hi(c) > sel_lo(c) {
+      wc_copy(s, selected(c));
+      if key == 'x' || key == 'X' { composer_cut_selection(c); }
+      return true;
+    }
+    if t[0].has_sel && (key == 'c' || key == 'C') {
+      n := t_selected(t, s[0].outbox[..]);
+      if n > 0 && n <= s[0].outbox.count { s[0].out_n = n; s[0].action = WC_COPY; }
       return true;
     }
     return false;
   }
-  if cmd != TK_KEY { return false; }
-  if key == K_ESC && (s[0].keying || s[0].listing) { s[0].keying = false; s[0].listing = false; ch_wipe_key(s); return true; }
-  if key == K_UP { s[0].back += 40 * d; return true; }
-  if key == K_DOWN { s[0].back -= 40 * d; return true; }
-  if key == -10 { s[0].back += s[0].height * 0.8; return true; }
-  if key == -11 { s[0].back -= s[0].height * 0.8; return true; }
-  if key == K_HOME { s[0].back = 1000000000; return true; }
-  if key == K_END { s[0].back = 0; return true; }
+  if cmd && (key == 'a' || key == 'A') && !c[0].focused {
+    if t[0].nsel == 0 { return false; }
+    t[0].anchor = SelPos.{line = 0, off = 0};
+    t[0].focus = SelPos.{line = t[0].nsel - 1, off = t_line_len(t, t[0].nsel - 1)};
+    t[0].has_sel = true;
+    return true;
+  }
+  // Escape stops a running turn (Enter never does)
+  if key == KEY_ESCAPE && mods == 0 && c[0].running && !s[0].demo { wc_stop(s); return true; }
+  // typing anywhere goes to the composer
+  if !c[0].focused && key > 0 && !cmd { c[0].focused = true; }
+  return composer_key(c, s[0].atlas[..], key, mods);
+}
+coaxial_chat_key_up :: (s: [] WcState, key: int, mods: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  if key == WK_SHIFT { s[0].shift = false; }
   return false;
 }
-coaxial_chat_wheel :: (s: [] ChatState, dy: f32) #export_c { if s.count > 0 { s[0].back -= dy * hi(s[0].d, 1); } }
-coaxial_chat_message :: (s: [] ChatState, kind: int, length: int) #export_c {
+coaxial_chat_message :: (s: [] WcState, kind: int, length: int) #export_c {
   if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
-  if kind >= CH_HTTP && kind < CH_HTTP + 8 { ch_answer(s, kind - CH_HTTP, text); return; }
-  if kind == CH_TYPED { if s[0].typing { ch_type(s, text); } return; }
-  if kind == CH_PUSHED {
-    if s[0].status == 200 && (ifx s[0].lab then ch_pushed_lab(text) else !ch_pushed_lab(text) && ch_pushed_for(text) == s[0].shown) { ch_take(s, text, 0); }
-    return;
-  }
-  if kind == CH_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
+  if kind >= WC_HTTP && kind < WC_HTTP + 8 { wc_answer(s, kind - WC_HTTP, text); return; }
+  if kind == WC_TYPED { wc_typed(s, text); return; }
+  if kind == WC_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
 }
-coaxial_chat_hash :: (s: [] ChatState, length: int) #export_c { }
-coaxial_chat_page :: (s: [] ChatState, page: int) #export_c { }
-coaxial_chat_wants_text :: (s: [] ChatState) -> bool #export_c { return s.count > 0 && s[0].typing && s[0].status == 200; }
-coaxial_chat_cursor :: (s: [] ChatState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
-coaxial_chat_action :: (s: [] ChatState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_chat_action_done :: (s: [] ChatState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-coaxial_chat_inbox_cap :: () -> int #export_c { return CH_INBOX; }
-coaxial_chat_max_vertices :: () -> int #export_c { return CH_MAX_VERTICES; }
+// The location's hash: #demo shows Zeron's demo conversation.
+coaxial_chat_hash :: (s: [] WcState, length: int) #export_c {
+  if s.count < 1 || length < 0 || length > s[0].inbox.count { return; }
+  if !s[0].ready { wc_init(s); }
+  if cast(string) s[0].inbox[0..<length] == "demo" { wc_demo(s); }
+}
+coaxial_chat_golden :: (s: [] WcState, on: bool) #export_c { if s.count > 0 { s[0].golden = on; } }
+coaxial_chat_wants_text :: (s: [] WcState) -> bool #export_c {
+  if s.count < 1 { return false; }
+  if s[0].keying { return s[0].key_focus; }
+  return s[0].composer[0].focused || pk_is_open(s[0].picker[..]);
+}
+coaxial_chat_cursor :: (s: [] WcState) -> int #export_c { if s.count < 1 { return 0; } return s[0].cursor; }
+coaxial_chat_action :: (s: [] WcState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_chat_action_done :: (s: [] WcState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+coaxial_chat_inbox_cap :: () -> int #export_c { return WC_INBOX; }
+coaxial_chat_max_vertices :: () -> int #export_c { return WC_MAX_VERTICES; }
+coaxial_chat_vertex_floats :: () -> int #export_c { return GP_VERTEX_FLOATS; }
+
+// ---------------------------------------------------------------- the atlas, for coax/web/gpui.js
+
+coaxial_chat_glyph_count :: () -> int #export_c { return GP_GLYPHS; }
+coaxial_chat_glyph_code :: (g: int) -> int #export_c {
+  if g < 95 { return g + 32; }
+  extra := GP_EXTRA;
+  return ifx g - 95 < 3 then cast(int) extra[g - 95] else 63;
+}
+coaxial_chat_font_count :: () -> int #export_c { return GP_FONTS; }
+coaxial_chat_font_size :: (k: int) -> f32 #export_c { sizes := FONT_SIZES; return ifx k >= 0 && k < GP_FONTS then sizes[k] else 14.0f32; }
+coaxial_chat_font_weight :: (k: int) -> int #export_c { weights := FONT_WEIGHTS; return ifx k >= 0 && k < GP_FONTS then weights[k] else 0; }
+coaxial_chat_icon_count :: () -> int #export_c { return ICON_COUNT; }
+coaxial_chat_icon_size :: (i: int) -> f32 #export_c { sizes := ICON_SIZES; return ifx i >= 0 && i < ICON_COUNT then sizes[i] else 16.0f32; }
+// An icon's file name, into the scratch bytes; its length.
+coaxial_chat_icon_name :: (s: [] WcState, i: int) -> int #export_c {
+  if s.count < 1 || i < 0 || i >= ICON_COUNT { return 0; }
+  names := ICON_NAMES;
+  n := ifx names[i].count < 64 then names[i].count else 64;
+  for k: 0..<n { s[0].sbytes[k] = names[i][k]; }
+  return n;
+}
+// A font from the scratch: its header (7), then each glyph's advance, then the kerning.
+coaxial_chat_set_font :: (s: [] WcState, slot: int) #export_c {
+  if s.count < 1 { return; }
+  sizes := FONT_SIZES;
+  if slot < 0 || slot >= GP_FONTS { return; }
+  gp_set_font(s[0].atlas[..], slot, sizes[slot], s[0].scratch[0..<7], s[0].scratch[7..<7 + GP_GLYPHS], s[0].scratch[7 + GP_GLYPHS..<7 + GP_GLYPHS + GP_GLYPHS * GP_GLYPHS]);
+}
+coaxial_chat_set_icon :: (s: [] WcState, i: int, x: f32, y: f32, w: f32, h: f32) #export_c { if s.count > 0 { gp_set_icon(s[0].atlas[..], i, x, y, w, h); } }
+coaxial_chat_set_atlas :: (s: [] WcState, width: f32, height: f32, levels: int) #export_c { if s.count > 0 { gp_set_atlas(s[0].atlas[..], width, height, levels); } }
+coaxial_chat_set_dynamic :: (s: [] WcState, size: f32, pen_x: f32, pen_y: f32, y0: f32, cols: int, color_cols: int, color_width: f32, color_height: f32) #export_c {
+  if s.count > 0 { gp_set_dynamic(s[0].atlas[..], size, pen_x, pen_y, y0, cols, color_cols, color_width, color_height); }
+}
+coaxial_chat_next_cluster :: (s: [] WcState) -> int #export_c { if s.count < 1 { return -1; } return gp_next_cluster(s[0].atlas[..]); }
+// A cluster's bytes into the scratch bytes; font * 256 + their count.
+coaxial_chat_cluster :: (s: [] WcState, slot: int) -> int #export_c { if s.count < 1 { return 0; } return gp_cluster(s[0].atlas[..], slot, s[0].sbytes[..]); }
+coaxial_chat_measured :: (s: [] WcState, slot: int, advance: f32, color: bool) #export_c { if s.count > 0 { gp_measured(s[0].atlas[..], slot, advance, color); } }
+coaxial_chat_next_cell :: (s: [] WcState) -> int #export_c { if s.count < 1 { return -1; } return gp_next_cell(s[0].atlas[..]); }
+// A wanted cell's six numbers into the scratch: slot, level, subpixel, color, texel x, y.
+coaxial_chat_cell :: (s: [] WcState, cell: int) -> bool #export_c { if s.count < 1 { return false; } return gp_cell(s[0].atlas[..], cell, s[0].scratch[0..<6]); }
+coaxial_chat_cell_ready :: (s: [] WcState, cell: int) #export_c { if s.count > 0 { gp_cell_ready(s[0].atlas[..], cell); } }
 
 // ---------------------------------------------------------------- checks
 
-// A #test's buffers: enough for the fixtures, and small, so the checks stay
-// inside the compiler's aggregate storage limit (E0400).
-CH_TEST_DATA :: 4096;
-CH_TEST_INBOX :: 1024;
-CH_TEST_VERTICES :: 24000;
-
-CH_FIXTURE :: "200\nZ|0.12|10.00|||0|1|7\nC|7|What does release.sh do?|claude-opus-5-5|Oct 28 15:52|1\nC|3|Older|claude-haiku-5-5|Oct 27 09:00|0\nS|7|What does release.sh do?|claude-opus-5-5|1\nU|20|done|Oct 28 15:50|claude-haiku-5-5|openagents|What does coax/web/release.sh do?|## What it does\\n\\nIt **releases** the site:\\n\\n- builds `apps/openagents-web`\\n- runs the goldens\\n\\n```\\ncoax/web/release.sh\\n```\\n\\n1. one\\n2. two \\p three\\n> quoted||Oct|0.0123\nT|20|Read|coax/web/release.sh\nU|21|running|Oct 28 15:52|claude-opus-5-5|openagents|And then?|||reading coax/web/deploy.sh|0.0000\nT|21|Read|coax/web/deploy.sh\n";
-
-ch_fresh :: (s: [] ChatState, out: [] f32, u: [] f32, w: f32, h: f32) -> int {
-  return coaxial_chat_frame(s, out, u, w, h, 2, 0.016, true);
+#test "the agent's tools become Zeron's chips" {
+  #assert wc_tool_kind("Read") == TK_READ;
+  #assert wc_tool_kind("Grep") == TK_SEARCH;
+  #assert wc_tool_kind("Glob") == TK_GLOB;
+  #assert wc_tool_kind("WebSearch") == TK_WEB;
+  #assert wc_tool_kind("WebFetch") == TK_FETCH;
+  #assert wc_tool_kind("Mystery") == TK_TOOL;
 }
-ch_has_hit :: (s: [] ChatState, id: int) -> bool {
-  for i: 0..<s[0].hit_n { if s[0].hit_id[i] == id { return true; } }
-  return false;
+#test "a group's summary is Zeron's words" {
+  kinds := [4] int.[TK_READ, TK_READ, TK_SEARCH, TK_FETCH];
+  out: [128] u8;
+  n := wc_summary(kinds[..], 4, out[..]);
+  #assert cast(string) out[0..<n] == "Read 2 files · searched 1 time · fetched 1 page";
+  one := [1] int.[TK_GLOB];
+  n = wc_summary(one[..], 1, out[..]);
+  #assert cast(string) out[0..<n] == "Searched 1 time";
 }
-ch_loaded :: (s: [] ChatState, out: [] f32, u: [] f32) {
-  n0 := ch_fresh(s, out, u, 1440, 900);
-  coaxial_chat_asked(s, 0);
-  ch_answer(s, 0, CH_FIXTURE);
+#test "cents, JSON and answers" {
+  #assert wc_cents("1.07") == 107;
+  #assert wc_cents("5") == 500;
+  #assert wc_cents("") == -1;
+  buf: [64] u8;
+  n := wc_json(buf[..], 0, "a\"b\nc");
+  #assert cast(string) buf[0..<n] == "a\\\"b\\nc";
+  #assert wc_value("{\"c\": 42, \"error\": \"no\"}", 0, "c") == "42";
+  #assert wc_value("{\"c\": 42, \"error\": \"no\"}", 0, "error") == "no";
+  #assert wc_int("12") == 12 && wc_int("x") == -1;
 }
-ch_typed_in :: (s: [] ChatState, text: string) {
-  for i: 0..<text.count { s[0].inbox[i] = text[i]; }
-  coaxial_chat_message(s, CH_TYPED, text.count);
+#test "titles lose their escapes" {
+  buf: [32] u8;
+  #assert wc_decode_into("a\\pb\\nc", buf[..]) == "a|b c";
 }
-
-#test "signed out or not an admin: LOG IN and nothing else" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  n0 := ch_fresh(s[..], out[..], u[..], 1440, 900);
-  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/chat/state";
-  coaxial_chat_asked(s[..], 0);
-  ch_answer(s[..], 0, "401\n{\"error\": \"log in as an admin\"}");
-  n := ch_fresh(s[..], out[..], u[..], 1440, 900);
-  #assert n > 0 && s[0].line_n == 0 && ch_has_hit(s[..], H_SIGNIN) && !ch_has_hit(s[..], H_FIELD) && !ch_has_hit(s[..], H_KEY);
-  #assert s[0].ask_n == 0;   // and it stops asking
-  ch_act(s[..], H_SIGNIN);
-  #assert s[0].action == CH_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/login";
-}
-
-#test "an admin's page: the list, the conversation shown, its answer drawn, the tool in use and STOP" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  ch_loaded(s[..], out[..], u[..]);
-  #assert s[0].status == 200 && s[0].shown == 7 && ch_count(s[..], 'U') == 2 && ch_busy(s[..]);
-  n := ch_fresh(s[..], out[..], u[..], 2880, 1800);
-  #assert n > 3000;
-  #assert ch_has_hit(s[..], H_CONV + 1);
-  #assert ch_has_hit(s[..], H_STOP);
-  #assert ch_has_hit(s[..], H_FIELD) && ch_has_hit(s[..], H_MODEL + 2);
-  #assert ch_model(s[..]) == 2;
-  // while a turn runs it reads again after 2 s, for the conversation shown
-  s[0].time += 2.1;
-  n2 := ch_fresh(s[..], out[..], u[..], 2880, 1800);
-  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/chat/state?c=7";
-  ch_act(s[..], H_STOP);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/stop" && cast(string) s[0].body[0..<s[0].body_n] == "{\"c\":\"7\"}";
-}
-
-#test "a phone draws the conversation alone, CHATS over it" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  ch_loaded(s[..], out[..], u[..]);
-  n := ch_fresh(s[..], out[..], u[..], 780, 1688);
-  #assert n > 1000 && !ch_has_hit(s[..], H_CONV) && ch_has_hit(s[..], H_CHATS) && ch_has_hit(s[..], H_FIELD) && ch_has_hit(s[..], H_MODEL + 2);
-  for i: 0..<s[0].hit_n { b := s[0].hit_box[i]; #assert b.x0 >= 0 && b.x1 <= 780; }
-  ch_act(s[..], H_CHATS);
-  n2 := ch_fresh(s[..], out[..], u[..], 780, 1688);
-  #assert ch_has_hit(s[..], H_CONV + 1) && !ch_has_hit(s[..], H_FIELD);
-  ch_act(s[..], H_CONV + 1);
-  #assert s[0].shown == 3 && !s[0].listing && s[0].asked_at < 0;
-}
-
-#test "a message is sent with its conversation and model, escaped as JSON; a new chat sends none" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  ch_loaded(s[..], out[..], u[..]);
-  ch_answer(s[..], -5, "");   // nothing waits for that
-  // the running turn ends
-  coaxial_chat_asked(s[..], 1);
-  done := "200\nZ|0.20|10.00||||0|7\nC|7|T|claude-opus-5-5|Oct 28|0\nS|7|T|claude-opus-5-5|1\nU|21|done|Oct 28|claude-opus-5-5|openagents|And then?|ok||x|0.0100\n";
-  ch_answer(s[..], 1, done);
-  #assert !ch_busy(s[..]);
-  ch_act(s[..], H_FIELD);
-  #assert coaxial_chat_wants_text(s[..]);
-  ch_typed_in(s[..], "say \"hi\"\nnow");
-  // Cmd+A and Cmd+C copy what's typed, Cmd+R is the browser's, typing replaces a selection
-  #assert !coaxial_chat_key(s[..], 'r', 8) && coaxial_chat_key(s[..], 'a', 8) && coaxial_chat_key(s[..], 'c', 8);
-  #assert s[0].action == TK_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "say \"hi\"\nnow";
-  coaxial_chat_action_done(s[..]);
-  #assert coaxial_chat_key(s[..], 'Q', 0) && cast(string) s[0].text[0..<s[0].text_n] == "Q";
-  #assert coaxial_chat_key(s[..], K_BACK, 8) && s[0].text_n == 0;
-  ch_typed_in(s[..], "say \"hi\"\nnow");
-  k2 := coaxial_chat_key(s[..], K_ENTER, 0);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/send";
-  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"c\":\"7\",\"text\":\"say \\\"hi\\\"\\nnow\",\"model\":\"claude-opus-5-5\"}";
-  coaxial_chat_posted(s[..], 5);
-  #assert s[0].body_n == 0 && s[0].body[0] == 0;
-  ch_answer(s[..], 5, "200\n{\"c\": 7, \"turn\": 22, \"model\": \"claude-opus-5-5\"}");
-  #assert s[0].text_n == 0 && s[0].asked_at < 0;
-  ch_act(s[..], H_NEW);
-  #assert s[0].shown == 0 && ch_model(s[..]) == 2;
-  ch_act(s[..], H_MODEL + 0);
-  #assert s[0].post_n == 0 && ch_model(s[..]) == 0;     // a new chat: kept here until it's sent
-  ch_typed_in(s[..], "fresh");
-  ch_act(s[..], H_SEND);
-  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"text\":\"fresh\",\"model\":\"claude-haiku-5-5\"}";
-  coaxial_chat_posted(s[..], 6);
-  ch_answer(s[..], 6, "200\n{\"c\": 9, \"turn\": 23, \"model\": \"claude-haiku-5-5\"}");
-  #assert s[0].shown == 9;
-}
-
-#test "a model chosen mid-conversation is posted for it; the cap and its words" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  ch_loaded(s[..], out[..], u[..]);
-  ch_act(s[..], H_MODEL + 1);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/model" && cast(string) s[0].body[0..<s[0].body_n] == "{\"c\":\"7\",\"model\":\"claude-sonnet-5-5\"}";
-  #assert ch_model(s[..]) == 1;
-  coaxial_chat_posted(s[..], 2);
-  ch_answer(s[..], 2, "200\n{}");
-  coaxial_chat_asked(s[..], 3);
-  capped := "200\nZ|10.02|10.00|||0|0|7\nS|7|T|claude-sonnet-5-5|1\n";
-  ch_answer(s[..], 3, capped);
-  #assert ch_capped(s[..]) && ch_model(s[..]) == 1;
-  ch_typed_in(s[..], "x");
-  s[0].typing = true; s[0].focus = 0;
-  ch_typed_in(s[..], "more");
-  ch_send(s[..]);
-  coaxial_chat_posted(s[..], 4);
-  ch_answer(s[..], 4, "429\n{\"cap\": true, \"error\": \"Today's $10 limit for /chat is used up.\"}");
-  #assert cast(string) s[0].note[0..<s[0].note_n] == "Today's $10 limit for /chat is used up.";
-  #assert ch_cents("10.00") == 1000 && ch_cents("0.5") == 50 && ch_cents("3") == 300;
-}
-
-#test "KEY: a pasted key is masked, posted once and wiped; a refusal says why; REMOVE" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  ch_loaded(s[..], out[..], u[..]);
-  ch_act(s[..], H_KEY);
-  n := ch_fresh(s[..], out[..], u[..], 1440, 900);
-  #assert s[0].keying && ch_has_hit(s[..], H_KFIELD) && ch_has_hit(s[..], H_KSAVE) && !ch_has_hit(s[..], H_REMOVE);
-  ch_act(s[..], H_KFIELD);
-  ch_typed_in(s[..], " sk-ant-api03-abc\nWXYZ ");
-  #assert cast(string) s[0].key[0..<s[0].key_n] == "sk-ant-api03-abcWXYZ" && s[0].text_n == 0;
-  k := coaxial_chat_key(s[..], K_ENTER, 0);
-  #assert s[0].key_n == 0 && s[0].key[0] == 0;
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/key" && cast(string) s[0].body[0..<s[0].body_n] == "{\"credential\":\"sk-ant-api03-abcWXYZ\"}";
-  coaxial_chat_posted(s[..], 3);
-  #assert s[0].body_n == 0;
-  ch_answer(s[..], 3, "400\n{\"error\":\"That key didn't work: invalid x-api-key\"}");
-  #assert cast(string) s[0].knote[0..<s[0].knote_n] == "That key didn't work: invalid x-api-key";
-  // saved: its kind and last four, REPLACE and REMOVE
-  coaxial_chat_asked(s[..], 4);
-  ch_answer(s[..], 4, "200\nZ|0.12|10.00|oauth|OATK|0|0|7\nS|7|T|claude-opus-5-5|1\n");
-  n2 := ch_fresh(s[..], out[..], u[..], 1440, 900);
-  #assert ch_has_hit(s[..], H_REPLACE) && ch_has_hit(s[..], H_REMOVE) && !ch_has_hit(s[..], H_KFIELD) && !ch_capped(s[..]);
-  ch_act(s[..], H_REMOVE);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/key_remove" && cast(string) s[0].body[0..<s[0].body_n] == "{}";
-  ch_act(s[..], H_CLOSE);
-  #assert !s[0].keying;
-}
-
-#test "Markdown: escapes undone, marks taken out, links kept readable" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  #assert ch_decode(s[..], "a\\nb \\p c \\\\ d") == "a\nb | c \\ d";
-  buf: [200] u8;
-  #assert ch_inline("It **releases** `x` see [docs](https://a.b/c) and [f.c](f.c)", buf[..]) == "It releases x see docs (https://a.b/c) and f.c";
-  #assert ch_is_sep("|---|:--:|") && !ch_is_sep("| a | b |") && ch_is_rule("---") && !ch_is_rule("-- a");
-}
-
-#test "on the Mac app the turns are the user's own Claude Code: no KEY and no cap" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  n0 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
-  coaxial_chat_asked(s[..], 0);
-  ch_answer(s[..], 0, "200\nZ|0.00|0.00|local||0|0|0|\n");
-  n := ch_fresh(s[..], out[..], u[..], 2640, 1760);
-  #assert n > 0 && ch_local(s[..]) && !ch_capped(s[..]) && !ch_has_hit(s[..], H_KEY) && ch_has_hit(s[..], H_FIELD);
-  #assert ch_effort(s[..]) == EFFORT_DEFAULT && ch_has_hit(s[..], H_EFFORT + 4);
-  ch_act(s[..], H_EFFORT + 3);
-  #assert ch_effort(s[..]) == 3 && cast(string) s[0].post[0..<s[0].post_n] == "/api/chat/effort" && cast(string) s[0].body[0..<s[0].body_n] == "{\"effort\":\"xhigh\"}";
-}
-
-#test "the web has no effort chips" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  ch_loaded(s[..], out[..], u[..]);
-  n := ch_fresh(s[..], out[..], u[..], 2880, 1800);
-  #assert !ch_has_hit(s[..], H_EFFORT) && ch_has_hit(s[..], H_KEY);
-}
-
-#test "a pushed state replaces the lines only for the conversation shown" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  ch_loaded(s[..], out[..], u[..]);
-  push := "Z|0|0|local||0|1|7|high\nS|7|T|claude-opus-5-5|1\nU|21|running|Oct 28|claude-opus-5-5|local|And then?|Hel||writing|0\n";
-  for i: 0..<push.count { s[0].inbox[i] = push[i]; }
-  coaxial_chat_message(s[..], CH_PUSHED, push.count);
-  #assert ch_count(s[..], 'U') == 1 && ch_local(s[..]);
-  other := "Z|0|0|local||0|1|3|high\n";
-  for i: 0..<other.count { s[0].inbox[i] = other[i]; }
-  coaxial_chat_message(s[..], CH_PUSHED, other.count);
-  #assert ch_count(s[..], 'U') == 1;
-}
-
-#test "the Mac app's Lab: LAB in the header, then BACK, one transcript and one field on /api/lab" {
-  s: [1] ChatState; data: [CH_TEST_DATA] u8; inbox: [CH_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
-  out: [CH_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
-  n0 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
-  coaxial_chat_asked(s[..], 0);
-  ch_answer(s[..], 0, "200\nZ|0|0|local||0|0|0|high\n");
-  n1 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
-  #assert ch_has_hit(s[..], H_LAB);
-  ch_act(s[..], H_LAB);
-  n2 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
-  #assert s[0].lab && cast(string) s[0].ask[0..<s[0].ask_n] == "/api/lab/state";
-  #assert ch_has_hit(s[..], H_BACK) && ch_has_hit(s[..], H_FIELD) && !ch_has_hit(s[..], H_MODEL) && !ch_has_hit(s[..], H_NEW);
-  coaxial_chat_asked(s[..], 1);
-  ch_answer(s[..], 1, "200\nZ|0|0|local||0|0|lab|high\nU|5|done|Oct 28|claude-opus-5-5|local|hi|hello||x|0\n");
-  #assert ch_count(s[..], 'U') == 1;
-  ch_typed_in(s[..], "again");
-  ch_act(s[..], H_SEND);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/lab/send" && cast(string) s[0].body[0..<s[0].body_n] == "{\"text\":\"again\"}";
-  coaxial_chat_posted(s[..], 2);
-  push := "Z|0|0|local||0|1|lab|high\nU|5|done|Oct 28|claude-opus-5-5|local|hi|hello||x|0\nU|6|running|Oct 28|claude-opus-5-5|local|again|he||writing|0\n";
-  for i: 0..<push.count { s[0].inbox[i] = push[i]; }
-  coaxial_chat_message(s[..], CH_PUSHED, push.count);
-  #assert ch_count(s[..], 'U') == 2;
-  ch_act(s[..], H_BACK);
-  #assert !s[0].lab && s[0].line_n == 0;
-  n3 := ch_fresh(s[..], out[..], u[..], 2640, 1760);
-  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/chat/state";
+#test "the menu offers the three models oa-api runs" {
+  c: [1] PkCatalog;
+  c[0] = wc_catalog();
+  #assert c[0].n == 3 && c[0].id[0] == "claude-opus-5-5" && c[0].label[2] == "Haiku 5.5";
+  #assert pk_level_for(c[..], 0, 0) == -1;
+  #assert wc_model_index("claude-sonnet-5-5") == 1 && wc_model_name("claude-haiku-5-5") == "Haiku 5.5";
 }

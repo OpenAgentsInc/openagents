@@ -1,122 +1,207 @@
-// /chat's passes: the same as /projects (projects.wgsl), whose HUD it draws.
-// The projects list's two passes (projects.coax decides every number): a dark
-// nebula, dimmer than the splash's so the HUD reads over it, with the glass
-// of up to ten HUD panels, then the strokes.
+// /chat's passes: GPUI's quad, shadow and sprite shaders, the WebGPU port of
+// apps/openagents-desktop/Zeron.metal (itself zeronsh/zui's
+// gpui_macos/src/shaders.metal, Apache-2.0, the renderer Zeron draws with),
+// so the page draws the shared Zeron components (apps/shared/zeron/,
+// gpui.coax writes the vertices) exactly as the Mac app does. Based on Zeron
+// by Wing, MIT. Colors are straight sRGB with alpha, blended source-over into
+// a non-sRGB target, as GPUI does; the host (coax/web/gpui.js) gives this the
+// glyph and icon atlas (gpui_atlas, r8) and the color-glyph atlas
+// (gpui_color, rgba8, straight alpha).
 //
-// Temporary: hand-written WGSL until Coax emits WGSL (coax/web.md). The
-// nebula and the stroke modes are splash.wgsl's.
+// Hand-written WGSL, as Zeron.metal is hand-written Metal: GPUI's fragment
+// shaders are not Coax, so coax/web/wgsl.py (which translates Coax scalar
+// functions) has nothing to translate. Keep the two files in step.
+//
+// A vertex is 28 floats (gpui.coax GP_VERTEX_FLOATS):
+//   a: device x, y, kind (0 quad, 1 shadow, 2 sprite, 3 color sprite, 4 elbow, 5 gradient, 6 inset), blur
+//   b: the primitive's bounds in device pixels: x, y, w, h
+//   c: corner radius, border width, u, v
+//   d: fill (a sprite's color)
+//   e: border color
+//   f: the content mask, device x0, y0, x1, y1
+//   g: GPUI's EdgeFade, device top y, top band, bottom y, bottom band
 
-struct U {
-  size: vec2f, time: f32, fade: f32, still: f32, count: f32, pad0: f32, pad1: f32,
-  panels: array<vec4f, 20>,   // per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0
-}
+struct U { size: vec2f, pad0: f32, pad1: f32 }
 @group(0) @binding(0) var<uniform> u: U;
-// The system sans for small text: the host's glyph atlas (coax/web/host.js, "the sans atlas").
-@group(0) @binding(1) var sans_atlas: texture_2d<f32>;
-@group(0) @binding(2) var sans_sampler: sampler;
+@group(0) @binding(1) var gpui_atlas: texture_2d<f32>;
+@group(0) @binding(2) var gpui_color: texture_2d<f32>;
+@group(0) @binding(3) var gpui_sampler: sampler;
 
+// The canvas: Zeron Dark's shell (the frame paints it too).
 @vertex fn bg_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
   let p = array(vec2f(-1.0, -3.0), vec2f(-1.0, 1.0), vec2f(3.0, 1.0));
   return vec4f(p[i], 0.0, 1.0);
 }
-fn hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
-fn noise(p: vec2f) -> f32 {
-  let i = floor(p); let f = fract(p); let s = f * f * (3.0 - 2.0 * f);
-  return mix(mix(hash(i), hash(i + vec2f(1.0, 0.0)), s.x), mix(hash(i + vec2f(0.0, 1.0)), hash(i + vec2f(1.0, 1.0)), s.x), s.y);
-}
-fn fbm(q: vec2f) -> f32 {
-  var p = q; var v = 0.0; var a = 0.5;
-  for (var k = 0; k < 5; k++) { v += a * noise(p); p = p * 2.03 + vec2f(1.7, 9.2); a *= 0.5; }
-  return v;
-}
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  let uv = (pos.xy - 0.5 * u.size) / u.size.y;
-  let t = u.time * 0.03;
-  let w = vec2f(fbm(uv * 1.4 + vec2f(t, -t)), fbm(uv * 1.4 + vec2f(-t, t * 0.7) + 4.0));
-  let n = fbm(uv * 2.0 + 2.4 * w + vec2f(0.0, t));
-  let glow = exp(-1.6 * dot(uv, uv));
-  let tint = mix(vec3f(0.035, 0.038, 0.05), vec3f(0.13, 0.14, 0.18), n * n);
-  var c = tint * glow * (0.25 + 0.75 * n) * 0.8;
-  // a faint warm horizon behind the Grid
-  c += vec3f(0.06, 0.03, 0.008) * exp(-pow((uv.y - 0.08) * 6.0, 2.0)) * glow;
-  let star = step(0.998, hash(floor(pos.xy * 0.5))) * (0.5 + 0.5 * sin(u.time * 1.3 + hash(floor(pos.xy)) * 40.0));
-  c += vec3f(star * 0.35 * (1.0 - glow * 0.6));
-  c = c * u.fade;
-  for (var k = 0; k < 10; k++) {
-    if (f32(k) >= u.count) { break; }
-    c = panel(pos.xy, c, u.panels[k * 2], u.panels[k * 2 + 1]);
-  }
-  return vec4f(c, 1.0);
+  return vec4f(13.0 / 255.0, 13.0 / 255.0, 13.0 / 255.0, 1.0);
 }
 
-// A HUD panel's glass: dark, its plain corners (top right, bottom left) clipped at 45°, faint scanlines and
-// an orange glow inside its edge.
-fn panel(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
-  let alpha = s.y * u.fade;
-  if (alpha <= 0.0) { return under; }
-  let x = p.x - r.x; let y = p.y - r.y; let w = r.z - r.x; let h = r.w - r.y;
-  let side = min(min(x, w - x), min(y, h - y));
-  let corner = min((w - x) + y, x + (h - y)) - s.x;
-  let inside = min(side, corner * 0.7071);
-  if (inside <= 0.0) { return under; }
-  let tint = vec3f(1.0, 0.55, 0.12);
-  let shade = mix(vec3f(0.03, 0.022, 0.016), vec3f(0.01, 0.011, 0.016), clamp(y / max(h, 1.0), 0.0, 1.0));
-  let line = select(0.0, 0.018, fract(p.y / 3.0) < 0.34);
-  let edge = exp(-inside / 22.0) * 0.07;
-  let glass = mix(under * 0.25, shade, 0.85) + vec3f(line) + tint * edge;
-  return mix(under, glass, clamp(alpha, 0.0, 1.0) * smoothstep(0.0, 1.5, inside));
+struct ZIn {
+  @location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f, @location(3) d: vec4f,
+  @location(4) e: vec4f, @location(5) f: vec4f, @location(6) g: vec4f,
 }
-
-// ---- the strokes: text, the HUD, the Grid, the tree and the agents, one quad each
-struct V {
+struct ZV {
   @builtin(position) pos: vec4f,
-  @location(0) place: vec2f,   // along, across, pixels
-  @location(1) shape: vec4f,   // length, core, light, glow
-  @location(2) tint: vec4f,    // red, green, blue, mode (project.coax MODE_*)
+  @location(0) @interpolate(flat) kind_blur: vec2f,
+  @location(1) @interpolate(flat) bounds: vec4f,
+  @location(2) @interpolate(flat) shape: vec2f,
+  @location(3) uv: vec2f,
+  @location(4) @interpolate(flat) fill: vec4f,
+  @location(5) @interpolate(flat) border: vec4f,
+  @location(6) @interpolate(flat) clip: vec4f,
+  @location(7) @interpolate(flat) fade: vec4f,
 }
-@vertex fn fx_vs(@location(0) a: vec4f, @location(1) b: vec4f, @location(2) c: vec4f) -> V {
-  var o: V;
-  let ndc = vec2f(a.x / u.size.x * 2.0 - 1.0, 1.0 - a.y / u.size.y * 2.0);
-  o.pos = vec4f(ndc, 0.0, 1.0);
-  o.place = a.zw;
-  o.shape = b;
-  o.tint = c;
+
+@vertex fn fx_vs(v: ZIn) -> ZV {
+  var o: ZV;
+  o.pos = vec4f(v.a.x / u.size.x * 2.0 - 1.0, 1.0 - v.a.y / u.size.y * 2.0, 0.0, 1.0);
+  o.kind_blur = v.a.zw; o.bounds = v.b; o.shape = v.c.xy; o.uv = v.c.zw;
+  o.fill = v.d; o.border = v.e; o.clip = v.f; o.fade = v.g;
   return o;
 }
-@fragment fn fx_fs(v: V) -> @location(0) vec4f {
-  if (v.tint.w > 3.5) {
-    // A sans glyph (font.coax draw_sans): place is the atlas coordinate, shape.x the em in pixels.
-    let lod = clamp(log2(64.0 / max(v.shape.x, 1.0)), 0.0, 4.0);
-    let a = pow(textureSampleLevel(sans_atlas, sans_sampler, v.place, lod).a, 0.85);
-    return vec4f(v.tint.rgb * a * min(v.shape.z * 1.15, 1.0) * u.fade, 1.0);
+
+fn quad_sdf_impl(corner_center_to_point: vec2f, corner_radius: f32) -> f32 {
+  if (corner_radius == 0.0) { return max(corner_center_to_point.x, corner_center_to_point.y); }
+  let signed_distance_to_inset_quad = length(max(vec2f(0.0), corner_center_to_point)) +
+                                      min(0.0, max(corner_center_to_point.x, corner_center_to_point.y));
+  return signed_distance_to_inset_quad - corner_radius;
+}
+fn over(below: vec4f, above: vec4f) -> vec4f {
+  let alpha = above.a + below.a * (1.0 - above.a);
+  return vec4f((above.rgb * above.a + below.rgb * below.a * (1.0 - above.a)) / alpha, alpha);
+}
+fn gaussian(x: f32, sigma: f32) -> f32 { return exp(-(x * x) / (2.0 * sigma * sigma)) / (sqrt(2.0 * 3.14159265) * sigma); }
+fn erf2(x: vec2f) -> vec2f {
+  let s = sign(x); let a = abs(x);
+  let r1 = 1.0 + (0.278393 + (0.230389 + (0.000972 + 0.078108 * a) * a) * a) * a;
+  let r2 = r1 * r1;
+  return s - s / (r2 * r2);
+}
+fn blur_along_x(x: f32, y: f32, sigma: f32, corner: f32, half_size: vec2f) -> f32 {
+  let delta = min(half_size.y - corner - abs(y), 0.0);
+  let curved = half_size.x - corner + sqrt(max(0.0, corner * corner - delta * delta));
+  let integral = 0.5 + 0.5 * erf2((x + vec2f(-curved, curved)) * (sqrt(0.5) / sigma));
+  return integral.y - integral.x;
+}
+
+// GPUI quad_fragment: one radius and one border width on every side, solid fills.
+fn quad_color(p: vec2f, bounds: vec4f, corner_radius: f32, bw: f32, background_color: vec4f, border_color: vec4f) -> vec4f {
+  if (bw == 0.0 && corner_radius == 0.0) { return background_color; }
+  let antialias_threshold = 0.5;
+  let half_size = bounds.zw / 2.0;
+  let center_to_point = p - bounds.xy - half_size;
+  let reduced_border = select(bw, -antialias_threshold, bw == 0.0);
+  let corner_to_point = abs(center_to_point) - half_size;
+  let corner_center_to_point = corner_to_point + corner_radius;
+  let is_near_rounded_corner = corner_center_to_point.x >= 0.0 && corner_center_to_point.y >= 0.0;
+  let straight_border_inner_corner_to_point = corner_to_point + reduced_border;
+  let is_beyond_inner_straight_border = straight_border_inner_corner_to_point.x > 0.0 || straight_border_inner_corner_to_point.y > 0.0;
+  let is_within_inner_straight_border = straight_border_inner_corner_to_point.x < -antialias_threshold &&
+                                        straight_border_inner_corner_to_point.y < -antialias_threshold;
+  if (is_within_inner_straight_border && !is_near_rounded_corner) { return background_color; }
+  let outer_sdf = quad_sdf_impl(corner_center_to_point, corner_radius);
+  var inner_sdf = 0.0;
+  if (corner_center_to_point.x <= 0.0 || corner_center_to_point.y <= 0.0) {
+    inner_sdf = -max(straight_border_inner_corner_to_point.x, straight_border_inner_corner_to_point.y);
+  } else if (is_beyond_inner_straight_border) {
+    inner_sdf = -1.0;
+  } else {
+    inner_sdf = -(outer_sdf + reduced_border);
   }
-  let along = max(max(-v.place.x, v.place.x - v.shape.x), 0.0);
-  let d = length(vec2f(along, v.place.y));
-  let mode = v.tint.w;
-  if (mode > 1.5 && mode < 2.5) {
-    // A payment in flight, as the Payment Network demo draws one
-    // (aethyr-cpp src/paynet/render.cpp): a capsule glow-wide with a
-    // white-hot head, its tail fading back along the path.
-    let r = d / max(v.shape.w, 1.0);
-    if (r >= 1.0) { return vec4f(0.0, 0.0, 0.0, 1.0); }
-    let tail = select(1.0, mix(0.08, 1.0, clamp(v.place.x / v.shape.x, 0.0, 1.0)), v.shape.x > 1.0);
-    let g = exp(-r * r * 5.0) * (1.0 - r);
-    let hot = exp(-r * r * 36.0) * v.shape.y;
-    let c = (v.tint.rgb * g + vec3f(1.0, 0.95, 0.86) * hot) * tail * v.shape.z * u.fade;
-    return vec4f(c, 1.0);
+  let border_sdf = max(inner_sdf, outer_sdf);
+  var color = background_color;
+  if (border_sdf < antialias_threshold) {
+    let blended_border = over(background_color, border_color);
+    color = mix(background_color, blended_border, saturate(antialias_threshold - inner_sdf));
   }
-  let core = 1.0 - smoothstep(v.shape.y - 0.5, v.shape.y + 0.6, d);
-  let g = d / max(v.shape.w, 1.0);
-  let halo = exp(-5.0 * g * g) * 0.28;
-  if (mode > 0.5 && mode < 1.5) {
-    // A link: soft across, and faded within 8 px of its nodes.
-    let ends = smoothstep(0.0, 8.0, v.place.x) * smoothstep(0.0, 8.0, v.shape.x - v.place.x);
-    return vec4f(v.tint.rgb * (core * 0.8 + halo) * ends * v.shape.z * u.fade, 1.0);
+  return color * vec4f(1.0, 1.0, 1.0, saturate(antialias_threshold - outer_sdf));
+}
+
+// GPUI shadow_fragment for a drop shadow.
+fn shadow_color(p: vec2f, bounds: vec4f, corner_radius: f32, blur: f32, color: vec4f) -> vec4f {
+  let half_size = bounds.zw / 2.0;
+  let pt = p - (bounds.xy + half_size);
+  var alpha = 0.0;
+  if (blur == 0.0) {
+    let corner_center_to_point = abs(pt) - half_size + corner_radius;
+    alpha = saturate(0.5 - quad_sdf_impl(corner_center_to_point, corner_radius));
+  } else {
+    let low = pt.y - half_size.y;
+    let high = pt.y + half_size.y;
+    let start = clamp(-3.0 * blur, low, high);
+    let end = clamp(3.0 * blur, low, high);
+    let step = (end - start) / 4.0;
+    var y = start + step * 0.5;
+    for (var i = 0; i < 4; i++) {
+      alpha += blur_along_x(pt.x, pt.y - y, blur, corner_radius, half_size) * gaussian(y, blur) * step;
+      y += step;
+    }
   }
-  if (mode > 2.5) {
-    // An amount: a near-white core in a coloured glow.
-    let c = (mix(v.tint.rgb, vec3f(1.0, 0.97, 0.92), 0.75) * core + v.tint.rgb * halo * 1.8) * v.shape.z * u.fade;
-    return vec4f(c, 1.0);
+  return color * vec4f(1.0, 1.0, 1.0, alpha);
+}
+
+// A vertical linear gradient (GPUI linear_gradient, 180 degrees, sRGB stops), no border.
+fn gradient_color(p: vec2f, bounds: vec4f, corner_radius: f32, top: vec4f, bottom: vec4f) -> vec4f {
+  let t = saturate((p.y - bounds.y) / max(bounds.w, 1.0));
+  return quad_color(p, bounds, corner_radius, 0.0, mix(top, bottom, t), vec4f(0.0));
+}
+
+// An unblurred inset shadow dy down (GPUI paint_inset_shadows).
+fn inset_color(p: vec2f, bounds: vec4f, corner_radius: f32, dy: f32, color: vec4f) -> vec4f {
+  let half_size = bounds.zw / 2.0;
+  let a = abs(p - bounds.xy - half_size) - half_size + corner_radius;
+  let b = abs(p - vec2f(0.0, dy) - bounds.xy - half_size) - half_size + corner_radius;
+  let inside = saturate(0.5 - quad_sdf_impl(a, corner_radius));
+  let covered = saturate(0.5 - quad_sdf_impl(b, corner_radius));
+  return color * vec4f(1.0, 1.0, 1.0, inside * (1.0 - covered));
+}
+
+// zui shaders.metal edge_fade_alpha, the top and bottom edges.
+fn edge_fade_alpha(p: vec2f, fade: vec4f) -> f32 {
+  var ramp = 1.0;
+  if (fade.y > 0.0) { ramp = min(ramp, clamp((p.y - fade.x) / fade.y, 0.0, 1.0)); }
+  if (fade.w > 0.0) { ramp = min(ramp, clamp((fade.z - p.y) / fade.w, 0.0, 1.0)); }
+  return ramp * ramp;
+}
+
+fn segment_distance(p: vec2f, a: vec2f, b: vec2f) -> f32 {
+  let pa = p - a; let ba = b - a;
+  let h = clamp(dot(pa, ba) / max(dot(ba, ba), 1e-6), 0.0, 1.0);
+  return length(pa - ba * h);
+}
+
+// The activity rail's elbow (transcript.rs activity_branch_points).
+fn elbow_color(p: vec2f, b: vec4f, c: vec2f, color: vec4f) -> vec4f {
+  let s = b.xy; let r = b.z; let end_x = b.w; let half_w = 0.5 * c.x;
+  var dist = 1e9;
+  var prev = s;
+  for (var k = 1; k <= 24; k++) {
+    let t = f32(k) / 24.0;
+    let q = s + r * vec2f(t * t, 2.0 * t - t * t);
+    dist = min(dist, segment_distance(p, prev, q));
+    prev = q;
   }
-  return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
+  dist = min(dist, segment_distance(p, prev, vec2f(end_x, s.y + r)));
+  var cover = saturate(half_w + 0.5 - dist);
+  if (c.y > 0.5) { cover = max(0.0, cover - saturate(half_w + 0.5 - abs(p.x - s.x))); }
+  return color * vec4f(1.0, 1.0, 1.0, cover);
+}
+
+@fragment fn fx_fs(v: ZV) -> @location(0) vec4f {
+  let p = v.pos.xy;
+  if (p.x < v.clip.x || p.y < v.clip.y || p.x >= v.clip.z || p.y >= v.clip.w) { discard; }
+  // read texel for pixel, as GPUI's sprites land on whole device pixels (no filtering to blur them)
+  let mono = textureLoad(gpui_atlas, vec2i(floor(v.uv * vec2f(textureDimensions(gpui_atlas)))), 0).r;
+  let poly = textureLoad(gpui_color, vec2i(floor(v.uv * vec2f(textureDimensions(gpui_color)))), 0);
+  let kind = v.kind_blur.x;
+  var c: vec4f;
+  if (kind > 5.5) { c = inset_color(p, v.bounds, v.shape.x, v.kind_blur.y, v.fill); }
+  else if (kind > 4.5) { c = gradient_color(p, v.bounds, v.shape.x, v.fill, v.border); }
+  else if (kind > 3.5) { c = elbow_color(p, v.bounds, v.shape, v.fill); }
+  else if (kind > 2.5) { c = vec4f(poly.rgb, poly.a * v.fill.a); }
+  else if (kind > 1.5) { c = vec4f(v.fill.rgb, v.fill.a * mono); }
+  else if (kind > 0.5) { c = shadow_color(p, v.bounds, v.shape.x, v.kind_blur.y, v.fill); }
+  else { c = quad_color(p, v.bounds, v.shape.x, v.shape.y, v.fill, v.border); }
+  c.a *= edge_fade_alpha(p, v.fade);
+  return c;
 }

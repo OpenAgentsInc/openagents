@@ -1,4 +1,4 @@
-// The Mac app's C face over chat.coax (apps/openagents-web/chat.coax): the
+// The Mac app's C face over chat.coax (apps/openagents-web/chat-hud.coax): the
 // same calls host.js makes of chat.wasm, as plain C for Swift.
 #pragma once
 #include <stdint.h>

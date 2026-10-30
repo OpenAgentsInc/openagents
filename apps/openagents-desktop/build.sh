@@ -2,7 +2,7 @@
 # Builds OpenAgents.app for this Mac (docs/desktop/coax-desktop.md): the
 # Zeron-fork chat screen (zeron/screen.coax, GPUI's shaders in Zeron.metal,
 # Geist and Zeron's icons) it opens on, and, still in the tree, the HUD chat
-# (chat.coax with chat.wgsl's passes) and the Lab's router (router.coax,
+# (chat-hud.coax, the old HUD chat /chat drew before the Zeron one) and the Lab's router (router.coax,
 # Mammoth), all compiled to C behind their C faces, with the AppKit host in Swift.
 #   apps/openagents-desktop/build.sh [--open]
 set -euo pipefail
@@ -11,7 +11,7 @@ repo="$(cd "$here/../.." && pwd)"
 work="$here/build"
 app="$work/OpenAgents.app"
 mkdir -p "$work/c" "$app/Contents/MacOS" "$app/Contents/Resources"
-"$repo/coax/bin/coax" c "$repo/apps/openagents-web/chat.coax" --library --header "$work/c/chat.h" > "$work/c/chat.c"
+"$repo/coax/bin/coax" c "$repo/apps/openagents-web/chat-hud.coax" --library --header "$work/c/chat.h" > "$work/c/chat.c"
 cflags=(-std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable -I"$work/c" -I"$here")
 /usr/bin/clang "${cflags[@]}" -c "$work/c/chat.c" -o "$work/c/chat.o"
 /usr/bin/clang "${cflags[@]}" -c "$here/face.c" -o "$work/c/face.o"
