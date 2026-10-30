@@ -1,0 +1,103 @@
+{
+  "release_receipt": "399c492885308c64965a0e9df8568eb8dc5d3545 20261030T145330Z staged fast",
+  "local_nip01_wasm": {
+    "frames": 82,
+    "keys": 10,
+    "hud_clicks": 18,
+    "index_navigation_viewports": 3,
+    "guard_bytes": true,
+    "slowest_frame_ms": 3.7,
+    "engine": "Nodev24.13.1"
+  },
+  "local_project_wasm": {
+    "viewports": 3,
+    "peak_vertices": 46764,
+    "max_vertices": 240000,
+    "finite_geometry": true,
+    "guard_bytes": true
+  },
+  "release_nip01_wasm": {
+    "frames": 82,
+    "keys": 10,
+    "hud_clicks": 18,
+    "index_navigation_viewports": 3,
+    "guard_bytes": true,
+    "slowest_frame_ms": 11.3,
+    "engine": "Nodev24.13.1"
+  },
+  "release_project_wasm": {
+    "viewports": 3,
+    "peak_vertices": 46758,
+    "max_vertices": 240000,
+    "finite_geometry": true,
+    "guard_bytes": true
+  },
+  "staging_modules": {
+    "project": {
+      "asset": "/build/project.c541ec9eb66e.wasm",
+      "sha256": "c541ec9eb66e065dcc588a9f298355face92a24365c72e058ce2519f49639d09",
+      "same_as_local": false
+    },
+    "nip01": {
+      "asset": "/build/nip01.1125612868fb.wasm",
+      "sha256": "1125612868fb53ea9d706236bebce13e016ce5511be35d54d4a8aaf4c5bfd2d5",
+      "same_as_local": false
+    }
+  },
+  "production_modules": {
+    "project": {
+      "asset": "/build/project.c541ec9eb66e.wasm",
+      "sha256": "c541ec9eb66e065dcc588a9f298355face92a24365c72e058ce2519f49639d09",
+      "same_as_staging": true
+    },
+    "nip01": {
+      "asset": "/build/nip01.1125612868fb.wasm",
+      "sha256": "1125612868fb53ea9d706236bebce13e016ce5511be35d54d4a8aaf4c5bfd2d5",
+      "same_as_staging": true
+    }
+  },
+  "nip_http": {
+    "routes": 23,
+    "html_checks": 46,
+    "markdown_checks": 23,
+    "assets": {
+      "/build/nip-guide.6c580426e3da.wasm": {
+        "bytes": 165156,
+        "sha256": "6c580426e3da88eac17fb47422bf83c1db4b4d2ef9def5f5cb434aa621ee7024",
+        "url_source_fingerprint": "6c580426e3da"
+      },
+      "/build/nip-guide.8c4d23fd65c1.wgsl": {
+        "bytes": 7514,
+        "sha256": "9b3c1d96d9348794872ecf56e9fd46d1ffd66a335ef2c10aaba933df63ee5b07",
+        "url_source_fingerprint": "8c4d23fd65c1"
+      },
+      "/build/nip01.1125612868fb.wasm": {
+        "bytes": 117250,
+        "sha256": "1125612868fb53ea9d706236bebce13e016ce5511be35d54d4a8aaf4c5bfd2d5",
+        "url_source_fingerprint": "1125612868fb"
+      },
+      "/build/nip01.8c4d23fd65c1.wgsl": {
+        "bytes": 7514,
+        "sha256": "9b3c1d96d9348794872ecf56e9fd46d1ffd66a335ef2c10aaba933df63ee5b07",
+        "url_source_fingerprint": "8c4d23fd65c1"
+      },
+      "/coaxial/host.f9ba818523b9.js": {
+        "bytes": 98179,
+        "sha256": "beb17796d72f2501ca0caf9de4803e3659e0e351e303c6abbe61203cf13dae68",
+        "url_source_fingerprint": "f9ba818523b9"
+      }
+    },
+    "all_identical_to_staging": true
+  },
+  "coax_html_and_markdown_intro_and_book_link": true,
+  "staging_browser_walk": "all pages passed; 99.0 seconds; desktop and phone NIP-01 both 0 blocks changed",
+  "performance_gate": "8 scenes at dpr 1/2 passed 60 FPS gate",
+  "production_browser_start_and_http_smoke": "passed",
+  "held_back_pages": [],
+  "coax_checks": {
+    "nip01": "47/47",
+    "project_new_intro": "passed",
+    "project_suite": "43/61; same 18 failures as baseline 42/60 (17 aggregate limits, 1 history-count assertion)"
+  },
+  "mutations": "unchanged cryptographic gates not rerun for presentation changes"
+}

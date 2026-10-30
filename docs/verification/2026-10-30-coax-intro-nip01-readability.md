@@ -43,6 +43,25 @@ No compiler limits or inherited checks were weakened. The new small check
 and actual emitted-Wasm geometry checks above pass. Full unchanged crypto
 mutation gates were not rerun for this presentation change.
 
-Deployment uses the normal clean-commit staging, browser/golden and performance
-gates before production promotion. Its result is recorded below after the
-release completes.
+## Deployed
+
+Code commit `399c492885308c64965a0e9df8568eb8dc5d3545` is live as release
+`20261030T145330Z`. The normal clean-commit release passed staging HTTP smoke,
+the full browser/golden walk (99 seconds), the eight-scene 60 FPS performance
+gate, production engine starts and production HTTP smoke. No pages were held
+back. NIP-01 desktop and phone each matched their reviewed golden with zero
+changed blocks.
+
+The downloaded release modules also pass the actual-Wasm checks: NIP-01's
+82 frames/controls and the project's three layouts (peak 46,758 vertices).
+Production serves exactly those checked staging module hashes. All 23 NIP
+routes, 46 HTML checks, 23 Markdown twins and five assets pass the separate
+HTTP checker; all five served asset identities match staging. The Coax page's
+HTML and Markdown both contain the introduction and book link. Production
+phone renders of both pages were reviewed in muted headless Chrome.
+
+The [evidence file](data/coax-intro-nip01-readability-2026-10-30/results.json)
+records the GCS PASSED receipt, module identities and check results.
+
+Live pages: [Coax](https://openagents.com/projects/coax) and
+[NIP-01](https://openagents.com/nip/01).
