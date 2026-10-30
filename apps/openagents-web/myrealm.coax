@@ -398,6 +398,11 @@ take_answer :: (s: [] MyRealm, t: [] Track, text: string) {
   if what == REQ_SPEC {
     if status == 200 && read_spec(s, body) {
       s[0].spec_ready = true; s[0].laid = false; lay_out(s);
+      if !s[0].entered {
+        // world-enter as every world's page sends it (made-<slug>, the realm's verse.worlds id), then realm-enter
+        w: [48] u8; wn := put(w[..], 0, "made-"); wn = put(w[..], wn, slug_text(s));
+        track_world(t, cast(string) w[0..<wn]);
+      }
       if !s[0].entered && track_begin(t, "realm-enter") { s[0].entered = true; track_str(t, "slug", slug_text(s)); track_bool(t, "owner", s[0].owner); track_end(t); }
     } else if !s[0].spec_ready { s[0].spec_failed = true; }
     return;
@@ -1702,6 +1707,16 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert q[0].people == 1 && person_name(q[..], 0) == "Old Mott" && person_role(q[..], 0) == "keeps the bridge";
   #assert q[0].placed_n == 1 && q[0].placed_thing[0] == 0 && abs(q[0].placed_x[0] - 3.5) < 0.01 && abs(q[0].placed_z[0] + 2.25) < 0.01;
   #assert abs(q[0].lantern_b - 1.0) < 0.01;
+}
+
+#test "a made realm records world-enter (made-<slug>) and realm-enter once its spec is read" {
+  s: [1] MyRealm; t: [1] Track;
+  track_init(t[..], "realm");
+  #assert track_message(t[..], HOST_PAGE, "tab=00000000000000aa\nfresh=1\nvisitor=00000000000000bb\nnow=1793200000000\nnav=10\nua=x\nvw=1280\nvh=800\ndpr=2");
+  opened(s[..], t[..], "moonlit-marsh", SPEC);
+  body := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert has_text(body, "\"ev\":\"world-enter\"") && has_text(body, "\"world\":\"made-moonlit-marsh\"");
+  #assert has_text(body, "\"ev\":\"realm-enter\"") && has_text(body, "\"slug\":\"moonlit-marsh\"");
 }
 
 #test "only what was checked is in it: an empty realm has nothing and no one" {
