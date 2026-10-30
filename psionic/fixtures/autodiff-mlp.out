@@ -1,0 +1,32 @@
+tape: 10 forward steps, 9 backward steps; statuses ok and ok
+values arena: 193 floats in 12 blocks while training, 128 floats in 10 blocks forward only, 234 if every value were kept
+gradient arena: 161 doubles in 13 blocks
+values saved for the backward pass: 3; 8 9 13
+
+gradient check at the start, central differences with h = 1/64:
+  W1: 16 elements, ok, gradient norm 0.831658, largest difference 0.000074
+  b1: 8 elements, ok, gradient norm 0.717109, largest difference 0.000286
+  W2: 8 elements, ok, gradient norm 1.644728, largest difference 0.000016
+  b2: 1 element, ok, gradient norm 4.650803, largest difference 0.000015
+  worst difference 0.000286: within 0.01
+
+training, learning rate 0.01:
+  step 0: loss 10.75579
+  step 100: loss 1.637489
+  step 200: loss 0.30915
+  step 300: loss 0.193845
+  step 400: loss 0.145242
+  step 500: loss 0.113336
+  step 600: loss 0.087372
+  step 700: loss 0.064215
+  step 800: loss 0.045014
+
+predictions after training (ok), against the targets:
+  (-0.75 -0.5): 1.522047 for 1.5
+  (-0.25 -0.5): 0.475214 for 0.5
+  (0.25 -0.5): -0.526302 for -0.5
+  (0.75 -0.5): -1.473953 for -1.5
+  (-0.75 0.5): -1.358504 for -1.5
+  (-0.25 0.5): -0.57965 for -0.5
+  (0.25 0.5): 0.395235 for 0.5
+  (0.75 0.5): 1.571067 for 1.5

@@ -1,0 +1,617 @@
+// Chapter 71b: reverse mode over chapter 26a's tensor IR, profile
+// autodiff-f32-v1. Forward values are f32, computed by the IR's own command
+// kernel; gradients are accumulated in f64 and rounded once to f32 when
+// published. A tape is a static schedule: forward steps, then backward steps
+// in reverse node order, with every value and gradient placed in an arena
+// for exactly as long as some step still reads it.
+//
+// Coax has no callbacks, so the caller steps the tape. Built-in operators
+// run inside ad_run. A registered operator (chapter 26c) and a node with a
+// custom derivative come back as a call: the caller runs its own kernel, then
+// ad_finish folds the result in.
+#authority;
+#load "operator-registry.coax";
+#load "tensor-ops-backward.coax";
+#load "tensor-ir-kernels.coax";
+#load "../examples/operators/squared-relu.coax";
+
+#test "every built-in rule agrees with chapter 3's dense Jacobian" {
+    data:=[12]f32.[1,-2,0,3,2,-1,0.5,4,-3,1,2,-0.5];weights:=[12]f32.[1,2,3,-1,0.5,2,-2,1,0.25,3,-1,1];
+    for op:0..<7 {
+        p:TiProgram;
+        sa:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};sb:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};
+        o:=TiNode.{op=TiOp.add,a=0,b=1};bv:=[6]f32.[10,20,30,0,0,0];
+        if op==1 {o.op=TiOp.multiply;sb=TvShape.{rank=2,dims=[4]int.[2,1,0,0]};bv=[6]f32.[2,-3,0,0,0,0];}
+        if op==2 {o.op=TiOp.matmul;sb=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};bv=[6]f32.[1,2,3,4,5,6];}
+        if op==3 {o=TiNode.{op=TiOp.relu,a=0};}
+        if op==4 {o=TiNode.{op=TiOp.sum,a=0,axis=1};}
+        if op==5 {o=TiNode.{op=TiOp.gather,a=0,axis=0,index_count=3};o.indices[0]=2;o.indices[2]=2;sa=TvShape.{rank=2,dims=[4]int.[3,2,0,0]};}
+        if op==6 {o=TiNode.{op=TiOp.sum,a=0,axis=1};sa=TvShape.{rank=3,dims=[4]int.[2,3,2,0]};}
+        p.nodes[0]=ti_input(sa,0);p.nodes[1]=ti_input(sb,16);p.nodes[2]=o;p.count=3;p.output=2;
+        shape:=ti_compile(p,TiTarget.{},false).values[2].view.shape;p.count=5;p.output=4;
+        p.nodes[3]=ti_input(shape,32);p.nodes[4]=TiNode.{op=TiOp.multiply,a=2,b=3};
+        inputs:[48]f32;for j:0..<12 {inputs[j]=data[j];inputs[32+j]=weights[j];}
+        for j:0..<6 {inputs[16+j]=bv[j];}
+        mode:AdMode;mode.grad[0]=true;mode.grad[1]=true;
+        t:=ad_tape(p,mode,OrRegistry.{});#assert t.status==AdStatus.ok;
+        values:[64]f32;grads:[64]f64;flags:[16]u8;
+        run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);#assert run.status==AdStatus.ok && !run.external && run.cursor.next==t.count;
+        na:=ad_count(sa);ga:[12]f32;gb:[6]f32;
+        #assert ad_gradient(t,run.cursor,0,grads[..],ga[..])==AdStatus.ok;
+        binary:=ti_binary(o.op);nb:=0;if binary {nb=ad_count(sb);}
+        #assert ad_gradient(t,run.cursor,1,grads[..],gb[..])==(ifx binary then AdStatus.ok else AdStatus.unused);
+        owners:=[2]TvStorage.[tv_owner(1,1,na).storage,tv_owner(2,1,nb).storage];
+        views:=[2]TvView.[tv_contiguous(owners[0],sa,false).view,tv_contiguous(owners[1],ifx binary then sb else TvShape.{rank=1},false).view];
+        n:=ad_count(shape);ra:[12]f32;rb:[6]f32;sa2:[12]f32;sb2:[6]f32;
+        r:=to_vjp_checked(ti_request(o),owners[..],views[..],inputs[0..<na],inputs[16..<16+nb],o.indices[0..<o.index_count],inputs[32..<32+n],ra[..],rb[0..<nb],sa2[..],sb2[0..<nb],false);
+        #assert r.status==ToStatus.ok;
+        for j:0..<na {#assert ga[j]==ra[j];}
+        for j:0..<nb {#assert gb[j]==rb[j];}
+    }
+}
+#test "a value used twice adds both uses and a shared node is differentiated once" {
+    p:TiProgram;p.count=5;p.output=4;v:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};p.nodes[2]=TiNode.{op=TiOp.relu,a=1};
+    p.nodes[3]=TiNode.{op=TiOp.add,a=2,b=0};p.nodes[4]=TiNode.{op=TiOp.add,a=3,b=2};
+    mode:AdMode;mode.grad[0]=true;t:=ad_tape(p,mode,OrRegistry.{});
+    #assert t.status==AdStatus.ok && t.forward==4 && t.count==8 && t.steps[4].node==4 && t.steps[7].node==1 && t.steps[7].backward;
+    inputs:=[3]f32.[1,-2,3];values:[32]f32;grads:[32]f64;flags:[8]u8;g:[3]f32;y:[3]f32;
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    // y = 2x^2 + x, so dy/dx = 4x + 1.
+    #assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok && g[0]==5 && g[1]==-7 && g[2]==13;
+    #assert ad_value(t,run.cursor,4,inputs[..],values[..],y[..])==AdStatus.ok && y[0]==3 && y[1]==6 && y[2]==21;
+}
+#test "unused inputs detached nodes and forward-only tapes publish no gradient" {
+    p:TiProgram;p.count=4;p.output=3;v:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=ti_input(v,2);p.nodes[2]=TiNode.{op=TiOp.relu,a=0};p.nodes[3]=TiNode.{op=TiOp.sum,a=2,axis=0};
+    inputs:=[4]f32.[2,-1,5,5];values:[8]f32;grads:[8]f64;flags:[4]u8;g:[2]f32;
+    mode:AdMode;mode.grad[0]=true;mode.grad[1]=true;
+    t:=ad_tape(p,mode,OrRegistry.{});run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    #assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok && g[0]==1 && g[1]==0;
+    #assert ad_gradient(t,run.cursor,1,grads[..],g[..])==AdStatus.unused;
+    #assert ad_gradient(t,run.cursor,2,grads[..],g[..])==AdStatus.state && ad_gradient(t,AdCursor.{next=t.count-1},0,grads[..],g[..])==AdStatus.state;
+    mode.detach[2]=true;t=ad_tape(p,mode,OrRegistry.{});run=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    #assert t.count==t.forward && t.grads.top==0 && ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.unused;
+    mode.detach[2]=false;mode.enabled=false;t=ad_tape(p,mode,OrRegistry.{});run=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    #assert t.count==t.forward && !t.saved[2] && ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.mode;
+    mode.enabled=true;mode.detach[0]=true;#assert ad_tape(p,mode,OrRegistry.{}).status==AdStatus.mode;
+    mode.detach[0]=false;mode.custom[1]=true;#assert ad_tape(p,mode,OrRegistry.{}).status==AdStatus.mode;
+}
+#test "a value lives until its last reader and arenas reuse what died" {
+    p:TiProgram;p.count=6;p.output=5;v:=TvShape.{rank=1,dims=[4]int.[4,0,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=TiNode.{op=TiOp.relu,a=0};p.nodes[2]=TiNode.{op=TiOp.relu,a=0};p.nodes[3]=TiNode.{op=TiOp.relu,a=0};
+    p.nodes[4]=TiNode.{op=TiOp.add,a=1,b=2};p.nodes[5]=TiNode.{op=TiOp.sum,a=4,axis=0};
+    mode:AdMode;mode.grad[0]=true;t:=ad_tape(p,mode,OrRegistry.{});
+    // Node 3 is never read: it lives only at its own step, and needs no backward step.
+    #assert t.forward==5 && t.count==9 && !t.stepped[3] && !t.reaches[3] && t.grad_born[3]==-1;
+    // ReLU reads its input, not its output, so neither ReLU nor add saves anything.
+    #assert t.value_dies[1]==3 && t.value_dies[2]==3 && t.value_dies[3]==2 && t.value_dies[5]==9 && !t.saved[1] && !t.saved[2];
+    #assert t.value_at[1]==0 && t.value_at[2]==4 && t.value_at[3]==8 && t.value_at[4]==8 && t.value_at[5]==0;
+    #assert t.values.top==12 && t.values.count==5 && t.kept==17;
+    #assert t.grad_born[5]==5 && t.grad_born[4]==5 && t.grad_dies[4]==6 && t.grad_born[1]==6 && t.grad_born[2]==6 && t.grad_dies[2]==7 && t.grad_dies[1]==8 && t.grad_born[0]==7 && t.grad_dies[0]==9;
+    #assert t.grad_at[0]==0 && t.grad_at[1]==4 && t.grad_at[2]==8 && t.grad_at[4]==0 && t.grad_at[5]==4 && t.grads.top==12 && t.grads.count==5;
+    inputs:=[4]f32.[1,-2,3,0];values:[16]f32;grads:[16]f64;flags:[4]u8;g:[4]f32;y:[4]f32;
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    #assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok && g[0]==2 && g[1]==0 && g[2]==2 && g[3]==0;
+    // A value can be read from the step after its own until the step after its last reader.
+    #assert ad_value(t,AdCursor.{next=0},1,inputs[..],values[..],y[..])==AdStatus.state && ad_value(t,AdCursor.{next=1},1,inputs[..],values[..],y[..])==AdStatus.ok;
+    #assert ad_value(t,AdCursor.{next=4},1,inputs[..],values[..],y[..])==AdStatus.ok && ad_value(t,AdCursor.{next=5},1,inputs[..],values[..],y[..])==AdStatus.state;
+    #assert ad_value(t,AdCursor.{},0,inputs[..],values[..],y[..])==AdStatus.ok && y[2]==3;
+    #assert ad_value(t,run.cursor,-1,inputs[..],values[..],y[..])==AdStatus.state && ad_value(t,run.cursor,6,inputs[..],values[..],y[..])==AdStatus.state;
+    // Multiplying the two keeps both for the backward step.
+    p.nodes[4].op=TiOp.multiply;t=ad_tape(p,mode,OrRegistry.{});
+    #assert t.saved[1] && t.saved[2] && t.value_dies[1]==6 && t.value_dies[2]==6 && t.value_at[5]==12 && t.values.top==13;
+    run=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    #assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok && g[0]==2 && g[1]==0 && g[2]==6 && g[3]==0;
+    mode.enabled=false;t=ad_tape(p,mode,OrRegistry.{});#assert t.values.top==12 && t.grads.top==0 && t.grads.count==0;
+}
+#test "a backward step saves exactly the operands its rule reads" {
+    p:TiProgram;p.count=13;p.output=12;v:=TvShape.{rank=2,dims=[4]int.[2,2,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=ti_input(v,4);
+    for i:2..<6 {p.nodes[i]=TiNode.{op=TiOp.relu,a=i/4};}
+    p.nodes[6]=TiNode.{op=TiOp.multiply,a=2,b=4};p.nodes[7]=TiNode.{op=TiOp.matmul,a=5,b=3};
+    p.nodes[8]=TiNode.{op=TiOp.relu,a=6};p.nodes[9]=TiNode.{op=TiOp.layernorm,a=7,epsilon=1};
+    p.nodes[10]=TiNode.{op=TiOp.add,a=8,b=9};p.nodes[11]=or_node(0,10,10,false,1);p.nodes[12]=TiNode.{op=TiOp.sum,a=11,axis=0};
+    mode:AdMode;mode.grad[0]=true;t:=ad_tape(p,mode,OrRegistry.{count=1});
+    // x feeds 2 and 3, w feeds 4 and 5. A product keeps only the factor
+    // the other operand's gradient needs.
+    #assert t.status==AdStatus.ok && t.stepped[2] && t.stepped[3] && !t.stepped[4] && !t.stepped[5];
+    #assert !t.saved[2] && !t.saved[3] && t.saved[4] && t.saved[5] && t.saved[6] && t.saved[7] && !t.saved[8] && !t.saved[9] && t.saved[10] && !t.saved[11];
+    mode.custom[10]=true;mode.custom[8]=true;t=ad_tape(p,mode,OrRegistry.{count=1});
+    #assert t.saved[8] && t.saved[9] && t.saved[10] && t.saved[6] && t.value_dies[10]==t.forward+2;
+}
+#test "metadata views and the forward pass agree with chapter 26a's lowering" {
+    p:TiProgram;p.count=11;p.output=10;
+    p.nodes[0]=ti_input(TvShape.{rank=2,dims=[4]int.[3,4,0,0]},0);p.nodes[1]=ti_input(TvShape.{rank=2,dims=[4]int.[4,2,0,0]},12);
+    p.nodes[2]=TiNode.{op=TiOp.view,a=0,shape=TvShape.{rank=2,dims=[4]int.[2,3,0,0]},strides=[4]int.[1,4,0,0],offset=1};
+    p.nodes[3]=TiNode.{op=TiOp.matmul,a=0,b=1};p.nodes[4]=TiNode.{op=TiOp.reshape,a=3,shape=TvShape.{rank=2,dims=[4]int.[2,3,0,0]}};
+    p.nodes[5]=TiNode.{op=TiOp.add,a=2,b=4};p.nodes[6]=TiNode.{op=TiOp.sum,a=5,axis=1};
+    p.nodes[7]=TiNode.{op=TiOp.layernorm,a=5,epsilon=0.5};
+    p.nodes[8]=TiNode.{op=TiOp.gather,a=7,axis=1,index_count=2};p.nodes[8].indices[0]=2;
+    p.nodes[9]=or_node(0,8,8,false,0.5);p.nodes[10]=TiNode.{op=TiOp.multiply,a=9,b=6};
+    inputs:=[20]f32.[0.5,1,-1,2, 1.5,-0.5,0.25,1, -2,0.75,1,0.5, 1,-1,0.5,2, -0.5,1,1.5,-1];
+    registry:=OrRegistry.{count=1};mode:AdMode;mode.grad[0]=true;mode.grad[1]=true;t:=ad_tape(p,mode,registry);
+    plan:=t.plan;#assert t.status==AdStatus.ok;
+    for c:0..<plan.launches-1 {
+        i:=plan.commands[c];m:=ad_meta(t,i);l:=ti_lower(plan,c).meta;n:=p.nodes[i];
+        for k:0..<64 {if k!=1 && k!=2 && k!=9 && k!=20 {#assert m[k]==l[k];}}
+        for o:0..<2 {
+            if o==1 && !ti_binary(n.op) {continue;}
+            x:=ifx o==0 then n.a else n.b;r:=t.root[x];at:=ifx o==0 then 9 else 20;
+            base:=ifx p.nodes[r].op==TiOp.input then p.nodes[r].input_base else t.value_at[r];
+            #assert m[at]-base==l[at]-plan.values[x].base;
+        }
+        #assert m[1]==t.value_at[i];
+    }
+    #assert ad_meta(t,5)[9]==1;
+    // The IR runs its own commands; the tape must produce the same bits.
+    work:[64]f32;wflags:[64]u8;out:[4]f32;
+    for c:0..<plan.launches {
+        l:=ti_lower(plan,c);
+        for item:0..<l.items {
+            if l.meta[0]==11 {registered_squared(item,l.meta[..],l.epsilon,inputs[..],work[..],out[..],wflags[..]);}
+            else {tik_run(item,l.meta[..],l.epsilon,inputs[..],work[..],out[..],wflags[..]);}
+        }
+    }
+    values:[64]f32;grads:[64]f64;flags:[8]u8;y:[4]f32;
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    while run.external {
+        for item:0..<run.call.items {registered_squared(item,run.call.meta[..],run.call.gain,inputs[..],values[..],values[..],flags[..]);}
+        run=ad_finish(t,run.cursor,values[..],grads[..],flags[..]);run=ad_run(t,run.cursor,inputs[..],values[..],grads[..],flags[..]);
+    }
+    #assert run.status==AdStatus.ok;
+    #assert ad_value(t,run.cursor,10,inputs[..],values[..],y[..])==AdStatus.ok;
+    for j:0..<4 {#assert f32_bits(y[j])==f32_bits(out[j]);}
+    // x reaches the output twice, directly and through a strided view.
+    gx:[12]f32;gw:[8]f32;
+    #assert ad_gradient(t,run.cursor,0,grads[..],gx[..])==AdStatus.ok && ad_gradient(t,run.cursor,1,grads[..],gw[..])==AdStatus.ok;
+    eval:AdMode;eval.enabled=false;e:=ad_tape(p,eval,registry);
+    for k:0..<20 {
+        sum:[2]f64;keep:=inputs[k];
+        for side:0..<2 {
+            inputs[k]=keep+(ifx side==0 then 0.0078125 else -0.0078125);
+            r:=ad_run(e,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+            while r.external {
+                for item:0..<r.call.items {registered_squared(item,r.call.meta[..],r.call.gain,inputs[..],values[..],values[..],flags[..]);}
+                r=ad_finish(e,r.cursor,values[..],grads[..],flags[..]);r=ad_run(e,r.cursor,inputs[..],values[..],grads[..],flags[..]);
+            }
+            #assert ad_value(e,r.cursor,10,inputs[..],values[..],y[..])==AdStatus.ok;
+            for j:0..<4 {sum[side]+=f64(y[j]);}
+        }
+        inputs[k]=keep;g:=ifx k<12 then f64(gx[k]) else f64(gw[k-12]);
+        d:=(sum[0]-sum[1])/0.015625-g;#assert d<0.01+0.01*abs(g) && d> -0.01-0.01*abs(g);
+    }
+}
+#test "layer norm's rule matches central differences of an f64 layer norm" {
+    p:TiProgram;p.count=4;p.output=3;v:=TvShape.{rank=2,dims=[4]int.[2,4,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=ti_input(v,8);p.nodes[2]=TiNode.{op=TiOp.layernorm,a=0,epsilon=0.25};p.nodes[3]=TiNode.{op=TiOp.multiply,a=2,b=1};
+    inputs:=[16]f32.[1,-2,0.5,3, 2,2,-1,0, 1,0.5,-2,3, -1,2,0.25,1];
+    mode:AdMode;mode.grad[0]=true;t:=ad_tape(p,mode,OrRegistry.{});
+    #assert t.saved[0]==false && t.value_dies[2]==1;
+    values:[32]f32;grads:[32]f64;flags:[8]u8;g:[8]f32;
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);#assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok;
+    for e:0..<8 {
+        loss:[2]f64;
+        for side:0..<2 {
+            x:[8]f64;for j:0..<8 {x[j]=f64(inputs[j]);}
+            x[e]+=ifx side==0 then 1e-5 else -1e-5;
+            for row:0..<2 {
+                mean:f64=0;for k:0..<4 {mean+=x[row*4+k];}mean/=4;
+                var:f64=0;for k:0..<4 {d:=x[row*4+k]-mean;var+=d*d;}
+                sigma:=sqrt(var/4+0.25);
+                for k:0..<4 {loss[side]+=f64(inputs[8+row*4+k])*(x[row*4+k]-mean)/sigma;}
+            }
+        }
+        d:=(loss[0]-loss[1])/2e-5-f64(g[e]);#assert d<1e-6 && d> -1e-6;
+    }
+}
+#test "a registered operator runs and differentiates as the caller's kernel" {
+    // The second operand is a strided view, so the backward call must describe the staged gradient itself.
+    p:TiProgram;p.count=5;p.output=4;v:=TvShape.{rank=2,dims=[4]int.[3,3,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=ti_input(v,9);
+    p.nodes[2]=TiNode.{op=TiOp.view,a=1,shape=v,strides=[4]int.[1,3,0,0]};p.nodes[3]=or_node(0,0,2,false,2);p.nodes[4]=TiNode.{op=TiOp.sum,a=3,axis=1};
+    registry:=OrRegistry.{count=1};mode:AdMode;mode.grad[0]=true;mode.grad[1]=true;t:=ad_tape(p,mode,registry);
+    #assert t.status==AdStatus.ok && !t.reaches[1] && t.grad_born[1]==-1 && t.steps[3].kind==AdKind.registered && t.steps[3].stage_dy>=0 && t.steps[3].stage_dx>=0 && t.steps[3].stage_dx!=t.steps[3].stage_dy;
+    inputs:=[18]f32.[-1,2,3,0.5,0,1,2,-2,1,7,7,7,7,7,7,7,7,7];values:[48]f32;grads:[32]f64;flags:[12]u8;g:[9]f32;y:[3]f32;
+    run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    #assert run.external && run.call.node==3 && !run.call.backward && run.call.items==9 && run.call.gain==2;
+    #assert run.call.meta[8]==0 && run.call.meta[9]==0 && run.call.meta[19]==0 && run.call.meta[20]==9 && run.call.meta[26]==1 && run.call.meta[27]==3 && run.call.dy_at==-1 && run.call.ga_at==-1 && run.call.gb_at==-1;
+    #assert ad_run(t,run.cursor,inputs[..],values[..],grads[..],flags[..]).status==AdStatus.state;
+    for i:0..<run.call.items {registered_squared(i,run.call.meta[..],run.call.gain,inputs[..],values[..],values[..],flags[..]);}
+    run=ad_finish(t,run.cursor,values[..],grads[..],flags[..]);#assert run.status==AdStatus.ok && run.cursor.next==1;
+    run=ad_run(t,run.cursor,inputs[..],values[..],grads[..],flags[..]);
+    st:=t.steps[3];m:=run.call.meta;
+    #assert run.external && run.call.backward && m[48]==1 && m[1]==st.stage_dx && m[19]==1 && m[20]==st.stage_dy && m[21]==2 && m[22]==3 && m[23]==3 && m[24]==0 && m[25]==0 && m[26]==3 && m[27]==1 && m[28]==0 && m[29]==0;
+    #assert run.call.na==9 && run.call.nb==0 && run.call.dy_at==st.stage_dy && run.call.ga_at==st.stage_dx && run.call.gb_at==-1 && values[st.stage_dy+8]==1;
+    for i:0..<run.call.items {registered_squared(i,run.call.meta[..],run.call.gain,inputs[..],values[..],values[..],flags[..]);}
+    run=ad_finish(t,run.cursor,values[..],grads[..],flags[..]);
+    #assert ad_finish(t,run.cursor,values[..],grads[..],flags[..]).status==AdStatus.state;
+    run=ad_run(t,run.cursor,inputs[..],values[..],grads[..],flags[..]);#assert !run.external && run.cursor.next==t.count;
+    // d/dx 2 relu(x)^2 = 4 relu(x); the second operand only carries the shape.
+    #assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok && g[0]==0 && g[1]==8 && g[2]==12 && g[3]==2 && g[4]==0 && g[5]==4 && g[6]==8 && g[7]==0 && g[8]==4;
+    #assert ad_gradient(t,run.cursor,1,grads[..],g[..])==AdStatus.unused;
+    #assert ad_value(t,run.cursor,4,inputs[..],values[..],y[..])==AdStatus.ok && y[0]==26 && y[1]==2.5 && y[2]==10;
+    // The kernel's own flags fail the step.
+    inputs[0]=3e38;run=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    for i:0..<run.call.items {registered_squared(i,run.call.meta[..],run.call.gain,inputs[..],values[..],values[..],flags[..]);}
+    #assert ad_finish(t,run.cursor,values[..],grads[..],flags[..]).status==AdStatus.number;
+    registry.schemas[0].backward=false;#assert ad_tape(p,mode,registry).status==AdStatus.operation;
+    mode.grad[0]=false;#assert ad_tape(p,mode,registry).status==AdStatus.ok;
+    p.nodes[3].index_count=1;#assert ad_tape(p,mode,registry).status==AdStatus.operation;
+    p.nodes[3]=or_node(1,0,0,false,2);#assert ad_tape(p,mode,OrRegistry.{count=1}).status==AdStatus.operation;
+    // Without a VJP, a registered node is fine as long as no gradient passes through it.
+    p.count=6;p.output=5;p.nodes[3]=or_node(0,2,2,false,2);p.nodes[4]=TiNode.{op=TiOp.multiply,a=3,b=0};p.nodes[5]=TiNode.{op=TiOp.sum,a=4,axis=1};
+    mode.grad[0]=true;mode.grad[1]=false;t=ad_tape(p,mode,registry);#assert t.status==AdStatus.ok && t.stepped[4] && !t.stepped[3];
+}
+#test "a custom derivative replaces the rule and receives both operands" {
+    p:TiProgram;p.count=4;p.output=3;v:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=ti_input(v,2);p.nodes[2]=TiNode.{op=TiOp.multiply,a=0,b=1};p.nodes[3]=TiNode.{op=TiOp.sum,a=2,axis=0};
+    mode:AdMode;mode.grad[0]=true;mode.grad[1]=true;mode.custom[2]=true;t:=ad_tape(p,mode,OrRegistry.{});
+    #assert t.status==AdStatus.ok && t.saved[2] && t.value_dies[2]==3 && t.steps[3].kind==AdKind.custom && t.steps[3].stage_db>=0;
+    inputs:=[4]f32.[2,3,5,7];values:[16]f32;grads:[16]f64;flags:[4]u8;g:[2]f32;
+    for trial:0..<3 {
+        run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+        #assert run.external && run.call.kind==AdKind.custom && run.call.na==2 && run.call.nb==2 && values[run.call.y_at+1]==21;
+        // A deliberately different derivative, to show whose rule ran.
+        for j:0..<2 {values[run.call.ga_at+j]=10*values[run.call.dy_at+j];values[run.call.gb_at+j]=-1;}
+        big:f32=3e38;
+        if trial==1 {values[run.call.ga_at+1]=big*big;}
+        if trial==2 {values[run.call.gb_at]=-big*big;}
+        // The caller's kernel, not the IR, owns the flags of a custom step.
+        flags[0]=1;run=ad_finish(t,run.cursor,values[..],grads[..],flags[..]);flags[0]=0;
+        if trial>0 {#assert run.status==AdStatus.number;continue;}
+        #assert run.status==AdStatus.ok;
+        run=ad_run(t,run.cursor,inputs[..],values[..],grads[..],flags[..]);
+        #assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok && g[0]==10 && g[1]==10;
+        #assert ad_gradient(t,run.cursor,1,grads[..],g[..])==AdStatus.ok && g[0]==-1 && g[1]==-1;
+    }
+}
+#test "bad programs small arenas and overflowing values are refused" {
+    p:TiProgram;p.count=2;p.output=1;v:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};
+    p.nodes[0]=ti_input(v,0);p.nodes[1]=TiNode.{op=TiOp.multiply,a=0,b=0};
+    mode:AdMode;mode.grad[0]=true;t:=ad_tape(p,mode,OrRegistry.{});
+    inputs:=[2]f32.[3e38,1];values:[8]f32;grads:[8]f64;flags:[4]u8;g:[2]f32;
+    #assert t.values.top==2 && t.grads.top==4;
+    #assert ad_run(t,AdCursor.{},inputs[..],values[0..<2],grads[0..<4],flags[0..<2]).status==AdStatus.number;
+    #assert ad_run(t,AdCursor.{},inputs[0..<1],values[..],grads[..],flags[..]).status==AdStatus.capacity;
+    #assert ad_run(t,AdCursor.{},inputs[..],values[0..<1],grads[..],flags[..]).status==AdStatus.capacity;
+    #assert ad_run(t,AdCursor.{},inputs[..],values[..],grads[0..<3],flags[..]).status==AdStatus.capacity;
+    #assert ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[0..<1]).status==AdStatus.capacity;
+    #assert ad_finish(t,AdCursor.{},values[..],grads[..],flags[..]).status==AdStatus.state;
+    inputs[0]=2;run:=ad_run(t,AdCursor.{},inputs[..],values[..],grads[..],flags[..]);
+    #assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.ok && g[0]==4 && g[1]==2;
+    mode.grad[2]=true;t=ad_tape(p,mode,OrRegistry.{});
+    #assert ad_gradient(t,run.cursor,-1,grads[..],g[..])==AdStatus.state && ad_gradient(t,run.cursor,2,grads[..],g[..])==AdStatus.state && ad_gradient(t,run.cursor,1,grads[..],g[..])==AdStatus.state;
+    #assert ad_gradient(t,AdCursor.{next=t.count,pending=true},0,grads[..],g[..])==AdStatus.state;
+    // A gradient too large for f32 is refused when published.
+    grads[t.grad_at[0]]=1e300;#assert ad_gradient(t,run.cursor,0,grads[..],g[..])==AdStatus.number;
+    mode.grad[0]=false;t=ad_tape(p,mode,OrRegistry.{});#assert ad_gradient(t,AdCursor.{next=t.count},0,grads[..],g[..])==AdStatus.state;
+    p.nodes[1].b=1;#assert ad_tape(p,mode,OrRegistry.{}).status==AdStatus.program;
+}
+AD_STEPS :: 64;
+AD_BLOCKS :: 128;
+AdStatus :: enum u8 {ok;program;operation;mode;capacity;number;unused;state;}
+AdKind :: enum u8 {builtin;registered;custom;}
+// book:begin mode
+// What gradients are wanted. grad marks inputs that require one; detach
+// stops the gradient at a node's output; custom gives a node a derivative
+// the caller computes; enabled false runs forward only and saves nothing.
+AdMode :: struct {enabled:bool=true;grad:[32]bool;detach:[32]bool;custom:[32]bool;}
+// book:end mode
+AdStep :: struct {node:int;backward:bool;kind:AdKind;stage_dy:int=-1;stage_dx:int=-1;stage_db:int=-1;}
+// Blocks placed in one arena, each live from its first step to its last.
+AdArena :: struct {count:int;top:int;at:[AD_BLOCKS]int;first:[AD_BLOCKS]int;last:[AD_BLOCKS]int;size:[AD_BLOCKS]int;}
+AdTape :: struct {
+    status:AdStatus;program:TiProgram;plan:TiPlan;mode:AdMode;
+    root:[32]int;wants:[32]bool;reaches:[32]bool;stepped:[32]bool;saved:[32]bool;
+    value_at:[32]int;value_born:[32]int;value_dies:[32]int;
+    grad_at:[32]int;grad_born:[32]int;grad_dies:[32]int;
+    steps:[AD_STEPS]AdStep;count:int;forward:int;
+    values:AdArena;grads:AdArena;kept:int;
+}
+// A call the caller makes. meta is chapter 26c's kernel metadata, items its
+// work items and gain the node's parameter. For a custom derivative, y_at,
+// dy_at, ga_at and gb_at are value-arena offsets of the output, the output's
+// gradient and the operand gradients the caller writes, contiguous.
+AdCall :: struct {node:int;backward:bool;kind:AdKind;items:int;gain:f32;meta:[64]int;y_at:int;dy_at:int=-1;ga_at:int=-1;gb_at:int=-1;na:int;nb:int;}
+AdCursor :: struct {next:int;pending:bool;}
+AdRun :: struct {status:AdStatus;cursor:AdCursor;external:bool;call:AdCall;}
+
+ad_material :: (op:TiOp)->bool {return op!=TiOp.input && op!=TiOp.view && op!=TiOp.reshape;}
+ad_count :: (s:TvShape)->int {return tv_elements(s).elements;}
+// A registered operator's second operand only carries its shape; a custom
+// derivative may differentiate both operands.
+ad_both :: (n:TiNode,custom:bool)->bool {return ti_binary(n.op) && (custom || n.op!=TiOp.registered);}
+
+// book:begin needs
+// Which operand values a node's rule reads in backward, given which of its
+// operands need a gradient.
+ad_reads :: (n:TiNode,custom:bool,need_a:bool,need_b:bool)->[2]bool {
+    r:[2]bool;
+    if custom {r[0]=true;r[1]=ti_binary(n.op);}
+    else if n.op==TiOp.registered || n.op==TiOp.relu || n.op==TiOp.layernorm {r[0]=true;}
+    else if n.op==TiOp.matmul || n.op==TiOp.multiply {r[0]=need_b;r[1]=need_a;}
+    return r;
+}
+// book:end needs
+
+// book:begin place
+// First fit: the lowest offset that overlaps no block live at any of the
+// same steps. Lifetimes are inclusive, so a step never writes what it reads.
+ad_place :: (arena:AdArena,size:int,first:int,last:int)->AdArena {
+    a:=arena;best:=0;moved:=true;
+    while moved {
+        moved=false;
+        for j:0..<a.count {
+            if a.last[j]<first || a.first[j]>last {continue;}
+            if a.at[j]<best+size && best<a.at[j]+a.size[j] {best=a.at[j]+a.size[j];moved=true;}
+        }
+    }
+    a.at[a.count]=best;a.first[a.count]=first;a.last[a.count]=last;a.size[a.count]=size;a.count+=1;
+    if best+size>a.top {a.top=best+size;}
+    return a;
+}
+// book:end place
+ad_last :: (a:AdArena)->int {return a.at[a.count-1];}
+
+// book:begin tape
+ad_tape :: (p:TiProgram,mode:AdMode,registry:OrRegistry)->AdTape {
+    t:AdTape;t.program=p;t.mode=mode;
+    t.plan=ti_compile(p,TiTarget.{},false);
+    if t.plan.status!=TiStatus.ok {t.status=AdStatus.program;return t;}
+    for i:0..<p.count {
+        n:=p.nodes[i];t.root[i]=t.plan.values[i].root;t.grad_born[i]=-1;
+        if (mode.detach[i] || mode.custom[i]) && !ad_material(n.op) {t.status=AdStatus.mode;return t;}
+        if n.op==TiOp.registered && (n.index_count!=0 || n.axis>=registry.count) {t.status=AdStatus.operation;return t;}
+        if n.op==TiOp.input {t.wants[i]=mode.enabled && mode.grad[i];}
+        else if !mode.detach[i] {t.wants[i]=t.wants[n.a] || (ad_both(n,mode.custom[i]) && t.wants[n.b]);}
+    }
+    // Walking back from the output through nodes that want a gradient finds
+    // the nodes whose backward step is needed, and the inputs that get one.
+    t.reaches[p.output]=true;
+    for k:0..<p.count {
+        i:=p.count-1-k;n:=p.nodes[i];
+        if !t.reaches[i] || !t.wants[i] || n.op==TiOp.input {continue;}
+        t.stepped[i]=ad_material(n.op);
+        // A registered operator without a registered VJP needs a custom one.
+        if n.op==TiOp.registered && !mode.custom[i] && !registry.schemas[n.axis].backward {t.status=AdStatus.operation;return t;}
+        t.reaches[n.a]=true;if ad_both(n,mode.custom[i]) {t.reaches[n.b]=true;}
+    }
+    // One forward step for each material node, then the backward steps.
+    // Node 0 can only be an input.
+    for i:1..<p.count {
+        n:=p.nodes[i];if !ad_material(n.op) {continue;}
+        kind:=AdKind.builtin;if n.op==TiOp.registered {kind=AdKind.registered;}
+        t.steps[t.count]=AdStep.{node=i,kind=kind};t.value_born[i]=t.count;t.value_dies[i]=t.count;t.count+=1;
+    }
+    t.forward=t.count;
+    for k:0..<p.count {
+        i:=p.count-1-k;if !t.stepped[i] {continue;}
+        kind:=AdKind.builtin;
+        if mode.custom[i] {kind=AdKind.custom;} else if p.nodes[i].op==TiOp.registered {kind=AdKind.registered;}
+        t.steps[t.count]=AdStep.{node=i,backward=true,kind=kind};t.count+=1;
+    }
+    // A value lives to its last forward reader, a saved value to its last
+    // backward reader, and the output to the end. Step 0 reads only inputs.
+    for s:1..<t.count {
+        i:=t.steps[s].node;n:=p.nodes[i];reads:=[2]bool.[true,ti_binary(n.op)];
+        if t.steps[s].backward {
+            custom:=t.steps[s].kind==AdKind.custom;
+            reads=ad_reads(n,custom,t.wants[n.a],ad_both(n,custom) && t.wants[n.b]);
+            if custom {t.saved[i]=true;t.value_dies[i]=s;}
+        }
+        for o:0..<2 {
+            x:=ifx o==0 then n.a else n.b;
+            if !reads[o] || p.nodes[t.root[x]].op==TiOp.input {continue;}
+            if t.steps[s].backward {t.saved[t.root[x]]=true;}
+            t.value_dies[t.root[x]]=s;
+        }
+    }
+    t.value_dies[t.root[p.output]]=t.count;
+    // A gradient is born at its first contributor and dies after its own
+    // step; an input's lives to the end, to be published.
+    if t.forward<t.count {t.grad_born[t.root[p.output]]=t.forward;}
+    for s:t.forward..<t.count {
+        i:=t.steps[s].node;n:=p.nodes[i];t.grad_dies[i]=s;
+        for o:0..<2 {
+            if o==1 && !ad_both(n,t.steps[s].kind==AdKind.custom) {continue;}
+            x:=ifx o==0 then n.a else n.b;r:=t.root[x];
+            if !t.wants[x] {continue;}
+            if t.grad_born[r]==-1 {t.grad_born[r]=s;}
+            if p.nodes[r].op==TiOp.input {t.grad_dies[r]=t.count;}
+        }
+    }
+    return ad_layout(t);
+}
+// book:end tape
+
+// Place values and staging buffers in step order, then gradients.
+ad_layout :: (tape:AdTape)->AdTape {
+    t:=tape;p:=t.program;
+    for s:0..<t.count {
+        st:=t.steps[s];i:=st.node;n:=p.nodes[i];
+        if !st.backward {
+            size:=t.plan.values[i].storage;t.kept+=size;
+            t.values=ad_place(t.values,size,t.value_born[i],t.value_dies[i]);t.value_at[i]=ad_last(t.values);
+        } else if st.kind!=AdKind.builtin {
+            t.values=ad_place(t.values,t.plan.values[i].storage,s,s);t.steps[s].stage_dy=ad_last(t.values);
+            t.values=ad_place(t.values,ad_count(t.plan.values[n.a].view.shape),s,s);t.steps[s].stage_dx=ad_last(t.values);
+            if st.kind==AdKind.custom && ti_binary(n.op) {t.values=ad_place(t.values,ad_count(t.plan.values[n.b].view.shape),s,s);t.steps[s].stage_db=ad_last(t.values);}
+        }
+    }
+    for i:0..<p.count {
+        if t.grad_born[i]==-1 {continue;}
+        t.grads=ad_place(t.grads,t.plan.values[i].storage,t.grad_born[i],t.grad_dies[i]);t.grad_at[i]=ad_last(t.grads);
+    }
+    return t;
+}
+
+// An operand as chapter 26c's kernels read it: inputs from the caller's
+// input buffer, everything else from the value arena.
+ad_describe :: (t:AdTape,x:int,at:int,meta:[]int) {
+    v:=t.plan.values[x].view;r:=t.root[x];base:=t.value_at[r];meta[at]=1;
+    if t.program.nodes[r].op==TiOp.input {base=t.program.nodes[r].input_base;meta[at]=0;}
+    meta[at+1]=base+v.offset;meta[at+2]=v.shape.rank;
+    for j:0..<4 {meta[at+3+j]=v.shape.dims[j];meta[at+7+j]=v.strides[j];}
+}
+ad_meta :: (t:AdTape,i:int)->[64]int {
+    n:=t.program.nodes[i];s:=t.plan.values[i].view.shape;a:=t.plan.values[n.a].view.shape;m:[64]int;
+    m[0]=int(cast(u8)n.op);m[1]=t.value_at[i];m[3]=s.rank;
+    for j:0..<4 {m[4+j]=s.dims[j];}
+    ad_describe(t,n.a,8,m[..]);if ti_binary(n.op) {ad_describe(t,n.b,19,m[..]);}
+    if n.op==TiOp.matmul {m[30]=a.dims[1];} else if n.op==TiOp.sum {m[30]=a.dims[n.axis];} else if n.op==TiOp.layernorm {m[30]=a.dims[a.rank-1];}
+    m[31]=n.axis;m[48]=n.index_count;for j:0..<16 {m[32+j]=n.indices[j];}
+    return m;
+}
+ad_read :: (t:AdTape,x:int,j:int,inputs:[]f32,values:[]f32)->f64 {
+    v:=t.plan.values[x].view;r:=t.root[x];
+    if t.program.nodes[r].op==TiOp.input {return f64(inputs[t.program.nodes[r].input_base+tv_offset(v,j)]);}
+    return f64(values[t.value_at[r]+tv_offset(v,j)]);
+}
+// A gradient lands in its root's storage, through the operand's view.
+ad_add :: (t:AdTape,x:int,j:int,g:f64,grads:[]f64) {
+    k:=t.grad_at[t.root[x]]+tv_offset(t.plan.values[x].view,j);grads[k]+=g;
+}
+// book:begin rules
+// The vector-Jacobian product of one built-in node, added into its
+// operands' gradients. dy is the node's own gradient, contiguous.
+ad_rule :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
+    n:=t.program.nodes[i];s:=t.plan.values[i].view.shape;dy:=t.grad_at[i];
+    a:=t.plan.values[n.a].view.shape;need_a:=t.wants[n.a];need_b:=ti_binary(n.op) && t.wants[n.b];
+    for j:0..<ad_count(s) {
+        g:=grads[dy+j];c:=to_coords(s,j);
+        if n.op==TiOp.add || n.op==TiOp.multiply {
+            b:=t.plan.values[n.b].view.shape;ja:=to_broadcast_index(a,s,j);jb:=to_broadcast_index(b,s,j);
+            ga:=g;gb:=g;
+            if n.op==TiOp.multiply {ga=g*ad_read(t,n.b,jb,inputs,values);gb=g*ad_read(t,n.a,ja,inputs,values);}
+            if need_a {ad_add(t,n.a,ja,ga,grads);}
+            if need_b {ad_add(t,n.b,jb,gb,grads);}
+        } else if n.op==TiOp.matmul {
+            b:=t.plan.values[n.b].view.shape;
+            for k:0..<a.dims[1] {
+                ja:=c[0]*a.dims[1]+k;jb:=k*b.dims[1]+c[1];
+                if need_a {ad_add(t,n.a,ja,g*ad_read(t,n.b,jb,inputs,values),grads);}
+                if need_b {ad_add(t,n.b,jb,g*ad_read(t,n.a,ja,inputs,values),grads);}
+            }
+        } else if n.op==TiOp.relu {
+            if ad_read(t,n.a,j,inputs,values)>0 {ad_add(t,n.a,j,g,grads);}
+        } else if n.op==TiOp.sum {
+            point:[4]int;cursor:=0;
+            for d:0..<a.rank {if d!=n.axis {point[d]=c[cursor];cursor+=1;}}
+            for k:0..<a.dims[n.axis] {point[n.axis]=k;ad_add(t,n.a,to_flat(a,point),g,grads);}
+        } else if n.op==TiOp.gather {
+            point:=c;point[n.axis]=n.indices[c[n.axis]];ad_add(t,n.a,to_flat(a,point),g,grads);
+        }
+    }
+    if n.op==TiOp.layernorm {ad_layernorm(t,i,inputs,values,grads);}
+}
+// Layer norm over the last axis, recomputed from x in f64:
+// dx = (dy - mean(dy) - xhat * mean(dy * xhat)) / sigma.
+ad_layernorm :: (t:AdTape,i:int,inputs:[]f32,values:[]f32,grads:[]f64) {
+    n:=t.program.nodes[i];a:=t.plan.values[n.a].view.shape;width:=a.dims[a.rank-1];dy:=t.grad_at[i];
+    for row:0..<ad_count(a)/width {
+        base:=row*width;mean:f64=0;
+        for k:0..<width {mean+=ad_read(t,n.a,base+k,inputs,values);}
+        mean/=f64(width);variance:f64=0;
+        for k:0..<width {d:=ad_read(t,n.a,base+k,inputs,values)-mean;variance+=d*d;}
+        sigma:=sqrt(variance/f64(width)+f64(n.epsilon));m1:f64=0;m2:f64=0;
+        for k:0..<width {g:=grads[dy+base+k];m1+=g;m2+=g*(ad_read(t,n.a,base+k,inputs,values)-mean)/sigma;}
+        m1/=f64(width);m2/=f64(width);
+        for k:0..<width {
+            xhat:=(ad_read(t,n.a,base+k,inputs,values)-mean)/sigma;
+            ad_add(t,n.a,base+k,(grads[dy+base+k]-m1-xhat*m2)/sigma,grads);
+        }
+    }
+}
+// book:end rules
+
+// book:begin run
+// Run steps until the tape ends or a step needs the caller. Gradients born
+// at a step are cleared first; the output's gradient is seeded with ones, so
+// the result is the gradient of the sum of the output's elements.
+ad_run :: (t:AdTape,cursor:AdCursor,inputs:[]f32,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {
+    run:=AdRun.{cursor=cursor};
+    if t.status!=AdStatus.ok || cursor.pending {run.status=AdStatus.state;return run;}
+    if inputs.count<t.plan.input_elements || values.count<t.values.top || grads.count<t.grads.top {run.status=AdStatus.capacity;return run;}
+    while run.cursor.next<t.count {
+        s:=run.cursor.next;st:=t.steps[s];i:=st.node;n:=t.program.nodes[i];
+        call:=AdCall.{node=i,backward=st.backward,kind=st.kind,items=t.plan.values[i].storage,gain=n.epsilon,meta=ad_meta(t,i),y_at=t.value_at[i]};
+        if flags.count<call.items {run.status=AdStatus.capacity;return run;}
+        if !st.backward {
+            if st.kind!=AdKind.builtin {run.external=true;run.cursor.pending=true;run.call=call;return run;}
+            for item:0..<call.items {tik_run(item,call.meta[..],n.epsilon,inputs,values,values,flags);}
+            for item:0..<call.items {if flags[item]!=0 {run.status=AdStatus.number;return run;}}
+        } else {
+            for r:0..<t.program.count {
+                if t.grad_born[r]!=s {continue;}
+                for k:0..<t.plan.values[r].storage {grads[t.grad_at[r]+k]=0;}
+            }
+            if s==t.forward {
+                for j:0..<ad_count(t.plan.values[t.program.output].view.shape) {ad_add(t,t.program.output,j,1,grads);}
+            }
+            if st.kind==AdKind.builtin {ad_rule(t,i,inputs,values,grads);}
+            else {
+                for j:0..<call.items {values[st.stage_dy+j]=f32(grads[t.grad_at[i]+j]);}
+                call.dy_at=st.stage_dy;call.ga_at=st.stage_dx;call.gb_at=st.stage_db;
+                call.na=ad_count(t.plan.values[n.a].view.shape);
+                if st.kind==AdKind.custom && ti_binary(n.op) {call.nb=ad_count(t.plan.values[n.b].view.shape);}
+                if st.kind==AdKind.registered {
+                    // The second operand's slot now describes the staged gradient. It
+                    // already has the right shape; its strides become contiguous.
+                    call.meta[1]=st.stage_dx;call.meta[48]=1;call.meta[19]=1;call.meta[20]=st.stage_dy;stride:=1;
+                    for k:0..<call.meta[21] {d:=call.meta[21]-1-k;call.meta[26+d]=stride;stride*=call.meta[22+d];}
+                }
+                run.external=true;run.cursor.pending=true;run.call=call;return run;
+            }
+        }
+        run.cursor.next+=1;
+    }
+    return run;
+}
+// The caller ran the call; fold its result in and move past the step.
+ad_finish :: (t:AdTape,cursor:AdCursor,values:[]f32,grads:[]f64,flags:[]u8)->AdRun {
+    run:=AdRun.{cursor=cursor};
+    if !cursor.pending {run.status=AdStatus.state;return run;}
+    st:=t.steps[cursor.next];n:=t.program.nodes[st.node];
+    if st.kind!=AdKind.custom {
+        for item:0..<t.plan.values[st.node].storage {if flags[item]!=0 {run.status=AdStatus.number;return run;}}
+    }
+    if st.backward {
+        for j:0..<ad_count(t.plan.values[n.a].view.shape) {
+            g:=values[st.stage_dx+j];if !tv_finite(g) {run.status=AdStatus.number;return run;}
+            if t.wants[n.a] {ad_add(t,n.a,j,f64(g),grads);}
+        }
+        if st.kind==AdKind.custom && ti_binary(n.op) && t.wants[n.b] {
+            for j:0..<ad_count(t.plan.values[n.b].view.shape) {
+                g:=values[st.stage_db+j];if !tv_finite(g) {run.status=AdStatus.number;return run;}
+                ad_add(t,n.b,j,f64(g),grads);
+            }
+        }
+    }
+    run.cursor=AdCursor.{next=cursor.next+1};
+    return run;
+}
+// book:end run
+
+// book:begin publish
+// A node's value, after its forward step has run.
+ad_value :: (t:AdTape,cursor:AdCursor,x:int,inputs:[]f32,values:[]f32,out:[]f32)->AdStatus {
+    if x<0 || x>=t.program.count {return AdStatus.state;}
+    if t.program.nodes[t.root[x]].op!=TiOp.input && (cursor.next<=t.value_born[t.root[x]] || cursor.next>t.value_dies[t.root[x]]+1) {return AdStatus.state;}
+    for j:0..<ad_count(t.plan.values[x].view.shape) {out[j]=f32(ad_read(t,x,j,inputs,values));}
+    return AdStatus.ok;
+}
+// An input's gradient, rounded once to f32, after the whole tape has run.
+ad_gradient :: (t:AdTape,cursor:AdCursor,x:int,grads:[]f64,out:[]f32)->AdStatus {
+    if x<0 || x>=t.program.count || t.program.nodes[x].op!=TiOp.input || !t.mode.grad[x] {return AdStatus.state;}
+    if !t.mode.enabled {return AdStatus.mode;}
+    if cursor.next<t.count || cursor.pending {return AdStatus.state;}
+    if !t.reaches[x] {return AdStatus.unused;}
+    for j:0..<ad_count(t.plan.values[x].view.shape) {
+        g:=grads[t.grad_at[x]+tv_offset(t.plan.values[x].view,j)];
+        if !to_fits(g) {return AdStatus.number;}
+        out[j]=f32(g);
+    }
+    return AdStatus.ok;
+}
+// book:end publish

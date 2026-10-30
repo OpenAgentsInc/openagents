@@ -28,6 +28,7 @@
 - [25. Many questions at once](ch025-many-questions-at-once.md)
 - [70. Learning with arrays](ch070-learning-with-arrays.md) — first learning chapter
 - [71. Gradients as a program](ch071-gradients-as-a-program.md)
+- [71b. Differentiate any tensor program](ch071b-differentiate-any-tensor-program.md)
 - [26. A Coax compute subset](ch026-a-coax-compute-subset.md) — first device chapter
 - [26a. A tensor program becomes an execution plan](ch026a-a-tensor-program-becomes-an-execution-plan.md)
 - [26b. Compile a general tensor program](ch026b-compile-a-general-tensor-program.md)
@@ -111,6 +112,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 77, 115, 156–161, 161a, 164, 164a, 165–176, 178–183 and 186–188 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 71b, 73, 77, 115, 156–161, 161a, 164, 164a, 165–176, 178–183 and 186–188 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–32, 34–35, 37–40 and the remaining outlines
 remain proposed.

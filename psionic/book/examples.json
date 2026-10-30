@@ -862,6 +862,16 @@
       ]
     },
     {
+      "source": "psionic/examples/autodiff-mlp.coax",
+      "chapter": "psionic/book/ch071b-differentiate-any-tensor-program.md",
+      "stdout": "psionic/fixtures/autodiff-mlp.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/kernel-search.coax",
       "chapter": "psionic/book/ch188-an-agent-optimizes-a-psionic-kernel.md",
       "stdout": "psionic/fixtures/kernel-search.out",
