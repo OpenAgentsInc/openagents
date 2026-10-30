@@ -182,7 +182,7 @@
   ],
   [
    "AG_procedure_limit :: ()->int {return 64;}\n",
-   "AG_procedure_limit :: ()->int {return 256;}\nAG_bit :: (seen:int)->u64 {if seen>=63 {return cast(u64)1<<63;}return cast(u64)1<<cast(u64)seen;}\n"
+   "AG_procedure_limit :: ()->int {return 256;}\nAG_bit :: (seen:int)->u64 {if seen>=64 {return cast(u64)1<<63;}return cast(u64)1<<cast(u64)seen;}\n"
   ],
   [
    " level:=state[0].depth;state[0].stack[level]=id;state[0].depth+=1;memory[0].scope[level]=cast(u64)1<<seen;memory[0].height[level]=1;env:=[1]AgEnv.[AgEnv.{procedure=id}];at:=p.head;count:=0;keys:[8]AgValue;cacheable:=true;\n",

@@ -836,7 +836,7 @@ AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
  #assert AG_procedure_limit()==256 && AG_bit(0)==1 && AG_bit(1)==2 && AG_bit(62)==cast(u64)1<<62 && AG_bit(63)==cast(u64)1<<63 && AG_bit(64)==cast(u64)1<<63 && AG_bit(255)==cast(u64)1<<63;
 }
 AG_procedure_limit :: ()->int {return 256;}
-AG_bit :: (seen:int)->u64 {if seen>=63 {return cast(u64)1<<63;}return cast(u64)1<<cast(u64)seen;}
+AG_bit :: (seen:int)->u64 {if seen>=64 {return cast(u64)1<<63;}return cast(u64)1<<cast(u64)seen;}
 AG_procedure :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,args:[]AgValue,memory:[]AgMemory,state:[]ScAudit)->AgValue {
  if !AG_tick(state,id) {return AgValue.{};}if state[0].depth==16 || args.count>8 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}
  for i:0..<state[0].depth {if state[0].stack[i]==id {SC_fail(state,SC_RECURSION,id);return AgValue.{};}}

@@ -191,19 +191,34 @@ sw_views :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:boo
   return work.count==1 && key.count==32 && aux.count==32 && message.count>=0 && message.count<=SV_MAX_MESSAGE && out.count==64 && !overlap;
 }
 // An invalid key refuses here; its validity is the call's public result.
+// Declassification points, each reported by the secret-source audit (#4828).
+// Key and nonce validity are each call's public result.
+sw_valid_declassify :: (valid:u64)->bool {return valid==1;}
+// The public key and R are published inside every signature.
+sw_bytes_declassify :: (bytes:[]u8) {}
+// The BIP-340 challenge hash over public R, public key and message, through
+// the fixed-flow SHA-256 workspace, so the audit checks it with public inputs.
+sw_challenge_public :: (message:[]u8,pub:[]u8,r:[]u8,sha:[]ShaOwned,tag:[]u8,out:[]u8)->bool {
+  tagvalue:=SV_TAG_HASH;ok:=sha256_emit(tagvalue.words[..],tag)==SHA_OK;
+  return ok && so_init(sha) && so_update(sha,tag,false) && so_update(sha,tag,false) && so_update(sha,r,false) && so_update(sha,pub,false) && so_update(sha,message,false) && so_finish(sha,out,false);
+}
 sw_key :: (key:[]u8,work:[]SignWork)->int {
-  if !sk_prepare(key,work[0].prep[..],false) || work[0].prep[0].valid!=1 {return sw_clear(work);}
+  if !sk_prepare(key,work[0].prep[..],false) || !sw_valid_declassify(work[0].prep[0].valid) {return sw_clear(work);}
+  sw_bytes_declassify(work[0].prep[0].public_key[..]);
   work[0].stage=1;return SIGN_MORE;
 }
 sw_nonce :: (aux:[]u8,message:[]u8,work:[]SignWork)->int {
   if !snp_prepare(work[0].prep[0].normalized[..],work[0].prep[0].public_key[..],aux,message,work[0].nonce[..],false) {return sw_clear(work);}
+  sw_bytes_declassify(work[0].nonce[0].r[..]);
   if sha256_hash_checked(message,work[0].message[..],false)!=SHA_OK {return sw_clear(work);}
   work[0].stage=2;return SIGN_MORE;
 }
 // r, the public key and the message are public: the challenge may vary in time.
 sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int {
   if !sw_same_message(message,work) {return sw_clear(work);}
-  challenge:=sv_challenge_vartime(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..]);
+  sha:[1]ShaOwned;tag:[32]u8;digest:[32]u8;
+  if !sw_challenge_public(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],sha[..],tag[..],digest[..]) {return sw_clear(work);}
+  challenge:=sc_reduce_bytes(digest[..]);
   written:=ss_write(challenge.value,work[0].challenge[..]);
   if !sm_equation(key,work[0].nonce[0].hash[..],work[0].challenge[..],work[0].prep[0].point[0].odd,work[0].nonce[0].point[0].odd,work[0].math[..],false) {return sw_clear(work);}
   for i:0..<32 {work[0].sig[i]=work[0].nonce[0].r[i];}

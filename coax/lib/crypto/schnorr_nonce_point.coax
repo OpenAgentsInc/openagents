@@ -39,7 +39,9 @@ snp_finish :: (work:[]SignNoncePoint)->bool {work[0].valid=work[0].nonce_valid &
 snp_reduce :: (hash:[]u8,work:[]SignNoncePoint)->bool {
   if work.count!=1 || hash.count!=32 {return false;}
   loaded:=sc_reduce_bytes(hash);bits:u32;for i:0..<8 {bits|=loaded.value.limbs[i];}
-  work[0].valid=0;work[0].nonce_valid=sc_zero_bit(bits)^1;work[0].safe=sc_select(work[0].nonce_valid,loaded.value,sc_small(1));return loaded.ok;
+  // sc_reduce_bytes succeeds exactly for the 32 bytes checked above; returning
+  // that public fact avoids reading ok out of a struct that also holds secrets.
+  work[0].valid=0;work[0].nonce_valid=sc_zero_bit(bits)^1;work[0].safe=sc_select(work[0].nonce_valid,loaded.value,sc_small(1));return true;
 }
 // The caller supplies parity-normalized key bytes and matching public x. Views
 // are valid/stable/disjoint, and the entire work region requires a host wipe.
