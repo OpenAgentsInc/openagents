@@ -72,6 +72,10 @@ under host load ~160. All of the following came from one
 | Public, read-only `["REQ","coax-tls",{"kinds":[0],"limit":2}]` until EOSE, system trust store | `wss://nos.lol`: 2 events before EOSE. `wss://relay.primal.net`: 2 events (a second run, with a URL argument) |
 | Public `wss://relay.damus.io` | -8 `CXTLS_HANDSHAKE`. The network policy on this host blocks it: `curl https://relay.damus.io/` fails with the same "wrong version number" (a non-TLS reply), while `curl https://nos.lol/` works. It was not retried |
 
+When the worktree's own compiler (coax0 0.24.0) finished building, the
+checks ran with it once more: `tls.sh` passed every local case, and
+mutation was again 264/264 killed over 3 shards.
+
 One earlier run failed the relay case. The fixture logged a
 `ConnectionResetError` because the driver closed the TCP socket right after
 sending its close frame. The driver now completes the RFC 6455 closing
