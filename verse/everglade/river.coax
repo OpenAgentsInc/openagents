@@ -1040,6 +1040,23 @@ float_field :: (r: [] River, b: RigidBody, i: int, h: f64) -> RigidBody {
       out.vel = d3_add(out.vel, d3(-0.3 * b.vel.x * h, (ay + 9.81) * h, -0.3 * b.vel.z * h));
       return out;
     }
+    if kind == 5 {
+      // a wall (Wall of Stone): what floats into it is put back out on the side it came from and
+      // its way in undone but for a fifth; a rowboat's hull reaches 1.6 m along it, the rest 0.3 m
+      ex := f64(f[3] - f[1]); ez := f64(f[4] - f[2]);
+      l2 := fmax(ex * ex + ez * ez, 0.0001);
+      u := ((b.pos.x - f64(f[1])) * ex + (b.pos.z - f64(f[2])) * ez) / l2;
+      l := sqrt(l2); nx := -ez / l; nz := ex / l;
+      off := (b.pos.x - f64(f[1])) * nx + (b.pos.z - f64(f[2])) * nz;
+      reach := ifx b.mass > 100.0 then 1.6 else 0.3;
+      if u < 0.0 || u > 1.0 || abs(off) > f64(f[7]) * 0.5 + reach { continue; }
+      vn := b.vel.x * nx + b.vel.z * nz;
+      side := ifx abs(vn) > 0.05 then (ifx vn > 0.0 then -1.0 else 1.0) else (ifx off >= 0.0 then 1.0 else -1.0);
+      push := side * (f64(f[7]) * 0.5 + reach) - off;
+      out.pos = d3_add(out.pos, d3(push * nx, 0.0, push * nz));
+      if vn * side < 0.0 { out.vel = d3_add(out.vel, d3(-1.2 * vn * nx, 0.0, -1.2 * vn * nz)); }
+      continue;
+    }
     if kind == 2 {
       if b.pos.y > top { continue; }
       ex := f64(f[3] - f[1]); ez := f64(f[4] - f[2]);

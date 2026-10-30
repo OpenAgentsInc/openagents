@@ -999,6 +999,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   if s[0].sp.on { ab_frame(s, dt); } else { w[0].field_n = 0; }
   // the debris (verse/demolish.coax), its dust, and what grows back
   demo_step_wet(w, everglade_ground(), s[0].heights[..], s[0].water_grid[..], dt);
+  if s[0].sp.on { ab_after_step(s); }
   sp_dome(s, dt);
   for e: 0..<w[0].event_n {
     ev := w[0].events[e];

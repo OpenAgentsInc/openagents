@@ -39,7 +39,9 @@
 //                      300 feet off.
 //   ! WALL OF STONE    (Shift+1, the bar's second row) Another pair of granite panels, each 10 feet
 //                      square and 6 inches thick, side by side across your way 4 m ahead on level
-//                      ground, for ten minutes (the oldest of 4 goes): they stop you as a wall does.
+//                      ground, for ten minutes (the oldest of 4 goes): they stop you as a wall does,
+//                      and the debris, the floats and rowboats and the townsfolk too (the watch's
+//                      chase and walk back go round them), and a name isn't seen through them.
 //
 // No cooldown, as the old bar. They draw as the old engine drew them: Reverse Gravity only its
 // particles (motes.rs: dust, violet sparks, pebbles and leaves falling upward and gathering under its
@@ -92,6 +94,7 @@ Abilities :: struct {
   gust_on: bool; gust_t: f32; gust_at: Point; gust_dir: Point; gust_in: [WATCH_ACTORS] bool; gust_next: [WATCH_ACTORS] f32;
   tw_t: f32; tw_at: Point; tw_dir: Point;   // the last Thunderwave: since when, from where, which way
   stones: [AB_STONES] AbWall;
+  st_px: [WATCH_ACTORS] f32; st_pz: [WATCH_ACTORS] f32;   // where each person was last frame (the panels stop them)
 }
 AB_FIELD_FLOATS :: 10;
 
@@ -370,6 +373,116 @@ ab_stone_bodies :: (s: [] Everglade, out: [] f32, at: int) -> int {
   return n;
 }
 
+// The panels stand in the way of more than you: the debris and splinters strike them (after each
+// step, ab_after_step), the townsfolk stop at them (ab_stone_folk), and a name isn't seen through
+// them (everglade.coax name_hidden).
+// How far (x, z) is off panel pair q's face, signed (+ on its normal's side), and whether it is along it.
+AbOff :: struct { off: f32; along: bool; nx: f32; nz: f32; }
+ab_stone_off :: (q: AbWall, x: f32, z: f32) -> AbOff {
+  ex := q.bx - q.ax; ez := q.bz - q.az;
+  l := hi(sqrt(ex * ex + ez * ez), 0.0001);
+  u := ((x - q.ax) * ex + (z - q.az) * ez) / (l * l);
+  nx := -ez / l; nz := ex / l;
+  return AbOff.{off = (x - q.ax) * nx + (z - q.az) * nz, along = u >= 0 && u <= 1, nx = nx, nz = nz};
+}
+// Whether a point at height y is within the panels' height (risen as far as they have).
+ab_stone_tall :: (q: AbWall, y: f32) -> bool { return y >= q.base - 0.1 && y <= q.base + f32(AB_ST_PANEL) * clamp(q.t / 0.35, 0, 1); }
+// After the debris steps: a body or a splinter in a panel is put back on the side it came from (by
+// its motion), its way into the panel undone but for a fifth (a stone's rebound).
+ab_after_step :: (s: [] Everglade) {
+  a := ab_of(s);
+  w := sp_dm(s);
+  for q: 0..<AB_STONES {
+    st := a[0].stones[q];
+    if !st.live { continue; }
+    for b: 0..<DEMO_BODIES {
+      if w[0].meta[b].kind == 0 { continue; }
+      k := b * DB_FLOATS;
+      x := f32(w[0].state[k + 4]); y := f32(w[0].state[k + 5]); z := f32(w[0].state[k + 6]);
+      r := lo(f32(w[0].meta[b].radius), 0.6) * 0.6;
+      o := ab_stone_off(st, x, z);
+      if !o.along || !ab_stone_tall(st, y) || abs(o.off) > f32(AB_ST_THICK) * 0.5 + r { continue; }
+      vn := f32(w[0].state[k + 7]) * o.nx + f32(w[0].state[k + 9]) * o.nz;
+      side := ifx abs(vn) > 0.05 then (ifx vn > 0 then -1.0f32 else 1.0f32) else (ifx o.off >= 0 then 1.0f32 else -1.0f32);
+      push := side * (f32(AB_ST_THICK) * 0.5 + r) - o.off;
+      w[0].state[k + 4] += f64(push * o.nx); w[0].state[k + 6] += f64(push * o.nz);
+      if vn * side < 0 {
+        kick := -1.2 * vn;
+        w[0].state[k + 7] += f64(kick * o.nx); w[0].state[k + 9] += f64(kick * o.nz);
+      }
+    }
+    for b: 0..<DEMO_BITS {
+      if !w[0].bits[b].live { continue; }
+      p := w[0].bits[b].at;
+      o := ab_stone_off(st, p.x, p.z);
+      if !o.along || !ab_stone_tall(st, p.y) || abs(o.off) > f32(AB_ST_THICK) * 0.5 + 0.05 { continue; }
+      v := w[0].bits[b].vel;
+      vn := v.x * o.nx + v.z * o.nz;
+      side := ifx abs(vn) > 0.05 then (ifx vn > 0 then -1.0f32 else 1.0f32) else (ifx o.off >= 0 then 1.0f32 else -1.0f32);
+      push := side * (f32(AB_ST_THICK) * 0.5 + 0.05) - o.off;
+      w[0].bits[b].at = add(p, v3(push * o.nx, 0, push * o.nz));
+      if vn * side < 0 { w[0].bits[b].vel = add(v, times(v3(o.nx, 0, o.nz), -1.2 * vn)); }
+    }
+  }
+}
+// The townsfolk stop at the panels: each standing pair is a fence on the watch's ground
+// (verse/everglade/watch.coax watch_fences: no one stands in one, and the chase and the walk back go
+// round its nearer end). One on their day whose way runs into a fence steps off their day where they
+// were and walks back to it round the fence (WM_BACK); one off their day caught in a panel as it rose
+// is put out on the side they were on.
+ab_stone_folk :: (s: [] Everglade) {
+  a := ab_of(s);
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  f: [AB_STONES * 5] f32;
+  n := 0;
+  for q: 0..<AB_STONES {
+    st := a[0].stones[q];
+    if !st.live { continue; }
+    f[n * 5] = st.ax; f[n * 5 + 1] = st.az; f[n * 5 + 2] = st.bx; f[n * 5 + 3] = st.bz; f[n * 5 + 4] = f32(AB_ST_THICK) * 0.5;
+    n += 1;
+  }
+  watch_fences(w, f[..], n);
+  for i: 0..<WATCH_ACTORS {
+    if !watch_here(w, i) { continue; }
+    pl := person_place(s, i);
+    act := w[0].actors[i..<i + 1];
+    for k: 0..<n {
+      if watch_fence_gap(w, k, pl.x, pl.z) >= f32(EG_RADIUS) - 0.02 || act[0].mode == WM_DEAD { continue; }
+      if act[0].mode == WM_CALM && watch_fence_gap(w, k, a[0].st_px[i], a[0].st_pz[i]) >= f32(EG_RADIUS) - 0.02 {
+        act[0].mode = WM_BACK; act[0].t = 0; act[0].swing = -1;
+        act[0].x = a[0].st_px[i]; act[0].z = a[0].st_pz[i];
+      } else {
+        if act[0].mode == WM_CALM { act[0].mode = WM_BACK; act[0].t = 0; act[0].swing = -1; }
+        st := AbWall.{live = true, ax = f[k * 5], az = f[k * 5 + 1], bx = f[k * 5 + 2], bz = f[k * 5 + 3], base = 0, t = 1, seed = 0};
+        o := ab_stone_off(st, pl.x, pl.z);
+        was := ab_stone_off(st, a[0].st_px[i], a[0].st_pz[i]);
+        side := ifx was.off >= 0 then 1.0f32 else -1.0f32;
+        push := side * (f32(AB_ST_THICK) * 0.5 + f32(EG_RADIUS) + 0.02) - o.off;
+        act[0].x = pl.x + push * o.nx; act[0].z = pl.z + push * o.nz;
+      }
+      if i < EG_SPOTS { s[0].folk[i].x = act[0].x; s[0].folk[i].z = act[0].z; }
+      pl.x = act[0].x; pl.z = act[0].z;
+    }
+    a[0].st_px[i] = pl.x; a[0].st_pz[i] = pl.z;
+  }
+}
+// Whether the sight line from a to b runs through a standing panel.
+ab_stone_hides :: (s: [] Everglade, p: Point, q2: Point) -> bool {
+  if !sp_on(s) { return false; }
+  a := ab_of(s);
+  for q: 0..<AB_STONES {
+    st := a[0].stones[q];
+    if !st.live { continue; }
+    oa := ab_stone_off(st, p.x, p.z); ob := ab_stone_off(st, q2.x, q2.z);
+    if (oa.off > 0) == (ob.off > 0) { continue; }
+    t := oa.off / (oa.off - ob.off);
+    x := lerp(p.x, q2.x, t); y := lerp(p.y, q2.y, t); z := lerp(p.z, q2.z, t);
+    if ab_stone_off(st, x, z).along && ab_stone_tall(st, y) { return true; }
+  }
+  return false;
+}
+
 // ---- Levitate, Feather Fall
 
 ab_levitate :: (s: [] Everglade) {
@@ -542,6 +655,7 @@ ab_frame_more :: (s: [] Everglade, dt: f32) {
   a := ab_of(s);
   a[0].tw_t += dt;
   for k: 0..<AB_STONES { if a[0].stones[k].live { a[0].stones[k].t += dt; if a[0].stones[k].t >= f32(AB_ST_LIFE) { a[0].stones[k].live = false; } } }
+  ab_stone_folk(s);
   if a[0].lev_on { a[0].lev_t += dt; if a[0].lev_t >= f32(AB_LEV_LIFE) { a[0].lev_on = false; } }
   if a[0].ff_on { a[0].ff_t += dt; if a[0].ff_t >= f32(AB_FF_LIFE) { a[0].ff_on = false; } }
   if !a[0].ff_on { for i: 0..<WATCH_ACTORS { if !a[0].up[i] { a[0].feather[i] = false; } } }
@@ -634,8 +748,17 @@ everglade_spell_fields :: (s: [] Everglade, out: [] f32) -> int #export_c {
     out[o + 5] = f.base; out[o + 6] = f.top; out[o + 7] = f.r; out[o + 8] = f.wide; out[o + 9] = f.force;
     n += 1;
   }
-  // a Thunderwave's push, for the floats a quarter second (the debris has its own, ab_thunder)
   a := ab_of(s);
+  // each Wall of Stone: a wall the floats and rowboats strike (river.coax float_field, kind 5)
+  for q: 0..<AB_STONES {
+    st := a[0].stones[q];
+    if !st.live || (n + 1) * AB_FIELD_FLOATS > out.count { continue; }
+    o := n * AB_FIELD_FLOATS;
+    out[o] = 5; out[o + 1] = st.ax; out[o + 2] = st.az; out[o + 3] = st.bx; out[o + 4] = st.bz;
+    out[o + 5] = st.base; out[o + 6] = st.base + f32(AB_ST_PANEL); out[o + 7] = f32(AB_ST_THICK); out[o + 8] = 0; out[o + 9] = 0;
+    n += 1;
+  }
+  // a Thunderwave's push, for the floats a quarter second (the debris has its own, ab_thunder)
   if a[0].tw_t < 0.25 && (n + 1) * AB_FIELD_FLOATS <= out.count {
     o := n * AB_FIELD_FLOATS;
     g := a[0].tw_at; d := a[0].tw_dir;
@@ -1111,6 +1234,46 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert everglade_bodies_on(g[..], false) == BODIES + AB_ST_BODIES;
   b := g[0].bodies[BODIES * 7..<(BODIES + 1) * 7];
   #assert near(b[2], -26, 0.01) && near(b[5], -26, 0.01) && near(abs(b[3] - b[0]), 2 * f32(AB_ST_PANEL), 0.01);
+  // risen, a splinter flying into it rebounds on its own side, and a name beyond it is hidden
+  ab_frame(g[..], 0.5);
+  w := sp_dm(g[..]);
+  base := ground_at(g[..], 0, -26);
+  w[0].bits[0] = DemoBit.{live = true, at = v3(0.5, base + 1, -26.02), vel = v3(0, 0, 6), spin = v3(0, 0, 0), t = 0, size = 0.05, stretch = 1, colour = v3(1, 1, 1), resting = false};
+  ab_after_step(g[..]);
+  #assert w[0].bits[0].at.z < -26 - f32(AB_ST_THICK) * 0.5 && w[0].bits[0].vel.z < 0;
+  #assert ab_stone_hides(g[..], v3(0, base + 1.7, -32), v3(1, base + 1.7, -20)) && !ab_stone_hides(g[..], v3(0, base + 6, -32), v3(1, base + 6, -20));
+  #assert !ab_stone_hides(g[..], v3(9, base + 1.7, -32), v3(9, base + 1.7, -20));
   for k: 0..<601 { ab_frame(g[..], 1.0); }
   #assert everglade_bodies_on(g[..], false) == BODIES;
+}
+
+#test "abilities: a guard hunting you on a Wall of Stone's far side runs round it, never through it; when it falls, straight on" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  g[0].feet = v3(0, 0, -30); g[0].face = 0;
+  #assert spells_key(g[..], '!');
+  ab_frame(g[..], 0.5);
+  w := watch_w(g[..]);
+  #assert w[0].on && w[0].fence_n == 1;
+  i := EG_SPOTS;   // the first of the new watch
+  #assert watch_is_guard(i);
+  you := ab_you(g[..]);
+  w[0].wanted = true;
+  a := w[0].actors[i..<i + 1];
+  a[0].mode = WM_CHASE; a[0].t = 0; a[0].x = 0.4; a[0].z = -21; a[0].swing = -1;
+  caught := false;
+  for k: 0..<600 {
+    ab_frame(g[..], 0.05);
+    watch_step(w, i, 0.05, you, g[0].boxes[..], g[0].box_n, g[0].heights[..]);
+    #assert watch_fence_gap(w, 0, a[0].x, a[0].z) >= f32(EG_RADIUS) - 0.02;
+    if flat_gap(v3(a[0].x, 0, a[0].z), you) < f32(REACH) + 0.3 { caught = true; break; }
+  }
+  #assert caught;
+  // the wall gone, the way is straight again
+  ab_frame(g[..], 700);
+  #assert w[0].fence_n == 0 && near(watch_way(w, 0, -21, 0, -30), atan2(0, -9), 0.001);
 }

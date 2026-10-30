@@ -2773,7 +2773,7 @@ name_hidden :: (s: [] Everglade, eye: Point, p: Point) -> bool {
     k := b * 6;
     if segment_box(eye, p, s[0].boxes[k], s[0].boxes[k + 1], s[0].boxes[k + 2], s[0].boxes[k + 3], s[0].boxes[k + 4], s[0].boxes[k + 5]) { return true; }
   }
-  return false;
+  return ab_stone_hides(s, eye, p);   // a Wall of Stone (everglade-abilities.coax)
 }
 // Whether the segment a to b passes through the box (slabs), short of b.
 segment_box :: (a: Point, b: Point, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> bool {
