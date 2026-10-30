@@ -47,7 +47,7 @@ sf32_equal :: (a:Sf32,b:Sf32)->bool {
   difference:u64; for i:0..<8 {difference |= cast(u64)(a.limb[i] ^ b.limb[i]);} return difference == 0;
 }
 sf32_fold_top :: (input:Sf32,top:u64)->Sf32Fold {
-  r:Sf32Fold; carry:=top*977;
+  r:Sf32Fold; carry:=mul_wrap(top,977);
   for i:0..<8 {
     // i is public; only limb1 receives the 2^32 part of top.
     extra:=ifx i==1 then top else cast(u64)0;
@@ -80,12 +80,12 @@ sf32_mul :: (a:Sf32,b:Sf32)->Sf32 {
   product:[16]u32;
   for i:0..<8 {
     carry:u64;
-    for j:0..<8 {wide:=cast(u64)a.limb[i]*cast(u64)b.limb[j]+cast(u64)product[i+j]+carry;product[i+j]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
+    for j:0..<8 {wide:=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[j])+cast(u64)product[i+j]+carry;product[i+j]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
     product[i+8]=cast(u32)carry;
   }
   r:Sf32;carry:u64;previous:u64;
   for i:0..<8 {
-    high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+high*977+previous+carry;
+    high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+mul_wrap(high,977)+previous+carry;
     r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;previous=high;
   }
   top:=previous+carry;folded:=sf32_fold_top(r,top);folded=sf32_fold_top(folded.value,folded.carry);

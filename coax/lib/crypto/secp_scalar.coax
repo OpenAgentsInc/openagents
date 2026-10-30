@@ -143,17 +143,17 @@ sc_montgomery :: (a:ScScalar,b:ScScalar)->ScScalar {
   t:[17]u32;
   for i:0..<8 {
     carry:=cast(u64)0;
-    for j:0..<8 {wide:=cast(u64)a.limbs[i]*cast(u64)b.limbs[j]+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+    for j:0..<8 {wide:=mul_wrap(cast(u64)a.limbs[i],cast(u64)b.limbs[j])+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
     t[i+8]=cast(u32)carry;
   }
   // REDC adds a multiple of n that clears one low word per round. Carry
   // propagation visits all remaining public positions, even after carry=0.
   for i:0..<8 {
-    factor:=(cast(u64)t[i]*SC_N0_INV)&SC_WORD;
+    factor:=(mul_wrap(cast(u64)t[i],SC_N0_INV))&SC_WORD;
     // The first low word cancels modulo R's word base and is discarded.
     // Seed its outgoing carry directly instead of storing an unused zero.
-    first:=factor*cast(u64)SC_N.limbs[0]+cast(u64)t[i];carry:=first>>32;
-    for j:1..<8 {wide:=factor*cast(u64)SC_N.limbs[j]+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+    first:=mul_wrap(factor,cast(u64)SC_N.limbs[0])+cast(u64)t[i];carry:=first>>32;
+    for j:1..<8 {wide:=mul_wrap(factor,cast(u64)SC_N.limbs[j])+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
     for k:i+8..<17 {wide:=cast(u64)t[k]+carry;t[k]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
   }
   // REDC(T)<2n for T<n²<nR, so exactly one masked subtraction suffices.

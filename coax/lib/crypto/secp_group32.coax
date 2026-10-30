@@ -28,10 +28,14 @@ Sg32 :: struct {x:Sf32;y:Sf32;z:Sf32;}
   #assert sg_equal_mask(result,three)==CB_MAX64;
 }
 
+// The input must be normalized (26-bit limbs, 22 in the top one), as every
+// caller's table and field values are. Each limb is masked to 26 bits, so the
+// 32-bit pieces fit by construction rather than through a checked cast whose
+// trap would test secret limb bits.
 sg32_from_field :: (a:SecpField)->Sf32 {
   r:Sf32;
   for i:0..<10 {
-    at:=i*26;word:=at/32;shift:=at%32;v:=a.limb[i];
+    at:=i*26;word:=at/32;shift:=at%32;v:=a.limb[i]&SF_MASK26;
     r.limb[word]|=cast(u32)((v<<shift)&SF32_WORD);
     r.limb[(word+1)%8]|=cast(u32)(v>>(32-shift));
   }

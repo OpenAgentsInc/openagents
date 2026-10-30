@@ -52,8 +52,8 @@
   "  r:=AG_unranged(base);r.mask=AG_origin(base,memory);r.extent=hi.lo-lo.lo;r.view=true;r.literal=0;r.known=false;return r;}\n"
  ],
  [
-  "  r:=args[0];r.mask=AG_origin(r,memory);r.region=0;r.known=false;r.literal=0;\n",
-  "  r:=AG_unranged(args[0]);r.mask=AG_origin(r,memory);r.region=0;r.known=false;r.literal=0;\n"
+  "  r:=args[0];r.mask=AG_origin(r,memory);r.region=0;r.known=false;r.literal=0;\n  if builtin!=1 {r.mask|=AG_origin(args[1],memory);if builtin==3 && AG_origin(args[1],memory)!=0 {SC_fail(state,SC_SHIFT,id);}}return r;\n",
+  "  r:=AG_unranged(args[0]);r.mask=AG_origin(r,memory);r.region=0;r.known=false;r.literal=0;\n  if builtin!=1 {r.mask|=AG_origin(args[1],memory);if builtin==3 && AG_origin(args[1],memory)!=0 {SC_fail(state,SC_SHIFT,id);}}\n  // A wrapping product or sum whose bounds cannot wrap equals the exact one.\n  if n.name==\"mul_wrap\" {r=AG_binary_range(args[0],args[1],36,r);}if n.name==\"add_wrap\" {r=AG_binary_range(args[0],args[1],34,r);}return r;\n"
  ],
  [
   " if n.kind==43 {root:=AG_target_root(nodes,n.c,state);slot:=AG_slot(env,nodes[root].name);if slot>=0 {env[0].bindings[slot].value.mask|=mask;env[0].bindings[slot].value.known=false;}}\n",

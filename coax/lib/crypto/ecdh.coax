@@ -114,5 +114,5 @@ ecdh_stage :: (secret:[]u8,peer:[]u8,work:[]EcdhScratch)->u32 {
   // Each source word is u32; no secret-dependent range check is needed.
   for i:0..<32 {work[0].staged[31-i]=cast(u8)((product.affine_x.limb[i/4]>>((i%4)*8))&255);}
   mask:=cb_mask(valid);for i:0..<32 {work[0].staged[i]&=cast(u8)(mask&255);}
-  return cast(u32)((valid^1)*EC_SCALAR);
+  return cast(u32)mul_wrap(valid^1,EC_SCALAR);
 }

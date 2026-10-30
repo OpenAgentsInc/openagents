@@ -174,9 +174,11 @@ cb_store_le32 :: (out: [] u8, at: int, value: u32) -> bool #export_c { return cb
 cb_store_be64 :: (out: [] u8, at: int, value: u64) -> bool #export_c { return cb_store_word(out, at, value, 8, true); }
 cb_store_le64 :: (out: [] u8, at: int, value: u64) -> bool #export_c { return cb_store_word(out, at, value, 8, false); }
 
-// (bit & 1) is 0 or 1, so multiplication cannot overflow even in checked C.
+// (bit & 1) is 0 or 1, so the product is 0 or all ones. The multiply wraps
+// explicitly: a checked u64 multiply's overflow test branches on a zero
+// operand and divides by it, which would depend on the secret bit.
 // The barrier obscures the resulting mask; it does not erase memory.
-cb_mask :: (bit: u64) -> u64 #export_c { return value_barrier((bit & 1) * CB_MAX64); }
+cb_mask :: (bit: u64) -> u64 #export_c { return value_barrier(mul_wrap(bit & 1, CB_MAX64)); }
 cb_ct_select64 :: (mask: u64, a: u64, b: u64) -> u64 #export_c { return b ^ ((a ^ b) & value_barrier(mask)); }
 cb_ct_select32 :: (mask: u32, a: u32, b: u32) -> u32 #export_c { return b ^ ((a ^ b) & value_barrier(mask)); }
 cb_ct_equal :: (a: [] u8, b: [] u8) -> u64 #export_c {

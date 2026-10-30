@@ -36,7 +36,7 @@
 }
 ef_finish :: (folded:Sf32Fold)->Sf32 {
   candidate:=sf32_fold_total(folded.value,1);
-  mask:=cast(u32)(value_barrier(((folded.carry|candidate.carry)&1)*CB_MAX64)&SF32_WORD);r:Sf32;
+  mask:=cast(u32)(cb_mask(folded.carry|candidate.carry)&SF32_WORD);r:Sf32;
   r.limb[0]=folded.value.limb[0]^((folded.value.limb[0]^candidate.value.limb[0])&value_barrier(mask));
   r.limb[1]=folded.value.limb[1]^((folded.value.limb[1]^candidate.value.limb[1])&value_barrier(mask));
   r.limb[2]=folded.value.limb[2]^((folded.value.limb[2]^candidate.value.limb[2])&value_barrier(mask));
@@ -56,18 +56,18 @@ ef_field_mul :: (a:Sf32,b:Sf32)->Sf32 {
   product:[16]u32;
   for i:0..<8 {
     carry:u64;wide:u64;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[0]+cast(u64)product[i];product[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[1]+cast(u64)product[i+1]+carry;product[i+1]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[2]+cast(u64)product[i+2]+carry;product[i+2]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[3]+cast(u64)product[i+3]+carry;product[i+3]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[4]+cast(u64)product[i+4]+carry;product[i+4]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[5]+cast(u64)product[i+5]+carry;product[i+5]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[6]+cast(u64)product[i+6]+carry;product[i+6]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-    wide=cast(u64)a.limb[i]*cast(u64)b.limb[7]+cast(u64)product[i+7]+carry;product[i+7]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[0])+cast(u64)product[i];product[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[1])+cast(u64)product[i+1]+carry;product[i+1]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[2])+cast(u64)product[i+2]+carry;product[i+2]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[3])+cast(u64)product[i+3]+carry;product[i+3]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[4])+cast(u64)product[i+4]+carry;product[i+4]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[5])+cast(u64)product[i+5]+carry;product[i+5]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[6])+cast(u64)product[i+6]+carry;product[i+6]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+    wide=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[7])+cast(u64)product[i+7]+carry;product[i+7]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
     product[i+8]=cast(u32)carry;
   }
   r:Sf32;carry:u64;previous:u64;
-  for i:0..<8 {high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+high*977+previous+carry;r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;previous=high;}
+  for i:0..<8 {high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+mul_wrap(high,977)+previous+carry;r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;previous=high;}
   return ef_finish(sf32_fold_total(r,previous+carry));
 }
 ef_double :: (p:Sg32)->Sg32 {

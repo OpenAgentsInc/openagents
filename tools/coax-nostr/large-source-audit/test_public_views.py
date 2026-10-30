@@ -147,15 +147,15 @@ class PublicViews(unittest.TestCase):
             replace(original);r=self.tool.audit(p,'candidate',classification=m,after_compile=lambda:replace(poison));self.assertEqual(r['error'],13,r);self.assertEqual(r['audit_artifact_sha256'],old_hash)
         finally:replace(original)
         self.assertEqual(self.audit(p,m,0)['return_dependency_mask'],1)
-    def test_real_ecdh_entry_passes_widening_and_refuses_checked_arithmetic(self):
+    def test_real_ecdh_entry_reaches_only_public_guard_obligations(self):
         p=ROOT/'coax/lib/crypto/ecdh.coax';base=self.tool.audit(p,'ecdh_stage')
         self.assertFalse(base['accepted']);self.assertEqual(base['error_name'],'unsupported')
         rows=[{'name':'secret','type':'[] u8','classification':'secret','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'peer','type':'[] u8','classification':'public','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'work','type':'[] EcdhScratch','classification':'public','view':{'element_type':'EcdhScratch','extent':1,'access':'write'}}]
         m={'schema':'coax.secret-large-classification-views.v3','entry':'ecdh_stage','sources':base['source_sha256'],'parameters':rows,'views_disjoint':True,'live_aligned_exclusive':True,'public_only':True,'compiler_sha256':self.tool.compiler_fingerprint,'audit_inputs':self.tool.inputs,'audit_artifact_sha256':metadata_sha(self.tool.artifact),'profile':'native-c-checked-library'}
-        r=self.tool.audit(p,'ecdh_stage',classification=m);self.assertEqual(r['error'],5,r);self.assertFalse(r['accepted']);self.assertLess(r['visited_nodes'],262144)
-        # v3 also proves the scalar carry chains; cb_mask's checked u64 multiply
-        # of a secret bit still refuses (its emitted check branches on the bit).
-        self.assertTrue(r['file'].endswith('/crypto/bytes.coax'));self.assertEqual((r['line'],r['column']),(179,73));self.assertEqual(r['reached_procedures'],33)
+        r=self.tool.audit(p,'ecdh_stage',classification=m);self.assertEqual(r['error'],14,r);self.assertFalse(r['accepted']);self.assertLess(r['visited_nodes'],262144)
+        # With wrapping limb products and masked limb conversion, the whole entry's
+        # dataflow is analyzed; only the two public authored guards remain.
+        self.assertEqual(r['reached_procedures'],61);self.assertEqual(r['return_dependency_mask'],1)
         self.assertEqual([(g['line'],g['origin_mask']) for g in r['authored_guard_obligations']],[(239,0),(492,0)])
-        self.observations.append({'case':'real_ecdh_entry','expected':5,'report':r})
+        self.observations.append({'case':'real_ecdh_entry','expected':14,'report':r})
 if __name__=='__main__':unittest.main()
