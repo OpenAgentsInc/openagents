@@ -247,7 +247,8 @@ Read these numbers for what they are. Twelve items cannot measure
 calibration: every top probability fell in the last bin (14/15, 1], so the
 calibration error only says that the model was confident and right. No answer
 was wrong, so the set cannot show overconfidence on mistakes. With 12 of 12
-right, the 95% one-sided lower bound on accuracy is still only about 0.78. The
+right, the 95% one-sided lower bound on accuracy is still only about 0.78. [Chapter 179](ch179-how-far-a-metric-moves-by-itself.md)
+refuses accuracy on this suite for that reason: no item is left to gain on. The
 requests are short and easy, and we wrote them ourselves; this is not a
 benchmark and not a comparison with the published Decision Index. A larger
 corpus, and a faster backend to run it, remain open.

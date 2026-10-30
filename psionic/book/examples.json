@@ -450,6 +450,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/noise-floor.coax",
+      "chapter": "psionic/book/ch179-how-far-a-metric-moves-by-itself.md",
+      "stdout": "psionic/fixtures/noise-floor.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

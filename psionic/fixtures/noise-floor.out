@@ -1,0 +1,21 @@
+open tasks (32): block accuracy 0.4891 to 0.5938, sd 0.0322, floor 0.0893; baseline 0.5334, room 0.4666: open
+saturated tasks (8): block accuracy 0.9719 to 0.9938, sd 0.0066, floor 0.0184; baseline 0.9879, room 0.0121: refused
+the baseline against itself, 20 times: gains up to 0.1242, root mean square 0.0516, 3 beyond the floor
+  standard error from items 0.0186: 6 of 20 beyond 1.96 of them
+  standard error from tasks 0.0388: 5 of 20 beyond 1.96 of them
+candidate 0.5 logits better: gain 0.0555, floor 0.0893
+  items: standard error 0.018, 1 of 1000 at or below 0, 973 at or below the floor
+  tasks: standard error 0.0351, 54 of 1000 at or below 0, 822 at or below the floor
+candidate 1.5 logits better: gain 0.1359, floor 0.0893
+  items: standard error 0.0173, 0 of 1000 at or below 0, 6 at or below the floor
+  tasks: standard error 0.0299, 0 of 1000 at or below 0, 58 at or below the floor
+Elephant, chapter 12's suite, accuracy:
+  choice: 5 items, 0 below the ceiling, room 0.0, refused
+  noul: 4 items, 0 below the ceiling, room 0.0, refused
+  score: 3 items, 0 below the ceiling, room 0.0, refused
+  all: 12 items, 0 below the ceiling, room 0.0, refused
+Elephant, Brier score (negated, ceiling 0):
+  choice: 5 items, 5 below the ceiling, room 0.0000534, open
+  noul: 4 items, 4 below the ceiling, room 0.0000653, open
+  score: 3 items, 3 below the ceiling, room 0.0000499, open
+  all: 12 items, 12 below the ceiling, room 0.0000565, open

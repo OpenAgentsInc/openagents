@@ -1,0 +1,379 @@
+// Chapter 179: how far a metric moves by itself. Repeated runs of one
+// configuration, grouped in blocks of seeds, give a noise floor: the
+// difference two equal blocks reach by chance. A paired bootstrap that
+// resamples whole tasks gives the spread from which items were written. A
+// partition whose baseline is already within the floor of its ceiling is
+// refused, since no gain could show there.
+// Profile cpu-f64-noise-v1: binary64, chapter 3's compensated accumulator for
+// every sum, scores where higher is better (losses enter negated), up to 4,096
+// items in 1,024 tasks, 2 to 16 blocks and up to 10,000 replicates.
+#load "tabular.coax";
+#authority;
+
+NsStatus :: enum u8 {ok;shape;number;alias;}
+NsFloor :: struct {status:NsStatus;blocks:int;mean:[16]f64;sd:f64;floor:f64;}
+NsBoot :: struct {status:NsStatus;tasks:int;items:int;gain:f64;se:f64;below:int;}
+NsRoom :: struct {status:NsStatus;items:int;open:int;room:f64;refused:bool;}
+
+NS_ITEMS_MAX :: 4096;
+NS_TASKS_MAX :: 1024;
+NS_BLOCKS_MAX :: 16;
+NS_REPLICATES_MAX :: 10000;
+NS_BIG :: 1.0e300;
+NS_Z :: 1.96;
+// The synthetic suite: 40 tasks of 10 items; tasks 32 to 39 are easy enough
+// to saturate. A run shifts every task by up to 0.3 and each task by up to 3.
+NS_TASKS :: 40;
+NS_PER_TASK :: 10;
+NS_ITEMS :: 400;
+NS_SATURATED :: 32;
+NS_SPREAD :: 3.0;
+NS_SHIFT :: 0.3;
+NS_RUNS :: 1000000;
+
+// Checks precede the implementation. Expected values are derived in chapter 179.
+#test "the world at its counters" {
+    out:[400]f64;for i:0..<400 {out[i]=7;}
+    #assert ns_run(5,7,0.25,out[..])==NsStatus.ok;
+    base:=cast(u64)800000;shift:=0.3*(2*tb_uniform(5,base+999)-1);ones:=0;
+    for i:0..<400 {
+        t:=i/10;d:=3*tb_uniform(5,cast(u64)t)-1.5+tb_uniform(5,cast(u64)(1000+i))-0.5;
+        if t>31 {d-=5;}
+        #assert ns_difficulty(5,i)==d;
+        g:=shift+3*(2*tb_uniform(5,base+cast(u64)t)-1);
+        y:=floor(tb_uniform(5,base+cast(u64)(1000+i))+tb_sigmoid(0.25-d+g));
+        #assert out[i]==y;
+        if y==1 {ones+=1;}
+        #assert ns_task(i)==t && ns_part(i)==ifx t>31 then 1 else 0;
+    }
+    #assert ones>100 && ones<300;
+    // Item 320 is the first of the saturated tasks.
+    #assert ns_part(319)==0 && ns_part(320)==1;
+    #assert ns_difficulty(5,320)<ns_difficulty(5,319)-2;
+    #assert ns_run(5,0,0.25,out[0..<399])==NsStatus.shape && ns_run(5,-1,0.25,out[..])==NsStatus.shape;
+    #assert ns_run(5,999999,0.25,out[..])==NsStatus.ok && ns_run(5,1000000,0.25,out[..])==NsStatus.shape;
+    #assert ns_run(5,0,8,out[..])==NsStatus.ok && ns_run(5,0,-8,out[..])==NsStatus.ok;
+    #assert ns_run(5,0,8.5,out[..])==NsStatus.number && ns_run(5,0,-8.5,out[..])==NsStatus.number;
+    nan:=0.0/0.0;#assert ns_run(5,0,nan,out[..])==NsStatus.number;
+}
+
+#test "runs differ, a better skill scores higher" {
+    a:[400]f64;b:[400]f64;c:[400]f64;
+    #assert ns_run(1,0,0,a[..])==NsStatus.ok && ns_run(1,1,0,b[..])==NsStatus.ok && ns_run(1,0,2,c[..])==NsStatus.ok;
+    same:=0;sa:=0.0;sc:=0.0;
+    for i:0..<400 {if a[i]==b[i] {same+=1;}sa+=a[i];sc+=c[i];#assert c[i]>=a[i];}
+    #assert same<400 && sc>sa+40;
+}
+
+#test "item means by hand" {
+    // Three runs of two items, run-major.
+    s:=[6]f64.[1,0, 0,0.5, 1,0.25];out:[2]f64;
+    #assert ns_means(s[..],2,0,3,out[..],false)==NsStatus.ok && out[0]==2.0/3.0 && out[1]==0.25;
+    #assert ns_means(s[..],2,1,2,out[..],false)==NsStatus.ok && out[0]==0.5 && out[1]==0.375;
+    #assert ns_means(s[..],2,2,1,out[..],false)==NsStatus.ok && out[0]==1 && out[1]==0.25;
+    one:[1]f64;#assert ns_means(s[..],1,5,1,one[..],false)==NsStatus.ok && one[0]==0.25;
+    out[0]=7;
+    #assert ns_means(s[..],2,2,2,out[..],false)==NsStatus.shape && ns_means(s[..],2,-1,1,out[..],false)==NsStatus.shape;
+    #assert ns_means(s[..],2,0,0,out[..],false)==NsStatus.shape && ns_means(s[..],2,0,1,out[0..<1],false)==NsStatus.shape;
+    #assert ns_means(s[0..<3],2,1,1,out[..],false)==NsStatus.shape && ns_means(s[0..<4],2,1,1,out[..],false)==NsStatus.ok && ns_means(s[..],0,0,1,out[0..<0],false)==NsStatus.shape;
+    out[0]=7;#assert ns_means(s[..],2,0,1,out[..],true)==NsStatus.alias && ns_means(s[..],2,0,4,out[..],true)==NsStatus.shape;
+    s[0]=0.0/0.0;#assert ns_means(s[..],2,0,1,out[..],true)==NsStatus.alias;s[0]=1;
+    #assert ns_means(s[..],3,0,2,out[..],false)==NsStatus.shape && ns_means(s[..],2,0,4,out[..],false)==NsStatus.shape && out[0]==7;
+    big:[4097]f64;wide:[4097]f64;
+    #assert ns_means(big[..],4097,0,1,wide[..],false)==NsStatus.shape && ns_means(big[0..<4096],4096,0,1,wide[0..<4096],false)==NsStatus.ok;
+    s[2]=0.0/0.0;
+    #assert ns_means(s[..],2,0,1,out[..],false)==NsStatus.ok && ns_means(s[..],2,1,1,out[..],false)==NsStatus.number && ns_means(s[..],2,2,1,out[..],false)==NsStatus.ok;
+    s[2]=0;s[3]=0.0/0.0;
+    #assert ns_means(s[..],2,0,1,out[..],false)==NsStatus.ok && ns_means(s[..],2,1,1,out[..],false)==NsStatus.number && out[0]==1;
+    s[3]=1.0e301;#assert ns_means(s[..],2,0,2,out[..],false)==NsStatus.number;
+    s[3]=-1.0e301;#assert ns_means(s[..],2,0,2,out[..],false)==NsStatus.number;
+    s[3]=1.0e300;#assert ns_means(s[..],2,0,2,out[..],false)==NsStatus.ok;
+}
+
+#test "a floor by hand" {
+    // Four runs of three items; item 1 is in part 1. Blocks of two runs:
+    // block 0 over items 0 and 2 is (1+0+1+1)/4, block 1 is (0+0+0+1)/4.
+    s:=[12]f64.[1,9,0, 1,9,1, 0,9,0, 0,9,1];part:=[3]int.[0,1,0];
+    f:=ns_floor(s[..],part[..],0,4,2);
+    #assert f.status==NsStatus.ok && f.blocks==2 && f.mean[0]==0.75 && f.mean[1]==0.25;
+    // Mean 0.5, deviations 0.25 each: sd = sqrt(0.125/1).
+    #assert f.sd==sqrt(0.125) && f.floor==1.96*sqrt(2.0)*sqrt(0.125);
+    g:=ns_floor(s[..],part[..],1,4,2);
+    #assert g.status==NsStatus.ok && g.mean[0]==9 && g.mean[1]==9 && g.sd==0 && g.floor==0;
+    // Four blocks of one run: 0.5, 1, 0, 0.5; mean 0.5; squares sum 0.5; sd sqrt(0.5/3).
+    h:=ns_floor(s[..],part[..],0,4,1);
+    #assert h.blocks==4 && h.mean[0]==0.5 && h.mean[1]==1 && h.mean[2]==0 && h.mean[3]==0.5;
+    #assert h.sd==sqrt(0.5/3.0) && h.floor==1.96*sqrt(2.0)*sqrt(0.5/3.0);
+    #assert ns_floor(s[..],part[..],0,4,4).status==NsStatus.shape && ns_floor(s[..],part[..],0,4,3).status==NsStatus.shape;
+    #assert ns_floor(s[..],part[..],0,4,0).status==NsStatus.shape && ns_floor(s[..],part[..],0,4,-2).status==NsStatus.shape;
+    #assert ns_floor(s[..],part[..],0,3,1).status==NsStatus.shape && ns_floor(s[..],part[..],2,4,2).status==NsStatus.shape;
+    #assert ns_floor(s[0..<9],part[..],0,3,1).status==NsStatus.ok && ns_floor(s[0..<0],part[0..<0],0,0,1).status==NsStatus.shape;
+    many:[51]f64;one:=[1]int.[0];
+    #assert ns_floor(many[0..<16],one[..],0,16,1).status==NsStatus.ok && ns_floor(many[0..<17],one[..],0,17,1).status==NsStatus.shape;
+    #assert ns_floor(many[0..<32],one[..],0,32,2).blocks==16 && ns_floor(many[0..<2],one[..],0,2,1).blocks==2;
+    #assert ns_floor(many[0..<1],one[..],0,1,1).status==NsStatus.shape;
+    s[4]=0.0/0.0;#assert ns_floor(s[..],part[..],0,4,2).status==NsStatus.number;
+    s[4]=-1.0e301;#assert ns_floor(s[..],part[..],0,4,2).status==NsStatus.number;
+}
+
+#test "a bootstrap by hand" {
+    // Two tasks; task 1's three items each gain 1, task 0's one item loses 1.
+    a:=[5]f64.[1,0,0,0,7];b:=[5]f64.[0,1,1,1,7];task:=[5]int.[3,1,1,1,0];part:=[5]int.[0,0,0,0,1];
+    r:=ns_boot(a[..],b[..],task[..],part[..],0,0.5,11,50);
+    #assert r.status==NsStatus.ok && r.tasks==2 && r.items==4 && r.gain==0.5;
+    // Recompute each replicate: tasks drawn in id order (1, then 3).
+    sums:=[2]f64.[3,-1];counts:=[2]int.[3,1];reps:[50]f64;below:=0;mean:=0.0;
+    for k:0..<50 {
+        s:=0.0;c:=0;
+        for j:0..<2 {t:=cast(int)(tb_uniform(11,cast(u64)(k*2+j))*2);s+=sums[t];c+=counts[t];}
+        reps[k]=s/f64(c);mean+=reps[k];if reps[k]<=0.5 {below+=1;}
+    }
+    // Replicates are 1, -1 or 0.5, so their sum is exact; the squares are
+    // summed as the library does.
+    mean/=50;v:PsionicAccumulator;for x:reps {v=psionic_ops_accumulate(v,(x-mean)*(x-mean));}
+    #assert r.below==below && below>0 && below<50 && r.se==sqrt(psionic_ops_total(v)/49);
+    // Every replicate is 1, -1 or 0.5; a floor at 0.5 counts the ties.
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,0.4999,11,50).below<below;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,1,11,50).below==50 && ns_boot(a[..],b[..],task[..],part[..],0,-1,11,50).below>0;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,-1.0001,11,50).below==0;
+    // Item clusters: four tasks of one item each.
+    each:=[5]int.[0,1,2,3,4];e:=ns_boot(a[..],b[..],each[..],part[..],0,0.5,11,50);
+    #assert e.tasks==4 && e.items==4 && e.gain==0.5;
+    // The other part: one task of one item with no change.
+    z:=ns_boot(a[..],b[..],task[..],part[..],1,0,11,2);
+    #assert z.status==NsStatus.ok && z.tasks==1 && z.items==1 && z.gain==0 && z.se==0 && z.below==2;
+}
+
+#test "bootstrap refusals" {
+    a:=[3]f64.[0,0,0];b:=[3]f64.[1,1,0];task:=[3]int.[0,1,1];part:=[3]int.[0,0,0];
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,2).status==NsStatus.ok;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,1).status==NsStatus.shape;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,10000).status==NsStatus.ok;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,10001).status==NsStatus.shape;
+    #assert ns_boot(a[..],b[..],task[..],part[..],1,0,1,2).status==NsStatus.shape;
+    #assert ns_boot(a[0..<2],b[..],task[..],part[..],0,0,1,2).status==NsStatus.shape;
+    #assert ns_boot(a[..],b[0..<2],task[..],part[..],0,0,1,2).status==NsStatus.shape;
+    #assert ns_boot(a[..],b[..],task[..],part[0..<2],0,0,1,2).status==NsStatus.shape;
+    #assert ns_boot(a[0..<0],b[0..<0],task[0..<0],part[0..<0],0,0,1,2).status==NsStatus.shape;
+    task[0]=1023;#assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,2).tasks==2;
+    task[0]=1024;#assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,2).status==NsStatus.shape;
+    task[0]=-1;#assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,2).status==NsStatus.shape;
+    task[0]=0;
+    nan:=0.0/0.0;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,nan,1,2).status==NsStatus.number;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,1.0e301,1,2).status==NsStatus.number;
+    #assert ns_boot(a[..],b[..],task[..],part[..],0,-1.0e301,1,2).status==NsStatus.number;
+    b[2]=nan;#assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,2).status==NsStatus.number;
+    b[2]=0;a[2]=-1.0e301;#assert ns_boot(a[..],b[..],task[..],part[..],0,0,1,2).status==NsStatus.number;
+    big:[4097]f64;bt:[4097]int;bp:[4097]int;
+    #assert ns_boot(big[0..<4096],big[0..<4096],bt[0..<4096],bp[0..<4096],0,0,1,2).items==4096;
+    #assert ns_boot(big[..],big[..],bt[..],bp[..],0,0,1,2).status==NsStatus.shape;
+}
+
+#test "headroom by hand" {
+    s:=[5]f64.[1,0.5,1,0,1];part:=[5]int.[0,0,1,1,1];
+    r:=ns_headroom(s[..],part[..],0,1,0.2);
+    #assert r.status==NsStatus.ok && r.items==2 && r.open==1 && r.room==0.25 && !r.refused;
+    #assert ns_headroom(s[..],part[..],0,1,0.25).refused && !ns_headroom(s[..],part[..],0,1,0.2499).refused;
+    q:=ns_headroom(s[..],part[..],1,1,0);
+    #assert q.items==3 && q.open==1 && q.room==1-2.0/3.0 && !q.refused;
+    // Every item at its ceiling: no room, whatever the floor.
+    full:=[3]f64.[0.1,0.1,0.1];one:=[3]int.[4,4,4];
+    f:=ns_headroom(full[..],one[..],4,0.1,0);
+    #assert f.status==NsStatus.ok && f.items==3 && f.open==0 && f.room==0 && f.refused;
+    // Losses enter negated, with ceiling 0.
+    loss:=[2]f64.[-0.25,-0.75];two:=[2]int.[0,0];l:=ns_headroom(loss[..],two[..],0,0,0.4);
+    #assert l.open==2 && l.room==0.5 && !l.refused;
+    #assert ns_headroom(s[..],part[..],2,1,0).status==NsStatus.shape;
+    #assert ns_headroom(s[..],part[..],0,0.75,0).status==NsStatus.number;
+    #assert ns_headroom(s[..],part[..],0,1,-0.001).status==NsStatus.number;
+    #assert ns_headroom(s[..],part[..],0,1,0).refused==false && ns_headroom(s[..],part[..],0,1,1.0e300).refused;
+    #assert ns_headroom(s[..],part[..],0,1,1.0e301).status==NsStatus.number;
+    #assert ns_headroom(s[..],part[0..<4],0,1,0).status==NsStatus.shape && ns_headroom(s[0..<0],part[0..<0],0,1,0).status==NsStatus.shape;
+    nan:=0.0/0.0;
+    #assert ns_headroom(s[..],part[..],0,nan,0).status==NsStatus.number && ns_headroom(s[..],part[..],0,1,nan).status==NsStatus.number;
+    #assert ns_headroom(s[..],part[..],0,1.0e301,0).status==NsStatus.number;
+    s[1]=nan;#assert ns_headroom(s[..],part[..],0,1,0).status==NsStatus.number;
+    s[1]=-1.0e301;#assert ns_headroom(s[..],part[..],0,1,0).status==NsStatus.number;
+    big:[4097]f64;bp:[4097]int;
+    #assert ns_headroom(big[0..<4096],bp[0..<4096],0,0,0).items==4096 && ns_headroom(big[..],bp[..],0,0,0).status==NsStatus.shape;
+}
+
+#test "an item's Brier score and correctness" {
+    p:=[3]f64.[0.25,0.5,0.25];
+    #assert ns_brier(p[..],1)==0.375 && ns_brier(p[..],0)==0.875 && ns_correct(p[..],1)==1 && ns_correct(p[..],0)==0;
+    // Ties go to the first maximum.
+    t:=[3]f64.[0.4,0.4,0.2];#assert ns_correct(t[..],0)==1 && ns_correct(t[..],1)==0;
+    u:=[3]f64.[0.2,0.4,0.4];#assert ns_correct(u[..],1)==1 && ns_correct(u[..],2)==0;
+    one:=[1]f64.[1];#assert ns_brier(one[..],0)==0 && ns_correct(one[..],0)==1;
+    #assert ns_brier(p[..],3)==-1 && ns_brier(p[..],-1)==-1 && ns_correct(p[..],3)==-1 && ns_correct(p[..],-1)==-1;
+    #assert ns_brier(p[0..<0],0)==-1 && ns_correct(p[0..<0],0)==-1;
+    big:[256]f64;big[0]=1;
+    #assert ns_brier(big[0..<255],0)==0 && ns_brier(big[..],0)==-1 && ns_correct(big[..],0)==-1;
+    p[2]=1.5;#assert ns_brier(p[..],0)==-1 && ns_correct(p[..],0)==-1;
+    p[2]=-0.5;#assert ns_brier(p[..],0)==-1 && ns_correct(p[..],0)==-1;
+    p[2]=0.0/0.0;#assert ns_brier(p[..],0)==-1 && ns_correct(p[..],0)==-1;
+    p[2]=1;#assert ns_brier(p[..],2)==0.0625+0.25 && ns_correct(p[..],2)==1;
+    p[2]=0;#assert ns_brier(p[..],2)==0.0625+0.25+1;
+}
+
+#test "a small suite end to end" {
+    // Eight baseline runs in four blocks of two, a candidate one logit
+    // better, and the headroom of both parts.
+    scores:[3200]f64;
+    for r:0..<8 {#assert ns_run(3,r,0,scores[r*400..<(r+1)*400])==NsStatus.ok;}
+    task:[400]int;part:[400]int;for i:0..<400 {task[i]=ns_task(i);part[i]=ns_part(i);}
+    f:=ns_floor(scores[..],part[..],0,8,2);#assert f.status==NsStatus.ok && f.blocks==4 && f.floor>0;
+    s:=ns_floor(scores[..],part[..],1,8,2);#assert s.status==NsStatus.ok;
+    m:[400]f64;#assert ns_means(scores[..],400,0,8,m[..],false)==NsStatus.ok;
+    #assert !ns_headroom(m[..],part[..],0,1,f.floor).refused && ns_headroom(m[..],part[..],1,1,s.floor).refused;
+    a:[400]f64;b:[400]f64;c:[800]f64;
+    #assert ns_means(scores[..],400,0,2,a[..],false)==NsStatus.ok;
+    for q:0..<2 {#assert ns_run(3,100+q,1,c[q*400..<(q+1)*400])==NsStatus.ok;}
+    #assert ns_means(c[..],400,0,2,b[..],false)==NsStatus.ok;
+    t:=ns_boot(a[..],b[..],task[..],part[..],0,0,9,100);
+    #assert t.tasks==32 && t.items==320 && t.gain>0.05 && t.se>0;
+}
+
+// book:begin world
+// SplitMix64 at a counter, as in chapter 156. Item i belongs to task i/10;
+// tasks from 32 on are 5 logits easier, so the baseline saturates there.
+ns_task :: (item:int)->int {return item/NS_PER_TASK;}
+ns_part :: (item:int)->int {return ifx ns_task(item)>=NS_SATURATED then 1 else 0;}
+ns_difficulty :: (seed:u64,item:int)->f64 {
+    t:=ns_task(item);d:=3*tb_uniform(seed,cast(u64)t)-1.5+tb_uniform(seed,cast(u64)(1000+item))-0.5;
+    if t>=NS_SATURATED {d-=5;}
+    return d;
+}
+// Run r: a shift shared by every task, an effect for each task, and a draw
+// for each item. Item i is right with probability σ(skill − difficulty + effects).
+ns_run :: (seed:u64,run:int,skill:f64,out:[]f64)->NsStatus #export_c {
+    if out.count!=NS_ITEMS || run<0 || run>=NS_RUNS {return NsStatus.shape;}
+    if !tb_in(skill,-8,8) {return NsStatus.number;}
+    base:=cast(u64)(100000*(run+1));shift:=NS_SHIFT*(2*tb_uniform(seed,base+999)-1);
+    for i:0..<NS_ITEMS {
+        g:=shift+NS_SPREAD*(2*tb_uniform(seed,base+cast(u64)ns_task(i))-1);
+        out[i]=floor(tb_uniform(seed,base+cast(u64)(1000+i))+tb_sigmoid(skill-ns_difficulty(seed,i)+g));
+    }
+    return NsStatus.ok;
+}
+// book:end world
+
+ns_finite :: (v:[]f64)->bool {for x:v {if !tb_in(x,-NS_BIG,NS_BIG) {return false;}}return true;}
+ns_parts_ok :: (part:[]int,which:int)->int {
+    if part.count<1 || part.count>NS_ITEMS_MAX {return 0;}
+    picked:=0;for p:part {if p==which {picked+=1;}}
+    return picked;
+}
+
+// Scores are run-major: run r's items fill scores[r*items..<(r+1)*items].
+// The native adapter reports whether out overlaps scores.
+ns_means :: (scores:[]f64,items:int,first:int,runs:int,out:[]f64,overlap:bool)->NsStatus #export_c {
+    if items<1 || items>NS_ITEMS_MAX || out.count!=items || first<0 || runs<1 {return NsStatus.shape;}
+    if (first+runs)*items>scores.count {return NsStatus.shape;}
+    if overlap {return NsStatus.alias;}
+    if !ns_finite(scores[first*items..<(first+runs)*items]) {return NsStatus.number;}
+    for i:0..<items {
+        a:PsionicAccumulator;for r:first..<first+runs {a=psionic_ops_accumulate(a,scores[r*items+i]);}
+        out[i]=psionic_ops_total(a)/f64(runs);
+    }
+    return NsStatus.ok;
+}
+
+// book:begin floor
+// Runs of one configuration in blocks of equal size: each block's mean over
+// the partition, their standard deviation, and the floor, the difference
+// two blocks stay under 95 times in 100 if block means are normal.
+ns_floor :: (scores:[]f64,part:[]int,which:int,runs:int,block:int)->NsFloor #export_c {
+    n:=part.count;picked:=ns_parts_ok(part,which);
+    if picked==0 || block<1 || runs%block!=0 || scores.count!=runs*n {return NsFloor.{status=NsStatus.shape};}
+    r:=NsFloor.{blocks=runs/block};
+    if r.blocks<2 || r.blocks>NS_BLOCKS_MAX {return NsFloor.{status=NsStatus.shape};}
+    if !ns_finite(scores) {return NsFloor.{status=NsStatus.number};}
+    all:PsionicAccumulator;
+    for k:0..<r.blocks {
+        a:PsionicAccumulator;
+        for q:k*block..<(k+1)*block {for i:0..<n {if part[i]==which {a=psionic_ops_accumulate(a,scores[q*n+i]);}}}
+        r.mean[k]=psionic_ops_total(a)/f64(block*picked);all=psionic_ops_accumulate(all,r.mean[k]);
+    }
+    mu:=psionic_ops_total(all)/f64(r.blocks);v:PsionicAccumulator;
+    for k:0..<r.blocks {d:=r.mean[k]-mu;v=psionic_ops_accumulate(v,d*d);}
+    r.sd=sqrt(psionic_ops_total(v)/f64(r.blocks-1));r.floor=NS_Z*sqrt(2.0)*r.sd;
+    return r;
+}
+// book:end floor
+
+// book:begin bootstrap
+// The paired gain of b over a on a partition, and its spread when whole tasks
+// are drawn again with replacement; below counts replicates at or under floor.
+ns_boot :: (a:[]f64,b:[]f64,task:[]int,part:[]int,which:int,noise:f64,seed:u64,replicates:int)->NsBoot #export_c {
+    n:=part.count;
+    if ns_parts_ok(part,which)==0 || a.count!=n || b.count!=n || task.count!=n {return NsBoot.{status=NsStatus.shape};}
+    if replicates<2 || replicates>NS_REPLICATES_MAX {return NsBoot.{status=NsStatus.shape};}
+    for t:task {if t<0 || t>=NS_TASKS_MAX {return NsBoot.{status=NsStatus.shape};}}
+    if !ns_finite(a) || !ns_finite(b) || !tb_in(noise,-NS_BIG,NS_BIG) {return NsBoot.{status=NsStatus.number};}
+    sums:[NS_TASKS_MAX]PsionicAccumulator;counts:[NS_TASKS_MAX]int;
+    for i:0..<n {if part[i]==which {sums[task[i]]=psionic_ops_accumulate(sums[task[i]],b[i]-a[i]);counts[task[i]]+=1;}}
+    // The tasks present, in id order, with each task's summed difference.
+    present:[NS_TASKS_MAX]int;gain:[NS_TASKS_MAX]f64;r:NsBoot;all:PsionicAccumulator;
+    for t:0..<NS_TASKS_MAX {
+        if counts[t]>0 {
+            present[r.tasks]=t;gain[t]=psionic_ops_total(sums[t]);r.tasks+=1;r.items+=counts[t];
+            all=psionic_ops_accumulate(all,gain[t]);
+        }
+    }
+    r.gain=psionic_ops_total(all)/f64(r.items);
+    reps:[NS_REPLICATES_MAX]f64;m:PsionicAccumulator;
+    for k:0..<replicates {
+        s:PsionicAccumulator;c:=0;
+        for j:0..<r.tasks {
+            t:=present[cast(int)(tb_uniform(seed,cast(u64)(k*r.tasks+j))*f64(r.tasks))];
+            s=psionic_ops_accumulate(s,gain[t]);c+=counts[t];
+        }
+        reps[k]=psionic_ops_total(s)/f64(c);m=psionic_ops_accumulate(m,reps[k]);
+        if reps[k]<=noise {r.below+=1;}
+    }
+    mu:=psionic_ops_total(m)/f64(replicates);v:PsionicAccumulator;
+    for k:0..<replicates {d:=reps[k]-mu;v=psionic_ops_accumulate(v,d*d);}
+    r.se=sqrt(psionic_ops_total(v)/f64(replicates-1));
+    return r;
+}
+// book:end bootstrap
+
+// book:begin headroom
+// A partition is refused when its baseline is within the floor of the
+// ceiling: no gain larger than the floor could fit. With every item at the
+// ceiling the room is exactly 0.
+ns_headroom :: (score:[]f64,part:[]int,which:int,ceiling:f64,noise:f64)->NsRoom #export_c {
+    r:=NsRoom.{items=ns_parts_ok(part,which)};
+    if r.items==0 || score.count!=part.count {return NsRoom.{status=NsStatus.shape};}
+    if !tb_in(ceiling,-NS_BIG,NS_BIG) || !tb_in(noise,0,NS_BIG) || !ns_finite(score) {return NsRoom.{status=NsStatus.number};}
+    a:PsionicAccumulator;
+    for v,i:score {
+        if v>ceiling {return NsRoom.{status=NsStatus.number};}
+        if part[i]==which {a=psionic_ops_accumulate(a,v);if v<ceiling {r.open+=1;}}
+    }
+    if r.open>0 {r.room=ceiling-psionic_ops_total(a)/f64(r.items);}
+    r.refused=r.room<=noise;
+    return r;
+}
+// book:end headroom
+
+// An item's Brier score over its options, and whether its first most
+// probable option is the right one; -1 refuses.
+ns_item_ok :: (p:[]f64,gold:int)->bool {
+    if p.count<1 || p.count>255 || gold<0 || gold>=p.count {return false;}
+    for v:p {if !tb_in(v,0,1) {return false;}}
+    return true;
+}
+ns_brier :: (p:[]f64,gold:int)->f64 #export_c {
+    if !ns_item_ok(p,gold) {return -1;}
+    a:PsionicAccumulator;
+    for v,i:p {t:=ifx i==gold then 1.0 else 0.0;a=psionic_ops_accumulate(a,(v-t)*(v-t));}
+    return psionic_ops_total(a);
+}
+ns_correct :: (p:[]f64,gold:int)->f64 #export_c {
+    if !ns_item_ok(p,gold) {return -1;}
+    best:=0;for v,i:p {if v>p[best] {best=i;}}
+    return ifx best==gold then 1.0 else 0.0;
+}

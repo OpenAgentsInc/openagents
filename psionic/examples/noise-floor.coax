@@ -1,0 +1,88 @@
+#import "Basic";
+#load "../lib/noise.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+r7 :: (v:f64)->f64 {return floor(v*10000000+0.5)/10000000;}
+SEED :: 179;
+RUNS :: 64;
+BLOCK :: 4;
+
+// Chapter 12's held-out run: kind (0 choice, 1 noul, 2 score), gold option
+// and Elephant's probabilities, as recorded in fixtures/quality.
+ELEPHANT_KIND :: [12]int.[0,0,0,0,0,1,1,1,1,2,2,2];
+ELEPHANT_GOLD :: [12]int.[1,0,2,2,1,1,0,1,0,0,1,2];
+ELEPHANT_START :: [13]int.[0,3,6,9,13,16,18,20,22,24,27,30,33];
+ELEPHANT_P :: [33]f64.[
+    0.002928807,0.993571220,0.003499973, 0.999760347,0.000120185,0.000119469,
+    0.004286453,0.007238023,0.988475524, 0.000022106,0.000147891,0.999662403,0.000167600,
+    0.000654594,0.999191446,0.000153959, 0.000371329,0.999628671, 0.999669108,0.000330892,
+    0.000142345,0.999857655, 0.988583238,0.011416762, 0.999912545,0.000062176,0.000025279,
+    0.008296165,0.991150862,0.000552973, 0.000428897,0.000749283,0.998821820];
+
+room :: (name:string,r:NsRoom) {
+    print("  %: % items, % below the ceiling, room %, %\n",name,r.items,r.open,r7(r.room),ifx r.refused then "refused" else "open");
+}
+
+// book:begin example
+main :: () {
+    task:[400]int;part:[400]int;each:[400]int;
+    for i:0..<400 {task[i]=ns_task(i);part[i]=ns_part(i);each[i]=i;}
+
+    // 64 runs of the baseline, in 16 blocks of 4 seeds.
+    scores:[25600]f64;
+    for r:0..<RUNS {#assert ns_run(SEED,r,0,scores[r*400..<(r+1)*400])==NsStatus.ok;}
+    names:=[2]string.["open tasks (32)","saturated tasks (8)"];floors:[2]f64;mean:[400]f64;
+    #assert ns_means(scores[..],400,0,RUNS,mean[..],false)==NsStatus.ok;
+    for w:0..<2 {
+        f:=ns_floor(scores[..],part[..],w,RUNS,BLOCK);#assert f.status==NsStatus.ok;floors[w]=f.floor;
+        lo:=f.mean[0];hi:=f.mean[0];for k:1..<f.blocks {if f.mean[k]<lo {lo=f.mean[k];}if f.mean[k]>hi {hi=f.mean[k];}}
+        h:=ns_headroom(mean[..],part[..],w,1,f.floor);
+        print("%: block accuracy % to %, sd %, floor %; baseline %, room %: %\n",names[w],r4(lo),r4(hi),r4(f.sd),r4(f.floor),
+            r4(1-h.room),r4(h.room),ifx h.refused then "refused" else "open");
+    }
+
+    // Twenty comparisons of the baseline with itself, each block of 4 seeds
+    // against the next, judged by resampling items and by resampling tasks.
+    a:[400]f64;b:[400]f64;pair:[3200]f64;spread:=0.0;largest:=0.0;item_se:=0.0;task_se:=0.0;item_far:=0;task_far:=0;over:=0;
+    for j:0..<20 {
+        for q:0..<8 {#assert ns_run(SEED,RUNS+8*j+q,0,pair[q*400..<(q+1)*400])==NsStatus.ok;}
+        #assert ns_means(pair[..],400,0,4,a[..],false)==NsStatus.ok && ns_means(pair[..],400,4,4,b[..],false)==NsStatus.ok;
+        i:=ns_boot(a[..],b[..],each[..],part[..],0,0,cast(u64)(10+j),200);t:=ns_boot(a[..],b[..],task[..],part[..],0,0,cast(u64)(10+j),200);
+        spread+=i.gain*i.gain;if abs(i.gain)>largest {largest=abs(i.gain);}
+        item_se+=i.se/20;task_se+=t.se/20;
+        if abs(i.gain)>1.96*i.se {item_far+=1;}
+        if abs(t.gain)>1.96*t.se {task_far+=1;}
+        if abs(i.gain)>floors[0] {over+=1;}
+    }
+    print("the baseline against itself, 20 times: gains up to %, root mean square %, % beyond the floor\n",r4(largest),r4(sqrt(spread/20)),over);
+    print("  standard error from items %: % of 20 beyond 1.96 of them\n",r4(item_se),item_far);
+    print("  standard error from tasks %: % of 20 beyond 1.96 of them\n",r4(task_se),task_far);
+
+    // Two candidates, 4 seeds each, against the baseline's first block.
+    #assert ns_means(scores[..],400,0,BLOCK,a[..],false)==NsStatus.ok;
+    skills:=[2]f64.[0.5,1.5];firsts:=[2]int.[2000,3000];c:[1600]f64;
+    for k:0..<2 {
+        for q:0..<4 {#assert ns_run(SEED,firsts[k]+q,skills[k],c[q*400..<(q+1)*400])==NsStatus.ok;}
+        #assert ns_means(c[..],400,0,4,b[..],false)==NsStatus.ok;
+        i0:=ns_boot(a[..],b[..],each[..],part[..],0,0,7,1000);i1:=ns_boot(a[..],b[..],each[..],part[..],0,floors[0],7,1000);
+        t0:=ns_boot(a[..],b[..],task[..],part[..],0,0,7,1000);t1:=ns_boot(a[..],b[..],task[..],part[..],0,floors[0],7,1000);
+        print("candidate % logits better: gain %, floor %\n",skills[k],r4(i0.gain),r4(floors[0]));
+        print("  items: standard error %, % of 1000 at or below 0, % at or below the floor\n",r4(i0.se),i0.below,i1.below);
+        print("  tasks: standard error %, % of 1000 at or below 0, % at or below the floor\n",r4(t0.se),t0.below,t1.below);
+    }
+
+    // Elephant on chapter 12's suite: one run, so the floor is 0.
+    correct:[12]f64;brier:[12]f64;same:[12]int;
+    for i:0..<12 {
+        p:=ELEPHANT_P;q:=p[ELEPHANT_START[i]..<ELEPHANT_START[i+1]];
+        correct[i]=ns_correct(q,ELEPHANT_GOLD[i]);brier[i]=-ns_brier(q,ELEPHANT_GOLD[i]);
+    }
+    kind:=ELEPHANT_KIND;kinds:=[3]string.["choice","noul","score"];
+    print("Elephant, chapter 12's suite, accuracy:\n");
+    for w:0..<3 {room(kinds[w],ns_headroom(correct[..],kind[..],w,1,0));}
+    room("all",ns_headroom(correct[..],same[..],0,1,0));
+    print("Elephant, Brier score (negated, ceiling 0):\n");
+    for w:0..<3 {room(kinds[w],ns_headroom(brier[..],kind[..],w,0,0));}
+    room("all",ns_headroom(brier[..],same[..],0,0,0));
+}
+// book:end example

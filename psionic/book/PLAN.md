@@ -47,6 +47,9 @@ calibration maps, and refuses them for another model version.
 thresholds from written costs on synthetic probabilities.
 [Chapter 158](ch158-record-readings-join-outcomes-watch-drift.md) logs every
 decision, joins its outcome, and watches calibration drift.
+[Chapter 179](ch179-how-far-a-metric-moves-by-itself.md) measures noise floors
+from seed blocks and task-clustered bootstraps, and refuses partitions with no
+headroom.
 [Chapter 164a](ch164a-learn-which-model-to-call.md) uses chapter 70's trainer
 to choose among three simulated models and to judge a new router from an old
 one's logs.
@@ -694,7 +697,7 @@ advance (164, 180).
 | Chapter | What we build and check |
 | --- | --- |
 | 178. A suite is three digests | Items with their partitions, the question set and the gate each carry a digest; results go to an append-only store with a receipt chain, and a locked partition can be read once. Rewording a question changes only the question digest; a run over different items is refused as a comparison. |
-| 179. How far a metric moves by itself — in progress: Claude, 2026-10-29 | The noise floor from seed blocks and a task-clustered paired bootstrap, and a headroom check that refuses a partition already at its ceiling; reproduced on an Elephant suite before any optimization claims a gain. |
+| [179. How far a metric moves by itself](ch179-how-far-a-metric-moves-by-itself.md) — runnable: cpu-f64-noise-v1, synthetic suite and chapter 12's Elephant run | The noise floor from seed blocks and a task-clustered paired bootstrap, and a headroom check that refuses a partition already at its ceiling; reproduced on an Elephant suite before any optimization claims a gain. |
 | 180. Gates that can say unverifiable | Comparison gates as `#authority` Coax: a decision gate requiring a gain beyond the noise floor, a probability gate that ranks log loss and confident errors above calibration error and accuracy, and an evaluation gate where cost and time can block a result but never earn one; verdicts are passed, failed or unverifiable. Chapters 12, 156 and 157 report through them. |
 | 181. Environments with checkers | A task, a checker, a budget and a replay as one record; the checker must fail on empty work and pass on the reference solution before the environment is admitted; rollouts use Psionic-served models. |
 | 182. Fit settings on recorded answers | Thresholds, cut points and weights fitted from answers already recorded, with zero model calls: midpoint candidates, acceptance only when strictly better on the fit set and on grouped cross-validation; the first optimization to try, before any text changes. |
