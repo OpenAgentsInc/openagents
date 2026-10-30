@@ -1,0 +1,19 @@
+chapter 12's suite: items 7be5373b5066785a, questions 122febdeccba8aea, gate 11de5c6dc83dbd89
+question 7 reworded: items 7be5373b5066785a, questions 934d5dd7629dbb37, gate 11de5c6dc83dbd89
+item 7's state edited: items fa5040f8a407816b, questions 122febdeccba8aea, gate 11de5c6dc83dbd89
+2000 replicates: items 7be5373b5066785a, questions 122febdeccba8aea, gate bfc097d32bfc4e0b
+Elephant on the original suite, partition 0 (9 items): accuracy 1.0, receipt 0 5ae6f45398dfa09c
+Elephant on the original suite, partition 1 (3 items): accuracy 1.0, receipt 1 aa6dee4d3c4e8ad5
+Elephant on the original suite, partition 1 (3 items): refused, locked
+first option on the original suite, partition 0 (9 items): accuracy 0.3333333333333333, receipt 2 6158224b6f82fc71
+first option on the reworded suite, partition 0 (9 items): accuracy 0.3333333333333333, receipt 3 de52191f638cc841
+first option on the edited suite, partition 0 (9 items): accuracy 0.3333333333333333, receipt 4 fba5dcd7fbe46c51
+first option on the 2000 replicates suite, partition 0 (9 items): accuracy 0.3333333333333333, receipt 5 cba5169cff07786b
+compare receipts 0 and 2: ok, same questions
+compare receipts 2 and 3: ok, questions differ
+compare receipts 2 and 4: items
+compare receipts 2 and 5: gate
+compare receipts 0 and 1: partition
+the chain of 6 receipts: ok
+receipt 1's accuracy changed to 0.5: broken, at receipt 1
+and its digest recomputed: broken, at receipt 2

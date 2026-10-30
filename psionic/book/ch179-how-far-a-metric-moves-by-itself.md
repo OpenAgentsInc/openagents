@@ -322,5 +322,5 @@ has the commands and results.
   self-comparisons showed, is not reported.
 - **Standard errors and counts, not intervals.** Percentile intervals, and
   verdicts that say passed, failed or unverifiable, belong to chapter 180.
-- **No suite digests.** Chapter 178 pins which items, questions and gate a
+- **No suite digests here.** [Chapter 178](ch178-a-suite-is-three-digests.md) pins which items, questions and gate a
   comparison used.

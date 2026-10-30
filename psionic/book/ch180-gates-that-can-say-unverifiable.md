@@ -275,8 +275,8 @@ has the commands and results.
 
 ## What this does not do yet
 
-- **No receipts.** Chapter 178 pins the items, questions and gate a verdict
-  used.
+- **No receipts here.** [Chapter 178](ch178-a-suite-is-three-digests.md) pins
+  the items, questions and gate a verdict used.
 - **Fixed rules.** The 1-in-40 line, 10 tasks and 0.9 for confident are
   constants. A suite that needs others is a different profile.
 - **Yes-or-no probabilities only.** Choices and scores, as in chapter 12, need

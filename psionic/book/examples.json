@@ -490,6 +490,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/suite-digests.coax",
+      "chapter": "psionic/book/ch178-a-suite-is-three-digests.md",
+      "stdout": "psionic/fixtures/suite-digests.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

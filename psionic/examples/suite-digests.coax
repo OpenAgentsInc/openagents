@@ -1,0 +1,91 @@
+#import "Basic";
+#load "../lib/suite.coax";
+
+short :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[16]u8;
+    for i:0..<8 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+named :: (a:string,b:string,c:string)->[8]SuOption {
+    o:[8]SuOption;o[0]=SuOption.{named=true,name=a};o[1]=SuOption.{named=true,name=b};o[2]=SuOption.{named=true,name=c};return o;
+}
+levels :: (a:string,b:string,c:string)->[8]SuOption {
+    o:[8]SuOption;o[0]=SuOption.{described=true,description=a};o[1]=SuOption.{described=true,description=b};
+    o[2]=SuOption.{described=true,description=c};return o;
+}
+UNKNOWN :: SuOption.{named=true,name="unknown",described=true,description="the state does not say"};
+
+// Chapter 12's held-out suite, as in fixtures/quality/heldout-v1.json. Each
+// item is its own task; the last item of each kind is the locked partition 1.
+heldout :: ()->[12]SuItem {
+    s:[12]SuItem;
+    s[0]=SuItem.{id="choice-water",kind=0,task=0,state="The kettle was switched off an hour ago. The water in it is now at room temperature.",options=3,option=named("boiling","room temperature","frozen"),gold=1,abstain=-1};
+    s[1]=SuItem.{id="choice-payment",kind=0,task=1,state="Maya paid for the concert tickets in cash. She does not own a bank card.",options=3,option=named("cash","card","bank transfer"),gold=0,abstain=-1};
+    s[2]=SuItem.{id="choice-room-unknown",kind=0,task=2,state="The team meeting was moved to a different room this morning.",options=3,option=named("room 101","room 204",""),gold=2,abstain=2};
+    s[2].option[2]=UNKNOWN;
+    s[3]=SuItem.{id="choice-parcel",kind=0,task=3,state="The parcel left the warehouse on Monday and was delivered on Wednesday.",options=4,option=named("Monday","Tuesday","Wednesday"),gold=2,abstain=3};
+    s[3].option[3]=UNKNOWN;
+    s[4]=SuItem.{id="choice-routing",kind=0,task=4,partition=1,state="A customer writes: \"The app crashes every time I open the camera.\"",options=3,option=named("billing","bug reports","sales"),gold=1,abstain=-1};
+    s[5]=SuItem.{id="noul-window",kind=1,task=5,state="Every window in the house is closed.",gold=1,abstain=-1};
+    s[6]=SuItem.{id="noul-height",kind=1,task=6,state="Sam is taller than Ana, and Ana is taller than Lee.",gold=0,abstain=-1};
+    s[7]=SuItem.{id="noul-hours",kind=1,task=7,state="The shop opens at 9:00 and closes at 17:00 every day.",gold=1,abstain=-1};
+    s[8]=SuItem.{id="noul-capital",kind=1,task=8,partition=1,state="France is a country in Europe.",gold=0,abstain=-1};
+    s[9]=SuItem.{id="score-review-bad",kind=2,task=9,state="Review: \"Terrible. It broke on the first day.\"",options=3,option=levels("very negative","neutral","very positive"),gold=0,abstain=-1};
+    s[10]=SuItem.{id="score-review-plain",kind=2,task=10,state="Review: \"It works. Nothing special.\"",options=3,option=levels("very negative","neutral","very positive"),gold=1,abstain=-1};
+    s[11]=SuItem.{id="score-severity",kind=2,task=11,partition=1,state="Bug report: the whole service is down for every user.",options=3,option=levels("minor","moderate","critical"),gold=2,abstain=-1};
+    return s;
+}
+QUESTIONS :: [12]string.["How warm is the water in the kettle?","How did Maya pay for the tickets?",
+    "Which room is the meeting in now?","On which day was the parcel delivered?","Which team should handle this message?",
+    "Is the kitchen window open?","Is Sam taller than Lee?","Is the shop open at 20:00?","The capital of France is Paris.",
+    "How positive is the review?","How positive is the review?","How severe is the issue?"];
+// Chapter 180's decision gate, with chapter 157's limits.
+GATE :: SuGate.{kind=0,clear=40,min_tasks=10,replicates=1000,seed=7,cost_limit=1,seconds_limit=30};
+
+show :: (name:string,s:SuSuite) {print("%: items ",name);short(s.items);print(", questions ");short(s.questions);print(", gate ");short(s.gate);print("\n");}
+// A run reads one partition: Elephant was right on every item in chapter 12;
+// the first-option baseline is right where the label is option 0.
+run :: (s:SuSuite,items:[]SuItem,partition:int,system:u64)->SuReceipt {
+    values:[12]f64;n:=0;sum:=0.0;
+    for item:items {if item.partition==partition {values[n]=ifx system==1 || item.gold==0 then 1.0 else 0.0;sum+=values[n];n+=1;}}
+    return SuReceipt.{suite=s,partition=partition,system=system,read=n,score=sum/f64(n),values=su_values(values[0..<n])};
+}
+systems :: [3]string.["","Elephant","first option"];
+
+// book:begin example
+main :: () {
+    items:=heldout();questions:=QUESTIONS;
+    base:=su_suite(items[..],questions[..],GATE,2);#assert base.status==SuStatus.ok;
+    show("chapter 12's suite",base);
+
+    // Reword a question, edit an item, change the gate.
+    reworded:=questions;reworded[7]="Is the shop open at 8 pm?";
+    edited:=items;edited[7].state="The shop opens at 9:00 and closes at 17:00 on weekdays.";
+    gate:=GATE;gate.replicates=2000;
+    suites:=[3]SuSuite.[su_suite(items[..],reworded[..],GATE,2),su_suite(edited[..],questions[..],GATE,2),su_suite(items[..],questions[..],gate,2)];
+    show("question 7 reworded",suites[0]);show("item 7's state edited",suites[1]);show("2000 replicates",suites[2]);
+
+    // The store: each receipt names the one before it.
+    store:[8]SuReceipt;count:=0;
+    tries:=[7]SuReceipt.[run(base,items[..],0,1),run(base,items[..],1,1),run(base,items[..],1,1),run(base,items[..],0,2),
+        run(suites[0],items[..],0,2),run(suites[1],edited[..],0,2),run(suites[2],items[..],0,2)];
+    labels:=[7]string.["original","original","original","original","reworded","edited","2000 replicates"];
+    for t,k:tries {
+        a:=su_append(store[..],count,t);
+        print("% on the % suite, partition % (% items): ",systems[t.system],labels[k],t.partition,t.read);
+        if a.status==SuStatus.ok {count=a.count;print("accuracy %, receipt % ",t.score,count-1);short(store[count-1].digest);print("\n");}
+        else {print("refused, %\n",a.status);}
+    }
+    left:=[5]int.[0,2,2,2,0];right:=[5]int.[2,3,4,5,1];
+    for k:0..<5 {
+        c:=su_compare(store[left[k]],store[right[k]]);
+        print("compare receipts % and %: %",left[k],right[k],c.status);
+        if c.status==SuStatus.ok {print("%\n",ifx c.questions_same then ", same questions" else ", questions differ");} else {print("\n");}
+    }
+    check:=su_verify(store[..],count);print("the chain of % receipts: %\n",count,check.status);
+    store[1].score=0.5;check=su_verify(store[..],count);
+    print("receipt 1's accuracy changed to 0.5: %, at receipt %\n",check.status,check.index);
+    store[1].digest=su_receipt_digest(store[1]);check=su_verify(store[..],count);
+    print("and its digest recomputed: %, at receipt %\n",check.status,check.index);
+}
+// book:end example

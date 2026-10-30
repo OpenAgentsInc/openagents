@@ -58,6 +58,7 @@
 - [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md)
 - [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md)
 
+- [178. A suite is three digests](ch178-a-suite-is-three-digests.md)
 - [179. How far a metric moves by itself](ch179-how-far-a-metric-moves-by-itself.md)
 - [180. Gates that can say unverifiable](ch180-gates-that-can-say-unverifiable.md)
 
@@ -66,6 +67,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–59, 61, 63, 66, 70–71, 156–158, 164a, 165–169, 172, 179 and 180 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–59, 61, 63, 66, 70–71, 156–158, 164a, 165–169, 172 and 178–180 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–40 and the remaining outlines
 remain proposed.

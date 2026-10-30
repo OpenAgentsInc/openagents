@@ -1,0 +1,330 @@
+// Chapter 178: a suite is three digests. The items with their tasks,
+// partitions and locked partitions carry one digest, the question set
+// another, and the gate a third. Results go to an append-only store in which
+// every receipt names the previous one, a locked partition can be read once,
+// and two results compare only over the same items, partition and gate.
+// Profile sha256-suite-v1: SHA-256 over a fixed little-endian encoding, up to
+// 64 items and 64 partitions, and a store of up to 4,096 receipts.
+#load "../../coax/lib/crypto/sha256.coax";
+#authority;
+
+SuStatus :: enum u8 {ok;shape;capacity;number;locked;broken;items;gate;partition;}
+SuOption :: struct {named:bool;name:string;described:bool;description:string;}
+// kind: 0 choice, 1 noul, 2 score; abstain -1 when no option means "I don't know".
+SuItem :: struct {id:string;kind:u8;task:int;partition:int;state:string;options:int;option:[8]SuOption;gold:int;abstain:int;}
+SuGate :: struct {kind:u8;clear:int;min_tasks:int;replicates:int;seed:u64;cost_limit:f64;seconds_limit:f64;}
+SuSuite :: struct {status:SuStatus;items:[32]u8;questions:[32]u8;gate:[32]u8;mask:u64;}
+SuReceipt :: struct {sequence:int;previous:[32]u8;suite:SuSuite;partition:int;system:u64;read:int;score:f64;values:[32]u8;digest:[32]u8;}
+SuAppend :: struct {status:SuStatus;count:int;}
+SuCheck :: struct {status:SuStatus;index:int;}
+SuComparison :: struct {status:SuStatus;questions_same:bool;}
+
+SU_ITEMS_MAX :: 64;
+SU_PARTITIONS :: 64;
+SU_TASKS_MAX :: 1024;
+SU_ID_MAX :: 64;
+SU_STATE_MAX :: 512;
+SU_OPTION_MAX :: 64;
+SU_QUESTION_MAX :: 256;
+SU_BYTES :: 131072;
+
+// Checks precede the implementation. Expected digests come from
+// psionic/tests/suite_oracle.py --tests, which uses Python's hashlib.
+su_hex :: (d:[32]u8,text:string)->bool {
+    digits:="0123456789abcdef";
+    for i:0..<32 {if text[2*i]!=digits[cast(int)(d[i]>>4)] || text[2*i+1]!=digits[cast(int)(d[i]&15)] {return false;}}
+    return true;
+}
+su_small :: ()->[2]SuItem {
+    items:[2]SuItem;
+    items[0]=SuItem.{id="a",kind=1,state="s",gold=1,abstain=-1};
+    items[1]=SuItem.{id="bc",kind=0,task=3,partition=2,state="",options=3,gold=2,abstain=1};
+    items[1].option[0]=SuOption.{named=true,name="x"};
+    items[1].option[1]=SuOption.{named=true,name="y",described=true,description="d"};
+    items[1].option[2]=SuOption.{described=true,description=""};
+    return items;
+}
+SMALL_GATE :: SuGate.{kind=1,clear=40,min_tasks=10,replicates=200,seed=5,cost_limit=1.5,seconds_limit=0.25};
+
+#test "three digests by hand" {
+    items:=su_small();questions:=[2]string.["q?",""];
+    s:=su_suite(items[..],questions[..],SMALL_GATE,4);
+    #assert s.status==SuStatus.ok && s.mask==4;
+    #assert su_hex(s.items,"63ac32de4807c267b802cf536bd24c6b1663c9b9e29c18f9d782d0d5bd5c7592");
+    #assert su_hex(s.questions,"32e936dc7bb872e1ff562bb231763d80e813d17fdd52160f423653679e5ae0e5");
+    #assert su_hex(s.gate,"58208ff926c1c99ae487568d315c35fd9fd8841a7ced0aa439daf8929b440afd");
+    values:=[3]f64.[1,0,0.5];
+    #assert su_hex(su_values(values[..]),"f1b8a71639a085dfad48a329d80b5d973d2dea05a78d0b1572b09c0a92f2c8f8");
+    r:=SuReceipt.{sequence=1,suite=s,partition=2,system=7,read=3,score=0.5,values=su_values(values[..])};
+    for i:0..<32 {r.previous[i]=cast(u8)i;}
+    #assert su_hex(su_receipt_digest(r),"e6eea6cab9eefb6be4ff33d93e2eb7d3c1304a74266ebbb11f9ff6dc0b279a7b");
+    // The check helpers see a change in the first and last nibble and byte.
+    #assert !su_hex(s.gate,"68208ff926c1c99ae487568d315c35fd9fd8841a7ced0aa439daf8929b440afd");
+    #assert !su_hex(s.gate,"59208ff926c1c99ae487568d315c35fd9fd8841a7ced0aa439daf8929b440afd");
+    #assert !su_hex(s.gate,"58208ff926c1c99ae487568d315c35fd9fd8841a7ced0aa439daf8929b440afc");
+    a:=s.gate;b:=s.gate;#assert su_same(a,b);
+    b[0]^=1;#assert !su_same(a,b);b=a;b[31]^=128;#assert !su_same(a,b);
+}
+
+#test "each field moves exactly one digest" {
+    items:=su_small();questions:=[2]string.["q?",""];s:=su_suite(items[..],questions[..],SMALL_GATE,4);
+    // Rewording a question changes only the question digest.
+    q2:=[2]string.["q!",""];r:=su_suite(items[..],q2[..],SMALL_GATE,4);
+    #assert su_same(r.items,s.items) && su_same(r.gate,s.gate) && !su_same(r.questions,s.questions);
+    q3:=[2]string.["","q?"];#assert !su_same(su_suite(items[..],q3[..],SMALL_GATE,4).questions,s.questions);
+    // Any change to an item, its partition or the locked set changes only the items digest.
+    edits:[14][2]SuItem;
+    for k:0..<14 {edits[k]=su_small();}
+    edits[0][0].id="b";edits[1][1].kind=2;edits[2][0].task=1;edits[3][0].partition=1;edits[4][0].state="t";
+    edits[5][1].options=4;edits[6][1].option[0].named=false;edits[7][1].option[0].name="z";
+    edits[8][1].option[2].described=false;edits[9][1].option[1].description="e";edits[10][1].gold=1;edits[11][1].abstain=-1;
+    edits[12][0].state="ss";edits[13][1].option[1].name="";
+    for k:0..<14 {
+        e:=su_suite(edits[k][..],questions[..],SMALL_GATE,4);
+        #assert e.status==SuStatus.ok && !su_same(e.items,s.items) && su_same(e.questions,s.questions) && su_same(e.gate,s.gate);
+    }
+    #assert !su_same(su_suite(items[..],questions[..],SMALL_GATE,6).items,s.items);
+    // Swapping two items changes the items digest.
+    swapped:=[2]SuItem.[items[1],items[0]];#assert !su_same(su_suite(swapped[..],q3[..],SMALL_GATE,4).items,s.items);
+    // Every gate field changes only the gate digest.
+    gates:[7]SuGate;for k:0..<7 {gates[k]=SMALL_GATE;}
+    gates[0].kind=0;gates[1].clear=41;gates[2].min_tasks=9;gates[3].replicates=201;gates[4].seed=6;
+    gates[5].cost_limit=1.25;gates[6].seconds_limit=0.5;
+    for g:gates {t:=su_suite(items[..],questions[..],g,4);#assert !su_same(t.gate,s.gate) && su_same(t.items,s.items) && su_same(t.questions,s.questions);}
+    // Values: order and bits matter; negative zero is not zero.
+    v1:=[2]f64.[1,0];v2:=[2]f64.[0,1];v3:=[2]f64.[1,-0.0];v4:=[1]f64.[1];
+    #assert !su_same(su_values(v1[..]),su_values(v2[..])) && !su_same(su_values(v1[..]),su_values(v3[..])) && !su_same(su_values(v1[..]),su_values(v4[..]));
+}
+
+#test "suite refusals" {
+    items:=su_small();questions:=[2]string.["q?",""];
+    #assert su_suite(items[..],questions[0..<1],SMALL_GATE,4).status==SuStatus.shape;
+    #assert su_suite(items[0..<0],questions[0..<0],SMALL_GATE,4).status==SuStatus.shape;
+    one:=su_suite(items[0..<1],questions[0..<1],SMALL_GATE,0);#assert one.status==SuStatus.ok;
+    many:[65]SuItem;mq:[65]string;for i:0..<65 {many[i]=items[0];mq[i]="q";}
+    #assert su_suite(many[0..<64],mq[0..<64],SMALL_GATE,0).status==SuStatus.ok && su_suite(many[..],mq[..],SMALL_GATE,0).status==SuStatus.shape;
+    bad:[20][2]SuItem;for k:0..<20 {bad[k]=su_small();}
+    bad[0][0].id="";bad[1][1].kind=3;bad[2][0].task=-1;bad[3][0].task=1024;bad[4][0].partition=-1;bad[5][0].partition=64;
+    bad[6][1].options=9;bad[7][1].options=-1;bad[8][1].gold=3;bad[9][1].gold=-1;bad[10][1].abstain=3;bad[11][1].abstain=-2;
+    bad[12][0].gold=2;
+    long:[600]u8;for i:0..<600 {long[i]=97;}
+    bad[13][0].id=cast(string)long[0..<65];bad[14][0].state=cast(string)long[0..<513];
+    bad[15][1].option[0].name=cast(string)long[0..<65];bad[16][1].option[0].description=cast(string)long[0..<65];
+    bad[17][0].options=1;bad[18][1].options=1;bad[19][1].kind=1;
+    for k:0..<20 {#assert su_suite(bad[k][..],questions[..],SMALL_GATE,4).status==SuStatus.shape;}
+    // At the limits.
+    ok:[9][2]SuItem;for k:0..<9 {ok[k]=su_small();}
+    ok[8][1].options=2;ok[8][1].gold=1;
+    ok[0][0].id=cast(string)long[0..<64];ok[1][0].state=cast(string)long[0..<512];ok[2][1].option[0].name=cast(string)long[0..<64];
+    ok[3][1].option[0].description=cast(string)long[0..<64];ok[4][0].task=1023;ok[5][0].partition=63;ok[6][1].options=8;ok[6][1].abstain=7;
+    ok[7][1].abstain=2;ok[7][1].gold=0;
+    for k:0..<9 {#assert su_suite(ok[k][..],questions[..],SMALL_GATE,4).status==SuStatus.ok;}
+    lq:=[2]string.[cast(string)long[0..<257],""];#assert su_suite(items[..],lq[..],SMALL_GATE,4).status==SuStatus.shape;
+    lq[0]=cast(string)long[0..<256];#assert su_suite(items[..],lq[..],SMALL_GATE,4).status==SuStatus.ok;
+    g:=SMALL_GATE;g.kind=2;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.shape;
+    g=SMALL_GATE;g.clear=0;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.shape;
+    g=SMALL_GATE;g.min_tasks=0;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.shape;
+    g=SMALL_GATE;g.replicates=1;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.shape;
+    g=SMALL_GATE;g.clear=1;g.min_tasks=1;g.replicates=2;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.ok;
+    g=SMALL_GATE;g.cost_limit=-1;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.number;
+    g=SMALL_GATE;g.seconds_limit=0.0/0.0;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.number;
+    g=SMALL_GATE;g.cost_limit=0;g.seconds_limit=1.0e300;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.ok;
+    g.seconds_limit=1.0e301;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.number;
+    g=SMALL_GATE;g.cost_limit=1.0e300;g.seconds_limit=0;#assert su_suite(items[..],questions[..],g,4).status==SuStatus.ok;
+}
+
+su_result :: (s:SuSuite,partition:int,system:u64,score:f64)->SuReceipt {
+    v:=[1]f64.[score];return SuReceipt.{suite=s,partition=partition,system=system,read=1,score=score,values=su_values(v[..])};
+}
+
+#test "an append-only store with a chain" {
+    items:=su_small();questions:=[2]string.["q?",""];s:=su_suite(items[..],questions[..],SMALL_GATE,4);
+    store:[4]SuReceipt;
+    a:=su_append(store[..],0,su_result(s,0,1,0.5));#assert a.status==SuStatus.ok && a.count==1;
+    #assert store[0].sequence==0 && su_same(store[0].previous,store[3].previous) && su_same(store[0].digest,su_receipt_digest(store[0]));
+    // Partition 2 is locked: one read, then refused.
+    a=su_append(store[..],1,su_result(s,2,1,1));#assert a.status==SuStatus.ok && a.count==2;
+    #assert store[1].sequence==1 && su_same(store[1].previous,store[0].digest);
+    keep:=store[2];
+    #assert su_append(store[..],2,su_result(s,2,7,1)).status==SuStatus.locked && su_same(store[2].digest,keep.digest);
+    // Another suite's locked partition 2 is a different read.
+    other:=su_suite(items[1..<2],questions[1..<2],SMALL_GATE,4);
+    #assert su_append(store[..],2,su_result(other,2,1,1)).count==3;
+    // Open partitions can be read again.
+    #assert su_append(store[..],3,su_result(s,0,1,0.5)).count==4;
+    #assert su_append(store[..],4,su_result(s,0,1,0.5)).status==SuStatus.capacity;
+    #assert su_append(store[..],5,su_result(s,0,1,0.5)).status==SuStatus.shape && su_append(store[..],-1,su_result(s,0,1,0.5)).status==SuStatus.shape;
+    #assert su_append(store[..],3,su_result(s,64,1,0.5)).status==SuStatus.shape && su_append(store[..],3,su_result(s,-1,1,0.5)).status==SuStatus.shape;
+    nan:=0.0/0.0;#assert su_append(store[..],3,su_result(s,0,1,nan)).status==SuStatus.number;
+    #assert su_append(store[..],3,su_result(s,0,1,-1.0e301)).status==SuStatus.number;
+    edge:[3]SuReceipt;
+    #assert su_append(edge[..],0,su_result(s,0,1,1.0e300)).count==1 && su_append(edge[..],1,su_result(s,0,1,-1.0e300)).count==2;
+    // A first receipt on a locked partition blocks the next; partition 3 is open.
+    first:[3]SuReceipt;#assert su_append(first[..],0,su_result(s,2,1,1)).count==1;
+    #assert su_append(first[..],1,su_result(s,2,1,1)).status==SuStatus.locked;
+    #assert su_append(first[..],1,su_result(s,3,1,1)).count==2 && su_append(first[..],2,su_result(s,3,1,1)).count==3;
+    #assert su_append(store[..],3,su_result(s,0,1,1.0e301)).status==SuStatus.number;
+    r:=su_result(s,0,1,0.5);r.read=0;#assert su_append(store[..],3,r).status==SuStatus.shape;
+    bad:=s;bad.status=SuStatus.shape;#assert su_append(store[..],3,su_result(bad,0,1,0.5)).status==SuStatus.shape;
+    // The chain verifies; any change to a stored field breaks it at that receipt.
+    #assert su_verify(store[..],4).status==SuStatus.ok && su_verify(store[..],0).status==SuStatus.ok;
+    #assert su_verify(store[..],5).status==SuStatus.shape && su_verify(store[..],-1).status==SuStatus.shape;
+    for k:0..<11 {
+        t:=store;
+        if k==0 {t[1].score=0.25;}
+        if k==1 {t[1].sequence=2;}
+        if k==2 {t[1].previous[5]^=1;}
+        if k==3 {t[1].suite.items[0]^=1;}
+        if k==4 {t[1].suite.questions[31]^=1;}
+        if k==5 {t[1].suite.gate[9]^=1;}
+        if k==6 {t[1].suite.mask=0;}
+        if k==7 {t[1].partition=0;}
+        if k==8 {t[1].system=2;}
+        if k==9 {t[1].read=2;}
+        if k==10 {t[1].values[3]^=1;}
+        c:=su_verify(t[..],4);#assert c.status==SuStatus.broken && c.index==1;
+    }
+    // Rewriting a receipt and its own digest still breaks the next link.
+    t:=store;t[1].score=0.25;t[1].digest=su_receipt_digest(t[1]);
+    c:=su_verify(t[..],4);#assert c.status==SuStatus.broken && c.index==2;
+    #assert su_verify(t[..],2).status==SuStatus.ok;
+    t=store;t[0].previous[0]=1;c=su_verify(t[..],4);#assert c.status==SuStatus.broken && c.index==0;
+}
+
+#test "results compare only over the same items, partition and gate" {
+    items:=su_small();questions:=[2]string.["q?",""];s:=su_suite(items[..],questions[..],SMALL_GATE,4);
+    q2:=[2]string.["q!",""];r:=su_suite(items[..],q2[..],SMALL_GATE,4);
+    a:=su_result(s,0,1,0.5);b:=su_result(r,0,2,0.75);
+    c:=su_compare(a,b);#assert c.status==SuStatus.ok && !c.questions_same;
+    c=su_compare(a,su_result(s,0,2,0.25));#assert c.status==SuStatus.ok && c.questions_same;
+    edited:=su_small();edited[0].state="t";
+    #assert su_compare(a,su_result(su_suite(edited[..],questions[..],SMALL_GATE,4),0,2,0.5)).status==SuStatus.items;
+    #assert su_compare(a,su_result(su_suite(items[..],questions[..],SMALL_GATE,6),0,2,0.5)).status==SuStatus.items;
+    g:=SMALL_GATE;g.seed=9;#assert su_compare(a,su_result(su_suite(items[..],questions[..],g,4),0,2,0.5)).status==SuStatus.gate;
+    #assert su_compare(a,su_result(s,2,2,0.5)).status==SuStatus.partition;
+    // Items are checked before the gate, and the gate before the partition.
+    #assert su_compare(a,su_result(su_suite(edited[..],questions[..],g,4),2,2,0.5)).status==SuStatus.items;
+    #assert su_compare(a,su_result(su_suite(items[..],questions[..],g,4),2,2,0.5)).status==SuStatus.gate;
+    bad:=s;bad.status=SuStatus.shape;#assert su_compare(a,su_result(bad,0,2,0.5)).status==SuStatus.shape;
+    #assert su_compare(su_result(bad,0,2,0.5),a).status==SuStatus.shape;
+}
+
+// book:begin encode
+su_zero :: ()->[32]u8 {z:[32]u8;return z;}
+su_same :: (a:[32]u8,b:[32]u8)->bool {for i:0..<32 {if a[i]!=b[i] {return false;}}return true;}
+// Little-endian u64s, and texts as a u64 length then their bytes.
+su_u64 :: (buf:[]u8,at:int,x:u64)->int {for i:0..<8 {buf[at+i]=cast(u8)((x>>(i*8))&255);}return at+8;}
+su_text :: (buf:[]u8,at:int,s:string)->int {p:=su_u64(buf,at,cast(u64)s.count);for i:0..<s.count {buf[p+i]=s[i];}return p+s.count;}
+su_flag :: (buf:[]u8,at:int,b:bool)->int {buf[at]=ifx b then 1 else 0;return at+1;}
+su_hash :: (bytes:[]u8)->[32]u8 {out:[32]u8;status:=sha256_hash_checked(bytes,out[..],false);#assert status==SHA_OK;return out;}
+// book:end encode
+
+su_text_ok :: (s:string,lo:int,hi:int)->bool {return s.count>=lo && s.count<=hi;}
+su_item_ok :: (item:SuItem)->bool {
+    if !su_text_ok(item.id,1,SU_ID_MAX) || !su_text_ok(item.state,0,SU_STATE_MAX) || item.kind>2 {return false;}
+    if item.task<0 || item.task>=SU_TASKS_MAX || item.partition<0 || item.partition>=SU_PARTITIONS {return false;}
+    // A noul item has no options and answers yes (0) or no (1); the others have 2 to 8.
+    count:=ifx item.kind==1 then 2 else item.options;
+    if item.kind==1 && item.options!=0 {return false;}
+    if item.kind!=1 && (item.options<2 || item.options>8) {return false;}
+    if item.gold<0 || item.gold>=count || item.abstain< -1 || item.abstain>=count {return false;}
+    for k:0..<item.options {
+        o:=item.option[k];
+        if !su_text_ok(o.name,0,SU_OPTION_MAX) || !su_text_ok(o.description,0,SU_OPTION_MAX) {return false;}
+    }
+    return true;
+}
+su_gate_ok :: (g:SuGate)->SuStatus {
+    if g.kind>1 || g.clear<1 || g.min_tasks<1 || g.replicates<2 {return SuStatus.shape;}
+    if !(g.cost_limit>=0 && g.cost_limit<=1.0e300) || !(g.seconds_limit>=0 && g.seconds_limit<=1.0e300) {return SuStatus.number;}
+    return SuStatus.ok;
+}
+
+// book:begin suite
+// The items digest covers every item field, its task and partition, and the
+// set of locked partitions; the question digest covers only the questions;
+// the gate digest covers every gate setting.
+su_suite :: (items:[]SuItem,questions:[]string,gate:SuGate,locked:u64)->SuSuite #export_c {
+    n:=items.count;
+    if n<1 || n>SU_ITEMS_MAX || questions.count!=n {return SuSuite.{status=SuStatus.shape};}
+    for item:items {if !su_item_ok(item) {return SuSuite.{status=SuStatus.shape};}}
+    for q:questions {if !su_text_ok(q,0,SU_QUESTION_MAX) {return SuSuite.{status=SuStatus.shape};}}
+    g:=su_gate_ok(gate);if g!=SuStatus.ok {return SuSuite.{status=g};}
+    s:=SuSuite.{mask=locked};buf:[SU_BYTES]u8;
+    at:=su_text(buf[..],0,"psionic.suite.items.v1");at=su_u64(buf[..],at,locked);at=su_u64(buf[..],at,cast(u64)n);
+    for item:items {
+        at=su_text(buf[..],at,item.id);buf[at]=item.kind;at+=1;
+        at=su_u64(buf[..],at,cast(u64)item.task);at=su_u64(buf[..],at,cast(u64)item.partition);
+        at=su_text(buf[..],at,item.state);at=su_u64(buf[..],at,cast(u64)item.options);
+        for k:0..<item.options {
+            o:=item.option[k];at=su_flag(buf[..],at,o.named);at=su_text(buf[..],at,o.name);
+            at=su_flag(buf[..],at,o.described);at=su_text(buf[..],at,o.description);
+        }
+        at=su_u64(buf[..],at,cast(u64)item.gold);at=su_u64(buf[..],at,cast(u64)(item.abstain+1));
+    }
+    s.items=su_hash(buf[0..<at]);
+    at=su_text(buf[..],0,"psionic.suite.questions.v1");at=su_u64(buf[..],at,cast(u64)n);
+    for q:questions {at=su_text(buf[..],at,q);}
+    s.questions=su_hash(buf[0..<at]);
+    at=su_text(buf[..],0,"psionic.suite.gate.v1");buf[at]=gate.kind;at+=1;
+    at=su_u64(buf[..],at,cast(u64)gate.clear);at=su_u64(buf[..],at,cast(u64)gate.min_tasks);
+    at=su_u64(buf[..],at,cast(u64)gate.replicates);at=su_u64(buf[..],at,gate.seed);
+    at=su_u64(buf[..],at,f64_bits(gate.cost_limit));at=su_u64(buf[..],at,f64_bits(gate.seconds_limit));
+    s.gate=su_hash(buf[0..<at]);
+    return s;
+}
+// book:end suite
+
+su_values :: (values:[]f64)->[32]u8 #export_c {
+    buf:[SU_BYTES]u8;at:=su_text(buf[..],0,"psionic.suite.values.v1");at=su_u64(buf[..],at,cast(u64)values.count);
+    for v:values {at=su_u64(buf[..],at,f64_bits(v));}
+    return su_hash(buf[0..<at]);
+}
+
+// book:begin store
+su_receipt_digest :: (r:SuReceipt)->[32]u8 #export_c {
+    buf:[512]u8;at:=su_text(buf[..],0,"psionic.suite.receipt.v1");at=su_u64(buf[..],at,cast(u64)r.sequence);
+    for i:0..<32 {buf[at+i]=r.previous[i];buf[at+32+i]=r.suite.items[i];buf[at+64+i]=r.suite.questions[i];buf[at+96+i]=r.suite.gate[i];}
+    at+=128;at=su_u64(buf[..],at,r.suite.mask);at=su_u64(buf[..],at,cast(u64)r.partition);
+    at=su_u64(buf[..],at,r.system);at=su_u64(buf[..],at,cast(u64)r.read);at=su_u64(buf[..],at,f64_bits(r.score));
+    for i:0..<32 {buf[at+i]=r.values[i];}
+    return su_hash(buf[0..<at+32]);
+}
+// Append at count: the receipt takes the next sequence number and the previous
+// receipt's digest. A locked partition of a suite's items can be read once.
+su_append :: (store:[]SuReceipt,count:int,r:SuReceipt)->SuAppend #export_c {
+    if count<0 || count>store.count || r.suite.status!=SuStatus.ok || r.read<1 {return SuAppend.{status=SuStatus.shape};}
+    if r.partition<0 || r.partition>=SU_PARTITIONS {return SuAppend.{status=SuStatus.shape};}
+    if !(r.score>=-1.0e300 && r.score<=1.0e300) {return SuAppend.{status=SuStatus.number};}
+    if count==store.count {return SuAppend.{status=SuStatus.capacity};}
+    if (r.suite.mask>>r.partition)&1==1 {
+        for old:store[0..<count] {
+            if su_same(old.suite.items,r.suite.items) && old.partition==r.partition {return SuAppend.{status=SuStatus.locked};}
+        }
+    }
+    e:=r;e.sequence=count;e.previous=ifx count==0 then su_zero() else store[count-1].digest;
+    e.digest=su_receipt_digest(e);store[count]=e;
+    return SuAppend.{count=count+1};
+}
+// The first receipt whose sequence, link or digest does not hold.
+su_verify :: (store:[]SuReceipt,count:int)->SuCheck #export_c {
+    if count<0 || count>store.count {return SuCheck.{status=SuStatus.shape};}
+    for r,i:store[0..<count] {
+        previous:=ifx i==0 then su_zero() else store[i-1].digest;
+        if r.sequence!=i || !su_same(r.previous,previous) || !su_same(r.digest,su_receipt_digest(r)) {return SuCheck.{status=SuStatus.broken,index=i};}
+    }
+    return SuCheck.{};
+}
+// book:end store
+
+// book:begin compare
+// Two results compare only over the same items, gate and partition; the
+// questions may differ, which is what rewording measures.
+su_compare :: (a:SuReceipt,b:SuReceipt)->SuComparison #export_c {
+    if a.suite.status!=SuStatus.ok || b.suite.status!=SuStatus.ok {return SuComparison.{status=SuStatus.shape};}
+    if !su_same(a.suite.items,b.suite.items) || a.suite.mask!=b.suite.mask {return SuComparison.{status=SuStatus.items};}
+    if !su_same(a.suite.gate,b.suite.gate) {return SuComparison.{status=SuStatus.gate};}
+    if a.partition!=b.partition {return SuComparison.{status=SuStatus.partition};}
+    return SuComparison.{questions_same=su_same(a.suite.questions,b.suite.questions)};
+}
+// book:end compare
