@@ -11,7 +11,7 @@ def npy(blob):
     assert blob[:6]==b'\x93NUMPY';major=blob[6];width=2 if major==1 else 4;start=8+width;n=int.from_bytes(blob[8:start],'little');h=ast.literal_eval(blob[start:start+n].decode());assert not h['fortran_order'] and len(h['shape'])==1
     data=blob[start+n:];assert h['descr'] in ('<f4','<i8');assert len(data)==h['shape'][0]*(4 if h['descr']=='<f4' else 8);return data,h['descr']
 def main():
-    ap=argparse.ArgumentParser();ap.add_argument('model',choices=['20b','120b']);ap.add_argument('results',type=Path);a=ap.parse_args();archive=ROOT/'psionic/fixtures/gptoss/original'/a.model/'qualification/reference.npz';summary={'profile':'gpt-oss-cuda-f32-v1','reference_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'bound':BOUND,'steps':[]}
+    ap=argparse.ArgumentParser();ap.add_argument('model',choices=['20b','120b']);ap.add_argument('results',type=Path);ap.add_argument('--profile',default='gpt-oss-cuda-f32-v1');a=ap.parse_args();archive=ROOT/'psionic/fixtures/gptoss/original'/a.model/'qualification/reference.npz';summary={'profile':a.profile,'reference_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'bound':BOUND,'steps':[]}
     with zipfile.ZipFile(archive) as z:
         for step in range(2):
             r={}

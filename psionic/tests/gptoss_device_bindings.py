@@ -19,4 +19,11 @@ def main():
                 arguments.append(f'({typ}){{({c}*)pg_address(s,a[{j}].ref),a[{j}].ref.count}}')
         print(f'case {i}: {name}('+','.join(arguments)+');break;')
     print('default: abort();}}')
+    # Which parameters are f64 views: float-float pairs on Metal, binary64 here.
+    print('static inline int pg_cpu_f64(int kind,int parameter){switch(kind){')
+    for i,name in enumerate(names):
+        signature=re.search(r'void '+name+r'\((.*?)\);',text)[1].split(', ')[1:]
+        wide=[j for j,parameter in enumerate(signature) if parameter.split()[0]=='coax_v_f64']
+        if wide:print(f'case {i}: return '+' || '.join(f'parameter=={j}' for j in wide)+';')
+    print('default: return 0;}}')
 if __name__=='__main__':main()

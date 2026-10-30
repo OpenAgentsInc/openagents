@@ -4,7 +4,10 @@
 #include "device-host.h"
 typedef struct PgSession PgSession;
 /* All admission/shape/dispatch decisions come from Coax. A nonzero PcStatus
-   is a platform failure. An unsuccessful why is a Coax refusal. No fallback. */
+   is a platform failure. An unsuccessful why is a Coax refusal. No fallback.
+   Two engines implement this API: gptoss-device.c (CUDA, cuda-host.c) and
+   gptoss-metal.c (Apple GPUs, metal-host.m); the source passed to pg_open is
+   `coax cuda` or `coax metal-compute` output of device-kernels.coax. */
 PcStatus pg_open(coax_t_GProfile profile,coax_v_t_GFile files,const char *cuda,size_t cuda_bytes,size_t budget,PgSession **out,coax_t_GResult *why);
 PcStatus pg_reset(PgSession *session);
 PcStatus pg_step(PgSession *session,int64_t token,int64_t position,int choose,int64_t limit,int wait,int64_t control[8]);
@@ -25,5 +28,8 @@ const char *pg_error(const PgSession *session);
 void pg_profile(PgSession *session,int enable);
 PcStatus pg_patch(PgSession *session,size_t offset,const void *bytes,size_t count);
 PcStatus pg_open_cpu(coax_t_GProfile profile,coax_v_t_GFile files,PgSession **out,coax_t_GResult *why);
+/* Metal build only (gptoss-metal.c): repeat selected launches on the CPU. */
+void pg_qualify(PgSession *session,int enable);
+void pg_qualify_report(PgSession *session,int64_t *checked,int64_t *exact,double *worst,int *worst_kind,double *worst_wide,int *worst_wide_kind);
 #endif
 #endif
