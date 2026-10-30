@@ -33,7 +33,13 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
     }
     x.coaxial_key(p,49,0);frame(w,h,d);
     x.coaxial_pointer(p,(first+50)*d,y,0,0,1);x.coaxial_pointer(p,(first+50)*d,y,3,0,1);x.coaxial_pointer(p,(first+50)*d,y,2,0,1);frame(w,h,d);assert.equal(Number(x.coaxial_nip_mode(p)),0);
+    const ix=w-78*d,iy=42*d;
+    x.coaxial_pointer(p,ix,iy,0,0,1);x.coaxial_pointer(p,ix,iy,2,0,1);
+    assert.equal(x.coaxial_action(p),1);
+    assert.equal(new TextDecoder().decode(u.subarray(x.coaxial_outbox(p),x.coaxial_outbox(p)+x.coaxial_outbox_len(p))),'/nip');
+    x.coaxial_action_done(p);assert.equal(x.coaxial_action(p),0);
+    assert.equal(x.coaxial_key(p,-1,0),1);assert.equal(x.coaxial_action(p),1);x.coaxial_action_done(p);
   }
   assert.equal(x.coaxial_key(p,48,0),0);assert.equal(x.coaxial_key(p,55,0),0);
-  process.stdout.write(JSON.stringify({frames,keys:7,hud_clicks:clicks,guard_bytes:true,slowest_frame_ms:Math.round(ms*10)/10,engine:`Node${process.version}`})+'\n');
+  process.stdout.write(JSON.stringify({frames,keys:10,hud_clicks:clicks,index_navigation_viewports:3,guard_bytes:true,slowest_frame_ms:Math.round(ms*10)/10,engine:`Node${process.version}`})+'\n');
 })().catch(e=>{console.error(e);process.exitCode=1;});

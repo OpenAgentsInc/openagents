@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NIP-19: Names people can share · OpenAgents</title>
+<meta name="description" content="npub, note, nprofile, nevent and naddr turn keys and references into checksummed strings.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/nip/19/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>html,body{margin:0;height:100%;background:#000;color:#ededed}body{overflow:hidden;font:14px/1.5 system-ui,sans-serif}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}canvas[data-cursor=pointer]{cursor:pointer}main{position:relative;max-width:760px;margin:0 auto;padding:24px 16px}html:not(.gpu) body{overflow:auto}a{color:#ff8c1f}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>NIP-19: Names people can share</h1>
+<p>npub, note, nprofile, nevent and naddr turn keys and references into checksummed strings.</p>
+<h2>Implementation</h2>
+<p>Coax encodes and decodes the NIP-19 forms, including bounded TLV references and relay hints. Project pages use the public forms.</p>
+<h2>Example</h2>
+<p>A public example runs through the shared NIP-19 decoder, including checksum and output-size refusals.</p>
+<h2>What remains</h2>
+<p>A checksum catches damaged text. It does not authenticate a person, relay hint or referenced event.</p>
+<p><a href="/nip">All implemented NIPs</a> · <a href="/nip/19/index.md">Full write-up and source links</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="nip-guide" data-page="6"></script>
+</body>
+</html>

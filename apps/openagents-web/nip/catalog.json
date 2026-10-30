@@ -1,0 +1,593 @@
+{
+  "schema": 1,
+  "relay_observed": "2026-10-30",
+  "relay_supported_nips": [
+    1,
+    9,
+    11,
+    17,
+    29,
+    40,
+    42,
+    45,
+    50,
+    59,
+    65,
+    67,
+    70,
+    77,
+    94,
+    98
+  ],
+  "pages": [
+    {
+      "number": 1,
+      "title": "Events and relay messages",
+      "summary": "The signed event is the common language of Nostr. Parse it, recompute its id, then check its signature.",
+      "coverage": "Coax reads and verifies events, matches filters, reads standard tags and metadata, and builds signed events. The NIP-01 page runs five real verification cases.",
+      "gap": "Live project pages still trust the configured relay. Production signing keys wait for the secret audit and independent review.",
+      "sources": [
+        "coax/lib/nostr/event.coax",
+        "coax/lib/nostr/message.coax",
+        "coax/lib/nostr/event_sign.coax"
+      ],
+      "demo": "event",
+      "status": "coax",
+      "evidence": [
+        "docs/verification/2026-10-30-nostr-messages.md"
+      ],
+      "cases": [
+        "REAL",
+        "SIGNATURE",
+        "KIND"
+      ],
+      "expected": [
+        0,
+        8,
+        2
+      ],
+      "demo_scope": "The captured event and altered copies run through the shared event reader and signature verifier."
+    },
+    {
+      "number": 9,
+      "title": "Deletion requests",
+      "summary": "Authors can ask relays to delete their own events. A deletion request is a signed event, not a command from any reader.",
+      "coverage": "The production relay advertises NIP-09. Its Coax replacement does not yet implement deletion and tombstones.",
+      "gap": "Coax needs authorized deletion, durable tombstones and recovery that cannot resurrect deleted events.",
+      "sources": [
+        "coax/nostr.md",
+        "coax/lib/nostr/store_core.coax"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 10,
+      "title": "Replies and threads",
+      "summary": "An e tag can mark a root, reply or mention. These markers describe the thread rather than granting authority.",
+      "coverage": "Coax reads the root, reply and mention markers of standard event tags.",
+      "gap": "Reading a reference does not verify the referenced event or implement an entire social client.",
+      "sources": [
+        "coax/lib/nostr/tags.coax"
+      ],
+      "demo": "tags",
+      "status": "partial",
+      "evidence": [
+        "docs/verification/2026-10-30-nostr-tags-metadata.md"
+      ],
+      "cases": [
+        "ROOT",
+        "BAD MARKER",
+        "BAD ID"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "A public synthetic tag fixture runs through the shared standard-tag reader. No event signature is checked here."
+    },
+    {
+      "number": 11,
+      "title": "Relay information",
+      "summary": "Before subscribing, a client can ask a relay which protocols and limits it declares.",
+      "coverage": "The Coax relay serves its own NIP-11 document. The production relay publishes a separate capability document.",
+      "gap": "A supported_nips list is a declaration, not a conformance proof. Production and Coax relay capabilities differ.",
+      "sources": [
+        "coax/lib/nostr/relay_route.coax",
+        "coax/lib/nostr/relay_server.coax"
+      ],
+      "demo": "relay",
+      "status": "coax",
+      "evidence": [
+        "docs/verification/2026-10-29-coax-relay-r1.md"
+      ],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 17,
+      "title": "Private messages",
+      "summary": "Private messages compose signed and encrypted envelopes. Relays transport ciphertext rather than a public plaintext conversation.",
+      "coverage": "The production relay advertises NIP-17. The browser encrypted-deck path already uses the existing NIP-44 and gift-wrap plumbing.",
+      "gap": "A complete shared Coax private-message client and its NIP-59 composition remain unfinished.",
+      "sources": [
+        "coax/web/unlock/",
+        "coax/nostr.md"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 19,
+      "title": "Names people can share",
+      "summary": "npub, note, nprofile, nevent and naddr turn keys and references into checksummed strings.",
+      "coverage": "Coax encodes and decodes the NIP-19 forms, including bounded TLV references and relay hints. Project pages use the public forms.",
+      "gap": "A checksum catches damaged text. It does not authenticate a person, relay hint or referenced event.",
+      "sources": [
+        "coax/lib/nostr/nip19-core.coax",
+        "coax/lib/nostr/bech32.coax",
+        "apps/openagents-web/project-names.coax"
+      ],
+      "demo": "bech32",
+      "status": "coax",
+      "evidence": [
+        "docs/verification/coax-nostr-bech32-2026-10-28.md"
+      ],
+      "cases": [
+        "NPUB",
+        "CHECKSUM",
+        "SHORT OUT"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "A public example runs through the shared NIP-19 decoder, including checksum and output-size refusals."
+    },
+    {
+      "number": 22,
+      "title": "Comments with explicit scope",
+      "summary": "A comment names its root and parent. Uppercase scope tags and lowercase parent tags make that relationship explicit.",
+      "coverage": "Coax has a typed reader for kind 1111 comments and the task-plan, claim and revision tags OpenAgents uses with them.",
+      "gap": "The typed reader reads structure. Callers still verify the original signature and decide whose comments count.",
+      "sources": [
+        "coax/lib/nostr/nip22.coax",
+        "coax/lib/nostr/nip34-event.coax"
+      ],
+      "demo": "comment",
+      "status": "coax",
+      "evidence": [],
+      "cases": [
+        "COMMENT",
+        "NO PARENT",
+        "WRONG KIND"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "Synthetic comment tags run through the shared typed reader. Scope shape is not signature or permission."
+    },
+    {
+      "number": 29,
+      "title": "Relay-based groups",
+      "summary": "A relay can host groups with membership, moderation and group-specific rules.",
+      "coverage": "The production relay advertises NIP-29. The shared Coax relay has not reached group-policy parity.",
+      "gap": "Group membership, moderation, history visibility and permission checks need their own qualified Coax implementation.",
+      "sources": [
+        "coax/nostr.md"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 34,
+      "title": "Git repositories and issues",
+      "summary": "Repository announcements, issues and status events let development work travel as signed Nostr records.",
+      "coverage": "OpenAgents publishes its work on Nostr. Coax has typed readers for repository, issue and status records, plus OpenAgents project and ordering records.",
+      "gap": "Typed extraction and signature verification are separate. Project scope, allowed authors and complete live folding remain consumer responsibilities.",
+      "sources": [
+        "coax/lib/nostr/nip34.coax",
+        "coax/lib/nostr/nip34-event.coax",
+        "apps/openagents-web/project-fold.coax"
+      ],
+      "demo": "git",
+      "status": "coax",
+      "evidence": [],
+      "cases": [
+        "REPOSITORY",
+        "NO ID",
+        "WRONG KIND"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "Synthetic repository tags run through the shared typed reader. It does not verify an event signature."
+    },
+    {
+      "number": 40,
+      "title": "Event expiration",
+      "summary": "An expiration tag limits how long a relay should serve an event. The exact expiry second is already expired.",
+      "coverage": "The Coax relay checks expiration during admission and queries. Its store retains expired replacement heads so older versions do not return.",
+      "gap": "Expiration is not a deletion guarantee, and a relay cannot erase copies held elsewhere.",
+      "sources": [
+        "coax/lib/nostr/relay_server.coax",
+        "coax/lib/nostr/store_core.coax"
+      ],
+      "demo": "expiration",
+      "status": "coax",
+      "evidence": [
+        "docs/verification/2026-10-29-nostr-store-r1.md"
+      ],
+      "cases": [
+        "BEFORE",
+        "AT EXPIRY",
+        "NO EXPIRY"
+      ],
+      "expected": [
+        0,
+        1,
+        0
+      ],
+      "demo_scope": "The shared relay expiration predicate runs at explicit fixture times. No event is published or deleted."
+    },
+    {
+      "number": 42,
+      "title": "Authenticate to a relay",
+      "summary": "A relay sends a fresh challenge. The client signs a kind 22242 event bound to that relay and connection.",
+      "coverage": "Coax handles challenges, canonical relay URLs, event templates, signature checks, connection generations and AUTH routing.",
+      "gap": "The demo builds an unsigned fixture template. It does not sign or send an AUTH event. Real keys remain behind the review gate.",
+      "sources": [
+        "coax/lib/nostr/nip42.coax",
+        "coax/lib/nostr/nip42-event.coax",
+        "coax/lib/nostr/relay_route.coax"
+      ],
+      "demo": "auth",
+      "status": "coax",
+      "evidence": [
+        "docs/verification/2026-10-29-nostr-nip42.md"
+      ],
+      "cases": [
+        "CHALLENGE",
+        "STALE",
+        "BAD RELAY"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "The shared challenge/template functions run on public fixtures. No key is entered and no AUTH is sent."
+    },
+    {
+      "number": 44,
+      "title": "Version 2 encryption",
+      "summary": "A conversation key derives message keys. The receiver checks the MAC before releasing decrypted plaintext.",
+      "coverage": "Coax implements NIP-44 v2 payload encryption and decryption, and conversation-key derivation from validated x-only ECDH.",
+      "gap": "These public test vectors are not permission to enter real keys. Production secret use still needs audit, target evidence and independent review.",
+      "sources": [
+        "coax/lib/nostr/nip44.coax",
+        "coax/lib/nostr/nip44-key.coax"
+      ],
+      "demo": "encryption",
+      "status": "coax",
+      "evidence": [
+        "docs/verification/2026-10-30-nip44-conversation-key.md"
+      ],
+      "cases": [
+        "VECTOR",
+        "BAD MAC",
+        "TRUNCATED"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "The shared decryptor reads a pinned upstream public vector. Changed or truncated ciphertext must refuse."
+    },
+    {
+      "number": 45,
+      "title": "Count matching events",
+      "summary": "A COUNT request asks a relay how many events match a filter without downloading every event.",
+      "coverage": "The production relay advertises NIP-45. The Coax R1 relay currently reports COUNT as unsupported.",
+      "gap": "COUNT responses and their limits need a Coax implementation before that relay advertises this NIP.",
+      "sources": [
+        "coax/lib/nostr/message_server.coax",
+        "coax/lib/nostr/relay_server.coax"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 49,
+      "title": "Encrypted key backup foundations",
+      "summary": "Password-protected key backup needs a costly KDF, a complete encrypted format, and careful memory and key handling.",
+      "coverage": "Coax has a resumable scrypt foundation for NIP-49, bounded workspaces and independent vector checks. This page exercises its buffer-admission helper.",
+      "gap": "The complete ncryptsec backup format, normalization, secret erasure and production approval are not established. This is a partial foundation.",
+      "sources": [
+        "coax/lib/crypto/scrypt_nip49.coax",
+        "coax/lib/crypto/scrypt_admission.coax"
+      ],
+      "demo": "backup",
+      "status": "partial",
+      "evidence": [
+        "docs/verification/2026-10-29-scrypt-nip49.md"
+      ],
+      "cases": [
+        "FITS",
+        "BAD COST",
+        "SHORT MEMORY"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "The existing scrypt buffer-admission helper checks public fixture addresses and sizes. No password is derived."
+    },
+    {
+      "number": 50,
+      "title": "Search a relay",
+      "summary": "A search filter asks a relay to match text according to its supported search behavior.",
+      "coverage": "The production relay advertises NIP-50 search. The Coax replacement has not implemented its search behavior.",
+      "gap": "Search semantics, query cost, ordering and compatibility need differential tests before a Coax cutover.",
+      "sources": [
+        "coax/nostr.md"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 59,
+      "title": "Gift wraps",
+      "summary": "Gift wraps layer a rumor, a signed seal and an outer encrypted envelope, using fresh wrapping keys.",
+      "coverage": "The existing browser encrypted-deck path uses NIP-59 plumbing, and the production relay advertises NIP-59.",
+      "gap": "The shared Coax gift-wrap and seal composition is not implemented. NIP-44 primitives alone do not finish NIP-59.",
+      "sources": [
+        "coax/web/unlock/",
+        "coax/nostr.md"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 65,
+      "title": "Relay list metadata",
+      "summary": "A user can publish the relays they read from and write to, so peers know where to look.",
+      "coverage": "The production relay advertises NIP-65. Pylon planning includes publishing its selected relays as a NIP-65 list.",
+      "gap": "The capability declaration does not establish a complete Coax outbox-discovery or multi-relay synchronization client.",
+      "sources": [
+        "psionic/lib/pylon/",
+        "coax/nostr.md"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 67,
+      "title": "Relay pagination metadata",
+      "summary": "A relay can attach metadata to EOSE so a client can distinguish more available history from a finished page.",
+      "coverage": "The production relay advertises NIP-67 and sends trailing EOSE metadata. Coax message.coax accepts bounded trailing EOSE values.",
+      "gap": "Parsing metadata is not proof of complete history. Catch-up still needs explicit limits, ties, retries and missing-record handling.",
+      "sources": [
+        "coax/lib/nostr/message.coax",
+        "apps/openagents-web/project-live.coax"
+      ],
+      "demo": "relay",
+      "status": "partial",
+      "evidence": [
+        "docs/verification/2026-10-30-nostr-messages.md"
+      ],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 70,
+      "title": "Protected events",
+      "summary": "A protected event may only be published by its authenticated author, when a relay supports accepting it.",
+      "coverage": "The production relay advertises NIP-70. The Coax relay has AUTH plumbing but not this complete protected-event policy.",
+      "gap": "AUTH alone does not implement NIP-70. The event author must be bound to the authenticated connection under the protected-event rules.",
+      "sources": [
+        "coax/nostr.md",
+        "coax/lib/nostr/relay_route.coax"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 77,
+      "title": "Efficient synchronization",
+      "summary": "Negentropy helps peers find differences between event sets without downloading the whole shared history.",
+      "coverage": "The production relay advertises NIP-77. The Coax replacement roadmap includes a separate synchronization implementation.",
+      "gap": "The shared Coax stack does not yet provide NIP-77 reconciliation. EOSE and ordinary pagination are different mechanisms.",
+      "sources": [
+        "coax/nostr.md"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 94,
+      "title": "File metadata",
+      "summary": "A signed file-metadata event describes a file and its location, hash, type and related hints.",
+      "coverage": "The production relay advertises NIP-94 and can carry file metadata records.",
+      "gap": "The shared Coax stack has no complete file-metadata consumer or download-integrity flow yet. A signed URL does not establish file availability.",
+      "sources": [
+        "coax/nostr.md"
+      ],
+      "demo": "relay",
+      "status": "relay",
+      "evidence": [],
+      "cases": [
+        "DECLARED",
+        "REMOVED",
+        "MALFORMED"
+      ],
+      "expected": [
+        1,
+        0,
+        -1
+      ],
+      "demo_scope": "This demo reads a frozen public NIP-11 capability document. It does not execute this NIP on a relay."
+    },
+    {
+      "number": 98,
+      "title": "Authenticate an HTTP request",
+      "summary": "A signed kind 27235 event can bind an HTTP method, URL, timestamp and optional body digest to a request.",
+      "coverage": "Coax has tag extraction and a public request-field observer. The existing service and production relay advertise HTTP-auth capability.",
+      "gap": "The demo compares supplied fields only. It does not verify an event, reserve replay IDs, authorize a request or create a session.",
+      "sources": [
+        "coax/lib/nostr/nip98-tags.coax",
+        "coax/lib/nostr/nip98-observe.coax"
+      ],
+      "demo": "http",
+      "status": "partial",
+      "evidence": [
+        "docs/verification/2026-10-29-nip98-observation.md"
+      ],
+      "cases": [
+        "MATCH",
+        "METHOD",
+        "EXPIRED"
+      ],
+      "expected": [
+        0,
+        1,
+        1
+      ],
+      "demo_scope": "The existing observer compares public fixture fields. Matching fields are not authenticated HTTP access."
+    }
+  ]
+}

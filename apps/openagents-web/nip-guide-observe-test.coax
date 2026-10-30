@@ -1,0 +1,17 @@
+// New page cases exercise the existing libraries; no production authority.
+#load "nip-guide-observe.coax";
+#load "nip/catalog.coax";
+
+#forall "each NIP example reports the actual library outcome" page:0..<NG_COUNT, mode:0..<3 {
+  #assert ng_demo(NG_NUMBERS[page],mode)==NG_EXPECTED[page][mode];
+}
+#test "unknown cases and NIPs do not acquire a success verdict" {
+  #assert ng_demo(-1,0)==-1 && ng_demo(12345,0)==-1;
+  #assert ng_demo(19,-1)==-1 && ng_demo(19,3)==-1;
+  #assert ng_advertised("{}",19)==-1;
+  #assert ng_advertised("{\"supported_nips\":true}",19)==-1;
+  #assert ng_advertised("{\"supported_nips\":[19,\"x\"]}",19)==-1;
+  #assert ng_advertised("{\"supported_nips\":[19],\"supported_nips\":[]}",19)==-1;
+  #assert ng_advertised("{\"supported_nips\":[19]}",19)==1;
+  #assert ng_advertised("{\"supported_nips\":[1]}",19)==0;
+}

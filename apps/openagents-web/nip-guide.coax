@@ -1,0 +1,135 @@
+// All visible NIP guide UI is Coax. The separate observation unit runs the
+// real library examples; this renderer displays their returned outcomes.
+#load "nip01.coax";
+#load "nip/catalog.coax";
+
+#test "guide navigation is bounded and routes name real catalog entries" {
+  s:[1]Ng;ng_page(s[..],1);#assert s[0].page==1 && ng_requested(s[..])==0;
+  ng_observed(s[..],8);#assert ng_requested(s[..])==-1 && s[0].code==8;
+  #assert ng_key(s[..],50) && ng_requested(s[..])==1;
+  ng_observed(s[..],7);ng_go(s[..],0);#assert s[0].action==1 && cast(string)s[0].route[0..<s[0].route_n]=="/nip";
+  ng_go(s[..],6);#assert cast(string)s[0].route[0..<s[0].route_n]=="/nip/19";
+  ng_page(s[..],-1);#assert s[0].page==0 && ng_requested(s[..])==-1;
+  ng_page(s[..],NG_COUNT+1);#assert s[0].page==0;
+}
+#test "all observation requests carry a bounded page and mode" {
+  s:[1]Ng;
+  for page:1..<NG_COUNT+1 {ng_page(s[..],page);for mode:0..<3 {s[0].mode=mode;s[0].pending=true;#assert ng_requested(s[..])==(page-1)*3+mode;}}
+  s[0].page=NG_COUNT+1;#assert ng_requested(s[..])==-1;
+  s[0].page=1;s[0].mode=3;#assert ng_requested(s[..])==-1;
+}
+#test "the page labels observations without granting cryptographic approval" {
+  #assert ng_label(19,0)=="DECODED" && ng_label(19,1)=="REFUSED";
+  #assert ng_label(98,0)=="FIELDS MATCH" && ng_label(49,0)=="PARAMETERS FIT";
+  #assert ng_label(9,1)=="ADVERTISED" && ng_label(9,0)=="NOT LISTED";
+}
+#test "index scroll and input stay within the catalog" {
+  s:[1]Ng;s[0].width=390;s[0].height=844;s[0].dpr=1;
+  ng_wheel(s[..],100000);#assert s[0].scroll==ng_scroll_limit(s[..]);
+  ng_wheel(s[..],-100000);#assert s[0].scroll==0;
+  #assert ng_key(s[..],-7) && s[0].selected==1;
+  #assert ng_key(s[..],-2) && s[0].action==1;
+  #assert !ng_key(s[..],48) && !ng_key(s[..],52);
+}
+
+Ng :: struct {page:int;mode:int;view:int;code:int;pending:bool;selected:int;scroll:f32;width:f32;height:f32;dpr:f32=1;down:int=-1;down_y:f32;start_scroll:f32;action:int;route:[256]u8;route_n:int;}
+ng_number :: (page:int)->int #export_c {if page<1 || page>NG_COUNT {return -1;}return NG_NUMBERS[page-1];}
+ng_page :: (s:[]Ng,page:int) #export_c {s[0]=Ng.{};if page>=0 && page<=NG_COUNT {s[0].page=page;}s[0].pending=s[0].page>0;}
+ng_requested :: (s:[]Ng)->int #export_c {if s[0].page<1 || s[0].page>NG_COUNT || s[0].mode<0 || s[0].mode>2 || !s[0].pending {return -1;}return (s[0].page-1)*3+s[0].mode;}
+ng_observed :: (s:[]Ng,code:int) #export_c {s[0].code=code;s[0].pending=false;}
+ng_path :: (s:[]Ng,path:string) {s[0].route_n=put(s[0].route[..],0,path);s[0].action=1;}
+ng_go :: (s:[]Ng,page:int) {if page==0 {ng_path(s,"/nip");return;}if page<1 || page>NG_COUNT {return;}
+  n:=put(s[0].route[..],0,"/nip/");number:=NG_NUMBERS[page-1];if number<10 {n=put(s[0].route[..],n,"0");}s[0].route_n=put_int(s[0].route[..],n,number);s[0].action=1;
+}
+ng_readme :: (s:[]Ng) {ng_go(s,s[0].page);s[0].route_n=put(s[0].route[..],s[0].route_n,"/index.md");}
+ng_label :: (nip:int,code:int)->string {
+  if nip==1 {return ifx code==0 then "VERIFIED" else "REFUSED";}
+  if nip==10 || nip==19 || nip==22 || nip==34 {return ifx code==0 then "DECODED" else "REFUSED";}
+  if nip==40 {return ifx code==0 then "VISIBLE" else "EXPIRED";}
+  if nip==42 {return ifx code==0 then "TEMPLATE READY" else "REFUSED";}
+  if nip==44 {return ifx code==0 then "DECRYPTED" else "REFUSED";}
+  if nip==49 {return ifx code==0 then "PARAMETERS FIT" else "REFUSED";}
+  if nip==98 {return ifx code==0 then "FIELDS MATCH" else "FIELDS REFUSED";}
+  return ifx code==1 then "ADVERTISED" else ifx code==0 then "NOT LISTED" else "REFUSED";
+}
+ng_columns :: (s:[]Ng)->int {return ifx s[0].width/s[0].dpr>=900 then 2 else 1;}
+ng_scroll_limit :: (s:[]Ng)->f32 {rows:=(NG_COUNT+ng_columns(s)-1)/ng_columns(s);return hi(0,cast(f32)rows*58-(s[0].height/s[0].dpr-190));}
+ng_wheel :: (s:[]Ng,dy:f32) #export_c {if s[0].page==0 {s[0].scroll=clamp(s[0].scroll+dy,0,ng_scroll_limit(s));}}
+ng_select :: (s:[]Ng,mode:int) {if mode>=0 && mode<3 {s[0].mode=mode;s[0].pending=true;s[0].view=0;}}
+ng_key :: (s:[]Ng,key:int)->bool #export_c {
+  if key==-1 {ng_go(s,0);return true;}
+  if s[0].page==0 {
+    if key==-2 {ng_go(s,s[0].selected+1);return true;}
+    if key>=-7 && key<=-4 {step:=ifx key==-6 || key==-4 then -1 else 1;s[0].selected=(s[0].selected+step+NG_COUNT)%NG_COUNT;
+      row:=s[0].selected/ng_columns(s);s[0].scroll=clamp(cast(f32)row*58-120,0,ng_scroll_limit(s));return true;}
+  }else {if key>=49 && key<=51 {ng_select(s,key-49);return true;}if key==52 {s[0].view=1-s[0].view;return true;}}
+  return false;
+}
+ng_nav_box :: (s:[]Ng,i:int)->Box {d:=s[0].dpr;w:=(s[0].width/d-32-32)/5;x:=16+cast(f32)i*(w+8);return Box.{x0=x*d,y0=s[0].height-56*d,x1=(x+w)*d,y1=s[0].height-18*d};}
+ng_case_box :: (s:[]Ng,i:int)->Box {d:=s[0].dpr;w:=lo(180,(s[0].width/d-48-16)/3);x:=24+cast(f32)i*(w+8);return Box.{x0=x*d,y0=118*d,x1=(x+w)*d,y1=156*d};}
+ng_item_box :: (s:[]Ng,i:int)->Box {d:=s[0].dpr;cols:=ng_columns(s);w:=(s[0].width/d-48-12*cast(f32)(cols-1))/cast(f32)cols;x:=24+cast(f32)(i%cols)*(w+12);y:=130+cast(f32)(i/cols)*58-s[0].scroll;return Box.{x0=x*d,y0=y*d,x1=(x+w)*d,y1=(y+48)*d};}
+ng_hit :: (s:[]Ng,x:f32,y:f32)->int {
+  if s[0].page==0 {for i:0..<NG_COUNT {b:=ng_item_box(s,i);if b.y0>=120*s[0].dpr && b.y1<s[0].height-66*s[0].dpr && inside(b,x,y) {return i+100;}}return -1;}
+  for i:0..<3 {if inside(ng_case_box(s,i),x,y) {return i;}}
+  for i:0..<5 {if inside(ng_nav_box(s,i),x,y) {return i+10;}}return -1;
+}
+ng_pointer :: (s:[]Ng,x:f32,y:f32,phase:int)->bool #export_c {
+  hit:=ng_hit(s,x,y);
+  if phase==POINTER_DOWN {s[0].down=hit;s[0].down_y=y;s[0].start_scroll=s[0].scroll;return hit>=0;}
+  if phase==POINTER_MOVE && s[0].page==0 && s[0].down>=0 {s[0].scroll=clamp(s[0].start_scroll+(s[0].down_y-y)/s[0].dpr,0,ng_scroll_limit(s));return true;}
+  if phase==POINTER_CANCEL {s[0].down=-1;return false;}
+  if phase==POINTER_UP {down:=s[0].down;s[0].down=-1;if hit!=down || hit<0 || abs(y-s[0].down_y)>12*s[0].dpr {return false;}
+    if hit>=100 {ng_go(s,hit-99);return true;}if hit<3 {ng_select(s,hit);return true;}
+    nav:=hit-10;if nav==0 {ng_go(s,0);}if nav==1 {ng_go(s,ifx s[0].page==1 then NG_COUNT else s[0].page-1);}if nav==2 {ng_go(s,ifx s[0].page==NG_COUNT then 1 else s[0].page+1);}
+    if nav==3 {s[0].view=1-s[0].view;}if nav==4 {ng_readme(s);}return true;
+  }return hit>=0;
+}
+ng_paragraph :: (out:[]f32,at:int,text:string,x:f32,y:f32,width:f32,size:f32,d:f32,color:Ink)->int {
+  v:=at;from:=0;line:=0;next:[1]int;
+  while from<text.count && line<12 {end:=wrap(text,from,width/size,0.2,0.65,false,next[..]);v=write(d,out,v,text[from..<end],x,y+cast(f32)line*size*1.65,size,0.2,0.65,color,false,false);if next[0]<=from {break;}from=next[0];line+=1;}return v;
+}
+ng_lines :: (text:string,width:f32,size:f32)->int {from:=0;line:=0;next:[1]int;while from<text.count && line<12 {end:=wrap(text,from,width/size,0.2,0.65,false,next[..]);if next[0]<=from {break;}from=next[0];line+=1;}return line;}
+ng_frame :: (s:[]Ng,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c {
+  if s.count!=1 || u.count<16 || w<1 || h<1 || d<0.5 || d>4 {return 0;}
+  s[0].width=w;s[0].height=h;s[0].dpr=d;for i:0..<16 {u[i]=0;}u[0]=w;u[1]=h;u[3]=1;u[4]=1;
+  v:=0;left:=24*d;room:=w-48*d;white:=ink(0.6*d,0.95,5*d,0.95,0.95,0.95);muted:=ink(0.4*d,0.65,3*d,0.7,0.76,0.79);orange:=ink(0.6*d,0.9,4*d,1,0.62,0.2);
+  if s[0].page==0 {
+    v=write(d,out,v,"NOSTR IN OPENAGENTS",left,48*d,18*d,0.2,0.7,white,false,false);
+    v=ng_paragraph(out,v,"Coax libraries, partial foundations and the production relay. Choose a NIP to see exactly what runs.",left,78*d,room,7.2*d,d,muted);
+    for i:0..<NG_COUNT {b:=ng_item_box(s,i);if b.y0<120*d || b.y1>=h-66*d {continue;}
+      v=hud(out,v,b,d,ifx i==s[0].selected then 0.2 else 0,0,0.65,0.95,0.65,0.22);
+      label:[32]u8;n:=put(label[..],0,"NIP-");if NG_NUMBERS[i]<10 {n=put(label[..],n,"0");}n=put_int(label[..],n,NG_NUMBERS[i]);
+      v=write(d,out,v,cast(string)label[0..<n],b.x0+10*d,b.y0+19*d,8*d,0.2,0.6,orange,false,false);
+      v=draw_fit(d,out,v,NG_TITLES[i],b.x0+78*d,b.y0+19*d,7*d,0.2,0.6,white,b.x1-b.x0-90*d);
+      status:=ifx NG_STATUS[i]==0 then "COAX LIBRARY" else ifx NG_STATUS[i]==1 then "PARTIAL COAX" else "PRODUCTION RELAY DECLARATION";
+      v=write(d,out,v,status,b.x0+10*d,b.y0+36*d,4.8*d,0.2,0.6,muted,false,false);
+    }
+    v=write(d,out,v,"SCROLL TO EXPLORE  /  ARROWS SELECT  /  ENTER OPENS",left,h-28*d,5.2*d,0.2,0.6,muted,false,false);return v;
+  }
+  p:=s[0].page-1;if p<0 || p>=NG_COUNT {return 0;}
+  label:[32]u8;n:=put(label[..],0,"NIP-");if NG_NUMBERS[p]<10 {n=put(label[..],n,"0");}n=put_int(label[..],n,NG_NUMBERS[p]);
+  v=write(d,out,v,cast(string)label[0..<n],left,44*d,22*d,0.2,0.7,white,false,false);
+  status:=ifx NG_STATUS[p]==0 then "COAX LIBRARY" else ifx NG_STATUS[p]==1 then "PARTIAL COAX" else "PRODUCTION RELAY";
+  v=write(d,out,v,status,left+170*d,43*d,5*d,0.2,0.7,orange,false,false);
+  v=draw_fit(d,out,v,NG_TITLES[p],left,75*d,12*d,0.2,0.65,white,room);
+  v=draw_fit(d,out,v,ifx s[0].view==0 then "TRY THE PUBLIC EXAMPLE - KEYS 1, 2, 3" else "IMPLEMENTATION AND BOUNDARIES - KEY 4 TO RETURN",left,100*d,5.8*d,0.2,0.65,muted,room);
+  for i:0..<3 {b:=ng_case_box(s,i);v=hud(out,v,b,d,ifx i==s[0].mode then 0.5 else 0,0,0.8,1,0.65,0.2);v=draw_fit(d,out,v,NG_CASES[p][i],b.x0+8*d,b.y0+23*d,5.5*d,0.1,0.5,white,b.x1-b.x0-16*d);}
+  y:=184*d;size:=7.2*d;
+  if s[0].view==0 {
+    v=ng_paragraph(out,v,NG_SCOPE[p],left,y,room,size,d,muted);y+=cast(f32)ng_lines(NG_SCOPE[p],room,size)*size*1.65+36*d;
+    color:=ifx (NG_DISCOVERY[p] && s[0].code==1) || (!NG_DISCOVERY[p] && s[0].code==0) then GOOD else BAD;
+    outcome:=ink(0.8*d,1,6*d,color[0],color[1],color[2]);v=draw_fit(d,out,v,ng_label(NG_NUMBERS[p],s[0].code),left,y,22*d,0.2,0.6,outcome,room);y+=38*d;
+    v=write(d,out,v,"IMPLEMENTATION",left,y,6*d,0.2,0.6,orange,false,false);y+=20*d;
+    v=ng_paragraph(out,v,NG_COVERAGE[p],left,y,room,size,d,white);y+=cast(f32)ng_lines(NG_COVERAGE[p],room,size)*size*1.65+26*d;
+    v=write(d,out,v,"WHAT REMAINS",left,y,6*d,0.2,0.6,orange,false,false);y+=20*d;
+    v=ng_paragraph(out,v,NG_GAPS[p],left,y,room,size,d,muted);
+  }else {
+    v=ng_paragraph(out,v,NG_SUMMARY[p],left,y,room,size,d,white);y+=cast(f32)ng_lines(NG_SUMMARY[p],room,size)*size*1.65+30*d;
+    v=write(d,out,v,"SOURCE IN THE REPOSITORY",left,y,6*d,0.2,0.6,orange,false,false);y+=20*d;
+    v=ng_paragraph(out,v,NG_SOURCE[p],left,y,room,size,d,white);y+=cast(f32)ng_lines(NG_SOURCE[p],room,size)*size*1.65+30*d;
+    v=ng_paragraph(out,v,NG_GAPS[p],left,y,room,size,d,muted);
+  }
+  buttons:=[5]string.["INDEX","PREV","NEXT",ifx s[0].view==0 then "PARTS" else "DEMO","READ"];
+  for i:0..<5 {b:=ng_nav_box(s,i);v=hud(out,v,b,d,0,0,0.7,0.9,0.9,0.9);v=draw_fit(d,out,v,buttons[i],b.x0+6*d,b.y0+23*d,5.2*d,0.1,0.5,white,b.x1-b.x0-12*d);}
+  return v;
+}

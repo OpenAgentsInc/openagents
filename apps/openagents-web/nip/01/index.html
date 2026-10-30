@@ -3,31 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>NIP-01 in Coax · OpenAgents</title>
-<meta name="description" content="How OpenAgents runs Nostr's basic protocol, NIP-01, in Coax: events parsed, hashed and their BIP-340 signatures verified in Coax, in your browser. Try a real event and changed copies of it.">
+<title>NIP-01: Events and relay messages · OpenAgents</title>
+<meta name="description" content="The signed event is the common language of Nostr. Parse it, recompute its id, then check its signature.">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/nip/01/index.md">
 <script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
-<style>
-html,body{margin:0;height:100%;background:#000;color:#ededed}
-body{overflow:hidden;font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;font-size:14px;line-height:1.5}
-canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none;user-select:none}
-canvas[data-cursor=pointer]{cursor:pointer}
-main{position:relative;max-width:640px;margin:0 auto;padding:24px 16px}
-html:not(.gpu) body{overflow:auto}
-a{color:#ff8c1f}
-.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
-</style>
+<style>html,body{margin:0;height:100%;background:#000;color:#ededed}body{overflow:hidden;font:14px/1.5 system-ui,sans-serif}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}canvas[data-cursor=pointer]{cursor:pointer}main{position:relative;max-width:760px;margin:0 auto;padding:24px 16px}html:not(.gpu) body{overflow:auto}a{color:#ff8c1f}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}</style>
 </head>
 <body>
 <canvas id="coaxial" aria-hidden="true"></canvas>
 <main>
-<h1>NIP-01 in Coax</h1>
-<p>Nostr's basic protocol, NIP-01, runs in Coax. Coax parses an event, recomputes its id from the NIP-01 preimage with SHA-256, and verifies its BIP-340 signature. The project pages already read their relay in Coax; verifying every event they keep is the next step.</p>
-<p>This page runs those checks on a real captured relay event and on four copies of it, each changed in one place: one digit of the id, one letter of the content, one bit of the signature, and an out-of-range kind. Each copy is refused at the step where it breaks.</p>
-<p><a href="/nip/01/index.md">The full write-up: every part of NIP-01 and the Coax that runs it</a></p>
+<h1>NIP-01: Events and relay messages</h1>
+<p>The signed event is the common language of Nostr. Parse it, recompute its id, then check its signature.</p>
+<h2>Implementation</h2>
+<p>Coax reads and verifies events, matches filters, reads standard tags and metadata, and builds signed events. The NIP-01 page runs five real verification cases.</p>
+<h2>Example</h2>
+<p>The captured event and altered copies run through the shared event reader and signature verifier.</p>
+<h2>What remains</h2>
+<p>Live project pages still trust the configured relay. Production signing keys wait for the secret audit and independent review.</p>
+<p><a href="/nip">All implemented NIPs</a> · <a href="/nip/01/index.md">Full write-up and source links</a></p>
 </main>
-<script type="module" src="/coaxial/host.js" data-app="nip01"></script>
+<script type="module" src="/coaxial/host.js" data-app="nip01" data-page="1"></script>
 </body>
 </html>

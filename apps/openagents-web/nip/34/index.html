@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NIP-34: Git repositories and issues · OpenAgents</title>
+<meta name="description" content="Repository announcements, issues and status events let development work travel as signed Nostr records.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/nip/34/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>html,body{margin:0;height:100%;background:#000;color:#ededed}body{overflow:hidden;font:14px/1.5 system-ui,sans-serif}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}canvas[data-cursor=pointer]{cursor:pointer}main{position:relative;max-width:760px;margin:0 auto;padding:24px 16px}html:not(.gpu) body{overflow:auto}a{color:#ff8c1f}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>NIP-34: Git repositories and issues</h1>
+<p>Repository announcements, issues and status events let development work travel as signed Nostr records.</p>
+<h2>Implementation</h2>
+<p>OpenAgents publishes its work on Nostr. Coax has typed readers for repository, issue and status records, plus OpenAgents project and ordering records.</p>
+<h2>Example</h2>
+<p>Synthetic repository tags run through the shared typed reader. It does not verify an event signature.</p>
+<h2>What remains</h2>
+<p>Typed extraction and signature verification are separate. Project scope, allowed authors and complete live folding remain consumer responsibilities.</p>
+<p><a href="/nip">All implemented NIPs</a> · <a href="/nip/34/index.md">Full write-up and source links</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="nip-guide" data-page="9"></script>
+</body>
+</html>

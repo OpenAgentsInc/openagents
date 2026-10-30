@@ -47,6 +47,19 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
   const byAddress: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
     "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
+  // NIP guides are public Coaxial pages too. Every route must start and draw
+  // during staging and production checks, with its own reviewed golden.
+  const nipCatalog = join(ROOT, APP, "nip/catalog.json")
+  if (existsSync(nipCatalog)) {
+    const nips = JSON.parse(readFileSync(nipCatalog, "utf8")).pages as { number: number }[]
+    byAddress["nip-index"] = { path: "/nip", lit: 0.004, settle: 1200, blocks: 4, module: "nip-guide" }
+    for (const nip of nips) {
+      const number = String(nip.number).padStart(2, "0")
+      byAddress[`nip-${number}`] = { path: `/nip/${number}`, lit: 0.004, settle: nip.number === 1 ? 2200 : 1200, blocks: 4, module: nip.number === 1 ? "nip01" : "nip-guide" }
+    }
+    for (const [name, path] of [["nip-index-phone", "/nip"], ["nip-44-phone", "/nip/44"], ["nip-49-phone", "/nip/49"]])
+      byAddress[name] = { path, lit: 0.004, settle: 1500, blocks: 4, module: "nip-guide", size: [390, 844] }
+  }
   // The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
   for (const c of ["0", "0.25", "0.5", "0.75"])
     byAddress[`fixture-painterly-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }

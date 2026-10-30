@@ -46,3 +46,18 @@ A new `.coax` file is watched from the next `coax serve` start; until then,
 save `splash.coax` to rebuild.
 
 Needs upstream LLVM: `brew install llvm lld wasi-libc wasi-runtimes`.
+
+## NIP implementation guides
+
+`/nip` indexes 22 NIPs with Coax library support, partial foundations or a
+production-relay declaration. Each `/nip/NN` page names its exact scope and
+remaining work. `/nip/01` keeps the five-case event-verification pipeline;
+the other pages share `nip-guide.coax` and its separately compiled
+`nip-guide-observe.coax`, which calls the existing libraries on public fixtures.
+Relay-only examples inspect frozen NIP-11 metadata; they do not test relay
+conformance. No guide takes keys or publishes events.
+
+Edit `nip/catalog.json`, then run `python3 coax/web/nip-pages.py` to refresh
+the Coax inventory and HTML/Markdown twins. The build checks their freshness.
+Focused checks and scope are in the
+[verification record](../../docs/verification/2026-10-30-nip-pages.md).

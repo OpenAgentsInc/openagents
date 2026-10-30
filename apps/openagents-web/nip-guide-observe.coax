@@ -1,0 +1,95 @@
+// Public, fixed examples for the NIP guide. These are observations, never
+// authentication, permission, production approval or a relay conformance gate.
+// The renderer is compiled separately to keep its names out of the crypto unit.
+#load "nip01-verify.coax";
+#load "../../coax/lib/nostr/nip19-core.coax";
+#load "../../coax/lib/nostr/tags.coax";
+#load "../../coax/lib/nostr/nip22.coax";
+#load "../../coax/lib/nostr/nip42.coax";
+#load "../../coax/lib/nostr/nip44.coax";
+#load "../../coax/lib/nostr/nip98-observe.coax";
+#load "../../coax/lib/nostr/relay_server.coax";
+#load "../../coax/lib/crypto/scrypt_admission.coax";
+
+// Frozen public production NIP-11 observation, 2026-10-30. A declaration
+// establishes only what that document says, not implementation conformance.
+NG_RELAY_INFO :: "{\"name\":\"OpenAgents Relay\",\"supported_nips\":[1,9,11,40,45,50,65,67,77,94,17,42,59,70,29,98]}";
+
+ng_advertised :: (text:string,nip:int)->int #export_c {
+  if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);
+  if json_next(j[..])!=JSON_OBJECT {return -1;}seen:=false;found:=false;
+  while true {
+    t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}
+    if t!=JSON_STRING || !j[0].key {return -1;}
+    selected:=json_is(json_text(j[..]),"supported_nips");t=json_next(j[..]);
+    if selected {
+      if seen || t!=JSON_ARRAY {return -1;}seen=true;
+      while true {t=json_next(j[..]);if t==JSON_ARRAY_END {break;}
+        if t!=JSON_NUMBER {return -1;}n:=json_int(json_text(j[..]));if !n.ok || n.value<0 {return -1;}
+        if n.value==nip {found=true;}
+      }
+    }else {if !json_skip(j[..]) {return -1;}}
+  }
+  if !seen || json_next(j[..])!=JSON_END {return -1;}
+  return ifx found then 1 else 0;
+}
+ng_read :: (ok:bool)->int {return ifx ok then 0 else 1;}
+ng_tag_fixture :: (text:string)->NostrEvent {
+  return NostrEvent.{error=NE_OK,kind=1,original=text,tags_to=text.count,tags=1};
+}
+ng_typed_fixture :: (text:string,kind:int)->NtEvent {
+  return NtEvent.{ok=true,kind=kind,original=text,tags_to=text.count};
+}
+ng_discovery :: (nip:int,mode:int)->int {
+  if mode==1 {return ng_advertised("{\"supported_nips\":[]}",nip);}
+  if mode==2 {return ng_advertised("{\"supported_nips\":true}",nip);}
+  return ng_advertised(NG_RELAY_INFO,nip);
+}
+ng_demo :: (nip:int,mode:int)->int #export_c {
+  if mode<0 || mode>2 {return -1;}
+  if nip==1 {o:[68]int;nv_run(ifx mode==0 then 0 else ifx mode==1 then 3 else 4,o[..]);return o[0];}
+  if nip==10 {
+    text:=ifx mode==0 then "[[\"e\",\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af\",\"\",\"root\"]]"
+      else ifx mode==1 then "[[\"e\",\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af\",\"\",\"invalid\"]]"
+      else "[[\"e\",\"not-an-id\",\"\",\"root\"]]";
+    tag:=nostr_tag(ng_tag_fixture(text),0);return ng_read(tag.error==NT_OK);
+  }
+  if nip==19 {
+    out:[32]u8;text:=ifx mode==1 then "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptq" else "npub10elfcs4fr0l0r8af98jlmgdh9c8tcxjvz9qkw038js35mp4dma8qzvjptg";
+    r:=nip19_decode_checked(text,out[0..<(ifx mode==2 then 31 else 32)],false);
+    return ng_read(r.error==NC_OK && r.type==N19_NPUB && out[0]==126 && out[31]==78);
+  }
+  if nip==22 {
+    text:=ifx mode==1 then "[[\"I\",\"https://example.com\"],[\"K\",\"web\"]]" else "[[\"I\",\"https://example.com\"],[\"K\",\"web\"],[\"i\",\"https://example.com\"],[\"k\",\"web\"]]";
+    c:=n22_comment(ng_typed_fixture(text,ifx mode==2 then 1 else 1111));return ng_read(c.status==N34_OK);
+  }
+  if nip==34 {
+    text:=ifx mode==1 then "[]" else "[[\"d\",\"openagents\"],[\"name\",\"OpenAgents\"]]";
+    r:=n34_repo(ng_typed_fixture(text,ifx mode==2 then 1 else 30617));return ng_read(r.status==N34_OK);
+  }
+  if nip==40 {return ng_read(rs_live(ifx mode==2 then -1 else 1000,ifx mode==0 then 999 else 1000));}
+  if nip==42 {
+    n:[1]Nip42;out:[1024]u8;
+    e:=nip42_init(n[..],ifx mode==2 then "https://relay.example" else "wss://relay.example");if e!=N42_OK {return 1;}
+    e=nip42_challenge(n[..],7,"[\"AUTH\",\"public-fixture\"]");if e!=N42_OK {return 1;}
+    t:=nip42_template(n[..],ifx mode==1 then 8 else 7,1000,out[..]);return ng_read(t.error==N42_OK && t.kind==22242);
+  }
+  if nip==44 {
+    // Pinned upstream nip44.vectors.json v2.valid.encrypt_decrypt[0].
+    key:=[32]u8.[196,28,119,83,86,253,146,234,220,99,255,90,13,193,218,33,27,38,140,190,162,35,22,118,112,149,178,135,30,161,65,45];
+    original:="AgAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABee0G5VSK0/9YypIObAtDKfYEAjD35uVkHyB0F4DwrcNaCXlCWZKaArsGrY6M9wnuTMxWfp1RTN9Xga8no+kF5Vsb";
+    changed:[132]u8;for i:0..<132 {changed[i]=original[i];}if mode==1 {changed[100]=ifx changed[100]=='A' then 'B' else 'A';}
+    work:[512]u8;out:[32]u8;out[0]=165;
+    r:=nip44_decrypt_checked(NIP44_COMPAT,key[..],cast(string)changed[0..<(ifx mode==2 then 131 else 132)],work[..],out[..],false);
+    if r.error!=NIP44_OK {return 1;}return ng_read(r.written==1 && out[0]=='a');
+  }
+  if nip==49 {
+    return ng_read(sa_start(100,20,2000000,ifx mode==2 then 2047 else 2048,3000000,5,4000000,16,ifx mode==1 then 0 else 1));
+  }
+  if nip==98 {
+    return ng_read(n98_observe(27235,ifx mode==2 then 939 else 1000,1000,"https://example.com/api","POST","","https://example.com/api",ifx mode==1 then "GET" else "POST","",1,1,0,false));
+  }
+  allowed:=[13]int.[9,11,17,29,45,50,59,65,67,70,77,94,0];
+  for number:allowed {if nip==number && number!=0 {return ng_discovery(nip,mode);}}
+  return -1;
+}

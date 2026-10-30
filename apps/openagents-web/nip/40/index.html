@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>NIP-40: Event expiration · OpenAgents</title>
+<meta name="description" content="An expiration tag limits how long a relay should serve an event. The exact expiry second is already expired.">
+<meta name="theme-color" content="#000000">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="alternate" type="text/markdown" href="/nip/40/index.md">
+<script>if ("gpu" in navigator) document.documentElement.classList.add("gpu")</script>
+<style>html,body{margin:0;height:100%;background:#000;color:#ededed}body{overflow:hidden;font:14px/1.5 system-ui,sans-serif}canvas{position:fixed;inset:0;width:100%;height:100%;touch-action:none}canvas[data-cursor=pointer]{cursor:pointer}main{position:relative;max-width:760px;margin:0 auto;padding:24px 16px}html:not(.gpu) body{overflow:auto}a{color:#ff8c1f}.gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}</style>
+</head>
+<body>
+<canvas id="coaxial" aria-hidden="true"></canvas>
+<main>
+<h1>NIP-40: Event expiration</h1>
+<p>An expiration tag limits how long a relay should serve an event. The exact expiry second is already expired.</p>
+<h2>Implementation</h2>
+<p>The Coax relay checks expiration during admission and queries. Its store retains expired replacement heads so older versions do not return.</p>
+<h2>Example</h2>
+<p>The shared relay expiration predicate runs at explicit fixture times. No event is published or deleted.</p>
+<h2>What remains</h2>
+<p>Expiration is not a deletion guarantee, and a relay cannot erase copies held elsewhere.</p>
+<p><a href="/nip">All implemented NIPs</a> · <a href="/nip/40/index.md">Full write-up and source links</a></p>
+</main>
+<script type="module" src="/coaxial/host.js" data-app="nip-guide" data-page="10"></script>
+</body>
+</html>

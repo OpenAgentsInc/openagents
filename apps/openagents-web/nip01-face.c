@@ -30,3 +30,7 @@ EXPORT("coaxial_nip_mode") int64_t mode(uint32_t p) { return state_at(p)->mode; 
 EXPORT("coaxial_nip_error") int64_t error(uint32_t p) { return state_at(p)->error; }
 EXPORT("coaxial_nip_verified") int32_t verified(uint32_t p) { return state_at(p)->verified; }
 EXPORT("coaxial_nip_view") int64_t view(uint32_t p) { return state_at(p)->view; }
+EXPORT("coaxial_action") int32_t action(uint32_t p) {return (int32_t)state_at(p)->action;}
+EXPORT("coaxial_outbox") uint32_t outbox(uint32_t p) {(void)p;static const char route[]="/nip";return (uint32_t)(uintptr_t)route;}
+EXPORT("coaxial_outbox_len") uint32_t outbox_len(uint32_t p) {(void)p;return 4;}
+EXPORT("coaxial_action_done") void action_done(uint32_t p) {state_at(p)->action=0;}

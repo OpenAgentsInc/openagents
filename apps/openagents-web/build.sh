@@ -4,6 +4,7 @@
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
+python3 "$here/../../coax/web/nip-pages.py" --check
 # Guard the shared-library/output race before launching parallel world builds.
 python3 "$here/../../coax/web/tests/wasm_isolation.py"
 # The realm host's table (realms.json): the galaxy's worlds into realms.coax
@@ -125,6 +126,9 @@ wait "$list"
 { echo "// /nip/01: the splash's passes (splash.wgsl, copied by build.sh), as nip01.coax draws only words, strokes and HUD bars."; cat "$here/splash.wgsl"; } > "$here/nip01.wgsl"
 "$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip01-verify.coax" &
 nip01=$!
+cp "$here/nip01.wgsl" "$here/nip-guide.wgsl"
+"$here/../../coax/web/wasm.sh" "$here/nip-guide.coax" "$here/nip-guide-face.c" "$here/build/nip-guide.wasm" "$here/nip-guide-observe.coax" &
+nip_guide=$!
 # /admin/analytics: the projects list's HUD over the admins' numbers.
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" &
 admin=$!
@@ -143,6 +147,7 @@ python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.j
 wait "$admin"
 wait "$chat"
 wait "$nip01"
+wait "$nip_guide"
 wait "$splash"
 wait "$realm"
 wait "$voice"
