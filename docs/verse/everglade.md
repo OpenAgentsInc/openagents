@@ -631,7 +631,16 @@ and the whole row the nearest was placed with: migration
 kept only for one person: `0047_realm_voice_fields.sql`); or undo. No words are matched. While the
 server answers, what was heard shows; then the result (PLACED 4 CRATES,
 PLACED A BARREL, REMOVED MARTA). A sentence with no edit in it shows only
-DIDN'T CATCH AN EDIT IN: '...'. The page does the edit
+DIDN'T CATCH AN EDIT IN: '...'. Sentences said while one is with the
+server wait their turn in the order said (six at most); none replaces
+another. The line shows the last result, then the sentence with the server
+and how many wait after it ("PLACED 2 BARRELS · 'turn it around' · 1 MORE
+WAITING"). The planner is `gemini-2.5-flash` with its thinking off
+(`0054_voice_edit_fast.sql`; npc.c `OA_EDIT_MODEL`): each try has 4 s
+(`OA_EDIT_TIMEOUT_MS`), a failed or stalled one is tried once more, and
+`verse.voice_edits.ms_taken` keeps the time both took. One at a time
+means one with the model, so the next sentence goes the moment the last
+is answered. The page does the edit
 (`verse/everglade/edits.coax`, `apps/openagents-web/everglade-voice.coax`):
 a row starts clear of you (your radius, a margin and half the thing) and
 goes further out where it doesn't fit, saying how many didn't; it refuses

@@ -462,6 +462,12 @@ fn place(id: u32, instance: u32) -> S {
       o.uv = vec2f(word(b + 6u), word(b + 7u));
       o.slice = vertices[b + 8u] >> 24u;
       tint = unpack4x8unorm(vertices[b + 8u]).rgb * m.colour.rgb;
+      // a flower in a colour asked for (everglade-items.coax ed_tint: its colour negated): the petals
+      // dyed that colour, the stem and leaves as they are, not the pink petals multiplied darker
+      if (m.colour.r < 0.0) {
+        tint = unpack4x8unorm(vertices[b + 8u]).rgb;
+        o.dye = vec4f(-m.colour.rgb, 6.0);
+      }
       // a tree's leaves (pack_realm.py: the blob in the vertex's spare word): one soft blob round the
       // canopy's centre, breathing with the wind
       let blob = vertices[b + 9u];
@@ -668,6 +674,13 @@ fn shade_shadows(p: vec2f) -> f32 { return shade_shadows_at(p, 0.0, false); }
 fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
   // dye.w: 2 + share on a pale cloth, 4 + share on a green one (case 6u's people), 0 for no dye
   if (dye.w < 2.0) { return t; }
+  if (dye.w >= 6.0) {
+    // petals (dye.w 6): any texel more red or blue than green takes the dye, kept as light or dark as
+    // the petal's shading; green stems and leaves stay
+    let petal = smoothstep(0.04, 0.16, max(t.r, t.b) - t.g);
+    let shade = clamp(dot(t, vec3f(0.2126, 0.7152, 0.0722)) / 0.5, 0.65, 1.25);
+    return max(mix(t, dye.rgb * shade, petal), vec3f(0.0));
+  }
   let green = dye.w >= 4.0;
   let share = clamp(dye.w - select(2.0, 4.0, green), 0.0, 1.0);
   let hi = max(t.r, max(t.g, t.b));

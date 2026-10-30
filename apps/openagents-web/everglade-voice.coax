@@ -30,6 +30,8 @@ VOICE_FACING :: "Everglade builder";   // whom the voice host leaves our turns t
 EDIT_UNDOS :: 16;
 EDIT_POST :: 6144;
 EDIT_ASK :: 512;
+EDIT_SAID :: 300;         // one heard sentence (the server keeps 300 characters)
+EDIT_QUEUE :: 6;          // heard sentences waiting their turn, in the order said
 EDIT_LINE :: 480;
 
 EditVoice :: struct {
@@ -51,7 +53,11 @@ EditVoice :: struct {
   phase: [16] u8; phase_n: int;
   caption: [EDIT_LINE] u8; caption_n: int;
   line: [EDIT_LINE] u8; line_n: int;  // what was done, or why not
-  ask: [EDIT_ASK] u8; ask_n: int;     // the heard words for the face to send
+  ask: [EDIT_ASK] u8; ask_n: int;     // the request the face is sending
+  // Sentences said while one is with the server wait here, in order: none replaces another
+  waiting: [EDIT_QUEUE * EDIT_SAID] u8; waiting_n: [EDIT_QUEUE] int; wait_at: int; wait_count: int;
+  asking: [EDIT_SAID] u8; asking_n: int;   // the sentence with the server now (0 none)
+  shown: [EDIT_LINE] u8;              // the line on the screen, put together
   post: [EDIT_POST] u8; post_n: int;  // the list to publish, for the face
   say: [EDIT_LINE] u8; say_n: int;    // what to speak back
   person: int;                        // the city's person picked in edit mode, -1 none
@@ -107,19 +113,34 @@ everglade_voice_message :: (s: [] Everglade, kind: int, text: string) -> bool {
   caption := ifx bar < text.count then text[bar + 1..<text.count] else "";
   s[0].ev.phase_n = ev_put(s[0].ev.phase[..], phase);
   s[0].ev.caption_n = ev_put(s[0].ev.caption[..], caption);
-  // The turn's final words: an edit to ask for (the server picks it; nothing here reads them).
+  // The turn's final words: an edit to ask for (the server picks it; nothing here reads them),
+  // after any said before it.
   if phase == "heard" && caption.count > 0 && voice_on(s) {
-    n := ev_put(s[0].ev.ask[..], "{\"sentence\":\"");
+    if s[0].ev.wait_count >= EDIT_QUEUE { ev_line(s, "SIX ARE WAITING ALREADY · SAY IT AGAIN AFTER THEM"); return true; }
+    slot := (s[0].ev.wait_at + s[0].ev.wait_count) % EDIT_QUEUE;
+    n := 0;
     for c: 0..<caption.count {
       ch := caption[c];
       if ch == '"' || ch == '\\' || ch < 32 { continue; }
-      if n < EDIT_ASK - 4 { s[0].ev.ask[n] = ch; n += 1; }
+      if n < EDIT_SAID { s[0].ev.waiting[slot * EDIT_SAID + n] = ch; n += 1; }
     }
-    n += ev_put(s[0].ev.ask[n..<EDIT_ASK], "\"}");
-    s[0].ev.ask_n = n;
-    s[0].ev.line_n = 0;   // the heard words show until the edit is done
+    s[0].ev.waiting_n[slot] = n;
+    if n > 0 { s[0].ev.wait_count += 1; }
   }
   return true;
+}
+
+// The next waiting sentence, as the face's request, when none is with the server.
+ev_next_ask :: (s: [] Everglade) {
+  if s[0].ev.asking_n > 0 || s[0].ev.ask_n > 0 || s[0].ev.wait_count == 0 { return; }
+  slot := s[0].ev.wait_at;
+  said := s[0].ev.waiting[slot * EDIT_SAID..<slot * EDIT_SAID + s[0].ev.waiting_n[slot]];
+  s[0].ev.asking_n = ev_put(s[0].ev.asking[..], cast(string) said);
+  s[0].ev.wait_at = (slot + 1) % EDIT_QUEUE; s[0].ev.wait_count -= 1;
+  n := ev_put(s[0].ev.ask[..], "{\"sentence\":\"");
+  n += ev_put(s[0].ev.ask[n..<EDIT_ASK], cast(string) said);
+  n += ev_put(s[0].ev.ask[n..<EDIT_ASK], "\"}");
+  s[0].ev.ask_n = n;
 }
 
 // ---- the button: hold to talk
@@ -177,7 +198,8 @@ everglade_voice_actions :: (s: [] Everglade) {
 
 // ---- the face's calls
 
-everglade_edit_ask :: (s: [] Everglade) -> int #export_c { return s[0].ev.ask_n; }
+// The request to send (0 none): the face asks only when it has none out, and answers with everglade_edit_answer.
+everglade_edit_ask :: (s: [] Everglade) -> int #export_c { ev_next_ask(s); return s[0].ev.ask_n; }
 everglade_edit_ask_sent :: (s: [] Everglade) #export_c { s[0].ev.ask_n = 0; }
 everglade_edit_post :: (s: [] Everglade) -> int #export_c { return s[0].ev.post_n; }
 everglade_edit_post_sent :: (s: [] Everglade) #export_c { s[0].ev.post_n = 0; }
@@ -200,11 +222,15 @@ everglade_edit_saved :: (s: [] Everglade, status: int) #export_c {
 
 // The selector's answer ("STATUS\n" and its JSON): the edit, done in front of you.
 everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
+  ev_answered(s, answer);
+  s[0].ev.asking_n = 0; s[0].ev.ask_n = 0;   // the next waiting sentence goes now
+}
+ev_answered :: (s: [] Everglade, answer: string) {
   if answer.count < 4 || answer[0..<4] != "200\n" {
     if answer.count >= 4 && answer[0..<4] == "422\n" {
       // nothing in the catalogue fits: what was heard, and nothing more
       n := ev_put(s[0].ev.line[..], "DIDN'T CATCH AN EDIT IN: '");
-      for c: 0..<s[0].ev.caption_n { if n < EDIT_LINE - 1 { s[0].ev.line[n] = s[0].ev.caption[c]; n += 1; } }
+      for c: 0..<s[0].ev.asking_n { if n < EDIT_LINE - 1 { s[0].ev.line[n] = s[0].ev.asking[c]; n += 1; } }
       n += ev_put(s[0].ev.line[n..<EDIT_LINE], "'");
       s[0].ev.line_n = n;
       ev_say(s, "I didn't catch an edit.");
@@ -936,9 +962,24 @@ ev_text :: (s: [] Everglade) -> string {
   p := cast(string) s[0].ev.phase[0..<s[0].ev.phase_n];
   if s[0].ev.held && (p == "" || p == "off" || p == "connecting") { return "CONNECTING · KEEP HOLDING"; }
   if s[0].ev.held && p == "listening" { return "LISTENING · SAY WHAT TO CHANGE"; }
-  if (p == "hearing" || p == "heard") && s[0].ev.caption_n > 0 && s[0].ev.line_n == 0 { return cast(string) s[0].ev.caption[0..<s[0].ev.caption_n]; }
+  if p == "hearing" && s[0].ev.caption_n > 0 { return cast(string) s[0].ev.caption[0..<s[0].ev.caption_n]; }
   if p == "notice" && s[0].ev.caption_n > 0 { return cast(string) s[0].ev.caption[0..<s[0].ev.caption_n]; }
-  if s[0].ev.line_n > 0 { return cast(string) s[0].ev.line[0..<s[0].ev.line_n]; }
+  // the last result, then the sentence with the server (or next), as heard, and how many wait after it
+  ev_next_ask(s);
+  if s[0].ev.asking_n == 0 { return ifx s[0].ev.line_n > 0 then cast(string) s[0].ev.line[0..<s[0].ev.line_n] else ev_hint(); }
+  n := ev_put(s[0].ev.shown[..], cast(string) s[0].ev.line[0..<s[0].ev.line_n]);
+  if n > 0 { n += ev_put(s[0].ev.shown[n..<EDIT_LINE], " · "); }
+  n += ev_put(s[0].ev.shown[n..<EDIT_LINE], "'");
+  n += ev_put(s[0].ev.shown[n..<EDIT_LINE], cast(string) s[0].ev.asking[0..<s[0].ev.asking_n]);
+  n += ev_put(s[0].ev.shown[n..<EDIT_LINE], "'");
+  if s[0].ev.wait_count > 0 {
+    n += ev_put(s[0].ev.shown[n..<EDIT_LINE], " · ");
+    n = eg_put_int(s[0].ev.shown[..], n, s[0].ev.wait_count);
+    n += ev_put(s[0].ev.shown[n..<EDIT_LINE], " MORE WAITING");
+  }
+  return cast(string) s[0].ev.shown[0..<n];
+}
+ev_hint :: () -> string {
   return "SAY: PUT SIX PUMPKINS ON THE STALL · WHAT CAN I PUT DOWN?";
 }
 
@@ -1019,13 +1060,38 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert s[0].action == ACT_VOICE && cast(string) s[0].outbox[0..<s[0].out_n] == "end";
 }
 
+#test "voice edits: sentences said while one is with the server wait their turn, in order, each shown and then its result" {
+  s: [1] Everglade;
+  everglade_start(s[..]);
+  everglade_message(s[..], MSG_FACTS, "voice=haunted-house");
+  everglade_message(s[..], MSG_VIEWER, "A|1\n");
+  s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
+  everglade_message(s[..], MSG_VOICE, "heard|put two barrels here");
+  #assert everglade_edit_ask(s[..]) > 0;
+  everglade_edit_ask_sent(s[..]);   // the face sent it
+  everglade_message(s[..], MSG_VOICE, "heard|what time is it");
+  everglade_message(s[..], MSG_VOICE, "heard|put a crate here");
+  #assert everglade_edit_ask(s[..]) == 0;   // one with the server at a time
+  #assert ev_text(s[..]) == "'put two barrels here' · 2 MORE WAITING";
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"barrel\", \"count\": 2, \"model\": \"m\"}");
+  #assert ev_text(s[..]) == "PLACED 2 BARRELS · 'what time is it' · 1 MORE WAITING";
+  #assert everglade_edit_ask(s[..]) > 0 && cast(string) s[0].ev.ask[0..<s[0].ev.ask_n] == "{\"sentence\":\"what time is it\"}";
+  everglade_edit_ask_sent(s[..]);
+  everglade_edit_answer(s[..], "422\n{\"error\": \"none fit\"}");
+  #assert ev_text(s[..]) == "DIDN'T CATCH AN EDIT IN: 'what time is it' · 'put a crate here'";
+  #assert everglade_edit_ask(s[..]) > 0 && cast(string) s[0].ev.ask[0..<s[0].ev.ask_n] == "{\"sentence\":\"put a crate here\"}";
+  everglade_edit_ask_sent(s[..]);
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"crate\", \"model\": \"m\"}");
+  #assert ev_text(s[..]) == "PLACED A CRATE" && everglade_edit_ask(s[..]) == 0 && s[0].ev.edits.n == 3;
+}
+
 #test "voice edits: the heard words go to the server as they are; its typed answer places, removes and undoes" {
   s: [1] Everglade;
   everglade_start(s[..]);
   everglade_message(s[..], MSG_FACTS, "voice=haunted-house");
   everglade_message(s[..], MSG_VIEWER, "A|1\n");
   everglade_message(s[..], MSG_VOICE, "heard|Put two \"barrels\" here");
-  #assert cast(string) s[0].ev.ask[0..<s[0].ev.ask_n] == "{\"sentence\":\"Put two barrels here\"}";
+  #assert everglade_edit_ask(s[..]) > 0 && cast(string) s[0].ev.ask[0..<s[0].ev.ask_n] == "{\"sentence\":\"Put two barrels here\"}";
   // standing on the commons, facing south
   s[0].feet = v3(6, 0, -9); s[0].face = f32(PI);
   walls := s[0].wall_n;
@@ -1039,7 +1105,8 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   everglade_edit_answer(s[..], "200\n{\"edit\": \"undo\", \"model\": \"m\"}");
   #assert s[0].ev.edits.n == 2;
   everglade_message(s[..], MSG_VOICE, "heard|what time is it");
-  #assert s[0].ev.line_n == 0 && ev_text(s[..]) == "what time is it";   // the heard words while the server answers
+  shown := ev_text(s[..]);   // the heard words while the server answers, after the last result
+  #assert shown.count > 17 && shown[shown.count - 17..<shown.count] == "'what time is it'";
   everglade_edit_answer(s[..], "422\n{\"error\": \"none fit\"}");
   #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "DIDN'T CATCH AN EDIT IN: 'what time is it'";
   #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "I didn't catch an edit.";

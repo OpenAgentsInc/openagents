@@ -200,8 +200,9 @@ static void edit_out(uint32_t state) {
     world_asked = true;
     world_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, 0, 0, 4);
   }
-  int64_t n = everglade_edit_ask(at(state));
-  if (n > 0 && edit_id < 0) {
+  /* heard sentences go one at a time, in the order said: the next is taken only when none is out */
+  int64_t n = edit_id < 0 ? everglade_edit_ask(at(state)) : 0;
+  if (n > 0) {
     edit_id = coaxial_http((uint32_t)(uintptr_t)EDIT_URL, sizeof EDIT_URL - 1, (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
     everglade_edit_ask_sent(at(state));
     if (edit_id < 0) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){"0\n", 2}); }

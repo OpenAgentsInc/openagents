@@ -59,7 +59,9 @@ ed_piece :: (s: [] Everglade, t: EgThing, m: int, u: f32, v: f32, y: f32, yaw: f
 // The colour of the group's last instance.
 ed_tint :: (s: [] Everglade, group: int, tint: int) {
   o := (s[0].group_at[group] + s[0].kit_used[group] - 1) * OBJECT_FLOATS;
-  for k: 0..<3 { s[0].objects[o + 12 + k] = EDIT_TINT[tint * 3 + k]; }
+  // a flower's colour goes on its petals only (everglade.wgsl person_dye, dye 6): negated to say so
+  sign := ifx group == group_of(M_FLOWER3) then -1.0f32 else 1.0f32;
+  for k: 0..<3 { s[0].objects[o + 12 + k] = sign * EDIT_TINT[tint * 3 + k]; }
 }
 // An engine shape of a thing at its local (u, v), its middle up by y; sizes before the thing's size.
 ed_shape :: (s: [] Everglade, t: EgThing, kind: int, look: int, u: f32, v: f32, y: f32, sx: f32, sy: f32, sz: f32, r: f32, gr: f32, b: f32) {
@@ -212,7 +214,7 @@ edit_spots :: (s: [] Everglade) {
         x := t.x + d * sin(a) + (ed_hash(i, j) - 0.5) * 0.3;
         z := t.z + d * cos(a) + (ed_hash(j, i) - 0.5) * 0.3;
         if !eg_spot_free(e, solids[..], sn, x, z, 0.12) { continue; }
-        ed_spot(s, x, z, ed_hash(i + 3, j) * 6.28, 0.16 + 0.07 * ed_hash(j + 5, i), M_FLOWER3, ifx t.tint <= 1 then 0 else t.tint);   // one mesh, tinted; white when unsaid
+        ed_spot(s, x, z, ed_hash(i + 3, j) * 6.28, 0.16 + 0.07 * ed_hash(j + 5, i), M_FLOWER3, t.tint);   // one mesh, its petals dyed the colour said (purple is 1); as it is when unsaid
       }
     } else {
       h := EG_EDIT_HALF[k * 3] * t.size;
@@ -341,6 +343,9 @@ edit_in_hidden :: (s: [] Everglade, solids: [] f32, k: int) -> bool {
   edit_draw(s[..]);
   drawn := s[0].kit_used[group_of(M_FLOWER3)] - s[0].ev.town_used[group_of(M_FLOWER3)];
   #assert drawn > 200 && drawn <= EDIT_SPOTS_DRAWN;
+  // purple on the petals: the colour negated, so the shader dyes the petals with it (not pink times purple)
+  fo := (s[0].group_at[group_of(M_FLOWER3)] + s[0].kit_used[group_of(M_FLOWER3)] - 1) * OBJECT_FLOATS;
+  #assert s[0].objects[fo + 12] == -EDIT_TINT[3] && s[0].objects[fo + 13] == -EDIT_TINT[4] && s[0].objects[fo + 14] == -EDIT_TINT[5];
 }
 
 #test "items: a hidden building is laid without, and its walls go" {
