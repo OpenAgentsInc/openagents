@@ -17,6 +17,8 @@ struct U {
   sun: vec4f,                                  // toward the sun, then its strength
   water: vec4f,                                // the water: x, z, radius, on
   panel: array<vec4f, 48>,  // per plate (myrealm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
+  pool: array<vec4f, 16>,   // the lanterns' lights (myrealm.coax POOL_AT): x, y, z (metres), on
+  pool_tint: vec4f,         // their colour, then their strength (the time of day's share)
 }
 @group(0) @binding(0) var<uniform> u: U;
 // A plate (verse.wgsl's): a dark wood fill with one thin bronze line round
@@ -71,6 +73,19 @@ fn lamp_near(p: vec3f, n: vec3f) -> f32 {
   let d = length(to);
   return max(0.0, dot(n, to / max(d, 0.001))) * u.lamp.w / (1.0 + 0.18 * d * d);
 }
+// The lanterns' light on what they reach: a warm pool round each post after dark.
+fn lanterns_near(p: vec3f, n: vec3f) -> vec3f {
+  if (u.pool_tint.w <= 0.0) { return vec3f(0.0); }
+  var sum = 0.0;
+  for (var i = 0; i < 16; i++) {
+    let l = u.pool[i];
+    if (l.w < 0.5) { break; }
+    let to = l.xyz - p;
+    let d = length(to);
+    sum += (0.25 + 0.75 * max(0.0, dot(n, to / max(d, 0.001)))) / (1.0 + 0.55 * d * d);
+  }
+  return u.pool_tint.rgb * sum * u.pool_tint.w;
+}
 fn noise(p: vec2f) -> f32 {
   let i = floor(p); let f = fract(p); let w = f * f * (3.0 - 2.0 * f);
   return mix(mix(hash(i), hash(i + vec2f(1.0, 0.0)), w.x), mix(hash(i + vec2f(0.0, 1.0)), hash(i + vec2f(1.0, 1.0)), w.x), w.y);
@@ -119,6 +134,7 @@ fn daylight(n: vec3f) -> vec3f {
     ground = mix(water, u.ground.rgb * 1.2 * daylight(vec3f(0.0, 1.0, 0.0)), rim * 0.5);
   }
   ground += vec3f(1.0, 0.62, 0.28) * lamp_near(hit, vec3f(0.0, 1.0, 0.0)) * 0.55 * u.ground.w;
+  ground += lanterns_near(hit, vec3f(0.0, 1.0, 0.0)) * 0.9;
   // the realm's edge fades into the horizon's haze
   let haze = clamp(1.0 - exp(-max(t - u.rx.w, 0.0) * 0.018), 0.0, 1.0);
   ground = mix(ground, u.horizon.rgb, haze * 0.85);
@@ -165,6 +181,7 @@ struct S {
   let n = normalize(s.normal);
   var lit = daylight(n);
   lit += vec3f(1.0, 0.62, 0.28) * lamp_near(s.world, n) * 1.6 * u.ground.w;
+  lit += lanterns_near(s.world, n) * 1.4;
   let far = max(length(s.world - u.eye.xyz) - u.rx.w, 0.0);
   let haze = clamp(1.0 - exp(-far * 0.018), 0.0, 1.0);
   let c = mix(tex.rgb * s.tint * lit, u.horizon.rgb, haze * 0.85) * u.fade;

@@ -55,10 +55,10 @@ and takes them into it.
 | trees | round, pine, dead, mixed; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted) |
 | rocks | 2 to 16 | the fixture pack's rock |
 | plants | 4 to 24 | the fixture pack's fern |
-| lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights on posts (strokes) |
-| flock | crow, bat; 3 to 12 | strokes circling whoever walks |
+| lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
+| flock | crow, bat; 3 to 12 | dark wings circling low ahead of whoever walks |
 | props | crates, barrels, wagon, fence, camp (up to 5) | the fixture pack's props |
-| character | a name and a role (up to 4) | a figure with its name and role |
+| character | a name and a role (up to 4) | a figure (the pack's barrel and crate) with its name and role |
 | tool | build, fly, jump, map, talk, voice | what visitors may do (below) |
 
 Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coax`):

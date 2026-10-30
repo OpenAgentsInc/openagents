@@ -10,7 +10,9 @@
 // empty ground when nothing was checked, and no one in it unless characters were. The features are
 // laid out from the slug (the same realm for everyone), from the fixture pack's meshes
 // (realms/fixture/assets/fixture.pack): trees, rocks, ferns, crates, barrels, a wagon, a fence, a
-// chest and an anvil. Lanterns are lights on posts; the flock circles whoever walks.
+// chest and an anvil. Lanterns are lights in cages on dark posts, with a pool of light round each
+// after dark; the flock circles low ahead of whoever walks, dark against the sky; you and the
+// characters are figures built from the pack's barrel and crate (from above, a figure on a bright ring).
 //
 // The owner and admins (the server decides) get EDIT, the shared edit layer (verse/edit/edit.coax):
 // the board of what is here, a checkbox a row, revised by typing; SETTINGS, the tools visitors get;
@@ -43,7 +45,8 @@ PLATES :: 24;
 VIEW_AT :: 8; LAMP_AT :: 24; EYE_AT :: 28; RAY_AT :: 32;
 SKY_AT :: 44; HORIZON_AT :: 48; GROUND_AT :: 52; SUN_AT :: 56; WATER_AT :: 60;
 PANEL_AT :: 64;
-UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+POOL_AT :: PANEL_AT + PLATES * 8;   // per lantern x, y, z, on (16), then their colour and strength
+UNIFORM_FLOATS :: POOL_AT + LANTERNS * 4 + 4;
 
 MODE_STROKE :: 0.0;
 MODE_BAR :: 4.0;   // ui.coax's
@@ -100,7 +103,7 @@ HTTP_ANSWER_KIND :: 512;
 OUTBOX :: 256; URL :: 160; BODY :: 512; SLUG :: 64; TITLE :: 64; WORD :: 16; NOTE :: 100;
 HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
 MESHES :: 24; NAME :: 32;
-PIECES :: 400;           // meshes drawn: features and placed things (a tree is two)
+PIECES :: 460;           // meshes drawn: features and placed things (a tree is two), then the actors each frame
 SOLIDS :: 260;           // circles you can't walk into
 INSTANCE_FLOATS :: 16;
 LANTERNS :: 16; BIRDS :: 12; PEOPLE :: 4; PERSON :: 24; ROLE :: 40;
@@ -156,6 +159,10 @@ MyRealm :: struct {
   laid: bool;
   piece_n: int; piece_mesh: [PIECES] int; piece_x: [PIECES] f32; piece_z: [PIECES] f32; piece_yaw: [PIECES] f32;
   piece_k: [PIECES] f32; piece_tint: [PIECES * 3] f32;
+  // a piece's height off the ground, its roll (about its own forward axis) and its stretch along each axis
+  piece_y: [PIECES] f32; piece_roll: [PIECES] f32; piece_sx: [PIECES] f32; piece_sy: [PIECES] f32; piece_sz: [PIECES] f32;
+  static_n: int;           // the pieces laid out; the actors (you, the characters' moves, the flock) follow each frame
+  flock_x: f32; flock_z: f32; flock_set: bool;
   solid_n: int; solid_x: [SOLIDS] f32; solid_z: [SOLIDS] f32; solid_r: [SOLIDS] f32;
   lantern_x: [LANTERNS] f32; lantern_z: [LANTERNS] f32;
   person_x: [PEOPLE] f32; person_z: [PEOPLE] f32;
@@ -473,15 +480,27 @@ longest :: (s: [] MyRealm, m: int) -> f32 {
 // a mesh's footprint radius at scale k
 foot_of :: (s: [] MyRealm, m: int, k: f32) -> f32 { o := m * 6; return 0.5 * hi(s[0].mesh_box[o + 3] - s[0].mesh_box[o], s[0].mesh_box[o + 5] - s[0].mesh_box[o + 2]) * k; }
 piece :: (s: [] MyRealm, m: int, x: f32, z: f32, yaw: f32, k: f32, r: f32, g: f32, b: f32) {
+  shaped(s, m, x, 0, z, yaw, 0, k, 1, 1, 1, r, g, b);
+}
+// A piece lifted off the ground, rolled and stretched: a post, a body, a wing.
+shaped :: (s: [] MyRealm, m: int, x: f32, y: f32, z: f32, yaw: f32, roll: f32, k: f32, sx: f32, sy: f32, sz: f32, r: f32, g: f32, b: f32) {
   if m < 0 || s[0].piece_n >= PIECES { return; }
   n := s[0].piece_n;
   s[0].piece_mesh[n] = m; s[0].piece_x[n] = x; s[0].piece_z[n] = z; s[0].piece_yaw[n] = yaw; s[0].piece_k[n] = k;
+  s[0].piece_y[n] = y; s[0].piece_roll[n] = roll; s[0].piece_sx[n] = sx; s[0].piece_sy[n] = sy; s[0].piece_sz[n] = sz;
   s[0].piece_tint[n * 3] = r; s[0].piece_tint[n * 3 + 1] = g; s[0].piece_tint[n * 3 + 2] = b;
   s[0].piece_n = n + 1;
 }
+// A mesh stretched to w by h by d metres (its box), standing at (x, y, z).
+sized :: (s: [] MyRealm, m: int, x: f32, y: f32, z: f32, yaw: f32, roll: f32, w: f32, h: f32, d: f32, r: f32, g: f32, b: f32) {
+  if m < 0 { return; }
+  o := m * 6;
+  bw := hi(s[0].mesh_box[o + 3] - s[0].mesh_box[o], 0.01); bh := hi(s[0].mesh_box[o + 4] - s[0].mesh_box[o + 1], 0.01); bd := hi(s[0].mesh_box[o + 5] - s[0].mesh_box[o + 2], 0.01);
+  shaped(s, m, x, y, z, yaw, roll, 1, w / bw, h / bh, d / bd, r, g, b);
+}
 // A thing at (x, z): its mesh (a tree with its leaves), its size, a circle you can't walk into.
 thing_at :: (s: [] MyRealm, t: int, x: f32, z: f32, yaw: f32, grow: f32, kind: int) {
-  if t == 5 { return; }   // lanterns are lights, drawn as strokes
+  if t == 5 { lantern_post(s, x, z); return; }   // a post; its light is a stroke
   m := mesh_named(s, THING_MESH[t]);
   if m < 0 { return; }
   k := THING_SIZE[t] / hi(longest(s, m), 0.01) * grow;
@@ -496,7 +515,8 @@ thing_at :: (s: [] MyRealm, t: int, x: f32, z: f32, yaw: f32, grow: f32, kind: i
 lay_out :: (s: [] MyRealm) {
   if !s[0].spec_ready || !s[0].pack_ready { return; }
   r: [1] Seed; r[0].v = seed_of(slug_text(s));
-  s[0].piece_n = 0; s[0].solid_n = 0; s[0].water_r = 0;
+  s[0].piece_n = 0; s[0].static_n = 0; s[0].solid_n = 0; s[0].water_r = 0;
+  if !s[0].flock_set { f := flock_target(s); s[0].flock_x = f.x; s[0].flock_z = f.z; s[0].flock_set = true; }
   if s[0].water > 0 {
     s[0].water_r = ifx s[0].water == 1 then 2.5f32 else ifx s[0].water == 3 then 6.5f32 else 4.0f32;
     a := rand(r[..]) * 1.2 - 0.6;
@@ -513,7 +533,7 @@ lay_out :: (s: [] MyRealm) {
   for i: 0..<s[0].lanterns {
     a := cast(f32) i / cast(f32) hi_int(s[0].lanterns, 1) * 6.2831853 + 0.3;
     s[0].lantern_x[i] = 7.5 * sin(a); s[0].lantern_z[i] = 6 - 7.5 * cos(a);
-    solid(s, s[0].lantern_x[i], s[0].lantern_z[i], 0.2);
+    lantern_post(s, s[0].lantern_x[i], s[0].lantern_z[i]);
   }
   for p: 0..<s[0].prop_n {
     kind := s[0].props[p];
@@ -535,9 +555,77 @@ lay_out :: (s: [] MyRealm) {
   for i: 0..<s[0].rocks { c := spot(s, r[..], 4, GROUND_R - 2, 0.8); if c.x < 90 { thing_at(s, 3, c.x, c.z, rand(r[..]) * 6.28, 0.6 + 0.9 * rand(r[..]), 0); } }
   for i: 0..<s[0].plants { c := spot(s, r[..], 3, GROUND_R - 2, 0.4); if c.x < 90 { thing_at(s, 4, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), 0); } }
   for i: 0..<s[0].placed_n { thing_at(s, s[0].placed_thing[i], s[0].placed_x[i], s[0].placed_z[i], s[0].placed_yaw[i], 1, 0); }
-  build_draws(s);
+  // the characters, each a figure facing where you start
+  for p: 0..<s[0].people {
+    o := (p % 4) * 3;
+    pawn(s, s[0].person_x[p], 0, s[0].person_z[p], turn_of(-s[0].person_x[p], s[0].person_z[p] - 6), 1, PERSON_RGB[o], PERSON_RGB[o + 1], PERSON_RGB[o + 2], false);
+  }
+  s[0].static_n = s[0].piece_n;
+  actors(s);
   s[0].laid = true;
 }
+
+// A lantern's post: a dark wooden post (the pack's crate, stretched) and the cage its light hangs in.
+POST_RGB :: [3] f32.[0.42, 0.31, 0.22];
+lantern_post :: (s: [] MyRealm, x: f32, z: f32) {
+  m := mesh_named(s, "Prop_Crate");
+  sized(s, m, x, 0, z, 0.4, 0, 0.13, 1.42, 0.13, POST_RGB[0], POST_RGB[1], POST_RGB[2]);
+  sized(s, m, x, 1.36, z, 0.4, 0, 0.24, 0.04, 0.24, POST_RGB[0] * 0.7, POST_RGB[1] * 0.7, POST_RGB[2] * 0.7);
+  sized(s, m, x, 1.4, z, 0.4, 0, 0.17, 0.2, 0.17, 0.4 + 0.6 * s[0].lantern_r, 0.4 + 0.6 * s[0].lantern_g, 0.4 + 0.6 * s[0].lantern_b);
+  sized(s, m, x, 1.6, z, 0.4, 0, 0.24, 0.04, 0.24, POST_RGB[0] * 0.7, POST_RGB[1] * 0.7, POST_RGB[2] * 0.7);
+  solid(s, x, z, 0.2);
+}
+
+// A figure: a body, shoulders and a head (the pack's barrel and crate, stretched), facing yaw;
+// seen from above (top-down) it is a disc on the ground, round shoulders and a head, a size larger.
+PERSON_RGB :: [12] f32.[0.35, 0.55, 0.42,  0.62, 0.42, 0.78,  0.36, 0.5, 0.82,  0.8, 0.62, 0.3];
+YOU_RGB :: [3] f32.[0.86, 0.36, 0.16];
+pawn :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, big: f32, r: f32, g: f32, b: f32, you: bool) {
+  barrel := mesh_named(s, "Barrel"); crate := mesh_named(s, "Prop_Crate");
+  above := s[0].camera == CAM_TOP;
+  k := big * (ifx above then 1.6f32 else 1.0f32);
+  // a mesh's own x runs along (cos a, -sin a) turned by a: -yaw puts it across the way you face
+  turn := -yaw;
+  if above && you { sized(s, barrel, x, y + 0.01, z, 0, 0, 1.25 * k, 0.03, 1.25 * k, 1.9, 1.4, 0.6); }
+  sized(s, barrel, x, y, z, turn, 0, 0.44 * k, 1.08 * k, 0.38 * k, r, g, b);
+  sized(s, crate, x, y + 1.0 * k, z, turn, 0, 0.6 * k, 0.17 * k, 0.28 * k, r * 0.8, g * 0.8, b * 0.8);
+  sized(s, barrel, x, y + 1.2 * k, z, turn, 0, 0.3 * k, 0.32 * k, 0.3 * k, 0.93, 0.8, 0.66);
+  // which way it faces: a pack on the back (seen from above, the head is ahead of it)
+  sized(s, crate, x - 0.2 * k * sin(yaw), y + 0.55 * k, z + 0.2 * k * cos(yaw), turn, 0, 0.32 * k, 0.4 * k, 0.12 * k, r * 0.6, g * 0.6, b * 0.6);
+}
+
+// What moves, after what was laid out: you (unless the camera is your eyes) and the flock, circling
+// ahead of you low enough to see against the sky, dark wings beating.
+actors :: (s: [] MyRealm) {
+  s[0].piece_n = s[0].static_n;
+  if s[0].camera != CAM_FIRST { pawn(s, s[0].x, s[0].y, s[0].z, s[0].yaw, 1, YOU_RGB[0], YOU_RGB[1], YOU_RGB[2], true); }
+  crate := mesh_named(s, "Prop_Crate");
+  for i: 0..<s[0].birds {
+    b := bird_at(s, i);
+    span: f32 = ifx s[0].bats then 0.5f32 else 0.62f32;
+    flap := ifx s[0].still then 0.35f32 else 0.55 * sin(s[0].time * (ifx s[0].bats then 14.0f32 else 8.0f32) + cast(f32) i);
+    cr: f32 = ifx s[0].bats then 0.16f32 else 0.1f32; cb: f32 = ifx s[0].bats then 0.2f32 else 0.11f32;
+    for side: 0..<2 {
+      w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+      cx := 0.5 * span * cos(flap); cy := 0.5 * span * sin(flap);
+      wx := b.x + w * cx * cos(b.yaw); wz := b.z + w * cx * sin(b.yaw);
+      sized(s, crate, wx, b.y + cy - 0.015, wz, -b.yaw, w * flap, span, 0.03, 0.2, cr, 0.1, cb);
+    }
+    sized(s, crate, b.x, b.y - 0.04, b.z, -b.yaw, 0, 0.12, 0.08, 0.32, cr * 0.8, 0.08, cb * 0.8);
+  }
+  build_draws(s);
+}
+Bird :: struct { x: f32; y: f32; z: f32; yaw: f32; }
+// The flock circles a spot ahead of you that follows you round (realm_step eases it there).
+bird_at :: (s: [] MyRealm, i: int) -> Bird {
+  a := s[0].time * (0.35 + 0.04 * cast(f32) (i % 3)) + cast(f32) i / cast(f32) hi_int(s[0].birds, 1) * 6.2831853;
+  rr := 3.5 + 1.2 * sin(cast(f32) i * 2.3);
+  x := s[0].flock_x + rr * cos(a); z := s[0].flock_z + rr * sin(a);
+  y := 3.6 + 0.6 * sin(cast(f32) i * 1.3 + s[0].time * 0.7) + ifx s[0].flying then s[0].y else 0.0f32;
+  // its heading: along the circle (the wings span across it)
+  return Bird.{x = x, y = y, z = z, yaw = a};
+}
+flock_target :: (s: [] MyRealm) -> Spot { return Spot.{x = s[0].x + 7 * sin(s[0].yaw), z = s[0].z - 7 * cos(s[0].yaw)}; }
 
 // The pieces as draws, a mesh's together: [first, count, base instance, instances], and their transforms.
 build_draws :: (s: [] MyRealm) {
@@ -551,11 +639,17 @@ build_draws :: (s: [] MyRealm) {
     for p: 0..<s[0].piece_n {
       if s[0].piece_mesh[p] != m || s[0].object_n >= PIECES { continue; }
       k := s[0].piece_k[p]; c := cos(s[0].piece_yaw[p]); sn := sin(s[0].piece_yaw[p]);
-      x := s[0].piece_x[p]; z := s[0].piece_z[p];
+      cr := cos(s[0].piece_roll[p]); sr := sin(s[0].piece_roll[p]);
+      kx := k * s[0].piece_sx[p]; ky := k * s[0].piece_sy[p]; kz := k * s[0].piece_sz[p];
+      x := s[0].piece_x[p]; y := s[0].piece_y[p]; z := s[0].piece_z[p];
+      // turned by its yaw, rolled about its forward axis, stretched: rows of (yaw · roll) · stretch
+      m0 := c * cr * kx; m1 := -c * sr * ky; m2 := sn * kz;
+      m4 := sr * kx; m5 := cr * ky; m6: f32 = 0;
+      m8 := -sn * cr * kx; m9 := sn * sr * ky; m10 := c * kz;
       t := s[0].object_n * INSTANCE_FLOATS;
-      s[0].objects[t] = c * k; s[0].objects[t + 1] = 0; s[0].objects[t + 2] = sn * k; s[0].objects[t + 3] = x - k * (c * cx + sn * cz);
-      s[0].objects[t + 4] = 0; s[0].objects[t + 5] = k; s[0].objects[t + 6] = 0; s[0].objects[t + 7] = -k * floor_y;
-      s[0].objects[t + 8] = -sn * k; s[0].objects[t + 9] = 0; s[0].objects[t + 10] = c * k; s[0].objects[t + 11] = z - k * (-sn * cx + c * cz);
+      s[0].objects[t] = m0; s[0].objects[t + 1] = m1; s[0].objects[t + 2] = m2; s[0].objects[t + 3] = x - (m0 * cx + m1 * floor_y + m2 * cz);
+      s[0].objects[t + 4] = m4; s[0].objects[t + 5] = m5; s[0].objects[t + 6] = m6; s[0].objects[t + 7] = y - (m4 * cx + m5 * floor_y + m6 * cz);
+      s[0].objects[t + 8] = m8; s[0].objects[t + 9] = m9; s[0].objects[t + 10] = m10; s[0].objects[t + 11] = z - (m8 * cx + m9 * floor_y + m10 * cz);
       s[0].objects[t + 12] = s[0].piece_tint[p * 3]; s[0].objects[t + 13] = s[0].piece_tint[p * 3 + 1]; s[0].objects[t + 14] = s[0].piece_tint[p * 3 + 2]; s[0].objects[t + 15] = 0;
       s[0].object_n += 1;
     }
@@ -602,6 +696,9 @@ in_water :: (s: [] MyRealm) -> bool {
 realm_step :: (s: [] MyRealm, dt: f32) {
   step := clamp(dt, 0, 0.1);
   s[0].time += step;
+  // the flock drifts after the spot ahead of you
+  f := flock_target(s); ease_k := clamp(step * 0.6, 0, 1);
+  s[0].flock_x += (f.x - s[0].flock_x) * ease_k; s[0].flock_z += (f.z - s[0].flock_z) * ease_k;
   ahead := 0.0f32; turn := 0.0f32;
   if (s[0].held & HOLD_UP) != 0 { ahead += 1; }
   if (s[0].held & HOLD_DOWN) != 0 { ahead -= 1; }
@@ -676,7 +773,11 @@ view_rows :: (s: [] MyRealm) {
     cp := cos(s[0].pitch);
     ax = ex + fx0 * cp; ay = ey + sin(s[0].pitch); az = ez + fz0 * cp;
   }
-  if cam == CAM_TOP { ex = s[0].x; ey = s[0].y * 0.5 + TOP_UP; ez = s[0].z + TOP_BACK; ax = s[0].x; ay = s[0].y * 0.5; az = s[0].z; }
+  if cam == CAM_TOP {
+    // a phone held upright sees as wide as a desktop: the camera comes down so you stay a readable size
+    near := clamp(aspect * 1.4, 0.6, 1);
+    ex = s[0].x; ey = s[0].y * 0.5 + TOP_UP * near; ez = s[0].z + TOP_BACK * near; ax = s[0].x; ay = s[0].y * 0.5; az = s[0].z;
+  }
   if cam == CAM_SIDE { ex = s[0].x; ey = SIDE_UP; ez = s[0].z + SIDE_BACK; ax = s[0].x; ay = SIDE_LOOK; az = s[0].z; }
   s[0].ortho = cam == CAM_SIDE;
   fx := ax - ex; fy := ay - ey; fz := az - ez;
@@ -900,50 +1001,20 @@ checkbox :: (s: [] MyRealm, out: [] f32, at: int, x: f32, y: f32, size: f32, on:
 draw_world :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   k := s[0].dpr; n := at;
   night := ifx s[0].tod == 3 then 1.0f32 else ifx s[0].tod == 2 then 0.75f32 else ifx s[0].tod == 1 then 0.6f32 else 0.45f32;
+  // the lanterns' lights, in their cages on the posts (lantern_post)
   for i: 0..<s[0].lanterns {
-    lx := s[0].lantern_x[i]; lz := s[0].lantern_z[i];
-    base := seen(s, lx, 0, lz); top := seen(s, lx, 1.5, lz);
-    if !base.ok || !top.ok { continue; }
-    tall := abs(base.y - top.y);
-    if lit(out, n, base.x, base.y, top.x, top.y, hi(0.03 * tall, 0.6 * k), 0.5, 1 * k, 0.35, 0.28, 0.2, MODE_STROKE) { n += 6; }
+    top := seen(s, s[0].lantern_x[i], 1.5, s[0].lantern_z[i]);
+    if !top.ok { continue; }
+    px := clamp(28.0 * k / hi(top.far, 0.5), 1.2 * k, 14 * k);
     flick := ifx s[0].still then 1.0f32 else 0.85 + 0.15 * sin(s[0].time * 5 + cast(f32) i * 1.7);
-    if tinted_dot(out, n, top.x, top.y, hi(0.05 * tall, 1.2 * k), 1.3 * flick * night, hi(0.45 * tall, 6 * k), s[0].lantern_r, s[0].lantern_g, s[0].lantern_b) { n += 6; }
+    if tinted_dot(out, n, top.x, top.y, px * 0.3, 1.3 * flick * night, px * (1.5 + 3 * night), s[0].lantern_r, s[0].lantern_g, s[0].lantern_b) { n += 6; }
   }
-  // the flock: wings beating, circling above whoever walks
-  for i: 0..<s[0].birds {
-    a := s[0].time * (0.35 + 0.04 * cast(f32) (i % 3)) + cast(f32) i / cast(f32) s[0].birds * 6.2831853;
-    rr := 5.0 + 1.5 * sin(cast(f32) i * 2.3);
-    bx := s[0].x + rr * cos(a); bz := s[0].z + rr * sin(a); by := 6.0 + s[0].y + 0.8 * sin(cast(f32) i * 1.3 + s[0].time * 0.7);
-    c := seen(s, bx, by, bz);
-    if !c.ok { continue; }
-    span := clamp(36.0 * k / hi(c.far, 0.5), 3 * k, 26 * k);
-    beat := ifx s[0].still then 0.5f32 else sin(s[0].time * (ifx s[0].bats then 14.0f32 else 8.0f32) + cast(f32) i);
-    lift := span * 0.45 * beat;
-    r: f32 = ifx s[0].bats then 0.55f32 else 0.42f32; g: f32 = ifx s[0].bats then 0.42f32 else 0.42f32; b: f32 = ifx s[0].bats then 0.6f32 else 0.48f32;
-    if lit(out, n, c.x - span, c.y - lift, c.x, c.y, 0.8 * k, 0.9, 1 * k, r, g, b, MODE_STROKE) { n += 6; }
-    if lit(out, n, c.x, c.y, c.x + span, c.y - lift, 0.8 * k, 0.9, 1 * k, r, g, b, MODE_STROKE) { n += 6; }
-  }
-  // the characters: a figure each
-  for p: 0..<s[0].people {
-    n = figure(s, out, n, s[0].person_x[p], 0, s[0].person_z[p], 0.55 + 0.1 * cast(f32) p, 0.75, 0.9 - 0.12 * cast(f32) p, false);
-  }
-  // you, and your lamp after dark
-  // (first person: you are the camera, so no figure)
-  if s[0].camera != CAM_FIRST { n = figure(s, out, n, s[0].x, s[0].y, s[0].z, PARCH_R, PARCH_G, PARCH_B, s[0].tod >= 2); }
-  return n;
-}
-figure :: (s: [] MyRealm, out: [] f32, at: int, x: f32, y: f32, z: f32, r: f32, g: f32, b: f32, lamp: bool) -> int {
-  k := s[0].dpr; n := at;
-  foot := seen(s, x, y, z); head := seen(s, x, y + 1.55, z); hip := seen(s, x, y + 0.15, z);
-  if !foot.ok || !head.ok || !hip.ok { return n; }
-  tall := abs(head.y - hip.y);
-  if tinted_dot(out, n, foot.x, foot.y, 0.1, 0.5, 10 * k, r * 0.6, g * 0.6, b * 0.6) { n += 6; }
-  if lit(out, n, hip.x, hip.y, head.x, head.y + tall * 0.14, 0.045 * tall, 0.8, 2 * k, r, g, b, MODE_STROKE) { n += 6; }
-  if tinted_dot(out, n, head.x, head.y, 0.055 * tall, 0.9, 2 * k, r, g, b) { n += 6; }
-  if lamp {
+  // your lamp after dark (the figures are meshes: pawn)
+  if s[0].camera != CAM_FIRST && s[0].tod >= 2 {
     pulse := ifx s[0].still then 0.5f32 else 0.5 + 0.5 * sin(s[0].time * 2.4);
-    flame := seen(s, x + 0.25 * cos(s[0].yaw), y + LAMP_HEIGHT, z + 0.25 * sin(s[0].yaw));
-    if flame.ok && tinted_dot(out, n, flame.x, flame.y, 0.025 * tall + 2 * k, 1.4, 9 * k + pulse * 8 * k, EMBER_R, EMBER_G, EMBER_B) { n += 6; }
+    flame := seen(s, s[0].x + 0.32 * cos(s[0].yaw), s[0].y + LAMP_HEIGHT, s[0].z + 0.32 * sin(s[0].yaw));
+    px := clamp(28.0 * k / hi(flame.far, 0.5), 1.2 * k, 14 * k);
+    if flame.ok && tinted_dot(out, n, flame.x, flame.y, px * 0.3, 1.4, px * 1.5 + pulse * 6 * k, EMBER_R, EMBER_G, EMBER_B) { n += 6; }
   }
   return n;
 }
@@ -1084,6 +1155,7 @@ SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.33, 0.38, 0.62,  0.17, 0.15, 0.34,  0.
 HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  0.96, 0.64, 0.46,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
 SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.85, 0.3, -0.4, 0.75,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
 LAMP_SHARE :: [4] f32.[0, 0.25, 0.6, 1];
+POOL_SHARE :: [4] f32.[0, 0.3, 0.7, 1.1];
 STARS :: [4] f32.[0, 0.1, 0.35, 1];
 
 realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
@@ -1104,6 +1176,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   next_request(s);
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
   realm_step(s, dt);
+  if s[0].laid { actors(s); }
   s[0].plate_n = 0;
   for i: 0..<BUTTONS { s[0].shown[i] = false; }
   for i: 0..<UNIFORM_FLOATS { uniforms[i] = 0; }
@@ -1132,6 +1205,16 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   uniforms[SUN_AT + 3] = SUN[tod * 4 + 3];
   uniforms[WATER_AT] = s[0].water_x; uniforms[WATER_AT + 1] = s[0].water_z; uniforms[WATER_AT + 2] = s[0].water_r;
   uniforms[WATER_AT + 3] = ifx s[0].water_r > 0 && s[0].spec_ready then 1.0f32 else 0.0f32;
+  // the lanterns' pools of light, from dusk
+  if s[0].laid {
+    for i: 0..<s[0].lanterns {
+      o := POOL_AT + i * 4;
+      uniforms[o] = s[0].lantern_x[i]; uniforms[o + 1] = 1.45; uniforms[o + 2] = s[0].lantern_z[i]; uniforms[o + 3] = 1;
+    }
+    o := POOL_AT + LANTERNS * 4;
+    uniforms[o] = s[0].lantern_r; uniforms[o + 1] = s[0].lantern_g; uniforms[o + 2] = s[0].lantern_b;
+    uniforms[o + 3] = ifx s[0].lanterns > 0 then POOL_SHARE[tod] * (ifx still then 1.0f32 else 0.93 + 0.07 * sin(s[0].time * 5)) else 0.0f32;
+  }
   n := 0;
   if s[0].spec_ready { n = draw_world(s, out, n); n = draw_names(s, out, n); }
   n = draw_hud(s, out, n);
@@ -1199,7 +1282,9 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
 #test "only what was checked is in it: an empty realm has nothing and no one" {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "bare", EMPTY);
-  #assert s[0].spec_ready && s[0].laid && realm_draw_count(s[..]) == 0 && s[0].people == 0 && s[0].lanterns == 0 && s[0].birds == 0 && s[0].water_r == 0;
+  #assert s[0].spec_ready && s[0].laid && s[0].static_n == 0 && s[0].people == 0 && s[0].lanterns == 0 && s[0].birds == 0 && s[0].water_r == 0;
+  // nothing but you: one figure's pieces
+  #assert s[0].piece_n > 0 && s[0].piece_n <= 6;
   n := frame_of(s[..], t[..], 2560, 1600);
   #assert !s[0].shown[BTN_BUILD] && !s[0].shown[BTN_MAP] && !s[0].shown[BTN_FLY] && !s[0].shown[BTN_JUMP] && !s[0].ed[0].shown[RB_EDIT];
   #assert !realm_key(s[..], t[..], 'f', true) || !s[0].flying;
