@@ -70,6 +70,7 @@
 - [156. Fit our own calibration, and refuse a stale one](ch156-fit-our-own-calibration.md)
 - [157. Thresholds from written costs](ch157-thresholds-from-written-costs.md)
 - [158. Record readings, join outcomes, watch drift](ch158-record-readings-join-outcomes-watch-drift.md)
+- [159. A Pylon checks itself before serving](ch159-a-pylon-checks-itself-before-serving.md)
 - [160. How far apart may two honest answers be?](ch160-how-far-apart-may-two-honest-answers-be.md)
 - [164a. Learn which model to call](ch164a-learn-which-model-to-call.md)
 
@@ -94,6 +95,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 115, 156–158, 160, 164a, 165–169, 172 and 178–183 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 115, 156–160, 164a, 165–169, 172 and 178–183 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–32, 34–35, 37–40 and the remaining outlines
 remain proposed.

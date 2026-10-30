@@ -730,6 +730,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/pylon-self-check.coax",
+      "chapter": "psionic/book/ch159-a-pylon-checks-itself-before-serving.md",
+      "stdout": "psionic/fixtures/pylon-self-check.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

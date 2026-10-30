@@ -30,6 +30,7 @@
 #load "host.coax";
 #load "queue.coax";
 #load "../../../coax/lib/nostr/event_sign.coax";
+#load "selfcheck.coax";
 #load "../../../coax/lib/net/relay_conn.coax";
 #load "../../../coax/lib/nostr/relay.coax";
 #load "../../../coax/lib/crypto/entropy.coax";
@@ -51,6 +52,13 @@ pyh_now_s :: () -> int #foreign;
 pyh_stop_path_push :: (byte: int) -> int #foreign;
 pyh_stop :: () -> int #foreign;
 pyh_sleep_ms :: (ms: int) -> int #foreign;
+pyh_status :: (code: int) -> int #foreign;
+pyh_file_path_clear :: () -> int #foreign;
+pyh_file_path_push :: (byte: int) -> int #foreign;
+pyh_file_read :: () -> int #foreign;
+pyh_file_byte :: (i: int) -> int #foreign;
+pyh_file_write_push :: (byte: int) -> int #foreign;
+pyh_file_write_commit :: () -> int #foreign;
 
 PY_IN :: 262144; PY_MSG :: 262144; PY_OUT :: 131072;
 PY_IO_MS :: 5000;
@@ -93,6 +101,7 @@ PyConfig :: struct {
     model:string;slug:string;label:string;family:string;memory_gb:int;
     label_key:string;key_file:string;stop_file:string;
     decide_ms:int;refresh:int;ttl:int;
+    references:string;state:string;declared:string;doctor:bool;
 }
 py_arg :: (c:[]PyConfig,i:int)->string {
     n:=pyh_arg_len(i);if n<0 || c[0].used+n>PY_ARGS {return "";}
@@ -116,12 +125,15 @@ py_usage :: () {
     print("             (--test-key-label LABEL | --key-file PATH)\n");
     print("             [--list URL]... [--label TEXT] [--family gpu|cpu|unified-memory] [--memory-gb N]\n");
     print("             [--decide-ms N] [--refresh S] [--ttl S] [--stop-file PATH]\n");
+    print("             --references SET --identity-state PATH [--declare-identity ID]\n");
+    print("       pylon --doctor --engine http://HOST:PORT --model NAME --references SET --identity-state PATH [--declare-identity ID]\n");
 }
 py_config :: (c:[]PyConfig)->bool {
     c[0].label="Psionic Pylon";c[0].family="cpu";c[0].memory_gb=16;c[0].decide_ms=30000;c[0].refresh=60;c[0].ttl=180;
     i:=1;argc:=pyh_argc();
     while i<argc {
         name:=py_arg(c,i);
+        if name=="--doctor" {c[0].doctor=true;i+=1;continue;}
         if i+1>=argc {print("pylon: % needs a value\n",name);return false;}
         v:=py_arg(c,i+1);i+=2;
         if name=="--relay" {c[0].relay=v;}
@@ -138,10 +150,16 @@ py_config :: (c:[]PyConfig)->bool {
         else if name=="--decide-ms" {c[0].decide_ms=py_int(v);}
         else if name=="--refresh" {c[0].refresh=py_int(v);}
         else if name=="--ttl" {c[0].ttl=py_int(v);}
+        else if name=="--references" {c[0].references=v;}
+        else if name=="--identity-state" {c[0].state=v;}
+        else if name=="--declare-identity" {c[0].declared=v;}
         else {print("pylon: unknown option %\n",name);return false;}
     }
-    if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
     if c[0].engine_port<0 || c[0].engine_host.count==0 {print("pylon: --engine must be http://HOST:PORT\n");return false;}
+    if c[0].references.count==0 || c[0].state.count==0 {print("pylon: --references and --identity-state are required: a Pylon checks itself before it serves (chapter 159)\n");py_usage();return false;}
+    if c[0].model.count==0 {py_usage();return false;}
+    if c[0].doctor {return true;}
+    if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
     if c[0].key_file.count!=0 {
         print("pylon: --key-file refused: real keys wait on the secret-handling audit (#4828); use --test-key-label\n");return false;
     }
@@ -666,15 +684,94 @@ py_acked :: (p:[]Py,slot:int,limit_ms:int)->bool {
     }
     return false;
 }
+// ---- chapter 159: the self-check and the doctor -----------------------------
+
+// One named file through the host: its bytes into out, the length, -1 when it
+// can't be read, -2 when it is missing.
+py_read_file :: (path:string,out:[]u8)->int {
+    r:=pyh_file_path_clear();for b:path {if pyh_file_path_push(cast(int)b)!=0 {return -1;}}
+    n:=pyh_file_read();if n<0 {return n;}
+    if n>out.count {return -1;}
+    for i:0..<n {out[i]=cast(u8)pyh_file_byte(i);}
+    return n;
+}
+py_write_file :: (path:string,text:string)->bool {
+    r:=pyh_file_path_clear();for b:path {if pyh_file_path_push(cast(int)b)!=0 {return false;}}
+    for b:text {if pyh_file_write_push(cast(int)b)!=0 {return false;}}
+    return pyh_file_write_commit()==0;
+}
+PyCheckRun :: struct {
+    set_text:[65536]u8;state_text:[256]u8;
+    cases:[PS_CASES]PsCase;answers:[PS_CASES][PY_HTTP]u8;views:[PS_CASES]string;
+    set:PsSet;check:PsCheck;last:string;gate:PsGate;facts:PsFacts;ms:int;
+}
+// The probe has named the engine's identity. Read the set and the last
+// served identity, ask the engine every case, and decide; nothing is
+// written here.
+py_selfcheck :: (p:[]Py,w:[]PyCheckRun) {
+    c:=p[0].cfg[0];f:=PsFacts.{config=true,engine=true};
+    id:=py_identity(p);
+    n:=py_read_file(c.state,w[0].state_text[..]);
+    if n==-1 {f.gate=PsGate.unnamed;w[0].facts=f;w[0].gate=PsGate.unnamed;print("pylon: the identity state % can't be read\n",c.state);return;}
+    w[0].last="";
+    if n>0 {e:=n;while e>0 && w[0].state_text[e-1]=='\n' {e-=1;}w[0].last=cast(string)w[0].state_text[0..<e];}
+    w[0].gate=ps_gate(w[0].last,c.declared,id);f.gate=w[0].gate;
+    k:=py_read_file(c.references,w[0].set_text[..]);
+    if k<0 {f.set=PsStatus.header;w[0].facts=f;print("pylon: the reference set % can't be read\n",c.references);return;}
+    w[0].set=ps_read_set(cast(string)w[0].set_text[0..<k],w[0].cases[..]);f.set=w[0].set.status;
+    if f.set!=PsStatus.ok {w[0].facts=f;return;}
+    started:=cxsock_now_ms();
+    for i:0..<w[0].set.count {
+        w[0].views[i]="";
+        r:=py_http(p,w[0].cases[i].request,c.decide_ms,w[0].answers[i][..]);
+        if r.reached && r.status==200 {w[0].views[i]=r.body;}
+    }
+    w[0].ms=cxsock_now_ms()-started;
+    w[0].check=ps_check(w[0].set,w[0].cases[..],id,w[0].views[0..<w[0].set.count]);
+    f.verdict=w[0].check.verdict;w[0].facts=f;
+}
+PS_STEP_NAMES :: [6]string.["healthy","config","engine","identity","references","check"];
+PS_GATE_NAMES :: [6]string.["first start","same as last served","a declared change","the engine names none","an undeclared change","not the declared identity"];
+PS_CODE_NAMES :: [7]string.["pass","malformed answer","other kind","other choice","other options","missing","value out of tolerance"];
+PS_SET_NAMES :: [7]string.["ok","header","line","identity","tolerance","cases","expect"];
+py_report :: (p:[]Py,w:[]PyCheckRun) {
+    c:=p[0].cfg[0];f:=w[0].facts;
+    print("doctor: engine % answered as %\n",c.model,py_identity(p));
+    print("doctor: identity: % (last served: %)\n",PS_GATE_NAMES[cast(int)f.gate],ifx w[0].last.count>0 then w[0].last else "none");
+    if f.set!=PsStatus.ok {print("doctor: reference set %: refused (%, line %)\n",c.references,PS_SET_NAMES[cast(int)f.set],w[0].set.line);return;}
+    print("doctor: reference set %: % cases for %\n",c.references,w[0].set.count,w[0].set.identity);
+    k:=w[0].check;
+    if k.verdict==PsVerdict.passed {print("doctor: self-check passed: % cases in % ms, largest error % billionths (tolerance %)\n",w[0].set.count,w[0].ms,k.worst,w[0].set.tolerance);}
+    else if k.verdict==PsVerdict.other_model {print("doctor: self-check refused: the set is for another identity\n");}
+    else if k.verdict==PsVerdict.no_references {print("doctor: self-check refused: no references\n");}
+    else {print("doctor: self-check failed at case % (%): %, option %, error % billionths\n",k.failed,w[0].cases[k.failed].question,PS_CODE_NAMES[cast(int)k.item.code],k.item.option,k.item.error);}
+}
+
 py_main :: (p:[]Py)->int {
-    if !py_config(p[0].cfg[..]) {return 2;}
+    if !py_config(p[0].cfg[..]) {
+        if pyh_argc()>1 && py_arg(p[0].cfg[..],1)=="--doctor" {print("doctor: verdict config\n");}
+        return 2;
+    }
     c:=p[0].cfg[0];
+    if c.doctor {
+        // Read-only: no key, no relay, no state written.
+        w:[1]PyCheckRun;
+        if !py_probe(p) {print("doctor: verdict engine\n");return 3;}
+        py_selfcheck(p,w[..]);py_report(p,w[..]);
+        step:=ps_doctor(w[0].facts);print("doctor: verdict %\n",PS_STEP_NAMES[cast(int)step]);
+        return ifx step==PsStep.healthy then 0 else 10+cast(int)step;
+    }
     // TEST-ONLY key: sha256 of the label. Never printed.
     label:[256]u8;if c.label_key.count>256 {return 2;}for i:0..<c.label_key.count {label[i]=c.label_key[i];}
     if sha256_hash_checked(label[0..<c.label_key.count],p[0].key[..],false)!=SHA_OK {return 2;}
     if !py_public(p) {print("pylon: the signer refused the key\n");return 2;}
     print("pylon: TEST-ONLY key, signed in Coax; pubkey %\n",py_me(p));
     if !py_probe(p) {return 3;}
+    {
+        w:[1]PyCheckRun;py_selfcheck(p,w[..]);py_report(p,w[..]);
+        if !ps_may_serve(w[0].facts) {print("pylon: not serving: the self-check did not pass (%)\n",PS_STEP_NAMES[cast(int)ps_doctor(w[0].facts)]);return 6;}
+        if w[0].gate!=PsGate.same && !py_write_file(c.state,py_identity(p)) {print("pylon: the identity state % can't be written\n",c.state);return 6;}
+    }
     if nip42_init(p[0].n42[..],c.relay)!=N42_OK {print("pylon: NIP-42 refuses the relay URL\n");return 4;}
     now:=pyh_now_s();
     p[0].first_since=now-PD_PAST;
@@ -717,4 +814,5 @@ py_main :: (p:[]Py)->int {
 main :: () {
     p:[1]Py;r:=py_main(p[..]);
     if r!=0 {print("pylon: stopped (%)\n",r);}
+    x:=pyh_status(r);
 }

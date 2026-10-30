@@ -1,0 +1,74 @@
+#import "Basic";
+#load "../lib/pylon/selfcheck.coax";
+
+// The shipped set, and Elephant's own answers to its six requests, recorded
+// from psionic-serve --elephant-gpu on the RTX 4080 (chapter 159's record).
+SET :: "psionic.selfcheck.v1\nidentity elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\ntolerance 500000\ncase wet\nrequest {\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}\nexpect choice yes yes=757202773 no=242797227\ncase refund\nrequest {\"model\":\"elephant-1\",\"state\":\"Customer: my order arrived broken and I want my money back.\",\"questions\":{\"refund\":{\"type\":\"noul\",\"instructions\":\"Should we issue a refund?\"}}}\nexpect noul 815389232\ncase team\nrequest {\"model\":\"elephant-1\",\"state\":\"Ticket: I was charged twice for my subscription this month.\",\"questions\":{\"team\":{\"type\":\"choice\",\"instructions\":\"Which team should handle this ticket?\",\"criteria\":{\"billing\":null,\"technical\":null,\"account\":null}}}}\nexpect choice billing billing=988655217 technical=1824876 account=9519907\ncase tone\nrequest {\"model\":\"elephant-1\",\"state\":\"Review: the battery died after two days and support never answered.\",\"questions\":{\"tone\":{\"type\":\"choice\",\"instructions\":\"What is the tone of this review?\",\"criteria\":{\"positive\":null,\"negative\":null,\"neutral\":null}}}}\nexpect choice negative positive=18366 negative=999901113 neutral=80521\ncase urgent\nrequest {\"model\":\"elephant-1\",\"state\":\"Message: the production database is down and customers cannot log in.\",\"questions\":{\"urgent\":{\"type\":\"noul\",\"instructions\":\"Is this urgent?\"}}}\nexpect noul 987583450\ncase language\nrequest {\"model\":\"elephant-1\",\"state\":\"Text: ¿Dónde está la biblioteca?\",\"questions\":{\"language\":{\"type\":\"choice\",\"instructions\":\"Which language is this text in?\",\"criteria\":{\"english\":null,\"spanish\":null,\"french\":null}}}}\nexpect choice spanish english=404549 spanish=993730823 french=5864628\n";
+RECORDED :: [6]string.[
+    "{\"model\":\"elephant-1\",\"answers\":{\"wet\":{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":0.757202773,\"probabilities\":{\"yes\":0.757202773,\"no\":0.242797227}}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"},\"latency_ms\":131}",
+    "{\"model\":\"elephant-1\",\"answers\":{\"refund\":{\"type\":\"noul\",\"noul\":0.815389232}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"},\"latency_ms\":278}",
+    "{\"model\":\"elephant-1\",\"answers\":{\"team\":{\"type\":\"choice\",\"choice\":\"billing\",\"confidence\":0.988655217,\"probabilities\":{\"billing\":0.988655217,\"technical\":0.001824876,\"account\":0.009519907}}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"},\"latency_ms\":265}",
+    "{\"model\":\"elephant-1\",\"answers\":{\"tone\":{\"type\":\"choice\",\"choice\":\"negative\",\"confidence\":0.999901113,\"probabilities\":{\"positive\":0.000018366,\"negative\":0.999901113,\"neutral\":0.000080521}}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"},\"latency_ms\":260}",
+    "{\"model\":\"elephant-1\",\"answers\":{\"urgent\":{\"type\":\"noul\",\"noul\":0.98758345}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"},\"latency_ms\":271}",
+    "{\"model\":\"elephant-1\",\"answers\":{\"language\":{\"type\":\"choice\",\"choice\":\"spanish\",\"confidence\":0.993730823,\"probabilities\":{\"english\":0.000404549,\"spanish\":0.993730823,\"french\":0.005864628}}},\"usage\":null,\"service\":{\"door\":\"psionic\",\"version\":\"psionic-serve-v1\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\"},\"latency_ms\":258}"
+];
+CODE :: [7]string.["pass","malformed","other kind","other choice","other options","missing","out of tolerance"];
+VERDICT :: [4]string.["passed","no references","the set is for another model","failed"];
+GATE :: [6]string.["first start","same as last served","a declared change","no identity","an undeclared change","not the declared identity"];
+STEP :: [6]string.["healthy: may serve","config","engine","identity","references","check"];
+show :: (what:string,k:PsCheck,cases:[]PsCase) {
+    if k.verdict==PsVerdict.failed {
+        print("  %: failed at %: %, error % billionths\n",what,cases[k.failed].question,CODE[cast(int)k.item.code],k.item.error);
+    } else if k.verdict==PsVerdict.passed {print("  %: passed, largest error % billionths\n",what,k.worst);}
+    else {print("  %: %\n",what,VERDICT[cast(int)k.verdict]);}
+}
+
+// book:begin example
+main :: () {
+    cases:[PS_CASES]PsCase;s:=ps_read_set(SET,cases[..]);#assert s.status==PsStatus.ok;
+    id:=s.identity;
+    print("% cases for %, tolerance % billionths\n",s.count,id,s.tolerance);
+    answers:[6]string;for a,i:RECORDED {answers[i]=a;}
+    show("Elephant's own answers",ps_check(s,cases[..],id,answers[..]),cases[..]);
+
+    // A copy whose answers drift: every probability nudged by 0.0004, then 0.0006.
+    for nudge:0..<2 {
+        moved:[6][1024]u8;views:[6]string;
+        for a,i:RECORDED {views[i]=nudged(a,moved[i][..],ifx nudge==0 then 400000 else 600000);}
+        show(ifx nudge==0 then "nudged by 0.0004" else "nudged by 0.0006",ps_check(s,cases[..],id,views[..]),cases[..]);
+    }
+    flipped:=answers;flipped[3]="{\"answers\":{\"tone\":{\"type\":\"choice\",\"choice\":\"neutral\",\"probabilities\":{\"positive\":0.000018366,\"negative\":0.999901113,\"neutral\":0.000080521}}}}";
+    show("one choice changed",ps_check(s,cases[..],id,flipped[..]),cases[..]);
+    show("an engine with other weights",ps_check(s,cases[..],"elephant-1@sha256:1111111111111111111111111111111111111111111111111111111111111111",answers[..]),cases[..]);
+
+    print("the identity gate:\n");
+    other:="elephant-1@sha256:1111111111111111111111111111111111111111111111111111111111111111";
+    print("  nothing served before: %\n",GATE[cast(int)ps_gate("","",id)]);
+    print("  served the same: %\n",GATE[cast(int)ps_gate(id,"",id)]);
+    print("  served other weights, nothing declared: %\n",GATE[cast(int)ps_gate(other,"",id)]);
+    print("  served other weights, new ones declared: %\n",GATE[cast(int)ps_gate(other,id,id)]);
+    f:=PsFacts.{config=true,engine=true,gate=ps_gate(other,"",id),set=s.status,verdict=PsVerdict.passed};
+    print("the doctor, after an undeclared change: %\n",STEP[cast(int)ps_doctor(f)]);
+    f.gate=ps_gate(other,id,id);print("the doctor, once it is declared: %\n",STEP[cast(int)ps_doctor(f)]);
+}
+// book:end example
+
+// Every number after "probabilities" or "noul" moved by delta billionths, as
+// a copy whose arithmetic drifted would answer.
+nudged :: (a:string,out:[]u8,delta:int)->string {
+    n:=0;i:=0;
+    while i<a.count {
+        if a[i]=='0' && i+1<a.count && a[i+1]=='.' && i>0 && a[i-1]==':' {
+            end:=i+2;while end<a.count && a[end]>='0' && a[end]<='9' {end+=1;}
+            v:=ps_nanos(a[i..<end]);
+            if v>=0 {
+                v+=delta;if v>=PS_NANO {v-=2*delta;} // near 1, move down instead
+                out[n]='0';out[n+1]='.';
+                d:=100000000;for k:0..<9 {out[n+2+k]=cast(u8)('0'+(v/d)%10);d/=10;}
+                n+=11;i=end;continue;
+            }
+        }
+        out[n]=a[i];n+=1;i+=1;
+    }
+    return cast(string)out[0..<n];
+}

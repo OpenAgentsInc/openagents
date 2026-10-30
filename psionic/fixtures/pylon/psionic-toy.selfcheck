@@ -1,0 +1,9 @@
+psionic.selfcheck.v1
+identity psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+tolerance 500000
+case wet
+request {"model":"psionic-toy","state":"Water is wet.","questions":{"wet":{"type":"choice","instructions":"Is the water wet?","criteria":{"yes":null,"no":null}}}}
+expect choice no yes=437947251 no=562052749
+case team
+request {"model":"psionic-toy","state":"Ticket: I was charged twice for my subscription this month.","questions":{"team":{"type":"choice","instructions":"Which team should handle this ticket?","criteria":{"billing":null,"technical":null,"account":null}}}}
+expect choice technical billing=390558998 technical=502244523 account=107196479

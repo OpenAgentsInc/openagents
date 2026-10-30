@@ -1,0 +1,13 @@
+6 cases for elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba, tolerance 500000 billionths
+  Elephant's own answers: passed, largest error 0 billionths
+  nudged by 0.0004: passed, largest error 400000 billionths
+  nudged by 0.0006: failed at wet: out of tolerance, error 600000 billionths
+  one choice changed: failed at tone: other choice, error 0 billionths
+  an engine with other weights: the set is for another model
+the identity gate:
+  nothing served before: first start
+  served the same: same as last served
+  served other weights, nothing declared: an undeclared change
+  served other weights, new ones declared: a declared change
+the doctor, after an undeclared change: identity
+the doctor, once it is declared: healthy: may serve

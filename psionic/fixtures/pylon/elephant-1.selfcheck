@@ -1,0 +1,21 @@
+psionic.selfcheck.v1
+identity elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba
+tolerance 500000
+case wet
+request {"model":"elephant-1","state":"Water is wet.","questions":{"wet":{"type":"choice","instructions":"Is the water wet?","criteria":{"yes":null,"no":null}}}}
+expect choice yes yes=757202773 no=242797227
+case refund
+request {"model":"elephant-1","state":"Customer: my order arrived broken and I want my money back.","questions":{"refund":{"type":"noul","instructions":"Should we issue a refund?"}}}
+expect noul 815389232
+case team
+request {"model":"elephant-1","state":"Ticket: I was charged twice for my subscription this month.","questions":{"team":{"type":"choice","instructions":"Which team should handle this ticket?","criteria":{"billing":null,"technical":null,"account":null}}}}
+expect choice billing billing=988655217 technical=1824876 account=9519907
+case tone
+request {"model":"elephant-1","state":"Review: the battery died after two days and support never answered.","questions":{"tone":{"type":"choice","instructions":"What is the tone of this review?","criteria":{"positive":null,"negative":null,"neutral":null}}}}
+expect choice negative positive=18366 negative=999901113 neutral=80521
+case urgent
+request {"model":"elephant-1","state":"Message: the production database is down and customers cannot log in.","questions":{"urgent":{"type":"noul","instructions":"Is this urgent?"}}}
+expect noul 987583450
+case language
+request {"model":"elephant-1","state":"Text: ¿Dónde está la biblioteca?","questions":{"language":{"type":"choice","instructions":"Which language is this text in?","criteria":{"english":null,"spanish":null,"french":null}}}}
+expect choice spanish english=404549 spanish=993730823 french=5864628

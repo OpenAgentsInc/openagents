@@ -21,6 +21,7 @@ int coax_pylon_main(void);
 static int g_argc;
 static char **g_argv;
 static volatile sig_atomic_t g_stop;
+static int g_status;
 static char g_stop_path[1024];
 static size_t g_stop_used;
 
@@ -30,6 +31,8 @@ int64_t pyh_arg_byte(int64_t i, int64_t k) {
   if (i < 0 || i >= g_argc || k < 0 || (size_t)k >= strlen(g_argv[i])) return -1;
   return (unsigned char)g_argv[i][k];
 }
+/* The exit status the Coax main reports (chapter 159: the doctor's verdict). */
+int64_t pyh_status(int64_t code) { g_status = (int)(code & 255); return 0; }
 int64_t pyh_now_s(void) { return (int64_t)time(NULL); }
 /* Sleeps ms (at most 10 s), for the reconnect backoff. */
 int64_t pyh_sleep_ms(int64_t ms) {
@@ -48,6 +51,46 @@ int64_t pyh_stop_path_push(int64_t byte) {
 int64_t pyh_stop(void) {
   if (g_stop) return 1;
   return g_stop_used > 0 && access(g_stop_path, F_OK) == 0 ? 1 : 0;
+}
+
+/* Chapter 159: one named file, read whole (at most 1 MiB) or written whole
+   through a temporary file and a rename. The Coax side names the path a byte
+   at a time, as it does the stop file. */
+static char g_file_path[1024];
+static size_t g_file_used;
+static unsigned char g_file[1 << 20];
+static size_t g_file_len, g_write_len;
+int64_t pyh_file_path_clear(void) { g_file_used = 0; g_file_path[0] = 0; return 0; }
+int64_t pyh_file_path_push(int64_t byte) {
+  if (byte <= 0 || byte > 255 || g_file_used + 1 >= sizeof g_file_path) return -1;
+  g_file_path[g_file_used++] = (char)byte; g_file_path[g_file_used] = 0;
+  return 0;
+}
+/* The file's length, or -1 when it can't be read; -2 when it is missing. */
+int64_t pyh_file_read(void) {
+  g_file_len = 0;
+  FILE *f = fopen(g_file_path, "rb");
+  if (!f) return access(g_file_path, F_OK) == 0 ? -1 : -2;
+  size_t n = fread(g_file, 1, sizeof g_file, f);
+  int more = fgetc(f) != EOF, bad = ferror(f);
+  fclose(f);
+  if (more || bad) return -1;
+  g_file_len = n; return (int64_t)n;
+}
+int64_t pyh_file_byte(int64_t i) { return i >= 0 && (size_t)i < g_file_len ? g_file[i] : -1; }
+int64_t pyh_file_write_push(int64_t byte) {
+  if (byte < 0 || byte > 255 || g_write_len >= sizeof g_file) return -1;
+  g_file[g_write_len++] = (unsigned char)byte; return 0;
+}
+int64_t pyh_file_write_commit(void) {
+  char tmp[1100]; snprintf(tmp, sizeof tmp, "%s.tmp", g_file_path);
+  size_t n = g_write_len; g_write_len = 0; g_file_len = 0;
+  FILE *f = fopen(tmp, "wb");
+  if (!f) return -1;
+  int ok = fwrite(g_file, 1, n, f) == n && fflush(f) == 0 && fsync(fileno(f)) == 0;
+  ok = fclose(f) == 0 && ok;
+  if (!ok || rename(tmp, g_file_path) != 0) { unlink(tmp); return -1; }
+  return 0;
 }
 
 static void on_signal(int sig) { (void)sig; g_stop = 1; }
@@ -70,5 +113,5 @@ int main(int argc, char **argv) {
   pthread_t t;
   if (pthread_create(&t, &attr, run, NULL) != 0) { fprintf(stderr, "pylon: no thread\n"); return 1; }
   pthread_join(t, NULL);
-  return 0;
+  return g_status;
 }
