@@ -1,0 +1,93 @@
+// Bounded operational recovery. Platform effects provide time and observations;
+// only these two existing hosts may be recovered, within a six-hour window.
+#authority;
+
+#test "a watch is exactly six hours and both ends are explicit" {
+  #assert fw_window(100,100,21700)==0;
+  #assert fw_window(21699,100,21700)==0;
+  #assert fw_window(99,100,21700)==1;
+  #assert fw_window(21700,100,21700)==2;
+  #assert fw_window(21701,100,21700)==2;
+  #assert fw_window(-1,100,21700)==-1;
+  #assert fw_window(0,100,21700)==1;
+  #assert fw_window(1,1,21601)==0;
+  #assert fw_window(100,0,21600)==-1;
+  #assert fw_window(100,100,21699)==-1;
+  #assert fw_window(100,100,21701)==-1;
+  #assert fw_window(100,4102444800,4102466400)==-1;
+  #assert fw_window(100,4102423201,100)==-1;
+  #assert fw_window(4102423201,4102423201,4102444801)==-1;
+  #assert fw_window(100,100,-1)==-1;
+  #assert fw_window(4102423200,4102423200,4102444800)==0;
+}
+#test "only the fixed project and two exact host identities are eligible" {
+  #assert fw_target("openagentsgemini","us-central1-b","psionic-rtx6000-pylon")==0;
+  #assert fw_target("openagentsgemini","us-central1-a","oct30-att-tdx-clef")==1;
+  #assert fw_target("other","us-central1-b","psionic-rtx6000-pylon")==-1;
+  #assert fw_target("openagentsgemini","us-central1-a","psionic-rtx6000-pylon")==-1;
+  #assert fw_target("openagentsgemini","us-central1-b","oct30-att-tdx-clef")==-1;
+  #assert fw_target("openagentsgemini","us-central1-a","psionic-l4-elephant")==-1;
+  #assert fw_target("openagentsgemini","us-central1-b","psionic-rtx6000-pylon-2")==-1;
+}
+#test "healthy hosts do not restart and terminated recovery respects dry mode" {
+  #assert fw_recover(0,"RUNNING","0")==0;
+  #assert fw_recover(1,"RUNNING","1")==0;
+  #assert fw_recover(0,"TERMINATED","0")==4;
+  #assert fw_recover(1,"TERMINATED","0")==3;
+  #assert fw_recover(0,"TERMINATED","1")==2;
+  #assert fw_recover(1,"TERMINATED","1")==2;
+  #assert fw_recover(-1,"RUNNING","0")==-1;
+  #assert fw_recover(2,"RUNNING","0")==-1;
+  #assert fw_recover(0,"RUNNING","true")==-1;
+}
+#test "transitions wait and unknown observations fail closed" {
+  states:=[6]string.["PROVISIONING","STAGING","STOPPING","SUSPENDING","SUSPENDED","REPAIRING"];
+  for state:states {#assert fw_recover(0,state,"0")==1;#assert fw_recover(1,state,"1")==1;}
+  #assert fw_recover(0,"","0")==-1;
+  #assert fw_recover(1,"UNKNOWN","0")==-1;
+  #assert fw_recover(0,"running","0")==-1;
+  #assert fw_recover(1,"RUNNING ","0")==-1;
+}
+#test "every recovery decision includes the full target and time fence" {
+  #assert fw_plan("openagentsgemini","us-central1-a","oct30-att-tdx-clef","TERMINATED",100,100,21700,"0")==3;
+  #assert fw_plan("openagentsgemini","us-central1-b","psionic-rtx6000-pylon","TERMINATED",100,100,21700,"0")==4;
+  #assert fw_plan("openagentsgemini","us-central1-a","oct30-att-tdx-clef","TERMINATED",99,100,21700,"0")==-2;
+  #assert fw_plan("openagentsgemini","us-central1-a","oct30-att-tdx-clef","TERMINATED",21700,100,21700,"0")==-3;
+  #assert fw_plan("openagentsgemini","us-central1-a","oct30-att-tdx-clef","TERMINATED",100,100,21701,"0")==-1;
+  #assert fw_plan("other","us-central1-a","oct30-att-tdx-clef","TERMINATED",100,100,21700,"0")==-1;
+}
+
+// Window results: -1 malformed, 0 active, 1 not started, 2 expired.
+fw_window :: (now:int,start:int,end:int)->int #export_c {
+  if now<0 || start<=0 || start>4102423200 {return -1;}
+  if end!=start+21600 {return -1;}
+  if now<start {return 1;}
+  if now>=end {return 2;}
+  return 0;
+}
+// Target 0 delegates to the standing RTX controller; target 1 may start TDX.
+fw_target :: (project:string,zone:string,vm:string)->int #export_c {
+  if project!="openagentsgemini" {return -1;}
+  if zone=="us-central1-b" && vm=="psionic-rtx6000-pylon" {return 0;}
+  if zone=="us-central1-a" && vm=="oct30-att-tdx-clef" {return 1;}
+  return -1;
+}
+// Actions: -1 refuse, 0 healthy/no-op, 1 wait, 2 dry, 3 start TDX,
+// 4 dispatch the existing fixed RTX recovery job. Never stop/create a VM.
+fw_recover :: (target:int,status:string,dry:string)->int #export_c {
+  if target<0 || target>1 || (dry!="0" && dry!="1") {return -1;}
+  if status=="RUNNING" {return 0;}
+  if status=="TERMINATED" {
+    if dry=="1" {return 2;}
+    return ifx target==0 then 4 else 3;
+  }
+  if status=="PROVISIONING" || status=="STAGING" || status=="STOPPING" || status=="SUSPENDING" || status=="SUSPENDED" || status=="REPAIRING" {return 1;}
+  return -1;
+}
+fw_plan :: (project:string,zone:string,vm:string,status:string,now:int,start:int,end:int,dry:string)->int #export_c {
+  window:=fw_window(now,start,end);
+  if window<0 {return -1;}
+  if window==1 {return -2;}
+  if window==2 {return -3;}
+  return fw_recover(fw_target(project,zone,vm),status,dry);
+}
