@@ -1,0 +1,5 @@
+title: OpenAgents Pylon fleet instance read only
+description: Read only the two existing instances on which this role is bound.
+stage: GA
+includedPermissions:
+- compute.instances.get

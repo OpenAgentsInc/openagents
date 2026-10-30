@@ -1,0 +1,5 @@
+title: OpenAgents Pylon fleet job invocation only
+description: Invoke only a bound job, without execution overrides.
+stage: GA
+includedPermissions:
+- run.jobs.run

@@ -1,0 +1,5 @@
+title: OpenAgents Pylon fleet TDX start only
+description: Request start only on the existing confidential CPU instance.
+stage: GA
+includedPermissions:
+- compute.instances.start
