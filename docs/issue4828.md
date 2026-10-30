@@ -47,7 +47,7 @@ secrets. That's measured by the memcheck probes below.
 | `753e949fc6` | Signer fix from an independent review: the message is now bound across stages, so one nonce can't sign two messages |
 | `a193b526cb` | Self-verifier memcheck probe: the release build has no candidate-dependent branch or address; the variable-time control is flagged |
 | `10d8e604b8` | **Signer secret-flow map** (`coax/tests/nostr/schnorr_sign_secret_probe.sh`) |
-| `335fc24472` | (b) step 1: masked narrowing casts in the six kernels use `cast,trunc(u32)` (43 casts plus 5 carries). Fast checks pass; mutation is owed. At -O2 this does not change the probe count (see the correction below) |
+| `335fc24472` | (b) step 1: masked narrowing casts in the six kernels use `cast,trunc(u32)` (43 casts plus 5 carries). Mutation after the push: all six at 0 survivors: `secp_field32_total` 348/348, `secp_field32` 233/233, `secp_scalar` 385/385, `secp_group32` 1,125/1,125, `ecdh_fast` 1,342/1,342, `secp_mult_const` 1,442/1,442 (96 shards, each under 15 minutes). At -O2 this does not change the probe count (see the correction below) |
 | (this push) | **Signer probe at -O2 with P, R and the validity bits declassified: passes.** Only the 3 declared decisions remain, and the control is flagged |
 
 ## In flight
@@ -70,7 +70,7 @@ Estimate: a few hours. It pushes once fast checks pass. Full gates follow the pu
 ### `openagents-d7` (this session)
 
 - **(c) done:** the signer's key-path probe, below.
-- **(b) next:** make the compiled kernels branch-free on secrets.
+- **(b) stopped at step 1**, by agreement with `openagents-20`. The large audit profile already admits a secret checked add/sub or narrowing cast only when operand ranges prove the trap can't fire. So checked builds are covered at source level, and target probes cover release. Whether checked builds must also pass memcheck is an owner policy call, stated as a limit in the #4828 record. The original (b) plan follows:
   - First change: replace the range-checked narrowing casts of masked values with the non-trapping `cast,trunc(u32)` (`coax/spec.md`: "`cast,trunc(T) x` converts between integer types keeping the low bits").
   - Then replace checked add/sub with `add_wrap`/`sub_wrap` where the sum provably can't wrap.
   - Files: `secp_field32_total.coax`, `secp_field32.coax`, `secp_group32.coax`, `secp_scalar.coax`, `ecdh_fast.coax`, `secp_mult_const.coax`.
