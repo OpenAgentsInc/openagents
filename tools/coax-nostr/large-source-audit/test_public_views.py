@@ -91,7 +91,7 @@ class PublicViews(unittest.TestCase):
         r=self.audit(p,m,10);self.assertEqual(r['error_name'],'type')
         m4=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=[['W','stage']])
         r=self.audit(p,m4,0);self.assertTrue(r['accepted']);self.assertEqual(r['public_fields'],[['W','stage']]);self.assertEqual(r['return_dependency_mask'],0)
-        for bad in [[],[['W']],[['W','stage'],['W','stage']],[['W',1]],[['','stage']],[['W','f%d'%i] for i in range(9)],'W.stage']:
+        for bad in [[],[['W']],[['W','stage'],['W','stage']],[['W',1]],[['','stage']],[['W','f%d'%i] for i in range(17)],'W.stage']:
             r=self.tool.audit(p,'candidate',classification=dict(m4,public_fields=bad));self.assertFalse(r['accepted'],bad);self.assertNotEqual(r['error'],0,bad)
         r=self.tool.audit(p,'candidate',classification=dict(m,public_fields=[['W','stage']]));self.assertFalse(r['accepted'])
         r=self.audit(p,dict(m4,public_fields=[['W','nope']]),10)
@@ -101,6 +101,21 @@ class PublicViews(unittest.TestCase):
         r=self.audit(p,m,14);self.assertFalse(r['accepted']);self.assertEqual(r['source_status'],'analyzed-with-guard-obligations')
         self.assertEqual([(g['kind'],g['origin_mask'],g['line']) for g in r['authored_guard_obligations']],[('declassification',1,2)])
         p,_,m=self.source('no_declassify',src.replace('ok_declassify','ok_check'),[('k','u64','secret',None,0)]);self.audit(p,m,6)
+    def test_independent_review_false_accepts_refuse(self):
+        # Reproducers from the independent review of 51e4d98b3d: writes inside a
+        # nested for-each must reach the outer loop's back edge, and a scalar
+        # read from a public field must not declassify the field everywhere.
+        K=('k','u64','secret',None,0);V=('v','[] u8','public','read',2)
+        cases=[('foreach_backedge','candidate :: (v:[]u8,k:u64)->u64 #export_c {\n x:=cast(u64)0;r:=cast(u64)0;\n for i:0..<2 {\n  if x==0 {r=r|1;}\n  for item:v {x=k;}\n }\n return r;\n}',6),
+          ('foreach_in_foreach','candidate :: (v:[]u8,k:u64)->u64 #export_c {\n x:=cast(u64)0;r:=cast(u64)0;\n for a:v {\n  if x==0 {r=r|1;}\n  for item:v {x=k;}\n }\n return r;\n}',6),
+          ('foreach_stale_range_trap','candidate :: (v:[]u8,k:u64)->u64 #export_c {\n x:=cast(u64)0;y:=cast(u64)0;acc:=cast(u64)0;\n for i:0..<100 {\n  acc=x+(k&1);\n  for item:v {x=(y<<1)|1;}\n  y=x;\n }\n return acc;\n}',5),
+          ('foreach_index','candidate :: (v:[]u8,k:u64)->u8 #export_c {\n x:=0;r:u8=0;\n for i:0..<2 {\n  r=v[x];\n  for item:v {x=cast,trunc(int)(k&1);}\n }\n return r;\n}',None)]
+        for name,src,error in cases:
+            p,_,m=self.source(name,src,[V,K]);r=self.tool.audit(p,'candidate',classification=m);self.assertFalse(r['accepted'],name)
+            if error is not None:self.assertEqual(r['error'],error,(name,r['error_name']))
+        src='W :: struct {stage:u64;val:u64;}\nok_declassify :: (s:u64)->u64 {return s;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].stage=1;w[1].stage=k;\n d:=ok_declassify(w[0].stage);\n if w[1].stage==0 {return 1;}\n return d;\n}'
+        p,_,m=self.source('declassify_one_element',src,[('w','[] W','secret','write',2),K])
+        r=self.tool.audit(p,'candidate',classification=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=[['W','stage']]));self.assertEqual(r['error'],6,r['error_name'])
     def test_taint_alias_and_readonly_effects(self):
         cases=[
           ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),

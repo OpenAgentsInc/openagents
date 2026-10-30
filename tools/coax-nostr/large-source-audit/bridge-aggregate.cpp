@@ -70,8 +70,8 @@ static coax_t_ScResult ag_bridge_impl(const coax_string *sources,int64_t count,c
   std::vector<coax_t_AgMemory> memory(1);
   coax_t_ScResult result{};
   if(classified) {
-   // Up to eight parameters plus eight public-field labels on the view path.
-   if(parameter_count<0||parameter_count>(views?16:8))return failure(2,-1);
+   // Up to eight parameters plus sixteen public-field labels on the view path.
+   if(parameter_count<0||parameter_count>(views?24:8))return failure(2,-1);
    std::vector<coax_t_AgLabel> labels;for(int64_t i=0;i<parameter_count;i++)labels.push_back({names[i],parameter_types[i],views?extents[i]:0,views?access[i]:0});
    result=views?AG_check_public_views({flat.data(),(int64_t)flat.size()},{values.data(),(int64_t)values.size()},{roots.data(),(int64_t)roots.size()},{const_cast<coax_t_ScType*>(types),type_count},entry,{memory.data(),1},secret_mask,{labels.data(),parameter_count},compiled):AG_check_classified({flat.data(),(int64_t)flat.size()},{values.data(),(int64_t)values.size()},{roots.data(),(int64_t)roots.size()},{const_cast<coax_t_ScType*>(types),type_count},entry,{memory.data(),1},secret_mask,{labels.data(),parameter_count},compiled);
   }

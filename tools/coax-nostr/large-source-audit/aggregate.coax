@@ -11,7 +11,7 @@ AgBinding :: struct {name:string;value:AgValue;induction:bool;}
 AgEnv :: struct {bindings:[64]AgBinding;count:int;procedure:int;binding_floor:int;}
 AgGuard :: struct {node:int;unit:int;line:int;column:int;mask:u64;kind:u32;}
 AgMemo :: struct {procedure:int;count:int;args:[8]AgValue;result:AgValue;closure:u64;height:int;}
-AgMemory :: struct {taint:[4096]u64;dirty:[4096]bool;readonly:[4096]bool;used:int;guard_count:int;guards:[256]AgGuard;memo:[128]AgMemo;memo_count:int;scope:[16]u64;height:[16]int;compiled_runs:bool;classified:bool;public_views:bool;branch_active:int;protected_regions:int;fields:[8]int;structs:[8]int;field_count:int;shadow_base:[64]int;shadow_field:[64]int;shadow_struct:[64]int;shadow_region:[64]int;shadow_count:int;}
+AgMemory :: struct {taint:[4096]u64;dirty:[4096]bool;readonly:[4096]bool;used:int;guard_count:int;guards:[256]AgGuard;memo:[128]AgMemo;memo_count:int;scope:[16]u64;height:[16]int;compiled_runs:bool;classified:bool;public_views:bool;branch_active:int;protected_regions:int;fields:[16]int;structs:[16]int;field_count:int;shadow_base:[128]int;shadow_field:[128]int;shadow_struct:[128]int;shadow_region:[128]int;shadow_whole:[128]bool;shadow_count:int;}
 AgBlock :: struct {value:AgValue;returned:bool;possible:bool;}
 AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
 #test "opt-in view roots require explicit bounded region and access" {
@@ -197,7 +197,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  #assert AG_contains(nodes[..],roots[..],11,7,state[..],0) && !AG_contains(nodes[..],roots[..],11,9,state[..],0) && !AG_contains(nodes[..],roots[..],13,7,state[..],0) && state[0].error==0;
  #assert AG_contains(nodes[..],roots[..],1,1,state[..],0) && !AG_contains(nodes[..],roots[..],9,7,state[..],0) && AG_contains(nodes[..],roots[..],5,7,state[..],0);
  // An exhausted visit budget answers "may contain".
- state[0].visits=262144;#assert AG_contains(nodes[..],roots[..],9,7,state[..],0);
+ state[0].visits=AG_visit_limit();#assert AG_contains(nodes[..],roots[..],9,7,state[..],0);
 }
 #test "public-field labels are validated before any shadow is created" {
  nodes:[24]ScNode;roots:=[1]int.[1];nodes[1]=ScNode.{kind=74,head=2};nodes[2]=ScNode.{kind=66,name="W",head=3,next=6};nodes[3]=ScNode.{kind=69,name="stage",a=10,next=4};
@@ -211,7 +211,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  #assert memory[0].shadow_count==4 && memory[0].used==6 && memory[0].shadow_base[0]==1 && memory[0].shadow_region[0]==3 && memory[0].shadow_field[0]==3 && memory[0].shadow_struct[0]==2;
  #assert memory[0].shadow_base[3]==2 && memory[0].shadow_region[3]==6 && memory[0].shadow_field[3]==7 && memory[0].shadow_struct[3]==6 && memory[0].readonly[5] && memory[0].readonly[6] && !memory[0].readonly[3];
  #assert args[0].mask==0 && args[1].mask==2 && args[2].mask==0;
- bad:[9]AgLabel;for i:0..<9 {bad[i]=AgLabel.{name="stage",type="W",access=3};}memory[0]=AgMemory.{};state[0]=ScAudit.{};
+ bad:[17]AgLabel;for i:0..<17 {bad[i]=AgLabel.{name="stage",type="W",access=3};}memory[0]=AgMemory.{};state[0]=ScAudit.{};
  AG_public_fields(nodes[..],roots[..],bad[..],args[..],memory[..],state[..]);#assert state[0].error==SC_LIMIT && state[0].where==0 && memory[0].field_count==0;
  for variant:0..<6 {
   one:=[1]AgLabel.[AgLabel.{name="stage",type="W",access=3}];
@@ -232,19 +232,24 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  nodes[32]=ScNode.{kind=66,name="R",head=33};nodes[33]=ScNode.{kind=69,name="r",a=32};#assert AG_contains(nodes[..],roots[0..<0],32,30,state[..],0);
  state[0]=ScAudit.{};#assert !AG_contains(nodes[..],roots[0..<0],3,30,state[..],0) && !AG_contains(nodes[..],roots[0..<0],1,30,state[..],0);
 }
-#test "eight public-field labels are admitted and a struct may be node one" {
- nodes:[24]ScNode;roots:=[1]int.[12];nodes[12]=ScNode.{kind=74,head=1};nodes[1]=ScNode.{kind=66,name="V",head=2};names:=[8]string.["a","b","c","d","e","f","g","h"];
- for i:0..<8 {nodes[2+i]=ScNode.{kind=69,name=names[i],a=11,next=ifx i==7 then 0 else 3+i};}nodes[11]=ScNode.{kind=1,name="u64"};
- labels:[8]AgLabel;for i:0..<8 {labels[i]=AgLabel.{name=names[i],type="V",access=3};}args:=[1]AgValue.[AgValue.{mask=1,region=1}];memory:[1]AgMemory;memory[0].used=1;state:[1]ScAudit;
- AG_public_fields(nodes[..],roots[..],labels[..],args[..],memory[..],state[..]);#assert state[0].error==0 && memory[0].field_count==8 && memory[0].shadow_count==8 && memory[0].fields[0]==2;
+#test "sixteen public-field labels are admitted and a struct may be node one" {
+ nodes:[40]ScNode;roots:=[1]int.[30];nodes[30]=ScNode.{kind=74,head=1};nodes[1]=ScNode.{kind=66,name="V",head=2};
+ names:=[16]string.["a","b","c","d","e","f","g","h","i","j","k","l","m","n","o","p"];
+ for i:0..<16 {nodes[2+i]=ScNode.{kind=69,name=names[i],a=20,next=ifx i==15 then 0 else 3+i};}nodes[20]=ScNode.{kind=1,name="u64"};
+ labels:[16]AgLabel;for i:0..<16 {labels[i]=AgLabel.{name=names[i],type="V",access=3};}args:=[1]AgValue.[AgValue.{mask=1,region=1}];memory:[1]AgMemory;memory[0].used=1;state:[1]ScAudit;
+ AG_public_fields(nodes[..],roots[..],labels[..],args[..],memory[..],state[..]);#assert state[0].error==0 && memory[0].field_count==16 && memory[0].shadow_count==16 && memory[0].fields[0]==2;
 }
 #test "declassification names, shadows, flat fields and obligations are exact" {
  #assert AG_declassifies("ok_declassify") && AG_declassifies("_declassify") && !AG_declassifies("declassify") && !AG_declassifies("ok_declassifyx") && !AG_declassifies("ok_vartime");
- memory:[1]AgMemory;memory[0].shadow_count=1;memory[0].shadow_region[0]=4;#assert AG_is_shadow(memory[..],4) && !AG_is_shadow(memory[..],3) && !AG_is_shadow(memory[..],0);
- memory[0].shadow_region[0]=0;#assert !AG_is_shadow(memory[..],0);
+ memory:[1]AgMemory;memory[0].shadow_count=2;memory[0].shadow_region[0]=4;memory[0].shadow_whole[0]=true;memory[0].shadow_region[1]=5;
+ #assert AG_whole_shadow(memory[..],4) && !AG_whole_shadow(memory[..],5) && !AG_whole_shadow(memory[..],3) && !AG_whole_shadow(memory[..],0);
+ memory[0].shadow_region[0]=0;#assert !AG_whole_shadow(memory[..],0);
  nodes:[8]ScNode;roots:[1]int;state:[1]ScAudit;nodes[1]=ScNode.{kind=2,b=2};nodes[2]=ScNode.{kind=1,name="u8"};nodes[3]=ScNode.{kind=2,b=4};nodes[4]=ScNode.{kind=66,name="S"};nodes[5]=ScNode.{kind=3,b=2};
  #assert AG_flat(nodes[..],roots[0..<0],-1,state[..]) && AG_flat(nodes[..],roots[0..<0],1,state[..]) && !AG_flat(nodes[..],roots[0..<0],3,state[..]) && !AG_flat(nodes[..],roots[0..<0],4,state[..]) && !AG_flat(nodes[..],roots[0..<0],5,state[..]) && !AG_flat(nodes[..],roots[0..<0],0,state[..]);
- m:[1]AgMemory;m[0].public_views=true;args:=[1]AgValue.[AgValue.{region=4}];m[0].shadow_count=1;m[0].shadow_region[0]=4;m[0].taint[4]=8;
+ m:[1]AgMemory;m[0].public_views=true;args:=[1]AgValue.[AgValue.{region=4,view=true}];m[0].shadow_count=2;m[0].shadow_region[0]=4;m[0].shadow_whole[0]=true;m[0].shadow_region[1]=6;m[0].taint[4]=8;m[0].taint[6]=32;
+ // A scalar read from a shadow, or a view of a shadow shared across elements, is not reset.
+ scalar:=[2]AgValue.[AgValue.{region=4},AgValue.{region=6,view=true}];w:=AG_declassify(nodes[..],m[..],state[..],7,AgValue.{type=-1},scalar[..]);#assert m[0].taint[4]==8 && m[0].taint[6]==32 && w.mask==0;m[0]=AgMemory.{};
+ m[0].public_views=true;m[0].shadow_count=1;m[0].shadow_region[0]=4;m[0].shadow_whole[0]=true;m[0].taint[4]=8;
  v:=AG_declassify(nodes[..],m[..],state[..],1,AgValue.{mask=2,type=-1},args[..]);#assert v.mask==0 && v.type==-1 && m[0].taint[4]==0 && m[0].guard_count==1 && m[0].guards[0].mask==10 && m[0].guards[0].kind==2 && m[0].guards[0].node==1;
  v=AG_declassify(nodes[..],m[..],state[..],1,AgValue.{mask=16,type=-1},args[0..<0]);#assert m[0].guard_count==1 && m[0].guards[0].mask==26;
  v=AG_declassify(nodes[..],m[..],state[..],2,AgValue.{type=-1},args[0..<0]);#assert m[0].guard_count==2 && m[0].guards[1].node==2 && state[0].error==0;
@@ -334,7 +339,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  for kind:[2]u32.[23,26] {nodes[5]=ScNode.{kind=kind,a=1,b=2};#assert AG_readonly_expr(nodes[..],5,state[..],0);#assert AG_readonly_expr(nodes[..],5,state[..],30);#assert !AG_readonly_expr(nodes[..],5,state[..],31);nodes[5].a=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].a=1;nodes[5].b=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);}
  nodes[5]=ScNode.{kind=31,a=1,b=2,c=3};#assert AG_readonly_expr(nodes[..],5,state[..],0);#assert AG_readonly_expr(nodes[..],5,state[..],30);#assert !AG_readonly_expr(nodes[..],5,state[..],31);
  nodes[5].a=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].a=1;nodes[5].b=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].b=2;nodes[5].c=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);
- state[0].visits=262144;#assert !AG_readonly_expr(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
+ state[0].visits=AG_visit_limit();#assert !AG_readonly_expr(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
 }
 #test "read-only loop scanner rejects writes calls and invalid structure" {
  nodes:[16]ScNode;state:[1]ScAudit;nodes[1]=ScNode.{kind=40};nodes[3]=ScNode.{kind=16};nodes[4]=ScNode.{kind=21};nodes[5]=ScNode.{kind=40};
@@ -344,7 +349,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  nodes[2]=ScNode.{kind=45,a=3,c=5};#assert AG_readonly_block(nodes[..],1,state[..],0);#assert AG_readonly_block(nodes[..],1,state[..],14);#assert !AG_readonly_block(nodes[..],1,state[..],15);
  nodes[2].a=4;#assert !AG_readonly_block(nodes[..],1,state[..],0);nodes[2].a=3;nodes[2].c=3;#assert !AG_readonly_block(nodes[..],1,state[..],0);nodes[2].c=5;nodes[2].d=5;#assert AG_readonly_block(nodes[..],1,state[..],0);nodes[2].d=3;#assert !AG_readonly_block(nodes[..],1,state[..],0);
  nodes[2]=ScNode.{kind=43};#assert !AG_readonly_block(nodes[..],1,state[..],0);
- state[0].visits=262144;#assert !AG_readonly_block(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
+ state[0].visits=AG_visit_limit();#assert !AG_readonly_block(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
 }
 #test "public return joins preserve origins and protected scope" {
  memory:[1]AgMemory;a:=AgBlock.{possible=true,value=AgValue.{mask=1,type=-1}};b:=AgBlock.{possible=true,returned=true,value=AgValue.{mask=2,type=-1}};
@@ -388,7 +393,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  // Each branch depth must advance, including an optional else.
  n[5]=ScNode.{kind=45,a=1,c=7,d=6};n[7]=ScNode.{kind=40,head=8};n[8]=ScNode.{kind=45,a=1,c=6};#assert !AG_readonly_block(n[..],4,s[..],14);
  n[5].c=6;n[5].d=7;#assert !AG_readonly_block(n[..],4,s[..],14);
- s[0]=ScAudit.{visits=262143};#assert !AG_readonly_block(n[..],4,s[..],0) && s[0].error==SC_LIMIT;
+ s[0]=ScAudit.{visits=AG_visit_limit()-1};#assert !AG_readonly_block(n[..],4,s[..],0) && s[0].error==SC_LIMIT;
 }
 #test "public arm restores fresh local scope and leaves prior bindings to the join" {
  f:=SC_fixture();values:[32]u64;env:[1]AgEnv;memory:[1]AgMemory;state:[1]ScAudit;
@@ -506,7 +511,7 @@ AG_shadow_write :: (nodes:[]ScNode,roots:[]int,memory:[]AgMemory,state:[]ScAudit
 // A public field is a primitive or an array of primitives.
 AG_flat :: (nodes:[]ScNode,roots:[]int,type:int,state:[]ScAudit)->bool {if AG_primitive_name(type)!="" {return true;}return SC_ref(type,nodes.count) && nodes[type].kind==2 && AG_primitive_name(AG_type(nodes,roots,nodes[type].b,state))!="";}
 AG_public_fields :: (nodes:[]ScNode,roots:[]int,labels:[]AgLabel,args:[]AgValue,memory:[]AgMemory,state:[]ScAudit) {
- if labels.count>8 {SC_fail(state,SC_LIMIT,0);return;}
+ if labels.count>16 {SC_fail(state,SC_LIMIT,0);return;}
  for label:labels {
   structure:=AG_struct(nodes,roots,label.type,state);if label.access!=3 || label.extent!=0 || structure==0 {SC_fail(state,SC_TYPE,0);return;}
   field:=AG_field(nodes,structure,label.name,state);if state[0].error!=0 {return;}
@@ -517,7 +522,7 @@ AG_public_fields :: (nodes:[]ScNode,roots:[]int,labels:[]AgLabel,args:[]AgValue,
   for f:0..<memory[0].field_count {
    if memory[0].used==4095 {SC_fail(state,SC_LIMIT,0);return;}memory[0].used+=1;at:=memory[0].shadow_count;
    memory[0].shadow_base[at]=args[i].region;memory[0].shadow_field[at]=memory[0].fields[f];memory[0].shadow_struct[at]=memory[0].structs[f];memory[0].shadow_region[at]=memory[0].used;
-   memory[0].readonly[memory[0].used]=memory[0].readonly[args[i].region];memory[0].shadow_count+=1;args[i].mask=0;
+   memory[0].readonly[memory[0].used]=memory[0].readonly[args[i].region];memory[0].shadow_whole[at]=args[i].extent==1;memory[0].shadow_count+=1;args[i].mask=0;
   }
  }}
 }
@@ -605,10 +610,13 @@ AG_declassifies :: (name:string)->bool {return name.count>=11 && name[name.count
 AG_declassify :: (nodes:[]ScNode,memory:[]AgMemory,state:[]ScAudit,id:int,result:AgValue,args:[]AgValue)->AgValue {
  if !memory[0].public_views || result.region!=0 {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}
  r:=result;mask:=AG_origin(r,memory);
- for arg:args {if AG_is_shadow(memory,arg.region) {mask|=memory[0].taint[arg.region];memory[0].taint[arg.region]=0;}}
+ // Only a view of a public field of a one-element root view is reset: a
+ // shadow covers that field in every element, and a scalar read from it is
+ // one element's value, so neither may clear it.
+ for arg:args {if arg.view && AG_whole_shadow(memory,arg.region) {mask|=memory[0].taint[arg.region];memory[0].taint[arg.region]=0;}}
  AG_obligation(nodes,memory,state,id,mask,2);r.mask=0;return r;
 }
-AG_is_shadow :: (memory:[]AgMemory,region:int)->bool {if region==0 {return false;}for i:0..<memory[0].shadow_count {if memory[0].shadow_region[i]==region {return true;}}return false;}
+AG_whole_shadow :: (memory:[]AgMemory,region:int)->bool {if region==0 {return false;}for i:0..<memory[0].shadow_count {if memory[0].shadow_region[i]==region {return memory[0].shadow_whole[i];}}return false;}
 AG_union :: (a:AgValue,b:AgValue,memory:[]AgMemory)->AgValue {
  r:=a;r.mask=AG_origin(a,memory)|AG_origin(b,memory);r.region=0;r.literal=0;bounds:=AG_join_bounds(a,b);r.known=bounds.known;r.lo=bounds.lo;r.hi=bounds.hi;
  r=AG_unranged(r);if AG_bounded(a) && AG_bounded(b) {r=AG_with(r,AG_lo(a)&AG_lo(b),AG_fill(AG_hi(a)|AG_hi(b)));}return r;
@@ -750,7 +758,7 @@ AG_loop_marks :: (nodes:[]ScNode,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]Sc
  // has already tainted; its shadows reach their fixed point in AG_loop_body.
  if n.kind==43 {root:=AG_target_root(nodes,n.c,state);slot:=AG_slot(env,nodes[root].name);if slot>=0 {if !AG_sensitive(memory,env[0].bindings[slot].value.region) {env[0].bindings[slot].value.mask|=mask;}env[0].bindings[slot].value.known=false;env[0].bindings[slot].value=AG_unranged(env[0].bindings[slot].value);}}
  if n.kind==40 {at:=n.head;while at!=0 {AG_loop_marks(nodes,at,env,memory,state,mask,depth+1);at=nodes[at].next;}}
- else if n.kind==47 || n.kind==45 {AG_loop_marks(nodes,n.c,env,memory,state,mask,depth+1);if n.d!=0 {AG_loop_marks(nodes,n.d,env,memory,state,mask,depth+1);}}
+ else if n.kind==47 || n.kind==48 || n.kind==45 {AG_loop_marks(nodes,n.c,env,memory,state,mask,depth+1);if n.d!=0 {AG_loop_marks(nodes,n.d,env,memory,state,mask,depth+1);}}
 }
 // A deliberately narrow read-only loop subset. Calls and writes refuse this
 // optimization; the existing conservative loop analysis still handles them.
@@ -838,6 +846,7 @@ AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
 // Distinct procedures one audit may reach. Procedures past the 63rd share
 // the top bit of the memo closure masks, which only causes extra misses.
 #test "the procedure cap and its closure bits are exact" {
+ #assert AG_visit_limit()==4194304;
  #assert AG_procedure_limit()==256 && AG_bit(0)==1 && AG_bit(1)==2 && AG_bit(62)==cast(u64)1<<62 && AG_bit(63)==cast(u64)1<<63 && AG_bit(64)==cast(u64)1<<63 && AG_bit(255)==cast(u64)1<<63;
 }
 AG_procedure_limit :: ()->int {return 256;}
@@ -935,7 +944,7 @@ AG_widen :: (s:AgValue,e:AgValue)->AgValue {
 // is also one under the final assumptions. Eight passes without both fixed
 // points fail closed.
 AG_loop_body :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,n:ScNode,loop:AgValue,entry:[]AgBinding,marked:[]AgBinding,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int,at:int)->AgBlock {
- saved:=env[0].count;assume:[64]AgValue;before:[64]u64;
+ saved:=env[0].count;assume:[64]AgValue;before:[128]u64;
  for i:0..<saved {assume[i]=marked[i].value;if entry[i].value.ranged {assume[i]=AG_with(assume[i],entry[i].value.rlo,entry[i].value.rhi);}}
  for pass:0..<8 {
   ranged:=pass<4;for i:0..<saved {env[0].bindings[i].value=ifx ranged then assume[i] else marked[i].value;}
@@ -1022,8 +1031,10 @@ AG_check_public_views :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType
  return AG_check_source(nodes,values,roots,types,entry,memory,compiled_runs,true,secret_mask,labels,true);
 }
 
+// Analysis steps one audit may take.
+AG_visit_limit :: ()->int {return 4194304;}
 AG_tick :: (state:[]ScAudit,where:int)->bool {
- if state[0].error!=0 {return false;}if state[0].visits>=262144 {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;
+ if state[0].error!=0 {return false;}if state[0].visits>=AG_visit_limit() {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;
 }
 AG_decl :: (nodes:[]ScNode,roots:[]int,name:string,state:[]ScAudit)->int {
  cached:=AG_lookup_cached(state,name,1);if cached>=0 {return cached;}if state[0].error!=0 {return 0;}

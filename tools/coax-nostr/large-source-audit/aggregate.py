@@ -44,7 +44,7 @@ class AggregateAudit(Audit):
                 elif view is not None:raise ValueError('non-view premise')
             if row['classification']=='secret':mask|=1<<i
         fields=manifest.get('public_fields',[])
-        if not isinstance(fields,list) or len(fields)>8 or (fields_schema and not fields) or any(not isinstance(x,list) or len(x)!=2 or not all(isinstance(s,str) and s for s in x) for x in fields) or len({tuple(x) for x in fields})!=len(fields):raise ValueError('public field premise')
+        if not isinstance(fields,list) or len(fields)>16 or (fields_schema and not fields) or any(not isinstance(x,list) or len(x)!=2 or not all(isinstance(s,str) and s for s in x) for x in fields) or len({tuple(x) for x in fields})!=len(fields):raise ValueError('public field premise')
         canonical=json.dumps(manifest,sort_keys=True,separators=(',',':')).encode()
         import hashlib
         return {'parameters':rows,'mask':mask,'sha256':hashlib.sha256(canonical).hexdigest(),'views':views,'public_fields':fields}

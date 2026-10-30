@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[3]
 OLD = ROOT/'tools/coax-nostr/public-view-check'
 NEW = Path(__file__).resolve().parent
 PINS = {
-    'aggregate.coax':'4ce2cde86994566b5149f0113b12f11431f7d13f86d85598ff3f8fecc7583617',
+    'aggregate.coax':'55af5286b8b8c4ee57a9ea60ebc6a85e5e54ae9eeaaeff80b4e6380429db9d08',
     'bridge-aggregate.cpp':'ac56e8d614612532900a62462a6089e4c0de6f2857c57d8c52a98cd8cfb5754c',
     'check.py':'4a478426bcf468e5e4d319185bffce2b503ac62e3fc2ef4659cbb13d77656e6b',
     'aggregate.py':'6e3babd692fdb5a3ea351b6abf50ed9d33aef6856a9857d868d37c716ac9078d',

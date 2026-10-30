@@ -91,7 +91,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  for kind:[2]u32.[23,26] {nodes[5]=ScNode.{kind=kind,a=1,b=2};#assert AG_readonly_expr(nodes[..],5,state[..],0);#assert AG_readonly_expr(nodes[..],5,state[..],30);#assert !AG_readonly_expr(nodes[..],5,state[..],31);nodes[5].a=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].a=1;nodes[5].b=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);}
  nodes[5]=ScNode.{kind=31,a=1,b=2,c=3};#assert AG_readonly_expr(nodes[..],5,state[..],0);#assert AG_readonly_expr(nodes[..],5,state[..],30);#assert !AG_readonly_expr(nodes[..],5,state[..],31);
  nodes[5].a=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].a=1;nodes[5].b=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);nodes[5].b=2;nodes[5].c=4;#assert !AG_readonly_expr(nodes[..],5,state[..],0);
- state[0].visits=262144;#assert !AG_readonly_expr(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
+ state[0].visits=AG_visit_limit();#assert !AG_readonly_expr(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
 }
 #test "read-only loop scanner rejects writes calls and invalid structure" {
  nodes:[16]ScNode;state:[1]ScAudit;nodes[1]=ScNode.{kind=40};nodes[3]=ScNode.{kind=16};nodes[4]=ScNode.{kind=21};nodes[5]=ScNode.{kind=40};
@@ -101,7 +101,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  nodes[2]=ScNode.{kind=45,a=3,c=5};#assert AG_readonly_block(nodes[..],1,state[..],0);#assert AG_readonly_block(nodes[..],1,state[..],14);#assert !AG_readonly_block(nodes[..],1,state[..],15);
  nodes[2].a=4;#assert !AG_readonly_block(nodes[..],1,state[..],0);nodes[2].a=3;nodes[2].c=3;#assert !AG_readonly_block(nodes[..],1,state[..],0);nodes[2].c=5;nodes[2].d=5;#assert AG_readonly_block(nodes[..],1,state[..],0);nodes[2].d=3;#assert !AG_readonly_block(nodes[..],1,state[..],0);
  nodes[2]=ScNode.{kind=43};#assert !AG_readonly_block(nodes[..],1,state[..],0);
- state[0].visits=262144;#assert !AG_readonly_block(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
+ state[0].visits=AG_visit_limit();#assert !AG_readonly_block(nodes[..],1,state[..],0) && state[0].error==SC_LIMIT;
 }
 #test "public return joins preserve origins and protected scope" {
  memory:[1]AgMemory;a:=AgBlock.{possible=true,value=AgValue.{mask=1,type=-1}};b:=AgBlock.{possible=true,returned=true,value=AgValue.{mask=2,type=-1}};
@@ -141,7 +141,7 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  // Each branch depth must advance, including an optional else.
  n[5]=ScNode.{kind=45,a=1,c=7,d=6};n[7]=ScNode.{kind=40,head=8};n[8]=ScNode.{kind=45,a=1,c=6};#assert !AG_readonly_block(n[..],4,s[..],14);
  n[5].c=6;n[5].d=7;#assert !AG_readonly_block(n[..],4,s[..],14);
- s[0]=ScAudit.{visits=262143};#assert !AG_readonly_block(n[..],4,s[..],0) && s[0].error==SC_LIMIT;
+ s[0]=ScAudit.{visits=AG_visit_limit()-1};#assert !AG_readonly_block(n[..],4,s[..],0) && s[0].error==SC_LIMIT;
 }
 #test "public arm isolates prior bindings and restores fresh local scope" {
  f:=SC_fixture();values:[32]u64;env:[1]AgEnv;memory:[1]AgMemory;state:[1]ScAudit;
@@ -469,6 +469,7 @@ AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
 }
 // Distinct procedures one audit may reach.
 #test "the procedure cap and its closure bits are exact" {
+ #assert AG_visit_limit()==262144;
  #assert AG_procedure_limit()==64;
 }
 AG_procedure_limit :: ()->int {return 64;}
@@ -536,8 +537,10 @@ AG_check_public_views :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType
  return AG_check_source(nodes,values,roots,types,entry,memory,compiled_runs,true,secret_mask,labels,true);
 }
 
+// Analysis steps one audit may take.
+AG_visit_limit :: ()->int {return 262144;}
 AG_tick :: (state:[]ScAudit,where:int)->bool {
- if state[0].error!=0 {return false;}if state[0].visits>=262144 {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;
+ if state[0].error!=0 {return false;}if state[0].visits>=AG_visit_limit() {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;
 }
 AG_decl :: (nodes:[]ScNode,roots:[]int,name:string,state:[]ScAudit)->int {
  cached:=AG_lookup_cached(state,name,1);if cached>=0 {return cached;}if state[0].error!=0 {return 0;}

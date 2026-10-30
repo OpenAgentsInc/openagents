@@ -196,7 +196,7 @@ sw_views :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:boo
 // Key and nonce validity are each call's public result.
 sw_valid_declassify :: (valid:u64)->bool {return valid==1;}
 // The public key and R are published inside every signature.
-sw_bytes_declassify :: (bytes:[]u8) {}
+sw_bytes_declassify :: (bytes:[]u8)->bool {return bytes.count==32;}
 // The BIP-340 challenge hash over public R, public key and message, through
 // the fixed-flow SHA-256 workspace, so the audit checks it with public inputs.
 sw_challenge_public :: (message:[]u8,pub:[]u8,r:[]u8,sha:[]ShaOwned,tag:[]u8,out:[]u8)->bool {
@@ -207,12 +207,12 @@ sw_challenge_public :: (message:[]u8,pub:[]u8,r:[]u8,sha:[]ShaOwned,tag:[]u8,out
 sw_message_digest :: (message:[]u8,out:[]u8)->bool {sha:[1]ShaOwned;return so_init(sha[..]) && so_update(sha[..],message,false) && so_finish(sha[..],out,false);}
 sw_key :: (key:[]u8,work:[]SignWork)->int {
   if !sk_prepare(key,work[0].prep[..],false) || !sw_valid_declassify(work[0].prep[0].valid) {return sw_clear(work);}
-  sw_bytes_declassify(work[0].prep[0].public_key[..]);
+  if !sw_bytes_declassify(work[0].prep[0].public_key[..]) {return sw_clear(work);}
   work[0].stage=1;return SIGN_MORE;
 }
 sw_nonce :: (aux:[]u8,message:[]u8,work:[]SignWork)->int {
   if !snp_prepare(work[0].prep[0].normalized[..],work[0].prep[0].public_key[..],aux,message,work[0].nonce[..],false) {return sw_clear(work);}
-  sw_bytes_declassify(work[0].nonce[0].r[..]);
+  if !sw_bytes_declassify(work[0].nonce[0].r[..]) {return sw_clear(work);}
   if !sw_message_digest(message,work[0].message[..]) {return sw_clear(work);}
   work[0].stage=2;return SIGN_MORE;
 }
