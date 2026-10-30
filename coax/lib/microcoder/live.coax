@@ -1,0 +1,54 @@
+// Live Microcoder smoke (live.sh runs it): "what is 2+2" through a fast
+// plan, Vertex gemini-3.8-flash first, must finish in one step with no
+// commands. Prints the ending, the reply and the attempt log; never a key
+// or the prompt.
+
+#import "Basic";
+#load "loop.coax";
+#load "../gateway/plan.coax";
+#load "../gateway/vertex.coax";
+#load "../gateway/openrouter.coax";
+
+main :: () {
+  v: [1] GwVertex;
+  why := gw_vertex_token(v[..]);
+  if why.count > 0 { print("vertex: %\n", why); }
+  pb: [1] GwPlanBuffers; p: [1] GwPlan; bench: [1] GwBench;
+  gw_plan_init(p[..], pb[..]);
+  none: [1] string; ub: [512] u8;
+  if v[0].nt > 0 { x := gw_plan_add(p[..], gw_vertex(v[..]), GW_VERTEX_FLASH, none[0..<0]); }
+  key: [512] u8;
+  if gw_env("GEMINI_API_KEY", key[..]).count > 0 { x := gw_plan_add(p[..], gw_gemini(GW_GEMINI_FLASH, true, ub[..]), GW_GEMINI_FLASH, none[0..<0]); }
+  h := GW_OPENROUTER_HEADERS;
+  x := gw_plan_add(p[..], gw_openrouter(false), GW_OPENROUTER_FLASH, h[..]);
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{\"os\":\"macOS\",\"app\":\"OpenAgents\",\"cwd\":\"/tmp\"}", "what is 2+2", "{\"route\":\"other\",\"difficulty\":\"trivial\",\"effort\":\"low\",\"local_work\":0.1}", 0.1);
+  t0 := cxproc_now_ms();
+  calls := 0;
+  for guard: 0..<20 {
+    req := mc_request(l[..]);
+    req.effort = "low";
+    gw_plan_start(p[..], bench[..], req);
+    calls += 1;
+    r := MC_WAIT;
+    ev: [8] GwEvent;
+    while !p[0].over {
+      n := gw_plan_poll(p[..], bench[..], ev[..]);
+      for i: 0..<n { r = mc_feed(l[..], ev[i]); }
+    }
+    lb2: [512] u8;
+    for i: 0..<p[0].nlog { print("attempt: %\n", gw_attempt_line(p[0].log[i], lb2[..])); }
+    if r == MC_ENDED { break; }
+    if r == MC_TOOLS {
+      a := mc_pending(l[..]);
+      for i: 0..<a.nc { mc_command(l[..], a.commands[i], -1, false, "not run: this smoke has no tools"); }
+      for i: 0..<a.nv { mc_view(l[..], a.view[i], false, "not shown: this smoke has no tools"); }
+      r = mc_tools_done(l[..]);
+    }
+  }
+  print("microcoder: ending %, % model call(s), % steps, %ms, reply: %\n", mc_ending_name(l[0].ending), calls, l[0].steps, cxproc_now_ms() - t0, l[0].reply);
+  ok := l[0].ending == MC_END_FINISHED && calls == 1 && l[0].steps == 1;
+  four := false;
+  for c: l[0].reply { if c == '4' { four = true; } }
+  print("smoke: %\n", ifx ok && four then "ok" else "FAILED");
+}

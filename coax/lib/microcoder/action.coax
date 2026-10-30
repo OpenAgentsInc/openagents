@@ -1,0 +1,83 @@
+// The action (docs/coder/microcoder.md, "The action"): each step is one
+// model call with a strict JSON schema, and the reply is this object:
+//
+//   { "rationale": "why this step, for the log; never shown as the reply",
+//     "commands":  ["shell commands to run, in order"],
+//     "view":      ["files to show in full in the next step"],
+//     "finished":  false,
+//     "reply":     "on the finishing step, the answer addressed to the user",
+//     "ask":       "none | question" }
+//
+// The old NextAction without freeze_tests and expand. mc_action_parse holds
+// a reply to the schema and to its meaning: finished and ask: question each
+// need a reply.
+
+#load "state.coax";
+
+MC_SCHEMA_NAME :: "next_action";
+MC_SCHEMA :: "{\"type\":\"object\",\"properties\":{\"rationale\":{\"type\":\"string\"},\"commands\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"view\":{\"type\":\"array\",\"items\":{\"type\":\"string\"}},\"finished\":{\"type\":\"boolean\"},\"reply\":{\"type\":\"string\"},\"ask\":{\"type\":\"string\",\"enum\":[\"none\",\"question\"]}},\"required\":[\"rationale\",\"commands\",\"view\",\"finished\",\"reply\",\"ask\"],\"additionalProperties\":false}";
+
+MC_MAX_COMMANDS :: 32;
+MC_MAX_VIEWS :: 16;
+
+McAction :: struct {
+  rationale: string;
+  commands: [MC_MAX_COMMANDS] string; nc: int;
+  view: [MC_MAX_VIEWS] string; nv: int;
+  finished: bool;
+  reply: string;
+  asks: bool;                    // ask: question
+}
+
+// The reply as an action, its strings decoded into ar (they live as long as
+// text and ar). What's wrong with it, or "".
+mc_action_parse :: (ar: [] ClArena, text: string, a: [] McAction) -> string {
+  a[0] = McAction.{};
+  if !json_valid(text) { return "the reply is not JSON"; }
+  if !cl_valid(text, "s:rationale a:commands s:commands.* a:view s:view.* b:finished s:reply s:ask=none|question") {
+    return "the reply does not match the next_action schema";
+  }
+  a[0].rationale = cl_str(ar, text, "rationale");
+  cmds := cl_raw(text, "commands");
+  nc := cl_count(cmds);
+  if nc > MC_MAX_COMMANDS { return "the reply has more than 32 commands"; }
+  for i: 0..<nc { a[0].commands[i] = cl_text(ar, cmds, cl_item(cmds, i)); }
+  a[0].nc = nc;
+  views := cl_raw(text, "view");
+  nv := cl_count(views);
+  if nv > MC_MAX_VIEWS { return "the reply asks to view more than 16 files"; }
+  for i: 0..<nv { a[0].view[i] = cl_text(ar, views, cl_item(views, i)); }
+  a[0].nv = nv;
+  a[0].finished = cl_bool(text, "finished").value;
+  a[0].reply = cl_str(ar, text, "reply");
+  a[0].asks = cl_str(ar, text, "ask") == "question";
+  if ar[0].full { return "the reply does not fit its buffer"; }
+  if a[0].finished && a[0].reply.count == 0 { return "finished is true but reply is empty"; }
+  if a[0].asks && a[0].reply.count == 0 { return "ask is question but reply is empty"; }
+  for i: 0..<nc { if a[0].commands[i].count == 0 { return "a command is empty"; } }
+  return "";
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "the schema is JSON, and a plain answer parses as finished with no commands" {
+  #assert json_valid(MC_SCHEMA);
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a: [1] McAction;
+  why := mc_action_parse(ar[..], "{\"rationale\":\"arithmetic\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"4\",\"ask\":\"none\"}", a[..]);
+  #assert why == "" && a[0].finished && a[0].reply == "4" && a[0].nc == 0 && a[0].nv == 0 && !a[0].asks;
+  why = mc_action_parse(ar[..], "{\"rationale\":\"look\",\"commands\":[\"ls *.swift | wc -l\",\"echo \\\"hi\\\"\"],\"view\":[\"README.md\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}", a[..]);
+  #assert why == "" && a[0].nc == 2 && a[0].commands[1] == "echo \"hi\"" && a[0].view[0] == "README.md" && !a[0].finished;
+}
+
+#test "replies that fail the schema or its meaning are refused with a reason" {
+  ab: [1024] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  a: [1] McAction;
+  #assert mc_action_parse(ar[..], "4", a[..]) == "the reply does not match the next_action schema";
+  #assert mc_action_parse(ar[..], "The answer is 4.", a[..]) == "the reply is not JSON";
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"4\"}", a[..]) != "";
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[1],\"view\":[],\"finished\":true,\"reply\":\"4\",\"ask\":\"none\"}", a[..]) != "";
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"4\",\"ask\":\"maybe\"}", a[..]) != "";
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"\",\"ask\":\"none\"}", a[..]) == "finished is true but reply is empty";
+  #assert mc_action_parse(ar[..], "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":false,\"reply\":\"\",\"ask\":\"question\"}", a[..]) == "ask is question but reply is empty";
+}
