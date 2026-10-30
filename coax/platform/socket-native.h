@@ -9,7 +9,7 @@ extern "C" {
    effects only: name resolution, connect, read, write, close and a monotonic
    clock. The WebSocket protocol, the relay policy and every limit beyond
    these buffers are Coax (coax/lib/net/ws.coax, coax/lib/nostr/relay.coax).
-   There is no TLS here: wss:// needs a separate owner decision.
+   TLS for wss:// is coax/platform/tls-native.c, layered on these handles.
 
    Connect: cxsock_host_push the host name's bytes (at most CXSOCK_MAX_HOST),
    then cxsock_connect(port, timeout_ms) resolves it (getaddrinfo, blocking),
@@ -43,6 +43,10 @@ int64_t cxsock_read(int64_t h, int64_t timeout_ms);
 int64_t cxsock_byte(int64_t h, int64_t i);
 int64_t cxsock_close(int64_t h);
 int64_t cxsock_now_ms(void);
+/* For coax/platform/tls-native.c only (not a #foreign import): the handle's
+   file descriptor, or -1. TLS reads and writes the descriptor directly and
+   leaves these buffers unused; cxsock_close still releases it. */
+int cxsock_fd(int64_t h);
 #ifdef __cplusplus
 }
 #endif

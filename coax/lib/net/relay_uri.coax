@@ -1,0 +1,68 @@
+// The relay URL decision for native clients: ws:// or wss://, the host to
+// resolve and to verify the certificate against, the port (explicit, or 80
+// for ws and 443 for wss) and the request target for the WebSocket opening
+// request. The host driver picks the plain socket effect or the TLS effect
+// (coax/platform/socket-native.c, coax/platform/tls-native.c) from `tls`
+// alone; it never inspects the URL itself. Authority syntax is uri.coax's
+// (DNS names only: no credentials, IP literals, fragments or trailing dots),
+// so a relay URL is refused exactly where uri_parse refuses its wss:// form.
+// Ranges borrow the caller's bytes; nothing is normalized.
+#load "uri.coax";
+#authority;
+
+RELAY_URI_MAX :: 2047;  // ws:// is one byte shorter than the wss:// form uri_parse bounds at 2048
+RelayUri :: struct { ok: bool; tls: bool; host_from: int; host_to: int; port: int; target_from: int; target_to: int; }
+
+#test "wss takes TLS and 443; ws takes the plain socket and 80" {
+  s := "wss://relay.damus.io"; r := relay_uri(s);
+  #assert r.ok && r.tls && r.port == 443 && s[r.host_from..<r.host_to] == "relay.damus.io";
+  #assert r.target_from == 20 && r.target_to == 20;
+  s = "ws://localhost"; r = relay_uri(s);
+  #assert r.ok && !r.tls && r.port == 80 && r.host_from == 5 && r.host_to == 14 && r.target_from == 14 && r.target_to == 14;
+}
+#test "explicit ports, paths and queries keep the caller's byte ranges" {
+  s := "ws://relay.example:7777/a%20b?x=1"; r := relay_uri(s);
+  #assert r.ok && !r.tls && r.port == 7777;
+  #assert s[r.host_from..<r.host_to] == "relay.example" && s[r.target_from..<r.target_to] == "/a%20b?x=1";
+  s = "wss://localhost:8443/echo"; r = relay_uri(s);
+  #assert r.ok && r.tls && r.port == 8443 && s[r.host_from..<r.host_to] == "localhost" && s[r.target_from..<r.target_to] == "/echo";
+  s = "ws://a:443"; r = relay_uri(s); #assert r.ok && !r.tls && r.port == 443 && r.target_from == 10;
+  s = "wss://a:80/"; r = relay_uri(s); #assert r.ok && r.tls && r.port == 80 && s[r.target_from..<r.target_to] == "/";
+  s = "ws://a:1"; r = relay_uri(s); #assert r.ok && r.port == 1 && r.host_to == 6;
+  s = "ws://a?"; r = relay_uri(s); #assert r.ok && r.port == 80 && r.target_from == 6 && r.target_to == 7;
+}
+#test "other schemes and bad authorities are refused with empty metadata" {
+  r := relay_uri("https://relay.example");
+  #assert !r.ok && !r.tls && r.host_from == 0 && r.host_to == 0 && r.port == 0 && r.target_from == 0 && r.target_to == 0;
+  #assert !relay_uri("http://relay.example").ok && !relay_uri("").ok && !relay_uri("ws:/a").ok && !relay_uri("ws:").ok;
+  #assert !relay_uri("WS://a").ok && !relay_uri("wss:/a").ok && !relay_uri("wsx://a").ok && !relay_uri("w").ok;
+  #assert !relay_uri("ws://").ok && !relay_uri("ws://user@a").ok && !relay_uri("ws://127.0.0.1").ok && !relay_uri("ws://a#f").ok;
+  #assert !relay_uri("ws://a:0").ok && !relay_uri("ws://a:65536").ok && !relay_uri("ws://a.").ok && !relay_uri("ws://a/%00").ok;
+  #assert !relay_uri("wss://a:").ok && !relay_uri("wss://[::1]/").ok;
+}
+#test "length limits: 2047 bytes for ws, 2048 for wss" {
+  data: [2049] u8; for i: 0..<2049 { data[i] = 'a'; }
+  ws := "ws://a.test/"; for i: 0..<ws.count { data[i] = ws[i]; }
+  #assert relay_uri(cast(string) data[0..<2047]).ok && !relay_uri(cast(string) data[0..<2048]).ok;
+  r := relay_uri(cast(string) data[0..<2047]); #assert r.target_from == 11 && r.target_to == 2047 && r.host_to == 11;
+  wss := "wss://a.test/"; for i: 0..<wss.count { data[i] = wss[i]; }
+  #assert relay_uri(cast(string) data[0..<2048]).ok && !relay_uri(cast(string) data[..]).ok;
+}
+
+relay_uri :: (text: string) -> RelayUri #export_c {
+  bad: RelayUri;
+  if uri_prefix(text, "wss://") {
+    p := uri_parse(text);
+    if !p.ok { return bad; }
+    return RelayUri.{ok = true, tls = true, host_from = p.host_from, host_to = p.host_to, port = p.port, target_from = p.path_from, target_to = text.count};
+  }
+  if !uri_prefix(text, "ws://") || text.count > RELAY_URI_MAX { return bad; }
+  // Parse the wss:// spelling of the same bytes, then shift its ranges back by one.
+  buf: [2048] u8; buf[0] = 'w'; buf[1] = 's'; buf[2] = 's';
+  for i: 2..<text.count { buf[i + 1] = text[i]; }
+  p := uri_parse(cast(string) buf[0..<text.count + 1]);
+  if !p.ok { return bad; }
+  r := RelayUri.{ok = true, tls = false, host_from = p.host_from - 1, host_to = p.host_to - 1, port = p.port, target_from = p.path_from - 1, target_to = text.count};
+  if p.path_from == p.host_to { r.port = 80; }  // no ":port" between host and path
+  return r;
+}

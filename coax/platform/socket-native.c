@@ -170,6 +170,11 @@ int64_t cxsock_byte(int64_t h, int64_t i) {
   return s->in[i];
 }
 
+int cxsock_fd(int64_t h) {
+  cxsock_slot *s = cxsock_get(h);
+  return s == NULL ? -1 : s->fd;
+}
+
 int64_t cxsock_close(int64_t h) {
   cxsock_slot *s = cxsock_get(h);
   if (s == NULL) return CXSOCK_ERROR;

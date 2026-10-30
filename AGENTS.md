@@ -74,6 +74,7 @@ scripts/proto.sh check                      # schemas (needs PROTOC and PROTO_PY
 python3 verse/test_home.py               # the home against real protobuf
 verse/test_sanitized.sh                  # ASan/UBSan harness
 verse/test_voice.sh [WAV...]             # voice engine, wire, floor, meter through voice.h (ASan/UBSan, protoc)
+coax/tests/net/tls.sh [--public [URL]]   # wss://: tls-native.c under ASan/UBSan against local TLS endpoints (OpenSSL from Nix)
 apps/openagents-ios/build.sh                # the app, for the simulator
 coax/web/serve.sh apps/openagents-web       # the website with hot reload: http://127.0.0.1:8800/
 ```

@@ -1,0 +1,190 @@
+// Test driver for wss:// (coax/tests/net/tls.sh): relay_uri.coax decides
+// plain or TLS, host and port; the socket and TLS effects move bytes; ws.coax
+// does the WebSocket handshake and frames. Built as a C library and called
+// from tls_test.c. Mask keys and the handshake nonce are fixed test bytes,
+// not entropy: this is a test driver, not the relay client.
+#load "../../lib/net/relay_uri.coax";
+#load "../../lib/net/ws.coax";
+
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+cxtls_host_push :: (byte: int) -> int #foreign;
+cxtls_start :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_write :: (h: int, byte: int) -> int #foreign;
+cxtls_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxtls_byte :: (h: int, i: int) -> int #foreign;
+cxtls_version :: (h: int) -> int #foreign;
+cxtls_close :: (h: int) -> int #foreign;
+
+// Driver failures, below the effects' codes (-1 .. -11).
+TW_URL :: -20; TW_REQUEST :: -21; TW_HELLO :: -22; TW_FRAME :: -23; TW_ECHO :: -24; TW_BUFFER :: -25; TW_CLOSED :: -26;
+TW_TIMEOUT_MS :: 5000;
+TW_IN_MAX :: 65536;
+
+Conn :: struct { h: int; tls: bool; }
+
+tw_open :: (url: string) -> Conn {
+  r := relay_uri(url);
+  if !r.ok { return Conn.{h = TW_URL}; }
+  host := url[r.host_from..<r.host_to];
+  // A refused byte makes the connect itself fail (the effect remembers it).
+  for b: host { pushed := cxsock_host_push(cast(int) b); if pushed != 0 { break; } }
+  h := cxsock_connect(r.port, TW_TIMEOUT_MS);
+  if h < 0 { return Conn.{h = h}; }
+  if r.tls {
+    for b: host { pushed := cxtls_host_push(cast(int) b); if pushed != 0 { break; } }
+    e := cxtls_start(h, TW_TIMEOUT_MS);
+    if e != 0 { return Conn.{h = tw_fail(Conn.{h = h}, e)}; }
+  }
+  return Conn.{h = h, tls = r.tls};
+}
+tw_write :: (c: Conn, bytes: string) -> int {
+  for b: bytes {
+    e := ifx c.tls then cxtls_write(c.h, cast(int) b) else cxsock_write(c.h, cast(int) b);
+    if e != 0 { return e; }
+  }
+  return ifx c.tls then cxtls_flush(c.h, TW_TIMEOUT_MS) else cxsock_flush(c.h, TW_TIMEOUT_MS);
+}
+// Appends what the transport has to acc[used[0]..]; the count or an error.
+tw_fill :: (c: Conn, acc: [] u8, used: [] int) -> int {
+  n := ifx c.tls then cxtls_read(c.h, TW_TIMEOUT_MS) else cxsock_read(c.h, TW_TIMEOUT_MS);
+  if n < 0 { return n; }
+  if used[0] + n > acc.count { return TW_BUFFER; }
+  for i: 0..<n {
+    acc[used[0] + i] = cast,trunc(u8) (ifx c.tls then cxtls_byte(c.h, i) else cxsock_byte(c.h, i));
+  }
+  used[0] += n;
+  return n;
+}
+tw_close :: (c: Conn) -> int { return ifx c.tls then cxtls_close(c.h) else cxsock_close(c.h); }
+// Closes c and returns code; a failed close reports itself only when code was a success.
+tw_fail :: (c: Conn, code: int) -> int {
+  closed := tw_close(c);
+  return ifx closed != 0 && code >= 0 then closed else code;
+}
+tw_shift :: (acc: [] u8, used: [] int, n: int) {
+  for i: n..<used[0] { acc[i - n] = acc[i]; }
+  used[0] -= n;
+}
+
+// Connect, upgrade to WebSocket. h >= 0 on success; acc holds any bytes
+// after the 101 response.
+tw_hello :: (url: string, acc: [] u8, used: [] int) -> Conn {
+  c := tw_open(url);
+  if c.h < 0 { return c; }
+  r := relay_uri(url);
+  text := "coax tls test 16"; nonce: [16] u8; key: [24] u8;
+  for i: 0..<16 { nonce[i] = text[i]; }
+  if !ws_key(nonce[..], key[..]) { return Conn.{h = tw_fail(c, TW_REQUEST)}; }
+  // The request target: the URL's path and query, with "/" in front of a bare query.
+  target: [2049] u8; tn := 0;
+  if r.target_from == r.target_to || url[r.target_from] != '/' { target[0] = '/'; tn = 1; }
+  for i: r.target_from..<r.target_to { target[tn] = url[i]; tn += 1; }
+  req: [4096] u8;
+  n := ws_request(url[r.host_from..<r.host_to], r.port, cast(string) target[0..<tn], cast(string) key[..], req[..]);
+  if n < 0 { return Conn.{h = tw_fail(c, TW_REQUEST)}; }
+  e := tw_write(c, cast(string) req[0..<n]);
+  if e != 0 { return Conn.{h = tw_fail(c, e)}; }
+  while true {
+    k := tw_fill(c, acc, used);
+    if k < 0 { return Conn.{h = tw_fail(c, k)}; }
+    hello := ws_response(cast(string) acc[0..<used[0]], cast(string) key[..]);
+    if hello.status == WS_HELLO_OK { tw_shift(acc, used, hello.consumed); return c; }
+    if hello.status != WS_HELLO_MORE { return Conn.{h = tw_fail(c, TW_HELLO)}; }
+  }
+  return c;
+}
+
+// The next complete message (text or binary) into msg; its length, or an error.
+tw_message :: (c: Conn, acc: [] u8, used: [] int, msg: [] u8) -> int {
+  reader: [1] WsReader;
+  while true {
+    f := ws_frame_read(cast(string) acc[0..<used[0]], TW_IN_MAX);
+    if f.status == WS_FRAME_MORE {
+      k := tw_fill(c, acc, used);
+      if k < 0 { return k; }
+    } else if f.status != WS_FRAME_OK {
+      return TW_FRAME;
+    } else if used[0] < f.total {
+      k := tw_fill(c, acc, used);
+      if k < 0 { return k; }
+    } else {
+      ev := ws_take(reader[..], f, cast(string) acc[f.header..<f.total], msg);
+      tw_shift(acc, used, f.total);
+      if ev == WS_EV_MESSAGE { return reader[0].used; }
+      if ev == WS_EV_CLOSE { return TW_CLOSED; }
+      if ev != WS_EV_PART && ev != WS_EV_PING && ev != WS_EV_PONG { return TW_FRAME; }
+    }
+  }
+  return TW_FRAME;
+}
+
+// The closing handshake (RFC 6455 section 7): send close, read until the
+// server's close frame (skipping data still in flight), then close the
+// transport, so the server's reply never meets a reset socket.
+tw_bye :: (c: Conn, acc: [] u8, used: [] int) -> int {
+  mask := [4] u8.[9, 8, 7, 6]; out: [16] u8;
+  n := ws_close_write(WS_CLOSE_NORMAL, mask[..], out[..]);
+  sent := tw_write(c, cast(string) out[0..<n]);
+  if sent != 0 { return tw_fail(c, sent); }
+  msg: [65536] u8; m := 0;
+  while m >= 0 { m = tw_message(c, acc, used, msg[..]); }
+  return tw_fail(c, ifx m == TW_CLOSED then 0 else m);
+}
+
+// TCP and, for wss://, the TLS handshake only: the negotiated TLS version
+// (0x0303, 0x0304), 1 for plain ws://, or the effect's error code.
+tlsws_connect :: (url: string) -> int #export_c {
+  c := tw_open(url);
+  if c.h < 0 { return c.h; }
+  v := ifx c.tls then cxtls_version(c.h) else 1;
+  return tw_fail(c, v);
+}
+
+// WebSocket upgrade, one text message out and its echo back, then close.
+// The TLS version (or 1 for ws://) on success, else an error code.
+tlsws_echo :: (url: string, message: string) -> int #export_c {
+  acc: [65536] u8; used: [1] int;
+  c := tw_hello(url, acc[..], used[..]);
+  if c.h < 0 { return c.h; }
+  v := ifx c.tls then cxtls_version(c.h) else 1;
+  mask := [4] u8.[1, 2, 3, 4]; out: [1024] u8;
+  n := ws_frame_write(WS_OP_TEXT, true, message, mask[..], out[..]);
+  if n < 0 { return tw_fail(c, TW_REQUEST); }
+  e := tw_write(c, cast(string) out[0..<n]);
+  if e != 0 { return tw_fail(c, e); }
+  msg: [65536] u8;
+  m := tw_message(c, acc[..], used[..], msg[..]);
+  if m < 0 { return tw_fail(c, m); }
+  if cast(string) msg[0..<m] != message { return tw_fail(c, TW_ECHO); }
+  bye := tw_bye(c, acc[..], used[..]);
+  return ifx bye == 0 then v else bye;
+}
+
+// A read-only NIP-01 query: send req (a REQ for subscription "coax-tls"),
+// read messages until EOSE for it. The count of EVENT messages, or an error.
+tlsws_req_eose :: (url: string, req: string) -> int #export_c {
+  acc: [65536] u8; used: [1] int;
+  c := tw_hello(url, acc[..], used[..]);
+  if c.h < 0 { return c.h; }
+  mask := [4] u8.[5, 6, 7, 8]; out: [4096] u8;
+  n := ws_frame_write(WS_OP_TEXT, true, req, mask[..], out[..]);
+  if n < 0 { return tw_fail(c, TW_REQUEST); }
+  e := tw_write(c, cast(string) out[0..<n]);
+  if e != 0 { return tw_fail(c, e); }
+  events := 0; msg: [65536] u8;
+  while true {
+    m := tw_message(c, acc[..], used[..], msg[..]);
+    if m < 0 { return tw_fail(c, m); }
+    s := cast(string) msg[0..<m];
+    if ws_starts(s, "[\"EOSE\",\"coax-tls\"") { bye := tw_bye(c, acc[..], used[..]); return ifx bye == 0 then events else bye; }
+    if ws_starts(s, "[\"EVENT\",\"coax-tls\"") { events += 1; }
+  }
+  return events;
+}
