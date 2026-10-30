@@ -76,7 +76,7 @@ static void send_all(int fd, const void *data, size_t n) {
 static const char *reason(int status) {
   switch (status) {
     case 200: return "OK"; case 204: return "No Content"; case 301: return "Moved Permanently"; case 303: return "See Other";
-    case 400: return "Bad Request"; case 401: return "Unauthorized"; case 403: return "Forbidden";
+    case 400: return "Bad Request"; case 401: return "Unauthorized"; case 402: return "Payment Required"; case 403: return "Forbidden";
     case 404: return "Not Found"; case 405: return "Method Not Allowed"; case 409: return "Conflict"; case 413: return "Payload Too Large"; case 429: return "Too Many Requests";
     case 500: return "Internal Server Error";
     case 503: return "Service Unavailable"; default: return "Error";

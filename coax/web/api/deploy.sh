@@ -16,6 +16,9 @@
 # they exist, and the runner services oa-agent-staging and oa-agent, when
 # deployed (coax/web/agent/deploy.sh), become OA_AGENT_WAKE_URL.
 #
+# Inference credit (inference.c, NIP-X402 over Spark): OA_SPARK_URL is oa-spark's URL when that
+# service exists; the API's runtime account may invoke it (coax/web/api/spark/deploy.sh).
+#
 # Publishing from a drop (rc-publish, drops.c): Secret Manager oa-project-kek-staging and
 # oa-project-kek-production (64 hex digits each, made once, never printed) seal each project's
 # key; while one is missing that environment's PUBLISH only freezes the draft.
@@ -64,6 +67,10 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
     secrets+=",OA_PROJECT_KEK=$kek:latest"
     env+="@OA_PUBLISH_RELAY=wss://relay.openagents.com@OA_SITE_BUCKET=$site@OA_PUBLISH_VISIBILITY=$vis"
   fi
+  # Inference credit (inference.c): our Spark wallet, oa-spark (coax/web/api/spark/deploy.sh), when deployed.
+  local spark
+  spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
+  [[ -n "$spark" ]] && env+="@OA_SPARK_URL=$spark"
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"
   local release
