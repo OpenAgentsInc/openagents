@@ -456,8 +456,8 @@ sp_rebuild :: (s: [] Everglade) {
   sp_say(s, ifx rested then "LONG REST · THE TOWN STANDS AGAIN" else "THE TOWN STANDS AGAIN", n, "PIECES");
 }
 
-// The pointer: a click on a slot presses it, a tap when it lifts (unless it
-// was held for the card, as the old engine's bar); with a spell picked
+// The pointer: a click or a tap on a slot presses it at once (a finger held
+// on it shows its card until it lifts); with a spell picked
 // the pointer aims and a click or a tap casts where it points. A mouse drag
 // still turns the camera.
 spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
@@ -467,15 +467,17 @@ spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: i
   if phase == 0 {
     for b: 0..<SP_BAR + 1 {
       if in_box(s[0].sp.boxes[b], x, y) {
+        // a tap acts at once, as its key does (the owner, October 30: on a phone a tap only showed
+        // the card); a finger held on it shows the card until it lifts
         s[0].sp.slot_finger = id; s[0].sp.slot_held = -1;
-        if kind == 0 { sp_press(s, b); } else { s[0].sp.slot_held = b; s[0].sp.slot_t = s[0].time; }
+        sp_press(s, b);
+        if kind != 0 { s[0].sp.slot_held = b; s[0].sp.slot_t = s[0].time; }
         return true;
       }
     }
   }
   if id == s[0].sp.slot_finger && s[0].sp.slot_finger >= 0 {
     if phase >= 2 {
-      if phase == 2 && s[0].sp.slot_held >= 0 && s[0].time - s[0].sp.slot_t < f64(HB_LONG) { sp_press(s, s[0].sp.slot_held); }
       s[0].sp.slot_finger = -1; s[0].sp.slot_held = -1;
     }
     return true;
@@ -2256,8 +2258,8 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   _ := everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   b := g[0].sp.boxes[SP_BOLT];
   #assert b.x1 > b.x0 && b.x1 <= 780;
-  // the slot acts when the finger lifts, as the old engine's bar (a held finger shows its card)
-  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 3) && g[0].sp.armed == -1;
+  // a tap picks the spell at once, as its key does (a held finger shows its card too)
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 3) && g[0].sp.armed == SP_BOLT;
   #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 3) && g[0].sp.armed == SP_BOLT;
   // a tap in the middle of the screen casts there
   #assert everglade_pointer(g[..], 390, 1200, 0, 1, 4);
@@ -2503,13 +2505,12 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   r1 := g[0].sp.boxes[HB_PHONE_ROW];
   #assert abs(r1.x0 - g[0].sp.boxes[0].x0) < 1 && abs(r1.y0 - g[0].sp.boxes[0].y0 - 42 * pu) < 1.5;
   #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu - 2 * 42 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
-  // a finger held on the slot shows the card (at 2x) and, lifted, casts nothing
+  // a finger held on the slot picks it and shows the card (at 2x) until it lifts
   #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 0, 1, 7);
   for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/thunderbolt-card-2x.jpg ");
-  #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 2, 1, 7) && g[0].sp.armed == -1;
+  #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 2, 1, 7) && g[0].sp.armed == SP_BOLT && g[0].sp.slot_held == -1;
   // picked, its frame is the gold one, two pixels, over the icon's edge: the icon draws a pixel in
-  #assert everglade_key(g[..], '2', 0) && g[0].sp.armed == SP_BOLT;
   _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   on := false;
   for k: 0..<g[0].plate_n { if u[U_PLATE + k * 8 + 5] == PLATE_SLOT_ON && u[U_PLATE + k * 8 + 7] == 4 { on = true; } }
