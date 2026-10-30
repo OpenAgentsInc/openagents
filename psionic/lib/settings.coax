@@ -1,0 +1,393 @@
+// Chapter 182: fit settings on recorded answers. A stall detector's weight,
+// threshold and cut point are fitted from answers already recorded, with no
+// model calls: candidates at the midpoints where a decision changes, a
+// coordinate search priced by written costs, and a move kept only when it is
+// strictly cheaper on the recorded answers and, optionally, on grouped
+// cross-validation.
+// Profile cpu-f64-settings-v1: binary64, costs counted then priced, up to
+// 1,024 recorded steps, 2 to 16 folds of runs and up to 16 passes.
+#load "tabular.coax";
+#authority;
+
+StStatus :: enum u8 {ok;shape;capacity;number;}
+StRow :: struct {group:int;p:f64;repeats:int;quiet:f64;stalled:bool;}
+StSettings :: struct {weight:f64;threshold:f64;quiet:f64;}
+StCosts :: struct {miss:f64;alarm:f64;}
+StScore :: struct {rows:int;stalls:int;flagged:int;caught:int;missed:int;alarms:int;cost:f64;}
+StBest :: struct {value:f64;cost:f64;current:f64;}
+StOutcome :: enum u8 {none;accepted;no_gain;no_held_gain;}
+StStep :: struct {pass:int;which:int;outcome:StOutcome;from:f64;to:f64;before:f64;after:f64;held:f64;}
+StFit :: struct {status:StStatus;settings:StSettings;steps:int;accepted:int;}
+
+ST_STEPS :: 10;
+ST_REPEATS :: 8.0;
+ST_REPEATS_MAX :: 8;
+ST_WEIGHT_MAX :: 4.0;
+ST_ROWS_MAX :: 1024;
+ST_FOLDS_MAX :: 16;
+ST_PASSES_MAX :: 16;
+ST_BIG :: 1.0e300;
+
+// Checks precede the implementation. Pinned values come from
+// psionic/tests/settings_oracle.py --tests; the rest are worked by hand.
+st_tiny :: ()->[6]StRow {
+    return [6]StRow.[StRow.{group=0,p=0.6,quiet=10,stalled=true},StRow.{group=0,p=0.3,repeats=4,quiet=20,stalled=true},
+        StRow.{group=1,p=0.2,quiet=500,stalled=true},StRow.{group=1,p=0.45,quiet=30},
+        StRow.{group=2,p=0.1,repeats=2,quiet=40},StRow.{group=2,p=0.55,repeats=8,quiet=600}];
+}
+// The hand-written settings and the written costs of chapter 182.
+ST_START :: StSettings.{weight=0,threshold=0.5,quiet=700};
+ST_COSTS :: StCosts.{miss=4,alarm=1};
+st_score_is :: (s:StScore,rows:int,stalls:int,flagged:int,caught:int,missed:int,alarms:int,cost:f64)->bool {
+    return s.rows==rows && s.stalls==stalls && s.flagged==flagged && s.caught==caught && s.missed==missed && s.alarms==alarms && s.cost==cost;
+}
+st_step_is :: (s:StStep,pass:int,which:int,outcome:StOutcome,to:f64,before:f64,after:f64,held:f64)->bool {
+    return s.pass==pass && s.which==which && s.outcome==outcome && s.to==to && s.before==before && s.after==after && s.held==held;
+}
+
+#test "the simulator at its counters" {
+    rows:[41]StRow;rows[40].p=7;
+    #assert st_simulate(15,4,rows[..])==StStatus.ok && rows[40].p==7;
+    #assert rows[0].group==0 && rows[0].p==0.5729404227695227 && rows[0].repeats==7 && rows[0].quiet==64.8163070877361 && rows[0].stalled;
+    #assert rows[1].group==0 && rows[1].p==0.2082953893151321 && rows[1].repeats==0 && rows[1].quiet==220.32451310962261 && !rows[1].stalled;
+    stalls:=0;
+    for row,i:rows[0..<40] {
+        g:=i/10;s:=i%10;b:=cast(u64)(1000*(g+1)+8*s);
+        #assert row.group==g && row.stalled==(tb_uniform(15,b)+0.1+0.4*tb_uniform(15,cast(u64)g)>=1);
+        a:=tb_uniform(15,b+1)+tb_uniform(15,b+2);u3:=tb_uniform(15,b+3);
+        if row.stalled {
+            stalls+=1;
+            #assert row.p==0.2+0.5*a/2 && row.repeats==cast(int)(9*u3) && row.quiet==30+700*tb_uniform(15,b+4);
+        } else {
+            #assert row.p==0.55*a/2 && row.repeats==cast(int)(4*u3*u3) && row.quiet==700*tb_uniform(15,b+4)*tb_uniform(15,b+5);
+        }
+    }
+    #assert stalls==16;
+    #assert st_simulate(15,1,rows[0..<10])==StStatus.ok && rows[0].p==0.5729404227695227;
+    #assert st_simulate(15,0,rows[..])==StStatus.shape && st_simulate(15,103,rows[..])==StStatus.shape;
+    #assert st_simulate(15,5,rows[..])==StStatus.capacity && st_simulate(15,4,rows[0..<39])==StStatus.capacity;
+    big:[1024]StRow;#assert st_simulate(15,102,big[..])==StStatus.ok && big[1019].group==101;
+}
+
+#test "the check helpers see every field" {
+    s:=StScore.{rows=1,stalls=2,flagged=3,caught=4,missed=5,alarms=6,cost=7};
+    #assert st_score_is(s,1,2,3,4,5,6,7);
+    #assert !st_score_is(s,0,2,3,4,5,6,7) && !st_score_is(s,1,0,3,4,5,6,7) && !st_score_is(s,1,2,0,4,5,6,7) && !st_score_is(s,1,2,3,0,5,6,7);
+    #assert !st_score_is(s,1,2,3,4,0,6,7) && !st_score_is(s,1,2,3,4,5,0,7) && !st_score_is(s,1,2,3,4,5,6,0);
+    t:=StStep.{pass=1,which=2,outcome=StOutcome.accepted,to=3,before=4,after=5,held=6};
+    #assert st_step_is(t,1,2,StOutcome.accepted,3,4,5,6);
+    #assert !st_step_is(t,0,2,StOutcome.accepted,3,4,5,6) && !st_step_is(t,1,0,StOutcome.accepted,3,4,5,6) && !st_step_is(t,1,2,StOutcome.no_gain,3,4,5,6);
+    #assert !st_step_is(t,1,2,StOutcome.accepted,0,4,5,6) && !st_step_is(t,1,2,StOutcome.accepted,3,0,5,6) && !st_step_is(t,1,2,StOutcome.accepted,3,4,0,6);
+    #assert !st_step_is(t,1,2,StOutcome.accepted,3,4,5,0);
+}
+
+#test "the rule and its written costs by hand" {
+    rows:=st_tiny();
+    #assert st_score_is(st_score(rows[..],ST_START,ST_COSTS),6,3,2,1,2,1,9);
+    #assert st_score_is(st_score(rows[..],ST_START,StCosts.{miss=0.5,alarm=3}),6,3,2,1,2,1,4);
+    // At the threshold and at the cut point a step is flagged.
+    edge:=StRow.{p=0.5,quiet=1};#assert st_flag(ST_START,edge);edge.p=0.4999;#assert !st_flag(ST_START,edge);
+    edge.quiet=700;#assert st_flag(ST_START,edge);edge.quiet=699.99;#assert !st_flag(ST_START,edge);
+    // The weight adds its share for each repeated call, up to eight.
+    w:=StSettings.{weight=0.4,threshold=0.5,quiet=700};
+    #assert st_flag(w,rows[1]) && !st_flag(w,rows[4]) && st_score_of(w,rows[5])==0.55+0.4;
+    #assert st_score_is(st_score(rows[..],w,ST_COSTS),6,3,3,2,1,1,5);
+    #assert st_score_is(st_score(rows[0..<1],w,ST_COSTS),1,1,1,1,0,0,0);
+}
+
+#test "candidates sit where a decision changes" {
+    v:=[5]f64.[3,1,3,2,1];#assert st_distinct(v[..],5)==3 && v[0]==1 && v[1]==2 && v[2]==3;
+    #assert st_distinct(v[..],0)==0;
+    rows:=st_tiny();out:[8]f64;
+    k:=st_candidates(rows[..],ST_START,0,out[..]);
+    #assert k==3 && out[0]==0 && out[1]==((0.5-0.3)*8/4+(0.5-0.1)*8/2)/2 && out[2]==4;
+    k=st_candidates(rows[..],ST_START,1,out[..]);
+    #assert k==7 && out[0]==0.1 && out[1]==(0.1+0.2)/2 && out[2]==(0.2+0.3)/2 && out[3]==(0.3+0.45)/2 && out[4]==(0.45+0.55)/2 && out[5]==(0.55+0.6)/2 && out[6]==1.6;
+    k=st_candidates(rows[..],ST_START,2,out[..]);
+    #assert k==7 && out[0]==10 && out[1]==15 && out[2]==25 && out[3]==35 && out[4]==270 && out[5]==550 && out[6]==601;
+    // The threshold's candidates follow the weight; points at 0 or past the
+    // largest weight, and steps already at the threshold, are not candidates.
+    w:=StSettings.{weight=1,threshold=0.5,quiet=700};
+    k=st_candidates(rows[..],w,1,out[..]);#assert k==7 && out[0]==0.2 && out[6]==0.55+1+1;
+    low:=StSettings.{weight=0,threshold=0.1,quiet=700};#assert st_candidates(rows[..],low,0,out[..])==2 && out[0]==0 && out[1]==4;
+    high:=StSettings.{weight=0,threshold=1.3,quiet=700};
+    k=st_candidates(rows[..],high,0,out[..]);
+    #assert k==3 && out[1]==((1.3-0.55)*8/8+(1.3-0.3)*8/4)/2;
+    one:=rows;one[1].repeats=0;one[5].repeats=0;
+    #assert st_candidates(one[..],ST_START,0,out[..])==2 && out[0]==0 && out[1]==4;
+    #assert st_candidates(rows[0..<1],ST_START,1,out[..])==2 && out[0]==0.6 && out[1]==1.6;
+    // A step at the threshold, or one that the largest weight only just
+    // reaches, is not a candidate; one repeat more and it is.
+    edge:=[3]StRow.[StRow.{p=0.5,repeats=3},StRow.{p=0,repeats=1},StRow.{p=0.25,repeats=2}];
+    #assert st_candidates(edge[..],ST_START,0,out[..])==2 && out[0]==0 && out[1]==4;
+    edge[1].repeats=2;#assert st_candidates(edge[..],ST_START,0,out[..])==3 && out[1]==1.5 && out[2]==4;
+}
+
+#test "the cheapest candidate, first on ties, and only if strictly cheaper" {
+    rows:=st_tiny();
+    b:=st_best(rows[..],ST_START,0,ST_COSTS);#assert b.value==(0.4+1.6)/2 && b.cost==5 && b.current==9;
+    b=st_best(rows[..],ST_START,1,ST_COSTS);#assert b.value==(0.1+0.2)/2 && b.cost==2 && b.current==9;
+    b=st_best(rows[..],ST_START,2,ST_COSTS);#assert b.value==10 && b.cost==3 && b.current==9;
+    // Nothing cheaper: the current value stays.
+    at:=StSettings.{weight=0,threshold=0.15,quiet=700};
+    b=st_best(rows[..],at,1,ST_COSTS);#assert b.value==0.15 && b.cost==2 && b.current==2;
+    b=st_best(rows[..],at,2,ST_COSTS);#assert b.value==700 && b.cost==2;
+    #assert st_with(ST_START,0,2).weight==2 && st_with(ST_START,1,2).threshold==2 && st_with(ST_START,2,2).quiet==2;
+    #assert st_with(ST_START,1,2).weight==0 && st_with(ST_START,0,2).quiet==700 && st_with(ST_START,2,2).threshold==0.5;
+    #assert st_get(at,0)==0 && st_get(at,1)==0.15 && st_get(at,2)==700;
+}
+
+#test "a fit on four recorded runs" {
+    rows:[40]StRow;#assert st_simulate(15,4,rows[..])==StStatus.ok;
+    trail:[12]StStep;
+    f:=st_fit(rows[..],ST_START,ST_COSTS,3,true,4,trail[..]);
+    #assert f.status==StStatus.ok && f.steps==9 && f.accepted==3;
+    #assert f.settings.weight==0.8303626292604434 && f.settings.threshold==0.5267784987119637 && f.settings.quiet==496.58585677043914;
+    #assert st_step_is(trail[0],0,0,StOutcome.accepted,0.8303626292604434,45,16,20) && trail[0].from==0;
+    #assert st_step_is(trail[1],0,1,StOutcome.no_held_gain,0.3594533170507178,16,13,23) && trail[1].from==0.5;
+    #assert st_step_is(trail[2],0,2,StOutcome.accepted,496.58585677043914,16,9,13) && trail[2].from==700;
+    // Refitting the weight without each fold costs exactly what leaving it costs: kept as is.
+    #assert st_step_is(trail[3],1,0,StOutcome.no_held_gain,0.46010292558632404,9,7,9);
+    #assert st_step_is(trail[4],1,1,StOutcome.accepted,0.5267784987119637,9,6,8);
+    for k:5..<9 {#assert trail[k].outcome==StOutcome.no_gain && trail[k].before==6 && trail[k].after==6 && trail[k].held==0 && trail[k].from==trail[k].to;}
+    #assert trail[8].pass==2 && trail[8].which==2 && trail[9].outcome==StOutcome.none;
+    #assert st_score_is(st_score(rows[..],f.settings,ST_COSTS),40,16,17,15,1,2,6);
+    two:=st_fit(rows[..],ST_START,ST_COSTS,2,true,4,trail[..]);
+    #assert two.steps==9 && trail[0].held==19 && trail[1].held==18 && trail[2].held==14 && trail[3].held==19 && trail[4].held==6;
+    g:=st_fit(rows[..],ST_START,ST_COSTS,3,false,4,trail[..]);
+    #assert g.status==StStatus.ok && g.steps==12 && g.accepted==5;
+    #assert g.settings.weight==0 && g.settings.threshold==0.3594533170507178 && g.settings.quiet==456.2306538871127;
+    #assert st_step_is(trail[1],0,1,StOutcome.accepted,0.3594533170507178,16,13,0);
+    #assert st_step_is(trail[3],1,0,StOutcome.accepted,0.2681758974633146,13,10,0) && trail[3].from==0.8303626292604434;
+    #assert st_step_is(trail[5],1,2,StOutcome.accepted,456.2306538871127,10,7,0);
+    #assert st_step_is(trail[6],2,0,StOutcome.accepted,0,7,6,0) && st_step_is(trail[11],3,2,StOutcome.no_gain,456.2306538871127,6,6,0);
+    #assert st_score_is(st_score(rows[..],g.settings,ST_COSTS),40,16,22,16,0,6,6);
+    // One pass stops after three steps; a pass that changes nothing ends the search.
+    one:=st_fit(rows[..],ST_START,ST_COSTS,3,true,1,trail[0..<3]);#assert one.steps==3 && one.accepted==2;
+    at:=st_fit(rows[..],f.settings,ST_COSTS,3,true,4,trail[..]);#assert at.steps==3 && at.accepted==0 && at.settings.quiet==f.settings.quiet;
+}
+
+#test "a fit on the six hand-worked steps" {
+    rows:=st_tiny();trail:[12]StStep;
+    for row,i:rows {#assert row.group==i/2;}
+    // Each fold holds out one run. Without run 0 the weight stays 0 and run 0
+    // costs 4; without run 1 it becomes 1 and run 1 costs 4; without run 2 it
+    // becomes 4 and run 2 costs 2. 10 is not below 9, so the weight is refused.
+    f:=st_fit(rows[..],ST_START,ST_COSTS,3,true,4,trail[..]);
+    #assert f.steps==6 && f.accepted==1 && f.settings.weight==0 && f.settings.threshold==0.15000000000000002 && f.settings.quiet==700;
+    #assert st_step_is(trail[0],0,0,StOutcome.no_held_gain,1,9,5,10) && st_step_is(trail[1],0,1,StOutcome.accepted,0.15000000000000002,9,2,2);
+    g:=st_fit(rows[..],ST_START,ST_COSTS,3,false,4,trail[..]);
+    #assert g.steps==9 && g.accepted==3 && g.settings.weight==0 && g.settings.threshold==0.2 && g.settings.quiet==700;
+    #assert st_step_is(trail[1],0,1,StOutcome.accepted,0.2,5,3,0) && st_step_is(trail[3],1,0,StOutcome.accepted,0,3,2,0);
+}
+
+#test "fit refusals" {
+    rows:=st_tiny();trail:[48]StStep;
+    #assert st_fit(rows[..],ST_START,ST_COSTS,3,true,16,trail[..]).status==StStatus.ok;
+    #assert st_fit(rows[..],ST_START,ST_COSTS,3,true,16,trail[0..<47]).status==StStatus.capacity;
+    #assert st_fit(rows[..],ST_START,ST_COSTS,3,true,2,trail[0..<6]).status==StStatus.ok;
+    #assert st_fit(rows[..],ST_START,ST_COSTS,3,true,17,trail[..]).status==StStatus.shape && st_fit(rows[..],ST_START,ST_COSTS,3,true,0,trail[..]).status==StStatus.shape;
+    #assert st_fit(rows[..],ST_START,ST_COSTS,1,true,2,trail[..]).status==StStatus.shape && st_fit(rows[..],ST_START,ST_COSTS,17,true,2,trail[..]).status==StStatus.shape;
+    // Fold 3 of 4 would be empty; with two folds of one group, nothing is left to fit on.
+    #assert st_fit(rows[..],ST_START,ST_COSTS,4,true,2,trail[..]).status==StStatus.shape;
+    #assert st_fit(rows[0..<2],ST_START,ST_COSTS,2,true,2,trail[..]).status==StStatus.shape;
+    #assert st_fit(rows[0..<0],ST_START,ST_COSTS,2,true,2,trail[..]).status==StStatus.shape;
+    many:[17]StRow;for i:0..<17 {many[i]=rows[i%6];many[i].group=i;}
+    #assert st_fit(many[0..<16],ST_START,ST_COSTS,16,true,1,trail[..]).status==StStatus.ok;
+    #assert st_fit(many[..],ST_START,ST_COSTS,17,true,1,trail[..]).status==StStatus.shape;
+    #assert st_fit(rows[..],ST_START,ST_COSTS,0,true,1,trail[..]).status==StStatus.shape;
+    // Runs 1, 3 and 5 leave fold 0 of 2 empty.
+    odd:=st_tiny();for i:0..<6 {odd[i].group=2*odd[i].group+1;}
+    #assert st_fit(odd[..],ST_START,ST_COSTS,2,true,1,trail[..]).status==StStatus.shape && st_fit(odd[..],ST_START,ST_COSTS,3,true,1,trail[..]).status==StStatus.ok;
+    bad:[8][6]StRow;for k:0..<8 {bad[k]=st_tiny();}
+    bad[0][0].group=-1;bad[1][0].repeats=-1;bad[2][0].repeats=9;
+    bad[3][0].p=-0.01;bad[4][0].p=1.01;bad[5][0].quiet=-1;bad[6][0].quiet=1.0e301;bad[7][0].p=0.0/0.0;
+    for k:0..<3 {#assert st_fit(bad[k][..],ST_START,ST_COSTS,3,true,2,trail[..]).status==StStatus.shape;}
+    for k:3..<8 {#assert st_fit(bad[k][..],ST_START,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;}
+    ok:=st_tiny();ok[0].p=1;ok[1].p=0;ok[2].repeats=8;ok[3].quiet=1.0e300;ok[4].quiet=0;
+    #assert st_fit(ok[..],ST_START,ST_COSTS,3,true,2,trail[..]).status==StStatus.ok;
+    s:=ST_START;s.weight=-0.1;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;
+    s.weight=4.1;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;
+    s.weight=4;s.threshold=-1.0e300;s.quiet=1.0e300;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.ok;
+    s=ST_START;s.weight=0;s.threshold=1.0e300;s.quiet=-1.0e300;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.ok;
+    s=ST_START;s.threshold=1.0e301;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;
+    s=ST_START;s.threshold=-1.0e301;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;
+    s=ST_START;s.quiet=1.0e301;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;
+    s=ST_START;s.quiet=-1.0e301;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;
+    s=ST_START;s.quiet=0.0/0.0;#assert st_fit(rows[..],s,ST_COSTS,3,true,2,trail[..]).status==StStatus.number;
+    c:=ST_COSTS;c.miss=-1;#assert st_fit(rows[..],ST_START,c,3,true,2,trail[..]).status==StStatus.number;
+    c=ST_COSTS;c.alarm=-1;#assert st_fit(rows[..],ST_START,c,3,true,2,trail[..]).status==StStatus.number;
+    c=ST_COSTS;c.miss=1.0e301;#assert st_fit(rows[..],ST_START,c,3,true,2,trail[..]).status==StStatus.number;
+    c=ST_COSTS;c.alarm=1.0e301;#assert st_fit(rows[..],ST_START,c,3,true,2,trail[..]).status==StStatus.number;
+    c=StCosts.{miss=0,alarm=1.0e300};#assert st_fit(rows[..],ST_START,c,3,true,2,trail[..]).status==StStatus.ok;
+    c=StCosts.{miss=1.0e300,alarm=0};#assert st_fit(rows[..],ST_START,c,3,true,2,trail[..]).status==StStatus.ok;
+    full:[1025]StRow;for i:0..<1025 {full[i]=rows[i%6];full[i].group=i%3;}
+    #assert st_fit(full[0..<1024],ST_START,ST_COSTS,3,false,1,trail[..]).status==StStatus.ok;
+    #assert st_fit(full[..],ST_START,ST_COSTS,3,false,1,trail[..]).status==StStatus.shape;
+}
+
+// book:begin simulate
+// stall-sim-v1. Run g draws how prone it is to stall; step s of the run is
+// stalled or not, and records the model's probability that it is stalled, how
+// many times the agent repeated its last call, and how many seconds passed
+// without output. The probability is honest but timid: a stalled step reads
+// 0.2 to 0.7, a working one 0 to 0.55.
+st_simulate :: (seed:u64,runs:int,out:[]StRow)->StStatus #export_c {
+    if runs<1 || runs>ST_ROWS_MAX/ST_STEPS {return StStatus.shape;}
+    if out.count<runs*ST_STEPS {return StStatus.capacity;}
+    for g:0..<runs {
+        prone:=tb_uniform(seed,cast(u64)g);
+        for s:0..<ST_STEPS {
+            b:=cast(u64)(1000*(g+1)+8*s);
+            stalled:=cast(int)(tb_uniform(seed,b)+0.1+0.4*prone)>0;
+            a1:=tb_uniform(seed,b+1);a2:=tb_uniform(seed,b+2);a3:=tb_uniform(seed,b+3);
+            r:=StRow.{group=g,stalled=stalled};
+            if stalled {
+                r.p=0.2+0.5*(a1+a2)/2;r.repeats=cast(int)(9*a3);r.quiet=30+700*tb_uniform(seed,b+4);
+            } else {
+                r.p=0.55*(a1+a2)/2;r.repeats=cast(int)(4*a3*a3);r.quiet=700*tb_uniform(seed,b+4)*tb_uniform(seed,b+5);
+            }
+            out[g*ST_STEPS+s]=r;
+        }
+    }
+    return StStatus.ok;
+}
+// book:end simulate
+
+// book:begin rule
+// The detector: flag a step when the probability, raised by the weight for
+// each repeated call, reaches the threshold, or when it has been quiet for at
+// least the cut point in seconds.
+st_score_of :: (s:StSettings,row:StRow)->f64 {return row.p+s.weight*f64(row.repeats)/ST_REPEATS;}
+st_flag :: (s:StSettings,row:StRow)->bool {return st_score_of(s,row)>=s.threshold || row.quiet>=s.quiet;}
+// Written costs: a missed stall and a false alarm, counted then priced.
+st_score :: (rows:[]StRow,s:StSettings,costs:StCosts)->StScore #export_c {
+    r:=StScore.{rows=rows.count};
+    for row:rows {
+        f:=st_flag(s,row);
+        if row.stalled {r.stalls+=1;}
+        if f {r.flagged+=1;}
+        if row.stalled && f {r.caught+=1;}
+        if row.stalled && !f {r.missed+=1;}
+        if !row.stalled && f {r.alarms+=1;}
+    }
+    r.cost=costs.miss*f64(r.missed)+costs.alarm*f64(r.alarms);
+    return r;
+}
+// book:end rule
+
+st_with :: (s:StSettings,which:int,x:f64)->StSettings {
+    r:=s;
+    if which==0 {r.weight=x;}
+    if which==1 {r.threshold=x;}
+    if which==2 {r.quiet=x;}
+    return r;
+}
+st_get :: (s:StSettings,which:int)->f64 {return ifx which==0 then s.weight else ifx which==1 then s.threshold else s.quiet;}
+// Sorted distinct values, in place: each value is inserted into the sorted
+// prefix unless it is already there. Returns how many.
+st_distinct :: (v:[]f64,n:int)->int {
+    m:=0;
+    for i:0..<n {
+        x:=v[i];j:=m;
+        while j>0 && v[j-1]>x {j-=1;}
+        if j==0 || v[j-1]!=x {
+            k:=m;while k>j {v[k]=v[k-1];k-=1;}
+            v[j]=x;m+=1;
+        }
+    }
+    return m;
+}
+
+// book:begin candidates
+// Where a setting can change a decision. The threshold changes one where a
+// step's score sits, the cut point where its quiet seconds sit, and the
+// weight where a step that is below the threshold and repeated reaches it.
+// Between two such points every decision is the same, so the candidates are
+// the midpoints, plus one value past each end.
+st_candidates :: (rows:[]StRow,s:StSettings,which:int,out:[]f64)->int {
+    points:[ST_ROWS_MAX]f64;n:=0;
+    for row:rows {
+        if which==0 {
+            // Below the threshold and able to reach it under the largest weight.
+            gap:=(s.threshold-row.p)*ST_REPEATS;
+            if row.p<s.threshold && gap<ST_WEIGHT_MAX*f64(row.repeats) {points[n]=gap/f64(row.repeats);n+=1;}
+        } else {points[n]=ifx which==1 then st_score_of(s,row) else row.quiet;n+=1;}
+    }
+    m:=st_distinct(points[..],n);
+    out[0]=ifx which==0 then 0 else points[0];k:=1;
+    for i:1..<m {out[k]=(points[i-1]+points[i])/2;k+=1;}
+    out[k]=ifx which==0 then ST_WEIGHT_MAX else points[m-1]+1;
+    return k+1;
+}
+// book:end candidates
+
+// book:begin best
+// The candidate with the lowest written cost, the first on ties; it replaces
+// the current value only when strictly cheaper.
+st_best :: (rows:[]StRow,s:StSettings,which:int,costs:StCosts)->StBest {
+    out:[ST_ROWS_MAX+2]f64;k:=st_candidates(rows,s,which,out[..]);
+    r:=StBest.{value=st_get(s,which),current=st_score(rows,s,costs).cost};r.cost=r.current;
+    for x:out[0..<k] {
+        c:=st_score(rows,st_with(s,which,x),costs).cost;
+        if c<r.cost {r.value=x;r.cost=c;}
+    }
+    return r;
+}
+// book:end best
+
+st_rows_ok :: (rows:[]StRow)->StStatus {
+    if rows.count>ST_ROWS_MAX {return StStatus.shape;}
+    for row:rows {
+        if row.group<0 || row.repeats<0 || row.repeats>ST_REPEATS_MAX {return StStatus.shape;}
+        if !(row.p>=0 && row.p<=1) || !(row.quiet>=0 && row.quiet<=ST_BIG) {return StStatus.number;}
+    }
+    return StStatus.ok;
+}
+st_settings_ok :: (s:StSettings)->bool {
+    return s.weight>=0 && s.weight<=ST_WEIGHT_MAX && s.threshold>=-ST_BIG && s.threshold<=ST_BIG && s.quiet>=-ST_BIG && s.quiet<=ST_BIG;
+}
+
+// book:begin fit
+// Coordinate search over the weight, the threshold and the cut point, in that
+// order, until a pass changes nothing. A move is kept only when it is
+// strictly cheaper on the recorded answers and, with cross-validation, when
+// refitting that one setting without each fold of runs and pricing it on the
+// fold is strictly cheaper, in total, than leaving it alone.
+st_fit :: (rows:[]StRow,start:StSettings,costs:StCosts,folds:int,cv:bool,passes:int,trail:[]StStep)->StFit #export_c {
+    status:=st_rows_ok(rows);if status!=StStatus.ok {return StFit.{status=status};}
+    if !st_settings_ok(start) || !(costs.miss>=0 && costs.miss<=ST_BIG) || !(costs.alarm>=0 && costs.alarm<=ST_BIG) {return StFit.{status=StStatus.number};}
+    if folds<2 || folds>ST_FOLDS_MAX || passes<1 || passes>ST_PASSES_MAX {return StFit.{status=StStatus.shape};}
+    if trail.count<3*passes {return StFit.{status=StStatus.capacity};}
+    // Every fold holds out at least one run, so every fold also keeps one.
+    seen:[16]bool;for row:rows {seen[row.group%folds]=true;}
+    for f:0..<folds {if !seen[f] {return StFit.{status=StStatus.shape};}}
+    r:=StFit.{settings=start};
+    train:[ST_ROWS_MAX]StRow;
+    for pass:0..<passes {
+        changed:=false;
+        for which:0..<3 {
+            b:=st_best(rows,r.settings,which,costs);
+            step:=StStep.{pass=pass,which=which,from=st_get(r.settings,which),to=b.value,before=b.current,after=b.cost};
+            if b.cost>=b.current {step.outcome=StOutcome.no_gain;}
+            else if cv {
+                held:=0.0;
+                for f:0..<folds {
+                    a:=0;
+                    for row:rows {if row.group%folds!=f {train[a]=row;a+=1;}}
+                    // The fold's own counts are the whole set's less the training runs'.
+                    x:=st_with(r.settings,which,st_best(train[0..<a],r.settings,which,costs).value);
+                    whole:=st_score(rows,x,costs);part:=st_score(train[0..<a],x,costs);
+                    held+=costs.miss*f64(whole.missed-part.missed)+costs.alarm*f64(whole.alarms-part.alarms);
+                }
+                step.held=held;
+                step.outcome=ifx held<b.current then StOutcome.accepted else StOutcome.no_held_gain;
+            } else {step.outcome=StOutcome.accepted;}
+            if step.outcome==StOutcome.accepted {r.settings=st_with(r.settings,which,b.value);r.accepted+=1;changed=true;}
+            trail[r.steps]=step;r.steps+=1;
+        }
+        if !changed {break;}
+    }
+    return r;
+}
+// book:end fit

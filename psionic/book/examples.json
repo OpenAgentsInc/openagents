@@ -510,6 +510,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/stall-settings.coax",
+      "chapter": "psionic/book/ch182-fit-settings-on-recorded-answers.md",
+      "stdout": "psionic/fixtures/stall-settings.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

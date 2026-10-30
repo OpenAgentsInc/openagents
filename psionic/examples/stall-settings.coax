@@ -1,0 +1,73 @@
+#import "Basic";
+#load "../lib/settings.coax";
+#load "../lib/verdict.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+SETTING :: [3]string.["weight","threshold","quiet"];
+OUTCOME :: [4]string.["","accepted","no cheaper value","refused by the held-out folds"];
+VERDICT :: [3]string.["unverifiable","passed","failed"];
+REASON :: [4]string.["none","beyond the floor","within the floor","near the floor"];
+show :: (name:string,s:StSettings,x:StScore) {
+    print("  %: weight %, threshold %, quiet % s: cost %, caught % of %, % false alarms\n",name,r4(s.weight),r4(s.threshold),
+        r4(s.quiet),cast(int)x.cost,x.caught,x.stalls,x.alarms);
+}
+average :: (v:[]f64)->f64 {t:=0.0;for x:v {t+=x;}return t/f64(v.count);}
+// Per step: the written cost of each decision, negated so that higher is better.
+values :: (rows:[]StRow,s:StSettings,out:[]f64) {
+    for row,i:rows {f:=st_flag(s,row);out[i]=ifx row.stalled && !f then -4.0 else ifx f && !row.stalled then -1.0 else 0.0;}
+}
+
+// book:begin example
+main :: () {
+    rows:[400]StRow;#assert st_simulate(182,40,rows[..])==StStatus.ok;
+    first:=st_score(rows[..],ST_START,ST_COSTS);
+    print("recorded answers: 40 runs, 400 steps, % stalled; a missed stall costs 4, a false alarm 1\n",first.stalls);
+    show("hand-written",ST_START,first);
+    print("fit with cross-validation over 5 folds of runs:\n");
+    trail:[24]StStep;f:=st_fit(rows[..],ST_START,ST_COSTS,5,true,8,trail[..]);#assert f.status==StStatus.ok;
+    for step:trail[0..<f.steps] {
+        if step.outcome==StOutcome.no_gain {print("  pass %, % %: no cheaper value\n",step.pass,SETTING[step.which],r4(step.from));continue;}
+        print("  pass %, % % -> %: cost % -> % on the recorded answers, % on the held-out folds: %\n",step.pass,SETTING[step.which],
+            r4(step.from),r4(step.to),cast(int)step.before,cast(int)step.after,cast(int)step.held,OUTCOME[cast(int)step.outcome]);
+    }
+    show("fitted",f.settings,st_score(rows[..],f.settings,ST_COSTS));
+    g:=st_fit(rows[..],ST_START,ST_COSTS,5,false,8,trail[..]);#assert g.status==StStatus.ok;
+    show("fit only",g.settings,st_score(rows[..],g.settings,ST_COSTS));
+
+    // Fifteen more fit sets of 40 runs, each fitted both ways. Every setting
+    // is written down before the held-out runs are read.
+    fits:[2][16]StSettings;
+    for s:0..<16 {
+        other:[400]StRow;#assert st_simulate(cast(u64)(1000+s),40,other[..])==StStatus.ok;
+        set:=ifx s==0 then rows else other;
+        for k:0..<2 {x:=st_fit(set[..],ST_START,ST_COSTS,5,k==0,8,trail[..]);#assert x.status==StStatus.ok;fits[k][s]=x.settings;}
+    }
+
+    held:[800]StRow;#assert st_simulate(9182,80,held[..])==StStatus.ok;
+    print("the held-out 80 runs, read once: 800 steps, % stalled\n",st_score(held[..],ST_START,ST_COSTS).stalls);
+    show("hand-written",ST_START,st_score(held[..],ST_START,ST_COSTS));
+    show("fitted",f.settings,st_score(held[..],f.settings,ST_COSTS));
+    groups:[800]int;zero:[800]int;for row,i:held {groups[i]=row.group;}
+    runs:[2][12800]f64;means:[2][16]f64;
+    for k:0..<2 {
+        for s:0..<16 {
+            values(held[..],fits[k][s],runs[k][s*800..<(s+1)*800]);
+            means[k][s]=-st_score(held[..],fits[k][s],ST_COSTS).cost/800;
+        }
+    }
+    floors:=[2]NsFloor.[ns_floor(runs[0][..],zero[..],0,16,1),ns_floor(runs[1][..],zero[..],0,16,1)];
+    base:[800]f64;values(held[..],ST_START,base[..]);
+    d:=vd_decision(base[..],runs[0][0..<800],groups[..],zero[..],0,floors[0],0,7,1000);#assert d.status==VdStatus.ok;
+    print("  decision gate, fitted against hand-written: gain % per step, floor % -> % (%)\n",r4(d.gain.gain),r4(floors[0].floor),
+        VERDICT[cast(int)d.result.verdict],REASON[cast(int)d.result.reason]);
+    for k:0..<2 {
+        print("  % over the 16 fit sets: cost per step %, floor %\n",ifx k==0 then "cross-validated" else "fit only",
+            r4(-average(means[k][..])),r4(floors[k].floor));
+    }
+    sets:[16]int;none:[16]int;for s:0..<16 {sets[s]=s;}
+    b:=ns_boot(means[0][..],means[1][..],sets[..],none[..],0,0,7,1000);#assert b.status==NsStatus.ok;
+    side:=vd_side(b.below,1000);
+    print("  fit only against cross-validated, by fit set: gain % per step, % of 1000 replicates at or below no gain -> %\n",
+        r4(b.gain),b.below,ifx side==1 then "clearly cheaper" else ifx side==-1 then "clearly not cheaper" else "unverifiable");
+}
+// book:end example

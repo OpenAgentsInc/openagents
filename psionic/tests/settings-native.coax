@@ -1,0 +1,4 @@
+// Chapter 182's native harness also reports through chapter 180's gates, so
+// its library carries them; the settings library does not load them.
+#load "../lib/settings.coax";
+#load "../lib/verdict.coax";

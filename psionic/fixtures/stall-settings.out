@@ -1,0 +1,18 @@
+recorded answers: 40 runs, 400 steps, 125 stalled; a missed stall costs 4, a false alarm 1
+  hand-written: weight 0.0, threshold 0.5, quiet 700.0 s: cost 351, caught 39 of 125, 7 false alarms
+fit with cross-validation over 5 folds of runs:
+  pass 0, weight 0.0 -> 0.6139: cost 351 -> 124 on the recorded answers, 128 on the held-out folds: accepted
+  pass 0, threshold 0.5: no cheaper value
+  pass 0, quiet 700.0 -> 586.1724: cost 124 -> 115 on the recorded answers, 119 on the held-out folds: accepted
+  pass 1, weight 0.6139: no cheaper value
+  pass 1, threshold 0.5: no cheaper value
+  pass 1, quiet 586.1724: no cheaper value
+  fitted: weight 0.6139, threshold 0.5, quiet 586.1724 s: cost 115, caught 107 of 125, 43 false alarms
+  fit only: weight 0.6139, threshold 0.5, quiet 586.1724 s: cost 115, caught 107 of 125, 43 false alarms
+the held-out 80 runs, read once: 800 steps, 253 stalled
+  hand-written: weight 0.0, threshold 0.5, quiet 700.0 s: cost 708, caught 78 of 253, 8 false alarms
+  fitted: weight 0.6139, threshold 0.5, quiet 586.1724 s: cost 162, caught 234 of 253, 86 false alarms
+  decision gate, fitted against hand-written: gain 0.6825 per step, floor 0.0414 -> passed (beyond the floor)
+  cross-validated over the 16 fit sets: cost per step 0.2201, floor 0.0414
+  fit only over the 16 fit sets: cost per step 0.2109, floor 0.0599
+  fit only against cross-validated, by fit set: gain 0.0091 per step, 34 of 1000 replicates at or below no gain -> unverifiable
