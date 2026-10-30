@@ -1,0 +1,152 @@
+{
+  "basic": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "70dc69f06fa4b98a7e22e3aa12f5b60b54ecc8ad31239b81ce18fa284de797bf",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "68b484a4b226c1f95612f88b48047be5a5bdf6bb89d12750c690b4d9694dd7551b0ebb4a5a5612e467a05496db76846f38bfa8a95c8f17f2b687c11d20117348",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "POST"
+      ]
+    ]
+  },
+  "negative_time": {
+    "content": "",
+    "created_at": -1,
+    "id": "730cb5a47db87293bd71279916558b4b338f734645fc8f626403433ef005da3c",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "e60bdf0271c749b87173dcafb6a67e64095f602000abdc14e0aa5a58cab45c7ce87a7ec0b6ef2018814cddd16280a1b2c541f2a7dfef5e1525df1594020f1e10",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "POST"
+      ]
+    ]
+  },
+  "nul": {
+    "content": "x\u0000y",
+    "created_at": 1761750000,
+    "id": "3eb88f66727976a0b72a3b95f84fd141c1a124c1f30e950f6f6b148e883eab37",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "ee58f60502c0d373f59ef8a9e129665db04181516136680abde2b7cb815b2fd533489ffa93142fc30d46b548c9f4310d4c3c5e619c9674bbcd7de7efb9280eac",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "POST"
+      ]
+    ]
+  },
+  "tags17": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "ba77b4e6af659af81c20d75db4ecc38b1e82524e597e84483243a84f967dc880",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "8d33b195e69ba5eb68184f40e861ad471afc0c7a39f5772dcf34452e9e08c9e6487b33bbb32f94cc093dab3942281f0166b2a403899bb969ea4e1ca4e901294a",
+    "tags": [
+      [
+        "x",
+        "0"
+      ],
+      [
+        "x",
+        "1"
+      ],
+      [
+        "x",
+        "2"
+      ],
+      [
+        "x",
+        "3"
+      ],
+      [
+        "x",
+        "4"
+      ],
+      [
+        "x",
+        "5"
+      ],
+      [
+        "x",
+        "6"
+      ],
+      [
+        "x",
+        "7"
+      ],
+      [
+        "x",
+        "8"
+      ],
+      [
+        "x",
+        "9"
+      ],
+      [
+        "x",
+        "10"
+      ],
+      [
+        "x",
+        "11"
+      ],
+      [
+        "x",
+        "12"
+      ],
+      [
+        "x",
+        "13"
+      ],
+      [
+        "x",
+        "14"
+      ],
+      [
+        "x",
+        "15"
+      ],
+      [
+        "x",
+        "16"
+      ]
+    ]
+  },
+  "utf8": {
+    "content": "\u00e9\ud83d\ude00",
+    "created_at": 1761750000,
+    "id": "5ce64c268e5b05613ac2f64a3bc37681646fb7343c83f0b4a564a85a10734629",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "eb61eac0a6d6004e6b3cf4abfe55386c1fb17c176c2f66b0f8d36bc54f54bbbb14c2d089b0e04729fa66cefe5a7f56579ca548a1f3838262c6dd437843c1c45e",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "POST"
+      ]
+    ]
+  }
+}
