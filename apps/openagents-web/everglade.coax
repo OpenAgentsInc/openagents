@@ -718,6 +718,15 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c {
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     return;
   }
+  // on the west bank above the weir, facing down it into the plunge pool
+  if hash == "weir" {
+    x := f32(EG_RIVER_X) - 4.5; z := f32(EG_WEIR_Z) + 3;
+    s[0].spawn = v3(x, 0, z); s[0].spawn_face = yaw_of(f32(EG_RIVER_X) - x, f32(EG_POOL_Z) - z);
+    s[0].feet = v3(x, ground_at(s, x, z), z);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return;
+  }
   // the quest board: just north of it, facing it, near enough to read it
   if hash == "quest-board" {
     bm := board_middle();
@@ -1307,6 +1316,17 @@ city :: (s: [] Everglade, u: [] f32) {
       wide := ifx k == 1 then 0.9f32 else 0.5f32;
       bed := ground_at(s, px, pz);
       shape(s, SHAPE_CYLINDER, LOOK_WOOD, v3(px, (bed + deck - 0.9) / 2, pz), 0, 0, wide, deck - 0.9 - bed + 0.3, wide, 0.36, 0.27, 0.17);
+    }
+  }
+  // Glade Run's weir: a sill of six stones across the stream 0.12 m under the water above it,
+  // which spills over them 0.25 m down into the plunge pool (plan.coax EG_WEIR_Z).
+  wz := f32(EG_WEIR_Z);
+  top := ground_at(s, f32(EG_RIVER_X), wz) + f32(EG_RIVER_DEPTH) - 0.12;
+  for k: 0..<6 {
+    x := f32(EG_RIVER_X) - 2.1 + f32(k) * 0.84;
+    bed := ground_at(s, x, wz);
+    if top - bed > 0.05 {
+      shape(s, SHAPE_BOX, LOOK_STONE, v3(x, (top + bed) / 2, wz), (f32(k % 3) - 1) * 0.12, 0, 0.82, top - bed, 0.7, 0.5, 0.52, 0.48);
     }
   }
   if redit_row_on(s[0].ev.ed[..], "floats") { river_floats(s); }   // the realm's board (docs/verse/realm-edit.md)

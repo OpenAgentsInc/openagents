@@ -313,6 +313,15 @@ EG_RIVER_RIM :: 0.25;     // under the level at the banks
 EG_RIVER_FALL :: 0.008;   // the least the level falls each ground row (2 m)
 EG_RIVER_FREEBOARD :: 0.2;
 EG_RIVER_COL :: 96;       // the ground's column at x = 88
+// The weir (Glade Run's, from the old W3): the level steps down 0.25 m more
+// between the ground row at z = -30 and the next downstream, over a stone
+// sill, into a plunge pool 1.6 m deeper than the channel at its middle,
+// 2.5 m round, centred 3 m below the sill (river.coax WEIR_Z, POOL_*).
+EG_WEIR_Z :: -30.0;
+EG_WEIR_DROP :: 0.25;
+EG_POOL_Z :: -33.0;
+EG_POOL_R :: 2.5;
+EG_POOL_DEEP :: 1.6;
 
 // The level over each ground row (z = EG_EDGE + j EG_CELL) of the ground
 // as built, before the carve.
@@ -324,7 +333,10 @@ everglade_river_levels_of :: (heights: [] f32, levels: [] f32) {
     j := EG_CELLS - k;
     low := 1000000.0f32;
     for i: EG_RIVER_COL - 4..<EG_RIVER_COL + 5 { low = lo(low, heights[j * w + i]); }
-    levels[j] = lo(above - f32(EG_RIVER_FALL), low - f32(EG_RIVER_FREEBOARD));
+    // the weir: the row just below it steps down by the drop as well
+    z := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+    weir := ifx z < f32(EG_WEIR_Z) && z + f32(EG_CELL) >= f32(EG_WEIR_Z) then f32(EG_WEIR_DROP) else 0.0f32;
+    levels[j] = lo(above - f32(EG_RIVER_FALL) - weir, low - f32(EG_RIVER_FREEBOARD));
     above = levels[j];
   }
 }
@@ -333,7 +345,15 @@ everglade_river_levels_of :: (heights: [] f32, levels: [] f32) {
 everglade_river_levels :: (heights: [] f32, levels: [] f32) #export_c {
   w := EG_CELLS + 1;
   if levels.count < w || heights.count < EG_GROUND_POINTS { return; }
-  for j: 0..<w { levels[j] = heights[j * w + EG_RIVER_COL] + f32(EG_RIVER_DEPTH); }
+  for j: 0..<w { levels[j] = heights[j * w + EG_RIVER_COL] + f32(EG_RIVER_DEPTH) + everglade_pool_deepen(f32(EG_RIVER_X), f32(EG_EDGE) + f32(j) * f32(EG_CELL)); }
+}
+
+// How much deeper than the channel the plunge pool is at (x, z): a bowl,
+// EG_POOL_DEEP at its middle and none at its edge.
+everglade_pool_deepen :: (x: f32, z: f32) -> f32 #export_c {
+  dx := x - f32(EG_RIVER_X); dz := z - f32(EG_POOL_Z);
+  t := (dx * dx + dz * dz) / (f32(EG_POOL_R) * f32(EG_POOL_R));
+  return ifx t < 1 then f32(EG_POOL_DEEP) * (1 - t) else 0.0f32;
 }
 
 // The bed's height d metres from the middle under a level.
@@ -352,7 +372,8 @@ everglade_carve_river :: (heights: [] f32) {
       x := f32(EG_EDGE) + f32(i) * f32(EG_CELL);
       d := abs(x - f32(EG_RIVER_X));
       if d > 30 { continue; }
-      heights[j * w + i] = lo(heights[j * w + i], river_section(levels[j], d));
+      z := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+      heights[j * w + i] = lo(heights[j * w + i], river_section(levels[j], d) - everglade_pool_deepen(x, z));
     }
   }
 }
@@ -791,9 +812,17 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
       x := f32(EG_EDGE) + f32(i) * f32(EG_CELL);
       d := abs(x - f32(EG_RIVER_X));
       if d >= 4 && d <= 8 { #assert heights[j * w + i] >= levels[j] + 0.15; }
-      if d <= 2 { #assert near(heights[j * w + i], river_section(levels[j], d), 0.0001); }
+      zj := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+      if d <= 2 { #assert near(heights[j * w + i], river_section(levels[j], d) - everglade_pool_deepen(x, zj), 0.0001); }
     }
   }
+  // the weir: the level steps down at least its drop past the sill, into a pool 1.6 m deeper
+  jw := cast(int) ((f32(EG_WEIR_Z) - f32(EG_EDGE)) / f32(EG_CELL));
+  #assert levels[jw] - levels[jw - 1] >= f32(EG_WEIR_DROP) + f32(EG_RIVER_FALL) - 0.0001;
+  jp := cast(int) ((f32(EG_POOL_Z) - f32(EG_EDGE)) / f32(EG_CELL) + 0.5);
+  zp := f32(EG_EDGE) + f32(jp) * f32(EG_CELL);
+  #assert levels[jp] - heights[jp * w + EG_RIVER_COL] > f32(EG_RIVER_DEPTH) + f32(EG_POOL_DEEP) * 0.8;
+  #assert near(levels[jp] - heights[jp * w + EG_RIVER_COL], f32(EG_RIVER_DEPTH) + everglade_pool_deepen(88, zp), 0.0001);
   // Deep enough to swim in the middle, shallow enough to wade at the edge.
   z := -30.0f32;
   j := cast(int) ((z - f32(EG_EDGE)) / f32(EG_CELL));

@@ -485,6 +485,10 @@ and W6's ripples), drawn by its shader and read by the swimmer:
   under a level 0.25 m below the ground round it. `#lantern-pond`,
   `#reed-pond`, `#thinking-pond` and `#fern-pond` start you on the bank.
   A duck paddles round each pond and three lily pads ride on it.
+- **The weir:** 19 m below the bridge the river steps down 0.25 m over a
+  sill of stones into a plunge pool 3.8 m deep at its middle, white where
+  it falls and churning in the pool. `#weir` starts you on the bank above
+  it.
 
 ## What's next
 

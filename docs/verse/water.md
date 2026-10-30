@@ -7,8 +7,8 @@ W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
 Everglade (its river, swimming and floats) and, from W6, the ripple field
 with your wake and splash, most of W5 (below) and W4 (the spectral sea,
 in the water lab, below). The rest has a task each under `verse-water`
-(#c278): W3's rest (the weir, NPC swimming, rowboat props; the ponds are
-in), the rest of W6, and W7 to W11.
+(#c278): W3's rest (NPC swimming, rowboat props; the ponds and the weir
+are in), the rest of W6, and W7 to W11.
 
 ## W1: the physics (done)
 
@@ -164,8 +164,18 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   duck paddling round its middle and three lily pads at 0.6 of its rim,
   floats like the river's.
 
-Not ported yet (task `verse-water-w3-rest`): the weir and its plunge pool,
-rowboats, and townsfolk swimming. Not
+- The weir (Glade Run's, from the old W3): at z = -30, 19 m below the
+  bridge, the level steps down 0.25 m over a sill of six stones 0.12 m
+  under the water above it, into a plunge pool 2.5 m round whose middle is
+  1.6 m deeper than the channel (`plan.coax` `EG_WEIR_*`, `EG_POOL_*`,
+  `everglade_pool_deepen`). The river's level profile is a point every 2 m
+  (a ground row, `RIVER_PROFILE`), so the step stays at the sill. The
+  nodes carry white water down the drop and churning in the pool
+  (`river_bake`). `#weir` puts you on the west bank above it. Its mist is
+  W6's.
+
+Not ported yet (task `verse-water-w3-rest`): rowboats and townsfolk
+swimming. Not
 ported: underwater combat. You swim with the walk clip (there is no swim clip yet), and a
 phone has no dive button yet.
 

@@ -41,6 +41,7 @@ RIVER_NORTH :: 104.0;     // from the north edge of the ground, flowing south
 RIVER_SOUTH :: -104.0;
 RIVER_WIDTH :: 6.0;       // the outline: the 4 m channel and its wet banks
 RIVER_POINTS :: 27;       // the course, every 8 m
+RIVER_PROFILE :: 105;     // its level, every 2 m (a ground row), so the weir's step stays where it is
 RIVER_COLS :: 13;         // the baked nodes: 0.5 m across, from -3 to 3 m
 RIVER_ROWS :: 209;        // and 1 m along
 RIVER_ACROSS :: 0.5;
@@ -83,9 +84,14 @@ FLOATS :: RIVER_FLOATS + PONDS * POND_FLOATS;
 DUCKS :: 3;
 FLOAT_HOME :: [18] f64.[
   88.4, -26.0,   87.2, 2.0,   88.8, -34.0,
-  86.6, -22.5,   86.8, -29.5,   89.4, -24.0,   86.7, 4.5,   89.3, 7.0,   86.9, -36.5
+  86.6, -22.5,   89.2, -38.5,   89.4, -24.0,   86.7, 4.5,   89.3, 7.0,   86.9, -36.5
 ];
 FLOAT_STEP :: 1.0 / 120.0;
+// The weir and its plunge pool (plan.coax EG_WEIR_Z, EG_POOL_*): white water
+// down the drop and churning in the pool.
+WEIR_Z :: -30.0;
+WEIR_FOOT :: -32.0;
+POOL_X :: 88.0; POOL_Z :: -33.0; POOL_R :: 2.5;
 
 River :: struct {
   ready: bool;
@@ -93,7 +99,7 @@ River :: struct {
   flow_boost: f32;      // and how much faster its current runs for it (0 to 0.6)
   n: int; cell: f32; west: f32; south: f32;      // the ground the bed is (verse/terrain.coax's grid)
   points: [RIVER_POINTS] D2; widths: [RIVER_POINTS] f64; lengths: [RIVER_POINTS] f64;
-  profile: [RIVER_POINTS] D2;
+  profile: [RIVER_PROFILE] D2; profile_n: int;
   flow: [RIVER_FLOW] D2;
   piles: [RIVER_PILES] Obstacle;
   bodies: [1 + PONDS] WaterBody;
@@ -175,14 +181,17 @@ everglade_river_start :: (r: [] River, heights: [] f32, all: [] f32, n: int, cel
     r[0].widths[i] = RIVER_WIDTH;
   }
   course := water_course(r[0].points[..], r[0].widths[..], r[0].lengths[..]);
-  for i: 0..<RIVER_POINTS {
-    r[0].profile[i] = d2(r[0].lengths[i], level_from(r, levels, r[0].points[i].y));
+  // the course runs straight south, so a point's way along it is how far it is south of the north end
+  for i: 0..<RIVER_PROFILE {
+    along := (RIVER_NORTH - RIVER_SOUTH) * f64(i) / f64(RIVER_PROFILE - 1);
+    r[0].profile[i] = d2(along, level_from(r, levels, RIVER_NORTH - along));
   }
+  r[0].profile_n = RIVER_PROFILE;
   for p: 0..<RIVER_PILES {
     r[0].piles[p] = Obstacle.{center = d2(RIVER_PILE[p * 3], RIVER_PILE[p * 3 + 1]), radius = RIVER_PILE[p * 3 + 2]};
   }
   grid := water_flow_river(course, r[0].piles[..], RIVER_FLOW_CELL, RIVER_SPEED, r[0].flow[..]);
-  body := water_with_flow(water_river(1, course, r[0].profile[..]), grid);
+  body := water_with_flow(water_river(1, course, r[0].profile[0..<r[0].profile_n]), grid);
   // A light chop drifting downstream: the old river preset's water under a breeze.
   sea := water_wind_sea(3.0, 2.6, 0.55, 4);
   // gentler than the open sea's: a river's chop seldom breaks
@@ -236,6 +245,9 @@ river_bake :: (r: [] River, heights: [] f32) {
       // white water where the current wraps a pile
       foam := 0.0;
       for q: 0..<RIVER_PILES { foam = fmax(foam, 1.0 - d2_dist(p, r[0].piles[q].center) / 1.2); }
+      // and down the weir's drop, and where it plunges into its pool
+      if p.y <= WEIR_Z + 0.5 && p.y >= WEIR_FOOT - 0.5 { foam = fmax(foam, 1.0 - abs(p.y - (WEIR_Z + WEIR_FOOT) * 0.5) / 1.5); }
+      foam = fmax(foam, 0.85 * (1.0 - d2_dist(p, d2(POOL_X, POOL_Z)) / (POOL_R + 0.5)));
       r[0].nodes[k + 7] = cast(f32) foam;
       wet[j * RIVER_COLS + c] = depth > 0.0;
     }
@@ -669,6 +681,14 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   edge := (100 * RIVER_COLS + 0) * WATER_NODE;
   #assert r[0].nodes[edge + 3] < 0 && r[0].nodes[edge + 4] == 0;
   #assert r[0].nodes[mid + 4] > 1.0 && r[0].nodes[mid + 6] < -0.3;
+  // white water down the weir and in its pool, none in the open stream
+  pool := 0.0f32; open_foam := 0.0f32;
+  for k: 0..<RIVER_COLS * RIVER_ROWS {
+    x := r[0].nodes[k * WATER_NODE]; z := r[0].nodes[k * WATER_NODE + 2]; f := r[0].nodes[k * WATER_NODE + 7];
+    if abs(x - 88) < 0.6 && abs(z + 33) < 0.6 { pool = hi_f(pool, f); }
+    if abs(z + 50) < 0.6 { open_foam = hi_f(open_foam, f); }
+  }
+  #assert pool > 0.6 && open_foam == 0;
   // the frame the shader finds a node from (everglade.wgsl water_uv) gives each node its column and row
   u: [WATER_FLOATS] f32;
   everglade_river_frame(r[..], u[..], 0, false, 88, 5, -40, 0.001);
