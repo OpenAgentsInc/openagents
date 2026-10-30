@@ -728,6 +728,12 @@ cats, which were three coloured spheres with cone ears, are the kit's sitting ca
 its own size, drawn after the edits' draw so the town's groups keep them (as the commons' brazier now is:
 it drew its flames over no cauldron before).
 
+**Comparison round 1** (October 29, noon and dusk sheets against the owner's two references): the
+biggest gap was the grass. On screen it read acid lime, 0.55 to 0.62 saturation at about 0.6 value, where
+the references' meadow and forest floor sit at 0.25 to 0.4 at 0.35 to 0.55. The meadow (ground and blades
+alike, `meadow_srgb`) now runs in broad patches from a cool deep green (0.25, 0.38, 0.22) to a warm olive
+(0.41, 0.49, 0.25), sRGB: 0.39 to 0.46 saturation at 0.55 on screen.
+
 ## Order of the work
 
 1. The style field and presets, and the style fixture, which everything else

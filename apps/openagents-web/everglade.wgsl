@@ -759,7 +759,7 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
   if (s.look == 99u) {
     // broad colour only (eg-paint-pack: no fine noise on the ground; patches 4 m and more across)
     let broad = noise(xz * 0.13);
-    base = mix(vec3f(0.24, 0.43, 0.15), vec3f(0.38, 0.58, 0.22), broad) * (0.96 + 0.08 * noise(xz * 0.23 + 7.0));
+    base = meadow_srgb(broad) * (0.96 + 0.08 * noise(xz * 0.23 + 7.0));
     for (var q = 0; q < 4; q++) {
       let sq = u.square[q];
       if (sq.z <= 0.0) { break; }
@@ -2452,8 +2452,14 @@ fn ground_y(q: vec2f) -> f32 {
   let i = vec2i(floor(g)); let f = fract(g);
   return mix(mix(height(i.x, i.y), height(i.x + 1, i.y), f.x), mix(height(i.x, i.y + 1), height(i.x + 1, i.y + 1), f.x), f.y);
 }
+// The meadow's green, sRGB (comparison round 1 against the references: the grass read acid lime, 0.55 to
+// 0.62 saturation at 0.6 value on screen, where theirs is 0.25 to 0.4 at 0.35 to 0.55): broad patches
+// from a cool deep green to a warm olive, the same under the blades as in them.
+const MEADOW_COOL = vec3f(0.25, 0.38, 0.22);
+const MEADOW_WARM = vec3f(0.41, 0.49, 0.25);
+fn meadow_srgb(t: f32) -> vec3f { return mix(MEADOW_COOL, MEADOW_WARM, t); }
 fn meadow(q: vec2f) -> vec3f {
-  return pow(mix(vec3f(0.24, 0.43, 0.15), vec3f(0.38, 0.58, 0.22), noise(q * 0.13)), vec3f(2.2));
+  return pow(meadow_srgb(noise(q * 0.13)), vec3f(2.2));
 }
 fn grass_mask(q: vec2f) -> f32 {
   var m = verse_style_grass_clear(path_distance(q) - u.path_info.y);
