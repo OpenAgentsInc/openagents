@@ -272,7 +272,7 @@ AG_new :: (nodes:[]ScNode,values:[]u64,roots:[]int,value:AgValue,type:int,memory
  if value.region!=0 && memory[0].dirty[value.region] {result.literal=0;}
  if !AG_valid_type(nodes,values,roots,result.type,result.mask!=0,state,0) {SC_fail(state,SC_TYPE,0);return result;}
  if AG_primitive_name(result.type)=="" {n:=nodes[result.type];if n.kind==3 {if value.region==0 || value.extent<1 {SC_fail(state,SC_UNSUPPORTED,type);return result;}result.region=value.region;result.view=true;}
- else {if memory[0].used==4095 {SC_fail(state,SC_LIMIT,type);return result;}memory[0].used+=1;result.region=memory[0].used;memory[0].taint[result.region]=result.mask;if n.kind==2 {result.extent=AG_length(nodes,values,result.type,state);}}}
+ else {if memory[0].used==AG_region_limit()-1 {SC_fail(state,SC_LIMIT,type);return result;}memory[0].used+=1;result.region=memory[0].used;memory[0].taint[result.region]=result.mask;if n.kind==2 {result.extent=AG_length(nodes,values,result.type,state);}}}
  return result;
 }
 AG_bind :: (env:[]AgEnv,name:string,value:AgValue,state:[]ScAudit,where:int) {
@@ -469,6 +469,7 @@ AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
 }
 // Distinct procedures one audit may reach.
 #test "the procedure cap and its closure bits are exact" {
+ #assert AG_region_limit()==4096;
  #assert AG_visit_limit()==262144;
  #assert AG_procedure_limit()==64;
 }
@@ -538,6 +539,8 @@ AG_check_public_views :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType
 }
 
 // Analysis steps one audit may take.
+// Memory regions one audit may allocate.
+AG_region_limit :: ()->int {return 4096;}
 AG_visit_limit :: ()->int {return 262144;}
 AG_tick :: (state:[]ScAudit,where:int)->bool {
  if state[0].error!=0 {return false;}if state[0].visits>=AG_visit_limit() {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;
