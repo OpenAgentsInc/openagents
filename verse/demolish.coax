@@ -143,6 +143,21 @@ DemoBody :: struct {
   wet: bool;                   // in the water last step
 }
 
+// A spell's field on what flies (the realm sets them each frame: DemoWorld.fields): its kind
+// (DF_*), and its shape: a cylinder on (ax, az) of radius r from base to top (Reverse Gravity), a
+// wall along (ax, az) to (bx, bz) r thick from base to top (Wind Wall), or a push along the unit
+// (bx, bz) from (ax, az) out to r, `wide` across, from base to top (Gust of Wind), or a hold at
+// (ax, base, az) (Telekinesis, body `body`). `seed` turns a wall's spiral.
+DEMO_FIELDS :: 16;
+DF_RISE :: 1; DF_UPDRAFT :: 2; DF_PUSH :: 3; DF_HOLD :: 4;
+DemoField :: struct { kind: int; ax: f32; az: f32; bx: f32; bz: f32; base: f32; top: f32; r: f32; wide: f32; force: f32; seed: f32; body: int; }
+// Reverse Gravity's (verse-world cad-world reverse_gravity.rs Gravity::at): gravity upward, and
+// within DF_BAND of the top a critically damped spring onto it, a light drag across.
+DF_G :: 9.81; DF_BAND :: 1.5; DF_OMEGA :: 20.0; DF_DRAG :: 0.3;
+// Wind Wall's (wind_wall.rs updraft): a lightweight body (DF_LIGHT kg at most) lifted at DF_UPDRAFT
+// m/s² in a spiral of DF_TURB, held in the wall's middle; a heavier one DF_HEAVY, too little to lift it.
+DF_LIGHT :: 2.0; DF_UPDRAFT_A :: 25.0; DF_HEAVY :: 3.0; DF_TURB :: 6.0; DF_CAPTURE :: 2.0;
+
 DemoEvent :: struct { at: Point; size: f32; kind: int; }   // kind 1 a break, 2 a heavy landing, 3 a splash (DEMO_SPLASH)
 // A puff of dust (demo_dust_at draws it) and a splinter (demo_bit_at).
 DemoDust :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; colour: Point; }
@@ -185,6 +200,8 @@ DemoWorld :: struct {
   blast_on: bool; blast_at: Point; blast_radius: f32; blast_speed: f32; blast_face: Point;
   dust: [DEMO_DUST] DemoDust;
   bits: [DEMO_BITS] DemoBit;
+  // the spells' fields over the bodies this frame (demo_field_accel), the realm's to set
+  fields: [DEMO_FIELDS] DemoField; field_n: int;
 }
 
 // ---- small things
@@ -257,6 +274,7 @@ demo_new :: (w: [] DemoWorld, small_screen: bool) {
   for i: 0..<DEMO_BODIES { w[0].meta[i].kind = 0; }
   for i: 0..<DEMO_DUST { w[0].dust[i].live = false; }
   for i: 0..<DEMO_BITS { w[0].bits[i].live = false; }
+  w[0].field_n = 0;
 }
 demo_tier :: (w: [] DemoWorld, small_screen: bool) {
   w[0].chunk_cap = ifx small_screen then DEMO_CHUNKS / 2 else DEMO_CHUNKS;
@@ -873,6 +891,8 @@ demo_fine :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
     d.at = add(d.at, times(d.vel, dt));
     d.vel = times(d.vel, 1 - lo(dt * 1.6, 0.5));
     d.vel.y += 0.35 * dt;
+    da := demo_field_accel(w, dp3(d.at), dp3(d.vel), 0.001, -1, w[0].clock);
+    d.vel = add(d.vel, times(pd3(d3(da.x, da.y - DEMO_GRAVITY, da.z)), dt * 0.4));
     w[0].dust[i] = d;
   }
   for i: 0..<DEMO_BITS {
@@ -880,8 +900,10 @@ demo_fine :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
     b := w[0].bits[i];
     b.t += dt;
     if b.t > f32(DEMO_BIT_LIFE) { w[0].bits[i].live = false; continue; }
+    fa := demo_field_accel(w, dp3(b.at), dp3(b.vel), 0.01, -1, w[0].clock);
+    if b.resting && fa.y > 0.0 { b.resting = false; }
     if !b.resting {
-      b.vel.y -= 9.81 * dt;
+      b.vel = add(b.vel, times(pd3(fa), dt));
       b.at = add(b.at, times(b.vel, dt));
       ground := verse_terrain_height(g, heights, b.at.x, b.at.z) + b.size * 0.3;
       if b.at.y < ground {
@@ -1260,6 +1282,58 @@ demo_step :: (w: [] DemoWorld, g: Ground, heights: [] f32, dt: f32) {
   none: [1] f32;
   demo_step_wet(w, g, heights, none[0..<0], dt);
 }
+// The acceleration on a body of `mass` kg at pos moving at vel (body b, -1 none): gravity, or the
+// fields' over it (the first that holds it decides; a wall's updraft adds to gravity).
+demo_field_accel :: (w: [] DemoWorld, pos: D3, vel: D3, mass: f64, b: int, t: f64) -> D3 {
+  a := d3(0.0, DEMO_GRAVITY, 0.0);
+  for i: 0..<w[0].field_n {
+    f := w[0].fields[i];
+    if f.kind == DF_HOLD {
+      if b < 0 || b != f.body { continue; }
+      om := 6.0;
+      to := d3(f64(f.ax), f64(f.base), f64(f.az));
+      return d3_sub(d3_scale(d3_sub(to, pos), om * om), d3_scale(vel, 2.0 * om));
+    }
+    if pos.y < f64(f.base) - 0.5 || pos.y > f64(f.top) + f64(DF_BAND) { continue; }
+    if f.kind == DF_RISE {
+      dx := pos.x - f64(f.ax); dz := pos.z - f64(f.az);
+      if dx * dx + dz * dz > f64(f.r * f.r) { continue; }
+      below := f64(f.top) - pos.y;
+      if below > DF_BAND { return d3(0.0, DF_G, 0.0); }
+      return d3(-DF_DRAG * vel.x, DF_OMEGA * DF_OMEGA * below - 2.0 * DF_OMEGA * vel.y, -DF_DRAG * vel.z);
+    }
+    if f.kind == DF_UPDRAFT {
+      if pos.y > f64(f.top) { continue; }
+      ex := f64(f.bx - f.ax); ez := f64(f.bz - f.az);
+      l2 := fmax(ex * ex + ez * ez, 0.0001);
+      u := fclamp(((pos.x - f64(f.ax)) * ex + (pos.z - f64(f.az)) * ez) / l2, 0.0, 1.0);
+      nx := f64(f.ax) + ex * u; nz := f64(f.az) + ez * u;
+      l := sqrt(l2); tx := ex / l; tz := ez / l;
+      off := (pos.x - nx) * -tz + (pos.z - nz) * tx;   // across the wall, signed
+      if abs(off) > f64(f.r) * 0.5 + 0.15 || u <= 0.0 || u >= 1.0 { continue; }
+      if mass > DF_LIGHT { a.y += DF_HEAVY; continue; }
+      sp := fclamp(f64(f.seed) + f64(b) * 0.618, 0.0, 1000.0);
+      hz := 1.0 + sp - floor(sp);
+      ang := 6.2831853 * hz * t + f64(b) * 2.4;
+      om := 6.2831853 * DF_CAPTURE;
+      across := d3(-tz, 0.0, tx); along := d3(tx, 0.0, tz);
+      side := d3_add(d3_scale(along, cos(ang) * DF_TURB), d3_scale(across, sin(ang) * DF_TURB));
+      pull := d3_scale(across, -(om * om * off + 2.0 * om * (vel.x * across.x + vel.z * across.z)));
+      a = d3_add(d3(0.0, DEMO_GRAVITY + DF_UPDRAFT_A, 0.0), d3_add(side, pull));
+      continue;
+    }
+    if f.kind == DF_PUSH {
+      dx := pos.x - f64(f.ax); dz := pos.z - f64(f.az);
+      along := dx * f64(f.bx) + dz * f64(f.bz);
+      across := abs(dx * -f64(f.bz) + dz * f64(f.bx));
+      if along < 0.0 || along > f64(f.r) || across > f64(f.wide) * 0.5 || pos.y > f64(f.top) { continue; }
+      k := f64(f.force) / fmax(mass, 1.0);
+      a = d3_add(a, d3(f64(f.bx) * k, 0.0, f64(f.bz) * k));
+      continue;
+    }
+  }
+  return a;
+}
 // Body b's free flight over h: gravity, its motion and its turn (q' = q (0, ω)/2 with ω its own),
 // held to its speed caps, and no longer held up until a contact says so.
 demo_fly :: (w: [] DemoWorld, b: int, h: f64) {
@@ -1268,7 +1342,11 @@ demo_fly :: (w: [] DemoWorld, b: int, h: f64) {
   thrown := w[0].clock < w[0].meta[b].thrown;
   top := ifx thrown then DEMO_BLAST_SPEED else DEMO_MAX_SPEED;
   spin := ifx thrown then DEMO_MAX_SPIN * 2.0 else DEMO_MAX_SPIN;
-  f[8] += DEMO_GRAVITY * h;
+  pos := d3(f[4], f[5], f[6]); vel := d3(f[7], f[8], f[9]);
+  a := demo_field_accel(w, pos, vel, f[0], b, w[0].clock);
+  f[7] += a.x * h; f[8] += a.y * h; f[9] += a.z * h;
+  // a field holds it up: it is in flight no longer than a fall, and never rubble mid-air
+  if a.y > DEMO_GRAVITY + 0.01 || a.x != 0.0 || a.z != 0.0 { w[0].meta[b].born += h; w[0].meta[b].rest_time = 0.0; }
   v := sqrt(f[7] * f[7] + f[8] * f[8] + f[9] * f[9]);
   if v > top { s := top / v; f[7] *= s; f[8] *= s; f[9] *= s; }
   o := sqrt(f[14] * f[14] + f[15] * f[15] + f[16] * f[16]);

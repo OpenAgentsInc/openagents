@@ -60,9 +60,12 @@ SUNLIGHT = (1.0, 0.9, 0.5)
 MEGA = (0.82, 0.48, 1.0)
 WATER = (0.35, 0.72, 1.0)
 OIL = (0.86, 0.7, 0.36)
+TRANSMUTATION = (0.76, 0.62, 1.0)
+WIND = (0.6, 0.95, 0.9)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
+# An SVG name ending in "^" is drawn upside down (icons.rs flip_y: Reverse Gravity's arrows point up).
 # Each slot in the bar's order: its name, SVG, tint, key, card title, sentence and details.
 # The four spells' sentences and details are the old dev bar's (hotbar.rs SLOTS), with
 # this realm's cast bars (verse/rules/srd5.coax) and reach.
@@ -79,6 +82,12 @@ SLOTS = [
     ("water-orb", "lorc/frozen-orb.svg", WATER, "4", "Water Orb",
      "Gathers an orb of water over you and throws it at the spot you choose, where it bursts and sends loose things rolling without breaking them.",
      [("Key 4", KEY), FREE, ("0.6 s cast", TIME), RANGE]),
+    ("reverse-gravity", "delapouite/gravitation.svg^", TRANSMUTATION, "5", "Reverse Gravity",
+     "Gravity flips in a 50-foot cylinder around you: you, the loose things in it and the townsfolk who fail to grab hold fall upward and hover near its top until you press again.",
+     [("Key 5", KEY), FREE, ("1 minute", TIME)]),
+    ("wind-wall", "lorc/whirlwind.svg", WIND, "6", "Wind Wall",
+     "Raises another 30-foot wall of wind 4 m ahead whose updraft throws you upward when you walk into it.",
+     [("Key 6", KEY), FREE, ("1 minute", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),
@@ -127,7 +136,10 @@ def text(draw, font, ascent, x, y, line, colour):
 
 
 def icon(name, svg, tint, key, size):
-    cover = svg_coverage(ICONS / svg, size)
+    flip = svg.endswith("^")
+    cover = svg_coverage(ICONS / svg.rstrip("^"), size)
+    if flip:
+        cover = cover.transpose(Image.FLIP_TOP_BOTTOM)
     image = Image.new("RGB", (size, size))
     px = image.load()
     cv = cover.load()

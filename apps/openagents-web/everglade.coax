@@ -2337,7 +2337,7 @@ pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   for c: 0..<4 { s[0].palette[h + 8 + c] = ifx spot then FOLK_DYE[i * 4 + c] else WATCH_DYE[c]; }
   pl := person_place(s, i);
   x := pl.x; z := pl.z;
-  y := folk_feet(s, x, z);
+  y := folk_feet(s, x, z) + ab_air(s, i);   // off their feet in a spell (everglade-abilities.coax)
   yaw := pl.face;
   c := cos(yaw); sn := sin(yaw);
   // their head, for their name over it

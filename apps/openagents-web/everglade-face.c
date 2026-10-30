@@ -171,8 +171,17 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     player.pos.x = seat.x; player.pos.z = seat.z; player.prev_pos = player.pos;
     player.vel.x = 0; player.vel.z = 0;
     player.face = seat.yaw; player.prev_face = seat.yaw;
-  } else
-  player = verse_player_advance_among(player, dt, (coax_v_f32){hull_bodies, bodies * 7}, (coax_v_f32){g->walls.e, walls * 6});
+  } else {
+    float vy0 = player.vel.y;
+    player = verse_player_advance_among(player, dt, (coax_v_f32){hull_bodies, bodies * 7}, (coax_v_f32){g->walls.e, walls * 6});
+    // Reverse Gravity's cylinder and the Wind Walls move you up (everglade-abilities.coax)
+    coax_t_SpLift lift = everglade_lift(at(state), player.pos.x, player.pos.z, was.y, vy0, player.pos.y, player.vel.y, dt);
+    if (lift.on) {
+      player.prev_pos.y += lift.y - player.pos.y;
+      player.pos.y = lift.y; player.vel.y = lift.vy;
+      if (lift.y > 0.01f || lift.vy > 0) { player.on_ground = false; player.act = 3; }
+    }
+  }
   // afloat, the current carries you
   if (swim.medium == 2 || swim.medium == 3) { player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt; }
   coax_t_Point kept = everglade_hold(at(state), was.x, was.z, player.pos.x, player.pos.z);
@@ -196,6 +205,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     player = verse_player_place(swim.bank_x, 0, swim.bank_z, verse_player_face(player));
     swim.medium = 0; swim.pace = 1;
   }
+  // the spells' fields over the floats (Reverse Gravity, the Wind Walls: everglade-abilities.coax), as last frame left them
+  static float spell_fields[16 * 10];
+  everglade_river_fields(rv(), (coax_v_f32){spell_fields, 16 * 10}, everglade_spell_fields(at(state), (coax_v_f32){spell_fields, 16 * 10}));
   int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 28 * 8});
   // a rowboat near you to board, or E (the prompt) to board it or step ashore
   everglade_boat_near(at(state), swim.medium == 3 || busy ? -1 : everglade_river_boat_near(rv(), player.pos.x, player.pos.z));

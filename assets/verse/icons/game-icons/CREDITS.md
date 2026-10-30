@@ -14,7 +14,9 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/lightning-frequency.svg` (Thunderbolt, in white-gold, and Mega
   Thunderbolt, in electric violet)
 - `lorc/frozen-orb.svg` (Water Orb)
+- `lorc/whirlwind.svg` (Wind Wall)
 
 Icons made by Delapouite (<https://delapouite.com>):
 
 - `delapouite/house.svg` (Rebuild)
+- `delapouite/gravitation.svg` (Reverse Gravity, drawn upside down)

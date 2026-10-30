@@ -48,10 +48,12 @@
 #load "../../verse/demolish.coax";
 #load "../../verse/water-spells.coax";
 #load "everglade-hotbar.coax";
+#load "everglade-abilities.coax";
 
 SP_SLOTS :: 4;
 SP_MEDIA_BYTES :: 600;
-SP_METEOR :: 0; SP_BOLT :: 1; SP_MEGA :: 2; SP_ORB :: 3; SP_REBUILD :: 4;
+SP_METEOR :: 0; SP_BOLT :: 1; SP_MEGA :: 2; SP_ORB :: 3; SP_REBUILD :: SP_SLOTS + AB_N;
+SP_BAR :: SP_REBUILD + 1;   // the bar's slots: the four aimed spells, the abilities (everglade-abilities.coax), Rebuild
 SP_SPELL :: [4] int.[SPELL_METEOR_SWARM, SPELL_THUNDERBOLT, SPELL_MEGA_THUNDERBOLT, SPELL_WATER_ORB];
 SP_WORD :: [5] string.["METEOR", "BOLT", "MEGA", "ORB", "REBUILD"];
 SP_KEY :: [5] string.["1", "2", "3", "4", "R"];
@@ -182,7 +184,8 @@ Spells :: struct {
   broke: int;                // pieces this cast broke
   pushed: int;               // pieces the orb's water shoved loose
   news: [120] u8; news_n: int; news_t: f32;
-  boxes: [SP_SLOTS + 1] Box;
+  boxes: [SP_BAR] Box;
+  ab: [1] Abilities;           // Reverse Gravity and the Wind Walls (everglade-abilities.coax)
   lift: f32;                 // how much of the bottom the bar takes, for what sits over it
   regrow_t: f32;
   frame_ms: f32;
@@ -259,6 +262,7 @@ spells_start :: (s: [] Everglade) {
   s[0].sp.dice[0] = srd_dice(20261029);
   s[0].sp.armed = -1; s[0].sp.casting = -1; s[0].sp.slot_finger = -1; s[0].sp.down_id = -1;
   s[0].sp.slot_held = -1; s[0].sp.tip_slot = -1; s[0].sp.tip_hid = -100;
+  ab_start(s);
   for g: 0..<SP_GROUPS { s[0].sp.group_x[g] = 0; s[0].sp.group_z[g] = 0; s[0].sp.group_n[g] = 0; }
   rows: [12] f32;
   for g: KIT_FOREST..<KIT_GROUPS {
@@ -345,16 +349,18 @@ sp_shapes :: (s: [] Everglade) {
   s[0].sp.ready = true;
 }
 
-// Keys: 1 to 4 pick a spell (again puts it away), Esc puts it away or stops a cast, R rebuilds.
+// Keys: 1 to 4 pick a spell (again puts it away), 5 and 6 cast an ability, Esc puts a spell away or
+// stops a cast, R rebuilds.
 spells_key :: (s: [] Everglade, key: int) -> bool {
   if !sp_on(s) || s[0].above || s[0].ev.editing { return false; }
-  if key >= '1' && key < '1' + SP_SLOTS { sp_press(s, key - '1'); return true; }
+  if key >= '1' && key < '1' + SP_REBUILD { sp_press(s, key - '1'); return true; }
   if key == KEY_ESCAPE && (s[0].sp.armed >= 0 || s[0].sp.casting >= 0) { s[0].sp.armed = -1; s[0].sp.casting = -1; return true; }
   if (key == 'r' || key == 'R') && sp_broken(s) { sp_rebuild(s); return true; }
   return false;
 }
 sp_press :: (s: [] Everglade, slot: int) {
   if slot == SP_REBUILD { sp_rebuild(s); return; }
+  if slot >= SP_SLOTS { ab_press(s, slot - SP_SLOTS); return; }
   s[0].sp.armed = ifx s[0].sp.armed == slot then -1 else slot;
 }
 sp_broken :: (s: [] Everglade) -> bool { return s[0].sp.dm[0].broken_n > 0 || demo_chunks(sp_dm(s)) > 0; }
@@ -374,7 +380,7 @@ spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: i
   k := hi(s[0].dpr, 0.5);
   if kind == 0 || phase == 0 { s[0].sp.px = x; s[0].sp.py = y; s[0].sp.seen = true; s[0].sp.mouse = kind == 0; }
   if phase == 0 {
-    for b: 0..<SP_SLOTS + 1 {
+    for b: 0..<SP_BAR {
       if in_box(s[0].sp.boxes[b], x, y) {
         s[0].sp.slot_finger = id; s[0].sp.slot_held = -1;
         if kind == 0 { sp_press(s, b); } else { s[0].sp.slot_held = b; s[0].sp.slot_t = s[0].time; }
@@ -978,6 +984,8 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     s[0].sp.orb_t += dt;
     if s[0].sp.orb_t >= 0.7 { s[0].sp.orb_live = false; sp_blast(s, s[0].sp.orb_to, SP_ORB); sp_report(s, SP_ORB); }
   }
+  // the abilities' fields over the debris, the people they have up, you (everglade-abilities.coax)
+  if s[0].sp.on { ab_frame(s, dt); } else { w[0].field_n = 0; }
   // the debris (verse/demolish.coax), its dust, and what grows back
   demo_step_wet(w, everglade_ground(), s[0].heights[..], s[0].water_grid[..], dt);
   sp_dome(s, dt);
@@ -1003,6 +1011,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     if p.state == DP_STANDING && p.hp < p.max_hp { sp_tint(s, i, 0.3 + 0.7 * f32(p.hp) / f32(hi_int(p.max_hp, 1))); }
   }
   sp_draw(s, dt);
+  if s[0].sp.on { ab_draw(s); }
   sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
@@ -1596,7 +1605,7 @@ sp_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, at: Point, nrm: Poi
 
 spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
   s[0].sp.lift = 0; s[0].sp.tip_on = false;
-  for b: 0..<SP_SLOTS + 1 { s[0].sp.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  for b: 0..<SP_BAR { s[0].sp.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
   if !sp_on(s) { return at; }
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
@@ -1735,8 +1744,8 @@ spells_reserve :: (s: [] Everglade) -> f32 {
   un := sp_unit(s);
   return f32(HB_MARGIN + HB_ICON + 2 * HB_PAD) * un + f32(HB_RESERVE) * hi(s[0].dpr, 0.5);
 }
-// Slots shown: the four spells, and Rebuild once something broke.
-sp_count :: (s: [] Everglade) -> int { return ifx sp_broken(s) then SP_SLOTS + 1 else SP_SLOTS; }
+// Slots shown: the four spells, the abilities, and Rebuild once something broke.
+sp_count :: (s: [] Everglade) -> int { return ifx sp_broken(s) then SP_REBUILD + 1 else SP_REBUILD; }
 
 // A plate of one of hud_rect's looks; w its unit or its edge, device pixels.
 sp_plate :: (s: [] Everglade, u: [] f32, b: Box, look: f32, w: f32) {
@@ -1802,7 +1811,7 @@ sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
     y := sp_round(top + f32(HB_PAD) * un);
     slot := Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
     s[0].sp.boxes[b] = slot;
-    on := b < SP_SLOTS && (s[0].sp.armed == b || s[0].sp.casting == b);
+    on := (b < SP_SLOTS && (s[0].sp.armed == b || s[0].sp.casting == b)) || (b >= SP_SLOTS && b < SP_REBUILD && ab_active(s, b - SP_SLOTS));
     edge := sp_round(k);
     sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
     // a picked slot's gold frame is two pixels, its inner one over the icon's edge
@@ -2263,7 +2272,7 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   b0 := g[0].sp.boxes[0]; b1 := g[0].sp.boxes[1];
   #assert abs(b0.x1 - b0.x0 - 36 * un) < 1 && abs(b1.x0 - b0.x0 - 42 * un) < 1;
   #assert abs(800 - b0.y1 - (8 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
-  #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS - 1].x1) / 2 - 640) < 2;   // centred
+  #assert abs((b0.x0 + g[0].sp.boxes[SP_REBUILD - 1].x1) / 2 - 640) < 2;   // centred
   media := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
   #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && !contains(media, "rebuild") && !contains(media, "over ");
   // the mouse resting on Thunderbolt's slot shows its card after 0.35 s

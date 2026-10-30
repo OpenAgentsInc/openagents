@@ -1,0 +1,642 @@
+// Everglade's spells that need no target (eg-abilities), loaded by everglade-spells.coax: the rest
+// of the previous Rust engine's Everglade bar (`0b401561a0^:crates/verse-zone-everglade/src/zones/
+// everglade/spells.rs` and hotbar.rs SLOTS, on the chamber's rules in `crates/cad-world/src/
+// reverse_gravity.rs` and `wind_wall.rs`), on the bar after the four that are aimed:
+//
+//   5 REVERSE GRAVITY  Gravity flips in a 50-foot-radius, 100-foot-high cylinder standing on the
+//                      floor under you, for a minute or until you press 5 again: you, the loose
+//                      debris and the town's unsecured props (barrels, crates, chairs, benches, the
+//                      market's goods), splinters, the ducks, the lily pads and the rowboats fall
+//                      upward at 9.81 m/s² and, within 1.5 m of its top, a critically damped spring
+//                      (20 rad/s) holds them there; a roof over you stops you. Each townsperson in it
+//                      (or walking into it) makes a Dexterity save against DC 15 and holds on to a
+//                      wall within 5 feet, or falls upward too. When it ends everything falls: a prop
+//                      that lands hard breaks, a person takes 1d6 per 10 feet fallen. Lifting people
+//                      or the town's things is a crime the watch answers.
+//   6 WIND WALL        Another 30-foot wall of wind, 15 feet high and 1 foot thick, 4 m ahead across
+//                      your way, for a minute (the oldest of 12 goes): it needs level ground (the
+//                      ground along it within 0.3 m of its middle's). Whoever stands in it as it rises
+//                      makes a Strength save against DC 15: 4d8 bludgeoning, half on a success, and a
+//                      failure is thrown upward. Walking into it throws you up at 11 m/s and keeps you
+//                      rising while you are in it. Lightweight things (2 kg at most: a duck, a
+//                      splinter) fly up it at 25 m/s² in a spiral held to its middle, heavier ones are
+//                      lightened by 3 m/s²; smoke is kept out of it.
+//
+// No cooldown, as the old bar. They draw as the old engine drew them: Reverse Gravity only its
+// particles (motes.rs: dust, violet sparks, pebbles and leaves falling upward and gathering under its
+// top, a band of bright motes climbing its edge, glow streaks rising round its wall, shimmering rings
+// at its base and its top); a Wind Wall its grounded outline and the updraft's streaks rising through
+// it (wind_wall.rs wall_lines), in the old guide lines' cyan.
+
+AB_N :: 2;                 // abilities on the bar, after the four aimed spells
+AB_REVERSE :: 0; AB_WIND :: 1;
+AB_FOOT :: 0.3048;
+// Reverse Gravity (SRD 5.2.1, level 7): a 50-foot-radius, 100-foot-high cylinder, a minute.
+AB_RG_R :: 15.24; AB_RG_H :: 30.48; AB_RG_LIFE :: 60.0;
+AB_RG_BAND :: 1.5; AB_RG_OMEGA :: 20.0; AB_RG_DRAG :: 0.3; AB_G :: 9.81;
+AB_GRAB :: 1.524;          // m: a creature reaches a fixed object 5 feet off
+AB_DC :: 15;
+AB_HEAR_RG :: 30.0;        // m the watch hears it from
+// Wind Wall (level 3): 30 feet long here (the old bar's), 15 high, 1 thick, a minute, 12 at most.
+AB_WW_LEN :: 9.144; AB_WW_HIGH :: 4.572; AB_WW_THICK :: 0.3048; AB_WW_LIFE :: 60.0; AB_WW_AHEAD :: 4.0;
+AB_WALLS :: 12;
+AB_WW_LEVEL :: 0.3;        // m the ground may rise or fall along it
+AB_WIND_LIFT :: 11.0;      // m/s up it throws you (spells.rs WIND_LIFT)
+AB_HEAR_WW :: 30.0;
+AB_RADIUS :: 0.3; AB_HEIGHT :: 1.8;   // your capsule (verse/player.coax)
+
+AbWall :: struct { live: bool; ax: f32; az: f32; bx: f32; bz: f32; base: f32; t: f32; seed: f32; }
+Abilities :: struct {
+  rg_on: bool; rg_at: Point; rg_t: f32;
+  walls: [AB_WALLS] AbWall;
+  // the town's people the spells have off their feet: how high over them, how fast, the highest
+  // they rose (for the fall), whether they hold on, and whether the cylinder has taken their save
+  air: [WATCH_ACTORS] f32; air_v: [WATCH_ACTORS] f32; air_top: [WATCH_ACTORS] f32;
+  up: [WATCH_ACTORS] bool; held: [WATCH_ACTORS] bool; saved: [WATCH_ACTORS] bool;
+  // the fields for the river's floats (everglade_spell_fields), AB_FIELD_FLOATS each
+  t: f32;
+}
+AB_FIELD_FLOATS :: 10;
+
+ab_of :: (s: [] Everglade) -> [] Abilities { return s[0].sp.ab[..]; }
+ab_start :: (s: [] Everglade) {
+  a := ab_of(s);
+  a[0].rg_on = false; a[0].rg_t = 0; a[0].t = 0;
+  for k: 0..<AB_WALLS { a[0].walls[k].live = false; }
+  for i: 0..<WATCH_ACTORS { a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].up[i] = false; a[0].held[i] = false; a[0].saved[i] = false; }
+}
+// Whether slot `k` (an ability's) shows as on: Reverse Gravity holding, a Wind Wall standing.
+ab_active :: (s: [] Everglade, k: int) -> bool {
+  a := ab_of(s);
+  if k == AB_REVERSE { return a[0].rg_on; }
+  if k == AB_WIND { for q: 0..<AB_WALLS { if a[0].walls[q].live { return true; } } }
+  return false;
+}
+ab_forward :: (s: [] Everglade) -> Point { return v3(sin(s[0].face), 0, cos(s[0].face)); }
+// Your feet in the world (the page's feet are over the floor you walk on).
+ab_you :: (s: [] Everglade) -> Point { f := s[0].feet; return v3(f.x, f.y + walk_at(s, f.x, f.z), f.z); }
+
+// A press on ability k's slot (its key, a click or a tap).
+ab_press :: (s: [] Everglade, k: int) {
+  s[0].sp.armed = -1;
+  if k == AB_REVERSE { ab_reverse(s); return; }
+  if k == AB_WIND { ab_wind(s); return; }
+}
+
+// ---- Reverse Gravity
+
+ab_in_cylinder :: (a: [] Abilities, p: Point) -> bool {
+  if !a[0].rg_on { return false; }
+  dx := p.x - a[0].rg_at.x; dz := p.z - a[0].rg_at.z;
+  return dx * dx + dz * dz <= f32(AB_RG_R * AB_RG_R) && p.y >= a[0].rg_at.y - 0.5 && p.y <= a[0].rg_at.y + f32(AB_RG_H + AB_RG_BAND);
+}
+// The field's pull on a reference point (a body's middle, a creature's feet) at height y moving up at
+// v, in the cylinder (reverse_gravity.rs Gravity::at): up at g, or the hover spring under its top.
+ab_rg_accel :: (a: [] Abilities, y: f32, v: f32) -> f32 {
+  below := a[0].rg_at.y + f32(AB_RG_H) - y;
+  if below > f32(AB_RG_BAND) { return f32(AB_G); }
+  w := f32(AB_RG_OMEGA);
+  return w * w * below - 2 * w * v;
+}
+// The town's unsecured props, which the cylinder takes (mesh - 12, as SP_MAT): the market's apples,
+// barrels, crates, tables, chairs, benches, mugs, bags, the anvil, swords, shields, the cauldron, the
+// chalice and the scrolls. Stalls, shelves, stands, dummies, banners and pegs are built in or staked.
+AB_LOOSE :: [40] bool.[
+  false, false, false, false, false, false, false, false, false, false,
+  false, false, false, false, false, false, false, false, true, true,
+  true, true, true, true, true, false, true, true, false, true,
+  true, true, false, false, false, true, false, true, false, false];
+ab_prop :: (mesh: int) -> bool { m := mesh - (KIT_FOREST + KIT_TREES); return m >= 0 && m < 40 && AB_LOOSE[m]; }
+
+ab_reverse :: (s: [] Everglade) {
+  a := ab_of(s);
+  if a[0].rg_on { a[0].rg_on = false; sp_say(s, "REVERSE GRAVITY ENDS", -1, ""); ab_fall_all(s); return; }
+  you := ab_you(s);
+  a[0].rg_on = true; a[0].rg_t = 0;
+  a[0].rg_at = v3(you.x, walk_at(s, you.x, you.z), you.z);
+  for i: 0..<WATCH_ACTORS { a[0].saved[i] = false; a[0].held[i] = false; }
+  w := sp_dm(s);
+  // what isn't anchored: the props standing in it come loose (as many as there are bodies for)
+  loosened := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING || !ab_prop(p.mesh) || !ab_in_cylinder(a, v3(p.cx, p.cy, p.cz)) { continue; }
+    if demo_loose(w) >= w[0].loose_cap { break; }
+    demo_loosen(w, i);
+    if w[0].pieces[i].state == DP_LOOSE { loosened += 1; }
+  }
+  // and what already lies loose wakes
+  c := a[0].rg_at;
+  demo_rouse(w, v3(c.x - f32(AB_RG_R), c.y - 1, c.z - f32(AB_RG_R)), v3(c.x + f32(AB_RG_R), c.y + f32(AB_RG_H), c.z + f32(AB_RG_R)), 0);
+  for b: 0..<DEMO_BITS { if w[0].bits[b].live { w[0].bits[b].resting = false; } }
+  lifted := ab_rg_entries(s);
+  if loosened > 0 { s[0].sp.walls_dirty = true; }
+  if (loosened > 0 || lifted > 0) && watch_on(s) {
+    _ := watch_crime(watch_w(s), c, f32(AB_HEAR_RG), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+  }
+  sp_say(s, "REVERSE GRAVITY", loosened + lifted, "FALL UPWARD");
+}
+// Everyone in the cylinder who hasn't saved yet makes their save: they hold on to a wall in reach,
+// or fall upward. How many fell upward.
+ab_rg_entries :: (s: [] Everglade) -> int {
+  a := ab_of(s);
+  if !a[0].rg_on || !watch_on(s) { return 0; }
+  w := watch_w(s);
+  n := 0;
+  for i: 0..<WATCH_ACTORS {
+    if a[0].saved[i] || !watch_here(w, i) { continue; }
+    act := w[0].actors[i];
+    if act.mode == WM_DEAD || (act.mode == WM_CALM && act.home_in) { continue; }
+    pl := person_place(s, i);
+    feet := folk_feet(s, pl.x, pl.z);
+    if !ab_in_cylinder(a, v3(pl.x, feet, pl.z)) { continue; }
+    a[0].saved[i] = true;
+    save := srd_save(s[0].sp.dice[..], watch_block(i).dex, AB_DC);
+    if save.success && ab_wall_near(s, pl.x, pl.z, f32(AB_GRAB)) { a[0].held[i] = true; continue; }
+    ab_lift(s, i, 0.5);
+    n += 1;
+  }
+  return n;
+}
+// Whether a wall stands within `reach` of (x, z): something fixed to hold on to.
+ab_wall_near :: (s: [] Everglade, x: f32, z: f32, reach: f32) -> bool {
+  for k: 0..<s[0].wall_n {
+    b := k * 6;
+    dx := hi(hi(s[0].walls[b] - x, x - s[0].walls[b + 3]), 0);
+    dz := hi(hi(s[0].walls[b + 2] - z, z - s[0].walls[b + 5]), 0);
+    if dx * dx + dz * dz <= reach * reach { return true; }
+  }
+  return false;
+}
+// Person i off their feet at `v` m/s up: knocked down by the watch's rules (off their day, where they
+// are), held there till they land.
+ab_lift :: (s: [] Everglade, i: int, v: f32) {
+  a := ab_of(s);
+  w := watch_w(s);
+  if w[0].actors[i].mode != WM_DOWN { watch_harm(w, i, 0, ab_you(s)); }
+  if !a[0].up[i] { a[0].air[i] = 0.02; a[0].air_top[i] = 0; }
+  a[0].up[i] = true; a[0].air_v[i] = hi(a[0].air_v[i], v);
+}
+// The cylinder ends: everything in it falls.
+ab_fall_all :: (s: [] Everglade) {
+  w := sp_dm(s);
+  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 { w[0].state[b * DB_FLOATS + 23] = 0.0; w[0].meta[b].rest_time = 0; } }
+}
+
+// ---- Wind Wall
+
+ab_wind :: (s: [] Everglade) {
+  a := ab_of(s);
+  you := ab_you(s);
+  f := ab_forward(s);
+  side := v3(-f.z, 0, f.x);
+  mid := add(you, times(f, f32(AB_WW_AHEAD)));
+  half := f32(AB_WW_LEN) * 0.5;
+  ax := mid.x - side.x * half; az := mid.z - side.z * half;
+  bx := mid.x + side.x * half; bz := mid.z + side.z * half;
+  // grounded: the ground along it within AB_WW_LEVEL of its middle's (wind_wall.rs NotGrounded)
+  base := ground_at(s, mid.x, mid.z);
+  q := 0;
+  steps := cast(int) (f32(AB_WW_LEN) / 0.25);
+  for k: 0..<steps + 1 {
+    u := f32(k) / f32(steps);
+    g := ground_at(s, lerp(ax, bx, u), lerp(az, bz, u));
+    if abs(g - base) > f32(AB_WW_LEVEL) { q += 1; }
+  }
+  if q > 0 { sp_say(s, "WIND WALL NEEDS LEVEL GROUND AHEAD", -1, ""); return; }
+  // another beside those standing; past 12 the oldest goes
+  k := 0;
+  for i: 0..<AB_WALLS { if !a[0].walls[i].live { k = i; break; } if a[0].walls[i].t > a[0].walls[k].t { k = i; } }
+  a[0].walls[k] = AbWall.{live = true, ax = ax, az = az, bx = bx, bz = bz, base = base, t = 0, seed = sp_rand(s)};
+  // whoever stands in it as it rises: a Strength save, 4d8 bludgeoning or half, and a failure is thrown up
+  hit := 0; total := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    dmg := srd_sum(s[0].sp.dice[..], 4, 8);
+    for i: 0..<WATCH_ACTORS {
+      if !watch_here(w, i) { continue; }
+      act := w[0].actors[i];
+      if act.mode == WM_DEAD || (act.mode == WM_CALM && act.home_in) { continue; }
+      pl := person_place(s, i);
+      if !ab_in_wall(a[0].walls[k], v3(pl.x, folk_feet(s, pl.x, pl.z), pl.z), 0.35) { continue; }
+      save := srd_save(s[0].sp.dice[..], ifx watch_is_guard(i) then 1 else 0, AB_DC);
+      took := ifx save.success then dmg / 2 else dmg;
+      watch_harm(w, i, took, you);
+      if !save.success && w[0].actors[i].mode != WM_DEAD { ab_lift(s, i, f32(AB_WIND_LIFT)); }
+      hit += 1; total = dmg;
+    }
+    if hit > 0 { _ := watch_crime(w, mid, f32(AB_HEAR_WW), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  }
+  if hit > 0 { sp_say(s, "WIND WALL · 4D8 BLUDGEONING", total, ifx hit == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  else { sp_say(s, "WIND WALL", -1, ""); }
+}
+// Whether p (feet) with a body `pad` m round is in wall q's area, from its ground to its top.
+ab_in_wall :: (q: AbWall, p: Point, pad: f32) -> bool {
+  if !q.live || p.y + f32(AB_HEIGHT) < q.base || p.y > q.base + f32(AB_WW_HIGH) { return false; }
+  return ab_off_wall(q, p.x, p.z) <= f32(AB_WW_THICK) * 0.5 + pad;
+}
+// How far (x, z) is from wall q's path.
+ab_off_wall :: (q: AbWall, x: f32, z: f32) -> f32 {
+  ex := q.bx - q.ax; ez := q.bz - q.az;
+  l2 := hi(ex * ex + ez * ez, 0.0001);
+  u := clamp(((x - q.ax) * ex + (z - q.az) * ez) / l2, 0, 1);
+  dx := x - (q.ax + ex * u); dz := z - (q.az + ez * u);
+  return sqrt(dx * dx + dz * dz);
+}
+
+// ---- each frame
+
+// The fields over what flies (verse/demolish.coax DemoWorld.fields), the people off their feet,
+// the smoke the walls keep out; before the debris steps.
+ab_frame :: (s: [] Everglade, dt: f32) {
+  a := ab_of(s);
+  w := sp_dm(s);
+  a[0].t += dt;
+  if a[0].rg_on {
+    a[0].rg_t += dt;
+    if a[0].rg_t >= f32(AB_RG_LIFE) { a[0].rg_on = false; ab_fall_all(s); }
+  }
+  for k: 0..<AB_WALLS {
+    if !a[0].walls[k].live { continue; }
+    a[0].walls[k].t += dt;
+    if a[0].walls[k].t >= f32(AB_WW_LIFE) { a[0].walls[k].live = false; }
+  }
+  w[0].field_n = ab_fields(s, w[0].fields[..]);
+  // whoever walks into the cylinder makes their save
+  if a[0].rg_on && cast(int) (a[0].rg_t * 4) != cast(int) ((a[0].rg_t - dt) * 4) {
+    n := ab_rg_entries(s);
+    if n > 0 && watch_on(s) { _ := watch_crime(watch_w(s), a[0].rg_at, f32(AB_HEAR_RG), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  }
+  ab_people(s, dt);
+  // the walls keep the smoke away: it is blown up and out of them
+  for q: 0..<AB_WALLS {
+    wl := a[0].walls[q];
+    if !wl.live { continue; }
+    for i: 0..<SP_PUFFS {
+      if !s[0].sp.puffs[i].live { continue; }
+      p := s[0].sp.puffs[i].at;
+      off := ab_off_wall(wl, p.x, p.z);
+      if off > 1.2 + s[0].sp.puffs[i].size || p.y > wl.base + f32(AB_WW_HIGH) + 1 { continue; }
+      ex := wl.bx - wl.ax; ez := wl.bz - wl.az; l := hi(sqrt(ex * ex + ez * ez), 0.01);
+      nx := -ez / l; nz := ex / l;
+      side := ifx (p.x - wl.ax) * nx + (p.z - wl.az) * nz >= 0 then 1.0f32 else -1.0f32;
+      s[0].sp.puffs[i].vel = add(s[0].sp.puffs[i].vel, times(v3(nx * side * 6, 9, nz * side * 6), dt));
+    }
+  }
+}
+// The fields as verse/demolish.coax reads them; how many.
+ab_fields :: (s: [] Everglade, out: [] DemoField) -> int {
+  a := ab_of(s);
+  n := 0;
+  if a[0].rg_on && n < out.count {
+    c := a[0].rg_at;
+    out[n] = DemoField.{kind = DF_RISE, ax = c.x, az = c.z, bx = 0, bz = 0, base = c.y, top = c.y + f32(AB_RG_H), r = f32(AB_RG_R), wide = 0, force = 0, seed = 0, body = -1};
+    n += 1;
+  }
+  for k: 0..<AB_WALLS {
+    q := a[0].walls[k];
+    if !q.live || n >= out.count { continue; }
+    out[n] = DemoField.{kind = DF_UPDRAFT, ax = q.ax, az = q.az, bx = q.bx, bz = q.bz, base = q.base, top = q.base + f32(AB_WW_HIGH), r = f32(AB_WW_THICK), wide = 0, force = 0, seed = q.seed, body = -1};
+    n += 1;
+  }
+  return n;
+}
+// The same fields for the river's floats (everglade-face.c hands them to river.coax
+// everglade_river_fields): AB_FIELD_FLOATS numbers each, kind first. How many.
+everglade_spell_fields :: (s: [] Everglade, out: [] f32) -> int #export_c {
+  if !sp_on(s) { return 0; }
+  w := sp_dm(s);
+  n := 0;
+  for i: 0..<w[0].field_n {
+    if (n + 1) * AB_FIELD_FLOATS > out.count { break; }
+    f := w[0].fields[i];
+    o := n * AB_FIELD_FLOATS;
+    out[o] = f32(f.kind); out[o + 1] = f.ax; out[o + 2] = f.az; out[o + 3] = f.bx; out[o + 4] = f.bz;
+    out[o + 5] = f.base; out[o + 6] = f.top; out[o + 7] = f.r; out[o + 8] = f.wide; out[o + 9] = f.force;
+    n += 1;
+  }
+  return n;
+}
+
+// The people off their feet: they rise with the cylinder or fall, held in the watch's knocked-down
+// clip while they are up, and take 1d6 for every 10 feet when they land.
+ab_people :: (s: [] Everglade, dt: f32) {
+  a := ab_of(s);
+  if !watch_on(s) { for i: 0..<WATCH_ACTORS { a[0].up[i] = false; a[0].air[i] = 0; } return; }
+  w := watch_w(s);
+  steps := clamp_i(cast(int) (dt * 120) + 1, 1, 30);
+  h := dt / f32(steps);
+  for i: 0..<WATCH_ACTORS {
+    if !a[0].up[i] { continue; }
+    pl := person_place(s, i);
+    feet := folk_feet(s, pl.x, pl.z);
+    y := a[0].air[i]; v := a[0].air_v[i];
+    for q: 0..<steps {
+      at := v3(pl.x, feet + y, pl.z);
+      g := ifx ab_in_cylinder(a, at) then ab_rg_accel(a, feet + y, v) else -f32(AB_G);
+      v += g * h; y += v * h;
+      if y <= 0 && v <= 0 { break; }
+    }
+    a[0].air_top[i] = hi(a[0].air_top[i], y);
+    if y <= 0 && v <= 0 {
+      // landed: the fall's 1d6 per 10 feet (at most 20d6)
+      dice := clamp_i(cast(int) floor(a[0].air_top[i] / (10 * f32(AB_FOOT)) + 0.000001), 0, 20);
+      if dice > 0 && w[0].actors[i].mode != WM_DEAD { watch_harm(w, i, srd_sum(s[0].sp.dice[..], dice, 6), ab_you(s)); }
+      a[0].up[i] = false; a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].air_top[i] = 0;
+      continue;
+    }
+    a[0].air[i] = y; a[0].air_v[i] = v;
+    // held down in the fall's clip while they are up (or dead, as they are)
+    if w[0].actors[i].mode == WM_DOWN { w[0].actors[i].t = lo(w[0].actors[i].t, 0.25); }
+  }
+}
+// How high over their feet person i is drawn.
+ab_air :: (s: [] Everglade, i: int) -> f32 {
+  if i < 0 || i >= WATCH_ACTORS { return 0; }
+  a := ab_of(s);
+  return ifx a[0].up[i] then a[0].air[i] else 0.0f32;
+}
+
+// You, after the controller's step (everglade-face.c): in the cylinder the field moves you as the
+// old bar did (spells.rs after_step: from where the step began, in 1/120 s substeps, stopped by a
+// roof over you and the floor under you); walking into a Wind Wall throws you up and keeps you
+// rising. y and vy are over the floor you walk on, as the player's are.
+SpLift :: struct { on: bool; y: f32; vy: f32; dx: f32; dz: f32; }
+everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, vy1: f32, dt: f32) -> SpLift #export_c {
+  out := SpLift.{on = false, y = y1, vy = vy1, dx = 0, dz = 0};
+  if !sp_on(s) || !(dt > 0) || !finite(y0) || !finite(y1) { return out; }
+  a := ab_of(s);
+  floor_y := walk_at(s, x, z);
+  if a[0].rg_on {
+    feet := floor_y + y0;
+    dx := x - a[0].rg_at.x; dz := z - a[0].rg_at.z;
+    if dx * dx + dz * dz <= f32(AB_RG_R * AB_RG_R) && feet >= a[0].rg_at.y - 0.5 && feet <= a[0].rg_at.y + f32(AB_RG_H + AB_RG_BAND) {
+      steps := clamp_i(cast(int) -floor(-dt * 120), 1, 30);
+      h := dt / f32(steps);
+      y := feet; v := vy0;
+      for q: 0..<steps { v += ab_rg_accel(a, y, v) * h; y += v * h; }
+      roof := ab_roof(s, x, z, feet + f32(AB_HEIGHT) - 0.2);
+      if y + f32(AB_HEIGHT) > roof { y = roof - f32(AB_HEIGHT); v = lo(v, 0); }
+      if y <= floor_y { y = floor_y; v = hi(v, 0); }
+      out.on = true; out.y = y - floor_y; out.vy = v;
+      return out;
+    }
+  }
+  you := v3(x, floor_y + y1, z);
+  for k: 0..<AB_WALLS {
+    if !ab_in_wall(a[0].walls[k], you, f32(AB_RADIUS)) { continue; }
+    v := hi(vy1, f32(AB_WIND_LIFT));
+    out.on = true; out.vy = v; out.y = y1 + (v - vy1) * dt;
+    return out;
+  }
+  return out;
+}
+// The lowest underside of what stands over (x, z) above `over` (a floor above, a roof), else far up.
+ab_roof :: (s: [] Everglade, x: f32, z: f32, over: f32) -> f32 {
+  w := sp_dm(s);
+  roof := 100000.0f32;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING || p.y0 < over || p.y0 >= roof { continue; }
+    if x < p.x0 - 0.1 || x > p.x1 + 0.1 || z < p.z0 - 0.1 || z > p.z1 + 0.1 { continue; }
+    roof = p.y0;
+  }
+  return roof;
+}
+
+// ---- drawing (after the spells' own, before their puffs are sorted)
+
+AB_VIOLET :: Point.{x = 0.62, y = 0.4, z = 1.0};       // motes.rs VIOLET
+AB_DUST :: Point.{x = 1.0, y = 0.9, z = 0.72};         // DUST_TINT
+AB_FADE :: 0.6;
+// A particle's four numbers in [0, 1) from its family's seed and its index (motes.rs seeded).
+ab_h :: (seed: f32, i: int, k: int) -> f32 { return sp_noise(seed + f32(i) * 1.618, f32(k) * 3.7 + 0.5); }
+AbMote :: struct { ok: bool; at: Point; fade: f32; age: f32; }
+// Particle i of the family `seed`, `age` s into the spell (motes.rs Field::mote): it lifts off from
+// the ground, falls upward faster as it climbs (lift m/s²), gathers and bobs a little under the top,
+// fades and lifts off again; a slow swirl about the axis.
+ab_mote :: (a: [] Abilities, seed: f32, i: int, age: f32, lift: f32) -> AbMote {
+  m: AbMote;
+  c := a[0].rg_at; R := f32(AB_RG_R); H := f32(AB_RG_H);
+  h0 := ab_h(seed, i, 0); h1 := ab_h(seed, i, 1); h2 := ab_h(seed, i, 2); h3 := ab_h(seed, i, 3);
+  g0 := ab_h(seed + 41.0, i, 0); g1 := ab_h(seed + 41.0, i, 1); g2 := ab_h(seed + 41.0, i, 2); g3 := ab_h(seed + 41.0, i, 3);
+  r := R * 0.95 * pow(hi(h0, 0.0001), 0.8);
+  start := f32(TAU) * h1;
+  depth := 0.4 + 2.2 * g0;
+  climb := H - depth;
+  accel := lift * (0.8 + 0.6 * h2);
+  rise := sqrt(2 * climb / accel);
+  hover := 2 + 4 * g1;
+  period := rise + hover + f32(AB_FADE);
+  since := age - 3 * h3;
+  if since < 0 { return m; }
+  t := since - period * floor(since / period);
+  y := 0.0f32; fade := 1.0f32;
+  if t < rise { y = 0.5 * accel * t * t; fade = lo(t / f32(AB_FADE), 1); }
+  else if t < rise + hover {
+    bob := 0.25 * sin((t - rise) * (0.9 + g2) + f32(TAU) * g3);
+    y = climb + bob * (1 - exp(-(t - rise) * 3));
+  } else { y = climb; fade = 1 - (t - rise - hover) / f32(AB_FADE); }
+  ang := start + since * (0.08 + 0.1 * g2) + 0.35 * y / H;
+  m.ok = true; m.at = v3(c.x + r * cos(ang), c.y + 0.08 + y, c.z + r * sin(ang)); m.fade = clamp(fade, 0, 1); m.age = t;
+  return m;
+}
+// motes.rs's counts (448 particles, 46 streaks, two rings of 64), a phone half of each.
+AB_MOTE_DUST :: 150; AB_MOTE_SPARKS :: 60; AB_PEBBLES :: 50; AB_LEAVES :: 60; AB_EDGE :: 128; AB_STREAKS :: 46; AB_RING :: 64;
+AB_STONES :: [9] f32.[0.42, 0.4, 0.37, 0.52, 0.47, 0.4, 0.33, 0.31, 0.3];
+AB_FOLIAGE :: [12] f32.[0.26, 0.42, 0.12, 0.4, 0.5, 0.14, 0.6, 0.48, 0.16, 0.46, 0.3, 0.13];
+// The old engine's luminances over our bloom: a glow of `level` there.
+AB_GLOW :: 0.16;
+
+ab_draw :: (s: [] Everglade) {
+  a := ab_of(s);
+  eye := s[0].sp.shot.eye;
+  few := phone(s);
+  div := ifx few then 2 else 1;
+  if a[0].rg_on {
+    age := a[0].rg_t;
+    c := a[0].rg_at; R := f32(AB_RG_R); H := f32(AB_RG_H);
+    // ends: the field fades in over its first half second
+    on := clamp(age / 0.5, 0, 1);
+    // the bright band climbing the edge, first so it survives a full budget
+    for k: 0..<AB_EDGE / div {
+      kk := k * div;
+      e0 := ab_h(70.0, kk, 0); e1 := ab_h(70.0, kk, 1); e2 := ab_h(70.0, kk, 2); e3 := ab_h(70.0, kk, 3);
+      period := 8 + 6 * e0;
+      u := age / period + e1; u = u - floor(u);
+      sy := H * u * u;
+      ang := f32(TAU) * (f32(kk) + 0.6 * (e2 - 0.5)) / f32(AB_EDGE) + 0.05 * age;
+      r := R * (0.97 + 0.03 * e3);
+      at := v3(c.x + r * cos(ang), c.y + 0.1 + sy, c.z + r * sin(ang));
+      whole := clamp(lo(sy / f32(AB_FADE), 1) * lo((H - sy) / (2 * f32(AB_FADE)), 1), 0, 1);
+      f0 := ab_h(71.0, kk, 0); f1 := ab_h(71.0, kk, 1); f2 := ab_h(71.0, kk, 2);
+      tw := 0.7 + 0.3 * sin(age * (2 + 3 * f0) + f32(TAU) * f1);
+      ab_blob(s, at, 0.35 + 0.25 * f2, times(AB_VIOLET, 4.0 * f32(AB_GLOW) * tw * whole * on), eye);
+    }
+    for i: 0..<AB_MOTE_DUST / div {
+      m := ab_mote(a, 13.0, i * div, age, 2.0);
+      if !m.ok { continue; }
+      h0 := ab_h(14.0, i, 0); h1 := ab_h(14.0, i, 1); h2 := ab_h(14.0, i, 2);
+      fl := 0.75 + 0.25 * sin(age * (2 + 3 * h1) + f32(TAU) * h2);
+      ab_blob(s, m.at, 0.09 + 0.1 * h0, times(AB_DUST, 1.6 * f32(AB_GLOW) * fl * m.fade * on), eye);
+    }
+    for i: 0..<AB_MOTE_SPARKS / div {
+      m := ab_mote(a, 23.0, i * div, age, 2.6);
+      if !m.ok { continue; }
+      h0 := ab_h(24.0, i, 0); h1 := ab_h(24.0, i, 1); h2 := ab_h(24.0, i, 2);
+      b := 0.5 + 0.5 * sin(age * (3 + 4 * h1) + f32(TAU) * h2);
+      tw := 0.3 + 0.7 * b * b * b;
+      ab_blob(s, m.at, 0.14 + 0.16 * h0, times(AB_VIOLET, 4.0 * f32(AB_GLOW) * tw * m.fade * on), eye);
+    }
+    // pebbles tumbling and leaves rocking as they climb
+    for i: 0..<AB_PEBBLES / div {
+      m := ab_mote(a, 33.0, i * div, age, 1.0);
+      if !m.ok || !in_view_p(s, m.at) { continue; }
+      h0 := ab_h(34.0, i, 0); h1 := ab_h(34.0, i, 1); h2 := ab_h(34.0, i, 2);
+      size := (0.05 + 0.08 * h0) * m.fade * 2;
+      spin := m.age * (1 + 2.5 * h2);
+      x := v3(cos(spin + h1 * 6) * size, sin(spin) * size * 0.5, sin(spin + h1 * 6) * size);
+      y := v3(-sin(spin) * size * 0.4, cos(spin) * size * 0.75, 0);
+      z := times(unit_or(cross(x, y), v3(0, 0, 1)), size * 0.9);
+      k := (i % 3) * 3;
+      sp_shape(s, SHAPE_BOX, LOOK_STONE, m.at, x, y, z, v3(AB_STONES[k], AB_STONES[k + 1], AB_STONES[k + 2]));
+    }
+    for i: 0..<AB_LEAVES / div {
+      m := ab_mote(a, 43.0, i * div, age, 1.2);
+      if !m.ok || !in_view_p(s, m.at) { continue; }
+      h0 := ab_h(44.0, i, 0); h1 := ab_h(44.0, i, 1); h2 := ab_h(44.0, i, 2); h3 := ab_h(44.0, i, 3);
+      size := (0.09 + 0.07 * h0) * m.fade * 2;
+      spin := f32(TAU) * h1 + m.age * (0.8 + h2);
+      rock := 0.9 * sin(m.age * (2 + 2 * h3) + f32(TAU) * h3);
+      along := v3(sin(spin), 0, cos(spin));
+      across := v3(cos(spin) * cos(rock), sin(rock), -sin(spin) * cos(rock));
+      k := (i % 4) * 3;
+      sp_shape(s, SHAPE_BOX, LOOK_LEAVES, m.at, times(across, size * 0.9), times(cross(along, across), 0.012), times(along, size * 2), v3(AB_FOLIAGE[k], AB_FOLIAGE[k + 1], AB_FOLIAGE[k + 2]));
+    }
+    // soft streaks rising up the wall on a slow helix
+    half := 5.0f32;
+    span := H + 2 * half;
+    for k: 0..<AB_STREAKS / div {
+      kk := k * div;
+      h0 := ab_h(54.0, kk, 0); h1 := ab_h(54.0, kk, 1); h2 := ab_h(54.0, kk, 2); h3 := ab_h(54.0, kk, 3);
+      sp_ := age * (2.2 + 1.6 * h0) + h1 * span; sp_ = sp_ - span * floor(sp_ / span);
+      y := sp_ - half;
+      ang := f32(TAU) * (f32(kk) + 0.5 * h2) / f32(AB_STREAKS) + 0.22 * age + 0.6 * y / H;
+      at := v3(c.x + R * cos(ang), c.y + y, c.z + R * sin(ang));
+      ends := sin(f32(PI) * sp_ / span);
+      sp_fx(s, FX_GLOW, at, 0.45 + 0.35 * h3, times(AB_VIOLET, 0.8 * f32(AB_GLOW) * 2.5 * ends * (0.7 + 0.3 * h3) * on), 0.2, v3(0, half, 0), 0);
+    }
+    // the shimmering rings at the base and the top
+    for ring: 0..<2 {
+      y := ifx ring == 0 then 0.25f32 else H;
+      ph := ifx ring == 0 then 0.0f32 else 1.7f32;
+      for k: 0..<AB_RING / div {
+        ang := f32(TAU) * f32(k * div) / f32(AB_RING);
+        sh := sin(ang * 7 + age * 2.3 + ph) * sin(ang * 3 - age * 1.1 + ph);
+        level := 0.2 + 0.8 * abs(sh);
+        ab_blob(s, v3(c.x + R * cos(ang), c.y + y, c.z + R * sin(ang)), 0.7 * f32(div), times(AB_VIOLET, 1.6 * f32(AB_GLOW) * level * on), eye);
+      }
+    }
+  }
+  // each Wind Wall: its outline on the ground and at its top, either face, its ends' uprights, and the
+  // updraft's streaks rising through it every half metre (wind_wall.rs wall_lines)
+  outline := times(v3(0.55, 0.9, 1.0), 0.85 * 0.6);
+  streak := times(v3(0.85, 0.97, 1.0), 0.55 * 0.6);
+  for q: 0..<AB_WALLS {
+    wl := a[0].walls[q];
+    if !wl.live { continue; }
+    rise := clamp(wl.t / 0.35, 0, 1);
+    top := wl.base + f32(AB_WW_HIGH) * rise;
+    ex := wl.bx - wl.ax; ez := wl.bz - wl.az; l := hi(sqrt(ex * ex + ez * ez), 0.01);
+    nx := -ez / l * f32(AB_WW_THICK) * 0.5; nz := ex / l * f32(AB_WW_THICK) * 0.5;
+    for side: 0..<2 {
+      sg := ifx side == 0 then -1.0f32 else 1.0f32;
+      a0 := v3(wl.ax + nx * sg, 0, wl.az + nz * sg); b0 := v3(wl.bx + nx * sg, 0, wl.bz + nz * sg);
+      ab_line(s, v3(a0.x, wl.base + 0.02, a0.z), v3(b0.x, wl.base + 0.02, b0.z), outline);
+      ab_line(s, v3(a0.x, top, a0.z), v3(b0.x, top, b0.z), outline);
+    }
+    ab_line(s, v3(wl.ax, wl.base, wl.az), v3(wl.ax, top, wl.az), outline);
+    ab_line(s, v3(wl.bx, wl.base, wl.bz), v3(wl.bx, top, wl.bz), outline);
+    count := cast(int) -floor(-l / 0.5);
+    height := top - wl.base;
+    if height < 0.05 { continue; }
+    for i: 0..<count {
+      u := (f32(i) + 0.5) / f32(count);
+      ph := f32(i) * 0.618; ph = ph - floor(ph);
+      v := (a[0].t * 2.2 + ph) * height / 2; v = v - height * floor(v / height);
+      y := wl.base + v;
+      e := lo(y + 0.9, top);
+      ab_line(s, v3(lerp(wl.ax, wl.bx, u), y, lerp(wl.az, wl.bz, u)), v3(lerp(wl.ax, wl.bx, u), e, lerp(wl.az, wl.bz, u)), streak);
+    }
+  }
+}
+in_view_p :: (s: [] Everglade, p: Point) -> bool { return length(sub(p, s[0].sp.shot.eye)) < 90; }
+// A round glow of half size `half` turned toward the eye, fading out as it brushes the camera
+// (motes.rs blob).
+ab_blob :: (s: [] Everglade, at: Point, half: f32, c: Point, eye: Point) {
+  close := clamp((length(sub(eye, at)) - 1) / 3, 0, 1);
+  if close <= 0 { return; }
+  sp_glow(s, at, half, times(c, close));
+}
+// A thin glowing line from a to b: the old guide lines.
+ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
+  sp_fx(s, FX_GLOW, mix(a, b, 0.5), 0.035, c, 0.6, times(sub(b, a), 0.5), 0);
+}
+
+// ---- checks
+
+#test "abilities: Reverse Gravity lifts you and the town's loose props to hover under its top, and lets them fall" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  // stand by the market's props
+  g[0].feet = v3(30, 0, -4);
+  ab_press(g[..], AB_REVERSE);
+  a := ab_of(g[..]);
+  #assert a[0].rg_on && near(a[0].rg_at.y, walk_at(g[..], 30, -4), 0.001);
+  // you rise from the floor and hover within the band under its top, the spring holding you there
+  y := 0.0f32; v := 0.0f32;
+  for k: 0..<600 { l := everglade_lift(g[..], 30, -4, y, v, y, v - 24.0 / 60, 1.0 / 60); #assert l.on; y = l.y; v = l.vy; }
+  top := f32(AB_RG_H);
+  #assert y > top - f32(AB_RG_BAND) - 0.2 && y < top + 0.2 && abs(v) < 0.5;
+  // outside it, nothing
+  far := everglade_lift(g[..], 30 + 40, -4, 0, 0, 0, 0, 1.0 / 60);
+  #assert !far.on;
+  // the props it took rise too
+  w := sp_dm(g[..]);
+  loose := demo_loose(w);
+  #assert loose > 0;
+  for k: 0..<480 { ab_frame(g[..], 1.0 / 60); demo_step(w, everglade_ground(), g[0].heights[..], 1.0 / 60); }
+  high := 0;
+  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_WHOLE && f32(demo_pos(w, b).y) > a[0].rg_at.y + top - 3 { high += 1; } }
+  #assert high > 0;
+  // pressed again it ends, and they fall back to the ground
+  ab_press(g[..], AB_REVERSE);
+  #assert !a[0].rg_on;
+  for k: 0..<600 { ab_frame(g[..], 1.0 / 60); demo_step(w, everglade_ground(), g[0].heights[..], 1.0 / 60); }
+  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind != 0 { #assert f32(demo_pos(w, b).y) < a[0].rg_at.y + 6; } }
+}
+
+#test "abilities: a Wind Wall rises 4 m ahead across your way, throws you up when you walk in, and lifts a splinter" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].feet = v3(0, 0, -30); g[0].face = 0;
+  ab_press(g[..], AB_WIND);
+  a := ab_of(g[..]);
+  q := a[0].walls[0];
+  #assert q.live && near(q.az, -26, 0.01) && near(q.bz, -26, 0.01) && near(abs(q.bx - q.ax), f32(AB_WW_LEN), 0.01);
+  // walking into it: thrown up at 11 m/s
+  l := everglade_lift(g[..], 0, -26, 0, 0, 0, 0, 1.0 / 60);
+  #assert l.on && l.vy >= f32(AB_WIND_LIFT) && l.y > 0;
+  #assert !everglade_lift(g[..], 0, -28, 0, 0, 0, 0, 1.0 / 60).on;
+  // a splinter in it flies up, a chunk is only lightened
+  w := sp_dm(g[..]);
+  ab_frame(g[..], 1.0 / 60);
+  up := demo_field_accel(w, d3(0.0, f64(q.base) + 1.0, -26.0), D3_ZERO, 0.01, -1, 0.0);
+  heavy := demo_field_accel(w, d3(0.0, f64(q.base) + 1.0, -26.0), D3_ZERO, 50.0, 3, 0.0);
+  #assert up.y > 10.0 && near(f32(heavy.y), f32(DEMO_GRAVITY + DF_HEAVY), 0.001);
+  // it stands a minute
+  for k: 0..<61 { ab_frame(g[..], 1.0); }
+  #assert !a[0].walls[0].live;
+}

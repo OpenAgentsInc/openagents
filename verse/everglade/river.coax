@@ -164,7 +164,10 @@ River :: struct {
   fx: [FX * FX_FLOATS] f32; fx_next: int; fx_seed: u32; mist_carry: f32; foot_carry: f32;
   weir: [6] f32;          // the weir's sheet: west and east edges of its water, the level above and below it (2 spare)
   clock: f32;             // s on the water's clock, folded every hour (the ripples' and the FX's)
+  // the spells' fields over the floats this frame (everglade_river_fields), RIVER_FIELD_FLOATS each
+  fields: [RIVER_FIELDS * RIVER_FIELD_FLOATS] f32; field_n: int;
 }
+RIVER_FIELDS :: 16; RIVER_FIELD_FLOATS :: 10;
 
 // What the face passes on to the controller and the page each frame.
 Swim :: struct {
@@ -600,6 +603,7 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     for i: 0..<r[0].float_n {
       if i == r[0].aboard { r[0].floats[i] = boat_row(r, r[0].floats[i], FLOAT_STEP); continue; }
       r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].kinds[i], r[0].homes[i * 3], r[0].homes[i * 3 + 1], r[0].homes[i * 3 + 2], r[0].float_tick);
+      if r[0].field_n > 0 { r[0].floats[i] = float_field(r, r[0].floats[i], i, FLOAT_STEP); }
     }
     w = rigid_step(w, gravity);
     boat_shore(r, r[0].aboard);
@@ -1007,6 +1011,52 @@ everglade_river_shove :: (r: [] River, x: f32, z: f32, reach: f32, impulse: f32,
     n += 1;
   }
   return n;
+}
+
+// The spells' fields over the floats (the page's everglade_spell_fields, laid out as verse/
+// demolish.coax DemoField: kind, ax, az, bx, bz, base, top, r, wide, force), till the next call.
+everglade_river_fields :: (r: [] River, fields: [] f32, n: int) #export_c {
+  r[0].field_n = n; if n < 0 { r[0].field_n = 0; } if n > RIVER_FIELDS { r[0].field_n = RIVER_FIELDS; }
+  if fields.count < r[0].field_n * RIVER_FIELD_FLOATS { r[0].field_n = fields.count / RIVER_FIELD_FLOATS; }
+  for k: 0..<r[0].field_n * RIVER_FIELD_FLOATS { r[0].fields[k] = fields[k]; }
+}
+// What the fields do to float i over h, besides gravity (as verse/demolish.coax demo_field_accel
+// moves the debris): in Reverse Gravity's cylinder it falls upward and hovers under the top; in a
+// Wind Wall a duck or a pad (2 kg at most) flies up its updraft held to its middle, a rowboat is
+// lightened by 3 m/s². The rowboat you sit in stays on the water.
+float_field :: (r: [] River, b: RigidBody, i: int, h: f64) -> RigidBody {
+  out := b;
+  for k: 0..<r[0].field_n {
+    f := r[0].fields[k * RIVER_FIELD_FLOATS..<(k + 1) * RIVER_FIELD_FLOATS];
+    kind := cast(int) f[0];
+    base := f64(f[5]); top := f64(f[6]);
+    if b.pos.y < base - 0.5 || b.pos.y > top + 1.5 { continue; }
+    if kind == 1 {
+      dx := b.pos.x - f64(f[1]); dz := b.pos.z - f64(f[2]);
+      if dx * dx + dz * dz > f64(f[7] * f[7]) { continue; }
+      below := top - b.pos.y;
+      ay := ifx below > 1.5 then 9.81 else 400.0 * below - 40.0 * b.vel.y;
+      out = rigid_wake(out);
+      out.vel = d3_add(out.vel, d3(-0.3 * b.vel.x * h, (ay + 9.81) * h, -0.3 * b.vel.z * h));
+      return out;
+    }
+    if kind == 2 {
+      if b.pos.y > top { continue; }
+      ex := f64(f[3] - f[1]); ez := f64(f[4] - f[2]);
+      l2 := fmax(ex * ex + ez * ez, 0.0001);
+      u := fclamp(((b.pos.x - f64(f[1])) * ex + (b.pos.z - f64(f[2])) * ez) / l2, 0.0, 1.0);
+      l := sqrt(l2); tx := ex / l; tz := ez / l;
+      off := (b.pos.x - f64(f[1]) - ex * u) * -tz + (b.pos.z - f64(f[2]) - ez * u) * tx;
+      if abs(off) > f64(f[7]) * 0.5 + 0.3 || u <= 0.0 || u >= 1.0 { continue; }
+      out = rigid_wake(out);
+      if b.mass > 2.0 { out.vel = d3_add(out.vel, d3(0.0, 3.0 * h, 0.0)); continue; }
+      om := 6.2831853 * 2.0;
+      ang := 6.2831853 * 1.4 * f64(r[0].clock) + f64(i) * 2.4;
+      cross := -(om * om * off + 2.0 * om * (b.vel.x * -tz + b.vel.z * tx));
+      out.vel = d3_add(out.vel, d3((tx * cos(ang) * 6.0 - tz * (sin(ang) * 6.0 + cross)) * h, 25.0 * h, (tz * cos(ang) * 6.0 + tx * (sin(ang) * 6.0 + cross)) * h));
+    }
+  }
+  return out;
 }
 
 // The water's clock folded on the hour, as the ripples keep it.
