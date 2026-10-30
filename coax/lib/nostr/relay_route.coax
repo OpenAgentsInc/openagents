@@ -182,6 +182,38 @@ rr_free_slot :: (handles: [] int) -> int {
 // bound to it, so a reconnect needs a new challenge.
 rr_next_gen :: (gen: int) -> int { return gen + 1; }
 
+#test "deadlines: a slow HTTP head is dropped, a stalled frame closed, an idle WebSocket kept" {
+  // The head: 10 s from accept, as the Rust relay's HANDSHAKE_TIMEOUT.
+  #assert rr_deadline(false, 0, 100, 109) == RR_T_KEEP && rr_deadline(false, 0, 100, 110) == RR_T_DROP;
+  #assert rr_deadline(false, 5, 100, 109) == RR_T_KEEP && rr_deadline(false, 5, 100, 111) == RR_T_DROP;
+  // A WebSocket with bytes of an unfinished frame: 30 s since the last progress.
+  #assert rr_deadline(true, 1, 100, 129) == RR_T_KEEP && rr_deadline(true, 1, 100, 130) == RR_T_CLOSE;
+  #assert rr_deadline(true, 140000, 100, 131) == RR_T_CLOSE;
+  // An idle WebSocket (nothing buffered) is kept however long it waits.
+  #assert rr_deadline(true, 0, 100, 130) == RR_T_KEEP && rr_deadline(true, 0, 100, 100000) == RR_T_KEEP;
+  // A clock that went back never drops anyone.
+  #assert rr_deadline(false, 0, 100, 50) == RR_T_KEEP && rr_deadline(true, 9, 100, 50) == RR_T_KEEP;
+  #assert RR_CLOSE_SLOW == 1008;
+}
+// Deadlines, so that 16 silent or trickling sockets can't hold every slot.
+// since is when the connection was accepted (before the 101) or when its
+// last complete frame was taken (after). A head not finished in RR_HEAD_S
+// is dropped (the Rust relay: gateway/socket.rs HANDSHAKE_TIMEOUT, 10 s).
+// A WebSocket holding part of a frame with no complete frame for
+// RR_FRAME_S is closed with 1008 (policy). An idle WebSocket with nothing
+// buffered is kept: a Pylon waits for jobs that way.
+RR_HEAD_S :: 10; RR_FRAME_S :: 30; RR_CLOSE_SLOW :: 1008;
+RR_T_KEEP :: 0; RR_T_DROP :: 1; RR_T_CLOSE :: 2;
+rr_deadline :: (ws: bool, used: int, since: int, now: int) -> int {
+  waited := now - since;
+  if !ws {
+    if waited >= RR_HEAD_S { return RR_T_DROP; }
+    return RR_T_KEEP;
+  }
+  if used >= 1 && waited >= RR_FRAME_S { return RR_T_CLOSE; }
+  return RR_T_KEEP;
+}
+
 #test "fan-out: only a newly stored event, only to open WebSocket subscriptions that match" {
   #assert rr_fanout(RR_RS_ACCEPT) && !rr_fanout(1) && !rr_fanout(2) && !rr_fanout(RR_RS_BAD_EVENT);
   #assert rr_deliver(true, true, true);

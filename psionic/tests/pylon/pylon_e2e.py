@@ -18,7 +18,13 @@ throwaway CA and localhost leaf that openssl generates into OUT_DIR for this
 run. The Pylon is built with -DCXTLS_TEST_TRUST and trusts only that CA
 (CXTLS_TEST_CA); nothing is committed.
 
-  python3 -I psionic/tests/pylon/pylon_e2e.py [--wss] [OUT_DIR]
+With --listen ADDRESS --host NAME the relay binds ADDRESS instead of
+127.0.0.1 and every client names it as NAME, which must resolve to ADDRESS
+(the Pylon and relay_uri refuse IP literals). On the tailnet:
+--listen 100.74.238.61 --host coderos-4080.tailaeab8f.ts.net. The relay is
+still the Coax relay started here; nothing public is contacted.
+
+  python3 -I psionic/tests/pylon/pylon_e2e.py [--wss] [--listen ADDRESS --host NAME] [OUT_DIR]
 
 Environment:
   COAX     the compiler (default coax/bin/coax)
@@ -42,7 +48,21 @@ MODEL = os.environ.get('MODEL', 'elephant-1' if ENGINE else 'psionic-toy')
 SLUG = 'ch19-local'
 RESTART = os.environ.get('RESTART', '1') != '0'
 WSS = '--wss' in sys.argv[1:]
-ARGS = [a for a in sys.argv[1:] if a != '--wss']
+ARGS, LISTEN, HOST = [], '127.0.0.1', 'localhost'
+_argv = [a for a in sys.argv[1:] if a != '--wss']
+while _argv:
+    a = _argv.pop(0)
+    if a in ('--listen', '--host') and _argv:
+        if a == '--listen':
+            LISTEN = _argv.pop(0)
+        else:
+            HOST = _argv.pop(0)
+    else:
+        ARGS.append(a)
+if HOST == 'localhost' and LISTEN != '127.0.0.1':
+    sys.exit('pylon_e2e: --listen needs --host, a name that resolves to it')
+if HOST != 'localhost' and socket.gethostbyname(HOST) != LISTEN:
+    sys.exit('pylon_e2e: --host %s does not resolve to --listen %s' % (HOST, LISTEN))
 failed = []
 
 
@@ -52,15 +72,15 @@ def check(ok, what):
         failed.append(what)
 
 
-def free_port():
-    s = socket.socket(); s.bind(('127.0.0.1', 0)); p = s.getsockname()[1]; s.close(); return p
+def free_port(address='127.0.0.1'):
+    s = socket.socket(); s.bind((address, 0)); p = s.getsockname()[1]; s.close(); return p
 
 
-def wait_port(port, seconds):
+def wait_port(port, seconds, address='127.0.0.1'):
     end = time.time() + seconds
     while time.time() < end:
         try:
-            socket.create_connection(('127.0.0.1', port), 0.5).close(); return True
+            socket.create_connection((address, port), 0.5).close(); return True
         except OSError:
             time.sleep(0.2)
     return False
@@ -146,7 +166,7 @@ class TlsProxy:
             raw.close(); return
         self.handshakes += 1
         try:
-            up = socket.create_connection(('127.0.0.1', self.upstream), 2)
+            up = socket.create_connection((LISTEN, self.upstream), 2)
         except OSError:
             self.end(tls); return
         # An SSL object must have one owner. Concurrent recv/send/unwrap from
@@ -220,7 +240,7 @@ class TlsProxy:
 
 def start_relay(out, rport, url, n):
     log = open(out / ('relay-%d.log' % n), 'w')
-    return subprocess.Popen([str(out / 'relay'), '--listen', '127.0.0.1', '--port', str(rport), '--url', url,
+    return subprocess.Popen([str(out / 'relay'), '--listen', LISTEN, '--port', str(rport), '--url', url,
                              '--store', str(out / 'relay.store')], stdout=log, stderr=subprocess.STDOUT)
 
 
@@ -238,7 +258,7 @@ def run(out, serve):
     relays = []
     proxy = None
     try:
-        rport = free_port()
+        rport = free_port(LISTEN)
         store = out / 'relay.store'
         if store.exists():
             store.unlink()
@@ -249,10 +269,10 @@ def run(out, serve):
             relay_url = 'wss://localhost:%d' % proxy.port
             env['CXTLS_TEST_CA'] = str(ca)
         else:
-            relay_url = 'ws://localhost:%d' % rport
+            relay_url = 'ws://%s:%d' % (HOST, rport)
         env.pop('CXTLS_TEST_CA', None) if not WSS else None
         relays.append(start_relay(out, rport, relay_url, 1))
-        check(wait_port(rport, 30), 'the Coax relay listens on 127.0.0.1:%d (NIP-42 URL %s, --store)' % (rport, relay_url))
+        check(wait_port(rport, 30, LISTEN), 'the Coax relay listens on %s:%d (NIP-42 URL %s, --store)' % (LISTEN, rport, relay_url))
         engine = ENGINE
         if not engine:
             eport = free_port()
@@ -280,7 +300,7 @@ def run(out, serve):
         check(wait_line(pylon_log, 'pylon: online, waiting for jobs', 120, pylon), 'the Pylon authenticated, published its list and beacon, and subscribed')
         check('doctor: self-check passed' in pylon_log.read_text(), 'the Pylon passed its self-check before its beacon (chapter 159)')
         check(state.exists() and state.read_text().startswith(MODEL + '@sha256:'), 'the Pylon recorded the identity it serves')
-        benv = {**os.environ, 'NODE_PATH': NOBLE, 'RELAY': relay_url, 'CONNECT': 'ws://localhost:%d' % rport, 'SLUG': SLUG,
+        benv = {**os.environ, 'NODE_PATH': NOBLE, 'RELAY': relay_url, 'CONNECT': 'ws://%s:%d' % (HOST, rport), 'SLUG': SLUG,
                 'MODEL': MODEL, 'STOP_FILE': str(stop_file), 'CANCEL': '0' if ENGINE else '1'}
         if RESTART:
             benv.update(RESTART_FILE=str(restart_file), UP_FILE=str(up_file))
@@ -297,7 +317,7 @@ def run(out, serve):
                 print('     relay stopped at %.1f s; down for 4 s' % (time.time() - t_start), flush=True)
                 time.sleep(4)
                 relays.append(start_relay(out, rport, relay_url, 2))
-                check(wait_port(rport, 30), 'the relay restarted on the same port and store')
+                check(wait_port(rport, 30, LISTEN), 'the relay restarted on the same port and store')
                 up_file.write_text('up\n')
                 restarted = True
             time.sleep(0.1)
@@ -339,7 +359,7 @@ def run(out, serve):
             stop(p)
         if proxy:
             proxy.stop()
-    print('pylon e2e%s: ok' % (' (wss)' if WSS else '') if not failed else 'pylon e2e: %d failed' % len(failed))
+    print('pylon e2e%s%s: ok' % (' (wss)' if WSS else '', '' if HOST == 'localhost' else ' (%s at %s)' % (HOST, LISTEN)) if not failed else 'pylon e2e: %d failed' % len(failed))
     return 0 if not failed else 1
 
 

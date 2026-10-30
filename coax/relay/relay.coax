@@ -64,11 +64,15 @@ ry_host_random :: () -> int #foreign;
 ry_host_store :: () -> int #foreign;
 ry_host_tls :: () -> int #foreign;
 
-RY_CONNS :: 16; RY_IN :: 147456; RY_OUT :: 140000; RY_IO_MS :: 2000;
+// RY_IN holds one partial frame (at most RS_MAX_MESSAGE + 14 bytes) plus one
+// transport read (socket-server-native.h's CXSRV_MAX_IN, 65536), so a client
+// that pipelines a full-size frame and the next one is never cut off.
+RY_CONNS :: 16; RY_IN :: RS_MAX_MESSAGE + 14 + 65536; RY_OUT :: 140000; RY_IO_MS :: 2000;
 RY_SENT :: 2032;   // 16 filters x 127 events
 
 RyConn :: struct {
   h: int = -1; ws: bool; gen: int;
+  since: int;   // accepted, or the last complete frame taken (rr_deadline)
   n42: [1] Nip42; auth: [1] RrAuth;
   inb: [RY_IN] u8; used: int;
   rd: [1] WsReader;
@@ -218,7 +222,7 @@ ry_http :: (c: [] RyConn, w: [] RyWork) {
     key := cast(string) c[0].inb[h.key_from..<h.key_to];
     n := wss_accept_write(key, w[0].out[..]);
     if n < 0 || !ry_send_raw(c, cast(string) w[0].out[0..<n]) { ry_shut(c); return; }
-    ry_consume(c, h.consumed); c[0].ws = true;
+    ry_consume(c, h.consumed); c[0].ws = true; c[0].since = cxsrv_now_s();
     if !ry_challenge(c, w) { ry_close(c, w, WS_CLOSE_GOING_AWAY); }
     return;
   }
@@ -237,7 +241,7 @@ ry_frames :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore) {
     n := wss_unmask(cast(string) c[0].inb[0..<c[0].used], f, w[0].frame[..]);
     payload := cast(string) w[0].frame[0..<n];
     ev := ws_take(c[0].rd[..], f, payload, c[0].msg[..]);
-    ry_consume(c, f.total);
+    ry_consume(c, f.total); c[0].since = cxsrv_now_s();
     d := rr_frame_event(ev, c[0].rd[0].op);
     if d.action == RR_F_TEXT { ry_message(conns, at, w, store, cast(string) c[0].msg[0..<c[0].rd[0].used]); }
     else if d.action == RR_F_BINARY { ok := ry_notice(c, w, RS_BINARY); }
@@ -258,11 +262,15 @@ ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RsdStore) {
       if slot < 0 { x := cxsrv_close(h); continue; }
       w[0].gen = rr_next_gen(w[0].gen);
       conns[slot].h = h; conns[slot].ws = false; conns[slot].used = 0; conns[slot].rd[0] = WsReader.{};
-      conns[slot].gen = w[0].gen; rr_auth_reset(conns[slot].auth[..]);
+      conns[slot].gen = w[0].gen; rr_auth_reset(conns[slot].auth[..]); conns[slot].since = cxsrv_now_s();
     }
+    now := cxsrv_now_s();
     for i: 0..<conns.count {
       if conns[i].h < 0 { continue; }
       c := conns[i..<i + 1];
+      t := rr_deadline(c[0].ws, c[0].used, c[0].since, now);
+      if t == RR_T_DROP { ry_shut(c); continue; }
+      if t == RR_T_CLOSE { ry_close(c, w, RR_CLOSE_SLOW); continue; }
       n := cxsrv_read(c[0].h);
       if n == 0 { continue; }
       if n < 0 { ry_shut(c); continue; }
