@@ -87,7 +87,7 @@ is proposed here; this revision does not add or renumber live project issues.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 1. Learning a number — runnable | Learn `y = 2x`; derive the loss and gradient, verify the first update, and predict a held-out value. |
+| [1. Learning a number](ch001-learning-a-number.md) — runnable | Learn `y = 2x`; derive the loss and gradient, verify the first update, and predict a held-out value. |
 | [2. Shapes and storage](ch002-shapes-and-storage.md) — runnable | Admit bounded dimensions, caller-owned buffers, scratch and aliases; refuse malformed work before publishing output. |
 | [3. Numbers and matrices](ch003-numbers-and-matrices.md) — runnable | Dot/matmul, gather, stable reductions, softmax and normalization, with independent numerical contracts. |
 | [2a. A tensor is a view of memory](ch002a-a-tensor-is-a-view-of-memory.md) — runnable: bounded CPU views | Admitted ranks, strides, slicing, transposes, broadcasting, contiguous and noncontiguous layouts, zero-element tensors, storage ownership, and mutation and alias tracking. Every view's offsets are proved, and a mutation that would corrupt a saved value for backward is detected. Framework track. |
