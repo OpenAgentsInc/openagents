@@ -4,6 +4,7 @@ import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { chrome as chromePath, gpuFlags } from "./chrome"
 
 const root = join(import.meta.dir, '../..'), temp = mkdtempSync(join(tmpdir(), 'coax-scene-ready-'))
 let server: ReturnType<typeof Bun.serve>, chrome: ReturnType<typeof Bun.spawn>, ws: WebSocket
@@ -70,7 +71,7 @@ beforeAll(async () => {
     if (path === '/missing') return new Response('not found', { status: 404 })
     return new Response(`<!doctype html><html><body><canvas id="coaxial"></canvas><script type="module" src="/host.js" data-app="scene" data-wasm="/scene-${url.searchParams.has('empty') ? 1 : url.searchParams.has('zeroindex') ? 2 : url.searchParams.has('zeroinstance') ? 3 : 0}.wasm" data-assets="index:${url.searchParams.has('missing') ? '/missing' : '/indices'}"></script></body></html>`, { headers: { 'Content-Type': 'text/html' } })
   } })
-  chrome = Bun.spawn([process.env.CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', '--headless=new', '--mute-audio', `--user-data-dir=${join(temp, 'chrome')}`, '--no-first-run', '--hide-scrollbars', '--enable-unsafe-webgpu', '--use-angle=metal', '--remote-debugging-port=0', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' })
+  chrome = Bun.spawn([chromePath(), '--headless=new', '--mute-audio', `--user-data-dir=${join(temp, 'chrome')}`, '--no-first-run', '--hide-scrollbars', ...gpuFlags(), '--remote-debugging-port=0', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' })
   let port = ''
   for (let i = 0; i < 200; i++) { try { port = readFileSync(join(temp, 'chrome/DevToolsActivePort'), 'utf8').split('\n')[0]; break } catch {} await Bun.sleep(50) }
   if (!port) throw Error('Chrome did not open a debugging port')

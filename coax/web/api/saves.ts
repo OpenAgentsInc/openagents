@@ -9,17 +9,17 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { chrome as chromePath, gpuFlags } from "../chrome"
 
 const origin = process.argv[2]
 if (!origin) { console.error("usage: bun coax/web/api/saves.ts ORIGIN"); process.exit(2) }
 const page = origin + "/realms/haunted-house"
-const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+const chrome = chromePath()
 const email = `saves-smoke+${Date.now()}@openagents.com`
 
 async function browser() {
   const profile = mkdtempSync(join(tmpdir(), "coax-saves-"))
-  const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", "--enable-unsafe-webgpu",
-    "--enable-features=Vulkan", "--use-angle=metal", "--window-size=1280,800", "--remote-debugging-port=0", "about:blank"],
+  const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", ...gpuFlags(), "--window-size=1280,800", "--remote-debugging-port=0", "about:blank"],
     { stdout: "ignore", stderr: "ignore" })
   const portFile = join(profile, "DevToolsActivePort")
   for (let i = 0; i < 100 && !existsSync(portFile); i++) await Bun.sleep(50)

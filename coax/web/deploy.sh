@@ -133,7 +133,7 @@ if $server; then
   t=$(now)
   mkdir -p "$stage/image/server"
   cp "$here/serve.c" "$here/../../verse/voice-host/ws.c" "$here/../../verse/voice-host/ws.h" "$stage/image/server/"
-  sed -i '' 's#"../../verse/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c"
+  sed -i.bak 's#"../../verse/voice-host/ws.h"#"ws.h"#' "$stage/image/server/serve.c" && rm -f "$stage/image/server/serve.c.bak"
   cp "$here/Dockerfile" "$stage/image/"
   image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/coaxial-serve:$(date +%Y%m%d-%H%M%S)"
   gcloud builds submit "$stage/image" --project "$project" --region "$region" --tag "$image" --quiet \

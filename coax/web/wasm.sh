@@ -3,17 +3,15 @@
 # any Coax libraries the face calls, each its own C library and header
 # (Haunt.h for haunt.coax), as the iOS app links the engine's.
 #   coax/web/wasm.sh APP.coax FACE.c OUT.wasm [LIBRARY.coax...]
-# Needs upstream LLVM (clang + wasm-ld) and wasi-libc; on this Mac:
-#   brew install llvm lld wasi-libc wasi-runtimes
-# Override with COAXIAL_CLANG, COAXIAL_SYSROOT, COAXIAL_RESOURCES.
+# Needs upstream LLVM (clang + wasm-ld) and wasi-libc: toolchain.sh finds
+# them (Homebrew on a Mac, nixpkgs on Linux). Override with COAXIAL_CLANG,
+# COAXIAL_SYSROOT, COAXIAL_RESOURCES.
 set -euo pipefail
 coax_file="$1"; face="$2"; out="$3"; shift 3
 libraries=("$@")
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
-clang="${COAXIAL_CLANG:-/opt/homebrew/opt/llvm/bin/clang}"
-sysroot="${COAXIAL_SYSROOT:-/opt/homebrew/opt/wasi-libc/share/wasi-sysroot}"
-resources="${COAXIAL_RESOURCES:-/opt/homebrew/opt/wasi-runtimes/share/wasi-runtimes}"
-export PATH="/opt/homebrew/opt/lld/bin:$PATH"
+source "$repo/coax/web/toolchain.sh"
+clang="$COAXIAL_CLANG"; sysroot="$COAXIAL_SYSROOT"; resources="$COAXIAL_RESOURCES"
 name="$(basename "$coax_file" .coax)"
 # Concurrent pages often compile the same libraries (and dev rebuilds may
 # target the same output). Give each invocation its own headers, C and objects.

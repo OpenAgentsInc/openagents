@@ -33,7 +33,7 @@
 //   bun coax/web/goldens.ts BASE --only landing,galaxy   # compare only these pages (golden-check.sh)
 //   bun coax/web/goldens.ts BASE --report FILE    # also write the failures as JSON (release.sh's hold-back)
 //
-// A golden is coax/web/goldens/NAME.png at 1280x800 (or its page's own size), NAME a realm's slug for
+// A golden is coax/web/goldens/NAME.png (the Mac's; Linux's in goldens/linux/, golden-pages.ts GOLDEN_DIR) at 1280x800 (or its page's own size), NAME a realm's slug for
 // a realm; what a realm's page must light, how long it settles and how many
 // blocks may change are its "golden" in realms.json. A page differs when
 // more of its 8 px blocks changed than the page allows (a block changed
@@ -51,8 +51,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { inflateSync } from "node:zlib"
 import { type World } from "./realms"
-import { goldenPages, type Page } from "./golden-pages"
+import { goldenPages, GOLDEN_DIR, type Page } from "./golden-pages"
 import { classify, missingGolden } from "./golden-policy"
+import { chrome as chromePath, gpuFlags } from "./chrome"
 
 const W = 1280, H = 800, BLOCK = Number(process.env.BLOCK ?? 8), SHADE = Number(process.env.SHADE ?? 8)
 const args = process.argv.slice(2)
@@ -60,7 +61,7 @@ const flag = (n: string) => args.includes(`--${n}`)
 const value = (n: string, d = "") => { const i = args.indexOf(`--${n}`); return i >= 0 ? args[i + 1] : d }
 const base = (args[0] ?? "").replace(/\/$/, ""), root = value("root"), update = flag("update"), walkOnly = flag("walk") || flag("starts"), startsOnly = flag("starts")
 if (!base.startsWith("http")) { console.error("usage: bun coax/web/goldens.ts BASE [--update] [--walk] [--root /demo/NAME] [--starts] [--unchanged-against ORIGIN --since COMMIT] [--full] [--only NAME,NAME] [--report FILE]"); process.exit(2) }
-const goldens = join(import.meta.dir, "goldens")
+const goldens = join(import.meta.dir, "../..", GOLDEN_DIR)
 const contract: Record<string, string[]> = JSON.parse(readFileSync(join(import.meta.dir, "analytics-contract.json"), "utf8"))
 const sent = new Set<string>()
 // The pages and their numbers (golden-pages.ts): the least share of pixels
@@ -181,7 +182,7 @@ async function compareInputs(name: string, at: string): Promise<string> {
     return (await p.exited) === 0 ? out : null
   }
   const file = async (rel: string) => at ? await git("show", `${at}:${rel}`) : existsSync(join(import.meta.dir, "../..", rel)) ? new Uint8Array(readFileSync(join(import.meta.dir, "../..", rel))) : null
-  const golden = await file(`coax/web/goldens/${name}.png`), self = await file("coax/web/goldens.ts"), table = await file("apps/openagents-web/realms.json")
+  const golden = await file(`${GOLDEN_DIR}/${name}.png`), self = await file("coax/web/goldens.ts"), table = await file("apps/openagents-web/realms.json")
   let page: unknown = BY_ADDRESS[name] ?? (name === "landing" || name === "galaxy" ? PAGES[name] : null), listed: unknown = null
   if (table && !page) {
     const w = (JSON.parse(new TextDecoder().decode(table)).worlds as World[]).find((w) => w.kind === "open" && w.realm?.slug === name)
@@ -207,7 +208,7 @@ const skipping = (name: Name) => unchanged.has(name)
 // ---- Chrome: a small pool of tabs (GOLDENS_POOL, default 4) in one headless
 // Chrome, or one Chrome each (GOLDENS_CHROMES=1). Each tab keeps its own
 // errors, requests and analytics, so each page's checks are its own.
-const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+const chrome = chromePath()
 const POOL = Math.max(1, Number(process.env.GOLDENS_POOL ?? 4)), CHROMES = process.env.GOLDENS_CHROMES === "1"
 const failed: string[] = []
 const procs: { proc: ReturnType<typeof Bun.spawn>; profile: string }[] = []
@@ -222,7 +223,7 @@ async function launch(): Promise<string> {
 async function start() {
   const profile = mkdtempSync(join(tmpdir(), "coax-goldens-"))
   const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
-    "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", `--window-size=${W},${H}`,
+    ...gpuFlags(), `--window-size=${W},${H}`,
     "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
   procs.push({ proc, profile })
   const portFile = join(profile, "DevToolsActivePort")

@@ -5,16 +5,17 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { chrome as chromePath, gpuFlags } from "./chrome"
 
 const [url, out, size = "1440x900", wait = "4000"] = process.argv.slice(2)
 const evalAt = process.argv.indexOf("--eval")
 const script = evalAt > 0 ? process.argv[evalAt + 1] : ""
 if (!url || !out) { console.error("usage: bun coax/web/shot.ts URL OUT.png [WxH] [WAIT_MS] [--eval JS]"); process.exit(2) }
 const [w, h] = size.split("x").map(Number)
-const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+const chrome = chromePath()
 const profile = mkdtempSync(join(tmpdir(), "coax-shot-"))
 const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run",
-  "--hide-scrollbars", "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal",
+  "--hide-scrollbars", ...gpuFlags(),
   `--window-size=${w},${h}`, "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
 try {
   const portFile = join(profile, "DevToolsActivePort")

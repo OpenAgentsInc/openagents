@@ -23,6 +23,11 @@ import { worlds } from "./realms"
 // rules (golden-check.sh on a commit from before this file existed).
 const ROOT = process.env.GOLDEN_PAGES_ROOT || join(import.meta.dir, "../..")
 const APP = "apps/openagents-web"
+// Goldens are renders, and Metal on a Mac and Vulkan on Linux light pixels a
+// little differently, so each platform's walk compares with its own set:
+// coax/web/goldens/ (the Mac's) or coax/web/goldens/linux/. GOLDENS_PLATFORM
+// (mac or linux) picks one by hand.
+export const GOLDEN_DIR = (process.env.GOLDENS_PLATFORM ?? (process.platform === "darwin" ? "mac" : "linux")) === "mac" ? "coax/web/goldens" : "coax/web/goldens/linux"
 
 // path: its address; lit: the least share of pixels lit; settle: ms before its
 // shot; blocks: how many 8 px blocks may change; module: the app it runs; size: its viewport in css px
@@ -93,6 +98,7 @@ export function pageInputs(name: string, p: Pages = goldenPages()): string[] {
   for (const f of sources([`${APP}/${m}.coax`, `${APP}/${m}-face.c`, ...linked(m)])) out.add(f)
   out.add(`${APP}/${m}.wgsl`)
   out.add(`coax/web/goldens/${name}.png`)   // a wrong golden fails the page as surely as a changed page
+  out.add(`coax/web/goldens/linux/${name}.png`)
   const dir = page.path.split("?")[0].replace(/^\//, "")
   out.add(`${APP}/${dir}/`)
   const realm = p.open.find((w) => w.realm!.slug === name)?.realm

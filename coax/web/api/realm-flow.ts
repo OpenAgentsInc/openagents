@@ -9,6 +9,7 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { chrome as chromePath, gpuFlags } from "../chrome"
 
 const origin = process.argv[2]
 const shots = process.argv[3] ?? ""
@@ -26,10 +27,10 @@ const check = (name: string, ok: boolean, detail?: any) => {
 }
 
 const W = 1440, Hh = 900
-const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+const chrome = chromePath()
 const profile = mkdtempSync(join(tmpdir(), "realm-flow-"))
 const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
-  "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", `--window-size=${W},${Hh}`,
+  ...gpuFlags(), `--window-size=${W},${Hh}`,
   "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
 try {
   const portFile = join(profile, "DevToolsActivePort")

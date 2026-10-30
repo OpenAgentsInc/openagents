@@ -8,6 +8,7 @@
 import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { chrome as chromePath } from "../chrome"
 
 const origin = process.argv[2]
 const page = process.argv[3] ?? "/realms/haunted-house"
@@ -66,7 +67,7 @@ const flow = async () => {
   return steps
 }
 
-const chrome = process.env.CHROME ?? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+const chrome = chromePath()
 const profile = mkdtempSync(join(tmpdir(), "coax-flow-"))
 const proc = Bun.spawn([chrome, "--headless=new", "--mute-audio", `--user-data-dir=${profile}`, "--no-first-run",
   "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })

@@ -3,13 +3,14 @@
 // before its golden: it must still start, show no errors and draw (goldens.ts
 // checks those first), and its shot waits in goldens/pending/ for approval.
 // A listed realm, and any page that once had a golden, stays strict.
+import { GOLDEN_DIR } from "./golden-pages"
 export type Missing = { fail: boolean; pending: string; line: string }
 
 export function missingGolden(name: string, unlisted: boolean, pendingDir: string, base: string): Missing {
   const pending = `${pendingDir.replace(/\/$/, "")}/${name}.png`
-  if (!unlisted) return { fail: true, pending: "", line: `${name}: no golden (coax/web/goldens/${name}.png); run --update and look at it` }
+  if (!unlisted) return { fail: true, pending: "", line: `${name}: no golden (${GOLDEN_DIR}/${name}.png); run --update and look at it` }
   return { fail: false, pending,
-    line: `NEW REALM ${name}: no golden yet, approve with \`bun coax/web/goldens.ts ${base} --update\`, look at ${pending} and commit coax/web/goldens/${name}.png` }
+    line: `NEW REALM ${name}: no golden yet, approve with \`bun coax/web/goldens.ts ${base} --update\`, look at ${pending} and commit ${GOLDEN_DIR}/${name}.png` }
 }
 
 // A walk's failures, for release.sh's hold-back: golden, the pages whose
