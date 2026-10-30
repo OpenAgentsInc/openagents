@@ -196,8 +196,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 static void edit_out(uint32_t state) {
   coax_t_Everglade *g = city(state);
   edit_face_drain((coax_v_t_RealmEdit){g->ev.ed.e, 1});   /* the shared edit layer's one request */
-  // a golden shot is the designed city: what admins published (test edits too) never holds a release back
-  if (facts_seen && !world_asked && !golden) {
+  if (facts_seen && !world_asked) {
     world_asked = true;
     world_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, 0, 0, 4);
   }
@@ -298,7 +297,11 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   }
   if (world_id >= 0 && kind == 512 + world_id) {
     world_id = -1;
-    everglade_world(at(state), (coax_string){(const char *)inbox, length});
+    // a golden shot is the designed city: what admins published (test edits too) never holds a release
+    // back; the world is still asked for, so the page settles as it always does, and read as nobody's edits
+    static const char empty[] = "200\n{\"doc\": null, \"version\": 0}";
+    if (golden) everglade_world(at(state), (coax_string){empty, sizeof empty - 1});
+    else everglade_world(at(state), (coax_string){(const char *)inbox, length});
     // a piece published since may stand where you were put back
     if (place_back && !place_keeper.moved) place_put(state, place_here(state));
     return;
