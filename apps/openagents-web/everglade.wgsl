@@ -404,6 +404,7 @@ const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax
 const LOOK_FLAME = 13u;                            // a lamp's flame: its colour, glowing as the lamps are lit
 const LOOK_WINDOW = 14u;                           // a window pane: the kit's, its glass glowing warm at night
 const LOOK_GLOW = 15u;                             // a spell's fire or lightning (everglade-spells.coax): its own light, unlit, all of it blooming
+const LOOK_ORB = 16u;                              // a spell's ball of water (everglade-spells.coax): a sphere's rim, highlight and swirl, part see-through
 fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
   return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
 }
@@ -586,7 +587,7 @@ struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(
   let n = u32(u.ground.x);
   if (instance < n * n || st(21u).x < 1.0) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // the ground casts nothing
   let v = place(id, instance);
-  if (v.look == LOOK_GLOW) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // fire and lightning cast no shadow
+  if (v.look == LOOK_GLOW || v.look == LOOK_ORB) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // fire, lightning and the water orb cast no shadow
   let q = shadow_place(v.world, light_space());
   o.pos = vec4f(q.xy, q.z, 1.0);
   o.uv = v.uv; o.slice = v.slice;
@@ -693,6 +694,7 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
     let c = mix(rim * 0.5, mix(tint, vec3f(1.0, 0.97, 0.9), facing * facing * 0.6), smoothstep(0.0, 0.7, facing)) * (0.8 + 2.4 * facing);
     return Lit(vec4f(c, 1.0), vec4f(0.0));
   }
+  if (s.look == LOOK_ORB) { return orb(s); }
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;
@@ -797,6 +799,28 @@ fn glass(s: S, front: bool) -> Lit {
   let fog = haze_share(length(u.eye.xyz - s.world), s.world.y);
   c = mix(c, haze_colour(fog, v), fog * (1.0 - 0.6 * room));
   return Lit(vec4f(c, select(0.0, 0.85, room > 0.05)), vec4f(0.0));
+}
+// A ball of water (the Water Orb, its drips and splash): a deep body lit by the sun, a swirl moving
+// over it, the sky's colour along its rim, a hard sun highlight; where it faces you it is part
+// see-through, a screen door of 4 by 4 (the scene pass draws no blend), so what's behind shows.
+fn orb(s: S) -> Lit {
+  let n = normalize(s.normal);
+  let v = normalize(u.eye.xyz - s.world);
+  let facing = abs(dot(n, v));
+  let t = u.time;
+  let swirl = 0.5 * noise(s.world.xy * 2.1 + n.xz * 3.0 + vec2f(t * 1.6, -t * 1.1)) + 0.5 * noise(s.world.zy * 2.7 - n.yx * 2.0 + vec2f(-t * 1.2, t * 0.9));
+  var bayer = array(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  let px = vec2u(s.pos.xy) % vec2u(4u);
+  let clear = smoothstep(0.35, 0.95, facing) * (0.35 + 0.3 * swirl);
+  if ((bayer[px.y * 4u + px.x] + 0.5) / 16.0 < clear) { discard; }
+  let l = st(1u).xyz;
+  let deep = pow(max(s.tint, vec3f(0.0)), vec3f(2.2));
+  let body = deep * (0.35 + 0.55 * max(dot(n, l), 0.0)) * (0.75 + 0.5 * swirl);
+  let fres = pow(1.0 - facing, 3.0);
+  let rim = mix(vec3f(0.55, 0.75, 0.85), st(5u).xyz, 0.3) * fres * 1.3;
+  let spec = pow(max(dot(n, normalize(l + v)), 0.0), 90.0) * 2.5 + pow(max(dot(n, normalize(vec3f(-0.4, 0.8, 0.2) + v)), 0.0), 40.0) * 0.35;
+  let c = body + rim + vec3f(spec);
+  return Lit(vec4f(c, select(0.0, 0.7, spec > 0.6)), vec4f(0.0));
 }
 // A lit room's colour: deep amber to a paler gold.
 fn room_warm(k: f32) -> vec3f { return mix(vec3f(1.0, 0.36, 0.08), vec3f(1.0, 0.5, 0.16), k); }

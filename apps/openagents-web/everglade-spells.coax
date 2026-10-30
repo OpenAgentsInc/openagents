@@ -45,8 +45,8 @@ SP_BLAST :: [4] f32.[4.0, 3.4, 5.8, 3.0];
 SP_THROW :: [4] f32.[17.0, 14.0, 22.0, 10.0];
 SP_RANGE :: 140.0;        // m from you: the old destruction bar reached anything in sight; the city is 127 m across
 SP_METEORS :: 6;
-SP_HEIGHT :: 30.0;        // a meteor falls from this high
-SP_FALL :: 1.0;           // s
+SP_HEIGHT :: 24.0;        // a meteor falls from this high
+SP_FALL :: 1.5;           // s
 SP_STAGGER :: 0.13;       // s between meteors
 SP_BOLT_HEIGHT :: 60.0;
 SP_BOLT_LEAD :: 0.09;     // s for the bolt to come down
@@ -71,10 +71,11 @@ SP_DEBRIS_OBJECTS :: SP_DEBRIS_MESHES * SP_DEBRIS_CAP;
 
 YELLOW_R :: 1.0; YELLOW_G :: 0.68; YELLOW_B :: 0.22;
 LOOK_GLOW :: 15;          // everglade.wgsl LOOK_GLOW: its own light, unlit, blooming
+LOOK_ORB :: 16;           // everglade.wgsl LOOK_ORB: a ball of water, its rim, highlight and swirl, part see-through
 
 SpMeteor :: struct { live: bool; from: Point; to: Point; t: f32; fall: f32; }
 SpBlast :: struct { live: bool; at: Point; t: f32; radius: f32; kind: int; }   // kind: 0 fire, 1 lightning, 2 water
-SpScorch :: struct { live: bool; at: Point; t: f32; radius: f32; }
+SpScorch :: struct { live: bool; at: Point; t: f32; radius: f32; wet: bool; }
 SpPuff :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; dark: f32; }
 SpDrop :: struct { live: bool; at: Point; vel: Point; t: f32; }
 SpBolt :: struct { live: bool; t: f32; mega: bool; points: [SP_BOLT_POINTS] Point; branch: [8] Point; }
@@ -407,7 +408,8 @@ sp_release :: (s: [] Everglade, slot: int) {
       if m == 0 { gy = to.y; }
       dest := v3(gx, gy, gz);
       lateral := (srd_unit(s[0].sp.dice[..]) - 0.5) * 12;
-      from := add(dest, add(times(back, 14 + 6 * srd_unit(s[0].sp.dice[..])), add(times(side, lateral), v3(0, f32(SP_HEIGHT), 0))));
+      // from beyond the target and off to a side, down toward you at about 45 degrees: in the view behind you
+      from := add(dest, add(times(back, -(20 + 6 * srd_unit(s[0].sp.dice[..]))), add(times(side, lateral * 1.6), v3(0, f32(SP_HEIGHT), 0))));
       s[0].sp.meteors[m] = SpMeteor.{live = true, from = from, to = dest, t = -(f32(m) * f32(SP_STAGGER) + 0.05 * srd_unit(s[0].sp.dice[..])), fall = f32(SP_FALL)};
     }
     return;
@@ -474,7 +476,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
   }
   sp_add_blast(s, at, radius, kind);
-  if kind != 2 { sp_add_scorch(s, v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z), ifx kind == 0 then 1.4f32 else radius * 0.45); }
+  sp_add_scorch(s, v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z), ifx kind == 0 then 1.4f32 else radius * 0.45, kind == 2);
   for q: 0..<(ifx kind == 2 then 0 else 4) {
     sp_add_puff(s, add(at, v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 2, 0.5, (srd_unit(s[0].sp.dice[..]) - 0.5) * 2)),
                 v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 1.2, 1.4 + srd_unit(s[0].sp.dice[..]), (srd_unit(s[0].sp.dice[..]) - 0.5) * 1.2),
@@ -494,10 +496,10 @@ sp_add_blast :: (s: [] Everglade, at: Point, radius: f32, kind: int) {
   for i: 0..<SP_BLASTS { if !s[0].sp.blasts[i].live { k = i; break; } if s[0].sp.blasts[i].t > s[0].sp.blasts[k].t { k = i; } }
   s[0].sp.blasts[k] = SpBlast.{live = true, at = at, t = 0, radius = radius, kind = kind};
 }
-sp_add_scorch :: (s: [] Everglade, at: Point, radius: f32) {
+sp_add_scorch :: (s: [] Everglade, at: Point, radius: f32, wet: bool) {
   k := 0;
   for i: 0..<SP_SCORCHES { if !s[0].sp.scorches[i].live { k = i; break; } if s[0].sp.scorches[i].t > s[0].sp.scorches[k].t { k = i; } }
-  s[0].sp.scorches[k] = SpScorch.{live = true, at = at, t = 0, radius = radius};
+  s[0].sp.scorches[k] = SpScorch.{live = true, at = at, t = 0, radius = radius, wet = wet};
 }
 sp_add_puff :: (s: [] Everglade, at: Point, vel: Point, size: f32, life: f32, dark: f32) {
   k := 0;
@@ -811,15 +813,16 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     e := f * f * 0.35 + f * 0.65;
     at := mix(me.from, me.to, e);
     dir := unit_or(sub(me.to, me.from), v3(0, -1, 0));
-    sp_ball(s, LOOK_MATTE, at, 0.7, v3(0.12, 0.1, 0.09));   // the rock
-    sp_ball(s, LOOK_GLOW, sub(at, times(dir, 0.15)), 1.2, v3(1.0, 0.85, 0.5));
-    for k: 1..<9 {
+    sp_ball(s, LOOK_MATTE, add(at, times(dir, 0.25)), 0.9, v3(0.14, 0.11, 0.09));   // the rock, leading its fire
+    sp_ball(s, LOOK_GLOW, at, 1.5, v3(1.0, 0.85, 0.5));
+    for k: 1..<12 {
       tk := f32(k);
-      p := sub(at, times(dir, tk * 0.75));
-      c := mix(v3(YELLOW_R, YELLOW_G, YELLOW_B), v3(0.85, 0.16, 0.03), tk / 9);
-      sp_ball(s, LOOK_GLOW, p, 1.15 - tk * 0.1, c);
+      p := sub(at, times(dir, tk * 0.8));
+      c := mix(v3(YELLOW_R, YELLOW_G, YELLOW_B), v3(0.85, 0.16, 0.03), tk / 12);
+      sp_ball(s, LOOK_GLOW, p, 1.4 - tk * 0.09, c);
     }
-    for k: 0..<3 { sp_ball(s, LOOK_MATTE, sub(at, times(dir, 7.5 + f32(k) * 1.6)), 0.9 + f32(k) * 0.35, v3(0.42, 0.4, 0.38)); }
+    // its smoke, widening behind the fire
+    for k: 0..<4 { sp_ball(s, LOOK_MATTE, sub(at, times(dir, 10 + f32(k) * 1.8)), 1.0 + f32(k) * 0.4, v3(0.36, 0.34, 0.33)); }
   }
   // the blasts: a fireball (or a splash) that swells and fades
   for i: 0..<SP_BLASTS {
@@ -833,7 +836,9 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     close_k := clamp(length(sub(bl.at, s[0].sp.shot.eye)) / 18, 0.4, 1);
     r := bl.radius * (0.14 + 0.28 * grow) * (0.4 + 0.6 * fade) * close_k;
     if bl.kind == 2 {
-      sp_ball(s, LOOK_WATER, add(bl.at, v3(0, r * 0.3, 0)), r * 2 * fade, v3(0.42, 0.62, 0.72));
+      // the splash: a low dome of water thrown up and out, flattening as it goes
+      wide := bl.radius * (0.5 + 0.9 * grow) * close_k;
+      sp_shape(s, SHAPE_SPHERE, LOOK_ORB, add(bl.at, v3(0, 0.1, 0)), v3(wide, 0, 0), v3(0, wide * 0.45 * fade, 0), v3(0, 0, wide), v3(0.3, 0.55, 0.68));
     } else {
       hot := ifx bl.kind == 0 then mix(v3(1.0, 0.85, 0.5), v3(0.85, 0.2, 0.05), 1 - fade) else mix(v3(0.95, 0.97, 1.0), v3(0.45, 0.6, 1.0), 1 - fade);
       sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 2, hot);
@@ -848,6 +853,11 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if sc.t > f32(SP_SCORCH_LIFE) { s[0].sp.scorches[i].live = false; continue; }
     left := clamp((f32(SP_SCORCH_LIFE) - sc.t) / 3, 0, 1);
     r := sc.radius * 2 * (0.4 + 0.6 * left);
+    if sc.wet {
+      // a wet patch: the ground darkened where the orb burst, drying from its edge
+      sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.01, 0)), v3(r * 1.3, 0, 0), v3(0, 0.02, 0), v3(0, 0, r * 1.3), v3(0.09, 0.11, 0.12));
+      continue;
+    }
     sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.01, 0)), v3(r, 0, 0), v3(0, 0.02, 0), v3(0, 0, r), v3(0.03, 0.025, 0.022));
     if sc.t < 3 { sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, add(sc.at, v3(0, 0.06, 0)), v3(r * 0.5, 0, 0), v3(0, 0.03, 0), v3(0, 0, r * 0.5), times(v3(0.9, 0.3, 0.05), 1 - sc.t / 3)); }
   }
@@ -869,18 +879,25 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     s[0].sp.drops[i].vel.y -= 9.81 * dt;
     s[0].sp.drops[i].at = add(s[0].sp.drops[i].at, times(s[0].sp.drops[i].vel, dt));
     if s[0].sp.drops[i].t > 1.4 { s[0].sp.drops[i].live = false; continue; }
-    sp_ball(s, LOOK_WATER, s[0].sp.drops[i].at, 0.5, v3(0.42, 0.62, 0.72));
+    sp_ball(s, LOOK_ORB, s[0].sp.drops[i].at, 0.38 * (1 - s[0].sp.drops[i].t / 1.6), v3(0.36, 0.6, 0.72));
   }
   // the orb: gathering over you, then thrown on an arc
   if s[0].sp.orb_live {
     if s[0].sp.casting == SP_ORB {
       grow := clamp(s[0].sp.cast_t / srd_spell(SPELL_WATER_ORB).bar, 0, 1);
-      sp_ball(s, LOOK_WATER, sp_orb_rest(s), 0.3 + 1.7 * grow, v3(0.4, 0.62, 0.74));
+      sp_ball(s, LOOK_ORB, sp_orb_rest(s), 0.3 + 1.3 * grow, v3(0.3, 0.56, 0.7));
     } else {
       f := clamp(s[0].sp.orb_t / 0.7, 0, 1);
       p := mix(s[0].sp.orb_from, s[0].sp.orb_to, f);
       p.y += sin(f * f32(PI)) * hi(1.2, flat_gap(s[0].sp.orb_from, s[0].sp.orb_to) * 0.07);   // a low arc, in the camera's view
-      sp_ball(s, LOOK_WATER, p, 2.0, v3(0.4, 0.62, 0.74));
+      sp_ball(s, LOOK_ORB, p, 1.6, v3(0.3, 0.56, 0.7));
+      // drips trailing behind it, falling away
+      for k: 1..<5 {
+        fk := clamp(f - f32(k) * 0.045, 0, 1);
+        q := mix(s[0].sp.orb_from, s[0].sp.orb_to, fk);
+        q.y += sin(fk * f32(PI)) * hi(1.2, flat_gap(s[0].sp.orb_from, s[0].sp.orb_to) * 0.07) - f32(k * k) * 0.06;
+        sp_ball(s, LOOK_ORB, q, 0.42 - f32(k) * 0.07, v3(0.33, 0.58, 0.72));
+      }
     }
   }
   // the bolt: a bright core in segments, coming down over its lead, flickering

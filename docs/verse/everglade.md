@@ -570,7 +570,15 @@ is cut around the gap (a building's solid footprint first into its four
 stood back up, the town's own walls come back. A blast's fireball swells to
 under a third of its radius across (a cart, not the house) and to as little
 as 0.4 of that within 18 m of the camera, so a meteor at your feet doesn't
-fill the view. Fire and smoke
+fill the view. Each meteor comes in from beyond the target and off to a
+side, about 45 degrees down toward you over 1.5 s, so it crosses the view
+behind you: a dark rock leading a ball of fire, a trail of eleven fading
+fire balls and four of smoke. The Water Orb and its drips and splash draw
+with their own look (everglade.wgsl LOOK_ORB, 16): a deep body lit by the
+sun with a moving swirl, the sky along its rim, a hard highlight, and part
+see-through where it faces you (a 4 by 4 screen door; the scene pass has no
+blend). It flies with four drips trailing, bursts in a low dome of water
+with drops, and leaves a wet patch on the ground. Fire and smoke
 draw as the shapes' boxes and spheres (700 and 168 slots);
 fire and lightning are LOOK_GLOW in everglade.wgsl: unlit, three times
 their colour, blooming, no shadow.
