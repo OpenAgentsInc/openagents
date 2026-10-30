@@ -17,11 +17,12 @@
 #load "newland-network.coax";
 #load "newland-xp.coax";
 #load "analytics.coax";
+#load "newland-walkers.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 400000;
 TEST_VERTICES :: 75000;   // what the checks give a frame: a page draws well under it
-PANELS :: 4;
+PANELS :: 5;
 UNIFORM_FLOATS :: 8 + PANELS * 8;   // width, height, time, fade, still, panels, vignette, 0, then the panels
 
 MODE_STROKE :: 0.0;
@@ -117,6 +118,7 @@ LandState :: struct {
   plots: int; plot: [MAX_PLOTS] Plot;
   agents: int; agent_row: [MAX_AGENTS] int; agent_plot: [MAX_AGENTS] int;
   pylons: int; pyl: [MAX_PYLONS] Pyl;
+  walk: [1] Walkers; walk_box: Box; walk_click: bool; dive_fade: f32;   // WALK AROUND and the Grid's walkers (newland-walkers.coax)
   playtest: Box;network_box:Box;network_join:Box;network_guide:Box;network_list:Box;
   network_scroll:f32;network_scroll_max:f32;network_scroll_start:f32;network_down:bool;network_list_down:bool;network_copied:bool;network_rows:[MAX_PYLONS]Box;
   action: int; outbox: [256] u8; out_n: int;
@@ -1179,7 +1181,7 @@ floor_grid :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen) 
 
 // ---------------------------------------------------------------- the HUD
 
-Layout :: struct { phone: bool; title: Box; playtest: Box; network:Box; feed: Box; scene: Box; galaxy: Box; }
+Layout :: struct { phone: bool; title: Box; playtest: Box; network:Box; walk: Box; feed: Box; scene: Box; galaxy: Box; }
 layout :: (width: f32, height: f32, d: f32) -> Layout {
   w := width / d; h := height / d;
   l: Layout;
@@ -1189,20 +1191,21 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
     l.title = Box.{x0 = m, y0 = m, x1 = w - m, y1 = m + 54};
     l.feed = Box.{x0 = m, y0 = h - m - 132, x1 = w - m, y1 = h - m};
     l.playtest = Box.{x0 = m, y0 = l.feed.y0 - 12 - 48, x1 = w - m, y1 = l.feed.y0 - 12};
-    mid:=(w*0.5);l.network=l.playtest;l.network.x1=mid-6;l.playtest.x0=mid+6;
+    third:=(w-2*m-12)/3;l.network=l.playtest;l.network.x1=m+third;l.walk=l.playtest;l.walk.x0=m+third+6;l.walk.x1=m+2*third+6;l.playtest.x0=m+2*third+12;
     l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
     l.galaxy = Box.{x0 = w - m - 156, y0 = m + 82, x1 = w - m, y1 = m + 82 + 136};
   } else {
     l.title = Box.{x0 = m, y0 = m, x1 = w * 0.5, y1 = m + 70};
     l.playtest = Box.{x0 = w - m - 148, y0 = m, x1 = w - m, y1 = m + 40};
     l.network=Box.{x0=w-m-308,y0=m,x1=w-m-158,y1=m+40};
+    l.walk=Box.{x0=w-m-468,y0=m,x1=w-m-318,y1=m+40};
     fw: f32 = 320;
     l.feed = Box.{x0 = w - m - fw, y0 = h - m - lo(330, h * 0.42), x1 = w - m, y1 = h - m};
     l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
     l.galaxy = Box.{x0 = m, y0 = h - 32 - 184, x1 = m + 248, y1 = h - 32};
   }
   l.galaxy = scaled(l.galaxy, d);
-  l.title = scaled(l.title, d); l.playtest = scaled(l.playtest, d);l.network=scaled(l.network,d);
+  l.title = scaled(l.title, d); l.playtest = scaled(l.playtest, d);l.network=scaled(l.network,d);l.walk=scaled(l.walk,d);
   l.feed = scaled(l.feed, d); l.scene = scaled(l.scene, d);
   return l;
 }
@@ -1873,6 +1876,7 @@ click :: (s: [] LandState, x: f32, y: f32) -> bool {
     if inside(s[0].card_box, x, y) { return true; }
   }
   if inside(s[0].playtest, x, y) { go(s, "/verse"); return true; }
+  if inside(s[0].walk_box, x, y) { walk_around(s); return true; }
   if gal_click(s, x, y) { return true; }
   got := pick(s, x, y);
   if got.kind != CARD_NONE { open_card(s, got.kind, got.which); return true; }
@@ -1990,7 +1994,7 @@ coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
     if inside(s[0].card_box, x, y) { return 0; }
   }
   if inside(s[0].gal_box, x, y) { return ifx gal_at(s, x, y) >= 0 || (s[0].gal_sel >= 0 && inside(s[0].gal_open, x, y)) then 1 else 0; }
-  if inside(s[0].playtest, x, y) || pick(s, x, y).kind != CARD_NONE { return 1; }
+  if inside(s[0].playtest, x, y) || inside(s[0].walk_box, x, y) || pick(s, x, y).kind != CARD_NONE { return 1; }
   return 0;
 }
 coaxial_land_action :: (s: [] LandState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
@@ -2022,20 +2026,23 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   uniforms[3] = ifx still then 1.0f32 else ease((t - 0.15) / 3.0);   // up from black
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
   uniforms[6] = 1;
+  walk_dive(s, step);   // WALK AROUND: the view dives in (newland-walkers.coax)
+  walkers_step(s, step);
   c := frame_view(s, l, t, step, still, width, height, d);
   v := floor_grid(out, 0, s, c, s[0].look, p);
   v = roads(out, v, s, c, p);
   for k: 0..<s[0].plots { v = place(out, v, s, c, k, p); }
   v = pylon_bay(out, v, s, c, p, t);
   v = xp_scene(out, v, s, c, p, t);
-  v = people(out, v, s, c, p, motion);
+  // the people walking the Grid now; the simulated ones only while nobody is
+  if coaxial_land_walkers(s) > 0 { v = walkers_draw(out, v, s, c, p, motion); } else { v = people(out, v, s, c, p, motion); }
   v = agents(out, v, s, c, p, motion);
   for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); }
   v = pylon_labels(out, v, s, c, p);
   scene_end := v;
   // the HUD over it
   hud := ifx still then 1.0f32 else ease((t - 2.0) / 1.0);
-  s[0].playtest = l.playtest;s[0].network_box=l.network;
+  s[0].playtest = l.playtest;s[0].network_box=l.network;s[0].walk_box=l.walk;
   hover := !s[0].touch && s[0].pointed;
   sheet := l.phone && s[0].card != CARD_NONE;
   v = wordmark(out, v, l, p);
@@ -2054,6 +2061,8 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
   if !sheet {
     v = button(out, v, l.playtest, "PLAYTEST", true, hover && inside(l.playtest, s[0].px, s[0].py), false, p, hud);
+    v = button(out, v, l.walk, "WALK AROUND", true, hover && inside(l.walk, s[0].px, s[0].py), false, p, hud);
+    glass(uniforms, 4, l.walk, 7 * d, 0.95 * hud, 1);
     counts:=network_counts(s);label:[48]u8;ln:=app(label[..],0,"PYLONS ");ln=app_int(label[..],ln,counts.online);
     v=button(out,v,l.network,cast(string)label[0..<ln],false,hover && inside(l.network,s[0].px,s[0].py),true,p,hud);
     glass(uniforms,2,l.network,7*d,0.95*hud,0);
@@ -2061,7 +2070,7 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     glass(uniforms, 0, l.feed, 10 * d, 0.92 * feed_on, 0);
     glass(uniforms, 1, l.playtest, 7 * d, 0.95 * hud, 1);
   } else {
-    s[0].playtest = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};s[0].network_box=s[0].playtest;
+    s[0].playtest = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};s[0].network_box=s[0].playtest;s[0].walk_box=s[0].playtest;
   }
   if s[0].card == CARD_NONE {
     // the small galaxy, in the glass the card uses while it's up
@@ -2108,7 +2117,8 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
     s[0].card_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
     s[0].close_box = s[0].card_box; s[0].open_box = s[0].card_box;
   }
-  uniforms[5] = 4;
+  uniforms[5] = f32(PANELS);
+  uniforms[3] *= 1 - s[0].dive_fade;   // the dive goes dark as the Grid comes
   return v;
 }
 

@@ -135,12 +135,12 @@ save_unb64 :: (text: string, out: [] u8, at: int) -> int {
     d: [4] int;
     for k: 0..<4 { d[k] = ifx text[i + k] == 61 && i + 4 == text.count && k >= 2 then -2 else save_b64_digit(text[i + k]); }
     if d[0] < 0 || d[1] < 0 || d[2] == -1 || d[3] == -1 || (d[2] == -2 && d[3] != -2) { return -1; }
-    take := ifx d[2] == -2 then 1 else ifx d[3] == -2 then 2 else 3;
-    if o + take > out.count { return -1; }
+    got := ifx d[2] == -2 then 1 else ifx d[3] == -2 then 2 else 3;
+    if o + got > out.count { return -1; }
     out[o] = cast(u8) ((d[0] << 2) | (d[1] >> 4));
-    if take > 1 { out[o + 1] = cast(u8) (((d[1] & 15) << 4) | (d[2] >> 2)); }
-    if take > 2 { out[o + 2] = cast(u8) (((d[2] & 3) << 6) | d[3]); }
-    o += take; i += 4;
+    if got > 1 { out[o + 1] = cast(u8) (((d[1] & 15) << 4) | (d[2] >> 2)); }
+    if got > 2 { out[o + 2] = cast(u8) (((d[2] & 3) << 6) | d[3]); }
+    o += got; i += 4;
   }
   return o - at;
 }

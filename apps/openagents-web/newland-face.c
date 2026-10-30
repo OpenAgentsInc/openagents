@@ -17,6 +17,17 @@ static coax_v_t_Track tr(void) {return (coax_v_t_Track){&track_state,1};}
 IMPORT("coaxial_socket_open") int32_t coaxial_socket_open(uint32_t,uint32_t);
 IMPORT("coaxial_socket_send") void coaxial_socket_send(int32_t,uint32_t,uint32_t);
 IMPORT("coaxial_socket_close") void coaxial_socket_close(int32_t);
+// The Grid's walkers (newland-walkers.coax): who walks the Grid now, asked about once a second; and
+// WALK AROUND counted once when pressed.
+static int32_t walkers_id=-1;
+static void walkers_out(uint32_t state) {
+  coax_t_LandState *s=state_at(state);
+  if(s->walk_click){s->walk_click=0;if(track_begin(tr(),track_cstr("walk-around")))track_end(tr());track_drain(&track_state);}
+  if(golden_mode || walkers_id>=0 || !coaxial_land_walkers_ask(view(state)))return;
+  coax_string url=coaxial_land_walkers_url();
+  walkers_id=coaxial_http((uint32_t)(uintptr_t)url.data,(uint32_t)url.count,0,0,4|8);
+  if(walkers_id<0){walkers_id=-1;coaxial_land_walkers_answer(view(state),(coax_string){"0\n",2});}
+}
 static void drain(uint32_t state) {
   coax_t_Pipe *p=&state_at(state)->net.e[0].pipe.e[0];int64_t n=p->n;
   for(int64_t k=0;k<n;k++) {
@@ -32,6 +43,7 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) {return sizeof inbo
 EXPORT("coaxial_message") void coaxial_message(uint32_t state,int32_t kind,int32_t n) {
   if(n<0 || n>(int32_t)sizeof inbox)return;
   coax_string text={(const char *)inbox,n};
+  if(walkers_id>=0 && kind==512+walkers_id){walkers_id=-1;coaxial_land_walkers_answer(view(state),text);return;}
   coaxial_land_message(view(state),kind,text);
   if(!track_state.page_n)track_init(tr(),track_cstr("home"));
   _Bool mine=track_message(tr(),kind,text);track_drain(&track_state);
@@ -71,6 +83,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   if(!golden_mode)coaxial_land_network_tick(view(state));
   int64_t n = coaxial_land_frame(view(state), out, u, width, height, dpr, dt, still != 0 || golden_mode != 0);
   drain(state);
+  walkers_out(state);
   if(!track_state.page_n)track_init(tr(),track_cstr("home"));
   track_frame(tr(),dt,width,height,dpr);
   // what people do here (analytics.coax): the page drawn, each card opened (CARD_*)

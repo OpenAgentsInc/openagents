@@ -69,3 +69,19 @@ sql("update verse.room_here set seen_ms = seen_ms - 7000 where room = 'full-room
 check("someone gone six seconds isn't there any more, and frees a place",
       room_call("POST", "/api/playtest/presence/full-room", {}, late["key"])[0] == 200
       and bo["id"] not in [o["id"] for o in room_call("POST", "/api/playtest/presence/full-room", {}, ann["key"])[1]["others"]])
+
+# Who walks a room, for the homepage (0069): GET needs no key and joins nothing; automation (its mark,
+# a headless browser) is seen only by its own player, in GET and in the others a POST answers.
+G = "/api/playtest/presence/grid-test"
+walker, check_bot = mint(), mint()
+room_call("POST", G, {"x": 4, "z": -3, "yaw": 1}, walker["key"])
+status, raw, _ = call("POST", G, json.dumps({"x": 9, "z": 9}).encode(), {"Content-Type": "application/json", "X-Verse-Player": check_bot["key"], "X-Verse-Automation": "qa-1"})
+check("automation in a room still sees the people there", status == 200 and [o["id"] for o in json.loads(raw)["others"]] == [walker["id"]], raw)
+status, g = room_call("GET", G)
+check("anyone can see who walks a room, and automation isn't among them", status == 200 and g["count"] == 1
+      and [(o["id"], o["x"], o["z"]) for o in g["others"]] == [(walker["id"], 4, -3)], g)
+check("a person in the room doesn't see the automation", [o["id"] for o in room_call("POST", G, {"x": 4, "z": -3}, walker["key"])[1]["others"]] == [], G)
+check("automation sees itself when it asks", check_bot["id"] in [o["id"] for o in room_call("GET", G, None, check_bot["key"])[1]["others"]])
+status, raw, _ = call("POST", G, b"{}", {"Content-Type": "application/json", "X-Verse-Player": check_bot["key"], "User-Agent": "Mozilla/5.0 HeadlessChrome/131.0"})
+check("a headless browser is automation too", status == 200 and check_bot["id"] not in [o["id"] for o in room_call("GET", G)[1]["others"]])
+check("a GET joins nobody", room_call("GET", "/api/playtest/presence/nobody-here") == (200, {"others": [], "count": 0}))

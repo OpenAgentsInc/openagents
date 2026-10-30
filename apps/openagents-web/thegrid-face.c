@@ -4,17 +4,24 @@
 // values between them in order: the page's controls, the player's step
 // among the stations' walls, then the page's frame with where you ended up.
 // grid.data (asset 0) goes to the page; the other four assets are the GPU's
-// and the page is only told they came. Where you are is kept so a reload
+// and the page is only told they came. Cast.bin (asset 5, and 6 as the GPU's
+// copy; 7 its texture sheets) is opened here with verse/cast.coax, which
+// plays each person's clips and writes their joint palettes, store 1, for
+// the people the page lists (thegrid-people.coax). The page's room, the-grid,
+// is posted where you are about five times a second, and its answer handed
+// back; a browser with no player key gets one first. Where you are is kept so a reload
 // puts you back (place-face.h). It decides nothing. Every pointer is
 // an offset into the host's WebAssembly.Memory; the page's state is the
 // host's (coaxial_state_size).
 #include "thegrid.h"
 #include "Player.h"
 #include "Grid.h"
+#include "Cast.h"
 #include "analytics-face.h"
 #include "edit-face.h"
 #include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 
 #define EXPORT(name) __attribute__((export_name(name)))
 
@@ -25,6 +32,28 @@ static double now;
 static float width, height, dpr;
 static uint8_t inbox[4096];
 static uint8_t data[65536];
+// Cast.bin: the character (and the robots iOS draws from it), read by verse/cast.coax
+#define CAST_CAP (6u << 20)
+static uint8_t cast_bytes[CAST_CAP];
+static uint32_t cast_n;
+static coax_t_Cast cast_set;
+static bool cast_open;
+#define PEOPLE_MAX 16
+#define JOINTS_MAX 65
+static coax_t_Anim anims[PEOPLE_MAX];
+static float anim_whose[PEOPLE_MAX];
+static coax_t_Joint palette[PEOPLE_MAX * JOINTS_MAX];
+static uint32_t palette_bytes;
+// the room the-grid (thegrid-people.coax; coax/web/api/room.c)
+#define PLAYER_URL "/api/playtest/player"
+#define ROOM_WAIT_S 5.0
+static int32_t room_id = -1, mint_id = -1;
+static bool facts_seen, has_player, mint_tried;
+static double room_at = -10, room_asked_at;
+static char room_url_buf[120];
+static uint8_t room_body[256];
+static void room_out(uint32_t state);
+static void people_out(uint32_t state);
 static coax_t_Track track_state;
 #define SUGGEST_URL "/api/playtest/survey/answer"
 static int32_t post_id = -1;
@@ -52,6 +81,7 @@ static coax_t_Place place_here(uint32_t state) {
   return verse_place_of(player.pos.x, player.pos.y, player.pos.z, verse_player_face(player), grid(state)->orbit, -1);
 }
 static void place_put(uint32_t state, coax_t_Place p) {
+  if (thegrid_diving(at(state))) return;   // WALK AROUND from the homepage lands at the start spot
   coax_t_Place q = thegrid_place_fix(at(state), p);
   player = verse_player_place(q.x, 0, q.z, q.face);
   thegrid_place_camera(at(state), q);
@@ -91,6 +121,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
                             verse_player_act(player), player.vel.x, player.vel.z,
                             sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   post_out(state);
+  room_out(state);
+  people_out(state);
   edit_face_drain(ed(state));
   place_frame(state);
   track_frame(tr(), dt, w, h, scale);
@@ -99,6 +131,51 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (n > 0 && thegrid_draws(at(state)) > 0 && !entered) { entered = true; track_world(tr(), track_cstr("the-grid")); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
+}
+
+// Each person the page lists, posed: their clips moved on for how they move (verse_cast_update) and
+// their joints placed where they stand (verse_cast_pose), into store 1. A slot that holds someone new
+// starts their clips afresh. In golden mode everyone holds one moment.
+static void people_out(uint32_t state) {
+  coax_t_TheGrid *g = grid(state);
+  palette_bytes = 0;
+  if (!cast_open) return;
+  coax_v_u8 b = {cast_bytes, cast_n};
+  int64_t n = g->people_n, joints = cast_set.joints;
+  if (n > PEOPLE_MAX) n = PEOPLE_MAX;
+  if (joints <= 0 || joints > JOINTS_MAX) return;
+  double t = golden ? 1.0 : now;
+  for (int64_t i = 0; i < n; i++) {
+    const float *p = &g->people.e[i * 6];
+    if (anim_whose[i] != p[5]) { anims[i] = (coax_t_Anim){0}; anims[i].fade_start = -1; anim_whose[i] = p[5]; }
+    int64_t act = (int64_t)p[4];
+    anims[i] = verse_cast_update(b, cast_set, anims[i], act, act == 3 && p[1] > 0.05f, t);
+    if (!verse_cast_pose(b, cast_set, anims[i], t, p[0], p[1], p[2], p[3], (coax_v_t_Joint){&palette[i * joints], joints})) return;
+  }
+  palette_bytes = (uint32_t)(n * joints * sizeof(coax_t_Joint));
+}
+
+// Where you are, to the room about five times a second, once the browser has a player key (minting
+// one when it has none); the answer is the others, for the page.
+static void room_out(uint32_t state) {
+  if (golden || !facts_seen) return;
+  if (!has_player && !mint_tried) {
+    mint_tried = true;
+    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    if (mint_id < 0) mint_id = -1;
+    return;
+  }
+  if (mint_id >= 0 || !has_player) return;
+  if (room_id >= 0 && now - room_asked_at < ROOM_WAIT_S) return;
+  if (now - room_at < thegrid_room_every()) return;
+  room_at = now;
+  int64_t un = room_url(thegrid_room_name(at(state)), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
+  coax_t_Vec3 feet = verse_player_feet(player);
+  int64_t bn = room_presence_body(feet.x, feet.y > 0 ? feet.y : 0, feet.z, verse_player_face(player), 0, (coax_v_u8){room_body, sizeof room_body});
+  if (un <= 0 || bn <= 0) return;
+  room_id = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
+  if (room_id < 0) room_id = -1;
+  room_asked_at = now;
 }
 
 // A suggestion the page wrote goes to the site's feedback; its answer comes back to the page.
@@ -112,10 +189,11 @@ static void post_out(uint32_t state) {
 
 EXPORT("coaxial_draws") uint32_t coaxial_draws(uint32_t state) { return (uint32_t)(uintptr_t)grid(state)->draws.e; }
 EXPORT("coaxial_draw_count") uint32_t coaxial_draw_count(uint32_t state) { return grid(state)->started ? (uint32_t)thegrid_draws(at(state)) : 0u; }
-EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 1; }
-EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { (void)k; return (uint32_t)sizeof(((coax_t_TheGrid *)0)->robots); }
-EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { (void)k; return (uint32_t)(uintptr_t)grid(state)->robots.e; }
-EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)k; return (uint32_t)thegrid_store_bytes(at(state)); }
+// Store 0 the robots, store 1 the people's joint palettes.
+EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 2; }
+EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return k == 1 ? (uint32_t)sizeof palette : (uint32_t)sizeof(((coax_t_TheGrid *)0)->robots); }
+EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) { return k == 1 ? (uint32_t)(uintptr_t)palette : (uint32_t)(uintptr_t)grid(state)->robots.e; }
+EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { return k == 1 ? palette_bytes : (uint32_t)thegrid_store_bytes(at(state)); }
 
 EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) {
   start(state);
@@ -148,25 +226,52 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) return;
   start(state);
   if (place_message(state, kind, inbox, length)) return;
+  if (kind == 600) {
+    facts_seen = true;
+    for (uint32_t i = 0; i + 7 <= length; i++)
+      if ((i == 0 || inbox[i - 1] == '\n') && !memcmp(inbox + i, "player=", 7) && i + 7 < length && inbox[i + 7] != '\n') has_player = true;
+  }
+  if (mint_id >= 0 && kind == 512 + mint_id) {
+    mint_id = -1;
+    if (length > 4 && !memcmp(inbox, "200\n", 4)) { thegrid_keep_player(at(state), (coax_string){(const char *)inbox + 4, length - 4}); has_player = true; }
+    return;
+  }
+  if (room_id >= 0 && kind == 512 + room_id) {
+    room_id = -1;
+    int64_t st = thegrid_room_answer(at(state), (coax_string){(const char *)inbox, length});
+    if (st == 403 && has_player) { has_player = false; mint_tried = false; }   // the key was refused: a new one
+    return;
+  }
   if (edit_face_message(ed(state), kind, (coax_string){(const char *)inbox, length}) && kind != 600) { edit_face_drain(ed(state)); return; }
   if (post_id >= 0 && kind == 512 + post_id) {
     post_id = -1;
     thegrid_post_answer(at(state), (coax_string){(const char *)inbox, length});
     return;
   }
+  bool diving = thegrid_diving(at(state));
   thegrid_message(at(state), kind, (coax_string){(const char *)inbox, length});
+  if (!diving && thegrid_diving(at(state))) {   // from the homepage: the start spot, whatever was kept
+    player = verse_player_place(0, 0, 0, 0);
+    thegrid_spawn(at(state));
+  }
   if (track_message(tr(), kind, (coax_string){(const char *)inbox, length})) track_drain(&track_state);
 }
 
-EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { int32_t a = (int32_t)thegrid_action(at(state)); return a ? a : place_action(); }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)grid(state)->outbox.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return place_out_now ? place_outbox_len() : (uint32_t)grid(state)->out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (place_out_now) place_done(); else thegrid_action_done(at(state)); }
+// A new player key goes first (action 5: host.js keeps the outbox as the browser's player).
+static bool keeping;
+EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
+  if (grid(state)->keep_player) { grid(state)->keep_player = false; keeping = true; return 5; }
+  int32_t a = (int32_t)thegrid_action(at(state)); return a ? a : place_action();
+}
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return keeping ? (uint32_t)(uintptr_t)grid(state)->player_out.e : place_out_now ? place_outbox() : (uint32_t)(uintptr_t)grid(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return keeping ? (uint32_t)grid(state)->player_out_n : place_out_now ? place_outbox_len() : (uint32_t)grid(state)->out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (keeping) keeping = false; else if (place_out_now) place_done(); else thegrid_action_done(at(state)); }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return thegrid_wants_text(at(state)) ? 1 : 0; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)grid(state)->field.e; }
 
 EXPORT("coaxial_asset") uint32_t coaxial_asset(uint32_t state, int32_t i, uint32_t bytes) {
   (void)state;
+  if (i == 5) return bytes <= CAST_CAP ? (uint32_t)(uintptr_t)cast_bytes : 0u;
   return i == 0 && bytes <= sizeof data ? (uint32_t)(uintptr_t)data : 0u;
 }
 EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i, uint32_t bytes) {
@@ -174,5 +279,11 @@ EXPORT("coaxial_asset_ready") void coaxial_asset_ready(uint32_t state, int32_t i
   if (i == 0) {
     if (bytes > 0 && bytes <= sizeof data) thegrid_data(at(state), (coax_string){(const char *)data, bytes});
     else thegrid_arrived(at(state), false);
-  } else if (i >= 1 && i <= 4) thegrid_arrived(at(state), bytes > 0);
+  } else if (i == 5) {
+    // Cast.bin: admitted whole (verse_cast_open checks every buffer, index and joint), or nobody draws
+    cast_n = bytes <= CAST_CAP ? bytes : 0;
+    cast_set = verse_cast_open((coax_v_u8){cast_bytes, cast_n});
+    cast_open = cast_n > 0 && cast_set.ok && cast_set.joints <= JOINTS_MAX;
+    thegrid_cast(at(state), cast_open, cast_set.body_vertices.offset / 4, cast_set.body_indices.offset / 4, cast_set.body_indices.count, cast_set.joints);
+  } else if (i >= 1 && i <= 7) thegrid_arrived(at(state), bytes > 0);
 }

@@ -1,0 +1,221 @@
+// The people on the Grid (grid-walk): you and everyone else walking it, as the human character
+// from Cast.bin (verse/cast.coax, the character the app's native Grid wears), never a robot.
+//
+// The page joins the playtest room "the-grid" (room.coax; coax/web/api/room.c, no new server): the
+// face posts where you are about five times a second and is answered with everyone else seen there
+// in the last six seconds (automation is seen only by itself, migration 0069). Each is drawn where
+// the room says, carried on at the speed they were last going and eased onto it, with the walk, run
+// or idle clip their speed calls for and their name over them. The face poses the character for each
+// person in people[] (x, y, z, facing, act, whose) and writes the joint palettes the WGSL skins it with.
+//
+// A visit from the homepage's WALK AROUND (?from=home) starts with the camera coming down out of
+// the homepage's isometric view onto you at the start spot; HOME goes back.
+
+#load "room.coax";
+
+GRID_ROOM :: "the-grid";
+PEOPLE :: 16;              // you and the room's others (ROOM_OTHERS)
+PERSON_FLOATS :: 6;        // x, y, z, facing, act (verse_player_act: 0 idle, 1 walk, 2 run, 3 air), whose
+PERSON_BASE :: 1000;       // a person's instance number in the draw (thegrid.wgsl reads u.people.w)
+PERSON_NAME_NEAR :: 40.0;  // m: a name shows this near
+ROOM_POST_EVERY :: 0.2;    // s between posts
+WALK_FROM :: 0.5;          // m/s: slower stands
+RUN_FROM :: 5.2;           // m/s: faster runs (verse/player.coax walks 3.5, runs 7.5)
+CARRY_MOST :: 0.35;        // s a person is carried on past their last place
+DIVE_FOR :: 2.2;           // s the camera takes to come down from the homepage
+HOME :: "/";
+ACT_KEEP_PLAYER :: 5;      // host.js: keep the outbox as the browser's playtest player
+
+Others :: struct {
+  vel: [ROOM_OTHERS * 2] f32;    // where each was going, m/s (x, z)
+  since: [ROOM_OTHERS] f32;      // s since the room last said where they are
+  speed: [ROOM_OTHERS] f32;      // how fast each is drawn moving, smoothed
+  drawn: [ROOM_OTHERS * 4] f32;  // last frame's x, y, z, yaw
+  whose: [ROOM_OTHERS] f32;      // a number for who each is, so the face keeps their clips going
+}
+
+// ---- the room's answer, and the others carried on and eased
+
+// Takes the room's answer: who is here, and how fast each moved since they were last heard of.
+thegrid_room_answer :: (s: [] TheGrid, answer: string) -> int #export_c {
+  r := s[0].room[..];
+  was := r[0].others;
+  was_to: [ROOM_OTHERS * 4] f32; was_whose: [ROOM_OTHERS] f32; was_since: [ROOM_OTHERS] f32;
+  was_vel: [ROOM_OTHERS * 2] f32; was_speed: [ROOM_OTHERS] f32; was_drawn: [ROOM_OTHERS * 4] f32;
+  for i: 0..<was {
+    for k: 0..<4 { was_to[i * 4 + k] = r[0].to[i * 4 + k]; was_drawn[i * 4 + k] = s[0].ot.drawn[i * 4 + k]; }
+    was_whose[i] = s[0].ot.whose[i]; was_since[i] = s[0].ot.since[i]; was_speed[i] = s[0].ot.speed[i];
+    was_vel[i * 2] = s[0].ot.vel[i * 2]; was_vel[i * 2 + 1] = s[0].ot.vel[i * 2 + 1];
+  }
+  status := room_take(r, answer);
+  for i: 0..<r[0].others {
+    h := whose_of(room_other_id(r, i));
+    j := -1;
+    for q: 0..<was { if j < 0 && was_whose[q] == h { j = q; } }
+    s[0].ot.whose[i] = h; s[0].ot.since[i] = 0;
+    if j < 0 {
+      s[0].ot.vel[i * 2] = 0; s[0].ot.vel[i * 2 + 1] = 0; s[0].ot.speed[i] = 0;
+      for k: 0..<4 { s[0].ot.drawn[i * 4 + k] = r[0].to[i * 4 + k]; }
+      continue;
+    }
+    gap := hi(was_since[j], 0.05);
+    vx := (r[0].to[i * 4] - was_to[j * 4]) / gap; vz := (r[0].to[i * 4 + 2] - was_to[j * 4 + 2]) / gap;
+    fast := sqrt(vx * vx + vz * vz);
+    if !finite(fast) || fast > 12 { vx = 0; vz = 0; }   // a jump across the Grid (a reload elsewhere) isn't a run
+    s[0].ot.vel[i * 2] = vx; s[0].ot.vel[i * 2 + 1] = vz;
+    s[0].ot.speed[i] = was_speed[j];
+    for k: 0..<4 { s[0].ot.drawn[i * 4 + k] = was_drawn[j * 4 + k]; }
+    if fast > 12 { for k: 0..<4 { s[0].ot.drawn[i * 4 + k] = r[0].to[i * 4 + k]; } }
+  }
+  return status;
+}
+
+// A player id as a number (FNV-1a, 24 bits so a float keeps it whole).
+whose_of :: (id: string) -> f32 {
+  h: u64 = 2166136261;
+  for i: 0..<id.count { h = ((h ^ cast(u64) id[i]) * 16777619) & 0xFFFFFFFF; }
+  return f32(cast(int) (h & 0xFFFFFF) + 1);
+}
+
+// Each frame: every other carried on the way they were going, eased onto it, and how fast they move.
+others_frame :: (s: [] TheGrid, dt: f32) {
+  r := s[0].room[..];
+  k := clamp(dt * 9, 0, 1);
+  for i: 0..<r[0].others {
+    s[0].ot.since[i] += dt;
+    carry := lo(s[0].ot.since[i], f32(CARRY_MOST));
+    tx := r[0].to[i * 4] + s[0].ot.vel[i * 2] * carry;
+    tz := r[0].to[i * 4 + 2] + s[0].ot.vel[i * 2 + 1] * carry;
+    bx := s[0].ot.drawn[i * 4]; bz := s[0].ot.drawn[i * 4 + 2];
+    nx := bx + (tx - bx) * k; nz := bz + (tz - bz) * k;
+    s[0].ot.drawn[i * 4] = nx; s[0].ot.drawn[i * 4 + 2] = nz;
+    s[0].ot.drawn[i * 4 + 1] += (r[0].to[i * 4 + 1] - s[0].ot.drawn[i * 4 + 1]) * k;
+    d := wrap_angle(r[0].to[i * 4 + 3] - s[0].ot.drawn[i * 4 + 3]);
+    s[0].ot.drawn[i * 4 + 3] = wrap_angle(s[0].ot.drawn[i * 4 + 3] + d * k);
+    if dt > 0 {
+      now := sqrt((nx - bx) * (nx - bx) + (nz - bz) * (nz - bz)) / dt;
+      if finite(now) { s[0].ot.speed[i] += (lo(now, 12) - s[0].ot.speed[i]) * clamp(dt * 6, 0, 1); }
+    }
+  }
+}
+
+// What a speed and height look like: verse_player_act's numbers.
+act_of :: (speed: f32, air: f32) -> int {
+  if air > 0.25 { return 3; }
+  if speed > f32(RUN_FROM) { return 2; }
+  if speed > f32(WALK_FROM) { return 1; }
+  return 0;
+}
+
+// The people to draw this frame: you first (unless the camera is inside your head), then the others.
+people_list :: (s: [] TheGrid, feet: Point, face: f32, act: int, you_shown: bool) {
+  n := 0;
+  if you_shown { n = person_put(s, n, feet.x, feet.y, feet.z, face, act, 0); }
+  r := s[0].room[..];
+  for i: 0..<r[0].others {
+    if n >= PEOPLE { break; }
+    o := s[0].ot.drawn[i * 4..<i * 4 + 4];
+    n = person_put(s, n, o[0], hi(o[1], 0), o[2], o[3], act_of(s[0].ot.speed[i], o[1]), s[0].ot.whose[i]);
+  }
+  s[0].people_n = n;
+}
+person_put :: (s: [] TheGrid, n: int, x: f32, y: f32, z: f32, face: f32, act: int, whose: f32) -> int {
+  p := s[0].people[n * PERSON_FLOATS..<n * PERSON_FLOATS + PERSON_FLOATS];
+  p[0] = x; p[1] = y; p[2] = z; p[3] = face; p[4] = f32(act); p[5] = whose;
+  return n + 1;
+}
+
+// The others' names over them, the near ones.
+people_labels :: (s: [] TheGrid, out: [] f32, u: [] f32, n: int, you: Point) -> int {
+  k := hi(s[0].dpr, 0.5);
+  m := n;
+  r := s[0].room[..];
+  for i: 0..<r[0].others {
+    o := s[0].ot.drawn[i * 4..<i * 4 + 4];
+    p := v3(o[0], hi(o[1], 0) + 2.15, o[2]);
+    d := flat_gap(p, you);
+    if d > f32(PERSON_NAME_NEAR) { continue; }
+    name := room_other_name(r, i);
+    if name.count == 0 { continue; }
+    sc := on_screen(u, p, s[0].width, s[0].height);
+    if !sc.ok { continue; }
+    cap := 7 * k;
+    w := text_width(name, cap);
+    light := 0.95 * clamp((f32(PERSON_NAME_NEAR) - d) / 12, 0, 1);
+    m = draw_text(out, m, name, sc.x - w / 2, sc.y, cap, GAP, SPACE, ink(k, light, INK_R, INK_G, INK_B), false, false);
+  }
+  return m;
+}
+
+// ---- what the face sends: where you are, when it's time
+
+thegrid_room_name :: (s: [] TheGrid) -> string #export_c { return GRID_ROOM; }
+// Seconds between posts to the room.
+thegrid_room_every :: () -> f32 #export_c { return f32(ROOM_POST_EVERY); }
+thegrid_others :: (s: [] TheGrid) -> int #export_c { return s[0].room[0].others; }
+thegrid_people :: (s: [] TheGrid) -> int #export_c { return s[0].people_n; }
+
+// A new player key (POST /api/playtest/player answered): host.js keeps it as the browser's player.
+thegrid_keep_player :: (s: [] TheGrid, record: string) #export_c {
+  if s[0].action != 0 || record.count > OUTBOX_PLAYER { return; }
+  for i: 0..<record.count { s[0].player_out[i] = record[i]; }
+  s[0].player_out_n = record.count; s[0].keep_player = true;
+}
+OUTBOX_PLAYER :: 256;
+
+// ---- Cast.bin, as the face found it
+
+// The face opened Cast.bin: where the character's vertices and triangles start (in 4-byte words),
+// how many corners its triangles have, and its joints. Nothing draws a person until it has.
+thegrid_cast :: (s: [] TheGrid, ok: bool, vertex_word: int, index_word: int, corners: int, joints: int) #export_c {
+  s[0].cast_ok = ok && corners > 0 && corners % 3 == 0 && joints > 0;
+  s[0].cast_vertex = vertex_word; s[0].cast_index = index_word; s[0].cast_corners = corners; s[0].cast_joints = joints;
+}
+
+// ---- coming down from the homepage
+
+// The camera this frame: until the dive is done, from high over the start spot the way the
+// homepage looks at its grid (from the south-west, 45 degrees round, steeply down), down onto you.
+dive_shot :: (s: [] TheGrid, shot: Shot, dt: f32) -> Shot {
+  if !thegrid_diving(s) || !ready(s) { return shot; }
+  s[0].dive += dt;
+  f := clamp(s[0].dive / f32(DIVE_FOR), 0, 1);
+  if f >= 1 { s[0].dived = true; return shot; }
+  e := f * f * (3 - 2 * f);
+  e = e * e * (3 - 2 * e);   // slow away and slow in: one long glide
+  high := add(s[0].feet, v3(-34, 52, -34));
+  out := shot;
+  out.eye = add(high, times(sub(shot.eye, high), e));
+  out.at = add(s[0].feet, times(sub(shot.at, s[0].feet), e));
+  return out;
+}
+thegrid_diving :: (s: [] TheGrid) -> bool #export_c { return s[0].dove && !s[0].dived; }
+// Back at the start spot, facing the terminal, the camera behind you.
+thegrid_spawn :: (s: [] TheGrid) #export_c {
+  s[0].feet = v3(0, 0, 0); s[0].face = 0;
+  s[0].orbit = verse_orbit_start(s[0].feet, 0);
+}
+
+#test "the room's others are people: carried on the way they go, walking at a walk, named; ?from=home dives" {
+  g: [1] TheGrid;
+  thegrid_start(g[..]);
+  a := "200\n{\"others\":[{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":0,\"y\":0,\"z\":10,\"yaw\":0}],\"messages\":[]}";
+  #assert thegrid_room_answer(g[..], a) == 200 && thegrid_others(g[..]) == 1 && room_other_name(g[0].room[..], 0) == "WREN";
+  people_list(g[..], v3(0, 0, 0), 0, 0, true);
+  #assert g[0].people_n == 2 && g[0].people[PERSON_FLOATS + 2] == 10 && g[0].people[PERSON_FLOATS + 4] == 0;
+  whose := g[0].people[PERSON_FLOATS + 5];
+  // a fifth of a second on they are 0.7 m along: walking, carried on past it until the next answer
+  others_frame(g[..], 0.2);
+  #assert thegrid_room_answer(g[..], "200\n{\"others\":[{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":0.7,\"y\":0,\"z\":10,\"yaw\":1.5}]}") == 200;
+  for i: 0..<12 { others_frame(g[..], 1.0 / 60.0); }
+  people_list(g[..], v3(0, 0, 0), 0, 0, true);
+  #assert g[0].people[PERSON_FLOATS] > 0.7 && g[0].people[PERSON_FLOATS + 4] == 1 && g[0].people[PERSON_FLOATS + 5] == whose;
+  // gone from the room: gone from the Grid; inside your own head, you aren't drawn
+  #assert thegrid_room_answer(g[..], "200\n{\"others\":[]}") == 200;
+  people_list(g[..], v3(0, 0, 0), 0, 0, false);
+  #assert g[0].people_n == 0 && act_of(6, 0) == 2 && act_of(1, 0.5) == 3;
+  #assert from_home("https://openagents.com/realms/the-grid?from=home") && from_home("/realms/the-grid?a=1&from=home#x");
+  #assert !from_home("/realms/the-grid?from=homes") && !from_home("/realms/the-grid#from=home");
+  thegrid_message(g[..], MSG_FACTS, "tab=t\nurl=https://openagents.com/realms/the-grid?from=home\n");
+  #assert thegrid_diving(g[..]);
+}

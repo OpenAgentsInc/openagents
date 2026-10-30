@@ -101,7 +101,8 @@
 // and each one that arrives (or fails, bytes 0) is told: coaxial_asset_ready(state, i, bytes), i its
 // place in the list. The app's scene, drawn between bg and fx with a depth buffer once every GPU asset is in:
 //   coaxial_draws(state), coaxial_draw_count(state)   u32 [first, count, base instance, instances] each,
-//                             indexed draws over the index buffer
+//                             indexed draws over the index buffer (a base instance with its top bit
+//                             set: that many vertices from first, in order, no index buffer)
 //   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
 //                             memory copied each frame to storage buffers; an app with
 //   coaxial_store_version(state, k)  has store k copied only when that number changes (a
@@ -973,9 +974,7 @@ async function loadAsset(a) {
       }));
       a.texture = await layerTexture(images); a.size = images.length;
     } else {
-      const r = await fetch(a.url);
-      if (!r.ok) throw new Error(`${a.url}: ${r.status}`);
-      const bytes = await readBytes(r, (l, t) => loading.bytes(a.url, l, t));
+      const bytes = await fetchedOnce(a.url);
       a.size = bytes.length;
       if (a.kind === "data") a.bytes = bytes;
       else {
@@ -990,6 +989,17 @@ async function loadAsset(a) {
   deliver(a);
   bindScene();
   loading.assetDone(a.failed && `ASSET FAILED TO LOAD: ${(a.url || "").split("/").pop()}`);
+}
+// An asset's bytes, fetched once however many of the page's assets name the same URL (the Grid's
+// Cast.bin is both data, for its clips, and storage, for its vertices).
+const fetches = new Map();
+function fetchedOnce(url) {
+  if (!fetches.has(url)) fetches.set(url, (async () => {
+    const r = await fetch(url);
+    if (!r.ok) throw new Error(`${url}: ${r.status}`);
+    return readBytes(r, (l, t) => loading.bytes(url, l, t));
+  })());
+  return fetches.get(url);
 }
 // A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size).
 async function layerTexture(images) {   // the loading screen counts each layer as it goes up
@@ -1346,7 +1356,13 @@ function draw(now) {
   const encoder = device.createCommandEncoder();
   const list = draws ? new Uint32Array(memory.buffer, x.coaxial_draws(arena.state), draws * 4) : null;
   const wet = draws && gpu.waterTransmit && x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(arena.state), draws) : 0;
-  const drawOne = (pass, i) => { if (list[i * 4 + 1] && list[i * 4 + 3]) pass.drawIndexed(list[i * 4 + 1], list[i * 4 + 3], list[i * 4], 0, list[i * 4 + 2]); };
+  // a draw whose base instance has its top bit set draws its vertices in order, with no index buffer
+  const drawOne = (pass, i) => {
+    const [first, count, base, instances] = [list[i * 4], list[i * 4 + 1], list[i * 4 + 2], list[i * 4 + 3]];
+    if (!count || !instances) return;
+    if (base & 0x80000000) pass.draw(count, instances, first, base & 0x7fffffff);
+    else pass.drawIndexed(count, instances, first, 0, base);
+  };
   const drawScene = (pass) => {
     pass.setBindGroup(1, gpu.sceneGroup); pass.setIndexBuffer(gpu.index, "uint32");
     for (let i = 0; i < draws - wet; i++) drawOne(pass, i);

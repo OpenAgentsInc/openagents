@@ -61,9 +61,9 @@ everglade=$!
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \
   "$m/player.coax" "$m/grid.coax" "$m/fairy-forest/stream.coax" &
 fairy=$!
-# /realms/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player and thumbs.
+# /realms/the-grid: the bare Verse world from the demo's scene (verse/tools/pack_grid.py), with the player, thumbs and the people (verse/cast.coax).
 "$here/../../coax/web/wasm.sh" "$here/thegrid.coax" "$here/thegrid-face.c" "$here/build/thegrid.wasm" \
-  "$m/player.coax" "$m/grid.coax" &
+  "$m/player.coax" "$m/grid.coax" "$m/cast.coax" &
 thegrid=$!
 # /realms/hecates-cemetery: Planetary Villa's first expansion (verse/planetary-villa/README.md),
 # with the player, thumbs and figures (villafig.coax: the engine's figures and motions) as libraries.

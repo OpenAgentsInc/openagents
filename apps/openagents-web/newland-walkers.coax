@@ -1,0 +1,166 @@
+// The Grid's walkers on the homepage, and the way in (grid-walk).
+//
+// WALK AROUND, a button by PYLONS and PLAYTEST: one click and the camera dives into the middle of
+// the homepage's grid, then the page goes on to the Grid (/realms/the-grid?from=home), whose camera
+// comes down the rest of the way onto you at the start spot (thegrid-people.coax). The click is
+// counted (analytics "walk-around").
+//
+// The people walking the Grid right now (the playtest room the-grid, room.coax; GET
+// /api/playtest/presence/the-grid, everyone seen there in the last six seconds, automation never)
+// walk the homepage's grid too: the Grid's start spot is the places' middle, a metre of the Grid half
+// a grid unit here, as the figures are drawn. Each is a person under their name, eased from where
+// they were to where they are, walking or running as fast as they go. While anyone is there the
+// simulated people stay away; with nobody, they come back.
+
+#load "room.coax";
+
+WALK_ROOM :: "/api/playtest/presence/the-grid";
+WALK_ASK_EVERY :: 1.0;     // s between asks
+WALK_ASK_AFTER :: 2.5;     // s before the first, so the page's first seconds are only its own
+WALK_SCALE :: 0.5;         // grid units a Grid metre
+WALK_DIVE :: 0.75;         // s the camera dives before the page goes on
+WALK_URL :: "/realms/the-grid?from=home";
+
+Walkers :: struct {
+  room: [1] RoomState;
+  ask_t: f32;              // s since the last ask
+  asking: bool;            // an ask is out (the face sends it)
+  want: bool;              // time for the next one
+  speed: [ROOM_OTHERS] f32; phase: [ROOM_OTHERS] f32;
+  drawn: [ROOM_OTHERS * 3] f32;   // x, z, yaw on the homepage, eased
+  seen: [ROOM_OTHERS] bool;
+  diving: bool; dive: f32; // WALK AROUND was pressed, and s into its dive
+}
+
+// The face: whether to ask now (then it sends the GET and answers with land_walkers_answer).
+coaxial_land_walkers_ask :: (s: [] LandState) -> bool #export_c {
+  w := s[0].walk[..];
+  if s[0].golden || w[0].asking || !w[0].want { return false; }
+  w[0].want = false; w[0].asking = true; w[0].ask_t = 0;
+  return true;
+}
+coaxial_land_walkers_url :: () -> string #export_c { return WALK_ROOM; }
+coaxial_land_walkers_answer :: (s: [] LandState, answer: string) #export_c {
+  w := s[0].walk[..];
+  w[0].asking = false;
+  r := w[0].room[..];
+  was := r[0].others;
+  was_id: [ROOM_OTHERS] f32; was_drawn: [ROOM_OTHERS * 3] f32; was_speed: [ROOM_OTHERS] f32; was_phase: [ROOM_OTHERS] f32;
+  for i: 0..<was {
+    was_id[i] = walker_hash(room_other_id(r, i));
+    for k: 0..<3 { was_drawn[i * 3 + k] = w[0].drawn[i * 3 + k]; }
+    was_speed[i] = w[0].speed[i]; was_phase[i] = w[0].phase[i];
+  }
+  st := room_take(r, answer);
+  if st != 200 { r[0].others = 0; return; }
+  mid := centre(s, -1);
+  for i: 0..<r[0].others {
+    h := walker_hash(room_other_id(r, i));
+    j := -1;
+    for q: 0..<was { if j < 0 && was_id[q] == h { j = q; } }
+    if j >= 0 {
+      for k: 0..<3 { w[0].drawn[i * 3 + k] = was_drawn[j * 3 + k]; }
+      w[0].speed[i] = was_speed[j]; w[0].phase[i] = was_phase[j];
+    } else {
+      w[0].drawn[i * 3] = mid.x + r[0].to[i * 4] * WALK_SCALE;
+      w[0].drawn[i * 3 + 1] = mid.z + r[0].to[i * 4 + 2] * WALK_SCALE;
+      w[0].drawn[i * 3 + 2] = r[0].to[i * 4 + 3];
+      w[0].speed[i] = 0; w[0].phase[i] = 0;
+    }
+  }
+}
+walker_hash :: (id: string) -> f32 {
+  h: u64 = 2166136261;
+  for i: 0..<id.count { h = ((h ^ cast(u64) id[i]) * 16777619) & 0xFFFFFFFF; }
+  return cast(f32) cast(int) (h & 0xFFFFFF);
+}
+coaxial_land_walkers :: (s: [] LandState) -> int #export_c { return s[0].walk[0].room[0].others; }
+
+// Each frame: time for the next ask, and everyone eased on toward where the room says.
+walkers_step :: (s: [] LandState, dt: f32) {
+  w := s[0].walk[..];
+  w[0].ask_t += dt;
+  if !w[0].asking && s[0].time >= WALK_ASK_AFTER && w[0].ask_t >= WALK_ASK_EVERY { w[0].want = true; }
+  r := w[0].room[..];
+  mid := centre(s, -1);
+  k := clamp(dt * 2.5, 0, 1);   // an ask a second: eased so they keep moving between answers
+  for i: 0..<r[0].others {
+    tx := mid.x + r[0].to[i * 4] * WALK_SCALE; tz := mid.z + r[0].to[i * 4 + 2] * WALK_SCALE;
+    bx := w[0].drawn[i * 3]; bz := w[0].drawn[i * 3 + 1];
+    nx := bx + (tx - bx) * k; nz := bz + (tz - bz) * k;
+    w[0].drawn[i * 3] = nx; w[0].drawn[i * 3 + 1] = nz;
+    step := sqrt((nx - bx) * (nx - bx) + (nz - bz) * (nz - bz));
+    if step > 0.002 { w[0].drawn[i * 3 + 2] = angle_of(nx - bx, nz - bz); }
+    if dt > 0 { w[0].speed[i] += (step / dt / WALK_SCALE - w[0].speed[i]) * clamp(dt * 4, 0, 1); }   // Grid m/s
+    stride: f32 = (ifx w[0].speed[i] > 5.2 then 2.6f32 else 1.45f32) * FIG;
+    w[0].phase[i] = fract(w[0].phase[i] + step / stride);
+  }
+}
+
+// The walkers: a figure each, their name over them.
+walkers_draw :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int {
+  v := at;
+  w := s[0].walk[..];
+  r := w[0].room[..];
+  white := ink(p, INK_WHITE); bright := ink(p, INK_BRIGHT);
+  for i: 0..<r[0].others {
+    sh := person_shape(i + 3);
+    k := verse_figure_skeleton(sh);
+    sp := w[0].speed[i];
+    gait := ifx sp > 5.2 then Gait.run else ifx sp > 0.5 then Gait.walk else Gait.stand;
+    pose := verse_figure_gait(Rig.person, gait, w[0].phase[i], t + cast(f32) i * 1.7);
+    top: [1] Spot;
+    x := w[0].drawn[i * 3]; z := w[0].drawn[i * 3 + 1];
+    v = figure(out, v, c, k, pose, x, z, w[0].drawn[i * 3 + 2], bright, 1, p, top[..]);
+    w[0].seen[i] = top[0].ok && inside(c.clip, top[0].x, top[0].y);
+    if w[0].seen[i] {
+      cap := (ifx p.phone then 5.8f32 else 6.8f32) * p.d;
+      v = put_centred(out, v, room_other_name(r, i), top[0].x, top[0].y - cap * 0.6, cap, dimmed(white, vignette(c, top[0].x, top[0].y)));
+    }
+  }
+  return v;
+}
+
+// WALK AROUND: the dive begins; when it is done the page goes on to the Grid.
+walk_around :: (s: [] LandState) {
+  if s[0].walk[0].diving { return; }
+  s[0].walk[0].diving = true; s[0].walk[0].dive = 0;
+  take(s);
+  s[0].walk_click = true;
+}
+// This frame's dive: the view closes in on the places' middle, flattening toward the Grid's own
+// camera, and at the end the page goes on.
+walk_dive :: (s: [] LandState, step: f32) {
+  w := s[0].walk[..];
+  if !w[0].diving { return; }
+  w[0].dive += step;
+  f := clamp(w[0].dive / WALK_DIVE, 0, 1);
+  e := f * f;
+  mid := centre(s, -1);
+  s[0].look = fv_mix(s[0].look, mid, clamp(step * 6, 0, 1));
+  s[0].zoom = s[0].zoom + (ZOOM_IN * 0.5 - s[0].zoom) * clamp(step * 5, 0, 1); s[0].zoom_to = s[0].zoom;
+  s[0].vel_x = 0; s[0].vel_z = 0;
+  if f >= 1 && s[0].action == 0 { go(s, WALK_URL); }
+  s[0].dive_fade = e;
+}
+
+#test "the Grid's walkers walk the homepage under their names, and WALK AROUND dives on into the Grid" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9;
+  s[0].walk[0].ask_t = 5;
+  #assert coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false) > 1000;
+  #assert coaxial_land_walkers_ask(s[..]) && !coaxial_land_walkers_ask(s[..]);
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":4,\"y\":0,\"z\":0,\"yaw\":0}],\"count\":1}");
+  #assert coaxial_land_walkers(s[..]) == 1 && s[0].walk[0].drawn[0] == centre(s[..], -1).x + 2;
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[{\"id\":\"p-a\",\"name\":\"WREN\",\"x\":6,\"y\":0,\"z\":0,\"yaw\":0}],\"count\":1}");
+  for i: 0..<30 { walkers_step(s[..], 1.0 / 60.0); }
+  #assert s[0].walk[0].drawn[0] > centre(s[..], -1).x + 2.2 && s[0].walk[0].speed[0] > 0.5;
+  #assert coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false) > 1000 && s[0].walk[0].seen[0];
+  walk_around(s[..]);
+  #assert s[0].walk_click;
+  walk_dive(s[..], 0.4); walk_dive(s[..], 0.4);
+  #assert s[0].action == ACT_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == WALK_URL;
+  coaxial_land_walkers_answer(s[..], "200\n{\"others\":[],\"count\":0}");
+  #assert coaxial_land_walkers(s[..]) == 0;
+}

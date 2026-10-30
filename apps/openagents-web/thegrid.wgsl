@@ -4,6 +4,10 @@
 // the demo drew), fading into the field with distance: the faces, the lines
 // (a quad each, built here from its two ends and kept a pixel and a half
 // wide on the screen) and the robots, skinned here from their clips' frames.
+// The people (you and everyone else walking the Grid) are the human
+// character from Cast.bin (verse/cast.coax), drawn in vertex order from its
+// triangles and skinned with the joint palettes the face writes each frame,
+// textured from its sheets and lit softly from above.
 // Every number comes from thegrid.coax.
 
 struct U {
@@ -12,6 +16,7 @@ struct U {
   eye: vec4f,                                   // the eye, and a line's width in device pixels
   field: vec4f,                                 // fading from x to y metres; bones a frame
   plate: array<vec4f, 24>,
+  people: vec4f,                                // Cast.bin's body vertices and indices (words), joints, the first person's instance
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -54,8 +59,13 @@ fn plates(p: vec2f, under: vec3f) -> vec3f {
 @group(1) @binding(0) var<storage, read> vertices: array<u32>;   // 6 words: x, y, z, colour, joints, weights
 @group(1) @binding(1) var<storage, read> lines: array<u32>;      // 7 words: two ends, colour
 @group(1) @binding(2) var<storage, read> bones: array<vec4f>;    // a frame's bones, three rows each
+@group(1) @binding(3) var<storage, read> body: array<u32>;        // Cast.bin
 struct Robot { place: vec4f, frames: vec4f }                      // x, y, z, yaw; scale, frame a, frame b, blend
-@group(1) @binding(3) var<storage, read> robots: array<Robot>;
+@group(1) @binding(4) var<storage, read> robots: array<Robot>;
+@group(1) @binding(5) var<storage, read> palette: array<vec4f>;  // each person's joints, three rows each, placed in the world
+@group(1) @binding(6) var sheets: texture_2d_array<f32>;          // the character's texture layers
+@group(1) @binding(7) var sheet: sampler;
+fn cf(i: u32) -> f32 { return bitcast<f32>(body[i]); }
 fn f(i: u32) -> f32 { return bitcast<f32>(vertices[i]); }
 fn lf(i: u32) -> f32 { return bitcast<f32>(lines[i]); }
 
@@ -92,10 +102,44 @@ struct S {
   @builtin(position) pos: vec4f,
   @location(0) world: vec3f,
   @location(1) colour: vec3f,
+  @location(2) uv: vec2f,
+  @location(3) normal: vec3f,
+  @location(4) @interpolate(flat) layer: f32,   // a person's texture layer; -1 the art's flat colour, 255 a person's flat colour
 }
+
+// A person's corner: triangle corner id of Cast.bin's body, skinned with person h's palette.
+fn person(id: u32, h: u32) -> S {
+  var o: S;
+  let v = body[u32(u.people.y) + id];
+  let b = u32(u.people.x) + v * 16u;
+  let p = vec4f(cf(b), cf(b + 1u), cf(b + 2u), 1.0);
+  let n = vec3f(cf(b + 3u), cf(b + 4u), cf(b + 5u));
+  let w = vec4f(cf(b + 8u), cf(b + 9u), cf(b + 10u), cf(b + 11u));
+  let j = unpack4x8unorm(body[b + 12u]) * 255.0;
+  var at = vec3f(0.0); var nn = vec3f(0.0);
+  for (var k = 0u; k < 4u; k++) {
+    if (w[k] <= 0.0) { continue; }
+    let r = (h * u32(u.people.z) + u32(j[k] + 0.5)) * 3u;
+    let r0 = palette[r]; let r1 = palette[r + 1u]; let r2 = palette[r + 2u];
+    at += w[k] * vec3f(dot(r0, p), dot(r1, p), dot(r2, p));
+    nn += w[k] * vec3f(dot(r0.xyz, n), dot(r1.xyz, n), dot(r2.xyz, n));
+  }
+  let tint = unpack4x8unorm(body[b + 13u]);
+  o.world = at;
+  o.pos = clip(at);
+  o.colour = tint.rgb;
+  o.uv = vec2f(cf(b + 6u), cf(b + 7u));
+  o.normal = nn;
+  o.layer = tint.a * 255.0;
+  return o;
+}
+fn decode(c: vec3f) -> vec3f { return select(pow((c + 0.055) / 1.055, vec3f(2.4)), c / 12.92, c <= vec3f(0.04045)); }
+fn encode(c: vec3f) -> vec3f { let x = clamp(c, vec3f(0.0), vec3f(1.0)); return select(1.055 * pow(x, vec3f(1.0 / 2.4)) - 0.055, x * 12.92, x <= vec3f(0.0031308)); }
 
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
   var o: S;
+  if (f32(instance) >= u.people.w) { return person(id, instance - u32(u.people.w)); }
+  o.layer = -1.0;
   let r = robots[instance];
   if ((id & 0x80000000u) == 0u) {
     // a face's corner: the art's, in the world, or a robot's
@@ -135,7 +179,16 @@ struct S {
 @fragment fn scene_fs(s: S) -> @location(0) vec4f {
   let d = length(u.eye.xz - s.world.xz);
   let t = clamp((d - u.field.x) / max(u.field.y - u.field.x, 1.0), 0.0, 1.0);
-  let c = mix(s.colour, FIELD, t * t * (3.0 - 2.0 * t));
+  // a person: the sheet's colour under the tint, lit from above and the front (sampled every time, so
+  // the sample stays in uniform control flow)
+  let albedo = textureSample(sheets, sheet, s.uv, i32(clamp(s.layer, 0.0, 5.0))).rgb;
+  let up = normalize(vec3f(0.35, 0.85, 0.4));
+  let light = 0.5 + 0.6 * max(dot(normalize(s.normal + vec3f(0.0, 0.0001, 0.0)), up), 0.0);
+  var colour = s.colour;
+  if (s.layer >= 0.0) {
+    colour = select(encode(albedo * decode(s.colour) * light), encode(decode(s.colour) * light), s.layer > 250.0);
+  }
+  let c = mix(colour, FIELD, t * t * (3.0 - 2.0 * t));
   return vec4f(plates(s.pos.xy, c), 1.0);
 }
 

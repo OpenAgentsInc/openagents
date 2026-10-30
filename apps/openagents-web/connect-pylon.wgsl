@@ -8,7 +8,7 @@
 
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, count: f32, vignette: f32, pad1: f32,
-  panels: array<vec4f, 8>,   // per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0
+  panels: array<vec4f, 10>,   // per panel: x0, y0, x1, y1 (device pixels), then cut, alpha, tint, 0
 }
 @group(0) @binding(0) var<uniform> u: U;
 // The system sans for small text: the host's glyph atlas (coax/web/host.js, "the sans atlas").

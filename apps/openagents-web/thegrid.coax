@@ -9,9 +9,11 @@
 //
 // You walk it with the engine's controller (verse/player.coax, its own
 // library) among the stations' walls and see it through the free orbit
-// (verse/camera.coax), as a robot yourself. Walk into the Everglade gate and
-// you go to Everglade; GALAXY goes back to the galaxy. Nothing here changes
-// the Grid.
+// (verse/camera.coax), as a person, the character from Cast.bin, and so
+// does everyone else walking the Grid with you (thegrid-people.coax: the
+// playtest room the-grid). Walk into the Everglade gate and you go to
+// Everglade; GALAXY goes to the galaxy, HOME to the homepage. Nothing here
+// changes the Grid.
 //
 // thegrid.wgsl draws the scene from the assets alone: the art's faces and
 // lines in world space, and the robots skinned from their clips' frames,
@@ -25,6 +27,7 @@
 #load "../../verse/camera.coax";
 #load "../../verse/terrain.coax";
 #load "place-orbit.coax";
+#load "thegrid-people.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as Everglade's
 MAX_VERTICES :: 16000;
@@ -32,7 +35,8 @@ PLATES :: 12;
 // width, height, time, fade, still, plates, dpr, robot vertex base; the view's
 // four rows; the eye (and a line's width); the fade and bones a frame; the plates
 U_VIEW :: 8; U_EYE :: 24; U_FIELD :: 28; U_PLATE :: 32;
-UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
+U_PEOPLE :: U_PLATE + PLATES * 8;   // Cast.bin's vertex and index words, its joints, PERSON_BASE
+UNIFORM_FLOATS :: U_PEOPLE + 4;
 
 FADE_NEAR :: 6.0; FADE_FAR :: 110.0;   // metres: the art fades into the field between these
 LINE_PX :: 1.5;                        // a line's width, CSS pixels
@@ -46,7 +50,7 @@ ROBOTS :: 16;          // store 0's instances; 0 stands for the art and is never
 ROBOT_FLOATS :: 8;     // x, y, z, yaw; scale, frame a, frame b, blend
 FOREMAN_X :: 2.8; FOREMAN_Z :: 2.5; FOREMAN_YAW :: -1.079; FOREMAN_SCALE :: 3.0;
 WALK_SPEED :: 1.46;    // m/s: the robots' walk, as its clip was made for
-DRAWS :: 4;
+DRAWS :: 5;            // the art's faces and lines, the robots' faces and lines, the people
 
 WALLS :: 16;           // the player's walls (player.coax WALL numbers each)
 GATE_X :: 9.0; GATE_Z :: 1.0; GATE_R :: 1.0;   // the Everglade gate's portal, and how near is through it
@@ -169,6 +173,13 @@ TheGrid :: struct {
   robots: [ROBOTS * ROBOT_FLOATS] f32; robot_n: int;
   walls: [WALLS * 6] f32; wall_n: int;
   galaxy_button: Box; button_finger: int; pressed: bool;
+  home_button: Box; home_finger: int; home_pressed: bool;
+  // the people (thegrid-people.coax): the room, the others as drawn, who to draw, Cast.bin
+  room: [1] RoomState; ot: Others;
+  people: [PEOPLE * PERSON_FLOATS] f32; people_n: int;
+  cast_ok: bool; cast_vertex: int; cast_index: int; cast_corners: int; cast_joints: int;
+  dive: f32; dove: bool; dived: bool;      // s into the dive down from the homepage, whether it began, and ended
+  player_out: [OUTBOX_PLAYER] u8; player_out_n: int; keep_player: bool;
   outbox: [OUTBOX] u8; out_n: int; action: int;
   ed: [1] RealmEdit;                       // the shared edit layer: the board switches robots and names
   plate_n: int;
@@ -231,7 +242,7 @@ thegrid_start :: (s: [] TheGrid) {
   s[0].started = true;
   s[0].feet = v3(0, 0, 0); s[0].face = 0;
   s[0].orbit = verse_orbit_start(s[0].feet, 0);
-  s[0].button_finger = -1; s[0].drag_id = -1;
+  s[0].button_finger = -1; s[0].drag_id = -1; s[0].home_finger = -1;
   s[0].near = -1; s[0].panel = -1; s[0].answer = -1; s[0].panel_finger = -1;
   n := 0;
   for i: 0..<SOLIDS {
@@ -316,7 +327,8 @@ thegrid_arrived :: (s: [] TheGrid, ok: bool) #export_c {
   if !s[0].started { thegrid_start(s); }
   if ok { s[0].arrived += 1; } else { s[0].failed = true; }
 }
-ready :: (s: [] TheGrid) -> bool { return s[0].data_ready && s[0].arrived >= 4 && !s[0].failed; }
+GPU_ASSETS :: 6;   // grid.vertices, .lines, .bones, .indices, Cast.bin as storage, the character's sheets
+ready :: (s: [] TheGrid) -> bool { return s[0].data_ready && s[0].arrived >= GPU_ASSETS && !s[0].failed; }
 thegrid_draws :: (s: [] TheGrid) -> int #export_c { return ifx ready(s) then DRAWS else 0; }
 thegrid_store_bytes :: (s: [] TheGrid) -> int #export_c { return (hi_i(s[0].robot_n, 0) + 1) * ROBOT_FLOATS * 4; }
 hi_i :: (a: int, b: int) -> int { return ifx a > b then a else b; }
@@ -370,7 +382,7 @@ thegrid_key_up :: (s: [] TheGrid, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-thegrid_blur :: (s: [] TheGrid) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].pressed = false; s[0].panel_finger = -1; }
+thegrid_blur :: (s: [] TheGrid) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].pressed = false; s[0].panel_finger = -1; s[0].home_finger = -1; s[0].home_pressed = false; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -385,6 +397,12 @@ thegrid_pointer :: (s: [] TheGrid, x: f32, y: f32, phase: int, kind: int, id: in
   if id == s[0].panel_finger {
     if phase == 2 && s[0].near >= 0 && in_box(s[0].open_button, x, y) { open_station(s, s[0].near); }
     if phase >= 2 { s[0].panel_finger = -1; }
+    return true;
+  }
+  if phase == 0 && in_box(s[0].home_button, x, y) { s[0].home_finger = id; s[0].home_pressed = true; return true; }
+  if id == s[0].home_finger {
+    if phase == 2 && in_box(s[0].home_button, x, y) { leave_to(s, HOME); }
+    if phase >= 2 { s[0].home_finger = -1; s[0].home_pressed = false; }
     return true;
   }
   if phase == 0 && in_box(s[0].galaxy_button, x, y) { s[0].button_finger = id; s[0].pressed = true; return true; }
@@ -407,7 +425,20 @@ thegrid_pointer :: (s: [] TheGrid, x: f32, y: f32, phase: int, kind: int, id: in
   return true;
 }
 
-thegrid_cursor :: (s: [] TheGrid) -> int #export_c { return ifx s[0].pressed then 1 else 0; }
+thegrid_cursor :: (s: [] TheGrid) -> int #export_c { return ifx s[0].pressed || s[0].home_pressed then 1 else 0; }
+
+// The page's address asks for the dive: its query has from=home.
+from_home :: (url: string) -> bool {
+  q := 0;
+  while q < url.count && url[q] != '?' { q += 1; }
+  i := q + 1;
+  while i < url.count && url[i] != '#' {
+    e := i; while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+    if url[i..<e] == "from=home" { return true; }
+    i = e + 1;
+  }
+  return false;
+}
 
 // ---- the stations' panels
 
@@ -578,6 +609,8 @@ thegrid_message :: (s: [] TheGrid, kind: int, text: string) #export_c {
     v := take_fact(line, "visitor=", s[0].visitor[..]); if v >= 0 { s[0].visitor_n = v; }
     p := take_fact(line, "player=", s[0].player[..]); if p >= 0 { s[0].player_n = p; }
     t := take_fact(line, "now=", s[0].stamp[..]); if t >= 0 { s[0].stamp_n = t; }
+    // the homepage's WALK AROUND: the camera comes down onto you (once, on the first facts)
+    if line.count > 4 && line[0..<4] == "url=" && from_home(line) && !s[0].dove { s[0].dive = 0; s[0].dove = true; }
   }
 }
 
@@ -875,6 +908,7 @@ hud :: (s: [] TheGrid, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, 
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
   n := ifx ready(s) && redit_row_on(s[0].ed[..], "names") then labels(s, out, u, 0, you) else 0;
+  if ready(s) { n = people_labels(s, out, u, n, you); }   // the others' names (thegrid-people.coax)
   gutter := 16 * k;
   cap := 11 * k;
   title := "THE GRID";
@@ -891,10 +925,16 @@ hud :: (s: [] TheGrid, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, 
   s[0].galaxy_button = gb;
   plate(s, u, gb, 0.85, ifx s[0].pressed then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, gb.x0 + 16 * k, gb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
-  // EDIT, left of GALAXY, for its owner and admins (verse/edit/edit.coax); a station's panel closes it
+  // HOME, left of GALAXY: back to the homepage
+  hw := text_width("HOME", 9 * k) + 32 * k;
+  hb := Box.{x0 = gb.x0 - 8 * k - hw, y0 = gb.y0, x1 = gb.x0 - 8 * k, y1 = gb.y1};
+  s[0].home_button = hb;
+  plate(s, u, hb, 0.85, ifx s[0].home_pressed then 2.0f32 else 1.0f32);
+  n = draw_text(out, n, "HOME", hb.x0 + 16 * k, hb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, INK_R, INK_G, INK_B), false, false);
+  // EDIT, left of HOME, for its owner and admins (verse/edit/edit.coax); a station's panel closes it
   if s[0].panel >= 0 { s[0].ed[0].pane = REDIT_SHUT; }
   ew := text_width("EDIT", 9 * k) + 32 * k;
-  n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = gb.x0 - 8 * k - ew, y0 = gb.y0, x1 = gb.x0 - 8 * k, y1 = gb.y1});
+  n = redit_hud(s[0].ed[..], out, n, RBox.{x0 = hb.x0 - 8 * k - ew, y0 = hb.y0, x1 = hb.x0 - 8 * k, y1 = hb.y1});
   for i: 0..<s[0].ed[0].plate_n {
     pb := s[0].ed[0].plate_box[i];
     plate(s, u, Box.{x0 = pb.x0, y0 = pb.y0, x1 = pb.x1, y1 = pb.y1}, s[0].ed[0].plate_alpha[i], s[0].ed[0].plate_look[i]);
@@ -958,7 +998,7 @@ thegrid_frame :: (s: [] TheGrid, out: [] f32, u: [] f32, width: f32, height: f32
 
   s[0].near = ifx s[0].panel >= 0 || !ready(s) then -1 else nearest_station(feet);
 
-  shot := camera_frame(s, feet, vx, vz, t);
+  shot := dive_shot(s, camera_frame(s, feet, vx, vz, t), t);   // from the homepage: down onto you first
 
   s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
@@ -970,24 +1010,24 @@ thegrid_frame :: (s: [] TheGrid, out: [] f32, u: [] f32, width: f32, height: f32
     if redit_row_on(s[0].ed[..], "robots") { r = walk_patrols(s, clock); }   // the board can switch them off
     pose(s, r, f32(FOREMAN_X), f32(FOREMAN_Z), f32(FOREMAN_YAW), f32(FOREMAN_SCALE), CLIP_IDLE, ifx s[0].golden then 0.0f32 else f32(s[0].time));
     r += 1;
-    // you, unless zoomed into your head (first person, verse/camera.coax)
-    if !verse_orbit_inside(s[0].orbit) {
-      pose(s, r, feet.x, feet.z, face, 1, ifx walking then CLIP_WALK else CLIP_IDLE, ifx walking then s[0].walk_time else s[0].idle_time);
-      s[0].robots[r * ROBOT_FLOATS + 1] = feet.y;
-      r += 1;
-    }
   }
   s[0].robot_n = r - 1;
+  // the people: you, unless zoomed into your head (first person, verse/camera.coax), and everyone else
+  others_frame(s, t);
+  people_list(s, feet, face, act, !verse_orbit_inside(s[0].orbit));
+  people := ifx ready(s) && s[0].cast_ok then cast(u32) s[0].people_n else 0;
   robots := cast(u32) s[0].robot_n;
   f := cast(u32) s[0].faces; al := cast(u32) (6 * s[0].art_lines); ri := cast(u32) s[0].robot_indices; rl := cast(u32) (6 * s[0].robot_lines);
-  d := [16] u32.[0, f, 0, 1,  f, al, 0, 1,  f + al, ri, 1, robots,  f + al + ri, rl, 1, robots];
-  for i: 0..<16 { s[0].draws[i] = d[i]; }
+  pc := cast(u32) s[0].cast_corners;
+  d := [20] u32.[0, f, 0, 1,  f, al, 0, 1,  f + al, ri, 1, robots,  f + al + ri, rl, 1, robots,  0, pc, 0x80000000 | cast(u32) PERSON_BASE, people];
+  for i: 0..<20 { s[0].draws[i] = d[i]; }
 
   u[0] = width; u[1] = height; u[2] = f32(s[0].time); u[3] = 1; u[4] = ifx still then 1.0f32 else 0.0f32;
   u[6] = s[0].dpr; u[7] = f32(s[0].robot_base);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
   u[U_EYE + 3] = f32(LINE_PX) * s[0].dpr;
   u[U_FIELD] = f32(FADE_NEAR); u[U_FIELD + 1] = f32(FADE_FAR); u[U_FIELD + 2] = f32(s[0].bones);
+  u[U_PEOPLE] = f32(s[0].cast_vertex); u[U_PEOPLE + 1] = f32(s[0].cast_index); u[U_PEOPLE + 2] = f32(s[0].cast_joints); u[U_PEOPLE + 3] = f32(PERSON_BASE);
 
   n := hud(s, out, u, move_on && s[0].panel < 0, ox, oy, pad_x, pad_y, feet);
   u[5] = f32(s[0].plate_n);
@@ -1038,7 +1078,7 @@ fake_data :: (out: [] u8) -> int {
 }
 
 #test "the uniforms line up with thegrid.wgsl's" {
-  #assert UNIFORM_FLOATS % 4 == 0 && U_PLATE == 32 && UNIFORM_FLOATS == 128;
+  #assert UNIFORM_FLOATS % 4 == 0 && U_PLATE == 32 && U_PEOPLE == 128 && UNIFORM_FLOATS == 132;
   #assert ROBOT_FLOATS == 8 && SOLIDS <= WALLS;
 }
 
@@ -1051,7 +1091,7 @@ fake_data :: (out: [] u8) -> int {
   #assert g[0].clip_n == 3 && g[0].clip_first[2] == 92 && g[0].clip_frames[1] == 60 && g[0].clip_length[0] > 1.33;
   #assert g[0].patrol_n == 2 && g[0].patrol_len[0] == 48 && g[0].patrol_at[1] == 48 && g[0].scale == 1.5;
   #assert thegrid_draws(g[..]) == 0 && hint(g[..]) == "THE GRID IS ON ITS WAY";
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   #assert thegrid_draws(g[..]) == DRAWS;
   // a broken or cut file is refused and keeps nothing
   h: [1] TheGrid;
@@ -1060,21 +1100,27 @@ fake_data :: (out: [] u8) -> int {
   #assert !thegrid_data(h[..], "NOPE and more bytes than a header, so only the tag is wrong here");
 }
 
-#test "a frame draws the art, then every robot: the patrols, the Foreman and you" {
+#test "a frame draws the art, the robots (the patrols and the Foreman), then you as a person" {
   g: [1] TheGrid;
   b: [2048] u8;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
   n := fake_data(b[..]);
   ok := thegrid_data(g[..], cast(string) b[0..<n]);
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   m := thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert m > 0 && m <= MAX_VERTICES;
-  #assert g[0].robot_n == 4;   // two patrol_count, the Foreman, you
+  #assert g[0].robot_n == 3;   // two patrol_count, the Foreman
   #assert g[0].draws[0] == 0 && g[0].draws[1] == 10 && g[0].draws[4] == 10 && g[0].draws[5] == 18;
-  #assert g[0].draws[8] == 28 && g[0].draws[9] == 6 && g[0].draws[10] == 1 && g[0].draws[11] == 4;
-  #assert g[0].draws[12] == 34 && g[0].draws[13] == 12 && g[0].draws[15] == 4;
-  #assert thegrid_store_bytes(g[..]) == 5 * ROBOT_FLOATS * 4;
+  #assert g[0].draws[8] == 28 && g[0].draws[9] == 6 && g[0].draws[10] == 1 && g[0].draws[11] == 3;
+  #assert g[0].draws[12] == 34 && g[0].draws[13] == 12 && g[0].draws[15] == 3;
+  #assert thegrid_store_bytes(g[..]) == 4 * ROBOT_FLOATS * 4;
+  // you are a person, not a robot: nobody drawn until Cast.bin is in, then you, in vertex order
+  #assert g[0].people_n == 1 && g[0].draws[19] == 0;
+  thegrid_cast(g[..], true, 120, 9000, 30, 65);
+  m = thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].draws[17] == 30 && g[0].draws[18] == 0x80000000 + PERSON_BASE && g[0].draws[19] == 1;
+  #assert u[U_PEOPLE] == 120 && u[U_PEOPLE + 1] == 9000 && u[U_PEOPLE + 2] == 65 && u[U_PEOPLE + 3] == f32(PERSON_BASE);
   // the walker walks its clip, between two of its frames; the Foreman stands three times as tall
   #assert g[0].robots[ROBOT_FLOATS + 4] == 1.5 && g[0].robots[ROBOT_FLOATS + 5] >= 0 && g[0].robots[ROBOT_FLOATS + 5] < 32;
   #assert g[0].robots[2 * ROBOT_FLOATS + 5] >= 92 && g[0].robots[2 * ROBOT_FLOATS + 5] < 116;
@@ -1098,22 +1144,22 @@ fake_data :: (out: [] u8) -> int {
   u: [UNIFORM_FLOATS] f32;
   n := fake_data(b[..]);
   ok := thegrid_data(g[..], cast(string) b[0..<n]);
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   m := thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].ed[0].req_ready && cast(string) g[0].ed[0].req_url[0..<g[0].ed[0].req_url_n] == "/api/playtest/realms/the-grid";
   redit_requested(g[0].ed[..], 2);
   used := redit_message(g[0].ed[..], HTTP_KIND + 2, "200\nrealm the-grid\nrole visitor\nowner 0\nrow robots 0 Robots walking their rounds\nrow names 1 Place names in the air\n");
   m = thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert g[0].robot_n == 2 && !g[0].ed[0].shown[RB_EDIT];   // the Foreman and you; a visitor has no EDIT
+  #assert g[0].robot_n == 1 && !g[0].ed[0].shown[RB_EDIT];   // the Foreman; a visitor has no EDIT
   a: [1] TheGrid;
   ok2 := thegrid_data(a[..], cast(string) b[0..<n]);
-  for i: 0..<4 { thegrid_arrived(a[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(a[..], true); }
   m = thegrid_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   redit_requested(a[0].ed[..], 2);
   used2 := redit_message(a[0].ed[..], HTTP_KIND + 2, "200\nrealm the-grid\nrole admin\nowner 1\nrow robots 1 Robots walking their rounds\n");
   m = thegrid_frame(a[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   e := a[0].ed[0].boxes[RB_EDIT];
-  #assert a[0].robot_n == 4 && a[0].ed[0].shown[RB_EDIT] && e.x1 < a[0].galaxy_button.x0 && e.x0 > 0;
+  #assert a[0].robot_n == 3 && a[0].ed[0].shown[RB_EDIT] && e.x1 < a[0].home_button.x0 && e.x0 > 0;
   #assert thegrid_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && thegrid_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
   #assert a[0].ed[0].pane == REDIT_BOARD;
 }
@@ -1125,7 +1171,7 @@ fake_data :: (out: [] u8) -> int {
   u: [UNIFORM_FLOATS] f32;
   n := fake_data(b[..]);
   ok := thegrid_data(g[..], cast(string) b[0..<n]);
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   thegrid_golden(g[..], true);
   m := thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   x := g[0].robots[ROBOT_FLOATS];
@@ -1140,7 +1186,7 @@ fake_data :: (out: [] u8) -> int {
   u: [UNIFORM_FLOATS] f32;
   n := fake_data(b[..]);
   ok := thegrid_data(g[..], cast(string) b[0..<n]);
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   m := thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert thegrid_action(g[..]) == 0;
   gb := g[0].galaxy_button;
@@ -1148,6 +1194,10 @@ fake_data :: (out: [] u8) -> int {
   #assert thegrid_pointer(g[..], (gb.x0 + gb.x1) / 2, (gb.y0 + gb.y1) / 2, 0, 0, 1) && g[0].pressed && !g[0].drag_on;
   #assert thegrid_pointer(g[..], (gb.x0 + gb.x1) / 2, (gb.y0 + gb.y1) / 2, 2, 0, 1) && !g[0].pressed;
   #assert thegrid_action(g[..]) == ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == GALAXY;
+  thegrid_action_done(g[..]);
+  hb := g[0].home_button;   // HOME, left of GALAXY, to the homepage
+  #assert hb.x1 < gb.x0 && thegrid_pointer(g[..], (hb.x0 + hb.x1) / 2, (hb.y0 + hb.y1) / 2, 0, 0, 5) && thegrid_pointer(g[..], (hb.x0 + hb.x1) / 2, (hb.y0 + hb.y1) / 2, 2, 0, 5);
+  #assert thegrid_action(g[..]) == ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == HOME;
   thegrid_action_done(g[..]);
   // pressed and dragged off, it doesn't go; a drag elsewhere turns the camera
   #assert thegrid_pointer(g[..], gb.x0 + 2, gb.y0 + 2, 0, 0, 2);
@@ -1165,7 +1215,7 @@ fake_data :: (out: [] u8) -> int {
   u: [UNIFORM_FLOATS] f32;
   n := fake_data(b[..]);
   ok := thegrid_data(g[..], cast(string) b[0..<n]);
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   // at the start nothing is near enough
   m := thegrid_frame(g[..], out[..], u[..], 1280, 800, 1, 0.016, false, 0, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].near == -1 && !thegrid_key(g[..], 'e', 0);
@@ -1209,7 +1259,7 @@ fake_data :: (out: [] u8) -> int {
   u: [UNIFORM_FLOATS] f32;
   n := fake_data(b[..]);
   ok := thegrid_data(g[..], cast(string) b[0..<n]);
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   thegrid_message(g[..], MSG_FACTS, "tab=t\nvisitor=v-1\nnow=1730000000000\nplayer=p-4\n");
   g[0].touch = true;
   m := thegrid_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, 12, 0, -8.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
@@ -1252,7 +1302,7 @@ fake_data :: (out: [] u8) -> int {
   // the terminal stands 4 m ahead of the start, across your way
   #assert g[0].walls[5 * 6] < 0 && g[0].walls[5 * 6 + 3] > 0 && g[0].walls[5 * 6 + 2] == 3.5;
   g[0].touch = true;
-  for i: 0..<4 { thegrid_arrived(g[..], true); }
+  for i: 0..<GPU_ASSETS { thegrid_arrived(g[..], true); }
   #assert text_width(hint(g[..]), 6.5 * 3) < 1170 - 96;
   #assert where(v3(0, 0, 1)) == "PYLON TERMINAL" && where(v3(100, 0, 100)) == "WALK UP TO A PLACE TO SEE ITS NAME";
   #assert where(v3(9, 0, 0)) == "TO EVERGLADE";
