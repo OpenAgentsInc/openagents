@@ -3,6 +3,7 @@
 #include "zeron.h"
 #include "face.h"
 #include <stdlib.h>
+#include <time.h>
 
 static coax_v_t_ZeronState at(void *state) { return (coax_v_t_ZeronState){(coax_t_ZeronState *)state, 1}; }
 
@@ -81,7 +82,16 @@ void zr_attach(void *state, const uint8_t *cwd, int32_t length) {
                        (coax_v_u8){out, ZR_OUT}, (coax_v_u8){scratch, ZR_SCRATCH}, str(cwd, length));
   uint8_t *store = malloc(ZR_STORE);
   if (store) coaxial_zeron_attach_store(at(state), (coax_v_u8){store, ZR_STORE});
+  // The Codex engine (zeron/codex.coax): itself and its buffers, kept for the app's life.
+  coax_t_CxEngine *codex = calloc(1, sizeof(coax_t_CxEngine));
+  int64_t cmem = coaxial_zeron_codex_mem();
+  uint8_t *cline = malloc(ZR_LINE), *carena = malloc(ZR_ARENA), *cout = malloc(ZR_LINE), *cm = malloc((size_t)cmem);
+  if (codex && cline && carena && cout && cm)
+    coaxial_zeron_attach_codex(at(state), (coax_v_t_CxEngine){codex, 1}, (coax_v_u8){cline, ZR_LINE}, (coax_v_u8){carena, ZR_ARENA},
+                               (coax_v_u8){cout, ZR_LINE}, (coax_v_u8){cm, cmem});
 }
+// The clock Codex's usage-limit notices count from (zeron/codex.coax).
+int64_t zr_unix_s(void) { return (int64_t)time(NULL); }
 // Attachments (zeron/attachments.coax): a file the host staged, its bytes (up to 5 MB) or a failure.
 void zr_attach_file(void *state, const uint8_t *path, int32_t path_len, const uint8_t *name, int32_t name_len, const uint8_t *bytes, int32_t length, int32_t failure) {
   coaxial_zeron_attach_file(at(state), str(path, path_len), str(name, name_len), (coax_v_u8){(uint8_t *)bytes, bytes ? length : 0}, failure);

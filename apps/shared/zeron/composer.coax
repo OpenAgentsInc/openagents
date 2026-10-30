@@ -78,14 +78,16 @@ ICON_PSIONIC :: 21;        // the Psionic mode's mark: the OpenAgents power symb
 // document artwork), and the pickers' (picker.coax)
 ICON_GALLERY :: 22; ICON_FILE_TEXT :: 23; ICON_FILE :: 24; ICON_CHECK :: 25; ICON_BACK :: 26;
 ICON_CHEVRON_10 :: 27; ICON_CLAUDE_14 :: 28; ICON_MAGNIFER_14 :: 29;
-ICON_COUNT :: 30;
-ICON_NAMES :: [30] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
+// the Codex mode's mark (icons.rs OPENAI_MARK, monochrome): the chip's, the picker's
+ICON_OPENAI :: 30; ICON_OPENAI_14 :: 31;
+ICON_COUNT :: 32;
+ICON_NAMES :: [32] string.["paperclip", "arrow-up", "claude-mark", "alt-arrow-down", "terminal", "document", "pen",
                            "magnifer", "global", "chat-round-line", "copy", "wrap-text", "file-rust", "alt-arrow-right",
                            "document-add", "folder-with-files", "checklist", "bot", "widget", "danger-triangle", "stop", "psionic-mark",
                            "gallery", "file-text", "file-document", "check", "alt-arrow-left",
-                           "alt-arrow-right", "claude-mark", "magnifer"];
-ICON_SIZES :: [30] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
-                        14, 14, 14, 14, 14, 10, 14, 14];
+                           "alt-arrow-right", "claude-mark", "magnifer", "openai-mark", "openai-mark"];
+ICON_SIZES :: [32] f32.[18, 14, 16, 14, 16, 16, 16, 16, 16, 16, 12, 13, 14, 14, 16, 16, 16, 16, 16, 12, 11, 16,
+                        14, 14, 14, 14, 14, 10, 14, 14, 16, 14];
 
 COMPOSER_TEXT :: 8000;
 COMPOSER_LINES :: 1024;

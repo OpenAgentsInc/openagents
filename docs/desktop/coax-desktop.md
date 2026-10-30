@@ -136,6 +136,26 @@ How it works:
   shot step `mode NAME`. Tests: `coax test --library zeron/psionic.coax`
   runs recorded streams (`zeron/fixtures/psionic-turns.sse`, recorded and
   turned into `psionic_fixture.coax` by `fixtures/psionic.py`).
+- Codex: the third harness (`zeron/codex.coax` over `coax/lib/agent/codex/`,
+  the pull-based client for `codex app-server`), mapped as Zeron maps it
+  (`harness/src/codex/`). It uses the ChatGPT login the Codex CLI already
+  has (the child never gets `OPENAI_API_KEY` or `CODEX_API_KEY` and never
+  opens a browser); the login probe finds `codex` (nvm, volta, bun, npm,
+  Homebrew) and its `auth.json`. One `codex app-server` and one thread per
+  conversation, polled each frame; the model list (OpenAI mark on the chip)
+  comes from `model/list`, effort Minimal..Ultra as Zeron's ladder; the access
+  chip is the approval policy and sandbox (Full access = never asks,
+  danger-full-access, the default as for Claude; Auto-accept edits =
+  untrusted with workspace-write, file changes accepted; Supervised =
+  untrusted, read-only); Allow and Deny answer Codex's approval requests.
+  Text streams as Markdown, reasoning goes in Thought process, commands are
+  Run chips with output and exit status (red when failed or declined), file
+  changes are Edit chips with Codex's own unified diff, plus web search, MCP,
+  plan/todo; signed out, not installed, and usage or rate limits are Zeron's
+  notices; Stop interrupts the turn. Attachments go as paths in the prompt
+  (as Zeron sends them). The Lab routes to Codex when Elephant picks it.
+  Flags `--mode codex`; tests `coax test --library zeron/codex.coax` run a
+  scrubbed recorded session through the mapping.
 - `zeron/transcript.coax` (with `markdown.coax` and `tools.coax`) is Zeron's
   chat transcript (`crates/ui/src/transcript.rs`, `render.rs`'s Markdown and
   code blocks, `changes.rs`'s diff rows) showing a fixed demo conversation,

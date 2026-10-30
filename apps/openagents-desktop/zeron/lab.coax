@@ -21,9 +21,11 @@
 // Claude Code runs what Elephant routes to it with the chosen model and
 // effort; Psionic runs gpt-oss-20b through its Responses engine
 // (psionic.coax) with the effort mapped to its three. When Psionic gives
-// no answer (its server down), Claude Code answers after Psionic's chip. Codex is not an
-// engine in this build: its messages run on Claude Code, and the decision
-// says so.
+// no answer (its server down), Claude Code answers after Psionic's chip.
+// Codex, offered when it is installed and signed in, runs what Elephant
+// routes to it on the Codex engine (codex.coax) with its default model and
+// the chosen effort: the Lab marks the message due (codex_due) and the
+// screen hands it over.
 
 #load "gpu.coax";
 #load "../../../coax/lib/systemone/systemone.coax";
@@ -60,7 +62,9 @@ Lab :: struct {
   q: [1] SoBody;                  // the questions asked, for so_check
   part: int;                      // the user's message (a session part)
   route: int;                     // its decision part, or -1
-  via: int;                       // the engine running it: 0 Claude Code, 1 Psionic
+  via: int;                       // the engine running it: 0 Claude Code, 1 Psionic, 2 Codex
+  codex_due: bool;                // routed to Codex: the screen gives the message to the Codex engine
+  codex_effort: int;              // ... at this effort (EFFORT_IDS)
   fallback: bool;                 // Psionic failed and Claude Code took it
   secs: f32;                      // since it was sent
   codex: bool;                    // Codex is installed: offered as a choice
@@ -172,16 +176,15 @@ lab_ranked :: (out: [] u8, at: int, text: string, name: string, keys: [] string)
 }
 
 // The chip's headline: "Routed to Claude Code · Sonnet 5.5 · High · 1.8 s"
-// (the round trip), and for an agent this build cannot run yet, who answers instead.
+// (the round trip); Codex runs its own default model, so its headline names the effort only.
 lab_headline :: (out: [] u8, d: LabDecision, round_ms: int) -> string {
   names := LAB_HARNESS_NAMES; models := MODEL_NAMES; efforts := EFFORT_NAMES;
   k := e_set(out, 0, "Routed to "); k = e_set(out, k, names[d.harness]);
   if d.harness == 1 { k = e_set(out, k, " · gpt-oss-20b"); }
-  else { k = e_set(out, k, " · "); k = e_set(out, k, models[d.model]); }
+  else if d.harness == 0 { k = e_set(out, k, " · "); k = e_set(out, k, models[d.model]); }
   k = e_set(out, k, " · "); k = e_set(out, k, efforts[d.effort]);
   k = e_set(out, k, " · "); k = put_int(out, k, round_ms / 1000); k = e_set(out, k, ".");
   k = put_int(out, k, (round_ms % 1000) / 100); k = e_set(out, k, " s");
-  if d.harness == 2 { k = e_set(out, k, " · answered by Claude Code"); }
   return cast(string) out[0..<k];
 }
 
@@ -206,7 +209,6 @@ lab_details :: (out: [] u8, text: string, d: LabDecision, codex: bool, round_ms:
   ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
   who := cl_str(ar[..], text, "service.identity");
   if who.count > 0 { k = e_set(out, k, "\nserved by     "); k = e_set(out, k, who); }
-  if d.harness == 2 { k = e_set(out, k, "\nnote          Codex is not an engine in this build yet, so Claude Code answers"); }
   if d.harness == 1 { k = e_set(out, k, "\nnote          if Psionic gives no answer, Claude Code answers after its chip"); }
   return cast(string) out[0..<k];
 }
@@ -245,7 +247,7 @@ lab_problem :: (out: [] u8, r: SoResult, url: string) -> string {
 
 // A Lab message: it joins the transcript, and Elephant is asked where it goes.
 lab_send :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, text: string) {
-  l[0].route = -1; l[0].via = 0; l[0].fallback = false;
+  l[0].route = -1; l[0].via = 0; l[0].fallback = false; l[0].codex_due = false;
   if l[0].phase != LAB_IDLE || s[0].live { s_notice(s, N_ERROR, "Wait for this turn to finish, or stop it, before sending to the Lab again."); return; }
   s_user(s, text);
   l[0].part = s[0].n - 1; l[0].secs = 0;
@@ -301,6 +303,8 @@ lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Se
     ps_forward(p, s, s_text_of(s, l[0].part));
     return;
   }
+  // Codex runs it (the screen hands it to the Codex engine) at the chosen effort
+  if d.harness == 2 { l[0].via = 2; l[0].codex_due = true; l[0].codex_effort = d.effort; return; }
   // Claude Code runs it with the chosen model and effort
   lab_claude(l, e, s, d.model, d.effort);
 }
@@ -446,14 +450,22 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
   #assert s_has(text, "\nserved by     elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba") && !s_has(text, "note");
 }
 
-#test "routed to Psionic or Codex: the headline names it, and Codex says Claude Code answers" {
+#test "routed to Psionic or Codex: the headline names it; Codex is due on its own engine" {
   d := LabDecision.{ok = true, harness = 1, effort = 0, model = 2, difficulty = 0.1, level = 0, local_work = 0.01, latency_ms = 1700};
   db: [4096] u8; hb: [256] u8;
   #assert lab_headline(hb[..], d, 1700) == "Routed to Psionic · gpt-oss-20b · Low · 1.7 s";
   d.harness = 2;
-  #assert lab_headline(hb[..], d, 1700) == "Routed to Codex · Haiku 5.5 · Low · 1.7 s · answered by Claude Code";
-  #assert s_has(lab_details(db[..], LAB_TEST_ANSWER, d, true, 1900), "\nnote          codex is not an engine in this build yet, so claude code answers");
+  #assert lab_headline(hb[..], d, 1700) == "Routed to Codex · Low · 1.7 s";
+  #assert !s_has(lab_details(db[..], LAB_TEST_ANSWER, d, true, 1900), "note");
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
+  e[0].codex = true;
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "rename the helper");
+  #assert l[0].codex;
+  lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_CODEX, 1700);
+  #assert l[0].via == 2 && l[0].codex_due && l[0].codex_effort == 2 && ss[0].live && s_text_of(ss[..], 1) == "Routed to Codex · High · 1.7 s";
 }
+LAB_TEST_CODEX :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"codex\",\"confidence\":0.8,\"probabilities\":{\"claude_code\":0.1,\"psionic\":0.1,\"codex\":0.8}},\"difficulty\":{\"type\":\"score\",\"score\":1.0,\"confidence\":0.9,\"probabilities\":{\"0\":0.05,\"1\":0.9,\"2\":0.03,\"3\":0.01,\"4\":0.01}},\"effort\":{\"type\":\"choice\",\"choice\":\"high\",\"confidence\":0.9,\"probabilities\":{\"low\":0.05,\"medium\":0.05,\"high\":0.9,\"xhigh\":0.0,\"max\":0.0}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-haiku-5-5\",\"confidence\":0.9,\"probabilities\":{\"claude-opus-5-5\":0.05,\"claude-sonnet-5-5\":0.05,\"claude-haiku-5-5\":0.9}},\"local_work\":{\"type\":\"noul\",\"noul\":0.9}},\"latency_ms\":1700}";
 
 #test "the decision joins the transcript as its own group, then the message goes to Claude Code" {
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);

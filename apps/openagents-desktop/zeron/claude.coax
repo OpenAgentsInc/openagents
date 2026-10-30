@@ -51,7 +51,8 @@ SPart :: struct {
   id: string; tk: int;
   arg: string; detail: string;
   before: string; after: string; // an edit's old and new strings, a write's content (new)
-  input: string;            // the call's input, JSON (an approval answers with it)
+  input: string;            // the call's input, JSON (an approval answers with it); Codex's
+                            // file change has none: its unified diff is kept here instead (123 is "{")
   output: string; failed: bool; resolved: bool;
 }
 
@@ -431,6 +432,47 @@ s_diff :: (t: [] Transcript, old: string, new: string, hunk_out: [] u8) -> int {
   return k * 1000 + lines;
 }
 
+// A unified diff as the chip's lines (Codex's fileChange diff): each hunk's
+// lines numbered from its header, the first header as the chip's hunk; file
+// headers (---, +++) and "\ No newline" skipped; at most S_DIFF_MAX * 2
+// lines. Text with no hunk header is a new file's content: all additions.
+S_PATCH_MAX :: 80;
+s_patch :: (t: [] Transcript, patch: string, hunk_out: [] u8) -> int {
+  has := false;
+  for i: 0..<patch.count - 1 { if patch[i] == '@' && patch[i + 1] == '@' && (i == 0 || patch[i - 1] == '\n') { has = true; break; } }
+  if !has { return s_diff(t, "", patch, hunk_out); }
+  k := 0; lines := 0; old_no := 0; new_no := 0; i := 0;
+  while i < patch.count && lines < S_PATCH_MAX {
+    j := i; while j < patch.count && patch[j] != '\n' { j += 1; }
+    l := cast(string) patch[i..<j];
+    i = j + 1;
+    if l.count >= 2 && l[0] == '@' && l[1] == '@' {
+      // @@ -a,b +c,d @@
+      q := 2; while q < l.count && l[q] != '-' { q += 1; }
+      q += 1; old_no = 0; while q < l.count && l[q] >= '0' && l[q] <= '9' { old_no = old_no * 10 + cast(int) (l[q] - '0'); q += 1; }
+      while q < l.count && l[q] != '+' { q += 1; }
+      q += 1; new_no = 0; while q < l.count && l[q] >= '0' && l[q] <= '9' { new_no = new_no * 10 + cast(int) (l[q] - '0'); q += 1; }
+      if k == 0 {
+        e := 2; while e + 1 < l.count && !(l[e] == '@' && l[e + 1] == '@') { e += 1; }
+        e = ifx e + 1 < l.count then e + 2 else l.count;
+        if e > hunk_out.count { e = hunk_out.count; }
+        for c: 0..<e { hunk_out[c] = l[c]; }
+        k = e;
+      }
+      continue;
+    }
+    if l.count == 0 && i >= patch.count { break; }
+    if l.count >= 3 && (cast(string) l[0..<3] == "---" || cast(string) l[0..<3] == "+++") { continue; }
+    if l.count > 0 && l[0] == '\\' { continue; }
+    body := ifx l.count > 0 then cast(string) l[1..<l.count] else l;
+    if l.count > 0 && l[0] == '+' { t_diff_line(t, DL_ADD, 0, new_no, body); new_no += 1; }
+    else if l.count > 0 && l[0] == '-' { t_diff_line(t, DL_DEL, old_no, 0, body); old_no += 1; }
+    else { t_diff_line(t, DL_CONTEXT, old_no, new_no, body); old_no += 1; new_no += 1; }
+    lines += 1;
+  }
+  return k * 1000 + lines;
+}
+
 // Rebuilds the transcript from the session's parts (from ui.first on).
 s_build :: (s: [] Session, ui: [] SUi, t: [] Transcript) {
   // what the user changed since the last build is theirs
@@ -468,7 +510,12 @@ s_build :: (s: [] Session, ui: [] SUi, t: [] Transcript) {
       if q.kind == P_THINK { tool = Tool.{kind = TK_THOUGHT, arg = s_text_of(s, k), resolved = true}; }
       else {
         tool = Tool.{kind = q.tk, arg = q.arg, detail = q.detail, output = q.output, failed = q.failed, resolved = q.resolved};
-        if (q.tk == TK_EDIT || q.tk == TK_WRITE) && (q.before.count > 0 || q.after.count > 0) {
+        if (q.tk == TK_EDIT || q.tk == TK_WRITE) && q.input.count > 0 && q.input[0] != 123 {
+          hunk: [64] u8;
+          d0 := t[0].nd;
+          r := s_patch(t, q.input, hunk[..]);
+          tool.hunk = t_pool(t, cast(string) hunk[0..<r / 1000]); tool.diff_from = d0; tool.diff_lines = t[0].nd - d0;
+        } else if (q.tk == TK_EDIT || q.tk == TK_WRITE) && (q.before.count > 0 || q.after.count > 0) {
           hunk: [64] u8;
           d0 := t[0].nd;
           r := s_diff(t, q.before, q.after, hunk[..]);
@@ -689,7 +736,9 @@ Engine :: struct {
   probe_out: [E_PATH + 1024] u8; probe_n: int;
   path_env: [E_PATH + 8] u8; path_n: int;          // "PATH=..."
   claude: [E_FILE] u8; claude_n: int;
-  codex: bool;                       // codex is on PATH (the Lab offers it)
+  codex: bool;                       // codex is installed and signed in (the Lab offers it)
+  codex_exe: string;                 // where codex is (in probe_out; codex.coax starts it)
+  codex_auth: bool;                  // its login is on disk (~/.codex/auth.json)
   cwd: [E_FILE] u8; cwd_n: int;
   sid: [128] u8; sid_n: int;         // the conversation's session, for --resume
   err: [2048] u8;
@@ -698,8 +747,9 @@ Engine :: struct {
 e_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
 
 // The login shell's PATH and where claude is (the old Backend's lookup: the
-// usual install places, then `command -v claude`), and whether codex is on it.
-PROBE_SCRIPT :: "printf 'OA_PATH=%s\\n' \"$PATH\"; for p in \"$HOME/.local/bin/claude\" /opt/homebrew/bin/claude /usr/local/bin/claude \"$HOME/.claude/local/claude\"; do if [ -x \"$p\" ]; then printf 'OA_CLAUDE=%s\\n' \"$p\"; fi; done; printf 'OA_CLAUDE=%s\\n' \"$(command -v claude)\"; printf 'OA_CODEX=%s\\n' \"$(command -v codex)\"";
+// usual install places, then `command -v claude`), and where codex is (on
+// PATH, else the usual npm, nvm, Volta and Homebrew places) and whether its login is on disk.
+PROBE_SCRIPT :: "printf 'OA_PATH=%s\\n' \"$PATH\"; for p in \"$HOME/.local/bin/claude\" /opt/homebrew/bin/claude /usr/local/bin/claude \"$HOME/.claude/local/claude\"; do if [ -x \"$p\" ]; then printf 'OA_CLAUDE=%s\\n' \"$p\"; fi; done; printf 'OA_CLAUDE=%s\\n' \"$(command -v claude)\"; c=\"$(command -v codex)\"; if [ -z \"$c\" ]; then setopt null_glob 2>/dev/null; for p in \"$HOME\"/.nvm/versions/node/*/bin/codex \"$HOME/.volta/bin/codex\" \"$HOME/.bun/bin/codex\" \"$HOME/.npm-global/bin/codex\" \"$HOME/.local/bin/codex\" \"$HOME/.codex/bin/codex\" /opt/homebrew/bin/codex /usr/local/bin/codex; do if [ -x \"$p\" ]; then c=\"$p\"; fi; done; fi; printf 'OA_CODEX=%s\\n' \"$c\"; if [ -f \"${CODEX_HOME:-$HOME/.codex}/auth.json\" ]; then printf 'OA_CODEX_AUTH=1\\n'; fi";
 
 e_probe_start :: (e: [] Engine) {
   h := cxproc_new();
@@ -741,10 +791,12 @@ e_probe_done :: (e: [] Engine) {
     j := i; while j < out.count && out[j] != '\n' { j += 1; }
     l := cast(string) out[i..<j];
     if l.count > 8 && l[0..<8] == "OA_PATH=" { path = cast(string) l[8..<l.count]; }
-    if l.count > 9 && l[0..<9] == "OA_CODEX=" { e[0].codex = true; }
+    if l.count > 9 && l[0..<9] == "OA_CODEX=" && e[0].codex_exe.count == 0 { e[0].codex_exe = cast(string) l[9..<l.count]; }
+    if l == "OA_CODEX_AUTH=1" { e[0].codex_auth = true; }
     if l.count > 10 && l[0..<10] == "OA_CLAUDE=" && e[0].claude_n == 0 && l.count - 10 < E_FILE { e[0].claude_n = e_set(e[0].claude[..], 0, cast(string) l[10..<l.count]); }
     i = j + 1;
   }
+  e[0].codex = e[0].codex_exe.count > 0 && e[0].codex_auth;
   home: [E_FILE] u8;
   h := cl_getenv("HOME", home[..]);
   k := e_set(e[0].path_env[..], 0, "PATH=");

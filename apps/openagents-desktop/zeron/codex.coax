@@ -1,0 +1,969 @@
+// The chat's Codex engine: the user's own Codex (`codex app-server`, their
+// ChatGPT login), driven through the Coax Codex client
+// (coax/lib/agent/codex), and what its notifications become in Zeron's
+// transcript. One long-lived server per chat, one thread per conversation
+// (thread/start, then thread/resume when the server has to start again), a
+// turn/start per message; polled from the frame loop without blocking
+// (cx_poll), like the Claude engine (claude.coax).
+//
+// The stream maps onto the session's parts as Zeron's Codex harness does
+// (harness/src/codex/mod.rs, normalize.rs): agentMessage deltas are text
+// (each message closed as a paragraph, a message that never streamed taken
+// whole when it completes); reasoning summary deltas are thinking, parts
+// of different items or indices kept a blank line apart (ReasoningStream);
+// a commandExecution is a Run chip (failed on status failed or a nonzero
+// exit code), a fileChange an Edit chip (a lone add a Write), an imageView
+// a Read, an mcpToolCall an MCP chip "server · tool", a webSearch a Web
+// chip, a todoList and turn/plan/updated the Todo chip, a plan item's text
+// and contextCompaction text, an error item an error chip. Unlike Zeron,
+// which opts command output out and keeps chips one-liners, a command keeps
+// its aggregatedOutput and an edit its diff, so the chip opens onto them
+// (as the Claude engine's do). A turn's error reads as codex_error_text:
+// "Codex's credentials were rejected. Run codex login ..." on a 401, "Codex
+// usage limit reached" or "Codex rate limit reached" with when it resets.
+//
+// Access maps as Zeron's (mod.rs permissions): Full access runs with
+// approval policy never and sandbox danger-full-access; Auto-accept edits
+// with untrusted and workspace-write, file changes accepted here; Supervised
+// with untrusted and read-only. Asked approvals reach the person
+// (approvalsReviewer user) as the transcript's Allow/Deny chip, answered
+// over the protocol. Models and efforts come from Codex's own model/list
+// (Zeron's catalog: hidden models skipped, the default first, levels from
+// supportedReasoningEfforts; its static snapshot until the server answers).
+// Attachments go as Zeron sends them to Codex: their paths in the text.
+// The child never gets an API key (OPENAI_API_KEY and CODEX_API_KEY are
+// removed) nor opens a browser. Based on Zeron by Wing, MIT.
+
+#load "claude.coax";
+#load "../../../coax/lib/agent/codex/codex.coax";
+#load "../../../coax/lib/agent/codex/fixture.coax";
+
+// The wall clock in seconds (zeron-face.c): a limit's reset time is a Unix time.
+zr_unix_s :: () -> int #foreign;
+
+CODEX_LEVEL_IDS :: [7] string.["minimal", "low", "medium", "high", "xhigh", "max", "ultra"];
+CODEX_LEVEL_NAMES :: [7] string.["Minimal", "Low", "Medium", "High", "X-High", "Max", "Ultra"];
+// What a level sends as turn/start's effort (catalog.rs to_effort: minimal is clamped to low).
+CODEX_EFFORTS :: [7] string.["low", "low", "medium", "high", "xhigh", "max", "ultra"];
+CX_LV_HIGH :: 3;
+CX_LADDER_ULTRA :: 126; CX_LADDER_MAX :: 62; CX_LADDER_XHIGH :: 30;   // low..ultra, low..max, low..xhigh
+CODEX_INSTALL :: "npm install -g @openai/codex";
+CODEX_SIGNED_OUT :: "Codex's credentials were rejected. Run codex login (or check the API key for your model provider), then send again.";
+CODEX_LIVE_PLAN :: "codex-live-plan";      // the turn's plan chip (zeron_proto::LIVE_PLAN_TOOL_ID)
+CX_OUTPUT_MAX :: 65536;                    // a command's output kept
+
+// Zeron's Codex catalog: the static snapshot (catalog.rs static_models),
+// until model/list answers.
+codex_catalog :: () -> PkCatalog {
+  c := PkCatalog.{provider = "Codex", icon = ICON_OPENAI_14, tint = zeron_dark().muted, levels = 7, default_level = CX_LV_HIGH,
+                  access = 3, full_access = 2, plan = true};
+  ids := [9] string.["gpt-6-astra", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-daybreak-blue-latest", "gpt-5.5", "gpt-5.4", "gpt-5.4-mini", "gpt-5.3-codex-spark"];
+  names := [9] string.["GPT-6-Astra", "GPT-5.6-Sol", "GPT-5.6-Terra", "GPT-5.6-Luna", "Daybreak Blue", "GPT-5.5", "GPT-5.4", "GPT-5.4-Mini", "GPT-5.3-Codex-Spark"];
+  descs := [9] string.["Our most capable model for complex, demanding work.", "Frontier reasoning flagship", "Deep multi-step agentic work",
+                       "Fast frontier model", "Frontier model for defensive cybersecurity work", "Previous generation flagship",
+                       "Reliable general coding", "Small, fast and capable", "Ultra-fast lightweight coding"];
+  ladders := [9] int.[CX_LADDER_ULTRA, CX_LADDER_ULTRA, CX_LADDER_ULTRA, CX_LADDER_MAX, CX_LADDER_ULTRA, CX_LADDER_XHIGH, CX_LADDER_XHIGH, CX_LADDER_XHIGH, CX_LADDER_XHIGH];
+  c.n = 9;
+  for k: 0..<9 { c.id[k] = ids[k]; c.label[k] = names[k]; c.desc[k] = descs[k]; c.ladder[k] = ladders[k]; }
+  lids := CODEX_LEVEL_IDS; lnames := CODEX_LEVEL_NAMES;
+  for k: 0..<7 { c.level_id[k] = lids[k]; c.level_label[k] = lnames[k]; }
+  cl := claude_catalog();
+  for k: 0..<3 { c.access_label[k] = cl.access_label[k]; c.access_desc[k] = cl.access_desc[k]; c.access_value[k] = cl.access_value[k]; }
+  return c;
+}
+// The catalog from a model/list answer (parse_model_list_page), its strings
+// kept in pool: visible models in the server's order, the default first.
+// Whether it listed one.
+codex_discover :: (c: [] PkCatalog, ar: [] ClArena, result: string, pool: [] u8, at: [] int) -> bool {
+  base := codex_catalog();
+  c[0] = base; c[0].n = 0;
+  at[0] = 0;
+  data := cl_at(result, "data");
+  if !data.ok || data.tok != JSON_ARRAY { c[0] = base; return false; }
+  first := -1;
+  lids := CODEX_LEVEL_IDS;
+  for i: 0..<PK_MODELS * 2 {
+    v := cl_element(result, data, i);
+    if !v.ok { break; }
+    if c[0].n >= PK_MODELS { break; }
+    item := cl_json(result, v);
+    if cl_bool(item, "hidden").value { continue; }
+    id := cl_str(ar, item, "model");
+    if id.count == 0 { id = cl_str(ar, item, "id"); }
+    if id.count == 0 { continue; }
+    k := c[0].n;
+    label := cl_str(ar, item, "displayName");
+    c[0].id[k] = claude_keep(pool, at, id);
+    c[0].label[k] = claude_keep(pool, at, ifx label.count > 0 then label else id);
+    c[0].desc[k] = claude_keep(pool, at, cl_str(ar, item, "description"));
+    if c[0].id[k].count == 0 { break; }       // the pool is full
+    bits := 0;
+    efforts := cl_raw(item, "supportedReasoningEfforts");
+    for j: 0..<cl_count(efforts) {
+      ev := cl_json(efforts, cl_item(efforts, j));
+      name := cl_str(ar, ev, "reasoningEffort");
+      if name.count == 0 { name = cl_text(ar, efforts, cl_item(efforts, j)); }
+      for l: 0..<7 { if name == lids[l] { bits |= 1 << l; } }
+    }
+    c[0].ladder[k] = bits;
+    if first < 0 && cl_bool(item, "isDefault").value { first = k; }
+    c[0].n += 1;
+  }
+  if c[0].n == 0 { c[0] = base; return false; }
+  if first > 0 {
+    id := c[0].id[first]; label := c[0].label[first]; desc := c[0].desc[first]; ladder := c[0].ladder[first];
+    for j: 0..<first { k := first - j; c[0].id[k] = c[0].id[k - 1]; c[0].label[k] = c[0].label[k - 1]; c[0].desc[k] = c[0].desc[k - 1]; c[0].ladder[k] = c[0].ladder[k - 1]; }
+    c[0].id[0] = id; c[0].label[0] = label; c[0].desc[0] = desc; c[0].ladder[0] = ladder;
+  }
+  return true;
+}
+
+// ---------------------------------------------------------------- errors
+
+// How long until a limit's window resets (describe_wait): "under a minute", "45m", "2h 5m", "3d 4h".
+codex_wait :: (out: [] u8, at: int, secs: int) -> int {
+  minutes := (secs + 59) / 60;
+  d := minutes / 1440; h := minutes / 60 % 24; m := minutes % 60;
+  k := at;
+  if d == 0 && h == 0 && m == 0 { return e_set(out, k, "under a minute"); }
+  if d > 0 { k = put_int(out, k, d); k = e_set(out, k, "d"); if h > 0 { k = e_set(out, k, " "); k = put_int(out, k, h); k = e_set(out, k, "h"); } return k; }
+  if h > 0 { k = put_int(out, k, h); k = e_set(out, k, "h"); if m > 0 { k = e_set(out, k, " "); } }
+  if m > 0 { k = put_int(out, k, m); k = e_set(out, k, "m"); }
+  return k;
+}
+
+// The account's rate-limit windows (account/rateLimits/updated, merged sparsely).
+CxLimits :: struct { used: [2] f64; resets: [2] int; has: [2] bool; }
+codex_merge_limits :: (lim: [] CxLimits, params: string) {
+  names := [2] string.["rateLimits.primary", "rateLimits.secondary"];
+  for w: 0..<2 {
+    v := cl_at(params, names[w]);
+    if !v.ok || v.tok != JSON_OBJECT { continue; }
+    win := cl_json(params, v);
+    u := cl_num(win, "usedPercent"); if u.ok { lim[0].used[w] = u.value; lim[0].has[w] = true; }
+    r := cl_int(win, "resetsAt"); if r.ok { lim[0].resets[w] = r.value; }
+  }
+}
+// Seconds until the exhausted windows reset (the latest), or -1 when none is exhausted.
+codex_reset_in :: (lim: CxLimits, now: int) -> int {
+  best := -1;
+  for w: 0..<2 { if lim.has[w] && lim.used[w] >= 100.0 && lim.resets[w] > best { best = lim.resets[w]; } }
+  if best < 0 { return -1; }
+  return ifx best - now > 0 then best - now else 0;
+}
+
+// A Codex TurnError (turn.error, an error notification's error) as Zeron
+// words it (codex_error_text): codexErrorInfo decides signed out and the
+// limits; additionalDetails, else the message, is the text.
+codex_error_text :: (out: [] u8, ar: [] ClArena, error: string, lim: CxLimits, now: int) -> string {
+  info := cl_at(error, "codexErrorInfo");
+  code := ""; http := 0;
+  if info.ok && info.tok == JSON_STRING { code = cl_text(ar, error, info); }
+  if info.ok && info.tok == JSON_OBJECT {
+    obj := cl_json(error, info);
+    code = cl_text(ar, obj, cl_key(obj, 0));
+    detail := cl_json(obj, cl_item(obj, 0));
+    st := cl_int(detail, "httpStatusCode"); if st.ok { http = st.value; }
+  }
+  if code == "unauthorized" || http == 401 { return cast(string) out[0..<e_set(out, 0, CODEX_SIGNED_OUT)]; }
+  limit := "";
+  if code == "usageLimitExceeded" { limit = "Codex usage limit reached"; }
+  else if code == "rateLimitExceeded" || http == 429 { limit = "Codex rate limit reached"; }
+  text := cl_str(ar, error, "additionalDetails");
+  lo := 0; hi := text.count;
+  while lo < hi && (text[lo] == ' ' || text[lo] == '\n') { lo += 1; }
+  while hi > lo && (text[hi - 1] == ' ' || text[hi - 1] == '\n') { hi -= 1; }
+  text = cast(string) text[lo..<hi];
+  if text.count == 0 { text = cl_str(ar, error, "message"); }
+  if text.count == 0 { text = error; }
+  if limit.count == 0 { return cast(string) out[0..<e_set(out, 0, text)]; }
+  k := e_set(out, 0, limit);
+  wait := codex_reset_in(lim, now);
+  if wait >= 0 { k = e_set(out, k, " — it resets in "); k = codex_wait(out, k, wait); k = e_set(out, k, "."); }
+  else if text.count == 0 { k = e_set(out, k, "."); }
+  else { k = e_set(out, k, ". "); k = e_set(out, k, text); }
+  return cast(string) out[0..<k];
+}
+
+// ---------------------------------------------------------------- the engine
+
+CX_STREAMED :: 2048;
+
+CxEngine :: struct {
+  on: bool;                          // the host attached buffers (never in tests)
+  c: [1] CxClient; p: [1] ClProcess;
+  line: [] u8; arena: [] u8; out: [] u8;
+  running: bool;                     // the server is up
+  ready: bool;                       // it answered initialize
+  thread_wait: bool;                 // thread/start or thread/resume went unanswered
+  turn_wait: bool;                   // turn/start went unanswered
+  pend: int;                         // a user part waiting to go, or -1
+  stop_due: bool;                    // Stop came before the turn had an id: interrupt once it has one
+  model: int; effort: int;           // chosen (the catalog's model and level)
+  access: int;                       // ACC_* (the screen's, shared with the other engines)
+  plan: bool; plan_used: bool;       // plan mode; it was on once (each turn then names its mode)
+  cat: [1] PkCatalog;                // codex_catalog, then the server's (codex_discover)
+  cat_pool: [] u8; cat_at: [1] int;
+  cat_gen: int;                      // counts catalog changes (the screen copies it for the menus)
+  listed: bool;                      // model/list was asked
+  want_warm: bool; warmed: bool;     // start the server ahead of a message (the Codex tab is open), once
+  prompt: [] u8; prompt_n: int;      // (the screen's buffer)
+  att: [] Attachments;
+  settled: bool;                     // took the probe's codex and PATH (claude.coax e_probe_done)
+  exe: [] u8; exe_n: int;
+  path_env: [] u8; path_n: int;
+  cwd: [] u8; cwd_n: int;
+  tid: [CX_ID] u8; tid_n: int;       // the conversation's thread
+  turn: [CX_ID] u8; turn_n: int;     // the turn the transcript follows
+  streamed: [] u8; streamed_n: int;   // the agent messages that streamed this turn ("id\n" each)
+  // ReasoningStream: the last part written and the newlines it ended with
+  rs_item: [CX_ID] u8; rs_item_n: int; rs_summary: bool; rs_index: int; rs_have: bool; rs_trailing: int;
+  rs_said: [CX_ID] u8; rs_said_n: int; rs_said_index: int;
+  held: [] u8; held_n: int;      // the turn's last final error notification
+  lim: [1] CxLimits;
+  ask_kind: int;                     // the approval asked (CX_ASK_*), its part is the session's asking
+  err: [] u8;
+}
+// The engine's own buffers, carved from the host's (cxe_mem): the catalog's
+// strings, codex's path and the child's PATH, the folder, this turn's
+// streamed messages, its held error, the server's stderr.
+CX_MEM :: 4096 + E_FILE + E_PATH + E_FILE + 8 + E_FILE + CX_STREAMED + 2048 + 2048;
+cxe_mem :: (x: [] CxEngine, mem: [] u8) {
+  if mem.count < CX_MEM { return; }
+  at := 0;
+  x[0].cat_pool = mem[at..<at + 4096]; at += 4096;
+  x[0].exe = mem[at..<at + E_FILE]; at += E_FILE;
+  x[0].path_env = mem[at..<at + E_PATH + E_FILE + 8]; at += E_PATH + E_FILE + 8;
+  x[0].cwd = mem[at..<at + E_FILE]; at += E_FILE;
+  x[0].streamed = mem[at..<at + CX_STREAMED]; at += CX_STREAMED;
+  x[0].held = mem[at..<at + 2048]; at += 2048;
+  x[0].err = mem[at..<at + 2048];
+}
+
+cx_str :: (b: [] u8, n: int) -> string { return cast(string) b[0..<n]; }
+
+// (Every entry point takes an empty slice too: the screen without the host's engine, in its checks.)
+cxe_init :: (x: [] CxEngine) {
+  if x.count < 1 { return; }
+  if x[0].cat[0].n == 0 { x[0].cat[0] = codex_catalog(); x[0].effort = CX_LV_HIGH; x[0].pend = -1; x[0].p[0].handle = -1; }
+}
+// The host's buffers and working folder.
+cxe_attach :: (x: [] CxEngine, line: [] u8, arena: [] u8, out: [] u8, mem: [] u8, cwd: string) {
+  if x.count < 1 { return; }
+  x[0] = CxEngine.{};
+  cxe_init(x);
+  cxe_mem(x, mem);
+  x[0].line = line; x[0].arena = arena; x[0].out = out;
+  x[0].p[0].handle = -1; x[0].pend = -1;
+  x[0].cwd_n = e_set(x[0].cwd, 0, cwd);
+  x[0].on = true;
+}
+
+// What a thread and its turns run with: the chosen model and effort, the
+// access mapped as Zeron's (permissions()), plan mode.
+cxe_settings :: (x: [] CxEngine) -> CxSettings {
+  st := CxSettings.{cwd = cx_str(x[0].cwd, x[0].cwd_n), plan = x[0].plan, name_mode = x[0].plan_used};
+  cat := x[0].cat[..];
+  if x[0].model >= 0 && x[0].model < cat[0].n { st.model = cat[0].id[x[0].model]; }
+  lv := pk_level_for(cat, x[0].model, x[0].effort);
+  efforts := CODEX_EFFORTS;
+  if lv >= 0 { st.effort = efforts[lv]; }
+  if x[0].access == ACC_FULL { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
+  else if x[0].access == ACC_EDITS { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
+  else { st.approval_policy = "untrusted"; st.sandbox = "read-only"; st.ask_person = true; }
+  return st;
+}
+
+// The probe's answer (claude.coax): where codex is, and the child's PATH
+// (codex's folder first: it is a node script, node sits beside it).
+cxe_take_probe :: (x: [] CxEngine, e: [] Engine) {
+  x[0].settled = true;
+  x[0].exe_n = e_set(x[0].exe, 0, e[0].codex_exe);
+  exe := cx_str(x[0].exe, x[0].exe_n);
+  slash := -1;
+  for i: 0..<exe.count { if exe[i] == '/' { slash = i; } }
+  k := e_set(x[0].path_env, 0, "PATH=");
+  if slash > 0 { k = e_set(x[0].path_env, k, cast(string) exe[0..<slash]); k = e_set(x[0].path_env, k, ":"); }
+  rest := ifx e[0].path_n > 5 then cast(string) e[0].path_env[5..<e[0].path_n] else "/usr/bin:/bin:/usr/sbin:/sbin";
+  k = e_set(x[0].path_env, k, rest);
+  x[0].path_n = k;
+}
+
+// Starts the server: initialize, then model/list once. warm: ahead of any
+// message, quiet if it fails. Whether it started.
+cxe_launch :: (x: [] CxEngine, s: [] Session, warm: bool) -> bool {
+  if x[0].p[0].handle >= 0 { cx_close_process(x[0].p[..]); }
+  x[0].c[0] = CxClient.{};
+  c := x[0].c[..];
+  cx_init(c, x[0].line, x[0].arena, x[0].out);
+  l: [1] CxLaunch;
+  l[0].program = cx_str(x[0].exe, x[0].exe_n);
+  if x[0].path_n > 5 { cx_add_env(l[..], cx_str(x[0].path_env, x[0].path_n)); }
+  l[0].cwd = cx_str(x[0].cwd, x[0].cwd_n);
+  why := cx_start(c, x[0].p[..], l[0]);
+  if why.count > 0 {
+    x[0].p[0].handle = -1;
+    if warm { return false; }
+    if why == "codex executable not found" || x[0].exe_n == 0 {
+      s_notice(s, N_CODEX_INSTALL, "Install it in Terminal, then send again: npm install -g @openai/codex");
+    } else { s_notice(s, N_ERROR, why); }
+    s_turn_end(s, false, "");
+    return false;
+  }
+  r := cx_initialize(c, "openagents-desktop", "OpenAgents", "0.1.0");
+  if !x[0].listed { r = cx_model_list(c, ""); x[0].listed = true; }
+  x[0].running = true; x[0].ready = false; x[0].thread_wait = false; x[0].turn_wait = false;
+  return true;
+}
+cxe_close :: (x: [] CxEngine) {
+  if x.count < 1 { return; }
+  if x[0].p[0].handle >= 0 { cx_close_process(x[0].p[..]); }
+  x[0].running = false; x[0].ready = false; x[0].thread_wait = false; x[0].turn_wait = false;
+}
+
+// The user sent a message: it joins the transcript as shown, and goes to
+// Codex as text (the server started, and the thread opened, first).
+cxe_send_as :: (x: [] CxEngine, s: [] Session, shown: string, text: string) {
+  s_user(s, shown);
+  if x.count < 1 { return; }
+  x[0].prompt_n = e_set(x[0].prompt, 0, text);
+  cxe_go(x, s, s[0].n - 1);
+}
+// User part k goes to Codex (the Lab sends it here once Elephant has routed it).
+cxe_forward :: (x: [] CxEngine, s: [] Session, k: int) { if x.count < 1 { return; } x[0].prompt_n = e_set(x[0].prompt, 0, s_text_of(s, k)); cxe_go(x, s, k); }
+cxe_go :: (x: [] CxEngine, s: [] Session, k: int) {
+  x[0].stop_due = false; x[0].held_n = 0; x[0].streamed_n = 0; x[0].rs_have = false;
+  if !x[0].on && !x[0].running { if x[0].att.count > 0 { at_delivered(x[0].att); } return; }   // the checks: no process
+  x[0].pend = k;
+  if !x[0].settled && x[0].on { return; }        // cxe_pump starts it once the probe is done
+  if !x[0].running { if !cxe_launch(x, s, false) { x[0].pend = -1; } return; }
+  if x[0].ready && !x[0].thread_wait && !x[0].turn_wait { cxe_open(x); }
+}
+// The thread the message goes on (opened, or resumed after a restart), then the turn.
+cxe_open :: (x: [] CxEngine) {
+  c := x[0].c[..];
+  if c[0].thread_n > 0 { cxe_deliver(x); return; }
+  st := cxe_settings(x);
+  r := ifx x[0].tid_n > 0 then cx_thread_resume(c, cx_str(x[0].tid[..], x[0].tid_n), st) else cx_thread_start(c, st);
+  x[0].thread_wait = true;
+}
+cxe_deliver :: (x: [] CxEngine) {
+  st := cxe_settings(x);
+  none: [1] string;
+  r := cx_turn_start(x[0].c[..], cx_str(x[0].prompt, x[0].prompt_n), none[0..<0], st);
+  if x[0].plan { x[0].plan_used = true; }
+  x[0].turn_wait = true; x[0].turn_n = 0; x[0].pend = -1;
+  if x[0].att.count > 0 { at_delivered(x[0].att); }
+}
+
+// STOP: turn/interrupt (before the turn has an id, once it has one; a server still starting is closed).
+cxe_stop :: (x: [] CxEngine, s: [] Session) {
+  if !s[0].live { return; }
+  s[0].stopping = true;
+  if x.count < 1 { s_turn_end(s, false, ""); return; }
+  if s[0].asking >= 0 { cxe_answer(x, s, false); }
+  if !x[0].on || !x[0].running || x[0].pend >= 0 {
+    x[0].pend = -1;
+    if x[0].running && !x[0].ready { cxe_close(x); }
+    s_turn_end(s, false, "");
+    return;
+  }
+  if x[0].c[0].turn_n == 0 || x[0].turn_n == 0 { x[0].stop_due = true; return; }
+  r := cx_interrupt(x[0].c[..]);
+}
+
+// An approval's answer (the chip's Allow or Deny), over the protocol.
+cxe_answer :: (x: [] CxEngine, s: [] Session, allow: bool) {
+  k := s[0].asking;
+  if k < 0 { return; }
+  s[0].asking = -1;
+  if k < s[0].n && s[0].parts[k].kind == P_NOTICE {
+    for j: k..<s[0].n - 1 { s[0].parts[j] = s[0].parts[j + 1]; }
+    s[0].n -= 1; s[0].changed = true;
+  }
+  if x.count > 0 { cx_approve(x[0].c[..], allow); }
+}
+
+// An approval asked by the server: Auto-accept edits accepts a file change
+// itself (and Full access everything); otherwise the transcript asks.
+cxe_approval :: (x: [] CxEngine, s: [] Session, ev: CxEvent) {
+  patch := ev.of == CX_ASK_PATCH || ev.of == CX_ASK_PATCH_V1;
+  if x[0].access == ACC_FULL || (x[0].access == ACC_EDITS && patch) { cx_approve(x[0].c[..], true); return; }
+  ar := x[0].c[0].ar[..];
+  buf: [700] u8; k := 0;
+  if ev.of == CX_ASK_EXEC || ev.of == CX_ASK_EXEC_V1 {
+    cmd := cl_str(ar, ev.params, "command");
+    if cmd.count == 0 { cmd = cl_raw(ev.params, "command"); }
+    k = e_set(buf[..], 0, "Run: "); k = e_set(buf[..], k, cmd);
+  } else if patch {
+    k = e_set(buf[..], 0, "Edit");
+    t := s_tool_of(s, cl_str(ar, ev.params, "itemId"));
+    if t >= 0 && s[0].parts[t].arg.count > 0 { k = e_set(buf[..], k, ": "); k = e_set(buf[..], k, s[0].parts[t].arg); }
+  } else {
+    k = e_set(buf[..], 0, "More permissions");
+  }
+  why := cl_str(ar, ev.params, "reason");
+  if why.count > 0 { k = e_set(buf[..], k, " ("); k = e_set(buf[..], k, why); k = e_set(buf[..], k, ")"); }
+  s_notice(s, N_ASK, e_str(buf[..], k));
+  s[0].asking = s[0].n - 1;
+  x[0].ask_kind = ev.of;
+}
+
+// ---------------------------------------------------------------- the stream into the session
+
+cxe_streamed :: (x: [] CxEngine, id: string) -> bool {
+  text := cx_str(x[0].streamed, x[0].streamed_n);
+  i := 0;
+  while i < text.count {
+    j := i; while j < text.count && text[j] != '\n' { j += 1; }
+    if cast(string) text[i..<j] == id { return true; }
+    i = j + 1;
+  }
+  return false;
+}
+cxe_note_streamed :: (x: [] CxEngine, id: string) {
+  if id.count == 0 || cxe_streamed(x, id) || x[0].streamed_n + id.count + 1 > x[0].streamed.count { return; }
+  x[0].streamed_n = e_set(x[0].streamed, x[0].streamed_n, id);
+  x[0].streamed[x[0].streamed_n] = '\n'; x[0].streamed_n += 1;
+}
+
+// A reasoning delta (ReasoningStream.map): parts of different items or
+// indices a blank line apart; the summary index announced by summaryPartAdded.
+cxe_reasoning :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, method: string, params: string) {
+  id := cl_str(ar, params, "itemId");
+  summary := method != "item/reasoning/textDelta";
+  ix := cl_int(params, ifx summary then "summaryIndex" else "contentIndex");
+  index := 0;
+  if ix.ok { index = ix.value; }
+  else if summary && x[0].rs_said_n > 0 && cx_str(x[0].rs_said[..], x[0].rs_said_n) == id { index = x[0].rs_said_index; }
+  if method == "item/reasoning/summaryPartAdded" { x[0].rs_said_n = e_set(x[0].rs_said[..], 0, id); x[0].rs_said_index = index; return; }
+  text := cl_str(ar, params, "delta");
+  if text.count == 0 { text = cl_str(ar, params, "textDelta"); }
+  if text.count == 0 { return; }
+  same := x[0].rs_have && cx_str(x[0].rs_item[..], x[0].rs_item_n) == id && x[0].rs_summary == summary && x[0].rs_index == index;
+  // the blank line between parts goes only inside one thought (a new thought starts its own part)
+  if x[0].rs_have && !same && s[0].n > 0 && s[0].parts[s[0].n - 1].kind == P_THINK {
+    lead := 0; while lead < text.count && text[lead] == '\n' { lead += 1; }
+    missing := 2 - (x[0].rs_trailing + lead);
+    if missing == 2 { s_delta(s, P_THINK, "\n\n"); } else if missing == 1 { s_delta(s, P_THINK, "\n"); }
+    if missing > 0 { x[0].rs_trailing += missing; }
+  }
+  tail := 0; while tail < text.count && text[text.count - 1 - tail] == '\n' { tail += 1; }
+  x[0].rs_trailing = ifx tail == text.count then x[0].rs_trailing + tail else tail;
+  x[0].rs_item_n = e_set(x[0].rs_item[..], 0, id); x[0].rs_summary = summary; x[0].rs_index = index; x[0].rs_have = true;
+  s_delta(s, P_THINK, text);
+}
+
+// A tool chip for an item, found by its id or started.
+cxe_tool :: (s: [] Session, id: string, tk: int) -> int {
+  k := s_tool_of(s, id);
+  if k < 0 {
+    k = s_part(s, P_TOOL);
+    if k < 0 { return -1; }
+    s[0].parts[k].id = s_put(s, id);
+  }
+  s[0].parts[k].tk = tk;
+  s[0].changed = true;
+  return k;
+}
+// A checklist (todoList items or a plan's steps) as the Todo chip: "[x] step" lines, "1/3 done".
+cxe_todo :: (s: [] Session, ar: [] ClArena, k: int, list: string, text_key: string, plan: bool) {
+  total := cl_count(list); done := 0;
+  at := s[0].np;
+  for i: 0..<total {
+    item := cl_json(list, cl_item(list, i));
+    fin := ifx plan then cl_str(ar, item, "status") == "completed" else cl_bool(item, "completed").value;
+    if fin { done += 1; }
+    if i > 0 { q := s_put(s, "\n"); }
+    q := s_put(s, ifx fin then "[x] " else "[ ] "); q = s_put(s, cl_str(ar, item, text_key));
+  }
+  s[0].parts[k].arg = cast(string) s[0].pool[at..<s[0].np];
+  buf: [40] u8; nb := put_int(buf[..], 0, done); buf[nb] = '/'; nb += 1; nb = put_int(buf[..], nb, total);
+  for c: " done" { buf[nb] = c; nb += 1; }
+  s[0].parts[k].detail = s_put(s, cast(string) buf[0..<nb]);
+  s[0].parts[k].resolved = true;
+}
+
+// item/started and item/completed (map_item, and the session loop's agentMessage and plan handling).
+cxe_item :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, done: bool, item: string) {
+  ty := cl_str(ar, item, "type");
+  id := cl_str(ar, item, "id");
+  status := cl_str(ar, item, "status");
+  if ty == "agentMessage" {
+    if !done { return; }
+    text := cl_str(ar, item, "text");
+    if !cxe_streamed(x, id) && text.count > 0 { s_delta(s, P_TEXT, text); }
+    // each message closes as a paragraph (consecutive ones carry no separator)
+    if s[0].n > 0 && s[0].parts[s[0].n - 1].kind == P_TEXT { s_delta(s, P_TEXT, "\n\n"); }
+    return;
+  }
+  if ty == "commandExecution" {
+    k := cxe_tool(s, id, TK_EXEC);
+    if k < 0 { return; }
+    if s[0].parts[k].arg.count == 0 { s[0].parts[k].arg = s_put(s, cl_str(ar, item, "command")); s[0].parts[k].detail = s_single(s, s[0].parts[k].arg); }
+    if done {
+      out := cl_str(ar, item, "aggregatedOutput");
+      if out.count > CX_OUTPUT_MAX { out = cast(string) out[0..<CX_OUTPUT_MAX]; }
+      code := cl_int(item, "exitCode");
+      // a declined command is no run: its chip says so (Zeron leaves it unmarked)
+      declined := status == "declined";
+      s[0].parts[k].output = s_put(s, ifx declined && out.count == 0 then "Declined." else out);
+      s[0].parts[k].failed = status == "failed" || declined || (code.ok && code.value != 0);
+      s[0].parts[k].resolved = true;
+    }
+    return;
+  }
+  if ty == "fileChange" {
+    changes := cl_raw(item, "changes");
+    n := cl_count(changes);
+    first := ifx n > 0 then cl_json(changes, cl_item(changes, 0)) else "";
+    kind := cl_str(ar, first, "kind.type");
+    if kind.count == 0 { kind = cl_str(ar, first, "kind"); }
+    k := cxe_tool(s, id, ifx n == 1 && kind == "add" then TK_WRITE else TK_EDIT);
+    if k < 0 { return; }
+    if s[0].parts[k].arg.count == 0 {
+      if n == 1 { s[0].parts[k].arg = s_put(s, cl_str(ar, first, "path")); }
+      else { buf: [32] u8; nb := put_int(buf[..], 0, n); nb = e_set(buf[..], nb, " files"); s[0].parts[k].arg = s_put(s, cast(string) buf[0..<nb]); }
+      // one file's diff (a patch over several files lists them, its chip has no single diff)
+      if n == 1 { s[0].parts[k].input = s_put(s, cl_str(ar, first, "diff")); }
+    }
+    if done {
+      s[0].parts[k].failed = status == "failed" || status == "declined";
+      if status == "declined" { s[0].parts[k].output = s_put(s, "Declined."); }
+      s[0].parts[k].resolved = true;
+    }
+    return;
+  }
+  if ty == "imageView" {
+    k := cxe_tool(s, id, TK_READ);
+    if k < 0 { return; }
+    if s[0].parts[k].arg.count == 0 { s[0].parts[k].arg = s_put(s, cl_str(ar, item, "path")); }
+    s[0].parts[k].resolved = done;
+    return;
+  }
+  if ty == "mcpToolCall" {
+    k := cxe_tool(s, id, TK_MCP);
+    if k < 0 { return; }
+    if s[0].parts[k].detail.count == 0 {
+      at := s[0].np; a := s_put(s, cl_str(ar, item, "server")); b := s_put(s, " · "); c := s_put(s, cl_str(ar, item, "tool"));
+      s[0].parts[k].detail = cast(string) s[0].pool[at..<s[0].np];
+      s[0].parts[k].arg = s_put(s, cl_raw(item, "arguments"));
+    }
+    if done {
+      s[0].parts[k].failed = status == "failed";
+      e := cl_str(ar, item, "error.message");
+      if e.count > 0 { s[0].parts[k].output = s_put(s, e); }
+      s[0].parts[k].resolved = true;
+    }
+    return;
+  }
+  if ty == "webSearch" {
+    k := cxe_tool(s, id, TK_WEB);
+    if k < 0 { return; }
+    q := cl_str(ar, item, "query");
+    if q.count > 0 { s[0].parts[k].arg = s_put(s, q); }
+    s[0].parts[k].resolved = done;
+    return;
+  }
+  if ty == "todoList" {
+    k := cxe_tool(s, id, TK_TODO);
+    if k >= 0 { cxe_todo(s, ar, k, cl_raw(item, "items"), "text", false); }
+    return;
+  }
+  if ty == "error" { if done { m := cl_str(ar, item, "message"); s_notice(s, s_problem(m), m); } return; }
+  if ty == "plan" && done {
+    text := cl_str(ar, item, "text");
+    hi := text.count; while hi > 0 && (text[hi - 1] == ' ' || text[hi - 1] == '\n') { hi -= 1; }
+    if hi > 0 { s_delta(s, P_TEXT, cast(string) text[0..<hi]); s_delta(s, P_TEXT, "\n\n"); }
+    return;
+  }
+  if ty == "contextCompaction" && done { s_delta(s, P_TEXT, "Context compacted."); s_delta(s, P_TEXT, "\n\n"); return; }
+}
+
+// The end of the turn the transcript follows (settle_turn_error): stopped,
+// its error, a failure without one (the held error), or done (a held error
+// then stands alone).
+cxe_turn_done :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, params: string) {
+  status := cl_str(ar, params, "turn.status");
+  e := cl_at(params, "turn.error");
+  held := cx_str(x[0].held, x[0].held_n);
+  x[0].turn_n = 0; x[0].turn_wait = false; x[0].streamed_n = 0; x[0].rs_have = false;
+  if status == "interrupted" { s[0].stopping = true; }
+  if s[0].stopping { x[0].held_n = 0; s_turn_end(s, false, ""); return; }
+  if e.ok && e.tok == JSON_OBJECT {
+    buf: [2048] u8;
+    text := codex_error_text(buf[..], ar, cl_json(params, e), x[0].lim[0], zr_now(x));
+    x[0].held_n = 0;
+    s_turn_end(s, true, text);
+    return;
+  }
+  if status == "failed" { s_turn_end(s, true, ifx held.count > 0 then held else "Codex turn failed"); x[0].held_n = 0; return; }
+  if held.count > 0 { s_notice(s, s_problem(held), held); }
+  x[0].held_n = 0;
+  s_turn_end(s, false, "");
+}
+// Now, as a Unix time (0 in the checks: no limit resets then).
+zr_now :: (x: [] CxEngine) -> int { return ifx x[0].on then zr_unix_s() else 0; }
+
+// One notification: what it adds to the session.
+cxe_note :: (x: [] CxEngine, s: [] Session, ar: [] ClArena, method: string, params: string) {
+  if method == "account/rateLimits/updated" { codex_merge_limits(x[0].lim[..], params); return; }
+  if !s[0].live { return; }
+  // a notification of another turn (one already settled) is not this one's
+  tid := cl_str(ar, params, "turnId");
+  if tid.count > 0 && x[0].turn_n > 0 && tid != cx_str(x[0].turn[..], x[0].turn_n) { return; }
+  if method == "item/agentMessage/delta" {
+    cxe_note_streamed(x, cl_str(ar, params, "itemId"));
+    d := cl_str(ar, params, "delta");
+    if d.count == 0 { d = cl_str(ar, params, "textDelta"); }
+    s_delta(s, P_TEXT, d);
+    return;
+  }
+  if method == "item/reasoning/summaryTextDelta" || method == "item/reasoning/textDelta" || method == "item/reasoning/summaryPartAdded" {
+    cxe_reasoning(x, s, ar, method, params);
+    return;
+  }
+  if method == "item/started" || method == "item/completed" {
+    cxe_item(x, s, ar, method == "item/completed", cl_raw(params, "item"));
+    return;
+  }
+  if method == "turn/plan/updated" {
+    k := cxe_tool(s, CODEX_LIVE_PLAN, TK_TODO);
+    if k >= 0 { cxe_todo(s, ar, k, cl_raw(params, "plan"), "step", true); }
+    return;
+  }
+  if method == "turn/started" {
+    t := cl_str(ar, params, "turn.id");
+    if t.count > 0 && x[0].turn_n == 0 { x[0].turn_n = e_set(x[0].turn[..], 0, t); }
+    if x[0].stop_due && x[0].turn_n > 0 { x[0].stop_due = false; r := cx_interrupt(x[0].c[..]); }
+    return;
+  }
+  if method == "turn/completed" {
+    t := cl_str(ar, params, "turn.id");
+    if x[0].turn_n > 0 && t.count > 0 && t != cx_str(x[0].turn[..], x[0].turn_n) { return; }   // a stale turn's
+    cxe_turn_done(x, s, ar, params);
+    return;
+  }
+  if method == "error" {
+    if cl_bool(params, "willRetry").value { return; }     // Codex retrying: progress, not an outcome
+    buf: [2048] u8;
+    e := cl_at(params, "error");
+    text := ifx e.ok && e.tok == JSON_OBJECT then codex_error_text(buf[..], ar, cl_json(params, e), x[0].lim[0], zr_now(x)) else cl_str(ar, params, "message");
+    if text.count == 0 { text = "Codex error"; }
+    x[0].held_n = e_set(x[0].held, 0, text);
+    return;
+  }
+  // after an interrupt the server only says the thread is idle (0.163: no turn/completed)
+  if method == "thread/status/changed" && s[0].stopping && cl_str(ar, params, "status.type") == "idle" {
+    x[0].turn_n = 0; x[0].turn_wait = false;
+    s_turn_end(s, false, "");
+  }
+}
+
+// One event from the client. Whether the pump must wait (an approval asks the person).
+cxe_event :: (x: [] CxEngine, s: [] Session, ev: CxEvent) -> bool {
+  c := x[0].c[..]; ar := c[0].ar[..];
+  if ev.kind == CxEventKind.initialized {
+    x[0].ready = true;
+    if x[0].pend >= 0 && s[0].live { cxe_open(x); }
+    return false;
+  }
+  if ev.kind == CxEventKind.answered {
+    if ev.of == CX_MODEL_LIST { cxe_take_models(x, ev.result); return false; }
+    if ev.of == CX_THREAD_START || ev.of == CX_THREAD_RESUME {
+      x[0].thread_wait = false;
+      x[0].tid_n = e_set(x[0].tid[..], 0, cx_thread_id(c));
+      if s[0].live && x[0].pend >= 0 { cxe_deliver(x); }
+      return false;
+    }
+    if ev.of == CX_TURN_START {
+      x[0].turn_wait = false;
+      if x[0].turn_n == 0 { x[0].turn_n = e_set(x[0].turn[..], 0, cx_turn_id(c)); }
+      if x[0].stop_due && x[0].turn_n > 0 { x[0].stop_due = false; r := cx_interrupt(c); }
+      return false;
+    }
+    if ev.of == CX_TURN_INTERRUPT {
+      // 0.163 answers {} and sends no turn/completed: the turn is over here
+      if s[0].live && s[0].stopping { x[0].turn_n = 0; s_turn_end(s, false, ""); }
+      return false;
+    }
+    return false;
+  }
+  if ev.kind == CxEventKind.refused {
+    if ev.of == CX_MODEL_LIST || ev.of == CX_TURN_INTERRUPT { return false; }
+    if ev.of == CX_THREAD_RESUME {
+      // the thread is gone (another Codex home, say): a new one
+      x[0].thread_wait = false; x[0].tid_n = 0;
+      if s[0].live && x[0].pend >= 0 { cxe_open(x); }
+      return false;
+    }
+    x[0].thread_wait = false; x[0].turn_wait = false; x[0].pend = -1;
+    if s[0].live { s_turn_end(s, true, ev.message); }
+    return false;
+  }
+  if ev.kind == CxEventKind.notification { cxe_note(x, s, ar, ev.method, ev.params); return false; }
+  if ev.kind == CxEventKind.approval {
+    if !s[0].live { cx_approve(c, false); return false; }
+    cxe_approval(x, s, ev);
+    return s[0].asking >= 0;
+  }
+  return false;
+}
+
+// The server's models become the catalog; the chosen model stays chosen by id.
+cxe_take_models :: (x: [] CxEngine, result: string) {
+  was := x[0].cat[0].id[x[0].model];
+  wid: [96] u8; wn := e_set(wid[..], 0, was);
+  c: [1] PkCatalog;
+  if !codex_discover(c[..], x[0].c[0].ar[..], result, x[0].cat_pool, x[0].cat_at[..]) { return; }
+  first := x[0].cat_gen == 0;
+  x[0].cat[0] = c[0];
+  k := claude_find(x[0].cat[..], e_str(wid[..], wn));
+  // the first list puts the account's default first and chosen (until the user picks another)
+  x[0].model = ifx first || k < 0 then 0 else k;
+  x[0].cat_gen += 1;
+}
+
+// Each frame: what the server wrote (at most a batch of lines).
+cxe_pump :: (x: [] CxEngine, e: [] Engine, s: [] Session) {
+  if x.count < 1 || !x[0].on { return; }
+  if !x[0].settled { if !e[0].probed { return; } cxe_take_probe(x, e); }
+  if !x[0].running && x[0].pend >= 0 && s[0].live {
+    if !cxe_launch(x, s, false) { x[0].pend = -1; return; }
+  }
+  // the server starts ahead of the first message once the Codex tab is open: its model/list fills the picker
+  if !x[0].running && x[0].want_warm && !x[0].warmed && x[0].exe_n > 0 { x[0].warmed = true; b := cxe_launch(x, s, true); }
+  if !x[0].running || s[0].asking >= 0 { return; }
+  for guard: 0..<200 {
+    ev := cx_poll(x[0].c[..], x[0].p[..], 0);
+    if ev.kind == CxEventKind.idle { return; }
+    if ev.kind == CxEventKind.failed || ev.kind == CxEventKind.end {
+      why := "";
+      if ev.kind == CxEventKind.failed { why = cx_error(x[0].c[..]); }
+      tail := cl_stderr(x[0].p[..], x[0].err);
+      if tail.count > 0 { why = tail; }
+      if why.count == 0 { why = "Codex stopped before answering."; }
+      cxe_close(x);
+      x[0].pend = -1;
+      if !s[0].live { return; }
+      s_turn_end(s, !s[0].stopping, why);
+      return;
+    }
+    if cxe_event(x, s, ev) { return; }
+  }
+}
+
+// The chips: model, level and plan ride the next turn; access too.
+cxe_set_model :: (x: [] CxEngine, m: int) { if x.count > 0 && m >= 0 && m < x[0].cat[0].n { x[0].model = m; } }
+
+// ---------------------------------------------------------------- checks
+
+// Feeds recorded lines to an engine with no process, as cxe_pump would.
+cxe_test_feed :: (x: [] CxEngine, s: [] Session, line: string) -> bool {
+  cx_outbox_clear(x[0].c[..]);
+  return cxe_event(x, s, cx_feed(x[0].c[..], line));
+}
+// Whether a recorded line is a notification of this method (its prefix, cheaper than parsing it).
+cxe_test_is :: (l: string, method: string) -> bool {
+  pre := "{\"method\":\"";
+  if l.count < pre.count + method.count + 1 { return false; }
+  return cast(string) l[0..<pre.count] == pre && cast(string) l[pre.count..<pre.count + method.count] == method && l[pre.count + method.count] == '"';
+}
+// The usage and limit updates the checks skip (the replay budget is the interpreter's).
+cxe_test_noise :: (l: string) -> bool { return cxe_test_is(l, "thread/tokenUsage/updated") || cxe_test_is(l, "account/rateLimits/updated"); }
+CxeTest :: struct { line: [8] u8; arena: [65536] u8; out: [16384] u8; prompt: [4096] u8; mem: [CX_MEM] u8; }
+cxe_test_engine :: (x: [] CxEngine, b: [] CxeTest) {
+  cxe_init(x);
+  cxe_mem(x, b[0].mem[..]);
+  cx_init(x[0].c[..], b[0].line[..], b[0].arena[..], b[0].out[..]);
+  x[0].prompt = b[0].prompt[..];
+  x[0].cwd_n = e_set(x[0].cwd, 0, "/tmp/demo/work");
+  x[0].running = true;
+}
+
+#test "Codex's model/list becomes the catalog: visible models, the default first, levels from its efforts" {
+  abuf: [8192] u8; ar := [1] ClArena.[ClArena.{buf = abuf[..]}];
+  pool: [4096] u8; at: [1] int; c: [1] PkCatalog;
+  fx := CX_FIXTURE_FULL;
+  r := cl_raw(fx[1], "result");
+  #assert codex_discover(c[..], ar[..], r, pool[..], at[..]);
+  #assert c[0].n == 8 && c[0].id[0] == "gpt-6.1-sol" && c[0].label[0] == "GPT-6.1-Sol" && c[0].ladder[0] == CX_LADDER_ULTRA;
+  #assert c[0].provider == "Codex" && c[0].icon == ICON_OPENAI_14 && c[0].level_label[4] == "X-High" && c[0].plan;
+  for i: 0..<c[0].n { #assert c[0].ladder[i] != 0; for j: i + 1..<c[0].n { #assert c[0].id[i] != c[0].id[j]; } }
+  // a hidden model is left out, the default moves first
+  ar[0].at = 0;
+  #assert codex_discover(c[..], ar[..], "{\"data\":[{\"id\":\"a\",\"displayName\":\"A\",\"supportedReasoningEfforts\":[{\"reasoningEffort\":\"low\"}]},{\"id\":\"h\",\"hidden\":true},{\"model\":\"b\",\"isDefault\":true,\"supportedReasoningEfforts\":[\"medium\",\"high\"]}]}", pool[..], at[..]);
+  #assert c[0].n == 2 && c[0].id[0] == "b" && c[0].label[0] == "b" && c[0].ladder[0] == 12 && c[0].id[1] == "a" && c[0].ladder[1] == 2;
+  #assert !codex_discover(c[..], ar[..], "{\"data\":[]}", pool[..], at[..]) && c[0].n == 9 && c[0].id[0] == "gpt-6-astra";
+}
+
+#test "access maps as Zeron's: full access never asks, auto-accept edits writes the workspace, supervised reads" {
+  x: [1] CxEngine; b: [1] CxeTest;
+  cxe_test_engine(x[..], b[..]);
+  st := cxe_settings(x[..]);
+  #assert st.approval_policy == "never" && st.sandbox == "danger-full-access" && !st.ask_person && st.model == "gpt-6-astra" && st.effort == "high";
+  x[0].access = ACC_EDITS; x[0].effort = 1;
+  st = cxe_settings(x[..]);
+  #assert st.approval_policy == "untrusted" && st.sandbox == "workspace-write" && st.ask_person && st.effort == "low";
+  x[0].access = ACC_SUPERVISED; x[0].effort = 6; x[0].model = 5;   // GPT-5.5 has no Ultra: the catalog's High
+  st = cxe_settings(x[..]);
+  #assert st.sandbox == "read-only" && st.effort == "high";
+}
+
+#test "errors read as Zeron words them: signed out, the limits with their reset, the plain message" {
+  abuf: [4096] u8; ar := [1] ClArena.[ClArena.{buf = abuf[..]}];
+  buf: [512] u8; lim: CxLimits;
+  #assert codex_error_text(buf[..], ar[..], "{\"message\":\"bad\",\"codexErrorInfo\":\"unauthorized\"}", lim, 0) == CODEX_SIGNED_OUT;
+  #assert codex_error_text(buf[..], ar[..], "{\"message\":\"x\",\"codexErrorInfo\":{\"httpConnectionFailed\":{\"httpStatusCode\":401}}}", lim, 0) == CODEX_SIGNED_OUT;
+  #assert s_problem(CODEX_SIGNED_OUT) == N_SIGNED_OUT;
+  #assert codex_error_text(buf[..], ar[..], "{\"message\":\"You've hit your usage limit.\",\"codexErrorInfo\":\"usageLimitExceeded\"}", lim, 0) == "Codex usage limit reached. You've hit your usage limit.";
+  lim.has[0] = true; lim.used[0] = 100.0; lim.resets[0] = 1000 + 2 * 3600 + 5 * 60;
+  t := codex_error_text(buf[..], ar[..], "{\"message\":\"slow down\",\"codexErrorInfo\":{\"responseStreamDisconnected\":{\"httpStatusCode\":429}}}", lim, 1000);
+  #assert t == "Codex rate limit reached — it resets in 2h 5m." && s_problem(t) == N_LIMIT;
+  #assert codex_error_text(buf[..], ar[..], "{\"message\":\"boom\",\"additionalDetails\":\"  model is not supported  \",\"codexErrorInfo\":\"other\"}", lim, 0) == "model is not supported";
+  w: [32] u8;
+  #assert e_str(w[..], codex_wait(w[..], 0, 30)) == "1m" && e_str(w[..], codex_wait(w[..], 0, 0)) == "under a minute" && e_str(w[..], codex_wait(w[..], 0, 90000)) == "1d 1h";
+  m: [1] CxLimits;
+  codex_merge_limits(m[..], "{\"rateLimits\":{\"primary\":{\"usedPercent\":100,\"resetsAt\":50},\"secondary\":null}}");
+  #assert m[0].has[0] && !m[0].has[1] && codex_reset_in(m[0], 20) == 30;
+}
+
+// The recorded full-access session, from the start through turn `last`
+// (the interpreter's budget: the first turn streams, the second takes each
+// message whole when it completes, the path for one that didn't stream).
+cxe_test_full :: (x: [] CxEngine, s: [] Session, last: int, models: bool) {
+  r := cx_initialize(x[0].c[..], "openagents-desktop", "OpenAgents", "0.1.0");
+  r = cx_model_list(x[0].c[..], ""); x[0].listed = true;
+  cxe_send_as(x, s, "List the files in this folder and read the README", "List the files in this folder and read the README");
+  fx := CX_FIXTURE_FULL;
+  turns := 1; at := 0;
+  for l: fx {
+    at += 1;
+    if !s[0].live && x[0].ready {
+      if turns == last { break; }
+      turns = 2; cxe_send_as(x, s, "Fix the typo", "Fix the typo in notes.txt, then run cat missing.txt");
+    }
+    if cxe_test_noise(l) || (at == 2 && !models) { continue; }
+    if (last == 2 || turns == 2) && cxe_test_is(l, "item/agentMessage/delta") { continue; }
+    w := cxe_test_feed(x, s, l);
+  }
+}
+
+#test "a recorded full-access turn streams into Zeron's parts: the model list, text, a command chip with its output" {
+  x: [1] CxEngine; b: [1] CxeTest;
+  cxe_test_engine(x[..], b[..]);
+  s: [1] Session; pool: [65536] u8;
+  s_init(s[..], pool[..]);
+  cxe_test_full(x[..], s[..], 1, true);
+  #assert !s[0].live && x[0].cat_gen == 1 && x[0].cat[0].id[0] == "gpt-6.1-sol" && x[0].model == 0 && x[0].tid_n > 0;
+  // the message, the commentary, the command, the answer
+  #assert s[0].n == 4 && s[0].parts[0].kind == P_USER && s[0].parts[1].kind == P_TEXT && s[0].parts[2].kind == P_TOOL && s[0].parts[3].kind == P_TEXT;
+  run := s[0].parts[2];
+  #assert run.tk == TK_EXEC && run.resolved && !run.failed && s_has(run.arg, "rg --files") && s_has(run.output, "readme.md");
+  #assert s_text_of(s[..], 1) == "I’ll list the current folder’s files and read its README.\n\n";
+  last := s_text_of(s[..], 3);
+  #assert s_has(last, "files in the folder:") && last[last.count - 1] == '\n' && last[last.count - 2] == '\n';
+}
+
+#test "a recorded full-access session's second turn: a failed command red with its output, the thought, the answer" {
+  x: [1] CxEngine; b: [1] CxeTest;
+  cxe_test_engine(x[..], b[..]);
+  s: [1] Session; pool: [65536] u8;
+  s_init(s[..], pool[..]);
+  cxe_test_full(x[..], s[..], 2, false);
+  #assert !s[0].live && x[0].cat_gen == 0;
+  users := 0; tools := 0; texts := 0; thoughts := 0; failed := -1;
+  for k: 0..<s[0].n {
+    p := s[0].parts[k];
+    if p.kind == P_USER { users += 1; }
+    if p.kind == P_TEXT { texts += 1; }
+    if p.kind == P_THINK { thoughts += 1; }
+    if p.kind == P_TOOL { tools += 1; #assert p.resolved && p.tk == TK_EXEC; if p.failed && failed < 0 { failed = k; } }
+  }
+  #assert users == 2 && tools >= 3 && texts >= 4 && thoughts >= 1;
+  #assert failed > 0 && s_has(s[0].parts[failed].output, "missing.txt");
+  last := s_text_of(s[..], s[0].n - 1);
+  #assert s[0].parts[s[0].n - 1].kind == P_TEXT && last.count > 20;
+}
+
+#test "a recorded supervised session: the edit's chip holds its diff, Allow and Deny go over the protocol, Stop ends the story" {
+  x: [1] CxEngine; b: [1] CxeTest;
+  cxe_test_engine(x[..], b[..]);
+  x[0].access = ACC_SUPERVISED; x[0].listed = true;
+  s: [1] Session; pool: [65536] u8;
+  s_init(s[..], pool[..]);
+  r := cx_initialize(x[0].c[..], "openagents-desktop", "OpenAgents", "0.1.0");
+  cxe_send_as(x[..], s[..], "change milk", "In notes.txt change milk to oat milk");
+  fx := CX_FIXTURE_SUPERVISED;
+  turns := 1; asked := 0; deltas := 0; mark := 0; stopped := false;
+  answers := [2] bool.[true, false];
+  for l: fx {
+    if !s[0].live && x[0].ready && turns < 3 { turns += 1; cxe_send_as(x[..], s[..], "next", "next"); mark = deltas; }
+    if turns == 3 && !stopped && deltas > mark + 30 { cxe_stop(x[..], s[..]); stopped = true; #assert s[0].stopping; }
+    delta := cxe_test_is(l, "item/agentMessage/delta");
+    if delta { deltas += 1; }
+    if cxe_test_noise(l) || delta { continue; }   // each message comes whole when it completes (the budget); Stop ends the story
+    if cxe_test_feed(x[..], s[..], l) {
+      #assert s[0].parts[s[0].asking].kind == P_NOTICE && s[0].parts[s[0].asking].notice == N_ASK;
+      if asked == 0 { #assert s_has(s_text_of(s[..], s[0].asking), "edit: /tmp/demo/work/notes.txt"); }
+      if asked == 1 { #assert s_has(s_text_of(s[..], s[0].asking), "run: /bin/zsh -lc 'touch denied.txt'"); }
+      cxe_answer(x[..], s[..], answers[asked]);
+      #assert s_has(cx_outbox(x[0].c[..]), ifx asked == 0 then "\"decision\":\"accept\"" else "\"decision\":\"decline\"");
+      asked += 1;
+    }
+  }
+  #assert asked == 2;
+  #assert turns == 3;
+  #assert stopped;
+  #assert !x[0].stop_due;
+  #assert s[0].stopping;
+  #assert !s[0].live;
+  #assert s[0].asking < 0;
+  edit := -1; denied := -1;
+  for k: 0..<s[0].n {
+    p := s[0].parts[k];
+    if p.kind == P_TOOL && p.tk == TK_EDIT { edit = k; }
+    if p.kind == P_TOOL && p.tk == TK_EXEC && s_has(p.arg, "touch denied.txt") { denied = k; }
+  }
+  #assert edit > 0 && s[0].parts[edit].arg == "/tmp/demo/work/notes.txt" && s[0].parts[edit].resolved && !s[0].parts[edit].failed;
+  #assert s[0].parts[edit].input == "@@ -2,2 +2,2 @@\n - bread\n-- milk\n+- oat milk\n";
+  #assert denied > 0 && s[0].parts[denied].failed && s[0].parts[denied].resolved;
+  // the story stopped: the transcript's quiet Stopped line
+  #assert s[0].parts[s[0].n - 1].kind == P_NOTICE && s[0].parts[s[0].n - 1].notice == N_STOPPED;
+  // the edit's chip: the hunk header from the diff, its lines numbered from it
+  t: [1] Transcript; ui: [1] SUi;
+  s_build(s[..], ui[..], t[..]);
+  ed := -1;
+  for k: 0..<t[0].nt { if t[0].tools[k].kind == TK_EDIT { ed = k; } }
+  #assert ed >= 0 && t[0].tools[ed].hunk == "@@ -2,2 +2,2 @@" && t[0].tools[ed].diff_lines == 3;
+  d := t[0].tools[ed].diff_from;
+  #assert t[0].diff[d].kind == DL_CONTEXT && t[0].diff[d].text == "- bread" && t[0].diff[d + 1].kind == DL_DEL && t[0].diff[d + 1].text == "- milk";
+  #assert t[0].diff[d + 2].kind == DL_ADD && t[0].diff[d + 2].text == "- oat milk";
+}
+
+#test "auto-accept edits answers a file change itself; a failed turn's error chip reads signed out" {
+  x: [1] CxEngine; b: [1] CxeTest;
+  cxe_test_engine(x[..], b[..]);
+  x[0].access = ACC_EDITS;
+  s: [1] Session; pool: [8192] u8;
+  s_init(s[..], pool[..]);
+  s_user(s[..], "edit");
+  #assert !cxe_test_feed(x[..], s[..], "{\"method\":\"item/fileChange/requestApproval\",\"id\":7,\"params\":{\"itemId\":\"e1\"}}");
+  #assert s[0].asking < 0 && s_has(cx_outbox(x[0].c[..]), "{\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"decision\":\"accept\"}}");
+  #assert cxe_test_feed(x[..], s[..], "{\"method\":\"item/commandExecution/requestApproval\",\"id\":8,\"params\":{\"command\":\"rm -rf x\",\"reason\":\"cleanup\"}}");
+  #assert s_text_of(s[..], s[0].asking) == "Run: rm -rf x (cleanup)";
+  cxe_answer(x[..], s[..], false);
+  w := cxe_test_feed(x[..], s[..], "{\"method\":\"error\",\"params\":{\"error\":{\"message\":\"retrying\"},\"willRetry\":true}}");
+  #assert x[0].held_n == 0;
+  w = cxe_test_feed(x[..], s[..], "{\"method\":\"turn/completed\",\"params\":{\"turn\":{\"id\":\"t\",\"status\":\"failed\",\"error\":{\"message\":\"401\",\"codexErrorInfo\":\"unauthorized\"}}}}");
+  #assert !s[0].live && s[0].parts[s[0].n - 1].kind == P_NOTICE && s[0].parts[s[0].n - 1].notice == N_SIGNED_OUT;
+  #assert s_text_of(s[..], s[0].n - 1) == CODEX_SIGNED_OUT;
+  // reasoning parts of one thought stay a blank line apart; the plan is the Todo chip
+  s_user(s[..], "think");
+  w = cxe_test_feed(x[..], s[..], "{\"method\":\"item/reasoning/summaryTextDelta\",\"params\":{\"itemId\":\"r\",\"summaryIndex\":0,\"delta\":\"**One**\"}}");
+  w = cxe_test_feed(x[..], s[..], "{\"method\":\"item/reasoning/summaryTextDelta\",\"params\":{\"itemId\":\"r\",\"summaryIndex\":1,\"delta\":\"**Two**\"}}");
+  #assert s_text_of(s[..], s[0].n - 1) == "**One**\n\n**Two**";
+  w = cxe_test_feed(x[..], s[..], "{\"method\":\"turn/plan/updated\",\"params\":{\"plan\":[{\"step\":\"look\",\"status\":\"completed\"},{\"step\":\"fix\",\"status\":\"inProgress\"}]}}");
+  p := s[0].parts[s[0].n - 1];
+  #assert p.tk == TK_TODO && p.arg == "[x] look\n[ ] fix" && p.detail == "1/2 done";
+}

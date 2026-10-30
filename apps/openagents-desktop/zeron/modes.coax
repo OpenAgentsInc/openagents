@@ -1,5 +1,6 @@
 // The chat's modes: which engine answers a conversation. Claude is the
-// user's own Claude Code (claude.coax); Psionic is our own gpt-oss-20b
+// user's own Claude Code (claude.coax); Codex the user's own Codex
+// (codex.coax, codex app-server on their ChatGPT login); Psionic is our own gpt-oss-20b
 // through the Psionic Responses API (psionic.coax); the Lab (lab.coax) has
 // our own Elephant route each message to one of them. A conversation keeps
 // its mode; an empty one can change it. In Zeron the harness is picked
@@ -12,25 +13,34 @@
 // the pump. Based on Zeron by Wing, MIT.
 
 #load "psionic.coax";
+#load "codex.coax";
 #load "lab.coax";
 
-MODE_CLAUDE :: 0; MODE_PSIONIC :: 1; MODE_LAB :: 2;
-MODE_COUNT :: 3;
-MODE_NAMES :: [MODE_COUNT] string.["Claude", "Psionic", "Lab"];
+// (a new mode takes the next index: the host's --mode list and saved
+// choices read these numbers)
+MODE_CLAUDE :: 0; MODE_PSIONIC :: 1; MODE_LAB :: 2; MODE_CODEX :: 3;
+MODE_COUNT :: 4;
+MODE_NAMES :: [MODE_COUNT] string.["Claude", "Psionic", "Lab", "Codex"];
 LAB_EFFORT :: "Elephant decides";
-// The model chip's mark per mode (Composer.brand: 0 the Claude mark).
-MODE_BRANDS :: [MODE_COUNT] int.[0, ICON_PSIONIC, ICON_PSIONIC];
+// The model chip's mark per mode (Composer.brand: 0 the Claude mark; Codex
+// the OpenAI mark, monochrome as Zeron's harness_brand_icon draws it).
+MODE_BRANDS :: [MODE_COUNT] int.[0, ICON_PSIONIC, ICON_PSIONIC, ICON_OPENAI];
+// Each mode's tab in the picker's rail: its 16px mark and tint.
+mode_tab_icon :: (mode: int) -> int { return ifx mode == MODE_CLAUDE then ICON_CLAUDE else ifx mode == MODE_CODEX then ICON_OPENAI else ICON_PSIONIC; }
+mode_tab_tint :: (mode: int) -> Rgba { return ifx mode == MODE_CLAUDE then CLAUDE_TINT else zeron_dark().muted; }
 CH_MODE :: 4;                    // coaxial_zeron_choose's which for the mode
 
 // Each mode's catalog for the picker menus (picker.coax): Claude's models
-// and levels (claude.coax), Psionic's one model and its three efforts,
-// the Lab's one row (Elephant decides).
+// and levels (claude.coax), Codex's (codex.coax: its snapshot here, the
+// engine's model/list in the menus), Psionic's one model and its three
+// efforts, the Lab's one row (Elephant decides).
 mode_catalog :: (mode: int) -> PkCatalog {
+  if mode == MODE_CODEX { return codex_catalog(); }
   if mode == MODE_LAB {
     // one row: Elephant picks the engine, the model and the effort per message
     l := PkCatalog.{provider = "Lab", icon = ICON_PSIONIC, tint = zeron_dark().muted, n = 1, levels = 1, default_level = 0,
                     access = 3, full_access = 2, plan = false};
-    l.id[0] = "lab"; l.label[0] = "Lab"; l.desc[0] = "Elephant routes each message to Claude Code or Psionic"; l.ladder[0] = 0;   // no slider: the chip says Elephant decides
+    l.id[0] = "lab"; l.label[0] = "Lab"; l.desc[0] = "Elephant routes each message to Claude Code, Psionic or Codex"; l.ladder[0] = 0;   // no slider: the chip says Elephant decides
     l.level_id[0] = "auto"; l.level_label[0] = LAB_EFFORT;
     cl := claude_catalog();
     for k: 0..<3 { l.access_label[k] = cl.access_label[k]; l.access_desc[k] = cl.access_desc[k]; l.access_value[k] = cl.access_value[k]; }
@@ -71,5 +81,6 @@ mode_option_label :: (mode: int, which: int, i: int) -> string {
   #assert mode_option_count(MODE_PSIONIC, CH_EFFORT) == 3 && mode_option_label(MODE_PSIONIC, CH_EFFORT, 2) == "High";
   #assert mode_option_label(MODE_PSIONIC, CH_EFFORT, 3) == "" && mode_option_label(MODE_CLAUDE, CH_EFFORT, 6) == "Ultrathink";
   #assert mode_option_label(MODE_PSIONIC, CH_MODE, 1) == "Psionic" && mode_option_label(MODE_PSIONIC, CH_ACCESS, 1) == "Auto-accept edits";
+  #assert mode_option_label(MODE_LAB, CH_MODE, 3) == "Codex" && mode_option_count(MODE_CODEX, CH_EFFORT) == 7 && mode_option_label(MODE_CODEX, CH_EFFORT, 4) == "X-High";
   #assert mode_option_label(MODE_LAB, CH_MODE, 2) == "Lab" && mode_option_label(MODE_LAB, CH_MODEL, 0) == "Lab" && mode_option_label(MODE_LAB, CH_EFFORT, 0) == LAB_EFFORT;
 }

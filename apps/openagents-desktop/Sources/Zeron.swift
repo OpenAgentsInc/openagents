@@ -278,6 +278,8 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case 1: terminal("claude /login")
     case 2: terminal("curl -fsSL https://claude.ai/install.sh | bash")
     case 3: pickFiles()
+    case 4: terminal("codex login")
+    case 5: terminal("npm install -g @openai/codex")
     default: break
     }
     let copied = Int(zr_take_copy(state, &copyBuffer, Int32(copyBuffer.count)))
@@ -314,7 +316,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     if args.contains("--demo") { zr_demo(state); return }
     let cwd = value("--cwd").map { ($0 as NSString).expandingTildeInPath } ?? NSHomeDirectory()
     Array(cwd.utf8).withUnsafeBufferPointer { zr_attach(state, $0.baseAddress, Int32($0.count)) }
-    if let m = value("--mode")?.lowercased(), let i = ["claude", "psionic", "lab"].firstIndex(of: m) { zr_choose(state, 4, Int32(i)) }
+    if let m = value("--mode")?.lowercased(), let i = ["claude", "psionic", "lab", "codex"].firstIndex(of: m) { zr_choose(state, 4, Int32(i)) }
     for (flag, which) in [("--model", Int32(1)), ("--effort", Int32(2))] { if let v = value(flag) { named(which, v) } }
     if let v = value("--access")?.lowercased(), let i = ["full", "edits", "supervised"].firstIndex(of: v) { zr_choose(state, 3, Int32(i)) }
   }
@@ -489,7 +491,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "open": zr_open_menu(state, arg == "access" ? 3 : 1)
     case "attach": attach(URL(fileURLWithPath: (arg as NSString).expandingTildeInPath))
     case "mode":
-      if let i = ["claude", "psionic", "lab"].firstIndex(of: arg.lowercased()) { zr_choose(state, 4, Int32(i)) }
+      if let i = ["claude", "psionic", "lab", "codex"].firstIndex(of: arg.lowercased()) { zr_choose(state, 4, Int32(i)) }
     case "wait" where nums.count == 1: return (CACurrentMediaTime() + Double(nums[0]), false)
     case "waitidle": return (CACurrentMediaTime() + Double(nums.first ?? 300), true)
     case "scroll" where nums.count == 1: zr_scroll_to(state, nums[0])
