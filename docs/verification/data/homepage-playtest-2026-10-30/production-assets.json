@@ -1,0 +1,7 @@
+{
+  "base": "https://openagents.com",
+  "root_and_alias": "one Playtest link to /verse",
+  "wasm_path": "/build/newland.bd089243007c.wasm",
+  "wasm_sha256": "bd089243007c5560e4d0348e8580f26c9f8930f0983564dc01471c923e2ab9ab",
+  "release_artifact_matches": true
+}

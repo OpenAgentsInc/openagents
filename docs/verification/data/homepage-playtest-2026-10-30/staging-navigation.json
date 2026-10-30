@@ -1,0 +1,22 @@
+{
+  "base": "https://staging.openagents.com",
+  "cases": [
+    {
+      "width": 1280,
+      "height": 800,
+      "input": "mouse",
+      "path": "/verse",
+      "app": "verse",
+      "ready": true
+    },
+    {
+      "width": 390,
+      "height": 844,
+      "input": "touch",
+      "path": "/verse",
+      "app": "verse",
+      "ready": true
+    }
+  ],
+  "errors": []
+}

@@ -1,0 +1,13 @@
+{
+  "base": "https://staging.openagents.com",
+  "ready_projects": 63,
+  "watch_connected": true,
+  "beacon_history_ended": true,
+  "beacon_observations": 3,
+  "project_refreshes": 6,
+  "connections": 2,
+  "received_frames": 5410,
+  "sent_frames": 170,
+  "errors": [],
+  "elapsed_ms": 15177
+}
