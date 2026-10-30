@@ -24,3 +24,11 @@ Coax aggregate storage cap; `coax test` reports E0400 for that existing check
 (20 other imported checks passed). The unfinished #0845 borrowed-runner work
 tracks exercising the real transition code with borrowed buffers and a complete
 authority mutation gate. This display fix does not close #0845 or #c969.
+
+For the product path, the project Wasm was built from fresh relay snapshots
+for all seven configured projects and the real project page was served locally.
+A 1280x720 headless Chrome render showed the canvas and project content; this
+static-server smoke does not claim live relay connectivity. The required
+`golden-check.sh --commit c2cc5d5970` returned success but selected no project
+page, so it did not compare this page with a visual golden. No golden was
+changed or approved. Local screenshot: `/tmp/coax-0845-project-page.png`.
