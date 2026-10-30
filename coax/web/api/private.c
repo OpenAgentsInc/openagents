@@ -222,11 +222,14 @@ static void visitor(const request *q, char ip[128]) {
 //                                         page's Verse player (X-Verse-Player) moved to the phone's key -> player
 //   GET  me         (oa_session)          the session's npub and projects, as lines; A|1 an admin's
 //   POST logout     (this site's pages)   ends the session
+//   POST key        (NIP-98, with payload, from this site's pages) {"kind":"login"}: the words account's
+//                                         key logs in (docs/web-log-in.md): the same oa_session cookie as the
+//                                         poll, and the page's Verse player moved to that key -> player
 // Every POST is rate limited per address; challenges and poll tokens are never logged.
 static bool auth_route(const request *q) {
   const char *op = q->path + 10;
   bool post = !strcmp(q->method, "POST");
-  bool known = (post && (!strcmp(op, "challenge") || !strcmp(op, "approve") || !strcmp(op, "poll") || !strcmp(op, "logout")))
+  bool known = (post && (!strcmp(op, "challenge") || !strcmp(op, "approve") || !strcmp(op, "poll") || !strcmp(op, "logout") || !strcmp(op, "key")))
                || (!post && !strcmp(q->method, "GET") && !strcmp(op, "me"));
   if (!known) { no(q); return true; }
   char ip[128], auth[4096], from[256], site[65], pubkey[65] = "";
@@ -234,9 +237,9 @@ static bool auth_route(const request *q) {
   bool signed_req = api_header(q, "Authorization", auth, sizeof auth) && !strncmp(auth, "Nostr ", 6);
   if (post) {
     bool has_origin = api_header(q, "Origin", from, sizeof from) != NULL;
-    bool approve = !strcmp(op, "approve");
-    // the phone's approval is signed; the rest come from this site's pages
-    if (approve ? !signed_req || (has_origin && strcmp(from, origin())) : !has_origin || strcmp(from, origin())) {
+    bool approve = !strcmp(op, "approve"), key = !strcmp(op, "key");
+    // the phone's approval is signed; the rest come from this site's pages; a key's login is both
+    if (approve ? !signed_req || (has_origin && strcmp(from, origin())) : !has_origin || strcmp(from, origin()) || (key && !signed_req)) {
       api_respond(q->fd, 403, "application/json", PRIVATE_HEADERS, "{\"error\":\"cross-site\"}", 22); return true;
     }
     int per = !strcmp(op, "poll") ? 120 : !strcmp(op, "logout") ? 30 : 10;
@@ -248,10 +251,16 @@ static bool auth_route(const request *q) {
   if (q->body_len > 4096) { api_respond(q->fd, 413, "application/json", PRIVATE_HEADERS, "{\"error\":\"too large\"}", 21); return true; }
   PGconn *db = api_db();
   if (!db) { api_respond(q->fd, 503, "application/json", PRIVATE_HEADERS, "{\"error\":\"no database\"}", 23); return true; }
-  if (!strcmp(op, "approve")) {
+  if (!strcmp(op, "approve") || !strcmp(op, "key")) {
     char url[4300]; snprintf(url, sizeof url, "%s%s", origin(), q->target);
     nostr_event ev; char err[160];
+    // a key's login: the body is exactly {"kind":"login"}, its event fresh (60 s), its payload that body, its id new
+    bool login = !strcmp(op, "key");
+    if (login && (q->body_len != 16 || memcmp(q->body, "{\"kind\":\"login\"}", 16))) {
+      api_respond(q->fd, 400, "application/json", PRIVATE_HEADERS, "{\"error\":\"not a login\"}", 23); return true;
+    }
     if (!nip98_check(auth, q->method, url, q->body, q->body_len, (long long)time(NULL), &ev, err, sizeof err) || !ev.payload[0] || !first_use(db, &ev)) {
+      if (login) { api_respond(q->fd, 401, "application/json", PRIVATE_HEADERS, "{\"error\":\"not signed\"}", 22); return true; }
       no(q); return true;
     }
     if (!allowed("key", ev.pubkey, 30)) {
@@ -262,7 +271,7 @@ static bool auth_route(const request *q) {
   cookie_named(q, SITE_COOKIE, site);
   // the poll's Verse player (host flag 8): signed in with the phone's key too (migration 0022)
   char player[160] = "";
-  if (!strcmp(op, "poll") && api_header(q, "X-Verse-Player", player, sizeof player)) {
+  if ((!strcmp(op, "poll") || !strcmp(op, "key")) && api_header(q, "X-Verse-Player", player, sizeof player)) {
     size_t n = strlen(player);
     bool fine = n >= 20 && n <= 128;
     for (size_t i = 0; fine && i < n; i++) fine = isalnum((unsigned char)player[i]) || player[i] == '_' || player[i] == '-';
