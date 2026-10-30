@@ -47,6 +47,7 @@ secrets. That's measured by the memcheck probes below.
 | `753e949fc6` | Signer fix from an independent review: the message is now bound across stages, so one nonce can't sign two messages |
 | `a193b526cb` | Self-verifier memcheck probe: the release build has no candidate-dependent branch or address; the variable-time control is flagged |
 | `10d8e604b8` | **Signer secret-flow map** (`coax/tests/nostr/schnorr_sign_secret_probe.sh`) |
+| (b) step 1, this push | Masked narrowing casts in the six kernels use `cast,trunc(u32)` (43 casts plus 5 carries); the signer map drops from 217 to 189 reports. Fast checks pass. Mutation is owed |
 
 ## In flight
 

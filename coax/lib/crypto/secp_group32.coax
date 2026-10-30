@@ -36,7 +36,7 @@ sg32_from_field :: (a:SecpField)->Sf32 {
   r:Sf32;
   for i:0..<10 {
     at:=i*26;word:=at/32;shift:=at%32;v:=a.limb[i]&SF_MASK26;
-    r.limb[word]|=cast(u32)((v<<shift)&SF32_WORD);
+    r.limb[word]|=cast,trunc(u32)((v<<shift));
     r.limb[(word+1)%8]|=cast(u32)(v>>(32-shift));
   }
   return r;
@@ -56,7 +56,7 @@ sg32_mask_equal :: (a:Sf32,b:Sf32)->u64 {
   difference:u64;for i:0..<8 {difference|=cast(u64)(a.limb[i]^b.limb[i]);}return sg_word_equal(difference,0);
 }
 sg32_choose_field :: (mask:u64,a:Sf32,b:Sf32)->Sf32 {
-  r:Sf32;m:=cast(u32)(mask&SF32_WORD);for i:0..<8 {r.limb[i]=cb_ct_select32(m,a.limb[i],b.limb[i]);}return r;
+  r:Sf32;m:=cast,trunc(u32)(mask);for i:0..<8 {r.limb[i]=cb_ct_select32(m,a.limb[i],b.limb[i]);}return r;
 }
 sg32_choose :: (mask:u64,a:Sg32,b:Sg32)->Sg32 {return Sg32.{x=sg32_choose_field(mask,a.x,b.x),y=sg32_choose_field(mask,a.y,b.y),z=sg32_choose_field(mask,a.z,b.z)};}
 sg32_infinity :: ()->Sg32 {r:Sg32;r.x.limb[0]=1;r.y.limb[0]=1;return r;}

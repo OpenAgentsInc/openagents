@@ -90,14 +90,14 @@ sc_zero_bit :: (word:u32)->u64 {return ((cast(u64)word+SC_WORD)>>32)^1;}
 sc_is_zero :: (a:ScScalar)->bool #export_c {bits: u32;for i:0..<8 {bits=bits|a.limbs[i];}return sc_zero_bit(bits)==1;}
 sc_equal :: (a:ScScalar,b:ScScalar)->bool #export_c {bits:u32;for i:0..<8 {bits=bits|(a.limbs[i]^b.limbs[i]);}return sc_zero_bit(bits)==1;}
 sc_select :: (bit:u64,a:ScScalar,b:ScScalar)->ScScalar {
-  mask:=cast(u32)(cb_mask(bit)&SC_WORD);result:ScScalar;
+  mask:=cast,trunc(u32)(cb_mask(bit));result:ScScalar;
   for i:0..<8 {result.limbs[i]=cb_ct_select32(mask,a.limbs[i],b.limbs[i]);}return result;
 }
 sc_subtract_n :: (a:[9]u32)->ScDifference {
   result:ScDifference;borrow:=cast(u64)0;
   for i:0..<8 {
     wide:=SC_BASE+cast(u64)a[i]-cast(u64)SC_N.limbs[i]-borrow;
-    result.value.limbs[i]=cast(u32)(wide&SC_WORD);borrow=1-(wide>>32);
+    result.value.limbs[i]=cast,trunc(u32)(wide);borrow=1-(wide>>32);
   }
   result.borrow=1-((SC_BASE+cast(u64)a[8]-borrow)>>32);return result;
 }
@@ -126,14 +126,14 @@ sc_store :: (a:ScScalar,bytes:[]u8)->bool #export_c {
 }
 sc_add :: (a:ScScalar,b:ScScalar)->ScScalar #export_c {
   x:=sc_normalize(a);y:=sc_normalize(b);sum:[9]u32;carry:=cast(u64)0;
-  for i:0..<8 {wide:=cast(u64)x.limbs[i]+cast(u64)y.limbs[i]+carry;sum[i]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
-  sum[8]=cast(u32)carry;return sc_reduce9(sum);
+  for i:0..<8 {wide:=cast(u64)x.limbs[i]+cast(u64)y.limbs[i]+carry;sum[i]=cast,trunc(u32)(wide);carry=wide>>32;}
+  sum[8]=cast,trunc(u32)carry;return sc_reduce9(sum);
 }
 sc_sub :: (a:ScScalar,b:ScScalar)->ScScalar #export_c {
   x:=sc_normalize(a);y:=sc_normalize(b);result:ScScalar;borrow:=cast(u64)0;
-  for i:0..<8 {wide:=SC_BASE+cast(u64)x.limbs[i]-cast(u64)y.limbs[i]-borrow;result.limbs[i]=cast(u32)(wide&SC_WORD);borrow=1-(wide>>32);}
-  mask:=cast(u32)(cb_mask(borrow)&SC_WORD);carry:=cast(u64)0;
-  for i:0..<8 {wide:=cast(u64)result.limbs[i]+cast(u64)(SC_N.limbs[i]&mask)+carry;result.limbs[i]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+  for i:0..<8 {wide:=SC_BASE+cast(u64)x.limbs[i]-cast(u64)y.limbs[i]-borrow;result.limbs[i]=cast,trunc(u32)(wide);borrow=1-(wide>>32);}
+  mask:=cast,trunc(u32)(cb_mask(borrow));carry:=cast(u64)0;
+  for i:0..<8 {wide:=cast(u64)result.limbs[i]+cast(u64)(SC_N.limbs[i]&mask)+carry;result.limbs[i]=cast,trunc(u32)(wide);carry=wide>>32;}
   return result;
 }
 sc_negate :: (a:ScScalar)->ScScalar #export_c {return sc_sub(ScScalar.{},a);}
@@ -143,8 +143,8 @@ sc_montgomery :: (a:ScScalar,b:ScScalar)->ScScalar {
   t:[17]u32;
   for i:0..<8 {
     carry:=cast(u64)0;
-    for j:0..<8 {wide:=mul_wrap(cast(u64)a.limbs[i],cast(u64)b.limbs[j])+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
-    t[i+8]=cast(u32)carry;
+    for j:0..<8 {wide:=mul_wrap(cast(u64)a.limbs[i],cast(u64)b.limbs[j])+cast(u64)t[i+j]+carry;t[i+j]=cast,trunc(u32)(wide);carry=wide>>32;}
+    t[i+8]=cast,trunc(u32)carry;
   }
   // REDC adds a multiple of n that clears one low word per round. Carry
   // propagation visits all remaining public positions, even after carry=0.
@@ -153,8 +153,8 @@ sc_montgomery :: (a:ScScalar,b:ScScalar)->ScScalar {
     // The first low word cancels modulo R's word base and is discarded.
     // Seed its outgoing carry directly instead of storing an unused zero.
     first:=mul_wrap(factor,cast(u64)SC_N.limbs[0])+cast(u64)t[i];carry:=first>>32;
-    for j:1..<8 {wide:=mul_wrap(factor,cast(u64)SC_N.limbs[j])+cast(u64)t[i+j]+carry;t[i+j]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
-    for k:i+8..<17 {wide:=cast(u64)t[k]+carry;t[k]=cast(u32)(wide&SC_WORD);carry=wide>>32;}
+    for j:1..<8 {wide:=mul_wrap(factor,cast(u64)SC_N.limbs[j])+cast(u64)t[i+j]+carry;t[i+j]=cast,trunc(u32)(wide);carry=wide>>32;}
+    for k:i+8..<17 {wide:=cast(u64)t[k]+carry;t[k]=cast,trunc(u32)(wide);carry=wide>>32;}
   }
   // REDC(T)<2n for T<n²<nR, so exactly one masked subtraction suffices.
   reduced:[9]u32;for i:0..<9 {reduced[i]=t[i+8];}return sc_reduce9(reduced);

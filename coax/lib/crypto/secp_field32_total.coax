@@ -45,24 +45,24 @@
 }
 sf32_fold_total :: (input:Sf32,top:u64)->Sf32Fold {
   r:Sf32Fold;wide:=cast(u64)input.limb[0]+mul_wrap(top,977);
-  r.value.limb[0]=cast(u32)(wide&SF32_WORD);carry:=wide>>32;
-  wide=cast(u64)input.limb[1]+carry+top;r.value.limb[1]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-  wide=cast(u64)input.limb[2]+carry;r.value.limb[2]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-  wide=cast(u64)input.limb[3]+carry;r.value.limb[3]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-  wide=cast(u64)input.limb[4]+carry;r.value.limb[4]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-  wide=cast(u64)input.limb[5]+carry;r.value.limb[5]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-  wide=cast(u64)input.limb[6]+carry;r.value.limb[6]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
-  wide=cast(u64)input.limb[7]+carry;r.value.limb[7]=cast(u32)(wide&SF32_WORD);carry=wide>>32;
+  r.value.limb[0]=cast,trunc(u32)(wide);carry:=wide>>32;
+  wide=cast(u64)input.limb[1]+carry+top;r.value.limb[1]=cast,trunc(u32)(wide);carry=wide>>32;
+  wide=cast(u64)input.limb[2]+carry;r.value.limb[2]=cast,trunc(u32)(wide);carry=wide>>32;
+  wide=cast(u64)input.limb[3]+carry;r.value.limb[3]=cast,trunc(u32)(wide);carry=wide>>32;
+  wide=cast(u64)input.limb[4]+carry;r.value.limb[4]=cast,trunc(u32)(wide);carry=wide>>32;
+  wide=cast(u64)input.limb[5]+carry;r.value.limb[5]=cast,trunc(u32)(wide);carry=wide>>32;
+  wide=cast(u64)input.limb[6]+carry;r.value.limb[6]=cast,trunc(u32)(wide);carry=wide>>32;
+  wide=cast(u64)input.limb[7]+carry;r.value.limb[7]=cast,trunc(u32)(wide);carry=wide>>32;
   r.carry=carry;return r;
 }
 sf32_canonical_total :: (input:Sf32)->Sf32 {
-  folded:=sf32_fold_total(input,1);mask:=cast(u32)(cb_mask(folded.carry)&SF32_WORD);r:Sf32;
+  folded:=sf32_fold_total(input,1);mask:=cast,trunc(u32)(cb_mask(folded.carry));r:Sf32;
   for i:0..<8 {r.limb[i]=input.limb[i]^((input.limb[i]^folded.value.limb[i])&value_barrier(mask));}
   return r;
 }
 sf32_add_total :: (a:Sf32,b:Sf32)->Sf32 {
   r:Sf32;carry:u64;
-  for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
+  for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;}
   // Two folds reduce any 257-bit sum; the second cannot overflow.
   // A fold's carry is 0 or 1, so &1 keeps its value and states its range.
   folded:=sf32_fold_total(r,carry);folded=sf32_fold_total(folded.value,folded.carry&1);
@@ -72,13 +72,13 @@ sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 {
   product:[16]u32;
   for i:0..<8 {
     carry:u64;
-    for j:0..<8 {wide:=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[j])+cast(u64)product[i+j]+carry;product[i+j]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
-    product[i+8]=cast(u32)carry;
+    for j:0..<8 {wide:=mul_wrap(cast(u64)a.limb[i],cast(u64)b.limb[j])+cast(u64)product[i+j]+carry;product[i+j]=cast,trunc(u32)(wide);carry=wide>>32;}
+    product[i+8]=cast,trunc(u32)carry;
   }
   r:Sf32;carry:u64;previous:u64;
   for i:0..<8 {
     high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+mul_wrap(high,977)+previous+carry;
-    r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;previous=high;
+    r.limb[i]=cast,trunc(u32)(wide);carry=wide>>32;previous=high;
   }
   top:=previous+carry;folded:=sf32_fold_total(r,top);folded=sf32_fold_total(folded.value,folded.carry&1);
   return sf32_canonical_total(folded.value);

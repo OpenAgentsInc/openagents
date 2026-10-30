@@ -122,7 +122,7 @@ smc_table :: (point: Sg32) -> [9] Sg32 {
 smc_pick :: (table: [] Sg32,which: u64) -> Sg32 {
   chosen := sg32_infinity();
   for i: 0..<table.count {
-    mask := cast(u32)(sg_word_equal(which,cast(u64) i)&SF32_WORD); point := table[i];
+    mask := cast,trunc(u32)(sg_word_equal(which,cast(u64) i)); point := table[i];
     for limb: 0..<8 {
       chosen.x.limb[limb] ^= (chosen.x.limb[limb] ^ point.x.limb[limb]) & mask;
       chosen.y.limb[limb] ^= (chosen.y.limb[limb] ^ point.y.limb[limb]) & mask;
