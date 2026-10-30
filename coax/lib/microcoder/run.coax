@@ -1,0 +1,241 @@
+// A Microcoder run for a frame loop (docs/coder/microcoder.md, "What the
+// Lab shows"): the loop, a plan and the tools behind one poll, which hands
+// back what a transcript draws: each step's attempt (gateway, model,
+// status), its commands with exit codes and output, the reply as it streams
+// (the next_action's "reply" text, read out of the JSON while it arrives),
+// and the ending. mc_run_stop is STOP: curl goes and the run ends stopped.
+//
+// Infrastructure only: the Mac app's Lab and /chat call this when the
+// owner asks for the wiring. Model calls never block a poll; a step's
+// commands run inside the poll that starts them (30 s each at most).
+
+#load "tools.coax";
+#load "../gateway/plan.coax";
+
+// ---------------------------------------------------------------- the reply as it streams
+
+// Reads a next_action object byte by byte and hands out its top-level
+// "reply" string's text as it arrives, decoded (escapes, \u with surrogate
+// pairs). Other fields, nested values and keys are skipped.
+McReplyStream :: struct {
+  depth: int;
+  in_str: bool; esc: bool;
+  hex: int; nhex: int;           // a \uXXXX being read (nhex digits so far), -1 when none
+  high: int;                     // a high surrogate waiting for its low half
+  key: [8] u8; nk: int; key_long: bool;   // the key being read at depth 1
+  is_key: bool;                  // the string being read is a key
+  want_value: bool;              // after "key": at depth 1
+  in_reply: bool;                // inside the reply value's string
+  reply_key: bool;               // the last key was "reply"
+}
+
+mc_rs_reset :: (rs: [] McReplyStream) { rs[0] = McReplyStream.{nhex = -1}; }
+
+mc_rs_put :: (out: [] u8, n: int, c: u8) -> int {
+  if n < 0 || n >= out.count { return n; }
+  out[n] = c;
+  return n + 1;
+}
+
+// Feeds text; the reply's new bytes go to out; how many.
+mc_rs_feed :: (rs: [] McReplyStream, text: string, out: [] u8) -> int {
+  n := 0;
+  for c: text {
+    if rs[0].in_str {
+      if rs[0].nhex >= 0 {
+        d := json_hex(c);
+        if d < 0 { rs[0].nhex = -1; continue; }
+        rs[0].hex = rs[0].hex * 16 + d; rs[0].nhex += 1;
+        if rs[0].nhex < 4 { continue; }
+        cp := rs[0].hex; rs[0].nhex = -1;
+        if cp >= 0xD800 && cp < 0xDC00 { rs[0].high = cp; continue; }
+        if cp >= 0xDC00 && cp < 0xE000 && rs[0].high > 0 { cp = 0x10000 + ((rs[0].high - 0xD800) << 10) + (cp - 0xDC00); }
+        rs[0].high = 0;
+        if rs[0].in_reply { m := json_put_cp(out, n, cp); if m > 0 { n = m; } }
+        continue;
+      }
+      if rs[0].esc {
+        rs[0].esc = false;
+        if c == 'u' { rs[0].nhex = 0; rs[0].hex = 0; continue; }
+        e := c;
+        if c == 'n' { e = 10; } else if c == 't' { e = 9; } else if c == 'r' { e = 13; } else if c == 'b' { e = 8; } else if c == 'f' { e = 12; }
+        if rs[0].in_reply { n = mc_rs_put(out, n, e); }
+        else if rs[0].is_key { if rs[0].nk < 8 { rs[0].key[rs[0].nk] = e; rs[0].nk += 1; } else { rs[0].key_long = true; } }
+        continue;
+      }
+      if c == '\\' { rs[0].esc = true; continue; }
+      if c == '"' {
+        rs[0].in_str = false;
+        if rs[0].is_key {
+          rs[0].is_key = false;
+          rs[0].reply_key = !rs[0].key_long && cast(string) rs[0].key[0..<rs[0].nk] == "reply";
+        }
+        rs[0].in_reply = false;
+        continue;
+      }
+      if rs[0].in_reply { n = mc_rs_put(out, n, c); }
+      else if rs[0].is_key { if rs[0].nk < 8 { rs[0].key[rs[0].nk] = c; rs[0].nk += 1; } else { rs[0].key_long = true; } }
+      continue;
+    }
+    if c == '"' {
+      rs[0].in_str = true;
+      if rs[0].depth == 1 && !rs[0].want_value { rs[0].is_key = true; rs[0].nk = 0; rs[0].key_long = false; }
+      else if rs[0].depth == 1 && rs[0].want_value { rs[0].in_reply = rs[0].reply_key; rs[0].want_value = false; }
+      continue;
+    }
+    if c == ':' && rs[0].depth == 1 { rs[0].want_value = true; continue; }
+    if c == ',' && rs[0].depth == 1 { rs[0].want_value = false; rs[0].reply_key = false; continue; }
+    if c == '{' || c == '[' { if rs[0].depth == 1 && rs[0].want_value { rs[0].want_value = false; } rs[0].depth += 1; continue; }
+    if c == '}' || c == ']' { rs[0].depth -= 1; continue; }
+    if rs[0].depth == 1 && rs[0].want_value && c != ' ' && c != '\n' && c != '\t' && c != '\r' { rs[0].want_value = false; }
+  }
+  return n;
+}
+
+// ---------------------------------------------------------------- the run
+
+MR_ATTEMPT :: 1;                 // log: an attempt of this step ended (gateway, model, status ...)
+MR_REPLY :: 2;                   // text: more of the reply
+MR_COMMAND :: 3;                 // text: the command; exit, timed_out, output
+MR_VIEW :: 4;                    // text: the path; found
+MR_STEP :: 5;                    // a step ended; step: its number
+MR_ENDED :: 6;                   // ending (MC_END_*), text: the reply (finished, asked) or why (no_capacity)
+
+McRunEvent :: struct {
+  kind: int;
+  text: string;
+  log: GwAttemptLog;
+  exit: int;
+  timed_out: bool;
+  found: bool;
+  output: string;
+  step: int;
+  ending: int;
+}
+
+McRun :: struct {
+  l: [1] McLoop;
+  p: [] GwPlan;
+  bench: [] GwBench;
+  cwd: string;
+  effort: string;
+  rs: [1] McReplyStream;
+  calling: bool;
+  logged: int;                   // plan log entries handed out this step
+  ended: bool;
+  rbuf: [4096] u8;               // this poll's reply bytes
+  tb: [1] McToolBuffers;
+}
+
+// Starts a run of the loop already set up in r.l (mc_init) through plan p
+// (gw_plan_add its attempts first); effort "" leaves it to the provider.
+mc_run_start :: (r: [] McRun, p: [] GwPlan, bench: [] GwBench, cwd: string, effort: string) {
+  r[0].p = p; r[0].bench = bench; r[0].cwd = cwd; r[0].effort = effort; r[0].ended = false;
+  mc_run_call(r);
+}
+
+mc_run_call :: (r: [] McRun) {
+  req := mc_request(r[0].l[..]);
+  if r[0].effort.count > 0 { req.effort = r[0].effort; }
+  mc_rs_reset(r[0].rs[..]);
+  r[0].logged = 0;
+  gw_plan_start(r[0].p, r[0].bench, req);
+  r[0].calling = true;
+}
+
+mc_run_put :: (out: [] McRunEvent, n: int, e: McRunEvent) -> int {
+  if n >= out.count { return n; }
+  out[n] = e;
+  return n + 1;
+}
+
+mc_run_logs :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
+  n := k;
+  while r[0].logged < r[0].p[0].nlog && n < out.count {
+    n = mc_run_put(out, n, McRunEvent.{kind = MR_ATTEMPT, log = r[0].p[0].log[r[0].logged]});
+    r[0].logged += 1;
+  }
+  return n;
+}
+
+mc_run_end :: (r: [] McRun, out: [] McRunEvent, k: int) -> int {
+  r[0].ended = true;
+  l := r[0].l[..];
+  text := ifx l[0].ending == MC_END_NO_CAPACITY then l[0].why else l[0].reply;
+  return mc_run_put(out, k, McRunEvent.{kind = MR_ENDED, ending = l[0].ending, text = text});
+}
+
+// What happened since the last poll (give out 16 or more). Model calls
+// never block; a step's commands run here when the step asks for them.
+mc_run_poll :: (r: [] McRun, out: [] McRunEvent) -> int {
+  if r[0].ended { return 0; }
+  l := r[0].l[..];
+  k := 0;
+  ev: [8] GwEvent;
+  n := gw_plan_poll(r[0].p, r[0].bench, ev[..]);
+  status := MC_WAIT;
+  rn := 0;
+  for i: 0..<n {
+    if ev[i].kind == GW_EV_TEXT { rn += mc_rs_feed(r[0].rs[..], ev[i].text, r[0].rbuf[rn..<r[0].rbuf.count]); }
+    status = mc_feed(l, ev[i]);
+  }
+  if rn > 0 { k = mc_run_put(out, k, McRunEvent.{kind = MR_REPLY, text = cast(string) r[0].rbuf[0..<rn]}); }
+  k = mc_run_logs(r, out, k);
+  if status == MC_WAIT { return k; }
+  r[0].calling = false;
+  if status == MC_TOOLS {
+    a := mc_pending(l);
+    for i: 0..<a.nc {
+      res := mc_run_command(r[0].cwd, a.commands[i], MC_COMMAND_SECONDS, r[0].tb[0].out[..]);
+      mc_command(l, a.commands[i], res.exit, res.timed_out, res.output);
+      k = mc_run_put(out, k, McRunEvent.{kind = MR_COMMAND, text = a.commands[i], exit = res.exit, timed_out = res.timed_out, output = res.output});
+    }
+    for i: 0..<a.nv {
+      v := mc_view_file(r[0].cwd, a.view[i], r[0].tb[0].view[..]);
+      mc_view(l, a.view[i], v.found, v.content);
+      k = mc_run_put(out, k, McRunEvent.{kind = MR_VIEW, text = a.view[i], found = v.found});
+    }
+    status = mc_tools_done(l);
+  }
+  k = mc_run_put(out, k, McRunEvent.{kind = MR_STEP, step = l[0].steps});
+  if status == MC_ENDED { return mc_run_end(r, out, k); }
+  mc_run_call(r);
+  return k;
+}
+
+// STOP: the running call's curl goes and the run ends stopped.
+mc_run_stop :: (r: [] McRun, out: [] McRunEvent) -> int {
+  if r[0].ended { return 0; }
+  gw_plan_stop(r[0].p);
+  mc_stop(r[0].l[..]);
+  k := mc_run_logs(r, out, 0);
+  return mc_run_end(r, out, k);
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "the reply streams out of a next_action as it arrives, in any split, decoded" {
+  whole := "{\"rationale\":\"a \\\"reply\\\" here is not it\",\"commands\":[\"echo {\\\"reply\\\":1}\"],\"view\":[],\"finished\":true,\"reply\":\"2 + 2 = 4.\\nCaf\\u00e9 \\ud83d\\ude00 \\\"ok\\\"\",\"ask\":\"none\"}";
+  want := "2 + 2 = 4.\nCafé 😀 \"ok\"";
+  for size: 1..<12 {
+    rs: [1] McReplyStream; mc_rs_reset(rs[..]);
+    got: [256] u8; ng := 0;
+    at := 0;
+    while at < whole.count {
+      e := ifx at + size < whole.count then at + size else whole.count;
+      ng += mc_rs_feed(rs[..], cast(string) whole[at..<e], got[ng..<got.count]);
+      at = e;
+    }
+    #assert cast(string) got[0..<ng] == want;
+  }
+}
+
+#test "no reply text comes from other fields, nested objects or a reply-like key" {
+  rs: [1] McReplyStream; mc_rs_reset(rs[..]);
+  got: [256] u8;
+  n := mc_rs_feed(rs[..], "{\"replying\":\"no\",\"x\":{\"reply\":\"nested\"},\"reply\":\"\",\"ask\":\"question\"}", got[..]);
+  #assert n == 0;
+  mc_rs_reset(rs[..]);
+  n = mc_rs_feed(rs[..], "{\"reply\" : \"spaced\"}", got[..]);
+  #assert cast(string) got[0..<n] == "spaced";
+}

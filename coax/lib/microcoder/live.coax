@@ -5,7 +5,7 @@
 // replies and the attempt log; never a key or the prompt.
 
 #import "Basic";
-#load "tools.coax";
+#load "run.coax";
 #load "../gateway/plan.coax";
 #load "../gateway/vertex.coax";
 #load "../gateway/openrouter.coax";
@@ -47,6 +47,31 @@ live_commands_run :: (l: [] McLoop, lb: [] McLoopBuffers) -> int {
   return n;
 }
 
+// Through McRun: the reply must stream in more than one piece; with stop,
+// STOP after the first piece must end the run stopped mid-stream.
+live_run_stream :: (p: [] GwPlan, bench: [] GwBench, stop: bool) -> bool {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; r: [1] McRun;
+  mc_init(r[0].l[..], sb[..], lb[..], "{\"os\":\"macOS\"}", "In one paragraph of about 150 words, explain what a GPU is.", "{\"route\":\"other\",\"local_work\":0.1}", 0.1);
+  t0 := cxproc_now_ms();
+  mc_run_start(r[..], p, bench, "", "low");
+  ev: [16] McRunEvent;
+  pieces := 0; first_ms := -1; chars := 0; ending := 0;
+  while !r[0].ended {
+    n := mc_run_poll(r[..], ev[..]);
+    for i: 0..<n {
+      if ev[i].kind == MR_REPLY { pieces += 1; chars += ev[i].text.count; if first_ms < 0 { first_ms = cxproc_now_ms() - t0; } }
+      if ev[i].kind == MR_ENDED { ending = ev[i].ending; }
+    }
+    if stop && pieces > 0 && !r[0].ended {
+      n = mc_run_stop(r[..], ev[..]);
+      for i: 0..<n { if ev[i].kind == MR_ENDED { ending = ev[i].ending; } }
+    }
+  }
+  print("run%: reply in % piece(s), % bytes, first at %ms, ending % after %ms\n", ifx stop then " (STOP)" else "", pieces, chars, first_ms, mc_ending_name(ending), cxproc_now_ms() - t0);
+  if stop { return ending == MC_END_STOPPED && pieces >= 1 && p[0].over; }
+  return ending == MC_END_FINISHED && pieces > 1;
+}
+
 main :: () {
   v: [1] GwVertex;
   why := gw_vertex_token(v[..]);
@@ -79,5 +104,7 @@ main :: () {
   ran := live_commands_run(l[..], lb[..]);
   print("microcoder: % command(s) ran\n", ran);
   ok = ok && l[0].ending == MC_END_FINISHED && three && ran == 1;
+  ok = live_run_stream(p[..], bench[..], false) && ok;
+  ok = live_run_stream(p[..], bench[..], true) && ok;
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }
