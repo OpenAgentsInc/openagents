@@ -5,6 +5,8 @@
 #include <stddef.h>
 extern void nv_run(int64_t mode, coax_v_s64 observation);
 #define EXPORT(name) __attribute__((export_name(name)))
+static uint32_t golden_mode;
+EXPORT("coaxial_golden") void golden(uint32_t on) { golden_mode = on != 0; }
 static coax_t_Nip *state_at(uint32_t p) { return (coax_t_Nip *)(uintptr_t)p; }
 static coax_v_t_Nip at(uint32_t p) { return (coax_v_t_Nip){state_at(p), 1}; }
 EXPORT("coaxial_layout") uint32_t layout(void) { return sizeof(coax_t_Nip) * 1000003u + 0x4e495031u; }
@@ -19,7 +21,7 @@ EXPORT("coaxial_frame") uint32_t frame(uint32_t p, uint32_t vertices, uint32_t u
     nv_run(request, (coax_v_s64){result, 68});
     nip_observed(at(p), (coax_v_s64){result, 68});
   }
-  return nip_frame(at(p), (coax_v_f32){(float *)(uintptr_t)vertices, 50400 * 16}, (coax_v_f32){(float *)(uintptr_t)uniforms, 16}, w, h, d, dt, still != 0);
+  return nip_frame(at(p), (coax_v_f32){(float *)(uintptr_t)vertices, 50400 * 16}, (coax_v_f32){(float *)(uintptr_t)uniforms, 16}, w, h, d, dt, still != 0 || golden_mode != 0);
 }
 EXPORT("coaxial_key") uint32_t key(uint32_t p, int32_t k, int32_t mods) { (void)mods; return nip_key(at(p), k); }
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p, float x, float y, int32_t phase, int32_t kind, int32_t id) {

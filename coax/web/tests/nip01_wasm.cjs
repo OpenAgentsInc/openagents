@@ -41,5 +41,11 @@ const fs=require('node:fs'),assert=require('node:assert/strict');
     assert.equal(x.coaxial_key(p,-1,0),1);assert.equal(x.coaxial_action(p),1);x.coaxial_action_done(p);
   }
   assert.equal(x.coaxial_key(p,48,0),0);assert.equal(x.coaxial_key(p,55,0),0);
+  // Golden mode forwards the host's deterministic/reduced-motion request to
+  // Coax even when the OS motion preference permits the normal animation.
+  u.fill(0,p,p+stateSize);x.coaxial_golden(1);frame();
+  const golden=new Uint8Array(u.slice(vertices,vertices+50400*64));
+  frame(1280,800,1,1);assert.deepEqual(u.subarray(vertices,vertices+50400*64),golden);
+  x.coaxial_golden(0);
   process.stdout.write(JSON.stringify({frames,keys:10,hud_clicks:clicks,index_navigation_viewports:3,guard_bytes:true,slowest_frame_ms:Math.round(ms*10)/10,engine:`Node${process.version}`})+'\n');
 })().catch(e=>{console.error(e);process.exitCode=1;});
