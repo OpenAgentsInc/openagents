@@ -1,5 +1,7 @@
 # Coax Nostr epic: handoff
 
+Latest Codex stop: [2026-10-29 handoff](nostr-codex-handoff-2026-10-29.md).
+
 ## API deployment integrity handoff — 2026-10-30
 
 A separately scoped update hardens the existing C-image deployment. It captures
