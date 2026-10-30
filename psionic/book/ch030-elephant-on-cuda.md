@@ -196,7 +196,16 @@ through cuBLAS, which no Psionic build loads. The one-token readout reaches
 90% of cuBLAS's BF16 rate; the 86-token products reach 34–41% of its f32
 SGEMM and 10–16% of its BF16 tensor-core GEMM.
 
-Opening the session takes about 100 seconds, nearly all of it hashing the
+A request's questions share one prefix, so the engine runs chapter 8's fork
+(chapter 31 lists `dp_plan_prefix` and `dp_plan_suffix`): the prefix pass
+keeps each linear layer's convolution history and delta-rule state and each
+full layer's key and value rows in an 82 MiB fork buffer, and every
+question's suffix starts from them. The forked decision is bit-identical to
+the whole one (none of 496,640 logits differ); the 37-token suffix takes
+about 120 ms, and the Lab's five questions went from 1.84 to 1.17 s with the
+same answers.
+
+Opening the session took about 100 seconds, nearly all of it hashing the
 18.8 GB checkpoint on the CPU; the upload of 13.9 GB of resident weights takes
 2 seconds. The [verification record](../../docs/verification/psionic-ch30-2026-10-29.md)
 has the measurements, the per-kernel profile and the headroom runs.
@@ -208,5 +217,5 @@ projections share no tiles between warps yet; chapters 27 to 29 and 32 are where
 they come from. When the feed-forward matrices are not enough, the head and the
 mixer matrices stream too: [chapter 30a](ch030a-share-the-card.md) runs the
 decision in a few hundred MiB beside another model. The session is still the CPU's, so a cold start is
-dominated by authentication. There is no batching, no prefix reuse across
-requests and no service.
+dominated by authentication unless a verified-file record (chapter 15)
+names the checkpoint. Questions run one after another, not batched.
