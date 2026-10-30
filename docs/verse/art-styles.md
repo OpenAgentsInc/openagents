@@ -154,9 +154,13 @@ stage (0.8; half for what glows and for her skin and clothes).
   along the shore) with slow broken ripple lines drifting across the open
   water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`).
 - **Painterly snow** in a made realm is `PAINT_SNOW`: sky blue (0.5, 0.66, 1.0)
-  by day and night, lilac (0.74, 0.54, 0.94) at dawn and dusk, not the low-poly ground's near white: white snow measured a saturation of
+  by day and night, periwinkle (0.6, 0.62, 1.0) at dawn and dusk (the low warm key turns it
+  lavender), not the low-poly ground's near white: white snow measured a saturation of
   0.08 at noon and 0.10 at dusk, under the style check's 0.22, and read as
-  paper rather than paint (`myrealm.coax`, October 30).
+  paper rather than paint (`myrealm.coax`, October 30). Now 0.24 at noon on
+  a desktop; at dusk 0.20 (0.17 on a phone): the dusk sky's cream haze and
+  grey cloud are half the frame there, so the rest waits on the preset's
+  dusk sky (task as-snow-dusk).
 - **Made realms** (`/realms/new`, style flat) take `FLAT_GARDEN` at their
   own time of day: three hard tones on their shapes (by the realm's own
   colours, drawn toward the palette), the flat sky and disc, two water
