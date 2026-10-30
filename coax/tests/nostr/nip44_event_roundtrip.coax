@@ -1,0 +1,78 @@
+// NIP-44 inside a signed NIP-01 event, end to end in Coax with test keys
+// (BIP-340 vectors 0 and 1). Alice derives the conversation key from her
+// secret and Bob's public key, encrypts, and signs a kind 4 event with
+// event_sign.coax. Bob reads the event with the shared reader, verifies its
+// id and signature, derives the same key from his secret and Alice's public
+// key, and decrypts. A changed content byte or the wrong key refuses.
+// Kept out of every #authority graph; its pieces have their own gates:
+//   coax/bin/coax test coax/tests/nostr/nip44_event_roundtrip.coax --steps 2000000000 --run-steps 250000000
+#load "../../lib/nostr/nip44-key.coax";
+#load "../../lib/nostr/event_sign.coax";
+
+RT_ALICE_PUB :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+RT_BOB_PUB :: "dff1d77f2a671c5f36183726db2341be58feae1da2deced843240f7b502ba659";
+RT_PLAIN :: "Bob: the decision job is ready.";
+
+rt_alice :: ()->[32]u8 {k:[32]u8;k[31]=3;return k;}
+rt_bob :: ()->[32]u8 {
+  k:=[32]u8.[0xb7,0xe1,0x51,0x62,0x8a,0xed,0x2a,0x6a,0xbf,0x71,0x58,0x80,0x9c,0xf4,0xf3,0xc7,0x62,0xe7,0x16,0x0f,0x38,0xb4,0xda,0x56,0xa7,0x84,0xd9,0x04,0x51,0x90,0xcf,0xef];
+  return k;
+}
+rt_hex :: (s:string)->[32]u8 {out:[32]u8;ok:=ne_lower_hex(s,out[..]);return out;}
+// The conversation key of secret with the other party's public key.
+rt_conversation :: (secret:[32]u8,public_hex:string)->[32]u8 {
+  pub:=rt_hex(public_hex);key:=secret;work:[1]EcdhScratch;ck:[32]u8;
+  status:=nip44_conversation_key_from_keys_checked(key[..],pub[..],work[..],ck[..],false);
+  if status!=NIP44_OK {fresh:[32]u8;return fresh;}
+  return ck;
+}
+// Alice's signed kind 4 event to Bob, its length in out, or -1.
+rt_event :: (out:[]u8)->int {
+  alice:=rt_alice();ck:=rt_conversation(alice,RT_BOB_PUB);
+  nonce:[32]u8;for i:0..<32 {nonce[i]=cast(u8)(i+1);}
+  plain:[64]u8;for i:0..<RT_PLAIN.count {plain[i]=RT_PLAIN[i];}
+  work:[512]u8;payload:[256]u8;
+  r:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],nonce[..],plain[0..<RT_PLAIN.count],work[..],payload[..],false);
+  if r.error!=NIP44_OK {return -1;}
+  tags:[128]u8;n:=json_raw(tags[..],0,"[[\"p\",\"");n=json_raw(tags[..],n,RT_BOB_PUB);n=json_raw(tags[..],n,"\"]]");
+  aux:[32]u8;sw:[1]NostrSignWork;scratch:[2048]u8;
+  k:=EVENT_MORE;
+  while k==EVENT_MORE {
+    k=nostr_event_sign_step(alice[..],aux[..],1793300000,4,cast(string)tags[0..<n],cast(string)payload[0..<r.written],sw[..],scratch[..],out,false);
+  }
+  return k;
+}
+// What Bob reads from an event: 0 and the plaintext in plain, or a refusal code.
+rt_open :: (event:string,secret:[32]u8,sender_hex:string,plain:[]u8)->int {
+  scratch:[2048]u8;e:=nostr_event_read(event,scratch[..],false);
+  if e.error!=NE_OK {return 1;}
+  if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return 2;}
+  sender:=rt_hex(sender_hex);
+  for i:0..<32 {if e.public_key[i]!=sender[i] {return 3;}}
+  ck:=rt_conversation(secret,sender_hex);
+  work:[512]u8;
+  d:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],event[e.content_from..<e.content_to],work[..],plain,false);
+  if d.error!=NIP44_OK {return 4;}
+  return -d.written;
+}
+
+#test "the two conversation keys agree" {
+  a:=rt_conversation(rt_alice(),RT_BOB_PUB);b:=rt_conversation(rt_bob(),RT_ALICE_PUB);
+  same:=true;nonzero:=false;for i:0..<32 {if a[i]!=b[i] {same=false;}if a[i]!=0 {nonzero=true;}}
+  #assert same && nonzero;
+}
+#test "Alice's signed, encrypted event opens for Bob" {
+  out:[1024]u8;n:=rt_event(out[..]);#assert n>0;
+  plain:[64]u8;r:=rt_open(cast(string)out[0..<n],rt_bob(),RT_ALICE_PUB,plain[..]);
+  #assert r== -RT_PLAIN.count && cast(string)plain[0..<RT_PLAIN.count]==RT_PLAIN;
+}
+#test "a changed content byte, the wrong sender or the wrong key refuses" {
+  out:[1024]u8;n:=rt_event(out[..]);#assert n>0;
+  plain:[64]u8;
+  #assert rt_open(cast(string)out[0..<n],rt_bob(),RT_BOB_PUB,plain[..])==3;
+  // Alice's own key with her own public key derives a different conversation key.
+  #assert rt_open(cast(string)out[0..<n],rt_alice(),RT_ALICE_PUB,plain[..])==4;
+  e:=ne_parse(cast(string)out[0..<n]);#assert e.error==NE_OK;
+  c:=e.content_from+5;out[c]=ifx out[c]=='A' then 'B' else 'A';
+  #assert rt_open(cast(string)out[0..<n],rt_bob(),RT_ALICE_PUB,plain[..])==1;
+}

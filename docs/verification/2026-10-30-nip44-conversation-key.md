@@ -82,11 +82,24 @@ The nip44.coax diff in this change is two comment lines in its header (line
 count unchanged). The vector-file run above predates that comment edit; the
 mutation runs, whose baseline reruns all 215 unit checks, follow it.
 
+## Signed-event round trip (added after event_sign landed)
+
+`coax/tests/nostr/nip44_event_roundtrip.coax` (`coax test ... --steps
+2000000000 --run-steps 250000000`, 392 of 392 checks including the loaded
+suites, 30 s), with test keys from BIP-340 vectors 0 and 1:
+
+- Alice's and Bob's conversation keys from the two keys agree.
+- Alice encrypts with NIP-44 and signs a kind 4 event with `event_sign.coax`.
+  Bob reads it with `nostr_event_read`, verifies the id and signature with
+  the fast verifier, checks the sender and decrypts the content.
+- The wrong sender, the wrong conversation key and a changed content byte
+  are each refused.
+
+It's a plain test file, not `#authority`: every piece it joins has its own
+zero-survivor gate.
+
 ## Not done
 
-- **Signed-event round trip:** a NIP-44 payload encrypted to a key, put in an
-  event, signed, read back and decrypted. It waits on `event_sign.coax`,
-  which isn't on main yet.
 - **No `#export_c` wrapper:** the public ECDH build goes through the owned
   `coax_ecdh_owned_*` ABI and its lifecycle (`ecdh_lifecycle.coax`). A raw
   export of this function would bypass that contract, so the native and Wasm
