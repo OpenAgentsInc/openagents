@@ -236,12 +236,15 @@ ice_pointer :: (s: [] IceRealm, x: f32, y: f32, ph: int, kind: int, id: int) -> 
       if h_card_on(s) || s[0].acts[b] / 256 == A_GALAXY { s[0].press = b; } else { h_do_act(s, s[0].acts[b]); }
       return 0;
     }
-    if h_card_on(s) { return 0; }
+    // the tour's card still lets a thumb take the stick it names: walking closes it (qa-icm-tour-walk)
+    tour := s[0].facts[F_TOUR] >= 0;
+    if h_card_on(s) && !(tour && run_phase(s) == PH_PLAYING) { return 0; }
     if kind != 0 && run_phase(s) == PH_PLAYING && s[0].touch {
       dx := x - s[0].stick_cx; dy := y - s[0].stick_cy;
       r := (s[0].stick.x1 - s[0].stick.x0) * 0.5 + 20 * s[0].dpr;
       if dx * dx + dy * dy <= r * r { return -2; }
     }
+    if h_card_on(s) { return 0; }
     return -1;
   }
   if s[0].press >= 0 {
@@ -638,6 +641,12 @@ h_draw_hud :: (s: [] IceRealm, out: [] f32) -> int {
     s[0].button_n = 0;
     s[0].plate_n = 0;
     n = h_draw_card(s, out, 0);
+    // on a phone the tour's first card names the stick: it shows under the card, and takes a thumb
+    if s[0].touch && s[0].facts[F_TOUR] >= 0 && p == PH_PLAYING {
+      st := s[0].stick; q := (st.x1 - st.x0) / 120;
+      h_plate(s, st, 0.45, LOOK_PLAIN, 60 * q);
+      h_plate(s, h_rect(s[0].stick_cx - 25 * q, s[0].stick_cy - 25 * q, 50 * q, 50 * q), 0.95, LOOK_ON, 25 * q);
+    }
   }
   return n;
 }
@@ -739,6 +748,11 @@ h_playing_facts :: (f: [] f32) {
   #assert ice_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 6) == 0 && ice_next_act(s[..]) == A_SELECT * 256 + 1;
   #assert ice_pointer(s[..], s[0].stick_cx, s[0].stick_cy, POINTER_DOWN, 1, 7) == -2;
   #assert ice_pointer(s[..], 600, 900, POINTER_DOWN, 1, 8) == -1;
+  // the tour's card up: a thumb on the stick still walks (and the run ends the tour); elsewhere the card keeps it
+  f[F_TOUR] = 0;
+  n = ice_frame(s[..], out[..], u[..], 1170, 2532, 3, 0.016, true, f[..], 3);
+  #assert ice_pointer(s[..], s[0].stick_cx, s[0].stick_cy, POINTER_DOWN, 1, 9) == -2;
+  #assert ice_pointer(s[..], 600, 150, POINTER_DOWN, 1, 10) == 0;
 }
 
 #test "the cards: Paused, the end of a round and the tour, each with its main button" {
