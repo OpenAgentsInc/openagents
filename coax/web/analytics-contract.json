@@ -9,5 +9,6 @@
   "the-grid": ["page-view", "world-enter", "load-engine", "world-leave"],
   "everglade": ["page-view", "world-enter", "load-engine", "world-leave"],
   "fairy-forest": ["page-view", "world-enter", "load-engine", "world-leave"],
-  "orbit-league": ["page-view", "world-enter", "load-engine", "world-leave"]
+  "orbit-league": ["page-view", "world-enter", "load-engine", "world-leave"],
+  "belt-2200": ["page-view", "world-enter", "load-engine", "world-leave"]
 }
