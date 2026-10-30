@@ -1,0 +1,9 @@
+{
+  "frames": 9,
+  "viewports": 3,
+  "peak_vertices": 48834,
+  "max_vertices": 400000,
+  "clock_and_pause_expiry": true,
+  "finite_geometry": true,
+  "guard_bytes": true
+}

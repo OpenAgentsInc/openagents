@@ -65,7 +65,7 @@ budget. It never counts an already retained event a second time.
 
 Checks were written with the changes. Focused results:
 
-- `coax test apps/openagents-web/newland.coax --steps 400000000`: 59/59 after the rebase (57/57 before it).
+- `coax test apps/openagents-web/newland.coax --steps 400000000`: 60/60 after the counter-transition fix (59/59 after the realm merge).
 - `coax test coax/web/project/landing-browser.coax --library --steps 250000000`:
   293/293, including the shared crypto and protocol suites.
 - `bun test coax/web/tests/newland_reader.test.ts`: 7 tests, 578 assertions.
@@ -89,7 +89,9 @@ Checks were written with the changes. Focused results:
   `git diff --check` pass.
 
 The owner requested changed-code checks without full mutation runs; no full
-mutation or unrelated model gates were run. The existing aggregate-budget and
+homepage/application mutation or unrelated model gates were run. The later
+compiler change on main requires its normal bootstrap qualification before
+release; that separate compiler build runs its own established gates. The existing aggregate-budget and
 history-count failures in the larger project interpreter suite remain outside
 this change; actual Wasm capture/fold fixtures and live traffic qualify this
 integration rather than claiming that unrelated suite now passes.
@@ -101,7 +103,8 @@ project-ready bits, watch connection and beacon EOSE, and reject JS exceptions.
 This gate allows a genuine empty provider set. Production failure rolls back.
 
 Compact evidence is in [the evidence directory](data/live-homepage-2026-10-30/).
-Before pushing, rebased onto `14d53d5e20`. Kept both the public Pylon page
+Before pushing, rebased onto `14d53d5e20` and then `9322269a89` (the latter
+changes compiler mutation scheduling, with no homepage source changes). Kept both the public Pylon page
 release changes and `b5e318420f`'s small public-realm galaxy, including its
 shared Verse projection/HUD and input checks. The merged homepage passed all
 59 Coax checks, linked signed fixtures, guarded geometry and another ordinary
@@ -111,3 +114,19 @@ The shared verifier did not change during this rebase, so its passing checks
 were not repeated.
 
 The production receipt is appended after the normal staged release completes.
+
+
+## Snapshot-to-watch counter correction
+
+Final review found that the first live Pylon could inherit its warm-start
+24-hour answer count. Newly admitted providers now start with zero watch
+observations; later beacon updates retain this tab's counters. The added Coax
+check uses a nonzero captured count and verifies both transitions. All 60
+homepage checks, 13 signed Wasm fixture assertions and the guarded renderer pass
+with the qualified `81ad04b7877f` compiler. The first complete release artifact
+also passed its signed fixtures; its renderer was checked against its matching
+release capture rather than the developer checkout's older capture.
+
+Compiler qualification completed normally in 259.8 seconds, with provenance
+matching `9322269a89`'s compiler inputs. No qualification receipt was edited or
+bypassed. The final release receipt follows below.

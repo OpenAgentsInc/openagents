@@ -37,6 +37,12 @@ HomeIssue :: struct {id:string;kind:string;status:string;title:string;parent:str
   hn_fail(s[..]);#assert s[0].net[0].stalled && s[0].net[0].ready==63;
   #assert s[0].net[0].retry_query==13 && s[0].net[0].refused==1;
 }
+#test "a newly watched provider starts with no snapshot activity; beacon updates preserve watch observations" {
+  held:Pyl;held.jobs=9;held.updates=3;held.last_answer=10;held.demo=true;
+  fresh:=hn_pylon_base(held,true);#assert fresh.jobs==0 && fresh.updates==0 && fresh.last_answer==0 && !fresh.demo;
+  update:=hn_pylon_base(held,false);#assert update.jobs==9 && update.updates==3 && update.last_answer==10;
+}
+hn_pylon_base :: (held:Pyl,fresh:bool)->Pyl {return ifx fresh then Pyl.{} else held;}
 hn_raw_json :: (text:string,kind:int)->string {j:[1]Json;json_start(j[..],text);if json_next(j[..])!=kind {return "";}return text;}
 hn_raw :: (j:[]Json,t:int)->string {
   if t==JSON_STRING {return j[0].text[j[0].from-1..<j[0].to+1];}
@@ -120,7 +126,7 @@ hn_beacon :: (s:[]LandState,text:string,now:int) {
   pools:[512]u8;pn:=hn_join_strings(hn_field(text,"pools"),pools[..],64);pooltext:=cast(string)pools[0..<hi_int(0,pn)];bay:=1;
   if pooltext=="coder" {bay=3;}else if pooltext=="verse" || pooltext=="everglade" {bay=4;}else if pooltext=="planetary-villa" {bay=5;}
   rank:=0;for i:0..<at {if s[0].pyl[i].plot==bay {rank+=1;}}
-  q:=s[0].pyl[at];q.row=at;q.live=true;q.plot=bay;q.x=s[0].plot[bay].x+4.4+cast(f32)(rank%8)*1.5;q.z=s[0].plot[bay].z-4.4+cast(f32)(rank/8)*1.5;
+  q:=hn_pylon_base(s[0].pyl[at],first || at==s[0].pylons);q.row=at;q.live=true;q.plot=bay;q.x=s[0].plot[bay].x+4.4+cast(f32)(rank%8)*1.5;q.z=s[0].plot[bay].z-4.4+cast(f32)(rank/8)*1.5;
   q.generation=generation;q.observed=observed;q.valid_until=until;q.received=now;
   status:=hn_string(text,"status");q.captured_status=ifx status=="online" then ST_ONLINE else ifx status=="draining" then ST_DRAINING else ST_OFFLINE;q.status=q.captured_status;
   hardware:=hn_field(text,"class");slots:=hn_field(text,"slots");family:=hn_string(hardware,"family");q.family=ifx family=="gpu" then FAM_GPU else ifx family=="cpu" then FAM_CPU else FAM_UNIFIED;

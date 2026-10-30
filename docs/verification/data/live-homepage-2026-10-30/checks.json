@@ -1,5 +1,5 @@
 {
-  "ui_checks": 59,
+  "ui_checks": 60,
   "shared_browser_checks": 293,
   "reader_tests": 7,
   "reader_assertions": 578,
@@ -12,5 +12,5 @@
     "home-phone"
   ],
   "mutation": "not run: owner requested changed-code checks without full mutation runs",
-  "wasm_sha256": "2307fa6bbb1105a76e2155b81d685d6a16582412ca098926ba71f92648851d2b"
+  "wasm_sha256": "7ad511b43fe6bfa085f742950c97ead79761b22c807c70cdd13a70704fa13ed2"
 }

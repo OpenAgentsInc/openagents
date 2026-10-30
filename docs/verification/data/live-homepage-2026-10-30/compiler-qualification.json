@@ -1,0 +1,6 @@
+{
+  "fingerprint": "81ad04b7877f29c0f424154fb27589c1b1839ef1d05ed28d724c488fc72f28c5",
+  "exit_code": 0,
+  "elapsed_seconds": 259.8,
+  "command": "coax/build.sh with release compiler environment; normal private snapshot qualification"
+}
