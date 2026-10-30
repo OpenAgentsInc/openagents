@@ -87,7 +87,7 @@ beforeAll(async () => {
       globalThis.makeByteStorage=makeByteStorage;
       globalThis.reloadEngine=bytes=>loadEngine(bytes,++wanted);
     `, { headers: { 'Content-Type': 'text/javascript' } })
-    if (['/entropy.js', '/entropy-import.js', '/drop.js', '/uploads.js', '/voice.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
+    if (['/entropy.js', '/entropy-import.js', '/drop.js', '/uploads.js', '/voice.js', '/loader.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
     if (path === '/probe.wasm') return new Response(readFileSync(join(temp, 'probe.wasm')), { headers: { 'Content-Type': 'application/wasm' } })
     if (path === '/probe.wgsl') return new Response(shader)
     if (path === '/api/auth/me') return new Response('', { status: 401 })

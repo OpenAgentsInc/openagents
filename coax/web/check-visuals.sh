@@ -10,7 +10,15 @@ bad() { echo "check-visuals: $1" >&2; fail=1; }
 while IFS= read -r page; do
   # Visible elements: anything in <body> besides the canvas, the hidden text
   # (main with h1/p/a) and scripts.
-  body="$(sed -n '/<body>/,/<\/body>/p' "$page")"
+  # The loading screen (loader.js, realms.ts writes it) is the one block allowed: it covers the
+  # page only until the engine draws, and holds only its own elements.
+  loader="$(sed -n '/<!-- loader: coax\/web\/loader.js -->/,/<!-- \/loader -->/p' "$page")"
+  if [[ -n "$loader" ]]; then
+    odd="$(printf '%s\n' "$loader" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(div|s|b|i|span|a)' || true)"
+    [[ -z "$odd" ]] || bad "${page#$app/}: the loading screen holds $(echo $odd)"
+    printf '%s\n' "$loader" | grep -q '<div id="coaxial-load"' || bad "${page#$app/}: a loader block that isn't the loading screen"
+  fi
+  body="$(sed -n '/<body>/,/<\/body>/p' "$page" | sed '/<!-- loader: coax\/web\/loader.js -->/,/<!-- \/loader -->/d')"
   extra="$(printf '%s\n' "$body" | grep -oE '<[a-z][a-z0-9]*' | sort -u | grep -vxE '<(body|canvas|main|h1|h2|p|a|script|ul|li|em|strong|code)' || true)"
   [[ -z "$extra" ]] || bad "${page#$app/}: visible elements $(echo $extra)"
   # Links and text live only inside <main>, which the GPU page clips away.
@@ -18,13 +26,14 @@ while IFS= read -r page; do
   [[ -z "$outside" ]] || bad "${page#$app/}: text or links outside the hidden <main>"
 done < <(find "$app" -name '*.html' -not -path '*/build/*' -not -path '*/node_modules/*' | sort)
 # The host and the crypto glue build no UI: no styled or created elements
-# except the keyboard field and the dev note (host.js, localhost), each line
-# marked.
-for f in "$here/host.js" "$here/drop.js" "$here"/unlock/*.ts; do
+# except the keyboard field and the dev note (host.js, localhost) and the
+# loading screen (loader.js), each line marked.
+for f in "$here/host.js" "$here/loader.js" "$here/drop.js" "$here"/unlock/*.ts; do
   [[ -e "$f" ]] || continue
   case "$f" in *.test.ts) continue ;; esac
   marked='// (dev only|keyboard field)$'
   [[ "$(basename "$f")" == host.js ]] || marked='^$'
+  [[ "$(basename "$f")" == loader.js ]] && marked='// loading screen$'
   n="$(grep -E 'innerHTML|insertAdjacentHTML|\.style\.|createElement\("(div|span|button|a|img|form|section|pre|p|h[1-6]|style|svg|canvas)"\)|className *=' "$f" | grep -cvE "$marked" || true)"
   [[ "$n" -eq 0 ]] || bad "$(basename "$f"): builds or styles visible UI ($n place(s)); draw it in Coax"
 done

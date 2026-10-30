@@ -1871,11 +1871,21 @@ Allowed HTML, none of it visible to a WebGPU visitor:
   decision, 2026-10-28);
 - an invisible `<input>` over a Coax-drawn text field (the rect Coax reports),
   for the keyboard, paste and the context menu; it draws nothing itself;
-- the development-only error note `coax serve` shows on localhost.
+- the development-only error note `coax serve` shows on localhost;
+- a realm's loading screen (`coax/web/loader.js`, an owner decision,
+  2026-10-30): the realm's name, a bar moved only by what really loads
+  (engine bytes, compile, GPU, shader pipelines, asset bytes, textures, the
+  world's first frame) and the line naming it, in plain HTML and CSS so it
+  shows at the first paint, before the engine can draw. It is gone on the
+  world's first frame; on a failure it says what failed with one working
+  action (no WebGPU: the realm's text page; anything else: try again). It is
+  only on realm pages, written by `realms.ts` (a made realm's by the host),
+  and holds nothing else.
 
 Check: `coax/web/check-visuals.sh` (run by `coax/web/deploy.sh` before every
 upload) refuses visible elements, inline styling of UI, and DOM-built UI in
-the app's HTML, the host and `coax/web/unlock/`.
+the app's HTML, the host and `coax/web/unlock/`; the loading screen's block
+may hold only its own elements, and `loader.js` styles only marked lines.
 
 
 ## Private projects answer non-members with nothing

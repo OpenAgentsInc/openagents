@@ -134,6 +134,31 @@
       ]
     },
     {
+      "slug": "rl-loading",
+      "parent": "rl-shared",
+      "title": "Realms show a loading screen while they load",
+      "size": "S",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Every realm page is black until its engine draws. Show a loading screen from the first paint, before the engine arrives: the realm's name, a progress bar driven by the bytes and steps that really load (the engine, compiling it, the GPU, the shaders, the world's assets, its textures, the first frame of the world), and a line naming what loads now (ENGINE 2.1 / 4.8 MB, SHADERS 12/30). Styled as the new lander's HUD (chamfered frame, grayscale, a blue accent). It fades on the first frame of the world; when something fails it says what and offers one working action.",
+      "files": [
+        "coax/web/loader.js",
+        "coax/web/host.js",
+        "coax/web/realms.ts",
+        "coax/web/check-visuals.sh",
+        "INVARIANTS.md"
+      ],
+      "acceptance": [
+        "Every realm page shows the loader at first paint and it fades on the world's first frame",
+        "On a throttled phone connection the bar moves and the line changes",
+        "Goldens unchanged; Everglade holds 60 FPS"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
       "slug": "icm-rules",
       "parent": "icm",
       "title": "Ice Cream Man: the rules in Coax, step for step",

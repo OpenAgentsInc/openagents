@@ -145,6 +145,7 @@ import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { startGpui } from "./gpui.js";
+import { startLoading, readBytes } from "./loader.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -186,6 +187,13 @@ let wanted = 0;      // the newest requested engine; an older finished build nev
 const PACK_PARTS = ["data", "storage", "index", "layers"], PACK_KIND = 605;
 const PACK_CATALOG = 1, PACK_VERTICES = 2, PACK_INDICES = 3, PACK_LAYER = 4, PACK_SOUND = 5;
 const assets = parseAssets((script && script.dataset.assets) || "");
+// What main() loads once the GPU is up (sounds wait to be played; fonts and icons are gpui.js's).
+const LATER = ["sound", "loop", "particles", "font", "icons", "licence"];
+const firstAssets = assets.filter((a) => !a.pack && !LATER.includes(a.kind)), firstPacks = new Set(assets.filter((a) => a.pack).map((a) => a.pack));
+// A realm's loading screen (loader.js): told what really loads, gone on the world's first frame.
+const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
+  textured: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "layers"),
+  scene: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "index"), golden });
 let last = 0;
 // This is a completed indexed scene frame in the current engine generation,
 // after all outstanding shader loads have settled. Pixel/error checks still
@@ -587,6 +595,8 @@ async function startGpu() {
   const adapter = await navigator.gpu.requestAdapter();
   if (!adapter) return false;
   const device = await adapter.requestDevice();
+  loading.watch(device);
+  loading.step("shaders");
   const context = canvas.getContext("webgpu");
   const format = navigator.gpu.getPreferredCanvasFormat();
   context.configure({ device, format, alphaMode: "opaque", usage: GPUTextureUsage.RENDER_ATTACHMENT | (probe ? GPUTextureUsage.COPY_SRC : 0) });
@@ -865,6 +875,7 @@ async function loadPack(pack) {
       if (done) break;
       chunks.push(value); loaded += value.length;
       if (loaded >= 12 && chunks[0].length >= 12) total = new DataView(chunks[0].buffer, chunks[0].byteOffset).getUint32(8, true);
+      loading.bytes(pack.url, loaded, total);
       if (performance.now() - told > 100) { told = performance.now(); send(PACK_KIND, `${loaded} ${total}`); }
     }
     const bytes = new Uint8Array(loaded);
@@ -879,13 +890,15 @@ async function loadPack(pack) {
       a.buffer = device.createBuffer({ size: whole.length, usage: (a.kind === "index" ? GPUBufferUsage.INDEX : GPUBufferUsage.STORAGE) | GPUBufferUsage.COPY_DST });
       device.queue.writeBuffer(a.buffer, 0, whole); a.size = e.bytes.length;
     }
-    const images = await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes]))));
+    loading.textures(0, 2 * of(PACK_LAYER).length);   // each layer decoded, then on the GPU
+    const images = await Promise.all(of(PACK_LAYER).map((e) => createImageBitmap(new Blob([e.bytes])).then((b) => (loading.textures(1, 0), b))));
     if (images.length) { layers.texture = await layerTexture(images); layers.size = images.length; }
     else layers.failed = true;
     for (const e of of(PACK_SOUND)) assets.push({ i: assets.length, kind: "sound", name: e.name, bytes: e.bytes, done: true });
   } catch (e) { for (const a of parts) a.failed = true; say(`${app}: ${e.message}`, true); }
   for (const a of parts) { a.done = true; deliver(a); }
   bindScene();
+  loading.assetDone(parts[0].failed && `WORLD FAILED TO LOAD: ${pack.url.split("/").pop()}`);
 }
 // The pack's entries: its header and table checked against its length; nothing outside it is read.
 function unpack(bytes) {
@@ -915,12 +928,19 @@ async function loadAsset(a) {
   const { device } = gpu;
   try {
     if (a.kind === "layers") {
-      const images = await Promise.all(a.urls.map(async (u) => createImageBitmap(await (await fetch(u)).blob())));
+      loading.textures(0, 2 * a.urls.length);
+      const images = await Promise.all(a.urls.map(async (u) => {
+        const r = await fetch(u);
+        if (!r.ok) throw new Error(`${u}: ${r.status}`);
+        const b = await createImageBitmap(new Blob([await readBytes(r, (l, t) => loading.bytes(u, l, t))]));
+        loading.textures(1, 0);
+        return b;
+      }));
       a.texture = await layerTexture(images); a.size = images.length;
     } else {
       const r = await fetch(a.url);
       if (!r.ok) throw new Error(`${a.url}: ${r.status}`);
-      const bytes = new Uint8Array(await r.arrayBuffer());
+      const bytes = await readBytes(r, (l, t) => loading.bytes(a.url, l, t));
       a.size = bytes.length;
       if (a.kind === "data") a.bytes = bytes;
       else {
@@ -934,20 +954,23 @@ async function loadAsset(a) {
   a.done = true;
   deliver(a);
   bindScene();
+  loading.assetDone(a.failed && `ASSET FAILED TO LOAD: ${(a.url || "").split("/").pop()}`);
 }
 // A 2D-array texture, an image a layer, sRGB, mipmapped (every image at the first one's size).
-async function layerTexture(images) {
+async function layerTexture(images) {   // the loading screen counts each layer as it goes up
   const { device } = gpu, [w, h] = [images[0].width, images[0].height];
   const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
   const texture = device.createTexture({ size: [w, h, images.length], format: "rgba8unorm-srgb", mipLevelCount: levels,
     usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
-  for (const [layer, image] of images.entries())
+  for (const [layer, image] of images.entries()) {
     for (let level = 0; level < levels; level++) {
       const lw = Math.max(1, w >> level), lh = Math.max(1, h >> level);
       const source = level === 0 && image.width === w && image.height === h ? image
         : await createImageBitmap(image, { resizeWidth: lw, resizeHeight: lh, resizeQuality: "high" });
       device.queue.copyExternalImageToTexture({ source }, { texture, mipLevel: level, origin: [0, 0, layer] }, [lw, lh]);
     }
+    loading.textures(1, 0);
+  }
   return texture;
 }
 function sceneLayout() {
@@ -1257,7 +1280,7 @@ function frame(now) {
     if (probeDo && !gpu.probed) runProbe(w, h, dpr);
     n = engine.exports.coaxial_frame(arena.state, arena.vertices, arena.uniforms, w, h, dpr, dt, still ? 1 : 0);
     if (gpu.gpuiOn) gpuiFrame(dpr);
-  } catch (e) { say(`${app} trapped: ${e.message}`, true); engine = null; return; }
+  } catch (e) { say(`${app} trapped: ${e.message}`, true); loading.fail(`ENGINE STOPPED: ${e.message}`); engine = null; return; }
   n = Math.min(n, arena.maxVertices);
   const { device, context } = gpu;
   const x = engine.exports;
@@ -1371,6 +1394,7 @@ function frame(now) {
     }
   }
   document.documentElement.classList.add("gpu");
+  if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
   if (readback) report(readback, texture);
   if (x.coaxial_sounds) playSounds(x);
   after(false);
@@ -1625,7 +1649,10 @@ function say(text, error = false) {
 
 async function fetchEngine(generation) {
   const response = await fetch(wasmUrl, { cache: dev ? "no-store" : "default" });
-  return loadEngine(await response.arrayBuffer(), generation);
+  if (!response.ok) throw new Error(`engine: ${response.status}`);
+  const bytes = await readBytes(response, (l, t) => loading.engine(l, t));
+  loading.step("compile");
+  return loadEngine(bytes, generation);
 }
 
 function live() {
@@ -1649,16 +1676,19 @@ function live() {
 async function main() {
   try {
     await fetchEngine(beginEngine());
-    // No usable WebGPU after all: show the page's text, as written.
-    if (!(await startGpu())) { document.documentElement.classList.remove("gpu"); return; }
+    // No usable WebGPU after all: show the page's text, as written (a realm's loader says so).
+    loading.step("gpu");
+    const started = await startGpu();
+    if (!started) { document.documentElement.classList.remove("gpu"); loading.fail("SHADERS FAILED TO COMPILE", !gpu); return; }
     observeSize();
     requestAnimationFrame(frame);
     // The heavy ones first; sounds are fetched when first played.
-    // (fonts, icons and their licence are gpui.js's)
-    for (const a of assets) if (!a.pack && !["sound", "loop", "particles", "font", "icons", "licence"].includes(a.kind)) loadAsset(a);
-    for (const pack of new Set(assets.filter((a) => a.pack).map((a) => a.pack))) loadPack(pack);
+    loading.step("assets");
+    for (const a of firstAssets) loadAsset(a);
+    for (const pack of firstPacks) loadPack(pack);
   } catch (e) {
     document.documentElement.classList.remove("gpu");
+    loading.fail(`${gpu || /gpu|adapter|device/i.test(e.message) ? "GPU" : "ENGINE"} FAILED: ${e.message}`);
     say(`${app}: ${e.message}`, true);
   }
   if (dev) live();

@@ -13,6 +13,7 @@
 //   bun coax/web/realms.ts --check   compare only
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
+import { LOADER_CSS, loaderMarkup } from "./loader.js"
 
 const SITE = join(import.meta.dir, "../../apps/openagents-web")
 const KINDS = { locked: 0, open: 1, soon: 2 } as const
@@ -159,10 +160,12 @@ html:not(.gpu) body{overflow:auto}
 a{color:#ff8c1f}
 /* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
 .gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+${LOADER_CSS}
 </style>
 </head>
 <body>
 <canvas id="coaxial" aria-hidden="true"></canvas>
+${loaderMarkup(r.title, `/realms/${r.slug}/index.md`)}
 <main>
 <h1>${t}</h1><p><a href="/realms/${r.slug}/index.md">${t}</a></p>
 </main>

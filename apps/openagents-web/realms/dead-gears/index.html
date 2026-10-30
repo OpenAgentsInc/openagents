@@ -32,10 +32,38 @@ html:not(.gpu) body{overflow:auto}
 a{color:#ff8c1f}
 /* When the GPU draws the page, the text stays for agents, search engines and screen readers only. */
 .gpu main{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;padding:0}
+#coaxial-load{position:fixed;inset:0;z-index:2;display:flex;align-items:center;justify-content:center;padding:0 16px;background:#000;color:#f0f0f0;font:500 11px/1.5 ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;transition:opacity .35s ease-out}
+#coaxial-load.gone{opacity:0;pointer-events:none}
+#coaxial-load .lf{position:relative;box-sizing:border-box;width:min(360px,100%);padding:22px 22px 20px;background:rgba(240,240,240,.28);clip-path:polygon(0 0,calc(100% - 12px) 0,100% 12px,100% 100%,12px 100%,0 calc(100% - 12px))}
+#coaxial-load .lf::before{content:"";position:absolute;inset:1px;background:#000;clip-path:polygon(0 0,calc(100% - 11.6px) 0,100% 11.6px,100% 100%,11.6px 100%,0 calc(100% - 11.6px))}
+#coaxial-load .lf>*{position:relative}
+#coaxial-load .lf>s{position:absolute;width:22px;height:13px;border:0 solid #f0f0f0}
+#coaxial-load .lf>.c1{top:0;left:0;border-width:1px 0 0 1px}
+#coaxial-load .lf>.c2{right:0;bottom:0;border-width:0 1px 1px 0}
+#coaxial-load .ln{display:block;margin:0 0 18px;font:600 16px/1.3 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;letter-spacing:.2em;overflow-wrap:anywhere}
+#coaxial-load .lr{display:grid;grid-template-columns:1fr auto;column-gap:12px}
+#coaxial-load .lb{grid-column:1/3;display:block;height:2px;margin:0 0 10px;background:rgba(240,240,240,.14);overflow:hidden}
+#coaxial-load .lb i{display:block;height:100%;background:hsl(180,68.07%,53.33%);transform:scaleX(0);transform-origin:0 50%;transition:transform .2s linear}
+#coaxial-load .lt{color:#c7c7c7;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#coaxial-load .lp{color:#999;font-variant-numeric:tabular-nums}
+#coaxial-load .le,#coaxial-load .la{display:none}
+html:not(.gpu) #coaxial-load .lr,#coaxial-load[data-state=fail] .lr{display:none}
+html:not(.gpu) #coaxial-load .le,#coaxial-load[data-state=fail] .le{display:block;color:#f0f0f0}
+html:not(.gpu) #coaxial-load .la,#coaxial-load[data-state=fail] .la{display:inline-block;margin-top:16px;padding:8px 12px;border:1px solid rgba(240,240,240,.45);color:#f0f0f0;text-decoration:none}
+#coaxial-load .la:hover,#coaxial-load .la:focus-visible{color:hsl(180,68.07%,53.33%);border-color:hsl(180,68.07%,53.33%);outline:none}
+@media (prefers-reduced-motion:reduce){#coaxial-load,#coaxial-load .lb i{transition:none}}
 </style>
 </head>
 <body>
 <canvas id="coaxial" aria-hidden="true"></canvas>
+<!-- loader: coax/web/loader.js -->
+<div id="coaxial-load" role="progressbar" aria-label="Loading Dead Gears" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="lf"><s class="c1"></s><s class="c2"></s>
+<b class="ln">Dead Gears</b>
+<div class="lr"><i class="lb"><i></i></i><span class="lt">ENGINE</span><span class="lp">0%</span></div>
+<span class="le">NO WEBGPU IN THIS BROWSER</span>
+<a class="la" href="/realms/dead-gears/index.md">READ ABOUT Dead Gears</a>
+</div></div>
+<!-- /loader -->
 <main>
 <h1>Dead Gears</h1><p><a href="/realms/dead-gears/index.md">Dead Gears</a></p>
 </main>
