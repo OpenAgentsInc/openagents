@@ -424,6 +424,22 @@ CPU vectors, never routine full-original CPU inference. Full mutation roots
 remain excluded by the owner's request. Scope, hardware and measurements:
 [device record](docs/verification/psionic-gptoss-device-2026-10-29.md).
 
+The same programs and kernels run on an Apple GPU (chapter 45h) under
+`gpt-oss-metal-f32-ff-v1`: `coax metal-compute` emits `device-kernels.coax`
+unchanged, and `psionic/platform/gptoss-metal.c` implements the same `pg_*`
+interface through `psionic/platform/metal-host.m`. It decides nothing. Every
+original weight is resident in shared memory, and nothing streams. There is
+no CPU fallback: without a device the result is `PC_ABSENT`. A failed command
+buffer or a failed in-kernel Coax check poisons the session. The f64
+reductions are APPLE-FF-v1 float-float pairs, and the YaRN table is built on
+the host in binary64. CUDA graph replay has no Metal counterpart; each program
+is one ordered command buffer. Check: `psionic/tests/run_gptoss_metal.sh` runs
+the tiny model by default. With the original files it applies chapter 45b's
+frozen 0.0005 rule and exact routes and top token. `PSIONIC_CPU_GREEDY=1`
+requires the GPU's greedy token IDs to equal chapter 45's CPU engine's, and
+`PSIONIC_DEVICE_QUALIFY=1` repeats layers 0 and 1 and the readout on the CPU,
+launch by launch. [Metal record](docs/verification/psionic-gptoss-metal-2026-10-29.md).
+
 ## Psionic original gpt-oss execution and constrained continuations
 
 `psionic/lib/gptoss/` owns `gpt-oss-cpu-wide-v1`: fixed independently pinned

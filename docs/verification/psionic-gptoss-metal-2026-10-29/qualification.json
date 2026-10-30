@@ -1,0 +1,45 @@
+{
+  "profile": "gpt-oss-metal-f32-ff-v1",
+  "reference_sha256": "816b0df0293354898f371a7dff3cfa73db99a0870b285c94cb35a199dfbb0ff3",
+  "bound": 0.0005,
+  "steps": [
+    {
+      "logits": {
+        "maximum_scaled_error": 9.984028774615059e-06,
+        "top_token": 7,
+        "candidate_sha256": "fe0b21dff3c9a50f4a549ada6613f18158634682146f16d6eaf62d8e69d42155"
+      },
+      "trace": {
+        "maximum_scaled_error": 0.0004886902024598814,
+        "candidate_sha256": "38ca99329570fa7a58d0ae637bb404013b729f8dead77f50d22d75e3d74bfc9c"
+      },
+      "routes": {
+        "exact": true,
+        "candidate_sha256": "2c7d9f9a4fe27296e3fe40415099f676eb46dbedb6d044af5bafbfc328ed64e6"
+      },
+      "weights": {
+        "maximum_scaled_error": 3.2941411323473673e-07,
+        "candidate_sha256": "4cdac957157365ebfc0b43978400debcffc8588a383e45a87f338b07ea2f007c"
+      }
+    },
+    {
+      "logits": {
+        "maximum_scaled_error": 9.052755178645558e-06,
+        "top_token": 200005,
+        "candidate_sha256": "3a6d030299bd6859d8264cf1fbb6c3b20d12aed7125245afc6452d37d8f7a52b"
+      },
+      "trace": {
+        "maximum_scaled_error": 0.0003922856909943713,
+        "candidate_sha256": "4706d1b6ee4646a6dd6b6ab8c5866f89572014e1cb31347e4f9265701fec75a8"
+      },
+      "routes": {
+        "exact": true,
+        "candidate_sha256": "76abc2913712570d32e84b1b1e7c4c63962892fd0322f0f7fe615b9d790c6168"
+      },
+      "weights": {
+        "maximum_scaled_error": 1.208883032092375e-07,
+        "candidate_sha256": "80a9c1505d7949ef64084481222b3c3a890b533552761b9b0e67e16207279e71"
+      }
+    }
+  ]
+}

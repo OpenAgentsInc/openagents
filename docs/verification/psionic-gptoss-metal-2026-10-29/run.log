@@ -1,0 +1,91 @@
+device Apple M5 Max (Apple family 10) unified=1 working set 107.5 GiB, largest buffer 80.6 GiB
+original 20b admitted/authenticated/copied once in 136.249840 s; weight bytes=13761300984 workspace=527933440 reserve=134217728
+original step 0 0.274329 seconds
+original step 1 0.045804 seconds
+original 129-token varied prefix: complete serial/batch cache and logits bitwise equal across window/chunk boundary
+greedy hi prefix=59 emitted=24 stop=1 prefill_seconds=0.352218 decode_seconds=0.628945 decode_tok_s=36.569
+final hi: Hello! 👋 How can I help you today?
+greedy sum prefix=64 emitted=23 stop=1 prefill_seconds=0.501017 decode_seconds=0.670190 decode_tok_s=32.827
+final sum: 2 + 2 = 4.
+profiled prefill, 1024 tokens (one command buffer per launch):
+kernel gk_begin launches=8 device_seconds=0.000036750 share=0.0%
+kernel gk_clear launches=8 device_seconds=0.000229042 share=0.0%
+kernel gk_norm_part launches=8 device_seconds=0.000214042 share=0.0%
+kernel gk_norm launches=8 device_seconds=0.000195292 share=0.0%
+kernel gk_bf_part launches=8 device_seconds=0.020266208 share=0.4%
+kernel gk_bf_finish launches=8 device_seconds=0.000297833 share=0.0%
+kernel gk_mx_finish launches=384 device_seconds=0.208504583 share=3.7%
+kernel gk_activate launches=192 device_seconds=0.030446084 share=0.5%
+kernel gk_flags_part launches=2704 device_seconds=0.102002709 share=1.8%
+kernel gk_flags_finish launches=2704 device_seconds=0.599096542 share=10.5%
+kernel gk_batch_embed launches=8 device_seconds=0.000273833 share=0.0%
+kernel gk_batch_norm_part launches=384 device_seconds=0.010902458 share=0.2%
+kernel gk_batch_norm launches=384 device_seconds=0.107846583 share=1.9%
+kernel gk_batch_bf_part launches=576 device_seconds=0.677843292 share=11.9%
+kernel gk_batch_finish launches=768 device_seconds=0.068359207 share=1.2%
+kernel gk_batch_route launches=192 device_seconds=0.014932166 share=0.3%
+kernel gk_group launches=192 device_seconds=0.019798541 share=0.3%
+kernel gk_group_prefix launches=192 device_seconds=0.003333417 share=0.1%
+kernel gk_batch_mx_part launches=384 device_seconds=3.258463667 share=57.2%
+kernel gk_batch_residual launches=192 device_seconds=0.004500417 share=0.1%
+kernel gk_batch_mix launches=192 device_seconds=0.011191291 share=0.2%
+kernel gk_batch_rotate launches=192 device_seconds=0.006884917 share=0.1%
+kernel gk_batch_scores launches=192 device_seconds=0.215470167 share=3.8%
+kernel gk_batch_softmax launches=192 device_seconds=0.054258292 share=1.0%
+kernel gk_batch_context_part launches=192 device_seconds=0.270390458 share=4.7%
+kernel gk_copy launches=8 device_seconds=0.003791417 share=0.1%
+kernel gk_batch_shadow launches=192 device_seconds=0.003556625 share=0.1%
+kernel gk_publish_batch launches=8 device_seconds=0.004186708 share=0.1%
+kernel gk_advance_many launches=8 device_seconds=0.000031583 share=0.0%
+profiled decode, 16 steps at position 1024:
+kernel gk_begin launches=16 device_seconds=0.000078667 share=0.0%
+kernel gk_clear launches=16 device_seconds=0.000772292 share=0.1%
+kernel gk_embed launches=16 device_seconds=0.000070333 share=0.0%
+kernel gk_norm_part launches=784 device_seconds=0.025516000 share=4.3%
+kernel gk_norm launches=784 device_seconds=0.025153917 share=4.3%
+kernel gk_bf_part launches=1168 device_seconds=0.139139042 share=23.7%
+kernel gk_bf_finish launches=1168 device_seconds=0.015973874 share=2.7%
+kernel gk_mx_part launches=768 device_seconds=0.200043626 share=34.1%
+kernel gk_mx_finish launches=768 device_seconds=0.013854999 share=2.4%
+kernel gk_residual launches=384 device_seconds=0.002296457 share=0.4%
+kernel gk_activate launches=384 device_seconds=0.003471334 share=0.6%
+kernel gk_route launches=384 device_seconds=0.030466584 share=5.2%
+kernel gk_mix launches=384 device_seconds=0.003086418 share=0.5%
+kernel gk_rotate launches=384 device_seconds=0.003806292 share=0.6%
+kernel gk_scores launches=384 device_seconds=0.014414833 share=2.5%
+kernel gk_context_part launches=384 device_seconds=0.018378542 share=3.1%
+kernel gk_context_finish launches=384 device_seconds=0.003358333 share=0.6%
+kernel gk_flags_part launches=16 device_seconds=0.000826875 share=0.1%
+kernel gk_flags_finish launches=16 device_seconds=0.011985708 share=2.0%
+kernel gk_publish launches=16 device_seconds=0.000202667 share=0.0%
+kernel gk_advance launches=16 device_seconds=0.000060125 share=0.0%
+kernel gk_softmax_prepare launches=384 device_seconds=0.070069292 share=11.9%
+kernel gk_softmax_divide launches=384 device_seconds=0.004211293 share=0.7%
+  qualify op    5 gk_batch_norm_part     layer  0: 23 values differ, largest relative difference 0 (f32) 3.52e-15 (f64)
+  qualify op   17 gk_batch_softmax       layer  0: 2563 values differ, largest relative difference 2.05e-07 (f32) 0 (f64)
+  qualify op   31 gk_batch_norm_part     layer  0: 500 values differ, largest relative difference 0 (f32) 1.76e-14 (f64)
+  qualify op   48 gk_activate            layer  0: 17376 values differ, largest relative difference 3.15e-07 (f32) 0 (f64)
+  qualify op   59 gk_batch_norm_part     layer  1: 505 values differ, largest relative difference 0 (f32) 1.54e-14 (f64)
+  qualify op   71 gk_batch_softmax       layer  1: 2565 values differ, largest relative difference 1.99e-07 (f32) 0 (f64)
+  qualify op   85 gk_batch_norm_part     layer  1: 504 values differ, largest relative difference 0 (f32) 1.7e-14 (f64)
+  qualify op  102 gk_activate            layer  1: 16660 values differ, largest relative difference 3.16e-07 (f32) 0 (f64)
+  qualify op 1302 gk_norm_part           layer -1: 63 values differ, largest relative difference 0 (f32) 9.99e-15 (f64)
+qualified prompt chunk: 121 launches repeated on the CPU, 112 identical; largest relative difference 3.16e-07 in f32 (gk_activate), 1.76e-14 in f64 against float-float (gk_batch_norm_part)
+  qualify op    3 gk_norm_part           layer  0: 5 values differ, largest relative difference 0 (f32) 2e-15 (f64)
+  qualify op    9 gk_softmax_prepare     layer  0: 486 values differ, largest relative difference 1.19e-07 (f32) 2.52e-08 (f64)
+  qualify op   16 gk_norm_part           layer  0: 64 values differ, largest relative difference 0 (f32) 1.22e-14 (f64)
+  qualify op   23 gk_activate            layer  0: 2436 values differ, largest relative difference 2.82e-07 (f32) 0 (f64)
+  qualify op   27 gk_norm_part           layer  1: 64 values differ, largest relative difference 0 (f32) 1.99e-14 (f64)
+  qualify op   33 gk_softmax_prepare     layer  1: 498 values differ, largest relative difference 1.18e-07 (f32) 3.67e-08 (f64)
+  qualify op   40 gk_norm_part           layer  1: 63 values differ, largest relative difference 0 (f32) 1.81e-14 (f64)
+  qualify op   47 gk_activate            layer  1: 2154 values differ, largest relative difference 2.86e-07 (f32) 0 (f64)
+  qualify op  579 gk_norm_part           layer -1: 62 values differ, largest relative difference 0 (f32) 1.64e-14 (f64)
+qualified decode step: 61 launches repeated on the CPU, 52 identical; largest relative difference 2.86e-07 in f32 (gk_activate), 3.67e-08 in f64 against float-float (gk_softmax_prepare)
+forced-token batched workload repeat=-1 input=1024 output=128 prefill=8.343357 prefill_tok_s=122.7 decode=4.041810 tok_s=31.669
+forced-token batched workload repeat=0 input=1024 output=128 prefill=6.435088 prefill_tok_s=159.1 decode=3.559150 tok_s=35.964
+forced-token batched workload repeat=1 input=1024 output=128 prefill=5.966438 prefill_tok_s=171.6 decode=3.554428 tok_s=36.011
+forced-token batched workload repeat=2 input=1024 output=128 prefill=6.280563 prefill_tok_s=163.0 decode=3.904275 tok_s=32.785
+forced-token batched workload repeat=3 input=1024 output=128 prefill=6.990649 prefill_tok_s=146.5 decode=3.683291 tok_s=34.752
+forced-token batched workload repeat=4 input=1024 output=128 prefill=6.959596 prefill_tok_s=147.1 decode=4.719343 tok_s=27.122
+median prefill 6.435088 s (159.1 tok/s), median decode 3.683291 s (34.752 tok/s) over 5 runs
+Metal memory allocated by this process: 13.31 GiB of a 107.52 GiB working set

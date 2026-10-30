@@ -49,6 +49,7 @@ run examples directly without the check command.
 | [45b. A complete CUDA decoder](ch045b-a-complete-cuda-decoder.md) | Runnable: original 20b CUDA greedy generation | Every layer, cache, router and full head stay on device; complete Harmony final display. |
 | [45c. Prefill together](ch045c-prefill-together.md) | Runnable: batched CUDA prefill | Coefficient reuse across tokens, grouped experts, causal chunk attention and atomic cache shadows. |
 | [45f. Replay the device program](ch045f-replay-the-device-program.md) | Runnable: exact CUDA decode replay | Coax compares admitted descriptors; ordered graph nodes reuse bindings and patch changing arguments. |
+| [45h. gpt-oss-20b on Metal](ch045h-gpt-oss-on-metal.md) | Runnable: original 20b on an Apple M5 Max | The same Coax kernels and launch programs through Metal; every weight resident; CPU-identical greedy tokens; served by `serve-gptoss.sh --metal`. |
 | [46. Execute gpt-oss-120b](ch046-execute-gpt-oss-120b.md) | Runnable: original CPU model and residency | The same engine, 36 layers and 128 experts, original shards and measured memory. |
 | [47. Let the small model guess](ch047-let-the-small-model-guess.md) | Runnable: serial CPU speculative profile | Standard acceptance/correction, block bonus, whole-cache rollback, prompt n-grams and original greedy parity. |
 | [48. Call a tool](ch048-call-a-tool.md) | Runnable: finite JSON-schema enum and granted tools | Mask before sampling, typed commentary handoffs, tool-role results and final-only display. |

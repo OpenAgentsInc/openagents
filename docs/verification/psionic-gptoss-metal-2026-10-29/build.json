@@ -1,0 +1,15 @@
+{
+  "machine": "MacBook Pro, Apple M5 Max (Apple GPU family 10), 128 GB unified memory, recommended working set 107.5 GiB, largest buffer 80.6 GiB",
+  "os": "macOS 26.4 (25E246)",
+  "host_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101), C11, -O2 -ffp-contract=off -fno-fast-math",
+  "metal_compile": "MTLMathModeSafe, MTLMathFloatingPointFunctionsPrecise, Metal 4.0",
+  "coax": "coax0 0.24.0, built from 89a77a0f5e by coax/build.sh",
+  "coax_sha256": "b2caa6b761c5ecdb44487d690e2d7ba00b01310cdf2c7fd008708f3a0a9cba18",
+  "generated_metal": "coax metal-compute psionic/lib/gptoss/device-kernels.coax --release",
+  "generated_metal_sha256": "15f463c7b58157d2fe4bc321721bc6aeca83fd2cb3e1d04b5c0432494d1d55e4",
+  "engine": "psionic/platform/gptoss-metal.c, psionic/platform/metal-host.m",
+  "harness": "psionic/tests/run_gptoss_metal.sh (gptoss_metal.c, gptoss_cpu_greedy.c)",
+  "model": "openai/gpt-oss-20b original, revision 6cee5e81ee83917806bbde320786a8fb61efebee, authenticated by Coax at admission",
+  "numerical_profile": "gpt-oss-metal-f32-ff-v1: gpt-oss-cuda-f32-v1's f32 storage and lane sums; its f64 reductions as APPLE-FF-v1 float-float pairs",
+  "commit": "f937335f58"
+}

@@ -38,6 +38,7 @@
 - [45b. A complete CUDA decoder](ch045b-a-complete-cuda-decoder.md)
 - [45c. Prefill together](ch045c-prefill-together.md)
 - [45f. Replay the device program](ch045f-replay-the-device-program.md)
+- [45h. gpt-oss-20b on Metal](ch045h-gpt-oss-on-metal.md)
 - [46. Execute gpt-oss-120b](ch046-execute-gpt-oss-120b.md)
 - [47. Let the small model guess](ch047-let-the-small-model-guess.md)
 - [48. Call a tool](ch048-call-a-tool.md)
