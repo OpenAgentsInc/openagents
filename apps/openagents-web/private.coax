@@ -69,7 +69,7 @@ H_KEYOPEN :: 15; H_KFIELD :: 16; H_KSAVE :: 17; H_KREPLACE :: 18; H_KREMOVE :: 1
 PV_KEY :: 400;             // a pasted credential's most
 H_UNDO :: 100; H_STOP :: 140; H_AGREE :: 200;   // + the turn's (or goal's) index
 H_MINE :: 300;                                  // + a project's index on /signin
-H_WSHOW :: 20; H_WCOPY :: 21; H_SWFIELD :: 22; H_SWAP :: 23; H_SWYES :: 24; H_SWNO :: 25; H_WORDS_IN :: 26;   // /login's words account
+H_WSHOW :: 20; H_WCOPY :: 21; H_SWFIELD :: 22; H_SWAP :: 23; H_SWYES :: 24; H_SWNO :: 25; H_WORDS_IN :: 26; H_OUTYES :: 27; H_OUTNO :: 28; H_NEWACCT :: 29;   // /login's words account
 POST_WORDS :: 14;          // /api/auth/key: the words' key logs in (a NIP-98 signed event)
 // The words account (docs/web-log-in.md, owner 2026-10-30): 16 bytes of entropy made on
 // this device and kept in this browser (action 4), as 12 BIP-39 words; their NIP-06 key
@@ -78,7 +78,8 @@ WANT_NEW :: 1;             // make 16 bytes of entropy (the browser's crypto.get
 WANT_DERIVE :: 2;          // acct_hex: the words, the npub and the key (in memory only)
 WANT_SIGN :: 3;            // acct_key: the NIP-98 Authorization for POST acct_url with body PV_LOGIN_BODY
 WANT_CHECK :: 4;           // swap: the typed words' checksum, their entropy into swap_hex
-ACCT_NONE :: 0; ACCT_READY :: 2; ACCT_FAILED :: 3;
+ACCT_NONE :: 0; ACCT_READY :: 2; ACCT_FAILED :: 3; ACCT_GONE :: 4;   // GONE: logged out, the words forgotten here
+PV_OUT_MARK :: "out";     // what this browser keeps after LOG OUT in place of the entropy: no secret, and no new account on load
 PV_LOGIN_BODY :: "{\"kind\":\"login\"}";
 PV_KEPT :: 4; PV_KEEP :: 4;   // the host's kept text (action 4 keeps it; message 4 at the next visit)
 PV_FACTS :: 600;
@@ -139,6 +140,8 @@ PrivateState :: struct {
   acct_force: bool;              // log in with the words even over another session (SWITCH, SWAP)
   acct_tried: bool;              // the automatic login was sent once
   acct_keep: bool;               // acct_hex is new: keep it in this browser (action 4)
+  acct_forget: bool;             // LOG OUT: keep PV_OUT_MARK in its place (replaces the kept entropy)
+  out_ask: bool;                 // LOG OUT's confirm is shown
   kept_seen: bool;               // the first frame has passed (a kept text comes before it)
   swap: [PV_WORDS] u8; swap_n: int; swap_ok: bool; swap_hex: [32] u8;
   inbox: [] u8;                  // PrivateHost's
@@ -656,12 +659,16 @@ coaxial_private_acct_done :: (s: [] PrivateState, ok: bool) #export_c {
   } else if want == WANT_SIGN {
     if !ok { s[0].acct_auth_n = 0; pv_acct_say(s, "COULDN'T SIGN THE LOGIN"); }
   } else if want == WANT_CHECK {
-    if ok { s[0].swap_ok = true; s[0].typing = false; }
+    if ok { s[0].swap_ok = true; s[0].typing = false; if s[0].acct == ACCT_GONE { pv_swap_yes(s); } }
     else { pv_wipe(s[0].swap_hex[..]); pv_acct_say(s, "THOSE WORDS DON'T CHECK OUT"); }
   }
 }
 // Each frame on /login: keep new entropy, log in with the words when no one is, post a signed login.
 pv_acct_due :: (s: [] PrivateState) {
+  if s[0].acct_forget && s[0].action == 0 {
+    s[0].acct_forget = false;
+    s[0].out_n = pv_put(s[0].outbox[..], 0, PV_OUT_MARK); s[0].action = PV_KEEP;
+  }
   if s[0].acct_keep && s[0].action == 0 && s[0].acct_hex_n == 32 {
     s[0].acct_keep = false;
     s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].acct_hex[0..<32]); s[0].action = PV_KEEP;
@@ -683,12 +690,27 @@ pv_acct_due :: (s: [] PrivateState) {
     s[0].post_kind = POST_WORDS; s[0].post_id = -1;
   }
 }
+// LOG OUT, confirmed: end the session, forget the words here (the kept entropy becomes PV_OUT_MARK).
+pv_log_out :: (s: [] PrivateState) {
+  if s[0].post_kind != 0 { return; }
+  s[0].out_ask = false;
+  pv_post_auth(s, "logout", POST_SITE_OUT, "", "");
+  pv_forget(s);
+}
+pv_forget :: (s: [] PrivateState) {
+  pv_wipe(s[0].acct_hex[..]); s[0].acct_hex_n = 0;
+  pv_wipe(s[0].acct_words[..]); s[0].acct_words_n = 0;
+  pv_wipe(s[0].acct_npub[..]); s[0].acct_npub_n = 0;
+  pv_wipe(s[0].acct_auth[..]); s[0].acct_auth_n = 0;
+  pv_wipe_swap(s);
+  s[0].acct = ACCT_GONE; s[0].acct_keep = false; s[0].acct_forget = true; s[0].acct_show = false; s[0].acct_force = false;
+}
 pv_swap_check :: (s: [] PrivateState) {
   if s[0].swap_n == 0 || s[0].acct_want != 0 { return; }
   s[0].acct_want = WANT_CHECK;
 }
 pv_swap_yes :: (s: [] PrivateState) {
-  if !s[0].swap_ok || s[0].acct_want != 0 { return; }
+  if !s[0].swap_ok || (s[0].acct_want != 0 && s[0].acct != ACCT_GONE) { return; }
   for i: 0..<32 { s[0].acct_hex[i] = s[0].swap_hex[i]; }
   s[0].acct_hex_n = 32;
   pv_wipe_swap(s);
@@ -712,7 +734,10 @@ pv_account :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: 
   r.v = put(out, r.v, "YOUR ACCOUNT", x0, r.y, 12 * d, white);
   r.y += 22 * d;
   active := pv_active(s);
+  gone := s[0].acct == ACCT_GONE;
   state := ifx s[0].acct == ACCT_FAILED then "NO ACCOUNT ON THIS DEVICE"
+    else ifx gone && active == 2 then "LOGGED IN WITH YOUR PHONE'S KEY"
+    else ifx gone then "YOU'RE LOGGED OUT"
     else ifx s[0].acct != ACCT_READY then "MAKING YOUR ACCOUNT"
     else ifx active == 1 then "LOGGED IN WITH YOUR WORDS"
     else ifx active == 2 then "LOGGED IN WITH YOUR PHONE'S KEY"
@@ -750,11 +775,17 @@ pv_account :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: 
     r.y -= 12 * d;   // pv_text's y is the top of its first line; the rest here are baselines
     r = pv_text(s, out, r, "YOUR ACCOUNT IS MADE FOR YOU ON THIS DEVICE. KEEP YOUR 12 WORDS TO USE IT ELSEWHERE.", x0, x1 - x0, 6, dim, 3, true, top);
     r.y += 24 * d;
-    if active == 2 || (active == 0 && s[0].acct_out) {
-      lab2 := ifx active == 2 then "SWITCH TO MY WORDS ACCOUNT" else "LOG IN WITH MY WORDS";
-      r.v = pv_chip(s, out, r.v, lab2, x0, r.y, H_WORDS_IN, true, p, true, top);
+    if active == 2 {
+      r.v = pv_chip(s, out, r.v, "SWITCH TO MY WORDS ACCOUNT", x0, r.y, H_WORDS_IN, true, p, true, top);
       r.y += 30 * d;
     }
+  }
+  if gone {
+    r.v = pv_chip(s, out, r.v, "NEW ACCOUNT", x0, r.y, H_NEWACCT, true, p, true, top);
+    r.y += 26 * d;
+    r.y -= 12 * d;
+    r = pv_text(s, out, r, "MAKES NEW WORDS ON THIS DEVICE AND LOGS IN.", x0, x1 - x0, 6, dim, 2, true, top);
+    r.y += 24 * d;
   }
   if active != 0 {
     n := pv_count(s, 'J');
@@ -769,19 +800,28 @@ pv_account :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: 
         r.y += 26 * d;
       }
     }
-    r.v = pv_chip(s, out, r.v, "LOG OUT", x0, r.y, H_SITE_OUT, false, p, true, top);
+    if s[0].out_ask {
+      r.y -= 12 * d;
+      msg := ifx s[0].acct == ACCT_READY then "LOG OUT AND FORGET THIS ACCOUNT'S WORDS ON THIS DEVICE? WRITE THEM DOWN FIRST, OR YOU CAN'T GET BACK IN." else "LOG OUT?";
+      r = pv_text(s, out, r, msg, x0, x1 - x0, 6.5, orange, 3, true, top);
+      r.y += 16 * d;
+      r.v = pv_chip(s, out, r.v, "LOG OUT", x0, r.y, H_OUTYES, true, p, true, top);
+      r.v = pv_chip(s, out, r.v, "CANCEL", x0 + chip_width("LOG OUT", 7 * d, p) + 10 * d, r.y, H_OUTNO, false, p, true, top);
+    } else {
+      r.v = pv_chip(s, out, r.v, "LOG OUT", x0, r.y, H_SITE_OUT, false, p, true, top);
+    }
     r.y += 34 * d;
   }
   if s[0].acct_note_n > 0 && s[0].time - s[0].acct_note_at < 6 {
     r.v = put(out, r.v, cast(string) s[0].acct_note[0..<s[0].acct_note_n], x0, r.y, 6 * d, orange);
     r.y += 18 * d;
   }
-  // SWAP ACCOUNT: other words in place of these, after a warning
+  // SWAP ACCOUNT: other words in place of these, after a warning (logged out: LOG IN WITH MY WORDS)
   r.y += 10 * d;
-  r.v = put(out, r.v, "SWAP ACCOUNT", x0, r.y, 8 * d, white);
+  r.v = put(out, r.v, ifx gone then "LOG IN WITH MY WORDS" else "SWAP ACCOUNT", x0, r.y, 8 * d, white);
   r.y += 4 * d;
   r = pv_text(s, out, r, "DON'T PASTE WORDS FOR A KEY YOU USE ELSEWHERE: THIS DEVICE KEEPS THEM.", x0, x1 - x0, 6, dim, 3, true, top);
-  if s[0].swap_ok {
+  if s[0].swap_ok && !gone {
     r.y += 4 * d;
     r = pv_text(s, out, r, "THIS DEVICE FORGETS THE CURRENT WORDS. WRITE THEM DOWN FIRST.", x0, x1 - x0, 6.5, orange, 3, true, top);
     r.y += 16 * d;
@@ -789,7 +829,7 @@ pv_account :: (s: [] PrivateState, out: [] f32, f: PvFlow, x0: f32, x1: f32, p: 
     r.v = pv_chip(s, out, r.v, "CANCEL", x0 + chip_width("SWAP ACCOUNT", 7 * d, p) + 10 * d, r.y, H_SWNO, false, p, true, top);
     r.y += 26 * d;
   } else {
-    r = pv_field(s, out, r, x0, x1, p, true, top, 3, "Paste 12 other words", "SWAP", H_SWFIELD, H_SWAP);
+    r = pv_field(s, out, r, x0, x1, p, true, top, 3, ifx gone then "Paste your 12 words" else "Paste 12 other words", ifx gone then "LOG IN" else "SWAP", H_SWFIELD, H_SWAP);
   }
   return r;
 }
@@ -1550,6 +1590,9 @@ pv_act :: (s: [] PrivateState, target: int) {
   else if target == H_SWYES { pv_swap_yes(s); }
   else if target == H_SWNO { pv_wipe_swap(s); }
   else if target == H_WORDS_IN { s[0].acct_force = true; s[0].acct_out = false; }
+  else if target == H_OUTYES { pv_log_out(s); }
+  else if target == H_OUTNO { s[0].out_ask = false; }
+  else if target == H_NEWACCT { if s[0].acct_want == 0 { s[0].acct = ACCT_NONE; s[0].acct_want = WANT_NEW; s[0].acct_force = true; s[0].acct_out = false; } }
   if target == H_KEYOPEN || target == H_KREPLACE { s[0].keying = true; s[0].typing = true; s[0].focus = 2; pv_wipe_key(s); }
   else if target == H_KFIELD { s[0].typing = true; s[0].focus = 2; }
   else if target == H_KSAVE { s[0].focus = 2; pv_save_key(s); }
@@ -1558,7 +1601,11 @@ pv_act :: (s: [] PrivateState, target: int) {
   else if target == H_LINKPHONE { if !s[0].linking { s[0].linking = true; s[0].code_state = CODE_NONE; s[0].scroll = 0; pv_new_code(s); } }
   else if target == H_CLOSE { s[0].linking = false; s[0].code_state = CODE_NONE; s[0].qr_size = 0; s[0].poll_n = 0; }
   else if target == H_NEWCODE { pv_new_code(s); }
-  else if target == H_SITE_OUT { if s[0].post_kind == 0 { s[0].acct_out = true; pv_post_auth(s, "logout", POST_SITE_OUT, "", ""); } }
+  else if target == H_SITE_OUT {
+    // /login asks first: logging out forgets this device's words; elsewhere it only ends the session
+    if s[0].page == 2 { s[0].out_ask = true; }
+    else if s[0].post_kind == 0 { pv_post_auth(s, "logout", POST_SITE_OUT, "", ""); }
+  }
   else if target >= H_MINE && target < H_MINE + 12 {
     j := pv_nth(s, 'J', target - H_MINE);
     if j >= 0 { n := pv_put(s[0].outbox[..], 0, "/projects/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_cell(s, j, 1)); s[0].action = PV_NAVIGATE; }
@@ -1696,6 +1743,7 @@ coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_
   if kind == PV_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
   if kind == PV_FACTS { pv_facts(s, text); return; }
   // this browser's account (only /login reads it): 16 bytes as hex
+  if kind == PV_KEPT && s[0].page == 2 && text == PV_OUT_MARK { s[0].acct = ACCT_GONE; return; }
   if kind == PV_KEPT && s[0].page == 2 && pv_hex_ok(text) && s[0].acct_want == 0 {
     for i: 0..<32 { s[0].acct_hex[i] = text[i]; }
     s[0].acct_hex_n = 32; s[0].acct_want = WANT_DERIVE;
@@ -2019,7 +2067,9 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/projects/other";
   coaxial_private_action_done(s[..]);
   pv_act(s[..], H_SITE_OUT);
-  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/logout";
+  #assert s[0].out_ask && s[0].post_n == 0;   // /login asks first
+  pv_act(s[..], H_OUTYES);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/logout" && s[0].acct == ACCT_GONE && s[0].acct_forget;
   coaxial_private_posted(s[..], 6);
   pv_answer(s[..], 6, "200\n{\"ok\": true}");
   #assert s[0].me_status == -1 && s[0].code_state == CODE_NONE && s[0].line_n == 0;
@@ -2168,7 +2218,45 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   coaxial_private_action_done(s[..]);
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
   pv_act(s[..], H_SITE_OUT);
-  #assert s[0].acct_out && cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/logout";
+  #assert s[0].out_ask && s[0].post_n == 0;
+  pv_act(s[..], H_OUTNO);
+  #assert !s[0].out_ask && s[0].acct == ACCT_READY;
+  pv_act(s[..], H_SITE_OUT); pv_act(s[..], H_OUTYES);
+  // confirmed: the session ends, the words are wiped here and the browser keeps only the mark
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/logout";
+  #assert s[0].acct == ACCT_GONE && s[0].acct_hex_n == 0 && s[0].acct_words_n == 0 && s[0].acct_npub_n == 0 && s[0].acct_hex[0] == 0 && s[0].acct_words[0] == 0;
+  coaxial_private_posted(s[..], 5);
+  pv_answer(s[..], 5, "200\n{\"ok\": true}");
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].action == PV_KEEP && cast(string) s[0].outbox[0..<s[0].out_n] == "out";
+  coaxial_private_action_done(s[..]);
+  coaxial_private_asked(s[..], 6);
+  pv_answer(s[..], 6, "401\n{}");
+  n = pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].acct_want == 0 && s[0].post_kind != POST_WORDS;   // no new account, no login
+  // NEW ACCOUNT makes fresh words and logs in
+  pv_act(s[..], H_NEWACCT);
+  #assert s[0].acct_want == WANT_NEW && s[0].acct_force;
+}
+#test "/login: a browser that logged out stays logged out; LOG IN WITH MY WORDS logs straight in" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 2);
+  k := pv_put(s[0].inbox, 0, "out");
+  coaxial_private_message(s[..], PV_KEPT, k);
+  n := pv_fresh(s[..], out[..], u[..], 1440, 900);
+  #assert s[0].acct == ACCT_GONE && s[0].acct_want == 0 && n > 0;
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "401\n{}");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].acct_want == 0 && s[0].acct == ACCT_GONE;
+  pv_act(s[..], H_SWFIELD); pv_type(s[..], "legal winner");
+  pv_act(s[..], H_SWAP);
+  #assert s[0].acct_want == WANT_CHECK;
+  s[0].swap_hex = [32] u8.['7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f','7','f'];
+  coaxial_private_acct_done(s[..], true);
+  // no confirm: there are no current words to lose
+  #assert s[0].acct_want == WANT_DERIVE && s[0].acct_force && s[0].acct_keep && s[0].acct_hex[0] == '7' && s[0].swap_n == 0;
 }
 #test "/login: a kept account, the phone's key logged in, SWITCH and SWAP" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
