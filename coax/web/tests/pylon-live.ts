@@ -9,7 +9,7 @@ import {chrome,gpuFlags} from "../chrome"
 const args=process.argv.slice(2),url=args[0]
 const value=(n:string,d:string)=>{const i=args.indexOf(`--${n}`);return i<0?d:args[i+1]}
 if(!url?.startsWith("http"))throw Error("usage: pylon-live.ts URL --expect SLUG,SLUG --answers N --out FILE")
-const expected=value("expect","").split(",").filter(Boolean),answers=Number(value("answers","1")),seconds=Number(value("timeout","120")),out=value("out","/tmp/pylon-live.png"),perProvider=Number(value("per-provider",answers>0?"1":"0"))
+const expected=value("expect","").split(",").filter(Boolean),answers=Number(value("answers","1")),seconds=Number(value("timeout","120")),out=value("out","/tmp/pylon-live.png"),perProvider=Number(value("per-provider",answers>0?"1":"0")),identity=value("identity","")
 if(!Number.isInteger(answers)||answers<0||!Number.isInteger(perProvider)||perProvider<0||!Number.isFinite(seconds)||seconds<1||seconds>600)throw Error("invalid bounded live proof options")
 const profile=mkdtempSync(join(tmpdir(),"coax-pylon-live-"))
 const proc=Bun.spawn([chrome(),"--headless=new","--mute-audio",`--user-data-dir=${profile}`,"--no-first-run","--hide-scrollbars",...gpuFlags(),"--window-size=1280,800","--remote-debugging-port=0","about:blank"],{stdout:"ignore",stderr:"ignore"})
@@ -40,7 +40,7 @@ try{
         globalThis.pylonObservation=()=>{
           const count=x.coaxial_pylon_count(state),decode=new TextDecoder();
           const slugs=Array.from({length:count},(_,i)=>decode.decode(new Uint8Array(memory.buffer,x.coaxial_pylon_slug(state,i),x.coaxial_pylon_slug_len(state,i))));
-          const rows=slugs.map((slug,i)=>({slug,answers:x.coaxial_pylon_row_answers(state,i),statuses:x.coaxial_pylon_row_statuses(state,i)}));
+          const rows=slugs.map((slug,i)=>({slug,identity:x.coaxial_pylon_identity?decode.decode(new Uint8Array(memory.buffer,x.coaxial_pylon_identity(state,i),x.coaxial_pylon_identity_len(state,i))):"",answers:x.coaxial_pylon_row_answers(state,i),statuses:x.coaxial_pylon_row_statuses(state,i)}));
           return {ready:globalThis.coaxial?.ready===true,count,slugs,rows,answers:x.coaxial_pylon_answers(state),statuses:x.coaxial_pylon_statuses(state),refused:x.coaxial_pylon_refused(state)};
         };
       }
@@ -52,16 +52,16 @@ try{
     snapshot=await evaluate("globalThis.pylonObservation?.()")
     if(snapshot?.ready&&expected.every(s=>snapshot.slugs.includes(s))){
       if(!ready){ready=true;console.log("READY "+JSON.stringify(snapshot))}
-      if(snapshot.answers>=answers&&expected.every(s=>snapshot.rows.some((r:any)=>r.slug===s&&r.answers>=perProvider))){
+      if(snapshot.answers>=answers&&expected.every(s=>snapshot.rows.some((r:any)=>r.slug===s&&r.answers>=perProvider&&(!identity||r.identity===identity)))){
         if(errors.length)throw Error("page exceptions: "+JSON.stringify(errors))
         await Bun.sleep(500)
         const shot=await send("Page.captureScreenshot",{format:"png"});writeFileSync(out,Buffer.from(shot.result.data,"base64"))
-        const evidence={url,at:new Date().toISOString(),expected,minimum_answers:answers,per_provider:perProvider,...snapshot,screenshot:out}
+        const evidence={url,at:new Date().toISOString(),expected,minimum_answers:answers,per_provider:perProvider,identity,...snapshot,screenshot:out}
         writeFileSync(out+".json",JSON.stringify(evidence,null,2)+"\n")
         console.log("PASS "+JSON.stringify(evidence));process.exitCode=0;break;
       }
     }
     await Bun.sleep(500)
   }
-  if(!snapshot?.ready||!expected.every(s=>snapshot.slugs.includes(s))||snapshot.answers<answers||!expected.every(s=>snapshot.rows.some((r:any)=>r.slug===s&&r.answers>=perProvider)))throw Error("live page proof timed out: "+JSON.stringify({expected,answers,snapshot,errors}))
+  if(!snapshot?.ready||!expected.every(s=>snapshot.slugs.includes(s))||snapshot.answers<answers||!expected.every(s=>snapshot.rows.some((r:any)=>r.slug===s&&r.answers>=perProvider&&(!identity||r.identity===identity))))throw Error("live page proof timed out: "+JSON.stringify({expected,answers,snapshot,errors}))
 }finally{ws?.close();proc.kill();rmSync(profile,{recursive:true,force:true})}
