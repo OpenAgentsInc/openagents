@@ -340,6 +340,7 @@ sp_press :: (s: [] Everglade, slot: int) {
 sp_broken :: (s: [] Everglade) -> bool { return s[0].sp.dm[0].broken_n > 0 || demo_chunks(sp_dm(s)) > 0; }
 sp_rebuild :: (s: [] Everglade) {
   n := sp_restore(s, -1);
+  _ := watch_rebuilt(s);   // the fallen stand up too (everglade-watch.coax)
   for i: 0..<SP_SCORCHES { s[0].sp.scorches[i].live = false; }
   sp_say(s, "THE TOWN STANDS AGAIN", n, "PIECES");
 }
@@ -628,6 +629,7 @@ sp_orb_hit :: (s: [] Everglade, i: int, at: Point, c: Point, share: f32) {
   s[0].sp.pushed += 1;
 }
 sp_blast :: (s: [] Everglade, at: Point, slot: int) {
+  watch_spell(s, at, slot);   // who it hurts, and whether the watch calls it a crime (everglade-watch.coax)
   w := sp_dm(s);
   radius := SP_BLAST[slot];
   // what it breaks is thrown out from it (verse/demolish.coax demo_blast_begin): along the ground, or

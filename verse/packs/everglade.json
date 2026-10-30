@@ -179,6 +179,42 @@
         "name": "spell",
         "library": "ual1",
         "clip": "Spell_Simple_Idle_Loop"
+      },
+      {
+        "name": "slash",
+        "library": "ual1",
+        "clip": "Sword_Attack",
+        "tolerance": 0.035,
+        "still_fingers": true
+      },
+      {
+        "name": "run",
+        "library": "ual1",
+        "clip": "Jog_Fwd_Loop",
+        "tolerance": 0.035,
+        "still_fingers": true,
+        "distance": 3.4
+      },
+      {
+        "name": "die",
+        "library": "ual1",
+        "clip": "Death01",
+        "tolerance": 0.035,
+        "still_fingers": true
+      },
+      {
+        "name": "knock",
+        "library": "ual2",
+        "clip": "Hit_Knockback",
+        "tolerance": 0.035,
+        "still_fingers": true
+      },
+      {
+        "name": "cower",
+        "library": "ual1",
+        "clip": "Crouch_Idle_Loop",
+        "tolerance": 0.035,
+        "still_fingers": true
       }
     ],
     "kinds": {

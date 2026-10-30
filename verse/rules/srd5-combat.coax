@@ -1,0 +1,87 @@
+// SRD 5e creatures and their attacks (System Reference Document 5.2.1, CC BY
+// 4.0), beside verse/rules/srd5.coax's dice, spells and objects: a stat
+// block's armor class, hit points, Dexterity save, and one melee attack (its
+// bonus to hit and its damage dice), and the attack roll itself. As the
+// combat model (`0b401561a0^:docs/verse/combat-model.md`) translates them:
+// real time, no turns; a d20 plus the attack bonus against the target's AC
+// decides a hit, a natural 20 always hits and crits (its damage dice rolled
+// twice), a natural 1 always misses; a creature in a spell's area makes the
+// spell's save and takes half on a success, as the SRD has it.
+//   coax/bin/coax test --library verse/rules/srd5-combat.coax
+
+#load "srd5.coax";
+
+SrdCreature :: struct {
+  name: string;
+  ac: int; hp: int;
+  dex: int;                       // Dexterity save modifier
+  attack: int;                    // melee attack bonus
+  dice: int; sides: int; bonus: int; kind: int;   // its damage: dice x d sides + bonus
+}
+
+// Guard (SRD 5.2.1): AC 16 (chain shirt, shield), 11 HP (2d8 + 2), Dex +1; its melee +3 for
+// 1d6 + 1 (the SRD's spear; Everglade's watch carry a sword, slashing).
+SRD_GUARD :: SrdCreature.{name = "Guard", ac = 16, hp = 11, dex = 1, attack = 3, dice = 1, sides = 6, bonus = 1, kind = DMG_SLASHING};
+// Commoner (SRD 5.2.1): AC 10, 4 HP (1d8), Dex +0; a club, +2 for 1d4 bludgeoning.
+SRD_COMMONER :: SrdCreature.{name = "Commoner", ac = 10, hp = 4, dex = 0, attack = 2, dice = 1, sides = 4, bonus = 0, kind = DMG_BLUDGEONING};
+// The player, a 5th-level Ranger (SRD 5.2.1: d10 hit dice, Con +2: 10 + 2 + 4 x (6 + 2) = 44 HP;
+// studded leather, Dex +3: AC 15).
+SRD_RANGER_5 :: SrdCreature.{name = "Ranger", ac = 15, hp = 44, dex = 3, attack = 6, dice = 1, sides = 8, bonus = 3, kind = DMG_PIERCING};
+
+SrdAttack :: struct { roll: int; total: int; hit: bool; crit: bool; damage: int; }
+
+// An attack roll by `c` against armor class ac, and its damage on a hit.
+srd_attack :: (d: [] SrdDice, c: SrdCreature, ac: int) -> SrdAttack {
+  a: SrdAttack;
+  a.roll = srd_roll(d, 20);
+  a.total = a.roll + c.attack;
+  a.crit = a.roll == 20;
+  a.hit = a.roll != 1 && (a.crit || a.total >= ac);
+  if a.hit {
+    n := ifx a.crit then c.dice * 2 else c.dice;
+    a.damage = srd_max_i(srd_sum(d, n, c.sides) + c.bonus, 1);
+  }
+  return a;
+}
+srd_max_i :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+
+// What a creature takes of a spell's damage in its area: its save against dc, half on a success.
+srd_creature_takes :: (d: [] SrdDice, c: SrdCreature, dmg: SrdDamage, save: int, on_save: int, dc: int) -> int {
+  all := dmg.amount + dmg.amount2;
+  if save == SAVE_NONE { return all; }
+  s := srd_save(d, c.dex, dc);
+  if s.success { return ifx on_save == ON_SAVE_HALF then all / 2 else 0; }
+  return all;
+}
+
+// ---- checks
+
+#test "srd5 combat: a guard's attack is d20 + 3 against AC, 1d6 + 1 on a hit, 2d6 + 1 on a natural 20" {
+  d: [1] SrdDice; d[0] = srd_dice(9);
+  hits := 0; crits := 0; misses := 0;
+  for i: 0..<2000 {
+    a := srd_attack(d[..], SRD_GUARD, 15);
+    #assert a.roll >= 1 && a.roll <= 20 && a.total == a.roll + 3;
+    #assert a.hit == (a.roll != 1 && (a.roll == 20 || a.roll + 3 >= 15));
+    if a.hit && !a.crit { hits += 1; #assert a.damage >= 2 && a.damage <= 7; }
+    if a.crit { crits += 1; #assert a.damage >= 3 && a.damage <= 13; }
+    if !a.hit { misses += 1; #assert a.damage == 0; }
+  }
+  // 12 or better on the d20 hits AC 15: 9 faces in 20 (45%), one of them a crit
+  #assert hits + crits > 800 && hits + crits < 1000 && crits > 60 && crits < 150;
+  #assert SRD_GUARD.ac == 16 && SRD_GUARD.hp == 11 && SRD_COMMONER.hp == 4 && SRD_RANGER_5.hp == 44 && SRD_RANGER_5.ac == 15;
+}
+
+#test "srd5 combat: a creature in a spell's area saves for half" {
+  d: [1] SrdDice; d[0] = srd_dice(3);
+  dmg := SrdDamage.{amount = 30, kind = DMG_FIRE, amount2 = 10, kind2 = DMG_BLUDGEONING};
+  half := 0; full := 0;
+  for i: 0..<400 {
+    t := srd_creature_takes(d[..], SRD_GUARD, dmg, SAVE_DEX, ON_SAVE_HALF, 15);
+    #assert t == 40 || t == 20;
+    if t == 20 { half += 1; } else { full += 1; }
+  }
+  // d20 + 1 against 15: 14 or better, 7 in 20
+  #assert half > 100 && half < 180 && full > half;
+  #assert srd_creature_takes(d[..], SRD_GUARD, dmg, SAVE_NONE, ON_SAVE_NONE, 15) == 40;
+}

@@ -1,0 +1,752 @@
+// Everglade's town watch and what the town does about a crime (eg-watch).
+//
+// The watch: the two gate guards of routines.coax (Bram and Tilda) and six
+// more, each on a beat of their own, there and back on the town's shared
+// clock as the gate guards walk theirs: Inn Street, the commons, the
+// market, Guild Row out to the West Gate, the East Gate, and the North Gate.
+// They are Quaternius people (folk.coax) in the Ranger's leathers with its
+// pauldrons and bracers, dyed the watch's crimson, with the Fantasy Props
+// kit's bronze sword and wooden shield: SRD 5.2.1 Guards (verse/rules/
+// srd5-combat.coax).
+//
+// A crime (watch_crime): a spell that breaks or strikes a building piece,
+// or that hits a person. A guard who sees it (within WATCH_SIGHT and no
+// building, wall or the palisade between, at the blast or at you) or hears
+// it (a blast carries: WATCH_HEAR by spell) turns on you, shouts and comes
+// running; with one on you, you are WANTED. Townsfolk who see it run from
+// you and cower; the brave few (the smith, the fighters' master, the
+// rangers' warden) come at you with their fists. Out of every hunting
+// guard's sight for WANTED_LOSE seconds, or dead, you are wanted no more,
+// and the watch walk back to their beats.
+//
+// The fight (the combat model, `0b401561a0^:docs/verse/combat-model.md`:
+// real time, dice behind the scenes): a guard in reach swings every
+// SWING_EVERY seconds, its blow landing STRIKE_AT into the swing as an SRD
+// attack roll against your AC (15, a 5th-level Ranger's), 1d6 + 1 on a hit.
+// You have 44 HP; at 0 the view fades, YOU DIED, and you stand at the Road
+// In again whole. A spell's blast hits everyone in it (its damage rolled once,
+// a Dexterity save for half, as srd5.coax's objects take it): one who
+// lives is knocked down (the SRD's Prone, PRONE_SECONDS, then they get up),
+// one at 0 HP falls dead. A dead guard is back on their beat GUARD_BACK
+// seconds later (more of the watch come); the townsfolk lie where they fell
+// until R (the spell bar's Rebuild) or the next dawn.
+//
+// Fit: the watch's beats are a pure function of the shared clock, so every
+// visitor sees the same town at peace; a crime and what follows are this
+// page's alone, as what a player breaks is (everglade-spells.coax), so one
+// visitor's fight never troubles another's town. A still page (a golden)
+// has no crime and holds everyone at their posts. Everything here is fixed
+// pools; the dice are seeded (srd5.coax), so a fight replays exactly.
+//   coax/bin/coax test --library verse/everglade/watch.coax --steps 2000000000
+
+#load "plan.coax";
+#load "routines.coax";
+#load "people-rig.coax";
+#load "../rules/srd5-combat.coax";
+
+WATCH_NEW :: 6;                        // the watch past the two gate guards
+WATCH_ACTORS :: EG_SPOTS + WATCH_NEW;  // everyone who can be hurt: the spots' people, then the new watch
+WATCH_SIGHT :: 34.0;      // m a guard sees a crime or you
+WATCH_EYE :: 1.6;         // m up their eyes are
+WATCH_HEAR :: [4] f32.[85.0, 60.0, 85.0, 22.0];   // m a blast carries: the meteors, the bolt, the mega bolt, the orb's splash
+FOLK_SEE :: 26.0;         // m townsfolk see a crime from
+GUARD_RUN :: 5.0;         // m/s a guard runs (you run 7.5: you can get away)
+BRAVE_RUN :: 4.2;
+FLEE_RUN :: 3.8;
+BACK_WALK :: 1.4;         // m/s walking back to their day
+REACH :: 1.5;             // m from you a blow reaches
+SWING :: 1.5333333;       // s the sword's swing (people-rig PEOPLE_SLASH) and its rest after
+SWING_EVERY :: 1.9;
+STRIKE_AT :: 0.62;        // s into the swing its blow lands
+PUNCH :: 1.5333333;       // s a bare-handed swing (the sword's clip, PEOPLE_SLASH)
+PUNCH_EVERY :: 2.2;
+PUNCH_AT :: 0.62;
+PRONE_SECONDS_W :: 1.5;   // the combat model's knocked-down debuff (srd5.coax PRONE_SECONDS)
+KNOCK :: 0.8333333;       // s the fall (PEOPLE_KNOCK)
+RISE :: 0.8;              // s getting up (a blend back to PEOPLE_IDLE)
+DIE :: 2.4;               // s the fall dead (PEOPLE_DIE)
+FLEE_FOR :: 5.0;          // s they run before they cower
+CALM_AFTER :: 9.0;        // s with you no longer wanted before the frightened walk back
+COWER_NEAR :: 5.0;        // m: nearer than this to a cowering one, they run again
+WANTED_LOSE :: 18.0;      // s out of every hunter's sight and you are wanted no more
+GUARD_BACK :: 40.0;       // s after a guard falls another takes their beat
+SHOUT_FOR :: 2.6;         // s a shout shows
+DEATH_FADE :: 1.2;        // s the view takes to go dark
+DEATH_HOLD :: 2.2;        // s YOU DIED shows before you stand again
+RISE_FADE :: 0.8;         // s the view takes to come back
+SAVE_DC_W :: 15;          // a spell's DC (everglade-spells.coax SP_DC)
+BLAST_PAD :: 0.4;         // m: a body's half width, what a blast reaches past its edge
+
+// The modes.
+WM_CALM :: 0;    // on their day (routines.coax) or beat
+WM_CHASE :: 1;   // a guard after you
+WM_FLEE :: 2;
+WM_COWER :: 3;
+WM_FIGHT :: 4;   // a brave townsperson after you
+WM_DOWN :: 5;    // knocked down, then up
+WM_DEAD :: 6;
+WM_BACK :: 7;    // walking back to where their day has them
+
+// The brave: the smith, the fighters' master, the rangers' warden.
+WATCH_BRAVE :: [3] int.[11, 13, 14];
+
+// The new watch's beats: their points (x, z), there and back.
+WATCH_BEAT_N :: [6] int.[2, 5, 2, 2, 2, 2];
+WATCH_BEAT :: [60] f32.[
+  // Inn Street, from inside the South Gate up to the commons
+  1.6, -50.0,   1.6, -18.0,   0, 0,   0, 0,   0, 0,
+  // round the commons
+  13.0, 0.5,   0.5, 13.0,   -13.0, 0.5,   0.5, -13.0,   13.0, 0.5,
+  // the market, along its street
+  21.0, -1.6,   47.0, -1.6,   0, 0,   0, 0,   0, 0,
+  // Guild Row out to the West Gate
+  -22.0, -1.2,  -62.0, -0.5,  0, 0,   0, 0,   0, 0,
+  // out to the East Gate
+  50.0, 1.2,    65.0, 0.6,    0, 0,   0, 0,   0, 0,
+  // the North Gate's lane
+  44.6, 47.0,   44.6, 66.0,   0, 0,   0, 0,   0, 0
+];
+WATCH_PAUSE :: [6] f32.[12.0, 4.0, 10.0, 11.0, 13.0, 9.0];
+WATCH_NAME :: [6] string.["WATCH", "WATCH", "WATCH", "WATCH", "WATCH", "WATCH"];
+// Their looks, as folk.coax's tables: a woman or a man, hair, beard, skin, hair colour, colourway.
+WATCH_FEMALE :: [6] bool.[false, true, false, false, true, false];
+WATCH_HAIR :: [6] int.[9, 12, 8, 9, 13, 9];      // folk.coax PART_HAIR_*
+WATCH_BEARD :: [6] bool.[true, false, false, true, false, false];
+WATCH_SKIN :: [6] int.[1, 2, 3, 0, 4, 2];
+WATCH_HAIR_RGB :: [18] f32.[0.05, 0.035, 0.03,  0.32, 0.12, 0.04,  0.08, 0.05, 0.035,  0.55, 0.55, 0.57,  0.03, 0.025, 0.025,  0.2, 0.1, 0.04];
+WATCH_VARIANT :: [6] int.[0, 1, 0, 1, 0, 1];
+WATCH_DYE :: [4] f32.[0.32, 0.03, 0.025, 1];    // the gate guards' crimson (folk.coax FOLK_DYE)
+
+// What a guard shouts when they turn on you, and townsfolk as they run.
+WATCH_SHOUTS :: 5;
+WATCH_SHOUT :: [5] string.["HALT!", "STOP RIGHT THERE!", "GUARDS! TO ME!", "SEIZE THEM!", "YOU'LL HANG FOR THIS!"];
+FOLK_SHOUTS :: 3;
+FOLK_SHOUT :: [3] string.["HELP!", "RUN!", "GUARDS!"];
+BRAVE_SHOUT :: "NOT IN MY TOWN!";
+
+// One of the town: how they stand toward you.
+Actor :: struct {
+  mode: int; t: f32;              // the mode and the seconds in it
+  after: int;                     // the mode they get up into, knocked down
+  hp: int; max: int;
+  x: f32; z: f32; yaw: f32;       // where they are off their day
+  home_x: f32; home_z: f32; home_yaw: f32; home_in: bool;   // where their day has them now
+  speed: f32;                     // m/s they move this frame
+  clip: int; hold: bool;          // the clip, and whether it holds at its end (a fall)
+  swing: f32; struck: bool; cool: f32;   // into a blow (-1 none), its roll made, and till the next
+  shout: int; shout_t: f32;       // a line over them (-1 none) and how long it has shown
+  sees: bool;                     // a guard: they see you now
+  seen_x: f32; seen_z: f32;       // where they last saw you (or heard the crime): where they run
+  ready: bool;
+  homed: bool;                    // the realm has said where their day has them (one an admin took away never is)
+}
+
+Watch :: struct {
+  on: bool;                       // the ruleset is the SRD's and the page is not still
+  actors: [WATCH_ACTORS] Actor;
+  wanted: bool; unseen: f32;      // seconds no hunter has seen you
+  hp: int; max: int; ac: int;     // you
+  dead: bool; dead_t: f32;        // you fell, and the seconds since
+  respawn: bool;                  // the realm puts you at the Road In (taken once)
+  hurt_t: f32;                    // seconds since a blow landed on you
+  hits: int; misses: int;         // blows at you, for the checks
+  crimes: int;
+  dice: [1] SrdDice;
+  day: f32;                       // the town's clock as last read, for the dawn
+  beats: [WATCH_NEW] Route; beats_ok: bool;
+  solids: [EG_SOLIDS * EG_BOX] f32; solid_n: int;
+}
+
+watch_is_guard :: (i: int) -> bool { return i >= EG_SPOTS || (i >= 0 && i < EG_SPOTS && FOLK_PATROL[i] >= 0); }
+watch_is_brave :: (i: int) -> bool { for k: 0..<3 { if WATCH_BRAVE[k] == i { return true; } } return false; }
+watch_hurtable :: (i: int) -> bool { return i >= EG_SPOTS || (i >= 0 && !EG_SPOT_CAT[i]); }
+watch_here :: (w: [] Watch, i: int) -> bool { return watch_hurtable(i) && w[0].actors[i].homed; }
+watch_block :: (i: int) -> SrdCreature { return ifx watch_is_guard(i) || i == 13 then SRD_GUARD else SRD_COMMONER; }
+
+watch_start :: (w: [] Watch, heights: [] f32) {
+  w[0].wanted = false; w[0].unseen = 0;
+  w[0].max = SRD_RANGER_5.hp; w[0].hp = w[0].max; w[0].ac = SRD_RANGER_5.ac;
+  w[0].dead = false; w[0].dead_t = 0; w[0].respawn = false; w[0].hurt_t = 100;
+  w[0].dice[0] = srd_dice(20261030);
+  w[0].day = -1;
+  w[0].solid_n = everglade_solids(w[0].solids[..]);
+  for i: 0..<WATCH_ACTORS { watch_revive(w, i); }
+  for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
+  w[0].beats_ok = heights.count >= EG_GROUND_POINTS;
+}
+watch_revive :: (w: [] Watch, i: int) {
+  a := w[0].actors[i..<i + 1];
+  a[0].mode = WM_CALM; a[0].t = 0; a[0].after = WM_CALM;
+  a[0].max = watch_block(i).hp; a[0].hp = a[0].max;
+  a[0].swing = -1; a[0].struck = false; a[0].cool = 0; a[0].shout = -1; a[0].shout_t = 0;
+  a[0].hold = false; a[0].clip = PEOPLE_IDLE; a[0].speed = 0; a[0].sees = false;
+  a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw;
+  a[0].ready = true;
+}
+
+// ---- the new watch's beats (as routines.coax walks the gate guards')
+
+watch_beat_route :: (r: [] Route, solids: [] f32, ns: int, k: int, heights: [] f32) {
+  r[0].n = 0; r[0].row = -3; r[0].who = EG_SPOTS + k;
+  x := WATCH_BEAT[k * 10]; z := WATCH_BEAT[k * 10 + 1];
+  route_put(r, x, z);
+  for p: 1..<WATCH_BEAT_N[k] {
+    bx := WATCH_BEAT[k * 10 + p * 2]; bz := WATCH_BEAT[k * 10 + p * 2 + 1];
+    route_leg(r, solids, ns, x, z, bx, bz);
+    x = bx; z = bz;
+  }
+  route_time(r, heights);
+}
+// Where the new guard k's beat has them at `beat` s on the shared clock (still: at its start).
+watch_beat_at :: (w: [] Watch, k: int, beat: f64, still: bool) -> Placed {
+  r := w[0].beats[k..<k + 1];
+  if still || r[0].n < 2 {
+    p: Placed;
+    p.x = WATCH_BEAT[k * 10]; p.z = WATCH_BEAT[k * 10 + 1];
+    p.face = atan2(WATCH_BEAT[k * 10 + 2] - p.x, WATCH_BEAT[k * 10 + 3] - p.z);
+    return p;
+  }
+  walk := r[0].seconds; pause := WATCH_PAUSE[k];
+  period := 2 * (walk + pause);
+  ph := cast(f32) (beat - f64(period) * floor(beat / f64(period)));
+  if ph < pause { p := route_at(r, 0); return p; }
+  ph -= pause;
+  if ph < walk { p := route_at(r, ph); p.walking = true; return p; }
+  ph -= walk;
+  if ph < pause { p := route_at(r, walk); p.face = folk_wrap_r(p.face + f32(PI)); return p; }
+  ph -= pause;
+  p := route_at(r, walk - ph);
+  p.face = folk_wrap_r(p.face + f32(PI));
+  p.walking = true;
+  return p;
+}
+
+// ---- sight and the way
+
+// Whether the segment a to b passes through a camera box (x0, y0, z0, x1, y1, z1: the buildings,
+// the palisade and the tall props), short of b's last metre.
+watch_hidden :: (boxes: [] f32, n: int, a: Point, b: Point) -> bool {
+  span := length(sub(b, a));
+  if span < 0.5 { return false; }
+  stop := clamp01(1 - 1.0 / span);
+  for q: 0..<n {
+    k := q * 6;
+    lo_t := 0.0f32; hi_t := stop; out := false;
+    for ax: 0..<3 {
+      o := ifx ax == 0 then a.x else ifx ax == 1 then a.y else a.z;
+      d := (ifx ax == 0 then b.x else ifx ax == 1 then b.y else b.z) - o;
+      mn := boxes[k + ax]; mx := boxes[k + 3 + ax];
+      if abs(d) < 0.00001 { if o < mn || o > mx { out = true; } continue; }
+      t0 := (mn - o) / d; t1 := (mx - o) / d;
+      if t0 > t1 { tt := t0; t0 = t1; t1 = tt; }
+      lo_t = hi(lo_t, t0); hi_t = lo(hi_t, t1);
+      if lo_t > hi_t { out = true; }
+    }
+    if !out { return true; }
+  }
+  return false;
+}
+// Whether one at (x, z) sees p: near enough and nothing in the way.
+watch_sees :: (boxes: [] f32, n: int, x: f32, z: f32, eye_y: f32, p: Point, reach: f32) -> bool {
+  if flat_gap(v3(x, 0, z), p) > reach { return false; }
+  return !watch_hidden(boxes, n, v3(x, eye_y, z), p);
+}
+// Whether (x, z) is open to a runner: no solid within a body's width, inside the world.
+watch_open :: (w: [] Watch, x: f32, z: f32) -> bool {
+  if abs(x) > f32(EG_BOUND) - 0.5 || abs(z) > f32(EG_BOUND) - 0.5 { return false; }
+  for k: 0..<w[0].solid_n { if box_gap(w[0].solids[..], k, x, z) < f32(EG_RADIUS) { return false; } }
+  return true;
+}
+// One step of `step` m from (x, z) toward the heading `to` (radians): straight on, else the nearest
+// way round that is open (a quarter, then half way round each side), else none.
+WATCH_TRIES :: [7] f32.[0.0, 0.5, -0.5, 1.0, -1.0, 1.6, -1.6];
+watch_stride :: (w: [] Watch, a: [] Actor, to: f32, step: f32) -> bool {
+  for k: 0..<7 {
+    h := to + WATCH_TRIES[k];
+    nx := a[0].x + sin(h) * step; nz := a[0].z + cos(h) * step;
+    if watch_open(w, nx, nz) || !watch_open(w, a[0].x, a[0].z) {
+      a[0].x = nx; a[0].z = nz; a[0].yaw = watch_turn(a[0].yaw, h, step * 2);
+      return true;
+    }
+  }
+  return false;
+}
+watch_turn :: (from: f32, to: f32, most: f32) -> f32 {
+  d := folk_wrap_r(to - from);
+  return folk_wrap_r(from + clamp(d, -hi(most, 0.08), hi(most, 0.08)));
+}
+
+// ---- crime and harm
+
+// The modes a shout and a turn put one in.
+watch_alarm :: (w: [] Watch, i: int, you: Point, known: Point) {
+  a := w[0].actors[i..<i + 1];
+  if a[0].mode != WM_CHASE && a[0].mode != WM_FIGHT { a[0].seen_x = known.x; a[0].seen_z = known.z; }
+  if a[0].mode == WM_DEAD || a[0].mode == WM_DOWN { if a[0].mode == WM_DOWN { a[0].after = watch_scared_mode(i, a[0], you); } return; }
+  m := watch_scared_mode(i, a[0], you);
+  if m == a[0].mode && m != WM_COWER { return; }
+  if a[0].mode == WM_CALM || a[0].mode == WM_BACK {
+    a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw;
+    a[0].shout_t = 0;
+    seed := cast(int) srd_roll(w[0].dice[..], 64);
+    a[0].shout = ifx watch_is_guard(i) then seed % WATCH_SHOUTS else ifx m == WM_FIGHT then 100 else ifx seed % 3 == 0 then seed % FOLK_SHOUTS else -1;
+  }
+  a[0].mode = m; a[0].t = 0;
+}
+watch_scared_mode :: (i: int, a: Actor, you: Point) -> int {
+  if watch_is_guard(i) { return WM_CHASE; }
+  if watch_is_brave(i) && flat_gap(v3(a.x, 0, a.z), you) < 18 { return WM_FIGHT; }
+  return WM_FLEE;
+}
+
+// A crime at `at` (a blast that struck the town or a person), heard out to `heard` m, you at `you`
+// (your feet, on the ground): every guard who sees it or you, or hears it, turns on you and runs
+// at where they saw you (or at the blast, heard), and the townsfolk who see it run. How many guards
+// turned.
+watch_crime :: (w: [] Watch, at: Point, heard: f32, you: Point, boxes: [] f32, nb: int, heights: [] f32) -> int {
+  if !w[0].on || w[0].dead { return 0; }
+  w[0].crimes += 1;
+  turned := 0;
+  chest := add(you, v3(0, 1.2, 0));
+  mark := add(at, v3(0, 0.3, 0));
+  for i: 0..<WATCH_ACTORS {
+    if !watch_here(w, i) { continue; }
+    a := w[0].actors[i];
+    if a.mode == WM_DEAD { continue; }
+    if a.mode == WM_CALM && a.home_in { continue; }   // indoors: they neither see nor come
+    eye := watch_ground_y(heights, a.x, a.z) + f32(WATCH_EYE);
+    d := flat_gap(v3(a.x, 0, a.z), at);
+    if watch_is_guard(i) {
+      saw_you := watch_sees(boxes, nb, a.x, a.z, eye, chest, f32(WATCH_SIGHT));
+      saw := saw_you || watch_sees(boxes, nb, a.x, a.z, eye, mark, f32(WATCH_SIGHT));
+      if saw || d < heard {
+        if a.mode != WM_CHASE { turned += 1; }
+        watch_alarm(w, i, you, ifx saw_you then you else at);
+      }
+    } else {
+      if d < f32(FOLK_SEE) && !watch_hidden(boxes, nb, v3(a.x, eye, a.z), mark) { watch_alarm(w, i, you, you); }
+      else if d < heard * 0.35 { watch_alarm(w, i, you, you); }
+    }
+  }
+  for i: 0..<WATCH_ACTORS {
+    a := w[0].actors[i];
+    if a.mode == WM_CHASE || (a.mode == WM_DOWN && a.after == WM_CHASE) { w[0].wanted = true; w[0].unseen = 0; }
+  }
+  return turned;
+}
+watch_ground_y :: (heights: [] f32, x: f32, z: f32) -> f32 {
+  if heights.count < EG_GROUND_POINTS { return 0; }
+  return verse_terrain_height(everglade_ground(), heights, x, z);
+}
+
+// A spell's blast of `radius` m at `at`: everyone in it takes its damage (rolled once, a Dexterity save
+// for half); one who lives is knocked down, one at 0 HP dies. How many it hit.
+watch_blast :: (w: [] Watch, at: Point, radius: f32, dmg: SrdDamage, you: Point) -> int {
+  if !w[0].on { return 0; }
+  hit := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !watch_here(w, i) { continue; }
+    a := w[0].actors[i..<i + 1];
+    if a[0].mode == WM_DEAD || (a[0].mode == WM_CALM && a[0].home_in) { continue; }
+    d := flat_gap(v3(a[0].x, 0, a[0].z), at);
+    if d >= radius + f32(BLAST_PAD) { continue; }
+    hit += 1;
+    took := srd_creature_takes(w[0].dice[..], watch_block(i), dmg, SAVE_DEX, ON_SAVE_HALF, SAVE_DC_W);
+    watch_harm(w, i, took, you);
+  }
+  return hit;
+}
+// i takes `amount`: dead at 0, else knocked down and then up to what fright makes them.
+watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
+  a := w[0].actors[i..<i + 1];
+  if a[0].mode == WM_DEAD { return; }
+  if a[0].mode == WM_CALM || a[0].mode == WM_BACK { a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw; }
+  a[0].hp -= amount;
+  a[0].swing = -1;
+  if a[0].hp <= 0 { a[0].hp = 0; a[0].mode = WM_DEAD; a[0].t = 0; a[0].shout = -1; return; }
+  a[0].after = watch_scared_mode(i, a[0], you);
+  a[0].mode = WM_DOWN; a[0].t = 0;
+}
+
+// You take a blow: at 0 you fall, and the town stands down.
+watch_hurt_you :: (w: [] Watch, amount: int) {
+  if w[0].dead { return; }
+  w[0].hp -= amount; w[0].hurt_t = 0;
+  if w[0].hp <= 0 { w[0].hp = 0; w[0].dead = true; w[0].dead_t = 0; }
+}
+
+// Everyone the R of the spell bar or the dawn stands up again: alive, whole and on their day.
+watch_restore :: (w: [] Watch) -> int {
+  n := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !watch_hurtable(i) { continue; }
+    a := w[0].actors[i];
+    if a.mode == WM_DEAD || a.hp < a.max { n += 1; }
+    if a.mode != WM_CHASE && a.mode != WM_FIGHT { watch_revive(w, i); }
+  }
+  return n;
+}
+
+// ---- each frame
+
+// Where i's day has them now (the routine or the beat), set before watch_step.
+watch_home :: (w: [] Watch, i: int, x: f32, z: f32, yaw: f32, indoors: bool) {
+  a := w[0].actors[i..<i + 1];
+  if !a[0].ready { watch_revive(w, i); }
+  a[0].home_x = x; a[0].home_z = z; a[0].home_yaw = yaw; a[0].home_in = indoors;
+  if !a[0].homed { a[0].homed = true; a[0].x = x; a[0].z = z; a[0].yaw = yaw; }
+  if a[0].mode == WM_CALM { a[0].x = x; a[0].z = z; a[0].yaw = yaw; }
+}
+// Whether i is off their day (the realm draws them where they are and as they are).
+watch_off :: (w: [] Watch, i: int) -> bool { return w[0].actors[i].ready && w[0].actors[i].mode != WM_CALM; }
+
+// The whole town for dt seconds, you at you; the town's clock's time of day, for the dawn.
+watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: int, heights: [] f32) {
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  w[0].hurt_t += t;
+  // the dawn stands the dead up again
+  if w[0].day >= 0 && w[0].day < 0.25 && day >= 0.25 && day < 0.5 { _ := watch_restore(w); }
+  w[0].day = day;
+  if w[0].dead {
+    w[0].dead_t += t;
+    if w[0].dead_t >= f32(DEATH_FADE) + f32(DEATH_HOLD) && !w[0].respawn {
+      w[0].respawn = true;
+      w[0].hp = w[0].max; w[0].dead = false; w[0].dead_t = 0; w[0].hurt_t = 100;
+      watch_stand_down(w);
+      w[0].dead_t = -f32(RISE_FADE);   // the view comes back
+    }
+  } else if w[0].dead_t < 0 { w[0].dead_t = lo(w[0].dead_t + t, 0); }
+  seen := false;
+  for i: 0..<WATCH_ACTORS {
+    if !watch_here(w, i) { continue; }
+    watch_step(w, i, t, you, boxes, nb, heights);
+    if w[0].actors[i].mode == WM_CHASE && w[0].actors[i].sees { seen = true; }
+  }
+  if w[0].wanted {
+    w[0].unseen = ifx seen then 0.0f32 else w[0].unseen + t;
+    if w[0].unseen >= f32(WANTED_LOSE) { watch_stand_down(w); }
+  }
+}
+// You are wanted no more: the hunters walk back to their beats, the brave stand down.
+watch_stand_down :: (w: [] Watch) {
+  w[0].wanted = false; w[0].unseen = 0;
+  for i: 0..<WATCH_ACTORS {
+    a := w[0].actors[i..<i + 1];
+    if a[0].mode == WM_CHASE || a[0].mode == WM_FIGHT { a[0].mode = WM_BACK; a[0].t = 0; a[0].swing = -1; }
+    if a[0].mode == WM_DOWN && (a[0].after == WM_CHASE || a[0].after == WM_FIGHT) { a[0].after = WM_BACK; }
+  }
+}
+
+// One of the town for dt seconds.
+watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int, heights: [] f32) {
+  a := w[0].actors[i..<i + 1];
+  if !a[0].ready { watch_revive(w, i); }
+  a[0].t += dt;
+  a[0].speed = 0; a[0].hold = false;
+  if a[0].shout >= 0 { a[0].shout_t += dt; if a[0].shout_t > f32(SHOUT_FOR) { a[0].shout = -1; } }
+  a[0].sees = false;
+  gap := flat_gap(v3(a[0].x, 0, a[0].z), you);
+  toward := atan2(you.x - a[0].x, you.z - a[0].z);
+  m := a[0].mode;
+  if m == WM_CALM {
+    a[0].clip = -1;   // their day's own clip
+    return;
+  }
+  if m == WM_DEAD {
+    a[0].clip = PEOPLE_DIE; a[0].hold = true;
+    if watch_is_guard(i) && a[0].t >= f32(GUARD_BACK) {
+      watch_revive(w, i);
+      if w[0].wanted && !w[0].dead { a[0].mode = WM_CHASE; a[0].shout = 2; a[0].shout_t = 0; }
+    }
+    return;
+  }
+  if m == WM_DOWN {
+    if a[0].t < f32(PRONE_SECONDS_W) { a[0].clip = PEOPLE_KNOCK; a[0].hold = true; return; }
+    if a[0].t < f32(PRONE_SECONDS_W) + f32(RISE) { a[0].clip = PEOPLE_IDLE; a[0].hold = false; return; }
+    next := a[0].after;
+    if (next == WM_CHASE || next == WM_FIGHT) && (!w[0].wanted || w[0].dead) { next = WM_BACK; }
+    if next == WM_CALM { next = WM_BACK; }
+    a[0].mode = next; a[0].t = 0;
+    return;
+  }
+  if m == WM_CHASE || m == WM_FIGHT {
+    guard := m == WM_CHASE;
+    eye := watch_ground_y(heights, a[0].x, a[0].z) + f32(WATCH_EYE);
+    a[0].sees = watch_sees(boxes, nb, a[0].x, a[0].z, eye, add(you, v3(0, 1.2, 0)), f32(WATCH_SIGHT));
+    if a[0].sees { a[0].seen_x = you.x; a[0].seen_z = you.z; }
+    if w[0].dead { a[0].mode = WM_BACK; a[0].t = 0; a[0].swing = -1; return; }
+    every := ifx guard then f32(SWING_EVERY) else f32(PUNCH_EVERY);
+    strike := ifx guard then f32(STRIKE_AT) else f32(PUNCH_AT);
+    length_ := ifx guard then f32(SWING) else f32(PUNCH);
+    a[0].cool -= dt;
+    if a[0].swing >= 0 {
+      a[0].swing += dt;
+      a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
+      a[0].clip = PEOPLE_SLASH; a[0].hold = true;
+      if !a[0].struck && a[0].swing >= strike {
+        a[0].struck = true;
+        if gap <= f32(REACH) + 0.5 {
+          roll := srd_attack(w[0].dice[..], watch_block(i), w[0].ac);
+          if roll.hit { w[0].hits += 1; watch_hurt_you(w, roll.damage); } else { w[0].misses += 1; }
+        }
+      }
+      if a[0].swing >= length_ { a[0].swing = -1; a[0].cool = every - length_; }
+      return;
+    }
+    if gap <= f32(REACH) && a[0].sees {
+      a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
+      a[0].clip = ifx guard then PEOPLE_IDLE else PEOPLE_IDLE;
+      if a[0].cool <= 0 { a[0].swing = 0; a[0].struck = false; }
+      return;
+    }
+    run := ifx guard then f32(GUARD_RUN) else f32(BRAVE_RUN);
+    // to you while they see you, else to where they last did, and there they look about
+    goal := ifx a[0].sees then you else v3(a[0].seen_x, 0, a[0].seen_z);
+    left := flat_gap(v3(a[0].x, 0, a[0].z), goal) - (ifx a[0].sees then f32(REACH) * 0.8 else 0.3f32);
+    step := lo(run * dt, left);
+    if step > 0 && watch_stride(w, a, atan2(goal.x - a[0].x, goal.z - a[0].z), step) { a[0].speed = step / hi(dt, 0.0001); }
+    a[0].clip = ifx a[0].speed > 0.1 then PEOPLE_RUN else (ifx guard then PEOPLE_IDLE else PEOPLE_IDLE);
+    return;
+  }
+  if m == WM_FLEE {
+    if a[0].t < f32(FLEE_FOR) {
+      away := atan2(a[0].x - you.x, a[0].z - you.z);
+      step := f32(FLEE_RUN) * dt;
+      if watch_stride(w, a, away, step) { a[0].speed = f32(FLEE_RUN); }
+      a[0].clip = ifx a[0].speed > 0.1 then PEOPLE_RUN else PEOPLE_COWER;
+      return;
+    }
+    a[0].mode = WM_COWER; a[0].t = 0;
+    m = WM_COWER;
+  }
+  if m == WM_COWER {
+    a[0].clip = PEOPLE_COWER;
+    if gap < f32(COWER_NEAR) && !w[0].dead { a[0].mode = WM_FLEE; a[0].t = 0; return; }
+    if (!w[0].wanted || w[0].dead) && a[0].t >= f32(CALM_AFTER) { a[0].mode = WM_BACK; a[0].t = 0; }
+    return;
+  }
+  // WM_BACK: walk to where their day has them now, then go on with it
+  d := flat_gap(v3(a[0].x, 0, a[0].z), v3(a[0].home_x, 0, a[0].home_z));
+  if d < 0.35 || a[0].t > 120 {
+    a[0].mode = WM_CALM; a[0].t = 0;
+    a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw; a[0].clip = -1;
+    return;
+  }
+  home := atan2(a[0].home_x - a[0].x, a[0].home_z - a[0].z);
+  step := lo(f32(BACK_WALK) * dt, d);
+  if watch_stride(w, a, home, step) { a[0].speed = f32(BACK_WALK); }
+  else { a[0].x = a[0].home_x; a[0].z = a[0].home_z; }
+  a[0].clip = ifx a[0].speed > 0.1 then PEOPLE_WALK else PEOPLE_IDLE;
+}
+
+// How dark the view is for your fall, 0 to 1 (0.92 at most, held while YOU DIED shows).
+watch_dark :: (w: [] Watch) -> f32 {
+  if w[0].dead { return 0.92 * clamp01(w[0].dead_t / f32(DEATH_FADE)); }
+  if w[0].dead_t < 0 { return 0.92 * clamp01(-w[0].dead_t / f32(RISE_FADE)); }
+  return 0;
+}
+// Whether YOU DIED shows.
+watch_died_shown :: (w: [] Watch) -> bool { return w[0].dead && w[0].dead_t >= f32(DEATH_FADE) * 0.6; }
+
+// ---- checks
+
+watch_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); }
+
+// A watch whose everyone stands where their day starts (the spots, the beats' first points).
+watch_test_town :: (w: [] Watch, heights: [] f32) {
+  watch_start(w, heights);
+  w[0].on = true;
+  for i: 0..<EG_SPOTS { watch_home(w, i, EG_SPOT[i * 3], EG_SPOT[i * 3 + 1], EG_SPOT[i * 3 + 2], false); }
+  for k: 0..<WATCH_NEW {
+    p := watch_beat_at(w, k, 0, true);
+    watch_home(w, EG_SPOTS + k, p.x, p.z, p.face, false);
+  }
+}
+
+#test "the watch: eight guards, each beat on open ground, there and back on the shared clock" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_start(w[..], heights[..]);
+  guards := 0;
+  for i: 0..<WATCH_ACTORS { if watch_is_guard(i) { guards += 1; } }
+  #assert guards == 8 && WATCH_NEW == 6;
+  for k: 0..<WATCH_NEW {
+    r := w[0].beats[k..<k + 1];
+    #assert r[0].n >= 2 && r[0].n < ROUTE_MAX && r[0].seconds > 8;
+    for q: 1..<r[0].n {
+      ax := r[0].pts[(q - 1) * ROUTE_FLOATS]; az := r[0].pts[(q - 1) * ROUTE_FLOATS + 1];
+      bx := r[0].pts[q * ROUTE_FLOATS]; bz := r[0].pts[q * ROUTE_FLOATS + 1];
+      d := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+      steps := cast(int) (d / 0.25) + 1;
+      for s: 0..<steps + 1 {
+        t := f32(s) / f32(steps);
+        x := lerp(ax, bx, t); z := lerp(az, bz, t);
+        #assert !everglade_in_woods(x, z);
+        for b: 0..<w[0].solid_n { #assert box_gap(w[0].solids[..], b, x, z) >= f32(EG_RADIUS); }
+      }
+    }
+    // the same clock puts them in the same place; they walk, and stand at either end
+    walked := false; far := 0.0f32;
+    for s: 0..<400 {
+      p := watch_beat_at(w[..], k, f64(s) * 0.5 + 1000, false);
+      q := watch_beat_at(w[..], k, f64(s) * 0.5 + 1000, false);
+      #assert p.x == q.x && p.z == q.z;
+      if p.walking { walked = true; }
+      far = hi(far, flat_gap(v3(p.x, 0, p.z), v3(WATCH_BEAT[k * 10], 0, WATCH_BEAT[k * 10 + 1])));
+    }
+    #assert walked && far > 10;
+    // still (a golden): at the beat's start
+    st := watch_beat_at(w[..], k, 12345, true);
+    #assert st.x == WATCH_BEAT[k * 10] && st.z == WATCH_BEAT[k * 10 + 1] && !st.walking;
+  }
+}
+
+#test "a crime makes a guard who sees it hostile and you wanted; one who can't see or hear it stays calm" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  bram := 0;
+  // a bolt (heard to 60 m) 20 m north of Bram's post, in the open on the road
+  you := v3(EG_SPOT[0] + 6, 0, EG_SPOT[1] - 6);
+  at := v3(EG_SPOT[0], 0, EG_SPOT[1] - 20);
+  #assert w[0].actors[bram].mode == WM_CALM && !w[0].wanted;
+  turned := watch_crime(w[..], at, WATCH_HEAR[1], you, nob[..], 0, heights[..]);
+  #assert turned >= 1 && w[0].actors[bram].mode == WM_CHASE && w[0].wanted && w[0].actors[bram].shout >= 0;
+  // the guard on the North Gate's lane is 130 m off: they neither see nor hear it
+  #assert w[0].actors[EG_SPOTS + 5].mode == WM_CALM;
+  // with a building between, a guard too far to hear sees nothing
+  w2: [1] Watch;
+  watch_test_town(w2[..], heights[..]);
+  wall := [6] f32.[EG_SPOT[0] - 5, -10, EG_SPOT[1] - 12, EG_SPOT[0] + 5, 20, EG_SPOT[1] - 11];
+  quiet := watch_crime(w2[..], at, 1.0, v3(at.x, 0, at.z - 2), wall[..], 1, heights[..]);
+  #assert w2[0].actors[bram].mode == WM_CALM && quiet == 0 && !w2[0].wanted;
+  // and the townsfolk who see it run (the stable hand by the road)
+  #assert w[0].actors[2].mode == WM_FLEE;
+  // a still page has no crime
+  w3: [1] Watch;
+  watch_test_town(w3[..], heights[..]);
+  w3[0].on = false;
+  #assert watch_crime(w3[..], at, 100, you, nob[..], 0, heights[..]) == 0 && !w3[0].wanted;
+}
+
+#test "a hostile guard runs to you and its blows resolve under the SRD: d20 + 3 against your AC 15, 1d6 + 1" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  // Tilda at the gate; you 10 m up the road from her
+  g := 1;
+  you := v3(EG_SPOT[g * 3], 0, EG_SPOT[g * 3 + 1] - 10);
+  _ := watch_crime(w[..], v3(you.x, 0, you.z - 3), WATCH_HEAR[0], you, nob[..], 0, heights[..]);
+  #assert w[0].actors[g].mode == WM_CHASE;
+  start := flat_gap(v3(w[0].actors[g].x, 0, w[0].actors[g].z), you);
+  for f: 0..<60 { watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
+  moved := start - flat_gap(v3(w[0].actors[g].x, 0, w[0].actors[g].z), you);
+  #assert moved > 3.5 && moved < 5.5 && w[0].actors[g].clip == PEOPLE_RUN;
+  // in reach, they swing: every blow is an attack roll; the hits take 2 to 7 (13 on a crit) off you
+  w[0].hp = 100000; w[0].max = 100000;
+  for f: 0..<60 * 120 {
+    before := w[0].hp;
+    watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
+    took := before - w[0].hp;
+    #assert took == 0 || (took >= 2 && took <= 26);
+  }
+  #assert flat_gap(v3(w[0].actors[g].x, 0, w[0].actors[g].z), you) <= f32(REACH) + 0.01;
+  blows := w[0].hits + w[0].misses;
+  // the guards swing every 1.9 s; with Bram and the stable hand's fright about, at least Tilda's 60
+  #assert blows >= 55;
+  // 12 or better on the d20 (45%)
+  #assert w[0].hits * 100 / blows > 30 && w[0].hits * 100 / blows < 62;
+}
+
+#test "you die at 0 HP: the view fades, YOU DIED, then you stand at the Road In whole and wanted no more" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  you := v3(EG_SPOT[3], 0, EG_SPOT[4] - 8);
+  _ := watch_crime(w[..], v3(EG_SPOT[3] + 20, 0, EG_SPOT[4]), WATCH_HEAR[0], you, nob[..], 0, heights[..]);
+  #assert w[0].wanted && w[0].hp == 44;
+  watch_hurt_you(w[..], 40);
+  #assert !w[0].dead && w[0].hp == 4;
+  watch_hurt_you(w[..], 7);
+  #assert w[0].dead && w[0].hp == 0;
+  #assert watch_dark(w[..]) == 0;
+  for f: 0..<6 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert watch_dark(w[..]) > 0.3 && watch_dark(w[..]) < 0.6;
+  for f: 0..<14 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert w[0].dead && watch_died_shown(w[..]) && !w[0].respawn;
+  // the hunters stand down while you lie there
+  for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_CHASE; }
+  for f: 0..<16 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert w[0].respawn && !w[0].dead && w[0].hp == w[0].max && !w[0].wanted;
+  #assert watch_dark(w[..]) > 0.5;
+  for f: 0..<10 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert watch_dark(w[..]) == 0;
+}
+
+#test "a blast hurts or kills the townsfolk and the watch; R or the dawn stands them up; a fallen guard is replaced" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  you := v3(0, 0, -30);
+  // 20d6 + 20d6 on the market's stalls: everyone there falls dead (40 to 240, half at least 20 > 11)
+  big := SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 70, kind2 = DMG_BLUDGEONING};
+  n := watch_blast(w[..], v3(EG_SPOT[8 * 3], 0, EG_SPOT[8 * 3 + 1]), 4, big, you);
+  #assert n >= 2 && w[0].actors[8].mode == WM_DEAD && w[0].actors[7].mode == WM_DEAD;
+  // a light blow knocks one down, and they get up and run
+  watch_harm(w[..], 9, 1, you);
+  #assert w[0].actors[9].mode == WM_DOWN && w[0].actors[9].hp == 3;
+  for f: 0..<20 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert (w[0].actors[9].mode == WM_DOWN && w[0].actors[9].clip == PEOPLE_IDLE) || w[0].actors[9].mode == WM_FLEE;
+  for f: 0..<20 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert w[0].actors[9].mode == WM_FLEE || w[0].actors[9].mode == WM_COWER;
+  // the dead lie where they fell
+  for f: 0..<100 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert w[0].actors[8].mode == WM_DEAD && w[0].actors[8].clip == PEOPLE_DIE && w[0].actors[8].hold;
+  // R: everyone stands again, whole
+  #assert watch_restore(w[..]) >= 2;
+  #assert w[0].actors[8].mode == WM_CALM && w[0].actors[8].hp == w[0].actors[8].max && w[0].actors[7].mode == WM_CALM;
+  // the dawn does it too
+  watch_harm(w[..], 10, 100, you);
+  #assert w[0].actors[10].mode == WM_DEAD;
+  watch_tick(w[..], 0.1, you, 0.2, nob[..], 0, heights[..]);
+  #assert w[0].actors[10].mode == WM_DEAD;
+  watch_tick(w[..], 0.1, you, 0.26, nob[..], 0, heights[..]);
+  #assert w[0].actors[10].mode == WM_CALM;
+  // a guard who falls is back on their beat GUARD_BACK s on, hunting you while you are wanted
+  g := EG_SPOTS + 2;
+  w[0].wanted = true;
+  watch_harm(w[..], g, 100, you);
+  #assert w[0].actors[g].mode == WM_DEAD;
+  for f: 0..<cast(int) (f32(GUARD_BACK) * 10) + 2 { w[0].unseen = 0; watch_tick(w[..], 0.1, v3(EG_SPOT[3], 0, EG_SPOT[4]), 0.5, nob[..], 0, heights[..]); }
+  #assert w[0].actors[g].mode == WM_CHASE && w[0].actors[g].hp == SRD_GUARD.hp;
+}
+
+#test "out of every hunter's sight for a while, you are wanted no more and the watch walk back" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  you := v3(EG_SPOT[0], 0, EG_SPOT[1] - 8);
+  _ := watch_crime(w[..], you, WATCH_HEAR[1], you, nob[..], 0, heights[..]);
+  #assert w[0].wanted;
+  // a wall between you and everyone
+  wall := [6] f32.[-200, -10, EG_SPOT[1] - 3, 200, 50, EG_SPOT[1] - 2.5];
+  far := v3(EG_SPOT[0], 0, EG_SPOT[1] - 60);
+  for f: 0..<cast(int) (f32(WANTED_LOSE) * 10) + 5 { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
+  #assert !w[0].wanted;
+  for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_CHASE; }
+  #assert w[0].actors[0].mode == WM_BACK || w[0].actors[0].mode == WM_CALM;
+  for f: 0..<1200 { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
+  #assert w[0].actors[0].mode == WM_CALM;
+}

@@ -61,10 +61,12 @@
 #load "../../verse/flock.coax";
 #load "../../verse/everglade/ranger.coax";
 #load "../../verse/everglade/folk.coax";
+#load "../../verse/everglade/watch.coax";
 #load "../../verse/water-weather.coax";
 #load "everglade-voice.coax";
 #load "everglade-place.coax";
 #load "everglade-spells.coax";
+#load "everglade-watch.coax";
 #load "everglade-items.coax";
 #load "../../verse/style-preset.coax";
 
@@ -137,7 +139,7 @@ TOWN_CAP :: [53] int.[
   4
 ];
 TOWN_OBJECTS :: 3093;     // the sum of TOWN_CAP
-OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EDIT_OBJECTS + SP_DEBRIS_OBJECTS;   // and an admin's placed things (everglade-items.coax), and the spells' debris
+OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EDIT_OBJECTS + SP_DEBRIS_OBJECTS + WATCH_OBJECTS;   // and an admin's placed things (everglade-items.coax), the spells' debris, and the watch's swords and shields (everglade-watch.coax)
 RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
 // Lathed stone (the fountain's basin and column): a profile turned about its axis (everglade.wgsl
 // lathe_vertex), drawn in LATHE_WEDGES instances of LATHE_SECTORS sectors and LATHE_SEGMENTS
@@ -385,6 +387,7 @@ Everglade :: struct {
   answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
+  wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
 }
 
 // ---- small things
@@ -561,13 +564,14 @@ everglade_start :: (s: [] Everglade) {
   plant_forest(s);
   at := KIT_AT;
   for g: 0..<KIT_GROUPS {
-    cap := ifx g < KIT_FOREST then KIT_CAP else TOWN_CAP[g - KIT_FOREST] + edit_cap(g) + spells_cap(g);
+    cap := ifx g < KIT_FOREST then KIT_CAP else TOWN_CAP[g - KIT_FOREST] + edit_cap(g) + spells_cap(g) + watch_cap(g);
     s[0].group_at[g] = at; s[0].group_cap[g] = cap; s[0].kit_used[g] = 0;
     at += cap;
   }
   build_town(s);
   edit_start(s);
   spells_start(s);
+  watch_page_start(s);
 }
 
 // The player's walls (every solid, from the floor up) and the camera's
@@ -922,6 +926,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
   if everglade_voice_key(s, key, true) { return true; }
+  if watch_key(s, key) { return true; }
   if spells_key(s, key) { return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
@@ -1142,7 +1147,7 @@ folk_at :: (s: [] Everglade, i: int) -> Point { return v3(s[0].folk[i].x, 0, s[0
 nearest :: (s: [] Everglade, you: Point) -> int {
   best := -1; most := f32(TALK_NEAR);
   for i: 0..<EG_SPOTS {
-    if eg_gone(s[0].ev.edits, i) || s[0].folk[i].indoors { continue; }
+    if eg_gone(s[0].ev.edits, i) || s[0].folk[i].indoors || watch_busy(s, i) { continue; }
     d := flat_gap(folk_at(s, i), you);
     if d < most { most = d; best = i; }
   }
@@ -2166,14 +2171,28 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
 people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
   for k: 0..<PEOPLE_PARTS { s[0].part_used[k] = 0; }
   for i: 0..<EG_SPOTS { s[0].head_on[i] = false; }
+  for i: 0..<WATCH_ACTORS { s[0].wv.head_on[i] = false; }
+  s[0].wv.arm_n = 0;
   c := folk_clock(s, still);
   s[0].shown_n = 0;
   cap := ifx phone(s) then PEOPLE_SHOWN_PHONE else PEOPLE_SHOWN;
   reach := ifx phone(s) then f32(PEOPLE_NEAR_PHONE) else f32(PEOPLE_NEAR);
   gaps: [PEOPLE_SHOWN] f32;
+  // where each one's day has them, for the watch (everglade-watch.coax), which then steps once
   for i: 0..<EG_SPOTS {
-    if eg_gone(s[0].ev.edits, i) { continue; }   // an admin took them away
-    if EG_SPOT_CAT[i] {
+    if eg_gone(s[0].ev.edits, i) || EG_SPOT_CAT[i] { continue; }
+    talking := s[0].talk == i;
+    folk_step(s[0].folk[i..<i + 1], i, dt, you, talking, ifx talking then s[0].answered else 1000.0f32, c, s[0].heights[..]);
+    watch_home(watch_w(s), i, s[0].folk[i].x, s[0].folk[i].z, s[0].folk[i].yaw, s[0].folk[i].indoors);
+  }
+  for k: 0..<WATCH_NEW {
+    watch_new_place(s, k, c, dt);
+    watch_home(watch_w(s), EG_SPOTS + k, s[0].wv.at[k].x, s[0].wv.at[k].z, s[0].wv.at[k].yaw, false);
+  }
+  watch_frame(s, you, dt, c);
+  for i: 0..<WATCH_ACTORS {
+    if i < EG_SPOTS && eg_gone(s[0].ev.edits, i) { continue; }   // an admin took them away
+    if i < EG_SPOTS && EG_SPOT_CAT[i] {
       if s[0].pack_ready { continue; }   // the kit's cat (cats), once the pack is in
       x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1]; face := EG_SPOT[i * 3 + 2];
       g := ground_at(s, x, z);
@@ -2184,10 +2203,15 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
       shape(s, SHAPE_CONE, LOOK_MATTE, add(head, v3(-cos(face) * 0.06, 0.1, sin(face) * 0.06)), face, 0, 0.07, 0.1, 0.05, 0.8, 0.5, 0.2);
       continue;
     }
-    talking := s[0].talk == i;
-    folk_step(s[0].folk[i..<i + 1], i, dt, you, talking, ifx talking then s[0].answered else 1000.0f32, c, s[0].heights[..]);
-    if s[0].folk[i].indoors { continue; }
-    x := s[0].folk[i].x; z := s[0].folk[i].z;
+    x := 0.0f32; z := 0.0f32;
+    if i < EG_SPOTS {
+      watch_apply(s, i);
+      if s[0].folk[i].indoors { continue; }
+      x = s[0].folk[i].x; z = s[0].folk[i].z;
+    } else {
+      p := person_place(s, i);
+      x = p.x; z = p.z;
+    }
     g := folk_feet(s, x, z);
     gap := flat_gap(v3(x, 0, z), you);
     if gap < 30 { shadow(s, u, x, z, g, 0.5, 0.5); }
@@ -2213,6 +2237,17 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
     s[0].pose_of[p] = s[0].shown[k]; s[0].poses[p] = Skin.{};
   }
   for k: 0..<s[0].shown_n { pose_person(s, s[0].shown[k], k, slot[k], dt); }
+}
+
+// Where person i stands and faces now: a spot's from their day (or the watch), a new guard's from
+// their beat or the watch (everglade-watch.coax).
+person_place :: (s: [] Everglade, i: int) -> Placed {
+  p: Placed;
+  if i < EG_SPOTS { p.x = s[0].folk[i].x; p.z = s[0].folk[i].z; p.face = s[0].folk[i].yaw; p.walking = s[0].folk[i].walking; return p; }
+  k := i - EG_SPOTS;
+  if watch_busy(s, i) { a := s[0].wt[0].actors[i]; p.x = a.x; p.z = a.z; p.face = a.yaw; return p; }
+  p.x = s[0].wv.at[k].x; p.z = s[0].wv.at[k].z; p.face = s[0].wv.at[k].yaw; p.walking = s[0].wv.at[k].walking;
+  return p;
 }
 
 // The city's cats as the kit's cat (eg-paint-people), sitting where their day starts, a size each
@@ -2250,30 +2285,50 @@ folk_feet :: (s: [] Everglade, x: f32, z: f32) -> f32 {
   return feet_walking(ifx w <= f32(DEMO_DRY) + 1 then -1000.0f32 else w, bed);
 }
 
-// Person i, shown k-th: their pose and colours into store 2, an instance of each part they wear.
+// Person i, shown k-th: their pose and colours into store 2, an instance of each part they wear;
+// a guard's sword and shield (everglade-watch.coax). Past the spots' people, the new watch (WATCH_*).
 pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
-  rig := people_rig(s[0].people_rig[..], FOLK_FEMALE[i]);
+  spot := i < EG_SPOTS;
+  w := i - EG_SPOTS;
+  female := ifx spot then FOLK_FEMALE[i] else WATCH_FEMALE[w];
+  rig := people_rig(s[0].people_rig[..], female);
   at := RANGER_JOINTS * 12 + k * PERSON_ROWS * 4;
-  folk_pose(rig, s[0].folk[i..<i + 1], s[0].poses[slot..<slot + 1], dt, s[0].palette[at..<at + PEOPLE_JOINTS * 12]);
+  sk := s[0].poses[slot..<slot + 1];
+  pal := s[0].palette[at..<at + PEOPLE_JOINTS * 12];
+  if watch_busy(s, i) { watch_pose(rig, s[0].wt[0].actors[i], sk, dt, pal); }
+  else if spot { folk_pose(rig, s[0].folk[i..<i + 1], sk, dt, pal); }
+  else {
+    // a new guard on their beat: walking, or standing with folded arms
+    walking := s[0].wv.at[w].walking;
+    sk[0].fade = f32(FOLK_FADE);
+    skin_advance(rig, sk, ifx walking then PEOPLE_WALK else PEOPLE_FOLD, ifx walking then f32(FOLK_WALK) else 0.0f32, dt);
+    skin_palette(rig, sk, pal);
+  }
   h := at + PEOPLE_JOINTS * 12;
   for c: 0..<3 {
-    s[0].palette[h + c] = SKIN_TONE[FOLK_SKIN[i] * 3 + c];
-    s[0].palette[h + 4 + c] = FOLK_HAIR_RGB[i * 3 + c];
+    s[0].palette[h + c] = SKIN_TONE[(ifx spot then FOLK_SKIN[i] else WATCH_SKIN[w]) * 3 + c];
+    s[0].palette[h + 4 + c] = ifx spot then FOLK_HAIR_RGB[i * 3 + c] else WATCH_HAIR_RGB[w * 3 + c];
   }
-  s[0].palette[h + 3] = f32(FOLK_VARIANT[i]);
+  s[0].palette[h + 3] = f32(ifx spot then FOLK_VARIANT[i] else WATCH_VARIANT[w]);
   s[0].palette[h + 7] = 0;
-  for c: 0..<4 { s[0].palette[h + 8 + c] = FOLK_DYE[i * 4 + c]; }
-  x := s[0].folk[i].x; z := s[0].folk[i].z;
+  for c: 0..<4 { s[0].palette[h + 8 + c] = ifx spot then FOLK_DYE[i * 4 + c] else WATCH_DYE[c]; }
+  pl := person_place(s, i);
+  x := pl.x; z := pl.z;
   y := folk_feet(s, x, z);
-  yaw := s[0].folk[i].yaw;
+  yaw := pl.face;
   c := cos(yaw); sn := sin(yaw);
   // their head, for their name over it
-  hp := skin_joint(rig, s[0].poses[slot..<slot + 1], PEOPLE_HEAD);
-  s[0].heads[i] = v3(c * hp.x + sn * hp.z + x, hp.y + y, -sn * hp.x + c * hp.z + z);
-  s[0].head_on[i] = true;
+  hp := skin_joint(rig, sk, PEOPLE_HEAD);
+  head := v3(c * hp.x + sn * hp.z + x, hp.y + y, -sn * hp.x + c * hp.z + z);
+  if spot { s[0].heads[i] = head; s[0].head_on[i] = true; }
+  s[0].wv.heads[i] = head; s[0].wv.head_on[i] = true;
+  if watch_is_guard(i) {
+    m := s[0].wt[0].actors[i].mode;
+    watch_arm_guard(s, rig, sk, x, y, z, yaw, watch_busy(s, i) && (m == WM_CHASE || m == WM_DOWN));
+  }
   rows := [12] f32.[c, 0, sn, x,   0, 1, 0, y,   -sn, 0, c, z];
   parts: [FOLK_PARTS_MAX] int;
-  n := folk_parts(i, parts[..]);
+  n := ifx spot then folk_parts(i, parts[..]) else watch_parts(w, parts[..]);
   for p: 0..<n {
     part := parts[p];
     if s[0].part_count[part] <= 0 { continue; }
@@ -2941,6 +2996,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].map_button = mb;
   plate(s, u, mb, 0.85, ifx s[0].above then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = watch_hud(s, out, u, n, mb.y1 + 10 * k);   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].talk >= 0 { return conversation(s, out, u, n); }
@@ -3038,6 +3094,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   edit_draw(s);
   lamp_posts(s);   // after the edits' draw, which sets the town's groups back to the town's own
   kit_cats(s);
+  watch_arms(s);
   spells_frame(s, u, shot, t);
   first := cast(u32) hi_i(s[0].identity_first, 0);
   for kind: 0..<5 {
@@ -3160,6 +3217,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
     if s[0].waited > f32(ANSWER_WAIT) { s[0].ask_n = 0; everglade_answer(s, "0\n"); }
   }
   n := hud(s, out, u, move_on && !s[0].above && s[0].talk < 0 && !s[0].board, ox, oy, pad_x, pad_y, shown);
+  n = watch_overlay(s, out, u, n);
   u[5] = f32(s[0].plate_n);
   return n;
 }
@@ -3170,7 +3228,7 @@ board_middle :: () -> Point {
 }
 
 // While the map shows, while you talk or read the board, you stand still.
-everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0 || s[0].board; }
+everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0].talk >= 0 || s[0].board || watch_down(s); }
 
 // Nothing draws until the pack is in: its index buffer holds the shapes' indices too.
 everglade_draws :: (s: [] Everglade) -> int #export_c { return ifx s[0].pack_ready then DRAWS else 0; }

@@ -375,11 +375,12 @@ def channel(g, anim, node_name, path):
     return []
 
 
-def thin(keys, rotation):
+def thin(keys, rotation, tol=None):
     """Drop keys the line (arc) between their neighbours reproduces within the tolerance."""
     if len(keys) <= 2:
         return keys
-    tol = KEY_TOLERANCE_R if rotation else KEY_TOLERANCE_T
+    if tol is None:
+        tol = KEY_TOLERANCE_R if rotation else KEY_TOLERANCE_T
     out = [keys[0]]
     i = 0
     while i < len(keys) - 1:
@@ -414,8 +415,16 @@ def clips(spec, skeletons, library_rest):
             raise SystemExit(f"{c['clip']}: not in {c['library']}")
         duration = max(t for ch in anim["channels"] for t in g["acc"](anim["samplers"][ch["sampler"]]["input"]))
         rot = []
+        # a clip's own "tolerance" (radians of arc, and a twentieth of it in metres for the pelvis) thins
+        # its keys further, and "still_fingers" holds each finger at its first key: a quick action, a
+        # fall or a run reads the same and costs the realm's compile-time budget less
+        tol_r = float(c.get("tolerance", KEY_TOLERANCE_R))
+        tol_t = max(KEY_TOLERANCE_T, tol_r / 20)
+        still_fingers = bool(c.get("still_fingers", False))
         for j, name in enumerate(names):
             keys = [(t, qunit(q)) for t, q in channel(g, anim, name, "rotation")]
+            if still_fingers and keys and any(name.startswith(f) for f in ("index_", "middle_", "pinky_", "ring_", "thumb_")):
+                keys = keys[:1]
             for k in range(1, len(keys)):   # one hemisphere, so the arcs between keys are the short ones
                 if sum(x * y for x, y in zip(keys[k - 1][1], keys[k][1])) < 0:
                     keys[k] = (keys[k][0], tuple(-x for x in keys[k][1]))
@@ -423,10 +432,10 @@ def clips(spec, skeletons, library_rest):
                 keys = []
             elif keys and all(qangle(k[1], keys[0][1]) < KEY_TOLERANCE_R for k in keys):
                 keys = [keys[0]]
-            rot.append(thin(keys, True))
+            rot.append(thin(keys, True, tol_r))
         base = channel(g, anim, "pelvis", "translation")
         lib = library_rest[pelvis]
-        male = thin([(t, tuple(v[i] - lib[i] for i in range(3))) for t, v in base], False)
+        male = thin([(t, tuple(v[i] - lib[i] for i in range(3))) for t, v in base], False, tol_t)
         move = {body: [(t, tuple(sk.t[pelvis][i] + v[i] for i in range(3))) for t, v in male] for body, sk in skeletons.items()}
         for name in names:
             if name != "pelvis" and any(max(abs(x - y) for x, y in zip(v, library_rest_by_name(libs, c["library"], name))) > 1e-4
@@ -434,7 +443,7 @@ def clips(spec, skeletons, library_rest):
                 if name == "root":
                     raise SystemExit(f"{c['clip']}: moves the root (use the library's in-place clips)")
         out.append({"name": c["name"], "duration": duration, "distance": float(c.get("distance", 0)),
-                    "rot": rot, "move": move})
+                    "rot": rot, "move": move, "thinned": "tolerance" in c})
     return out
 
 
@@ -641,7 +650,7 @@ def rig_coax(manifest, rig, parts, prefix):
            "// clip, where a joint stands: body (0 male, 1 female), clip, seconds, joint, x, y, z.",
            arr(f"{P}_CHECK", "f32", flat((b, ci, tm, j) + tuple(posed(sk, c, body, tm)[j])
                                          for b, (body, sk) in enumerate((("male", m), ("female", f)))
-                                         for ci, c in enumerate(cl) for tm in (0.0, c["duration"] * 0.37)
+                                         for ci, c in enumerate(cl) for tm in ((c["duration"] * 0.37,) if c.get("thinned") else (0.0, c["duration"] * 0.37))
                                          for j in (m.index(n) for n in CHECK_JOINTS)), 7, f9),
            "",
            "// The rig in a page's state (a view needs an array it may write through), and its views.",

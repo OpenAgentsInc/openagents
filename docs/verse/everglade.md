@@ -285,8 +285,9 @@ than 6.5 m from the flock. Each bird keeps its last ten places (one every
   spell breaks is your page's alone. Edit anything. No building, placing, removing, painting or
   terrain tools; no player-made objects stay in the city. An admin
   (`admins.conf`, logged in at /login) is the one exception: see Edit mode. Everglade stays
-  put so quests can rely on it; making things is the Sandbox's job. No
-  fighting inside the walls. The world ends at its edge, and past the
+  put so quests can rely on it; making things is the Sandbox's job. A
+  spell on the town or its people is a crime: the watch hunt you (see The
+  watch). The world ends at its edge, and past the
   trails' ends the forest keeps you to the ways out (the river's glade by
   the bridge is open: you may swim across there).
 
@@ -612,6 +613,38 @@ their colour, blooming, no shadow.
 once you are 30 m from it (the old engine's rule), R (or REBUILD) stands
 the whole town at once, and a reload starts it whole. The shared town is
 never wrecked.
+
+## The watch (eg-watch)
+
+Under the SRD ruleset the town has a watch: the six patrol characters plus
+six new guards walking beats (Inn Street, the commons, the market, Guild
+Row to the West Gate, the East Gate, the North Gate lane; verse/everglade/watch.coax).
+They wear the ranger kit's leathers dyed crimson and carry the Fantasy
+Props bronze sword and wooden shield (sheathed and on the back on their
+beat, in hand when they hunt you); the kits have no plate armour.
+
+- **Crime:** a spell's blast that reaches a building piece or a person. A
+  guard who sees it (34 m, line of sight past the town's walls) or hears it
+  (Meteor Swarm and the Mega Thunderbolt 85 m, Thunderbolt 60 m) turns on
+  you; WANTED shows under your HP.
+- **Combat** (verse/rules/srd5-combat.coax, SRD 5.2.1): a guard is AC 16,
+  11 HP, +3 to hit for 1d6 + 1; a commoner AC 10, 4 HP; you a 5th-level
+  Ranger, AC 15, 44 HP. A swing is d20 + 3 against your AC; a natural 20
+  crits, a natural 1 misses. A spell's blast does its SRD damage to anyone
+  in it, a Dex save (DC 15) for half: a light hurt knocks one down, a heavy
+  one kills.
+- **Townsfolk** flee and cower; three brave ones (the smith, the
+  fighters' master, the rangers' warden) fight back. R or REBUILD stands everyone up,
+  and they come back at dawn. A fallen guard is replaced after 40 s.
+- **You** die at 0 HP: the view darkens, YOU DIED, and you stand at the Road
+  In whole, no longer wanted. Out of every guard's sight for 18 s, the
+  watch stand down.
+
+Hostility is your page's alone, like a broken building: each player has
+their own watch, and the beats are a function of the shared clock, so
+everyone sees the guards in the same place until one of them is hunted.
+A still page (goldens, reduced motion) has a watch that never moves or
+turns.
 
 ## Edit mode (admins only, eg-edit)
 

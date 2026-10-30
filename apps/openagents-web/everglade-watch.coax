@@ -1,0 +1,342 @@
+// Everglade's town watch on the page (eg-watch), loaded by everglade.coax:
+// verse/everglade/watch.coax's rules (who sees a crime, the chase, the
+// SRD blows, your death) put to the realm's people, spells and HUD.
+//
+//   - people() reads each one's day, hands it to the watch, steps the watch
+//     once a frame (watch_frame) and draws whoever is off their day where
+//     the watch has them, in its clip (watch_pose): running, swinging,
+//     cowering, knocked down, dead;
+//   - the six new guards walk their beats (watch_new_place) and are drawn
+//     with the spots' people, a part an instance, in the watch's crimson;
+//   - every guard carries the Fantasy Props bronze sword and wooden shield:
+//     sword at the hip and shield on the back on their beat, in hand when
+//     they hunt you (watch_arms, after the edits' draw, as kit instances);
+//   - a spell's blast (everglade-spells.coax sp_blast) calls watch_spell:
+//     it hurts whoever is in it and, if it reached the town or a person, is
+//     a crime;
+//   - the spell bar's Rebuild (R) stands the fallen up (watch_rebuilt), and
+//     R does so too when nothing is broken;
+//   - the HUD: your HP under MAP, WANTED while the watch hunt you, their
+//     shouts over their heads, and your death: the view darkens, YOU DIED,
+//     and the face puts you at the Road In (the warp).
+// All of it only with the SRD ruleset and never on a still page.
+
+WATCH_OBJECTS :: 2 * PEOPLE_SHOWN;   // a sword and a shield for each one drawn
+WATCH_SWORD_SIZE :: 0.82;            // the kit's sword is 1.13 m: a guard's arming sword
+WATCH_SHIELD_SIZE :: 0.9;
+WATCH_RED_R :: 0.95; WATCH_RED_G :: 0.3; WATCH_RED_B :: 0.24;
+
+NewGuard :: struct { x: f32; z: f32; yaw: f32; walking: bool; placed: bool; }
+// What the page keeps of the watch for drawing it.
+WatchView :: struct {
+  // the new guards: where they stand, the way they face, walking, their head (for a shout)
+  // (one struct each: a [6] f32 here would be the same C array type as the river library's, in one translation unit)
+  at: [WATCH_NEW] NewGuard;
+  heads: [WATCH_ACTORS] Point; head_on: [WATCH_ACTORS] bool;
+  // each one drawn's sword and shield (12 numbers each), how many
+  arms: [WATCH_OBJECTS * 12] f32; arm_group: [WATCH_OBJECTS] int; arm_n: int;
+  started: bool;
+}
+
+watch_cap :: (group: int) -> int {
+  if group == group_of(M_SWORD) || group == group_of(M_SHIELD) { return PEOPLE_SHOWN; }
+  return 0;
+}
+
+// The parts new guard k wears: the Ranger's leathers, a head, their hair, maybe a beard.
+watch_parts :: (k: int, out: [] int) -> int {
+  if k < 0 || k >= WATCH_NEW || out.count < FOLK_PARTS_MAX { return 0; }
+  f := WATCH_FEMALE[k];
+  out[0] = ifx f then PART_FEMALE_RANGER else PART_MALE_RANGER;
+  out[1] = ifx f then PART_FEMALE_HEAD else PART_MALE_HEAD;
+  out[2] = WATCH_HAIR[k];
+  n := 3;
+  if WATCH_BEARD[k] && !f { out[n] = PART_BEARD; n += 1; }
+  return n;
+}
+
+watch_w :: (s: [] Everglade) -> [] Watch { return s[0].wt[..]; }
+watch_on :: (s: [] Everglade) -> bool { return s[0].wt[0].on; }
+// Whether person i (a spot, or EG_SPOTS + a new guard) is off their day.
+watch_busy :: (s: [] Everglade, i: int) -> bool { return s[0].wv.started && watch_off(watch_w(s), i); }
+// You lie dead: you stand still.
+watch_down :: (s: [] Everglade) -> bool { return s[0].wv.started && s[0].wt[0].dead; }
+
+watch_page_start :: (s: [] Everglade) {
+  watch_start(watch_w(s), s[0].heights[..]);
+  for k: 0..<WATCH_NEW { s[0].wv.at[k].placed = false; }
+  s[0].wv.started = true;
+}
+
+// Where new guard k is on their beat now (and the way they face, turning smoothly at the ends).
+watch_new_place :: (s: [] Everglade, k: int, c: FolkClock, dt: f32) {
+  p := watch_beat_at(watch_w(s), k, c.world, c.still);
+  if !s[0].wv.at[k].placed { s[0].wv.at[k].yaw = p.face; s[0].wv.at[k].placed = true; }
+  s[0].wv.at[k].x = p.x; s[0].wv.at[k].z = p.z; s[0].wv.at[k].walking = p.walking && !c.still;
+  s[0].wv.at[k].yaw = ifx c.still then p.face else watch_turn(s[0].wv.at[k].yaw, p.face, f32(FOLK_TURN) * dt);
+}
+
+// Once a frame, after everyone's day is read (watch_home): the watch steps; a fall of yours ends in
+// the warp to the Road In; whoever you talk to who turns on you ends the talk.
+watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
+  w := watch_w(s);
+  w[0].on = sp_on(s) && !c.still;
+  if !w[0].on { return; }
+  watch_tick(w, dt, you, c.day, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+  if w[0].respawn {
+    w[0].respawn = false;
+    s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z)); s[0].spawn_face = 0;
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    s[0].sp.armed = -1; s[0].sp.casting = -1;
+  }
+  if s[0].talk >= 0 && watch_off(w, s[0].talk) { end_talk(s); }
+  if w[0].dead && s[0].talk >= 0 { end_talk(s); }
+}
+
+// Person i (a spot's) off their day: drawn where the watch has them.
+watch_apply :: (s: [] Everglade, i: int) {
+  w := watch_w(s);
+  if !watch_off(w, i) { return; }
+  a := w[0].actors[i];
+  s[0].folk[i].x = a.x; s[0].folk[i].z = a.z; s[0].folk[i].yaw = a.yaw;
+  s[0].folk[i].indoors = false; s[0].folk[i].walking = false; s[0].folk[i].facing = false;
+}
+
+// A pose for one off their day: the watch's clip, its gait at their speed, a fall held at its end.
+watch_pose :: (r: SkinRig, a: Actor, sk: [] Skin, dt: f32, out: [] f32) {
+  clip := clamp_i(a.clip, 0, PEOPLE_CLIPS - 1);
+  step := ifx finite(dt) then hi(dt, 0) else 0.0f32;
+  if a.hold && sk[0].clip == clip {
+    left := r.duration[clip] - 0.03 - sk[0].time;
+    step = clamp(step, 0, hi(left, 0));
+  }
+  speed := ifx clip == PEOPLE_RUN || clip == PEOPLE_WALK then hi(a.speed, 0.6) else 0.0f32;
+  sk[0].fade = 0.16;
+  skin_advance(r, sk, clip, speed, step);
+  if a.hold && step == 0 { sk[0].clock += ifx finite(dt) then hi(dt, 0) else 0.0f32; }   // the blend still finishes
+  skin_palette(r, sk, out);
+}
+
+// Joint j's frame in the pose now, in the character's own space: its rotation and where it is.
+WatchFrame :: struct { q: Quat; t: Point; }
+watch_joint :: (r: SkinRig, sk: [] Skin, j: int) -> WatchFrame {
+  f: WatchFrame;
+  if j < 0 || j >= r.joints || r.joints > SKIN_JOINTS_MAX { return f; }
+  chain: [SKIN_JOINTS_MAX] int;
+  n := 0; k := j;
+  while k >= 0 && n < SKIN_JOINTS_MAX { chain[n] = k; n += 1; p := r.parent[k]; k = ifx p < k then p else -1; }
+  q := Quat.{}; t := v3(0, 0, 0);
+  while n > 0 {
+    n -= 1;
+    l := sk[0].now[chain[n]];
+    t = add(t, quat_rotate(q, l.t));
+    q = quat_unit(quat_mul(q, l.q));
+  }
+  f.q = q; f.t = t;
+  return f;
+}
+
+PEOPLE_PELVIS_J :: 1; PEOPLE_CHEST_J :: 4; PEOPLE_HAND_L_J :: 10; PEOPLE_FOREARM_L_J :: 9; PEOPLE_HAND_R_J :: 34; PEOPLE_THIGH_L_J :: 55;
+
+// One kit piece's rows (a sword's or a shield's): its axes x, y, z (unit, in the world) scaled, its
+// origin at o.
+watch_arm_put :: (s: [] Everglade, group: int, x: Point, y: Point, z: Point, o: Point, size: f32) {
+  n := s[0].wv.arm_n;
+  if n >= WATCH_OBJECTS { return; }
+  k := n * 12;
+  s[0].wv.arms[k] = x.x * size; s[0].wv.arms[k + 1] = y.x * size; s[0].wv.arms[k + 2] = z.x * size; s[0].wv.arms[k + 3] = o.x;
+  s[0].wv.arms[k + 4] = x.y * size; s[0].wv.arms[k + 5] = y.y * size; s[0].wv.arms[k + 6] = z.y * size; s[0].wv.arms[k + 7] = o.y;
+  s[0].wv.arms[k + 8] = x.z * size; s[0].wv.arms[k + 9] = y.z * size; s[0].wv.arms[k + 10] = z.z * size; s[0].wv.arms[k + 11] = o.z;
+  s[0].wv.arm_group[n] = group;
+  s[0].wv.arm_n = n + 1;
+}
+
+// A guard's sword and shield, from their pose: in hand hunting you (drawn: the sword's grip in the right
+// fist, its blade out past the thumb; the shield on the left forearm, facing out), else the sword at
+// the left hip, point down, and the shield across the back.
+watch_arm_guard :: (s: [] Everglade, r: SkinRig, sk: [] Skin, x: f32, y: f32, z: f32, yaw: f32, drawn: bool) {
+  c := cos(yaw); sn := sin(yaw);
+  // the character's space to the world's
+  at := v3(x, y, z);
+  // (the person's rows: x' = c x + sn z, z' = -sn x + c z)
+  chest := watch_joint(r, sk, PEOPLE_CHEST_J);
+  pelvis := watch_joint(r, sk, PEOPLE_PELVIS_J);
+  thigh := watch_joint(r, sk, PEOPLE_THIGH_L_J);
+  forward := watch_world(v3(0, 0, 1), c, sn);
+  up := v3(0, 1, 0);
+  if drawn {
+    hand := watch_joint(r, sk, PEOPLE_HAND_R_J);
+    blade := watch_world(quat_rotate(hand.q, v3(0, 0, 1)), c, sn);
+    fingers := watch_world(quat_rotate(hand.q, v3(0, 1, 0)), c, sn);
+    grip := add(at, watch_world(add(hand.t, quat_rotate(hand.q, v3(0, 0.085, 0))), c, sn));
+    across := unit_or(cross(blade, fingers), v3(1, 0, 0));
+    edge := cross(across, blade);
+    o := sub(grip, times(blade, 0.15 * f32(WATCH_SWORD_SIZE)));
+    watch_arm_put(s, group_of(M_SWORD), edge, blade, across, o, f32(WATCH_SWORD_SIZE));
+    lh := watch_joint(r, sk, PEOPLE_HAND_L_J);
+    la := watch_joint(r, sk, PEOPLE_FOREARM_L_J);
+    mid := mix(la.t, lh.t, 0.55);
+    out := unit_or(v3(mid.x - chest.t.x, 0, mid.z - chest.t.z), v3(1, 0, 0));
+    face := watch_world(out, c, sn);
+    side := unit_or(cross(up, face), v3(1, 0, 0));
+    centre := add(add(at, watch_world(mid, c, sn)), times(face, 0.07));
+    so := sub(centre, times(up, 0.31 * f32(WATCH_SHIELD_SIZE)));
+    watch_arm_put(s, group_of(M_SHIELD), side, up, face, so, f32(WATCH_SHIELD_SIZE));
+    return;
+  }
+  // sheathed: from the left hip, point down and a little back
+  left := unit_or(v3(thigh.t.x - pelvis.t.x, 0, thigh.t.z - pelvis.t.z), v3(1, 0, 0));
+  hip := add(pelvis.t, add(times(left, 0.2), v3(0, 0.08, 0.02)));
+  down := watch_world(unit_or(v3(0, -1, -0.32), v3(0, -1, 0)), c, sn);
+  hipw := add(at, watch_world(hip, c, sn));
+  blade_side := watch_world(left, c, sn);
+  edge := unit_or(cross(blade_side, down), forward);
+  // the sword's own +y is from its pommel to its point: pointing down, its guard at the hip
+  watch_arm_put(s, group_of(M_SWORD), edge, down, blade_side, sub(hipw, times(down, 0.3 * f32(WATCH_SWORD_SIZE))), f32(WATCH_SWORD_SIZE));
+  back := times(forward, -1);
+  side := unit_or(cross(up, back), v3(1, 0, 0));
+  centre := add(at, add(watch_world(chest.t, c, sn), add(times(back, 0.2), v3(0, -0.12, 0))));
+  watch_arm_put(s, group_of(M_SHIELD), side, up, back, sub(centre, times(up, 0.31 * f32(WATCH_SHIELD_SIZE))), f32(WATCH_SHIELD_SIZE));
+}
+watch_world :: (v: Point, c: f32, sn: f32) -> Point { return v3(c * v.x + sn * v.z, v.y, -sn * v.x + c * v.z); }
+
+// After the edits' draw: the swords and shields of everyone drawn, as kit instances.
+watch_arms :: (s: [] Everglade) {
+  if !s[0].pack_ready { return; }
+  for n: 0..<s[0].wv.arm_n { kit_rows(s, s[0].wv.arm_group[n], s[0].wv.arms[n * 12..<n * 12 + 12]); }
+}
+
+// A blast of the spell in `slot` at `at` (everglade-spells.coax sp_blast, before its damage): whoever
+// is in it takes it, and if it reached the town's pieces or a person, it is a crime.
+watch_spell :: (s: [] Everglade, at: Point, slot: int) {
+  w := watch_w(s);
+  if !w[0].on || slot < 0 || slot >= SP_SLOTS { return; }
+  radius := SP_BLAST[slot];
+  you := add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z), 0));
+  hit := watch_blast(w, at, radius, s[0].sp.dmg, you);
+  touched := 0;
+  dm := sp_dm(s);
+  for i: 0..<dm[0].n {
+    p := dm[0].pieces[i];
+    if p.state == DP_BROKEN { continue; }
+    c := v3(clamp(at.x, p.x0, p.x1), clamp(at.y, p.y0, p.y1), clamp(at.z, p.z0, p.z1));
+    if length(sub(c, at)) < radius { touched += 1; break; }
+  }
+  if hit > 0 || touched > 0 { _ := watch_crime(w, at, WATCH_HEAR[slot], you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+}
+
+// The town stands again (the spell bar's Rebuild): the fallen too.
+watch_rebuilt :: (s: [] Everglade) -> int {
+  if !s[0].wv.started { return 0; }
+  return watch_restore(watch_w(s));
+}
+// R with nothing broken but someone hurt: they stand up again.
+watch_key :: (s: [] Everglade, key: int) -> bool {
+  if !watch_on(s) || s[0].above || s[0].ev.editing || (key != 'r' && key != 'R') || sp_broken(s) { return false; }
+  w := watch_w(s);
+  hurt := false;
+  for i: 0..<WATCH_ACTORS { if w[0].actors[i].mode == WM_DEAD || w[0].actors[i].mode == WM_DOWN { hurt = true; } }
+  if !hurt { return false; }
+  n := watch_restore(w);
+  sp_say(s, "THE TOWN STANDS AGAIN", n, "PEOPLE");
+  return true;
+}
+
+// ---- the HUD
+
+// Your HP under MAP, WANTED under it, and the watch's shouts over their heads.
+watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int {
+  n := at;
+  if !sp_on(s) || s[0].above || !s[0].wv.started { return n; }
+  w := watch_w(s);
+  k := hi(s[0].dpr, 0.5);
+  wd := s[0].width;
+  gutter := 16 * k;
+  bw := 168 * k; bh := 28 * k;
+  b := Box.{x0 = wd - gutter - bw, y0 = top, x1 = wd - gutter, y1 = top + bh};
+  plate(s, u, b, 0.82, ifx w[0].hurt_t < 0.35 then 2.0f32 else 0.0f32);
+  ls := 7 * k;
+  n = draw_text(out, n, "HP", b.x0 + 12 * k, b.y1 - 10 * k, ls, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  bx0 := b.x0 + 40 * k; bx1 := b.x1 - 14 * k; by := (b.y0 + b.y1) / 2;
+  if lit(out, n, bx0, by, bx1, by, 3 * k, 0.22, 0.5 * k, 0.5, 0.42, 0.36, 0) { n += 6; }
+  share := clamp01(f32(w[0].hp) / f32(hi_i(w[0].max, 1)));
+  if share > 0 && lit(out, n, bx0, by, bx0 + (bx1 - bx0) * share, by, 3 * k, 0.95, 2.2 * k, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B, 0) { n += 6; }
+  if w[0].wanted {
+    cap := 9 * k;
+    word := "WANTED";
+    tw := text_width(word, cap);
+    pulse := 0.75 + 0.25 * sin(f32(s[0].time) * 6);
+    wb := Box.{x0 = b.x1 - tw - 28 * k, y0 = b.y1 + 8 * k, x1 = b.x1, y1 = b.y1 + 8 * k + cap + 20 * k};
+    plate(s, u, wb, 0.82, 1);
+    n = draw_text(out, n, word, wb.x0 + 14 * k, wb.y1 - 10 * k, cap, GAP, SPACE, ink(k, pulse, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B), false, false);
+  }
+  // the shouts
+  for i: 0..<WATCH_ACTORS {
+    a := w[0].actors[i];
+    if a.shout < 0 || !s[0].wv.head_on[i] { continue; }
+    line := ifx a.shout == 100 then BRAVE_SHOUT else ifx watch_is_guard(i) then WATCH_SHOUT[a.shout % WATCH_SHOUTS] else FOLK_SHOUT[a.shout % FOLK_SHOUTS];
+    sc := on_screen(u, add(s[0].wv.heads[i], v3(0, 0.55, 0)), s[0].width, s[0].height);
+    if !sc.ok { continue; }
+    cap := 8 * k;
+    tw := text_width(line, cap);
+    fade := clamp01((f32(SHOUT_FOR) - a.shout_t) / 0.4);
+    n = draw_text(out, n, line, sc.x - tw / 2, sc.y, cap, GAP, SPACE, ink(k, 0.95 * fade, 1, 0.92, 0.82), false, false);
+  }
+  return n;
+}
+
+// Over everything: your fall's dark and YOU DIED.
+watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  n := at;
+  if !s[0].wv.started { return n; }
+  w := watch_w(s);
+  dark := watch_dark(w);
+  if dark <= 0.001 { return n; }
+  wd := s[0].width; ht := s[0].height;
+  plate(s, u, Box.{x0 = -60, y0 = -60, x1 = wd + 60, y1 = ht + 60}, dark, 0);
+  if watch_died_shown(w) {
+    k := hi(s[0].dpr, 0.5);
+    cap := 26 * k;
+    word := "YOU DIED";
+    tw := text_width(word, cap);
+    light := clamp01((w[0].dead_t - f32(DEATH_FADE) * 0.6) / 0.6);
+    n = draw_text(out, n, word, (wd - tw) / 2, ht / 2 + cap / 2, cap, GAP, SPACE, ink(k, 0.95 * light, WATCH_RED_R, WATCH_RED_G * 0.8, WATCH_RED_B * 0.8), false, false);
+  }
+  return n;
+}
+
+// ---- checks
+
+#test "watch: a meteor on the inn is a crime the watch hear and hunt you for; R stands the fallen up" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := watch_w(g[..]);
+  #assert w[0].on && !w[0].wanted && w[0].hp == SRD_RANGER_5.hp;
+  g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert sp_broken(g[..]) && w[0].crimes > 0 && w[0].wanted;
+  hunting := 0;
+  for i: 0..<WATCH_ACTORS { if watch_is_guard(i) && w[0].actors[i].mode == WM_CHASE { hunting += 1; } }
+  #assert hunting >= 2;
+  // townsfolk struck down: the Rebuild stands them up with the town
+  you := v3(ix - 4, 0, iz - 30);
+  fallen := -1;
+  for i: 0..<EG_SPOTS { if fallen < 0 && watch_hurtable(i) && !watch_is_guard(i) && w[0].actors[i].mode != WM_DEAD { fallen = i; } }
+  #assert fallen >= 0;
+  watch_harm(w, fallen, 99, you);
+  #assert w[0].actors[fallen].mode == WM_DEAD;
+  #assert everglade_key(g[..], 'r', 0) && !sp_broken(g[..]);
+  #assert w[0].actors[fallen].mode == WM_CALM && w[0].actors[fallen].hp == w[0].actors[fallen].max;
+  // with nothing broken, R stands the fallen up too
+  watch_harm(w, fallen, 99, you);
+  #assert everglade_key(g[..], 'r', 0) && w[0].actors[fallen].mode == WM_CALM;
+  for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_DEAD; }
+}
