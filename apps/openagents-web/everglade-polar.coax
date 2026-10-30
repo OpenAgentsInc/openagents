@@ -102,6 +102,7 @@ po_rf_at :: (s: [] Everglade, i: int) {
   at := add(wd_feet(s, i), v3(0, 1.1, 0));
   v[0].rf_a = gv_hand(s); v[0].rf_b = at;
   v[0].rf_hit = false;
+  _ := fi_douse(s, at, 1.5);   // a fire where it strikes goes out
   if !watch_on(s) { return; }
   w := watch_w(s);
   d := s[0].sp.dice[..];
@@ -172,6 +173,7 @@ po_cc_at :: (s: [] Everglade, from: Point, way: Point) {
   v := po_of(s);
   d := unit_or(v3(way.x, 0, way.z), ab_forward(s));
   v[0].cc_t = 0; v[0].cc_at = from; v[0].cc_dir = d;
+  _ := fi_douse_cone(s, from, d);   // what burns in it goes out
   hurt := 0; total := 0;
   if watch_on(s) {
     w := watch_w(s);

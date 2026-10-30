@@ -299,6 +299,7 @@ gv_bolt_land :: (s: [] Everglade, b: GvBolt) {
     floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
     if b.target < 0 && at.y - floor_y < 0.6 && !fr_wet(s, at.x, at.z) { sp_add_scorch(s, v3(at.x, floor_y, at.z), 0.35, false); wd_light(s, v3(at.x, floor_y, at.z), WD_GEN - 2); }
     if b.body >= 0 && b.body < DEMO_BODIES && sp_dm(s)[0].meta[b.body].kind != 0 { s[0].sp.burn[b.body] = hi(s[0].sp.burn[b.body], f32(GV_BURN)); }
+    if b.target < 0 { _ := fi_catch(s, at, 0.6, FI_SPELL); }   // wood it strikes catches
     fr_melt(s, at, 0.8);
   } else if b.kind == GV_BOLT_WISP {
     // it breaks in a burst of starlight

@@ -1,0 +1,648 @@
+// Fire on the town's pieces (eg-fire), loaded by everglade-spells.coax after everglade-wild.coax.
+//
+// What is wood burns: the timber-framed plaster walls, the roofs' timbers, doors, posts, floors, stairs,
+// stalls, barrels, crates, tables, chairs, benches, shelves, fences, the cloth of bags and banners. The
+// brick, the stone, the glass and the iron do not (a brick building burns only in its wooden parts).
+//
+// What lights it: a fire spell's flame on it (Meteor Swarm's blasts, Fire Storm's cubes, Wall of Fire's
+// foot, Produce Flame hurled at it, Sunburst's flash), the grass fire burning up to it, a piece of
+// burning debris lying against it; lightning sometimes (the Thunderbolt about half the time, the Mega
+// Thunderbolt mostly, a Call Lightning or a Storm of Vengeance bolt about half). Setting the town alight
+// is a crime the watch answers.
+//
+// A burning piece flames and smokes, and takes 1d6 fire each second (SRD Breaking Objects: its hit
+// points) after its first 3 s, and goes black as it burns, until it breaks into charred chunks through the town's own
+// break (verse/demolish.coax demo_damage): what it held up falls, the chunks burn on a while. Every
+// 1.2 s or so it may catch a flammable piece touching it, and the grass at its foot; rain slows that
+// and may put it out. Whoever stands in or against it burns, 1d10 fire a round. Water and cold put it
+// out: the Water Orb, Create Water, Ice Storm and Sleet Storm, Elementalism's mist, Storm of
+// Vengeance's rain, Cone of Cold and Ray of Frost. At most FI_MAX pieces burn at once (half on a
+// phone), and their flames share the spells' particles, so the frame holds.
+//
+// The observatory's dome (the engine's sphere on its tower, everglade-spells.coax sp_dome) is stone,
+// four Large sections' worth of hit points (SRD: Huge objects as Large sections): the spells' blasts,
+// the sledgehammer, rubble falling on it, its own fall, and fire (halved, stone) wear it down, and at
+// none it breaks into curved slabs that fall and tumble; a slab still falling hard on someone hurts
+// them as rubble does (2d6 bludgeoning). R, or a long rest, puts it back with the town.
+
+FI_MAX :: 32;              // pieces burning at once (a phone half)
+FI_KINDLE :: 3.0;          // s a piece burns before the fire eats into it
+FI_TICK :: 1.0;            // s between a burning piece's fire damage after that
+FI_DICE :: 1; FI_SIDES :: 6;
+FI_SPREAD :: 1.2;          // s, about, between its tries at what touches it
+FI_NEAR :: 0.5;            // m between two boxes for fire to cross
+FI_CATCH :: 0.7;           // the odds a try catches a touching piece
+FI_TO_GRASS :: 0.35;       // and the grass at its foot
+FI_HEAR :: 30.0;           // m the watch hears a building catch from
+FI_SOOT :: 10.0;           // s to burn black
+FI_ROUND :: 6.0;           // s a round: who stands in it burns once a round
+FI_PEOPLE_DICE :: 1; FI_PEOPLE_SIDES :: 10;
+FI_BURN_DEBRIS :: 6.0;     // s what breaks off a burning piece burns on
+// what lit it: a fire spell, a bolt, a Mega Thunderbolt, the grass fire, a burning piece of debris
+FI_SPELL :: 0; FI_BOLT :: 1; FI_MEGA :: 2; FI_GRASS :: 3; FI_EMBER :: 4;
+FI_ODDS :: [5] f32.[1.0, 0.45, 0.8, 0.3, 0.2];
+FI_RGB :: Point.{x = 1.0, y = 0.55, z = 0.22};
+
+FI_DOME_HP :: 108;         // four Large stone sections (5d10 each, 27)
+FI_SHARDS :: 14;
+FI_SHARD_HURT :: 4.0;      // m/s: a slab moving faster than this hurts who it strikes
+FI_RUBBLE_SPEED :: 4.0;    // m/s: debris striking the dome this fast wears it
+
+FiBurn :: struct { piece: int; t: f32; tick: f32; spread: f32; }
+FiShard :: struct { live: bool; at: Point; vel: Point; yaw: f32; tilt: f32; spin: f32; sx: f32; sy: f32; sz: f32; still: bool; struck: bool; }
+Fire :: struct {
+  time: f32;
+  burn: [FI_MAX] FiBurn; n: int;
+  soot: [DEMO_PIECES] f32; sooty: bool;   // how black each piece has burnt, 0 to 1; whether any has
+  lit: int;                               // pieces caught so far (the checks count them)
+  next: [WATCH_ACTORS] f32; you_next: f32;
+  embers_t: f32;
+  dome_dmg: int; dome_gone: bool; dome_cool: f32;
+  shards: [FI_SHARDS] FiShard;
+}
+fi_of :: (s: [] Everglade) -> [] Fire { return s[0].sp.fi[..]; }
+fi_cap :: (s: [] Everglade) -> int { return ifx phone(s) then FI_MAX / 2 else FI_MAX; }
+
+// Whether piece i burns, and how readily (the plaster walls are timber frames filled with plaster:
+// slower to catch than bare wood).
+fi_fuel :: (p: DemoPiece) -> f32 {
+  o := sp_object(p.mesh);
+  if o.material != MAT_WOOD && o.material != MAT_CLOTH { return 0; }
+  if p.mesh >= M_PLASTER && p.mesh <= M_PLASTER_GRID { return 0.6; }
+  return 1;
+}
+fi_burning :: (s: [] Everglade, i: int) -> bool {
+  v := fi_of(s);
+  for k: 0..<v[0].n { if v[0].burn[k].piece == i { return true; } }
+  return false;
+}
+fi_count :: (s: [] Everglade) -> int { return fi_of(s)[0].n; }
+
+// Piece i catches, if it can: standing, wood, not burning yet, and room for another fire.
+fi_ignite :: (s: [] Everglade, i: int) -> bool {
+  if s[0].sp.dm.count < 1 { return false; }
+  w := sp_dm(s);
+  v := fi_of(s);
+  if i < 0 || i >= w[0].n || v[0].n >= fi_cap(s) { return false; }
+  p := w[0].pieces[i];
+  if p.state != DP_STANDING || fi_fuel(p) <= 0 || fi_burning(s, i) { return false; }
+  if fr_wet(s, p.cx, p.cz) && p.y0 < ground_at(s, p.cx, p.cz) + 0.5 { return false; }   // stood in water
+  v[0].burn[v[0].n] = FiBurn.{piece = i, t = 0, tick = f32(FI_KINDLE), spread = f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s))};
+  v[0].n += 1;
+  v[0].lit += 1;
+  return true;
+}
+fi_drop :: (s: [] Everglade, k: int) {
+  v := fi_of(s);
+  v[0].n -= 1;
+  v[0].burn[k] = v[0].burn[v[0].n];
+}
+
+// Flame reaches `at`, `r` round it (and from a little under it to a storey and a half over it): what
+// burns there may catch, at the odds of what lit it (FI_*). How many caught; a crime when a spell did it.
+fi_catch :: (s: [] Everglade, at: Point, r: f32, how: int) -> int {
+  if s[0].sp.dm.count < 1 || !s[0].sp.ready { return 0; }
+  w := sp_dm(s);
+  odds := FI_ODDS[clamp_i(how, 0, 4)] * (1 - 0.6 * clamp(cast(f32) s[0].sky.rain, 0, 1));
+  n := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING || p.y1 < at.y - 1.5 || p.y0 > at.y + 4.5 { continue; }
+    dx := clamp(at.x, p.x0, p.x1) - at.x; dz := clamp(at.z, p.z0, p.z1) - at.z;
+    if dx * dx + dz * dz > r * r { continue; }
+    f := fi_fuel(p);
+    if f <= 0 || fi_burning(s, i) || sp_rand(s) >= odds * f { continue; }
+    if fi_ignite(s, i) { n += 1; }
+  }
+  if n > 0 && how <= FI_MEGA { gv_crime(s, at, f32(FI_HEAR)); }
+  // the dome: stone, it does not catch, but the flame wears it (halved)
+  if how == FI_SPELL || how == FI_GRASS { if fi_dome_gap(s, at) < r { fi_dome_hurt(s, srd_object_damage(fi_dome_object(), srd_sum(s[0].sp.dice[..], 4, 6), DMG_FIRE), at); } }
+  return n;
+}
+
+// Water or cold over `at`, `r` round: what burns there goes out in a hiss of steam. How many.
+fi_douse :: (s: [] Everglade, at: Point, r: f32) -> int {
+  if s[0].sp.dm.count < 1 { return 0; }
+  w := sp_dm(s);
+  v := fi_of(s);
+  n := 0;
+  k := 0;
+  while k < v[0].n {
+    p := w[0].pieces[v[0].burn[k].piece];
+    dx := clamp(at.x, p.x0, p.x1) - at.x; dz := clamp(at.z, p.z0, p.z1) - at.z;
+    if dx * dx + dz * dz <= r * r {
+      if n < 6 { sp_add_puff(s, v3(p.cx, p.y1, p.cz), v3(0, 1.0, 0), 0.7, 1.8, 0.88); }
+      fi_drop(s, k);
+      n += 1;
+      continue;
+    }
+    k += 1;
+  }
+  return n;
+}
+// Cone of Cold's cone from `from` along the unit `d` (everglade-polar.coax po_in_cone): what burns in it goes out.
+fi_douse_cone :: (s: [] Everglade, from: Point, d: Point) -> int {
+  if s[0].sp.dm.count < 1 { return 0; }
+  w := sp_dm(s);
+  v := fi_of(s);
+  n := 0;
+  k := 0;
+  while k < v[0].n {
+    p := w[0].pieces[v[0].burn[k].piece];
+    side := v3(clamp(from.x + d.x * 9, p.x0, p.x1), clamp(from.y, p.y0, p.y1), clamp(from.z + d.z * 9, p.z0, p.z1));
+    if po_in_cone(from, d, side) || po_in_cone(from, d, v3(p.cx, from.y, p.cz)) {
+      if n < 6 { sp_add_puff(s, v3(p.cx, p.y1, p.cz), v3(0, 1.0, 0), 0.7, 1.8, 0.9); }
+      fi_drop(s, k);
+      n += 1;
+      continue;
+    }
+    k += 1;
+  }
+  return n;
+}
+
+// A blast (everglade-spells.coax sp_blast) at `at`, `radius` round, of kind 0 fire, 1 lightning, 2
+// water: what burns catches or goes out, and the dome takes its share.
+fi_blast :: (s: [] Everglade, at: Point, radius: f32, kind: int, mega: bool) {
+  if kind == 2 { _ := fi_douse(s, at, radius); return; }
+  _ := fi_catch(s, at, radius * 0.8, ifx kind == 0 then FI_SPELL else ifx mega then FI_MEGA else FI_BOLT);
+  d := fi_dome_gap(s, at);
+  if d < radius { fi_dome_hurt(s, srd_object_takes(fi_dome_object(), s[0].sp.dmg, 1 - d / radius), at); }
+}
+
+// Piece i, breaking (by fire or by what fell): its new chunks charred, some burning on.
+fi_char_chunks :: (s: [] Everglade, burning: bool) {
+  w := sp_dm(s);
+  for b: 0..<DEMO_BODIES {
+    if w[0].meta[b].kind == 0 || w[0].meta[b].born != w[0].clock { continue; }
+    k := 0.25 + 0.2 * sp_rand(s);
+    w[0].meta[b].cr *= k; w[0].meta[b].cg *= k * 0.92; w[0].meta[b].cb *= k * 0.85;
+    if burning && sp_rand(s) < 0.6 { s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(FI_BURN_DEBRIS) * (0.5 + sp_rand(s))); }
+  }
+}
+
+// The gap between two boxes (0 touching or overlapping).
+fi_box_gap :: (a: DemoPiece, b: DemoPiece) -> f32 {
+  gx := hi(hi(a.x0 - b.x1, b.x0 - a.x1), 0);
+  gy := hi(hi(a.y0 - b.y1, b.y0 - a.y1), 0);
+  gz := hi(hi(a.z0 - b.z1, b.z0 - a.z1), 0);
+  return sqrt(gx * gx + gy * gy + gz * gz);
+}
+// Burning piece i tries to catch one flammable piece touching it, and the grass at its foot.
+fi_spread_from :: (s: [] Everglade, i: int) {
+  w := sp_dm(s);
+  p := w[0].pieces[i];
+  pick := -1; seen := 0;
+  for j: 0..<w[0].n {
+    if j == i { continue; }
+    q := w[0].pieces[j];
+    if q.state != DP_STANDING || q.x0 > p.x1 + f32(FI_NEAR) || q.x1 < p.x0 - f32(FI_NEAR) || q.z0 > p.z1 + f32(FI_NEAR) || q.z1 < p.z0 - f32(FI_NEAR) { continue; }
+    if fi_fuel(q) <= 0 || fi_box_gap(p, q) > f32(FI_NEAR) || fi_burning(s, j) { continue; }
+    seen += 1;
+    if sp_rand(s) * f32(seen) < 1 { pick = j; }
+  }
+  if pick >= 0 && sp_rand(s) < f32(FI_CATCH) * fi_fuel(w[0].pieces[pick]) { _ := fi_ignite(s, pick); }
+  g := ground_at(s, p.cx, p.cz);
+  if p.y0 < g + 0.6 && sp_rand(s) < f32(FI_TO_GRASS) {
+    a := f32(TAU) * sp_rand(s);
+    hx := (p.x1 - p.x0) * 0.5 + 0.6; hz := (p.z1 - p.z0) * 0.5 + 0.6;
+    wd_light(s, v3(p.cx + cos(a) * hx, g, p.cz + sin(a) * hz), WD_GEN - 3);
+  }
+}
+
+// Each frame (everglade-wild.coax wd_frame): the fires burn, spread, hurt, and go out.
+fi_frame :: (s: [] Everglade, dt: f32) {
+  if s[0].sp.dm.count < 1 || !s[0].sp.ready { return; }
+  w := sp_dm(s);
+  v := fi_of(s);
+  v[0].time += dt;
+  rain := clamp(cast(f32) s[0].sky.rain, 0, 1);
+  d := s[0].sp.dice[..];
+  k := 0;
+  broke := false;
+  while k < v[0].n {
+    i := v[0].burn[k].piece;
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING {
+      // it fell whole: it burns on as debris
+      if p.state == DP_LOOSE && p.body >= 0 && p.body < DEMO_BODIES { s[0].sp.burn[p.body] = hi(s[0].sp.burn[p.body], f32(FI_BURN_DEBRIS)); }
+      fi_drop(s, k); continue;
+    }
+    v[0].burn[k].t += dt;
+    v[0].soot[i] = lo(v[0].soot[i] + dt / f32(FI_SOOT), 1);
+    v[0].sooty = true;
+    e := v[0].burn[k];
+    if e.t >= e.tick {
+      v[0].burn[k].tick = e.tick + f32(FI_TICK);
+      // the rain may put it out
+      if rain > 0.05 && sp_rand(s) < 0.12 * rain { fi_drop(s, k); continue; }
+      amount := srd_object_damage(sp_object(p.mesh), srd_sum(d, FI_DICE, FI_SIDES), DMG_FIRE);
+      if demo_damage(w, i, amount, v3(p.cx, p.y0, p.cz), 1.2) {
+        fi_char_chunks(s, true);
+        s[0].sp.broke += 1;
+        broke = true;
+        fi_drop(s, k); continue;
+      }
+      // the dome by it wears in the heat
+      if !v[0].dome_gone && fi_dome_gap(s, v3(p.cx, p.cy, p.cz)) < hi(p.hx, hi(p.hy, p.hz)) + 1 {
+        fi_dome_hurt(s, srd_object_damage(fi_dome_object(), srd_sum(d, FI_DICE, FI_SIDES), DMG_FIRE), v3(p.cx, p.cy, p.cz));
+      }
+    }
+    if e.t >= e.spread {
+      v[0].burn[k].spread = e.spread + f32(FI_SPREAD) * (0.6 + 0.8 * sp_rand(s)) * (1 + 3 * rain);
+      fi_spread_from(s, i);
+    }
+    k += 1;
+  }
+  if broke {
+    _ := demo_settle(w);
+    fi_char_chunks(s, true);   // what that dropped
+    s[0].sp.walls_dirty = true;
+  }
+  // burning debris lying against a piece may set it alight
+  v[0].embers_t += dt;
+  if v[0].embers_t >= 1 {
+    v[0].embers_t = 0;
+    box: [1] DemoBox;
+    tried := 0;
+    for b: 0..<DEMO_BODIES {
+      if tried >= 6 || s[0].sp.burn[b] <= 0 || !demo_chunk_box(w, b, box[..]) { continue; }
+      tried += 1;
+      _ := fi_catch(s, box[0].at, 0.5, FI_EMBER);
+    }
+  }
+  fi_people(s);
+  fi_dome_frame(s, dt);
+}
+
+// Whoever stands in or against a burning piece burns, once a round.
+fi_people :: (s: [] Everglade) {
+  v := fi_of(s);
+  if v[0].n == 0 || !watch_on(s) { return; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || v[0].time < v[0].next[i] { continue; }
+    if !fi_by_fire(s, wd_feet(s, i)) { continue; }
+    v[0].next[i] = v[0].time + f32(FI_ROUND);
+    watch_harm(w, i, srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES), you);
+  }
+  if !w[0].dead && v[0].time >= v[0].you_next && fi_by_fire(s, you) {
+    v[0].you_next = v[0].time + f32(FI_ROUND);
+    wd_hurt_you(s, srd_sum(d, FI_PEOPLE_DICE, FI_PEOPLE_SIDES), "THE FIRE BURNS YOU · 1D10 FIRE");
+  }
+}
+fi_by_fire :: (s: [] Everglade, at: Point) -> bool {
+  w := sp_dm(s);
+  v := fi_of(s);
+  for k: 0..<v[0].n {
+    p := w[0].pieces[v[0].burn[k].piece];
+    if v[0].burn[k].t < 1 || at.y + f32(BODY_TALL) < p.y0 - 0.2 || at.y > p.y1 + 0.2 { continue; }
+    dx := clamp(at.x, p.x0, p.x1) - at.x; dz := clamp(at.z, p.z0, p.z1) - at.z;
+    if dx * dx + dz * dz <= (f32(EG_RADIUS) + 0.5) * (f32(EG_RADIUS) + 0.5) { return true; }
+  }
+  return false;
+}
+
+// R, a long rest, or a building growing back (everglade-spells.coax sp_restore): group g's (every
+// group's, g < 0) fires out and soot gone; the dome back with the observatory.
+fi_restore :: (s: [] Everglade, g: int) {
+  w := sp_dm(s);
+  v := fi_of(s);
+  k := 0;
+  while k < v[0].n {
+    if g < 0 || w[0].pieces[v[0].burn[k].piece].group == g { fi_drop(s, k); continue; }
+    k += 1;
+  }
+  for i: 0..<w[0].n { if g < 0 || w[0].pieces[i].group == g { v[0].soot[i] = 0; } }
+  if g < 0 || g == EG_OBSERVATORY {
+    v[0].dome_dmg = 0; v[0].dome_gone = false;
+    for q: 0..<FI_SHARDS { v[0].shards[q].live = false; }
+  }
+}
+
+// ---- the dome
+
+fi_dome_object :: () -> SrdObject { return srd_object(MAT_STONE, SIZE_LARGE, true); }
+fi_dome_gone :: (s: [] Everglade) -> bool { return s[0].sp.fi[0].dome_gone; }
+fi_dome_centre :: (s: [] Everglade) -> Point {
+  c := sp_dome_spot(s);
+  if s[0].sp.dome_on { c.y = s[0].sp.dome_y; }
+  return c;
+}
+// How far `at` is from the dome's face (0 in it); far off once it is gone.
+fi_dome_gap :: (s: [] Everglade, at: Point) -> f32 {
+  if fi_dome_gone(s) { return 1.0e9; }
+  return hi(length(sub(at, fi_dome_centre(s))) - f32(SP_DOME_R), 0);
+}
+fi_dome_hurt :: (s: [] Everglade, amount: int, from: Point) {
+  v := fi_of(s);
+  if v[0].dome_gone || amount <= 0 { return; }
+  v[0].dome_dmg += amount;
+  if v[0].dome_dmg >= FI_DOME_HP { fi_dome_break(s, from); }
+}
+// Its hit points gone: it breaks into curved slabs, thrown off what broke it, and a cloud of stone dust.
+fi_dome_break :: (s: [] Everglade, from: Point) {
+  v := fi_of(s);
+  v[0].dome_gone = true;
+  c := fi_dome_centre(s);
+  away := unit_or(v3(c.x - from.x, 0, c.z - from.z), v3(0, 0, 1));
+  R := f32(SP_DOME_R);
+  for q: 0..<FI_SHARDS {
+    // spread over the sphere (a golden spiral), the upper half more
+    y := 1 - 1.6 * (f32(q) + 0.5) / f32(FI_SHARDS);
+    rr := sqrt(hi(1 - y * y, 0));
+    a := f32(q) * 2.39996;
+    n := v3(cos(a) * rr, y, sin(a) * rr);
+    v[0].shards[q] = FiShard.{live = true, at = add(c, times(n, R * 0.7)),
+                               vel = add(add(times(n, 2 + 3 * sp_rand(s)), times(away, 2 + 2 * sp_rand(s))), v3(0, 1.5, 0)),
+                               yaw = f32(TAU) * sp_rand(s), tilt = (sp_rand(s) - 0.5) * 2.4, spin = (sp_rand(s) - 0.5) * 6,
+                               sx = 1.6 + 0.8 * sp_rand(s), sy = 0.45 + 0.2 * sp_rand(s), sz = 1.3 + 0.7 * sp_rand(s), still = false, struck = false};
+  }
+  if s[0].sp.dm.count > 0 {
+    w := sp_dm(s);
+    for q: 0..<10 {
+      a := (f32(q) + sp_rand(s)) * f32(TAU) / 10;
+      out := v3(cos(a), 0, sin(a));
+      demo_dust(w, add(c, times(out, R * 0.8)), add(times(out, 2 + sp_rand(s)), v3(0, 0.6, 0)), 1.6 + 0.8 * sp_rand(s), v3(0.62, 0.6, 0.57));
+    }
+  }
+  for q: 0..<6 { sp_add_smoke(s, add(c, times(sp_spray(s, 0), R * 0.6)), times(sp_spray(s, 0.3), 1.5), 1.8 + sp_rand(s), 4.0, 0.62, 0.4, 0.55, 0); }
+  s[0].sp.broke += 1;
+  s[0].sp.shake = hi(s[0].sp.shake, 0.4f32);
+  sp_say(s, "THE OBSERVATORY'S DOME BREAKS", -1, "");
+}
+// The dome's own fall (sp_dome): its landing at `speed` m/s hurts it as a fall does (1d6 a 10 feet).
+fi_dome_landed :: (s: [] Everglade, speed: f32) {
+  feet := speed * speed / (2 * 9.81) / 0.3048;
+  dice := cast(int) floor(feet / 10);
+  if dice > 0 { fi_dome_hurt(s, srd_sum(s[0].sp.dice[..], dice, 6), v3(fi_dome_centre(s).x, -100, fi_dome_centre(s).z)); }
+}
+// The sledgehammer (everglade-hammer.coax): how far the dome's face is from you, in front of you within
+// reach, or -1.
+fi_dome_reach :: (s: [] Everglade, you: Point, chest: f32, fx: f32, fz: f32) -> f32 {
+  if fi_dome_gone(s) { return -1; }
+  c := fi_dome_centre(s);
+  to := sub(c, v3(you.x, chest, you.z));
+  d := length(to) - f32(SP_DOME_R);
+  if d > f32(HM_REACH) + f32(EG_RADIUS) { return -1; }
+  flat := sqrt(to.x * to.x + to.z * to.z);
+  if flat > 0.05 && (to.x * fx + to.z * fz) / flat < 0.5 { return -1; }
+  return hi(d, 0);
+}
+// A blow of the maul on the dome: d20 + 6 against its AC, 2d6 + 3 doubled (Wrecking).
+fi_dome_hammer :: (s: [] Everglade) {
+  o := fi_dome_object();
+  d := s[0].sp.dice[..];
+  roll := srd_roll(d, 20);
+  crit := roll == 20;
+  hit := roll != 1 && (crit || roll + HM_TO_HIT >= o.ac);
+  you := s[0].feet;
+  from := v3(you.x, walk_at(s, you.x, you.z) + you.y + 1.2, you.z);
+  amount := 0;
+  if hit {
+    dice := srd_sum(d, ifx crit then HM_DICE * 2 else HM_DICE, HM_SIDES);
+    amount = srd_object_damage(o, (dice + HM_BONUS) * 2, DMG_BLUDGEONING);
+    at := add(fi_dome_centre(s), times(unit_or(sub(from, fi_dome_centre(s)), v3(0, 0, 1)), f32(SP_DOME_R)));
+    sp_add_puff(s, at, v3(0, 0.4, 0), 0.6, 1.6, 0.66);
+    ww := watch_w(s);
+    if ww[0].on { _ := watch_crime(ww, at, HM_HEAR, ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+    fi_dome_hurt(s, amount, from);
+  }
+  buf := s[0].sp.news[..];
+  n := sp_put(buf, 0, "HAMMER · ");
+  n = put_digits(buf, n, roll + HM_TO_HIT);
+  if !hit { n = sp_put(buf, n, " MISSES"); }
+  else {
+    n = sp_put(buf, n, ifx crit then " CRITICAL · " else " HITS · ");
+    n = put_digits(buf, n, amount); n = sp_put(buf, n, " BLUDGEONING");
+    if fi_dome_gone(s) { n = sp_put(buf, n, " · BROKE"); }
+  }
+  s[0].sp.news_n = n; s[0].sp.news_t = 3;
+}
+// Each frame: rubble striking the dome wears it; its slabs fall, tumble and come to rest, striking whoever they fall on.
+fi_dome_frame :: (s: [] Everglade, dt: f32) {
+  v := fi_of(s);
+  w := sp_dm(s);
+  if !v[0].dome_gone {
+    v[0].dome_cool = hi(v[0].dome_cool - dt, 0);
+    if v[0].dome_cool <= 0 {
+      c := fi_dome_centre(s);
+      for b: 0..<DEMO_BODIES {
+        if w[0].meta[b].kind == 0 || demo_asleep(w, b) { continue; }
+        k := b * DB_FLOATS;
+        at := v3(cast(f32) w[0].state[k + 4], cast(f32) w[0].state[k + 5], cast(f32) w[0].state[k + 6]);
+        vel := v3(cast(f32) w[0].state[k + 7], cast(f32) w[0].state[k + 8], cast(f32) w[0].state[k + 9]);
+        if length(vel) < f32(FI_RUBBLE_SPEED) || length(sub(at, c)) > f32(SP_DOME_R) + cast(f32) w[0].meta[b].radius + 0.2 { continue; }
+        fi_dome_hurt(s, srd_sum(s[0].sp.dice[..], 1, 6), at);
+        v[0].dome_cool = 0.3;
+        break;
+      }
+    }
+    return;
+  }
+  for q: 0..<FI_SHARDS {
+    if !v[0].shards[q].live || v[0].shards[q].still { continue; }
+    sh := v[0].shards[q];
+    sh.vel.y -= 9.81 * dt;
+    sh.at = add(sh.at, times(sh.vel, dt));
+    sh.yaw += sh.spin * dt; sh.tilt += sh.spin * 0.6 * dt;
+    floor_y := sp_surface(s, sh.at.x, sh.at.z, sh.at.y + 0.5) + sh.sy * 0.5;
+    if sh.at.y <= floor_y {
+      sh.at.y = floor_y;
+      hit := -sh.vel.y;
+      sh.vel = v3(sh.vel.x * 0.5, ifx hit > 2 then hit * 0.25 else 0.0f32, sh.vel.z * 0.5);
+      sh.spin *= 0.5;
+      if hit > 4 && s[0].sp.dm.count > 0 { demo_dust(w, sh.at, v3(0, 0.5, 0), 0.9, v3(0.62, 0.6, 0.57)); }
+      if length(sh.vel) < 0.4 { sh.still = true; sh.tilt = clamp(sh.tilt, -0.25, 0.25); }
+    }
+    // falling hard on someone: rubble's 2d6 bludgeoning, once a slab
+    if !sh.struck && length(sh.vel) > f32(FI_SHARD_HURT) && watch_on(s) {
+      ww := watch_w(s);
+      reach := hi(sh.sx, sh.sz) * 0.5 + f32(EG_RADIUS);
+      for i: 0..<WATCH_ACTORS {
+        if sh.struck || !ab_person_ok(s, i) { continue; }
+        p := wd_feet(s, i);
+        if flat_gap(p, sh.at) > reach || sh.at.y < p.y - 0.3 || sh.at.y > p.y + f32(BODY_TALL) + 0.3 { continue; }
+        watch_harm(ww, i, srd_sum(s[0].sp.dice[..], 2, 6), ab_you(s));
+        sh.struck = true;
+      }
+      you := ab_you(s);
+      if !sh.struck && !ww[0].dead && flat_gap(you, sh.at) <= reach && sh.at.y > you.y - 0.3 && sh.at.y < you.y + f32(BODY_TALL) + 0.3 {
+        wd_hurt_you(s, srd_sum(s[0].sp.dice[..], 2, 6), "THE DOME FALLS ON YOU · 2D6 BLUDGEONING");
+        sh.struck = true;
+      }
+    }
+    v[0].shards[q] = sh;
+  }
+}
+
+// ---- drawing
+
+fi_flick :: (t: f32, k: f32) -> f32 { return 0.75 + 0.25 * sin(t * 15 + k * 2.1) * sin(t * 5.3 + k); }
+// After the pieces' instances are written (everglade-wild.coax wd_draw): soot on what has burnt, flames
+// and smoke off what burns, the dome's slabs.
+fi_draw :: (s: [] Everglade) {
+  if s[0].sp.dm.count < 1 || !s[0].sp.ready { return; }
+  w := sp_dm(s);
+  v := fi_of(s);
+  few := phone(s);
+  t := v[0].time;
+  if v[0].sooty {
+    any := false;
+    for i: 0..<w[0].n {
+      k := v[0].soot[i];
+      if k <= 0 { continue; }
+      any = true;
+      p := w[0].pieces[i];
+      if p.state != DP_STANDING { continue; }
+      hurt := 0.3 + 0.7 * f32(p.hp) / f32(hi_int(p.max_hp, 1));
+      sp_tint(s, i, lo(hurt, 1) * (1 - 0.78 * k));
+    }
+    v[0].sooty = any;
+  }
+  // the flames: a few licks on each burning piece's face every frame, billows thrown off it, a
+  // column of smoke; the more the bigger it is. On a phone half as many.
+  budget := ifx few then 6 else 14;    // billows a frame across all the fires
+  for k: 0..<v[0].n {
+    e := v[0].burn[k];
+    p := w[0].pieces[e.piece];
+    on := clamp(e.t / 1.2, 0, 1);
+    size := clamp(sqrt((p.x1 - p.x0) * (p.x1 - p.x0) + (p.z1 - p.z0) * (p.z1 - p.z0) + (p.y1 - p.y0) * (p.y1 - p.y0)) * 0.5, 0.4, 4);
+    licks := ifx few then 1 else clamp_i(cast(int) (size * 1.2), 1, 4);
+    for q: 0..<licks {
+      hx := sp_noise(f32(e.piece) * 0.37 + f32(q), 1.3); hz := sp_noise(f32(e.piece) * 0.53 + f32(q), 7.1);
+      hy := 0.35 + 0.65 * sp_noise(f32(e.piece) * 0.71 + f32(q), 3.9);
+      at := v3(mix_f(p.x0, p.x1, hx), mix_f(p.y0, p.y1, hy), mix_f(p.z0, p.z1, hz));
+      fl := fi_flick(t, f32(e.piece * 3 + q));
+      sp_fx(s, FX_FIRE, at, (0.45 + 0.2 * size) * on * fl, v3(1.5, 0.85, 0.32), 0.6, v3(0.9, 0, 0), t * 2.6 + f32(e.piece + q) * 0.37);
+    }
+    sp_glow(s, v3(p.cx, mix_f(p.y0, p.y1, 0.6), p.cz), (1.0 + 0.6 * size) * on * fi_flick(t, f32(e.piece)), v3(0.45, 0.17, 0.04));
+    if budget > 0 && sp_rand(s) < 0.3 + 0.15 * size {
+      budget -= 1;
+      at := v3(mix_f(p.x0, p.x1, sp_rand(s)), mix_f(p.y0, p.y1, 0.3 + 0.7 * sp_rand(s)), mix_f(p.z0, p.z1, sp_rand(s)));
+      sp_add_flame(s, at, v3((sp_rand(s) - 0.5) * 0.4, 0.8 + 0.6 * sp_rand(s), (sp_rand(s) - 0.5) * 0.4), (0.3 + 0.12 * size) * (0.8 + 0.4 * sp_rand(s)), 1.9, 0.45 + 0.3 * sp_rand(s), 3.0, ifx sp_rand(s) < 0.35 then 1.0f32 else 0.0f32);
+    }
+    if budget > 0 && sp_rand(s) < (ifx few then 0.03f32 else 0.06f32) * size {
+      budget -= 1;
+      sp_add_smoke(s, v3(p.cx, p.y1 + 0.3, p.cz), v3((sp_rand(s) - 0.5) * 0.5, 1.0 + 0.5 * sp_rand(s), (sp_rand(s) - 0.5) * 0.5), 0.6 + 0.3 * size, 3.5, 0.22, 0.6, 0.6, 0.35);
+    }
+  }
+  // the dome's slabs
+  if v[0].dome_gone {
+    for q: 0..<FI_SHARDS {
+      sh := v[0].shards[q];
+      if !sh.live { continue; }
+      shape(s, SHAPE_BOX, LOOK_STONE, sh.at, sh.yaw, sh.tilt, sh.sx, sh.sy, sh.sz, 0.74, 0.74, 0.78);
+    }
+  }
+}
+mix_f :: (a: f32, b: f32, t: f32) -> f32 { return a + (b - a) * t; }
+// The fires' light on the town: the three biggest, flickering.
+fi_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  if s[0].sp.dm.count < 1 { return k; }
+  w := sp_dm(s);
+  v := fi_of(s);
+  n := k;
+  for q: 0..<lo_i(v[0].n, 3) {
+    e := v[0].burn[q * v[0].n / lo_i(v[0].n, 3)];
+    p := w[0].pieces[e.piece];
+    n = sp_lamp(u, n, most, v3(p.cx, p.y1 + 0.5, p.cz), 12, FI_RGB, 1.8 * clamp(e.t / 1.2, 0, 1) * fi_flick(v[0].time, f32(q)));
+  }
+  return n;
+}
+
+// ---- checks
+
+// The nearest standing piece of mesh m to (x, z), -1 none.
+fi_test_piece :: (g: [] Everglade, m: int, x: f32, z: f32) -> int {
+  w := sp_dm(g);
+  best := -1; most := 1.0e9f32;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.mesh != m || p.state != DP_STANDING { continue; }
+    d := (p.cx - x) * (p.cx - x) + (p.cz - z) * (p.cz - z);
+    if d < most { most = d; best = i; }
+  }
+  return best;
+}
+
+#test "fire: Fire Storm sets a house burning; a bolt catches wood about half the time; fire spreads along a fence, burns it to collapse, and frost puts it out" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := sp_dm(g[..]);
+  v := fi_of(g[..]);
+  // Fire Storm at the inn: its walls and timbers catch
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  ci_fs_at(g[..], v3(ix, ground_at(g[..], ix, iz), iz), v3(0, 0, 1));
+  #assert v[0].n >= 4;
+  for k: 0..<v[0].n { #assert w[0].pieces[v[0].burn[k].piece].group == EG_INN && fi_fuel(w[0].pieces[v[0].burn[k].piece]) > 0; }
+  // brick and glass never catch
+  for k: 0..<v[0].n { m := w[0].pieces[v[0].burn[k].piece].mesh; #assert m != M_BRICK && m != M_WINDOW; }
+  fi_restore(g[..], -1);
+  #assert v[0].n == 0;
+  // a bolt: about half the time, on one fence section
+  f := fi_test_piece(g[..], M_FENCE, 0, 0);
+  #assert f >= 0;
+  p := w[0].pieces[f];
+  at := v3(p.cx, p.y1, p.cz);
+  caught := 0;
+  for k: 0..<40 {
+    if fi_catch(g[..], at, 0.1, FI_BOLT) > 0 { caught += 1; }
+    fi_restore(g[..], -1);
+  }
+  #assert caught >= 8 && caught <= 32;
+  // lit, it spreads to the fence beside it
+  #assert fi_ignite(g[..], f) && !fi_ignite(g[..], f);
+  next := -1;
+  for j: 0..<w[0].n { if j != f && w[0].pieces[j].mesh == M_FENCE && fi_box_gap(w[0].pieces[f], w[0].pieces[j]) <= f32(FI_NEAR) { next = j; } }
+  #assert next >= 0;
+  spread := false;
+  for k: 0..<60 { fi_frame(g[..], 0.25); if fi_burning(g[..], next) || w[0].pieces[next].state != DP_STANDING { spread = true; } }
+  #assert spread;
+  // and burns down: a fence section (Medium wood, 4 hp fragile, as its SRD stats) breaks in a few seconds
+  #assert w[0].pieces[f].state != DP_STANDING && v[0].soot[f] > 0;
+  // frost: Cone of Cold over a burning piece puts it out
+  fi_restore(g[..], -1);
+  _ = sp_restore(g[..], -1);
+  #assert w[0].pieces[f].state == DP_STANDING && fi_ignite(g[..], f);
+  from := v3(p.cx - 6, ground_at(g[..], p.cx, p.cz), p.cz);
+  po_cc_at(g[..], from, v3(1, 0, 0));
+  #assert !fi_burning(g[..], f);
+  // water too
+  #assert fi_ignite(g[..], f) && fi_douse(g[..], at, 1) == 1 && v[0].n == 0;
+}
+
+#test "fire: the observatory's dome breaks under a Meteor Swarm into slabs that fall to the ground; R stands it again" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := fi_of(g[..]);
+  c := fi_dome_centre(g[..]);
+  #assert !fi_dome_gone(g[..]) && fi_dome_gap(g[..], c) == 0;
+  // a hammer's blow or two only wears it
+  fi_dome_hurt(g[..], 30, add(c, v3(0, 0, 5)));
+  #assert !fi_dome_gone(g[..]) && v[0].dome_dmg == 30;
+  // a meteor bursting on it: 20d6 fire (halved, stone) and 20d6 bludgeoning
+  g[0].sp.dmg = SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 70, kind2 = DMG_BLUDGEONING};
+  fi_blast(g[..], add(c, v3(0, 0, f32(SP_DOME_R) + 0.5)), 4, 0, false);
+  #assert fi_dome_gone(g[..]) && fi_dome_gap(g[..], c) > 1000;
+  high := 0.0f32;
+  for q: 0..<FI_SHARDS { #assert v[0].shards[q].live; high = hi(high, v[0].shards[q].at.y); }
+  #assert high > ground_at(g[..], c.x, c.z) + 8;
+  for k: 0..<80 { fi_dome_frame(g[..], 0.05); }
+  low := 0;
+  for q: 0..<FI_SHARDS { if v[0].shards[q].at.y < c.y - 4 { low += 1; } }
+  #assert low >= FI_SHARDS / 2;
+  _ = sp_restore(g[..], -1);
+  #assert !fi_dome_gone(g[..]) && v[0].dome_dmg == 0 && !v[0].shards[0].live;
+}

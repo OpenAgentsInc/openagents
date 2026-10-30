@@ -17,6 +17,7 @@ HM_TO_HIT :: 6;
 HM_DICE :: 2; HM_SIDES :: 6; HM_BONUS :: 3;
 HM_THROW :: 5.0;           // m/s the blow throws what it breaks
 HM_HEAR :: 30.0;           // m the watch hears a blow from
+HM_DOME :: -2;             // the target when it is the observatory's dome, fallen within reach (everglade-fire.coax)
 
 Hammer :: struct {
   t: f32;                  // into the swing (s), -1 resting
@@ -43,15 +44,17 @@ hm_target :: (s: [] Everglade) -> int {
     if d > 0.05 && (dx * fx + dz * fz) / d < 0.5 { continue; }
     best = i; most = d;
   }
+  dome := fi_dome_reach(s, you, y + 1.2, fx, fz);
+  if dome >= 0 && dome < most { return HM_DOME; }
   return best;
 }
 
-hm_prompt_on :: (s: [] Everglade) -> bool { return s[0].hm.target >= 0 && s[0].hm.t < 0; }
+hm_prompt_on :: (s: [] Everglade) -> bool { return s[0].hm.target != -1 && s[0].hm.t < 0; }
 hm_prompt :: (s: [] Everglade) -> string { return ifx phone(s) then "SWING THE HAMMER" else "E · SWING THE HAMMER"; }
 hm_swinging :: (s: [] Everglade) -> bool { return s[0].hm.t >= 0; }
 
 hm_swing :: (s: [] Everglade) -> bool {
-  if s[0].hm.t >= 0 || s[0].hm.target < 0 { return false; }
+  if s[0].hm.t >= 0 || s[0].hm.target == -1 { return false; }
   s[0].hm.t = 0;
   return true;
 }
@@ -101,7 +104,7 @@ hm_frame :: (s: [] Everglade, dt: f32) {
   s[0].hm.t += dt;
   if before < f32(HM_WIND) && s[0].hm.t >= f32(HM_WIND) {
     i := hm_target(s);
-    if i >= 0 { _ := hm_strike(s, i); }
+    if i >= 0 { _ := hm_strike(s, i); } else if i == HM_DOME { fi_dome_hammer(s); }
   }
   if s[0].hm.t >= f32(HM_SWING) { s[0].hm.t = -1; s[0].hm.target = hm_target(s); }
 }

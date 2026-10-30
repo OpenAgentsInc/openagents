@@ -1459,7 +1459,7 @@ city :: (s: [] Everglade, u: [] f32) {
   // (everglade-spells.coax sp_dome).
   ob := EG_OBSERVATORY * EG_BOX;
   ox := (EG_BUILDING[ob] + EG_BUILDING[ob + 2]) / 2; oz := (EG_BUILDING[ob + 1] + EG_BUILDING[ob + 3]) / 2;
-  if !eg_hidden(s[0].ev.edits, EG_OBSERVATORY) { shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, spells_dome_y(s, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS)), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82); }
+  if !eg_hidden(s[0].ev.edits, EG_OBSERVATORY) && !fi_dome_gone(s) { shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, spells_dome_y(s, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS)), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82); }
   // The commons: the fountain, the quest board.
   g := ground_at(s, 0, 0);
   // the fountain: a carved basin and a column with an upper bowl, its water the water shader's

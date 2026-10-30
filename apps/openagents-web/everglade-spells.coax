@@ -53,6 +53,7 @@
 #load "everglade-tide.coax";
 #load "everglade-grove.coax";
 #load "everglade-wild.coax";
+#load "everglade-fire.coax";
 #load "everglade-circle.coax";
 #load "everglade-marks.coax";
 #load "everglade-storm.coax";
@@ -200,6 +201,7 @@ Spells :: struct {
   po: [1] Polar;               // and the last four: Ray of Frost, Fog Cloud, Hold Person, Cone of Cold (everglade-polar.coax)
   st: [1] Storm;               // and after those: Sunburst, Storm of Vengeance, Shapechange, Speak with Animals, Wild Resurgence (everglade-storm.coax)
   ci: [1] Circle;              // the circle spells after it: Conjure Animals, Polymorph, Mass Cure Wounds, Sunbeam, Wall of Thorns, Fire Storm (everglade-circle.coax)
+  fi: [1] Fire;                // fire on the town's pieces and the dome's breaking (everglade-fire.coax)
   wd: [1] Wild;                // the rest of its third row: Faerie Fire, Healing Word, Spike Growth, Call Lightning, Wall of Fire, and fire on the grass (everglade-wild.coax)
   gv: [1] Grove;               // the old Grove's druid spells: Moonbeam, Produce Flame, Starry Wisp, Shillelagh, Poison Spray, Elementalism, Entangle (everglade-grove.coax)
   td: [1] Tide;                // Water Walk, Control Water, Create or Destroy Water, Water Breathing (everglade-tide.coax)
@@ -765,6 +767,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   demo_blast_end(w);
   s[0].sp.walls_dirty = true;
   kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
+  fi_blast(s, at, radius, kind, slot == SP_MEGA);   // what burns catches or goes out; the dome takes its share (everglade-fire.coax)
   if kind == 0 { fr_melt(s, at, radius); }   // fire melts the ice it reaches (everglade-frost.coax)
   if slot == SP_ORB {
     // the water puts out what burns where it splashes: a fireball still burning ends, a char steams
@@ -806,8 +809,8 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     if w[0].meta[b].kind != DEMO_CHUNK || w[0].meta[b].born != w[0].clock { continue; }
     burn := ifx kind == 2 then 1.0f32 else 0.3 + 0.6 * srd_unit(s[0].sp.dice[..]);
     w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
-    // a meteor sets some of what it broke alight: it burns as it flies and where it lands
-    s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else 0.0f32;
+    // a meteor sets some of what it broke alight, a bolt a few: it burns as it flies and where it lands
+    s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else ifx kind == 1 && sp_rand(s) < 0.3 then 2.0 + 3.0 * sp_rand(s) else 0.0f32;   // a bolt, some
   }
   // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
   floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
@@ -1124,6 +1127,7 @@ sp_tint :: (s: [] Everglade, i: int, whole: f32) {
 sp_restore :: (s: [] Everglade, g: int) -> int {
   w := sp_dm(s);
   n := demo_restore(w, g);
+  fi_restore(s, g);
   for i: 0..<w[0].n { if g < 0 || w[0].pieces[i].group == g { sp_tint(s, i, 1); } }
   sp_open_walls(s);
   return n;
@@ -2109,6 +2113,7 @@ sp_dome :: (s: [] Everglade, dt: f32) {
       s[0].sp.dome_y = rest;
       s[0].sp.dome_vy = 0;
       if hit > 2.5 {
+        fi_dome_landed(s, hit);
         s[0].sp.dome_vy = hit * 0.22;
         if s[0].sp.ready && s[0].sp.dm.count > 0 {
           w := sp_dm(s);
