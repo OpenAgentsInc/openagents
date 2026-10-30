@@ -101,7 +101,9 @@
 //   coaxial_draws(state), coaxial_draw_count(state)   u32 [first, count, base instance, instances] each,
 //                             indexed draws over the index buffer
 //   coaxial_stores(), coaxial_store_cap(k), coaxial_store(state, k), coaxial_store_bytes(state, k)
-//                             memory copied each frame to storage buffers
+//                             memory copied each frame to storage buffers; an app with
+//   coaxial_store_version(state, k)  has store k copied only when that number changes (a
+//                             generation: bump it when the store is rewritten)
 //   coaxial_sounds(state), coaxial_sounds_len(state)  sounds to play now, a line each: NAME GAIN PAN
 //   coaxial_water_draws(state)  how many of the last draws are water (water_vs, waterPipelines)
 //                               (a WGSL with water_scene gets the scene's colour and depth copied
@@ -997,7 +999,7 @@ function bindScene() {
   if (!gpu || gpu.sceneGroup || !engine?.exports.coaxial_draws || gpuAssets.some((a) => !a.done || a.failed)) return;
   const x = engine.exports, { device } = gpu, resources = [];
   for (const a of assets) if (a.kind === "storage") resources.push({ buffer: a.buffer });
-  gpu.stores = [];
+  gpu.stores = []; gpu.storeVersions = [];
   for (let k = 0; k < (x.coaxial_stores?.() || 0); k++) {
     const buffer = device.createBuffer({ size: align(Math.max(x.coaxial_store_cap(k), 16), 16), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     gpu.stores.push(buffer); resources.push({ buffer });
@@ -1215,8 +1217,10 @@ function frame(now) {
   if (n) device.queue.writeBuffer(gpu.vertexBuffer, 0, new Float32Array(memory.buffer, arena.vertices, n * arena.floats));
   const draws = gpu.scene && gpu.sceneGroup ? x.coaxial_draw_count(arena.state) : 0;
   if (draws) gpu.stores.forEach((buffer, k) => {
+    const version = x.coaxial_store_version?.(arena.state, k);
+    if (version !== undefined && gpu.storeVersions[k] === version) return;
     const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
-    if (bytes) device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes);
+    if (bytes) { device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes); gpu.storeVersions[k] = version; }
   });
   if ((gpu.scene || gpu.surface) && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup
       || (gpu.post && !!gpu.waterCopy !== !!gpu.waterCopyGroup))) {

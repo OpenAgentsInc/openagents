@@ -272,6 +272,7 @@ Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 
 Everglade :: struct {
   started: bool;
+  ground_gen: int;   // bumped each time the ground (store 0) is built: the host uploads it then
   // the time of day (realms.json clock: cycle, or ?clock=T pinned): the clock now, how it runs, when it was read
   clock: f32; day: StyleClock; day_from: f64;
   grass_n: int;   // the blades this frame (everglade_grass_instances)
@@ -525,6 +526,7 @@ everglade_start :: (s: [] Everglade) {
   s[0].started = true;
   s[0].clock = 0.5; s[0].day.mode = STYLE_CLOCK_FIXED; s[0].day.at = 0.5; s[0].day_from = 0;   // noon until the page says
   ok := everglade_build_ground(s[0].heights[..]);
+  s[0].ground_gen += 1;
   s[0].deck = everglade_deck(s[0].heights[..]);
   water_grid_build(s);
   s[0].breath = 1;

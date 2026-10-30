@@ -57,6 +57,7 @@ static void ask_out(uint32_t state);
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_t_River river;
 static bool river_built;
+static uint32_t river_gen, frames;   // the river's bake (store 3) and frames drawn (stores 1 and 2 change every frame)
 static float river_levels[105 + 16];   // the river's levels, then the ponds' rows (everglade_levels)
 static float river_floats[28 * 8];
 static coax_t_Swim swim;
@@ -103,7 +104,7 @@ static void start(uint32_t state) {
   if (!river_built) {
     everglade_levels(at(state), (coax_v_f32){river_levels, 105 + 16});
     everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 105 * 105}, (coax_v_f32){river_levels, 105 + 16}, 104, 2, -104, -104);
-    river_built = true;
+    river_built = true; river_gen += 1;
     swim.pace = 1; swim.breath = 1;
   }
   place_seen(state);
@@ -140,6 +141,7 @@ EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   start(state);
+  frames += 1;
   coax_t_Everglade *g = city(state);
   width = w; height = h; dpr = scale;
   dt = dt < 0 ? 0 : dt > 0.1f ? 0.1f : dt;
@@ -304,6 +306,10 @@ EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
   return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->heights.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)state; return coaxial_store_cap(k); }
+// What the host uploads: the ground and the river only when built, the objects and joints every frame.
+EXPORT("coaxial_store_version") uint32_t coaxial_store_version(uint32_t state, int32_t k) {
+  return k == 0 ? (uint32_t)city(state)->ground_gen : k == 3 ? river_gen : frames;
+}
 // The last draw is the river's (everglade.coax WATER_DRAW): the host draws it after the rest, in two halves.
 EXPORT("coaxial_water_draws") uint32_t coaxial_water_draws(uint32_t state) { (void)state; return 1; }
 
