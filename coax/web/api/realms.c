@@ -85,20 +85,40 @@ static void answer_lines(int fd, int status, const char *json_text, const char *
   api_respond(fd, status, "text/plain; charset=utf-8", NULL, out, strlen(out));
 }
 
-// The model's answer, held by SQL: builder_answer for a plan, builder_pick_answer for a pick.
+// The model's answer, held by SQL: builder_answer for a plan, builder_pick_answer for a pick. A
+// board that leaves out something asked for (migrations/0065_builder_subject.sql) comes back as
+// {retry: REQUEST}: the model is asked that once more and its answer held as the second try.
+static PGresult *answer_of(PGconn *db, bool pick, const char *asked, long status, const char *got, const char *model, double t0, const char *request) {
+  char http[16], taken[16];
+  snprintf(http, sizeof http, "%ld", status);
+  snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
+  if (pick) {
+    const char *v[5] = {asked, http, got ? got : "", model, taken};
+    return PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines', NULL::text FROM verse.builder_pick_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+                        5, NULL, v, NULL, NULL, 0);
+  }
+  const char *v[6] = {asked, http, got ? got : "", model, taken, request};
+  return PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lines' - 'retry')::text, x->>'lines', (x->'retry')::text "
+                          "FROM verse.builder_answer($1::jsonb || CASE WHEN $6::jsonb IS NULL THEN '{\"retry\": true}' ELSE '{}' END::jsonb, $2::int, $3, $4, $5::int, $6::jsonb) x", 6, NULL, v, NULL, NULL, 0);
+}
 static void plan_answer(int fd, const char *asked, const char *request, bool lines, bool pick) {
   const char *model = env_or("OA_BUILDER_MODEL", "gemini-2.5-flash");
   char *got = NULL;
   double t0 = api_now_ms();
   long status = ask_builder(model, request, &got);
-  char http[16], taken[16];
-  snprintf(http, sizeof http, "%ld", status);
-  snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
   PGconn *db = api_db_new();
-  const char *v[5] = {asked, http, got ? got : "", model, taken};
-  PGresult *r = db ? PQexecParams(db, pick ? "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.builder_pick_answer($1::jsonb, $2::int, $3, $4, $5::int) x"
-                                         : "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.builder_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
-                                  5, NULL, v, NULL, NULL, 0) : NULL;
+  PGresult *r = db ? answer_of(db, pick, asked, status, got, model, t0, request) : NULL;
+  if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 3)) {
+    char *again = strdup(PQgetvalue(r, 0, 3));
+    PQclear(r); r = NULL;
+    if (again) {
+      free(got); got = NULL;
+      long second = ask_builder(model, again, &got);
+      if (second != 200) api_log("realms: model answered %ld on the second try", second);
+      r = answer_of(db, false, asked, second, got, model, t0, NULL);   // no request: the second try
+      free(again);
+    }
+  }
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
     if (lines) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
     else api_json(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1));

@@ -529,6 +529,28 @@
         "A 390 px headless drag changes pitch"
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "byo-plan-subject",
+      "parent": "byo-next",
+      "title": "The board always holds the thing you asked for",
+      "size": "M",
+      "labels": [
+        "realm-builder",
+        "api"
+      ],
+      "body": "\"Build a small red house next to a tall tree\" came back as pine trees and a camp, no house: the catalogue had no house and nothing checked that the main thing asked for was on the board. The planner's typed answer now names the main things asked for, each with the catalogue feature that makes it; a board missing one is asked again once with what was missing, then the feature is added from its typed fields. A house is in the catalogue and the made realm draws it, in its colour.",
+      "files": [
+        "coax/web/api/migrations/0064_builder_subject.sql",
+        "coax/web/api/realms.c",
+        "coax/web/api/test_realm_builder.py",
+        "apps/openagents-web/myrealm.coax"
+      ],
+      "acceptance": [
+        "test_realm_builder.py: a board missing an asked-for feature is retried, then repaired",
+        "Five or more varied prompts on production each get their main thing on the board"
+      ],
+      "blocked_by": []
     }
   ]
 }

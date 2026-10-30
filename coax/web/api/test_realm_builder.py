@@ -8,7 +8,7 @@ import threading
 import time
 
 builder_seen = []
-builder_mode = {"status": 200, "text": "{}"}
+builder_mode = {"status": 200, "text": "{}", "texts": [], "statuses": []}
 
 
 class FakeBuilderModel(http.server.BaseHTTPRequestHandler):
@@ -18,12 +18,15 @@ class FakeBuilderModel(http.server.BaseHTTPRequestHandler):
         if builder_mode.get("stall", 0) > 0:   # a stalled try: answered only after the server has given up on it
             builder_mode["stall"] -= 1
             time.sleep(3)
-        if builder_mode["status"] != 200:
-            out = json.dumps({"error": {"code": builder_mode["status"]}}).encode()
+        # "texts" and "statuses": one a call, in turn, before "text" and "status"
+        text = builder_mode["texts"].pop(0) if builder_mode["texts"] else builder_mode["text"]
+        code = builder_mode["statuses"].pop(0) if builder_mode["statuses"] else builder_mode["status"]
+        if code != 200:
+            out = json.dumps({"error": {"code": code}}).encode()
         else:
             out = json.dumps({"candidates": [{"content": {"role": "model", "parts": [
-                {"text": "planning", "thought": True}, {"text": builder_mode["text"]}]}}]}).encode()
-        self.send_response(builder_mode["status"])
+                {"text": "planning", "thought": True}, {"text": text}]}}]}).encode()
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(out)))
         self.end_headers()
@@ -256,6 +259,64 @@ def realm_builder_checks():
     check("the model's error on a pick is a 503", b_call("POST", "/api/playtest/realms/pick", {"field": "dims", "words": "flat"})[0] == 503)
     builder_mode["status"] = 200
     check("SAY IT's pick is asked with its thinking off too", builder_seen[-1]["generationConfig"]["thinkingConfig"] == {"thinkingBudget": 0})
+
+    # the thing asked for is always on the board (byo-plan-subject, 0065): the planner names it first
+    time.sleep(2.1)
+    HOUSE = [{"thing": "small red house", "feature": "house"}, {"thing": "tall tree", "feature": "trees"}]
+    no_house = {"asked": HOUSE, "name": "Red House", "features": [{"feature": "trees", "on": True, "variant": "pine"},
+                                                                    {"feature": "props", "on": True, "variant": "camp"}]}
+    with_house = {"asked": HOUSE, "name": "Red House", "features": [{"feature": "house", "on": True, "colour": "red", "size": "small"},
+                                                                      {"feature": "trees", "on": True, "variant": "pine", "count": 3}]}
+    builder_mode["texts"] = [json.dumps(no_house), json.dumps(with_house)]
+    n0 = len(builder_seen)
+    st, sub = b_call("POST", "/api/playtest/realms/plan", {"prompt": "Build a small red house next to a tall tree."}, b_player())
+    schema = builder_seen[n0]["generationConfig"]["responseSchema"]
+    check("subject: the schema asks for what was asked first, each with its feature, and a house is in the catalogue",
+          schema["required"][0] == "asked" and schema["propertyOrdering"][0] == "asked"
+          and "house" in schema["properties"]["asked"]["items"]["properties"]["feature"]["enum"]
+          and "none" in schema["properties"]["asked"]["items"]["properties"]["feature"]["enum"]
+          and "red" in schema["properties"]["features"]["items"]["properties"]["colour"]["enum"], schema["required"])
+    asked_again = builder_seen[-1]["contents"]
+    check("subject: a board without the house is asked again, told what it left out",
+          len(builder_seen) - n0 == 2 and len(asked_again) == 3 and asked_again[1]["role"] == "model" and "small red house" in asked_again[2]["parts"][0]["text"]
+          and "house feature" in asked_again[2]["parts"][0]["text"], [c["parts"][0]["text"][:120] for c in asked_again])
+    kinds = [(f["feature"], f["on"], f["label"]) for f in sub.get("board", {}).get("features", [])]
+    check("subject: the second answer is the board, the house first, in its colour", st == 200 and kinds[0] == ("house", True, "A small red house")
+          and sub["asked"] == HOUSE, (st, kinds, sub.get("asked")))
+    row = sql(f"select retried, repaired is null, asked_for->0->>'feature' from verse.realm_plans where id = {sub['plan']}")
+    check("subject: the plan keeps what was asked and that it was asked again", row == "t|t|house", row)
+
+    time.sleep(2.1)
+    off_house = {"asked": HOUSE, "name": "Red House", "features": [{"feature": "house", "on": False, "colour": "red"},
+                                                                     {"feature": "trees", "on": True}]}
+    builder_mode["texts"] = [json.dumps(no_house), json.dumps(off_house)]
+    st, sub2 = b_call("POST", "/api/playtest/realms/plan", {"prompt": "Build a small red house next to a tall tree."}, b_player())
+    f2 = {f["feature"]: f for f in sub2.get("board", {}).get("features", [])}
+    check("subject: when the second answer still holds it off, it is switched on", st == 200 and f2["house"]["on"] is True and f2["house"]["colour"] == "red", sub2)
+    row = sql(f"select retried, repaired->0->>'feature' from verse.realm_plans where id = {sub2['plan']}")
+    check("subject: and the plan says it was repaired", row == "t|house", row)
+
+    time.sleep(2.1)
+    wizard = {"asked": [{"thing": "Old Wizard", "feature": "character"}, {"thing": "a dragon", "feature": "none"}], "name": "Tower", "features": [{"feature": "rocks", "on": True}]}
+    builder_mode["texts"] = [json.dumps(wizard)]
+    builder_mode["statuses"] = [200, 500, 500]
+    st, sub3 = b_call("POST", "/api/playtest/realms/plan", {"prompt": "an old wizard and a dragon"}, b_player())
+    f3 = {f["feature"]: f for f in sub3.get("board", {}).get("features", [])}
+    check("subject: when the second try fails, the first board answers with what was asked put on (none is left alone)",
+          st == 200 and f3.get("character", {}).get("name") == "Old Wizard" and f3["character"]["on"] is True and f3["rocks"]["on"] is True, (st, sub3))
+    builder_mode["statuses"] = []
+
+    time.sleep(2.1)
+    n0 = len(builder_seen)
+    builder_mode["texts"] = [json.dumps(with_house)]
+    maker = b_player()
+    st, sub4 = b_call("POST", "/api/playtest/realms/plan", {"prompt": "Build a small red house next to a tall tree."}, maker)
+    check("subject: a board with what was asked is asked once", st == 200 and len(builder_seen) - n0 == 1
+          and sql(f"select retried from verse.realm_plans where id = {sub4['plan']}") == "f", (st, len(builder_seen) - n0))
+    st, made = b_call("POST", "/api/playtest/realms", {"plan": sub4["plan"], "on": [True, True]}, maker)
+    st2, spec = b_call("GET", "/api/playtest/realms/" + made.get("slug", "x"), key=maker)
+    check("subject: the made realm's spec has its house, for the engine to draw", st == 200 and "feature house small red 1" in spec, (made, spec))
+    builder_mode["texts"] = []
 
     # the slow tail (byo-plan-speed): a stalled try is cut off at OA_BUILDER_TIMEOUT_MS and tried once more
     time.sleep(2.1)

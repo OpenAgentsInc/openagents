@@ -5,13 +5,13 @@
 // realm of its own so every release checks the module.
 //
 // The realm is its spec (GET /api/playtest/realms/<slug>, a line each): its name, style, ground and
-// time of day, which tools its owner gives visitors, its features (water, trees, rocks, plants,
-// lanterns, a flock, props, characters) and the things placed since. Nothing else is in it: an
+// time of day, which tools its owner gives visitors, its features (a house, water, trees, rocks,
+// plants, lanterns, a flock, props, characters) and the things placed since. Nothing else is in it: an
 // empty ground when nothing was checked, and no one in it unless characters were. The features are
 // laid out from the slug (the same realm for everyone), from the fixture pack's meshes
 // (realms/fixture/assets/fixture.pack): trees, rocks, ferns, crates, barrels, a wagon, a fence, a
-// chest and an anvil. Lanterns are lights in cages on dark posts, with a pool of light round each
-// after dark; the flock circles low ahead of whoever walks, dark against the sky; you and the
+// chest and an anvil; a house is the pack's crate stretched into walls, a roof, a door and windows.
+// Lanterns are lights in cages on dark posts, with a pool of light round each after dark; the flock circles low ahead of whoever walks, dark against the sky; you and the
 // characters are figures built from the pack's barrel and crate (from above, a figure on a bright ring).
 //
 // The owner and admins (the server decides) get EDIT, the shared edit layer (verse/edit/edit.coax):
@@ -113,6 +113,7 @@ HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
 MESHES :: 24; NAME :: 32;
 PIECES :: 460;           // meshes drawn: features and placed things (a tree is two), then the actors each frame
 SOLIDS :: 260;           // circles you can't walk into
+HOUSES :: 5;
 INSTANCE_FLOATS :: 16;
 LANTERNS :: 16; BIRDS :: 12; PEOPLE :: 4; PERSON :: 24; ROLE :: 40;
 CARDS :: 8;
@@ -163,6 +164,7 @@ MyRealm :: struct {
   lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
   birds: int; bats: bool;
   props: [5] int; prop_n: int;   // 0 crates, 1 barrels, 2 wagon, 3 fence, 4 camp
+  houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
   people: int; person: [PEOPLE * PERSON] u8; person_n: [PEOPLE] int; role: [PEOPLE * ROLE] u8; role_n: [PEOPLE] int;
   placed_n: int; placed_thing: [200] int; placed_x: [200] f32; placed_z: [200] f32; placed_yaw: [200] f32;
   // the pack
@@ -231,6 +233,9 @@ TIMES :: [4] string.["day", "dawn", "dusk", "night"];
 PROPS :: [5] string.["crates", "barrels", "wagon", "fence", "camp"];
 COLOURS :: [7] string.["gold", "orange", "red", "green", "blue", "violet", "white"];
 COLOUR_RGB :: [21] f32.[1.0, 0.78, 0.35,  1.0, 0.55, 0.2,  1.0, 0.3, 0.25,  0.45, 1.0, 0.5,  0.4, 0.65, 1.0,  0.75, 0.45, 1.0,  1.0, 0.97, 0.9];
+// a house's walls, a tint on the pack's crate
+HOUSE_COLOURS :: [7] string.["white", "red", "blue", "green", "yellow", "brown", "grey"];
+HOUSE_RGB :: [21] f32.[1.3, 1.25, 1.15,  1.3, 0.3, 0.24,  0.45, 0.62, 1.25,  0.5, 1.05, 0.5,  1.4, 1.15, 0.35,  0.72, 0.5, 0.34,  0.82, 0.82, 0.85];
 thing_of :: (word: string) -> int { for i: 0..<THINGS { if THING_NAMES[i] == word { return i; } } return -1; }
 tool_of :: (word: string) -> int { for i: 0..<TOOLS { if TOOL_NAMES[i] == word { return i; } } return -1; }
 
@@ -292,7 +297,7 @@ slug_ok :: (text: string) -> bool {
 read_spec :: (s: [] MyRealm, text: string) -> bool {
   for i: 0..<TOOLS { s[0].tools[i] = false; }
   s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0;
-  s[0].prop_n = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
+  s[0].prop_n = 0; s[0].houses = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
   was := s[0].camera;
   s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0; s[0].camera = CAM_THIRD;
   got := false;
@@ -342,6 +347,11 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
         s[0].lantern_r = COLOUR_RGB[c * 3]; s[0].lantern_g = COLOUR_RGB[c * 3 + 1]; s[0].lantern_b = COLOUR_RGB[c * 3 + 2];
       }
       if f == "flock" { s[0].birds = clamp_int(count_of(line, 7), 0, BIRDS); s[0].bats = a == "bat"; }
+      if f == "house" {
+        s[0].houses = clamp_int(count_of(line, 1), 1, HOUSES);
+        s[0].house_size = ifx a == "large" then 2 else ifx a == "medium" then 1 else 0;
+        c := word_of(line, 3); s[0].house_colour = 0; for k: 0..<7 { if HOUSE_COLOURS[k] == c { s[0].house_colour = k; } }
+      }
       if f == "props" && s[0].prop_n < 5 { for k: 0..<5 { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
     }
   }
@@ -592,6 +602,13 @@ lay_out :: (s: [] MyRealm) {
     s[0].lantern_x[i] = 7.5 * sin(a); s[0].lantern_z[i] = 6 - 7.5 * cos(a);
     lantern_post(s, s[0].lantern_x[i], s[0].lantern_z[i]);
   }
+  // the houses first of what stands about: the first ahead of you, its door towards where you start
+  for h: 0..<s[0].houses {
+    w := HOUSE_W[s[0].house_size];
+    c := ifx h == 0 && free(s, 2.5, -3.5, 0.62 * w) then Spot.{x = 2.5, z = -3.5} else spot(s, r[..], 6, 16, 0.62 * w);
+    if c.x > 90 { continue; }
+    house(s, c.x, c.z, turn_of(-c.x, 6 - c.z), s[0].house_size, s[0].house_colour);
+  }
   for p: 0..<s[0].prop_n {
     kind := s[0].props[p];
     c := spot(s, r[..], 5, 13, 2.2);
@@ -620,6 +637,32 @@ lay_out :: (s: [] MyRealm) {
   s[0].static_n = s[0].piece_n;
   actors(s);
   s[0].laid = true;
+}
+
+// A house: walls in its colour, a gabled roof of two dark slabs, the gable's ends filled, a door and two
+// lit windows on the side facing yaw, a chimney (the pack's crate, stretched). A wall you can't walk into.
+HOUSE_W :: [3] f32.[3.4, 4.4, 5.6]; HOUSE_D :: [3] f32.[3.0, 3.8, 4.6]; HOUSE_H :: [3] f32.[2.3, 2.8, 3.3];
+house :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, size: int, colour: int) {
+  m := mesh_named(s, "Prop_Crate");
+  if m < 0 { return; }
+  w := HOUSE_W[size]; d := HOUSE_D[size]; h := HOUSE_H[size];
+  r := HOUSE_RGB[colour * 3]; g := HOUSE_RGB[colour * 3 + 1]; b := HOUSE_RGB[colour * 3 + 2];
+  ax := cos(yaw); az := -sin(yaw);     // the house's own x, across its front
+  fx := sin(yaw); fz := cos(yaw);      // its front, where the door is
+  sized(s, m, x, 0, z, yaw, 0, w, h, d, r, g, b);
+  half := 0.5 * w + 0.3; rise := 0.42 * w; slope := sqrt(half * half + rise * rise); tilt := turn_of(rise, half);
+  sized(s, m, x, h, z, yaw, 0, 0.56 * w, 0.5 * rise, d - 0.04, r * 0.92, g * 0.92, b * 0.92);   // the gable's ends
+  for side: 0..<2 {
+    k: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    sized(s, m, x + k * 0.5 * half * ax, h + 0.5 * rise - 0.12, z + k * 0.5 * half * az, yaw, -k * tilt, slope + 0.1, 0.16, d + 0.5, 0.42, 0.24, 0.2);
+  }
+  sized(s, m, x + 0.3 * w * ax - 0.2 * d * fx, h + 0.35 * rise, z + 0.3 * w * az - 0.2 * d * fz, yaw, 0, 0.42, 0.75 * rise + 0.5, 0.42, 0.5, 0.45, 0.44);
+  sized(s, m, x + 0.5 * d * fx, 0, z + 0.5 * d * fz, yaw, 0, 0.85, 1.7, 0.08, 0.32, 0.2, 0.13);   // the door
+  for side: 0..<2 {
+    k: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    sized(s, m, x + k * 0.3 * w * ax + 0.5 * d * fx, 1.0, z + k * 0.3 * w * az + 0.5 * d * fz, yaw, 0, 0.6, 0.55, 0.08, 1.6, 1.3, 0.6);
+  }
+  solid(s, x, z, 0.55 * hi(w, d));
 }
 
 // A lantern's post: a dark wooden post (the pack's crate, stretched) and the cage its light hangs in.
@@ -1080,6 +1123,7 @@ knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
   if s[0].rocks > 0 { n = json_in(out, n, " There are rocks."); }
   if s[0].lanterns > 0 { n = json_in(out, n, " Lanterns stand about."); }
   if s[0].birds > 0 { n = json_in(out, n, ifx s[0].bats then " Bats circle overhead." else " Birds circle overhead."); }
+  if s[0].houses > 0 { n = json_in(out, n, ifx s[0].houses == 1 then " There is a " else " There are "); n = json_in(out, n, HOUSE_COLOURS[s[0].house_colour]); n = json_in(out, n, ifx s[0].houses == 1 then " house." else " houses."); }
   for i: 0..<s[0].prop_n { n = json_in(out, n, " There is "); n = json_in(out, n, PROP_WORDS[s[0].props[i]]); n = json_in(out, n, "."); }
   for q: 0..<s[0].people {
     if q == p { continue; }
@@ -1761,6 +1805,21 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   // you start clear
   #assert free(s[..], 0, 6, 0.01) == false || true;
   for i: 0..<s[0].solid_n { dx := s[0].solid_x[i]; dz := s[0].solid_z[i] - 6; #assert sqrt(dx * dx + dz * dz) > s[0].solid_r[i]; }
+}
+
+#test "a red house stands ahead of you in its colour, its door towards you, and you can't walk into it" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "red-house", "realm red-house\nname Red House\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature house small red 1\nfeature trees pine 3\n");
+  #assert s[0].laid && s[0].houses == 1 && s[0].house_size == 0 && s[0].house_colour == 1;
+  crate := mesh_named(s[..], "Prop_Crate");
+  walls := -1;
+  for p: 0..<s[0].piece_n { if walls < 0 && s[0].piece_mesh[p] == crate && s[0].piece_sy[p] > 1 && s[0].piece_tint[p * 3] > 1.2 && s[0].piece_tint[p * 3 + 1] < 0.4 { walls = p; } }
+  #assert walls >= 0 && s[0].piece_x[walls] == 2.5 && s[0].piece_z[walls] == -3.5;
+  // its front faces where you start: the door is nearer you than the walls' middle
+  door := walls + 5;
+  dx := s[0].piece_x[door]; dz := s[0].piece_z[door] - 6; wx := s[0].piece_x[walls]; wz := s[0].piece_z[walls] - 6;
+  #assert dx * dx + dz * dz < wx * wx + wz * wz;
+  #assert !free(s[..], 2.5, -3.5, 0.1);
 }
 
 #test "a round tree has its leaves; mixed trees mix" {
