@@ -85,8 +85,10 @@ source pin, target, implementation state, consumer and acceptance evidence:
 Additional official NIPs (for example deletion, expiration, relay discovery,
 private messaging and search) enter only with a named consumer and conformance
 fixtures. Importing all NIP text does not advertise all NIPs. BIP-32/39 wallet
-derivation, ECDSA and MuSig2 are separate wallet/Bitcoin scopes. We are building a
-client, not replacing the existing relay. TLS stays in OS/browser transports.
+derivation, ECDSA and MuSig2 are separate wallet/Bitcoin scopes. Sections 1–16
+build a client. Since 2026-10-29 the owner also wants a Coax relay to replace
+relay.openagents.com: see section 17. Native clients may use the C host's TLS
+library (AGENTS.md); browsers keep their own transports.
 
 ## 2. Architecture and compatibility
 
@@ -610,9 +612,12 @@ replay and durable commit).
 
 | Phase | What | Exit evidence |
 | --- | --- | --- |
-| R1. A tailnet relay | Server WebSocket (accept the handshake, read masked frames, write unmasked ones, limits, close); NIP-01 server: EVENT admission with id and signature verification, REQ subscriptions matched by `filter.coax` over stored and new events, EOSE, CLOSE, OK and CLOSED with the standard prefixes, NOTICE; NIP-11; NIP-40 expiration; replaceable and addressable ordering; an append-only verified log with an index, fsync'd, replayed on start; NIP-42 required for writes; the Rust relay's limits | A differential test: the same scripted sessions against our relay and against the Rust relay built from history (in a sandbox, never on the owner's Mac), same OKs, CLOSED reasons and event sets; the client relay machine from #7de9 and the chapter 19 Pylon talk to it; ASan/UBSan; bounded memory under a flood |
+| R1. A tailnet relay | Server WebSocket (accept the handshake, read masked frames, write unmasked ones, limits, close); NIP-01 server: EVENT admission with id and signature verification, REQ subscriptions matched by `filter.coax` over stored and new events, EOSE, CLOSE, OK and CLOSED with the standard prefixes, NOTICE; NIP-11; NIP-40 expiration; replaceable and addressable ordering; storage through `nostr-event-store` (#8eb5) and the `store_*.coax` slices (#f539 verified dedup, #966b trusted recovery), not a second store; NIP-42 required for writes; the Rust relay's limits | A differential test against the Rust relay's recorded behaviour: read-only sessions captured from relay.openagents.com (as `coax/lib/nostr/fixtures/coax_relay.coax` was) and its NIP-11 document; the same OKs, CLOSED reasons and event sets where the recordings cover them. Building or running the old Rust crate from history needs the owner's explicit yes (AGENTS.md: history is for reading) and is listed in NEEDS_OWNER.md. The client relay machine from #7de9 and the chapter 19 Pylon talk to it; ASan/UBSan; bounded memory under a flood |
 | R2. Feature parity | NIP-09 deletion with tombstones, NIP-45 COUNT, NIP-50 search (the Rust relay's semantics), NIP-77 negentropy sync, NIP-29 groups, NIP-59/17 gift wraps, NIP-70 protected events, NIP-65, 67, 94, 98 as the Rust relay implements them, and the 11 extensions | Each NIP's vectors and differential sessions; the owner decides which advertised NIPs survive |
 | R3. Data and cutover | Export from the Rust relay's Postgres (read-only), import with re-verification of every event, a shadow period where both relays receive writes and readers compare, then DNS/proxy cutover with the Rust relay kept as a read-only fallback | Event-set equality at cutover; a rollback rehearsed; **owner sign-off before any DNS or production change** |
+
+Board: milestone m10-coax-relay, tasks relay-server-r1, -r2, -r3 (3abbde2a52).
+R1 waits on #6015 nostr-nip01-messages, #f426 nostr-nip42 and nostr-event-store.
 
 R1 is useful on its own: chapter 19's Pylon and the queue tools can use a
 Coax relay on the tailnet while relay.openagents.com is unchanged. Nothing in
