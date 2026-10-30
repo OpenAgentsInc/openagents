@@ -5,8 +5,8 @@
    stop file the Coax side named. The relay connection, the WebSocket, NIP-42,
    NIP-44, admission, the queue, the engine's HTTP request and every answer
    are Coax. Sockets are coax/platform/socket-native.c, TLS for wss://
-   tls-native.c (OpenSSL), entropy entropy-foreign.c, the signing double's
-   process process-native.c. */
+   tls-native.c (OpenSSL), entropy entropy-foreign.c; signing is Coax
+   (event_sign.coax). */
 #define _POSIX_C_SOURCE 200809L
 #include <pthread.h>
 #include <signal.h>

@@ -453,10 +453,10 @@ fi
 # (psionic/tests/pylon/pylon_e2e.py [--wss]) needs bun and @noble; run it by
 # hand.
 if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" pylon/"* ]]; then
-    "$coax" test psionic/lib/pylon/host.coax
-    "$coax" test psionic/lib/pylon/host.coax --release
-    "$coax" test psionic/lib/pylon/host-serve.coax
-    "$coax" test psionic/lib/pylon/host-serve.coax --release
+    "$coax" test psionic/lib/pylon/host.coax --run-steps 250000000
+    "$coax" test psionic/lib/pylon/host.coax --release --run-steps 250000000
+    "$coax" test psionic/lib/pylon/host-serve.coax --run-steps 250000000
+    "$coax" test psionic/lib/pylon/host-serve.coax --release --run-steps 250000000
     phase "chapter 19 Pylon"
 fi
 python3 -I psionic/tests/book.py --coax "$coax" --jobs "$jobs"

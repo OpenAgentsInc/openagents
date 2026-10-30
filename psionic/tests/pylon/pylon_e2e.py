@@ -28,7 +28,7 @@ Environment:
            psionic-serve --toy here with --fixture-delay-ms 2500)
   MODEL    the engine's model name (default psionic-toy; elephant-1 with ENGINE)
   RESTART  0 skips the relay restart case (default 1)
-  BUN, NOBLE  bun, and a node_modules holding @noble and nostr-effect
+  BUN, NOBLE  bun (the buyer), and a node_modules holding @noble and nostr-effect
 """
 import os, pathlib, shutil, socket, ssl, subprocess, sys, tempfile, threading, time
 
@@ -234,7 +234,6 @@ def run(out, serve):
         pylon_log = out / 'pylon.log'
         pylon = subprocess.Popen([str(out / 'pylon-build/pylon'), '--relay', relay_url, '--engine', engine, '--model', MODEL,
                                   '--slug', SLUG, '--label', 'Chapter 19 local', '--test-key-label', 'psionic ch19 pylon test key',
-                                  '--signer-bun', BUN, '--signer-script', str(HERE / 'sign_double.ts'), '--node-path', NOBLE,
                                   '--stop-file', str(stop_file), '--decide-ms', '30000'],
                                  stdout=open(pylon_log, 'w'), stderr=open(out / 'pylon.err', 'w'), env=env)
         procs.append(pylon)

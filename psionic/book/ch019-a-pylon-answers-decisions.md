@@ -27,28 +27,24 @@ and `run.coax`, which wires the units to a relay, a signer and an engine.
 
 ## What is test-only here
 
-Three pieces are stand-ins until other work lands on main. The chapter says
+Two pieces are stand-ins until other work lands on main. The chapter says
 so wherever they appear.
 
-- **Signing.** Every event the Pylon publishes is signed by
-  `psionic/tests/pylon/sign_double.ts`, a small `@noble/curves` process the
-  Pylon talks to over a pipe. It has the same shape as
-  `nostr_event_sign_step` in `coax/lib/nostr/event_sign.coax`, which is
-  still in its mutation gate. The BIP-340 signer underneath it,
-  `coax/lib/crypto/schnorr_sign.coax`, landed while this chapter was
-  written (`0cc86015e7`).
-- **NIP-44 is all Coax now.** `coax/lib/nostr/nip44.coax` does padding,
-  keys, MAC and ChaCha20, and the conversation key comes from the Pylon's
-  key and the buyer's x-only key through
-  `coax/lib/nostr/nip44-key.coax` (x-only ECDH, then HKDF-extract). That
-  unit landed (`a7589e2c90`) after the first version of this chapter, which
-  took the shared x from the double; the double now only signs. The
-  Pylon's end-to-end run is the first native use of `nip44-key.coax`.
 - **The key.** The Pylon's key is the SHA-256 of a label, made for tests.
   `--key-file` is accepted as configuration (the owner's choice: a `0600`
-  file in `~/work/.secrets/`) and refused while the signer is the double.
+  file in `~/work/.secrets/`) and refused until the secret-handling audit
+  (#4828) admits real keys.
 - **Relay frames.** `py_frame` reads the relay's EVENT, OK, EOSE, CLOSED
   and NOTICE frames until `coax/lib/nostr/message.coax` lands.
+
+Signing and NIP-44 were stand-ins in the first version of this chapter and
+are Coax now. Every event is signed by `nostr_event_sign_step` in
+`coax/lib/nostr/event_sign.coax` (`7bef91d26c`): BIP-340 over
+`coax/lib/crypto/schnorr_sign.coax`, with 32 fresh bytes from the OS as the
+auxiliary randomness of each signature. The NIP-44 conversation key comes
+from the Pylon's key and the buyer's x-only key through
+`coax/lib/nostr/nip44-key.coax` (`a7589e2c90`: x-only ECDH, then
+HKDF-extract). Before that, a `@noble/curves` process did both over a pipe.
 
 Everything else is the real code: the relay connection
 (`coax/lib/net/relay_conn.coax`: `ws://` or `wss://`, the WebSocket from
@@ -314,34 +310,28 @@ this machine and Elephant on the cloud L4 through a tunnel. A cancel for
 the job that is running cannot be seen until it has finished, so it is
 logged and the answer goes out; only waiting jobs are cancelled.
 
-The signer is the one boundary that is test-only:
+Signing is one call, `nostr_event_sign_step`, run until it writes the
+event:
 
 <!-- source: psionic/lib/pylon/run.coax sign -->
 ```jai
-// TEST-ONLY, shaped as nostr_event_sign_step: the signed event's JSON into
-// out and its length, 0 for "call again" (never, here), -1 refused.
-py_sign_step :: (key:[]u8,aux:[]u8,created_at:int,kind:int,tags:string,content:string,work:[]PySignWork,scratch:[]u8,out:[]u8,overlap:bool)->int {
-    if overlap || key.count!=32 || aux.count!=32 || !json_valid(tags) {return -1;}
-    hk:[64]u8;ha:[64]u8;
-    n:=json_raw(scratch,0,"{\"op\":\"sign\",\"key\":\"");n=json_raw(scratch,n,py_hex(key,hk[..]));
-    n=json_raw(scratch,n,"\",\"aux\":\"");n=json_raw(scratch,n,py_hex(aux,ha[..]));
-    n=json_raw(scratch,n,"\",\"created_at\":");n=json_write_int(scratch,n,created_at);
-    n=json_raw(scratch,n,",\"kind\":");n=json_write_int(scratch,n,kind);
-    n=json_raw(scratch,n,",\"tags\":");n=json_raw(scratch,n,tags);
-    n=json_raw(scratch,n,",\"content\":");n=json_write_string(scratch,n,content);n=json_raw(scratch,n,"}");
-    for i:0..<hk.count {hk[i]=0;}
-    if n<0 {return -1;}
-    m:=py_double(work,cast(string)scratch[0..<n],out);
-    for i:0..<n {scratch[i]=0;}
-    return m;
+// One event signed in Coax: event_sign.coax's stages until it writes the
+// event's JSON into out, with 32 fresh bytes from the OS as BIP-340's aux.
+// The length, or -1 refused.
+py_sign :: (p:[]Py,created_at:int,kind:int,tags:string,content:string,scratch:[]u8,out:[]u8)->int {
+    aux:[32]u8;if !py_draw(32,aux[..]) {return -1;}
+    n:=EVENT_MORE;
+    while n==EVENT_MORE {n=nostr_event_sign_step(p[0].key[..],aux[..],created_at,kind,tags,content,p[0].signer[..],scratch,out,false);}
+    for i:0..<32 {aux[i]=0;}
+    return n;
 }
 ```
 
-It has `nostr_event_sign_step`'s arguments and its return values (the
-signed event's length, `0` to call again, `-1` refused). When
-`event_sign.coax` lands, the call sites change from `py_sign_step` to
-`nostr_event_sign_step` and `PySignWork` to `NostrSignWork`, and nothing
-else moves.
+It works in stages (the key, the id, the signature, the JSON) and returns
+`EVENT_MORE` until the last one. Before it returns the event, `event.coax`
+reads the JSON back and recomputes the id. The Pylon learns its own public
+key the same way: it signs an event it never sends and reads `pubkey` back
+(`py_public`).
 
 ## Run it
 
@@ -364,20 +354,19 @@ each one only to the subscribers it has at that moment, so r-8 can reach
 no Pylon, and r-7's answer, which the Pylon sends again on its new
 connection, can go out before the buyer has resubscribed. So the buyer
 does what any buyer without an answer does: once the Pylon's beacon is
-back, it sends the same signed jobs again. The Pylon has seen r-7, so it
-sends r-7's kept answer again (`pq_again`), the same event with the same
-id. If r-8 is new to the Pylon, it decides r-8; if not, it sends r-8's kept
-answer. At the end the buyer checks that every job has exactly one answer
-event.
+back, it sends again the same signed jobs that have no answer yet. A job
+the Pylon has not seen is decided. For a job it has already decided, it
+sends the kept answer again (`pq_again`), the same event with the same id.
+At the end the buyer checks that every job has exactly one answer event.
 
 With chapter 16's toy engine (`psionic-serve --toy`, holding each decision
 2.5 s so that jobs wait), the whole output:
 
 ```jai
-ok   the Coax relay listens on 127.0.0.1:52829 (NIP-42 URL ws://localhost:52829, --store)
-ok   psionic-serve --toy listens on 127.0.0.1:53945
+ok   the Coax relay listens on 127.0.0.1:58301 (NIP-42 URL ws://localhost:58301, --store)
+ok   psionic-serve --toy listens on 127.0.0.1:33483
 ok   the Pylon authenticated, published its list and beacon, and subscribed
-     relay stopped at 13.4 s; down for 4 s
+     relay stopped at 13.7 s; down for 4 s
 ok   the relay restarted on the same port and store
 ok   the relay sent a NIP-42 challenge
 ok   the buyer authenticated (NIP-42) with its test key
@@ -388,10 +377,10 @@ ok   the beacon names the served identity psionic-toy@sha256:b6680707750842c489b
 ok   the service is this key's pylon/decision, lane cj-decision
 ok   the x tag is the content's SHA-256
 ok   the Pylon's NIP-65 relay list is on the relay
-ok   the list names wss://relay.openagents.com and ws://localhost:52829
+ok   the list names wss://relay.openagents.com and ws://localhost:58301
 ok   job r-1 (25910, NIP-44 to the Pylon) accepted by the relay
 ok   r-1 answered with a 26910
-     r-1 answer after 3346 ms: {"wet":{"type":"choice","choice":"no","confidence":0.562052749,"probabilities":{"yes":0.437947251,"no":0.562052749}}}
+     r-1 answer after 3275 ms: {"wet":{"type":"choice","choice":"no","confidence":0.562052749,"probabilities":{"yes":0.437947251,"no":0.562052749}}}
 ok   the 26910 is signed by the Pylon, to the buyer, naming the job
 ok   outcome answered for request r-1, attempt 1
 ok   the answer names the beacon's identity psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
@@ -409,7 +398,7 @@ ok   the harness restarted the relay
 ok   the buyer reconnected and re-authenticated to the restarted relay
 ok   job r-8 accepted by the restarted relay
 ok   the Pylon republished its beacon to the restarted relay
-     r-7: no answer yet; the same signed job sent again after the Pylon's beacon came back
+     r-7: answer arrived without a resend
      r-8: no answer yet; the same signed job sent again after the Pylon's beacon came back
 ok   r-7, in flight during the restart, answered after it
 ok   r-8, sent while the Pylon was away, answered after it
@@ -423,71 +412,74 @@ ok   the offline beacon verifies and offers no free slot
 buyer: ok
 ok   the buyer's checks held
 --- pylon log ---
-pylon: TEST-ONLY key and signing double; pubkey 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b
-pylon: engine psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 answered the probe in 2565 ms
+pylon: TEST-ONLY key, signed in Coax; pubkey 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b
+pylon: engine psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 answered the probe in 2569 ms
 pylon: relay list of 2
-pylon: connection 1 open to ws://localhost:52829
-pylon: authenticated to ws://localhost:52829 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 1)
+pylon: connection 1 open to ws://localhost:58301
+pylon: authenticated to ws://localhost:58301 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 1)
 pylon: beacon online generation 1 free 4 of 4 (connection 1)
-pylon: REQ s0.1 since 1793340043 (connection 1)
+pylon: REQ s0.1 since 1793341392 (connection 1)
 pylon: caught up on s0.1 (connection 1)
 pylon: online, waiting for jobs
-pylon: event 7b4f78f01bf9 kind 25910 -> queue (none)
-pylon: job 7b4f78f01bf9 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2548 ms
-pylon: event 2645ffedfd52 kind 25910 -> refuse (unsupported_version)
-pylon: job 2645ffedfd52 -> 27010 error unsupported_version
-pylon: event 68073509ba4a kind 25910 -> queue (none)
-pylon: job 68073509ba4a -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2567 ms
-pylon: event 240abcb35d88 kind 25910 -> queue (none)
-pylon: event ebf05bda867e kind 25910 -> cancel (none)
-pylon: cancel ebf05bda867e drops waiting job 240abcb35d88
-pylon: job 240abcb35d88 -> 27010 error cancelled
-pylon: event 435184d06b04 kind 25910 -> queue (none)
+pylon: event d255822e3df5 kind 25910 -> queue (none)
+pylon: job d255822e3df5 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2570 ms
+pylon: event bcc4842d3664 kind 25910 -> refuse (unsupported_version)
+pylon: job bcc4842d3664 -> 27010 error unsupported_version
+pylon: event 2053778e60a2 kind 25910 -> queue (none)
+pylon: event 133f87bc249e kind 25910 -> queue (none)
+pylon: job 2053778e60a2 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2542 ms
+pylon: event dd57e68c1985 kind 25910 -> cancel (none)
+pylon: cancel dd57e68c1985 drops waiting job 133f87bc249e
+pylon: job 133f87bc249e -> 27010 error cancelled
+pylon: event c95e533f1e06 kind 25910 -> queue (none)
 pylon: beacon online generation 1 free 3 of 4 (connection 1)
-pylon: job 435184d06b04 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2567 ms
-pylon: connection 1 ended (send failed); reconnecting in 692 ms
-pylon: connection 2 ended (no WebSocket); reconnecting in 1272 ms
-pylon: connection 3 open to ws://localhost:52829
-pylon: authenticated to ws://localhost:52829 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 3)
+pylon: job c95e533f1e06 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2570 ms
+pylon: connection 1 ended (send failed); reconnecting in 518 ms
+pylon: connection 2 ended (no WebSocket); reconnecting in 1237 ms
+pylon: connection 3 open to ws://localhost:58301
+pylon: authenticated to ws://localhost:58301 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 3)
 pylon: beacon online generation 1 free 4 of 4 (connection 3)
-pylon: REQ s0.1 since 1793340173 (connection 3), resumed from the newest job delivered
+pylon: REQ s0.1 since 1793341522 (connection 3), resumed from the newest job delivered
 pylon: caught up on s0.1 (connection 3)
-pylon: event ac6918cab858 kind 25910 -> queue (none)
-pylon: job ac6918cab858 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2566 ms
-pylon: job 435184d06b04 seen again; its answer 09e47cd93bc2 goes again
-pylon: job ac6918cab858 seen again; its answer beb1a7fcf91e goes again
-pylon: event 5434660d3081 kind 25910 -> queue (none)
-pylon: job 5434660d3081 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2566 ms
-pylon: event 2fb9337d1d64 kind 25910 -> queue (none)
+pylon: event 4554ec8d63b4 kind 25910 -> queue (none)
+pylon: job 4554ec8d63b4 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2563 ms
+pylon: event 653db1443573 kind 25910 -> queue (none)
+pylon: event 10f8423bb162 kind 25910 -> queue (none)
 pylon: beacon draining generation 1 free 0 of 4 (connection 3)
-pylon: job 2fb9337d1d64 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2543 ms
+pylon: job 653db1443573 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2568 ms
+pylon: job 10f8423bb162 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2603 ms
 pylon: beacon offline generation 1 free 0 of 4 (connection 3)
-pylon: offline. sent 16, accepted 12, refused 0, answered 6, refusals 2, cancelled 1, forged 0, duplicates 2, ignored 0, beacons 5, connections 3, drops 2, auths 2, catch-ups 2
+pylon: offline. sent 16, accepted 13, refused 0, answered 6, refusals 2, cancelled 1, forged 0, duplicates 0, ignored 0, beacons 5, connections 3, drops 2, auths 2, catch-ups 2
 --- end ---
 ok   the Pylon stopped cleanly after the offline beacon
 ok   the relay accepted every event the Pylon published; no forged input
 ok   the Pylon saw the drop and reconnected (2 connections opened)
 ok   it re-authenticated on each connection, once per new challenge (2 AUTHs)
-ok   it resubscribed with since moved to the newest job delivered (1793340043 -> 1793340173)
+ok   it resubscribed with since moved to the newest job delivered (1793341392 -> 1793341522)
 ok   it republished its beacon on the new connection
 ok   no sanitizer report from the Pylon
 ok   no sanitizer report from the relay
 pylon e2e: ok
 ```
 
-The relay went away while r-7 (`435184d06b04`) was with the engine. Its
+The relay went away while r-7 (`c95e533f1e06`) was with the engine. Its
 answer was made with the relay gone, and the first try to send it failed
 (`send failed`). One reconnect was refused while the relay was down. The
-next connection was a new generation with a new NIP-42 challenge: the
-Pylon answered it, published a fresh beacon, resubscribed with `since` at
-the newest job it had taken, and sent the waiting answer, which went out
-before the buyer had resubscribed. r-8 (`ac6918cab858`) reached the Pylon
-on that connection and was decided, but the buyer gave up waiting after
-1.5 s, while the 2.5 s decision ran, and sent r-8 again. Both resends got
-their kept answers back: one answer event per job. The cancel case and the
-shutdown order are unchanged. Every event the Pylon published was accepted
-by the relay after its own BIP-340 check, and neither process reported to
-the sanitizers.
+next connection was a new generation with a new NIP-42 challenge. The
+Pylon signed a new 22242 for it, published a fresh beacon, resubscribed
+with `since` at the newest job it had taken, and sent the waiting r-7
+answer from its outbox; the buyer, already back, got it. r-8 had been sent
+while no Pylon was subscribed, so it reached nobody. The buyer sent it
+again once the beacon was back, and the Pylon decided it on that
+connection (`4554ec8d63b4`). The cancel case and the shutdown order are
+unchanged. Every event the Pylon published, each one signed in Coax, was
+accepted by the relay after its own BIP-340 check, and neither process
+reported to the sanitizers.
+
+When an answer goes out before the buyer is back, the buyer's resend is a
+job id the Pylon has seen, and `pq_again` sends the kept answer again. An
+earlier run showed it: `job 435184d06b04 seen again; its answer
+09e47cd93bc2 goes again`.
 
 Over `wss://` the Pylon reaches the same relay through a TLS proxy in the
 harness, with a CA and a `localhost` certificate generated for the run.
@@ -498,29 +490,27 @@ python3 -I psionic/tests/pylon/pylon_e2e.py --wss build/pylon-e2e
 ```
 
 ```jai
-ok   the Coax relay listens on 127.0.0.1:59093 (NIP-42 URL wss://localhost:40369, --store)
+ok   the Coax relay listens on 127.0.0.1:36865 (NIP-42 URL wss://localhost:45481, --store)
 ok   job r-7 accepted by the relay
 ok   job r-8 accepted by the restarted relay
-     r-7: no answer yet; the same signed job sent again after the Pylon's beacon came back
+     r-7: answer arrived without a resend
      r-8: no answer yet; the same signed job sent again after the Pylon's beacon came back
 ok   r-7, in flight during the restart, answered after it
 ok   r-8, sent while the Pylon was away, answered after it
 ok   every job got exactly one answer event
-pylon: connection 1 open to wss://localhost:40369
-pylon: authenticated to wss://localhost:40369 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 1)
+pylon: connection 1 open to wss://localhost:45481
+pylon: authenticated to wss://localhost:45481 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 1)
 pylon: beacon online generation 1 free 4 of 4 (connection 1)
-pylon: REQ s0.1 since 1793340088 (connection 1)
+pylon: REQ s0.1 since 1793341431 (connection 1)
 pylon: caught up on s0.1 (connection 1)
+pylon: connection 1 ended (closed by the relay); reconnecting in 503 ms
 pylon: beacon online generation 1 free 3 of 4 (connection 1)
-pylon: connection 1 ended (closed by the relay); reconnecting in 551 ms
-pylon: connection 2 ended (no WebSocket); reconnecting in 1250 ms
-pylon: connection 3 open to wss://localhost:40369
-pylon: authenticated to wss://localhost:40369 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 3)
+pylon: connection 2 ended (no WebSocket); reconnecting in 1427 ms
+pylon: connection 3 open to wss://localhost:45481
+pylon: authenticated to wss://localhost:45481 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 3)
 pylon: beacon online generation 1 free 4 of 4 (connection 3)
-pylon: REQ s0.1 since 1793340218 (connection 3), resumed from the newest job delivered
+pylon: REQ s0.1 since 1793341564 (connection 3), resumed from the newest job delivered
 pylon: caught up on s0.1 (connection 3)
-pylon: job cb73ea411f44 seen again; its answer 5baa2c7b41ee goes again
-pylon: job 1f2fcfaebfb3 seen again; its answer ed5ba9b6f3b9 goes again
 pylon: beacon draining generation 1 free 0 of 4 (connection 3)
 pylon: beacon offline generation 1 free 0 of 4 (connection 3)
 ok   the Pylon spoke TLS to the proxy (3 TLS handshakes)
@@ -538,38 +528,35 @@ ENGINE=http://127.0.0.1:18797 python3 -I psionic/tests/pylon/pylon_e2e.py build/
 ```jai
 ok   the beacon names the served identity elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba
 ok   r-1 answered with a 26910
-     r-1 answer after 1334 ms: {"wet":{"type":"choice","choice":"yes","confidence":0.757202773,"probabilities":{"yes":0.757202773,"no":0.242797227}}}
+     r-1 answer after 1464 ms: {"wet":{"type":"choice","choice":"yes","confidence":0.757202773,"probabilities":{"yes":0.757202773,"no":0.242797227}}}
 ok   job r-7 accepted by the relay
 ok   job r-8 accepted by the restarted relay
-     r-7: no answer yet; the same signed job sent again after the Pylon's beacon came back
-     r-8: answer arrived without a resend
+     r-7: answer arrived without a resend
+     r-8: no answer yet; the same signed job sent again after the Pylon's beacon came back
 ok   r-7, in flight during the restart, answered after it
 ok   r-8, sent while the Pylon was away, answered after it
 ok   every job got exactly one answer event
-pylon: engine elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba answered the probe in 336 ms
-pylon: connection 1 open to ws://localhost:47739
-pylon: connection 1 ended (closed by the relay); reconnecting in 544 ms
-pylon: connection 2 ended (no WebSocket); reconnecting in 1344 ms
-pylon: connection 3 ended (no WebSocket); reconnecting in 2033 ms
-pylon: connection 4 open to ws://localhost:47739
-pylon: job 7815a5681a8a seen again; its answer 60248aa2e804 goes again
-pylon: offline. sent 13, accepted 11, refused 0, answered 5, refusals 1, cancelled 0, forged 0, duplicates 1, ignored 0, beacons 4, connections 4, drops 3, auths 2, catch-ups 2
+pylon: engine elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba answered the probe in 658 ms
+pylon: connection 1 open to ws://localhost:36607
+pylon: connection 1 ended (closed by the relay); reconnecting in 696 ms
+pylon: connection 2 ended (no WebSocket); reconnecting in 1033 ms
+pylon: connection 3 ended (no WebSocket); reconnecting in 2522 ms
+pylon: connection 4 open to ws://localhost:36607
+pylon: offline. sent 13, accepted 11, refused 0, answered 5, refusals 1, cancelled 0, forged 0, duplicates 0, ignored 0, beacons 4, connections 4, drops 3, auths 2, catch-ups 2
 pylon e2e: ok
 ```
 
 The answer is chapter 10's sample, `yes` with p 0.757202773, and the
 identity in the beacon and the answer is Elephant's own,
 `elephant-1@sha256:682f0234…`. This time the relay stayed down through two
-refused reconnects (backoff 0.5, 1.3 and 2.0 s) before the fourth
+refused reconnects (backoff 0.7, 1.0 and 2.5 s) before the fourth
 connection opened.
 
 ## What this does not do yet
 
-- **Real keys.** Signing is still the double above. `event_sign.coax` has
-  landed, but loading it puts `run.coax` past the compiler's 64-unit source
-  graph (the [record](../../docs/verification/psionic-ch19-2026-10-29.md)
-  has the count). Nothing here may be pointed at `relay.openagents.com`
-  until signing is Coax and the owner's key file is wired.
+- **Real keys.** The key is a test key. Nothing here may be pointed at
+  `relay.openagents.com` until the owner's key file is wired, after the
+  secret-handling audit (#4828).
 - **One relay.** The Pylon holds one connection. Its relay list names
   more, and a buyer may use any of them, but this host listens on one.
 - **Replay beyond the windows.** Jobs are deduplicated by id in two

@@ -17,20 +17,19 @@
 //
 // The host (psionic/platform/pylon-host.c) gives arguments, the wall clock,
 // a sleep and a stop request; sockets are socket-native.c, TLS tls-native.c,
-// entropy entropy-foreign.c, and the signer's process process-native.c.
+// entropy entropy-foreign.c. Every event is signed in Coax
+// (event_sign.coax's nostr_event_sign_step, BIP-340 over schnorr_sign.coax,
+// a fresh 32-byte aux from the OS for each), and NIP-44's conversation key
+// is nip44-key.coax.
 //
-// TEST-ONLY until openagents-d7's units land on main (see the record,
-// docs/verification/psionic-ch19-2026-10-29.md, for the exact swaps):
-//   - py_sign_step stands in for nostr_event_sign_step (event_sign.coax): it
-//     asks psionic/tests/pylon/sign_double.ts (@noble/curves) over a pipe.
-//     NIP-44's conversation key is Coax: nip44-key.coax, from the key and
-//     the caller's x-only key.
+// TEST-ONLY (see the record, docs/verification/psionic-ch19-2026-10-29.md):
 //   - py_frame reads relay-to-client frames until message.coax lands.
-//   - The key is sha256 of --test-key-label. --key-file is refused while the
-//     signer is the double.
+//   - The key is sha256 of --test-key-label. --key-file is refused until the
+//     secret-handling audit (#4828) admits real keys.
 #import "Basic";
 #load "host.coax";
 #load "queue.coax";
+#load "../../../coax/lib/nostr/event_sign.coax";
 #load "../../../coax/lib/net/relay_conn.coax";
 #load "../../../coax/lib/nostr/relay.coax";
 #load "../../../coax/lib/crypto/entropy.coax";
@@ -45,15 +44,6 @@
 #assert PQ_CODES==cast(int)PdCode.internal+1 && PQ_CALL==cast(int)PdType.call && PQ_CANCEL==cast(int)PdType.cancel && PQ_REQUEST==PD_REQUEST;
 
 // relay_conn.coax declares the cxsock_*, cxtls_* and cxrand_* effects.
-cxproc_new :: () -> int #foreign;
-cxproc_push :: (h: int, field: int, byte: int) -> int #foreign;
-cxproc_end :: (h: int, field: int) -> int #foreign;
-cxproc_spawn :: (h: int) -> int #foreign;
-cxproc_read_line :: (h: int, timeout_ms: int) -> int #foreign;
-cxproc_line_byte :: (h: int, i: int) -> int #foreign;
-cxproc_write :: (h: int, byte: int) -> int #foreign;
-cxproc_flush :: (h: int) -> int #foreign;
-cxproc_release :: (h: int) -> int #foreign;
 pyh_argc :: () -> int #foreign;
 pyh_arg_len :: (i: int) -> int #foreign;
 pyh_arg_byte :: (i: int, k: int) -> int #foreign;
@@ -64,7 +54,6 @@ pyh_sleep_ms :: (ms: int) -> int #foreign;
 
 PY_IN :: 262144; PY_MSG :: 262144; PY_OUT :: 131072;
 PY_IO_MS :: 5000;
-PY_SIGN_MS :: 10000;
 PY_VERSION :: "psionic-pylon-v1";
 PY_BODY :: 16384;       // the largest server request this host forwards
 PY_HTTP :: 131072;
@@ -74,10 +63,8 @@ PY_DEFAULT_LIST :: "wss://relay.openagents.com";   // owner decision, 2026-10-30
 // Frame verbs (py_frame), until message.coax.
 PF_UNKNOWN :: 0; PF_EVENT :: 1; PF_OK :: 2; PF_EOSE :: 3; PF_CLOSED :: 4; PF_NOTICE :: 5; PF_AUTH :: 6;
 
-// ---- the signing double (TEST-ONLY) ----------------------------------------
+// ---- hex ------------------------------------------------------------------
 
-// The double's process. nostr_event_sign_step's work is [1]NostrSignWork.
-PySignWork :: struct {proc:int=-1;}
 py_hex :: (bytes:[]u8,out:[]u8)->string {
     digits:="0123456789abcdef";
     for i:0..<bytes.count {out[2*i]=digits[bytes[i]>>4];out[2*i+1]=digits[bytes[i]&15];}
@@ -96,47 +83,6 @@ py_unhex :: (s:string,out:[]u8)->bool {
     }
     return true;
 }
-// One request line to the double, one answer line back into out.
-py_double :: (work:[]PySignWork,line:string,out:[]u8)->int {
-    h:=work[0].proc;if h<0 {return -1;}
-    for b:line {if cxproc_write(h,cast(int)b)!=0 {return -1;}}
-    if cxproc_write(h,10)!=0 || cxproc_flush(h)!=0 {return -1;}
-    n:=cxproc_read_line(h,PY_SIGN_MS);
-    if n<=0 || n>out.count {return -1;}
-    for i:0..<n {out[i]=cast(u8)cxproc_line_byte(h,i);}
-    if n>8 && cast(string)out[0..<9]=="{\"error\":" {return -1;}
-    return n;
-}
-// book:begin sign
-// TEST-ONLY, shaped as nostr_event_sign_step: the signed event's JSON into
-// out and its length, 0 for "call again" (never, here), -1 refused.
-py_sign_step :: (key:[]u8,aux:[]u8,created_at:int,kind:int,tags:string,content:string,work:[]PySignWork,scratch:[]u8,out:[]u8,overlap:bool)->int {
-    if overlap || key.count!=32 || aux.count!=32 || !json_valid(tags) {return -1;}
-    hk:[64]u8;ha:[64]u8;
-    n:=json_raw(scratch,0,"{\"op\":\"sign\",\"key\":\"");n=json_raw(scratch,n,py_hex(key,hk[..]));
-    n=json_raw(scratch,n,"\",\"aux\":\"");n=json_raw(scratch,n,py_hex(aux,ha[..]));
-    n=json_raw(scratch,n,"\",\"created_at\":");n=json_write_int(scratch,n,created_at);
-    n=json_raw(scratch,n,",\"kind\":");n=json_write_int(scratch,n,kind);
-    n=json_raw(scratch,n,",\"tags\":");n=json_raw(scratch,n,tags);
-    n=json_raw(scratch,n,",\"content\":");n=json_write_string(scratch,n,content);n=json_raw(scratch,n,"}");
-    for i:0..<hk.count {hk[i]=0;}
-    if n<0 {return -1;}
-    m:=py_double(work,cast(string)scratch[0..<n],out);
-    for i:0..<n {scratch[i]=0;}
-    return m;
-}
-// book:end sign
-py_public :: (key:[]u8,work:[]PySignWork,out:[]u8)->bool {
-    hk:[64]u8;line:[256]u8;
-    n:=json_raw(line[..],0,"{\"op\":\"pub\",\"key\":\"");n=json_raw(line[..],n,py_hex(key,hk[..]));n=json_raw(line[..],n,"\"}");
-    for i:0..<64 {hk[i]=0;}
-    answer:[256]u8;m:=py_double(work,cast(string)line[0..<n],answer[..]);
-    for i:0..<n {line[i]=0;}
-    if m!=74 || cast(string)answer[0..<8]!="{\"pub\":\"" {return false;}
-    for i:0..<64 {out[i]=answer[8+i];}
-    return pt_hex64(cast(string)out[0..<64]);
-}
-
 // ---- configuration ----------------------------------------------------------
 
 PyConfig :: struct {
@@ -145,7 +91,7 @@ PyConfig :: struct {
     lists:[8]string;list_count:int;
     engine_host:string;engine_port:int;
     model:string;slug:string;label:string;family:string;memory_gb:int;
-    label_key:string;key_file:string;bun:string;script:string;node_path:string;stop_file:string;
+    label_key:string;key_file:string;stop_file:string;
     decide_ms:int;refresh:int;ttl:int;
 }
 py_arg :: (c:[]PyConfig,i:int)->string {
@@ -167,7 +113,7 @@ py_url :: (url:string,scheme:string)->PyUrl {
 }
 py_usage :: () {
     print("usage: pylon --relay ws[s]://HOST[:PORT] --engine http://HOST:PORT --model NAME --slug SLUG\n");
-    print("             (--test-key-label LABEL | --key-file PATH) --signer-bun BUN --signer-script sign_double.ts --node-path DIR\n");
+    print("             (--test-key-label LABEL | --key-file PATH)\n");
     print("             [--list URL]... [--label TEXT] [--family gpu|cpu|unified-memory] [--memory-gb N]\n");
     print("             [--decide-ms N] [--refresh S] [--ttl S] [--stop-file PATH]\n");
 }
@@ -188,9 +134,6 @@ py_config :: (c:[]PyConfig)->bool {
         else if name=="--memory-gb" {c[0].memory_gb=py_int(v);}
         else if name=="--test-key-label" {c[0].label_key=v;}
         else if name=="--key-file" {c[0].key_file=v;}
-        else if name=="--signer-bun" {c[0].bun=v;}
-        else if name=="--signer-script" {c[0].script=v;}
-        else if name=="--node-path" {c[0].node_path=v;}
         else if name=="--stop-file" {c[0].stop_file=v;}
         else if name=="--decide-ms" {c[0].decide_ms=py_int(v);}
         else if name=="--refresh" {c[0].refresh=py_int(v);}
@@ -200,9 +143,9 @@ py_config :: (c:[]PyConfig)->bool {
     if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
     if c[0].engine_port<0 || c[0].engine_host.count==0 {print("pylon: --engine must be http://HOST:PORT\n");return false;}
     if c[0].key_file.count!=0 {
-        print("pylon: --key-file refused: this build signs through the TEST-ONLY double, which never takes a real key\n");return false;
+        print("pylon: --key-file refused: real keys wait on the secret-handling audit (#4828); use --test-key-label\n");return false;
     }
-    if c[0].label_key.count==0 || c[0].bun.count==0 || c[0].script.count==0 || c[0].node_path.count==0 {py_usage();return false;}
+    if c[0].label_key.count==0 {py_usage();return false;}
     if c[0].model.count==0 || !pb_slug(c[0].slug,PB_SLUG) {py_usage();return false;}
     if c[0].list_count==0 {c[0].lists[0]=PY_DEFAULT_LIST;c[0].list_count=1;}
     have:=false;for k:0..<c[0].list_count {if c[0].lists[k]==c[0].relay {have=true;}}
@@ -266,7 +209,7 @@ PyKept :: struct {jid:[32]u8;used:bool;frame:[131072]u8;n:int;}
 Py :: struct {
     cfg:[1]PyConfig;
     key:[32]u8;me:[64]u8;
-    signer:[1]PySignWork;
+    signer:[1]NostrSignWork;
     // One RelayConn (about 450 KB) and the machine for the whole run; Py is
     // main's, on the host's 512 MiB thread, never a per-call frame.
     conn:[1]RelayConn;rl:[1]Relay;outbox:[8]PyOutbox;
@@ -285,6 +228,28 @@ py_me :: (p:[]Py)->string {return cast(string)p[0].me[..];}
 py_identity :: (p:[]Py)->string {return cast(string)p[0].identity[0..<p[0].identity_n];}
 py_short :: (s:string)->string {return ifx s.count>12 then s[0..<12] else s;}
 
+// book:begin sign
+// One event signed in Coax: event_sign.coax's stages until it writes the
+// event's JSON into out, with 32 fresh bytes from the OS as BIP-340's aux.
+// The length, or -1 refused.
+py_sign :: (p:[]Py,created_at:int,kind:int,tags:string,content:string,scratch:[]u8,out:[]u8)->int {
+    aux:[32]u8;if !py_draw(32,aux[..]) {return -1;}
+    n:=EVENT_MORE;
+    while n==EVENT_MORE {n=nostr_event_sign_step(p[0].key[..],aux[..],created_at,kind,tags,content,p[0].signer[..],scratch,out,false);}
+    for i:0..<32 {aux[i]=0;}
+    return n;
+}
+// book:end sign
+// The Pylon's public key, through the same signer: an event that is signed
+// here and never sent, read back by event.coax.
+py_public :: (p:[]Py)->bool {
+    scratch:[4096]u8;signed:[4096]u8;
+    n:=py_sign(p,0,1,"[]","",scratch[..],signed[..]);if n<0 {return false;}
+    ev:=nostr_event_read(cast(string)signed[0..<n],scratch[..],false);
+    if ev.error!=NE_OK {return false;}
+    pk:=ev.public_key;id:=py_hex(pk[..],p[0].me[..]);
+    return pt_hex64(id);
+}
 // A template's four signed fields, read back for the signer.
 PyTpl :: struct {ok:bool;created_at:int;kind:int;tags:string;content:string;}
 py_fields :: (template:string,content:[]u8)->PyTpl {
@@ -310,9 +275,8 @@ py_fields :: (template:string,content:[]u8)->PyTpl {
 py_publish :: (p:[]Py,template:string,what:string)->int {
     content:[65536]u8;t:=py_fields(template,content[..]);
     if !t.ok {print("pylon: % template unreadable\n",what);return -1;}
-    aux:[32]u8;if !py_draw(32,aux[..]) {return -1;}
-    scratch:[PY_OUT]u8;signed:[PY_OUT]u8;n:=0;
-    while n==0 {n=py_sign_step(p[0].key[..],aux[..],t.created_at,t.kind,t.tags,t.content,p[0].signer[..],scratch[..],signed[..],false);}
+    scratch:[PY_OUT]u8;signed:[PY_OUT]u8;
+    n:=py_sign(p,t.created_at,t.kind,t.tags,t.content,scratch[..],signed[..]);
     if n<0 {print("pylon: % refused by the signer\n",what);return -1;}
     // The signed event's id is its first field: {"id":"<64 hex>",...
     id:[32]u8;
@@ -619,9 +583,8 @@ py_drop :: (p:[]Py,why:string) {
 py_auth :: (p:[]Py)->bool {
     tags:[1024]u8;t:=nip42_template(p[0].n42[..],p[0].gen,pyh_now_s(),tags[..]);
     if t.error!=N42_OK {print("pylon: no NIP-42 challenge (%)\n",t.error);return false;}
-    aux:[32]u8;if !py_draw(32,aux[..]) {return false;}
-    scratch:[PY_OUT]u8;signed:[PY_OUT]u8;n:=0;
-    while n==0 {n=py_sign_step(p[0].key[..],aux[..],t.created_at,t.kind,t.tags,t.content,p[0].signer[..],scratch[..],signed[..],false);}
+    scratch:[PY_OUT]u8;signed:[PY_OUT]u8;
+    n:=py_sign(p,t.created_at,t.kind,t.tags,t.content,scratch[..],signed[..]);
     id:[32]u8;
     if n<72 || cast(string)signed[0..<7]!="{\"id\":\"" || !py_unhex(cast(string)signed[7..<71],id[..]) {return false;}
     frame:[PY_OUT]u8;m:=json_raw(frame[..],0,"[\"AUTH\",");m=json_raw(frame[..],m,cast(string)signed[0..<n]);m=json_raw(frame[..],m,"]");
@@ -703,23 +666,14 @@ py_acked :: (p:[]Py,slot:int,limit_ms:int)->bool {
     }
     return false;
 }
-py_signer :: (p:[]Py)->bool {
-    c:=p[0].cfg[0];h:=cxproc_new();if h<0 {return false;}
-    for b:c.bun {r:=cxproc_push(h,0,cast(int)b);}r:=cxproc_end(h,0);
-    for b:c.script {r=cxproc_push(h,0,cast(int)b);}r=cxproc_end(h,0);
-    env:="NODE_PATH=";for b:env {r=cxproc_push(h,1,cast(int)b);}for b:c.node_path {r=cxproc_push(h,1,cast(int)b);}r=cxproc_end(h,1);
-    if cxproc_spawn(h)!=0 {return false;}
-    p[0].signer[0].proc=h;return true;
-}
-
 py_main :: (p:[]Py)->int {
     if !py_config(p[0].cfg[..]) {return 2;}
     c:=p[0].cfg[0];
     // TEST-ONLY key: sha256 of the label. Never printed.
     label:[256]u8;if c.label_key.count>256 {return 2;}for i:0..<c.label_key.count {label[i]=c.label_key[i];}
     if sha256_hash_checked(label[0..<c.label_key.count],p[0].key[..],false)!=SHA_OK {return 2;}
-    if !py_signer(p) || !py_public(p[0].key[..],p[0].signer[..],p[0].me[..]) {print("pylon: the TEST-ONLY signer did not start\n");return 2;}
-    print("pylon: TEST-ONLY key and signing double; pubkey %\n",py_me(p));
+    if !py_public(p) {print("pylon: the signer refused the key\n");return 2;}
+    print("pylon: TEST-ONLY key, signed in Coax; pubkey %\n",py_me(p));
     if !py_probe(p) {return 3;}
     if nip42_init(p[0].n42[..],c.relay)!=N42_OK {print("pylon: NIP-42 refuses the relay URL\n");return 4;}
     now:=pyh_now_s();
@@ -755,7 +709,6 @@ py_main :: (p:[]Py)->int {
     rl_shutdown(p[0].rl[..]);
     ok:=relay_conn_close(p[0].conn[..],WS_CLOSE_NORMAL);
     for i:0..<32 {p[0].key[i]=0;}
-    r:=cxproc_release(p[0].signer[0].proc);
     print("pylon: offline. sent %, accepted %, refused %, answered %, refusals %, cancelled %, forged %, duplicates %, ignored %, beacons %, connections %, drops %, auths %, catch-ups %\n",
         p[0].sent,p[0].accepted,p[0].refused,p[0].answered,p[0].refusals,p[0].cancelled,p[0].forged,p[0].duplicates,p[0].ignored,p[0].beacons,
         p[0].connects,p[0].drops,p[0].auths,p[0].caught_up);
