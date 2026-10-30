@@ -13,4 +13,7 @@ for a in "$@"; do if [[ $a == --elephant-gpu ]]; then gpu=gpu; elif [[ $a == --e
 psionic/platform/serve-build.sh "$build" release plain $gpu
 args=("$@")
 for a in "$@"; do if [[ $a == --elephant || $a == --elephant-gpu || $a == --elephant-metal ]]; then args+=(--table psionic/fixtures/text/ch05/qwen35.pst); fi; done
+if [[ ${PSIONIC_SUPERVISE:-0} == 1 ]];then
+    exec "$build/psionic-supervise" -- "$build/psionic-serve" "${args[@]}"
+fi
 exec "$build/psionic-serve" "${args[@]}"

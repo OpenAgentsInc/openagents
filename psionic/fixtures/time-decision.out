@@ -1,0 +1,3 @@
+Observed samples: 5, P50 120, P95 180, P99 180 us
+100 tokens in 500000 us: 200.0 logical input tokens/s
+A requested cold run is cold only when zero mapped pages are resident: cold

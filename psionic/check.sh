@@ -27,6 +27,9 @@ cc=${COAX_CC:-cc}
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == live-decision || $chapter == service-part3 ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_live_decision.sh
+    fi
     if [[ $chapter == tensor-ops || $chapter == tensor-ops-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ops.sh
     fi
@@ -254,7 +257,7 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; interchange=0; operator_registry=0; tensor_template=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; operator_registry=0; tensor_template=0
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_operator_registry() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == operator-registry || $n == operator-registry-* ]]; }
 picks_interchange() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == interchange || $n == interchange-* ]]; }
@@ -264,6 +267,7 @@ picks_deepseek() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == deepseek ||
 picks_qualify() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == qualify || $n == qualify-elephant ]]; }
 picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n == gptoss/* ]]; }
 if [[ ${#only[@]} -eq 0 ]]; then
+    live_decision=1
     interchange=1
     operator_registry=1
     tensor_template=1
@@ -379,6 +383,11 @@ fi
 if [[ $interchange == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
     phase "interchange (focused gate, no full mutation claim)"
+fi
+
+if [[ $live_decision == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_live_decision.sh
+    phase "live-decision (focused operations; no full mutation claim)"
 fi
 
 # Chapter 13's qualification gate has its own runner; --only qualify selects it.

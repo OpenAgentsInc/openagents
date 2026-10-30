@@ -18,8 +18,12 @@
 - [11. Execute Mammoth](ch011-execute-mammoth.md)
 - [12. Are the probabilities any good?](ch012-are-the-probabilities-any-good.md)
 - [13. Qualify honestly](ch013-qualify-honestly.md)
+- [14. Time a decision](ch014-time-a-decision.md)
+- [15. Keep the model resident](ch015-keep-the-model-resident.md)
 - [16. Serve `/v1/systemone`](ch016-serve-systemone.md)
 - [16b. The protobuf wire](ch016b-the-protobuf-wire.md)
+- [17. Run it live](ch017-run-it-live.md)
+- [18. Make the numbers move](ch018-make-the-numbers-move.md)
 - [70. Learning with arrays](ch070-learning-with-arrays.md) — first learning chapter
 - [71. Gradients as a program](ch071-gradients-as-a-program.md)
 - [26. A Coax compute subset](ch026-a-coax-compute-subset.md) — first device chapter

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 /* Nanosecond mtime and ctime: Linux names them st_mtim/st_ctim, macOS
@@ -43,15 +44,23 @@ static int make_dirs(char *path) {
     return mkdir(path, 0700) && errno != EEXIST ? -1 : 0;
 }
 
-void vf_attach(VfEntry *e, const char *path, coax_t_PaFile *f) {
+void vf_attach_fd(VfEntry *e, int fd, coax_t_PaFile *f) {
     memset(e, 0, sizeof *e);
     f->record = (coax_v_u8){NULL, 0};
     struct stat st;
     char dir[3800];
-    if (stat(path, &st) || record_dir(dir, sizeof dir)) return;
+    if (fstat(fd, &st) || st.st_size != f->data.count) return;
     e->stat = (coax_t_PaStat){(int64_t)st.st_dev, (int64_t)st.st_ino, (int64_t)st.st_size,
         VF_MTIME(st), VF_CTIME(st)};
     f->stat = e->stat;
+    long page=sysconf(_SC_PAGESIZE);e->cached_pages=-1;
+    if(page>0){
+        e->total_pages=(f->data.count+page-1)/page;int64_t cached=0;int ok=1;unsigned char vec[65536];
+        for(int64_t start=0;start<e->total_pages;start+=65536){int64_t n=e->total_pages-start;if(n>65536)n=65536;size_t length=(size_t)n*(size_t)page;
+            if(mincore(f->data.data+start*page,length,(void*)vec)){ok=0;break;}for(int64_t i=0;i<n;i++)cached+=vec[i]&1;
+        }if(ok)e->cached_pages=cached;
+    }
+    if (record_dir(dir, sizeof dir)) return;
     snprintf(e->path, sizeof e->path, "%s/%llu-%llu.rec", dir, (unsigned long long)st.st_dev, (unsigned long long)st.st_ino);
     FILE *in = fopen(e->path, "rb");
     if (!in) return;
@@ -60,6 +69,18 @@ void vf_attach(VfEntry *e, const char *path, coax_t_PaFile *f) {
     e->length = (int64_t)n;
     e->found = 1;
     f->record = (coax_v_u8){e->record, e->length};
+}
+
+int vf_map_file(VfEntry *e, const char *path, coax_t_PaFile *f) {
+    int fd = open(path, O_RDONLY); struct stat st;
+    if (fd < 0) return -1;
+    if (fstat(fd, &st) || st.st_size <= 0) { close(fd); return -1; }
+    void *p = mmap(NULL, (size_t)st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (p == MAP_FAILED) { close(fd); return -1; }
+    coax_t_PaFile draft = {.data = {p, st.st_size}};
+    vf_attach_fd(e, fd, &draft); close(fd);
+    if (draft.stat.size != st.st_size) { munmap(p, (size_t)st.st_size); return -1; }
+    *f = draft; return 0;
 }
 
 int vf_keep(VfEntry *e, uint8_t kind, int64_t capacity, int64_t shard) {

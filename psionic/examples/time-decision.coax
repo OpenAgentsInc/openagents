@@ -1,0 +1,12 @@
+#load "../lib/serve-run.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    // Teaching observations in microseconds; native harnesses read real clocks.
+    samples:=[5]int.[100,180,110,130,120];work:[5]int;p:=ls_percentiles(samples[..],work[..]);
+    #assert p.ok && p.p50==120 && p.p95==180 && p.p99==180;
+    print("Observed samples: %, P50 %, P95 %, P99 % us\n",p.count,p.p50,p.p95,p.p99);
+    print("100 tokens in 500000 us: % logical input tokens/s\n",ls_rate(100,500000));
+    print("A requested cold run is cold only when zero mapped pages are resident: %\n",ls_cache_label(0,100));
+}
+// book:end example

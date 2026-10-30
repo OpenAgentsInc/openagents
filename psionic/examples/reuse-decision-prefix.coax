@@ -1,0 +1,11 @@
+#load "../lib/serve-run.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    cached:=[4]int.[10,20,30,40];next:=[4]int.[10,20,31,41];record:=LsPrefix.{valid=true,identity="checkpoint-A",count=2};
+    print("Same checkpoint and exact prefix: %\n",ls_prefix_match(record,"checkpoint-A",cached[..],next[..],2,true));
+    next[0]=99;print("Changed prefix token: %\n",ls_prefix_match(record,"checkpoint-A",cached[..],next[..],2,true));
+    print("Changed checkpoint: %\n",ls_prefix_match(record,"checkpoint-B",cached[..],cached[..],2,true));
+    print("Only one request owns the snapshot; suffix state never replaces it.\n");
+}
+// book:end example

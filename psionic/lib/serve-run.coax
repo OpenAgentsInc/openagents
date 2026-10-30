@@ -70,3 +70,252 @@ sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrRes
     logits[7]=0.0/0.0;#assert sv_read(e,r,pools,0,staged.prepared,logits[..],p[..],prob[..])==SvCode.internal;
     #assert sv_stage(e,r,pools,work,1).code==SvCode.internal && sv_stage(e,r,pools,work,-1).code==SvCode.internal;
 }
+
+// Part III operations are composed here to stay within Coax's 64-unit source budget.
+#authority;
+
+// Chapters 14/17: clocks are host observations; statistics and private records are Coax.
+LS_US_DAY :: 86400000000;
+// book:begin metrics
+LsPhase :: struct {prepare:int;prefix:int;suffix:int;model:int;readout:int;tokens:int;prefix_tokens:int;hit:int;}
+LsSample :: struct {ok:bool;total:int;prepare:int;prefix:int;suffix:int;readout:int;model:int;tokens:int;prefix_tokens:int;questions:int;hits:int;peak_bytes:int;auth:int;place:int;device:bool;kind:int;compile:int;reused:int;cached_pages:int;total_pages:int;phases:[64]LsPhase;}
+LsPercentiles :: struct {ok:bool;count:int;p50:int;p95:int;p99:int;min:int;max:int;}
+LsUsage :: struct {requests:int;answered:int;refused:int;cancelled:int;tokens:int;microseconds:int;}
+LsUsageResult :: struct {ok:bool;usage:LsUsage;}
+// book:end metrics
+#test "nearest ranks preserve tails instead of interpolating them away" {
+    a:[100]int;for i:0..<100 {a[i]=100-i;}w:[100]int;r:=ls_percentiles(a[..],w[..]);
+    #assert r.ok && r.p50==50 && r.p95==95 && r.p99==99 && r.min==1 && r.max==100 && r.count==100;
+    #assert !ls_percentiles(a[..],w[0..<99]).ok && !ls_percentiles(a[0..<0],w[..]).ok;
+    a[0]=-1;#assert !ls_percentiles(a[..],w[..]).ok;
+}
+#test "phase clocks and token rates reject backwards or empty observations" {
+    #assert ls_elapsed(10,17)==7 && ls_elapsed(10,9)==-1 && ls_elapsed(-1,9)==-1;
+    #assert ls_rate(100,500000)==200 && ls_rate(0,500000)==0 && ls_rate(1,0)==-1;
+    s:=LsSample.{ok=true,total=10,prepare=1,prefix=2,suffix=3,readout=1,tokens=8,prefix_tokens=3,questions=1};
+    #assert ls_sample_valid(s);s.prefix_tokens=9;#assert !ls_sample_valid(s);s.prefix_tokens=3;s.total=1;#assert !ls_sample_valid(s);
+}
+#test "usage keeps only bounded counts and never request or answer content" {
+    a:=ls_usage(LsUsage.{},200,7,12,false);#assert a.ok && a.usage.requests==1 && a.usage.answered==1 && a.usage.tokens==7;
+    b:=ls_usage(a.usage,503,0,4,false);#assert b.ok && b.usage.refused==1 && b.usage.microseconds==16;
+    c:=ls_usage(b.usage,0,0,5,true);#assert c.ok && c.usage.cancelled==1 && c.usage.requests==3;
+    #assert !ls_usage(c.usage,200,-1,3,false).ok;
+}
+#test "privacy records contain fixed metadata and observed counts only" {
+    b:[2048]u8;s:=LsSample.{ok=true,total=12,prepare=1,tokens=7,prefix_tokens=2,questions=1};
+    n:=ls_record("build","digest",200,s,b[..]);#assert n>0 && json_valid(cast(string)b[0..<n-1]);
+    #assert ls_record("build","digest",200,s,b[0..<10])==-1;
+}
+ls_elapsed :: (start:int,end:int)->int #export_c {if start<0 || end<start || end-start>LS_US_DAY {return -1;}return end-start;}
+ls_rate :: (tokens:int,us:int)->f64 #export_c {if tokens<0 || tokens>1048576 || us<1 || us>LS_US_DAY {return -1;}return f64(tokens)*1000000.0/f64(us);}
+ls_percentiles :: (samples:[]int,work:[]int)->LsPercentiles #export_c {
+    n:=samples.count;if n<1 || n>4096 || work.count<n {return LsPercentiles.{};}
+    for x:samples {if x<0 || x>LS_US_DAY {return LsPercentiles.{};}}
+    for i:0..<n {work[i]=samples[i];j:=i;while j>0 && work[j]<work[j-1] {t:=work[j];work[j]=work[j-1];work[j-1]=t;j-=1;}}
+    return LsPercentiles.{ok=true,count=n,p50=work[(50*n+99)/100-1],p95=work[(95*n+99)/100-1],p99=work[(99*n+99)/100-1],min=work[0],max=work[n-1]};
+}
+ls_sample_valid :: (s:LsSample)->bool #export_c {
+    if !s.ok || s.total<0 || s.total>LS_US_DAY || s.prepare<0 || s.prefix<0 || s.suffix<0 || s.readout<0 || s.model<0 || s.auth<0 || s.place<0 || s.compile<0 || s.peak_bytes<0 {return false;}
+    if s.prepare>s.total || s.prefix>s.total || s.suffix>s.total || s.readout>s.total || s.model>s.total {return false;}
+    if s.prepare+s.prefix+s.suffix+s.readout+s.model+s.auth+s.place+s.compile>s.total {return false;}
+    return s.tokens>=0 && s.tokens<=1048576 && s.prefix_tokens>=0 && s.prefix_tokens<=s.tokens && s.reused>=0 && s.reused<=s.prefix_tokens && s.kind>=0 && s.kind<=3 && s.questions>=0 && s.questions<=64 && s.hits>=0 && s.hits<=s.questions;
+}
+ls_usage :: (u:LsUsage,status:int,tokens:int,us:int,cancel:bool)->LsUsageResult #export_c {
+    if tokens<0 || tokens>1048576 || us<0 || us>LS_US_DAY || (!cancel && (status<100 || status>599)) {return LsUsageResult.{};}
+    if u.requests<0 || u.requests>=1000000000 || u.tokens<0 || u.tokens>1000000000000 || u.microseconds<0 || u.microseconds>1000000000000000 {return LsUsageResult.{};}
+    v:=u;v.requests+=1;v.tokens+=tokens;v.microseconds+=us;
+    if cancel {v.cancelled+=1;}else if status==200 {v.answered+=1;}else {v.refused+=1;}return LsUsageResult.{ok=true,usage=v};
+}
+ls_record :: (build:string,identity:string,status:int,s:LsSample,out:[]u8)->int #export_c {
+    if !ls_sample_valid(s) || build.count>128 || identity.count>128 || status<0 || status>599 {return -1;}
+    at:=json_raw(out,0,"{\"schema\":\"psionic-decision-metrics-v1\",\"build\":");at=json_write_string(out,at,build);at=json_raw(out,at,",\"checkpoint\":");at=json_write_string(out,at,identity);
+    at=json_raw(out,at,",\"phase_profile\":");at=json_write_string(out,at,ifx s.device then "device-joint-v1" else "cpu-prefix-v1");
+    at=json_raw(out,at,",\"file_cache_at_open\":");at=json_write_string(out,at,ls_cache_label(s.cached_pages,s.total_pages));
+    names:=[19]string.["status","total_us","prepare_us","prefix_us","suffix_us","readout_us","joint_model_us","tokens","prefix_tokens","questions","prefix_hits","peak_host_bytes","authenticate_us","place_us","kind","compile_us","reused_tokens","cached_pages","total_pages"];
+    values:=[19]int.[status,s.total,s.prepare,s.prefix,s.suffix,s.readout,s.model,s.tokens,s.prefix_tokens,s.questions,s.hits,s.peak_bytes,s.auth,s.place,s.kind,s.compile,s.reused,s.cached_pages,s.total_pages];
+    for i:0..<19 {at=json_raw(out,at,",");at=json_write_string(out,at,names[i]);at=json_raw(out,at,":");at=json_write_int(out,at,values[i]);}at=json_raw(out,at,",\"question_phases_us\":[");
+    fields:=[8]string.["prepare","prefix","suffix_with_readout","joint_model","readout","tokens","prefix_tokens","prefix_hit"];
+    for q:0..<s.questions {if q>0 {at=json_raw(out,at,",");}at=json_raw(out,at,"{");v:=s.phases[q];counts:=[8]int.[v.prepare,v.prefix,v.suffix,v.model,v.readout,v.tokens,v.prefix_tokens,v.hit];for j:0..<8 {if j>0 {at=json_raw(out,at,",");}at=json_write_string(out,at,fields[j]);at=json_raw(out,at,":");at=json_write_int(out,at,counts[j]);}at=json_raw(out,at,"}");}
+    return json_raw(out,at,"]}\n");
+}
+
+// Chapter 17: bounded readiness/promotion and restart policy, independent of OS effects.
+// book:begin lifecycle
+LsLife :: struct {authenticated:bool;sealed:bool;warm:int;failed:bool;draining:bool;}
+LsRestart :: struct {ok:bool;retry:bool;failures:int;delay_ms:int;}
+// book:end lifecycle
+#test "readiness requires authentication sealed storage and three good seeded decisions" {
+    s:=LsLife.{};#assert !ls_ready(s);s.authenticated=true;s.sealed=true;
+    for i:0..<3 {#assert !ls_ready(s);s=ls_warmed(s,true);}#assert ls_ready(s);
+    #assert !ls_ready(ls_warmed(s,false));s.draining=true;#assert !ls_ready(s);
+}
+#test "a candidate may promote only the same retained identity after golden parity" {
+    #assert ls_promote(true,"abc","abc",true) && !ls_promote(false,"abc","abc",true);
+    #assert !ls_promote(true,"abc","def",true) && !ls_promote(true,"abc","abc",false) && !ls_promote(true,"","",true);
+}
+#test "crash loops back off and stop at the explicit restart budget" {
+    r:=ls_restart(0,3,100,1,false);#assert r.ok && r.retry && r.failures==1 && r.delay_ms==100;
+    r=ls_restart(2,3,100,1,false);#assert r.retry && r.delay_ms==400;
+    #assert !ls_restart(3,3,100,1,false).retry && !ls_restart(0,3,100,0,false).retry && !ls_restart(0,3,100,1,true).retry;
+    #assert !ls_restart(-1,3,100,1,false).ok && !ls_restart(0,33,100,1,false).ok;
+}
+ls_ready :: (s:LsLife)->bool #export_c {return s.authenticated && s.sealed && s.warm>=3 && !s.failed && !s.draining;}
+ls_warmed :: (s:LsLife,passed:bool)->LsLife #export_c {n:=s;if !passed || !s.authenticated || !s.sealed {n.failed=true;return n;}if n.warm<3 {n.warm+=1;}return n;}
+ls_promote :: (ready:bool,expected:string,actual:string,golden:bool)->bool #export_c {return ready && expected.count>0 && expected==actual && golden;}
+ls_restart :: (failures:int,limit:int,base_ms:int,exit_code:int,stopping:bool)->LsRestart #export_c {
+    if failures<0 || failures>32 || limit<0 || limit>32 || base_ms<1 || base_ms>10000 {return LsRestart.{};}
+    if stopping || exit_code==0 || failures>=limit {return LsRestart.{ok=true,failures=failures};}
+    delay:=base_ms;for i:0..<failures {if delay<5000 {delay*=2;}else {delay=10000;}}
+    return LsRestart.{ok=true,retry=true,failures=failures+1,delay_ms=delay};
+}
+
+// Part III integration: the existing JSON/protobuf contract with bounded operations.
+// book:begin resident
+LsMemory :: struct {code:SvCode;bytes:int;state:int;work:int;}
+LsPrefix :: struct {valid:bool;identity:string;count:int;}
+LsPrefixResult :: struct {code:SvCode;cache:LsPrefix;hit:bool;}
+// book:end resident
+#test "residency budgets account for the immutable prefix snapshot before serving" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],128);m:=ls_memory(e,68719476736);
+    #assert m.code==SvCode.none && m.bytes>0 && m.state==sv_plan(e).state && m.work==sv_plan(e).work;
+    #assert ls_memory(e,m.bytes).code==SvCode.none && ls_memory(e,m.bytes-1).code==SvCode.limit_exceeded;
+    #assert ls_memory(SvEngine.{},100).code==SvCode.internal;
+}
+#test "prefix reuse compares every token and the immutable checkpoint identity" {
+    a:=[3]int.[1,2,3];b:=[3]int.[1,2,4];c:=LsPrefix.{valid=true,identity="abc",count=2};
+    #assert ls_prefix_match(c,"abc",a[..],b[..],2,true);
+    #assert !ls_prefix_match(c,"def",a[..],b[..],2,true) && !ls_prefix_match(c,"abc",a[..],b[..],3,true);
+    b[0]=9;#assert !ls_prefix_match(c,"abc",a[..],b[..],2,true) && !ls_prefix_match(c,"abc",a[..],a[..],2,false);
+    id:=ls_model_id("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");#assert id[0]==1 && id[7]==239 && id[31]==239;
+}
+#test "health probes are bounded exact paths and readiness cannot bypass warmup" {
+    #assert ls_probe("GET /healthz HTTP/1.1\r\n\r\n")==1 && ls_probe("GET /readyz HTTP/1.1\r\n\r\n")==2;
+    #assert ls_probe("POST /readyz HTTP/1.1\r\n\r\n")==0 && ls_probe("GET /readyz-bad HTTP/1.1\r\n\r\n")==0;
+    out:[1024]u8;n:=ls_health(LsLife.{},"m","build",2,out[..]);#assert n>0 && (cast(string)out[0..<12])=="HTTP/1.1 503";
+    n=ls_health(LsLife.{authenticated=true,sealed=true,warm=3},"m","build",2,out[..]);#assert n>0 && (cast(string)out[0..<12])=="HTTP/1.1 200";
+    #assert ls_seed("psionic-toy").count>0 && ls_seed("elephant-1").count>0 && ls_seed("other")=="";
+}
+ls_memory :: (e:SvEngine,budget:int)->LsMemory #export_c {return ls_memory_for(e,budget,false);}
+ls_memory_for :: (e:SvEngine,budget:int,device:bool)->LsMemory #export_c {
+    p:=sv_plan(e);if !e.ok || !p.ok {return LsMemory.{code=SvCode.internal};}
+    fields:=[15]int.[p.state,p.work,p.tokens,p.prompt,p.render,p.candidate,p.full,p.stage,p.normal,p.scalars,p.symbols,p.answers,p.prob,e.capacity,budget];
+    for n:fields {if n<0 || n>68719476736 {return LsMemory.{code=SvCode.limit_exceeded};}}
+    state:=p.state;work:=p.work;if device {state=0;work=0;}
+    bytes:=(2*state+work)*4+(2*p.tokens+p.candidate+p.full+p.stage+p.scalars+p.symbols)*8+p.prompt+p.render+p.normal+(p.answers+p.prob)*8;
+    if budget<bytes {return LsMemory.{code=SvCode.limit_exceeded,bytes=bytes,state=state,work=work};}return LsMemory.{bytes=bytes,state=state,work=work};
+}
+ls_prefix_match :: (cache:LsPrefix,identity:string,old:[]int,tokens:[]int,prefix:int,enabled:bool)->bool #export_c {
+    if !enabled || !cache.valid || identity=="" || cache.identity!=identity || prefix<1 || prefix!=cache.count || old.count<prefix || tokens.count<prefix {return false;}
+    for i:0..<prefix {if old[i]!=tokens[i] {return false;}}return true;
+}
+ls_model_id :: (digest:string)->[32]u8 #export_c {
+    id:[32]u8;if !sv_hex64(digest) {return id;}for i:0..<32 {a:=digest[2*i];b:=digest[2*i+1];x:=int(a)-48;y:=int(b)-48;if a>=97 {x=int(a)-87;}if b>=97 {y=int(b)-87;}id[i]=cast(u8)(16*x+y);}return id;
+}
+// The host calls stage, prefix, suffix in order so clocks can surround real work.
+// The cache is private to one request, in a single immutable engine.
+ls_cpu_prefix :: (e:SvEngine,p:PrResult,tokens:[]int,c:LsPrefix,cached_tokens:[]int,cached_state:[]f32,w:SvWork,enabled:bool)->LsPrefixResult #export_c {
+    fits:=sv_fits(e,p,w.work.count);if fits!=SvCode.none {return LsPrefixResult.{code=fits};}
+    if !e.sealed || tokens.count!=p.written || cached_tokens.count<p.prefix || cached_state.count!=w.state.count || w.state.count!=qp_total(e.session.model.shape.state) {return LsPrefixResult.{code=SvCode.internal};}
+    plan:=qs_layout(e.session.model,p.written,p.prefix);rope:=w.work[plan.rope..<plan.rope_work];temp:=w.work[plan.rope_work..<plan.engine];engine:=w.work[plan.engine..<plan.total];
+    r:=qw_rope(0,p.written,rope,temp,false);if r.status!=QwStatus.ok {return LsPrefixResult.{code=SvCode.internal};}
+    hit:=ls_prefix_match(c,e.digest,cached_tokens,tokens,p.prefix,enabled);next:=LsPrefix.{valid=true,identity=e.digest,count=p.prefix};
+    if !hit {
+        linear:=e.session.model.shape.state.linear_layers*qp_linear_count(e.session.model.shape.state);for i:0..<linear {cached_state[i]=0;}
+        if p.prefix>0 {
+            slots:=[1]int.[qr_pinned_slot(0)];out:[1]f64;prob:[1]f64;
+            first:=qx_block(e.session.model,tokens[0..<p.prefix],rope[0..<p.prefix*64],0,cached_state,QrKind.choice,e.temperature,slots[..],out[..],prob[..],engine,false);
+            if first.status!=QxStatus.ok {return LsPrefixResult.{code=sv_answer_code(first.status)};}
+        }
+        for i:0..<p.prefix {cached_tokens[i]=tokens[i];}
+    }
+    id:=ls_model_id(e.digest);claim:=QpClaim.{model=id,prefix=p.prefix,shape=e.session.model.shape.state};
+    fork:=qp_fork(e.session.model.shape.state,id,claim,cached_state,w.state,w.work[0..<plan.rope],false);
+    if fork.status!=QpStatus.ok {return LsPrefixResult.{code=SvCode.internal};}return LsPrefixResult.{cache=next,hit=hit};
+}
+ls_cpu_suffix :: (e:SvEngine,p:PrResult,tokens:[]int,w:SvWork,out:[]f64)->SvCode #export_c {
+    fits:=sv_fits(e,p,w.work.count);if fits!=SvCode.none {return fits;}
+    if !e.sealed || tokens.count!=p.written || w.state.count!=qp_total(e.session.model.shape.state) || out.count<p.slots || w.prob.count<2*p.slots {return SvCode.internal;}
+    plan:=qs_layout(e.session.model,p.written,p.prefix);slots:[255]int;for i:0..<p.slots {slots[i]=qr_pinned_slot(i);}
+    r:=qx_block(e.session.model,tokens[p.prefix..<p.written],w.work[plan.rope+p.prefix*64..<plan.rope_work],p.prefix,w.state,cast(QrKind)cast(u8)p.kind,e.temperature,slots[0..<p.slots],out,w.prob,w.work[plan.engine..<plan.total],false);
+    return sv_answer_code(r.status);
+}
+ls_probe :: (text:string)->int #export_c {
+    if text.count>8192 || sv_find(text,0,"\r\n\r\n")<0 {return 0;}
+    a:="GET /healthz HTTP/1.1\r\n";b:="GET /readyz HTTP/1.1\r\n";
+    if text.count>=a.count && text[0..<a.count]==a {return 1;}if text.count>=b.count && text[0..<b.count]==b {return 2;}return 0;
+}
+ls_health :: (life:LsLife,identity:string,build:string,probe:int,out:[]u8)->int #export_c {
+    ready:=ls_ready(life);status:=503;if probe==1 || ready {status=200;}
+    at:=json_raw(out,0,"{\"schema\":\"psionic-health-v1\",\"ready\":");at=json_raw(out,at,ifx ready then "true" else "false");at=json_raw(out,at,",\"checkpoint\":");at=json_write_string(out,at,identity);at=json_raw(out,at,",\"build\":");at=json_write_string(out,at,build);at=json_raw(out,at,"}");if at<0 {return -1;}
+    head:=sv_response_head(out[at..<out.count],status,at,false);if head<0 {return -1;}sv_reverse(out,0,at);sv_reverse(out,at,at+head);sv_reverse(out,0,at+head);return at+head;
+}
+ls_seed :: (model:string)->string #export_c {
+    if model=="psionic-toy" {return "{\"model\":\"psionic-toy\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}";}
+    if model=="elephant-1" {return "{\"model\":\"elephant-1\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}";}return "";
+}
+
+#test "CPU prefix and suffix staging refuse before touching absent storage" {
+    e:SvEngine;p:=PrResult.{status=PrStatus.capacity};tokens:[1]int;cached:[1]f32;w:SvWork;
+    #assert ls_cpu_prefix(e,p,tokens[..],LsPrefix.{},tokens[..],cached[..],w,true).code==SvCode.limit_exceeded;
+    out:[1]f64;#assert ls_cpu_suffix(e,p,tokens[..],w,out[..])==SvCode.limit_exceeded;
+}
+
+#test "warmup checks the retained answer under the original frozen numerical limits" {
+    #assert ls_seed_valid("psionic-toy",0.437947251,0.562052749) && !ls_seed_valid("psionic-toy",0.5,0.5);
+    #assert ls_seed_valid("elephant-1",0.757202773,0.242797227) && !ls_seed_valid("elephant-1",0.9,0.1);
+    #assert !ls_seed_valid("other",0.5,0.5);
+}
+ls_seed_valid :: (model:string,yes:f64,no:f64)->bool #export_c {
+    if !sv_probability(yes) || !sv_probability(no) || abs(yes+no-1)>0.00000001 {return false;}
+    if model=="psionic-toy" {return abs(yes-0.437947251)<0.00000001;}
+    if model=="elephant-1" {return abs(yes-0.757196285)<0.0005;}return false;
+}
+
+#test "bounded host probes measure real Coax work without changing model arithmetic" {
+    x:=[4]f32.[1,2,3,4];y:[4]f32;#assert ls_probe_copy(x[..],y[..]) && y[3]==4;
+    #assert !ls_probe_copy(x[..],y[0..<3]);#assert ls_probe_dot(x[..],x[..])==30;
+    #assert ls_warm_budget()==30000;
+}
+ls_warm_budget :: ()->int #export_c {return 30000;}
+ls_probe_copy :: (src:[]f32,dst:[]f32)->bool #export_c {
+    if src.count<1 || src.count>16777216 || dst.count<src.count {return false;}
+    for i:0..<src.count {dst[i]=src[i];}return true;
+}
+ls_probe_dot :: (x:[]f32,y:[]f32)->f64 #export_c {
+    if x.count<1 || x.count>16777216 || y.count!=x.count {return -1;}
+    sum:f64=0;for i:0..<x.count {sum+=f64(x[i])*f64(y[i]);}return sum;
+}
+
+#test "a cache label is an observed page inventory not a requested benchmark name" {
+    #assert ls_cache_label(0,4)=="cold" && ls_cache_label(4,4)=="warm" && ls_cache_label(1,4)=="mixed";
+    #assert ls_cache_label(-1,4)=="unknown" && ls_cache_label(0,0)=="unknown";
+}
+ls_cache_label :: (cached:int,total:int)->string #export_c {
+    if cached<0 || total<1 || cached>total {return "unknown";}if cached==0 {return "cold";}if cached==total {return "warm";}return "mixed";
+}
+
+#test "a device request owns device state instead of a redundant CPU arena" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],128);cpu:=ls_memory_for(e,68719476736,false);gpu:=ls_memory_for(e,68719476736,true);
+    #assert cpu.code==SvCode.none && gpu.code==SvCode.none && gpu.state==0 && gpu.work==0 && cpu.bytes-gpu.bytes==(2*cpu.state+cpu.work)*4;
+    p:=PrResult.{written=8,prefix=3,slots=2};#assert ls_device_fits(e,p)==SvCode.none;
+    p.prefix=8;#assert ls_device_fits(e,p)==SvCode.limit_exceeded;
+    pools:SvPools;w:SvWork;#assert ls_stage_device(e,SvRequest.{},pools,w,0).code==SvCode.internal;
+}
+ls_device_fits :: (e:SvEngine,p:PrResult)->SvCode #export_c {
+    if p.status!=PrStatus.ok {return sv_prepare_code(p);}if !e.sealed {return SvCode.internal;}
+    if p.written<1 || p.written>e.capacity || p.written>512 || p.prefix<0 || p.prefix>=p.written {return SvCode.limit_exceeded;}
+    if p.slots<1 || p.slots>e.options {return SvCode.unsupported_input;}return SvCode.none;
+}
+ls_stage_device :: (e:SvEngine,r:SvRequest,pools:SvPools,w:SvWork,i:int)->SvStaged #export_c {
+    if i<0 || i>=r.questions {return SvStaged.{code=SvCode.internal};}
+    q:=pools.questions[i];options:=pools.options[q.first..<q.first+q.count];question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
+    p:=ps_prepare(e.session.table,r.state,question,options,w.tokens,w.prep,false);return SvStaged.{code=ls_device_fits(e,p),prepared=p};
+}
+
+LsBusyPolicy :: struct {capacity:int;accepts:int;drain_bytes:int;linger_ms:int;write_ms:int;}
+#test "busy sockets are bounded cleanup not queued model requests" {
+    p:=ls_busy_policy();#assert p.capacity==16 && p.accepts==4 && p.drain_bytes==262144 && p.linger_ms==200 && p.write_ms==1;
+    #assert ls_busy_left(100,100)==200 && ls_busy_left(100,299)==1 && ls_busy_left(100,300)==0 && ls_busy_left(100,99)==0;
+}
+ls_busy_policy :: ()->LsBusyPolicy #export_c {return LsBusyPolicy.{capacity=16,accepts=4,drain_bytes=262144,linger_ms=200,write_ms=1};}
+ls_busy_left :: (started:int,now:int)->int #export_c {if started<0 || now<started || now-started>=200 {return 0;}return 200-(now-started);}

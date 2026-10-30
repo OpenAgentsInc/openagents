@@ -165,8 +165,8 @@ authenticated before the server accepted any connection. It is the loaded
 file's digest, not a digest computed over tensor payloads alone, so a file that
 differs only in its header metadata would have a different identity.
 
-Chapter 15 will keep one session resident and size each request's workspace
-from a memory plan. Its session enters here:
+[Chapter 15](ch015-keep-the-model-resident.md) now keeps one session resident
+and admits reserved execution storage from a memory plan. Its session enters here:
 
 <!-- source: psionic/lib/serve-engine.coax seam -->
 ```jai
@@ -177,15 +177,17 @@ sv_engine :: (session:PsSession,name:string,alias:string,digest:string,temperatu
 }
 ```
 
-Until then the host allocates one fixed workspace at start from `sv_plan`,
+The host allocates one fixed workspace at start from `sv_plan`,
 for a request of the full capacity. The host checks once that every buffer it
 allocated is disjoint from the others and from the session's borrowed
 storage, and passes the result to `sv_seal`; an engine that is not sealed
 answers nothing. Each answer is produced at temperature 1, with no
 calibration, as in chapter 10.
 
-The questions of one request run in order, each through chapter 10's
-preparation and answer:
+The reference sequencing API runs each question through chapter 10's
+preparation and answer. [Chapter 18](ch018-make-the-numbers-move.md) now uses
+checked per-request prefix snapshots in the CPU host and removes redundant
+CPU arenas on device hosts:
 
 <!-- source: psionic/lib/serve-run.coax answers -->
 ```jai
@@ -211,7 +213,8 @@ probability as `confidence`. A `score` reports the probability-weighted level,
 the largest level probability as `confidence`, that level's index as
 `selected` (the lowest index on a tie), and a `legend` that repeats each
 requested level entry's original JSON. Probabilities are written with nine decimals.
-`usage` is `null`: this chapter keeps no usage records.
+`usage` remains `null`. [Chapter 17](ch017-run-it-live.md) adds separate
+private operational usage records, without request or answer content.
 
 ## One decision at a time
 
@@ -291,7 +294,7 @@ server serves Elephant. It authenticates all 18.8 GB before it accepts a
 connection, and one decision takes minutes on a CPU:
 
 ```shell
-psionic/platform/serve.sh --elephant ~/models/elephant-1-b3f8a934 --capacity 128 --deadline-ms 7200000
+psionic/platform/serve.sh --elephant ~/models/elephant-1-b3f8a934 --capacity 128 --deadline-ms 7200000 --warmup-ms 7200000
 ```
 
 We sent chapter 10's sample as a NIP-DEC body, recorded in

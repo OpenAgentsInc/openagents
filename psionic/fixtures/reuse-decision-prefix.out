@@ -1,0 +1,4 @@
+Same checkpoint and exact prefix: true
+Changed prefix token: false
+Changed checkpoint: false
+Only one request owns the snapshot; suffix state never replaces it.

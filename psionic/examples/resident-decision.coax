@@ -1,0 +1,12 @@
+#load "../lib/serve-run.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],128);
+    cpu:=ls_memory_for(e,68719476736,false);gpu:=ls_memory_for(e,68719476736,true);
+    #assert cpu.code==SvCode.none && gpu.code==SvCode.none && gpu.state==0 && gpu.work==0;
+    print("CPU execution payload: % bytes; device execution host payload: % bytes\n",cpu.bytes,gpu.bytes);
+    print("One byte short: %\n",sv_code_name(ls_memory(e,cpu.bytes-1).code));
+    print("The authenticated session is shared; each decision starts with fresh state.\n");
+}
+// book:end example

@@ -83,7 +83,7 @@ static Reply receive(int fd, int timeout_ms) {
 }
 static Reply ask(int port, const char *bytes, size_t n) { int fd = dial(port); send_all(fd, bytes, n); return receive(fd, 120000); }
 static char *post(const char *body) {
-    char *s = malloc(strlen(body) + 128); sprintf(s, "POST /v1/systemone HTTP/1.1\r\nHost: localhost\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body); return s;
+    size_t cap=strlen(body)+128;char *s = malloc(cap); snprintf(s,cap, "POST /v1/systemone HTTP/1.1\r\nHost: localhost\r\nContent-Length: %zu\r\n\r\n%s", strlen(body), body); return s;
 }
 static Reply ask_body(int port, const char *body) { char *m = post(body); Reply r = ask(port, m, strlen(m)); free(m); return r; }
 static bool has_code(Reply r, const char *code) { char want[96]; snprintf(want, sizeof want, "{\"error\":{\"code\":\"%s\"", code); return !strncmp(r.body, want, strlen(want)); }
@@ -131,14 +131,14 @@ static void direct(double hot[2], double what[2], double level[3]) {
 }
 
 static char *repeat_questions(int n) {
-    char *b = malloc(64 * (size_t)n + 128); int at = sprintf(b, "{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{");
-    for (int i = 0; i < n; i++) at += sprintf(b + at, "%s\"q%d\":{\"type\":\"noul\"}", i ? "," : "", i);
-    sprintf(b + at, "}}"); return b;
+    size_t cap=64*(size_t)n+128;char *b = malloc(cap); int at = snprintf(b,cap, "{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{");
+    for (int i = 0; i < n; i++) at += snprintf(b + at,cap-(size_t)at, "%s\"q%d\":{\"type\":\"noul\"}", i ? "," : "", i);
+    snprintf(b + at,cap-(size_t)at, "}}"); return b;
 }
 static char *many_options(int n) {
-    char *b = malloc(32 * (size_t)n + 128); int at = sprintf(b, "{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{");
-    for (int i = 0; i < n; i++) at += sprintf(b + at, "%s\"o%d\":null", i ? "," : "", i);
-    sprintf(b + at, "}}}}"); return b;
+    size_t cap=32*(size_t)n+128;char *b = malloc(cap); int at = snprintf(b,cap, "{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"q\":{\"type\":\"choice\",\"criteria\":{");
+    for (int i = 0; i < n; i++) at += snprintf(b + at,cap-(size_t)at, "%s\"o%d\":null", i ? "," : "", i);
+    snprintf(b + at,cap-(size_t)at, "}}}}"); return b;
 }
 
 static void answers(Server a) {
@@ -186,8 +186,8 @@ static void refusals(Server a) {
     CHECK(now_ms() - t0 < 1000, "an oversized declaration is refused before its body");
     char *longhead = malloc(9001); memset(longhead, 'a', 9000); memcpy(longhead, "POST /v1/systemone HTTP/1.1\r\nX: ", 33); longhead[9000] = 0;
     expect_refusal(ask(a.port, longhead, 9000), 413, "limit_exceeded", "head over 8 KiB"); free(longhead);
-    char *big = malloc(262144 + 256); int at = sprintf(big, "{\"model\":\"psionic-toy\",\"state\":\""); memset(big + at, 's', 262144 - at - 50); at = 262144 - 50;
-    sprintf(big + at, "\",\"questions\":{\"q\":{\"type\":\"noul\"}}}"); expect_refusal(ask_body(a.port, big), 400, "invalid_request", "state over 128 KiB"); free(big);
+    char *big = malloc(262144 + 256); int at = snprintf(big,262144+256, "{\"model\":\"psionic-toy\",\"state\":\""); memset(big + at, 's', 262144 - at - 50); at = 262144 - 50;
+    snprintf(big + at,262144+256-(size_t)at, "\",\"questions\":{\"q\":{\"type\":\"noul\"}}}"); expect_refusal(ask_body(a.port, big), 400, "invalid_request", "state over 128 KiB"); free(big);
     printf("refusals: malformed, invalid, too many questions/options, not admitted, unsupported, route, method, chunked and oversized\n");
 }
 

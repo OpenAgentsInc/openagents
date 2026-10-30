@@ -21,6 +21,13 @@ Chapter 6 executes a small causal dense attention block with a KV cache.
 Chapter 7 composes Qwen-style linear and full-attention layers with separate states.
 Chapter 8 adds decision blocks and forks their complete live hybrid state.
 Chapter 9 converts vocabulary logits to option probabilities and typed statistics.
+[Chapters 14–18](book/ch014-time-a-decision.md) now put that model behind a
+measured resident decision service: bounded host/device memory ownership,
+JSON/protobuf `/v1/systemone`, golden-gated readiness, content-free usage,
+Coax restart supervision and exact CPU prefix reuse. The first managed
+deployment is private loopback; [operations](book/ch017-run-it-live.md)
+describe its install and stop commands. Run the focused gate with
+`psionic/check.sh --only live-decision`.
 [Chapter 41](book/ch041-original-mxfp4-weights.md) starts the independent gpt-oss
 branch with an exact bounded decoder for its original MXFP4 byte groups.
 [Chapter 42](book/ch042-a-few-experts-then-a-router.md) adds sorted top-k routing

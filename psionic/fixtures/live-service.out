@@ -1,0 +1,4 @@
+Ready before warmup: false
+Ready after three retained golden decisions: true
+Crash: restart true, backoff 500 ms
+A different checkpoint cannot pass promotion.

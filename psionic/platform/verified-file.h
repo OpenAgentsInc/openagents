@@ -14,13 +14,16 @@ typedef struct {
     uint8_t record[512];
     int64_t length;
     int found;
+    int64_t cached_pages,total_pages; /* mincore observation before authentication */
     char path[4096];
 } VfEntry;
 
-/* Stat path (the file already mapped into f->data) and attach the record kept
-   for that identity, if any, to f. Without a stat or a record, f keeps an
-   empty record and the session hashes the file in full. */
-void vf_attach(VfEntry *e, const char *path, coax_t_PaFile *f);
+/* Observe the descriptor which supplied f->data, never re-stat its pathname.
+   Caller keeps it open through this observation and its mapping immutable. */
+void vf_attach_fd(VfEntry *e, int fd, coax_t_PaFile *f);
+/* Open, fstat, map and attach on the same descriptor; caller owns the mapping.
+   Returns 0 on success, -1 on I/O failure. No failed result is published. */
+int vf_map_file(VfEntry *e, const char *path, coax_t_PaFile *f);
 /* After a session opened: keep the record Coax writes for shard `shard` of
    target `kind`, unless the attached one already is it. Returns 1 if a record
    was written, 0 if none was needed, -1 if it could not be written. */

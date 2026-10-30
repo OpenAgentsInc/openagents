@@ -150,9 +150,9 @@ int main(int argc, char **argv) {
 
     /* The CPU session authenticates and binds the original files (chapter 10). */
     coax_v_u8 config = named(argv[1], "config.json"), tokenizer = named(argv[1], "tokenizer.json"), readout = named(argv[1], "readout.json"), index = {NULL, 0}, table = map_file(argv[2]);
-    coax_t_PaFile file = {named(argv[1], "model.safetensors")};
+    coax_t_PaFile file = {0};
     char weights_path[4096]; snprintf(weights_path, sizeof weights_path, "%s/model.safetensors", argv[1]);
-    static VfEntry verified; vf_attach(&verified, weights_path, &file);
+    static VfEntry verified; if (vf_map_file(&verified, weights_path, &file)) return 2;
     size_t count = sizeof(elephant_specs) / sizeof(*elephant_specs);
     coax_t_P5Spec *specs = calloc(count, sizeof(*specs));
     coax_t_P5Tensor *inventory = calloc(count, sizeof(*inventory)), *draft = calloc(count, sizeof(*draft));

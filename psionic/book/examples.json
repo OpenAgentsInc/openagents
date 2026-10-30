@@ -630,6 +630,46 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/time-decision.coax",
+      "chapter": "psionic/book/ch014-time-a-decision.md",
+      "stdout": "psionic/fixtures/time-decision.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/resident-decision.coax",
+      "chapter": "psionic/book/ch015-keep-the-model-resident.md",
+      "stdout": "psionic/fixtures/resident-decision.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/live-service.coax",
+      "chapter": "psionic/book/ch017-run-it-live.md",
+      "stdout": "psionic/fixtures/live-service.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
+      "source": "psionic/examples/reuse-decision-prefix.coax",
+      "chapter": "psionic/book/ch018-make-the-numbers-move.md",
+      "stdout": "psionic/fixtures/reuse-decision-prefix.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

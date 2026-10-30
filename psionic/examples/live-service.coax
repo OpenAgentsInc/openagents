@@ -1,0 +1,11 @@
+#load "../lib/serve-run.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    life:=LsLife.{authenticated=true,sealed=true};print("Ready before warmup: %\n",ls_ready(life));
+    for i:0..<3 {life=ls_warmed(life,true);}print("Ready after three retained golden decisions: %\n",ls_ready(life));
+    next:=ls_restart(1,5,250,137,false);print("Crash: restart %, backoff % ms\n",next.retry,next.delay_ms);
+    #assert !ls_promote(true,"expected-checkpoint","different-checkpoint",true);
+    print("A different checkpoint cannot pass promotion.\n");
+}
+// book:end example

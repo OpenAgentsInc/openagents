@@ -26,13 +26,17 @@ common=(-std=c11 "$opt" -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werro
 "$cc" "${common[@]}" -c psionic/platform/decision-prepare-memory.c -o "$out/prepare.o"
 "$cc" "${common[@]}" -c psionic/platform/decision-answer-memory.c -o "$out/answer.o"
 "$cc" "${common[@]}" -c psionic/platform/verified-file.c -o "$out/verified-file.o"
+build_id() {
+    python3 -I psionic/tests/serve_build_id.py "$out" "$coax" "$cc" "$mode" "$native" "${gpu:-cpu}"
+}
 if [[ $gpu == gpu ]]; then
     "$coax" c psionic/lib/device/plan.coax --library --release --header "$out/plan.h" > "$out/plan.c"
     for unit in project layer warp; do "$coax" cuda "psionic/lib/device/$unit.coax" --release > "$out/$unit.cu"; done
     "$cc" "${common[@]}" -Wno-missing-field-initializers -c "$out/plan.c" -o "$out/plan.o"
     "$cc" "${common[@]}" -Wno-missing-field-initializers -c psionic/platform/elephant-gpu.c -o "$out/elephant-gpu.o"
-    "$cc" "${common[@]}" -Wno-missing-field-initializers -c psionic/platform/cuda-host.c -o "$out/cuda-host.o"
-    "$cc" "${common[@]}" -Wno-missing-field-initializers -DPSIONIC_SERVE_GPU psionic/platform/serve-host.c "$out/serve.o" "$out/session.o" "$out/verified-file.o" \
+    "$cc" "${common[@]}" -Wno-missing-field-initializers -Wno-misleading-indentation -c psionic/platform/cuda-host.c -o "$out/cuda-host.o"
+    build_id
+    "$cc" "${common[@]}" -Wno-missing-field-initializers -DPSIONIC_SERVE_GPU psionic/platform/serve-host.c psionic/platform/serve-notify.c psionic/platform/serve-busy.c "$out/serve.o" "$out/session.o" "$out/verified-file.o" \
         "$out/plan.o" "$out/elephant-gpu.o" "$out/cuda-host.o" -ldl -lm -o "$out/psionic-serve"
 elif [[ $gpu == metal ]]; then
     "$coax" c psionic/lib/device/plan.coax --library --release --header "$out/plan.h" > "$out/plan.c"
@@ -40,8 +44,12 @@ elif [[ $gpu == metal ]]; then
     "$cc" "${common[@]}" -Wno-missing-field-initializers -c "$out/plan.c" -o "$out/plan.o"
     "$cc" "${common[@]}" -Wno-missing-field-initializers -c psionic/platform/elephant-metal.c -o "$out/elephant-metal.o"
     "$cc" -fobjc-arc -mmacosx-version-min=15.0 "$opt" -g -Wall -Wextra -Werror "${sanitizers[@]}" -c psionic/platform/metal-host.m -o "$out/metal-host.o"
-    "$cc" "${common[@]}" -Wno-missing-field-initializers -DPSIONIC_SERVE_METAL psionic/platform/serve-host.c "$out/serve.o" "$out/session.o" "$out/verified-file.o" \
+    build_id
+    "$cc" "${common[@]}" -Wno-missing-field-initializers -DPSIONIC_SERVE_METAL psionic/platform/serve-host.c psionic/platform/serve-notify.c psionic/platform/serve-busy.c "$out/serve.o" "$out/session.o" "$out/verified-file.o" \
         "$out/plan.o" "$out/elephant-metal.o" "$out/metal-host.o" -framework Metal -framework Foundation -lm -o "$out/psionic-serve"
 else
-    "$cc" "${common[@]}" psionic/platform/serve-host.c "$out/serve.o" "$out/session.o" "$out/verified-file.o" -lm -o "$out/psionic-serve"
+    build_id
+    "$cc" "${common[@]}" psionic/platform/serve-host.c psionic/platform/serve-notify.c psionic/platform/serve-busy.c "$out/serve.o" "$out/session.o" "$out/verified-file.o" -lm -o "$out/psionic-serve"
 fi
+
+"$cc" "${common[@]}" psionic/platform/serve-supervisor.c "$out/serve.o" -lm -o "$out/psionic-supervise"
