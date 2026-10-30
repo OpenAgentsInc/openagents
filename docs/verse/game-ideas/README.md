@@ -10,7 +10,7 @@ needs before it could ship.
 |---|---|---|---|
 | Orbit League | Topher | Car-ball in space (rocket-powered roadsters) | [orbit-league.md](orbit-league.md) |
 | Belt 2200 | Ted | Hard sci-fi real-time strategy, the solar system in the year 2200 | [belt-2200.md](belt-2200.md) |
-| Hold the Stair | Marc and Chris | Tower defense on the SRD 5e rules | [hold-the-stair.md](hold-the-stair.md) |
+| Hold the Stair | Marc | Tower defense on the SRD 5e rules | [hold-the-stair.md](hold-the-stair.md) |
 
 These are original games in their genres. They borrow general styles (a
 car-ball sport, hard sci-fi, a popping tower defense, tabletop fantasy rules)

@@ -1,6 +1,6 @@
 # Hold the Stair
 
-Pitched by Marc and Chris on the October 30, 2026 recording: a balloon-popping
+Pitched by Marc on the October 30, 2026 recording: a balloon-popping
 tower defense game, but with D&D.
 
 Status: design only. Nothing is built.
