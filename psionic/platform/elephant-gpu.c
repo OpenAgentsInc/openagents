@@ -42,7 +42,7 @@ int eg_compile(EgEngine *e, const EgSources *src) {
         coax_string name = dp_kernel_name(k);
         char text[64];
         snprintf(text, sizeof text, "%.*s", (int)name.count, name.data);
-        CHECK(pc_kernel(e->modules[k < 3 ? 0 : k < 17 ? 1 : 2], text, &e->kernels[k]));
+        CHECK(pc_kernel(e->modules[k < 3 ? 0 : k < 17 ? 1 : k < 19 ? 2 : 1], text, &e->kernels[k]));
     }
     return EG_OK;
 }
@@ -53,7 +53,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     size_t free_bytes, total_bytes;
     CHECK(pc_memory(&free_bytes, &total_bytes));
     e->free_before = (int64_t)free_bytes;
-    e->budget = (int64_t)free_bytes - ((int64_t)256 << 20); /* left for the driver and for other processes, whose own plans are already placed */
+    e->budget = (int64_t)free_bytes - ((int64_t)256 << 20) - dp_fork_bytes(); /* left for the driver and for other processes, whose own plans are already placed, and the fork buffer */
     if (budget > 0 && budget < e->budget) e->budget = budget;
     e->op_cap = 4096;
     e->ops = calloc((size_t)e->op_cap, sizeof *e->ops);
@@ -65,6 +65,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     CHECK(pc_alloc((size_t)e->placed.workspace, &e->workspace));
     if (e->placed.slot) { CHECK(pc_alloc((size_t)e->placed.slot, &e->slots[0])); CHECK(pc_alloc((size_t)e->placed.slot, &e->slots[1])); }
     CHECK(pc_alloc((size_t)e->placed.resident, &e->arena));
+    CHECK(pc_alloc((size_t)dp_fork_bytes(), &e->fork));
     CHECK(pc_stream(&e->compute));
     CHECK(pc_stream(&e->copy));
     int64_t at = 0;
@@ -96,13 +97,19 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     return e->rope_work ? EG_OK : EG_FAILED;
 }
 
+/* Embedding rows of tokens[0..count) and rotary coefficients for positions
+   start..start+count into the pinned inputs, both computed by Coax. */
+static int stage(EgEngine *e, const int64_t *tokens, int64_t count, int64_t start) {
+    if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, EG_WIDTH, e->model.embedding, (coax_v_f32){e->x, count * EG_WIDTH})) return EG_REFUSED;
+    coax_t_QwResult r = qw_rope(start, count, (coax_v_f32){e->rope, count * 64}, (coax_v_f32){e->rope_work, count * 64}, 0);
+    return r.status ? EG_REFUSED : EG_OK;
+}
+
 int eg_prepare(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix) {
     if (count < 1 || count > e->max_tokens) return EG_REFUSED;
     e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->plan.status) return EG_REFUSED;
-    if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, EG_WIDTH, e->model.embedding, (coax_v_f32){e->x, count * EG_WIDTH})) return EG_REFUSED;
-    coax_t_QwResult r = qw_rope(0, count, (coax_v_f32){e->rope, count * 64}, (coax_v_f32){e->rope_work, count * 64}, 0);
-    if (r.status) return EG_REFUSED;
+    if (stage(e, tokens, count, 0)) return EG_REFUSED;
     e->tokens = count;
     e->prefix = prefix;
     return EG_OK;
@@ -126,7 +133,7 @@ int eg_issue(EgEngine *e, int64_t i, PcStream compute) {
         coax_t_DpArg *a = &op->args.e[k];
         args[k] = (PcArg){(PcArgKind)a->kind, a->value, a->real, 0, a->count};
         if (a->kind == 4) {
-            PcBuffer base = a->buffer == 0 ? e->workspace : a->buffer <= 2 ? e->slots[a->buffer - 1] : e->address[a->buffer - 3];
+            PcBuffer base = a->buffer == 0 ? e->workspace : a->buffer <= 2 ? e->slots[a->buffer - 1] : a->buffer == EG_FORK_BUFFER ? e->fork : e->address[a->buffer - 3];
             if (!base) return EG_FAILED;
             args[k].data = base + (PcBuffer)a->offset;
         }
@@ -140,11 +147,11 @@ int eg_layer_start(const EgEngine *e, int64_t i) {
     return dp_stop_point(e->ops[i]);
 }
 
-int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context) {
-    int r = eg_prepare(e, tokens, count, prefix);
-    if (r) return r;
+/* Upload the staged inputs of `count` tokens and issue the current plan. */
+static int run(EgEngine *e, int64_t count, int (*stop)(void *), void *context) {
+    int r;
     CHECK(pc_upload(e->workspace + (PcBuffer)dp_input_offset(count), e->x, (size_t)count * EG_WIDTH * 4, e->compute));
-    CHECK(pc_upload(e->workspace + (PcBuffer)dp_rope_offset(count), e->rope, (size_t)count * 64 * 4, e->compute));
+    CHECK(pc_upload(e->workspace + (PcBuffer)e->plan.rope, e->rope, (size_t)count * 64 * 4, e->compute));
     for (int64_t i = 0; i < e->plan.ops; i++) {
         if (stop && eg_layer_start(e, i)) {
             /* Let the device catch up so the check sees time actually spent. */
@@ -157,7 +164,41 @@ int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix,
         r = eg_issue(e, i, e->compute);
         if (r) return r;
     }
-    CHECK(pc_download(e->logits, e->workspace + (PcBuffer)dp_logits_offset(count), EG_VOCAB * 4, e->compute));
+    return EG_OK;
+}
+
+int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context) {
+    int r = eg_prepare(e, tokens, count, prefix);
+    if (r) return r;
+    e->forked = 0;
+    if ((r = run(e, count, stop, context))) return r;
+    CHECK(pc_download(e->logits, e->workspace + (PcBuffer)e->plan.logits, EG_VOCAB * 4, e->compute));
     CHECK(pc_sync());
+    return EG_OK;
+}
+
+int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context) {
+    if (prefix < 1 || prefix >= count || count > e->max_tokens) return eg_decide(e, tokens, count, prefix, stop, context);
+    coax_v_bool stream = {e->stream, EG_STREAMABLE};
+    coax_v_t_DpOp ops = {e->ops, e->op_cap};
+    int r;
+    if (e->fork_length != prefix || memcmp(e->fork_tokens, tokens, (size_t)prefix * sizeof *tokens)) {
+        e->fork_length = 0; /* the buffer is about to change: a stopped pass leaves no fork */
+        e->plan = dp_plan_prefix(prefix, e->placed, stream, ops);
+        if (e->plan.status) return EG_REFUSED;
+        if ((r = stage(e, tokens, prefix, 0)) || (r = run(e, prefix, stop, context))) return r;
+        CHECK(pc_sync()); /* the pinned inputs are staged again next */
+        memcpy(e->fork_tokens, tokens, (size_t)prefix * sizeof *tokens);
+        e->fork_length = prefix;
+        e->prefix_passes++;
+    }
+    e->plan = dp_plan_suffix(prefix, count - prefix, e->placed, stream, ops);
+    if (e->plan.status) return EG_REFUSED;
+    if ((r = stage(e, tokens + prefix, count - prefix, prefix)) || (r = run(e, count - prefix, stop, context))) return r;
+    CHECK(pc_download(e->logits, e->workspace + (PcBuffer)e->plan.logits, EG_VOCAB * 4, e->compute));
+    CHECK(pc_sync());
+    e->tokens = count;
+    e->prefix = prefix;
+    e->forked = 1;
     return EG_OK;
 }

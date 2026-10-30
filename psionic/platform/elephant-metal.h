@@ -11,7 +11,9 @@
 #include "decision-answer.h"
 #include "plan.h"
 
-#define EG_KERNELS 21   /* DP_KERNELS: the CUDA engine's 19 and the two matrix-unit tiles */
+#define EG_KERNELS 23   /* DP_KERNELS: the CUDA engine's 21 and the two matrix-unit tiles */
+#define EG_MAX_TOKENS 512 /* DP_MAX_TOKENS */
+#define EG_FORK_BUFFER 517 /* DP_FORK_BUFFER: views into the fork buffer */
 #define EG_WEIGHTS 514  /* DP_WEIGHTS */
 #define EG_STREAMABLE 277 /* DP_STREAMABLE */
 #define EG_WIDTH 4096   /* DP_WIDTH */
@@ -31,12 +33,14 @@ typedef struct {
     coax_t_DpPlan placed, plan;
     _Bool stream[EG_STREAMABLE];
     coax_t_DpOp *ops;
-    PmBuffer workspace, arena;
+    PmBuffer workspace, arena, fork; /* fork: the kept prefix state (dp_fork_bytes) */
     int64_t offset[EG_WEIGHTS]; /* each resident weight's byte offset in the arena */
     int64_t bytes[EG_WEIGHTS];
     float logits[EG_VOCAB];
     float *rope_work;
     int64_t tokens, prefix;
+    int64_t fork_tokens[EG_MAX_TOKENS], fork_length; /* the prefix the fork buffer holds; 0: none */
+    int64_t forked, prefix_passes;                     /* the last decision forked; prefix passes run */
     double compile_seconds, upload_seconds, gpu_seconds; /* gpu_seconds: the last decision's command buffers */
     int64_t resident_bytes, pinned_bytes; /* pinned_bytes stays 0: nothing streams */
 } EgEngine;
@@ -58,6 +62,11 @@ int eg_encode(EgEngine *e, PmBatch batch, int64_t from, int64_t to);
    be null) is asked before each layer; when it returns true the decision is
    abandoned with nothing published and EG_STOPPED is returned. */
 int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
+/* The same decision through a fork (chapter 8): the prefix block (tokens
+   0..prefix) runs once and is kept; this and every later decision with the
+   same prefix tokens runs only its suffix from the kept state. Without a
+   prefix (0) it is eg_decide. e->forked says which way it ran. */
+int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
 int eg_layer_start(const EgEngine *e, int64_t i);
 
 #endif

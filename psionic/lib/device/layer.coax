@@ -86,6 +86,40 @@ dl_scan :: (item:int,tokens:int,heads:int,key_heads:int,channels:int,conv:[]f32,
 }
 // book:end scan
 
+// book:begin fork
+// A forked decision (chapter 8): the prefix block runs once and keeps each
+// linear layer's last three convolution inputs and delta-rule state; every
+// question's suffix starts from them. mode bit 0 starts from the kept values
+// (else zero), bit 1 keeps the final ones. history holds the three inputs
+// oldest first (3 x channels); state holds item's column (128 per item).
+dl_conv_state :: (item:int,channels:int,tokens:int,input:[]f32,weight:[]f32,out:[]f32,history:[]f32,mode:int) #export_c {
+    w:=weight[4*item..<4*item+4];a:f32=0;b:f32=0;c:f32=0;
+    if (mode&1)!=0 {a=history[item];b=history[channels+item];c=history[2*channels+item];}
+    for t:0..<tokens {
+        d:=input[t*channels+item];
+        acc:=f64(a)*f64(w[0])+f64(b)*f64(w[1])+f64(c)*f64(w[2])+f64(d)*f64(w[3]);
+        out[t*channels+item]=f32(acc*dl_sigmoid(acc));
+        a=b;b=c;c=d;
+    }
+    if (mode&2)!=0 {history[item]=a;history[channels+item]=b;history[2*channels+item]=c;}
+}
+dl_scan_state :: (item:int,tokens:int,heads:int,key_heads:int,channels:int,conv:[]f32,q:[]f32,k:[]f32,beta:[]f32,decay:[]f32,out:[]f32,kept:[]f32,mode:int) #export_c {
+    h:=item/128;c:=item%128;kh:=h/(heads/key_heads);vbase:=key_heads*256+h*128+c;
+    state:[128]f32;
+    if (mode&1)!=0 {for r:0..<128 {state[r]=kept[item*128+r];}}
+    for t:0..<tokens {
+        kb:=(t*key_heads+kh)*128;kr:=k[kb..<kb+128];qr:=q[kb..<kb+128];
+        g:=decay[t*heads+h];memory:f32=0;
+        for r:0..<128 {state[r]=state[r]*g;memory+=state[r]*kr[r];}
+        delta:=(conv[t*channels+vbase]-memory)*beta[t*heads+h];
+        result:f32=0;
+        for r:0..<128 {state[r]+=kr[r]*delta;result+=qr[r]*state[r];}
+        out[(t*heads+h)*128+c]=result;
+    }
+    if (mode&2)!=0 {for r:0..<128 {kept[item*128+r]=state[r];}}
+}
+// book:end fork
+
 // Token t, value head h (item t*heads+h): RMS-normalize the head's 128
 // outputs, scale by gamma and gate by silu(z).
 dl_gate_norm :: (item:int,epsilon:f32,draft:[]f32,gamma:[]f32,z:[]f32,out:[]f32) #export_c {
@@ -312,4 +346,56 @@ dl_attend :: (item:int,tokens:int,heads:int,kv_heads:int,probs:[]f64,v:[]f32,qpr
         for s:0..<3 {acc+=probs[th*3+s]*f64(v[(s*2+kv)*256+i]);}
         #assert out[th*256+i]==f32(acc*dl_sigmoid(f64(t-h)));
     }}}}
+}
+#test "a forked convolution continues exactly where the prefix stopped" {
+    // Three channels, seven tokens, split after 2 (fewer than the history) and after 4.
+    input:[21]f32;for i:0..<21 {input[i]=f32((5*i)%11)-5+0.25*f32(i%3);}
+    weight:=[12]f32.[1,-2,3,4, 0.5,0.25,-1,2, -3,1,1,-0.5];
+    whole:[21]f32;for ch:0..<3 {dl_conv(ch,3,7,input[..],weight[..],whole[..]);}
+    for split:2..<5 {
+        history:[9]f32;out:[21]f32;for i:0..<9 {history[i]=99;}
+        for ch:0..<3 {dl_conv_state(ch,3,split,input[0..<3*split],weight[..],out[0..<3*split],history[..],2);}
+        if split==2 {#assert history[0]==0 && history[1]==0 && history[2]==0 && history[3]==input[0] && history[8]==input[5];}
+        kept:[9]f32;for i:0..<9 {kept[i]=history[i];}
+        for ch:0..<3 {dl_conv_state(ch,3,7-split,input[3*split..<21],weight[..],out[3*split..<21],history[..],1);}
+        for i:0..<9 {#assert history[i]==kept[i];} // a suffix leaves the prefix's history alone
+        for i:0..<21 {#assert out[i]==whole[i];}
+    }
+    // Mode 0 is the plain convolution and keeps nothing; mode 3 loads and stores.
+    zero:[21]f32;history:[9]f32;for i:0..<9 {history[i]=7;}
+    for ch:0..<3 {dl_conv_state(ch,3,7,input[..],weight[..],zero[..],history[..],0);}
+    for i:0..<21 {#assert zero[i]==whole[i];}
+    for i:0..<9 {#assert history[i]==7;}
+    for i:0..<9 {history[i]=0;}
+    for ch:0..<3 {dl_conv_state(ch,3,3,input[0..<9],weight[..],zero[0..<9],history[..],3);}
+    for ch:0..<3 {dl_conv_state(ch,3,4,input[9..<21],weight[..],zero[9..<21],history[..],3);}
+    for i:0..<21 {#assert zero[i]==whole[i];}
+    #assert history[0]==input[12] && history[3]==input[15] && history[8]==input[20];
+}
+#test "a forked delta rule continues exactly where the prefix stopped" {
+    // Four value heads over two key heads, five tokens, every value nonzero;
+    // six columns (items) of the 512, each independent of the others.
+    channels:=1024;conv:[5120]f32;q:[1280]f32;k:[1280]f32;beta:[20]f32;decay:[20]f32;
+    for i:0..<5120 {conv[i]=f32((7*i)%13)-6;}
+    for i:0..<1280 {q[i]=f32((3*i)%5)*0.125-0.25;k[i]=f32((11*i)%7)*0.0625-0.1875;}
+    for i:0..<20 {beta[i]=f32(0.25+0.03125*f64(i));decay[i]=f32(0.75+0.0078125*f64(i));}
+    items:=[6]int.[0,1,255,256,383,511];
+    whole:[2560]f32;for item:items {dl_scan(item,5,4,2,channels,conv[..],q[..],k[..],beta[..],decay[..],whole[..]);}
+    for split:1..<5 {
+        kept:[65536]f32;out:[2560]f32;n:=5-split;
+        for item:items {dl_scan_state(item,split,4,2,channels,conv[0..<split*channels],q[0..<split*256],k[0..<split*256],beta[0..<4*split],decay[0..<4*split],out[0..<split*512],kept[..],2);}
+        first:=kept[511*128+3];
+        for item:items {dl_scan_state(item,n,4,2,channels,conv[split*channels..<5120],q[split*256..<1280],k[split*256..<1280],beta[4*split..<20],decay[4*split..<20],out[split*512..<2560],kept[..],1);}
+        for t:0..<5 {for item:items {at:=(t*4+item/128)*128+item%128;#assert out[at]==whole[at];}}
+        #assert kept[511*128+3]==first && first!=0; // a suffix leaves the prefix's state alone
+    }
+    // Mode 0 starts from zero and keeps nothing; mode 3 loads, then stores.
+    kept:[65536]f32;out:[2560]f32;for i:0..<65536 {kept[i]=5;}
+    for item:items {dl_scan_state(item,5,4,2,channels,conv[..],q[..],k[..],beta[..],decay[..],out[..],kept[..],0);}
+    for t:0..<5 {for item:items {at:=(t*4+item/128)*128+item%128;#assert out[at]==whole[at];}}
+    #assert kept[0]==5 && kept[65535]==5;
+    for i:0..<65536 {kept[i]=0;}
+    for item:items {dl_scan_state(item,2,4,2,channels,conv[0..<2048],q[0..<512],k[0..<512],beta[0..<8],decay[0..<8],out[0..<1024],kept[..],3);}
+    for item:items {dl_scan_state(item,3,4,2,channels,conv[2048..<5120],q[512..<1280],k[512..<1280],beta[8..<20],decay[8..<20],out[1024..<2560],kept[..],3);}
+    for t:0..<5 {for item:items {at:=(t*4+item/128)*128+item%128;#assert out[at]==whole[at];}}
 }

@@ -102,9 +102,12 @@ dp_give :: (b:DpBuilder)->DpBuilder {
 }
 // A matrix projection whose weight may stream.
 dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
-    if !dp_streamed(w,b.stream) {return dp_project(b,p,dp_matrix(w),rows,cols,tokens,input,output);}
+    return dp_project_weight_to(b,p,w,rows,cols,tokens,input,dp_ws(output,tokens*rows));
+}
+dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder {
+    if !dp_streamed(w,b.stream) {return dp_project_to(b,p,dp_matrix(w),rows,cols,tokens,input,out);}
     r:=dp_take(b);
-    r=dp_project(r,p,DpArg.{kind=4,buffer=1+b.at%2},rows,cols,tokens,input,output);
+    r=dp_project_to(r,p,DpArg.{kind=4,buffer=1+b.at%2},rows,cols,tokens,input,out);
     return dp_give(r);
 }
 ```

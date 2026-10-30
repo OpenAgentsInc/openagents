@@ -313,13 +313,16 @@ PcStatus pc_launch_warps(PcKernel kernel, int64_t warps, int block, const PcArg 
 
 /* Parameter values are copied by the driver before these calls return. */
 PcStatus pc_program_create(size_t capacity,PcProgram *out){
-    if(!g.ready)return PC_ABSENT;if(!out || !capacity || capacity>SIZE_MAX/sizeof(void*))return PC_ARGUMENT;*out=NULL;
+    if(!g.ready)return PC_ABSENT;
+    if(!out || !capacity || capacity>SIZE_MAX/sizeof(void*))return PC_ARGUMENT;
+    *out=NULL;
     PcProgramData *p=calloc(1,sizeof *p);if(!p)return PC_MEMORY;
     p->nodes=calloc(capacity,sizeof *p->nodes);if(!p->nodes){free(p);return PC_MEMORY;}p->capacity=capacity;
     PcStatus code=check(g.cuGraphCreate(&p->graph,0),"cuGraphCreate");if(code){free(p->nodes);free(p);return code;}*out=p;return PC_OK;
 }
 static PcStatus program_node(PcProgram graph,size_t node,PcKernel kernel,int64_t items,int block,const PcArg *args,int count,int add){
-    if(!g.ready)return PC_ABSENT;PcProgramData *p=graph;
+    if(!g.ready)return PC_ABSENT;
+    PcProgramData *p=graph;
     if(!p || !kernel || items<1 || block<1 || block>1024 || count<0 || count>30 || (count && !args) || items>INT64_MAX-block)return PC_ARGUMENT;
     int64_t blocks=(items+block-1)/block;if(blocks>2147483647)return PC_ARGUMENT;
     if(add ? (p->exec || p->count>=p->capacity) : (!p->exec || node>=p->count))return PC_ARGUMENT;
@@ -327,20 +330,24 @@ static PcStatus program_node(PcProgram graph,size_t node,PcKernel kernel,int64_t
     PcNodeParams params={kernel,(unsigned)blocks,1,1,(unsigned)block,1,1,0,pointers,NULL};
     if(!add)return check(g.cuGraphExecKernelNodeSetParams(p->exec,p->nodes[node],&params),"cuGraphExecKernelNodeSetParams");
     code=check(g.cuGraphAddKernelNode(&p->nodes[p->count],p->graph,p->count?(const void *const *)&p->nodes[p->count-1]:NULL,p->count?1:0,&params),"cuGraphAddKernelNode");
-    if(!code)p->count++;return code;
+    if(!code)p->count++;
+    return code;
 }
 PcStatus pc_program_add(PcProgram p,PcKernel k,int64_t items,int block,const PcArg *args,int count){return program_node(p,0,k,items,block,args,count,1);}
 PcStatus pc_program_set(PcProgram p,size_t node,PcKernel k,int64_t items,int block,const PcArg *args,int count){return program_node(p,node,k,items,block,args,count,0);}
 PcStatus pc_program_ready(PcProgram graph){
-    if(!g.ready)return PC_ABSENT;PcProgramData *p=graph;if(!p || p->exec || !p->count)return PC_ARGUMENT;
+    if(!g.ready)return PC_ABSENT;
+    PcProgramData *p=graph;if(!p || p->exec || !p->count)return PC_ARGUMENT;
     return check(g.cuGraphInstantiate(&p->exec,p->graph,0),"cuGraphInstantiate");
 }
 PcStatus pc_program_replay(PcProgram graph,PcStream stream){
-    if(!g.ready)return PC_ABSENT;PcProgramData *p=graph;if(!p || !p->exec)return PC_ARGUMENT;
+    if(!g.ready)return PC_ABSENT;
+    PcProgramData *p=graph;if(!p || !p->exec)return PC_ARGUMENT;
     return check(g.cuGraphLaunch(p->exec,stream),"cuGraphLaunch");
 }
 PcStatus pc_program_free(PcProgram graph){
-    if(!g.ready)return PC_ABSENT;PcProgramData *p=graph;if(!p)return PC_OK;PcStatus code=PC_OK;
+    if(!g.ready)return PC_ABSENT;
+    PcProgramData *p=graph;if(!p)return PC_OK;PcStatus code=PC_OK;
     if(p->exec)code=check(g.cuGraphExecDestroy(p->exec),"cuGraphExecDestroy");
     PcStatus last=check(g.cuGraphDestroy(p->graph),"cuGraphDestroy");free(p->nodes);free(p);return code?code:last;
 }

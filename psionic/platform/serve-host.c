@@ -325,7 +325,8 @@ static int64_t decide_gpu(Server *s, coax_t_SvRequest request, int64_t started) 
     for (int64_t i = 0; code == COAX_SvCode_none && i < request.questions; i++) {
         coax_t_SvStaged staged = sv_stage(s->engine, request, s->pools, s->work, i);
         if ((code = staged.code) != COAX_SvCode_none) break;
-        int r = eg_decide(s->gpu, s->work.tokens.data, staged.prepared.written, staged.prepared.prefix, gpu_stop, s);
+        /* Questions share the state prefix: it runs once (chapter 8), each suffix from it. */
+        int r = eg_decide_fork(s->gpu, s->work.tokens.data, staged.prepared.written, staged.prepared.prefix, gpu_stop, s);
         if (r == EG_STOPPED) return -1;
         if (r) { code = COAX_SvCode_internal; break; }
         code = sv_read(s->engine, request, s->pools, i, staged.prepared, (coax_v_f32){s->gpu->logits, EG_VOCAB}, s->answers, s->work.prob);

@@ -21,7 +21,7 @@
 #include <unistd.h>
 
 /* The plan's constants (psionic/lib/device/plan.coax). */
-#define DP_KERNELS 19
+#define DP_KERNELS 21
 #define DP_WEIGHTS 514
 #define DP_WIDTH 4096
 #define DP_VOCAB 248320
@@ -95,6 +95,8 @@ static void cpu_launch(CpuLaunch *c) {
         case 16: dl_attend(i, I(0), I(1), I(2), VD(3), VF(4), VF(5), VF(6)); break;
         case 17: dw_split(i, I(0), I(1), VF(2), VW(3), VW(4)); break;
         case 18: dw_project(i, I(0), I(1), I(2), I(3), VW(4), VW(5), VW(6), VF(7)); break;
+        case 19: dl_conv_state(i, I(0), I(1), VF(2), VF(3), VF(4), VF(5), I(6)); break;
+        case 20: dl_scan_state(i, I(0), I(1), I(2), I(3), VF(4), VF(5), VF(6), VF(7), VF(8), VF(9), VF(10), I(11)); break;
         default: fprintf(stderr, "unknown kernel %u\n", c->op->kernel); exit(1);
     }
 }
@@ -275,6 +277,37 @@ int main(int argc, char **argv) {
         for (int k = 0; k < shapes; k++)
             printf("  projection %6lld x %-5lld %3d launches %8.2f ms  %.2f TFLOP/s\n", (long long)shape_rows[k], (long long)shape_cols[k], shape_n[k],
                    shape_ms[k] * 1e3, 2.0 * shape_rows[k] * shape_cols[k] * T * shape_n[k] / shape_ms[k] / 1e12);
+    }
+    /* A forked decision (chapter 8): the prefix pass and then the suffix from
+       the kept state, then the suffix alone as a later question with the same
+       prefix would run it. Both must give the whole decision's answer within
+       0.0005; a suffix under 16 tokens projects with the work-item kernels,
+       so its logits need not match bit for bit. */
+    if (!replay) {
+        static float whole[DP_VOCAB];
+        memcpy(whole, logits, sizeof whole);
+        double fork_ms[2], worst = 0, fp[2], fw[2];
+        int64_t differ = 0;
+        for (int pass = 0; pass < 2; pass++) {
+            double tf = now();
+            int fr = eg_decide_fork(e, tokens, T, P, NULL, NULL);
+            if (fr || !e->forked) { fprintf(stderr, "forked decision status %d: %s\n", fr, eg_log()); return 1; }
+            fork_ms[pass] = (now() - tf) * 1e3;
+            for (int64_t v = 0; v < DP_VOCAB; v++) {
+                if (memcmp(&whole[v], &logits[v], 4)) differ++;
+                double d = fabs((double)whole[v] - (double)logits[v]);
+                if (d > worst) worst = d;
+            }
+        }
+        int64_t slot_ids[2] = {qr_pinned_slot(0), qr_pinned_slot(1)};
+        coax_t_QrResult forked = qr_read(COAX_QrKind_choice, 1, (coax_v_f32){logits, DP_VOCAB}, (coax_v_s64){slot_ids, 2}, (coax_v_f64){fp, 2}, (coax_v_f64){fw, 2}, 0);
+        int same = !forked.status && fabs(fp[0] - probabilities[0]) <= 0.0005 && fabs(fp[1] - probabilities[1]) <= 0.0005 && forked.best == answer.best;
+        printf("forked decision (prefix %lld, suffix %lld tokens): prefix pass and suffix %.1f ms, suffix alone %.1f ms (%lld prefix passes); "
+               "%lld of %d logits differ from the whole decision (largest %.3g); p_yes %.9g %s\n",
+               (long long)P, (long long)(T - P), fork_ms[0], fork_ms[1], (long long)e->prefix_passes, (long long)differ, 2 * DP_VOCAB, worst, fp[0], same ? "ok" : "FAIL");
+        if (!same || e->prefix_passes != 1) return 1;
+        if (eg_prepare(e, tokens, T, P)) return 1; /* the whole decision's plan again, for what follows */
+        memcpy(logits, whole, sizeof whole);
     }
     /* PSIONIC_DEVICE_QUALIFY=1: every launch of layers 0 and 3 (the first
        linear and full-attention layers) and of the readout is repeated on the

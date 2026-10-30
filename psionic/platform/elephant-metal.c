@@ -39,7 +39,7 @@ int eg_compile(EgEngine *e, const EgSources *src) {
         coax_string name = dp_kernel_name(k);
         char text[64];
         snprintf(text, sizeof text, "%.*s", (int)name.count, name.data);
-        CHECK(pm_kernel(e->modules[k < 3 ? 0 : k < 17 ? 1 : k < 19 ? 2 : 3], text, &e->kernels[k]));
+        CHECK(pm_kernel(e->modules[k < 3 ? 0 : k < 17 ? 1 : k < 19 ? 2 : k < 21 ? 1 : 3], text, &e->kernels[k]));
     }
     return EG_OK;
 }
@@ -59,6 +59,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     double t0 = seconds_now();
     CHECK(pm_alloc((size_t)e->placed.workspace, &e->workspace));
     CHECK(pm_alloc((size_t)e->placed.resident, &e->arena));
+    CHECK(pm_alloc((size_t)dp_fork_bytes(), &e->fork));
     uint8_t *arena = pm_contents(e->arena);
     int64_t at = 0;
     for (int64_t w = 0; w < EG_WEIGHTS; w++) {
@@ -78,15 +79,22 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     return e->rope_work ? EG_OK : EG_FAILED;
 }
 
+/* The current plan's inputs: embedding rows of tokens[0..count) and rotary
+   coefficients for positions start..start+count, both computed by Coax. */
+static int stage(EgEngine *e, const int64_t *tokens, int64_t count, int64_t start) {
+    uint8_t *ws = pm_contents(e->workspace);
+    float *x = (float *)(ws + dp_input_offset(count)), *rope = (float *)(ws + e->plan.rope);
+    if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, EG_WIDTH, e->model.embedding, (coax_v_f32){x, count * EG_WIDTH})) return EG_REFUSED;
+    coax_t_QwResult r = qw_rope(start, count, (coax_v_f32){rope, count * 64}, (coax_v_f32){e->rope_work, count * 64}, 0);
+    return r.status ? EG_REFUSED : EG_OK;
+}
+
 int eg_prepare(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix) {
     if (count < 1 || count > e->max_tokens) return EG_REFUSED;
     e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->plan.status) return EG_REFUSED;
-    uint8_t *ws = pm_contents(e->workspace);
-    float *x = (float *)(ws + dp_input_offset(count)), *rope = (float *)(ws + dp_rope_offset(count));
-    if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, EG_WIDTH, e->model.embedding, (coax_v_f32){x, count * EG_WIDTH})) return EG_REFUSED;
-    coax_t_QwResult r = qw_rope(0, count, (coax_v_f32){rope, count * 64}, (coax_v_f32){e->rope_work, count * 64}, 0);
-    if (r.status) return EG_REFUSED;
+    int r = stage(e, tokens, count, 0);
+    if (r) return r;
     e->tokens = count;
     e->prefix = prefix;
     return EG_OK;
@@ -103,6 +111,7 @@ int eg_encode(EgEngine *e, PmBatch batch, int64_t from, int64_t to) {
             if (a->kind == 4) {
                 if (a->buffer == 0) { args[k].buffer = e->workspace; args[k].offset = a->offset; }
                 else if (a->buffer >= 3 && a->buffer - 3 < EG_WEIGHTS && e->bytes[a->buffer - 3]) { args[k].buffer = e->arena; args[k].offset = e->offset[a->buffer - 3] + a->offset; }
+                else if (a->buffer == EG_FORK_BUFFER && e->fork) { args[k].buffer = e->fork; args[k].offset = a->offset; }
                 else { eg_note("operation %lld names buffer %lld", (long long)i, (long long)a->buffer); return EG_FAILED; }
             }
         }
@@ -114,10 +123,10 @@ int eg_encode(EgEngine *e, PmBatch batch, int64_t from, int64_t to) {
 
 int eg_layer_start(const EgEngine *e, int64_t i) { return dp_stop_point(e->ops[i]); }
 
-int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context) {
-    int r = eg_prepare(e, tokens, count, prefix);
-    if (r) return r;
-    e->gpu_seconds = 0;
+/* Run every operation of the current plan; one command buffer per layer when
+   the caller may stop between layers, otherwise all in one. */
+static int run(EgEngine *e, int (*stop)(void *), void *context) {
+    int r;
     /* One command buffer per layer when the caller may stop between layers;
        otherwise the whole decision in one. */
     int64_t from = 0;
@@ -136,6 +145,40 @@ int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix,
         e->gpu_seconds += seconds;
         from = to;
     }
-    memcpy(e->logits, (uint8_t *)pm_contents(e->workspace) + dp_logits_offset(count), sizeof e->logits);
+    return EG_OK;
+}
+
+int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context) {
+    int r = eg_prepare(e, tokens, count, prefix);
+    if (r) return r;
+    e->gpu_seconds = 0;
+    e->forked = 0;
+    if ((r = run(e, stop, context))) return r;
+    memcpy(e->logits, (uint8_t *)pm_contents(e->workspace) + e->plan.logits, sizeof e->logits);
+    return EG_OK;
+}
+
+int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context) {
+    if (prefix < 1 || prefix >= count || count > e->max_tokens) return eg_decide(e, tokens, count, prefix, stop, context);
+    coax_v_bool stream = {e->stream, EG_STREAMABLE};
+    coax_v_t_DpOp ops = {e->ops, e->op_cap};
+    int r;
+    e->gpu_seconds = 0;
+    if (e->fork_length != prefix || memcmp(e->fork_tokens, tokens, (size_t)prefix * sizeof *tokens)) {
+        e->fork_length = 0; /* the buffer is about to change: a stopped pass leaves no fork */
+        e->plan = dp_plan_prefix(prefix, e->placed, stream, ops);
+        if (e->plan.status) return EG_REFUSED;
+        if ((r = stage(e, tokens, prefix, 0)) || (r = run(e, stop, context))) return r;
+        memcpy(e->fork_tokens, tokens, (size_t)prefix * sizeof *tokens);
+        e->fork_length = prefix;
+        e->prefix_passes++;
+    }
+    e->plan = dp_plan_suffix(prefix, count - prefix, e->placed, stream, ops);
+    if (e->plan.status) return EG_REFUSED;
+    if ((r = stage(e, tokens + prefix, count - prefix, prefix)) || (r = run(e, stop, context))) return r;
+    memcpy(e->logits, (uint8_t *)pm_contents(e->workspace) + e->plan.logits, sizeof e->logits);
+    e->tokens = count;
+    e->prefix = prefix;
+    e->forked = 1;
     return EG_OK;
 }

@@ -9,7 +9,9 @@
 #include "decision-answer.h"
 #include "plan.h"
 
-#define EG_KERNELS 19   /* DP_KERNELS */
+#define EG_KERNELS 21   /* the first 21 of DP_KERNELS; the last two are Metal's */
+#define EG_MAX_TOKENS 512 /* DP_MAX_TOKENS */
+#define EG_FORK_BUFFER 517 /* DP_FORK_BUFFER: views into the fork buffer */
 #define EG_WEIGHTS 514  /* DP_WEIGHTS */
 #define EG_STREAMABLE 277 /* DP_STREAMABLE */
 #define EG_WIDTH 4096   /* DP_WIDTH */
@@ -29,7 +31,7 @@ typedef struct {
     coax_t_DpPlan placed, plan;   /* the opening placement; the current decision */
     _Bool stream[EG_STREAMABLE];
     coax_t_DpOp *ops;
-    PcBuffer workspace, slots[2], arena;
+    PcBuffer workspace, slots[2], arena, fork; /* fork: the kept prefix state (dp_fork_bytes) */
     PcBuffer address[EG_WEIGHTS];
     void *pinned[EG_WEIGHTS];
     int64_t bytes[EG_WEIGHTS];
@@ -37,6 +39,8 @@ typedef struct {
     PcEvent filled[2], released[2];
     float *x, *rope, *rope_work, *logits; /* pinned inputs and the logits */
     int64_t tokens, prefix;
+    int64_t fork_tokens[EG_MAX_TOKENS], fork_length; /* the prefix the fork buffer holds; 0: none */
+    int64_t forked, prefix_passes;                     /* the last decision forked; prefix passes run */
     double compile_seconds, upload_seconds;
     int64_t resident_bytes, pinned_bytes, free_before;
 } EgEngine;
@@ -63,6 +67,11 @@ int eg_issue(EgEngine *e, int64_t i, PcStream compute);
    true the decision is abandoned, the streams are drained and EG_STOPPED is
    returned with nothing published. */
 int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
+/* The same decision through a fork (chapter 8): the prefix block (tokens
+   0..prefix) runs once and is kept; this and every later decision with the
+   same prefix tokens runs only its suffix from the kept state. Without a
+   prefix (0) it is eg_decide. e->forked says which way it ran. */
+int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
 /* Whether operation i begins a layer (or the final norm). */
 int eg_layer_start(const EgEngine *e, int64_t i);
 
