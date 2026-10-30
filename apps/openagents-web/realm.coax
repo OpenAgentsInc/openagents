@@ -1242,8 +1242,10 @@ draw_name :: (r: [] Realm, v: RealmView, out: [] f32, at: int) -> int {
   plate(r, b, 0.85, LOOK_PLAIN);
   vertices := draw_fit(k, out, at, name, b.x0 + 14 * k, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, GAP, SPACE, white(k, 0.95), w - 28 * k);
   if v.quest_line.count > 0 {
-    vertices = draw_fit(k, out, vertices, v.quest_line, t.x0 + 2 * k, t.y1 + 20 * k, 7.5 * k, GAP, SPACE,
-                        orange(k, ifx v.quest < QUEST_STEPS then 0.95f32 else 0.6f32), minimap_box(r).x0 - t.x0 - 16 * k);
+    // wrapped, not cut: on a phone the first step ("Walk in through the front door") is wider than the room left of the map
+    said: [1] f32;
+    vertices = draw_wrapped(k, out, vertices, v.quest_line, t.x0 + 2 * k, t.y1 + 12.5 * k, 7.5 * k, GAP, SPACE,
+                            orange(k, ifx v.quest < QUEST_STEPS then 0.95f32 else 0.6f32), minimap_box(r).x0 - t.x0 - 16 * k, 12.5 * k, false, true, said[..]);
   }
   return vertices;
 }
@@ -1288,7 +1290,10 @@ draw_ask :: (r: [] Realm, v: RealmView, out: [] f32, at: int, uniforms: [] f32) 
   // what happens to the words, under the box (analytics.coax)
   said: [1] f32;
   disclosure := ifx kind == TYPE_ASK then ASK_DISCLOSURE else ifx kind == TYPE_TEACH then TEACH_DISCLOSURE else ifx kind == TYPE_PIECE then PIECE_DISCLOSURE else TRACK_DISCLOSURE;
-  vertices = draw_wrapped(k, out, vertices, disclosure, b.x0 + 4 * k, b.y1 + 8 * k, 7 * k, GAP, SPACE, white(k, 0.7),
+  // under the box when it fits on the screen, else over it (the box sits on the bar, at the screen's bottom)
+  _ := draw_wrapped(k, out, vertices, disclosure, 0, 0, 7 * k, GAP, SPACE, white(k, 0), b.x1 - b.x0 - 8 * k, 14 * k, false, false, said[..]);
+  dy := ifx b.y1 + 8 * k + said[0] <= r[0].height - 4 * k then b.y1 + 8 * k else b.y0 - 10 * k - said[0];
+  vertices = draw_wrapped(k, out, vertices, disclosure, b.x0 + 4 * k, dy, 7 * k, GAP, SPACE, white(k, 0.7),
                           b.x1 - b.x0 - 8 * k, 14 * k, false, true, said[..]);
   return hud_button(r, out, vertices, BTN_CANCEL, cancel, "CANCEL", "ESC", false);
 }
