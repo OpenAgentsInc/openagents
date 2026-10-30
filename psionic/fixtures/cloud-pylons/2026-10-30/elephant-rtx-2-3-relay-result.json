@@ -1,0 +1,30 @@
+{
+  "captured_at": "2026-10-30T21:33Z",
+  "command": "bun psionic/tests/pylon/demo-buyer.ts --model elephant-1 --slug SLUG --discover 4 --timeout 45 --json",
+  "results": [
+    {
+      "slug": "oct30-gcloud-elephant-rtx-2",
+      "provider": "npub1w83rqe9aa6ln84nqrhgmdgvr2df5xkdhx7j5duvce9zg06kqqy9q59us3k",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+      "status": "answered",
+      "choice": "yes",
+      "probabilities": {
+        "yes": 0.757197863,
+        "no": 0.242802137
+      },
+      "latency_ms": 387
+    },
+    {
+      "slug": "oct30-gcloud-elephant-rtx-3",
+      "provider": "npub1mqpcda7wh7ek8dalqhn4gpa650mh8edjfrapm57zjv6h85dlq8fse25q7k",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+      "status": "answered",
+      "choice": "yes",
+      "probabilities": {
+        "yes": 0.757197863,
+        "no": 0.242802137
+      },
+      "latency_ms": 369
+    }
+  ]
+}

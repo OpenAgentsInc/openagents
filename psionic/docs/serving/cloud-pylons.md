@@ -9,9 +9,11 @@ build fingerprints are in [the rollout record](../../../docs/verification/psioni
 
 Project `openagentsgemini`, VM `psionic-rtx6000-pylon`, zone `us-central1-b`:
 one NVIDIA RTX PRO 6000 Blackwell Server Edition, 96 GB device memory,
-176 GiB host RAM, `g4-standard-48`, 200 GB Hyperdisk. It runs three independent
+176 GiB host RAM, `g4-standard-48`, 200 GB Hyperdisk. It runs five independent
 Coax model servers and Pylons on the shared card. Combined measured device use
-after adding original GPT-OSS20B is 80,783 MiB of 97,887 MiB.
+after adding original GPT-OSS20B was 80,783 MiB; after the two streaming
+Elephant servers (2026-10-30 21:30 UTC) it is 96,070 MiB of 97,887 MiB, so the
+card has no room for another model server.
 The old L4 VM `psionic-l4-elephant` stays stopped after repeated preemption;
 its earlier provider is not the current Elephant route.
 
@@ -20,6 +22,8 @@ its earlier provider is not the current Elephant route.
 | `elephant-1` | `59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7` | `oct30-gcloud-elephant-rtx` | `psionic-elephant-rtx` / `openagents-pylon-oct30-gcloud-elephant-rtx` |
 | `mammoth-1` | `d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829` | `oct30-gcloud-mammoth` | `psionic-mammoth` / `openagents-pylon-oct30-gcloud-mammoth` |
 | `gpt-oss-20b` | `23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599` | `oct30-gcloud-gptoss20b` | `psionic-gptoss20b` / `openagents-pylon-oct30-gcloud-gptoss20b` |
+| `elephant-1` | `71e23064bdeebf33d6601dd1b6a18353534359b737a546f198c94487eac0010a` | `oct30-gcloud-elephant-rtx-2` | `psionic-elephant-rtx-2` / `openagents-pylon-oct30-gcloud-elephant-rtx-2` |
+| `elephant-1` | `d80386f7cebfb363b7bf05e75407baa3f773e5b248fa1dd3c2933573d1bf01d3` | `oct30-gcloud-elephant-rtx-3` | `psionic-elephant-rtx-3` / `openagents-pylon-oct30-gcloud-elephant-rtx-3` |
 
 Exact identities:
 
@@ -37,7 +41,8 @@ These are declared/checkpoint-checked provider identities, not remote hardware
 attestation. The authenticated public endpoint forwards only its configured
 models through private native fleets and the relay. The model listeners
 remain `127.0.0.1:8796` (Elephant), `127.0.0.1:8797` (Mammoth), and
-`127.0.0.1:8795` (GPT-OSS). Ingress is denied except IAP SSH. There are no
+`127.0.0.1:8795` (GPT-OSS), `127.0.0.1:8798` and `127.0.0.1:8799` (the two
+streaming Elephants). Ingress is denied except IAP SSH. There are no
 upstream provider API keys, service-account scopes or outside inference
 services. GPT-OSS's local Responses bearer is retained in a private mode 0600
 file and never enters public events or argv.
@@ -62,10 +67,10 @@ gcloud compute instances start psionic-rtx6000-pylon \
 
 gcloud compute ssh psionic-rtx6000-pylon --tunnel-through-iap \
   --project=openagentsgemini --zone=us-central1-b \
-  --command='sudo journalctl -u psionic-mammoth -u psionic-elephant-rtx -u psionic-gptoss20b -n 30 --no-pager'
+  --command='sudo journalctl -u psionic-mammoth -u psionic-elephant-rtx -u psionic-gptoss20b -u psionic-elephant-rtx-2 -u psionic-elephant-rtx-3 -n 30 --no-pager'
 ```
 
-All six plain-model units are enabled. A boot starts the backends and Pylons; the Pylons
+All ten plain-model units are enabled. A boot starts the backends and Pylons; the Pylons
 retry while models authenticate/place and advertise only after their real
 reference checks pass. First-ever Mammoth authentication reads/hashes the
 54.7 GB originals and took about six minutes here. Retained verified-file
@@ -124,7 +129,15 @@ native programs.
 ## Model and upgrade limits
 
 The current servers admit 512 prepared tokens per decision. Elephant uses
-`--elephant-gpu`, port 8796, device budget 20,000 MiB; Mammoth uses
+`--elephant-gpu`, port 8796, device budget 20,000 MiB (14.79 GiB resident,
+16,260 MiB measured). The two added Elephants use ports 8798/8799 with
+`--device-mib 7000` each: 6.16 GiB resident plus 8.62 GiB pinned host memory
+streamed per decision, 7,620 MiB measured each. Their six-case doctors take
+about 1.5-1.7 s against 744 ms fully resident, and fresh relay tasks answered
+in 387 ms and 369 ms with the same probabilities as the resident Elephant. A
+CPU-only Elephant (`--elephant`) was tried on this host and refused: one
+single-threaded decision exceeded the 30 s warmup bound, so it is not
+deployed; Mammoth uses
 `--mammoth-gpu`, port 8797, requested budget 90,000 MiB, capped by observed
 free device memory. Both checkpoints are original pinned weights; Mammoth
 uses the frozen manifest covering both shards. GPT-OSS is not advertised
