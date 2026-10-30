@@ -363,3 +363,25 @@ and E. Then F. G about an hour before the talk.
   [`data/oct30-pylon-production`](verification/data/oct30-pylon-production/).
   The display-only full model-identity follow-up is recorded separately,
   without repeating passing unchanged-page/performance checks.
+
+- **Chapter 20 final, 2026-10-30 15:43 UTC, `aeeaf41140`.**
+  `psionic-fleet` now serves the opt-in loopback JSON `/v1/systemone` path:
+  verified fresh exact-identity free Pylons, encrypted correlated attempts,
+  complete asked-answer validation, bounded failover and same-identity local
+  fallback. The chapter, PLAN/README/SUMMARY, runnable example, invariants
+  and focused gates are on main. All three new authority inventories close:
+  **419 mutants killed, zero survivors**. A dedicated scope-filter compiler
+  keeps imported baseline checks while avoiding unchanged-library mutation;
+  native artifacts still use the previously qualified code generator.
+  The first frozen artifact passed 37 distinct native/adversarial cases and
+  real public Mac/Linux requests. The guarded successor fixes independently
+  reproduced confidence/score range edges and passes 17 affected/new cases
+  (numeric 10, real Coax relay/Pylon/toy all types 1, local framing 6) without
+  sanitizer findings. Its one deployment smoke returned 200 through Linux
+  `oct30-coderos-demo` in 991 ms. It is retained privately on Mac 127.0.0.1:8798;
+  the production cloud API is unchanged. The old proof is not relabeled as
+  the new binary: exact source/build hashes, case records and limits are in
+  `docs/verification/psionic-ch20-2026-10-30.md`,
+  `docs/verification/2026-10-30-fleet-numeric-boundaries.md` and the public
+  rehearsal data. Rebase preserved other agents' changes; all 88 qualified
+  Coax input hashes stayed unchanged, so passing gates were not repeated.

@@ -101,5 +101,6 @@
   "rebase_changes_in_source_graph": [],
   "compiler_sha256": "df4d78ef4ddc8f788cb4a87da31d538a2ecf174af14085a5f34ab1d868a80fb0",
   "emitted_c_sha256": "c2801dce27bc21b8b1e434d9bd6492fa76df3bd4d35500dea75523e3ca744ae9",
-  "sanitized_binary_sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54"
+  "sanitized_binary_sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54",
+  "source_commit": "a51f7b19bdbd32b876eca3d931bf98fca9fa9aba"
 }
