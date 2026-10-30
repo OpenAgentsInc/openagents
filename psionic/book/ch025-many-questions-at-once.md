@@ -119,8 +119,9 @@ the exact workspace a batch needs. With chapter 30a's checker, they show that
 a fully streamed batch launches what the resident batch launches up to the
 readout, with every copy used once and one value slot held across each full
 layer's questions. `coax test psionic/lib/device/plan.coax` passes 82 checks
-in debug and release builds. Mutation testing of the plan, run as two shards
-of `--jobs 8`, leaves no survivors (see the
+in debug and release builds. Mutation testing of the changed plan is still
+open. Two shards of `--jobs 8` were stopped after 30 minutes on a host at load
+78, before either reported (see the
 [record](../../docs/verification/psionic-ch25-2026-10-30.md)).
 
 The [example](../examples/many-questions.coax) plans the Lab request without
@@ -205,3 +206,5 @@ Mammoth) with an eviction rule; it is not built.
 - The Metal plan refuses batches.
 - A multi-entry prefix cache is not built.
 - Batches that mix short and long suffixes run one question at a time.
+- Zero-survivor mutation of the changed `plan.coax` has not been run to
+  completion.
