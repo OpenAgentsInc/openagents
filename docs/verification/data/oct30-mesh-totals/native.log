@@ -1,0 +1,14 @@
+demo admitted snapshot
+pylons 1, free 1 of 2 slots
+buyer-reported accepted jobs 1, units 1, rate 1
+trusted checker observations: pass 1, fail 0, inconclusive 0
+counted receipt 3333333333333333333333333333333333333333333333333333333333333333
+without trusted checkers: reported jobs 1, checker observations 0
+demo admitted snapshot
+pylons 1, free 1 of 2 slots
+buyer-reported accepted jobs 1, units 1, rate 1
+trusted checker observations: pass 1, fail 0, inconclusive 0
+counted receipt 3333333333333333333333333333333333333333333333333333333333333333
+without trusted checkers: reported jobs 1, checker observations 0
+synthetic maximum cohort: 32 beacons, 64 receipts, 128 checks; exact digests and bounds passed
+synthetic maximum cohort: 32 beacons, 64 receipts, 128 checks; exact digests and bounds passed

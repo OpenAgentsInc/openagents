@@ -1,0 +1,44 @@
+#import "Basic";
+#load "../lib/mesh/totals.coax";
+
+// Public synthetic identifiers exercise exact capacities and input ownership.
+// Signature admission is exercised by the independent native mesh harness.
+mtn_id :: (out:[]u8,value:int)->string {
+  digits:="0123456789abcdef";n:=value;
+  for i:0..<64 {out[63-i]=digits[n&15];n>>=4;}
+  return cast(string)out;
+}
+main :: () {
+  provider_bytes:[32*64]u8;provider_keys:[32]string;checker_bytes:[128*64]u8;checker_keys:[128]string;
+  beacon_bytes:[32*64]u8;receipt_bytes:[64*64]u8;request_bytes:[64*64]u8;check_bytes:[128*64]u8;
+  bs:[33]MtBeacon;rs:[65]MtReceipt;cs:[129]MtCheck;buyers:=[1]string.[MT_A];
+  for i:0..<32 {
+    provider_keys[i]=mtn_id(provider_bytes[i*64..<i*64+64],100+i);
+    bs[i]=MtBeacon.{event_id=mtn_id(beacon_bytes[i*64..<i*64+64],5000+31-i),provider=provider_keys[i],pylon="maximum",generation=1,observed_at=90,valid_until=120,status=0,family=i%3,total=64,free=32};
+  }
+  for i:0..<64 {
+    rs[i]=MtReceipt.{event_id=mtn_id(receipt_bytes[i*64..<i*64+64],20000+63-i),buyer=MT_A,provider=provider_keys[i%32],pylon="maximum",request=mtn_id(request_bytes[i*64..<i*64+64],10000+i),request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1};
+  }
+  for i:0..<128 {
+    checker_keys[i]=mtn_id(checker_bytes[i*64..<i*64+64],2000+i);
+    cs[i]=MtCheck.{event_id=mtn_id(check_bytes[i*64..<i*64+64],30000+127-i),checker=checker_keys[i],receipt_id=rs[i%64].event_id,provider=rs[i%64].provider,result_digest=MT_E,created_at=70,verdict=1+i%3};
+  }
+  p:=MtPolicy.{from=0,to=120,providers=provider_keys[..],buyers=buyers[..],checkers=checker_keys[..]};
+  result:=mt_recompute(p,bs[0..<32],rs[0..<64],cs[0..<128]);
+  #assert result.code==MT_OK && result.beacon_count==32 && result.receipt_count==64 && result.check_count==128;
+  #assert result.jobs_reported==64 && result.units_jobs==64 && result.rate==64 && result.pylons_online==32 && result.slots_total==2048 && result.slots_free==1024;
+  #assert result.by_family[0]==11 && result.by_family[1]==11 && result.by_family[2]==10;
+  #assert result.checks_pass==43 && result.checks_fail==43 && result.checks_inconclusive==42;
+  bh:=[32]u8.[10,192,111,144,128,100,21,154,29,93,57,13,249,101,110,34,127,97,2,244,158,102,112,106,178,29,115,79,163,71,144,216];
+  rh:=[32]u8.[34,204,175,47,243,106,125,139,17,228,121,235,130,104,75,231,61,74,193,125,26,18,146,0,198,179,155,212,49,184,2,208];
+  ch:=[32]u8.[118,155,102,194,62,112,76,236,214,118,64,208,42,153,181,157,73,255,190,73,170,157,220,27,55,130,115,77,207,218,158,199];
+  for i:0..<32 {#assert result.beacon_digest[i]==bh[i] && result.receipt_digest[i]==rh[i] && result.check_digest[i]==ch[i];}
+  // Output lists sort their own descriptors and retain the owned input arena.
+  #assert result.beacon_ids[0]==bs[31].event_id && result.receipt_ids[0]==rs[63].event_id && result.check_ids[0]==cs[127].event_id;
+  #assert bs[0].event_id==cast(string)beacon_bytes[0..<64] && rs[0].event_id==cast(string)receipt_bytes[0..<64] && cs[0].event_id==cast(string)check_bytes[0..<64];
+  for i:0..<4 {#assert result.paid_buckets[i]==0;}
+  #assert mt_recompute(p,bs[..],rs[0..<64],cs[0..<128]).code==MT_LIMIT;
+  #assert mt_recompute(p,bs[0..<32],rs[..],cs[0..<128]).code==MT_LIMIT;
+  #assert mt_recompute(p,bs[0..<32],rs[0..<64],cs[..]).code==MT_LIMIT;
+  print("synthetic maximum cohort: % beacons, % receipts, % checks; exact digests and bounds passed\n",result.beacon_count,result.receipt_count,result.check_count);
+}

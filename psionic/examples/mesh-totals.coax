@@ -1,0 +1,22 @@
+#import "Basic";
+#load "../lib/mesh/totals.coax";
+
+// Synthetic admitted DTOs illustrate the pure reader. The native mesh
+// reader constructs these only after verifying each original signed event.
+main :: () {
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];
+  p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};
+  b:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="demo",generation=1,observed_at=90,valid_until=120,status=0,family=2,total=2,free=1}];
+  r:=[2]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="demo",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1},MtReceipt.{}];
+  r[1]=r[0]; // receiving the same original event twice adds no credit
+  c:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_E,created_at=70,verdict=1}];
+  totals:=mt_recompute(p,b[..],r[..],c[..]);#assert totals.code==MT_OK;
+  print("demo admitted snapshot\n");
+  print("pylons %, free % of % slots\n",totals.pylons_online,totals.slots_free,totals.slots_total);
+  print("buyer-reported accepted jobs %, units %, rate %\n",totals.jobs_reported,totals.units_jobs,totals.rate);
+  print("trusted checker observations: pass %, fail %, inconclusive %\n",totals.checks_pass,totals.checks_fail,totals.checks_inconclusive);
+  print("counted receipt %\n",totals.receipt_ids[0]);
+  p.checkers=checkers[0..<0];totals=mt_recompute(p,b[..],r[..],c[..]);
+  #assert totals.jobs_reported==1 && totals.check_count==0 && totals.checks_fail==0;
+  print("without trusted checkers: reported jobs %, checker observations %\n",totals.jobs_reported,totals.check_count);
+}

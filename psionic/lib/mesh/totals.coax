@@ -1,0 +1,197 @@
+// Chapter21 free-pool projection. PRECONDITION: the private wire reader
+// verified each original event ID/signature, strict body/tags/content digest,
+// supported features and free jobs=1 profile before constructing these DTOs.
+// This unit does not verify signatures or accept a verified bit. Trust lists
+// are explicit, empty by default. Totals describe buyer/checker claims.
+#load "../../../coax/lib/crypto/sha256.coax";
+#authority;
+
+MT_BEACONS :: 32; MT_RECEIPTS :: 64; MT_CHECKS :: 128;
+MT_OK :: 0; MT_LIMIT :: 1; MT_WINDOW :: 2; MT_POLICY :: 3; MT_RECORD :: 4; MT_CONFLICT :: 5;
+MT_SAFE :: 9007199254740991;
+MtReceipt :: struct {event_id:string;buyer:string;provider:string;pylon:string;request:string;request_digest:string;result_digest:string;created_at:int;finished_at:int;accepted:bool;units:int;}
+MtCheck :: struct {event_id:string;checker:string;receipt_id:string;provider:string;result_digest:string;created_at:int;verdict:int;}
+// status: 0 online, 1 draining, 2 offline; family: 0 unified-memory, 1 gpu, 2 cpu.
+MtBeacon :: struct {event_id:string;provider:string;pylon:string;generation:int;observed_at:int;valid_until:int;status:int;family:int;total:int;free:int;}
+MtPolicy :: struct {from:int;to:int;providers:[]string;buyers:[]string;checkers:[]string;}
+MtResult :: struct {
+  code:int=MT_RECORD;beacon_count:int;receipt_count:int;check_count:int;
+  beacon_ids:[MT_BEACONS]string;receipt_ids:[MT_RECEIPTS]string;check_ids:[MT_CHECKS]string;
+  beacon_digest:[32]u8;receipt_digest:[32]u8;check_digest:[32]u8;
+  pylons_online:int;slots_total:int;slots_free:int;by_family:[3]int;
+  jobs_accepted:int;jobs_reported:int;units_jobs:int;checks_pass:int;checks_fail:int;checks_inconclusive:int;rate:int;paid_buckets:[4]int;
+}
+MT_A :: "1111111111111111111111111111111111111111111111111111111111111111";
+MT_B :: "2222222222222222222222222222222222222222222222222222222222222222";
+MT_C :: "3333333333333333333333333333333333333333333333333333333333333333";
+MT_D :: "4444444444444444444444444444444444444444444444444444444444444444";
+MT_E :: "5555555555555555555555555555555555555555555555555555555555555555";
+
+#test "scalar boundaries, explicit policy and canonical input commitments" {
+  #assert mt_hex(MT_A) && !mt_hex("") && !mt_hex(MT_A[0..<63]);long:[65]u8;for i:0..<65 {long[i]='a';}#assert !mt_hex(cast(string)long[..]);
+  text:[64]u8;for i:0..<64 {text[i]='a';}
+  for value:0..<256 {text[0]=cast(u8)value;want:=(value>=48 && value<=57)||(value>=97 && value<=102);#assert mt_hex(cast(string)text[..])==want;one:=[1]u8.[cast(u8)value];slug:=(value>=48&&value<=57)||(value>=97&&value<=122)||value==45||value==95;#assert mt_slug(cast(string)one[..])==slug;}
+  #assert !mt_slug("") && !mt_slug(cast(string)long[..]) && mt_slug(MT_A);
+  #assert mt_time(0) && mt_time(MT_SAFE) && !mt_time(-1) && !mt_time(MT_SAFE+1);
+  #assert mt_window(0,60) && mt_window(60,3660) && !mt_window(0,0) && !mt_window(0,3660) && !mt_window(1,60) && !mt_window(0,61) && !mt_window(-60,60) && !mt_window(0,MT_SAFE+1);
+  keys:=[2]string.[MT_A,MT_B];empty:[1]string;
+  #assert mt_has(keys[..],MT_A) && mt_has(keys[..],MT_B) && !mt_has(keys[..],MT_C) && !mt_has(empty[0..<0],MT_A);
+  #assert mt_policy(MtPolicy.{from=0,to=60}) && mt_policy(MtPolicy.{providers=keys[..],buyers=keys[..],checkers=keys[..]});
+  keys[1]="bad";#assert !mt_policy(MtPolicy.{providers=keys[..]}) && !mt_policy(MtPolicy.{buyers=keys[..]}) && !mt_policy(MtPolicy.{checkers=keys[..]});
+  #assert mt_less("","a") && mt_less("a","aa") && mt_less("a","b") && mt_less("ab","ac") && !mt_less("a","a") && !mt_less("aa","a") && !mt_less("b","a");
+  ids:=[3]string.[MT_B,MT_A,MT_B];mt_sort(ids[..]);#assert ids[0]==MT_A && ids[1]==MT_B && ids[2]==MT_B;mt_sort(empty[0..<0]);
+  expected:=[32]u8.[240,16,40,123,53,241,141,80,100,173,104,49,12,145,120,212,126,179,184,147,16,90,151,173,134,205,210,164,217,219,98,204];h:=mt_hash(ids[0..<2]);for i:0..<32 {#assert h[i]==expected[i];}
+  nil:=[32]u8.[227,176,196,66,152,252,28,20,154,251,244,200,153,111,185,36,39,174,65,228,100,155,147,76,164,149,153,27,120,82,184,85];h=mt_hash(empty[0..<0]);for i:0..<32 {#assert h[i]==nil[i];}
+}
+#test "free accepted jobs remain buyer claims and checks need independent explicit trust" {
+  bs:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+  rs:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  cs:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};
+  r:=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.code==MT_OK && r.pylons_online==1 && r.slots_total==3 && r.slots_free==2 && r.by_family[0]==1 && r.by_family[1]==0 && r.by_family[2]==0;
+  bh:=[32]u8.[49,56,187,155,199,141,242,124,71,62,207,209,65,15,123,212,94,186,193,245,156,243,255,156,254,77,183,122,171,122,237,211];
+  rh:=[32]u8.[121,189,125,127,214,132,179,153,133,124,88,43,27,113,114,221,242,119,212,254,27,2,126,197,43,40,218,58,227,129,230,117];
+  ch:=[32]u8.[244,53,242,66,11,80,199,14,200,8,101,207,142,32,177,105,135,65,101,251,133,118,180,134,51,202,242,168,23,109,46,74];
+  for i:0..<32 {#assert r.beacon_digest[i]==bh[i] && r.receipt_digest[i]==rh[i] && r.check_digest[i]==ch[i];}
+  #assert r.jobs_accepted==1 && r.jobs_reported==1 && r.units_jobs==1 && r.rate==1 && r.checks_pass==1 && r.checks_fail==0 && r.checks_inconclusive==0;
+  #assert r.beacon_count==1 && r.receipt_count==1 && r.check_count==1 && r.beacon_ids[0]==MT_A && r.receipt_ids[0]==MT_C && r.check_ids[0]==MT_D;
+  for i:0..<4 {#assert r.paid_buckets[i]==0;}
+  r=mt_recompute(MtPolicy.{from=0,to=120},bs[..],rs[..],cs[..]);#assert r.code==MT_OK && r.beacon_count==0 && r.receipt_count==0 && r.check_count==0;
+  empty:[1]string;p.buyers=empty[0..<0];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.pylons_online==1 && r.jobs_reported==0 && r.check_count==0;p.buyers=buyers[..];p.providers=empty[0..<0];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.pylons_online==0 && r.jobs_reported==0;p.providers=providers[..];p.checkers=empty[0..<0];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.jobs_reported==1 && r.check_count==0 && r.checks_fail==0;p.checkers=checkers[..];
+  cs[0].verdict=2;r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.checks_fail==1 && r.checks_pass==0 && r.jobs_reported==1;
+  cs[0].verdict=3;r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.checks_inconclusive==1 && r.checks_fail==0;
+  checkers[0]=MT_A;cs[0].checker=MT_A;r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.check_count==0;checkers[0]=MT_B;cs[0].checker=MT_B;r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.check_count==0;
+  rs[0].accepted=false;r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.jobs_reported==0 && r.check_count==0;
+}
+#test "canonical receipt and verdict selection is order independent and time bounded" {
+  bs:[1]MtBeacon;rs:=[2]MtReceipt.[MtReceipt.{event_id=MT_A,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1},MtReceipt.{}];rs[1]=rs[0];rs[1].event_id=MT_C;rs[1].created_at=63;
+  cs:=[2]MtCheck.[MtCheck.{event_id=MT_A,checker=MT_E,receipt_id=MT_A,provider=MT_B,result_digest=MT_C,created_at=70,verdict=1},MtCheck.{}];cs[1]=cs[0];cs[1].event_id=MT_B;cs[1].created_at=71;cs[1].verdict=2;
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=60,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};r:=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && r.receipt_ids[0]==MT_A && r.check_count==1 && r.check_ids[0]==MT_B && r.checks_fail==1;
+  rs[1].created_at=62;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && r.receipt_ids[0]==MT_A;
+  swap:=rs[0];rs[0]=rs[1];rs[1]=swap;cswap:=cs[0];cs[0]=cs[1];cs[1]=cswap;other:=mt_recompute(p,bs[0..<0],rs[..],cs[..]);for i:0..<32 {#assert r.receipt_digest[i]==other.receipt_digest[i] && r.check_digest[i]==other.check_digest[i];}
+  rs[0]=rs[1];cs[0]=cs[1];r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==1 && r.check_count==1 && r.checks_pass==1;
+  rs[0].created_at=61;rs[0].event_id=MT_C;rs[0].finished_at=59;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==0 && r.check_count==0;
+  rs[0]=rs[1];rs[1].event_id=MT_C;rs[0].finished_at=120;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.receipt_count==0;
+  rs[0].finished_at=60;cs[1].event_id=MT_B;cs[1].created_at=120;cs[1].verdict=2;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.checks_pass==1 && r.checks_fail==0;
+  cs[1].created_at=70;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.checks_fail==1 && r.check_ids[0]==MT_B;
+  cs[1].provider=MT_C;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.checks_pass==1;
+  cs[0].created_at=61;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.check_count==0;
+  cs[0].created_at=62;cs[1]=cs[0];cs[1].event_id=MT_B;cs[1].verdict=2;r=mt_recompute(p,bs[0..<0],rs[..],cs[..]);#assert r.check_count==1 && r.checks_fail==1;
+}
+#test "newer offline or expired beacons tombstone old capacity; future observations do not" {
+  bs:=[2]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=1,total=2,free=1},MtBeacon.{}];bs[1]=bs[0];bs[1].event_id=MT_B;bs[1].generation=2;bs[1].status=2;
+  rs:[1]MtReceipt;cs:[1]MtCheck;keys:=[1]string.[MT_B];p:=MtPolicy.{from=60,to=120,providers=keys[..]};r:=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==0;
+  bs[1].observed_at=120;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==0;bs[1].observed_at=90;
+  bs[1].status=1;bs[1].family=2;bs[1].free=0;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.pylons_online==1 && r.slots_total==2 && r.slots_free==0 && r.by_family[2]==1 && r.beacon_ids[0]==MT_B;
+  bs[1].valid_until=119;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==0;
+  bs[1].observed_at=121;bs[1].valid_until=421;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==1 && r.beacon_ids[0]==MT_A && r.by_family[1]==1;
+  bs[1]=bs[0];bs[1].event_id=MT_B;bs[1].free=2;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_ids[0]==MT_B && r.slots_free==2;
+  bs[1].event_id=MT_A;bs[1].free=1;r=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.beacon_count==1;
+}
+#test "untrusted signer and provider noise is filtered before validation or dedup" {
+  bs:=[2]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_C,pylon="!",generation=-1},MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p",generation=0,observed_at=0,valid_until=120,status=0,family=0,total=2,free=1}];
+  rs:=[2]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_D,provider=MT_B,units=-1},MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  cs:=[2]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_A,verdict=99},MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};r:=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.code==MT_OK && r.beacon_count==1 && r.receipt_count==1 && r.check_count==1;
+  rs[0]=rs[1];rs[0].provider=MT_C;rs[0].created_at=0;rs[0].finished_at=0;r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.code==MT_OK && r.receipt_count==1 && r.check_count==1;
+}
+#test "every admitted receipt, label and beacon field is bounded before projection" {
+  a:=MtReceipt.{event_id=MT_A,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_C,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1};
+  #assert mt_receipt_valid(a);for i:0..<12 {v:=a;if i==0 {v.event_id="x";}if i==1 {v.buyer="x";}if i==2 {v.provider="x";}if i==3 {v.buyer=MT_B;}if i==4 {v.pylon="!";}if i==5 {v.request="x";}if i==6 {v.request_digest="x";}if i==7 {v.result_digest="";}if i==8 {v.created_at=-1;}if i==9 {v.finished_at=-1;}if i==10 {v.units=0;}if i==11 {v.units=2;}#assert !mt_receipt_valid(v);}
+  a.accepted=false;a.result_digest="";#assert mt_receipt_valid(a);a.result_digest="x";#assert !mt_receipt_valid(a);
+  c:=MtCheck.{event_id=MT_A,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_D,created_at=70,verdict=1};#assert mt_check_valid(c);
+  for i:0..<8 {v:=c;if i==0 {v.event_id="x";}if i==1 {v.checker="x";}if i==2 {v.receipt_id="x";}if i==3 {v.provider="x";}if i==4 {v.result_digest="x";}if i==5 {v.created_at=-1;}if i==6 {v.verdict=0;}if i==7 {v.verdict=4;}#assert !mt_check_valid(v);}
+  b:=MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=0,observed_at=0,valid_until=0,status=0,family=0,total=0,free=0};#assert mt_beacon_valid(b);b.status=2;b.family=2;b.total=64;b.free=64;b.valid_until=300;#assert mt_beacon_valid(b);
+  for i:0..<16 {v:=b;if i==0 {v.event_id="x";}if i==1 {v.provider="x";}if i==2 {v.pylon="";}if i==3 {v.generation=-1;}if i==4 {v.observed_at=-1;}if i==5 {v.valid_until=-1;}if i==6 {v.observed_at=301;}if i==7 {v.valid_until=301;}if i==8 {v.status=-1;}if i==9 {v.status=3;}if i==10 {v.family=-1;}if i==11 {v.family=3;}if i==12 {v.total=-1;}if i==13 {v.total=65;}if i==14 {v.free=-1;}if i==15 {v.free=65;}#assert !mt_beacon_valid(v);}
+}
+#test "record identity collisions refuse transactionally instead of selecting a body" {
+  bs:=[2]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2},MtBeacon.{}];bs[1]=bs[0];
+  rs:=[2]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1},MtReceipt.{}];rs[1]=rs[0];
+  cs:=[2]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1},MtCheck.{}];cs[1]=cs[0];
+  providers:=[3]string.[MT_A,MT_B,MT_C];buyers:=[2]string.[MT_A,MT_C];checkers:=[2]string.[MT_D,MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};
+  for i:0..<9 {v:=bs[0];if i==0 {v.provider=MT_C;}if i==1 {v.pylon="p2";}if i==2 {v.generation=2;}if i==3 {v.observed_at=91;}if i==4 {v.valid_until=121;}if i==5 {v.status=1;}if i==6 {v.family=1;}if i==7 {v.total=4;}if i==8 {v.free=1;}bs[1]=v;r:=mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]);#assert r.code==MT_CONFLICT && r.beacon_count==0;}
+  bs[1]=bs[0];for i:0..<9 {v:=rs[0];if i==0 {v.buyer=MT_C;}if i==1 {v.provider=MT_C;}if i==2 {v.pylon="p2";}if i==3 {v.request=MT_E;}if i==4 {v.request_digest=MT_C;}if i==5 {v.result_digest=MT_B;}if i==6 {v.created_at=63;}if i==7 {v.finished_at=61;}if i==8 {v.accepted=false;}rs[1]=v;r:=mt_recompute(p,bs[0..<0],rs[..],cs[0..<0]);#assert r.code==MT_CONFLICT && r.receipt_count==0;}
+  rs[1]=rs[0];for i:0..<6 {v:=cs[0];if i==0 {v.checker=MT_D;}if i==1 {v.receipt_id=MT_E;}if i==2 {v.provider=MT_C;}if i==3 {v.result_digest=MT_B;}if i==4 {v.created_at=71;}if i==5 {v.verdict=2;}cs[1]=v;r:=mt_recompute(p,bs[0..<0],rs[0..<0],cs[..]);#assert r.code==MT_CONFLICT && r.check_count==0;}
+  bs[0].event_id="";r:=mt_recompute(p,bs[0..<1],rs[0..<0],cs[0..<0]);#assert r.code==MT_RECORD;
+  rs[0].event_id="";r=mt_recompute(p,bs[0..<0],rs[0..<1],cs[0..<0]);#assert r.code==MT_RECORD;
+  cs[0].event_id="";r=mt_recompute(p,bs[0..<0],rs[0..<0],cs[0..<1]);#assert r.code==MT_RECORD;
+}
+#test "capacities refuse whole cohorts and exact limits remain usable" {
+  bs:[33]MtBeacon;rs:[65]MtReceipt;cs:[129]MtCheck;keys:[129]string;for i:0..<129 {keys[i]=MT_A;}
+  p:=MtPolicy.{from=0,to=60};#assert mt_recompute(p,bs[..],rs[0..<0],cs[0..<0]).code==MT_LIMIT;#assert mt_recompute(p,bs[0..<0],rs[..],cs[0..<0]).code==MT_LIMIT;#assert mt_recompute(p,bs[0..<0],rs[0..<0],cs[..]).code==MT_LIMIT;
+  #assert mt_policy(MtPolicy.{providers=keys[0..<32],buyers=keys[0..<64],checkers=keys[0..<128]});
+  #assert !mt_policy(MtPolicy.{providers=keys[0..<33]}) && !mt_policy(MtPolicy.{buyers=keys[0..<65]}) && !mt_policy(MtPolicy.{checkers=keys[..]});
+  p.providers=keys[0..<33];#assert mt_recompute(p,bs[0..<0],rs[0..<0],cs[0..<0]).code==MT_POLICY;p.providers=keys[0..<0];p.to=0;#assert mt_recompute(p,bs[0..<0],rs[0..<0],cs[0..<0]).code==MT_WINDOW;p.to=60;
+  for i:0..<32 {bs[i]=MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p",generation=0,observed_at=0,valid_until=60,status=0,family=0,total=0,free=0};}
+  for i:0..<64 {rs[i]=MtReceipt.{event_id=MT_A,buyer=MT_A,provider=MT_B,pylon="p",request=MT_C,request_digest=MT_D,result_digest=MT_E,created_at=0,finished_at=0,accepted=true,units=1};}
+  for i:0..<128 {cs[i]=MtCheck.{event_id=MT_A,checker=MT_E,receipt_id=MT_A,provider=MT_B,result_digest=MT_C,created_at=0,verdict=1};}
+  r:=mt_recompute(p,bs[0..<32],rs[0..<64],cs[0..<128]);#assert r.code==MT_OK;
+}
+#test "independent coordinates survive and every output ID list is canonical" {
+  bs:[3]MtBeacon;rs:[3]MtReceipt;cs:[3]MtCheck;ids:=[3]string.[MT_C,MT_B,MT_A];names:=[3]string.["p3","p2","p1"];
+  for i:0..<3 {bs[i]=MtBeacon.{event_id=ids[i],provider=MT_B,pylon=names[i],generation=1,observed_at=120,valid_until=120,status=0,family=i,total=3,free=i};rs[i]=MtReceipt.{event_id=ids[i],buyer=MT_A,provider=MT_B,pylon="p",request=ids[i],request_digest=MT_D,result_digest=MT_E,created_at=60,finished_at=60,accepted=true,units=1};cs[i]=MtCheck.{event_id=ids[i],checker=MT_E,receipt_id=ids[i],provider=MT_B,result_digest=MT_D,created_at=60,verdict=1};}
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=60,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};r:=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.beacon_count==3 && r.receipt_count==3 && r.check_count==3 && r.pylons_online==3 && r.slots_total==9 && r.slots_free==3 && r.jobs_reported==3 && r.checks_pass==3;
+  for i:0..<3 {#assert r.by_family[i]==1 && r.beacon_ids[i]==ids[2-i] && r.receipt_ids[i]==ids[2-i] && r.check_ids[i]==ids[2-i];}
+  b:=mt_hash(r.beacon_ids[0..<3]);q:=mt_hash(r.receipt_ids[0..<3]);c:=mt_hash(r.check_ids[0..<3]);for i:0..<32 {#assert r.beacon_digest[i]==b[i] && r.receipt_digest[i]==q[i] && r.check_digest[i]==c[i];}
+  cs[1].checker=MT_D;cs[1].receipt_id=MT_C;more:=[2]string.[MT_E,MT_D];p.checkers=more[..];r=mt_recompute(p,bs[..],rs[..],cs[..]);#assert r.check_count==3;
+}
+
+mt_hex :: (s:string)->bool {if s.count!=64 {return false;}for c:s {if !((c>='0'&&c<='9')||(c>='a'&&c<='f')) {return false;}}return true;}
+mt_slug :: (s:string)->bool {if s.count<1||s.count>64 {return false;}for c:s {if !((c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='-'||c=='_') {return false;}}return true;}
+mt_time :: (n:int)->bool {return n>=0 && n<=MT_SAFE;}
+mt_window :: (from:int,to:int)->bool {return mt_time(from)&&mt_time(to)&&to>from&&from%60==0&&to%60==0&&(to-from)/60<=60;}
+mt_has :: (keys:[]string,key:string)->bool {for k:keys {if k==key {return true;}}return false;}
+mt_policy :: (p:MtPolicy)->bool {
+  if p.providers.count>MT_BEACONS||p.buyers.count>MT_RECEIPTS||p.checkers.count>MT_CHECKS {return false;}
+  for key:p.providers {if !mt_hex(key) {return false;}}for key:p.buyers {if !mt_hex(key) {return false;}}for key:p.checkers {if !mt_hex(key) {return false;}}return true;
+}
+mt_less :: (a:string,b:string)->bool {for i:0..<a.count {if i>=b.count {return false;}if a[i]<b[i] {return true;}if a[i]>b[i] {return false;}}return a.count<b.count;}
+mt_receipt_valid :: (r:MtReceipt)->bool {return mt_hex(r.event_id)&&mt_hex(r.buyer)&&mt_hex(r.provider)&&r.buyer!=r.provider&&mt_slug(r.pylon)&&mt_hex(r.request)&&mt_hex(r.request_digest)&&(mt_hex(r.result_digest)||(!r.accepted&&r.result_digest==""))&&mt_time(r.created_at)&&mt_time(r.finished_at)&&r.units==1;}
+mt_check_valid :: (c:MtCheck)->bool {return mt_hex(c.event_id)&&mt_hex(c.checker)&&mt_hex(c.receipt_id)&&mt_hex(c.provider)&&mt_hex(c.result_digest)&&mt_time(c.created_at)&&c.verdict>=1&&c.verdict<=3;}
+mt_beacon_valid :: (b:MtBeacon)->bool {return mt_hex(b.event_id)&&mt_hex(b.provider)&&mt_slug(b.pylon)&&mt_time(b.generation)&&mt_time(b.observed_at)&&mt_time(b.valid_until)&&b.valid_until>=b.observed_at&&b.valid_until-b.observed_at<=300&&b.status>=0&&b.status<=2&&b.family>=0&&b.family<=2&&b.total>=0&&b.total<=64&&b.free>=0&&b.free<=b.total;}
+// Both records already passed units==1; comparing that constant again would
+// add no collision evidence. The remaining body fields can vary independently.
+mt_receipt_same :: (a:MtReceipt,b:MtReceipt)->bool {return a.buyer==b.buyer&&a.provider==b.provider&&a.pylon==b.pylon&&a.request==b.request&&a.request_digest==b.request_digest&&a.result_digest==b.result_digest&&a.created_at==b.created_at&&a.finished_at==b.finished_at&&a.accepted==b.accepted;}
+mt_check_same :: (a:MtCheck,b:MtCheck)->bool {return a.checker==b.checker&&a.receipt_id==b.receipt_id&&a.provider==b.provider&&a.result_digest==b.result_digest&&a.created_at==b.created_at&&a.verdict==b.verdict;}
+mt_beacon_same :: (a:MtBeacon,b:MtBeacon)->bool {return a.provider==b.provider&&a.pylon==b.pylon&&a.generation==b.generation&&a.observed_at==b.observed_at&&a.valid_until==b.valid_until&&a.status==b.status&&a.family==b.family&&a.total==b.total&&a.free==b.free;}
+mt_receipt_before :: (a:MtReceipt,b:MtReceipt)->bool {return a.created_at<b.created_at||(a.created_at==b.created_at&&mt_less(a.event_id,b.event_id));}
+mt_check_newer :: (a:MtCheck,b:MtCheck)->bool {return a.created_at>b.created_at||(a.created_at==b.created_at&&mt_less(b.event_id,a.event_id));}
+mt_beacon_newer :: (a:MtBeacon,b:MtBeacon)->bool {return a.generation>b.generation||(a.generation==b.generation&&(a.observed_at>b.observed_at||(a.observed_at==b.observed_at&&mt_less(b.event_id,a.event_id))));}
+mt_sort :: (ids:[]string) {for i:1..<ids.count {at:=i;while at>0&&mt_less(ids[at],ids[at-1]) {swap:=ids[at];ids[at]=ids[at-1];ids[at-1]=swap;at-=1;}}}
+mt_hash :: (ids:[]string)->[32]u8 {
+  // Called only for <=128 already-validated IDs. These bounds establish
+  // the checked SHA API's byte/output/nonalias preconditions by construction.
+  bytes:[MT_CHECKS*65]u8;at:=0;for i:0..<ids.count {if i>0 {bytes[at]=10;at+=1;}for c:ids[i] {bytes[at]=c;at+=1;}}
+  digest:[32]u8;done:=sha256_hash_checked(bytes[0..<at],digest[..],false);return digest;
+}
+mt_recompute :: (p:MtPolicy,beacons:[]MtBeacon,receipts:[]MtReceipt,checks:[]MtCheck)->MtResult #export_c {
+  bad:MtResult;
+  if beacons.count>MT_BEACONS||receipts.count>MT_RECEIPTS||checks.count>MT_CHECKS {bad.code=MT_LIMIT;return bad;}
+  if !mt_window(p.from,p.to) {bad.code=MT_WINDOW;return bad;}if !mt_policy(p) {bad.code=MT_POLICY;return bad;}
+  for i:0..<beacons.count {if !mt_has(p.providers,beacons[i].provider) {continue;}if !mt_beacon_valid(beacons[i]) {return bad;}for j:0..<i {if mt_has(p.providers,beacons[j].provider)&&beacons[i].event_id==beacons[j].event_id&&!mt_beacon_same(beacons[i],beacons[j]) {bad.code=MT_CONFLICT;return bad;}}}
+  for i:0..<receipts.count {if !mt_has(p.buyers,receipts[i].buyer)||!mt_has(p.providers,receipts[i].provider) {continue;}if !mt_receipt_valid(receipts[i]) {return bad;}for j:0..<i {if mt_has(p.buyers,receipts[j].buyer)&&mt_has(p.providers,receipts[j].provider)&&receipts[i].event_id==receipts[j].event_id&&!mt_receipt_same(receipts[i],receipts[j]) {bad.code=MT_CONFLICT;return bad;}}}
+  for i:0..<checks.count {if !mt_has(p.checkers,checks[i].checker) {continue;}if !mt_check_valid(checks[i]) {return bad;}for j:0..<i {if mt_has(p.checkers,checks[j].checker)&&checks[i].event_id==checks[j].event_id&&!mt_check_same(checks[i],checks[j]) {bad.code=MT_CONFLICT;return bad;}}}
+  r:MtResult;selected:[MT_RECEIPTS]bool;
+  for i:0..<beacons.count {
+    b:=beacons[i];if b.observed_at>p.to||!mt_has(p.providers,b.provider) {continue;}latest:=true;
+    for j:0..<beacons.count {v:=beacons[j];if v.provider==b.provider&&v.pylon==b.pylon&&v.observed_at<=p.to&&(mt_beacon_newer(v,b)||(v.event_id==b.event_id&&j<i)) {latest=false;}}
+    if !latest||b.valid_until<p.to||b.status==2 {continue;}
+    r.beacon_ids[r.beacon_count]=b.event_id;r.beacon_count+=1;r.pylons_online+=1;r.slots_total+=b.total;r.slots_free+=b.free;r.by_family[b.family]+=1;
+  }
+  for i:0..<receipts.count {
+    v:=receipts[i];if !mt_has(p.buyers,v.buyer)||!mt_has(p.providers,v.provider) {continue;}first:=true;for j:0..<receipts.count {other:=receipts[j];if other.buyer==v.buyer&&other.request==v.request&&mt_has(p.providers,other.provider)&&(mt_receipt_before(other,v)||(other.event_id==v.event_id&&j<i)) {first=false;}}
+    if !first||!v.accepted||v.finished_at<p.from||v.finished_at>=p.to {continue;}
+    selected[i]=true;r.receipt_ids[r.receipt_count]=v.event_id;r.receipt_count+=1;r.jobs_accepted+=1;r.units_jobs+=1;
+  }
+  for i:0..<checks.count {
+    c:=checks[i];if !mt_has(p.checkers,c.checker)||c.created_at>=p.to {continue;}subject:=-1;
+    for k:0..<receipts.count {if selected[k]&&receipts[k].event_id==c.receipt_id {subject=k;}}
+    if subject<0 {continue;}receipt:=receipts[subject];
+    if c.provider!=receipt.provider||c.checker==receipt.buyer||c.checker==receipt.provider||c.created_at<receipt.created_at {continue;}latest:=true;
+    for j:0..<checks.count {v:=checks[j];if v.checker==c.checker&&v.receipt_id==c.receipt_id&&v.provider==receipt.provider&&v.created_at>=receipt.created_at&&v.created_at<p.to&&(mt_check_newer(v,c)||(v.event_id==c.event_id&&j<i)) {latest=false;}}
+    if !latest {continue;}r.check_ids[r.check_count]=c.event_id;r.check_count+=1;
+    if c.verdict==1 {r.checks_pass+=1;}else if c.verdict==2 {r.checks_fail+=1;}else {r.checks_inconclusive+=1;}
+  }
+  mt_sort(r.beacon_ids[0..<r.beacon_count]);mt_sort(r.receipt_ids[0..<r.receipt_count]);mt_sort(r.check_ids[0..<r.check_count]);
+  r.beacon_digest=mt_hash(r.beacon_ids[0..<r.beacon_count]);r.receipt_digest=mt_hash(r.receipt_ids[0..<r.receipt_count]);r.check_digest=mt_hash(r.check_ids[0..<r.check_count]);r.jobs_reported=r.jobs_accepted;r.rate=r.jobs_accepted;r.code=MT_OK;return r;
+}

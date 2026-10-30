@@ -1,0 +1,44 @@
+{
+  "at": "2026-10-30T16:03:03.555548+00:00",
+  "unit": "psionic/lib/mesh/totals.coax",
+  "source_sha256": "a68c67b477e6f576f02ac2a4401c872dd91d5f3db39205b7639702464d6f2e52",
+  "compiler_input_fingerprint": "81ad04b7877f29c0f424154fb27589c1b1839ef1d05ed28d724c488fc72f28c5",
+  "compiler_sha256": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+  "baseline": {
+    "checks": 50,
+    "passed": 50,
+    "dependency_checks_retained": true
+  },
+  "mutation": {
+    "scope": "root-only",
+    "mutants": 422,
+    "killed": 422,
+    "survived": 0,
+    "dependency_mutation_not_repeated": true
+  },
+  "native": {
+    "consumers": [
+      "explicitly synthetic admitted snapshot",
+      "maximum32beacon/64receipt/128check cohort"
+    ],
+    "profiles": [
+      "optimized plain",
+      "ASan+UBSan"
+    ],
+    "independent_hash_vectors": true,
+    "all_exact_capacity_and_capacity_plus_one_checks_passed": true,
+    "sanitizer_reports": 0
+  },
+  "scope": "Pure recomputation over policy-eligible admitted DTOs. Original event signature/content/tag admission is a separate required native reader boundary. This does not qualify raw event admission, public relay completeness, truthful hardware, private execution or payment.",
+  "hashes": {
+    "psionic/examples/mesh-totals.coax": "af15fde4ebe68e32d955be96740ca8d5522e735f7c1958b7243e30bcb8015ea4",
+    "psionic/tests/mesh-totals-native.coax": "acaf1a96dc5aa07a89c1af301c5b1c5cb3ea840a45b153ee7d5b4d56fe6d3681",
+    "psionic/tests/mesh-totals-native.sh": "493c86003016b4bfd67b4cb91c9fe3d8de77d52eb5feaefb5a49e663df1a295e",
+    "example.c": "2aa58eabf5a69ee771e5dfedf0d48f6e15c4e995b5793fa7106b8662f9425be1",
+    "example-plain": "11b242f090ac7b183d87a1939082e8719e8290d0ceacb3094a59a4391c0379cb",
+    "example-sanitized": "aad2ac44cba391e775e72aa7a6f3b0ac9e96ab6ee7f29119845225f11f3c2f8b",
+    "maximum.c": "01f8103280d27249b3dacb4fd0346c587ea769d793dea725d29ce19b212518f1",
+    "maximum-plain": "62cb4e24c12355adf9828379c9fae302057effbc88250a468295c3ca6bfbbcae",
+    "maximum-sanitized": "6f5d07dac341e0dc2f6e87d1b6851f091fade2b9906100bbd570ac2bbd155f97"
+  }
+}
