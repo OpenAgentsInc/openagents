@@ -50,8 +50,11 @@ def segment(a, b, c):
   global segments, lines
   segments += struct.pack('<6fI', *a, *b, c); lines += 1
 
-# The placed art (the floor's lines too: the Grid is its floor) and the gates.
+# The placed art (the floor's lines too: the Grid is its floor) and the gates; not the Game Lab
+# or the Lagrange arch, which lead nowhere (owner, 2026-10-30: nothing there that doesn't work).
+LEFT_OUT = {'grid/game-lab', 'grid/arch-lagrange-2'}
 for placement in scene['statics'] + scene['gates']:
+  if placement['model'] in LEFT_OUT: continue
   m = placement['matrix']
   for s in scene['models'][placement['model']]['surfaces']:
     P = arr(s['positions'], 'f'); idx = arr(s['indices'], 'I'); c = colour(s['tint'])

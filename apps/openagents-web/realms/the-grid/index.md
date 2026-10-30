@@ -7,7 +7,7 @@ The bare Verse world, at https://openagents.com/realms/the-grid: a floor of line
 - The Pylon terminal, four metres ahead of where you start, and the help desk ("Ask us"), the suggestion box and the build board near it.
 - The Foreman, a robot three times the size of the others, standing by the start.
 - Robots walking their rounds, and one waving.
-- The Game Lab, the gym with its boards, and the Lagrange arch.
+- The gym with its boards.
 - The gate to Everglade: walk into it and you go to [Everglade](https://openagents.com/realms/everglade).
 - Everyone else walking the Grid right now, on the web or in the OpenAgents app, each with their name over them. The homepage shows them walking too.
 

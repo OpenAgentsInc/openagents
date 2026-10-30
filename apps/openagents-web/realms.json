@@ -67,7 +67,7 @@
         "style": "lowpoly",
         "clock": "fixed:0.0",
         "title": "The Grid",
-        "description": "The Grid, the bare Verse world: a floor of lines out to the dark, the Pylon terminal, the help desk, the Game Lab and the gym, robots walking their rounds with the Foreman by the start, and the gate to Everglade.",
+        "description": "The Grid, the bare Verse world: a floor of lines out to the dark, the Pylon terminal, the help desk and the gym, robots walking their rounds with the Foreman by the start, and the gate to Everglade.",
         "alt": "Enter the Verse: walk the Grid",
         "module": "thegrid",
         "slot": "the-grid",
