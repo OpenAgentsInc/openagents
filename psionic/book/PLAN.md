@@ -173,7 +173,7 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 
 | # | Prerequisite | Who | State |
 | --- | --- | --- | --- |
-| 1 | Complete BIP-340 signer (`coax/lib/crypto/schnorr_sign.coax`) and a fixed-work self-check (`schnorr_self_verify.coax`) | openagents-d7 Fork A, claude-sigcheck (#51f4, #89db) | in progress; test keys only until the #4828 secret audit and review gate |
+| 1 | Complete BIP-340 signer (`coax/lib/crypto/schnorr_sign.coax`) and a fixed-work self-check (`schnorr_self_verify.coax`) | openagents-d7 Fork A, claude-sigcheck (#51f4, #89db) | in progress; test keys only until the #4828 secret audit (openagents-20: partial in about 1.5 h, full later) and the review gate |
 | 2 | NIP-01 event builder: fields, id, sign, serialize (`coax/lib/nostr/event_sign.coax`) | openagents-d7 Fork A (#bab4) | in progress |
 | 3 | NIP-44 v2 (`coax/lib/nostr/nip44.coax`): padding, message keys, MAC before plaintext, every official vector | claude-nip44 (#4878); x-only ECDH from codex-nostr-profiles (#71e7) | in progress; the conversation key waits on #71e7 |
 | 4a | Relay messages: EVENT/OK/EOSE/CLOSED/NOTICE readers, EVENT/REQ/CLOSE writers (`coax/lib/nostr/message.coax`) | openagents-d7 Fork B (#6015) | mutation gate running |
