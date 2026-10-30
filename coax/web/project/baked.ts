@@ -20,14 +20,16 @@ const SITE = join(import.meta.dir, "../../../apps/openagents-web/projects")
 /** The constant prefix a slug's generated names use: COAX, VERSE, PLANETARY_VILLA. */
 export const prefix = (slug: string) => slug.toUpperCase().replace(/-/g, "_")
 
-export function projects(): { slug: string; owner: string }[] {
-  const out: { slug: string; owner: string }[] = []
+export function projects(): { slug: string; owner: string; path: string }[] {
+  const out: { slug: string; owner: string; path: string }[] = []
   for (const slug of readdirSync(SITE).sort()) {
     const file = join(SITE, slug, "project.json")
     if (!existsSync(file) || !existsSync(join(SITE, slug, "index.html"))) continue
     const p = JSON.parse(readFileSync(file, "utf8"))
     if (!/^[0-9a-f]{64}$/.test(p.pubkey ?? "") || p.slug !== slug || !/^[a-z0-9][a-z0-9-]{0,63}$/.test(slug)) continue
-    out.push({ slug, owner: String(p.owner || p.repo?.name || "OpenAgents") })
+    // the repository folder (or file) whose commits the page draws; the slug when it names none
+    const path = String(p.path || slug).replace(/\/+$/, "") || slug
+    out.push({ slug, owner: String(p.owner || p.repo?.name || "OpenAgents"), path })
   }
   return out.sort((a, b) => (a.slug === "coax" ? -1 : b.slug === "coax" ? 1 : a.slug < b.slug ? -1 : 1))
 }
@@ -37,9 +39,9 @@ if (import.meta.main) {
   if (process.argv.includes("--list")) { console.log(list.map((p) => p.slug).join("\n")); process.exit(0) }
   const lit = (s: string) => JSON.stringify(s.replace(/[^\x20-\x7e]/g, "").replace(/[|]/g, " "))
   const loads: string[] = [], cases: string[] = []
-  list.forEach(({ slug, owner }, k) => {
+  list.forEach(({ slug, owner, path }, k) => {
     const P = prefix(slug)
-    const commits = spawnSync("bash", [join(SITE, "commits.sh"), slug, P], { encoding: "utf8" })
+    const commits = spawnSync("bash", [join(SITE, "commits.sh"), path, P], { encoding: "utf8" })
     if (commits.status !== 0) throw new Error(`commits.sh ${slug}: ${commits.stderr}`)
     writeFileSync(join(SITE, slug, "commits.coax"), commits.stdout)
     if (!existsSync(join(SITE, slug, "work.coax"))) throw new Error(`${slug}/work.coax is missing: run snapshot.ts --project ${slug}`)
