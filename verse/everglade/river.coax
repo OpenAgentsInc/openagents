@@ -131,6 +131,7 @@ WEIR_FOOT :: -32.0;
 POOL_X :: 88.0; POOL_Z :: -33.0; POOL_R :: 2.5;
 
 River :: struct {
+  gills: bool;         // you breathe under water (the page's Water Breathing): your breath never runs short
   ready: bool;
   rise: f32;            // m the rain has raised the river (verse/water-weather.coax, at most 0.15; W9)
   flow_boost: f32;      // and how much faster its current runs for it (0 to 0.6)
@@ -484,7 +485,7 @@ everglade_river_swim_over :: (r: [] River, heights: [] f32, x: f32, z: f32, over
     if afloat && feet <= bed + f32(STANDING) && surface - bed <= f32(SWIM_DEPTH) { afloat = false; medium = MEDIUM_WADING; }
   }
   if !afloat { feet = bed; }
-  events := breath_tick(r, f64(t), medium == MEDIUM_DIVING);
+  events := breath_tick(r, f64(t), medium == MEDIUM_DIVING && !r[0].gills);
   r[0].medium = medium; r[0].feet = feet; r[0].afloat = afloat;
   out.medium = medium; out.feet = feet; out.surface = surface;
   out.pace = pace_of(medium, r[0].levels);
@@ -508,6 +509,9 @@ everglade_river_swim_over :: (r: [] River, heights: [] f32, x: f32, z: f32, over
   river_wake(r, x, z, medium, surface, time);
   return out;
 }
+
+// Whether you breathe under water (the page's Water Breathing), from now.
+everglade_river_gills :: (r: [] River, on: bool) #export_c { r[0].gills = on; }
 
 // You stand again whole (a death, a warp): out of the water and out of any rowboat, breath full.
 everglade_river_reset :: (r: [] River) #export_c {
@@ -1046,7 +1050,8 @@ everglade_river_fields :: (r: [] River, fields: [] f32, n: int) #export_c {
 // What the fields do to float i over h, besides gravity (as verse/demolish.coax demo_field_accel
 // moves the debris): in Reverse Gravity's cylinder it falls upward and hovers under the top; in a
 // Wind Wall a duck or a pad (2 kg at most) flies up its updraft held to its middle, a rowboat is
-// lightened by 3 m/s². In ice (kind 6) it is held still. The rowboat you sit in stays on the water.
+// lightened by 3 m/s². In ice (kind 6) it is held still; Control Water whirls it (7), puts it out of
+// a trench (8) or runs it with its current or its wave (9). The rowboat you sit in stays on the water.
 float_field :: (r: [] River, b: RigidBody, i: int, h: f64) -> RigidBody {
   out := b;
   for k: 0..<r[0].field_n {
@@ -1062,6 +1067,45 @@ float_field :: (r: [] River, b: RigidBody, i: int, h: f64) -> RigidBody {
       out = rigid_wake(out);
       out.vel = d3_add(out.vel, d3(-0.3 * b.vel.x * h, (ay + 9.81) * h, -0.3 * b.vel.z * h));
       return out;
+    }
+    if kind == 7 {
+      // a whirlpool (the page's Control Water): round it and in toward its middle, faster nearer,
+      // and down a little at its eye
+      dx := b.pos.x - f64(f[1]); dz := b.pos.z - f64(f[2]);
+      d := sqrt(dx * dx + dz * dz);
+      if d > f64(f[7]) || d < 0.01 { continue; }
+      share := 1.0 - d / f64(f[7]);
+      want := d3(-dz / d * (0.6 + 2.4 * share) - dx / d * f64(f[9]), 0.0, dx / d * (0.6 + 2.4 * share) - dz / d * f64(f[9]));
+      out = rigid_wake(out);
+      ease := fmin(h * 3.0, 1.0);
+      out.vel = d3_add(out.vel, d3((want.x - b.vel.x) * ease, -1.5 * share * share * h, (want.z - b.vel.z) * ease));
+      continue;
+    }
+    if kind == 8 {
+      // a parted trench: what floats in it is put out on its nearer side
+      ex := f64(f[3] - f[1]); ez := f64(f[4] - f[2]);
+      l2 := fmax(ex * ex + ez * ez, 0.0001);
+      u := ((b.pos.x - f64(f[1])) * ex + (b.pos.z - f64(f[2])) * ez) / l2;
+      l := sqrt(l2); nx := -ez / l; nz := ex / l;
+      off := (b.pos.x - f64(f[1])) * nx + (b.pos.z - f64(f[2])) * nz;
+      reach := ifx b.mass > 100.0 then 0.6 else 0.15;
+      if u < 0.0 || u > 1.0 || abs(off) > f64(f[7]) + reach { continue; }
+      side := ifx off >= 0.0 then 1.0 else -1.0;
+      push := side * (f64(f[7]) + reach) - off;
+      out = rigid_wake(out);
+      out.pos = d3_add(out.pos, d3(push * nx, 0.0, push * nz));
+      continue;
+    }
+    if kind == 9 {
+      // a current (Redirect Flow) or a wave's crest (Flood): along (f[3], f[4]) at f[9] m/s in a disc
+      // f[7] across, the crest lifting by f[8] m/s² besides
+      dx := b.pos.x - f64(f[1]); dz := b.pos.z - f64(f[2]);
+      if dx * dx + dz * dz > f64(f[7] * f[7]) { continue; }
+      out = rigid_wake(out);
+      ease := fmin(h * 2.0, 1.0);
+      sp := f64(f[9]);
+      out.vel = d3_add(out.vel, d3((f64(f[3]) * sp - b.vel.x) * ease, f64(f[8]) * h, (f64(f[4]) * sp - b.vel.z) * ease));
+      continue;
     }
     if kind == 6 {
       // ice (the page's Ice Storm, an Ice Knife): what floats in its disc is frozen in, held where

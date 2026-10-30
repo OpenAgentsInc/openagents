@@ -202,7 +202,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     }
   }
   // afloat, the current carries you
-  if (swim.medium == 2 || swim.medium == 3) { player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt; }
+  if (swim.medium == 2 || swim.medium == 3) {
+    player.pos.x += swim.flow_x * dt; player.pos.z += swim.flow_z * dt;
+    // and Control Water's: its wave, its current, its whirlpool (everglade-tide.coax)
+    coax_t_Point tide = everglade_tide_flow(at(state), player.pos.x, player.pos.z, swim.medium);
+    player.pos.x += tide.x * dt; player.pos.z += tide.z * dt;
+  }
   coax_t_Point kept = everglade_hold(at(state), was.x, was.z, player.pos.x, player.pos.z);
   if (kept.x != player.pos.x || kept.z != player.pos.z) {
     if (kept.x != player.pos.x) player.vel.x = 0;
@@ -214,7 +219,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
   everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
   coax_v_f32 heights = {g->heights.e, 105 * 105};
-  if (everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2) {
+  // Water Breathing (everglade-tide.coax): your breath never runs short under water
+  everglade_river_gills(rv(), everglade_water_breathing(at(state)));
+  // on the bridge's deck, or in Part Water's trench (everglade-tide.coax), you are out of the water
+  if ((everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2) || everglade_parted(at(state), player.pos.x, player.pos.z)) {
     swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
   } else {
     // your feet's height over the bed: over the water's surface (levitating, falling) you are not in it

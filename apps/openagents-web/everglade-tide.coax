@@ -1,0 +1,517 @@
+// Everglade's water spells (eg-tide), loaded by everglade-spells.coax after everglade-frost.coax: the
+// previous engine's Water Lab set (`0b401561a0^:crates/verse-water-spells/src/spells.rs`, `hotbar.rs`,
+// and `crates/verse-world/src/spells/water/control.rs`), on the bar's second row after Sleet Storm:
+//
+//  S7 WATER WALK       (SRD 5.2.1, level 3, an hour) Shift+7 turns it on and off: you walk and run on
+//                      the water as on solid ground; under it, you rise to its top.
+//  S8 CONTROL WATER    (level 4, Concentration up to 10 minutes) Pick it, then click water within 300
+//                      feet: the water in a 100-foot cube there is yours. Flood first: a pond rises
+//                      over its rim (ours: 5 feet, for the old 20 would empty it), and lifts what floats
+//                      on it; on the river a 20-foot wave crosses the cube the way you face, carrying
+//                      the rowboats and the ducks with it. Shift+8 again: Part Water, a trench 10 feet
+//                      wide the cube's length down to the bed, its water standing in walls each side
+//                      (you walk its bed; whoever swims in its path is put on the nearer side); again:
+//                      Redirect Flow, the current running the way you face; again: Whirlpool, a vortex
+//                      50 feet wide that pulls what floats round and in, and you 10 feet a round
+//                      toward its middle (ours: the town's water is too shallow for the SRD's 25 feet
+//                      deep, so it whirls anywhere): 2d8 bludgeoning when you come into it and each
+//                      round in it, half on a Strength save, and you swim out only with a DC 15
+//                      Strength (Athletics) check. Once more ends it.
+//  S9 CREATE OR DESTROY WATER (level 1) Pick it, then click within 30 feet: rain falls on a 30-foot
+//                      cube and puts out what burns in it. Shift+9 again before the click: Destroy
+//                      Water instead, the fog and mist in the cube lifted away and its slush gone.
+//  S0 WATER BREATHING  (level 3, 24 hours) Shift+0 turns it on and off: you breathe under water, so
+//                      you dive and stay down as long as you like.
+//
+// None of them harms the town, so the watch hears no crime from them but a Whirlpool's pull on a
+// rowboat (river.coax's floats: they are the town's) and the wave's.
+
+TD_FOOT :: 0.3048;
+TD_CTL_RANGE :: 91.44; TD_SIDE :: 30.48; TD_HALF :: 15.24;
+TD_TRENCH :: 1.524;                   // half the trench's width: 10 feet across
+TD_WAVE_SPEED :: 5.08;                // m/s: it crosses the cube in a round
+TD_WAVE_TALL :: 6.096;
+TD_POND_RISE :: 1.524;                // ours: 5 feet
+TD_WHIRL_R :: 7.62;                   // 50 feet across at the top
+TD_WHIRL_EYE :: 1.2;                  // the hole at its middle (ours)
+TD_WHIRL_PULL :: 0.508;               // m/s: 10 feet a round
+TD_FLOW :: 1.5;                       // m/s, Redirect Flow's current (ours: the river's 0.45 at least tripled)
+TD_CREATE_RANGE :: 9.144; TD_CUBE :: 9.144; TD_RAIN_FOR :: 6.0; TD_VAPOR_FOR :: 4.0;
+TD_DC :: 15; TD_STR :: 4;
+TD_LIFE :: 600.0;
+TD_HEAR :: 30.0;
+TD_FLOOD :: 0; TD_PART :: 1; TD_REDIRECT :: 2; TD_WHIRL :: 3;
+TD_RGB :: Point.{x = 0.35, y = 0.72, z = 1.0};
+TD_U_FLOATS :: 8;                     // its two uniform rows (everglade.coax U_TIDE; everglade.wgsl u.tide)
+
+Tide :: struct {
+  time: f32;
+  walk: bool; breathe: bool;
+  on: bool; mode: int; at: Point; dir: Point; t: f32; mode_t: f32; pond: int; level: f32;
+  part_a: Point; part_b: Point; part_end: f32;   // the trench, and when it began to refill (-1 open)
+  whirl_in: bool; whirl_next: f32; free_until: f32;
+  destroy: bool;                      // Create or Destroy Water picked to destroy
+  rain_on: bool; rain_at: Point; rain_t: f32;
+  vapor_on: bool; vapor_at: Point; vapor_t: f32;
+}
+td_of :: (s: [] Everglade) -> [] Tide { return s[0].sp.td[..]; }
+td_start :: (s: [] Everglade) {
+  d := td_of(s);
+  d[0].time = 0; d[0].walk = false; d[0].breathe = false; d[0].on = false; d[0].part_end = -1;
+  d[0].destroy = false; d[0].rain_on = false; d[0].vapor_on = false; d[0].whirl_in = false;
+}
+// You stand again (a respawn): your spells on yourself end.
+td_you_reset :: (s: [] Everglade) { d := td_of(s); d[0].walk = false; d[0].whirl_in = false; }
+
+// The pond (x, z) is in, -1 the river or none.
+td_pond_of :: (x: f32, z: f32) -> int { b := water_body_of(x, z); return ifx b >= 1 then b - 1 else -1; }
+td_in_cube :: (d: [] Tide, x: f32, z: f32) -> bool {
+  ox := x - d[0].at.x; oz := z - d[0].at.z;
+  // the cube turns with you: along your facing and across it
+  along := ox * d[0].dir.x + oz * d[0].dir.z; across := -ox * d[0].dir.z + oz * d[0].dir.x;
+  return abs(along) <= f32(TD_HALF) && abs(across) <= f32(TD_HALF);
+}
+// Whether (x, z) is in the open trench: its water stands aside (everglade-face.c: you walk its bed).
+everglade_parted :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
+  if !sp_on(s) { return false; }
+  d := td_of(s);
+  w := td_trench_half(d);
+  if w <= 0 { return false; }
+  return td_off_segment(d[0].part_a, d[0].part_b, x, z) <= w;
+}
+// The trench's half width now: open, or closing as it refills.
+td_trench_half :: (d: [] Tide) -> f32 {
+  if d[0].on && d[0].mode == TD_PART { return f32(TD_TRENCH) * clamp(d[0].mode_t / 0.6, 0, 1); }
+  if d[0].part_end >= 0 && d[0].time - d[0].part_end < 6 { return f32(TD_TRENCH) * (1 - (d[0].time - d[0].part_end) / 6); }
+  return 0;
+}
+td_off_segment :: (a: Point, b: Point, x: f32, z: f32) -> f32 {
+  ex := b.x - a.x; ez := b.z - a.z;
+  l2 := hi(ex * ex + ez * ez, 0.0001);
+  u := clamp(((x - a.x) * ex + (z - a.z) * ez) / l2, 0, 1);
+  px := a.x + ex * u - x; pz := a.z + ez * u - z;
+  return ifx u <= 0 || u >= 1 then 1000.0f32 else sqrt(px * px + pz * pz);
+}
+// The wave's crest now: how far along the cube it has come (0 to the cube's side), -1 none.
+td_wave :: (d: [] Tide) -> f32 {
+  if !d[0].on || d[0].mode != TD_FLOOD || d[0].pond >= 0 { return -1; }
+  along := d[0].mode_t * f32(TD_WAVE_SPEED);
+  return ifx along <= f32(TD_SIDE) then along else -1.0f32;
+}
+td_crest :: (d: [] Tide, along: f32) -> Point { return add(d[0].at, times(d[0].dir, along - f32(TD_HALF))); }
+
+// ---- you in the water
+
+// What the water spells do to you afloat (everglade-face.c adds it to where the current carries
+// you), m/s: the wave carries you, the redirected current runs you its way, the whirlpool pulls.
+everglade_tide_flow :: (s: [] Everglade, x: f32, z: f32, medium: int) -> Point #export_c {
+  if !sp_on(s) || medium < WATER_SWIMMING || medium > WATER_DIVING { return v3(0, 0, 0); }
+  d := td_of(s);
+  if !d[0].on { return v3(0, 0, 0); }
+  if d[0].mode == TD_FLOOD {
+    along := td_wave(d);
+    if along >= 0 && flat_gap(td_crest(d, along), v3(x, 0, z)) < 3.5 && td_in_cube(d, x, z) { return times(d[0].dir, f32(TD_WAVE_SPEED)); }
+    return v3(0, 0, 0);
+  }
+  if d[0].mode == TD_REDIRECT && td_in_cube(d, x, z) { return times(d[0].dir, f32(TD_FLOW)); }
+  if d[0].mode == TD_WHIRL && d[0].time >= d[0].free_until {
+    ox := x - d[0].at.x; oz := z - d[0].at.z; r := sqrt(ox * ox + oz * oz);
+    if r > f32(TD_WHIRL_R) || r < 0.05 { return v3(0, 0, 0); }
+    inward := v3(-ox / r, 0, -oz / r); round_ := v3(-oz / r, 0, ox / r);
+    return add(times(inward, f32(TD_WHIRL_PULL)), times(round_, 1.2 * (1 - r / f32(TD_WHIRL_R)) + 0.4));
+  }
+  return v3(0, 0, 0);
+}
+// Your water breathing for the river's breath (everglade-face.c: river.coax everglade_river_gills).
+everglade_water_breathing :: (s: [] Everglade) -> bool #export_c { return sp_on(s) && td_of(s)[0].breathe; }
+// Water Walk's floor at (x, z): the water's top, else far down (everglade-frost.coax fr_floor takes it).
+td_floor :: (s: [] Everglade, x: f32, z: f32) -> f32 {
+  d := td_of(s);
+  if !d[0].walk { return -1000; }
+  lv := water_at(s, x, z);
+  if lv <= f32(DEMO_DRY) + 1 || everglade_parted(s, x, z) { return -1000; }
+  return lv + 0.03;
+}
+// Each frame: the whirlpool's grip on you swimming in it (2d8 bludgeoning coming in and each round,
+// half on a Strength save; a DC 15 Strength (Athletics) check each round you swim to leave).
+td_you :: (s: [] Everglade) {
+  d := td_of(s);
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  you := ab_you(s);
+  inside := d[0].on && d[0].mode == TD_WHIRL && s[0].water >= WATER_SWIMMING && flat_gap(you, d[0].at) <= f32(TD_WHIRL_R);
+  if inside && !w[0].dead && (!d[0].whirl_in || d[0].time >= d[0].whirl_next) {
+    d[0].whirl_next = d[0].time + f32(FR_ROUND);
+    took := srd_creature_takes(w[0].dice[..], SRD_RANGER_5, SrdDamage.{amount = srd_sum(s[0].sp.dice[..], 2, 8), kind = DMG_BLUDGEONING, amount2 = 0, kind2 = DMG_NONE}, SAVE_STR, ON_SAVE_HALF, TD_DC);
+    watch_hurt_you_thrown(w, took, you, s[0].face, v3(0, 0, 0));
+    sp_say(s, "THE WHIRLPOOL", took, "DAMAGE");
+    moving := s[0].act == 1 || s[0].act == 2;
+    if d[0].whirl_in && moving {
+      if srd_save(w[0].dice[..], TD_STR, TD_DC).success { d[0].free_until = d[0].time + f32(FR_ROUND); sp_say(s, "YOU SWIM FREE OF THE PULL", -1, ""); }
+    }
+  }
+  d[0].whirl_in = inside;
+}
+
+// ---- the spells
+
+td_walk :: (s: [] Everglade) {
+  d := td_of(s);
+  d[0].walk = !d[0].walk;
+  sp_say(s, ifx d[0].walk then "WATER WALK" else "WATER WALK ENDS", -1, "");
+}
+td_breathe :: (s: [] Everglade) {
+  d := td_of(s);
+  d[0].breathe = !d[0].breathe;
+  sp_say(s, ifx d[0].breathe then "WATER BREATHING" else "WATER BREATHING ENDS", -1, "");
+}
+td_mode_name :: (m: int) -> string {
+  return ifx m == TD_FLOOD then "FLOOD" else ifx m == TD_PART then "PART WATER" else ifx m == TD_REDIRECT then "REDIRECT FLOW" else "WHIRLPOOL";
+}
+// A click with Control Water picked: the water there is yours, flooding first.
+td_control_cast :: (s: [] Everglade) {
+  d := td_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT WATER", -1, ""); return; }
+  at := s[0].sp.aim;
+  if !fr_wet(s, at.x, at.z) { sp_say(s, "POINT AT WATER", -1, ""); return; }
+  if flat_gap(at, ab_you(s)) > f32(TD_CTL_RANGE) { sp_say(s, "TOO FAR · 300 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  if d[0].on { td_control_end(s); }
+  d[0].on = true; d[0].t = 0; d[0].pond = td_pond_of(at.x, at.z);
+  d[0].at = v3(at.x, water_at(s, at.x, at.z), at.z);
+  d[0].level = d[0].at.y;
+  td_set_mode(s, TD_FLOOD);
+}
+td_set_mode :: (s: [] Everglade, m: int) {
+  d := td_of(s);
+  if d[0].mode == TD_PART && m != TD_PART { d[0].part_end = d[0].time; }
+  d[0].mode = m; d[0].mode_t = 0; d[0].whirl_in = false; d[0].free_until = 0;
+  f := ab_forward(s);
+  d[0].dir = unit_or(v3(f.x, 0, f.z), v3(0, 0, 1));
+  // on the river the wave and the trench run with it or across it, whichever is nearer your facing
+  if d[0].pond < 0 && (m == TD_FLOOD || m == TD_PART) {
+    d[0].dir = ifx abs(f.z) >= abs(f.x) then v3(0, 0, ifx f.z >= 0 then 1.0f32 else -1.0f32) else v3(ifx f.x >= 0 then 1.0f32 else -1.0f32, 0, 0);
+  }
+  if m == TD_PART {
+    d[0].part_a = add(d[0].at, times(d[0].dir, -f32(TD_HALF))); d[0].part_b = add(d[0].at, times(d[0].dir, f32(TD_HALF)));
+    d[0].part_end = -1;
+    // whoever swims in its path is put on its nearer side (everglade-face.c moves you; here, the line)
+  }
+  sp_say(s, "CONTROL WATER", -1, td_mode_name(m));
+}
+// Shift+8 while it holds: the next mode, and after the whirlpool it ends.
+td_control_next :: (s: [] Everglade) {
+  d := td_of(s);
+  if d[0].mode >= TD_WHIRL { td_control_end(s); sp_say(s, "CONTROL WATER ENDS", -1, ""); return; }
+  td_set_mode(s, d[0].mode + 1);
+}
+td_control_end :: (s: [] Everglade) {
+  d := td_of(s);
+  if d[0].on && d[0].mode == TD_PART { d[0].part_end = d[0].time; }
+  d[0].on = false; d[0].whirl_in = false;
+}
+// A click with Create or Destroy Water picked.
+td_create_cast :: (s: [] Everglade) {
+  d := td_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR THE WATER", -1, ""); return; }
+  at := s[0].sp.aim;
+  if flat_gap(at, ab_you(s)) > f32(TD_CREATE_RANGE) { sp_say(s, "TOO FAR · 30 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  if d[0].destroy {
+    d[0].vapor_on = true; d[0].vapor_t = 0; d[0].vapor_at = at;
+    td_destroy(s, at);
+    sp_say(s, "DESTROY WATER", -1, "");
+  } else {
+    d[0].rain_on = true; d[0].rain_t = 0; d[0].rain_at = at;
+    sp_say(s, "CREATE WATER", -1, "");
+  }
+  d[0].destroy = false;
+}
+td_in_box :: (c: Point, half: f32, p: Point) -> bool { return abs(p.x - c.x) <= half && abs(p.z - c.z) <= half && p.y >= c.y - 1 && p.y <= c.y + half * 2; }
+// Destroy Water: the fog and mist in the cube, and the slush and the frost's melt on its water.
+td_destroy :: (s: [] Everglade, at: Point) {
+  half := f32(TD_CUBE) * 0.5;
+  for q: 0..<SP_PUFFS { if s[0].sp.puffs[q].live && td_in_box(at, half, s[0].sp.puffs[q].at) { s[0].sp.puffs[q].live = false; } }
+  for q: 0..<SP_SCORCHES { if s[0].sp.scorches[q].live && td_in_box(at, half, s[0].sp.scorches[q].at) { s[0].sp.scorches[q].wet = false; } }
+  f := fr_of(s);
+  for k: 0..<FR_PATCHES {
+    p := f[0].patches[k];
+    if p.live && fr_water_stage(p) == FR_SLUSH && abs(p.x - at.x) <= half + p.r && abs(p.z - at.z) <= half + p.r && !(f[0].sleet_on && k == f[0].sleet_patch) { f[0].patches[k].live = false; }
+  }
+}
+// The rain, each frame it falls: what burns in the cube goes out, its scorches wet.
+td_rain :: (s: [] Everglade) {
+  d := td_of(s);
+  c := d[0].rain_at; half := f32(TD_CUBE) * 0.5;
+  for q: 0..<SP_BLASTS { if s[0].sp.blasts[q].live && s[0].sp.blasts[q].kind == 0 && td_in_box(c, half + s[0].sp.blasts[q].radius, s[0].sp.blasts[q].at) { s[0].sp.blasts[q].live = false; } }
+  for q: 0..<SP_FLAMES { if s[0].sp.flames[q].live && td_in_box(c, half, s[0].sp.flames[q].at) { s[0].sp.flames[q].live = false; } }
+  for q: 0..<SP_SCORCHES { if s[0].sp.scorches[q].live && td_in_box(c, half, s[0].sp.scorches[q].at) { s[0].sp.scorches[q].wet = true; } }
+  w := sp_dm(s);
+  box: [1] DemoBox;
+  for b: 0..<DEMO_BODIES { if s[0].sp.burn[b] > 0 && demo_chunk_box(w, b, box[..]) && td_in_box(c, half, box[0].at) { s[0].sp.burn[b] = 0; } }
+}
+
+// ---- each frame, the floats, the uniforms, drawing
+
+td_frame :: (s: [] Everglade, dt: f32) {
+  d := td_of(s);
+  d[0].time += dt;
+  if d[0].on {
+    d[0].t += dt; d[0].mode_t += dt;
+    if d[0].t >= f32(TD_LIFE) { td_control_end(s); sp_say(s, "CONTROL WATER ENDS", -1, ""); }
+  }
+  if d[0].rain_on { d[0].rain_t += dt; td_rain(s); if d[0].rain_t >= f32(TD_RAIN_FOR) { d[0].rain_on = false; } }
+  if d[0].vapor_on {
+    d[0].vapor_t += dt;
+    if d[0].vapor_t >= f32(TD_VAPOR_FOR) { d[0].vapor_on = false; }
+    else if sp_rand(s) < dt * 10 {
+      c := d[0].vapor_at; half := f32(TD_CUBE) * 0.5;
+      at := v3(c.x + (sp_rand(s) - 0.5) * 2 * half, hi(ground_at(s, c.x, c.z), water_at(s, c.x, c.z)) + 0.3, c.z + (sp_rand(s) - 0.5) * 2 * half);
+      sp_add_puff(s, at, v3(0, 1.2 + sp_rand(s), 0), 1.2, 2.5, 0.0);
+    }
+  }
+  td_you(s);
+}
+// Its fields over the river's floats (everglade_spell_fields; river.coax float_field kinds 1, 7, 8, 9).
+td_fields :: (s: [] Everglade, out: [] f32, n: int, each: int) -> int {
+  d := td_of(s);
+  m := n;
+  if (m + 1) * each > out.count { return m; }
+  o := m * each;
+  for k: 0..<each { out[o + k] = 0; }
+  w := td_trench_half(d);
+  if w > 0 {
+    out[o] = 8; out[o + 1] = d[0].part_a.x; out[o + 2] = d[0].part_a.z; out[o + 3] = d[0].part_b.x; out[o + 4] = d[0].part_b.z;
+    out[o + 5] = d[0].level - 3; out[o + 6] = d[0].level + 2; out[o + 7] = w; return m + 1;
+  }
+  if !d[0].on { return m; }
+  if d[0].mode == TD_FLOOD && d[0].pond >= 0 {
+    // the risen pond: what floats on it rises with it and rides there (kind 1 holds it under the top)
+    p := d[0].pond;
+    out[o] = 1; out[o + 1] = EG_POND[p * 4]; out[o + 2] = EG_POND[p * 4 + 1];
+    out[o + 5] = d[0].level - 3; out[o + 6] = d[0].level + td_rise(d) - 0.1; out[o + 7] = EG_POND[p * 4 + 2] + 3; return m + 1;
+  }
+  if d[0].mode == TD_FLOOD {
+    along := td_wave(d);
+    if along < 0 { return m; }
+    c := td_crest(d, along);
+    out[o] = 9; out[o + 1] = c.x; out[o + 2] = c.z; out[o + 3] = d[0].dir.x; out[o + 4] = d[0].dir.z;
+    out[o + 5] = d[0].level - 3; out[o + 6] = d[0].level + 3; out[o + 7] = 3.5; out[o + 8] = 6; out[o + 9] = f32(TD_WAVE_SPEED); return m + 1;
+  }
+  if d[0].mode == TD_REDIRECT {
+    out[o] = 9; out[o + 1] = d[0].at.x; out[o + 2] = d[0].at.z; out[o + 3] = d[0].dir.x; out[o + 4] = d[0].dir.z;
+    out[o + 5] = d[0].level - 3; out[o + 6] = d[0].level + 2; out[o + 7] = f32(TD_HALF); out[o + 8] = 0; out[o + 9] = f32(TD_FLOW); return m + 1;
+  }
+  out[o] = 7; out[o + 1] = d[0].at.x; out[o + 2] = d[0].at.z;
+  out[o + 5] = d[0].level - 3; out[o + 6] = d[0].level + 2; out[o + 7] = f32(TD_WHIRL_R); out[o + 9] = f32(TD_WHIRL_PULL);
+  return m + 1;
+}
+// How far the flooded pond stands over its level now: up in a second, down over a round when it ends.
+td_rise :: (d: [] Tide) -> f32 { return f32(TD_POND_RISE) * clamp(d[0].mode_t / 1.5, 0, 1); }
+// The water not drawn (everglade.wgsl water_dry): the trench, and the whirlpool's eye.
+td_uniforms :: (s: [] Everglade, u: [] f32, at: int) {
+  if !sp_on(s) || at + TD_U_FLOATS > u.count { return; }
+  d := td_of(s);
+  w := td_trench_half(d);
+  if w > 0 { u[at] = d[0].part_a.x; u[at + 1] = d[0].part_a.z; u[at + 2] = d[0].part_b.x; u[at + 3] = d[0].part_b.z; u[at + 4] = w; }
+  if d[0].on && d[0].mode == TD_WHIRL { u[at + 5] = d[0].at.x; u[at + 6] = d[0].at.z; u[at + 7] = f32(TD_WHIRL_EYE) * clamp(d[0].mode_t / 1.0, 0, 1); }
+}
+TD_WALL_RGB :: Point.{x = 0.28, y = 0.55, z = 0.66};
+TD_FOAM_RGB :: Point.{x = 0.9, y = 0.95, z = 0.97};
+td_draw :: (s: [] Everglade) {
+  d := td_of(s);
+  you := ab_you(s);
+  few := phone(s);
+  // Water Walk: a ring under your feet on the water
+  if d[0].walk && fr_wet(s, you.x, you.z) && s[0].feet.y < 0.3 {
+    sp_add_spark(s, add(you, v3((sp_rand(s) - 0.5) * 0.6, 0.02, (sp_rand(s) - 0.5) * 0.6)), v3(0, 0.3, 0), 0.4, 0.03, TD_FOAM_RGB, 0);
+  }
+  // Water Breathing: a bubble now and then from your mouth under water
+  if d[0].breathe && s[0].water == WATER_DIVING && sp_rand(s) < 0.08 {
+    sp_add_spark(s, add(you, v3(0, 1.6, 0)), v3(0, 0.8, 0), 0.8, 0.04, TD_FOAM_RGB, -1);
+  }
+  // the trench: walls of water standing each side down to the bed, where there is water
+  w := td_trench_half(d);
+  if w > 0 {
+    ex := sub(d[0].part_b, d[0].part_a); run := length(v3(ex.x, 0, ex.z));
+    dir := times(v3(ex.x, 0, ex.z), 1 / hi(run, 0.01)); side := v3(-dir.z, 0, dir.x);
+    steps := ifx few then 10 else 20;
+    seg := run / f32(steps);
+    for q: 0..<steps {
+      mid := add(d[0].part_a, times(dir, seg * (f32(q) + 0.5)));
+      for e: 0..<2 {
+        sg := ifx e == 0 then 1.0f32 else -1.0f32;
+        p := add(mid, times(side, sg * (w + 0.35)));
+        lv := water_at(s, p.x, p.z);
+        if lv <= f32(DEMO_DRY) + 1 { continue; }
+        bed := ground_at(s, p.x, p.z);
+        top := lv + 0.25;
+        sp_shape(s, SHAPE_BOX, LOOK_ORB, v3(p.x, (bed + top) * 0.5, p.z), times(dir, seg * 0.52), v3(0, (top - bed) * 0.5, 0), times(side, 0.35), TD_WALL_RGB);
+      }
+    }
+  }
+  if d[0].on {
+    if d[0].mode == TD_FLOOD && d[0].pond >= 0 {
+      // the pond risen over its rim
+      p := d[0].pond;
+      r := EG_POND[p * 4 + 2] + 2.5 * clamp(d[0].mode_t / 1.5, 0, 1);
+      sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(EG_POND[p * 4], d[0].level + td_rise(d) * 0.5, EG_POND[p * 4 + 1]), v3(r * 2, 0, 0), v3(0, td_rise(d) * 0.5 + 0.02, 0), v3(0, 0, r * 2), TD_WALL_RGB);
+    }
+    along := td_wave(d);
+    if along >= 0 {
+      // the wave: a wall of water 20 feet tall rolling through the cube where there is water, foam on its crest
+      c := td_crest(d, along);
+      side := v3(-d[0].dir.z, 0, d[0].dir.x);
+      rise := clamp(along / 4, 0, 1) * clamp((f32(TD_SIDE) - along) / 4, 0, 1);
+      for q: 0..<8 {
+        p := add(c, times(side, (f32(q) - 3.5) * 1.6));
+        lv := water_at(s, p.x, p.z);
+        if lv <= f32(DEMO_DRY) + 1 { continue; }
+        h := f32(TD_WAVE_TALL) * rise * (0.85 + 0.15 * sin(f32(q) * 1.7 + d[0].mode_t * 3));
+        sp_shape(s, SHAPE_BOX, LOOK_ORB, v3(p.x, lv + h * 0.5, p.z), times(d[0].dir, 1.4), v3(0, h * 0.5 + 0.05, 0), times(side, 0.85), TD_WALL_RGB);
+        if !few || q % 2 == 0 { sp_add_puff(s, v3(p.x, lv + h, p.z), add(times(d[0].dir, 3), v3(0, 0.6, 0)), 0.6, 0.6, 0.0); }
+      }
+    }
+    if d[0].mode == TD_REDIRECT {
+      // the current's streaks running its way across the cube's water
+      for q: 0..<(ifx few then 16 else 32) {
+        h0 := ab_h(83.0, q, 0); h1 := ab_h(83.0, q, 1);
+        side := v3(-d[0].dir.z, 0, d[0].dir.x);
+        run := d[0].mode_t * f32(TD_FLOW) * 2 + h0 * f32(TD_SIDE); run = run - f32(TD_SIDE) * floor(run / f32(TD_SIDE));
+        p := add(add(d[0].at, times(d[0].dir, run - f32(TD_HALF))), times(side, (h1 - 0.5) * f32(TD_SIDE)));
+        lv := water_at(s, p.x, p.z);
+        if lv <= f32(DEMO_DRY) + 1 { continue; }
+        ab_line(s, v3(p.x, lv + 0.05, p.z), add(v3(p.x, lv + 0.05, p.z), times(d[0].dir, 0.9)), times(TD_FOAM_RGB, 0.5));
+      }
+    }
+    if d[0].mode == TD_WHIRL {
+      // the whirlpool: a funnel down from its eye, foam spiralling in round it
+      c := d[0].at; on := clamp(d[0].mode_t / 1.0, 0, 1);
+      eye := f32(TD_WHIRL_EYE) * on;
+      sp_shape(s, SHAPE_CONE, LOOK_ORB, v3(c.x, c.y - 1.1 * on, c.z), v3(-eye * 2, 0, 0), v3(0, -1.1 * on, 0), v3(0, 0, eye * 2), v3(0.12, 0.3, 0.38));
+      arms := ifx few then 3 else 5;
+      for a: 0..<arms {
+        for q: 0..<10 {
+          u0 := f32(q) / 10; u1 := f32(q + 1) / 10;
+          ang0 := f32(TAU) * f32(a) / f32(arms) + d[0].mode_t * 2.2 + u0 * 4.5;
+          ang1 := f32(TAU) * f32(a) / f32(arms) + d[0].mode_t * 2.2 + u1 * 4.5;
+          r0 := f32(TD_WHIRL_R) * (1 - u0) * on + eye; r1 := f32(TD_WHIRL_R) * (1 - u1) * on + eye;
+          p0 := v3(c.x + cos(ang0) * r0, 0, c.z + sin(ang0) * r0); p1 := v3(c.x + cos(ang1) * r1, 0, c.z + sin(ang1) * r1);
+          l0 := water_at(s, p0.x, p0.z); l1 := water_at(s, p1.x, p1.z);
+          if l0 <= f32(DEMO_DRY) + 1 || l1 <= f32(DEMO_DRY) + 1 { continue; }
+          ab_line(s, v3(p0.x, l0 + 0.04 - 0.3 * u0 * on, p0.z), v3(p1.x, l1 + 0.04 - 0.3 * u1 * on, p1.z), times(TD_FOAM_RGB, 0.6));
+        }
+      }
+    }
+  }
+  // the rain: streaks falling through its cube from a grey cloud over it
+  if d[0].rain_on {
+    c := d[0].rain_at; half := f32(TD_CUBE) * 0.5;
+    on := clamp(d[0].rain_t / 0.5, 0, 1) * clamp((f32(TD_RAIN_FOR) - d[0].rain_t) / 0.8, 0, 1);
+    base := hi(ground_at(s, c.x, c.z), water_at(s, c.x, c.z));
+    for q: 0..<(ifx few then 30 else 60) {
+      h0 := ab_h(91.0, q, 0); h1 := ab_h(91.0, q, 1); h2 := ab_h(91.0, q, 2);
+      fall := d[0].rain_t * 9 + h2 * 2 * half; fall = fall - 2 * half * floor(fall / (2 * half));
+      at := v3(c.x + (h0 - 0.5) * 2 * half, base + 2 * half - fall, c.z + (h1 - 0.5) * 2 * half);
+      ab_line(s, at, add(at, v3(0, 0.9, 0)), times(v3(0.75, 0.85, 0.95), 0.4 * on));
+    }
+    if sp_rand(s) < 0.15 { sp_add_smoke(s, v3(c.x + (sp_rand(s) - 0.5) * half * 2, base + 2 * half + 0.5, c.z + (sp_rand(s) - 0.5) * half * 2), v3(0, 0, 0), 2.2, 3.0, 0.55, 0, 0.5, 0); }
+    if fr_wet(s, c.x, c.z) && sp_rand(s) < 0.2 { water_hit(s, c.x + (sp_rand(s) - 0.5) * half * 2, c.z + (sp_rand(s) - 0.5) * half * 2, SP_SPLASH_DEBRIS, 0.2); }
+  }
+}
+
+// ---- checks
+
+#test "tide: Water Walk keeps you on a pond's top; Water Breathing breathes under it" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  px := EG_POND[0]; pz := EG_POND[1];
+  #assert walk_at(g[..], px, pz) < water_at(g[..], px, pz);
+  #assert spells_key(g[..], '&', 1) && td_of(g[..])[0].walk && ab_active(g[..], AB_WWALK);
+  #assert near(walk_at(g[..], px, pz), water_at(g[..], px, pz) + 0.03, 0.001) && everglade_ice_lift(g[..], px, pz) > 0;
+  up0 := spells_key_up(g[..], '&', 1);
+  #assert spells_key(g[..], '&', 1) && !td_of(g[..])[0].walk && walk_at(g[..], px, pz) < water_at(g[..], px, pz);
+  #assert !everglade_water_breathing(g[..]) && spells_key(g[..], ')', 1) && everglade_water_breathing(g[..]);
+}
+
+#test "tide: Control Water floods, parts a dry trench to walk, turns the current and whirls; Shift+8 steps through them and ends it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  d := td_of(g[..]);
+  // on the river, facing north along it
+  rx := f32(EG_RIVER_X); rz := 40.0f32;
+  #assert fr_wet(g[..], rx, rz);
+  g[0].feet = v3(rx - 12, 0, rz); g[0].face = 0;
+  #assert spells_key(g[..], '*', 1) && g[0].sp.armed == SP_SLOTS + AB_CONTROL;
+  up0 := spells_key_up(g[..], '*', 1);
+  g[0].sp.aim = v3(rx, water_at(g[..], rx, rz), rz); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert d[0].on && d[0].mode == TD_FLOOD && d[0].pond < 0 && d[0].dir.z == 1;
+  fl: [16 * AB_FIELD_FLOATS] f32;
+  ab_frame(g[..], 1.0);
+  #assert td_wave(d) > 0 && td_fields(g[..], fl[..], 0, AB_FIELD_FLOATS) == 1 && fl[0] == 9;
+  // a swimmer near the crest is carried with it
+  c := td_crest(d, td_wave(d));
+  #assert everglade_tide_flow(g[..], c.x, c.z, WATER_SWIMMING).z > 4 && everglade_tide_flow(g[..], c.x, c.z, WATER_GROUND).z == 0;
+  // Part Water: its middle is dry to walk, and the water is not drawn there
+  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_PART;
+  up1 := spells_key_up(g[..], '*', 1);
+  ab_frame(g[..], 1.0);
+  #assert everglade_parted(g[..], rx, rz) && !everglade_parted(g[..], rx + 3, rz);
+  td_uniforms(g[..], u[..], U_TIDE);
+  #assert u[U_TIDE + 4] > 1;
+  // Redirect Flow: the current runs your way
+  g[0].face = f32(PI) * 0.5;
+  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_REDIRECT;
+  up2 := spells_key_up(g[..], '*', 1);
+  #assert everglade_tide_flow(g[..], rx, rz, WATER_SWIMMING).x > 1;
+  // the trench refills
+  for k: 0..<7 { ab_frame(g[..], 1.0); }
+  #assert !everglade_parted(g[..], rx, rz);
+  // Whirlpool: pulls you in and hurts you swimming in it
+  #assert spells_key(g[..], '*', 1) && d[0].mode == TD_WHIRL;
+  up3 := spells_key_up(g[..], '*', 1);
+  flow := everglade_tide_flow(g[..], rx + 3, rz, WATER_SWIMMING);
+  #assert flow.x < 0;
+  w := watch_w(g[..]);
+  hp := w[0].hp;
+  g[0].feet = v3(rx + 2, 0, rz); g[0].water = WATER_SWIMMING;
+  ab_frame(g[..], 0.1);
+  #assert w[0].hp < hp && d[0].whirl_in;
+  g[0].water = WATER_GROUND;
+  #assert spells_key(g[..], '*', 1) && !d[0].on;
+}
+
+#test "tide: Create Water's rain puts out a fire; Destroy Water lifts the smoke from its cube" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  d := td_of(g[..]);
+  g[0].feet = v3(0, 0, -30);
+  at := v3(0, ground_at(g[..], 0, -25), -25);
+  g[0].sp.blasts[0] = SpBlast.{live = true, at = at, t = 0, radius = 2, kind = 0, seed = 0};
+  #assert spells_key(g[..], '(', 1) && g[0].sp.armed == SP_SLOTS + AB_CREATE && !d[0].destroy;
+  up0 := spells_key_up(g[..], '(', 1);
+  g[0].sp.aim = at; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert d[0].rain_on;
+  ab_frame(g[..], 0.1);
+  #assert !g[0].sp.blasts[0].live;
+  sp_add_smoke(g[..], add(at, v3(1, 1, 0)), v3(0, 0, 0), 2, 30, 0.5, 0, 0.5, 0);
+  live := 0; for q: 0..<SP_PUFFS { if g[0].sp.puffs[q].live && td_in_box(at, 4.5, g[0].sp.puffs[q].at) { live += 1; } }
+  #assert live > 0;
+  // again before the click: Destroy Water
+  #assert spells_key(g[..], '(', 1) && g[0].sp.armed == SP_SLOTS + AB_CREATE;
+  up1 := spells_key_up(g[..], '(', 1);
+  #assert spells_key(g[..], '(', 1) && d[0].destroy;
+  up2 := spells_key_up(g[..], '(', 1);
+  sp_cast(g[..]);
+  #assert d[0].vapor_on;
+  left := 0; for q: 0..<SP_PUFFS { p := g[0].sp.puffs[q]; if p.live && p.vel.y <= 0.5 && td_in_box(at, 4.5, p.at) { left += 1; } }
+  #assert left == 0;
+}

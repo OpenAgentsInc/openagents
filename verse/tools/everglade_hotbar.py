@@ -66,6 +66,7 @@ STORM = (0.55, 0.75, 1.0)
 STONE = (0.82, 0.76, 0.66)
 ROT = (0.55, 0.9, 0.5)
 ICE = (0.65, 0.92, 1.0)
+MIST = (0.72, 0.86, 1.0)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -122,6 +123,18 @@ SLOTS = [
     ("sleet-storm", "lorc/snowflake-2.svg", ICE, "S6", "Sleet Storm",
      "Freezing sleet fills a 20-foot-radius cylinder: it hides what is behind it, puts out fires and ices the ground. Whoever is in it makes a Dexterity save each round or falls Prone and loses Concentration.",
      [("Shift+6", KEY), FREE, ("150 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
+    ("water-walk", "lorc/sprint.svg", WATER, "S7", "Water Walk",
+     "You walk and run on the water's surface as if it were solid ground; under it, you rise to its top. Press again to end it.",
+     [("Shift+7", KEY), FREE, ("1 hour", TIME)]),
+    ("control-water", "lorc/tornado-discs.svg", WATER, "S8", "Control Water",
+     "Click water: you flood it first, a pond over its rim or a wave down the river. Press again to part it, again to turn its current your way, again for a whirlpool, and once more to end it.",
+     [("Shift+8", KEY), FREE, ("300 ft range", RULE), ("Concentration, up to 10 minutes", TIME)]),
+    ("create-water", "delapouite/fog.svg", MIST, "S9", "Create or Destroy Water",
+     "Rain falls on a 30-foot cube and puts out what burns in it; press again before the click to destroy water instead, lifting the fog and the slush there away.",
+     [("Shift+9", KEY), FREE, ("30 ft range", RULE)]),
+    ("water-breathing", "lorc/shield-reflect.svg", MIST, "S0", "Water Breathing",
+     "You breathe under water, so you can dive and stay down. Press again to end it.",
+     [("Shift+0", KEY), FREE, ("24 hours", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),

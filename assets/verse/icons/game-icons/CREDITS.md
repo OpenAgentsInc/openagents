@@ -22,6 +22,9 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/ice-spear.svg` (Ice Knife)
 - `lorc/ice-bolt.svg` (Ice Storm)
 - `lorc/snowflake-2.svg` (Sleet Storm)
+- `lorc/sprint.svg` (Water Walk)
+- `lorc/tornado-discs.svg` (Control Water)
+- `lorc/shield-reflect.svg` (Water Breathing)
 
 Icons made by Delapouite (<https://delapouite.com>):
 
@@ -30,4 +33,5 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/body-height.svg` (Levitate)
 - `delapouite/stone-wall.svg` (Wall of Stone)
 - `delapouite/tentacles-barrier.svg` (Black Tentacles)
+- `delapouite/fog.svg` (Create or Destroy Water)
 - `delapouite/plain-arrow.svg` (a phone bar's next row, drawn upside down)

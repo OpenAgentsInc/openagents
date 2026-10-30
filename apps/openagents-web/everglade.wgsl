@@ -30,6 +30,7 @@ struct U {
   // trails (2 movers, 8 points each: x, z, when, speed; the newest first), then 64 particles (x, y, z,
   // size; kind, alpha, age's share)
   fx: array<vec4f, 149>,
+  tide: array<vec4f, 2>,   // the water the spells hold back (everglade-tide.coax td_uniforms): Part Water's trench (ax, az, bx, bz; half width), the whirlpool's eye (x, z, radius)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -1972,6 +1973,18 @@ const FX_HULLS = 2u;
 const FX_TRAILS = 5u;
 const FX_PARTS = 21u;
 const WAKE_TAN: f32 = 0.3536;    // tan 19.47 degrees: Kelvin's half-angle, at any speed
+// Whether the spells hold the water back from p (everglade-tide.coax): Part Water's trench, the
+// whirlpool's eye. None is drawn there.
+fn water_dry(p: vec2f) -> bool {
+  let w = u.tide[1].x;
+  if (w > 0.0) {
+    let a = u.tide[0].xy; let e = u.tide[0].zw - a;
+    let t = dot(p - a, e) / max(dot(e, e), 1e-4);
+    if (t > 0.0 && t < 1.0 && length(p - a - e * t) < w) { return true; }
+  }
+  let r = u.tide[1].w;
+  return r > 0.0 && length(p - u.tide[1].yz) < r;
+}
 // 1 inside a rowboat's hull: no water is drawn there (the old engine's hull masking).
 fn water_hull(p: vec2f) -> f32 {
   for (var k = 0u; k < 3u; k++) {
@@ -2410,7 +2423,7 @@ fn water_whole(i: WaterOut) -> vec3f {
   let world = i.world_depth.xyz;
   let px = vec2i(i.clip.xy);
   // inside a rowboat's hull the water isn't drawn
-  if (water_hull(world.xz) > 0.5) { return water_scene_at(px); }
+  if (water_hull(world.xz) > 0.5 || water_dry(world.xz)) { return water_scene_at(px); }
   let s = water_halves(i);
   let w = max(dot(u.r3, vec4f(world, 1.0)), 1e-3);
   let thick = water_thickness(px, world);

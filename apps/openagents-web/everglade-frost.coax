@@ -150,12 +150,13 @@ fr_ice_at :: (s: [] Everglade, x: f32, z: f32) -> FrIce {
 // What you can stand on over the water at (x, z): the ice's top, else far down (walk_at takes the higher).
 fr_floor :: (s: [] Everglade, x: f32, z: f32) -> f32 {
   if !sp_on(s) { return -1000; }
+  walk := td_floor(s, x, z);   // Water Walk (everglade-tide.coax)
   f := fr_of(s);
   any := false;
   for k: 0..<FR_PATCHES { p := f[0].patches[k]; if p.live && fr_water_stage(p) >= FR_FLOES && fr_in_disc(p, x, z) { any = true; } }
-  if !any { return -1000; }
-  if fr_ice_at(s, x, z).state >= FR_FLOES { return water_at(s, x, z) + 0.04; }
-  return -1000;
+  if !any { return walk; }
+  if fr_ice_at(s, x, z).state >= FR_FLOES { return hi(walk, water_at(s, x, z) + 0.04); }
+  return walk;
 }
 // How far the ice holds you over the ground under it there (everglade-face.c: your height over the
 // bed, for the river's swim).

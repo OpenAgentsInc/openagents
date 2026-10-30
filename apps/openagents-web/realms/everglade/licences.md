@@ -154,5 +154,9 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Ice Knife | `lorc/ice-spear.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Ice Storm | `lorc/ice-bolt.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Sleet Storm | `lorc/snowflake-2.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Water Walk | `lorc/sprint.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Control Water | `lorc/tornado-discs.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Create or Destroy Water | `delapouite/fog.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Water Breathing | `lorc/shield-reflect.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

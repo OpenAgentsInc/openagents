@@ -66,15 +66,16 @@
 // at its base and its top); a Wind Wall its grounded outline and the updraft's streaks rising through
 // it (wind_wall.rs wall_lines), in the old guide lines' cyan.
 
-AB_N :: 12;                // abilities on the bar, after the four aimed spells
+AB_N :: 16;                // abilities on the bar, after the four aimed spells
 AB_REVERSE :: 0; AB_WIND :: 1; AB_LEVITATE :: 2; AB_FEATHER :: 3; AB_GUST :: 4; AB_THUNDER :: 5; AB_STONE :: 6;
 AB_TK :: 7; AB_TENTACLES :: 8;
 AB_KNIFE :: 9; AB_STORM :: 10; AB_SLEET :: 11;   // everglade-frost.coax
+AB_WWALK :: 12; AB_CONTROL :: 13; AB_CREATE :: 14; AB_BREATH :: 15;   // everglade-tide.coax
 // Each one's place on the bar, row * 12 + column (everglade-spells.coax sp_place): 5 to 0, then the
 // second row's Shift+1 on.
-AB_PLACE :: [AB_N] int.[4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17];
+AB_PLACE :: [AB_N] int.[4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21];
 // The ones you point with (picked, then a click or a tap casts them where it points).
-ab_aimed :: (k: int) -> bool { return k == AB_TK || k == AB_TENTACLES || k == AB_KNIFE || k == AB_STORM || k == AB_SLEET; }
+ab_aimed :: (k: int) -> bool { return k == AB_TK || k == AB_TENTACLES || k == AB_KNIFE || k == AB_STORM || k == AB_SLEET || k == AB_CONTROL || k == AB_CREATE; }
 AB_FOOT :: 0.3048;
 // Reverse Gravity (SRD 5.2.1, level 7): a 50-foot-radius, 100-foot-high cylinder, a minute.
 AB_RG_R :: 15.24; AB_RG_H :: 30.48; AB_RG_LIFE :: 60.0;
@@ -155,6 +156,7 @@ ab_start :: (s: [] Everglade) {
   for i: 0..<WATCH_ACTORS { a[0].bt_held[i] = false; a[0].bt_next[i] = 0; }
   for i: 0..<WATCH_ACTORS { a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].up[i] = false; a[0].held[i] = false; a[0].saved[i] = false; }
   fr_start(s);
+  td_start(s);
 }
 // Whether slot `k` (an ability's) shows as on: Reverse Gravity holding, a Wind Wall standing.
 ab_active :: (s: [] Everglade, k: int) -> bool {
@@ -171,6 +173,10 @@ ab_active :: (s: [] Everglade, k: int) -> bool {
   if k == AB_KNIFE { return fr_of(s)[0].knife.live; }
   if k == AB_STORM { return fr_of(s)[0].storm_on; }
   if k == AB_SLEET { return fr_of(s)[0].sleet_on; }
+  if k == AB_WWALK { return td_of(s)[0].walk; }
+  if k == AB_CONTROL { return td_of(s)[0].on; }
+  if k == AB_CREATE { return td_of(s)[0].rain_on || td_of(s)[0].vapor_on; }
+  if k == AB_BREATH { return td_of(s)[0].breathe; }
   return false;
 }
 ab_forward :: (s: [] Everglade) -> Point { return v3(sin(s[0].face), 0, cos(s[0].face)); }
@@ -188,6 +194,15 @@ ab_press :: (s: [] Everglade, k: int) {
   }
   if k == AB_TENTACLES && a[0].bt_on { ab_bt_end(s); sp_say(s, "BLACK TENTACLES END", -1, ""); return; }
   if k == AB_SLEET && fr_of(s)[0].sleet_on { fr_sleet_end(s); sp_say(s, "SLEET STORM ENDS", -1, ""); return; }
+  if k == AB_CONTROL && td_of(s)[0].on { td_control_next(s); return; }
+  if k == AB_CREATE {
+    // picked once: Create; again: Destroy; once more puts it away
+    d := td_of(s);
+    if s[0].sp.armed != b { s[0].sp.armed = b; d[0].destroy = false; }
+    else if !d[0].destroy { d[0].destroy = true; }
+    else { s[0].sp.armed = -1; d[0].destroy = false; }
+    return;
+  }
   if ab_aimed(k) { s[0].sp.armed = ifx s[0].sp.armed == b then -1 else b; return; }
   s[0].sp.armed = -1;
   if k == AB_REVERSE { ab_reverse(s); return; }
@@ -197,6 +212,8 @@ ab_press :: (s: [] Everglade, k: int) {
   if k == AB_GUST { ab_gust(s); return; }
   if k == AB_THUNDER { ab_thunder(s); return; }
   if k == AB_STONE { ab_stone(s); return; }
+  if k == AB_WWALK { td_walk(s); return; }
+  if k == AB_BREATH { td_breathe(s); return; }
 }
 // A click or a tap with ability k picked, where the pointer points (everglade-spells.coax sp_cast).
 ab_cast :: (s: [] Everglade, k: int) {
@@ -205,6 +222,8 @@ ab_cast :: (s: [] Everglade, k: int) {
   if k == AB_KNIFE { fr_knife_cast(s); return; }
   if k == AB_STORM { fr_storm_cast(s); return; }
   if k == AB_SLEET { fr_sleet_cast(s); return; }
+  if k == AB_CONTROL { td_control_cast(s); return; }
+  if k == AB_CREATE { td_create_cast(s); return; }
 }
 // Esc with an ability picked: Telekinesis lets go.
 ab_cancel :: (s: [] Everglade) {
@@ -999,6 +1018,15 @@ ab_hint :: (s: [] Everglade, k: int, phone_: bool) -> string {
     if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(FR_SLEET_RANGE) { return "TOO FAR · 150 FEET AT MOST"; }
     return ifx phone_ then "TAP THE GROUND FOR A SLEET STORM · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR A SLEET STORM · ESC CANCELS";
   }
+  if k == AB_CONTROL {
+    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(TD_CTL_RANGE) { return "TOO FAR · 300 FEET AT MOST"; }
+    return ifx phone_ then "TAP WATER FOR CONTROL WATER · TAP ITS SLOT TO CANCEL" else "CLICK WATER FOR CONTROL WATER · ESC CANCELS";
+  }
+  if k == AB_CREATE {
+    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(TD_CREATE_RANGE) { return "TOO FAR · 30 FEET AT MOST"; }
+    if td_of(s)[0].destroy { return ifx phone_ then "TAP FOR DESTROY WATER · TAP ITS SLOT TO CANCEL" else "CLICK FOR DESTROY WATER · SHIFT+9 PUTS IT AWAY"; }
+    return ifx phone_ then "TAP FOR CREATE WATER · TAP ITS SLOT FOR DESTROY" else "CLICK FOR CREATE WATER · SHIFT+9 FOR DESTROY WATER";
+  }
   return "";
 }
 // Where ability k would land, as strokes: Telekinesis's small ring where it points; Black
@@ -1008,6 +1036,8 @@ ab_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int) -> int 
   pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
   if k == AB_KNIFE { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, f32(FR_KNIFE_R), FR_ICE_RGB, pulse); }
   if k == AB_STORM || k == AB_SLEET { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(FR_STORM_R), FR_ICE_RGB, pulse); }
+  if k == AB_CONTROL { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(TD_HALF), TD_RGB, pulse); }
+  if k == AB_CREATE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(TD_CUBE) * 0.5, TD_RGB, pulse); }
   if k != AB_TK { return n; }
   return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.6, AB_TK_RGB, pulse);
 }
@@ -1182,6 +1212,7 @@ ab_frame_more :: (s: [] Everglade, dt: f32) {
   ab_tk_frame(s, dt);
   ab_bt_frame(s, dt);
   fr_frame(s, dt);
+  td_frame(s, dt);
   ab_stone_folk(s);
   if a[0].lev_on { a[0].lev_t += dt; if a[0].lev_t >= f32(AB_LEV_LIFE) { a[0].lev_on = false; } }
   if a[0].ff_on { a[0].ff_t += dt; if a[0].ff_t >= f32(AB_FF_LIFE) { a[0].ff_on = false; } }
@@ -1312,6 +1343,8 @@ everglade_spell_fields :: (s: [] Everglade, out: [] f32) -> int #export_c {
   }
   // walkable and thin ice: what floats in it is held (everglade-frost.coax)
   n = fr_fields(s, out, n, AB_FIELD_FLOATS);
+  // Control Water's (everglade-tide.coax)
+  n = td_fields(s, out, n, AB_FIELD_FLOATS);
   return n;
 }
 
@@ -1474,6 +1507,7 @@ ab_draw :: (s: [] Everglade) {
   ab_draw_more(s, eye);
   ab_bt_draw(s);
   fr_draw(s);
+  td_draw(s);
   // Black Tentacles picked: its square where the pointer points
   if s[0].sp.armed == SP_SLOTS + AB_TENTACLES && s[0].sp.aim_ok {
     pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
