@@ -27,15 +27,20 @@ and `run.coax`, which wires the units to a relay, a signer and an engine.
 
 ## What is test-only here
 
-Two pieces are stand-ins until other work lands on main. The chapter says
-so wherever they appear.
+One piece is a stand-in until other work lands on main. The chapter says
+so wherever it appears.
 
 - **The key.** The Pylon's key is the SHA-256 of a label, made for tests.
   `--key-file` is accepted as configuration (the owner's choice: a `0600`
   file in `~/work/.secrets/`) and refused until the secret-handling audit
   (#4828) admits real keys.
-- **Relay frames.** `py_frame` reads the relay's EVENT, OK, EOSE, CLOSED
-  and NOTICE frames until `coax/lib/nostr/message.coax` lands.
+
+Relay frames were a stand-in too. They are `coax/lib/nostr/message.coax`
+(#6015) now: `nostr_message_read` reads the relay's EVENT, OK, EOSE, CLOSED
+and NOTICE frames, the Pylon verifies an EVENT's id and signature before
+the relay machine sees it, an AUTH challenge (which `message.coax` leaves to
+NIP-42) goes to `nip42_input`, and `nostr_message_write_req`, `_close` and
+`_event` write what the Pylon sends.
 
 Signing and NIP-44 were stand-ins in the first version of this chapter and
 are Coax now. Every event is signed by `nostr_event_sign_step` in

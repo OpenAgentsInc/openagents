@@ -134,9 +134,25 @@ the "below 128" form.
   append-only fsync'd log, replay with re-verification and the indexes are
   that task's job, not a second store here.
 - **NIP-42.** Done in the second part (below).
-- **message.coax (#6015).** It is not on main. When it lands,
-  message_server.coax should take `nm_sub_ok`, `NM_PREFIXES` and
-  `NM_MAX_FRAME` from it in place of its own equal values.
+- **message.coax (#6015).** Landed (`c7f0d7a222`). message_server.coax
+  keeps its own values and is unchanged (its 1179/1179 above stands): loading
+  message.coax into it would put message.coax's 4,162 mutants into its
+  mutation graph. Instead `coax/lib/nostr/message_agree.coax` (not
+  `#authority`) loads both and `coax/relay/relay.coax` loads it, so a drift
+  fails the relay build. Top-level `#assert`s, inside the compiler's default
+  100,000-step bound: `MS_MAX_FRAME`, `MS_MAX_FILTERS` and `MS_SUB_MAX` equal
+  `NM_MAX_FRAME`, `NM_MAX_FILTERS` and `NM_MAX_SUB`; `ms_prefix_ok` admits
+  exactly `NM_PREFIXES` (each read by `nm_prefix` as its own index) plus
+  auth-required (read as another word). Its check (`coax test
+  coax/lib/nostr/message_agree.coax`, 219/219 with its graph) adds what
+  is too costly at compile time: `ms_sub_ok`/`ms_chars` equal
+  `nm_sub_ok`/`nm_chars` for 0..66 one- and two-byte characters, every OK,
+  CLOSED and NOTICE the relay writes (each prefix, accepted and refused),
+  EOSE and EVENT read back by `nostr_message_read` with the same id, verdict,
+  prefix, sub and event bytes, and a client's REQ (16 filters), CLOSE and
+  EVENT from `nostr_message_write_*` read back by `ms_read`. With it loaded,
+  `relay_session.py` passes 72 checks and `relay_differential.py` 13, under
+  ASan/UBSan.
 - **Rust differential beyond the recording.** The owner allows a sandboxed
   build of the Rust relay from history. It did not fit this time box, so it
   was not built. The differential uses the read-only recording only.

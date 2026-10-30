@@ -22,8 +22,13 @@
 // a fresh 32-byte aux from the OS for each), and NIP-44's conversation key
 // is nip44-key.coax.
 //
+// Relay frames are coax/lib/nostr/message.coax's (#6015): nostr_message_read
+// reads EVENT, OK, EOSE, CLOSED and NOTICE; an EVENT's event is verified
+// here with nostr_event_verify_vartime before relay.coax sees it; AUTH (which
+// message.coax reports as NM_TYPE) goes to nip42_input. REQ, CLOSE and EVENT
+// are written with nostr_message_write_req/close/event.
+//
 // TEST-ONLY (see the record, docs/verification/psionic-ch19-2026-10-29.md):
-//   - py_frame reads relay-to-client frames until message.coax lands.
 //   - The key is sha256 of --test-key-label. --key-file is refused until the
 //     secret-handling audit (#4828) admits real keys.
 #import "Basic";
@@ -38,6 +43,7 @@
 #load "../../../coax/lib/nostr/nip44.coax";
 #load "../../../coax/lib/nostr/nip44-key.coax";
 #load "../../../coax/lib/nostr/nip42.coax";
+#load "../../../coax/lib/nostr/message.coax";
 
 // queue.coax names these PdCode and PdType values as integers.
 #assert PQ_NONE==cast(int)PdCode.none && PQ_BUSY==cast(int)PdCode.busy && PQ_TIMEOUT==cast(int)PdCode.timeout;
@@ -68,8 +74,6 @@ PY_HTTP :: 131072;
 PY_ARGS :: 8192;
 PY_LISTS :: 8;
 PY_DEFAULT_LIST :: "wss://relay.openagents.com";   // owner decision, 2026-10-30
-// Frame verbs (py_frame), until message.coax.
-PF_UNKNOWN :: 0; PF_EVENT :: 1; PF_OK :: 2; PF_EOSE :: 3; PF_CLOSED :: 4; PF_NOTICE :: 5; PF_AUTH :: 6;
 
 // ---- hex ------------------------------------------------------------------
 
@@ -187,34 +191,6 @@ py_connect :: (host:string,port:int)->int {
     return cxsock_connect(port,PY_IO_MS);
 }
 
-// ---- relay frames (TEST-ONLY adapter until message.coax) -------------------
-
-PyFrame :: struct {verb:int;sub:string;event:string;id:string;ok:bool;message:string;}
-py_frame :: (text:string)->PyFrame {
-    f:PyFrame;j:[1]Json;json_start(j[..],text);
-    if json_next(j[..])!=JSON_ARRAY || json_next(j[..])!=JSON_STRING {return f;}
-    verb:=json_text(j[..]);
-    if json_is(verb,"EVENT") {
-        if json_next(j[..])!=JSON_STRING {return f;}
-        f.sub=json_text(j[..]);t:=json_next(j[..]);if t!=JSON_OBJECT {return f;}
-        f.event=pt_raw(j[..],t);if f.event.count==0 || json_next(j[..])!=JSON_ARRAY_END {return f;}
-        f.verb=PF_EVENT;return f;
-    }
-    if json_is(verb,"OK") {
-        if json_next(j[..])!=JSON_STRING {return f;}
-        f.id=json_text(j[..]);t:=json_next(j[..]);if t!=JSON_TRUE && t!=JSON_FALSE {return f;}
-        f.ok=t==JSON_TRUE;if json_next(j[..])!=JSON_STRING {return f;}
-        f.message=json_text(j[..]);f.verb=PF_OK;return f;
-    }
-    if json_is(verb,"AUTH") {f.verb=PF_AUTH;return f;}
-    if json_next(j[..])!=JSON_STRING {return f;}
-    s:=json_text(j[..]);
-    if json_is(verb,"EOSE") {f.sub=s;f.verb=PF_EOSE;}
-    else if json_is(verb,"CLOSED") {f.sub=s;if json_next(j[..])==JSON_STRING {f.message=json_text(j[..]);}f.verb=PF_CLOSED;}
-    else if json_is(verb,"NOTICE") {f.message=s;f.verb=PF_NOTICE;}
-    return f;
-}
-
 // ---- the Pylon ----------------------------------------------------------------
 
 PySlot :: struct {held:PdJob;id:[64]u8;caller:[64]u8;request:[128]u8;body:[16384]u8;n:int;}
@@ -302,7 +278,7 @@ py_publish :: (p:[]Py,template:string,what:string)->int {
     slot:=rl_publish(p[0].rl[..],id[..]);
     if slot<0 {print("pylon: no publish slot free for the %\n",what);return -1;}
     o:=p[0].outbox[slot].text[..];
-    m:=json_raw(o,0,"[\"EVENT\",");m=json_raw(o,m,cast(string)signed[0..<n]);m=json_raw(o,m,"]");
+    m:=nostr_message_write_event(cast(string)signed[0..<n],o,false);
     if m<0 || m>RC_MSG_MAX {x:=rl_cancel_publish(p[0].rl[..],slot);return -1;}
     p[0].outbox[slot].n=m;
     p[0].sent+=1;
@@ -539,51 +515,55 @@ py_run :: (p:[]Py,slot:int) {
     } else {ok:=py_status(p,jb,cast(PdCode)a.code);}
     done:=pq_done(p[0].q[..],slot);
 }
-// One relay message, through relay.coax's machine.
+// One relay message, read by message.coax, through relay.coax's machine.
 py_take :: (p:[]Py) {
     c:=p[0].conn[..];r:=p[0].rl[..];
-    text:=cast(string)c[0].text[0..<c[0].text_n];f:=py_frame(text);
-    if f.verb==PF_EVENT {
+    text:=cast(string)c[0].text[0..<c[0].text_n];f:=nostr_message_read(text);
+    if f.error==NM_TYPE {
+        // AUTH is the one relay-to-client label message.coax leaves to NIP-42.
+        if nip42_input(r,p[0].n42[..],p[0].gen,text)>=0 {return;}
+        print("pylon: unreadable frame (% bytes, error %)\n",text.count,f.error);return;
+    }
+    if f.error!=NM_OK {print("pylon: unreadable frame (% bytes, error %)\n",text.count,f.error);return;}
+    sub:=nm_text(f,f.sub);message:=nm_text(f,f.message);
+    if f.type==NM_EVENT {
         scratch:[262144]u8;
-        ev:=nostr_event_verify_vartime(f.event,scratch[..],false);
-        m:=RlIn.{kind=RL_IN_EVENT,sub=f.sub,created_at=ev.created_at,verified=ev.error==NE_OK && ev.verified};
+        ev:=nostr_event_verify_vartime(text[f.event.from..<f.event.to],scratch[..],false);
+        m:=RlIn.{kind=RL_IN_EVENT,sub=sub,created_at=ev.created_at,verified=ev.error==NE_OK && ev.verified};
         m.id=ev.id;
         d:=rl_input(r,p[0].gen,m);
         if d==RL_FORGED {p[0].forged+=1;print("pylon: event refused by verification (error %)\n",ev.error);return;}
         if d==RL_DUPLICATE {p[0].duplicates+=1;py_again(p,ev.id[..]);return;}
-        if d!=RL_DELIVER {p[0].ignored+=1;print("pylon: event for % not taken (%)\n",f.sub,d);return;}
+        if d!=RL_DELIVER {p[0].ignored+=1;print("pylon: event for % not taken (%)\n",sub,d);return;}
         py_event(p,ev);
         return;
     }
-    if f.verb==PF_OK {
-        m:=RlIn.{kind=RL_IN_OK,accepted=f.ok};
-        if f.id.count!=64 || !py_unhex(f.id,m.id[..]) {print("pylon: unreadable OK\n");return;}
+    if f.type==NM_ACCEPT {
+        m:=RlIn.{kind=RL_IN_OK,accepted=f.accepted};m.id=f.id;
         d:=rl_input(r,p[0].gen,m);
         if d==RL_AUTH {
-            if f.ok {p[0].auths+=1;print("pylon: authenticated to % as % (connection %)\n",p[0].cfg[0].relay,py_me(p),p[0].gen);}
-            else {print("pylon: the relay refused NIP-42 AUTH: %\n",f.message);}
+            if f.accepted {p[0].auths+=1;print("pylon: authenticated to % as % (connection %)\n",p[0].cfg[0].relay,py_me(p),p[0].gen);}
+            else {print("pylon: the relay refused NIP-42 AUTH: %\n",message);}
             return;
         }
         if d==RL_ACK {
-            if f.ok {p[0].accepted+=1;}else {p[0].refused+=1;print("pylon: relay refused %: %\n",py_short(f.id),f.message);}
+            hex:[64]u8;
+            if f.accepted {p[0].accepted+=1;}else {p[0].refused+=1;print("pylon: relay refused %: %\n",py_short(py_hex(f.id[..],hex[..])),message);}
         }
         return;
     }
-    if f.verb==PF_EOSE {
-        if rl_input(r,p[0].gen,RlIn.{kind=RL_IN_EOSE,sub=f.sub})==RL_EOSE {p[0].caught_up+=1;print("pylon: caught up on % (connection %)\n",f.sub,p[0].gen);}
+    if f.type==NM_EOSE {
+        if rl_input(r,p[0].gen,RlIn.{kind=RL_IN_EOSE,sub=sub})==RL_EOSE {p[0].caught_up+=1;print("pylon: caught up on % (connection %)\n",sub,p[0].gen);}
         return;
     }
-    if f.verb==PF_CLOSED {
-        need:=f.message.count>=14 && f.message[0..<14]=="auth-required:";
-        d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_CLOSED,sub=f.sub,auth_required=need});
-        print("pylon: relay closed %: %\n",f.sub,f.message);return;
+    if f.type==NM_CLOSED {
+        // message.coax reads NIP-42's auth-required as another prefix word.
+        need:=f.prefix==NM_PREFIX_OTHER && message.count>=14 && message[0..<14]=="auth-required:";
+        d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_CLOSED,sub=sub,auth_required=need});
+        print("pylon: relay closed %: %\n",sub,message);return;
     }
-    if f.verb==PF_NOTICE {d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_NOTICE});print("pylon: notice %\n",f.message);return;}
-    if f.verb==PF_AUTH {
-        if nip42_challenge(p[0].n42[..],p[0].gen,text)==N42_OK {d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_AUTH});}
-        return;
-    }
-    print("pylon: unreadable frame (% bytes)\n",text.count);
+    // NM_NOTICE
+    d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_NOTICE});print("pylon: notice %\n",message);
 }
 py_jitter :: ()->int {
     b:[4]u8;if !py_draw(4,b[..]) {return 0;}
@@ -620,12 +600,15 @@ py_flush :: (p:[]Py)->bool {
         ok:=false;
         if o.kind==RL_OUT_REQ {
             since:=pq_since(o.has_since,o.since,p[0].first_since);
-            req:[512]u8;n:=json_raw(req[..],0,"[\"REQ\",");n=json_write_string(req[..],n,id);n=json_raw(req[..],n,",{\"kinds\":[25910],\"#p\":[\"");
-            n=json_raw(req[..],n,py_me(p));n=json_raw(req[..],n,"\"],\"since\":");n=json_write_int(req[..],n,since.since);n=json_raw(req[..],n,"}]");
+            kinds:=[1]int.[25910];me:=[1]string.[py_me(p)];
+            tags:=[1]NostrTagFilter.[NostrTagFilter.{name='p',values=me[..]}];
+            f:NostrFilter;f.has_kinds=true;f.kinds=kinds[..];f.tags=tags[..];f.has_since=true;f.since=since.since;
+            filters:=[1]NostrFilter.[f];
+            req:[512]u8;n:=nostr_message_write_req(id,filters[..],req[..],false);
             print("pylon: REQ % since % (connection %)%\n",id,since.since,p[0].gen,ifx since.resumed then ", resumed from the newest job delivered" else "");
             ok=n>0 && relay_conn_send(p[0].conn[..],cast(string)req[0..<n]);
         } else if o.kind==RL_OUT_CLOSE {
-            close:[64]u8;n:=json_raw(close[..],0,"[\"CLOSE\",");n=json_write_string(close[..],n,id);n=json_raw(close[..],n,"]");
+            close:[64]u8;n:=nostr_message_write_close(id,close[..],false);
             ok=n>0 && relay_conn_send(p[0].conn[..],cast(string)close[0..<n]);
         } else if o.kind==RL_OUT_EVENT {
             ok=relay_conn_send(p[0].conn[..],cast(string)p[0].outbox[o.slot].text[0..<p[0].outbox[o.slot].n]);

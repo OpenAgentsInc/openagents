@@ -24,6 +24,8 @@
 #load "../lib/nostr/store_saved.coax";
 #load "../lib/nostr/nip42-event.coax";
 #load "../lib/nostr/relay_route.coax";
+// message_server.coax's frames agree with message.coax's (#6015).
+#load "../lib/nostr/message_agree.coax";
 
 // relay_route.coax's mirrored codes are its sources' codes.
 #assert RR_MS_OK == MS_OK && RR_MS_VERB == MS_VERB && RR_MS_SUB == MS_SUB && RR_MS_TOO_MANY == MS_TOO_MANY;

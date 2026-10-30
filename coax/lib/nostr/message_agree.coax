@@ -1,0 +1,108 @@
+// Ties the relay's server codec (message_server.coax, #authority) to the
+// client codec (message.coax, #6015, #authority) without loading either into
+// the other: each keeps its own constants and its own mutation graph, and
+// the top-level #asserts below fail the build when they drift. Not
+// #authority: it decides nothing. coax/relay/relay.coax loads it, so the
+// relay does not build when the two disagree.
+//
+// What must agree: the frame bound, the filter bound, the subscription-id
+// bound in characters, and the machine-readable prefixes (message_server
+// writes the eight NIP-01 words plus NIP-42's auth-required, which
+// message.coax reads as another word). And each side reads what the other
+// writes: OK, EOSE, CLOSED, NOTICE and EVENT from the relay, REQ, CLOSE and
+// EVENT from a client.
+#load "message.coax";
+#load "message_server.coax";
+
+#assert MS_MAX_FRAME == NM_MAX_FRAME && MS_MAX_FILTERS == NM_MAX_FILTERS && MS_SUB_MAX == NM_MAX_SUB;
+#assert MS_PREFIXES == NM_PREFIXES.count + 1;
+// The compiler's default compile-time bound (100,000 steps) holds the
+// bounds and the prefix words; the subscription-id counting and the frame
+// round trips run as this unit's checks (coax test).
+#assert #run ma_prefixes();
+
+#test "the server and client codecs agree" {
+  #assert ma_prefixes() && ma_relay_frames() && ma_client_frames();
+  for n: 0..<67 { #assert ma_sub(n); }
+}
+
+// "word: why" into buf.
+ma_reason :: (word: string, buf: [] u8) -> string {
+  n := json_raw(buf, 0, word); n = json_raw(buf, n, ": why");
+  return cast(string) buf[0..<n];
+}
+// message_server writes exactly the NIP-01 words, in message.coax's order,
+// and auth-required; message.coax reads auth-required as another word.
+ma_prefixes :: () -> bool {
+  buf: [64] u8;
+  for k: 0..<NM_PREFIXES.count {
+    if !ms_prefix_ok(NM_PREFIXES[k]) || nm_prefix(ma_reason(NM_PREFIXES[k], buf[..])) != k + 1 { return false; }
+  }
+  if !ms_prefix_ok("auth-required") || nm_prefix(ma_reason("auth-required", buf[..])) != NM_PREFIX_OTHER { return false; }
+  return !ms_prefix_ok("closed") && !ms_prefix_ok("") && !ms_prefix_ok("Error");
+}
+// Subscription ids: 1..64 characters on both sides, counted the same way.
+// n characters of one byte, then of two.
+ma_sub :: (n: int) -> bool {
+  buf: [256] u8;
+  for c: 0..<2 {
+    w := 0;
+    for i: 0..<n { if c == 0 { buf[w] = 'a'; w += 1; } else { buf[w] = 0xc3; buf[w + 1] = 0xa9; w += 2; } }
+    s := cast(string) buf[0..<w];
+    if ms_sub_ok(s) != nm_sub_ok(s) || ms_chars(s) != nm_chars(s) || nm_sub_ok(s) != (n >= 1 && n <= 64) { return false; }
+  }
+  return true;
+}
+// What the relay writes, the client reads, with the same meaning.
+ma_relay_frames :: () -> bool {
+  out: [1024] u8; id: [32] u8; for i: 0..<32 { id[i] = cast(u8) (i * 7 + 3); }
+  words: [9] string; for k: 0..<8 { words[k] = NM_PREFIXES[k]; } words[8] = "auth-required";
+  for k: 0..<9 {
+    for refused: 0..<2 {
+      accepted := refused == 0;
+      n := ms_write_ok(id[..], accepted, words[k], "why", out[..]);
+      m := nostr_message_read(cast(string) out[0..<n]);
+      want := ifx k < 8 then k + 1 else NM_PREFIX_OTHER;
+      if n <= 0 || m.error != NM_OK || m.type != NM_ACCEPT || m.accepted != accepted || m.prefix != want { return false; }
+      for i: 0..<32 { if m.id[i] != id[i] { return false; } }
+    }
+    n := ms_write_closed("s\"1", words[k], "why", out[..]);
+    m := nostr_message_read(cast(string) out[0..<n]);
+    if n <= 0 || m.error != NM_OK || m.type != NM_CLOSED || nm_text(m, m.sub) != "s\\\"1" || m.prefix != (ifx k < 8 then k + 1 else NM_PREFIX_OTHER) { return false; }
+    n = ms_write_notice(words[k], "why", out[..]);
+    m = nostr_message_read(cast(string) out[0..<n]);
+    if n <= 0 || m.error != NM_OK || m.type != NM_NOTICE { return false; }
+  }
+  n := ms_write_ok(id[..], true, "", "", out[..]);
+  m := nostr_message_read(cast(string) out[0..<n]);
+  if n <= 0 || m.error != NM_OK || !m.accepted || m.prefix != NM_PREFIX_NONE { return false; }
+  n = ms_write_eose("feed", out[..]);
+  m = nostr_message_read(cast(string) out[0..<n]);
+  if n <= 0 || m.error != NM_OK || m.type != NM_EOSE || nm_text(m, m.sub) != "feed" || m.extra != 0 { return false; }
+  n = ms_write_event("feed", NE_FIXTURE, out[..]);
+  m = nostr_message_read(cast(string) out[0..<n]);
+  return n > 0 && m.error == NM_OK && m.type == NM_EVENT && nm_text(m, m.sub) == "feed" && nm_text(m, m.event) == NE_FIXTURE;
+}
+// A p tag names a key: 64 lowercase hex digits.
+MA_KEY :: "1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b";
+// What a client writes, the relay reads, with the same meaning.
+ma_client_frames :: () -> bool {
+  out: [4096] u8;
+  kinds := [1] int.[25910]; values := [1] string.[MA_KEY];
+  tags := [1] NostrTagFilter.[NostrTagFilter.{name = 'p', values = values[..]}];
+  f: NostrFilter; f.has_kinds = true; f.kinds = kinds[..]; f.tags = tags[..]; f.has_since = true; f.since = 5;
+  filters: [NM_MAX_FILTERS] NostrFilter; for i: 0..<NM_MAX_FILTERS { filters[i] = f; }
+  n := nostr_message_write_req("feed", filters[..], out[..], false);
+  t := cast(string) out[0..<n];
+  m := ms_read(t);
+  if n <= 0 || m.error != MS_OK || m.type != MS_REQ || cast(string) m.sub[0..<m.sub_n] != "feed" || m.filters != NM_MAX_FILTERS { return false; }
+  want: [128] u8; w := json_raw(want[..], 0, "{\"kinds\":[25910],\"#p\":[\""); w = json_raw(want[..], w, MA_KEY); w = json_raw(want[..], w, "\"],\"since\":5}");
+  if t[m.filter_from[0]..<m.filter_to[0]] != cast(string) want[0..<w] { return false; }
+  n = nostr_message_write_close("é", out[..], false);
+  m = ms_read(cast(string) out[0..<n]);
+  if n <= 0 || m.error != MS_OK || m.type != MS_CLOSE || cast(string) m.sub[0..<m.sub_n] != "é" { return false; }
+  n = nostr_message_write_event(NE_FIXTURE, out[..], false);
+  t = cast(string) out[0..<n];
+  m = ms_read(t);
+  return n > 0 && m.error == MS_OK && m.type == MS_EVENT && t[m.event_from..<m.event_to] == NE_FIXTURE;
+}
