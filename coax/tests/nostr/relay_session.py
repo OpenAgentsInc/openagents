@@ -361,7 +361,7 @@ def main():
                 w = Ws(port)
                 w.send(['REQ', 'after', {}])
                 got, _ = w.until_eose('after')
-                print('  note restart: %d events after restart (the test-only store double is not durable)' % len(got))
+                print('  note restart: %d events after restart (the in-memory store is not durable yet)' % len(got))
                 w.close()
             finally:
                 p.terminate(); p.wait(10)

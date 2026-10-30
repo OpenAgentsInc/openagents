@@ -5,9 +5,9 @@
 // message_server.coax (NIP-01 frames) -> relay_server.coax (admission,
 // REQ rules, subscriptions, NIP-11, NIP-40, replacement) -> the store.
 //
-// STORE: this build uses the TEST-ONLY in-memory double
-// (coax/tests/nostr/relay_store_double.coax) until nostr-event-store (#8eb5)
-// lands; a restart forgets every event. TLS: none here (ws:// only); put it
+// STORE: the verified in-memory store (coax/lib/nostr/store.coax, #8eb5's R1
+// part). It is not durable yet: a restart forgets every event until the
+// durable file and trusted recovery (#966b) land. TLS: none here (ws:// only); put it
 // behind a TLS proxy or add tls-native's server mode later.
 //
 // Routing (which reply goes to which connection and subscription) is
@@ -19,7 +19,7 @@
 // (relay_route.coax states the policy). Names here are ry_ because
 // nip42.coax loads the client relay.coax, whose names are rl_.
 #import "Basic";
-#load "../tests/nostr/relay_store_double.coax";
+#load "../lib/nostr/store.coax";
 #load "../lib/nostr/nip42-event.coax";
 #load "../lib/nostr/relay_route.coax";
 
