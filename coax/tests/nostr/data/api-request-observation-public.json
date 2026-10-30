@@ -1,0 +1,65 @@
+{
+  "duplicate_method": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "dbf5223c237955ca833411635a23e5bbf5b1b4761e8a7d9485c12426d900c163",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "6bd2318e97f4afe771effdf4983d0f1d9dc96e35d8bc422535a603690d7d4d1cb629affed3c5b49d5fd13d6292a998f945be072161ed92652b205d1a4f594170",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "GET"
+      ],
+      [
+        "method",
+        "POST"
+      ]
+    ]
+  },
+  "empty_payload": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "4ac5fa23d1c9bed2dd4628db55feb04418a25a6a454c1678599ef079872876d2",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "282f4268b2fab78d93a89a04a8bc82cfdaa71c806f7d00db3b54a76e2e0d1213751406938b64372bfa37de8b89d88057fbe18916cce635d56c3a9934cfc6ee61",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api"
+      ],
+      [
+        "method",
+        "POST"
+      ],
+      [
+        "payload",
+        ""
+      ]
+    ]
+  },
+  "extra_url_field": {
+    "content": "",
+    "created_at": 1761750000,
+    "id": "649bf3b33e9c402eb449dcae72bea7501894381ef81443430e4a616cce5e87a3",
+    "kind": 27235,
+    "pubkey": "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9",
+    "sig": "b95df1bf73fcd48fe24609af5e51fc989b26de15fa373a3a7d8aad49e60e45c4302491e0655b10fd2f33306889d47b1db6ad8848161adeb754218a16f335726e",
+    "tags": [
+      [
+        "u",
+        "https://example.test/api",
+        "extra"
+      ],
+      [
+        "method",
+        "POST"
+      ]
+    ]
+  }
+}

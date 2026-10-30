@@ -1,0 +1,92 @@
+// Public request-field observation only, not authentication or permission.
+// The caller supplies borrowed fields, cardinalities and a body digest; this
+// function does not parse, hash, verify their source, or provide replay safety.
+#authority;
+
+#test "matching request fields and inclusive time window" {
+  #assert n98_observe(27235,1000,1000,"u","POST","","u","POST","",1,1,0,false);
+  #assert n98_observe(27235,940,1000,"u","POST","","u","post","",1,1,0,false);
+  #assert n98_observe(27235,1060,1000,"u","GET","","u","get","",1,1,0,false);
+  #assert !n98_observe(1,1000,1000,"u","POST","","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,939,1000,"u","POST","","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,1061,1000,"u","POST","","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,1000,1000,"other","POST","","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,1000,1000,"u","GET","","u","POST","",1,1,0,false);
+}
+#test "body digest comparison is exact and lowercase" {
+  a:="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  b:="baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  #assert n98_observe(27235,1,1,"u","POST",a,"u","POST",a,1,1,1,false);
+  #assert !n98_observe(27235,1,1,"u","POST",b,"u","POST",a,1,1,1,false);
+  #assert !n98_observe(27235,1,1,"u","POST",a,"u","POST",a,1,1,2,false);
+  #assert !n98_observe(27235,1,1,"u","POST",a,"u","POST","",1,1,1,false);
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST",a,1,1,1,false);
+  #assert !n98_observe(27235,1,1,"u","POST","a","u","POST","a",1,1,1,false);
+  #assert n98_observe(27235,1,1,"u","POST","","u","POST","",1,1,0,false);
+  // With no payload tag the observed fields do not bind the request body.
+  #assert n98_observe(27235,1,1,"u","POST","","u","POST",a,1,1,0,false);
+}
+#test "ambiguous or malformed event tags never pass" {
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST","",0,1,0,false);
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST","",2,1,0,false);
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST","",1,0,0,false);
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST","",1,2,0,false);
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST","",1,1,2,false);
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST","",1,1,0,true);
+  #assert !n98_observe(27235,1,1,"u","POST","hidden","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,1,1,"u","POST","","u","POST","",1,1,-1,false);
+}
+#test "invalid request fields and negative or extreme times refuse safely" {
+  #assert n98_observe(27235,0,0,"u","POST","","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,-1,0,"u","POST","","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,0,-1,"u","POST","","u","POST","",1,1,0,false);
+  #assert !n98_observe(27235,0,0,"","POST","","","POST","",1,1,0,false);
+  #assert !n98_observe(27235,0,0,"u","","","u","","",1,1,0,false);
+  #assert n98_observe(27235,9223372036854775807,9223372036854775807,"u","a","","u","A","",1,1,0,false);
+  #assert !n98_observe(27235,0,9223372036854775807,"u","a","","u","A","",1,1,0,false);
+  #assert !n98_observe(27235,9223372036854775807,0,"u","a","","u","A","",1,1,0,false);
+}
+#test "ASCII method comparison preserves nonletters and length" {
+  #assert n98_method_equal("AZ","az") && n98_method_equal("az","AZ");
+  #assert !n98_method_equal("{","[");
+  #assert n98_method_equal("pOsT-9","PoSt-9");
+  #assert !n98_method_equal("GET","GETS");
+  #assert !n98_method_equal("@","`");
+  #assert !n98_method_equal("[","{");
+  #assert !n98_method_equal("X","Y");
+}
+
+#test "digest accepts only the exact lowercase hexadecimal alphabet" {
+ digits:[64]u8;for i:0..<64 {digits[i]='a';}
+ for c:"0123456789abcdef" {digits[0]=c;#assert n98_hex_digest(cast(string)digits[..]);}
+ for c:"/:@G`g{" {digits[0]=c;#assert !n98_hex_digest(cast(string)digits[..]);}
+ digits[0]='a';digits[63]='g';#assert !n98_hex_digest(cast(string)digits[..]);
+ #assert !n98_hex_digest(cast(string)digits[0..<63]);
+}
+
+n98_method_equal :: (a:string,b:string)->bool {
+ if a.count!=b.count {return false;}
+ for i:0..<a.count {
+  x:=cast(int)a[i];y:=cast(int)b[i];
+  if x>=65 && x<=90 {x+=32;}
+  if y>=65 && y<=90 {y+=32;}
+  if x!=y {return false;}
+ }
+ return true;
+}
+n98_hex_digest :: (s:string)->bool {
+ if s.count!=64 {return false;}
+ for c:s {if !((c>=48 && c<=57) || (c>=97 && c<=102)) {return false;}}
+ return true;
+}
+// `matches` is only a field observation. Never use it as authorization: the
+// caller must separately bind these fields to verified original bytes, hash
+// the real body, validate the HTTP request, and apply replay/session policy.
+n98_observe :: (kind:int,created:int,now:int,u:string,method:string,payload:string,url:string,request_method:string,body_hash:string,uc:int,mc:int,pc:int,malformed:bool)->bool #export_c {
+ if malformed || uc!=1 || mc!=1 || pc<0 || pc>1 {return false;}
+ if kind!=27235 || created<0 || now<0 {return false;}
+ if created-now>60 || now-created>60 {return false;}
+ if url.count==0 || request_method.count==0 || u!=url || !n98_method_equal(method,request_method) {return false;}
+ if pc==0 {return payload.count==0;}
+ return n98_hex_digest(payload) && payload==body_hash;
+}
