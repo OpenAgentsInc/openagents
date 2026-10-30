@@ -144,6 +144,7 @@ TYPED :: 1000;           // the most a suggestion keeps (the server's own cap)
 POST_BYTES :: 4096;
 SENT_NONE :: 0; SENT_SENDING :: 1; SENT_OK :: 2; SENT_FAILED :: 3;
 MSG_FACTS :: 600;
+MSG_TEXT :: 1;            // host.js: typed or pasted text from the keyboard field (every key a phone types, and a desktop's once the field has focus)
 
 TheGrid :: struct {
   started: bool;
@@ -451,6 +452,24 @@ panel_key :: (s: [] TheGrid, key: int, mods: int) -> bool {
   if key == KEY_ENTER || key == 'e' || key == 'E' { press(s, 0); return true; }
   return (mods & 10) == 0 && key != KEY_SHIFT;
 }
+// Text from the keyboard field at the suggestion station: it types, a line
+// break sends it. A character is taken whole or not at all.
+suggestion_typed :: (s: [] TheGrid, text: string) {
+  if s[0].panel != STATION_SUGGEST || s[0].sent == SENT_SENDING { return; }
+  i := 0;
+  while i < text.count {
+    c := text[i];
+    size := ifx c < 0x80 then 1 else ifx (c & 0xE0) == 0xC0 then 2 else ifx (c & 0xF0) == 0xE0 then 3 else ifx (c & 0xF8) == 0xF0 then 4 else 1;
+    if c == '\n' || c == '\r' { send_suggestion(s); return; }
+    if c < 32 || c == 127 || (c >= 0x80 && size == 1) || i + size > text.count { i += 1; continue; }
+    n := s[0].typed_n;
+    if n + size > TYPED { return; }
+    if s[0].sent == SENT_FAILED { s[0].sent = SENT_NONE; }
+    for b: 0..<size { s[0].typed[n + b] = text[i + b]; }
+    s[0].typed_n = n + size;
+    i += size;
+  }
+}
 // A code point as UTF-8 onto what's typed, if it fits.
 type_code :: (s: [] TheGrid, c: int) {
   n := s[0].typed_n;
@@ -549,6 +568,7 @@ take_fact :: (line: string, name: string, out: [] u8) -> int {
   return n;
 }
 thegrid_message :: (s: [] TheGrid, kind: int, text: string) #export_c {
+  if kind == MSG_TEXT { suggestion_typed(s, text); return; }
   if kind != MSG_FACTS { return; }
   i := 0;
   while i < text.count {
@@ -803,7 +823,8 @@ panel_view :: (s: [] TheGrid, out: [] f32, u: [] f32, at: int) -> int {
     y += 12 * k;
     fb := Box.{x0 = x0 + 12 * k, y0 = y, x1 = x1 - 12 * k, y1 = y + 40 * k};
     plate(s, u, fb, 0.95, 0);
-    s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1 - fb.x0; s[0].field[3] = fb.y1 - fb.y0;
+    // x0, y0, x1, y1 in device pixels: host.js puts the keyboard field there
+    s[0].field[0] = fb.x0; s[0].field[1] = fb.y0; s[0].field[2] = fb.x1; s[0].field[3] = fb.y1;
     tc := cap;
     base := fb.y1 - 15 * k;
     if s[0].sent == SENT_SENDING {
@@ -817,7 +838,9 @@ panel_view :: (s: [] TheGrid, out: [] f32, u: [] f32, at: int) -> int {
       cx := fb.x0 + 12 * k + tw + 3 * k;
       if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, base, cx, base - tc, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
     } else {
-      n = draw_text(out, n, "TYPE YOUR SUGGESTION", fb.x0 + 12 * k, base, tc * 0.85, GAP, SPACE, ink(k, 0.5, DIM_R, DIM_G, DIM_B), false, false);
+      n = draw_text(out, n, "TYPE YOUR SUGGESTION", fb.x0 + 18 * k, base, tc * 0.85, GAP, SPACE, ink(k, 0.5, DIM_R, DIM_G, DIM_B), false, false);
+      cx := fb.x0 + 12 * k;
+      if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, base + 2 * k, cx, base - tc - 1 * k, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
     }
     y = fb.y1;
   }
@@ -1186,10 +1209,12 @@ fake_data :: (out: [] u8) -> int {
   #assert thegrid_pointer(g[..], (ob.x0 + ob.x1) / 2, (ob.y0 + ob.y1) / 2, 2, 1, 5) && g[0].panel == STATION_SUGGEST;
   #assert thegrid_wants_text(g[..]);
   m = thegrid_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, 12, 0, -8.6, 3.14, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert g[0].field[2] > 0 && g[0].field[1] + g[0].field[3] <= 2532;
+  #assert g[0].field[2] > g[0].field[0] && g[0].field[3] > g[0].field[1] && g[0].field[3] <= 2532;
   // nothing typed: SEND sends nothing
   #assert thegrid_key(g[..], KEY_ENTER, 0) && thegrid_post(g[..]) == 0;
-  for c: "More \"lamps\"" { #assert thegrid_key(g[..], cast(int) c, 0); }
+  // a phone's keys (and a desktop's once the keyboard field has focus) come as text, not keys
+  thegrid_message(g[..], MSG_TEXT, "More \"la");
+  for c: "mps\"" { #assert thegrid_key(g[..], cast(int) c, 0); }
   #assert thegrid_key(g[..], KEY_BACKSPACE, 0) && typed_text(g[..]) == "More \"lamps";
   #assert thegrid_key(g[..], '!', 0);
   sb := g[0].buttons[0];

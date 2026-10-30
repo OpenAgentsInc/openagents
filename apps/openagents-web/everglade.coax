@@ -249,6 +249,7 @@ TYPED :: 200;
 ASK_BYTES :: 8192;
 ANSWER_WAIT :: 30.0;      // seconds before an unanswered question is given up
 MSG_KEPT :: 4;            // the host's kept text for this save slot, once at load
+MSG_TEXT :: 1;            // host.js: typed or pasted text from the keyboard field (every key a phone types, and a desktop's once the field has focus)
 ACT_KEEP :: 4;            // host.js: keep the outbox in this browser (the save slot, everglade)
 BOARD_NEAR :: 3.0;        // metres from the quest board's middle that read it
 SAVE_BYTES :: 160;
@@ -764,6 +765,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
 everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   if everglade_voice_message(s, kind, text) { return; }
+  if kind == MSG_TEXT { talk_typed(s, text); return; }
   if kind == MSG_FACTS {
     if !s[0].started { everglade_start(s); }
     take_visit(s, text); take_player(s, text);
@@ -1241,9 +1243,29 @@ talk_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   return true;
 }
 
+// Text from the keyboard field while you talk: it types, a line break says it.
+// A character is taken whole or not at all, so the line stays UTF-8.
+talk_typed :: (s: [] Everglade, text: string) {
+  if s[0].talk < 0 { return; }
+  i := 0;
+  while i < text.count {
+    c := text[i];
+    size := ifx c < 0x80 then 1 else ifx (c & 0xE0) == 0xC0 then 2 else ifx (c & 0xF0) == 0xE0 then 3 else ifx (c & 0xF8) == 0xF0 then 4 else 1;
+    if c == '\n' || c == '\r' { send_typed(s); i += 1; continue; }
+    if c < 32 || c == 127 || (c >= 0x80 && size == 1) || i + size > text.count { i += 1; continue; }
+    n := s[0].typed_n;
+    if n + size > TYPED { return; }
+    for b: 0..<size { s[0].typed[n + b] = text[i + b]; }
+    s[0].typed_n = n + size;
+    i += size;
+  }
+}
+
 // TALK (a phone's way to start) and BYE: pressed and lifted on them.
 talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
   if phase == 0 && (in_box(s[0].talk_button, x, y) || in_box(s[0].bye_button, x, y)) { s[0].talk_finger = id; return true; }
+  // a press on the line you type in is the keyboard field's: the host focuses it (a phone's keyboard comes up)
+  if s[0].talk >= 0 && s[0].talk_finger != id && in_box(Box.{x0 = s[0].field[0], y0 = s[0].field[1], x1 = s[0].field[2], y1 = s[0].field[3]}, x, y) { return true; }
   if id != s[0].talk_finger { return false; }
   if phase == 2 {
     if s[0].talk >= 0 && in_box(s[0].bye_button, x, y) { end_talk(s); }
@@ -2816,26 +2838,32 @@ conversation :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
       n = draw_text(out, n, said[starts[q]..<ends[q]], x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
     }
   }
-  // what you type, or how to
+  // the line you type in: a box with what you typed and the caret, or how to
   y += 12 * k + cap + 4 * k;
-  fx0 := x0 + 12 * k; fy0 := y - cap - 10 * k; fx1 := x1 - 12 * k; fy1 := y + 10 * k;
-  s[0].field[0] = fx0; s[0].field[1] = fy0; s[0].field[2] = fx1 - fx0; s[0].field[3] = fy1 - fy0;
+  fx0 := x0 + 12 * k; fy0 := y - cap - 9 * k; fx1 := x1 - 12 * k; fy1 := y + 9 * k;
+  // x0, y0, x1, y1 in device pixels: host.js puts the keyboard field there
+  s[0].field[0] = fx0; s[0].field[1] = fy0; s[0].field[2] = fx1; s[0].field[3] = fy1;
+  plate(s, u, Box.{x0 = fx0, y0 = fy0, x1 = fx1, y1 = fy1}, 0.95, 1);
+  tx := fx0 + 10 * k;
   if s[0].waiting {
     dots := ifx (cast(int) (s[0].time * 3)) % 3 == 0 then "." else ifx (cast(int) (s[0].time * 3)) % 3 == 1 then ". ." else ". . .";
-    n = draw_text(out, n, dots, x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.7, PARCH_R, PARCH_G, PARCH_B), false, false);
-  } else if s[0].typed_n > 0 {
+    n = draw_text(out, n, dots, tx, y, cap, GAP, SPACE, ink(k, 0.7, PARCH_R, PARCH_G, PARCH_B), false, false);
+  } else {
     typed := typed_text(s);
     tc := cap;
     tw := text_width(typed, tc);
     // the end of a long line stays in view
     shown := typed; skip := 0;
-    while tw > inner - 2 * tc && skip < typed.count { skip += 1; while skip < typed.count && (typed[skip] & 0xC0) == 0x80 { skip += 1; } shown = typed[skip..<typed.count]; tw = text_width(shown, tc); }
-    n = draw_text(out, n, shown, x0 + 16 * k, y, tc, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false);
-    cx := x0 + 16 * k + tw + 3 * k;
-    if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, y, cx, y - tc, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
-  } else {
-    help := ifx phone(s) then "TYPE TO SAY SOMETHING" else "TYPE TO SAY SOMETHING · ENTER SAYS IT · ESC ENDS";
-    n = draw_text(out, n, help, x0 + 16 * k, y, cap * 0.85, GAP, SPACE, ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false);
+    while tw > fx1 - tx - 2 * tc && skip < typed.count { skip += 1; while skip < typed.count && (typed[skip] & 0xC0) == 0x80 { skip += 1; } shown = typed[skip..<typed.count]; tw = text_width(shown, tc); }
+    if s[0].typed_n > 0 {
+      n = draw_text(out, n, shown, tx, y, tc, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false);
+    } else {
+      help := ifx phone(s) then "TYPE TO SAY SOMETHING" else "TYPE TO SAY SOMETHING · ENTER SAYS IT · ESC ENDS";
+      n = draw_text(out, n, help, tx + 6 * k, y, cap * 0.85, GAP, SPACE, ink(k, 0.6, PARCH_R, PARCH_G, PARCH_B), false, false);
+      tw = 0;
+    }
+    cx := tx + tw + (ifx s[0].typed_n > 0 then 3 * k else 0.0f32);
+    if (cast(int) (s[0].time * 2)) % 2 == 0 && lit(out, n, cx, y + 2 * k, cx, y - tc - 1 * k, 0.6 * k, 0.9, 1.2 * k, 1, 1, 1, 0) { n += 6; }
   }
   return n;
 }
@@ -3674,6 +3702,43 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_key(g[..], KEY_ESCAPE, 0) && g[0].talk == -1 && !everglade_busy(g[..]);
 }
 
+#test "what the keyboard field types reaches the conversation and is drawn in a box with a caret (host.js MSG_TEXT)" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  for size: 0..<2 {
+    w := ifx size == 0 then 1280 else 390; h := ifx size == 0 then 800 else 844;
+    g[0].talk = -1; g[0].line_n = 0;
+    n := everglade_frame(g[..], out[..], u[..], cast(f32) w, cast(f32) h, 1, 0.016, false, -2.2, 0, -37, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    #assert g[0].near == 5 && everglade_key(g[..], 'e', 0) && g[0].talk == 5;
+    // what the page sends with the field focused: no key events, the text itself
+    everglade_message(g[..], MSG_TEXT, "Hello");
+    everglade_message(g[..], MSG_TEXT, " Marta, café");
+    #assert typed_text(g[..]) == "Hello Marta, café";
+    // a key still types (the field not focused), and Backspace takes a letter back
+    #assert everglade_key(g[..], KEY_BACKSPACE, 0) && everglade_key(g[..], 'e', 0) && typed_text(g[..]) == "Hello Marta, cafe";
+    n = everglade_frame(g[..], out[..], u[..], cast(f32) w, cast(f32) h, 1, 0.016, false, -2.2, 0, -37, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    // the field is x0, y0, x1, y1 on the screen, inside the panel, and a box is drawn there
+    f := g[0].field;
+    #assert f[0] >= 0 && f[2] > f[0] + 100 && f[3] > f[1] + 10 && f[3] <= cast(f32) h && f[2] <= cast(f32) w;
+    drawn := false;
+    for p: 0..<g[0].plate_n { if u[U_PLATE + p * 8] == f[0] && u[U_PLATE + p * 8 + 3] == f[3] { drawn = true; } }
+    #assert drawn;
+    // a press on the box is the field's, not the camera's or the sticks'
+    #assert everglade_pointer(g[..], (f[0] + f[2]) / 2, (f[1] + f[3]) / 2, 0, size, 3) && !g[0].drag_on;
+    // a line break says it
+    everglade_message(g[..], MSG_TEXT, "\n");
+    #assert g[0].waiting && g[0].typed_n == 0 && line_of(g[..], g[0].line_n - 1) == "Hello Marta, cafe" && everglade_ask(g[..]) > 0;
+    everglade_answer(g[..], "200\n{\"text\":\"Well met.\",\"model\":\"m\"}");
+    #assert !g[0].waiting && line_of(g[..], g[0].line_n - 1) == "Well met.";
+    everglade_ask_sent(g[..]);
+    // nothing typed outside a conversation
+    #assert everglade_key(g[..], KEY_ESCAPE, 0) && g[0].talk == -1;
+    everglade_message(g[..], MSG_TEXT, "wasd");
+    #assert g[0].typed_n == 0;
+  }
+}
+
 #test "#quest-board starts you at the board, near enough to read it" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
@@ -3700,7 +3765,7 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert everglade_pointer(g[..], (tb.x0 + tb.x1) / 2, (tb.y0 + tb.y1) / 2, 0, 1, 7);
   #assert everglade_pointer(g[..], (tb.x0 + tb.x1) / 2, (tb.y0 + tb.y1) / 2, 2, 1, 7) && g[0].talk == 4;
   n = everglade_frame(g[..], out[..], u[..], 1170, 2532, 3, 0.016, false, -3.6, 0, 3.2, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert g[0].field[2] > 0 && g[0].field[1] + g[0].field[3] <= 2532 && g[0].field[0] >= 0;
+  #assert g[0].field[2] > g[0].field[0] && g[0].field[3] > g[0].field[1] && g[0].field[3] <= 2532 && g[0].field[0] >= 0;
   k := everglade_key(g[..], 'h', 0); k = everglade_key(g[..], 'i', 0); k = everglade_key(g[..], KEY_ENTER, 0);
   everglade_answer(g[..], "0\n");
   #assert line_of(g[..], g[0].line_n - 1) == "Mrrp.";
