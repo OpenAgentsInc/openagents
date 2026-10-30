@@ -1,5 +1,37 @@
 # Coax Nostr epic: handoff
 
+## API deployment integrity handoff — 2026-10-30
+
+A separately scoped update hardens the existing C-image deployment. It captures
+and tests committed API sources in a detached worktree, obtains an immutable
+image digest from the successful Cloud Build result, and verifies project,
+region, service UID, ready revision, resolved image, exclusive traffic and
+routed health identity before promotion. Staging and production receive the
+same digest. API health now reports configured build/release plus Cloud Run
+service/revision; it is still a database health endpoint. Existing phone and
+NIP-98 behavior and the C Dockerfile remain unchanged.
+
+The full native API suite passed 954 service checks under ASan/UBSan, alongside
+standalone bounded-JSON, fake-gcloud/curl rollout and real-Git detached-source
+fixtures. A build-only Cloud Build of the exact C source context succeeded; no
+Cloud Run staging or production deployment was performed. Full evidence,
+source/fixture limits, build ID and digest are in
+`docs/verification/2026-10-30-api-deploy-identity.md`. A verified archive of
+the build context, source manifest and sanitized build result is local at
+`~/.codex/handoffs/nostr-api-c-deploy-20261030/`, not a remote backup. The first
+full-suite attempt was invalid because its shell script was edited while it ran;
+the recorded final rerun used frozen inputs and passed.
+
+This does **not** establish that a real digest-based Cloud Run rollout works,
+authenticate a source/build attestation, or authenticate a Coax compiler
+artifact. #f96d remains open: the separate Coax-linked API prototype is in
+`~/.codex/handoffs/nostr-api-bridge-20261029/`, and its Linux bootstrap/artifact
+limits are in `~/.codex/handoffs/nostr-api-linux-bootstrap-20261029/`. The
+source-only Coax image previously timed out at the build limit; do not replace
+the working C Dockerfile with it absent a demonstrated, reviewed image flow.
+Take a fresh worktree, verify the live queue, and continue from those artifacts;
+do not infer Coax Nostr authorization or production secret approval.
+
 ## Restart — claude-nostr, 2026-10-29 (Linux host)
 
 The owner restarted the epic with one worker, `claude-nostr`, on the Linux

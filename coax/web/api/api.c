@@ -209,6 +209,15 @@ const char *api_query(const request *q, const char *name, char *out, size_t cap)
   return NULL;
 }
 
+// Never reflect unsanitized environment bytes into the public JSON response.
+static const char *health_identity(const char *key) {
+  const char *value = getenv(key);
+  if (!value || strlen(value) > 128) return "";
+  for (const unsigned char *p = (const unsigned char *)value; *p; p++)
+    if (!((*p >= 'a' && *p <= 'z') || (*p >= '0' && *p <= '9') || *p == '-')) return "";
+  return value;
+}
+
 static void health(int fd) {
   PGconn *c = api_db();
   if (!c) { api_json(fd, 503, "{\"ok\":false,\"error\":\"database unavailable\"}"); return; }
@@ -220,9 +229,10 @@ static void health(int fd) {
     api_json(fd, 503, "{\"ok\":false,\"error\":\"database query failed\"}");
     return;
   }
-  char json[512];
-  snprintf(json, sizeof json, "{\"ok\":true,\"database\":\"%s\",\"migration\":\"%s\",\"at\":\"%s\",\"roundTripMs\":%.1f}",
-           PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 2), api_now_ms() - t0);
+  char json[1200];
+  snprintf(json, sizeof json, "{\"ok\":true,\"database\":\"%s\",\"migration\":\"%s\",\"at\":\"%s\",\"roundTripMs\":%.1f,\"build\":\"%s\",\"release\":\"%s\",\"service\":\"%s\",\"revision\":\"%s\"}",
+           PQgetvalue(r, 0, 0), PQgetvalue(r, 0, 1), PQgetvalue(r, 0, 2), api_now_ms() - t0,
+           health_identity("OA_BUILD_SHA"), health_identity("OA_RELEASE_ID"), health_identity("K_SERVICE"), health_identity("K_REVISION"));
   PQclear(r);
   api_json(fd, 200, json);
 }

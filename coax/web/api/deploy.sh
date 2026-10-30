@@ -21,21 +21,33 @@
 # key; while one is missing that environment's PUBLISH only freezes the draft.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
+repo="$(git -C "$here" rev-parse --show-toplevel)"
+commit="$(git -C "$repo" rev-parse --verify HEAD)"
+[[ -z "$(git -C "$repo" status --porcelain --untracked-files=normal -- coax/web/api)" ]] || { echo 'api: commit API changes before deployment' >&2; exit 1; }
+work="$(mktemp -d)"
+cleanup() { git -C "$repo" worktree remove --force "$work/source" >/dev/null 2>&1 || true; rm -rf "$work"; }
+trap cleanup EXIT
+git -C "$repo" worktree add --detach "$work/source" "$commit" >/dev/null
+here="$work/source/coax/web/api"
 # shellcheck source=deploy-command.sh
 source "$here/deploy-command.sh"
-prod=true; [[ "${1:-}" == --staging ]] && prod=false
+# shellcheck source=deploy-rollout.sh
+source "$here/deploy-rollout.sh"
+case "${1:-}" in '') prod=true ;; --staging) prod=false ;; *) echo 'usage: deploy.sh [--staging]' >&2; exit 1 ;; esac
 project=openagentsgemini region=us-central1
 instance="$project:$region:openagents-production-pg"
 export CLOUDSDK_CONFIG="${CLOUDSDK_CONFIG:-$HOME/work/.secrets/gcloud-sa-config}"
 "$here/test.sh"
 
-stage="$(mktemp -d)"; trap 'rm -rf "$stage"' EXIT
+stage="$work/context"
 mkdir -p "$stage/src"
 cp "$here"/*.c "$here"/*.h "$stage/src/"; cp -R "$here/migrations" "$here/Dockerfile" "$stage/"
-image="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:$(git -C "$here" rev-parse --short HEAD)-$(date +%Y%m%d-%H%M%S)"
-gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$image" --quiet \
+tag="$region-docker.pkg.dev/$project/cloud-run-source-deploy/oa-api:${commit:0:12}-$(date +%Y%m%d-%H%M%S)"
+# Capture the authenticated build result, not the mutable tag's later value.
+gcloud builds submit "$stage" --project "$project" --region "$region" --tag "$tag" --format=json --suppress-logs --quiet \
   --service-account "projects/$project/serviceAccounts/oa-mvp-automation@$project.iam.gserviceaccount.com" \
-  --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$stage/build.log" 2>&1 || { tail -30 "$stage/build.log"; exit 1; }
+  --default-buckets-behavior REGIONAL_USER_OWNED_BUCKET > "$work/build.json" 2> "$work/build.log" || { tail -30 "$work/build.log"; exit 1; }
+image="$(python3 "$here/deploy_verify.py" build-image "$work/build.json" "$tag")"
 admins="$(grep -v '^#' "$here/admins.conf" | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64}$' | paste -sd, - || true)"
 # Our team (team.conf): kind:value,... ; its visits are our own testing, not usage.
@@ -54,17 +66,14 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
   fi
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
   [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"
-  api_run_deploy gcloud run deploy "$1" --image "$image" --project "$project" --region "$region" \
+  local release
+  release="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+  env+="@OA_BUILD_SHA=$commit@OA_RELEASE_ID=$release"
+  mkdir -p "$work/$1"
+  api_verified_rollout "$1" "$3" "$image" "$commit" "$release" "$work/$1" \
     --allow-unauthenticated --ingress internal-and-cloud-load-balancing \
     --port 8080 --cpu 1 --memory 256Mi --min-instances 0 --max-instances 4 --concurrency 40 \
-    --add-cloudsql-instances "$instance" --set-secrets "$secrets" \
-    --set-env-vars "$env" --quiet || return 1
-  for _ in $(seq 20); do
-    body="$(curl -s "https://$3/api/playtest/health" || true)"
-    [[ "$body" == *'"ok":true'* ]] && { echo "  ok    https://$3/api/playtest/health $body"; return 0; }
-    sleep 3
-  done
-  echo "  FAIL  https://$3/api/playtest/health: $body"; return 1
+    --add-cloudsql-instances "$instance" --set-secrets "$secrets" --set-env-vars "$env"
 }
 deploy oa-api-staging oa-analytics-staging-database-url staging.openagents.com oa-agent-projects-staging oa-agent-staging staging
 $prod && deploy oa-api oa-analytics-database-url openagents.com oa-agent-projects oa-agent production

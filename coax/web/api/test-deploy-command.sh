@@ -27,7 +27,7 @@ status=0
 api_run_deploy "$work/missing" >"$work/missing.log" 2>&1 || status=$?
 [[ "$status" == 127 ]] || { echo "missing command status was masked: $status" >&2; exit 1; }
 mkdir -p "$work/api/migrations" "$work/bin"
-cp "$here/deploy.sh" "$here/deploy-command.sh" "$work/api/"
+cp "$here/deploy.sh" "$here/deploy-command.sh" "$here/deploy-rollout.sh" "$here/deploy_verify.py" "$work/api/"
 touch "$work/api/fixture.c" "$work/api/fixture.h" "$work/api/Dockerfile" "$work/api/admins.conf" "$work/api/migrations/fixture.sql"
 cat > "$work/api/test.sh" <<'MOCK'
 #!/usr/bin/env bash
@@ -35,14 +35,35 @@ exit 0
 MOCK
 cat > "$work/bin/git" <<'MOCK'
 #!/usr/bin/env bash
-printf '0123456\n'
+set -euo pipefail
+[[ "$1" == -C ]] || exit 91
+shift 2
+case "${1:-} ${2:-}" in
+  'rev-parse --show-toplevel') printf '%s\n' "$DEPLOY_FIXTURE_REPO" ;;
+  'rev-parse --verify') printf '%s\n' 1111111111111111111111111111111111111111 ;;
+  'status --porcelain') ;;
+  'worktree add')
+    [[ "${3:-}" == --detach ]] || exit 92
+    mkdir -p "$4/coax/web/api"
+    cp -R "$DEPLOY_FIXTURE_API"/. "$4/coax/web/api/" ;;
+  'worktree remove') ;;
+  *) exit 93 ;;
+esac
 MOCK
 cat > "$work/bin/gcloud" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "$DEPLOY_FIXTURE_LOG"
-if [[ ${1:-} == builds && ${2:-} == submit ]]; then exit 0; fi
+if [[ ${1:-} == builds && ${2:-} == submit ]]; then
+  args=("$@"); tag=""
+  for ((i=0;i<${#args[@]};i++)); do [[ "${args[i]}" == --tag ]] && tag="${args[i+1]}"; done
+  printf '{"status":"SUCCESS","results":{"images":[{"name":"%s","digest":"sha256:%064d"}]}}\n' "$tag" 0
+  exit 0
+fi
 if [[ ${1:-} == secrets && ${2:-} == describe ]]; then exit 1; fi
-if [[ ${1:-} == run && ${2:-} == services && ${3:-} == describe ]]; then exit 1; fi
+if [[ ${1:-} == run && ${2:-} == services && ${3:-} == describe ]]; then
+  if [[ ${4:-} == oa-api-staging ]]; then printf '{}\n'; exit 0; fi
+  exit 1
+fi
 if [[ ${1:-} == run && ${2:-} == deploy && ${3:-} == oa-api-staging ]]; then
   echo 'simulated deployment failure' >&2
   exit 42
@@ -57,7 +78,7 @@ printf '{"ok":true}\n'
 MOCK
 chmod +x "$work/api/test.sh" "$work/bin/git" "$work/bin/gcloud" "$work/bin/curl"
 status=0
-PATH="$work/bin:$PATH" DEPLOY_FIXTURE_LOG="$work/calls" DEPLOY_FIXTURE_CURL="$work/curl-called" \
+PATH="$work/bin:$PATH" DEPLOY_FIXTURE_REPO="$work" DEPLOY_FIXTURE_API="$work/api" DEPLOY_FIXTURE_LOG="$work/calls" DEPLOY_FIXTURE_CURL="$work/curl-called" \
   bash "$work/api/deploy.sh" >"$work/callsite.log" 2>&1 || status=$?
 [[ "$status" != 0 ]] || { echo 'failed staging deploy returned success' >&2; exit 1; }
 grep -q '^run deploy oa-api-staging ' "$work/calls" || { echo 'fixture did not reach staging deploy' >&2; exit 1; }

@@ -28,6 +28,7 @@ def sql(q):
 status, body, _ = call("GET", "/api/playtest/health")
 h = json.loads(body)
 check("health answers with a database round trip", status == 200 and h["ok"] and h["database"] == "oa_analytics", body)
+check("health reports exact deployment identity", h.get("build") == "1" * 40 and h.get("release") == "123e4567-e89b-42d3-a456-426614174000" and h.get("service") == "oa-api-staging" and h.get("revision") == "oa-api-staging-00002-new", body)
 check("every migration applied once", sql("select count(*) from schema_migrations") == str(len([f for f in os.listdir(os.path.join(os.path.dirname(__file__), "migrations")) if f.endswith(".sql")])))
 check("an unknown path is a 404", call("GET", "/api/nothing")[0] == 404)
 
