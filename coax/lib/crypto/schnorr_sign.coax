@@ -1,0 +1,184 @@
+// BIP-340 signing in four resumable stages over one caller-owned workspace:
+// key point, nonce point, scalar equation, then verification of the result.
+// Each call does one stage, so a page can spread a signature over frames;
+// call until the status is not SIGN_MORE. The signature is published only
+// after it verifies, and the workspace is cleared when signing ends.
+#load "schnorr_prepare_workspace.coax";
+#load "schnorr_nonce_point.coax";
+#load "schnorr_math_workspace.coax";
+#load "schnorr_fast.coax";
+#load "../../tests/nostr/schnorr_sign_vectors.coax";
+#authority;
+
+SIGN_REFUSED :: 0; SIGN_MORE :: 1; SIGN_DONE :: 2;
+
+#test "status values are the host ABI" {
+  #assert SIGN_REFUSED==0 && SIGN_MORE==1 && SIGN_DONE==2;
+}
+#test "stage one derives each vector's x-only key and parity" {
+  v:=SIGN_VECTORS[3];work:[1]SignWork;out:[64]u8;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_MORE && work[0].stage==1;
+  for i:0..<32 {#assert work[0].prep[0].public_key[i]==v.pub[i] && work[0].prep[0].normalized[i]==v.normalized[i];}
+  #assert work[0].prep[0].point[0].odd==v.key_odd && work[0].prep[0].valid==1;
+  for i:0..<64 {#assert out[i]==0;}
+}
+#test "stage one keeps an even key unchanged" {
+  v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_MORE && work[0].stage==1;
+  for i:0..<32 {#assert work[0].prep[0].public_key[i]==v.pub[i] && work[0].prep[0].normalized[i]==v.key[i];}
+  #assert work[0].prep[0].point[0].odd==0;
+}
+#test "a zero key refuses at the first stage and clears the workspace" {
+  v:=SIGN_VECTORS[0];key:[32]u8;work:[1]SignWork;out:[64]u8;out[5]=7;
+  #assert schnorr_sign_step(key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_REFUSED;
+  #assert work[0].stage==0 && work[0].prep[0].valid==0 && work[0].prep[0].public_key[0]==0 && out[5]==7;
+}
+#test "the group order refuses as a key" {
+  v:=SIGN_VECTORS[0];key:[32]u8;work:[1]SignWork;out:[64]u8;
+  #assert ss_write(SC_N,key[..]);
+  #assert schnorr_sign_step(key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_REFUSED && work[0].stage==0;
+}
+#test "stage two derives the nonce point from the normalized key" {
+  v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;
+  work[0].stage=1;work[0].prep[0].normalized=v.normalized;work[0].prep[0].public_key=v.pub;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_MORE && work[0].stage==2;
+  for i:0..<32 {#assert work[0].nonce[0].r[i]==v.r[i] && work[0].nonce[0].hash[i]==v.hash[i];}
+  #assert work[0].nonce[0].point[0].odd==v.nonce_odd && work[0].nonce[0].valid==1;
+}
+#test "stage two with an even nonce point" {
+  v:=SIGN_VECTORS[3];work:[1]SignWork;out:[64]u8;
+  work[0].stage=1;work[0].prep[0].normalized=v.normalized;work[0].prep[0].public_key=v.pub;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_MORE && work[0].stage==2;
+  for i:0..<32 {#assert work[0].nonce[0].r[i]==v.r[i];}
+  #assert work[0].nonce[0].point[0].odd==0;
+}
+#forall "stage three computes every vector's signature" index:0..<4 {
+  v:=SIGN_VECTORS[index];work:[1]SignWork;out:[64]u8;
+  work[0].stage=2;work[0].prep[0].public_key=v.pub;work[0].prep[0].point[0].odd=v.key_odd;
+  work[0].nonce[0].hash=v.hash;work[0].nonce[0].r=v.r;work[0].nonce[0].point[0].odd=v.nonce_odd;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_MORE && work[0].stage==3;
+  for i:0..<64 {#assert work[0].sig[i]==v.sig[i];}
+  #assert work[0].math[0].valid==1;for i:0..<64 {#assert out[i]==0;}
+}
+#test "stage four publishes vector zero after it verifies, then clears" {
+  v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;
+  work[0].stage=3;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
+  work[0].prep[0].valid=1;work[0].nonce[0].valid=1;work[0].math[0].valid=1;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_DONE;
+  for i:0..<64 {#assert out[i]==v.sig[i] && work[0].sig[i]==0;}
+  #assert work[0].stage==0 && work[0].prep[0].valid==0 && work[0].prep[0].public_key[0]==0;
+}
+#test "stage four publishes vector three" {
+  v:=SIGN_VECTORS[3];work:[1]SignWork;out:[64]u8;
+  work[0].stage=3;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
+  work[0].prep[0].valid=1;work[0].nonce[0].valid=1;work[0].math[0].valid=1;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_DONE;
+  for i:0..<64 {#assert out[i]==v.sig[i];}
+}
+#test "stage four refuses a signature for another message" {
+  v:=SIGN_VECTORS[1];work:[1]SignWork;out:[64]u8;message:=v.message;message[31]^=1;
+  work[0].stage=3;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
+  work[0].prep[0].valid=1;work[0].nonce[0].valid=1;work[0].math[0].valid=1;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],message[..],work[..],out[..],false)==SIGN_REFUSED;
+  for i:0..<64 {#assert out[i]==0 && work[0].sig[i]==0;}#assert work[0].stage==0;
+}
+#forall "stage four needs every validity bit" key:bool,nonce:bool,math:bool {
+  v:=SIGN_VECTORS[2];work:[1]SignWork;out:[64]u8;
+  if key && nonce && math {return;}
+  work[0].stage=3;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
+  work[0].prep[0].valid=ifx key then cast(u64)1 else cast(u64)0;work[0].nonce[0].valid=ifx nonce then cast(u64)1 else cast(u64)0;work[0].math[0].valid=ifx math then cast(u64)1 else cast(u64)0;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_REFUSED;
+  for i:0..<64 {#assert out[i]==0 && work[0].sig[i]==0;}#assert work[0].stage==0;
+}
+#forall "a corrupt stage clears the workspace without output" stage:-1..<6 {
+  if stage>=0 && stage<4 {return;}
+  v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;
+  work[0].stage=stage;work[0].sig[3]=9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_REFUSED;
+  #assert work[0].stage==0 && work[0].sig[3]==0 && out[3]==0;
+}
+#test "views are admitted before the workspace changes" {
+  v:=SIGN_VECTORS[0];work:[1]SignWork;out:[65]u8;big:[1048577]u8;
+  // A corrupt stage marks whether a call got past view admission.
+  work[0].stage=4;work[0].sig[0]=9;
+  #assert schnorr_sign_step(v.key[0..<31],v.aux[..],v.message[..],work[..],out[0..<64],false)==SIGN_REFUSED && work[0].sig[0]==9;
+  #assert schnorr_sign_step(v.key[..],v.aux[0..<31],v.message[..],work[..],out[0..<64],false)==SIGN_REFUSED && work[0].sig[0]==9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[0..<63],false)==SIGN_REFUSED && work[0].sig[0]==9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_REFUSED && work[0].sig[0]==9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[0..<64],true)==SIGN_REFUSED && work[0].sig[0]==9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],big[..],work[..],out[0..<64],false)==SIGN_REFUSED && work[0].sig[0]==9;
+  two:[2]SignWork;two[0].stage=4;two[0].sig[0]=9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],two[..],out[0..<64],false)==SIGN_REFUSED && two[0].sig[0]==9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],two[0..<0],out[0..<64],false)==SIGN_REFUSED;
+  // Empty and maximum messages are admitted (the corrupt stage then clears).
+  #assert schnorr_sign_step(v.key[..],v.aux[..],big[0..<0],work[..],out[0..<64],false)==SIGN_REFUSED && work[0].sig[0]==0;
+  work[0].stage=4;work[0].sig[0]=9;
+  #assert schnorr_sign_step(v.key[..],v.aux[..],big[0..<1048576],work[..],out[0..<64],false)==SIGN_REFUSED && work[0].sig[0]==0;
+}
+#test "the Nostr entry signs exactly a 32-byte event id" {
+  v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;id:[33]u8;
+  work[0].stage=4;work[0].sig[0]=9;
+  #assert nostr_sign_step(v.key[..],v.aux[..],id[0..<31],work[..],out[..],false)==SIGN_REFUSED && work[0].sig[0]==9;
+  #assert nostr_sign_step(v.key[..],v.aux[..],id[..],work[..],out[..],false)==SIGN_REFUSED && work[0].sig[0]==9;
+  #assert nostr_sign_step(v.key[..],v.aux[..],id[0..<32],work[..],out[..],false)==SIGN_REFUSED && work[0].sig[0]==0;
+  work[0].stage=3;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
+  work[0].prep[0].valid=1;work[0].nonce[0].valid=1;work[0].math[0].valid=1;
+  #assert nostr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_DONE;
+  for i:0..<64 {#assert out[i]==v.sig[i];}
+}
+
+SignWork :: struct {stage:int;prep:[1]SignPrepare;nonce:[1]SignNoncePoint;math:[1]SignMath;challenge:[32]u8;sig:[64]u8;}
+
+// The whole workspace returns to its initial value. Compiler or host copies
+// of secret values are outside this reach; the host still wipes the region.
+sw_clear :: (work:[]SignWork)->int {fresh:SignWork;work[0]=fresh;return SIGN_REFUSED;}
+sw_views :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->bool {
+  return work.count==1 && key.count==32 && aux.count==32 && message.count>=0 && message.count<=SV_MAX_MESSAGE && out.count==64 && !overlap;
+}
+// An invalid key refuses here; its validity is the call's public result.
+sw_key :: (key:[]u8,work:[]SignWork)->int {
+  if !sk_prepare(key,work[0].prep[..],false) || work[0].prep[0].valid!=1 {return sw_clear(work);}
+  work[0].stage=1;return SIGN_MORE;
+}
+sw_nonce :: (aux:[]u8,message:[]u8,work:[]SignWork)->int {
+  if !snp_prepare(work[0].prep[0].normalized[..],work[0].prep[0].public_key[..],aux,message,work[0].nonce[..],false) {return sw_clear(work);}
+  work[0].stage=2;return SIGN_MORE;
+}
+// r, the public key and the message are public: the challenge may vary in time.
+sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int {
+  challenge:=sv_challenge_vartime(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..]);
+  written:=ss_write(challenge.value,work[0].challenge[..]);
+  if !sm_equation(key,work[0].nonce[0].hash[..],work[0].challenge[..],work[0].prep[0].point[0].odd,work[0].nonce[0].point[0].odd,work[0].math[..],false) {return sw_clear(work);}
+  for i:0..<32 {work[0].sig[i]=work[0].nonce[0].r[i];}
+  written=ss_write(work[0].math[0].result,work[0].sig[32..<64]);
+  work[0].stage=3;return SIGN_MORE;
+}
+// Any key, nonce or equation fault, or a key changed between calls, fails
+// here: nothing is published unless the finished signature verifies.
+// The one self-check of an unpublished candidate. Variable-time for now;
+// #89db replaces it with a fixed-work verifier returning a validity mask.
+ss_self_check :: (message:[]u8,pub:[]u8,candidate:[]u8)->bool {
+  return schnorr_fast_verify_vartime(message,pub,candidate);
+}
+sw_publish :: (message:[]u8,work:[]SignWork,out:[]u8)->int {
+  valid:=work[0].prep[0].valid & work[0].nonce[0].valid & work[0].math[0].valid;
+  if valid!=1 || !ss_self_check(message,work[0].prep[0].public_key[..],work[0].sig[..]) {return sw_clear(work);}
+  for i:0..<64 {out[i]=work[0].sig[i];}
+  cleared:=sw_clear(work);return SIGN_DONE;
+}
+// Pass the same key, aux and message on every call. Views must be stable and
+// disjoint, and overlap is the host's truthful observation. Refused views
+// change nothing; any other refusal clears the workspace. out is written
+// only on SIGN_DONE.
+schnorr_sign_step :: (key:[]u8,aux:[]u8,message:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->int #export_c {
+  if !sw_views(key,aux,message,work,out,overlap) {return SIGN_REFUSED;}
+  stage:=work[0].stage;
+  if stage==0 {return sw_key(key,work);}
+  if stage==1 {return sw_nonce(aux,message,work);}
+  if stage==2 {return sw_scalar(key,message,work);}
+  if stage==3 {return sw_publish(message,work,out);}
+  return sw_clear(work);
+}
+nostr_sign_step :: (key:[]u8,aux:[]u8,event_id:[]u8,work:[]SignWork,out:[]u8,overlap:bool)->int #export_c {
+  if event_id.count!=32 {return SIGN_REFUSED;}return schnorr_sign_step(key,aux,event_id,work,out,overlap);
+}
