@@ -95,6 +95,12 @@ class PublicViews(unittest.TestCase):
             r=self.tool.audit(p,'candidate',classification=dict(m4,public_fields=bad));self.assertFalse(r['accepted'],bad);self.assertNotEqual(r['error'],0,bad)
         r=self.tool.audit(p,'candidate',classification=dict(m,public_fields=[['W','stage']]));self.assertFalse(r['accepted'])
         r=self.audit(p,dict(m4,public_fields=[['W','nope']]),10)
+    def test_declassification_is_reported(self):
+        src='ok_declassify :: (v:u64)->bool {return v==1;}\ncandidate :: (k:u64)->u64 #export_c {if ok_declassify(k) {return 1;}return 2;}'
+        p,_,m=self.source('declassify',src,[('k','u64','secret',None,0)])
+        r=self.audit(p,m,14);self.assertFalse(r['accepted']);self.assertEqual(r['source_status'],'analyzed-with-guard-obligations')
+        self.assertEqual([(g['kind'],g['origin_mask'],g['line']) for g in r['authored_guard_obligations']],[('declassification',1,2)])
+        p,_,m=self.source('no_declassify',src.replace('ok_declassify','ok_check'),[('k','u64','secret',None,0)]);self.audit(p,m,6)
     def test_taint_alias_and_readonly_effects(self):
         cases=[
           ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),

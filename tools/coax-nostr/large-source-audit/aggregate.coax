@@ -238,6 +238,21 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  labels:[8]AgLabel;for i:0..<8 {labels[i]=AgLabel.{name=names[i],type="V",access=3};}args:=[1]AgValue.[AgValue.{mask=1,region=1}];memory:[1]AgMemory;memory[0].used=1;state:[1]ScAudit;
  AG_public_fields(nodes[..],roots[..],labels[..],args[..],memory[..],state[..]);#assert state[0].error==0 && memory[0].field_count==8 && memory[0].shadow_count==8 && memory[0].fields[0]==2;
 }
+#test "declassification names, shadows, flat fields and obligations are exact" {
+ #assert AG_declassifies("ok_declassify") && AG_declassifies("_declassify") && !AG_declassifies("declassify") && !AG_declassifies("ok_declassifyx") && !AG_declassifies("ok_vartime");
+ memory:[1]AgMemory;memory[0].shadow_count=1;memory[0].shadow_region[0]=4;#assert AG_is_shadow(memory[..],4) && !AG_is_shadow(memory[..],3) && !AG_is_shadow(memory[..],0);
+ memory[0].shadow_region[0]=0;#assert !AG_is_shadow(memory[..],0);
+ nodes:[8]ScNode;roots:[1]int;state:[1]ScAudit;nodes[1]=ScNode.{kind=2,b=2};nodes[2]=ScNode.{kind=1,name="u8"};nodes[3]=ScNode.{kind=2,b=4};nodes[4]=ScNode.{kind=66,name="S"};nodes[5]=ScNode.{kind=3,b=2};
+ #assert AG_flat(nodes[..],roots[0..<0],-1,state[..]) && AG_flat(nodes[..],roots[0..<0],1,state[..]) && !AG_flat(nodes[..],roots[0..<0],3,state[..]) && !AG_flat(nodes[..],roots[0..<0],4,state[..]) && !AG_flat(nodes[..],roots[0..<0],5,state[..]) && !AG_flat(nodes[..],roots[0..<0],0,state[..]);
+ m:[1]AgMemory;m[0].public_views=true;args:=[1]AgValue.[AgValue.{region=4}];m[0].shadow_count=1;m[0].shadow_region[0]=4;m[0].taint[4]=8;
+ v:=AG_declassify(nodes[..],m[..],state[..],1,AgValue.{mask=2,type=-1},args[..]);#assert v.mask==0 && v.type==-1 && m[0].taint[4]==0 && m[0].guard_count==1 && m[0].guards[0].mask==10 && m[0].guards[0].kind==2 && m[0].guards[0].node==1;
+ v=AG_declassify(nodes[..],m[..],state[..],1,AgValue.{mask=16,type=-1},args[0..<0]);#assert m[0].guard_count==1 && m[0].guards[0].mask==26;
+ v=AG_declassify(nodes[..],m[..],state[..],2,AgValue.{type=-1},args[0..<0]);#assert m[0].guard_count==2 && m[0].guards[1].node==2 && state[0].error==0;
+ v=AG_declassify(nodes[..],m[..],state[..],3,AgValue.{region=5},args[0..<0]);#assert state[0].error==SC_UNSUPPORTED && state[0].where==3;
+ state[0]=ScAudit.{};m[0].public_views=false;v=AG_declassify(nodes[..],m[..],state[..],3,AgValue.{type=-1},args[0..<0]);#assert state[0].error==SC_UNSUPPORTED;
+ state[0]=ScAudit.{};m[0].guard_count=256;AG_obligation(nodes[..],m[..],state[..],7,1,2);#assert state[0].error==SC_LIMIT && state[0].where==7;
+ state[0]=ScAudit.{};m[0]=AgMemory.{};AG_guard(nodes[..],m[..],state[..],5,4);#assert m[0].guards[0].kind==1 && m[0].guards[0].mask==4;
+}
 #test "type resolution skips unrepresentable candidates at their exact depth" {
  nodes:[30]ScNode;values:[30]u64;roots:[1]int;state:[1]ScAudit;
  nodes[2]=ScNode.{kind=2,a=3,b=5};nodes[3]=ScNode.{kind=16};values[3]=5000;nodes[4]=ScNode.{kind=2,a=6,b=5};nodes[5]=ScNode.{kind=1,name="u64"};nodes[6]=ScNode.{kind=16};values[6]=2;
@@ -469,12 +484,14 @@ AG_shadow_write :: (nodes:[]ScNode,roots:[]int,memory:[]AgMemory,state:[]ScAudit
 // Named fields: each (struct, field) resolves to one primitive field. Every
 // root view gets a public shadow per named field; the view's own mask moves
 // into its region so element reads can reach the shadows.
+// A public field is a primitive or an array of primitives.
+AG_flat :: (nodes:[]ScNode,roots:[]int,type:int,state:[]ScAudit)->bool {if AG_primitive_name(type)!="" {return true;}return SC_ref(type,nodes.count) && nodes[type].kind==2 && AG_primitive_name(AG_type(nodes,roots,nodes[type].b,state))!="";}
 AG_public_fields :: (nodes:[]ScNode,roots:[]int,labels:[]AgLabel,args:[]AgValue,memory:[]AgMemory,state:[]ScAudit) {
  if labels.count>8 {SC_fail(state,SC_LIMIT,0);return;}
  for label:labels {
   structure:=AG_struct(nodes,roots,label.type,state);if label.access!=3 || label.extent!=0 || structure==0 {SC_fail(state,SC_TYPE,0);return;}
   field:=AG_field(nodes,structure,label.name,state);if state[0].error!=0 {return;}
-  if AG_primitive_name(AG_type(nodes,roots,nodes[field].a,state))=="" || AG_designated(memory,field) {SC_fail(state,SC_TYPE,field);return;}
+  if !AG_flat(nodes,roots,AG_type(nodes,roots,nodes[field].a,state),state) || AG_designated(memory,field) {SC_fail(state,SC_TYPE,field);return;}
   memory[0].fields[memory[0].field_count]=field;memory[0].structs[memory[0].field_count]=structure;memory[0].field_count+=1;
  }
  for i:0..<args.count {if args[i].region!=0 {
@@ -555,10 +572,24 @@ AG_new :: (nodes:[]ScNode,values:[]u64,roots:[]int,value:AgValue,type:int,memory
 AG_bind :: (env:[]AgEnv,name:string,value:AgValue,state:[]ScAudit,where:int) {
  if env[0].count==64 || AG_slot(env,name)>=0 {SC_fail(state,SC_UNSUPPORTED,where);return;}at:=env[0].count;env[0].bindings[at]=AgBinding.{name=name,value=value};env[0].count+=1;
 }
-AG_guard :: (nodes:[]ScNode,memory:[]AgMemory,state:[]ScAudit,id:int,mask:u64) {
+AG_guard :: (nodes:[]ScNode,memory:[]AgMemory,state:[]ScAudit,id:int,mask:u64) {AG_obligation(nodes,memory,state,id,mask,1);}
+// Obligations are reported, never accepted silently: kind 1 is an authored
+// assertion, kind 2 an explicit declassification.
+AG_obligation :: (nodes:[]ScNode,memory:[]AgMemory,state:[]ScAudit,id:int,mask:u64,kind:u32) {
  for i:0..<memory[0].guard_count {if memory[0].guards[i].node==id {memory[0].guards[i].mask|=mask;return;}}
- if memory[0].guard_count==256 {SC_fail(state,SC_LIMIT,id);return;}n:=nodes[id];at:=memory[0].guard_count;memory[0].guards[at]=AgGuard.{node=id,unit=n.unit,line=n.line,column=n.column,mask=mask,kind=1};memory[0].guard_count+=1;
+ if memory[0].guard_count==256 {SC_fail(state,SC_LIMIT,id);return;}n:=nodes[id];at:=memory[0].guard_count;memory[0].guards[at]=AgGuard.{node=id,unit=n.unit,line=n.line,column=n.column,mask=mask,kind=kind};memory[0].guard_count+=1;
 }
+AG_declassifies :: (name:string)->bool {return name.count>=11 && name[name.count-11..<name.count]=="_declassify";}
+// A *_declassify call is analyzed like any other; then its scalar result and
+// any public-field shadow it was handed become public. The call site and the
+// taint it removed are reported as a declassification obligation.
+AG_declassify :: (nodes:[]ScNode,memory:[]AgMemory,state:[]ScAudit,id:int,result:AgValue,args:[]AgValue)->AgValue {
+ if !memory[0].public_views || result.region!=0 {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}
+ r:=result;mask:=AG_origin(r,memory);
+ for arg:args {if AG_is_shadow(memory,arg.region) {mask|=memory[0].taint[arg.region];memory[0].taint[arg.region]=0;}}
+ AG_obligation(nodes,memory,state,id,mask,2);r.mask=0;return r;
+}
+AG_is_shadow :: (memory:[]AgMemory,region:int)->bool {if region==0 {return false;}for i:0..<memory[0].shadow_count {if memory[0].shadow_region[i]==region {return true;}}return false;}
 AG_union :: (a:AgValue,b:AgValue,memory:[]AgMemory)->AgValue {
  r:=a;r.mask=AG_origin(a,memory)|AG_origin(b,memory);r.region=0;r.literal=0;bounds:=AG_join_bounds(a,b);r.known=bounds.known;r.lo=bounds.lo;r.hi=bounds.hi;
  r=AG_unranged(r);if AG_bounded(a) && AG_bounded(b) {r=AG_with(r,AG_lo(a)&AG_lo(b),AG_fill(AG_hi(a)|AG_hi(b)));}return r;
@@ -663,7 +694,9 @@ AG_call :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]
   // A wrapping product or sum whose bounds cannot wrap equals the exact one.
   if n.name=="mul_wrap" {r=AG_binary_range(args[0],args[1],36,r);}if n.name=="add_wrap" {r=AG_binary_range(args[0],args[1],34,r);}return r;
  }
- if nodes[d].kind!=64 {SC_fail(state,SC_CALL,id);return AgValue.{};}return AG_procedure(nodes,values,roots,types,d,args[0..<count],memory,state);
+ if nodes[d].kind!=64 {SC_fail(state,SC_CALL,id);return AgValue.{};}
+ r:=AG_procedure(nodes,values,roots,types,d,args[0..<count],memory,state);
+ if AG_declassifies(n.name) {return AG_declassify(nodes,memory,state,id,r,args[0..<count]);}return r;
 }
 AG_target_root :: (nodes:[]ScNode,id:int,state:[]ScAudit)->int {
  at:=id;for i:0..<16 {if !AG_tick(state,at) {return 0;}if nodes[at].kind==20 {return at;}if nodes[at].kind!=25 && nodes[at].kind!=26 {SC_fail(state,SC_UNSUPPORTED,at);return 0;}at=nodes[at].a;}SC_fail(state,SC_LIMIT,id);return 0;
