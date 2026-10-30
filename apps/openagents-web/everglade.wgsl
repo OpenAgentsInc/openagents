@@ -1341,10 +1341,12 @@ fn fountain_fall(k: u32, jet: bool, v: f32) -> Fall {
 // quad whose corners all stand on dry ground is not drawn. Part 6, in the painted look.
 const POND_PART = 6u;
 fn pond_on(p: u32) -> bool { return u.ponds[p].z > 0.5; }
+// A pond's row with its level risen by the rain as the river's is (W9; the physics adds the same rise).
+fn pond_row(p: u32) -> vec4f { var q = u.ponds[p]; q.w += u.weather[2].x; return q; }
 // How deep a point lies in a pond, or -1 when it is in none.
 fn pond_depth_at(p: vec3f) -> f32 {
   for (var k = 0u; k < 4u; k++) {
-    let q = u.ponds[k];
+    let q = pond_row(k);
     if (q.z <= 0.5) { continue; }
     if (length(p.xz - q.xy) < q.z + 0.3 && p.y < q.w + 0.08) { return q.w - p.y; }
   }
@@ -1358,7 +1360,7 @@ fn pond_vertex(id: u32, f: u32) -> WaterOut {
   let c = quad(id % 6u);
   let p = f / 8u;
   if (f >= 32u || !pond_on(p) || quad_id >= qa * ql) { o.clip = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
-  let q = u.ponds[p];
+  let q = pond_row(p);
   let qx = quad_id % qa;
   let qz = quad_id / qa;
   let rim = q.z + 0.3;

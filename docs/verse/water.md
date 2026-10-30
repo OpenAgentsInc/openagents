@@ -7,8 +7,8 @@ W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
 Everglade (its river, swimming and floats) and, from W6, the ripple field
 with your wake and splash, most of W5 (below) and W4 (the spectral sea,
 in the water lab, below). The rest has a task each under `verse-water`
-(#c278): W3's rest (NPC swimming, rowboat props; the ponds and the weir
-are in), the rest of W6, and W7 to W11.
+(#c278): W3's rest (townsfolk swimming; the ponds, the weir and the
+rowboats are in), the rest of W6, and W7 to W11.
 
 ## W1: the physics (done)
 
@@ -159,7 +159,8 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   `water_set` as the river (`river.coax`), so wading, swimming, diving,
   breath and the bank you come back to all work the same; the shader draws
   each as 8 wedges of a disc (`everglade.wgsl` `pond_vertex`) from the
-  levels the page passes (`U.ponds`). `#lantern-pond`, `#reed-pond`,
+  levels the page passes (`U.ponds`), risen by the rain as the river is
+  (W9, `pond_row`). `#lantern-pond`, `#reed-pond`,
   `#thinking-pond` and `#fern-pond` put you on their banks. Each has a
   duck paddling round its middle and three lily pads at 0.6 of its rim,
   floats like the river's.
@@ -174,8 +175,15 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   (`river_bake`). `#weir` puts you on the west bank above it. Its mist is
   W6's.
 
-Not ported yet (task `verse-water-w3-rest`): rowboats and townsfolk
-swimming. Not
+- Rowboats: one moored at each of the Lantern, Thinking and Fern ponds, a
+  W1 rigid body (a 3.2 x 0.4 x 1.1 m hull of 220 kg, riding 6 cm under)
+  on a slack line back to its mooring that keeps its bow along the shore
+  (`river.coax` `FLOAT_BOAT`); drawn from boxes (`everglade.coax`
+  `rowboat`). Boarding and rowing are W6's.
+
+Not ported yet (task `verse-water-w3-rest`): townsfolk swimming. Everglade's
+people stand at their places and don't walk yet; when they do, they wade
+and swim by the same rules as you. Not
 ported: underwater combat. You swim with the walk clip (there is no swim clip yet), and a
 phone has no dive button yet.
 

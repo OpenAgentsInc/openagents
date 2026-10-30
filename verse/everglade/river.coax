@@ -30,8 +30,13 @@
 //   still level over the bowls the plan carves, in the same set as the
 //   river, so wading, swimming, diving and breath hold in them too.
 //
-// Not yet: the weir and its plunge pool, rowboats, townsfolk swimming, and
-// the underwater combat rules.
+// - The weir (plan.coax EG_WEIR_Z): the level profile is a point every 2 m,
+//   so its 0.25 m step stays at the sill; the nodes carry white water down
+//   the drop and in the plunge pool.
+//
+// - Rowboats moored at three ponds (FLOAT_BOAT): a hull on a slack line.
+//
+// Not yet: townsfolk swimming, and the underwater combat rules.
 //   coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
 
 #load "../water-look.coax";
@@ -80,7 +85,15 @@ DEFEAT_LEVEL :: 6;
 // duck and three pads (POND_FLOATS, the duck first).
 RIVER_FLOATS :: 9;
 POND_FLOATS :: 4;
-FLOATS :: RIVER_FLOATS + PONDS * POND_FLOATS;
+// and a rowboat moored at the Lantern, Thinking and Fern ponds (not the Reed
+// Pond's: it is too small for one)
+BOAT_PONDS :: [4] bool.[true, false, true, true];
+BOATS :: 3;
+FLOATS :: RIVER_FLOATS + PONDS * POND_FLOATS + BOATS;
+FLOAT_DUCK :: 0; FLOAT_PAD :: 1; FLOAT_BOAT :: 2;
+// A rowboat: 3.2 m long and 1.1 m across, its hull 0.4 m deep, 220 kg.
+BOAT_HALF :: D3.{x = 0.55, y = 0.2, z = 1.6};
+BOAT_MASS :: 220.0;
 DUCKS :: 3;
 FLOAT_HOME :: [18] f64.[
   88.4, -26.0,   87.2, 2.0,   88.8, -34.0,
@@ -116,7 +129,7 @@ River :: struct {
   wake_x: f32; wake_z: f32; wake_time: f32; splashed: bool;
   // the floats
   floats: [FLOATS] RigidBody; colliders: [FLOATS] Collider; pushes: [FLOATS * 2] Push;
-  homes: [FLOATS * 2] f64; float_n: int;
+  homes: [FLOATS * 3] f64; kinds: [FLOATS] int; float_n: int;   // each one's home x, z and yaw
   float_tick: u64; float_carry: f64;
 }
 
@@ -468,7 +481,10 @@ river_wake :: (r: [] River, x: f32, z: f32, medium: int, surface: f32, time: f64
 // A duck: a ball of 0.16 m radius at 1.1 kg (half under); a lily pad: a disc
 // as a 0.5 x 0.03 x 0.5 m slab of 2.6 kg (a third under).
 floats_start :: (r: [] River) {
-  for i: 0..<RIVER_FLOATS * 2 { r[0].homes[i] = FLOAT_HOME[i]; }
+  for i: 0..<RIVER_FLOATS {
+    r[0].homes[i * 3] = FLOAT_HOME[i * 2]; r[0].homes[i * 3 + 1] = FLOAT_HOME[i * 2 + 1]; r[0].homes[i * 3 + 2] = 0.0;
+    r[0].kinds[i] = ifx i < DUCKS then FLOAT_DUCK else FLOAT_PAD;
+  }
   n := RIVER_FLOATS;
   // a pond's duck at its middle, its pads round it at 0.6 of the rim
   for p: 0..<PONDS {
@@ -478,35 +494,49 @@ floats_start :: (r: [] River) {
     for q: 0..<POND_FLOATS {
       a := golden(p * 7 + q) * TAU_D;
       d := ifx q == 0 then 0.0 else rim * 0.6;
-      r[0].homes[n * 2] = cx + d * cos(a); r[0].homes[n * 2 + 1] = cz + d * sin(a);
+      r[0].homes[n * 3] = cx + d * cos(a); r[0].homes[n * 3 + 1] = cz + d * sin(a); r[0].homes[n * 3 + 2] = 0.0;
+      r[0].kinds[n] = ifx q == 0 then FLOAT_DUCK else FLOAT_PAD;
       n += 1;
     }
   }
+  // the rowboats: 1.9 m in from the rim, along the shore, between the pads
+  for p: 0..<PONDS {
+    rim := f64(r[0].ponds[p * 4 + 2]);
+    if rim < 4.0 || !BOAT_PONDS[p] || n >= FLOATS { continue; }
+    cx := f64(r[0].ponds[p * 4]); cz := f64(r[0].ponds[p * 4 + 1]);
+    a := (golden(p * 7 + 1) + golden(p * 7 + 2)) * PI_D;
+    d := rim - 1.9;
+    r[0].homes[n * 3] = cx + d * cos(a); r[0].homes[n * 3 + 1] = cz + d * sin(a);
+    r[0].homes[n * 3 + 2] = atan_d2(-sin(a), cos(a));
+    r[0].kinds[n] = FLOAT_BOAT;
+    n += 1;
+  }
   r[0].float_n = n;
   for i: 0..<n {
-    x := r[0].homes[i * 2]; z := r[0].homes[i * 2 + 1];
+    x := r[0].homes[i * 3]; z := r[0].homes[i * 3 + 1];
     s := water_sample(r[0].set, x, z, 0);
     y := ifx s.found then s.height else 0.0;
     shape: ColliderShape;
     mass := 0.0;
     inertia := d3(0.0, 0.0, 0.0);
-    if float_duck(i) {
+    yaw := golden(i + 5) * TAU_D;
+    if r[0].kinds[i] == FLOAT_DUCK {
       shape = shape_sphere(0.16); mass = 1.1;
       m := 0.4 * mass * 0.16 * 0.16; inertia = d3(m, m, m);
+    } else if r[0].kinds[i] == FLOAT_BOAT {
+      shape = shape_cuboid(BOAT_HALF); mass = BOAT_MASS;
+      inertia = rigid_box_inertia(mass, d3(BOAT_HALF.x * 2, BOAT_HALF.y * 2, BOAT_HALF.z * 2));
+      yaw = r[0].homes[i * 3 + 2];
     } else {
       shape = shape_cuboid(d3(0.25, 0.015, 0.25)); mass = 2.6;
       inertia = rigid_box_inertia(mass, d3(0.5, 0.03, 0.5));
     }
-    r[0].floats[i] = rigid_body(mass, inertia, d3(x, y + 0.02, z), dq_y(golden(i + 5) * TAU_D));
+    r[0].floats[i] = rigid_body(mass, inertia, d3(x, y + 0.02, z), dq_y(yaw));
     r[0].colliders[i] = Collider.{body = i, shape = shape};
   }
   r[0].float_tick = 0; r[0].float_carry = 0.0;
 }
 
-// Whether float i is a duck: the river's first three, and each pond's first.
-float_duck :: (i: int) -> bool {
-  return i < DUCKS || (i >= RIVER_FLOATS && (i - RIVER_FLOATS) % POND_FLOATS == 0);
-}
 
 // Steps the floats by dt in fixed steps: buoyancy and drag from the water,
 // a duck's paddling home and a lily pad's stem; writes each one's x, y, z,
@@ -522,7 +552,7 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     w := rigid_world(FLOAT_STEP, r[0].floats[0..<r[0].float_n]);
     w.tick = r[0].float_tick;
     n := water_apply(w, r[0].colliders[0..<r[0].float_n], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
-    for i: 0..<r[0].float_n { r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].homes[i * 2], r[0].homes[i * 2 + 1], r[0].float_tick); }
+    for i: 0..<r[0].float_n { r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].kinds[i], r[0].homes[i * 3], r[0].homes[i * 3 + 1], r[0].homes[i * 3 + 2], r[0].float_tick); }
     w = rigid_step(w, gravity);
     r[0].float_tick = w.tick;
     r[0].float_carry -= FLOAT_STEP;
@@ -539,7 +569,7 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     // how far it tips (its up's lean), and which way, about the vertical
     up := dq_rotate(b.orientation, D3_Y);
     out[k + 4] = cast(f32) acos_d(fclamp(up.y, -1.0, 1.0)); out[k + 5] = cast(f32) atan_d2(up.x, up.z); out[k + 6] = 0;
-    out[k + 7] = ifx float_duck(i) then 0.0f32 else 1.0f32;
+    out[k + 7] = f32(r[0].kinds[i]);
     count += 1;
   }
   return count;
@@ -548,9 +578,19 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
 // A duck paddles toward a point that wanders slowly round its home, up to
 // 4 N; a lily pad's stem pulls it back to its anchor like a spring with
 // some give, and keeps it from spinning away.
-float_steer :: (b: RigidBody, i: int, hx: f64, hz: f64, tick: u64) -> RigidBody {
+float_steer :: (b: RigidBody, i: int, kind: int, hx: f64, hz: f64, hyaw: f64, tick: u64) -> RigidBody {
   next := b;
-  if float_duck(i) {
+  if kind == FLOAT_BOAT {
+    // a rowboat on its mooring: a slack line back to where it is tied, and its bow kept along the shore
+    m := b.mass;
+    fx := ((hx - b.pos.x) * 0.6 - b.vel.x * 1.2) * m;
+    fz := ((hz - b.pos.z) * 0.6 - b.vel.z * 1.2) * m;
+    ty := (turn_d(hyaw, yaw_of_q(b.orientation)) * 0.5 - b.omega.y * 1.5) * b.inertia.y;
+    next.force = d3_add(next.force, d3(fx, 0.0, fz));
+    next.torque = d3_add(next.torque, d3(0.0, ty, 0.0));
+    return next;
+  }
+  if kind == FLOAT_DUCK {
     t := f64(tick % 1000000) / 120.0;
     a := t * 0.11 + f64(i) * 2.1;
     // along the river's stretch, or round a pond
@@ -792,14 +832,22 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   for n: 0..<400 { w = everglade_river_swim(r[..], heights[..], -40, 20, true, 0.25, 0); if w.defeated { break; } }
   #assert w.defeated;
   #assert abs(sqrt((w.bank_x + 40) * (w.bank_x + 40) + (w.bank_z - 20) * (w.bank_z - 20)) - 7.5) < 0.01;
-  // its duck and three lily pads float on it and stay inside its rim
+  // its duck, three lily pads and moored rowboat float on it and stay inside its rim
   out: [FLOATS * 8] f32;
   n := 0;
   for q: 0..<150 { n = everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
-  #assert n == RIVER_FLOATS + POND_FLOATS;
+  #assert n == RIVER_FLOATS + POND_FLOATS + 1;
   for i: RIVER_FLOATS..<n {
-    x := out[i * 8]; y := out[i * 8 + 1]; z := out[i * 8 + 2];
-    #assert abs(y - 0.75) < 0.12 && sqrt((x + 40) * (x + 40) + (z - 20) * (z - 20)) < 5.5;
-    #assert out[i * 8 + 7] == ifx i == RIVER_FLOATS then 0.0f32 else 1.0f32;
+    x := out[i * 8]; y := out[i * 8 + 1]; z := out[i * 8 + 2]; kind := out[i * 8 + 7];
+    #assert sqrt((x + 40) * (x + 40) + (z - 20) * (z - 20)) < 5.5;
+    #assert kind == ifx i == RIVER_FLOATS then 0.0f32 else ifx i == n - 1 then 2.0f32 else 1.0f32;
+    // a boat rides with its 0.4 m hull 6 cm under (220 kg over 3.5 square metres), level, its bow along the shore
+    if kind == 2 {
+      #assert abs(y - (0.75 + 0.2 - 0.0625)) < 0.05 && out[i * 8 + 4] < 0.05;
+      #assert abs(turn_d(f64(out[i * 8 + 3]), r[0].homes[i * 3 + 2])) < 0.1;
+      #assert sqrt((x - f32(r[0].homes[i * 3])) * (x - f32(r[0].homes[i * 3])) + (z - f32(r[0].homes[i * 3 + 1])) * (z - f32(r[0].homes[i * 3 + 1]))) < 0.3;
+    } else {
+      #assert abs(y - 0.75) < 0.12;
+    }
   }
 }

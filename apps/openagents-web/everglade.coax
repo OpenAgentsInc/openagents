@@ -208,8 +208,8 @@ PEOPLE_DRAW :: LATHE_DRAW + 1;
 WATER_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
-// y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad).
-FLOATS :: 25;
+// y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad, 2 a rowboat).
+FLOATS :: 28;
 FLOAT_FLOATS :: 8;
 // Your medium in the water (river.coax): ground, wading, swimming, diving.
 WATER_GROUND :: 0; WATER_WADING :: 1; WATER_SWIMMING :: 2; WATER_DIVING :: 3;
@@ -1339,6 +1339,7 @@ river_floats :: (s: [] Everglade) {
     k := i * FLOAT_FLOATS;
     p := v3(s[0].floats[k], s[0].floats[k + 1], s[0].floats[k + 2]);
     yaw := s[0].floats[k + 3];
+    if s[0].floats[k + 7] > 1.5 { rowboat(s, p, yaw); continue; }
     if s[0].floats[k + 7] < 0.5 {
       shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(p.x, p.y + 0.02, p.z), yaw, 0, 0.3, 0.2, 0.42, 0.42, 0.3, 0.18);
       hx := p.x + sin(yaw) * 0.16; hz := p.z + cos(yaw) * 0.16;
@@ -1348,6 +1349,30 @@ river_floats :: (s: [] Everglade) {
     }
     shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(p.x, p.y + 0.01, p.z), yaw, 0, 0.55, 0.02, 0.55, 0.22, 0.46, 0.2);
     if i % 2 == 0 { shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(p.x + 0.08, p.y + 0.06, p.z), yaw, 0, 0.12, 0.08, 0.12, 0.95, 0.78, 0.86); }
+  }
+}
+
+// A piece of a rowboat: x across, y up, z along its hull from p, its size, look and colour.
+boat_part :: (s: [] Everglade, p: Point, ax: f32, az: f32, rx: f32, rz: f32, yaw: f32, x: f32, y: f32, z: f32, sx: f32, sy: f32, sz: f32, look: int, r: f32, g: f32, b: f32) {
+  shape(s, SHAPE_BOX, look, v3(p.x + rx * x + ax * z, p.y + y, p.z + rz * x + az * z), yaw, 0, sx, sy, sz, r, g, b);
+}
+
+// A moored rowboat (river.coax FLOAT_BOAT) about its hull's middle p, its bow
+// along yaw: a plank bottom, two sides, the ends, two thwarts and its oars
+// shipped inside, 3.2 m long and 1.1 m across.
+rowboat :: (s: [] Everglade, p: Point, yaw: f32) {
+  ax := sin(yaw); az := cos(yaw);       // along, to the bow
+  rx := az; rz := -ax;                  // across, to starboard
+  boat_part(s, p, ax, az, rx, rz, yaw, 0, -0.17, 0, 0.94, 0.06, 2.96, LOOK_PLANKS, 0.5, 0.34, 0.2);
+  for side: 0..<2 {
+    x := ifx side == 0 then -0.51f32 else 0.51f32;
+    boat_part(s, p, ax, az, rx, rz, yaw, x, 0, 0, 0.08, 0.4, 3.2, LOOK_WOOD, 0.44, 0.3, 0.18);
+    boat_part(s, p, ax, az, rx, rz, yaw, x * 0.7, 0.04, -0.2, 0.06, 0.04, 2.4, LOOK_WOOD, 0.66, 0.52, 0.34);
+  }
+  for end: 0..<2 {
+    z := ifx end == 0 then -1.56f32 else 1.56f32;
+    boat_part(s, p, ax, az, rx, rz, yaw, 0, 0, z, 1.1, 0.4, 0.08, LOOK_WOOD, 0.44, 0.3, 0.18);
+    boat_part(s, p, ax, az, rx, rz, yaw, 0, 0.02, z * 0.45, 0.94, 0.05, 0.3, LOOK_PLANKS, 0.56, 0.4, 0.25);
   }
 }
 
