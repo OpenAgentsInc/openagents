@@ -37,6 +37,16 @@ The script's `--help` is the authoritative option list. `--source DIR` reuses an
 4. For a checked repository rehearsal, follow `docs/Oct30MVP.md` and the Pylon buyer/run documentation at `psionic/book/ch019-a-pylon-answers-decisions.md`. The operator's demo buyer is separate from the audience join script; joining does not publish arbitrary requests or spend money.
 5. Stop with Ctrl-C. Do not leave a demo machine unattended or reuse its temporary key for an account.
 
+Demo operators can use the independently signed stage buyer after opening the page:
+
+```sh
+bun install --cwd psionic/tests/pylon --frozen-lockfile
+bun psionic/tests/pylon/demo-buyer.ts --list
+bun psionic/tests/pylon/demo-buyer.ts --slug PYLON_SLUG --json
+```
+
+Read `psionic/tests/pylon/DEMO.md` for its exact supported profile, model matching and timeout behavior. The buyer creates its own throwaway identity; do not supply a real key. The public page must already be open to see the resulting ephemeral activity.
+
 ## Troubleshooting
 
 - **Build failed:** check the first compiler error in `engine.log` / `pylon.log`, toolchain installation, disk space and HTTPS access to GitHub. A real C compiler is required; downloaded model weights are not used for this toy demo.

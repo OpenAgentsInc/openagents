@@ -64,3 +64,7 @@ EXPORT("coaxial_pylon_count") int32_t count(uint32_t p){return (int32_t)s(p)->co
 EXPORT("coaxial_pylon_answers") int32_t answers(uint32_t p){return (int32_t)s(p)->answers;}
 EXPORT("coaxial_pylon_statuses") int32_t statuses(uint32_t p){return (int32_t)s(p)->statuses;}
 EXPORT("coaxial_pylon_refused") int32_t refused(uint32_t p){return (int32_t)s(p)->refused;}
+EXPORT("coaxial_pylon_slug") uint32_t slug(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(uint32_t)(uintptr_t)s(p)->rows.e[i].slug.e:0;}
+EXPORT("coaxial_pylon_slug_len") int32_t slug_len(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].slug_n:0;}
+EXPORT("coaxial_pylon_row_answers") int32_t row_answers(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].answers:0;}
+EXPORT("coaxial_pylon_row_statuses") int32_t row_statuses(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].statuses:0;}
