@@ -82,6 +82,7 @@
 - [171. Decode in logarithmic time](ch171-decode-in-logarithmic-time.md)
 - [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md)
 - [173. Exact replay as a verification class](ch173-exact-replay-as-a-verification-class.md)
+- [176. Composable weight modules](ch176-composable-weight-modules.md)
 
 - [178. A suite is three digests](ch178-a-suite-is-three-digests.md)
 - [179. How far a metric moves by itself](ch179-how-far-a-metric-moves-by-itself.md)
@@ -99,6 +100,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 115, 156–160, 164a, 165–169, 171–173 and 178–183 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 115, 156–160, 164a, 165–169, 171–173, 176 and 178–183 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–32, 34–35, 37–40 and the remaining outlines
 remain proposed.

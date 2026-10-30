@@ -1,0 +1,42 @@
+#import "Basic";
+#load "../lib/weight-module.coax";
+
+// book:begin example
+main :: () {
+    p:=wm_pair();sa:=wm_step_graph();oa:=wm_step_outs();sb:=wm_max_graph();ob:=wm_max_outs();
+    scratch:[1024]f64;c:=wm_cases();nodes:[1]GgNode;none:=nodes[0..<0];
+    // The max module ships two cases instead of its source.
+    cb:[2]WmCase;cb[0].inputs[0]=4;cb[0].inputs[1]=9;cb[0].outputs[0]=9;cb[0].outputs[2]=9;
+    cb[1].inputs[1]=-5;cb[1].outputs[1]=1;cb[1].outputs[2]=-5;
+    pa:=wm_digest(p.a,p.wa[..]);pb:=wm_digest(p.b,p.wb[..]);
+    ra:=wm_admit(p.a,p.wa[..],pa,c[0..<0],sa[..],oa[..],scratch[..]);
+    rb:=wm_admit(p.b,p.wb[..],pb,cb[..],none,ob[..],scratch[..]);
+    show("step module",p.a,pa);print(", %, admitted: %\n",p.a.label,ra.status);
+    show("max module",p.b,pb);print(", %, admitted: %\n",p.b.label,rb.status);
+    wire:=wm_wires();out:[4096]f64;l:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[..]);
+    pl:=wm_digest(l,out[..]);
+    show("linked",l,pl);print(", %, seam after layer %\n",l.label,l.seams[0].layer);
+    again:[4096]f64;r:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],again[..]);
+    print("linked again: the same digest: %\n",wm_same(wm_digest(r,again[..]),pl));
+    nc:[32]GgNode;oc:[4]int;n:=wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[..],oc[..]);
+    count:=0;sum:=0;
+    for op:0..<3 {for a:-3..<4 {for b:-2..<3 {
+        inputs:=[3]int.[op,a,b];got:[3]f64;
+        #assert wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],nc[0..<n],oc[0..<3],inputs[..]);
+        #assert wm_run(l,out[..],inputs[..],got[..]).status==GgStatus.ok;
+        count+=1;sum+=count*(cast(int)got[0]*9+cast(int)got[1]*3+cast(int)got[2]);
+    }}}
+    print("% inputs: the linked block, the chain and the composed graph agree; checksum %\n",count,sum);
+    big:=[3]int.[2,10000,10000];got:[3]f64;want:[3]int;
+    s1:=wm_run(l,out[..],big[..],got[..]);s2:=wm_chain(p.a,p.wa[..],p.b,p.wb[..],wire[..],big[..],got[..]);
+    s3:=gg_eval(nc[0..<n],big[..],oc[0..<3],want[..]);
+    print("multiply 10000 by 10000: linked % at layer %; chain %; graph % at node %\n",s1.status,s1.layer,s2.status,s3.status,s3.node);
+    w:=out;w[100]+=1;
+    print("one linked weight changed: admitted: %\n",wm_admit(l,w[..],pl,c[0..<0],none,oa[..],scratch[..]).status);
+}
+show :: (name:string,m:WmModule,d:[32]u8) {
+    digits:="0123456789abcdef";
+    print("%: % layers, width %, % weights, digest ",name,m.plan.layers,m.plan.width,m.plan.weights);
+    for i:0..<4 {hi:=cast(int)(d[i]>>4);lo:=cast(int)(d[i]&15);print("%",digits[hi..<hi+1]);print("%",digits[lo..<lo+1]);}
+}
+// book:end example

@@ -1,0 +1,7 @@
+step module: 3 layers, width 6, 396 weights, digest 6fcd0391, exact, admitted: ok
+max module: 2 layers, width 5, 165 weights, digest e659d8fb, tests, admitted: ok
+linked: 6 layers, width 10, 1050 weights, digest aa3cdd24, tests, seam after layer 4
+linked again: the same digest: true
+105 inputs: the linked block, the chain and the composed graph agree; checksum 68178
+multiply 10000 by 10000: linked range at layer 4; chain range; graph range at node 9
+one linked weight changed: admitted: digest

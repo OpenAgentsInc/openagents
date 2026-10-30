@@ -1,0 +1,607 @@
+// Chapter 176: composable weight modules. A module is chapter 168's compiled
+// block pinned by a digest of its shape and every weight's bits. Two modules
+// link into one block: the first module's layers, a glue layer that copies its
+// outputs into the second module's input slots, then the second module's
+// layers in slots of their own. Each of the second module's inputs is wired
+// to one of the first module's outputs; a module that must pass an input on
+// exports it as an output, because its block reuses input slots. The linked
+// block must replay exactly: the same outputs as running the two modules one
+// after the other, and as evaluating the composed gate graph. Every module
+// carries a label saying how a user can check it: exact replay, tests,
+// statistical evidence, or none.
+// Profile module-v1: chapter 168's blocks in binary64, at most 4 seams, the
+// linked residual within 64 slots and 32 layers.
+#load "gate-graph.coax";
+#load "../../coax/lib/crypto/sha256.coax";
+#authority;
+
+// Weakest first, so the weaker of two labels is the smaller.
+WmLabel :: enum u8 {none;statistical;tests;exact;}
+// After `layer` layers, slots slot..<slot+count hold a module's inputs; they
+// must be in that module's input range, as its own run would require.
+WmSeam :: struct {layer:int;slot:int;count:int;}
+WmModule :: struct {plan:GgPlan;seams:[4]WmSeam;nseams:int;label:WmLabel;samples:int;}
+WmRun :: struct {status:GgStatus;layer:int;}
+WmStatus :: enum u8 {ok;digest;cases;evidence;source;}
+WmCase :: struct {inputs:[16]int;outputs:[16]int;}
+WmAdmit :: struct {status:WmStatus;failed:int;}
+
+WM_SEAMS :: 4;
+
+wm_module :: (plan:GgPlan,label:WmLabel)->WmModule {return WmModule.{plan=plan,label=label};}
+
+// book:begin digest
+// The digest's bytes are staged 512 at a time: put writes eight bytes at
+// buf[n] and returns the new length, hashing a full buffer first.
+wm_put :: (sha:[]u8,buf:[]u8,n:int,w:u64)->int {
+    at:=n;
+    if at+8>buf.count {#assert sha256_update_checked(sha,buf[0..<at],false)==SHA_OK;at=0;}
+    for i:0..<8 {buf[at+i]=cast(u8)((w>>cast(u64)(i*8))&0xff);}
+    return at+8;
+}
+// A signed value as its two's complement.
+wm_u64 :: (v:int)->u64 {
+    w:=cast(u64)(v&0x7fffffffffffffff);
+    if v<0 {w|=0x8000000000000000;}
+    return w;
+}
+// SHA-256 over the block's shape, its seams, its output forms and the bits
+// of every weight, each as eight little-endian bytes.
+wm_digest :: (m:WmModule,weights:[]f64)->[32]u8 {
+    sha:[112]u8;d:[32]u8;buf:[512]u8;n:=0;p:=m.plan;#assert sha256_init(sha[..])==SHA_OK;
+    head:[8]int;head[0]=p.layers;head[1]=p.width;head[2]=p.inputs;head[3]=p.outputs;head[4]=m.nseams;head[5]=p.weights;
+    for i:0..<6 {n=wm_put(sha[..],buf[..],n,wm_u64(head[i]));}
+    for L:0..<p.layers {n=wm_put(sha[..],buf[..],n,wm_u64(p.units[L]));}
+    for s:0..<m.nseams {
+        e:=m.seams[s];
+        n=wm_put(sha[..],buf[..],n,wm_u64(e.layer));n=wm_put(sha[..],buf[..],n,wm_u64(e.slot));n=wm_put(sha[..],buf[..],n,wm_u64(e.count));
+    }
+    for k:0..<p.outputs {
+        f:=p.out[k];n=wm_put(sha[..],buf[..],n,wm_u64(f.count));
+        for t:0..<f.count {n=wm_put(sha[..],buf[..],n,wm_u64(f.slots[t]));n=wm_put(sha[..],buf[..],n,wm_u64(f.coefs[t]));}
+    }
+    for i:0..<p.weights {n=wm_put(sha[..],buf[..],n,f64_bits(weights[i]));}
+    #assert sha256_update_checked(sha[..],buf[0..<n],false)==SHA_OK;
+    #assert sha256_final_checked(sha[..],d[..],false)==SHA_OK;
+    return d;
+}
+// book:end digest
+wm_same :: (a:[32]u8,b:[32]u8)->bool {
+    for i:0..<32 {if a[i]!=b[i] {return false;}}
+    return true;
+}
+
+// book:begin run
+// Chapter 168's run, with each seam checked after its layer.
+wm_run :: (m:WmModule,weights:[]f64,inputs:[]int,outputs:[]f64)->WmRun {
+    r:WmRun;p:=m.plan;
+    if p.status!=GgStatus.ok {r.status=p.status;return r;}
+    if weights.count<p.weights || inputs.count!=p.inputs || outputs.count<p.outputs {r.status=GgStatus.capacity;return r;}
+    for v:inputs {if v< -RA_VALUE_MAX || v>RA_VALUE_MAX {r.status=GgStatus.range;return r;}}
+    x:[64]f64;x[0]=1;
+    for k:0..<inputs.count {x[k+1]=f64(inputs[k]);}
+    base:=0;
+    for L:0..<p.layers {
+        n:=ra_weight_count(p.width,p.units[L]);
+        #assert ra_forward(p.width,p.units[L],weights[base..<base+n],x[0..<p.width],x[0..<p.width],false,false)==RaStatus.ok;
+        base+=n;
+        for s:0..<m.nseams {
+            e:=m.seams[s];
+            if e.layer==L+1 {
+                for i:e.slot..<e.slot+e.count {
+                    if x[i]< -f64(RA_VALUE_MAX) || x[i]>f64(RA_VALUE_MAX) {r.status=GgStatus.range;r.layer=L+1;return r;}
+                }
+            }
+        }
+    }
+    for k:0..<p.outputs {
+        f:=p.out[k];sum:f64=0;
+        for t:0..<f.count {sum=sum+f64(f.coefs[t])*x[f.slots[t]];}
+        outputs[k]=sum;
+    }
+    return r;
+}
+// book:end run
+
+// book:begin link
+// A module's slot s in the linked block: slot 0 is the shared constant one,
+// and its other slots start at `base`.
+wm_slot :: (s:int,base:int)->int {
+    if s==0 {return 0;}
+    return base+s-1;
+}
+// Copies one layer of a module of width w into the linked block of width W.
+// A layer's weights are the value rows, the gate rows (units of each, w
+// wide), then the output matrix (w rows of units). Row 0 of the output
+// matrix would write the shared constant slot: a module whose row 0 isn't
+// zero changes the one the other module reads, so the copy refuses it.
+wm_copy :: (from:[]f64,fb:int,w:int,units:int,base:int,to:[]f64,tb:int,W:int)->bool {
+    for row:0..<2*units {for s:0..<w {to[tb+row*W+wm_slot(s,base)]=from[fb+row*w+s];}}
+    for i:0..<w {for u:0..<units {
+        v:=from[fb+2*units*w+i*units+u];
+        if i==0 && v!=0 {return false;}
+        to[tb+2*units*W+wm_slot(i,base)*units+u]=v;
+    }}
+    return true;
+}
+wm_link :: (a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,out:[]f64)->WmModule {
+    r:WmModule;pa:=a.plan;pb:=b.plan;
+    r.plan.status=GgStatus.shape;
+    if pa.status!=GgStatus.ok || pb.status!=GgStatus.ok || wire.count!=pb.inputs {return r;}
+    r.plan.status=GgStatus.operand;
+    for w:wire {if w<0 || w>=pa.outputs {return r;}}
+    W:=pa.width+pb.width-1;L:=pa.layers+1+pb.layers;g:=wire.count;
+    r.plan.status=GgStatus.width;if W>RA_WIDTH_MAX {return r;}
+    r.plan.status=GgStatus.layers;if L>GG_LAYERS_MAX {return r;}
+    r.plan.status=GgStatus.capacity;
+    if a.nseams+1+b.nseams>WM_SEAMS || wa.count<pa.weights || wb.count<pb.weights {return r;}
+    total:=ra_weight_count(W,g);
+    for k:0..<pa.layers {total+=ra_weight_count(W,pa.units[k]);}
+    for k:0..<pb.layers {total+=ra_weight_count(W,pb.units[k]);}
+    if total>out.count {return r;}
+    // A refused copy leaves the status shape; out's contents are then unspecified.
+    r.plan.status=GgStatus.shape;
+    for i:0..<total {out[i]=0;}
+    // The first module keeps its slots; the second's follow them.
+    ba:=1;bb:=pa.width;
+    tb:=0;fb:=0;
+    for k:0..<pa.layers {
+        if !wm_copy(wa,fb,pa.width,pa.units[k],ba,out,tb,W) {return r;}
+        fb+=ra_weight_count(pa.width,pa.units[k]);tb+=ra_weight_count(W,pa.units[k]);r.plan.units[k]=pa.units[k];
+    }
+    // The glue layer: unit j's value is the wired output's form, its gate
+    // reads the constant one, and it adds into input slot j of the second module.
+    for j:0..<g {
+        f:=pa.out[wire[j]];
+        for t:0..<f.count {out[tb+j*W+f.slots[t]]=f64(f.coefs[t]);}
+        out[tb+(g+j)*W]=1;
+        out[tb+2*g*W+(pa.width+j)*g+j]=1;
+    }
+    r.plan.units[pa.layers]=g;tb+=ra_weight_count(W,g);fb=0;
+    for k:0..<pb.layers {
+        if !wm_copy(wb,fb,pb.width,pb.units[k],bb,out,tb,W) {return r;}
+        fb+=ra_weight_count(pb.width,pb.units[k]);tb+=ra_weight_count(W,pb.units[k]);r.plan.units[pa.layers+1+k]=pb.units[k];
+    }
+    r.plan.status=GgStatus.ok;r.plan.layers=L;r.plan.width=W;r.plan.weights=total;
+    r.plan.inputs=pa.inputs;r.plan.outputs=pb.outputs;
+    for k:0..<pb.outputs {
+        f:=pb.out[k];r.plan.out[k]=f;
+        for t:0..<f.count {r.plan.out[k].slots[t]=wm_slot(f.slots[t],bb);}
+    }
+    for s:0..<a.nseams {r.seams[s]=a.seams[s];}
+    r.seams[a.nseams]=WmSeam.{layer=pa.layers+1,slot=pa.width,count=g};
+    for s:0..<b.nseams {
+        e:=b.seams[s];
+        r.seams[a.nseams+1+s]=WmSeam.{layer=e.layer+pa.layers+1,slot=wm_slot(e.slot,bb),count=e.count};
+    }
+    r.nseams=a.nseams+1+b.nseams;
+    // The weaker label: x + y less the larger.
+    x:=cast(int)a.label;y:=cast(int)b.label;r.label=cast(WmLabel)(x+y-gg_max(x,y));
+    return r;
+}
+// book:end link
+
+// book:begin chain
+// The reference for a link: run the first module, wire its results into the
+// second, and run that. A result outside the second module's input range is
+// refused by the second run, as the linked block refuses it at the seam.
+wm_chain :: (a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,inputs:[]int,outputs:[]f64)->WmRun {
+    mid:[16]f64;r:=wm_run(a,wa,inputs,mid[0..<a.plan.outputs]);
+    if r.status!=GgStatus.ok {return r;}
+    next:[16]int;
+    for j:0..<wire.count {
+        next[j]=cast(int)mid[wire[j]];
+    }
+    return wm_run(b,wb,next[0..<wire.count],outputs);
+}
+// The composed gate graph: the first graph, then the second with each input
+// node replaced by its wired output, scaled by one.
+wm_compose :: (na:[]GgNode,oa:[]int,nb:[]GgNode,ob:[]int,wire:[]int,nc:[]GgNode,oc:[]int)->int {
+    if na.count+nb.count>nc.count || ob.count>oc.count {return -1;}
+    for i:0..<na.count {nc[i]=na[i];}
+    shift:=na.count;
+    for i:0..<nb.count {
+        n:=nb[i];
+        if n.op==GgOp.input {
+            nc[shift+i]=GgNode.{op=GgOp.scale,a=oa[wire[n.k]],k=1};
+        } else {
+            n.a+=shift;n.b+=shift;n.c+=shift;nc[shift+i]=n;
+        }
+    }
+    for k:0..<ob.count {oc[k]=ob[k]+shift;}
+    return na.count+nb.count;
+}
+// book:end chain
+
+// book:begin admit
+// Admits a module against its pinned digest. Every case given must pass, and
+// the label must have its evidence: an exact module's source graph compiles
+// to the pinned digest, a tests one has cases, a statistical one has
+// samples.
+wm_admit :: (m:WmModule,weights:[]f64,pin:[32]u8,cases:[]WmCase,nodes:[]GgNode,outs:[]int,scratch:[]f64)->WmAdmit {
+    r:WmAdmit;p:=m.plan;
+    r.status=WmStatus.digest;
+    if p.status!=GgStatus.ok || weights.count<p.weights || !wm_same(wm_digest(m,weights),pin) {return r;}
+    r.status=WmStatus.cases;
+    for c:0..<cases.count {
+        r.failed=c;got:[16]f64;
+        run:=wm_run(m,weights,cases[c].inputs[0..<p.inputs],got[0..<p.outputs]);
+        if run.status!=GgStatus.ok {return r;}
+        for k:0..<p.outputs {if got[k]!=f64(cases[c].outputs[k]) {return r;}}
+    }
+    r.failed=0;r.status=WmStatus.evidence;
+    if m.label==WmLabel.tests && cases.count==0 {return r;}
+    if m.label==WmLabel.statistical && m.samples<1 {return r;}
+    if m.label==WmLabel.exact {
+        if nodes.count==0 {return r;}
+        r.status=WmStatus.source;
+        if m.nseams!=0 {return r;}
+        q:=gg_compile(nodes,outs,scratch);
+        if q.status!=GgStatus.ok || !wm_same(wm_digest(wm_module(q,m.label),scratch),pin) {return r;}
+    }
+    r.status=WmStatus.ok;
+    return r;
+}
+// book:end admit
+
+// Chapter 168's arithmetic step, which also exports its input a: op 0 adds
+// a and b, 1 subtracts, 2 multiplies.
+wm_step_graph :: ()->[12]GgNode {
+    return [12]GgNode.[
+        GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.input,k=2},
+        GgNode.{op=GgOp.eq0,a=0},GgNode.{op=GgOp.constant,k=-1},GgNode.{op=GgOp.add,a=0,b=4},GgNode.{op=GgOp.eq0,a=5},
+        GgNode.{op=GgOp.add,a=1,b=2},GgNode.{op=GgOp.sub,a=1,b=2},GgNode.{op=GgOp.mul,a=1,b=2},
+        GgNode.{op=GgOp.select,c=6,a=8,b=9},GgNode.{op=GgOp.select,c=3,a=7,b=10}];
+}
+// max(x, y), whether x is zero, and y passed on.
+wm_max_graph :: ()->[6]GgNode {
+    return [6]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.sub,a=0,b=1},
+        GgNode.{op=GgOp.step,a=2},GgNode.{op=GgOp.select,c=3,a=0,b=1},GgNode.{op=GgOp.eq0,a=0}];
+}
+WM_STEP_OUTS :: 2;
+WM_MAX_OUTS :: 3;
+wm_step_outs :: ()->[2]int {return [2]int.[11,1];}
+wm_max_outs :: ()->[3]int {return [3]int.[4,5,1];}
+WmPair :: struct {a:WmModule;b:WmModule;wa:[1024]f64;wb:[1024]f64;}
+wm_pair :: ()->WmPair {
+    r:WmPair;sa:=wm_step_graph();oa:=wm_step_outs();sb:=wm_max_graph();ob:=wm_max_outs();
+    r.a=wm_module(gg_compile(sa[..],oa[..],r.wa[..]),WmLabel.exact);
+    r.b=wm_module(gg_compile(sb[..],ob[..],r.wb[..]),WmLabel.tests);
+    return r;
+}
+// B's x is A's result, B's y is A's input a.
+wm_wires :: ()->[2]int {return [2]int.[0,1];}
+wm_differs :: (m:WmModule,w:[]f64,d:[32]u8)->bool {return !wm_same(d,wm_digest(m,w));}
+
+#test "the digest covers the shape and every weight bit" {
+    p:=wm_pair();m:=p.b;w:=p.wb;d:=wm_digest(m,w[..]);n:=m.plan.weights;
+    #assert !wm_differs(m,w[..],d) && wm_differs(p.a,p.wa[..],d);
+    w[7]=w[7]+1;#assert wm_differs(m,w[..],d);
+    w=p.wb;w[n-1]=w[n-1]+1;#assert wm_differs(m,w[..],d);
+    w=p.wb;w[n]=5;#assert !wm_differs(m,w[..],d);
+    x:=m;x.plan.layers-=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.plan.width+=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.plan.inputs+=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.plan.outputs-=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.plan.units[1]+=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.plan.units[2]=9;#assert !wm_differs(x,p.wb[..],d);
+    x=m;x.plan.weights-=1;#assert wm_differs(x,p.wb[..],d);
+}
+#test "the digest covers the output forms and the seams" {
+    p:=wm_pair();m:=p.b;d:=wm_digest(m,p.wb[..]);k:=m.plan.outputs-1;
+    x:=m;x.plan.out[k].slots[0]+=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.plan.out[k].coefs[x.plan.out[k].count-1]+=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.plan.out[k].count-=1;#assert wm_differs(x,p.wb[..],d);
+    x=m;x.nseams=1;#assert wm_differs(x,p.wb[..],d);
+    e:=wm_digest(x,p.wb[..]);s:=WmSeam.{layer=1,slot=1,count=1};
+    y:=x;y.seams[0].layer=1;#assert wm_differs(y,p.wb[..],e);
+    y=x;y.seams[0].slot=1;#assert wm_differs(y,p.wb[..],e);
+    y=x;y.seams[0].count=1;#assert wm_differs(y,p.wb[..],e);
+    y=x;y.nseams=2;y.seams[0]=s;z:=y;z.seams[1].layer=2;#assert wm_differs(z,p.wb[..],wm_digest(y,p.wb[..]));
+    x=m;x.label=WmLabel.none;x.samples=3;x.seams[1].layer=2;x.plan.out[k+1].count=1;#assert !wm_differs(x,p.wb[..],d);
+}
+#test "every byte of a word reaches the digest" {
+    m:WmModule;m.plan.weights=1;a:=[1]f64.[1];b:=[1]f64.[-1];c:=[1]f64.[1.0000000000000002];
+    d:=wm_digest(m,a[..]);#assert wm_differs(m,b[..],d) && wm_differs(m,c[..],d);
+    for i:0..<8 {
+        e:=m;e.plan.inputs=1<<(8*i);
+        if i==7 {e.plan.inputs=-1;}
+        #assert wm_differs(e,a[..],d);
+        f:=e;f.plan.inputs=e.plan.inputs*2;if i==7 {f.plan.inputs=0x7fffffffffffffff;}
+        #assert wm_differs(f,a[..],wm_digest(e,a[..]));
+    }
+    #assert wm_u64(-1)==0xffffffffffffffff && wm_u64(-2)==0xfffffffffffffffe && wm_u64(5)==5;
+    #assert wm_u64(0x7fffffffffffffff)==0x7fffffffffffffff;
+}
+#test "the digest stages bytes across its buffer" {
+    sha:[112]u8;buf:[16]u8;
+    #assert sha256_init(sha[..])==SHA_OK;
+    n:=wm_put(sha[..],buf[..],0,0x0807060504030201);#assert n==8 && buf[0]==1 && buf[7]==8;
+    n=wm_put(sha[..],buf[..],n,0xff);#assert n==16 && buf[8]==0xff && buf[9]==0;
+    n=wm_put(sha[..],buf[..],n,2);#assert n==8 && buf[0]==2;
+    // 129 words: across many full buffers, the same digest as one long update.
+    m:WmModule;m.plan.weights=129;w:[129]f64;for i:0..<129 {w[i]=f64(i);}
+    bytes:[1080]u8;words:[135]u64;
+    words[0]=0;words[1]=0;words[2]=0;words[3]=0;words[4]=0;words[5]=129;
+    for i:0..<129 {words[6+i]=f64_bits(w[i]);}
+    for i:0..<135 {for j:0..<8 {bytes[i*8+j]=cast(u8)((words[i]>>cast(u64)(j*8))&0xff);}}
+    want:[32]u8;#assert sha256_hash_checked(bytes[..],want[..],false)==SHA_OK;
+    #assert wm_same(wm_digest(m,w[..]),want);
+}
+#test "a module runs as chapter 168's block" {
+    p:=wm_pair();sa:=wm_step_graph();oa:=wm_step_outs();
+    for op:0..<3 {for a:-3..<4 {
+        inputs:=[3]int.[op,a,5-a*a];got:[2]f64;want:[2]int;ref:[2]f64;
+        #assert wm_run(p.a,p.wa[..],inputs[..],got[..]).status==GgStatus.ok;
+        #assert gg_eval(sa[..],inputs[..],oa[..],want[..]).status==GgStatus.ok && got[0]==f64(want[0]) && got[1]==f64(a);
+        #assert gg_run(p.a.plan,p.wa[..],inputs[..],ref[..],false,false)==GgStatus.ok && ref[0]==got[0] && ref[1]==got[1];
+    }}
+    inputs:=[3]int.[0,1,2];got:[2]f64;n:=p.a.plan.weights;
+    #assert wm_run(p.a,p.wa[0..<n-1],inputs[..],got[..]).status==GgStatus.capacity;
+    #assert wm_run(p.a,p.wa[0..<n],inputs[..],got[..]).status==GgStatus.ok;
+    #assert wm_run(p.a,p.wa[..],inputs[0..<2],got[..]).status==GgStatus.capacity;
+    #assert wm_run(p.a,p.wa[..],inputs[..],got[0..<1]).status==GgStatus.capacity;
+    inputs[1]=RA_VALUE_MAX;#assert wm_run(p.a,p.wa[..],inputs[..],got[..]).status==GgStatus.ok;
+    inputs[1]=RA_VALUE_MAX+1;#assert wm_run(p.a,p.wa[..],inputs[..],got[..]).status==GgStatus.range;
+    inputs[1]=-RA_VALUE_MAX;#assert wm_run(p.a,p.wa[..],inputs[..],got[..]).status==GgStatus.ok;
+    inputs[1]=-RA_VALUE_MAX-1;#assert wm_run(p.a,p.wa[..],inputs[..],got[..]).status==GgStatus.range;
+    bad:=p.a;bad.plan.status=GgStatus.terms;#assert wm_run(bad,p.wa[..],inputs[..],got[..]).status==GgStatus.terms;
+}
+// The linked block, the chain and the composed graph agree on every input.
+wm_agree :: (l:WmModule,lw:[]f64,a:WmModule,wa:[]f64,b:WmModule,wb:[]f64,wire:[]int,nc:[]GgNode,oc:[]int,inputs:[]int)->bool {
+    got:[16]f64;chain:[16]f64;want:[16]int;n:=l.plan.outputs;
+    if wm_run(l,lw,inputs,got[0..<n]).status!=GgStatus.ok {return false;}
+    if wm_chain(a,wa,b,wb,wire,inputs,chain[0..<n]).status!=GgStatus.ok {return false;}
+    if gg_eval(nc,inputs,oc,want[0..<n]).status!=GgStatus.ok {return false;}
+    for k:0..<n {if got[k]!=chain[k] || got[k]!=f64(want[k]) {return false;}}
+    return true;
+}
+#test "the linked block replays the chain and the composed graph" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;
+    l:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[..]);
+    #assert l.plan.status==GgStatus.ok && l.plan.layers==p.a.plan.layers+1+p.b.plan.layers;
+    #assert l.plan.width==p.a.plan.width+p.b.plan.width-1 && l.plan.inputs==3 && l.plan.outputs==3;
+    #assert l.plan.units[p.a.plan.layers]==2 && l.plan.units[0]==p.a.plan.units[0] && l.plan.units[l.plan.layers-1]==p.b.plan.units[p.b.plan.layers-1];
+    #assert l.nseams==1 && l.seams[0].layer==p.a.plan.layers+1 && l.seams[0].slot==p.a.plan.width && l.seams[0].count==2;
+    #assert l.label==WmLabel.tests;
+    sa:=wm_step_graph();oa:=wm_step_outs();sb:=wm_max_graph();ob:=wm_max_outs();nc:[32]GgNode;oc:[4]int;
+    n:=wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[..],oc[..]);#assert n==18;
+    for op:0..<3 {for a:-3..<4 {for b:-2..<3 {
+        inputs:=[3]int.[op,a,b];
+        #assert wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],nc[0..<n],oc[0..<3],inputs[..]);
+    }}}
+    inputs:=[3]int.[2,-3,2];got:[3]f64;#assert wm_run(l,out[..],inputs[..],got[..]).status==GgStatus.ok;
+    #assert got[0]==-3 && got[1]==0 && got[2]==-3;
+    inputs=[3]int.[1,4,4];#assert wm_run(l,out[..],inputs[..],got[..]).status==GgStatus.ok && got[0]==4 && got[1]==1 && got[2]==4;
+}
+#test "the agreement check fails when any of the three differs" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;l:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[..]);
+    sa:=wm_step_graph();oa:=wm_step_outs();sb:=wm_max_graph();ob:=wm_max_outs();nc:[32]GgNode;oc:[4]int;
+    n:=wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[..],oc[..]);
+    inputs:=[3]int.[0,2,3];
+    #assert wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],nc[0..<n],oc[0..<3],inputs[..]);
+    w:=out;w[0]+=1;#assert !wm_agree(l,w[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],nc[0..<n],oc[0..<3],inputs[..]);
+    o2:=oc;o2[2]=oc[1];#assert !wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],nc[0..<n],o2[0..<3],inputs[..]);
+    w2:=wire;w2[1]=0;#assert !wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],w2[..],nc[0..<n],oc[0..<3],inputs[..]);
+    big:=[3]int.[2,10000,10000];#assert !wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],nc[0..<n],oc[0..<3],big[..]);
+    c2:=nc;c2[13].k=2;#assert !wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],c2[0..<n],oc[0..<3],big[..]);
+    #assert !wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],c2[0..<n],oc[0..<3],inputs[..]);
+}
+#test "a result out of the second module's range is refused at the seam" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;l:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[..]);
+    big:=[3]int.[2,10000,10000];got:[3]f64;
+    r:=wm_run(l,out[..],big[..],got[..]);#assert r.status==GgStatus.range && r.layer==l.seams[0].layer;
+    #assert wm_chain(p.a,p.wa[..],p.b,p.wb[..],wire[..],big[..],got[..]).status==GgStatus.range;
+    neg:=[3]int.[2,10000,-10000];
+    #assert wm_run(l,out[..],neg[..],got[..]).status==GgStatus.range;
+    #assert wm_chain(p.a,p.wa[..],p.b,p.wb[..],wire[..],neg[..],got[..]).status==GgStatus.range;
+    edge:=[3]int.[2,8192,8192];
+    #assert wm_run(l,out[..],edge[..],got[..]).status==GgStatus.ok && got[0]==f64(RA_VALUE_MAX);
+    #assert wm_chain(p.a,p.wa[..],p.b,p.wb[..],wire[..],edge[..],got[..]).status==GgStatus.ok && got[0]==f64(RA_VALUE_MAX);
+    edge=[3]int.[2,8192,-8192];
+    #assert wm_run(l,out[..],edge[..],got[..]).status==GgStatus.ok && got[0]==8192;
+    #assert wm_chain(p.a,p.wa[..],p.b,p.wb[..],wire[..],edge[..],got[..]).status==GgStatus.ok && got[0]==8192;
+    over:=[3]int.[0,RA_VALUE_MAX+1,0];
+    #assert wm_chain(p.a,p.wa[..],p.b,p.wb[..],wire[..],over[..],got[..]).status==GgStatus.range;
+}
+#test "linking twice gives the same block; another wiring another" {
+    p:=wm_pair();wire:=wm_wires();o1:[4096]f64;o2:[4096]f64;
+    l1:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],o1[..]);
+    for i:0..<4096 {o2[i]=7;}
+    l2:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],o2[..]);
+    #assert wm_same(wm_digest(l1,o1[..]),wm_digest(l2,o2[..]));
+    w:=wire;w[0]=1;w[1]=0;l3:=wm_link(p.a,p.wa[..],p.b,p.wb[..],w[..],o2[..]);
+    #assert l3.plan.status==GgStatus.ok && l3.plan.weights==l1.plan.weights;
+    differ:=false;for i:0..<l1.plan.weights {if o1[i]!=o2[i] {differ=true;}}
+    #assert differ;
+    inputs:=[3]int.[0,4,9];got:[3]f64;#assert wm_run(l3,o2[..],inputs[..],got[..]).status==GgStatus.ok && got[0]==13 && got[1]==0 && got[2]==13;
+    inputs=[3]int.[0,0,9];#assert wm_run(l3,o2[..],inputs[..],got[..]).status==GgStatus.ok && got[0]==9 && got[1]==1;
+}
+#test "a link refuses what it cannot build" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;
+    #assert wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[0..<1],out[..]).plan.status==GgStatus.shape;
+    bad:=p.a;bad.plan.status=GgStatus.terms;#assert wm_link(bad,p.wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.shape;
+    bad=p.b;bad.plan.status=GgStatus.terms;#assert wm_link(p.a,p.wa[..],bad,p.wb[..],wire[..],out[..]).plan.status==GgStatus.shape;
+    w:=wire;w[0]=2;#assert wm_link(p.a,p.wa[..],p.b,p.wb[..],w[..],out[..]).plan.status==GgStatus.operand;
+    w=wire;w[1]=-1;#assert wm_link(p.a,p.wa[..],p.b,p.wb[..],w[..],out[..]).plan.status==GgStatus.operand;
+    wide:=p.a;wide.plan.width=RA_WIDTH_MAX+2-p.b.plan.width;
+    #assert wm_link(wide,p.wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.width;
+    deep:=p.a;deep.plan.layers=GG_LAYERS_MAX-p.b.plan.layers;
+    #assert wm_link(deep,p.wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.layers;
+    full:=p.a;full.nseams=WM_SEAMS;#assert wm_link(full,p.wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.capacity;
+    full=p.b;full.nseams=WM_SEAMS;#assert wm_link(p.a,p.wa[..],full,p.wb[..],wire[..],out[..]).plan.status==GgStatus.capacity;
+    full.nseams=WM_SEAMS-1;#assert wm_link(p.a,p.wa[..],full,p.wb[..],wire[..],out[..]).plan.status==GgStatus.ok;
+    na:=p.a.plan.weights;nb:=p.b.plan.weights;
+    #assert wm_link(p.a,p.wa[0..<na-1],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.capacity;
+    #assert wm_link(p.a,p.wa[0..<na],p.b,p.wb[0..<nb],wire[..],out[..]).plan.status==GgStatus.ok;
+    #assert wm_link(p.a,p.wa[..],p.b,p.wb[0..<nb-1],wire[..],out[..]).plan.status==GgStatus.capacity;
+    l:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[..]);
+    #assert wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[0..<l.plan.weights-1]).plan.status==GgStatus.capacity;
+    #assert wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[0..<l.plan.weights]).plan.status==GgStatus.ok;
+}
+#test "the second module may not write the shared constant slot" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;
+    zb:=p.wb;u:=p.b.plan.units[0];zb[2*u*p.b.plan.width+u-1]=1;
+    #assert wm_link(p.a,p.wa[..],p.b,zb[..],wire[..],out[..]).plan.status==GgStatus.shape;
+    zb=p.wb;base:=0;L:=p.b.plan.layers-1;
+    for k:0..<L {base+=ra_weight_count(p.b.plan.width,p.b.plan.units[k]);}
+    u=p.b.plan.units[L];zb[base+2*u*p.b.plan.width]=-1;
+    #assert wm_link(p.a,p.wa[..],p.b,zb[..],wire[..],out[..]).plan.status==GgStatus.shape;
+    zb=p.wb;zb[base+2*u*p.b.plan.width+u]=1;
+    #assert wm_link(p.a,p.wa[..],p.b,zb[..],wire[..],out[..]).plan.status==GgStatus.ok;
+}
+#test "a linked module links again, and seams move with it" {
+    p:=wm_pair();sb:=wm_max_graph();ob:=wm_max_outs();wy:=[2]int.[0,2];
+    yw:[4096]f64;y:=wm_link(p.b,p.wb[..],p.b,p.wb[..],wy[..],yw[..]);
+    #assert y.plan.status==GgStatus.ok && y.nseams==1;
+    wire:=wm_wires();out:[8192]f64;l:=wm_link(p.a,p.wa[..],y,yw[..],wire[..],out[..]);
+    #assert l.plan.status==GgStatus.ok && l.nseams==2;
+    #assert l.seams[0].layer==p.a.plan.layers+1 && l.seams[0].slot==p.a.plan.width;
+    #assert l.seams[1].layer==y.seams[0].layer+p.a.plan.layers+1 && l.seams[1].slot==p.a.plan.width+y.seams[0].slot-1 && l.seams[1].count==2;
+    zw:[8192]f64;l2:=wm_link(l,out[..],p.b,p.wb[..],wy[..],zw[..]);
+    #assert l2.nseams==3 && l2.seams[0].layer==l.seams[0].layer && l2.seams[1].slot==l.seams[1].slot && l2.seams[2].layer==l.plan.layers+1;
+    sa:=wm_step_graph();oa:=wm_step_outs();n1:[32]GgNode;o1:[4]int;n2:[64]GgNode;o2:[4]int;
+    m:=wm_compose(sb[..],ob[..],sb[..],ob[..],wy[..],n1[..],o1[..]);#assert m==12;
+    n:=wm_compose(sa[..],oa[..],n1[0..<m],o1[0..<3],wire[..],n2[..],o2[..]);#assert n==24;
+    for op:0..<3 {for a:-2..<3 {
+        inputs:=[3]int.[op,a,3];
+        #assert wm_agree(l,out[..],p.a,p.wa[..],y,yw[..],wire[..],n2[0..<n],o2[0..<3],inputs[..]);
+    }}
+}
+#test "the composed graph refuses to overflow its storage" {
+    sa:=wm_step_graph();oa:=wm_step_outs();sb:=wm_max_graph();ob:=wm_max_outs();wire:=wm_wires();nc:[32]GgNode;oc:[4]int;
+    #assert wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[0..<17],oc[..])==-1;
+    #assert wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[0..<18],oc[0..<2])==-1;
+    #assert wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[0..<18],oc[0..<3])==18;
+    #assert nc[11].op==GgOp.select && nc[12].op==GgOp.scale && nc[12].a==11 && nc[12].k==1 && nc[13].a==1;
+    #assert nc[14].a==12 && nc[14].b==13 && nc[16].c==15 && nc[16].a==12 && nc[16].b==13;
+    #assert oc[0]==16 && oc[1]==17 && oc[2]==13;
+}
+#test "the weaker label wins" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;a:=p.a;b:=p.b;
+    for x:0..<4 {for y:0..<4 {
+        a.label=cast(WmLabel)x;b.label=cast(WmLabel)y;l:=wm_link(a,p.wa[..],b,p.wb[..],wire[..],out[..]);
+        want:=x;if y<x {want=y;}
+        #assert cast(int)l.label==want;
+    }}
+}
+wm_cases :: ()->[2]WmCase {
+    c:[2]WmCase;
+    // Subtractions: a case with op 0 would pass with its op unset.
+    c[0].inputs[0]=1;c[0].inputs[1]=7;c[0].inputs[2]=-3;c[0].outputs[0]=10;c[0].outputs[1]=7;
+    c[1].inputs[0]=1;c[1].inputs[1]=2;c[1].inputs[2]=5;c[1].outputs[0]=-3;c[1].outputs[1]=2;
+    return c;
+}
+#test "admission checks the pin and every case" {
+    p:=wm_pair();sa:=wm_step_graph();oa:=wm_step_outs();scratch:[1024]f64;c:=wm_cases();
+    pin:=wm_digest(p.a,p.wa[..]);
+    r:=wm_admit(p.a,p.wa[..],pin,c[..],sa[..],oa[..],scratch[..]);#assert r.status==WmStatus.ok && r.failed==0;
+    bad:=pin;bad[31]^=1;#assert wm_admit(p.a,p.wa[..],bad,c[..],sa[..],oa[..],scratch[..]).status==WmStatus.digest;
+    #assert wm_admit(p.a,p.wa[0..<p.a.plan.weights-1],pin,c[..],sa[..],oa[..],scratch[..]).status==WmStatus.digest;
+    m:=p.a;m.plan.status=GgStatus.terms;#assert wm_admit(m,p.wa[..],pin,c[..],sa[..],oa[..],scratch[..]).status==WmStatus.digest;
+    w:=c;w[1].outputs[0]=-20;r=wm_admit(p.a,p.wa[..],pin,w[..],sa[..],oa[..],scratch[..]);#assert r.status==WmStatus.cases && r.failed==1;
+    w=c;w[1].outputs[1]=6;r=wm_admit(p.a,p.wa[..],pin,w[..],sa[..],oa[..],scratch[..]);#assert r.status==WmStatus.cases && r.failed==1;
+    w=c;w[0].inputs[1]=RA_VALUE_MAX+1;r=wm_admit(p.a,p.wa[..],pin,w[..],sa[..],oa[..],scratch[..]);#assert r.status==WmStatus.cases && r.failed==0;
+}
+#test "an exact label needs a source graph that compiles to the pin" {
+    p:=wm_pair();sa:=wm_step_graph();oa:=wm_step_outs();scratch:[1024]f64;c:=wm_cases();
+    pin:=wm_digest(p.a,p.wa[..]);nodes:[1]GgNode;none:=nodes[0..<0];cases:=c[0..<0];
+    #assert wm_admit(p.a,p.wa[..],pin,cases,sa[..],oa[..],scratch[..]).status==WmStatus.ok;
+    #assert wm_admit(p.a,p.wa[..],pin,c[..],none,oa[..],scratch[..]).status==WmStatus.evidence;
+    oops:=sa;oops[4].k=-2;#assert wm_admit(p.a,p.wa[..],pin,cases,oops[..],oa[..],scratch[..]).status==WmStatus.source;
+    #assert wm_admit(p.a,p.wa[..],pin,cases,sa[..],oa[..],scratch[0..<10]).status==WmStatus.source;
+    seamed:=p.a;seamed.nseams=1;spin:=wm_digest(seamed,p.wa[..]);
+    #assert wm_admit(seamed,p.wa[..],spin,cases,sa[..],oa[..],scratch[..]).status==WmStatus.source;
+}
+#test "the other labels need their own evidence" {
+    p:=wm_pair();oa:=wm_step_outs();scratch:[16]f64;c:=wm_cases();
+    pin:=wm_digest(p.a,p.wa[..]);nodes:[1]GgNode;none:=nodes[0..<0];cases:=c[0..<0];
+    m:=p.a;m.label=WmLabel.tests;
+    #assert wm_admit(m,p.wa[..],pin,cases,none,oa[..],scratch[..]).status==WmStatus.evidence;
+    #assert wm_admit(m,p.wa[..],pin,c[0..<1],none,oa[..],scratch[..]).status==WmStatus.ok;
+    m.label=WmLabel.statistical;
+    #assert wm_admit(m,p.wa[..],pin,cases,none,oa[..],scratch[..]).status==WmStatus.evidence;
+    m.samples=1;#assert wm_admit(m,p.wa[..],pin,cases,none,oa[..],scratch[..]).status==WmStatus.ok;
+    m.label=WmLabel.none;m.samples=0;#assert wm_admit(m,p.wa[..],pin,cases,none,oa[..],scratch[..]).status==WmStatus.ok;
+}
+#test "the digest is SHA-256 of the specified bytes" {
+    m:WmModule;p:=m.plan;
+    m.plan.layers=2;m.plan.width=3;m.plan.inputs=1;m.plan.outputs=2;m.plan.weights=3;m.plan.units[0]=1;m.plan.units[1]=2;
+    m.nseams=1;m.seams[0]=WmSeam.{layer=4,slot=5,count=6};
+    m.plan.out[0].count=2;m.plan.out[0].slots[0]=0;m.plan.out[0].coefs[0]=-1;m.plan.out[0].slots[1]=2;m.plan.out[0].coefs[1]=3;
+    m.plan.out[1].count=1;m.plan.out[1].slots[0]=1;m.plan.out[1].coefs[0]=7;
+    w:=[3]f64.[1.5,-0.0,5e-324];d:=wm_digest(m,w[..]);
+    want:=[32]u8.[58,150,218,161,129,120,149,227,177,217,66,63,90,201,208,199,36,210,224,241,89,252,222,208,20,155,207,30,142,53,227,105];
+    #assert wm_same(d,want);
+    a:=want;a[0]^=1;#assert !wm_same(d,a);
+    a=want;a[31]^=1;#assert !wm_same(d,a);
+}
+#test "a one-wire link and a first module with no layers" {
+    p:=wm_pair();sa:=wm_step_graph();oa:=wm_step_outs();
+    z:=[2]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.eq0,a=0}];oz:=[1]int.[1];wz:[256]f64;
+    c:=wm_module(gg_compile(z[..],oz[..],wz[..]),WmLabel.exact);
+    one:=[1]int.[0];out:[4096]f64;for i:0..<4096 {out[i]=7;}
+    l:=wm_link(p.a,p.wa[..],c,wz[..],one[..],out[..]);#assert l.plan.status==GgStatus.ok && l.plan.units[p.a.plan.layers]==1;
+    nc:[32]GgNode;oc:[4]int;n:=wm_compose(sa[..],oa[..],z[..],oz[..],one[..],nc[..],oc[..]);
+    for op:0..<3 {for a:-2..<3 {
+        inputs:=[3]int.[op,a,2];
+        #assert wm_agree(l,out[..],p.a,p.wa[..],c,wz[..],one[..],nc[0..<n],oc[0..<1],inputs[..]);
+    }}
+    // A linear first module compiles to no layers: the glue layer comes first.
+    lin:=[3]GgNode.[GgNode.{op=GgOp.input,k=0},GgNode.{op=GgOp.input,k=1},GgNode.{op=GgOp.sub,a=0,b=1}];
+    ol:=[2]int.[2,1];wl:[256]f64;q:=wm_module(gg_compile(lin[..],ol[..],wl[..]),WmLabel.exact);
+    #assert q.plan.status==GgStatus.ok && q.plan.layers==0;
+    for i:0..<4096 {out[i]=7;}
+    sb:=wm_max_graph();ob:=wm_max_outs();ww:=wm_wires();
+    l=wm_link(q,wl[..],p.b,p.wb[..],ww[..],out[..]);
+    #assert l.plan.status==GgStatus.ok && l.seams[0].layer==1;
+    n=wm_compose(lin[..],ol[..],sb[..],ob[..],ww[..],nc[..],oc[..]);
+    for x:-2..<3 {for y:-2..<3 {
+        inputs:=[2]int.[x,y];
+        #assert wm_agree(l,out[..],q,wl[..],p.b,p.wb[..],ww[..],nc[0..<n],oc[0..<3],inputs[..]);
+    }}
+}
+#test "the first module may not write the shared constant slot either" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;wa:=p.wa;u:=p.a.plan.units[0];
+    wa[2*u*p.a.plan.width]=0.5;
+    #assert wm_link(p.a,wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.shape;
+    // In the chain it runs, but the second module there still reads a one.
+    inputs:=[3]int.[0,2,3];chain:[3]f64;clean:[3]f64;
+    #assert wm_chain(p.a,wa[..],p.b,p.wb[..],wire[..],inputs[..],chain[..]).status==GgStatus.ok;
+    #assert wm_chain(p.a,p.wa[..],p.b,p.wb[..],wire[..],inputs[..],clean[..]).status==GgStatus.ok;
+    #assert clean[0]!=chain[0] || clean[2]!=chain[2];
+    L:=p.a.plan.layers-1;base:=0;for k:0..<L {base+=ra_weight_count(p.a.plan.width,p.a.plan.units[k]);}
+    wa=p.wa;u=p.a.plan.units[L];wa[base+2*u*p.a.plan.width+u-1]=-2;
+    #assert wm_link(p.a,wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.shape;
+    wa=p.wa;wa[base+2*u*p.a.plan.width+u]=-2;
+    #assert wm_link(p.a,wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.ok;
+}
+#test "limits hold exactly at their edges" {
+    p:=wm_pair();wire:=wm_wires();out:[4]f64;
+    wide:=p.a;wide.plan.width=RA_WIDTH_MAX+1-p.b.plan.width;
+    #assert wm_link(wide,p.wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.capacity;
+    deep:=p.a;deep.plan.layers=GG_LAYERS_MAX-1-p.b.plan.layers;
+    #assert wm_link(deep,p.wa[..],p.b,p.wb[..],wire[..],out[..]).plan.status==GgStatus.capacity;
+    sa:=wm_step_graph();oa:=wm_step_outs();scratch:[1024]f64;c:=wm_cases();pin:=wm_digest(p.a,p.wa[..]);
+    #assert wm_admit(p.a,p.wa[0..<p.a.plan.weights],pin,c[..],sa[..],oa[..],scratch[..]).status==WmStatus.ok;
+    #assert wm_same(pin,pin) && wm_slot(0,9)==0 && wm_slot(1,9)==9 && wm_slot(4,9)==12;
+}
+#test "the arithmetic is pinned, and the composed graph overwrites its storage" {
+    p:=wm_pair();got:[2]f64;
+    i0:=[3]int.[0,3,-4];#assert wm_run(p.a,p.wa[..],i0[..],got[..]).status==GgStatus.ok && got[0]==-1 && got[1]==3;
+    i1:=[3]int.[1,3,-4];#assert wm_run(p.a,p.wa[..],i1[..],got[..]).status==GgStatus.ok && got[0]==7;
+    i2:=[3]int.[2,3,-4];#assert wm_run(p.a,p.wa[..],i2[..],got[..]).status==GgStatus.ok && got[0]==-12;
+    sa:=wm_step_graph();oa:=wm_step_outs();sb:=wm_max_graph();ob:=wm_max_outs();wire:=wm_wires();nc:[32]GgNode;oc:[4]int;
+    for i:0..<32 {nc[i]=GgNode.{op=GgOp.mul,a=5,b=6,c=7,k=8};}
+    #assert wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[..],oc[..])==18;
+    #assert nc[0].op==GgOp.input && nc[0].k==0 && nc[0].a==0 && nc[11].op==GgOp.select;
+}
+#test "the agreement check fails when the chain or the graph fails" {
+    p:=wm_pair();wire:=wm_wires();out:[4096]f64;l:=wm_link(p.a,p.wa[..],p.b,p.wb[..],wire[..],out[..]);
+    sa:=wm_step_graph();oa:=wm_step_outs();sb:=wm_max_graph();ob:=wm_max_outs();nc:[32]GgNode;oc:[4]int;
+    n:=wm_compose(sa[..],oa[..],sb[..],ob[..],wire[..],nc[..],oc[..]);inputs:=[3]int.[0,2,3];
+    bad:=p.b;bad.plan.status=GgStatus.terms;
+    #assert !wm_agree(l,out[..],p.a,p.wa[..],bad,p.wb[..],wire[..],nc[0..<n],oc[0..<3],inputs[..]);
+    broken:=nc;broken[3].a=40;
+    #assert !wm_agree(l,out[..],p.a,p.wa[..],p.b,p.wb[..],wire[..],broken[0..<n],oc[0..<3],inputs[..]);
+}

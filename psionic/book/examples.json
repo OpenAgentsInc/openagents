@@ -770,6 +770,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/link-modules.coax",
+      "chapter": "psionic/book/ch176-composable-weight-modules.md",
+      "stdout": "psionic/fixtures/link-modules.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
