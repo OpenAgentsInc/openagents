@@ -1,0 +1,71 @@
+// NIP-42 on whole events: the two calls that take event JSON. nip42_admit is
+// the relay side: nostr_event_verify_vartime checks the id and signature,
+// then nip42.coax's check decides. nip42_send is the client side: it reads
+// the signed AUTH event (nostr_event_read recomputes its id), checks that it
+// answers the current challenge, writes ["AUTH",<event>] and hands the id to
+// relay.coax. Verification is variable-time; every input here is public.
+//
+// A full signature verification costs about 76M interpreter steps, over the
+// 20M a check gets, so the admitted path with real signatures is checked in
+// coax/tests/nostr/nip42_signed_checks.coax (coax test --steps). The checks
+// here stay cheap enough for coax mutate.
+#load "event.coax";
+#load "nip42.coax";
+#load "fixtures/nip42_events.coax";
+#authority;
+
+// The event's raw tags array, from a record nostr_event_read filled.
+n42e_tags :: (e: NostrEvent) -> string { return e.original[e.tags_from..<e.tags_to]; }
+
+#test "the template's tags are byte for byte what an independent signer signed" {
+  n: [1] Nip42; out: [512] u8; scratch: [4096] u8;
+  #assert nip42_init(n[..], "wss://relay.example.com/") == N42_OK && nip42_challenge(n[..], 1, "[\"AUTH\",\"challengestringhere\"]") == N42_OK;
+  t := nip42_template(n[..], 1, N42_FX_TIME, out[..]);
+  e := nostr_event_read(N42_FX_TEMPLATE, scratch[..], false);
+  #assert t.error == N42_OK && e.error == NE_OK && e.kind == t.kind && e.created_at == t.created_at && n42e_tags(e) == t.tags;
+  #assert nip42_challenge(n[..], 1, "[\"AUTH\",\"a\\\"b\\\\c\\n\"]") == N42_OK;
+  t = nip42_template(n[..], 1, N42_FX_TIME, out[..]);
+  e = nostr_event_read(N42_FX_ESCAPED, scratch[..], false);
+  #assert t.error == N42_OK && e.error == NE_OK && n42e_tags(e) == t.tags;
+}
+#test "sending a signed AUTH event: the frame, the hook and the refusals" {
+  r: [1] Relay; n: [1] Nip42; scratch: [4096] u8; out: [1024] u8;
+  #assert nip42_init(n[..], "wss://relay.example.com") == N42_OK;
+  g := rl_start(r[..], 0); ok := rl_opened(r[..], g, 0);
+  #assert nip42_input(r[..], n[..], g, "[\"AUTH\",\"challengestringhere\"]") == RL_AUTH;
+  // an event whose id doesn't match its fields, and one that isn't JSON
+  bad: [1024] u8; for i: 0..<N42_FX_TEMPLATE.count { bad[i] = N42_FX_TEMPLATE[i]; } bad[7] = '1';
+  #assert nip42_send(r[..], n[..], g, N42_FX_TIME, cast(string) bad[0..<N42_FX_TEMPLATE.count], scratch[..], out[..], false).error == N42_EVENT;
+  #assert nip42_send(r[..], n[..], g, N42_FX_TIME, "{", scratch[..], out[..], false).error == N42_EVENT;
+  #assert nip42_send(r[..], n[..], g, N42_FX_TIME, N42_FX_KIND, scratch[..], out[..], false).error == N42_KIND && r[0].auth == RA_CHALLENGED;
+  f := nip42_send(r[..], n[..], g, N42_FX_TIME, N42_FX_TEMPLATE, scratch[..], out[..], false);
+  #assert f.error == N42_OK && r[0].auth == RA_SENT;
+  #assert cast(string) out[0..<9] == "[\"AUTH\",{" && cast(string) out[8..<f.written - 1] == N42_FX_TEMPLATE && out[f.written - 1] == ']';
+  e := nostr_event_read(N42_FX_TEMPLATE, scratch[..], false);
+  #assert rl_input(r[..], g, RlIn.{kind = RL_IN_OK, id = e.id, accepted = true}) == RL_AUTH && r[0].auth == RA_OK;
+}
+#test "admission refuses an event whose id or signature does not verify" {
+  n: [1] Nip42; scratch: [4096] u8;
+  #assert nip42_init(n[..], "wss://relay.example.com/") == N42_OK && nip42_challenge(n[..], 1, "[\"AUTH\",\"challengestringhere\"]") == N42_OK;
+  bad: [1024] u8; for i: 0..<N42_FX_SPEC.count { bad[i] = N42_FX_SPEC[i]; } bad[7] = '0';
+  a := nip42_admit(n[..], 1, N42_FX_TIME, cast(string) bad[0..<N42_FX_SPEC.count], scratch[..], false);
+  #assert a.error == N42_EVENT && a.public_key[0] == 0;
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, "[\"AUTH\"]", scratch[..], false).error == N42_EVENT;
+}
+
+// The relay side: admits an AUTH event for generation gen's current
+// challenge at time now (seconds). Only nostr_event_verify_vartime's verdict
+// counts as verified. scratch holds the id preimage; overlap is the host's
+// truthful observation that text and scratch share memory.
+nip42_admit :: (n: [] Nip42, gen: int, now: int, text: string, scratch: [] u8, overlap: bool) -> Nip42Admit {
+  e := nostr_event_verify_vartime(text, scratch, overlap);
+  key := e.public_key;
+  return nip42_admit_fields(n, gen, now, e.verified, e.kind, e.created_at, n42e_tags(e), key[..]);
+}
+// The client side: answers relay.coax's RL_OUT_AUTH with a signed event
+// (event_sign's output). On N42_OK, out[0..<written] is the frame to send.
+nip42_send :: (r: [] Relay, n: [] Nip42, gen: int, now: int, signed: string, scratch: [] u8, out: [] u8, overlap: bool) -> Nip42Frame {
+  e := nostr_event_read(signed, scratch, overlap);
+  id := e.id;
+  return nip42_send_fields(r, n, gen, now, e.error == NE_OK, e.kind, e.created_at, n42e_tags(e), id[..], signed, out);
+}

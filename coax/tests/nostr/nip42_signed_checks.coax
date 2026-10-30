@@ -1,0 +1,56 @@
+// NIP-42 admission with real signatures. Each verification costs about 76M
+// interpreter steps, so run these with a larger budget:
+//   coax test coax/tests/nostr/nip42_signed_checks.coax --steps 400000000
+// The events in coax/lib/nostr/fixtures/nip42_events.coax were signed by
+// @noble/curves with a TEST-ONLY key (the scalar 3, BIP-340 vector 0).
+#load "../../lib/nostr/nip42-event.coax";
+
+main :: () {}
+
+n42s_record :: (n: [] Nip42, gen: int, url: string, challenge_frame: string) {
+  ok := nip42_init(n, url) == N42_OK && nip42_challenge(n, gen, challenge_frame) == N42_OK;
+  #assert ok;
+}
+n42s_key_is :: (a: Nip42Admit, hex: string) -> bool {
+  key := a.public_key; h: [64] u8; r := hex_encode_checked(cast(string) key[..], h[..], false);
+  return r.error == NC_OK && cast(string) h[..] == hex;
+}
+
+#test "the NIP-42 example, signed independently, is admitted with its key" {
+  n: [1] Nip42; scratch: [4096] u8;
+  n42s_record(n[..], 1, "wss://relay.example.com", "[\"AUTH\",\"challengestringhere\"]");
+  a := nip42_admit(n[..], 1, N42_FX_TIME + 600, N42_FX_SPEC, scratch[..], false);
+  #assert a.error == N42_OK && n42s_key_is(a, N42_FX_PUBKEY);
+}
+#test "another spelling of the relay URL, other tags and an escaped challenge are admitted" {
+  n: [1] Nip42; scratch: [4096] u8;
+  n42s_record(n[..], 2, "wss://relay.example.com/", "[\"AUTH\",\"challengestringhere\"]");
+  #assert nip42_admit(n[..], 2, N42_FX_TIME - 600, N42_FX_SPELLED, scratch[..], false).error == N42_OK;
+  #assert nip42_challenge(n[..], 2, "[\"AUTH\",\"a\\\"b\\\\c\\n\"]") == N42_OK;
+  #assert nip42_admit(n[..], 2, N42_FX_TIME, N42_FX_ESCAPED, scratch[..], false).error == N42_OK;
+}
+#test "a valid signature does not admit a wrong kind or wrong tags" {
+  n: [1] Nip42; scratch: [4096] u8;
+  n42s_record(n[..], 1, "wss://relay.example.com", "[\"AUTH\",\"challengestringhere\"]");
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_KIND, scratch[..], false).error == N42_KIND;
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_TWO_CHALLENGES, scratch[..], false).error == N42_TAGS;
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_TWO_RELAYS, scratch[..], false).error == N42_TAGS;
+}
+#test "a valid signature does not admit missing, short or long tags" {
+  n: [1] Nip42; scratch: [4096] u8;
+  n42s_record(n[..], 1, "wss://relay.example.com", "[\"AUTH\",\"challengestringhere\"]");
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_NO_RELAY, scratch[..], false).error == N42_TAGS;
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_SHORT_TAG, scratch[..], false).error == N42_TAGS;
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_LONG_TAG, scratch[..], false).error == N42_TAGS;
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_EMPTY_TAG, scratch[..], false).error == N42_OK;
+}
+#test "a valid answer to an old challenge, another relay, another generation or out of time is refused" {
+  n: [1] Nip42; scratch: [4096] u8;
+  n42s_record(n[..], 1, "wss://relay.example.com", "[\"AUTH\",\"newchallenge\"]");
+  #assert nip42_admit(n[..], 1, N42_FX_TIME, N42_FX_SPEC, scratch[..], false).error == N42_CHALLENGE;
+  m: [1] Nip42; n42s_record(m[..], 1, "wss://relay.example.org", "[\"AUTH\",\"challengestringhere\"]");
+  #assert nip42_admit(m[..], 1, N42_FX_TIME, N42_FX_SPEC, scratch[..], false).error == N42_RELAY;
+  #assert nip42_admit(m[..], 2, N42_FX_TIME, N42_FX_SPEC, scratch[..], false).error == N42_STALE;
+  k: [1] Nip42; n42s_record(k[..], 1, "wss://relay.example.com", "[\"AUTH\",\"challengestringhere\"]");
+  #assert nip42_admit(k[..], 1, N42_FX_TIME + 601, N42_FX_SPEC, scratch[..], false).error == N42_TIME;
+}
