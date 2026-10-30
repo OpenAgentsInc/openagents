@@ -65,7 +65,7 @@
 #load "rigid.coax";
 #load "terrain.coax";
 
-DEMO_PIECES :: 3100;
+DEMO_PIECES :: 3400;
 DEMO_MESHES :: 64;
 DEMO_SUPPORTS :: 16000;
 DEMO_CHUNKS :: 260;        // the desktop's chunks (the old town's budget), a phone half

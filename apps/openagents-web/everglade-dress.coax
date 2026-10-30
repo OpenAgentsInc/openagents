@@ -1,0 +1,287 @@
+// Everglade's chimneys and their wood smoke (verse-eg-chimney-smoke): the previous Everglade's smoke
+// rose from the bakehouse's stack, the smithy's forge and the houses' chimneys (verse/everglade/previous/
+// everglade.md, Layout). Here every building with a fire in it has a kit chimney (Prop_Chimney) through
+// its roof, on the side away from its door: the inn and the smithy over their hearth and forge, the
+// alchemist over the cauldron, and the six houses. Each smokes: soft puffs on the spells' particle pass
+// (everglade-fx.wgsl FX_SMOKE), rising, spreading and thinning as they drift with the wind, the forge's
+// darker. Nothing rises from a chimney that broke or a building an admin took away. A phone smokes
+// only the chimneys within SMOKE_NEAR_PHONE of you, with fewer puffs. A still page holds one moment.
+
+SMOKE_HOUSES :: [9] int.[0, 2, 3, 10, 11, 12, 13, 14, 15];   // EG_INN, EG_SMITHY, EG_ALCHEMIST, the houses
+SMOKE_CHIMNEYS :: 9;
+SMOKE_PUFFS :: 14;          // a chimney's puffs on a computer
+SMOKE_PUFFS_PHONE :: 8;
+SMOKE_LIFE :: 9.0;          // s from the stack to gone
+SMOKE_RISE :: 0.75;         // m/s up
+SMOKE_DRIFT :: 0.35;        // m/s downwind with no weather wind (a light westerly breeze)
+SMOKE_NEAR_PHONE :: 60.0;   // m
+SMOKE_FAR :: 140.0;         // m: past this no one sees a wisp
+
+// Where a building's chimney stands: its base on the roof's slope a fifth of the way from the ridge
+// toward the side away from the door, a quarter of the run from one end, and its top 1.6 m over the
+// ridge, so it shows over the ridge from the street in front. x, z, the base's height, how tall (its kit mesh is 3.18 m).
+Chimney :: struct { x: f32; z: f32; y: f32; tall: f32; }
+chimney_of :: (s: [] Everglade, b: int) -> Chimney {
+  k := b * EG_BOX;
+  return chimney_on(b, ground_at(s, (EG_BUILDING[k] + EG_BUILDING[k + 2]) / 2, (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2));
+}
+// The same on ground at height g under the building's middle.
+chimney_on :: (b: int, g: f32) -> Chimney {
+  k := b * EG_BOX;
+  x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+  top := g + f32(storeys(b)) * f32(STOREY);
+  w := x1 - x0; d := z1 - z0;
+  long_z := d >= w;
+  span := ifx long_z then w else d;
+  sy := (span + 0.8) / 8.24 * 0.85;
+  ridge := top + (0.78 + 4.89) * sy;
+  half := (span + 0.8) / 2;
+  // across the ridge, away from the door; along it, a quarter in from the end nearer the door's side
+  door := everglade_door(b);
+  away := ifx long_z then (ifx door.side == 2 then 1.0f32 else -1.0f32) else (ifx door.side == 0 then 1.0f32 else -1.0f32);
+  a := half * 0.2;
+  mx := (x0 + x1) / 2; mz := (z0 + z1) / 2;
+  c: Chimney;
+  if long_z { c.x = mx + away * a; c.z = z0 + d * 0.27; } else { c.z = mz + away * a; c.x = x0 + w * 0.27; }
+  base := ridge - (ridge - top) * (a / half) - 0.25;
+  c.y = base;
+  c.tall = (ridge + 1.6 - base) / 3.178;
+  return c;
+}
+
+// The chimneys, laid with the town (build_town): each one's object, so its smoke stops when it breaks.
+chimneys :: (s: [] Everglade) {
+  s[0].chimney_n = 0;
+  for i: 0..<SMOKE_CHIMNEYS {
+    b := SMOKE_HOUSES[i];
+    if eg_hidden(s[0].ev.edits, b) || b == EG_MAGES || b == EG_OBSERVATORY { continue; }
+    c := chimney_of(s, b);
+    g := group_of(M_CHIMNEY);
+    n := s[0].kit_used[g];
+    if n >= s[0].group_cap[g] { break; }
+    piece(s, M_CHIMNEY, c.x, c.y, c.z, 0, 1, c.tall, 1);
+    s[0].chimney_obj[s[0].chimney_n] = s[0].group_at[g] + n;
+    s[0].chimney_b[s[0].chimney_n] = b;
+    s[0].chimney_piece[s[0].chimney_n] = -1;
+    s[0].chimney_n += 1;
+  }
+}
+
+// Whether chimney i still stands (its demolition piece, found once by its object).
+chimney_up :: (s: [] Everglade, i: int) -> bool {
+  if !s[0].sp.ready || s[0].sp.dm.count < 1 { return true; }
+  w := sp_dm(s);
+  p := s[0].chimney_piece[i];
+  if p < 0 || p >= w[0].n || w[0].pieces[p].object != s[0].chimney_obj[i] {
+    p = -2;
+    for k: 0..<w[0].n { if w[0].pieces[k].object == s[0].chimney_obj[i] { p = k; break; } }
+    s[0].chimney_piece[i] = p;
+  }
+  if p < 0 { return true; }
+  return w[0].pieces[p].state == DP_STANDING;
+}
+
+smoke_hash :: (a: f32) -> f32 { h := sin(a * 91.7 + 13.1) * 43758.547; return h - floor(h); }
+
+// The smoke, each frame before the particle pass closes (spells_frame): each puff a function of the
+// clock, so it costs no state: born at the stack's mouth, rising and slowing, carried downwind,
+// growing from 0.3 m to 1.9 m across and fading in then out.
+chimney_smoke :: (s: [] Everglade, still: bool) {
+  if s[0].chimney_n < 1 { return; }
+  small := phone(s);
+  puffs := ifx small then SMOKE_PUFFS_PHONE else SMOKE_PUFFS;
+  t := ifx still then 30.0f32 else f32(s[0].time - floor(s[0].time / 3600.0) * 3600.0);
+  eye := s[0].sp.shot.eye;
+  wx := f32(s[0].sky.wind_x); wz := f32(s[0].sky.wind_z);
+  wind := v3(SMOKE_DRIFT + wx * 0.45, 0, 0.12 + wz * 0.45);
+  dusk := 1 - 0.65 * s[0].sp.dusk;
+  for i: 0..<s[0].chimney_n {
+    c := chimney_of(s, s[0].chimney_b[i]);
+    mouth := v3(c.x, c.y + c.tall * 3.178 + 0.1, c.z);
+    far := length(sub(mouth, eye));
+    if far > SMOKE_FAR || (small && far > SMOKE_NEAR_PHONE) { continue; }
+    if !chimney_up(s, i) { continue; }
+    forge := s[0].chimney_b[i] == EG_SMITHY;
+    for k: 0..<puffs {
+      seed := f32(i) * 7.3 + f32(k) * 1.37;
+      f := (t / SMOKE_LIFE + f32(k) / f32(puffs) + smoke_hash(f32(i)) ) ;
+      f = f - floor(f);
+      age := f * SMOKE_LIFE;
+      // it rises fast off the stack and slows; the wind takes more of it the higher it is
+      up := SMOKE_RISE * age * (1 - 0.35 * f);
+      curl := 0.35 * f * sin(age * 0.9 + seed);
+      at := add(mouth, add(times(wind, age * (0.4 + 0.8 * f)), v3(curl, up, 0.3 * f * cos(age * 0.7 + seed))));
+      size := 0.4 + 2.3 * f;
+      thick := 0.9 * clamp(f * 7, 0, 1) * (1 - f * f);
+      grey := ifx forge then 0.36f32 else 0.6f32;
+      tone := grey + 0.08 * (smoke_hash(seed) - 0.5);
+      colour := times(v3(tone, tone * 0.97, tone * 0.93), dusk);
+      sp_fx(s, FX_SMOKE, at, size, colour, ifx forge then thick * 1.2 else thick, v3(0, 0, 0), seed * 0.19);
+    }
+  }
+}
+
+#test "dress: a chimney on every roof with a fire, through the roof and over its ridge" {
+  for i: 0..<SMOKE_CHIMNEYS {
+    b := SMOKE_HOUSES[i];
+    k := b * EG_BOX;
+    x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+    c := chimney_on(b, 0);
+    // inside the footprint, clear of its walls
+    #assert c.x > x0 + 0.5 && c.x < x1 - 0.5 && c.z > z0 + 0.5 && c.z < z1 - 0.5;
+    // tall enough to stand clear of the ridge, never a tower
+    #assert c.tall > 0.3 && c.tall < 1.6;
+  }
+}
+
+// ---- the streets' dressing (verse-eg-street-dressing): the previous Everglade's bunting over the
+// plaza and the streets, flower boxes under the windows, signposts at the crossings and ivy on the
+// old walls (verse/everglade/previous/everglade.md, Layout). The window boxes and the ivy are the
+// kit's, laid with each building (building: a planter of crate boards under a third of the
+// ground-floor windows with three flowers in it, and the nature kit's bush pressed flat against one
+// plain ground wall in five), so they break with their wall. The bunting and the signposts are the
+// engine's shapes, drawn each frame near you: a rope between two poles, sagging, hung with
+// pennants in the old town's red, blue and gold; a post at a crossing with an arm along each street.
+
+// Bunting: x0, z0, x1, z1 of each string's poles, and how high they stand (m).
+BUNTING_N :: 12;
+BUNTING :: [60] f32.[
+  -3.4, -19, 3.4, -19, 4.6,     -3.4, -27, 3.4, -27, 4.6,     -3.4, -43, 3.4, -43, 4.6,     -3.4, -51, 3.4, -51, 4.6,
+  5.82, 14.05, -5.82, -14.05, 6.8,   14.05, 5.82, -14.05, -5.82, 6.8,
+  14.05, -5.82, -14.05, 5.82, 6.8,   5.82, -14.05, -5.82, 14.05, 6.8,
+  16, -3.4, 16, 3.4, 4.6,       22, -3.4, 22, 3.4, 4.6,       -19, -3.4, -19, 3.4, 4.6,     -26, -3.4, -26, 3.4, 4.6
+];
+PENNANT_RGB :: [15] f32.[0.78, 0.16, 0.12,  0.2, 0.34, 0.72,  0.92, 0.7, 0.18,  0.94, 0.92, 0.86,  0.24, 0.52, 0.26];
+BUNTING_GAP :: 0.72;        // m between pennants
+BUNTING_NEAR :: 70.0;       // drawn within this of the eye (a phone 45)
+BUNTING_SAG :: 0.55;        // m the rope hangs at its middle per 10 m of span
+
+// The rope's height at t (0 to 1) along a string whose poles stand `up` over the ground at each end.
+bunting_y :: (g0: f32, g1: f32, up: f32, span: f32, t: f32) -> f32 {
+  return lerp(g0, g1, t) + up - BUNTING_SAG * (span / 10 + 0.3) * 4 * t * (1 - t);
+}
+
+// Signposts: the crossings that have one (EG_NODE_XZ indices).
+SIGN_NODES :: [7] int.[0, 1, 2, 3, 22, 13, 18];
+SIGNS :: 7;
+SIGN_NEAR :: 45.0;
+
+street_dress :: (s: [] Everglade, u: [] f32, eye: Point) {
+  small := phone(s);
+  reach := ifx small then 45.0f32 else BUNTING_NEAR;
+  t := f32(s[0].time);
+  for i: 0..<BUNTING_N {
+    k := i * 5;
+    ax := BUNTING[k]; az := BUNTING[k + 1]; bx := BUNTING[k + 2]; bz := BUNTING[k + 3]; up := BUNTING[k + 4];
+    mx := (ax + bx) / 2; mz := (az + bz) / 2;
+    dx := bx - ax; dz := bz - az;
+    span := sqrt(dx * dx + dz * dz);
+    if length(sub(v3(mx, eye.y, mz), eye)) > reach + span / 2 { continue; }
+    g0 := ground_at(s, ax, az); g1 := ground_at(s, bx, bz);
+    if !in_view(u, mx, (g0 + g1) / 2 + up, mz, span / 2 + 2) { continue; }
+    ux := dx / span; uz := dz / span;
+    yaw := atan2(-uz, ux);
+    // the poles: dark timber, a knob on top
+    for e: 0..<2 {
+      px := ifx e == 0 then ax else bx; pz := ifx e == 0 then az else bz; pg := ifx e == 0 then g0 else g1;
+      shape(s, SHAPE_BOX, LOOK_WOOD, v3(px, pg + (up + 0.3) / 2, pz), yaw, 0, 0.14, up + 0.3, 0.14, 0.4, 0.29, 0.18);
+    }
+    // the rope, in four straight runs along its sag
+    for r: 0..<4 {
+      t0 := f32(r) / 4; t1 := f32(r + 1) / 4;
+      y0 := bunting_y(g0, g1, up, span, t0); y1 := bunting_y(g0, g1, up, span, t1);
+      // along its local z, pitched down or up the sag
+      shape(s, SHAPE_BOX, LOOK_MATTE, v3(ax + dx * (t0 + t1) / 2, (y0 + y1) / 2, az + dz * (t0 + t1) / 2), atan2(ux, uz), -atan2(y1 - y0, span / 4),
+            0.025, 0.025, sqrt(span * span / 16 + (y1 - y0) * (y1 - y0)), 0.62, 0.55, 0.42);
+    }
+    // the pennants, each a flat triangle hanging from the rope, stirring a little
+    n := cast(int) (span / BUNTING_GAP);
+    for p: 0..<n {
+      f := (f32(p) + 0.5) / f32(n);
+      y := bunting_y(g0, g1, up, span, f);
+      c := ((p + i) % 5) * 3;
+      sway := ifx s[0].smoke_still then 0.0f32 else 0.18 * sin(t * 2.1 + f32(p) * 0.9 + f32(i));
+      shape(s, SHAPE_CONE, LOOK_MATTE, v3(ax + dx * f, y - 0.2, az + dz * f), yaw, f32(PI) + sway, 0.42, 0.4, 0.02,
+            PENNANT_RGB[c], PENNANT_RGB[c + 1], PENNANT_RGB[c + 2]);
+    }
+  }
+  // the signposts
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  for q: 0..<SIGNS {
+    nd := SIGN_NODES[q];
+    nx := EG_NODE_XZ[nd * 2]; nz := EG_NODE_XZ[nd * 2 + 1];
+    if length(sub(v3(nx, eye.y, nz), eye)) > SIGN_NEAR { continue; }
+    // its post on the corner farthest from every street
+    best := -1.0f32; px := nx; pz := nz;
+    for c: 0..<4 {
+      cx := nx + (ifx c % 2 == 0 then 2.6f32 else -2.6f32); cz := nz + (ifx c < 2 then 2.6f32 else -2.6f32);
+      d := verse_path_nearest(nodes[..], links[..], cx, cz).d;
+      if d > best { best = d; px = cx; pz = cz; }
+    }
+    g := ground_at(s, px, pz);
+    if !in_view(u, px, g + 1.5, pz, 2) { continue; }
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(px, g + 1.25, pz), 0, 0, 0.13, 2.5, 0.13, 0.42, 0.3, 0.19);
+    shape(s, SHAPE_BOX, LOOK_WOOD, v3(px, g + 2.53, pz), 0, 0, 0.2, 0.06, 0.2, 0.36, 0.26, 0.16);
+    arm := 0;
+    for l: 0..<EG_LINKS {
+      a := EG_LINK_AB[l * 2]; b := EG_LINK_AB[l * 2 + 1];
+      other := ifx a == nd then b else ifx b == nd then a else -1;
+      if other < 0 || arm >= 3 { continue; }
+      ox := EG_NODE_XZ[other * 2] - nx; oz := EG_NODE_XZ[other * 2 + 1] - nz;
+      ol := sqrt(ox * ox + oz * oz);
+      if ol < 0.1 { continue; }
+      ox /= ol; oz /= ol;
+      ay := atan2(-oz, ox);
+      h := g + 2.2 - f32(arm) * 0.32;
+      // a board pointing down the street, its tip cut to a point
+      shape(s, SHAPE_BOX, LOOK_PLANKS, v3(px + ox * 0.5, h, pz + oz * 0.5), ay, 0, 0.86, 0.22, 0.05, 0.7, 0.55, 0.36);
+      shape(s, SHAPE_CONE, LOOK_PLANKS, v3(px + ox * 1.0, h, pz + oz * 1.0), atan2(ox, oz), f32(PI) / 2, 0.05, 0.16, 0.22, 0.7, 0.55, 0.36);
+      arm += 1;
+    }
+  }
+}
+
+// A third of a building's ground-floor windows get a box of flowers under them (by a hash of the
+// building and the window), and one plain ground wall in five ivy over it; its outer face's normal
+// is (nx, nz), its piece's yaw `yaw`, its origin at cx, y, cz.
+DRESS_FLOWERS :: [12] f32.[1.0, 0.5, 0.6,  1.0, 0.85, 0.35,  0.75, 0.6, 1.0,  1.0, 1.0, 1.0];
+dress_hash :: (b: int, w: int, i: int) -> int { return (b * 131 + w * 37 + i * 11 + 7) % 15; }
+window_box :: (s: [] Everglade, b: int, w: int, i: int, cx: f32, y: f32, cz: f32, nx: f32, nz: f32, yaw: f32) {
+  if dress_hash(b, w, i) % 3 != 0 { return; }
+  out := 0.27f32;
+  bx := cx + nx * out; bz := cz + nz * out;
+  piece(s, M_CRATE, bx, y + 0.77, bz, yaw, 1.4, 0.26, 0.36);
+  ux := cos(yaw); uz := -sin(yaw);
+  c := (dress_hash(b, w, i) / 3 % 4) * 3;
+  for f: 0..<3 {
+    o := (f32(f) - 1) * 0.36;
+    for k: 0..<3 { s[0].kit_tint[k] = DRESS_FLOWERS[c + k]; }
+    piece(s, M_FLOWER3, bx + ux * o, y + 0.99, bz + uz * o, yaw + f32(f) * 2.1, 0.75, 0.75, 0.75);
+    s[0].kit_tint[0] = 0;
+  }
+}
+ivy :: (s: [] Everglade, b: int, w: int, i: int, cx: f32, y: f32, cz: f32, nx: f32, nz: f32, yaw: f32) {
+  if dress_hash(b, w, i) % 5 != 1 { return; }
+  s[0].kit_tint[0] = 0.62; s[0].kit_tint[1] = 0.82; s[0].kit_tint[2] = 0.5;
+  piece(s, M_SHRUB, cx + nx * 0.16, y - 0.1, cz + nz * 0.16, yaw, 1.3, 1.9, 0.28);
+  s[0].kit_tint[0] = 0;
+}
+
+#test "dress: the bunting's poles stand off the streets, its ropes high over them" {
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  for i: 0..<BUNTING_N {
+    k := i * 5;
+    for e: 0..<2 {
+      x := BUNTING[k + e * 2]; z := BUNTING[k + e * 2 + 1];
+      #assert verse_path_nearest(nodes[..], links[..], x, z).d > f32(EG_PATH_HALF) + 0.4;
+      for b: 0..<EG_BUILDINGS {
+        q := b * EG_BOX;
+        #assert x < EG_BUILDING[q] - 0.5 || x > EG_BUILDING[q + 2] + 0.5 || z < EG_BUILDING[q + 1] - 0.5 || z > EG_BUILDING[q + 3] + 0.5;
+      }
+    }
+    dx := BUNTING[k + 2] - BUNTING[k]; dz := BUNTING[k + 3] - BUNTING[k + 1];
+    span := sqrt(dx * dx + dz * dz);
+    // a pennant's tip (0.4 under the rope) clears a rider's head at the sag's lowest
+    #assert bunting_y(0, 0, BUNTING[k + 4], span, 0.5) - 0.62 > 2.6;
+  }
+}

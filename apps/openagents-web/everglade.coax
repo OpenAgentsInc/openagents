@@ -68,6 +68,7 @@
 #load "everglade-spells.coax";
 #load "everglade-watch.coax";
 #load "everglade-items.coax";
+#load "everglade-dress.coax";
 #load "../../verse/style-preset.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
@@ -137,13 +138,13 @@ KIT_GROUPS :: KIT_MESHES - KIT_TREES;
 // The town's pieces' instances, a group each, from mesh 12 on.
 TOWN_CAP :: [53] int.[
   260, 200, 20, 140, 220, 200, 8, 330, 20, 140,
-  16, 12, 760, 328, 100, 6, 4, 8, 16, 30,
-  24, 12, 40, 24, 24, 12, 10, 4, 6, 6,
+  16, 12, 760, 328, 100, 12, 4, 8, 16, 30,
+  64, 12, 40, 24, 24, 12, 10, 4, 6, 6,
   8, 3, 6, 12, 4, 2, 40, 6, 8, 20,
-  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+  0, 0, 0, 0, 0, 0, 0, 100, 0, 0, 0, 40,
   4
 ];
-TOWN_OBJECTS :: 3093;     // the sum of TOWN_CAP
+TOWN_OBJECTS :: 3279;     // the sum of TOWN_CAP
 OBJECTS :: SHAPE_OBJECTS + KIT_FOREST * KIT_CAP + TOWN_OBJECTS + EDIT_OBJECTS + SP_DEBRIS_OBJECTS + WATCH_OBJECTS;   // and an admin's placed things (everglade-items.coax), the spells' debris, and the watch's swords and shields (everglade-watch.coax)
 RANGER_AT :: OBJECTS;     // you, the Ranger: one object after everything else
 // Lathed stone (the fountain's basin and column): a profile turned about its axis (everglade.wgsl
@@ -343,6 +344,8 @@ Everglade :: struct {
   pack_loaded: int; pack_total: int;
   kit_used: [KIT_GROUPS] int;
   kit_tint: [3] f32;        // the tint the next kit pieces take (0: none): a house's own plaster or roof
+  // the chimneys (everglade-dress.coax): how many, each one's object, building and demolition piece, and a still frame
+  chimney_n: int; chimney_obj: [SMOKE_CHIMNEYS] int; chimney_b: [SMOKE_CHIMNEYS] int; chimney_piece: [SMOKE_CHIMNEYS] int; smoke_still: bool;
   group_at: [KIT_GROUPS] int; group_cap: [KIT_GROUPS] int;
   kit_triangles: int;       // the kit triangles the last frame drew
   forest_triangles: int;    // of which the forest's
@@ -1633,6 +1636,9 @@ building :: (s: [] Everglade, b: int) {
         piece(s, m, cx, y, cz, q.yaw, 1, 1, 1);
         s[0].kit_tint[0] = 0;
         if window { piece(s, M_WINDOW, cx, y, cz, q.yaw, 1, 1, 1); }
+        // the street dressing (everglade-dress.coax): window boxes under the ground floor's windows, ivy on its plain walls
+        if f == 0 && window { window_box(s, b, w, i, cx, y, cz, q.nx, q.nz, q.yaw); }
+        if f == 0 && !window && !is_door { ivy(s, b, w, i, cx, y, cz, q.nx, q.nz, q.yaw); }
         if is_door {
           // The leaf hangs on the doorway's left post: shut, or swung in on a walk-in building.
           hx := cx - ux * 0.53; hz := cz - uz * 0.53;
@@ -1836,6 +1842,7 @@ build_town :: (s: [] Everglade) {
     building(s, b);
     if EG_INTERIOR[b] { furnish(s, b); }
   }
+  chimneys(s);
   stalls(s);
   bridge(s);
   crypt(s);
@@ -3322,7 +3329,9 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t, still);
   s[0].answered += t;
+  s[0].smoke_still = still;
   city(s, u);
+  if s[0].pack_ready { street_dress(s, u, shot.eye); }   // the bunting and the signposts (everglade-dress.coax)
   forest(s, u, shot.eye);
   landmarks(s);
   edit_draw(s);

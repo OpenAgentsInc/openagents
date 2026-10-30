@@ -1105,6 +1105,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   }
   sp_draw(s, dt);
   if s[0].sp.on { ab_draw(s); }
+  chimney_smoke(s, s[0].smoke_still);   // the town's wood smoke (everglade-dress.coax)
   sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
