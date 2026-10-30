@@ -1,0 +1,228 @@
+// Chapter21's free accepted receipt and OpenAgents NIP32 label profile.
+// Caller verifies the complete Nostr event before mr_read/mr_check_read.
+// Admission here does not grant buyer/checker trust or prove private work.
+// Consumers must pin trust and ensure checker differs from buyer/provider.
+#load "../fleet/protocol.coax";
+#load "../../../coax/lib/nostr/jcs.coax";
+#authority;
+MrReceipt :: struct {ok:bool;buyer:string;provider:string;pylon:string;request:string;request_digest:string;result_digest:string;started_at:int;finished_at:int;created_at:int;}
+MrCheck :: struct {ok:bool;checker:string;receipt:string;provider:string;result_digest:string;method:string;created_at:int;verdict:int;}
+MrStamp :: struct {ok:bool;value:int;}
+MR_KIND :: 3201; MR_LABEL_KIND :: 1985;
+MR_PASS :: 1; MR_FAIL :: 2; MR_INCONCLUSIVE :: 3;
+MR_VERSION :: "openagents.pylon-receipt.v2";
+MR_MARKER :: "oa:pylon-receipt:v2";
+MR_BODY_MAX :: 4096;
+MR_BUYER :: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+MR_PROVIDER :: "c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5";
+MR_CHECKER :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+MR_REQUEST :: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+MR_REQUEST_DIGEST :: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+MR_RESULT_DIGEST :: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+MR_RECEIPT_ID :: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+MR_CONTENT :: "{\"buyer\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"capability\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:pylon/decision\",\"finished_at\":102,\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"pylon\":\"demo-pylon\",\"request\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"request_digest\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"requires\":[],\"result_digest\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"started_at\":100,\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}";
+MR_DIGEST :: "12ec621098556c48810922e941b67da1bca33a0991fee657129121a63a9c2218";
+MR_TAGS :: "[[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"a\",\"30200:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:demo-pylon\"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"12ec621098556c48810922e941b67da1bca33a0991fee657129121a63a9c2218\"]]";
+MR_LABEL_TAGS :: "[[\"L\",\"openagents.pylon\"],[\"l\",\"check-pass\",\"openagents.pylon\"],[\"e\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"],[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"],[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]]";
+mr_fixture :: ()->MrReceipt {return MrReceipt.{ok=true,buyer=MR_BUYER,provider=MR_PROVIDER,pylon="demo-pylon",request=MR_REQUEST,request_digest=MR_REQUEST_DIGEST,result_digest=MR_RESULT_DIGEST,started_at=100,finished_at=102,created_at=103};}
+mr_check_fixture :: ()->MrCheck {return MrCheck.{ok=true,checker=MR_CHECKER,receipt=MR_RECEIPT_ID,provider=MR_PROVIDER,result_digest=MR_RESULT_DIGEST,method="max8-centred-log-f64-v1;ppb=1000",created_at=104,verdict=MR_PASS};}
+// Test rehashes invalid bodies so the reader reaches each semantic guard.
+mr_case :: (content:string)->MrReceipt {hex:[64]u8;hashed:=ph_digest(content,hex[..]);tags:[1024]u8;t:=pd_swap(tags[..],MR_TAGS,MR_DIGEST,cast(string)hex[..]);return mr_read(MR_KIND,MR_BUYER,103,t,content);}
+
+#test "canonical free completion roundtrip pins all signed fields" {
+    r:=mr_fixture();#assert r.created_at==103;body:[4096]u8;n:=mr_body(r,body[..]);#assert n>0 && cast(string)body[0..<n]==MR_CONTENT;
+    tags:[1024]u8;t:=mr_tags(r,MR_CONTENT,tags[..]);#assert t>0 && cast(string)tags[0..<t]==MR_TAGS;
+    read:=mr_read(MR_KIND,MR_BUYER,103,MR_TAGS,MR_CONTENT);
+    #assert read.ok && read.buyer==r.buyer && read.provider==r.provider && read.pylon==r.pylon && read.request==r.request && read.request_digest==r.request_digest && read.result_digest==r.result_digest && read.started_at==100 && read.finished_at==102 && read.created_at==103;
+    #assert mr_case(MR_CONTENT).ok && mr_case(MR_CONTENT).created_at==103;
+    #assert mr_body(r,body[0..<10])==-1 && mr_tags(r,MR_CONTENT,tags[0..<10])==-1 && mr_tags(r,"{}",tags[..])==-1;
+}
+#test "receipt writer validates each identity, binding and timestamp" {
+    for i:0..<13 {r:=mr_fixture();
+        if i==0 {r.ok=false;}if i==1 {r.buyer="bad";}if i==2 {r.provider=r.buyer;}if i==3 {r.provider="bad";}if i==4 {r.pylon="Bad";}if i==5 {r.request="bad";}if i==6 {r.request_digest="bad";}if i==7 {r.result_digest="bad";}if i==8 {r.started_at=-1;}if i==9 {r.finished_at=99;}if i==10 {r.created_at=-1;}if i==11 {r.created_at=JSON_INT_MOST;}if i==12 {r.finished_at=JSON_INT_MOST;}
+        body:[4096]u8;#assert mr_body(r,body[..])==-1 && mr_tags(r,MR_CONTENT,body[..])==-1;
+    }
+    r:=mr_fixture();r.started_at=0;r.finished_at=0;r.created_at=0;body:[4096]u8;#assert mr_body(r,body[..])>0;
+    r.started_at=JSON_INT_MOST-1;r.finished_at=JSON_INT_MOST-1;r.created_at=JSON_INT_MOST-1;#assert mr_body(r,body[..])>0;
+    #assert mr_time(0) && !mr_time(-1) && mr_time(JSON_INT_MOST-1) && !mr_time(JSON_INT_MOST);
+}
+#test "receipt readers reject wrong envelopes before granting a completion" {
+    #assert !mr_read(3202,MR_BUYER,103,MR_TAGS,MR_CONTENT).ok && !mr_read(MR_KIND,MR_PROVIDER,103,MR_TAGS,MR_CONTENT).ok;
+    #assert !mr_read(MR_KIND,MR_BUYER,-1,MR_TAGS,MR_CONTENT).ok && !mr_read(MR_KIND,MR_BUYER,JSON_INT_MOST,MR_TAGS,MR_CONTENT).ok;
+    out:[4096]u8;
+    #assert !mr_read(MR_KIND,MR_BUYER,103,pd_swap(out[..],MR_TAGS,"oa:pylon-receipt:v2","oa:pylon-receipt:v1"),MR_CONTENT).ok;
+    #assert !mr_read(MR_KIND,MR_BUYER,103,pd_swap(out[..],MR_TAGS,MR_DIGEST,MR_RESULT_DIGEST),MR_CONTENT).ok;
+    #assert !mr_read(MR_KIND,MR_BUYER,103,"[]",MR_CONTENT).ok;
+    #assert !mr_read(MR_KIND,MR_BUYER,103,MR_TAGS,pd_swap(out[..],MR_CONTENT,"\"count\":1","\"count\":2")).ok;
+}
+#test "independent receipt body refusal fields 0 through 4" {
+    from:=[15]string.["receipt.v2","\"requires\":[]",MR_BUYER,MR_PROVIDER,"demo-pylon","cj-decision","pylon/decision",MR_REQUEST,MR_REQUEST_DIGEST,MR_RESULT_DIGEST,"\"started_at\":100","\"finished_at\":102","\"count\":1","\"outcome\":\"accepted\"","\"payment\":null"];
+    to:=[15]string.["receipt.v1","\"requires\":[\"x\"]","bad","bad","Bad","cj-execution","pylon/other","bad","bad","bad","\"started_at\":103","\"finished_at\":0.0","\"count\":2","\"outcome\":\"timeout\"","\"payment\":{}"];
+    out:[4096]u8;for i:0..<5 {#assert !mr_case(pd_swap(out[..],MR_CONTENT,from[i],to[i])).ok;}
+}
+#test "independent receipt body refusal fields 5 through 9" {
+    from:=[15]string.["receipt.v2","\"requires\":[]",MR_BUYER,MR_PROVIDER,"demo-pylon","cj-decision","pylon/decision",MR_REQUEST,MR_REQUEST_DIGEST,MR_RESULT_DIGEST,"\"started_at\":100","\"finished_at\":102","\"count\":1","\"outcome\":\"accepted\"","\"payment\":null"];
+    to:=[15]string.["receipt.v1","\"requires\":[\"x\"]","bad","bad","Bad","cj-execution","pylon/other","bad","bad","bad","\"started_at\":103","\"finished_at\":0.0","\"count\":2","\"outcome\":\"timeout\"","\"payment\":{}"];
+    out:[4096]u8;for i:5..<10 {#assert !mr_case(pd_swap(out[..],MR_CONTENT,from[i],to[i])).ok;}
+}
+#test "independent receipt body refusal fields 10 through 14" {
+    from:=[15]string.["receipt.v2","\"requires\":[]",MR_BUYER,MR_PROVIDER,"demo-pylon","cj-decision","pylon/decision",MR_REQUEST,MR_REQUEST_DIGEST,MR_RESULT_DIGEST,"\"started_at\":100","\"finished_at\":102","\"count\":1","\"outcome\":\"accepted\"","\"payment\":null"];
+    to:=[15]string.["receipt.v1","\"requires\":[\"x\"]","bad","bad","Bad","cj-execution","pylon/other","bad","bad","bad","\"started_at\":103","\"finished_at\":0.0","\"count\":2","\"outcome\":\"timeout\"","\"payment\":{}"];
+    out:[4096]u8;for i:10..<15 {#assert !mr_case(pd_swap(out[..],MR_CONTENT,from[i],to[i])).ok;}
+}
+#test "nested receipt shape and unknown fields refuse" {
+    out:[4096]u8;
+    #assert !mr_case(pd_swap(out[..],MR_CONTENT,"\"units\":{","\"units\":{\"extra\":0,")).ok;
+    #assert !mr_case(pd_swap(out[..],MR_CONTENT,"\"kind\":\"jobs\"","\"kind\":\"tokens\"")).ok;
+    #assert !mr_case(pd_swap(out[..],MR_CONTENT,"\"count\":1","\"count\":1.0")).ok;
+    #assert !mr_case(pd_swap(out[..],MR_CONTENT,"\"started_at\":100","\"started_at\":0.0")).ok;
+    #assert !mr_case(pd_swap(out[..],MR_CONTENT,"\"v\":","\"extra\":0,\"v\":")).ok;
+    #assert !mr_case("{}").ok && !mr_case("[]").ok;
+}
+#test "container counts and timestamp observations preserve type" {
+    #assert mr_object_count("{}")==0 && mr_object_count("{\"a\":[1],\"b\":null}")==2;
+    #assert mr_object_count("[]")==-1 && mr_object_count("{")==-1;
+    #assert mr_array_count("[]")==0 && mr_array_count("[{},[1],null]")==3;
+    #assert mr_array_count("{}")==-1 && mr_array_count("[")==-1;
+    #assert mr_stamp(MfField.{ok=true,token=JSON_NUMBER,text="0"}).ok && mr_stamp(MfField.{ok=true,token=JSON_NUMBER,text="0"}).value==0;
+    #assert !mr_stamp(MfField.{ok=true,token=JSON_STRING,text="0"}).ok && !mr_stamp(MfField.{ok=true,token=JSON_NUMBER,text="0.0"}).ok;
+}
+#test "NIP32 verdict profile binds namespace receipt provider and own result digest" {
+    c:=mr_check_fixture();out:[1024]u8;n:=mr_check_tags(c,out[..]);#assert n>0 && cast(string)out[0..<n]==MR_LABEL_TAGS;
+    r:=mr_check_read(MR_LABEL_KIND,c.checker,c.created_at,MR_LABEL_TAGS,c.method);
+    #assert r.ok && r.checker==c.checker && r.receipt==c.receipt && r.provider==c.provider && r.result_digest==c.result_digest && r.method==c.method && r.created_at==104 && r.verdict==MR_PASS;
+    for i:1..<4 {c.verdict=i;n=mr_check_tags(c,out[..]);#assert n>0 && mr_check_read(MR_LABEL_KIND,c.checker,104,cast(string)out[0..<n],c.method).verdict==i;}
+    #assert mr_check_tags(c,out[0..<10])==-1;
+    #assert !mr_check_read(1984,c.checker,104,MR_LABEL_TAGS,c.method).ok && !mr_check_read(MR_LABEL_KIND,c.provider,104,MR_LABEL_TAGS,c.method).ok;
+    #assert !mr_check_read(MR_LABEL_KIND,c.checker,-1,MR_LABEL_TAGS,c.method).ok;
+    #assert !mr_check_read(MR_LABEL_KIND,c.checker,104,"[]",c.method).ok;
+    #assert !mr_check_read(MR_LABEL_KIND,c.checker,104,pd_swap(out[..],MR_LABEL_TAGS,"openagents.pylon","other"),c.method).ok;
+    #assert !mr_check_read(MR_LABEL_KIND,c.checker,104,pd_swap(out[..],MR_LABEL_TAGS,"check-pass","other"),c.method).ok;
+    #assert !mr_check_read(MR_LABEL_KIND,c.checker,104,MR_LABEL_TAGS,"").ok;
+}
+#test "label writer refuses each unsupported or self-check observation" {
+    for i:0..<10 {c:=mr_check_fixture();if i==0 {c.ok=false;}if i==1 {c.checker="bad";}if i==2 {c.checker=c.provider;}if i==3 {c.provider="bad";}if i==4 {c.receipt="bad";}if i==5 {c.result_digest="bad";}if i==6 {c.method="";}if i==7 {c.verdict=0;}if i==8 {c.verdict=4;}if i==9 {c.created_at=-1;}out:[1024]u8;#assert mr_check_tags(c,out[..])==-1;}
+    method:[513]u8;for i:0..<513 {method[i]='a';}c:=mr_check_fixture();c.method=cast(string)method[0..<512];out:[1024]u8;#assert mr_check_tags(c,out[..])>0;c.method=cast(string)method[..];#assert mr_check_tags(c,out[..])==-1;
+}
+
+mr_time :: (value:int)->bool {return value>=0 && value<JSON_INT_MOST;}
+mr_stamp :: (f:MfField)->MrStamp {n:=json_int(f.text);if f.token!=JSON_NUMBER || !n.ok || !mr_time(n.value) {return MrStamp.{};}return MrStamp.{ok=true,value=n.value};}
+mr_object_count :: (text:string)->int {
+    if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return -1;}count:=0;
+    while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}t=json_next(j[..]);raw:=pt_raw(j[..],t);count+=1;}return count;
+}
+mr_array_count :: (text:string)->int {
+    if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_ARRAY {return -1;}count:=0;
+    while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}raw:=pt_raw(j[..],t);count+=1;}return count;
+}
+mr_text :: (content:string,key:string)->string {f:=mf_get(content,key);if f.token!=JSON_STRING {return "";}return f.text;}
+mr_valid :: (r:MrReceipt)->bool {
+    return r.ok && pt_hex64(r.buyer) && pt_hex64(r.provider) && r.buyer!=r.provider && mr_slug(r.pylon) && pt_hex64(r.request) && pt_hex64(r.request_digest) && pt_hex64(r.result_digest) && r.started_at>=0 && r.finished_at>=r.started_at && r.finished_at<JSON_INT_MOST && mr_time(r.created_at);
+}
+mr_address :: (provider:string,pylon:string,out:[]u8)->string {
+    n:=json_raw(out,0,"30200:");n=json_raw(out,n,provider);n=json_raw(out,n,":");n=json_raw(out,n,pylon);return cast(string)out[0..<n];
+}
+mr_body :: (r:MrReceipt,out:[]u8)->int #export_c {
+    if !mr_valid(r) {return -1;}
+    cap:[96]u8;k:=json_raw(cap[..],0,r.provider);k=json_raw(cap[..],k,":pylon/decision");
+    n:=json_raw(out,0,"{\"buyer\":");n=json_write_string(out,n,r.buyer);n=json_raw(out,n,",\"capability\":");n=json_write_string(out,n,cast(string)cap[0..<k]);
+    n=json_raw(out,n,",\"finished_at\":");n=json_write_int(out,n,r.finished_at);n=json_raw(out,n,",\"lane\":\"cj-decision\",\"outcome\":\"accepted\",\"payment\":null,\"provider\":");n=json_write_string(out,n,r.provider);
+    n=json_raw(out,n,",\"pylon\":");n=json_write_string(out,n,r.pylon);n=json_raw(out,n,",\"request\":");n=json_write_string(out,n,r.request);n=json_raw(out,n,",\"request_digest\":");n=json_write_string(out,n,r.request_digest);
+    n=json_raw(out,n,",\"requires\":[],\"result_digest\":");n=json_write_string(out,n,r.result_digest);n=json_raw(out,n,",\"started_at\":");n=json_write_int(out,n,r.started_at);return json_raw(out,n,",\"units\":{\"count\":1,\"kind\":\"jobs\"},\"v\":\"openagents.pylon-receipt.v2\"}");
+}
+mr_tags :: (r:MrReceipt,content:string,out:[]u8)->int #export_c {
+    if !mr_valid(r) {return -1;}canonical:[MR_BODY_MAX]u8;n:=mr_body(r,canonical[..]);if content!=cast(string)canonical[0..<n] {return -1;}
+    hex:[64]u8;hashed:=ph_digest(content,hex[..]);address:[160]u8;a:=mr_address(r.provider,r.pylon,address[..]);
+    n=json_raw(out,0,"[[\"p\",");n=json_write_string(out,n,r.provider);n=json_raw(out,n,"],[\"a\",");n=json_write_string(out,n,a);n=json_raw(out,n,"],[\"t\",\"oa:pylon-receipt:v2\"],[\"x\",\"");n=json_raw(out,n,cast(string)hex[..]);return json_raw(out,n,"\"]]");
+}
+mr_body_read :: (content:string,created_at:int)->MrReceipt {
+    bad:MrReceipt;if !mr_jcs(content) || mr_object_count(content)!=15 {return bad;}
+    if !mf_string(mf_get(content,"v"),MR_VERSION) || !mf_empty(mf_get(content,"requires").raw) || !mf_string(mf_get(content,"lane"),"cj-decision") || !mf_string(mf_get(content,"outcome"),"accepted") || mf_get(content,"payment").token!=JSON_NULL {return bad;}
+    units:=mf_get(content,"units");count:=mf_get(units.raw,"count");number:=json_int(count.text);
+    if mr_object_count(units.raw)!=2 || !mf_string(mf_get(units.raw,"kind"),"jobs") || count.token!=JSON_NUMBER || number.value!=1 {return bad;}
+    started:=mr_stamp(mf_get(content,"started_at"));finished:=mr_stamp(mf_get(content,"finished_at"));if !started.ok || !finished.ok {return bad;}
+    r:=MrReceipt.{ok=true,buyer=mr_text(content,"buyer"),provider=mr_text(content,"provider"),pylon=mr_text(content,"pylon"),request=mr_text(content,"request"),request_digest=mr_text(content,"request_digest"),result_digest=mr_text(content,"result_digest"),started_at=started.value,finished_at=finished.value,created_at=created_at};
+    // Hex/slug fields are canonical unescaped ASCII in this profile.
+    if !mr_valid(r) {return bad;}cap:[96]u8;n:=json_raw(cap[..],0,r.provider);n=json_raw(cap[..],n,":pylon/decision");
+    if !mf_string(mf_get(content,"capability"),cast(string)cap[0..<n]) {return bad;}
+    return r;
+}
+mr_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrReceipt #export_c {
+    bad:MrReceipt;if kind!=MR_KIND {return bad;}r:=mr_body_read(content,created_at);if !r.ok || r.buyer!=signer {return bad;}
+    p:=pt_tag(tags,"p");a:=pt_tag(tags,"a");t:=pt_tag(tags,"t");x:=pt_tag(tags,"x");
+    if mr_array_count(tags)!=4 || p.size!=2 || a.size!=2 || t.size!=2 || x.size!=2 {return bad;}
+    hex:[64]u8;hashed:=ph_digest(content,hex[..]);address:[160]u8;expected:=mr_address(r.provider,r.pylon,address[..]);
+    if p.v[1]!=r.provider || a.v[1]!=expected || t.v[1]!=MR_MARKER || x.v[1]!=cast(string)hex[..] {return bad;}return r;
+}
+mr_check_name :: (verdict:int)->string {names:=[3]string.["check-pass","check-fail","check-inconclusive"];return names[verdict-1];}
+mr_check_valid :: (c:MrCheck)->bool {return c.ok && pt_hex64(c.checker) && pt_hex64(c.provider) && c.checker!=c.provider && pt_hex64(c.receipt) && pt_hex64(c.result_digest) && c.method.count>=1 && c.method.count<=512 && mr_time(c.created_at) && c.verdict>=1 && c.verdict<=3;}
+mr_check_tags :: (c:MrCheck,out:[]u8)->int #export_c {
+    if !mr_check_valid(c) {return -1;}n:=json_raw(out,0,"[[\"L\",\"openagents.pylon\"],[\"l\",");n=json_write_string(out,n,mr_check_name(c.verdict));n=json_raw(out,n,",\"openagents.pylon\"],[\"e\",");n=json_write_string(out,n,c.receipt);
+    n=json_raw(out,n,"],[\"p\",");n=json_write_string(out,n,c.provider);n=json_raw(out,n,"],[\"x\",");n=json_write_string(out,n,c.result_digest);return json_raw(out,n,"]]");
+}
+mr_check_read :: (kind:int,signer:string,created_at:int,tags:string,content:string)->MrCheck #export_c {
+    bad:MrCheck;if kind!=MR_LABEL_KIND || mr_array_count(tags)!=5 {return bad;}
+    ns:=pt_tag(tags,"L");label:=pt_tag(tags,"l");e:=pt_tag(tags,"e");p:=pt_tag(tags,"p");x:=pt_tag(tags,"x");
+    if ns.size!=2 || ns.v[1]!="openagents.pylon" || label.size!=3 || label.v[2]!="openagents.pylon" || e.size!=2 || p.size!=2 || x.size!=2 {return bad;}
+    verdict:=0;for i:1..<4 {if label.v[1]==mr_check_name(i) {verdict=i;}}
+    c:=MrCheck.{ok=true,checker=signer,receipt=e.v[1],provider=p.v[1],result_digest=x.v[1],method=content,created_at=created_at,verdict=verdict};if !mr_check_valid(c) {return bad;}return c;
+}
+
+#test "receipt identity projections require actual JSON strings" {
+    #assert mr_text("{\"x\":\"123\"}","x")=="123" && mr_text("{\"x\":123}","x")=="";
+    out:[4096]u8;#assert !mr_body_read(pd_swap(out[..],MR_CONTENT,"\"demo-pylon\"","123"),103).ok;
+}
+
+#test "receipt tag shapes reject every independently padded required tag" {
+    out:[2048]u8;
+    from:=[4]string.["[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]","[\"a\",\"30200:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:demo-pylon\"]","[\"t\",\"oa:pylon-receipt:v2\"]","[\"x\",\"12ec621098556c48810922e941b67da1bca33a0991fee657129121a63a9c2218\"]"];
+    to:=[4]string.["[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"extra\"]","[\"a\",\"30200:c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5:demo-pylon\",\"extra\"]","[\"t\",\"oa:pylon-receipt:v2\",\"extra\"]","[\"x\",\"12ec621098556c48810922e941b67da1bca33a0991fee657129121a63a9c2218\",\"extra\"]"];
+    for i:0..<4 {#assert !mr_read(MR_KIND,MR_BUYER,103,pd_swap(out[..],MR_TAGS,from[i],to[i]),MR_CONTENT).ok;}
+    #assert !mr_case(pd_swap(out[..],MR_CONTENT,"\"count\":1","\"count\":\"1\"")).ok;
+}
+#test "label tag shapes and one-byte method boundary are exact" {
+    c:=mr_check_fixture();c.method="x";out:[2048]u8;#assert mr_check_tags(c,out[..])>0;
+    from:=[5]string.["[\"L\",\"openagents.pylon\"]","[\"l\",\"check-pass\",\"openagents.pylon\"]","[\"e\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\"]","[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\"]","[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"]"];
+    to:=[5]string.["[\"L\",\"openagents.pylon\",\"extra\"]","[\"l\",\"check-pass\",\"openagents.pylon\",\"extra\"]","[\"e\",\"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"extra\"]","[\"p\",\"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5\",\"extra\"]","[\"x\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"extra\"]"];
+    for i:0..<5 {#assert !mr_check_read(MR_LABEL_KIND,c.checker,104,pd_swap(out[..],MR_LABEL_TAGS,from[i],to[i]),c.method).ok;}
+}
+
+#test "maximum body and slug boundaries remain explicit" {
+    r:=mr_fixture();slug:[65]u8;for i:0..<65 {slug[i]='a';}body:[4096]u8;r.pylon=cast(string)slug[0..<64];#assert mr_body(r,body[..])>0;r.pylon=cast(string)slug[..];#assert mr_body(r,body[..])==-1;
+    text:[4097]u8;for i:0..<4097 {text[i]=' ';}for i:0..<MR_CONTENT.count {text[i]=MR_CONTENT[i];}
+    #assert !mr_body_read(cast(string)text[0..<4096],103).ok && !mr_body_read(cast(string)text[..],103).ok;
+}
+#test "extra unrelated tags cannot bypass exact inventory" {
+    tags:[2048]u8;n:=json_raw(tags[..],0,MR_TAGS[0..<MR_TAGS.count-1]);n=json_raw(tags[..],n,",[]]");#assert !mr_read(MR_KIND,MR_BUYER,103,cast(string)tags[0..<n],MR_CONTENT).ok;
+}
+
+#test "receipt pylon address and recipient cannot disagree independently" {
+    out:[2048]u8;
+    #assert !mr_read(MR_KIND,MR_BUYER,103,pd_swap(out[..],MR_TAGS,MR_PROVIDER,MR_CHECKER),MR_CONTENT).ok;
+    #assert !mr_read(MR_KIND,MR_BUYER,103,pd_swap(out[..],MR_TAGS,"demo-pylon","other"),MR_CONTENT).ok;
+}
+
+#test "receipt JSON must already be canonical and slugs start alphanumeric" {
+    #assert mr_jcs(MR_CONTENT) && mr_jcs("null") && !mr_jcs("") && !mr_jcs("{ \"a\":1}") && !mr_jcs("{\"z\":0,\"a\":1}");
+    out:[4096]u8;#assert !mr_case(pd_swap(out[..],MR_CONTENT,"{\"buyer\":","{ \"buyer\":")).ok;
+    #assert !mr_case(pd_swap(out[..],MR_CONTENT,"\"finished_at\":102,\"lane\":\"cj-decision\"","\"lane\":\"cj-decision\",\"finished_at\":102")).ok;
+    #assert !mr_slug("") && mr_slug("a-") && mr_slug("1_");
+    for value:0..<128 {one:=[1]u8.[cast(u8)value];want:=(value>=97&&value<=122)||(value>=48&&value<=57);#assert mr_slug(cast(string)one[..])==want;}
+}
+#test "canonical input resource ceiling includes exactly 4096 bytes" {
+    text:[4097]u8;for i:0..<4097 {text[i]='a';}text[0]='"';text[4095]='"';
+    #assert mr_jcs(cast(string)text[0..<4096]);text[4095]='a';text[4096]='"';#assert !mr_jcs(cast(string)text[..]);
+}
+mr_slug :: (text:string)->bool {if !pb_slug(text,64) {return false;}return text[0]!='-' && text[0]!='_';}
+mr_jcs :: (text:string)->bool {
+    if text.count>MR_BODY_MAX {return false;}
+    out:[8192]u8;r:=jcs_canonicalize_checked(text,out[..],false);
+    return r.error==JCS_OK && cast(string)out[0..<r.written]==text;
+}
+
+#test "independent timestamp types refuse even when their default would be ordered" {
+    a:[4096]u8;b:[4096]u8;
+    #assert !mr_case(pd_swap(a[..],MR_CONTENT,"\"started_at\":100","\"started_at\":\"100\"")).ok;
+    base:=pd_swap(a[..],MR_CONTENT,"\"started_at\":100","\"started_at\":0");
+    #assert !mr_case(pd_swap(b[..],base,"\"finished_at\":102","\"finished_at\":\"102\"")).ok;
+}
