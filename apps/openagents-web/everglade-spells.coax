@@ -810,7 +810,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     burn := ifx kind == 2 then 1.0f32 else 0.3 + 0.6 * srd_unit(s[0].sp.dice[..]);
     w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
     // a meteor sets some of what it broke alight, a bolt a few: it burns as it flies and where it lands
-    s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else ifx kind == 1 && sp_rand(s) < 0.3 then 2.0 + 3.0 * sp_rand(s) else 0.0f32;   // a bolt, some
+    s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else ifx kind == 1 && sp_rand(s) < 0.5 then 2.0 + 3.0 * sp_rand(s) else 0.0f32;   // a bolt, some
   }
   // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
   floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);

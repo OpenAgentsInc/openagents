@@ -165,7 +165,8 @@ fi_douse_cone :: (s: [] Everglade, from: Point, d: Point) -> int {
 // water: what burns catches or goes out, and the dome takes its share.
 fi_blast :: (s: [] Everglade, at: Point, radius: f32, kind: int, mega: bool) {
   if kind == 2 { _ := fi_douse(s, at, radius); return; }
-  _ := fi_catch(s, at, radius * 0.8, ifx kind == 0 then FI_SPELL else ifx mega then FI_MEGA else FI_BOLT);
+  // fire reaches most of the blast; a bolt's heat what it strikes and what stands just past its blast
+  _ := fi_catch(s, at, radius * (ifx kind == 0 then 0.8f32 else 1.2f32), ifx kind == 0 then FI_SPELL else ifx mega then FI_MEGA else FI_BOLT);
   d := fi_dome_gap(s, at);
   if d < radius { fi_dome_hurt(s, srd_object_takes(fi_dome_object(), s[0].sp.dmg, 1 - d / radius), at); }
 }
@@ -526,7 +527,7 @@ fi_draw :: (s: [] Everglade) {
     }
     if budget > 0 && sp_rand(s) < (ifx few then 0.03f32 else 0.06f32) * size {
       budget -= 1;
-      sp_add_smoke(s, v3(p.cx, p.y1 + 0.3, p.cz), v3((sp_rand(s) - 0.5) * 0.5, 1.0 + 0.5 * sp_rand(s), (sp_rand(s) - 0.5) * 0.5), 0.6 + 0.3 * size, 3.5, 0.22, 0.6, 0.6, 0.35);
+      sp_add_smoke(s, v3(p.cx, p.y1 + 0.3, p.cz), v3((sp_rand(s) - 0.5) * 0.5, 1.0 + 0.5 * sp_rand(s), (sp_rand(s) - 0.5) * 0.5), 0.6 + 0.3 * size, 3.5, 0.18, 0.6, 0.6, 0.3);
     }
   }
   // the dome's slabs
