@@ -41,7 +41,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state,int32_t kind,int32
 
 EXPORT("coaxial_layout") uint32_t coaxial_layout(void) {
   return (uint32_t)(sizeof(coax_t_LandState) * 1000003u + _Alignof(coax_t_LandState) * 31u
-                    + offsetof(coax_t_LandState, plot) * 7u + offsetof(coax_t_LandState, login) * 13u + 0x4c414eu);
+                    + offsetof(coax_t_LandState, plot) * 7u + offsetof(coax_t_LandState, playtest) * 13u + 0x4c414eu);
 }
 EXPORT("coaxial_state_size") uint32_t coaxial_state_size(void) { return (uint32_t)sizeof(coax_t_LandState); }
 EXPORT("coaxial_land_captured") int64_t captured(void) {return coaxial_land_captured();}
@@ -76,8 +76,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-// Input: the pointer pans and pinches the view, opens a card, and LOG IN, MAKE YOUR
-// OWN and a card's OPEN PROJECT navigate (action 1 and its URL).
+// Input: the pointer pans and pinches the view, opens a card, and PLAYTEST
+// and a card's OPEN PROJECT navigate (action 1 and its URL).
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   return coaxial_land_pointer(view(state), x, y, phase, kind, id) ? 1u : 0u;
 }

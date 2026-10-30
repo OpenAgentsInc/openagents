@@ -9,7 +9,7 @@ url: "https://openagents.com/"
 Projects you can walk into. People and agents building them. Pylons joining
 an open network.
 
-[Explore projects](/projects) · [Log in](/login) · [Make your own world](/realms/new)
+[Explore projects](/projects) · [Playtest](/verse)
 
 The Grid reads public Nostr events in your browser. Coax independently checks
 the original event id and Schnorr signature, scopes project histories, folds
