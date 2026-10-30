@@ -1,0 +1,33 @@
+{
+  "at": "2026-10-30T17:44:46.277Z",
+  "base": "https://openagents.com",
+  "source_commit": "8968c4c9736c39033490b9ceae111bcb9db3b12f",
+  "release": "20261030T174200Z",
+  "html_sha256": "eb4640f40599e8eeae15d8179aa1905e8eb86798d0d9cb63c7766d3152b8d728",
+  "wasm": "/build/newland.c4becfa1fa8b.wasm",
+  "wasm_sha256": "c4becfa1fa8b36d4e78de9d502e404b22905c1e2a25deddf2f7bfe7fb0e32297",
+  "wasm_bytes": 522347,
+  "staging_smoke": true,
+  "staging_real_home": true,
+  "home_goldens": {
+    "desktop_changed_blocks": 0,
+    "phone_changed_blocks": 0
+  },
+  "everglade_perf_cases": 8,
+  "everglade_perf_passed": true,
+  "held_back": [
+    "everglade"
+  ],
+  "production_smoke": true,
+  "production_real_home": true,
+  "real_job": {
+    "http_status": 200,
+    "provider": "d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f",
+    "answers_before": 0,
+    "answers_after": 1,
+    "elapsed_ms": 1022
+  },
+  "clipboard_bytes": 96,
+  "guide_http_status": 200,
+  "desktop_phone_errors": []
+}

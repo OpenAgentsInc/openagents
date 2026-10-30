@@ -1,0 +1,337 @@
+{
+  "base": "https://openagents.com",
+  "at": "2026-10-30T17:43:06.287Z",
+  "job_api": "http://127.0.0.1:8798/v1/systemone",
+  "scenarios": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "touch": false
+      },
+      "errors": [],
+      "sockets": 2,
+      "received_frames": 5635,
+      "sent_frames": 183,
+      "documents": [
+        "https://openagents.com/",
+        "https://openagents.com/pylon/index.md"
+      ],
+      "document_responses": [
+        {
+          "url": "https://openagents.com/",
+          "status": 200
+        },
+        {
+          "url": "https://openagents.com/pylon/index.md",
+          "status": 200
+        }
+      ],
+      "home": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 394495,
+        "ready_projects": 63,
+        "beacons": 4,
+        "refreshes": 6,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 0,
+        "scroll": 0,
+        "controls": [
+          [
+            1104,
+            28,
+            1254,
+            68
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "browser": {
+        "width": 1440,
+        "height": 900,
+        "dpr": 1
+      },
+      "home_screenshot": "/tmp/home-pylons-production-desktop-home.png",
+      "panel": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 460031,
+        "ready_projects": 63,
+        "beacons": 4,
+        "refreshes": 7,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 1,
+        "scroll": 0,
+        "controls": [
+          [
+            1104,
+            28,
+            1254,
+            68
+          ],
+          [
+            44,
+            156,
+            263,
+            196
+          ],
+          [
+            273,
+            156,
+            492,
+            196
+          ],
+          [
+            464,
+            92,
+            500,
+            128
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "panel_screenshot": "/tmp/home-pylons-production-desktop-panel.png",
+      "job": {
+        "endpoint": "http://127.0.0.1:8798/v1/systemone",
+        "answers_before": 0,
+        "post_count": 1,
+        "http_status": 200,
+        "provider": "d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f",
+        "answers_after": 1,
+        "counter_delta": 1,
+        "elapsed_ms": 1022
+      },
+      "job_screenshot": "/tmp/home-pylons-production-desktop-job.png",
+      "clipboard": {
+        "matches": true,
+        "bytes": 96
+      },
+      "guide": "https://openagents.com/pylon/index.md",
+      "elapsed_ms": 18804
+    },
+    {
+      "viewport": {
+        "name": "phone",
+        "width": 390,
+        "height": 844,
+        "touch": true
+      },
+      "errors": [],
+      "sockets": 2,
+      "received_frames": 5634,
+      "sent_frames": 183,
+      "documents": [
+        "https://openagents.com/",
+        "https://openagents.com/pylon/index.md"
+      ],
+      "document_responses": [
+        {
+          "url": "https://openagents.com/",
+          "status": 200
+        },
+        {
+          "url": "https://openagents.com/pylon/index.md",
+          "status": 200
+        }
+      ],
+      "home": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 394751,
+        "ready_projects": 63,
+        "beacons": 5,
+        "refreshes": 6,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 0,
+        "scroll": 0,
+        "controls": [
+          [
+            16,
+            636,
+            189,
+            684
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "browser": {
+        "width": 390,
+        "height": 844,
+        "dpr": 1
+      },
+      "home_screenshot": "/tmp/home-pylons-production-phone-home.png",
+      "panel": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 460287,
+        "ready_projects": 63,
+        "beacons": 5,
+        "refreshes": 7,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 1,
+        "scroll": 0,
+        "controls": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            176,
+            190,
+            216
+          ],
+          [
+            200,
+            176,
+            358,
+            216
+          ],
+          [
+            330,
+            112,
+            366,
+            148
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "panel_screenshot": "/tmp/home-pylons-production-phone-panel.png",
+      "clipboard": {
+        "matches": true,
+        "bytes": 96
+      },
+      "guide": "https://openagents.com/pylon/index.md",
+      "elapsed_ms": 16670
+    }
+  ],
+  "passed": true
+}

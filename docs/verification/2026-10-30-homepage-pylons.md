@@ -65,4 +65,25 @@ request to repeat the first run after every unrelated main commit.
 
 ## Deployment
 
-Pending the normal committed-code staging→same-byte production release.
+Live on `https://openagents.com/` from source `8968c4c973`, normal release
+`20261030T174200Z`. The release reused its qualified compiler cache, waited for
+the shared staging slot, then promoted the same staged bytes. HTTP smoke,
+all-six-project live catch-up and both homepage goldens passed on staging;
+production smoke and live catch-up passed after promotion. All eight
+Everglade performance cases passed at 60 FPS after shared-GPU busy waits.
+An unrelated Everglade visual mismatch retained that page's previous production
+HTML; its golden was not approved as part of this task.
+
+The final production browser proof used actual mouse/touch input on desktop
+and phone. Both saw 3 fresh Pylons and 10 advertised free slots, copied the
+exact 96-byte command and opened the guide with HTTP 200, without JS exceptions.
+While the desktop panel stayed open, one synthetic request to the retained
+Chapter 20 API returned HTTP 200 through Linux provider
+`d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f`.
+The homepage's observed answer count changed 0→1 without reload in 1,022 ms.
+The phone scenario sent no second job. Production screenshots were inspected.
+
+[Deployment hashes and browser/job evidence](data/homepage-pylons/deployment.json)
+and [the complete production browser record](data/homepage-pylons/browser-production.json)
+retain exact URLs, inputs and outcomes. Only public projections and synthetic
+request metadata are archived; no signing keys or private witnesses.
