@@ -947,7 +947,8 @@ AG_loop_body :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,n:ScNode
 AG_loop_run :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,n:ScNode,loop:AgValue,want:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int,at:int)->AgBlock {
  readonly:=false;if memory[0].classified {readonly=AG_readonly_block(nodes,n.c,state,0);}
  incoming:=cast(u64)0;for i:0..<env[0].count {incoming|=AG_origin(env[0].bindings[i].value,memory);}
- if !readonly {for i:0..<env[0].count {region:=env[0].bindings[i].value.region;if region!=0 {memory[0].taint[region]|=incoming;memory[0].dirty[region]=true;}}}
+ // Read-only regions refuse every write, so a loop cannot change them.
+ if !readonly {for i:0..<env[0].count {region:=env[0].bindings[i].value.region;if region!=0 && !memory[0].readonly[region] {memory[0].taint[region]|=incoming;memory[0].dirty[region]=true;}}}
  entry:=env[0].bindings;AG_loop_marks(nodes,n.c,env,memory,state,incoming,0);saved:=env[0].count;
  loop_type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,"loop",state);if loop_type!=want {SC_fail(state,SC_TYPE,at);return AgBlock.{};}
  marked:=env[0].bindings;l:=loop;l.type=loop_type;

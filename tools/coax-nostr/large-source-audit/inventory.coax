@@ -8,8 +8,9 @@
 #test "large inventory bounds include both edges and reject overflow" {
   a:[33]int;
   #assert !LA_inputs(a[0..<0],0) && LA_inputs(a[0..<1],0) && LA_inputs(a[0..<32],0) && !LA_inputs(a[..],0);
-  a[0]=65536;a[1]=65536;a[2]=65536;a[3]=65536;
-  #assert LA_inputs(a[0..<4],0);a[4]=1;#assert !LA_inputs(a[0..<5],0);
+  // The aggregate budget is 524,288 bytes: eight full 65,536-byte units.
+  for i:0..<8 {a[i]=65536;}
+  #assert LA_inputs(a[0..<8],0);a[8]=1;#assert !LA_inputs(a[0..<9],0);a[7]=65535;#assert LA_inputs(a[0..<9],0);
   a[0]=65537;#assert !LA_inputs(a[0..<1],0);a[0]= -1;#assert !LA_inputs(a[0..<1],0);
   #assert !LA_inputs(a[0..<1],1);
   #assert LA_node_limit()==65536 && LA_counts(2,1,0) && LA_counts(65536,32,8192);
@@ -46,7 +47,7 @@ LA_node_limit :: ()->int #export_c {return 65536;}
 LA_units :: (count:int)->bool #export_c {return count>=1 && count<=32;}
 LA_inputs :: (lengths:[]int,descriptors:int)->bool #export_c {
   if !LA_units(lengths.count) || descriptors!=0 {return false;}
-  total:=0;for n:lengths {if n<0 || n>65536 || n>262144-total {return false;}total+=n;}return true;
+  total:=0;for n:lengths {if n<0 || n>65536 || n>524288-total {return false;}total+=n;}return true;
 }
 LA_counts :: (nodes:int,units:int,types:int)->bool #export_c {return nodes>=2 && nodes<=LA_node_limit() && LA_units(units) && types>=0 && types<=8192;}
 LA_closure :: (expected:[]ScPath,actual:[]ScPath)->bool #export_c {

@@ -202,6 +202,8 @@ sw_challenge_public :: (message:[]u8,pub:[]u8,r:[]u8,sha:[]ShaOwned,tag:[]u8,out
   tagvalue:=SV_TAG_HASH;ok:=sha256_emit(tagvalue.words[..],tag)==SHA_OK;
   return ok && so_init(sha) && so_update(sha,tag,false) && so_update(sha,tag,false) && so_update(sha,r,false) && so_update(sha,pub,false) && so_update(sha,message,false) && so_finish(sha,out,false);
 }
+// SHA-256 of the message through the fixed-flow workspace the audit can follow.
+sw_message_digest :: (message:[]u8,out:[]u8)->bool {sha:[1]ShaOwned;return so_init(sha[..]) && so_update(sha[..],message,false) && so_finish(sha[..],out,false);}
 sw_key :: (key:[]u8,work:[]SignWork)->int {
   if !sk_prepare(key,work[0].prep[..],false) || !sw_valid_declassify(work[0].prep[0].valid) {return sw_clear(work);}
   sw_bytes_declassify(work[0].prep[0].public_key[..]);
@@ -210,17 +212,18 @@ sw_key :: (key:[]u8,work:[]SignWork)->int {
 sw_nonce :: (aux:[]u8,message:[]u8,work:[]SignWork)->int {
   if !snp_prepare(work[0].prep[0].normalized[..],work[0].prep[0].public_key[..],aux,message,work[0].nonce[..],false) {return sw_clear(work);}
   sw_bytes_declassify(work[0].nonce[0].r[..]);
-  if sha256_hash_checked(message,work[0].message[..],false)!=SHA_OK {return sw_clear(work);}
+  if !sw_message_digest(message,work[0].message[..]) {return sw_clear(work);}
   work[0].stage=2;return SIGN_MORE;
 }
 // r, the public key and the message are public: the challenge may vary in time.
 sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int {
   if !sw_same_message(message,work) {return sw_clear(work);}
+  // Parities stay secret; &1 keeps each 0/1 value and states its range.
   sha:[1]ShaOwned;tag:[32]u8;digest:[32]u8;
   if !sw_challenge_public(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],sha[..],tag[..],digest[..]) {return sw_clear(work);}
   challenge:=sc_reduce_bytes(digest[..]);
   written:=ss_write(challenge.value,work[0].challenge[..]);
-  if !sm_equation(key,work[0].nonce[0].hash[..],work[0].challenge[..],work[0].prep[0].point[0].odd,work[0].nonce[0].point[0].odd,work[0].math[..],false) {return sw_clear(work);}
+  if !sm_equation(key,work[0].nonce[0].hash[..],work[0].challenge[..],work[0].prep[0].point[0].odd&1,work[0].nonce[0].point[0].odd&1,work[0].math[..],false) {return sw_clear(work);}
   for i:0..<32 {work[0].sig[i]=work[0].nonce[0].r[i];}
   written=ss_write(work[0].math[0].result,work[0].sig[32..<64]);
   work[0].stage=3;return SIGN_MORE;
@@ -241,7 +244,7 @@ sw_check :: (message:[]u8,work:[]SignWork)->int {
 // check may branch.
 sw_same_message :: (message:[]u8,work:[]SignWork)->bool {
   digest:[32]u8;
-  return sha256_hash_checked(message,digest[..],false)==SHA_OK && cb_ct_equal(digest[..],work[0].message[..])==CB_MAX64;
+  return sw_message_digest(message,digest[..]) && cb_ct_equal(digest[..],work[0].message[..])==CB_MAX64;
 }
 // The self-check always finishes before the validity bits are read, so a
 // refusal does the same work as a publication.
