@@ -207,3 +207,11 @@ routing unit, so neither big mutation graph is touched:
 - Not compared, because they are R2: NIP-09 deletion, NIP-45 COUNT beyond
   the refusal, NIP-50, NIP-77, NIP-29, gift wraps, NIP-70, rate limits and
   connection limits (lifted on the Rust side here).
+
+## Rerun on the final tree
+
+At `bffe9c0d04` (after the store-recovery change `092c3e44a4` touched
+`relay.coax`), the Rust relay was rebuilt with `rust_relay_sandbox.sh all`
+(53.7 s compile) and `rust_relay_differential.sh` run again under ASan/UBSan:
+114 observations, 88 match, 15 same verdict with other text, 7 intentional,
+4 for the owner, 0 unexplained, sanitizer clean.
