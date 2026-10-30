@@ -64,7 +64,8 @@ sf32_add_total :: (a:Sf32,b:Sf32)->Sf32 {
   r:Sf32;carry:u64;
   for i:0..<8 {wide:=cast(u64)a.limb[i]+cast(u64)b.limb[i]+carry;r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;}
   // Two folds reduce any 257-bit sum; the second cannot overflow.
-  folded:=sf32_fold_total(r,carry);folded=sf32_fold_total(folded.value,folded.carry);
+  // A fold's carry is 0 or 1, so &1 keeps its value and states its range.
+  folded:=sf32_fold_total(r,carry);folded=sf32_fold_total(folded.value,folded.carry&1);
   return sf32_canonical_total(folded.value);
 }
 sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 {
@@ -79,6 +80,6 @@ sf32_mul_total :: (a:Sf32,b:Sf32)->Sf32 {
     high:=cast(u64)product[i+8];wide:=cast(u64)product[i]+mul_wrap(high,977)+previous+carry;
     r.limb[i]=cast(u32)(wide&SF32_WORD);carry=wide>>32;previous=high;
   }
-  top:=previous+carry;folded:=sf32_fold_total(r,top);folded=sf32_fold_total(folded.value,folded.carry);
+  top:=previous+carry;folded:=sf32_fold_total(r,top);folded=sf32_fold_total(folded.value,folded.carry&1);
   return sf32_canonical_total(folded.value);
 }

@@ -30,10 +30,6 @@ def expected(name):
         text = replace_exact(text, '#load "../../../coax/lib/crypto/secret-flow.coax";', '#load "inventory.coax";')
         text = replace_exact(text, 'if !SC_shape(nodes,roots,types) || values.count!=nodes.count || memory.count!=1',
                              'if !LA_shape(nodes,roots,types) || values.count!=nodes.count || memory.count!=1')
-        # This profile's own rules (contained casts, unsigned ranges and loop
-        # invariants) are an exact, ordered list of block replacements.
-        for old, new in json.loads((NEW/'large-delta.json').read_text()):
-            text = replace_exact(text, old, new)
     elif name == 'bridge-aggregate.cpp':
         for old, new in [('SC_units(count)','LA_units(count)'),
                          ('SC_inputs({lengths.data(),(int64_t)lengths.size()},0)','LA_inputs({lengths.data(),(int64_t)lengths.size()},0)'),
@@ -54,6 +50,11 @@ def expected(name):
         text = replace_exact(text, old, 'coax.secret-large-classification-views.v3', count)
         text = replace_exact(text, "if set(manifest)!=required or (not views and manifest.get('schema')!='coax.secret-classification.v1')",
                              "if set(manifest)!=required or not views")
+    # This profile's own rules (contained casts, unsigned ranges, loop
+    # invariants, public fields) are an exact, ordered list of block
+    # replacements per file.
+    for old, new in json.loads((NEW/'large-delta.json').read_text()).get(name, []):
+        text = replace_exact(text, old, new)
     return text.encode()
 
 

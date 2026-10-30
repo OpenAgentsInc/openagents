@@ -85,6 +85,16 @@ class PublicViews(unittest.TestCase):
         r=self.audit(p,m,5);self.assertFalse(r['accepted'])
         p,_,m=self.source('public_narrow','candidate :: (x:u64)->u32 #export_c {return cast(u32)x;}',[('x','u64','public',None,0)])
         r=self.audit(p,m,0);self.assertEqual(r['return_dependency_mask'],0)
+    def test_public_fields_manifest(self):
+        src='W :: struct {stage:int;val:u64;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {w[0].val=k;if w[0].stage==0 {return 1;}return 2;}'
+        p,_,m=self.source('public_field',src,[('w','[] W','secret','write',1),('k','u64','secret',None,0)])
+        r=self.audit(p,m,10);self.assertEqual(r['error_name'],'type')
+        m4=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=[['W','stage']])
+        r=self.audit(p,m4,0);self.assertTrue(r['accepted']);self.assertEqual(r['public_fields'],[['W','stage']]);self.assertEqual(r['return_dependency_mask'],0)
+        for bad in [[],[['W']],[['W','stage'],['W','stage']],[['W',1]],[['','stage']],[['W','f%d'%i] for i in range(9)],'W.stage']:
+            r=self.tool.audit(p,'candidate',classification=dict(m4,public_fields=bad));self.assertFalse(r['accepted'],bad);self.assertNotEqual(r['error'],0,bad)
+        r=self.tool.audit(p,'candidate',classification=dict(m,public_fields=[['W','stage']]));self.assertFalse(r['accepted'])
+        r=self.audit(p,dict(m4,public_fields=[['W','nope']]),10)
     def test_taint_alias_and_readonly_effects(self):
         cases=[
           ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),

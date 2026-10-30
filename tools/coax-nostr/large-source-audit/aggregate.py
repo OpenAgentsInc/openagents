@@ -22,8 +22,11 @@ class AggregateAudit(Audit):
         manifest=getattr(self,'classification',UNCLASSIFIED)
         if manifest is UNCLASSIFIED:return None
         if not isinstance(manifest,dict):raise ValueError('classification identity')
-        views=manifest.get('schema')=='coax.secret-large-classification-views.v3'
-        required={'schema','entry','sources','parameters'} | ({'views_disjoint','live_aligned_exclusive','public_only','compiler_sha256','audit_inputs','audit_artifact_sha256','profile'} if views else set())
+        # v4 adds public_fields: [struct, field] pairs whose values are public
+        # inside root views; the Coax analysis tracks each one separately.
+        fields_schema=manifest.get('schema')=='coax.secret-large-classification-views.v4'
+        views=fields_schema or manifest.get('schema')=='coax.secret-large-classification-views.v3'
+        required={'schema','entry','sources','parameters'} | ({'views_disjoint','live_aligned_exclusive','public_only','compiler_sha256','audit_inputs','audit_artifact_sha256','profile'} if views else set()) | ({'public_fields'} if fields_schema else set())
         if set(manifest)!=required or not views or manifest['entry']!=entry or manifest['sources']!=hashes:raise ValueError('classification identity')
         if views and (manifest['views_disjoint'] is not True or manifest['live_aligned_exclusive'] is not True or manifest['public_only'] is not True or manifest['compiler_sha256']!=self.compiler_fingerprint or manifest['audit_inputs']!=self.inputs or manifest['audit_artifact_sha256']!=self.artifact_fingerprint or manifest['profile']!='native-c-checked-library'):raise ValueError('view premises or tool identity')
         functions=[f for f in metadata['functions'] if f['name']==entry]
@@ -40,18 +43,21 @@ class AggregateAudit(Audit):
                     if not isinstance(view,dict) or set(view)!={'element_type','extent','access'} or view['element_type']!=actual['type'][3:] or type(view['extent']) is not int or not 1<=view['extent']<=1024 or view['access'] not in ('read','write'):raise ValueError('view identity')
                 elif view is not None:raise ValueError('non-view premise')
             if row['classification']=='secret':mask|=1<<i
+        fields=manifest.get('public_fields',[])
+        if not isinstance(fields,list) or len(fields)>8 or (fields_schema and not fields) or any(not isinstance(x,list) or len(x)!=2 or not all(isinstance(s,str) and s for s in x) for x in fields) or len({tuple(x) for x in fields})!=len(fields):raise ValueError('public field premise')
         canonical=json.dumps(manifest,sort_keys=True,separators=(',',':')).encode()
         import hashlib
-        return {'parameters':rows,'mask':mask,'sha256':hashlib.sha256(canonical).hexdigest(),'views':views}
+        return {'parameters':rows,'mask':mask,'sha256':hashlib.sha256(canonical).hexdigest(),'views':views,'public_fields':fields}
     def _analyze(self,sources,types,entry,compiled_runs=False,classification=None,string=None):
         guards=(Guard*256)();count=C.c_int64()
         if classification is None:
             bridge=self.lib.ag_bridge_compiled if compiled_runs else self.lib.ag_bridge;result=bridge(sources,len(sources),types,len(types),entry,guards,256,C.byref(count))
         else:
-            rows=classification['parameters'];names=(String*len(rows))(*[string(x['name']) for x in rows]);parameter_types=(String*len(rows))(*[string(x['type']) for x in rows])
+            rows=classification['parameters'];fields=classification.get('public_fields',[]);labels=len(rows)+len(fields)
+            names=(String*labels)(*[string(x['name']) for x in rows],*[string(f) for s,f in fields]);parameter_types=(String*labels)(*[string(x['type']) for x in rows],*[string(s) for s,f in fields])
             if classification['views']:
-                extents=(C.c_int64*len(rows))(*[(row['view']['extent'] if row['view'] else 0) for row in rows]);access=(C.c_uint32*len(rows))(*[({'read':1,'write':2}[row['view']['access']] if row['view'] else 0) for row in rows])
-                result=self.lib.ag_bridge_public_views(sources,len(sources),types,len(types),entry,guards,256,C.byref(count),classification['mask'],names,parameter_types,len(rows),compiled_runs,extents,access)
+                extents=(C.c_int64*labels)(*[(row['view']['extent'] if row['view'] else 0) for row in rows],*[0]*len(fields));access=(C.c_uint32*labels)(*[({'read':1,'write':2}[row['view']['access']] if row['view'] else 0) for row in rows],*[3]*len(fields))
+                result=self.lib.ag_bridge_public_views(sources,len(sources),types,len(types),entry,guards,256,C.byref(count),classification['mask'],names,parameter_types,labels,compiled_runs,extents,access)
             else:result=self.lib.ag_bridge_classified(sources,len(sources),types,len(types),entry,guards,256,C.byref(count),classification['mask'],names,parameter_types,len(rows),compiled_runs)
         self.guards=[{'node':x.node,'unit':x.unit,'line':x.line,'column':x.column,'origin_mask':x.mask,'kind':'authored-assertion'} for x in guards[:count.value]];return result
     def audit(self,*args,classification=UNCLASSIFIED,**kwargs):
@@ -68,7 +74,8 @@ class AggregateAudit(Audit):
         report['source_status']='analyzed-with-guard-obligations' if report['error']==14 else 'admitted-source' if report['error']==0 else 'refused'
         if report['error']==14:report['error_name']='guard-obligations'
         report['production_crypto_approved']=False
-        if 'classified_parameters' in report and isinstance(self.classification,dict) and self.classification.get('schema')=='coax.secret-large-classification-views.v3':
+        if 'classified_parameters' in report and isinstance(self.classification,dict):report['public_fields']=self.classification.get('public_fields',[])
+        if 'classified_parameters' in report and isinstance(self.classification,dict) and self.classification.get('schema') in ('coax.secret-large-classification-views.v3','coax.secret-large-classification-views.v4'):
             report['view_assumption']='caller supplies live aligned fixed-extent views, mutually disjoint from each other and all other reachable storage, with declared access and initial classifications and no concurrent mutation throughout the invocation'
             report['public_only_scope']='all reached public-only bodies and transitive effects are analyzed; no declassification from names'
         sources=list(report.get('source_sha256',{}));obligations=[]
