@@ -721,28 +721,28 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
   }
   let xz = s.world.xz;
   if (s.look == 99u) {
+    // broad colour only (eg-paint-pack: no fine noise on the ground; patches 4 m and more across)
     let broad = noise(xz * 0.13);
-    let fine = noise(xz * 2.7);
-    base = mix(vec3f(0.24, 0.43, 0.15), vec3f(0.38, 0.58, 0.22), broad) * (0.88 + 0.2 * fine);
+    base = mix(vec3f(0.24, 0.43, 0.15), vec3f(0.38, 0.58, 0.22), broad) * (0.96 + 0.08 * noise(xz * 0.23 + 7.0));
     for (var q = 0; q < 4; q++) {
       let sq = u.square[q];
       if (sq.z <= 0.0) { break; }
       let paved = 1.0 - smoothstep(sq.z - 0.3, sq.z + 0.3, length(xz - sq.xy));
-      let stone = mix(vec3f(0.42, 0.40, 0.36), vec3f(0.52, 0.49, 0.43), noise(xz * 1.7)) * (0.9 + 0.12 * noise(xz * 9.0));
+      // the square's paving keeps its stone-sized patches (a slab of one grey reads as a stand-in), without the grit
+      let stone = mix(vec3f(0.41, 0.39, 0.35), vec3f(0.53, 0.49, 0.42), noise(xz * 1.7) * 0.6 + noise(xz * 0.2 + 5.0) * 0.4);
       base = mix(base, stone, paved);
     }
     let d = path_distance(xz);
     let half = u.path_info.y;
     let edge = 1.0 - smoothstep(half - 0.12, half + 0.12, d);
     if (edge > 0.0) {
-      let grit = noise(xz * 5.0) * 0.5 + noise(xz * 13.0) * 0.5;
-      let dirt = mix(vec3f(0.47, 0.36, 0.23), vec3f(0.58, 0.46, 0.31), grit);
+      let dirt = mix(vec3f(0.46, 0.35, 0.23), vec3f(0.58, 0.46, 0.3), noise(xz * 0.21 + 3.0) * 0.6 + noise(xz * 0.08) * 0.4);
       base = mix(base, dirt, edge);
     }
     // the river's bed: silt and stones under the water, darker the deeper,
     // and wet earth where the bank meets it
     let under = water_over(xz);
-    let mud = mix(vec3f(0.27, 0.22, 0.15), vec3f(0.36, 0.3, 0.2), noise(xz * 2.3)) * (0.85 + 0.25 * noise(xz * 11.0));
+    let mud = mix(vec3f(0.28, 0.23, 0.155), vec3f(0.34, 0.28, 0.19), noise(xz * 0.24));
     let wet = smoothstep(-0.02, 0.25, under);
     base = mix(base, mud * (1.0 - 0.45 * smoothstep(0.3, 2.0, under)), wet);
     shadow = shade_shadows_at(xz, s.world.y, true);
