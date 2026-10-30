@@ -21,7 +21,9 @@ FFK_V_MEND :: 1; FFK_V_AXE :: 2; FFK_V_CUT :: 3; FFK_V_LANTERN :: 4; FFK_V_DAM :
 FFK_V_REST :: 7; FFK_V_MORNING :: 8;   // at the lantern flower: rest till night, or in the night till morning
 FFK_V_FILL :: 9;                       // by the low pond, with WATER (fairypond.coax)
 FFK_V_FIX :: 10;                       // by a broken thing, with MEND (fairymend.coax)
-FFK_VERB_WORDS :: [11] string.["", "MEND", "TALK TO ROWAN", "CUT", "LIGHT", "CLEAR", "GATHER", "REST TILL NIGHT", "REST TILL MORNING", "FILL THE POND", "MEND"];
+FFK_V_MAKE :: 11;                      // at Rowan's stump, with CRAFT: 11 + the tool (fairytools.coax)
+FFK_VERB_WORDS :: [14] string.["", "MEND", "TALK TO ROWAN", "CUT", "LIGHT", "CLEAR", "GATHER", "REST TILL NIGHT", "REST TILL MORNING", "FILL THE POND", "MEND",
+                                "MAKE A WATERING CAN", "MAKE A BASKET", "MAKE A LANTERN"];
 FFK_LEARNED :: [7] string.["YOU LEARNED BLOOM", "YOU LEARNED SPEAK", "YOU LEARNED MEND", "YOU LEARNED GATHER",
                            "YOU LEARNED CRAFT", "YOU LEARNED LIGHT", "YOU LEARNED WATER"];
 FFK_FOUND :: [3] string.["A BERRY", "AN ACORN", "A SEED"];
@@ -51,6 +53,7 @@ ffk_note :: (s: [] Fairy, k: int) {
 ffk_verb :: (s: [] Fairy, you: Point) -> int {
   k := s[0].life[0].skills;
   if !k.bird && ffk_at(you, f32(FFK_BIRD_X), f32(FFK_BIRD_Z), f32(FFK_NEAR)) { return FFK_V_MEND; }
+  if ffo_can_make(s, you) { return FFK_V_MAKE + ffo_next(s[0].life[..]); }   // a tool, at his stump (fairytools.coax)
   if ffw_near(you) { return FFK_V_AXE; }   // Rowan the woodcutter (fairywoodcutter.coax)
   if ffk_at(you, f32(FFK_LANTERN_X), f32(FFK_LANTERN_Z), f32(FFK_NEAR)) && !ffn_resting(s[0].clock[..]) {
     if !k.lantern && ffn_dark(s) { return FFK_V_LANTERN; }
@@ -73,10 +76,12 @@ ffk_use :: (s: [] Fairy, you: Point) -> bool {
   if v == FFK_V_DAM { l[0].skills.dam = true; ffk_note(s, FFK_WATER); }
   if v == FFK_V_FILL { ffp_fill(s); }
   if v == FFK_V_FIX { ffx_mend(s, you); }
+  if v >= FFK_V_MAKE { ffo_make(s); }
   if v == FFK_V_CUT { l[0].skills.cut[ffk_log_near(s, you)] = true; l[0].changes += 1; }
   if v == FFK_V_GATHER {
     knew := ffk_knows(l, FFK_GATHER);
     kind := ffk_gather(l, ffk_find_near(s, you), s[0].now_min);
+    ffo_basket(l, kind);
     if !knew { s[0].k_news = FFK_GATHER + 1; } else { s[0].k_news = 100 + kind; }
     s[0].k_news_at = s[0].time;
   }
@@ -89,6 +94,7 @@ ffk_news :: (s: [] Fairy, who: [] string, said: [] string) -> bool {
   n := s[0].k_news;
   if n <= 0 || s[0].time - s[0].k_news_at > f64(FFK_NEWS_TIME) { return false; }
   if n >= FFX_NEWS && n < FFX_NEWS + FFX_THINGS { who[0] = "MENDED"; said[0] = FFX_NAMES[n - FFX_NEWS]; return true; }
+  if n >= FFO_NEWS && n < FFO_NEWS + FFO_TOOLS { who[0] = FFO_MADE[n - FFO_NEWS]; said[0] = FFO_DOES[n - FFO_NEWS]; return true; }
   if n == FFN_NEWS_HOLLOW { who[0] = "THE MOON HOLLOW"; said[0] = "LANTERN MOTHS FOLLOW YOUR LIGHT"; return true; }
   if n >= 100 && n < 100 + FFK_FIND_KINDS { who[0] = FFK_FOUND[n - 100]; said[0] = FFK_FOR[n - 100]; return true; }
   if n > FFK_SKILLS { return false; }
@@ -209,6 +215,8 @@ ffk_draw :: (s: [] Fairy, eye: Point) {
 
 // What she carries: once she has LIGHT, a little lantern at her side.
 ffk_carried :: (s: [] Fairy, feet: Point, face: f32) {
+  lamp := ffo_carried(s, feet, face);   // the tools she made (fairytools.coax); her lantern takes the little light's place
+  if ffo_made(s[0].life[..], FFO_LANTERN) { ffn_carried(s, lamp); return; }
   if !ffk_knows(s[0].life[..], FFK_LIGHT) { return; }
   t := effect_time(s);
   right := v3(cos(face), 0, -sin(face));

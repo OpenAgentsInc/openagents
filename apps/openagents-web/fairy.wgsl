@@ -466,7 +466,8 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
   if (u.night.z > 0.0) {
     let to = vec3f(u.grass2.w, u.night.w, u.you_z) - world;
     let d2 = dot(to, to);
-    let fall = u.night.z * 1.3 / (1.0 + d2 * 0.18) * (1.0 - smoothstep(36.0, 100.0, d2));
+    let reach = max(u.night.z, 1.0);   // her lantern (fairytools.coax) sends it twice as far
+    let fall = min(u.night.z, 1.0) * 1.3 / (1.0 + d2 * 0.18 / (reach * reach)) * (1.0 - smoothstep(36.0 * reach * reach, 100.0 * reach * reach, d2));
     let face = 0.45 + 0.55 * max(dot(n, to * inverseSqrt(max(d2, 0.0001))), 0.0);
     light += c * vec3f(1.0, 0.76, 0.44) * fall * face;
   }

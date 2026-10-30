@@ -200,8 +200,9 @@ Deeds :: struct {
   hollow: bool;      // the moon hollow found, in the dark with LIGHT (ff-night)
   pond: bool;        // the pond filled with WATER (ff-pond)
   mended: int;       // a bit for each broken thing mended (ff-mend: the fence, the footbridge, the birdhouse)
+  tools: int;        // a bit for each tool made (ff-tools: the watering can, the basket, the lantern)
 }
-FFD_BYTES :: 1;
+FFD_BYTES :: 2;
 
 Life :: struct {
   look: FairyLook;
@@ -487,7 +488,7 @@ ffl_save :: (l: [] Life, out: [] u8) -> int {
   dd := l[0].deeds;
   out[n] = cast(u8) FFL_TAG_DEEDS; out[n + 1] = cast(u8) FFD_BYTES; n += 2;
   flags := (ifx dd.hollow then 1 else 0) + (ifx dd.pond then 2 else 0) + (dd.mended & 7) * 4;
-  out[n] = cast(u8) flags; n += 1;
+  out[n] = cast(u8) flags; out[n + 1] = cast(u8) (dd.tools & 7); n += 2;
   // the course: its id, its best, then each hoop (x, y, z in cm, yaw)
   co := l[0].course;
   csize := 1 + co.id_n + 4 + 1 + co.n * 7;
@@ -560,6 +561,7 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
     }
     if tag == FFL_TAG_DEEDS && size >= 1 {
       l[0].deeds.hollow = b[i] & 1 != 0; l[0].deeds.pond = b[i] & 2 != 0; l[0].deeds.mended = (cast(int) b[i] >> 2) & 7;
+      if size >= 2 { l[0].deeds.tools = cast(int) b[i + 1] & 7; }
     }
     if tag == FFL_TAG_COURSE && size >= 6 {
       idn := cast(int) b[i];
@@ -712,7 +714,7 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
   #assert ffk_gather(l[..], 2, day + 60) == -1;   // found today
   #assert ffk_gather(l[..], 2, day + 1440) == 2 && l[0].skills.finds[2] == 2;
   #assert ffk_gather(l[..], 0, day) == 0 && l[0].skills.finds[0] == 1;
-  l[0].skills.bird = true; l[0].skills.dam = true; l[0].skills.cut[2] = true; l[0].deeds.hollow = true;
+  l[0].skills.bird = true; l[0].skills.dam = true; l[0].skills.cut[2] = true; l[0].deeds.hollow = true; l[0].deeds.tools = 5;
   b: [FFL_BYTES] u8;
   n := ffl_save(l[..], b[..]);
   c: [1] Life;
@@ -720,6 +722,6 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
   #assert ffk_count(c[..]) == 2 && ffk_knows(c[..], FFK_GATHER) && c[0].skills.bird && c[0].skills.dam && !c[0].skills.axe;
   #assert c[0].skills.cut[2] && !c[0].skills.cut[1] && c[0].skills.finds[2] == 2 && c[0].skills.found_day[2] == 20391;
   #assert !ffk_find_here(c[..], 2, day + 1440) && ffk_find_here(c[..], 1, day);
-  #assert c[0].deeds.hollow;
+  #assert c[0].deeds.hollow && c[0].deeds.tools == 5;
   for k: 0..<FFK_SKILLS { #assert FFK_NAMES[k].count > 0 && FFK_LETS[k].count > 0; }
 }

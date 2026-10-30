@@ -1,0 +1,166 @@
+// Tools (ff-tools, verse/fairy-forest/README.md "What you learn": CRAFT,
+// "build and make tools"). At Rowan's chopping stump, with CRAFT, E makes a
+// tool from wood (the deadwood you cut) and what you gather: a watering can
+// (1 wood, 2 acorns), a basket (1 wood, 2 berries), a lantern (1 wood, 2
+// seeds). Each does something: watering with the can cares for a garden bed
+// twice over, the basket gathers two at a time, and the lantern lights your
+// way farther by night (and lights it at all before LIGHT). She carries them;
+// they are kept in the save's deeds.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFO_TOOLS :: 3;
+FFO_CAN :: 0; FFO_BASKET :: 1; FFO_LANTERN :: 2;
+FFO_KIND :: [3] int.[1, 0, 2];   // the find each takes two of: acorns, berries, seeds (FFK_FIND kinds)
+FFO_NEED :: 2;
+FFO_NEAR :: 1.5;                 // metres from the stump where E makes one
+FFO_NEWS :: 400;                 // k_news for a tool made: 400 + which
+FFO_MADE :: [3] string.["YOU MADE A WATERING CAN", "YOU MADE A BASKET", "YOU MADE A LANTERN"];
+FFO_DOES :: [3] string.["WATERING CARES FOR A BED TWICE OVER", "YOU GATHER TWO AT A TIME", "IT LIGHTS YOUR WAY FARTHER BY NIGHT"];
+FFO_WANTS :: [3] string.["TO MAKE A WATERING CAN", "TO MAKE A BASKET", "TO MAKE A LANTERN"];
+FFO_NEEDS :: [3] string.["1 WOOD AND 2 ACORNS", "1 WOOD AND 2 BERRIES", "1 WOOD AND 2 SEEDS"];
+
+ffo_made :: (l: [] Life, i: int) -> bool { return (l[0].deeds.tools >> i) & 1 == 1; }
+ffo_count :: (l: [] Life) -> int { n := 0; for i: 0..<FFO_TOOLS { if ffo_made(l, i) { n += 1; } } return n; }
+// Wood: each deadwood log cut gives one, and each tool takes one.
+ffo_wood :: (l: [] Life) -> int {
+  n := 0;
+  for q: 0..<FFK_LOGS { if l[0].skills.cut[q] { n += 1; } }
+  return n - ffo_count(l);
+}
+// The next tool to make, in order, or -1 when all are.
+ffo_next :: (l: [] Life) -> int { for i: 0..<FFO_TOOLS { if !ffo_made(l, i) { return i; } } return -1; }
+ffo_at_stump :: (s: [] Fairy, you: Point) -> bool {
+  return ffk_knows(s[0].life[..], FFK_CRAFT) && ffo_next(s[0].life[..]) >= 0 && ffk_at(you, f32(FFK_AXE_X), f32(FFK_AXE_Z), f32(FFO_NEAR));
+}
+ffo_can_make :: (s: [] Fairy, you: Point) -> bool {
+  l := s[0].life[..];
+  if !ffo_at_stump(s, you) { return false; }
+  i := ffo_next(l);
+  return ffo_wood(l) >= 1 && l[0].skills.finds[FFO_KIND[i]] >= FFO_NEED;
+}
+ffo_make :: (s: [] Fairy) {
+  l := s[0].life[..];
+  i := ffo_next(l);
+  if i < 0 { return; }
+  l[0].skills.finds[FFO_KIND[i]] -= FFO_NEED;
+  l[0].deeds.tools = l[0].deeds.tools | (1 << i); l[0].changes += 1;
+  s[0].k_news = FFO_NEWS + i; s[0].k_news_at = s[0].time;
+}
+// The basket: a find gathered (kind, or -1) comes two at a time; a seed is two seeds for the garden.
+ffo_basket :: (l: [] Life, kind: int) {
+  if kind < 0 || !ffo_made(l, FFO_BASKET) { return; }
+  l[0].skills.finds[kind] += 1;
+  if kind == 2 { l[0].garden.gifts += 1; }
+}
+// The can: a bed watered (and, with WATER, every bed) is cared for once more.
+ffo_watered :: (l: [] Life, i: int) {
+  if !ffo_made(l, FFO_CAN) || i < 0 || i >= FFG_BEDS || l[0].garden.bed[i].kind == 0 { return; }
+  l[0].garden.bed[i].care += 1;
+}
+// How far her own light reaches by night: none, LIGHT's, or the lantern's (twice as far), for fairy.wgsl.
+ffo_light :: (s: [] Fairy) -> f32 {
+  l := s[0].life[..];
+  if ffo_made(l, FFO_LANTERN) { return s[0].night * 2; }
+  return ifx ffk_knows(l, FFK_LIGHT) then s[0].night else 0.0f32;
+}
+// What the stump wants for the next tool, when you have not got it: who, said.
+ffo_wants :: (s: [] Fairy, you: Point, who: [] string, said: [] string) -> bool {
+  if !ffo_at_stump(s, you) || ffo_can_make(s, you) { return false; }
+  i := ffo_next(s[0].life[..]);
+  who[0] = FFO_WANTS[i]; said[0] = FFO_NEEDS[i];
+  return true;
+}
+
+// What she carries of them: the basket at her hip, the lantern in her hand, the can in the garden.
+// Where the lantern's light is (for the moths), or feet when she has none.
+ffo_carried :: (s: [] Fairy, feet: Point, face: f32) -> Point {
+  l := s[0].life[..];
+  if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 12 { return feet; }
+  t := effect_time(s);
+  ahead := v3(sin(face), 0, cos(face)); right := v3(cos(face), 0, -sin(face));
+  if ffo_made(l, FFO_BASKET) {
+    b := add(feet, add(times(right, -0.31), add(times(ahead, 0.02), v3(0, 0.8, 0))));
+    shape(s, SHAPE_CYLINDER, LOOK_BARK, b, face, 0, 0.2, 0.13, 0.17, 0.72, 0.54, 0.3);
+    shape(s, SHAPE_CYLINDER, LOOK_BARK, add(b, v3(0, 0.065, 0)), face, 0, 0.22, 0.025, 0.19, 0.6, 0.43, 0.24);   // its rim
+    top := add(b, v3(0, 0.22, 0));
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, add(b, add(times(ahead, 0.08), v3(0, 0.06, 0))), top, 0.022, 0.6, 0.43, 0.24);
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, add(b, add(times(ahead, -0.08), v3(0, 0.06, 0))), top, 0.022, 0.6, 0.43, 0.24);
+    for k: 0..<3 { shape(s, SHAPE_SPHERE, LOOK_MATTE, add(b, add(times(ahead, (f32(k) - 1) * 0.06), v3(0, 0.08, 0))), 0, 0, 0.05, 0.05, 0.05, 0.72, 0.16 + 0.1 * f32(k), 0.24); }
+  }
+  lamp := feet;
+  if ffo_made(l, FFO_LANTERN) {
+    sway := 0.06 * sin(t * 1.9);
+    hand := add(feet, add(times(right, 0.33), add(times(ahead, 0.08), v3(0, 0.98, 0))));
+    p := add(hand, add(times(ahead, sway), v3(0, -0.2, 0)));
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, hand, add(p, v3(0, 0.1, 0)), 0.012, 0.4, 0.3, 0.2);
+    glow := 0.35 + 0.65 * s[0].night;
+    look := ifx s[0].night > 0.5 then LOOK_SPARK else LOOK_GLOW;   // lit by night like Lanternwood's fruit
+    shape(s, SHAPE_SPHERE, look, p, 0, 0, 0.08, 0.1, 0.08, glow, 0.74 * glow, 0.36 * glow);   // the seed pod's glass
+    shape(s, SHAPE_CONE, LOOK_BARK, add(p, v3(0, 0.1, 0)), face, 0, 0.13, 0.07, 0.13, 0.5, 0.36, 0.22);
+    shape(s, SHAPE_CYLINDER, LOOK_BARK, add(p, v3(0, -0.095, 0)), face, 0, 0.12, 0.025, 0.12, 0.5, 0.36, 0.22);
+    for k: 0..<4 {
+      a := face + 0.785 + f32(k) * 1.5708;
+      post := add(p, v3(sin(a) * 0.07, 0, cos(a) * 0.07));
+      limb(s, SHAPE_CYLINDER, LOOK_BARK, add(post, v3(0, -0.09, 0)), add(post, v3(0, 0.08, 0)), 0.012, 0.46, 0.33, 0.2);
+    }
+    lamp = p;
+  }
+  if ffo_made(l, FFO_CAN) && ffh_room_at(feet.x, feet.z, 4) == 1 {   // in the garden she has the can in hand
+    c := add(feet, add(times(right, -0.3), add(times(ahead, 0.22), v3(0, 0.82, 0))));
+    shape(s, SHAPE_CYLINDER, LOOK_STONE, c, face, 0, 0.17, 0.17, 0.17, 0.5, 0.62, 0.56);
+    limb(s, SHAPE_CYLINDER, LOOK_STONE, add(c, add(times(ahead, 0.06), v3(0, -0.03, 0))), add(c, add(times(ahead, 0.24), v3(0, 0.1, 0))), 0.03, 0.5, 0.62, 0.56);   // the spout
+    limb(s, SHAPE_CYLINDER, LOOK_STONE, add(c, add(times(ahead, -0.08), v3(0, 0.08, 0))), add(c, add(times(ahead, 0.04), v3(0, 0.15, 0))), 0.02, 0.44, 0.54, 0.5);
+  }
+  return lamp;
+}
+
+#test "tools: made at Rowan's stump with CRAFT from wood and finds, one by one; the basket gathers two, the can cares twice, the lantern lights farther; kept in the save" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  fairy_clock(s[..], 29000000.0 * 60000);
+  l := s[0].life[..];
+  stump := v3(f32(FFK_AXE_X) - 0.6, 0, f32(FFK_AXE_Z) + 0.4);
+  #assert !ffo_at_stump(s[..], stump);   // CRAFT not yet known
+  rowan := v3(f32(FFW_X) + 1, 0, f32(FFW_Z));
+  #assert ffk_use(s[..], rowan) && ffk_knows(l, FFK_CRAFT);
+  end_talk(s[..]);
+  who: [1] string; said: [1] string;
+  #assert ffo_at_stump(s[..], stump) && !ffo_can_make(s[..], stump) && ffk_verb(s[..], stump) == 0;
+  #assert ffo_wants(s[..], stump, who[..], said[..]) && who[0] == "TO MAKE A WATERING CAN" && said[0] == "1 WOOD AND 2 ACORNS";
+  // wood from deadwood, acorns gathered: the can
+  l[0].skills.cut[0] = true; l[0].skills.finds[1] = 2;
+  #assert ffo_wood(l) == 1 && ffk_verb(s[..], stump) == FFK_V_MAKE + FFO_CAN && FFK_VERB_WORDS[FFK_V_MAKE + FFO_CAN] == "MAKE A WATERING CAN";
+  #assert ffk_use(s[..], stump) && ffo_made(l, FFO_CAN) && l[0].skills.finds[1] == 0 && ffo_wood(l) == 0;
+  #assert ffk_news(s[..], who[..], said[..]) && who[0] == "YOU MADE A WATERING CAN";
+  #assert ffk_verb(s[..], stump) == 0 && ffo_wants(s[..], stump, who[..], said[..]) && who[0] == "TO MAKE A BASKET";
+  // Rowan still talks from his side
+  #assert ffk_verb(s[..], rowan) == FFK_V_AXE;
+  // the can: a watered bed is cared for twice
+  l[0].garden.bed[0].kind = 1; l[0].garden.bed[0].care = 0;
+  ffo_watered(l, 0);
+  #assert l[0].garden.bed[0].care == 1;
+  // the basket: two at a time
+  l[0].skills.cut[1] = true; l[0].skills.finds[0] = 2;
+  #assert ffk_use(s[..], stump) && ffo_made(l, FFO_BASKET);
+  find := v3(FFK_FIND[0], 0, FFK_FIND[1]);
+  kind := cast(int) FFK_FIND[2];
+  before := l[0].skills.finds[kind];
+  #assert ffk_verb(s[..], find) == FFK_V_GATHER && ffk_use(s[..], find) && l[0].skills.finds[kind] == before + 2;
+  // the lantern: her light by night, twice as far, before LIGHT
+  l[0].skills.cut[2] = true; l[0].skills.finds[2] = 2;
+  #assert ffk_use(s[..], stump) && ffo_made(l, FFO_LANTERN) && ffo_next(l) < 0 && !ffo_at_stump(s[..], stump);
+  s[0].night = 1;
+  #assert !ffk_knows(l, FFK_LIGHT) && ffo_light(s[..]) == 2;
+  // kept
+  b: [FFL_BYTES] u8;
+  n := ffl_save(l, b[..]);
+  c: [1] Fairy;
+  fairy_start(c[..]);
+  #assert ffl_open(c[0].life[..], b[0..<n]) && ffo_count(c[0].life[..]) == 3;
+  // a frame with all three in hand stays in its slots
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  m := fairy_frame(s[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FFK_AXE_X), 0, f32(FFK_AXE_Z) - 4, 3.1, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert m > 0;
+  for k: 1..<5 { #assert s[0].counts[k] <= SLOTS[k]; }
+}

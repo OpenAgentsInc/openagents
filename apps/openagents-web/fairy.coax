@@ -51,6 +51,7 @@
 #load "fairypond.coax";    // the pond filled, the waterfall
 #load "fairywoodcutter.coax";   // Rowan, who gives you his axe
 #load "fairymend.coax";    // broken things mended
+#load "fairytools.coax";   // tools made with CRAFT
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -2005,6 +2006,8 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   if s[0].near_creature >= 0 { said = ff_says(f, s[0].near_creature); who = FF_CREATURE_NAMES[s[0].near_creature]; }
   else if s[0].remark_creature >= 0 { said = ff_remark(f, s[0].remark_creature, s[0].remark_turn); who = FF_CREATURE_NAMES[s[0].remark_creature]; }
   else if ffw_near(you) { said = ff_talker_says(f, FF_WOODCUTTER, s[0].life[0].skills.axe); who = "ROWAN"; }
+  ow: [1] string; os: [1] string;
+  if s[0].near_creature < 0 && ffo_wants(s, you, ow[..], os[..]) { who = ow[0]; said = os[0]; }
   if f[0].news >= 0 && f[0].news < FF_ROOTS && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
   if f[0].news == FF_NEWS_HEART && s[0].time - f[0].news_at < f64(HEART_NEWS_TIME) { said = "THE FOREST IS AWAKE, AND IT IS YOURS TO WANDER"; who = "THE HEART TREE BLOOMS"; }
   kw: [1] string; ks: [1] string;

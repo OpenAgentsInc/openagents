@@ -37,7 +37,7 @@ ffn_key_dir :: (s: [] Fairy) -> Point {
 }
 ffn_uniforms :: (s: [] Fairy, u: [] f32) {
   u[U_NIGHT] = s[0].night; u[U_NIGHT + 1] = s[0].dusk;
-  u[U_NIGHT + 2] = ifx ffk_knows(s[0].life[..], FFK_LIGHT) then s[0].night else 0.0f32;   // the light she carries
+  u[U_NIGHT + 2] = ffo_light(s);   // the light she carries: LIGHT's, or her lantern's twice as far (fairytools.coax)
   u[U_NIGHT + 3] = s[0].feet.y + 2.0;
 }
 
