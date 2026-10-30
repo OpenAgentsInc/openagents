@@ -1,0 +1,106 @@
+// The verified event store's relay face (nostr-event-store #8eb5, R1 part):
+// the narrow interface the relay uses (rsd_admit, rsd_query, rsd_text,
+// RsdStore, RsdRec, RSD_MAX, RSD_ARENA), the same as the test-only double
+// coax/tests/nostr/relay_store_double.coax, so the relay swaps it in by
+// changing that one #load. Every decision (verified admission, id dedup
+// keeping the lowest exact original, replacement, expiration, bounds,
+// order) is store_core.coax's, an #authority unit. This file only copies
+// fields: an RsAdmit into a record, a record back into a NostrEvent for
+// filter.coax's nf_match. It is not #authority itself because loading
+// relay_server.coax would put the relay's whole 6,087-mutant graph under
+// every mutation run; its checks below and in
+// coax/tests/nostr/store_verified_checks.coax cover it.
+//
+// In memory only: a restart forgets every event. No NIP-09 deletion or
+// tombstones, no durable file, no trusted recovery (#966b).
+#load "relay_server.coax";
+#load "store_core.coax";
+
+#test "the store's results are the relay's reasons" {
+  #assert NSS_ACCEPT == RS_ACCEPT && NSS_DUP == RS_DUP && NSS_SUPERSEDED == RS_SUPERSEDED;
+  #assert NSS_BAD == RS_BAD_EVENT && NSS_UNVERIFIED == RS_BAD_SIG && NSS_FULL == RS_FULL;
+  #assert NS_ORDINARY == RS_REGULAR && NS_REPLACEABLE == RS_REPLACEABLE && NS_EPHEMERAL == RS_EPHEMERAL && NS_ADDRESSABLE == RS_ADDRESSABLE;
+}
+// An admission as the relay hands it over, with its signature check taken
+// as passed: rs_admit_read's result marked verified. Only for checks that
+// exercise the store without running BIP-340; store_verified_checks.coax
+// runs the real verifier.
+rst_store_read :: (text: string, scratch: [] u8) -> RsAdmit {
+  r := rs_admit_read(text, 1000, false, false, scratch);
+  r.e.verified = true;
+  return r;
+}
+#test "admission takes only a verified accepted result for this exact text" {
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  scratch: [4096] u8;
+  r := rst_store_read(RST_PLAIN, scratch[..]);
+  r.e.verified = false; #assert rsd_admit(s[..], r, RST_PLAIN) == RS_BAD_SIG && s[0].n == 0;
+  r.e.verified = true; r.reason = RS_TIME; #assert rsd_admit(s[..], r, RST_PLAIN) == RS_BAD_SIG;
+  r.reason = RS_ACCEPT; r.e.error = NE_SIGNATURE; #assert rsd_admit(s[..], r, RST_PLAIN) == RS_BAD_SIG;
+  r.e.error = NE_OK; #assert rsd_admit(s[..], r, RST_EDGE) == RS_BAD_SIG && s[0].n == 0;
+  #assert rsd_admit(s[..], r, RST_PLAIN) == RS_ACCEPT && s[0].n == 1 && rsd_text(s[..], 0) == RST_PLAIN;
+  #assert rsd_admit(s[..], r, RST_PLAIN) == RS_DUP && s[0].n == 1;
+  rec := s[0].recs[0];
+  #assert rec.kind == 1 && rec.created == 1000 && rec.expiry == -1 && rec.id[0] == 0x18 && rec.author[0] == 0x79;
+  e := rsd_event(s[..], 0);
+  #assert e.error == NE_OK && e.verified && e.original == RST_PLAIN && e.kind == 1 && e.created_at == 1000 && e.id[31] == 0x53 && e.public_key[31] == 0x98;
+  #assert cast(string) e.original[e.tags_from..<e.tags_to] == "[]";
+}
+#test "addressable fields and expiration reach the store" {
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  scratch: [4096] u8;
+  a := rst_store_read(RST_ADDR, scratch[..]); #assert rsd_admit(s[..], a, RST_ADDR) == RS_ACCEPT;
+  #assert s[0].recs[0].d_n == 5 && cast(string) s[0].recs[0].d[0..<5] == "re\"po" && s[0].recs[0].kind == 30617;
+  l := rst_store_read(RST_LIVE, scratch[..]); #assert rsd_admit(s[..], l, RST_LIVE) == RS_ACCEPT && s[0].recs[1].expiry == 1001;
+  f: NostrFilter; idx: [8] int;
+  #assert rsd_query(s[..], f, 1000, idx[..]) == 2 && idx[0] == 0 && idx[1] == 1;
+  #assert rsd_query(s[..], f, 1001, idx[..]) == 1 && idx[0] == 0 && s[0].now == 1001;
+}
+#test "queries match filters over the stored originals, newest first" {
+  arena: [4096] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  scratch: [4096] u8;
+  texts := [4] string.[RST_PLAIN, RST_EDGE, RST_ADDR, RST_ADDR_NOD];
+  for t: texts { r := rst_store_read(t, scratch[..]); #assert rsd_admit(s[..], r, t) == RS_ACCEPT; }
+  f: NostrFilter; idx: [8] int;
+  #assert rsd_query(s[..], f, 1000, idx[..]) == 4 && rsd_text(s[..], idx[0]) == RST_EDGE;
+  // the same second: lowest id first (18c0, 9d7c, ee72)
+  #assert rsd_text(s[..], idx[1]) == RST_PLAIN && rsd_text(s[..], idx[2]) == RST_ADDR && rsd_text(s[..], idx[3]) == RST_ADDR_NOD;
+  kinds := [1] int.[30617]; f.has_kinds = true; f.kinds = kinds[..];
+  #assert rsd_query(s[..], f, 1000, idx[..]) == 1 && rsd_text(s[..], idx[0]) == RST_ADDR;
+  f.has_kinds = false; f.kinds = kinds[0..<0];
+  values := [1] string.["x"]; tags := [1] NostrTagFilter.[NostrTagFilter.{name = 't', values = values[..]}];
+  f.tags = tags[..]; #assert rsd_query(s[..], f, 1000, idx[..]) == 2 && rsd_text(s[..], idx[0]) == RST_ADDR;
+  values[0] = "re\"po"; tags[0].name = 'd'; #assert rsd_query(s[..], f, 1000, idx[..]) == 1 && rsd_text(s[..], idx[0]) == RST_ADDR;
+  f.tags = tags[0..<0]; f.has_limit = true; f.limit = 2;
+  #assert rsd_query(s[..], f, 1000, idx[..]) == 2 && rsd_text(s[..], idx[1]) == RST_PLAIN;
+  f.limit = 0; #assert rsd_query(s[..], f, 1000, idx[..]) == 0;
+  f.limit = 9; #assert rsd_query(s[..], f, 1000, idx[0..<3]) == 3;
+}
+
+// Stores r, an RS_ACCEPT result of rs_admit_verified over text.
+rsd_admit :: (s: [] RsdStore, r: RsAdmit, text: string) -> int {
+  c: RsdRec;
+  c.id = r.e.id; c.author = r.e.public_key; c.kind = r.e.kind; c.created = r.e.created_at;
+  c.expiry = r.expiration; c.d = r.d; c.d_n = r.d_n; c.tags_from = r.e.tags_from; c.tags_to = r.e.tags_to;
+  verified := r.reason == RS_ACCEPT && r.e.error == NE_OK && r.e.verified && r.e.original == text;
+  return ns_store_admit(s, c, text, verified);
+}
+// Record i as the event it was admitted as.
+rsd_event :: (s: [] RsdStore, i: int) -> NostrEvent {
+  r := s[0].recs[i];
+  e: NostrEvent; e.error = NE_OK; e.verified = true; e.original = rsd_text(s, i);
+  e.id = r.id; e.public_key = r.author; e.kind = r.kind; e.created_at = r.created;
+  e.tags_from = r.tags_from - r.from; e.tags_to = r.tags_to - r.from;
+  return e;
+}
+// Up to rs_limit(f) (and out.count) live, unexpired records matching f,
+// newest first, then lowest id, as indexes into out: the count.
+rsd_query :: (s: [] RsdStore, f: NostrFilter, now: int, out: [] int) -> int {
+  later := ns_store_seen(s, now);
+  limit := rs_limit(f); n := 0;
+  for i: 0..<s[0].n {
+    if !ns_store_visible(s, i, now) || !nf_match(f, rsd_event(s, i)) { continue; }
+    n = ns_store_insert(s, i, n, limit, out);
+  }
+  return n;
+}

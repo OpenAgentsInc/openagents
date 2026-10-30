@@ -1,0 +1,388 @@
+// The in-memory verified event store's decisions (nostr-event-store #8eb5,
+// R1 part; verified-ID dedup #f539): admission of verified events, one
+// lowest exact original per event id, NIP-01 replaceable (0, 3, 10000-19999)
+// and addressable (30000-39999 by d tag) replacement with the same-second
+// lowest-id rule, NIP-40 expiration, fixed record and byte bounds, and the
+// newest-first query order. It loads neither event.coax nor the verifier:
+// the caller passes the verification result (`verified`) and the fields it
+// read, as relay_server's rs_admit_verified does. Matching a filter is the
+// caller's (store.coax with filter.coax's nf_match). Nothing here is durable:
+// a restart forgets every event; there is no NIP-09 deletion or tombstone,
+// and no trusted recovery (#966b).
+//
+// The type and constant names are the relay's store interface (rsd_, from
+// coax/tests/nostr/relay_store_double.coax), so the relay swaps its test
+// double for this store by changing one #load.
+#load "store_policy.coax";
+#load "store_dedup_policy.coax";
+#authority;
+
+RSD_MAX :: 2048; RSD_ARENA :: 4194304;
+// Results, numerically the relay's RS_ACCEPT, RS_DUP, RS_SUPERSEDED,
+// RS_BAD_EVENT, RS_BAD_SIG and RS_FULL (store.coax checks they agree).
+NSS_ACCEPT :: 0; NSS_DUP :: 1; NSS_SUPERSEDED :: 2; NSS_BAD :: 3; NSS_UNVERIFIED :: 5; NSS_FULL :: 11;
+// One stored event. from/to is its exact original in the arena, tags_from/
+// tags_to its tags array inside the arena. A record that is not live was
+// replaced; it is kept only so its id still answers "duplicate" until the
+// next compaction.
+RsdRec :: struct {
+  live: bool; id: [32] u8; author: [32] u8; kind: int; created: int; expiry: int;
+  d: [256] u8; d_n: int; from: int; to: int; tags_from: int; tags_to: int;
+}
+// The caller owns arena and recs (the relay sizes them RSD_ARENA and RSD_MAX).
+// n records are in use and used arena bytes; live and bytes count the live
+// records and their originals (what the bounds charge); now is the latest
+// query time seen, used to drop expired regular events at compaction.
+RsdStore :: struct { n: int; used: int; live: int; bytes: int; now: int; arena: [] u8; recs: [] RsdRec; }
+NsRoom :: struct { ok: bool; keep: int; }
+
+// ---- test helpers ------------------------------------------------------------
+nss_t_rec :: (id: u8, kind: int, created: int) -> RsdRec {
+  c: RsdRec; c.id[0] = id; c.kind = kind; c.created = created; c.expiry = -1; return c;
+}
+
+#test "admits verified events, refuses unverified and malformed ones" {
+  arena: [64] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10);
+  #assert ns_store_admit(s[..], c, "ab", false) == NSS_UNVERIFIED && s[0].n == 0 && s[0].used == 0;
+  #assert ns_store_admit(s[..], c, "", true) == NSS_BAD && s[0].n == 0;
+  c.tags_to = 3; #assert ns_store_admit(s[..], c, "ab", true) == NSS_BAD;
+  c.tags_from = 3; #assert ns_store_admit(s[..], c, "abc", true) == NSS_ACCEPT; c.id[0] = 2;
+  c.tags_from = -1; c.tags_to = 0; #assert ns_store_admit(s[..], c, "ab", true) == NSS_BAD;
+  c.tags_from = 2; c.tags_to = 1; #assert ns_store_admit(s[..], c, "ab", true) == NSS_BAD;
+  c.tags_from = 0; c.tags_to = 0; c.d_n = -1; #assert ns_store_admit(s[..], c, "ab", true) == NSS_BAD;
+  c.d_n = 257; #assert ns_store_admit(s[..], c, "ab", true) == NSS_BAD;
+  c.d_n = 256; #assert ns_store_admit(s[..], c, "ab", true) == NSS_ACCEPT;
+  #assert s[0].n == 2 && s[0].live == 2 && s[0].bytes == 5 && s[0].used == 5;
+  #assert rsd_text(s[..], 0) == "abc" && rsd_text(s[..], 1) == "ab";
+  #assert s[0].recs[0].tags_from == 3 && s[0].recs[0].tags_to == 3 && s[0].recs[1].from == 3 && s[0].recs[1].to == 5;
+  #assert s[0].recs[0].live && s[0].recs[0].kind == 1 && s[0].recs[0].created == 10;
+}
+#test "tag spans are stored relative to the arena" {
+  arena: [64] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10); #assert ns_store_admit(s[..], c, "xyz", true) == NSS_ACCEPT;
+  c.id[0] = 2; c.tags_from = 1; c.tags_to = 3; #assert ns_store_admit(s[..], c, "abcd", true) == NSS_ACCEPT;
+  #assert s[0].recs[1].tags_from == 4 && s[0].recs[1].tags_to == 6;
+  #assert cast(string) arena[s[0].recs[1].tags_from..<s[0].recs[1].tags_to] == "bc";
+}
+#test "ephemeral events are accepted and never stored" {
+  arena: [8] u8; recs: [1] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 20000, 1); #assert ns_store_admit(s[..], c, "abcdefghijk", true) == NSS_ACCEPT && s[0].n == 0 && s[0].used == 0;
+  c.kind = 29999; #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT && s[0].n == 0;
+  c.kind = 30000; #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT && s[0].n == 1;
+}
+#test "a duplicate id is not charged and keeps the lowest exact original" {
+  arena: [16] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10);
+  #assert ns_store_admit(s[..], c, "bb", true) == NSS_ACCEPT;
+  // a higher representation changes nothing
+  #assert ns_store_admit(s[..], c, "bc", true) == NSS_DUP && rsd_text(s[..], 0) == "bb" && s[0].n == 1 && s[0].used == 2;
+  #assert ns_store_admit(s[..], c, "bb", true) == NSS_DUP && s[0].used == 2 && s[0].live == 1;
+  // a lower one of the same or shorter length is written in place
+  c.tags_from = 1; c.tags_to = 1;
+  #assert ns_store_admit(s[..], c, "a", true) == NSS_DUP && rsd_text(s[..], 0) == "a";
+  #assert s[0].n == 1 && s[0].live == 1 && s[0].bytes == 1 && s[0].used == 2 && s[0].recs[0].tags_from == 1;
+  // a longer lower one is appended and the old record retired
+  c.id[0] = 2; c.tags_from = 0; c.tags_to = 0; #assert ns_store_admit(s[..], c, "zzz", true) == NSS_ACCEPT && s[0].used == 5;
+  c.tags_from = 1; c.tags_to = 3; #assert ns_store_admit(s[..], c, "yyyy", true) == NSS_DUP;
+  #assert s[0].n == 3 && s[0].live == 2 && s[0].bytes == 5 && s[0].used == 9 && !s[0].recs[1].live && s[0].recs[2].live;
+  #assert rsd_text(s[..], 2) == "yyyy" && s[0].recs[2].tags_from == 6 && s[0].recs[2].tags_to == 8;
+  // the retired copy still answers duplicate
+  c.tags_from = 0; c.tags_to = 0; #assert ns_store_admit(s[..], c, "zzz", true) == NSS_DUP && rsd_text(s[..], 2) == "yyyy";
+  #assert ns_store_admit(s[..], c, "yyyx", true) == NSS_DUP && rsd_text(s[..], 2) == "yyyx" && s[0].n == 3;
+}
+#test "a longer lower original that does not fit keeps the old one" {
+  arena: [6] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10); #assert ns_store_admit(s[..], c, "zz", true) == NSS_ACCEPT;
+  c.id[0] = 2; #assert ns_store_admit(s[..], c, "yy", true) == NSS_ACCEPT;
+  c.id[0] = 1; #assert ns_store_admit(s[..], c, "aaaaa", true) == NSS_DUP;
+  #assert rsd_text(s[..], 0) == "zz" && s[0].n == 2 && s[0].live == 2 && s[0].bytes == 4 && s[0].used == 4 && arena[4] == 0;
+  // exactly fitting succeeds
+  #assert ns_store_admit(s[..], c, "aa", true) == NSS_DUP && rsd_text(s[..], 0) == "aa";
+  #assert ns_store_admit(s[..], c, "a", true) == NSS_DUP && s[0].bytes == 3;
+  c.id[0] = 3; #assert ns_store_admit(s[..], c, "qq", true) == NSS_ACCEPT && s[0].used == 6;
+}
+#test "a full record table refuses a new id but takes its duplicates" {
+  arena: [16] u8; recs: [2] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10); #assert ns_store_admit(s[..], c, "b", true) == NSS_ACCEPT;
+  c.id[0] = 2; #assert ns_store_admit(s[..], c, "b", true) == NSS_ACCEPT;
+  c.id[0] = 3; #assert ns_store_admit(s[..], c, "b", true) == NSS_FULL && s[0].n == 2 && s[0].used == 2;
+  c.id[0] = 2; #assert ns_store_admit(s[..], c, "a", true) == NSS_DUP && rsd_text(s[..], 1) == "a";
+  // longer and lower, but no free record: the old one stays
+  #assert ns_store_admit(s[..], c, "Aa", true) == NSS_DUP && rsd_text(s[..], 1) == "a" && s[0].live == 2;
+}
+#test "a full arena refuses at the exact boundary" {
+  arena: [5] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10); #assert ns_store_admit(s[..], c, "abc", true) == NSS_ACCEPT;
+  c.id[0] = 2; #assert ns_store_admit(s[..], c, "abc", true) == NSS_FULL && s[0].n == 1 && s[0].used == 3;
+  #assert ns_store_admit(s[..], c, "ab", true) == NSS_ACCEPT && s[0].used == 5 && s[0].bytes == 5;
+}
+#test "replaceable events: newest wins, the same second goes to the lowest id" {
+  arena: [64] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(5, 0, 10);
+  #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT;
+  c.id[0] = 6; #assert ns_store_admit(s[..], c, "b", true) == NSS_SUPERSEDED && s[0].n == 1;
+  c.id[0] = 4; #assert ns_store_admit(s[..], c, "c", true) == NSS_ACCEPT && !s[0].recs[0].live && s[0].recs[1].live;
+  #assert s[0].live == 1 && s[0].bytes == 1 && s[0].used == 2;
+  c.created = 9; c.id[0] = 3; #assert ns_store_admit(s[..], c, "d", true) == NSS_SUPERSEDED;
+  // a replaced event sent again is a duplicate while its record is kept
+  c.id[0] = 5; #assert ns_store_admit(s[..], c, "a", true) == NSS_DUP && s[0].n == 2;
+  c.created = 11; c.id[0] = 9; #assert ns_store_admit(s[..], c, "e", true) == NSS_ACCEPT && !s[0].recs[1].live && s[0].live == 1;
+  // another author, another kind, a regular kind: separate addresses
+  c.author[0] = 1; c.id[0] = 10; c.created = 1; #assert ns_store_admit(s[..], c, "f", true) == NSS_ACCEPT && s[0].live == 2;
+  c.kind = 3; c.id[0] = 11; #assert ns_store_admit(s[..], c, "g", true) == NSS_ACCEPT && s[0].live == 3;
+  c.kind = 1; c.id[0] = 12; c.created = 0; #assert ns_store_admit(s[..], c, "h", true) == NSS_ACCEPT;
+  c.id[0] = 13; #assert ns_store_admit(s[..], c, "i", true) == NSS_ACCEPT && s[0].live == 5;
+  c.kind = 10000; c.id[0] = 14; #assert ns_store_admit(s[..], c, "j", true) == NSS_ACCEPT;
+  c.id[0] = 15; c.created = 1; #assert ns_store_admit(s[..], c, "k", true) == NSS_ACCEPT && s[0].live == 6;
+  c.kind = 19999; c.id[0] = 16; #assert ns_store_admit(s[..], c, "l", true) == NSS_ACCEPT && s[0].live == 7;
+}
+#test "the tie rule compares the whole id" {
+  arena: [64] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(5, 3, 10); c.id[31] = 2;
+  #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT;
+  c.id[31] = 3; #assert ns_store_admit(s[..], c, "b", true) == NSS_SUPERSEDED;
+  c.id[31] = 1; c.d[0] = 'q'; c.d_n = 1; #assert ns_store_admit(s[..], c, "c", true) == NSS_ACCEPT && s[0].live == 1 && s[0].recs[1].live;
+  c.author[31] = 1; c.id[31] = 0; #assert ns_store_admit(s[..], c, "d", true) == NSS_ACCEPT && s[0].live == 2;
+}
+#test "addressable events are replaced per author, kind and d tag" {
+  arena: [64] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(7, 30617, 20); c.d[0] = 'a'; c.d_n = 1;
+  #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT;
+  c.d[0] = 'b'; c.id[0] = 8; #assert ns_store_admit(s[..], c, "b", true) == NSS_ACCEPT && s[0].live == 2;
+  c.d_n = 0; c.id[0] = 9; #assert ns_store_admit(s[..], c, "c", true) == NSS_ACCEPT && s[0].live == 3;
+  c.d[0] = 'a'; c.d_n = 1; c.id[0] = 6; c.created = 21; #assert ns_store_admit(s[..], c, "d", true) == NSS_ACCEPT;
+  #assert !s[0].recs[0].live && s[0].recs[1].live && s[0].recs[2].live && s[0].live == 3;
+  // a longer d with the same first byte is another address
+  c.d[1] = 'x'; c.d_n = 2; c.id[0] = 1; c.created = 0; #assert ns_store_admit(s[..], c, "e", true) == NSS_ACCEPT && s[0].live == 4;
+  c.d_n = 0; c.id[0] = 2; c.created = 0; #assert ns_store_admit(s[..], c, "f", true) == NSS_SUPERSEDED;
+  c.kind = 39999; #assert ns_store_admit(s[..], c, "f", true) == NSS_ACCEPT;
+  c.kind = 30617; c.d[0] = 'b'; c.d_n = 1; c.id[0] = 3; c.created = 20; #assert ns_store_admit(s[..], c, "g", true) == NSS_ACCEPT && !s[0].recs[1].live;
+}
+#test "a replacement that does not fit keeps the current version" {
+  arena: [3] u8; recs: [4] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(5, 0, 10); #assert ns_store_admit(s[..], c, "ab", true) == NSS_ACCEPT;
+  c.created = 11; c.id[0] = 6; #assert ns_store_admit(s[..], c, "ab", true) == NSS_FULL;
+  #assert s[0].recs[0].live && s[0].live == 1 && s[0].n == 1 && rsd_text(s[..], 0) == "ab";
+}
+#test "compaction drops replaced records and keeps order and spans" {
+  arena: [8] u8; recs: [3] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10); c.tags_from = 1; c.tags_to = 2; #assert ns_store_admit(s[..], c, "ab", true) == NSS_ACCEPT;
+  r := nss_t_rec(5, 0, 10); #assert ns_store_admit(s[..], r, "cd", true) == NSS_ACCEPT;
+  r.id[0] = 4; r.tags_from = 1; r.tags_to = 2; #assert ns_store_admit(s[..], r, "ef", true) == NSS_ACCEPT && s[0].n == 3 && s[0].live == 2;
+  c.id[0] = 2; #assert ns_store_admit(s[..], c, "gh", true) == NSS_ACCEPT;
+  #assert s[0].n == 3 && s[0].used == 6 && s[0].live == 3 && s[0].bytes == 6;
+  #assert rsd_text(s[..], 0) == "ab" && rsd_text(s[..], 1) == "ef" && rsd_text(s[..], 2) == "gh";
+  #assert s[0].recs[0].tags_from == 1 && s[0].recs[1].tags_from == 3 && s[0].recs[1].tags_to == 4 && s[0].recs[2].tags_from == 5;
+  #assert s[0].recs[1].id[0] == 4 && s[0].recs[2].id[0] == 2 && s[0].recs[0].live && s[0].recs[1].live && s[0].recs[2].live;
+  // the retired id is forgotten: re-sent, it is superseded instead
+  r.id[0] = 5; #assert ns_store_admit(s[..], r, "cd", true) == NSS_SUPERSEDED;
+}
+#test "a duplicate dropped as expired at compaction is not revived" {
+  arena: [8] u8; recs: [1] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 1); c.expiry = 5; #assert ns_store_admit(s[..], c, "zz", true) == NSS_ACCEPT;
+  #assert ns_store_seen(s[..], 5) && !ns_store_seen(s[..], 5) && !ns_store_seen(s[..], 4) && s[0].now == 5;
+  #assert ns_store_admit(s[..], c, "aaa", true) == NSS_DUP && s[0].n == 0 && s[0].live == 0 && s[0].bytes == 0;
+}
+#test "an expired regular event after the first is dropped and its bytes freed" {
+  arena: [6] u8; recs: [2] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 1); #assert ns_store_admit(s[..], c, "ab", true) == NSS_ACCEPT;
+  c.id[0] = 2; c.expiry = 5; #assert ns_store_admit(s[..], c, "cd", true) == NSS_ACCEPT;
+  #assert ns_store_seen(s[..], 5);
+  c.id[0] = 3; c.expiry = -1; #assert ns_store_admit(s[..], c, "efgh", true) == NSS_ACCEPT;
+  #assert s[0].n == 2 && s[0].live == 2 && s[0].bytes == 6 && s[0].used == 6 && rsd_text(s[..], 1) == "efgh";
+}
+#test "an in-place lower original after the first record keeps its spans" {
+  arena: [8] u8; recs: [2] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 1); #assert ns_store_admit(s[..], c, "x", true) == NSS_ACCEPT;
+  c.id[0] = 2; #assert ns_store_admit(s[..], c, "zz", true) == NSS_ACCEPT;
+  c.tags_from = 1; c.tags_to = 2; #assert ns_store_admit(s[..], c, "ab", true) == NSS_DUP;
+  #assert rsd_text(s[..], 1) == "ab" && s[0].recs[1].tags_from == 2 && s[0].recs[1].tags_to == 3 && s[0].bytes == 3;
+}
+#test "a longer lower original of the first record moves it" {
+  arena: [8] u8; recs: [2] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 1); #assert ns_store_admit(s[..], c, "b", true) == NSS_ACCEPT;
+  #assert ns_store_admit(s[..], c, "ab", true) == NSS_DUP && s[0].n == 2 && rsd_text(s[..], 1) == "ab" && !s[0].recs[0].live;
+}
+#test "compaction drops expired regular events but keeps expired replaceable heads" {
+  arena: [8] u8; recs: [3] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10); c.expiry = 50; #assert ns_store_admit(s[..], c, "ab", true) == NSS_ACCEPT;
+  r := nss_t_rec(5, 0, 10); r.expiry = 50; #assert ns_store_admit(s[..], r, "cd", true) == NSS_ACCEPT;
+  c.id[0] = 2; c.expiry = -1; #assert ns_store_admit(s[..], c, "ef", true) == NSS_ACCEPT;
+  #assert ns_store_seen(s[..], 49);
+  c.id[0] = 3; #assert ns_store_admit(s[..], c, "gh", true) == NSS_FULL && s[0].n == 3;
+  #assert ns_store_seen(s[..], 50) && !ns_store_seen(s[..], 7) && s[0].now == 50;
+  #assert ns_store_admit(s[..], c, "gh", true) == NSS_ACCEPT && s[0].n == 3 && s[0].live == 3 && s[0].bytes == 6;
+  #assert rsd_text(s[..], 0) == "cd" && rsd_text(s[..], 1) == "ef" && rsd_text(s[..], 2) == "gh";
+  // the expired head still blocks an older version
+  r.id[0] = 6; r.created = 9; r.expiry = -1; #assert ns_store_admit(s[..], r, "x", true) == NSS_SUPERSEDED;
+  #assert !ns_store_visible(s[..], 0, 50) && ns_store_visible(s[..], 0, 49) && ns_store_visible(s[..], 1, 50);
+}
+#test "compaction finds a duplicate's new place" {
+  arena: [8] u8; recs: [3] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  r := nss_t_rec(5, 0, 10); #assert ns_store_admit(s[..], r, "ab", true) == NSS_ACCEPT;
+  r.id[0] = 4; #assert ns_store_admit(s[..], r, "cd", true) == NSS_ACCEPT;
+  c := nss_t_rec(1, 1, 10); #assert ns_store_admit(s[..], c, "zz", true) == NSS_ACCEPT && s[0].n == 3;
+  #assert ns_store_admit(s[..], c, "yyy", true) == NSS_DUP;
+  #assert s[0].n == 3 && s[0].live == 2 && rsd_text(s[..], 0) == "cd" && !s[0].recs[1].live && rsd_text(s[..], 2) == "yyy";
+  #assert s[0].bytes == 5 && s[0].used == 7;
+  // after compaction a new event takes the replaced head's place
+  r.id[0] = 3; r.created = 11; #assert ns_store_admit(s[..], r, "e", true) == NSS_ACCEPT;
+  #assert s[0].n == 3 && !s[0].recs[0].live && s[0].live == 2;
+}
+#test "compaction moves a replacement's head to its new index" {
+  arena: [6] u8; recs: [3] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 0, 10); #assert ns_store_admit(s[..], c, "ab", true) == NSS_ACCEPT;
+  c.id[0] = 2; c.created = 11; #assert ns_store_admit(s[..], c, "cd", true) == NSS_ACCEPT;
+  x := nss_t_rec(9, 1, 1); #assert ns_store_admit(s[..], x, "e", true) == NSS_ACCEPT;
+  c.id[0] = 3; c.created = 12; #assert ns_store_admit(s[..], c, "fg", true) == NSS_ACCEPT;
+  #assert s[0].n == 3 && s[0].live == 2 && !s[0].recs[0].live && s[0].recs[1].live && s[0].recs[2].live;
+  #assert rsd_text(s[..], 1) == "e" && rsd_text(s[..], 2) == "fg" && s[0].used == 5 && s[0].bytes == 3;
+}
+#test "visibility: live and not expired at the exact second" {
+  arena: [8] u8; recs: [3] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(1, 1, 10); c.expiry = 5; #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT;
+  #assert ns_store_visible(s[..], 0, 4) && !ns_store_visible(s[..], 0, 5);
+  r := nss_t_rec(5, 0, 10); #assert ns_store_admit(s[..], r, "b", true) == NSS_ACCEPT;
+  r.id[0] = 4; #assert ns_store_admit(s[..], r, "c", true) == NSS_ACCEPT;
+  #assert !ns_store_visible(s[..], 1, 0) && ns_store_visible(s[..], 2, 9223372036854775807);
+}
+#test "query order: newest first, then lowest id, cut at the limit" {
+  arena: [16] u8; recs: [8] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  c := nss_t_rec(3, 1, 10); #assert ns_store_admit(s[..], c, "a", true) == NSS_ACCEPT;
+  c.id[0] = 1; c.created = 5; #assert ns_store_admit(s[..], c, "b", true) == NSS_ACCEPT;
+  c.id[0] = 2; c.created = 10; #assert ns_store_admit(s[..], c, "c", true) == NSS_ACCEPT;
+  c.id[0] = 4; c.created = 12; #assert ns_store_admit(s[..], c, "d", true) == NSS_ACCEPT;
+  out: [8] int; n := 0;
+  for i: 0..<4 { n = ns_store_insert(s[..], i, n, 8, out[..]); }
+  #assert n == 4 && out[0] == 3 && out[1] == 2 && out[2] == 0 && out[3] == 1;
+  n = 0; for i: 0..<4 { n = ns_store_insert(s[..], i, n, 2, out[..]); }
+  #assert n == 2 && out[0] == 3 && out[1] == 2 && out[2] == 0;
+  n = 0; for i: 0..<4 { n = ns_store_insert(s[..], i, n, 3, out[0..<2]); }
+  #assert n == 2 && out[0] == 3 && out[1] == 2;
+  n = 0; for i: 0..<4 { n = ns_store_insert(s[..], i, n, 0, out[..]); }
+  #assert n == 0;
+  n = 0; for i: 0..<4 { n = ns_store_insert(s[..], 3 - i, n, 3, out[..]); }
+  #assert n == 3 && out[0] == 3 && out[1] == 2 && out[2] == 0;
+  out[2] = 99; n = 0; for i: 0..<4 { n = ns_store_insert(s[..], 3 - i, n, 2, out[..]); }
+  #assert n == 2 && out[0] == 3 && out[1] == 2 && out[2] == 99;
+  n = 0; for i: 0..<4 { n = ns_store_insert(s[..], 3 - i, n, 3, out[0..<2]); }
+  #assert n == 2 && out[0] == 3 && out[1] == 2 && out[2] == 99;
+  n = 0; for i: 0..<4 { n = ns_store_insert(s[..], 3 - i, n, -1, out[..]); }
+  #assert n == 0;
+}
+
+rsd_text :: (s: [] RsdStore, i: int) -> string { return cast(string) s[0].arena[s[0].recs[i].from..<s[0].recs[i].to]; }
+ns_store_same_address :: (a: RsdRec, b: RsdRec) -> bool {
+  if a.kind != b.kind || !ns_equal32(a.author, b.author) { return false; }
+  if ns_class(a.kind) != NS_ADDRESSABLE { return true; }
+  if a.d_n != b.d_n { return false; }
+  for k: 0..<a.d_n { if a.d[k] != b.d[k] { return false; } }
+  return true;
+}
+// Newest first, then lowest id (NIP-01).
+ns_store_newer :: (a: RsdRec, b: RsdRec) -> bool { return a.created > b.created || (a.created == b.created && ns_before(a.id, b.id)); }
+// Records the latest query time; expired regular events go at compaction.
+ns_store_seen :: (s: [] RsdStore, now: int) -> bool { if now > s[0].now { s[0].now = now; return true; } return false; }
+ns_store_visible :: (s: [] RsdStore, i: int, now: int) -> bool { return s[0].recs[i].live && !ns_expired(s[0].recs[i].expiry, now); }
+// Moves every kept record's original down to close the gaps, in index order
+// (which is arena order: a record's bytes never move up). Replaced records
+// and expired regular events are dropped. keep is a record index; the
+// result is its new index, or -1 when it was dropped.
+ns_store_compact :: (s: [] RsdStore, keep: int) -> int {
+  j := 0; at := 0; moved := -1;
+  for i: 0..<s[0].n {
+    r := s[0].recs[i];
+    if !r.live || (ns_class(r.kind) == NS_ORDINARY && ns_expired(r.expiry, s[0].now)) {
+      if r.live { s[0].live -= 1; s[0].bytes -= r.to - r.from; }
+      continue;
+    }
+    shift := r.from - at;
+    for k: r.from..<r.to { s[0].arena[k - shift] = s[0].arena[k]; }
+    r.from -= shift; r.to -= shift; r.tags_from -= shift; r.tags_to -= shift;
+    s[0].recs[j] = r;
+    if i == keep { moved = j; }
+    at = r.to; j += 1;
+  }
+  s[0].n = j; s[0].used = at;
+  return moved;
+}
+// Room for one more record of need bytes, compacting when the table or the
+// arena is full; keep is tracked through the compaction.
+ns_store_room :: (s: [] RsdStore, need: int, keep: int) -> NsRoom {
+  if s[0].n < s[0].recs.count && need <= s[0].arena.count - s[0].used { return NsRoom.{ok = true, keep = keep}; }
+  k := ns_store_compact(s, keep);
+  return NsRoom.{ok = s[0].n < s[0].recs.count && need <= s[0].arena.count - s[0].used, keep = k};
+}
+// Appends c with original text as a live record at index n.
+ns_store_append :: (s: [] RsdStore, c: RsdRec, text: string) {
+  from := s[0].used;
+  for i: 0..<text.count { s[0].arena[from + i] = text[i]; }
+  r := c; r.live = true; r.from = from; r.to = from + text.count;
+  r.tags_from = from + c.tags_from; r.tags_to = from + c.tags_to;
+  s[0].recs[s[0].n] = r; s[0].n += 1; s[0].used += text.count; s[0].live += 1; s[0].bytes += text.count;
+}
+// Retires live record i.
+ns_store_retire :: (s: [] RsdStore, i: int) {
+  s[0].recs[i].live = false; s[0].live -= 1; s[0].bytes -= s[0].recs[i].to - s[0].recs[i].from;
+}
+// The same verified id again: keep the lowest exact original (#f539). A
+// lower one no longer than the stored one is written over it; a longer one
+// is appended (from c: the same id carries the same fields) and the old
+// record retired, or refused (the old one kept)
+// when it does not fit. Neither charges another record. Record i is live.
+// Always NSS_DUP.
+ns_store_duplicate :: (s: [] RsdStore, i: int, c: RsdRec, text: string) -> int {
+  if !ns_original_before(text, rsd_text(s, i)) { return NSS_DUP; }
+  r := s[0].recs[i];
+  if text.count <= r.to - r.from {
+    for k: 0..<text.count { s[0].arena[r.from + k] = text[k]; }
+    s[0].bytes -= r.to - r.from - text.count;
+    s[0].recs[i].to = r.from + text.count;
+    s[0].recs[i].tags_from = r.from + c.tags_from; s[0].recs[i].tags_to = r.from + c.tags_to;
+    return NSS_DUP;
+  }
+  room := ns_store_room(s, text.count, i);
+  if !room.ok || room.keep < 0 { return NSS_DUP; }
+  ns_store_append(s, c, text);
+  ns_store_retire(s, room.keep);
+  return NSS_DUP;
+}
+// Admits one event. verified is the caller's signature check over this exact
+// text (id recomputed from it, signature checked against it); c holds the
+// fields read from it, with tags_from/tags_to relative to text. Ephemeral
+// kinds are accepted and not stored.
+ns_store_admit :: (s: [] RsdStore, c: RsdRec, text: string, verified: bool) -> int {
+  if !verified { return NSS_UNVERIFIED; }
+  if text.count < 1 || c.d_n < 0 || c.d_n > 256 || c.tags_from < 0 || c.tags_from > c.tags_to || c.tags_to > text.count { return NSS_BAD; }
+  class := ns_class(c.kind);
+  if class == NS_EPHEMERAL { return NSS_ACCEPT; }
+  known := false; head := -1;
+  for i: 0..<s[0].n {
+    if ns_equal32(s[0].recs[i].id, c.id) {
+      if s[0].recs[i].live { return ns_store_duplicate(s, i, c, text); }
+      known = true; continue;
+    }
+    if class != NS_ORDINARY && s[0].recs[i].live && ns_store_same_address(s[0].recs[i], c) { head = i; }
+  }
+  if known { return NSS_DUP; }
+  if head >= 0 && !ns_store_newer(c, s[0].recs[head]) { return NSS_SUPERSEDED; }
+  room := ns_store_room(s, text.count, head);
+  if !room.ok { return NSS_FULL; }
+  ns_store_append(s, c, text);
+  if room.keep >= 0 { ns_store_retire(s, room.keep); }
+  return NSS_ACCEPT;
+}
+// Puts record i into out[0..<n], kept newest first, then lowest id, and at
+// most limit long (and at most out.count): the new length.
+ns_store_insert :: (s: [] RsdStore, i: int, n: int, limit: int, out: [] int) -> int {
+  at := n;
+  while at > 0 && ns_store_newer(s[0].recs[i], s[0].recs[out[at - 1]]) { at -= 1; }
+  if at >= limit || at >= out.count { return n; }
+  full := n >= limit || n >= out.count;
+  k := n; if full { k = n - 1; }
+  while k > at { out[k] = out[k - 1]; k -= 1; }
+  out[at] = i;
+  if full { return n; }
+  return n + 1;
+}
