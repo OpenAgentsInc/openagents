@@ -812,6 +812,28 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "as-snow-dusk",
+      "parent": "as-checks",
+      "title": "Painterly snow at dusk: a sky that keeps its colour",
+      "size": "S",
+      "labels": [
+        "engine",
+        "art-styles"
+      ],
+      "body": "A painterly made realm on snow measures saturation 0.24 at noon now (PAINT_SNOW, sky blue by day, periwinkle at dawn and dusk), but 0.20 at dusk on a desktop and 0.17 on a phone, under the style check's 0.22: at dusk the preset's sky is cream haze and grey cloud over half the frame. Give the dusk sky its colour (rose to violet, as Everglade's dusk reads) for snow, or the preset for every painterly realm with the owner's look, and check the fixture's and Everglade's goldens move only with that approval.",
+      "files": [
+        "verse/style.coax",
+        "apps/openagents-web/myrealm.wgsl",
+        "docs/verse/art-styles.md"
+      ],
+      "acceptance": [
+        "A painterly snow realm at dusk measures saturation 0.22 or more at 1440x900 and 390x844 on staging",
+        "The style check still passes for Everglade and the fixture"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
