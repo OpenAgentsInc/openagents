@@ -262,3 +262,20 @@ and E. Then F. G about an hour before the talk.
   alongside it). This proves the buyer/Pylon public exchange; A's Pylon
   build/10002/two-minute evidence and G's two-machine rehearsal are recorded
   separately by the demo owner.
+
+- **B — Linux join passed, 2026-10-30 15:03 UTC.** The actual join script
+  at `efe5c86819` built Pylon and the toy engine with GCC/Nix, passed both
+  reference cases, authenticated with NIP-42 to the public relay using normal
+  system TLS trust, and published `oct30-coderos-demo` online. The join took
+  about **137 seconds** with an existing isolated checkout and matching checked
+  compiler; that timing excludes source download and compiler bootstrap.
+  A fresh 64-character random throwaway label stayed in a **0600** file and
+  only the file path entered argv; npub/public key were printed. The Linux
+  label-file host tests also passed with ASan/UBSan. Public logs and exact
+  source/compiler/binary identities are in
+  [`data/oct30-join-linux`](verification/data/oct30-join-linux/). The node was
+  left running for G. A separate fresh-clone Mac qualification is owned by
+  the demo owner. Native input hashing now uses the same compile-time work
+  cap as the Pylon build. A focused failed-start regression first reproduced
+  linked-stop-file truncation, then passed with the cleanup guard; the guard
+  is in `488220542e`. This does not change the tested native source graph.

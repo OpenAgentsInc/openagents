@@ -1,0 +1,11 @@
+pylon: building Pylon and toy engine
+built /home/christopherdavid/.openagents/oct30-linux-demo/build/pylon
+pylon: connecting oct30-coderos-demo to wss://relay.openagents.com
+
+Pylon online: oct30-coderos-demo
+pylon: TEST-ONLY key, signed in Coax; pubkey d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f
+pylon: npub npub16wak2l2d5784sgn8v96p9umz8cj78vs3t3czgjpfhca3ra4r5uls056yhx
+Model: psionic-toy (demo)
+Logs: /home/christopherdavid/.openagents/oct30-linux-demo/state
+Stop: Ctrl-C, or touch /home/christopherdavid/.openagents/oct30-linux-demo/state/stop
+Throwaway identity: keep its demo-label private. This demo does no paid work.
