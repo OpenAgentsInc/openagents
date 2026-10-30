@@ -905,6 +905,14 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
     // A kit mesh: its texture, cut out where the leaves' layer is clear; both sides of a leaf lit
     // (a canopy's blob normal already faces out, so it keeps it).
     if (tex.a < 0.35) { discard; }
+    // a crown's leaves thin out by an ordered dither within a few metres of the eye, so walking in
+    // the woods the camera looks through the boughs it backs into, not at their undersides
+    if (s.look == LOOK_CANOPY) {
+      let keep = smoothstep(1.4, 3.2, length(s.world - u.eye.xyz));
+      var bayer = array(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+      let px = vec2u(s.pos.xy) % vec2u(4u);
+      if ((bayer[px.y * 4u + px.x] + 0.5) / 16.0 >= keep) { discard; }
+    }
     base = person_dye(tex.rgb, s.dye) * s.tint;
     if (!front && s.look != LOOK_CANOPY) { n = -n; }
     if (s.shard != 0u) {
