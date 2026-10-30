@@ -47,8 +47,8 @@ SU_Visit :: struct {index:int= -1;action:u8;}
  r:=SU_scan(t[..],out[..]);#assert !r.authority && r.balanced && r.error==0;
  #assert !SU_scan(t[0..<7],out[..]).balanced;
 }
-#forall "source budget boundaries" units:62..<66, depth:30..<34, extra: -1..<3 {
- #assert SU_admit(units,depth,16777215,extra)==(units<64 && depth<32 && extra>=0 && extra<=1);
+#forall "source budget boundaries" units:126..<130, depth:30..<34, extra: -1..<3 {
+ #assert SU_admit(units,depth,16777215,extra)==(units<128 && depth<32 && extra>=0 && extra<=1);
 }
 #test "negative or over-budget graph inputs are refused" {
  #assert SU_admit(0,0,0,0);#assert SU_admit(0,0,0,16777216);
@@ -113,7 +113,7 @@ SU_scan :: (tokens:[] SU_Token,out:[] SU_Load)->SU_Scan #export_c {
  return r;
 }
 SU_admit :: (units:int,depth:int,total:int,bytes:int)->bool #export_c {
- return units>=0 && units<64 && depth>=0 && depth<32 && total>=0 && bytes>=0 && bytes<=16777216-total;
+ return units>=0 && units<128 && depth>=0 && depth<32 && total>=0 && bytes>=0 && bytes<=16777216-total;
 }
 SU_visit :: (paths:[] string,states:[] u8,path:string)->SU_Visit #export_c {
  if paths.count!=states.count {return SU_Visit.{action=3};}

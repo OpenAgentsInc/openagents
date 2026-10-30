@@ -64,7 +64,7 @@ dot paths and symlinks. Distinct hard-link names remain distinct units. Loading 
 the directive that closes it. This is source identity, not a guarantee
 that a filesystem cannot change during a build.
 
-Each compilation admits at most 64 distinct units, 32 active units, 16 MiB
+Each compilation admits at most 128 distinct units, 32 active units, 16 MiB
 of source bytes and 512 load directives per unit. Budget exhaustion is
 E0603. Reads are checked against the byte budget before allocation and as
 the file is read. These bounds do not make the whole compiler a hostile

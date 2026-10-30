@@ -1097,7 +1097,7 @@ C/header seed reproduces exactly in the Python-free bootstrap, with authority
 checks and a zero-survivor mutation gate. `lib/compiler/compiler.coax` is the
 actual bootstrap source graph, not a concatenated copy.
 
-One compilation admits 64 canonical units, 32 active units, 16 MiB of source
+One compilation admits 128 canonical units, 32 active units, 16 MiB of source
 bytes and 512 load directives per physical unit (E0603). Invalid loads are
 E0600, unreadable/nonregular files E0601, and unbalanced composed units E0604.
 Reads check the source-byte budget before allocation and while reading. These

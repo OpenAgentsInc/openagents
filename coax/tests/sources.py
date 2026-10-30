@@ -180,10 +180,10 @@ class Sources(unittest.TestCase):
         for n in range(65):
             self.write(f"u{n}.coax",f'#load "u{n+1}.coax";' if n<64 else '')
         self.error(self.base/"u0.coax","E0603")
-        main=self.write("main.coax",'\n'.join(f'#load "u{n}.coax";' for n in range(64))+'\nmain :: () {}')
-        for n in range(64):self.write(f"u{n}.coax",'')
+        main=self.write("main.coax",'\n'.join(f'#load "u{n}.coax";' for n in range(128))+'\nmain :: () {}')
+        for n in range(128):self.write(f"u{n}.coax",'')
         self.error(main,"E0603")
-        main.write_text('\n'.join(f'#load "u{n}.coax";' for n in range(63))+'\nmain :: () {}')
+        main.write_text('\n'.join(f'#load "u{n}.coax";' for n in range(127))+'\nmain :: () {}')
         self.success("check",main)
 
     def test_private_library_checks_need_no_native_exports(self):
@@ -196,12 +196,12 @@ class Sources(unittest.TestCase):
 #include <stdint.h>
 #include "sources.h"
 int main(void) {
-  int64_t v[] = {-1,0,1,31,32,63,64,16777215,16777216,16777217,INT64_MAX};
+  int64_t v[] = {-1,0,1,31,32,63,64,127,128,16777215,16777216,16777217,INT64_MAX};
   for(unsigned a=0;a<sizeof(v)/sizeof(v[0]);a++)
   for(unsigned b=0;b<sizeof(v)/sizeof(v[0]);b++)
   for(unsigned c=0;c<sizeof(v)/sizeof(v[0]);c++)
   for(unsigned d=0;d<sizeof(v)/sizeof(v[0]);d++) {
-    int expected=v[a]>=0 && v[a]<64 && v[b]>=0 && v[b]<32 && v[c]>=0 && v[d]>=0;
+    int expected=v[a]>=0 && v[a]<128 && v[b]>=0 && v[b]<32 && v[c]>=0 && v[d]>=0;
     if (expected) expected=(__uint128_t)v[c]+(__uint128_t)v[d]<=16777216;
     assert(SU_admit(v[a],v[b],v[c],v[d])==expected);
   }
