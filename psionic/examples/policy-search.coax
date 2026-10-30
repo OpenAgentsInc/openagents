@@ -1,0 +1,67 @@
+#import "Basic";
+#load "../lib/search.coax";
+#load "../lib/verdict.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+OP :: [4]string.["escalate","retry","widen","verify"];
+VERDICT :: [3]string.["unverifiable","passed","failed"];
+REASON :: [4]string.["none","beyond the floor","within the floor","near the floor"];
+show :: (p:SrPolicy) {
+    print("%, % retries, % context%",ifx p.model==1 then "Mammoth" else "Elephant",p.retries,
+        ifx p.context==1 then "long" else "short",ifx p.verify then ", checked" else "");
+}
+print_digest :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[8]u8;
+    for i:0..<4 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+scores_of :: (cells:[]SrCell,out:[]f64) {for c,i:cells {out[i]=c.score;}}
+average :: (v:[]f64)->f64 {t:=0.0;for x:v {t+=x;}return t/f64(v.count);}
+
+// book:begin example
+main :: () {
+    entries:[32]SrEntry;e:=sr_expand(entries[..]);#assert e.status==SrStatus.ok;
+    print("% policies, breadth first from the simplest (",e.count);show(entries[0].policy);print(", digest ");print_digest(entries[0].digest);print(")\n");
+    tasks:[60]SrTask;#assert sr_tasks(183,tasks[..])==SrStatus.ok;
+    tiers:=[3]SrTier.[SrTier.{tasks=12,trials=1,seed=301},SrTier.{tasks=30,trials=2,seed=302},SrTier.{tasks=60,trials=4,seed=303}];
+    keeps:=[2]int.[16,8];rounds:[3]SrRound;
+    s:=sr_search(entries[..],tasks[..],tiers[..],keeps[..],rounds[..]);#assert s.status==SrStatus.ok;
+    for r,k:rounds {
+        print("  round %: % policies on % tasks x % trials, best #%; kept %, lone bests %; spent % so far\n",k+1,r.measured,
+            tiers[k].tasks,tiers[k].trials,r.best,r.kept,r.frontier,r.spend);
+    }
+    w:=entries[s.winner];
+    print("winner #%: ",s.winner);show(w.policy);print(", digest ");print_digest(w.digest);print("\n");
+    path:[8]int;n:=0;at:=s.winner;while at>0 {path[n]=at;n+=1;at=entries[at].parent;}
+    print("  from the simplest:");while n>0 {n-=1;print(" %",OP[cast(int)entries[path[n]].op]);}print("\n");
+
+    // For comparison only: every policy measured in full.
+    full:[32][60]SrCell;spend:=0.0;totals:[32]f64;order:[32]int;
+    for x,i:entries {m:=sr_measure(303,x.policy,tasks[..],4,full[i][..]);spend+=m.spend;totals[i]=m.score;}
+    sr_rank(totals[..],order[..]);
+    print("measuring every policy in full would spend % (the search spent %) and pick #%\n",spend,s.spend,order[0]);
+    off:=0;top:=0.0;
+    for i:0..<60 {
+        best:=full[0][i].score;for x:full {if x[i].score>best {best=x[i].score;}}
+        if best>full[s.winner][i].score {off+=1;}
+        top+=best;
+    }
+    print("  another policy scores higher on % of 60 tasks; the best per task averages %, the winner %\n",off,r4(top/60),
+        r4(totals[s.winner]/60));
+
+    // The winner is written down; now the held-out tasks are read.
+    held:[60]SrTask;#assert sr_tasks(9183,held[..])==SrStatus.ok;
+    cells:[60]SrCell;base:[60]f64;runs:[16*60]f64;
+    #assert sr_measure(501,SR_SIMPLEST,held[..],4,cells[..]).status==SrStatus.ok;scores_of(cells[..],base[..]);
+    for r:0..<16 {
+        #assert sr_measure(cast(u64)(501+r),w.policy,held[..],4,cells[..]).status==SrStatus.ok;scores_of(cells[..],runs[r*60..<(r+1)*60]);
+    }
+    groups:[60]int;zero:[60]int;for i:0..<60 {groups[i]=i;}
+    f:=ns_floor(runs[..],zero[..],0,16,1);#assert f.status==NsStatus.ok;
+    print("held-out 60 tasks, 4 trials each: score per task % for the simplest, % for the winner; floor %\n",
+        r4(average(base[..])),r4(average(runs[0..<60])),r4(f.floor));
+    d:=vd_decision(base[..],runs[0..<60],groups[..],zero[..],0,f,1,7,1000);#assert d.status==VdStatus.ok;
+    print("  decision gate: gain % per task, % of 1000 replicates at or below no gain -> % (%)\n",r4(d.gain.gain),d.gain.below,
+        VERDICT[cast(int)d.result.verdict],REASON[cast(int)d.result.reason]);
+}
+// book:end example

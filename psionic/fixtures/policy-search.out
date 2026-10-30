@@ -1,0 +1,10 @@
+32 policies, breadth first from the simplest (Elephant, 0 retries, short context, digest 1e94bdd0)
+  round 1: 32 policies on 12 tasks x 1 trials, best #19; kept 16, lone bests 0; spent 2395.5 so far
+  round 2: 16 policies on 30 tasks x 2 trials, best #30; kept 8, lone bests 1; spent 6047.0 so far
+  round 3: 9 policies on 60 tasks x 4 trials, best #30; kept 0, lone bests 0; spent 11479.5 so far
+winner #30: Elephant, 3 retries, long context, checked, digest 6feb8050
+  from the simplest: retry retry retry widen verify
+measuring every policy in full would spend 45490.0 (the search spent 11479.5) and pick #30
+  another policy scores higher on 55 of 60 tasks; the best per task averages 0.7206, the winner 0.6117
+held-out 60 tasks, 4 trials each: score per task 0.3725 for the simplest, 0.5558 for the winner; floor 0.0834
+  decision gate: gain 0.1833 per task, 7 of 1000 replicates at or below no gain -> passed (beyond the floor)

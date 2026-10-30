@@ -1,0 +1,387 @@
+// Chapter 183: search a policy, cheapest first. A policy is a manifest with a
+// SHA-256 digest; operators named for what they do grow every policy from the
+// simplest one; successive halving measures them all cheaply, keeps the best
+// half and any policy that alone is best on some task, and measures the
+// survivors more fully, until one is written down as the winner.
+// Profile cpu-f64-search-v1: binary64, plain sums in a fixed order, up to 64
+// policies, 256 tasks, 4 tiers and 16 trials per task.
+#load "suite.coax";
+#load "tabular.coax";
+#authority;
+
+SrStatus :: enum u8 {ok;shape;capacity;number;}
+SrOp :: enum u8 {escalate;retry;widen;verify;}
+// model: 0 Elephant, 1 Mammoth; context: 0 short, 1 long.
+SrPolicy :: struct {model:u8;retries:int;context:u8;verify:bool;}
+SrApplied :: struct {changed:bool;policy:SrPolicy;}
+SrEntry :: struct {policy:SrPolicy;digest:[32]u8;parent:int;op:SrOp;}
+SrExpand :: struct {status:SrStatus;count:int;}
+SrTask :: struct {difficulty:f64;needs_context:bool;checkable:bool;}
+SrTrial :: struct {solved:bool;attempts:int;cost:f64;}
+SrCell :: struct {success:f64;cost:f64;score:f64;}
+SrMeasure :: struct {status:SrStatus;spend:f64;score:f64;}
+SrTier :: struct {tasks:int;trials:int;seed:u64;}
+SrRound :: struct {measured:int;best:int;kept:int;frontier:int;spend:f64;}
+SrSearch :: struct {status:SrStatus;winner:int;rounds:int;spend:f64;}
+
+SR_POLICIES_MAX :: 64;
+SR_TASKS_MAX :: 256;
+SR_TIERS_MAX :: 4;
+SR_TRIALS_MAX :: 16;
+SR_RETRIES_MAX :: 3;
+SR_BIG :: 1.0e300;
+// The world, written down: skill and price per model, long context doubles
+// the price and adds 1.5 where it is needed (and costs 1.0 where it is
+// missing), a check costs 0.5 per attempt; a task's score is its success
+// rate less 0.04 per unit of cost.
+SR_SKILL :: [2]f64.[0,1.5];
+SR_PRICE :: [2]f64.[1,6];
+SR_LONG :: 2.0;
+SR_CHECK :: 0.5;
+SR_LAMBDA :: 0.04;
+SR_SIMPLEST :: SrPolicy.{};
+
+// Checks precede the implementation. Pinned values come from
+// psionic/tests/search_oracle.py --tests; the rest are worked by hand.
+sr_policy_is :: (p:SrPolicy,model:int,retries:int,context:int,verify:bool)->bool {
+    return cast(int)p.model==model && p.retries==retries && cast(int)p.context==context && p.verify==verify;
+}
+sr_cell_is :: (c:SrCell,success:f64,cost:f64,score:f64)->bool {return c.success==success && c.cost==cost && c.score==score;}
+
+#test "the check helpers see every field" {
+    p:=SrPolicy.{model=1,retries=2,context=1,verify=true};#assert sr_policy_is(p,1,2,1,true);
+    #assert !sr_policy_is(p,0,2,1,true) && !sr_policy_is(p,1,1,1,true) && !sr_policy_is(p,1,2,0,true) && !sr_policy_is(p,1,2,1,false);
+    c:=SrCell.{success=1,cost=2,score=3};#assert sr_cell_is(c,1,2,3);
+    #assert !sr_cell_is(c,0,2,3) && !sr_cell_is(c,1,0,3) && !sr_cell_is(c,1,2,0);
+}
+
+#test "a manifest digest" {
+    #assert su_hex(sr_digest(SR_SIMPLEST),"1e94bdd00f310d44743a64716ed8819aac1ef41d6fd19ab85bbda2f8c1c1109e");
+    #assert su_hex(sr_digest(SrPolicy.{model=1,retries=3,context=1,verify=true}),"cf8b6200530cfce5afe1c1e112b8bbce94b292becfa02f91df1a0530e1381d1b");
+    seen:[5][32]u8;seen[0]=sr_digest(SR_SIMPLEST);
+    seen[1]=sr_digest(SrPolicy.{model=1});seen[2]=sr_digest(SrPolicy.{retries=1});
+    seen[3]=sr_digest(SrPolicy.{context=1});seen[4]=sr_digest(SrPolicy.{verify=true});
+    for a:0..<5 {for b:a+1..<5 {#assert !su_same(seen[a],seen[b]);}}
+}
+
+#test "operators named for what they do" {
+    p:=SR_SIMPLEST;
+    a:=sr_apply(p,SrOp.escalate);#assert a.changed && sr_policy_is(a.policy,1,0,0,false);
+    #assert !sr_apply(a.policy,SrOp.escalate).changed && sr_policy_is(sr_apply(a.policy,SrOp.escalate).policy,1,0,0,false);
+    a=sr_apply(p,SrOp.retry);#assert a.changed && sr_policy_is(a.policy,0,1,0,false);
+    three:=SrPolicy.{retries=3};#assert !sr_apply(three,SrOp.retry).changed && sr_apply(SrPolicy.{retries=2},SrOp.retry).policy.retries==3;
+    a=sr_apply(p,SrOp.widen);#assert a.changed && sr_policy_is(a.policy,0,0,1,false);
+    #assert !sr_apply(a.policy,SrOp.widen).changed;
+    a=sr_apply(p,SrOp.verify);#assert a.changed && sr_policy_is(a.policy,0,0,0,true);
+    #assert !sr_apply(a.policy,SrOp.verify).changed;
+}
+
+#test "every policy, breadth first from the simplest" {
+    out:[33]SrEntry;out[32].parent=7;
+    e:=sr_expand(out[..]);#assert e.status==SrStatus.ok && e.count==32 && out[32].parent==7;
+    #assert sr_policy_is(out[0].policy,0,0,0,false) && out[0].parent==-1;
+    #assert sr_policy_is(out[1].policy,1,0,0,false) && out[1].parent==0 && out[1].op==SrOp.escalate;
+    #assert sr_policy_is(out[2].policy,0,1,0,false) && out[2].parent==0 && out[2].op==SrOp.retry;
+    #assert sr_policy_is(out[3].policy,0,0,1,false) && out[3].op==SrOp.widen && sr_policy_is(out[4].policy,0,0,0,true) && out[4].op==SrOp.verify;
+    #assert sr_policy_is(out[5].policy,1,1,0,false) && out[5].parent==1 && out[5].op==SrOp.retry;
+    #assert sr_policy_is(out[30].policy,0,3,1,true) && out[30].parent==24 && out[30].op==SrOp.verify;
+    #assert sr_policy_is(out[31].policy,1,3,1,true) && out[31].parent==27;
+    for x,i:out[0..<32] {
+        #assert su_same(x.digest,sr_digest(x.policy));
+        if i>0 {
+            a:=sr_apply(out[x.parent].policy,x.op);
+            #assert x.parent<i && a.changed && su_same(sr_digest(a.policy),x.digest) && cast(int)x.op>=cast(int)out[x.parent].op;
+        }
+        for y:out[0..<i] {#assert !su_same(x.digest,y.digest);}
+    }
+    #assert sr_expand(out[0..<31]).status==SrStatus.capacity && sr_expand(out[0..<32]).status==SrStatus.ok;
+}
+
+#test "the world by hand" {
+    ts:[7]SrTask;ts[6].difficulty=7;
+    #assert sr_tasks(5,ts[0..<6])==SrStatus.ok && ts[6].difficulty==7;
+    #assert ts[0].difficulty==-0.452927816064264 && ts[0].needs_context && !ts[0].checkable;
+    #assert ts[4].difficulty==1.4970023906947678 && !ts[4].needs_context && ts[4].checkable;
+    for t,i:ts[0..<6] {
+        #assert t.difficulty==4*tb_uniform(5,cast(u64)(3*i))-2;
+        #assert t.needs_context==(tb_uniform(5,cast(u64)(3*i+1))>=0.7) && t.checkable==(tb_uniform(5,cast(u64)(3*i+2))>=0.6);
+    }
+    #assert sr_tasks(5,ts[0..<0])==SrStatus.shape && sr_tasks(5,ts[0..<1])==SrStatus.ok;
+    big:[257]SrTask;#assert sr_tasks(5,big[0..<256])==SrStatus.ok && sr_tasks(5,big[..])==SrStatus.shape;
+    // Chance: 0.5 + z/(2(1+|z|)) for z = skill - difficulty, adjusted for context.
+    plain:=SrTask.{difficulty=0.5};
+    #assert sr_chance(SR_SIMPLEST,plain)==0.5-0.5/3 && sr_chance(SrPolicy.{model=1},plain)==0.5+1.0/4;
+    needs:=SrTask.{difficulty=0.5,needs_context=true};
+    #assert sr_chance(SR_SIMPLEST,needs)==0.5-1.5/5 && sr_chance(SrPolicy.{context=1},needs)==0.5+1.0/4;
+    #assert sr_chance(SrPolicy.{context=1},plain)==sr_chance(SR_SIMPLEST,plain);
+}
+
+#test "a trial: retries need a check that can run" {
+    hard:=SrTask.{difficulty=1.5,checkable=true};
+    // Chance 0.5 - 1.5/5 = 0.2; attempt a solves when the uniform reaches 0.8.
+    u:[4]f64;for a:0..<4 {u[a]=tb_uniform(9,cast(u64)((2*16+1)*4+a));}
+    first:=0;while first<4 && u[first]<0.8 {first+=1;}
+    t:=sr_trial(9,SrPolicy.{retries=3,verify=true},hard,2,1);
+    #assert t.solved==(first<4) && t.attempts==(ifx first<4 then first+1 else 4) && t.cost==1.5*f64(t.attempts);
+    t=sr_trial(9,SrPolicy.{retries=3},hard,2,1);#assert t.attempts==1 && t.cost==1 && t.solved==(u[0]>=0.8);
+    plain:=hard;plain.checkable=false;
+    t=sr_trial(9,SrPolicy.{retries=3,verify=true},plain,2,1);#assert t.attempts==1 && t.cost==1.5;
+    t=sr_trial(9,SrPolicy.{model=1,context=1},plain,2,1);#assert t.attempts==1 && t.cost==12;
+    // A certain task solves on the first attempt.
+    easy:=SrTask.{difficulty=-1.0e300,checkable=true};
+    t=sr_trial(9,SrPolicy.{retries=3,verify=true},easy,0,0);#assert t.solved && t.attempts==1;
+    never:=SrTask.{difficulty=1.0e300,checkable=true};
+    t=sr_trial(9,SrPolicy.{retries=2,verify=true},never,0,0);#assert !t.solved && t.attempts==3 && t.cost==4.5;
+}
+
+#test "measured cells against the oracle" {
+    ts:[6]SrTask;#assert sr_tasks(5,ts[..])==SrStatus.ok;
+    cells:[7]SrCell;cells[6].score=9;
+    m:=sr_measure(11,SR_SIMPLEST,ts[..],3,cells[..]);#assert m.status==SrStatus.ok && m.spend==18 && m.score==1.7599999999999998 && cells[6].score==9;
+    #assert sr_cell_is(cells[0],0,1,-0.04) && sr_cell_is(cells[1],1,1,0.96) && sr_cell_is(cells[3],0.3333333333333333,1,0.29333333333333333);
+    #assert sr_cell_is(cells[4],0.6666666666666666,1,0.6266666666666666);
+    m=sr_measure(11,SrPolicy.{model=1,retries=3,context=1,verify=true},ts[..],3,cells[..]);#assert m.spend==262.5 && m.score==1.5;
+    #assert sr_cell_is(cells[2],0.3333333333333333,12.5,-0.16666666666666669) && sr_cell_is(cells[4],1,25,0);
+    m=sr_measure(11,SrPolicy.{retries=2,verify=true},ts[..],3,cells[0..<6]);#assert m.status==SrStatus.ok && m.spend==30 && m.score==1.5999999999999999;
+    #assert sr_cell_is(cells[4],0.6666666666666666,2.5,0.5666666666666667) && sr_cell_is(cells[3],0.3333333333333333,1.5,0.2733333333333333);
+    #assert sr_measure(11,SR_SIMPLEST,ts[..],3,cells[0..<5]).status==SrStatus.capacity;
+    #assert sr_measure(11,SR_SIMPLEST,ts[0..<0],3,cells[..]).status==SrStatus.shape && sr_measure(11,SR_SIMPLEST,ts[0..<1],3,cells[..]).status==SrStatus.ok;
+    big:[257]SrTask;wide:[257]SrCell;
+    #assert sr_measure(11,SR_SIMPLEST,big[0..<256],1,wide[..]).status==SrStatus.ok && sr_measure(11,SR_SIMPLEST,big[..],1,wide[..]).status==SrStatus.shape;
+    #assert sr_measure(11,SR_SIMPLEST,ts[..],0,cells[..]).status==SrStatus.shape && sr_measure(11,SR_SIMPLEST,ts[..],17,cells[..]).status==SrStatus.shape;
+    #assert sr_measure(11,SR_SIMPLEST,ts[..],16,cells[..]).status==SrStatus.ok;
+    bad:=[4]SrPolicy.[SrPolicy.{model=2},SrPolicy.{retries=4},SrPolicy.{retries=-1},SrPolicy.{context=2}];
+    for p:bad {#assert sr_measure(11,p,ts[..],1,cells[..]).status==SrStatus.shape;}
+    edge:=ts;edge[5].difficulty=1.0e301;#assert sr_measure(11,SR_SIMPLEST,edge[..],1,cells[..]).status==SrStatus.number;
+    edge[5].difficulty=-1.0e301;#assert sr_measure(11,SR_SIMPLEST,edge[..],1,cells[..]).status==SrStatus.number;
+    edge[5].difficulty=1.0e300;#assert sr_measure(11,SR_SIMPLEST,edge[..],1,cells[..]).status==SrStatus.ok;
+    edge[5].difficulty=-1.0e300;#assert sr_measure(11,SR_SIMPLEST,edge[..],1,cells[..]).status==SrStatus.ok;
+    edge[0].difficulty=0.0/0.0;#assert sr_measure(11,SR_SIMPLEST,edge[..],1,cells[..]).status==SrStatus.number;
+}
+
+#test "ranking and a task's lone best" {
+    order:[5]int;for j:0..<5 {order[j]=9;}
+    total:=[4]f64.[1,3,3,2];sr_rank(total[..],order[..]);
+    #assert order[0]==1 && order[1]==2 && order[2]==3 && order[3]==0 && order[4]==9;
+    // Three positions, two tasks: score[position*2+task].
+    score:[6]SrCell;for v,i:[6]f64.[5,4,3,4,1,1] {score[i].score=v;}
+    #assert sr_lone_best(score[..],3,2,0)==0 && sr_lone_best(score[..],3,2,1)==-1;
+    later:[3]SrCell;for v,i:[3]f64.[1,5,3] {later[i].score=v;}#assert sr_lone_best(later[..],3,1,0)==1;
+    #assert sr_lone_best(later[..],1,1,0)==0;
+    // Task 0's lone best is position 0; task 1's best is shared.
+    keep:[3]bool;#assert sr_frontier(score[..],3,2,keep[..])==1 && keep[0] && !keep[1] && !keep[2];
+    #assert sr_frontier(score[..],3,2,keep[..])==0;
+    other:=[3]bool.[false,true,false];#assert sr_frontier(later[..],3,1,other[..])==0 && !other[0] && !other[2];
+}
+
+SR_TEST_TIERS :: [2]SrTier.[SrTier.{tasks=4,trials=1,seed=21},SrTier.{tasks=8,trials=2,seed=22}];
+
+#test "successive halving keeps a task's lone best" {
+    entries:[32]SrEntry;#assert sr_expand(entries[..]).count==32;
+    ts:[8]SrTask;#assert sr_tasks(41,ts[..])==SrStatus.ok;
+    keeps:=[1]int.[4];rounds:[3]SrRound;rounds[2].best=5;tiers:=SR_TEST_TIERS;
+    s:=sr_search(entries[..],ts[..],tiers[..],keeps[..],rounds[..]);
+    #assert s.status==SrStatus.ok && s.winner==30 && s.rounds==2 && s.spend==1038 && rounds[2].best==5;
+    // Policies 3, 9 and 17 never check, so their retries do nothing: they
+    // tie, and the lower number goes first. Policy 25 is the only best on a
+    // task and is measured again although it ranked lower.
+    #assert rounds[0].measured==32 && rounds[0].best==30 && rounds[0].kept==4 && rounds[0].frontier==1 && rounds[0].spend==864.5;
+    #assert rounds[1].measured==5 && rounds[1].best==30 && rounds[1].kept==0 && rounds[1].frontier==0 && rounds[1].spend==1038;
+    one:=sr_search(entries[..],ts[..],tiers[0..<1],keeps[0..<0],rounds[..]);
+    #assert one.status==SrStatus.ok && one.winner==30 && one.rounds==1 && one.spend==864.5;
+    // Keeping one measures the best policy and the lone bests again.
+    keeps[0]=1;s=sr_search(entries[..],ts[..],tiers[..],keeps[..],rounds[..]);
+    #assert rounds[0].kept==1 && rounds[0].frontier==1 && rounds[1].measured==2;
+    keeps[0]=32;s=sr_search(entries[..],ts[..],tiers[..],keeps[..],rounds[..]);
+    #assert rounds[0].kept==32 && rounds[0].frontier==0 && rounds[1].measured==32;
+}
+
+#test "search refusals" {
+    entries:[65]SrEntry;#assert sr_expand(entries[0..<32]).count==32;
+    for i:32..<65 {entries[i]=entries[i%32];}
+    ts:[8]SrTask;#assert sr_tasks(41,ts[..])==SrStatus.ok;
+    keeps:=[3]int.[4,2,1];rounds:[4]SrRound;
+    tiers:=[4]SrTier.[SR_TEST_TIERS[0],SR_TEST_TIERS[1],SR_TEST_TIERS[1],SR_TEST_TIERS[1]];
+    #assert sr_search(entries[0..<64],ts[..],tiers[..],keeps[..],rounds[..]).status==SrStatus.ok;
+    #assert sr_search(entries[..],ts[..],tiers[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.shape;
+    #assert sr_search(entries[0..<0],ts[..],tiers[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.shape;
+    #assert sr_search(entries[0..<1],ts[..],tiers[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.ok;
+    #assert sr_search(entries[0..<32],ts[..],tiers[0..<0],keeps[0..<0],rounds[..]).status==SrStatus.shape;
+    five:[5]SrTier;for k:0..<5 {five[k]=SR_TEST_TIERS[0];}
+    four:=[4]int.[1,1,1,1];
+    #assert sr_search(entries[0..<32],ts[..],five[..],four[..],rounds[..]).status==SrStatus.shape;
+    #assert sr_search(entries[0..<32],ts[..],tiers[0..<2],keeps[0..<2],rounds[..]).status==SrStatus.shape;
+    #assert sr_search(entries[0..<32],ts[..],tiers[0..<2],keeps[0..<1],rounds[0..<1]).status==SrStatus.capacity;
+    #assert sr_search(entries[0..<32],ts[..],tiers[0..<2],keeps[0..<1],rounds[0..<2]).status==SrStatus.ok;
+    zero:=[1]int.[0];#assert sr_search(entries[0..<32],ts[..],tiers[0..<2],zero[..],rounds[..]).status==SrStatus.shape;
+    t:=tiers;t[1].tasks=9;#assert sr_search(entries[0..<32],ts[..],t[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.shape;
+    t=tiers;t[0].tasks=1;t[0].trials=16;#assert sr_search(entries[0..<32],ts[..],t[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.ok;
+    t=tiers;t[0].tasks=0;#assert sr_search(entries[0..<32],ts[..],t[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.shape;
+    t=tiers;t[0].trials=0;#assert sr_search(entries[0..<32],ts[..],t[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.shape;
+    t=tiers;t[0].trials=17;#assert sr_search(entries[0..<32],ts[..],t[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.shape;
+    bad:=entries;bad[3].policy.retries=4;#assert sr_search(bad[0..<32],ts[..],tiers[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.shape;
+    worse:=ts;worse[7].difficulty=0.0/0.0;#assert sr_search(entries[0..<32],worse[..],tiers[0..<2],keeps[0..<1],rounds[..]).status==SrStatus.number;
+}
+
+// book:begin manifest
+// A policy's digest: chapter 178's encoding under its own tag.
+sr_digest :: (p:SrPolicy)->[32]u8 #export_c {
+    buf:[64]u8;at:=su_text(buf[..],0,"psionic.policy.v1");buf[at]=p.model;
+    at=su_u64(buf[..],at+1,cast(u64)p.retries);buf[at]=p.context;at=su_flag(buf[..],at+1,p.verify);
+    return su_hash(buf[0..<at]);
+}
+// Each operator changes one field and says so; at its limit it changes nothing.
+sr_apply :: (p:SrPolicy,op:SrOp)->SrApplied {
+    r:=SrApplied.{policy=p};
+    if op==SrOp.escalate && p.model==0 {r.policy.model=1;r.changed=true;}
+    if op==SrOp.retry && p.retries<SR_RETRIES_MAX {r.policy.retries+=1;r.changed=true;}
+    if op==SrOp.widen && p.context==0 {r.policy.context=1;r.changed=true;}
+    if op==SrOp.verify && !p.verify {r.policy.verify=true;r.changed=true;}
+    return r;
+}
+// Breadth first from the simplest policy. A policy grows only by its own
+// operator or a later one, so each is reached by one path (escalate, then
+// retries, then widen, then verify) and none twice; each is recorded with
+// its digest, the policy it came from and the operator used.
+sr_expand :: (out:[]SrEntry)->SrExpand #export_c {
+    n:=1;
+    if out.count<32 {return SrExpand.{status=SrStatus.capacity};}
+    out[0]=SrEntry.{policy=SR_SIMPLEST,digest=sr_digest(SR_SIMPLEST),parent=-1};
+    k:=0;
+    while k<n {
+        for o:cast(int)out[k].op..<4 {
+            op:=cast(SrOp)o;a:=sr_apply(out[k].policy,op);
+            if a.changed {out[n]=SrEntry.{policy=a.policy,digest=sr_digest(a.policy),parent=k,op=op};n+=1;}
+        }
+        k+=1;
+    }
+    return SrExpand.{count=n};
+}
+// book:end manifest
+
+// book:begin world
+// world-sim-v1. Task i draws a difficulty in [-2, 2], whether it needs long
+// context (3 in 10) and whether its answer can be checked (4 in 10).
+sr_tasks :: (seed:u64,out:[]SrTask)->SrStatus #export_c {
+    if out.count<1 || out.count>SR_TASKS_MAX {return SrStatus.shape;}
+    for i:0..<out.count {
+        b:=cast(u64)(3*i);
+        out[i]=SrTask.{difficulty=4*tb_uniform(seed,b)-2,needs_context=cast(int)(tb_uniform(seed,b+1)+0.3)>0,
+            checkable=cast(int)(tb_uniform(seed,b+2)+0.4)>0};
+    }
+    return SrStatus.ok;
+}
+sr_chance :: (p:SrPolicy,task:SrTask)->f64 {
+    z:=SR_SKILL[cast(int)p.model]-task.difficulty;
+    if task.needs_context {z+=ifx p.context==1 then 1.5 else -1.0;}
+    return 0.5+z/(2*(1+abs(z)));
+}
+// Without a check that can run, the agent cannot tell a wrong answer from a
+// right one, so it never retries.
+sr_trial :: (seed:u64,p:SrPolicy,task:SrTask,index:int,trial:int)->SrTrial {
+    q:=sr_chance(p,task);
+    attempts:=ifx p.verify && task.checkable then 1+p.retries else 1;
+    r:=SrTrial.{attempts=attempts};
+    for a:0..<attempts {
+        r.cost+=SR_PRICE[cast(int)p.model]*(ifx p.context==1 then SR_LONG else 1.0)+(ifx p.verify then SR_CHECK else 0.0);
+        if cast(int)(tb_uniform(seed,cast(u64)((index*16+trial)*4+a))+q)>0 {r.solved=true;r.attempts=a+1;return r;}
+    }
+    return r;
+}
+// book:end world
+
+sr_policy_ok :: (p:SrPolicy)->bool {return p.model<=1 && p.retries>=0 && p.retries<=SR_RETRIES_MAX && p.context<=1;}
+sr_tasks_ok :: (tasks:[]SrTask)->SrStatus {
+    if tasks.count<1 || tasks.count>SR_TASKS_MAX {return SrStatus.shape;}
+    for t:tasks {if !(t.difficulty>=-SR_BIG && t.difficulty<=SR_BIG) {return SrStatus.number;}}
+    return SrStatus.ok;
+}
+
+// book:begin measure
+// A tier's measurement: each task tried trials times; its cell holds the
+// success rate, the mean cost and the score. The spend is every unit paid;
+// the score is the cells' scores summed in task order.
+sr_measure :: (seed:u64,p:SrPolicy,tasks:[]SrTask,trials:int,out:[]SrCell)->SrMeasure #export_c {
+    status:=sr_tasks_ok(tasks);if status!=SrStatus.ok {return SrMeasure.{status=status};}
+    if trials<1 || trials>SR_TRIALS_MAX || !sr_policy_ok(p) {return SrMeasure.{status=SrStatus.shape};}
+    if out.count<tasks.count {return SrMeasure.{status=SrStatus.capacity};}
+    r:=SrMeasure.{};
+    for task,i:tasks {
+        solved:=0;total:=0.0;
+        for t:0..<trials {x:=sr_trial(seed,p,task,i,t);if x.solved {solved+=1;}total+=x.cost;r.spend+=x.cost;}
+        success:=f64(solved)/f64(trials);cost:=total/f64(trials);
+        out[i]=SrCell.{success=success,cost=cost,score=success-SR_LAMBDA*cost};
+        r.score+=out[i].score;
+    }
+    return r;
+}
+// book:end measure
+
+// book:begin rank
+// Positions by total, highest first, the earlier position first on ties.
+sr_rank :: (total:[]f64,order:[]int) {
+    for j:0..<total.count {
+        q:=j;
+        while q>0 && total[j]>total[order[q-1]] {order[q]=order[q-1];q-=1;}
+        order[q]=j;
+    }
+}
+// The position that alone holds the best score on task i of m, or -1 when
+// the best is shared.
+sr_lone_best :: (cells:[]SrCell,count:int,m:int,i:int)->int {
+    for j:0..<count {
+        alone:=true;
+        for q:0..<count {if q!=j && cells[q*m+i].score>=cells[j*m+i].score {alone=false;}}
+        if alone {return j;}
+    }
+    return -1;
+}
+// Keeps every position that alone holds the best score on one of m tasks;
+// returns how many were not kept already.
+sr_frontier :: (cells:[]SrCell,count:int,m:int,keep:[]bool)->int {
+    added:=0;
+    for i:0..<m {
+        j:=sr_lone_best(cells,count,m,i);
+        if j>=0 && !keep[j] {keep[j]=true;added+=1;}
+    }
+    return added;
+}
+// book:end rank
+
+// book:begin halve
+// Each tier measures every policy still alive on its first tasks. Policies
+// are ranked by their total score, the lower number first on ties. All but
+// the last tier keep the best keeps[k], and any other policy that alone holds
+// the best score on some task. The last tier's first is the winner.
+sr_search :: (entries:[]SrEntry,tasks:[]SrTask,tiers:[]SrTier,keeps:[]int,rounds:[]SrRound)->SrSearch #export_c {
+    n:=entries.count;
+    if n<1 || n>SR_POLICIES_MAX || tiers.count<1 || tiers.count>SR_TIERS_MAX || keeps.count!=tiers.count-1 {return SrSearch.{status=SrStatus.shape};}
+    status:=sr_tasks_ok(tasks);if status!=SrStatus.ok {return SrSearch.{status=status};}
+    for e:entries {if !sr_policy_ok(e.policy) {return SrSearch.{status=SrStatus.shape};}}
+    for t:tiers {if t.tasks<1 || t.tasks>tasks.count || t.trials<1 || t.trials>SR_TRIALS_MAX {return SrSearch.{status=SrStatus.shape};}}
+    for k:keeps {if k<1 {return SrSearch.{status=SrStatus.shape};}}
+    if rounds.count<tiers.count {return SrSearch.{status=SrStatus.capacity};}
+    alive:[SR_POLICIES_MAX]int;count:=n;for i:1..<n {alive[i]=i;}   // alive[0] is 0 already
+    cells:[SR_POLICIES_MAX*SR_TASKS_MAX]SrCell;total:[SR_POLICIES_MAX]f64;
+    r:=SrSearch.{};
+    for tier,k:tiers {
+        m:=tier.tasks;
+        for j:0..<count {
+            e:=alive[j];x:=sr_measure(tier.seed,entries[e].policy,tasks[0..<m],tier.trials,cells[j*m..<j*m+m]);
+            r.spend+=x.spend;total[j]=x.score;
+        }
+        order:[SR_POLICIES_MAX]int;sr_rank(total[0..<count],order[..]);
+        round:=SrRound.{measured=count,best=alive[order[0]],spend=r.spend};
+        r.winner=round.best;
+        if k<keeps.count {
+            keep:[SR_POLICIES_MAX]bool;
+            for j:0..<count {if j<keeps[k] {keep[order[j]]=true;round.kept+=1;}}
+            round.frontier=sr_frontier(cells[..],count,m,keep[..]);
+            next:=0;for j:0..<count {if keep[j] {alive[next]=alive[j];next+=1;}}
+            count=next;
+        }
+        rounds[k]=round;r.rounds+=1;
+    }
+    return r;
+}
+// book:end halve

@@ -590,6 +590,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/policy-search.coax",
+      "chapter": "psionic/book/ch183-search-a-policy-cheapest-first.md",
+      "stdout": "psionic/fixtures/policy-search.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

@@ -1,0 +1,4 @@
+// Chapter 183's native harness also reports through chapter 180's gate, so
+// its library carries it; the search library does not load it.
+#load "../lib/search.coax";
+#load "../lib/verdict.coax";

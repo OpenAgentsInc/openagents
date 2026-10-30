@@ -56,6 +56,9 @@ headroom.
 passed, failed or unverifiable verdicts for chapters 12, 156 and 157.
 [Chapter 182](ch182-fit-settings-on-recorded-answers.md) fits a stall
 detector's settings on recorded answers with no model calls.
+[Chapter 183](ch183-search-a-policy-cheapest-first.md) searches 32 policies
+by successive halving and finds the full measurement's winner for a quarter
+of its spend.
 [Chapter 164a](ch164a-learn-which-model-to-call.md) uses chapter 70's trainer
 to choose among three simulated models and to judge a new router from an old
 one's logs.
@@ -753,7 +756,7 @@ advance (164, 180).
 | [180. Gates that can say unverifiable](ch180-gates-that-can-say-unverifiable.md) — runnable: cpu-f64-verdict-v1, chapters 12, 156, 157 and 179 reporting | Comparison gates as `#authority` Coax: a decision gate requiring a gain beyond the noise floor, a probability gate that ranks log loss and confident errors above calibration error and accuracy, and an evaluation gate where cost and time can block a result but never earn one; verdicts are passed, failed or unverifiable. Chapters 12, 156 and 157 report through them. |
 | 181. Environments with checkers | A task, a checker, a budget and a replay as one record; the checker must fail on empty work and pass on the reference solution before the environment is admitted; rollouts use Psionic-served models. |
 | [182. Fit settings on recorded answers](ch182-fit-settings-on-recorded-answers.md) — runnable: cpu-f64-settings-v1, a simulated stall detector | Thresholds, cut points and weights fitted from answers already recorded, with zero model calls: midpoint candidates, acceptance only when strictly better on the fit set and on grouped cross-validation; the first optimization to try, before any text changes. |
-| 183. Search a policy, cheapest first — in progress: Claude, 2026-10-29 | Policies as digested manifests, operators named for what they do, successive halving across tiers from replay to full measurement, a per-task Pareto frontier, and the held-out read only after the winner is written down. |
+| [183. Search a policy, cheapest first](ch183-search-a-policy-cheapest-first.md) — runnable: cpu-f64-search-v1, a simulated world | Policies as digested manifests, operators named for what they do, successive halving across tiers from replay to full measurement, a per-task Pareto frontier, and the held-out read only after the winner is written down. |
 | 184. Reflective prompt evolution | GEPA in Coax: candidates whose fields are fixed by the seed, per-instance Pareto sampling, a reflector served by Psionic that is never the grader, refusal of a malformed reflection, a check that the answer space did not drift, and a canary proving the candidate reached the model. Measured honestly against chapter 182's settings fitting. |
 | 185. Judges are components | Elephant or Mammoth inside a search as a pinned judge or router: agreement with real outcomes measured, a grader whose identity differs from the student's and the reflector's, cost per judgment recorded, and a teacher's opinion never stored as a label. |
 | 186. Outcomes become training rows | Decision outcomes and verified traces admitted with their replay verdicts; labels from diffs and checks, never from an agent's own summary; an exposure ledger across artifacts so held-out groups are never trained on; splits by time. These rows feed chapters 85 to 87, 163 and 174. |
