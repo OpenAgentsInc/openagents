@@ -66,7 +66,7 @@ Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coa
 | Camera | What you see | Controls |
 |---|---|---|
 | third | behind you and above (the first one built) | W/S walk, A/D turn, a drag turns |
-| first | at eye height (1.6 m), your figure unseen | W/S walk, A/D turn, a drag looks round, up and down |
+| first | at eye height (1.6 m), your figure unseen | W/S walk, A/D turn, a drag looks round, up and down; on a phone the left thumb walks and the right looks |
 | top | 17 m up and 10 m south of you, a fixed angle, north up | W/A/S/D, a thumb or a drag walk that way |
 | side | 2D: side-on, orthographic (12 m tall, tilted 8° so the ground shows), a lane through the realm | A/D walk, W or Space jumps (always); trees and characters stop you, and you jump onto rocks, crates and barrels |
 

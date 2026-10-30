@@ -22,6 +22,7 @@
 // The camera is the maker's (the spec's "camera", chosen at /realms/new; 0049_realm_builder_setup.sql):
 //   third  behind you (W and S walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns)
 //   first  at eye height, your figure unseen; the same keys, and a drag looks round and up and down
+//          (on a phone a thumb on the right half looks; on the left it walks)
 //   top    high above at a fixed angle, north up: W, A, S and D (or a thumb, or a drag) walk that way
 //   side   2D: side-on with an orthographic camera; A and D walk left and right, W or Space jumps
 //          (always, as a 2D realm needs); what stands in your lane stops you: trees and the characters
@@ -947,8 +948,10 @@ realm_pointer :: (s: [] MyRealm, t: [] Track, x: f32, y: f32, phase: int, kind: 
   if phase == POINTER_DOWN {
     if b >= 0 { s[0].press = b; return true; }
     c := cell_at(s, x, y); if c >= 0 { s[0].cell_press = c; return true; }
-    // a mouse drag turns (first person: looks round, up and down); with a fixed camera it walks, as a thumb does
-    if kind == 0 && s[0].camera != CAM_TOP && s[0].camera != CAM_SIDE { s[0].turning = true; s[0].turn_id = id; s[0].turn_x = x; s[0].turn_y = y; return true; }
+    // a mouse drag turns (first person: looks round, up and down); with a fixed camera it walks, as a thumb does.
+    // First person on a phone: a thumb on the right half looks round, up and down; on the left it walks.
+    looks := s[0].camera == CAM_FIRST && kind != 0 && x > s[0].width * 0.5;
+    if (kind == 0 && s[0].camera != CAM_TOP && s[0].camera != CAM_SIDE) || looks { s[0].turning = true; s[0].turn_id = id; s[0].turn_x = x; s[0].turn_y = y; return true; }
     s[0].stick = true; s[0].stick_id = id; s[0].stick_x0 = x; s[0].stick_y0 = y; s[0].stick_dx = 0; s[0].stick_dy = 0;
     return true;
   }
@@ -1133,7 +1136,7 @@ draw_hud :: (s: [] MyRealm, out: [] f32, at: int) -> int {
     n = centred(d, out, n, line, w * 0.5, by - 16 * k, fit_cap(line, 8 * k, w - 2 * g), ember(k, 0.95));
   } else if s[0].walked < 6 && s[0].spec_ready && s[0].pane == PANE_NONE {
     hint := ifx phone then "DRAG A THUMB TO WALK AND TURN" else "W AND S WALK, A AND D TURN, OR DRAG TO TURN";
-    if s[0].camera == CAM_FIRST && !phone { hint = "W AND S WALK, A AND D TURN, DRAG TO LOOK"; }
+    if s[0].camera == CAM_FIRST { hint = ifx phone then "LEFT THUMB WALKS, RIGHT THUMB LOOKS" else "W AND S WALK, A AND D TURN, DRAG TO LOOK"; }
     if s[0].camera == CAM_TOP { hint = ifx phone then "DRAG A THUMB TO WALK" else "W, A, S AND D WALK, OR DRAG"; }
     if s[0].camera == CAM_SIDE { hint = ifx phone then "DRAG LEFT OR RIGHT TO WALK, UP TO JUMP" else "A AND D WALK, W OR SPACE JUMPS"; }
     n = centred(d, out, n, hint, w * 0.5, by - 16 * k, fit_cap(hint, 7.5 * k, w - 2 * g), white(k, 0.7));
@@ -1593,4 +1596,21 @@ SIDE :: "realm flat\nname Flat\nstyle painterly\nground desert\ntime dusk\ncamer
   k5 := realm_key(s[..], t[..], 'a', true);
   for i: 0..<200 { realm_step(s[..], 0.05); if i % 10 == 0 { leap(s[..]); } }
   #assert s[0].x >= x0 - 5 + 0.4 + BODY_R - 0.01;
+}
+
+#test "first person on a 390 px phone: a thumb on the right looks up and down; on the left it walks" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "eyes", FIRST);
+  n := frame_of(s[..], t[..], 780, 1688);
+  p0 := s[0].pitch; yaw0 := s[0].yaw;
+  d := realm_pointer(s[..], t[..], 600, 1000, POINTER_DOWN, 1, 7);
+  #assert s[0].turning && !s[0].stick;
+  m := realm_pointer(s[..], t[..], 640, 700, POINTER_MOVE, 1, 7);
+  u := realm_pointer(s[..], t[..], 640, 700, POINTER_UP, 1, 7);
+  #assert s[0].pitch > p0 + 0.2 && s[0].yaw > yaw0 && !s[0].turning;
+  f := frame_of(s[..], t[..], 780, 1688);
+  #assert s[0].fwd[1] > 0.2;
+  // the left half is the stick
+  d2 := realm_pointer(s[..], t[..], 150, 1300, POINTER_DOWN, 1, 8);
+  #assert s[0].stick && !s[0].turning;
 }
