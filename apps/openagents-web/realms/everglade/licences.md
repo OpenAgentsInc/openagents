@@ -178,5 +178,10 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Sunbeam | `lorc/sunbeams.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Wall of Thorns | `lorc/thorn-helix.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Fire Storm | `lorc/burning-embers.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Sunburst | `lorc/sun-radiations.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Storm of Vengeance | `lorc/lightning-tree.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Shapechange | `lorc/dragon-spiral.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Speak with Animals | `lorc/parrot-head.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Wild Resurgence | `lorc/cycle.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

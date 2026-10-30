@@ -934,7 +934,6 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
   if everglade_voice_key(s, key, true) { return true; }
-  if watch_key(s, key) { return true; }
   if spells_key(s, key, mods) { return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
@@ -3065,6 +3064,7 @@ board_panel :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
 hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pad_x: f32, pad_y: f32, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
+  st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   n := labels(s, out, u, 0, you);
   gutter := 16 * k;
   cap := 11 * k;
@@ -3083,6 +3083,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   plate(s, u, mb, 0.85, ifx s[0].above then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = watch_hud(s, out, u, n, mb.y1 + 10 * k);   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
+  n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   s[0].bye_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].talk >= 0 { return conversation(s, out, u, n); }

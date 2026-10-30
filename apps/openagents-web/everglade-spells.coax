@@ -54,6 +54,7 @@
 #load "everglade-grove.coax";
 #load "everglade-wild.coax";
 #load "everglade-circle.coax";
+#load "everglade-storm.coax";
 
 SP_SLOTS :: 4;
 SP_MEDIA_BYTES :: 5600;
@@ -194,6 +195,7 @@ Spells :: struct {
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // the row a phone's bar shows
+  st: [1] Storm;               // and after those: Sunburst, Storm of Vengeance, Shapechange, Speak with Animals, Wild Resurgence (everglade-storm.coax)
   ci: [1] Circle;              // the circle spells after it: Conjure Animals, Polymorph, Mass Cure Wounds, Sunbeam, Wall of Thorns, Fire Storm (everglade-circle.coax)
   wd: [1] Wild;                // the rest of its third row: Faerie Fire, Healing Word, Spike Growth, Call Lightning, Wall of Fire, and fire on the grass (everglade-wild.coax)
   gv: [1] Grove;               // the old Grove's druid spells: Moonbeam, Produce Flame, Starry Wisp, Shillelagh, Poison Spray, Elementalism, Entangle (everglade-grove.coax)
@@ -413,7 +415,7 @@ spells_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if b >= SP_SLOTS && b < SP_REBUILD { ab_key(s, b - SP_SLOTS); return true; }
   if ab_key_other(s, key) { return true; }
   if key == KEY_ESCAPE && (s[0].sp.armed >= 0 || s[0].sp.casting >= 0) { ab_cancel(s); s[0].sp.armed = -1; s[0].sp.casting = -1; return true; }
-  if (key == 'r' || key == 'R') && sp_broken(s) { sp_rebuild(s); return true; }
+  if key == 'r' || key == 'R' { sp_rebuild(s); return true; }
   return false;
 }
 // A key let go: an ability's in its column is up (whatever row it was pressed in), Levitate stops
@@ -440,11 +442,13 @@ sp_next_row :: (s: [] Everglade) {
   }
 }
 sp_broken :: (s: [] Everglade) -> bool { return s[0].sp.dm[0].broken_n > 0 || demo_chunks(sp_dm(s)) > 0; }
+// R: the town stands again, and you take a Long Rest (everglade-storm.coax st_long_rest).
 sp_rebuild :: (s: [] Everglade) {
   n := sp_restore(s, -1);
   _ := watch_rebuilt(s);   // the fallen stand up too (everglade-watch.coax)
   for i: 0..<SP_SCORCHES { s[0].sp.scorches[i].live = false; }
-  sp_say(s, "THE TOWN STANDS AGAIN", n, "PIECES");
+  rested := st_long_rest(s);
+  sp_say(s, ifx rested then "LONG REST · THE TOWN STANDS AGAIN" else "THE TOWN STANDS AGAIN", n, "PIECES");
 }
 
 // The pointer: a click on a slot presses it, a tap when it lifts (unless it
@@ -1840,8 +1844,8 @@ spells_reserve :: (s: [] Everglade) -> f32 {
 }
 HB_GAP :: 4.0;             // units between a wide screen's stacked rows (the old Grove's GAP)
 HB_PHONE_ROW :: 6;         // slots in a row of the tray on a phone
-// Slots shown: the four spells, the abilities, and Rebuild once something broke.
-sp_count :: (s: [] Everglade) -> int { return ifx sp_broken(s) then SP_REBUILD + 1 else SP_REBUILD; }
+// Slots shown: the four spells, the abilities, and Rebuild and Long Rest.
+sp_count :: (s: [] Everglade) -> int { return SP_REBUILD + 1; }
 
 // A plate of one of hud_rect's looks; w its unit or its edge, device pixels.
 sp_plate :: (s: [] Everglade, u: [] f32, b: Box, look: f32, w: f32) {
@@ -2089,7 +2093,7 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   #assert sp_on(g[..]);
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
   for b: 0..<SP_SLOTS { #assert g[0].sp.boxes[b].x1 > g[0].sp.boxes[b].x0; }
-  #assert g[0].sp.boxes[SP_REBUILD].x1 == 0;   // nothing broken yet
+  #assert g[0].sp.boxes[SP_REBUILD].x1 > 0;    // Rebuild and Long Rest, broken or not
   w := sp_dm(g[..]);
   #assert w[0].n > 2000 && w[0].n <= DEMO_PIECES && w[0].linked;
   walls := 0; glass := 0;
@@ -2417,7 +2421,7 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   #assert abs(800 - b0.y1 - (8 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
   #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS + AB_WALLFIRE].x1) / 2 - 640) < 2;   // centred: its columns from 1 to Wall of Fire's Ctrl+=
   media := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
-  #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && !contains(media, "rebuild") && !contains(media, "over ");
+  #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && contains(media, "rebuild-48.jpg") && !contains(media, "over ");   // Rebuild and Long Rest always there
   // the mouse resting on Thunderbolt's slot shows its card after 0.35 s
   if everglade_pointer(g[..], (b1.x0 + b1.x1) / 2, (b1.y0 + b1.y1) / 2, 1, 0, 1) {}
   for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }

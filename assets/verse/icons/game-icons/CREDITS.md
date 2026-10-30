@@ -35,6 +35,11 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/sunbeams.svg` (Sunbeam)
 - `lorc/thorn-helix.svg` (Wall of Thorns)
 - `lorc/burning-embers.svg` (Fire Storm)
+- `lorc/sun-radiations.svg` (Sunburst)
+- `lorc/lightning-tree.svg` (Storm of Vengeance)
+- `lorc/dragon-spiral.svg` (Shapechange)
+- `lorc/parrot-head.svg` (Speak with Animals)
+- `lorc/cycle.svg` (Wild Resurgence)
 
 Icons made by Delapouite (<https://delapouite.com>):
 

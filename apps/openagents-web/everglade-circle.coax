@@ -45,16 +45,21 @@ CI_FS_RANGE :: 45.72; CI_FS_CUBE :: 3.048; CI_FS_SHOW :: 2.4; CI_FS_N :: 10; CI_
 CI_ROUND :: 6.0;
 CI_REACH :: 1.524;   // a beast's bite: 5 feet
 
-// Your beast's shapes, and the frog: a wolf (Wild Shape), a brown bear (Polymorph, Shapechange), a frog
-// (the townsfolk Polymorph takes). Speed, the shape's Hit Points (Temporary ones here), the bite.
-CI_FORM_NONE :: 0; CI_FORM_WOLF :: 1; CI_FORM_BEAR :: 2; CI_FORM_FROG :: 3;
-CI_FORM_NAME :: [4] string.["", "WOLF", "BROWN BEAR", "FROG"];
-CI_FORM_HP :: [4] int.[0, 11, 22, 1];
-CI_FORM_PACE :: [4] f32.[1.0, 1.333, 1.333, 0.667];
-CI_FORM_ATTACKS :: [4] int.[0, 1, 2, 0];
+// Your beast's shapes, and the frog: a wolf (Wild Shape, Shapechange), a brown bear (Polymorph,
+// Shapechange), a frog (the townsfolk Polymorph takes), a mammoth (Shapechange, everglade-storm.coax).
+// Speed, the shape's Hit Points (Temporary ones here), the bite.
+CI_FORM_NONE :: 0; CI_FORM_WOLF :: 1; CI_FORM_BEAR :: 2; CI_FORM_FROG :: 3; CI_FORM_MAMMOTH :: 4;
+CI_FORMS :: 5;
+CI_FORM_NAME :: [5] string.["", "WOLF", "BROWN BEAR", "FROG", "MAMMOTH"];
+CI_FORM_HP :: [5] int.[0, 11, 22, 1, 126];
+CI_FORM_PACE :: [5] f32.[1.0, 1.333, 1.333, 0.667, 1.667];
+CI_FORM_ATTACKS :: [5] int.[0, 1, 2, 0, 2];
 CI_WOLF_BITE :: SrdCreature.{name = "Wolf", ac = 12, hp = 11, dex = 2, attack = 4, dice = 1, sides = 6, bonus = 2, kind = DMG_PIERCING};
 CI_BEAR_BITE :: SrdCreature.{name = "Brown Bear", ac = 11, hp = 22, dex = 0, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_PIERCING};
 CI_BEAR_CLAW :: SrdCreature.{name = "Brown Bear", ac = 11, hp = 22, dex = 0, attack = 5, dice = 1, sides = 4, bonus = 3, kind = DMG_SLASHING};
+// Mammoth (SRD 5.2.1): Huge, AC 13, 126 HP, Speed 50 feet; two Gores, +10, reach 10 feet, 2d10 + 7 piercing.
+CI_MAMMOTH_GORE :: SrdCreature.{name = "Mammoth", ac = 13, hp = 126, dex = -1, attack = 10, dice = 2, sides = 10, bonus = 7, kind = DMG_PIERCING};
+CI_MAMMOTH_REACH :: 3.048;
 
 CI_SPIRIT_RGB :: Point.{x = 0.45, y = 0.95, z = 0.8};
 CI_SHIFT_RGB :: Point.{x = 0.76, y = 0.62, z = 1.0};
@@ -65,6 +70,8 @@ CI_THORN_RGB :: Point.{x = 0.42, y = 0.36, z = 0.2};
 CI_WOLF_RGB :: Point.{x = 0.36, y = 0.33, z = 0.3};
 CI_BEAR_RGB :: Point.{x = 0.3, y = 0.19, z = 0.1};
 CI_FROG_RGB :: Point.{x = 0.32, y = 0.5, z = 0.16};
+CI_MAMMOTH_RGB :: Point.{x = 0.27, y = 0.17, z = 0.1};
+CI_TUSK_RGB :: Point.{x = 0.86, y = 0.8, z = 0.66};
 
 Circle :: struct {
   time: f32;
@@ -87,8 +94,10 @@ ci_start :: (s: [] Everglade) {
   v[0].shift_t = 100; v[0].mc_t = 100; v[0].mc_n = 0; v[0].sb_on = false; v[0].sb_cool = 0; v[0].sb_shot = 100;
   v[0].wt_on = false; v[0].fs_t = 100; v[0].you_ca_near = false; v[0].you_ca_next = 0; v[0].you_wt_next = 0;
   for i: 0..<WATCH_ACTORS { v[0].ca_near[i] = false; v[0].ca_next[i] = 0; v[0].blind[i] = 0; v[0].wt_next[i] = 0; }
+  st_start(s);
 }
 ci_active :: (s: [] Everglade, k: int) -> bool {
+  if k >= AB_SUNBURST { return st_active(s, k); }
   v := ci_of(s);
   if k == AB_CONJURE { return v[0].ca_on; }
   if k == AB_POLYMORPH { return v[0].pm_on; }
@@ -99,6 +108,7 @@ ci_active :: (s: [] Everglade, k: int) -> bool {
   return false;
 }
 ci_press :: (s: [] Everglade, k: int) {
+  if k >= AB_SUNBURST { st_press(s, k); return; }
   v := ci_of(s);
   b := SP_SLOTS + k;
   picked := s[0].sp.armed == b;
@@ -119,13 +129,15 @@ ci_cast :: (s: [] Everglade, k: int) {
   if k == AB_SUNBEAM { ci_sb_cast(s); return; }
   if k == AB_THORNS { ci_wt_cast(s); return; }
   if k == AB_FIRESTORM { ci_fs_cast(s); return; }
+  st_cast(s, k);
 }
 ci_concentration_lost :: (s: [] Everglade) {
   v := ci_of(s);
   v[0].ca_on = false; v[0].sb_on = false; v[0].wt_on = false;
   if v[0].pm_on { ci_pm_end(s); }
+  st_concentration_lost(s);
 }
-ci_rough :: (s: [] Everglade, x: f32, z: f32) -> bool { return ci_wt_where(s, v3(x, ground_at(s, x, z), z)) == 1; }
+ci_rough :: (s: [] Everglade, x: f32, z: f32) -> bool { return ci_wt_where(s, v3(x, ground_at(s, x, z), z)) == 1 || st_rough(s, x, z); }
 
 // In a beast's shape you cast no spells (Polymorph, Wild Shape; Shapechange's beasts have none): only the
 // shape's own slot, which bites, or ends it. Whether slot b's press is refused.
@@ -138,10 +150,11 @@ ci_no_casting :: (s: [] Everglade, b: int) -> bool {
 ci_cant :: (form: int) -> string {
   if form == CI_FORM_WOLF { return "A WOLF CASTS NO SPELLS"; }
   if form == CI_FORM_BEAR { return "A BEAR CASTS NO SPELLS"; }
+  if form == CI_FORM_MAMMOTH { return "A MAMMOTH CASTS NO SPELLS"; }
   return "A FROG CASTS NO SPELLS";
 }
 // Your Speed in the shape you wear, against your own.
-ci_pace :: (s: [] Everglade) -> f32 { v := ci_of(s); return CI_FORM_PACE[clamp_i(v[0].form, 0, 3)]; }
+ci_pace :: (s: [] Everglade) -> f32 { v := ci_of(s); return CI_FORM_PACE[clamp_i(v[0].form, 0, CI_FORMS - 1)]; }
 // Whether the Ranger is drawn (not while you wear a beast's shape).
 ci_you_shown :: (s: [] Everglade) -> bool { return !sp_on(s) || ci_of(s)[0].form == CI_FORM_NONE; }
 // Whether person i is drawn as themselves (not while a frog).
@@ -186,25 +199,28 @@ ci_bite :: (s: [] Everglade) {
   v := ci_of(s);
   if v[0].form_cool > 0 { return; }
   pick := ab_tk_pick(s);
-  if pick.kind != 2 { sp_say(s, ifx v[0].form == CI_FORM_WOLF then "CLICK SOMEONE IN REACH TO BITE" else "CLICK SOMEONE IN REACH TO MAUL", -1, ""); return; }
+  mammoth := v[0].form == CI_FORM_MAMMOTH;
+  if pick.kind != 2 { sp_say(s, ifx v[0].form == CI_FORM_WOLF then "CLICK SOMEONE IN REACH TO BITE" else ifx mammoth then "CLICK SOMEONE IN REACH TO GORE" else "CLICK SOMEONE IN REACH TO MAUL", -1, ""); return; }
   i := pick.idx;
-  if flat_gap(ab_person_at(s, i), ab_you(s)) > f32(CI_REACH) + 0.6 { sp_say(s, "TOO FAR · 5 FEET AT MOST", -1, ""); return; }
+  reach := ifx mammoth then f32(CI_MAMMOTH_REACH) + 1.2 else f32(CI_REACH) + 0.6;
+  if flat_gap(ab_person_at(s, i), ab_you(s)) > reach { sp_say(s, ifx mammoth then "TOO FAR · 10 FEET AT MOST" else "TOO FAR · 5 FEET AT MOST", -1, ""); return; }
   v[0].form_cool = 1.0;
   w := watch_w(s);
   d := s[0].sp.dice[..];
   ac := watch_stats(w, i).ac;
   total := 0; hits := 0;
-  for q: 0..<CI_FORM_ATTACKS[clamp_i(v[0].form, 0, 3)] {
-    c := ifx v[0].form == CI_FORM_WOLF then CI_WOLF_BITE else ifx q == 0 then CI_BEAR_BITE else CI_BEAR_CLAW;
+  for q: 0..<CI_FORM_ATTACKS[clamp_i(v[0].form, 0, CI_FORMS - 1)] {
+    c := ifx v[0].form == CI_FORM_WOLF then CI_WOLF_BITE else ifx mammoth then CI_MAMMOTH_GORE else ifx q == 0 then CI_BEAR_BITE else CI_BEAR_CLAW;
     roll := srd_attack(d, c, ac);
     if roll.hit { total += roll.damage; hits += 1; }
   }
   at := ab_person_at(s, i);
   ci_crime(s, at, 10);
-  if hits == 0 { sp_say(s, ifx v[0].form == CI_FORM_WOLF then "THE BITE MISSES" else "THE BEAR MISSES", -1, ""); return; }
+  if hits == 0 { sp_say(s, ifx v[0].form == CI_FORM_WOLF then "THE BITE MISSES" else ifx mammoth then "THE GORES MISS" else "THE BEAR MISSES", -1, ""); return; }
   watch_harm(w, i, total, ab_you(s));
   for q: 0..<8 { sp_add_spark(s, at, times(sp_spray(s, 0.4), 2.5), 0.3, 0.025, v3(0.6, 0.08, 0.05), 9.81); }
-  sp_say(s, ifx v[0].form == CI_FORM_WOLF then "BITE" else "BITE AND CLAW", total, "DAMAGE");
+  if mammoth { s[0].sp.shake = hi(s[0].sp.shake, 0.15f32); }
+  sp_say(s, ifx v[0].form == CI_FORM_WOLF then "BITE" else ifx mammoth then "GORE" else "BITE AND CLAW", total, "DAMAGE");
 }
 ci_form_frame :: (s: [] Everglade, dt: f32) {
   v := ci_of(s);
@@ -218,8 +234,9 @@ ci_form_frame :: (s: [] Everglade, dt: f32) {
   v[0].form_last = you;
   if !watch_on(s) { return; }
   w := watch_w(s);
-  // the shape's Hit Points spent, or you fell: you stand in your own again
-  if w[0].dead || w[0].temp <= 0 {
+  // you fell, or Polymorph's shape's Hit Points are spent: you stand in your own again (Wild Shape and
+  // Shapechange only lend theirs as Temporary ones; the shape holds when they are gone)
+  if w[0].dead || (w[0].temp <= 0 && v[0].form_by == AB_POLYMORPH) {
     name := v[0].form;
     if v[0].form_by == AB_POLYMORPH { v[0].pm_on = false; }
     ci_leave_shape(s);
@@ -650,6 +667,7 @@ ci_frame :: (s: [] Everglade, dt: f32) {
   ci_pm_frame(s, dt);
   ci_sb_frame(s, dt);
   ci_wt_frame(s, dt);
+  st_frame(s, dt);
 }
 ci_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
   v := ci_of(s);
@@ -666,7 +684,7 @@ ci_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
   }
   if v[0].ca_on { n = sp_lamp(u, n, most, add(v[0].ca_at, v3(0, 0.8, 0)), 5, CI_SPIRIT_RGB, 0.7); }
   if v[0].mc_t < f32(CI_MC_LIFE) { f := 1 - v[0].mc_t / f32(CI_MC_LIFE); n = sp_lamp(u, n, most, add(v[0].mc_at, v3(0, 1, 0)), 10, CI_CURE_RGB, 1.6 * f); }
-  return n;
+  return st_lamps(s, u, n, most);
 }
 ci_draw :: (s: [] Everglade) {
   v := ci_of(s);
@@ -730,6 +748,7 @@ ci_draw :: (s: [] Everglade) {
   }
   ci_wt_draw(s, few);
   ci_fs_draw(s, few);
+  st_draw(s);
   // picked: where it would fall
   armed := s[0].sp.armed - SP_SLOTS;
   if s[0].sp.aim_ok && v[0].form == CI_FORM_NONE {
@@ -874,12 +893,13 @@ ci_beast :: (s: [] Everglade, form: int, feet: Point, face: f32, walk: f32, move
     }
     return;
   }
-  bear := form == CI_FORM_BEAR;
-  k := ifx bear then 1.35f32 else 1.0f32;
-  coat := ifx bear then CI_BEAR_RGB else CI_WOLF_RGB;
+  mam := form == CI_FORM_MAMMOTH;
+  bear := form == CI_FORM_BEAR || mam;
+  k := ifx mam then 2.5f32 else ifx bear then 1.35f32 else 1.0f32;
+  coat := ifx mam then CI_MAMMOTH_RGB else ifx bear then CI_BEAR_RGB else CI_WOLF_RGB;
   hip := 0.55 * k;
   // the trot: diagonal pairs, the back rising and falling with them
-  stride := ifx bear then 1.3f32 else 1.1f32;
+  stride := ifx mam then 2.6f32 else ifx bear then 1.3f32 else 1.1f32;
   ph := walk / stride * f32(TAU);
   bob := 0.025 * k * abs(sin(ph)) * move;
   back := add(feet, v3(0, hip + 0.08 * k + bob, 0));
@@ -888,7 +908,28 @@ ci_beast :: (s: [] Everglade, form: int, feet: Point, face: f32, walk: f32, move
   ci_part(s, SHAPE_SPHERE, chest, times(r, (ifx bear then 0.6f32 else 0.34f32) * k), v3(0, (ifx bear then 0.62f32 else 0.42f32) * k, 0), times(f, 0.5 * k), coat, spirit, on);
   head := add(back, add(times(f, (ifx bear then 0.66f32 else 0.62f32) * k), v3(0, (ifx bear then 0.12f32 else 0.22f32) * k + 0.02 * sin(ph * 0.5), 0)));
   ci_part(s, SHAPE_SPHERE, head, times(r, 0.26 * k), v3(0, 0.25 * k, 0), times(f, 0.3 * k), coat, spirit, on);
-  if bear {
+  if mam {
+    // a shaggy hump over the shoulders, the trunk hanging and swinging, two long curved tusks, small ears
+    ci_part(s, SHAPE_SPHERE, add(back, add(times(f, 0.28 * k), v3(0, 0.36 * k, 0))), times(r, 0.42 * k), v3(0, 0.3 * k, 0), times(f, 0.5 * k), times(coat, 0.85), spirit, on);
+    sw := 0.06 * k * sin(ph * 0.5 + 0.4);
+    t0 := add(head, add(times(f, 0.22 * k), v3(0, -0.06 * k, 0)));
+    t1 := add(t0, add(times(f, 0.1 * k), add(times(r, sw * 0.4), v3(0, -0.32 * k, 0))));
+    t2 := add(t1, add(times(f, 0.03 * k), add(times(r, sw), v3(0, -0.3 * k, 0))));
+    t3 := add(t2, add(times(f, 0.12 * k), add(times(r, sw * 1.2), v3(0, -0.06 * k, 0))));
+    ci_leg(s, t0, t1, 0.1 * k, coat, spirit, on);
+    ci_leg(s, t1, t2, 0.075 * k, coat, spirit, on);
+    ci_limb(s, t2, t3, 0.05 * k, coat, spirit, on);
+    for e: 0..<2 {
+      sd := ifx e == 0 then 1.0f32 else -1.0f32;
+      u0 := add(head, add(times(r, sd * 0.11 * k), add(times(f, 0.16 * k), v3(0, -0.13 * k, 0))));
+      u1 := add(u0, add(times(f, 0.3 * k), add(times(r, sd * 0.1 * k), v3(0, -0.2 * k, 0))));
+      u2 := add(u1, add(times(f, 0.22 * k), add(times(r, -sd * 0.07 * k), v3(0, 0.2 * k, 0))));
+      ci_leg(s, u0, u1, 0.035 * k, CI_TUSK_RGB, spirit, on);
+      ci_limb(s, u1, u2, 0.03 * k, CI_TUSK_RGB, spirit, on);
+      ear := add(head, add(times(r, sd * 0.2 * k), add(times(f, -0.06 * k), v3(0, 0.06 * k, 0))));
+      ci_part(s, SHAPE_BOX, ear, times(r, 0.04 * k), v3(0, 0.1 * k, 0), times(f, 0.08 * k), times(coat, 0.75), spirit, on);
+    }
+  } else if bear {
     // a short broad muzzle, paler, a dark nose; round ears
     m := add(head, add(times(f, 0.17 * k), v3(0, -0.05 * k, 0)));
     ci_part(s, SHAPE_BOX, m, times(r, 0.15 * k), v3(0, 0.12 * k, 0), times(f, 0.2 * k), v3(0.42, 0.3, 0.2), spirit, on);
@@ -915,10 +956,10 @@ ci_beast :: (s: [] Everglade, form: int, feet: Point, face: f32, walk: f32, move
     lift := hi(cos(ph + pair), 0) * 0.07 * k * move;
     top := add(back, add(times(f, (ifx front then 0.33f32 else -0.33f32) * k), add(times(r, sd * (ifx bear then 0.17f32 else 0.1f32) * k), v3(0, -0.06 * k, 0))));
     foot := add(feet, add(times(f, (ifx front then 0.33f32 else -0.33f32) * k + swing), add(times(r, sd * (ifx bear then 0.18f32 else 0.1f32) * k), v3(0, lift, 0))));
-    ci_leg(s, top, foot, (ifx bear then 0.15f32 else 0.065f32) * k, times(coat, 0.85), spirit, on);
+    ci_leg(s, top, foot, (ifx mam then 0.16f32 else ifx bear then 0.15f32 else 0.065f32) * k, times(coat, 0.85), spirit, on);
   }
   tail := add(back, add(times(f, -0.5 * k), v3(0, 0.02 * k, 0)));
-  tl := ifx bear then 0.1f32 else 0.42f32;
+  tl := ifx mam then 0.22f32 else ifx bear then 0.1f32 else 0.42f32;
   ci_limb(s, tail, add(tail, add(times(f, -tl * k), v3(0, -tl * 0.45 * k, 0))), (ifx bear then 0.06f32 else 0.07f32) * k, coat, spirit, on);
 }
 // A part of a beast: its shape, or for a spirit its light (a glowing shell and a haze).
@@ -956,8 +997,10 @@ ci_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
   v := ci_of(s);
   you := ab_you(s);
   if v[0].form != CI_FORM_NONE && k == v[0].form_by {
+    if k == AB_SHAPECHANGE || k == AB_RESURGENCE { return st_shape_hint(s, phone_); }
     return ifx phone_ then "TAP SOMEONE IN REACH TO BITE · TAP ITS SLOT TO END THE SHAPE" else "CLICK SOMEONE IN REACH TO BITE · ITS KEY ENDS THE SHAPE";
   }
+  if k >= AB_SUNBURST { return st_hint(s, k, phone_, far); }
   if k == AB_CONJURE {
     if v[0].ca_on {
       if far && flat_gap(s[0].sp.aim, v[0].ca_at) > f32(CI_CA_MOVE) + 0.3 { return "TOO FAR · THE PACK RUNS 30 FEET AT MOST"; }
@@ -991,6 +1034,7 @@ ci_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
 }
 ci_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
   if ci_of(s)[0].form != CI_FORM_NONE { return n; }
+  if k >= AB_SUNBURST { return st_aim_ring(s, out, u, n, k, pulse); }
   if k == AB_POLYMORPH { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, CI_SHIFT_RGB, pulse); }
   if k == AB_MASSCURE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(CI_MC_R), CI_CURE_RGB, pulse); }
   return n;

@@ -1,0 +1,669 @@
+// The old Grove's circle spells after the fourth row's first five (eg-grove), loaded by
+// everglade-spells.coax after everglade-circle.coax, whose ci_* hand these on (SRD 5.2.1, at the
+// realm's caster's tier: DC 15, Wisdom +3, a druid of level 9 for what the level sets):
+//
+//  A6 SUNBURST      (level 8) Click a point within 150 feet: brilliant sunlight flashes in a 60-foot
+//                   radius round it. Each creature in it (you too) makes a Constitution save, 12d6
+//                   radiant and Blinded for a minute on a failure, half on a success. Blinded, it makes
+//                   the save again at the end of each of its turns (each 6 seconds here), and it ends on
+//                   a success. Blinded, your own attacks have Disadvantage.
+//  A7 STORM OF VENGEANCE (level 9, Concentration up to a minute) Click where it gathers: a churning storm
+//                   cloud 300 feet in radius. Each creature under it (you too): on the first round a
+//                   Constitution save, 2d6 thunder and Deafened until it ends on a failure; the second,
+//                   acid rain, 4d6 acid; the third, six bolts strike the six nearest its middle, 10d6
+//                   lightning to whoever is within 5 feet of one, half on a Dexterity save; the fourth,
+//                   hail, 2d6 bludgeoning; the fifth to the tenth, gusts and freezing rain, 1d6 cold a
+//                   round, its ground Difficult Terrain and the air under it Heavily Obscured. Its rain
+//                   puts out what burns under it. Alt+7 with it picked ends it.
+//  A8 SHAPECHANGE   (level 9, Concentration up to an hour) Click to take a mammoth's shape: its Hit
+//                   Points (126) as Temporary Hit Points, Speed 50 feet, two gores at whoever you click
+//                   within 10 feet. Alt+8 with it picked changes your shape (a Magic action): the
+//                   mammoth, a brown bear, a wolf, then your own again. A beast casts no spells.
+//  A9 SPEAK WITH ANIMALS (level 1, ritual, 10 minutes) You understand the town's beasts and they you:
+//                   the cats, the ducks, a frog, the pack say their piece over their heads. Alt+9 again
+//                   ends it.
+//  A0 WILD RESURGENCE (the druid's level-5 feature) A spell slot spent for a use of Wild Shape, taken at
+//                   once: a wolf, with Temporary Hit Points equal to your druid level (9), Speed 40
+//                   feet, its bite at whoever you click in reach. Alt+0 with it picked ends it.
+//
+// Rebuild on R is a Long Rest as well (st_long_rest): your Hit Points all back, your conditions gone,
+// your shape your own; what the watch thinks of you stays.
+//
+// Every save or blow on a person is a crime the watch answers.
+
+AB_SUNBURST :: 34; AB_VENGEANCE :: 35; AB_SHAPECHANGE :: 36; AB_SPEAK :: 37; AB_RESURGENCE :: 38;
+
+ST_SU_RANGE :: 45.72; ST_SU_R :: 18.288; ST_SU_BLIND :: 60.0; ST_SU_SHOW :: 1.4; ST_HEAR_SU :: 60.0;
+ST_SV_R :: 91.44; ST_SV_LIFE :: 60.0; ST_SV_UP :: 30.0; ST_SV_BOLTS :: 6; ST_SV_HIT :: 1.524; ST_SV_FLASH :: 0.45; ST_HEAR_SV :: 90.0;
+ST_SC_LIFE :: 3600.0;
+ST_SA_LIFE :: 600.0; ST_SA_NEAR :: 18.288;
+ST_DRUID :: 9;        // the druid's level: Wild Shape's Temporary Hit Points
+ST_ROUND :: 6.0;
+
+ST_SUN_RGB :: Point.{x = 1.0, y = 0.88, z = 0.55};
+ST_CLOUD_RGB :: Point.{x = 0.07, y = 0.075, z = 0.09};
+ST_BOLT_RGB :: Point.{x = 0.75, y = 0.85, z = 1.0};
+
+Storm :: struct {
+  time: f32;
+  su_t: f32; su_at: Point;                              // Sunburst: since, where
+  su_save: [WATCH_ACTORS] bool; su_next: [WATCH_ACTORS] f32;   // Blinded by it: saving each round, when next
+  you_blind: f32; you_blind_next: f32;                  // you, Blinded (s left), your next save
+  sv_on: bool; sv_t: f32; sv_at: Point; sv_round: int; sv_puff: f32;   // Storm of Vengeance: its middle on the ground, rounds done
+  deaf: [WATCH_ACTORS] bool; you_deaf: bool;
+  bolt_t: f32; bolt_n: int; bolts: [ST_SV_BOLTS] Point; // the third round's bolts: since, where
+  sc_on: bool; sc_t: f32;                               // Shapechange
+  sa_on: bool; sa_t: f32;                               // Speak with Animals
+}
+st_of :: (s: [] Everglade) -> [] Storm { return s[0].sp.st[..]; }
+st_start :: (s: [] Everglade) {
+  v := st_of(s);
+  v[0].time = 0; v[0].su_t = 100; v[0].you_blind = 0; v[0].you_blind_next = 0;
+  v[0].sv_on = false; v[0].sv_round = 0; v[0].you_deaf = false; v[0].bolt_t = 100; v[0].bolt_n = 0;
+  v[0].sc_on = false; v[0].sa_on = false;
+  for i: 0..<WATCH_ACTORS { v[0].su_save[i] = false; v[0].su_next[i] = 0; v[0].deaf[i] = false; }
+}
+st_active :: (s: [] Everglade, k: int) -> bool {
+  v := st_of(s);
+  if k == AB_SUNBURST { return v[0].su_t < f32(ST_SU_SHOW); }
+  if k == AB_VENGEANCE { return v[0].sv_on; }
+  if k == AB_SHAPECHANGE { return v[0].sc_on; }
+  if k == AB_SPEAK { return v[0].sa_on; }
+  if k == AB_RESURGENCE { return ci_of(s)[0].form_by == AB_RESURGENCE; }
+  return false;
+}
+st_press :: (s: [] Everglade, k: int) {
+  v := st_of(s);
+  c := ci_of(s);
+  b := SP_SLOTS + k;
+  picked := s[0].sp.armed == b;
+  if k == AB_SPEAK {
+    v[0].sa_on = !v[0].sa_on; v[0].sa_t = 0;
+    sp_say(s, ifx v[0].sa_on then "SPEAK WITH ANIMALS · 10 MINUTES" else "SPEAK WITH ANIMALS ENDS", -1, "");
+    return;
+  }
+  if k == AB_RESURGENCE {
+    if c[0].form_by == AB_RESURGENCE {
+      if picked { ci_leave_shape(s); sp_say(s, "WILD SHAPE ENDS", -1, ""); s[0].sp.armed = -1; return; }
+      s[0].sp.armed = b; return;
+    }
+    st_wild_shape(s);
+    return;
+  }
+  if picked {
+    if k == AB_VENGEANCE && v[0].sv_on { st_sv_end(s); sp_say(s, "STORM OF VENGEANCE ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_SHAPECHANGE && v[0].sc_on { st_sc_next(s); return; }
+  }
+  s[0].sp.armed = ifx picked then -1 else b;
+}
+st_cast :: (s: [] Everglade, k: int) {
+  if k == AB_SUNBURST { st_su_cast(s); return; }
+  if k == AB_VENGEANCE { st_sv_cast(s); return; }
+  if k == AB_SHAPECHANGE { st_sc_on(s); return; }
+}
+st_concentration_lost :: (s: [] Everglade) {
+  v := st_of(s);
+  if v[0].sv_on { st_sv_end(s); }
+  if v[0].sc_on { v[0].sc_on = false; if ci_of(s)[0].form_by == AB_SHAPECHANGE { ci_leave_shape(s); } }
+}
+st_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  v := st_of(s);
+  return v[0].sv_on && v[0].sv_round >= 5 && flat_gap(v3(x, 0, z), v[0].sv_at) <= f32(ST_SV_R);
+}
+// Whether the sight line from p to q runs through the freezing rain (Heavily Obscured) for more than a metre.
+st_hides :: (s: [] Everglade, p: Point, q: Point) -> bool {
+  if !sp_on(s) { return false; }
+  v := st_of(s);
+  if !v[0].sv_on || v[0].sv_round < 5 { return false; }
+  inside := 0;
+  for k: 0..<12 { if flat_gap(mix(p, q, (f32(k) + 0.5) / 12), v[0].sv_at) <= f32(ST_SV_R) { inside += 1; } }
+  return f32(inside) / 12 * length(sub(q, p)) > 1.0;
+}
+st_you_blind :: (s: [] Everglade) -> bool { return sp_on(s) && st_of(s)[0].you_blind > 0; }
+st_con :: (s: [] Everglade) -> bool { return srd_save(watch_w(s)[0].dice[..], GV_YOU_CON, GV_DC).success; }
+
+// ---- Sunburst
+
+st_su_cast :: (s: [] Everglade) {
+  if wd_aim_far(s, f32(ST_SU_RANGE), "POINT WHERE IT BURSTS") { return; }
+  s[0].sp.armed = -1;
+  st_su_at(s, s[0].sp.aim);
+}
+st_su_at :: (s: [] Everglade, at: Point) {
+  v := st_of(s);
+  c := ci_of(s);
+  v[0].su_t = 0; v[0].su_at = at;
+  R := f32(ST_SU_R) + f32(BLAST_PAD);
+  hurt := 0; total := 0; blinded := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    d := s[0].sp.dice[..];
+    you := ab_you(s);
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) { continue; }
+      p := add(wd_feet(s, i), v3(0, 0.9, 0));
+      if length(sub(p, at)) > R { continue; }
+      amount := srd_sum(d, 12, 6);
+      ok := ci_con(s, i);
+      took := ifx ok then amount / 2 else amount;
+      watch_harm(w, i, took, you);
+      if !ok { c[0].blind[i] = f32(ST_SU_BLIND); v[0].su_save[i] = true; v[0].su_next[i] = v[0].time + f32(ST_ROUND); blinded += 1; }
+      hurt += 1; total += took;
+    }
+    if hurt > 0 { ci_crime(s, at, f32(ST_HEAR_SU)); }
+    if !w[0].dead && length(sub(add(you, v3(0, 0.9, 0)), at)) <= R {
+      amount := srd_sum(d, 12, 6);
+      ok := st_con(s);
+      wd_hurt_you(s, ifx ok then amount / 2 else amount, ifx ok then "SUNBURST · YOU ARE IN IT" else "SUNBURST · YOU ARE BLINDED");
+      if !ok && !w[0].dead { v[0].you_blind = f32(ST_SU_BLIND); v[0].you_blind_next = v[0].time + f32(ST_ROUND); }
+    }
+  }
+  if hurt > 0 { sp_say(s, "SUNBURST · 12D6 RADIANT", total, ifx blinded > 0 then "· BLINDED OR BURNT" else "DAMAGE"); }
+  else if !(watch_on(s) && v[0].you_blind > 0) { sp_say(s, "SUNBURST", -1, ""); }
+  sp_add_shock(s, add(at, v3(0, 0.1, 0)), R, 1.0, ST_SUN_RGB);
+  for q: 0..<(ifx phone(s) then 20 else 40) {
+    sp_add_spark(s, at, times(sp_spray(s, 0), 9 + 7 * sp_rand(s)), 0.7 + 0.5 * sp_rand(s), 0.04, v3(1.7, 1.5, 1.0), -0.3);
+  }
+  wd_debris_catch(s, at, 3.0);
+  s[0].sp.shake = hi(s[0].sp.shake, 0.3f32);
+}
+st_su_frame :: (s: [] Everglade, dt: f32) {
+  v := st_of(s);
+  if !watch_on(s) { return; }
+  c := ci_of(s);
+  w := watch_w(s);
+  for i: 0..<WATCH_ACTORS {
+    if !v[0].su_save[i] { continue; }
+    if c[0].blind[i] <= 0 || !ab_person_ok(s, i) { v[0].su_save[i] = false; continue; }
+    // the save again at the end of each of its turns: a success ends it
+    if v[0].time >= v[0].su_next[i] {
+      v[0].su_next[i] = v[0].time + f32(ST_ROUND);
+      if ci_con(s, i) { c[0].blind[i] = 0; v[0].su_save[i] = false; }
+    }
+  }
+  if v[0].you_blind > 0 {
+    v[0].you_blind = hi(v[0].you_blind - dt, 0);
+    if w[0].dead { v[0].you_blind = 0; }
+    else if v[0].time >= v[0].you_blind_next {
+      v[0].you_blind_next = v[0].time + f32(ST_ROUND);
+      if st_con(s) { v[0].you_blind = 0; sp_say(s, "YOU CAN SEE AGAIN", -1, ""); }
+    }
+  }
+}
+
+// ---- Storm of Vengeance
+
+st_sv_cast :: (s: [] Everglade) {
+  if !s[0].sp.aim_ok { sp_say(s, "POINT WHERE IT GATHERS", -1, ""); return; }
+  s[0].sp.armed = -1;
+  st_sv_at(s, s[0].sp.aim);
+}
+st_sv_at :: (s: [] Everglade, at: Point) {
+  v := st_of(s);
+  if v[0].sv_on { st_sv_end(s); }
+  v[0].sv_on = true; v[0].sv_t = 0; v[0].sv_round = 0; v[0].sv_puff = 0;
+  v[0].sv_at = v3(at.x, ground_at(s, at.x, at.z), at.z);
+  for i: 0..<WATCH_ACTORS { v[0].deaf[i] = false; }
+  v[0].you_deaf = false;
+  st_sv_round(s);
+}
+st_sv_end :: (s: [] Everglade) {
+  v := st_of(s);
+  v[0].sv_on = false; v[0].you_deaf = false;
+  for i: 0..<WATCH_ACTORS { v[0].deaf[i] = false; }
+}
+st_under :: (s: [] Everglade, p: Point) -> bool { return flat_gap(p, st_of(s)[0].sv_at) <= f32(ST_SV_R) + f32(BLAST_PAD); }
+// The storm's next round, on whoever is under it.
+st_sv_round :: (s: [] Everglade) {
+  v := st_of(s);
+  v[0].sv_round += 1;
+  r := v[0].sv_round;
+  c := v[0].sv_at;
+  // the rain puts out what burns under it
+  if r >= 2 {
+    R := f32(ST_SV_R);
+    for q: 0..<SP_BLASTS { if s[0].sp.blasts[q].live && s[0].sp.blasts[q].kind == 0 && flat_gap(s[0].sp.blasts[q].at, c) < R { s[0].sp.blasts[q].live = false; } }
+    for q: 0..<SP_FLAMES { if s[0].sp.flames[q].live && flat_gap(s[0].sp.flames[q].at, c) < R { s[0].sp.flames[q].live = false; } }
+    wd_douse_at(s, c, R);
+  }
+  if r == 3 { st_sv_bolts(s); return; }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  hurt := 0; total := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || !st_under(s, wd_feet(s, i)) { continue; }
+    took := 0;
+    if r == 1 { if !ci_con(s, i) { took = srd_sum(d, 2, 6); v[0].deaf[i] = true; } }
+    else if r == 2 { took = srd_sum(d, 4, 6); }
+    else if r == 4 { took = srd_sum(d, 2, 6); }
+    else { took = srd_sum(d, 1, 6); }
+    if took <= 0 { continue; }
+    watch_harm(w, i, took, you);
+    hurt += 1; total += took;
+  }
+  if hurt > 0 { ci_crime(s, c, f32(ST_HEAR_SV)); }
+  what := ifx r == 1 then "STORM OF VENGEANCE · 2D6 THUNDER" else ifx r == 2 then "ACID RAIN · 4D6 ACID" else ifx r == 4 then "HAIL · 2D6 BLUDGEONING" else "FREEZING RAIN · 1D6 COLD";
+  if hurt > 0 { sp_say(s, what, total, "DAMAGE"); } else if r == 1 { sp_say(s, "STORM OF VENGEANCE", -1, ""); }
+  if w[0].dead || !st_under(s, you) { return; }
+  if r == 1 {
+    if !st_con(s) { v[0].you_deaf = true; wd_hurt_you(s, srd_sum(d, 2, 6), "THE THUNDER · YOU ARE DEAFENED"); }
+    return;
+  }
+  amount := ifx r == 2 then srd_sum(d, 4, 6) else ifx r == 4 then srd_sum(d, 2, 6) else srd_sum(d, 1, 6);
+  wd_hurt_you(s, amount, ifx r == 2 then "THE ACID RAIN ON YOU · 4D6 ACID" else ifx r == 4 then "THE HAIL ON YOU · 2D6 BLUDGEONING" else "THE FREEZING RAIN · 1D6 COLD");
+}
+// The third round: six bolts on the six under it nearest its middle (where there are fewer, about it).
+st_sv_bolts :: (s: [] Everglade) {
+  v := st_of(s);
+  c := v[0].sv_at;
+  v[0].bolt_t = 0; v[0].bolt_n = 0;
+  gaps: [ST_SV_BOLTS] f32;
+  if watch_on(s) {
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) { continue; }
+      p := wd_feet(s, i);
+      g := flat_gap(p, c);
+      if g > f32(ST_SV_R) { continue; }
+      k := v[0].bolt_n;
+      if k == ST_SV_BOLTS { if g >= gaps[k - 1] { continue; } k -= 1; } else { v[0].bolt_n += 1; }
+      while k > 0 && gaps[k - 1] > g { gaps[k] = gaps[k - 1]; v[0].bolts[k] = v[0].bolts[k - 1]; k -= 1; }
+      gaps[k] = g; v[0].bolts[k] = p;
+    }
+  }
+  while v[0].bolt_n < ST_SV_BOLTS {
+    a := f32(TAU) * sp_rand(s); rr := 14 * sqrt(sp_rand(s));
+    x := c.x + cos(a) * rr; z := c.z + sin(a) * rr;
+    v[0].bolts[v[0].bolt_n] = v3(x, ground_at(s, x, z), z);
+    v[0].bolt_n += 1;
+  }
+  hurt := 0; total := 0;
+  R := f32(ST_SV_HIT) + f32(BLAST_PAD);
+  if watch_on(s) {
+    w := watch_w(s);
+    d := s[0].sp.dice[..];
+    you := ab_you(s);
+    // a creature is struck once, however many bolts fall by it
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) { continue; }
+      p := wd_feet(s, i);
+      by := false;
+      for q: 0..<v[0].bolt_n { if flat_gap(p, v[0].bolts[q]) <= R && abs(p.y - v[0].bolts[q].y) < 3 { by = true; } }
+      if !by { continue; }
+      took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 10, 6), kind = DMG_LIGHTNING, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+      watch_harm(w, i, took, you);
+      hurt += 1; total += took;
+    }
+    if hurt > 0 { ci_crime(s, c, f32(ST_HEAR_SV)); }
+    by := false;
+    for q: 0..<v[0].bolt_n { if flat_gap(you, v[0].bolts[q]) <= R && abs(you.y - v[0].bolts[q].y) < 3 { by = true; } }
+    if !w[0].dead && by {
+      amount := srd_sum(d, 10, 6);
+      wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "A BOLT BY YOU · 10D6 LIGHTNING");
+    }
+  }
+  if hurt > 0 { sp_say(s, "SIX BOLTS · 10D6 LIGHTNING", total, ifx hurt == 1 then "· 1 STRUCK" else "· STRUCK"); }
+  else { sp_say(s, "SIX BOLTS", -1, ""); }
+  for q: 0..<v[0].bolt_n {
+    b := v[0].bolts[q];
+    if !fr_wet(s, b.x, b.z) { sp_add_scorch(s, b, 0.9, false); wd_light(s, b, WD_GEN - 3); }
+    for e: 0..<(ifx phone(s) then 4 else 8) { sp_add_spark(s, add(b, v3(0, 0.2, 0)), times(sp_spray(s, 0.3), 5), 0.4 + 0.3 * sp_rand(s), 0.025, v3(1.2, 1.4, 1.8), 9.81); }
+  }
+  s[0].sp.shake = hi(s[0].sp.shake, 0.45f32);
+}
+st_sv_frame :: (s: [] Everglade, dt: f32) {
+  v := st_of(s);
+  v[0].bolt_t += dt;
+  if !v[0].sv_on { return; }
+  v[0].sv_t += dt;
+  if v[0].sv_t >= f32(ST_SV_LIFE) { st_sv_end(s); sp_say(s, "STORM OF VENGEANCE ENDS", -1, ""); return; }
+  if v[0].sv_t >= f32(v[0].sv_round) * f32(ST_ROUND) && v[0].sv_round < 10 { st_sv_round(s); }
+  // the murk of the freezing rain about you, while you are under it
+  if v[0].sv_round >= 5 && st_under(s, ab_you(s)) {
+    v[0].sv_puff += dt;
+    while v[0].sv_puff > 0.3 {
+      v[0].sv_puff -= 0.3;
+      a := f32(TAU) * sp_rand(s); rr := 4 + 12 * sp_rand(s);
+      you := ab_you(s);
+      at := v3(you.x + cos(a) * rr, you.y + 0.6 + 3 * sp_rand(s), you.z + sin(a) * rr);
+      sp_add_smoke(s, at, v3(1.2 + 0.6 * sp_rand(s), -0.2, 0.4), 2.4 + 1.2 * sp_rand(s), 4.0, 0.72, 0, 0.4, 0);
+    }
+  }
+}
+
+// ---- Shapechange, Wild Resurgence
+
+st_sc_on :: (s: [] Everglade) {
+  v := st_of(s);
+  if !watch_on(s) || watch_w(s)[0].dead { return; }
+  v[0].sc_on = true; v[0].sc_t = 0;
+  ci_take_shape(s, CI_FORM_MAMMOTH, AB_SHAPECHANGE, true);
+  sp_say(s, "SHAPECHANGE · A MAMMOTH", CI_FORM_HP[CI_FORM_MAMMOTH], "TEMPORARY HIT POINTS");
+}
+// The next shape (a Magic action): the mammoth, the bear, the wolf, then your own again. The
+// Temporary Hit Points are the first shape's.
+st_sc_next :: (s: [] Everglade) {
+  v := st_of(s);
+  f := ci_of(s)[0].form;
+  if f == CI_FORM_MAMMOTH { ci_take_shape(s, CI_FORM_BEAR, AB_SHAPECHANGE, false); sp_say(s, "SHAPECHANGE · A BROWN BEAR", -1, ""); return; }
+  if f == CI_FORM_BEAR { ci_take_shape(s, CI_FORM_WOLF, AB_SHAPECHANGE, false); sp_say(s, "SHAPECHANGE · A WOLF", -1, ""); return; }
+  v[0].sc_on = false;
+  ci_leave_shape(s);
+  s[0].sp.armed = -1;
+  sp_say(s, "SHAPECHANGE ENDS", -1, "");
+}
+st_sc_frame :: (s: [] Everglade, dt: f32) {
+  v := st_of(s);
+  if !v[0].sc_on { return; }
+  v[0].sc_t += dt;
+  if ci_of(s)[0].form_by != AB_SHAPECHANGE { v[0].sc_on = false; return; }   // you fell
+  if v[0].sc_t >= f32(ST_SC_LIFE) { v[0].sc_on = false; ci_leave_shape(s); sp_say(s, "SHAPECHANGE ENDS", -1, ""); }
+}
+st_wild_shape :: (s: [] Everglade) {
+  if !watch_on(s) || watch_w(s)[0].dead { return; }
+  if ci_of(s)[0].form != CI_FORM_NONE { return; }
+  ci_take_shape(s, CI_FORM_WOLF, AB_RESURGENCE, false);
+  watch_w(s)[0].temp = ST_DRUID;
+  sp_say(s, "WILD RESURGENCE · A SPELL SLOT FOR WILD SHAPE · A WOLF", ST_DRUID, "TEMPORARY HIT POINTS");
+}
+
+// ---- Long Rest (on R, with the Rebuild)
+
+// Your Hit Points all back, your conditions gone, your own shape again (its Temporary Hit Points with
+// it). WANTED stays as it is. Nothing for the fallen: their rest is the town's standing again.
+st_long_rest :: (s: [] Everglade) -> bool {
+  if !watch_on(s) { return false; }
+  w := watch_w(s);
+  if w[0].dead { return false; }
+  v := st_of(s);
+  w[0].hp = w[0].max;
+  w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false;
+  v[0].you_blind = 0; v[0].you_deaf = false;
+  wd_of(s)[0].you_lit = false;
+  f := fr_of(s);
+  f[0].prone = 0; f[0].held = false;
+  c := ci_of(s);
+  if c[0].form != CI_FORM_NONE {
+    if c[0].form_by == AB_POLYMORPH { c[0].pm_on = false; }
+    if c[0].form_by == AB_SHAPECHANGE { v[0].sc_on = false; }
+    ci_leave_shape(s);
+  }
+  w[0].temp = 0;
+  return true;
+}
+
+// ---- each frame, the light, the drawing, the words
+
+st_frame :: (s: [] Everglade, dt: f32) {
+  v := st_of(s);
+  v[0].time += dt;
+  v[0].su_t += dt;
+  st_su_frame(s, dt);
+  st_sv_frame(s, dt);
+  st_sc_frame(s, dt);
+  if v[0].sa_on { v[0].sa_t += dt; if v[0].sa_t >= f32(ST_SA_LIFE) { v[0].sa_on = false; sp_say(s, "SPEAK WITH ANIMALS ENDS", -1, ""); } }
+}
+st_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  v := st_of(s);
+  n := k;
+  if v[0].su_t < f32(ST_SU_SHOW) {
+    f := v[0].su_t / f32(ST_SU_SHOW);
+    n = sp_lamp(u, n, most, add(v[0].su_at, v3(0, 3, 0)), 40, ST_SUN_RGB, 6.0 * (1 - f) * (1 - f));
+  }
+  if v[0].bolt_t < f32(ST_SV_FLASH) {
+    f := v[0].bolt_t / f32(ST_SV_FLASH);
+    n = sp_lamp(u, n, most, add(v[0].sv_at, v3(0, 8, 0)), 60, ST_BOLT_RGB, 5.0 * (1 - f));
+  }
+  if v[0].sv_on && sp_noise(floor(v[0].sv_t * 4), 3.3) > 0.86 {
+    n = sp_lamp(u, n, most, add(ab_you(s), v3(0, 12, 0)), 50, ST_BOLT_RGB, 1.4);
+  }
+  return n;
+}
+st_draw :: (s: [] Everglade) {
+  v := st_of(s);
+  few := phone(s);
+  // Sunburst: a ball of sunlight swelling to its 60 feet and fading, rays thrown off it
+  if v[0].su_t < f32(ST_SU_SHOW) {
+    f := v[0].su_t / f32(ST_SU_SHOW);
+    grow := clamp(f / 0.2, 0, 1);
+    fade := (1 - f) * (1 - f);
+    c := v[0].su_at;
+    R := f32(ST_SU_R);
+    sp_glow(s, c, R * (0.4 + 0.8 * grow), times(ST_SUN_RGB, 0.35 * fade));
+    sp_glow(s, c, 2.5 + 2 * grow, times(v3(1.6, 1.5, 1.2), fade));
+    core := (1.2 + 3.5 * grow) * (1 - f * 0.6);
+    sp_part(s, SHAPE_SPHERE, LOOK_GLOW, c, v3(core, 0, 0), v3(0, core, 0), v3(0, 0, core), ST_SUN_RGB, fade);
+    for q: 0..<(ifx few then 8 else 16) {
+      a := f32(TAU) * f32(q) / 16 + 0.3 * ab_h(61.0, q, 0);
+      e := (ab_h(61.0, q, 1) - 0.4) * 1.2;
+      d := v3(cos(a) * cos(e), sin(e) * 0.8 + 0.2, sin(a) * cos(e));
+      sp_rod(s, add(c, times(d, 1.5)), add(c, times(d, R * grow)), 0.05 + 0.1 * fade, times(ST_SUN_RGB, 1.2 * fade));
+    }
+  }
+  // Storm of Vengeance: a dark mass high over, churning, lit from within; the rain about you
+  if v[0].sv_on {
+    on := clamp(v[0].sv_t / 2, 0, 1);
+    c := add(v[0].sv_at, v3(0, f32(ST_SV_UP), 0));
+    R := f32(ST_SV_R);
+    t := v[0].sv_t;
+    for q: 0..<(ifx few then 20 else 40) {
+      a := f32(TAU) * ab_h(67.0, q, 0) + t * 0.05 * (ifx q % 2 == 0 then 1.0f32 else -1.0f32);
+      rr := R * sqrt(ab_h(67.0, q, 1));
+      p := add(c, v3(cos(a) * rr, (ab_h(67.0, q, 2) - 0.5) * 6, sin(a) * rr));
+      sp_fx(s, FX_SMOKE, p, 18 + 10 * ab_h(67.0, q, 3), ST_CLOUD_RGB, on, v3(0, 0, 0), f32(q) * 0.37);
+    }
+    if sp_noise(floor(t * 4), 3.3) > 0.86 {
+      sp_glow(s, add(c, v3((sp_noise(floor(t * 4), 1.1) - 0.5) * R, -3, (sp_noise(floor(t * 4), 2.2) - 0.5) * R)), 18, times(ST_BOLT_RGB, 0.35));
+    }
+    you := ab_you(s);
+    if st_under(s, you) {
+      r := v[0].sv_round;
+      tint := ifx r == 2 then v3(0.62, 0.8, 0.3) else ifx r == 4 then v3(0.95, 0.97, 1.0) else v3(0.7, 0.76, 0.85);
+      slant := ifx r >= 5 then v3(1.4, 2.2, 0.5) else v3(0.15, 1.6, 0.1);
+      H := 14.0f32; RR := 16.0f32;
+      for q: 0..<(ifx few then 40 else 90) {
+        h0 := ab_h(73.0, q, 0); h1 := ab_h(73.0, q, 1); h2 := ab_h(73.0, q, 2); h3 := ab_h(73.0, q, 3);
+        a := f32(TAU) * h0; rr := RR * sqrt(h1);
+        fall := t * (ifx r == 4 then 16.0f32 else 11.0f32 + 3 * h3) + h2 * H; fall = fall - H * floor(fall / H);
+        at := v3(you.x + cos(a) * rr, you.y + H - fall - 1, you.z + sin(a) * rr);
+        if r == 4 { sp_shape(s, SHAPE_BOX, LOOK_STONE, at, v3(0.05, 0, 0), v3(0, 0.05, 0), v3(0, 0, 0.05), tint); }
+        else { ab_line(s, at, add(at, slant), times(tint, 0.32 * on)); }
+      }
+    }
+  }
+  // the six bolts: jagged white strokes from the cloud to the ground
+  if v[0].bolt_t < f32(ST_SV_FLASH) {
+    f := v[0].bolt_t / f32(ST_SV_FLASH);
+    k := 1 - f;
+    for q: 0..<v[0].bolt_n {
+      b := v[0].bolts[q];
+      top := add(b, v3((ab_h(79.0, q, 0) - 0.5) * 8, f32(ST_SV_UP), (ab_h(79.0, q, 1) - 0.5) * 8));
+      last := top;
+      steps := 9;
+      for e: 1..<steps + 1 {
+        u := f32(e) / f32(steps);
+        p := mix(top, b, u);
+        if e < steps {
+          j := (1 - u * 0.5) * 2.4;
+          p = add(p, v3((ab_h(83.0, q * 13 + e, 0) - 0.5) * j, 0, (ab_h(83.0, q * 13 + e, 1) - 0.5) * j));
+        }
+        sp_rod(s, last, p, 0.06 + 0.12 * k, times(ST_BOLT_RGB, 1.6 * k));
+        last = p;
+      }
+      sp_glow(s, add(b, v3(0, 0.5, 0)), 3.5 * k, times(ST_BOLT_RGB, 0.6));
+    }
+  }
+}
+st_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
+  v := st_of(s);
+  if k == AB_SUNBURST {
+    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(ST_SU_RANGE) { return "TOO FAR · 150 FEET AT MOST"; }
+    return ifx phone_ then "TAP WHERE THE SUNBURST FLASHES · TAP ITS SLOT TO CANCEL" else "CLICK WHERE THE SUNBURST FLASHES · ESC CANCELS";
+  }
+  if k == AB_VENGEANCE {
+    if v[0].sv_on { return ifx phone_ then "TAP ELSEWHERE TO GATHER IT THERE · TAP ITS SLOT TO END IT" else "CLICK ELSEWHERE TO GATHER IT THERE · ALT+7 ENDS IT"; }
+    return ifx phone_ then "TAP WHERE THE STORM GATHERS · TAP ITS SLOT TO CANCEL" else "CLICK WHERE THE STORM GATHERS · ESC CANCELS";
+  }
+  if k == AB_SHAPECHANGE { return ifx phone_ then "TAP TO TAKE A MAMMOTH'S SHAPE · TAP ITS SLOT TO CANCEL" else "CLICK TO TAKE A MAMMOTH'S SHAPE · ESC CANCELS"; }
+  return "";
+}
+// The shape's line while you wear it (everglade-circle.coax ci_hint).
+st_shape_hint :: (s: [] Everglade, phone_: bool) -> string {
+  f := ci_of(s)[0].form;
+  if f == CI_FORM_MAMMOTH { return ifx phone_ then "TAP SOMEONE IN REACH TO GORE · TAP ITS SLOT TO CHANGE SHAPE" else "CLICK SOMEONE WITHIN 10 FEET TO GORE · ALT+8 CHANGES SHAPE"; }
+  if f == CI_FORM_BEAR { return ifx phone_ then "TAP SOMEONE IN REACH TO MAUL · TAP ITS SLOT TO CHANGE SHAPE" else "CLICK SOMEONE IN REACH TO MAUL · ALT+8 CHANGES SHAPE"; }
+  return ifx phone_ then "TAP SOMEONE IN REACH TO BITE · TAP ITS SLOT TO END THE SHAPE" else "CLICK SOMEONE IN REACH TO BITE · ALT+8 ENDS THE SHAPE";
+}
+st_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
+  if k == AB_SUNBURST { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(ST_SU_R), ST_SUN_RGB, pulse); }
+  if k == AB_VENGEANCE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(ST_SV_R), ST_BOLT_RGB, pulse); }
+  return n;
+}
+
+// Blinded, the world goes dark under the HUD (everglade.coax hud draws this first).
+st_blind_plate :: (s: [] Everglade, u: [] f32) {
+  if !st_you_blind(s) || s[0].above { return; }
+  f := clamp(st_of(s)[0].you_blind / 0.6, 0, 1);
+  plate(s, u, Box.{x0 = -60, y0 = -60, x1 = s[0].width + 60, y1 = s[0].height + 60}, 0.93 * f, 0);
+}
+
+// Speak with Animals: what the beasts near you say, over their heads; BLINDED and DEAFENED while you are.
+ST_CAT_LINES :: [6] string.["THE BAKER DROPS FISH ON MARKET DAY", "THE SUN IS WARM ON THIS WALL", "YOU SMELL OF SMOKE",
+                            "A GUARD KICKED ME ONCE", "MICE UNDER THE INN'S FLOOR", "I SAW WHAT YOU DID"];
+ST_DUCK_LINES :: [5] string.["BREAD?", "THE RIVER IS COLD TODAY", "THE BIG FISH LIVES BY THE WEIR", "MIND THE BOATS", "QUACK. THAT IS ALL"];
+ST_FROG_LINES :: [4] string.["PUT ME BACK!", "I AM NOT A FROG", "THE WATCH WILL HEAR OF THIS", "WHY A FROG?"];
+ST_PACK_LINES :: [4] string.["WHERE DO WE RUN?", "WE SMELL THE WATCH", "GOOD HUNTING HERE", "SAY THE WORD"];
+st_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
+  n := at;
+  if !sp_on(s) || s[0].above { return n; }
+  v := st_of(s);
+  k := hi(s[0].dpr, 0.5);
+  if v[0].you_blind > 0 || v[0].you_deaf {
+    word := ifx v[0].you_blind > 0 && v[0].you_deaf then "BLINDED · DEAFENED" else ifx v[0].you_blind > 0 then "BLINDED" else "DEAFENED";
+    cap := 9 * k;
+    tw := text_width(word, cap);
+    n = draw_text(out, n, word, (s[0].width - tw) / 2, 90 * k, cap, GAP, SPACE, ink(k, 0.9, 1, 0.9, 0.75), false, false);
+  }
+  if !v[0].sa_on || v[0].you_blind > 0 { return n; }
+  you := ab_you(s);
+  beat := int(floor(v[0].time / f32(ST_ROUND)));
+  cap := 7 * k;
+  // the cats
+  for i: 0..<EG_SPOTS {
+    if !EG_SPOT_CAT[i] || eg_gone(s[0].ev.edits, i) || s[0].folk[i].indoors { continue; }
+    p := name_point(s, i);
+    if flat_gap(p, you) > f32(ST_SA_NEAR) { continue; }
+    n = st_say_at(s, out, u, n, add(p, v3(0, 0.4, 0)), ST_CAT_LINES[(i * 7 + beat) % 6], cap, k);
+  }
+  // the ducks
+  said := 0;
+  for q: 0..<s[0].float_n {
+    if s[0].floats[q * FLOAT_FLOATS + 7] != 0 || said >= 3 { continue; }
+    p := v3(s[0].floats[q * FLOAT_FLOATS], s[0].floats[q * FLOAT_FLOATS + 1] + 0.7, s[0].floats[q * FLOAT_FLOATS + 2]);
+    if flat_gap(p, you) > f32(ST_SA_NEAR) { continue; }
+    n = st_say_at(s, out, u, n, p, ST_DUCK_LINES[(q * 3 + beat) % 5], cap, k);
+    said += 1;
+  }
+  // the frog, the pack
+  c := ci_of(s);
+  if c[0].pm_on && c[0].pm_who >= 0 && flat_gap(wd_feet(s, c[0].pm_who), you) <= f32(ST_SA_NEAR) {
+    n = st_say_at(s, out, u, n, add(wd_feet(s, c[0].pm_who), v3(0, 0.6, 0)), ST_FROG_LINES[beat % 4], cap, k);
+  }
+  if c[0].ca_on && flat_gap(c[0].ca_at, you) <= f32(ST_SA_NEAR) {
+    n = st_say_at(s, out, u, n, add(c[0].ca_at, v3(0, 1.6, 0)), ST_PACK_LINES[beat % 4], cap, k);
+  }
+  return n;
+}
+st_say_at :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, p: Point, line: string, cap: f32, k: f32) -> int {
+  sc := on_screen(u, p, s[0].width, s[0].height);
+  if !sc.ok { return at; }
+  tw := text_width(line, cap);
+  return draw_text(out, at, line, sc.x - tw / 2, sc.y, cap, GAP, SPACE, ink(k, 0.95, 0.85, 1, 0.8), false, false);
+}
+
+// ---- checks
+
+#test "storm: Sunburst burns and blinds in 60 feet (you too, your attacks then at Disadvantage), Storm of Vengeance's rounds fall on whoever is under it (you too)" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := st_of(g[..]);
+  c := ci_of(g[..]);
+  w := watch_w(g[..]);
+  #assert sp_key_place('6', 4) == 41 && sp_key_place('0', 4) == 45;
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  at := wd_feet(g[..], who);
+  g[0].feet = v3(pl.x + 6, 0, pl.z);
+  // they live through it, to be Blinded; you as well
+  blinded := false;
+  for k: 0..<30 {
+    if c[0].blind[who] > 0 && v[0].you_blind > 0 { blinded = true; break; }
+    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM; w[0].hp = 500; w[0].dead = false;
+    st_su_at(g[..], at);
+  }
+  #assert blinded && w[0].crimes > 0 && v[0].su_save[who] && st_you_blind(g[..]);
+  // your attack at them: the lower of two d20s
+  sum := 0;
+  for k: 0..<400 { sum += wd_d20(g[..], who); }
+  #assert sum < 400 * 9;
+  // a save each round ends it, sooner or later
+  for k: 0..<200 { st_frame(g[..], 0.5); ci_sb_frame(g[..], 0.5); }
+  #assert c[0].blind[who] <= 0 && !st_you_blind(g[..]);
+  // Storm of Vengeance over you both: the thunder, the acid, the bolts, the hail, the freezing rain
+  w[0].actors[who].hp = 500; w[0].hp = 500;
+  hp := w[0].actors[who].hp; mine := w[0].hp;
+  st_sv_at(g[..], at);
+  #assert v[0].sv_on && v[0].sv_round == 1 && ab_active(g[..], AB_VENGEANCE);
+  for k: 0..<285 { st_frame(g[..], 0.2); }   // 57 s: the tenth round at 54
+  #assert v[0].sv_round == 10 && w[0].actors[who].hp < hp && w[0].hp < mine;
+  #assert st_rough(g[..], at.x + 3, at.z) && st_hides(g[..], add(at, v3(-5, 1.6, 0)), add(at, v3(5, 1.6, 0)));
+  for k: 0..<20 { st_frame(g[..], 0.5); }
+  #assert !v[0].sv_on && !st_rough(g[..], at.x + 3, at.z);
+}
+
+#test "storm: Shapechange's mammoth (126 Temporary Hit Points, gores, no spells) turns bear, wolf, then you; Wild Resurgence makes a wolf of you; Speak with Animals; R is a Long Rest" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := st_of(g[..]);
+  c := ci_of(g[..]);
+  w := watch_w(g[..]);
+  g[0].sp.armed = SP_SLOTS + AB_SHAPECHANGE;
+  st_cast(g[..], AB_SHAPECHANGE);
+  #assert v[0].sc_on && c[0].form == CI_FORM_MAMMOTH && w[0].temp == 126 && ci_pace(g[..]) > 1.6 && g[0].sp.armed == SP_SLOTS + AB_SHAPECHANGE;
+  #assert ci_no_casting(g[..], SP_METEOR) && !ci_no_casting(g[..], SP_SLOTS + AB_SHAPECHANGE);
+  // its Temporary Hit Points spent, the shape holds (it is not Polymorph)
+  watch_hurt_you(w, 130);
+  ci_form_frame(g[..], 1.0 / 30);
+  #assert c[0].form == CI_FORM_MAMMOTH && w[0].temp == 0;
+  st_press(g[..], AB_SHAPECHANGE);
+  #assert c[0].form == CI_FORM_BEAR && w[0].temp == 0;
+  st_press(g[..], AB_SHAPECHANGE);
+  #assert c[0].form == CI_FORM_WOLF;
+  st_press(g[..], AB_SHAPECHANGE);
+  #assert c[0].form == CI_FORM_NONE && !v[0].sc_on;
+  // Wild Resurgence: a wolf, 9 Temporary Hit Points
+  st_press(g[..], AB_RESURGENCE);
+  #assert c[0].form == CI_FORM_WOLF && c[0].form_by == AB_RESURGENCE && w[0].temp == ST_DRUID && ab_active(g[..], AB_RESURGENCE);
+  st_press(g[..], AB_RESURGENCE);
+  #assert c[0].form == CI_FORM_NONE;
+  // Speak with Animals
+  st_press(g[..], AB_SPEAK);
+  #assert v[0].sa_on;
+  st_press(g[..], AB_SPEAK);
+  #assert !v[0].sa_on;
+  // R: a Long Rest with the Rebuild, the heat untouched
+  w[0].hp = 3; w[0].slow_t = 2; w[0].marked = true; v[0].you_blind = 30; w[0].heat = 7;
+  st_press(g[..], AB_RESURGENCE);
+  #assert everglade_key(g[..], 'r', 0);
+  #assert w[0].hp == w[0].max && w[0].slow_t == 0 && !w[0].marked && !st_you_blind(g[..]) && c[0].form == CI_FORM_NONE && w[0].temp == 0 && w[0].heat == 7;
+}

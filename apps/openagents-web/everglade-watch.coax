@@ -415,18 +415,6 @@ watch_rebuilt :: (s: [] Everglade) -> int {
   if !s[0].wv.started { return 0; }
   return watch_restore(watch_w(s));
 }
-// R with nothing broken but someone hurt: they stand up again.
-watch_key :: (s: [] Everglade, key: int) -> bool {
-  if !watch_on(s) || s[0].above || s[0].ev.editing || (key != 'r' && key != 'R') || sp_broken(s) { return false; }
-  w := watch_w(s);
-  hurt := false;
-  for i: 0..<WATCH_ACTORS { if w[0].actors[i].mode == WM_DEAD || w[0].actors[i].mode == WM_DOWN { hurt = true; } }
-  if !hurt { return false; }
-  n := watch_restore(w);
-  sp_say(s, "THE TOWN STANDS AGAIN", n, "PEOPLE");
-  return true;
-}
-
 // ---- the HUD
 
 // Your HP under MAP, WANTED under it, and the watch's shouts over their heads.

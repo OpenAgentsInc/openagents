@@ -109,12 +109,15 @@ wd_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
   v := wd_of(s);
   return (v[0].sg_on && flat_gap(v3(x, 0, z), v[0].sg_at) <= f32(WD_SG_R)) || ci_rough(s, x, z);
 }
-// A d20 for an attack at person i: two, the higher, while Faerie Fire outlines them.
+// A d20 for an attack at person i: two, the higher, while Faerie Fire outlines them; the lower while you are Blinded.
 wd_d20 :: (s: [] Everglade, i: int) -> int {
   d := s[0].sp.dice[..];
   roll := srd_roll(d, 20);
   v := wd_of(s);
-  if v[0].ff_on && i >= 0 && i < WATCH_ACTORS && v[0].lit[i] { other := srd_roll(d, 20); if other > roll { roll = other; } }
+  up := v[0].ff_on && i >= 0 && i < WATCH_ACTORS && v[0].lit[i];
+  down := st_you_blind(s);   // you Blinded (everglade-storm.coax Sunburst): Disadvantage; both cancel
+  if up && !down { other := srd_roll(d, 20); if other > roll { roll = other; } }
+  if down && !up { other := srd_roll(d, 20); if other < roll { roll = other; } }
   return roll;
 }
 wd_aim_far :: (s: [] Everglade, reach: f32, what: string) -> bool {
