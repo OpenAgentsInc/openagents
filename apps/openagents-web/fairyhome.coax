@@ -154,8 +154,16 @@ ffb_room_floor :: (s: [] Fairy, r: int, open: bool) {
     }
     return;
   }
-  // soft moss, a ring of mossy stones and little flowers between them
-  shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(cx, g + 0.03, cz), 0, 0, rr, 0.05, rr, 0.42, 0.72, 0.3);
+  // soft moss tufts over the ground (they follow its slope), a ring of mossy stones and little flowers between them
+  for ring: 0..<3 {
+    count := 1 + ring * 6;
+    for j: 0..<count {
+      a := f32(j) * f32(TAU) / f32(count) + f32(ring) * 0.5;
+      d := f32(ring) * rr / 3;
+      mx := cx + cos(a) * d; mz := cz + sin(a) * d;
+      shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(mx, ground_at(s, mx, mz) + 0.02, mz), a, 0, rr * 0.42, 0.07, rr * 0.42, 0.42, 0.72, 0.3);
+    }
+  }
   for i: 0..<12 {
     a := f32(i) * f32(TAU) / 12 + f32(r) * 0.4;
     px := cx + cos(a) * (rr + 0.1); pz := cz + sin(a) * (rr + 0.1);
@@ -257,7 +265,7 @@ ffb_piece :: (s: [] Fairy, p: Piece, lit_up: bool) {
 
 ffb_home :: (s: [] Fairy, eye: Point) {
   dx := eye.x - f32(FFH_X); dz := eye.z - f32(FFH_Z);
-  if dx * dx + dz * dz > 90 * 90 { return; }
+  if dx * dx + dz * dz > 48 * 48 { return; }
   roots := ffb_roots(s);
   ffb_root(s);
   for r: 0..<FFH_ROOMS { ffb_room_floor(s, r, r < ffh_rooms_open(roots)); }

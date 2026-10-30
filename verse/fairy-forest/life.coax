@@ -9,7 +9,7 @@
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000   (these checks run with the page's)
 
 FFL_MAGIC :: 76;           // 'L'
-FFL_TAG_LOOK :: 1; FFL_TAG_HOME :: 2;
+FFL_TAG_LOOK :: 1; FFL_TAG_HOME :: 2; FFL_TAG_GARDEN :: 3; FFL_TAG_VILLAGE :: 4;
 FFL_BYTES :: 1024;         // the most the tail takes
 
 // ---- your fairy (ff-maker): each part an index into its choices
@@ -81,9 +81,45 @@ Home :: struct {
   undo: [FFH_UNDO * FFH_PIECES] Piece; undo_n: [FFH_UNDO] int; undo_count: int;
 }
 
+// ---- your garden (ff-garden): six beds in the garden room. A seed comes
+// for each patch you bloom and one a day you visit; a plant grows by real
+// time from when it was planted (a sprout in two hours, young in a day, grown
+// in two), and one watered and sung to often enough grows into its rare form.
+FFG_BEDS :: 6;
+FFG_KINDS :: 3;   // a sapling, a flower, a mushroom (planted in turn)
+FFG_KIND_WORDS :: [3] string.["SAPLING", "FLOWER", "MUSHROOM"];
+FFG_SPROUT :: 120.0; FFG_YOUNG :: 1440.0; FFG_GROWN :: 2880.0;   // minutes after planting
+FFG_CARE_EVERY :: 360.0;   // minutes between two waterings (or two songs) that count
+FFG_RARE :: 4;             // care that makes a grown plant rare
+FFG_NEAR :: 1.1;
+
+Bed :: struct { kind: int; planted: f64; care: int; watered: f64; sung: f64; }   // kind 0 empty, else 1 + the kind; times in minutes
+
+Garden :: struct {
+  bed: [FFG_BEDS] Bed;
+  planted: int;        // seeds planted ever
+  gifts: int;          // the day's seeds taken
+  gift_day: int;       // the last day (since 1970) one was
+}
+
+// ---- the village (ff-village): a creature you have helped, invited, moves
+// to a plot by your home and builds its house there over a couple of minutes.
+FFV_PLOTS :: 5;
+FFV_BUILD :: 2.0;   // minutes to build a house
+// The plots: round the clearing's south and west, off the rooms.
+FFV_PLOT_ANGLE :: [5] f32.[3.3, 3.9, 4.5, 5.1, 5.7];
+FFV_PLOT_R :: 8.0;
+
+Village :: struct {
+  plot: [5] int;       // each creature's plot + 1 (0: not moved in)
+  moved: [5] f64;      // when (minutes since 1970; 0 unknown: already built)
+}
+
 Life :: struct {
   look: FairyLook;
   home: Home;
+  garden: Garden;
+  village: Village;
   changes: int;      // grows with every change, so the face keeps it (not saved)
 }
 
@@ -217,6 +253,88 @@ ffl_word :: (p: int, v: int) -> string {
   return "";
 }
 
+// A bed's middle: two rows of three in the garden room.
+ffg_bed_at :: (i: int) -> Point {
+  cx := f32(FFH_X) + FFH_ROOM[3]; cz := f32(FFH_Z) + FFH_ROOM[4];
+  return v3(cx + (f32(i % 3) - 1) * 1.35, 0, cz + (f32(i / 3) - 0.5) * 1.5);
+}
+ffg_bed_near :: (x: f32, z: f32) -> int {
+  best := -1; bd := f32(FFG_NEAR * FFG_NEAR);
+  for i: 0..<FFG_BEDS {
+    b := ffg_bed_at(i);
+    d := (b.x - x) * (b.x - x) + (b.z - z) * (b.z - z);
+    if d < bd { bd = d; best = i; }
+  }
+  return best;
+}
+// Seeds in hand: one a patch bloomed and one a day, less those planted.
+ffg_seeds :: (l: [] Life, bloomed: int) -> int { n := bloomed + l[0].garden.gifts - l[0].garden.planted; return ifx n < 0 then 0 else n; }
+// A visit on a new day: that day's seed.
+ffg_day :: (l: [] Life, now_min: f64) {
+  if now_min <= 0 { return; }
+  day := cast(int) floor(now_min / 1440);
+  if day > l[0].garden.gift_day { l[0].garden.gift_day = day; l[0].garden.gifts += 1; l[0].changes += 1; }
+}
+// How grown a bed's plant is: 0 a seed, 1 a sprout, 2 young, 3 grown, 4 grown rare; -1 empty.
+ffg_stage :: (l: [] Life, i: int, now_min: f64) -> int {
+  b := l[0].garden.bed[i];
+  if b.kind == 0 { return -1; }
+  age := now_min - b.planted;
+  if age >= FFG_GROWN { return ifx b.care >= FFG_RARE then 4 else 3; }
+  if age >= FFG_YOUNG { return 2; }
+  if age >= FFG_SPROUT { return 1; }
+  return 0;
+}
+ffg_plant :: (l: [] Life, i: int, bloomed: int, now_min: f64) -> bool {
+  if i < 0 || i >= FFG_BEDS || l[0].garden.bed[i].kind != 0 || ffg_seeds(l, bloomed) <= 0 || now_min <= 0 { return false; }
+  l[0].garden.bed[i] = Bed.{kind = 1 + l[0].garden.planted % FFG_KINDS, planted = now_min, care = 0, watered = 0, sung = 0};
+  l[0].garden.planted += 1;
+  l[0].changes += 1;
+  return true;
+}
+// Water (song false) or sing (true): counts once each FFG_CARE_EVERY minutes.
+ffg_can_care :: (l: [] Life, i: int, song: bool, now_min: f64) -> bool {
+  if i < 0 || i >= FFG_BEDS || l[0].garden.bed[i].kind == 0 { return false; }
+  last := ifx song then l[0].garden.bed[i].sung else l[0].garden.bed[i].watered;
+  return now_min - last >= FFG_CARE_EVERY;
+}
+ffg_care :: (l: [] Life, i: int, song: bool, now_min: f64) -> bool {
+  if !ffg_can_care(l, i, song, now_min) { return false; }
+  if song { l[0].garden.bed[i].sung = now_min; } else { l[0].garden.bed[i].watered = now_min; }
+  l[0].garden.bed[i].care += 1;
+  l[0].changes += 1;
+  return true;
+}
+ffv_plot_at :: (k: int) -> Point {
+  a := FFV_PLOT_ANGLE[k];
+  return v3(f32(FFH_X) + cos(a) * f32(FFV_PLOT_R), 0, f32(FFH_Z) + sin(a) * f32(FFV_PLOT_R));
+}
+ffv_moved_in :: (l: [] Life, c: int) -> bool { return c >= 0 && c < 5 && l[0].village.plot[c] > 0; }
+ffv_count :: (l: [] Life) -> int { n := 0; for c: 0..<5 { if l[0].village.plot[c] > 0 { n += 1; } } return n; }
+// Creature c moves in: the first free plot is its. False when it already has, or none is free.
+ffv_invite :: (l: [] Life, c: int, now_min: f64) -> bool {
+  if c < 0 || c >= 5 || l[0].village.plot[c] > 0 { return false; }
+  for k: 0..<FFV_PLOTS {
+    taken := false;
+    for o: 0..<5 { if l[0].village.plot[o] == k + 1 { taken = true; } }
+    if taken { continue; }
+    l[0].village.plot[c] = k + 1; l[0].village.moved[c] = ifx now_min > 0 then now_min else 0;
+    l[0].changes += 1;
+    return true;
+  }
+  return false;
+}
+// How far its house is built, 0 to 1.
+ffv_built :: (l: [] Life, c: int, now_min: f64) -> f32 {
+  if !ffv_moved_in(l, c) { return 0; }
+  m := l[0].village.moved[c];
+  if m <= 0 || now_min <= 0 { return 1; }
+  return cast(f32) clamp01(cast(f32) ((now_min - m) / FFV_BUILD));
+}
+
+ffl_put32 :: (out: [] u8, at: int, v: int) { for k: 0..<4 { out[at + k] = cast(u8) ((v >> (8 * k)) & 255); } }
+ffl_get32 :: (b: [] u8, at: int) -> int { v := 0; for k: 0..<4 { v = v | (cast(int) b[at + k] << (8 * k)); } return v; }
+
 // ---- the save's tail
 
 ffl_save :: (l: [] Life, out: [] u8) -> int {
@@ -242,6 +360,24 @@ ffl_save :: (l: [] Life, out: [] u8) -> int {
     out[n + 6] = cast(u8) p.size;
     n += 7;
   }
+  // the garden: planted, gifts, the gift day, then each bed (kind, planted, care, watered, sung: minutes)
+  gsize := 10 + FFG_BEDS * 14;
+  if n + 2 + gsize > out.count { return n; }
+  out[n] = cast(u8) FFL_TAG_GARDEN; out[n + 1] = cast(u8) gsize; n += 2;
+  ffl_put32(out, n, l[0].garden.planted); ffl_put32(out, n + 4, l[0].garden.gifts);
+  out[n + 8] = cast(u8) (l[0].garden.gift_day & 255); out[n + 9] = cast(u8) ((l[0].garden.gift_day >> 8) & 255);
+  n += 10;
+  for i: 0..<FFG_BEDS {
+    b := l[0].garden.bed[i];
+    out[n] = cast(u8) b.kind;
+    ffl_put32(out, n + 1, cast(int) b.planted); out[n + 5] = cast(u8) (ifx b.care > 255 then 255 else b.care);
+    ffl_put32(out, n + 6, cast(int) b.watered); ffl_put32(out, n + 10, cast(int) b.sung);
+    n += 14;
+  }
+  // the village: each creature's plot and when it moved in
+  if n + 2 + 25 > out.count { return n; }
+  out[n] = cast(u8) FFL_TAG_VILLAGE; out[n + 1] = 25; n += 2;
+  for c: 0..<5 { out[n] = cast(u8) l[0].village.plot[c]; ffl_put32(out, n + 1, cast(int) l[0].village.moved[c]); n += 5; }
   return n;
 }
 // Metres as centimetres in two bytes (to +-327 m), and back.
@@ -278,6 +414,23 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
         l[0].home.piece[l[0].home.n] = p; l[0].home.n += 1;
       }
       l[0].home.undo_count = 0;
+    }
+    if tag == FFL_TAG_VILLAGE && size >= 25 {
+      for c: 0..<5 {
+        pl := cast(int) b[i + c * 5];
+        l[0].village.plot[c] = ifx pl <= FFV_PLOTS then pl else 0;
+        l[0].village.moved[c] = f64(ffl_get32(b, i + c * 5 + 1));
+      }
+    }
+    if tag == FFL_TAG_GARDEN && size >= 10 + FFG_BEDS * 14 {
+      l[0].garden.planted = ffl_get32(b, i); l[0].garden.gifts = ffl_get32(b, i + 4);
+      l[0].garden.gift_day = cast(int) b[i + 8] + cast(int) b[i + 9] * 256;
+      for k: 0..<FFG_BEDS {
+        o := i + 10 + k * 14;
+        kind := cast(int) b[o];
+        l[0].garden.bed[k] = Bed.{kind = ifx kind <= FFG_KINDS then kind else 0, planted = f64(ffl_get32(b, o + 1)), care = cast(int) b[o + 5],
+                                  watered = f64(ffl_get32(b, o + 6)), sung = f64(ffl_get32(b, o + 10))};
+      }
     }
     i += size;
   }
@@ -321,7 +474,7 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
   #assert ffh_undo(a[..]) && abs(a[0].home.piece[2].x - tx) < 0.001;
   ffh_furnish(a[..], 2);
   #assert a[0].home.n == 3 + 2;
-  b: [256] u8;
+  b: [512] u8;
   n := ffl_save(a[..], b[..]);
   c: [1] Life;
   #assert ffl_open(c[..], b[0..<n]);
@@ -330,7 +483,44 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
     p := c[0].home.piece[i]; q := a[0].home.piece[i];
     #assert p.kind == q.kind && abs(p.x - q.x) < 0.01 && abs(p.z - q.z) < 0.01 && abs(wrap_angle(p.yaw - q.yaw)) < 0.03 && p.size == q.size;
   }
+  // the garden is kept too
+  a[0].garden.planted = 2; a[0].garden.gift_day = 20390;
+  a[0].garden.bed[4] = Bed.{kind = 2, planted = 29000000, care = 3, watered = 29000100, sung = 29000200};
+  n = ffl_save(a[..], b[..]);
+  #assert ffl_open(c[..], b[0..<n]);
+  #assert c[0].garden.planted == 2 && c[0].garden.gift_day == 20390 && c[0].garden.bed[4].kind == 2 && c[0].garden.bed[4].care == 3;
+  #assert c[0].garden.bed[4].planted == 29000000 && c[0].garden.bed[4].sung == 29000200 && c[0].garden.bed[0].kind == 0;
   // rooms open once: furnishing again adds nothing
   ffh_furnish(c[..], 2);
   #assert c[0].home.n == a[0].home.n;
+}
+
+#test "a garden: seeds from blooms and days, planted, grown by real time, and rare with care" {
+  l: [1] Life;
+  day := 29000000.0;   // minutes since 1970: late 2025
+  #assert ffg_seeds(l[..], 0) == 0 && !ffg_plant(l[..], 0, 0, day);
+  ffg_day(l[..], day); ffg_day(l[..], day + 10);
+  #assert ffg_seeds(l[..], 0) == 1;
+  #assert ffg_plant(l[..], 0, 0, day) && ffg_seeds(l[..], 0) == 0 && ffg_seeds(l[..], 2) == 2;
+  #assert ffg_stage(l[..], 0, day) == 0 && ffg_stage(l[..], 0, day + 200) == 1 && ffg_stage(l[..], 0, day + 1500) == 2 && ffg_stage(l[..], 0, day + 3000) == 3;
+  // watering twice in an hour counts once
+  #assert ffg_care(l[..], 0, false, day + 10) && !ffg_care(l[..], 0, false, day + 60) && ffg_care(l[..], 0, true, day + 60);
+  #assert ffg_care(l[..], 0, false, day + 430) && ffg_care(l[..], 0, true, day + 430);
+  #assert ffg_stage(l[..], 0, day + 3000) == 4;
+  #assert ffg_bed_near(ffg_bed_at(5).x, ffg_bed_at(5).z) == 5;
+  // every bed is in the garden room
+  for i: 0..<FFG_BEDS { p := ffg_bed_at(i); #assert ffh_room_at(p.x, p.z, 4) == 1; }
+}
+
+#test "the village: an invited creature takes the first free plot, builds its house over two minutes, and is kept" {
+  l: [1] Life;
+  #assert ffv_invite(l[..], 3, 1000) && !ffv_invite(l[..], 3, 1000) && ffv_invite(l[..], 0, 1001);
+  #assert l[0].village.plot[3] == 1 && l[0].village.plot[0] == 2 && ffv_count(l[..]) == 2;
+  #assert ffv_built(l[..], 3, 1001) == 0.5 && ffv_built(l[..], 3, 1005) == 1 && ffv_built(l[..], 1, 1005) == 0;
+  b: [512] u8;
+  n := ffl_save(l[..], b[..]);
+  c: [1] Life;
+  #assert ffl_open(c[..], b[0..<n]) && c[0].village.plot[3] == 1 && c[0].village.moved[0] == 1001;
+  // every plot is in the clearing and off the rooms
+  for k: 0..<FFV_PLOTS { p := ffv_plot_at(k); #assert ffh_near(p.x, p.z, f32(FFH_CLEAR)) && ffh_room_at(p.x, p.z, 4) < 0; }
 }

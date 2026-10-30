@@ -1,0 +1,77 @@
+// The village (ff-village, verse/fairy-forest/README.md "The community"): a
+// creature whose glade you restored can be invited home (E by it: INVITE);
+// it takes a plot round your home's clearing and builds its own small house
+// there, in its own colours, over a couple of minutes, then comes by to
+// visit, sitting at its door while you are home. The data and its save are
+// verse/fairy-forest/life.coax's.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+// Each creature's house: its walls and its roof.
+FFV_WALLS :: [15] f32.[0.62, 0.44, 0.3,   0.5, 0.72, 0.5,   0.92, 0.86, 0.7,   0.46, 0.36, 0.28,   0.66, 0.6, 0.5];
+FFV_ROOF :: [15] f32.[0.42, 0.66, 0.3,   0.3, 0.6, 0.42,   0.98, 0.72, 0.36,   0.36, 0.5, 0.26,   0.5, 0.36, 0.5];
+FFV_INVITE :: [5] string.["INVITE BRAMBLE HOME", "INVITE PIP HOME", "INVITE CLOVER HOME", "INVITE BURDOCK HOME", "INVITE HOLLOW HOME"];
+
+// E by a happy creature that hasn't moved in invites it.
+ffv_can_invite :: (s: [] Fairy, c: int) -> bool {
+  return c >= 0 && c < FF_CREATURES && ff_feel(s[0].forest[..], c) == FEEL_HAPPY && !ffv_moved_in(s[0].life[..], c);
+}
+
+ffv_house :: (s: [] Fairy, u: [] f32, c: int, k: int) {
+  p := ffv_plot_at(k);
+  g := ground_at(s, p.x, p.z);
+  done := ffv_built(s[0].life[..], c, s[0].now_min);
+  at := v3(p.x, g, p.z);
+  // its door faces your hollow
+  face := yaw_of(f32(FFH_X) - p.x, f32(FFH_Z) - p.z);
+  ahead := v3(sin(face), 0, cos(face));
+  wc := v3(FFV_WALLS[c * 3], FFV_WALLS[c * 3 + 1], FFV_WALLS[c * 3 + 2]);
+  rc := v3(FFV_ROOF[c * 3], FFV_ROOF[c * 3 + 1], FFV_ROOF[c * 3 + 2]);
+  // the frame first, then the walls rise, then the roof
+  for j: 0..<6 {
+    a := f32(j) * 1.0472;
+    post := add(at, v3(cos(a) * 1.05, 0, sin(a) * 1.05));
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, post, add(post, v3(0, 1.4, 0)), 0.07, 0.46, 0.34, 0.24);
+  }
+  wall := clamp01(done * 1.6);
+  if wall > 0 { shape(s, SHAPE_CYLINDER, LOOK_BARK, add(at, v3(0, 0.7 * wall, 0)), face, 0, 1.0, 0.7 * wall, 1.0, wc.x, wc.y, wc.z); }
+  if done > 0.6 {
+    roof := clamp01((done - 0.6) / 0.4);
+    limb(s, SHAPE_CONE, LOOK_LEAVES, add(at, v3(0, 1.35, 0)), add(at, v3(0, 1.35 + 1.1 * roof, 0)), 1.35, rc.x, rc.y, rc.z);
+  }
+  if done >= 1 {
+    shape(s, SHAPE_BOX, LOOK_MATTE, add(at, add(times(ahead, 0.97), v3(0, 0.45, 0))), face, 0, 0.42, 0.45, 0.08, 0.26, 0.17, 0.12);
+    shape(s, SHAPE_SPHERE, LOOK_GLOW, add(at, add(times(ahead, 0.86), add(times(v3(-cos(face), 0, sin(face)), 0.55), v3(0, 0.95, 0)))), face, 0, 0.16, 0.16, 0.05, 1.0, 0.85, 0.5);
+    limb(s, SHAPE_CYLINDER, LOOK_STONE, add(at, add(times(ahead, -0.4), v3(0.3, 1.5, 0))), add(at, add(times(ahead, -0.4), v3(0.3, 2.3, 0))), 0.12, 0.55, 0.52, 0.5);
+    // it comes by: sitting at its door while you are home
+    if ffh_near(s[0].feet.x, s[0].feet.z, 18) {
+      door := add(at, times(ahead, 1.55));
+      creature_draw(s, u, c, door.x, door.z, s[0].feet);
+    }
+  }
+}
+
+ffv_draw :: (s: [] Fairy, u: [] f32, eye: Point) {
+  if !ffh_near(eye.x, eye.z, 48) { return; }
+  l := s[0].life[..];
+  for c: 0..<FF_CREATURES {
+    if l[0].village.plot[c] > 0 { ffv_house(s, u, c, l[0].village.plot[c] - 1); }
+  }
+}
+
+#test "a happy creature is invited by E and moves in; a sad one is talked to" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  c := FF_CREATURE[0]; cz := FF_CREATURE[1];
+  you := v3(c + 1, 0, cz);
+  play(s[..], you);   // by it
+  s[0].use = true; play(s[..], you);
+  #assert s[0].talk == 1 && !ffv_moved_in(s[0].life[..], 0);
+  end_talk(s[..]);
+  for i: 0..<FF_PATCHES { if cast(int) FF_PATCH[i * 4 + 3] == cast(int) FF_CREATURE[2] { _ := ff_bloom(s[0].forest[..], i, 1); } }
+  #assert ffv_can_invite(s[..], 0);
+  s[0].use = true; play(s[..], you);
+  #assert ffv_moved_in(s[0].life[..], 0) && s[0].talk == 0;
+  // the next E talks
+  s[0].use = true; play(s[..], you);
+  #assert s[0].talk == 1;
+}

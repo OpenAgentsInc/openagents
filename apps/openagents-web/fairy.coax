@@ -42,6 +42,8 @@
 #load "../../verse/fairy-forest/life.coax";
 #load "fairymaker.coax";   // make your fairy, and the mirror pool
 #load "fairyhome.coax";    // your home, room by room
+#load "fairygarden.coax";  // your garden, by real days
+#load "fairyvillage.coax"; // creatures moving in
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -171,6 +173,7 @@ Fairy :: struct {
   life: [1] Life;       // what you made your own (verse/fairy-forest/life.coax)
   maker: [1] Maker;     // making your fairy (fairymaker.coax)
   build: [1] Build;     // building in your home (fairyhome.coax)
+  now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
   fig_on: bool; fig_at: Point; fig_up: f32; fig_across: f32;   // her body's size, while she is laid out
 }
 
@@ -223,6 +226,7 @@ fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return ground_a
 
 fairy_start :: (s: [] Fairy) {
   s[0].build[0].carry = -1; s[0].build[0].picked = -1;
+  ff_bloom_add(s[0].forest[..], f32(FFH_X), f32(FFH_Z), 15, -100);   // your home is never grey
   s[0].started = true;
   ff_stream_line(s[0].stream[..]);
   nodes := FF_NODE_XZ; links := FF_LINK_AB; flats := FF_FLATS;
@@ -1206,9 +1210,13 @@ heart_bloom :: (s: [] Fairy) {
 
 // The creatures: a hedgehog, a frog, a rabbit, a badger and an owl, turned to you when you are near.
 creatures :: (s: [] Fairy, u: [] f32, you: Point) {
+  for c: 0..<FF_CREATURES { creature_draw(s, u, c, FF_CREATURE[c * 4], FF_CREATURE[c * 4 + 1], you); }
+}
+// Creature c at (x, z): at home in its glade, or visiting the village (fairyvillage.coax).
+creature_draw :: (s: [] Fairy, u: [] f32, c: int, x: f32, z: f32, you: Point) {
   t := effect_time(s);
-  for c: 0..<FF_CREATURES {
-    x := FF_CREATURE[c * 4]; z := FF_CREATURE[c * 4 + 1]; kind := cast(int) FF_CREATURE[c * 4 + 3];
+  {
+    kind := cast(int) FF_CREATURE[c * 4 + 3];
     g := ground_at(s, x, z);
     mood := ff_mood(s[0].forest[..], c);
     feel := ff_feel(s[0].forest[..], c);
@@ -1787,7 +1795,9 @@ play :: (s: [] Fairy, you: Point) {
   if s[0].use {
     i := ff_patch_near(f, you.x, you.z);
     if i >= 0 { done := ff_bloom(f, i, s[0].time); }
+    else if s[0].near_creature >= 0 && ffv_can_invite(s, s[0].near_creature) { _ := ffv_invite(s[0].life[..], s[0].near_creature, s[0].now_min); }
     else if s[0].near_creature >= 0 && s[0].talk == 0 { talk_to(s, s[0].near_creature); }
+    else if ffg_verb(s, you) != 0 { _ := ffg_use(s, you); }
     else if ffm_near_pool(you) { ffm_open(s, false); }
     else if ffh_near(you.x, you.z, f32(FFB_HOME_NEAR)) && !s[0].build[0].open { ffb_open(s); }
     s[0].use = false;
@@ -1972,14 +1982,16 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   near_patch := ff_patch_near(f, you.x, you.z);
   pool := ffm_near_pool(you);
   home := ffh_near(you.x, you.z, f32(FFB_HOME_NEAR)) && !s[0].build[0].open;
+  garden := ffg_verb(s, you);
   if s[0].build[0].open {
     n = ffb_hud(s, out, u, n, above - 8 * k);
     above = s[0].build[0].panel.y0; foot_x0 = lo(foot_x0, s[0].build[0].panel.x0);
   }
-  if (near_patch >= 0 || s[0].near_creature >= 0 || pool || home) && s[0].air <= f32(FLYING) {
+  if (near_patch >= 0 || s[0].near_creature >= 0 || pool || home || garden != 0) && s[0].air <= f32(FLYING) {
     bc := 9 * k;
     // the Old Ring's stones are lit, not bloomed; the mirror pool makes your fairy; at home you build
-    verb := ifx near_patch < 0 && s[0].near_creature < 0 then (ifx pool then "MIRROR" else "BUILD")
+    verb := ifx near_patch < 0 && s[0].near_creature < 0 then (ifx garden != 0 then ffg_word(garden) else ifx pool then "MIRROR" else "BUILD")
+            else ifx near_patch < 0 && ffv_can_invite(s, s[0].near_creature) then (ifx phone(s) then "INVITE" else FFV_INVITE[s[0].near_creature])
             else ifx near_patch < 0 then (ifx phone(s) then "TALK" else FF_TALK_TO[s[0].near_creature])
             else ifx cast(int) FF_PATCH[near_patch * 4 + 3] == FF_OLD_RING then "LIGHT" else "BLOOM";
     if phone(s) {
@@ -2163,8 +2175,9 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   fairy_figure(s, u, shown, face, s[0].stride, act, s[0].air, flap);
   s[0].fig_on = false;
   s[0].mine = false;
-  ffm_pool(s);
+  if ffh_near(shot.eye.x, shot.eye.z, 48) { ffm_pool(s); ffg_draw(s); }
   ffb_home(s, shot.eye);
+  ffv_draw(s, u, shot.eye);
   if redit_row_on(s[0].ed[..], "sparkles") { sparkle(s, shown, face, speed > 0.6 || s[0].air > 0.2, t); } else { s[0].spark_next = 0; for i: 0..<18 * 4 { s[0].sparks[i] = 0; } }
   creatures(s, u, shown);
   heart(s, u);
@@ -2262,7 +2275,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert ff_patch_near(g[0].forest[..], g[0].feet.x, g[0].feet.z) == 0;
   #assert fairy_key(g[..], 'e', 0);
   nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert g[0].forest[0].bloomed[0] && u[U_BLOOM_INFO] == 1;
+  #assert g[0].forest[0].bloomed[0] && u[U_BLOOM_INFO] == 2;   // the home's and the flower's
   for i: 1..<4 {
     pressed := fairy_key(g[..], 'e', 0);
     for k: 0..<3 { nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, FF_PATCH[i * 4], 0, FF_PATCH[i * 4 + 1], 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }

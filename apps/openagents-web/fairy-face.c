@@ -207,6 +207,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   now += dt;
   fairy_golden(at(state), golden);
   fairy_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
+  if (!golden) fairy_clock(at(state), wall_ms());   /* the garden grows by real days */
   // the save has had its chance to come (an account's from the server): a first visit makes its fairy
   if (!golden && now > 2.0 && (progress_ask == -2 || (now > 6.0 && progress_ask != -1) || !place_keeper.account)) fairy_life_ready(at(state));
   // while you talk you stand still: no walking, no wing beats

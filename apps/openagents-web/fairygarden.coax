@@ -1,0 +1,114 @@
+// Your garden (ff-garden, verse/fairy-forest/README.md "Caring for something
+// until it changes"): six beds in your home's garden room. E at a bed plants
+// a seed (one for each patch you bloom and one a day you come), then waters
+// it and sings to it; it grows by real days, and the most cared for turns
+// rare: the sapling a glowing tree, the flower a moon flower a lantern moth
+// comes to, the mushroom a glowcap. The data and its save are
+// verse/fairy-forest/life.coax's; the clock is the face's (fairy_clock).
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFG_PLANT :: 1; FFG_WATER :: 2; FFG_SING :: 3;
+
+ffg_bloomed :: (s: [] Fairy) -> int {
+  n := 0;
+  for i: 0..<FF_PATCHES { if s[0].forest[0].bloomed[i] { n += 1; } }
+  return n;
+}
+// What E does at the bed by you: plant, water, sing, or nothing (0); and which bed.
+ffg_verb :: (s: [] Fairy, you: Point) -> int {
+  l := s[0].life[..];
+  i := ffg_bed_near(you.x, you.z);
+  if i < 0 || s[0].now_min <= 0 || ffh_room_at(you.x, you.z, ff_roots_awake(s[0].forest[..])) != 1 { return 0; }
+  if l[0].garden.bed[i].kind == 0 { return ifx ffg_seeds(l, ffg_bloomed(s)) > 0 then FFG_PLANT else 0; }
+  if ffg_can_care(l, i, false, s[0].now_min) { return FFG_WATER; }
+  if ffg_can_care(l, i, true, s[0].now_min) { return FFG_SING; }
+  return 0;
+}
+ffg_use :: (s: [] Fairy, you: Point) -> bool {
+  v := ffg_verb(s, you);
+  if v == 0 { return false; }
+  l := s[0].life[..];
+  i := ffg_bed_near(you.x, you.z);
+  if v == FFG_PLANT { return ffg_plant(l, i, ffg_bloomed(s), s[0].now_min); }
+  return ffg_care(l, i, v == FFG_SING, s[0].now_min);
+}
+ffg_word :: (v: int) -> string { return ifx v == FFG_PLANT then "PLANT" else ifx v == FFG_WATER then "WATER" else "SING"; }
+
+// The face's wall clock, in ms since 1970: the garden's days.
+fairy_clock :: (s: [] Fairy, ms: f64) #export_c {
+  if !(ms > 0) { return; }
+  s[0].now_min = ms / 60000;
+  ffg_day(s[0].life[..], s[0].now_min);
+}
+
+ffg_draw :: (s: [] Fairy) {
+  if ff_roots_awake(s[0].forest[..]) < 1 { return; }   // the garden room isn't open yet
+  l := s[0].life[..];
+  t := effect_time(s);
+  for i: 0..<FFG_BEDS {
+    p := ffg_bed_at(i);
+    g := ground_at(s, p.x, p.z);
+    at := v3(p.x, g, p.z);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(at, v3(0, 0.06, 0)), 0, 0, 0.55, 0.06, 0.5, 0.42, 0.3, 0.2);
+    stage := ffg_stage(l, i, s[0].now_min);
+    kind := l[0].garden.bed[i].kind - 1;
+    if stage < 0 { continue; }
+    wet := s[0].now_min - l[0].garden.bed[i].watered < f64(FFG_CARE_EVERY);
+    if wet { shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(at, v3(0, 0.075, 0)), 0, 0, 0.5, 0.05, 0.45, 0.3, 0.22, 0.16); }
+    if stage == 0 { shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, v3(0, 0.12, 0)), 0, 0, 0.06, 0.04, 0.06, 0.55, 0.4, 0.25); continue; }
+    grow := ifx stage == 1 then 0.3f32 else ifx stage == 2 then 0.65f32 else 1.0f32;
+    rare := stage == 4;
+    if kind == 0 {
+      // a sapling, and rare a glowing tree
+      h := 1.6 * grow;
+      limb(s, SHAPE_CYLINDER, LOOK_BARK, at, add(at, v3(0, h, 0)), 0.08 + 0.06 * grow, 0.5, 0.36, 0.24);
+      c := ifx rare then v3(0.5, 1.0, 0.85) else v3(0.42, 0.74, 0.3);
+      shape(s, SHAPE_SPHERE, ifx rare then LOOK_GLOW else LOOK_LEAVES, add(at, v3(0, h + 0.2 * grow, 0)), 0, 0, 0.55 * grow, 0.45 * grow, 0.55 * grow, c.x, c.y, c.z);
+      if rare { for j: 0..<5 { a := f32(j) * 1.2566 + t * 0.6; shape(s, SHAPE_SPHERE, LOOK_SPARK, add(at, v3(cos(a) * 0.7, h + 0.1 * sin(t + f32(j)), sin(a) * 0.7)), 0, 0, 0.05, 0.05, 0.05, 0.8, 1.0, 0.9); } }
+    } else if kind == 1 {
+      // a flower, and rare a moon flower with a lantern moth
+      h := 0.7 * grow;
+      limb(s, SHAPE_CYLINDER, LOOK_LEAVES, at, add(at, v3(0, h, 0)), 0.04, 0.34, 0.6, 0.26);
+      c := ifx rare then v3(0.85, 0.9, 1.0) else v3(1.0, 0.55, 0.7);
+      if stage >= 2 {
+        for j: 0..<5 {
+          a := f32(j) * 1.2566;
+          shape(s, SHAPE_SPHERE, ifx rare then LOOK_GLOW else LOOK_CLOTH, add(at, v3(cos(a) * 0.12 * grow, h, sin(a) * 0.12 * grow)), a, 0.6, 0.12 * grow, 0.03, 0.08 * grow, c.x, c.y, c.z);
+        }
+        shape(s, SHAPE_SPHERE, LOOK_GLOW, add(at, v3(0, h + 0.02, 0)), 0, 0, 0.06, 0.05, 0.06, 1.0, 0.85, 0.4);
+      }
+      if rare {
+        m := add(at, v3(cos(t * 0.9) * 0.8, h + 0.5 + 0.15 * sin(t * 2.3), sin(t * 0.9) * 0.8));
+        shape(s, SHAPE_SPHERE, LOOK_GLOW, m, 0, 0, 0.07, 0.06, 0.1, 1.0, 0.9, 0.5);
+        flap := 0.6 + 0.4 * sin(t * 14);
+        for side: 0..<2 { sg := ifx side == 0 then 1.0f32 else -1.0f32; shape(s, SHAPE_SPHERE, LOOK_GLOW, add(m, v3(0.1 * sg * flap, 0.02, 0)), 0, 0, 0.1 * flap, 0.02, 0.08, 1.0, 0.95, 0.7); }
+      }
+    } else {
+      // a mushroom, and rare a glowcap
+      h := 0.45 * grow;
+      limb(s, SHAPE_CYLINDER, LOOK_CLOTH, at, add(at, v3(0, h, 0)), 0.09 * grow + 0.03, 0.95, 0.92, 0.84);
+      c := ifx rare then v3(0.4, 0.8, 1.0) else v3(0.8, 0.5, 0.35);
+      shape(s, SHAPE_SPHERE, ifx rare then LOOK_GLOW else LOOK_CLOTH, add(at, v3(0, h, 0)), 0, 0, 0.32 * grow, 0.18 * grow, 0.32 * grow, c.x, c.y, c.z);
+    }
+  }
+}
+
+#test "the garden: E at a bed plants, then waters and sings; it grows by the clock" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  s[0].forest[0].awake[0] = true;   // one root: the garden room is open
+  fairy_clock(s[..], 29000000.0 * 60000);
+  #assert ffg_seeds(s[0].life[..], 0) == 1;   // the day's seed
+  b := ffg_bed_at(2);
+  you := v3(b.x, 0, b.z);
+  #assert ffg_verb(s[..], you) == FFG_PLANT && ffg_use(s[..], you);
+  #assert ffg_verb(s[..], you) == FFG_WATER && ffg_use(s[..], you);
+  #assert ffg_verb(s[..], you) == FFG_SING && ffg_use(s[..], you);
+  #assert ffg_verb(s[..], you) == 0;
+  // E in play does it too, a day on
+  fairy_clock(s[..], (29000000.0 + 1500) * 60000);
+  #assert ffg_stage(s[0].life[..], 2, s[0].now_min) == 2;
+  s[0].use = true;
+  play(s[..], you);
+  #assert s[0].life[0].garden.bed[2].care == 3;
+}

@@ -132,6 +132,11 @@ you told them and what you did for them).
   that moves in builds its own small home on the plot you give it, and comes
   by to visit. The village around your home grows with how much you have
   helped.
+  Built (ff-village, `apps/openagents-web/fairyvillage.coax`): by a creature
+  whose glade is green, E is INVITE (name) HOME; it takes the next of five
+  plots round your home's clearing and builds its house there in its own
+  colours over two minutes (frame, walls, roof), then sits at its door while
+  you are home. Kept in the save's tail.
 
 ## Caring for something until it changes
 
@@ -139,6 +144,13 @@ you told them and what you did for them).
   Plants grow over real days, and what you care for most changes into
   something rarer: a sapling into a glowing tree, a flower into one that
   attracts a rare visitor.
+- Built (ff-garden, `apps/openagents-web/fairygarden.coax`): six beds in
+  the garden room (open with the first root). A seed comes for each patch
+  you bloom and one a day you come. E at a bed: PLANT, then WATER and SING,
+  each counting once in six hours. A sapling, a flower and a mushroom are
+  planted in turn; by real time a plant sprouts in two hours, is young in a
+  day and grown in two; with four cares it grows rare: a glowing tree, a
+  moon flower with a lantern moth, a glowcap. Kept in the save's tail.
 - **Visitors to the garden:** certain plants draw certain creatures. Grow the
   right mix and new animals come to stay; care for them and they change too
   (a moth into a lantern moth, a frog into a singing frog).
@@ -236,8 +248,6 @@ its steps (apps/openagents-web/fairyquest.coax).
 
 - Flight and gliding in the controller.
 - The fade: per-area colour restoration that spreads, saved per player.
-- Gardens that grow over real days and change with care.
-- Creatures moving in and building homes.
 - Timed courses with shareable links and friends' times.
 - Panes: the agent bringing up the right pane, the design board from a voice
   prompt, the lore and quest-design panes, and accept-or-decline cards for
