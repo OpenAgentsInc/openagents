@@ -21,7 +21,7 @@ struct U {
   water: WaterU,   // the river's waves, look and mesh (verse/water-look.coax W_* rows)
   style: array<vec4f, 32>,  // the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
   solid: array<vec4f, 32>,  // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
-  light_info: vec4f,        // the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps)
+  light_info: vec4f,        // the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps), and how many of the last are the spells' blasts
   lights: array<vec4f, 32>,  // each lamp: x, y, z, reach; r, g, b, strength
   weather: array<vec4f, 3>,  // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, deck top (m), buildings in solid (everglade.coax weather_frame)
   ponds: array<vec4f, 4>,   // the ponds: x, z, rim radius, level (everglade.coax U_PONDS; pond_vertex)
@@ -1024,9 +1024,10 @@ fn paint(dry: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: boo
 // the surface a little so the ground under a lamp lights all round it; none by day.
 fn lamp_light(p: vec3f, n: vec3f) -> vec3f {
   let glow = u.light_info.y;
-  if (glow <= 0.0) { return vec3f(0.0); }
-  var sum = vec3f(0.0);
   let count = u32(u.light_info.x);
+  let lit_by_day = count - min(u32(u.light_info.z), count);   // the spells' blasts (everglade-spells.coax spells_lamps) burn by day too
+  if (glow <= 0.0 && lit_by_day == count) { return vec3f(0.0); }
+  var sum = vec3f(0.0);
   for (var i = 0u; i < 16u; i++) {
     if (i >= count) { break; }
     let at = u.lights[i * 2u]; let c = u.lights[i * 2u + 1u];
@@ -1035,9 +1036,9 @@ fn lamp_light(p: vec3f, n: vec3f) -> vec3f {
     if (d >= at.w) { continue; }
     let k = 1.0 - (d * d) / (at.w * at.w);
     let face = max(0.15, (dot(n, delta / max(d, 0.001)) + 0.3) / 1.3);
-    sum += c.rgb * c.w * k * k * face;
+    sum += c.rgb * c.w * k * k * face * select(glow, 1.0, i >= lit_by_day);
   }
-  return sum * glow;
+  return sum;
 }
 fn saturation(c: vec3f) -> f32 { let hi = max(c.x, max(c.y, c.z)); return (hi - min(c.x, min(c.y, c.z))) / max(hi, 0.0001); }
 // A banded surface (spec 1 and 3): the shadow band takes the tint's hue once more at the preset's

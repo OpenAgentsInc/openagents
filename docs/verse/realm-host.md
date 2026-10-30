@@ -37,7 +37,7 @@ written files are behind the table or the table breaks a rule below (`bun test c
 | `realm.module` | The module: `apps/openagents-web/<module>.coax`, `<module>-face.c` and `<module>.wgsl`, built to `build/<module>.wasm` by a line in `build.sh`. Two realms may share a module (the page tells it which realm it is). |
 | `realm.slot` | The save slot (below). Unique across realms. |
 | `realm.slot_was` | A slot this realm used before, read once when its own is empty. The Haunted House kept its saves under `realm` (its module's name) before slots existed. |
-| `realm.assets` | The page's `data-assets` (host.js): `pack:` (the realm's asset pack, below), or `data:`, `storage:`, `index:`, `layers:`, `sound:` and `loop:` one file each; and `particles:/particles.wgsl` for particles. |
+| `realm.assets` | The page's `data-assets` (host.js): `pack:` (the realm's asset pack, below), or `data:`, `storage:`, `index:`, `layers:`, `sound:` and `loop:` one file each; and `particles:/particles.wgsl` for particles (Everglade's spells name `particles:/everglade-fx.wgsl`). |
 | `realm.uploads` | What the page's file picker takes (`image/*,video/*`): the page gets `data-uploads`, and its action 30 picks files and sends them to this site's admit/upload/scan protocol (`coax/web/uploads.js`; Planetary Villa's pets). |
 | `realm.golden` | What the release walk asks of the page (below): `lit`, the least share of its pixels lit (the fixture 0.015, the Haunted House 0.03); `settle`, milliseconds to wait before its shot; `blocks`, how many 8 px blocks may differ from its golden. |
 | `realm.style` | Required: the realm's art style, `lowpoly`, `painterly` or `photoreal` ([art-styles.md](art-styles.md)). The page gets `data-style` and the facts `style=`; `realms.coax` has `PLANET_STYLE`. Once `verse/style.coax` exists, a painterly or photoreal realm's `<module>.wgsl` must hold its generated block (`// ---- generated: verse/style.coax`). |
@@ -68,7 +68,7 @@ What every realm module exports:
 | `coaxial_action`, `coaxial_outbox`, `coaxial_outbox_len`, `coaxial_action_done` | for saves | Action 4 keeps the outbox in the realm's slot; action 1 goes to a URL (`/verse/galaxy` to leave). |
 | `coaxial_asset`, `coaxial_asset_ready` | with assets | Where a `data:` asset goes in memory, and that each asset arrived. |
 | `coaxial_draws`, `coaxial_draw_count`, `coaxial_stores`, ... | with a 3D scene | The scene's indexed draws over its storage, index and texture assets (`realm.wgsl` `scene_vs`/`scene_fs`). |
-| `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `verse/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`. |
+| `coaxial_particle_cap`, `coaxial_particles`, `coaxial_particle_bytes`, `coaxial_particle_instances` | with particles | Emitters from `verse/particles.coax`, drawn by `particles.wgsl` when the page names `particles:/particles.wgsl`; Everglade's are its spells' fire and smoke puffs (`everglade-fx.wgsl`, whose `particle_over_vs`/`particle_over_fs` draw the smoke first, premultiplied over). |
 
 Shared engine pieces stay in `verse/` and are linked as the Haunted House
 links them (`build.sh` lists them after the face): `player.coax` walks,

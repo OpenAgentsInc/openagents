@@ -231,7 +231,11 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     // what struck the water this frame (spells, falling debris: W8) splashes, rings and shoves the floats
     static float hits[32];
     int64_t hn = everglade_water_hits(at(state), (coax_v_f32){hits, 32});
-    for (int64_t k = 0; k < hn; k++) everglade_river_splash(rv(), hits[k * 4], hits[k * 4 + 1], (int64_t)hits[k * 4 + 2], hits[k * 4 + 3], now);
+    for (int64_t k = 0; k < hn; k++) {
+      // the Water Orb's water running out over the floats (kind 4, everglade-spells.coax SP_SHOVE): its own impulse
+      if ((int64_t)hits[k * 4 + 2] == 4) everglade_river_shove(rv(), hits[k * 4], hits[k * 4 + 1], hits[k * 4 + 3], everglade_orb_impulse(), everglade_orb_sheet());
+      else everglade_river_splash(rv(), hits[k * 4], hits[k * 4 + 1], (int64_t)hits[k * 4 + 2], hits[k * 4 + 3], now);
+    }
   }
   ask_out(state);
   edit_out(state);
@@ -408,5 +412,10 @@ EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return place_
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (place_out_now) place_done(); else everglade_action_done(at(state)); }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return everglade_wants_text(at(state)) ? 1 : 0; }
+// ---- the spells' fire and smoke, drawn after the scene (everglade-fx.wgsl, host.js particles)
+EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_Everglade *)0)->sp.sprites); }
+EXPORT("coaxial_particles") uint32_t coaxial_particles(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->sp.sprites.e; }
+EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state) { return (uint32_t)(city(state)->sp.sprite_n * 12 * sizeof(float)); }
+EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { return city(state)->started ? (uint32_t)city(state)->sp.sprite_n : 0u; }
 EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(uint32_t state) { return city(state)->started ? (uint32_t)everglade_grass_instances(at(state)) : 0u; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->field.e; }

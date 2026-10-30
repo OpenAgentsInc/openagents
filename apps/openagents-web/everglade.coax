@@ -3188,6 +3188,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   ring := ifx u[STYLE_AT + SU_FOLIAGE + 3] > 0 then cast(int) (2 * reach) * cast(int) (2 * reach) * cast(int) u[STYLE_AT + SU_FOLIAGE + 3] else 0;
   s[0].grass_n = ifx s[0].pack_ready && s[0].lift < 0.01 then far + ring else 0;
   lamps(s, u, shot.eye, ifx phone(s) then LIGHTS_PHONE else LIGHTS);
+  spells_lamps(s, u, ifx phone(s) then LIGHTS_PHONE else LIGHTS);   // the blasts' light, after the lamps
   u[U_GROUND] = f32(EG_CELLS); u[U_GROUND + 1] = f32(EG_CELL); u[U_GROUND + 2] = f32(EG_EDGE); u[U_GROUND + 3] = f32(EG_EDGE);
   paths(u);
 

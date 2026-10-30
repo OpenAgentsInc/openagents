@@ -256,7 +256,8 @@ edit_spots_draw :: (s: [] Everglade) {
       turns := cast(int) (sk / 8);
       sz := sk - 8 * f32(turns);
       before := s[0].kit_used[group];
-      piece(s, m, x, s[0].ev.spot[i * 4 + 2], z, f32(turns) * 0.7854 + f32(i % 7) * 0.11, sz, sz, sz);
+      bent := spells_plant(s, x, z);   // the Water Orb's splash lays it flat a moment (everglade-spells.coax)
+      piece(s, m, x + bent.x, s[0].ev.spot[i * 4 + 2], z + bent.z, f32(turns) * 0.7854 + f32(i % 7) * 0.11, sz, sz * bent.y, sz);
       if tint > 0 && s[0].kit_used[group] > before { ed_tint(s, group, tint); }
     }
   }

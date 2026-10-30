@@ -125,7 +125,10 @@
 // after it, depth-tested and written:
 //   coaxial_surface_vertices(state)  vertices to draw, three a triangle (0: none)
 // Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
-// group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested:
+// group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested;
+// a module with particle_over_vs/particle_over_fs draws them first too, premultiplied over (smoke), and
+// one that reads particle_depth (group 3, binding 1) on a page that copies its scene for the water gets
+// that copy's depth, for soft particles:
 //   coaxial_particle_cap(), coaxial_particles(state), coaxial_particle_bytes(state)
 //                             the emitters' memory, copied each frame to that storage buffer
 //   coaxial_particle_instances(state)  quads to draw (6 vertices each)
@@ -758,8 +761,8 @@ async function loadShaders() {
   ]);
   gpu.surface = su;
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
-  gpu.particles = sc ? await particlePipeline(post) : null;
   gpu.waterCopy = post && /var\s+water_scene\b/.test(code);
+  gpu.particles = sc ? await particlePipeline(post) : null;
   const waterGroups = gpu.waterCopy ? [...sceneGroups, ...(sceneGroups.length < 3 ? [emptyLayout()] : []), waterCopyLayout()] : sceneGroups;
   [gpu.waterTransmit, gpu.waterEmit] = sc && /fn\s+water_vs\b/.test(code) ? await waterPipelines(module, waterGroups, post) : [null, null];
   return true;
@@ -803,24 +806,37 @@ function waterCopyLayout() {
 // The particles' own module and pipeline; a page without one, or one that doesn't compile, draws none.
 async function particlePipeline(post) {
   const a = assets.find((s) => s.kind === "particles"), x = engine?.exports;
+  gpu.particlesOver = null; gpu.particleDepth = false;
   if (!a || !x?.coaxial_particles) return null;
   const { device, format } = gpu;
   try {
-    const module = device.createShaderModule({ code: await (await fetch(a.url, { cache: dev ? "no-store" : "default" })).text() });
+    const code = await (await fetch(a.url, { cache: dev ? "no-store" : "default" })).text();
+    const module = device.createShaderModule({ code });
     const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === "error");
     if (errors.length) { say(errors.map((m) => `particles.wgsl:${m.lineNum}:${m.linePos}: ${m.message}`).join("\n"), true); return null; }
     const group = device.createBindGroupLayout({ entries: [{ binding: 0, visibility: GPUShaderStage.VERTEX, buffer: { type: "read-only-storage" } }] });
     gpu.particleBuffer ||= device.createBuffer({ size: align(Math.max(x.coaxial_particle_cap(), 16), 16), usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST });
     gpu.particleGroup = device.createBindGroup({ layout: group, entries: [{ binding: 0, resource: { buffer: gpu.particleBuffer } }] });
     const add = { operation: "add", srcFactor: "one", dstFactor: "one" };
-    return await device.createRenderPipelineAsync({
-      layout: device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, group] }),
-      vertex: { module, entryPoint: "particle_vs" }, fragment: { module, entryPoint: "particle_fs", targets: post
-        ? [{ format: "rgba16float", blend: { color: add, alpha: add } }, { format: "rgba16float", writeMask: 0 }]
-        : [{ format, blend: { color: add, alpha: add } }] },
+    const over = { operation: "add", srcFactor: "one", dstFactor: "one-minus-src-alpha" };
+    const under = { operation: "add", srcFactor: "zero", dstFactor: "one-minus-src-alpha" };
+    // soft particles, when the module reads particle_depth and the page copies its scene for the water
+    // (W5): the copy's light and depth at group 3, so a puff fades where it meets what stands behind it
+    gpu.particleDepth = gpu.waterCopy && /\bparticle_depth\b/.test(code);
+    const layout = device.createPipelineLayout({ bindGroupLayouts: gpu.particleDepth ? [gpu.layout, group, emptyLayout(), waterCopyLayout()] : [gpu.layout, group] });
+    const pipe = (vs, fs, color, alpha) => device.createRenderPipelineAsync({
+      layout, vertex: { module, entryPoint: vs }, fragment: { module, entryPoint: fs, targets: post
+        ? [{ format: "rgba16float", blend: { color, alpha } }, { format: "rgba16float", writeMask: 0 }]
+        : [{ format, blend: { color, alpha } }] },
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "less" },
     });
+    // smoke, when the module has particle_over_vs: premultiplied over what is behind, its alpha
+    // taking that much of the light's bloom share, drawn before the added particles
+    const [lit, shade] = await Promise.all([pipe("particle_vs", "particle_fs", add, add),
+      /fn\s+particle_over_vs\b/.test(code) ? pipe("particle_over_vs", "particle_over_fs", over, under) : null]);
+    gpu.particlesOver = shade;
+    return lit;
   } catch (e) { say(`${app}: particles: ${e.message}`, true); return null; }
 }
 
@@ -1299,8 +1315,10 @@ function frame(now) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
     drawScene(pass);
-    if (wet && post && gpu.waterCopyGroup) {
-      // W5: the scene's light and depth as they stand before the water, then on in a pass that keeps them
+    const sparks = gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
+    if ((wet || (sparks && gpu.particleDepth)) && post && gpu.waterCopyGroup) {
+      // W5: the scene's light and depth as they stand before the water (and the soft particles), then on
+      // in a pass that keeps them
       pass.end();
       encoder.copyTextureToTexture({ texture: gpu.light }, { texture: gpu.waterLight }, [w, h]);
       encoder.copyTextureToTexture({ texture: gpu.depth }, { texture: gpu.waterDepth }, [w, h]);
@@ -1316,11 +1334,13 @@ function frame(now) {
       pass.setPipeline(gpu.waterTransmit); drawOne(pass, i);
       pass.setPipeline(gpu.waterEmit); drawOne(pass, i);
     }
-    const sparks = gpu.particles ? x.coaxial_particle_instances(arena.state) : 0;
-    const bytes = sparks ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
+    const bytes = sparks && (!gpu.particleDepth || gpu.waterCopyGroup) ? Math.min(x.coaxial_particle_bytes(arena.state), gpu.particleBuffer.size) & ~3 : 0;
     if (bytes) {
       device.queue.writeBuffer(gpu.particleBuffer, 0, memory.buffer, x.coaxial_particles(arena.state), bytes);
-      pass.setPipeline(gpu.particles); pass.setBindGroup(1, gpu.particleGroup); pass.draw(6, sparks);
+      pass.setBindGroup(1, gpu.particleGroup);
+      if (gpu.particleDepth) { pass.setBindGroup(2, (emptyLayout(), gpu.emptyGroup)); pass.setBindGroup(3, gpu.waterCopyGroup); }
+      if (gpu.particlesOver) { pass.setPipeline(gpu.particlesOver); pass.draw(6, sparks); }
+      pass.setPipeline(gpu.particles); pass.draw(6, sparks);
     }
   }
   if (post) {

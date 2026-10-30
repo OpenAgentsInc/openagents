@@ -962,7 +962,9 @@ everglade_river_splash :: (r: [] River, x: f32, z: f32, kind: int, size: f32, ti
     fx_spray(r, x, y, z, 6, 2.5, 0.09);
     water_add_ripple(r[0].ripples[..], x, z, t, 0.02);
   }
-  // floats within reach are thrown back from it (the orb's splash reaches 2 m and 2.2 its radius)
+  // floats within reach are thrown back from it (the orb's splash reaches 2 m and 2.2 its radius); the
+  // Water Orb's own water shoves them by its impulse instead (everglade_river_shove)
+  if kind == SPLASH_ORB { return true; }
   reach := ifx kind == SPLASH_DEBRIS then 1.0 else 2.0 + 0.6 * f64(k);
   for i: 0..<r[0].float_n {
     b := r[0].floats[i];
@@ -975,6 +977,36 @@ everglade_river_splash :: (r: [] River, x: f32, z: f32, kind: int, size: f32, ti
     r[0].floats[i].vel = d3_add(b.vel, d3(ux * shove, shove * 0.5, uz * shove));
   }
   return true;
+}
+
+// The Water Orb's water running out over the floats from where it burst, on the water or the bank
+// beside it (everglade-spells.coax sp_orb_hit's physics, for what floats): its `impulse` (N s) is shared
+// over its splash, π·reach², each float taking its share by how near it is (none at the edge) and how
+// much of its water it meets (its face to the splash: a duck's ball, a pad's rim and the sheet over
+// it, a rowboat's side); nothing holds a float but the water, so it rides off at that over its mass,
+// never faster than the sheet itself (`sheet` m/s at the middle). Returns how many it moved.
+everglade_river_shove :: (r: [] River, x: f32, z: f32, reach: f32, impulse: f32, sheet: f32) -> int #export_c {
+  if !r[0].ready || !(reach > 0.0) { return 0; }
+  n := 0;
+  wide := f64(reach);
+  splash := PI_D * wide * wide;
+  for i: 0..<r[0].float_n {
+    b := r[0].floats[i];
+    dx := b.pos.x - f64(x); dz := b.pos.z - f64(z);
+    d := sqrt(dx * dx + dz * dz);
+    if d >= wide { continue; }
+    share := 1.0 - d / wide;
+    face := ifx r[0].kinds[i] == FLOAT_DUCK then PI_D * 0.16 * 0.16
+            else ifx r[0].kinds[i] == FLOAT_BOAT then BOAT_HALF.y * 2.0 * (BOAT_HALF.x + BOAT_HALF.z)
+            else 0.5 * 0.1;
+    got := f64(impulse) * share * fmin(face / splash, 1.0);
+    dv := fmin(got / b.mass, f64(sheet) * share);
+    ux := ifx d > 0.01 then dx / d else 1.0; uz := ifx d > 0.01 then dz / d else 0.0;
+    r[0].floats[i] = rigid_wake(b);
+    r[0].floats[i].vel = d3_add(b.vel, d3(ux * dv, dv * 0.2, uz * dv));
+    n += 1;
+  }
+  return n;
 }
 
 // The water's clock folded on the hour, as the ripples keep it.
@@ -1456,4 +1488,36 @@ test_pond :: (heights: [] f32, all: [] f32) {
   #assert live > 0 && live <= FX && r[0].weir[1] > r[0].weir[0] && r[0].weir[2] > r[0].weir[3];
   // a splash off the water does nothing
   #assert !everglade_river_splash(r[..], 0, 0, SPLASH_ORB, 3, 20);
+}
+
+#test "the Water Orb's water shoves a pond's duck, pads and rowboat by its impulse: the light ones far, the boat a little" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  all: [TEST_N + 1 + PONDS * 4] f32;
+  test_pond(heights[..], all[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  out: [FLOATS * 8] f32;
+  for q: 0..<30 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
+  boat := everglade_river_first_boat(r[..]);
+  #assert boat >= 0;
+  // the orb's blow (everglade-spells.coax everglade_orb_impulse: 1000 kg/m³ · ⁴⁄₃π·0.8³ · 12 m/s)
+  impulse := 1000.0f32 * 4.0 / 3.0 * 3.14159265 * 0.512 * 12.0;
+  for i: 0..<r[0].float_n { r[0].floats[i].vel = d3(0.0, 0.0, 0.0); }
+  // bursting 1.5 m from the boat and from the pond's duck in turn (beside each, so the push is outward)
+  b := r[0].floats[boat];
+  #assert everglade_river_shove(r[..], cast(f32) b.pos.x - 1.5, cast(f32) b.pos.z, 3, impulse, 6) >= 1;
+  boat_v := r[0].floats[boat].vel.x;
+  // a 220 kg hull meets a tonne of water side on: it moves off, away from the burst, slower than the sheet
+  #assert boat_v > 0.3 && boat_v < 3.0;
+  duck := -1;
+  for i: 0..<r[0].float_n { if r[0].kinds[i] == FLOAT_DUCK && i >= RIVER_FLOATS { duck = i; break; } }
+  #assert duck >= 0;
+  for i: 0..<r[0].float_n { r[0].floats[i].vel = d3(0.0, 0.0, 0.0); }
+  d := r[0].floats[duck];
+  #assert everglade_river_shove(r[..], cast(f32) d.pos.x, cast(f32) d.pos.z - 1.5, 3, impulse, 6) >= 1;
+  // a 1.1 kg duck rides off with the sheet itself, half of it at half the reach
+  #assert abs(r[0].floats[duck].vel.z - 3.0) < 0.01 && abs(r[0].floats[duck].vel.x) < 0.01;
+  // beyond its reach nothing moves; off the water there is nothing to move
+  for i: 0..<r[0].float_n { r[0].floats[i].vel = d3(0.0, 0.0, 0.0); }
+  #assert everglade_river_shove(r[..], cast(f32) d.pos.x + 40, cast(f32) d.pos.z + 40, 3, impulse, 6) == 0;
 }

@@ -101,7 +101,7 @@
         "module": "everglade",
         "slot": "everglade",
         "golden": { "lit": 0.03, "settle": 3000, "blocks": 6 },
-        "assets": ["pack:/realms/everglade/assets/everglade.pack"]
+        "assets": ["pack:/realms/everglade/assets/everglade.pack", "particles:/everglade-fx.wgsl"]
       } },
     { "id": "fairy", "name": "FAIRY FOREST", "kind": "open", "listed": false, "orbit": { "r": 0.3, "a": 0.9, "size": 0.028 },
       "realm": {

@@ -74,7 +74,8 @@ SP_BOLT_BRANCHES :: 5; SP_BRANCH_POINTS :: 6;
 SP_BLASTS :: 12;
 SP_SCORCHES :: 18;        // the old engine's most scorch marks
 SP_SCORCH_LIFE :: 16.0;
-SP_PUFFS :: 56;
+SP_PUFFS :: 200;          // smoke and dust: a meteor's column lingers for seconds
+SP_FLAMES :: 320;         // billows of fire: a fireball's, a meteor's trail, what burns
 SP_SPARKS :: 220;         // sparks, embers and arcs: glowing streaks along their flight
 SP_SHOCKS :: 8;           // shockwave rings racing out along the ground
 SP_BLAST_LIFE :: 1.5;     // s a fireball burns
@@ -107,15 +108,28 @@ YELLOW_R :: 1.0; YELLOW_G :: 0.68; YELLOW_B :: 0.22;
 SP_DEX :: 3;
 SP_DC :: 15;
 SP_SPLASH_DEBRIS :: 3;     // river.coax SPLASH_DEBRIS: debris falling in
+SP_SHOVE :: 4;             // everglade-face.c: the orb's water running out over the floats (everglade_river_shove)
 LOOK_GLOW :: 15;          // everglade.wgsl LOOK_GLOW: its own light, unlit, blooming
 LOOK_ORB :: 16;           // everglade.wgsl LOOK_ORB: a ball of water, its rim, highlight and swirl, part see-through
 // everglade.wgsl's soft parts, each as much there as its cover says (sp_part): a billow of fire, smoke, a shockwave's rim
 LOOK_FIRE :: 17; LOOK_SMOKE :: 18; LOOK_RING :: 19;
+// The fire, smoke, glows, sparks and shockwaves are soft camera-facing puffs the host draws after the
+// scene (everglade-fx.wgsl, host.js particles): the smoke premultiplied over what is behind, the rest
+// added to the light and blooming, so nothing that burns is a hard ball. SP_FX_FLOATS numbers each
+// (sp_fx), SP_FX of them a frame, written into `sprites` with no allocation.
+SP_FX :: 1400;
+SP_FX_FLOATS :: 12;
+SP_FX_BUCKETS :: 48;      // the smoke and fire sorted far to near in these (sp_fx_close), 2 m each
+FX_FIRE :: 0; FX_SMOKE :: 1; FX_GLOW :: 2; FX_RING :: 3;
+SP_FLASHES :: 4;          // the blasts' light on what is round them, lamps that burn by day too (spells_lamps)
 
 SpMeteor :: struct { live: bool; from: Point; to: Point; t: f32; fall: f32; n: Point; }   // n: the face it is sent at (up on the ground)
 SpBlast :: struct { live: bool; at: Point; t: f32; radius: f32; kind: int; seed: f32; }   // kind: 0 fire, 1 lightning, 2 water
 SpScorch :: struct { live: bool; at: Point; t: f32; radius: f32; wet: bool; }
-SpPuff :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; dark: f32; }
+SpPuff :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; dark: f32; rise: f32; thick: f32; warm: f32; }   // rise: m/s² it climbs; thick: how opaque; warm: the fire's glow on it, 0 to 1
+// A billow of fire: thrown out, slowed by the air, climbing, swelling, cooling from white through
+// orange to a dull red as it burns, then left as smoke (`smoke` its share of a puff, 0 none).
+SpFlame :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; grow: f32; rise: f32; seed: f32; smoke: f32; }
 SpDrop :: struct { live: bool; at: Point; vel: Point; t: f32; }
 SpSpark :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; colour: Point; fall: f32; }   // fall: its gravity, m/s² (below 0 it rises)
 SpShock :: struct { live: bool; at: Point; t: f32; life: f32; radius: f32; colour: Point; }
@@ -148,6 +162,13 @@ Spells :: struct {
   blasts: [SP_BLASTS] SpBlast;
   scorches: [SP_SCORCHES] SpScorch;
   puffs: [SP_PUFFS] SpPuff;
+  flames: [SP_FLAMES] SpFlame;
+  burn: [DEMO_BODIES] f32;   // s each piece of debris has left to burn (fire breaks some alight)
+  sprites: [SP_FX * SP_FX_FLOATS] f32; sprite_n: int;   // this frame's puffs, for everglade-fx.wgsl (everglade-face.c coaxial_particles)
+  stage: [SP_FX * SP_FX_FLOATS] f32; stage_n: int;   // while drawing; sp_fx_close sorts them into `sprites`
+  fx_far: [SP_FX] f32; bucket: [SP_FX_BUCKETS + 1] int;
+  wave_at: Point; wave_t: f32; wave_r: f32;
+  dusk: f32;                 // how far the day has gone to night (everglade.coax lamp_glow): smoke darkens with it   // the last orb's splash on land, flattening the plants it reaches (spells_plant)
   drops: [SP_DROPS] SpDrop;
   sparks: [SP_SPARKS] SpSpark;
   shocks: [SP_SHOCKS] SpShock;
@@ -663,6 +684,12 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     for q: 0..<SP_SCORCHES {
       if s[0].sp.scorches[q].live && flat_gap(s[0].sp.scorches[q].at, at) < radius { s[0].sp.scorches[q].wet = true; }
     }
+    box: [1] DemoBox;
+    for b: 0..<DEMO_BODIES { if s[0].sp.burn[b] > 0 && demo_chunk_box(w, b, box[..]) && flat_gap(box[0].at, at) < radius { s[0].sp.burn[b] = 0; } }
+    // its water runs out over what floats near it (the ducks, the lily pads, a rowboat: river.coax
+    // everglade_river_shove, by everglade_orb_impulse) and lays the plants it reaches flat (spells_plant)
+    water_hit(s, at.x, at.z, SP_SHOVE, radius);
+    s[0].sp.wave_at = at; s[0].sp.wave_t = 0; s[0].sp.wave_r = radius;
   }
   // on the water (W8): the splash its spell raises there, steam for scorch, and a bolt runs through it
   lv := water_at(s, at.x, at.z);
@@ -688,6 +715,8 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     if w[0].meta[b].kind != DEMO_CHUNK || w[0].meta[b].born != w[0].clock { continue; }
     burn := ifx kind == 2 then 1.0f32 else 0.3 + 0.6 * srd_unit(s[0].sp.dice[..]);
     w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
+    // a meteor sets some of what it broke alight: it burns as it flies and where it lands
+    s[0].sp.burn[b] = ifx kind == 0 && sp_rand(s) < 0.45 then 2.5 + 3.5 * sp_rand(s) else 0.0f32;
   }
   // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
   floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
@@ -709,19 +738,22 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
       // arcs leaping off the strike: fast, short-lived streaks
       sp_burst(s, at, face, 14, 70, 0.16, 0.05, v3(0.92, 0.96, 1.0), v3(0.7, 0.8, 1.0), 0);
     } else {
-      sp_burst(s, at, face, 30, 18, 1.7, 0.06, v3(1.0, 0.85, 0.45), v3(0.95, 0.3, 0.04), 9);
+      sp_burst(s, at, face, 40, 18, 1.7, 0.06, v3(1.0, 0.85, 0.45), v3(0.95, 0.3, 0.04), 9);
+      sp_fireball(s, at, face, wet);
     }
     sp_add_shock(s, add(under, v3(0, 0.05, 0)), ifx mega then 13.0f32 else ifx lightning then 8.5f32 else 9.0f32, ifx lightning then 0.55f32 else 0.65f32,
                  ifx lightning then v3(0.5, 0.62, 0.95) else v3(0.95, 0.62, 0.3));
     for q: 0..<(ifx wet then 0 else 6) {
       a := (f32(q) + sp_rand(s)) * f32(TAU) / 6;
       out := v3(cos(a), 0, sin(a));
-      sp_add_puff(s, add(under, add(times(out, 1.4), v3(0, 0.4, 0))), add(times(out, 6 + 4 * sp_rand(s)), v3(0, 0.6, 0)), 1.1 + 0.5 * sp_rand(s), 2.2, 0.56);
+      // dust: the ground's own colour, low and thin, shoved out with the wave and settling
+      sp_add_smoke(s, add(under, add(times(out, 1.4), v3(0, 0.3, 0))), add(times(out, 4.5 + 2.5 * sp_rand(s)), v3(0, 0.3, 0)), 0.9 + 0.4 * sp_rand(s), 1.8, 0.3, 0, 0.45, 0);
     }
-    for q: 0..<(ifx wet then 0 else 4) {
-      sp_add_puff(s, add(at, v3((sp_rand(s) - 0.5) * 2, 0.8 + sp_rand(s), (sp_rand(s) - 0.5) * 2)),
-                  v3((sp_rand(s) - 0.5) * 1.2, 1.4 + 1.2 * sp_rand(s), (sp_rand(s) - 0.5) * 1.2),
-                  1.6 + sp_rand(s), 4.5, ifx lightning then 0.34f32 else 0.2f32);
+    // a bolt's pall of smoke (a meteor's column climbs out of its fireball as it burns: sp_draw)
+    for q: 0..<(ifx wet || !lightning then 0 else 4) {
+      sp_add_smoke(s, add(at, v3((sp_rand(s) - 0.5) * 2, 0.8 + sp_rand(s), (sp_rand(s) - 0.5) * 2)),
+                   v3((sp_rand(s) - 0.5) * 1.2, 1.4 + 1.2 * sp_rand(s), (sp_rand(s) - 0.5) * 1.2),
+                   1.4 + sp_rand(s), 4.0, 0.3, 0.3, 0.6, 0.3);
     }
     eye := s[0].sp.shot.eye;
     reach := clamp(1 - length(sub(at, eye)) / 65, 0, 1);
@@ -738,6 +770,21 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   if kind == 1 { s[0].sp.white = 1; }
   s[0].sp.flash_rgb = ifx kind == 1 then v3(0.72, 0.8, 1.0) else ifx kind == 0 then v3(1.0, 0.62, 0.28) else v3(0.6, 0.8, 0.9);
 }
+// A meteor's fireball: billows of fire thrown out of the blast and up out of it, slowed by the air,
+// climbing as they swell and cool from white to a dull red, half of them leaving their smoke (the
+// old engine's meteor_explosion fireball and column).
+sp_fireball :: (s: [] Everglade, at: Point, face: Point, wet: bool) {
+  few := phone(s);
+  for q: 0..<(ifx few then 20 else 34) {
+    d := unit_or(add(sp_spray(s, 0.3), times(face, 0.7)), face);
+    sp_add_flame(s, add(at, add(times(d, 0.3 + 0.5 * sp_rand(s)), times(face, 0.4))), times(d, 2.5 + 7 * sp_rand(s)),
+                 0.55 + 0.4 * sp_rand(s), 1.9 + 0.8 * sp_rand(s), 0.8 + 0.8 * sp_rand(s), 2.6, ifx q % 2 == 0 then (ifx wet then 0.6f32 else 1.0f32) else 0.0f32);
+  }
+  for q: 0..<(ifx few then 4 else 7) {
+    d := unit_or(add(times(face, 2.5), sp_spray(s, 0)), face);
+    sp_add_flame(s, add(at, times(face, 0.6)), times(d, 5 + 5 * sp_rand(s)), 0.5 + 0.3 * sp_rand(s), 2.3, 0.7 + 0.5 * sp_rand(s), 1.5, ifx q % 3 == 0 then 1.0f32 else 0.0f32);
+  }
+}
 sp_add_blast :: (s: [] Everglade, at: Point, radius: f32, kind: int) {
   k := 0;
   for i: 0..<SP_BLASTS { if !s[0].sp.blasts[i].live { k = i; break; } if s[0].sp.blasts[i].t > s[0].sp.blasts[k].t { k = i; } }
@@ -749,9 +796,63 @@ sp_add_scorch :: (s: [] Everglade, at: Point, radius: f32, wet: bool) {
   s[0].sp.scorches[k] = SpScorch.{live = true, at = at, t = 0, radius = radius, wet = wet};
 }
 sp_add_puff :: (s: [] Everglade, at: Point, vel: Point, size: f32, life: f32, dark: f32) {
+  sp_add_smoke(s, at, vel, size, life, dark, 0, 0.75, 0);
+}
+sp_add_smoke :: (s: [] Everglade, at: Point, vel: Point, size: f32, life: f32, dark: f32, rise: f32, thick: f32, warm: f32) {
   k := 0;
   for i: 0..<SP_PUFFS { if !s[0].sp.puffs[i].live { k = i; break; } if s[0].sp.puffs[i].t / s[0].sp.puffs[i].life > s[0].sp.puffs[k].t / s[0].sp.puffs[k].life { k = i; } }
-  s[0].sp.puffs[k] = SpPuff.{live = true, at = at, vel = vel, t = 0, life = life, size = size, dark = dark};
+  s[0].sp.puffs[k] = SpPuff.{live = true, at = at, vel = vel, t = 0, life = life, size = size, dark = dark, rise = rise, thick = thick, warm = warm};
+}
+// A billow of fire at `at`, thrown at `vel`, `size` across at first and `grow` times that by its end.
+sp_add_flame :: (s: [] Everglade, at: Point, vel: Point, size: f32, grow: f32, life: f32, rise: f32, smoke: f32) {
+  k := 0;
+  for i: 0..<SP_FLAMES { if !s[0].sp.flames[i].live { k = i; break; } if s[0].sp.flames[i].t / s[0].sp.flames[i].life > s[0].sp.flames[k].t / s[0].sp.flames[k].life { k = i; } }
+  s[0].sp.flames[k] = SpFlame.{live = true, at = at, vel = vel, t = 0, life = hi(life, 0.05), size = size, grow = grow, rise = rise, seed = sp_rand(s), smoke = smoke};
+}
+// One puff for everglade-fx.wgsl: its kind (FX_*), place, radius, colour (linear light), heat (fire:
+// how white its heart; smoke: how opaque), a glow's streak, its half-length along its flight (zero
+// round; for fire, x is how opaque it is), seed.
+sp_fx :: (s: [] Everglade, kind: int, at: Point, size: f32, colour: Point, heat: f32, along: Point, seed: f32) {
+  n := s[0].sp.stage_n;
+  if n >= SP_FX || !(size > 0.005) || !(at.x == at.x) { return; }
+  s[0].sp.stage_n = n + 1;
+  o := n * SP_FX_FLOATS;
+  s[0].sp.stage[o] = at.x; s[0].sp.stage[o + 1] = at.y; s[0].sp.stage[o + 2] = at.z; s[0].sp.stage[o + 3] = size;
+  s[0].sp.stage[o + 4] = colour.x; s[0].sp.stage[o + 5] = colour.y; s[0].sp.stage[o + 6] = colour.z; s[0].sp.stage[o + 7] = heat;
+  s[0].sp.stage[o + 8] = along.x; s[0].sp.stage[o + 9] = along.y; s[0].sp.stage[o + 10] = along.z;
+  s[0].sp.stage[o + 11] = f32(kind) + 0.5 * (seed - floor(seed)) * 0.998;
+  // smoke and fire are drawn over what is behind them, so far to near; glows add, in any order
+  s[0].sp.fx_far[n] = ifx kind == FX_SMOKE || kind == FX_FIRE then length(sub(at, s[0].sp.shot.eye)) else -1.0f32;
+}
+// The frame's puffs into `sprites`: the smoke and fire far to near (by 2 m buckets), then the glows.
+sp_fx_close :: (s: [] Everglade) {
+  n := s[0].sp.stage_n;
+  for k: 0..<SP_FX_BUCKETS + 1 { s[0].sp.bucket[k] = 0; }
+  for i: 0..<n { s[0].sp.bucket[sp_fx_bucket(s[0].sp.fx_far[i])] += 1; }
+  at := 0;
+  for k: 0..<SP_FX_BUCKETS + 1 { c := s[0].sp.bucket[k]; s[0].sp.bucket[k] = at; at += c; }
+  for i: 0..<n {
+    k := sp_fx_bucket(s[0].sp.fx_far[i]);
+    to := s[0].sp.bucket[k] * SP_FX_FLOATS; s[0].sp.bucket[k] += 1;
+    from := i * SP_FX_FLOATS;
+    for q: 0..<SP_FX_FLOATS { s[0].sp.sprites[to + q] = s[0].sp.stage[from + q]; }
+  }
+  s[0].sp.sprite_n = n;
+  s[0].sp.stage_n = 0;
+}
+// A puff's bucket: the farthest first, the glows (-1) last.
+sp_fx_bucket :: (far: f32) -> int {
+  if far < 0 { return SP_FX_BUCKETS; }
+  return clamp_i(SP_FX_BUCKETS - 1 - cast(int) (far / 2), 0, SP_FX_BUCKETS - 1);
+}
+sp_glow :: (s: [] Everglade, at: Point, size: f32, colour: Point) { sp_fx(s, FX_GLOW, at, size, colour, 0, v3(0, 0, 0), 0); }
+// Fire's light `f` of the way through a billow's life: white-hot, yellow, orange, a deep red, gone
+// (linear light, the bloom's: a fireball's heart runs past white).
+sp_flame_rgb :: (f: f32) -> Point {
+  if f < 0.08 { return mix(v3(1.6, 1.35, 0.95), v3(1.4, 0.7, 0.18), f / 0.08); }
+  if f < 0.3 { return mix(v3(1.4, 0.7, 0.18), v3(0.95, 0.28, 0.05), (f - 0.08) / 0.22); }
+  if f < 0.65 { return mix(v3(0.95, 0.28, 0.05), v3(0.32, 0.07, 0.015), (f - 0.3) / 0.35); }
+  return mix(v3(0.32, 0.07, 0.015), v3(0.06, 0.035, 0.025), (f - 0.65) / 0.35);
 }
 
 // What a cast did, for the line over the bar.
@@ -814,6 +915,7 @@ sp_upper :: (out: [] u8, text: string) -> string {
 // they reach, the debris steps, each piece's instance is written as it is
 // now, and the spells' fire, light and smoke are drawn.
 spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
+  s[0].sp.sprite_n = 0; s[0].sp.stage_n = 0;
   if !s[0].sp.ready || s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
   demo_tier(w, phone(s));
@@ -904,6 +1006,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     if p.state == DP_STANDING && p.hp < p.max_hp { sp_tint(s, i, 0.3 + 0.7 * f32(p.hp) / f32(hi_int(p.max_hp, 1))); }
   }
   sp_draw(s, dt);
+  sp_fx_close(s);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
   s[0].sp.white = hi(s[0].sp.white - dt * 10, 0);
@@ -1149,8 +1252,10 @@ sp_shards :: (s: [] Everglade) {
 sp_draw :: (s: [] Everglade, dt: f32) {
   w := sp_dm(s);
   sp_shards(s);
-  // the meteors: a dark rock in a white-hot head, a streak of fire behind it, embers flung back off it
-  // and smoke left hanging along its fall (the old engine's meteor_head and meteor_trail)
+  // the meteors: a dark rock in a white-hot head, a streak of fire behind it, billows of fire rolling
+  // off it into a trail, embers flung back and smoke left hanging along its fall (the old engine's
+  // meteor_head and meteor_trail)
+  eye := s[0].sp.shot.eye;
   for m: 0..<SP_METEORS {
     me := s[0].sp.meteors[m];
     if !me.live || me.t < 0 { continue; }
@@ -1160,14 +1265,21 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     dir := unit_or(sub(me.to, me.from), v3(0, -1, 0));
     gone := length(sub(at, me.from));
     flick := 0.9 + 0.2 * sin(f32(s[0].time) * 41 + f32(m) * 2.3);
-    sp_soft(s, LOOK_SMOKE, add(at, times(dir, 0.45)), 1.0, v3(0.12, 0.05, 0.03), 1);   // the rock, leading its fire (it casts no shadow)
-    sp_soft(s, LOOK_FIRE, at, 1.9 * flick, v3(1.0, 0.82, 0.5), 1);
-    sp_streak(s, LOOK_FIRE, sub(at, times(dir, lo(gone, 4.5))), at, 0.75, v3(1.0, 0.78, 0.4), 1);
-    sp_streak(s, LOOK_FIRE, sub(at, times(dir, lo(gone, 10.0))), sub(at, times(dir, 0.4)), 1.35 * flick, v3(1.0, 0.42, 0.08), 0.9);
-    sp_streak(s, LOOK_FIRE, sub(at, times(dir, lo(gone, 16.0))), sub(at, times(dir, 1.5)), 1.7, v3(0.85, 0.25, 0.05), 0.5);
-    // smoke left behind every tenth of a second, and embers
-    if cast(int) (me.t * 10) != cast(int) ((me.t - dt) * 10) && gone > 6 {
-      sp_add_puff(s, sub(at, times(dir, 6 + 2 * sp_rand(s))), v3((sp_rand(s) - 0.5) * 0.6, 0.3, (sp_rand(s) - 0.5) * 0.6), 1.5 + 0.6 * sp_rand(s), 2.0, 0.4);
+    sp_fx(s, FX_SMOKE, add(at, times(dir, 0.3)), 0.55, v3(0.05, 0.03, 0.02), 1.0, v3(0, 0, 0), f32(m) * 0.17);   // the rock, leading its fire
+    sp_glow(s, at, 2.6 * flick, v3(0.8, 0.5, 0.2));
+    sp_fx(s, FX_FIRE, sub(at, times(dir, 0.2)), 1.0 * flick, v3(1.6, 1.15, 0.65), 1, v3(1, 0, 0), f32(s[0].time) * 3.1 + f32(m));
+    l1 := lo(gone, 5.0); l2 := lo(gone, 14.0);
+    sp_fx(s, FX_GLOW, sub(at, times(dir, l1 * 0.5 + 0.3)), 0.55, v3(1.2, 0.65, 0.2), 0.6, times(dir, l1 * 0.5), 0);
+    sp_fx(s, FX_GLOW, sub(at, times(dir, l2 * 0.5 + 0.6)), 1.15, v3(0.35, 0.11, 0.025), 0, times(dir, l2 * 0.5), 0);
+    // fire rolling off it, left behind as it falls
+    rolls := cast(int) (me.t * 50) - cast(int) ((me.t - dt) * 50);
+    for q: 0..<rolls {
+      sp_add_flame(s, add(sub(at, times(dir, 0.3 + 0.8 * sp_rand(s))), times(sp_spray(s, 0), 0.3)), add(times(dir, -(2 + 3 * sp_rand(s))), times(sp_spray(s, 0), 1.2)),
+                   0.4 + 0.25 * sp_rand(s), 2.0, 0.25 + 0.25 * sp_rand(s), 1.5, 0);
+    }
+    // smoke left behind every twentieth of a second, and embers
+    if cast(int) (me.t * 20) != cast(int) ((me.t - dt) * 20) && gone > 4 {
+      sp_add_smoke(s, sub(at, times(dir, 3 + 2 * sp_rand(s))), v3((sp_rand(s) - 0.5) * 0.6, 0.3, (sp_rand(s) - 0.5) * 0.6), 0.7 + 0.3 * sp_rand(s), 2.0 + 0.6 * sp_rand(s), 0.3, 0.4, 0.5, 0.4);
     }
     embers := cast(int) (me.t * 45) - cast(int) ((me.t - dt) * 45);
     for q: 0..<embers {
@@ -1175,16 +1287,16 @@ sp_draw :: (s: [] Everglade, dt: f32) {
                    0.3 + 0.3 * sp_rand(s), 0.05, mix(v3(1.0, 0.85, 0.45), v3(0.95, 0.3, 0.04), sp_rand(s)), 6);
     }
   }
-  // the blasts: a flash, then a fireball of churning billows that swells, rises and burns down to soot
-  // (or a splash, or the bolt's flash and the glow it leaves)
+  // the blasts: a flash, a fireball's light inside its billows (sp_fireball), fire licking the ground
+  // and a column of smoke climbing out of it (or a splash, or the bolt's flash and the glow it leaves)
   for i: 0..<SP_BLASTS {
     if !s[0].sp.blasts[i].live { continue; }
+    before := s[0].sp.blasts[i].t;
     s[0].sp.blasts[i].t += dt;
     bl := s[0].sp.blasts[i];
-    if bl.t > (ifx bl.kind == 2 then 0.9f32 else f32(SP_BLAST_LIFE)) { s[0].sp.blasts[i].live = false; continue; }
+    if bl.t > (ifx bl.kind == 2 then 0.9f32 else ifx bl.kind == 0 then 2.6f32 else f32(SP_BLAST_LIFE)) { s[0].sp.blasts[i].live = false; continue; }
     t := bl.t;
-    // a fireball the size of a cart, not of the house; smaller still near you, where it would fill the view
-    close_k := clamp(length(sub(bl.at, s[0].sp.shot.eye)) / 18, 0.4, 1);
+    close_k := clamp(length(sub(bl.at, eye)) / 18, 0.4, 1);
     if bl.kind == 2 {
       // the splash: a low dome of water thrown up and out, flattening as it goes
       grow := clamp(t / 0.3, 0, 1);
@@ -1193,25 +1305,81 @@ sp_draw :: (s: [] Everglade, dt: f32) {
       sp_shape(s, SHAPE_SPHERE, LOOK_ORB, add(bl.at, v3(0, 0.1, 0)), v3(wide, 0, 0), v3(0, wide * 0.6 * fade, 0), v3(0, 0, wide), v3(0.3, 0.55, 0.68));
       continue;
     }
+    up := add(bl.at, v3(0, 0.5, 0));
     if bl.kind == 1 {
       // the bolt's strike: a blue-white flash, and the point it struck left glowing, cooling to orange
-      if t < 0.25 { sp_soft(s, LOOK_FIRE, bl.at, bl.radius * (0.5 + 1.0 * t / 0.25) * close_k, v3(0.7, 0.8, 1.0), 1 - t / 0.25); }
-      sp_soft(s, LOOK_FIRE, add(bl.at, v3(0, 0.2, 0)), (0.7 + 0.5 * (1 - t / f32(SP_BLAST_LIFE))) * close_k, mix(v3(1.0, 0.95, 0.9), v3(1.0, 0.4, 0.1), t / f32(SP_BLAST_LIFE)), 1 - t / f32(SP_BLAST_LIFE));
+      if t < 0.3 { k := 1 - t / 0.3; sp_glow(s, up, bl.radius * (1.2 + 2.2 * t / 0.3) * close_k, times(v3(1.0, 1.15, 1.5), k * k)); }
+      left := 1 - t / f32(SP_BLAST_LIFE);
+      sp_glow(s, add(bl.at, v3(0, 0.25, 0)), (0.9 + 0.6 * left) * close_k, times(mix(v3(0.5, 0.18, 0.04), v3(1.1, 1.0, 0.95), left * left), left));
+      sp_fx(s, FX_FIRE, add(bl.at, v3(0, 0.3, 0)), 0.45 * close_k, mix(v3(0.6, 0.2, 0.04), v3(1.3, 1.2, 1.05), left), left, v3(left, 0, 0), bl.seed);
       continue;
     }
-    if t < 0.14 { sp_soft(s, LOOK_FIRE, add(bl.at, v3(0, 0.6, 0)), bl.radius * (0.9 + 3 * t) * close_k, v3(1.0, 0.95, 0.85), 1 - t / 0.14); }
-    grow := 1 - (1 - clamp(t / 0.25, 0, 1)) * (1 - clamp(t / 0.25, 0, 1));
-    burn := 1 - clamp((t - 0.35) / (f32(SP_BLAST_LIFE) - 0.35), 0, 1);
-    for k: 0..<4 {
-      a := (bl.seed + f32(k) * 0.25) * f32(TAU);
-      lift := 0.35 + 0.3 * sp_noise(bl.seed, f32(k));
-      off := v3(cos(a) * 0.6, lift, sin(a) * 0.6);
-      lobe := add(bl.at, add(times(off, bl.radius * 0.4 * grow), v3(0, t * 1.5 + t * t * 0.8, 0)));
-      size := bl.radius * (0.3 + 0.08 * f32(k % 2)) * (0.4 + 0.6 * grow) * (1 + 0.6 * t) * close_k;
-      sp_soft(s, LOOK_FIRE, lobe, size, sp_fire(t * 1.5 + 0.08 * f32(k)), burn);
+    // a meteor's: the flash, white and wide, then the fireball's own light deep in its billows
+    if t < 0.22 { k := 1 - t / 0.22; sp_glow(s, add(bl.at, v3(0, 1, 0)), bl.radius * (0.7 + 1.2 * t / 0.22) * close_k, times(v3(1.2, 0.95, 0.65), k * k)); }
+    if t < 0.6 { k := 1 - t / 0.6; sp_glow(s, add(bl.at, v3(0, 1.5, 0)), bl.radius * 2.6 * close_k, times(v3(0.35, 0.17, 0.06), k * k)); }
+    if t < 1.2 { k := 1 - t / 1.2; sp_glow(s, add(bl.at, v3(0, 1.2 + 1.6 * t, 0)), bl.radius * 1.1 * close_k, times(v3(0.22, 0.08, 0.02), k * k)); }
+    low := bl.at.y - sp_surface(s, bl.at.x, bl.at.z, bl.at.y + 0.5) < 1.5;
+    wet := water_at(s, bl.at.x, bl.at.z) > bl.at.y - 0.6;
+    few := phone(s);
+    // fire licking the ground round where it struck
+    if low && !wet && t < 1.5 {
+      licks := cast(int) (t * 22) - cast(int) (before * 22);
+      for q: 0..<licks {
+        a := f32(TAU) * sp_rand(s); r := 2.0 * sqrt(sp_rand(s));
+        sp_add_flame(s, add(bl.at, v3(cos(a) * r, 0.15, sin(a) * r)), v3(0, 0.8 + 0.8 * sp_rand(s), 0), 0.3 + 0.25 * sp_rand(s), 1.7, 0.4 + 0.35 * sp_rand(s), 2.5, 0);
+      }
     }
-    // a tongue of fire thrown up out of it
-    sp_soft(s, LOOK_FIRE, add(bl.at, v3(0, bl.radius * 0.3 + 6 * t - 2.2 * t * t, 0)), bl.radius * 0.22 * (1 + t) * close_k, sp_fire(t * 1.5 + 0.1), 1 - clamp(t / 1.0, 0, 1));
+    // the column of smoke climbing out of it, lit from below while it burns, lingering long after
+    if t > 0.15 && t < 2.4 {
+      rate := ifx few then 4.0f32 else 7.0f32;
+      puffs := cast(int) (t * rate) - cast(int) (before * rate);
+      for q: 0..<puffs {
+        sp_add_smoke(s, add(bl.at, v3((sp_rand(s) - 0.5) * 1.6, 1.0 + 1.5 * t + sp_rand(s), (sp_rand(s) - 0.5) * 1.6)),
+                     v3((sp_rand(s) - 0.5) * 0.7, 2.0 + 1.3 * sp_rand(s), (sp_rand(s) - 0.5) * 0.7),
+                     1.1 + 0.5 * sp_rand(s), 5.0 + 2.5 * sp_rand(s), 0.045 + 0.03 * sp_rand(s), 0.35, 0.9, clamp(1.2 - t, 0, 1));
+      }
+    }
+  }
+  // the fire: each billow thrown out, slowed by the air and climbing, swelling as it cools, and half
+  // of them leaving their smoke as they burn out
+  for i: 0..<SP_FLAMES {
+    if !s[0].sp.flames[i].live { continue; }
+    fl := s[0].sp.flames[i];
+    fl.t += dt;
+    if fl.t > fl.life {
+      s[0].sp.flames[i].live = false;
+      if fl.smoke > 0 {
+        sp_add_smoke(s, fl.at, add(times(fl.vel, 0.3), v3(0, 1.4, 0)), fl.size * fl.grow * 0.8, 3.5 + 2.5 * sp_rand(s), 0.045, 0.45, 0.85 * fl.smoke, 0.6);
+      }
+      continue;
+    }
+    fl.vel = times(fl.vel, 1 - lo(dt * 3.2, 0.6));
+    fl.vel.y += fl.rise * dt;
+    fl.at = add(fl.at, times(fl.vel, dt));
+    s[0].sp.flames[i] = fl;
+    f := fl.t / fl.life;
+    g := 1 - (1 - f) * (1 - f);
+    size := fl.size * (1 + (fl.grow - 1) * g) * clamp(length(sub(fl.at, eye)) / 14, 0.5, 1);
+    // it flares up, then thins as it cools, the last of it a sooty wisp
+    sp_fx(s, FX_FIRE, fl.at, size, sp_flame_rgb(f), clamp(1 - f * 3.5, 0, 1), v3(clamp(f * 25, 0, 1) * clamp((1 - f) * 1.6, 0, 1), 0, 0), fl.seed);
+  }
+  // what burns: debris a meteor set alight, flames licking off it and a wisp of smoke
+  box: [1] DemoBox;
+  for b: 0..<DEMO_BODIES {
+    if s[0].sp.burn[b] <= 0 { continue; }
+    left := s[0].sp.burn[b];
+    s[0].sp.burn[b] = hi(left - dt, 0);
+    if !demo_chunk_box(w, b, box[..]) || water_at(s, box[0].at.x, box[0].at.z) > box[0].at.y { s[0].sp.burn[b] = 0; continue; }
+    big := clamp((length(box[0].x) + length(box[0].y) + length(box[0].z)) * 0.3, 0.2, 0.9);
+    k := clamp(left, 0, 1);
+    flick := 0.75 + 0.25 * sin(f32(s[0].time) * 23 + f32(b) * 1.7);
+    sp_glow(s, box[0].at, big * 1.6 * flick, times(v3(0.5, 0.2, 0.04), k));
+    if cast(int) (left * 14) != cast(int) ((left - dt) * 14) {
+      sp_add_flame(s, add(box[0].at, times(sp_spray(s, 0), big * 0.4)), v3(0, 0.6, 0), big * (0.35 + 0.2 * sp_rand(s)), 1.8, 0.3 + 0.25 * sp_rand(s), 3.0, 0);
+    }
+    if cast(int) (left * 3) != cast(int) ((left - dt) * 3) {
+      sp_add_smoke(s, add(box[0].at, v3(0, big, 0)), v3(0, 0.6, 0), big * 0.6, 2.2, 0.16, 0.6, 0.5, 0.3);
+    }
   }
   // the shockwaves: a ring of light racing out along the ground
   for i: 0..<SP_SHOCKS {
@@ -1221,9 +1389,9 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if sh.t > sh.life { s[0].sp.shocks[i].live = false; continue; }
     f := sh.t / sh.life;
     r := sh.radius * (0.1 + 0.9 * (1 - (1 - f) * (1 - f) * (1 - f)));
-    sp_part(s, SHAPE_SPHERE, LOOK_RING, sh.at, v3(r * 2, 0, 0), v3(0, r * 0.22, 0), v3(0, 0, r * 2), sh.colour, (1 - f) * (1 - f) * 1.3);
+    sp_fx(s, FX_RING, add(sh.at, v3(0, 0.12, 0)), r, times(sh.colour, (1 - f) * (1 - f) * 1.1), 0, v3(0, 0, 0), f32(i) * 0.13);
   }
-  // the scorch marks, fading as they shrink
+  // the scorch marks, fading as they shrink, embers glowing in them a while
   for i: 0..<SP_SCORCHES {
     if !s[0].sp.scorches[i].live { continue; }
     s[0].sp.scorches[i].t += dt;
@@ -1237,19 +1405,22 @@ sp_draw :: (s: [] Everglade, dt: f32) {
       continue;
     }
     sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(sc.at, v3(0, 0.01, 0)), v3(r, 0, 0), v3(0, 0.02, 0), v3(0, 0, r), v3(0.03, 0.025, 0.022));
-    if sc.t < 3 { sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, add(sc.at, v3(0, 0.06, 0)), v3(r * 0.5, 0, 0), v3(0, 0.03, 0), v3(0, 0, r * 0.5), times(v3(0.9, 0.3, 0.05), 1 - sc.t / 3)); }
+    if sc.t < 4 { k := 1 - sc.t / 4; sp_glow(s, add(sc.at, v3(0, 0.15, 0)), r * 0.45, times(v3(0.45, 0.13, 0.02), k * k * (0.8 + 0.2 * sin(f32(s[0].time) * 7 + f32(i))))); }
   }
-  // smoke and dust
+  // smoke and dust: drifting, slowed by the air, climbing as it is warm, billowing out as it thins
+  dusk := 1 - 0.7 * s[0].sp.dusk;
   for i: 0..<SP_PUFFS {
     if !s[0].sp.puffs[i].live { continue; }
     s[0].sp.puffs[i].t += dt;
     s[0].sp.puffs[i].at = add(s[0].sp.puffs[i].at, times(s[0].sp.puffs[i].vel, dt));
     s[0].sp.puffs[i].vel = times(s[0].sp.puffs[i].vel, 1 - lo(dt * 1.4, 0.5));   // the air slows it
+    s[0].sp.puffs[i].vel.y += s[0].sp.puffs[i].rise * dt;
     pf := s[0].sp.puffs[i];
     if pf.t > pf.life { s[0].sp.puffs[i].live = false; continue; }
     f := pf.t / pf.life;
-    // it billows out as it thins away
-    sp_soft(s, LOOK_SMOKE, pf.at, pf.size * (0.8 + 1.6 * f), v3(pf.dark, pf.dark * 0.92, pf.dark * 0.84), clamp(f * 8, 0, 1) * (1 - f) * 0.8);
+    grey := times(v3(pf.dark, pf.dark * 0.92, pf.dark * 0.84), dusk);
+    glow := pf.warm * clamp(1 - pf.t / 1.4, 0, 1);
+    sp_fx(s, FX_SMOKE, pf.at, pf.size * (0.8 + 1.6 * f), mix(grey, v3(0.5, 0.17, 0.04), glow * 0.6), pf.thick * clamp(f * 9, 0, 1) * (1 - f), v3(0, 0, 0), f32(i) * 0.37);
   }
   // the orb's splash
   for i: 0..<SP_DROPS {
@@ -1260,6 +1431,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if s[0].sp.drops[i].t > 1.4 { s[0].sp.drops[i].live = false; continue; }
     sp_ball(s, LOOK_ORB, s[0].sp.drops[i].at, 0.38 * (1 - s[0].sp.drops[i].t / 1.6), v3(0.36, 0.6, 0.72));
   }
+  s[0].sp.wave_t += dt;
   // the orb: gathering over you, then thrown on an arc
   if s[0].sp.orb_live {
     if s[0].sp.casting == SP_ORB {
@@ -1279,25 +1451,37 @@ sp_draw :: (s: [] Everglade, dt: f32) {
       }
     }
   }
-  // the bolt: a white core along its jagged stroke, coming down over its lead, its branches once it
-  // is down, the clouds it left lit, all flickering out (the old engine's draw_bolt)
+  // the bolt: a white core along its jagged stroke in a blue glow, coming down over its lead, its
+  // branches once it is down, the clouds it left lit, all flickering out (the old engine's draw_bolt:
+  // BOLT_CORE in BOLT_GLOW)
   if s[0].sp.bolt.live {
     b := s[0].sp.bolt;
     light := sp_bolt_light(b);
     reach := clamp(b.t / f32(SP_BOLT_LEAD), 0, 1);
     shown := cast(int) (reach * f32(SP_BOLT_POINTS - 1) + 0.999);
-    thick := ifx b.mega then 0.6f32 else 0.32f32;
+    thick := ifx b.mega then 0.5f32 else 0.26f32;
+    halo := ifx b.mega then 1.9f32 else 1.2f32;
     if light > 0.05 {
       core := times(v3(0.95, 0.97, 1.0), 0.55 + 0.45 * light);
-      for i: 0..<shown { sp_rod(s, b.points[i], b.points[i + 1], thick, core); }
+      glow := times(v3(0.2, 0.27, 0.65), light * (ifx b.mega then 1.4f32 else 1.0f32));
+      for i: 0..<shown {
+        sp_rod(s, b.points[i], b.points[i + 1], thick, core);
+        sp_fx(s, FX_GLOW, mix(b.points[i], b.points[i + 1], 0.5), halo, glow, 0.4, times(sub(b.points[i + 1], b.points[i]), 0.5), 0);
+      }
       if reach >= 1 {
         for br: 0..<SP_BOLT_BRANCHES {
           prev := b.points[b.root[br]];
-          for j: 0..<SP_BRANCH_POINTS { q := b.branch[br * SP_BRANCH_POINTS + j]; sp_rod(s, prev, q, thick * 0.42, times(v3(0.78, 0.86, 1.0), 0.5 + 0.5 * light)); prev = q; }
+          for j: 0..<SP_BRANCH_POINTS {
+            q := b.branch[br * SP_BRANCH_POINTS + j];
+            sp_rod(s, prev, q, thick * 0.42, times(v3(0.78, 0.86, 1.0), 0.5 + 0.5 * light));
+            sp_fx(s, FX_GLOW, mix(prev, q, 0.5), halo * 0.45, times(glow, 0.7), 0.3, times(sub(q, prev), 0.5), 0);
+            prev = q;
+          }
         }
       }
     }
-    sp_part(s, SHAPE_SPHERE, LOOK_FIRE, b.top, v3(26, 0, 0), v3(0, 9, 0), v3(0, 0, 26), v3(0.5, 0.6, 1.0), light * 0.55);  }
+    sp_glow(s, b.top, 34, times(v3(0.42, 0.52, 1.0), light * 0.35));
+  }
   // sparks, embers and arcs: streaks along their flight, falling, cooling, bouncing once off the ground
   for i: 0..<SP_SPARKS {
     if !s[0].sp.sparks[i].live { continue; }
@@ -1310,18 +1494,12 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     g := ground_at(s, sk.at.x, sk.at.z) + 0.03;
     if sk.at.y < g && sk.vel.y < 0 { sk.at.y = g; sk.vel = v3(sk.vel.x * 0.5, -sk.vel.y * 0.35, sk.vel.z * 0.5); }
     s[0].sp.sparks[i] = sk;
-    if s[0].counts[SHAPE_BOX] >= SLOTS[SHAPE_BOX] - 8 { continue; }
     left := 1 - sk.t / sk.life;
-    speed := length(sk.vel);
-    tail := hi(speed * 0.04, sk.size * 2);
+    tail := hi(length(sk.vel) * 0.025, sk.size);
     d := unit_or(sk.vel, v3(0, 1, 0));
-    a := sub(sk.at, times(d, tail));
-    x := unit_or(cross(d, v3(0, 0, 1)), v3(1, 0, 0)); z := cross(x, d);
-    thick := sk.size * (0.5 + 0.5 * left);
-    sp_part(s, SHAPE_BOX, LOOK_FIRE, mix(a, sk.at, 0.5), times(x, thick), times(d, tail + thick), times(z, thick), times(sk.colour, 0.45 + 0.55 * left), 1);
+    sp_fx(s, FX_GLOW, sub(sk.at, times(d, tail)), sk.size * (1.0 + 0.9 * left), times(sk.colour, 2.4 * (0.3 + 0.7 * left)), 0.35, times(d, tail), 0);
   }
 }
-
 // The thunder's light and the fire's: the key light flares with the flash.
 spells_light :: (s: [] Everglade, u: [] f32) {
   f := s[0].sp.flash;
@@ -1331,6 +1509,70 @@ spells_light :: (s: [] Everglade, u: [] f32) {
   u[k + 3] = u[k + 3] * (1 + 3.0 * f);
   u[k] = lerp(u[k], c.x, f * 0.6); u[k + 1] = lerp(u[k + 1], c.y, f * 0.6); u[k + 2] = lerp(u[k + 2], c.z, f * 0.6);
 }
+
+// The blasts' light on what is round them (the old engine's FlashLights): each fireball, a falling
+// meteor and the bolt light the ground, the walls and the people near them, by day as by night, as
+// lamps after the town's (everglade.wgsl lamp_light: the last u.light_info.z of them burn by day too),
+// in place of the farthest lamps when the list is full. After lamps(), with its glow.
+sp_lamp :: (u: [] f32, k: int, most: int, at: Point, reach: f32, c: Point, strength: f32) -> int {
+  if k >= most || strength < 0.05 { return k; }
+  o := U_LIGHTS + k * 8;
+  u[o] = at.x; u[o + 1] = at.y; u[o + 2] = at.z; u[o + 3] = reach;
+  u[o + 4] = c.x; u[o + 5] = c.y; u[o + 6] = c.z; u[o + 7] = strength;
+  return k + 1;
+}
+spells_lamps :: (s: [] Everglade, u: [] f32, cap: int) {
+  s[0].sp.dusk = u[U_LIGHT_INFO + 1];
+  if !sp_on(s) { return; }
+  n := cast(int) u[U_LIGHT_INFO];
+  most := lo_int(cap, LIGHTS);
+  first := lo_int(n, most - SP_FLASHES);
+  k := first;
+  if s[0].sp.bolt.live && s[0].sp.bolt.t >= f32(SP_BOLT_LEAD) {
+    b := s[0].sp.bolt;
+    k = sp_lamp(u, k, most, add(b.to, v3(0, 3, 0)), ifx b.mega then 30.0f32 else 22.0f32, v3(0.6, 0.72, 1.0), 6 * sp_bolt_light(b));
+  }
+  for i: 0..<SP_BLASTS {
+    bl := s[0].sp.blasts[i];
+    if !bl.live || bl.kind != 0 || bl.t > 1.4 { continue; }
+    f := 1 - bl.t / 1.4;
+    k = sp_lamp(u, k, most, add(bl.at, v3(0, 1.6, 0)), bl.radius * 4.5, v3(1.0, 0.55, 0.22), ifx bl.t < 0.1 then 5.0f32 else 3 * f * f);
+  }
+  for m: 0..<SP_METEORS {
+    me := s[0].sp.meteors[m];
+    if !me.live || me.t < 0 { continue; }
+    f := clamp(me.t / me.fall, 0, 1);
+    k = sp_lamp(u, k, most, mix(me.from, me.to, 0.55 * f + 0.45 * f * f), 14, v3(1.0, 0.6, 0.25), 1 + 1.5 * f);
+  }
+  if k == first { return; }
+  u[U_LIGHT_INFO] = f32(k); u[U_LIGHT_INFO + 2] = f32(k - first);
+}
+
+// How the last orb's splash leaves a plant at (x, z) (a patch's flower or sprout, everglade-items.coax
+// edit_spots_draw): its water, a tonne of it at 12 m/s, lays a stem of a few grams flat by its share
+// of the splash (sp_orb_hit's push, which nothing so light holds against), and the stem springs back,
+// a damped spring. x, z: how far it is pushed out (m); y: how much of its height it keeps.
+spells_plant :: (s: [] Everglade, x: f32, z: f32) -> Point {
+  t := s[0].sp.wave_t; r := s[0].sp.wave_r;
+  if r <= 0 || t > 2.6 { return v3(0, 1, 0); }
+  dx := x - s[0].sp.wave_at.x; dz := z - s[0].sp.wave_at.z;
+  d := sqrt(dx * dx + dz * dz);
+  if d >= r * 1.3 { return v3(0, 1, 0); }
+  share := 1 - d / (r * 1.3);
+  arrive := d / f32(SP_ORB_SPEED);   // the water reaches it
+  if t < arrive { return v3(0, 1, 0); }
+  a := t - arrive;
+  fall := clamp(a / 0.08, 0, 1);
+  left := 1 - clamp(a / 2.4, 0, 1);
+  bend := share * fall * left * left * cos(a * 5.5);
+  out := ifx d > 0.01 then v3(dx / d, 0, dz / d) else v3(1, 0, 0);
+  return v3(out.x * 0.35 * bend, 1 - 0.6 * hi(bend, 0), out.z * 0.35 * bend);
+}
+// The Water Orb's blow, for what floats (everglade-face.c hands it to river.coax everglade_river_shove):
+// its impulse, ρ·⁴⁄₃πr³·v (N s), and the speed its water runs out at over the surface (m/s), half its
+// throw's as it spreads.
+everglade_orb_impulse :: () -> f32 #export_c { r := f32(SP_ORB_R); return f32(SP_WATER) * 4.0 / 3.0 * f32(PI) * r * r * r * f32(SP_ORB_SPEED); }
+everglade_orb_sheet :: () -> f32 #export_c { return f32(SP_ORB_SPEED) * 0.5; }
 
 // ---- the HUD: the ring, the bolt's glow, the flash, the bar
 
