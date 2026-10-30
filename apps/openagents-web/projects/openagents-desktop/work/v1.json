@@ -456,6 +456,29 @@
         "Live Claude turns answer about an attached image and an attached text file",
         "build.sh passes"
       ]
+    },
+    {
+      "slug": "web-chat-zeron",
+      "title": "openagents.com/chat drawn with the Zeron components",
+      "parent": "desk-zeron-ui",
+      "size": "L",
+      "body": "The web /chat page draws everything with the Zeron/GPUI components the Mac app uses (composer, transcript, Markdown, tool chips, picker menus), moved to apps/shared/zeron/ so both apps load the same files, and drawn by Coax on WebGPU: a WGSL port of Zeron.metal and a glyph atlas rasterized in the browser from self-hosted Geist (OFL) and Zeron's icons. The API stays as it is: Haiku, Sonnet and Opus 5.5, no effort, no attachments (the paperclip is hidden), tools as tool chips. Desktop width gets Zeron's layout with the chat list; phones get no sideways scroll, 16 px gutters, a docked composer and the list one tap away. Signed out shows Log in (/login).",
+      "files": [
+        "apps/shared/zeron/",
+        "apps/openagents-web/chat.coax",
+        "apps/openagents-web/chat-face.c",
+        "apps/openagents-web/chat.wgsl",
+        "apps/openagents-web/chat/",
+        "coax/web/gpui.js",
+        "coax/web/host.js",
+        "docs/chat.md"
+      ],
+      "acceptance": [
+        "The Mac app's --shot renders are byte-identical after the move to apps/shared/zeron/",
+        "/chat#demo against the Mac --shot of the same state, per region, with the numbers in docs/chat.md",
+        "coax test passes for chat.coax and every touched shared file; check-visuals.sh passes",
+        "Released with coax/web/release.sh; production /chat captured headlessly"
+      ]
     }
   ]
 }
