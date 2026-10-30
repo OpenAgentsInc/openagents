@@ -403,6 +403,8 @@ icecream_frame :: (s: [] IceScene, width: f32, height: f32, dpr: f32, frame_dt: 
   if icecream_scene_stale(s) { icecream_scene_build(s); }
   scene_objects(s);
 }
+// The realm's board over the house being played (play.coax board_now), after the face sets the options.
+icecream_board_now :: (s: [] IceScene) #export_c { board_now(s[0].plays[..], s[0].games[..]); }
 icecream_draw_count :: (s: [] IceScene) -> int #export_c { return ifx s[0].built then s[0].draw_n else 0; }
 // The store's bytes this frame: the house and models the first few frames after a build, then none; the objects every frame.
 icecream_scene_store_bytes :: (s: [] IceScene, k: int) -> int #export_c {

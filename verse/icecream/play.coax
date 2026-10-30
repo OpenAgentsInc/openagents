@@ -95,6 +95,9 @@ Play :: struct {
   bots: [1] Bot;
   trace: [TRACE_CAP] u8; trace_n: int; trace_full: bool; trace_sent: bool; trace_want: bool;
   seen_tour: bool; save_want: bool; save: [SAVE_CAP] u8; save_n: int;
+  // the house's own tuning, before the board; the board's minions and weapons it was played with;
+  // whether the board eased this run at any point (then it doesn't count for the best time)
+  house_tuning: Tuning; board_minions_off: bool; board_weapons_off: bool; board_eased: bool;
 }
 
 // ---- small things
@@ -247,13 +250,42 @@ board_tuning :: (o: Options, t: Tuning) -> Tuning {
   return tuned;
 }
 
+// The board switched while a house is played (the realm's EDIT): its minions and weapons change at
+// once (minions off melts the enemy ones there are; on, they come as the house's tuning says); its
+// backrooms are the house's shape, so they change from the next house.
+board_now :: (p: [] Play, g: [] Game) {
+  o := p[0].options;
+  if o.no_minions || o.no_weapons || o.no_backrooms { p[0].board_eased = true; }
+  if !p[0].started || o.calm { return; }
+  if o.no_minions == p[0].board_minions_off && o.no_weapons == p[0].board_weapons_off { return; }
+  if o.no_minions && !p[0].board_minions_off { g[0].minion_n = board_melt(g[0].minions[..], g[0].minion_n); }
+  p[0].board_minions_off = o.no_minions; p[0].board_weapons_off = o.no_weapons;
+  g[0].tuning = board_live(o, p[0].house_tuning, g[0].tuning);
+}
+// The house's tuning as played, with the board's minions and weapons.
+board_live :: (o: Options, house: Tuning, live: Tuning) -> Tuning {
+  t := board_tuning(o, house);
+  out := live;
+  out.minion_count = t.minion_count; out.minion_growth = t.minion_growth; out.earned_weapons = t.earned_weapons;
+  return out;
+}
+// Minions off: the enemy ones melt, the friendly ones stay; the count left.
+board_melt :: (m: [] Minion, n: int) -> int {
+  kept := 0;
+  for i: 0..<n { if m[i].friendly { m[kept] = m[i]; kept += 1; } }
+  return kept;
+}
+
 DEFAULT_SEED :: 3;
 new_run :: (p: [] Play, g: [] Game) {
   o := p[0].options;
   p[0].seed = ifx o.has_seed then o.seed else ifx p[0].stepped == 0 && p[0].seed == 0 then DEFAULT_SEED else p[0].seed + 1;
   if p[0].seed == 0 && !o.has_seed { p[0].seed = DEFAULT_SEED; }
   p[0].difficulty = p[0].next_difficulty;
-  game_new(g, p[0].seed, !o.calm, board_tuning(o, tuning_for(p[0].difficulty)));
+  p[0].house_tuning = tuning_for(p[0].difficulty);
+  p[0].board_minions_off = o.no_minions; p[0].board_weapons_off = o.no_weapons;
+  p[0].board_eased = o.no_minions || o.no_weapons || o.no_backrooms;
+  game_new(g, p[0].seed, !o.calm, board_tuning(o, p[0].house_tuning));
   if o.no_farts { g[0].player.farts = 0; }
   if o.arm { game_arm(g); }
   if o.free_roam {
@@ -576,7 +608,8 @@ effect :: (p: [] Play, g: [] Game, e: Event) {
 // Whether a run counts for the best time: played by hand, as the game comes.
 counts_for_best :: (p: [] Play, g: [] Game) -> bool {
   o := p[0].options;
-  return !o.bot && !o.calm && !o.arm && !o.free_roam && !o.no_farts && !o.cone && !g[0].free_roam && !o.no_minions && !o.no_weapons && !o.no_backrooms;
+  return !o.bot && !o.calm && !o.arm && !o.free_roam && !o.no_farts && !o.cone && !g[0].free_roam && !o.no_minions && !o.no_weapons && !o.no_backrooms
+         && !p[0].board_eased;
 }
 finished :: (p: [] Play, g: [] Game) {
   p[0].new_best = false;
@@ -1035,4 +1068,20 @@ ice_play_facts :: (p: [] Play, g: [] Game, out: [] f32) #export_c {
   t := board_tuning(o, hard);
   #assert t.minion_count == 0 && t.minion_growth == 0 && t.earned_weapons == 0 && t.backrooms == 0 && t.puzzle_key == 0;
   #assert t.house_size == hard.house_size && t.man_chase == hard.man_chase;
+}
+
+#test "the board switched mid-house: minions melt and weapons stop at once, and come back as the house had them" {
+  o: Options;
+  hard := tuning_for(Difficulty.hard);
+  live := hard; live.minion_count = 6;   // played on: what the board doesn't touch stays as it is
+  live.man_chase = 9;
+  o.no_minions = true; o.no_weapons = true;
+  off := board_live(o, hard, live);
+  #assert off.minion_count == 0 && off.minion_growth == 0 && off.earned_weapons == 0 && off.man_chase == 9 && off.backrooms == hard.backrooms;
+  o.no_minions = false; o.no_weapons = false;
+  on := board_live(o, hard, off);
+  #assert on.minion_count == hard.minion_count && on.minion_growth == hard.minion_growth && on.earned_weapons == hard.earned_weapons && on.man_chase == 9;
+  m: [3] Minion;
+  m[0].friendly = false; m[1].friendly = true; m[1].health = 7; m[2].friendly = false;
+  #assert board_melt(m[..], 3) == 1 && m[0].friendly && m[0].health == 7;
 }

@@ -26,12 +26,14 @@ static Realm *state_at(uint32_t state) { return (Realm *)(uintptr_t)state; }
 static coax_v_t_IceRealm at(uint32_t state) { return (coax_v_t_IceRealm){&state_at(state)->hud, 1}; }
 static coax_v_t_IceScene scene_at(uint32_t state) { return (coax_v_t_IceScene){&state_at(state)->scene, 1}; }
 static coax_v_t_RealmEdit ed(uint32_t state) { return (coax_v_t_RealmEdit){state_at(state)->hud.ed.e, 1}; }
-// The board's rows are the run's options for the next house (verse/icecream/play.coax).
+// The board's rows are the run's options: minions and weapons change the house being played at
+// once, backrooms the next house (verse/icecream/play.coax board_now).
 static void edit_options(uint32_t state) {
   coax_t_Options *o = &state_at(state)->scene.plays.e[0].options;
   o->no_minions = !ice_row_on(at(state), (coax_string){"minions", 7});
   o->no_weapons = !ice_row_on(at(state), (coax_string){"weapons", 7});
   o->no_backrooms = !ice_row_on(at(state), (coax_string){"backrooms", 9});
+  icecream_board_now(scene_at(state));
 }
 static uint8_t inbox[4096];
 static float facts[64];
