@@ -10,7 +10,7 @@
 //
 // With the relay unreachable it keeps the last snapshot and says so. Nothing
 // here signs: it reads public events only.
-import { neventEncode, npubEncode } from "nostr-effect/nip19"
+import { npubEncode } from "nostr-effect/nip19"
 import { existsSync, readFileSync, statSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { Relay } from "./relay"
@@ -141,9 +141,7 @@ line()
 line(`## Reading the project from Nostr`)
 line()
 line(`- Relay: \`${config.relay}\``)
-line(`- Project key: \`${npub}\` (hex \`${pubkey}\`)`)
-line(`- Project: \`${address}\` (kind 30621, \`d\` = \`${config.slug}\`, coordinate \`${coord}\`)`)
-line(`- Names: keys, events and addresses here are NIP-19 (\`npub\`, \`nevent\`, \`naddr\`) with the relay hint; the page draws the same names, encoded in Coax.`)
+line(`- Project: \`${address}\` (kind 30621, \`d\` = \`${config.slug}\`)`)
 line(`- Tasks, milestones and the initiative: kind 1621 issues with \`["a", "${coord}"]\`; the issue's \`subject\` is its title, \`t\` its labels, \`parent\` and \`blocked-by\` its relations (event ids).`)
 line(`- Edits: kind 1111 comments on the issue with \`["revision", "openagents.issue-revision.v1"]\`; the latest one by the project key is current.`)
 line(`- Work on an issue: kind 1111 comments without that mark. \`["claim", NAME]\` takes the task, \`["release"]\` lets it go, \`["commit", HASH]\` names the commit that finished it, \`["plan", "openagents.task-plan.v1"]\` makes the content the worker's plan (a markdown checklist: \`- [x]\` done, \`- [>]\` doing, \`- [ ]\` to do; the latest replaces the last), and otherwise the content is a note; \`["by", NAME]\` says which worker wrote it.`)
@@ -164,7 +162,7 @@ const task = (i: Issue) => {
   if (mine.some((r) => r[1] === "needs")) line(`\nWaits on another project: ${mine.filter((r) => r[1] === "needs").map(far).join("; ")}`)
   if (mine.some((r) => r[1] === "by")) line(`\nNeeded by: ${mine.filter((r) => r[1] === "by").map(far).join("; ")}`)
   line()
-  line(`Event: \`${neventEncode({ id: i.id, relays: [config.relay], author: pubkey, kind: KIND_ISSUE })}\` (id \`${i.id}\`)`)
+  line(`Event: \`${i.id}\``)
   line()
   if (i.plan) {
     line(`Plan (${planDone(i.plan.steps)} of ${i.plan.steps.length} done, updated ${chicago(new Date(i.plan.at * 1000))}${i.plan.by ? ` by ${i.plan.by}` : ""}):`)
