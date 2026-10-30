@@ -38,11 +38,14 @@ providers, free slots and current advertised capacity. Multiple Pylons can
 share one physical host. Inspect a provider for
 its full npub, model identities and beacon details.
 
+This loads original Elephant: an 18.8 GB download and a qualified native GPU.
+Read the hardware requirements in the guide before starting.
+
 Join a Pylon with the command below. **COPY COMMAND** on the board copies the
 same command; **GUIDE** opens the [Pylon guide](/docs/connect-a-pylon).
 
 ```sh
-curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh
+curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test
 ```
 
 Project placement and recent Git history are captured at deployment. There

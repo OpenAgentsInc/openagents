@@ -8,7 +8,7 @@ import {chrome,gpuFlags} from '../chrome'
 const base=process.argv[2]?.replace(/\/$/,''),prefix=process.argv[3]??'/tmp/connect-pylon'
 if(!base?.startsWith('http'))throw Error('usage: connect_pylon_browser.ts ORIGIN [OUT_PREFIX]')
 const source=readFileSync(resolve(import.meta.dir,'../../../docs/connect-a-pylon.md'),'utf8')
-const command='curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh'
+const command='curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test'
 const profile=mkdtempSync(join(tmpdir(),'coax-guide-'))
 const proc=Bun.spawn([chrome(),'--headless=new','--mute-audio',`--user-data-dir=${profile}`,'--no-first-run','--hide-scrollbars',...gpuFlags(),'--window-size=1440,900','--remote-debugging-port=0','about:blank'],{stdout:'ignore',stderr:'ignore'})
 let ws:WebSocket|undefined;const evidence:any={base,at:new Date().toISOString(),scenarios:[]}

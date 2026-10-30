@@ -19,7 +19,7 @@ const jobAPI = jobAt < 0 ? undefined : args[jobAt + 1]
 if (!base?.startsWith('http') || !prefix || (jobAt >= 0 && !jobAPI?.startsWith('http'))) throw Error('usage: home_pylon_browser.ts ORIGIN [--out PREFIX] [--job-api URL]')
 if (jobAPI) new URL(jobAPI)
 const origin = new URL(base).origin
-const joinCommand = 'curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh'
+const joinCommand = 'curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test'
 const profile = mkdtempSync(join(tmpdir(), 'coax-home-pylons-'))
 const proc = Bun.spawn([chrome(), '--headless=new', '--mute-audio', `--user-data-dir=${profile}`,
   '--no-first-run', '--hide-scrollbars', ...gpuFlags(), '--window-size=1440,900',
@@ -186,7 +186,7 @@ try {
     await until(async () => {
       // Never return or log unrelated clipboard contents if the write fails.
       recording.clipboard = await evaluate(`navigator.clipboard.readText().then(text => ({matches:text === ${JSON.stringify(joinCommand)},bytes:new TextEncoder().encode(text).length}), error => ({error:error.name}))`)
-      return recording.clipboard?.matches === true && recording.clipboard.bytes === 96
+      return recording.clipboard?.matches === true && recording.clipboard.bytes === Buffer.byteLength(joinCommand)
     }, viewport.name + ' exact clipboard command')
     await click(2)
     await until(async () => await evaluate('location.pathname') === '/docs/connect-a-pylon', viewport.name + ' guide navigation')

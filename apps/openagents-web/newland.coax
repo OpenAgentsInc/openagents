@@ -45,7 +45,7 @@ RUN :: 2.6;
 
 POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
 ACT_NAVIGATE :: 1; ACT_COPY :: 2;
-HOME_PYLON_JOIN :: "curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh";
+HOME_PYLON_JOIN :: "curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test";
 
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
@@ -1783,7 +1783,7 @@ network_panel :: (out:[]f32,at:int,s:[]LandState,l:Layout,p:Pen,width:f32,height
   v=button(out,v,s[0].network_guide,"GUIDE",false,hover && inside(s[0].network_guide,s[0].px,s[0].py),false,p,1);
   state:=ifx s[0].golden then "SNAPSHOT" else ifx s[0].net[0].watch_state==2 then (ifx s[0].net[0].beacon_ended then "LIVE" else "SYNCING") else "CONNECTING";
   v=put(out,v,state,left,top+135*d,6.5*d,dim);
-  v=put_fit(out,v,"Mac / Linux",inner_right-100*d,top+135*d,6.5*d,dim,100*d);
+  v=put_fit(out,v,"GPU / 18.8 GB",inner_right-100*d,top+135*d,6.5*d,dim,100*d);
   list:=Box.{x0=left,y0=top+146*d,x1=inner_right,y1=bottom-38*d};s[0].network_list=list;
   for i:0..<MAX_PYLONS {s[0].network_rows[i]=Box.{};}
   y:=list.y0-s[0].network_scroll*d;first:=v;
@@ -2367,7 +2367,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   #assert click(s[..],20,20) && s[0].card==CARD_NETWORK && s[0].action==0;
   s[0].network_join=Box.{x0=20,y0=80,x1=180,y1=120};
   #assert click(s[..],30,90) && s[0].action==ACT_COPY && cast(string)s[0].outbox[0..<s[0].out_n]==HOME_PYLON_JOIN;
-  #assert s[0].out_n==96 && s[0].network_copied;
+  #assert s[0].out_n==HOME_PYLON_JOIN.count && s[0].network_copied;
   coaxial_land_action_done(s[..]);s[0].network_guide=Box.{x0=190,y0=80,x1=300,y1=120};
   #assert click(s[..],200,90) && s[0].action==ACT_NAVIGATE && cast(string)s[0].outbox[0..<s[0].out_n]=="/docs/connect-a-pylon";
 }

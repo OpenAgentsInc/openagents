@@ -6,7 +6,7 @@ import {readFileSync} from 'node:fs'
 import {join} from 'node:path'
 
 const root = join(import.meta.dir, '../../..')
-const joinCommand = 'curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh'
+const joinCommand = 'curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test'
 const generated = Bun.spawnSync(['python3', '-c', `
 import hashlib, json, sys
 from pathlib import Path
@@ -136,7 +136,7 @@ for (const viewport of [
   h.click(1)
   expect(h.action()).toBe(2)
   expect(h.outbox()).toBe(joinCommand)
-  expect(h.x.coaxial_outbox_len(h.state)).toBe(96)
+  expect(h.x.coaxial_outbox_len(h.state)).toBe(Buffer.byteLength(joinCommand))
   h.clearAction()
   expect(h.action()).toBe(0)
   expect(h.outbox()).toBe('')

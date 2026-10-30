@@ -25,7 +25,11 @@ test('the documented hosted decision is executable protocol JSON',()=>{
 test('quickstart does not suggest a paid credential, inbound port or unshipped models',()=>{
  expect(source).toContain('No inbound port or public IP is required')
  expect(source).toContain('You do not need Bun, a wallet, an API credential or a paid account')
- expect(source).toContain('It does not download or pretend to serve a larger model')
+ expect(source).toContain('bash /tmp/join-pylon.sh --model elephant-1 --self-test')
+ expect(source).toContain('18.8 GB')
+ expect(source).toContain('before downloading')
+ expect(source).toContain('bash /tmp/join-pylon.sh --model psionic-toy')
+ expect(source).toContain('does not automatically enroll')
  expect(source).not.toMatch(/ANTHROPIC_API_KEY|OPENAI_API_KEY|Bearer /)
 })
 test('public confidential report preserves the dated source and explicitly reports a CPU capture',()=>{
@@ -35,4 +39,12 @@ test('public confidential report preserves the dated source and explicitly repor
  expect(measure.hwmodel).toBe('GCP_INTEL_TDX');expect(measure.gpu).toBeNull();expect(measure.reported).toBe(measure.expected)
  expect(receipt.level).toBe('tee-cloud');expect(steps.some((s:any)=>s.step==='refused')).toBe(false)
  expect(source).toContain('dated capture');expect(source).toContain('A Coax sealed client remains to be implemented')
+})
+
+test('feedback has an explicit GitHub issues link in the canonical source and GPU document',()=>{
+ const url='https://github.com/OpenAgentsInc/openagents/issues'
+ expect(source).toContain('[Report a bug or request a feature]('+url+')')
+ expect(source.indexOf(url)).toBeLessThan(source.indexOf('## 1. Prepare'))
+ expect(readFileSync(resolve(root,'apps/openagents-web/docs/connect-a-pylon/index.html'),'utf8')).toContain('<a href="'+url+'">Report a bug or request a feature</a>')
+ expect(readFileSync(resolve(root,'apps/openagents-web/connect-pylon-content.coax'),'utf8')).toContain('"'+url+'"')
 })

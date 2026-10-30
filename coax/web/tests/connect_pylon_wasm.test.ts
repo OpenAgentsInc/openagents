@@ -4,7 +4,7 @@ import {readFileSync} from 'node:fs'
 import {resolve} from 'node:path'
 import {createHash} from 'node:crypto'
 const root=resolve(import.meta.dir,'../../..'),markdown=readFileSync(resolve(root,'docs/connect-a-pylon.md'),'utf8')
-const command='curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh'
+const command='curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test'
 async function guide(width:number,height:number,dpr:number){
  const memory=new WebAssembly.Memory({initial:128,maximum:1024})
  const {instance}=await WebAssembly.instantiate(readFileSync(resolve(root,'apps/openagents-web/build/connect-pylon.wasm')),{env:{memory,coaxial_http:()=>0},wasi_snapshot_preview1:{fd_fdstat_get:()=>52,fd_seek:()=>52,fd_write:()=>{throw Error("unexpected Wasm diagnostic")}}})
@@ -43,4 +43,12 @@ test('guide uses the shared Coax page-view and automation analytics through the 
  const facts=new TextEncoder().encode('tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793376000000\nnav=10\nurl=https://openagents.com/docs/connect-a-pylon\nlang=en\nwebdriver=1\nvw=390\nvh=844\ndpr=1')
  new Uint8Array(memory.buffer,x.coaxial_inbox(state),facts.length).set(facts);x.coaxial_message(state,600,facts.length);x.coaxial_frame(state,vertices,uniforms,390,844,1,3,1)
  expect(requests.some(r=>r.url==='/api/analytics/events'&&r.body.auto==='webdriver'&&r.body.events.some((e:any)=>e.page==='connect-pylon'&&e.ev==='page-view'))).toBe(true)
+})
+
+test('the first document link opens GitHub feedback through ordinary Coax keyboard input',async()=>{
+ const g=await guide(390,844,1);g.frame()
+ for(let i=0;i<4;i++)expect(g.x.coaxial_key(g.state,-15,0)).toBe(1)
+ expect(g.x.coaxial_key(g.state,-2,0)).toBe(1)
+ expect(g.x.coaxial_action(g.state)).toBe(1)
+ expect(g.copied()).toBe('https://github.com/OpenAgentsInc/openagents/issues')
 })

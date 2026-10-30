@@ -1,61 +1,87 @@
 ---
 title: "Connect a Pylon"
-description: "Contribute a computer to the OpenAgents mesh, verify it online, and make a decision request."
+description: "Load a real model, contribute a Pylon to the OpenAgents mesh, and verify your own relay task."
 url: "https://openagents.com/docs/connect-a-pylon"
 ---
 
 # Connect a Pylon
 
-A Pylon shares a model from your computer. Start with the toy network, then try the authenticated hosted API.
+A Pylon runs a model on your computer and contributes it to the mesh. Load original Elephant on your GPU, then verify an encrypted relay task with your own Pylon.
+
+[Report a bug or request a feature](https://github.com/OpenAgentsInc/openagents/issues)
 
 ## 1. Prepare
 
-Use macOS or Linux with an Internet connection that permits HTTPS and secure WebSockets. No inbound port or public IP is required.
+Elephant downloads 18.8 GB of original BF16 weights plus about 20 MB of tokenizer data. Reserve 40 GB of free disk for the cached model and build headroom. Interruptions keep partial downloads; repeat the same command to resume.
 
-Install Git, Python 3 and a C/C++ compiler. On a Mac, install Apple's Command Line Tools:
+Use macOS or Linux with outbound HTTPS and secure WebSockets. No inbound port or public IP is required. Install Git, Python 3, curl and a C/C++ compiler. You do not need Bun, a wallet, an API credential or a paid account to contribute a Pylon.
 
-```sh
-xcode-select --install
-```
+Mac: the qualified configuration is an Apple M5 Max with 128 GB of unified memory, macOS 26 and Xcode 26.6 with SDK 26.5. This path uses Metal 4 and Metal Performance Primitives; Command Line Tools alone are not the qualified setup. Select your installed Xcode developer directory before running it.
 
-On Linux, install Nix and GCC/G++; the script uses the pinned Nix OpenSSL dependency. You do not need Bun, a wallet, an API credential or a paid account to contribute a Pylon.
+Linux: use an NVIDIA CUDA GPU with its working driver, NVRTC and Nix for the OpenSSL dependency. Native Elephant has run on RTX 4080 16 GB, L4 24 GB and RTX PRO 6000 96 GB; smaller cards can stream selected tensors from host RAM. The recorded CUDA runtime uses driver 595 and NVRTC 13.2.86. Plan at least 32 GB of host RAM, with extra headroom for model mappings, pinned streaming buffers and workspace; GPU VRAM alone is not sufficient. These are qualified configurations, not a promise that every GPU or smaller Mac works.
 
-## 2. Connect
+The installer probes native GPU/toolchain support before downloading. Unsupported setups fail with an explicit toy alternative. It never silently substitutes a toy for Elephant. If you only want the small network smoke test, use the separate toy command below.
 
-Download the script, inspect it, then run it:
+## 2. Load and connect
+
+Download the script, inspect it, then run the learned-model path:
 
 ```sh
 curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh
-bash /tmp/join-pylon.sh
+bash /tmp/join-pylon.sh --model elephant-1 --self-test
 ```
 
-The script clones or updates the OpenAgents source, builds Coax and the native toy engine, creates a temporary demo identity, and connects to `wss://relay.openagents.com`. Keep the terminal open. A cold compiler build takes longer than a later start.
+The script clones or updates OpenAgents, builds checked Coax and its native Metal or CUDA engine, fetches the pinned original checkpoint, creates a private disposable demo identity, and connects to `wss://relay.openagents.com`. Keep the terminal open. A cold compiler build, model download and first authentication take longer than later starts.
 
-Wait for `pylon: online, waiting for jobs`. The terminal prints your public `npub` and Pylon name.
+Every model file is authenticated before use. The engine loads the weights onto the native GPU and passes a known-answer doctor before the Pylon advertises available capacity. Failed loading or doctor checks stop startup; a built binary alone does not mean the model is serving.
 
-## 3. Find your Pylon
+The checkpoint is `baselabs/elephant-1` revision `b3f8a93462fb1051a9de031e94a7ff380e254072`. Its admitted model identity is `elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba`.
+
+## 3. Prove your own Pylon
+
+Wait for the online log and this success line:
+
+```text
+Self-test passed: elephant-1 via <your public key>
+```
+
+The self-test sends a real encrypted decision through the relay, pins this join's own provider key and Elephant identity, and checks the returned answer. It prints the actual JSON result, then keeps the Pylon serving in the foreground. It does not borrow a hosted provider or fall back to another model.
+
+Inspect the saved result and logs under `~/.openagents/pylon/state/elephant-1`: `self-test.json`, `fleet.log`, `engine.log` and `pylon.log`. Preserve that directory while serving; do not publish its private state or demo-label file. The terminal also prints your public `npub` and Pylon name.
+
+## 4. Find your Pylon
 
 [Open the live Grid](https://openagents.com/)
 
-Choose Pylons on the homepage and find the name printed in your terminal. The board shows the advertised model identity, public key, status and free slots. New signed announcements appear without a reload.
+Choose Pylons and find the printed name. The board shows advertised model identity, public key, status and free slots. New signed announcements appear without a reload.
 
-Give the computer a recognizable label and stable name:
+Give it a recognizable label and name on a later start:
 
 ```sh
-bash /tmp/join-pylon.sh --label "My laptop" --slug my-laptop
+bash /tmp/join-pylon.sh --model elephant-1 --self-test --label "My GPU" --slug my-elephant
 ```
 
-The join command starts `psionic-toy`. It does not download or pretend to serve a larger model. Other advertised model identities may come from separate, configured model servers. Appearing on the Grid does not automatically enroll a provider into the hosted API: Elephant and Mammoth routes pin operator-approved provider keys and exact checkpoint identities.
+Your own-provider self-test and the hosted API are separate paths. Appearing on the Grid does not automatically enroll your computer into `/api/v1/systemone`: hosted Elephant and Mammoth routes pin operator-approved provider keys and exact checkpoint identities. Use the native self-test above to prove your contribution.
 
 ## Stop or restart
 
 Press Ctrl-C in the join terminal. From another terminal:
 
 ```sh
-bash /tmp/join-pylon.sh --stop
+bash /tmp/join-pylon.sh --model elephant-1 --stop
 ```
 
-Run the same join command to start again. Private state and logs live under `~/.openagents/pylon/state`; set `OPENAGENTS_PYLON_HOME` to use a different directory. Do not publish that private state or its label file. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.
+Repeat the learned join command to start again and reuse verified model files. Set `OPENAGENTS_PYLON_HOME` to change the checkout/cache/state root. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.
+
+## Small toy test
+
+For a machine without a qualified native GPU, choose the toy explicitly:
+
+```sh
+bash /tmp/join-pylon.sh --model psionic-toy
+```
+
+This lightweight network smoke test advertises `psionic-toy`; it downloads no Elephant checkpoint and makes no learned-model claim. Its state remains `~/.openagents/pylon/state`. On a Mac it needs Command Line Tools; on Linux it needs Nix and GCC/G++.
 
 ## Send a decision
 
@@ -133,19 +159,21 @@ Read this exact guide as Markdown:
 curl -fsSL https://openagents.com/docs/connect-a-pylon/index.md
 ```
 
-1. Check the prerequisites and run the join script with a unique `--label` and `--slug`.
-2. Preserve its working directory and private state. Keep its foreground process alive while serving; use Ctrl-C or `--stop` when finished.
-3. Confirm the online log line and locate the public Pylon on the homepage. Never infer successful contribution from a build exit alone.
+1. Check native GPU/toolchain support and disk space, then run `--model elephant-1 --self-test` with a unique `--label` and `--slug`.
+2. Preserve its working directory and private state. Keep its foreground process alive while serving; use Ctrl-C or `bash /tmp/join-pylon.sh --model elephant-1 --stop` when finished.
+3. Confirm the known-answer doctor, own-provider relay self-test and online log. Inspect `self-test.json` and locate the public Pylon on the homepage; a build exit alone proves no contribution.
 4. Authenticate separately before calling the pooled API. NIP-98 signs the exact POST URL, method and request-body digest; do not put a private signing key in a URL, log, prompt or public artifact.
 5. Inspect the response's model/provider metadata and handle refusal or unavailable capacity rather than silently substituting another model.
 
 ## Troubleshooting
 
-If the first build is still running, leave the terminal open and read its current build step. Later runs can reuse a matching checked compiler and native build.
+If the first download or build is still running, leave the terminal open and read its current step. Repeat the same command after an interrupted download. Later runs reuse matching checked builds and authenticated model files.
 
-If it cannot connect, check outbound HTTPS and `wss://relay.openagents.com`, system time and certificate trust. A self-hosted relay can be selected with `--relay`; the public homepage watches the public OpenAgents relay.
+If a GPU/toolchain probe refuses, fix that requirement or deliberately choose the toy command. Do not relabel a toy provider as Elephant. If it cannot connect, check outbound HTTPS and `wss://relay.openagents.com`, system time and certificate trust. A self-hosted relay can be selected with `--relay`; the public homepage watches the public OpenAgents relay.
 
 If the computer is missing, confirm the online log line, the printed name and its beacon expiry. Use a unique slug. Expired advertisements stop contributing available capacity.
+
+Include your OS, GPU/chip, model, exact command and nonsecret error logs when reporting a problem. Never attach private state or signing keys.
 
 If a checkout has local edits, preserve them: deliberately use `--no-update`, use another `OPENAGENTS_PYLON_HOME`, or supply an existing checkout with `--source DIR`. Do not reset someone else's files. `bash /tmp/join-pylon.sh --help` is the executable option reference.
 
