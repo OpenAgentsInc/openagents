@@ -342,7 +342,8 @@ static int usage() {
           "       coax deps    file.coax                           JSON source/descriptor inputs\n"
           "       coax test    file.coax [--steps N]\n"
           "       coax mutate  file.coax [--jobs N] [--shard I/N | --merge RECORD...]\n"
-          "                    [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
+          "                    [--root-only] [--mutation-reference] [--mutation-stats] [--mutation-trace]\n"
+          "                    --root-only mutates entry-source procedures; all baseline checks still run\n"
           "                    --jobs N evaluates mutants in N processes (default: available cores,\n"
           "                    or $COAX_MUTATE_JOBS); the report is the same for every N\n"
           "                    --shard I/N runs mutants I-1, I-1+N, ... and prints a record on stdout\n"
@@ -451,6 +452,7 @@ static int main_impl(int argc, char **argv) {
       }
     }
     else if (a == "--prefix" && i + 1 < argc && cmd == "proto") proto_prefix = argv[++i];
+    else if (a == "--root-only" && cmd == "mutate") mutation.root_only = true;
     else if (a == "--mutation-reference" && cmd == "mutate") mutation.reference = true;
     else if (a == "--mutation-stats" && cmd == "mutate") mutation.stats = true;
     else if (a == "--mutation-trace" && cmd == "mutate") mutation.trace = true;

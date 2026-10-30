@@ -1,0 +1,19 @@
+{
+  "baseline_sha256": "df4d78ef4ddc8f788cb4a87da31d538a2ecf174af14085a5f34ab1d868a80fb0",
+  "development_compiler_sha256": "1cf5c9a31ef3bcf6d88a718c5ed7ff71f9dbc87ae04f57788f3ee59bfc2641e8",
+  "source_sha256": {
+    "coax/src/main.cpp": "98e43a127740cd162bbdf627fd446552183b6529e54991cf63b1d6ee3d71f9a0",
+    "coax/src/verify.cpp": "cbde1e04148f66c65f0925cc6035ddc1362a626daaafd4a7c0c18f6f8c805d25",
+    "coax/lib/compiler/mutation-schedule.coax": "5eae9058f6594483d7725ef03544f90d527d06af17927fde9262f250c2bfccdd",
+    "coax/bootstrap/mutation-schedule.c": "2dd7ecdcafe4a1aaf5f6c7dcb45518cda872148e04a755d7228c2b88678a34d0",
+    "coax/bootstrap/mutation-schedule.h": "24bd20d2dc6008ca6133a3b6d1b315be7a71e51388155fbd4ca2b7d35b8cfa89"
+  },
+  "development_compiler": "/tmp/coax-root-only-tools/coax",
+  "build_scope": "targeted C++ driver plus Coax-generated compiler core; no full release-cache qualification",
+  "base_commit": "0f90920803404d8869227f783fdd14529b5b2a30",
+  "build_commands": [
+    "baseline c coax/lib/compiler/compiler.coax --library --header /tmp/coax-root-only-tools/proto_importer.h > /tmp/coax-root-only-tools/proto_importer.c",
+    "cc -std=c11 -O1 -g -c /tmp/coax-root-only-tools/proto_importer.c -o /tmp/coax-root-only-tools/proto_importer.o",
+    "c++ -std=c++20 -O1 -g -Wall -Wextra -Wno-missing-field-initializers -I /tmp/coax-root-only-tools -o /tmp/coax-root-only-tools/coax coax/src/main.cpp /tmp/coax-root-only-tools/proto_importer.o"
+  ]
+}

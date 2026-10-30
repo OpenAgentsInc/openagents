@@ -97,6 +97,11 @@ mutates reachable code, including dependency helpers reached by the checks;
 its unchecked-procedure gate covers the entry file and authority units.
 An unused non-authority dependency need not be covered by its importer.
 For a reusable dependency, run its own checks and mutation gate separately.
+`coax mutate entry.coax --root-only` selects only entry-source procedure
+mutation sites while still running all baseline checks and enforcing the
+same authority coverage. It reports an explicit scoped result; it does not
+repeat or replace a dependency's mutation gate. Every shard and its merge
+must use the same scope.
 
 This makes Chapter 26's composition possible: a protocol adapter can load
 a pure authority policy without requiring checks to execute every unused

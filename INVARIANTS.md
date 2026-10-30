@@ -1772,8 +1772,12 @@ source-load interpreter effect or native syntax-policy fallback.
 A physical unit's `#authority` requirements survive loading without spreading
 to unmarked dependencies. The internal checker graph receives source-owned
 scope annotations, never untrusted wire claims. Actual executed-check coverage
-still gates authority functions, and mutation covers reachable helpers while
-requiring entry/authority coverage. Compiler/evaluator/emitter, native ABI and
+still gates authority functions, and default mutation covers reachable helpers
+while requiring entry/authority coverage. Optional `--root-only` selects
+mutation sites using the procedure's physical declaration provenance; it does
+not filter baseline checks or weaken authority coverage. Scoped scores do not
+qualify dependency mutation coverage. Shard receipts bind scope even when
+filtered and default inventories coincide; merging modes refuses. Compiler/evaluator/emitter, native ABI and
 filesystem behavior remain trust inputs; finite checks are not proofs.
 
 Check: source-kernel authority checks and zero-survivor mutation, explicit
@@ -1782,7 +1786,9 @@ from `lib/compiler/compiler.coax`, and `coax/tests/sources.py` (real driver,
 cycle/diamond/symlink tests, scoped authority, relative descriptors, original
 file diagnostics/traps, graph limits, helper-free relocated compiler, native
 ABI and ASan/UBSan with an independent widened budget oracle). The book
-capstone and real iOS HUD consume loaded policy/types. `coax deps` is a checked
+capstone and real iOS HUD consume loaded policy/types. `coax/tests/mutation_scope.py`
+checks default frozen-compiler parity, imported baseline failures, physical
+scope selection, worker/shard parity and scope-separated receipts. `coax deps` is a checked
 path inventory, not a lockfile, content cache key or native build manifest.
 
 

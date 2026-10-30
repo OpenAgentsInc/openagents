@@ -2,12 +2,19 @@
 // graph and actual baseline calls; this policy makes the scheduling decision.
 #authority;
 
+#forall "root scope changes sites, never the dependency check set" root_only:bool, root_source:bool {
+ #assert MS_include(root_only,root_source)==(!root_only || root_source);
+}
+
 #forall "unsafe facts or a requested reference always run the full suite" reference:bool, borrowed:bool, strings:bool, unstable:bool {
  #assert MS_selective(reference,borrowed,strings,unstable)==(!reference && !borrowed && !strings && !unstable);
 }
 #forall "only a proven independent check may be skipped" selective:bool, entered:bool {
  #assert MS_run(selective,entered)==(!selective || entered);
 }
+
+// The driver observes each declaration's physical source provenance.
+MS_include :: (root_only:bool,root_source:bool)->bool #export_c {return !root_only || root_source;}
 
 MS_selective :: (reference:bool,borrowed_aggregate:bool,string_allocation:bool,unstable_storage:bool)->bool #export_c {
  return !reference && !borrowed_aggregate && !string_allocation && !unstable_storage;

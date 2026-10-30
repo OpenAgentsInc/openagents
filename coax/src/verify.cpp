@@ -343,7 +343,7 @@ static bool mutation_allocates_string(const File *file) {
 // source order after all of them finish, so the bytes match a serial run.
 
 struct MutationOptions {
-  bool reference = false, stats = false, trace = false;
+  bool reference = false, stats = false, trace = false, root_only = false;
   uint64_t jobs = 0;               // 0: available cores (or $COAX_MUTATE_JOBS)
   uint64_t shard = 0, shards = 0;  // 0/0: the whole set
   std::vector<std::string> merge;  // shard records to combine instead of running
@@ -476,12 +476,15 @@ static bool evaluate_parallel(const MutationRun &run, const std::vector<size_t> 
 
 // Identifies the mutant set a shard record describes: the compiler, the root
 // source and every mutant's location and change, in order.
-static std::string mutation_fingerprint(const File *file, const std::vector<Mutant> &mutants) {
+static std::string mutation_fingerprint(const File *file, const std::vector<Mutant> &mutants, bool root_only) {
   uint64_t h = 1469598103934665603ull;
   auto mix = [&](const std::string &s) {
     for (unsigned char c : s) { h ^= c; h *= 1099511628211ull; }
     h ^= 0xff; h *= 1099511628211ull;
   };
+  // Keep default receipts unchanged; a selected scope must never merge with
+  // an unfiltered receipt, even if that graph has the same mutation sites.
+  if (root_only) mix("scope:root-only:v1");
   mix(COAX_RELEASE_VERSION);
   mix(file->src->text);
   for (const Mutant &mu : mutants) {
@@ -508,10 +511,11 @@ struct MutationFacts {
   bool selective = false, borrowed = false, strings = false, unstable = false;
 };
 
-static std::string facts_line(const std::string &fingerprint, size_t total, uint64_t shards, const MutationFacts &f) {
+static std::string facts_line(const std::string &fingerprint, size_t total, uint64_t shards, const MutationFacts &f, bool root_only) {
   return "file " + fingerprint + " mutants " + std::to_string(total) + " shards " + std::to_string(shards) +
          " scheduling " + (f.selective ? "selective" : "full") + " borrowed " + std::to_string(f.borrowed) +
-         " strings " + std::to_string(f.strings) + " unstable " + std::to_string(f.unstable);
+         " strings " + std::to_string(f.strings) + " unstable " + std::to_string(f.unstable) +
+         (root_only ? " scope root-only" : "");
 }
 
 // Reads shard records and fills every result. Each record must describe the
@@ -610,12 +614,15 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   // Mutate in source order, procedure by procedure.
   for (ProcDecl *p : file->procs) {
     if (std::find(m.reached.begin(), m.reached.end(), p) == m.reached.end()) continue;
+    // root_source was mapped from the declaration through the source-unit
+    // provenance, not from a flattened line or the caller's source location.
+    if (!MS_include(opt.root_only, p->root_source)) continue;
     size_t first = m.mutants.size();
     m.stmt(p->body);
     for (size_t i = first; i < m.mutants.size(); ++i) m.mutants[i].owner = p;
   }
   size_t total = m.mutants.size();
-  std::string fingerprint = merging || opt.shards ? mutation_fingerprint(file, m.mutants) : "";
+  std::string fingerprint = merging || opt.shards ? mutation_fingerprint(file, m.mutants, opt.root_only) : "";
   MutationFacts facts;
   std::vector<MutantResult> results(total);
   bool sharded = opt.shards != 0;
@@ -671,13 +678,14 @@ static int mutate_command(Arena *arena, File *file, const MutationOptions &opt) 
   FILE *report = sharded ? stderr : stdout;
   if (sharded) {
     printf("coax-mutation-shard v1\nshard %llu/%llu\n%s\n", (unsigned long long)opt.shard, (unsigned long long)opt.shards,
-           facts_line(fingerprint, total, opt.shards, facts).c_str());
+           facts_line(fingerprint, total, opt.shards, facts, opt.root_only).c_str());
     for (size_t i : owned)
       printf("outcome %zu %d %llu %llu\n", i, results[i].killer, (unsigned long long)results[i].invocations,
              (unsigned long long)results[i].skipped);
     printf("end %zu\n", owned.size());
     fflush(stdout);
   }
+  if (opt.root_only) fprintf(report, "mutation scope: root-only (entry-source procedures; dependency checks retained)\n");
   for (const Mutant *mu : survivors) {
     Loc loc = diagnostic_loc(file->src, mu->loc);
     auto point = source_point(file->src, loc);

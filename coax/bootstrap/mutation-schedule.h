@@ -23,6 +23,7 @@ typedef struct { const char *data; int64_t count; } coax_string;
 #endif
 
 
+_Bool MS_include(_Bool root_only, _Bool root_source);
 _Bool MS_selective(_Bool reference, _Bool borrowed_aggregate, _Bool string_allocation, _Bool unstable_storage);
 _Bool MS_run(_Bool selective, _Bool entered);
 uint32_t MS_type_action(uint32_t kind);

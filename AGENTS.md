@@ -65,6 +65,7 @@ them, with `git show 0b401561a0^:<path>`. Never restore them wholesale.
 coax/build.sh test                          # compiler + every Coax suite
 coax/bin/coax test FILE                     # a file's checks
 coax/bin/coax mutate FILE                   # are the checks sharp? parallel on every core
+coax/bin/coax mutate FILE --root-only       # entry-source sites; all baseline checks still run
 coax/bin/coax mutate FILE --jobs N          # cap the workers (or COAX_MUTATE_JOBS=N)
 coax/bin/coax mutate FILE --shard I/N > I.rec  # one of N parts; then --merge 1.rec --merge 2.rec ...
 psionic/check.sh --only UNIT...             # just those Psionic units: checks, mutation, native, sanitizers, book

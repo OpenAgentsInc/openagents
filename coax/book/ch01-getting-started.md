@@ -305,7 +305,7 @@ set for reference:
 | `coax check FILE` | Check without building |
 | `coax c FILE` | Print the generated C |
 | `coax test FILE` | Run the file's `#test` and `#forall` checks ([Chapter 10](ch10-writing-checks.md)) |
-| `coax mutate FILE [--jobs N] [--shard I/N]` | Check that the checks would catch small bugs, in parallel or in shards ([Chapter 10](ch10-writing-checks.md)) |
+| `coax mutate FILE [--root-only] [--jobs N] [--shard I/N]` | Check that the checks would catch small bugs, in parallel or in shards ([Chapter 10](ch10-writing-checks.md)) |
 | `coax layout FILE` | Print every struct's size, alignment and field offsets ([Chapter 11](ch11-data-layout.md)) |
 | `coax lib FILE [-o out.o]` | Build an object file of the `#export_c` procedures, with no `main` ([Chapter 17](ch17-interop.md)) |
 | `coax header FILE [-o out.h]` | Write the C header for those procedures ([Chapter 17](ch17-interop.md)) |

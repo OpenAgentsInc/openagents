@@ -707,6 +707,22 @@ being folded before mutation; future shared or lazy state needs a new review.
 External memory pressure and host allocation failure are outside this
 deterministic isolation model.
 
+With loaded source units, the default inventory includes dependency helpers
+reached by checks. For a change confined to the entry source, select its
+procedures explicitly:
+
+```shell
+coax mutate entry.coax --root-only
+```
+
+The selection follows each declaration's physical source provenance, rather
+than flattened line numbers or its caller. Every baseline check still runs,
+including imported checks; existing authority coverage obligations remain.
+The report labels this `root-only` scope. Its mutation score covers the entry
+source, not its dependencies: keep their separate, passing mutation evidence.
+A filtered inventory with no mutation sites fails rather than claiming a
+zero-survivor pass.
+
 Use `coax mutate split.coax --mutation-reference` to force the full runner.
 `--mutation-stats` reports check counts and fallback facts;
 `--mutation-trace` reports the first killing check for each mutant.
@@ -742,6 +758,10 @@ $ coax mutate split.coax --shard 2/2 > two.rec
 $ coax mutate split.coax --merge one.rec --merge two.rec
 6 mutants, 6 killed, 0 survived
 ```
+
+When using `--root-only`, pass it to every shard and to the merge too. Scope
+is bound into the receipt even when root-only and default mutation inventories
+happen to match; their records cannot be mixed.
 
 A record names the compiler, the file's text and every mutant, so a merge
 refuses records from another file, another compiler, a missing or repeated

@@ -1,0 +1,12 @@
+ok   #forall root scope changes sites, never the dependency check set (4 cases, 60 steps)
+ok   #forall unsafe facts or a requested reference always run the full suite (16 cases, 376 steps)
+ok   #forall only a proven independent check may be skipped (4 cases, 60 steps)
+ok   #forall type observation has a closed action for every kind (16 cases, 708 steps)
+ok   #forall string allocation observation includes unknown expressions (260 cases, 10074 steps)
+ok   #forall tracked storage changes disable isolation (81 cases, 1952 steps)
+ok   #forall a shard spec is 1-based and bounded (36 cases, 1180 steps)
+ok   #test shard counts are capped (1 case, 59 steps)
+ok   #forall each mutant belongs to exactly its residue shard (300 cases, 14166 steps)
+ok   #forall shards partition the mutants (320 cases, 62724 steps)
+ok   #test job requests are capped (1 case, 48 steps)
+11 checks, 11 passed, 0 failed

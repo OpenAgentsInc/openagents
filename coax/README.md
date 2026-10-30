@@ -73,7 +73,7 @@ coax/build.sh test
 | `coax deps FILE` | Print a checked JSON source/descriptor input inventory |
 | `coax layout FILE` | Print every struct's size, alignment, offsets and padding, and every enum |
 | `coax test FILE [--steps N]` | Run every `#test` and `#forall`; print counterexamples |
-| `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails. `--jobs N` (default: cores) runs mutants in parallel; `--shard I/N` and `--merge RECORD...` split a file across processes or machines. The report is identical in every mode |
+| `coax mutate FILE` | Change the checked code one site at a time; report mutants no check fails. `--jobs N` (default: cores) runs mutants in parallel; `--shard I/N` and `--merge RECORD...` split a file across processes or machines. Optional `--root-only` mutates entry-source procedures while retaining all baseline checks; it reports a scoped result. The report is identical across worker/shard modes within one scope |
 | `coax explain CODE` / `--all [--markdown]` | Explain an error code |
 | `coax version` | Print the version |
 | `coax status [--json]` | Print the release catalogue as Markdown or inventory-schema-1 JSON |
@@ -193,6 +193,15 @@ beside their declaring file; canonical units load once, active cycles fail,
 and checks/diagnostics retain their physical source ownership. `#authority`
 does not spread to unmarked loaded units. `coax test` and `coax mutate` accept
 `--library` for pure units without a main or C exports.
+
+By default, mutation includes reachable dependency helpers. Use
+`coax mutate entry.coax --root-only` for an explicit entry-source inventory:
+physical declaration provenance selects sites, even when loaded units share
+names or flatten into one compiler input. Imported checks still run in the
+unmutated baseline, and authority/execution coverage is unchanged. A scoped
+zero-survivor result does not qualify dependency mutation coverage; keep and
+cite their separate gates. Use `--root-only` on every shard and its merge.
+Receipts bind the scope even when both inventories happen to be identical.
 
 `coax deps FILE` lists canonical sources in deterministic traversal order and
 resolved descriptor inputs as schema-version-1 JSON. It is a path inventory,
