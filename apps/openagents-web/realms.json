@@ -191,7 +191,7 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["pack:/realms/fixture/assets/fixture.pack"]
       } },
-    { "id": "sandbox", "name": "SANDBOX", "kind": "open", "orbit": { "r": 0.36, "a": 4.8, "size": 0.03 },
+    { "id": "sandbox", "name": "SANDBOX", "kind": "open", "orbit": { "r": 0.36, "a": 4.6, "size": 0.03 },
       "realm": {
         "slug": "sandbox",
         "style": "lowpoly",
