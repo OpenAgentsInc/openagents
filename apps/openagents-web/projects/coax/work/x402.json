@@ -1,0 +1,219 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "coax",
+  "initiative": {
+    "slug": "lab-x402",
+    "title": "The Lab pays for inference with Lightning (x402 over Spark)",
+    "body": "Open `POST /api/v1/inference` beyond admin keys: any Nostr key buys credit over Lightning with x402, received by a server Spark wallet, and spends it on the Lab's inference. Coax and the C API hold our logic; the Breez Spark SDK is the wallet engine behind a narrow boundary.",
+    "spec": "nips/openagents/NIP-X402.md",
+    "labels": [
+      "x402",
+      "lightning"
+    ]
+  },
+  "milestones": [
+    {
+      "slug": "x402-credit",
+      "title": "Credit over Lightning for our inference route",
+      "body": "Spark receiver profile, credit ledger, top-up and draw-down routes, the Lab's payment, a live smoke.",
+      "parent": "lab-x402"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "x402-spark-profile",
+      "parent": "x402-credit",
+      "title": "The Spark receiver profile in NIP-X402, and the invariant",
+      "size": "S",
+      "labels": [
+        "x402",
+        "spark",
+        "spec"
+      ],
+      "body": "Add `openagents:spark-receiver:1` to `nips/openagents/NIP-X402.md`: settlement is proved by the receiver's own Spark wallet record of that exact invoice paid, plus the preimage hashing to its payment hash; the request binding (invoice to request digest) lives in the server's database, issued only by us, because Spark's shared SSP node signs every invoice and `receivePayment` takes a memo, not a description hash. State the trust: SSP and operators, small balances, sweep policy. Fix the stale claim that Rust `crates/x402` implements the NIP (deleted in 0b401561a0). Add the policy to INVARIANTS.md.",
+      "files": [
+        "nips/openagents/NIP-X402.md",
+        "INVARIANTS.md",
+        "docs/lightning/breez-spark.md"
+      ],
+      "acceptance": [
+        "NIP-X402 names the Spark receiver profile and no longer claims crates/x402",
+        "INVARIANTS.md has the Spark receiver rule and names its tests"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "spark-receiver-wallet",
+        "inference-credit-ledger"
+      ]
+    },
+    {
+      "slug": "x402-wire-codec",
+      "parent": "x402-credit",
+      "title": "The x402 v2 HTTP wire codec in Coax",
+      "size": "S",
+      "labels": [
+        "x402",
+        "coax"
+      ],
+      "body": "`coax/lib/x402/x402.coax`: base64 JSON for the `PAYMENT-REQUIRED`, `PAYMENT-SIGNATURE` and `PAYMENT-RESPONSE` headers; read a PaymentRequired (scheme exact, network lnbtc mainnet, msat amount string, extra.invoice, extra.paymentHash, the profile), build a PaymentPayload for a retry, read a settlement response. Refuse other versions, schemes, networks and non-decimal amounts. The Lab uses it.",
+      "files": [
+        "coax/lib/x402/x402.coax"
+      ],
+      "acceptance": [
+        "coax/bin/coax test --library coax/lib/x402/x402.coax"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "lab-x402-pay"
+      ]
+    },
+    {
+      "slug": "spark-receiver-wallet",
+      "parent": "x402-credit",
+      "title": "A server Spark wallet that issues invoices and reports payments",
+      "size": "M",
+      "labels": [
+        "x402",
+        "spark",
+        "api"
+      ],
+      "body": "A narrow wallet process (Breez Spark SDK, mainnet, conversions off) on Cloud Run next to oa-api: create a BOLT11 invoice with a memo, say whether that exact invoice was paid with its payment hash and preimage, and give the BTC/USD rate. IAM-only ingress from the API's service account. A new seed in Secret Manager, never printed or committed.",
+      "files": [
+        "coax/web/api/spark/"
+      ],
+      "acceptance": [
+        "The service answers /health on Cloud Run and creates a mainnet invoice for the API",
+        "The seed exists only in Secret Manager"
+      ],
+      "blocked_by": [
+        "x402-spark-profile"
+      ],
+      "blocks": [
+        "inference-credit-route"
+      ]
+    },
+    {
+      "slug": "inference-credit-ledger",
+      "parent": "x402-credit",
+      "title": "Credit balances, top-ups, used payments and a BTC price cache",
+      "size": "S",
+      "labels": [
+        "x402",
+        "api",
+        "sql"
+      ],
+      "body": "A migration for `inference.credit` (msat per pubkey), `inference.topups` (invoice bound to the request digest), `inference.used_payments` (replay key `network:payment_hash`, inserted once) and the cached BTC/USD price, with settle and debit functions that run in one transaction.",
+      "files": [
+        "coax/web/api/migrations/"
+      ],
+      "acceptance": [
+        "coax/web/api/test.sh"
+      ],
+      "blocked_by": [
+        "x402-spark-profile"
+      ],
+      "blocks": [
+        "inference-credit-route"
+      ]
+    },
+    {
+      "slug": "inference-credit-route",
+      "parent": "x402-credit",
+      "title": "POST /api/v1/inference/credit: buy credit with x402 over Spark",
+      "size": "M",
+      "labels": [
+        "x402",
+        "api"
+      ],
+      "body": "Body `{pubkey, msat}`, no NIP-98. Without proof: 402 with `PAYMENT-REQUIRED` and a Spark invoice bound to the body, within min and max top-up bounds. With `PAYMENT-SIGNATURE`: the wallet's record of that invoice paid and a preimage that hashes to its payment hash, then the payment inserted once and the balance credited in one transaction; a repeat is `duplicate_settlement`.",
+      "files": [
+        "coax/web/api/inference.c",
+        "coax/web/api/test_inference.py"
+      ],
+      "acceptance": [
+        "coax/web/api/test.sh"
+      ],
+      "blocked_by": [
+        "inference-credit-ledger",
+        "spark-receiver-wallet"
+      ],
+      "blocks": [
+        "inference-drawdown"
+      ]
+    },
+    {
+      "slug": "inference-drawdown",
+      "parent": "x402-credit",
+      "title": "The inference route admits any key with credit and debits it",
+      "size": "S",
+      "labels": [
+        "x402",
+        "api"
+      ],
+      "body": "Any NIP-98 signed key with credit above zero may use `/api/v1/inference`; admins and the allowlist still do. After metering, debit msat at the cached BTC/USD price; with no fresh price, refuse paid use (fail safe). No credit is a 402 pointing at `/api/v1/inference/credit`. The daily caps stay.",
+      "files": [
+        "coax/web/api/inference.c",
+        "coax/web/api/test_inference.py"
+      ],
+      "acceptance": [
+        "coax/web/api/test.sh"
+      ],
+      "blocked_by": [
+        "inference-credit-route"
+      ],
+      "blocks": [
+        "lab-x402-pay",
+        "x402-live-smoke"
+      ]
+    },
+    {
+      "slug": "lab-x402-pay",
+      "parent": "x402-credit",
+      "title": "The Lab adds credit when our route answers 402",
+      "size": "M",
+      "labels": [
+        "x402",
+        "lab",
+        "coax"
+      ],
+      "body": "On a 402 from our route the Lab shows \"Add credit: N sats\" with the invoice as copyable text, then retries the top-up with the proof until it is paid or the invoice expires, and says when the credit is in. Lab only.",
+      "files": [
+        "apps/openagents-desktop/zeron/microcoder.coax",
+        "coax/lib/gateway/"
+      ],
+      "acceptance": [
+        "coax/bin/coax test --library apps/openagents-desktop/zeron/microcoder.coax",
+        "coax/bin/coax test --library coax/lib/gateway/transport.coax"
+      ],
+      "blocked_by": [
+        "x402-wire-codec",
+        "inference-drawdown"
+      ],
+      "blocks": [
+        "x402-live-smoke"
+      ]
+    },
+    {
+      "slug": "x402-live-smoke",
+      "parent": "x402-credit",
+      "title": "Live smoke: a real top-up and a non-admin paid request",
+      "size": "S",
+      "labels": [
+        "x402",
+        "live"
+      ],
+      "body": "Deploy the wallet and the API (staging, then production). Top up a fresh non-admin key with a few sats over Lightning, then make a signed request with it that succeeds and debits its credit. Tests never move the owner's money: without a funded throwaway payer, stop at the invoice and put the payment in NEEDS_OWNER.md.",
+      "files": [
+        "coax/web/api/deploy.sh"
+      ],
+      "acceptance": [
+        "A paid top-up credits a non-admin key in production and its next request is debited"
+      ],
+      "blocked_by": [
+        "inference-drawdown",
+        "lab-x402-pay"
+      ],
+      "blocks": []
+    }
+  ]
+}
