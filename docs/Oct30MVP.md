@@ -208,3 +208,17 @@ and E. Then F. G about an hour before the talk.
   coderos-4080 for test A was stopped before it ran. `serve-build.sh` had
   failed on `-Werror` (see B), and the Pylon build didn't finish. A is not
   done.
+
+- 2026-10-30, B (initial implementation): `scripts/join-pylon.sh` now checks
+  prerequisites, uses a shallow sparse source checkout, reuses only a
+  matching checked compiler, bounds each build, launches the loopback toy
+  engine and Pylon, waits for online readiness, and stops both on Ctrl-C or
+  a stop file. The throwaway label is read through `--test-key-label-file`,
+  not exposed as an argv value; only its public key/npub is printed. Coax
+  demo-label checks passed 1/1 and reference mutation 18/18; native file
+  metadata/bounds/refusal/clearing tests passed under ASan/UBSan. The actual
+  Pylon compiled/linked and refused a missing label file with exit 2. Offline
+  join tests passed for a source path containing spaces, readiness, private
+  label creation, public output and stop/cleanup. Linux/macOS public join
+  qualification is pending. `python3` is also required for the existing
+  engine build tooling; the Wasm toolchain and Bun are not join dependencies.

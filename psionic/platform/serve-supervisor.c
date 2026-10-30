@@ -15,7 +15,9 @@ static void stop(int sig){(void)sig;stopping=1;}
 int main(int argc,char **argv){
     int at=1;long limit=5,base=250;
     while(at<argc && strcmp(argv[at],"--")){
-        if(at+1>=argc)return 2;char *end=NULL;long n=strtol(argv[at+1],&end,10);if(!*argv[at+1] || *end)return 2;
+        if(at+1>=argc)return 2;
+        char *end=NULL;long n=strtol(argv[at+1],&end,10);
+        if(!*argv[at+1] || *end)return 2;
         if(!strcmp(argv[at],"--restart-limit"))limit=n;else if(!strcmp(argv[at],"--backoff-ms"))base=n;else return 2;at+=2;
     }
     if(at>=argc-1 || !ls_restart(0,limit,base,1,false).ok){fprintf(stderr,"usage: psionic-supervise [--restart-limit N] [--backoff-ms N] -- /absolute/program args...\n");return 2;}

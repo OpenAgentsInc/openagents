@@ -32,6 +32,8 @@
 //   - The key is sha256 of --test-key-label. --key-file is refused until the
 //     secret-handling audit (#4828) admits real keys.
 #import "Basic";
+#load "demo-label.coax";
+#load "../../../coax/lib/nostr/nip19-core.coax";
 #load "host.coax";
 #load "queue.coax";
 #load "../../../coax/lib/nostr/event_sign.coax";
@@ -65,6 +67,9 @@ pyh_file_read :: () -> int #foreign;
 pyh_file_byte :: (i: int) -> int #foreign;
 pyh_file_write_push :: (byte: int) -> int #foreign;
 pyh_file_write_commit :: () -> int #foreign;
+pyh_label_read :: () -> int #foreign;
+pyh_label_byte :: (i:int) -> int #foreign;
+pyh_label_clear :: () -> int #foreign;
 
 PY_IN :: 262144; PY_MSG :: 262144; PY_OUT :: 131072;
 PY_IO_MS :: 5000;
@@ -103,7 +108,7 @@ PyConfig :: struct {
     lists:[8]string;list_count:int;
     engine_host:string;engine_port:int;
     model:string;slug:string;label:string;family:string;memory_gb:int;
-    label_key:string;key_file:string;stop_file:string;
+    label_key:string;label_file:string;key_file:string;stop_file:string;
     decide_ms:int;refresh:int;ttl:int;
     references:string;state:string;declared:string;doctor:bool;
 }
@@ -126,7 +131,7 @@ py_url :: (url:string,scheme:string)->PyUrl {
 }
 py_usage :: () {
     print("usage: pylon --relay ws[s]://HOST[:PORT] --engine http://HOST:PORT --model NAME --slug SLUG\n");
-    print("             (--test-key-label LABEL | --key-file PATH)\n");
+    print("             (--test-key-label LABEL | --test-key-label-file PATH | --key-file PATH)\n");
     print("             [--list URL]... [--label TEXT] [--family gpu|cpu|unified-memory] [--memory-gb N]\n");
     print("             [--decide-ms N] [--refresh S] [--ttl S] [--stop-file PATH]\n");
     print("             --references SET --identity-state PATH [--declare-identity ID]\n");
@@ -149,6 +154,7 @@ py_config :: (c:[]PyConfig)->bool {
         else if name=="--family" {c[0].family=v;}
         else if name=="--memory-gb" {c[0].memory_gb=py_int(v);}
         else if name=="--test-key-label" {c[0].label_key=v;}
+        else if name=="--test-key-label-file" {c[0].label_file=v;}
         else if name=="--key-file" {c[0].key_file=v;}
         else if name=="--stop-file" {c[0].stop_file=v;}
         else if name=="--decide-ms" {c[0].decide_ms=py_int(v);}
@@ -165,9 +171,9 @@ py_config :: (c:[]PyConfig)->bool {
     if c[0].doctor {return true;}
     if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
     if c[0].key_file.count!=0 {
-        print("pylon: --key-file refused: real keys wait on the secret-handling audit (#4828); use --test-key-label\n");return false;
+        print("pylon: --key-file refused: real keys wait on the secret-handling audit (#4828); use a throwaway --test-key-label-file\n");return false;
     }
-    if c[0].label_key.count==0 {py_usage();return false;}
+    if (c[0].label_key.count==0)==(c[0].label_file.count==0) {print("pylon: supply exactly one test label or test label file\n");return false;}
     if c[0].model.count==0 || !pb_slug(c[0].slug,PB_SLUG) {py_usage();return false;}
     if c[0].list_count==0 {c[0].lists[0]=PY_DEFAULT_LIST;c[0].list_count=1;}
     have:=false;for k:0..<c[0].list_count {if c[0].lists[k]==c[0].relay {have=true;}}
@@ -743,10 +749,27 @@ py_main :: (p:[]Py)->int {
         return ifx step==PsStep.healthy then 0 else 10+cast(int)step;
     }
     // TEST-ONLY key: sha256 of the label. Never printed.
-    label:[256]u8;if c.label_key.count>256 {return 2;}for i:0..<c.label_key.count {label[i]=c.label_key[i];}
-    if sha256_hash_checked(label[0..<c.label_key.count],p[0].key[..],false)!=SHA_OK {return 2;}
+    label:[256]u8;label_n:=c.label_key.count;
+    if c.label_file.count>0 {
+        r:=pyh_file_path_clear();for b:c.label_file {if pyh_file_path_push(cast(int)b)!=0 {return 2;}}
+        label_n=pyh_label_read();
+        if label_n<0 || label_n>256 {print("pylon: demo label file must be a private regular file owned by this user\n");return 2;}
+        for i:0..<label_n {label[i]=cast(u8)pyh_label_byte(i);}
+        r=pyh_label_clear();
+        if !pyd_label_ok(cast(string)label[0..<label_n]) {for i:0..<256 {label[i]=0;}print("pylon: demo label file must contain exactly 64 lowercase hex characters\n");return 2;}
+    } else {
+        if label_n>256 {return 2;}for i:0..<label_n {label[i]=c.label_key[i];}
+    }
+    label_status:=sha256_hash_checked(label[0..<label_n],p[0].key[..],false);
+    for i:0..<256 {label[i]=0;}
+    if label_status!=SHA_OK {return 2;}
     if !py_public(p) {print("pylon: the signer refused the key\n");return 2;}
     print("pylon: TEST-ONLY key, signed in Coax; pubkey %\n",py_me(p));
+    public_key:[32]u8;public_text:[128]u8;
+    if py_unhex(py_me(p),public_key[..]) {
+        encoded:=nip19_encode_checked(N19_NPUB,cast(string)public_key[..],public_text[..],false);
+        if encoded.error==NC_OK {print("pylon: npub %\n",cast(string)public_text[0..<encoded.written]);}
+    }
     if !py_probe(p) {return 3;}
     {
         w:[1]PyCheckRun;py_selfcheck(p,w[..]);py_report(p,w[..]);

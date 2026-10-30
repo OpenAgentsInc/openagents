@@ -7,8 +7,13 @@
    are Coax. Sockets are coax/platform/socket-native.c, TLS for wss://
    tls-native.c (OpenSSL), entropy entropy-foreign.c; signing is Coax
    (event_sign.coax). */
+#if defined(__APPLE__)
+#define _DARWIN_C_SOURCE
+#endif
 #define _POSIX_C_SOURCE 200809L
 #include <pthread.h>
+#include <fcntl.h>
+#include <sys/stat.h>
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -78,6 +83,33 @@ int64_t pyh_file_read(void) {
   g_file_len = n; return (int64_t)n;
 }
 int64_t pyh_file_byte(int64_t i) { return i >= 0 && (size_t)i < g_file_len ? g_file[i] : -1; }
+/* Demo-label bytes have their own bounded buffer and are never argv values.
+   Metadata is observed on the opened file, never on a path checked earlier. */
+static unsigned char g_demo_label[256];
+static size_t g_demo_label_len;
+int64_t pyh_label_clear(void) {
+  volatile unsigned char *p = g_demo_label;
+  for (size_t i = 0; i < sizeof g_demo_label; i++) p[i] = 0;
+  g_demo_label_len = 0; return 0;
+}
+int64_t pyh_label_read(void) {
+  pyh_label_clear();
+  int fd = open(g_file_path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+  if (fd < 0) return -1;
+  struct stat st;
+  if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() ||
+      (st.st_mode & 077) != 0 || st.st_size < 0 || st.st_size > (off_t)sizeof g_demo_label) {
+    close(fd); return -1;
+  }
+  ssize_t n = read(fd, g_demo_label, sizeof g_demo_label);
+  unsigned char extra; ssize_t more = read(fd, &extra, 1); close(fd);
+  if (n < 0 || more != 0) { pyh_label_clear(); return -1; }
+  g_demo_label_len = (size_t)n; return n;
+}
+int64_t pyh_label_byte(int64_t i) {
+  return i >= 0 && (size_t)i < g_demo_label_len ? g_demo_label[i] : -1;
+}
+
 int64_t pyh_file_write_push(int64_t byte) {
   if (byte < 0 || byte > 255 || g_write_len >= sizeof g_file) return -1;
   g_file[g_write_len++] = (unsigned char)byte; return 0;

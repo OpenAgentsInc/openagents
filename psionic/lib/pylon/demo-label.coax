@@ -1,0 +1,17 @@
+// The demo file stores a fresh random label, never an nsec or production key.
+#authority;
+#test "demo labels are exactly 32 random bytes encoded as lowercase hex" {
+ good:="0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+ #assert pyd_label_ok(good);
+ #assert !pyd_label_ok("") && !pyd_label_ok(good[0..<63]);
+ #assert !pyd_label_ok("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0");
+ bytes:[64]u8;for i:0..<64 {bytes[i]='a';}
+ for c:"0123456789abcdef" {bytes[0]=c;#assert pyd_label_ok(cast(string)bytes[..]);}
+ for c:"/:@G`g{" {bytes[0]=c;#assert !pyd_label_ok(cast(string)bytes[..]);}
+ bytes[0]='a';bytes[63]='g';#assert !pyd_label_ok(cast(string)bytes[..]);
+}
+pyd_label_ok :: (label:string)->bool {
+ if label.count!=64 {return false;}
+ for c:label {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+ return true;
+}
