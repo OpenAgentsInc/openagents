@@ -1,0 +1,38 @@
+#import "Basic";
+#load "../lib/replay.coax";
+#load "../lib/exact-memory.coax";
+
+// book:begin example
+main :: () {
+    p:=rx_squares();
+    // The claimant is chapter 166's executor, whose memory is attention.
+    rows:[256]int;outs:[4]int;keys:[64]int;values:[64]int;
+    e:=em_run(p[..],64,rows[..],outs[..],keys[..],values[..],false);
+    #assert e.status==TmStatus.ok;
+    c:=RxClaim.{trace=e.digest,steps=e.steps};
+    c.program=rx_program_digest(p[..]);c.outputs=rx_ints_digest(outs[..],e.outputs);
+    n:=e.steps*TM_TOKENS;all:=rows[0..<n];none:=rows[0..<0];
+    print("claim: % steps, output %\n",e.steps,outs[0]);
+    show("whole run, with rows",rx_check(p[..],c,all,0,53,64));
+    show("whole run, digests only",rx_check(p[..],c,none,0,53,64));
+    show("window 40..<53",rx_check(p[..],c,all,40,53,64));
+    show("whole run, budget 20",rx_check(p[..],c,all,0,53,20));
+    t:=c;t.program[0]^=1;show("program digest changed",rx_check(p[..],t,all,0,53,64));
+    t=c;t.trace[0]^=1;show("trace digest changed",rx_check(p[..],t,all,0,53,64));
+    t=c;t.outputs[0]^=1;show("output digest changed",rx_check(p[..],t,all,0,53,64));
+    // A claimant that stores 99 instead of 16 at step 6 and rehashes its rows.
+    forged:=rows;forged[6*4+2]=99;f:=forged[0..<n];t=c;t.trace=rx_ints_digest(f,n);
+    show("store forged, whole run",rx_check(p[..],t,f,0,53,64));
+    show("store forged, window 40..<53",rx_check(p[..],t,f,40,53,64));
+    show("store forged, window 48..<53",rx_check(p[..],t,f,48,53,64));
+    t=c;t.steps=52;t.trace=rx_ints_digest(all,52*4);
+    show("claim of 52 steps",rx_check(p[..],t,rows[0..<208],0,52,64));
+}
+show :: (what:string,r:RxReport) {
+    #assert r.status==RxStatus.ok;
+    print("%: % (%)",what,r.verdict,r.reason);
+    if r.step>=0 {print(" at step %",r.step);}
+    if r.field!=RxField.none {print(", field %",r.field);}
+    print(", % steps replayed\n",r.checked);
+}
+// book:end example

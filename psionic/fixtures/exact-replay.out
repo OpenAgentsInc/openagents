@@ -1,0 +1,12 @@
+claim: 53 steps, output 17
+whole run, with rows: exact (none), 53 steps replayed
+whole run, digests only: exact (none), 53 steps replayed
+window 40..<53: unverifiable (window), 13 steps replayed
+whole run, budget 20: unverifiable (over_budget), 0 steps replayed
+program digest changed: failed (program), 0 steps replayed
+trace digest changed: failed (rows), 0 steps replayed
+output digest changed: failed (outputs), 53 steps replayed
+store forged, whole run: failed (row) at step 6, field x, 6 steps replayed
+store forged, window 40..<53: failed (row) at step 47, field x, 7 steps replayed
+store forged, window 48..<53: unverifiable (window), 5 steps replayed
+claim of 52 steps: failed (running) at step 51, 52 steps replayed

@@ -49,7 +49,7 @@ The set for Elephant is
 [elephant-1.selfcheck](../fixtures/pylon/elephant-1.selfcheck). Its first
 case:
 
-```text
+```jai
 psionic.selfcheck.v1
 identity elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba
 tolerance 500000
