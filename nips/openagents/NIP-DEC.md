@@ -170,6 +170,17 @@ the recorded result without a second charge or model call. A `type:
 "cancel"` from the original signer stops a job before dispatch and asks a
 dispatched one to stop; its receipt is not proof of stop.
 
+Delivery is not storage. Relays keep no ephemeral events, so a request sent
+while no worker is subscribed reaches nobody, and a result or status sent
+while the caller is not subscribed is lost. A caller that has no answer by
+its deadline resends the same signed request (the same idempotency key) once
+the worker is reachable again, for example after its beacon reappears. A
+worker keeps the results it has settled for at least the request's freshness
+window, and answers such a redelivery by publishing the same recorded result
+event again, never with a second model call. Neither side treats an
+unanswered request as refused. (Clarification, 2026-10-30: the wire and the
+`openagents.systemone.v1` version are unchanged.)
+
 ## Models
 
 The worker, not the caller, admits a model; naming a model authorizes
