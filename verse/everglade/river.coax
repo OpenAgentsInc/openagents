@@ -47,10 +47,12 @@
 //   steam and crown splashes the spells raise (everglade_river_splash).
 //   A fixed pool of FX particles, the oldest replaced; nothing allocates.
 //
-// Not yet: townsfolk swimming, and the underwater combat rules.
+// The townsfolk wade and swim by the same rules (verse/water-wade.coax, verse/everglade/routines.coax).
+// Not yet: the underwater combat rules.
 //   coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
 
 #load "../water-look.coax";
+#load "../water-wade.coax";
 
 RIVER_X :: 88.0;          // the plan's river runs along x = 88 (EG_RIVER_X)
 RIVER_NORTH :: 104.0;     // from the north edge of the ground, flowing south
@@ -91,15 +93,10 @@ POND_POINTS :: 24;        // each pond's outline, a polygon round its rim
 MEDIUM_BOAT :: 4;         // seated in a rowboat (Swim.medium; out of the water for lightning)
 
 // The swimmer (medium.rs).
-WADE_DEPTH :: 0.4;
-SWIM_DEPTH :: 1.25;
-FLOAT_DEPTH :: 1.2;
-EYE_HEIGHT :: 1.6;
-STANDING :: 0.05;
+// (WADE_DEPTH, SWIM_DEPTH, FLOAT_DEPTH, EYE_HEIGHT, STANDING and the media are verse/water-wade.coax's)
 RISE_SPEED :: 0.6;
 SETTLE_RATE :: 6.0;
 DIVE_SPEED :: 1.5;        // m/s down while you hold dive (ours; the old diver followed the camera's pitch)
-MEDIUM_GROUND :: 0; MEDIUM_WADING :: 1; MEDIUM_SWIMMING :: 2; MEDIUM_DIVING :: 3;
 
 // Breath (verse-world water.rs, SRD 5.2.1).
 CON :: 0;                 // the Ranger's Constitution modifier
@@ -145,6 +142,7 @@ River :: struct {
   bodies: [1 + PONDS] WaterBody;
   pond_points: [PONDS * POND_POINTS] D2;
   ponds: [PONDS * 4] f32;
+  boat_room: [PONDS * POND_POINTS] f32;   // how far out from each pond's middle a hull still floats, a direction each
   starts: [257] int; entries: [256] int;
   set: WaterSet;
   preset: WaterPreset;
@@ -262,6 +260,7 @@ everglade_river_start :: (r: [] River, heights: [] f32, all: [] f32, n: int, cel
   r[0].set = water_set(r[0].bodies[0..<bodies], 8.0, r[0].starts[..], r[0].entries[..]);
   r[0].preset = water_preset(WATER_PAINTED);   // the painted look (art-styles.md 12, eg-paint-river)
   river_bake(r, heights);
+  boat_rooms(r, heights);
   r[0].breath = hold_seconds(CON);
   r[0].medium = MEDIUM_GROUND;
   floats_start(r);
@@ -373,16 +372,7 @@ everglade_river_surface :: (r: [] River, x: f32, z: f32, time: f64) -> f32 #expo
 
 // ---- the swimmer (medium.rs)
 
-// The medium of feet at `feet` over a bed at `bed` under a surface at
-// `surface` (-1000: none). In the air over the water is the ground's rules.
-medium_of :: (surface: f32, bed: f32, feet: f32) -> int {
-  if surface <= -999 { return MEDIUM_GROUND; }
-  depth := surface - bed;
-  if depth <= f32(WADE_DEPTH) || feet > surface { return MEDIUM_GROUND; }
-  if feet + f32(EYE_HEIGHT) < surface { return MEDIUM_DIVING; }
-  if depth > f32(SWIM_DEPTH) || feet > bed + f32(STANDING) { return MEDIUM_SWIMMING; }
-  return MEDIUM_WADING;
-}
+// The medium is verse/water-wade.coax's medium_of, the people's rule too.
 
 // A swimmer's feet after dt: at the float line it settles onto it, an idle
 // diver rises at RISE_SPEED, a stroke moves it at the asked speed, never
@@ -399,12 +389,7 @@ swim_height :: (feet: f32, surface: f32, bed: f32, vertical: f32, dt: f32) -> f3
   return clamp_f(next, floor_, top);
 }
 
-// The speed's share (water.rs pace): half wading and swimming without a
-// swim speed, less a sixth each Exhaustion level.
-pace_of :: (medium: int, levels: int) -> f32 {
-  base := ifx medium == MEDIUM_GROUND then 1.0f32 else 0.5f32;
-  return base * hi_f((30.0 - 5.0 * f32(levels)) / 30.0, 0);
-}
+// The pace is verse/water-wade.coax's pace_of.
 
 // ---- breath (water.rs Breath)
 
@@ -617,6 +602,7 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
       r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].kinds[i], r[0].homes[i * 3], r[0].homes[i * 3 + 1], r[0].homes[i * 3 + 2], r[0].float_tick);
     }
     w = rigid_step(w, gravity);
+    boat_shore(r, r[0].aboard);
     r[0].float_tick = w.tick;
     r[0].float_carry -= FLOAT_STEP;
     steps += 1;
@@ -796,6 +782,75 @@ everglade_river_leave :: (r: [] River, heights: [] f32, time: f64) -> Seat #expo
   out.x = cast(f32) bx; out.z = cast(f32) bz; out.y = river_bed(r, heights, cast(f32) bx, cast(f32) bz);
   out.yaw = cast(f32) yaw;
   return out;
+}
+
+// ---- the shore: a rowed boat runs aground at the water's edge, its bow never on the grass
+
+BOAT_DRAFT :: 0.3;          // m of water a hull needs under it (it rides 0.4 m deep, 6 cm of it out)
+
+// Out from each pond's middle along each of its outline's directions, the last place with BOAT_DRAFT of
+// water over the bed: past it a hull would be on the bank.
+boat_rooms :: (r: [] River, heights: [] f32) {
+  for p: 0..<PONDS {
+    cx := r[0].ponds[p * 4]; cz := r[0].ponds[p * 4 + 1]; rim := r[0].ponds[p * 4 + 2]; level := r[0].ponds[p * 4 + 3];
+    for k: 0..<POND_POINTS {
+      a := f32(TAU_D) * f32(k) / f32(POND_POINTS);
+      room := 0.0f32;
+      d := 0.0f32;
+      while d < rim + 1 {
+        if level - river_bed(r, heights, cx + d * cos(a), cz + d * sin(a)) < f32(BOAT_DRAFT) { break; }
+        room = d;
+        d += 0.1;
+      }
+      r[0].boat_room[p * POND_POINTS + k] = ifx rim > 0 then room else 0.0f32;
+    }
+  }
+}
+
+// How far out a hull may reach from pond p's middle toward (dx, dz), between its outline's directions.
+boat_room_at :: (r: [] River, p: int, dx: f32, dz: f32) -> f32 {
+  a := cast(f32) atan_d2(f64(dz), f64(dx));
+  if a < 0 { a += f32(TAU_D); }
+  f := a / f32(TAU_D) * f32(POND_POINTS);
+  k := cast(int) floor(f);
+  t := f - f32(k);
+  k0 := k % POND_POINTS; k1 := (k + 1) % POND_POINTS;
+  if k0 < 0 { k0 = 0; }
+  return r[0].boat_room[p * POND_POINTS + k0] * (1 - t) + r[0].boat_room[p * POND_POINTS + k1] * t;
+}
+
+// Keeps boat i's hull in its pond: its four corners and its bow and stern no further out than the water
+// holds it, moving it back and stopping what carries it on toward the bank (it glides along the shore).
+boat_shore :: (r: [] River, i: int) {
+  if i < 0 || i >= r[0].float_n || r[0].kinds[i] != FLOAT_BOAT { return; }
+  b := r[0].floats[i];
+  pond := -1;
+  for p: 0..<PONDS {
+    rim := f64(r[0].ponds[p * 4 + 2]);
+    dx := b.pos.x - f64(r[0].ponds[p * 4]); dz := b.pos.z - f64(r[0].ponds[p * 4 + 1]);
+    if rim > 0.0 && dx * dx + dz * dz < (rim + 3.0) * (rim + 3.0) { pond = p; }
+  }
+  if pond < 0 { return; }
+  cx := f64(r[0].ponds[pond * 4]); cz := f64(r[0].ponds[pond * 4 + 1]);
+  yaw := yaw_of_q(b.orientation);
+  ax := sin(yaw); az := cos(yaw);
+  worst := 0.0; nx := 0.0; nz := 0.0;
+  for c: 0..<6 {
+    along := ifx c < 4 then (ifx c % 2 == 0 then BOAT_HALF.z else -BOAT_HALF.z) else (ifx c == 4 then BOAT_HALF.z + 0.1 else -BOAT_HALF.z - 0.1);
+    across := ifx c < 4 then (ifx c < 2 then BOAT_HALF.x else -BOAT_HALF.x) else 0.0;
+    px := b.pos.x + ax * along + az * across - cx;
+    pz := b.pos.z + az * along - ax * across - cz;
+    d := sqrt(px * px + pz * pz);
+    if d < 0.001 { continue; }
+    over := d - f64(boat_room_at(r, pond, cast(f32) px, cast(f32) pz));
+    if over > worst { worst = over; nx = px / d; nz = pz / d; }
+  }
+  if worst <= 0.0 { return; }
+  next := b;
+  next.pos = d3(b.pos.x - nx * worst, b.pos.y, b.pos.z - nz * worst);
+  out := b.vel.x * nx + b.vel.z * nz;
+  if out > 0.0 { next.vel = d3(b.vel.x - nx * out, b.vel.y, b.vel.z - nz * out); }
+  r[0].floats[i] = next;
 }
 
 // The stroke's share now (0 to 1, the power stroke the first BOAT_POWER of it).
@@ -1336,6 +1391,40 @@ test_pond :: (heights: [] f32, all: [] f32) {
   gx := f64(off.x) - b2.pos.x; gz := f64(off.z) - b2.pos.z;
   #assert sqrt(gx * gx + gz * gz) < 5;
   #assert abs(r[0].homes[boat * 3] - b2.pos.x) < 0.001 && everglade_river_boat_near(r[..], cast(f32) b2.pos.x + 9, cast(f32) b2.pos.z + 9) == -1;
+}
+
+#test "rowed into the bank, the boat stops at the water's edge: no corner of its hull over the grass" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  all: [TEST_N + 1 + PONDS * 4] f32;
+  test_pond(heights[..], all[..]);
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  // the water holds a hull out to about 5.6 m of the 6 m rim, the same all round
+  for k: 0..<POND_POINTS { #assert r[0].boat_room[k] > 4.5 && r[0].boat_room[k] < 6.0; }
+  out: [FLOATS * 8] f32;
+  boat := everglade_river_first_boat(r[..]);
+  #assert everglade_river_board(r[..], boat);
+  // rowing hard straight ahead along the shore it is tied to: it reaches the bank and stops there
+  start := r[0].floats[boat].pos;
+  everglade_river_row(r[..], 1, 0);
+  for q: 0..<200 { fl := everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
+  b := r[0].floats[boat];
+  yaw := yaw_of_q(b.orientation);
+  ax := sin(yaw); az := cos(yaw);
+  touching := -10.0;
+  for c: 0..<4 {
+    along := ifx c % 2 == 0 then BOAT_HALF.z else -BOAT_HALF.z;
+    across := ifx c < 2 then BOAT_HALF.x else -BOAT_HALF.x;
+    px := b.pos.x + ax * along + az * across; pz := b.pos.z + az * along - ax * across;
+    bed := river_bed(r[..], heights[..], cast(f32) px, cast(f32) pz);
+    #assert 0.75 - bed > f32(BOAT_DRAFT) - 0.06;
+    touching = fmax(touching, sqrt((px + 40) * (px + 40) + (pz - 20) * (pz - 20)) - f64(boat_room_at(r[..], 0, cast(f32) (px + 40), cast(f32) (pz - 20))));
+  }
+  // and it is at the bank: a corner at the water's edge
+  #assert touching > -0.1;
+  // it went somewhere first, and at the bank it is not carried on into it
+  #assert sqrt((b.pos.x - start.x) * (b.pos.x - start.x) + (b.pos.z - start.z) * (b.pos.z - start.z)) > 0.4;
+  #assert abs(b.vel.x * (b.pos.x + 40) + b.vel.z * (b.pos.z - 20)) / sqrt((b.pos.x + 40) * (b.pos.x + 40) + (b.pos.z - 20) * (b.pos.z - 20)) < 0.2;
 }
 
 #test "a wake trail lays behind what moves on the water, and the spray stays bounded" {

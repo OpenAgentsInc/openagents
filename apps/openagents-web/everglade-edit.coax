@@ -367,9 +367,10 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   }
   for i: 0..<EG_SPOTS {
     tall := ifx EG_SPOT_CAT[i] then 0.3f32 else 1.1f32;
-    p := v3(EG_SPOT[i * 3], ground_at(s, EG_SPOT[i * 3], EG_SPOT[i * 3 + 1]) + tall, EG_SPOT[i * 3 + 1]);
+    fx := s[0].folk[i].x; fz := s[0].folk[i].z;   // where their day has them now
+    p := v3(fx, ground_at(s, fx, fz) + tall, fz);
     sc := on_screen(u, p, s[0].width, s[0].height);
-    s[0].ev.pseen[i] = sc.ok && !eg_gone(s[0].ev.edits, i); s[0].ev.px[i] = sc.x; s[0].ev.py[i] = sc.y;
+    s[0].ev.pseen[i] = sc.ok && !eg_gone(s[0].ev.edits, i) && !s[0].folk[i].indoors; s[0].ev.px[i] = sc.x; s[0].ev.py[i] = sc.y;
   }
   pk := s[0].ev.picked;
   if pk >= s[0].ev.edits.n { pk = -1; s[0].ev.picked = -1; }
@@ -422,7 +423,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   if who >= 0 {
     // a person picked: named over them, and DELETE alone over the hotbar
     tall := ifx EG_SPOT_CAT[who] then 0.8f32 else 2.25f32;
-    top := v3(EG_SPOT[who * 3], ground_at(s, EG_SPOT[who * 3], EG_SPOT[who * 3 + 1]) + tall + 0.3, EG_SPOT[who * 3 + 1]);
+    top := v3(s[0].folk[who].x, ground_at(s, s[0].folk[who].x, s[0].folk[who].z) + tall + 0.3, s[0].folk[who].z);
     n = tag(s, out, u, n, ev_name_up(who), top, 9 * k, 1, true);
     y -= bh + 12 * k;
     d := edit_row(s, 0, 1, 120 * k, 34 * k, y);

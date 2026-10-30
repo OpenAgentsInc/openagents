@@ -155,7 +155,23 @@ a character is told what that player said to it, and what it answered, on
 their earlier visits, the last twelve exchanges, oldest first. Nothing one
 player said reaches another, and each character remembers only its own
 conversations. A browser without a player key is given one when it first
-talks. They stand at their spots all day for now; schedules are for later.
+talks.
+
+They keep a day (`verse/everglade/routines.coax`, after the routines in
+`previous/generative-agents.md`, without the planning): each has rows of
+"at this time of day, go here", and walks the road graph at 1.2 m/s between
+them with the walk clip, no physics. Shopkeepers open their stalls in the
+morning and walk home at dusk, where they go indoors until dawn; Sable,
+Elowen and Quill stroll round the commons; the gate guards walk a beat and
+pause at each end; Pip swims across the Lantern Pond after lunch, wading
+and swimming by the player's rules (`verse/water-wade.coax`). Where someone
+is comes only from the day clock and the route, so every visitor sees the
+same town. Talking to someone, or standing in their way, stops them and
+turns them to face you; they hurry to catch up after. With the clock held
+(golden mode, `daycycle` off) everyone stands at their spot as before.
+
+Their names float just above their heads, fade out between 8 and 11 m, and hide
+behind walls and behind a nearer person's name.
 
 | Who | Where |
 | --- | --- |

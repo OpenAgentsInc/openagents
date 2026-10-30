@@ -8,8 +8,8 @@ Everglade (its river, ponds, weir, rowboats, swimming and floats), W6
 (ripples, rowing, wakes, spray, mist and the weir's falling sheet, debris
 that floats), most of W5, W4 (the spectral sea, in the water lab), W7
 (under the water), W8 (spells and water), W9 (weather), W10 (ocean and
-scale) and W11 (measurement), each below. The rest has a task each under
-`verse-water` (#c278): W3's rest (townsfolk swimming).
+scale) and W11 (measurement), each below. W3's rest (townsfolk wading and
+swimming) is done too.
 
 ## W1: the physics (done)
 
@@ -182,10 +182,11 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   (`river.coax` `FLOAT_BOAT`); drawn from boxes (`everglade.coax`
   `rowboat`). You board and row them (W6, below).
 
-Not ported yet (task `verse-water-w3-rest`): townsfolk swimming. Everglade's
-people stand at their places and don't walk yet; when they do, they wade
-and swim by the same rules as you. Not
-ported: underwater combat. You swim with the walk clip (there is no swim clip yet), and a
+Townsfolk (W3's rest): the people walking their day wade and swim by the
+same rules as you (`verse/water-wade.coax`, shared with `river.coax`): past
+0.4 m they wade, past 1.25 m they swim with only their head out, at half
+pace either way. Pip the stable hand swims the Lantern Pond after lunch.
+Not ported: underwater combat. You swim with the walk clip (there is no swim clip yet), and a
 phone has no dive button yet.
 
 ## W5: the scene behind the water (done, in part)
@@ -299,7 +300,12 @@ stroke, splash at the catch and drip as they lift. E · STEP ASHORE puts you
 on the nearest place round the hull no deeper than a wade, else in the water
 beside it, and ties the boat up there. A boat's hull is a pair of capsules
 you can't walk or swim through (`everglade-face.c` `with_hulls`), and the
-water isn't drawn inside it. `#rowboat` starts you in the Lantern Pond's.
+water isn't drawn inside it. Rowed into the bank, a boat stops at the
+water's edge instead of running its bow into the grass: at the start each
+pond bakes how far the water stays deep enough for the hull (0.3 m) in each
+direction (`boat_rooms`), and after each step the hull's corners and ends
+are pushed back inside and its speed outward dropped (`boat_shore`).
+`#rowboat` starts you in the Lantern Pond's.
 
 **Wakes** (`wake_follow`, `water_wake` in everglade.wgsl). You (or your
 boat) and the duck nearest the eye each lay a point behind every 0.3 s

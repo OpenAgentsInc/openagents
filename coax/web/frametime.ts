@@ -14,7 +14,7 @@ const [w, h] = size.split("x").map(Number), dpr = Number(dprS)
 const chrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 const profile = mkdtempSync(join(tmpdir(), "coax-ft-"))
 const proc = Bun.spawn([chrome, "--headless=new", `--user-data-dir=${profile}`, "--no-first-run", "--hide-scrollbars",
-  "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", "--enable-dawn-features=allow_unsafe_apis",
+  "--mute-audio", "--enable-unsafe-webgpu", "--enable-features=Vulkan", "--use-angle=metal", "--enable-dawn-features=allow_unsafe_apis",
   "--disable-dawn-features=timestamp_quantization", ...(process.argv.includes("--vsync") ? [] : ["--disable-frame-rate-limit", "--disable-gpu-vsync"]),
   `--window-size=${w},${h}`, "--remote-debugging-port=0", "about:blank"], { stdout: "ignore", stderr: "ignore" })
 const inject = `(() => {

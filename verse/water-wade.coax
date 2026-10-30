@@ -1,0 +1,64 @@
+// Who wades and who swims (the old W3's medium.rs, SRD 5.2.1): the rules
+// you and Everglade's people both go by in the river and the ponds. Your
+// swimmer is verse/everglade/river.coax; the people's walks are
+// verse/everglade/routines.coax. Pure functions, no state.
+//   coax/bin/coax test --library verse/water-wade.coax
+
+WADE_DEPTH :: 0.4;        // deeper than this you wade
+SWIM_DEPTH :: 1.25;       // and than this you swim
+FLOAT_DEPTH :: 1.2;       // a swimmer's feet settle this far under the surface
+EYE_HEIGHT :: 1.6;        // the eye over the feet: under the surface, you dive
+STANDING :: 0.05;         // feet this near the bed stand on it
+MEDIUM_GROUND :: 0; MEDIUM_WADING :: 1; MEDIUM_SWIMMING :: 2; MEDIUM_DIVING :: 3;
+
+// The medium of feet at `feet` over a bed at `bed` under a surface at
+// `surface` (-1000: none). In the air over the water is the ground's rules.
+medium_of :: (surface: f32, bed: f32, feet: f32) -> int {
+  if surface <= -999 { return MEDIUM_GROUND; }
+  depth := surface - bed;
+  if depth <= f32(WADE_DEPTH) || feet > surface { return MEDIUM_GROUND; }
+  if feet + f32(EYE_HEIGHT) < surface { return MEDIUM_DIVING; }
+  if depth > f32(SWIM_DEPTH) || feet > bed + f32(STANDING) { return MEDIUM_SWIMMING; }
+  return MEDIUM_WADING;
+}
+
+// Someone walking (never diving) over a bed at `bed` under `surface`: on the
+// ground, wading with their feet on the bed, or swimming at the float line.
+medium_walking :: (surface: f32, bed: f32) -> int {
+  if surface <= -999 || surface - bed <= f32(WADE_DEPTH) { return MEDIUM_GROUND; }
+  return ifx surface - bed > f32(SWIM_DEPTH) then MEDIUM_SWIMMING else MEDIUM_WADING;
+}
+
+// Where a walker's feet are in it: on the bed, or at the float line.
+feet_walking :: (surface: f32, bed: f32) -> f32 {
+  if medium_walking(surface, bed) == MEDIUM_SWIMMING {
+    float := surface - f32(FLOAT_DEPTH);
+    return ifx float > bed then float else bed;
+  }
+  return bed;
+}
+
+// The speed's share (water.rs pace): half wading and swimming without a
+// swim speed, less a sixth each Exhaustion level.
+pace_of :: (medium: int, levels: int) -> f32 {
+  base := ifx medium == MEDIUM_GROUND then 1.0f32 else 0.5f32;
+  share := (30.0f32 - 5.0f32 * f32(levels)) / 30.0f32;
+  if share < 0 { share = 0; }
+  return base * share;
+}
+
+#test "wading past 0.4 m, swimming past 1.25 m, at half speed either way" {
+  #assert medium_of(-1000, 0, 0) == MEDIUM_GROUND;
+  #assert medium_of(0, -0.3, -0.3) == MEDIUM_GROUND;
+  #assert medium_of(0, -0.8, -0.8) == MEDIUM_WADING;
+  #assert medium_of(0, -2, -f32(FLOAT_DEPTH)) == MEDIUM_SWIMMING;
+  #assert medium_of(0, -3, -2) == MEDIUM_DIVING;
+  #assert medium_walking(-1000, 0) == MEDIUM_GROUND && medium_walking(0, -0.39) == MEDIUM_GROUND;
+  #assert medium_walking(0, -0.41) == MEDIUM_WADING && medium_walking(0, -1.24) == MEDIUM_WADING;
+  #assert medium_walking(0, -1.26) == MEDIUM_SWIMMING;
+  #assert feet_walking(0, -0.8) == -0.8 && feet_walking(0, -2) == -f32(FLOAT_DEPTH) && feet_walking(-1000, 0.5) == 0.5;
+  // a walker in the water stands on the bed until it is deep enough to float
+  #assert feet_walking(0, -1.3) == -f32(FLOAT_DEPTH) && feet_walking(0, -1.0) == -1.0;
+  #assert pace_of(MEDIUM_GROUND, 0) == 1 && pace_of(MEDIUM_WADING, 0) == 0.5 && pace_of(MEDIUM_SWIMMING, 0) == 0.5;
+  #assert abs(pace_of(MEDIUM_WADING, 1) - 0.5 * 25.0 / 30.0) < 0.0001 && pace_of(MEDIUM_SWIMMING, 6) == 0;
+}

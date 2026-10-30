@@ -1,0 +1,564 @@
+// Everglade's people go about their day (eg-routines): the routines of the
+// previous Everglade's townsfolk (verse/everglade/previous/generative-agents.md,
+// "Townsfolk with deterministic routines"), without its model planning.
+// Each person's day is data: rows of (time of day, where, by way of), and
+// where they are is a pure function of the town's clock, so everyone who
+// opens the city at the same moment sees the same town:
+//
+//   - the shopkeepers, the sellers, the smith and the alchemist stand at
+//     their work by day, walk home at dusk and are indoors at night;
+//   - the innkeeper, the guild masters, the archmage and the priest go in
+//     at nightfall; the astronomer works the night and sleeps by day;
+//   - a few stroll (the rangers' warden round the commons in the morning,
+//     the archmage up to the temple and back, the trinket seller round the
+//     ring), and the stable hand takes a midday swim in the Reed Pond;
+//   - the gate guards patrol, one out along the road, one in through the
+//     gate, all day and all night;
+//   - the crier, the cats and the three people quests send you to stay put.
+//
+// A walk follows the town's road graph (plan.coax EG_NODE_XZ, EG_LINK_AB),
+// straight to and from the nearest street, or straight where the way is
+// short and clear of every solid and the woods. It takes the real seconds
+// FOLK_WALK gives, at half pace in the water (verse/water-wade.coax: the
+// player's rules), so a walk home is a minute or two of the 48-minute day.
+//   coax/bin/coax test --library verse/everglade/routines.coax --steps 2000000000
+
+#load "plan.coax";
+#load "../water-wade.coax";
+
+FOLK_WALK :: 1.2;         // m/s a person walks
+FOLK_ROWS :: 4;           // rows of a day at most
+FOLK_WAYS :: 10;          // points a stroll goes by at most
+ROUTE_MAX :: 64;          // a walk's points at most (x, z, and the seconds to reach it)
+ROUTE_FLOATS :: 3;
+ROUTE_WET_STEP :: 0.8;    // m: a walk through a pond is cut this fine, so its pace follows the depth
+DIRECT_MAX :: 25.0;       // m: a way this short and clear is walked straight, off the streets
+CLEAR_STEP :: 0.5;        // m between the samples a clear way is checked at
+CLEAR_PAD :: 0.35;        // m a walk keeps from every solid: a walker's radius and a little
+PATROL_PAUSE :: 14.0;     // s a guard stands at each end of their beat
+
+// Where a row puts someone: a spot (plan.coax EG_SPOT: their work), or the
+// door of a building (FOLK_DOOR + b), and once there they are indoors.
+FOLK_DOOR :: EG_SPOTS;
+FOLK_STOPS :: EG_SPOTS + EG_BUILDINGS;
+
+// The strolls and beats: up to FOLK_WAYS points each (x, z), how many.
+FOLK_VIAS :: 6;
+VIA_BRAM :: 0; VIA_TILDA :: 1; VIA_POND :: 2; VIA_SABLE :: 3; VIA_ELOWEN :: 4; VIA_QUILL :: 5;
+FOLK_VIA_N :: [FOLK_VIAS] int.[2, 3, 9, 5, 4, 5];
+FOLK_VIA :: [120] f32.[
+  // Bram's beat: from the gate's west tower out along the road in
+  -2.0, -62.0,   -1.5, -70.5,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,
+  // Tilda's: in through the gate and up Inn Street
+  2.2, -59.2,   1.8, -52.0,   1.8, -45.0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,
+  // Pip's swim: up out of the stables' yard to the grass under the palisade, down the road, down the
+  // bank into the Reed Pond, across its deep middle and back out, and home the same way
+  6.5, -64.5,   6.0, -61.5,   10.0, -85.5,   12.0, -88.0,   16.5, -92.0,   13.0, -89.0,   10.0, -85.5,   6.0, -61.5,   6.5, -64.5,   0, 0,
+  // Sable's walk round the commons
+  -12.0, 0.0,   0.0, 12.0,   12.0, 0.0,   0.0, -12.0,   -12.0, 0.0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,
+  // Elowen's, down to the commons and up the Temple Walk
+  0.0, 26.0,   0.0, 12.0,   12.0, 0.0,   0.0, 26.0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0,
+  // Quill's, round the ring
+  12.0, 0.0,   0.0, -12.0,   -12.0, 0.0,   0.0, 12.0,   12.0, 0.0,   0, 0,   0, 0,   0, 0,   0, 0,   0, 0
+];
+// The way out from a stop that stands behind something (a seller behind their stall, a house's door
+// behind the alchemist's): the stop, then the point they step to first (x, z), and come back by.
+FOLK_EXITS :: 4;
+FOLK_EXIT :: [12] f32.[
+  8, 29.0, 8.0,
+  9, 29.0, -8.0,
+  10, 35.0, 8.0,
+  22 + 14, 42.0, -27.0
+];
+folk_exit :: (stop: int) -> int {
+  for e: 0..<FOLK_EXITS { if cast(int) FOLK_EXIT[e * 3] == stop { return e; } }
+  return -1;
+}
+
+// Who walks a beat all day (a via), or -1.
+FOLK_PATROL :: [22] int.[VIA_BRAM, VIA_TILDA, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1, -1];
+
+// Each person's day: FOLK_ROWS rows of (time of day 0 to 1, where, by way of: a via or -1),
+// sorted; a row at -1 is none. No rows: they stay at their spot.
+N_ :: -1.0;
+FOLK_DAY :: [264] f32.[
+  // the guards walk their beats (FOLK_PATROL)
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  // Pip: the stables by day, a swim at midday, the stables at night
+  0.24, 2, -1,   0.52, 2, 2,   0.78, 22 + 9, -1,   N_, 0, -1,
+  // Oswin and Pebble stay
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  // Marta keeps the inn's door till late; Soot stays
+  0.23, 5, -1,   0.9, 22 + 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  // Hollis, Fern, Ada and Quill: the store and the stalls by day, home at dusk
+  0.27, 7, -1,   0.74, 22 + 10, -1,   N_, 0, -1,   N_, 0, -1,
+  0.26, 8, -1,   0.72, 22 + 11, -1,   N_, 0, -1,   N_, 0, -1,
+  0.28, 9, -1,   0.73, 22 + 12, -1,   N_, 0, -1,   N_, 0, -1,
+  0.3, 10, -1,   0.6, 10, 5,   0.76, 22 + 13, -1,   N_, 0, -1,
+  // Garrick and Isolde: the smithy and the alchemist's
+  0.25, 11, -1,   0.77, 22 + 14, -1,   N_, 0, -1,   N_, 0, -1,
+  0.29, 12, -1,   0.75, 22 + 15, -1,   N_, 0, -1,   N_, 0, -1,
+  // Rook and Sable go into their halls at night; Sable walks the commons of a morning
+  0.24, 13, -1,   0.8, 22 + 4, -1,   N_, 0, -1,   N_, 0, -1,
+  0.26, 14, -1,   0.36, 14, 3,   0.81, 22 + 5, -1,   N_, 0, -1,
+  // Elowen walks out after noon and goes up into her tower at night; Wisp stays
+  0.28, 15, -1,   0.55, 15, 4,   0.83, 22 + 6, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  // Brother Anselm on the steps by day
+  0.24, 17, -1,   0.86, 22 + 7, -1,   N_, 0, -1,   N_, 0, -1,
+  // Vega sleeps by day at Fern's and keeps the observatory at night
+  0.21, 22 + 11, -1,   0.7, 18, -1,   N_, 0, -1,   N_, 0, -1,
+  // Moss, Old Tam and Corin, whom quests send you to, stay
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1,
+  N_, 0, -1,   N_, 0, -1,   N_, 0, -1,   N_, 0, -1
+];
+
+// The town's clock as the people read it.
+FolkClock :: struct {
+  day: f32;        // the time of day, 0 midnight to 1
+  length: f32;     // real seconds a day lasts
+  world: f64;      // real seconds on a clock everyone shares (the beats keep it when the day is held)
+  turning: bool;   // the day turns (else it holds, and only the beats move)
+  still: bool;     // a still page (a golden): everyone at their spot
+}
+
+// A walk: its points (x, z, seconds from its start to reach each), how many,
+// and which row it is (-1 none built; -2 a guard's beat).
+Route :: struct {
+  pts: [ROUTE_MAX * ROUTE_FLOATS] f32;
+  n: int;
+  row: int;
+  who: int;
+  seconds: f32;
+}
+
+// Where someone is and what they're doing, from their routine.
+Placed :: struct {
+  x: f32; z: f32;
+  face: f32;       // the way the walk goes, or the way their stop faces
+  walking: bool;
+  indoors: bool;
+}
+
+folk_rows :: (i: int) -> int {
+  n := 0;
+  for r: 0..<FOLK_ROWS { if FOLK_DAY[(i * FOLK_ROWS + r) * 3] >= 0 { n += 1; } }
+  return n;
+}
+folk_row_at :: (i: int, r: int) -> f32 { return FOLK_DAY[(i * FOLK_ROWS + r) * 3]; }
+folk_row_stop :: (i: int, r: int) -> int { return cast(int) FOLK_DAY[(i * FOLK_ROWS + r) * 3 + 1]; }
+folk_row_via :: (i: int, r: int) -> int { return cast(int) FOLK_DAY[(i * FOLK_ROWS + r) * 3 + 2]; }
+
+// Whether person i ever leaves their spot.
+folk_moves :: (i: int) -> bool { return FOLK_PATROL[i] >= 0 || folk_rows(i) > 0; }
+
+// A stop's place and the way one stands there: a spot as the plan has it; a door just outside it, facing in.
+folk_stop :: (stop: int) -> Placed {
+  p: Placed;
+  if stop < FOLK_DOOR {
+    p.x = EG_SPOT[stop * 3]; p.z = EG_SPOT[stop * 3 + 1]; p.face = EG_SPOT[stop * 3 + 2];
+    return p;
+  }
+  b := stop - FOLK_DOOR;
+  p.x = EG_DOOR[b * 2]; p.z = EG_DOOR[b * 2 + 1];
+  k := b * EG_BOX;
+  cx := (EG_BUILDING[k] + EG_BUILDING[k + 2]) / 2; cz := (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2;
+  p.face = atan2(cx - p.x, cz - p.z);
+  p.indoors = true;
+  return p;
+}
+
+// ---- the way: clear ground, the streets, the water
+
+// Whether (x, z) is open to a walker: not in the woods, not within CLEAR_PAD of a solid, inside the world.
+folk_open :: (solids: [] f32, n: int, x: f32, z: f32) -> bool {
+  if abs(x) > f32(EG_BOUND) - 0.5 || abs(z) > f32(EG_BOUND) - 0.5 { return false; }
+  if everglade_in_woods(x, z) { return false; }
+  for k: 0..<n { if box_gap(solids, k, x, z) < f32(CLEAR_PAD) { return false; } }
+  return true;
+}
+// Whether the straight way from a to b is open all along.
+folk_clear :: (solids: [] f32, n: int, ax: f32, az: f32, bx: f32, bz: f32) -> bool {
+  d := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+  steps := cast(int) (d / f32(CLEAR_STEP)) + 1;
+  for s: 0..<steps + 1 {
+    t := f32(s) / f32(steps);
+    if !folk_open(solids, n, lerp(ax, bx, t), lerp(az, bz, t)) { return false; }
+  }
+  return true;
+}
+
+// The shortest ways over the road graph from node `from`: each node's distance and the node before it.
+folk_paths :: (from: int, dist: [] f32, prev: [] int) {
+  done: [EG_NODES] bool;
+  for k: 0..<EG_NODES { dist[k] = 1000000; prev[k] = -1; done[k] = false; }
+  dist[from] = 0;
+  for round: 0..<EG_NODES {
+    best := -1;
+    for k: 0..<EG_NODES { if !done[k] && dist[k] < 999999 && (best < 0 || dist[k] < dist[best]) { best = k; } }
+    if best < 0 { break; }
+    done[best] = true;
+    for l: 0..<EG_LINKS {
+      a := EG_LINK_AB[l * 2]; b := EG_LINK_AB[l * 2 + 1];
+      other := ifx a == best then b else ifx b == best then a else -1;
+      if other < 0 || done[other] { continue; }
+      dx := EG_NODE_XZ[a * 2] - EG_NODE_XZ[b * 2]; dz := EG_NODE_XZ[a * 2 + 1] - EG_NODE_XZ[b * 2 + 1];
+      through := dist[best] + sqrt(dx * dx + dz * dz);
+      if through < dist[other] { dist[other] = through; prev[other] = best; }
+    }
+  }
+}
+
+route_put :: (r: [] Route, x: f32, z: f32) {
+  n := r[0].n;
+  if n > 0 {
+    px := r[0].pts[(n - 1) * ROUTE_FLOATS]; pz := r[0].pts[(n - 1) * ROUTE_FLOATS + 1];
+    if (x - px) * (x - px) + (z - pz) * (z - pz) < 0.0025 { return; }
+  }
+  if n >= ROUTE_MAX { return; }
+  r[0].pts[n * ROUTE_FLOATS] = x; r[0].pts[n * ROUTE_FLOATS + 1] = z; r[0].pts[n * ROUTE_FLOATS + 2] = 0;
+  r[0].n = n + 1;
+}
+
+// One leg, from (ax, az) to (bx, bz), onto the walk (its first point already on it): straight when short and
+// clear, else to the nearest street, along the graph's shortest way, and off the street to the end.
+route_leg :: (r: [] Route, solids: [] f32, ns: int, ax: f32, az: f32, bx: f32, bz: f32) {
+  d := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+  if d < 0.05 { return; }
+  if d <= f32(DIRECT_MAX) && folk_clear(solids, ns, ax, az, bx, bz) { route_put(r, bx, bz); return; }
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  pa := verse_path_nearest(nodes[..], links[..], ax, az);
+  pb := verse_path_nearest(nodes[..], links[..], bx, bz);
+  if pa.link < 0 || pb.link < 0 { route_put(r, bx, bz); return; }
+  route_put(r, pa.x, pa.z);
+  if pa.link == pb.link { route_put(r, pb.x, pb.z); route_put(r, bx, bz); return; }
+  // by whichever end of each street is shortest
+  best := 1000000.0f32; from := -1; to := -1;
+  dist: [EG_NODES] f32; prev: [EG_NODES] int;
+  for e: 0..<2 {
+    ea := EG_LINK_AB[pa.link * 2 + e];
+    folk_paths(ea, dist[..], prev[..]);
+    for f: 0..<2 {
+      eb := EG_LINK_AB[pb.link * 2 + f];
+      w := sqrt((EG_NODE_XZ[ea * 2] - pa.x) * (EG_NODE_XZ[ea * 2] - pa.x) + (EG_NODE_XZ[ea * 2 + 1] - pa.z) * (EG_NODE_XZ[ea * 2 + 1] - pa.z))
+         + dist[eb]
+         + sqrt((EG_NODE_XZ[eb * 2] - pb.x) * (EG_NODE_XZ[eb * 2] - pb.x) + (EG_NODE_XZ[eb * 2 + 1] - pb.z) * (EG_NODE_XZ[eb * 2 + 1] - pb.z));
+      if w < best { best = w; from = ea; to = eb; }
+    }
+  }
+  folk_paths(from, dist[..], prev[..]);
+  // the nodes from `to` back to `from`, then walked forward
+  chain: [EG_NODES] int;
+  m := 0;
+  k := to;
+  while k >= 0 && m < EG_NODES { chain[m] = k; m += 1; if k == from { break; } k = prev[k]; }
+  for q: 0..<m {
+    c := chain[m - 1 - q];
+    route_put(r, EG_NODE_XZ[c * 2], EG_NODE_XZ[c * 2 + 1]);
+  }
+  route_put(r, pb.x, pb.z);
+  route_put(r, bx, bz);
+}
+
+// The ponds' levels, for the depth along a walk.
+folk_pond_levels :: (heights: [] f32, out: [] f32) {
+  for p: 0..<EG_PONDS { out[p] = everglade_pond_level(heights, p); }
+}
+// The water's surface over (x, z) (a pond's still level; -1000 none) and the bed under it.
+folk_surface :: (levels: [] f32, x: f32, z: f32) -> f32 {
+  for p: 0..<EG_PONDS {
+    dx := x - EG_POND[p * 4]; dz := z - EG_POND[p * 4 + 1]; rim := EG_POND[p * 4 + 2] + 1;
+    if dx * dx + dz * dz < rim * rim { return levels[p]; }
+  }
+  return -1000;
+}
+// A walker's medium at (x, z): on the ground, wading or swimming (verse/water-wade.coax).
+folk_medium :: (heights: [] f32, levels: [] f32, x: f32, z: f32) -> int {
+  if heights.count < EG_GROUND_POINTS { return MEDIUM_GROUND; }
+  return medium_walking(folk_surface(levels, x, z), verse_terrain_height(everglade_ground(), heights, x, z));
+}
+
+// The walk's seconds: each piece at FOLK_WALK times the pace its medium allows (half in the water); a piece
+// through a pond is cut ROUTE_WET_STEP fine first, so the pace changes where the depth does.
+route_time :: (r: [] Route, heights: [] f32) {
+  levels: [EG_PONDS] f32;
+  folk_pond_levels(heights, levels[..]);
+  // cut the wet pieces
+  src: [ROUTE_MAX * 2] f32;
+  m := r[0].n;
+  for k: 0..<m { src[k * 2] = r[0].pts[k * ROUTE_FLOATS]; src[k * 2 + 1] = r[0].pts[k * ROUTE_FLOATS + 1]; }
+  r[0].n = 0;
+  for k: 0..<m {
+    x := src[k * 2]; z := src[k * 2 + 1];
+    if k > 0 {
+      px := src[(k - 1) * 2]; pz := src[(k - 1) * 2 + 1];
+      d := sqrt((x - px) * (x - px) + (z - pz) * (z - pz));
+      if everglade_in_pond(px, pz, 1) || everglade_in_pond(x, z, 1) || everglade_in_pond((x + px) / 2, (z + pz) / 2, 1) {
+        cuts := cast(int) (d / f32(ROUTE_WET_STEP));
+        for c: 1..<cuts + 1 {
+          t := f32(c) / f32(cuts + 1);
+          route_put(r, lerp(px, x, t), lerp(pz, z, t));
+        }
+      }
+    }
+    route_put(r, x, z);
+  }
+  t := 0.0f32;
+  for k: 0..<r[0].n {
+    if k > 0 {
+      ax := r[0].pts[(k - 1) * ROUTE_FLOATS]; az := r[0].pts[(k - 1) * ROUTE_FLOATS + 1];
+      bx := r[0].pts[k * ROUTE_FLOATS]; bz := r[0].pts[k * ROUTE_FLOATS + 1];
+      d := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+      pace := pace_of(folk_medium(heights, levels[..], (ax + bx) / 2, (az + bz) / 2), 0);
+      t += d / (f32(FOLK_WALK) * hi(pace, 0.1));
+    }
+    r[0].pts[k * ROUTE_FLOATS + 2] = t;
+  }
+  r[0].seconds = t;
+}
+
+// Row `row` of person i's day as a walk: from where the row before left them, by the row's via, to its stop.
+route_row :: (r: [] Route, i: int, row: int, heights: [] f32) {
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  ns := everglade_solids(solids[..]);
+  rows := folk_rows(i);
+  before := (row + rows - 1) % rows;
+  a := folk_stop(folk_row_stop(i, before));
+  b := folk_stop(folk_row_stop(i, row));
+  r[0].n = 0; r[0].row = row; r[0].who = i;
+  route_put(r, a.x, a.z);
+  x := a.x; z := a.z;
+  ea := folk_exit(folk_row_stop(i, before));
+  if ea >= 0 { x = FOLK_EXIT[ea * 3 + 1]; z = FOLK_EXIT[ea * 3 + 2]; route_put(r, x, z); }
+  v := folk_row_via(i, row);
+  if v >= 0 {
+    for w: 0..<FOLK_VIA_N[v] {
+      wx := FOLK_VIA[(v * FOLK_WAYS + w) * 2]; wz := FOLK_VIA[(v * FOLK_WAYS + w) * 2 + 1];
+      route_leg(r, solids[..], ns, x, z, wx, wz);
+      x = wx; z = wz;
+    }
+  }
+  eb := folk_exit(folk_row_stop(i, row));
+  if eb >= 0 { route_leg(r, solids[..], ns, x, z, FOLK_EXIT[eb * 3 + 1], FOLK_EXIT[eb * 3 + 2]); x = FOLK_EXIT[eb * 3 + 1]; z = FOLK_EXIT[eb * 3 + 2]; }
+  route_leg(r, solids[..], ns, x, z, b.x, b.z);
+  route_time(r, heights);
+}
+
+// A guard's beat: from their spot by its points, straight, there and back.
+route_beat :: (r: [] Route, i: int, heights: [] f32) {
+  r[0].n = 0; r[0].row = -2; r[0].who = i;
+  route_put(r, EG_SPOT[i * 3], EG_SPOT[i * 3 + 1]);
+  v := FOLK_PATROL[i];
+  for w: 0..<FOLK_VIA_N[v] { route_put(r, FOLK_VIA[(v * FOLK_WAYS + w) * 2], FOLK_VIA[(v * FOLK_WAYS + w) * 2 + 1]); }
+  route_time(r, heights);
+}
+
+// Where the walk is `t` seconds in: its point, and the way it heads.
+route_at :: (r: [] Route, t: f32) -> Placed {
+  p: Placed;
+  n := r[0].n;
+  if n == 0 { return p; }
+  if t <= 0 || n == 1 {
+    p.x = r[0].pts[0]; p.z = r[0].pts[1];
+    if n > 1 { p.face = atan2(r[0].pts[ROUTE_FLOATS] - p.x, r[0].pts[ROUTE_FLOATS + 1] - p.z); }
+    return p;
+  }
+  k := 1;
+  while k < n - 1 && r[0].pts[k * ROUTE_FLOATS + 2] < t { k += 1; }
+  ax := r[0].pts[(k - 1) * ROUTE_FLOATS]; az := r[0].pts[(k - 1) * ROUTE_FLOATS + 1]; at := r[0].pts[(k - 1) * ROUTE_FLOATS + 2];
+  bx := r[0].pts[k * ROUTE_FLOATS]; bz := r[0].pts[k * ROUTE_FLOATS + 1]; bt := r[0].pts[k * ROUTE_FLOATS + 2];
+  share := ifx bt > at then clamp01((t - at) / (bt - at)) else 1.0f32;
+  p.x = lerp(ax, bx, share); p.z = lerp(az, bz, share);
+  p.face = atan2(bx - ax, bz - az);
+  return p;
+}
+
+// Person i at `seconds` into the day (a day of `day_s` s) or, walking a beat, `beat` s on the shared clock:
+// where they are and whether they walk. Builds (and keeps) the walk it needs in r.
+folk_placed :: (r: [] Route, i: int, seconds: f32, day_s: f32, beat: f64, heights: [] f32) -> Placed {
+  if FOLK_PATROL[i] >= 0 {
+    if r[0].row != -2 || r[0].who != i { route_beat(r, i, heights); }
+    walk := r[0].seconds;
+    period := 2 * (walk + f32(PATROL_PAUSE));
+    ph := cast(f32) (beat - f64(period) * floor(beat / f64(period)));
+    // stand at the spot, walk out, stand at the far end, walk back
+    if ph < f32(PATROL_PAUSE) { return folk_stop(i); }
+    ph -= f32(PATROL_PAUSE);
+    if ph < walk { p := route_at(r, ph); p.walking = true; return p; }
+    ph -= walk;
+    if ph < f32(PATROL_PAUSE) { p := route_at(r, walk); p.face = folk_wrap_r(p.face + f32(PI)); return p; }
+    ph -= f32(PATROL_PAUSE);
+    p := route_at(r, walk - ph);
+    p.face = folk_wrap_r(p.face + f32(PI));
+    p.walking = true;
+    return p;
+  }
+  rows := folk_rows(i);
+  if rows == 0 { return folk_stop(i); }
+  // the row now: the last one begun (before the first row of the day, yesterday's last)
+  row := rows - 1;
+  for k: 0..<rows { if folk_row_at(i, k) * day_s <= seconds { row = k; } }
+  since := seconds - folk_row_at(i, row) * day_s;
+  if since < 0 { since += day_s; }
+  if r[0].row != row || r[0].who != i { route_row(r, i, row, heights); }
+  if since < r[0].seconds { p := route_at(r, since); p.walking = true; return p; }
+  return folk_stop(folk_row_stop(i, row));
+}
+
+folk_wrap_r :: (a: f32) -> f32 {
+  x := a;
+  while x > f32(PI) { x -= 2 * f32(PI); }
+  while x < -f32(PI) { x += 2 * f32(PI); }
+  return x;
+}
+
+// ---- checks
+
+routines_ground :: (heights: [] f32) { #assert everglade_build_ground(heights); }
+
+#test "every day is sorted, starts and ends at a real stop, and each walk ends before the next row begins" {
+  heights: [EG_GROUND_POINTS] f32;
+  routines_ground(heights[..]);
+  r: [1] Route;
+  walkers := 0;
+  for i: 0..<EG_SPOTS {
+    rows := folk_rows(i);
+    if EG_SPOT_CAT[i] { #assert rows == 0 && FOLK_PATROL[i] < 0; continue; }
+    if rows == 0 { continue; }
+    walkers += 1;
+    #assert FOLK_PATROL[i] < 0;
+    for k: 0..<rows {
+      #assert folk_row_at(i, k) >= 0 && folk_row_at(i, k) < 1;
+      if k > 0 { #assert folk_row_at(i, k) > folk_row_at(i, k - 1); }
+      #assert folk_row_stop(i, k) >= 0 && folk_row_stop(i, k) < FOLK_STOPS;
+      // a spot of their own: no one walks to another's work
+      if folk_row_stop(i, k) < FOLK_DOOR { #assert folk_row_stop(i, k) == i; }
+      v := folk_row_via(i, k);
+      #assert v >= -1 && v < FOLK_VIAS;
+      r[0].row = -1;
+      route_row(r[..], i, k, heights[..]);
+      #assert r[0].n >= 2 && r[0].n < ROUTE_MAX;
+      // on the 48-minute day, each walk is done before the next row starts
+      next := ifx k + 1 < rows then folk_row_at(i, k + 1) else folk_row_at(i, 0) + 1;
+      #assert r[0].seconds < (next - folk_row_at(i, k)) * 2880 * 0.9;
+      #assert r[0].seconds > 0.3 && r[0].seconds < 300;
+    }
+  }
+  #assert walkers >= 12;
+}
+
+#test "every walk and every beat keeps to open ground: the streets, the squares, the clearings, never a wall or the woods" {
+  heights: [EG_GROUND_POINTS] f32;
+  routines_ground(heights[..]);
+  solids: [EG_SOLIDS * EG_BOX] f32;
+  ns := everglade_solids(solids[..]);
+  r: [1] Route;
+  for i: 0..<EG_SPOTS {
+    if !folk_moves(i) { continue; }
+    rows := hi_i(folk_rows(i), 1);
+    for k: 0..<rows {
+      r[0].row = -1;
+      if FOLK_PATROL[i] >= 0 { route_beat(r[..], i, heights[..]); } else { route_row(r[..], i, k, heights[..]); }
+      for q: 1..<r[0].n {
+        ax := r[0].pts[(q - 1) * ROUTE_FLOATS]; az := r[0].pts[(q - 1) * ROUTE_FLOATS + 1];
+        bx := r[0].pts[q * ROUTE_FLOATS]; bz := r[0].pts[q * ROUTE_FLOATS + 1];
+        // the first and last steps leave and reach a door or a spot, which stand close to walls
+        d := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+        steps := cast(int) (d / 0.25) + 1;
+        for s: 0..<steps + 1 {
+          t := f32(s) / f32(steps);
+          x := lerp(ax, bx, t); z := lerp(az, bz, t);
+          #assert !everglade_in_woods(x, z);
+          for b: 0..<ns { #assert box_gap(solids[..], b, x, z) >= f32(EG_RADIUS); }
+        }
+      }
+    }
+  }
+}
+
+#test "the stable hand wades into the Reed Pond and swims its middle at half pace, by the player's rules" {
+  heights: [EG_GROUND_POINTS] f32;
+  routines_ground(heights[..]);
+  levels: [EG_PONDS] f32;
+  folk_pond_levels(heights[..], levels[..]);
+  r: [1] Route;
+  pip := 2;
+  route_row(r[..], pip, 1, heights[..]);
+  waded := 0; swum := 0; dry := 0;
+  for q: 1..<r[0].n {
+    ax := r[0].pts[(q - 1) * ROUTE_FLOATS]; az := r[0].pts[(q - 1) * ROUTE_FLOATS + 1];
+    bx := r[0].pts[q * ROUTE_FLOATS]; bz := r[0].pts[q * ROUTE_FLOATS + 1];
+    d := sqrt((bx - ax) * (bx - ax) + (bz - az) * (bz - az));
+    dt := r[0].pts[q * ROUTE_FLOATS + 2] - r[0].pts[(q - 1) * ROUTE_FLOATS + 2];
+    m := folk_medium(heights[..], levels[..], (ax + bx) / 2, (az + bz) / 2);
+    if m == MEDIUM_WADING { waded += 1; }
+    if m == MEDIUM_SWIMMING { swum += 1; }
+    if m == MEDIUM_GROUND { dry += 1; }
+    // the pace: a walk on land, half of it in the water
+    if d > 0.05 { #assert near(d / dt, f32(FOLK_WALK) * pace_of(m, 0), 0.01); }
+  }
+  #assert waded > 0 && swum > 0 && dry > 0;
+  // the midday swim: in the water at 0.53, back at the stables well before dusk
+  p := folk_placed(r[..], pip, 0.52 * 2880 + 40, 2880, 0, heights[..]);
+  #assert p.walking;
+  q := folk_placed(r[..], pip, 0.6 * 2880, 2880, 0, heights[..]);
+  #assert !q.walking && !q.indoors && near(q.x, EG_SPOT[pip * 3], 0.001) && near(q.z, EG_SPOT[pip * 3 + 1], 0.001);
+}
+
+#test "a day: at work by day, walking home at dusk, indoors at night, out again in the morning" {
+  heights: [EG_GROUND_POINTS] f32;
+  routines_ground(heights[..]);
+  r: [1] Route;
+  hollis := 7;
+  L := 2880.0f32;
+  noon := folk_placed(r[..], hollis, 0.5 * L, L, 0, heights[..]);
+  #assert !noon.walking && !noon.indoors && near(noon.x, EG_SPOT[hollis * 3], 0.001) && near(noon.face, EG_SPOT[hollis * 3 + 2], 0.001);
+  dusk := folk_placed(r[..], hollis, 0.74 * L + 10, L, 0, heights[..]);
+  #assert dusk.walking && !dusk.indoors;
+  // ten seconds in, about 12 m along: the walk moves at FOLK_WALK
+  #assert sqrt((dusk.x - EG_SPOT[hollis * 3]) * (dusk.x - EG_SPOT[hollis * 3]) + (dusk.z - EG_SPOT[hollis * 3 + 1]) * (dusk.z - EG_SPOT[hollis * 3 + 1])) > 6;
+  night := folk_placed(r[..], hollis, 0.9 * L, L, 0, heights[..]);
+  #assert night.indoors && !night.walking && near(night.x, EG_DOOR[10 * 2], 0.001);
+  // after midnight still in, from yesterday's last row
+  late := folk_placed(r[..], hollis, 0.1 * L, L, 0, heights[..]);
+  #assert late.indoors;
+  morning := folk_placed(r[..], hollis, 0.27 * L + 15, L, 0, heights[..]);
+  #assert morning.walking;
+  // the astronomer the other way round
+  vega := 18;
+  #assert folk_placed(r[..], vega, 0.5 * L, L, 0, heights[..]).indoors;
+  #assert !folk_placed(r[..], vega, 0.95 * L, L, 0, heights[..]).indoors;
+  // and the crier, whom the quests rely on, never moves
+  p := folk_placed(r[..], 3, 0.8 * L, L, 0, heights[..]);
+  #assert !folk_moves(3) && !p.walking && p.x == EG_SPOT[9] && p.z == EG_SPOT[10];
+}
+
+#test "two people reading the same clock put a person in the same place; a guard walks the beat all day" {
+  heights: [EG_GROUND_POINTS] f32;
+  routines_ground(heights[..]);
+  a: [1] Route; b: [1] Route;
+  a[0].row = -1; b[0].row = -1;
+  for k: 0..<40 {
+    t := f32(k) * 71.3;
+    for i: 0..<EG_SPOTS {
+      // one route built from cold, one kept from the last call
+      b[0].row = -1;
+      pa := folk_placed(a[..], i, t, 2880, f64(t) + 1000000, heights[..]);
+      pb := folk_placed(b[..], i, t, 2880, f64(t) + 1000000, heights[..]);
+      #assert pa.x == pb.x && pa.z == pb.z && pa.walking == pb.walking && pa.indoors == pb.indoors;
+    }
+  }
+  // Bram's beat: at his spot, out along the road, back; never indoors, day or night
+  far := 0.0f32; walked := false;
+  for k: 0..<600 {
+    p := folk_placed(a[..], 0, 0, 2880, f64(k) * 0.25, heights[..]);
+    #assert !p.indoors;
+    if p.walking { walked = true; }
+    far = hi(far, EG_SPOT[1] - p.z);
+  }
+  #assert walked && far > 8;
+}

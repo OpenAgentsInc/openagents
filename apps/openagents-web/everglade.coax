@@ -278,6 +278,7 @@ Everglade :: struct {
   ground_gen: int;   // bumped each time the ground (store 0) is built: the host uploads it then
   // the time of day (realms.json clock: cycle, or ?clock=T pinned): the clock now, how it runs, when it was read
   clock: f32; day: StyleClock; day_from: f64;
+  now_s: f64;     // and the page's `now` (s since 1970, -1 none): the shared clock the guards' beats keep
   grass_n: int;   // the blades this frame (everglade_grass_instances)
   time: f64;
   width: f32; height: f32; dpr: f32;
@@ -366,6 +367,8 @@ Everglade :: struct {
   rig: [1] Ranger; skin: [1] Skin; palette: [PALETTE_FLOATS] f32;
   // the city's people: how each lives, their poses, their rig, the pack's parts and who is shown
   folk: [EG_SPOTS] Folk; people_rig: [1] People;
+  // each one shown's head this frame (for their name over it), and whether they were shown
+  heads: [EG_SPOTS] Point; head_on: [EG_SPOTS] bool;
   // a pose for each one shown (a person keeps theirs while shown; one who comes into
   // view takes a pose no one shown holds, and starts it afresh)
   poses: [PEOPLE_SHOWN] Skin; pose_of: [PEOPLE_SHOWN] int;
@@ -756,6 +759,8 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     weather_facts(s, text);
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
+    ms := sp_number(fact(text, "now"));
+    s[0].now_s = ifx ms >= 0 then ms / 1000.0 else -1.0;
     return;
   }
   if kind == MSG_KEPT {
@@ -1122,12 +1127,15 @@ board_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool 
   return true;
 }
 
+// Where person i stands now (their day moves them: verse/everglade/routines.coax), on the flat.
+folk_at :: (s: [] Everglade, i: int) -> Point { return v3(s[0].folk[i].x, 0, s[0].folk[i].z); }
+
 // The nearest person within TALK_NEAR of you, or -1.
 nearest :: (s: [] Everglade, you: Point) -> int {
   best := -1; most := f32(TALK_NEAR);
   for i: 0..<EG_SPOTS {
-    if eg_gone(s[0].ev.edits, i) { continue; }
-    d := flat_gap(v3(EG_SPOT[i * 3], 0, EG_SPOT[i * 3 + 1]), you);
+    if eg_gone(s[0].ev.edits, i) || s[0].folk[i].indoors { continue; }
+    d := flat_gap(folk_at(s, i), you);
     if d < most { most = d; best = i; }
   }
   return best;
@@ -2141,23 +2149,26 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
   }
 }
 
-// The city's characters, each where their day starts. The people are
+// The city's characters, where their day has them (verse/everglade/routines.coax):
+// walking between work and home on the town's clock, indoors at night. The people are
 // skinned characters (verse/everglade/folk.coax): every one lives each frame
-// (turns to you, glances, shifts, nods, talks), and the nearest in view,
+// (walks, turns to you, glances, shifts, nods, talks), and the nearest in view,
 // PEOPLE_SHOWN at most, are posed and drawn, a part an instance. The cats
 // are small and round.
-people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32) {
+people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
   for k: 0..<PEOPLE_PARTS { s[0].part_used[k] = 0; }
+  for i: 0..<EG_SPOTS { s[0].head_on[i] = false; }
+  c := folk_clock(s, still);
   s[0].shown_n = 0;
   cap := ifx phone(s) then PEOPLE_SHOWN_PHONE else PEOPLE_SHOWN;
   reach := ifx phone(s) then f32(PEOPLE_NEAR_PHONE) else f32(PEOPLE_NEAR);
   gaps: [PEOPLE_SHOWN] f32;
   for i: 0..<EG_SPOTS {
     if eg_gone(s[0].ev.edits, i) { continue; }   // an admin took them away
-    x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1]; face := EG_SPOT[i * 3 + 2];
-    g := ground_at(s, x, z);
     if EG_SPOT_CAT[i] {
       if s[0].pack_ready { continue; }   // the kit's cat (cats), once the pack is in
+      x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1]; face := EG_SPOT[i * 3 + 2];
+      g := ground_at(s, x, z);
       shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(x, g + 0.2, z), face, 0, 0.26, 0.24, 0.46, 0.85, 0.55, 0.22);
       head := v3(x + sin(face) * 0.24, g + 0.36, z + cos(face) * 0.24);
       shape(s, SHAPE_SPHERE, LOOK_MATTE, head, face, 0, 0.2, 0.18, 0.2, 0.85, 0.55, 0.22);
@@ -2166,7 +2177,10 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32) {
       continue;
     }
     talking := s[0].talk == i;
-    folk_step(s[0].folk[i..<i + 1], i, dt, you, talking, ifx talking then s[0].answered else 1000.0f32);
+    folk_step(s[0].folk[i..<i + 1], i, dt, you, talking, ifx talking then s[0].answered else 1000.0f32, c, s[0].heights[..]);
+    if s[0].folk[i].indoors { continue; }
+    x := s[0].folk[i].x; z := s[0].folk[i].z;
+    g := folk_feet(s, x, z);
     gap := flat_gap(v3(x, 0, z), you);
     if gap < 30 { shadow(s, u, x, z, g, 0.5, 0.5); }
     if gap > reach || !in_view(u, x, g + 1, z, 1.3) { continue; }
@@ -2208,6 +2222,26 @@ kit_cats :: (s: [] Everglade) {
   }
 }
 
+// The town's clock as the people read it: the painterly day's time and length, and a shared clock for
+// the guards' beats (the page's `now`, else the page's own). A still page holds everyone at their spot.
+folk_clock :: (s: [] Everglade, still: bool) -> FolkClock {
+  c: FolkClock;
+  c.still = still;
+  c.turning = !still && redit_row_on(s[0].ev.ed[..], "daycycle") && s[0].day.mode != STYLE_CLOCK_FIXED;
+  c.day = ifx c.turning then s[0].clock else 0.5f32;
+  c.length = ifx s[0].day.mode == STYLE_CLOCK_REAL then 86400.0f32 else f32(STYLE_CYCLE_SECONDS);
+  c.world = ifx s[0].now_s > 0 then s[0].now_s + (s[0].time - s[0].day_from) else s[0].time;
+  return c;
+}
+
+// A person's feet at (x, z): on the ground, or in a pond wading on its bed or swimming at the float line
+// (verse/water-wade.coax, the player's rules).
+folk_feet :: (s: [] Everglade, x: f32, z: f32) -> f32 {
+  bed := ground_at(s, x, z);
+  w := water_at(s, x, z);
+  return feet_walking(ifx w <= f32(DEMO_DRY) + 1 then -1000.0f32 else w, bed);
+}
+
 // Person i, shown k-th: their pose and colours into store 2, an instance of each part they wear.
 pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   rig := people_rig(s[0].people_rig[..], FOLK_FEMALE[i]);
@@ -2221,10 +2255,14 @@ pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   s[0].palette[h + 3] = f32(FOLK_VARIANT[i]);
   s[0].palette[h + 7] = 0;
   for c: 0..<4 { s[0].palette[h + 8 + c] = FOLK_DYE[i * 4 + c]; }
-  x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
-  y := ground_at(s, x, z);
+  x := s[0].folk[i].x; z := s[0].folk[i].z;
+  y := folk_feet(s, x, z);
   yaw := s[0].folk[i].yaw;
   c := cos(yaw); sn := sin(yaw);
+  // their head, for their name over it
+  hp := skin_joint(rig, s[0].poses[slot..<slot + 1], PEOPLE_HEAD);
+  s[0].heads[i] = v3(c * hp.x + sn * hp.z + x, hp.y + y, -sn * hp.x + c * hp.z + z);
+  s[0].head_on[i] = true;
   rows := [12] f32.[c, 0, sn, x,   0, 1, 0, y,   -sn, 0, c, z];
   parts: [FOLK_PARTS_MAX] int;
   n := folk_parts(i, parts[..]);
@@ -2542,7 +2580,7 @@ tag :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, text: string, p: Point,
 // would overlap a name already drawn (the owner, October 29: GUILD ROW over THE COMMONS at the market)
 // moves up a line, or is left out when that overlaps too, so the farther one gives way.
 LABELS_MAX :: EG_PLACES + EG_BUILDINGS + EG_SPOTS;
-Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f32; done: bool; }
+Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f32; done: bool; person: bool; }
 labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
   overview := s[0].lift > 0.5;
@@ -2553,7 +2591,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     if !overview && EG_PLACE_NAME[p] == here { continue; }
     pp := v3(EG_PLACE[p * 2], ground_at(s, EG_PLACE[p * 2], EG_PLACE[p * 2 + 1]) + 3, EG_PLACE[p * 2 + 1]);
     if !overview && flat_gap(pp, you) > f32(PLACE_NEAR) { continue; }
-    ls[c] = Label.{text = EG_PLACE_NAME[p], p = pp, cap = (ifx overview then 8.0f32 else 9.0f32) * k, light = 0.95, gold = true, d = flat_gap(pp, you), done = false}; c += 1;
+    ls[c] = Label.{text = EG_PLACE_NAME[p], p = pp, cap = (ifx overview then 8.0f32 else 9.0f32) * k, light = 0.95, gold = true, d = flat_gap(pp, you), done = false, person = false}; c += 1;
   }
   for b: 0..<EG_BUILDINGS {
     if b >= EG_HOUSES || eg_hidden(s[0].ev.edits, b) { continue; }
@@ -2561,15 +2599,21 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     cx := (EG_BUILDING[q] + EG_BUILDING[q + 2]) / 2; cz := (EG_BUILDING[q + 1] + EG_BUILDING[q + 3]) / 2;
     pp := v3(cx, ground_at(s, cx, cz) + EG_BUILDING[q + 4] + 1.5, cz);
     if !overview && flat_gap(pp, you) > f32(PLACE_NEAR) * 0.6 { continue; }
-    ls[c] = Label.{text = EG_BUILDING_NAME[b], p = pp, cap = (ifx overview then 6.0f32 else 7.5f32) * k, light = 0.85, gold = false, d = flat_gap(pp, you), done = false}; c += 1;
+    ls[c] = Label.{text = EG_BUILDING_NAME[b], p = pp, cap = (ifx overview then 6.0f32 else 7.5f32) * k, light = 0.85, gold = false, d = flat_gap(pp, you), done = false, person = false}; c += 1;
   }
+  // The people's names (eg-npc-labels): over each one's head as they walk and turn, fading out toward
+  // NAME_NEAR; none over someone not drawn, indoors, or behind a wall from the eye.
   if !overview {
+    eye := v3(u[U_EYE], u[U_EYE + 1], u[U_EYE + 2]);
     for i: 0..<EG_SPOTS {
-      x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
-      if eg_gone(s[0].ev.edits, i) || flat_gap(v3(x, 0, z), you) > f32(NAME_NEAR) { continue; }
-      tall := ifx EG_SPOT_CAT[i] then 0.8f32 else 2.25f32;
-      pp := v3(x, ground_at(s, x, z) + tall, z);
-      ls[c] = Label.{text = EG_SPOT_NAME[i], p = pp, cap = 6.5 * k, light = 0.8, gold = false, d = flat_gap(pp, you), done = false}; c += 1;
+      if eg_gone(s[0].ev.edits, i) || s[0].folk[i].indoors { continue; }
+      pp := name_point(s, i);
+      d := flat_gap(pp, you);
+      if d > f32(NAME_NEAR) { continue; }
+      if !EG_SPOT_CAT[i] && !s[0].head_on[i] { continue; }   // not drawn this frame: no name in the air
+      if name_hidden(s, eye, pp) { continue; }
+      light := 0.8 * clamp01((f32(NAME_NEAR) - d) / f32(NAME_FADE));
+      ls[c] = Label.{text = EG_SPOT_NAME[i], p = pp, cap = 6.5 * k, light = light, gold = false, d = d, done = false, person = true}; c += 1;
     }
   }
   boxes: [LABELS_MAX * 4] f32;
@@ -2586,7 +2630,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     x0 := sc.x - w / 2 - l.cap * 0.4; x1 := sc.x + w / 2 + l.cap * 0.4;
     y := sc.y;
     shown := false;
-    for t: 0..<2 {
+    for t: 0..<(ifx l.person then 1 else 2) {   // a person's name stays at their head, or hides
       clear := true;
       for q: 0..<placed {
         o := q * 4;
@@ -2605,6 +2649,46 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     m = draw_text(out, m, l.text, sc.x - w / 2, y, l.cap, GAP, SPACE, ink(k, l.light, r_, g_, b_), false, false);
   }
   return m;
+}
+
+NAME_FADE :: 3.0;      // metres before NAME_NEAR a name starts to fade
+NAME_OVER :: 0.38;     // metres over the head's joint
+// Where person i's name goes: over their head (a cat's, over its back).
+name_point :: (s: [] Everglade, i: int) -> Point {
+  if EG_SPOT_CAT[i] {
+    x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
+    return v3(x, ground_at(s, x, z) + 0.8, z);
+  }
+  if s[0].head_on[i] { return add(s[0].heads[i], v3(0, f32(NAME_OVER), 0)); }
+  x := s[0].folk[i].x; z := s[0].folk[i].z;
+  return v3(x, folk_feet(s, x, z) + 2.1, z);
+}
+// Whether a wall, a building or the palisade stands between the eye and p (the camera's boxes).
+name_hidden :: (s: [] Everglade, eye: Point, p: Point) -> bool {
+  for b: 0..<s[0].box_n {
+    k := b * 6;
+    if segment_box(eye, p, s[0].boxes[k], s[0].boxes[k + 1], s[0].boxes[k + 2], s[0].boxes[k + 3], s[0].boxes[k + 4], s[0].boxes[k + 5]) { return true; }
+  }
+  return false;
+}
+// Whether the segment a to b passes through the box (slabs), short of b.
+segment_box :: (a: Point, b: Point, x0: f32, y0: f32, z0: f32, x1: f32, y1: f32, z1: f32) -> bool {
+  lo_t := 0.0f32; hi_t := 0.98f32;
+  for ax: 0..<3 {
+    o := ifx ax == 0 then a.x else ifx ax == 1 then a.y else a.z;
+    d := (ifx ax == 0 then b.x else ifx ax == 1 then b.y else b.z) - o;
+    mn := ifx ax == 0 then x0 else ifx ax == 1 then y0 else z0;
+    mx := ifx ax == 0 then x1 else ifx ax == 1 then y1 else z1;
+    if abs(d) < 0.000001 {
+      if o < mn || o > mx { return false; }
+      continue;
+    }
+    t0 := (mn - o) / d; t1 := (mx - o) / d;
+    if t0 > t1 { tt := t0; t0 = t1; t1 = tt; }
+    lo_t = hi(lo_t, t0); hi_t = lo(hi_t, t1);
+    if lo_t > hi_t { return false; }
+  }
+  return true;
 }
 
 // The prompt over the hint when someone is near.
@@ -2935,7 +3019,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // in a rowboat you sit on its thwart: your legs go down under it, out of sight
   figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
-  people(s, u, shown, t);
+  people(s, u, shown, t, still);
   s[0].answered += t;
   city(s, u);
   forest(s, u, shot.eye);
@@ -3034,7 +3118,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   if !s[0].above && s[0].talk < 0 && !s[0].board {
     bm := board_middle();
     bd := flat_gap(bm, feet);
-    if bd < f32(BOARD_NEAR) && (s[0].near < 0 || bd < flat_gap(v3(EG_SPOT[s[0].near * 3], 0, EG_SPOT[s[0].near * 3 + 1]), feet)) {
+    if bd < f32(BOARD_NEAR) && (s[0].near < 0 || bd < flat_gap(folk_at(s, s[0].near), feet)) {
       s[0].near_board = true; s[0].near = -1;
     }
   }
