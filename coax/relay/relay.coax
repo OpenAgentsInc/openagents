@@ -8,10 +8,33 @@
 // STORE: this build uses the TEST-ONLY in-memory double
 // (coax/tests/nostr/relay_store_double.coax) until nostr-event-store (#8eb5)
 // lands; a restart forgets every event. TLS: none here (ws:// only); put it
-// behind a TLS proxy or add tls-native's server mode later. NIP-42: AUTH is
-// answered "restricted" until nip42.coax (#f426) lands.
+// behind a TLS proxy or add tls-native's server mode later.
+//
+// Routing (which reply goes to which connection and subscription) is
+// relay_route.coax's (#authority); this file moves bytes and calls it.
+// NIP-42: every WebSocket gets a challenge after the 101 (nip42_issue, 32
+// host-random bytes as hex, bound to the connection's generation); AUTH is
+// checked by nip42_admit against the relay URL (--url, or ws://ADDRESS:PORT)
+// and its admitted keys are kept per connection; EVENT needs one
+// (relay_route.coax states the policy). Names here are ry_ because
+// nip42.coax loads the client relay.coax, whose names are rl_.
 #import "Basic";
 #load "../tests/nostr/relay_store_double.coax";
+#load "../lib/nostr/nip42-event.coax";
+#load "../lib/nostr/relay_route.coax";
+
+// relay_route.coax's mirrored codes are its sources' codes.
+#assert RR_MS_OK == MS_OK && RR_MS_VERB == MS_VERB && RR_MS_SUB == MS_SUB && RR_MS_TOO_MANY == MS_TOO_MANY;
+#assert RR_MS_EVENT == MS_EVENT && RR_MS_REQ == MS_REQ && RR_MS_CLOSE == MS_CLOSE && RR_MS_AUTH == MS_AUTH && RR_MS_COUNT == MS_COUNT;
+#assert RR_RS_ACCEPT == RS_ACCEPT && RR_RS_BAD_EVENT == RS_BAD_EVENT && RR_RS_BAD_ID == RS_BAD_ID && RR_RS_SUBID == RS_SUBID;
+#assert RR_RS_FILTERS == RS_FILTERS && RR_RS_FRAME == RS_FRAME && RR_RS_VERB == RS_VERB && RR_RS_BINARY == RS_BINARY && RR_RS_COUNT == RS_COUNT;
+#assert RR_WSS_OK == WSS_OK && RR_WSS_MORE == WSS_MORE && RR_WSS_NIP11 == WSS_NIP11;
+#assert RR_WS_FRAME_OK == WS_FRAME_OK && RR_WS_FRAME_MORE == WS_FRAME_MORE && RR_WS_FRAME_TOO_BIG == WS_FRAME_TOO_BIG && RR_WS_OP_TEXT == WS_OP_TEXT;
+#assert RR_WS_EV_PART == WS_EV_PART && RR_WS_EV_MESSAGE == WS_EV_MESSAGE && RR_WS_EV_PING == WS_EV_PING && RR_WS_EV_PONG == WS_EV_PONG && RR_WS_EV_CLOSE == WS_EV_CLOSE;
+#assert RR_WS_CLOSE_NORMAL == WS_CLOSE_NORMAL && RR_WS_CLOSE_PROTOCOL == WS_CLOSE_PROTOCOL && RR_WS_CLOSE_TOO_BIG == WS_CLOSE_TOO_BIG;
+#assert RR_N42_OK == N42_OK && RR_N42_STALE == N42_STALE && RR_N42_NO_CHALLENGE == N42_NO_CHALLENGE && RR_N42_EVENT == N42_EVENT;
+#assert RR_N42_KIND == N42_KIND && RR_N42_TIME == N42_TIME && RR_N42_TAGS == N42_TAGS && RR_N42_RELAY == N42_RELAY && RR_N42_CHALLENGE == N42_CHALLENGE;
+#assert RY_SENT <= 2032;
 
 cxsrv_listen :: (port: int) -> int #foreign;
 cxsrv_bound_port :: () -> int #foreign;
@@ -23,86 +46,94 @@ cxsrv_write :: (h: int, byte: int) -> int #foreign;
 cxsrv_flush :: (h: int, timeout_ms: int) -> int #foreign;
 cxsrv_close :: (h: int) -> int #foreign;
 cxsrv_now_s :: () -> int #foreign;
-rl_host_port :: () -> int #foreign;
+ry_host_port :: () -> int #foreign;
+ry_host_url_count :: () -> int #foreign;
+ry_host_url_byte :: (i: int) -> int #foreign;
+ry_host_address_count :: () -> int #foreign;
+ry_host_address_byte :: (i: int) -> int #foreign;
+ry_host_random :: () -> int #foreign;
 
-RL_CONNS :: 16; RL_IN :: 147456; RL_OUT :: 140000; RL_IO_MS :: 2000;
-RL_SENT :: 2032;   // 16 filters x 127 events
+RY_CONNS :: 16; RY_IN :: 147456; RY_OUT :: 140000; RY_IO_MS :: 2000;
+RY_SENT :: 2032;   // 16 filters x 127 events
 
-RlConn :: struct {
-  h: int = -1; ws: bool;
-  inb: [RL_IN] u8; used: int;
+RyConn :: struct {
+  h: int = -1; ws: bool; gen: int;
+  n42: [1] Nip42; auth: [1] RrAuth;
+  inb: [RY_IN] u8; used: int;
   rd: [1] WsReader;
   msg: [RS_MAX_MESSAGE] u8;
   subs: [RS_MAX_SUBS] RsSub;
 }
-RlWork :: struct {
+RyWork :: struct {
   frame: [RS_MAX_MESSAGE] u8;     // one unmasked frame payload
-  out: [RL_OUT] u8;               // one outgoing frame
-  body: [RL_OUT] u8;              // one outgoing message
+  out: [RY_OUT] u8;               // one outgoing frame
+  body: [RY_OUT] u8;              // one outgoing message
   scratch: [262144] u8;           // the event id preimage
-  sent: [RL_SENT] int;
+  sent: [RY_SENT] int;
+  n42: [1] Nip42;                 // the relay URL, copied into each connection
+  gen: int;                       // the last connection generation
 }
 
-rl_send_raw :: (c: [] RlConn, bytes: string) -> bool {
+ry_send_raw :: (c: [] RyConn, bytes: string) -> bool {
   for b: bytes { if cxsrv_write(c[0].h, cast(int) b) != 0 { return false; } }
-  return cxsrv_flush(c[0].h, RL_IO_MS) == 0;
+  return cxsrv_flush(c[0].h, RY_IO_MS) == 0;
 }
-rl_send :: (c: [] RlConn, w: [] RlWork, op: int, payload: string) -> bool {
+ry_send :: (c: [] RyConn, w: [] RyWork, op: int, payload: string) -> bool {
   n := wss_frame_write(op, payload, w[0].out[..]);
-  return n > 0 && rl_send_raw(c, cast(string) w[0].out[0..<n]);
+  return n > 0 && ry_send_raw(c, cast(string) w[0].out[0..<n]);
 }
-rl_text :: (c: [] RlConn, w: [] RlWork, n: int) -> bool {
+ry_text :: (c: [] RyConn, w: [] RyWork, n: int) -> bool {
   if n < 0 { return false; }
-  return rl_send(c, w, WS_OP_TEXT, cast(string) w[0].body[0..<n]);
+  return ry_send(c, w, WS_OP_TEXT, cast(string) w[0].body[0..<n]);
 }
-rl_shut :: (c: [] RlConn) {
+ry_shut :: (c: [] RyConn) {
   if c[0].h >= 0 { r := cxsrv_close(c[0].h); }
   c[0].h = -1; c[0].ws = false; c[0].used = 0; c[0].rd[0] = WsReader.{};
+  rr_auth_reset(c[0].auth[..]);
   for i: 0..<RS_MAX_SUBS { c[0].subs[i].live = false; }
 }
-rl_close :: (c: [] RlConn, w: [] RlWork, code: int) {
+ry_close :: (c: [] RyConn, w: [] RyWork, code: int) {
   n := wss_close_write(code, w[0].out[..]);
-  if n > 0 { ok := rl_send_raw(c, cast(string) w[0].out[0..<n]); }
-  rl_shut(c);
+  if n > 0 { ok := ry_send_raw(c, cast(string) w[0].out[0..<n]); }
+  ry_shut(c);
 }
-rl_notice :: (c: [] RlConn, w: [] RlWork, reason: int) -> bool {
-  return rl_text(c, w, ms_write_notice(rs_prefix(reason), rs_text(reason), w[0].body[..]));
+ry_notice :: (c: [] RyConn, w: [] RyWork, reason: int) -> bool {
+  return ry_text(c, w, ms_write_notice(rs_prefix(reason), rs_text(reason), w[0].body[..]));
 }
-rl_closed :: (c: [] RlConn, w: [] RlWork, sub: string, reason: int) -> bool {
-  return rl_text(c, w, ms_write_closed(sub, rs_prefix(reason), rs_text(reason), w[0].body[..]));
+ry_closed :: (c: [] RyConn, w: [] RyWork, sub: string, reason: int) -> bool {
+  return ry_text(c, w, ms_write_closed(sub, rs_prefix(reason), rs_text(reason), w[0].body[..]));
 }
 
 // A new event goes to every matching live subscription on every connection.
-rl_fanout :: (conns: [] RlConn, w: [] RlWork, e: NostrEvent) {
+ry_fanout :: (conns: [] RyConn, w: [] RyWork, e: NostrEvent) {
   for i: 0..<conns.count {
-    if conns[i].h < 0 || !conns[i].ws { continue; }
     for k: 0..<RS_MAX_SUBS {
-      if !rs_sub_matches(conns[i].subs[..], k, e) { continue; }
+      if !rr_deliver(conns[i].h >= 0, conns[i].ws, rs_sub_matches(conns[i].subs[..], k, e)) { continue; }
       sid := conns[i].subs[k].id;
       n := ms_write_event(cast(string) sid[0..<conns[i].subs[k].id_n], e.original, w[0].body[..]);
-      if !rl_text(conns[i..<i + 1], w, n) { rl_shut(conns[i..<i + 1]); break; }
+      if !ry_text(conns[i..<i + 1], w, n) { ry_shut(conns[i..<i + 1]); break; }
     }
   }
 }
-rl_event :: (conns: [] RlConn, at: int, w: [] RlWork, store: [] RsdStore, text: string, m: MsMsg) {
+ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore, text: string, m: MsMsg) {
   c := conns[at..<at + 1];
   event := text[m.event_from..<m.event_to];
-  r := rs_admit_read(event, cxsrv_now_s(), false, false, w[0].scratch[..]);
-  if r.reason == RS_BAD_EVENT { ok := rl_notice(c, w, RS_BAD_EVENT); return; }
+  r := rs_admit_read(event, cxsrv_now_s(), rr_writes_need_auth(true), rr_authed(c[0].auth[..]), w[0].scratch[..]);
+  if r.reason == RS_BAD_EVENT { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
   if r.reason == RS_ACCEPT { r = rs_admit_verified(r, nostr_event_verify_vartime(event, w[0].scratch[..], false)); }
   reason := r.reason;
   if reason == RS_ACCEPT { reason = rsd_admit(store, r, event); }
   id := r.e.id;
-  ok := rl_text(c, w, ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), w[0].body[..]));
-  if reason == RS_ACCEPT { rl_fanout(conns, w, r.e); }
+  ok := ry_text(c, w, ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), w[0].body[..]));
+  if rr_fanout(reason) { ry_fanout(conns, w, r.e); }
 }
-rl_req :: (c: [] RlConn, w: [] RlWork, store: [] RsdStore, text: string, m: MsMsg) {
+ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RsdStore, text: string, m: MsMsg) {
   mm := m;
   sub := cast(string) mm.sub[0..<mm.sub_n];
   v := rs_req(m, text);
-  if v != RS_ACCEPT { ok := rl_closed(c, w, sub, v); return; }
+  if v != RS_ACCEPT { ok := ry_closed(c, w, sub, v); return; }
   slot := rs_sub_open(c[0].subs[..], m, text, RS_MAX_SUBS);
-  if slot < 0 { ok := rl_closed(c, w, sub, -slot); return; }
+  if slot < 0 { ok := ry_closed(c, w, sub, -slot); return; }
   now := cxsrv_now_s(); sent := 0;
   for k: 0..<m.filters {
     strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
@@ -111,112 +142,152 @@ rl_req :: (c: [] RlConn, w: [] RlWork, store: [] RsdStore, text: string, m: MsMs
     if rs_filter(text, m, k, f[..], sp[..]) != FR_OK { continue; }
     n := rsd_query(store, f[0], now, idx[..]);
     for q: 0..<n {
-      dup := false;
-      for s: 0..<sent { if w[0].sent[s] == idx[q] { dup = true; } }
-      if dup { continue; }
-      w[0].sent[sent] = idx[q]; sent += 1;
-      if !rl_text(c, w, ms_write_event(sub, rsd_text(store, idx[q]), w[0].body[..])) { return; }
+      t := rr_take(w[0].sent[..], sent, idx[q]);
+      if t == -1 { continue; }
+      if t < 0 { break; }
+      sent = t;
+      if !ry_text(c, w, ms_write_event(sub, rsd_text(store, idx[q]), w[0].body[..])) { return; }
     }
   }
-  ok := rl_text(c, w, ms_write_eose(sub, w[0].body[..]));
+  ok := ry_text(c, w, ms_write_eose(sub, w[0].body[..]));
 }
-rl_message :: (conns: [] RlConn, at: int, w: [] RlWork, store: [] RsdStore, text: string) {
+// AUTH: the event's id first (for the OK), then nip42_admit (the signature
+// and nip42.coax's check), then relay_route.coax keeps the key and names
+// the answer. Nothing here reaches the store or the fan-out.
+ry_auth :: (c: [] RyConn, w: [] RyWork, obj: string) {
+  e := nostr_event_read(obj, w[0].scratch[..], false);
+  id := e.id;
+  if e.error == NE_ID { ok := ry_text(c, w, ms_write_ok(id[..], false, rs_prefix(RS_BAD_ID), rs_text(RS_BAD_ID), w[0].body[..])); return; }
+  if e.error != NE_OK { ok := ry_notice(c, w, RS_BAD_EVENT); return; }
+  a := nip42_admit(c[0].n42[..], c[0].gen, cxsrv_now_s(), obj, w[0].scratch[..], false);
+  key := a.public_key;
+  k := rr_auth(c[0].auth[..], a.error, key[..]);
+  ok := ry_text(c, w, ms_write_ok(id[..], k == RR_A_OK, rr_auth_prefix(k), rr_auth_text(k), w[0].body[..]));
+}
+ry_message :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore, text: string) {
   c := conns[at..<at + 1];
   m := ms_read(text);
-  if m.error != MS_OK {
-    sub := m.sub;
-    if m.error == MS_TOO_MANY { ok := rl_closed(c, w, cast(string) sub[0..<m.sub_n], RS_FILTERS); return; }
-    if m.error == MS_SUB { ok := rl_notice(c, w, RS_SUBID); return; }
-    if m.error == MS_VERB { ok := rl_notice(c, w, RS_VERB); return; }
-    if m.has_sub { ok := rl_closed(c, w, cast(string) sub[0..<m.sub_n], RS_FRAME); return; }
-    ok := rl_notice(c, w, RS_FRAME); return;
-  }
-  if m.type == MS_EVENT { rl_event(conns, at, w, store, text, m); return; }
-  if m.type == MS_REQ { rl_req(c, w, store, text, m); return; }
-  if m.type == MS_CLOSE { sub := m.sub; closed := rs_sub_close(c[0].subs[..], cast(string) sub[0..<m.sub_n]); return; }
-  if m.type == MS_COUNT { sub := m.sub; ok := rl_closed(c, w, cast(string) sub[0..<m.sub_n], RS_COUNT); return; }
-  // AUTH: NIP-42 is not configured until nip42.coax lands.
-  e := nostr_event_read(text[m.event_from..<m.event_to], w[0].scratch[..], false);
-  if e.error != NE_OK { ok := rl_notice(c, w, RS_BAD_EVENT); return; }
-  id := e.id;
-  ok := rl_text(c, w, ms_write_ok(id[..], false, rs_prefix(RS_AUTH_OFF), rs_text(RS_AUTH_OFF), w[0].body[..]));
+  sub := m.sub;
+  r := rr_message(m.error, m.type, m.has_sub);
+  if r.action == RR_NOTICE { ok := ry_notice(c, w, r.reason); return; }
+  if r.action == RR_CLOSED { ok := ry_closed(c, w, cast(string) sub[0..<m.sub_n], r.reason); return; }
+  if r.action == RR_EVENT { ry_event(conns, at, w, store, text, m); return; }
+  if r.action == RR_REQ { ry_req(c, w, store, text, m); return; }
+  if r.action == RR_CLOSE { closed := rs_sub_close(c[0].subs[..], cast(string) sub[0..<m.sub_n]); return; }
+  ry_auth(c, w, text[m.event_from..<m.event_to]);
 }
 // Drops the first n buffered bytes.
-rl_consume :: (c: [] RlConn, n: int) {
+ry_consume :: (c: [] RyConn, n: int) {
   for i: n..<c[0].used { c[0].inb[i - n] = c[0].inb[i]; }
   c[0].used -= n;
 }
-rl_http :: (c: [] RlConn, w: [] RlWork) {
+// A fresh challenge for this connection's generation, from host entropy.
+ry_challenge :: (c: [] RyConn, w: [] RyWork) -> bool {
+  b: [RR_CHALLENGE_BYTES] u8;
+  for i: 0..<RR_CHALLENGE_BYTES {
+    v := ry_host_random();
+    if v < 0 || v > 255 { return false; }
+    b[i] = cast(u8) v;
+  }
+  hex: [64] u8;
+  if rr_challenge(b[..], hex[..]) < 0 { return false; }
+  c[0].n42[0] = w[0].n42[0];
+  f := nip42_issue(c[0].n42[..], c[0].gen, cast(string) hex[..], w[0].body[..]);
+  if f.error != N42_OK { return false; }
+  return ry_text(c, w, f.written);
+}
+ry_http :: (c: [] RyConn, w: [] RyWork) {
   h := wss_request(cast(string) c[0].inb[0..<c[0].used]);
-  if h.status == WSS_MORE { return; }
-  if h.status == WSS_OK {
+  a := rr_http(h.status);
+  if a == RR_H_WAIT { return; }
+  if a == RR_H_UPGRADE {
     key := cast(string) c[0].inb[h.key_from..<h.key_to];
     n := wss_accept_write(key, w[0].out[..]);
-    if n < 0 || !rl_send_raw(c, cast(string) w[0].out[0..<n]) { rl_shut(c); return; }
-    rl_consume(c, h.consumed); c[0].ws = true;
+    if n < 0 || !ry_send_raw(c, cast(string) w[0].out[0..<n]) { ry_shut(c); return; }
+    ry_consume(c, h.consumed); c[0].ws = true;
+    if !ry_challenge(c, w) { ry_close(c, w, WS_CLOSE_GOING_AWAY); }
     return;
   }
-  n := ifx h.status == WSS_NIP11 then rs_nip11(w[0].out[..])
+  n := ifx a == RR_H_NIP11 then wss_http_write("200 OK", "application/nostr+json", RR_NIP11, w[0].out[..])
     else wss_http_write("400 Bad Request", "text/plain", "This is a Nostr relay: connect with a WebSocket, or ask for application/nostr+json.", w[0].out[..]);
-  if n > 0 { ok := rl_send_raw(c, cast(string) w[0].out[0..<n]); }
-  rl_shut(c);
+  if n > 0 { ok := ry_send_raw(c, cast(string) w[0].out[0..<n]); }
+  ry_shut(c);
 }
-rl_frames :: (conns: [] RlConn, at: int, w: [] RlWork, store: [] RsdStore) {
+ry_frames :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore) {
   c := conns[at..<at + 1];
   while c[0].h >= 0 && c[0].used > 0 {
     f := wss_frame_read(cast(string) c[0].inb[0..<c[0].used], RS_MAX_MESSAGE);
-    if f.status == WS_FRAME_MORE { return; }
-    if f.status != WS_FRAME_OK {
-      rl_close(c, w, ifx f.status == WS_FRAME_TOO_BIG then WS_CLOSE_TOO_BIG else WS_CLOSE_PROTOCOL);
-      return;
-    }
+    fr := rr_frame_read(f.status);
+    if fr.action == RR_F_WAIT { return; }
+    if fr.action == RR_F_CLOSE { ry_close(c, w, fr.code); return; }
     n := wss_unmask(cast(string) c[0].inb[0..<c[0].used], f, w[0].frame[..]);
     payload := cast(string) w[0].frame[0..<n];
     ev := ws_take(c[0].rd[..], f, payload, c[0].msg[..]);
-    rl_consume(c, f.total);
-    if ev == WS_EV_MESSAGE {
-      if c[0].rd[0].op == WS_OP_TEXT { rl_message(conns, at, w, store, cast(string) c[0].msg[0..<c[0].rd[0].used]); }
-      else { ok := rl_notice(c, w, RS_BINARY); }
-    } else if ev == WS_EV_PING {
-      if !rl_send(c, w, WS_OP_PONG, payload) { rl_shut(c); return; }
-    } else if ev == WS_EV_CLOSE {
-      rl_close(c, w, WS_CLOSE_NORMAL); return;
-    } else if ev != WS_EV_PART && ev != WS_EV_PONG {
-      rl_close(c, w, ws_error_code(ev)); return;
-    }
+    ry_consume(c, f.total);
+    d := rr_frame_event(ev, c[0].rd[0].op);
+    if d.action == RR_F_TEXT { ry_message(conns, at, w, store, cast(string) c[0].msg[0..<c[0].rd[0].used]); }
+    else if d.action == RR_F_BINARY { ok := ry_notice(c, w, RS_BINARY); }
+    else if d.action == RR_F_PONG { if !ry_send(c, w, WS_OP_PONG, payload) { ry_shut(c); return; } }
+    else if d.action == RR_F_CLOSE { ry_close(c, w, d.code); return; }
+    else if d.action == RR_F_ERROR { ry_close(c, w, ws_error_code(ev)); return; }
   }
 }
-rl_serve :: (conns: [] RlConn, w: [] RlWork, store: [] RsdStore) {
+ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RsdStore) {
   while true {
     r := cxsrv_poll(1000);
     while true {
       h := cxsrv_accept();
       if h <= 0 { break; }
-      slot := -1;
-      for i: 0..<conns.count { if conns[i].h < 0 && slot < 0 { slot = i; } }
+      handles: [RY_CONNS] int;
+      for i: 0..<conns.count { handles[i] = conns[i].h; }
+      slot := rr_free_slot(handles[0..<conns.count]);
       if slot < 0 { x := cxsrv_close(h); continue; }
+      w[0].gen = rr_next_gen(w[0].gen);
       conns[slot].h = h; conns[slot].ws = false; conns[slot].used = 0; conns[slot].rd[0] = WsReader.{};
+      conns[slot].gen = w[0].gen; rr_auth_reset(conns[slot].auth[..]);
     }
     for i: 0..<conns.count {
       if conns[i].h < 0 { continue; }
       c := conns[i..<i + 1];
       n := cxsrv_read(c[0].h);
       if n == 0 { continue; }
-      if n < 0 { rl_shut(c); continue; }
-      if c[0].used + n > RL_IN { rl_close(c, w, WS_CLOSE_TOO_BIG); continue; }
+      if n < 0 { ry_shut(c); continue; }
+      if c[0].used + n > RY_IN { ry_close(c, w, WS_CLOSE_TOO_BIG); continue; }
       for k: 0..<n { c[0].inb[c[0].used + k] = cast(u8) cxsrv_byte(c[0].h, k); }
       c[0].used += n;
-      if !c[0].ws { rl_http(c, w); }
-      if c[0].h >= 0 && c[0].ws { rl_frames(conns, i, w, store); }
+      if !c[0].ws { ry_http(c, w); }
+      if c[0].h >= 0 && c[0].ws { ry_frames(conns, i, w, store); }
     }
   }
 }
+// The relay URL NIP-42 answers must name: --url, or ws://ADDRESS:PORT.
+ry_url :: (port: int, out: [] u8) -> int {
+  k := 0;
+  if ry_host_url_count() > 0 {
+    if ry_host_url_count() > out.count { return -1; }
+    for i: 0..<ry_host_url_count() { out[i] = cast(u8) ry_host_url_byte(i); }
+    return ry_host_url_count();
+  }
+  pre := "ws://";
+  if pre.count + ry_host_address_count() + 7 > out.count { return -1; }
+  for i: 0..<pre.count { out[k] = pre[i]; k += 1; }
+  for i: 0..<ry_host_address_count() { out[k] = cast(u8) ry_host_address_byte(i); k += 1; }
+  out[k] = ':'; k += 1;
+  digits: [6] u8; d := 0; p := port;
+  while d == 0 || p > 0 { digits[d] = cast(u8) ('0' + p % 10); p /= 10; d += 1; }
+  while d > 0 { d -= 1; out[k] = digits[d]; k += 1; }
+  return k;
+}
 main :: () {
-  if cxsrv_listen(rl_host_port()) != 0 { print("relay: cannot listen\n"); return; }
+  if cxsrv_listen(ry_host_port()) != 0 { print("relay: cannot listen\n"); return; }
+  conns: [RY_CONNS] RyConn;
+  w: [1] RyWork;
+  url: [512] u8; u := ry_url(cxsrv_bound_port(), url[..]);
+  if u < 0 || nip42_init(w[0].n42[..], cast(string) url[0..<u]) != N42_OK {
+    print("relay: NIP-42 needs a ws:// or wss:// relay URL without brackets: pass --url\n"); return;
+  }
   print("relay: listening on port %\n", cxsrv_bound_port());
-  conns: [RL_CONNS] RlConn;
-  w: [1] RlWork;
   arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
   store: [1] RsdStore; store[0].arena = arena[..]; store[0].recs = recs[..];
-  rl_serve(conns[..], w[..], store[..]);
+  ry_serve(conns[..], w[..], store[..]);
 }

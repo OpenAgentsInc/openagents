@@ -7,8 +7,11 @@ drives it with a standard-library WebSocket client: NIP-11, publish and OK,
 REQ with stored events then EOSE then live events, CLOSE, duplicates, bad
 signatures, replaceable and addressable replacement with the same-second
 tie, the kinds and tag filters openagents.com uses, NIP-40 expiration,
-created_at limit, subscription/filter/frame limits, AUTH, ping, and a
-restart. Tooling only; nothing here ships. Never points at a public relay.
+created_at limit, subscription/filter/frame limits, ping, a restart, and
+NIP-42: a challenge on every connection, AUTH answers (right, wrong
+challenge, relay, time, kind, tags, signature, id), writes refused until
+AUTH, kind 22242 never stored or delivered, and a new challenge after a
+reconnect. Tooling only; nothing here ships. Never points at a public relay.
 
   python3 coax/tests/nostr/relay_session.py      # COAX=..., BUN=..., NOBLE=... override
 """
@@ -37,10 +40,13 @@ def check(ok, what):
         failures.append(what)
 
 
-def sign(templates):
+def sign(templates, label=None):
     lines = '\n'.join(json.dumps(t) for t in templates) + '\n'
+    env = {**os.environ, 'NODE_PATH': NOBLE}
+    if label:
+        env['RELAY_TEST_KEY_LABEL'] = label
     out = subprocess.run([BUN, str(HERE / 'relay_sign.ts')], input=lines, capture_output=True, text=True,
-                         env={**os.environ, 'NODE_PATH': NOBLE}, check=True, timeout=60)
+                         env=env, check=True, timeout=60)
     return [json.loads(l) for l in out.stdout.splitlines() if l.strip()]
 
 
@@ -56,6 +62,22 @@ class Ws:
         head, self.buf = head.split(b'\r\n\r\n', 1)
         want = base64.b64encode(hashlib.sha1((key + '258EAFA5-E914-47DA-95CA-C5AB0DC85B11').encode()).digest()).decode()
         self.ok = head.startswith(b'HTTP/1.1 101') and ('Sec-WebSocket-Accept: ' + want).encode() in head
+        self.port = port
+        # NIP-42: the relay's challenge comes first on every connection
+        m = self.recv() if self.ok else None
+        self.challenge = m[1] if isinstance(m, list) and len(m) == 2 and m[0] == 'AUTH' else None
+
+    def auth_event(self, **change):
+        t = {"kind": 22242, "created_at": int(time.time()), "content": "",
+             "tags": [["relay", "ws://127.0.0.1:%d" % self.port], ["challenge", self.challenge]]}
+        label = change.pop('label', None)
+        t.update(change)
+        return sign([t], label)[0]
+
+    def auth(self, e=None):
+        e = e or self.auth_event()
+        self.send(['AUTH', e])
+        return self.recv()
 
     def send_frame(self, op, payload):
         mask = os.urandom(4)
@@ -153,6 +175,9 @@ def session(port, now):
     ])
     a, b = Ws(port), Ws(port)
     check(a.ok and b.ok, 'two WebSocket handshakes with the right Sec-WebSocket-Accept')
+    check(bool(a.challenge and b.challenge) and len(a.challenge) == 64 and a.challenge != b.challenge
+          and all(c in '0123456789abcdef' for c in a.challenge), 'NIP-42: each connection gets its own 64-hex challenge first')
+    nip42(port, a, b, ev[0])
     a.send(['REQ', 'all', {'kinds': [1]}])
     got, end = a.until_eose('all')
     check(got == [] and end == ['EOSE', 'all'], 'REQ on an empty relay: EOSE only')
@@ -233,7 +258,8 @@ def session(port, now):
     a.send(['REQ', 's0', {'kinds': [8]}])
     check(a.until_eose('s0')[1] == ['EOSE', 's0'], 'reusing a sub id replaces it within the limit')
     a.send(['AUTH', ev[16]])
-    check(a.recv() == ['OK', ev[16]['id'], False, 'restricted: NIP-42 is not configured on this relay'], 'AUTH: NIP-42 not configured yet')
+    check(a.recv() == ['OK', ev[16]['id'], False, 'invalid: authentication event must have exactly one relay tag and one challenge tag'],
+          'AUTH without a relay tag: refused')
     check(publish(a, ev[16]) == ['OK', ev[16]['id'], False, 'invalid: authentication events cannot be published'], 'kind 22242 cannot be published')
     a.send(['HELLO'])
     check(a.recv() == ['NOTICE', 'invalid: unsupported message verb'], 'unknown verb: NOTICE')
@@ -256,6 +282,48 @@ def session(port, now):
     a.close(); b.close()
 
 
+def nip42(port, a, b, first):
+    """NIP-42 on connections a (stays anonymous) and b (authenticates)."""
+    check(publish(b, first) == ['OK', first['id'], False, 'auth-required: authenticate before publishing'],
+          'NIP-42: a write before AUTH gets auth-required')
+    a.send(['REQ', 'auth', {'kinds': [22242]}])
+    check(a.until_eose('auth') == ([], ['EOSE', 'auth']), 'NIP-42: reading needs no AUTH')
+    now = int(time.time())
+    url = "ws://127.0.0.1:%d" % port
+    for what, e, text in [
+            ('a wrong challenge', b.auth_event(tags=[["relay", url], ["challenge", a.challenge]]),
+             'authentication challenge does not match'),
+            ('another relay', b.auth_event(tags=[["relay", "ws://127.0.0.1:%d" % (port + 1)], ["challenge", b.challenge]]),
+             'authentication relay URL does not match'),
+            ('created 601 s ago', b.auth_event(created_at=now - 601),
+             "the authentication event's timestamp is more than 10 minutes from the relay's clock"),
+            ('kind 1', b.auth_event(kind=1), 'authentication event must have kind 22242'),
+            ('two challenge tags', b.auth_event(tags=[["relay", url], ["challenge", b.challenge], ["challenge", b.challenge]]),
+             'authentication event must have exactly one relay tag and one challenge tag')]:
+        check(b.auth(e) == ['OK', e['id'], False, 'invalid: ' + text], 'NIP-42: AUTH with %s is refused' % what)
+    good = b.auth_event(tags=[["relay", "WS://127.0.0.1:%d/" % port], ["challenge", b.challenge]])
+    bad = dict(good); bad['sig'] = ('0' if bad['sig'][0] != '0' else '1') + bad['sig'][1:]
+    check(b.auth(bad) == ['OK', bad['id'], False, 'invalid: bad signature'], 'NIP-42: AUTH with a bad signature is refused')
+    forged = dict(good); forged['content'] = 'x'
+    check(b.auth(forged) == ['OK', forged['id'], False, 'invalid: event id does not match its content'], 'NIP-42: AUTH with a wrong id is refused')
+    check(publish(b, first)[2] is False, 'NIP-42: refused AUTH answers authenticate nothing')
+    check(b.auth(good) == ['OK', good['id'], True, ''], 'NIP-42: the right answer (relay URL in another case, with a slash) gets OK true')
+    check(a.recv(0.3) is None, 'NIP-42: the AUTH event is not delivered to a kind 22242 subscription')
+    check(b.auth(good) == ['OK', good['id'], True, ''], 'NIP-42: the same key again is still OK true')
+    other = b.auth_event(label='coax relay r1 second test key')
+    check(b.auth(other) == ['OK', other['id'], True, ''] and other['pubkey'] != good['pubkey'], 'NIP-42: a second key on one connection')
+    a.send(['CLOSE', 'auth'])
+    b.send(['REQ', 'auth2', {'kinds': [22242]}])
+    check(b.until_eose('auth2') == ([], ['EOSE', 'auth2']), 'NIP-42: kind 22242 is never stored')
+    # a reconnect gets a new challenge; the old answer and the old key do not carry over
+    c = Ws(port)
+    check(bool(c.challenge) and c.challenge not in (a.challenge, b.challenge), 'NIP-42: a new connection gets a new challenge')
+    check(c.auth(good) == ['OK', good['id'], False, 'invalid: authentication challenge does not match'],
+          "NIP-42: an answer to another connection's challenge is refused")
+    check(publish(c, first)[3] == 'auth-required: authenticate before publishing', 'NIP-42: a new connection is anonymous until it answers')
+    c.close()
+
+
 def nip11(port):
     s = socket.create_connection(('127.0.0.1', port), timeout=5)
     s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nAccept: application/nostr+json\r\n\r\n')
@@ -270,7 +338,8 @@ def nip11(port):
     check(head.startswith(b'HTTP/1.1 200') and b'Access-Control-Allow-Origin: *' in head, 'NIP-11: 200 with CORS')
     lim = doc['limitation']
     check(lim['max_message_length'] == 131072 and lim['max_subscriptions'] == 32 and lim['max_limit'] == 127
-          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 11, 40], 'NIP-11: the Rust relay\'s limits, NIPs 1, 11, 40')
+          and lim['max_subid_length'] == 64 and doc['supported_nips'] == [1, 11, 40, 42], 'NIP-11: the Rust relay\'s limits, NIPs 1, 11, 40, 42')
+    check(lim['auth_required'] is False and lim['restricted_writes'] is True, 'NIP-11: reads open, writes need AUTH')
 
 
 def main():

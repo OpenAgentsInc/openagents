@@ -54,6 +54,9 @@ def main():
             p, port = rs.start(exe, log)
             try:
                 w = rs.Ws(port)
+                # NIP-42: writes need an authenticated key on the connection (any key,
+                # as the Rust relay's auth_required); the test key then imports others' events
+                rs.check(w.auth()[2] is True, 'AUTH with the test key before the import')
                 t0 = time.monotonic()
                 oks = 0
                 for eid, text in raw.items():

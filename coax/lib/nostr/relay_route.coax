@@ -1,0 +1,316 @@
+// The Coax relay's routing decisions (relay-server-r1, coax/nostr.md section
+// 17): which reply goes to which connection and subscription, and the
+// per-connection NIP-42 state. coax/relay/relay.coax moves bytes and calls
+// these; relay_server.coax decides admission and REQ policy; nip42.coax
+// decides whether an AUTH event answers the challenge.
+//
+// This unit loads nothing. It takes the other units' verdicts as integers
+// (ms_read's error and type, wss_request's status, wss_frame_read's status,
+// ws_take's event, nip42_admit's error) so that mutating it never re-mutates
+// event.coax, the Schnorr verifier or the JSON reader. The mirrored codes
+// below are tied to their sources by top-level #asserts in relay.coax, so a
+// change there fails the program's build.
+//
+// NIP-42 policy (Rust relay at 0b401561a0^, gateway/server.rs and auth.rs;
+// coax/nostr.md section 17 "NIP-42 required for writes"):
+// - Every WebSocket connection gets ["AUTH", <challenge>] right after the
+//   101, a fresh challenge of 32 host-random bytes as hex, bound to the
+//   connection's generation. A reconnect is a new generation and a new
+//   challenge; an answer to an old one is refused.
+// - Writes (EVENT) need at least one authenticated key on the connection,
+//   as the Rust relay's auth_required does (is_authenticated: any key, not
+//   necessarily the event's author, so a client can publish events signed
+//   by others, as the differential's import does). Refused with
+//   "auth-required: authenticate before publishing".
+// - Reads (REQ, CLOSE) stay open: relay.openagents.com runs with
+//   auth_required false and openagents.com reads anonymously.
+// - AUTH answers OK true "" or OK false with the Rust relay's texts. A
+//   connection keeps up to RR_KEYS keys (the Rust relay keeps a map; a bound
+//   is ours). The same key again is OK true and not counted twice.
+// - Kind 22242 is never stored or broadcast: relay_server.coax refuses it as
+//   an EVENT (RS_AUTH_KIND) and AUTH never reaches the store or fan-out.
+#authority;
+
+// ---- mirrored codes (tied to their sources in relay.coax) -----------------
+// message_server.coax
+RR_MS_OK :: 0; RR_MS_VERB :: 3; RR_MS_SUB :: 4; RR_MS_TOO_MANY :: 5;
+RR_MS_EVENT :: 1; RR_MS_REQ :: 2; RR_MS_CLOSE :: 3; RR_MS_AUTH :: 4; RR_MS_COUNT :: 5;
+// relay_server.coax reasons
+RR_RS_ACCEPT :: 0; RR_RS_BAD_EVENT :: 3; RR_RS_BAD_ID :: 4; RR_RS_SUBID :: 12; RR_RS_FILTERS :: 13;
+RR_RS_FRAME :: 21; RR_RS_VERB :: 22; RR_RS_BINARY :: 23; RR_RS_COUNT :: 25;
+// ws_server.coax / ws.coax
+RR_WSS_OK :: 0; RR_WSS_MORE :: 1; RR_WSS_NIP11 :: 9;
+RR_WS_FRAME_OK :: 0; RR_WS_FRAME_MORE :: 1; RR_WS_FRAME_TOO_BIG :: 7;
+RR_WS_OP_TEXT :: 1;
+RR_WS_EV_PART :: 0; RR_WS_EV_MESSAGE :: 1; RR_WS_EV_PING :: 2; RR_WS_EV_PONG :: 3; RR_WS_EV_CLOSE :: 4;
+RR_WS_CLOSE_NORMAL :: 1000; RR_WS_CLOSE_PROTOCOL :: 1002; RR_WS_CLOSE_TOO_BIG :: 1009;
+// nip42.coax
+RR_N42_OK :: 0; RR_N42_STALE :: 3; RR_N42_NO_CHALLENGE :: 4; RR_N42_EVENT :: 5; RR_N42_KIND :: 6;
+RR_N42_TIME :: 7; RR_N42_TAGS :: 8; RR_N42_RELAY :: 9; RR_N42_CHALLENGE :: 10;
+
+// ---- this unit's own codes --------------------------------------------------
+// What to do with one NIP-01 message.
+RR_NOTICE :: 0; RR_CLOSED :: 1; RR_EVENT :: 2; RR_REQ :: 3; RR_CLOSE :: 4; RR_AUTH :: 5;
+// What to do with one frame step.
+RR_F_WAIT :: 0; RR_F_CLOSE :: 1; RR_F_TEXT :: 2; RR_F_BINARY :: 3; RR_F_PONG :: 4; RR_F_NEXT :: 5; RR_F_ERROR :: 6;
+// What to do with the HTTP head.
+RR_H_WAIT :: 0; RR_H_UPGRADE :: 1; RR_H_NIP11 :: 2; RR_H_BAD :: 3;
+// Answers to AUTH.
+RR_A_OK :: 0; RR_A_SIG :: 1; RR_A_KIND :: 2; RR_A_TIME :: 3; RR_A_CHALLENGE :: 4; RR_A_RELAY :: 5;
+RR_A_TAGS :: 6; RR_A_FULL :: 7; RR_A_UNKNOWN :: 8;
+RR_A_REASONS :: 9;
+
+RR_KEYS :: 8;                 // authenticated keys per connection
+RR_CHALLENGE_BYTES :: 32;     // host entropy per challenge, sent as hex
+RR_AUTH_WRITES :: true;       // EVENT needs an authenticated key (see above)
+
+RR_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged. Publishing needs NIP-42 AUTH; reading is open.\",\"supported_nips\":[1,11,40,42],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":true,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+
+RrRoute :: struct { action: int; reason: int; }
+RrFrame :: struct { action: int; code: int; }
+RrAuth :: struct { keys: [256] u8; n: int; }    // RR_KEYS x 32 bytes
+
+// ---- messages ---------------------------------------------------------------
+
+#test "each message goes to its handler, and each refusal to NOTICE or CLOSED" {
+  r := rr_message(RR_MS_TOO_MANY, 0, true);
+  #assert r.action == RR_CLOSED && r.reason == RR_RS_FILTERS;
+  r = rr_message(RR_MS_SUB, 0, false); #assert r.action == RR_NOTICE && r.reason == RR_RS_SUBID;
+  r = rr_message(RR_MS_SUB, 0, true); #assert r.action == RR_NOTICE && r.reason == RR_RS_SUBID;
+  r = rr_message(RR_MS_VERB, 0, false); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
+  r = rr_message(RR_MS_VERB, 0, true); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
+  r = rr_message(1, 0, true); #assert r.action == RR_CLOSED && r.reason == RR_RS_FRAME;
+  r = rr_message(2, RR_MS_REQ, false); #assert r.action == RR_NOTICE && r.reason == RR_RS_FRAME;
+  r = rr_message(6, 0, true); #assert r.action == RR_CLOSED && r.reason == RR_RS_FRAME;
+  r = rr_message(RR_MS_OK, RR_MS_EVENT, false); #assert r.action == RR_EVENT && r.reason == RR_RS_ACCEPT;
+  r = rr_message(RR_MS_OK, RR_MS_REQ, true); #assert r.action == RR_REQ && r.reason == RR_RS_ACCEPT;
+  r = rr_message(RR_MS_OK, RR_MS_CLOSE, true); #assert r.action == RR_CLOSE;
+  r = rr_message(RR_MS_OK, RR_MS_COUNT, true); #assert r.action == RR_CLOSED && r.reason == RR_RS_COUNT;
+  r = rr_message(RR_MS_OK, RR_MS_AUTH, false); #assert r.action == RR_AUTH && r.reason == RR_RS_ACCEPT;
+  r = rr_message(RR_MS_OK, 9, false); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
+  r = rr_message(RR_MS_OK, 0, false); #assert r.action == RR_NOTICE && r.reason == RR_RS_VERB;
+}
+// One message read by ms_read: error and type are its codes, has_sub whether
+// a subscription id was read (a refusal then names it in CLOSED).
+rr_message :: (error: int, type: int, has_sub: bool) -> RrRoute {
+  if error != RR_MS_OK {
+    if error == RR_MS_TOO_MANY { return RrRoute.{action = RR_CLOSED, reason = RR_RS_FILTERS}; }
+    if error == RR_MS_SUB { return RrRoute.{action = RR_NOTICE, reason = RR_RS_SUBID}; }
+    if error == RR_MS_VERB { return RrRoute.{action = RR_NOTICE, reason = RR_RS_VERB}; }
+    if has_sub { return RrRoute.{action = RR_CLOSED, reason = RR_RS_FRAME}; }
+    return RrRoute.{action = RR_NOTICE, reason = RR_RS_FRAME};
+  }
+  if type == RR_MS_EVENT { return RrRoute.{action = RR_EVENT}; }
+  if type == RR_MS_REQ { return RrRoute.{action = RR_REQ}; }
+  if type == RR_MS_CLOSE { return RrRoute.{action = RR_CLOSE}; }
+  if type == RR_MS_COUNT { return RrRoute.{action = RR_CLOSED, reason = RR_RS_COUNT}; }
+  if type == RR_MS_AUTH { return RrRoute.{action = RR_AUTH}; }
+  return RrRoute.{action = RR_NOTICE, reason = RR_RS_VERB};
+}
+
+// ---- HTTP and frames --------------------------------------------------------
+
+#test "the opening request: wait, upgrade, NIP-11 or a plain refusal" {
+  #assert rr_http(RR_WSS_MORE) == RR_H_WAIT && rr_http(RR_WSS_OK) == RR_H_UPGRADE && rr_http(RR_WSS_NIP11) == RR_H_NIP11;
+  #assert rr_http(2) == RR_H_BAD && rr_http(8) == RR_H_BAD && rr_http(10) == RR_H_BAD;
+}
+rr_http :: (status: int) -> int {
+  if status == RR_WSS_MORE { return RR_H_WAIT; }
+  if status == RR_WSS_OK { return RR_H_UPGRADE; }
+  if status == RR_WSS_NIP11 { return RR_H_NIP11; }
+  return RR_H_BAD;
+}
+#test "frame reads: wait, close with the right code, or pass on" {
+  #assert rr_frame_read(RR_WS_FRAME_MORE).action == RR_F_WAIT;
+  f := rr_frame_read(RR_WS_FRAME_TOO_BIG); #assert f.action == RR_F_CLOSE && f.code == RR_WS_CLOSE_TOO_BIG;
+  f = rr_frame_read(2); #assert f.action == RR_F_CLOSE && f.code == RR_WS_CLOSE_PROTOCOL;
+  f = rr_frame_read(6); #assert f.action == RR_F_CLOSE && f.code == RR_WS_CLOSE_PROTOCOL;
+  f = rr_frame_read(8); #assert f.action == RR_F_CLOSE && f.code == RR_WS_CLOSE_PROTOCOL;
+  #assert rr_frame_read(RR_WS_FRAME_OK).action == RR_F_NEXT;
+}
+// wss_frame_read's status.
+rr_frame_read :: (status: int) -> RrFrame {
+  if status == RR_WS_FRAME_MORE { return RrFrame.{action = RR_F_WAIT}; }
+  if status == RR_WS_FRAME_TOO_BIG { return RrFrame.{action = RR_F_CLOSE, code = RR_WS_CLOSE_TOO_BIG}; }
+  if status != RR_WS_FRAME_OK { return RrFrame.{action = RR_F_CLOSE, code = RR_WS_CLOSE_PROTOCOL}; }
+  return RrFrame.{action = RR_F_NEXT};
+}
+#test "frame events: a text message, binary, ping, close, nothing yet, or an error" {
+  #assert rr_frame_event(RR_WS_EV_MESSAGE, RR_WS_OP_TEXT).action == RR_F_TEXT;
+  #assert rr_frame_event(RR_WS_EV_MESSAGE, 2).action == RR_F_BINARY && rr_frame_event(RR_WS_EV_MESSAGE, 0).action == RR_F_BINARY;
+  #assert rr_frame_event(RR_WS_EV_PING, RR_WS_OP_TEXT).action == RR_F_PONG;
+  f := rr_frame_event(RR_WS_EV_CLOSE, RR_WS_OP_TEXT); #assert f.action == RR_F_CLOSE && f.code == RR_WS_CLOSE_NORMAL;
+  #assert rr_frame_event(RR_WS_EV_PART, RR_WS_OP_TEXT).action == RR_F_NEXT && rr_frame_event(RR_WS_EV_PONG, 1).action == RR_F_NEXT;
+  #assert rr_frame_event(5, 1).action == RR_F_ERROR && rr_frame_event(9, 1).action == RR_F_ERROR;
+}
+// ws_take's event, and the assembled message's opcode.
+rr_frame_event :: (ev: int, op: int) -> RrFrame {
+  if ev == RR_WS_EV_MESSAGE { return RrFrame.{action = ifx op == RR_WS_OP_TEXT then RR_F_TEXT else RR_F_BINARY}; }
+  if ev == RR_WS_EV_PING { return RrFrame.{action = RR_F_PONG}; }
+  if ev == RR_WS_EV_CLOSE { return RrFrame.{action = RR_F_CLOSE, code = RR_WS_CLOSE_NORMAL}; }
+  if ev == RR_WS_EV_PART || ev == RR_WS_EV_PONG { return RrFrame.{action = RR_F_NEXT}; }
+  return RrFrame.{action = RR_F_ERROR};
+}
+
+// ---- connections, fan-out and REQ results ----------------------------------
+
+#test "a new connection takes the first free slot, or none" {
+  h := [4] int.[3, -1, 5, -1];
+  #assert rr_free_slot(h[..]) == 1;
+  h[1] = 7; #assert rr_free_slot(h[..]) == 3;
+  h[3] = 0; #assert rr_free_slot(h[..]) == -1;
+  h[0] = -1; #assert rr_free_slot(h[..]) == 0;
+  #assert rr_next_gen(0) == 1 && rr_next_gen(41) == 42;
+}
+// handles[i] < 0 marks a free slot.
+rr_free_slot :: (handles: [] int) -> int {
+  for i: 0..<handles.count { if handles[i] < 0 { return i; } }
+  return -1;
+}
+// Every accepted connection gets its own generation: a NIP-42 answer is
+// bound to it, so a reconnect needs a new challenge.
+rr_next_gen :: (gen: int) -> int { return gen + 1; }
+
+#test "fan-out: only a newly stored event, only to open WebSocket subscriptions that match" {
+  #assert rr_fanout(RR_RS_ACCEPT) && !rr_fanout(1) && !rr_fanout(2) && !rr_fanout(RR_RS_BAD_EVENT);
+  #assert rr_deliver(true, true, true);
+  #assert !rr_deliver(false, true, true) && !rr_deliver(true, false, true) && !rr_deliver(true, true, false);
+}
+// After admission and the store: duplicates and superseded versions (OK
+// true) are not new, so they are not sent again.
+rr_fanout :: (reason: int) -> bool { return reason == RR_RS_ACCEPT; }
+rr_deliver :: (open: bool, ws: bool, matches: bool) -> bool { return open && ws && matches; }
+
+#test "a REQ sends each stored event once across its filters" {
+  sent: [3] int;
+  n := rr_take(sent[..], 0, 7); #assert n == 1 && sent[0] == 7;
+  #assert rr_take(sent[..], n, 7) == -1;
+  n = rr_take(sent[..], n, 9); #assert n == 2 && sent[1] == 9;
+  #assert rr_take(sent[..], n, 9) == -1 && rr_take(sent[..], n, 7) == -1;
+  n = rr_take(sent[..], n, 0); #assert n == 3 && sent[2] == 0;
+  #assert rr_take(sent[..], n, 4) == -2 && rr_take(sent[..], n, 0) == -1;
+  #assert rr_take(sent[..], 1, 9) == 2;
+}
+// Records store index idx as sent: the new count, -1 when it was already
+// sent (skip it), -2 when the list is full (stop).
+rr_take :: (sent: [] int, n: int, idx: int) -> int {
+  for s: 0..<n { if sent[s] == idx { return -1; } }
+  if n >= sent.count { return -2; }
+  sent[n] = idx;
+  return n + 1;
+}
+
+// ---- NIP-42 -----------------------------------------------------------------
+
+#test "a challenge is the host's bytes as lowercase hex" {
+  b: [RR_CHALLENGE_BYTES] u8; out: [64] u8;
+  for i: 0..<RR_CHALLENGE_BYTES { b[i] = cast(u8) (i * 8 + 7); }
+  b[0] = 0; b[1] = 0xff; b[2] = 0x9a; b[3] = 0x0f; b[4] = 0xa0;
+  #assert rr_challenge(b[..], out[..]) == 64;
+  #assert cast(string) out[0..<10] == "00ff9a0fa0" && cast(string) out[10..<14] == "2f37";
+  #assert cast(string) out[62..<64] == "ff";
+  small: [63] u8; #assert rr_challenge(b[..], small[..]) == -1;
+  #assert rr_challenge(b[0..<31], out[..]) == -1;
+  #assert rr_hex(9) == '9' && rr_hex(10) == 'a' && rr_hex(0) == '0' && rr_hex(15) == 'f';
+}
+rr_hex :: (v: int) -> u8 { return ifx v < 10 then cast(u8) ('0' + v) else cast(u8) ('a' + v - 10); }
+// Writes the challenge for bytes (RR_CHALLENGE_BYTES of host entropy) into
+// out: its length, or -1.
+rr_challenge :: (bytes: [] u8, out: [] u8) -> int {
+  if bytes.count != RR_CHALLENGE_BYTES || out.count < 2 * RR_CHALLENGE_BYTES { return -1; }
+  for i: 0..<RR_CHALLENGE_BYTES {
+    out[2 * i] = rr_hex(cast(int) bytes[i] / 16);
+    out[2 * i + 1] = rr_hex(cast(int) bytes[i] % 16);
+  }
+  return 2 * RR_CHALLENGE_BYTES;
+}
+
+#test "AUTH answers: the texts, accepted only for an admitted key" {
+  for k: 0..<RR_A_REASONS {
+    #assert (k == RR_A_OK) == (rr_auth_prefix(k).count == 0);
+    #assert (k == RR_A_OK) == (rr_auth_text(k).count == 0);
+  }
+  #assert rr_auth_prefix(RR_A_SIG) == "invalid" && rr_auth_text(RR_A_SIG) == "bad signature";
+  #assert rr_auth_text(RR_A_KIND) == "authentication event must have kind 22242";
+  #assert rr_auth_text(RR_A_TIME) == "the authentication event's timestamp is more than 10 minutes from the relay's clock";
+  #assert rr_auth_text(RR_A_CHALLENGE) == "authentication challenge does not match";
+  #assert rr_auth_text(RR_A_RELAY) == "authentication relay URL does not match";
+  #assert rr_auth_prefix(RR_A_FULL) == "restricted" && rr_auth_prefix(RR_A_TAGS) == "invalid" && rr_auth_prefix(RR_A_UNKNOWN) == "error";
+  #assert rr_auth_prefix(-1) == "error" && rr_auth_prefix(RR_A_REASONS) == "error";
+  #assert rr_auth_text(-1) == "authentication failed" && rr_auth_text(RR_A_REASONS) == "authentication failed";
+  #assert rr_auth_answer(RR_N42_EVENT) == RR_A_SIG && rr_auth_answer(RR_N42_KIND) == RR_A_KIND && rr_auth_answer(RR_N42_TIME) == RR_A_TIME;
+  #assert rr_auth_answer(RR_N42_TAGS) == RR_A_TAGS && rr_auth_answer(RR_N42_RELAY) == RR_A_RELAY && rr_auth_answer(RR_N42_CHALLENGE) == RR_A_CHALLENGE;
+  #assert rr_auth_answer(RR_N42_STALE) == RR_A_CHALLENGE && rr_auth_answer(RR_N42_NO_CHALLENGE) == RR_A_CHALLENGE;
+  #assert rr_auth_answer(RR_N42_OK) == RR_A_OK && rr_auth_answer(1) == RR_A_UNKNOWN && rr_auth_answer(11) == RR_A_UNKNOWN;
+}
+rr_auth_prefix :: (k: int) -> string {
+  p := [9] string.["", "invalid", "invalid", "invalid", "invalid", "invalid", "invalid", "restricted", "error"];
+  if k < 0 || k >= RR_A_REASONS { return "error"; }
+  return p[k];
+}
+rr_auth_text :: (k: int) -> string {
+  t := [9] string.["", "bad signature", "authentication event must have kind 22242",
+    "the authentication event's timestamp is more than 10 minutes from the relay's clock",
+    "authentication challenge does not match", "authentication relay URL does not match",
+    "authentication event must have exactly one relay tag and one challenge tag",
+    "too many authenticated keys on this connection", "authentication failed"];
+  if k < 0 || k >= RR_A_REASONS { return "authentication failed"; }
+  return t[k];
+}
+// nip42_admit's error, as an answer. A stale generation or a missing
+// challenge reads as a challenge that does not match, as the Rust relay
+// says for an answer to anything but the current challenge.
+rr_auth_answer :: (n42: int) -> int {
+  if n42 == RR_N42_OK { return RR_A_OK; }
+  if n42 == RR_N42_EVENT { return RR_A_SIG; }
+  if n42 == RR_N42_KIND { return RR_A_KIND; }
+  if n42 == RR_N42_TIME { return RR_A_TIME; }
+  if n42 == RR_N42_TAGS { return RR_A_TAGS; }
+  if n42 == RR_N42_RELAY { return RR_A_RELAY; }
+  if n42 == RR_N42_CHALLENGE || n42 == RR_N42_STALE || n42 == RR_N42_NO_CHALLENGE { return RR_A_CHALLENGE; }
+  return RR_A_UNKNOWN;
+}
+
+#test "a connection's keys: admitted ones only, each once, at most RR_KEYS" {
+  a: [1] RrAuth; k: [32] u8;
+  #assert !rr_authed(a[..]) && !rr_authed_as(a[..], k[..]);
+  #assert rr_auth(a[..], RR_N42_TIME, k[..]) == RR_A_TIME && !rr_authed(a[..]);
+  #assert rr_auth(a[..], RR_N42_OK, k[..]) == RR_A_OK && rr_authed(a[..]) && a[0].n == 1 && rr_authed_as(a[..], k[..]);
+  #assert rr_auth(a[..], RR_N42_OK, k[..]) == RR_A_OK && a[0].n == 1;
+  k[31] = 1; #assert !rr_authed_as(a[..], k[..]);
+  #assert rr_auth(a[..], RR_N42_OK, k[..]) == RR_A_OK && a[0].n == 2 && a[0].keys[63] == 1 && rr_authed_as(a[..], k[..]);
+  k[0] = 1; k[31] = 0; #assert !rr_authed_as(a[..], k[..]);
+  for i: 2..<RR_KEYS { k[1] = cast(u8) i; #assert rr_auth(a[..], RR_N42_OK, k[..]) == RR_A_OK && a[0].n == i + 1; }
+  k[1] = 200; #assert rr_auth(a[..], RR_N42_OK, k[..]) == RR_A_FULL && a[0].n == RR_KEYS && !rr_authed_as(a[..], k[..]);
+  k[1] = 7; #assert rr_auth(a[..], RR_N42_OK, k[..]) == RR_A_OK && a[0].n == RR_KEYS;
+  #assert rr_auth(a[..], RR_N42_OK, k[0..<31]) == RR_A_UNKNOWN && !rr_authed_as(a[..], k[0..<31]);
+  rr_auth_reset(a[..]); #assert !rr_authed(a[..]) && a[0].n == 0 && !rr_authed_as(a[..], k[..]);
+  #assert rr_writes_need_auth(true) && !rr_writes_need_auth(false);
+}
+rr_auth_reset :: (a: [] RrAuth) { a[0].n = 0; }
+rr_authed :: (a: [] RrAuth) -> bool { return a[0].n > 0; }
+rr_authed_as :: (a: [] RrAuth, key: [] u8) -> bool {
+  if key.count != 32 { return false; }
+  for i: 0..<a[0].n {
+    same := true;
+    for b: 0..<32 { if a[0].keys[32 * i + b] != key[b] { same = false; } }
+    if same { return true; }
+  }
+  return false;
+}
+// One AUTH event's outcome: n42 is nip42_admit's error and key its public
+// key (only meaningful on N42_OK). Remembers an admitted key and returns the
+// answer (RR_A_OK is OK true).
+rr_auth :: (a: [] RrAuth, n42: int, key: [] u8) -> int {
+  k := rr_auth_answer(n42);
+  if k != RR_A_OK { return k; }
+  if key.count != 32 { return RR_A_UNKNOWN; }
+  if rr_authed_as(a, key) { return RR_A_OK; }
+  if a[0].n >= RR_KEYS { return RR_A_FULL; }
+  for b: 0..<32 { a[0].keys[32 * a[0].n + b] = key[b]; }
+  a[0].n += 1;
+  return RR_A_OK;
+}
+// Whether an EVENT on this connection must wait for AUTH: rs_admit_read's
+// auth_required. authed is rr_authed's answer.
+rr_writes_need_auth :: (configured: bool) -> bool { return configured && RR_AUTH_WRITES; }

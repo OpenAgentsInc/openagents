@@ -133,10 +133,7 @@ the "below 128" form.
   over a test-only in-memory double, so a restart forgets everything. The
   append-only fsync'd log, replay with re-verification and the indexes are
   that task's job, not a second store here.
-- **NIP-42.** nip42.coax (#f426) reached main at `9a655d3736` during this task's last minutes and is not wired yet. Next: a Nip42 record per connection, a challenge from host entropy sent on connect, `nip42_admit` on AUTH, and `authed` passed to `rs_admit_policy`. The program's `rl_` prefix must be renamed first, because nip42.coax loads the client `relay.coax`, which uses `rl_`. `rs_admit_policy` takes
-  `auth_required` and `authed`, and the program passes false and false. AUTH
-  is answered "restricted: NIP-42 is not configured on this relay". NIP-42
-  is not advertised.
+- **NIP-42.** Done in the second part (below).
 - **message.coax (#6015).** It is not on main. When it lands,
   message_server.coax should take `nm_sub_ok`, `NM_PREFIXES` and
   `NM_MAX_FRAME` from it in place of its own equal values.
@@ -154,9 +151,91 @@ the "below 128" form.
 - **The rest of R1's exit evidence.** The client relay machine (#7de9) and
   the Pylon have not yet been pointed at it on the tailnet. Bounded memory
   under a flood is fixed by construction: 16 connections, 32 subscriptions,
-  8 KiB of filters each, 2048 events and 4 MiB in the double, and a refusal
-  past every limit. It has not yet been measured under a flood. The session
-  glue in `relay.coax` (which reply goes where) is not yet an `#authority`
-  unit with its own checks; the policy it calls is.
+  8 KiB of filters each, 8 authenticated keys each, 2048 events and 4 MiB
+  in the double, and a refusal past every limit. It has not yet been
+  measured under a flood. The session glue's decisions are now
+  `relay_route.coax` (`#authority`, second part below).
 - **TLS.** None. ws:// only, on 127.0.0.1 or a tailnet literal. Use
   tls-native's server mode later or a TLS proxy.
+
+## Second part: NIP-42 and the routing unit (claude-relay-r1b)
+
+2026-10-29, claude-relay-r1b, on top of the first part. The store was not
+touched: claude-store is building the durable store behind the same
+interface as `relay_store_double.coax` (`rsd_admit`, `rsd_query`,
+`rsd_text`), and the swap is one `#load` line in `relay.coax`.
+`relay_server.coax`, `nip42.coax` and `nip42-event.coax` are unchanged, so
+their mutation results above and in the NIP-42 record still stand.
+
+| File | What | Checks | Mutation |
+| --- | --- | --- | --- |
+| `coax/lib/nostr/relay_route.coax` (`#authority`, new) | The routing decisions `relay.coax` used to make inline: which handler or reply each NIP-01 message gets (`rr_message`), what the HTTP head (`rr_http`), a frame read (`rr_frame_read`) and a frame event (`rr_frame_event`) lead to, the free connection slot and the connection generation, fan-out (only a newly stored event, only to an open WebSocket subscription that matches), the REQ's sent-once list across filters (`rr_take`), the challenge's hex (`rr_challenge`), the AUTH answers and their texts (`rr_auth_answer`, `rr_auth_prefix`, `rr_auth_text`), the per-connection authenticated keys (`rr_auth`, `rr_authed`, `rr_authed_as`, at most 8, each once) and the write gate. It loads nothing: it takes the other units' verdicts as integers, so mutating it never re-mutates event.coax, Schnorr or JSON. Its mirrored codes are tied to their sources by top-level `#assert`s in `relay.coax`, so a change there fails the program's build. It also holds the NIP-11 document the relay now serves (NIPs 1, 11, 40, 42; `auth_required` false, `restricted_writes` true) | 10 | **250/250 killed**, one run, `--jobs 3` |
+| `coax/relay/relay.coax` | Host names renamed `rl_`/`RL_`/`RlConn`/`RlWork` to `ry_`/`RY_`/`RyConn`/`RyWork` (nip42.coax loads the client `relay.coax`, whose names are `rl_`). Loads nip42-event.coax and relay_route.coax. Each connection has a generation, a `Nip42` record and an `RrAuth` record. After the 101 it sends `["AUTH", <64 hex>]` (`nip42_issue`, 32 bytes of host entropy). AUTH: `nostr_event_read` (for the id; a wrong id gets OK false "invalid: event id does not match its content", unreadable gets a NOTICE), then `nip42_admit` (signature, ±600 s, the relay URL canonicalized, the connection's current challenge and generation), then `rr_auth`. EVENT passes `rr_writes_need_auth(true)` and `rr_authed` to `rs_admit_read`. AUTH never reaches the store or fan-out | via the sessions | n/a |
+| `coax/relay/relay-host.c` | `--url URL` (the relay URL AUTH events must name; default `ws://ADDRESS:PORT` with the bound port) and `ry_host_random` (one byte of `getentropy`). The relay refuses to start when the URL is not one nip42.coax accepts (an IPv6 literal needs `--url`) | via the sessions | n/a (C) |
+| `coax/tests/nostr/relay_session.py`, `relay_differential.py` | Every connection reads its challenge first. A signed-AUTH session (`nip42()`), signed with the test-only key and a second test-only key through `@noble/curves` (`relay_sign.ts`, `RELAY_TEST_KEY_LABEL`). The differential authenticates once with the test key before importing the recording | 70 sessions; differential 13 | n/a |
+
+### The AUTH policy, and why
+
+Read from the Rust relay at `0b401561a0^` (`crates/nostr-relay/src/gateway/auth.rs`
+and `server.rs`) and coax/nostr.md section 17 ("NIP-42 required for writes"):
+
+- **A challenge on every connection, first.** The Rust relay queues
+  `["AUTH", challenge]` as a connection's first message whenever a relay
+  URL is configured. Ours always is: 32 bytes of host entropy as lowercase
+  hex, bound to the connection's generation. A reconnect is a new
+  generation and a new challenge, and an answer to any other challenge is
+  refused.
+- **Writes need an authenticated key; any key on the connection.** The Rust
+  relay's `auth_required` refuses EVENT unless the connection has at least
+  one authenticated key (`is_authenticated`), not necessarily the event's
+  author; author-bound checks are only for its closed-membership and
+  private kinds, which are R2. We do the same, so a client can import
+  events signed by others (the differential does). The refusal is the Rust
+  text, "auth-required: authenticate before publishing".
+- **Reads stay open.** The Rust relay's `auth_required` also gates REQ, but
+  relay.openagents.com runs with it false, and openagents.com's project page
+  reads anonymously. Section 17 asks for NIP-42 on writes. So REQ and CLOSE
+  need no AUTH, and NIP-11 says `auth_required` false and
+  `restricted_writes` true.
+- **AUTH answers.** OK true "" for an admitted key; the same key again is
+  OK true. Refusals use the Rust texts: "invalid: authentication event must
+  have kind 22242", "invalid: the authentication event's timestamp is more
+  than 10 minutes from the relay's clock", "invalid: authentication
+  challenge does not match" (also for a stale generation), "invalid:
+  authentication relay URL does not match", and "invalid: bad signature".
+  nip42.coax is stricter than Rust about tags (exactly one relay and one
+  challenge tag), which gets "invalid: authentication event must have
+  exactly one relay tag and one challenge tag". A ninth key on one
+  connection gets "restricted: too many authenticated keys on this
+  connection" (Rust keeps an unbounded map; the bound is ours).
+- **Kind 22242 is never stored or broadcast.** As an EVENT it is refused
+  before anything else ("invalid: authentication events cannot be
+  published"); as AUTH it never reaches the store or the fan-out.
+- **Not done:** the Rust relay's AUTH rate limits and its agent-attestation
+  ("virtual") keys are R2.
+
+### Checks
+
+- `coax test coax/lib/nostr/relay_route.coax --library`: 10 of 10.
+- `coax mutate coax/lib/nostr/relay_route.coax --library --jobs 3`:
+  250 mutants, 250 killed, no `// mutant: equivalent` lines.
+- `python3 coax/tests/nostr/relay_session.py` (ASan+UBSan): 70 of 70. The
+  first part's 50, with the old "AUTH: NIP-42 not configured" check now
+  "AUTH without a relay tag: refused", plus 20 NIP-42 checks: each
+  connection's own 64-hex challenge; a write before AUTH gets
+  auth-required; reading needs no AUTH; AUTH refused for a wrong
+  challenge, another relay, created 601 s ago, kind 1, two challenge tags,
+  a bad signature and a wrong id; refused answers authenticate nothing; the
+  right answer (relay URL as `WS://127.0.0.1:PORT/`) gets OK true; the AUTH
+  event is not delivered to a kind 22242 subscription and is never stored;
+  the same key again, and a second key; a new connection gets a new
+  challenge, an answer to another connection's challenge is refused, and
+  it is anonymous until it answers. NIP-11 now states NIPs 1, 11, 40, 42,
+  reads open, writes restricted. No sanitizer report.
+- `python3 coax/tests/nostr/relay_differential.py` (ASan+UBSan): 13 of 13. One AUTH with the test key, then the 237 recorded events (signed by the project key, not the authenticated one) all get OK true in 36.0 s, and the five REQs return the same ids in the same order with the same bytes. No sanitizer report.
+
+### Still missing for R1
+
+Durable storage (claude-store's swap), the client relay machine (#7de9) and
+the Pylon on the tailnet, a flood measurement, the sandboxed Rust
+differential, and TLS, as listed above.
