@@ -1,0 +1,16 @@
+pylon: downloading source
+Cloning into '/tmp/oct30-pylon-mac-live'...
+From https://github.com/OpenAgentsInc/openagents
+ * branch            main       -> FETCH_HEAD
+Already up to date.
+pylon: building Pylon and toy engine
+built /tmp/oct30-pylon-mac-live/build/pylon
+pylon: connecting oct30-mac-demo to wss://relay.openagents.com
+
+Pylon online: oct30-mac-demo
+pylon: TEST-ONLY key, signed in Coax; pubkey f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124
+pylon: npub npub17kf9p8g4xvp3q9vcfzwxyk46e77q96c4vr8kkzaq7q90rja9wyjq9gwsws
+Model: psionic-toy (demo)
+Logs: /tmp/oct30-pylon-mac-live/state
+Stop: Ctrl-C, or touch /tmp/oct30-pylon-mac-live/state/stop
+Throwaway identity: keep its demo-label private. This demo does no paid work.

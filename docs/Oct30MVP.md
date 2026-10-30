@@ -279,3 +279,19 @@ and E. Then F. G about an hour before the talk.
   cap as the Pylon build. A focused failed-start regression first reproduced
   linked-stop-file truncation, then passed with the cleanup guard; the guard
   is in `488220542e`. This does not change the tested native source graph.
+
+- **B Mac passed, 2026-10-30 15:02 UTC.** The published-source
+  join script made a fresh sparse clone into `/tmp/oct30-pylon-mac-live`,
+  reused a matching qualified compiler, built both native programs and
+  brought `oct30-mac-demo` online in 94.5 seconds. This
+  checks a fresh checkout, not a machine without prerequisites or a cold
+  compiler bootstrap. The first dependency-budget failure was corrected in
+  `efe5c86819` before this clean attempt. No TLS trust override, real identity
+  or secret-label argv was used. Evidence:
+  [`data/oct30-join-mac`](verification/data/oct30-join-mac/).
+- **G backend preflight passed, 2026-10-30 15:03 UTC.** The final stage buyer
+  discovered both script-started nodes and received verified/decrypted
+  answers: `oct30-coderos-demo` 422 ms; `oct30-mac-demo` 238 ms. Both served
+  the exact `psionic-toy@sha256:b6680707…d633573` identity. The browser
+  portion of G remains to be done after the page release; no historic
+  answer count is claimed. Both nodes remain running for that rehearsal.

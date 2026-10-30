@@ -1,0 +1,19 @@
+pylon: TEST-ONLY key, signed in Coax; pubkey f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124
+pylon: npub npub17kf9p8g4xvp3q9vcfzwxyk46e77q96c4vr8kkzaq7q90rja9wyjq9gwsws
+pylon: engine psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 answered the probe in 37 ms
+doctor: engine psionic-toy answered as psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+doctor: identity: first start (last served: none)
+doctor: reference set /private/tmp/oct30-pylon-mac-live/psionic/fixtures/pylon/psionic-toy.selfcheck: 2 cases for psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+doctor: self-check passed: 2 cases in 88 ms, largest error 0 billionths (tolerance 500000)
+pylon: relay list of 1
+pylon: connection 1 open to wss://relay.openagents.com
+pylon: authenticated to wss://relay.openagents.com as f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124 (connection 1)
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: REQ s0.1 since 1793372435 (connection 1)
+pylon: caught up on s0.1 (connection 1)
+pylon: online, waiting for jobs
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: event 4a52b5b4afd9 kind 25910 -> queue (none)
+pylon: beacon online generation 1 free 3 of 4 (connection 1)
+pylon: job 4a52b5b4afd9 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 36 ms
+pylon: beacon online generation 1 free 4 of 4 (connection 1)

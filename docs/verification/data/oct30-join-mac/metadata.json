@@ -1,0 +1,20 @@
+{
+  "source_commit": "d2d3481e14e5c4b37b71763e096ef623e95b64f5",
+  "started_at": "2026-10-30T15:01:01.355898+00:00",
+  "ready_at": "2026-10-30T15:02:35.858739+00:00",
+  "elapsed_seconds": 94.5,
+  "scope": "Fresh sparse clone and native builds; reused previously checked matching compiler cache. Original dependency-budget failure was fixed before this clean attempt. No full bootstrap timing claim.",
+  "relay": "wss://relay.openagents.com",
+  "slug": "oct30-mac-demo",
+  "label_file": {
+    "mode": "0o600",
+    "bytes": 64
+  },
+  "sha256": {
+    "compiler": "df4d78ef4ddc8f788cb4a87da31d538a2ecf174af14085a5f34ab1d868a80fb0",
+    "pylon": "50ee43120f4b05ade56b584e66d68c258306e88875e1b2a054ef27c66a37f1cd",
+    "psionic_serve": "8edef31672b37b874ef9a84c08e55b334af8b38494390895a8f396454f36db04",
+    "launcher": "64c04c2aad4274b6ac3b4cbbd866dc79b74e563d04e651fd36fc06045127bf7f"
+  },
+  "stop_command": "touch /tmp/oct30-pylon-mac-live/state/stop"
+}
