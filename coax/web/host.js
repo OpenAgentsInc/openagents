@@ -173,7 +173,7 @@ let frames = 0;
 // message, "t1.5" runs the clock that many seconds.
 const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "";
 
-// Room for the largest app's declared initial memory (Sandbox and the Haunted House need 65 pages); an import smaller than that fails to instantiate.
+// Grown at load to whatever the app's module declares (importedMemoryPages).
 const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
@@ -199,8 +199,36 @@ function beginEngine() {
 const randomScratch = {}; // lazily reserved once, shared by synchronous engine calls
 
 // ---- engine: compile, check its layout, keep or start over its state
+// The initial page count an app's module declares for its imported memory (0 if none), read from
+// the import section: an app with large static buffers declares more than the shared memory starts with.
+function importedMemoryPages(bytes) {
+  const b = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  let i = 8;
+  const leb = () => { let v = 0, shift = 0, c; do { c = b[i++]; v += (c & 0x7f) * 2 ** shift; shift += 7; } while (c & 0x80); return v; };
+  const skipName = () => { const n = leb(); i += n; };
+  while (i < b.length) {
+    const id = b[i++], size = leb(), end = i + size;
+    if (id === 2) {
+      for (let n = leb(); n > 0; n--) {
+        skipName(); skipName();
+        const kind = b[i++];
+        if (kind === 0) leb();                                   // function: type index
+        else if (kind === 1) { i++; const f = leb(); leb(); if (f & 1) leb(); } // table
+        else if (kind === 2) { const f = leb(); return leb(); }   // memory: flags, then the initial pages
+        else if (kind === 3) { i += 2; }                         // global: type, mutability
+        else return 0;
+      }
+      return 0;
+    }
+    i = end;
+  }
+  return 0;
+}
+
 async function loadEngine(bytes, generation) {
   const module = await WebAssembly.compile(bytes);
+  const pages = importedMemoryPages(bytes), have = memory.buffer.byteLength / 65536;
+  if (pages > have) memory.grow(pages - have); // instantiate refuses an imported memory smaller than declared
   const random = prepareRandomImport(memory, module, randomScratch);
   const imports = Object.create(null);
   imports.env = Object.assign(Object.create(null), { memory, ...socketImports, ...httpImports, ...random.imports, ...storageImports });
