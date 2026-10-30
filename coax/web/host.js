@@ -166,7 +166,8 @@ let frames = 0;
 // message, "t1.5" runs the clock that many seconds.
 const probeDo = probe ? new URLSearchParams(location.search).get("do") || "" : "";
 
-const memory = new WebAssembly.Memory({ initial: 64, maximum: 1024 }); // 4 MiB, at most 64 MiB
+// Room for the largest app's declared initial memory (Sandbox and the Haunted House need 65 pages); an import smaller than that fails to instantiate.
+const memory = new WebAssembly.Memory({ initial: 128, maximum: 1024 }); // 8 MiB, at most 64 MiB
 let engine = null;   // { exports, layout }
 let arena = null;    // { state, vertices, uniforms, floats, uniformFloats, maxVertices }
 let gpu = null;      // { device, context, format, bindGroup, uniformBuffer, vertexBuffer, bg, fx }
