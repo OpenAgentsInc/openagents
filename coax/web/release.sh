@@ -241,6 +241,9 @@ compiler_env COAX_RELEASE_COMPILER="$tree/coax/bin/coax" "$tree/scripts/coax-rel
 if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
   t=$(now); "$tree/coax/web/smoke.sh" https://staging.openagents.com; lap smoke "$t"
+  if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]]; then
+    t=$(now); bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com; lap "live home" "$t"
+  fi
   t=$(now)
   # Pages unchanged since production's newest live release, if it was staged, skip their golden comparison.
   unchanged=()
@@ -328,6 +331,11 @@ walked=true check=--starts
 [[ -n "$via" ]] || bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || walked=false
 if ! $walked || ! "$tree/coax/web/smoke.sh" https://openagents.com $via; then
   echo "release $commit: production smoke failed; rolling back to the pages from before" >&2
+  "$here/rollback.sh" "$stamp"
+  exit 1
+fi
+if [[ -f "$tree/coax/web/tests/home_live_browser.ts" ]] && ! bun "$tree/coax/web/tests/home_live_browser.ts" https://openagents.com; then
+  echo "release $commit: production live homepage failed; rolling back" >&2
   "$here/rollback.sh" "$stamp"
   exit 1
 fi

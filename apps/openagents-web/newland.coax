@@ -1,43 +1,25 @@
-// The new openagents.com landing, a first mock-up at /new-land (dev only:
-// deploy.sh leaves new-land/ out of every release, and build.sh builds it in
-// development only). The home page's look, the black fading up into a slow
-// nebula and glowing strokes, over the project pages' Grid seen from a high
-// 45° view: every project is a place on the Grid, its commits a tree that
-// spirals up, its tasks ticks around its edge, with how much is done. Related
-// projects sit together, joined by roads. People walk between the places,
-// named, with their npub; agents stand at the project whose task they're on.
-// A feed on the side runs the work and the commits; LOG IN and MAKE YOUR OWN.
-// Drag pans the Grid and the wheel or a pinch zooms, the view's angle fixed;
-// a click (a press let go without moving) on a place, a person or an agent
-// opens its card over the page.
-//
-// Real (captured by coax/web/project/landing.ts into newland-data.coax): the
-// projects, their tasks and milestones from their relays, the agents on
-// tasks, the commits from git. Simulated: the people, their names and keys,
-// and where they walk (a function of the clock, so every visit is the same).
-// The Pylons stand in bays by the projects they serve, drawn as the old Grid's
-// Pylon Bay drew them; LAND_PYLONS holds a row per Pylon in its NIP-PYLON
-// beacon's terms, read from the 30200 beacons on the relay by
-// coax/web/project/pylons.ts (PYLON_SOURCE "relay"; with "demo" every row is
-// a made-up machine and its first field says demo).
-//
-// A small galaxy in a corner holds the public realms (realms.json's listed,
-// open worlds), drawn with the Verse galaxy's projection (galaxy.coax): a
-// pointer over a planet or the arrow keys select it and show its name; a
-// click, a second tap, OPEN or Enter opens https://openagents.com/realms/<slug>.
-//
-// Checks: coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000
+// The public OpenAgents homepage at / and /new-land. Projects and Pylons
+// are real public observations, independently verified and updated in Coax.
+// The generic browser host provides sockets, clock, GPU and input only.
+// Git history is a real deployment snapshot; no simulated people are drawn.
+// Frozen public tables are used only in explicit visual-test mode.
+// The small galaxy uses the Verse projection and public-realm catalog;
+// pointer, touch and keyboard selection open each listed realm.
+// Checks: coax test apps/openagents-web/newland.coax --steps 400000000.
 
 #load "font.coax";
 #load "newland-data.coax";
+#load "newland-golden-data.coax";
 #load "realms.coax";
 #load "galaxy.coax";
 #load "../../verse/figure.coax";
 #load "../../verse/hud/frame.coax";
+#load "newland-network.coax";
+#load "analytics.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
-MAX_VERTICES :: 200000;
-TEST_VERTICES :: 90000;   // what the checks give a frame: a page draws well under it
+MAX_VERTICES :: 400000;
+TEST_VERTICES :: 75000;   // what the checks give a frame: a page draws well under it
 PANELS :: 4;
 UNIFORM_FLOATS :: 8 + PANELS * 8;   // width, height, time, fade, still, panels, vignette, 0, then the panels
 
@@ -51,8 +33,8 @@ TITLE_GAP :: 0.72; TITLE_SPACE :: 1.5; // the wordmark, spaced as the splash's w
 MAX_PLOTS :: 8;
 MAX_COMMITS :: 48;
 PEOPLE :: 14;
-MAX_AGENTS :: 12;
-MAX_PYLONS :: 16;
+MAX_AGENTS :: 32;
+MAX_PYLONS :: 128;
 PLOT :: 2.4;      // a place's half size, grid units
 GRID :: 34;       // grid lines each way from the view's centre
 FIG :: 0.5;       // a figure's scale: metres to grid units
@@ -103,6 +85,7 @@ coaxial_land_message :: (s:[]LandState,kind:int,text:string) #export_c {
 }
 Pyl :: struct {
   row: int; plot: int; x: f32; z: f32;
+  live:bool;generation:int;observed:int;valid_until:int;received:int;updates:int;last_answer:int;
   family: int; status: int; captured_status: int; valid_for: int; total: int; free: int; jobs: int; demo: bool;
   ok: bool; sx: f32; sy: f32;   // the machine's middle on screen
 }
@@ -111,12 +94,19 @@ Pyl :: struct {
 Plot :: struct {
   x: f32; z: f32; cluster: int;
   done: int; tasks: int; mdone: int; mtotal: int; working: int;
-  commits: int; commit_row: [MAX_COMMITS] int;   // LAND_COMMITS byte offsets, oldest first
+  verified_at:int;milestone:[192]u8;milestone_n:int;
+  commits: int; commit_row: [MAX_COMMITS] int;   // land_commits(s[..]) byte offsets, oldest first
   hit: Box;                                       // where a tap opens its page
   tag: Box;                                       // where its name is drawn
 }
 
 LandState :: struct {
+  golden:bool;net:[1]HomeNet;live_data:bool;live_beacons:bool;beacons_received:int;
+  known:[HOME_PROJECTS][HOME_KNOWN]u8;known_n:[HOME_PROJECTS]int;
+  work_cache:[HOME_PROJECTS][4096]u8;work_cache_n:[HOME_PROJECTS]int;
+  feed_cache:[HOME_PROJECTS][4096]u8;feed_cache_n:[HOME_PROJECTS]int;
+  working_live:[24576]u8;working_live_n:int;feed_live:[16384]u8;feed_live_n:int;
+  pylon_rows:[MAX_PYLONS][HOME_ROW]u8;pylon_n:[MAX_PYLONS]int;
   time: f32; frames: int; data_age: f64; wall: int; wall_age: f64;
   width: f32; height: f32; dpr: f32;
   px: f32; py: f32; pointed: bool; touch: bool;
@@ -207,52 +197,52 @@ same :: (a: string, b: string) -> bool {
 
 // The tables into the state, once.
 read_tables :: (s: [] LandState) {
-  n := lo_int(rows(LAND_PROJECTS), MAX_PLOTS);
+  n := lo_int(rows(land_projects(s[..])), MAX_PLOTS);
   s[0].plots = n;
   at := 0;
   for k: 0..<n {
     p: Plot;
-    p.x = parse_f(cell(LAND_PROJECTS, at, 4)); p.z = parse_f(cell(LAND_PROJECTS, at, 5));
-    p.cluster = parse_int(cell(LAND_PROJECTS, at, 3));
-    p.done = parse_int(cell(LAND_PROJECTS, at, 6)); p.tasks = parse_int(cell(LAND_PROJECTS, at, 7));
-    p.mdone = parse_int(cell(LAND_PROJECTS, at, 9)); p.mtotal = parse_int(cell(LAND_PROJECTS, at, 10));
-    p.working = parse_int(cell(LAND_PROJECTS, at, 11));
+    p.x = parse_f(cell(land_projects(s[..]), at, 4)); p.z = parse_f(cell(land_projects(s[..]), at, 5));
+    p.cluster = parse_int(cell(land_projects(s[..]), at, 3));
+    p.done = parse_int(cell(land_projects(s[..]), at, 6)); p.tasks = parse_int(cell(land_projects(s[..]), at, 7));
+    p.mdone = parse_int(cell(land_projects(s[..]), at, 9)); p.mtotal = parse_int(cell(land_projects(s[..]), at, 10));
+    p.working = parse_int(cell(land_projects(s[..]), at, 11));
     p.commits = 0;
     s[0].plot[k] = p;
-    at = next_row(LAND_PROJECTS, at);
+    at = next_row(land_projects(s[..]), at);
   }
   at = 0;
-  while at < LAND_COMMITS.count {
-    k := parse_int(cell(LAND_COMMITS, at, 0));
+  while at < land_commits(s[..]).count {
+    k := parse_int(cell(land_commits(s[..]), at, 0));
     if k >= 0 && k < n && s[0].plot[k].commits < MAX_COMMITS {
       s[0].plot[k].commit_row[s[0].plot[k].commits] = at;
       s[0].plot[k].commits += 1;
     }
-    at = next_row(LAND_COMMITS, at);
+    at = next_row(land_commits(s[..]), at);
   }
   s[0].agents = 0; at = 0;
-  while at < LAND_WORKING.count && s[0].agents < MAX_AGENTS {
+  while at < land_working(s).count && s[0].agents < MAX_AGENTS {
     s[0].agent_row[s[0].agents] = at;
-    s[0].agent_plot[s[0].agents] = parse_int(cell(LAND_WORKING, at, 1));
+    s[0].agent_plot[s[0].agents] = parse_int(cell(land_working(s), at, 1));
     s[0].agents += 1;
-    at = next_row(LAND_WORKING, at);
+    at = next_row(land_working(s), at);
   }
   s[0].pylons = 0; at = 0;
-  while at < LAND_PYLONS.count && s[0].pylons < MAX_PYLONS {
+  while at < land_seed_pylons(s[..]).count && s[0].pylons < MAX_PYLONS {
     q: Pyl;
     q.row = at;
-    q.demo = same(cell(LAND_PYLONS, at, 0), "demo");
-    q.plot = parse_int(cell(LAND_PYLONS, at, 1));
-    q.x = parse_f(cell(LAND_PYLONS, at, 2)); q.z = parse_f(cell(LAND_PYLONS, at, 3));
-    fam := cell(LAND_PYLONS, at, 8);
+    q.demo = same(cell(land_seed_pylons(s[..]), at, 0), "demo");
+    q.plot = parse_int(cell(land_seed_pylons(s[..]), at, 1));
+    q.x = parse_f(cell(land_seed_pylons(s[..]), at, 2)); q.z = parse_f(cell(land_seed_pylons(s[..]), at, 3));
+    fam := cell(land_seed_pylons(s[..]), at, 8);
     q.family = ifx same(fam, "gpu") then FAM_GPU else ifx same(fam, "cpu") then FAM_CPU else FAM_UNIFIED;
-    st := cell(LAND_PYLONS, at, 7);
+    st := cell(land_seed_pylons(s[..]), at, 7);
     q.status = ifx same(st, "online") then ST_ONLINE else ifx same(st, "draining") then ST_DRAINING else ST_OFFLINE;
-    q.captured_status = q.status; q.valid_for = parse_int(cell(LAND_PYLONS, at, 24));
-    q.total = parse_int(cell(LAND_PYLONS, at, 11)); q.free = parse_int(cell(LAND_PYLONS, at, 12));
-    q.jobs = parse_int(cell(LAND_PYLONS, at, 20));
+    q.captured_status = q.status; q.valid_for = parse_int(cell(land_seed_pylons(s[..]), at, 24));
+    q.total = parse_int(cell(land_seed_pylons(s[..]), at, 11)); q.free = parse_int(cell(land_seed_pylons(s[..]), at, 12));
+    q.jobs = parse_int(cell(land_seed_pylons(s[..]), at, 20));
     if q.plot >= 0 && q.plot < n { s[0].pyl[s[0].pylons] = q; s[0].pylons += 1; }
-    at = next_row(LAND_PYLONS, at);
+    at = next_row(land_seed_pylons(s[..]), at);
   }
   s[0].gal_over = -1; s[0].gal_sel = -1;
   s[0].ready = true;
@@ -561,7 +551,7 @@ place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -
   if !q.ok || !inside(c.clip, q.x, q.y) { return at; }   // a place off screen keeps its name off too
   base := spot(c, fv(pl.x, 0, pl.z));
   v := at; d := p.d;
-  name := field(LAND_PROJECTS, k, 1);
+  name := field(land_projects(s[..]), k, 1);
   white := chrome(dimmed(ink(p, INK_WHITE), shown)); accent := dimmed(ink(p, INK_BRIGHT), shown);
   dim := dimmed(ink(p, INK_DIM), shown);
   hover := !s[0].touch && s[0].pointed && inside(was, s[0].px, s[0].py);
@@ -585,7 +575,7 @@ place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -
   if share > 0 { v = rule(out, v, bx, by, bx + bw * share, by, accent, 0.95 * shown); }
   y1 := by;
   if !p.phone {
-    ms := field(LAND_PROJECTS, k, 8);
+    ms := land_milestone(s,k);
     if ms.count > 0 {
       mb: [16] u8; mn := number(pl.mdone, mb[..]); mb[mn] = '/'; mn += 1;
       tb: [8] u8; tn := number(pl.mtotal, tb[..]);
@@ -786,8 +776,8 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
       cap := (ifx p.phone then 5.4f32 else 6.2f32) * p.d;
       side: f32 = ifx j % 2 == 0 then 1.0f32 else -1.0f32;
       x0 := top[0].x + side * 10 * p.d;
-      name := cell(LAND_WORKING, s[0].agent_row[a], 0);
-      task := cell(LAND_WORKING, s[0].agent_row[a], 2);
+      name := cell(land_working(s), s[0].agent_row[a], 0);
+      task := cell(land_working(s), s[0].agent_row[a], 2);
       room := (ifx p.phone then 120.0f32 else 180.0f32) * p.d;
       if side > 0 {
         v = put(out, v, name, x0, top[0].y - cap, cap, dimmed(pale, vig));
@@ -1035,7 +1025,7 @@ pylon_labels :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen) -> int {
     tip := spot(c, fv(q.x, machine_top(q) + beam_height(q) + 0.35, q.z));
     if !tip.ok || !inside(c.clip, tip.x, tip.y) { continue; }
     cap := 6.4 * d;
-    label := cell(LAND_PYLONS, q.row, 5);
+    label := pylon_value(s,q,5);
     lw := lo(text_width(label, cap, pale), 150 * d);
     v = put_fit(out, v, label, tip.x - lw * 0.5, tip.y, cap, ifx picked || on_pylon(s, i) then chrome(pale) else pale, 150 * d);
   }
@@ -1085,15 +1075,15 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
   q := s[0].pyl[i]; r := q.row;
   w := right - x;
   white := chrome(ink(p, INK_WHITE)); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
-  clock := land_capture_age(s);
-  v = put_fit(out, v, cell(LAND_PYLONS, r, 5), x, y, 11 * d, white, w - 50 * d);
+  clock := ifx q.live then hi_int(0,land_now(s)-q.received) else land_capture_age(s);
+  v = put_fit(out, v, pylon_value(s,q,5), x, y, 11 * d, white, w - 50 * d);
   y += 18 * d;
   // its state and its key
   tone := ifx q.status == ST_ONLINE then INK_COOL else ifx q.status == ST_DRAINING then INK_PALE else INK_DIM;
   word: string = ifx q.status == ST_ONLINE then "Online" else ifx q.status == ST_DRAINING then "Draining" else ifx q.status == ST_STALE then "Expired beacon" else "Offline";
   v = diamond(out, v, x + 3 * d, y - 3.4 * d, 2.6 * d, ink(p, ifx q.status == ST_ONLINE then INK_BLUE else tone), 1);
   v = put(out, v, word, x + 11 * d, y, 7 * d, ink(p, tone));
-  v = put(out, v, cell(LAND_PYLONS, r, 6), x + 11 * d + text_width(word, 7 * d, ink(p, tone)) + 12 * d, y, 7 * d, dim);
+  v = put(out, v, pylon_value(s,q,6), x + 11 * d + text_width(word, 7 * d, ink(p, tone)) + 12 * d, y, 7 * d, dim);
   y += 20 * d;
   // a square a slot, filled while busy
   busy := q.total - q.free;
@@ -1112,41 +1102,41 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
   y += 20 * d;
   hw: [64] u8;
   m := app(hw[..], 0, ifx q.family == FAM_GPU then "GPU, " else ifx q.family == FAM_CPU then "CPU, " else "Unified memory, ");
-  m = app_int(hw[..], m, parse_int(cell(LAND_PYLONS, r, 10))); m = app(hw[..], m, " GB");
+  m = app_int(hw[..], m, parse_int(pylon_value(s,q,10))); m = app(hw[..], m, " GB");
   v = kv(out, v, "Hardware", cast(string) hw[0..<m], x, right, y, p); y += 18 * d;
-  v = kv(out, v, "Models", cell(LAND_PYLONS, r, 13), x, right, y, p); y += 18 * d;
-  v = kv(out, v, "Takes", cell(LAND_PYLONS, r, 14), x, right, y, p); y += 24 * d;
-  v = section(out, v, "PROVIDER ACTIVITY AT CAPTURE", x, y, right, p);
+  v = kv(out, v, "Models", pylon_value(s,q,13), x, right, y, p); y += 18 * d;
+  v = kv(out, v, "Takes", pylon_value(s,q,14), x, right, y, p); y += 24 * d;
+  v = section(out, v, ifx q.live then "OBSERVED PROVIDER EVENTS" else "PROVIDER ACTIVITY AT CAPTURE", x, y, right, p);
   y += 20 * d;
   jb: [64] u8; jn := app_int(jb[..], 0, q.jobs); jn = app(jb[..], jn, " answers, ");
-  jn = app_int(jb[..], jn, parse_int(cell(LAND_PYLONS, r, 21))); jn = app(jb[..], jn, " statuses");
+  jn = app_int(jb[..], jn, (ifx q.live then q.updates else parse_int(pylon_value(s,q,21)))); jn = app(jb[..], jn, " statuses");
   v = kv(out, v, "Signed events", cast(string) jb[0..<jn], x, right, y, p); y += 18 * d;
-  avg := parse_int(cell(LAND_PYLONS, r, 22));
+  avg := parse_int(pylon_value(s,q,22));
   ab: [32] u8; an := ifx avg >= 0 then say_span(ab[..], 0, avg) else app(ab[..], 0, "Unknown");
   v = kv(out, v, "Mean reply delay", cast(string) ab[0..<an], x, right, y, p); y += 18 * d;
-  last := parse_int(cell(LAND_PYLONS, r, 23));
+  last := ifx q.live then (ifx q.last_answer>0 then hi_int(0,land_now(s)-q.last_answer) else -1) else parse_int(pylon_value(s,q,23));
   if q.demo && q.jobs > 0 && busy > 0 && pylon_active(q.status) {
     every := receipt_every(q);
     last = cast(int) floor(every * fract(s[0].time / every + cast(f32) i * 0.21));
-  } else if last >= 0 { last += clock; }
+  } else if last >= 0 && !q.live { last += clock; }
   lb: [32] u8; ln := ifx last >= 0 then app(lb[..], say_span(lb[..], 0, last), " ago") else app(lb[..], 0, "None yet");
   v = kv(out, v, "Last answer", cast(string) lb[0..<ln], x, right, y, p); y += 24 * d;
   v = section(out, v, "BEACON", x, y, right, p);
   y += 20 * d;
-  ob: [32] u8; on := say_span(ob[..], 0, parse_int(cell(LAND_PYLONS, r, 18)) + clock);
+  ob: [32] u8; on := say_span(ob[..], 0, parse_int(pylon_value(s,q,18)) + clock);
   if !pylon_active(q.status) { on = app(ob[..], 0, ifx q.status==ST_STALE then "Unknown (expired)" else "Offline"); }
   v = kv(out, v, "Online for", cast(string) ob[0..<on], x, right, y, p); y += 18 * d;
   // a live beacon comes again within the minute; an offline one's age just grows
-  heard := parse_int(cell(LAND_PYLONS, r, 19)) + clock;
+  heard := parse_int(pylon_value(s,q,19)) + clock;
   hb: [32] u8; hn := app(hb[..], say_span(hb[..], 0, heard), " ago");
-  v = kv(out, v, "Observed in capture", cast(string) hb[0..<hn], x, right, y, p); y += 18 * d;
-  pools := cell(LAND_PYLONS, r, 16);
+  v = kv(out, v, ifx q.live then "Last signed beacon" else "Observed in capture", cast(string) hb[0..<hn], x, right, y, p); y += 18 * d;
+  pools := pylon_value(s,q,16);
   if pools.count > 0 { v = kv(out, v, "Pools", pools, x, right, y, p); y += 18 * d; }
-  price := parse_int(cell(LAND_PYLONS, r, 17));
+  price := parse_int(pylon_value(s,q,17));
   pb: [32] u8; pn := 0;
   if price > 0 { pn = app(pb[..], app_int(pb[..], 0, price), " msat"); }
-  else if price == 0 || same(cell(LAND_PYLONS, r, 15), "free-v1") { pn = app(pb[..], 0, "Free"); }
-  else { pn = app(pb[..], 0, cell(LAND_PYLONS, r, 15)); }
+  else if price == 0 || same(pylon_value(s,q,15), "free-v1") { pn = app(pb[..], 0, "Free"); }
+  else { pn = app(pb[..], 0, pylon_value(s,q,15)); }
   v = kv(out, v, "Price", cast(string) pb[0..<pn], x, right, y, p); y += 18 * d;
   ys[0] = y;
   return v;
@@ -1247,7 +1237,7 @@ button :: (out: [] f32, at: int, b: Box, text: string, main: bool, hover: bool, 
 
 // The feed: what agents are on and what landed, sliding up a row at a time.
 FEED_STEP :: 3.4;   // seconds a row holds
-feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
+feed :: (out: [] f32, at: int, s:[]LandState, l: Layout, p: Pen, t: f32, light: f32) -> int {
   if light <= 0 { return at; }
   d := p.d; b := l.feed;
   v := frame(out, at, b, 10 * d, ink(p, INK_BRIGHT), 0.8 * light, p);
@@ -1260,7 +1250,7 @@ feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
   beat := 0.55 + 0.45 * sin(p.time * 2.4);
   v = diamond(out, v, b.x1 - 18 * d, ty - cap * 0.5, 2.6 * d, ink(p, INK_BLUE), beat * light);
   v = rule(out, v, b.x0 + 12 * d, ty + 8 * d, b.x1 - 12 * d, ty + 8 * d, ink(p, INK_DIM), 0.12 * light);
-  n := rows(LAND_FEED);
+  n := rows(land_feed(s));
   if n == 0 { return v; }
   row_h := (ifx l.phone then 30.0f32 else 40.0f32) * d;
   top := ty + 16 * d; bottom := b.y1 - 8 * d;
@@ -1275,12 +1265,12 @@ feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
     // rows fade in at the bottom and out at the top
     shade := clamp((y - top) / (row_h * 0.8), 0, 1) * clamp((bottom - y + row_h * 0.3) / (row_h * 0.6), 0, 1) * light;
     if shade <= 0.01 { continue; }
-    at_row := row_start(LAND_FEED, r);
-    pk := parse_int(cell(LAND_FEED, at_row, 0));
-    kind := cell(LAND_FEED, at_row, 1);
-    who := cell(LAND_FEED, at_row, 2);
-    text := cell(LAND_FEED, at_row, 3);
-    name := field(LAND_PROJECTS, pk, 1);
+    at_row := row_start(land_feed(s), r);
+    pk := parse_int(cell(land_feed(s), at_row, 0));
+    kind := cell(land_feed(s), at_row, 1);
+    who := cell(land_feed(s), at_row, 2);
+    text := cell(land_feed(s), at_row, 3);
+    name := field(land_projects(s[..]), pk, 1);
     x := b.x0 + 16 * d;
     small := 6.4 * d;
     line1 := y - (ifx l.phone then 7.0f32 else 9.0f32) * d;
@@ -1606,7 +1596,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
   k := card_place(s);
   if s[0].card == CARD_PLACE && k >= 0 {
     pl := s[0].plot[k];
-    name := field(LAND_PROJECTS, k, 1);
+    name := field(land_projects(s[..]), k, 1);
     v = put_fit(out, v, name, x, y, title, white, w - 110 * d);
     buf: [16] u8;
     pct := ifx pl.tasks > 0 then (pl.done * 100 + pl.tasks / 2) / pl.tasks else 0;
@@ -1619,7 +1609,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     v = rule(out, v, x, y, right, y, dim, 0.3);
     if share > 0 { v = rule(out, v, x, y, x + w * share, y, accent, 1); }
     y += 22 * d;
-    ms := field(LAND_PROJECTS, k, 8);
+    ms := land_milestone(s,k);
     if ms.count > 0 {
       mb: [16] u8; mn := number(pl.mdone, mb[..]); mb[mn] = '/'; mn += 1;
       tb: [8] u8; tn := number(pl.mtotal, tb[..]);
@@ -1643,8 +1633,8 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     for a: 0..<s[0].agents {
       if s[0].agent_plot[a] != k { continue; }
       if on >= 4 { more += 1; continue; }
-      who := cell(LAND_WORKING, s[0].agent_row[a], 0);
-      task := cell(LAND_WORKING, s[0].agent_row[a], 2);
+      who := cell(land_working(s), s[0].agent_row[a], 0);
+      task := cell(land_working(s), s[0].agent_row[a], 2);
       nw := lo(text_width(who, 7 * d, pale), w * 0.45);
       v = put_fit(out, v, who, x, y, 7 * d, pale, w * 0.45);
       v = put_fit(out, v, task, x + nw + 10 * d, y, 7 * d, body, w - nw - 10 * d);
@@ -1659,15 +1649,15 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     }
     y += 10 * d;
     // the last commits
-    v = section(out, v, "LAST COMMITS", x, y, right, p);
+    v = section(out, v, "RECENT GIT / BUILD SNAPSHOT", x, y, right, p);
     y += 18 * d;
     for j: 0..<lo_int(3, pl.commits) {
       row := pl.commit_row[pl.commits - 1 - j];
-      hash := cell(LAND_COMMITS, row, 1);
+      hash := cell(land_commits(s[..]), row, 1);
       hk := dim; hk.red = GREY_LIGHT; hk.green = GREY_LIGHT; hk.blue = GREY_LIGHT;
       hw := text_width(hash[0..<lo_int(7, hash.count)], 6.8 * d, hk);
       v = put(out, v, hash[0..<lo_int(7, hash.count)], x, y, 6.8 * d, hk);
-      v = put_fit(out, v, cell(LAND_COMMITS, row, 3), x + hw + 10 * d, y, 7 * d, body, w - hw - 10 * d);
+      v = put_fit(out, v, cell(land_commits(s[..]), row, 3), x + hw + 10 * d, y, 7 * d, body, w - hw - 10 * d);
       y += 17 * d;
     }
     y += 10 * d;
@@ -1677,7 +1667,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     rx := x; any := false;
     for j: 0..<s[0].plots {
       if j == k || s[0].plot[j].cluster != pl.cluster { continue; }
-      n2 := field(LAND_PROJECTS, j, 1);
+      n2 := field(land_projects(s[..]), j, 1);
       nw := text_width(n2, 7 * d, pale);
       if rx + nw > right { rx = x; y += 16 * d; }
       v = put(out, v, n2, rx, y, 7 * d, pale);
@@ -1703,7 +1693,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     what: string = ifx w0.gait == Gait.stand then (ifx w0.talking then "Talking at" else "Looking round") else (ifx w0.gait == Gait.run then "Running past" else "Walking past");
     ww := text_width(what, 7.2 * d, body);
     v = put(out, v, what, x, y, 7.2 * d, body);
-    v = put(out, v, field(LAND_PROJECTS, near, 1), x + ww + 6 * d, y, 7.2 * d, pale);
+    v = put(out, v, field(land_projects(s[..]), near, 1), x + ww + 6 * d, y, 7.2 * d, pale);
     y += 22 * d;
   } else if s[0].card == CARD_PYLON && s[0].card_k >= 0 && s[0].card_k < s[0].pylons {
     ys: [1] f32; ys[0] = y;
@@ -1711,17 +1701,17 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     y = ys[0] + 4 * d;
   } else if s[0].card == CARD_AGENT && k >= 0 {
     a := s[0].card_k;
-    v = put_fit(out, v, cell(LAND_WORKING, s[0].agent_row[a], 0), x, y, title, white, w - 50 * d);
+    v = put_fit(out, v, cell(land_working(s), s[0].agent_row[a], 0), x, y, title, white, w - 50 * d);
     y += 18 * d;
     v = put(out, v, "Agent", x, y, 7 * d, dim);
     y += 24 * d;
     v = section(out, v, "WORKING ON", x, y, right, p);
     y += 18 * d;
-    v = put_fit(out, v, cell(LAND_WORKING, s[0].agent_row[a], 2), x, y, 7.2 * d, body, w);
+    v = put_fit(out, v, cell(land_working(s), s[0].agent_row[a], 2), x, y, 7.2 * d, body, w);
     y += 17 * d;
     nm := "in ";
     v = put(out, v, nm, x, y, 7 * d, dim);
-    v = put(out, v, field(LAND_PROJECTS, k, 1), x + text_width(nm, 7 * d, dim) + 2 * d, y, 7 * d, pale);
+    v = put(out, v, field(land_projects(s[..]), k, 1), x + text_width(nm, 7 * d, dim) + 2 * d, y, 7 * d, pale);
     y += 22 * d;
   }
   if k >= 0 {
@@ -1781,7 +1771,7 @@ go_project :: (s: [] LandState, k: int) {
   buf: [80] u8; n := 0;
   pre := "/projects/";
   for i: 0..<pre.count { buf[n] = pre[i]; n += 1; }
-  slug := field(LAND_PROJECTS, k, 0);
+  slug := field(land_projects(s[..]), k, 0);
   for i: 0..<lo_int(slug.count, 60) { buf[n] = slug[i]; n += 1; }
   go(s, cast(string) buf[0..<n]);
 }
@@ -1912,12 +1902,16 @@ coaxial_land_action_done :: (s: [] LandState) #export_c { if s.count > 0 { s[0].
 
 coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if s[0].golden {s[0].wall=HOME_GOLD_CAPTURED+600;s[0].wall_age=s[0].data_age;}
   if !s[0].ready { read_tables(s); s[0].card_k = -1; }
   step := clamp(dt, 0, 0.1);
   s[0].time += step; s[0].frames += 1;
   if dt > 0 { s[0].data_age += cast(f64) lo(dt, 86400); }
   age := land_capture_age(s);
-  for i:0..<s[0].pylons { s[0].pyl[i].status = land_beacon_state(s[0].pyl[i].captured_status,s[0].pyl[i].demo,s[0].pyl[i].valid_for,age,s[0].wall>=LAND_CAPTURED); }
+  for i:0..<s[0].pylons {
+    q:=s[0].pyl[i];
+    s[0].pyl[i].status=ifx q.live then (ifx s[0].wall<=0 || land_now(s)>=q.valid_until then ST_STALE else q.captured_status) else land_beacon_state(q.captured_status,q.demo,q.valid_for,age,s[0].wall>=LAND_CAPTURED);
+  }
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
   d := hi(dpr, 1);
   t := s[0].time;
@@ -1946,23 +1940,22 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   hover := !s[0].touch && s[0].pointed;
   sheet := l.phone && s[0].card != CARD_NONE;
   v = wordmark(out, v, l, p);
-  capture: [128] u8; cn := app(capture[..],0,"Verified capture ");
-  if s[0].wall>=LAND_CAPTURED { cn = say_span(capture[..],cn,land_capture_age(s)); cn = app(capture[..],cn," old"); }
-  else { cn = app(capture[..],cn,"/ time unavailable"); }
+  capture:[192]u8;cn:=0;net:=s[0].net[..];ready:=0;for k:0..<HOME_PROJECTS {if (net[0].ready&(1<<k))!=0 {ready+=1;}}
+  if !net[0].started {cn=app(capture[..],cn,"Build snapshot / connecting to Nostr");}
+  else if net[0].watch_state!=2 {cn=app(capture[..],cn,"Reconnecting / verified cached data");}
+  else if net[0].stalled {cn=app(capture[..],cn,"Refresh incomplete / verified cached data");}
+  else {cn=app(capture[..],cn,ifx ready==HOME_PROJECTS then "Live Nostr / " else "Syncing Nostr / ");cn=app_int(capture[..],cn,ready);cn=app(capture[..],cn," of 6 projects");}
   if !sheet {
     if l.phone {
-      v = put_fit(out,v,cast(string)capture[0..<cn],16*d,68*d,7*d,ink(p,INK_PALE),width-32*d);
-      v = put(out,v,"People simulated",16*d,82*d,7*d,ink(p,INK_DIM));
-    } else {
-      cn = app(capture[..],cn," / people simulated");
-      v = put_fit(out,v,cast(string)capture[0..<cn],16*d,height-14*d,7*d,ink(p,INK_PALE),width-32*d);
-    }
+      v=put_fit(out,v,cast(string)capture[0..<cn],16*d,68*d,7*d,ink(p,INK_PALE),width-32*d);
+      v=put_fit(out,v,"Live Pylons and project claims / git history at deploy",16*d,82*d,6.5*d,ink(p,INK_DIM),width-32*d);
+    }else {v=put_fit(out,v,cast(string)capture[0..<cn],16*d,height-14*d,7*d,ink(p,INK_PALE),width-32*d);}
   }
   v = button(out, v, l.login, "LOG IN", false, hover && inside(l.login, s[0].px, s[0].py), false, p, hud);
   feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
   if !sheet {
     v = button(out, v, l.make, "MAKE YOUR OWN", true, hover && inside(l.make, s[0].px, s[0].py), false, p, hud);
-    v = feed(out, v, l, p, t, feed_on);
+    v = feed(out, v, s, l, p, t, feed_on);
     glass(uniforms, 0, l.feed, 10 * d, 0.92 * feed_on, 0);
     glass(uniforms, 1, l.make, 7 * d, 0.95 * hud, 1);
   } else {
@@ -2014,13 +2007,13 @@ coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 #test "the tables read: every place, its commits and its agents" {
   s: [1] LandState;
   read_tables(s[..]);
-  #assert s[0].plots == rows(LAND_PROJECTS) && s[0].plots > 3;
+  #assert s[0].plots == rows(land_projects(s[..])) && s[0].plots > 3;
   for k: 0..<s[0].plots {
     #assert s[0].plot[k].tasks >= s[0].plot[k].done;
     #assert s[0].plot[k].commits > 0 && s[0].plot[k].commits <= MAX_COMMITS;
   }
   #assert s[0].agents > 0;
-  #assert rows(LAND_PEOPLE) >= PEOPLE;
+  #assert rows(LAND_PEOPLE)==0; // production has no simulated people
 }
 
 #test "places sit apart, and related ones together" {
@@ -2034,15 +2027,18 @@ coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   }
 }
 
-#test "a frame draws, on a laptop and on a phone, within the vertex budget" {
+#test "a laptop frame draws within the vertex budget" {
   s: [1] LandState; u: [UNIFORM_FLOATS] f32;
   out: [TEST_VERTICES * VERTEX_FLOATS] f32;
   s[0].time = 9;
   n := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
   #assert n > 1000 && n < TEST_VERTICES && n % 6 == 0 && u[3] == 1;
-  s2: [1] LandState;
-  s2[0].time = 9;
-  m := coaxial_land_frame(s2[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false);
+}
+#test "a phone frame draws within the vertex budget" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  s[0].time = 9;
+  m := coaxial_land_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false);
   #assert m > 1000 && m < TEST_VERTICES;
 }
 
@@ -2190,7 +2186,7 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
 #test "the Pylons read: each in its project's bay, off the places and apart" {
   s: [1] LandState;
   read_tables(s[..]);
-  #assert s[0].pylons == rows(LAND_PYLONS);   // the relay's Pylons at capture: any number, none too
+  #assert s[0].pylons == rows(land_seed_pylons(s[..]));   // the relay's Pylons at capture: any number, none too
   for i: 0..<s[0].pylons {
     q := s[0].pyl[i];
     #assert q.plot >= 0 && q.plot < s[0].plots && q.total >= q.free && q.free >= 0;

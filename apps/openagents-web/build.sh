@@ -92,16 +92,11 @@ deadgears=$!
 # /realms/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
-# /new-land: the new landing's first mock-up (newland.coax), development only:
-# a release build skips it and deploy.sh leaves new-land/ out (new-land/DEV-ONLY).
-newland=""
-if [[ "${COAXIAL_MODE:-dev}" != release ]]; then
-  # The reader and protocol decisions are shared Coax; Bun moves public
-  # socket/file/git bytes. A failed capture leaves the last complete one.
-  bun "$here/../../coax/web/project/landing.ts" || echo "new-land: keeping its last complete verified capture" >&2
-  "$here/../../coax/web/wasm.sh" "$here/newland.coax" "$here/newland-face.c" "$here/build/newland.wasm" &
-  newland=$!
-fi
+# The public homepage and /new-land alias. Warm start is real Coax-verified
+# public data; open pages independently watch and refresh Nostr in Coax.
+bun "$here/../../coax/web/project/landing.ts" || echo "home: keeping its last complete verified warm start" >&2
+"$here/../../coax/web/project/build-home.sh" "$here/build/newland.wasm" &
+newland=$!
 # /verse and /verse/galaxy: the playtest's landing and galaxy.
 "$here/../../coax/web/wasm.sh" "$here/verse.coax" "$here/verse-face.c" "$here/build/verse.wasm" &
 verse_app=$!

@@ -17,7 +17,7 @@ async function artifact() {
     path=resolve(path);if(sources.has(path))return;sources.add(path)
     for(const m of readFileSync(path,"utf8").matchAll(/^\s*#load\s+"([^"]+)"/gm))collect(resolve(dirname(path),m[1]))
   }
-  for(const name of ["landing-nostr.coax","landing-fold.coax"])collect(join(import.meta.dir,name))
+  for(const name of ["landing-browser.coax","landing-fold.coax"])collect(join(import.meta.dir,name))
   for(const name of ["landing-reader-face.c","landing-fold-face.c","build-reader.sh"])sources.add(join(import.meta.dir,name))
   sources.add(join(ROOT,"coax/web/toolchain.sh"));sources.add(join(ROOT,"coax/bin/coax"))
   const hash=createHash("sha256");for(const path of [...sources].sort())hash.update(path).update("\0").update(readFileSync(path)).update("\0")

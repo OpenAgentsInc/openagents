@@ -1,11 +1,10 @@
-// The /new-land development capture: shared Coax Nostr verifies and folds each project's tasks from its relay and its recent commits from git, written as
+// The public homepage warm start: shared Coax Nostr verifies and folds each project's tasks from its relay and its recent commits from git, written as
 // Coax tables into apps/openagents-web/newland-data.coax. A fixture: the page
 // draws what this captured until it reads the relay itself.
 //
 //   bun landing.ts
 import { readFileSync, writeFileSync, renameSync } from "node:fs"
 import { join } from "node:path"
-import { createHash } from "node:crypto"
 import { PublicRelay, reader, projectFilters, followupFilters } from "./landing-reader"
 import { pylons, pylonNow, pylonRows, PYLON_COLUMNS } from "./pylons"
 
@@ -134,12 +133,8 @@ for (const [k, [slug, row]] of rows0.entries()) {
   console.error(`landing: ${slug} ${log.length} commits (${taskRows[k].length} recorded by its tasks)`)
 }
 feed.sort((a, b) => b[0] - a[0])
-// The people are simulated: made-up names, each with a key made from its name, shown short.
-const NAMES = ["ada", "rui", "noor", "theo", "lena", "sam", "ivo", "zuri", "kai", "mira", "otto", "bea", "finn", "yuki"]
-const people = NAMES.map((n) => {
-  const npub = reader.npub(createHash("sha256").update(`new-land person ${n}`).digest("hex"))
-  return `${n}|${npub.slice(0, 9)}...${npub.slice(-4)}`
-})
+// People are shown only when a real public presence source is integrated.
+const people: string[] = []
 // The Pylons: the real beacons on the relay (pylons.ts PYLON_SOURCE; "demo" for the made-up machines).
 const places = new Map(PLACES.map(([slug, , x, z], k) => [slug, [k, x, z] as [number, number, number]]))
 const pylonList = await pylons(relayOverride??"wss://relay.openagents.com", (url) => PublicRelay.open(url))
@@ -159,7 +154,7 @@ writeFileSync(temporary, [
   `LAND_WORKING :: ${lit(working)};`,
   "// LAND_FEED, newest first: project|WORKING, DONE or COMMIT|who or hash|text",
   `LAND_FEED :: ${lit(feed.slice(0, 24).map((f) => f[1]))};`,
-  "// LAND_PEOPLE (simulated): name|short npub",
+  "// LAND_PEOPLE: empty; no simulated people",
   `LAND_PEOPLE :: ${lit(people)};`,
   "// LAND_COMMITS, oldest first per project: project|hash|author|subject",
   `LAND_COMMITS :: ${lit(commits)};`,
@@ -167,6 +162,21 @@ writeFileSync(temporary, [
   `LAND_PYLONS :: ${lit(pylonTable)};`,
   "",
 ].join("\n"))
+// Public identities for the runtime watcher are generated from the exact
+// successfully captured project configuration, rather than copied by hand.
+if (!relayOverride && out === join(ROOT, "apps/openagents-web/newland-data.coax")) {
+  const configs = PLACES.map(([slug]) => JSON.parse(readFileSync(join(ROOT,"apps/openagents-web/projects",slug,"project.json"),"utf8")))
+  if (configs.some(c=>c.relay!==configs[0].relay)) throw Error("home: featured projects need an explicit relay routing migration")
+  const target = join(ROOT,"apps/openagents-web/newland-targets.coax"), staged=target+`.${process.pid}`
+  writeFileSync(staged,["// Generated public homepage identities. No signing keys.",
+    `HOME_PROJECTS :: ${PLACES.length};`,
+    `HOME_SLUGS :: [${PLACES.length}]string.[${PLACES.map(([slug])=>JSON.stringify(slug)).join(",")}];`,
+    `HOME_KEYS :: [${PLACES.length}]string.[${configs.map(c=>JSON.stringify(c.pubkey)).join(",")}];`,
+    `HOME_REPOS :: [${PLACES.length}]string.[${configs.map(c=>JSON.stringify(c.repo.d)).join(",")}];`,
+    `HOME_KEY_JSON :: ${JSON.stringify(JSON.stringify(configs.map(c=>c.pubkey)))};`,
+    `HOME_RELAY :: ${JSON.stringify(configs[0].relay)};`,""].join("\n"))
+  renameSync(staged,target)
+}
 renameSync(temporary, out)
 console.error(`landing: wrote verified capture ${out}`)
 process.exit(0)

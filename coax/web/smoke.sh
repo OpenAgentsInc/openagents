@@ -73,7 +73,7 @@ s_verse = first[4 + len(pages) + len(moved) + len(extra):]
 check(s == 200 and h.get("content-type", "").startswith("text/html"), f"/ is a page ({s})")
 check("no-cache" in h.get("cache-control", ""), "/ is checked on every visit (no-cache)")
 html = page.decode("utf-8", "replace")
-check('data-app="splash"' in html, "/ runs the splash app")
+check('data-app="newland"' in html, "/ runs the live network homepage")
 check("<!--" not in html and "/*" not in html, "/ ships no comments")
 check(re.search(r"<main[^>]*>\s*\S[\s\S]*?</main>", html) is not None and "<title>" in html, "/ keeps its title and the hidden text for agents")
 files = sorted(set(re.findall(r'(?:src|data-wasm|data-wgsl)="(/[^"]+)"', html)))

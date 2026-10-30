@@ -1,0 +1,7 @@
+// Generated public homepage identities. No signing keys.
+HOME_PROJECTS :: 6;
+HOME_SLUGS :: [6]string.["coax","psionic","openagents-desktop","coder","verse","planetary-villa"];
+HOME_KEYS :: [6]string.["9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575","7fa6eb9366eead55197f55259f8702acc1656bd4663de6e474cbbb3dc9fbd3fa","75b7f23762e03acb12e68cdb864e85b3bad89e08bf513583ef47e6637c2b0c89","ba065d4fe884fa5f7468ef735a10c092e28212a513b5d137b73a53570f9e1a1d","951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18","f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7"];
+HOME_REPOS :: [6]string.["openagents","openagents","openagents","openagents","openagents","openagents"];
+HOME_KEY_JSON :: "[\"9ef92e341b43ebc5617a75cf7eca7e2e30fae41e08a0614a344d851d98731575\",\"7fa6eb9366eead55197f55259f8702acc1656bd4663de6e474cbbb3dc9fbd3fa\",\"75b7f23762e03acb12e68cdb864e85b3bad89e08bf513583ef47e6637c2b0c89\",\"ba065d4fe884fa5f7468ef735a10c092e28212a513b5d137b73a53570f9e1a1d\",\"951b70f9fa97d8214e0c9f3ff392a1dd1668e61561ef21a2a69168d382452e18\",\"f841614afa0210523f6f4038fe85ce7d83cacdc2098ba60d63128f064088e0a7\"]";
+HOME_RELAY :: "wss://relay.openagents.com";

@@ -1,5 +1,5 @@
 /* Scalar effects ABI for the read-only build tool. No Nostr policy here. */
-#include "landing-nostr.h"
+#include "landing-browser.h"
 #include <stdint.h>
 #define EXPORT(name) __attribute__((export_name(name)))
 #define INPUT_CAP 1048576
@@ -7,6 +7,7 @@
 unsigned char nl_inputs[3][INPUT_CAP], nl_output_bytes[OUTPUT_CAP];
 int64_t nl_output_count;
 static coax_t_LrQuery query;
+static coax_t_LbSeen activity_seen;
 static coax_v_t_LrQuery q(void) {return (coax_v_t_LrQuery){&query,1};}
 static coax_string in(int i,int n) {return (coax_string){(const char *)nl_inputs[i],n>=0 && n<=INPUT_CAP?n:0};}
 static coax_v_u8 out(void) {return (coax_v_u8){nl_output_bytes,OUTPUT_CAP};}
@@ -26,3 +27,5 @@ EXPORT("nl_newer") int32_t newer(int64_t g,int64_t t,int64_t hg,int64_t ht) {ret
 EXPORT("nl_budget") int32_t budget(int64_t events,int64_t bytes) {return lr_capture_budget(events,bytes);}
 EXPORT("nl_filter") int32_t filter(int32_t mode,int32_t key_n,int32_t value_n) {nl_output_count=lr_filter(mode,in(0,key_n),in(1,value_n),out());return nl_output_count>=0;}
 EXPORT("nl_stats") int32_t stats(int32_t work_n,int32_t requests_n,int32_t key_n,int64_t now) {nl_output_count=lr_stats(in(0,work_n),in(1,requests_n),in(2,key_n),now,out());return nl_output_count>=0;}
+int64_t home_watch_request(int64_t mode,int64_t keys_n,int64_t now) {nl_output_count=lb_begin((coax_v_t_LbSeen){&activity_seen,1},mode,in(1,(int)keys_n),now,out());return nl_output_count;}
+int64_t home_watch_message(int64_t text_n,int64_t keys_n,int64_t now) {coax_t_LbMessage r=lb_message((coax_v_t_LbSeen){&activity_seen,1},in(0,(int)text_n),in(1,(int)keys_n),now,out());nl_output_count=r.written;return r.code;}

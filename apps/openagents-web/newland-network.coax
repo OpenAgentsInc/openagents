@@ -1,0 +1,239 @@
+// Live homepage: two generic socket pipes, Coax verification, bounded
+// historical catch-up and atomic per-project publication. No signing keys.
+#load "socket.coax";
+#load "../../coax/lib/nostr/json.coax";
+#load "newland-targets.coax";
+home_clear :: (slot:int)->int #foreign;
+home_push :: (slot:int,byte:int)->int #foreign;
+home_output_size :: ()->int #foreign;
+home_output_byte :: (i:int)->int #foreign;
+home_copy_output :: (slot:int)->int #foreign;
+home_call :: (op:int,a:int,b:int,now:int)->int #foreign;
+home_wall :: ()->int #foreign;
+HOME_ROW :: 2048;
+HOME_KNOWN :: 32768;
+HomeNet :: struct {
+  pipe:[1]Pipe;started:bool;beacon_ended:bool;watch:int;socket:int;watch_state:int;query_state:int;
+  watch_at:f64;query_at:f64;retry_watch:f64;retry_query:f64;now:f64;due:f64;
+  busy:bool;stalled:bool;project:int;stage:int;batch:int;initial:int;dirty:int;ready:int;refused:int;refreshes:int;events:int;bytes:int;
+}
+HomeIssue :: struct {id:string;kind:string;status:string;title:string;parent:string;rank:string;worker:string;claimed:int;at:int;commit:string;}
+#test "live projections preserve counts, sort claims and refuse malformed input before publication" {
+  s:[1]LandState;read_tables(s[..]);
+  text:="{\"issues\":[{\"id\":\"a\",\"kind\":\"task\",\"status\":\"resolved\",\"title\":\"done\",\"claimed_by\":\"\",\"status_at\":10},{\"id\":\"b\",\"kind\":\"task\",\"status\":\"open\",\"title\":\"real work\",\"claimed_by\":\"worker\",\"claimed_at\":11}]}";
+  #assert hn_project(s[..],0,text,100);
+  #assert s[0].plot[0].tasks==2 && s[0].plot[0].done==1 && s[0].plot[0].working==1 && s[0].agents==1;
+  before:=s[0].plot[0].tasks;#assert !hn_project(s[..],0,"{}",100) && s[0].plot[0].tasks==before;
+  #assert hn_field("{\"nested\":{\"x\":1}}","nested")=="{\"x\":1}";
+  #assert hn_number("{\"n\":12}","n")==12 && hn_string("{\"s\":\"hi\"}","s")=="hi";
+}
+#test "live beacons replace only newer observations and provider events update real counters" {
+  #assert hn_newer(8,1,7,2) && hn_newer(7,3,7,2) && !hn_newer(7,2,7,2) && !hn_newer(6,9,7,2);
+  s:[1]LandState;s[0].pylons=1;s[0].pyl[0].live=true;s[0].pylon_n[0]=3;s[0].pylon_rows[0][0]='k';
+  #assert hn_raw_json("[]",JSON_ARRAY)=="[]";
+}
+#test "a refused refresh marks cached state without clearing the ready projection" {
+  s:[1]LandState;s[0].net[0].ready=63;s[0].net[0].now=10;
+  hn_fail(s[..]);#assert s[0].net[0].stalled && s[0].net[0].ready==63;
+  #assert s[0].net[0].retry_query==13 && s[0].net[0].refused==1;
+}
+hn_raw_json :: (text:string,kind:int)->string {j:[1]Json;json_start(j[..],text);if json_next(j[..])!=kind {return "";}return text;}
+hn_raw :: (j:[]Json,t:int)->string {
+  if t==JSON_STRING {return j[0].text[j[0].from-1..<j[0].to+1];}
+  if t==JSON_OBJECT || t==JSON_ARRAY {from:=j[0].from;if !json_skip(j) {return "";}return j[0].text[from..<j[0].at];}return json_text(j);
+}
+hn_field :: (text:string,name:string)->string {
+  j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return "";}
+  while true {t:=json_next(j[..]);if t==JSON_OBJECT_END || t==JSON_ERROR || t==JSON_END {break;}if t!=JSON_STRING || !j[0].key {return "";}key:=json_text(j[..]);t=json_next(j[..]);value:=hn_raw(j[..],t);if key==name {return value;}}
+  return "";
+}
+hn_string :: (text:string,name:string)->string {v:=hn_field(text,name);return ifx v.count>=2 && v[0]=='"' then v[1..<v.count-1] else "";}
+hn_number :: (text:string,name:string)->int {v:=json_int(hn_field(text,name));return ifx v.ok then v.value else 0;}
+hn_cell :: (out:[]u8,at:int,raw:string,limit:int)->int {
+  decoded:[4096]u8;n:=json_unescape(raw,decoded[..]);if n<0 {return -1;}end:=lo_int(n,limit);p:=at;
+  for i:0..<end {c:=decoded[i];if c<32 || c=='|' || c=='\\' || c=='"' {c=' ';}if c>126 {continue;}if p<0 || p>=out.count {return -1;}out[p]=c;p+=1;}
+  if end<n {p=json_raw(out,p,"...");}return p;
+}
+hn_put :: (slot:int,text:string)->bool {if home_clear(slot)!=1 {return false;}for i:0..<text.count {if home_push(slot,cast(int)text[i])!=1 {return false;}}return true;}
+hn_output :: (out:[]u8)->int {n:=home_output_size();if n<0 || n>out.count {return -1;}for i:0..<n {v:=home_output_byte(i);if v<0 {return -1;}out[i]=cast(u8)v;}return n;}
+hn_done :: (status:string)->bool {return status=="resolved" || status=="closed";}
+hn_before :: (a:string,b:string)->bool {for i:0..<lo_int(a.count,b.count) {if a[i]!=b[i] {return a[i]<b[i];}}return a.count<b.count;}
+hn_newer :: (generation:int,observed:int,held_generation:int,held_observed:int)->bool {return generation>held_generation || (generation==held_generation && observed>held_observed);}
+land_now :: (s:[]LandState)->int {return ifx s[0].net[0].started then s[0].wall else s[0].wall+hi_int(0,cast(int)(s[0].data_age-s[0].wall_age));}
+land_projects :: (s:[]LandState)->string {return ifx s[0].golden then HOME_GOLD_PROJECTS else LAND_PROJECTS;}
+land_commits :: (s:[]LandState)->string {return ifx s[0].golden then HOME_GOLD_COMMITS else LAND_COMMITS;}
+land_seed_pylons :: (s:[]LandState)->string {return ifx s[0].golden then HOME_GOLD_PYLONS else LAND_PYLONS;}
+land_working :: (s:[]LandState)->string {if s[0].golden {return HOME_GOLD_WORKING;}return ifx s[0].live_data then cast(string)s[0].working_live[0..<s[0].working_live_n] else LAND_WORKING;}
+land_feed :: (s:[]LandState)->string {if s[0].golden {return HOME_GOLD_FEED;}return ifx s[0].live_data then cast(string)s[0].feed_live[0..<s[0].feed_live_n] else LAND_FEED;}
+land_milestone :: (s:[]LandState,k:int)->string {return ifx s[0].plot[k].verified_at>0 then cast(string)s[0].plot[k].milestone[0..<s[0].plot[k].milestone_n] else field(land_projects(s),k,8);}
+pylon_value :: (s:[]LandState,q:Pyl,col:int)->string {return ifx q.live then cell(cast(string)s[0].pylon_rows[q.row][0..<s[0].pylon_n[q.row]],0,col) else cell(land_seed_pylons(s),q.row,col);}
+hn_merge :: (s:[]LandState) {
+  work:[HOME_PROJECTS*12]string;feed_rows:[HOME_PROJECTS*12]string;wn:=0;fn:=0;
+  for k:0..<HOME_PROJECTS {
+    text:=cast(string)s[0].work_cache[k][0..<s[0].work_cache_n[k]];at:=0;
+    while at<text.count && wn<work.count {end:=at;while end<text.count && text[end]!=10 {end+=1;}work[wn]=text[at..<end];wn+=1;at=end+1;}
+    text=cast(string)s[0].feed_cache[k][0..<s[0].feed_cache_n[k]];at=0;
+    while at<text.count && fn<feed_rows.count {end:=at;while end<text.count && text[end]!=10 {end+=1;}feed_rows[fn]=text[at..<end];fn+=1;at=end+1;}
+  }
+  for i:0..<wn {for j:i+1..<wn {if parse_int(cell(work[j],0,3))>parse_int(cell(work[i],0,3)) {tmp:=work[i];work[i]=work[j];work[j]=tmp;}}}
+  for i:0..<fn {for j:i+1..<fn {if parse_int(cell(feed_rows[j],0,4))>parse_int(cell(feed_rows[i],0,4)) {tmp:=feed_rows[i];feed_rows[i]=feed_rows[j];feed_rows[j]=tmp;}}}
+  n:=0;s[0].agents=0;
+  for i:0..<lo_int(wn,MAX_AGENTS) {s[0].agent_row[i]=n;s[0].agent_plot[i]=parse_int(cell(work[i],0,1));n=json_raw(s[0].working_live[..],n,work[i]);n=json_raw(s[0].working_live[..],n,"\n");s[0].agents+=1;}
+  s[0].working_live_n=hi_int(0,n);n=0;
+  for i:0..<lo_int(fn,32) {n=json_raw(s[0].feed_live[..],n,feed_rows[i]);n=json_raw(s[0].feed_live[..],n,"\n");}
+  s[0].feed_live_n=hi_int(0,n);s[0].live_data=true;
+}
+hn_project :: (s:[]LandState,k:int,text:string,now:int)->bool {
+  if k<0 || k>=HOME_PROJECTS {return false;}arr:=hn_field(text,"issues");j:[1]Json;json_start(j[..],arr);if json_next(j[..])!=JSON_ARRAY {return false;}
+  issues:[256]HomeIssue;count:=0;
+  while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT || count>=issues.count {return false;}
+    raw:=hn_raw(j[..],t);issues[count]=HomeIssue.{id=hn_string(raw,"id"),kind=hn_string(raw,"kind"),status=hn_string(raw,"status"),title=hn_string(raw,"title"),parent=hn_string(raw,"parent"),rank=hn_string(raw,"rank"),worker=hn_string(raw,"claimed_by"),claimed=hn_number(raw,"claimed_at"),at=hn_number(raw,"status_at"),commit=hn_string(raw,"commit")};count+=1;
+  }
+  if json_next(j[..])!=JSON_END {return false;}p:=s[0].plot[k];p.tasks=0;p.done=0;p.working=0;p.mdone=0;p.mtotal=0;p.milestone_n=0;
+  claim:[256]int;done_rows:[256]int;cn:=0;dn:=0;milestone:= -1;
+  for i:0..<count {item:=issues[i];if item.kind=="task" {p.tasks+=1;if hn_done(item.status) {p.done+=1;done_rows[dn]=i;dn+=1;}else if item.worker.count>0 {p.working+=1;claim[cn]=i;cn+=1;}}
+    if item.kind=="milestone" && !hn_done(item.status) {total:=0;done:=0;for b:0..<count {if issues[b].kind=="task" && issues[b].parent==item.id {total+=1;if hn_done(issues[b].status) {done+=1;}}}if total>done && (milestone<0 || hn_before(item.rank,issues[milestone].rank)) {milestone=i;p.mdone=done;p.mtotal=total;}}
+  }
+  if milestone>=0 {p.milestone_n=hn_cell(p.milestone[..],0,issues[milestone].title,180);if p.milestone_n<0 {return false;}}
+  for i:0..<cn {for b:i+1..<cn {if issues[claim[b]].claimed>issues[claim[i]].claimed {tmp:=claim[i];claim[i]=claim[b];claim[b]=tmp;}}}
+  for i:0..<dn {for b:i+1..<dn {if issues[done_rows[b]].at>issues[done_rows[i]].at {tmp:=done_rows[i];done_rows[i]=done_rows[b];done_rows[b]=tmp;}}}
+  work:[4096]u8;feed_rows:[4096]u8;wn:=0;fn:=0;kept:=0;
+  for i:0..<cn {item:=issues[claim[i]];duplicate:=false;for b:0..<i {if issues[claim[b]].worker==item.worker {duplicate=true;}}
+    if duplicate || kept>=12 {continue;}kept+=1;wn=hn_cell(work[..],wn,item.worker,64);wn=json_raw(work[..],wn,"|");wn=json_write_int(work[..],wn,k);wn=json_raw(work[..],wn,"|");wn=hn_cell(work[..],wn,item.title,180);wn=json_raw(work[..],wn,"|");wn=json_write_int(work[..],wn,item.claimed);wn=json_raw(work[..],wn,"\n");
+    if kept<=3 {fn=json_write_int(feed_rows[..],fn,k);fn=json_raw(feed_rows[..],fn,"|WORKING|");fn=hn_cell(feed_rows[..],fn,item.worker,64);fn=json_raw(feed_rows[..],fn,"|");fn=hn_cell(feed_rows[..],fn,item.title,180);fn=json_raw(feed_rows[..],fn,"|");fn=json_write_int(feed_rows[..],fn,item.claimed);fn=json_raw(feed_rows[..],fn,"\n");}
+  }
+  for i:0..<lo_int(dn,3) {item:=issues[done_rows[i]];fn=json_write_int(feed_rows[..],fn,k);fn=json_raw(feed_rows[..],fn,"|DONE||");fn=hn_cell(feed_rows[..],fn,item.title,180);fn=json_raw(feed_rows[..],fn,"|");fn=json_write_int(feed_rows[..],fn,item.at);fn=json_raw(feed_rows[..],fn,"\n");}
+  if wn<0 || fn<0 {return false;}for i:0..<wn {s[0].work_cache[k][i]=work[i];}for i:0..<fn {s[0].feed_cache[k][i]=feed_rows[i];}
+  s[0].work_cache_n[k]=wn;s[0].feed_cache_n[k]=fn;p.verified_at=now;s[0].plot[k]=p;hn_merge(s);return true;
+}
+hn_join_strings :: (array:string,out:[]u8,limit:int)->int {
+  j:[1]Json;json_start(j[..],array);if json_next(j[..])!=JSON_ARRAY {return 0;}n:=0;count:=0;
+  while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_STRING {return n;}if count>=4 {return json_raw(out,n,", ...");}if count>0 {n=json_raw(out,n,", ");}n=hn_cell(out,n,json_text(j[..]),limit);count+=1;}return n;
+}
+hn_beacon :: (s:[]LandState,text:string,now:int) {
+  provider:=hn_string(text,"provider");slug:=hn_string(text,"pylon");generation:=hn_number(text,"generation");observed:=hn_number(text,"observed_at");until:=hn_number(text,"valid_until");
+  if provider.count!=64 || slug.count==0 || until<=now {return;}
+  first:= !s[0].live_beacons;at:= -1;
+  for i:0..<(ifx first then 0 else s[0].pylons) {q:=s[0].pyl[i];if pylon_value(s,q,26)==provider && pylon_value(s,q,4)==slug {at=i;break;}}
+  if at<0 {if !first && s[0].pylons>=MAX_PYLONS {s[0].net[0].refused+=1;return;}at=ifx first then 0 else s[0].pylons;}
+  else if !hn_newer(generation,observed,s[0].pyl[at].generation,s[0].pyl[at].observed) {return;}
+  pools:[512]u8;pn:=hn_join_strings(hn_field(text,"pools"),pools[..],64);pooltext:=cast(string)pools[0..<hi_int(0,pn)];bay:=1;
+  if pooltext=="coder" {bay=3;}else if pooltext=="verse" || pooltext=="everglade" {bay=4;}else if pooltext=="planetary-villa" {bay=5;}
+  rank:=0;for i:0..<at {if s[0].pyl[i].plot==bay {rank+=1;}}
+  q:=s[0].pyl[at];q.row=at;q.live=true;q.plot=bay;q.x=s[0].plot[bay].x+4.4+cast(f32)(rank%8)*1.5;q.z=s[0].plot[bay].z-4.4+cast(f32)(rank/8)*1.5;
+  q.generation=generation;q.observed=observed;q.valid_until=until;q.received=now;
+  status:=hn_string(text,"status");q.captured_status=ifx status=="online" then ST_ONLINE else ifx status=="draining" then ST_DRAINING else ST_OFFLINE;q.status=q.captured_status;
+  hardware:=hn_field(text,"class");slots:=hn_field(text,"slots");family:=hn_string(hardware,"family");q.family=ifx family=="gpu" then FAM_GPU else ifx family=="cpu" then FAM_CPU else FAM_UNIFIED;
+  q.total=hn_number(slots,"total");q.free=hn_number(slots,"free");
+  row:[HOME_ROW]u8;n:=json_raw(row[..],0,"beacon|");n=json_write_int(row[..],n,bay);n=json_raw(row[..],n,"|0|0|");n=hn_cell(row[..],n,slug,64);n=json_raw(row[..],n,"|");n=hn_cell(row[..],n,hn_string(text,"label"),64);n=json_raw(row[..],n,"|");
+  short:[128]u8;sn:=0;if hn_put(0,provider) && home_call(14,0,0,now)==1 {sn=hn_output(short[..]);}
+  if sn>=13 {n=json_raw(row[..],n,cast(string)short[0..<9]);n=json_raw(row[..],n,"...");n=json_raw(row[..],n,cast(string)short[sn-4..<sn]);}
+  n=json_raw(row[..],n,"|");n=json_raw(row[..],n,status);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,family);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,hn_string(hardware,"tier"));n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,hn_number(hardware,"memory_gb"));n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,q.total);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,q.free);n=json_raw(row[..],n,"|");
+  models:[768]u8;lanes:[768]u8;mn:=0;ln:=0;service:[1]Json;json_start(service[..],hn_field(text,"services"));t:=json_next(service[..]);count:=0;price:= -1;
+  while t==JSON_ARRAY || t==JSON_OBJECT {
+    t=json_next(service[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT {break;}raw:=hn_raw(service[..],t);
+    if count<4 {model:=hn_string(raw,"model");end:=0;while end<model.count && model[end]!='@' {end+=1;}if count>0 {mn=json_raw(models[..],mn,", ");ln=json_raw(lanes[..],ln,", ");}mn=hn_cell(models[..],mn,model[0..<end],128);temp:[256]u8;tn:=hn_join_strings(hn_field(raw,"lanes"),temp[..],64);ln=json_raw(lanes[..],ln,cast(string)temp[0..<hi_int(0,tn)]);}
+    p:=json_int(hn_field(raw,"price_hint_msat"));if p.ok && (price<0 || p.value<price) {price=p.value;}count+=1;
+  }
+  if count>4 {mn=json_raw(models[..],mn,", ...");}n=json_raw(row[..],n,cast(string)models[0..<hi_int(0,mn)]);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,cast(string)lanes[0..<hi_int(0,ln)]);n=json_raw(row[..],n,"|");settlements:[512]u8;an:=hn_join_strings(hn_field(text,"settlement"),settlements[..],64);n=json_raw(row[..],n,cast(string)settlements[0..<hi_int(0,an)]);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,pooltext);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,price);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,hi_int(0,now-hn_number(text,"since")));n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,hi_int(0,now-observed));n=json_raw(row[..],n,"|0|0|-1|-1|");n=json_write_int(row[..],n,until-now);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,generation);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,provider);n=json_raw(row[..],n,"\n");
+  if n<0 {s[0].net[0].refused+=1;return;}if first {s[0].pylons=0;s[0].live_beacons=true;if s[0].card==CARD_PYLON {close_card(s);}}if at==s[0].pylons {s[0].pylons+=1;}for i:0..<n {s[0].pylon_rows[at][i]=row[i];}s[0].pylon_n[at]=n;s[0].pyl[at]=q;s[0].beacons_received+=1;
+}
+hn_activity :: (s:[]LandState,text:string) {
+  provider:=hn_string(text,"provider");kind:=hn_number(text,"kind");at:=hn_number(text,"at");
+  for i:0..<s[0].pylons {q:=s[0].pyl[i];if q.live && pylon_value(s,q,26)==provider {if kind==26910 {s[0].pyl[i].jobs+=1;s[0].pyl[i].last_answer=at;}else if kind==27010 {s[0].pyl[i].updates+=1;}}}
+}
+// --- bounded catch-up and reconnect state machine
+hn_send_output :: (s:[]LandState,socket:int)->bool {out:[16384]u8;n:=hn_output(out[..]);return n>0 && pipe_send(s[0].net[0].pipe[..],socket-1,cast(string)out[0..<n]);}
+hn_fail :: (s:[]LandState) {
+  n:=s[0].net[..];if n[0].socket>0 {ignored:=pipe_close(n[0].pipe[..],n[0].socket-1);}n[0].socket=0;n[0].query_state=0;n[0].busy=false;n[0].stalled=true;n[0].retry_query=n[0].now+3;n[0].refused+=1;
+}
+hn_request :: (s:[]LandState)->bool {
+  n:=s[0].net[..];if home_call(2,0,0,0)!=1 || !hn_send_output(s,n[0].socket) {return false;}n[0].busy=true;n[0].query_at=n[0].now;return true;
+}
+hn_start_filter :: (s:[]LandState)->bool {return home_copy_output(0)==1 && home_call(1,0,0,0)==1 && hn_request(s);}
+hn_filter :: (s:[]LandState,mode:int,value:string)->bool {
+  if !hn_put(0,HOME_KEYS[s[0].net[0].project]) || !hn_put(1,value) || home_call(0,mode,0,0)!=1 {return false;}return hn_start_filter(s);
+}
+hn_known_json :: (s:[]LandState,k:int,offset:int,limit:int,out:[]u8)->int {
+  n:=json_raw(out,0,"[");count:=0;
+  for i:offset..<lo_int(s[0].known_n[k],offset+limit) {if count>0 {n=json_raw(out,n,",");}n=json_write_string(out,n,cast(string)s[0].known[k][i*65..<i*65+64]);count+=1;}
+  return ifx count==0 then 0 else json_raw(out,n,"]");
+}
+hn_advance :: (s:[]LandState)->bool {
+  n:=s[0].net[..];k:=n[0].project;
+  while n[0].stage<=5 {
+    if n[0].stage<=2 {return hn_filter(s,n[0].stage,ifx n[0].stage==0 then HOME_REPOS[k] else HOME_SLUGS[k]);}
+    if n[0].stage==3 {ids:[8192]u8;size:=hn_known_json(s,k,n[0].batch,50,ids[..]);if size>0 {return hn_filter(s,7,cast(string)ids[0..<size]);}n[0].stage=4;n[0].batch=0;}
+    if n[0].stage==4 || n[0].stage==5 {
+      size:=home_call(9,n[0].batch,0,0);if size<0 {return false;}
+      if size==0 {n[0].stage+=1;n[0].batch=0;continue;}
+      if home_copy_output(1)!=1 || !hn_put(0,HOME_KEYS[k]) || home_call(0,ifx n[0].stage==4 then 3 else 4,0,0)!=1 {return false;}return hn_start_filter(s);
+    }
+  }
+  if home_call(8,0,0,0)!=1 {return false;}projection:[262144]u8;size:=hn_output(projection[..]);if size<0 {return false;}
+  if !hn_project(s,k,cast(string)projection[0..<size],land_now(s)) {return false;}
+  size=home_call(10,0,0,0);if size<0 || size>HOME_KNOWN {return false;}for i:0..<size {s[0].known[k][i]=cast(u8)home_output_byte(i);}s[0].known_n[k]=size/65;
+  n[0].ready|=1<<k;n[0].refreshes+=1;n[0].busy=false;n[0].stalled=false;
+  if n[0].initial<HOME_PROJECTS {n[0].initial+=1;n[0].project=n[0].initial%HOME_PROJECTS;n[0].due=n[0].now;}else {n[0].due=n[0].now+30;}
+  return true;
+}
+hn_begin_project :: (s:[]LandState,k:int)->bool {
+  n:=s[0].net[..];n[0].project=k;n[0].stage=0;n[0].batch=0;n[0].events=0;n[0].bytes=0;n[0].dirty&=63-(1<<k);
+  expected:[32768]u8;size:=hn_known_json(s,k,0,512,expected[..]);text:=ifx size>0 then cast(string)expected[0..<size] else "[]";
+  if !hn_put(0,HOME_KEYS[k]) || !hn_put(1,HOME_SLUGS[k]) || !hn_put(2,text) || home_call(6,0,0,0)!=1 {return false;}return hn_advance(s);
+}
+hn_seed_known :: (s:[]LandState) {
+  for k:0..<HOME_PROJECTS {object:=hn_field(LAND_KNOWN_ISSUES,HOME_SLUGS[k]);if hn_string(object,"key")!=HOME_KEYS[k] {continue;}j:[1]Json;json_start(j[..],hn_field(object,"ids"));if json_next(j[..])!=JSON_ARRAY {continue;}
+    while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_STRING {break;}id:=json_text(j[..]);at:=s[0].known_n[k]*65;if id.count!=64 || at+65>HOME_KNOWN {break;}for i:0..<64 {s[0].known[k][at+i]=id[i];}s[0].known[k][at+64]=10;s[0].known_n[k]+=1;}
+  }
+}
+coaxial_land_network_opened :: (s:[]LandState,role:int,id:int) #export_c {
+  n:=s[0].net[..];if role==0 {n[0].watch=ifx id<0 then 0 else id+1;if id<0 {n[0].watch_state=0;n[0].retry_watch=n[0].now+3;}}
+  else {n[0].socket=ifx id<0 then 0 else id+1;if id<0 {hn_fail(s);}}
+}
+coaxial_land_network_tick :: (s:[]LandState) #export_c {
+  wall:=home_wall();if wall>0 {s[0].wall=wall;s[0].wall_age=s[0].data_age;}
+  n:=s[0].net[..];n[0].now=s[0].data_age;if s[0].wall<=0 {return;}
+  if !n[0].started {hn_seed_known(s);n[0].started=true;}
+  if n[0].watch_state==0 && n[0].now>=n[0].retry_watch {if pipe_put(n[0].pipe[..],PIPE_OPEN,0,HOME_RELAY) {n[0].watch_state=1;n[0].watch_at=n[0].now;}}
+  if n[0].query_state==0 && n[0].now>=n[0].retry_query {if pipe_put(n[0].pipe[..],PIPE_OPEN,1,HOME_RELAY) {n[0].query_state=1;n[0].query_at=n[0].now;}}
+  if n[0].watch_state==1 && n[0].now-n[0].watch_at>10 {if n[0].watch>0 {ignored:=pipe_close(n[0].pipe[..],n[0].watch-1);}n[0].watch=0;n[0].watch_state=0;n[0].beacon_ended=false;n[0].retry_watch=n[0].now+3;}
+  if (n[0].query_state==1 || n[0].busy) && n[0].now-n[0].query_at>15 {hn_fail(s);}
+  if n[0].query_state==2 && !n[0].busy {
+    k:=n[0].project;
+    if n[0].initial>=HOME_PROJECTS {k=(k+1)%HOME_PROJECTS;for i:0..<HOME_PROJECTS {candidate:=(n[0].project+1+i)%HOME_PROJECTS;if (n[0].dirty&(1<<candidate))!=0 {k=candidate;break;}}}
+    if n[0].now>=n[0].due || n[0].dirty!=0 {if !hn_begin_project(s,k) {hn_fail(s);}}
+  }
+}
+coaxial_land_network_message :: (s:[]LandState,kind:int,text:string) #export_c {
+  wall:=home_wall();if wall>0 {s[0].wall=wall;s[0].wall_age=s[0].data_age;}
+  e:=socket_event(kind);if e.id<0 {return;}n:=s[0].net[..];n[0].now=s[0].data_age;
+  if e.id+1==n[0].watch {
+    if e.event==SOCKET_OPENED {n[0].watch_state=2;
+      for mode:0..<3 {if !hn_put(1,HOME_KEY_JSON) || home_call(11,mode,0,land_now(s))<0 || !hn_send_output(s,n[0].watch) {n[0].watch_state=0;}}
+    }else if e.event==SOCKET_CLOSED || e.event==SOCKET_ERROR {n[0].watch=0;n[0].watch_state=0;n[0].beacon_ended=false;n[0].retry_watch=n[0].now+3;}
+    else if e.event==SOCKET_FRAME && n[0].watch_state==2 {
+      if !hn_put(0,text) || !hn_put(1,HOME_KEY_JSON) {return;}result:=home_call(12,0,0,land_now(s));
+      if result==1 || result==2 {body:[16384]u8;size:=hn_output(body[..]);if size>0 {if result==1 {hn_beacon(s,cast(string)body[0..<size],land_now(s));}else {hn_activity(s,cast(string)body[0..<size]);}}}
+      else if result==3 {n[0].beacon_ended=true;}
+      else if result>=10 && result<10+HOME_PROJECTS {n[0].dirty|=1<<(result-10);}
+      else if result== -3 {ignored:=pipe_close(n[0].pipe[..],n[0].watch-1);n[0].watch=0;n[0].watch_state=0;n[0].beacon_ended=false;n[0].retry_watch=n[0].now+3;}
+    }
+  }else if e.id+1==n[0].socket {
+    if e.event==SOCKET_OPENED {n[0].query_state=2;n[0].due=n[0].now;}
+    else if e.event==SOCKET_CLOSED || e.event==SOCKET_ERROR {hn_fail(s);}
+    else if e.event==SOCKET_FRAME && n[0].busy {
+      if !hn_put(0,text) {hn_fail(s);return;}result:=home_call(4,0,0,0);
+      if result<0 {hn_fail(s);return;}
+      if result==1 {n[0].events+=1;n[0].bytes+=home_output_size();if home_call(13,n[0].events,n[0].bytes,0)!=1 || home_copy_output(0)!=1 || home_call(7,0,0,0)!=1 {hn_fail(s);return;}}
+      if result==2 {
+        state:=home_call(5,0,0,0);if home_call(3,0,0,0)!=1 || !hn_send_output(s,n[0].socket) {hn_fail(s);return;}
+        if state==1 {if !hn_request(s) {hn_fail(s);}}
+        else {if n[0].stage<3 {n[0].stage+=1;n[0].batch=0;}else {n[0].batch+=50;}if !hn_advance(s) {hn_fail(s);}}
+      }
+    }
+  }
+}
+
+// Read-only, generic host probe: project mask, watch bit and beacon/refresh counters.
+coaxial_land_network_probe :: (s:[]LandState)->int #export_c {n:=s[0].net[..];return n[0].ready | (ifx n[0].watch_state==2 then 64 else 0) | (ifx n[0].beacon_ended then 128 else 0) | (lo_int(s[0].beacons_received,255)<<8) | (lo_int(n[0].refreshes,255)<<16);}

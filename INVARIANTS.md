@@ -2040,3 +2040,20 @@ C observes spans and performs verification file effects only.
 Check: `psionic/tests/check_bpe_train.sh --mutate --jobs 8` (CPU only): full
 64-merge independent recount, exact persisted PST5, 147 Unicode/ID/byte round
 trips, 20 tiny training traces, debug/release and ASan/UBSan.
+
+## The homepage publishes verified live observations with explicit freshness
+
+`/` and `/new-land` use the same Coax homepage. Public event ID/signature,
+beacon digest/freshness, subscriptions, bounded history repair and project fold
+remain in shared Coax. C bridges effects and scalar byte buffers; JavaScript
+supplies generic sockets and a wall clock. No runtime Nostr SDK or signing key.
+Incomplete project reads preserve the prior projection. Expired Pylon slots
+become unknown; signed answer/status counts are deduplicated observations since
+this tab's watch began, not completed-job or latency measurements. Worker labels
+are project-authored claims. Featured identities/layout and Git trees are deploy
+snapshots; no simulated people enter the production view.
+
+Frozen real data is used only for deterministic golden checks. Release readiness
+also opens the ordinary homepage with real sockets in muted headless Chrome and
+requires all six featured projects, the watch and beacon EOSE. A genuine empty
+provider set is allowed. Scope and checks: [live homepage record](docs/verification/2026-10-30-live-network-homepage.md).

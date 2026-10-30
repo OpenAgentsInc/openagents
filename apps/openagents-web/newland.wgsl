@@ -1,4 +1,4 @@
-// The /new-land mock-up's two passes (newland.coax decides every number): the
+// The live homepage's two passes (newland.coax decides every number): the
 // splash's slow nebula fading up from black, darker at the edges (the
 // vignette; newland.coax dims the strokes to match), with the glass of the
 // feed and the buttons, then the strokes.

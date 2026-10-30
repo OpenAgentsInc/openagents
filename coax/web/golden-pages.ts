@@ -49,6 +49,8 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
     "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
   byAddress["pylon"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon"}
   byAddress["pylon-phone"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon",size:[390,844]}
+  byAddress["home"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland"}
+  byAddress["home-phone"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland",size:[390,844]}
   // NIP guides are public Coaxial pages too. Every route must start and draw
   // during staging and production checks, with its own reviewed golden.
   const nipCatalog = join(ROOT, APP, "nip/catalog.json")
@@ -116,7 +118,7 @@ export function pageInputs(name: string, p: Pages = goldenPages()): string[] {
   out.add(`coax/web/goldens/${name}.png`)   // a wrong golden fails the page as surely as a changed page
   out.add(`coax/web/goldens/linux/${name}.png`)
   const dir = page.path.split("?")[0].replace(/^\//, "")
-  out.add(`${APP}/${dir}/`)
+  out.add(dir ? `${APP}/${dir}/` : `${APP}/index.html`)
   const realm = p.open.find((w) => w.realm!.slug === name)?.realm
   // an asset is "kind:/path", or several paths apart by "|"
   for (const a of realm?.assets ?? []) for (const part of a.replace(/^[a-z]+:/, "").split("|")) if (part.startsWith("/")) out.add(`${APP}${part}`)

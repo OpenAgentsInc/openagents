@@ -69,3 +69,11 @@ test("the check's server answers like the bucket", () => {
   expect(resolve(site, "/../etc/passwd")).toBeNull()
   expect(resolve(site, "/nope")).toBeNull()
 })
+
+
+test("the public homepage and its phone view track the root HTML", () => {
+  expect(p.pages.home.path).toBe("/")
+  expect(p.pages["home-phone"].size).toEqual([390, 844])
+  expect(affected(["apps/openagents-web/index.html"], p)).toEqual(["home", "home-phone"])
+  expect(new RegExp(pageObjects("/")).test("index.html")).toBe(true)
+})

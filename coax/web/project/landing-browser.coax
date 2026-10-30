@@ -1,0 +1,60 @@
+// Public homepage watches. All event, signature, beacon and subscription
+// decisions stay in Coax; the browser moves socket bytes only.
+#load "landing-nostr.coax";
+#authority;
+LbMessage :: struct {code:int;written:int;}
+LbSeen :: struct {n:int;start:int;started:bool;ids:[LR_EVENTS*32]u8;}
+#test "homepage watches are scoped and activity ids do not count twice" {
+  keys:="[\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"]";
+  out:[8192]u8;
+  for mode:0..<3 {#assert lb_request(mode,keys,2000000000,out[..])>0;}
+  #assert lb_request(1,"[]",0,out[..])<0;
+  held:[1]LbSeen;id:[32]u8;
+  #assert lb_begin(held[..],2,keys,2000000000,out[..])>0 && held[0].start==2000000000;
+  #assert lb_once(held[..],id[..]) && !lb_once(held[..],id[..]);
+  #assert lb_message(held[..],"[]",keys,0,out[..]).code==0;
+  #assert lb_message(held[..],"[\"EOSE\",\"home-beacons\"]",keys,0,out[..]).code==3;
+  #assert lb_message(held[..],"[\"CLOSED\",\"home-beacons\",\"restricted: no\"]",keys,0,out[..]).code== -3;
+}
+lb_once :: (s:[]LbSeen,id:[]u8)->bool {
+  for k:0..<s[0].n {if lr_equal_id(s[0].ids[k*32..<k*32+32],id) {return false;}}
+  if id.count!=32 || s[0].n>=LR_EVENTS {return false;}
+  for i:0..<32 {s[0].ids[s[0].n*32+i]=id[i];}s[0].n+=1;return true;
+}
+lb_begin :: (s:[]LbSeen,mode:int,keys:string,now:int,out:[]u8)->int #export_c {
+  n:=lb_request(mode,keys,now,out);if n>0 && mode==2 && !s[0].started {s[0].start=now;s[0].started=true;}return n;
+}
+lb_request :: (mode:int,keys:string,now:int,out:[]u8)->int #export_c {
+  if mode<0 || mode>2 || now<0 || now>NF_SAFE {return -1;}
+  authors:[8]string;count:=lr_ids(keys,authors[..]);if count<1 {return -1;}
+  f:NostrFilter;kinds:[9]int;values:=[1]string.[PB_MARKER];tags:=[1]NostrTagFilter.[NostrTagFilter.{name='t',values=values[..]}];
+  f.has_kinds=true;f.has_since=true;f.since=ifx mode==0 then (ifx now>300 then now-300 else 0) else now;
+  sub:="home-beacons";
+  if mode==0 {kinds[0]=PB_KIND;f.kinds=kinds[0..<1];f.tags=tags[..];f.has_limit=true;f.limit=128;}
+  if mode==1 {sub="home-projects";kinds=[9]int.[30617,30621,30623,1621,1111,1630,1631,1632,1633];f.kinds=kinds[..];f.has_authors=true;f.authors=authors[0..<count];}
+  if mode==2 {sub="home-work";kinds[0]=26910;kinds[1]=27010;f.kinds=kinds[0..<2];}
+  filters:=[1]NostrFilter.[f];return nostr_message_write_req(sub,filters[..],out,false);
+}
+lb_message :: (seen:[]LbSeen,text:string,keys:string,now:int,out:[]u8)->LbMessage #export_c {
+  m:=nostr_message_read(text);if m.error!=NM_OK {return LbMessage.{};}
+  sub:=nm_text(m,m.sub);
+  if sub!="home-beacons" && sub!="home-projects" && sub!="home-work" {return LbMessage.{};}
+  if m.type==NM_CLOSED {return LbMessage.{code= -3};}
+  if m.type==NM_EOSE && sub=="home-beacons" {return LbMessage.{code=3};}
+  if m.type!=NM_EVENT {return LbMessage.{};}
+  original:=nm_text(m,m.event);scratch:[NE_MAX_OUTPUT]u8;e:=lr_event(original,scratch[..]);
+  if e.error!=NE_OK || !e.verified || now<0 || e.created_at>now+30 {return LbMessage.{code= -4};}
+  if sub=="home-beacons" {
+    n:=lr_beacon(original,now,out);return ifx n>0 then LbMessage.{code=1,written=n} else LbMessage.{code= -4};
+  }
+  if sub=="home-projects" {
+    if e.kind!=30617 && e.kind!=30621 && e.kind!=30623 && e.kind!=1621 && e.kind!=1111 && (e.kind<1630 || e.kind>1633) {return LbMessage.{};}
+    authors:[8]string;count:=lr_ids(keys,authors[..]);
+    for i:0..<count {if lr_public_key(e,authors[i]) {return LbMessage.{code=10+i};}}
+    return LbMessage.{};
+  }
+  if (e.kind!=26910 && e.kind!=27010) || !seen[0].started || e.created_at<seen[0].start || e.created_at>now || !lb_once(seen,e.id[..]) {return LbMessage.{};}
+  key:[64]u8;hex:="0123456789abcdef";for i:0..<32 {key[2*i]=hex[e.public_key[i]>>4];key[2*i+1]=hex[e.public_key[i]&15];}
+  n:=json_raw(out,0,"{\"provider\":");n=json_write_string(out,n,cast(string)key[..]);n=json_raw(out,n,",\"kind\":");n=json_write_int(out,n,e.kind);
+  n=json_raw(out,n,",\"at\":");n=json_write_int(out,n,e.created_at);n=json_raw(out,n,"}");return LbMessage.{code=2,written=n};
+}

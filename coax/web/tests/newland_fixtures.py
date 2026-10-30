@@ -40,7 +40,7 @@ def fixtures():
         content=json.dumps(value,sort_keys=True,separators=(',',':'))
         tags=[['d',value['pylon']],['t','oa:pylon-beacon:v1'],['x',hashlib.sha256(content.encode()).hexdigest()],['expiration',str(value['valid_until'])]]
         if override:override(tags)
-        return sign(30200,tags,content,now)
+        return sign(30200,tags,content,value["observed_at"])
     valid=beacon(body)
     variants={}
     for name,change in {
@@ -57,7 +57,8 @@ def fixtures():
     status=sign(27010,[['p',request['pubkey']],['e',request['id']]],'opaque public fixture',now)
     wrong=sign(27010,status['tags'],status['content'],now,7)
     older_answer=sign(26910,answer['tags'],answer['content'],now-1)
-    return dict(now=now,beacon=valid,invalid_beacons=variants,request=request,answer=answer,older_answer=older_answer,status=status,wrong_author=wrong)
+    updated=copy.deepcopy(body);updated.update(generation=8,observed_at=now+1,valid_until=now+301);updated['slots']['free']=0
+    return dict(now=now,beacon=valid,updated_beacon=beacon(updated),invalid_beacons=variants,request=request,answer=answer,older_answer=older_answer,status=status,wrong_author=wrong)
 
 
 if __name__=='__main__':

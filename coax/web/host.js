@@ -243,7 +243,7 @@ async function loadEngine(bytes, generation) {
   if (pages > have) memory.grow(pages - have); // instantiate refuses an imported memory smaller than declared
   const random = prepareRandomImport(memory, module, randomScratch);
   const imports = Object.create(null);
-  imports.env = Object.assign(Object.create(null), { memory, ...socketImports, ...httpImports, ...random.imports, ...storageImports });
+  imports.env = Object.assign(Object.create(null), { memory, coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)), ...socketImports, ...httpImports, ...random.imports, ...storageImports });
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
@@ -1455,7 +1455,7 @@ function send(kind, text = "") {
   x.coaxial_message(arena.state, kind, bytes.length);
   after(false);
 }
-globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts() };
+globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0 };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
 if (script?.dataset.drops) startDrops({ send });
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.

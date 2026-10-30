@@ -14,3 +14,5 @@ static coax_string in(int i,int n) {return (coax_string){(const char *)nl_inputs
 EXPORT("nl_fold_begin") int32_t fold_begin(int32_t key_n,int32_t slug_n,int32_t known_n) {return lf_begin(p(),in(0,key_n),in(1,slug_n),in(2,known_n));}
 EXPORT("nl_fold_feed") int32_t fold_feed(int32_t n) {coax_string original=in(0,n);_Bool verified=lr_verify_public(original);return lf_feed(p(),original,verified);}
 EXPORT("nl_fold_result") int32_t fold_result(void) {nl_output_count=lf_result(p(),(coax_v_u8){nl_output_bytes,OUTPUT_CAP});return nl_output_count>=0;}
+int64_t home_fold_ids(int64_t offset) {nl_output_count=lf_home_ids(p(),offset,(coax_v_u8){nl_output_bytes,OUTPUT_CAP});return nl_output_count;}
+int64_t home_fold_known(void) {nl_output_count=lf_home_known(p(),(coax_v_u8){nl_output_bytes,OUTPUT_CAP});return nl_output_count;}

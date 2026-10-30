@@ -7,7 +7,7 @@ source "$repo/coax/web/toolchain.sh"
 out="$1"; mkdir -p "$(dirname "$out")"
 work="$(mktemp -d)";trap 'rm -rf "$work"' EXIT
 objects=()
-for unit in landing-nostr landing-fold; do
+for unit in landing-browser landing-fold; do
   "$repo/coax/bin/coax" c "$here/$unit.coax" --library --header "$work/$unit.h" > "$work/$unit.c"
   "$COAXIAL_CLANG" --target=wasm32-wasip1 --sysroot="$COAXIAL_SYSROOT" -resource-dir="$COAXIAL_RESOURCES" -std=c11 -O2 -ffp-contract=off -fno-fast-math -Wno-unused-function -Wno-unused-variable -c "$work/$unit.c" -o "$work/$unit.o"
   objects+=("$work/$unit.o")
