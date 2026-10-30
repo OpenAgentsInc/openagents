@@ -1,0 +1,15 @@
+{
+  "name": "openagents-pylon-demo-tooling",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "demo": "bun demo-buyer.ts",
+    "test:demo": "bun test demo-buyer.test.ts demo-buyer.integration.test.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "1.8.1",
+    "@noble/hashes": "1.7.1",
+    "@scure/base": "1.2.4",
+    "nostr-effect": "0.0.13"
+  }
+}

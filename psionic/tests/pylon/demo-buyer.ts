@@ -1,0 +1,722 @@
+#!/usr/bin/env bun
+// Demo/operator tooling based on buyer.ts. Uses independent Nostr crypto,
+// throwaway in-memory buyer keys and fixed public toy requests. Not a general
+// gateway, payment client, or production identity/authorization implementation.
+import { schnorr } from "@noble/curves/secp256k1";
+import { sha256 } from "@noble/hashes/sha256";
+import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
+import { bech32 } from "@scure/base";
+import * as nip44 from "nostr-effect/nip44";
+
+export type Ev = {
+  id: string;
+  pubkey: string;
+  created_at: number;
+  kind: number;
+  tags: string[][];
+  content: string;
+  sig: string;
+};
+export type Beacon = {
+  event: Ev;
+  provider: string;
+  slug: string;
+  label: string;
+  status: string;
+  generation: number;
+  observed: number;
+  validUntil: number;
+  total: number;
+  free: number;
+  models: string[];
+  identity: string;
+};
+const V = "openagents.systemone.v1",
+  enc = new TextEncoder(),
+  hex = (x: any, n: number) =>
+    typeof x === "string" && new RegExp(`^[0-9a-f]{${n}}$`).test(x);
+const integer = (x: any) => Number.isSafeInteger(x) && x >= 0;
+const obj = (x: any) =>
+  x !== null && typeof x === "object" && !Array.isArray(x);
+const fields = (x: any, names: string[], optional: string[] = []) =>
+  obj(x) &&
+  names.every((k) => Object.hasOwn(x, k)) &&
+  Object.keys(x).every((k) => names.includes(k) || optional.includes(k));
+const clean = (s: string) => s.replace(/[\x00-\x1f\x7f\x1b]/g, " ");
+const npub = (s: string) =>
+  bech32.encode("npub", bech32.toWords(hexToBytes(s)));
+const single = (e: Ev, name: string) => {
+  const t = e.tags.filter((t) => t[0] === name);
+  return t.length === 1 && t[0].length === 2 ? t[0][1] : undefined;
+};
+export function signEvent(
+  secret: Uint8Array,
+  kind: number,
+  tags: string[][],
+  content: string,
+  created_at = Math.floor(Date.now() / 1000),
+): Ev {
+  const pubkey = bytesToHex(schnorr.getPublicKey(secret)),
+    id = sha256(
+      enc.encode(JSON.stringify([0, pubkey, created_at, kind, tags, content])),
+    );
+  return {
+    id: bytesToHex(id),
+    pubkey,
+    created_at,
+    kind,
+    tags,
+    content,
+    sig: bytesToHex(schnorr.sign(id, secret)),
+  };
+}
+export function verifyEvent(e: any): e is Ev {
+  try {
+    if (
+      !obj(e) ||
+      !hex(e.id, 64) ||
+      !hex(e.pubkey, 64) ||
+      !hex(e.sig, 128) ||
+      !integer(e.created_at) ||
+      !integer(e.kind) ||
+      e.kind > 65535 ||
+      typeof e.content !== "string" ||
+      enc.encode(e.content).length > 131072 ||
+      !Array.isArray(e.tags) ||
+      e.tags.length > 2000 ||
+      !e.tags.every(
+        (t: any) =>
+          Array.isArray(t) &&
+          t.length <= 16 &&
+          t.every(
+            (s: any) => typeof s === "string" && enc.encode(s).length <= 65536,
+          ),
+      )
+    )
+      return false;
+    const id = sha256(
+      enc.encode(
+        JSON.stringify([0, e.pubkey, e.created_at, e.kind, e.tags, e.content]),
+      ),
+    );
+    return (
+      bytesToHex(id) === e.id &&
+      schnorr.verify(hexToBytes(e.sig), id, hexToBytes(e.pubkey))
+    );
+  } catch {
+    return false;
+  }
+}
+export function admitBeacon(
+  e: Ev,
+  clock: number,
+  model = "psionic-toy",
+): Beacon | null {
+  try {
+    if (
+      !verifyEvent(e) ||
+      e.kind !== 30200 ||
+      enc.encode(e.content).length > 32768 ||
+      e.tags.some((t) => t[0] === "auth")
+    )
+      return null;
+    const b = JSON.parse(e.content),
+      required = [
+        "v",
+        "requires",
+        "provider",
+        "pylon",
+        "label",
+        "status",
+        "generation",
+        "since",
+        "observed_at",
+        "valid_until",
+        "class",
+        "slots",
+        "services",
+        "settlement",
+        "pools",
+      ];
+    if (
+      !fields(b, required, ["meta"]) ||
+      b.v !== "openagents.pylon-beacon.v1" ||
+      !Array.isArray(b.requires) ||
+      b.requires.length ||
+      b.provider !== e.pubkey ||
+      typeof b.pylon !== "string" ||
+      !/^[a-z0-9_-]{1,64}$/.test(b.pylon) ||
+      typeof b.label !== "string" ||
+      enc.encode(b.label).length > 64 ||
+      !["online", "draining", "offline"].includes(b.status)
+    )
+      return null;
+    if (
+      ![b.generation, b.since, b.observed_at, b.valid_until].every(integer) ||
+      b.since > b.observed_at ||
+      b.valid_until < b.observed_at ||
+      b.valid_until > b.observed_at + 300 ||
+      b.observed_at > clock + 30 ||
+      clock > b.valid_until ||
+      clock > b.observed_at + 300 ||
+      e.created_at !== b.observed_at
+    )
+      return null;
+    if (
+      single(e, "d") !== b.pylon ||
+      single(e, "t") !== "oa:pylon-beacon:v1" ||
+      single(e, "x") !== bytesToHex(sha256(enc.encode(e.content))) ||
+      single(e, "expiration") !== String(b.valid_until)
+    )
+      return null;
+    if (
+      !fields(b.class, ["family", "tier", "memory_gb"]) ||
+      !["cpu", "gpu", "unified-memory"].includes(b.class.family) ||
+      !["small", "medium", "large", "xl"].includes(b.class.tier) ||
+      ![8, 16, 32, 64, 128, 256, 512].includes(b.class.memory_gb)
+    )
+      return null;
+    if (
+      !fields(b.slots, ["total", "free"]) ||
+      !integer(b.slots.total) ||
+      !integer(b.slots.free) ||
+      b.slots.total > 64 ||
+      b.slots.free > b.slots.total
+    )
+      return null;
+    if (
+      !Array.isArray(b.services) ||
+      b.services.length < 1 ||
+      b.services.length > 16 ||
+      !Array.isArray(b.settlement) ||
+      b.settlement.length < 1 ||
+      b.settlement.length > 16 ||
+      !b.settlement.every(
+        (x: any) => typeof x === "string" && /^[a-zA-Z0-9_-]{1,64}$/.test(x),
+      ) ||
+      new Set(b.settlement).size !== b.settlement.length ||
+      !Array.isArray(b.pools) ||
+      b.pools.length > 8 ||
+      new Set(b.pools).size !== b.pools.length ||
+      !b.pools.every(
+        (s: any) => typeof s === "string" && /^[a-z0-9_-]{1,64}$/.test(s),
+      ) ||
+      ("meta" in b && !obj(b.meta))
+    )
+      return null;
+    // Admit the whole beacon before selecting a model. A newer announcement
+    // dropping the toy service must supersede its earlier toy announcement.
+    if (
+      !b.services.every(
+        (s: any) =>
+          fields(s, [
+            "capability",
+            "model",
+            "lanes",
+            "offering",
+            "price_hint_msat",
+          ]) &&
+          typeof s.capability === "string" &&
+          /^[0-9a-f]{64}:[a-zA-Z0-9_./-]{1,128}$/.test(s.capability) &&
+          typeof s.model === "string" &&
+          enc.encode(s.model).length <= 128 &&
+          Array.isArray(s.lanes) &&
+          s.lanes.length > 0 &&
+          new Set(s.lanes).size === s.lanes.length &&
+          s.lanes.every((x: any) =>
+            [
+              "cj-decision",
+              "cj-execution",
+              "cj-conversation",
+              "nip90-5050",
+            ].includes(x),
+          ) &&
+          (s.offering === null ||
+            (typeof s.offering === "string" &&
+              /^30192:[0-9a-f]{64}:[^:]{1,128}$/.test(s.offering))) &&
+          (s.price_hint_msat === null || integer(s.price_hint_msat)),
+      )
+    )
+      return null;
+    const services = b.services.filter(
+      (s: any) =>
+        fields(s, [
+          "capability",
+          "model",
+          "lanes",
+          "offering",
+          "price_hint_msat",
+        ]) &&
+        s.capability === e.pubkey + ":pylon/decision" &&
+        typeof s.model === "string" &&
+        s.model.length <= 128 &&
+        new RegExp(
+          "^" +
+            model.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") +
+            "@sha256:[0-9a-f]{64}$",
+        ).test(s.model) &&
+        Array.isArray(s.lanes) &&
+        s.lanes.includes("cj-decision") &&
+        new Set(s.lanes).size === s.lanes.length &&
+        s.lanes.every((x: any) =>
+          [
+            "cj-decision",
+            "cj-execution",
+            "cj-conversation",
+            "nip90-5050",
+          ].includes(x),
+        ) &&
+        s.offering === null &&
+        (s.price_hint_msat === null || s.price_hint_msat === 0),
+    );
+    return {
+      event: e,
+      provider: e.pubkey,
+      slug: b.pylon,
+      label: clean(b.label),
+      status: b.status,
+      generation: b.generation,
+      observed: b.observed_at,
+      validUntil: b.valid_until,
+      total: b.slots.total,
+      free: b.slots.free,
+      models: b.services.map((s: any) => String(s.model)),
+      identity: b.settlement.includes("free-v1")
+        ? (services[0]?.model ?? "")
+        : "",
+    };
+  } catch {
+    return null;
+  }
+}
+export function newestBeacons(all: Beacon[]): Beacon[] {
+  const best = new Map<string, Beacon>();
+  for (const b of all) {
+    const k = b.provider + ":" + b.slug,
+      p = best.get(k);
+    if (
+      !p ||
+      b.generation > p.generation ||
+      (b.generation === p.generation &&
+        (b.observed > p.observed ||
+          (b.observed === p.observed && b.event.id < p.event.id)))
+    )
+      best.set(k, b);
+  }
+  return [...best.values()].sort(
+    (a, b) =>
+      a.slug.localeCompare(b.slug) || a.provider.localeCompare(b.provider),
+  );
+}
+export function validateResult(r: any, p: Beacon, request: string): boolean {
+  if (
+    !obj(r) ||
+    r.v !== V ||
+    !Array.isArray(r.requires) ||
+    r.requires.length ||
+    r.type !== "result" ||
+    r.request !== request ||
+    r.attempt !== 1 ||
+    r.outcome !== "answered" ||
+    !obj(r.response) ||
+    r.response.model !== p.identity.split("@")[0] ||
+    !obj(r.response.service) ||
+    r.response.service.provider !== p.provider ||
+    r.response.service.door !== "pylon:" + p.slug ||
+    r.response.service.identity !== p.identity
+  )
+    return false;
+  const a = r.response.answers;
+  if (!obj(a) || Object.keys(a).length !== 1 || !obj(a.wet)) return false;
+  const q = a.wet,
+    probs = q.probabilities;
+  if (
+    q.type !== "choice" ||
+    !fields(probs, ["yes", "no"]) ||
+    ![probs.yes, probs.no, q.confidence].every(
+      (x) => typeof x === "number" && Number.isFinite(x) && x >= 0 && x <= 1,
+    ) ||
+    Math.abs(probs.yes + probs.no - 1) > 1e-6
+  )
+    return false;
+  const choice = probs.yes > probs.no ? "yes" : "no";
+  return q.choice === choice && Math.abs(q.confidence - probs[choice]) < 1e-6;
+}
+export type Options = {
+  relay: string;
+  slugs: string[];
+  all: boolean;
+  list: boolean;
+  model: string;
+  discover: number;
+  timeout: number;
+  json: boolean;
+  help: boolean;
+};
+export function parseArgs(args: string[]): Options {
+  const o: Options = {
+    relay: "wss://relay.openagents.com",
+    slugs: [],
+    all: false,
+    list: false,
+    model: "psionic-toy",
+    discover: 4,
+    timeout: 45,
+    json: false,
+    help: false,
+  };
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (["--all", "--list", "--json", "--help", "-h"].includes(a)) {
+      if (a === "--all") o.all = true;
+      else if (a === "--list") o.list = true;
+      else if (a === "--json") o.json = true;
+      else o.help = true;
+      continue;
+    }
+    const v = args[++i];
+    if (!v) throw Error("missing value for " + a);
+    if (a === "--relay") o.relay = v;
+    else if (a === "--slug") o.slugs.push(v);
+    else if (a === "--model") o.model = v;
+    else if (a === "--discover") o.discover = Number(v);
+    else if (a === "--timeout") o.timeout = Number(v);
+    else throw Error("unknown option " + a);
+  }
+  const url = new URL(o.relay);
+  if (
+    !["ws:", "wss:"].includes(url.protocol) ||
+    url.username ||
+    url.password ||
+    url.hash ||
+    url.search
+  )
+    throw Error(
+      "relay must be a ws:// or wss:// URL without credentials, query or fragment",
+    );
+  if (
+    !Number.isInteger(o.discover) ||
+    o.discover < 1 ||
+    o.discover > 30 ||
+    !Number.isInteger(o.timeout) ||
+    o.timeout < 1 ||
+    o.timeout > 180
+  )
+    throw Error("discover must be 1..30 and timeout 1..180 seconds");
+  if (o.all && o.slugs.length) throw Error("choose --all or --slug");
+  if (
+    !/^[a-zA-Z0-9_.-]{1,64}$/.test(o.model) ||
+    o.slugs.some((x) => !/^[a-z0-9_-]{1,64}$/.test(x))
+  )
+    throw Error("invalid model or Pylon slug");
+  if (!o.all && !o.slugs.length) o.list = true;
+  return o;
+}
+class Relay {
+  ws: WebSocket;
+  events: Ev[] = [];
+  seen = new Set<string>();
+  acks = new Map<string, { ok: boolean; why: string }>();
+  eose = new Set<string>();
+  error = "";
+  authId = "";
+  challenge = "";
+  listeners = new Set<(e: Ev) => void>();
+  rejected = 0;
+  constructor(
+    readonly url: string,
+    readonly secret: Uint8Array,
+    readonly report: (s: string) => void,
+  ) {
+    this.ws = new WebSocket(url);
+    this.ws.onmessage = (m) => {
+      try {
+        const raw = String(m.data);
+        if (enc.encode(raw).length > 262144) {
+          this.rejected++;
+          return;
+        }
+        const f = JSON.parse(raw);
+        if (!Array.isArray(f)) return;
+        if (
+          f[0] === "AUTH" &&
+          typeof f[1] === "string" &&
+          f[1].length <= 4096
+        ) {
+          this.challenge = f[1];
+          const a = signEvent(
+            this.secret,
+            22242,
+            [
+              ["relay", this.url],
+              ["challenge", f[1]],
+            ],
+            "",
+          );
+          this.authId = a.id;
+          this.ws.send(JSON.stringify(["AUTH", a]));
+          this.report("relay: AUTH challenge received");
+        } else if (
+          f[0] === "OK" &&
+          typeof f[1] === "string" &&
+          typeof f[2] === "boolean"
+        ) {
+          if (this.acks.size < 128)
+            this.acks.set(f[1], {
+              ok: f[2],
+              why: clean(String(f[3] ?? "")).slice(0, 240),
+            });
+        } else if (f[0] === "EOSE" && typeof f[1] === "string")
+          this.eose.add(f[1]);
+        else if (f[0] === "CLOSED")
+          this.error = "subscription closed: " + clean(String(f[2] ?? ""));
+        else if (f[0] === "EVENT" && verifyEvent(f[2])) {
+          const e = f[2];
+          if (!this.seen.has(e.id)) {
+            if (this.seen.size >= 2048) {
+              this.error = "event budget exceeded";
+              return;
+            }
+            this.seen.add(e.id);
+            this.events.push(e);
+            for (const fn of this.listeners) fn(e);
+          }
+        }
+      } catch {
+        this.rejected++;
+      }
+    };
+    this.ws.onerror = () => {
+      this.error = "relay connection failed";
+    };
+    this.ws.onclose = () => {
+      if (!this.error) this.error = "relay connection closed";
+    };
+  }
+  async until(fn: () => boolean, ms: number) {
+    const end = Date.now() + ms;
+    while (!fn()) {
+      if (this.error) throw Error(this.error);
+      if (Date.now() >= end) return false;
+      await Bun.sleep(20);
+    }
+    return true;
+  }
+  async open() {
+    if (!(await this.until(() => this.ws.readyState === WebSocket.OPEN, 10000)))
+      throw Error("relay connection timed out");
+    await this.until(() => this.authId !== "", 1200);
+    if (this.authId) {
+      if (!(await this.until(() => this.acks.has(this.authId), 15000)))
+        throw Error("AUTH timed out");
+      const a = this.acks.get(this.authId)!;
+      if (!a.ok) throw Error("AUTH refused: " + a.why);
+      this.report("relay: AUTH accepted");
+    } else this.report("relay: no initial AUTH challenge");
+  }
+  send(frame: any) {
+    if (this.ws.readyState !== WebSocket.OPEN)
+      throw Error("relay is not connected");
+    this.ws.send(JSON.stringify(frame));
+  }
+  async publish(e: Ev) {
+    this.send(["EVENT", e]);
+    if (!(await this.until(() => this.acks.has(e.id), 15000)))
+      throw Error("job publish acknowledgement timed out");
+    const a = this.acks.get(e.id)!;
+    if (!a.ok) throw Error("job refused by relay: " + a.why);
+    this.report("relay: 25910 job accepted");
+  }
+  close() {
+    this.ws.close();
+  }
+}
+export async function runDemo(
+  o: Options,
+  report = (s: string) => console.log(s),
+) {
+  let secret: Uint8Array;
+  while (true) {
+    secret = crypto.getRandomValues(new Uint8Array(32));
+    try {
+      schnorr.getPublicKey(secret);
+      break;
+    } catch {}
+  }
+  const me = bytesToHex(schnorr.getPublicKey(secret)),
+    relay = new Relay(o.relay, secret, report),
+    results: any[] = [];
+  try {
+    await relay.open();
+    const sub = "demo-beacons-" + crypto.randomUUID();
+    relay.send(["REQ", sub, { kinds: [30200], limit: 256 }]);
+    await relay.until(() => relay.eose.has(sub), o.discover * 1000);
+    relay.send(["CLOSE", sub]);
+    const beacons = newestBeacons(
+      relay.events
+        .map((e) => admitBeacon(e, Math.floor(Date.now() / 1000), o.model))
+        .filter((b): b is Beacon => b !== null),
+    );
+    for (const p of beacons)
+      report(
+        `PYLON ${p.slug} ${JSON.stringify(p.label)} ${p.status} ${p.free}/${p.total} ${p.identity || "model-mismatch: " + p.models.map(clean).join(",")} ${npub(p.provider)}`,
+      );
+    if (relay.events.filter((e) => e.kind === 30200).length >= 256)
+      report("discovery: relay limit reached; list may be incomplete");
+    if (o.list) return { pylons: beacons.length, results };
+    if (!o.all && !o.slugs.length)
+      throw Error("select --slug NAME (repeatable), --all, or --list");
+    const targets = beacons.filter(
+      (p) =>
+        (o.all || o.slugs.includes(p.slug)) &&
+        p.status === "online" &&
+        p.free > 0 &&
+        p.identity !== "",
+    );
+    const missing = o.slugs.filter((s) => !targets.some((p) => p.slug === s));
+    if (missing.length)
+      throw Error(
+        "no fresh available " + o.model + " Pylon: " + missing.join(", "),
+      );
+    if (!targets.length)
+      throw Error("no fresh available " + o.model + " Pylons found");
+    relay.send([
+      "REQ",
+      "demo-answers",
+      {
+        kinds: [26910, 27010],
+        "#p": [me],
+        since: Math.floor(Date.now() / 1000) - 5,
+      },
+    ]);
+    await Bun.sleep(100);
+    for (const p of targets) {
+      if (Math.floor(Date.now() / 1000) > p.validUntil) {
+        results.push({
+          slug: p.slug,
+          provider: npub(p.provider),
+          identity: p.identity,
+          status: "stale",
+        });
+        report(`STALE ${p.slug}: beacon expired before dispatch`);
+        continue;
+      }
+      const request = "demo-" + crypto.randomUUID(),
+        deadline = Math.floor(Date.now() / 1000) + o.timeout,
+        key = nip44.getConversationKey(secret, p.provider);
+      const payload = {
+        v: V,
+        requires: [],
+        type: "systemone",
+        request,
+        attempt: 1,
+        model: o.model,
+        state: "Water is wet.",
+        questions: {
+          wet: {
+            type: "choice",
+            instructions: "Is the water wet?",
+            criteria: { yes: null, no: null },
+          },
+        },
+        deadline,
+      };
+      const job = signEvent(
+        secret,
+        25910,
+        [
+          ["p", p.provider],
+          ["expiration", String(deadline)],
+        ],
+        nip44.encrypt(JSON.stringify(payload), key),
+      );
+      const start = Date.now();
+      let result: any;
+      const on = (e: Ev) => {
+        if (
+          result ||
+          e.pubkey !== p.provider ||
+          single(e, "p") !== me ||
+          single(e, "e") !== job.id ||
+          ![26910, 27010].includes(e.kind) ||
+          e.created_at < job.created_at - 5 ||
+          e.created_at > Math.floor(Date.now() / 1000) + 30 ||
+          e.created_at > deadline + 30
+        )
+          return;
+        try {
+          const r = JSON.parse(nip44.decrypt(e.content, key));
+          if (r.request !== request || r.attempt !== 1 || r.v !== V) return;
+          if (e.kind === 27010) {
+            if (r.type === "status" && r.status === "error")
+              result = {
+                slug: p.slug,
+                provider: npub(p.provider),
+                identity: p.identity,
+                status: "refused",
+                code: clean(String(r.code ?? "unknown")).slice(0, 128),
+                latency_ms: Date.now() - start,
+              };
+            return;
+          }
+          if (validateResult(r, p, request))
+            result = {
+              slug: p.slug,
+              provider: npub(p.provider),
+              identity: p.identity,
+              status: "answered",
+              choice: r.response.answers.wet.choice,
+              probabilities: r.response.answers.wet.probabilities,
+              latency_ms: Date.now() - start,
+            };
+        } catch {}
+      };
+      relay.listeners.add(on);
+      try {
+        await relay.publish(job);
+        await relay.until(() => result !== undefined, o.timeout * 1000);
+      } finally {
+        relay.listeners.delete(on);
+      }
+      if (!result)
+        result = {
+          slug: p.slug,
+          provider: npub(p.provider),
+          identity: p.identity,
+          status: "timeout",
+          latency_ms: Date.now() - start,
+        };
+      results.push(result);
+      report(
+        `${result.status.toUpperCase()} ${p.slug} ${result.choice ?? result.code ?? "no answer"} ${result.latency_ms}ms ${p.identity}`,
+      );
+    }
+    relay.send(["CLOSE", "demo-answers"]);
+    return { pylons: beacons.length, results };
+  } finally {
+    relay.close();
+    secret.fill(0);
+  }
+}
+if (import.meta.main) {
+  try {
+    const o = parseArgs(Bun.argv.slice(2));
+    if (o.help) {
+      console.log(
+        "Usage: bun psionic/tests/pylon/demo-buyer.ts [--relay URL] --list | --slug NAME | --all\nOptions: --model psionic-toy --discover 4 --timeout 45 --json\nTooling uses a fresh throwaway buyer identity per run. No payment or real identity.",
+      );
+      process.exit(0);
+    }
+    const r = await runDemo(
+      o,
+      o.json ? (s) => console.error(s) : (s) => console.log(s),
+    );
+    if (o.json) console.log(JSON.stringify(r));
+    process.exitCode = r.results.some((x) => x.status !== "answered") ? 1 : 0;
+  } catch (e) {
+    console.error(
+      "demo buyer: " + (e instanceof Error ? e.message : String(e)),
+    );
+    process.exitCode = 1;
+  }
+}
