@@ -1,0 +1,40 @@
+{
+  "binaries": {
+    "fleet": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/psionic-fleet-guarded",
+      "sha256": "b406aa3483d08308214fb07ddf90252c61addf7fe767e6da1b8aad725a031bfb"
+    },
+    "relay": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/relay",
+      "sha256": "46b772b5be9522e1473052494c34a0e0cc77487e28e03b96b32006166eb13c04"
+    },
+    "pylon": {
+      "path": "/tmp/oct30-pylon-mac-live/build/pylon",
+      "sha256": "50ee43120f4b05ade56b584e66d68c258306e88875e1b2a054ef27c66a37f1cd"
+    },
+    "serve": {
+      "path": "/tmp/oct30-pylon-mac-live/build/psionic-serve",
+      "sha256": "8edef31672b37b874ef9a84c08e55b334af8b38494390895a8f396454f36db04"
+    }
+  },
+  "sanitizer_errors": [],
+  "source_commit": null,
+  "at": "2026-10-30T15:39:35.988Z",
+  "selection": "native",
+  "from": null,
+  "only": "real HTTP -> compiled fleet -> Coax relay -> Coax Pylon -> toy engine",
+  "match": null,
+  "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+  "product": "compiled Coax fleet",
+  "scope": "loopback only; independent protocol peer and real Coax relay/Pylon/engine",
+  "results": [
+    {
+      "name": "real HTTP -> compiled fleet -> Coax relay -> Coax Pylon -> toy engine",
+      "ok": true,
+      "ms": 2143,
+      "http": 200,
+      "door": "pylon:ch20-real",
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573"
+    }
+  ]
+}

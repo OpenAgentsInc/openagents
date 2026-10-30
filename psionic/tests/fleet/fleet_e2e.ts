@@ -13,8 +13,10 @@ const out=resolve(process.env.OUT_DIR||mkdtempSync(join(tmpdir(),"psionic-fleet-
 if(![undefined,"all","native","peers"].includes(process.env.FLEET_SCOPE))throw Error("FLEET_SCOPE must be all, native or peers")
 const call={model:"psionic-toy",state:"Water is wet.",questions:{wet:{type:"choice",instructions:"Is the water wet?",criteria:{yes:null,no:null}}}}
 const multiCall={...call,questions:{...call.questions,uncertain:{type:"noul",instructions:"Is this certain?"},level:{type:"score",instructions:"How wet?",criteria:["dry","wet"]}}}
+const scoreCall={...call,questions:{wet:{type:"score",instructions:"How wet?",criteria:["dry","wet"]}}}
+const multilevelCall={...call,questions:{wet:{type:"score",instructions:"How wet?",criteria:["dry","damp","wet"]}}}
 type Event={id:string;pubkey:string;created_at:number;kind:number;tags:string[][];content:string;sig:string}
-type Mode="early-answer"|"early-reject"|"late-answer"|"answer"|"stale"|"draining"|"mismatch"|"full"|"superseded"|"silence"|"blocked"|"closed"|"retry"|"bad-signature"|"bad-provider"|"bad-job"|"bad-recipient"|"bad-request"|"bad-attempt"|"bad-model"|"bad-identity"|"bad-door"|"bad-question"|"bad-probability"
+type Mode="early-answer"|"early-reject"|"late-answer"|"answer"|"stale"|"draining"|"mismatch"|"full"|"superseded"|"silence"|"blocked"|"closed"|"retry"|"bad-signature"|"bad-provider"|"bad-job"|"bad-recipient"|"bad-request"|"bad-attempt"|"bad-model"|"bad-identity"|"bad-door"|"bad-question"|"bad-probability"|"numeric-bad-confidence-upper"|"numeric-bad-confidence-negative"|"numeric-bad-score-upper"|"numeric-bad-score-negative"|"numeric-bad-score-multilevel-upper"|"numeric-valid-confidence-tolerance"|"numeric-valid-confidence-upper"|"numeric-valid-score-tolerance"|"numeric-valid-score-upper"|"numeric-valid-score-multilevel"
 const now=()=>Math.floor(Date.now()/1000),tag=(e:Event,k:string)=>e.tags.find(t=>t[0]===k)?.[1]
 function key(n:number){const k=new Uint8Array(32);k[31]=n;return {secret:k,pubkey:bytesToHex(schnorr.getPublicKey(k)),slug:`peer-${n}`}}
 function sign(k:ReturnType<typeof key>,kind:number,tags:string[][],content:string,at=now()):Event{
@@ -30,7 +32,7 @@ function beacon(k:ReturnType<typeof key>,mode:Mode,generation=1){
   return sign(k,30200,[["d",k.slug],["t","oa:pylon-beacon:v1"],["x",bytesToHex(sha256(enc.encode(content)))],["expiration",String(until)]],content,observed)
 }
 function relayPeer(mode:Mode){
-  let discovered=0,answerSubscriptions=0;const peers=[key(10),key(11)],jobs:any[]=[],errors:string[]=[],authentications:string[]=[],timers:ReturnType<typeof setTimeout>[]=[]
+  let discovered=0,answerSubscriptions=0;const peers=[key(10),key(11)],jobs:any[]=[],bodies:string[]=[],errors:string[]=[],authentications:string[]=[],timers:ReturnType<typeof setTimeout>[]=[]
   const server=Bun.serve<{challenge:string;authenticated:boolean;sub:string}>({hostname:"127.0.0.1",port:0,
     fetch(req,s){if(s.upgrade(req,{data:{challenge:"fleet-test-challenge",authenticated:false,sub:""}}))return;return new Response("websocket only",{status:400})},
     websocket:{open(ws){ws.send(JSON.stringify(["AUTH",ws.data.challenge]))},message(ws,raw){try{
@@ -55,7 +57,7 @@ function relayPeer(mode:Mode){
         if(!ws.data.authenticated||!verified(e)||e.kind!==25910)throw Error("invalid or unauthenticated native job")
         const p=peers.find(p=>p.pubkey===tag(e,"p"));if(!p)throw Error("unknown target")
         const conversation=nip44.getConversationKey(p.secret,e.pubkey),job=JSON.parse(nip44.decrypt(e.content,conversation))
-        if(job.v!=="openagents.systemone.v1"||job.model!=="psionic-toy"||!job.request||job.attempt<1||job.deadline<now()||job.questions.wet.type!=="choice")throw Error("native job schema/correlation/deadline")
+        if(job.v!=="openagents.systemone.v1"||job.model!=="psionic-toy"||!job.request||job.attempt<1||job.deadline<now()||job.questions.wet.type!==(mode.includes("score")?"score":"choice"))throw Error("native job schema/correlation/deadline")
         jobs.push({provider:p.pubkey,job,event_id:e.id})
         const acknowledge=()=>ws.send(JSON.stringify(["OK",e.id,mode!=="blocked"&&mode!=="early-reject",mode==="blocked"||mode==="early-reject"?"blocked: test refusal":""]));
         if(mode==="early-answer"||mode==="early-reject")timers.push(setTimeout(acknowledge,100));else acknowledge();
@@ -70,17 +72,27 @@ function relayPeer(mode:Mode){
         if(mode==="bad-door")body.response.service.door="pylon:another-machine"
         if(mode==="bad-question")body.response.answers={unasked:body.response.answers.wet}
         if(mode==="bad-probability")body.response.answers.wet.confidence=0.1
+        if(mode.includes("confidence-upper"))body.response.answers.wet={type:"choice",choice:"yes",confidence:mode.startsWith("numeric-bad")?1.000000001:1,probabilities:{yes:1,no:0}}
+        if(mode==="numeric-bad-confidence-negative")body.response.answers.wet={type:"choice",choice:"yes",confidence:"__negative_one_unit__",probabilities:{yes:1,no:0}}
+        if(mode==="numeric-valid-confidence-tolerance")body.response.answers.wet.confidence=0.800001
+        if(mode.includes("score")){
+          const negative=mode==="numeric-bad-score-negative",multi=mode.includes("multilevel"),tolerance=mode==="numeric-valid-score-tolerance"
+          body.response.answers.wet={type:"score",selected:negative?"0":multi?"2":"1",score:negative?"__negative_one_unit__":mode==="numeric-bad-score-upper"?1.000000001:mode==="numeric-bad-score-multilevel-upper"?2.000000001:tolerance?0.700001:multi?1.5:1,confidence:tolerance?0.7:multi&&mode.startsWith("numeric-valid")?0.6:1,probabilities:multi?(mode.startsWith("numeric-valid")?{"0":0.1,"1":0.3,"2":0.6}:{"0":0,"1":0,"2":1}):negative?{"0":1,"1":0}:tolerance?{"0":0.3,"1":0.7}:{"0":0,"1":1}}
+        }
         if(mode==="bad-job")tags[1][1]="0".repeat(64)
         if(mode==="bad-recipient")tags[0][1]="0".repeat(64)
         if(mode==="bad-provider")signer=peers[1]
         if(mode==="retry"&&p===peers[0]){kind=27010;delete body.response;delete body.outcome;body.type="status";body.status="error";body.code="busy"}
-        const content=nip44.encrypt(JSON.stringify(body),nip44.getConversationKey(signer.secret,e.pubkey)),answer=sign(signer,kind,tags,content)
+        // Preserve the exact decimal boundary on the wire; JSON.stringify
+        // would spell the negative one-nanounit value in exponent notation.
+        const wire=JSON.stringify(body).replace('"__negative_one_unit__"',"-0.000000001");bodies.push(wire)
+        const content=nip44.encrypt(wire,nip44.getConversationKey(signer.secret,e.pubkey)),answer=sign(signer,kind,tags,content)
         if(mode==="bad-signature")answer.sig="0".repeat(128)
         if(!ws.data.sub)throw Error("job was published before subscribing to answers")
         timers.push(setTimeout(()=>ws.send(JSON.stringify(["EVENT",ws.data.sub,answer])),mode==="late-answer"?(p===peers[0]?650:150):20))
       }
     }catch(e){errors.push(String(e));ws.close()}}}})
-  return {url:`ws://localhost:${server.port}`,jobs,errors,authentications,peers,get discovered(){return discovered},get answerSubscriptions(){return answerSubscriptions},stop(){for(const t of timers)clearTimeout(t);server.stop(true)}}
+  return {url:`ws://localhost:${server.port}`,jobs,bodies,errors,authentications,peers,get discovered(){return discovered},get answerSubscriptions(){return answerSubscriptions},stop(){for(const t of timers)clearTimeout(t);server.stop(true)}}
 }
 async function freePort(){return await new Promise<number>((resolve,reject)=>{const s=createServer();s.on("error",reject);s.listen(0,"127.0.0.1",()=>{const p=(s.address() as any).port;s.close(()=>resolve(p))})})}
 const processes:Bun.Subprocess[]=[],results:any[]=[];let serial=0
@@ -91,7 +103,7 @@ async function listening(port:number,p:Bun.Subprocess){if(!await until(async()=>
 async function ask(port:number,body:any=call){const started=performance.now(),r=await fetch(`http://127.0.0.1:${port}/v1/systemone`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(body),signal:AbortSignal.timeout(12000)}),text=await r.text();let value:any;try{value=JSON.parse(text)}catch{throw Error(`HTTP ${r.status} not JSON: ${text.slice(0,200)}`)}return {status:r.status,body:value,ms:Math.round(performance.now()-started)}}
 function assert(ok:any,what:string){if(!ok)throw Error(what)}
 let selected=!process.env.FLEET_FROM;
-async function check(name:string,f:()=>Promise<any>){if(process.env.FLEET_ONLY&&name!==process.env.FLEET_ONLY)return;if(!selected){if(name!==process.env.FLEET_FROM)return;selected=true}const t=performance.now();try{const detail=await f();results.push({name,ok:true,ms:Math.round(performance.now()-t),...detail});console.log("ok   "+name)}catch(e){results.push({name,ok:false,error:String(e)});console.error("FAIL "+name+": "+e);throw e}}
+async function check(name:string,f:()=>Promise<any>){if(process.env.FLEET_ONLY&&name!==process.env.FLEET_ONLY)return;if(process.env.FLEET_MATCH&&!name.includes(process.env.FLEET_MATCH))return;if(!selected){if(name!==process.env.FLEET_FROM)return;selected=true}const t=performance.now();try{const detail=await f();results.push({name,ok:true,ms:Math.round(performance.now()-t),...detail});console.log("ok   "+name)}catch(e){results.push({name,ok:false,error:String(e)});console.error("FAIL "+name+": "+e);throw e}}
 const fleet=resolve(process.env.FLEET||join(out,"fleet/psionic-fleet")),relay=resolve(process.env.RELAY_BIN||join(out,"relay")),pylon=resolve(process.env.PYLON||join(out,"pylon/pylon")),serve=resolve(process.env.SERVE||join(out,"serve/psionic-serve"))
 async function build(script:string,args:string[],env:any={}){const p=Bun.spawn([join(root,script),...args],{cwd:root,stdout:"inherit",stderr:"inherit",env:{...process.env,...env}});let timer:ReturnType<typeof setTimeout>;try{const code=await Promise.race([p.exited,new Promise<number>((_resolve,reject)=>{timer=setTimeout(()=>{p.kill();reject(Error(`build exceeded 14 minutes: ${script}`))},840000)})]);if(code)throw Error(`${script} failed ${code}`)}finally{clearTimeout(timer!)}}
 async function ready(peer:ReturnType<typeof relayPeer>){assert(await until(()=>peer.authentications.length>0&&peer.discovered>0&&peer.answerSubscriptions>0,5000),"native buyer initial relay readiness")}
@@ -140,11 +152,12 @@ try{
   await stop(engine);await stop(rr)
   }
   if(process.env.FLEET_SCOPE!=="native"){
-  for(const mode of ["answer","early-answer","early-reject","late-answer","stale","draining","mismatch","full","superseded","blocked","closed","silence","retry","bad-signature","bad-provider","bad-job","bad-recipient","bad-request","bad-attempt","bad-model","bad-identity","bad-door","bad-question","bad-probability"] as Mode[]){
-    await check("independent relay: "+mode,async()=>{const peer=relayPeer(mode),f=await fleetProcess(peer.url);try{await ready(peer);const r=await ask(f.port);assert(peer.errors.length===0,peer.errors.join("; "));assert(peer.authentications.length>0,"native buyer did not authenticate");
-      if(mode==="answer"||mode==="early-answer"||mode==="retry"||mode==="late-answer"){assert(r.status===200&&r.body.answers.wet.choice==="no",JSON.stringify(r));assert(r.body.service.provider===(mode==="retry"||mode==="late-answer"?peer.peers[1].pubkey:peer.peers[0].pubkey),"wrong provider response");if(mode==="retry"||mode==="late-answer")assert(peer.jobs.length===2,"did not fail over to another provider")}
+  for(const mode of ["answer","early-answer","early-reject","late-answer","stale","draining","mismatch","full","superseded","blocked","closed","silence","retry","bad-signature","bad-provider","bad-job","bad-recipient","bad-request","bad-attempt","bad-model","bad-identity","bad-door","bad-question","bad-probability","numeric-bad-confidence-upper","numeric-bad-confidence-negative","numeric-bad-score-upper","numeric-bad-score-negative","numeric-bad-score-multilevel-upper","numeric-valid-confidence-tolerance","numeric-valid-confidence-upper","numeric-valid-score-tolerance","numeric-valid-score-upper","numeric-valid-score-multilevel"] as Mode[]){
+    await check("independent relay: "+mode,async()=>{const peer=relayPeer(mode),f=await fleetProcess(peer.url);try{await ready(peer);const r=await ask(f.port,mode.includes("score")?(mode.includes("multilevel")?multilevelCall:scoreCall):call);assert(peer.errors.length===0,peer.errors.join("; "));assert(peer.authentications.length>0,"native buyer did not authenticate");
+      if(mode.startsWith("numeric-"))assert(peer.jobs.length===1&&peer.bodies.length===1,"numeric case did not dispatch and receive its exact peer reply");
+      if(mode==="answer"||mode==="early-answer"||mode==="retry"||mode==="late-answer"||mode.startsWith("numeric-valid")){assert(r.status===200,JSON.stringify(r));if(!mode.startsWith("numeric-valid"))assert(r.body.answers.wet.choice==="no",JSON.stringify(r));assert(r.body.service.provider===(mode==="retry"||mode==="late-answer"?peer.peers[1].pubkey:peer.peers[0].pubkey),"wrong provider response");if(mode==="retry"||mode==="late-answer")assert(peer.jobs.length===2,"did not fail over to another provider");if(mode.startsWith("numeric-valid"))assert(JSON.stringify(r.body.answers.wet)===JSON.stringify(JSON.parse(peer.bodies[0]).response.answers.wet),"valid boundary response changed")}
       else {assert([503,524].includes(r.status),"invalid peer result was accepted "+JSON.stringify(r));if(["stale","draining","mismatch","full","superseded","closed"].includes(mode))assert(peer.jobs.length===0,"unavailable peer received a job")}
-      assert(r.ms<5000,"unbounded dispatch "+r.ms);return {http:r.status,jobs:peer.jobs.length,elapsed:r.ms}
+      assert(r.ms<5000,"unbounded dispatch "+r.ms);return {http:r.status,jobs:peer.jobs.length,elapsed:r.ms,...mode.startsWith("numeric-")?{reply_json:peer.bodies[0]}:{}}
     }finally{await stop(f.p);peer.stop()}})
   }
   for(const wrong of [false,true])await check(wrong?"different-identity local fallback is refused":"empty fleet uses same-identity local fallback",async()=>{const peer=relayPeer("draining"),local=localPeer(wrong),f=await fleetProcess(peer.url,local.url);try{await ready(peer);const r=await ask(f.port);assert(local.requests===1&&peer.jobs.length===0,"fallback routing count");assert(wrong?[503,524].includes(r.status):r.status===200&&r.body.service.door==="psionic"&&r.body.service.identity===identity,JSON.stringify(r));return {http:r.status,local_requests:local.requests}}finally{await stop(f.p);peer.stop();local.stop()}})
@@ -156,8 +169,8 @@ try{
   for(const p of processes.reverse())await stop(p)
   const sanitizerErrors=readdirSync(out).filter(n=>n.endsWith(".err")||n.endsWith(".log")).filter(n=>/ERROR: (AddressSanitizer|LeakSanitizer)|runtime error:|SUMMARY: UndefinedBehaviorSanitizer/.test(readFileSync(join(out,n),"utf8")));
   const binaries=Object.fromEntries(Object.entries({fleet,relay,pylon,serve}).filter(([_k,p])=>existsSync(p)).map(([k,p])=>[k,{path:p,sha256:bytesToHex(sha256(readFileSync(p)))}]));
-  writeFileSync(join(out,"results.json"),JSON.stringify({binaries,sanitizer_errors:sanitizerErrors,source_commit:process.env.FLEET_SOURCE_COMMIT||null,at:new Date().toISOString(),selection:process.env.FLEET_SCOPE||"all",from:process.env.FLEET_FROM||null,only:process.env.FLEET_ONLY||null,identity,product:"compiled Coax fleet",scope:"loopback only; independent protocol peer and real Coax relay/Pylon/engine",results},null,2)+"\n")
-  if((process.env.FLEET_ONLY||process.env.FLEET_FROM)&&results.length===0)throw Error("no fleet E2E cases selected");
+  writeFileSync(join(out,"results.json"),JSON.stringify({binaries,sanitizer_errors:sanitizerErrors,source_commit:process.env.FLEET_SOURCE_COMMIT||null,at:new Date().toISOString(),selection:process.env.FLEET_SCOPE||"all",from:process.env.FLEET_FROM||null,only:process.env.FLEET_ONLY||null,match:process.env.FLEET_MATCH||null,identity,product:"compiled Coax fleet",scope:"loopback only; independent protocol peer and real Coax relay/Pylon/engine",results},null,2)+"\n")
+  if((process.env.FLEET_ONLY||process.env.FLEET_FROM||process.env.FLEET_MATCH)&&results.length===0)throw Error("no fleet E2E cases selected");
   if(sanitizerErrors.length)throw Error("sanitizer failures: "+sanitizerErrors.join(", "));
   console.log(`fleet e2e: ${results.filter(r=>r.ok).length}/${results.length}, artifacts ${out}`)
 }

@@ -1,0 +1,25 @@
+{
+  "binaries": {
+    "fleet": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/psionic-fleet-final",
+      "sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54"
+    }
+  },
+  "sanitizer_errors": [],
+  "source_commit": null,
+  "at": "2026-10-30T15:34:29.217Z",
+  "selection": "peers",
+  "from": null,
+  "only": "independent relay: numeric-bad-confidence-upper",
+  "match": null,
+  "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+  "product": "compiled Coax fleet",
+  "scope": "loopback only; independent protocol peer and real Coax relay/Pylon/engine",
+  "results": [
+    {
+      "name": "independent relay: numeric-bad-confidence-upper",
+      "ok": false,
+      "error": "Error: invalid peer result was accepted {\"status\":200,\"body\":{\"model\":\"psionic-toy\",\"service\":{\"door\":\"pylon:peer-10\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"provider\":\"a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7\"},\"answers\":{\"wet\":{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":1.000000001,\"probabilities\":{\"yes\":1,\"no\":0}}}},\"ms\":573}"
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "binaries": {
+    "fleet": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/psionic-fleet-guarded",
+      "sha256": "b406aa3483d08308214fb07ddf90252c61addf7fe767e6da1b8aad725a031bfb"
+    }
+  },
+  "sanitizer_errors": [],
+  "source_commit": null,
+  "at": "2026-10-30T15:39:33.088Z",
+  "selection": "peers",
+  "from": null,
+  "only": null,
+  "match": "local HTTP framing",
+  "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+  "product": "compiled Coax fleet",
+  "scope": "loopback only; independent protocol peer and real Coax relay/Pylon/engine",
+  "results": [
+    {
+      "name": "local HTTP framing refuses status-prefix",
+      "ok": true,
+      "ms": 1003,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses duplicate-length",
+      "ok": true,
+      "ms": 673,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses transfer-encoding",
+      "ok": true,
+      "ms": 716,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses missing-length",
+      "ok": true,
+      "ms": 719,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses truncated",
+      "ok": true,
+      "ms": 739,
+      "http": 503
+    },
+    {
+      "name": "local HTTP framing refuses trailing-body",
+      "ok": true,
+      "ms": 660,
+      "http": 503
+    }
+  ]
+}

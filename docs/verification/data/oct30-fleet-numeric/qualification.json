@@ -1,0 +1,41 @@
+{
+  "at": "2026-10-30T15:41:10.819461+00:00",
+  "old_fleet_sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54",
+  "guarded_fleet_sha256": "b406aa3483d08308214fb07ddf90252c61addf7fe767e6da1b8aad725a031bfb",
+  "runtime_sources_sha256": {
+    "psionic/lib/fleet/run.coax": "6358e013019c1589d76371c96f2eeac10372c2aabe9043e5c5217b2aeddc75a7",
+    "psionic/lib/fleet/policy.coax": "9ecc4efd742fe6d03dbbcf32c7b79ffe9d6e33134e135d158baa4b1cdfbea5e3",
+    "psionic/lib/fleet/protocol.coax": "76eb9c3e70c1c2efb57e3906dea81dee8abba0bce077c0951f4dd63195470f03",
+    "psionic/lib/fleet/service.coax": "f96085e07d85d2e8918428a3b1d56e1a64d909688260c955cd796cbb39d3594d"
+  },
+  "guarded_emitted_c_sha256": "fa42cd11f8902c523d78f6db4a7f8f08dc46136843ee0c36a397b14011f35435",
+  "runs": {
+    "old-confidence": {
+      "passed": 0,
+      "total": 1
+    },
+    "old-score": {
+      "passed": 0,
+      "total": 1
+    },
+    "old-valid": {
+      "passed": 5,
+      "total": 5
+    },
+    "guarded-numeric": {
+      "passed": 10,
+      "total": 10
+    },
+    "guarded-native": {
+      "passed": 1,
+      "total": 1
+    },
+    "guarded-framing": {
+      "passed": 6,
+      "total": 6
+    }
+  },
+  "guarded_affected_cases_passed": 17,
+  "sanitizer_errors": [],
+  "scope": "Two independent signed/encrypted HTTP regressions first reproduce illegal confidence and score 1.000000001 acceptance on the prior artifact. The successor is checked only on numeric 10, native choice/noul/score 1, and affected local HTTP framing 6. Prior 37-case/public evidence remains unchanged and tied to its original source/binary hashes."
+}

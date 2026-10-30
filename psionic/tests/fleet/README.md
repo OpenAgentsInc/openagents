@@ -31,7 +31,16 @@ bun psionic/tests/fleet/fleet_e2e.ts
 `FLEET_SCOPE=peers` runs only the independent adversarial peer cases. This
 supports focused reruns while fixing one side. `FLEET_SOURCE_COMMIT` records
 the qualified runtime revision. `FLEET_FROM` starts at an exact check name;
-`FLEET_ONLY` selects one exact check (normally with `FLEET_SCOPE=peers`).
+`FLEET_ONLY` selects one exact check (normally with `FLEET_SCOPE=peers`);
+`FLEET_MATCH` selects names containing a substring. For example,
+`FLEET_SCOPE=peers FLEET_MATCH=numeric-` runs only the numeric boundary
+regressions. These cover confidence in `[0,1]`, score in the question's
+`[0, level_count-1]`, inclusive exact bounds, and valid exact `0.000001`
+serialization tolerance. Negative nanounits are sent in decimal notation,
+not exponent notation, so the wire tests exercise the intended boundary.
+The current chapter 16 profile admits 2..10 score levels, so valid scores
+cannot exceed 9; the numeric decoder's one-digit integer profile covers that
+admitted range.
 The peer harness waits for AUTH and both subscriptions before sending HTTP;
 the listener being open does not imply relay readiness. Results also record the native binary
 SHA-256 identities and scan all native logs for ASan/UBSan failures.

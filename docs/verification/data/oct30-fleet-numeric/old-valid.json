@@ -1,0 +1,65 @@
+{
+  "binaries": {
+    "fleet": {
+      "path": "/tmp/oct30-fleet-e2e-artifacts/psionic-fleet-final",
+      "sha256": "6b7049b1e469cb6930f3ea166e02e55138380bcb4064e90b2ba22c6f17d29e54"
+    }
+  },
+  "sanitizer_errors": [],
+  "source_commit": null,
+  "at": "2026-10-30T15:35:20.188Z",
+  "selection": "peers",
+  "from": null,
+  "only": null,
+  "match": "numeric-valid-",
+  "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+  "product": "compiled Coax fleet",
+  "scope": "loopback only; independent protocol peer and real Coax relay/Pylon/engine",
+  "results": [
+    {
+      "name": "independent relay: numeric-valid-confidence-tolerance",
+      "ok": true,
+      "ms": 771,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 586,
+      "reply_json": "{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"3d1089cd0592720585111d103ba56707\",\"attempt\":1,\"outcome\":\"answered\",\"response\":{\"model\":\"psionic-toy\",\"service\":{\"door\":\"pylon:peer-10\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"provider\":\"a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7\"},\"answers\":{\"wet\":{\"type\":\"choice\",\"choice\":\"no\",\"confidence\":0.800001,\"probabilities\":{\"yes\":0.2,\"no\":0.8}}}}}"
+    },
+    {
+      "name": "independent relay: numeric-valid-confidence-upper",
+      "ok": true,
+      "ms": 744,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 579,
+      "reply_json": "{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"c4cda2256a0e47f2e15ea39ff97fbe25\",\"attempt\":1,\"outcome\":\"answered\",\"response\":{\"model\":\"psionic-toy\",\"service\":{\"door\":\"pylon:peer-10\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"provider\":\"a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7\"},\"answers\":{\"wet\":{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":1,\"probabilities\":{\"yes\":1,\"no\":0}}}}}"
+    },
+    {
+      "name": "independent relay: numeric-valid-score-tolerance",
+      "ok": true,
+      "ms": 756,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 560,
+      "reply_json": "{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"952ed7e762f57175cb07475a6d9b4694\",\"attempt\":1,\"outcome\":\"answered\",\"response\":{\"model\":\"psionic-toy\",\"service\":{\"door\":\"pylon:peer-10\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"provider\":\"a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7\"},\"answers\":{\"wet\":{\"type\":\"score\",\"selected\":\"1\",\"score\":0.700001,\"confidence\":0.7,\"probabilities\":{\"0\":0.3,\"1\":0.7}}}}}"
+    },
+    {
+      "name": "independent relay: numeric-valid-score-upper",
+      "ok": true,
+      "ms": 749,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 581,
+      "reply_json": "{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"e317e091e9873352350ef8ba46190366\",\"attempt\":1,\"outcome\":\"answered\",\"response\":{\"model\":\"psionic-toy\",\"service\":{\"door\":\"pylon:peer-10\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"provider\":\"a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7\"},\"answers\":{\"wet\":{\"type\":\"score\",\"selected\":\"1\",\"score\":1,\"confidence\":1,\"probabilities\":{\"0\":0,\"1\":1}}}}}"
+    },
+    {
+      "name": "independent relay: numeric-valid-score-multilevel",
+      "ok": true,
+      "ms": 733,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 559,
+      "reply_json": "{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"b273d8f5304bb3ae9274de050930e0e7\",\"attempt\":1,\"outcome\":\"answered\",\"response\":{\"model\":\"psionic-toy\",\"service\":{\"door\":\"pylon:peer-10\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"provider\":\"a0434d9e47f3c86235477c7b1ae6ae5d3442d49b1943c2b752a68e2a47e247c7\"},\"answers\":{\"wet\":{\"type\":\"score\",\"selected\":\"2\",\"score\":1.5,\"confidence\":0.6,\"probabilities\":{\"0\":0.1,\"1\":0.3,\"2\":0.6}}}}}"
+    }
+  ]
+}
