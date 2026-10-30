@@ -134,7 +134,7 @@ meshes. Where a kit has no piece, the line says what is assembled instead.
 | Ruins | SN `Rock_Medium_*`; MV `Prop_Brick1..4`, `Wall_UnevenBrick_Straight` broken off, `Wall_Arch`; FP `Vase_Rubble_Medium`. |
 | Crypt | MV `Wall_UnevenBrick_Door_Round`, `DoorFrame_Round_Brick`, `Door_4_Round`; SN `DeadTree_1..3`, `Rock_Medium_*`. |
 | River crossing | The bridge is MV `Floor_WoodDark` boards (4 across by 7 along) and `Prop_WoodenFence_Single` rails, 4 lengths a side (everglade.coax `bridge`), over the engine's timber (`city`: the deck's plank slab, `LOOK_PLANKS`, four beams under it, two rows of three piles under cap beams, `LOOK_WOOD`; its posts and bars stand in for the rails until the pack is in). The rails stop you on the deck, and the piles stop a swimmer under it (everglade.coax `everglade_walls_on`, `everglade_bodies_on`); SN `Rock_Medium_*` on the banks; water drawn by the engine (the water system, docs/verse/water.md). |
-| Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are Quaternius Universal Base Characters dressed in the Fantasy outfits' `Peasant` and `Ranger` (below, "How the people look"); the cats are still plain shapes, to be aethyr's `Custom_Cat`. |
+| Characters | You are the previous Everglade's Ranger (below, "You: the Ranger"); the people are Quaternius Universal Base Characters dressed in the Fantasy outfits' `Peasant` and `Ranger` (below, "How the people look"); the cats are aethyr's `Custom_Cat`, sitting. |
 
 ## Where characters stand
 
@@ -202,9 +202,10 @@ phone) are drawn.
 Not yet: the Standard Fantasy outfits are only `Peasant` and `Ranger`, so
 the archmage, priest and astronomer wear dyed peasant and ranger clothes.
 Robes, a noble's and a knight's dress are in the full "Modular Character
-Outfits - Fantasy" pack, not here. The cats are still plain shapes: no
-kit in the workspace has an animated cat; aethyr's static `Custom_Cat`
-(`tools/custom_models.py`) is the stand-in to come.
+Outfits - Fantasy" pack, not here. The cats are aethyr's static
+`Custom_Cat` (`tools/custom_models.py`, in the pack since eg-paint-people),
+sitting where their day starts, each its own size; no kit in the workspace
+has an animated cat, so they don't move until one arrives.
 
 ## The quests (eg-quests)
 

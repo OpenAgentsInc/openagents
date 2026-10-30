@@ -722,6 +722,12 @@ paint pass would otherwise tint them with whatever hue their noise has, and the 
 The people's layers are 256 texels (`"people": {"texture_size": 256}`), as the characters sample two
 mips coarser anyway. 8,296,120 bytes of the 8,700,000 budget (from 8,634,456).
 
+**Built** (October 29, eg-paint-people): the Ranger and the Quaternius people already take the
+character shading (two bands, rim, coarse mips) and their layers pass the pack's rules at 256 texels; the
+cats, which were three coloured spheres with cone ears, are the kit's sitting cat (`Custom_Cat`), each
+its own size, drawn after the edits' draw so the town's groups keep them (as the commons' brazier now is:
+it drew its flames over no cauldron before).
+
 ## Order of the work
 
 1. The style field and presets, and the style fixture, which everything else

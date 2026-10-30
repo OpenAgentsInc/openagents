@@ -3,7 +3,7 @@
   "title": "Everglade",
   "style": "painterly",
   "paint": [2, 3, 19, 23, 32, 33, 35],
-  "neutral": [0, 3, 4, 19, 22, 27],
+  "neutral": [0, 3, 4, 19, 22, 27, 28],
   "budget": 8700000,
   "scene": "~/work/aethyr-cpp/build-native/native-root/assets/scene.bin",
   "layers": "~/work/aethyr-cpp/assets/layer{n}",
@@ -113,6 +113,10 @@
     },
     {
       "name": "Custom_Bush",
+      "licence": "openagents-custom-models"
+    },
+    {
+      "name": "Custom_Cat",
       "licence": "openagents-custom-models"
     }
   ],
