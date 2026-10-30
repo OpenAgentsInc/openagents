@@ -92,8 +92,8 @@ mch_run :: () {
     print("mesh-checker: key %\n",cast(string)f[0].me[..]);
     if !mch_public_receipt(f[..],cast(string)v.receipt_id[..]) {print("mesh-checker: receipt not observed\n");x:=fh_status(4);return;}
     comparison:=McComparison.{reason=8};replayed:=false;
-    compatible:=o[0].backend=="psionic-toy-cpu-v1" && f[0].cfg[0].identity==MF_ID;
-    if f[0].cfg[0].route_provider==v.receipt.provider {comparison.reason=7;}
+    compatible:=mb_backend(o[0].backend,f[0].cfg[0].identity);
+    if !mb_replay_node(v.receipt.provider,f[0].cfg[0].route_provider) {comparison.reason=7;}
     else if !compatible {comparison.reason=MC_CONTEXT;}
     else if fh_stop()==0 {
         f[0].capture=true;response:[FM_BUFFER]u8;k:=fm_dispatch(f[..],cast(string)application[0..<v.body_n],response[..]);

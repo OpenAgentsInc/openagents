@@ -22,15 +22,15 @@ if [[ $target == fleet ]]; then exit 0; fi
 for role in check pool; do
   if [[ $target != all && $target != "$role" ]]; then continue; fi
   case $role in
-    check) entry=psionic/lib/mesh/checker-main.coax; effect=psionic/platform/mesh-input.c;;
-    pool) entry=psionic/lib/mesh/pool-main.coax; effect=psionic/platform/mesh-public-input.c;;
+    check) entry=psionic/lib/mesh/checker-main.coax; effects=(psionic/platform/mesh-input.c);;
+    pool) entry=psionic/lib/mesh/pool-main.coax; effects=(psionic/platform/mesh-public-input.c psionic/platform/mesh-public-output.c);;
   esac
   symbol=coax_mesh_${role}_main
   "$coax" c "$entry" --run-steps 250000000 > "$out/mesh-$role.c"
   "$cc" "${flags[@]}" -Dmain="$symbol" -c "$out/mesh-$role.c" -o "$out/mesh-$role.o"
   # shellcheck disable=SC2086
   "$cc" "${flags[@]}" $CXTLS_CFLAGS -I"$out" -Icoax/platform -Dcoax_fleet_main="$symbol" \
-    "$host" "$effect" coax/platform/socket-native.c coax/platform/tls-native.c \
+    "$host" "${effects[@]}" coax/platform/socket-native.c coax/platform/tls-native.c \
     coax/platform/entropy-native.c coax/platform/entropy-foreign.c coax/platform/process-native.c \
     "$out/mesh-$role.o" $CXTLS_LIBS -lm -lpthread -o "$out/psionic-mesh-$role"
   echo "built $out/psionic-mesh-$role"

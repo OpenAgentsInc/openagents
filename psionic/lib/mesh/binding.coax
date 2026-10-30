@@ -35,3 +35,15 @@ mb_checker :: (checker:string,buyer:string,provider:string)->bool #export_c {ret
 mb_times :: (started:int,finished:int,request_created:int,result_created:int)->bool #export_c {
     return request_created>=started-5 && request_created<=finished+30 && result_created>=started-5 && result_created<=finished+30;
 }
+
+#test "only the independently configured toy CPU comparison scope is compatible" {
+    #assert mb_backend("psionic-toy-cpu-v1",MF_ID);
+    #assert !mb_backend("",MF_ID) && !mb_backend("other",MF_ID) && !mb_backend("psionic-toy-cpu-v1","other") && !mb_backend("psionic-toy-cpu-v1","");
+}
+mb_backend :: (backend:string,identity:string)->bool #export_c {return backend=="psionic-toy-cpu-v1" && identity==MF_ID;}
+#test "self replay cannot be called independent checking" {
+    #assert mb_replay_node("original","reference") && !mb_replay_node("same","same");
+}
+// Both provider keys have already passed their signed/explicit configuration
+// admission. This decides independence, not ownership or physical hardware.
+mb_replay_node :: (original:string,reference:string)->bool #export_c {return original!=reference;}
