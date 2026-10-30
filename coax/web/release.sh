@@ -9,6 +9,13 @@
 #   release.sh --full-walk         # compare every page with its golden, unchanged or not
 #   release.sh --thorough          # production gets the full walk too (default: the brief check)
 #   release.sh --style-check       # staging's painterly realms measured and their sheets written (style-check.ts)
+#   release.sh --gated             # golden screenshots and 60 FPS gate the promote, as before 2026-10-30
+#
+# FAST PATH (owner, 2026-10-30, the default): staging gets the HTTP smoke and a
+# brief check that every page starts with no errors (goldens.ts --starts, no
+# screenshots), then production. The golden walk and the 60 FPS check run AFTER
+# the release is live, against production, as a report (releases/<time>/AFTER):
+# they never hold back a page or stop a release. --gated restores the gate.
 #
 # Staging's smoke is the HTTP checks (smoke.sh), then the playtest flow walked
 # in headless Chrome against its golden screenshots (goldens.ts): each page
@@ -91,7 +98,7 @@
 #                            service is retired: docs/2026-10-28-coder-service-deprecation.md)
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"; repo="$(cd "$here/../.." && pwd)"
-ref=origin/main stage=true prod=true full_walk="" thorough=false
+ref=origin/main stage=true prod=true full_walk="" thorough=false gated=false
 while (($#)); do
   case "$1" in
     --ref) ref="$2"; shift 2 ;;
@@ -101,6 +108,7 @@ while (($#)); do
     --full-walk) full_walk=1; shift ;;
     --thorough) thorough=true; shift ;;
     --style-check) style_check=1; shift ;;
+    --gated) gated=true; shift ;;
     *) echo "release: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -245,6 +253,11 @@ if $stage; then
     t=$(now); bun "$tree/coax/web/tests/home_live_browser.ts" https://staging.openagents.com; lap "live home" "$t"
   fi
   t=$(now)
+  if ! $gated; then
+    bun "$tree/coax/web/goldens.ts" https://staging.openagents.com --starts ||
+      { echo "release $commit: staging's pages don't start (goldens.ts --starts above); production is untouched" >&2; exit 1; }
+    lap starts "$t"
+  else
   # Pages unchanged since production's newest live release, if it was staged, skip their golden comparison.
   unchanged=()
   [[ -n "$full_walk" || "$passed" != *" staged "* ]] || unchanged=(--unchanged-against https://openagents.com --since "${passed%% *}")
@@ -282,6 +295,7 @@ if $stage; then
   bun "$tree/coax/web/perf.ts" https://staging.openagents.com ||
     { echo "release $commit: Everglade misses 60 FPS on staging (perf.ts above); production is untouched" >&2; exit 1; }
   lap perf "$t"
+  fi
 fi
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s${held_names:+; would hold back $held_names}"; exit 0; }
 if ! $stage; then
@@ -344,6 +358,19 @@ lap "prod ${check#--}" "$t"
 echo "$full $stamp $($stage && echo staged || echo unstaged) $($thorough && echo thorough || echo fast)" | gcloud storage cp - "gs://$prod_bucket/releases/$stamp/PASSED" --quiet > /dev/null ||
   echo "release $commit: couldn't write releases/$stamp/PASSED; the next release walks in full" >&2
 echo "release $commit: live on openagents.com in $(secs $(( $(now) - start ))) s (rollback: coax/web/rollback.sh $stamp)${held_names:+; held back: $held_names}"
+# Fast path: the golden walk and 60 FPS run now, against production, as a report only.
+if ! $gated && [[ -z "$via" ]]; then
+  # Its own checkout of the commit: this run's $tree goes when the run ends.
+  aft="$(mktemp -d)"; after="$aft.txt"
+  git -C "$repo" worktree add -q --detach "$aft/t" "$full" 2>/dev/null
+  ( { GOLDENS_FULL=1 bun "$aft/t/coax/web/goldens.ts" https://openagents.com && echo "after: goldens passed" || echo "after: goldens differ (report only; fix or retake: bun coax/web/goldens.ts https://staging.openagents.com --update)"
+      bun "$aft/t/coax/web/perf.ts" https://openagents.com && echo "after: 60 FPS held" || echo "after: 60 FPS missed (report only)"
+    } > "$after" 2>&1
+    gcloud storage cp "$after" "gs://$prod_bucket/releases/$stamp/AFTER" --quiet > /dev/null 2>&1 || true
+    git -C "$repo" worktree remove --force "$aft/t" 2>/dev/null || true ) < /dev/null &
+  disown
+  echo "release $commit: goldens and 60 FPS check running after the release (report: $after, then releases/$stamp/AFTER)"
+fi
 # The commit released broke a page itself: the rest is live, but say so with a failure.
 if [[ -n "${held_mine:-}" ]]; then
   echo "release $commit: this commit changed how ${held_mine% } look(s) without updating the golden(s); those pages were held back" >&2
