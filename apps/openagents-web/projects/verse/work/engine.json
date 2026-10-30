@@ -787,6 +787,137 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "verse-eg-sledgehammer",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: the sledgehammer",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade's town broke under a two-handed maul as well as spells (verse/everglade/previous/destructible-buildings.md, \"The sledgehammer\"): SRD maul damage 2d6 bludgeoning plus Strength, doubled against objects (Wrecking, as Siege Monster), a 0.6 s wind-up on a 1 s cooldown, reach 2 m, the struck piece found along the swing. Ours breaks only to spells. The hammer on the bar, a swing that rolls d20 + 5 against the piece's AC and damages it through verse/demolish.coax's entry point, the chunks thrown away from the swing; the watch sees it as a crime.",
+      "files": [
+        "apps/openagents-web/everglade-spells.coax",
+        "verse/demolish.coax"
+      ],
+      "acceptance": [
+        "coax test passes on demolish.coax and everglade.coax",
+        "Two or three swings break a plaster wall on /realms/everglade, desktop and phone",
+        "Perf in the release walk holds 60 FPS"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-wall-topple",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: walls and towers topple",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "In the previous Everglade a wall section whose neighbours on both sides broke turned about its base edge and toppled, and a tall building cut at one level tipped over the cut and crumbled (verse/everglade/previous/destructible-buildings.md, \"Leaning and sagging\", \"Toppling\"). Ours lets a raised piece fall when its supports go, but a ground-floor wall with nothing beside it still stands, and the mages' tower and the observatory never tip. A ground wall left without side neighbours comes loose and topples outward; a tower that loses most of a level tips its upper storeys toward the cut.",
+      "files": [
+        "verse/demolish.coax",
+        "apps/openagents-web/everglade-spells.coax"
+      ],
+      "acceptance": [
+        "coax test passes on demolish.coax with a lone-wall and a tower test",
+        "A lone wall and the mages' tower topple under spells on /realms/everglade",
+        "Perf in the release walk holds 60 FPS"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-rumours",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: rumours that pass between the people",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade's villagers passed rumours when their routines put them together (verse/everglade/previous/generative-agents.md, \"Rumors\"): a typed record (the fact, its source, where and when it started, how many days it travels, a repeat probability), spread over the meetings of the day by a seeded roll, the same on every device, and told by the villager who knows it. Ours has routines and people who remember you, but no rumours. Rumours in verse/everglade/, spread over the routines' meetings, and what each person knows in their talk.",
+      "files": [
+        "verse/everglade/rumours.coax",
+        "verse/everglade/routines.coax",
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "coax test passes on rumours.coax with a diffusion test (one rumour, a day, who knows it)",
+        "A person who has heard a rumour tells it when asked what's new on /realms/everglade"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-distance-lod",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: distance detail levels",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade drew a far level of detail past 80 m, small plants and props only nearer than 52 m and shrubs nearer than 72 m, with a 2.5 m hysteresis so a cell at the switch doesn't flicker (verse/everglade/previous/everglade.md, Rendering). Ours draws every kit instance at every distance. The kit's small pieces dropped by distance (a phone nearer), each cell kept at its level until the eye moves past the switch, so a street view draws a fraction of the town's triangles with no change at walking distances.",
+      "files": [
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax",
+        "A street view on /realms/everglade draws fewer triangles than before, with no visible change at walking distance (goldens)",
+        "Perf in the release walk holds 60 FPS"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-baked-shading",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: baked sky light",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade baked its ambient light when the zone loaded (verse/everglade/previous/everglade.md, Rendering: each static vertex stored how much sky it saw, so the ground under the trees and inside buildings darkened, and a probe grid shaded the characters). Ours lights ambient by the normal alone. A sky-visibility grid baked once at load from the town's kit bounds and the trees, sampled for ambient light by the town, the ground and the people.",
+      "files": [
+        "apps/openagents-web/everglade.coax",
+        "apps/openagents-web/everglade.wgsl"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax with a bake test",
+        "The ground under the trees and in the streets' corners darker at noon on production; the style check still passes",
+        "Perf in the release walk holds 60 FPS"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "verse-eg-shared",
+      "parent": "engine-everglade-parity",
+      "title": "Everglade: other players in the city",
+      "size": "M",
+      "labels": [
+        "engine",
+        "everglade"
+      ],
+      "body": "The previous Everglade was a shared instance: other players walked it with you (verse/everglade/previous/everglade.md; coast.md, Multiplayer). Ours is one player a page. The playtest service already keeps rooms (coax/web/api/room.c, /api/playtest/presence/<room>) for the Haunted House; Everglade joins its own room, draws everyone else there as the Ranger under their name, and has the room's chat. No new server and no new GCP cost; destruction and the watch stay each page's own.",
+      "files": [
+        "apps/openagents-web/everglade-face.c",
+        "apps/openagents-web/everglade.coax"
+      ],
+      "acceptance": [
+        "coax test passes on everglade.coax",
+        "Two pages on /realms/everglade see each other walk, and a chat line reaches the other",
+        "No new GCP service"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
