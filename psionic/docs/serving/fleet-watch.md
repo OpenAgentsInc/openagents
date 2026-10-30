@@ -1,5 +1,23 @@
 # Six-hour GCloud Pylon watch
 
+## Stopped by the user
+
+The user ended this watch early on 2026-10-30 and assigned worker shutdown to
+another agent. **Do not resume, recreate recovery controls, or continue probes.**
+The six-hour objective was not completed; the fixed window below is retained
+as historical evidence, not an active instruction.
+
+Cleanup drained and deleted the `pylon-fleet-watch` and `pylon-spot-recovery`
+Cloud Run jobs and their Cloud Scheduler schedules. The thread heartbeat
+`six-hour-gcloud-pylon-fleet-watch` was deleted. On the RTX VM,
+`openagents-backend-watch.timer` is disabled/inactive and its service is
+inactive. The homepage sampler is interrupted and no browser process with
+its dedicated `coax-observe-pylons-` profile remains. Existing model/Pylon
+services and VM teardown are left to the other agent.
+
+The remaining sections describe the original setup and superseded continuation
+procedure; they do not authorize restarting it.
+
 This is the operational work file for the active fleet goal. The goal remains
 active until the complete required lineup is verified and has a six-hour
 supervision record. Setup time does not replace the requested live window.
