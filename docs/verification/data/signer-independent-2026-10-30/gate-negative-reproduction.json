@@ -1,0 +1,29 @@
+{
+  "schema": "coax.signer-gate-negative.v1",
+  "input_sha256": {
+    "/tmp/psionic-signer-comparison.TWZ38aAl/results-final/release.c": "4751de9d746addbf36799032036a128660d0c8990e76c0737287903040bbdbb7",
+    "/tmp/psionic-signer-comparison.TWZ38aAl/results-final/es.h": "dee968a2f6fffbd04621f3e12ba704c2fce01df66164584cd45f42a93097c7ac",
+    "/tmp/psionic-signer-comparison.TWZ38aAl/owner-gate.sh": "660e31d9ac61f7b53fded0ae9a988472be4e7512c317716ac88bec50e708fdf5",
+    "/tmp/psionic-signer-comparison.TWZ38aAl/owner-gate-probe.c": "7bab412da3db23d069b2bad6270cd6db65c6e22b8858a85a0f201e08c3621c5c",
+    "/tmp/psionic-signer-declassify.8tl0c2D2/tools/coax-nostr/signer-verification/seed_gate.py": "1706acea5044b13cfbc9d307c3205444300cb768cfd4e8f0e9702294c3206b6e"
+  },
+  "scope": "unchanged shell gate with substituted generated C; no product source changed",
+  "injection": "\n  static volatile uint32_t review_leak_sink;\n  if (l_key.data[0] & 1) review_leak_sink++;\n",
+  "gate_rejects_seed": false,
+  "runs": [
+    {
+      "case": "baseline",
+      "exit_code": 0,
+      "stdout": "calls 6 status 2 sig e907..\nreports: 3\n      1 sw_publish\n      1 sw_key\n      1 sm_equation\nok   control: a branch on the key is flagged (1)\nok   no key-dependent branch or address outside the declared decisions\n",
+      "stderr": "",
+      "generated_c_sha256": "7c0dbc86ea5682b97c896e6944890815f037ac514e3ee9fab374ec257aec1131"
+    },
+    {
+      "case": "seeded-key-branch",
+      "exit_code": 0,
+      "stdout": "calls 6 status 2 sig e907..\nreports: 4\n      2 sm_equation\n      1 sw_publish\n      1 sw_key\nok   control: a branch on the key is flagged (1)\nok   no key-dependent branch or address outside the declared decisions\n",
+      "stderr": "",
+      "generated_c_sha256": "c915f7d81d15a57111a50f8694b1454d756d9d615aa31e7060bca6d163bc160b"
+    }
+  ]
+}

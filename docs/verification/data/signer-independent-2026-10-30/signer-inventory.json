@@ -1,0 +1,154 @@
+{
+  "source_revision": "37df0fbb7c",
+  "inventory_origin": "compiler-recorded schnorr_sign physical closure; same load paths at the pinned revision",
+  "physical_units": 29,
+  "source_bytes": 269195,
+  "large_profile_byte_cap": 262144,
+  "sources": [
+    {
+      "path": "coax/lib/crypto/schnorr_sign.coax",
+      "bytes": 17592,
+      "sha256": "f26faa18b702c8031a02c6665320db23299a1d99e3e7d0afa88d2af01a949a9f"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_prepare_workspace.coax",
+      "bytes": 2624,
+      "sha256": "d96f9096b132f002baf75451c6698e2ec0e9656183028380faa60e2869eac305"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_scalar_workspace.coax",
+      "bytes": 2883,
+      "sha256": "6a5b214e6a9ac87bcd0afa34b2bf0668126fa7ce4b8fe7f69bff6e50b4ee52f9"
+    },
+    {
+      "path": "coax/lib/crypto/secp_scalar.coax",
+      "bytes": 11248,
+      "sha256": "80d53f77a3d3da9cd60fed42b527540c15923ec644a6a3ccb095f85d2364312d"
+    },
+    {
+      "path": "coax/lib/crypto/bytes.coax",
+      "bytes": 11552,
+      "sha256": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b"
+    },
+    {
+      "path": "coax/tests/nostr/scalar_fixtures.coax",
+      "bytes": 3907,
+      "sha256": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_point_workspace.coax",
+      "bytes": 2875,
+      "sha256": "98ab2e2ab9f4f90f2ae0333e8f340705b2a99520a717efa7e6139876d5b1f69e"
+    },
+    {
+      "path": "coax/lib/crypto/secp_mult_base_web.coax",
+      "bytes": 1754,
+      "sha256": "3ca9989b48ff368d1511fe9d81e4f91ec9f8f93d4099c6cf4cf0aa31fd391220"
+    },
+    {
+      "path": "coax/lib/crypto/secp_mult_base.coax",
+      "bytes": 7620,
+      "sha256": "fb9b34e769cb21e9d75439369e8608c27e94f5443907bd1b5a79f1cbcc1476a0"
+    },
+    {
+      "path": "coax/lib/crypto/secp_group32.coax",
+      "bytes": 4803,
+      "sha256": "ae2e2e5a1cd4701e094aa2aec34280d13277807621078fcb3394d53bbca2c6d6"
+    },
+    {
+      "path": "coax/lib/crypto/secp_group.coax",
+      "bytes": 17641,
+      "sha256": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c"
+    },
+    {
+      "path": "coax/lib/crypto/secp_field.coax",
+      "bytes": 27692,
+      "sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484"
+    },
+    {
+      "path": "coax/lib/crypto/secp_field32_total.coax",
+      "bytes": 4471,
+      "sha256": "971e37ac6fe8ab4e0e7e056935f8a130d44e1bf4520e56d7605227f9cbee74ae"
+    },
+    {
+      "path": "coax/lib/crypto/secp_field32.coax",
+      "bytes": 4441,
+      "sha256": "cd1a4ecf00535aa86b5fc3764cdc2920d745d9b3660b53999f83cdefd2c54902"
+    },
+    {
+      "path": "coax/lib/crypto/ecdh_fast.coax",
+      "bytes": 7529,
+      "sha256": "8247ea4a284db45d98a3b810c80e3ee80bac2ee4e5f2396174e2aabe5d6deee2"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_nonce_point.coax",
+      "bytes": 4444,
+      "sha256": "af765494a39a5c6cfa7b4ef4487f82281bdc3dd41f43d96bec86b2f9c8e2f507"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_nonce_workspace.coax",
+      "bytes": 4113,
+      "sha256": "68812db84fab59fb5fb22fe268c9d573c44e5df2cc5a99bac008810fe8bf8ac1"
+    },
+    {
+      "path": "coax/lib/crypto/sha256_workspace.coax",
+      "bytes": 7017,
+      "sha256": "a8a1d39760a4209eead8db6e89e6e935c1ca0740f038fb45929177d18820d98b"
+    },
+    {
+      "path": "coax/lib/crypto/sha256.coax",
+      "bytes": 13769,
+      "sha256": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9"
+    },
+    {
+      "path": "coax/lib/proto/fingerprint.coax",
+      "bytes": 19056,
+      "sha256": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_math_workspace.coax",
+      "bytes": 3816,
+      "sha256": "97a253083cceac10ed99c32eba15cab894534c2e4e08604cea6d3305c5aee787"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_fast.coax",
+      "bytes": 9494,
+      "sha256": "d27a4b855d5d350888d46d0a2ef68f88c6d30e48ad54e1e201f46c3e432f8f4c"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr.coax",
+      "bytes": 4114,
+      "sha256": "f90f2a3fca5f65bf0c32d22897b30c192e16946c3890a286e4a2922880ed1757"
+    },
+    {
+      "path": "coax/lib/crypto/secp_mult.coax",
+      "bytes": 9113,
+      "sha256": "9d193705688291686b265794a0634f2baab0181dfd7d36d5a708b38d9c84b195"
+    },
+    {
+      "path": "coax/tests/nostr/schnorr_checks.coax",
+      "bytes": 2879,
+      "sha256": "0dc51ad4161a227c9d51d8ffdfeab8543b4945e82eb4c8b7acb1f797f72af2fc"
+    },
+    {
+      "path": "coax/tests/nostr/schnorr_fixtures.coax",
+      "bytes": 26639,
+      "sha256": "c02d1bad643a6da2331bf95bcdd573e99d9b4e6e61f4fb86f6372f6ca4d71756"
+    },
+    {
+      "path": "coax/lib/crypto/schnorr_self_verify.coax",
+      "bytes": 20121,
+      "sha256": "756f6f1c5dd7720039bce446df463d3ca71527c438257cfa3b5afa0864ff9697"
+    },
+    {
+      "path": "coax/lib/crypto/secp_mult_const.coax",
+      "bytes": 9282,
+      "sha256": "aaa83e00f1fa8a1a2954e654c741e056337c1d17d6b5ec6d7e1f8285abb438e5"
+    },
+    {
+      "path": "coax/tests/nostr/schnorr_sign_vectors.coax",
+      "bytes": 6706,
+      "sha256": "84fda6ceab714c9b5ac93ff3596003783c84a00f97fa3b8ed31f73f2b22868db"
+    }
+  ]
+}
