@@ -201,8 +201,8 @@ colour   = mix(colour, haze, f)
 
 | | day | dusk/dawn | night |
 | --- | --- | --- | --- |
-| `start` | 20 m | 45 m | 30 m |
-| `density` (desktop) | 0.011 /m | 0.009 /m | 0.010 /m |
+| `start` | 10 m | 45 m | 30 m |
+| `density` (desktop) | 0.015 /m | 0.009 /m | 0.010 /m |
 | `cap` | 0.88 | 0.72 | 0.6 |
 | `falloff` | 60 m | 50 m | 40 m |
 | `haze_colour` | (0.56, 0.74, 0.90) | (0.96, 0.68, 0.56) | (0.025, 0.04, 0.09) |
@@ -214,7 +214,8 @@ thickens toward its cap, so the near world stays crisp and saturated, the
 middle distance goes teal and the far ridges blue, as Breath of the Wild's
 valleys do (`verse/style.coax` `verse_style_haze_hue`, added October 29).
 
-At 100 m by day the haze is 0.58, at 200 m 0.86, and it caps at 0.88 so
+At 40 m by day the haze is 0.36, at 100 m 0.74 (comparison round 3: from 0.58, as the
+references step their middle distance back), and it caps at 0.88 from about 160 m so
 far ridges still show as silhouettes. `base_y` is the realm's ground level
 at the eye. A realm with a short view (a walled city) still gets the same
 curve. Its far trees and hills are what show the layers, so it needs
@@ -739,6 +740,11 @@ alike, `meadow_srgb`) now runs in broad patches from a cool deep green (0.25, 0.
 haze now takes the meadow's hue (`haze_colour`: up to 0.38 of the way, none looking more than about 20
 degrees up or down, by day only), so the deep wood's far trunks, the far ridges and the valley seen from
 the map step back into teal-green rather than blue-grey.
+
+**Comparison round 3** (noon, dawn and dusk sheets): the value structure. The references fall from a
+darker, saturated near ground to a pale misty middle distance within 20 to 40 m; ours held the trees
+at 40 m as dark and crisp as those beside you. The day key's haze starts at 10 m (from 20) at 0.015 a
+metre (from 0.011): 0.36 at 40 m, 0.74 at 100 m. Dawn, dusk and night keep theirs.
 
 ## Order of the work
 

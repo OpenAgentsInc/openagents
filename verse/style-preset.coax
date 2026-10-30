@@ -146,7 +146,7 @@ painterly_key :: (i: int) -> StyleKey {
     k.tint_r = 0.52; k.tint_g = 0.58; k.tint_b = 0.86;
     k.sky_r = 0.55; k.sky_g = 0.66; k.sky_b = 0.84; k.ambient = 0.55;
     k.ground_r = 0.45; k.ground_g = 0.40; k.ground_b = 0.30;
-    k.haze_start = 20; k.haze_density = 0.011; k.haze_cap = 0.88; k.haze_falloff = 60;
+    k.haze_start = 10; k.haze_density = 0.015; k.haze_cap = 0.88; k.haze_falloff = 60;   // comparison round 3: aerial perspective from 20 m, as the references
     k.haze_r = 0.56; k.haze_g = 0.74; k.haze_b = 0.90;
     k.hkey_r = 1.00; k.hkey_g = 0.90; k.hkey_b = 0.72;
     k.zenith_r = 0.24; k.zenith_g = 0.48; k.zenith_b = 0.86;
@@ -456,7 +456,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert verse_style_at(p, 0.5, o[..]);
   #assert sp_near(o[SU_KEY], 1.0) && sp_near(o[SU_KEY + 1], 0.95) && sp_near(o[SU_KEY + 2], 0.85) && sp_near(o[SU_KEY + 3], 1.0);
   #assert sp_near(o[SU_TINT], 0.52) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_TINT + 2], 0.86);
-  #assert sp_near(o[SU_HAZE], 20) && sp_near(o[SU_HAZE + 1], 0.011) && sp_near(o[SU_HAZE + 2], 0.88) && sp_near(o[SU_HAZE + 3], 60);
+  #assert sp_near(o[SU_HAZE], 10) && sp_near(o[SU_HAZE + 1], 0.015) && sp_near(o[SU_HAZE + 2], 0.88) && sp_near(o[SU_HAZE + 3], 60);
   #assert sp_near(o[SU_HAZE_COLOUR], 0.56) && sp_near(o[SU_HAZE_COLOUR + 1], 0.74) && sp_near(o[SU_HAZE_COLOUR + 2], 0.90);
   #assert sp_near(o[SU_HORIZON], o[SU_HAZE_COLOUR]) && sp_near(o[SU_HORIZON + 2], o[SU_HAZE_COLOUR + 2]);
   #assert sp_near(o[SU_ZENITH + 2], 0.86) && sp_near(o[SU_TONE], 1.6) && sp_near(o[SU_RIM + 3], 0.30) && sp_near(o[SU_SHAFTS + 2], 0.44);
@@ -520,7 +520,7 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert verse_style_at(p, 0.5, o[..]);
   h100 := verse_style_haze(100, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
   h200 := verse_style_haze(200, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]);
-  #assert abs(h100 - 0.58) < 0.01 && abs(h200 - 0.86) < 0.01;
+  #assert abs(h100 - 0.74) < 0.01 && abs(h200 - 0.88) < 0.01;
   #assert verse_style_haze(9000, 0, 0, o[SU_HAZE], o[SU_HAZE + 1], o[SU_HAZE + 2], o[SU_HAZE + 3]) == o[SU_HAZE + 2];
   #assert verse_style_bands(0.4, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]) == o[SU_BANDS + 3];
   // the phone's haze is thicker at the same distance
