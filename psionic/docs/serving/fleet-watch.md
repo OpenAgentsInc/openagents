@@ -22,10 +22,13 @@ alone did not prove GPT-OSS; its real text round and website row are now verifie
 
 - Goal creation: `2026-10-30T19:00:42Z`.
 - Complete-model lineup verified: `2026-10-30T21:04:21Z`.
-- Independent managed supervision ready time: **pending actual Scheduler probe cycle**.
-- Six-hour deadline: supervision activation time plus exactly 21,600 seconds,
-  recorded once in the immutable window receipt. The full lineup and managed
-  probe/recovery path must be verified before that clock starts.
+- Independent managed four-role probe passed: `2026-10-30T21:06:50Z`.
+- Watch starts: **`2026-10-30T21:09:43Z` (4:09:43 PM Central)**.
+- Watch ends: **`2026-10-31T03:09:43Z` (10:09:43 PM Central)**.
+- The exact 21,600-second interval is fixed in
+  [the create-once window receipt](../../fixtures/fleet-watch/2026-10-30/window.json).
+  Activation was acknowledged before its start. Do not shift this window or
+  claim that configuring it proves six hours have elapsed.
 - Existing providers remain running and are probed during setup.
 - Do not claim six hours merely because a timer was configured. Preserve
   timestamped observations, failures, recovery requests and subsequent real
@@ -64,7 +67,20 @@ Cloud Build `cbadc10b-6599-4654-876b-02867b323656` passed. Recovery policy kille
 and six effect tests cover expiry, narrow recovery, dry mode, wrong-provider
 HTTP200 and refusal to credit only three roles. The embedded GPT-OSS client
 and confidential oracle were built from their qualified pinned components.
-Actual IAM/Scheduler activation is still pending; an image is not a live watch.
+The actual Scheduler-created bootstrap execution `pylon-fleet-watch-2jw7g`
+passed all four real probes. Its creator was the dedicated Scheduler service
+account, not an operator bypass. It returned GPT-OSS PONG in 753 ms and a
+fresh vendor-verified sealed round in 8,713 ms, as well as the two pinned
+decision answers. The job was then activated with DRY0 and the exact window;
+Scheduler ENABLED and its runtime image/config were independently read back.
+See [activation and bootstrap receipts](../../fixtures/fleet-watch/2026-10-30/).
+
+Runtime grants are scoped to GET on the two hosts, START on the TDX host,
+dispatch of the existing fixed RTX recovery job, and invocation of the two
+private model fleets. The Scheduler identity can invoke only this watcher.
+No model port, Google key, arbitrary target, VM creation, stop/delete or
+project-wide compute grant was added. Initial custom-role propagation was
+retried with the same grant rather than widening it.
 
 ## Recovery and probe ownership
 
@@ -83,7 +99,11 @@ minutes and covers only the fixed RTX VM. Its latest observed executions
 completed successfully through `20:11:51Z`; it is VM lifecycle recovery,
 not model-health verification. Preserve that controller and its pause/dry/
 drain procedure. The confidential VM is Standard with automatic restart and
-container `Always`; a stopped-VM recovery path still needs explicit coverage.
+container `Always`; the bounded watcher can request a start for this exact
+stopped VM. A start request remains distinct from model-ready or attested.
+Confidential endpoint keys can rotate on a verified reboot; accept a new
+nonce-bound key only through the unchanged publisher/image/release proof,
+never by copying a private TEE key or trusting a replacement label.
 
 A thread heartbeat, `six-hour-gcloud-pylon-fleet-watch`, supplies supervisory
 follow-up. Managed inference/attestation probes and recovery must survive the
@@ -97,3 +117,9 @@ production signing-key audit gate, send sats or restart an unrelated VM.
 Do not stop healthy workers to manufacture a preemption test. At the end,
 disable only this watch's follow-up/monitoring, leave existing providers
 intact, and report the observed window and any gaps honestly.
+
+At `03:09:43Z`, audit the full window and a final real probe. Then run the
+documented pause/drain for `pylon-fleet-watch`, disable the thread heartbeat,
+and preserve all execution/probe/recovery evidence. Leave the standing RTX
+controller and existing workers intact. The native time fence stops new
+watch actions after expiry even if the supervisory Mac is asleep.

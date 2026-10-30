@@ -1,0 +1,21 @@
+{
+  "httpTarget": {
+    "body": "e30=",
+    "headers": {
+      "Content-Type": "application/json",
+      "User-Agent": "Google-Cloud-Scheduler"
+    },
+    "httpMethod": "POST",
+    "oauthToken": {
+      "scope": "https://www.googleapis.com/auth/cloud-platform",
+      "serviceAccountEmail": "pylon-watch-scheduler@openagentsgemini.iam.gserviceaccount.com"
+    },
+    "uri": "https://run.googleapis.com/v2/projects/openagentsgemini/locations/us-central1/jobs/pylon-fleet-watch:run"
+  },
+  "name": "projects/openagentsgemini/locations/us-central1/jobs/pylon-fleet-watch",
+  "schedule": "*/5 * * * *",
+  "state": "ENABLED",
+  "status": {
+    "code": -1
+  }
+}

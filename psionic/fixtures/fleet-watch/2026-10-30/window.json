@@ -1,0 +1,30 @@
+{
+  "kind": "six-hour-fleet-watch-window",
+  "created_at": "2026-10-30T21:09:32.281597+00:00",
+  "goal_created_at": "2026-10-30T19:00:42Z",
+  "complete_models_verified_at": "2026-10-30T21:04:21Z",
+  "managed_four_role_probe_at": "2026-10-30T21:06:50Z",
+  "start_epoch": 1793394583,
+  "end_epoch": 1793416183,
+  "start_utc": "2026-10-30T21:09:43Z",
+  "end_utc": "2026-10-31T03:09:43Z",
+  "duration_seconds": 21600,
+  "scheduler": "projects/openagentsgemini/locations/us-central1/jobs/pylon-fleet-watch",
+  "scheduler_state_at_activation": "ENABLED",
+  "job": "pylon-fleet-watch",
+  "runtime_image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/pylon-fleet-watch@sha256:40c566373f3a74c2f34daab5ff3cf76de14bab977db8327cf741ebe1b803c736",
+  "dry_run": false,
+  "probe_interval_seconds": 300,
+  "verification_execution": "pylon-fleet-watch-2jw7g",
+  "verification_creator": "pylon-watch-scheduler@openagentsgemini.iam.gserviceaccount.com",
+  "required_gcloud_provider_roles": [
+    "elephant-1",
+    "mammoth-1",
+    "gpt-oss-20b",
+    "confidential-clef"
+  ],
+  "gcloud_physical_hosts": 2,
+  "gptoss_provider": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+  "completion_claim": false,
+  "completion_rule": "All four roles must remain supervised and the full actual six-hour interval must be audited. Configuration is not proof that six hours elapsed."
+}
