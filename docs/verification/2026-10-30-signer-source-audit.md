@@ -133,10 +133,20 @@ ordinary mutation runs; a full reference-mode run is not done.
 `test_correspondence.py` (exact blocks against the pinned public-view
 profile) and `test_signer_entry.py` pass.
 
-**Signer and self-verifier gates:** the signer's owner runs these on each
-push (`schnorr_sign`, `event_sign`, `schnorr_self_verify`,
-`sha256_workspace`, `schnorr_nonce_point`), together with the memcheck
-probes of the compiled release build. Results are in `docs/issue4828.md`.
+**Signer and self-verifier gates:** run by the signer's owner (`openagents-d7`)
+with `--run-steps 250000000` in short shards. All have 0 survivors and none
+marked equivalent:
+
+| Unit | Mutants killed | At |
+| --- | --- | --- |
+| `schnorr_sign` | 3,740/3,740 | `6c6dab1054` |
+| `schnorr_self_verify` | 3,133/3,133 | `6c6dab1054` |
+| `event_sign` | 5,550/5,550 | `6c6dab1054` |
+| `schnorr_nonce_point` | 2,848/2,848 | `d017c8f902`, unchanged since |
+| `sha256_workspace` | 1,091/1,091 | `d017c8f902`, unchanged since |
+
+The memcheck probes of the compiled release signer pass, leaving only the
+three declared decisions (`docs/issue4828.md`).
 
 **Pre-existing failures:** 3 legacy and 1 public-view Python failures, the
 same at `38b7f10b12` and on `main`. They are not caused by this work.
