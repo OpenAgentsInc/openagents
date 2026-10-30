@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 """OpenAgents App Store Connect operations. Credentials come only from ASC_API_*
 environment variables. No credentials/JWTs are printed. This tool targets only
-com.openagents.app; beta assignment uses an existing internal group.
+com.openagents.app; beta assignment uses an existing internal group, and
+`external` adds a build to the existing external group and submits it for beta
+review (it never creates groups or testers).
 """
 import argparse, base64, hashlib, json, os, subprocess, sys, time, urllib.error, urllib.parse, urllib.request
 
@@ -115,6 +117,42 @@ def find_build(number, version):
     return rows[0] if rows else None
 
 
+def external_group(version):
+    """The existing external group; with more than one, the one the latest earlier build went to."""
+    groups = [g for g in get(f"/v1/apps/{app_id()}/betaGroups", limit="50")["data"]
+              if not g["attributes"].get("isInternalGroup")]
+    if not groups: raise SystemExit("No external beta group exists")
+    if len(groups) == 1: return groups[0]
+    def latest(g):
+        rows = get(f"/v1/betaGroups/{g['id']}/builds", limit="200")["data"]
+        return max((int(r["attributes"]["version"]) for r in rows), default=-1)
+    return max(groups, key=latest)
+
+
+def external(build, version):
+    bid = build["id"]
+    if build["attributes"]["processingState"] != "VALID":
+        raise SystemExit("Build must finish processing before beta assignment")
+    group = external_group(version)
+    name = group["attributes"]["name"]
+    # Export compliance as earlier builds: the app uses no non-exempt encryption
+    # (Info.plist ITSAppUsesNonExemptEncryption NO); set it only if unset.
+    if build["attributes"].get("usesNonExemptEncryption") is None:
+        call("PATCH", f"/v1/builds/{bid}", {"data": {"type": "builds", "id": bid,
+             "attributes": {"usesNonExemptEncryption": False}}})
+    call("POST", f"/v1/betaGroups/{group['id']}/relationships/builds", {"data": [{"type": "builds", "id": bid}]})
+    rows = get(f"/v1/betaGroups/{group['id']}/builds", limit="200")["data"]
+    if not any(r["id"] == bid for r in rows): raise SystemExit("Could not verify external group assignment")
+    print("Verified build in", name, "(external)")
+    review = get(f"/v1/builds/{bid}/betaAppReviewSubmission")["data"]
+    if not review:
+        review = call("POST", "/v1/betaAppReviewSubmissions", {"data": {"type": "betaAppReviewSubmissions",
+            "relationships": {"build": {"data": {"type": "builds", "id": bid}}}}})["data"]
+    print("Beta review:", review["attributes"].get("betaReviewState"))
+    detail = get(f"/v1/builds/{bid}/buildBetaDetail")["data"]["attributes"]
+    print("External:", detail.get("externalBuildState"))
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__)
     commands = p.add_subparsers(dest="command", required=True)
@@ -128,12 +166,20 @@ def main():
     beta = commands.add_parser("testflight"); beta.add_argument("--build", required=True)
     beta.add_argument("--version", default="1.0.0"); beta.add_argument("--group", default="Owner")
     beta.add_argument("--notes-file", type=argparse.FileType("r"), required=True)
+    ext = commands.add_parser("external"); ext.add_argument("--build", required=True)
+    ext.add_argument("--version", default="1.0.0")
+    listing = commands.add_parser("builds"); listing.add_argument("--version", default="1.0.0")
     a = p.parse_args()
     if a.command == "cert-sha1":
         content = get(f"/v1/certificates/{a.id}")["data"]["attributes"]["certificateContent"]
         print(hashlib.sha1(base64.b64decode(content)).hexdigest().upper())
     elif a.command == "profile":
         profile(a.cert, a.name, a.out)
+    elif a.command == "builds":
+        rows = get("/v1/builds", **{"filter[app]": app_id(), "filter[preReleaseVersion.version]": a.version,
+                   "sort": "-uploadedDate", "limit": "5"})["data"]
+        for r in rows:
+            print(r["attributes"]["version"], r["attributes"]["processingState"], r["attributes"].get("uploadedDate"))
     else:
         build = find_build(a.build, a.version)
         if not build:
@@ -141,6 +187,8 @@ def main():
             print("NOT_YET_LISTED"); return
         bid = build["id"]; state = build["attributes"]["processingState"]
         print(f"OpenAgents {a.version} ({a.build}): {state}")
+        if a.command == "external":
+            external(build, a.version); return
         if a.command == "status":
             if state == "VALID":
                 detail = get(f"/v1/builds/{bid}/buildBetaDetail")["data"]["attributes"]
