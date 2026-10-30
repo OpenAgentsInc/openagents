@@ -47,7 +47,8 @@ secrets. That's measured by the memcheck probes below.
 | `753e949fc6` | Signer fix from an independent review: the message is now bound across stages, so one nonce can't sign two messages |
 | `a193b526cb` | Self-verifier memcheck probe: the release build has no candidate-dependent branch or address; the variable-time control is flagged |
 | `10d8e604b8` | **Signer secret-flow map** (`coax/tests/nostr/schnorr_sign_secret_probe.sh`) |
-| (b) step 1, this push | Masked narrowing casts in the six kernels use `cast,trunc(u32)` (43 casts plus 5 carries); the signer map drops from 217 to 189 reports. Fast checks pass. Mutation is owed |
+| `335fc24472` | (b) step 1: masked narrowing casts in the six kernels use `cast,trunc(u32)` (43 casts plus 5 carries). Fast checks pass; mutation is owed. At -O2 this does not change the probe count (see the correction below) |
+| (this push) | **Signer probe at -O2 with P, R and the validity bits declassified: passes.** Only the 3 declared decisions remain, and the control is flagged |
 
 ## In flight
 
@@ -106,71 +107,44 @@ each verification pass. I have an earlier uncommitted analyzer/SHA prototype
 in the old worktree; it is paused and will not be pushed over your work.
 Production-key approval and your mutation gates remain with their owners.
 
-## The signer's secret-flow map (`10d8e604b8`)
+## The signer's secret-flow probe (compiled code)
 
 `coax/tests/nostr/schnorr_sign_secret_probe.sh` works like this:
-- It builds the release generated C of `event_sign.coax`, which loads the signer.
+- It builds the release generated C of `event_sign.coax`, which loads the
+  signer, with GCC -O2, the shipped flags.
 - Memcheck marks the secret key and aux as undefined.
 - One whole signature runs: 6 calls, status 2, a valid signature.
-- Only the signature and the step status are declassified.
+- After each call the probe declassifies exactly what the signer publishes
+  or decides on, as #4828's `_declassify` points do: the public key P, R,
+  and the key, nonce and equation validity bits.
 
-It reports every branch or address that depends on the key. It is a map, not a gate: it always exits 0.
+**Result: it passes.** 3 reports remain, one each in `sw_key` (key
+validity), `sm_equation` (nonce and equation validity) and `sw_publish`
+(publication). Those are declared decisions made inside a call, which the C
+driver can't declassify mid-call. Apart from them, there is no key-dependent
+branch or memory address anywhere in the compiled signer. The control, a
+deliberate branch on a key byte, is flagged.
 
-The result: **217 reports.**
+**Correction to the first version of this page:** it reported "217 reports,
+201 of them range-checked narrowing casts". That run built with
+`-O1 -fno-inline`. Without inlining GCC can't fold `coax_cast_uu`'s range
+test, even for widening casts whose bound is `UINT64_MAX`. At -O2 the same
+code gives 26 reports. Those 26 are all on P, which is lifted in the
+self-check, and on the three decisions. Declassifying P leaves the 3 above.
+The `cast,trunc` change (`335fc24472`) is still correct, and it removes trap
+tests in non-inlined builds. But it did not change the -O2 count: 26 before
+and after.
 
-- **201 come from range-checked narrowing casts.** `coax_cast_uu` traps with `if (v > hi)` even in release, on values like `cast(u32)(wide & SF32_WORD)`. Those values are masked to 32 bits, so the trap can't fire, but the test is still a branch on secret data. Callers:
-
-  | Function | Reports |
-  | --- | --- |
-  | `sf32_fold_total` | 58 |
-  | `sf32_mul_total` | 57 |
-  | `ef_field_mul` | 37 |
-  | `ef_square_n` | 36 |
-  | `sg32_double` | 34 |
-  | `sf32_canonical_total` | 17 |
-  | `sf32_add_total` | 13 |
-  | `sc_mul`, `sc_montgomery` | 11 each |
-  | `so_compress` | 10 |
-  | `sf32_sub` | 7 |
-  | `sg32_from_point`, `sg32_from_field` | 6 each |
-  | `sc_sub`, `sc_negate`, `sc_subtract_n` | 5–6 each |
-  | `smc_multiply` | 5 |
-  | `sha256_update_checked` | 5 |
-
-  These are (b)'s first target.
-- **16 more** are spread across a few functions:
-
-  | Function | Reports |
-  | --- | --- |
-  | `sw_publish` | 4 |
-  | `smc_peer_bounded` | 3 |
-  | `sf_normalize` | 3 |
-  | `coax_index` | 3 |
-  | `sw_key` | 1 |
-  | `ssv_prepare` | 1 |
-  | `sm_equation` | 1 |
-
-  These are mostly where the public key P and the nonce point R become public. They are `openagents-20`'s `_declassify` points.
-
-Masked narrowing casts per file (counted by `grep 'cast(u32)(...&...WORD)'`):
-
-| File | Masked | All `cast(u32)` |
-| --- | --- | --- |
-| `secp_field32_total.coax` | 12 | 20 |
-| `secp_field32.coax` | 8 | 13 |
-| `secp_scalar.coax` | 9 | 16 |
-| `ecdh_fast.coax` | 11 | 17 |
-| `secp_group32.coax` | 2 | 3 |
-| `secp_mult_const.coax` | 1 | 2 |
-
-Other casts are of constants, of `carry` (a value of 0 or 1, or bounded by a shift) and of shifted values. They are checked one by one.
-
-The self-verifier's probe (`a193b526cb`, `coax/tests/nostr/schnorr_self_verify_secret_probe.sh`):
+The self-verifier's probe (`a193b526cb`,
+`coax/tests/nostr/schnorr_self_verify_secret_probe.sh`) gives this at -O2:
 - **Release:** no candidate-dependent report.
 - **Checked:** 126 reports, all checked-arithmetic and bounds traps.
-- **Positive control:** flagged 51 times in release and 104 in checked.
+- **Positive control:** flagged.
 
-The signer map above is the key-side equivalent, and it shows that the release kernels still trap-check casts.
+**Checked builds still branch on secrets** through their overflow and bounds
+traps, so checked builds are not for secrets. Making checked arithmetic on
+secret paths trap-free (`add_wrap`/`sub_wrap` where the bound is provable) is
+the remaining part of (b).
 
 ## Who holds which files
 
