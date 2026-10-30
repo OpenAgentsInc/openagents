@@ -17,6 +17,7 @@ Chat :: struct {
   buf: [CHAT_BYTES] u8; n: int;
   send: bool;          // a line to say: the face sends it and clears this
   said: int;           // lines you've said (the face's count, for its analytics)
+  bottom: f32;         // the chat box's lower edge as last drawn (a phone's tip goes under it, villatips.coax)
 }
 
 chat_text :: (c: [] Chat) -> string { return cast(string) c[0].buf[0..<c[0].n]; }
@@ -127,6 +128,7 @@ room_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   lift := ifx x0 + bw > hint_left - 8 * k then 7.5 * k + 20 * k + 10 * k else 0.0f32;
   y0 := ifx ph then 16 * k + 11 * k + 24 * k + 8 * k else h - 16 * k - bh - lift;
   b := Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y0 + bh};
+  c[0].bottom = b.y1;
   plate(s, u, b, ifx c[0].typing then 0.85f32 else 0.6f32, 0);
   base := y0 + pad + cap;
   if head > 0 {

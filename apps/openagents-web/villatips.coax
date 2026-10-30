@@ -100,6 +100,16 @@ tips_draw :: (s: [] Villa) {
   ball(s, LOOK_BLOOM, v3(x, g + 2.4 + 0.25 * sin(t * 1.7), z), 0.16, 0.75 * pulse, 0.8 * pulse, 1.0 * pulse);
 }
 
+// Where the tip's plate starts, its left edge at x0: under the place's name, or beside it when
+// there's room; on a phone under the row below it, which the chat box shares, so under that too.
+tips_top :: (s: [] Villa, x0: f32) -> f32 {
+  k := hi(s[0].dpr, 0.5); ph := phone(s);
+  y0 := 16 * k + 11 * k + 24 * k + 8 * k + (ifx ph then 38 * k + 8 * k else 0.0f32);
+  if ph { y0 = hi(y0, s[0].chat[0].bottom + 8 * k); }
+  if !ph && x0 > 300 * k { y0 = 16 * k; }   // room between the place's name and the pet button
+  return y0;
+}
+
 // The tip's plate, under the place's name (on a phone, under the row below it).
 tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   q := s[0].tips[..]; p := s[0].pet[..];
@@ -109,8 +119,7 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   cap := 8 * k; pad := 12 * k;
   bw := lo(560 * k, w - 32 * k);
   x0 := (w - bw) / 2;
-  y0 := 16 * k + 11 * k + 24 * k + 8 * k + (ifx ph then 38 * k + 8 * k else 0.0f32);
-  if !ph && x0 > 300 * k { y0 = 16 * k; }   // room between the place's name and the pet button
+  y0 := tips_top(s, x0);
   m := n;
   y: [1] f32;
   m = wrapped(out, m, tips_text(s, q[0].step), x0 + pad, y0 + pad + cap, bw - 2 * pad, cap, k, 3, 0.95, y[..]);
@@ -161,4 +170,15 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   #assert pet_toast_top(s[..]) == 110;          // a tip down to 102: under it
   s[0].tips[0].bottom = 30;
   #assert pet_toast_top(s[..]) == 68;
+}
+
+#test "on a phone the tip sits under the chat box, never over its CHAT button" {
+  s: [1] Villa;
+  s[0].dpr = 1; s[0].touch = true; s[0].width = 390; s[0].height = 844;
+  #assert phone(s[..]);
+  #assert tips_top(s[..], 16) == 105;          // no chat drawn yet: under the row below the name
+  s[0].chat[0].bottom = 120;                   // a chat box with a line and who's here
+  #assert tips_top(s[..], 16) == 128;
+  s[0].touch = false; s[0].width = 1440; s[0].height = 900;
+  #assert !phone(s[..]) && tips_top(s[..], 440) == 16;   // a desktop's chat is at the bottom: no matter
 }
