@@ -102,7 +102,9 @@ U_LIGHT_INFO :: U_SOLID + SOLIDS * 4;
 LIGHTS :: 16; LIGHTS_PHONE :: 8;
 U_LIGHTS :: U_LIGHT_INFO + 4;
 U_WEATHER :: U_LIGHTS + LIGHTS * 8;   // 3 rows: rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, 0, 0 (weather_frame)
-UNIFORM_FLOATS :: U_WEATHER + 12;
+// The ponds (plan.coax EG_POND): x, z, rim radius and level each (everglade.wgsl pond_vertex).
+U_PONDS :: U_WEATHER + 12;
+UNIFORM_FLOATS :: U_PONDS + EG_PONDS * 4;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -147,6 +149,8 @@ LOOK_WOOD :: 12;          // sawn timber: grain and a tone per piece         // 
 // ground, and the water's instances after the river's patches (everglade.wgsl fountain_vertex).
 FOUNTAIN_POOL :: 0.62;
 FOUNTAIN_INSTANCES :: 32;
+// and the ponds', after the fountain's: 8 wedges each (everglade.wgsl pond_vertex)
+POND_INSTANCES :: EG_PONDS * 8;
 // Then the city's people (verse/everglade/folk.coax): each part of the pack's
 // a run of PEOPLE_SHOWN instances, one for each person shown wearing it.
 PEOPLE_SHOWN :: 10;       // people drawn at once at most, the nearest in view
@@ -205,7 +209,7 @@ WATER_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad).
-FLOATS :: 9;
+FLOATS :: 25;
 FLOAT_FLOATS :: 8;
 // Your medium in the water (river.coax): ground, wading, swimming, diving.
 WATER_GROUND :: 0; WATER_WADING :: 1; WATER_SWIMMING :: 2; WATER_DIVING :: 3;
@@ -415,9 +419,11 @@ everglade_water :: (s: [] Everglade, medium: int, feet: f32, breath: f32, gasps:
 }
 clamp_i :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
 // The ground's height under each row's river (the face builds the river from them).
+// Then the ponds' rows, x, z, rim radius and level each, after the river's EG_CELLS + 1 levels.
 everglade_levels :: (s: [] Everglade, out: [] f32) #export_c {
   if !s[0].started { everglade_start(s); }
   everglade_river_levels(s[0].heights[..], out);
+  if out.count >= EG_CELLS + 1 + EG_PONDS * 4 { everglade_pond_rows(s[0].heights[..], out[EG_CELLS + 1..<out.count]); }
 }
 // On the bridge's deck you walk over the river, not in it.
 everglade_on_bridge :: (s: [] Everglade, x: f32, z: f32) -> bool #export_c {
@@ -690,6 +696,20 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
+  // a pond's bank on its trail's side, facing the water
+  for p: 0..<EG_PONDS {
+    if hash != EG_POND_ID[p] { continue; }
+    px := EG_POND[p * 4]; pz := EG_POND[p * 4 + 1];
+    nodes := EG_NODE_XZ; links := EG_LINK_AB;
+    by := verse_path_nearest(nodes[..], links[..], px, pz);
+    dx := by.x - px; dz := by.z - pz; d := hi(sqrt(dx * dx + dz * dz), 0.01);
+    x := px + dx / d * (EG_POND[p * 4 + 2] + 2); z := pz + dz / d * (EG_POND[p * 4 + 2] + 2);
+    s[0].spawn = v3(x, 0, z); s[0].spawn_face = yaw_of(px - x, pz - z);
+    s[0].feet = v3(x, ground_at(s, x, z), z);
+    s[0].orbit = verse_orbit_start(s[0].feet, s[0].spawn_face);
+    s[0].warp = true; s[0].above = false; s[0].lift = 0;
+    return;
+  }
   // in the river just north of the bridge, facing its piles (the water's views: docs/verse/water.md)
   if hash == "river-wade" {
     s[0].spawn = v3(88, 0, -1.5); s[0].spawn_face = yaw_of(0, -1);
@@ -2642,7 +2662,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // the water: the river a patch an instance, then the fountain's, drawn after everything (host.js
   // coaxial_water_draws)
   d = WATER_DRAW * 4;
-  waters := ifx s[0].water_vertices > 0 then s[0].water_patches + FOUNTAIN_INSTANCES else 0;
+  waters := ifx s[0].water_vertices > 0 then s[0].water_patches + FOUNTAIN_INSTANCES + POND_INSTANCES else 0;
   s[0].draws[d] = first;
   s[0].draws[d + 1] = cast(u32) s[0].water_vertices;
   s[0].draws[d + 2] = 0;
@@ -2654,6 +2674,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   u[7] = horizon_y(shot, u, height);
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
   u[U_FOUNTAIN] = ground_at(s, 0, 0); u[U_FOUNTAIN + 1] = 1;
+  everglade_pond_rows(s[0].heights[..], u[U_PONDS..<U_PONDS + EG_PONDS * 4]);
 
   // the painterly preset at the clock (art-styles.md 13): the day turns unless the page is still;
   // the key light (the sun, or the moon at night) is the one everything here is lit by
@@ -2733,7 +2754,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && U_WEATHER == 1216 && UNIFORM_FLOATS == 1228;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && U_WEATHER == 1216 && U_PONDS == 1228 && UNIFORM_FLOATS == 1244;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }
@@ -2821,8 +2842,11 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert g[0].ranger_first == 44107 && g[0].ranger_count == 94188 && g[0].ranger_word == 692676;
   n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].draws[0] == 43083 && g[0].draws[5 * 4] == 0 && g[0].draws[5 * 4 + 1] == 1464;
-  // On the road in, the trees beside you are the kit's, the shared trunk and leaves draws alike.
-  #assert g[0].kit_used[0] + g[0].kit_used[1] + g[0].kit_used[2] + g[0].kit_used[3] > 20;
+  // On the road in, the trees beside you are the kit's (the Reed Pond's clearing opens
+  // beside it), the shared trunk and leaves draws alike.
+  used := 0;
+  for k: 0..<KIT_TREES { used += g[0].kit_used[k]; }
+  #assert used > 20;
   #assert g[0].draws[5 * 4 + 3] == g[0].draws[6 * 4 + 3] && g[0].draws[5 * 4 + 2] == g[0].draws[6 * 4 + 2];
   // the rocks draw as rock (darker, mottled, mossy: everglade.wgsl LOOK_ROCK), a fern as the kit
   kit(g[..], group_of(10), 0, 0, -80, 0, 1); kit(g[..], group_of(9), 1, 0, -80, 0, 1);
@@ -2983,8 +3007,8 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   // The forest's kit share of a phone's frame stays under 700,000 triangles, and so
   // does the whole frame's kit: the forest, the town and you (the Ranger's 31,396).
   #assert most > 0 && most < 700000 && whole >= most + RANGER_TRIANGLES && whole < 700000;
-  // and with the water's 4,032 triangles drawn too (the river's 2,496 and the fountain's)
-  #assert g[0].water_triangles == 4032 && whole + g[0].water_triangles < 700000;
+  // and with the water's 5,568 triangles drawn too (the river's 2,496, the fountain's and the four ponds' 1,536)
+  #assert g[0].water_triangles == 5568 && whole + g[0].water_triangles < 700000;
 }
 
 #test "the camera stays out of the woods: at a clearing's edge it pulls in before the trees" {

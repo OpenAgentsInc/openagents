@@ -223,7 +223,79 @@ everglade_build_ground :: (heights: [] f32) -> bool {
   if made == 0 { return false; }
   if !verse_terrain_build(everglade_ground(), heights, nodes[..], links[..], f32(EG_PATH_HALF), flats[..]) { return false; }
   everglade_carve_river(heights);
+  everglade_carve_ponds(heights);
   return true;
+}
+
+// ---- the ponds (docs/verse/water.md, W3: the previous Everglade's four, verse/everglade/previous/water.md
+// "Owner decisions" 1): each a bowl carved into the ground off a trail, in its own clearing, its water a
+// verse/water.coax pond body at a still level (verse/everglade/river.coax). The level is 0.25 m under
+// the lowest ground 5 m past its rim; the bed falls from 0.25 m over the level at the rim to the pond's
+// depth under it at the middle, and past the rim climbs 0.7 in 1 to the ground.
+EG_PONDS :: 4;
+EG_POND_LANTERN :: 0; EG_POND_REED :: 1; EG_POND_THINKING :: 2; EG_POND_FERN :: 3;
+// x, z, rim radius, depth at the middle under the level; then each one's clearing's radius, which
+// reaches the open corridor of the trail beside it
+EG_POND :: [16] f32.[
+  -77, -11, 6.0, 3.0,
+  14, -90, 5.0, 1.6,
+  28, 73, 5.5, 2.5,
+  -79, 21, 5.0, 2.0
+];
+EG_POND_OPEN :: [4] f32.[12.5, 12.5, 9.5, 12.0];
+EG_POND_NAME :: [4] string.["LANTERN POND", "REED POND", "THE THINKING POND", "THE FERN POND"];
+EG_POND_ID :: [4] string.["lantern-pond", "reed-pond", "thinking-pond", "fern-pond"];   // the hash that starts you at its bank
+EG_POND_BANK :: 0.25;
+EG_POND_CLIMB :: 0.7;
+// The pond's level over the ground as built (before or after its carve: the carve leaves the ring it reads).
+everglade_pond_level :: (heights: [] f32, p: int) -> f32 {
+  x := EG_POND[p * 4]; z := EG_POND[p * 4 + 1]; r := EG_POND[p * 4 + 2] + 5;
+  low := 1000000.0f32;
+  for k: 0..<24 {
+    a := f32(k) / 24 * 6.2831853;
+    low = lo(low, verse_terrain_height(everglade_ground(), heights, x + r * cos(a), z + r * sin(a)));
+  }
+  return low - f32(EG_POND_BANK);
+}
+// The bed d metres from the middle of pond p under its level.
+everglade_pond_bed :: (p: int, level: f32, d: f32) -> f32 {
+  r := EG_POND[p * 4 + 2]; depth := EG_POND[p * 4 + 3];
+  bank := f32(EG_POND_BANK);
+  if d < r { t := d / r; return level + bank - (depth + bank) * (1 - t * t); }
+  return level + bank + (d - r) * f32(EG_POND_CLIMB);
+}
+everglade_carve_ponds :: (heights: [] f32) {
+  w := EG_CELLS + 1;
+  for p: 0..<EG_PONDS {
+    level := everglade_pond_level(heights, p);
+    x := EG_POND[p * 4]; z := EG_POND[p * 4 + 1]; reach := EG_POND[p * 4 + 2] + 6;
+    for j: 0..<w {
+      gz := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+      if abs(gz - z) > reach { continue; }
+      for i: 0..<w {
+        gx := f32(EG_EDGE) + f32(i) * f32(EG_CELL);
+        d := sqrt((gx - x) * (gx - x) + (gz - z) * (gz - z));
+        if d > reach { continue; }
+        heights[j * w + i] = lo(heights[j * w + i], everglade_pond_bed(p, level, d));
+      }
+    }
+  }
+}
+// x, z, rim radius and level of each pond, 4 numbers each (the face builds their bodies from them).
+everglade_pond_rows :: (heights: [] f32, out: [] f32) {
+  if out.count < EG_PONDS * 4 { return; }
+  for p: 0..<EG_PONDS {
+    out[p * 4] = EG_POND[p * 4]; out[p * 4 + 1] = EG_POND[p * 4 + 1]; out[p * 4 + 2] = EG_POND[p * 4 + 2];
+    out[p * 4 + 3] = everglade_pond_level(heights, p);
+  }
+}
+// Whether (x, z) is within `pad` of a pond's rim: no tree stands there.
+everglade_in_pond :: (x: f32, z: f32, pad: f32) -> bool {
+  for p: 0..<EG_PONDS {
+    dx := x - EG_POND[p * 4]; dz := z - EG_POND[p * 4 + 1]; r := EG_POND[p * 4 + 2] + pad;
+    if dx * dx + dz * dz < r * r { return true; }
+  }
+  return false;
 }
 
 // ---- the river (docs/verse/water.md W3): a channel carved along x = 88
@@ -436,6 +508,11 @@ everglade_in_woods :: (x: f32, z: f32) -> bool {
   // The river's glade either side of the bridge, where you may swim across.
   gx := (x - EG_GLADE[0]) / EG_GLADE[2]; gz := (z - EG_GLADE[1]) / EG_GLADE[3];
   if gx * gx + gz * gz < 1 { return false; }
+  // each pond's clearing, open to the trail beside it
+  for p: 0..<EG_PONDS {
+    px := EG_POND[p * 4]; pz := EG_POND[p * 4 + 1]; r := EG_POND_OPEN[p];
+    if (x - px) * (x - px) + (z - pz) * (z - pz) < r * r { return false; }
+  }
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
   return verse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE);
 }
@@ -743,4 +820,38 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   for s: 0..<EG_SPOTS {
     for k: 0..<n { #assert box_gap(solids[..], k, EG_SPOT[s * 3], EG_SPOT[s * 3 + 1]) >= f32(EG_RADIUS) + 0.2; }
   }
+}
+
+#test "the ponds: off the trails and the river, clear of the walls, each in a clearing that meets its trail, carved to their depths" {
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  heights: [EG_GROUND_POINTS] f32;
+  #assert everglade_build_ground(heights[..]);
+  for p: 0..<EG_PONDS {
+    x := EG_POND[p * 4]; z := EG_POND[p * 4 + 1]; r := EG_POND[p * 4 + 2];
+    // the water stays off the trail, with a bank to stand on
+    trail := verse_path_nearest(nodes[..], links[..], x, z).d;
+    #assert trail > r + f32(EG_PATH_HALF) + 1.5;
+    #assert EG_POND_OPEN[p] >= r + 4 && EG_POND_OPEN[p] > trail - f32(EG_TRAIL_FREE) + 1;
+    #assert !everglade_in_river(x, r + 3);
+    #assert abs(x) + r < f32(EG_BOUND) - 4 && abs(z) + r < f32(EG_BOUND) - 4;
+    // outside the palisade and its apron
+    #assert x - r > 65.25 || x + r < -65.25 || z - r > 61.25 || z + r < -57.5;
+    // the pond and the ground between it and its trail are open
+    #assert !everglade_in_woods(x, z) && !everglade_in_woods(x + r + 1, z) && !everglade_in_woods(x - r - 1, z);
+    level := everglade_pond_level(heights[..], p);
+    w := EG_CELLS + 1;
+    i := cast(int) floor((x - f32(EG_EDGE)) / f32(EG_CELL) + 0.5); j := cast(int) floor((z - f32(EG_EDGE)) / f32(EG_CELL) + 0.5);
+    gx := f32(EG_EDGE) + f32(i) * f32(EG_CELL); gz := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+    d := sqrt((gx - x) * (gx - x) + (gz - z) * (gz - z));
+    // deep at the middle by the pond's depth (within a grid cell's slope), dry ground 2 m past the rim
+    #assert level - heights[j * w + i] > EG_POND[p * 4 + 3] * 0.8;
+    #assert verse_terrain_height(everglade_ground(), heights[..], x + r + 2, z) >= level + 0.2;
+  }
+  // the carve leaves the ring the level is read from: the same level after it
+  raw: [EG_GROUND_POINTS] f32;
+  flats: [EG_FLATS * FLAT] f32;
+  #assert everglade_flats(flats[..]) == EG_FLATS;
+  #assert verse_terrain_build(everglade_ground(), raw[..], nodes[..], links[..], f32(EG_PATH_HALF), flats[..]);
+  everglade_carve_river(raw[..]);
+  for p: 0..<EG_PONDS { #assert abs(everglade_pond_level(raw[..], p) - everglade_pond_level(heights[..], p)) < 0.001; }
 }

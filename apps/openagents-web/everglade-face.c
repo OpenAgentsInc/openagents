@@ -57,8 +57,8 @@ static void ask_out(uint32_t state);
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_t_River river;
 static bool river_built;
-static float river_levels[105];
-static float river_floats[9 * 8];
+static float river_levels[105 + 16];   // the river's levels, then the ponds' rows (everglade_levels)
+static float river_floats[25 * 8];
 static coax_t_Swim swim;
 static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 #include "place-face.h"
@@ -81,8 +81,8 @@ static void start(uint32_t state) {
   sticks = verse_sticks_reset();
   placed = true;
   if (!river_built) {
-    everglade_levels(at(state), (coax_v_f32){river_levels, 105});
-    everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 105 * 105}, (coax_v_f32){river_levels, 105}, 104, 2, -104, -104);
+    everglade_levels(at(state), (coax_v_f32){river_levels, 105 + 16});
+    everglade_river_start(rv(), (coax_v_f32){city(state)->heights.e, 105 * 105}, (coax_v_f32){river_levels, 105 + 16}, 104, 2, -104, -104);
     river_built = true;
     swim.pace = 1; swim.breath = 1;
   }
@@ -165,10 +165,10 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     player = verse_player_place(swim.bank_x, 0, swim.bank_z, verse_player_face(player));
     swim.medium = 0; swim.pace = 1;
   }
-  int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 9 * 8});
+  int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 25 * 8});
   bool small = everglade_phone(at(state));
   everglade_water(at(state), swim.medium, swim.feet, swim.breath, swim.levels,
-                  everglade_river_vertices(small), everglade_river_patches(), (coax_v_f32){river_floats, 9 * 8}, floats);
+                  everglade_river_vertices(small), everglade_river_patches(), (coax_v_f32){river_floats, 25 * 8}, floats);
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 out = {(float *)(uintptr_t)vertices, coaxial_everglade_max_vertices() * coaxial_everglade_vertex_floats()};
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_everglade_uniform_floats()};

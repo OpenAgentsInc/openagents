@@ -61,8 +61,8 @@ everglade_place_camera :: (s: [] Everglade, p: Place) #export_c {
   q := everglade_place_fix(g[..], p);
   #assert q.x == p.x && q.z == p.z && q.yaw == 1.25 && q.zoom == 6;
   // the woods: back to the nearest open ground, within 20 m
-  #assert everglade_in_woods(-80, 0);
-  w := everglade_place_fix(g[..], verse_place(-80, 0, 0, 0, 0, 0.3, 6, 0, -1, 1000));
+  #assert everglade_in_woods(-86, 0);
+  w := everglade_place_fix(g[..], verse_place(-86, 0, 0, 0, 0, 0.3, 6, 0, -1, 1000));
   #assert !everglade_in_woods(w.x, w.z) && everglade_place_open(g[..], w.x, w.z, -1);
   // inside a wall (the first solid): moved just clear of it
   k := 0;

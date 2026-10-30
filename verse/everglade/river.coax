@@ -26,9 +26,12 @@
 //   water_apply's buoyancy and drag; a duck paddles back to its stretch of
 //   the glade against the current, a lily pad is held by its stem.
 //
-// Not ported, because today's Everglade has none of them: the four ponds,
-// the weir and its plunge pool, rowboats, townsfolk swimming, and the
-// underwater combat rules.
+// - The four ponds (verse/everglade/plan.coax EG_POND): W1 pond bodies at a
+//   still level over the bowls the plan carves, in the same set as the
+//   river, so wading, swimming, diving and breath hold in them too.
+//
+// Not yet: the weir and its plunge pool, rowboats, townsfolk swimming, and
+// the underwater combat rules.
 //   coax/bin/coax test --library verse/everglade/river.coax --steps 2000000000
 
 #load "../water-look.coax";
@@ -51,6 +54,8 @@ RIVER_SPEED :: 0.45;      // m/s, the mean current
 RIVER_PILES :: 2;         // the bridge's piles, in the stream
 RIVER_PILE :: [6] f64.[87.0, -11.0, 0.5,   89.0, -11.0, 0.5];   // each holds five of the flow grid's nodes
 RIVER_RIPPLES :: 24;
+PONDS :: 4;               // the plan's ponds (EG_PONDS): x, z, rim radius, level each after the river's levels
+POND_POINTS :: 24;        // each pond's outline, a polygon round its rim
 
 // The swimmer (medium.rs).
 WADE_DEPTH :: 0.4;
@@ -70,8 +75,11 @@ ROUND :: 6.0;
 REFILL :: 6.0;
 DEFEAT_LEVEL :: 6;
 
-// Floats: three ducks and six lily pads.
-FLOATS :: 9;
+// Floats: three ducks and six lily pads on the river, and on each pond a
+// duck and three pads (POND_FLOATS, the duck first).
+RIVER_FLOATS :: 9;
+POND_FLOATS :: 4;
+FLOATS :: RIVER_FLOATS + PONDS * POND_FLOATS;
 DUCKS :: 3;
 FLOAT_HOME :: [18] f64.[
   88.4, -26.0,   87.2, 2.0,   88.8, -34.0,
@@ -88,7 +96,9 @@ River :: struct {
   profile: [RIVER_POINTS] D2;
   flow: [RIVER_FLOW] D2;
   piles: [RIVER_PILES] Obstacle;
-  bodies: [1] WaterBody;
+  bodies: [1 + PONDS] WaterBody;
+  pond_points: [PONDS * POND_POINTS] D2;
+  ponds: [PONDS * 4] f32;
   starts: [257] int; entries: [256] int;
   set: WaterSet;
   preset: WaterPreset;
@@ -100,6 +110,7 @@ River :: struct {
   wake_x: f32; wake_z: f32; wake_time: f32; splashed: bool;
   // the floats
   floats: [FLOATS] RigidBody; colliders: [FLOATS] Collider; pushes: [FLOATS * 2] Push;
+  homes: [FLOATS * 2] f64; float_n: int;
   float_tick: u64; float_carry: f64;
 }
 
@@ -153,7 +164,9 @@ level_from :: (r: [] River, levels: [] f32, z: f64) -> f64 {
 
 // Builds the river: its course and level profile, its waves, its current,
 // its set, the baked nodes the shader reads, the floats.
-everglade_river_start :: (r: [] River, heights: [] f32, levels: [] f32, n: int, cell: f32, west: f32, south: f32) #export_c {
+// levels: the river's level over each of the n + 1 ground rows, then the ponds' rows (x, z, rim, level).
+everglade_river_start :: (r: [] River, heights: [] f32, all: [] f32, n: int, cell: f32, west: f32, south: f32) #export_c {
+  levels := all[0..<(ifx n + 1 < all.count then n + 1 else all.count)];
   r[0].n = n; r[0].cell = cell; r[0].west = west; r[0].south = south;
   span := RIVER_NORTH - RIVER_SOUTH;
   for i: 0..<RIVER_POINTS {
@@ -175,7 +188,21 @@ everglade_river_start :: (r: [] River, heights: [] f32, levels: [] f32, n: int, 
   // gentler than the open sea's: a river's chop seldom breaks
   if sea.error == WaveError.none { calm := sea.set; calm.steepness = 0.35; body = water_with_waves(body, calm); }
   r[0].bodies[0] = body;
-  r[0].set = water_set(r[0].bodies[..], 8.0, r[0].starts[..], r[0].entries[..]);
+  // the ponds: still water inside their rims, 0.3 m past it so the shallows are whole
+  bodies := 1;
+  for p: 0..<PONDS {
+    k := n + 1 + p * 4;
+    if all.count < k + 4 { break; }
+    for i: 0..<4 { r[0].ponds[p * 4 + i] = all[k + i]; }
+    rim := f64(all[k + 2]) + 0.3;
+    for i: 0..<POND_POINTS {
+      a := TAU_D * f64(i) / f64(POND_POINTS);
+      r[0].pond_points[p * POND_POINTS + i] = d2(f64(all[k]) + rim * cos(a), f64(all[k + 1]) + rim * sin(a));
+    }
+    r[0].bodies[bodies] = water_pond(2 + p, r[0].pond_points[p * POND_POINTS..<(p + 1) * POND_POINTS], f64(all[k + 3]));
+    bodies += 1;
+  }
+  r[0].set = water_set(r[0].bodies[0..<bodies], 8.0, r[0].starts[..], r[0].entries[..]);
   r[0].preset = water_preset(WATER_PAINTED);   // the painted look (art-styles.md 12, eg-paint-river)
   river_bake(r, heights);
   r[0].breath = hold_seconds(CON);
@@ -381,9 +408,16 @@ everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: boo
   out.levels = r[0].levels;
   if events & BREATH_DEFEAT != 0 {
     out.defeated = true;
-    // the nearer bank, past the water's edge
+    // the nearer bank, past the water's edge (a pond's, out from its middle past its rim)
     side := ifx x >= f32(RIVER_X) then 1.0f32 else -1.0f32;
     out.bank_x = f32(RIVER_X) + side * 4.4; out.bank_z = z;
+    for p: 0..<PONDS {
+      px := r[0].ponds[p * 4]; pz := r[0].ponds[p * 4 + 1]; rim := r[0].ponds[p * 4 + 2];
+      dx := x - px; dz := z - pz; d := sqrt(dx * dx + dz * dz);
+      if rim <= 0 || d > rim + 0.5 { continue; }
+      ux := ifx d > 0.01 then dx / d else 1.0f32; uz := ifx d > 0.01 then dz / d else 0.0f32;
+      out.bank_x = px + ux * (rim + 1.5); out.bank_z = pz + uz * (rim + 1.5);
+    }
     r[0].afloat = false; r[0].medium = MEDIUM_GROUND;
   }
   river_wake(r, x, z, medium, surface, time);
@@ -422,14 +456,29 @@ river_wake :: (r: [] River, x: f32, z: f32, medium: int, surface: f32, time: f64
 // A duck: a ball of 0.16 m radius at 1.1 kg (half under); a lily pad: a disc
 // as a 0.5 x 0.03 x 0.5 m slab of 2.6 kg (a third under).
 floats_start :: (r: [] River) {
-  for i: 0..<FLOATS {
-    x := FLOAT_HOME[i * 2]; z := FLOAT_HOME[i * 2 + 1];
+  for i: 0..<RIVER_FLOATS * 2 { r[0].homes[i] = FLOAT_HOME[i]; }
+  n := RIVER_FLOATS;
+  // a pond's duck at its middle, its pads round it at 0.6 of the rim
+  for p: 0..<PONDS {
+    rim := f64(r[0].ponds[p * 4 + 2]);
+    if rim < 2.0 { continue; }
+    cx := f64(r[0].ponds[p * 4]); cz := f64(r[0].ponds[p * 4 + 1]);
+    for q: 0..<POND_FLOATS {
+      a := golden(p * 7 + q) * TAU_D;
+      d := ifx q == 0 then 0.0 else rim * 0.6;
+      r[0].homes[n * 2] = cx + d * cos(a); r[0].homes[n * 2 + 1] = cz + d * sin(a);
+      n += 1;
+    }
+  }
+  r[0].float_n = n;
+  for i: 0..<n {
+    x := r[0].homes[i * 2]; z := r[0].homes[i * 2 + 1];
     s := water_sample(r[0].set, x, z, 0);
     y := ifx s.found then s.height else 0.0;
     shape: ColliderShape;
     mass := 0.0;
     inertia := d3(0.0, 0.0, 0.0);
-    if i < DUCKS {
+    if float_duck(i) {
       shape = shape_sphere(0.16); mass = 1.1;
       m := 0.4 * mass * 0.16 * 0.16; inertia = d3(m, m, m);
     } else {
@@ -440,6 +489,11 @@ floats_start :: (r: [] River) {
     r[0].colliders[i] = Collider.{body = i, shape = shape};
   }
   r[0].float_tick = 0; r[0].float_carry = 0.0;
+}
+
+// Whether float i is a duck: the river's first three, and each pond's first.
+float_duck :: (i: int) -> bool {
+  return i < DUCKS || (i >= RIVER_FLOATS && (i - RIVER_FLOATS) % POND_FLOATS == 0);
 }
 
 // Steps the floats by dt in fixed steps: buoyancy and drag from the water,
@@ -453,10 +507,10 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
   every: [1] bool;
   gravity := d3(0.0, -9.81, 0.0);
   while r[0].float_carry >= FLOAT_STEP && steps < 8 {
-    w := rigid_world(FLOAT_STEP, r[0].floats[..]);
+    w := rigid_world(FLOAT_STEP, r[0].floats[0..<r[0].float_n]);
     w.tick = r[0].float_tick;
-    n := water_apply(w, r[0].colliders[..], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
-    for i: 0..<FLOATS { r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].float_tick); }
+    n := water_apply(w, r[0].colliders[0..<r[0].float_n], r[0].set, w.tick, FLOAT_STEP, water_settings(), every[0..<0], r[0].pushes[..]);
+    for i: 0..<r[0].float_n { r[0].floats[i] = float_steer(r[0].floats[i], i, r[0].homes[i * 2], r[0].homes[i * 2 + 1], r[0].float_tick); }
     w = rigid_step(w, gravity);
     r[0].float_tick = w.tick;
     r[0].float_carry -= FLOAT_STEP;
@@ -464,7 +518,7 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
   }
   if r[0].float_carry >= FLOAT_STEP { r[0].float_carry = 0.0; }
   count := 0;
-  for i: 0..<FLOATS {
+  for i: 0..<r[0].float_n {
     if (count + 1) * 8 > out.count { break; }
     b := r[0].floats[i];
     k := count * 8;
@@ -473,7 +527,7 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
     // how far it tips (its up's lean), and which way, about the vertical
     up := dq_rotate(b.orientation, D3_Y);
     out[k + 4] = cast(f32) acos_d(fclamp(up.y, -1.0, 1.0)); out[k + 5] = cast(f32) atan_d2(up.x, up.z); out[k + 6] = 0;
-    out[k + 7] = ifx i < DUCKS then 0.0f32 else 1.0f32;
+    out[k + 7] = ifx float_duck(i) then 0.0f32 else 1.0f32;
     count += 1;
   }
   return count;
@@ -482,13 +536,14 @@ everglade_river_floats :: (r: [] River, dt: f32, out: [] f32) -> int #export_c {
 // A duck paddles toward a point that wanders slowly round its home, up to
 // 4 N; a lily pad's stem pulls it back to its anchor like a spring with
 // some give, and keeps it from spinning away.
-float_steer :: (b: RigidBody, i: int, tick: u64) -> RigidBody {
+float_steer :: (b: RigidBody, i: int, hx: f64, hz: f64, tick: u64) -> RigidBody {
   next := b;
-  hx := FLOAT_HOME[i * 2]; hz := FLOAT_HOME[i * 2 + 1];
-  if i < DUCKS {
+  if float_duck(i) {
     t := f64(tick % 1000000) / 120.0;
     a := t * 0.11 + f64(i) * 2.1;
-    tx := hx + 0.8 * sin(a); tz := hz + 2.5 * sin(a * 0.7 + 1.0);
+    // along the river's stretch, or round a pond
+    wx := ifx i < DUCKS then 0.8 else 1.8; wz := ifx i < DUCKS then 2.5 else 1.8;
+    tx := hx + wx * sin(a); tz := hz + wz * sin(a * 0.7 + 1.0);
     fx := (tx - b.pos.x) * 3.0 - b.vel.x * 2.0;
     fz := (tz - b.pos.z) * 3.0 - b.vel.z * 2.0;
     size := sqrt(fx * fx + fz * fz);
@@ -671,8 +726,8 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   out: [FLOATS * 8] f32;
   n := 0;
   for k: 0..<150 { n = everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
-  #assert n == FLOATS;
-  for i: 0..<FLOATS {
+  #assert n == RIVER_FLOATS;
+  for i: 0..<RIVER_FLOATS {
     x := out[i * 8]; y := out[i * 8 + 1]; z := out[i * 8 + 2];
     s := water_sample(r[0].set, f64(x), f64(z), r[0].float_tick);
     #assert s.found;
@@ -682,5 +737,49 @@ test_ground :: (heights: [] f32, levels: [] f32) {
     hx := cast(f32) FLOAT_HOME[i * 2]; hz := cast(f32) FLOAT_HOME[i * 2 + 1];
     #assert sqrt((x - hx) * (x - hx) + (z - hz) * (z - hz)) < 4;
     #assert out[i * 8 + 7] == ifx i < DUCKS then 0.0f32 else 1.0f32;
+  }
+}
+
+#test "a pond: still water over its bowl, waded at its shallows, swum in its middle, a bank to come to past its rim" {
+  heights: [(TEST_N + 1) * (TEST_N + 1)] f32;
+  all: [TEST_N + 1 + PONDS * 4] f32;
+  test_ground(heights[..], all[..]);
+  // a bowl 3 m deep under a level of 0.75 at (-40, 20), rim 6 m (plan.coax everglade_pond_bed)
+  for j: 0..<TEST_N + 1 {
+    for i: 0..<TEST_N + 1 {
+      x := -104.0f32 + f32(i) * 2; z := -104.0f32 + f32(j) * 2;
+      d := sqrt((x + 40) * (x + 40) + (z - 20) * (z - 20));
+      t := d / 6;
+      bed := ifx d < 6 then 0.75 + 0.25 - 3.25 * (1 - t * t) else 1.0 + (d - 6) * 0.7;
+      heights[j * (TEST_N + 1) + i] = lo_f(heights[j * (TEST_N + 1) + i], bed);
+    }
+  }
+  k := TEST_N + 1;
+  all[k] = -40; all[k + 1] = 20; all[k + 2] = 6; all[k + 3] = 0.75;
+  r: [1] River;
+  everglade_river_start(r[..], heights[..], all[..], TEST_N, 2, -104, -104);
+  s := water_sample(r[0].set, -40, 20, 0);
+  #assert s.found && abs(s.height - 0.75) < 0.0001 && water_still(s);
+  #assert !water_sample(r[0].set, -40, 28, 0).found;
+  // the middle swims, the shallows wade
+  w := everglade_river_swim(r[..], heights[..], -40, 20, false, 0.1, 0);
+  #assert w.medium == MEDIUM_SWIMMING && w.pace == 0.5 && w.flow_x == 0 && w.flow_z == 0;
+  r[0].afloat = false;
+  shallow := everglade_river_swim(r[..], heights[..], -35, 20, false, 0.1, 0);
+  #assert shallow.medium == MEDIUM_WADING || shallow.medium == MEDIUM_GROUND;
+  // out of breath at the bottom, you come to on its bank
+  r[0].afloat = false;
+  for n: 0..<400 { w = everglade_river_swim(r[..], heights[..], -40, 20, true, 0.25, 0); if w.defeated { break; } }
+  #assert w.defeated;
+  #assert abs(sqrt((w.bank_x + 40) * (w.bank_x + 40) + (w.bank_z - 20) * (w.bank_z - 20)) - 7.5) < 0.01;
+  // its duck and three lily pads float on it and stay inside its rim
+  out: [FLOATS * 8] f32;
+  n := 0;
+  for q: 0..<150 { n = everglade_river_floats(r[..], 1.0 / 60.0, out[..]); }
+  #assert n == RIVER_FLOATS + POND_FLOATS;
+  for i: RIVER_FLOATS..<n {
+    x := out[i * 8]; y := out[i * 8 + 1]; z := out[i * 8 + 2];
+    #assert abs(y - 0.75) < 0.12 && sqrt((x + 40) * (x + 40) + (z - 20) * (z - 20)) < 5.5;
+    #assert out[i * 8 + 7] == ifx i == RIVER_FLOATS then 0.0f32 else 1.0f32;
   }
 }

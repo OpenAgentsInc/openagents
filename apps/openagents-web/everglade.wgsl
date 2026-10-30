@@ -24,6 +24,7 @@ struct U {
   light_info: vec4f,        // the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps)
   lights: array<vec4f, 32>,  // each lamp: x, y, z, reach; r, g, b, strength
   weather: array<vec4f, 3>,  // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain (everglade.coax weather_frame)
+  ponds: array<vec4f, 4>,   // the ponds: x, z, rim radius, level (everglade.coax U_PONDS; pond_vertex)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -925,6 +926,8 @@ fn water_uv(xz: vec2f) -> vec2f {
 }
 // How deep the water stands over ground at xz (m; 0 where there is none).
 fn water_over(xz: vec2f) -> f32 {
+  let q = pond_depth_at(vec3f(xz.x, ground_y(xz), xz.y));
+  if (q > 0.0) { return q; }
   if (u.water.grid.x < 2.0 || u.water.frame.w <= 0.0) { return 0.0; }
   let uv = water_uv(xz);
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > u.water.grid.x - 1.0 || uv.y > u.water.grid.y - 1.0) { return 0.0; }
@@ -960,6 +963,8 @@ fn water_rest(uv: vec2f) -> WaterRest {
 fn water_depth_at(p: vec3f) -> f32 {
   let f = fountain_depth_at(p);
   if (f > -0.5) { return f; }
+  let q = pond_depth_at(p);
+  if (q > -0.5) { return q; }
   if (u.water.grid.x < 2.0 || u.water.frame.w <= 0.0) { return -1.0; }
   let uv = water_uv(p.xz);
   if (uv.x < 0.0 || uv.y < 0.0 || uv.x > u.water.grid.x - 1.0 || uv.y > u.water.grid.y - 1.0) { return -1.0; }
@@ -1286,6 +1291,67 @@ fn fountain_fall(k: u32, jet: bool, v: f32) -> Fall {
   f.radius = mix(0.075, 0.05, v);
   return f;
 }
+// ---- the ponds (verse/everglade/plan.coax EG_POND; docs/verse/water.md, W3): still water at each one's
+// level over its carved bowl, 8 wedges an instance of rings and sectors out to 0.3 m past its rim; a
+// quad whose corners all stand on dry ground is not drawn. Part 6, in the painted look.
+const POND_PART = 6u;
+fn pond_on(p: u32) -> bool { return u.ponds[p].z > 0.5; }
+// How deep a point lies in a pond, or -1 when it is in none.
+fn pond_depth_at(p: vec3f) -> f32 {
+  for (var k = 0u; k < 4u; k++) {
+    let q = u.ponds[k];
+    if (q.z <= 0.5) { continue; }
+    if (length(p.xz - q.xy) < q.z + 0.3 && p.y < q.w + 0.08) { return q.w - p.y; }
+  }
+  return -1.0;
+}
+fn pond_vertex(id: u32, f: u32) -> WaterOut {
+  var o: WaterOut;
+  let qa = u32(u.water.grid.z);
+  let ql = u32(u.water.grid.w);
+  let quad_id = id / 6u;
+  let c = quad(id % 6u);
+  let p = f / 8u;
+  if (f >= 32u || !pond_on(p) || quad_id >= qa * ql) { o.clip = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
+  let q = u.ponds[p];
+  let qx = quad_id % qa;
+  let qz = quad_id / qa;
+  let rim = q.z + 0.3;
+  let wedge = f % 8u;
+  // dry ground under all four corners: not drawn
+  var low = 1000.0;
+  for (var k = 0u; k < 4u; k++) {
+    let ca = f32(wedge * qa + qx + (k & 1u)) / (8.0 * f32(qa)) * TAU;
+    let cr = rim * f32(qz + (k >> 1u)) / f32(ql);
+    low = min(low, ground_y(q.xy + vec2f(cos(ca), sin(ca)) * cr) - q.w);
+  }
+  if (low > WATER_DRY) { o.clip = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
+  let a = (f32(wedge * qa + qx) + c.x) / (8.0 * f32(qa)) * TAU;
+  let r = rim * (f32(qz) + c.y) / f32(ql);
+  let xz = q.xy + vec2f(cos(a), sin(a)) * r;
+  let world = vec3f(xz.x, q.w, xz.y);
+  let depth = q.w - ground_y(xz);
+  o.clip = clip(world);
+  o.world_depth = vec4f(world, depth);
+  o.rest_flow = vec4f(xz, 0.0, 0.0);
+  // the shore: about where the bowl comes up through the level (its banks climb some 0.6 in 1)
+  o.look = vec4f(0.0, 0.0, 0.0, max(depth, 0.0) / 0.6);
+  o.extra = vec4f(f32(POND_PART), 0.0, r, 0.0);
+  return o;
+}
+fn pond_shade(i: WaterOut, v: vec3f, eye_distance: f32, footprint: f32) -> WaterShade {
+  let world = i.world_depth.xyz;
+  let rest = i.rest_flow.xy;
+  // a pond is calmer than the river: half its detail waves, and the rings you leave
+  let detail = water_flow_detail(rest, vec2f(0.0), footprint);
+  let slope = detail.xy * 0.5 + water_ripples(rest);
+  let n = normalize(vec3f(-slope.x, 1.0, -slope.y));
+  if (u.eye.y < world.y) { return water_below(n, v, eye_distance, length(slope)); }
+  return water_painted(world, rest, vec2f(0.0), i.world_depth.w, i.look.w, 0.0, n, v, footprint);
+}
+// Whether a water part is a surface (the river, the fountain's pools, the ponds) rather than a fall.
+fn water_surface_part(part: u32) -> bool { return part < 3u || part == POND_PART; }
+
 fn fountain_vertex(id: u32, f: u32) -> WaterOut {
   var o: WaterOut;
   let qa = u32(u.water.grid.z);
@@ -1409,6 +1475,7 @@ fn fountain_fall_shade(i: WaterOut, part: u32) -> WaterShade {
 @vertex fn water_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) piece: u32) -> WaterOut {
   var o: WaterOut;
   let patches = u32(u.water.grid2.y);
+  if (piece >= patches + 32u) { return pond_vertex(id, piece - patches - 32u); }
   if (piece >= patches) { return fountain_vertex(id, piece - patches); }
   let qa = u32(u.water.grid.z);
   let ql = u32(u.water.grid.w);
@@ -1738,7 +1805,7 @@ fn water_painted_teal(world: vec3f, rest: vec2f, flow: vec2f, depth: f32, shore:
 
 fn water_fragment(i: WaterOut) -> WaterShade {
   let part = u32(i.extra.x + 0.5);
-  if (part >= 3u) { return fountain_fall_shade(i, part); }
+  if (!water_surface_part(part)) { return fountain_fall_shade(i, part); }
   let world = i.world_depth.xyz;
   let rest = i.rest_flow.xy;
   let flow = i.rest_flow.zw;
@@ -1746,6 +1813,7 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   let v = normalize(u.eye.xyz - world);
   let eye_distance = distance(u.eye.xyz, world);
   let footprint = water_footprint(v, eye_distance);
+  if (part == POND_PART) { return pond_shade(i, v, eye_distance, footprint); }
   if (part >= 1u) { return fountain_pool_shade(i, part, v, footprint); }
   // the normal, and the roughness its lost detail adds
   let swell = water_gerstner_slope(rest, depth, 1.0);
@@ -1885,7 +1953,7 @@ fn water_whole(i: WaterOut) -> vec3f {
     let near = (1.0 - smoothstep(0.03, 0.2, thick)) * (1.0 - smoothstep(0.35, 0.7, thick / max(bed, 0.02)));
     let t = u.water.params.x;
     let broken = smoothstep(0.25, 0.6, water_noise(vec3f(i.rest_flow.xy * 5.0, t * 0.8)) + 0.5 * near - 0.2);
-    let foam = clamp(near * broken * 1.4, 0.0, 1.0) * select(1.0, 0.0, part >= 3u);
+    let foam = clamp(near * broken * 1.4, 0.0, 1.0) * select(0.0, 1.0, water_surface_part(part));
     let foam_rgb = vec3f(0.95, 0.97, 0.96) * (water_host_light(world, vec3f(0.0, 1.0, 0.0)) * 0.9 + vec3f(0.06));
     out = mix(out, foam_rgb, foam);
   }
@@ -1895,11 +1963,11 @@ fn water_whole(i: WaterOut) -> vec3f {
 }
 @fragment fn water_transmit_fs(i: WaterOut) -> @location(0) vec4f {
   // a surface draws whole in the light half (water_whole): this half clears what lies behind it
-  if (u32(i.extra.x + 0.5) < 3u) { return vec4f(0.0, 0.0, 0.0, 1.0); }
+  if (water_surface_part(u32(i.extra.x + 0.5))) { return vec4f(0.0, 0.0, 0.0, 1.0); }
   return vec4f(clamp(water_halves(i).transmit, vec3f(0.0), vec3f(1.0)), 1.0);
 }
 @fragment fn water_emit_fs(i: WaterOut) -> @location(0) vec4f {
-  if (u32(i.extra.x + 0.5) < 3u) { return vec4f(water_whole(i), 0.0); }
+  if (water_surface_part(u32(i.extra.x + 0.5))) { return vec4f(water_whole(i), 0.0); }
   return vec4f(water_halves(i).emit, 0.0);
 }
 

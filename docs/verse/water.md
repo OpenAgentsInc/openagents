@@ -7,8 +7,8 @@ W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
 Everglade (its river, swimming and floats) and, from W6, the ripple field
 with your wake and splash, most of W5 (below) and W4 (the spectral sea,
 in the water lab, below). The rest has a task each under `verse-water`
-(#c278): W3's rest (the ponds, the weir, NPC swimming, rowboat props), the
-rest of W6, and W7 to W11.
+(#c278): W3's rest (the weir, NPC swimming, rowboat props; the ponds are
+in), the rest of W6, and W7 to W11.
 
 ## W1: the physics (done)
 
@@ -149,9 +149,24 @@ bridge, so W3 is that river (docs/verse/everglade.md, "The river"):
   by the bridge. Up and down the river past it the forest closes in. The
   plan's reachability and slope checks say so.
 
-Not ported, because today's Everglade has none of them: the ponds, the
-weir and its plunge pool, rowboats, townsfolk swimming and underwater
-combat. You swim with the walk clip (there is no swim clip yet), and a
+- Ponds: four, carved into the woods and opened as clearings
+  (`verse/everglade/plan.coax` `EG_POND`): the Lantern Pond (-77, -11),
+  6 m in radius and 3 m deep; the Reed Pond (14, -90), 5 m and
+  1.6 m; the Thinking Pond (28, 73), 5.5 m and 2.5 m; the Fern Pond
+  (-79, 21), 5 m and 2 m. Each one's level sits 0.25 m under the lowest
+  ground 5 m past its rim; its bed is a bowl to that depth and climbs
+  0.7 in 1 past the rim to the ground. Each is a W1 pond body in the same
+  `water_set` as the river (`river.coax`), so wading, swimming, diving,
+  breath and the bank you come back to all work the same; the shader draws
+  each as 8 wedges of a disc (`everglade.wgsl` `pond_vertex`) from the
+  levels the page passes (`U.ponds`). `#lantern-pond`, `#reed-pond`,
+  `#thinking-pond` and `#fern-pond` put you on their banks. Each has a
+  duck paddling round its middle and three lily pads at 0.6 of its rim,
+  floats like the river's.
+
+Not ported yet (task `verse-water-w3-rest`): the weir and its plunge pool,
+rowboats, and townsfolk swimming. Not
+ported: underwater combat. You swim with the walk clip (there is no swim clip yet), and a
 phone has no dive button yet.
 
 ## W5: the scene behind the water (done, in part)

@@ -476,6 +476,15 @@ and W6's ripples), drawn by its shader and read by the swimmer:
   six lily pads ride on their stems, floating by the physics' buoyancy.
 - **Ripples:** a splash where you come into the water and rings as you
   move through it.
+- **The ponds:** four still ponds in clearings of the woods, each one
+  a W1 pond you can wade, swim and dive in like the river: the Lantern
+  Pond west of the town (-77, -11; 6 m in radius, 3 m deep), the Reed
+  Pond behind the road in (14, -90; 5 m, 1.6 m), the Thinking Pond in the north
+  (28, 73; 5.5 m, 2.5 m) and the Fern Pond in the west woods (-79, 21;
+  5 m, 2 m). `plan.coax` `everglade_carve_ponds` cuts a bowl for each
+  under a level 0.25 m below the ground round it. `#lantern-pond`,
+  `#reed-pond`, `#thinking-pond` and `#fern-pond` start you on the bank.
+  A duck paddles round each pond and three lily pads ride on it.
 
 ## What's next
 
