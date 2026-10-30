@@ -283,7 +283,11 @@ static void open_original(Server *s, uint8_t kind, const char *dir, const char *
     if (gpu) {
         t0 = now_ms();
         int64_t placing=now_us();
+#ifdef PSIONIC_SERVE_METAL
         int r = eg_place(s->gpu, session.model, capacity, device_mib * 1048576);
+#else
+        int r = eg_place_kind(s->gpu, kind, session.model, capacity, device_mib * 1048576);
+#endif
         if (r) { fprintf(stderr, "psionic-serve: device placement refused: %d %s\n", r, eg_log()); exit(1); }
         s->place_us=ls_elapsed(placing,now_us());
         printf("psionic-serve: placed %.2f GiB resident and %.2f GiB pinned for streaming in %lld ms (plan budget %.2f GiB)\n",
