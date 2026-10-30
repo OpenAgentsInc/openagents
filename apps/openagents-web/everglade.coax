@@ -1372,9 +1372,10 @@ city :: (s: [] Everglade, u: [] f32) {
     if i >= EG_RIVER { continue; }   // the river is the water's (verse/everglade/river.coax), drawn last
     if i == EG_BOARD { notice_board(s, x0, z0, x1, z1, h); continue; }
     if i >= EG_STALL && i < EG_WAYSTONE { continue; }   // the kit's stalls (build_town)
-    if i < EG_CRYPT && s[0].pack_ready { continue; }    // the waystone and the pillars are the kit's stone (landmarks)
+    if i <= EG_CRYPT && s[0].pack_ready { continue; }   // the waystone and the pillars are the kit's stone (landmarks), the crypt its brick (crypt)
     block(s, LOOK_STONE, x0, z0, x1, z1, h, 0.6, 0.6, 0.58);
   }
+  if s[0].pack_ready { crypt_stone(s); }
   // The bridge: a timber deck of planks where you walk over the river (its walkable rectangle is
   // plan.coax's EG_BRIDGE), with a rail of posts and two bars along each side, four beams under the
   // deck, and two rows of piles in the stream under a cap beam; the middle pile of each row is the
@@ -1759,8 +1760,63 @@ build_town :: (s: [] Everglade) {
   }
   stalls(s);
   bridge(s);
+  crypt(s);
   // The town crier's banner by the quest board.
   piece(s, M_BANNER, 8.6, ground_at(s, 8.6, -5), -5, f32(PI) * 1.5, 1, 1, 1);
+}
+
+// The crypt (eg-paint-props: it was a plain grey box): a mausoleum of the kit's brick, no windows, its
+// door on the side facing its trail, under a flat roof of brick paving; city() lays a carved cornice
+// round the roof's edge, a stepped coping on it and a column either side of the door, in dressed stone
+// (crypt_stone).
+crypt :: (s: [] Everglade) {
+  k := EG_CRYPT * EG_BOX;
+  x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3];
+  g := crypt_floor(s);
+  for w: 0..<4 {
+    q := side_of(x0, z0, x1, z1, w);
+    reach_m := abs(q.bx - q.ax) + abs(q.bz - q.az);
+    modules := cast(int) (reach_m / f32(EG_MODULE) + 0.5);
+    ux := (q.bx - q.ax) / reach_m; uz := (q.bz - q.az) / reach_m;
+    for i: 0..<modules {
+      t := (f32(i) + 0.5) * f32(EG_MODULE);
+      cx := q.ax + ux * t - q.nx * f32(WALL_FACE); cz := q.az + uz * t - q.nz * f32(WALL_FACE);
+      door := w == 0 && i == CRYPT_DOOR;
+      piece(s, ifx door then M_BRICK_DOOR else M_BRICK, cx, g, cz, q.yaw, 1, 1, 1);
+      if door { piece(s, M_DOOR, cx + ux * 0.53, g, cz + uz * 0.53, q.yaw, 1, 1, 1); }   // shut (its hinge on the left seen from outside)
+    }
+  }
+  top := g + f32(STOREY);
+  nx := cast(int) ((x1 - x0) / 2 + 0.5); nz := cast(int) ((z1 - z0) / 2 + 0.5);
+  for i: 0..<nx { for j: 0..<nz { piece(s, M_FLOOR_BRICK, x0 + 1 + f32(i) * 2, top, z0 + 1 + f32(j) * 2, 0, 1, 1, 1); } }
+}
+CRYPT_DOOR :: 1;   // the module of its south wall the door is in, toward the trail's end
+crypt_floor :: (s: [] Everglade) -> f32 {
+  k := EG_CRYPT * EG_BOX;
+  // the lowest of its corners, so no wall hangs above the slope
+  g := ground_at(s, EG_PROP[k], EG_PROP[k + 1]);
+  g = lo(g, ground_at(s, EG_PROP[k + 2], EG_PROP[k + 1]));
+  g = lo(g, ground_at(s, EG_PROP[k], EG_PROP[k + 3]));
+  return lo(g, ground_at(s, EG_PROP[k + 2], EG_PROP[k + 3])) - 0.1;
+}
+crypt_stone :: (s: [] Everglade) {
+  k := EG_CRYPT * EG_BOX;
+  x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3];
+  g := crypt_floor(s);
+  top := g + f32(STOREY);
+  mx := (x0 + x1) / 2; mz := (z0 + z1) / 2; w := x1 - x0; d := z1 - z0;
+  // a plinth it stands on, the cornice and a stepped coping
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(mx, g - 0.2, mz), 0, 0, w + 0.9, 0.9, d + 0.9, 0.56, 0.54, 0.5);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(mx, top + 0.18, mz), 0, 0, w + 0.6, 0.36, d + 0.6, 0.62, 0.6, 0.55);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(mx, top + 0.5, mz), 0, 0, w - 0.6, 0.3, d - 0.6, 0.58, 0.56, 0.52);
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(mx, top + 0.8, mz), 0, 0, w - 2.2, 0.3, d - 2.2, 0.55, 0.53, 0.49);
+  // the door's columns and the lintel over them
+  dx := x0 + (f32(CRYPT_DOOR) + 0.5) * f32(EG_MODULE);
+  for side: 0..<2 {
+    cx := dx + (ifx side == 0 then -1.0f32 else 1.0f32);
+    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(cx, g + f32(STOREY) / 2, z0 - 0.35), 0, 0, 0.42, f32(STOREY), 0.42, 0.66, 0.63, 0.57);
+  }
+  shape(s, SHAPE_BOX, LOOK_STONE, v3(dx, top - 0.1, z0 - 0.35), 0, 0, 2.7, 0.34, 0.6, 0.64, 0.61, 0.56);
 }
 
 // The bridge's deck and rails from the kit: dark wood floor boards, 4 across the river by 7 along
@@ -1776,7 +1832,7 @@ bridge :: (s: [] Everglade) {
   }
   for side: 0..<2 {
     z := ifx side == 0 then br[1] + 0.18 else br[3] - 0.18;
-    for k: 0..<4 { piece(s, M_FENCE, br[0] + 1 + f32(k) * 2, deck, z, 0, 0.97, 1.25, 1.4); }
+    for k: 0..<4 { piece(s, M_FENCE, br[0] + 1 + f32(k) * 2, deck, z, ifx side == 0 then 0.0f32 else f32(PI), 0.97, 1.25, 1.4); }
   }
 }
 
@@ -1992,7 +2048,22 @@ landmarks :: (s: [] Everglade) {
     x0 := EG_PROP[k]; z0 := EG_PROP[k + 1]; x1 := EG_PROP[k + 2]; z1 := EG_PROP[k + 3]; h := EG_PROP[k + 4];
     x := (x0 + x1) / 2; z := (z0 + z1) / 2;
     m := ifx i % 2 == 0 then 10 else 11;    // Rock_Medium_1 or _2: about 3.2 by 2.2 by 3 m
-    kit3(s, group_of(m), x, ground_at(s, x, z) - 0.1, z, f32(i) * 1.3, (x1 - x0) * 1.25 / 3.2, h / 2.0, (z1 - z0) * 1.25 / 3.0);
+    g := ground_at(s, x, z);
+    if i == EG_WAYSTONE {
+      // the waystone: a tall stone, broader than its footprint so it reads from the trail, two fallen
+      // stones at its foot, and a line of runes cut down its face that glow faintly, dusk or noon
+      kit3(s, group_of(m), x, g - 0.15, z, 0.4, 0.42, 1.25, 0.3);
+      kit3(s, group_of(11), x + 0.9, g - 0.25, z + 0.5, 2.1, 0.22, 0.2, 0.2);
+      kit3(s, group_of(10), x - 0.8, g - 0.25, z - 0.6, 4.0, 0.18, 0.16, 0.18);
+      fx := sin(0.4f32) * 0.52; fz := cos(0.4f32) * 0.52;
+      for r: 0..<8 {
+        f := ifx r < 4 then 1.0f32 else -1.0f32;
+        across := r % 2 == 0;   // strokes, across and down in turn
+        shape(s, SHAPE_BOX, LOOK_FLAME, v3(x + fx * f, g + 0.8 + f32(r % 4) * 0.34, z + fz * f), 0.4, 0, ifx across then 0.2f32 else 0.05f32, ifx across then 0.05f32 else 0.22f32, 0.03, 0.3, 0.72, 0.66);
+      }
+      continue;
+    }
+    kit3(s, group_of(m), x, g - 0.1, z, f32(i) * 1.3, (x1 - x0) * 1.25 / 3.2, h / 2.0, (z1 - z0) * 1.25 / 3.0);
   }
 }
 
@@ -2446,16 +2517,22 @@ tag :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, text: string, p: Point,
   return draw_text(out, n, text, sc.x - w / 2, sc.y, cap, GAP, SPACE, ink(k, light, r, g, b), false, false);
 }
 
+// The names over the world: the places, the houses and (on foot) the people. Nearest first, and one that
+// would overlap a name already drawn (the owner, October 29: GUILD ROW over THE COMMONS at the market)
+// moves up a line, or is left out when that overlaps too, so the farther one gives way.
+LABELS_MAX :: EG_PLACES + EG_BUILDINGS + EG_SPOTS;
+Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f32; done: bool; }
 labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
-  m := n;
   overview := s[0].lift > 0.5;
   here := where(you);
+  ls: [LABELS_MAX] Label;
+  c := 0;
   for p: 0..<EG_PLACES {
     if !overview && EG_PLACE_NAME[p] == here { continue; }
     pp := v3(EG_PLACE[p * 2], ground_at(s, EG_PLACE[p * 2], EG_PLACE[p * 2 + 1]) + 3, EG_PLACE[p * 2 + 1]);
     if !overview && flat_gap(pp, you) > f32(PLACE_NEAR) { continue; }
-    m = tag(s, out, u, m, EG_PLACE_NAME[p], pp, (ifx overview then 8.0f32 else 9.0f32) * k, 0.95, true);
+    ls[c] = Label.{text = EG_PLACE_NAME[p], p = pp, cap = (ifx overview then 8.0f32 else 9.0f32) * k, light = 0.95, gold = true, d = flat_gap(pp, you), done = false}; c += 1;
   }
   for b: 0..<EG_BUILDINGS {
     if b >= EG_HOUSES || eg_hidden(s[0].ev.edits, b) { continue; }
@@ -2463,14 +2540,48 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
     cx := (EG_BUILDING[q] + EG_BUILDING[q + 2]) / 2; cz := (EG_BUILDING[q + 1] + EG_BUILDING[q + 3]) / 2;
     pp := v3(cx, ground_at(s, cx, cz) + EG_BUILDING[q + 4] + 1.5, cz);
     if !overview && flat_gap(pp, you) > f32(PLACE_NEAR) * 0.6 { continue; }
-    m = tag(s, out, u, m, EG_BUILDING_NAME[b], pp, (ifx overview then 6.0f32 else 7.5f32) * k, 0.85, false);
+    ls[c] = Label.{text = EG_BUILDING_NAME[b], p = pp, cap = (ifx overview then 6.0f32 else 7.5f32) * k, light = 0.85, gold = false, d = flat_gap(pp, you), done = false}; c += 1;
   }
-  if overview { return m; }
-  for i: 0..<EG_SPOTS {
-    x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
-    if eg_gone(s[0].ev.edits, i) || flat_gap(v3(x, 0, z), you) > f32(NAME_NEAR) { continue; }
-    tall := ifx EG_SPOT_CAT[i] then 0.8f32 else 2.25f32;
-    m = tag(s, out, u, m, EG_SPOT_NAME[i], v3(x, ground_at(s, x, z) + tall, z), 6.5 * k, 0.8, false);
+  if !overview {
+    for i: 0..<EG_SPOTS {
+      x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1];
+      if eg_gone(s[0].ev.edits, i) || flat_gap(v3(x, 0, z), you) > f32(NAME_NEAR) { continue; }
+      tall := ifx EG_SPOT_CAT[i] then 0.8f32 else 2.25f32;
+      pp := v3(x, ground_at(s, x, z) + tall, z);
+      ls[c] = Label.{text = EG_SPOT_NAME[i], p = pp, cap = 6.5 * k, light = 0.8, gold = false, d = flat_gap(pp, you), done = false}; c += 1;
+    }
+  }
+  boxes: [LABELS_MAX * 4] f32;
+  placed := 0;
+  m := n;
+  for r: 0..<c {
+    best := -1;
+    for j: 0..<c { if !ls[j].done && (best < 0 || ls[j].d < ls[best].d) { best = j; } }
+    ls[best].done = true;
+    l := ls[best];
+    sc := on_screen(u, l.p, s[0].width, s[0].height);
+    if !sc.ok { continue; }
+    w := text_width(l.text, l.cap);
+    x0 := sc.x - w / 2 - l.cap * 0.4; x1 := sc.x + w / 2 + l.cap * 0.4;
+    y := sc.y;
+    shown := false;
+    for t: 0..<2 {
+      clear := true;
+      for q: 0..<placed {
+        o := q * 4;
+        if x0 < boxes[o + 2] && x1 > boxes[o] && y - l.cap * 0.3 < boxes[o + 3] && y + l.cap * 1.3 > boxes[o + 1] { clear = false; }
+      }
+      if clear { shown = true; break; }
+      y -= l.cap * 1.8;
+    }
+    if !shown { continue; }
+    o := placed * 4;
+    boxes[o] = x0; boxes[o + 1] = y - l.cap * 0.3; boxes[o + 2] = x1; boxes[o + 3] = y + l.cap * 1.3;
+    placed += 1;
+    r_ := ifx l.gold then f32(GOLD_R) else f32(PARCH_R);
+    g_ := ifx l.gold then f32(GOLD_G) else f32(PARCH_G);
+    b_ := ifx l.gold then f32(GOLD_B) else f32(PARCH_B);
+    m = draw_text(out, m, l.text, sc.x - w / 2, y, l.cap, GAP, SPACE, ink(k, l.light, r_, g_, b_), false, false);
   }
   return m;
 }
@@ -2974,7 +3085,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   #assert g[0].kit_used[group_of(M_PLASTER)] + g[0].kit_used[group_of(M_BRICK)] > 150;
   #assert g[0].kit_used[group_of(M_LOG)] > 600 && g[0].kit_used[group_of(M_FLOOR_WOOD)] > 150;
   #assert g[0].kit_used[group_of(M_ROOF)] == EG_BUILDINGS - 2 && g[0].kit_used[group_of(M_TOWER_ROOF)] == 9;
-  #assert g[0].kit_used[group_of(M_DOOR)] == EG_BUILDINGS && g[0].kit_used[group_of(M_STALL)] == 6;
+  #assert g[0].kit_used[group_of(M_DOOR)] == EG_BUILDINGS + 1 && g[0].kit_used[group_of(M_STALL)] == 6;
   #assert g[0].wall_n == EG_SOLIDS - 1 && g[0].box_n > EG_PALISADE_N + EG_BUILDINGS;
   p := [4] f32.[0, 1.6, -84, 1];
   cw := 0.0f32; cx := 0.0f32; cy := 0.0f32;

@@ -187,8 +187,10 @@ fn ridges(d: vec3f, sky_c: vec3f) -> vec3f {
     let land = mix(vec3f(0.05, 0.15, 0.05), vec3f(0.06, 0.12, 0.17), f32(i) * 0.5);
     let amb = vec3f(verse_style_ambient(1.0, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(1.0, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(1.0, st(5u).z, st(6u).z, st(5u).w));
     let lit = land * (st(0u).xyz * st(0u).w * face + amb);
-    // a fixed step of the haze cap a layer (0.15, 0.4, 0.65), so each stays apart and the nearest stays green
-    let fog = st(9u).z * (0.15 + 0.25 * f32(i));
+    // a fixed step of the haze cap a layer (0.15, 0.4, 0.65), so each stays apart and the nearest stays green;
+    // never less than the haze a surface that far off takes (the owner, October 29: in fog and storm the far
+    // trees in front of them hazed nearly white while the ridges stayed dark, cut-outs against the hills)
+    let fog = max(st(9u).z * (0.15 + 0.25 * f32(i)), haze_share(t, r.y * 0.5));
     return mix(lit, haze_colour(fog, d), fog);
   }
   return sky_c;

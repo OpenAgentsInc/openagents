@@ -703,6 +703,16 @@ distance, so far windows are warm points. Seen from inside a room the pane is
 discarded, so you look out through it. Phone, the commons at night, 390×844
 at 3×: 5.2 ms GPU p50.
 
+**Built** (October 29, eg-paint-props): the last plain stand-ins are painted. The crypt, a grey box,
+is a mausoleum of the kit's brick with no windows, a shut door toward its trail and a flat roof of brick
+paving, on a dressed-stone plinth under a cornice and stepped coping, with a column either side of the
+door. The deep wood's waystone stands taller than its footprint with two fallen stones at its foot and a
+line of cut runes down both faces that glow faintly (bright once the lamps light). The bridge's two
+rails both face out. The far ridges never take less haze than a surface as far off would, so in fog and
+storm they fade with the far trees in front of them instead of standing dark behind pale cut-outs, and
+the names over the world are placed nearest first: one that would overlap a name already drawn moves up
+a line or is left out.
+
 ## Order of the work
 
 1. The style field and presets, and the style fixture, which everything else
