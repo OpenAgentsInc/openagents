@@ -1,0 +1,517 @@
+// Typed readers for NIP-34 git events and OpenAgents' project events over a
+// parsed NIP-01 event (event.coax's NostrEvent, seen as an NtEvent through
+// nt_event_of in nip34-event.coax, so these checks don't carry event.coax's):
+// repository announcements (30617), issues (1621), statuses (1630 open, 1631 resolved/applied, 1632 closed, 1633
+// draft), OpenAgents projects (30621, NIP-MP) and queue orders (30623). The
+// fields are the ones coax/web/project/model.ts writes and reads.
+//
+// These are projections, not authority (INVARIANTS.md, "Nostr projections
+// cannot create authority"). Nothing here verifies a signature, checks the
+// author, a relay or freshness, or grants anything: a record that reads OK
+// says only that the event's tags have the shape below. The caller decides
+// whose events count, after nostr_event_verify_vartime and its own policy.
+//
+// Every value is a span (NtSpan) of raw JSON string bytes inside the
+// event's original text, escapes intact: unescape with json_unescape, or
+// compare with json_is. The caller keeps the original alive while it uses
+// them. Nothing allocates; lists go into caller-owned arrays and a short
+// array refuses with N34_OUTPUT (entries before it may have been written).
+// A selected tag is its first occurrence (model.ts reads tags.find); NtTag.n
+// says how many tags carry the name, so a caller can refuse duplicates.
+// Hex ids and coordinates are read as plain lowercase bytes: an escaped
+// spelling of one refuses. A required tag that is missing refuses with
+// N34_MISSING; a selected tag without its values, or an id, coordinate or
+// number that doesn't read, refuses with N34_MALFORMED.
+#load "json.coax";
+#authority;
+
+N34_OK :: 0; N34_EVENT :: 1; N34_KIND :: 2; N34_MISSING :: 3; N34_MALFORMED :: 4; N34_OUTPUT :: 5;
+N34_KIND_REPO :: 30617; N34_KIND_PROJECT :: 30621; N34_KIND_ORDER :: 30623; N34_KIND_ISSUE :: 1621;
+N34_KIND_OPEN :: 1630; N34_KIND_DRAFT :: 1633; N34_KIND_COMMENT :: 1111;
+// An item's kind, from its t labels.
+N34_TASK :: 0; N34_MILESTONE :: 1; N34_INITIATIVE :: 2;
+// A status event's state: its kind less 1630.
+N34_STATE_OPEN :: 0; N34_STATE_RESOLVED :: 1; N34_STATE_CLOSED :: 2; N34_STATE_DRAFT :: 3;
+
+// The parts of a NtEvent the readers read: ok when nostr_event_read
+// (or the verify entry) returned NE_OK, its kind, and its original text with
+// the tags array's and the content's spans in it.
+NtEvent :: struct {ok:bool;kind:int;original:string;tags_from:int;tags_to:int;content_from:int;content_to:int;}
+NtSpan :: struct {from:int;to:int;}
+// The selected tag: n tags matched (-1: the tags aren't an array of string
+// arrays), found when the k-th of them exists, and its values after its
+// name, the first four kept.
+NtTag :: struct {n:int;found:bool;values:int;v:[4]NtSpan;}
+NtCoord :: struct {kind:int=-1;d:int;}
+
+// ---- test events: a NtEvent whose original text is just its tags array.
+n34_event :: (tags:string,kind:int)->NtEvent {
+ e:NtEvent;e.ok=true;e.kind=kind;e.original=tags;e.tags_to=tags.count;return e;
+}
+N34_HEX :: "09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af";
+N34_REPO_A :: "30617:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:openagents";
+N34_PROJECT_A :: "30621:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:coax";
+
+#test "tags select by name, by marker and by position" {
+ e:=n34_event("[[\"r\",\"x\"],[],[\"r\",\"y\",\"euc\"],[\"\\u0072\",\"z\",\"\\u0065uc\",\"3\",\"4\",\"5\"],[\"rr\",\"w\"]]",1);
+ a:=nt_tag(e,"r",0);#assert a.n==3 && a.values==1 && nt_raw(e,a.v[0])=="x";
+ b:=nt_tag(e,"r",1);#assert b.n==3 && b.values==2 && nt_raw(e,b.v[0])=="y" && nt_raw(e,b.v[1])=="euc";
+ c:=nt_tag(e,"r",2);#assert c.values==5 && nt_raw(e,c.v[0])=="z" && nt_raw(e,c.v[3])=="4";
+ #assert nt_tag(e,"r",3).values==0 && nt_tag(e,"q",0).n==0;
+ m:=nt_select(e,"r",1,"euc",1);#assert m.n==2 && nt_raw(e,m.v[0])=="z";
+ #assert nt_select(e,"r",0,"y",0).n==1 && nt_select(e,"r",0,"y",0).values==2;
+ #assert nt_select(e,"r",1,"x",0).n==0;
+}
+#test "spans count from the original text, not the tags array" {
+ e:=n34_event("{\"tags\":[[\"d\",\"coax\"]]}",1);e.tags_from=8;e.tags_to=e.original.count-1;
+ t:=nt_tag(e,"d",0);#assert t.n==1 && t.v[0].from==15 && t.v[0].to==19 && nt_raw(e,t.v[0])=="coax";
+}
+#test "tags that aren't an array of string arrays, or a bad event, refuse" {
+ #assert nt_tag(n34_event("[]",1),"d",0).n==0;
+ #assert nt_tag(n34_event("[[\"d\",1]]",1),"d",0).n==-1;
+ #assert nt_tag(n34_event("[[1]]",1),"d",0).n==-1;
+ #assert nt_tag(n34_event("[{}]",1),"d",0).n==-1;
+ #assert nt_tag(n34_event("[[]] 1",1),"d",0).n==-1;
+ #assert nt_tag(n34_event("{}",1),"d",0).n==-1;
+ e:=n34_event("[]",1);e.ok=false;#assert nt_tag(e,"d",0).n==-1;
+ e=n34_event("[] ",1);e.tags_to=3;#assert nt_tag(e,"d",0).n==0;
+ e.tags_to=4;#assert nt_tag(e,"d",0).n==-1;
+ e.tags_to=1;#assert nt_tag(e,"d",0).n==-1;
+ e=n34_event("x[]",1);e.tags_from=-1;#assert nt_tag(e,"d",0).n==-1;
+ e=n34_event("[][]",1);e.tags_from=3;e.tags_to=2;#assert nt_tag(e,"d",0).n==-1;
+}
+
+nt_raw :: (e:NtEvent,s:NtSpan)->string {return e.original[s.from..<s.to];}
+
+// The k-th tag (from 0) named name whose value at index (0 is the first
+// value after the name) says marker; a negative index selects every tag of
+// the name.
+nt_select :: (e:NtEvent,name:string,index:int,marker:string,k:int)->NtTag {
+ r:NtTag;bad:NtTag;bad.n=-1;
+ if !e.ok || e.tags_from<0 || e.tags_to-e.tags_from<2 || e.tags_to>e.original.count {return bad;}
+ j:[1]Json;json_start(j[..],e.original[e.tags_from..<e.tags_to]);
+ if json_next(j[..])!=JSON_ARRAY {return bad;}
+ t:=json_next(j[..]);
+ while t==JSON_ARRAY {
+  one:NtTag;named:=false;marked:=index<0;
+  v:=json_next(j[..]);
+  if v==JSON_STRING {named=json_is(json_text(j[..]),name);v=json_next(j[..]);}
+  while v==JSON_STRING {
+   if one.values==index && json_is(json_text(j[..]),marker) {marked=true;}
+   if one.values<one.v.count {one.v[one.values]=NtSpan.{from=e.tags_from+j[0].from,to=e.tags_from+j[0].to};}
+   one.values+=1;v=json_next(j[..]);
+  }
+  if v!=JSON_ARRAY_END {return bad;}
+  if named && marked {r.n+=1;if r.n==k+1 {r.found=true;r.values=one.values;r.v=one.v;}}
+  t=json_next(j[..]);
+ }
+ if t!=JSON_ARRAY_END || json_next(j[..])!=JSON_END {return bad;}
+ return r;
+}
+nt_tag :: (e:NtEvent,name:string,k:int)->NtTag {return nt_select(e,name,-1,"",k);}
+// How many tags nt_select selects with this index and marker, or -1 when the tags don't read.
+nt_count :: (e:NtEvent,name:string,index:int,marker:string)->int {
+ k:=0;t:=nt_select(e,name,index,marker,k);
+ while t.found {k+=1;t=nt_select(e,name,index,marker,k);}
+ return ifx t.n<0 then -1 else k;
+}
+nt_tags :: (e:NtEvent,name:string)->int {return nt_count(e,name,-1,"");}
+#test "tags count by name and by marker" {
+ e:=n34_event("[[\"t\",\"x\"],[\"t\",\"\"],[\"u\"],[\"t\",\"x\",\"m\"]]",1);
+ #assert nt_tags(e,"t")==3 && nt_tags(e,"u")==1 && nt_tags(e,"q")==0 && nt_count(e,"t",0,"x")==2 && nt_count(e,"t",1,"m")==1;
+ #assert nt_tag(e,"t",2).found && !nt_tag(e,"t",3).found && nt_tags(n34_event("[1]",1),"t")==-1;
+}
+
+#test "hex reads exactly size lowercase digits" {
+ #assert nt_hex("09af",4) && nt_hex("",0) && !nt_hex("09af",3) && !nt_hex("09af",5);
+ #assert !nt_hex("09:f",4) && !nt_hex("09ag",4) && !nt_hex("09Af",4) && !nt_hex("/9af",4) && !nt_hex("09`f",4);
+}
+#test "slugs are a lowercase letter or digit, then letters, digits and hyphens, at most 64" {
+ #assert nt_slug("a-z09") && nt_slug("0") && nt_slug("z");
+ #assert !nt_slug("") && !nt_slug("-a") && !nt_slug("a{") && !nt_slug("a`") && !nt_slug("a/") && !nt_slug("a:") && !nt_slug("aB");
+ #assert nt_slug("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+ #assert !nt_slug("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+}
+#test "coordinates are kind, lowercase hex pubkey and d" {
+ c:=nt_coord(N34_REPO_A);#assert c.kind==30617 && N34_REPO_A[c.d..<N34_REPO_A.count]=="openagents";
+ c=nt_coord("0:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:");#assert c.kind==0 && c.d==67;
+ #assert nt_coord("65535:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x").kind==65535;
+ #assert nt_coord("65536:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x").kind==-1;
+ #assert nt_coord("-1:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x").kind==-1;
+ #assert nt_coord(":09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x").kind==-1;
+ #assert nt_coord("1:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09aF:x").kind==-1;
+ #assert nt_coord("1:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af0x").kind==-1;
+ #assert nt_coord("1:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af").kind==-1;
+ #assert nt_coord("30617").kind==-1;
+}
+
+nt_hex :: (raw:string,size:int)->bool {
+ if raw.count!=size {return false;}
+ for c:raw {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}
+ return true;
+}
+nt_slug :: (raw:string)->bool {
+ if raw.count<1 || raw.count>64 {return false;}
+ for i:0..<raw.count {
+  c:=raw[i];
+  if !((c>='a' && c<='z') || (c>='0' && c<='9') || (c=='-' && i>0)) {return false;}
+ }
+ return true;
+}
+// "<kind>:<pubkey hex>:<d>": the kind (-1 when it doesn't read) and where d starts.
+nt_coord :: (raw:string)->NtCoord {
+ r:NtCoord;i:=0;
+ while i<raw.count && raw[i]!=':' {i+=1;}
+ kind:=json_int(raw[0..<i]);
+ if !kind.ok || kind.value<0 || kind.value>65535 || raw.count<i+66 || raw[i+65]!=':' || !nt_hex(raw[i+1..<i+65],64) {return r;}
+ r.kind=kind.value;r.d=i+66;return r;
+}
+
+#test "a selected tag's shape: required, and enough values" {
+ t:NtTag;
+ #assert nt_shape(t,1,false)==N34_OK && nt_shape(t,1,true)==N34_MISSING;
+ t.n=1;t.values=1;#assert nt_shape(t,1,true)==N34_OK && nt_shape(t,2,false)==N34_MALFORMED;
+ #assert nt_and(N34_OK,N34_KIND)==N34_KIND && nt_and(N34_MISSING,N34_KIND)==N34_MISSING;
+}
+#test "a reader starts from a parsed event of its kind" {
+ #assert n34_start(n34_event("[]",1630),1630)==N34_OK && n34_start(n34_event("[]",1631),1630)==N34_KIND;
+ #assert n34_start(n34_event("[1]",1630),1630)==N34_EVENT && n34_valid(n34_event("[[\"x\"]]",1))==N34_OK;
+}
+
+nt_shape :: (t:NtTag,values:int,required:bool)->int {
+ if t.n==0 {return ifx required then N34_MISSING else N34_OK;}
+ if t.values<values {return N34_MALFORMED;}
+ return N34_OK;
+}
+nt_and :: (status:int,next:int)->int {return ifx status!=N34_OK then status else next;}
+n34_valid :: (e:NtEvent)->int {return ifx nt_tags(e,"")<0 then N34_EVENT else N34_OK;}
+n34_start :: (e:NtEvent,kind:int)->int {return nt_and(n34_valid(e),ifx e.kind!=kind then N34_KIND else N34_OK);}
+// Whether every tag of the name has a first value, of size lowercase hex
+// digits when size is positive: how many there are, or -1.
+nt_each :: (e:NtEvent,name:string,size:int)->int {
+ n:=nt_tags(e,name);
+ for k:0..<n {
+  t:=nt_tag(e,name,k);
+  if t.values<1 || (size>0 && !nt_hex(nt_raw(e,t.v[0]),size)) {return -1;}
+ }
+ return n;
+}
+// The first value of every tag of the name, in order: how many, or -1 when out is short.
+nt_values :: (e:NtEvent,name:string,out:[]NtSpan)->int {
+ n:=nt_tags(e,name);if n>out.count {return -1;}
+ for k:0..<n {out[k]=nt_tag(e,name,k).v[0];}
+ return n;
+}
+#test "every tag of a name, checked and listed" {
+ e:=n34_event("[[\"b\",\"09af\"],[\"b\",\"0000\",\"x\"],[\"c\",\"1\"],[\"c\"],[\"h\",\"0g\"]]",1);
+ #assert nt_each(n34_event("[[\"o\",\"g\"]]",1),"o",1)==-1 && nt_each(n34_event("[[\"o\",\"f\"]]",1),"o",1)==1;
+ #assert nt_each(e,"b",4)==2 && nt_each(e,"b",0)==2 && nt_each(e,"b",5)==-1 && nt_each(e,"c",0)==-1 && nt_each(e,"h",2)==-1 && nt_each(e,"h",0)==1 && nt_each(e,"q",4)==0;
+ out:[2]NtSpan;
+ #assert nt_values(e,"b",out[..])==2 && nt_raw(e,out[0])=="09af" && nt_raw(e,out[1])=="0000";
+ #assert nt_values(e,"b",out[0..<1])==-1 && nt_values(e,"q",out[0..<0])==0;
+}
+
+// ---- 30617: a NIP-34 repository announcement. d is required; euc is the
+// first r tag marked "euc", whose commit is 40 hex digits.
+N34Repo :: struct {status:int;d:NtTag;name:NtTag;description:NtTag;web:NtTag;clone:NtTag;relays:NtTag;euc:NtTag;}
+n34_repo :: (e:NtEvent)->N34Repo #export_c {
+ r:N34Repo;r.status=n34_start(e,N34_KIND_REPO);if r.status!=N34_OK {return r;}
+ r.d=nt_tag(e,"d",0);r.name=nt_tag(e,"name",0);r.description=nt_tag(e,"description",0);
+ r.web=nt_tag(e,"web",0);r.clone=nt_tag(e,"clone",0);r.relays=nt_tag(e,"relays",0);r.euc=nt_select(e,"r",1,"euc",0);
+ s:=nt_shape(r.d,1,true);s=nt_and(s,nt_shape(r.name,1,false));s=nt_and(s,nt_shape(r.description,1,false));
+ s=nt_and(s,nt_shape(r.web,1,false));s=nt_and(s,nt_shape(r.clone,1,false));s=nt_and(s,nt_shape(r.relays,1,false));
+ if s==N34_OK && r.euc.n>0 && !nt_hex(nt_raw(e,r.euc.v[0]),40) {s=N34_MALFORMED;}
+ r.status=s;return r;
+}
+#test "a repository announcement reads its fields" {
+ e:=n34_event("[[\"d\",\"openagents\"],[\"name\",\"OpenAgents\"],[\"description\",\"mono\"],[\"web\",\"https://w\"],[\"clone\",\"https://c\"],[\"relays\",\"wss://a\",\"wss://b\"],[\"r\",\"0aa2d953dd48f0d402ea7c826bad90b2548524c2\",\"euc\"]]",30617);
+ r:=n34_repo(e);#assert r.status==N34_OK;
+ #assert nt_raw(e,r.d.v[0])=="openagents" && nt_raw(e,r.name.v[0])=="OpenAgents" && nt_raw(e,r.description.v[0])=="mono";
+ #assert nt_raw(e,r.web.v[0])=="https://w" && nt_raw(e,r.clone.v[0])=="https://c" && r.relays.values==2 && nt_raw(e,r.relays.v[1])=="wss://b";
+ #assert nt_raw(e,r.euc.v[0])=="0aa2d953dd48f0d402ea7c826bad90b2548524c2";
+ m:=n34_repo(n34_event("[[\"d\",\"\"],[\"r\",\"x\"],[\"relays\",\"wss://a\"]]",30617));#assert m.status==N34_OK && m.d.n==1 && m.name.n==0 && m.euc.n==0;
+}
+#test "a repository announcement refuses a missing d, valueless fields and a bad euc" {
+ #assert n34_repo(n34_event("[[\"name\",\"x\"]]",30617)).status==N34_MISSING;
+ #assert n34_repo(n34_event("[[\"d\"]]",30617)).status==N34_MALFORMED;
+ names:=[5]string.["name","description","web","clone","relays"];
+ for i:0..<5 {
+  tags:[64]u8;n:=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"");n=json_raw(tags[..],n,names[i]);n=json_raw(tags[..],n,"\"]]");
+  #assert n34_repo(n34_event(cast(string)tags[0..<n],30617)).status==N34_MALFORMED;
+ }
+ #assert n34_repo(n34_event("[[\"d\",\"x\"],[\"r\",\"0aa2d953dd48f0d402ea7c826bad90b2548524c\",\"euc\"]]",30617)).status==N34_MALFORMED;
+ #assert n34_repo(n34_event("[[\"d\"],[\"r\",\"x\",\"euc\"]]",30617)).status==N34_MALFORMED;
+ #assert n34_repo(n34_event("[[\"d\",\"x\"]]",30618)).status==N34_KIND && n34_repo(n34_event("[[\"d\",\"x\"]]",30616)).status==N34_KIND;
+}
+
+// ---- 30621: an OpenAgents project (NIP-MP). d is required; a and path
+// name the repository's coordinate; maintainers counts p tags marked
+// "maintainer" (read each with nt_select(e,"p",2,"maintainer",k)).
+N34Project :: struct {
+ status:int;d:NtTag;name:NtTag;description:NtTag;a:NtTag;path:NtTag;contributions:NtTag;license:NtTag;
+ visibility:NtTag;listing:NtTag;maintainers:int;
+}
+n34_project :: (e:NtEvent)->N34Project #export_c {
+ r:N34Project;r.status=n34_start(e,N34_KIND_PROJECT);if r.status!=N34_OK {return r;}
+ r.d=nt_tag(e,"d",0);r.name=nt_tag(e,"name",0);r.description=nt_tag(e,"description",0);r.a=nt_tag(e,"a",0);
+ r.path=nt_tag(e,"path",0);r.contributions=nt_tag(e,"contributions",0);r.license=nt_tag(e,"license",0);
+ r.visibility=nt_tag(e,"visibility",0);r.listing=nt_tag(e,"buzz-visibility",0);r.maintainers=nt_count(e,"p",2,"maintainer");
+ s:=nt_shape(r.d,1,true);s=nt_and(s,nt_shape(r.name,1,false));s=nt_and(s,nt_shape(r.description,1,false));
+ s=nt_and(s,nt_shape(r.path,2,false));s=nt_and(s,nt_shape(r.contributions,1,false));
+ s=nt_and(s,nt_shape(r.license,1,false));s=nt_and(s,nt_shape(r.visibility,1,false));s=nt_and(s,nt_shape(r.listing,1,false));
+ if s==N34_OK && r.a.n>0 && nt_coord(nt_raw(e,r.a.v[0])).kind!=N34_KIND_REPO {s=N34_MALFORMED;}
+ if s==N34_OK && r.path.n>0 && nt_coord(nt_raw(e,r.path.v[0])).kind!=N34_KIND_REPO {s=N34_MALFORMED;}
+ r.status=s;return r;
+}
+#test "a project reads its fields" {
+ tags:[2048]u8;n:=json_raw(tags[..],0,"[[\"d\",\"coax\"],[\"name\",\"Coax\"],[\"description\",\"lang\"],[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);
+ n=json_raw(tags[..],n,"\",\"wss://r\"],[\"path\",\"");n=json_raw(tags[..],n,N34_REPO_A);
+ n=json_raw(tags[..],n,"\",\"coax\"],[\"contributions\",\"open\"],[\"license\",\"MIT\"],[\"visibility\",\"public\"],[\"buzz-visibility\",\"listed\"],[\"p\",\"");
+ n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"\",\"maintainer\"],[\"p\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\"]]");
+ e:=n34_event(cast(string)tags[0..<n],30621);r:=n34_project(e);
+ #assert r.status==N34_OK && nt_raw(e,r.d.v[0])=="coax" && nt_raw(e,r.name.v[0])=="Coax" && nt_raw(e,r.description.v[0])=="lang";
+ #assert nt_raw(e,r.a.v[0])==N34_REPO_A && nt_raw(e,r.path.v[1])=="coax" && nt_raw(e,r.contributions.v[0])=="open";
+ #assert nt_raw(e,r.license.v[0])=="MIT" && nt_raw(e,r.visibility.v[0])=="public" && nt_raw(e,r.listing.v[0])=="listed" && r.maintainers==1;
+ #assert n34_project(n34_event("[[\"d\",\"coax\"]]",30621)).status==N34_OK;
+}
+#test "a project refuses a missing d, valueless fields and coordinates of other kinds" {
+ #assert n34_project(n34_event("[]",30621)).status==N34_MISSING;
+ #assert n34_project(n34_event("[[\"d\",\"x\"]]",30620)).status==N34_KIND && n34_project(n34_event("[[\"d\",\"x\"]]",30622)).status==N34_KIND;
+ names:=[9]string.["d","name","description","a","path","contributions","license","visibility","buzz-visibility"];
+ for i:0..<9 {
+  tags:[64]u8;n:=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"");n=json_raw(tags[..],n,names[i]);n=json_raw(tags[..],n,"\"]]");
+  if i==0 {n=json_raw(tags[..],0,"[[\"d\"]]");}
+  #assert n34_project(n34_event(cast(string)tags[0..<n],30621)).status==N34_MALFORMED;
+ }
+ tags:[512]u8;n:=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"path\",\"");n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"\",\"p\"]]");
+ #assert n34_project(n34_event(cast(string)tags[0..<n],30621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"path\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"]]");
+ #assert n34_project(n34_event(cast(string)tags[0..<n],30621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"a\",\"");n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"\"]]");
+ #assert n34_project(n34_event(cast(string)tags[0..<n],30621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"d\"],[\"a\",\"");n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"\"],[\"path\",\"x\",\"y\"]]");
+ #assert n34_project(n34_event(cast(string)tags[0..<n],30621)).status==N34_MALFORMED;
+}
+
+// ---- 30623: a project's queue order. d is required; a, when present, is
+// the project's coordinate; every item tag is ["item", <issue id>, <rank>].
+N34Item :: struct {id:NtSpan;rank:NtSpan;}
+N34Order :: struct {status:int;d:NtTag;a:NtTag;items:int;}
+n34_order :: (e:NtEvent,items:[]N34Item)->N34Order #export_c {
+ r:N34Order;r.status=n34_start(e,N34_KIND_ORDER);if r.status!=N34_OK {return r;}
+ r.d=nt_tag(e,"d",0);r.a=nt_tag(e,"a",0);r.items=nt_tags(e,"item");
+ s:=nt_and(nt_shape(r.d,1,true),nt_shape(r.a,1,false));
+ if s==N34_OK && r.a.n>0 && nt_coord(nt_raw(e,r.a.v[0])).kind!=N34_KIND_PROJECT {s=N34_MALFORMED;}
+ if s==N34_OK && r.items>items.count {s=N34_OUTPUT;}
+ if s!=N34_OK {r.status=s;return r;}
+ for k:0..<r.items {
+  t:=nt_tag(e,"item",k);
+  if t.values<2 || !nt_hex(nt_raw(e,t.v[0]),64) {r.status=N34_MALFORMED;return r;}
+  items[k]=N34Item.{id=t.v[0],rank=t.v[1]};
+ }
+ return r;
+}
+#test "an order reads its items in order" {
+ tags:[1024]u8;n:=json_raw(tags[..],0,"[[\"d\",\"coax\"],[\"a\",\"");n=json_raw(tags[..],n,N34_PROJECT_A);
+ n=json_raw(tags[..],n,"\"],[\"item\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"0a\"],[\"item\",\"");
+ n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"1A\",\"x\"]]");
+ e:=n34_event(cast(string)tags[0..<n],30623);out:[2]N34Item;r:=n34_order(e,out[..]);
+ #assert r.status==N34_OK && r.items==2 && nt_raw(e,r.d.v[0])=="coax" && nt_raw(e,r.a.v[0])==N34_PROJECT_A;
+ #assert nt_raw(e,out[0].id)==N34_HEX && nt_raw(e,out[0].rank)=="0a" && nt_raw(e,out[1].rank)=="1A";
+ #assert n34_order(e,out[0..<1]).status==N34_OUTPUT;
+ none:=n34_order(n34_event("[[\"d\",\"coax\"]]",30623),out[0..<0]);#assert none.status==N34_OK && none.items==0;
+}
+#test "an order refuses a missing d, a bad a and malformed items" {
+ out:[2]N34Item;
+ #assert n34_order(n34_event("[]",30623),out[..]).status==N34_MISSING;
+ #assert n34_order(n34_event("[[\"d\",\"x\"]]",30622),out[..]).status==N34_KIND && n34_order(n34_event("[[\"d\",\"x\"]]",30624),out[..]).status==N34_KIND;
+ #assert n34_order(n34_event("[[\"d\",\"x\"],[\"a\"]]",30623),out[..]).status==N34_MALFORMED;
+ tags:[512]u8;n:=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"]]");
+ #assert n34_order(n34_event(cast(string)tags[0..<n],30623),out[..]).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"d\"],[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"]]");
+ #assert n34_order(n34_event(cast(string)tags[0..<n],30623),out[..]).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"d\",\"x\"],[\"item\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\"]]");
+ #assert n34_order(n34_event(cast(string)tags[0..<n],30623),out[..]).status==N34_MALFORMED;
+ #assert n34_order(n34_event("[[\"d\",\"x\"],[\"item\",\"09af\",\"0a\"]]",30623),out[..]).status==N34_MALFORMED;
+}
+
+// ---- an issue's fields, as model.ts's fieldsFrom reads them from an issue
+// (1621) or from a revision comment (1111) over one. t labels say the
+// item's kind (initiative before milestone, else a task); the other t
+// labels are its labels. reward is a whole number of sats; parent and every
+// blocked-by are issue ids. needs counts the well-formed needs tags only
+// (an issue id and a project coordinate whose d is a slug), as model.ts
+// drops the others.
+N34Fields :: struct {
+ status:int;item:int;subject:NtTag;size:NtTag;reward:NtTag;sats:int;parent:NtTag;labels:int;blocked:int;needs:int;
+}
+N34Need :: struct {id:NtSpan;coord:NtSpan;}
+n34_fields :: (e:NtEvent)->N34Fields #export_c {
+ f:N34Fields;f.status=n34_valid(e);
+ if f.status==N34_OK && e.kind!=N34_KIND_COMMENT && e.kind!=N34_KIND_ISSUE {f.status=N34_KIND;}
+ if f.status!=N34_OK {return f;}
+ f.subject=nt_tag(e,"subject",0);f.size=nt_tag(e,"size",0);f.reward=nt_tag(e,"reward",0);f.parent=nt_tag(e,"parent",0);
+ // reward and parent need no shape check: an empty first span reads as neither a number nor an id.
+ s:=nt_and(nt_shape(f.subject,1,false),nt_shape(f.size,1,false));
+ if s==N34_OK && f.reward.n>0 {
+  sats:=json_int(nt_raw(e,f.reward.v[0]));
+  if !sats.ok || sats.value<0 {s=N34_MALFORMED;} else {f.sats=sats.value;}
+ }
+ if s==N34_OK && f.parent.n>0 && !nt_hex(nt_raw(e,f.parent.v[0]),64) {s=N34_MALFORMED;}
+ labels:=nt_each(e,"t",0);f.blocked=nt_each(e,"blocked-by",64);
+ if s==N34_OK && (labels<0 || f.blocked<0) {s=N34_MALFORMED;}
+ if s!=N34_OK {f.status=s;return f;}
+ initiative:=nt_count(e,"t",0,"initiative");milestone:=nt_count(e,"t",0,"milestone");
+ f.item=ifx initiative>0 then N34_INITIATIVE else ifx milestone>0 then N34_MILESTONE else N34_TASK;
+ f.labels=labels-initiative-milestone;
+ for k:0..<nt_tags(e,"needs") {if n34_need(e,nt_tag(e,"needs",k)) {f.needs+=1;}}
+ return f;
+}
+n34_need :: (e:NtEvent,t:NtTag)->bool {
+ if t.values<2 || !nt_hex(nt_raw(e,t.v[0]),64) {return false;}
+ coord:=nt_raw(e,t.v[1]);c:=nt_coord(coord);
+ return c.kind==N34_KIND_PROJECT && nt_slug(coord[c.d..<coord.count]);
+}
+// The labels (t values other than initiative and milestone), in order: how many, or -1 when out is short.
+n34_labels :: (e:NtEvent,out:[]NtSpan)->int {
+ n:=0;
+ for k:0..<nt_tags(e,"t") {
+  v:=nt_tag(e,"t",k).v[0];raw:=nt_raw(e,v);
+  if json_is(raw,"initiative") || json_is(raw,"milestone") {continue;}
+  if n>=out.count {return -1;}
+  out[n]=v;n+=1;
+ }
+ return n;
+}
+// The well-formed needs, in order: how many, or -1 when out is short.
+n34_needs :: (e:NtEvent,out:[]N34Need)->int {
+ n:=0;
+ for k:0..<nt_tags(e,"needs") {
+  t:=nt_tag(e,"needs",k);
+  if !n34_need(e,t) {continue;}
+  if n>=out.count {return -1;}
+  out[n]=N34Need.{id=t.v[0],coord=t.v[1]};n+=1;
+ }
+ return n;
+}
+#test "an item's fields: kind, labels, size, reward, parent, blockers and needs" {
+ tags:[2048]u8;n:=json_raw(tags[..],0,"[[\"subject\",\"Title\"],[\"t\",\"nostr\"],[\"t\",\"milestone\"],[\"t\",\"web\"],[\"size\",\"M\"],[\"reward\",\"1000\",\"sats\"],[\"parent\",\"");
+ n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\"],[\"blocked-by\",\"");n=json_raw(tags[..],n,N34_HEX);
+ n=json_raw(tags[..],n,"\"],[\"needs\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"");n=json_raw(tags[..],n,N34_PROJECT_A);
+ n=json_raw(tags[..],n,"\"],[\"needs\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"");n=json_raw(tags[..],n,N34_REPO_A);
+ n=json_raw(tags[..],n,"\"],[\"needs\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\"]]");
+ e:=n34_event(cast(string)tags[0..<n],1621);f:=n34_fields(e);
+ #assert f.status==N34_OK && f.item==N34_MILESTONE && nt_raw(e,f.subject.v[0])=="Title" && nt_raw(e,f.size.v[0])=="M";
+ #assert f.sats==1000 && nt_raw(e,f.parent.v[0])==N34_HEX && f.labels==2 && f.blocked==1 && f.needs==1;
+ labels:[2]NtSpan;#assert n34_labels(e,labels[..])==2 && nt_raw(e,labels[0])=="nostr" && nt_raw(e,labels[1])=="web";
+ #assert n34_labels(e,labels[0..<1])==-1;
+ needs:[1]N34Need;#assert n34_needs(e,needs[..])==1 && nt_raw(e,needs[0].id)==N34_HEX && nt_raw(e,needs[0].coord)==N34_PROJECT_A;
+ #assert n34_needs(e,needs[0..<0])==-1;
+ e.kind=1111;#assert n34_fields(e).status==N34_OK;
+ t:=n34_fields(n34_event("[[\"t\",\"milestone\"],[\"t\",\"initiative\"],[\"reward\",\"0\"]]",1621));
+ #assert t.status==N34_OK && t.item==N34_INITIATIVE && t.labels==0 && t.sats==0 && t.subject.n==0 && t.needs==0;
+ #assert n34_fields(n34_event("[[\"t\",\"x\"]]",1621)).item==N34_TASK;
+}
+#test "needs must be an issue id and a project coordinate whose d is a slug" {
+ tags:[512]u8;
+ n:=json_raw(tags[..],0,"[[\"needs\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"");n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"X\"]]");
+ #assert n34_fields(n34_event(cast(string)tags[0..<n],1621)).needs==0;
+ n=json_raw(tags[..],0,"[[\"needs\",\"09af\",\"");n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"\"]]");
+ #assert n34_fields(n34_event(cast(string)tags[0..<n],1621)).needs==0;
+}
+#test "an item's fields refuse valueless tags, bad numbers and bad ids" {
+ names:=[4]string.["subject","size","reward","parent"];
+ for i:0..<4 {
+  tags:[64]u8;n:=json_raw(tags[..],0,"[[\"");n=json_raw(tags[..],n,names[i]);n=json_raw(tags[..],n,"\"]]");
+  #assert n34_fields(n34_event(cast(string)tags[0..<n],1621)).status==N34_MALFORMED;
+ }
+ #assert n34_fields(n34_event("[[\"reward\",\"-1\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_fields(n34_event("[[\"reward\",\"1.5\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_fields(n34_event("[[\"parent\",\"09af\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_fields(n34_event("[[\"subject\"],[\"parent\",\"09af\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_fields(n34_event("[[\"blocked-by\",\"09af\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_fields(n34_event("[[\"t\",\"x\"],[\"t\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_fields(n34_event("[[\"size\"],[\"t\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_fields(n34_event("[]",1622)).status==N34_KIND && n34_fields(n34_event("[]",1110)).status==N34_KIND;
+ #assert n34_fields(n34_event("[]",1112)).status==N34_KIND && n34_fields(n34_event("[]",1620)).status==N34_KIND;
+ #assert n34_fields(n34_event("[1]",1621)).status==N34_EVENT;
+ #assert n34_fields(n34_event("[]",1621)).status==N34_OK;
+}
+
+// ---- 1621: a NIP-34 issue. At least one a tag is required and every a is
+// a coordinate; repo and project are the first of kinds 30617 and 30621
+// (to>from when present). slug is OpenAgents' item slug.
+N34Issue :: struct {status:int;fields:N34Fields;slug:NtTag;a:int;repo:NtSpan;project:NtSpan;}
+n34_issue :: (e:NtEvent)->N34Issue #export_c {
+ r:N34Issue;r.status=n34_start(e,N34_KIND_ISSUE);if r.status!=N34_OK {return r;}
+ r.fields=n34_fields(e);r.slug=nt_tag(e,"slug",0);r.a=nt_tags(e,"a");
+ s:=ifx r.a==0 then N34_MISSING else nt_and(nt_shape(r.slug,1,false),r.fields.status);
+ for k:0..<r.a {
+  // A valueless a tag's first span is empty, which is no coordinate.
+  t:=nt_tag(e,"a",k);c:=nt_coord(nt_raw(e,t.v[0]));
+  if c.kind<0 {s=nt_and(s,N34_MALFORMED);}
+  if c.kind==N34_KIND_REPO && r.repo.to==0 {r.repo=t.v[0];}
+  if c.kind==N34_KIND_PROJECT && r.project.to==0 {r.project=t.v[0];}
+ }
+ r.status=s;return r;
+}
+#test "an issue reads its coordinates, slug and fields" {
+ tags:[1024]u8;n:=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\",\"wss://r\"],[\"a\",\"");
+ n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"\"],[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"x\"],[\"a\",\"");
+ n=json_raw(tags[..],n,N34_PROJECT_A);n=json_raw(tags[..],n,"y\"],[\"a\",\"1:");n=json_raw(tags[..],n,N34_HEX);
+ n=json_raw(tags[..],n,":\"],[\"slug\",\"nostr-json\"],[\"subject\",\"S\"]]");
+ e:=n34_event(cast(string)tags[0..<n],1621);r:=n34_issue(e);
+ #assert r.status==N34_OK && r.a==5 && nt_raw(e,r.repo)==N34_REPO_A && nt_raw(e,r.project)==N34_PROJECT_A;
+ #assert nt_raw(e,r.slug.v[0])=="nostr-json" && nt_raw(e,r.fields.subject.v[0])=="S";
+ o:=n34_issue(n34_event("[[\"a\",\"0:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:\"]]",1621));
+ #assert o.status==N34_OK && o.repo.to==0 && o.project.to==0;
+}
+#test "an issue refuses no a, a bad a, a valueless slug and bad fields" {
+ #assert n34_issue(n34_event("[[\"subject\",\"x\"]]",1621)).status==N34_MISSING;
+ #assert n34_issue(n34_event("[[\"subject\"]]",1621)).status==N34_MISSING;
+ #assert n34_issue(n34_event("[[\"a\"]]",1621)).status==N34_MALFORMED;
+ #assert n34_issue(n34_event("[[\"a\",\"x\"]]",1621)).status==N34_MALFORMED;
+ tags:[512]u8;n:=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"],[\"a\"]]");
+ #assert n34_issue(n34_event(cast(string)tags[0..<n],1621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"],[\"a\",\"x\"]]");
+ #assert n34_issue(n34_event(cast(string)tags[0..<n],1621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"],[\"slug\"]]");
+ #assert n34_issue(n34_event(cast(string)tags[0..<n],1621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"],[\"size\"]]");
+ #assert n34_issue(n34_event(cast(string)tags[0..<n],1621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"a\",\"x\"],[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"],[\"size\"]]");
+ #assert n34_issue(n34_event(cast(string)tags[0..<n],1621)).status==N34_MALFORMED;
+ n=json_raw(tags[..],0,"[[\"a\",\"");n=json_raw(tags[..],n,N34_REPO_A);n=json_raw(tags[..],n,"\"],[\"a\"],[\"slug\"]]");
+ #assert n34_issue(n34_event(cast(string)tags[0..<n],1621)).status==N34_MALFORMED;
+ #assert n34_issue(n34_event("[[\"a\",\"x\"]]",1111)).status==N34_KIND && n34_issue(n34_event("[[\"a\",\"x\"]]",1622)).status==N34_KIND;
+}
+
+// ---- 1630-1633: a NIP-34 status. root is the first e tag marked "root",
+// else the first e tag; it is required and is an event id.
+N34Status :: struct {status:int;state:int;root:NtTag;}
+n34_status :: (e:NtEvent)->N34Status #export_c {
+ r:N34Status;r.status=n34_valid(e);
+ if r.status==N34_OK && (e.kind<N34_KIND_OPEN || e.kind>N34_KIND_DRAFT) {r.status=N34_KIND;}if r.status!=N34_OK {return r;}
+ r.state=e.kind-N34_KIND_OPEN;r.root=nt_select(e,"e",2,"root",0);
+ if r.root.n==0 {r.root=nt_tag(e,"e",0);}
+ s:=nt_shape(r.root,1,true);
+ if s==N34_OK && !nt_hex(nt_raw(e,r.root.v[0]),64) {s=N34_MALFORMED;}
+ r.status=s;return r;
+}
+#test "a status reads its state and root" {
+ tags:[512]u8;n:=json_raw(tags[..],0,"[[\"e\",\"0000000000000000000000000000000000000000000000000000000000000000\",\"\",\"reply\"],[\"e\",\"");
+ n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\",\"\",\"root\"],[\"p\",\"x\"]]");
+ e:=n34_event(cast(string)tags[0..<n],1631);r:=n34_status(e);
+ #assert r.status==N34_OK && r.state==N34_STATE_RESOLVED && nt_raw(e,r.root.v[0])==N34_HEX;
+ n=json_raw(tags[..],0,"[[\"e\",\"");n=json_raw(tags[..],n,N34_HEX);n=json_raw(tags[..],n,"\"]]");
+ e=n34_event(cast(string)tags[0..<n],1630);r=n34_status(e);
+ #assert r.status==N34_OK && r.state==N34_STATE_OPEN && nt_raw(e,r.root.v[0])==N34_HEX;
+ e.kind=1633;#assert n34_status(e).state==N34_STATE_DRAFT;e.kind=1632;#assert n34_status(e).state==N34_STATE_CLOSED;
+}
+#test "a status refuses a missing, valueless or non-id root" {
+ #assert n34_status(n34_event("[[\"p\",\"x\"]]",1631)).status==N34_MISSING;
+ #assert n34_status(n34_event("[[\"e\"]]",1631)).status==N34_MALFORMED;
+ #assert n34_status(n34_event("[[\"e\",\"09af\",\"\",\"root\"]]",1631)).status==N34_MALFORMED;
+ #assert n34_status(n34_event("[[\"e\",\"09af\"]]",1634)).status==N34_KIND && n34_status(n34_event("[[\"e\",\"09af\"]]",1629)).status==N34_KIND;
+ #assert n34_status(n34_event("[1]",1630)).status==N34_EVENT;
+}

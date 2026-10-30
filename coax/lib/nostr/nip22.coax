@@ -1,0 +1,125 @@
+// A typed reader for NIP-22 comments (kind 1111) over a parsed NIP-01 event,
+// with the tags OpenAgents' project queue puts on them (model.ts): a
+// revision of an issue (["revision", "openagents.issue-revision.v1"]), a
+// worker's claim, release, commit and plan (["plan",
+// "openagents.task-plan.v1"]: the content is a markdown checklist), and by.
+//
+// A projection, not authority (INVARIANTS.md, "Nostr projections cannot
+// create authority"): this verifies no signature and checks no author,
+// relay, claim or membership. A claim tag is what an event says, not a
+// lock or a grant; the caller decides whose comments count.
+//
+// Values are spans into the event's original text (nip34.coax). The root
+// scope is the first of E, A and I, the parent the first of e, a and i;
+// both and their K and k are required. An E or e scope is an event id, an
+// A or a scope a coordinate, and both of those have a decimal K or k; an I
+// or i scope's k may be any NIP-73 type. P and p, when present, are pubkeys.
+#load "nip34.coax";
+#authority;
+
+N22_ISSUE_REVISION :: "openagents.issue-revision.v1";
+N22_TASK_PLAN :: "openagents.task-plan.v1";
+
+// One scope: which tag letter holds it (E, A or I, or lowercase), its tag,
+// its kind tag and that kind as a number (-1 when it isn't decimal), and its author.
+N22Scope :: struct {status:int;at:u8;ref:NtTag;kind:NtTag;kind_value:int=-1;author:NtTag;}
+N22Comment :: struct {
+ status:int;root:N22Scope;parent:N22Scope;
+ revision:NtTag;claim:NtTag;by:NtTag;release:int;commit:NtTag;plan:NtTag;
+ revised:bool;planned:bool;
+}
+
+// names: the scope letters E, A, I, then the kind and author letters K and P.
+n22_scope :: (e:NtEvent,names:string)->N22Scope {
+ s:N22Scope;
+ for i:0..<3 {
+  s.at=names[i];s.ref=nt_tag(e,names[i..<i+1],0);
+  if s.ref.n>0 {break;}
+ }
+ s.kind=nt_tag(e,names[3..<4],0);s.author=nt_tag(e,names[4..<5],0);
+ // An author needs no shape check: an empty first span is no pubkey.
+ st:=nt_and(nt_shape(s.ref,1,true),nt_shape(s.kind,1,true));
+ if st!=N34_OK {s.status=st;return s;}
+ v:=json_int(nt_raw(e,s.kind.v[0]));
+ if v.ok && v.value>=0 && v.value<=65535 {s.kind_value=v.value;}
+ ref:=nt_raw(e,s.ref.v[0]);
+ if s.at==names[0] && !nt_hex(ref,64) {st=N34_MALFORMED;}
+ if s.at==names[1] && nt_coord(ref).kind<0 {st=N34_MALFORMED;}
+ if s.at!=names[2] && s.kind_value<0 {st=N34_MALFORMED;}
+ if s.author.n>0 && !nt_hex(nt_raw(e,s.author.v[0]),64) {st=N34_MALFORMED;}
+ s.status=st;return s;
+}
+n22_comment :: (e:NtEvent)->N22Comment #export_c {
+ c:N22Comment;c.status=n34_start(e,N34_KIND_COMMENT);if c.status!=N34_OK {return c;}
+ c.root=n22_scope(e,"EAIKP");c.parent=n22_scope(e,"eaikp");
+ c.revision=nt_tag(e,"revision",0);c.claim=nt_tag(e,"claim",0);c.by=nt_tag(e,"by",0);
+ c.release=nt_tags(e,"release");c.commit=nt_tag(e,"commit",0);c.plan=nt_tag(e,"plan",0);
+ s:=nt_and(c.root.status,c.parent.status);s=nt_and(s,nt_shape(c.revision,1,false));s=nt_and(s,nt_shape(c.claim,1,false));
+ s=nt_and(s,nt_shape(c.by,1,false));s=nt_and(s,nt_shape(c.commit,1,false));s=nt_and(s,nt_shape(c.plan,1,false));
+ if s==N34_OK {
+  // An absent tag's first span is empty, which says neither mark.
+  c.revised=json_is(nt_raw(e,c.revision.v[0]),N22_ISSUE_REVISION);
+  c.planned=json_is(nt_raw(e,c.plan.v[0]),N22_TASK_PLAN);
+ }
+ c.status=s;return c;
+}
+
+N22_HEX :: "09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af";
+// An issue comment's scope tags, as publish.ts writes them, then extra.
+n22_event :: (out:[]u8,extra:string)->NtEvent {
+ n:=json_raw(out,0,"[[\"E\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\",\"wss://r\",\"");n=json_raw(out,n,N22_HEX);
+ n=json_raw(out,n,"\"],[\"K\",\"1621\"],[\"P\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\"],[\"e\",\"");n=json_raw(out,n,N22_HEX);
+ n=json_raw(out,n,"\",\"wss://r\",\"");n=json_raw(out,n,N22_HEX);n=json_raw(out,n,"\"],[\"k\",\"1621\"],[\"p\",\"");n=json_raw(out,n,N22_HEX);
+ n=json_raw(out,n,"\"]");n=json_raw(out,n,extra);n=json_raw(out,n,"]");
+ return n34_event(cast(string)out[0..<n],1111);
+}
+#test "an issue comment reads its scopes" {
+ buf:[1024]u8;e:=n22_event(buf[..],"");c:=n22_comment(e);
+ #assert c.status==N34_OK && c.root.at=='E' && nt_raw(e,c.root.ref.v[0])==N22_HEX && nt_raw(e,c.root.ref.v[1])=="wss://r";
+ #assert c.root.kind_value==1621 && nt_raw(e,c.root.author.v[0])==N22_HEX && nt_raw(e,c.root.ref.v[2])==N22_HEX;
+ #assert c.parent.at=='e' && c.parent.kind_value==1621 && nt_raw(e,c.parent.ref.v[2])==N22_HEX && nt_raw(e,c.parent.author.v[0])==N22_HEX;
+ #assert !c.revised && !c.planned && c.claim.n==0 && c.release==0;
+}
+#test "the queue's tags: revision, claim, by, release, commit and plan" {
+ buf:[1024]u8;
+ e:=n22_event(buf[..],",[\"revision\",\"openagents.issue-revision.v1\"],[\"subject\",\"S\"]");c:=n22_comment(e);
+ #assert c.status==N34_OK && c.revised && !c.planned && nt_raw(e,c.revision.v[0])=="openagents.issue-revision.v1";
+ #assert n34_fields(e).status==N34_OK && nt_raw(e,n34_fields(e).subject.v[0])=="S";
+ e=n22_event(buf[..],",[\"plan\",\"openagents.task-plan.v1\"],[\"by\",\"w\"]");c=n22_comment(e);
+ #assert c.status==N34_OK && c.planned && !c.revised && nt_raw(e,c.by.v[0])=="w";
+ e=n22_event(buf[..],",[\"claim\",\"w\"],[\"release\"],[\"commit\",\"abc\"],[\"revision\",\"other\"],[\"plan\",\"other\"]");c=n22_comment(e);
+ #assert c.status==N34_OK && nt_raw(e,c.claim.v[0])=="w" && c.release==1 && nt_raw(e,c.commit.v[0])=="abc" && !c.revised && !c.planned;
+}
+#test "other scopes: A and a coordinates, I and i identifiers" {
+ e:=n34_event("[[\"A\",\"30023:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x\"],[\"K\",\"30023\"],[\"i\",\"https://x\"],[\"k\",\"web\"]]",1111);
+ c:=n22_comment(e);
+ #assert c.status==N34_OK && c.root.at=='A' && c.root.kind_value==30023 && c.parent.at=='i' && c.parent.kind_value==-1 && c.root.author.n==0;
+ e=n34_event("[[\"I\",\"#nostr\"],[\"K\",\"#\"],[\"a\",\"0:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:\"],[\"k\",\"0\"]]",1111);c=n22_comment(e);
+ #assert c.status==N34_OK && c.root.at=='I' && c.parent.at=='a' && c.parent.kind_value==0;
+ e=n34_event("[[\"I\",\"x\"],[\"K\",\"65535\"],[\"i\",\"y\"],[\"k\",\"65536\"]]",1111);c=n22_comment(e);
+ #assert c.status==N34_OK && c.root.kind_value==65535 && c.parent.kind_value==-1;
+}
+#test "comments refuse missing scopes and kinds, and malformed scope tags" {
+ #assert n22_comment(n34_event("[[\"K\",\"1\"],[\"e\",\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af\"],[\"k\",\"1\"]]",1111)).status==N34_MISSING;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MISSING;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"k\",\"1\"]]",1111)).status==N34_MISSING;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"i\",\"x\"]]",1111)).status==N34_MISSING;
+ #assert n22_comment(n34_event("[[\"I\"],[\"K\",\"1\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"P\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"P\",\"09af\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"E\",\"09af\"],[\"K\",\"1\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"A\",\"x\"],[\"K\",\"1\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"e\",\"09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af\"],[\"k\",\"web\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"a\",\"30023:09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af09af:x\"],[\"k\",\"-1\"]]",1111)).status==N34_MALFORMED;
+ #assert n22_comment(n34_event("[[\"I\",\"x\"],[\"K\",\"1\"],[\"i\",\"x\"],[\"k\",\"1\"]]",1621)).status==N34_KIND;
+ #assert n22_comment(n34_event("[1]",1111)).status==N34_EVENT;
+}
+#test "the queue's tags refuse without their values" {
+ names:=[5]string.["revision","claim","by","commit","plan"];
+ for i:0..<5 {
+  buf:[1024]u8;extra:[32]u8;n:=json_raw(extra[..],0,",[\"");n=json_raw(extra[..],n,names[i]);n=json_raw(extra[..],n,"\"]");
+  #assert n22_comment(n22_event(buf[..],cast(string)extra[0..<n])).status==N34_MALFORMED;
+ }
+ buf:[1024]u8;#assert n22_comment(n22_event(buf[..],",[\"release\"]")).status==N34_OK;
+}

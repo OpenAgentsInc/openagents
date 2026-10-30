@@ -1,0 +1,16 @@
+// A NostrEvent (event.coax) as the NtEvent that nip34.coax and nip22.coax
+// read. ok copies only whether event.coax parsed it and matched its id; it
+// says nothing about the signature unless the caller got the event from
+// nostr_event_verify_vartime, and nothing about author or scope either way.
+#load "event.coax";
+#load "nip22.coax";
+
+nt_event_of :: (e:NostrEvent)->NtEvent {
+ return NtEvent.{ok=e.error==NE_OK,kind=e.kind,original=e.original,tags_from=e.tags_from,tags_to=e.tags_to,content_from=e.content_from,content_to=e.content_to};
+}
+#test "a read event's tags and content become an NtEvent's" {
+ text:="{\"id\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"pubkey\":\"0000000000000000000000000000000000000000000000000000000000000000\",\"created_at\":1,\"kind\":30617,\"tags\":[[\"d\",\"x\"]],\"content\":\"c\",\"sig\":\"00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\"}";
+ e:=nt_event_of(ne_parse(text));
+ #assert e.ok && e.kind==30617 && n34_repo(e).status==N34_OK && nt_raw(e,n34_repo(e).d.v[0])=="x" && e.original[e.content_from..<e.content_to]=="c";
+ #assert !nt_event_of(ne_parse("{}")).ok;
+}

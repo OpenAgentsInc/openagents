@@ -1,0 +1,85 @@
+// What nip34.coax and nip22.coax read from every event in the captured coax
+// relay transcript, a JSON line per EVENT frame in order. nip34_parity.ts
+// compares these lines with what coax/web/project/model.ts reads from the
+// same events. Test tooling: it prints raw spans, so each line is JSON.
+#import "Basic";
+#load "../../lib/nostr/nip34-event.coax";
+#load "../../lib/nostr/fixtures/coax_relay.coax";
+
+d_key :: (name:string) {print(",\"%\":",name);}
+d_raw :: (e:NtEvent,s:NtSpan) {print("\"%\"",nt_raw(e,s));}
+d_field :: (e:NtEvent,name:string,t:NtTag) {d_key(name);d_raw(e,t.v[0]);}
+d_bool :: (name:string,b:bool) {d_key(name);print("%",ifx b then "true" else "false");}
+// The first value of every tag of the name.
+d_all :: (e:NtEvent,name:string,tag:string) {
+ d_key(name);print("[");
+ for k:0..<nt_tags(e,tag) {if k>0 {print(",");}d_raw(e,nt_tag(e,tag,k).v[0]);}
+ print("]");
+}
+d_fields :: (e:NtEvent) {
+ f:=n34_fields(e);
+ print(",\"fields_status\":%,\"fields\":{\"kind\":\"%\"",f.status,ifx f.item==N34_INITIATIVE then "initiative" else ifx f.item==N34_MILESTONE then "milestone" else "task");
+ d_key("title");d_raw(e,f.subject.v[0]);
+ print(",\"body\":\"%\"",e.original[e.content_from..<e.content_to]);
+ labels:[64]NtSpan;n:=n34_labels(e,labels[..]);d_key("labels");print("[");
+ for k:0..<n {if k>0 {print(",");}d_raw(e,labels[k]);}
+ print("]");d_field(e,"size",f.size);print(",\"sats\":%",f.sats);d_field(e,"parent",f.parent);
+ blockers:[64]NtSpan;n=nt_values(e,"blocked-by",blockers[..]);d_key("blocked_by");print("[");
+ for k:0..<n {if k>0 {print(",");}d_raw(e,blockers[k]);}
+ needs:[64]N34Need;n=n34_needs(e,needs[..]);print("],\"needs\":[");
+ for k:0..<n {if k>0 {print(",");}print("{\"id\":");d_raw(e,needs[k].id);print(",\"coord\":");d_raw(e,needs[k].coord);print("}");}
+ print("]}");
+}
+d_event :: (index:int,e:NtEvent) {
+ print("{\"i\":%,\"kind\":%",index,e.kind);
+ if e.kind==N34_KIND_REPO {
+  r:=n34_repo(e);print(",\"status\":%",r.status);
+  d_field(e,"d",r.d);d_field(e,"name",r.name);d_field(e,"description",r.description);d_field(e,"web",r.web);
+  d_field(e,"clone",r.clone);d_field(e,"relays",r.relays);d_field(e,"euc",r.euc);
+ } else if e.kind==N34_KIND_PROJECT {
+  r:=n34_project(e);print(",\"status\":%",r.status);
+  d_field(e,"d",r.d);d_field(e,"name",r.name);d_field(e,"description",r.description);d_field(e,"a",r.a);
+  d_key("path");print("[");d_raw(e,r.path.v[0]);print(",");d_raw(e,r.path.v[1]);print("]");
+  d_field(e,"contributions",r.contributions);d_field(e,"license",r.license);d_field(e,"visibility",r.visibility);
+  d_field(e,"buzz-visibility",r.listing);print(",\"maintainers\":%",r.maintainers);
+ } else if e.kind==N34_KIND_ORDER {
+  items:[512]N34Item;r:=n34_order(e,items[..]);print(",\"status\":%",r.status);
+  d_field(e,"d",r.d);d_field(e,"a",r.a);d_key("items");print("[");
+  for k:0..<r.items {if k>0 {print(",");}print("[");d_raw(e,items[k].id);print(",");d_raw(e,items[k].rank);print("]");}
+  print("]");
+ } else if e.kind==N34_KIND_ISSUE {
+  r:=n34_issue(e);print(",\"status\":%",r.status);
+  d_all(e,"a","a");d_key("repo");d_raw(e,r.repo);d_key("project");d_raw(e,r.project);d_field(e,"slug",r.slug);d_fields(e);
+ } else if e.kind>=N34_KIND_OPEN && e.kind<=N34_KIND_DRAFT {
+  r:=n34_status(e);print(",\"status\":%,\"state\":\"%\"",r.status,STATUS_NAMES[r.state]);
+  d_field(e,"root",r.root);d_all(e,"e","e");
+ } else if e.kind==N34_KIND_COMMENT {
+  c:=n22_comment(e);print(",\"status\":%",c.status);
+  d_all(e,"E","E");print(",\"root_at\":%,\"root_kind\":%,\"parent_at\":%,\"parent_kind\":%",cast(int)c.root.at,c.root.kind_value,cast(int)c.parent.at,c.parent.kind_value);
+  d_bool("revised",c.revised);
+  if c.revised {d_fields(e);}
+  else {
+   d_key("by");d_raw(e,ifx c.by.n>0 then c.by.v[0] else c.claim.v[0]);
+   d_bool("claim",c.claim.n>0);d_field(e,"claimed",c.claim);d_bool("release",c.release>0);d_field(e,"commit",c.commit);
+   d_bool("planned",c.planned);print(",\"content\":\"%\"",e.original[e.content_from..<e.content_to]);
+  }
+ }
+ print("}\n");
+}
+STATUS_NAMES :: [4]string.["open","resolved","closed","draft"];
+
+main :: () {
+ text:=COAX_RELAY;i:=0;index:=0;out:[262144]u8;
+ while i<text.count {
+  end:=i;while end<text.count && text[end]!='\n' {end+=1;}
+  line:=text[i..<end];i=end+1;
+  j:[1]Json;json_start(j[..],line);
+  if json_next(j[..])!=JSON_ARRAY || json_next(j[..])!=JSON_STRING || !json_is(json_text(j[..]),"EVENT") {continue;}
+  if json_next(j[..])!=JSON_STRING || json_next(j[..])!=JSON_OBJECT {print("{\"i\":%,\"error\":\"frame\"}\n",index);index+=1;continue;}
+  from:=j[0].from;if !json_skip(j[..]) {print("{\"i\":%,\"error\":\"frame\"}\n",index);index+=1;continue;}
+  read:=nostr_event_read(line[from..<j[0].to],out[..],false);
+  if read.error!=NE_OK {print("{\"i\":%,\"error\":\"event %\"}\n",index,read.error);}
+  else {d_event(index,nt_event_of(read));}
+  index+=1;
+ }
+}
