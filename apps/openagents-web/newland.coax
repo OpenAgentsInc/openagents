@@ -7,6 +7,9 @@
 // projects sit together, joined by roads. People walk between the places,
 // named, with their npub; agents stand at the project whose task they're on.
 // A feed on the side runs the work and the commits; LOG IN and MAKE YOUR OWN.
+// Drag pans the Grid and the wheel or a pinch zooms, the view's angle fixed;
+// a click (a press let go without moving) on a place, a person or an agent
+// opens its card over the page.
 //
 // Real (captured by coax/web/project/landing.ts into newland-data.coax): the
 // projects, their tasks and milestones from their relays, the agents on
@@ -67,7 +70,21 @@ LandState :: struct {
   agents: int; agent_row: [MAX_AGENTS] int; agent_plot: [MAX_AGENTS] int;
   login: Box; make: Box;
   action: int; outbox: [96] u8; out_n: int;
+  // the view: drifting on its own until the visitor moves it, then theirs
+  user: bool; look: Fv; zoom: f32; zoom_to: f32; yaw: f32;
+  anchor_x: f32; anchor_y: f32;          // the screen point a zoom keeps still
+  vel_x: f32; vel_z: f32;                // the glide after a drag, grid units a second
+  pan_x: f32; pan_z: f32;                // this frame's drag, for the glide
+  home: Fv; home_zoom: f32; home_yaw: f32;   // where the drifting view was last frame
+  view: Cam; pitch: f32; base: f32; cx: f32; cy: f32; clip: Box;   // last frame's camera and what built it
+  ids: [2] int; tx: [2] f32; ty: [2] f32; touches: int; pinch: f32; pinch_x: f32; pinch_y: f32;
+  // the card: what it shows (CARD_*), which one, how long it has been up
+  card: int; card_k: int; card_t: f32;
+  card_box: Box; close_box: Box; open_box: Box;
+  head_ok: [PEOPLE] bool; head_x: [PEOPLE] f32; head_y: [PEOPLE] f32;
+  agent_ok: [MAX_AGENTS] bool; agent_x: [MAX_AGENTS] f32; agent_y: [MAX_AGENTS] f32;
 }
+CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3;
 
 ease :: (x: f32) -> f32 { return smooth01(x); }
 hash01 :: (a: f32) -> f32 { return fract(sin(a * 12.9898 + 4.1414) * 43758.5453); }
@@ -507,11 +524,11 @@ stop :: (s: [] LandState, i: int, step: int) -> Fv {
   h := hash01(cast(f32) lead * 7.31 + cast(f32) step * 1.17);
   cluster := ifx hash01(cast(f32) lead * 3.7 + cast(f32) step * 0.53) < 0.18 then 1 - lead % 2 else lead % 2;
   // the places in that cluster
-  n := 0; pick := 0;
+  n := 0; chosen := 0;
   for k: 0..<s[0].plots { if s[0].plot[k].cluster == cluster { n += 1; } }
   want := cast(int) floor(h * cast(f32) hi(1, cast(f32) n));
-  for k: 0..<s[0].plots { if s[0].plot[k].cluster == cluster { if want == 0 { pick = k; } want -= 1; } }
-  pl := s[0].plot[pick];
+  for k: 0..<s[0].plots { if s[0].plot[k].cluster == cluster { if want == 0 { chosen = k; } want -= 1; } }
+  pl := s[0].plot[chosen];
   a := hash01(cast(f32) lead * 5.1 + cast(f32) step * 2.9) * 2 * PI;
   r := PLOT + 0.7 + 1.3 * hash01(cast(f32) lead * 1.9 + cast(f32) step * 4.3);
   at := fv(pl.x + r * cos(a), 0, pl.z + r * sin(a));
@@ -614,6 +631,7 @@ people :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
     pose := verse_figure_gait(Rig.person, w.gait, w.phase, t + cast(f32) i * 1.3);
     top: [1] Spot;
     v = figure(out, v, c, k, pose, w.x, w.z, w.yaw, cool, 0.9 * seen, p, top[..]);
+    s[0].head_ok[i] = top[0].ok && inside(c.clip, top[0].x, top[0].y); s[0].head_x[i] = top[0].x; s[0].head_y[i] = top[0].y;
     // the name, and the key, above the head
     // (not under a place's name: that one reads first)
     if top[0].ok && inside(c.clip, top[0].x, top[0].y) && (!p.phone || i % 2 == 0 || w.talking)
@@ -654,6 +672,7 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
     pose.turn[P_R_ELBOW] = fv(-0.5, 0, 0);
     top: [1] Spot;
     v = figure(out, v, c, k, pose, x, z, yaw, pale, seen, p, top[..]);
+    s[0].agent_ok[a] = top[0].ok && inside(c.clip, top[0].x, top[0].y); s[0].agent_x[a] = top[0].x; s[0].agent_y[a] = top[0].y;
     // work in flight: a pulse from the agent to one of the newest commits
     target := node(pl, hi_int(0, pl.commits - 1 - j % 3), pk);
     from := spot(c, fv(x, 1.2 * FIG, z)); to := spot(c, target);
@@ -764,16 +783,6 @@ wordmark :: (out: [] f32, at: int, l: Layout, p: Pen) -> int {
     }
     x += (measure(word[i..<i + 1], TITLE_GAP, TITLE_SPACE, false) + TITLE_GAP) * cap;
   }
-  tag := ease((p.time - 1.6) / 1.0);
-  if p.still { tag = 1; }
-  small := (ifx l.phone then 6.6f32 else 7.4f32) * d;
-  k2 := dimmed(ink(p, INK_DIM), tag * 1.3);
-  if l.phone {
-    v = put(out, v, "Projects you can walk into.", l.title.x0, y + 19 * d, small, k2);
-    v = put(out, v, "People and agents building them.", l.title.x0, y + 33 * d, small, k2);
-  } else {
-    v = put(out, v, "Projects you can walk into. People and agents building them.", l.title.x0, y + 20 * d, small, k2);
-  }
   return v;
 }
 
@@ -844,61 +853,12 @@ feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
   return v;
 }
 
-// ---------------------------------------------------------------- input
+// ---------------------------------------------------------------- the view
 
-under_tag :: (s: [] LandState, x: f32, y: f32) -> bool {
-  for k: 0..<s[0].plots { b := s[0].plot[k].tag; if b.x1 > b.x0 && inside(b, x, y) { return true; } }
-  return false;
-}
-hit_slug :: (s: [] LandState, x: f32, y: f32) -> int {
-  for k: 0..<s[0].plots { b := s[0].plot[k].hit; if b.x1 > b.x0 && inside(b, x, y) { return k; } }
-  return -1;
-}
-go :: (s: [] LandState, url: string) {
-  n := lo_int(url.count, 95);
-  for i: 0..<n { s[0].outbox[i] = url[i]; }
-  s[0].out_n = n; s[0].action = ACT_NAVIGATE;
-}
-click :: (s: [] LandState, x: f32, y: f32) -> bool {
-  if inside(s[0].login, x, y) { go(s, "/login"); return true; }
-  if inside(s[0].make, x, y) { go(s, "/realms/new"); return true; }
-  k := hit_slug(s, x, y);
-  if k >= 0 {
-    buf: [80] u8; n := 0;
-    pre := "/projects/";
-    for i: 0..<pre.count { buf[n] = pre[i]; n += 1; }
-    slug := field(LAND_PROJECTS, k, 0);
-    for i: 0..<lo_int(slug.count, 60) { buf[n] = slug[i]; n += 1; }
-    go(s, cast(string) buf[0..<n]);
-    return true;
-  }
-  return false;
-}
-coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int) -> bool #export_c {
-  if s.count < 1 { return false; }
-  d := hi(s[0].dpr, 1);
-  s[0].px = x; s[0].py = y; s[0].pointed = true;
-  if phase == POINTER_DOWN { s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; s[0].touch = kind != 0; return false; }
-  if phase == POINTER_MOVE {
-    if kind == 0 && !s[0].down { s[0].touch = false; }
-    if s[0].down && abs(x - s[0].down_x) + abs(y - s[0].down_y) > 10 * d { s[0].moved = true; }
-    return false;
-  }
-  if phase == POINTER_CANCEL || !s[0].down { s[0].down = false; return false; }
-  s[0].down = false;
-  if s[0].moved { return false; }
-  return click(s, x, y);
-}
-coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
-  if s.count < 1 || s[0].touch || !s[0].pointed { return 0; }
-  x := s[0].px; y := s[0].py;
-  if inside(s[0].login, x, y) || inside(s[0].make, x, y) || hit_slug(s, x, y) >= 0 { return 1; }
-  return 0;
-}
-coaxial_land_action :: (s: [] LandState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
-coaxial_land_action_done :: (s: [] LandState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
-
-// ---------------------------------------------------------------- the frame
+ZOOM_IN :: 0.32;     // the closest the view comes (a share of the whole Grid's reach)
+ZOOM_OUT :: 1.5;
+ROAM :: 22.0;        // grid units the view's middle may go from the places' middle
+CLICK :: 10.0;       // CSS pixels a press may move and still be a click
 
 // The middle of a cluster's places (-1: of them all), as the view sees them:
 // halfway across and halfway back, measured along the screen's diagonals.
@@ -914,9 +874,455 @@ centre :: (s: [] LandState, cluster: int) -> Fv {
   return fv((u + w) * 0.5, 0, (w - u) * 0.5);
 }
 
+// The camera the visitor's view makes, from what the last frame set.
+cam_of :: (s: [] LandState) -> Cam {
+  return cam(s[0].look, s[0].yaw, s[0].pitch, s[0].base * s[0].zoom, s[0].cx, s[0].cy, s[0].width, s[0].clip, s[0].width, s[0].height);
+}
+// The point on the floor under a screen point.
+ground :: (c: Cam, x: f32, y: f32) -> Fv {
+  dir := fv_add(c.ahead, fv_add(fv_times(c.right, (x - c.cx) / c.focal), fv_times(c.up, -(y - c.cy) / c.focal)));
+  if dir.y > -0.001 { return fv(c.eye.x, 0, c.eye.z); }
+  t := -c.eye.y / dir.y;
+  return fv(c.eye.x + dir.x * t, 0, c.eye.z + dir.z * t);
+}
+// The visitor takes the view: it stops drifting where it is.
+take :: (s: [] LandState) {
+  if s[0].user { return; }
+  s[0].user = true;
+  s[0].look = s[0].home; s[0].zoom = s[0].home_zoom; s[0].zoom_to = s[0].home_zoom; s[0].yaw = s[0].home_yaw;
+}
+hold :: (s: [] LandState) {
+  mid := centre(s, -1);
+  s[0].look.x = clamp(s[0].look.x, mid.x - ROAM, mid.x + ROAM);
+  s[0].look.z = clamp(s[0].look.z, mid.z - ROAM, mid.z + ROAM);
+}
+// Moves the view so the floor under screen point (ax, ay) before is under it after.
+pan_screen :: (s: [] LandState, ax: f32, ay: f32, bx: f32, by: f32) {
+  c := cam_of(s);
+  a := ground(c, ax, ay); b := ground(c, bx, by);
+  s[0].look = fv_add(s[0].look, fv_sub(a, b));
+  s[0].pan_x += a.x - b.x; s[0].pan_z += a.z - b.z;
+  hold(s);
+}
+// Zooms to z, keeping the floor under (x, y) where it is.
+zoom_at :: (s: [] LandState, z: f32, x: f32, y: f32) {
+  before := ground(cam_of(s), x, y);
+  s[0].zoom = clamp(z, ZOOM_IN, ZOOM_OUT);
+  after := ground(cam_of(s), x, y);
+  s[0].look = fv_add(s[0].look, fv_sub(before, after));
+  hold(s);
+}
+
+// The view for this frame: on its own (a slow sway, a pull back as the page
+// fades up; on a phone a drift between the clusters) until the visitor
+// moves it, then theirs, gliding after a drag and easing into a zoom.
+frame_view :: (s: [] LandState, l: Layout, t: f32, step: f32, still: bool, width: f32, height: f32, d: f32) -> Cam {
+  s[0].pitch = ifx l.phone then 0.86f32 else 0.72f32;
+  s[0].clip = l.scene;
+  s[0].cx = width * 0.5; s[0].cy = height * 0.5;
+  s[0].base = 22.5;
+  if !l.phone { s[0].cx = width * 0.46; s[0].cy = height * 0.56; s[0].base = clamp(40 * 1440 / (width / d), 36, 50); }
+  look := centre(s, -1);
+  if l.phone {
+    sway := ifx still then 0.0f32 else ease(0.5 - 0.5 * cos(t * 0.07));
+    look = fv_mix(centre(s, 0), centre(s, 1), sway);
+  }
+  s[0].home = look;
+  s[0].home_zoom = ifx still then 1.0f32 else 0.84 + 0.16 * ease(t / 5.0);
+  s[0].home_yaw = 0.785398 + (ifx still then 0.0f32 else 0.05 * sin(t * 0.05));
+  if !s[0].user {
+    s[0].look = s[0].home; s[0].zoom = s[0].home_zoom; s[0].zoom_to = s[0].zoom; s[0].yaw = s[0].home_yaw;
+  } else {
+    dragging := s[0].touches > 0 && s[0].moved;
+    if dragging && step > 0 {
+      // the glide follows the drag's speed, smoothed
+      s[0].vel_x = s[0].vel_x * 0.5 + 0.5 * s[0].pan_x / step;
+      s[0].vel_z = s[0].vel_z * 0.5 + 0.5 * s[0].pan_z / step;
+    } else if s[0].touches == 0 {
+      s[0].look = fv_add(s[0].look, fv(s[0].vel_x * step, 0, s[0].vel_z * step));
+      k := exp(-3.2 * step);
+      s[0].vel_x *= k; s[0].vel_z *= k;
+      hold(s);
+    }
+    if abs(s[0].zoom_to - s[0].zoom) > 0.0005 {
+      zoom_at(s, s[0].zoom + (s[0].zoom_to - s[0].zoom) * clamp(step * 11, 0, 1), s[0].anchor_x, s[0].anchor_y);
+    }
+  }
+  s[0].pan_x = 0; s[0].pan_z = 0;
+  s[0].view = cam_of(s);
+  return s[0].view;
+}
+
+// ---------------------------------------------------------------- the card
+
+// The place, person or agent under a screen point: CARD_* in kind, its
+// index in which. People and agents first (small, on top), then a place's
+// name, tree or floor.
+Pick :: struct { kind: int; which: int; }
+pick :: (s: [] LandState, x: f32, y: f32) -> Pick {
+  d := hi(s[0].dpr, 1);
+  // a place's name wins: it is what a visitor aims at
+  for j: 0..<s[0].plots { b := s[0].plot[j].tag; if b.x1 > b.x0 && inside(b, x, y) { return Pick.{kind = CARD_PLACE, which = j}; } }
+  best := 22 * d; got := Pick.{kind = CARD_NONE, which = -1};
+  for i: 0..<PEOPLE {
+    if !s[0].head_ok[i] { continue; }
+    dx := x - s[0].head_x[i]; dy := y - (s[0].head_y[i] + 12 * d);   // the head to the hips
+    r := sqrt(dx * dx + dy * dy * 0.5);
+    if r < best { best = r; got = Pick.{kind = CARD_PERSON, which = i}; }
+  }
+  for a: 0..<s[0].agents {
+    if !s[0].agent_ok[a] { continue; }
+    dx := x - s[0].agent_x[a]; dy := y - (s[0].agent_y[a] + 12 * d);
+    r := sqrt(dx * dx + dy * dy * 0.5);
+    if r < best { best = r; got = Pick.{kind = CARD_AGENT, which = a}; }
+  }
+  if got.kind != CARD_NONE { return got; }
+  k := hit_slug(s, x, y);
+  if k >= 0 { return Pick.{kind = CARD_PLACE, which = k}; }
+  g := ground(s[0].view, x, y);
+  for j: 0..<s[0].plots {
+    if abs(g.x - s[0].plot[j].x) <= PLOT + 0.3 && abs(g.z - s[0].plot[j].z) <= PLOT + 0.3 { return Pick.{kind = CARD_PLACE, which = j}; }
+  }
+  return got;
+}
+open_card :: (s: [] LandState, k: int, which: int) {
+  if s[0].card != k || s[0].card_k != which { s[0].card_t = 0; }
+  s[0].card = k; s[0].card_k = which;
+}
+close_card :: (s: [] LandState) { s[0].card = CARD_NONE; s[0].card_k = -1; }
+
+// The project a card leads to: a place's own, an agent's place.
+card_place :: (s: [] LandState) -> int {
+  if s[0].card == CARD_PLACE { return s[0].card_k; }
+  if s[0].card == CARD_AGENT && s[0].card_k >= 0 && s[0].card_k < s[0].agents { return s[0].agent_plot[s[0].card_k]; }
+  return -1;
+}
+
+section :: (out: [] f32, at: int, name: string, x: f32, y: f32, right: f32, p: Pen) -> int {
+  o := ink(p, INK_ORANGE); cap := 6.6 * p.d;
+  v := rule(out, at, x, y - cap * 0.5, x + 5 * p.d, y - cap * 0.5, o, 1);
+  v = put(out, v, name, x + 10 * p.d, y, cap, o);
+  return rule(out, v, x + 10 * p.d + text_width(name, cap, o) + 8 * p.d, y - cap * 0.5, right, y - cap * 0.5, ink(p, INK_DIM), 0.14);
+}
+stat :: (out: [] f32, at: int, n: int, name: string, x: f32, y: f32, tone: int, p: Pen) -> int {
+  buf: [16] u8; m := number(n, buf[..]);
+  big := 12.0 * p.d;
+  v := put(out, at, cast(string) buf[0..<m], x, y, big, chrome(ink(p, tone)));
+  return put(out, v, name, x, y + 14 * p.d, 6.2 * p.d, ink(p, INK_DIM));
+}
+
+// The card's contents from y = 0 at the top; returns the vertex count, and
+// the height it took in h[0]. The frame moves it into place.
+card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t: f32, h: [] f32) -> int {
+  d := p.d; v := at;
+  x := x0 + 20 * d; right := x1 - 20 * d; w := right - x;
+  white := chrome(ink(p, INK_WHITE)); orange := ink(p, INK_ORANGE); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
+  body := ink(p, INK_WHITE); body.light = 0.82;
+  y := 34 * d;
+  title := 11.0 * d;
+  // the close: an X, top right
+  cb := Box.{x0 = x1 - 44 * d, y0 = 8 * d, x1 = x1 - 8 * d, y1 = 44 * d};
+  s[0].close_box = cb;
+  xc := (cb.x0 + cb.x1) * 0.5; yc := (cb.y0 + cb.y1) * 0.5; r := 5.5 * d;
+  hover := !s[0].touch && s[0].pointed;
+  xk := ink(p, INK_WHITE); xk.sans = false;
+  v = rule(out, v, xc - r, yc - r, xc + r, yc + r, xk, 0.8);
+  v = rule(out, v, xc - r, yc + r, xc + r, yc - r, xk, 0.8);
+  prev_open := s[0].open_box;   // where the last frame drew OPEN PROJECT, for the hover
+  s[0].open_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  k := card_place(s);
+  if s[0].card == CARD_PLACE && k >= 0 {
+    pl := s[0].plot[k];
+    name := field(LAND_PROJECTS, k, 1);
+    v = put_fit(out, v, name, x, y, title, white, w - 110 * d);
+    buf: [16] u8;
+    pct := ifx pl.tasks > 0 then (pl.done * 100 + pl.tasks / 2) / pl.tasks else 0;
+    m := number(pct, buf[..]); buf[m] = '%'; m += 1;
+    big := 15.0 * d;
+    pw := text_width(cast(string) buf[0..<m], big, orange);
+    v = put(out, v, cast(string) buf[0..<m], right - 40 * d - pw, y + 2 * d, big, orange);
+    y += 14 * d;
+    share: f32 = ifx pl.tasks > 0 then cast(f32) pl.done / cast(f32) pl.tasks else 0.0f32;
+    v = rule(out, v, x, y, right, y, dim, 0.3);
+    if share > 0 { v = rule(out, v, x, y, x + w * share, y, orange, 1); }
+    y += 22 * d;
+    ms := field(LAND_PROJECTS, k, 8);
+    if ms.count > 0 {
+      mb: [16] u8; mn := number(pl.mdone, mb[..]); mb[mn] = '/'; mn += 1;
+      tb: [8] u8; tn := number(pl.mtotal, tb[..]);
+      for i: 0..<tn { mb[mn] = tb[i]; mn += 1; }
+      fw := text_width(cast(string) mb[0..<mn], 7.2 * d, pale);
+      v = put_fit(out, v, ms, x, y, 7.2 * d, body, w - fw - 12 * d);
+      v = put(out, v, cast(string) mb[0..<mn], right - fw, y, 7.2 * d, pale);
+      y += 26 * d;
+    }
+    // tasks
+    open_n := hi_int(0, pl.tasks - pl.done - pl.working);
+    col := w / 3;
+    v = stat(out, v, open_n, "OPEN", x, y + 6 * d, INK_WHITE, p);
+    v = stat(out, v, pl.working, "IN PROGRESS", x + col, y + 6 * d, INK_COOL, p);
+    v = stat(out, v, pl.done, "DONE", x + col * 2, y + 6 * d, INK_ORANGE, p);
+    y += 44 * d;
+    // who's on it now
+    v = section(out, v, "WORKING NOW", x, y, right, p);
+    y += 18 * d;
+    on := 0; more := 0;
+    for a: 0..<s[0].agents {
+      if s[0].agent_plot[a] != k { continue; }
+      if on >= 4 { more += 1; continue; }
+      who := cell(LAND_WORKING, s[0].agent_row[a], 0);
+      task := cell(LAND_WORKING, s[0].agent_row[a], 2);
+      nw := lo(text_width(who, 7 * d, pale), w * 0.45);
+      v = put_fit(out, v, who, x, y, 7 * d, pale, w * 0.45);
+      v = put_fit(out, v, task, x + nw + 10 * d, y, 7 * d, body, w - nw - 10 * d);
+      y += 17 * d; on += 1;
+    }
+    if on == 0 { v = put(out, v, "Nobody yet.", x, y, 7 * d, dim); y += 17 * d; }
+    if more > 0 {
+      mb2: [24] u8; mn2 := 0; mb2[0] = '+'; mn2 = 1 + number(more, mb2[1..<24]);
+      v = put(out, v, cast(string) mb2[0..<mn2], x, y, 6.6 * d, dim);
+      v = put(out, v, "more", x + text_width(cast(string) mb2[0..<mn2], 6.6 * d, dim) + 4 * d, y, 6.6 * d, dim);
+      y += 16 * d;
+    }
+    y += 10 * d;
+    // the last commits
+    v = section(out, v, "LAST COMMITS", x, y, right, p);
+    y += 18 * d;
+    for j: 0..<lo_int(3, pl.commits) {
+      row := pl.commit_row[pl.commits - 1 - j];
+      hash := cell(LAND_COMMITS, row, 1);
+      hk := dim; hk.red = 1; hk.green = 0.7; hk.blue = 0.45;
+      hw := text_width(hash[0..<lo_int(7, hash.count)], 6.8 * d, hk);
+      v = put(out, v, hash[0..<lo_int(7, hash.count)], x, y, 6.8 * d, hk);
+      v = put_fit(out, v, cell(LAND_COMMITS, row, 3), x + hw + 10 * d, y, 7 * d, body, w - hw - 10 * d);
+      y += 17 * d;
+    }
+    y += 10 * d;
+    // the projects beside it
+    v = section(out, v, "RELATED", x, y, right, p);
+    y += 18 * d;
+    rx := x; any := false;
+    for j: 0..<s[0].plots {
+      if j == k || s[0].plot[j].cluster != pl.cluster { continue; }
+      n2 := field(LAND_PROJECTS, j, 1);
+      nw := text_width(n2, 7 * d, pale);
+      if rx + nw > right { rx = x; y += 16 * d; }
+      v = put(out, v, n2, rx, y, 7 * d, pale);
+      rx += nw + 16 * d; any = true;
+    }
+    if !any { v = put(out, v, "None yet.", x, y, 7 * d, dim); }
+    y += 20 * d;
+  } else if s[0].card == CARD_PERSON {
+    i := s[0].card_k;
+    v = put(out, v, field(LAND_PEOPLE, i, 0), x, y, title, white);
+    y += 18 * d;
+    v = put(out, v, field(LAND_PEOPLE, i, 1), x, y, 7 * d, dim);
+    y += 24 * d;
+    v = section(out, v, "NOW", x, y, right, p);
+    y += 18 * d;
+    w0 := walker(s, i, t);
+    // the place nearest them
+    near := 0; best := 1.0e9f32;
+    for j: 0..<s[0].plots {
+      dx := s[0].plot[j].x - w0.x; dz := s[0].plot[j].z - w0.z;
+      if dx * dx + dz * dz < best { best = dx * dx + dz * dz; near = j; }
+    }
+    what: string = ifx w0.gait == Gait.stand then (ifx w0.talking then "Talking at" else "Looking round") else (ifx w0.gait == Gait.run then "Running past" else "Walking past");
+    ww := text_width(what, 7.2 * d, body);
+    v = put(out, v, what, x, y, 7.2 * d, body);
+    v = put(out, v, field(LAND_PROJECTS, near, 1), x + ww + 6 * d, y, 7.2 * d, pale);
+    y += 22 * d;
+  } else if s[0].card == CARD_AGENT && k >= 0 {
+    a := s[0].card_k;
+    v = put_fit(out, v, cell(LAND_WORKING, s[0].agent_row[a], 0), x, y, title, white, w - 50 * d);
+    y += 18 * d;
+    v = put(out, v, "Agent", x, y, 7 * d, dim);
+    y += 24 * d;
+    v = section(out, v, "WORKING ON", x, y, right, p);
+    y += 18 * d;
+    v = put_fit(out, v, cell(LAND_WORKING, s[0].agent_row[a], 2), x, y, 7.2 * d, body, w);
+    y += 17 * d;
+    nm := "in ";
+    v = put(out, v, nm, x, y, 7 * d, dim);
+    v = put(out, v, field(LAND_PROJECTS, k, 1), x + text_width(nm, 7 * d, dim) + 2 * d, y, 7 * d, pale);
+    y += 22 * d;
+  }
+  if k >= 0 {
+    y += 4 * d;
+    ob := Box.{x0 = x, y0 = y, x1 = right, y1 = y + 40 * d};
+    s[0].open_box = ob;
+    v = button(out, v, ob, "OPEN PROJECT", true, hover && inside(prev_open, s[0].px, s[0].py), p, 1);
+    y += 40 * d;
+  }
+  if h.count > 0 { h[0] = y + 20 * d; }
+  return v;
+}
+
+// The card over the page: on the left under the wordmark on a wide screen,
+// a sheet from the bottom on a phone. Returns the vertex count; box gets where.
+card :: (out: [] f32, at: int, s: [] LandState, l: Layout, p: Pen, t: f32, width: f32, height: f32) -> int {
+  d := p.d;
+  x0 := ifx l.phone then 0.0f32 else 28 * d;
+  x1 := ifx l.phone then width else 28 * d + 384 * d;
+  h: [1] f32;
+  v := card_body(out, at, s, x0, x1, p, t, h[..]);
+  rise := ease(s[0].card_t / 0.22);
+  y0: f32 = ifx l.phone then height - h[0] + (1 - rise) * 40 * d else 76 * d + (1 - rise) * 14 * d;
+  if l.phone { y0 = hi(y0, height * 0.25); }
+  for q: at..<v { out[q * VERTEX_FLOATS + 1] += y0; out[q * VERTEX_FLOATS + 6] *= rise; }
+  s[0].close_box.y0 += y0; s[0].close_box.y1 += y0;
+  s[0].open_box.y0 += y0; s[0].open_box.y1 += y0;
+  box := Box.{x0 = x0, y0 = y0, x1 = x1, y1 = ifx l.phone then height + 20 * d else y0 + h[0]};
+  s[0].card_box = box;
+  lit_edge := ink(p, INK_ORANGE);
+  if l.phone {
+    // a sheet: its top edge lit, a grip in the middle
+    v = rule(out, v, box.x0, box.y0, box.x1, box.y0, lit_edge, 0.75 * rise);
+    v = rule(out, v, width * 0.5 - 18 * d, box.y0 + 8 * d, width * 0.5 + 18 * d, box.y0 + 8 * d, ink(p, INK_DIM), 0.5 * rise);
+  } else {
+    v = frame(out, v, box, 12 * d, lit_edge, 0.95 * rise, p);
+  }
+  return v;
+}
+
+// ---------------------------------------------------------------- input
+
+under_tag :: (s: [] LandState, x: f32, y: f32) -> bool {
+  for k: 0..<s[0].plots { b := s[0].plot[k].tag; if b.x1 > b.x0 && inside(b, x, y) { return true; } }
+  return false;
+}
+hit_slug :: (s: [] LandState, x: f32, y: f32) -> int {
+  for k: 0..<s[0].plots { b := s[0].plot[k].hit; if b.x1 > b.x0 && inside(b, x, y) { return k; } }
+  return -1;
+}
+go :: (s: [] LandState, url: string) {
+  n := lo_int(url.count, 95);
+  for i: 0..<n { s[0].outbox[i] = url[i]; }
+  s[0].out_n = n; s[0].action = ACT_NAVIGATE;
+}
+go_project :: (s: [] LandState, k: int) {
+  buf: [80] u8; n := 0;
+  pre := "/projects/";
+  for i: 0..<pre.count { buf[n] = pre[i]; n += 1; }
+  slug := field(LAND_PROJECTS, k, 0);
+  for i: 0..<lo_int(slug.count, 60) { buf[n] = slug[i]; n += 1; }
+  go(s, cast(string) buf[0..<n]);
+}
+// A click: the card's buttons, LOG IN and MAKE YOUR OWN navigate; a place,
+// person or agent opens its card (never navigates); anywhere else closes it.
+click :: (s: [] LandState, x: f32, y: f32) -> bool {
+  if s[0].card != CARD_NONE {
+    if inside(s[0].close_box, x, y) { close_card(s); return true; }
+    k := card_place(s);
+    if k >= 0 && inside(s[0].open_box, x, y) { go_project(s, k); return true; }
+    if inside(s[0].card_box, x, y) { return true; }
+  }
+  if inside(s[0].login, x, y) { go(s, "/login"); return true; }
+  if inside(s[0].make, x, y) { go(s, "/realms/new"); return true; }
+  got := pick(s, x, y);
+  if got.kind != CARD_NONE { open_card(s, got.kind, got.which); return true; }
+  if s[0].card != CARD_NONE { close_card(s); return true; }
+  return false;
+}
+slot_of :: (s: [] LandState, id: int) -> int {
+  for i: 0..<s[0].touches { if s[0].ids[i] == id { return i; } }
+  return -1;
+}
+coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  d := hi(s[0].dpr, 1);
+  s[0].px = x; s[0].py = y; s[0].pointed = true;
+  k := slot_of(s, id);
+  if phase == POINTER_DOWN {
+    s[0].touch = kind != 0;
+    if k < 0 && s[0].touches < 2 { k = s[0].touches; s[0].ids[k] = id; s[0].touches += 1; }
+    if k < 0 { return false; }
+    s[0].tx[k] = x; s[0].ty[k] = y;
+    s[0].vel_x = 0; s[0].vel_z = 0;
+    if s[0].touches == 1 { s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; }
+    else {
+      // two fingers: a pinch, never a click
+      s[0].moved = true;
+      take(s);
+      dx := s[0].tx[1] - s[0].tx[0]; dy := s[0].ty[1] - s[0].ty[0];
+      s[0].pinch = hi(sqrt(dx * dx + dy * dy), 1);
+      s[0].pinch_x = (s[0].tx[0] + s[0].tx[1]) * 0.5; s[0].pinch_y = (s[0].ty[0] + s[0].ty[1]) * 0.5;
+    }
+    return true;
+  }
+  if phase == POINTER_MOVE {
+    if kind == 0 && s[0].touches == 0 { s[0].touch = false; }
+    if k < 0 { return false; }
+    px := s[0].tx[k]; py := s[0].ty[k];
+    s[0].tx[k] = x; s[0].ty[k] = y;
+    if s[0].touches == 1 {
+      if !s[0].moved && abs(x - s[0].down_x) + abs(y - s[0].down_y) > CLICK * d {
+        s[0].moved = true; take(s);
+        pan_screen(s, s[0].down_x, s[0].down_y, x, y);   // the slack, so the floor stays under the finger
+      } else if s[0].moved {
+        pan_screen(s, px, py, x, y);
+      }
+      return s[0].moved;
+    }
+    // the pinch: zoom about its middle, and follow the middle
+    dx := s[0].tx[1] - s[0].tx[0]; dy := s[0].ty[1] - s[0].ty[0];
+    span := hi(sqrt(dx * dx + dy * dy), 1);
+    mx := (s[0].tx[0] + s[0].tx[1]) * 0.5; my := (s[0].ty[0] + s[0].ty[1]) * 0.5;
+    zoom_at(s, s[0].zoom * s[0].pinch / span, s[0].pinch_x, s[0].pinch_y);
+    s[0].zoom_to = s[0].zoom;
+    pan_screen(s, s[0].pinch_x, s[0].pinch_y, mx, my);
+    s[0].pinch = span; s[0].pinch_x = mx; s[0].pinch_y = my;
+    return true;
+  }
+  // up or cancel: that finger leaves
+  was := s[0].touches;
+  if k >= 0 {
+    for i: k..<s[0].touches - 1 { s[0].ids[i] = s[0].ids[i + 1]; s[0].tx[i] = s[0].tx[i + 1]; s[0].ty[i] = s[0].ty[i + 1]; }
+    s[0].touches -= 1;
+  }
+  if s[0].touches == 1 {
+    // one finger left after a pinch: it carries on panning from where it is
+    s[0].down_x = s[0].tx[0]; s[0].down_y = s[0].ty[0];
+    return true;
+  }
+  if phase == POINTER_CANCEL || !s[0].down || was != 1 { s[0].down = false; return false; }
+  s[0].down = false;
+  if s[0].moved { return true; }   // a drag is never a click
+  return click(s, x, y);
+}
+// The wheel (and a trackpad's pinch) zooms toward the pointer.
+coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c {
+  if s.count < 1 { return; }
+  take(s);
+  s[0].zoom_to = clamp(s[0].zoom_to * exp(clamp(dy, -400, 400) * 0.0016), ZOOM_IN, ZOOM_OUT);
+  s[0].anchor_x = ifx s[0].pointed then s[0].px else s[0].width * 0.5;
+  s[0].anchor_y = ifx s[0].pointed then s[0].py else s[0].height * 0.5;
+  s[0].vel_x = 0; s[0].vel_z = 0;
+}
+KEY_ESCAPE :: -1;
+coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
+  if s.count < 1 { return false; }
+  if key == KEY_ESCAPE && s[0].card != CARD_NONE { close_card(s); return true; }
+  return false;
+}
+coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
+  if s.count < 1 || s[0].touch || !s[0].pointed || (s[0].down && s[0].moved) { return 0; }
+  x := s[0].px; y := s[0].py;
+  if s[0].card != CARD_NONE {
+    if inside(s[0].close_box, x, y) || inside(s[0].open_box, x, y) { return 1; }
+    if inside(s[0].card_box, x, y) { return 0; }
+  }
+  if inside(s[0].login, x, y) || inside(s[0].make, x, y) || pick(s, x, y).kind != CARD_NONE { return 1; }
+  return 0;
+}
+coaxial_land_action :: (s: [] LandState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
+coaxial_land_action_done :: (s: [] LandState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
+
+// ---------------------------------------------------------------- the frame
+
 coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
   if s.count < 1 || uniforms.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
-  if !s[0].ready { read_tables(s); }
+  if !s[0].ready { read_tables(s); s[0].card_k = -1; }
   step := clamp(dt, 0, 0.1);
   s[0].time += step; s[0].frames += 1;
   s[0].width = width; s[0].height = height; s[0].dpr = dpr;
@@ -931,45 +1337,49 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   uniforms[3] = ifx still then 1.0f32 else ease((t - 0.15) / 3.0);   // up from black
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
   uniforms[6] = 1;
-  // the view: the whole Grid on a wide screen, beside the feed; on a phone,
-  // one cluster at a time, drifting between them
-  yaw := 0.785398 + (ifx still then 0.0f32 else 0.05 * sin(t * 0.05));
-  pitch: f32 = ifx l.phone then 0.86f32 else 0.72f32;
-  look := centre(s, -1);
-  reach: f32 = 37;
-  cx := width * 0.5; cy := height * 0.54;
-  if !l.phone {
-    cx = width * 0.46; cy = height * 0.56;
-    reach = clamp(40 * 1440 / (width / d), 36, 50);
-  } else {
-    reach = 22.5;
-    sway := ifx still then 0.0f32 else ease(0.5 - 0.5 * cos(t * 0.07));
-    // from the stack's middle to the worlds'
-    look = fv_mix(centre(s, 0), centre(s, 1), sway);
-    cy = height * 0.5;
-  }
-  // and a slow pull back as it fades up
-  if !still { reach = reach * (0.84 + 0.16 * ease(t / 5.0)); }
-  across := width;
-  c := cam(look, yaw, pitch, reach, cx, cy, across, l.scene, width, height);
-  v := floor_grid(out, 0, s, c, look, p);
+  c := frame_view(s, l, t, step, still, width, height, d);
+  v := floor_grid(out, 0, s, c, s[0].look, p);
   v = roads(out, v, s, c, p);
   for k: 0..<s[0].plots { v = place(out, v, s, c, k, p); }
   v = people(out, v, s, c, p, motion);
   v = agents(out, v, s, c, p, motion);
   for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); }
+  scene_end := v;
   // the HUD over it
   hud := ifx still then 1.0f32 else ease((t - 2.0) / 1.0);
   s[0].login = l.login; s[0].make = l.make;
   hover := !s[0].touch && s[0].pointed;
+  sheet := l.phone && s[0].card != CARD_NONE;
   v = wordmark(out, v, l, p);
   v = button(out, v, l.login, "LOG IN", false, hover && inside(l.login, s[0].px, s[0].py), p, hud);
-  v = button(out, v, l.make, "MAKE YOUR OWN", true, hover && inside(l.make, s[0].px, s[0].py), p, hud);
-  v = feed(out, v, l, p, t, ifx still then 1.0f32 else ease((t - 2.8) / 1.0));
-  glass(uniforms, 0, l.feed, 10 * d, 0.92 * (ifx still then 1.0f32 else ease((t - 2.8) / 1.0)), 0);
-  glass(uniforms, 1, l.make, 7 * d, 0.95 * hud, 1);
+  feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
+  if !sheet {
+    v = button(out, v, l.make, "MAKE YOUR OWN", true, hover && inside(l.make, s[0].px, s[0].py), p, hud);
+    v = feed(out, v, l, p, t, feed_on);
+    glass(uniforms, 0, l.feed, 10 * d, 0.92 * feed_on, 0);
+    glass(uniforms, 1, l.make, 7 * d, 0.95 * hud, 1);
+  } else {
+    s[0].make = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  }
   glass(uniforms, 2, l.login, 7 * d, 0.8 * hud, 0);
-  uniforms[5] = 3;
+  if s[0].card != CARD_NONE {
+    s[0].card_t += step;
+    v = card(out, v, s, l, p, motion, width, height);
+    b := s[0].card_box;
+    rise := ease(s[0].card_t / 0.22);
+    glass(uniforms, 3, b, ifx l.phone then 0.0f32 else 12 * d, 0.97 * rise, 0);
+    // the world goes quiet behind it, so it reads
+    for q: 0..<scene_end / 6 {
+      o := q * 6 * VERTEX_FLOATS;
+      x := (out[o] + out[o + 2 * VERTEX_FLOATS]) * 0.5;
+      y := (out[o + 1] + out[o + 2 * VERTEX_FLOATS + 1]) * 0.5;
+      if inside(b, x, y) { for k: 0..<6 { out[o + k * VERTEX_FLOATS + 6] *= 1 - 0.9 * rise; } }
+    }
+  } else {
+    s[0].card_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+    s[0].close_box = s[0].card_box; s[0].open_box = s[0].card_box;
+  }
+  uniforms[5] = 4;
   return v;
 }
 
@@ -1021,13 +1431,13 @@ coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   drawn := coaxial_land_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
   #assert drawn > 0;
   b := s[0].login;
-  down := coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 0);
-  #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 0);
+  down := coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 0, 1);
+  #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 0, 1);
   #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/login");
   coaxial_land_action_done(s[..]);
   b = s[0].make;
-  down = coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1);
-  #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1);
+  down = coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_DOWN, 1, 2);
+  #assert coaxial_land_pointer(s[..], (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5, POINTER_UP, 1, 2);
   #assert same(cast(string) s[0].outbox[0..<s[0].out_n], "/realms/new");
 }
 
@@ -1039,4 +1449,102 @@ coaxial_land_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
   // and they keep moving
   c := walker(s[..], 7, 10); e := walker(s[..], 7, 40);
   #assert c.x != e.x || c.z != e.z;
+}
+
+// A frame of a laptop's page, nine seconds in, for the input checks.
+settled :: (s: [] LandState, out: [] f32, u: [] f32) {
+  s[0].time = 9;
+  for i: 0..<3 { tick(s, out, u, 1440, 900, 1, 0.016, false); }
+}
+tick :: (s: [] LandState, out: [] f32, u: [] f32, w: f32, h: f32, dpr: f32, dt: f32, still: bool) {
+  n := coaxial_land_frame(s, out, u, w, h, dpr, dt, still);
+  if n < 0 { s[0].frames = 0; }
+}
+press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
+  used := coaxial_land_pointer(s, x, y, phase, kind, id);
+  if used { s[0].pointed = true; }
+}
+
+#test "a press let go where it was opens a place's card, and never navigates" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  settled(s[..], out[..], u[..]);
+  b := s[0].plot[0].hit;
+  #assert b.x1 > b.x0;
+  x := (b.x0 + b.x1) * 0.5; y := b.y0 + 6;
+  press(s[..], x, y, POINTER_DOWN, 0, 1);
+  #assert coaxial_land_pointer(s[..], x, y, POINTER_UP, 0, 1);
+  #assert s[0].card == CARD_PLACE && s[0].card_k == 0 && s[0].action == 0 && s[0].out_n == 0;
+  // drawn, it has its OPEN PROJECT and its close; Esc closes it
+  tick(s[..], out[..], u[..], 1440, 900, 1, 0.3, false);
+  #assert s[0].open_box.x1 > s[0].open_box.x0 && s[0].close_box.x1 > s[0].close_box.x0 && s[0].action == 0;
+  #assert coaxial_land_key(s[..], KEY_ESCAPE, 0) && s[0].card == CARD_NONE;
+}
+
+#test "a drag pans the view and is never a click" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  settled(s[..], out[..], u[..]);
+  b := s[0].plot[0].hit;
+  x := (b.x0 + b.x1) * 0.5; y := b.y0 + 6;
+  before := s[0].look;
+  press(s[..], x, y, POINTER_DOWN, 0, 1);
+  press(s[..], x + 30, y + 4, POINTER_MOVE, 0, 1);
+  press(s[..], x + 80, y + 10, POINTER_MOVE, 0, 1);
+  press(s[..], x + 80, y + 10, POINTER_UP, 0, 1);
+  #assert s[0].card == CARD_NONE && s[0].action == 0 && s[0].user;
+  #assert abs(s[0].look.x - before.x) + abs(s[0].look.z - before.z) > 0.5;
+  // a small wobble is still a click
+  tick(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  b = s[0].plot[0].hit; x = (b.x0 + b.x1) * 0.5; y = b.y0 + 6;
+  press(s[..], x, y, POINTER_DOWN, 0, 1);
+  press(s[..], x + 4, y + 3, POINTER_MOVE, 0, 1);
+  #assert coaxial_land_pointer(s[..], x + 4, y + 3, POINTER_UP, 0, 1) && s[0].card == CARD_PLACE;
+}
+
+#test "OPEN PROJECT goes to the place's page; a click outside closes the card" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  settled(s[..], out[..], u[..]);
+  open_card(s[..], CARD_PLACE, 1);
+  tick(s[..], out[..], u[..], 1440, 900, 1, 0.3, false);
+  o := s[0].open_box;
+  press(s[..], (o.x0 + o.x1) * 0.5, (o.y0 + o.y1) * 0.5, POINTER_DOWN, 0, 1);
+  press(s[..], (o.x0 + o.x1) * 0.5, (o.y0 + o.y1) * 0.5, POINTER_UP, 0, 1);
+  #assert s[0].action == ACT_NAVIGATE && same(cast(string) s[0].outbox[0..<s[0].out_n], "/projects/psionic");
+  coaxial_land_action_done(s[..]);
+  // an empty bit of floor far from everything
+  press(s[..], 700, 880, POINTER_DOWN, 0, 1);
+  press(s[..], 700, 880, POINTER_UP, 0, 1);
+  #assert s[0].card == CARD_NONE && s[0].action == 0;
+}
+
+#test "the zoom stays in its range and the view on the Grid" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  settled(s[..], out[..], u[..]);
+  for i: 0..<6 { coaxial_land_wheel(s[..], -400); tick(s[..], out[..], u[..], 1440, 900, 1, 0.1, false); }
+  #assert s[0].zoom >= ZOOM_IN - 0.001 && s[0].zoom < 0.4;
+  for i: 0..<6 { coaxial_land_wheel(s[..], 400); tick(s[..], out[..], u[..], 1440, 900, 1, 0.1, false); }
+  #assert s[0].zoom <= ZOOM_OUT + 0.001 && s[0].zoom > 1.3;
+  // a long fling glides, then stops inside the bounds
+  s[0].vel_x = 400; s[0].vel_z = -400;
+  for i: 0..<12 { tick(s[..], out[..], u[..], 1440, 900, 1, 0.1, false); }
+  mid := centre(s[..], -1);
+  #assert abs(s[0].look.x - mid.x) <= ROAM + 0.01 && abs(s[0].look.z - mid.z) <= ROAM + 0.01;
+  #assert abs(s[0].vel_x) < 40;
+}
+
+#test "a two-finger pinch zooms and is never a click" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  settled(s[..], out[..], u[..]);
+  z0 := s[0].zoom;
+  press(s[..], 600, 400, POINTER_DOWN, 1, 5);
+  press(s[..], 700, 400, POINTER_DOWN, 1, 6);
+  press(s[..], 760, 400, POINTER_MOVE, 1, 6);
+  #assert s[0].zoom < z0;   // fingers apart: closer
+  press(s[..], 760, 400, POINTER_UP, 1, 6);
+  press(s[..], 600, 400, POINTER_UP, 1, 5);
+  #assert s[0].card == CARD_NONE && s[0].action == 0 && s[0].touches == 0;
 }

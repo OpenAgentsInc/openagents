@@ -27,11 +27,14 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   return n < 0 ? 0u : (uint32_t)n;
 }
 
-// Input: the pointer opens LOG IN, MAKE YOUR OWN and a place's page (action 1 and its URL).
+// Input: the pointer pans and pinches the view, opens a card, and LOG IN, MAKE YOUR
+// OWN and a card's OPEN PROJECT navigate (action 1 and its URL).
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
-  (void)id;
-  return coaxial_land_pointer(view(state), x, y, phase, kind) ? 1u : 0u;
+  return coaxial_land_pointer(view(state), x, y, phase, kind, id) ? 1u : 0u;
 }
+// The wheel and a trackpad's pinch zoom; Esc closes the card.
+EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { coaxial_land_wheel(view(state), dy); }
+EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return coaxial_land_key(view(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_land_cursor(view(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)coaxial_land_action(view(state)); }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)&state_at(state)->outbox; }
