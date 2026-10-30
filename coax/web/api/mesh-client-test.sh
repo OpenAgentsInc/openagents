@@ -43,4 +43,6 @@ export EXPECTED_ORIGIN=https://staging.openagents.com
 if "$here/mesh-client.sh" --new-demo-key --key "$work/existing.key" "$work/body" >/dev/null 2>&1; then exit 1; fi
 if "$here/mesh-client.sh" --url https://evil.invalid --new-demo-key "$work/body" >/dev/null 2>&1; then exit 1; fi
 if "$here/mesh-client.sh" "$work/body" >/dev/null 2>&1; then exit 1; fi
+dd if=/dev/zero of="$work/oversized" bs=16385 count=1 2>/dev/null
+if "$here/mesh-client.sh" --new-demo-key "$work/oversized" >/dev/null 2>&1; then exit 1; fi
 echo 'mesh client: fixed origins, existing NIP-98 format, body binding, key lifetime and bad arguments passed'

@@ -18,7 +18,7 @@ static const char *origin(void) { const char *s = getenv("OA_API_ORIGIN"); retur
 static void refuse(int fd, int status) {
   const char *text = status == 401 ? "authentication_required" : status == 403 ? "cross_site" :
     status == 405 ? "method_not_allowed" : status == 413 ? "limit_exceeded" : status == 415 ? "application_json_required" :
-    status == 429 ? "demo_limit_exceeded" : status == 400 ? "invalid_request_or_model" :
+    status == 429 ? "demo_limit_exceeded" : status == 422 ? "unsupported_input" : status == 400 ? "invalid_request_or_model" :
     status == 504 ? "mesh_timeout" : "mesh_unavailable";
   char out[180]; snprintf(out, sizeof out, "{\"error\":{\"code\":\"%s\"}}", text);
   api_respond(fd, status, "application/json", status == 429 ? MESH_HEADERS "Retry-After: 60\r\n" : MESH_HEADERS, out, strlen(out));

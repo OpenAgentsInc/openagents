@@ -57,7 +57,7 @@ class Fleet(http.server.BaseHTTPRequestHandler):
                      "probabilities": {"yes": 1.0, "no": 0.0}}}, "service": {"identity": IDENTITY, "provider": HASH}}
         if current in ("model", "identity", "provider"):
             (response if current == "model" else response["service"])[current] = "substituted"
-        status = 503 if current == "503" else 403 if current == "403" else 302 if current == "redirect" else 200
+        status = 503 if current == "503" else 403 if current == "403" else 422 if current == "422" else 302 if current == "redirect" else 200
         raw = b"x" * 262145 if current == "oversized" else json.dumps(response).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -119,7 +119,7 @@ def reset():
 check("unsigned is refused", call()[0] == 401)
 check("GET is refused", request("GET")[0] == 405)
 check("content type is required", request(body=body(), headers={"Content-Type": "text/plain"})[0] == 415)
-check("oversized request is refused before authentication", call(b"x" * 262145)[0] == 413)
+check("oversized request is refused before authentication", call(b"x" * 16385)[0] == 413)
 data = body()
 check("NIP-98 payload is mandatory", call(data, sign())[0] == 401)
 check("signature binds the exact body", call(body(), sign(data))[0] == 401)
@@ -132,6 +132,11 @@ check("native upstream receives body unchanged without user auth/cookies", seen[
 check("response is private and varies by identity", "no-store" in headers["Cache-Control"] and "Authorization" in headers["Vary"])
 check("signed request cannot replay", call(data, auth)[0] == 401)
 reset()
+large = json.loads(body(padding=""))
+large["padding"] = "x" * (16384 - len(json.dumps(large).encode()))
+large = json.dumps(large).encode()
+check("exact16KiB request is admitted", len(large) == 16384 and signed(large)[0] == 200)
+check("one byte above16KiB is refused", signed(large + b" ")[0] == 413)
 check("unknown model refuses", signed(body(model="unknown"))[0] == 400)
 check("malformed JSON refuses", signed(b'{"model":')[0] == 400)
 check("duplicate model refuses", signed(b'{"model":"elephant-1","model":"other"}')[0] == 400)
@@ -140,6 +145,9 @@ reset()
 for value in ["model", "identity", "provider", "oversized", "redirect", "403"]:
     mode["value"] = value
     check(value + " substitution/refusal returns502", signed()[0] == 502)
+mode["value"] = "422"
+status, response, _ = signed()
+check("actual HTTP422 input rejection stays distinct from transport413", status == 422 and json.loads(response)["error"]["code"] == "unsupported_input")
 mode["value"] = "503"
 check("native unavailability refuses without substitution", signed()[0] == 503)
 reset()

@@ -50,9 +50,17 @@ lock covers observation, Coax admission and lease recording across API replicas;
 it is released before any model execution. Expired 60-second leases no longer
 occupy a concurrency slot. Completed calls release their lease and retain status.
 Model execution has a 30-second HTTP deadline and a three-second connection
-limit. Request and response bodies are bounded to 256 KiB. These bounds charge no
+limit. Request bodies are bounded to 16 KiB, matching the native fleet's
+16384-byte admission cap and staying below its NIP-44 compatibility envelope;
+responses are bounded to 256 KiB. These bounds charge no
 sats and create no inference credit. Quotas count admitted attempts, including
 failed upstream attempts. There is no administrator exemption.
+
+The native fleet currently treats authenticated remote provider error statuses
+as failed attempts: it retries eligible routes or returns 503. It does not yet
+propagate a remote context-limit status as 422. An actual HTTP 422 received from
+an upstream remains 422 (`unsupported_input`) at this edge; 413 is local byte
+admission, not a claim about model context.
 
 HTTP refusals include 401 authentication/replay, 403 cross-site, 400 invalid model
 or request, 405 method, 413 body limit, 415 content type, 429 demo quota, 502 invalid

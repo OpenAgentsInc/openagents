@@ -18,7 +18,7 @@ while (($#)); do
 done
 [[ -f "$body" && ( $fresh == true || -n "$key" ) ]] || { usage >&2; exit 2; }
 [[ $fresh != true || -z "$key" ]] || { echo 'mesh: choose an existing key or a disposable demo key' >&2; exit 2; }
-[[ $(wc -c < "$body") -le 262144 ]] || { echo 'mesh: body exceeds256KiB' >&2; exit 2; }
+[[ $(wc -c < "$body") -le 16384 ]] || { echo 'mesh: body exceeds 16 KiB' >&2; exit 2; }
 work=$(mktemp -d); trap 'rm -rf "$work"' EXIT
 sign=${OA_MESH_SIGNER:-${XDG_CACHE_HOME:-$HOME/.cache}/oa-mesh/sign}
 if [[ ! -x "$sign" || "$here/sign.c" -nt "$sign" ]]; then

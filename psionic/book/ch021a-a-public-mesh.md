@@ -57,8 +57,8 @@ one identity, at most 1200 per day globally. It admits one active request per
 identity and four globally. All API replicas serialize the count-read/admit/
 lease transaction through a database advisory lock. That lock ends before any
 network/model work. Completion releases the slot; a crashed worker's 60-second
-lease also expires. The API bounds both bodies to 256 KiB and waits at most 30
-seconds for the fleet. An upstream refusal never silently switches to Vertex.
+lease also expires. The API bounds request bodies to 16 KiB and responses to 256 KiB, and waits
+at most 30 seconds for the fleet. An upstream refusal never silently switches to Vertex.
 
 These are demo bounds, not a payment authorization or defense against every
 Sybil. Accepted attempts count even if a provider later fails. Operator-owned

@@ -7,12 +7,14 @@
 
 MgField :: struct {ok:bool;kind:int;value:string;}
 MgRoute :: struct {status:int;url:string;identity:string;provider:string;}
-MG_BODY_MAX :: 262144;
+MG_BODY_MAX :: 16384;
 MG_ROUTES :: "{\"elephant-1\":{\"url\":\"http://127.0.0.1:8801/v1/systemone\",\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
 MG_BODY :: "{\"model\":\"elephant-1\",\"state\":\"water\",\"questions\":{\"wet\":{\"type\":\"choice\",\"criteria\":{\"yes\":null,\"no\":null}}}}";
 MG_GOOD :: "{\"model\":\"elephant-1\",\"answers\":{},\"service\":{\"identity\":\"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\",\"provider\":\"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\"}}";
 
 #test "HTTP admission precedes authentication and has fixed byte bounds" {
+    #assert MG_BODY_MAX==16384;
+    #assert mg_http("POST","application/json",16384)==200 && mg_http("POST","application/json",16385)==413;
     #assert mg_http("POST","application/json",1)==200;
     #assert mg_http("POST","application/json; charset=utf-8",MG_BODY_MAX)==200;
     #assert mg_http("GET","application/json",1)==405;
