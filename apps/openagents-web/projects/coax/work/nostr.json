@@ -304,7 +304,8 @@
         "secp-field-repr",
         "secp-scalar",
         "crypto-ct-timing-harness",
-        "crypto-secure-zero"
+        "crypto-secure-zero",
+        "crypto-byte-load32-total"
       ]
     },
     {
@@ -841,7 +842,10 @@
         "project-page-verify",
         "nostr-proto-adapters",
         "nostr-event-store",
-        "project-verified-borrowed-state"
+        "project-verified-borrowed-state",
+        "nostr-store-verified-dedup",
+        "nostr-store-trusted-recovery",
+        "web-nostr-api-verifier-parity"
       ]
     },
     {
@@ -990,7 +994,8 @@
         "ios-key-custody",
         "nip49-primitives",
         "nip49-aead-workspace",
-        "nip49-kdf-workspace"
+        "nip49-kdf-workspace",
+        "schnorr-self-verification-boundary"
       ]
     },
     {
@@ -1007,7 +1012,11 @@
         "Full affected authority checks and mutation pass without survivors or waivers, with independent review of the dataflow and evidence binding; preserve caller, runtime, hidden-copy, target timing and production limitations"
       ],
       "blocked_by": [],
-      "blocks": ["schnorr-sign"]
+      "blocks": [
+        "schnorr-sign",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher"
+      ]
     },
     {
       "slug": "schnorr-self-verification-boundary",
@@ -1024,7 +1033,11 @@
         "Fixed-work designs include target behavior assessment and positive-control timing and address probes; declassification designs explain observations of failed and successful candidates. Preserve the 20M check cap and disclose target and production limits"
       ],
       "blocked_by": ["schnorr-fast-verify", "crypto-secure-zero"],
-      "blocks": ["schnorr-sign"]
+      "blocks": [
+        "schnorr-sign",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher"
+      ]
     },
     {
       "slug": "schnorr-sign",
@@ -1152,7 +1165,9 @@
         "signer-interface",
         "crypto-target-conformance",
         "nip46-signer",
-        "host-grants"
+        "host-grants",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher"
       ]
     },
     {
@@ -1405,7 +1420,8 @@
       ],
       "blocks": [
         "nostr-keys",
-        "nostr-event-store"
+        "nostr-event-store",
+        "nostr-store-trusted-recovery"
       ]
     },
     {
@@ -1428,7 +1444,9 @@
       ],
       "blocks": [
         "nostr-relay-state-machine",
-        "block-owner-admission"
+        "block-owner-admission",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher"
       ]
     },
     {
@@ -1572,7 +1590,8 @@
         "nostr-envelope"
       ],
       "blocks": [
-        "invariant-coax-only"
+        "invariant-coax-only",
+        "web-nostr-surface-retirement"
       ]
     },
     {
@@ -1686,7 +1705,8 @@
         "coax-nostr-cli"
       ],
       "blocks": [
-        "invariant-coax-only"
+        "invariant-coax-only",
+        "web-nostr-surface-retirement"
       ]
     },
     {
@@ -1806,7 +1826,10 @@
         "crypto-ct-timing-harness"
       ],
       "blocks": [
-        "nostr-production-cutover"
+        "nostr-production-cutover",
+        "web-nostr-api-verifier-cutover",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher"
       ]
     },
     {
@@ -1987,7 +2010,8 @@
         "tools/coax-nostr/server/"
       ],
       "blocks": [
-        "server-session-lifecycle"
+        "server-session-lifecycle",
+        "web-nostr-api-verifier-cutover"
       ],
       "slug": "server-nip98-session",
       "title": "The server verifies NIP-98 HTTP auth and issues a session",
@@ -2212,7 +2236,8 @@
       "blocks": [
         "nostr-production-cutover",
         "claim-from-page",
-        "secp-glv"
+        "secp-glv",
+        "web-nostr-surface-retirement"
       ]
     },
     {
@@ -2240,11 +2265,15 @@
         "phone-sign-in-e2e",
         "project-page-verify",
         "open-sealed-deck-native",
-        "unlock-gate-coax"
+        "unlock-gate-coax",
+        "web-nostr-api-verifier-cutover",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher"
       ],
       "blocks": [
         "invariant-coax-only",
-        "nostr-conformance-release"
+        "nostr-conformance-release",
+        "web-nostr-surface-retirement"
       ]
     },
     {
@@ -3602,7 +3631,10 @@
         "Run all affected authority checks and full mutation with zero survivors and no equivalence waivers; preserve target, timing, lifetime and production-security limitations in the evidence"
       ],
       "blocked_by": ["schnorr-verify"],
-      "blocks": ["schnorr-sign"]
+      "blocks": [
+        "schnorr-sign",
+        "schnorr-self-verification-boundary"
+      ]
     },
     {
       "slug": "nostr-host-proto-adapter",
@@ -3700,7 +3732,11 @@
         "Independent review establishes source/generated correspondence, nested field/depth/byte/count limits and fail-closed behavior; generated DTOs remain unverified and grant no authority"
       ],
       "blocked_by": [],
-      "blocks": ["nostr-proto-adapters"]
+      "blocks": [
+        "nostr-proto-adapters",
+        "proto-generated-error-precedence",
+        "proto-nostr-numeric-ranges"
+      ]
     },
     {
       "slug": "crypto-ecdh-export-migration",
@@ -3718,6 +3754,164 @@
       ],
       "blocked_by": ["crypto-ecdh-public-guards"],
       "blocks": ["crypto-ecdh-owned-lifecycle"]
+    }
+  ,
+    {
+      "slug": "web-nostr-api-verifier-parity",
+      "parent": "m8-project-live",
+      "title": "Compare API Nostr verification with Coax on real requests",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "Build a bounded Coax-backed API verifier adapter for existing NIP-98 requests without changing production authorization. Compare original signed bytes, URL, method, payload and freshness with the current service using public and forged fixtures. Never log credentials or private payloads; preserve the separately owned phone challenge and link endpoints.",
+      "files": [
+        "coax/web/api/",
+        "coax/lib/nostr/",
+        "coax/tests/nostr/"
+      ],
+      "acceptance": [
+        "Checked/release native adapter invokes the actual Coax verifier and agrees with an independent implementation on valid and malformed NIP-98 fixtures",
+        "Phone sign-in, link, admin, chat, analytics, player and drops regressions preserve existing decisions and replay behavior",
+        "Observation grants no authority and cannot change or block production decisions; resource bounds are recorded"
+      ],
+      "blocked_by": [
+        "svc-coax-in-api",
+        "nostr-event"
+      ],
+      "blocks": [
+        "web-nostr-api-verifier-cutover"
+      ]
+    },
+    {
+      "slug": "web-nostr-api-verifier-cutover",
+      "parent": "m8-project-live",
+      "title": "Migrate API Nostr verification to the reviewed Coax path",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "Replace the shared oa-api NIP-98 verifier only after parity, session lifecycle and independent review. Preserve exact URL, method, body, freshness and atomic replay checks, with staged per-surface rollback; a signature never implies membership.",
+      "files": [
+        "coax/web/api/",
+        "coax/lib/nostr/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Sign-in, phone link, private projects, admin, chat, analytics, player and drops success/refusal/replay tests pass using the Coax verifier",
+        "Staging establishes matching decisions, bounded work and rollback on real consumers; no secrets or private payloads are logged",
+        "Route and cookie contracts remain compatible and independent review is pinned to the shipped graph"
+      ],
+      "blocked_by": [
+        "web-nostr-api-verifier-parity",
+        "server-nip98-session",
+        "crypto-independent-review"
+      ],
+      "blocks": [
+        "nostr-production-cutover",
+        "web-nostr-surface-retirement"
+      ]
+    },
+    {
+      "slug": "web-nostr-api-publisher",
+      "parent": "m7-no-typescript",
+      "title": "Migrate API project publication to the reviewed Coax Nostr writer",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "Replace the C project/drop event writer and relay AUTH with shared Coax event, relay and signer interfaces. Preserve published identities, event IDs and sealed-key lifecycle; use throwaway keys until secret-source, signer-boundary and independent review gates are resolved.",
+      "files": [
+        "coax/web/api/relay.c",
+        "coax/web/api/drops.c",
+        "coax/lib/nostr/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Independent relay tests verify signed bytes, identity, AUTH, acknowledgements, retry and failures for the real drop publisher",
+        "Existing project keys and public/private publication migrate without changing identities; staged rollback is exercised",
+        "Source, target, timing and independent secret-handling review pass before any production key or retirement"
+      ],
+      "blocked_by": [
+        "svc-coax-in-api",
+        "nostr-event-sign",
+        "nostr-nip42",
+        "crypto-independent-review",
+        "crypto-secret-audit-large-closure",
+        "schnorr-self-verification-boundary"
+      ],
+      "blocks": [
+        "nostr-production-cutover",
+        "web-nostr-surface-retirement"
+      ]
+    },
+    {
+      "slug": "web-nostr-agent-publisher",
+      "parent": "m7-no-typescript",
+      "title": "Migrate the project agent runner to the reviewed Coax Nostr writer",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "Replace the hosted runner C Nostr signing and relay plumbing with the same reviewed Coax interfaces, preserving scoped identity, event history and acknowledgement handling. Use throwaway keys first; retain the existing path until approval.",
+      "files": [
+        "coax/web/agent/",
+        "coax/lib/nostr/",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Real runner fixtures and an independent relay verify signed task comments, AUTH, acknowledgements, failures and idempotent retry",
+        "Runner/project identities and history remain stable and a staged rollback restores the previous implementation",
+        "Independent secret-source, signer-boundary, target and production approval are pinned before production keys"
+      ],
+      "blocked_by": [
+        "svc-coax-in-api",
+        "nostr-event-sign",
+        "nostr-nip42",
+        "crypto-independent-review",
+        "crypto-secret-audit-large-closure",
+        "schnorr-self-verification-boundary"
+      ],
+      "blocks": [
+        "nostr-production-cutover",
+        "web-nostr-surface-retirement"
+      ]
+    },
+    {
+      "slug": "web-nostr-surface-retirement",
+      "parent": "m7-no-typescript",
+      "title": "Verify every live web surface before retiring old Nostr paths",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "Audit deployed project views and snapshots, API auth, drop/project publication, hosted runner and encrypted presentations against a source-pinned surface inventory. Replace remaining runtime Nostr implementations with reviewed Coax modules; keep standard external signer interfaces as interfaces.",
+      "files": [
+        "coax/web/",
+        "apps/openagents-web/",
+        "coax/nostr.md",
+        "docs/verification/"
+      ],
+      "acceptance": [
+        "Every deployed surface has a real Coax consumer test, authority boundaries and source-pinned rollout and rollback evidence",
+        "No live authorization, signing, relay or private-data path silently falls back to an unreviewed implementation; external signer interfaces are named",
+        "Staging and production migration preserves identities, history and private-data handling"
+      ],
+      "blocked_by": [
+        "web-nostr-api-verifier-cutover",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher",
+        "project-page-verify",
+        "publish-project-events",
+        "unlock-opener-coax",
+        "nostr-production-cutover"
+      ],
+      "blocks": []
     }
   ]
 }

@@ -84,7 +84,10 @@
       "blocked_by": [],
       "blocks": [
         "svc-pdf",
-        "svc-digest-model"
+        "svc-digest-model",
+        "web-nostr-api-verifier-parity",
+        "web-nostr-api-publisher",
+        "web-nostr-agent-publisher"
       ]
     },
     {

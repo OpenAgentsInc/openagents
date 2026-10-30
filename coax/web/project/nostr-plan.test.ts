@@ -164,3 +164,18 @@ test("source-preserving adapters wait for checked generated validators", () => {
   expect(task.body).toContain("Do not bypass generated validators")
   expect(task.acceptance.join(" ")).toContain("zero survivors")
 })
+test("web Nostr migration covers live verification and writer boundaries", () => {
+  expect(tasks.has("web-nostr-api-verifier-parity")).toBe(true)
+  expect(reaches("web-nostr-api-verifier-parity", "nostr-event")).toBe(true)
+  expect(reaches("web-nostr-api-verifier-parity", "schnorr-sign")).toBe(false)
+  expect(reaches("web-nostr-api-verifier-cutover", "web-nostr-api-verifier-parity")).toBe(true)
+  for (const slug of ["web-nostr-api-publisher", "web-nostr-agent-publisher"]) {
+    expect(reaches(slug, "crypto-secret-audit-large-closure")).toBe(true)
+    expect(reaches(slug, "schnorr-self-verification-boundary")).toBe(true)
+    expect(reaches(slug, "crypto-independent-review")).toBe(true)
+    expect(reaches("nostr-production-cutover", slug)).toBe(true)
+    expect(reaches("web-nostr-surface-retirement", slug)).toBe(true)
+  }
+  for (const slug of ["project-page-verify", "publish-project-events", "unlock-opener-coax", "web-nostr-api-verifier-cutover", "nostr-production-cutover"])
+    expect(reaches("web-nostr-surface-retirement", slug)).toBe(true)
+})
