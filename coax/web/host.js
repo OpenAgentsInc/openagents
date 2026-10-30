@@ -20,6 +20,7 @@
 //   coaxial_pointer(state, x, y, phase, kind, id) device pixels; phase 0 down 1 move 2 up 3 cancel;
 //                             kind 0 a mouse, 1 a finger or pen; id tells fingers apart
 //   coaxial_wheel(state, dy)  the wheel, CSS pixels down (the page doesn't scroll)
+//   coaxial_tilt(state, dyaw, dpitch) the phone turned, radians (the OpenAgents app's gyro: coaxial.tilt)
 //   coaxial_inbox(state), coaxial_inbox_cap(), coaxial_message(state, kind, length)
 //                             text in: kind 1 is typed or pasted text; kind 2 the page's data-text,
 //                             once each time an engine loads (which project a page shows, say);
@@ -1461,6 +1462,8 @@ function send(kind, text = "") {
   after(false);
 }
 globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0 };
+// The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
+globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
 if (script?.dataset.drops) startDrops({ send });
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.

@@ -592,6 +592,13 @@ nearest_station :: (you: Point) -> int {
   return best;
 }
 
+// The phone turned (the app's gyro), in radians: the camera turns with it,
+// added to the thumbs' look until the next frame.
+thegrid_tilt :: (s: [] TheGrid, dyaw: f32, dpitch: f32) #export_c {
+  if finite(dyaw) { s[0].look_yaw += clamp(dyaw, -0.5, 0.5); }
+  if finite(dpitch) { s[0].look_pitch += clamp(dpitch, -0.5, 0.5); }
+}
+
 thegrid_wheel :: (s: [] TheGrid, dy: f32) #export_c {
   if finite(dy) { s[0].orbit = verse_orbit_zoom(s[0].orbit, clamp(dy, -400, 400) * f32(WHEEL_ZOOM)); }
 }
@@ -1246,4 +1253,19 @@ fake_data :: (out: [] u8) -> int {
   #assert text_width(hint(g[..]), 6.5 * 3) < 1170 - 96;
   #assert where(v3(0, 0, 1)) == "PYLON TERMINAL" && where(v3(100, 0, 100)) == "WALK UP TO A PLACE TO SEE ITS NAME";
   #assert where(v3(9, 0, 0)) == "TO EVERGLADE";
+}
+
+#test "the phone's tilt turns the camera with the thumbs' look, once" {
+  g: [1] TheGrid;
+  thegrid_start(g[..]);
+  y0 := g[0].orbit.yaw; p0 := g[0].orbit.pitch;
+  thegrid_tilt(g[..], 0.2, 0.1);
+  thegrid_controls(g[..], 0.016, 0, 0);
+  #assert abs(wrap_angle(g[0].orbit.yaw - y0) - 0.2) < 0.001 && g[0].orbit.pitch < p0;
+  y1 := g[0].orbit.yaw;
+  thegrid_controls(g[..], 0.016, 0, 0);
+  #assert g[0].orbit.yaw == y1;   // used up
+  thegrid_tilt(g[..], 9, 0);      // a jump is clamped
+  thegrid_controls(g[..], 0.016, 0, 0);
+  #assert abs(wrap_angle(g[0].orbit.yaw - y1) - 0.5) < 0.001;
 }

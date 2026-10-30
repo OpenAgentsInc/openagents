@@ -136,6 +136,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   return kind != 0 ? 1u : 0u;
 }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { thegrid_wheel(at(state), dy); }
+EXPORT("coaxial_tilt") void coaxial_tilt(uint32_t state, float dyaw, float dpitch) { thegrid_tilt(at(state), dyaw, dpitch); }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)thegrid_cursor(at(state)); }
 
 EXPORT("coaxial_inbox") uint32_t coaxial_inbox(uint32_t state) { (void)state; return (uint32_t)(uintptr_t)inbox; }
