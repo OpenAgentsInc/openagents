@@ -167,5 +167,10 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Poison Spray | `lorc/poison-gas.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Elementalism | `lorc/tornado-discs.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Entangle | `delapouite/vines.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Faerie Fire | `delapouite/fairy.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Healing Word | `zeromancer/heart-plus.svg` | Icons made by Zeromancer, game-icons.net (CC BY 3.0) |
+| Spike Growth | `lorc/thorny-vine.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Call Lightning | `lorc/lightning-storm.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Wall of Fire | `lorc/fire-ring.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

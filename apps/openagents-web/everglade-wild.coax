@@ -1,0 +1,957 @@
+// The rest of the old Grove's third row (eg-grove), loaded by everglade-spells.coax after
+// everglade-grove.coax, whose gv_* hand these on (SRD 5.2.1, cast at the realm's caster's tier: DC 15,
+// Wisdom +3):
+//
+//  C7 FAERIE FIRE   (level 1, Concentration up to a minute) Click the ground within 60 feet: each
+//                   creature in a 20-foot cube there makes a Dexterity save or is outlined in light
+//                   (blue, green or violet) and sheds Dim Light 10 feet; attacks at one outlined have
+//                   Advantage (the druid's spell attacks and the staff, and the watch's at you when it
+//                   is you). Ctrl+7 with it picked ends it.
+//  C8 HEALING WORD  (level 1, a Bonus Action) Click someone within 60 feet: they regain 2d4 + 3 Hit
+//                   Points. Click anywhere else and it is you. The dead it does not reach.
+//  C9 SPIKE GROWTH  (level 2, Concentration up to 10 minutes) The ground in a 20-foot radius within 150
+//                   feet sprouts hard spikes and thorns, camouflaged: Difficult Terrain, and whoever
+//                   moves in it (you too) takes 2d4 piercing for every 5 feet they go.
+//  C0 CALL LIGHTNING (level 3, Concentration up to 10 minutes) A storm cloud 60 feet in radius gathers
+//                   100 feet over you; click the ground under it and a bolt strikes there: each creature
+//                   within 5 feet makes a Dexterity save, 3d10 lightning, half on a success (you too).
+//                   While it holds, each click under it calls another (a Magic action, one a second
+//                   here); Ctrl+0 with it picked ends it. A bolt sets the grass it strikes alight.
+//  C= WALL OF FIRE  (level 4, Concentration up to a minute) Click the ground within 120 feet: a wall of
+//                   fire 60 feet long, 20 feet high and 1 foot thick rises there across your view. Each
+//                   creature in it as it rises makes a Dexterity save, 5d8 fire, half on a success; its
+//                   far side burns: whoever ends a round within 10 feet of that side, or in the wall,
+//                   takes 5d8 fire. The townsfolk walk round it (a fence, as a Wall of Stone's panels);
+//                   you can walk through, and burn. The grass at its foot catches.
+//
+// Fire on the grass (a bolt, a hurled flame, the wall's foot) spreads: each patch burns a while, then
+// catches the dry grass beside it, a few steps from where it began, leaving it black; whoever stands in
+// one burns (1d4 fire a round). Water puts it out: the rain of Create Water, the Water Orb's burst, Sleet
+// Storm's sleet, Elementalism's mist. Every save or blow on a person is a crime the watch answers.
+
+AB_FAERIE :: 23; AB_HEALING :: 24; AB_SPIKE :: 25; AB_CALL :: 26; AB_WALLFIRE :: 27;
+
+WD_FF_RANGE :: 18.288; WD_FF_SIDE :: 6.096; WD_FF_LIFE :: 60.0; WD_FF_DIM :: 3.048; WD_HEAR_FF :: 20.0;
+// its light: blue, green or violet
+wd_ff_rgb :: (h: int) -> Point { return ifx h == 0 then v3(0.45, 0.6, 1.0) else ifx h == 1 then v3(0.45, 1.0, 0.5) else v3(0.82, 0.5, 1.0); }
+WD_HW_RANGE :: 18.288; WD_HW_LIFE :: 1.4;
+WD_SG_RANGE :: 45.72; WD_SG_R :: 6.096; WD_SG_LIFE :: 600.0; WD_SG_STEP :: 1.524; WD_HEAR_SG :: 10.0; WD_THORNS :: 64;
+WD_CL_RANGE :: 36.576; WD_CL_UP :: 30.48; WD_CL_R :: 18.288; WD_CL_HIT :: 1.524; WD_CL_LIFE :: 600.0; WD_CL_COOL :: 1.0; WD_HEAR_CL :: 60.0;
+WD_WF_RANGE :: 36.576; WD_WF_LONG :: 18.288; WD_WF_TALL :: 6.096; WD_WF_HALF :: 0.1524; WD_WF_NEAR :: 3.048; WD_WF_LIFE :: 60.0; WD_HEAR_WF :: 30.0;
+WD_ROUND :: 6.0;
+WD_FIRES :: 40; WD_BURNT :: 96; WD_FIRE_R :: 0.7; WD_GEN :: 7; WD_HEAR_FIRE :: 15.0;
+WD_HEAL_RGB :: Point.{x = 0.55, y = 1.0, z = 0.45};
+WD_BOLT_RGB :: Point.{x = 0.72, y = 0.8, z = 1.0};
+WD_THORN_RGB :: Point.{x = 0.3, y = 0.24, z = 0.12};
+
+WdFire :: struct { live: bool; at: Point; t: f32; life: f32; next: f32; gen: int; }
+Wild :: struct {
+  time: f32;
+  ff_on: bool; ff_t: f32; ff_at: Point; ff_hue: int;
+  lit: [WATCH_ACTORS] bool; you_lit: bool;        // Faerie Fire: outlined
+  hw_t: f32; hw_who: int;                          // Healing Word's light, on whom (-1 you)
+  sg_on: bool; sg_t: f32; sg_at: Point;            // Spike Growth: its middle on the ground
+  sg_x: [WATCH_ACTORS] f32; sg_z: [WATCH_ACTORS] f32; sg_walk: [WATCH_ACTORS] f32; sg_was: [WATCH_ACTORS] bool;
+  you_x: f32; you_z: f32; you_walk: f32; you_was: bool;
+  cl_on: bool; cl_t: f32; cl_at: Point; cl_cool: f32;   // Call Lightning: the cloud's middle
+  wf_on: bool; wf_t: f32; wf_a: Point; wf_b: Point; wf_n: Point;   // Wall of Fire: its ends, its burning side
+  wf_next: [WATCH_ACTORS] f32; you_wf_next: f32;
+  fires: [WD_FIRES] WdFire;
+  burnt: [WD_BURNT] Point; burnt_n: int;
+  fire_next: [WATCH_ACTORS] f32; you_fire_next: f32;
+}
+wd_of :: (s: [] Everglade) -> [] Wild { return s[0].sp.wd[..]; }
+wd_start :: (s: [] Everglade) {
+  v := wd_of(s);
+  v[0].time = 0; v[0].ff_on = false; v[0].you_lit = false; v[0].hw_t = 100; v[0].sg_on = false; v[0].cl_on = false; v[0].cl_cool = 0; v[0].wf_on = false;
+  for i: 0..<WATCH_ACTORS { v[0].lit[i] = false; v[0].sg_was[i] = false; v[0].wf_next[i] = 0; v[0].fire_next[i] = 0; }
+  for k: 0..<WD_FIRES { v[0].fires[k].live = false; }
+  v[0].burnt_n = 0; v[0].you_was = false;
+}
+wd_active :: (s: [] Everglade, k: int) -> bool {
+  v := wd_of(s);
+  if k == AB_FAERIE { return v[0].ff_on; }
+  if k == AB_SPIKE { return v[0].sg_on; }
+  if k == AB_CALL { return v[0].cl_on; }
+  if k == AB_WALLFIRE { return v[0].wf_on; }
+  return false;
+}
+wd_press :: (s: [] Everglade, k: int) {
+  v := wd_of(s);
+  b := SP_SLOTS + k;
+  picked := s[0].sp.armed == b;
+  if picked {
+    if k == AB_FAERIE && v[0].ff_on { wd_ff_end(s); sp_say(s, "FAERIE FIRE ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_SPIKE && v[0].sg_on { v[0].sg_on = false; sp_say(s, "SPIKE GROWTH ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_CALL && v[0].cl_on { v[0].cl_on = false; sp_say(s, "CALL LIGHTNING ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_WALLFIRE && v[0].wf_on { v[0].wf_on = false; sp_say(s, "WALL OF FIRE ENDS", -1, ""); s[0].sp.armed = -1; return; }
+  }
+  s[0].sp.armed = ifx picked then -1 else b;
+}
+wd_cast :: (s: [] Everglade, k: int) {
+  if k == AB_FAERIE { wd_ff_cast(s); return; }
+  if k == AB_HEALING { wd_hw_cast(s); return; }
+  if k == AB_SPIKE { wd_sg_cast(s); return; }
+  if k == AB_CALL { wd_cl_cast(s); return; }
+  if k == AB_WALLFIRE { wd_wf_cast(s); return; }
+}
+wd_concentration_lost :: (s: [] Everglade) {
+  v := wd_of(s);
+  if v[0].ff_on { wd_ff_end(s); }
+  v[0].sg_on = false; v[0].cl_on = false; v[0].wf_on = false;
+}
+wd_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  v := wd_of(s);
+  return v[0].sg_on && flat_gap(v3(x, 0, z), v[0].sg_at) <= f32(WD_SG_R);
+}
+// A d20 for an attack at person i: two, the higher, while Faerie Fire outlines them.
+wd_d20 :: (s: [] Everglade, i: int) -> int {
+  d := s[0].sp.dice[..];
+  roll := srd_roll(d, 20);
+  v := wd_of(s);
+  if v[0].ff_on && i >= 0 && i < WATCH_ACTORS && v[0].lit[i] { other := srd_roll(d, 20); if other > roll { roll = other; } }
+  return roll;
+}
+wd_aim_far :: (s: [] Everglade, reach: f32, what: string) -> bool {
+  if !s[0].sp.aim_ok { sp_say(s, what, -1, ""); return true; }
+  if flat_gap(s[0].sp.aim, ab_you(s)) > reach { sp_say(s, wd_too_far(reach), -1, ""); return true; }
+  return false;
+}
+wd_too_far :: (reach: f32) -> string {
+  if reach < 20 { return "TOO FAR · 60 FEET AT MOST"; }
+  if reach < 40 { return "TOO FAR · 120 FEET AT MOST"; }
+  return "TOO FAR · 150 FEET AT MOST";
+}
+wd_feet :: (s: [] Everglade, i: int) -> Point { pl := person_place(s, i); return v3(pl.x, folk_feet(s, pl.x, pl.z) + ab_air(s, i), pl.z); }
+wd_you_down :: (s: [] Everglade) -> bool { you := ab_you(s); return you.y - ground_at(s, you.x, you.z) < 0.35; }
+wd_hurt_you :: (s: [] Everglade, took: int, text: string) {
+  if took <= 0 || !watch_on(s) { return; }
+  w := watch_w(s);
+  if w[0].dead { return; }
+  watch_hurt_you_thrown(w, took, ab_you(s), s[0].face, v3(0, 0, 0));
+  sp_say(s, text, took, "DAMAGE");
+}
+
+// ---- Faerie Fire
+
+wd_ff_cast :: (s: [] Everglade) {
+  if wd_aim_far(s, f32(WD_FF_RANGE), "POINT AT THE GROUND") { return; }
+  s[0].sp.armed = -1;
+  wd_ff_at(s, s[0].sp.aim);
+}
+wd_in_cube :: (c: Point, p: Point, side: f32) -> bool {
+  h := side * 0.5;
+  return abs(p.x - c.x) <= h + 0.3 && abs(p.z - c.z) <= h + 0.3 && p.y + f32(BODY_TALL) >= c.y - 0.3 && p.y <= c.y + side;
+}
+wd_ff_at :: (s: [] Everglade, at: Point) {
+  v := wd_of(s);
+  if v[0].ff_on { wd_ff_end(s); }
+  c := v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z);
+  v[0].ff_on = true; v[0].ff_t = 0; v[0].ff_at = c;
+  v[0].ff_hue = cast(int) (sp_rand(s) * 2.999);
+  hue := wd_ff_rgb(v[0].ff_hue);
+  side := f32(WD_FF_SIDE);
+  // the cube fills with motes of light a moment
+  for q: 0..<(ifx phone(s) then 18 else 36) {
+    p := add(c, v3((sp_rand(s) - 0.5) * side, sp_rand(s) * side * 0.6, (sp_rand(s) - 0.5) * side));
+    sp_add_spark(s, p, times(sp_spray(s, 0), 0.3), 0.8 + 0.8 * sp_rand(s), 0.025, times(hue, 1.4), -0.2);
+  }
+  n := 0; tried := 0;
+  if watch_on(s) {
+    d := s[0].sp.dice[..];
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) || !wd_in_cube(c, wd_feet(s, i), side) { continue; }
+      tried += 1;
+      if srd_save(d, watch_block(i).dex, GV_DC).success { continue; }
+      v[0].lit[i] = true; n += 1;
+    }
+    w := watch_w(s);
+    if !w[0].dead && wd_in_cube(c, ab_you(s), side) && !srd_save(w[0].dice[..], SP_DEX, GV_DC).success { v[0].you_lit = true; }
+  }
+  if tried > 0 { gv_crime(s, c, f32(WD_HEAR_FF)); }
+  if v[0].you_lit { sp_say(s, "FAERIE FIRE · YOU ARE OUTLINED", -1, ""); }
+  else if n > 0 { sp_say(s, "FAERIE FIRE", n, "OUTLINED"); }
+  else { sp_say(s, "FAERIE FIRE", -1, ""); }
+}
+wd_ff_end :: (s: [] Everglade) {
+  v := wd_of(s);
+  v[0].ff_on = false; v[0].you_lit = false;
+  for i: 0..<WATCH_ACTORS { v[0].lit[i] = false; }
+}
+wd_ff_frame :: (s: [] Everglade, dt: f32) {
+  v := wd_of(s);
+  if !v[0].ff_on { return; }
+  v[0].ff_t += dt;
+  if v[0].ff_t >= f32(WD_FF_LIFE) { wd_ff_end(s); sp_say(s, "FAERIE FIRE ENDS", -1, ""); return; }
+  for i: 0..<WATCH_ACTORS { if v[0].lit[i] && !ab_person_ok(s, i) { v[0].lit[i] = false; } }
+  // outlined, the watch's next blow at you has Advantage, every one while it lasts
+  if v[0].you_lit && watch_on(s) { watch_w(s)[0].marked = true; }
+}
+
+// ---- Healing Word
+
+wd_hw_cast :: (s: [] Everglade) {
+  pick := ab_tk_pick(s);
+  who := ifx pick.kind == 2 then pick.idx else -1;
+  if who >= 0 && flat_gap(ab_person_at(s, who), ab_you(s)) > f32(WD_HW_RANGE) { sp_say(s, "TOO FAR · 60 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  wd_hw_on(s, who);
+}
+// Healing Word on person `who` (-1 you).
+wd_hw_on :: (s: [] Everglade, who: int) {
+  v := wd_of(s);
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  amount := srd_sum(s[0].sp.dice[..], 2, 4) + GV_WIS;
+  if who >= 0 {
+    a := w[0].actors[who..<who + 1];
+    if a[0].mode == WM_DEAD { sp_say(s, "HEALING WORD · THEY ARE BEYOND IT", -1, ""); return; }
+    got := lo_i(a[0].max, a[0].hp + amount) - a[0].hp;
+    a[0].hp += got;
+    sp_say(s, "HEALING WORD", got, "HIT POINTS");
+  } else {
+    if w[0].dead { return; }
+    got := lo_i(w[0].max, w[0].hp + amount) - w[0].hp;
+    w[0].hp += got;
+    sp_say(s, "HEALING WORD · YOU", got, "HIT POINTS");
+  }
+  v[0].hw_t = 0; v[0].hw_who = who;
+}
+wd_hw_place :: (s: [] Everglade) -> Point {
+  v := wd_of(s);
+  if v[0].hw_who >= 0 { return ab_person_at(s, v[0].hw_who); }
+  return add(ab_you(s), v3(0, 0.9, 0));
+}
+
+// ---- Spike Growth
+
+wd_sg_cast :: (s: [] Everglade) {
+  if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  if wd_aim_far(s, f32(WD_SG_RANGE), "POINT AT THE GROUND") { return; }
+  s[0].sp.armed = -1;
+  wd_sg_at(s, s[0].sp.aim);
+}
+wd_sg_at :: (s: [] Everglade, at: Point) {
+  v := wd_of(s);
+  v[0].sg_on = true; v[0].sg_t = 0; v[0].sg_at = v3(at.x, ground_at(s, at.x, at.z), at.z);
+  for i: 0..<WATCH_ACTORS { v[0].sg_was[i] = false; v[0].sg_walk[i] = 0; }
+  v[0].you_was = false; v[0].you_walk = 0;
+  for q: 0..<6 { a := f32(q) * 1.047; sp_add_puff(s, add(v[0].sg_at, v3(cos(a) * 3, 0.1, sin(a) * 3)), v3(0, 0.4, 0), 0.5, 1.2, 0.6); }
+  sp_say(s, "SPIKE GROWTH", -1, "");
+}
+wd_sg_frame :: (s: [] Everglade, dt: f32) {
+  v := wd_of(s);
+  if !v[0].sg_on { return; }
+  v[0].sg_t += dt;
+  if v[0].sg_t >= f32(WD_SG_LIFE) { v[0].sg_on = false; sp_say(s, "SPIKE GROWTH ENDS", -1, ""); return; }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  R := f32(WD_SG_R);
+  hurt := 0; total := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || ab_air(s, i) > 0.5 { v[0].sg_was[i] = false; continue; }
+    pl := person_place(s, i);
+    inside := flat_gap(v3(pl.x, 0, pl.z), v[0].sg_at) <= R;
+    if inside && v[0].sg_was[i] {
+      step := flat_gap(v3(pl.x, 0, pl.z), v3(v[0].sg_x[i], 0, v[0].sg_z[i]));
+      if step < 2 { v[0].sg_walk[i] += step; }   // a jump (knocked home) is no walk
+      while v[0].sg_walk[i] >= f32(WD_SG_STEP) {
+        v[0].sg_walk[i] -= f32(WD_SG_STEP);
+        took := srd_sum(d, 2, 4);
+        watch_harm(w, i, took, you);
+        hurt += 1; total += took;
+      }
+    } else if !inside { v[0].sg_walk[i] = 0; }
+    v[0].sg_was[i] = inside; v[0].sg_x[i] = pl.x; v[0].sg_z[i] = pl.z;
+  }
+  if hurt > 0 { gv_crime(s, v[0].sg_at, f32(WD_HEAR_SG)); sp_say(s, "SPIKE GROWTH · 2D4 PIERCING", total, "DAMAGE"); }
+  // you, on foot in it
+  inside := !w[0].dead && wd_you_down(s) && flat_gap(you, v[0].sg_at) <= R;
+  if inside && v[0].you_was {
+    step := flat_gap(you, v3(v[0].you_x, 0, v[0].you_z));
+    if step < 2 { v[0].you_walk += step; }
+    took := 0;
+    while v[0].you_walk >= f32(WD_SG_STEP) { v[0].you_walk -= f32(WD_SG_STEP); took += srd_sum(d, 2, 4); }
+    wd_hurt_you(s, took, "THE THORNS · 2D4 PIERCING");
+  } else if !inside { v[0].you_walk = 0; }
+  v[0].you_was = inside; v[0].you_x = you.x; v[0].you_z = you.z;
+}
+
+// ---- Call Lightning
+
+wd_cl_cast :: (s: [] Everglade) {
+  v := wd_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  you := ab_you(s);
+  middle := ifx v[0].cl_on then v[0].cl_at else v3(you.x, ground_at(s, you.x, you.z) + f32(WD_CL_UP), you.z);
+  if flat_gap(at, middle) > f32(WD_CL_R) { sp_say(s, "TOO FAR · UNDER THE CLOUD, 60 FEET ROUND", -1, ""); return; }
+  if v[0].cl_cool > 0 { return; }
+  s[0].sp.armed = -1;
+  if !v[0].cl_on { v[0].cl_on = true; v[0].cl_t = 0; v[0].cl_at = middle; }
+  wd_cl_call(s, at);
+}
+// A bolt from the cloud down to `to` (the Thunderbolt's stroke, everglade-spells.coax SpBolt, its
+// strike handed back to wd_cl_strike).
+wd_cl_call :: (s: [] Everglade, to: Point) {
+  v := wd_of(s);
+  v[0].cl_cool = f32(WD_CL_COOL);
+  b: SpBolt;
+  b.live = true; b.t = 0; b.mega = false; b.call = true; b.to = to; b.n = v3(0, 1, 0);
+  b.top = v3(to.x + (sp_rand(s) - 0.5) * 6, v[0].cl_at.y, to.z + (sp_rand(s) - 0.5) * 6);
+  b.seed = 1 + 97 * sp_rand(s); b.jag = -1;
+  s[0].sp.bolt = b;
+  sp_bolt_jag(s);
+}
+wd_cl_strike :: (s: [] Everglade, to: Point) {
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  r := f32(WD_CL_HIT) + f32(BLAST_PAD);
+  hurt := 0; total := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) { continue; }
+      p := wd_feet(s, i);
+      if flat_gap(p, to) > r || abs(p.y - to.y) > 3 { continue; }
+      took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 3, 10), kind = DMG_LIGHTNING, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+      watch_harm(w, i, took, you);
+      hurt += 1; total += took;
+    }
+    if hurt > 0 { gv_crime(s, to, f32(WD_HEAR_CL)); }
+    if !w[0].dead && flat_gap(you, to) <= r && abs(you.y - to.y) < 3 {
+      amount := srd_sum(d, 3, 10);
+      wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "CALL LIGHTNING STRIKES YOU");
+    }
+  }
+  if hurt > 0 { sp_say(s, "CALL LIGHTNING · 3D10 LIGHTNING", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  else { sp_say(s, "CALL LIGHTNING", -1, ""); }
+  // where it strikes: a ring of light, sparks, a scorch, what burns there catches
+  few := phone(s);
+  sp_add_shock(s, add(to, v3(0, 0.05, 0)), 3.0, 0.4, WD_BOLT_RGB);
+  for q: 0..<(ifx few then 10 else 22) { sp_add_spark(s, add(to, v3(0, 0.1, 0)), times(sp_spray(s, 0.6), 3 + 5 * sp_rand(s)), 0.3 + 0.4 * sp_rand(s), 0.02, v3(1.2, 1.3, 1.6), 9.81); }
+  for q: 0..<3 { sp_add_puff(s, add(to, v3(0, 0.2, 0)), times(sp_spray(s, 0.8), 1.0), 0.5, 1.6, 0.45); }
+  if !fr_wet(s, to.x, to.z) { sp_add_scorch(s, to, 0.7, false); wd_light(s, to, WD_GEN - 4); }
+  wd_debris_catch(s, to, 1.5);
+  fr_melt(s, to, 1.0);
+  s[0].sp.shake = hi(s[0].sp.shake, ifx flat_gap(you, to) < 12 then 0.35f32 else 0.15f32);
+}
+wd_cl_frame :: (s: [] Everglade, dt: f32) {
+  v := wd_of(s);
+  if v[0].cl_cool > 0 { v[0].cl_cool = hi(v[0].cl_cool - dt, 0); }
+  if !v[0].cl_on { return; }
+  v[0].cl_t += dt;
+  if v[0].cl_t >= f32(WD_CL_LIFE) { v[0].cl_on = false; sp_say(s, "CALL LIGHTNING ENDS", -1, ""); }
+}
+
+// ---- Wall of Fire
+
+wd_wf_cast :: (s: [] Everglade) {
+  if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  if wd_aim_far(s, f32(WD_WF_RANGE), "POINT AT THE GROUND") { return; }
+  s[0].sp.armed = -1;
+  wd_wf_at(s, s[0].sp.aim, ab_forward(s));
+}
+// The wall rises across `at`, square to `ahead`; its far side (along `ahead`) burns.
+wd_wf_at :: (s: [] Everglade, at: Point, ahead: Point) {
+  v := wd_of(s);
+  n := unit_or(v3(ahead.x, 0, ahead.z), v3(0, 0, 1));
+  side := v3(-n.z, 0, n.x);
+  h := f32(WD_WF_LONG) * 0.5;
+  v[0].wf_on = true; v[0].wf_t = 0; v[0].wf_n = n;
+  v[0].wf_a = sub(at, times(side, h)); v[0].wf_b = add(at, times(side, h));
+  v[0].wf_a.y = ground_at(s, v[0].wf_a.x, v[0].wf_a.z); v[0].wf_b.y = ground_at(s, v[0].wf_b.x, v[0].wf_b.z);
+  for i: 0..<WATCH_ACTORS { v[0].wf_next[i] = v[0].time + f32(WD_ROUND); }
+  v[0].you_wf_next = v[0].time + f32(WD_ROUND);
+  hurt := 0; total := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    d := s[0].sp.dice[..];
+    you := ab_you(s);
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) || wd_wf_where(s, wd_feet(s, i)) != 1 { continue; }
+      took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 5, 8), kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+      watch_harm(w, i, took, you);
+      hurt += 1; total += took;
+    }
+    if hurt > 0 { gv_crime(s, at, f32(WD_HEAR_WF)); }
+    if !w[0].dead && wd_wf_where(s, you) == 1 {
+      amount := srd_sum(d, 5, 8);
+      wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "WALL OF FIRE · YOU ARE IN IT");
+    }
+  }
+  if hurt > 0 { sp_say(s, "WALL OF FIRE · 5D8 FIRE", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  else { sp_say(s, "WALL OF FIRE", -1, ""); }
+  // the grass at its foot catches
+  for q: 0..<6 {
+    p := mix(v[0].wf_a, v[0].wf_b, (f32(q) + 0.5) / 6);
+    p.y = ground_at(s, p.x, p.z);
+    wd_light(s, add(p, times(n, 0.6)), WD_GEN - 3);
+  }
+  for q: 0..<6 { wd_debris_catch(s, mix(v[0].wf_a, v[0].wf_b, (f32(q) + 0.5) / 6), 1.2); }
+  fr_melt(s, at, h);
+}
+// Where p stands to the wall: 0 clear of it, 1 in it, 2 within 10 feet of its burning side.
+wd_wf_where :: (s: [] Everglade, p: Point) -> int {
+  v := wd_of(s);
+  if !v[0].wf_on { return 0; }
+  a := v[0].wf_a; n := v[0].wf_n;
+  side := v3(-n.z, 0, n.x);
+  along := (p.x - a.x) * side.x + (p.z - a.z) * side.z;
+  off := (p.x - a.x) * n.x + (p.z - a.z) * n.z;
+  if along < -0.3 || along > f32(WD_WF_LONG) + 0.3 || p.y > a.y + f32(WD_WF_TALL) + 1 { return 0; }
+  if abs(off) <= f32(WD_WF_HALF) + f32(EG_RADIUS) { return 1; }
+  if off > 0 && off <= f32(WD_WF_NEAR) { return 2; }
+  return 0;
+}
+wd_wf_frame :: (s: [] Everglade, dt: f32) {
+  v := wd_of(s);
+  if !v[0].wf_on { return; }
+  v[0].wf_t += dt;
+  if v[0].wf_t >= f32(WD_WF_LIFE) { v[0].wf_on = false; sp_say(s, "WALL OF FIRE ENDS", -1, ""); return; }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  hurt := 0; total := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || v[0].time < v[0].wf_next[i] { continue; }
+    if wd_wf_where(s, wd_feet(s, i)) == 0 { continue; }
+    // a round ends for them where it burns
+    v[0].wf_next[i] = v[0].time + f32(WD_ROUND);
+    took := srd_sum(d, 5, 8);
+    watch_harm(w, i, took, you);
+    hurt += 1; total += took;
+  }
+  if hurt > 0 { gv_crime(s, mix(v[0].wf_a, v[0].wf_b, 0.5), f32(WD_HEAR_WF)); sp_say(s, "WALL OF FIRE · 5D8 FIRE", total, "DAMAGE"); }
+  // you: walking into it burns at once, standing by its burning side as a round ends
+  spot := ifx w[0].dead then 0 else wd_wf_where(s, you);
+  if spot != 0 && v[0].time >= v[0].you_wf_next {
+    v[0].you_wf_next = v[0].time + f32(WD_ROUND);
+    wd_hurt_you(s, srd_sum(d, 5, 8), ifx spot == 1 then "WALL OF FIRE · YOU ARE IN IT" else "WALL OF FIRE · ITS HEAT");
+  }
+}
+// The walls the townsfolk walk round (everglade-abilities.coax ab_stone_folk): after the n in f, five
+// numbers each.
+wd_fences :: (s: [] Everglade, f: [] f32, n: int) -> int {
+  v := wd_of(s);
+  if !v[0].wf_on || (n + 1) * 5 > f.count { return n; }
+  f[n * 5] = v[0].wf_a.x; f[n * 5 + 1] = v[0].wf_a.z; f[n * 5 + 2] = v[0].wf_b.x; f[n * 5 + 3] = v[0].wf_b.z; f[n * 5 + 4] = f32(WD_WF_HALF);
+  return n + 1;
+}
+
+// ---- fire on the grass
+
+// Whether (x, z) is grass that burns: off the streets, out of the water and the buildings.
+wd_grass :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  if fr_wet(s, x, z) { return false; }
+  nodes := EG_NODE_XZ; links := EG_LINK_AB;
+  if verse_path_nearest(nodes[..], links[..], x, z).d < f32(EG_PATH_HALF) + 0.3 { return false; }
+  for q: 0..<s[0].box_n {
+    b := s[0].boxes[q * 6..<q * 6 + 6];
+    if x >= b[0] - 0.3 && x <= b[3] + 0.3 && z >= b[2] - 0.3 && z <= b[5] + 0.3 { return false; }
+  }
+  return true;
+}
+// Fire takes the grass at `at` (if it is grass not yet burnt), `gen` steps from where it began.
+wd_ignite :: (s: [] Everglade, at: Point, gen: int) -> bool {
+  v := wd_of(s);
+  if !wd_grass(s, at.x, at.z) { return false; }
+  for q: 0..<WD_FIRES { if v[0].fires[q].live && flat_gap(v[0].fires[q].at, at) < 0.85 { return false; } }
+  m := lo_i(v[0].burnt_n, WD_BURNT);
+  for q: 0..<m { if flat_gap(v[0].burnt[q], at) < 0.85 { return false; } }
+  for q: 0..<WD_FIRES {
+    if v[0].fires[q].live { continue; }
+    v[0].fires[q] = WdFire.{live = true, at = v3(at.x, ground_at(s, at.x, at.z), at.z), t = 0, life = 8 + 5 * sp_rand(s), next = 1.0 + 1.2 * sp_rand(s), gen = gen};
+    return true;
+  }
+  return false;
+}
+// The same, for who does not ask whether it took.
+wd_light :: (s: [] Everglade, at: Point, gen: int) { if !wd_ignite(s, at, gen) { return; } }
+wd_douse_at :: (s: [] Everglade, at: Point, r: f32) { if wd_douse(s, at, r) == 0 { return; } }
+wd_burn_out :: (s: [] Everglade, q: int) {
+  v := wd_of(s);
+  v[0].fires[q].live = false;
+  v[0].burnt[v[0].burnt_n % WD_BURNT] = v[0].fires[q].at;
+  v[0].burnt_n += 1;
+}
+// Water at `at`, `r` round: the fires there go out in a hiss of steam. How many.
+wd_douse :: (s: [] Everglade, at: Point, r: f32) -> int {
+  v := wd_of(s);
+  n := 0;
+  for q: 0..<WD_FIRES {
+    if !v[0].fires[q].live || flat_gap(v[0].fires[q].at, at) > r { continue; }
+    if n < 6 { sp_add_puff(s, add(v[0].fires[q].at, v3(0, 0.3, 0)), v3(0, 0.8, 0), 0.5, 1.4, 0.15); }
+    wd_burn_out(s, q);
+    n += 1;
+  }
+  return n;
+}
+wd_debris_catch :: (s: [] Everglade, at: Point, r: f32) {
+  w := sp_dm(s);
+  box: [1] DemoBox;
+  for b: 0..<DEMO_BODIES {
+    if w[0].meta[b].kind == 0 || !demo_chunk_box(w, b, box[..]) || flat_gap(box[0].at, at) > r || box[0].at.y > at.y + 2 { continue; }
+    s[0].sp.burn[b] = hi(s[0].sp.burn[b], f32(GV_BURN));
+  }
+}
+wd_fires_frame :: (s: [] Everglade, dt: f32) {
+  v := wd_of(s);
+  live := 0;
+  for q: 0..<WD_FIRES {
+    if !v[0].fires[q].live { continue; }
+    live += 1;
+    v[0].fires[q].t += dt;
+    f := v[0].fires[q];
+    if f.t >= f.life || fr_wet(s, f.at.x, f.at.z) { wd_burn_out(s, q); continue; }
+    // it catches the grass beside it
+    if f.t >= f.next {
+      v[0].fires[q].next = f.t + 1.2 + 1.4 * sp_rand(s);
+      if f.gen < WD_GEN {
+        a := f32(TAU) * sp_rand(s);
+        dd := 1.1 + 0.5 * sp_rand(s);
+        wd_light(s, add(f.at, v3(cos(a) * dd, 0, sin(a) * dd)), f.gen + 1);
+      }
+    }
+  }
+  if live == 0 || !watch_on(s) { return; }
+  // whoever stands in one burns, a round at a time
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  hurt := 0; at := you;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || v[0].time < v[0].fire_next[i] || ab_air(s, i) > 0.5 { continue; }
+    p := wd_feet(s, i);
+    if !wd_in_fire(s, p) { continue; }
+    v[0].fire_next[i] = v[0].time + f32(WD_ROUND);
+    watch_harm(w, i, srd_sum(d, 1, 4), you);
+    hurt += 1; at = p;
+  }
+  if hurt > 0 { gv_crime(s, at, f32(WD_HEAR_FIRE)); }
+  if !w[0].dead && v[0].time >= v[0].you_fire_next && wd_you_down(s) && wd_in_fire(s, you) {
+    v[0].you_fire_next = v[0].time + f32(WD_ROUND);
+    wd_hurt_you(s, srd_sum(d, 1, 4), "YOU ARE BURNING · 1D4 FIRE");
+  }
+  for q: 0..<WD_FIRES { if v[0].fires[q].live && v[0].fires[q].t < dt * 1.5 { wd_debris_catch(s, v[0].fires[q].at, 0.6); } }
+}
+wd_in_fire :: (s: [] Everglade, p: Point) -> bool {
+  v := wd_of(s);
+  for q: 0..<WD_FIRES { if v[0].fires[q].live && flat_gap(v[0].fires[q].at, p) <= f32(WD_FIRE_R) && abs(p.y - v[0].fires[q].at.y) < 1 { return true; } }
+  return false;
+}
+
+// ---- each frame, the light and drawing
+
+wd_frame :: (s: [] Everglade, dt: f32) {
+  v := wd_of(s);
+  v[0].time += dt;
+  v[0].hw_t += dt;
+  wd_ff_frame(s, dt);
+  wd_sg_frame(s, dt);
+  wd_cl_frame(s, dt);
+  wd_wf_frame(s, dt);
+  wd_fires_frame(s, dt);
+}
+wd_flick :: (t: f32, k: f32) -> f32 { return 0.8 + 0.2 * sin(t * 17 + k * 2.3) * sin(t * 6.1 + k); }
+wd_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  v := wd_of(s);
+  n := k;
+  t := v[0].time;
+  if v[0].wf_on {
+    on := wd_wf_rise(s);
+    for q: 0..<3 { n = sp_lamp(u, n, most, add(mix(v[0].wf_a, v[0].wf_b, (f32(q) + 0.5) / 3), v3(0, 2.5, 0)), 14, v3(1.0, 0.55, 0.22), 2.2 * on * wd_flick(t, f32(q))); }
+  }
+  // the ground fires: a few of them, spread out
+  shown := 0;
+  for q: 0..<WD_FIRES {
+    if !v[0].fires[q].live || shown >= 3 || q % 3 != shown % 3 { continue; }
+    f := v[0].fires[q];
+    n = sp_lamp(u, n, most, add(f.at, v3(0, 0.6, 0)), 7, v3(1.0, 0.55, 0.22), 1.1 * wd_fire_on(f) * wd_flick(t, f32(q)));
+    shown += 1;
+  }
+  if v[0].ff_on {
+    hue := wd_ff_rgb(v[0].ff_hue);
+    shone := 0;
+    for i: 0..<WATCH_ACTORS {
+      if !v[0].lit[i] || shone >= 4 { continue; }
+      n = sp_lamp(u, n, most, ab_person_at(s, i), f32(WD_FF_DIM), hue, 0.6);
+      shone += 1;
+    }
+    if v[0].you_lit { n = sp_lamp(u, n, most, add(ab_you(s), v3(0, 1, 0)), f32(WD_FF_DIM), hue, 0.6); }
+  }
+  if v[0].hw_t < f32(WD_HW_LIFE) { f := 1 - v[0].hw_t / f32(WD_HW_LIFE); n = sp_lamp(u, n, most, wd_hw_place(s), 5, WD_HEAL_RGB, 1.2 * f); }
+  return n;
+}
+wd_fire_on :: (f: WdFire) -> f32 { return clamp(f.t / 0.6, 0, 1) * clamp((f.life - f.t) / 1.5, 0, 1); }
+wd_wf_rise :: (s: [] Everglade) -> f32 {
+  v := wd_of(s);
+  return clamp(v[0].wf_t / 0.6, 0, 1) * clamp((f32(WD_WF_LIFE) - v[0].wf_t) / 1.0, 0, 1);
+}
+wd_draw :: (s: [] Everglade) {
+  v := wd_of(s);
+  few := phone(s);
+  t := v[0].time;
+  wd_wf_draw(s, few);
+  // the ground fires: a low blaze licking up off the grass, its glow, its smoke; black where it was
+  for q: 0..<WD_FIRES {
+    f := v[0].fires[q];
+    if !f.live { continue; }
+    on := wd_fire_on(f);
+    fl := wd_flick(t, f32(q));
+    sp_fx(s, FX_FIRE, add(f.at, v3(0, 0.25 * on, 0)), 0.45 * on * fl, v3(1.5, 0.9, 0.35), 0.6, v3(0.9, 0, 0), t * 2.7 + f32(q) * 0.31);
+    sp_glow(s, add(f.at, v3(0, 0.2, 0)), 1.4 * on * fl, v3(0.45, 0.18, 0.04));
+    every := ifx few then 4 else 8;
+    if cast(int) (f.t * f32(every)) != cast(int) ((f.t - 1.0 / 60) * f32(every)) {
+      sp_add_flame(s, add(f.at, v3((sp_rand(s) - 0.5) * 0.8, 0.05, (sp_rand(s) - 0.5) * 0.8)), v3(0, 0.5, 0), 0.22 + 0.15 * sp_rand(s), 1.8, 0.35 + 0.2 * sp_rand(s), 2.8, 0);
+    }
+    if cast(int) (f.t * 1.5) != cast(int) ((f.t - 1.0 / 60) * 1.5) { sp_add_smoke(s, add(f.at, v3(0, 0.6, 0)), v3(0, 0.5, 0), 0.45, 2.6, 0.2, 0.5, 0.45, 0.25); }
+  }
+  m := lo_i(v[0].burnt_n, WD_BURNT);
+  for q: 0..<m {
+    b := v[0].burnt[q];
+    r := 0.62 + 0.15 * ab_h(61.0, q, 0);
+    sp_shape(s, SHAPE_CONE, LOOK_MATTE, add(b, v3(0, 0.03, 0)), v3(r * 2, 0, 0), v3(0, 0.03, 0), v3(0, 0, r * 2), v3(0.035, 0.03, 0.025));
+  }
+  // Faerie Fire: the outlined ringed in motes of light
+  if v[0].ff_on {
+    hue := wd_ff_rgb(v[0].ff_hue);
+    drawn := 0;
+    for i: 0..<WATCH_ACTORS {
+      if !v[0].lit[i] || drawn >= 8 { continue; }
+      drawn += 1;
+      wd_outline(s, wd_feet(s, i), hue, f32(i), few);
+    }
+    if v[0].you_lit { wd_outline(s, ab_you(s), hue, 99, few); }
+  }
+  // Healing Word: a spiral of green-gold light rising round them
+  if v[0].hw_t < f32(WD_HW_LIFE) {
+    p := wd_hw_place(s);
+    f := v[0].hw_t / f32(WD_HW_LIFE);
+    sp_glow(s, p, 1.2 * (1 - f), times(WD_HEAL_RGB, 0.35));
+    for q: 0..<(ifx few then 6 else 12) {
+      a := f32(q) * 0.52 + f * 7;
+      y := -0.8 + 2.2 * clamp(f * 1.3 - f32(q) * 0.04, 0, 1);
+      sp_glow(s, add(p, v3(cos(a) * 0.45, y, sin(a) * 0.45)), 0.1, times(v3(1.1, 1.4, 0.7), 1 - f));
+    }
+  }
+  wd_sg_draw(s, few);
+  // Call Lightning's cloud: a dark mass turning slowly far over, lit from within now and then
+  if v[0].cl_on {
+    on := clamp(v[0].cl_t / 1.5, 0, 1);
+    c := v[0].cl_at;
+    R := f32(WD_CL_R);
+    for q: 0..<(ifx few then 9 else 18) {
+      a := f32(TAU) * ab_h(71.0, q, 0) + v[0].cl_t * 0.02;
+      rr := R * sqrt(ab_h(71.0, q, 1));
+      p := add(c, v3(cos(a) * rr, (ab_h(71.0, q, 2) - 0.5) * 2.5, sin(a) * rr));
+      sp_fx(s, FX_SMOKE, p, 5.5 + 2.5 * ab_h(71.0, q, 3), v3(0.2, 0.21, 0.24), 0.75 * on, v3(0, 0, 0), f32(q) * 0.41);
+    }
+    if sp_noise(floor(t * 3), 5.1) > 0.8 { sp_glow(s, add(c, v3((sp_noise(floor(t * 3), 1.3) - 0.5) * R, 0, (sp_noise(floor(t * 3), 2.7) - 0.5) * R)), 7, times(WD_BOLT_RGB, 0.3)); }
+  }
+  // picked: where it would fall
+  armed := s[0].sp.armed - SP_SLOTS;
+  if s[0].sp.aim_ok && (armed == AB_FAERIE || armed == AB_WALLFIRE) {
+    pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+    reach := ifx armed == AB_FAERIE then f32(WD_FF_RANGE) else f32(WD_WF_RANGE);
+    far := flat_gap(s[0].sp.aim, ab_you(s)) > reach;
+    if armed == AB_FAERIE { ab_square(s, s[0].sp.aim, f32(WD_FF_SIDE) * 0.5, times(ifx far then v3(0.6, 0.25, 0.2) else wd_ff_rgb(2), 0.7 * pulse)); }
+    else {
+      fw := ab_forward(s); side := unit_or(v3(-fw.z, 0, fw.x), v3(1, 0, 0));
+      h := f32(WD_WF_LONG) * 0.5;
+      c := ifx far then v3(0.6, 0.25, 0.2) else GV_FLAME_RGB;
+      for q: 0..<12 {
+        p0 := add(s[0].sp.aim, times(side, -h + f32(WD_WF_LONG) * f32(q) / 12)); p0.y = ground_at(s, p0.x, p0.z) + 0.08;
+        p1 := add(s[0].sp.aim, times(side, -h + f32(WD_WF_LONG) * f32(q + 1) / 12)); p1.y = ground_at(s, p1.x, p1.z) + 0.08;
+        ab_line(s, p0, p1, times(c, 0.8 * pulse));
+      }
+    }
+  }
+}
+// The wall: tongues of fire along it, tall and flickering, with its smoke, embers and its glow.
+wd_wf_draw :: (s: [] Everglade, few: bool) {
+  v := wd_of(s);
+  if !v[0].wf_on { return; }
+  on := wd_wf_rise(s);
+  t := v[0].wf_t;
+  cols := ifx few then 18 else 34;
+  H := f32(WD_WF_TALL) * on;
+  for q: 0..<cols {
+    u := (f32(q) + 0.5) / f32(cols);
+    base := mix(v[0].wf_a, v[0].wf_b, u);
+    base.y = ground_at(s, base.x, base.z);
+    tall := H * (0.75 + 0.25 * sin(t * 2.1 + f32(q) * 1.9) * sin(t * 1.3 + f32(q) * 0.7));
+    rows := ifx few then 3 else 5;
+    for r: 0..<rows {
+      k := (f32(r) + 0.5) / f32(rows);
+      // tongues narrowing as they climb, each one licking sideways a little
+      size := lerp(0.62, 0.3, k) * (0.85 + 0.15 * sin(t * 9 + f32(q * 3 + r)));
+      sway := 0.12 * k * sin(t * 4.3 + f32(q) * 2.1 + f32(r));
+      sp_fx(s, FX_FIRE, add(base, add(times(v[0].wf_n, sway), v3(0, tall * k, 0))), size, sp_flame_rgb(0.12 + 0.5 * k), lerp(0.5, 0.15, k), v3(lerp(0.85, 0.55, k), 0, 0), t * 2.3 + f32(q * 7 + r) * 0.37);
+    }
+    if q % 4 == 0 { sp_glow(s, add(base, v3(0, 0.6, 0)), 1.8 * on, v3(0.35, 0.13, 0.03)); }
+  }
+  // billows climbing off its top, embers, a pall of smoke
+  if on > 0.5 {
+    for q: 0..<(ifx few then 1 else 3) {
+      p := mix(v[0].wf_a, v[0].wf_b, sp_rand(s)); p.y = ground_at(s, p.x, p.z) + sp_rand(s) * H;
+      sp_add_flame(s, p, v3(0, 1.0, 0), 0.5 + 0.3 * sp_rand(s), 1.7, 0.45 + 0.3 * sp_rand(s), 3.5, 0.15);
+    }
+    if sp_rand(s) < 0.5 { p := mix(v[0].wf_a, v[0].wf_b, sp_rand(s)); p.y = ground_at(s, p.x, p.z) + H; sp_add_spark(s, p, add(v3(0, 2.5, 0), times(sp_spray(s, 0), 1.2)), 1.2 + sp_rand(s), 0.02, v3(1.4, 0.6, 0.15), -0.5); }
+    if sp_rand(s) < 0.12 { p := mix(v[0].wf_a, v[0].wf_b, sp_rand(s)); p.y = ground_at(s, p.x, p.z) + H; sp_add_smoke(s, p, v3(0, 1.0, 0), 1.4, 4.5, 0.25, 0.4, 0.5, 0.3); }
+  }
+}
+wd_outline :: (s: [] Everglade, feet: Point, hue: Point, k: f32, few: bool) {
+  t := wd_of(s)[0].time;
+  sp_glow(s, add(feet, v3(0, 0.9, 0)), 1.3, times(hue, 0.16));
+  n := ifx few then 8 else 16;
+  for q: 0..<n {
+    a := f32(TAU) * f32(q) / f32(n) + t * 0.9 + k;
+    y := 0.15 + 1.6 * ab_h(83.0, q, 0);
+    r := ifx y > 1.45 then 0.16f32 else 0.3f32;
+    sp_glow(s, add(feet, v3(cos(a) * r, y + 0.05 * sin(t * 3 + f32(q)), sin(a) * r)), 0.07, times(hue, 1.5));
+  }
+}
+// Spike Growth: thorns in clumps over its ground, low and brown (camouflaged), the creepers between.
+wd_sg_draw :: (s: [] Everglade, few: bool) {
+  v := wd_of(s);
+  if !v[0].sg_on { return; }
+  grow := clamp(v[0].sg_t / 0.6, 0, 1) * clamp((f32(WD_SG_LIFE) - v[0].sg_t) / 1.0, 0, 1);
+  c := v[0].sg_at;
+  R := f32(WD_SG_R);
+  for j: 0..<(ifx few then WD_THORNS / 2 else WD_THORNS) {
+    a := f32(TAU) * ab_h(67.0, j, 0);
+    rr := R * sqrt(ab_h(67.0, j, 1)) * 0.95;
+    x := c.x + cos(a) * rr; z := c.z + sin(a) * rr;
+    root := v3(x, ground_at(s, x, z), z);
+    for q: 0..<3 {
+      b := a * 3 + f32(q) * 2.1;
+      lean := 0.35 + 0.3 * ab_h(67.0, j * 3 + q, 2);
+      tall := (0.14 + 0.16 * ab_h(67.0, j * 3 + q, 3)) * grow;
+      tip := add(root, v3(cos(b) * lean * tall, tall, sin(b) * lean * tall));
+      ax := sub(tip, root);
+      l := length(ax);
+      if l < 0.01 { continue; }
+      up := times(ax, 1.0 / l);
+      side := unit_or(cross(up, v3(0, 1, 0.001)), v3(1, 0, 0));
+      fwd := cross(side, up);
+      sp_shape(s, SHAPE_CONE, LOOK_MATTE, mix(root, tip, 0.5), times(side, 0.035), ax, times(fwd, 0.035), times(WD_THORN_RGB, 0.8 + 0.4 * ab_h(67.0, j, 4)));
+    }
+  }
+}
+
+wd_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
+  v := wd_of(s);
+  you := ab_you(s);
+  if k == AB_FAERIE {
+    if far && flat_gap(s[0].sp.aim, you) > f32(WD_FF_RANGE) { return "TOO FAR · 60 FEET AT MOST"; }
+    if v[0].ff_on { return ifx phone_ then "TAP THE GROUND FOR FAERIE FIRE · TAP ITS SLOT TO END IT" else "CLICK THE GROUND FOR FAERIE FIRE · CTRL+7 ENDS IT"; }
+    return ifx phone_ then "TAP THE GROUND FOR FAERIE FIRE · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR FAERIE FIRE · ESC CANCELS";
+  }
+  if k == AB_HEALING { return ifx phone_ then "TAP SOMEONE TO HEAL THEM, OR ANYWHERE ELSE FOR YOU" else "CLICK SOMEONE TO HEAL THEM, OR ANYWHERE ELSE FOR YOU · ESC CANCELS"; }
+  if k == AB_SPIKE {
+    if far && flat_gap(s[0].sp.aim, you) > f32(WD_SG_RANGE) { return "TOO FAR · 150 FEET AT MOST"; }
+    if v[0].sg_on { return ifx phone_ then "TAP THE GROUND TO MOVE THE THORNS · TAP ITS SLOT TO END THEM" else "CLICK THE GROUND TO MOVE THE THORNS · CTRL+9 ENDS THEM"; }
+    return ifx phone_ then "TAP THE GROUND FOR SPIKE GROWTH · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR SPIKE GROWTH · ESC CANCELS";
+  }
+  if k == AB_CALL {
+    middle := ifx v[0].cl_on then v[0].cl_at else you;
+    if far && flat_gap(s[0].sp.aim, middle) > f32(WD_CL_R) { return "TOO FAR · UNDER THE CLOUD, 60 FEET ROUND"; }
+    if v[0].cl_on { return ifx phone_ then "TAP UNDER THE CLOUD TO CALL A BOLT · TAP ITS SLOT TO END IT" else "CLICK UNDER THE CLOUD TO CALL A BOLT · CTRL+0 ENDS IT"; }
+    return ifx phone_ then "TAP THE GROUND FOR CALL LIGHTNING · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR CALL LIGHTNING · ESC CANCELS";
+  }
+  if k == AB_WALLFIRE {
+    if far && flat_gap(s[0].sp.aim, you) > f32(WD_WF_RANGE) { return "TOO FAR · 120 FEET AT MOST"; }
+    if v[0].wf_on { return ifx phone_ then "TAP THE GROUND TO RAISE IT AGAIN · TAP ITS SLOT TO END IT" else "CLICK THE GROUND TO RAISE IT AGAIN · CTRL+= ENDS IT"; }
+    return ifx phone_ then "TAP THE GROUND FOR A WALL OF FIRE ACROSS YOUR VIEW · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR A WALL OF FIRE ACROSS YOUR VIEW · ESC CANCELS";
+  }
+  return "";
+}
+wd_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
+  if k == AB_HEALING { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, WD_HEAL_RGB, pulse); }
+  if k == AB_SPIKE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(WD_SG_R), WD_THORN_RGB, pulse); }
+  if k == AB_CALL { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(WD_CL_HIT), WD_BOLT_RGB, pulse); }
+  return n;
+}
+
+// ---- checks
+
+// One of the townsfolk who stands about the streets (not a guard), other than `not`.
+wd_test_one :: (g: [] Everglade, not: int) -> int {
+  for i: 0..<EG_SPOTS { if i != not && ab_person_ok(g, i) && !watch_is_guard(i) && ab_air(g, i) < 0.5 { return i; } }
+  return -1;
+}
+wd_test_put :: (g: [] Everglade, i: int, x: f32, z: f32) {
+  g[0].folk[i].x = x; g[0].folk[i].z = z;
+  a := g[0].wt[0].actors[i..<i + 1]; a[0].x = x; a[0].z = z;
+}
+
+#test "wild: Ctrl+7 Faerie Fire outlines who fails in its cube (attacks at them have Advantage; outlined, the town's at you have it), Ctrl+8 Healing Word heals them or you, never the dead" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := wd_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  #assert sp_key_place('7', 2) == 30 && sp_key_place('0', 2) == 33 && sp_key_place('=', 2) == 35;
+  #assert spells_key(g[..], '7', 2) && g[0].sp.armed == SP_SLOTS + AB_FAERIE;
+  ku := spells_key_up(g[..], '7', 2);
+  pl := person_place(g[..], who);
+  for k: 0..<16 { if v[0].lit[who] { break; } wd_ff_at(g[..], v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z)); }
+  #assert v[0].lit[who] && v[0].ff_on && ab_active(g[..], AB_FAERIE) && w[0].crimes > 0;
+  sum := 0;
+  for k: 0..<400 { sum += wd_d20(g[..], who); }
+  #assert sum > 400 * 12;   // the higher of two d20s: 13.8 on average, one alone 10.5
+  #assert wd_lamps(g[..], u[..], 0, LIGHTS) >= 1;
+  g[0].feet = v3(pl.x + 30, 0, pl.z);
+  you := ab_you(g[..]);
+  for k: 0..<16 { if v[0].you_lit { break; } wd_ff_at(g[..], you); }
+  #assert v[0].you_lit;
+  w[0].marked = false;
+  gv_frame(g[..], 1.0 / 30);
+  #assert w[0].marked;
+  // Ctrl+7 with it picked ends it
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], '7', 2) && g[0].sp.armed == SP_SLOTS + AB_FAERIE;
+  ku = spells_key_up(g[..], '7', 2);
+  #assert spells_key(g[..], '7', 2) && !v[0].ff_on && !v[0].lit[who] && !v[0].you_lit;
+  ku = spells_key_up(g[..], '7', 2);
+  // Healing Word: a hurt one is whole again (a commoner's 4 Hit Points, 2d4 + 3 at least 5)
+  crimes := w[0].crimes;
+  watch_harm(w, who, 2, ab_you(g[..]));
+  #assert w[0].actors[who].hp < w[0].actors[who].max;
+  wd_hw_on(g[..], who);
+  #assert w[0].actors[who].hp == w[0].actors[who].max && w[0].crimes == crimes && v[0].hw_t == 0;
+  w[0].hp = w[0].max - 6;
+  wd_hw_on(g[..], -1);
+  #assert w[0].hp == w[0].max;
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  watch_harm(w, other, 100, ab_you(g[..]));
+  wd_hw_on(g[..], other);
+  #assert w[0].actors[other].hp == 0;
+}
+
+#test "wild: Spike Growth's thorns tear whoever walks in them (you too) 2d4 a 5 feet; Call Lightning's cloud gathers over you and its bolt strikes 3d10 where you click under it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := wd_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  x := pl.x; z := pl.z;
+  wd_sg_at(g[..], v3(x, 0, z));
+  #assert v[0].sg_on && ab_active(g[..], AB_SPIKE) && gv_rough(g[..], x + 3, z) && !gv_rough(g[..], x + 8, z);
+  #assert everglade_footing(g[..], x + 3, z, 0).pace < 1;
+  hp := w[0].actors[who].hp;
+  for k: 0..<3 { wd_test_put(g[..], who, x + f32(k), z); wd_sg_frame(g[..], 1.0 / 30); }
+  #assert w[0].actors[who].hp < hp && w[0].crimes > 0;
+  // you, walking through
+  g[0].feet = v3(x - 4, 0, z + 1);
+  wd_sg_frame(g[..], 1.0 / 30);
+  hp = w[0].hp;
+  for k: 1..<4 { g[0].feet = v3(x - 4 + f32(k), 0, z + 1); wd_sg_frame(g[..], 1.0 / 30); }
+  #assert w[0].hp < hp;
+  // standing still in it is no harm
+  hp = w[0].hp;
+  for k: 0..<30 { wd_sg_frame(g[..], 1.0 / 30); }
+  #assert w[0].hp == hp;
+  // Call Lightning: picked, a click under the cloud calls the bolt
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  op := person_place(g[..], other);
+  g[0].feet = v3(op.x + 6, 0, op.z);
+  #assert spells_key(g[..], '0', 2) && g[0].sp.armed == SP_SLOTS + AB_CALL;
+  ku := spells_key_up(g[..], '0', 2);
+  g[0].sp.aim = wd_feet(g[..], other); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  hp = w[0].actors[other].hp;
+  crimes := w[0].crimes;
+  sp_cast(g[..]);
+  #assert v[0].cl_on && g[0].sp.bolt.live && g[0].sp.bolt.call && v[0].cl_at.y > ab_you(g[..]).y + 25;
+  for k: 0..<12 { ku2 := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].actors[other].hp < hp && w[0].crimes > crimes;
+  // under it, on you
+  hp = w[0].hp;
+  wd_cl_strike(g[..], ab_you(g[..]));
+  #assert w[0].hp < hp;
+  // too far from the cloud
+  g[0].sp.aim = add(v[0].cl_at, v3(40, 0, 0)); g[0].sp.aim.y = 0;
+  g[0].sp.armed = SP_SLOTS + AB_CALL;
+  v[0].cl_cool = 0;
+  g[0].sp.bolt.live = false;
+  sp_cast(g[..]);
+  #assert !g[0].sp.bolt.live;
+  // Ctrl+0 with it picked ends it
+  #assert spells_key(g[..], '0', 2) && !v[0].cl_on;
+}
+
+#test "wild: Wall of Fire rises across your view (5d8 to who is in it, its far side burns), the town walks round it; fire on the grass spreads, burns who stands in it, and water puts it out" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := wd_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  at := v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z);
+  g[0].feet = v3(pl.x, 0, pl.z - 8);
+  hp := w[0].actors[who].hp;
+  wd_wf_at(g[..], at, v3(0, 0, 1));
+  #assert v[0].wf_on && ab_active(g[..], AB_WALLFIRE) && w[0].actors[who].hp < hp && w[0].crimes > 0;
+  #assert wd_wf_where(g[..], at) == 1 && wd_wf_where(g[..], add(at, v3(0, 0, 2))) == 2 && wd_wf_where(g[..], sub(at, v3(0, 0, 2))) == 0;
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].fence_n >= 1;
+  // you by its burning side as a round ends
+  g[0].feet = v3(pl.x + 3, 0, pl.z + 2);
+  hp = w[0].hp;
+  for k: 0..<70 { wd_wf_frame(g[..], 0.1); v[0].time += 0.1; }
+  #assert w[0].hp < hp;
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], '=', 2) && g[0].sp.armed == SP_SLOTS + AB_WALLFIRE;
+  ku := spells_key_up(g[..], '=', 2);
+  #assert spells_key(g[..], '=', 2) && !v[0].wf_on;
+  ku = spells_key_up(g[..], '=', 2);
+  for q: 0..<WD_FIRES { v[0].fires[q].live = false; }
+  v[0].burnt_n = 0;
+  // fire on the grass: find some, light it, and it spreads
+  spot := v3(0, 0, 0); found := false;
+  for k: 0..<400 {
+    x := pl.x + f32(k % 20) * 2 - 20; z := pl.z + f32(k / 20) * 2 - 20;
+    if !found && wd_grass(g[..], x, z) && wd_grass(g[..], x + 3, z) && wd_grass(g[..], x - 3, z) && wd_grass(g[..], x, z + 3) && wd_grass(g[..], x, z - 3) { spot = v3(x, ground_at(g[..], x, z), z); found = true; }
+  }
+  #assert found;
+  #assert wd_ignite(g[..], spot, 0) && !wd_ignite(g[..], spot, 0);
+  for k: 0..<60 { wd_frame(g[..], 0.1); }
+  n := 0;
+  for q: 0..<WD_FIRES { if v[0].fires[q].live { n += 1; } }
+  #assert n >= 2;
+  // you in it burn
+  g[0].feet = v3(spot.x, 0, spot.z);
+  v[0].you_fire_next = 0;
+  hp = w[0].hp;
+  stood := false;
+  for q: 0..<WD_FIRES { if !stood && v[0].fires[q].live { g[0].feet = v3(v[0].fires[q].at.x, 0, v[0].fires[q].at.z); stood = true; } }
+  wd_fires_frame(g[..], 1.0 / 30);
+  #assert w[0].hp < hp;
+  // water: out, and black where it burnt, which does not catch again
+  #assert wd_douse(g[..], spot, 40) >= 2 && v[0].burnt_n >= 2;
+  n = 0;
+  for q: 0..<WD_FIRES { if v[0].fires[q].live { n += 1; } }
+  #assert n == 0 && !wd_ignite(g[..], spot, 0);
+}

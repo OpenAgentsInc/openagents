@@ -28,6 +28,9 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/sprint.svg` (Water Walk)
 - `lorc/tornado-discs.svg` (Control Water, in water's blue, and Elementalism, in the wind's cyan)
 - `lorc/shield-reflect.svg` (Water Breathing)
+- `lorc/thorny-vine.svg` (Spike Growth)
+- `lorc/lightning-storm.svg` (Call Lightning)
+- `lorc/fire-ring.svg` (Wall of Fire)
 
 Icons made by Delapouite (<https://delapouite.com>):
 
@@ -39,8 +42,13 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/fog.svg` (Create or Destroy Water)
 - `delapouite/moon-orbit.svg` (Moonbeam)
 - `delapouite/vines.svg` (Entangle)
+- `delapouite/fairy.svg` (Faerie Fire)
 - `delapouite/plain-arrow.svg` (a phone bar's next row, drawn upside down)
 
 Icons made by Carl Olsen (<https://twitter.com/unstoppableCarl>):
 
 - `carl-olsen/flame.svg` (Produce Flame)
+
+Icons made by Zeromancer (<https://game-icons.net>):
+
+- `zeromancer/heart-plus.svg` (Healing Word)

@@ -249,6 +249,7 @@ td_rain :: (s: [] Everglade) {
   w := sp_dm(s);
   box: [1] DemoBox;
   for b: 0..<DEMO_BODIES { if s[0].sp.burn[b] > 0 && demo_chunk_box(w, b, box[..]) && td_in_box(c, half, box[0].at) { s[0].sp.burn[b] = 0; } }
+  wd_douse_at(s, c, half * 1.42);
 }
 
 // ---- each frame, the floats, the uniforms, drawing

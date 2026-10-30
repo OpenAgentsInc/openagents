@@ -532,6 +532,7 @@ fr_sleet_frame :: (s: [] Everglade, dt: f32) {
   w := sp_dm(s);
   box: [1] DemoBox;
   for b: 0..<DEMO_BODIES { if s[0].sp.burn[b] > 0 && demo_chunk_box(w, b, box[..]) && flat_gap(box[0].at, c) < R { s[0].sp.burn[b] = 0; } }
+  wd_douse_at(s, c, R);
   // the murk: grey mist through it, a puff every quarter second
   f[0].sleet_puff += dt;
   while f[0].sleet_puff > 0.25 {

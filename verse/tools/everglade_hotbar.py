@@ -71,6 +71,9 @@ MOON = (0.88, 0.9, 1.0)
 FIRE = (1.0, 0.55, 0.2)
 VENOM = (0.6, 1.0, 0.35)
 GROWTH = (0.45, 0.95, 0.4)
+FEY = (0.9, 0.6, 1.0)
+REST = (0.45, 1.0, 0.5)
+THORN = (0.75, 0.82, 0.45)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -160,6 +163,21 @@ SLOTS = [
     ("entangle", "delapouite/vines.svg", GROWTH, "C6", "Entangle",
      "Grasping plants fill a 20-foot square: its ground is difficult terrain, and each creature there but you makes a Strength save or is restrained until it tears free.",
      [("Ctrl+6", KEY), FREE, ("90 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
+    ("faerie-fire", "delapouite/fairy.svg", FEY, "C7", "Faerie Fire",
+     "Each creature in a 20-foot cube makes a Dexterity save or is outlined in blue, green or violet light: it sheds dim light, and attacks at it have advantage. Press again to end it.",
+     [("Ctrl+7", KEY), FREE, ("60 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
+    ("healing-word", "zeromancer/heart-plus.svg", REST, "C8", "Healing Word",
+     "Click someone within 60 feet: they regain 2d4 + 3 hit points. Click anywhere else to heal yourself.",
+     [("Ctrl+8", KEY), FREE, ("Bonus action", RULE), ("60 ft range", RULE)]),
+    ("spike-growth", "lorc/thorny-vine.svg", THORN, "C9", "Spike Growth",
+     "Hidden thorns cover a 20-foot radius: its ground is difficult terrain, and whoever moves through it, you too, takes 2d4 piercing for every 5 feet. Press again to end it.",
+     [("Ctrl+9", KEY), FREE, ("150 ft range", RULE), ("Concentration, up to 10 minutes", TIME)]),
+    ("call-lightning", "lorc/lightning-storm.svg", STORM, "C0", "Call Lightning",
+     "A storm cloud gathers 100 feet over you. Click under it for a bolt: each creature within 5 feet makes a Dexterity save, 3d10 lightning, half on a success, and the grass catches. Each click calls another.",
+     [("Ctrl+0", KEY), FREE, ("Under the cloud, 60 ft round", RULE), ("Concentration, up to 10 minutes", TIME)]),
+    ("wall-of-fire", "lorc/fire-ring.svg", FIRE, "C=", "Wall of Fire",
+     "A wall of fire 60 feet long and 20 feet high rises across your view: 5d8 fire to whoever is in it, half on a Dexterity save, and its far side burns whoever ends a round within 10 feet. The townsfolk walk round it; the grass catches.",
+     [("Ctrl+=", KEY), FREE, ("120 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),
