@@ -197,9 +197,9 @@ vehicle_stuck :: (b: RigidBody, st: VehicleState, ground_up: D3) -> bool {
 
 // Checks.
 
-flat :: () -> [1] Plane { g: [1] Plane; g[0] = plane(D3_Y, 0.0); return g; }
+test_flat :: () -> [1] Plane { g: [1] Plane; g[0] = plane(D3_Y, 0.0); return g; }
 
-drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: VehicleInput, planes: [] Plane, gravity: D3, steps: int) -> VehicleState {
+test_drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: VehicleInput, planes: [] Plane, gravity: D3, steps: int) -> VehicleState {
   w := rigid_world(1.0 / 120.0, store);
   s := st;
   for k: 0..<steps {
@@ -215,8 +215,8 @@ drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: Vehic
   spec := vehicle_roadster();
   store: [1] RigidBody;
   store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.5, 0.0), DQ.{});
-  g := flat();
-  st := drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], d3(0.0, -9.81, 0.0), 480);
+  g := test_flat();
+  st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], d3(0.0, -9.81, 0.0), 480);
   #assert st.wheels == 4;
   // each wheel holds a quarter: k x = m g / 4
   #assert near_d(st.compression[0], 1000.0 * (9.81 + spec.stick) / 4.0 / spec.stiffness, 0.01);
@@ -227,18 +227,18 @@ drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: Vehic
   spec := vehicle_roadster();
   store: [1] RigidBody;
   store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
-  g := flat();
+  g := test_flat();
   gravity := d3(0.0, -9.81, 0.0);
-  st := drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 120);
-  st = drive(store[..], spec, st, VehicleInput.{throttle = 1.0}, g[..], gravity, 720);
+  st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 120);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = 1.0}, g[..], gravity, 720);
   #assert vehicle_forward_speed(store[0]) > spec.top_speed * 0.95 && vehicle_forward_speed(store[0]) < spec.top_speed * 1.1;
   #assert abs(store[0].pos.x) < 0.05;
   before := rigid_axis(store[0], D3_Z);
-  st = drive(store[..], spec, st, VehicleInput.{throttle = 0.5, steer = 1.0}, g[..], gravity, 120);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = 0.5, steer = 1.0}, g[..], gravity, 120);
   after := rigid_axis(store[0], D3_Z);
   #assert d3_angle(before, after) > 0.3 && rigid_axis(store[0], D3_Y).y > 0.9;
   was := vehicle_forward_speed(store[0]);
-  st = drive(store[..], spec, st, VehicleInput.{throttle = -1.0}, g[..], gravity, 60);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = -1.0}, g[..], gravity, 60);
   #assert vehicle_forward_speed(store[0]) < was - 6.0;
 }
 
@@ -246,16 +246,16 @@ drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: Vehic
   spec := vehicle_roadster();
   store: [1] RigidBody;
   store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
-  g := flat();
+  g := test_flat();
   gravity := d3(0.0, -6.5, 0.0);
-  st := drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 240);
-  st = drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 30);
+  st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 240);
+  st = test_drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 30);
   #assert st.wheels == 0 && store[0].pos.y > 1.8;
   // a wall at x = 0 facing +x; the car's up along +x, driving along +z, gravity -y
   wall: [1] Plane;
   wall[0] = plane(D3_X, 0.0);
   store[0] = vehicle_body(spec, 1000.0, d3(0.97, 0.0, 0.0), dq_z(-PI_D / 2.0));
   store[0].vel = d3(0.0, 0.0, 15.0);
-  st = drive(store[..], spec, VehicleState.{}, VehicleInput.{throttle = 1.0}, wall[..], gravity, 120);
+  st = test_drive(store[..], spec, VehicleState.{}, VehicleInput.{throttle = 1.0}, wall[..], gravity, 120);
   #assert st.wheels >= 2 && store[0].pos.x < 1.3;
 }

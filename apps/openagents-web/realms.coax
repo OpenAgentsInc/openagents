@@ -1,17 +1,17 @@
 // Written by coax/web/realms.ts from realms.json: change the table, not this file.
 // The galaxy's worlds in order (verse.coax): id, name, kind, orbit, whether
 // the galaxy shows it (an unlisted one with ?realms=all) and the page it opens.
-PLANETS :: 18;
+PLANETS :: 19;
 KIND_LOCKED :: 0; KIND_OPEN :: 1; KIND_SOON :: 2;
-PLANET_ID :: [PLANETS] string.["oa", "house", "blue", "brain", "coding", "grid", "everglade", "fairy", "deadgears", "belt2200", "fixture", "waterlab", "drop", "built", "sandbox", "icecream", "villa", "stair"];
-PLANET_NAME :: [PLANETS] string.["OPENAGENTS", "HAUNTED HOUSE", "BLUE RUSH", "BIG BRAIN", "CODING", "THE GRID", "EVERGLADE", "FAIRY FOREST", "DEAD GEARS", "BELT 2200", "FIXTURE REALM", "WATER LAB", "A FIRST REALM", "A REALM YOU BUILT", "SANDBOX", "ICE CREAM MAN", "PLANETARY VILLA", "HOLD THE STAIR"];
-PLANET_KIND :: [PLANETS] int.[KIND_LOCKED, KIND_OPEN, KIND_LOCKED, KIND_LOCKED, KIND_SOON, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN];
-PLANET_R :: [PLANETS] f32.[0, 0.15, 0.42, 0.46, 0.37, 0.3, 0.34, 0.3, 0.3, 0.44, 0.26, 0.28, 0.22, 0.24, 0.36, 0.22, 0.42, 0.22];
-PLANET_A :: [PLANETS] f32.[0, 0, 2.4, 0.5, 3.25, 5.4, 4.2, 0.9, 2.9, 1.4, 1.9, 3.3, 5.2, 4.6, 4.6, 3.7, 5.6, 1.2];
-PLANET_SIZE :: [PLANETS] f32.[0.075, 0.028, 0.05, 0.045, 0.043, 0.036, 0.032, 0.028, 0.03, 0.032, 0.026, 0.022, 0.024, 0.024, 0.03, 0.026, 0.034, 0.026];
-PLANET_LISTED :: [PLANETS] bool.[true, true, true, true, true, true, true, false, true, true, false, false, false, false, true, true, false, true];
-PLANET_PATH :: [PLANETS] string.["", "/realms/haunted-house", "", "", "", "/realms/the-grid", "/realms/everglade", "/realms/fairy-forest", "/realms/dead-gears", "/realms/belt-2200", "/realms/fixture", "/realms/waterlab", "/realms/drop", "/realms/built", "/realms/sandbox", "/realms/ice-cream-man", "/realms/hecates-cemetery", "/realms/hold-the-stair"];
+PLANET_ID :: [PLANETS] string.["oa", "house", "blue", "brain", "coding", "grid", "everglade", "fairy", "deadgears", "belt2200", "orbit", "fixture", "waterlab", "drop", "built", "sandbox", "icecream", "villa", "stair"];
+PLANET_NAME :: [PLANETS] string.["OPENAGENTS", "HAUNTED HOUSE", "BLUE RUSH", "BIG BRAIN", "CODING", "THE GRID", "EVERGLADE", "FAIRY FOREST", "DEAD GEARS", "BELT 2200", "ORBIT LEAGUE", "FIXTURE REALM", "WATER LAB", "A FIRST REALM", "A REALM YOU BUILT", "SANDBOX", "ICE CREAM MAN", "PLANETARY VILLA", "HOLD THE STAIR"];
+PLANET_KIND :: [PLANETS] int.[KIND_LOCKED, KIND_OPEN, KIND_LOCKED, KIND_LOCKED, KIND_SOON, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN, KIND_OPEN];
+PLANET_R :: [PLANETS] f32.[0, 0.15, 0.42, 0.46, 0.37, 0.3, 0.34, 0.3, 0.3, 0.44, 0.24, 0.26, 0.28, 0.22, 0.24, 0.36, 0.22, 0.42, 0.22];
+PLANET_A :: [PLANETS] f32.[0, 0, 2.4, 0.5, 3.25, 5.4, 4.2, 0.9, 2.9, 1.4, 0.35, 1.9, 3.3, 5.2, 4.6, 4.6, 3.7, 5.6, 1.2];
+PLANET_SIZE :: [PLANETS] f32.[0.075, 0.028, 0.05, 0.045, 0.043, 0.036, 0.032, 0.028, 0.03, 0.032, 0.03, 0.026, 0.022, 0.024, 0.024, 0.03, 0.026, 0.034, 0.026];
+PLANET_LISTED :: [PLANETS] bool.[true, true, true, true, true, true, true, false, true, true, true, false, false, false, false, true, true, false, true];
+PLANET_PATH :: [PLANETS] string.["", "/realms/haunted-house", "", "", "", "/realms/the-grid", "/realms/everglade", "/realms/fairy-forest", "/realms/dead-gears", "/realms/belt-2200", "/realms/orbit-league", "/realms/fixture", "/realms/waterlab", "/realms/drop", "/realms/built", "/realms/sandbox", "/realms/ice-cream-man", "/realms/hecates-cemetery", "/realms/hold-the-stair"];
 // Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.
 PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3;   // verse/style-preset.coax STYLE_*
-PLANET_STYLE :: [PLANETS] int.[PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_PAINTERLY, PLANET_FLAT, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_PAINTERLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_FLAT, PLANET_LOWPOLY];
-PLANET_CLOCK :: [PLANETS] string.["", "fixed:0.0", "", "", "", "fixed:0.0", "cycle", "real", "cycle", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.0", "fixed:0.5", "fixed:0.0", "fixed:0.0"];
+PLANET_STYLE :: [PLANETS] int.[PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_PAINTERLY, PLANET_FLAT, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_FLAT, PLANET_LOWPOLY, PLANET_PAINTERLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_LOWPOLY, PLANET_FLAT, PLANET_LOWPOLY];
+PLANET_CLOCK :: [PLANETS] string.["", "fixed:0.0", "", "", "", "fixed:0.0", "cycle", "real", "cycle", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.5", "fixed:0.0", "fixed:0.5", "fixed:0.0", "fixed:0.0"];

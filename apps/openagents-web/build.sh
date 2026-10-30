@@ -40,6 +40,7 @@ flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 ve
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
 # Fairy Forest draws in the flat style only: no painterly or grass functions.
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/fairy.wgsl)
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/orbitleague.wgsl)
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
 m="$here/../../verse"
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
@@ -98,6 +99,9 @@ stair=$!
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/stars.coax verse_starfield verse_sun_disc verse_sun_corona --into apps/openagents-web/belt.wgsl)
 "$here/../../coax/web/wasm.sh" "$here/belt.coax" "$here/belt-face.c" "$here/build/belt.wasm" &
 belt=$!
+# /realms/orbit-league: car ball in orbit, on the space primitives (docs/verse/space.md).
+"$here/../../coax/web/wasm.sh" "$here/orbitleague.coax" "$here/orbitleague-face.c" "$here/build/orbitleague.wasm" &
+orbitleague=$!
 # /realms/characters: the engine's figures (verse/figure.coax).
 "$here/../../coax/web/wasm.sh" "$here/characters.coax" "$here/characters-face.c" "$here/build/characters.wasm" &
 characters=$!
@@ -180,6 +184,7 @@ wait "$icecream"
 wait "$deadgears"
 wait "$stair"
 wait "$belt"
+wait "$orbitleague"
 wait "$everglade"
 wait "$fairy"
 wait "$thegrid"

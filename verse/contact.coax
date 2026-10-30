@@ -262,14 +262,14 @@ contact_resolve_static :: (a: RigidBody, ct: Contact, e: f64, mu: f64) -> RigidB
 
 // Checks.
 
-ball :: (r: f64, mass: f64, at: D3) -> RigidBody {
+test_ball :: (r: f64, mass: f64, at: D3) -> RigidBody {
   i := 0.4 * mass * r * r;
   return rigid_body(mass, d3(i, i, i), at, DQ.{});
 }
 
 #test "a ball dropped on the ground bounces back to e^2 of its height" {
   store: [1] RigidBody;
-  store[0] = ball(1.0, 30.0, d3(0.0, 11.0, 0.0));
+  store[0] = test_ball(1.0, 30.0, d3(0.0, 11.0, 0.0));
   w := rigid_world(1.0 / 480.0, store[..]);
   ground := plane(D3_Y, 0.0);
   top := 0.0; falling := true;
@@ -283,12 +283,12 @@ ball :: (r: f64, mass: f64, at: D3) -> RigidBody {
 }
 
 #test "equal spheres head on swap velocities at e = 1 and keep momentum at any e" {
-  a := ball(1.0, 2.0, d3(-0.99, 0.0, 0.0)); a.vel = d3(3.0, 0.0, 0.0);
-  b := ball(1.0, 2.0, d3(0.99, 0.0, 0.0));
+  a := test_ball(1.0, 2.0, d3(-0.99, 0.0, 0.0)); a.vel = d3(3.0, 0.0, 0.0);
+  b := test_ball(1.0, 2.0, d3(0.99, 0.0, 0.0));
   p := contact_resolve(a, b, contact_sphere_sphere(a.pos, 1.0, b.pos, 1.0), 1.0, 0.0);
   #assert near_d(p.a.vel.x, 0.0, 0.000000001) && near_d(p.b.vel.x, 3.0, 0.000000001);
-  c := ball(1.0, 5.0, d3(-0.99, 0.1, 0.0)); c.vel = d3(3.0, 0.5, -1.0);
-  d := ball(0.5, 1.0, d3(0.45, 0.0, 0.2)); d.vel = d3(-1.0, 0.0, 0.0);
+  c := test_ball(1.0, 5.0, d3(-0.99, 0.1, 0.0)); c.vel = d3(3.0, 0.5, -1.0);
+  d := test_ball(0.5, 1.0, d3(0.45, 0.0, 0.2)); d.vel = d3(-1.0, 0.0, 0.0);
   q := contact_resolve(c, d, contact_sphere_sphere(c.pos, 1.0, d.pos, 0.5), 0.4, 0.5);
   before := d3_add(d3_scale(c.vel, 5.0), d3_scale(d.vel, 1.0));
   after := d3_add(d3_scale(q.a.vel, 5.0), d3_scale(q.b.vel, 1.0));
@@ -297,7 +297,7 @@ ball :: (r: f64, mass: f64, at: D3) -> RigidBody {
 
 #test "a sliding ball starts to roll, at 5/7 of its speed" {
   store: [1] RigidBody;
-  store[0] = ball(1.0, 30.0, d3(0.0, 0.999, 0.0));
+  store[0] = test_ball(1.0, 30.0, d3(0.0, 0.999, 0.0));
   store[0].vel = d3(7.0, 0.0, 0.0);
   w := rigid_world(1.0 / 480.0, store[..]);
   ground := plane(D3_Y, 0.0);
@@ -315,8 +315,8 @@ ball :: (r: f64, mass: f64, at: D3) -> RigidBody {
   q := dq_y(PI_D / 4.0);
   ct := contact_sphere_box(d3(0.0, 0.0, 2.3), 1.0, D3_ZERO, q, d3(1.0, 1.0, 1.0));
   #assert ct.hit && ct.normal.z > 0.99 && near_d(ct.depth, 1.0 + 1.4142135623730951 - 2.3, 0.000000001);
-  inside := contact_sphere_box(d3(0.0, 0.8, 0.0), 0.5, D3_ZERO, DQ.{}, d3(2.0, 1.0, 2.0));
-  #assert inside.hit && inside.normal.y > 0.99 && near_d(inside.depth, 0.7, 0.000000001);
+  within := contact_sphere_box(d3(0.0, 0.8, 0.0), 0.5, D3_ZERO, DQ.{}, d3(2.0, 1.0, 2.0));
+  #assert within.hit && within.normal.y > 0.99 && near_d(within.depth, 0.7, 0.000000001);
   #assert !contact_sphere_box(d3(3.0, 0.0, 0.0), 1.0, D3_ZERO, DQ.{}, d3(1.0, 1.0, 1.0)).hit;
   // a box resting tilted on the ground: two corners under it
   into: [8] Contact;
@@ -342,10 +342,10 @@ ball :: (r: f64, mass: f64, at: D3) -> RigidBody {
 }
 
 #test "a force off the centre turns a body" {
-  b := ball(1.0, 1.0, D3_ZERO);
+  b := test_ball(1.0, 1.0, D3_ZERO);
   b = rigid_force_at(b, d3(0.0, 0.0, 2.0), d3(1.0, 0.0, 0.0));
   #assert near_d(b.torque.y, -2.0, 0.000000001) && near_d(b.force.z, 2.0, 0.000000001);
-  c := rigid_impulse_at(ball(1.0, 2.0, D3_ZERO), d3(0.0, 4.0, 0.0), D3_ZERO);
+  c := rigid_impulse_at(test_ball(1.0, 2.0, D3_ZERO), d3(0.0, 4.0, 0.0), D3_ZERO);
   #assert near_d(c.vel.y, 2.0, 0.000000001) && d3_eq(c.omega, D3_ZERO);
   #assert near_d(rigid_point_velocity(c, d3(5.0, 0.0, 0.0)).y, 2.0, 0.000000001);
 }

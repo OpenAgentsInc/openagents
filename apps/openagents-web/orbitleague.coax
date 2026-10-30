@@ -1,0 +1,890 @@
+// Orbit League (docs/verse/game-ideas/orbit-league.md): electric roadsters
+// playing ball in a glass arena in orbit. This file is the game's rules and
+// its drawing only; the physics is the engine's space primitives
+// (docs/verse/space.md): verse/vehicle.coax drives the cars, verse/contact.coax
+// answers every touch, verse/gravity.coax says which way is down, and
+// verse/thrust.coax burns the boost.
+//
+// The first playable: you (blue) against one bot (orange), a five-minute
+// match, a goal at each end of a flat box arena. Every 90 seconds of play the
+// station spins down: gravity fades to nothing for half a minute, then
+// comes back. W/S (or the arrows) drive, A/D steer, Space jumps (twice),
+// Shift boosts, C is ball cam, Escape goes back to the galaxy. On a phone
+// the left thumb steers and drives; JUMP and BOOST are on the right.
+//
+// orbitleague.wgsl traces the arena, the cars, the ball and the space round
+// them from the uniforms written here; the HUD is strokes over it.
+//   coax/bin/coax test apps/openagents-web/orbitleague.coax --steps 2000000000
+
+#load "font.coax";
+#load "ui.coax";
+#load "analytics.coax";
+#load "../../verse/vehicle.coax";
+#load "../../verse/gravity.coax";
+#load "../../verse/thrust.coax";
+
+VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
+MAX_VERTICES :: 24000;
+PLATES :: 16;
+MODE_STROKE :: 0.0;
+MODE_BAR :: 4.0;   // ui.coax's
+
+// The uniforms (orbitleague.wgsl's U): width, height, time, fade, still,
+// plates, dpr, zero-g share; the view's rows; the eye and the screen's rays;
+// the ball; each car's place and axes; the arena; the plates.
+VIEW_AT :: 8; EYE_AT :: 24; FWD_AT :: 28; RX_AT :: 32; UY_AT :: 36;
+BALL_AT :: 40; BALLQ_AT :: 44; CAR_AT :: 48; CAR_FLOATS :: 16; ARENA_AT :: 80; GOAL_AT :: 84; MISC_AT :: 88;
+PANEL_AT :: 92;
+UNIFORM_FLOATS :: PANEL_AT + PLATES * 8;
+
+lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
+hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
+clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
+ease :: (x: f32) -> f32 { t := clamp(x, 0, 1); return t * t * (3 - 2 * t); }
+
+// One stroke as a quad wide enough for its glow (droprealm.coax's).
+lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
+  dx := bx - ax; dy := by - ay;
+  length := sqrt(dx * dx + dy * dy);
+  if length <= 0 { return false; }
+  ux := dx / length; uy := dy / length;
+  nx := -uy; ny := ux;
+  r := glow + core;
+  a := [6] f32.[-r, length + r, length + r, -r, length + r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = ax + ux * a[v] + nx * c[v];
+    out[o + 1] = ay + uy * a[v] + ny * c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = length; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+tinted_dot :: (out: [] f32, at: int, x: f32, y: f32, radius: f32, light: f32, glow: f32, red: f32, green: f32, blue: f32) -> bool {
+  if at < 0 || (at + 6) * VERTEX_FLOATS > out.count || light <= 0 { return false; }
+  r := radius + glow;
+  a := [6] f32.[-r, r, r, -r, r, -r];
+  c := [6] f32.[-r, -r, r, -r, r, r];
+  for v: 0..<6 {
+    o := (at + v) * VERTEX_FLOATS;
+    out[o] = x + a[v]; out[o + 1] = y + c[v];
+    out[o + 2] = a[v]; out[o + 3] = c[v];
+    out[o + 4] = 0; out[o + 5] = radius; out[o + 6] = light; out[o + 7] = glow;
+    out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = MODE_STROKE;
+    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+  }
+  return true;
+}
+
+// ---- the game's numbers
+
+ARENA_HX :: 25.0;        // half its width (x), metres
+ARENA_HZ :: 40.0;        // half its length (z): the goal lines
+ARENA_H :: 18.0;         // the glass roof
+GOAL_HW :: 7.0;          // half the mouth's width
+GOAL_H :: 6.5;           // the crossbar
+GOAL_D :: 6.0;           // how deep the net goes
+WALL :: 2.0;             // the end walls' and nets' thickness (the ball's boxes)
+BALL_R :: 1.4;
+BALL_MASS :: 150.0;
+BALL_DRAG :: 0.03;       // 1/s
+CAR_MASS :: 1000.0;
+SPAWN_Z :: 28.0;
+FULL_SPIN_G :: G_EARTH;  // the station at full spin: 1 g toward the floor
+MATCH_TIME :: 300.0;     // seconds
+SPIN_CYCLE :: 90.0;      // a spin-down starts every this many seconds of play
+SPIN_DOWN :: 30.0;       // and lasts this long: RAMP down, zero-g, RAMP up
+RAMP :: 3.0;
+KICKOFF :: 3.0;          // the countdown
+CELEBRATE :: 3.0;        // after a goal, before the next kickoff
+BOOST_FORCE :: 12000.0;  // N
+BOOST_RATE :: 33.0;      // of 100 a second at full boost
+BOOST_START :: 34.0;
+BOOST_REGEN :: 7.0;      // a second while the wheels touch
+HIT_KICK :: 0.35;        // the share of the closing speed added to the ball on a car's hit
+STEP :: 0.008333333333333333;   // physics at 120 Hz
+MAX_STEPS :: 12;
+BLUE :: 0; ORANGE :: 1;
+PHASE_KICKOFF :: 0; PHASE_PLAY :: 1; PHASE_GOAL :: 2; PHASE_OVER :: 3;
+BALL :: 0; YOU :: 1; BOT :: 2; BODIES :: 3;
+BOXES :: 12;
+STICK :: 60.0;           // CSS pixels of thumb travel for full lock
+CAM_BACK :: 9.5; CAM_UP :: 3.4; FOV :: 1.15;
+
+HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8; HOLD_JUMP :: 16; HOLD_BOOST :: 32;
+KEY_SHIFT :: -13;
+OUTBOX :: 256;
+HOST_FACTS :: 600;
+BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BUTTONS :: 5;
+
+SBox :: struct { c: D3; h: D3; }
+
+OrbitLeague :: struct {
+  started: bool; golden: bool; still: bool; touch: bool;
+  time: f32; width: f32; height: f32; dpr: f32;
+  bodies: [BODIES] RigidBody;
+  cars: [2] VehicleState;
+  tanks: [2] Tank;
+  boosting: [2] bool;
+  stuck_for: [2] f64;
+  boxes: [BOXES] SBox;
+  field: GravityField;
+  spec: VehicleSpec;
+  phase: int; phase_t: f64; clock: f64; played: f64; overtime: bool;
+  score: [2] int; last_goal: int; touches: int;
+  carry: f64;                 // physics time not yet stepped
+  held: int;
+  ball_cam: bool;
+  stick: bool; stick_id: int; stick_x0: f32; stick_y0: f32; stick_dx: f32; stick_dy: f32;
+  button_id: [BUTTONS] int;   // the finger holding each button, -1 none
+  hover: int;
+  boxes_ui: [BUTTONS] Box; shown: [BUTTONS] bool;
+  outbox: [OUTBOX] u8; out_n: int; action: int;
+  plates: [PLATES] Box; plate_look: [PLATES] f32; plate_alpha: [PLATES] f32; plate_n: int;
+  // the camera, eased
+  cam_eye: [3] f32; cam_at: [3] f32; cam_ready: bool;
+  view: [16] f32; eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32;
+  bot_jump_t: f64;
+  no_bot: bool;               // ?bot=0: practice alone
+  jumped: [2] bool;
+  track: [1] Track;
+}
+
+// ---- the arena
+
+// The planes the cars meet: floor, roof, sides and ends.
+car_planes :: () -> [6] Plane {
+  p: [6] Plane;
+  p[0] = plane(D3_Y, 0.0); p[1] = plane(d3(0.0, -1.0, 0.0), -ARENA_H);
+  p[2] = plane(d3(1.0, 0.0, 0.0), -ARENA_HX); p[3] = plane(d3(-1.0, 0.0, 0.0), -ARENA_HX);
+  p[4] = plane(D3_Z, -ARENA_HZ); p[5] = plane(d3(0.0, 0.0, -1.0), -ARENA_HZ);
+  return p;
+}
+// The ball's planes: the same less the ends, which are boxes round the goal mouths.
+ball_planes :: () -> [4] Plane {
+  p: [4] Plane;
+  p[0] = plane(D3_Y, 0.0); p[1] = plane(d3(0.0, -1.0, 0.0), -ARENA_H);
+  p[2] = plane(d3(1.0, 0.0, 0.0), -ARENA_HX); p[3] = plane(d3(-1.0, 0.0, 0.0), -ARENA_HX);
+  return p;
+}
+sbox :: (x0: f64, y0: f64, z0: f64, x1: f64, y1: f64, z1: f64) -> SBox {
+  return SBox.{c = d3((x0 + x1) * 0.5, (y0 + y1) * 0.5, (z0 + z1) * 0.5), h = d3((x1 - x0) * 0.5, (y1 - y0) * 0.5, (z1 - z0) * 0.5)};
+}
+// Each end: the wall either side of the mouth and over it, then the net's back, sides and roof.
+build_boxes :: (s: [] OrbitLeague) {
+  for e: 0..<2 {
+    z := ifx e == 0 then ARENA_HZ else -ARENA_HZ;
+    out := ifx e == 0 then 1.0 else -1.0;
+    za := z; zb := z + out * WALL;
+    zn := z + out * GOAL_D; zm := zn + out * WALL;
+    k := e * 6;
+    s[0].boxes[k] = sbox(-ARENA_HX - WALL, 0.0, fmin(za, zb), -GOAL_HW, ARENA_H + WALL, fmax(za, zb));
+    s[0].boxes[k + 1] = sbox(GOAL_HW, 0.0, fmin(za, zb), ARENA_HX + WALL, ARENA_H + WALL, fmax(za, zb));
+    s[0].boxes[k + 2] = sbox(-GOAL_HW, GOAL_H, fmin(za, zb), GOAL_HW, ARENA_H + WALL, fmax(za, zb));
+    s[0].boxes[k + 3] = sbox(-GOAL_HW - WALL, -1.0, fmin(zn, zm), GOAL_HW + WALL, GOAL_H + WALL, fmax(zn, zm));
+    s[0].boxes[k + 4] = sbox(-GOAL_HW - WALL, -1.0, fmin(za, zn), -GOAL_HW, GOAL_H + WALL, fmax(za, zn));
+    s[0].boxes[k + 5] = sbox(GOAL_HW, -1.0, fmin(za, zn), GOAL_HW + WALL, GOAL_H + WALL, fmax(za, zn));
+  }
+}
+
+// ---- the match
+
+kickoff :: (s: [] OrbitLeague) {
+  s[0].bodies[BALL] = rigid_body(BALL_MASS, d3_scale(d3(1.0, 1.0, 1.0), 0.4 * BALL_MASS * BALL_R * BALL_R), d3(0.0, BALL_R + 0.02, 0.0), DQ.{});
+  s[0].bodies[YOU] = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, 1.0, -SPAWN_Z), DQ.{});
+  s[0].bodies[BOT] = vehicle_body(s[0].spec, CAR_MASS, ifx s[0].no_bot then d3(ARENA_HX - 3.0, 1.0, ARENA_HZ - 4.0) else d3(0.0, 1.0, SPAWN_Z), dq_y(PI_D));
+  for c: 0..<2 {
+    s[0].cars[c] = VehicleState.{};
+    s[0].tanks[c] = tank(fmax(s[0].tanks[c].fuel, BOOST_START), 100.0, false);
+    s[0].stuck_for[c] = 0.0;
+  }
+  s[0].phase = PHASE_KICKOFF; s[0].phase_t = 0.0;
+  s[0].cam_ready = false;
+}
+
+new_match :: (s: [] OrbitLeague) {
+  s[0].score[0] = 0; s[0].score[1] = 0;
+  s[0].clock = MATCH_TIME; s[0].played = 0.0; s[0].overtime = false; s[0].touches = 0;
+  for c: 0..<2 { s[0].tanks[c] = tank(BOOST_START, 100.0, false); }
+  kickoff(s);
+}
+
+game_reset :: (s: [] OrbitLeague) {
+  s[0].started = true;
+  s[0].spec = vehicle_roadster();
+  s[0].field = gravity_constant(d3(0.0, -FULL_SPIN_G, 0.0));
+  s[0].stick_id = -1; s[0].hover = -1;
+  for b: 0..<BUTTONS { s[0].button_id[b] = -1; }
+  build_boxes(s);
+  new_match(s);
+  track_init(s[0].track[..], "orbit-league");
+}
+
+// The station's spin, 0 to 1, after `played` seconds of play: full, then
+// every SPIN_CYCLE a spin-down of SPIN_DOWN seconds (RAMP down, zero, RAMP up).
+spin_share :: (played: f64) -> f64 {
+  k := played - floor(played / SPIN_CYCLE) * SPIN_CYCLE;
+  into := k - (SPIN_CYCLE - SPIN_DOWN);
+  if into < 0.0 { return 1.0; }
+  if into < RAMP { return 1.0 - into / RAMP; }
+  if into > SPIN_DOWN - RAMP { return (into - (SPIN_DOWN - RAMP)) / RAMP; }
+  return 0.0;
+}
+// Seconds of zero-g left, or until the next spin-down (negative).
+spin_clock :: (played: f64) -> f64 {
+  k := played - floor(played / SPIN_CYCLE) * SPIN_CYCLE;
+  into := k - (SPIN_CYCLE - SPIN_DOWN);
+  if into < 0.0 { return into; }
+  return SPIN_DOWN - into;
+}
+
+ceil_d :: (x: f64) -> f64 { return -floor(-x); }
+// atan2 from rigid.coax atan_d.
+atan2_d :: (y: f64, x: f64) -> f64 {
+  if x > 0.0 { return atan_d(y / x); }
+  if x < 0.0 { return ifx y >= 0.0 then atan_d(y / x) + PI_D else atan_d(y / x) - PI_D; }
+  if y > 0.0 { return PI_D / 2.0; }
+  if y < 0.0 { return -PI_D / 2.0; }
+  return 0.0;
+}
+
+// ---- the bot: drive to a spot behind the ball, toward our goal, and hit it
+
+Drive :: struct { input: VehicleInput; boost: bool; }
+
+steer_to :: (b: RigidBody, target: D3) -> f64 {
+  f := rigid_axis(b, D3_Z);
+  to := d3_sub(target, b.pos);
+  // the signed angle in the floor's plane; +: to the right (the car's right is -x when it faces +z)
+  fa := atan2_d(f.x, f.z);
+  ta := atan2_d(to.x, to.z);
+  a := fa - ta;
+  while a > PI_D { a -= TAU_D; }
+  while a < -PI_D { a += TAU_D; }
+  return a;
+}
+
+bot_drive :: (s: [] OrbitLeague) -> Drive {
+  me := s[0].bodies[BOT]; bl := s[0].bodies[BALL];
+  goal := d3(0.0, 0.0, -ARENA_HZ - 2.0);     // it attacks your goal, at -z
+  out: Drive;
+  if s[0].phase != PHASE_PLAY && s[0].phase != PHASE_GOAL { return out; }
+  if s[0].no_bot { return out; }
+  aim := d3_unit_or(d3_sub(goal, bl.pos), d3(0.0, 0.0, -1.0));
+  // ahead of where the ball goes: a short lead on its velocity
+  lead := d3_add(bl.pos, d3_scale(d3(bl.vel.x, 0.0, bl.vel.z), 0.35));
+  target := d3_sub(lead, d3_scale(aim, 3.0));
+  // on the wrong side of the ball (between it and our goal): go round, back toward its own goal
+  if me.pos.z < bl.pos.z - 1.0 { target = d3(bl.pos.x + (ifx me.pos.x > bl.pos.x then 6.0 else -6.0), 0.0, bl.pos.z + 9.0); }
+  target.x = fclamp(target.x, -ARENA_HX + 2.0, ARENA_HX - 2.0);
+  target.z = fclamp(target.z, -ARENA_HZ + 2.0, ARENA_HZ - 2.0);
+  a := steer_to(me, target);
+  dist := d3_len(d3(target.x - me.pos.x, 0.0, target.z - me.pos.z));
+  out.input.steer = fclamp(a * 2.2, -1.0, 1.0);
+  out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else 1.0;
+  out.input.handbrake = abs(a) > 1.4 && d3_len(me.vel) > 8.0;
+  out.boost = abs(a) < 0.25 && dist > 14.0 && s[0].tanks[1].fuel > 10.0;
+  near_ball := d3_dist(me.pos, bl.pos);
+  // in zero-g the boost is how it gets anywhere
+  if s[0].cars[1].wheels == 0 && spin_share(s[0].played) < 0.2 { out.boost = abs(a) < 0.6; out.input.throttle = 0.0; }
+  out.input.jump = near_ball < 6.0 && bl.pos.y > 3.0 && bl.pos.y < 7.0 && s[0].played - s[0].bot_jump_t > 1.5;
+  if out.input.jump { s[0].bot_jump_t = s[0].played; }
+  return out;
+}
+
+you_drive :: (s: [] OrbitLeague) -> Drive {
+  out: Drive;
+  if s[0].phase != PHASE_PLAY && s[0].phase != PHASE_GOAL { return out; }
+  h := s[0].held;
+  t := 0.0; st := 0.0;
+  if (h & HOLD_UP) != 0 { t += 1.0; }
+  if (h & HOLD_DOWN) != 0 { t -= 1.0; }
+  if (h & HOLD_LEFT) != 0 { st -= 1.0; }
+  if (h & HOLD_RIGHT) != 0 { st += 1.0; }
+  if s[0].stick { t -= cast(f64) s[0].stick_dy; st += cast(f64) s[0].stick_dx; }
+  out.input.throttle = fclamp(t, -1.0, 1.0);
+  out.input.steer = fclamp(st, -1.0, 1.0);
+  out.input.jump = (h & HOLD_JUMP) != 0 || s[0].button_id[BTN_JUMP] >= 0;
+  out.boost = (h & HOLD_BOOST) != 0 || s[0].button_id[BTN_BOOST] >= 0;
+  return out;
+}
+
+// ---- one physics step
+
+physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
+  dt := STEP;
+  s[0].field.scale = spin_share(s[0].played);
+  cp := car_planes();
+  bp := ball_planes();
+  for c: 0..<2 {
+    i := c + 1;
+    st := vehicle_step(s[0].bodies[i], s[0].spec, s[0].cars[c], drives[c].input, cp[..], gravity_at(s[0].field, s[0].bodies[i].pos), dt);
+    s[0].bodies[i] = st.body;
+    if st.state.jumps > s[0].cars[c].jumps && c == 0 { s[0].jumped[0] = true; }
+    s[0].cars[c] = st.state;
+    s[0].boosting[c] = false;
+    if drives[c].boost {
+      t := thruster_budget(d3(0.0, -0.05, -2.1), D3_Z, BOOST_FORCE, BOOST_RATE);
+      burn := thrust_apply(s[0].bodies[i], t, s[0].tanks[c], 1.0, dt);
+      s[0].bodies[i] = burn.body; s[0].tanks[c] = burn.tank;
+      s[0].boosting[c] = burn.thrust > 0.0;
+    } else if s[0].cars[c].wheels > 0 {
+      s[0].tanks[c].fuel = fmin(100.0, s[0].tanks[c].fuel + BOOST_REGEN * dt);
+    }
+  }
+  bl := s[0].bodies[BALL];
+  bl.force = d3_add(bl.force, d3_scale(gravity_at(s[0].field, bl.pos), bl.mass));
+  bl.force = d3_sub(bl.force, d3_scale(bl.vel, bl.mass * BALL_DRAG));
+  s[0].bodies[BALL] = bl;
+  w := rigid_world(dt, s[0].bodies[..]);
+  w = rigid_step(w, D3_ZERO);
+  // the cars against the arena, the ball, each other
+  for c: 0..<2 { s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, cp[..], 0.1, 0.6); }
+  for p: bp {
+    ct := contact_sphere_plane(s[0].bodies[BALL].pos, BALL_R, p);
+    if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.65, 0.35); }
+  }
+  for k: 0..<BOXES {
+    b := s[0].boxes[k];
+    ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, b.c, DQ.{}, b.h);
+    if ct.hit { s[0].bodies[BALL] = contact_resolve_static(s[0].bodies[BALL], ct, 0.5, 0.35); }
+  }
+  for c: 0..<2 {
+    car := s[0].bodies[c + 1];
+    ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, car.pos, car.orientation, s[0].spec.half);
+    if ct.hit {
+      closing := -d3_dot(d3_sub(s[0].bodies[BALL].vel, rigid_point_velocity(car, ct.point)), ct.normal);
+      pair := contact_resolve(s[0].bodies[BALL], car, ct, 0.55, 0.3);
+      if closing > 1.0 {
+        // a car's hit is a kick: the ball takes a share more of the closing speed
+        pair.a.vel = d3_add(pair.a.vel, d3_scale(ct.normal, closing * HIT_KICK));
+        if c == 0 { s[0].touches += 1; track_tally(s[0].track[..], "touch", ""); }
+      }
+      s[0].bodies[BALL] = pair.a; s[0].bodies[c + 1] = pair.b;
+    }
+  }
+  cc := contact_sphere_sphere(s[0].bodies[YOU].pos, 1.6, s[0].bodies[BOT].pos, 1.6);
+  if cc.hit {
+    pair := contact_resolve(s[0].bodies[YOU], s[0].bodies[BOT], cc, 0.3, 0.2);
+    s[0].bodies[YOU] = pair.a; s[0].bodies[BOT] = pair.b;
+  }
+  // a car on its roof or side, slow, for a second: set back on its wheels
+  for c: 0..<2 {
+    i := c + 1;
+    if vehicle_stuck(s[0].bodies[i], s[0].cars[c], D3_Y) && s[0].field.scale > 0.5 { s[0].stuck_for[c] += dt; } else { s[0].stuck_for[c] = 0.0; }
+    if s[0].stuck_for[c] > 1.0 {
+      f := rigid_axis(s[0].bodies[i], D3_Z);
+      b := s[0].bodies[i];
+      b.orientation = dq_y(atan2_d(f.x, f.z));
+      b.pos = d3(b.pos.x, 1.2, b.pos.z); b.vel = D3_ZERO; b.omega = D3_ZERO;
+      s[0].bodies[i] = b;
+      s[0].stuck_for[c] = 0.0;
+    }
+  }
+  // anything that left the arena (it shouldn't) comes back to the kickoff
+  for i: 0..<BODIES {
+    p := s[0].bodies[i].pos;
+    if !d3_finite(p) || abs(p.x) > ARENA_HX + 4.0 || p.y < -3.0 || p.y > ARENA_H + 4.0 || abs(p.z) > ARENA_HZ + GOAL_D + 4.0 { kickoff(s); return; }
+  }
+}
+
+goal_scored :: (s: [] OrbitLeague, team: int) {
+  s[0].score[team] += 1;
+  s[0].last_goal = team;
+  s[0].phase = PHASE_GOAL; s[0].phase_t = 0.0;
+  // the goal knocks every car back from the ball
+  for i: 1..<BODIES {
+    away := d3_sub(s[0].bodies[i].pos, s[0].bodies[BALL].pos);
+    d := d3_len(away);
+    if d < 30.0 {
+      k := 14.0 * (1.0 - d / 30.0);
+      s[0].bodies[i] = rigid_impulse_at(s[0].bodies[i], d3_scale(d3_unit_or(d3(away.x, d * 0.4, away.z), D3_Y), k * CAR_MASS), s[0].bodies[i].pos);
+    }
+  }
+  if track_begin(s[0].track[..], "goal") {
+    track_str(s[0].track[..], "team", ifx team == BLUE then "blue" else "orange");
+    track_int(s[0].track[..], "blue", s[0].score[0]); track_int(s[0].track[..], "orange", s[0].score[1]);
+    track_end(s[0].track[..]);
+  }
+}
+
+game_step :: (s: [] OrbitLeague, dt: f64) {
+  if s[0].golden { return; }
+  s[0].carry = fmin(s[0].carry + dt, STEP * f64(MAX_STEPS));
+  while s[0].carry >= STEP {
+    s[0].carry -= STEP;
+    s[0].phase_t += STEP;
+    if s[0].phase == PHASE_KICKOFF && s[0].phase_t >= KICKOFF { s[0].phase = PHASE_PLAY; s[0].phase_t = 0.0; }
+    if s[0].phase == PHASE_GOAL && s[0].phase_t >= CELEBRATE {
+      if !s[0].overtime && s[0].clock <= 0.0 { s[0].phase = PHASE_OVER; } else if s[0].overtime { s[0].phase = PHASE_OVER; } else { kickoff(s); }
+    }
+    if s[0].phase == PHASE_PLAY {
+      s[0].played += STEP;
+      if !s[0].overtime { s[0].clock = fmax(0.0, s[0].clock - STEP); }
+      if s[0].clock <= 0.0 && !s[0].overtime {
+        if s[0].score[0] == s[0].score[1] { s[0].overtime = true; }
+        else { s[0].phase = PHASE_OVER; s[0].phase_t = 0.0; end_tracked(s); }
+      }
+    }
+    drives: [2] Drive;
+    drives[0] = you_drive(s);
+    drives[1] = bot_drive(s);
+    if s[0].phase == PHASE_OVER { drives[0] = Drive.{}; drives[1] = Drive.{}; }
+    physics_step(s, drives);
+    if s[0].phase == PHASE_PLAY {
+      z := s[0].bodies[BALL].pos.z;
+      if z > ARENA_HZ + BALL_R { goal_scored(s, BLUE); }
+      else if z < -ARENA_HZ - BALL_R { goal_scored(s, ORANGE); }
+    }
+  }
+}
+
+end_tracked :: (s: [] OrbitLeague) {
+  if track_begin(s[0].track[..], "end") {
+    track_int(s[0].track[..], "blue", s[0].score[0]); track_int(s[0].track[..], "orange", s[0].score[1]);
+    track_int(s[0].track[..], "touches", s[0].touches);
+    track_end(s[0].track[..]);
+  }
+}
+
+// ---- in from the host
+
+has_text :: (text: string, part: string) -> bool {
+  if part.count == 0 { return true; }
+  for i: 0..<text.count - part.count + 1 { if text[i..<i + part.count] == part { return true; } }
+  return false;
+}
+
+game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
+  if !s[0].started { game_reset(s); }
+  if kind == HOST_FACTS && fact_of(text, "coarse") == "1" { s[0].touch = true; }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; kickoff(s); }
+  t := track_message(s[0].track[..], kind, text);
+  if kind == HOST_FACTS { track_world(s[0].track[..], "orbit-league"); }
+}
+
+game_golden :: (s: [] OrbitLeague, on: bool) #export_c { s[0].golden = on; }
+
+hold_of :: (key: int) -> int {
+  if key == KEY_UP || key == 'w' || key == 'W' { return HOLD_UP; }
+  if key == KEY_DOWN || key == 's' || key == 'S' { return HOLD_DOWN; }
+  if key == KEY_LEFT || key == 'a' || key == 'A' { return HOLD_LEFT; }
+  if key == KEY_RIGHT || key == 'd' || key == 'D' { return HOLD_RIGHT; }
+  if key == ' ' { return HOLD_JUMP; }
+  if key == KEY_SHIFT { return HOLD_BOOST; }
+  return 0;
+}
+
+leave :: (s: [] OrbitLeague) { if s[0].action == 0 { s[0].out_n = put(s[0].outbox[..], 0, "/verse/galaxy"); s[0].action = ACT_NAVIGATE; } }
+
+toggle_cam :: (s: [] OrbitLeague) {
+  s[0].ball_cam = !s[0].ball_cam;
+  track_setting(s[0].track[..], "ballcam", s[0].ball_cam);
+}
+
+play_again :: (s: [] OrbitLeague) {
+  new_match(s);
+  track_tally(s[0].track[..], "again", "");
+}
+
+game_key :: (s: [] OrbitLeague, key: int, mods: int) -> bool #export_c {
+  if !s[0].started { game_reset(s); }
+  track_key(s[0].track[..], key, false);
+  h := hold_of(key);
+  if h != 0 { s[0].held |= h; return true; }
+  if key == 'c' || key == 'C' { toggle_cam(s); return true; }
+  if key == KEY_ESCAPE { leave(s); return true; }
+  if key == KEY_ENTER && s[0].phase == PHASE_OVER { play_again(s); return true; }
+  return false;
+}
+game_key_up :: (s: [] OrbitLeague, key: int, mods: int) -> bool #export_c {
+  if !s[0].started { game_reset(s); }
+  track_key_up(s[0].track[..], key);
+  h := hold_of(key);
+  if h != 0 { s[0].held &= 63 - h; return true; }
+  return false;
+}
+game_blur :: (s: [] OrbitLeague) #export_c {
+  s[0].held = 0; s[0].stick = false; s[0].stick_dx = 0; s[0].stick_dy = 0;
+  for b: 0..<BUTTONS { s[0].button_id[b] = -1; }
+  track_blur(s[0].track[..]);
+}
+
+button_at :: (s: [] OrbitLeague, x: f32, y: f32) -> int {
+  for i: 0..<BUTTONS { if s[0].shown[i] && inside(s[0].boxes_ui[i], x, y) { return i; } }
+  return -1;
+}
+
+game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
+  if !s[0].started { game_reset(s); }
+  if kind == 1 { s[0].touch = true; }
+  b := button_at(s, x, y);
+  s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
+  track_pointer(s[0].track[..], x, y, phase, kind, "");
+  if phase == POINTER_DOWN {
+    if b >= 0 {
+      s[0].button_id[b] = id;
+      if b == BTN_CAM { toggle_cam(s); }
+      if b == BTN_AGAIN { play_again(s); }
+      if b == BTN_BOOST { track_tally(s[0].track[..], "boost", ""); }
+      return true;
+    }
+    if kind == 1 && x < s[0].width * 0.55 && !s[0].stick {
+      s[0].stick = true; s[0].stick_id = id; s[0].stick_x0 = x; s[0].stick_y0 = y; s[0].stick_dx = 0; s[0].stick_dy = 0;
+      return true;
+    }
+    return false;
+  }
+  for i: 0..<BUTTONS {
+    if s[0].button_id[i] == id && phase != POINTER_MOVE {
+      if i == BTN_BACK && phase == POINTER_UP && b == BTN_BACK { leave(s); }
+      s[0].button_id[i] = -1;
+      return true;
+    }
+  }
+  if s[0].stick && id == s[0].stick_id {
+    if phase == POINTER_MOVE {
+      reach := STICK * hi(s[0].dpr, 0.5);
+      s[0].stick_dx = clamp((x - s[0].stick_x0) / reach, -1, 1); s[0].stick_dy = clamp((y - s[0].stick_y0) / reach, -1, 1);
+    } else { s[0].stick = false; s[0].stick_dx = 0; s[0].stick_dy = 0; s[0].stick_id = -1; }
+    return true;
+  }
+  return false;
+}
+game_cursor :: (s: [] OrbitLeague) -> int #export_c { return ifx s[0].hover >= 0 then 1 else 0; }
+game_action :: (s: [] OrbitLeague) -> int #export_c { a := s[0].action; s[0].action = 0; return a; }
+game_action_done :: (s: [] OrbitLeague) #export_c { s[0].out_n = 0; }
+
+// ---- the camera: behind your car, or behind it looking at the ball
+
+f3 :: (v: D3) -> [3] f32 { o: [3] f32; o[0] = cast(f32) v.x; o[1] = cast(f32) v.y; o[2] = cast(f32) v.z; return o; }
+
+camera :: (s: [] OrbitLeague, dt: f32) {
+  car := s[0].bodies[YOU]; bl := s[0].bodies[BALL];
+  f := rigid_axis(car, D3_Z);
+  dir := d3_unit_or(d3(f.x, 0.0, f.z), D3_Z);
+  // moving fast: look the way it goes
+  flat_v := d3(car.vel.x, 0.0, car.vel.z);
+  if d3_len(flat_v) > 4.0 && d3_dot(flat_v, dir) > 0.0 { dir = d3_unit_or(d3_add(dir, d3_scale(d3_unit(flat_v), 0.6)), dir); }
+  at := d3_add(car.pos, d3_add(d3_scale(dir, 4.0), d3(0.0, 1.0, 0.0)));
+  if s[0].ball_cam {
+    to := d3_sub(bl.pos, car.pos);
+    dir = d3_unit_or(d3(to.x, 0.0, to.z), dir);
+    at = d3_add(d3_scale(bl.pos, 0.7), d3_scale(car.pos, 0.3));
+  }
+  eye := d3_add(d3_sub(car.pos, d3_scale(dir, CAM_BACK)), d3(0.0, CAM_UP, 0.0));
+  eye.x = fclamp(eye.x, -ARENA_HX + 0.8, ARENA_HX - 0.8);
+  eye.y = fclamp(eye.y, 0.8, ARENA_H - 0.8);
+  eye.z = fclamp(eye.z, -ARENA_HZ - GOAL_D + 1.0, ARENA_HZ + GOAL_D - 1.0);
+  if abs(eye.z) > ARENA_HZ - 0.8 && (abs(eye.x) > GOAL_HW - 0.8 || eye.y > GOAL_H - 0.8) { eye.z = fclamp(eye.z, -ARENA_HZ + 0.8, ARENA_HZ - 0.8); }
+  e := f3(eye); a := f3(at);
+  k: f32 = ifx s[0].cam_ready then 1 - exp(-dt * 7.0) else 1;
+  for i: 0..<3 { s[0].cam_eye[i] += (e[i] - s[0].cam_eye[i]) * k; s[0].cam_at[i] += (a[i] - s[0].cam_at[i]) * k; }
+  s[0].cam_ready = true;
+}
+
+view_rows :: (s: [] OrbitLeague) {
+  aspect := s[0].width / hi(s[0].height, 1);
+  ex := s[0].cam_eye[0]; ey := s[0].cam_eye[1]; ez := s[0].cam_eye[2];
+  fx := s[0].cam_at[0] - ex; fy := s[0].cam_at[1] - ey; fz := s[0].cam_at[2] - ez;
+  fl := hi(sqrt(fx * fx + fy * fy + fz * fz), 0.001); fx /= fl; fy /= fl; fz /= fl;
+  rx := -fz; rz := fx; rl := hi(sqrt(rx * rx + rz * rz), 0.001); rx /= rl; rz /= rl;
+  ux := -rz * fy; uy := rz * fx - rx * fz; uz := rx * fy;
+  t: f32 = 1 / tan(cast(f32) FOV * 0.5);
+  sx := t / hi(aspect, 0.3); sy := t;
+  if aspect < 1 { sx = t * 1.25; sy = sx * aspect; }
+  zn: f32 = 0.1; zf: f32 = 400.0;
+  a := zf / (zn - zf); b := zn * zf / (zn - zf);
+  v := s[0].view[..];
+  v[0] = sx * rx; v[1] = 0; v[2] = sx * rz; v[3] = -sx * (rx * ex + rz * ez);
+  v[4] = sy * ux; v[5] = sy * uy; v[6] = sy * uz; v[7] = -sy * (ux * ex + uy * ey + uz * ez);
+  v[8] = -a * fx; v[9] = -a * fy; v[10] = -a * fz; v[11] = a * (fx * ex + fy * ey + fz * ez) + b;
+  v[12] = fx; v[13] = fy; v[14] = fz; v[15] = -(fx * ex + fy * ey + fz * ez);
+  s[0].eye[0] = ex; s[0].eye[1] = ey; s[0].eye[2] = ez;
+  s[0].fwd[0] = fx; s[0].fwd[1] = fy; s[0].fwd[2] = fz;
+  s[0].right[0] = rx / sx; s[0].right[1] = 0; s[0].right[2] = rz / sx;
+  s[0].up[0] = ux / sy; s[0].up[1] = uy / sy; s[0].up[2] = uz / sy;
+}
+
+Seen :: struct { x: f32; y: f32; ok: bool; }
+seen :: (s: [] OrbitLeague, x: f32, y: f32, z: f32) -> Seen {
+  v := s[0].view[..];
+  cx := v[0] * x + v[1] * y + v[2] * z + v[3];
+  cy := v[4] * x + v[5] * y + v[6] * z + v[7];
+  cw := v[12] * x + v[13] * y + v[14] * z + v[15];
+  if cw < 0.01 { return Seen.{x = 0, y = 0, ok = false}; }
+  return Seen.{x = (cx / cw * 0.5 + 0.5) * s[0].width, y = (0.5 - cy / cw * 0.5) * s[0].height, ok = true};
+}
+
+// ---- the HUD
+
+GAP :: 0.5; SPACE :: 1.2;
+PARCH_R :: 0.93; PARCH_G :: 0.95; PARCH_B :: 1.0;
+TEAM_B_R :: 0.30; TEAM_B_G :: 0.62; TEAM_B_B :: 1.0;
+TEAM_O_R :: 1.0; TEAM_O_G :: 0.55; TEAM_O_B :: 0.18;
+LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
+white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
+team_ink :: (team: int, k: f32, light: f32) -> Ink {
+  if team == BLUE { return ink(0.6 * k, light, 1.6 * k, TEAM_B_R, TEAM_B_G, TEAM_B_B); }
+  return ink(0.6 * k, light, 1.6 * k, TEAM_O_R, TEAM_O_G, TEAM_O_B);
+}
+plate :: (s: [] OrbitLeague, b: Box, alpha: f32, look: f32) {
+  n := s[0].plate_n;
+  if n >= PLATES { return; }
+  s[0].plates[n] = b; s[0].plate_alpha[n] = alpha; s[0].plate_look[n] = look; s[0].plate_n = n + 1;
+}
+centred :: (d: f32, out: [] f32, at: int, text: string, x: f32, base: f32, cap: f32, k: Ink) -> int {
+  w := measure(text, GAP, SPACE, false) * cap;
+  return write(d, out, at, text, x - w * 0.5, base, cap, GAP, SPACE, k, false, false);
+}
+clock_text :: (buf: [] u8, at: int, seconds: f64) -> int {
+  t := cast(int) ceil_d(fmax(seconds, 0.0));
+  n := put_int(buf, at, t / 60); n = put(buf, n, ":");
+  if t % 60 < 10 { n = put(buf, n, "0"); }
+  return put_int(buf, n, t % 60);
+}
+hud_button :: (s: [] OrbitLeague, out: [] f32, at: int, which: int, b: Box, label: string, cap: f32) -> int {
+  k := s[0].dpr;
+  s[0].boxes_ui[which] = b; s[0].shown[which] = true;
+  look: f32 = LOOK_LIT;
+  if s[0].hover == which || s[0].button_id[which] >= 0 { look += LOOK_HOVER; }
+  plate(s, b, 0.85, look);
+  return centred(k, out, at, label, (b.x0 + b.x1) * 0.5, (b.y0 + b.y1) * 0.5 + cap * 0.5, cap, white(k, 0.95));
+}
+
+draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
+  k := s[0].dpr; w := s[0].width; h := s[0].height; d := k;
+  phone := w < 700 * k;
+  g := 14 * k;
+  v := 0;
+  buf: [64] u8;
+  // the score and the clock, top middle
+  sw := lo(236 * k, w - 2 * (g + 104 * k));
+  sb := Box.{x0 = w * 0.5 - sw * 0.5, y0 = g, x1 = w * 0.5 + sw * 0.5, y1 = g + 46 * k};
+  plate(s, sb, 0.88, LOOK_PLAIN);
+  n := put_int(buf[..], 0, s[0].score[0]);
+  v = centred(d, out, v, cast(string) buf[0..<n], sb.x0 + 34 * k, sb.y0 + 32 * k, 18 * k, team_ink(BLUE, k, 1));
+  n = put_int(buf[..], 0, s[0].score[1]);
+  v = centred(d, out, v, cast(string) buf[0..<n], sb.x1 - 34 * k, sb.y0 + 32 * k, 18 * k, team_ink(ORANGE, k, 1));
+  n = ifx s[0].overtime then put(buf[..], 0, "+OT") else clock_text(buf[..], 0, s[0].clock);
+  v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y0 + 29 * k, 12 * k, white(k, 0.95));
+  // GALAXY, top left
+  bb := Box.{x0 = g, y0 = g, x1 = g + 96 * k, y1 = g + 34 * k};
+  v = hud_button(s, out, v, BTN_BACK, bb, "GALAXY", 8 * k);
+  // the station's spin
+  sc := spin_clock(s[0].played);
+  if s[0].phase != PHASE_OVER && sc > 0.0 {
+    n = put(buf[..], 0, "SPIN-DOWN  ZERO-G  "); n = clock_text(buf[..], n, sc);
+    v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y1 + 26 * k, 9 * k, ink(0.6 * k, 1, 2 * k, 0.6, 0.95, 1.0));
+  } else if s[0].phase == PHASE_PLAY && sc > -6.0 {
+    n = put(buf[..], 0, "SPIN-DOWN IN "); n = put_int(buf[..], n, cast(int) ceil_d(-sc));
+    v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y1 + 26 * k, 9 * k, white(k, 0.85));
+  }
+  // the middle: the countdown, a goal, the end
+  if s[0].phase == PHASE_KICKOFF {
+    left := cast(int) ceil_d(KICKOFF - s[0].phase_t);
+    n = put_int(buf[..], 0, left);
+    v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, h * 0.42, 34 * k, white(k, 1));
+  }
+  if s[0].phase == PHASE_GOAL {
+    v = centred(d, out, v, "GOAL", w * 0.5, h * 0.4, 36 * k, team_ink(s[0].last_goal, k, 1));
+    v = centred(d, out, v, ifx s[0].last_goal == BLUE then "YOU SCORED" else "THE BOT SCORED", w * 0.5, h * 0.4 + 30 * k, 10 * k, white(k, 0.9));
+  }
+  if s[0].phase == PHASE_OVER {
+    won := s[0].score[0] > s[0].score[1];
+    v = centred(d, out, v, ifx won then "YOU WIN" else "THE BOT WINS", w * 0.5, h * 0.38, 26 * k, team_ink(ifx won then BLUE else ORANGE, k, 1));
+    ab := Box.{x0 = w * 0.5 - 90 * k, y0 = h * 0.38 + 24 * k, x1 = w * 0.5 + 90 * k, y1 = h * 0.38 + 66 * k};
+    v = hud_button(s, out, v, BTN_AGAIN, ab, "PLAY AGAIN", 10 * k);
+  }
+  // boost, bottom right (above the buttons on a phone)
+  fuel := cast(f32) s[0].tanks[0].fuel;
+  n = put_int(buf[..], 0, cast(int) fuel);
+  thumbs := s[0].touch || phone;
+  bx := w - g - 70 * k; by := ifx thumbs then h - 200 * k else h - g - 40 * k;
+  v = centred(d, out, v, cast(string) buf[0..<n], bx + 35 * k, by + 22 * k, 14 * k, ink(0.6 * k, 1, 2 * k, TEAM_O_R, TEAM_O_G, 0.3));
+  v = centred(d, out, v, "BOOST", bx + 35 * k, by + 36 * k, 6.5 * k, white(k, 0.7));
+  if lit(out, v, bx, by + 42 * k, bx + 70 * k, by + 42 * k, 0.5 * k, 0.3, 1 * k, 1, 1, 1, MODE_STROKE) { v += 6; }
+  if fuel > 0 && lit(out, v, bx, by + 42 * k, bx + 70 * k * fuel / 100, by + 42 * k, 1.4 * k, 1, 3 * k, TEAM_O_R, TEAM_O_G, 0.3, MODE_STROKE) { v += 6; }
+  if thumbs {
+    // the right thumb's buttons, and the left thumb's stick
+    r := 46 * k;
+    jb := Box.{x0 = w - g - 2 * r, y0 = h - g - 2 * r, x1 = w - g, y1 = h - g};
+    v = hud_button(s, out, v, BTN_JUMP, jb, "JUMP", 9 * k);
+    ob := Box.{x0 = jb.x0 - 2 * r - 12 * k, y0 = h - g - 1.6 * r, x1 = jb.x0 - 12 * k, y1 = h - g + 0.4 * r - 0.4 * r};
+    v = hud_button(s, out, v, BTN_BOOST, ob, "BOOST", 9 * k);
+    cb := Box.{x0 = w - g - 92 * k, y0 = sb.y1 + 40 * k, x1 = w - g, y1 = sb.y1 + 70 * k};
+    v = hud_button(s, out, v, BTN_CAM, cb, ifx s[0].ball_cam then "CAR CAM" else "BALL CAM", 7 * k);
+    if s[0].stick {
+      cx := s[0].stick_x0; cy := s[0].stick_y0; reach := STICK * k;
+      for q: 0..<24 {
+        a0 := cast(f32) q / 24.0 * 6.2831853; a1 := cast(f32) (q + 1) / 24.0 * 6.2831853;
+        if lit(out, v, cx + cos(a0) * reach, cy + sin(a0) * reach, cx + cos(a1) * reach, cy + sin(a1) * reach, 0.6 * k, 0.5, 1.5 * k, 1, 1, 1, MODE_STROKE) { v += 6; }
+      }
+      if tinted_dot(out, v, cx + s[0].stick_dx * reach, cy + s[0].stick_dy * reach, 14 * k, 0.9, 6 * k, TEAM_B_R, TEAM_B_G, TEAM_B_B) { v += 6; }
+    } else if s[0].played < 20 {
+      v = centred(d, out, v, "DRAG HERE TO DRIVE", w * 0.25, h - 60 * k, 7.5 * k, white(k, 0.6));
+    }
+  } else {
+    cb := Box.{x0 = w - g - 112 * k, y0 = g, x1 = w - g, y1 = g + 34 * k};
+    v = hud_button(s, out, v, BTN_CAM, cb, ifx s[0].ball_cam then "CAR CAM  C" else "BALL CAM  C", 7.5 * k);
+    if s[0].played < 25 && s[0].phase != PHASE_OVER {
+      hint := "W S DRIVE   A D STEER   SPACE JUMP   SHIFT BOOST";
+      v = centred(d, out, v, hint, w * 0.5, h - 30 * k, lo(8 * k, (w - 2 * g) / hi(measure(hint, GAP, SPACE, false), 1)), white(k, 0.65));
+    }
+  }
+  // the ball, when it is off the screen: an arrow at the edge toward it
+  bp := s[0].bodies[BALL].pos;
+  sp := seen(s, cast(f32) bp.x, cast(f32) bp.y, cast(f32) bp.z);
+  if !sp.ok || sp.x < 0 || sp.x > w || sp.y < 0 || sp.y > h {
+    ax := ifx sp.ok then clamp(sp.x, 40 * k, w - 40 * k) else w * 0.5;
+    ay := ifx sp.ok then clamp(sp.y, 90 * k, h - 60 * k) else h - 60 * k;
+    if tinted_dot(out, v, ax, ay, 7 * k, 1, 8 * k, 1, 1, 1) { v += 6; }
+  }
+  return v;
+}
+
+// ---- the frame
+
+put_car :: (u: [] f32, at: int, b: RigidBody, boost: bool, team: int, steer: f64) {
+  x := rigid_axis(b, D3_X); y := rigid_axis(b, D3_Y); z := rigid_axis(b, D3_Z);
+  u[at] = cast(f32) b.pos.x; u[at + 1] = cast(f32) b.pos.y; u[at + 2] = cast(f32) b.pos.z; u[at + 3] = ifx boost then 1.0f32 else 0.0f32;
+  u[at + 4] = cast(f32) x.x; u[at + 5] = cast(f32) x.y; u[at + 6] = cast(f32) x.z; u[at + 7] = cast(f32) team;
+  u[at + 8] = cast(f32) y.x; u[at + 9] = cast(f32) y.y; u[at + 10] = cast(f32) y.z; u[at + 11] = 0;
+  u[at + 12] = cast(f32) z.x; u[at + 13] = cast(f32) z.y; u[at + 14] = cast(f32) z.z; u[at + 15] = cast(f32) steer;
+}
+
+game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if s.count < 1 || u.count < UNIFORM_FLOATS || width < 1 || height < 1 { return 0; }
+  if !s[0].started { game_reset(s); }
+  s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
+  step := clamp(dt, 0, 0.1);
+  if !s[0].golden { s[0].time += step; }
+  game_step(s, cast(f64) step);
+  if s[0].jumped[0] { s[0].jumped[0] = false; track_tally(s[0].track[..], "jump", ""); }
+  camera(s, step);
+  view_rows(s);
+  s[0].plate_n = 0;
+  for i: 0..<BUTTONS { s[0].shown[i] = false; }
+  for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
+  u[0] = width; u[1] = height; u[2] = ifx still || s[0].golden then 20.0f32 else s[0].time;
+  u[3] = 1; u[4] = ifx still || s[0].golden then 1.0f32 else 0.0f32; u[6] = s[0].dpr;
+  u[7] = cast(f32) (1.0 - s[0].field.scale);
+  for i: 0..<16 { u[VIEW_AT + i] = s[0].view[i]; }
+  for i: 0..<3 { u[EYE_AT + i] = s[0].eye[i]; u[FWD_AT + i] = s[0].fwd[i]; u[RX_AT + i] = s[0].right[i]; u[UY_AT + i] = s[0].up[i]; }
+  // the goal's flash: its share, then the team
+  if s[0].phase == PHASE_GOAL { u[EYE_AT + 3] = cast(f32) fmax(0.0, 1.0 - s[0].phase_t / 1.5); u[FWD_AT + 3] = cast(f32) s[0].last_goal; }
+  bl := s[0].bodies[BALL];
+  u[BALL_AT] = cast(f32) bl.pos.x; u[BALL_AT + 1] = cast(f32) bl.pos.y; u[BALL_AT + 2] = cast(f32) bl.pos.z; u[BALL_AT + 3] = cast(f32) BALL_R;
+  q := bl.orientation;
+  u[BALLQ_AT] = cast(f32) q.x; u[BALLQ_AT + 1] = cast(f32) q.y; u[BALLQ_AT + 2] = cast(f32) q.z; u[BALLQ_AT + 3] = cast(f32) q.w;
+  put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now);
+  put_car(u, CAR_AT + CAR_FLOATS, s[0].bodies[BOT], s[0].boosting[1], ORANGE, s[0].cars[1].steer_now);
+  u[ARENA_AT] = cast(f32) ARENA_HX; u[ARENA_AT + 1] = cast(f32) ARENA_HZ; u[ARENA_AT + 2] = cast(f32) ARENA_H; u[ARENA_AT + 3] = cast(f32) GOAL_HW;
+  u[GOAL_AT] = cast(f32) GOAL_H; u[GOAL_AT + 1] = cast(f32) GOAL_D;
+  n := draw_hud(s, out);
+  u[5] = cast(f32) s[0].plate_n;
+  for i: 0..<s[0].plate_n {
+    o := PANEL_AT + i * 8; b := s[0].plates[i];
+    u[o] = b.x0; u[o + 1] = b.y0; u[o + 2] = b.x1; u[o + 3] = b.y1;
+    u[o + 4] = s[0].dpr; u[o + 5] = s[0].plate_alpha[i]; u[o + 6] = s[0].plate_look[i]; u[o + 7] = 0;
+  }
+  track_frame(s[0].track[..], dt, width, height, dpr);
+  return n;
+}
+
+coaxial_orbitleague_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+coaxial_orbitleague_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
+coaxial_orbitleague_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
+
+// ---- checks
+
+run_for :: (s: [] OrbitLeague, seconds: f64) {
+  steps := cast(int) (seconds / STEP);
+  for i: 0..<steps { game_step(s, STEP); }
+}
+
+#test "kickoff counts down, then you drive and boost toward the ball" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  s[0].width = 1440; s[0].height = 900; s[0].dpr = 1;
+  run_for(s[..], 1.0);
+  #assert s[0].phase == PHASE_KICKOFF && s[0].cars[0].wheels == 4;
+  z0 := s[0].bodies[YOU].pos.z;
+  run_for(s[..], 2.1);
+  #assert s[0].phase == PHASE_PLAY;
+  s[0].held = HOLD_UP | HOLD_BOOST;
+  run_for(s[..], 1.0);
+  #assert s[0].bodies[YOU].pos.z > z0 + 8.0 && s[0].tanks[0].fuel < BOOST_START;
+}
+
+#test "driving into the ball moves it; a ball past the line scores and kicks off again" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  run_for(s[..], KICKOFF + 0.1);
+  s[0].held = HOLD_UP;
+  run_for(s[..], 3.0);
+  #assert d3_len(s[0].bodies[BALL].vel) > 1.0 || abs(s[0].bodies[BALL].pos.z) > 1.0;
+  // put the ball in the bot's net
+  s[0].bodies[BALL].pos = d3(0.0, 2.0, ARENA_HZ + 1.0);
+  s[0].bodies[BALL].vel = d3(0.0, 0.0, 10.0);
+  run_for(s[..], 0.5);
+  #assert s[0].score[0] == 1 && s[0].phase == PHASE_GOAL;
+  // the net holds it
+  #assert s[0].bodies[BALL].pos.z < ARENA_HZ + GOAL_D;
+  run_for(s[..], CELEBRATE);
+  #assert s[0].phase == PHASE_KICKOFF && abs(s[0].bodies[BALL].pos.z) < 0.01;
+}
+
+#test "a ball hit at the wall beside the goal bounces back; the roof and walls hold it" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  run_for(s[..], KICKOFF + 0.1);
+  s[0].bodies[BALL].pos = d3(15.0, 3.0, 30.0);
+  s[0].bodies[BALL].vel = d3(0.0, 0.0, 40.0);
+  run_for(s[..], 1.0);
+  #assert s[0].score[0] == 0 && s[0].bodies[BALL].vel.z < 0.0;
+  s[0].bodies[BALL].pos = d3(0.0, 10.0, 0.0);
+  s[0].bodies[BALL].vel = d3(30.0, 30.0, 0.0);
+  run_for(s[..], 2.0);
+  p := s[0].bodies[BALL].pos;
+  #assert abs(p.x) < ARENA_HX && p.y < ARENA_H && p.y > 0.0;
+}
+
+#test "the station spins down every 90 s for 30 s" {
+  #assert spin_share(10.0) == 1.0 && spin_share(59.0) == 1.0;
+  #assert near_d(spin_share(61.5), 0.5, 0.000001);
+  #assert spin_share(70.0) == 0.0 && spin_share(88.5) > 0.4 && spin_share(91.0) == 1.0;
+  #assert near_d(spin_clock(70.0), 20.0, 0.000001) && near_d(spin_clock(50.0), -10.0, 0.000001);
+}
+
+#test "the bot drives to the ball and gets it moving" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  run_for(s[..], KICKOFF + 5.0);
+  #assert d3_len(s[0].bodies[BALL].vel) > 0.5 || d3_len(d3_sub(s[0].bodies[BALL].pos, d3(0.0, BALL_R, 0.0))) > 1.0;
+}
+
+#test "a frame draws the HUD and keys and thumbs drive" {
+  s: [1] OrbitLeague;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := game_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  #assert n > 0 && u[5] >= 3;
+  #assert game_key(s[..], 'w', 0) && (s[0].held & HOLD_UP) != 0;
+  #assert game_key_up(s[..], 'W', 0) && s[0].held == 0;
+  #assert game_key(s[..], KEY_SHIFT, 0) && (s[0].held & HOLD_BOOST) != 0;
+  m := game_frame(s[..], out[..], u[..], 390, 844, 3, 0.016, false);
+  a := game_pointer(s[..], 100, 2000, POINTER_DOWN, 1, 7);
+  b := game_pointer(s[..], 100, 1800, POINTER_MOVE, 1, 7);
+  #assert s[0].stick && s[0].stick_dy < -0.9;
+  m = game_frame(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.016, false);
+  #assert s[0].shown[BTN_JUMP] && s[0].shown[BTN_BOOST];
+  jb := s[0].boxes_ui[BTN_JUMP];
+  c := game_pointer(s[..], (jb.x0 + jb.x1) * 0.5, (jb.y0 + jb.y1) * 0.5, POINTER_DOWN, 1, 8);
+  #assert s[0].button_id[BTN_JUMP] == 8 && you_drive(s[..]).input.jump || s[0].phase == PHASE_KICKOFF;
+  #assert game_key(s[..], KEY_ESCAPE, 0) && game_action(s[..]) == ACT_NAVIGATE;
+}
