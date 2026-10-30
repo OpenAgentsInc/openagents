@@ -30,6 +30,7 @@ done
 state="$home_dir/state"
 if $stop; then
   [[ -d "$state" && ! -L "$state" ]] || die 'no running join state found'
+  [[ ! -L "$state/stop" ]] || die 'stop path must not be a symlink'
   : > "$state/stop"
   printf 'pylon: stop requested\n'
   exit 0
@@ -37,7 +38,7 @@ fi
 for tool in git python3; do command -v "$tool" >/dev/null 2>&1 || die "install $tool first"; done
 system="$(uname -s)"
 case "$system" in
-  Darwin) command -v xcrun >/dev/null 2>&1 || die 'install Xcode Command Line Tools: xcode-select --install'; xcrun --find clang >/dev/null || die 'Xcode Command Line Tools unavailable'; cc="${COAX_CC:-$(xcrun --find clang)}"; cxx="${CXX:-$(xcrun --find clang++)}" ;;
+  Darwin) command -v xcrun >/dev/null 2>&1 || die 'install Xcode Command Line Tools: xcode-select --install'; xcrun --find clang >/dev/null || die 'Xcode Command Line Tools unavailable'; cc="${COAX_CC:-cc}"; cxx="${CXX:-c++}" ;;
   Linux) command -v nix >/dev/null 2>&1 || die 'install Nix first (OpenSSL build dependency)'; cc="${COAX_CC:-$(command -v gcc || true)}"; cxx="${CXX:-$(command -v g++ || true)}" ;;
   *) die 'this demo supports macOS and Linux' ;;
 esac
@@ -77,13 +78,23 @@ lock="$state/join.lock"
 if ! mkdir "$lock" 2>/dev/null; then die "another join is active (or remove stale $lock after checking its pid file)"; fi
 printf '%s\n' "$$" > "$lock/pid"
 engine_pid='' pylon_pid=''
+owned_running() { jobs -pr | grep -qx "$1"; }
+stop_owned() {
+  local pid="$1" grace="$2" i
+  [[ -n "$pid" ]] || return 0
+  for ((i=0;i<grace;i++)); do owned_running "$pid" || break; sleep .1; done
+  if owned_running "$pid"; then
+    kill "$pid" 2>/dev/null || true
+    for ((i=0;i<20;i++)); do owned_running "$pid" || break; sleep .1; done
+    owned_running "$pid" && kill -KILL "$pid" 2>/dev/null || true
+  fi
+  wait "$pid" 2>/dev/null || true
+}
 cleanup() {
   trap - EXIT INT TERM HUP
   : > "$state/stop"
-  [[ -z "$pylon_pid" ]] || kill "$pylon_pid" 2>/dev/null || true
-  [[ -z "$engine_pid" ]] || kill "$engine_pid" 2>/dev/null || true
-  [[ -z "$pylon_pid" ]] || wait "$pylon_pid" 2>/dev/null || true
-  [[ -z "$engine_pid" ]] || wait "$engine_pid" 2>/dev/null || true
+  stop_owned "$pylon_pid" 30
+  stop_owned "$engine_pid" 0
   rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true
 }
 trap cleanup EXIT
@@ -151,14 +162,16 @@ PY
 )"
 fi
 [[ "$port" =~ ^[0-9]+$ ]] && ((port>=1024 && port<=65535)) || die 'port must be 1024..65535'
-host="$(hostname -s | tr -c 'A-Za-z0-9-' '-' | cut -c1-40)"
+host="$(hostname -s | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9-' '-' | cut -c1-40)"
 random_hex() { od -An -N "$1" -tx1 /dev/urandom | tr -d ' \n'; }
 [[ -n "$slug" ]] || slug="pylon-${host}-$(random_hex 2)"
 [[ -n "$label" ]] || label="${host} (demo)"
 [[ "$slug" =~ ^[a-zA-Z0-9_-]+$ && ${#slug} -le 64 ]] || die 'slug must be 1..64 letters, digits, _ or -'
 # This is a fresh demo label every join, never derived from an existing identity.
 label_file="$state/demo-label"
-[[ ! -L "$label_file" && ! -L "$state/stop" ]] || die 'state files must not be symlinks'
+for file in "$label_file" "$state/stop" "$state/engine.log" "$state/pylon.log" "$state/identity"; do
+  [[ ! -L "$file" ]] || die 'state files must not be symlinks'
+done
 random_hex 32 > "$label_file"
 chmod 600 "$label_file"
 rm -f "$state/stop"
