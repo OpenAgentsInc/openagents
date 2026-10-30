@@ -66,11 +66,17 @@ The start still takes about 17 s more to pin 14.45 GiB of streamed weights
 
 ## Not done
 
-- `coax mutate psionic/lib/decision-session.coax` did not finish in two
-  15-minute shards on the loaded host; it is being rerun in 8 shards and its
-  result will be added here.
+- `coax mutate psionic/lib/decision-session.coax` is owed. It did not finish
+  in 2 shards or in 8 shards (3 jobs each) within the 15-minute limit; the
+  host's load average was 94 to 138 from other work. Every mutant runs all
+  279 session checks, so it needs an idle host or a smaller split of the
+  unit. The new code there is the `known` line and `ps_shard_record`, both
+  covered by the two new tests.
 - The host stats the path after mapping it. A file replaced at that path
   between the two would get the new file's identity for the old mapping; a
   `fstat` of the mapped descriptor would close that.
 - `psionic/tests/serve.sh` (sanitized builds) was not run.
+- `psionic-serve --device-mib N` (chapter 48c) caps the device plan's budget;
+  release builds with and without `gpu` pass, and `--toy --device-mib`
+  is refused.
 - Pinning the streamed weights (17 s) is the next start-up cost.

@@ -40,6 +40,7 @@
 - [47. Let the small model guess](ch047-let-the-small-model-guess.md)
 - [48. Call a tool](ch048-call-a-tool.md)
 - [48b. Serve Responses](ch048b-serve-responses.md)
+- [48c. Two models, one card](ch048c-two-models-one-card.md)
 
 - [56. Execute a DeepSeek R1 distill](ch056-execute-a-deepseek-r1-distill.md)
 - [57. DeepSeek’s front door](ch057-deepseeks-front-door.md)

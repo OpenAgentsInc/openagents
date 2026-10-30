@@ -14,6 +14,11 @@
  *   psionic-serve --elephant-gpu DIR --table FILE [the same options]
  *   psionic-serve --elephant-metal DIR --table FILE [the same options]
  *
+ * --device-mib N (--elephant-gpu) caps the device memory the plan may use;
+ * without it the plan takes what is free less 256 MiB. Weights that do not fit
+ * stream from host memory (chapter 30a), so a small cap leaves room for
+ * another model on the same card.
+ *
  * --fixture-delay-ms N (toy only) holds each decision for N ms before it
  * starts, so tests can observe busy refusals, deadlines and cancellation.
  * The server binds 127.0.0.1 only.
@@ -202,7 +207,7 @@ static void open_toy(Server *s, int64_t capacity) {
     s->engine = sv_seal(s->engine, overlaps(read_only, 4, s));
 }
 
-static void open_elephant(Server *s, const char *dir, const char *table_path, int64_t capacity, bool gpu) {
+static void open_elephant(Server *s, const char *dir, const char *table_path, int64_t capacity, bool gpu, int64_t device_mib) {
     coax_v_u8 config = map_named(dir, "config.json"), tokenizer = map_named(dir, "tokenizer.json"), readout = map_named(dir, "readout.json");
     coax_v_u8 index = {NULL, 0}, table = map_file(table_path);
     coax_t_PaFile *file = zalloc(1, sizeof *file); file->data = map_named(dir, "model.safetensors");
@@ -234,7 +239,7 @@ static void open_elephant(Server *s, const char *dir, const char *table_path, in
 #ifdef PSIONIC_SERVE_GPU
     if (gpu) {
         t0 = now_ms();
-        int r = eg_place(s->gpu, session.model, capacity, 0);
+        int r = eg_place(s->gpu, session.model, capacity, device_mib * 1048576);
         if (r) { fprintf(stderr, "psionic-serve: device placement refused: %d %s\n", r, eg_log()); exit(1); }
         printf("psionic-serve: placed %.2f GiB resident and %.2f GiB pinned for streaming in %lld ms (plan budget %.2f GiB)\n",
             s->gpu->resident_bytes / 1073741824.0, s->gpu->pinned_bytes / 1073741824.0, (long long)(now_ms() - t0), s->gpu->budget / 1073741824.0);
@@ -359,7 +364,7 @@ static long option(const char *v, long lo, long hi, const char *name) {
 
 int main(int argc, char **argv) {
     const char *elephant = NULL, *table = NULL, *device_flag = NULL; bool toy = false, gpu = false;
-    long port = 8790, read_ms = 10000, deadline_ms = 30000, capacity = 0, delay = 0;
+    long port = 8790, read_ms = 10000, deadline_ms = 30000, capacity = 0, delay = 0, device_mib = 0;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--toy")) { toy = true; continue; }
@@ -372,8 +377,9 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--read-ms")) read_ms = option(v, 1, 600000, a);
         else if (!strcmp(a, "--deadline-ms")) deadline_ms = option(v, 1, 86400000, a);
         else if (!strcmp(a, "--capacity")) capacity = option(v, 1, 16384, a);
+        else if (!strcmp(a, "--device-mib")) device_mib = option(v, 1, 1048576, a);
         else if (!strcmp(a, "--fixture-delay-ms")) delay = option(v, 0, 600000, a);
-        else { fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]\n"); return 2; }
+        else { fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N] [--device-mib N]\n"); return 2; }
         i++;
     }
 #ifndef PSIONIC_SERVE_GPU
@@ -382,9 +388,10 @@ int main(int argc, char **argv) {
 #else
     if (gpu && strcmp(device_flag, DEVICE_FLAG)) { fprintf(stderr, "psionic-serve: built for " DEVICE_FLAG ", not %s\n", device_flag); return 2; }
 #endif
+    if (device_mib && !gpu) { fprintf(stderr, "psionic-serve: --device-mib needs a device engine\n"); return 2; }
     if (gpu && capacity > 512) { fprintf(stderr, "psionic-serve: the device plan takes at most 512 tokens\n"); return 2; }
     if (toy == (elephant != NULL) || (elephant && !table) || (delay && !toy)) {
-        fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]\n"); return 2;
+        fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N] [--device-mib N]\n"); return 2;
     }
     signal(SIGPIPE, SIG_IGN); signal(SIGTERM, on_signal); signal(SIGINT, on_signal);
     Server s = {0}; s.limits = (coax_t_SvLimits){read_ms, deadline_ms}; s.delay_ms = delay;
@@ -392,7 +399,7 @@ int main(int argc, char **argv) {
 #ifdef PSIONIC_SERVE_GPU
     if (gpu) open_gpu(&s);
 #endif
-    if (toy) open_toy(&s, capacity ? capacity : 2048); else open_elephant(&s, elephant, table, capacity ? capacity : gpu ? 128 : 512, gpu);
+    if (toy) open_toy(&s, capacity ? capacity : 2048); else open_elephant(&s, elephant, table, capacity ? capacity : gpu ? 128 : 512, gpu, device_mib);
     if (!s.engine.sealed) { fprintf(stderr, "psionic-serve: buffers overlap; refusing to serve\n"); return 1; }
     int lfd = listen_loopback((int)port);
     struct sockaddr_in bound; socklen_t len = sizeof bound; getsockname(lfd, (struct sockaddr *)&bound, &len);
