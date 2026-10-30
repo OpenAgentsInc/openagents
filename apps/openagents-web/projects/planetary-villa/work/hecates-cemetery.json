@@ -69,8 +69,9 @@
     {
       "slug": "hc-painterly",
       "title": "Hecate's Cemetery in painterly",
-      "body": "The garden moves to the Verse's painterly style at night (docs/verse/art-styles.md): soft moonlit bands, violet shadows, blue night haze, blob trees and moonlit grass, painted water, with Kiki's sign-off. The engine work is the Verse project's Art styles initiative.",
-      "parent": "hecates-cemetery"
+      "body": "Superseded: Kiki chose a flat low-poly style for Hecate's Cemetery instead of painterly. It shipped in 5a78605fc4 (the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); her sign-off is hc-flat-review. Was: The garden moves to the Verse's painterly style at night (docs/verse/art-styles.md): soft moonlit bands, violet shadows, blue night haze, blob trees and moonlit grass, painted water, with Kiki's sign-off. The engine work is the Verse project's Art styles initiative.",
+      "parent": "hecates-cemetery",
+      "status": "closed"
     }
   ],
   "tasks": [
@@ -835,6 +836,24 @@
       ]
     },
     {
+      "slug": "hc-flat-review",
+      "parent": "hc-launch",
+      "title": "Kiki signs off Hecate's Cemetery in the flat style",
+      "size": "S",
+      "labels": [
+        "web",
+        "flat",
+        "owner"
+      ],
+      "body": "An owner step: Kiki walks Hecate's Cemetery in the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\") at desktop and phone, the gate, the plaza and the field, and signs it off. Her sign-off feeds hc-launch-review.",
+      "files": [],
+      "acceptance": [
+        "Kiki's sign-off recorded in a note"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
       "slug": "hc-launch-review",
       "parent": "hc-launch",
       "title": "Kiki's review and the public launch",
@@ -855,7 +874,8 @@
         "hc-emotes",
         "hc-report-review",
         "hc-memorial-media",
-        "hc-emotes-live"
+        "hc-emotes-live",
+        "hc-flat-review"
       ],
       "blocks": []
     },
@@ -869,7 +889,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Tag the realm `style: painterly` with `clock: fixed:0.0` (always night; the moon keeps its real phase and fixed place). Write the style into verse/planetary-villa/README.md's Look section as Kiki confirms it: painterly at night, the moon the key light, outlines as pale edges only.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-style-field, as-presets. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Tag the realm `style: painterly` with `clock: fixed:0.0` (always night; the moon keeps its real phase and fixed place). Write the style into verse/planetary-villa/README.md's Look section as Kiki confirms it: painterly at night, the moon the key light, outlines as pale edges only.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-style-field, as-presets. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/realms.json",
         "verse/planetary-villa/README.md"
@@ -884,7 +904,8 @@
       "needs": [
         "verse:as-style-field",
         "verse:as-presets"
-      ]
+      ],
+      "status": "closed"
     },
     {
       "slug": "hc-paint-light",
@@ -896,7 +917,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Replace the faceted single-term moonlight with the night preset: smooth normals and three bands (no low-poly facets from `dpdx`/`dpdy`), a moon-silver rim on everything, the moon's shadow map (tombstones, hedges, cypresses and the wall cast soft violet-blue shadows), the night ambient and tone so the garden reads (its golden's `lit` rises from 0.015), night haze (0.10, 0.14, 0.27) from 12 m in place of the near-black fog, and the outlines in their light form at most 0.35, fading with haze. Kiki judges how dim the night is.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-toon-bands, as-rim, as-soft-shadows, as-tone-post, as-haze, as-day-night, as-outline-light. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Replace the faceted single-term moonlight with the night preset: smooth normals and three bands (no low-poly facets from `dpdx`/`dpdy`), a moon-silver rim on everything, the moon's shadow map (tombstones, hedges, cypresses and the wall cast soft violet-blue shadows), the night ambient and tone so the garden reads (its golden's `lit` rises from 0.015), night haze (0.10, 0.14, 0.27) from 12 m in place of the near-black fog, and the outlines in their light form at most 0.35, fading with haze. Kiki judges how dim the night is.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-toon-bands, as-rim, as-soft-shadows, as-tone-post, as-haze, as-day-night, as-outline-light. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -921,7 +942,8 @@
         "verse:as-haze",
         "verse:as-day-night",
         "verse:as-outline-light"
-      ]
+      ],
+      "status": "closed"
     },
     {
       "slug": "hc-paint-sky",
@@ -933,7 +955,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Keep the moon in its real phase and the stars; the horizon meets the haze colour so the hills step back in blue layers; clouds per Kiki's answer to the open question (cover 0 until then); faint moon shafts through the cypresses at the night strength.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-painted-sky, as-light-shafts. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Keep the moon in its real phase and the stars; the horizon meets the haze colour so the hills step back in blue layers; clouds per Kiki's answer to the open question (cover 0 until then); faint moon shafts through the cypresses at the night strength.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-painted-sky, as-light-shafts. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -951,7 +973,8 @@
       "needs": [
         "verse:as-painted-sky",
         "verse:as-light-shafts"
-      ]
+      ],
+      "status": "closed"
     },
     {
       "slug": "hc-paint-foliage",
@@ -963,7 +986,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "The cypresses (cones) and round trees (spheres) shade as soft ellipsoid and sphere blobs that sway; the hedges become soft rounded masses instead of boxes; moonlit wind-swept grass fills the field and the garden beds, with none on the paths, the plaza or the plots. The glowing flowers stand in the grass and stay findable.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-blob-foliage, as-wind-grass. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The cypresses (cones) and round trees (spheres) shade as soft ellipsoid and sphere blobs that sway; the hedges become soft rounded masses instead of boxes; moonlit wind-swept grass fills the field and the garden beds, with none on the paths, the plaza or the plots. The glowing flowers stand in the grass and stay findable.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-blob-foliage, as-wind-grass. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -982,7 +1005,8 @@
       "needs": [
         "verse:as-blob-foliage",
         "verse:as-wind-grass"
-      ]
+      ],
+      "status": "closed"
     },
     {
       "slug": "hc-paint-ground",
@@ -994,7 +1018,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "The ground and paths lose their fine grit (2.3, 4 and 11 cycles a metre today) for broad painted colour, the path a clean band with its pale edge; the fountain's water takes the painted water preset (night bands, moon sparkles, a clean foam ring).\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-painted-water. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The ground and paths lose their fine grit (2.3, 4 and 11 cycles a metre today) for broad painted colour, the path a clean band with its pale edge; the fountain's water takes the painted water preset (night bands, moon sparkles, a clean foam ring).\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-painted-water. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1010,7 +1034,8 @@
       "blocks": [],
       "needs": [
         "verse:as-painted-water"
-      ]
+      ],
+      "status": "closed"
     },
     {
       "slug": "hc-paint-figures",
@@ -1022,7 +1047,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "Your shadow stays all-black with fuzzy edges and the dogs stay glowing white (Kiki's designs, exempt from the bands), but the shadow's body reads as one soft silhouette rather than visible balls and limbs; other visitors match. The character rim applies where it doesn't fight the design.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-character-shading. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: Your shadow stays all-black with fuzzy edges and the dogs stay glowing white (Kiki's designs, exempt from the bands), but the shadow's body reads as one soft silhouette rather than visible balls and limbs; other visitors match. The character rim applies where it doesn't fight the design.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-character-shading. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/villa.coax",
         "apps/openagents-web/villa-face.c",
@@ -1041,7 +1066,8 @@
       "blocks": [],
       "needs": [
         "verse:as-character-shading"
-      ]
+      ],
+      "status": "closed"
     },
     {
       "slug": "hc-paint-review",
@@ -1053,7 +1079,7 @@
         "painterly",
         "needs-verse"
       ],
-      "body": "The realm passes the style check in the release walk at desktop and phone, and Kiki approves the side-by-side sheet; the golden moves only with her approval. Her sign-off feeds hc-launch-review.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-style-check, as-phone-tier. This task can't land until those are done.",
+      "body": "Superseded by the flat style (5a78605fc4: the \"flat\" preset in verse/style-preset.coax, docs/verse/art-styles.md \"Flat\"); Kiki chose it over painterly. Was: The realm passes the style check in the release walk at desktop and phone, and Kiki approves the side-by-side sheet; the golden moves only with her approval. Her sign-off feeds hc-launch-review.\n\nSpecification: `docs/verse/art-styles.md` (Painterly, and \"Audit: Hecate's Cemetery\").\n\nBlocked by Verse engine work, tracked in the Verse project (https://openagents.com/projects/verse): as-style-check, as-phone-tier. This task can't land until those are done.",
       "files": [
         "apps/openagents-web/realms.json"
       ],
@@ -1072,7 +1098,8 @@
       "needs": [
         "verse:as-style-check",
         "verse:as-phone-tier"
-      ]
+      ],
+      "status": "closed"
     }
   ]
 }

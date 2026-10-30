@@ -2,7 +2,8 @@
 
 Status: specification, October 29. Nothing here is built yet; the work is the
 Verse project's "Art styles" initiative (`apps/openagents-web/projects/verse/work/art-styles.json`)
-and Planetary Villa's "Hecate's Cemetery in painterly" milestone.
+and Planetary Villa's "Hecate's Cemetery in painterly" milestone (closed: Hecate's
+Cemetery moved to flat).
 
 The owner's rule: every zone on the Verse is drawn in one of a few art
 styles. For now there are four: **lowpoly**, **painterly**, **photoreal**
@@ -58,7 +59,7 @@ and a `style`; a zone without one takes the realm's.
   (`?clock=0.5`), so a shot doesn't depend on when it was taken.
 - Existing realms are tagged when the field lands: Haunted House, Dead
   Gears, Ice Cream Man, the fixture, the Grid, the Sandbox and the drops
-  `lowpoly`; Hecate's Cemetery and Everglade `painterly`. Each stays as it
+  `lowpoly`; Everglade `painterly`; Hecate's Cemetery and Fairy Forest `flat`. Each stays as it
   draws today until its adoption task changes it.
 
 ## Presets
