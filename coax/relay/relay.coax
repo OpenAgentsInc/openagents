@@ -1,0 +1,221 @@
+// The Coax relay, R1 (relay-server-r1, coax/nostr.md section 17): a ws://
+// Nostr relay for 127.0.0.1 or a tailnet address. relay-host.c parses the
+// flags and runs main on a large stack; socket-server-native.c moves bytes.
+// The chain: socket -> ws_server.coax (RFC 6455 server half) ->
+// message_server.coax (NIP-01 frames) -> relay_server.coax (admission,
+// REQ rules, subscriptions, NIP-11, NIP-40, replacement) -> the store.
+//
+// STORE: this build uses the TEST-ONLY in-memory double
+// (coax/tests/nostr/relay_store_double.coax) until nostr-event-store (#8eb5)
+// lands; a restart forgets every event. TLS: none here (ws:// only); put it
+// behind a TLS proxy or add tls-native's server mode later. NIP-42: AUTH is
+// answered "restricted" until nip42.coax (#f426) lands.
+#import "Basic";
+#load "../tests/nostr/relay_store_double.coax";
+
+cxsrv_listen :: (port: int) -> int #foreign;
+cxsrv_bound_port :: () -> int #foreign;
+cxsrv_poll :: (timeout_ms: int) -> int #foreign;
+cxsrv_accept :: () -> int #foreign;
+cxsrv_read :: (h: int) -> int #foreign;
+cxsrv_byte :: (h: int, i: int) -> int #foreign;
+cxsrv_write :: (h: int, byte: int) -> int #foreign;
+cxsrv_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsrv_close :: (h: int) -> int #foreign;
+cxsrv_now_s :: () -> int #foreign;
+rl_host_port :: () -> int #foreign;
+
+RL_CONNS :: 16; RL_IN :: 147456; RL_OUT :: 140000; RL_IO_MS :: 2000;
+RL_SENT :: 2032;   // 16 filters x 127 events
+
+RlConn :: struct {
+  h: int = -1; ws: bool;
+  inb: [RL_IN] u8; used: int;
+  rd: [1] WsReader;
+  msg: [RS_MAX_MESSAGE] u8;
+  subs: [RS_MAX_SUBS] RsSub;
+}
+RlWork :: struct {
+  frame: [RS_MAX_MESSAGE] u8;     // one unmasked frame payload
+  out: [RL_OUT] u8;               // one outgoing frame
+  body: [RL_OUT] u8;              // one outgoing message
+  scratch: [262144] u8;           // the event id preimage
+  sent: [RL_SENT] int;
+}
+
+rl_send_raw :: (c: [] RlConn, bytes: string) -> bool {
+  for b: bytes { if cxsrv_write(c[0].h, cast(int) b) != 0 { return false; } }
+  return cxsrv_flush(c[0].h, RL_IO_MS) == 0;
+}
+rl_send :: (c: [] RlConn, w: [] RlWork, op: int, payload: string) -> bool {
+  n := wss_frame_write(op, payload, w[0].out[..]);
+  return n > 0 && rl_send_raw(c, cast(string) w[0].out[0..<n]);
+}
+rl_text :: (c: [] RlConn, w: [] RlWork, n: int) -> bool {
+  if n < 0 { return false; }
+  return rl_send(c, w, WS_OP_TEXT, cast(string) w[0].body[0..<n]);
+}
+rl_shut :: (c: [] RlConn) {
+  if c[0].h >= 0 { r := cxsrv_close(c[0].h); }
+  c[0].h = -1; c[0].ws = false; c[0].used = 0; c[0].rd[0] = WsReader.{};
+  for i: 0..<RS_MAX_SUBS { c[0].subs[i].live = false; }
+}
+rl_close :: (c: [] RlConn, w: [] RlWork, code: int) {
+  n := wss_close_write(code, w[0].out[..]);
+  if n > 0 { ok := rl_send_raw(c, cast(string) w[0].out[0..<n]); }
+  rl_shut(c);
+}
+rl_notice :: (c: [] RlConn, w: [] RlWork, reason: int) -> bool {
+  return rl_text(c, w, ms_write_notice(rs_prefix(reason), rs_text(reason), w[0].body[..]));
+}
+rl_closed :: (c: [] RlConn, w: [] RlWork, sub: string, reason: int) -> bool {
+  return rl_text(c, w, ms_write_closed(sub, rs_prefix(reason), rs_text(reason), w[0].body[..]));
+}
+
+// A new event goes to every matching live subscription on every connection.
+rl_fanout :: (conns: [] RlConn, w: [] RlWork, e: NostrEvent) {
+  for i: 0..<conns.count {
+    if conns[i].h < 0 || !conns[i].ws { continue; }
+    for k: 0..<RS_MAX_SUBS {
+      if !rs_sub_matches(conns[i].subs[..], k, e) { continue; }
+      sid := conns[i].subs[k].id;
+      n := ms_write_event(cast(string) sid[0..<conns[i].subs[k].id_n], e.original, w[0].body[..]);
+      if !rl_text(conns[i..<i + 1], w, n) { rl_shut(conns[i..<i + 1]); break; }
+    }
+  }
+}
+rl_event :: (conns: [] RlConn, at: int, w: [] RlWork, store: [] RsdStore, text: string, m: MsMsg) {
+  c := conns[at..<at + 1];
+  event := text[m.event_from..<m.event_to];
+  r := rs_admit(event, cxsrv_now_s(), false, false, w[0].scratch[..]);
+  if r.reason == RS_BAD_EVENT { ok := rl_notice(c, w, RS_BAD_EVENT); return; }
+  reason := r.reason;
+  if reason == RS_ACCEPT { reason = rsd_admit(store, r, event); }
+  id := r.e.id;
+  ok := rl_text(c, w, ms_write_ok(id[..], rs_accepted(reason), rs_prefix(reason), rs_text(reason), w[0].body[..]));
+  if reason == RS_ACCEPT { rl_fanout(conns, w, r.e); }
+}
+rl_req :: (c: [] RlConn, w: [] RlWork, store: [] RsdStore, text: string, m: MsMsg) {
+  mm := m;
+  sub := cast(string) mm.sub[0..<mm.sub_n];
+  v := rs_req(m, text);
+  if v != RS_ACCEPT { ok := rl_closed(c, w, sub, v); return; }
+  slot := rs_sub_open(c[0].subs[..], m, text, RS_MAX_SUBS);
+  if slot < 0 { ok := rl_closed(c, w, sub, -slot); return; }
+  now := cxsrv_now_s(); sent := 0;
+  for k: 0..<m.filters {
+    strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
+    sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+    f: [1] NostrFilter; idx: [RS_MAX_LIMIT] int;
+    if rs_filter(text, m, k, f[..], sp[..]) != FR_OK { continue; }
+    n := rsd_query(store, f[0], now, idx[..]);
+    for q: 0..<n {
+      dup := false;
+      for s: 0..<sent { if w[0].sent[s] == idx[q] { dup = true; } }
+      if dup { continue; }
+      w[0].sent[sent] = idx[q]; sent += 1;
+      if !rl_text(c, w, ms_write_event(sub, rsd_text(store, idx[q]), w[0].body[..])) { return; }
+    }
+  }
+  ok := rl_text(c, w, ms_write_eose(sub, w[0].body[..]));
+}
+rl_message :: (conns: [] RlConn, at: int, w: [] RlWork, store: [] RsdStore, text: string) {
+  c := conns[at..<at + 1];
+  m := ms_read(text);
+  if m.error != MS_OK {
+    sub := m.sub;
+    if m.error == MS_TOO_MANY { ok := rl_closed(c, w, cast(string) sub[0..<m.sub_n], RS_FILTERS); return; }
+    if m.error == MS_SUB { ok := rl_notice(c, w, RS_SUBID); return; }
+    if m.error == MS_VERB { ok := rl_notice(c, w, RS_VERB); return; }
+    if m.has_sub { ok := rl_closed(c, w, cast(string) sub[0..<m.sub_n], RS_FRAME); return; }
+    ok := rl_notice(c, w, RS_FRAME); return;
+  }
+  if m.type == MS_EVENT { rl_event(conns, at, w, store, text, m); return; }
+  if m.type == MS_REQ { rl_req(c, w, store, text, m); return; }
+  if m.type == MS_CLOSE { sub := m.sub; closed := rs_sub_close(c[0].subs[..], cast(string) sub[0..<m.sub_n]); return; }
+  if m.type == MS_COUNT { sub := m.sub; ok := rl_closed(c, w, cast(string) sub[0..<m.sub_n], RS_COUNT); return; }
+  // AUTH: NIP-42 is not configured until nip42.coax lands.
+  e := nostr_event_read(text[m.event_from..<m.event_to], w[0].scratch[..], false);
+  if e.error != NE_OK { ok := rl_notice(c, w, RS_BAD_EVENT); return; }
+  id := e.id;
+  ok := rl_text(c, w, ms_write_ok(id[..], false, rs_prefix(RS_AUTH_OFF), rs_text(RS_AUTH_OFF), w[0].body[..]));
+}
+// Drops the first n buffered bytes.
+rl_consume :: (c: [] RlConn, n: int) {
+  for i: n..<c[0].used { c[0].inb[i - n] = c[0].inb[i]; }
+  c[0].used -= n;
+}
+rl_http :: (c: [] RlConn, w: [] RlWork) {
+  h := wss_request(cast(string) c[0].inb[0..<c[0].used]);
+  if h.status == WSS_MORE { return; }
+  if h.status == WSS_OK {
+    key := cast(string) c[0].inb[h.key_from..<h.key_to];
+    n := wss_accept_write(key, w[0].out[..]);
+    if n < 0 || !rl_send_raw(c, cast(string) w[0].out[0..<n]) { rl_shut(c); return; }
+    rl_consume(c, h.consumed); c[0].ws = true;
+    return;
+  }
+  n := ifx h.status == WSS_NIP11 then rs_nip11(w[0].out[..])
+    else wss_http_write("400 Bad Request", "text/plain", "This is a Nostr relay: connect with a WebSocket, or ask for application/nostr+json.", w[0].out[..]);
+  if n > 0 { ok := rl_send_raw(c, cast(string) w[0].out[0..<n]); }
+  rl_shut(c);
+}
+rl_frames :: (conns: [] RlConn, at: int, w: [] RlWork, store: [] RsdStore) {
+  c := conns[at..<at + 1];
+  while c[0].h >= 0 && c[0].used > 0 {
+    f := wss_frame_read(cast(string) c[0].inb[0..<c[0].used], RS_MAX_MESSAGE);
+    if f.status == WS_FRAME_MORE { return; }
+    if f.status != WS_FRAME_OK {
+      rl_close(c, w, ifx f.status == WS_FRAME_TOO_BIG then WS_CLOSE_TOO_BIG else WS_CLOSE_PROTOCOL);
+      return;
+    }
+    n := wss_unmask(cast(string) c[0].inb[0..<c[0].used], f, w[0].frame[..]);
+    payload := cast(string) w[0].frame[0..<n];
+    ev := ws_take(c[0].rd[..], f, payload, c[0].msg[..]);
+    rl_consume(c, f.total);
+    if ev == WS_EV_MESSAGE {
+      if c[0].rd[0].op == WS_OP_TEXT { rl_message(conns, at, w, store, cast(string) c[0].msg[0..<c[0].rd[0].used]); }
+      else { ok := rl_notice(c, w, RS_BINARY); }
+    } else if ev == WS_EV_PING {
+      if !rl_send(c, w, WS_OP_PONG, payload) { rl_shut(c); return; }
+    } else if ev == WS_EV_CLOSE {
+      rl_close(c, w, WS_CLOSE_NORMAL); return;
+    } else if ev != WS_EV_PART && ev != WS_EV_PONG {
+      rl_close(c, w, ws_error_code(ev)); return;
+    }
+  }
+}
+rl_serve :: (conns: [] RlConn, w: [] RlWork, store: [] RsdStore) {
+  while true {
+    r := cxsrv_poll(1000);
+    while true {
+      h := cxsrv_accept();
+      if h <= 0 { break; }
+      slot := -1;
+      for i: 0..<conns.count { if conns[i].h < 0 && slot < 0 { slot = i; } }
+      if slot < 0 { x := cxsrv_close(h); continue; }
+      conns[slot].h = h; conns[slot].ws = false; conns[slot].used = 0; conns[slot].rd[0] = WsReader.{};
+    }
+    for i: 0..<conns.count {
+      if conns[i].h < 0 { continue; }
+      c := conns[i..<i + 1];
+      n := cxsrv_read(c[0].h);
+      if n == 0 { continue; }
+      if n < 0 { rl_shut(c); continue; }
+      if c[0].used + n > RL_IN { rl_close(c, w, WS_CLOSE_TOO_BIG); continue; }
+      for k: 0..<n { c[0].inb[c[0].used + k] = cast(u8) cxsrv_byte(c[0].h, k); }
+      c[0].used += n;
+      if !c[0].ws { rl_http(c, w); }
+      if c[0].h >= 0 && c[0].ws { rl_frames(conns, i, w, store); }
+    }
+  }
+}
+main :: () {
+  if cxsrv_listen(rl_host_port()) != 0 { print("relay: cannot listen\n"); return; }
+  print("relay: listening on port %\n", cxsrv_bound_port());
+  conns: [RL_CONNS] RlConn;
+  w: [1] RlWork;
+  arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
+  store: [1] RsdStore; store[0].arena = arena[..]; store[0].recs = recs[..];
+  rl_serve(conns[..], w[..], store[..]);
+}

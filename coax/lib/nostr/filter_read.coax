@@ -1,0 +1,159 @@
+// NIP-01 filter reading: one filter object's JSON text into a NostrFilter
+// (filter.coax) whose views point into caller-owned storage. Strings are
+// decoded (JSON escapes read as what they mean) into bytes; string lists
+// take consecutive entries of strs, kinds of ints, tag filters of tags.
+// Rules: an absent list is not the same as an empty one (an empty list
+// matches nothing); ids, authors, #e and #p values are 64-character
+// lowercase hex; kinds are integers 0..65535; since, until and limit are
+// integers within 2^53 and limit >= 0 (limit 0 asks for no stored events);
+// tag keys are "#" and one ASCII letter, case-sensitive; every other key,
+// a repeated key or a value of the wrong type refuses the whole filter.
+// The result is checked with nf_valid before it is returned. Reading grants
+// nothing: a filter only selects.
+#load "filter.coax";
+#authority;
+
+FR_OK :: 0; FR_JSON :: 1; FR_FIELD :: 2; FR_TYPE :: 3; FR_SPACE :: 4; FR_INVALID :: 5;
+// Caller storage for one or more filters; the used counts advance.
+FrSpace :: struct { strs: []string; ints: []int; tags: []NostrTagFilter; bytes: []u8; strs_used: int; ints_used: int; tags_used: int; bytes_used: int; }
+
+#test "a filter round-trips through nf_write" {
+  strs: [16] string; ints: [8] int; tags: [4] NostrTagFilter; bytes: [1024] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter; out: [512] u8;
+  text := "{\"ids\":[\"0000000000000000000000000000000000000000000000000000000000000000\"],\"authors\":[],\"kinds\":[1,30617],\"#d\":[\"coax\",\"a\\\"b\"],\"#E\":[\"x\"],\"since\":10,\"until\":20,\"limit\":0}";
+  #assert filter_read(text, f[..], sp[..]) == FR_OK;
+  n := nf_write(f[0], out[..], false);
+  #assert n == text.count && cast(string) out[0..<n] == text;
+  #assert f[0].has_authors && f[0].authors.count == 0 && f[0].kinds[1] == 30617 && f[0].tags[1].name == 'E';
+  #assert sp[0].strs_used == 4 && sp[0].ints_used == 2 && sp[0].tags_used == 2;
+  // a second filter continues in the same storage
+  #assert filter_read("{\"#q\":[\"\\u0061\"]}", f[..], sp[..]) == FR_OK && f[0].tags[0].values[0] == "a" && f[0].tags[0].name == 'q';
+  #assert sp[0].strs_used == 5 && sp[0].tags_used == 3;
+  #assert filter_read("{}", f[..], sp[..]) == FR_OK && !f[0].has_ids && !f[0].has_limit && f[0].tags.count == 0;
+  #assert filter_read(" { \"limit\" : 5 } ", f[..], sp[..]) == FR_OK && f[0].has_limit && f[0].limit == 5;
+  #assert filter_read("{\"since\":-3}", f[..], sp[..]) == FR_OK && f[0].since == -3;
+}
+#test "refusals: shape, keys, types, values" {
+  strs: [80] string; ints: [80] int; tags: [4] NostrTagFilter; bytes: [8192] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  #assert filter_read("[]", f[..], sp[..]) == FR_JSON && filter_read("{", f[..], sp[..]) == FR_JSON && filter_read("{} x", f[..], sp[..]) == FR_JSON;
+  #assert filter_read("", f[..], sp[..]) == FR_JSON;
+  #assert filter_read("{\"search\":\"x\"}", f[..], sp[..]) == FR_FIELD && filter_read("{\"#\":[]}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read("{\"#ab\":[]}", f[..], sp[..]) == FR_FIELD && filter_read("{\"#1\":[]}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read("{\"a\":[]}", f[..], sp[..]) == FR_FIELD && filter_read("{\"#[\":[]}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read("{\"#`\":[]}", f[..], sp[..]) == FR_FIELD && filter_read("{\"#{\":[]}", f[..], sp[..]) == FR_FIELD && filter_read("{\"#@\":[]}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read("{\"#z\":[],\"#Z\":[],\"#a\":[],\"#A\":[]}", f[..], sp[..]) == FR_OK;
+  sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  #assert filter_read("{\"kinds\":[1],\"kinds\":[2]}", f[..], sp[..]) == FR_FIELD && filter_read("{\"#t\":[],\"#t\":[]}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read("{\"ids\":[],\"ids\":[]}", f[..], sp[..]) == FR_FIELD && filter_read("{\"authors\":[],\"authors\":[]}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read("{\"since\":1,\"since\":1}", f[..], sp[..]) == FR_FIELD && filter_read("{\"until\":1,\"until\":1}", f[..], sp[..]) == FR_FIELD && filter_read("{\"limit\":1,\"limit\":1}", f[..], sp[..]) == FR_FIELD;
+  #assert filter_read("{\"\\u006bkinds\":[]}", f[..], sp[..]) == FR_FIELD && filter_read("{\"\\u006binds\":[7]}", f[..], sp[..]) == FR_OK && f[0].kinds[0] == 7;
+  #assert filter_read("{\"kinds\":1}", f[..], sp[..]) == FR_TYPE && filter_read("{\"kinds\":[\"1\"]}", f[..], sp[..]) == FR_TYPE;
+  #assert filter_read("{\"kinds\":[1.5]}", f[..], sp[..]) == FR_TYPE && filter_read("{\"ids\":[1]}", f[..], sp[..]) == FR_TYPE;
+  #assert filter_read("{\"ids\":\"x\"}", f[..], sp[..]) == FR_TYPE && filter_read("{\"since\":\"1\"}", f[..], sp[..]) == FR_TYPE;
+  #assert filter_read("{\"until\":1e3}", f[..], sp[..]) == FR_TYPE && filter_read("{\"limit\":null}", f[..], sp[..]) == FR_TYPE;
+  #assert filter_read("{\"#e\":[[]]}", f[..], sp[..]) == FR_TYPE && filter_read("{\"kinds\":[[]]}", f[..], sp[..]) == FR_TYPE;
+  #assert filter_read("{\"ids\":[\"abc\"]}", f[..], sp[..]) == FR_INVALID && filter_read("{\"limit\":-1}", f[..], sp[..]) == FR_INVALID;
+  #assert filter_read("{\"kinds\":[65536]}", f[..], sp[..]) == FR_INVALID && filter_read("{\"#p\":[\"AA\"]}", f[..], sp[..]) == FR_INVALID;
+  #assert filter_read("{\"authors\":[\"000000000000000000000000000000000000000000000000000000000000000A\"]}", f[..], sp[..]) == FR_INVALID;
+  #assert filter_read("{\"kinds\":[0,65535]}", f[..], sp[..]) == FR_OK;
+}
+#test "storage limits refuse instead of truncating" {
+  strs: [2] string; ints: [1] int; tags: [1] NostrTagFilter; bytes: [4] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  #assert filter_read("{\"kinds\":[1,2]}", f[..], sp[..]) == FR_SPACE;
+  sp[0].ints_used = 0;
+  #assert filter_read("{\"kinds\":[1]}", f[..], sp[..]) == FR_OK && sp[0].ints_used == 1;
+  #assert filter_read("{\"#t\":[\"abcde\"]}", f[..], sp[..]) == FR_SPACE;
+  sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  #assert filter_read("{\"#t\":[\"ab\",\"cd\"]}", f[..], sp[..]) == FR_OK && sp[0].bytes_used == 4 && f[0].tags[0].values[1] == "cd";
+  #assert filter_read("{\"#t\":[]}", f[..], sp[..]) == FR_SPACE;
+  sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  #assert filter_read("{\"#t\":[\"a\",\"b\",\"c\"]}", f[..], sp[..]) == FR_SPACE;
+}
+
+// A string list: each decoded value appended to the space. FR_OK or a refusal.
+fr_strings :: (j: [] Json, sp: [] FrSpace, values: [] []string) -> int {
+  if j[0].tok != JSON_ARRAY { return FR_TYPE; }
+  from := sp[0].strs_used;
+  t := json_next(j);
+  while t != JSON_ARRAY_END {
+    if t != JSON_STRING { return FR_TYPE; }
+    if sp[0].strs_used >= sp[0].strs.count { return FR_SPACE; }
+    at := sp[0].bytes_used;
+    n := json_unescape(json_text(j), sp[0].bytes[at..<sp[0].bytes.count]);
+    if n < 0 { return FR_SPACE; }
+    sp[0].strs[sp[0].strs_used] = cast(string) sp[0].bytes[at..<at + n];
+    sp[0].strs_used += 1; sp[0].bytes_used += n;
+    t = json_next(j);
+  }
+  values[0] = sp[0].strs[from..<sp[0].strs_used];
+  return FR_OK;
+}
+fr_kinds :: (j: [] Json, sp: [] FrSpace, f: [] NostrFilter) -> int {
+  if j[0].tok != JSON_ARRAY { return FR_TYPE; }
+  from := sp[0].ints_used;
+  t := json_next(j);
+  while t != JSON_ARRAY_END {
+    v := json_int(json_text(j));
+    if t != JSON_NUMBER || !v.ok { return FR_TYPE; }
+    if sp[0].ints_used >= sp[0].ints.count { return FR_SPACE; }
+    sp[0].ints[sp[0].ints_used] = v.value; sp[0].ints_used += 1;
+    t = json_next(j);
+  }
+  f[0].has_kinds = true; f[0].kinds = sp[0].ints[from..<sp[0].ints_used];
+  return FR_OK;
+}
+fr_letter :: (c: u8) -> bool { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'); }
+// Reads the filter object text into f[0]. On a refusal f[0] is unspecified
+// and the space may have advanced; the caller discards both.
+filter_read :: (text: string, f: [] NostrFilter, sp: [] FrSpace) -> int {
+  f[0] = NostrFilter.{};
+  j: [1] Json; json_start(j[..], text);
+  if json_next(j[..]) != JSON_OBJECT { return FR_JSON; }
+  seen := 0; tag_from := sp[0].tags_used;
+  names := [7] string.["ids", "authors", "kinds", "since", "until", "limit", ""];
+  while true {
+    t := json_next(j[..]);
+    if t == JSON_OBJECT_END { break; }
+    if t != JSON_STRING { return FR_JSON; }
+    key: [8] u8;
+    kn := json_unescape(json_text(j[..]), key[..]);
+    field := 6;
+    for i: 0..<6 { if kn >= 0 && cast(string) key[0..<kn] == names[i] { field = i; } }
+    tag := kn == 2 && key[0] == '#' && fr_letter(key[1]);
+    if field == 6 && !tag { return FR_FIELD; }
+    if field < 6 {
+      if (seen & (1 << field)) != 0 { return FR_FIELD; }
+      seen |= 1 << field;
+    } else {
+      for i: tag_from..<sp[0].tags_used { if sp[0].tags[i].name == key[1] { return FR_FIELD; } }
+    }
+    v := json_next(j[..]);
+    if v == JSON_ERROR { return FR_JSON; }
+    r := FR_OK;
+    if field == 0 { list: [1] []string; r = fr_strings(j[..], sp, list[..]); f[0].has_ids = true; f[0].ids = list[0]; }
+    else if field == 1 { list: [1] []string; r = fr_strings(j[..], sp, list[..]); f[0].has_authors = true; f[0].authors = list[0]; }
+    else if field == 2 { r = fr_kinds(j[..], sp, f); }
+    else if field < 6 {
+      n := json_int(json_text(j[..]));
+      if v != JSON_NUMBER || !n.ok { return FR_TYPE; }
+      if field == 3 { f[0].has_since = true; f[0].since = n.value; }
+      else if field == 4 { f[0].has_until = true; f[0].until = n.value; }
+      else { f[0].has_limit = true; f[0].limit = n.value; }
+    } else {
+      if sp[0].tags_used >= sp[0].tags.count { return FR_SPACE; }
+      list: [1] []string; r = fr_strings(j[..], sp, list[..]);
+      sp[0].tags[sp[0].tags_used] = NostrTagFilter.{name = key[1], values = list[0]};
+      sp[0].tags_used += 1;
+    }
+    if r != FR_OK { return r; }
+  }
+  if json_next(j[..]) != JSON_END { return FR_JSON; }
+  f[0].tags = sp[0].tags[tag_from..<sp[0].tags_used];
+  if !nf_valid(f[0]) { return FR_INVALID; }
+  return FR_OK;
+}

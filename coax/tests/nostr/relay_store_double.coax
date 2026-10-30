@@ -1,0 +1,98 @@
+// TEST-ONLY in-memory event store for the relay (relay-server-r1). It is not
+// nostr-event-store (#8eb5): nothing is durable, a restart forgets every
+// event, and it is here only so the relay core and its sessions can run
+// while that task is open. It implements the narrow interface the relay
+// needs: admit (id dedup, replaceable/addressable replacement with
+// rs_replace's newest-then-lowest-id rule, ephemeral not stored), query by
+// filter (newest first, rs_limit, expired events left out) and expiry at
+// read time. Every record entered through rs_admit's verified result.
+#load "../../lib/nostr/relay_server.coax";
+
+RSD_MAX :: 2048; RSD_ARENA :: 4194304;
+RsdRec :: struct { live: bool; e: NostrEvent; from: int; to: int; expiration: int; kclass: int; d: [256] u8; d_n: int; }
+// The caller owns the arena and record views (the host sizes them RSD_ARENA and RSD_MAX).
+RsdStore :: struct { n: int; used: int; arena: [] u8; recs: [] RsdRec; }
+
+#test "the double stores, deduplicates, replaces and expires" {
+  arena: [256] u8; recs: [16] RsdRec; s: [1] RsdStore; s[0].arena = arena[..]; s[0].recs = recs[..];
+  r: RsAdmit; r.e.error = NE_OK; r.e.kind = 1; r.e.created_at = 10; r.e.id[0] = 1; r.kclass = RS_REGULAR; r.expiration = -1;
+  #assert rsd_admit(s[..], r, "{1}") == RS_ACCEPT && s[0].n == 1 && rsd_text(s[..], 0) == "{1}";
+  #assert rsd_admit(s[..], r, "{1}") == RS_DUP && s[0].n == 1;
+  r.e.kind = 20001; r.kclass = RS_EPHEMERAL; r.e.id[0] = 2;
+  #assert rsd_admit(s[..], r, "{2}") == RS_ACCEPT && s[0].n == 1;
+  r.e.kind = 0; r.kclass = RS_REPLACEABLE; r.e.id[0] = 5;
+  #assert rsd_admit(s[..], r, "{5}") == RS_ACCEPT && s[0].n == 2;
+  r.e.id[0] = 6; #assert rsd_admit(s[..], r, "{6}") == RS_SUPERSEDED;
+  r.e.id[0] = 4; #assert rsd_admit(s[..], r, "{4}") == RS_ACCEPT && !s[0].recs[1].live && s[0].recs[2].live;
+  r.e.created_at = 9; r.e.id[0] = 3; #assert rsd_admit(s[..], r, "{3}") == RS_SUPERSEDED;
+  r.e.public_key[0] = 9; #assert rsd_admit(s[..], r, "{3}") == RS_ACCEPT;
+  r.e.kind = 30617; r.kclass = RS_ADDRESSABLE; r.d[0] = 'a'; r.d_n = 1; r.e.id[0] = 7; r.e.created_at = 20;
+  #assert rsd_admit(s[..], r, "{7}") == RS_ACCEPT;
+  r.d[0] = 'b'; r.e.id[0] = 8; #assert rsd_admit(s[..], r, "{8}") == RS_ACCEPT;
+  r.d[0] = 'a'; r.e.id[0] = 9; r.e.created_at = 21; #assert rsd_admit(s[..], r, "{9}") == RS_ACCEPT && !s[0].recs[4].live;
+  f: NostrFilter; idx: [8] int;
+  n := rsd_query(s[..], f, 100, idx[..]);
+  #assert n == 5 && rsd_text(s[..], idx[0]) == "{9}" && rsd_text(s[..], idx[1]) == "{8}";
+  f.has_limit = true; f.limit = 1; #assert rsd_query(s[..], f, 100, idx[..]) == 1;
+  f.limit = 0; #assert rsd_query(s[..], f, 100, idx[..]) == 0;
+  r.e.kind = 1; r.kclass = RS_REGULAR; r.e.id[0] = 10; r.expiration = 50;
+  #assert rsd_admit(s[..], r, "{10}") == RS_ACCEPT;
+  f.has_limit = false; #assert rsd_query(s[..], f, 49, idx[..]) == 6 && rsd_query(s[..], f, 50, idx[..]) == 5;
+  #assert rsd_query(s[..], f, 49, idx[0..<2]) == 2 && rsd_text(s[..], idx[0]) == "{9}";
+  s[0].used = 254; r.e.id[0] = 11; #assert rsd_admit(s[..], r, "{11}") == RS_FULL;
+}
+
+rsd_text :: (s: [] RsdStore, i: int) -> string { return cast(string) s[0].arena[s[0].recs[i].from..<s[0].recs[i].to]; }
+rsd_same_key :: (a: [] u8, b: [] u8) -> bool { for i: 0..<32 { if a[i] != b[i] { return false; } } return true; }
+// Stores r (an RS_ACCEPT result of rs_admit) whose original JSON is text.
+rsd_admit :: (s: [] RsdStore, r: RsAdmit, text: string) -> int {
+  if r.kclass == RS_EPHEMERAL { return RS_ACCEPT; }
+  id := r.e.id; pk := r.e.public_key; rd := r.d;
+  old := -1;
+  for i: 0..<s[0].n {
+    rec := s[0].recs[i].e.id;
+    if rsd_same_key(rec[..], id[..]) { return RS_DUP; }
+    if !s[0].recs[i].live || r.kclass == RS_REGULAR || s[0].recs[i].e.kind != r.e.kind { continue; }
+    k := s[0].recs[i].e.public_key;
+    if !rsd_same_key(k[..], pk[..]) { continue; }
+    if r.kclass == RS_ADDRESSABLE && cast(string) s[0].recs[i].d[0..<s[0].recs[i].d_n] != cast(string) rd[0..<r.d_n] { continue; }
+    old = i;
+  }
+  if old >= 0 {
+    oid := s[0].recs[old].e.id;
+    v := rs_replace(r, true, s[0].recs[old].e.created_at, oid[..]);
+    if v != RS_ACCEPT { return v; }
+  }
+  if s[0].n >= s[0].recs.count || s[0].used + text.count > s[0].arena.count { return RS_FULL; }
+  if old >= 0 { s[0].recs[old].live = false; }
+  at := s[0].n; from := s[0].used;
+  for i: 0..<text.count { s[0].arena[from + i] = text[i]; }
+  s[0].used += text.count;
+  s[0].recs[at] = RsdRec.{live = true, e = r.e, from = from, to = from + text.count, expiration = r.expiration, kclass = r.kclass, d = r.d, d_n = r.d_n};
+  s[0].recs[at].e.original = rsd_text(s, at);
+  s[0].n += 1;
+  return RS_ACCEPT;
+}
+// Up to rs_limit(f) live, unexpired records matching f, newest first (then
+// lowest id), as indexes into out: the count.
+rsd_query :: (s: [] RsdStore, f: NostrFilter, now: int, out: [] int) -> int {
+  limit := rs_limit(f);
+  if limit > out.count { limit = out.count; }
+  n := 0;
+  for i: 0..<s[0].n {
+    if !s[0].recs[i].live || !rs_live(s[0].recs[i].expiration, now) || !nf_match(f, s[0].recs[i].e) { continue; }
+    // insert in order; drop what falls past the limit
+    at := n;
+    while at > 0 && rsd_before(s, i, out[at - 1]) { at -= 1; }
+    if at >= limit { continue; }
+    k := ifx n < limit then n else limit - 1;
+    while k > at { out[k] = out[k - 1]; k -= 1; }
+    out[at] = i;
+    if n < limit { n += 1; }
+  }
+  return n;
+}
+rsd_before :: (s: [] RsdStore, a: int, b: int) -> bool {
+  ia := s[0].recs[a].e.id; ib := s[0].recs[b].e.id;
+  return rs_newer(s[0].recs[a].e.created_at, ia[..], s[0].recs[b].e.created_at, ib[..]);
+}

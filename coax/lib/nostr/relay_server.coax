@@ -1,0 +1,447 @@
+// The relay's NIP-01 / NIP-11 / NIP-40 policy (relay-server-r1, coax/nostr.md
+// section 17): EVENT admission, the OK / CLOSED / NOTICE reasons, REQ limits
+// and query cost, replaceable and addressable ordering, expiration, the
+// per-connection subscription table and the NIP-11 document. Limits are the
+// Rust relay's (crates/nostr-relay at 0b401561a0^): frames 131072 bytes, 32
+// subscriptions, 16 filters, max_limit and default_limit 127 (min of 1000
+// and (256 - 1) / 2), query cost 100000, sub ids 1..64 characters, 256 tags,
+// created_at at most 900 s ahead, none too old. Reason texts are the Rust
+// relay's where it had one. Storage is not here: the relay asks a store
+// (nostr-event-store, #8eb5) through rs_store_* and only decides.
+// NIP-42 write authentication waits on nip42.coax (#f426): rs_admit_policy
+// takes auth_required and authed, and AUTH is answered "restricted" until
+// then (RS_AUTH_OFF), as the Rust relay does when NIP-42 is not configured.
+#load "../net/ws_server.coax";
+#load "message_server.coax";
+#load "filter_read.coax";
+#load "../../tests/nostr/relay_server_fixtures.coax";
+#authority;
+
+RS_MAX_MESSAGE :: 131072; RS_MAX_SUBS :: 32; RS_MAX_FILTERS :: 16; RS_MAX_LIMIT :: 127;
+RS_MAX_COST :: 100000; RS_MAX_TAGS :: 256; RS_FUTURE :: 900; RS_SUB_TEXT :: 8192;
+// Kind classes (NIP-01).
+RS_REGULAR :: 0; RS_REPLACEABLE :: 1; RS_EPHEMERAL :: 2; RS_ADDRESSABLE :: 3;
+// Reasons. 0 is an accepted event with no message.
+RS_ACCEPT :: 0; RS_DUP :: 1; RS_SUPERSEDED :: 2; RS_BAD_EVENT :: 3; RS_BAD_ID :: 4; RS_BAD_SIG :: 5;
+RS_AUTH_KIND :: 6; RS_TAGS :: 7; RS_TIME :: 8; RS_EXPIRED :: 9; RS_AUTH_REQUIRED :: 10; RS_FULL :: 11;
+RS_SUBID :: 12; RS_FILTERS :: 13; RS_SUBS :: 14; RS_EMPTY :: 15; RS_HEX_E :: 16; RS_HEX_P :: 17;
+RS_COST :: 18; RS_FILTER :: 19; RS_SUB_SPACE :: 20; RS_FRAME :: 21; RS_VERB :: 22; RS_BINARY :: 23;
+RS_AUTH_OFF :: 24; RS_COUNT :: 25; RS_TOO_BIG :: 26;
+RS_REASONS :: 27;
+
+#test "every reason has a standard prefix and accepted reasons are the right ones" {
+  out: [256] u8; id: [32] u8;
+  for r: 0..<RS_REASONS {
+    p := rs_prefix(r);
+    #assert (r == RS_ACCEPT) == (p.count == 0);
+    #assert r == RS_ACCEPT || ms_prefix_ok(p);
+    #assert (rs_text(r).count == 0) == (r == RS_ACCEPT);
+    #assert ms_write_ok(id[..], rs_accepted(r), p, rs_text(r), out[..]) > 0;
+  }
+  #assert rs_accepted(RS_ACCEPT) && rs_accepted(RS_DUP) && rs_accepted(RS_SUPERSEDED) && !rs_accepted(RS_BAD_EVENT) && !rs_accepted(RS_FULL);
+  #assert rs_prefix(RS_DUP) == "duplicate" && rs_text(RS_SUPERSEDED) == "newer replaceable event already stored";
+  #assert rs_prefix(RS_AUTH_REQUIRED) == "auth-required" && rs_prefix(RS_SUBS) == "restricted" && rs_prefix(RS_FULL) == "error";
+  #assert rs_text(RS_TIME) == "the event's created_at timestamp is too far in the past or the future for this relay";
+  #assert rs_prefix(-1) == "error" && rs_prefix(RS_REASONS) == "error" && rs_text(RS_REASONS) == "unknown";
+}
+
+rs_prefix :: (r: int) -> string {
+  p := [27] string.["", "duplicate", "duplicate", "invalid", "invalid", "invalid",
+    "invalid", "invalid", "invalid", "invalid", "auth-required", "error",
+    "invalid", "restricted", "restricted", "invalid", "invalid", "invalid",
+    "restricted", "invalid", "restricted", "invalid", "invalid", "invalid",
+    "restricted", "error", "invalid"];
+  if r < 0 || r >= RS_REASONS { return "error"; }
+  return p[r];
+}
+rs_text :: (r: int) -> string {
+  t := [27] string.["", "already have this event", "newer replaceable event already stored",
+    "malformed event", "event id does not match its content", "bad signature",
+    "authentication events cannot be published", "event has too many tags",
+    "the event's created_at timestamp is too far in the past or the future for this relay",
+    "event has expired", "authenticate before publishing", "relay storage is full",
+    "subscription id must contain 1 to 64 characters", "too many filters",
+    "too many active subscriptions", "filter arrays must not be empty",
+    "#e values must be 64 lowercase hexadecimal characters",
+    "#p values must be 64 lowercase hexadecimal characters",
+    "query cost exceeds the configured limit", "malformed filter",
+    "subscription filters exceed 8192 bytes", "malformed message",
+    "unsupported message verb", "binary messages are not supported",
+    "NIP-42 is not configured on this relay", "COUNT is not supported by this relay",
+    "message exceeds 131072 bytes"];
+  if r < 0 || r >= RS_REASONS { return "unknown"; }
+  return t[r];
+}
+// OK true: stored, or already covered (NIP-01 lets duplicates say true).
+rs_accepted :: (r: int) -> bool { return r == RS_ACCEPT || r == RS_DUP || r == RS_SUPERSEDED; }
+
+// ---- kinds, ordering and tags ---------------------------------------------
+
+#test "kind classes and the replacement tie rule" {
+  kinds := [12] int.[0, 1, 2, 3, 4, 9999, 10000, 19999, 20000, 29999, 30000, 39999];
+  want := [12] int.[RS_REPLACEABLE, RS_REGULAR, RS_REGULAR, RS_REPLACEABLE, RS_REGULAR, RS_REGULAR,
+    RS_REPLACEABLE, RS_REPLACEABLE, RS_EPHEMERAL, RS_EPHEMERAL, RS_ADDRESSABLE, RS_ADDRESSABLE];
+  for k: 0..<12 { #assert rs_class(kinds[k]) == want[k]; }
+  #assert rs_class(40000) == RS_REGULAR && rs_class(1111) == RS_REGULAR && rs_class(30617) == RS_ADDRESSABLE;
+  a: [32] u8; b: [32] u8; b[31] = 1;
+  #assert rs_newer(11, b[..], 10, a[..]) && !rs_newer(10, a[..], 11, b[..]);
+  #assert rs_newer(10, a[..], 10, b[..]) && !rs_newer(10, b[..], 10, a[..]) && !rs_newer(10, a[..], 10, a[..]);
+  b[31] = 0; b[0] = 1; a[1] = 255;
+  #assert rs_id_less(a[..], b[..]) && !rs_id_less(b[..], a[..]);
+}
+rs_class :: (kind: int) -> int {
+  if kind == 0 || kind == 3 || (kind >= 10000 && kind < 20000) { return RS_REPLACEABLE; }
+  if kind >= 20000 && kind < 30000 { return RS_EPHEMERAL; }
+  if kind >= 30000 && kind < 40000 { return RS_ADDRESSABLE; }
+  return RS_REGULAR;
+}
+rs_id_less :: (a: [] u8, b: [] u8) -> bool {
+  for i: 0..<32 { if a[i] != b[i] { return a[i] < b[i]; } }
+  return false;
+}
+// Whether the new version (created, id) replaces the old one: newer wins;
+// on the same second the lowest id wins (NIP-01).
+rs_newer :: (created: int, id: [] u8, old_created: int, old_id: [] u8) -> bool {
+  if created != old_created { return created > old_created; }
+  return rs_id_less(id, old_id);
+}
+
+#test "the first value of the first tag with a name, decoded" {
+  e: NostrEvent; e.error = NE_OK; out: [16] u8;
+  e.original = "[[\"t\",\"x\"],[\"d\",\"re\\\"po\",\"z\"],[\"d\",\"second\"],[\"e\"]]"; e.tags_from = 0; e.tags_to = e.original.count;
+  #assert rs_tag(e, 'd', out[..]) == 5 && cast(string) out[0..<5] == "re\"po";
+  #assert rs_tag(e, 't', out[..]) == 1 && rs_tag(e, 'x', out[..]) == -1 && rs_tag(e, 'e', out[..]) == -1;
+  #assert rs_tag(e, 'd', out[0..<4]) == -2;
+  e.original = "[[\"expiration\",\"1001\"]]"; e.tags_to = e.original.count;
+  #assert rs_expiration(e) == 1001;
+  e.original = "[[\"expiration\",\"10a\"],[\"expiration\",\"5\"]]"; e.tags_to = e.original.count;
+  #assert rs_expiration(e) == -1;
+  e.original = "[[\"expiration\",\"\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == -1;
+  e.original = "[[\"expiration\",\"12345678901234567\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == -1;
+  e.original = "[[\"expiration\",\"1234567890123456\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == 1234567890123456;
+  e.original = "[[\"expiration\",\"0\"],[\"x\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == 0;
+  e.original = "[]"; e.tags_to = 2; #assert rs_expiration(e) == -1 && rs_tag(e, 'd', out[..]) == -1;
+  e.original = "[[\"expiration\",\"/\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == -1;
+  e.original = "[[\"expiration\",\":\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == -1;
+  e.original = "[[\"expiration\",\"9\"]]"; e.tags_to = e.original.count; #assert rs_expiration(e) == 9;
+}
+// Decodes into out the first value of the first tag named name (one
+// letter, or the whole name when long is given): its length, -1 when there
+// is none, -2 when out is too small.
+rs_tag_named :: (e: NostrEvent, name: string, out: [] u8) -> int {
+  j: [1] Json; json_start(j[..], e.original[e.tags_from..<e.tags_to]);
+  if json_next(j[..]) != JSON_ARRAY { return -1; }
+  t := json_next(j[..]);
+  while t == JSON_ARRAY {
+    v := json_next(j[..]); index := 0; named := false;
+    while v == JSON_STRING {
+      if index == 0 { named = json_is(json_text(j[..]), name); }
+      if index == 1 && named {
+        n := json_unescape(json_text(j[..]), out);
+        return ifx n < 0 then -2 else n;
+      }
+      index += 1; v = json_next(j[..]);
+    }
+    t = json_next(j[..]);
+  }
+  return -1;
+}
+rs_tag :: (e: NostrEvent, name: u8, out: [] u8) -> int {
+  n: [1] u8; n[0] = name;
+  return rs_tag_named(e, cast(string) n[..], out);
+}
+// NIP-40: the expiration time, or -1 when there is none or it isn't a
+// plain decimal of at most 16 digits (then the event never expires).
+rs_expiration :: (e: NostrEvent) -> int {
+  b: [16] u8;
+  n := rs_tag_named(e, "expiration", b[..]);
+  if n < 1 { return -1; }
+  v := 0;
+  for i: 0..<n {
+    if b[i] < '0' || b[i] > '9' { return -1; }
+    v = v * 10 + cast(int) (b[i] - '0');
+  }
+  return v;
+}
+// Served only while not expired (NIP-40: at or after the time it is gone).
+rs_live :: (expiration: int, now: int) -> bool { return expiration < 0 || expiration > now; }
+
+// ---- EVENT admission ------------------------------------------------------
+
+#test "admission refusals, cheapest first, before the signature" {
+  out: [65536] u8;
+  #assert rs_admit("{", 1000, false, false, out[..]).reason == RS_BAD_EVENT;
+  #assert rs_admit("{}", 1000, false, false, out[..]).reason == RS_BAD_EVENT;
+  r := rs_admit(RST_PLAIN, 1000, false, false, out[..]);
+  #assert r.reason == RS_BAD_SIG && r.e.kind == 1 && r.e.created_at == 1000 && !r.e.verified;
+  bad: [512] u8; for i: 0..<RST_PLAIN.count { bad[i] = RST_PLAIN[i]; }
+  for i: 0..<RST_PLAIN.count - 4 { if bad[i] == 'h' && bad[i + 1] == 'i' && bad[i + 2] == '"' { bad[i] = 'H'; } }
+  r = rs_admit(cast(string) bad[0..<RST_PLAIN.count], 1000, false, false, out[..]);
+  #assert r.reason == RS_BAD_ID && r.e.id[0] == 0x18 && r.e.id[31] == 0x53;
+  #assert rs_admit(RST_AUTH, 1000, false, false, out[..]).reason == RS_AUTH_KIND;
+  #assert rs_admit(RST_FUTURE, 1000, false, false, out[..]).reason == RS_TIME;
+  #assert rs_admit(RST_EDGE, 1000, false, false, out[..]).reason == RS_BAD_SIG;
+  #assert rs_admit(RST_EXPIRED, 1000, false, false, out[..]).reason == RS_EXPIRED;
+  r = rs_admit(RST_LIVE, 1000, false, false, out[..]);
+  #assert r.reason == RS_BAD_SIG && r.expiration == 1001;
+  #assert rs_admit(RST_TAGS, 1000, false, false, out[..]).reason == RS_TAGS;
+  #assert rs_admit(RST_TAGS256, 1000, false, false, out[..]).reason == RS_BAD_SIG;
+  #assert rs_admit(RST_PLAIN, 1000, true, false, out[..]).reason == RS_AUTH_REQUIRED;
+  #assert rs_admit(RST_PLAIN, 1000, true, true, out[..]).reason == RS_BAD_SIG;
+  r = rs_admit(RST_ADDR, 1000, false, false, out[..]);
+  #assert r.reason == RS_BAD_SIG && r.kclass == RS_ADDRESSABLE && cast(string) r.d[0..<r.d_n] == "re\"po";
+  #assert rs_admit(RST_PLAIN, 1000, false, false, out[0..<10]).reason == RS_BAD_EVENT;
+}
+#test "admission policy on a read event" {
+  e: NostrEvent; e.error = NE_OK; e.kind = 1; e.created_at = 1900; e.tags = 256;
+  #assert rs_admit_policy(e, -1, 1000, false, false) == RS_ACCEPT;
+  e.created_at = 1901; #assert rs_admit_policy(e, -1, 1000, false, false) == RS_TIME;
+  e.created_at = 0; #assert rs_admit_policy(e, 1001, 1000, false, false) == RS_ACCEPT && rs_admit_policy(e, 1000, 1000, false, false) == RS_EXPIRED;
+  e.tags = 257; #assert rs_admit_policy(e, -1, 1000, false, false) == RS_TAGS;
+  e.tags = 0; e.kind = 22242; #assert rs_admit_policy(e, -1, 1000, false, false) == RS_AUTH_KIND;
+  e.kind = 22241; #assert rs_admit_policy(e, -1, 1000, true, false) == RS_AUTH_REQUIRED && rs_admit_policy(e, -1, 1000, true, true) == RS_ACCEPT;
+  #assert rs_live(-1, 5) && rs_live(6, 5) && !rs_live(5, 5) && !rs_live(0, 5);
+}
+
+RsAdmit :: struct {
+  reason: int; e: NostrEvent; kclass: int; expiration: int;
+  d: [256] u8; d_n: int;       // addressable events: the d tag ("" when none)
+}
+// The policy on an event whose id already matched (no signature yet).
+rs_admit_policy :: (e: NostrEvent, expiration: int, now: int, auth_required: bool, authed: bool) -> int {
+  if e.kind == 22242 { return RS_AUTH_KIND; }
+  if e.tags > RS_MAX_TAGS { return RS_TAGS; }
+  if e.created_at > now + RS_FUTURE { return RS_TIME; }
+  if !rs_live(expiration, now) { return RS_EXPIRED; }
+  // NIP-42 hook: nip42.coax (#f426) sets authed for this connection.
+  if auth_required && !authed { return RS_AUTH_REQUIRED; }
+  return RS_ACCEPT;
+}
+// Reads, checks and verifies an EVENT's object text. scratch holds the id
+// preimage. On RS_ACCEPT, r.e is verified and r.e.original is text.
+rs_admit :: (text: string, now: int, auth_required: bool, authed: bool, scratch: [] u8) -> RsAdmit {
+  r: RsAdmit; r.reason = RS_BAD_EVENT;
+  e := nostr_event_read(text, scratch, false);
+  if e.error == NE_ID { r.reason = RS_BAD_ID; r.e = e; return r; }
+  if e.error != NE_OK { return r; }
+  r.e = e; r.kclass = rs_class(e.kind); r.expiration = rs_expiration(e);
+  if r.kclass == RS_ADDRESSABLE {
+    n := rs_tag(e, 'd', r.d[..]);
+    r.d_n = ifx n < 0 then 0 else n;
+  }
+  r.reason = rs_admit_policy(e, r.expiration, now, auth_required, authed);
+  if r.reason != RS_ACCEPT { return r; }
+  v := nostr_event_verify_vartime(text, scratch, false);
+  if v.error != NE_OK || !v.verified { r.reason = RS_BAD_SIG; return r; }
+  r.e = v;
+  return r;
+}
+// What a store does with an admitted event, given the current version at
+// its replacement address (found false when none, or a regular event):
+// RS_ACCEPT stores it (and retires the old one), RS_SUPERSEDED keeps the old.
+rs_replace :: (r: RsAdmit, found: bool, old_created: int, old_id: [] u8) -> int {
+  if !found || r.kclass == RS_REGULAR || r.kclass == RS_EPHEMERAL { return RS_ACCEPT; }
+  id := r.e.id;
+  return ifx rs_newer(r.e.created_at, id[..], old_created, old_id) then RS_ACCEPT else RS_SUPERSEDED;
+}
+#test "replacement decisions" {
+  r: RsAdmit; r.kclass = RS_REPLACEABLE; r.e.created_at = 10; old: [32] u8; old[0] = 1;
+  #assert rs_replace(r, false, 0, old[..]) == RS_ACCEPT && rs_replace(r, true, 9, old[..]) == RS_ACCEPT;
+  #assert rs_replace(r, true, 11, old[..]) == RS_SUPERSEDED && rs_replace(r, true, 10, old[..]) == RS_ACCEPT;
+  r.e.id[0] = 2; #assert rs_replace(r, true, 10, old[..]) == RS_SUPERSEDED;
+  r.kclass = RS_ADDRESSABLE; #assert rs_replace(r, true, 11, old[..]) == RS_SUPERSEDED;
+  r.kclass = RS_REGULAR; #assert rs_replace(r, true, 11, old[..]) == RS_ACCEPT;
+  r.kclass = RS_EPHEMERAL; #assert rs_replace(r, true, 11, old[..]) == RS_ACCEPT;
+}
+
+// ---- REQ ------------------------------------------------------------------
+
+#test "REQ policy: limits, empty lists, hex tags and cost" {
+  t := "[\"REQ\",\"s\",{\"kinds\":[1],\"limit\":5},{\"#e\":[\"00\"]}]";
+  m := ms_read(t);
+  #assert rs_req(m, t) == RS_HEX_E;
+  t = "[\"REQ\",\"s\",{\"#p\":[\"00\"]}]"; #assert rs_req(ms_read(t), t) == RS_HEX_P;
+  t = "[\"REQ\",\"s\",{\"#e\":[\"0000000000000000000000000000000000000000000000000000000000000000\"],\"#p\":[\"x\"]}]"; #assert rs_req(ms_read(t), t) == RS_HEX_P;
+  t = "[\"REQ\",\"s\",{\"ids\":[\"0\"]}]"; #assert rs_req(ms_read(t), t) == RS_FILTER;
+  t = "[\"REQ\",\"s\",{\"kinds\":[]}]"; #assert rs_req(ms_read(t), t) == RS_EMPTY;
+  t = "[\"REQ\",\"s\",{\"ids\":[]}]"; #assert rs_req(ms_read(t), t) == RS_EMPTY;
+  t = "[\"REQ\",\"s\",{\"authors\":[]}]"; #assert rs_req(ms_read(t), t) == RS_EMPTY;
+  t = "[\"REQ\",\"s\",{\"#t\":[\"a\"],\"#q\":[]}]"; #assert rs_req(ms_read(t), t) == RS_EMPTY;
+  t = "[\"REQ\",\"s\",{\"search\":\"x\"}]"; #assert rs_req(ms_read(t), t) == RS_FILTER;
+  t = "[\"REQ\",\"s\",{\"kinds\":[1],\"#E\":[\"x\"],\"#a\":[\"30617:x:y\"]},{\"#d\":[\"coax\"]}]"; #assert rs_req(ms_read(t), t) == RS_ACCEPT;
+  t = "[\"REQ\",\"s\"]"; #assert rs_req(ms_read(t), t) == RS_ACCEPT;
+  // cost: 127 * 100 per open filter; eight are 101600 > 100000
+  b: [512] u8; pre := "[\"REQ\",\"s\""; n := pre.count;
+  for i: 0..<n { b[i] = pre[i]; }
+  for k: 0..<8 { b[n] = ','; b[n + 1] = '{'; b[n + 2] = '}'; n += 3; }
+  b[n] = ']';
+  #assert rs_req(ms_read(cast(string) b[0..<n + 1]), cast(string) b[0..<n + 1]) == RS_COST;
+  b[n - 3] = ']';
+  #assert rs_req(ms_read(cast(string) b[0..<n - 2]), cast(string) b[0..<n - 2]) == RS_ACCEPT;
+}
+#test "filter cost factors and the effective limit" {
+  f: NostrFilter;
+  #assert rs_limit(f) == 127 && rs_cost(f) == 12700;
+  f.has_limit = true; f.limit = 500; #assert rs_limit(f) == 127;
+  f.limit = 0; #assert rs_limit(f) == 0 && rs_cost(f) == 0;
+  f.limit = 10; f.has_since = true; #assert rs_cost(f) == 500;
+  f.has_since = false; f.has_until = true; #assert rs_cost(f) == 500;
+  kinds := [2] int.[1, 2]; f.has_kinds = true; f.kinds = kinds[..]; #assert rs_cost(f) == 240;
+  ids := [1] string.["x"]; f.has_authors = true; f.authors = ids[..]; #assert rs_cost(f) == 52;
+  f.has_kinds = false; f.kinds = kinds[0..<0]; #assert rs_cost(f) == 220;
+  values := [3] string.["a", "b", "c"]; tags := [1] NostrTagFilter.[NostrTagFilter.{name = 't', values = values[..]}];
+  f.has_authors = false; f.authors = ids[0..<0]; f.tags = tags[..]; #assert rs_cost(f) == 130;
+  f.has_ids = true; f.ids = ids[..]; #assert rs_cost(f) == 14;
+  #assert rs_empty(f) == false;
+  tags[0].values = values[0..<0]; #assert rs_empty(f);
+}
+
+rs_limit :: (f: NostrFilter) -> int {
+  if !f.has_limit || f.limit > RS_MAX_LIMIT { return RS_MAX_LIMIT; }
+  return f.limit;
+}
+// The Rust relay's query cost for one filter (its search factor aside).
+rs_cost :: (f: NostrFilter) -> int {
+  selectors := f.ids.count + f.authors.count + f.kinds.count;
+  for t: f.tags { selectors += t.values.count; }
+  factor := 100;
+  if f.has_ids { factor = 1; }
+  else if f.has_authors && f.has_kinds { factor = 4; }
+  else if f.tags.count > 0 { factor = 10; }
+  else if f.has_authors || f.has_kinds { factor = 20; }
+  else if f.has_since || f.has_until { factor = 50; }
+  return (rs_limit(f) + selectors) * factor;
+}
+rs_empty :: (f: NostrFilter) -> bool {
+  if (f.has_ids && f.ids.count == 0) || (f.has_authors && f.authors.count == 0) || (f.has_kinds && f.kinds.count == 0) { return true; }
+  for t: f.tags { if t.values.count == 0 { return true; } }
+  return false;
+}
+// A tag list named name holds a value that is not 64 lowercase hex.
+rs_bad_hex :: (f: NostrFilter, name: u8) -> bool {
+  for t: f.tags { if t.name == name { for v: t.values { if !nf_hex(v) { return true; } } } }
+  return false;
+}
+// One filter of the frame text read into f with sp's storage.
+rs_filter :: (text: string, m: MsMsg, k: int, f: [] NostrFilter, sp: [] FrSpace) -> int {
+  return filter_read(text[m.filter_from[k]..<m.filter_to[k]], f, sp);
+}
+// The REQ's filters against the relay's rules; RS_ACCEPT or a CLOSED reason.
+// The frame reader already refused bad sub ids and more than 16 filters.
+rs_req :: (m: MsMsg, text: string) -> int {
+  total := 0;
+  for k: 0..<m.filters {
+    strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
+    sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+    f: [1] NostrFilter;
+    r := rs_filter(text, m, k, f[..], sp[..]);
+    if r == FR_INVALID && rs_bad_hex(f[0], 'e') { return RS_HEX_E; }
+    if r == FR_INVALID && rs_bad_hex(f[0], 'p') { return RS_HEX_P; }
+    if r != FR_OK { return RS_FILTER; }
+    if rs_empty(f[0]) { return RS_EMPTY; }
+    total += rs_cost(f[0]);
+    if total > RS_MAX_COST { return RS_COST; }
+  }
+  return RS_ACCEPT;
+}
+
+// ---- subscriptions --------------------------------------------------------
+
+RsSub :: struct {
+  live: bool; id: [256] u8; id_n: int;
+  text: [RS_SUB_TEXT] u8; filters: int; from: [16] int; to: [16] int;
+}
+#test "subscriptions open, replace, match and close" {
+  subs: [3] RsSub;
+  t := "[\"REQ\",\"a\",{\"kinds\":[1]},{\"#d\":[\"coax\"]}]";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == 0 && subs[0].live && subs[0].filters == 2;
+  #assert cast(string) subs[0].text[subs[0].from[1]..<subs[0].to[1]] == "{\"#d\":[\"coax\"]}";
+  t = "[\"REQ\",\"b\",{\"kinds\":[2]}]";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == 1;
+  t = "[\"REQ\",\"c\",{}]";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == -RS_SUBS;
+  t = "[\"REQ\",\"a\",{\"kinds\":[3]}]";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == 0 && subs[0].filters == 1 && rs_subs_live(subs[..]) == 2;
+  e: NostrEvent; e.error = NE_OK; e.kind = 3; e.original = "[]"; e.tags_to = 2;
+  #assert rs_sub_matches(subs[..], 0, e) && !rs_sub_matches(subs[..], 1, e);
+  e.kind = 2; #assert rs_sub_matches(subs[..], 1, e) && !rs_sub_matches(subs[..], 0, e);
+  #assert rs_sub_find(subs[..], "b") == 1 && rs_sub_find(subs[..], "z") == -1;
+  #assert rs_sub_close(subs[..], "a") && !rs_sub_close(subs[..], "a") && !subs[0].live && rs_subs_live(subs[..]) == 1;
+  t = "[\"REQ\",\"c\",{}]";
+  #assert rs_sub_open(subs[..], ms_read(t), t, 2) == 0;
+  // the filters must fit the subscription's buffer
+  big: [RS_SUB_TEXT + 64] u8; pre := "[\"REQ\",\"d\",{\"#t\":[\""; n := pre.count;
+  for i: 0..<n { big[i] = pre[i]; }
+  for i: 0..<RS_SUB_TEXT { big[n + i] = 'x'; }
+  tail := "\"]}]"; for i: 0..<4 { big[n + RS_SUB_TEXT + i] = tail[i]; }
+  bt := cast(string) big[0..<n + RS_SUB_TEXT + 4];
+  #assert rs_sub_open(subs[..], ms_read(bt), bt, 3) == -RS_SUB_SPACE;
+  // with the filters' bytes just fitting
+  for i: 0..<4 { big[n + RS_SUB_TEXT - 11 + i] = tail[i]; }
+  bt = cast(string) big[0..<n + RS_SUB_TEXT - 7];
+  #assert rs_sub_open(subs[..], ms_read(bt), bt, 3) == 2 && subs[2].to[0] == RS_SUB_TEXT;
+}
+rs_subs_live :: (subs: [] RsSub) -> int {
+  n := 0;
+  for i: 0..<subs.count { if subs[i].live { n += 1; } }
+  return n;
+}
+rs_sub_find :: (subs: [] RsSub, id: string) -> int {
+  for i: 0..<subs.count { if subs[i].live && cast(string) subs[i].id[0..<subs[i].id_n] == id { return i; } }
+  return -1;
+}
+// Opens (or replaces, by id) a subscription from an admitted REQ: its slot,
+// or minus a reason. max caps the live subscriptions.
+rs_sub_open :: (subs: [] RsSub, m: MsMsg, text: string, max: int) -> int {
+  mm := m; id := cast(string) mm.sub[0..<mm.sub_n];
+  at := rs_sub_find(subs, id);
+  if at < 0 {
+    if rs_subs_live(subs) >= max { return -RS_SUBS; }
+    for i: 0..<subs.count { if !subs[i].live && at < 0 { at = i; } }
+  }
+  used := 0;
+  for k: 0..<m.filters { used += m.filter_to[k] - m.filter_from[k]; }
+  if used > RS_SUB_TEXT { return -RS_SUB_SPACE; }
+  subs[at].live = true; subs[at].id_n = m.sub_n; subs[at].filters = m.filters;
+  for i: 0..<m.sub_n { subs[at].id[i] = m.sub[i]; }
+  w := 0;
+  for k: 0..<m.filters {
+    subs[at].from[k] = w;
+    for i: m.filter_from[k]..<m.filter_to[k] { subs[at].text[w] = text[i]; w += 1; }
+    subs[at].to[k] = w;
+  }
+  return at;
+}
+rs_sub_close :: (subs: [] RsSub, id: string) -> bool {
+  at := rs_sub_find(subs, id);
+  if at < 0 { return false; }
+  subs[at].live = false;
+  return true;
+}
+// Whether filter k of subscription i matches e.
+rs_sub_filter :: (subs: [] RsSub, i: int, k: int, e: NostrEvent) -> bool {
+  strs: [600] string; ints: [65] int; tags: [52] NostrTagFilter; bytes: [RS_SUB_TEXT] u8;
+  sp: [1] FrSpace; sp[0] = FrSpace.{strs = strs[..], ints = ints[..], tags = tags[..], bytes = bytes[..]};
+  f: [1] NostrFilter;
+  if filter_read(cast(string) subs[i].text[subs[i].from[k]..<subs[i].to[k]], f[..], sp[..]) != FR_OK { return false; }
+  return nf_match(f[0], e);
+}
+// A live event goes to subscription i when any of its filters matches.
+rs_sub_matches :: (subs: [] RsSub, i: int, e: NostrEvent) -> bool {
+  if !subs[i].live { return false; }
+  for k: 0..<subs[i].filters { if rs_sub_filter(subs, i, k, e) { return true; } }
+  return false;
+}
+
+// ---- NIP-11 ---------------------------------------------------------------
+
+RS_NIP11 :: "{\"name\":\"OpenAgents Coax relay (R1)\",\"description\":\"A Nostr relay written in Coax. Tailnet preview; relay.openagents.com is unchanged.\",\"supported_nips\":[1,11,40],\"software\":\"https://github.com/OpenAgentsInc/openagents\",\"version\":\"r1\",\"limitation\":{\"max_message_length\":131072,\"max_subscriptions\":32,\"max_limit\":127,\"max_subid_length\":64,\"max_event_tags\":256,\"auth_required\":false,\"restricted_writes\":false,\"created_at_upper_limit\":900,\"default_limit\":127}}";
+#test "the NIP-11 document is JSON and states the limits in force" {
+  #assert json_valid(RS_NIP11);
+  #assert RS_MAX_MESSAGE == 131072 && RS_MAX_SUBS == 32 && RS_MAX_LIMIT == 127 && MS_SUB_MAX == 64 && RS_MAX_TAGS == 256 && RS_FUTURE == 900;
+  out: [1024] u8;
+  n := rs_nip11(out[..]);
+  #assert n > 0 && cast(string) out[n - RS_NIP11.count..<n] == RS_NIP11 && cast(string) out[0..<15] == "HTTP/1.1 200 OK";
+  #assert rs_nip11(out[0..<100]) == -1;
+}
+rs_nip11 :: (out: [] u8) -> int { return wss_http_write("200 OK", "application/nostr+json", RS_NIP11, out); }
