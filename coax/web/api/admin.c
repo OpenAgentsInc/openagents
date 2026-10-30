@@ -276,6 +276,7 @@ static void section(out_buf *o, PGconn *db, const char *title, const char *flags
 #define REALM_NOISE \
   "'session-start', 'page-view', 'load-engine', 'load-landing', 'world-enter', 'world-leave', 'page-leave', 'alive', " \
   "'hidden', 'visible', 'resize', 'click', 'key', 'error', 'fail', 'tally', 'app-launch', 'app-background', 'app-foreground'"
+#define REALM_ACT "(ev NOT IN (" REALM_NOISE ") AND ev NOT LIKE 'load-%')"
 #define REALM_PAGES \
   "'haunt', 'sandbox', 'the-grid', 'everglade', 'dead-gears', 'ice-cream-man', 'fairy-forest', 'hecates-cemetery', " \
   "'realm-made', 'realm', 'realm-builder', 'galaxy', 'landing', 'home', 'app'"
@@ -327,8 +328,8 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
   // A 'tally' event's properties are counts; every other action counts once.
   // Same filter as the rest: the team and automation are left out.
   section(o, db, "REALMS", "w", "REALM|VISITS|LOADED|IN THE WORLD|DID SOMETHING|MEDIAN MINUTES|IN THE APP", KEPT
-    ", v AS (SELECT page, sid, bool_or(ev = 'load-engine') AS loaded, bool_or(ev = 'world-enter') AS entered, "
-    "  bool_or(ev NOT IN (" REALM_NOISE ")) AS acted, (max(coalesce(ct, ms)) - min(coalesce(ct, ms))) / 60000.0 AS mins "
+    ", v AS (SELECT page, sid, bool_or(ev IN ('load-engine', 'load-landing')) AS loaded, bool_or(ev = 'world-enter') AS entered, "
+    "  bool_or(" REALM_ACT ") AS acted, (max(coalesce(ct, ms)) - min(coalesce(ct, ms))) / 60000.0 AS mins "
     "  FROM e WHERE page IN (" REALM_PAGES ") GROUP BY page, sid) "
     "SELECT v.page, count(*)::text, count(*) FILTER (WHERE loaded)::text, count(*) FILTER (WHERE entered)::text, "
     "  count(*) FILTER (WHERE acted)::text, round((percentile_cont(0.5) WITHIN GROUP (ORDER BY mins))::numeric, 1)::text, "
@@ -342,12 +343,12 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
       "  (1, 'Visited', (SELECT count(DISTINCT sid) FROM pe)), "
       "  (2, 'Loaded', (SELECT count(DISTINCT sid) FROM pe WHERE ev IN ('load-engine', 'load-landing', 'app-launch'))), "
       "  (3, 'In the world', (SELECT count(DISTINCT sid) FROM pe WHERE ev = 'world-enter')), "
-      "  (4, 'Did something', (SELECT count(DISTINCT sid) FROM pe WHERE ev NOT IN (" REALM_NOISE "))), "
+      "  (4, 'Did something', (SELECT count(DISTINCT sid) FROM pe WHERE " REALM_ACT ")), "
       "  (5, 'Walked 50 m', (SELECT count(DISTINCT sid) FROM pe WHERE ev = 'walk' AND (p->>'m')::int >= 50)), "
       "  (6, 'Stayed 5 minutes', (SELECT count(*) FROM (SELECT sid FROM pe GROUP BY sid HAVING max(coalesce(ct, ms)) - min(coalesce(ct, ms)) >= 300000) l)), "
       "  (7, 'Failed to load or errored', (SELECT count(DISTINCT sid) FROM pe WHERE ev IN ('error', 'fail')))), "
       "acts AS (SELECT sid, ev || coalesce(' ' || coalesce(p->>'id', p->>'area', p->>'label', p->>'m'), '') AS what, 1::bigint AS n "
-      "  FROM pe WHERE ev NOT IN (" REALM_NOISE ") "
+      "  FROM pe WHERE " REALM_ACT " "
       "  UNION ALL SELECT pe.sid, j.key, (j.value #>> '{}')::numeric::bigint FROM pe, jsonb_each(pe.p) j "
       "  WHERE pe.ev = 'tally' AND jsonb_typeof(j.value) = 'number'), "
       "top AS (SELECT what, count(DISTINCT sid) AS s, sum(n) AS t FROM acts GROUP BY what ORDER BY sum(n) DESC, what LIMIT 15) "
