@@ -39,10 +39,33 @@ class PublicViews(unittest.TestCase):
             p,baseline,m=self.source('read_'+cls,'candidate :: (v:[]u8)->u8 #export_c {return v[0];}', [('v','[] u8',cls,'read',2)])
             self.assertFalse(baseline['accepted']);r=self.audit(p,m,0);self.assertEqual(r['return_dependency_mask'],mask);self.assertIn('caller supplies live aligned',r['view_assumption'])
     def test_checked_cast_on_secret_view(self):
+        # v2: a range-contained (widening) checked cast of a secret is admitted
+        # and keeps its dependency; every other secret checked cast refuses.
         p,_,m=self.source('secret_cast','candidate :: (v:[]u8)->u64 #export_c {return cast(u64)v[0];}', [('v','[] u8','secret','read',2)])
-        r=self.audit(p,m,5);self.assertEqual(r['error_name'],'unsupported');self.assertFalse(r['accepted'])
+        r=self.audit(p,m,0);self.assertTrue(r['accepted']);self.assertEqual(r['return_dependency_mask'],1)
         p,_,m=self.source('tainted_alias_cast','candidate :: (v:[]u8,x:u8)->u64 #export_c {w:[]u8=v[0..<1];v[0]=x;return cast(u64)w[0];}', [('v','[] u8','public','write',2),('x','u8','secret',None,0)])
-        r=self.audit(p,m,5);self.assertEqual(r['error_name'],'unsupported');self.assertFalse(r['accepted'])
+        r=self.audit(p,m,0);self.assertTrue(r['accepted']);self.assertEqual(r['return_dependency_mask'],2)
+        # Classified scalars are u64, so narrower secrets come from explicit truncation.
+        for name,body,ret,error in [
+            ('widen_u8_u32','b:=cast,trunc(u8)x;return cast(u32)b;','u32',0),
+            ('widen_u8_u64','b:=cast,trunc(u8)x;return cast(u64)b;','u64',0),
+            ('widen_u8_int','b:=cast,trunc(u8)x;return cast(int)b;','int',5),
+            ('widen_u32_u64','w:=cast,trunc(u32)x;return cast(u64)w;','u64',0),
+            ('widen_u32_int','w:=cast,trunc(u32)x;return cast(int)w;','int',5),
+            ('narrow_u64_u32','return cast(u32)x;','u32',5),
+            ('narrow_u64_u8','return cast(u8)x;','u8',5),
+            ('narrow_u32_u8','w:=cast,trunc(u32)x;return cast(u8)w;','u8',5),
+            ('sign_u64_int','return cast(int)x;','int',5),
+            ('identity_u64','return cast(u64)x;','u64',5),
+            ('narrow_after_widen','b:=cast,trunc(u8)x;return cast(u8)(cast(u32)b<<1);','u8',5)]:
+            text='candidate :: (x:u64)->'+ret+' #export_c {'+body+'}'
+            p,_,m=self.source(name,text,[('x','u64','secret',None,0)]);r=self.audit(p,m,error);self.assertEqual(r['accepted'],error==0,name)
+            if error==0:self.assertEqual(r['return_dependency_mask'],1,name)
+            else:self.assertEqual(r['error_name'],'unsupported',name)
+        p,_,m=self.source('narrow_view_shift','candidate :: (v:[]u8)->u8 #export_c {return cast(u8)(cast(u32)v[0]<<1);}',[('v','[] u8','secret','read',2)])
+        r=self.audit(p,m,5);self.assertFalse(r['accepted'])
+        p,_,m=self.source('public_narrow','candidate :: (x:u64)->u32 #export_c {return cast(u32)x;}',[('x','u64','public',None,0)])
+        r=self.audit(p,m,0);self.assertEqual(r['return_dependency_mask'],0)
     def test_taint_alias_and_readonly_effects(self):
         cases=[
           ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),
@@ -105,13 +128,15 @@ class PublicViews(unittest.TestCase):
             replace(original);r=self.tool.audit(p,'candidate',classification=m,after_compile=lambda:replace(poison));self.assertEqual(r['error'],13,r);self.assertEqual(r['audit_artifact_sha256'],old_hash)
         finally:replace(original)
         self.assertEqual(self.audit(p,m,0)['return_dependency_mask'],1)
-    def test_real_ecdh_entry_refuses_secret_checked_cast(self):
+    def test_real_ecdh_entry_passes_widening_and_refuses_checked_arithmetic(self):
         p=ROOT/'coax/lib/crypto/ecdh.coax';base=self.tool.audit(p,'ecdh_stage')
         self.assertFalse(base['accepted']);self.assertEqual(base['error_name'],'unsupported')
         rows=[{'name':'secret','type':'[] u8','classification':'secret','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'peer','type':'[] u8','classification':'public','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'work','type':'[] EcdhScratch','classification':'public','view':{'element_type':'EcdhScratch','extent':1,'access':'write'}}]
         m={'schema':'coax.secret-large-classification-views.v3','entry':'ecdh_stage','sources':base['source_sha256'],'parameters':rows,'views_disjoint':True,'live_aligned_exclusive':True,'public_only':True,'compiler_sha256':self.tool.compiler_fingerprint,'audit_inputs':self.tool.inputs,'audit_artifact_sha256':metadata_sha(self.tool.artifact),'profile':'native-c-checked-library'}
         r=self.tool.audit(p,'ecdh_stage',classification=m);self.assertEqual(r['error'],5,r);self.assertFalse(r['accepted']);self.assertLess(r['visited_nodes'],262144)
-        self.assertTrue(r['file'].endswith('/crypto/bytes.coax'));self.assertEqual((r['line'],r['column']),(108,28))
+        # v2 admits the widening at bytes.coax:108:28 and in sc_subtract_n; the
+        # secret checked addition SC_BASE+cast(u64)a[i] still refuses.
+        self.assertTrue(r['file'].endswith('/crypto/secp_scalar.coax'));self.assertEqual((r['line'],r['column']),(99,18));self.assertEqual(r['reached_procedures'],30)
         self.assertEqual([(g['line'],g['origin_mask']) for g in r['authored_guard_obligations']],[(239,0),(492,0)])
         self.observations.append({'case':'real_ecdh_entry','expected':5,'report':r})
 if __name__=='__main__':unittest.main()

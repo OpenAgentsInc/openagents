@@ -63,7 +63,7 @@ class AggregateAudit(Audit):
         try:return super().audit(*args,**kwargs)
         finally:self.classification=UNCLASSIFIED
     def _decorate_report(self,report):
-        report['profile']='large-aggregate-source-v1';report['aggregate_memory_loops_supported']=True
+        report['profile']='large-aggregate-source-v2';report['aggregate_memory_loops_supported']=True
         report['supported_algorithm_dataflow']=report['error'] in (0,14)
         report['source_status']='analyzed-with-guard-obligations' if report['error']==14 else 'admitted-source' if report['error']==0 else 'refused'
         if report['error']==14:report['error_name']='guard-obligations'

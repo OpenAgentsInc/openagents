@@ -1,0 +1,34 @@
+{
+  "source_sha256": "5ddf836f9305c78383a00fb2466f2d5589610e001b5389113a7a77c510c94a08",
+  "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+  "host_cc": "/run/current-system/sw/bin/cc",
+  "host_cc_sha256": "de18d4626aecd4386163e674e3c40937427ac1deb18653c049edcf03994af9b6",
+  "cc_version": "gcc (GCC) 15.2.0",
+  "machine": "x86_64",
+  "results": [
+    {
+      "mode": "checked",
+      "c_sha256": "184cc1c41a38d6c54f82469312490ae88bfd2e0e13b85a0511422e6844f33c10",
+      "object_sha256": "b1f97849e60b728efeb6a70ac98ef973711e475e86ad1a7159a936fda77ee9b5",
+      "branch_free": [
+        "widen_u8_u32",
+        "widen_u8_u64",
+        "widen_u32_u64"
+      ],
+      "control_branches": true,
+      "values": "exact"
+    },
+    {
+      "mode": "release",
+      "c_sha256": "184cc1c41a38d6c54f82469312490ae88bfd2e0e13b85a0511422e6844f33c10",
+      "object_sha256": "b1f97849e60b728efeb6a70ac98ef973711e475e86ad1a7159a936fda77ee9b5",
+      "branch_free": [
+        "widen_u8_u32",
+        "widen_u8_u64",
+        "widen_u32_u64"
+      ],
+      "control_branches": true,
+      "values": "exact"
+    }
+  ]
+}

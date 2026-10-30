@@ -56,6 +56,20 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  f.nodes[7]=ScNode.{kind=21,name="missing_vartime"};env:[1]AgEnv;state:[1]ScAudit;memory[0]=AgMemory.{public_views=true};
  ignored:=AG_call(f.nodes[..],values[..],f.roots[..],f.types[0..<2],7,env[..],memory[..],state[..],0);#assert state[0].error==SC_VARTIME;
 }
+#test "only range-contained checked casts admit a secret operand" {
+ #assert !AG_contained(-5,-5) && AG_contained(-5,-2) && AG_contained(-5,-1) && !AG_contained(-5,-4);
+ #assert !AG_contained(-2,-2) && AG_contained(-2,-1) && !AG_contained(-2,-4) && !AG_contained(-2,-5);
+ #assert !AG_contained(-1,-1) && !AG_contained(-1,-2) && !AG_contained(-1,-5) && !AG_contained(-1,-4);
+ #assert !AG_contained(-4,-4) && !AG_contained(-4,-1) && !AG_contained(-4,-2) && !AG_contained(-4,-5);
+ #assert !AG_contained(-3,-3) && !AG_contained(-3,-1) && !AG_contained(-5,-3) && !AG_contained(-1,-3);
+ #assert !AG_contained(0,-1) && !AG_contained(-5,0) && !AG_contained(0,0) && !AG_contained(-6,-1) && !AG_contained(-5,-6);
+ state:[1]ScAudit;roots:[1]int;nodes:=[4]ScNode.[ScNode.{},ScNode.{kind=1,name="u64"},ScNode.{kind=1,name="Point"},ScNode.{kind=2,name="u8"}];
+ #assert AG_cast_primitive(nodes[..],1)==-1 && AG_cast_primitive(nodes[..],2)==0 && AG_cast_primitive(nodes[..],3)==0;
+ #assert AG_cast_primitive(nodes[..],-5)==-5 && AG_cast_primitive(nodes[..],-1)==-1 && AG_cast_primitive(nodes[..],-6)==0;
+ #assert AG_cast_primitive(nodes[..],4)==0 && AG_cast_primitive(nodes[..],0)==0;
+ // Node 0 resolves like any other node, as in AG_type.
+ nodes[0]=ScNode.{kind=1,name="u32"};#assert AG_cast_primitive(nodes[..],0)==-2 && AG_type(nodes[..],roots[0..<0],0,state[..])==-2;
+}
 #test "aggregate source bounds and scalar identities are explicit" {
  #assert AG_primitive("u64")==-1 && AG_primitive("u32")==-2 && AG_primitive("bool")==-3 && AG_primitive("int")==-4 && AG_primitive("u8")==-5;
  #assert AG_primitive("f64")==0 && AG_primitive("string")==0;
@@ -338,7 +352,7 @@ AG_expr :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]
   if n.op==52 {r.type=-3;if a.known {r.lo=ifx a.hi==0 then 1 else 0;r.hi=ifx a.lo!=0 then 0 else 1;}}
   else {r.known=false;}return r;}
  if n.kind==23 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);return AG_binary(a,b,n.op,memory,state,id);}
- if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);if r.mask!=0 && !n.flag {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
+ if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);if r.mask!=0 && !n.flag && !AG_contained(r.type,AG_cast_primitive(nodes,n.d)) {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
  if n.kind==31 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_origin(condition,memory)!=0 {SC_fail(state,SC_BRANCH,id);return AgValue.{};}
   a:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.c,env,memory,state,depth+1);if condition.known && condition.lo==condition.hi {return ifx condition.lo!=0 then a else b;}return AG_union(a,b,memory);}
  if n.kind==25 {base:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);
@@ -490,6 +504,23 @@ AG_procedure :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,a
  result:=AG_new(nodes,values,roots,block.value,p.a,memory,state);if result.view {SC_fail(state,SC_UNSUPPORTED,id);}
  if cacheable && state[0].error==0 && memory[0].memo_count<128 {at_memo:=memory[0].memo_count;memory[0].memo_count+=1;memory[0].memo[at_memo].procedure=id;memory[0].memo[at_memo].count=count;memory[0].memo[at_memo].args=keys;memory[0].memo[at_memo].result=AG_memo_value(result);memory[0].memo[at_memo].closure=memory[0].scope[level];memory[0].memo[at_memo].height=memory[0].height[level];}
  AG_memo_scope(memory,level,memory[0].scope[level],memory[0].height[level]);state[0].depth-=1;return result;
+}
+// A checked cast whose source type's whole range lies inside the target's
+// cannot reach its range trap, so the emitted check's branch never depends
+// on the value. Only unsigned strict widening qualifies: u8 -> u32/u64 and
+// u32 -> u64. Every other checked cast of a secret refuses: identity,
+// narrowing, any int source or target, bool and others.
+AG_contained :: (from:int,to:int)->bool {
+ if from==-5 {return to==-2 || to==-1;}
+ if from==-2 {return to==-1;}
+ return false;
+}
+// The cast's target as a primitive code, read like AG_type but without
+// failing: anything other than a primitive is 0, which nothing contains.
+AG_cast_primitive :: (nodes:[]ScNode,id:int)->int {
+ if id<0 {return ifx id>=-5 then id else 0;}
+ if SC_ref(id,nodes.count) && nodes[id].kind==1 {return AG_primitive(nodes[id].name);}
+ return 0;
 }
 AG_primitive_name :: (type:int)->string {if type==-1 {return "u64";}if type==-2 {return "u32";}if type==-3 {return "bool";}if type==-4 {return "int";}if type==-5 {return "u8";}return "";}
 AG_parameter_name :: (types:[]ScType,p:ScNode,n:ScNode)->string {for t:types {if t.unit==p.unit && t.procedure==p.name && t.procedure_line==p.line && t.name==n.name && t.line==n.line && t.role=="parameter" {return t.type;}}return "";}

@@ -39,6 +39,8 @@ def main():
         d = Path(td)
         for profile in profiles:
             for entry, expected in entries.items():
+                # Large profile v2 admits a range-contained checked cast (u8 -> u64).
+                if profile == 'large-source-audit' and entry == 'checked_wide': expected = 'accepted'
                 report = d / 'audit.json'
                 tool = ROOT / 'tools/coax-nostr' / profile / 'aggregate.py'
                 result = run(sys.executable, tool, SOURCE, '--entry', entry, '--report', report)

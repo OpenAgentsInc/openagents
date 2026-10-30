@@ -1,5 +1,10 @@
 # Larger secret-source inventory: partial profile
 
+**Update (2026-10-30):** the profile is now `large-aggregate-source-v2`. It
+admits a secret checked cast only for unsigned strict widening; see
+[the contained-cast record](2026-10-30-secret-audit-contained-cast.md).
+Reports naming `large-aggregate-source-v1` describe the earlier rule.
+
 **Security correction:** this is historical evidence for the original
 snapshot, which accepted a secret-dependent checked narrowing cast even
 though that cast can trap. Its prior mutation and source reviews did not

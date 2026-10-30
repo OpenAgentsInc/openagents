@@ -1,0 +1,427 @@
+{
+  "schema": "coax.public-view-source-tests.v1",
+  "scope": "conditional source analysis; no physical ownership, target or production approval",
+  "test_driver_sha256": "95a3f5bae066d7cc34a9890aa30593356ac6bb026b8f77476e425d1fec2dd554",
+  "observations": [
+    {
+      "case": "secret_cast.coax",
+      "expected": 0,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": true,
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/secret_cast.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 12,
+        "return_dependency_mask": 1,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/secret_cast.coax": "da1e42bad7fe3c82d95bcebe27eef033e531e5d3c2067e4445b24e8a0fbf5485"
+        },
+        "classification_manifest_sha256": "bf268aa8c62faf9b945d50d5bcebe3fe3aa0112220491cbf8cbd359f9ee5fad8",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "tainted_alias_cast.coax",
+      "expected": 0,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": true,
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/tainted_alias_cast.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 28,
+        "return_dependency_mask": 2,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/tainted_alias_cast.coax": "8ebefb3cbfb1203d87d1bf22c51698f6f2ab8aa992c5123ef249484f6cb422b2"
+        },
+        "classification_manifest_sha256": "2ef78abf7d53af0f01217853e3d4567abe7685a80c55e6d479cb3ce5d2045994",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "widen_u8_u32.coax",
+      "expected": 0,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": true,
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/widen_u8_u32.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 11,
+        "return_dependency_mask": 1,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/widen_u8_u32.coax": "7decd4cf880cb422b6e09162d5b9034ff322fea159277ccd28fa8a767c77e416"
+        },
+        "classification_manifest_sha256": "86e8be1ed0a081471d54b61dd1fdcc7256e2655313b56dde516874ae549786c0",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "widen_u8_u64.coax",
+      "expected": 0,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": true,
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/widen_u8_u64.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 11,
+        "return_dependency_mask": 1,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/widen_u8_u64.coax": "82c77f51ebfe7464b324a86e8dd58c4a5ea28b7ad693e81f43890427d38fe953"
+        },
+        "classification_manifest_sha256": "0928de7db2084f2fe11b1c4701956274ca11a64c766235f372a15b9a6a1128e4",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "widen_u8_int.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/widen_u8_int.coax",
+        "line": 1,
+        "column": 64,
+        "reached_procedures": 1,
+        "visited_nodes": 11,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/widen_u8_int.coax": "6801445b60c9269797c3cf89e335b6ef96cf4a9aa95f6575fb1e3213c1a519b0"
+        },
+        "classification_manifest_sha256": "c0aae626224cfdd9994a3c1fcf802763f300fd54301911dda789a9aeb9eb2f3a",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "widen_u32_u64.coax",
+      "expected": 0,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": true,
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/widen_u32_u64.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 11,
+        "return_dependency_mask": 1,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/widen_u32_u64.coax": "268c37fbe11d997910c7e66ea36d3ceafd1eaa905c7d9ee8aaa8fca5a501dc4a"
+        },
+        "classification_manifest_sha256": "d23625143f26c874b87dd9de83121a7013da0b2208729627db3ff045291b88f8",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "widen_u32_int.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/widen_u32_int.coax",
+        "line": 1,
+        "column": 65,
+        "reached_procedures": 1,
+        "visited_nodes": 11,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/widen_u32_int.coax": "b97858e5c7d4a9ffd01b1739cd26bc6fa27e9c5c6126fd9868d99f283156c082"
+        },
+        "classification_manifest_sha256": "167700c5e3a1ec9c39507107ffc95b59a0bae4c1b9a676ae12c6398a4deedd3e",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "narrow_u64_u32.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/narrow_u64_u32.coax",
+        "line": 1,
+        "column": 45,
+        "reached_procedures": 1,
+        "visited_nodes": 8,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/narrow_u64_u32.coax": "be68fc0a4927acb301472d28a639afbc1aadc5741cb32834a3e86239e4992a65"
+        },
+        "classification_manifest_sha256": "ccd22155b4e3713f6a0314099f4410094ecdaeebc3d411adefa3c93d65ab9132",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "narrow_u64_u8.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/narrow_u64_u8.coax",
+        "line": 1,
+        "column": 44,
+        "reached_procedures": 1,
+        "visited_nodes": 8,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/narrow_u64_u8.coax": "21c00f550a5a4347643c2e4faf46ac0ce16f15fb9685833b827cc72fe739b85a"
+        },
+        "classification_manifest_sha256": "82cb5fe15ded94197c2381f0259ed5c1cb04d3b59b4e5f647e500b741029e0fa",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "narrow_u32_u8.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/narrow_u32_u8.coax",
+        "line": 1,
+        "column": 64,
+        "reached_procedures": 1,
+        "visited_nodes": 11,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/narrow_u32_u8.coax": "ac637964e850dbc934d98c84c39a8c297bcaddb79bc449fe433cfb52f7ac9cb6"
+        },
+        "classification_manifest_sha256": "d0b172b56e73c4c7a1dd6234c4ba95405183d24ed751a82c84dfc079fc12e79d",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "sign_u64_int.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/sign_u64_int.coax",
+        "line": 1,
+        "column": 45,
+        "reached_procedures": 1,
+        "visited_nodes": 8,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/sign_u64_int.coax": "c736d8ac274689ba8f80d6fe8e3f4226e3fdc76beed94310f3e8e87906b7b803"
+        },
+        "classification_manifest_sha256": "75cb93ad64969853dad059882060819ad85559740bbc1276126db70c4967482e",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "identity_u64.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/identity_u64.coax",
+        "line": 1,
+        "column": 45,
+        "reached_procedures": 1,
+        "visited_nodes": 8,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/identity_u64.coax": "7f94a99e4b23d0031559fc788b9f59103815cf2a0fc6c34fcb5b0a8875f528ec"
+        },
+        "classification_manifest_sha256": "5f14fd31d6b9e4f619ae01efd84a95f1f093ddc18285b97a48850cf028c5fc9f",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "narrow_after_widen.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/narrow_after_widen.coax",
+        "line": 1,
+        "column": 63,
+        "reached_procedures": 1,
+        "visited_nodes": 14,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/narrow_after_widen.coax": "abe8195095b8e72963f10acba8b042447929e8c7fafc634d80bf457f9e68af9e"
+        },
+        "classification_manifest_sha256": "87eb05c4ef025862001f947659bc930f44dd83603150f9bd63eebe5904642a57",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "narrow_view_shift.coax",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$CASES/narrow_view_shift.coax",
+        "line": 1,
+        "column": 45,
+        "reached_procedures": 1,
+        "visited_nodes": 15,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/narrow_view_shift.coax": "11fb0fcf18f6de14ae9469ea53e42b1a45c44974745bf8bbde37da3fee43b2fb"
+        },
+        "classification_manifest_sha256": "6c6d8dd60da872abfcc4d765a041ce8419c27b76d5c37b083c292f10378bd0cf",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "public_narrow.coax",
+      "expected": 0,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": true,
+        "error": 0,
+        "error_name": "accepted",
+        "file": "$CASES/public_narrow.coax",
+        "line": 0,
+        "column": 0,
+        "reached_procedures": 1,
+        "visited_nodes": 8,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$CASES/public_narrow.coax": "be68fc0a4927acb301472d28a639afbc1aadc5741cb32834a3e86239e4992a65"
+        },
+        "classification_manifest_sha256": "6d7c6d636130d0dde5ec366572a814bcadf9819a45292e0d985113f0707e9762",
+        "authored_guard_obligations": []
+      }
+    },
+    {
+      "case": "real_ecdh_entry",
+      "expected": 5,
+      "report": {
+        "profile": "large-aggregate-source-v2",
+        "accepted": false,
+        "error": 5,
+        "error_name": "unsupported",
+        "file": "$REPO/coax/lib/crypto/secp_scalar.coax",
+        "line": 99,
+        "column": 18,
+        "reached_procedures": 30,
+        "visited_nodes": 29614,
+        "return_dependency_mask": 0,
+        "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+        "audit_artifact_sha256": "c3f0367a32cb441689cb9d6d4fac04231c41a7bdb3e3e44e8f22fe939ad4ec5b",
+        "source_sha256": {
+          "$REPO/coax/lib/crypto/ecdh.coax": "8bd78fccaa462d832e5c89621ac2159c78aa8035d4f13568783f3d195ad07c28",
+          "$REPO/coax/lib/crypto/secp_mult_const.coax": "948b31ef93663792305347ca5f65e22259c5777e783edf7b9502b09033de622b",
+          "$REPO/coax/lib/crypto/secp_group32.coax": "699f3ddb109dd26acfb7f0162edd9a5f1d7dfc44e353c0b2964b56fadc1f403a",
+          "$REPO/coax/lib/crypto/secp_group.coax": "b80d001e7f03a15c6dd7951c2b2c016305653c7755636b53cbc69b0cc00a1b1c",
+          "$REPO/coax/lib/crypto/secp_field.coax": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+          "$REPO/coax/lib/crypto/bytes.coax": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+          "$REPO/coax/lib/crypto/secp_field32_total.coax": "961e5da4378a23e1227fbc6e13308914aa310f2660107c05ac1775e8221ffccf",
+          "$REPO/coax/lib/crypto/secp_field32.coax": "98702d76f5c7fa69e62d2628df4eadd0c5344b7ca7a85772bff70c493cd7869b",
+          "$REPO/coax/lib/crypto/secp_scalar.coax": "daede6b4ab97c9565594adac71ca7abd8311ce1c18bcd3091a3bb8af21b0185a",
+          "$REPO/coax/tests/nostr/scalar_fixtures.coax": "9d1bb526c261db8d519e91d73ddfdf6d2a34a01c58afa235b5b039105b91235c",
+          "$REPO/coax/lib/crypto/ecdh_fast.coax": "3c7d7949f2b69677c199faa3ee85b253c9281f9e24f4a1e762728417acc88915"
+        },
+        "classification_manifest_sha256": "ec3b70210c1114c99427eb3e74ad532db748ccf0621577fb5bed693b9ad9449c",
+        "authored_guard_obligations": [
+          {
+            "node": 7186,
+            "line": 239,
+            "column": 3,
+            "origin_mask": 0,
+            "kind": "authored-assertion",
+            "file": "$REPO/coax/lib/crypto/secp_field.coax",
+            "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+            "classification": "public-unproved"
+          },
+          {
+            "node": 8991,
+            "line": 492,
+            "column": 5,
+            "origin_mask": 0,
+            "kind": "authored-assertion",
+            "file": "$REPO/coax/lib/crypto/secp_field.coax",
+            "source_sha256": "8420f6a9ad21054a1f0d37a1721f2bc79c0db8bc489803c9dd985fef9ac38484",
+            "classification": "public-unproved"
+          }
+        ]
+      }
+    }
+  ],
+  "audit_input_sha256": {
+    "$REPO/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
+    "$REPO/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
+    "$REPO/coax/lib/compiler/parser.coax": "448318fa44d7935bebb0efcf1d6a55f77c39d1cc4450c18ed5ffbe4c55d36365",
+    "$REPO/coax/lib/compiler/sources.coax": "a5cea55ef5f6efa502d15d9e0ddd462e3e1a5cffe0f25a8200873443c9df008d",
+    "$REPO/coax/lib/crypto/sha256-memory.coax": "9c59475cf6744005e9a9bff7efa5c1fd1cf90c5323a7c52e818a166b0451433d",
+    "$REPO/coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "$REPO/coax/lib/crypto/bytes.coax": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+    "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "$REPO/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
+    "$REPO/tools/coax-nostr/large-source-audit/aggregate.coax": "cd2e901eb7988f96e65469a79fcf993416fa229db45dfdfe28e9158d0b4d22aa",
+    "$REPO/tools/coax-nostr/large-source-audit/inventory.coax": "68a30c50ca2b02308dd56d6416a8dbf04798ded7912dcfc1354f19462fbb8d85",
+    "$REPO/coax/lib/crypto/secret-flow.coax": "3e7385219a694808e7d55caca47a0abe631de07911062c4a1c29605d79c9bba8",
+    "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
+    "$REPO/coax/tests/nostr/secret_flow.coax": "17fb7be86bed9c44bb15cff5a7eae76c9bc98eb8657c2846ece2dc82a2512cd0",
+    "$REPO/coax/tests/nostr/secret_aggregate.coax": "58c054b4bfb4e60626a30830acf566e1f772c29fc269113c9078fe771faa51ac",
+    "$REPO/coax/tests/nostr/secret_aggregate_cases.coax": "c352871a69fa5615754b863adbd570b0d3dd907ebcd1c811a03544bae8beea0a",
+    "$REPO/tools/coax-nostr/large-source-audit/bridge-aggregate.cpp": "36425ae3a5733ba91b1c383f07a836f6525dc102e483aee8d1e1fff870d97bd3",
+    "$REPO/tools/coax-nostr/large-source-audit/check.py": "811e7f65169eff6254e6509b7f84bb2fe111d6e85632c6a04457632b04257e4f",
+    "$REPO/tools/coax-nostr/large-source-audit/aggregate.py": "2731054da7c2efb2422c7baa5e3fe7f4ee5647fe3b7bf0f97ffb1dc7d080720c"
+  }
+}
