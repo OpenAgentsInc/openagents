@@ -1,0 +1,49 @@
+// Z.ai (docs/coder/microcoder.md, row 6): GLM on Chat Completions through
+// chat.coax, in the old Dialect from crates/inference upstream/zai.rs:
+// the cap goes as max_tokens, and thinking is always on (Z.ai's docs say
+// glm-5.3-flash cannot turn it off), so no reasoning_effort is sent. Its
+// reasoning streams as reasoning_content, which chat.coax reads as
+// reasoning. GLM has no strict JSON schemas: the gateway carries
+// GW_NO_STRICT_SCHEMA, sends none, and a structured caller (Microcoder)
+// reads the answer out of plain text instead (text_action).
+
+#load "gateway.coax";
+
+GW_ZAI_URL :: "https://api.z.ai/api/paas/v4/chat/completions";
+GW_ZAI_KEY_ENV :: "ZAI_API_KEY";
+GW_ZAI_FLASH :: "glm-5.3-flash";
+
+gw_zai :: () -> Gateway {
+  return Gateway.{name = "zai", url = GW_ZAI_URL, key_env = GW_ZAI_KEY_ENV, wire = GW_WIRE_CHAT,
+                  flags = GW_CHAT_LEGACY_MAX_TOKENS | GW_CHAT_THINKING_ON | GW_NO_STRICT_SCHEMA};
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a Z.ai body: max_tokens, thinking on, no effort and no schema" {
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "Count from one to five."};
+  req := GwRequest.{model = GW_ZAI_FLASH, system = "You are terse.", messages = msgs[..], max_tokens = 256, effort = "low", schema = "{\"type\":\"object\"}"};
+  #assert gw_translate(gw_zai(), req, out[..], why[..]) == "{\"model\":\"glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are terse.\"},{\"role\":\"user\",\"content\":\"Count from one to five.\"}],\"max_tokens\":256,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"thinking\":{\"type\":\"enabled\"}}";
+}
+
+#test "the recorded Z.ai stream parses: 34 reasoning deltas, none in the answer" {
+  r: [1] GwReplay; fx := GW_FX_ZAI_GLM_5_3_FLASH;
+  gw_replay(GW_WIRE_RESPONSES, fx[..], r[..]);
+  #assert r[0].thoughts == 34 && gw_replay_text(r[..]) == "one\ntwo\nthree\nfour\nfive" && r[0].done == 1 && r[0].usage.ok;
+}
+
+#test "a direct Z.ai stream: reasoning_content is reasoning, then content, finish, usage" {
+  lines: [8] string;
+  lines[0] = "data: {\"id\":\"1\",\"model\":\"glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"reasoning_content\":\"Counting\"}}]}";
+  lines[1] = "";
+  lines[2] = "data: {\"id\":\"1\",\"model\":\"glm-5.3-flash\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"one\\ntwo\"}}]}";
+  lines[3] = "";
+  lines[4] = "data: {\"id\":\"1\",\"model\":\"glm-5.3-flash\",\"choices\":[{\"index\":0,\"finish_reason\":\"stop\",\"delta\":{\"role\":\"assistant\",\"content\":\"\"}}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":30,\"total_tokens\":42,\"prompt_tokens_details\":{\"cached_tokens\":4}}}";
+  lines[5] = "";
+  lines[6] = "data: [DONE]";
+  lines[7] = "";
+  r: [1] GwReplay;
+  gw_replay(GW_WIRE_CHAT, lines[..], r[..]);
+  #assert r[0].thoughts == 1 && gw_replay_text(r[..]) == "one\ntwo" && r[0].done == 1 && r[0].usage.input_tokens == 12 && r[0].usage.cached_tokens == 4;
+}

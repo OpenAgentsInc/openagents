@@ -49,7 +49,7 @@ gw_gemini_body :: (req: GwRequest, flags: int, out: [] u8) -> int {
   n = json_raw(out, n, ",\"generationConfig\":{");
   comma := false;
   if req.max_tokens > 0 { n = json_raw(out, n, "\"maxOutputTokens\":"); n = json_write_int(out, n, req.max_tokens); comma = true; }
-  if req.schema.count > 0 {
+  if req.schema.count > 0 && (flags & GW_NO_STRICT_SCHEMA) == 0 {
     if comma { n = json_raw(out, n, ","); }
     n = json_raw(out, n, "\"responseMimeType\":\"application/json\",\"responseJsonSchema\":");
     n = json_raw(out, n, req.schema);
