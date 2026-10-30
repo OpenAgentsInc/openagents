@@ -26,6 +26,7 @@
 #load "font.coax";
 #load "newland-data.coax";
 #load "../../verse/figure.coax";
+#load "../../verse/hud/frame.coax";
 
 VERTEX_FLOATS :: 12;      // x, y, along, across, length, core, light, glow, red, green, blue, mode
 MAX_VERTICES :: 200000;
@@ -284,8 +285,10 @@ Pen :: struct { d: f32; fade: f32; time: f32; still: bool; phone: bool; }
 // PROJECT's hover and the live and online dots. BITCOIN orange is for Bitcoin
 // payments only, and nothing here pays yet. newland.wgsl and
 // new-land/index.html name the same tokens.
-GREY_WHITE :: 0.94; GREY_LIGHT :: 0.78; GREY_MID :: 0.6; GREY_DIM :: 0.42;
-ACCENT_R :: 0.216; ACCENT_G :: 0.851; ACCENT_B :: 0.851;
+// The greys, the blue and the frame are verse/hud/frame.coax's, which the
+// iOS app draws its screens from too.
+GREY_WHITE :: HUD_GREY_WHITE; GREY_LIGHT :: HUD_GREY_LIGHT; GREY_MID :: HUD_GREY_MID; GREY_DIM :: HUD_GREY_DIM;
+ACCENT_R :: HUD_ACCENT_R; ACCENT_G :: HUD_ACCENT_G; ACCENT_B :: HUD_ACCENT_B;
 BITCOIN_R :: 1.0; BITCOIN_G :: 0.55; BITCOIN_B :: 0.12;
 INK_WHITE :: 0; INK_DIM :: 1; INK_BRIGHT :: 2; INK_PALE :: 3; INK_FAINT :: 4; INK_COOL :: 5; INK_BITCOIN :: 6; INK_BLUE :: 7;
 ink :: (p: Pen, kind: int) -> Ink {
@@ -354,13 +357,14 @@ ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: Ink, light: f32) -> in
 // brackets on the others (the project pages' panels).
 frame :: (out: [] f32, at: int, b: Box, cut: f32, k: Ink, light: f32, p: Pen) -> int {
   v := at;
-  xs := [7] f32.[b.x0, b.x1 - cut, b.x1, b.x1, b.x0 + cut, b.x0, b.x0];
-  ys := [7] f32.[b.y0, b.y0, b.y0 + cut, b.y1, b.y1, b.y1 - cut, b.y0];
-  for i: 0..<6 { v = rule(out, v, xs[i], ys[i], xs[i + 1], ys[i + 1], k, 0.3 * light); }
-  arm := lo(22 * p.d, (b.x1 - b.x0) * 0.25);
-  v = rule(out, v, b.x0, b.y0 + arm * 0.6, b.x0, b.y0, k, light);
+  for i: 0..<6 {
+    a := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i); c := verse_hud_frame_point(b.x0, b.y0, b.x1, b.y1, cut, i + 1);
+    v = rule(out, v, a.x, a.y, c.x, c.y, k, HUD_OUTLINE * light);
+  }
+  arm := verse_hud_frame_arm(b.x1 - b.x0, p.d);
+  v = rule(out, v, b.x0, b.y0 + arm * HUD_ARM_DOWN, b.x0, b.y0, k, light);
   v = rule(out, v, b.x0, b.y0, b.x0 + arm, b.y0, k, light);
-  v = rule(out, v, b.x1, b.y1 - arm * 0.6, b.x1, b.y1, k, light);
+  v = rule(out, v, b.x1, b.y1 - arm * HUD_ARM_DOWN, b.x1, b.y1, k, light);
   return rule(out, v, b.x1, b.y1, b.x1 - arm, b.y1, k, light);
 }
 glass :: (uniforms: [] f32, k: int, b: Box, cut: f32, alpha: f32, tint: f32) {

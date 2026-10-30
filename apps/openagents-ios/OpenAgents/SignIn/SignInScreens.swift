@@ -19,37 +19,47 @@ enum SignInRouter {
     }
 }
 
-/// Your key and the ways in: scan a code, or paste a link.
+/// Your key and the ways in: scan a code, or paste a link. Drawn in the new
+/// landing's HUD (HudChrome.swift): its masthead, panels and buttons.
 final class SignInViewController: WalletForm {
-    private let npub = Look.label("", .monospacedSystemFont(ofSize: 13, weight: .regular))
-    private let note = Look.label("", .preferredFont(forTextStyle: .footnote), Look.dim)
+    private let npub = Look.label("", .monospacedSystemFont(ofSize: 13, weight: .regular), Hud.light)
+    private let note = Look.label("", .preferredFont(forTextStyle: .footnote), Hud.mid)
 
     override func viewDidLoad() {
         super.viewDidLoad()
         title = "Log in"
-        navigationItem.rightBarButtonItem = UIBarButtonItem(systemItem: .done, primaryAction: UIAction { [weak self] _ in self?.dismiss(animated: true) })
-        let about = Look.label("Scan the code on openagents.com/login to log in there, or the LINK A PHONE code on your project page.", .preferredFont(forTextStyle: .body), Look.dim)
-        let keyTitle = Look.label("Your key", .preferredFont(forTextStyle: .headline))
+        let close = HudButton("Done", "signin.close")
+        close.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
+        let head = HudMasthead(title: "Log in", close: close)
+        let about = Look.label("Scan the code on openagents.com/login to log in there, or the LINK A PHONE code on your project page.", .preferredFont(forTextStyle: .body), Hud.light)
         npub.accessibilityIdentifier = "signin.npub"; npub.lineBreakMode = .byCharWrapping
+        npub.font = UIFontMetrics(forTextStyle: .body).scaledFont(for: .monospacedSystemFont(ofSize: 13, weight: .regular))
         note.accessibilityIdentifier = "signin.note"
-        let copy = Look.button("Copy", "signin.copy")
+        let copy = HudButton("Copy", "signin.copy")
         copy.addAction(UIAction { [weak self] _ in
             guard let self, let text = self.npub.text, text.hasPrefix("npub1") else { return }
             UIPasteboard.general.string = text
             self.note.text = "Copied."
         }, for: .touchUpInside)
-        let scan = Look.button("Scan a code", "signin.scan", primary: true)
+        let scan = HudButton("Scan a code", "signin.scan", main: true)
         scan.addAction(UIAction { [weak self] _ in
             let scanner = ScannerViewController { code in self?.take(code) }
             self?.present(scanner, animated: true)
         }, for: .touchUpInside)
-        let paste = Look.button("Paste a link", "signin.paste")
+        let paste = HudButton("Paste a link", "signin.paste")
         paste.addAction(UIAction { [weak self] _ in self?.take(UIPasteboard.general.string ?? "") }, for: .touchUpInside)
-        let keyNote = Look.label("This key is made on this phone and stays in its Keychain. It signs only after you approve.", .preferredFont(forTextStyle: .footnote), Look.dim)
-        let stack = Look.stack([about, scan, paste, note, keyTitle, npub, copy, keyNote], spacing: 14)
-        stack.setCustomSpacing(28, after: note)
+        let keyNote = Look.label("This key is made on this phone and stays in its Keychain. It signs only after you approve.", .preferredFont(forTextStyle: .footnote), Hud.mid)
+        let ways = HudPanel([about, scan, paste, note])
+        ways.column.setCustomSpacing(18, after: about)
+        let key = HudPanel([HudHeading("Your key"), npub, copy, keyNote])
+        let stack = Look.stack([head, ways, key], spacing: 20)
+        stack.setCustomSpacing(28, after: head)
         column.addArrangedSubview(stack)
         do { npub.text = try PhoneSignIn.npub() } catch { npub.text = error.localizedDescription }
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: false)
     }
 
     private func take(_ text: String) {
@@ -59,13 +69,13 @@ final class SignInViewController: WalletForm {
     }
 }
 
-/// "Sign in to openagents.com?" with Approve and Cancel; then what happened.
+/// "Log in to openagents.com?" with Approve and Cancel; then what happened.
 final class ApproveSignInViewController: WalletForm {
     private let code: PhoneSignIn
-    private let question = Look.label("", Look.title(17))
-    private let result = Look.label("", .preferredFont(forTextStyle: .body))
-    private let approve = Look.button("Approve", "signin.approve", primary: true)
-    private let cancel = Look.button("Cancel", "signin.cancel")
+    private let question = Look.label("", Hud.chrome(15, .headline))
+    private let result = Look.label("", .preferredFont(forTextStyle: .body), Hud.light)
+    private let approve = HudButton("Approve", "signin.approve", main: true)
+    private let cancel = HudButton("Cancel", "signin.cancel")
     init(code: PhoneSignIn) { self.code = code; super.init(nibName: nil, bundle: nil) }
     required init?(coder: NSCoder) { fatalError() }
 
@@ -77,12 +87,17 @@ final class ApproveSignInViewController: WalletForm {
         let detail = Look.label(code.kind == .signin
             ? "Approve only if you just opened the login page yourself. The phone signs with its key and the page logs in as you."
             : "Approve only if the code came from your own project page or an invite sent to you. This phone's key becomes one of your keys for that project.",
-            .preferredFont(forTextStyle: .footnote), Look.dim)
+            .preferredFont(forTextStyle: .footnote), Hud.mid)
         approve.addAction(UIAction { [weak self] _ in self?.go() }, for: .touchUpInside)
         cancel.addAction(UIAction { [weak self] _ in self?.dismiss(animated: true) }, for: .touchUpInside)
         let buttons = UIStackView(arrangedSubviews: [cancel, approve]); buttons.spacing = 12; buttons.distribution = .fillEqually
-        let stack = Look.stack([question, detail, buttons, result], spacing: 18)
+        let panel = HudPanel([question, detail, buttons, result], spacing: 18)
+        let stack = Look.stack([HudMasthead(title: title ?? "", close: nil), panel], spacing: 28)
         column.addArrangedSubview(stack)
+    }
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: false)
     }
 
     private func go() {

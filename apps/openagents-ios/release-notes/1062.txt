@@ -1,0 +1,1 @@
+The Log in screen now looks like the new openagents.com home page: the same framed panels, buttons and lettering. Scanning a code, pasting a link and copying your key work as before.

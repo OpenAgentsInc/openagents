@@ -106,7 +106,7 @@ final class SignInUITests: XCTestCase {
         // Sign in: the sheet names the host, Approve sends the request, the phone says what happened.
         var app = launch("\(origin)/signin#c=\(secret)")
         XCTAssertTrue(app.staticTexts["signin.question"].waitForExistence(timeout: 30))
-        XCTAssertEqual(app.staticTexts["signin.question"].label, "Sign in to 127.0.0.1:\(fake.port)?")
+        XCTAssertEqual(app.staticTexts["signin.question"].label, "Log in to 127.0.0.1:\(fake.port)?")
         shot(app, "Sign in?")
         app.buttons["signin.approve"].tap()
         XCTAssertTrue(wait(20) { app.staticTexts["signin.result"].label == "Signed in. Look at your computer." }, app.staticTexts["signin.result"].label)
@@ -162,6 +162,26 @@ final class SignInUITests: XCTestCase {
         XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 30))
         XCTAssertFalse(app.staticTexts["signin.question"].waitForExistence(timeout: 3))
         XCTAssertEqual(fake.seen.count, 3)
+    }
+
+    /// The key screen in the lander's HUD: its buttons keep their words for
+    /// VoiceOver, Copy says so, and Done closes it.
+    func testKeyScreen() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-OAGridSeen", "NO"]
+        app.launch()
+        XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 30))
+        app.buttons["signin.open"].tap()
+        XCTAssertTrue(app.staticTexts["signin.npub"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons["signin.scan"].label, "Scan a code")
+        XCTAssertEqual(app.buttons["signin.paste"].label, "Paste a link")
+        shot(app, "Log in")
+        app.buttons["signin.copy"].tap()
+        XCTAssertTrue(app.staticTexts["signin.note"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.staticTexts["signin.note"].label, "Copied.")
+        app.buttons["signin.close"].tap()
+        XCTAssertTrue(wait(10) { !app.staticTexts["signin.npub"].exists })
+        XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 10))
     }
 
     /// The shim against BIP-340's own test vectors 0 and 1.

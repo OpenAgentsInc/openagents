@@ -1,0 +1,46 @@
+// The HUD frame both the new landing (apps/openagents-web/newland.coax
+// frame and button) and the iOS app (SignInScreens.swift HudFrame) draw:
+// a faint outline with 45° cuts on the top-right and bottom-left corners,
+// bright L brackets on the other two, and the four greys and the one blue
+// they are inked in. Coordinates are y-down, as a screen's.
+#load "types.coax";
+
+HUD_GREY_WHITE :: 0.94; HUD_GREY_LIGHT :: 0.78; HUD_GREY_MID :: 0.6; HUD_GREY_DIM :: 0.42;
+HUD_ACCENT_R :: 0.216; HUD_ACCENT_G :: 0.851; HUD_ACCENT_B :: 0.851;   // Arwes's hsl(180, 68.07%, 53.33%)
+HUD_OUTLINE :: 0.3;      // the outline's light against the brackets'
+HUD_ARM :: 22.0;         // a bracket's arm, points, at most a quarter of the width
+HUD_ARM_DOWN :: 0.6;     // its short side, a share of the arm
+HUD_CUT_BUTTON :: 7.0; HUD_CUT_PANEL :: 10.0; HUD_CUT_CARD :: 12.0;   // the cuts, points
+
+#test "the outline closes, cuts 45° on two corners, and the arms fit a narrow box" {
+ a:=verse_hud_frame_point(0,0,100,40,7,0);b:=verse_hud_frame_point(0,0,100,40,7,6);
+ #assert a.x==b.x && a.y==b.y;
+ p:=verse_hud_frame_point(0,0,100,40,7,1);q:=verse_hud_frame_point(0,0,100,40,7,2);
+ #assert p.x==93 && p.y==0 && q.x==100 && q.y==7;
+ r:=verse_hud_frame_point(0,0,100,40,7,4);t:=verse_hud_frame_point(0,0,100,40,7,5);
+ #assert r.x==7 && r.y==40 && t.x==0 && t.y==33;
+ #assert verse_hud_frame_arm(400,1)==22 && verse_hud_frame_arm(40,1)==10 && verse_hud_frame_arm(400,2)==44;
+}
+// The outline's points, 0 to 6 (6 is 0 again): top-left, along the top to
+// the cut, down the right, back along the bottom to the cut, up the left.
+verse_hud_frame_point :: (x0:f32,y0:f32,x1:f32,y1:f32,cut:f32,i:int)->HudPoint #export_c {
+ xs:=[7]f32.[x0,x1-cut,x1,x1,x0+cut,x0,x0];ys:=[7]f32.[y0,y0,y0+cut,y1,y1,y1-cut,y0];
+ out:HudPoint;if i<0 || i>6 {return out;}
+ out.x=xs[i];out.y=ys[i];return out;
+}
+// A bracket's arm for a box width wide, at d pixels a point.
+verse_hud_frame_arm :: (width:f32,d:f32)->f32 #export_c {
+ a:=HUD_ARM*d;q:=width*0.25;if q<a {return q;}return a;
+}
+// The greys by name (0 white, 1 light, 2 mid, 3 dim) and the blue (4, 5, 6: r, g, b).
+verse_hud_tone :: (k:int)->f32 #export_c {
+ t:=[7]f32.[HUD_GREY_WHITE,HUD_GREY_LIGHT,HUD_GREY_MID,HUD_GREY_DIM,HUD_ACCENT_R,HUD_ACCENT_G,HUD_ACCENT_B];
+ if k<0 || k>6 {return 0;}return t[k];
+}
+// The cut for a button (0), a panel (1) or a card (2), points.
+verse_hud_cut :: (k:int)->f32 #export_c {
+ if k==1 {return HUD_CUT_PANEL;}if k==2 {return HUD_CUT_CARD;}return HUD_CUT_BUTTON;
+}
+// The outline's light against the brackets', and a bracket's short side against its arm.
+verse_hud_outline :: ()->f32 #export_c {return HUD_OUTLINE;}
+verse_hud_arm_down :: ()->f32 #export_c {return HUD_ARM_DOWN;}
