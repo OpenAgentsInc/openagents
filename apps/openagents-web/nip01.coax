@@ -1,0 +1,321 @@
+// /nip/01: how OpenAgents runs NIP-01 in Coax. The page draws one captured
+// relay event going through the checks every relay event on the project
+// pages now goes through (parse, preimage, SHA-256, id, BIP-340), and copies
+// of it changed in one place stopping where they break. nip01-verify.coax,
+// compiled apart, decides every result; this file only draws them. A second
+// view lists NIP-01's parts and where each lives in the library.
+#load "splash.coax";
+#load "../../verse/hud.coax";
+
+#test "a result is VERIFIED only when the verifier said so" {
+  #assert nip_label(0, true) == "VERIFIED";
+  #assert nip_label(0, false) == "REFUSED";
+  #assert nip_label(7, true) == "REFUSED";
+  #assert nip_label(8, false) == "REFUSED";
+}
+#test "each refusal stops at the stage that failed" {
+  #assert nip_stop(0, true) == STAGES;
+  #assert nip_stop(0, false) == 0;
+  #assert nip_stop(1, false) == 0 && nip_stop(2, false) == 0 && nip_stop(3, false) == 0 && nip_stop(4, false) == 0;
+  #assert nip_stop(5, false) == 1 && nip_stop(6, false) == 0;
+  #assert nip_stop(7, false) == 3 && nip_stop(8, false) == 4;
+  #assert nip_stop(99, false) == 0;
+}
+#test "selections out of range change nothing; a new one runs again" {
+  #assert nip_mode(0) && nip_mode(CASES - 1) && !nip_mode(-1) && !nip_mode(CASES);
+  p: [1] Nip; #assert !nip_select(p[..], -1) && !p[0].pending;
+  #assert nip_select(p[..], 3) && p[0].mode == 3 && p[0].pending && p[0].view == VIEW_PIPELINE;
+  #assert nip_requested(p[..]) == 3;
+  o: [OBSERVED] int; o[0] = 8; o[4] = 0x81; o[36] = 0x81;
+  nip_observed(p[..], o[..]);
+  #assert !p[0].pending && p[0].error == 8 && !p[0].verified && p[0].claimed[0] == 0x81 && nip_requested(p[..]) == -1;
+  short: [4] int; short[0] = 0; nip_observed(p[..], short[..]); #assert p[0].error == 8;
+}
+#test "the parts view is its own slot and keys pick each slot" {
+  p: [1] Nip;
+  #assert nip_key(p[..], 49 + CASES) && p[0].view == VIEW_PARTS && !p[0].pending;
+  #assert nip_key(p[..], 50) && p[0].view == VIEW_PIPELINE && p[0].mode == 1 && p[0].pending;
+  #assert !nip_key(p[..], 48) && !nip_key(p[..], 50 + CASES);
+}
+#test "hex is drawn two lowercase digits a byte" {
+  b: [2] u8; b[0] = 0x81; b[1] = 0x0f; out: [8] u8;
+  #assert nip_hex(b[..], out[..]) == 4 && cast(string) out[0..<4] == "810f";
+  #assert nip_hex(b[..], out[0..<3]) == 0;
+}
+#test "the parts tally counts what's in Coax and what isn't" {
+  #assert nip_count(PART_COAX) + nip_count(PART_HOST) + nip_count(PART_NEXT) == PARTS;
+  #assert nip_count(PART_COAX) == 6 && nip_count(PART_NEXT) == 5;
+}
+nip_frame_check :: (w: f32, h: f32, dpr: f32) -> bool {
+  p: [1] Nip; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [16] f32;
+  o: [OBSERVED] int; o[0] = 7; o[3] = 0; for i: 0..<32 { o[4 + i] = i; o[36 + i] = 31 - i; }
+  nip_observed(p[..], o[..]); p[0].time = 9;
+  v := nip_frame(p[..], out[..], u[..], w * dpr, h * dpr, dpr, 0.016, false);
+  ok := v > 100 && v < MAX_VERTICES && u[0] == w * dpr;
+  p[0].view = VIEW_PARTS; v = nip_frame(p[..], out[..], u[..], w * dpr, h * dpr, dpr, 0.016, false);
+  return ok && v > 100 && v < MAX_VERTICES;
+}
+#test "a desktop frame draws both views inside the vertex budget" { #assert nip_frame_check(1440, 900, 1); }
+#test "a phone frame draws both views inside the vertex budget" { #assert nip_frame_check(390, 844, 3); }
+#test "a tablet frame draws both views inside the vertex budget" { #assert nip_frame_check(768, 1024, 2); }
+#test "with less motion the result shows on the first frame" {
+  p: [1] Nip; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [16] f32; o: [OBSERVED] int; o[3] = 1;
+  nip_observed(p[..], o[..]);
+  a := nip_frame(p[..], out[..], u[..], 1440, 900, 1, 0.016, false);
+  b := nip_frame(p[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  #assert b > a && p[0].time - p[0].ran_at >= 10;
+}
+#test "a frame without its uniforms draws nothing" {
+  p: [1] Nip; out: [600] f32; u: [8] f32; #assert nip_frame(p[..], out[..], u[..], 100, 100, 1, 0, false) == 0;
+}
+
+
+OBSERVED :: 68;          // nip01-verify.coax NV_OBSERVED
+CASES :: 5;              // nip01-fixture.coax NIP_CASES
+STAGES :: 5;
+VIEW_PIPELINE :: 0; VIEW_PARTS :: 1;
+
+// What each slot does to the captured event (nip01-fixture.coax, in order).
+SLOTS :: [6] string.["REAL", "ID", "TEXT", "SIG", "KIND", "PARTS"];
+SLOT_SAYS :: [5] string.[
+  "The event as relay.openagents.com sent it",
+  "One digit of the id changed",
+  "One letter of the content changed, id and signature kept",
+  "One bit of the signature changed",
+  "Kind 99999: past NIP-01's 0 to 65535"];
+STAGE_NAMES :: [5] string.["PARSE", "PREIMAGE", "SHA-256", "ID", "BIP-340"];
+STAGE_SAYS :: [5] string.[
+  "Seven fields, lowercase hex, kind 0 to 65535",
+  "[0,pubkey,created_at,kind,tags,content]",
+  "The preimage's hash",
+  "The hash must equal the event's id",
+  "Schnorr signature over the id, by the pubkey"];
+
+// NIP-01's parts: where each runs, and the Coax that runs it.
+PART_COAX :: 0; PART_HOST :: 1; PART_NEXT :: 2;   // in Coax on main; the browser; being built
+PARTS :: 12;
+PART_NAMES :: [12] string.[
+  "Event fields and limits", "Id preimage and SHA-256", "BIP-340 verification",
+  "BIP-340 signing", "Tags: e, p, a, d", "Kind 0 metadata",
+  "Kind ranges", "Replaceable: newest, lowest id",
+  "Filters", "Client messages: EVENT, REQ, CLOSE",
+  "Relay messages: EVENT, OK, EOSE, CLOSED, NOTICE", "WebSocket"];
+PART_WHERE :: [12] string.[
+  "nostr/event.coax", "nostr/event.coax, crypto/sha256.coax", "crypto/schnorr_fast.coax",
+  "next: crypto/schnorr_sign.coax, nostr/event_sign.coax", "next: nostr/tags.coax", "next: nostr/metadata.coax",
+  "nostr/store_policy.coax", "nostr/store_policy.coax",
+  "nostr/filter.coax", "REQ in Coax on the project page; next: nostr/message.coax",
+  "EVENT, EOSE and CLOSED in Coax on the project page; next: nostr/message.coax", "the browser's socket; socket.coax drives it"];
+PART_STATE :: [12] int.[0, 0, 0, 2, 2, 2, 0, 0, 0, 2, 2, 1];
+nip_count :: (state: int) -> int { n := 0; for i: 0..<PARTS { if PART_STATE[i] == state { n += 1; } } return n; }
+
+Nip :: struct {
+  mode: int; error: int; admission: int; written: int; verified: bool;
+  claimed: [32] u8; computed: [32] u8;
+  initialized: bool; pending: bool; view: int;
+  width: f32; height: f32; dpr: f32 = 1; time: f32; ran_at: f32;
+  down: int = -1; frames: int;
+}
+
+nip_mode :: (mode: int) -> bool { return mode >= 0 && mode < CASES; }
+nip_label :: (error: int, verified: bool) -> string { if error == 0 && verified { return "VERIFIED"; } return "REFUSED"; }
+// The first stage that didn't pass (event.coax's NE_ codes), STAGES for none.
+nip_stop :: (error: int, verified: bool) -> int {
+  if error == 0 { return ifx verified then STAGES else 0; }
+  if error == 5 { return 1; }   // NE_OUTPUT: no room for the preimage
+  if error == 7 { return 3; }   // NE_ID
+  if error == 8 { return 4; }   // NE_SIGNATURE
+  return 0;                      // NE_JSON, NE_SHAPE, NE_LIMIT, NE_HEX, NE_ALIAS
+}
+nip_why :: (error: int) -> string {
+  if error == 7 { return "the id is not the hash of this event"; }
+  if error == 8 { return "the signature does not verify"; }
+  if error == 2 || error == 3 { return "not a NIP-01 event"; }
+  if error == 0 { return "id and signature verify"; }
+  return "refused before hashing";
+}
+
+nip_select :: (p: [] Nip, mode: int) -> bool #export_c {
+  if p.count != 1 || !nip_mode(mode) { return false; }
+  p[0].mode = mode; p[0].pending = true; p[0].view = VIEW_PIPELINE; return true;
+}
+nip_requested :: (p: [] Nip) -> int #export_c {
+  if p.count != 1 || !nip_mode(p[0].mode) { return -1; }
+  if !p[0].initialized || p[0].pending { return p[0].mode; }
+  return -1;
+}
+// What the verifier observed, carried by the face; it grants nothing.
+nip_observed :: (p: [] Nip, observation: [] int) #export_c {
+  if p.count != 1 || observation.count != OBSERVED { return; }
+  p[0].error = observation[0]; p[0].admission = observation[1];
+  p[0].written = observation[2]; p[0].verified = observation[3] == 1;
+  for i: 0..<32 { p[0].claimed[i] = cast(u8) (observation[4 + i] & 255); p[0].computed[i] = cast(u8) (observation[36 + i] & 255); }
+  p[0].initialized = true; p[0].pending = false; p[0].ran_at = p[0].time;
+}
+
+nip_slot :: (width: f32, height: f32, d: f32, index: int) -> Box {
+  r := verse_hud_slot(width / d, height / d, 0, index, CASES + 1);
+  return Box.{x0 = r.x * d, y0 = r.y * d, x1 = (r.x + r.width) * d, y1 = (r.y + r.height) * d};
+}
+nip_pick :: (p: [] Nip, slot: int) -> bool {
+  if slot == CASES { p[0].view = VIEW_PARTS; return true; }
+  return nip_select(p, slot);
+}
+nip_pointer :: (p: [] Nip, x: f32, y: f32, phase: int) -> bool #export_c {
+  if p.count != 1 || p[0].width < 1 || p[0].height < 1 || p[0].dpr < 0.5 { return false; }
+  hit := -1; for i: 0..<CASES + 1 { if inside(nip_slot(p[0].width, p[0].height, p[0].dpr, i), x, y) { hit = i; } }
+  if phase == POINTER_DOWN { p[0].down = hit; return hit >= 0; }
+  if phase == POINTER_CANCEL { p[0].down = -1; return false; }
+  if phase == POINTER_UP { down := p[0].down; p[0].down = -1; if hit >= 0 && hit == down { return nip_pick(p, hit); } }
+  return hit >= 0;
+}
+nip_key :: (p: [] Nip, key: int) -> bool #export_c {
+  if p.count != 1 || key < 49 || key > 49 + CASES { return false; }
+  return nip_pick(p, key - 49);
+}
+
+HEX :: "0123456789abcdef";
+nip_hex :: (bytes: [] u8, out: [] u8) -> int {
+  if out.count < bytes.count * 2 { return 0; }
+  for i: 0..<bytes.count { out[2 * i] = HEX[cast(int) (bytes[i] >> 4)]; out[2 * i + 1] = HEX[cast(int) (bytes[i] & 15)]; }
+  return bytes.count * 2;
+}
+
+// Colours: passed, failed, not reached.
+GOOD :: [3] f32.[0.55, 0.95, 0.72];
+BAD :: [3] f32.[1.0, 0.48, 0.42];
+NEXT :: [3] f32.[1.0, 0.72, 0.3];
+UNLIT :: [3] f32.[0.95, 0.95, 0.95];
+
+nip_stage_box :: (width: f32, top: f32, d: f32, i: int, row: bool) -> Box {
+  left := 32 * d; room := width - 2 * left;
+  if row {
+    gap := 18 * d; w := (room - gap * cast(f32) (STAGES - 1)) / cast(f32) STAGES;
+    x := left + cast(f32) i * (w + gap);
+    return Box.{x0 = x, y0 = top, x1 = x + w, y1 = top + 74 * d};
+  }
+  y := top + cast(f32) i * 52 * d;
+  return Box.{x0 = left, y0 = y, x1 = width - left, y1 = y + 40 * d};
+}
+
+nip_pipeline :: (p: [] Nip, out: [] f32, at: int, top: f32) -> int {
+  d := p[0].dpr; width := p[0].width; v := at;
+  row := width / d >= 760;
+  left := 32 * d; right := width - left;
+  white := ink(0.6 * d, 0.9, 5 * d, 0.95, 0.95, 0.95);
+  muted := ink(0.5 * d, 0.6, 3 * d, 0.65, 0.65, 0.65);
+  v = write(d, out, v, SLOTS[p[0].mode], left, top, 7 * d, 0.3, 0.7, white, false, false);
+  v = draw_fit(d, out, v, SLOT_SAYS[p[0].mode], left + 70 * d, top, 5 * d, 0.25, 0.7, muted, right - left - 70 * d);
+  stop := nip_stop(p[0].error, p[0].verified);
+  shown := (p[0].time - p[0].ran_at) / 0.28;   // one stage lights every 0.28 s
+  y0 := top + 26 * d;
+  for i: 0..<STAGES {
+    b := nip_stage_box(width, y0, d, i, row);
+    reached := p[0].initialized && cast(f32) i < shown;
+    c := UNLIT; light := 0.28f32;
+    if reached && i < stop { c = GOOD; light = 0.9; }
+    if reached && i == stop { c = BAD; light = 1.0; }
+    v = hud(out, v, b, d, 0, ifx reached && i == stop then 0.6f32 else 0.0f32, light, c[0], c[1], c[2]);
+    name := ink(0.6 * d, ifx reached then 0.95f32 else 0.5f32, 4 * d, c[0], c[1], c[2]);
+    pad := 10 * d;
+    if row {
+      v = write(d, out, v, STAGE_NAMES[i], b.x0 + pad, b.y0 + 22 * d, 6 * d, 0.25, 0.7, name, false, false);
+      v = draw_fit(d, out, v, STAGE_SAYS[i], b.x0 + pad, b.y0 + 42 * d, 3.6 * d, 0.2, 0.6, muted, (b.x1 - b.x0) - 2 * pad);
+      if i < STAGES - 1 {
+        c2 := ifx reached && i < stop then GOOD else UNLIT;
+        _ := lit(out, v, b.x1 + 3 * d, (b.y0 + b.y1) * 0.5, b.x1 + 15 * d, (b.y0 + b.y1) * 0.5, 0.6 * d, ifx reached then 0.8f32 else 0.25f32, 3 * d, c2[0], c2[1], c2[2], MODE_STROKE);
+        v += 6;
+      }
+    } else {
+      v = write(d, out, v, STAGE_NAMES[i], b.x0 + pad, b.y0 + 25 * d, 5.5 * d, 0.25, 0.7, name, false, false);
+      v = draw_fit(d, out, v, STAGE_SAYS[i], b.x0 + 96 * d, b.y0 + 24 * d, 3.6 * d, 0.2, 0.6, muted, (b.x1 - b.x0) - 106 * d);
+    }
+  }
+  last := nip_stage_box(width, y0, d, STAGES - 1, row);
+  y := last.y1 + 54 * d;
+  if p[0].initialized && shown >= cast(f32) (stop + 1) - 0.01 {
+    c := ifx stop == STAGES then GOOD else BAD;
+    big := ink(0.8 * d, 1.0, 8 * d, c[0], c[1], c[2]);
+    cap := lo(26 * d, (right - left) / 7);
+    v = write(d, out, v, nip_label(p[0].error, p[0].verified), left, y, cap, 0.2, 0.6, big, false, false);
+    v = draw_fit(d, out, v, nip_why(p[0].error), left, y + 24 * d, 5 * d, 0.25, 0.7, muted, right - left);
+  }
+  // The id the event claims, and the hash Coax computed, digit by digit.
+  if p[0].initialized && stop >= 3 || (p[0].initialized && p[0].error == 7) {
+    hy := y + 56 * d;
+    hexa: [64] u8; hexb: [64] u8;
+    _ := nip_hex(p[0].claimed[..], hexa[..]); _ = nip_hex(p[0].computed[..], hexb[..]);
+    size := lo(4.4 * d, (right - left - 90 * d) / 64 / 0.62);
+    v = write(d, out, v, "CLAIMED ID", left, hy, 3.8 * d, 0.25, 0.7, muted, false, false);
+    v = write(d, out, v, "COMPUTED", left, hy + 18 * d, 3.8 * d, 0.25, 0.7, muted, false, false);
+    step := measure("0", 0.2, 0.6, false) * size + 0.2 * size;
+    for k: 0..<64 {
+      same := hexa[k] == hexb[k];
+      c := ifx same then GOOD else BAD;
+      digit := ink(0.5 * d, ifx same then 0.7f32 else 1.0f32, 3 * d, c[0], c[1], c[2]);
+      x := left + 90 * d + cast(f32) k * step;
+      v = write(d, out, v, cast(string) hexa[k..<k + 1], x, hy, size, 0.2, 0.6, digit, false, false);
+      v = write(d, out, v, cast(string) hexb[k..<k + 1], x, hy + 18 * d, size, 0.2, 0.6, digit, false, false);
+    }
+  }
+  return v;
+}
+
+nip_parts :: (p: [] Nip, out: [] f32, at: int, top: f32) -> int {
+  d := p[0].dpr; width := p[0].width; v := at;
+  left := 32 * d; right := width - left;
+  muted := ink(0.5 * d, 0.6, 3 * d, 0.65, 0.65, 0.65);
+  wide := width / d >= 760;
+  line := ifx wide then 30 * d else 38 * d;
+  words := [3] string.["COAX", "HOST", "NEXT"];
+  for i: 0..<PARTS {
+    y := top + cast(f32) i * line;
+    s := PART_STATE[i];
+    c := ifx s == PART_COAX then GOOD else ifx s == PART_HOST then UNLIT else NEXT;
+    chip := ink(0.6 * d, 0.95, 4 * d, c[0], c[1], c[2]);
+    name := ink(0.6 * d, 0.9, 4 * d, 0.95, 0.95, 0.95);
+    v = write(d, out, v, words[s], left, y, 5 * d, 0.25, 0.7, chip, false, false);
+    if wide {
+      v = draw_fit(d, out, v, PART_NAMES[i], left + 60 * d, y, 5.5 * d, 0.25, 0.7, name, (right - left) * 0.45);
+      v = draw_fit(d, out, v, PART_WHERE[i], left + 60 * d + (right - left) * 0.5, y, 4.4 * d, 0.2, 0.6, muted, (right - left) * 0.5 - 60 * d);
+    } else {
+      v = draw_fit(d, out, v, PART_NAMES[i], left + 52 * d, y, 5 * d, 0.25, 0.7, name, right - left - 52 * d);
+      v = draw_fit(d, out, v, PART_WHERE[i], left + 52 * d, y + 14 * d, 3.8 * d, 0.2, 0.6, muted, right - left - 52 * d);
+    }
+  }
+  return v;
+}
+
+// still: the visitor asked for less motion; every stage shows at once.
+nip_frame :: (p: [] Nip, out: [] f32, u: [] f32, width: f32, height: f32, dpr: f32, dt: f32, still: bool) -> int #export_c {
+  if p.count != 1 || u.count < 16 || width < 1 || height < 1 || dpr < 0.5 || dpr > 4 { return 0; }
+  p[0].width = width; p[0].height = height; p[0].dpr = dpr; p[0].frames += 1;
+  p[0].time += clamp(dt, 0, 0.1);
+  if still { p[0].ran_at = p[0].time - 10; }
+  for i: 0..<16 { u[i] = 0; }
+  u[0] = width; u[1] = height; u[3] = 1; u[4] = 1;
+  d := dpr; left := 32 * d; right := width - left; v := 0;
+  white := ink(0.6 * d, 0.9, 5 * d, 0.95, 0.95, 0.95);
+  muted := ink(0.5 * d, 0.6, 3 * d, 0.65, 0.65, 0.65);
+  v = write(d, out, v, "NIP-01", left, 56 * d, 14 * d, 0.4, 0.8, white, false, false);
+  v = draw_fit(d, out, v, "Nostr's basic protocol, run in Coax", left, 82 * d, 5.5 * d, 0.25, 0.7, muted, right - left);
+  // The tally: one mark a part, lit by where it runs.
+  for i: 0..<PARTS {
+    s := PART_STATE[i]; c := ifx s == PART_COAX then GOOD else ifx s == PART_HOST then UNLIT else NEXT;
+    x := left + cast(f32) i * 14 * d;
+    _ := lit(out, v, x, 104 * d, x + 8 * d, 104 * d, 1.4 * d, ifx s == PART_COAX then 0.95f32 else 0.4f32, 3 * d, c[0], c[1], c[2], MODE_STROKE);
+    v += 6;
+  }
+  tally: [64] u8; n := put_int(tally[..], 0, nip_count(PART_COAX)); n = put(tally[..], n, " OF "); n = put_int(tally[..], n, PARTS); n = put(tally[..], n, " PARTS IN COAX");
+  v = write(d, out, v, cast(string) tally[0..<n], left + cast(f32) PARTS * 14 * d + 10 * d, 107 * d, 4.4 * d, 0.25, 0.7, muted, false, false);
+  top := 150 * d;
+  if p[0].view == VIEW_PARTS { v = nip_parts(p, out, v, top); } else { v = nip_pipeline(p, out, v, top); }
+  for i: 0..<CASES + 1 {
+    b := nip_slot(width, height, d, i);
+    active := ifx i == CASES then p[0].view == VIEW_PARTS else p[0].view == VIEW_PIPELINE && i == p[0].mode;
+    v = hud(out, v, b, d, ifx active then 0.65f32 else 0.0f32, 0, ifx active then 1.0f32 else 0.45f32, 0.95, 0.95, 0.95);
+    text := SLOTS[i]; size := 5.5 * d; w := measure(text, 0.1, 0.5, false) * size;
+    v = write(d, out, v, text, (b.x0 + b.x1 - w) * 0.5, (b.y0 + b.y1 + size) * 0.5, size, 0.1, 0.5, white, false, false);
+  }
+  return v;
+}

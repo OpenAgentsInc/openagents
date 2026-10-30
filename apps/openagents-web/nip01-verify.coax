@@ -1,0 +1,24 @@
+// /nip/01's verifier, its own library (its flat names would clash with the
+// renderer's): the shared NIP-01 event reader and BIP-340 verifier, run on
+// the page's captured event and its changed copies. It decides every result
+// the page draws; the page grants nothing.
+#load "../../coax/lib/nostr/event.coax";
+#load "../../coax/lib/crypto/schnorr_fast.coax";
+#load "nip01-fixture.coax";
+
+NV_OBSERVED :: 68;
+
+// observation: error, admission, bytes written, verified (0 or 1), then the
+// claimed id's 32 bytes and the computed id's 32. Synchronous scalar
+// transport for the face; no span outlives the call.
+nv_run :: (mode: int, observation: [] int) #export_c {
+  if observation.count != NV_OBSERVED { return; }
+  for i: 0..<NV_OBSERVED { observation[i] = 0; }
+  if mode < 0 || mode >= NIP_CASES { observation[0] = NE_LIMIT; return; }
+  scratch: [2048] u8;
+  e := nostr_event_read(NIP_EVENTS[mode], scratch[..], false);   // parse, preimage, SHA-256, id
+  if e.error == NE_OK && !nostr_fast_verify_vartime(e.id[..], e.public_key[..], e.signature[..]) { e.error = NE_SIGNATURE; }
+  observation[0] = e.error; observation[1] = e.admission;
+  observation[2] = e.written; observation[3] = ifx e.error == NE_OK then 1 else 0;
+  for i: 0..<32 { observation[4 + i] = cast(int) e.id[i]; observation[36 + i] = cast(int) e.computed_id[i]; }
+}

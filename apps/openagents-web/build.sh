@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Builds the pages for the browser: build/splash.wasm, build/project.wasm,
-# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm and build/chat.wasm.
+# build/projects.wasm, build/realm.wasm, build/admin.wasm, build/verse.wasm, build/garden.wasm, build/characters.wasm, build/fixture.wasm, build/droprealm.wasm, build/builder.wasm, build/myrealm.wasm, build/icecream.wasm, build/deadgears.wasm, build/everglade.wasm, build/thegrid.wasm, build/villa.wasm, build/private.wasm, build/chat.wasm and build/nip01.wasm.
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
@@ -111,6 +111,10 @@ for pid in "${snaps[@]}"; do wait "$pid"; done
 bun "$tools/baked.ts"
 "$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm"
 wait "$list"
+# /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
+{ echo "// /nip/01: the splash's passes (splash.wgsl, copied by build.sh), as nip01.coax draws only words, strokes and HUD bars."; cat "$here/splash.wgsl"; } > "$here/nip01.wgsl"
+"$here/../../coax/web/wasm.sh" "$here/nip01.coax" "$here/nip01-face.c" "$here/build/nip01.wasm" "$here/nip01-verify.coax" &
+nip01=$!
 # /admin/analytics: the projects list's HUD over the admins' numbers.
 "$here/../../coax/web/wasm.sh" "$here/admin.coax" "$here/admin-face.c" "$here/build/admin.wasm" &
 admin=$!
@@ -128,6 +132,7 @@ python3 -c 'import json,os,sys; d=sys.argv[1]; json.dump({f[:-4]: open(os.path.j
   "$here/../../coax/lib/qr/qr-memory.coax"
 wait "$admin"
 wait "$chat"
+wait "$nip01"
 wait "$splash"
 wait "$realm"
 wait "$voice"

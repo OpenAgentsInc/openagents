@@ -1,0 +1,18 @@
+// nip01-verify.coax's checks, apart so the page's build doesn't run them:
+#load "nip01-verify.coax";
+
+// Each check verifies a real signature: run with coax test --steps 1000000000.
+#test "the captured event verifies and each changed copy is refused where it changed" {
+  o: [NV_OBSERVED] int;
+  nv_run(0, o[..]); #assert o[0] == NE_OK && o[3] == 1 && o[4] == 0x81 && o[36] == 0x81;
+  nv_run(1, o[..]); #assert o[0] == NE_ID && o[3] == 0 && o[4] == 0x91 && o[36] == 0x81;
+  nv_run(2, o[..]); #assert o[0] == NE_ID && o[3] == 0 && o[4] == 0x81 && o[36] != 0x81;
+  nv_run(3, o[..]); #assert o[0] == NE_SIGNATURE && o[3] == 0 && o[4] == 0x81 && o[36] == 0x81;
+  nv_run(4, o[..]); #assert o[0] == NE_SHAPE && o[3] == 0;
+}
+#test "a selection out of range is refused without running" {
+  o: [NV_OBSERVED] int; o[3] = 1;
+  nv_run(-1, o[..]); #assert o[0] == NE_LIMIT && o[3] == 0;
+  nv_run(NIP_CASES, o[..]); #assert o[0] == NE_LIMIT && o[3] == 0;
+  short: [4] int; short[0] = 7; nv_run(0, short[..]); #assert short[0] == 7;
+}
