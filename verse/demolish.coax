@@ -47,7 +47,8 @@ DEMO_MAX_STEPS :: 6;       // a quarter-second frame steps at most 0.1 s
 DEMO_SUP_CAP :: 48;       // supports a piece keeps at most
 DEMO_CELL :: 8.0;          // the support search's grid
 DEMO_GRID :: 40;           // cells a side (320 m)
-DEMO_HOLD :: 0.4;          // a piece falls when fewer than this share of its supports stand
+DEMO_HOLD :: 0.5;          // a piece falls when fewer than this share of its supports stand
+DEMO_ROOF_HOLD :: 0.75;    // a roof's piece, sooner: a roof sags in when a few of its walls go
 DEMO_SHATTER :: 3.0;       // m/s: a loose piece striking the ground faster breaks
 DEMO_RESTITUTION :: 0.15;
 DEMO_FRICTION :: 0.7;
@@ -95,7 +96,8 @@ DemoWorld :: struct {
   pieces: [DEMO_PIECES] DemoPiece; n: int;
   rest: [DEMO_PIECES * 12] f32;
   mesh_box: [DEMO_MESHES * 6] f32;   // each mesh's local bounds (low x y z, high x y z)
-  mesh_rgb: [DEMO_MESHES * 3] f32;   // and its chunks' colour (sRGB)  // each piece's instance rows standing (3 rows of 4: the columns and where it is)
+  mesh_rgb: [DEMO_MESHES * 3] f32;   // and its chunks' colour (sRGB)
+  tint: [DEMO_PIECES * 3] f32;       // each piece's own instance tint, whole (a realm darkens it as it's hurt)  // each piece's instance rows standing (3 rows of 4: the columns and where it is)
   supports: [DEMO_SUPPORTS] int; sup_n: int;
   state: [DEMO_BODIES * DB_FLOATS] f64;
   meta: [DEMO_BODIES] DemoBody;
@@ -461,7 +463,8 @@ demo_settle :: (w: [] DemoWorld) -> int {
     changed = false; rounds += 1;
     for i: 0..<w[0].n {
       if w[0].pieces[i].state != DP_STANDING || w[0].pieces[i].anchored || w[0].pieces[i].sup_n == 0 { continue; }
-      if f32(demo_standing_supports(w, i)) < f32(DEMO_HOLD) * f32(w[0].pieces[i].sup_n) {
+      hold := ifx w[0].pieces[i].pitched then f32(DEMO_ROOF_HOLD) else f32(DEMO_HOLD);
+      if f32(demo_standing_supports(w, i)) < hold * f32(w[0].pieces[i].sup_n) {
         demo_loosen(w, i);
         if w[0].pieces[i].state != DP_STANDING { moved += 1; changed = true; }
       }
@@ -771,6 +774,21 @@ demo_cottage :: (w: [] DemoWorld) {
   rows: [12] f32;
   demo_rows(w[..], 32, rows[..]);
   #assert rows[7] == 6.24 && rows[0] == 1;
+}
+
+#test "demolish: a roof falls in once a quarter of the walls under it go" {
+  w: [1] DemoWorld;
+  demo_cottage(w[..]);
+  demo_link(w[..]);
+  // four of the upper walls under it gone: it holds (12 of 16)
+  for i: 16..<20 { _ := demo_damage(w[..], i, 99, v3(0, 5, -8), 4); }
+  first := demo_settle(w[..]);
+  #assert w[0].pieces[32].state == DP_STANDING;
+  // a fifth: it comes down
+  fifth := demo_damage(w[..], 20, 99, v3(0, 5, 8), 4);
+  second := demo_settle(w[..]);
+  #assert fifth && second >= 1 && first >= 0;
+  #assert w[0].pieces[32].state != DP_STANDING;
 }
 
 #test "demolish: the chunk budget holds; a phone's is half" {

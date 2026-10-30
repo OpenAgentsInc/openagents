@@ -198,7 +198,8 @@ spells_start :: (s: [] Everglade) {
       o := s[0].group_at[g] + n;
       for k: 0..<12 { rows[k] = s[0].objects[o * OBJECT_FLOATS + k]; }
       grp := sp_group(rows[3], rows[11]);
-      _ := demo_add(w, m, o, grp, rows[..]);
+      i := demo_add(w, m, o, grp, rows[..]);
+      if i >= 0 { for k: 0..<3 { w[0].tint[i * 3 + k] = s[0].objects[o * OBJECT_FLOATS + 12 + k]; } }
       s[0].sp.group_x[grp] += rows[3]; s[0].sp.group_z[grp] += rows[11]; s[0].sp.group_n[grp] += 1;
     }
   }
@@ -290,7 +291,7 @@ sp_press :: (s: [] Everglade, slot: int) {
 }
 sp_broken :: (s: [] Everglade) -> bool { return s[0].sp.dm[0].broken_n > 0 || demo_chunks(sp_dm(s)) > 0; }
 sp_rebuild :: (s: [] Everglade) {
-  n := demo_restore(sp_dm(s), -1);
+  n := sp_restore(s, -1);
   for i: 0..<SP_SCORCHES { s[0].sp.scorches[i].live = false; }
   sp_say(s, "THE TOWN STANDS AGAIN", n, "PIECES");
 }
@@ -612,10 +613,29 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     demo_rows(w, i, rows[..]);
     o := w[0].pieces[i].object * OBJECT_FLOATS;
     for k: 0..<12 { s[0].objects[o + k] = rows[k]; }
+    // a hurt piece still standing goes dark toward soot, the more the nearer it is to breaking
+    p := w[0].pieces[i];
+    if p.state == DP_STANDING && p.hp < p.max_hp { sp_tint(s, i, 0.3 + 0.7 * f32(p.hp) / f32(hi_int(p.max_hp, 1))); }
   }
   sp_draw(s, dt);
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
+}
+
+// Piece i's tint: its own, times `whole` (1 its own, toward 0 soot).
+sp_tint :: (s: [] Everglade, i: int, whole: f32) {
+  w := sp_dm(s);
+  o := w[0].pieces[i].object * OBJECT_FLOATS + 12;
+  s[0].objects[o] = w[0].tint[i * 3] * whole;
+  s[0].objects[o + 1] = w[0].tint[i * 3 + 1] * whole * (0.9 + 0.1 * whole);
+  s[0].objects[o + 2] = w[0].tint[i * 3 + 2] * whole * (0.8 + 0.2 * whole);
+}
+// Group g's pieces (every group's, g < 0) stood back up: their own tints again.
+sp_restore :: (s: [] Everglade, g: int) -> int {
+  w := sp_dm(s);
+  n := demo_restore(w, g);
+  for i: 0..<w[0].n { if g < 0 || w[0].pieces[i].group == g { sp_tint(s, i, 1); } }
+  return n;
 }
 
 // A broken building grows back whole after SP_REGROW s of rest with you SP_REGROW_AWAY m away.
@@ -636,7 +656,7 @@ sp_regrow :: (s: [] Everglade) {
     if !hurt[g] || w[0].clock - latest[g] < f64(SP_REGROW) { continue; }
     dx := s[0].sp.group_x[g] - s[0].feet.x; dz := s[0].sp.group_z[g] - s[0].feet.z;
     if dx * dx + dz * dz < f32(SP_REGROW_AWAY * SP_REGROW_AWAY) { continue; }
-    _ := demo_restore(w, g);
+    _ := sp_restore(s, g);
   }
 }
 
@@ -1004,11 +1024,16 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
     p := w[0].pieces[i];
     if p.state == DP_BROKEN { #assert g[0].objects[p.object * OBJECT_FLOATS] == 0 && g[0].objects[p.object * OBJECT_FLOATS + 5] == 0; break; }
   }
+  // a hurt piece still standing is darker than its own tint
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_STANDING && p.hp < p.max_hp && w[0].tint[i * 3] > 0.05 { #assert g[0].objects[p.object * OBJECT_FLOATS + 12] < w[0].tint[i * 3]; }
+  }
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].sp.boxes[SP_REBUILD].x1 > 0;
   #assert everglade_key(g[..], 'r', 0) && w[0].broken_n == 0 && demo_chunks(w) == 0;
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  for i: 0..<w[0].n { p := w[0].pieces[i]; #assert p.state == DP_STANDING && g[0].objects[p.object * OBJECT_FLOATS + 3] == w[0].rest[i * 12 + 3]; }
+  for i: 0..<w[0].n { p := w[0].pieces[i]; #assert p.state == DP_STANDING && g[0].objects[p.object * OBJECT_FLOATS + 3] == w[0].rest[i * 12 + 3] && g[0].objects[p.object * OBJECT_FLOATS + 12] == w[0].tint[i * 3]; }
 }
 
 #test "spells: the Thunderbolt's bolt comes down and blasts a hole; a phone taps a slot, then the target" {

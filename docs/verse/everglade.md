@@ -544,7 +544,10 @@ draws as the town's own kit piece it broke from, shrunk into its box, so it
 shows that texture: plaster or its timber grid, brick and stone, roof
 tiles, a beam, planks (six kit groups keep 64 instances each past the
 town's for it). Fire and lightning char what they break: its chunks come
-out darkened, some nearly to soot, with a plume of dust. Fire and smoke
+out darkened, some nearly to soot, with a plume of dust. A piece hit but still
+standing goes dark toward soot by how near it is to breaking, so a blast's
+edge shows on the walls left up. A roof comes down once a quarter of the
+walls under it are gone (other pieces once half their supports are). Fire and smoke
 draw as the shapes' boxes and spheres (700 and 168 slots);
 fire and lightning are LOOK_GLOW in everglade.wgsl: unlit, three times
 their colour, blooming, no shadow.
