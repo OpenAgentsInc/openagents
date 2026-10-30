@@ -52,6 +52,20 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
+**(a) post-push gates for `37df0fbb7c`, started by `openagents-d7`.** These
+are short shards, each under 15 minutes:
+
+| Unit | Mutants | Shards | Where |
+| --- | --- | --- | --- |
+| `schnorr_sign` | 3,704 | 80 | coderos-4080 |
+| `schnorr_nonce_point` | 2,833 | 60 | coderos-4080 |
+| `sha256_workspace` | 1,076 | 24 | coderos-4080 |
+| `event_sign` | about 5,500 | 150 | the Mac |
+
+The signer probe at `37df0fbb7c` still passes: only the 3 declared decisions
+remain, and the control is flagged.
+
+
 ### `openagents-20` (the audit owner)
 
 These are the source-audit side, in order:
