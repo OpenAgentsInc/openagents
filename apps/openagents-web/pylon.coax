@@ -6,8 +6,9 @@
 #load "../../coax/lib/nostr/json.coax";
 #load "socket.coax";
 #load "pylon-policy.coax";
+#load "connect-pylon-content.coax";
 PL_MAX :: 64;
-PL_JOIN :: "curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh";
+PL_JOIN :: CP_JOIN;
 PL_REQ :: "[\"REQ\",\"pylons\",{\"kinds\":[30200],\"limit\":200},{\"kinds\":[26910,27010],\"since\":";
 PlRow :: struct {
   key:[64]u8;slug:[64]u8;slug_n:int;label:[64]u8;label_n:int;model:[128]u8;model_n:int;
@@ -119,8 +120,8 @@ pl_frame :: (p:[]Pylon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->i
   v=write(d,out,v,"PYLON",left,52*d,24*d,0.4,0.7,white,false,false);
   status:=ifx still then "PYLON NETWORK" else ifx p[0].connection==1 then "LIVE RELAY" else ifx p[0].connection== -2 then "RELAY REFUSED / RELOAD" else "CONNECTING";
   v=write(d,out,v,status,left,82*d,8*d,0.2,0.6,amber,false,false);
-  v=pl_text(out,v,"Lend a computer. Run the toy network together.",left,116*d,room,d,white);
-  v=pl_text(out,v,"curl -fsSL openagents.com/pylon/join.sh",left,153*d,room,d,muted);
+  v=pl_text(out,v,"Lend a computer. Serve a native model.",left,116*d,room,d,white);
+  v=pl_text(out,v,"Elephant / 18.8 GB / GPU required",left,153*d,room,d,muted);
   for i:0..<2 {b:=pl_button(p,i);v=hud(out,v,b,d,0,0,0.75,0.95,0.65,0.22);v=write(d,out,v,ifx i==0 then (ifx p[0].copied then "COPIED" else "COPY COMMAND") else "AGENT GUIDE",b.x0+12*d,b.y0+26*d,8*d,0.15,0.55,white,false,false);}
   now:=pl_now(p);online:=0;for i:0..<p[0].count {r:=p[0].rows[i..<i+1];if pl_current(r[0].until,now,cast(string)r[0].status[0..<r[0].status_n]) {online+=1;}}
   buf:[160]u8;n:=put_int(buf[..],0,online);n=put(buf[..],n," ONLINE     ");n=put_int(buf[..],n,p[0].answers);n=put(buf[..],n," ANSWERS     ");n=put_int(buf[..],n,p[0].statuses);n=put(buf[..],n," STATUS");
@@ -146,7 +147,7 @@ pl_frame :: (p:[]Pylon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->i
   p[0].scroll_max=hi(0,(y+p[0].scroll*d-(h-125*d))/d);p[0].scroll=clamp(p[0].scroll,0,p[0].scroll_max);
   // Clip the scrolling table, keeping the header and limitations visible.
   for i:first..<v {at:=i*16;if out[at+1]<316*d || out[at+1]>h-120*d {out[at+6]=0;}}
-  caveat:=ifx p[0].full then "64-event live window full. Reload to reset." else ifx p[0].capacity then "64-machine view full." else "Toy engine / no payments / temporary keys";
+  caveat:=ifx p[0].full then "64-event live window full. Reload to reset." else ifx p[0].capacity then "64-machine view full." else "Demo network / no payments / demo keys";
   v=pl_text(out,v,caveat,left,h-89*d,room,d,amber);
   v=pl_text(out,v,"Pylons read requests. No private prompts or real keys.",left,h-53*d,room,d,muted);return v;
 }

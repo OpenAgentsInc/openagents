@@ -1,0 +1,162 @@
+{
+  "base": "http://127.0.0.1:18845",
+  "at": "2026-10-30T19:32:48.063Z",
+  "scenarios": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "w": 1440,
+        "h": 900,
+        "d": 1,
+        "touch": false
+      },
+      "errors": [],
+      "initial": {
+        "ready": true,
+        "scroll": 0,
+        "limit": 4786.5234375,
+        "action": 0,
+        "controls": [
+          [
+            320,
+            104,
+            714,
+            146
+          ],
+          [
+            726,
+            104,
+            1120,
+            146
+          ],
+          [
+            1056,
+            22,
+            1120,
+            58
+          ],
+          [
+            320,
+            164,
+            1120,
+            880
+          ]
+        ]
+      },
+      "screenshot": "/tmp/connect-pylon-learned-final-local-desktop.png",
+      "markdown_bytes": 13933,
+      "command_bytes": 127,
+      "scrolled": {
+        "ready": true,
+        "scroll": 160,
+        "limit": 4786.5234375,
+        "action": 0,
+        "controls": [
+          [
+            320,
+            104,
+            714,
+            146
+          ],
+          [
+            726,
+            104,
+            1120,
+            146
+          ],
+          [
+            1056,
+            22,
+            1120,
+            58
+          ],
+          [
+            320,
+            164,
+            1120,
+            880
+          ]
+        ]
+      }
+    },
+    {
+      "viewport": {
+        "name": "phone",
+        "w": 390,
+        "h": 844,
+        "d": 2,
+        "touch": true
+      },
+      "errors": [],
+      "initial": {
+        "ready": true,
+        "scroll": 0,
+        "limit": 8916.921875,
+        "action": 0,
+        "controls": [
+          [
+            16,
+            104,
+            189,
+            146
+          ],
+          [
+            201,
+            104,
+            374,
+            146
+          ],
+          [
+            310,
+            22,
+            374,
+            58
+          ],
+          [
+            16,
+            164,
+            374,
+            824
+          ]
+        ]
+      },
+      "screenshot": "/tmp/connect-pylon-learned-final-local-phone.png",
+      "markdown_bytes": 13933,
+      "command_bytes": 127,
+      "scrolled": {
+        "ready": true,
+        "scroll": 160,
+        "limit": 8916.921875,
+        "action": 0,
+        "controls": [
+          [
+            16,
+            104,
+            189,
+            146
+          ],
+          [
+            201,
+            104,
+            374,
+            146
+          ],
+          [
+            310,
+            22,
+            374,
+            58
+          ],
+          [
+            16,
+            164,
+            374,
+            824
+          ]
+        ]
+      }
+    }
+  ],
+  "source_sha256": "00afd08fd327acbfef45ebaa580ce0dfe9834b4b18172e21b7a3ba5e05c1221c",
+  "scope": "Local real-GPU reader, clipboard and scroll; native model qualification is recorded separately by the platform owners."
+}

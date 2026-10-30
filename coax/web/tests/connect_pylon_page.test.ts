@@ -48,3 +48,12 @@ test('feedback has an explicit GitHub issues link in the canonical source and GP
  expect(readFileSync(resolve(root,'apps/openagents-web/docs/connect-a-pylon/index.html'),'utf8')).toContain('<a href="'+url+'">Report a bug or request a feature</a>')
  expect(readFileSync(resolve(root,'apps/openagents-web/connect-pylon-content.coax'),'utf8')).toContain('"'+url+'"')
 })
+
+test('the legacy Pylon board delegates onboarding to the canonical guide without stale commands',()=>{
+ const html=readFileSync(resolve(root,'apps/openagents-web/pylon/index.html'),'utf8')
+ expect(html).toContain('href="/docs/connect-a-pylon"')
+ expect(html).not.toContain('join-pylon.sh')
+ expect(html).not.toContain('toy engine demo')
+ expect(html).not.toContain('toy decision jobs')
+ expect(html).toContain('docs/connect-a-pylon.md')
+})

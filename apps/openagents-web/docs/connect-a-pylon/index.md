@@ -12,7 +12,7 @@ A Pylon runs a model on your computer and contributes it to the mesh. Load origi
 
 ## 1. Prepare
 
-Elephant downloads 18.8 GB of original BF16 weights plus about 20 MB of tokenizer data. Reserve 40 GB of free disk for the cached model and build headroom. Interruptions keep partial downloads; repeat the same command to resume.
+Elephant downloads 18.8 GB of original BF16 weights plus about 20 MB of tokenizer data. Reserve 40 GB of free disk for the cached model and build headroom. The 14-minute transfer limit can require several runs on slower links; timed-out downloads retain partial files and the same command resumes them.
 
 Use macOS or Linux with outbound HTTPS and secure WebSockets. No inbound port or public IP is required. Install Git, Python 3, curl and a C/C++ compiler. You do not need Bun, a wallet, an API credential or a paid account to contribute a Pylon.
 
@@ -47,7 +47,7 @@ Self-test passed: elephant-1 via <your public key>
 
 The self-test sends a real encrypted decision through the relay, pins this join's own provider key and Elephant identity, and checks the returned answer. It prints the actual JSON result, then keeps the Pylon serving in the foreground. It does not borrow a hosted provider or fall back to another model.
 
-Inspect the saved result and logs under `~/.openagents/pylon/state/elephant-1`: `self-test.json`, `fleet.log`, `engine.log` and `pylon.log`. Preserve that directory while serving; do not publish its private state or demo-label file. The terminal also prints your public `npub` and Pylon name.
+Inspect the saved result and logs under `~/.openagents/pylon/state/elephant-1`: `self-test.json`, `fleet.log`, `engine.log` and `pylon.log`. The profile retains its demo key and slug across restarts. Preserve that directory; do not publish its private state or demo-label file. The terminal also prints your public `npub` and Pylon name.
 
 ## 4. Find your Pylon
 
@@ -71,7 +71,7 @@ Press Ctrl-C in the join terminal. From another terminal:
 bash /tmp/join-pylon.sh --model elephant-1 --stop
 ```
 
-Repeat the learned join command to start again and reuse verified model files. Set `OPENAGENTS_PYLON_HOME` to change the checkout/cache/state root. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.
+Repeat the learned join command to start again and reuse verified model files. An existing original checkpoint can be selected with `--model-cache DIR`; its files must still pass the pinned checks. Set `OPENAGENTS_PYLON_HOME` to change the checkout/cache/state root. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.
 
 ## Small toy test
 
@@ -149,7 +149,7 @@ This is a dated capture, not a permanent liveness signal. The ordinary `/api/v1/
 
 [Read the original signed records and attestation](https://raw.githubusercontent.com/OpenAgentsInc/openagents/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/data/oct30-confidential/records.json)
 
-[Reproduce the dated operator verification](https://github.com/OpenAgentsInc/openagents/blob/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/2026-10-30-confidential-pylon.md)
+[Reproduce the dated operator verification](https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/2026-10-30-confidential-pylon.md)
 
 ## For agents
 

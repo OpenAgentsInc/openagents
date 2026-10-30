@@ -52,7 +52,7 @@ test("join control copies the full executable command and guide uses the existin
   const click=(a:number)=>{x.coaxial_pointer(state,a,210,0,0,0);x.coaxial_pointer(state,a,210,2,0,0)}
   click(50)
   expect(x.coaxial_action(state)).toBe(2)
-  expect(p.text(x.coaxial_outbox(state),x.coaxial_outbox_len(state))).toBe("curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh")
+  expect(p.text(x.coaxial_outbox(state),x.coaxial_outbox_len(state))).toBe("curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh --model elephant-1 --self-test")
   x.coaxial_action_done(state);click(200)
   expect(x.coaxial_action(state)).toBe(1)
   expect(p.text(x.coaxial_outbox(state),x.coaxial_outbox_len(state))).toBe("/docs/connect-a-pylon")

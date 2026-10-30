@@ -22,7 +22,7 @@ html,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-san
 <p>A Pylon runs a model on your computer and contributes it to the mesh. Load original Elephant on your GPU, then verify an encrypted relay task with your own Pylon.</p>
 <p><a href="https://github.com/OpenAgentsInc/openagents/issues">Report a bug or request a feature</a></p>
 <h2>1. Prepare</h2>
-<p>Elephant downloads 18.8 GB of original BF16 weights plus about 20 MB of tokenizer data. Reserve 40 GB of free disk for the cached model and build headroom. Interruptions keep partial downloads; repeat the same command to resume.</p>
+<p>Elephant downloads 18.8 GB of original BF16 weights plus about 20 MB of tokenizer data. Reserve 40 GB of free disk for the cached model and build headroom. The 14-minute transfer limit can require several runs on slower links; timed-out downloads retain partial files and the same command resumes them.</p>
 <p>Use macOS or Linux with outbound HTTPS and secure WebSockets. No inbound port or public IP is required. Install Git, Python 3, curl and a C/C++ compiler. You do not need Bun, a wallet, an API credential or a paid account to contribute a Pylon.</p>
 <p>Mac: the qualified configuration is an Apple M5 Max with 128 GB of unified memory, macOS 26 and Xcode 26.6 with SDK 26.5. This path uses Metal 4 and Metal Performance Primitives; Command Line Tools alone are not the qualified setup. Select your installed Xcode developer directory before running it.</p>
 <p>Linux: use an NVIDIA CUDA GPU with its working driver, NVRTC and Nix for the OpenSSL dependency. Native Elephant has run on RTX 4080 16 GB, L4 24 GB and RTX PRO 6000 96 GB; smaller cards can stream selected tensors from host RAM. The recorded CUDA runtime uses driver 595 and NVRTC 13.2.86. Plan at least 32 GB of host RAM, with extra headroom for model mappings, pinned streaming buffers and workspace; GPU VRAM alone is not sufficient. These are qualified configurations, not a promise that every GPU or smaller Mac works.</p>
@@ -38,7 +38,7 @@ bash /tmp/join-pylon.sh --model elephant-1 --self-test</code></p>
 <p>Wait for the online log and this success line:</p>
 <p><code>Self-test passed: elephant-1 via &lt;your public key&gt;</code></p>
 <p>The self-test sends a real encrypted decision through the relay, pins this join's own provider key and Elephant identity, and checks the returned answer. It prints the actual JSON result, then keeps the Pylon serving in the foreground. It does not borrow a hosted provider or fall back to another model.</p>
-<p>Inspect the saved result and logs under ~/.openagents/pylon/state/elephant-1: self-test.json, fleet.log, engine.log and pylon.log. Preserve that directory while serving; do not publish its private state or demo-label file. The terminal also prints your public npub and Pylon name.</p>
+<p>Inspect the saved result and logs under ~/.openagents/pylon/state/elephant-1: self-test.json, fleet.log, engine.log and pylon.log. The profile retains its demo key and slug across restarts. Preserve that directory; do not publish its private state or demo-label file. The terminal also prints your public npub and Pylon name.</p>
 <h2>4. Find your Pylon</h2>
 <p><a href="https://openagents.com/">Open the live Grid</a></p>
 <p>Choose Pylons and find the printed name. The board shows advertised model identity, public key, status and free slots. New signed announcements appear without a reload.</p>
@@ -48,7 +48,7 @@ bash /tmp/join-pylon.sh --model elephant-1 --self-test</code></p>
 <h2>Stop or restart</h2>
 <p>Press Ctrl-C in the join terminal. From another terminal:</p>
 <p><code>bash /tmp/join-pylon.sh --model elephant-1 --stop</code></p>
-<p>Repeat the learned join command to start again and reuse verified model files. Set OPENAGENTS_PYLON_HOME to change the checkout/cache/state root. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.</p>
+<p>Repeat the learned join command to start again and reuse verified model files. An existing original checkpoint can be selected with --model-cache DIR; its files must still pass the pinned checks. Set OPENAGENTS_PYLON_HOME to change the checkout/cache/state root. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.</p>
 <h2>Small toy test</h2>
 <p>For a machine without a qualified native GPU, choose the toy explicitly:</p>
 <p><code>bash /tmp/join-pylon.sh --model psionic-toy</code></p>
@@ -83,7 +83,7 @@ cd openagents-pylon</code></p>
 <p>This is a dated capture, not a permanent liveness signal. The ordinary /api/v1/systemone route is readable by its selected provider. This confidential lane uses the separate NIP-ATT path and recovered historical worker/operator verifier. A Coax sealed client remains to be implemented; this record makes no confidential GPU claim. Fetch and verify fresh evidence before sealing new input.</p>
 <p><a href="https://openagents.com/docs/connect-a-pylon/confidential-round.json">Read the sealed-round report as JSON</a></p>
 <p><a href="https://raw.githubusercontent.com/OpenAgentsInc/openagents/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/data/oct30-confidential/records.json">Read the original signed records and attestation</a></p>
-<p><a href="https://github.com/OpenAgentsInc/openagents/blob/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/2026-10-30-confidential-pylon.md">Reproduce the dated operator verification</a></p>
+<p><a href="https://github.com/OpenAgentsInc/openagents/blob/main/docs/verification/2026-10-30-confidential-pylon.md">Reproduce the dated operator verification</a></p>
 <h2>For agents</h2>
 <p>Read this exact guide as Markdown:</p>
 <p><code>curl -fsSL https://openagents.com/docs/connect-a-pylon/index.md</code></p>

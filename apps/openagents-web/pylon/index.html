@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Pylon · OpenAgents</title>
-<meta name="description" content="Join the OpenAgents Pylon demo network. Live signed machine beacons and toy decision jobs, powered by Coax.">
+<meta name="description" content="View OpenAgents Pylons and signed network activity, verified in Coax. Follow the canonical Connect a Pylon quickstart to contribute.">
 <meta name="theme-color" content="#000000">
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="alternate" type="text/markdown" href="/pylon/index.md">
@@ -14,12 +14,11 @@
 <body>
 <canvas id="coaxial" aria-hidden="true"></canvas>
 <main>
-<h1>Pylon</h1>
-<p>Join the toy network: <code>curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh &amp;&amp; bash /tmp/join-pylon.sh</code></p>
-<p>The live Coax view verifies Nostr event IDs, signatures and beacon content digests before displaying machines. Activity is observed live since the page opened; encrypted answer and status events have no historical count.</p>
-<p>This is a toy engine demo, with no payments. Use only temporary keys and non-private prompts. The Pylon can read requests it receives.</p>
+<h1>Pylon board</h1>
 <p><a href="/docs/connect-a-pylon">Connect a Pylon — the canonical quickstart</a></p>
-<p><a href="/docs/connect-a-pylon/index.md">Prerequisites, commands and troubleshooting as Markdown</a></p>
+<p><a href="/docs/connect-a-pylon/index.md">Read the exact quickstart as Markdown</a></p>
+<p>The homepage Pylons view is the primary live network view. This standalone board verifies signed provider beacons and counts verified, encrypted answer/status events observed since the tab opened. It retains at most 64 machine rows and de-duplicates 64 work-event IDs per session, freezing the count when full. Those are display bounds for this standalone board, not complete historical job totals. Reload resets observations.</p>
+<p>See the canonical quickstart for prerequisites, the join command, authentication, stopping and troubleshooting. Instructions are maintained in one source, <code>docs/connect-a-pylon.md</code>.</p>
 </main>
 <script type="module" src="/coaxial/host.js" data-app="pylon"></script>
 </body>
