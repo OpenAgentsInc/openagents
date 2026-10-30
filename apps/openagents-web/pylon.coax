@@ -39,6 +39,12 @@ pl_copy :: (out:[]u8,text:string)->int #export_c {
 }
 pl_now :: (p:[]Pylon)->int #export_c {return p[0].epoch+cast(int)p[0].time;}
 pl_row_key :: (r:[]PlRow)->string {return cast(string)r[0].key[..];}
+// This same full admitted identity is drawn and exposed to observation
+// tools: preserve the model, algorithm and digest exactly as advertised.
+pl_display_identity :: (p:[]Pylon,i:int)->string #export_c {
+  if i<0 || i>=p[0].count {return "";}
+  return cast(string)p[0].rows[i].model[0..<p[0].rows[i].model_n];
+}
 pl_observed :: (p:[]Pylon,content:string,npub:string) #export_c {
   key:=pl_field(content,"provider");slug:=pl_field(content,"pylon");
   generation:=pl_number(pl_field(content,"generation"));observed:=pl_number(pl_field(content,"observed_at"));
@@ -100,6 +106,11 @@ pl_text :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,d:f32,k:Ink)->int 
   at:=v;start:=0;line:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
   while start<text.count {n:=wrap_ink(text,start,width,10*d,0.15,0.55,k2,next[..]);at=write(d,out,at,text[start..<n],x,y+cast(f32)line*18*d,10*d,0.15,0.55,k2,false,false);if next[0]<=start {break;}start=next[0];line+=1;}return at;
 }
+pl_text_lines :: (text:string,width:f32,d:f32,k:Ink)->int {
+  start:=0;lines:=0;next:[1]int;k2:=k;k2.sans=true;k2.scale=d;
+  while start<text.count {n:=wrap_ink(text,start,width,10*d,0.15,0.55,k2,next[..]);lines+=1;if next[0]<=start {break;}start=next[0];}
+  return ifx lines>0 then lines else 1;
+}
 pl_frame :: (p:[]Pylon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->int #export_c {
   p[0].width=w;p[0].height=h;p[0].dpr=d;if dt>0 {p[0].time+=dt;}
   if p[0].connection== -1 {p[0].retry-=dt;if p[0].retry<=0 {p[0].connection=0;closed:=pipe_close(p[0].pipe[..],p[0].socket);_:=pipe_open(p[0].pipe[..],"wss://relay.openagents.com");}}
@@ -118,19 +129,19 @@ pl_frame :: (p:[]Pylon,out:[]f32,u:[]f32,w:f32,h:f32,d:f32,dt:f32,still:bool)->i
   y:=(336-p[0].scroll)*d;first:=v;
   if p[0].count==0 {v=pl_text(out,v,"Waiting for a verified Pylon beacon",left,y+20*d,room,d,white);}
   for i:0..<p[0].count {
-    if y+136*d<316*d || y>h-120*d {y+=136*d;continue;}
     r:=p[0].rows[i..<i+1];current:=pl_current(r[0].until,now,cast(string)r[0].status[0..<r[0].status_n]);tone:=ifx current then white else muted;
+    identity:=pl_display_identity(p,i);extra:=18*cast(f32)(pl_text_lines(identity,room,d,tone)-1)*d;row_height:=136*d+extra;
+    if y+row_height<316*d || y>h-120*d {y+=row_height;continue;}
     name:=ifx r[0].label_n>0 then cast(string)r[0].label[0..<r[0].label_n] else cast(string)r[0].slug[0..<r[0].slug_n];
     v=write(d,out,v,name,left,y+18*d,11*d,0.15,0.55,tone,false,false);
     n=put_int(buf[..],0,r[0].free);n=put(buf[..],n,"/");n=put_int(buf[..],n,r[0].total);n=put(buf[..],n," slots   ");n=put_int(buf[..],n,ifx now>=r[0].observed then now-r[0].observed else 0);n=put(buf[..],n,"s ago");if !current {n=put(buf[..],n," / offline");}
     v=pl_text(out,v,cast(string)buf[0..<n],left,y+46*d,room,d,muted);
-    model_n:=r[0].model_n;for c:0..<r[0].model_n {if r[0].model[c]=='@' {model_n=c;break;}}
-    v=pl_text(out,v,cast(string)r[0].model[0..<model_n],left,y+69*d,room,d,tone);
+    v=pl_text(out,v,identity,left,y+69*d,room,d,tone);
     keytone:=muted;keytone.sans=true;keytone.scale=d;
     split:=ifx r[0].npub_n>32 then 32 else r[0].npub_n;
-    v=write(d,out,v,cast(string)r[0].npub[0..<split],left,y+102*d,7*d,0.1,0.5,keytone,false,false);
-    if r[0].npub_n>split {v=write(d,out,v,cast(string)r[0].npub[split..<r[0].npub_n],left,y+116*d,7*d,0.1,0.5,keytone,false,false);}
-    y+=136*d;
+    v=write(d,out,v,cast(string)r[0].npub[0..<split],left,y+102*d+extra,7*d,0.1,0.5,keytone,false,false);
+    if r[0].npub_n>split {v=write(d,out,v,cast(string)r[0].npub[split..<r[0].npub_n],left,y+116*d+extra,7*d,0.1,0.5,keytone,false,false);}
+    y+=row_height;
   }
   p[0].scroll_max=hi(0,(y+p[0].scroll*d-(h-125*d))/d);p[0].scroll=clamp(p[0].scroll,0,p[0].scroll_max);
   // Clip the scrolling table, keeping the header and limitations visible.

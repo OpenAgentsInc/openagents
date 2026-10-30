@@ -68,3 +68,5 @@ EXPORT("coaxial_pylon_slug") uint32_t slug(uint32_t p,int32_t i){return i>=0&&i<
 EXPORT("coaxial_pylon_slug_len") int32_t slug_len(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].slug_n:0;}
 EXPORT("coaxial_pylon_row_answers") int32_t row_answers(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].answers:0;}
 EXPORT("coaxial_pylon_row_statuses") int32_t row_statuses(uint32_t p,int32_t i){return i>=0&&i<s(p)->count?(int32_t)s(p)->rows.e[i].statuses:0;}
+EXPORT("coaxial_pylon_identity") uint32_t identity(uint32_t p,int32_t i){return (uint32_t)(uintptr_t)pl_display_identity(at(p),i).data;}
+EXPORT("coaxial_pylon_identity_len") int32_t identity_len(uint32_t p,int32_t i){return (int32_t)pl_display_identity(at(p),i).count;}

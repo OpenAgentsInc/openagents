@@ -31,6 +31,8 @@ test("page verifies beacons and observes only live signed activity, with duplica
   p.event(f.beacon);p.event(f.beacon)
   expect(x.coaxial_pylon_count(state)).toBe(1)
   expect(p.text(x.coaxial_pylon_slug(state,0),x.coaxial_pylon_slug_len(state,0))).toBe("studio-gpu")
+  expect(p.text(x.coaxial_pylon_identity(state,0),x.coaxial_pylon_identity_len(state,0))).toBe(JSON.parse(f.beacon.content).services[0].model)
+  expect(x.coaxial_pylon_identity_len(state,-1)).toBe(0)
   expect(x.coaxial_pylon_slug(state,-1)).toBe(0)
   expect(x.coaxial_pylon_slug_len(state,1)).toBe(0)
   p.event(f.older_answer);p.event(f.wrong_author)
