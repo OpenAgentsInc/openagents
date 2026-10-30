@@ -96,3 +96,34 @@ operator's certificate, measurement, key-binding and receipt verification.
 Hosted availability is gated on fresh fleet/API rollout. No production web
 release was started while the GPU hosts were being recovered from capacity
 stockouts; the guide makes no permanent-availability or GPU-attestation claim.
+
+## Final production closeout
+
+Production release `a6b0f91c74`, stamp `20261030T185415Z`, contains the frozen
+guide candidate `83985bbc7f1684dc1e05f8e9c4c38767cbbcca26`. Its normal release
+passed production HTTP smoke and actual live homepage starts. No extra release
+or unchanged compiler gate was run for this closeout.
+
+The canonical source and production `/docs/connect-a-pylon/index.md` are byte
+identical: **10,374 bytes**, including the 16 KiB API request bound. SHA-256:
+`0aa18131dc848f1234e64d31d0aea407b62b680012340f38f76c0479746bdc4e`. Production names
+`connect-pylon.a78c411cdbdf.wasm` and the shared Grid shader.
+
+A final muted, headless browser run exercised ordinary input against the real
+production GPU page at 1440×900 desktop and 390×844 at DPR 2 phone. Both copied
+all 10,374 Markdown bytes, copied the exact 96-byte join command, scrolled
+160 CSS pixels, preserved the command clipboard through scrolling, and fetched
+the byte-identical Markdown with its `text/markdown` MIME. Neither recorded a
+runtime exception. The read-only observation receipt is
+[data/connect-pylon-2026-10-30/production-browser.json](data/connect-pylon-2026-10-30/production-browser.json).
+
+The browser harness now waits for nonzero layout and actual submitted GPU work
+completion. Module `ready` precedes first layout; the host's `sceneReady` flag
+is specifically for 3D draw lists and does not describe this 2D GPU guide.
+This verification correction changes no product state or rendering.
+
+The documented production helper also returned real authenticated Elephant and
+Mammoth results independently during this task. Managed, keyless recovery for
+the existing shared GPU host is recorded separately in
+`psionic/docs/serving/spot-recovery.md` and
+`docs/verification/data/pylon-spot-recovery-2026-10-30/managed-job.json`.

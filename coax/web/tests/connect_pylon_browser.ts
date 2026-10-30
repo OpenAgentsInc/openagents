@@ -1,5 +1,5 @@
 // Ordinary browser input and actual clipboard effects over the real GPU page.
-// Only read-only ABI observation is captured; no app state/content is injected.
+// Only read-only ABI/GPU-completion observation is captured; no app state/content is injected.
 // bun coax/web/tests/connect_pylon_browser.ts ORIGIN [OUT_PREFIX]
 import {existsSync,mkdtempSync,readFileSync,rmSync,writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
@@ -23,13 +23,15 @@ try{
  async function until(predicate:()=>Promise<boolean>,why:string){const end=Date.now()+30000;while(Date.now()<end){if(recording.errors.length)throw Error(recording.errors.join('\n'));if(await predicate())return;await Bun.sleep(100)}throw Error('timed out: '+why)}
  const observe=()=>evaluate('globalThis.guideObservation?.()')
  await send('Runtime.enable');await send('Page.enable');await send('Emulation.setFocusEmulationEnabled',{enabled:true});await send('Browser.grantPermissions',{origin:new URL(base).origin,permissions:['clipboardReadWrite','clipboardSanitizedWrite']})
- await send('Page.addScriptToEvaluateOnNewDocument',{source:`const original=WebAssembly.instantiate;WebAssembly.instantiate=async function(module,imports){const r=await original.call(WebAssembly,module,imports),x=(r.instance||r).exports;if(x.coaxial_guide_control){const memory=imports.env.memory,state=Math.ceil(Math.max(Number(x.__heap_base.value),memory.buffer.byteLength)/65536)*65536;globalThis.guideObservation=()=>{if(globalThis.coaxial?.ready!==true)return {ready:false};return ({ready:true,scroll:x.coaxial_guide_scroll(state),limit:x.coaxial_guide_limit(state),action:x.coaxial_action(state),controls:Array.from({length:4},(_,c)=>Array.from({length:4},(_,a)=>x.coaxial_guide_control(state,c,a)))});};}return r;};`})
+ await send('Page.addScriptToEvaluateOnNewDocument',{source:`const submit=GPUQueue.prototype.submit;GPUQueue.prototype.submit=function(commands){const r=submit.call(this,commands);this.onSubmittedWorkDone().then(()=>globalThis.guidePresented=true);return r;};const original=WebAssembly.instantiate;WebAssembly.instantiate=async function(module,imports){const r=await original.call(WebAssembly,module,imports),x=(r.instance||r).exports;if(x.coaxial_guide_control){const memory=imports.env.memory,state=Math.ceil(Math.max(Number(x.__heap_base.value),memory.buffer.byteLength)/65536)*65536;globalThis.guideObservation=()=>{if(globalThis.coaxial?.ready!==true)return {ready:false};return ({ready:true,scroll:x.coaxial_guide_scroll(state),limit:x.coaxial_guide_limit(state),action:x.coaxial_action(state),controls:Array.from({length:4},(_,c)=>Array.from({length:4},(_,a)=>x.coaxial_guide_control(state,c,a)))});};}return r;};`})
  for(const v of [{name:'desktop',w:1440,h:900,d:1,touch:false},{name:'phone',w:390,h:844,d:2,touch:true}]){
   recording={viewport:v,errors:[]};evidence.scenarios.push(recording)
   await send('Emulation.setDeviceMetricsOverride',{width:v.w,height:v.h,deviceScaleFactor:v.d,mobile:v.touch})
   await send('Emulation.setTouchEmulationEnabled',{enabled:v.touch,maxTouchPoints:2})
   await send('Page.navigate',{url:base+'/docs/connect-a-pylon'})
-  await until(async()=>(await observe())?.ready===true,v.name+' GPU readiness')
+  // Module readiness precedes first layout/present. The host sceneReady flag
+  // describes 3D draws, so observe real queue completion for this 2D GPU page.
+  await until(async()=>{const o=await observe();return o?.ready===true&&o.limit>0&&o.controls[0][2]>o.controls[0][0]&&await evaluate('globalThis.guidePresented===true')},v.name+' GPU scene readiness')
   recording.initial=await observe();recording.screenshot=`${prefix}-${v.name}.png`
   await Bun.sleep(250);writeFileSync(recording.screenshot,Buffer.from((await send('Page.captureScreenshot',{format:'png'})).data,'base64'))
   const fallback=await evaluate('({width:document.querySelector("main").getBoundingClientRect().width,alternate:document.querySelector("link[type=\\"text/markdown\\"]")?.getAttribute("href")})')

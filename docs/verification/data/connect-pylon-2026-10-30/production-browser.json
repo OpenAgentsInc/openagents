@@ -1,0 +1,160 @@
+{
+  "base": "https://openagents.com",
+  "at": "2026-10-30T18:58:16.230Z",
+  "scenarios": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "w": 1440,
+        "h": 900,
+        "d": 1,
+        "touch": false
+      },
+      "errors": [],
+      "initial": {
+        "ready": true,
+        "scroll": 0,
+        "limit": 3638.3115234375,
+        "action": 0,
+        "controls": [
+          [
+            320,
+            104,
+            714,
+            146
+          ],
+          [
+            726,
+            104,
+            1120,
+            146
+          ],
+          [
+            1056,
+            22,
+            1120,
+            58
+          ],
+          [
+            320,
+            164,
+            1120,
+            880
+          ]
+        ]
+      },
+      "screenshot": "/tmp/connect-pylon-production-final-desktop.png",
+      "markdown_bytes": 10374,
+      "command_bytes": 96,
+      "scrolled": {
+        "ready": true,
+        "scroll": 160,
+        "limit": 3638.3115234375,
+        "action": 0,
+        "controls": [
+          [
+            320,
+            104,
+            714,
+            146
+          ],
+          [
+            726,
+            104,
+            1120,
+            146
+          ],
+          [
+            1056,
+            22,
+            1120,
+            58
+          ],
+          [
+            320,
+            164,
+            1120,
+            880
+          ]
+        ]
+      }
+    },
+    {
+      "viewport": {
+        "name": "phone",
+        "w": 390,
+        "h": 844,
+        "d": 2,
+        "touch": true
+      },
+      "errors": [],
+      "initial": {
+        "ready": true,
+        "scroll": 0,
+        "limit": 6589.89111328125,
+        "action": 0,
+        "controls": [
+          [
+            16,
+            104,
+            189,
+            146
+          ],
+          [
+            201,
+            104,
+            374,
+            146
+          ],
+          [
+            310,
+            22,
+            374,
+            58
+          ],
+          [
+            16,
+            164,
+            374,
+            824
+          ]
+        ]
+      },
+      "screenshot": "/tmp/connect-pylon-production-final-phone.png",
+      "markdown_bytes": 10374,
+      "command_bytes": 96,
+      "scrolled": {
+        "ready": true,
+        "scroll": 160,
+        "limit": 6589.89111328125,
+        "action": 0,
+        "controls": [
+          [
+            16,
+            104,
+            189,
+            146
+          ],
+          [
+            201,
+            104,
+            374,
+            146
+          ],
+          [
+            310,
+            22,
+            374,
+            58
+          ],
+          [
+            16,
+            164,
+            374,
+            824
+          ]
+        ]
+      }
+    }
+  ]
+}
