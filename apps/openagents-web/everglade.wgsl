@@ -351,6 +351,7 @@ const LOOK_CANOPY = 7u;                            // a kit tree's leaves, lit a
 const PERSON_SPAN = 2.5;                           // a person's vertex box (verse/tools/people.py SPAN, LOW)
 const PERSON_LOW = vec3f(-1.25, -0.25, -1.25);
 const PERSON_JOINTS = 65u;                         // verse/everglade/people-rig.coax PEOPLE_JOINTS
+const CHARACTER_LOD_BIAS = 2.0;                    // spec 11: a character's textures two mip levels coarser
 const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
 const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
 const LOOK_FLAME = 13u;                            // a lamp's flame: its colour, glowing as the lamps are lit
@@ -633,7 +634,9 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
 }
 
 @fragment fn scene_fs(s: S, @builtin(front_facing) front: bool) -> Lit {
-  let tex = textureSample(sheets, sheet, s.uv, s.slice);
+  // a character's skin and cloth flat (spec 11): sampled two mip levels coarser, so stitching, pores
+  // and the fabric's grain go and two or three colour masses stay
+  let tex = textureSampleBias(sheets, sheet, s.uv, s.slice, select(0.0, CHARACTER_LOD_BIAS, s.look == LOOK_CHARACTER));
   if (s.look == LOOK_GLOW) {
     // fire, a fireball, lightning: white-hot where it faces you, its colour, then deep red at its rim;
     // up to three times as bright as its colour says, and it all blooms

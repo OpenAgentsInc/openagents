@@ -409,6 +409,11 @@ the sky without a seam.
   hands and feet slightly large); every character reads by its silhouette and
   two or three flat colour masses at 20 m. Grey boxes with sphere heads are
   placeholders and fail the style check where they show.
+- **Built in Everglade** (October 29, #ce76): the Ranger and the
+  Quaternius people (`LOOK_CHARACTER`) take the two bands, the character
+  rim and the cool tinted shadow in `paint`, and sample their textures with
+  `CHARACTER_LOD_BIAS` 2.0, so they read as flat colour masses. At night a
+  cool moon fill keeps them from going black (section 13).
 - **What glows stays glowing**: emissive materials skip the bands. Hecate's
   dog stays white light, and the shadow visitor stays black with its fuzzy
   edge. Those are character designs, not lighting.
