@@ -1451,6 +1451,7 @@ function draw(now) {
     }
   }
   document.documentElement.classList.add("gpu");
+  takeTouches();
   if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
   if (readback) report(readback, texture);
   if (x.coaxial_sounds) playSounds(x);
@@ -1639,14 +1640,47 @@ addEventListener("paste", (e) => {
   const text = e.clipboardData?.getData("text") || "";
   if (text) { e.preventDefault(); send(1, text); }
 });
+// Touches on a phone, iOS WebKit (the OpenAgents app's WKWebView) above all: the page takes every
+// touch, so no pan, zoom, selection or callout starts a gesture that turns a tap's pointerup into a
+// pointercancel; a pointercancel that ends a short, still touch is that tap; and the mouse events
+// a phone makes up after a touch (a hover over what was tapped) are not the app's.
+const TAP_MS = 600, TAP_MOVE = 24, AFTER_TOUCH_MS = 800;
+const touches = new Map();   // pointerId -> { t, x0, y0, x, y }
+let touchAt = -1e9;
+// (html and body too, once the app draws: a page without WebGPU keeps its scrolling text)
+let touchesTaken = false;
+function takeTouches() {
+  if (touchesTaken) return;
+  touchesTaken = true;
+  for (const el of [document.documentElement, document.body]) if (el) {
+    el.style.touchAction = "none"; el.style.webkitUserSelect = "none"; el.style.userSelect = "none"; el.style.webkitTouchCallout = "none";
+  }
+}
+canvas?.addEventListener("touchmove", (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
+canvas?.addEventListener("contextmenu", (e) => e.preventDefault());
 for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup", 2], ["pointercancel", 3]])
   addEventListener(type, (e) => {
     if (!engine) return;
+    const touch = e.pointerType !== "mouse", now = performance.now();
+    if (touch) touchAt = now;
+    else if (now - touchAt < AFTER_TOUCH_MS) return;
+    let x = e.clientX, y = e.clientY, ph = phase;
+    if (touch) {
+      if (phase === 0) touches.set(e.pointerId, { t: now, x0: x, y0: y, x, y });
+      const p = touches.get(e.pointerId);
+      if (p && phase === 1) { p.x = x; p.y = y; }
+      if (p && phase === 3) {
+        // a cancel's coordinates can be stale or zero: where the finger last was
+        x = p.x; y = p.y;
+        if (now - p.t < TAP_MS && Math.hypot(p.x - p.x0, p.y - p.y0) < TAP_MOVE) ph = 2;
+      }
+      if (phase >= 2) touches.delete(e.pointerId);
+    }
     const dpr = scale();
-    if (phase !== 1) touched = e.pointerType !== "mouse";
-    if (phase === 0) startAudio();
-    call("coaxial_pointer", e.clientX * dpr, e.clientY * dpr, phase, e.pointerType === "mouse" ? 0 : 1, e.pointerId);
-    after(phase === 2, phase === 2);
+    if (ph !== 1) touched = touch;
+    if (ph === 0) startAudio();
+    call("coaxial_pointer", x * dpr, y * dpr, ph, touch ? 1 : 0, e.pointerId);
+    after(ph === 2, ph === 2);
   });
 
 function runProbe(w, h, dpr) {
