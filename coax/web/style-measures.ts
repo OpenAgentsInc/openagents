@@ -67,13 +67,17 @@ export function boxMean(v: Float32Array, w: number, h: number, r: number): Float
 }
 export const allOf = (m: Image): Mask => new Uint8Array(m.w * m.h).fill(1)
 // The HUD's plates left out: a band at the top and one at the bottom (the title and map plates, the
-// hint and the spell bar), as shares of the height.
+// hint), as shares of the height, and the spell bar in the middle of the bottom: Everglade's druid
+// bar is rows of slots from about 68% of the height down on a desktop (four rows), 64% on a phone
+// (three), across the middle 44% of a desktop's width.
 // On a phone (under 600 px wide) the right-hand column too, where touch buttons stand, and the
-// bottom 32%: Everglade's spell bar there is two rows of slots from about 70% of the height down.
+// bottom 36%, where the bar's rows sit across the whole width.
 export function hudMask(m: Image, top = 0.1, bottom = 0.14): Mask {
-  const k = allOf(m), t = Math.round(m.h * top), b = Math.round(m.h * (1 - (m.w < 600 ? Math.max(bottom, 0.32) : bottom)))
+  const phone = m.w < 600
+  const k = allOf(m), t = Math.round(m.h * top), b = Math.round(m.h * (1 - (phone ? Math.max(bottom, 0.36) : bottom)))
   for (let y = 0; y < m.h; y++) if (y < t || y >= b) k.fill(0, y * m.w, (y + 1) * m.w)
-  if (m.w < 600) for (let y = t; y < b; y++) k.fill(0, y * m.w + Math.round(m.w * 0.76), (y + 1) * m.w)
+  if (phone) for (let y = t; y < b; y++) k.fill(0, y * m.w + Math.round(m.w * 0.76), (y + 1) * m.w)
+  else for (let y = Math.round(m.h * 0.68); y < b; y++) k.fill(0, y * m.w + Math.round(m.w * 0.28), y * m.w + Math.round(m.w * 0.72))
   return k
 }
 

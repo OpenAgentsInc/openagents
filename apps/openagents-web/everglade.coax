@@ -312,6 +312,7 @@ Everglade :: struct {
   floats: [FLOATS * FLOAT_FLOATS] f32; float_n: int;
   feet: Point; face: f32; act: int;
   above: bool;              // the map view: the camera over the city
+  paint_only: bool;         // a hash ending "+paint" (the style check): the painting without the names over the world
   lift: f32;                // eased toward 1 in the map view, 0 at your shoulder
   sink: f32;                // eased toward 1 while you dive: the camera follows you under
   // the weather (verse/water-weather.coax, W9): the zone's schedule at the world tick, from the
@@ -810,6 +811,9 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 // the street nearest it, facing it.
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
+  // "road+paint": the view, drawn without the world's names (art-styles.md 15: the style check measures
+  // the painting; the names are text like the HUD's plates, and a phone's narrow canvas makes them a big share)
+  if hash.count > 6 && hash[hash.count - 6..<hash.count] == "+paint" { s[0].paint_only = true; everglade_hash(s, hash[0..<hash.count - 6]); return; }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
   // a pond's bank on its trail's side, facing the water; #rowboat: in the Lantern Pond's boat
   boat := hash == "rowboat";
@@ -3065,7 +3069,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
-  n := labels(s, out, u, 0, you);
+  n := ifx s[0].paint_only then 0 else labels(s, out, u, 0, you);
   gutter := 16 * k;
   cap := 11 * k;
   title := "EVERGLADE";

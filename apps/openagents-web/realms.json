@@ -90,7 +90,7 @@
             {"id": "undergrowth", "label": "Bushes, ferns and rocks", "says": "bushes, ferns and rocks along the tree line"},
             {"id": "daycycle", "label": "Day turning to night", "says": "the sky turning from day to night; off, it holds at noon"} ] },
         "style": "painterly",
-        "style_views": ["road", "river", "commons"],
+        "style_views": ["road+paint", "river+paint", "commons+paint"],
         "clock": "cycle",
         "title": "Everglade",
         "description": "Everglade, the forest city in a forest you leave only by its trails: walk its streets and rooms, talk to its people, who remember you, and take quests from the board out to the deep wood, the ruins and the river crossing. One of them earns a flock of birds that follows you.",
