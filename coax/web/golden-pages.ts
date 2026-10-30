@@ -25,8 +25,9 @@ const ROOT = process.env.GOLDEN_PAGES_ROOT || join(import.meta.dir, "../..")
 const APP = "apps/openagents-web"
 
 // path: its address; lit: the least share of pixels lit; settle: ms before its
-// shot; blocks: how many 8 px blocks may change; module: the app it runs.
-export type Page = { path: string; lit: number; settle: number; blocks: number; module: string }
+// shot; blocks: how many 8 px blocks may change; module: the app it runs; size: its viewport in css px
+// when not the walk's 1280x800 (a phone's 390x844: the phone tier, art-styles.md 14).
+export type Page = { path: string; lit: number; settle: number; blocks: number; module: string; size?: [number, number] }
 export type Pages = { pages: Record<string, Page>; byAddress: Record<string, Page>; open: ReturnType<typeof worlds>; unlisted: Set<string> }
 
 export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
@@ -44,6 +45,9 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // The style fixture (docs/verse/art-styles.md): the fixture realm in the painterly preset at each clock key.
   for (const c of ["0", "0.25", "0.5", "0.75"])
     byAddress[`fixture-painterly-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
+  // and on a phone (390x844 css px: the phone tier, art-styles.md 14) at each clock key
+  for (const c of ["0", "0.25", "0.5", "0.75"])
+    byAddress[`fixture-painterly-phone-${c}`] = { path: `/realms/fixture?style=painterly&clock=${c}`, lit: 0.5, settle: 3000, blocks: 6, module: "fixture", size: [390, 844] }
   // and backlit at noon, the sun put behind the blob tree (?sun=, ?sunup=), for the light shafts (spec 6)
   byAddress["fixture-painterly-shafts"] = { path: "/realms/fixture?style=painterly&clock=0.5&sun=156&sunup=9.5", lit: 0.5, settle: 3000, blocks: 6, module: "fixture" }
   for (const [name, page] of Object.entries(byAddress)) pages[name] ??= page

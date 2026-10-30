@@ -320,16 +320,23 @@ fn shadow(p: vec3f, n: vec3f) -> f32 {
 // The painted sky along d (spec 5): from the ray, not the screen, so it holds still as the eye
 // pitches. The gradient by elevation, the horizon band lifted toward the haze, the sun or moon
 // with its two-term halo, and one layer of soft two-tone clouds at 1,500 m drifting with the wind.
+fn sky_sat(c: vec3f) -> f32 { let hi = max(c.x, max(c.y, c.z)); return (hi - min(c.x, min(c.y, c.z))) / max(hi, 0.0001); }
 fn sky(d: vec3f, l: vec3f) -> vec3f {
   let up = d.y;
-  var c = mix(st(13u).xyz, st(12u).xyz, verse_style_sky_t(up));
+  // horizon to zenith, the blend keeping the saturation its ends have (teal, cream, gold: not grey);
+  // round the sun the haze key painted over the sky, round the moon its light added (as Everglade's)
+  let h = st(13u).xyz; let z = st(12u).xyz; let t = verse_style_sky_t(up);
+  var c = mix(h, z, t);
+  let gain = verse_style_chroma_gain(sky_sat(c), mix(sky_sat(h), sky_sat(z), t), 1.0);
+  let cy = verse_style_luma(c.x, c.y, c.z);
+  c = max(vec3f(cy) + (c - vec3f(cy)) * gain, vec3f(0.0));
   c = mix(c, st(10u).xyz, verse_style_sky_band(up, st(12u).w));
   let ct = dot(d, l);
   let moon = st(1u).w > 0.5;
   let disc = smoothstep(cos(st(14u).x * 1.15), cos(st(14u).x * 0.85), ct);
   let halo = verse_style_halo(ct, st(14u).y) * 0.5 + verse_style_halo(ct, st(14u).z) * 0.25;
-  let glow = select(st(11u).xyz, st(0u).xyz, moon);
-  c += glow * halo * select(1.0, 0.5, moon);
+  if (moon) { c += st(0u).xyz * halo * 0.5; }
+  else { c = mix(c, st(11u).xyz * 1.5, clamp(halo * 1.1, 0.0, 0.9)); }
   c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), disc);
   let cl = st(15u); let c2 = st(16u);
   if (up > 0.01 && cl.x > 0.0) {

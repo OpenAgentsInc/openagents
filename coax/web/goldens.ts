@@ -33,7 +33,7 @@
 //   bun coax/web/goldens.ts BASE --only landing,galaxy   # compare only these pages (golden-check.sh)
 //   bun coax/web/goldens.ts BASE --report FILE    # also write the failures as JSON (release.sh's hold-back)
 //
-// A golden is coax/web/goldens/NAME.png at 1280x800, NAME a realm's slug for
+// A golden is coax/web/goldens/NAME.png at 1280x800 (or its page's own size), NAME a realm's slug for
 // a realm; what a realm's page must light, how long it settles and how many
 // blocks may change are its "golden" in realms.json. A page differs when
 // more of its 8 px blocks changed than the page allows (a block changed
@@ -451,10 +451,17 @@ if (!root) for (const [k, w] of open.entries()) {
 // Pages of their own, by their address.
 if (!root) for (const name of Object.keys(BY_ADDRESS)) {
   if (open.some((w) => w.realm!.slug === name) || !wanted(name)) continue
+  const size = PAGES[name].size
   lanes.push({ name, run: async (t) => {
-    await t.send("Page.navigate", { url: base + PAGES[name].path })
-    t.errors = []
-    await t.arrive(name)
+    // a page at its own size (a phone's): the tab takes it for this page and gives it back after
+    if (size) await t.send("Emulation.setDeviceMetricsOverride", { width: size[0], height: size[1], deviceScaleFactor: 1, mobile: false })
+    try {
+      await t.send("Page.navigate", { url: base + PAGES[name].path })
+      t.errors = []
+      await t.arrive(name)
+    } finally {
+      if (size) await t.send("Emulation.setDeviceMetricsOverride", { width: W, height: H, deviceScaleFactor: 1, mobile: false })
+    }
   } })
 }
 

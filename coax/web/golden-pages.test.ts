@@ -22,7 +22,8 @@ test("data, docs and the release tools change no page", () => {
 test("a page's own inputs change it and not the others", () => {
   expect(affected(["apps/openagents-web/verse.coax"], p)).toEqual(["landing", "galaxy"])
   expect(affected(["apps/openagents-web/realms/everglade/assets/everglade.pack"], p)).toEqual(["everglade"])
-  expect(affected(["apps/openagents-web/fixture.coax"], p)).toEqual(["fixture", "fixture-painterly-0", "fixture-painterly-0.25", "fixture-painterly-0.5", "fixture-painterly-0.75"])
+  expect(affected(["apps/openagents-web/fixture.coax"], p)).toEqual(["fixture", "fixture-painterly-0", "fixture-painterly-0.25", "fixture-painterly-0.5", "fixture-painterly-0.75",
+    "fixture-painterly-phone-0", "fixture-painterly-phone-0.25", "fixture-painterly-phone-0.5", "fixture-painterly-phone-0.75", "fixture-painterly-shafts"])
   // the engine is every realm's (its functions go into their shaders), not the landing's
   const engine = affected(["verse/haunt.coax"], p)
   expect(engine).toContain("haunted-house")
