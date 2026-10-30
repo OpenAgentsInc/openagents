@@ -75,44 +75,45 @@ is free for us; Elephant's text weights are 15.9 GB. So some must stream:
 
 <!-- source: psionic/lib/device/plan.coax residency -->
 ```jai
-// Which weights stream from pinned host memory, through two slots of 96 MiB
-// that hold them in turn. The feed-forward matrices go first: all down
-// projections, then up, then gate, in bit-reversed layer order (0, 16, 8,
-// 24, ...) so any number of them is spread across the model. If that is not
-// enough the head streams, in 21 chunks of up to 12,288 rows, and then the
-// mixer matrices (the projections before each layer's attention or scan),
-// a whole layer at a time in the same spread order. Only the small vectors
-// and the workspace must fit: everything else can stream.
+// Which weights stream from pinned host memory, through two slots that hold
+// them in turn, each the size of one feed-forward matrix (96 MiB for
+// Elephant, 170 MiB for Mammoth). The feed-forward matrices go first: all
+// down projections, then up, then gate, in bit-reversed layer order (0, 16,
+// 8, 24, ... for 32 layers) so any number of them is spread across the
+// model. If that is not enough the head streams, in chunks of up to one
+// feed-forward width of rows, and then the mixer matrices (the projections
+// before each layer's attention or scan), a whole layer at a time in the
+// same spread order. Only the small vectors and the workspace must fit:
+// everything else can stream.
 //
-// Streaming indices: 3*layer+k for feed-forward matrix k (0 gate, 1 up,
-// 2 down); 96+5*layer+k for mixer matrix k (linear: qkv, z, a, b, out; full:
-// q, k, v, out, and k = 4 is no matrix); 256+c for head chunk c.
-DP_FFN_STREAMS :: 96;
-DP_MIXER_BASE :: 96;
-DP_HEAD_BASE :: 256;
-DP_HEAD_ROWS :: 12288;
-DP_HEAD_CHUNKS :: 21;
-DP_STREAMABLE :: 277;
-dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {
-    if stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
+// Streaming indices, for L layers: 3*layer+k for feed-forward matrix k
+// (0 gate, 1 up, 2 down); 3L+5*layer+k for mixer matrix k (linear: qkv, z,
+// a, b, out; full: q, k, v, out, and k = 4 is no matrix); 8L+c for head
+// chunk c.
+dp_mixer_base :: (m:DpModel)->int {return 3*m.layers;}
+dp_head_base :: (m:DpModel)->int {return 8*m.layers;}
+dp_head_chunks :: (m:DpModel)->int #export_c {return m.chunks;}
+dp_streamable :: (m:DpModel)->int #export_c {return dp_head_base(m)+dp_head_chunks(m);}
+dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan {
+    if stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     total:=0;
-    for w:0..<DP_WEIGHTS {n:=dp_weight_bytes(w);if n<0 {return DpPlan.{status=DpStatus.capacity};}total+=dp_align(n);}
-    slot:=dp_align(2*DP_WIDTH*DP_HIDDEN);
-    for i:0..<DP_STREAMABLE {stream[i]=false;}
-    if workspace+total<=budget {return DpPlan.{workspace=workspace,resident=total};}
-    over:=workspace+total+2*slot-budget;saved:=0;n:=0;
+    for w:0..<dp_weights(m) {total+=dp_align(dp_bytes(m,w));}
+    slot:=dp_align(2*m.width*m.hidden);
+    for i:0..<stream.count {stream[i]=false;}
+    if workspace+total<=budget {return DpPlan.{workspace=workspace,resident=total,kind=m.kind};}
+    over:=workspace+total+2*slot-budget;saved:=0;n:=0;l:=m.layers;
     kinds:=[3]int.[2,1,0];
-    for i:0..<DP_FFN_STREAMS {if saved<over {stream[3*dp_spread(i%DP_LAYERS)+kinds[i/DP_LAYERS]]=true;saved+=slot;n+=1;}}
-    if saved<over {for c:0..<DP_HEAD_CHUNKS {stream[DP_HEAD_BASE+c]=true;}saved+=dp_weight_bytes(DP_HEAD);n+=DP_HEAD_CHUNKS;}
-    for i:0..<DP_LAYERS {
-        layer:=dp_spread(i);
+    for i:0..<3*l {if saved<over {stream[3*dp_spread_of(l,i%l)+kinds[i/l]]=true;saved+=slot;n+=1;}}
+    if saved<over {for c:0..<dp_head_chunks(m) {stream[dp_head_base(m)+c]=true;}saved+=dp_bytes(m,dp_head(m));n+=dp_head_chunks(m);}
+    for i:0..<l {
+        layer:=dp_spread_of(l,i);
         for k:0..<dp_mixers(layer) {
-            x:=DP_MIXER_BASE+5*layer+k;
-            if saved<over {stream[x]=true;saved+=dp_weight_bytes(dp_stream_weight(x));n+=1;}
+            x:=dp_mixer_base(m)+5*layer+k;
+            if saved<over {stream[x]=true;saved+=dp_bytes(m,dp_stream_weight_of(m,x));n+=1;}
         }
     }
     if saved<over {return DpPlan.{status=DpStatus.memory};}
-    return DpPlan.{workspace=workspace,resident=total-saved,streamed=saved,slot=slot,streamed_tensors=n};
+    return DpPlan.{workspace=workspace,resident=total-saved,streamed=saved,slot=slot,streamed_tensors=n,kind=m.kind};
 }
 ```
 

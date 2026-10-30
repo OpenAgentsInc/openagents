@@ -1,4 +1,4 @@
-/* Elephant on a CUDA device: device effects only (see elephant-gpu.h). */
+/* Elephant and Mammoth on a CUDA device: device effects only (see elephant-gpu.h). */
 #define _GNU_SOURCE
 #include "elephant-gpu.h"
 #include <stdio.h>
@@ -17,15 +17,15 @@ static double seconds_now(void) { struct timespec t; clock_gettime(CLOCK_MONOTON
 /* The session's view of weight id w: QlWeights and QhWeights are runs of
    {pointer, count} views in the plan's weight order. */
 typedef struct { const void *data; int64_t count; } View;
-static View weight_view(coax_t_QxModel *m, int64_t w) {
-    if (w == EG_WEIGHTS - 2) return (View){m->head.data, m->head.count};
-    if (w == EG_WEIGHTS - 1) return (View){m->final_norm.data, m->final_norm.count};
+static View weight_view(coax_t_QxModel *m, int64_t weights, int64_t w) {
+    if (w == weights - 2) return (View){m->head.data, m->head.count};
+    if (w == weights - 1) return (View){m->final_norm.data, m->final_norm.count};
     coax_t_QeLayer *l = &m->layers.data[w / 16];
     const View *fields = l->kind == 0 ? (const View *)&l->linear : (const View *)&l->full;
     return fields[w % 16];
 }
 
-const void *eg_weight(EgEngine *e, int64_t w) { return weight_view(&e->model, w).data; }
+const void *eg_weight(EgEngine *e, int64_t w) { return weight_view(&e->model, e->weights, w).data; }
 
 int eg_compile(EgEngine *e, const EgSources *src) {
     memset(e, 0, sizeof *e);
@@ -48,35 +48,53 @@ int eg_compile(EgEngine *e, const EgSources *src) {
 }
 
 int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budget) {
+    return eg_place_kind(e, 0, model, max_tokens, budget);
+}
+
+int eg_place_kind(EgEngine *e, int64_t kind, coax_t_QxModel model, int64_t max_tokens, int64_t budget) {
+    coax_t_DpModel d = dp_model(kind);
+    if (kind < 0 || kind > 1 || d.width != model.shape.linear.width || d.hidden != model.shape.linear.hidden ||
+        d.layers != model.shape.state.linear_layers + model.shape.state.full_layers || d.value_heads != model.shape.linear.delta.value_heads ||
+        d.heads != model.shape.full.attention.heads || d.vocab != model.vocab) {
+        eg_note("the session's model is not plan kind %lld's shape", (long long)kind);
+        return EG_REFUSED;
+    }
     e->model = model;
+    e->shape = d;
+    e->kind = kind;
+    e->weights = dp_weights(d);
+    e->streamable = dp_streamable(d);
+    e->width = d.width;
+    e->fork_buffer = dp_fork_buffer(d);
+    if (e->weights > EG_WEIGHTS || e->streamable > EG_STREAMABLE) return EG_FAILED;
     e->max_tokens = max_tokens;
     size_t free_bytes, total_bytes;
     CHECK(pc_memory(&free_bytes, &total_bytes));
     e->free_before = (int64_t)free_bytes;
-    e->budget = (int64_t)free_bytes - ((int64_t)256 << 20) - dp_fork_bytes(); /* left for the driver and for other processes, whose own plans are already placed, and the fork buffer */
+    e->budget = (int64_t)free_bytes - ((int64_t)256 << 20) - dp_fork_bytes_of(d); /* left for the driver and for other processes, whose own plans are already placed, and the fork buffer */
     if (budget > 0 && budget < e->budget) e->budget = budget;
-    e->op_cap = 4096;
+    e->op_cap = 8192;
     e->ops = calloc((size_t)e->op_cap, sizeof *e->ops);
     if (!e->ops) return EG_FAILED;
     /* Place for the largest decision; later decisions reuse the placement. */
-    e->placed = dp_plan(max_tokens, 0, e->budget, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    e->placed = dp_plan_model(kind, 0, max_tokens, 0, e->budget, (coax_v_bool){e->stream, e->streamable}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->placed.status) { eg_note("the plan refused %lld tokens in %lld bytes: status %u", (long long)max_tokens, (long long)e->budget, e->placed.status); return EG_REFUSED; }
     double t0 = seconds_now();
     CHECK(pc_alloc((size_t)e->placed.workspace, &e->workspace));
     if (e->placed.slot) { CHECK(pc_alloc((size_t)e->placed.slot, &e->slots[0])); CHECK(pc_alloc((size_t)e->placed.slot, &e->slots[1])); }
     CHECK(pc_alloc((size_t)e->placed.resident, &e->arena));
-    CHECK(pc_alloc((size_t)dp_fork_bytes(), &e->fork));
+    CHECK(pc_alloc((size_t)dp_fork_bytes_of(d), &e->fork));
     CHECK(pc_stream(&e->compute));
     CHECK(pc_stream(&e->copy));
     int64_t at = 0;
-    for (int64_t w = 0; w < EG_WEIGHTS; w++) {
-        e->bytes[w] = dp_weight_bytes(w);
+    for (int64_t w = 0; w < e->weights; w++) {
+        e->bytes[w] = dp_bytes(d, w);
         if (!e->bytes[w]) continue; /* no such tensor in this kind of layer */
-        View v = weight_view(&e->model, w);
+        View v = weight_view(&e->model, e->weights, w);
         /* The head is bytes; the final norm and the other non-bf16 weights are f32. */
-        int64_t element = w == EG_WEIGHTS - 2 ? 1 : w == EG_WEIGHTS - 1 ? 4 : dp_weight_bf16(w) ? 1 : 4;
+        int64_t element = w == e->weights - 2 ? 1 : w == e->weights - 1 ? 4 : dp_bf16(d, w) ? 1 : 4;
         if (element * v.count != e->bytes[w]) { eg_note("weight %lld: the session has %lld bytes, the plan expects %lld", (long long)w, (long long)(element * v.count), (long long)e->bytes[w]); return EG_REFUSED; }
-        if (dp_streamed(w, (coax_v_bool){e->stream, EG_STREAMABLE})) {
+        if (dp_streamed_of(d, w, (coax_v_bool){e->stream, e->streamable})) {
             CHECK(pc_host_alloc((size_t)e->bytes[w], &e->pinned[w]));
             memcpy(e->pinned[w], v.data, (size_t)e->bytes[w]);
             e->pinned_bytes += e->bytes[w];
@@ -90,7 +108,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     e->resident_bytes = at;
     e->upload_seconds = seconds_now() - t0;
     for (int i = 0; i < 2; i++) { CHECK(pc_event(&e->filled[i])); CHECK(pc_event(&e->released[i])); }
-    CHECK(pc_host_alloc((size_t)max_tokens * EG_WIDTH * 4, (void **)&e->x));
+    CHECK(pc_host_alloc((size_t)max_tokens * e->width * 4, (void **)&e->x));
     CHECK(pc_host_alloc((size_t)max_tokens * 64 * 4, (void **)&e->rope));
     CHECK(pc_host_alloc((size_t)EG_VOCAB * 4, (void **)&e->logits));
     e->rope_work = malloc((size_t)max_tokens * 64 * 4);
@@ -100,14 +118,14 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
 /* Embedding rows of tokens[0..count) and rotary coefficients for positions
    start..start+count into the pinned inputs, both computed by Coax. */
 static int stage(EgEngine *e, const int64_t *tokens, int64_t count, int64_t start) {
-    if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, EG_WIDTH, e->model.embedding, (coax_v_f32){e->x, count * EG_WIDTH})) return EG_REFUSED;
+    if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, e->width, e->model.embedding, (coax_v_f32){e->x, count * e->width})) return EG_REFUSED;
     coax_t_QwResult r = qw_rope(start, count, (coax_v_f32){e->rope, count * 64}, (coax_v_f32){e->rope_work, count * 64}, 0);
     return r.status ? EG_REFUSED : EG_OK;
 }
 
 int eg_prepare(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix) {
     if (count < 1 || count > e->max_tokens) return EG_REFUSED;
-    e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, e->streamable}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->plan.status) return EG_REFUSED;
     if (stage(e, tokens, count, 0)) return EG_REFUSED;
     e->tokens = count;
@@ -133,7 +151,7 @@ int eg_issue(EgEngine *e, int64_t i, PcStream compute) {
         coax_t_DpArg *a = &op->args.e[k];
         args[k] = (PcArg){(PcArgKind)a->kind, a->value, a->real, 0, a->count};
         if (a->kind == 4) {
-            PcBuffer base = a->buffer == 0 ? e->workspace : a->buffer <= 2 ? e->slots[a->buffer - 1] : a->buffer == EG_FORK_BUFFER ? e->fork : e->address[a->buffer - 3];
+            PcBuffer base = a->buffer == 0 ? e->workspace : a->buffer <= 2 ? e->slots[a->buffer - 1] : a->buffer == e->fork_buffer ? e->fork : e->address[a->buffer - 3];
             if (!base) return EG_FAILED;
             args[k].data = base + (PcBuffer)a->offset;
         }
@@ -150,7 +168,7 @@ int eg_layer_start(const EgEngine *e, int64_t i) {
 /* Upload the staged inputs of `count` tokens and issue the current plan. */
 static int run(EgEngine *e, int64_t count, int (*stop)(void *), void *context) {
     int r;
-    CHECK(pc_upload(e->workspace + (PcBuffer)dp_input_offset(count), e->x, (size_t)count * EG_WIDTH * 4, e->compute));
+    CHECK(pc_upload(e->workspace + (PcBuffer)dp_input_offset(count), e->x, (size_t)count * e->width * 4, e->compute));
     CHECK(pc_upload(e->workspace + (PcBuffer)e->plan.rope, e->rope, (size_t)count * 64 * 4, e->compute));
     for (int64_t i = 0; i < e->plan.ops; i++) {
         if (stop && eg_layer_start(e, i)) {
@@ -179,7 +197,7 @@ int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix,
 
 int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context) {
     if (prefix < 1 || prefix >= count || count > e->max_tokens) return eg_decide(e, tokens, count, prefix, stop, context);
-    coax_v_bool stream = {e->stream, EG_STREAMABLE};
+    coax_v_bool stream = {e->stream, e->streamable};
     coax_v_t_DpOp ops = {e->ops, e->op_cap};
     int r;
     if (e->fork_length != prefix || memcmp(e->fork_tokens, tokens, (size_t)prefix * sizeof *tokens)) {

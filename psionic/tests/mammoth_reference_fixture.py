@@ -33,6 +33,17 @@ elif len(sys.argv) == 3 and sys.argv[1] == '--check-output':
     if any(not math.isfinite(v) or abs(v - e) > TOLERANCE for v, e in zip(values, expected)):
         raise ValueError('original Mammoth decision differs from independent CPU reference')
     print(f'original Mammoth decision agrees with independent CPU reference within {TOLERANCE}')
+elif len(sys.argv) == 3 and sys.argv[1] == '--check-cpu':
+    # Frozen before the first device run (chapter 30b), as chapter 30 froze
+    # Elephant's: the same choice as chapter 11's recorded CPU result and
+    # every statistic within 0.0005 of it.
+    pattern = r'choice=(\w+) p_yes=([0-9.eE+-]+) p_no=([0-9.eE+-]+) slot_mass=([0-9.eE+-]+) confidence=([0-9.eE+-]+)'
+    cpu = re.search(pattern, (models / 'mammoth/psionic-reference.txt').read_text())
+    got = re.search(pattern, Path(sys.argv[2]).read_text())
+    if not cpu or not got or got[1] != cpu[1]: raise ValueError('unexpected decision output')
+    if any(not math.isfinite(float(got[i])) or abs(float(got[i]) - float(cpu[i])) > TOLERANCE for i in range(2, 6)):
+        raise ValueError('original Mammoth decision differs from the recorded CPU result')
+    print(f'original Mammoth decision agrees with the recorded CPU result within {TOLERANCE}')
 else:
-    if sys.argv[1:]: raise SystemExit('usage: mammoth_reference_fixture.py [--header | --check-output LOG]')
+    if sys.argv[1:]: raise SystemExit('usage: mammoth_reference_fixture.py [--header | --check-output LOG | --check-cpu LOG]')
     print('Mammoth sample request and independent reference fixture pass')

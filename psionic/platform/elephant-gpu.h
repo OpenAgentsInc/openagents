@@ -1,5 +1,5 @@
-/* Elephant decisions on a CUDA device, for any host: open once, then decide
-   prepared requests one at a time. The Coax device plan
+/* Elephant and Mammoth decisions on a CUDA device, for any host: open once,
+   then decide prepared requests one at a time. The Coax device plan
    (psionic/lib/device/plan.coax) decides residency, streaming and every
    launch; this module performs the effects. The CPU session (chapter 10)
    authenticates and binds the original files before eg_place. */
@@ -11,11 +11,9 @@
 
 #define EG_KERNELS 21   /* the first 21 of DP_KERNELS; the last two are Metal's */
 #define EG_MAX_TOKENS 512 /* DP_MAX_TOKENS */
-#define EG_FORK_BUFFER 517 /* DP_FORK_BUFFER: views into the fork buffer */
-#define EG_WEIGHTS 514  /* DP_WEIGHTS */
-#define EG_STREAMABLE 277 /* DP_STREAMABLE */
-#define EG_WIDTH 4096   /* DP_WIDTH */
-#define EG_VOCAB 248320 /* DP_VOCAB */
+#define EG_WEIGHTS 1026 /* the most dp_weights of any model (Mammoth's) */
+#define EG_STREAMABLE 527 /* the most dp_streamable of any model (DP_MAX_STREAMABLE) */
+#define EG_VOCAB 248320 /* both models' vocabulary */
 
 enum { EG_OK = 0, EG_SKIP = 1, EG_FAILED = 2, EG_STOPPED = 3, EG_REFUSED = 4 };
 
@@ -24,6 +22,8 @@ typedef struct { const char *text[3]; size_t length[3]; } EgSources;
 
 typedef struct {
     coax_t_QxModel model;
+    coax_t_DpModel shape;       /* dp_model(kind): the plan's shape */
+    int64_t kind, weights, streamable, width, fork_buffer; /* from the plan for this kind */
     int64_t max_tokens, budget, op_cap;
     PcDeviceInfo device;
     PcModule modules[3];
@@ -53,6 +53,9 @@ int eg_compile(EgEngine *e, const EgSources *src);
    max_tokens tokens within budget bytes (0: the free device memory less
    256 MiB; a larger budget is lowered to that). */
 int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budget);
+/* The same for plan kind 0 (Elephant, as eg_place) or 1 (Mammoth); refused
+   when the session's model does not have that kind's shape. */
+int eg_place_kind(EgEngine *e, int64_t kind, coax_t_QxModel model, int64_t max_tokens, int64_t budget);
 /* Why the last call refused or failed. */
 const char *eg_log(void);
 /* The session's bytes for plan weight w. */

@@ -185,10 +185,11 @@ dp_plan_suffix :: (start:int,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)-
     return dp_plan_fork(DpFork.{on=true,start=start},tokens,opened,stream,ops);
 }
 dp_plan_fork :: (fork:DpFork,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
-    if opened.status!=DpStatus.ok || stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
+    m:=dp_model(opened.kind);
+    if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     if tokens<1 || fork.start<0 || fork.start+tokens>DP_MAX_TOKENS {return DpPlan.{status=DpStatus.shape};}
-    if dp_layout_keys(tokens,fork.start+tokens).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
-    n:=0;for i:0..<DP_STREAMABLE {if stream[i] {n+=1;}}
+    if dp_layout_of(m,tokens,fork.start+tokens).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
+    n:=0;for i:0..<stream.count {if stream[i] {n+=1;}}
     if n!=opened.streamed_tensors {return DpPlan.{status=DpStatus.capacity};}
     return dp_schedule_fork(tokens,0,fork,opened,stream,ops);
 }

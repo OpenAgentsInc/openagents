@@ -1,4 +1,4 @@
-// The device schedule for one Elephant decision: workspace layout, which
+// The device schedule for one Elephant or Mammoth decision: workspace layout, which
 // weights stay resident and which stream from pinned host memory, and every
 // copy and kernel launch in order. The host executes the operations as
 // written; it makes no arithmetic, tiling or scheduling decision.
@@ -32,13 +32,37 @@ DpArg :: struct {kind:u8;value:int;real:f64;buffer:int;offset:int;count:int;}
 DpOp :: struct {kind:DpOpKind;kernel:u8;items:int;block:int;lanes:int;count:int;tensor:int;slot:int;args:[12]DpArg;}
 DpStatus :: enum u8 {ok;shape;capacity;memory;}
 // metal: projections use the Apple matrix-unit tiles (tile.coax).
-DpPlan :: struct {status:DpStatus;ops:int;workspace:int;resident:int;streamed:int;slot:int;streamed_tensors:int;metal:bool;rope:int;logits:int;}
+// kind: the model (dp_model) the placement is for.
+DpPlan :: struct {status:DpStatus;ops:int;workspace:int;resident:int;streamed:int;slot:int;streamed_tensors:int;metal:bool;rope:int;logits:int;kind:int;}
 
-// Elephant's decision shape. Weight ids per layer: linear 0 input_norm,
-// 1 post_norm, 2 conv, 3 A_log, 4 dt_bias, 5 delta norm, 6 qkv, 7 z, 8 a, 9 b,
-// 10 out, 11 gate, 12 up, 13 down; full 0 input_norm, 1 post_norm, 2 q_norm,
-// 3 k_norm, 4 q, 5 k, 6 v, 7 out, 8 gate, 9 up, 10 down. Head and final norm
-// follow the 32 layers.
+// book:begin model
+// The decision's shape is data. Elephant (kind 0) and Mammoth (kind 1) share
+// the layer pattern (every fourth layer is full attention), the head sizes
+// (128 in the linear layers, 256 in the full ones), 16 key heads in the
+// linear layers, 4 key/value heads in the full ones, and the vocabulary.
+// They differ in depth, width, feed-forward width and head counts. Any other
+// kind names Elephant here; the plans refuse it.
+// chunks: how many pieces of up to `hidden` rows the head streams in.
+DpModel :: struct {kind:int;layers:int;width:int;hidden:int;vocab:int;key_heads:int;value_heads:int;heads:int;kv_heads:int;chunks:int;}
+dp_model :: (kind:int)->DpModel #export_c {
+    if kind==1 {return DpModel.{kind=1,layers=64,width=5120,hidden=17408,vocab=248320,key_heads=16,value_heads=48,heads=24,kv_heads=4,chunks=15};}
+    return DpModel.{layers=32,width=4096,hidden=12288,vocab=248320,key_heads=16,value_heads=32,heads=16,kv_heads=4,chunks=21};
+}
+// book:end model
+// Rows of a linear layer's [q | k | v] projection, of its value heads and of
+// a full layer's [query | gate] projection; columns of its attention output;
+// rows of one key or value projection.
+dp_channels :: (m:DpModel)->int {return 256*m.key_heads+128*m.value_heads;}
+dp_values :: (m:DpModel)->int {return 128*m.value_heads;}
+dp_queries :: (m:DpModel)->int {return 512*m.heads;}
+dp_attended :: (m:DpModel)->int {return 256*m.heads;}
+dp_kv :: (m:DpModel)->int {return 256*m.kv_heads;}
+
+// Weight ids per layer: linear 0 input_norm, 1 post_norm, 2 conv, 3 A_log,
+// 4 dt_bias, 5 delta norm, 6 qkv, 7 z, 8 a, 9 b, 10 out, 11 gate, 12 up,
+// 13 down; full 0 input_norm, 1 post_norm, 2 q_norm, 3 k_norm, 4 q, 5 k, 6 v,
+// 7 out, 8 gate, 9 up, 10 down. Head and final norm follow the layers.
+// The DP_ constants are Elephant's.
 DP_LAYERS :: 32;
 DP_WIDTH :: 4096;
 DP_HIDDEN :: 12288;
@@ -47,33 +71,40 @@ DP_PER_LAYER :: 16;
 DP_HEAD :: 512;
 DP_FINAL :: 513;
 DP_WEIGHTS :: 514;
+dp_head :: (m:DpModel)->int {return m.layers*DP_PER_LAYER;}
+dp_final :: (m:DpModel)->int {return dp_head(m)+1;}
+dp_weights :: (m:DpModel)->int #export_c {return dp_head(m)+2;}
 dp_full :: (layer:int)->bool #export_c {return layer%4==3;}
 dp_weight :: (layer:int,j:int)->int #export_c {return layer*DP_PER_LAYER+j;}
 // Elements of weight id w (f32 vectors count values; BF16 matrices count
 // values too); 0 for an unused id inside a layer and -1 outside every layer.
-dp_weight_elements :: (w:int)->int #export_c {
-    if w<0 || w>DP_FINAL {return -1;}
-    if w>=DP_HEAD {if w==DP_HEAD {return DP_VOCAB*DP_WIDTH;}return DP_WIDTH;} // the head, then the final norm
-    layer:=w/DP_PER_LAYER;j:=w%DP_PER_LAYER;d:=DP_WIDTH;f:=DP_HIDDEN;
+dp_weight_elements :: (w:int)->int #export_c {return dp_elements(dp_model(0),w);}
+dp_elements :: (m:DpModel,w:int)->int #export_c {
+    if w<0 || w>dp_final(m) {return -1;}
+    if w>=dp_head(m) {if w==dp_head(m) {return m.vocab*m.width;}return m.width;} // the head, then the final norm
+    layer:=w/DP_PER_LAYER;j:=w%DP_PER_LAYER;d:=m.width;f:=m.hidden;
     if dp_full(layer) {
-        sizes:=[11] int.[d,d,256,256,8192*d,1024*d,1024*d,d*4096,f*d,f*d,d*f];
+        sizes:=[11] int.[d,d,256,256,dp_queries(m)*d,dp_kv(m)*d,dp_kv(m)*d,d*dp_attended(m),f*d,f*d,d*f];
         if j>=11 {return 0;}
         return sizes[j];
     }
-    sizes:=[14] int.[d,d,4*8192,32,32,128,8192*d,4096*d,32*d,32*d,d*4096,f*d,f*d,d*f];
+    c:=dp_channels(m);h:=m.value_heads;
+    sizes:=[14] int.[d,d,4*c,h,h,128,c*d,dp_values(m)*d,h*d,h*d,d*dp_values(m),f*d,f*d,d*f];
     if j>=14 {return 0;}
     return sizes[j];
 }
 // BF16 matrices stay in their original bytes; the small vectors are the
 // session's decoded f32 values.
-dp_weight_bf16 :: (w:int)->bool #export_c {
-    if w>=DP_HEAD {return w==DP_HEAD;}
+dp_weight_bf16 :: (w:int)->bool #export_c {return dp_bf16(dp_model(0),w);}
+dp_bf16 :: (m:DpModel,w:int)->bool #export_c {
+    if w>=dp_head(m) {return w==dp_head(m);}
     j:=w%DP_PER_LAYER; // negative for a negative id: never a matrix
     if dp_full(w/DP_PER_LAYER) {return j>=4 && j<=10;}
     return j>=6 && j<=13;
 }
-dp_weight_bytes :: (w:int)->int #export_c {
-    n:=dp_weight_elements(w);if dp_weight_bf16(w) {return 2*n;}return 4*n;
+dp_weight_bytes :: (w:int)->int #export_c {return dp_bytes(dp_model(0),w);}
+dp_bytes :: (m:DpModel,w:int)->int #export_c {
+    n:=dp_elements(m,w);if dp_bf16(m,w) {return 2*n;}return 4*n;
 }
 
 // Workspace regions, in f32 elements unless noted; offsets are bytes, each
@@ -81,112 +112,135 @@ dp_weight_bytes :: (w:int)->int #export_c {
 DpLayout :: struct {x0:int;x1:int;norm:int;residual:int;qkv:int;z:int;a:int;b:int;k:int;v:int;conv:int;qn:int;kn:int;beta:int;decay:int;
     draft:int;mix:int;aq:int;ak:int;scores:int;stats:int;probs:int;squares:int;partial:int;partial_rows:int;hi:int;lo:int;out:int;gate:int;up:int;product:int;down:int;rope:int;final:int;logits:int;lanes:int;total:int;}
 dp_align :: (n:int)->int {return (n+255)/256*256;}
-dp_layout :: (tokens:int)->DpLayout {return dp_layout_keys(tokens,tokens);}
+// The larger of a and b.
+dp_wider :: (a:int,b:int)->int {return (a+b+cast(int)abs(f64(a-b)))/2;}
+dp_layout :: (tokens:int)->DpLayout {return dp_layout_of(dp_model(0),tokens,tokens);}
 // A forked suffix's tokens attend over keys (the prefix's and its own).
-dp_layout_keys :: (tokens:int,keys:int)->DpLayout {
+dp_layout_keys :: (tokens:int,keys:int)->DpLayout {return dp_layout_of(dp_model(0),tokens,keys);}
+dp_layout_of :: (m:DpModel,tokens:int,keys:int)->DpLayout {
     // The first 256 bytes stay unused, so offset 0 never names a region.
-    p:DpLayout;at:=256;t:=tokens;d:=DP_WIDTH;
+    p:DpLayout;at:=256;t:=tokens;d:=m.width;f:=m.hidden;c:=dp_channels(m);v:=dp_values(m);h:=m.value_heads;n:=m.heads;
+    // The [q | k | v] channels and a full layer's [query | gate] share one region.
+    rows:=dp_wider(c,dp_queries(m));mix:=dp_wider(v,dp_attended(m));
     p.x0=at;at+=dp_align(4*t*d);p.x1=at;at+=dp_align(4*t*d);p.norm=at;at+=dp_align(4*t*d);p.residual=at;at+=dp_align(4*t*d);
-    p.qkv=at;at+=dp_align(4*t*8192);p.z=at;at+=dp_align(4*t*4096);p.a=at;at+=dp_align(4*t*32);p.b=at;at+=dp_align(4*t*32);
-    p.k=at;at+=dp_align(4*t*1024);p.v=at;at+=dp_align(4*t*1024);p.conv=at;at+=dp_align(4*t*8192);
-    p.qn=at;at+=dp_align(4*t*2048);p.kn=at;at+=dp_align(4*t*2048);p.beta=at;at+=dp_align(4*t*32);p.decay=at;at+=dp_align(4*t*32);
-    p.draft=at;at+=dp_align(4*t*4096);p.mix=at;at+=dp_align(4*t*4096);p.aq=at;at+=dp_align(4*t*4096);p.ak=at;at+=dp_align(4*t*1024);
-    p.scores=at;at+=dp_align(4*t*16*keys);p.stats=at;at+=dp_align(8*t*16*3);p.probs=at;at+=dp_align(8*t*16*keys);p.squares=at;at+=dp_align(8*t*16);p.partial=at;p.partial_rows=DP_PARTIAL_ROWS;at+=dp_align(4*p.partial_rows*t);
-    pad:=dp_padded(t);p.hi=at;at+=dp_align(4*pad*DP_HIDDEN/2);p.lo=at;at+=dp_align(4*pad*DP_HIDDEN/2);p.out=at;at+=dp_align(4*t*d);
-    p.gate=at;at+=dp_align(4*t*DP_HIDDEN);p.up=at;at+=dp_align(4*t*DP_HIDDEN);p.product=at;at+=dp_align(4*t*DP_HIDDEN);p.down=at;at+=dp_align(4*t*d);
-    p.rope=at;at+=dp_align(4*t*64);p.final=at;at+=dp_align(4*d);p.logits=at;at+=dp_align(4*DP_VOCAB);p.lanes=at;at+=dp_align(4*16*DP_VOCAB);
+    p.qkv=at;at+=dp_align(4*t*rows);p.z=at;at+=dp_align(4*t*v);p.a=at;at+=dp_align(4*t*h);p.b=at;at+=dp_align(4*t*h);
+    p.k=at;at+=dp_align(4*t*dp_kv(m));p.v=at;at+=dp_align(4*t*dp_kv(m));p.conv=at;at+=dp_align(4*t*c);
+    p.qn=at;at+=dp_align(4*t*128*m.key_heads);p.kn=at;at+=dp_align(4*t*128*m.key_heads);p.beta=at;at+=dp_align(4*t*h);p.decay=at;at+=dp_align(4*t*h);
+    p.draft=at;at+=dp_align(4*t*v);p.mix=at;at+=dp_align(4*t*mix);p.aq=at;at+=dp_align(4*t*dp_attended(m));p.ak=at;at+=dp_align(4*t*dp_kv(m));
+    p.scores=at;at+=dp_align(4*t*n*keys);p.stats=at;at+=dp_align(8*t*n*3);p.probs=at;at+=dp_align(8*t*n*keys);p.squares=at;at+=dp_align(8*t*16);p.partial=at;p.partial_rows=8*f;at+=dp_align(4*p.partial_rows*t);
+    pad:=dp_padded(t);p.hi=at;at+=dp_align(4*pad*f/2);p.lo=at;at+=dp_align(4*pad*f/2);p.out=at;at+=dp_align(4*t*d);
+    p.gate=at;at+=dp_align(4*t*f);p.up=at;at+=dp_align(4*t*f);p.product=at;at+=dp_align(4*t*f);p.down=at;at+=dp_align(4*t*d);
+    p.rope=at;at+=dp_align(4*t*64);p.final=at;at+=dp_align(4*d);p.logits=at;at+=dp_align(4*m.vocab);p.lanes=at;at+=dp_align(4*16*m.vocab);
     p.total=at;return p;
 }
 
 // book:begin residency
-// Which weights stream from pinned host memory, through two slots of 96 MiB
-// that hold them in turn. The feed-forward matrices go first: all down
-// projections, then up, then gate, in bit-reversed layer order (0, 16, 8,
-// 24, ...) so any number of them is spread across the model. If that is not
-// enough the head streams, in 21 chunks of up to 12,288 rows, and then the
-// mixer matrices (the projections before each layer's attention or scan),
-// a whole layer at a time in the same spread order. Only the small vectors
-// and the workspace must fit: everything else can stream.
+// Which weights stream from pinned host memory, through two slots that hold
+// them in turn, each the size of one feed-forward matrix (96 MiB for
+// Elephant, 170 MiB for Mammoth). The feed-forward matrices go first: all
+// down projections, then up, then gate, in bit-reversed layer order (0, 16,
+// 8, 24, ... for 32 layers) so any number of them is spread across the
+// model. If that is not enough the head streams, in chunks of up to one
+// feed-forward width of rows, and then the mixer matrices (the projections
+// before each layer's attention or scan), a whole layer at a time in the
+// same spread order. Only the small vectors and the workspace must fit:
+// everything else can stream.
 //
-// Streaming indices: 3*layer+k for feed-forward matrix k (0 gate, 1 up,
-// 2 down); 96+5*layer+k for mixer matrix k (linear: qkv, z, a, b, out; full:
-// q, k, v, out, and k = 4 is no matrix); 256+c for head chunk c.
+// Streaming indices, for L layers: 3*layer+k for feed-forward matrix k
+// (0 gate, 1 up, 2 down); 3L+5*layer+k for mixer matrix k (linear: qkv, z,
+// a, b, out; full: q, k, v, out, and k = 4 is no matrix); 8L+c for head
+// chunk c.
+dp_mixer_base :: (m:DpModel)->int {return 3*m.layers;}
+dp_head_base :: (m:DpModel)->int {return 8*m.layers;}
+dp_head_chunks :: (m:DpModel)->int #export_c {return m.chunks;}
+dp_streamable :: (m:DpModel)->int #export_c {return dp_head_base(m)+dp_head_chunks(m);}
+dp_residency_of :: (m:DpModel,budget:int,workspace:int,stream:[]bool)->DpPlan {
+    if stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
+    total:=0;
+    for w:0..<dp_weights(m) {total+=dp_align(dp_bytes(m,w));}
+    slot:=dp_align(2*m.width*m.hidden);
+    for i:0..<stream.count {stream[i]=false;}
+    if workspace+total<=budget {return DpPlan.{workspace=workspace,resident=total,kind=m.kind};}
+    over:=workspace+total+2*slot-budget;saved:=0;n:=0;l:=m.layers;
+    kinds:=[3]int.[2,1,0];
+    for i:0..<3*l {if saved<over {stream[3*dp_spread_of(l,i%l)+kinds[i/l]]=true;saved+=slot;n+=1;}}
+    if saved<over {for c:0..<dp_head_chunks(m) {stream[dp_head_base(m)+c]=true;}saved+=dp_bytes(m,dp_head(m));n+=dp_head_chunks(m);}
+    for i:0..<l {
+        layer:=dp_spread_of(l,i);
+        for k:0..<dp_mixers(layer) {
+            x:=dp_mixer_base(m)+5*layer+k;
+            if saved<over {stream[x]=true;saved+=dp_bytes(m,dp_stream_weight_of(m,x));n+=1;}
+        }
+    }
+    if saved<over {return DpPlan.{status=DpStatus.memory};}
+    return DpPlan.{workspace=workspace,resident=total-saved,streamed=saved,slot=slot,streamed_tensors=n,kind=m.kind};
+}
+// book:end residency
+// Elephant's streaming constants and residency.
 DP_FFN_STREAMS :: 96;
 DP_MIXER_BASE :: 96;
 DP_HEAD_BASE :: 256;
 DP_HEAD_ROWS :: 12288;
 DP_HEAD_CHUNKS :: 21;
 DP_STREAMABLE :: 277;
-dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {
-    if stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
-    total:=0;
-    for w:0..<DP_WEIGHTS {n:=dp_weight_bytes(w);if n<0 {return DpPlan.{status=DpStatus.capacity};}total+=dp_align(n);}
-    slot:=dp_align(2*DP_WIDTH*DP_HIDDEN);
-    for i:0..<DP_STREAMABLE {stream[i]=false;}
-    if workspace+total<=budget {return DpPlan.{workspace=workspace,resident=total};}
-    over:=workspace+total+2*slot-budget;saved:=0;n:=0;
-    kinds:=[3]int.[2,1,0];
-    for i:0..<DP_FFN_STREAMS {if saved<over {stream[3*dp_spread(i%DP_LAYERS)+kinds[i/DP_LAYERS]]=true;saved+=slot;n+=1;}}
-    if saved<over {for c:0..<DP_HEAD_CHUNKS {stream[DP_HEAD_BASE+c]=true;}saved+=dp_weight_bytes(DP_HEAD);n+=DP_HEAD_CHUNKS;}
-    for i:0..<DP_LAYERS {
-        layer:=dp_spread(i);
-        for k:0..<dp_mixers(layer) {
-            x:=DP_MIXER_BASE+5*layer+k;
-            if saved<over {stream[x]=true;saved+=dp_weight_bytes(dp_stream_weight(x));n+=1;}
-        }
-    }
-    if saved<over {return DpPlan.{status=DpStatus.memory};}
-    return DpPlan.{workspace=workspace,resident=total-saved,streamed=saved,slot=slot,streamed_tensors=n};
-}
-// book:end residency
-// Position i of the bit-reversed order of the 32 layers.
-dp_spread :: (i:int)->int {
-    return ((i&1)<<4) | (((i>>1)&1)<<3) | (((i>>2)&1)<<2) | (((i>>3)&1)<<1) | ((i>>4)&1);
+// The most streaming indices of any model (Mammoth's).
+DP_MAX_STREAMABLE :: 527;
+dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {return dp_residency_of(dp_model(0),budget,workspace,stream);}
+// Position i of the bit-reversed order of `layers` layers, a power of two.
+dp_spread :: (i:int)->int {return dp_spread_of(32,i);}
+dp_spread_of :: (layers:int,i:int)->int {
+    r:=0;x:=i;n:=1;
+    while n<layers {r=(r<<1)|(x&1);x=x>>1;n=n*2;}
+    return r;
 }
 // Mixer matrices in a layer: qkv, z, a, b and out in a linear layer; q, k,
 // v and out in a full-attention layer.
 dp_mixers :: (layer:int)->int {if dp_full(layer) {return 4;}return 5;}
 // The streaming index of weight w (the first chunk for the head), or -1 for
 // a weight that never streams. A negative w has a negative j.
-dp_stream_index :: (w:int)->int {
-    if w==DP_HEAD {return DP_HEAD_BASE;}
+dp_stream_index :: (w:int)->int {return dp_stream_index_of(dp_model(0),w);}
+dp_stream_index_of :: (m:DpModel,w:int)->int {
+    if w==dp_head(m) {return dp_head_base(m);}
     layer:=w/DP_PER_LAYER;j:=w%DP_PER_LAYER;
-    if layer>=DP_LAYERS {return -1;}
+    if layer>=m.layers {return -1;}
     mixer:=6;if dp_full(layer) {mixer=4;}
-    if j>=mixer && j<mixer+dp_mixers(layer) {return DP_MIXER_BASE+5*layer+j-mixer;}
+    if j>=mixer && j<mixer+dp_mixers(layer) {return dp_mixer_base(m)+5*layer+j-mixer;}
     ffn:=mixer+dp_mixers(layer);
     if j>=ffn && j<ffn+3 {return 3*layer+j-ffn;}
     return -1;
 }
 // The weight of streaming index i, or -1 for an index that names no matrix.
-dp_stream_weight :: (i:int)->int {
-    if i<0 || i>=DP_STREAMABLE {return -1;}
-    if i>=DP_HEAD_BASE {return DP_HEAD;}
-    if i<DP_FFN_STREAMS {
+dp_stream_weight :: (i:int)->int {return dp_stream_weight_of(dp_model(0),i);}
+dp_stream_weight_of :: (m:DpModel,i:int)->int {
+    if i<0 || i>=dp_streamable(m) {return -1;}
+    if i>=dp_head_base(m) {return dp_head(m);}
+    if i<dp_mixer_base(m) {
         layer:=i/3;j:=11+i%3;
         if dp_full(layer) {j=8+i%3;}
         return dp_weight(layer,j);
     }
-    layer:=(i-DP_MIXER_BASE)/5;k:=(i-DP_MIXER_BASE)%5;
+    layer:=(i-dp_mixer_base(m))/5;k:=(i-dp_mixer_base(m))%5;
     if !dp_full(layer) {return dp_weight(layer,6+k);}
     if k==4 {return -1;}
     return dp_weight(layer,4+k);
 }
-dp_streamed :: (w:int,stream:[]bool)->bool #export_c {
-    i:=dp_stream_index(w);
+dp_streamed :: (w:int,stream:[]bool)->bool #export_c {return dp_streamed_of(dp_model(0),w,stream);}
+dp_streamed_of :: (m:DpModel,w:int,stream:[]bool)->bool #export_c {
+    i:=dp_stream_index_of(m,w);
     return i>=0 && i<stream.count && stream[i];
 }
 // Rows in head chunk c.
-dp_head_rows :: (c:int)->int {
-    if c<DP_HEAD_CHUNKS-1 {return DP_HEAD_ROWS;}
-    return DP_VOCAB-c*DP_HEAD_ROWS;
+dp_head_rows :: (c:int)->int {return dp_chunk_rows(dp_model(0),c);}
+dp_chunk_rows :: (m:DpModel,c:int)->int {
+    if c<dp_head_chunks(m)-1 {return m.hidden;}
+    return m.vocab-c*m.hidden;
 }
 // book:begin copy
 // The copy that fills a slot with streaming index x. Its one argument names
 // the host bytes: weight 3+w, a byte offset into it and a byte count.
-dp_copy :: (x:int,slot:int)->DpOp {
-    w:=dp_stream_weight(x);offset:=0;bytes:=dp_weight_bytes(w);
-    if x>=DP_HEAD_BASE {c:=x-DP_HEAD_BASE;offset=2*c*DP_HEAD_ROWS*DP_WIDTH;bytes=2*dp_head_rows(c)*DP_WIDTH;}
+dp_copy :: (m:DpModel,x:int,slot:int)->DpOp {
+    w:=dp_stream_weight_of(m,x);offset:=0;bytes:=dp_bytes(m,w);
+    if x>=dp_head_base(m) {c:=x-dp_head_base(m);offset=2*c*m.hidden*m.width;bytes=2*dp_chunk_rows(m,c)*m.width;}
     op:=DpOp.{kind=DpOpKind.copy,tensor=w,slot=slot,count=1};
     op.args[0]=DpArg.{kind=4,buffer=3+w,offset=offset,count=bytes};
     return op;
@@ -208,21 +262,33 @@ dp_matrix :: (w:int)->DpArg {return DpArg.{kind=4,buffer=3+w};}
 // what its suffixes need in the fork buffer: each linear layer's last three
 // convolution inputs and delta-rule state, and each full layer's rotated keys
 // and values. A suffix starts at token `start` and reads them; it changes
-// nothing a sibling suffix will read. save marks the prefix pass.
+// nothing a sibling suffix will read. save marks the prefix pass. The fork
+// buffer is view 3+weights; the byte counts are per linear layer (history,
+// state) and per full layer (keys, then as many bytes of values).
 DpFork :: struct {on:bool;start:int;save:bool;}
+dp_fork_buffer :: (m:DpModel)->int #export_c {return 3+dp_weights(m);}
+dp_fork_history_bytes :: (m:DpModel)->int {return 4*3*dp_channels(m);}
+dp_fork_state_bytes :: (m:DpModel)->int {return 4*m.value_heads*128*128;}
+dp_fork_cache_bytes :: (m:DpModel)->int {return 4*DP_MAX_TOKENS*dp_kv(m);}
+dp_fork_linear :: (m:DpModel)->int {return m.layers-m.layers/4;}
+dp_fork_history_of :: (m:DpModel,layer:int)->int {return (layer-layer/4)*dp_fork_history_bytes(m);}
+dp_fork_state_of :: (m:DpModel,layer:int)->int {return dp_fork_linear(m)*dp_fork_history_bytes(m)+(layer-layer/4)*dp_fork_state_bytes(m);}
+dp_fork_keys_of :: (m:DpModel,layer:int)->int {return dp_fork_linear(m)*(dp_fork_history_bytes(m)+dp_fork_state_bytes(m))+layer/4*2*dp_fork_cache_bytes(m);}
+dp_fork_bytes_of :: (m:DpModel)->int #export_c {return dp_fork_keys_of(m,m.layers);}
+dp_fork_arg :: (m:DpModel,offset:int,count:int)->DpArg {return DpArg.{kind=4,buffer=dp_fork_buffer(m),offset=offset,count=count};}
+// Bit 0: start from the kept values; bit 1: keep the final ones.
+dp_fork_mode :: (f:DpFork)->int {m:=0;if f.start>0 {m+=1;}if f.save {m+=2;}return m;}
+// book:end forkstate
+// Elephant's fork buffer.
 DP_FORK_BUFFER :: 3+DP_WEIGHTS;
 DP_FORK_HISTORY :: 4*3*8192;          // bytes per linear layer
 DP_FORK_STATE :: 4*32*128*128;        // bytes per linear layer
 DP_FORK_CACHE :: 4*DP_MAX_TOKENS*1024; // bytes of keys, then of values, per full layer
-dp_fork_history :: (layer:int)->int {return (layer-layer/4)*DP_FORK_HISTORY;}
-dp_fork_state :: (layer:int)->int {return 24*DP_FORK_HISTORY+(layer-layer/4)*DP_FORK_STATE;}
-dp_fork_keys :: (layer:int)->int {return 24*(DP_FORK_HISTORY+DP_FORK_STATE)+layer/4*2*DP_FORK_CACHE;}
-dp_fork_bytes :: ()->int #export_c {return 24*(DP_FORK_HISTORY+DP_FORK_STATE)+8*2*DP_FORK_CACHE;}
-dp_fork_arg :: (offset:int,count:int)->DpArg {return DpArg.{kind=4,buffer=DP_FORK_BUFFER,offset=offset,count=count};}
-// Bit 0: start from the kept values; bit 1: keep the final ones.
-dp_fork_mode :: (f:DpFork)->int {m:=0;if f.start>0 {m+=1;}if f.save {m+=2;}return m;}
-// book:end forkstate
-DpBuilder :: struct {ops:[]DpOp;n:int;ok:bool;stream:[]bool;order:[]int;count:int;at:int;metal:bool;fork:DpFork;}
+dp_fork_history :: (layer:int)->int {return dp_fork_history_of(dp_model(0),layer);}
+dp_fork_state :: (layer:int)->int {return dp_fork_state_of(dp_model(0),layer);}
+dp_fork_keys :: (layer:int)->int {return dp_fork_keys_of(dp_model(0),layer);}
+dp_fork_bytes :: ()->int #export_c {return dp_fork_bytes_of(dp_model(0));}
+DpBuilder :: struct {ops:[]DpOp;n:int;ok:bool;stream:[]bool;order:[]int;count:int;at:int;metal:bool;fork:DpFork;m:DpModel;}
 dp_push :: (b:DpBuilder,op:DpOp)->DpBuilder {
     r:=b;
     if b.n>=b.ops.count {r.ok=false;return r;}
@@ -236,7 +302,7 @@ dp_launch :: (kernel:DpKernel,items:int,args:[12]DpArg,count:int)->DpOp {
 // Column slices for a prefill projection: 16, halved until the groups of four
 // columns divide evenly and the partial sums fit their workspace region. One
 // token uses the matvec kernel instead.
-DP_PARTIAL_ROWS :: 8*12288; // partial region: this many f32 per token
+DP_PARTIAL_ROWS :: 8*12288; // Elephant's partial region: this many f32 per token (8 x the feed-forward width)
 dp_slices :: (rows:int,cols:int,capacity:int)->int #export_c {
     s:=16;
     while s>1 && ((cols/4)%s!=0 || s*rows>capacity) {s/=2;}
@@ -298,7 +364,7 @@ dp_take :: (b:DpBuilder)->DpBuilder {return dp_push(b,DpOp.{kind=DpOpKind.wait,s
 dp_give :: (b:DpBuilder)->DpBuilder {
     slot:=b.at%2;
     r:=dp_push(b,DpOp.{kind=DpOpKind.release,slot=slot});
-    if r.at+2<r.count {r=dp_push(r,dp_copy(r.order[r.at+2],slot));}
+    if r.at+2<r.count {r=dp_push(r,dp_copy(r.m,r.order[r.at+2],slot));}
     r.at+=1;return r;
 }
 // A matrix projection whose weight may stream.
@@ -306,7 +372,7 @@ dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,
     return dp_project_weight_to(b,p,w,rows,cols,tokens,input,dp_ws(output,tokens*rows));
 }
 dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,out:DpArg)->DpBuilder {
-    if !dp_streamed(w,b.stream) {return dp_project_to(b,p,dp_matrix(w),rows,cols,tokens,input,out);}
+    if !dp_streamed_of(b.m,w,b.stream) {return dp_project_to(b,p,dp_matrix(w),rows,cols,tokens,input,out);}
     r:=dp_take(b);
     r=dp_project_to(r,p,DpArg.{kind=4,buffer=1+b.at%2},rows,cols,tokens,input,out);
     return dp_give(r);
@@ -314,19 +380,19 @@ dp_project_weight_to :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:i
 // book:end take
 // The offset norm of `rows` rows of x: partial squares, then the scaled rows.
 dp_norm_rows :: (b:DpBuilder,p:DpLayout,rows:int,input:int,scale:DpArg,output:int)->DpBuilder {
-    d:=DP_WIDTH;
+    d:=b.m.width;
     a:[12]DpArg;a[0]=dp_int(d);a[1]=dp_ws(input,rows*d);a[2]=DpArg.{kind=4,buffer=0,offset=p.squares,count=16*rows};
     r:=dp_push(b,dp_launch(DpKernel.squares,16*rows,a,3));
     return dp_scale(r,p,rows,input,scale,output);
 }
 dp_scale :: (b:DpBuilder,p:DpLayout,rows:int,input:int,scale:DpArg,output:int)->DpBuilder {
-    d:=DP_WIDTH;
+    d:=b.m.width;
     c:[12]DpArg;c[0]=dp_int(d);c[1]=dp_f32(0.000001);c[2]=dp_ws(input,rows*d);c[3]=scale;c[4]=DpArg.{kind=4,buffer=0,offset=p.squares,count=16*rows};c[5]=dp_ws(output,rows*d);
     return dp_push(b,dp_launch(DpKernel.scale,rows*d,c,6));
 }
 // Residual, post-attention norm and the SwiGLU feed-forward; writes output.
 dp_finish :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)->DpBuilder {
-    t:=tokens;d:=DP_WIDTH;f:=DP_HIDDEN;full:=dp_full(layer);
+    t:=tokens;d:=b.m.width;f:=b.m.hidden;full:=dp_full(layer);
     post:=dp_weight(layer,1);gate:=dp_weight(layer,11);up:=dp_weight(layer,12);
     if full {gate=dp_weight(layer,8);up=dp_weight(layer,9);}
     a:[12]DpArg;a[0]=dp_int(d);a[1]=dp_ws(input,t*d);a[2]=dp_ws(p.out,t*d);a[3]=dp_ws(p.residual,t*d);a[4]=DpArg.{kind=4,buffer=0,offset=p.squares,count=16*t};
@@ -341,58 +407,58 @@ dp_finish :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)-
     return dp_push(r,dp_launch(DpKernel.add,t*d,e,3));
 }
 dp_linear :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)->DpBuilder {
-    t:=tokens;d:=DP_WIDTH;w:=layer*DP_PER_LAYER;
+    m:=b.m;t:=tokens;d:=m.width;w:=layer*DP_PER_LAYER;c:=dp_channels(m);v:=dp_values(m);h:=m.value_heads;kh:=m.key_heads;
     r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
-    r=dp_project_weight(r,p,w+6,8192,d,t,p.norm,p.qkv);
-    r=dp_project_weight(r,p,w+7,4096,d,t,p.norm,p.z);
-    r=dp_project_weight(r,p,w+8,32,d,t,p.norm,p.a);
-    r=dp_project_weight(r,p,w+9,32,d,t,p.norm,p.b);
-    c:[12]DpArg;c[0]=dp_int(8192);c[1]=dp_int(t);c[2]=dp_ws(p.qkv,t*8192);c[3]=dp_w(w+2,4*8192);c[4]=dp_ws(p.conv,t*8192);
+    r=dp_project_weight(r,p,w+6,c,d,t,p.norm,p.qkv);
+    r=dp_project_weight(r,p,w+7,v,d,t,p.norm,p.z);
+    r=dp_project_weight(r,p,w+8,h,d,t,p.norm,p.a);
+    r=dp_project_weight(r,p,w+9,h,d,t,p.norm,p.b);
+    cv:[12]DpArg;cv[0]=dp_int(c);cv[1]=dp_int(t);cv[2]=dp_ws(p.qkv,t*c);cv[3]=dp_w(w+2,4*c);cv[4]=dp_ws(p.conv,t*c);
     if b.fork.on {
-        c[5]=dp_fork_arg(dp_fork_history(layer),3*8192);c[6]=dp_int(dp_fork_mode(b.fork));
-        r=dp_push(r,dp_launch(DpKernel.conv_state,8192,c,7));
-    } else {r=dp_push(r,dp_launch(DpKernel.conv,8192,c,5));}
-    g:[12]DpArg;g[0]=dp_int(32);g[1]=dp_ws(p.a,t*32);g[2]=dp_ws(p.b,t*32);g[3]=dp_w(w+3,32);g[4]=dp_w(w+4,32);g[5]=dp_ws(p.beta,t*32);g[6]=dp_ws(p.decay,t*32);
-    r=dp_push(r,dp_launch(DpKernel.gates,t*32,g,7));
-    q:[12]DpArg;q[0]=dp_int(16);q[1]=dp_int(128);q[2]=dp_int(8192);q[3]=dp_ws(p.conv,t*8192);q[4]=dp_ws(p.qn,t*2048);q[5]=dp_ws(p.kn,t*2048);
-    r=dp_push(r,dp_launch(DpKernel.qk,t*16,q,6));
-    s:[12]DpArg;s[0]=dp_int(t);s[1]=dp_int(32);s[2]=dp_int(16);s[3]=dp_int(8192);s[4]=dp_ws(p.conv,t*8192);s[5]=dp_ws(p.qn,t*2048);s[6]=dp_ws(p.kn,t*2048);
-    s[7]=dp_ws(p.beta,t*32);s[8]=dp_ws(p.decay,t*32);s[9]=dp_ws(p.draft,t*4096);
+        cv[5]=dp_fork_arg(m,dp_fork_history_of(m,layer),3*c);cv[6]=dp_int(dp_fork_mode(b.fork));
+        r=dp_push(r,dp_launch(DpKernel.conv_state,c,cv,7));
+    } else {r=dp_push(r,dp_launch(DpKernel.conv,c,cv,5));}
+    g:[12]DpArg;g[0]=dp_int(h);g[1]=dp_ws(p.a,t*h);g[2]=dp_ws(p.b,t*h);g[3]=dp_w(w+3,h);g[4]=dp_w(w+4,h);g[5]=dp_ws(p.beta,t*h);g[6]=dp_ws(p.decay,t*h);
+    r=dp_push(r,dp_launch(DpKernel.gates,t*h,g,7));
+    q:[12]DpArg;q[0]=dp_int(kh);q[1]=dp_int(128);q[2]=dp_int(c);q[3]=dp_ws(p.conv,t*c);q[4]=dp_ws(p.qn,t*128*kh);q[5]=dp_ws(p.kn,t*128*kh);
+    r=dp_push(r,dp_launch(DpKernel.qk,t*kh,q,6));
+    s:[12]DpArg;s[0]=dp_int(t);s[1]=dp_int(h);s[2]=dp_int(kh);s[3]=dp_int(c);s[4]=dp_ws(p.conv,t*c);s[5]=dp_ws(p.qn,t*128*kh);s[6]=dp_ws(p.kn,t*128*kh);
+    s[7]=dp_ws(p.beta,t*h);s[8]=dp_ws(p.decay,t*h);s[9]=dp_ws(p.draft,t*v);
     if b.fork.on {
-        s[10]=dp_fork_arg(dp_fork_state(layer),32*128*128);s[11]=dp_int(dp_fork_mode(b.fork));
-        r=dp_push(r,dp_launch(DpKernel.scan_state,32*128,s,12));
-    } else {r=dp_push(r,dp_launch(DpKernel.scan,32*128,s,10));}
-    n:[12]DpArg;n[0]=dp_f32(0.000001);n[1]=dp_ws(p.draft,t*4096);n[2]=dp_w(w+5,128);n[3]=dp_ws(p.z,t*4096);n[4]=dp_ws(p.mix,t*4096);
-    r=dp_push(r,dp_launch(DpKernel.gate_norm,t*32,n,5));
-    r=dp_project_weight(r,p,w+10,d,4096,t,p.mix,p.out);
+        s[10]=dp_fork_arg(m,dp_fork_state_of(m,layer),h*128*128);s[11]=dp_int(dp_fork_mode(b.fork));
+        r=dp_push(r,dp_launch(DpKernel.scan_state,v,s,12));
+    } else {r=dp_push(r,dp_launch(DpKernel.scan,v,s,10));}
+    n:[12]DpArg;n[0]=dp_f32(0.000001);n[1]=dp_ws(p.draft,t*v);n[2]=dp_w(w+5,128);n[3]=dp_ws(p.z,t*v);n[4]=dp_ws(p.mix,t*v);
+    r=dp_push(r,dp_launch(DpKernel.gate_norm,t*h,n,5));
+    r=dp_project_weight(r,p,w+10,d,v,t,p.mix,p.out);
     return dp_finish(r,p,layer,t,input,output);
 }
 dp_attention :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,prefix:int,input:int,output:int)->DpBuilder {
-    t:=tokens;d:=DP_WIDTH;w:=layer*DP_PER_LAYER;
+    m:=b.m;t:=tokens;d:=m.width;w:=layer*DP_PER_LAYER;nh:=m.heads;kv:=dp_kv(m);qr:=dp_queries(m);at:=dp_attended(m);
     // Keys and values: this decision's own, or (forked) the fork buffer's
     // rows from token 0, this block's written from `start`. A forked block
     // sees every key (its prefix is 0): the prefix pass is one block and a
     // suffix sees all.
-    keys:=t;mask:=prefix;kall:=dp_ws(p.ak,t*1024);vall:=dp_ws(p.v,t*1024);knew:=kall;vnew:=vall;
+    keys:=t;mask:=prefix;kall:=dp_ws(p.ak,t*kv);vall:=dp_ws(p.v,t*kv);knew:=kall;vnew:=vall;
     if b.fork.on {
-        start:=b.fork.start;kb:=dp_fork_keys(layer);vb:=kb+DP_FORK_CACHE;keys=start+t;
-        kall=dp_fork_arg(kb,keys*1024);vall=dp_fork_arg(vb,keys*1024);knew=dp_fork_arg(kb+4*start*1024,t*1024);vnew=dp_fork_arg(vb+4*start*1024,t*1024);
+        start:=b.fork.start;kb:=dp_fork_keys_of(m,layer);vb:=kb+dp_fork_cache_bytes(m);keys=start+t;
+        kall=dp_fork_arg(m,kb,keys*kv);vall=dp_fork_arg(m,vb,keys*kv);knew=dp_fork_arg(m,kb+4*start*kv,t*kv);vnew=dp_fork_arg(m,vb+4*start*kv,t*kv);
     }
     r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
-    r=dp_project_weight(r,p,w+4,8192,d,t,p.norm,p.qkv);
-    r=dp_project_weight(r,p,w+5,1024,d,t,p.norm,p.k);
-    r=dp_project_weight_to(r,p,w+6,1024,d,t,p.norm,vnew);
-    a:[12]DpArg;a[0]=dp_int(16);a[1]=dp_int(4);a[2]=dp_ws(p.qkv,t*8192);a[3]=dp_ws(p.k,t*1024);a[4]=dp_w(w+2,256);a[5]=dp_w(w+3,256);
-    a[6]=dp_ws(p.rope,t*64);a[7]=dp_ws(p.aq,t*4096);a[8]=knew;a[9]=dp_f32(0.000001);
-    r=dp_push(r,dp_launch(DpKernel.prepare,t*20,a,10));
-    s:[12]DpArg;s[0]=dp_int(keys);s[1]=dp_int(mask);s[2]=dp_int(16);s[3]=dp_int(4);s[4]=dp_ws(p.aq,t*4096);s[5]=kall;s[6]=dp_ws(p.scores,t*16*keys);
-    r=dp_push(r,dp_launch(DpKernel.scores,t*16*keys,s,7));
-    probs:=DpArg.{kind=4,buffer=0,offset=p.probs,count=t*16*keys};
-    m:[12]DpArg;m[0]=dp_int(keys);m[1]=dp_int(mask);m[2]=dp_int(16);m[3]=dp_ws(p.scores,t*16*keys);m[4]=DpArg.{kind=4,buffer=0,offset=p.stats,count=t*16*3};m[5]=probs;
-    r=dp_push(r,dp_launch(DpKernel.softmax,t*16,m,6));
-    o:[12]DpArg;o[0]=dp_int(keys);o[1]=dp_int(16);o[2]=dp_int(4);o[3]=probs;o[4]=vall;o[5]=dp_ws(p.qkv,t*8192);o[6]=dp_ws(p.mix,t*4096);
-    r=dp_push(r,dp_launch(DpKernel.attend,t*16*256,o,7));
-    r=dp_project_weight(r,p,w+7,d,4096,t,p.mix,p.out);
+    r=dp_project_weight(r,p,w+4,qr,d,t,p.norm,p.qkv);
+    r=dp_project_weight(r,p,w+5,kv,d,t,p.norm,p.k);
+    r=dp_project_weight_to(r,p,w+6,kv,d,t,p.norm,vnew);
+    a:[12]DpArg;a[0]=dp_int(nh);a[1]=dp_int(m.kv_heads);a[2]=dp_ws(p.qkv,t*qr);a[3]=dp_ws(p.k,t*kv);a[4]=dp_w(w+2,256);a[5]=dp_w(w+3,256);
+    a[6]=dp_ws(p.rope,t*64);a[7]=dp_ws(p.aq,t*at);a[8]=knew;a[9]=dp_f32(0.000001);
+    r=dp_push(r,dp_launch(DpKernel.prepare,t*(nh+m.kv_heads),a,10));
+    s:[12]DpArg;s[0]=dp_int(keys);s[1]=dp_int(mask);s[2]=dp_int(nh);s[3]=dp_int(m.kv_heads);s[4]=dp_ws(p.aq,t*at);s[5]=kall;s[6]=dp_ws(p.scores,t*nh*keys);
+    r=dp_push(r,dp_launch(DpKernel.scores,t*nh*keys,s,7));
+    probs:=DpArg.{kind=4,buffer=0,offset=p.probs,count=t*nh*keys};
+    sm:[12]DpArg;sm[0]=dp_int(keys);sm[1]=dp_int(mask);sm[2]=dp_int(nh);sm[3]=dp_ws(p.scores,t*nh*keys);sm[4]=DpArg.{kind=4,buffer=0,offset=p.stats,count=t*nh*3};sm[5]=probs;
+    r=dp_push(r,dp_launch(DpKernel.softmax,t*nh,sm,6));
+    o:[12]DpArg;o[0]=dp_int(keys);o[1]=dp_int(nh);o[2]=dp_int(m.kv_heads);o[3]=probs;o[4]=vall;o[5]=dp_ws(p.qkv,t*qr);o[6]=dp_ws(p.mix,t*at);
+    r=dp_push(r,dp_launch(DpKernel.attend,t*at,o,7));
+    r=dp_project_weight(r,p,w+7,d,at,t,p.mix,p.out);
     return dp_finish(r,p,layer,t,input,output);
 }
 
@@ -401,29 +467,34 @@ DP_MAX_TOKENS :: 512;
 // book:begin plan
 // The whole decision: tokens 0..prefix form the first block. Inputs are the
 // gathered embedding rows at x0 and rotary coefficients at rope; the result
-// is the last token's vocabulary logits at logits.
+// is the last token's vocabulary logits at logits. kind names the model.
 dp_plan :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
-    return dp_plan_on(false,tokens,prefix,budget,stream,ops);
+    return dp_plan_model(0,false,tokens,prefix,budget,stream,ops);
 }
 // The same decision for an Apple GPU: projections on the matrix units.
 dp_plan_metal :: (tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
-    return dp_plan_on(true,tokens,prefix,budget,stream,ops);
+    return dp_plan_model(0,true,tokens,prefix,budget,stream,ops);
 }
 dp_plan_on :: (metal:bool,tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan {
-    if tokens<1 || tokens>DP_MAX_TOKENS || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
-    plan:=dp_residency(budget,dp_layout(tokens).total,stream);
+    return dp_plan_model(0,metal,tokens,prefix,budget,stream,ops);
+}
+dp_plan_model :: (kind:int,metal:bool,tokens:int,prefix:int,budget:int,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+    if kind<0 || kind>1 || tokens<1 || tokens>DP_MAX_TOKENS || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
+    m:=dp_model(kind);
+    plan:=dp_residency_of(m,budget,dp_layout_of(m,tokens,tokens).total,stream);
     if plan.status!=DpStatus.ok {return plan;}
     plan.metal=metal;
     return dp_schedule(tokens,prefix,plan,stream,ops);
 }
 // book:end plan
 // A later decision on weights already placed by an opened plan: the same
-// streamed set, backend and the opened workspace, which must hold this layout.
+// model, streamed set, backend and the opened workspace, which must hold this layout.
 dp_replan :: (tokens:int,prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
-    if opened.status!=DpStatus.ok || stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
+    m:=dp_model(opened.kind);
+    if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     if tokens<1 || tokens>DP_MAX_TOKENS || prefix<0 || prefix>=tokens {return DpPlan.{status=DpStatus.shape};}
-    if dp_layout(tokens).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
-    n:=0;for i:0..<DP_STREAMABLE {if stream[i] {n+=1;}}
+    if dp_layout_of(m,tokens,tokens).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
+    n:=0;for i:0..<stream.count {if stream[i] {n+=1;}}
     if n!=opened.streamed_tensors {return DpPlan.{status=DpStatus.capacity};}
     return dp_schedule(tokens,prefix,opened,stream,ops);
 }
@@ -439,10 +510,11 @@ dp_plan_suffix :: (start:int,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)-
     return dp_plan_fork(DpFork.{on=true,start=start},tokens,opened,stream,ops);
 }
 dp_plan_fork :: (fork:DpFork,tokens:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
-    if opened.status!=DpStatus.ok || stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
+    m:=dp_model(opened.kind);
+    if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
     if tokens<1 || fork.start<0 || fork.start+tokens>DP_MAX_TOKENS {return DpPlan.{status=DpStatus.shape};}
-    if dp_layout_keys(tokens,fork.start+tokens).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
-    n:=0;for i:0..<DP_STREAMABLE {if stream[i] {n+=1;}}
+    if dp_layout_of(m,tokens,fork.start+tokens).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
+    n:=0;for i:0..<stream.count {if stream[i] {n+=1;}}
     if n!=opened.streamed_tensors {return DpPlan.{status=DpStatus.capacity};}
     return dp_schedule_fork(tokens,0,fork,opened,stream,ops);
 }
@@ -454,33 +526,34 @@ dp_schedule :: (tokens:int,prefix:int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->D
     return dp_schedule_fork(tokens,prefix,DpFork.{},placed,stream,ops);
 }
 dp_schedule_fork :: (tokens:int,prefix:int,fork:DpFork,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
-    p:=dp_layout_keys(tokens,fork.start+tokens);plan:=placed;readout:=!fork.save;
-    order:[DP_STREAMABLE]int;
-    b:=DpBuilder.{ops=ops,ok=true,stream=stream,order=order[..],metal=placed.metal,fork=fork};
+    m:=dp_model(placed.kind);
+    p:=dp_layout_of(m,tokens,fork.start+tokens);plan:=placed;readout:=!fork.save;
+    order:[DP_MAX_STREAMABLE]int;
+    b:=DpBuilder.{ops=ops,ok=true,stream=stream,order=order[..],metal=placed.metal,fork=fork,m=m};
     // Streaming indices in schedule order: each layer's mixer matrices, then
     // its gate, up and down; then the head chunks.
-    for layer:0..<DP_LAYERS {
-        for k:0..<5 {x:=DP_MIXER_BASE+5*layer+k;if stream[x] {order[b.count]=x;b.count+=1;}}
+    for layer:0..<m.layers {
+        for k:0..<5 {x:=dp_mixer_base(m)+5*layer+k;if stream[x] {order[b.count]=x;b.count+=1;}}
         for k:0..<3 {x:=3*layer+k;if stream[x] {order[b.count]=x;b.count+=1;}}
     }
     // The prefix pass of a fork has no readout, so it streams no head chunk.
-    if readout {for c:0..<DP_HEAD_CHUNKS {x:=DP_HEAD_BASE+c;if stream[x] {order[b.count]=x;b.count+=1;}}}
+    if readout {for c:0..<dp_head_chunks(m) {x:=dp_head_base(m)+c;if stream[x] {order[b.count]=x;b.count+=1;}}}
     // Prefetch the first two.
-    for i:0..<2 {if i<b.count {b=dp_push(b,dp_copy(order[i],i));}}
+    for i:0..<2 {if i<b.count {b=dp_push(b,dp_copy(m,order[i],i));}}
     input:=p.x0;output:=p.x1;
-    for layer:0..<DP_LAYERS {
+    for layer:0..<m.layers {
         if dp_full(layer) {b=dp_attention(b,p,layer,tokens,prefix,input,output);}
         else {b=dp_linear(b,p,layer,tokens,input,output);}
         swap:=input;input=output;output=swap;
     }
     if readout {
         b=dp_norm_last(b,p,tokens,input);
-        if dp_streamed(DP_HEAD,stream) {
-            for c:0..<DP_HEAD_CHUNKS {
+        if dp_streamed_of(m,dp_head(m),stream) {
+            for c:0..<dp_head_chunks(m) {
                 slot:=b.at%2;b=dp_take(b);
-                b=dp_readout(b,p,DpArg.{kind=4,buffer=1+slot},c*DP_HEAD_ROWS,dp_head_rows(c),true);
+                b=dp_readout(b,p,DpArg.{kind=4,buffer=1+slot},c*m.hidden,dp_chunk_rows(m,c),true);
             }
-        } else {b=dp_readout(b,p,dp_matrix(DP_HEAD),0,DP_VOCAB,false);}
+        } else {b=dp_readout(b,p,dp_matrix(dp_head(m)),0,m.vocab,false);}
     }
     if !b.ok {return DpPlan.{status=DpStatus.capacity};}
     plan.rope=p.rope;plan.logits=p.logits;
@@ -491,8 +564,8 @@ dp_schedule_fork :: (tokens:int,prefix:int,fork:DpFork,placed:DpPlan,stream:[]bo
 // partials, then their sums into those logits. A streamed chunk's slot is
 // released between the two.
 dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder {
-    a:[12]DpArg;w:=weight;w.count=rows*DP_WIDTH/4;
-    a[0]=dp_int(rows);a[1]=dp_int(DP_WIDTH);a[2]=w;a[3]=dp_ws(p.final,DP_WIDTH);a[4]=dp_ws(p.lanes,16*rows);
+    d:=b.m.width;a:[12]DpArg;w:=weight;w.count=rows*d/4;
+    a[0]=dp_int(rows);a[1]=dp_int(d);a[2]=w;a[3]=dp_ws(p.final,d);a[4]=dp_ws(p.lanes,16*rows);
     r:=dp_push(b,dp_launch(DpKernel.matvec,16*rows,a,5));
     if streamed {r=dp_give(r);}
     e:[12]DpArg;e[0]=dp_int(rows);e[1]=dp_int(16);e[2]=dp_ws(p.lanes,16*rows);e[3]=dp_ws(p.logits+4*first,rows);
@@ -501,13 +574,15 @@ dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:b
 // book:end readout
 dp_down :: (layer:int)->int {if dp_full(layer) {return dp_weight(layer,10);}return dp_weight(layer,13);}
 dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder {
-    return dp_norm_rows(b,p,1,input+4*(tokens-1)*DP_WIDTH,dp_w(DP_FINAL,DP_WIDTH),p.final);
+    d:=b.m.width;
+    return dp_norm_rows(b,p,1,input+4*(tokens-1)*d,dp_w(dp_final(b.m),d),p.final);
 }
 // Workspace byte offsets the host fills or reads.
 dp_input_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).x0;}
 dp_rope_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).rope;}
 dp_logits_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).logits;}
 dp_workspace_bytes :: (tokens:int)->int #export_c {return dp_layout(tokens).total;}
+dp_model_workspace_bytes :: (kind:int,tokens:int)->int #export_c {return dp_layout_of(dp_model(kind),tokens,tokens).total;}
 
 // book:begin embed
 // The host's input: the BF16 embedding rows of the request's tokens as f32.
@@ -637,10 +712,10 @@ dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
     #assert dp_stream_index(DP_HEAD+6)==-1 && dp_stream_index(DP_HEAD+11)==-1 && dp_stream_index(DP_FINAL+2)==-1 && dp_stream_index(-10)==-1 && dp_stream_index(-4)==-1;
     #assert dp_mixers(0)==5 && dp_mixers(3)==4 && dp_stream_index(dp_weight(3,8))==9 && dp_stream_index(dp_weight(0,11))==0;
     #assert dp_head_rows(0)==12288 && dp_head_rows(19)==12288 && dp_head_rows(20)==248320-20*12288 && DP_HEAD_CHUNKS*DP_HEAD_ROWS>=DP_VOCAB && (DP_HEAD_CHUNKS-1)*DP_HEAD_ROWS<DP_VOCAB;
-    c:=dp_copy(256+20,1);
+    c:=dp_copy(dp_model(0),256+20,1);
     #assert c.kind==DpOpKind.copy && c.tensor==DP_HEAD && c.slot==1 && c.count==1 && c.args[0].kind==4 && c.args[0].buffer==3+DP_HEAD && c.args[0].offset==2*20*12288*4096 && c.args[0].count==2*2560*4096;
-    f:=dp_copy(2,0);#assert f.tensor==dp_weight(0,13) && f.args[0].buffer==3+dp_weight(0,13) && f.args[0].offset==0 && f.args[0].count==2*4096*12288 && f.slot==0;
-    h:=dp_copy(256,0);#assert h.args[0].offset==0 && h.args[0].count==2*12288*4096;
+    f:=dp_copy(dp_model(0),2,0);#assert f.tensor==dp_weight(0,13) && f.args[0].buffer==3+dp_weight(0,13) && f.args[0].offset==0 && f.args[0].count==2*4096*12288 && f.slot==0;
+    h:=dp_copy(dp_model(0),256,0);#assert h.args[0].offset==0 && h.args[0].count==2*12288*4096;
 }
 dp_digest :: (ops:[]DpOp,n:int)->u64 {
     h:u64=14695981039346656037;
@@ -875,7 +950,7 @@ dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int {
     #assert dp_fork_keys(3)==24*(DP_FORK_HISTORY+DP_FORK_STATE) && dp_fork_keys(7)==dp_fork_keys(3)+2*DP_FORK_CACHE && dp_fork_keys(31)+2*DP_FORK_CACHE==dp_fork_bytes();
     #assert dp_fork_bytes()==86245376 && DP_FORK_HISTORY%256==0 && DP_FORK_STATE%256==0 && DP_FORK_CACHE%256==0;
     #assert dp_fork_mode(DpFork.{on=true,save=true})==2 && dp_fork_mode(DpFork.{on=true,start=5})==1 && dp_fork_mode(DpFork.{on=true,start=1})==1 && dp_fork_mode(DpFork.{on=true,start=5,save=true})==3 && dp_fork_mode(DpFork.{on=true})==0;
-    a:=dp_fork_arg(64,8);#assert a.kind==4 && a.buffer==DP_FORK_BUFFER && a.offset==64 && a.count==8 && DP_FORK_BUFFER==517;
+    a:=dp_fork_arg(dp_model(0),64,8);#assert a.kind==4 && a.buffer==DP_FORK_BUFFER && a.offset==64 && a.count==8 && DP_FORK_BUFFER==517;
     // A suffix's attention regions grow with its keys; the rest of the layout does not.
     p:=dp_layout_keys(37,86);q:=dp_layout(37);
     #assert p.scores==q.scores && p.probs==q.scores+dp_align(4*37*16*86)+dp_align(8*37*16*3) && p.total>q.total && dp_layout_keys(37,37).total==q.total;
@@ -963,4 +1038,153 @@ dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int {
     r:=dp_tile(b,dp_matrix(6),32,4096,17,256,out);r=dp_tile(r,dp_matrix(6),33,4096,17,256,out);r=dp_tile(r,dp_matrix(6),129,64,16,256,out);
     #assert r.n==3 && ops[0].kernel==cast(u8)DpKernel.tile_narrow && ops[0].items==2 && ops[1].kernel==cast(u8)DpKernel.tile_wide && ops[1].items==2;
     #assert ops[2].items==3 && ops[2].args[3].count==129*32 && ops[2].args[4].count==16*64 && ops[2].args[5].offset==1024 && ops[0].args[2].value==17;
+}
+#test "the shape is data: Elephant's and Mammoth's" {
+    e:=dp_model(0);m:=dp_model(1);
+    #assert e.kind==0 && e.layers==32 && e.width==4096 && e.hidden==12288 && e.vocab==248320 && e.key_heads==16 && e.value_heads==32 && e.heads==16 && e.kv_heads==4 && e.chunks==21;
+    #assert m.kind==1 && m.layers==64 && m.width==5120 && m.hidden==17408 && m.vocab==248320 && m.key_heads==16 && m.value_heads==48 && m.heads==24 && m.kv_heads==4 && m.chunks==15;
+    #assert dp_model(2).layers==32 && dp_model(2).kind==0 && dp_model(-1).width==4096;
+    #assert dp_channels(e)==8192 && dp_values(e)==4096 && dp_queries(e)==8192 && dp_attended(e)==4096 && dp_kv(e)==1024;
+    #assert dp_channels(m)==10240 && dp_values(m)==6144 && dp_queries(m)==12288 && dp_attended(m)==6144 && dp_kv(m)==1024;
+    #assert dp_weights(e)==514 && dp_head(m)==1024 && dp_final(m)==1025 && dp_weights(m)==1026;
+    #assert dp_streamable(e)==277 && dp_streamable(m)==527 && DP_MAX_STREAMABLE==dp_streamable(m) && dp_mixer_base(m)==192 && dp_head_base(m)==512;
+    // The head's chunks cover the vocabulary, the last one partly.
+    for x:0..<2 {k:=dp_model(x);#assert k.chunks*k.hidden>=k.vocab && (k.chunks-1)*k.hidden<k.vocab;}
+    #assert dp_chunk_rows(m,0)==17408 && dp_chunk_rows(m,13)==17408 && dp_chunk_rows(m,14)==4608;
+    // Elephant's constants are its model's.
+    #assert DP_LAYERS==e.layers && DP_WIDTH==e.width && DP_HIDDEN==e.hidden && DP_VOCAB==e.vocab && DP_HEAD==dp_head(e) && DP_FINAL==dp_final(e) && DP_WEIGHTS==dp_weights(e);
+    #assert DP_FFN_STREAMS==3*e.layers && DP_MIXER_BASE==dp_mixer_base(e) && DP_HEAD_BASE==dp_head_base(e) && DP_HEAD_ROWS==e.hidden && DP_HEAD_CHUNKS==e.chunks && DP_STREAMABLE==dp_streamable(e);
+    #assert DP_FORK_BUFFER==dp_fork_buffer(e) && DP_FORK_HISTORY==dp_fork_history_bytes(e) && DP_FORK_STATE==dp_fork_state_bytes(e) && DP_FORK_CACHE==dp_fork_cache_bytes(e);
+    #assert DP_PARTIAL_ROWS==dp_layout(86).partial_rows && dp_layout_of(m,86,86).partial_rows==8*17408;
+    #assert dp_wider(3,5)==5 && dp_wider(5,3)==5 && dp_wider(4,4)==4 && dp_wider(-2,1)==1 && dp_wider(0,0)==0;
+}
+#forall "Mammoth's spread order is the 6-bit reversal" i:0..<64 {
+    r:=dp_spread_of(64,i);
+    #assert r>=0 && r<64 && dp_spread_of(64,r)==i && dp_spread_of(64,i%32*2)==dp_spread(i%32);
+    #assert ((r>>5)&1)==(i&1) && (r&1)==((i>>5)&1) && ((r>>2)&1)==((i>>3)&1);
+}
+#test "Mammoth's weights: 64 layers, the pinned shapes" {
+    m:=dp_model(1);
+    #assert dp_elements(m,dp_weight(0,0))==5120 && dp_elements(m,dp_weight(0,2))==4*10240 && dp_elements(m,dp_weight(0,3))==48 && dp_elements(m,dp_weight(0,4))==48;
+    #assert dp_elements(m,dp_weight(0,5))==128 && dp_elements(m,dp_weight(0,6))==10240*5120 && dp_elements(m,dp_weight(0,7))==6144*5120 && dp_elements(m,dp_weight(0,8))==48*5120;
+    #assert dp_elements(m,dp_weight(0,10))==5120*6144 && dp_elements(m,dp_weight(0,11))==17408*5120 && dp_elements(m,dp_weight(0,13))==5120*17408 && dp_elements(m,dp_weight(0,14))==0;
+    #assert dp_elements(m,dp_weight(3,2))==256 && dp_elements(m,dp_weight(3,4))==12288*5120 && dp_elements(m,dp_weight(3,5))==1024*5120 && dp_elements(m,dp_weight(3,6))==1024*5120;
+    #assert dp_elements(m,dp_weight(3,7))==5120*6144 && dp_elements(m,dp_weight(63,10))==5120*17408 && dp_elements(m,dp_weight(63,11))==0;
+    #assert dp_elements(m,1024)==248320*5120 && dp_elements(m,1025)==5120 && dp_elements(m,1026)==-1 && dp_elements(m,-1)==-1 && dp_elements(m,512)==5120;
+    total:=0;matrices:=0;
+    for w:0..<dp_weights(m) {total+=dp_bytes(m,w);if dp_bf16(m,w) {matrices+=1;}}
+    #assert total==51254491136 && matrices==48*8+16*7+1;
+    #assert dp_bf16(m,1024) && !dp_bf16(m,1025) && !dp_bf16(m,1026) && !dp_bf16(m,512) && dp_bf16(m,513+6-1+16) && dp_bytes(m,1024)==2*248320*5120 && dp_bytes(m,1025)==4*5120;
+}
+#test "Mammoth's streaming indices" {
+    m:=dp_model(1);stream:[527]bool;for i:0..<527 {stream[i]=true;}
+    #assert dp_stream_index_of(m,dp_weight(0,11))==0 && dp_stream_index_of(m,dp_weight(63,10))==191 && dp_stream_index_of(m,dp_weight(0,6))==192;
+    #assert dp_stream_index_of(m,dp_weight(3,4))==192+15 && dp_stream_index_of(m,dp_weight(63,7))==192+5*63+3 && dp_stream_index_of(m,1024)==512;
+    #assert dp_stream_index_of(m,1025)==-1 && dp_stream_index_of(m,1026+5)==-1 && dp_stream_index_of(m,dp_weight(40,0))==-1 && dp_stream_index_of(m,dp_weight(40,12))==3*40+1;
+    #assert dp_stream_weight_of(m,527)==-1 && dp_stream_weight_of(m,526)==1024 && dp_stream_weight_of(m,512)==1024 && dp_stream_weight_of(m,511)==-1 && dp_stream_weight_of(m,510)==dp_weight(63,7);
+    #assert dp_stream_weight_of(m,191)==dp_weight(63,10) && dp_stream_weight_of(m,192)==dp_weight(0,6) && dp_stream_weight_of(m,-1)==-1;
+    for i:0..<512 {x:=dp_stream_weight_of(m,i);if x>=0 {#assert dp_stream_index_of(m,x)==i && dp_bf16(m,x);}}
+    #assert dp_streamed_of(m,1024,stream[..]) && dp_streamed_of(m,dp_weight(63,7),stream[..]) && !dp_streamed_of(m,dp_weight(63,7),stream[0..<510]);
+    c:=dp_copy(m,512+14,1);
+    #assert c.tensor==1024 && c.slot==1 && c.args[0].buffer==3+1024 && c.args[0].offset==2*14*17408*5120 && c.args[0].count==2*4608*5120;
+    f:=dp_copy(m,2,0);#assert f.tensor==dp_weight(0,13) && f.args[0].offset==0 && f.args[0].count==2*5120*17408;
+}
+#test "Mammoth's workspace and fork buffer" {
+    m:=dp_model(1);p:=dp_layout_of(m,86,86);
+    #assert p.total==120422656 && dp_model_workspace_bytes(1,86)==p.total && dp_model_workspace_bytes(0,86)==dp_workspace_bytes(86);
+    // The [q | k | v] region holds a full layer's 12,288 query rows; the mix region 6,144 values.
+    #assert p.z-p.qkv==dp_align(4*86*12288) && p.a-p.z==dp_align(4*86*6144) && p.k-p.b==dp_align(4*86*48) && p.qn-p.conv==dp_align(4*86*10240);
+    #assert p.aq-p.mix==dp_align(4*86*6144) && p.ak-p.aq==dp_align(4*86*6144) && p.stats-p.scores==dp_align(4*86*24*86) && p.squares-p.probs==dp_align(8*86*24*86);
+    #assert p.lo-p.hi==dp_align(4*88*17408/2) && p.up-p.gate==dp_align(4*86*17408) && p.lanes+dp_align(4*16*248320)==p.total && p.x1-p.x0==dp_align(4*86*5120);
+    e:=dp_layout(86);#assert e.z-e.qkv==dp_align(4*86*8192) && e.aq-e.mix==dp_align(4*86*4096);
+    #assert dp_fork_buffer(m)==1029 && dp_fork_bytes_of(m)==48*(4*3*10240+4*48*128*128)+16*2*4*512*1024 && dp_fork_bytes_of(m)==224002048;
+    #assert dp_fork_history_of(m,1)==4*3*10240 && dp_fork_state_of(m,0)==48*4*3*10240 && dp_fork_keys_of(m,7)==48*(4*3*10240+4*48*128*128)+2*4*512*1024;
+    a:=dp_fork_arg(m,64,8);#assert a.buffer==1029 && a.offset==64 && a.count==8;
+}
+#test "a Mammoth decision: resident, and streamed through two slots" {
+    m:=dp_model(1);ops:[3800]DpOp;stream:[527]bool;w:=dp_model_workspace_bytes(1,86);all:=0;matrices:=0;
+    for i:0..<dp_weights(m) {all+=dp_align(dp_bytes(m,i));if dp_bf16(m,i) {matrices+=dp_bytes(m,i);}}
+    slot:=dp_align(2*5120*17408);
+    plan:=dp_plan_model(1,false,86,49,w+all,stream[..],ops[..]);
+    #assert plan.status==DpStatus.ok && plan.kind==1 && plan.ops==2180 && plan.streamed==0 && plan.resident==all && plan.workspace==w;
+    #assert ops[0].kernel==cast(u8)DpKernel.squares && ops[0].items==16*86 && ops[0].args[0].value==5120 && ops[3].kernel==cast(u8)DpKernel.mma_project && ops[3].args[0].value==10240;
+    #assert ops[2178].kernel==cast(u8)DpKernel.matvec && ops[2178].items==16*248320 && ops[2178].args[2].count==248320*5120/4 && ops[2178].args[2].buffer==3+1024 && ops[2179].kernel==cast(u8)DpKernel.reduce;
+    full:=0;
+    for i:0..<plan.ops {
+        op:=ops[i];
+        if op.kernel==cast(u8)DpKernel.prepare {full+=1;#assert op.items==86*28 && op.args[0].value==24 && op.args[2].count==86*12288 && op.args[7].count==86*6144;}
+        if op.kernel==cast(u8)DpKernel.attend {#assert op.items==86*6144 && op.args[1].value==24;}
+        if op.kernel==cast(u8)DpKernel.scan {#assert op.items==48*128 && op.args[1].value==48 && op.args[3].value==10240 && op.args[9].count==86*6144;}
+        if op.kernel==cast(u8)DpKernel.gate_norm {#assert op.items==86*48;}
+    }
+    #assert full==16 && dp_digest(ops[..],plan.ops)==15592307743001654911;
+    #assert dp_digest(ops[..],2178)==15192526894030135554;
+}
+#test "Mammoth streaming feed-forward matrices computes what the resident plan computes" {
+    m:=dp_model(1);ops:[3800]DpOp;stream:[527]bool;w:=dp_model_workspace_bytes(1,86);all:=0;matrices:=0;
+    for i:0..<dp_weights(m) {all+=dp_align(dp_bytes(m,i));if dp_bf16(m,i) {matrices+=dp_bytes(m,i);}}
+    slot:=dp_align(2*5120*17408);resolved:[2300]DpOp;
+    // Feed-forward matrices only: the launches are the resident plan's.
+    some:=dp_plan_model(1,false,86,49,w+all-100*slot,stream[..],ops[..]);
+    #assert some.status==DpStatus.ok && some.streamed_tensors==102 && dp_resolve(ops[..],some.ops,resolved[..])==2180 && dp_digest(resolved[..],2178)==15192526894030135554;
+}
+#test "Mammoth streaming everything reads the head in 15 chunks" {
+    m:=dp_model(1);ops:[3800]DpOp;stream:[527]bool;w:=dp_model_workspace_bytes(1,86);all:=0;matrices:=0;
+    for i:0..<dp_weights(m) {all+=dp_align(dp_bytes(m,i));if dp_bf16(m,i) {matrices+=dp_bytes(m,i);}}
+    slot:=dp_align(2*5120*17408);resolved:[2300]DpOp;
+    plan:=dp_layout_of(m,86,86);
+    least:=dp_plan_model(1,false,86,49,w+all-matrices+2*slot,stream[..],ops[..]);
+    #assert least.status==DpStatus.ok && least.streamed_tensors==511 && least.streamed==matrices && least.ops==2180+3*511+2*14;
+    n:=dp_resolve(ops[..],least.ops,resolved[..]);
+    #assert n==2180+2*14 && dp_digest(resolved[..],2178)==15192526894030135554 && dp_digest(ops[..],least.ops)==7550959327929850761;
+    rows:=0;
+    for c:0..<15 {
+        mv:=resolved[2178+2*c];k:=dp_chunk_rows(m,c);
+        #assert mv.kernel==cast(u8)DpKernel.matvec && mv.args[0].value==k && mv.args[1].value==5120 && mv.args[2].offset==2*c*17408*5120 && mv.args[2].count==k*1280;
+        #assert resolved[2179+2*c].args[3].offset==plan.logits+4*c*17408;
+        rows+=k;
+    }
+    #assert rows==248320 && least.logits==dp_layout_of(m,86,86).logits;
+    #assert dp_plan_model(1,false,86,49,w+all-matrices+2*slot-1,stream[..],ops[..]).status==DpStatus.memory;
+    #assert dp_plan_model(2,false,86,49,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan_model(-1,false,86,49,w+all,stream[..],ops[..]).status==DpStatus.shape;
+    #assert dp_plan_model(1,false,86,49,w+all,stream[0..<277],ops[..]).status==DpStatus.capacity && dp_plan_model(1,false,86,49,w+all,stream[..],ops[0..<2179]).status==DpStatus.capacity;
+    #assert dp_plan_model(1,false,0,0,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan_model(1,false,513,0,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan_model(1,false,86,86,w+all,stream[..],ops[..]).status==DpStatus.shape;
+}
+#test "a later Mammoth decision keeps the model" {
+    m:=dp_model(1);ops:[3800]DpOp;stream:[527]bool;w:=dp_model_workspace_bytes(1,86);all:=0;matrices:=0;
+    for i:0..<dp_weights(m) {all+=dp_align(dp_bytes(m,i));if dp_bf16(m,i) {matrices+=dp_bytes(m,i);}}
+    slot:=dp_align(2*5120*17408);resolved:[2300]DpOp;
+    opened:=dp_plan_model(1,false,128,0,dp_model_workspace_bytes(1,128)+all-100*slot,stream[..],ops[..]);
+    later:=dp_replan(86,49,opened,stream[..],ops[..]);
+    #assert later.status==DpStatus.ok && later.kind==1 && dp_resolve(ops[..],later.ops,resolved[..])==2180 && dp_digest(resolved[..],2178)==15192526894030135554;
+    #assert dp_replan(86,49,opened,stream[0..<277],ops[..]).status==DpStatus.capacity;
+    elephant:=opened;elephant.kind=0;#assert dp_replan(86,49,elephant,stream[..],ops[..]).status==DpStatus.capacity;
+}
+#test "a forked Mammoth decision keeps every layer's state apart" {
+    m:=dp_model(1);ops:[3800]DpOp;stream:[527]bool;all:=0;for i:0..<dp_weights(m) {all+=dp_align(dp_bytes(m,i));}
+    opened:=dp_plan_model(1,false,128,0,dp_model_workspace_bytes(1,128)+all,stream[..],ops[..]);
+    prefix:=dp_plan_prefix(49,opened,stream[..],ops[..]);
+    #assert prefix.status==DpStatus.ok && prefix.kind==1 && ops[prefix.ops-1].kernel==cast(u8)DpKernel.add;
+    convs:=0;scans:=0;
+    for i:0..<prefix.ops {
+        op:=ops[i];
+        if op.kernel==cast(u8)DpKernel.conv_state {convs+=1;#assert op.items==10240 && op.args[5].buffer==1029 && op.args[5].count==3*10240 && op.args[6].value==2;}
+        if op.kernel==cast(u8)DpKernel.scan_state {scans+=1;#assert op.items==48*128 && op.args[10].count==48*128*128;}
+    }
+    #assert convs==48 && scans==48;
+    suffix:=dp_plan_suffix(49,37,opened,stream[..],ops[..]);
+    #assert suffix.status==DpStatus.ok && suffix.logits==dp_layout_of(m,37,86).logits && ops[suffix.ops-2].kernel==cast(u8)DpKernel.matvec;
+    at:=0;values:=0;
+    for i:0..<suffix.ops {
+        op:=ops[i];
+        if op.kernel==cast(u8)DpKernel.conv_state {#assert op.args[5].offset==dp_fork_history_of(m,at) && op.args[6].value==1;}
+        if op.kernel==cast(u8)DpKernel.scan_state {#assert op.args[10].offset==dp_fork_state_of(m,at);}
+        if op.kernel==cast(u8)DpKernel.prepare {#assert op.args[8].offset==dp_fork_keys_of(m,at)+4*49*1024 && op.args[8].count==37*1024;}
+        if op.kernel==cast(u8)DpKernel.scores {#assert op.args[0].value==86 && op.items==37*24*86 && op.args[5].offset==dp_fork_keys_of(m,at) && op.args[5].count==86*1024;}
+        if op.kernel==cast(u8)DpKernel.attend {#assert op.args[4].offset==dp_fork_keys_of(m,at)+dp_fork_cache_bytes(m) && op.args[4].count==86*1024;}
+        if op.kernel==cast(u8)DpKernel.mma_project && op.args[0].value==1024 {values+=1;}
+        if op.kernel==cast(u8)DpKernel.add {at+=1;}
+    }
+    #assert at==64 && values==32 && dp_plan_suffix(49,37,opened,stream[0..<277],ops[..]).status==DpStatus.capacity;
+    #assert dp_plan_suffix(28,100,opened,stream[..],ops[..]).status==DpStatus.ok && dp_plan_suffix(128,128,opened,stream[..],ops[..]).status==DpStatus.capacity;
 }
