@@ -1,0 +1,38 @@
+// Native pool orchestration grants no authority to relay/bundle contents.
+#load "pool-wire.coax";
+#authority;
+#test "pool publication needs a closed aligned window and bounded IO budget" {
+  #assert mpp_window(0,60,60) && mpp_window(60,3660,4000);
+  #assert !mpp_window(0,60,59) && !mpp_window(0,0,60) && !mpp_window(1,60,60) && !mpp_window(0,3660,4000);
+  #assert mpp_budget(1) && mpp_budget(60000) && !mpp_budget(0) && !mpp_budget(60001);
+}
+#test "mode combinations cannot accidentally publish a verification or policy request" {
+  #assert mpp_mode(false,false,false,false,false) && mpp_mode(false,false,true,false,true);
+  #assert mpp_mode(true,false,false,true,false) && mpp_mode(true,false,false,false,false);
+  #assert !mpp_mode(true,false,true,false,false) && !mpp_mode(true,false,false,false,true);
+  #assert !mpp_mode(false,true,true,false,false) && !mpp_mode(false,true,false,true,false) && !mpp_mode(false,true,false,false,true);
+  #assert !mpp_mode(false,false,false,true,false) && mpp_mode(false,true,false,false,false);
+}
+#test "public input capacity refuses the sentinel and every category overflow" {
+  #assert mpp_capacity(0,0,0,0) && mpp_capacity(224,32,64,128);
+  #assert !mpp_capacity(225,32,64,128) && !mpp_capacity(224,33,64,128) && !mpp_capacity(224,32,65,128) && !mpp_capacity(224,32,64,129);
+}
+#test "only explicitly pinned authors enter their corresponding role" {
+  k:=[1]string.[MT_A];p:=MtPolicy.{providers=k[..],buyers=k[..],checkers=k[..]};
+  #assert mpp_role(p,30200,MT_A)==1 && mpp_role(p,3201,MT_A)==2 && mpp_role(p,1985,MT_A)==3;
+  #assert mpp_role(p,30201,MT_A)==0 && mpp_role(p,3201,MT_B)==0;
+  p.providers=k[0..<0];#assert mpp_role(p,30200,MT_A)==0;p.buyers=k[0..<0];#assert mpp_role(p,3201,MT_A)==0;p.checkers=k[0..<0];#assert mpp_role(p,1985,MT_A)==0;
+}
+mpp_window :: (from:int,to:int,now:int)->bool {return mt_window(from,to) && to<=now;}
+mpp_budget :: (ms:int)->bool {return ms>=1 && ms<=60000;}
+mpp_mode :: (verify:bool,policy:bool,publish:bool,inputs:bool,bundle:bool)->bool {
+  if verify {return !policy && !publish && !bundle;}
+  if policy {return !publish && !inputs && !bundle;}
+  return !inputs;
+}
+mpp_capacity :: (seen:int,beacons:int,receipts:int,checks:int)->bool {return seen<=224 && beacons<=32 && receipts<=64 && checks<=128;}
+mpp_role :: (p:MtPolicy,kind:int,author:string)->int {
+  if kind==30200 && mt_has(p.providers,author) {return 1;}
+  if kind==3201 && mt_has(p.buyers,author) {return 2;}
+  if kind==1985 && mt_has(p.checkers,author) {return 3;}return 0;
+}

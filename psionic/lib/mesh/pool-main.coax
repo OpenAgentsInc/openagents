@@ -1,0 +1,2 @@
+#load "pool-runtime.coax";
+main :: () {mpr_main();}

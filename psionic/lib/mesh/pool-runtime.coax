@@ -1,0 +1,85 @@
+// Effectful shell only: checked profile units own role admission and totals.
+// All retained views point into immutable per-event owned storage, never a
+// reused relay scratch buffer. Bundles carry public original signed events.
+#load "../fleet/runtime.coax";
+#load "pool-input-policy.coax";
+#load "pool-bundle.coax";
+mpub_stdin_read :: (ms:int)->int #foreign;
+mpub_stdin_byte :: (i:int)->int #foreign;
+mpub_stdin_clear :: ()->int #foreign;
+mpub_stdout_tty :: ()->int #foreign;
+mpub_stderr_byte :: (byte:int)->int #foreign;
+MprConfig :: struct {args:[32768]u8;used:int;pool:string;from:int=-1;to:int=-1;providers:[32]string;pn:int;buyers:[64]string;bn:int;checkers:[128]string;cn:int;relay:string="wss://relay.openagents.com";timeout:int=10000;verify:string;policy:bool;publish:bool;bundle:bool;inputs:bool;}
+MprEvent :: struct {raw:[16384]u8;n:int;content:[16384]u8;content_n:int;id:[64]u8;author:[64]u8;}
+MprState :: struct {cfg:[1]MprConfig;f:[1]Fm;events:[224]MprEvent;count:int;seen:[225][64]u8;sn:int;beacons:[32]MtBeacon;bn:int;receipts:[64]MtReceipt;rn:int;checks:[128]MtCheck;cn:int;aggregate:[16384]u8;an:int;aggregate_content:[16384]u8;acn:int;policy:[32768]u8;policy_n:int;input:[2097152]u8;bundle:[1048576]u8;work:[1048576]u8;}
+mpr_error :: (message:string) {for ch:message {x:=mpub_stderr_byte(cast(int)ch);}x:=mpub_stderr_byte(10);x=fh_status(1);}
+mpr_arg :: (c:[]MprConfig,i:int)->string {n:=fh_arg_len(i);if n<0 || c[0].used+n>32768 {return "";}start:=c[0].used;for k:0..<n {c[0].args[start+k]=cast(u8)fh_arg_byte(i,k);}c[0].used+=n;return cast(string)c[0].args[start..<start+n];}
+mpr_policy :: (c:[]MprConfig)->MtPolicy {return MtPolicy.{from=c[0].from,to=c[0].to,providers=c[0].providers[0..<c[0].pn],buyers=c[0].buyers[0..<c[0].bn],checkers=c[0].checkers[0..<c[0].cn]};}
+mpr_config :: (c:[]MprConfig)->bool {
+  i:=1;while i<fh_argc() {a:=mpr_arg(c,i);i+=1;
+    if a=="--policy" {c[0].policy=true;continue;}if a=="--publish" {c[0].publish=true;continue;}if a=="--bundle" {c[0].bundle=true;continue;}if a=="--inputs" {c[0].inputs=true;continue;}
+    if i>=fh_argc() {return false;}v:=mpr_arg(c,i);i+=1;
+    if a=="--pool" {c[0].pool=v;}else if a=="--relay" {c[0].relay=v;}else if a=="--verify" {if !mt_hex(v) {return false;}c[0].verify=v;}
+    else if a=="--provider" {if c[0].pn>=32 {return false;}c[0].providers[c[0].pn]=v;c[0].pn+=1;}
+    else if a=="--buyer" {if c[0].bn>=64 {return false;}c[0].buyers[c[0].bn]=v;c[0].bn+=1;}
+    else if a=="--checker" {if c[0].cn>=128 {return false;}c[0].checkers[c[0].cn]=v;c[0].cn+=1;}
+    else if a=="--from" || a=="--to" || a=="--timeout-ms" {n:=json_int(v);if !n.ok {return false;}if a=="--from" {c[0].from=n.value;}else if a=="--to" {c[0].to=n.value;}else {c[0].timeout=n.value;}}
+    else {return false;}
+  }
+  p:=mpr_policy(c);return mr_slug(c[0].pool) && mt_policy(p) && mpp_window(p.from,p.to,fh_now_s()) && mpp_budget(c[0].timeout) && relay_uri(c[0].relay).ok && mpp_mode(c[0].verify.count>0,c[0].policy,c[0].publish,c[0].inputs,c[0].bundle);
+}
+mpr_ingest :: (s:[]MprState,raw:string,cutoff:int,public_only:bool)->bool {
+  if raw.count==0 || raw.count>16384 {return false;}scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_verify_vartime(raw,scratch[..],false);if e.error!=NE_OK || !e.verified {return false;}
+  if !mpi_kind(e.kind) {return !public_only;}
+  id:[64]u8;author:[64]u8;eid:=fm_hex(e.id[..],id[..]);key:=fm_hex(e.public_key[..],author[..]);
+  policy:=mpr_policy(s[0].cfg[..]);role:=mpp_role(policy,e.kind,key);if role==0 || e.created_at>cutoff {return true;}
+  decoded:[16384]u8;decoded_n:=json_unescape(raw[e.content_from..<e.content_to],decoded[..]);if decoded_n<0 {return false;}candidate_tags:=raw[e.tags_from..<e.tags_to];candidate_provider:=ifx role==2 then mr_text(cast(string)decoded[0..<decoded_n],"provider") else pt_tag(candidate_tags,"p").v[1];if !mpi_provider(policy,role,candidate_provider) {return true;}
+  for i:0..<s[0].sn {if cast(string)s[0].seen[i][..]==eid {return true;}}
+  if s[0].sn>=224 {return false;}for k:0..<64 {s[0].seen[s[0].sn][k]=id[k];}s[0].sn+=1;
+  if !mpp_capacity(s[0].count+1,s[0].bn+(ifx role==1 then 1 else 0),s[0].rn+(ifx role==2 then 1 else 0),s[0].cn+(ifx role==3 then 1 else 0)) {return false;}
+  index:=s[0].count;for i:0..<raw.count {s[0].events[index].raw[i]=raw[i];}s[0].events[index].n=raw.count;for i:0..<64 {s[0].events[index].id[i]=id[i];s[0].events[index].author[i]=author[i];}
+  body_n:=decoded_n;for i:0..<body_n {s[0].events[index].content[i]=decoded[i];}s[0].events[index].content_n=body_n;
+  body:=cast(string)s[0].events[index].content[0..<body_n];tags:=cast(string)s[0].events[index].raw[e.tags_from..<e.tags_to];owned_id:=cast(string)s[0].events[index].id[..];owned_key:=cast(string)s[0].events[index].author[..];
+  if role==1 {b:=ph_read_beacon(e.kind,owned_key,tags,body);if !mpi_beacon(b.code,b.auth,b.pylon) {return false;}family:=ifx b.family=="unified-memory" then 0 else ifx b.family=="gpu" then 1 else 2;s[0].beacons[s[0].bn]=MtBeacon.{event_id=owned_id,provider=owned_key,pylon=b.pylon,generation=b.generation,observed_at=b.observed_at,valid_until=b.valid_until,status=cast(int)b.status,family=family,total=b.total,free=b.free};s[0].bn+=1;}
+  else if role==2 {r:=mr_read(e.kind,owned_key,e.created_at,tags,body);if !r.ok {return false;}s[0].receipts[s[0].rn]=MtReceipt.{event_id=owned_id,buyer=owned_key,provider=r.provider,pylon=r.pylon,request=r.request,request_digest=r.request_digest,result_digest=r.result_digest,created_at=r.created_at,finished_at=r.finished_at,accepted=true,units=1};s[0].rn+=1;}
+  else {r:=mr_check_read(e.kind,owned_key,e.created_at,tags,body);if !r.ok {return false;}s[0].checks[s[0].cn]=MtCheck.{event_id=owned_id,checker=owned_key,receipt_id=r.receipt,provider=r.provider,result_digest=r.result_digest,created_at=r.created_at,verdict=r.verdict};s[0].cn+=1;}
+  s[0].count+=1;return true;
+}
+mpr_connect :: (s:[]MprState)->bool {s[0].f[0].quiet=true;s[0].f[0].cfg[0].relay=s[0].cfg[0].relay;if !fm_key(s[0].f[..]) {return false;}end:=cxsock_now_ms()+s[0].cfg[0].timeout;fm_connect(s[0].f[..]);while !s[0].f[0].subscribed && cxsock_now_ms()<end && fh_stop()==0 && s[0].f[0].conn[0].h>=0 {fm_pump(s[0].f[..],20);}return s[0].f[0].subscribed;}
+// Each role has its own relay filter; checker lists split at the relay's
+//64-author bound. The extra response is an explicit truncation sentinel.
+mpr_filter :: (out:[]u8,n:int,kind:int,keys:[]string,providers:[]string,cutoff:int)->int {
+  if keys.count==0 || (kind!=30200 && providers.count==0) {return n;}
+  at:=json_raw(out,n,",{\"kinds\":[");at=json_write_int(out,at,kind);at=json_raw(out,at,"],\"limit\":225,\"until\":");at=json_write_int(out,at,cutoff);at=json_raw(out,at,",\"authors\":[");
+  for i:0..<keys.count {if i>0 {at=json_raw(out,at,",");}at=json_write_string(out,at,keys[i]);}at=json_raw(out,at,"]");
+  if kind!=30200 {at=json_raw(out,at,",\"#p\":[");for i:0..<providers.count {if i>0 {at=json_raw(out,at,",");}at=json_write_string(out,at,providers[i]);}at=json_raw(out,at,"]");at=json_raw(out,at,ifx kind==3201 then ",\"#t\":[\"oa:pylon-receipt:v2\"]" else ",\"#L\":[\"openagents.pylon\"]");}
+  return json_raw(out,at,"}");
+}
+mpr_query :: (s:[]MprState,aggregate:bool,cutoff:int)->bool {
+  f:=s[0].f[..];sub:=ifx aggregate then "mesh-aggregate" else "mesh-inputs";f[0].observe_sub=sub;f[0].observed_n=0;f[0].observed_eose=false;f[0].observe_frames=0;f[0].observe_failed=false;out:[32768]u8;n:=json_raw(out[..],0,"[\"REQ\",\"");n=json_raw(out[..],n,sub);n=json_raw(out[..],n,"\"");
+  if aggregate {n=json_raw(out[..],n,",{\"ids\":[\"");n=json_raw(out[..],n,s[0].cfg[0].verify);n=json_raw(out[..],n,"\"],\"limit\":1}");}
+  else {p:=mpr_policy(s[0].cfg[..]);if p.providers.count==0 {return true;}n=mpr_filter(out[..],n,30200,p.providers,p.providers,cutoff);n=mpr_filter(out[..],n,3201,p.buyers,p.providers,cutoff);first:=ifx p.checkers.count<64 then p.checkers.count else 64;n=mpr_filter(out[..],n,1985,p.checkers[0..<first],p.providers,cutoff);n=mpr_filter(out[..],n,1985,p.checkers[first..<p.checkers.count],p.providers,cutoff);}
+  n=json_raw(out[..],n,"]");if n<0 || !relay_conn_send(f[0].conn[..],cast(string)out[0..<n]) {return false;}end:=cxsock_now_ms()+s[0].cfg[0].timeout;
+  while !f[0].observed_eose && cxsock_now_ms()<end && fh_stop()==0 && f[0].conn[0].h>=0 {f[0].observed_n=0;fm_pump(f,20);if !mpi_complete(f[0].observe_frames,f[0].observe_failed) {return false;}if f[0].observed_n>0 {raw:=cast(string)f[0].observed[0..<f[0].observed_n];if aggregate {if raw.count>16384 {return false;}for i:0..<raw.count {s[0].aggregate[i]=raw[i];}s[0].an=raw.count;}else if !mpr_ingest(s,raw,cutoff,false) {return false;}}}
+  close:[128]u8;k:=json_raw(close[..],0,"[\"CLOSE\",\"");k=json_raw(close[..],k,sub);k=json_raw(close[..],k,"\"]");sent:=relay_conn_send(f[0].conn[..],cast(string)close[0..<k]);return f[0].observed_eose && mpi_complete(f[0].observe_frames,f[0].observe_failed) && (!aggregate || s[0].an>0);
+}
+mpr_sign :: (s:[]MprState,stamp:int,tags:string,body:string,out:[]u8)->int {aux:[32]u8;if !rc_draw(32,aux[..]) {return -1;}scratch:[NE_MAX_OUTPUT]u8;n:=EVENT_MORE;while n==EVENT_MORE {n=nostr_event_sign_step(s[0].f[0].key[..],aux[..],stamp,MP_KIND,tags,body,s[0].f[0].signer[..],scratch[..],out,false);}for i:0..<32 {aux[i]=0;}return n;}
+mpr_verify :: (s:[]MprState)->bool {
+  raw:=cast(string)s[0].aggregate[0..<s[0].an];scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_verify_vartime(raw,scratch[..],false);if e.error!=NE_OK || !e.verified {return false;}id:[64]u8;author:[64]u8;if fm_hex(e.id[..],id[..])!=s[0].cfg[0].verify {return false;}
+  n:=json_unescape(raw[e.content_from..<e.content_to],s[0].aggregate_content[..]);if n<0 {return false;}s[0].acn=n;body:=cast(string)s[0].aggregate_content[0..<n];p:=mpr_policy(s[0].cfg[..]);t:=mt_recompute(p,s[0].beacons[0..<s[0].bn],s[0].receipts[0..<s[0].rn],s[0].checks[0..<s[0].cn]);g:=mr_stamp(mf_get(body,"generated_at"));v:=mr_stamp(mf_get(body,"valid_until"));if !g.ok || !v.ok || g.value>fh_now_s() {return false;}
+  c:=MpConfig.{aggregator=fm_hex(e.public_key[..],author[..]),pool=s[0].cfg[0].pool,generated_at=g.value,valid_until=v.value};if !mp_admit(e.kind,c.aggregator,e.created_at,raw[e.tags_from..<e.tags_to],body,c,p,t) {return false;}
+  print("{\"verified\":true,\"current\":%,\"id\":\"%\"}\n",ifx fh_now_s()<v.value then "true" else "false",s[0].cfg[0].verify);return true;
+}
+mpr_run :: (s:[]MprState)->bool {
+  c:=s[0].cfg[0];p:=mpr_policy(s[0].cfg[..]);n:=mp_policy(p,s[0].policy[..]);if n<0 {return false;}s[0].policy_n=n;if c.policy {print("%\n",cast(string)s[0].policy[0..<n]);return true;}
+  if c.bundle && mpub_stdout_tty()!=0 {return false;}
+  if c.inputs {count:=mpub_stdin_read(c.timeout);if count<0 || count>1048576 {cleared:=mpub_stdin_clear();return false;}for i:0..<count {s[0].input[i]=cast(u8)mpub_stdin_byte(i);}cleared:=mpub_stdin_clear();events:[224]string;b:=mbp_read(s[0].input[0..<count],events[..]);if !b.ok || b.policy!=cast(string)s[0].policy[0..<s[0].policy_n] {return false;}for i:0..<b.aggregate.count {s[0].aggregate[i]=b.aggregate[i];}s[0].an=b.aggregate.count;verify_work:[NE_MAX_OUTPUT]u8;aggregate_event:=nostr_event_verify_vartime(b.aggregate,verify_work[..],false);if aggregate_event.error!=NE_OK || !aggregate_event.verified {return false;}for i:0..<b.event_count {if !mpr_ingest(s,events[i],aggregate_event.created_at,true) {return false;}}return mpr_verify(s);}
+  if !mpr_connect(s) {return false;}
+  cutoff:=fh_now_s();if c.verify.count>0 {if !mpr_query(s,true,cutoff) {return false;}scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_verify_vartime(cast(string)s[0].aggregate[0..<s[0].an],scratch[..],false);if e.error!=NE_OK {return false;}cutoff=e.created_at;}
+  if !mpr_query(s,false,cutoff) {return false;}if c.verify.count>0 {return mpr_verify(s);}
+  t:=mt_recompute(p,s[0].beacons[0..<s[0].bn],s[0].receipts[0..<s[0].rn],s[0].checks[0..<s[0].cn]);stamp:=cutoff;mc:=MpConfig.{aggregator=cast(string)s[0].f[0].me[..],pool=c.pool,generated_at=stamp,valid_until=stamp+300};body:[16384]u8;tags:[4096]u8;k:=mp_content(mc,p,t,body[..]);if k<0 {return false;}tn:=mp_tags(mc,p,t,cast(string)body[0..<k],tags[..]);if tn<0 {return false;}s[0].an=mpr_sign(s,stamp,cast(string)tags[0..<tn],cast(string)body[0..<k],s[0].aggregate[..]);if s[0].an<0 {return false;}
+  bundled:=0;if c.bundle {events:[224]string;for i:0..<s[0].count {events[i]=cast(string)s[0].events[i].raw[0..<s[0].events[i].n];}bundled=mbp_write(cast(string)s[0].policy[0..<s[0].policy_n],cast(string)s[0].aggregate[0..<s[0].an],events[0..<s[0].count],s[0].bundle[..],s[0].work[..]);if bundled<0 {return false;}}
+  if c.publish {f:=s[0].f[..];scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_read(cast(string)s[0].aggregate[0..<s[0].an],scratch[..],false);if e.error!=NE_OK {return false;}id:=fm_hex(e.id[..],f[0].receipt_id[..]);f[0].receipt_event_n=s[0].an;f[0].receipt_ack=0;frame:[32768]u8;frame_n:=nostr_message_write_event(cast(string)s[0].aggregate[0..<s[0].an],frame[..],false);if frame_n<0 || !relay_conn_send(f[0].conn[..],cast(string)frame[0..<frame_n]) {return false;}end:=cxsock_now_ms()+c.timeout;while f[0].receipt_ack==0 && cxsock_now_ms()<end && fh_stop()==0 {fm_pump(f,20);}if f[0].receipt_ack!=1 {return false;}for ch:id {x:=mpub_stderr_byte(cast(int)ch);}x:=mpub_stderr_byte(10);}
+  if c.bundle {print("%",cast(string)s[0].bundle[0..<bundled]);}else {print("%\n",cast(string)s[0].aggregate[0..<s[0].an]);}return true;
+}
+mpr_main :: () {s:[1]MprState;if !mpr_config(s[0].cfg[..]) {mpr_error("pool: invalid arguments, trust, mode or closed window");return;}if !mpr_run(s[..]) {mpr_error("pool: unverified, incomplete, unsupported or unavailable input");}fm_drop(s[0].f[..]);for i:0..<32 {s[0].f[0].key[i]=0;}}

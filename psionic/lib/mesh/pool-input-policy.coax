@@ -1,0 +1,26 @@
+// Bounds and profile admission for the native PUBLIC snapshot reader.
+#load "pool-policy.coax";
+#authority;
+#test "public carriage cannot contain private or unrelated signed kinds" {
+  #assert mpi_kind(30200) && mpi_kind(3201) && mpi_kind(1985);
+  #assert !mpi_kind(25910) && !mpi_kind(26910) && !mpi_kind(30201) && !mpi_kind(0);
+}
+#test "raw response saturation or a failed original prevents completeness" {
+  #assert mpi_complete(0,false) && mpi_complete(224,false);
+  #assert !mpi_complete(225,false) && !mpi_complete(226,false) && !mpi_complete(0,true) && !mpi_complete(224,true);
+}
+#test "unknown providers cannot consume receipt or label capacity" {
+  keys:=[1]string.[MT_B];p:=MtPolicy.{providers=keys[..]};
+  #assert mpi_provider(p,2,MT_B) && mpi_provider(p,3,MT_B) && mpi_provider(p,1,"");
+  #assert !mpi_provider(p,2,MT_A) && !mpi_provider(p,3,MT_A) && !mpi_provider(p,0,MT_B);
+  p.providers=keys[0..<0];#assert !mpi_provider(p,2,MT_B) && !mpi_provider(p,3,MT_B);
+}
+#test "unsupported ownership and invalid slugs never project provider capacity" {
+  #assert mpi_beacon(PbCode.ok,false,"p1") && mpi_beacon(PbCode.ok,false,"p-1");
+  #assert !mpi_beacon(PbCode.tags,false,"p1") && !mpi_beacon(PbCode.ok,true,"p1");
+  #assert !mpi_beacon(PbCode.ok,false,"-p1") && !mpi_beacon(PbCode.ok,false,"_p1") && !mpi_beacon(PbCode.ok,false,"");
+}
+mpi_kind :: (kind:int)->bool {return kind==30200 || kind==3201 || kind==1985;}
+mpi_complete :: (frames:int,failed:bool)->bool {return frames<225 && !failed;}
+mpi_provider :: (p:MtPolicy,role:int,provider:string)->bool {if role==1 {return true;}if role==2 || role==3 {return mt_has(p.providers,provider);}return false;}
+mpi_beacon :: (code:PbCode,auth:bool,slug:string)->bool {return code==PbCode.ok && !auth && mr_slug(slug);}
