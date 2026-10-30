@@ -2,7 +2,7 @@ import XCTest
 
 /// The real flow against a real server, run by hand with a fresh code:
 ///   TEST_RUNNER_OA_SIGNIN_CODE='https://staging.openagents.com/signin#c=…' \
-///   [TEST_RUNNER_OA_SIGNIN_EXPECT='Signed in. Look at your computer.'] \
+///   [TEST_RUNNER_OA_SIGNIN_EXPECT='Logged in. Look at your computer.'] \
 ///   xcodebuild … -only-testing:OpenAgentsUITests/SignInLiveUITests test
 /// It opens the code as a link through the system (tapping its "Open in"
 /// prompt), approves, and checks what the phone says. Skipped without a code.
@@ -29,6 +29,6 @@ final class SignInLiveUITests: XCTestCase {
         let shot = XCTAttachment(screenshot: app.screenshot()); shot.name = "Live result"; shot.lifetime = .keepAlways; add(shot)
         print("OA_SIGNIN_RESULT: \(result.label)")
         if let want = env["OA_SIGNIN_EXPECT"], !want.isEmpty { XCTAssertEqual(result.label, want) }
-        else { XCTAssertTrue(result.label.hasPrefix("Signed in") || result.label.hasPrefix("This phone is linked"), result.label) }
+        else { XCTAssertTrue(result.label.hasPrefix("Logged in") || result.label.hasPrefix("This phone is linked"), result.label) }
     }
 }

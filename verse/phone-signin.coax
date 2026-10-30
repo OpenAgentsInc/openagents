@@ -239,7 +239,7 @@ si_name :: (body: string) -> string {
 // What to say after the server answered (status 0: no answer at all).
 verse_signin_result :: (kind: int, status: int, body: [] u8, out: [] u8) -> int #export_c {
   if status == 200 {
-    if kind == SIGNIN_SIGNIN { return si_put(out, 0, "Signed in. Look at your computer."); }
+    if kind == SIGNIN_SIGNIN { return si_put(out, 0, "Logged in. Look at your computer."); }
     name := si_name(cast(string) body);
     if name.count == 0 { return si_put(out, 0, "This phone is linked to your project."); }
     o := si_put(out, 0, "This phone is linked to your project as ");
@@ -413,7 +413,7 @@ kind_of :: (a: string, b: string, c: string, debug: bool) -> int { t := tx(a, b,
   buf: [200] u8;
   a := tx("{\"ok\":true,\"kind\":\"signin\"}", "", "");
   n := verse_signin_result(SIGNIN_SIGNIN, 200, a.b[0..<a.n], buf[..]);
-  #assert cast(string) buf[0..<n] == "Signed in. Look at your computer.";
+  #assert cast(string) buf[0..<n] == "Logged in. Look at your computer.";
   b := tx("{\"ok\":true,\"kind\":\"link\",\"name\":\"Ada\"}", "", "");
   n = verse_signin_result(SIGNIN_LINK, 200, b.b[0..<b.n], buf[..]);
   #assert cast(string) buf[0..<n] == "This phone is linked to your project as Ada.";

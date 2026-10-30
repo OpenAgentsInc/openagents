@@ -109,7 +109,7 @@ final class SignInUITests: XCTestCase {
         XCTAssertEqual(app.staticTexts["signin.question"].label, "Log in to 127.0.0.1:\(fake.port)?")
         shot(app, "Sign in?")
         app.buttons["signin.approve"].tap()
-        XCTAssertTrue(wait(20) { app.staticTexts["signin.result"].label == "Signed in. Look at your computer." }, app.staticTexts["signin.result"].label)
+        XCTAssertTrue(wait(20) { app.staticTexts["signin.result"].label == "Logged in. Look at your computer." }, app.staticTexts["signin.result"].label)
         shot(app, "Signed in")
         guard fake.seen.count == 1 else { return XCTFail("requests: \(fake.seen.count)") }
         let first = fake.seen[0]
