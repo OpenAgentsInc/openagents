@@ -38,6 +38,7 @@ WatchView :: struct {
   started: bool;
   knock: Point; knocked: bool;    // a blast's throw for your living body, for the face to add to your velocity once
   you_slot: int; you_t: f64;      // the spell that last caught you and when (a Meteor Swarm's spheres hurt you once)
+  want: int;                      // a hash's "+wantedN": the level you start wanted at (0 none)
 }
 
 watch_cap :: (group: int) -> int {
@@ -104,6 +105,10 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   w[0].on = sp_on(s) && !c.still;
   if !w[0].on { return; }
   w[0].face = s[0].face;
+  if s[0].wv.want > 0 {
+    w[0].wanted = true; w[0].unseen = 0; w[0].heat = hi_w(w[0].heat, HEAT_AT[clamp_w(s[0].wv.want, 1, WANTED_LEVELS)]);
+    s[0].wv.want = 0;
+  }
   watch_tick(w, dt, you, c.day, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
   // a hunter's spell threw you: the face adds it to your velocity
   if w[0].bound_said == 1 { sp_say(s, "EARTHBIND", -1, ""); }

@@ -837,6 +837,12 @@ everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   // "road+paint": the view, drawn without the world's names (art-styles.md 15: the style check measures
   // the painting; the names are text like the HUD's plates, and a phone's narrow canvas makes them a big share)
   if hash.count > 6 && hash[hash.count - 6..<hash.count] == "+paint" { s[0].paint_only = true; everglade_hash(s, hash[0..<hash.count - 6]); return; }
+  // "commons+wanted5": you start wanted at that level (1 to 5), its waves called in (the anti-air check)
+  if hash.count > 8 && hash[hash.count - 8..<hash.count - 1] == "+wanted" {
+    l := cast(int) hash[hash.count - 1] - cast(int) '0';
+    if l >= 1 && l <= WANTED_LEVELS { s[0].wv.want = l; }
+    everglade_hash(s, hash[0..<hash.count - 8]); return;
+  }
   if hash == "above" || hash == "map" { s[0].above = true; s[0].lift = 1; return; }
   // a pond's bank on its trail's side, facing the water; #rowboat: in the Lantern Pond's boat
   boat := hash == "rowboat";
