@@ -85,6 +85,8 @@ Spells :: struct {
   dm: [] DemoWorld;           // the pieces and their debris: the page's face holds it (everglade_attach_demolish); none, nothing breaks
   dice: [1] SrdDice;
   bounds: [KIT_MESHES * 6] f32; have: [KIT_MESHES] bool;
+  wall_keep: [WALLS * 6] f32; keep_n: int;   // the town's own walls (and the bridge's rails after them), whole
+  walls_dirty: bool;
   town_used: [SP_DEBRIS_MESHES] int;   // each debris mesh's group: the town's own instances (the debris follows them)
   group_x: [SP_GROUPS] f32; group_z: [SP_GROUPS] f32; group_n: [SP_GROUPS] int;
   armed: int;                // the slot aimed, -1 none
@@ -185,6 +187,8 @@ sp_debris :: (m: int, b: int) -> int {
 
 // At the start, once the town is laid: every town piece's instance.
 spells_start :: (s: [] Everglade) {
+  s[0].sp.keep_n = s[0].wall_n;
+  for k: 0..<lo_int((s[0].wall_n + 2) * 6, WALLS * 6) { s[0].sp.wall_keep[k] = s[0].walls[k]; }
   if s[0].sp.dm.count < 1 { return; }
   w := sp_dm(s);
   demo_new(w, false);
@@ -461,6 +465,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     if demo_damage(w, i, amount, at, SP_THROW[slot] * (0.4 + 0.6 * share)) { s[0].sp.broke += 1; }
   }
   _ := demo_settle(w);
+  s[0].sp.walls_dirty = true;
   kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
   // fire and lightning char what they broke: its new chunks darkened, some to soot; and dust where it broke
   for b: 0..<DEMO_BODIES {
@@ -605,6 +610,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
     sp_add_puff(s, ev.at, v3(0, 0.8, 0), hi(ev.size, 0.8) * 1.4, 3.0, 0.7);
     if ev.kind == 1 { sp_add_puff(s, add(ev.at, v3(0, 0.5, 0)), v3(0.6, 0.4, 0.3), hi(ev.size, 0.8), 3.5, 0.62); }
   }
+  if s[0].sp.walls_dirty { sp_open_walls(s); }
   s[0].sp.regrow_t += dt;
   if s[0].sp.regrow_t > 1 { s[0].sp.regrow_t = 0; sp_regrow(s); }
   // every piece's instance, as it is now
@@ -635,7 +641,87 @@ sp_restore :: (s: [] Everglade, g: int) -> int {
   w := sp_dm(s);
   n := demo_restore(w, g);
   for i: 0..<w[0].n { if g < 0 || w[0].pieces[i].group == g { sp_tint(s, i, 1); } }
+  sp_open_walls(s);
   return n;
+}
+
+// The player's walls with holes where the ground walls broke: each wall
+// with a broken piece in it is cut into what still stands either side of
+// the gap, a building's whole footprint first into its four 0.4 m sides, so
+// you walk in through the hole and out through another. Stood back up,
+// the town's own walls come back. (Out of room, the walls stay whole.)
+SP_GAPS :: 160;
+sp_open_walls :: (s: [] Everglade) {
+  w := sp_dm(s);
+  s[0].sp.walls_dirty = false;
+  keep := s[0].sp.keep_n;
+  // the broken ground pieces: their boxes standing
+  gaps: [SP_GAPS * 4] f32; gn := 0;
+  for i: 0..<w[0].n {
+    if gn >= SP_GAPS || !w[0].pieces[i].anchored || w[0].pieces[i].state == DP_STANDING { continue; }
+    gaps[gn * 4] = w[0].pieces[i].x0; gaps[gn * 4 + 1] = w[0].pieces[i].z0;
+    gaps[gn * 4 + 2] = w[0].pieces[i].x1; gaps[gn * 4 + 3] = w[0].pieces[i].z1;
+    gn += 1;
+  }
+  out: [WALLS * 6] f32; on := 0;
+  room := true;
+  for k: 0..<keep {
+    b := k * 6;
+    x0 := s[0].sp.wall_keep[b]; y0 := s[0].sp.wall_keep[b + 1]; z0 := s[0].sp.wall_keep[b + 2];
+    x1 := s[0].sp.wall_keep[b + 3]; y1 := s[0].sp.wall_keep[b + 4]; z1 := s[0].sp.wall_keep[b + 5];
+    hurt := false;
+    for q: 0..<gn {
+      cx := (gaps[q * 4] + gaps[q * 4 + 2]) / 2; cz := (gaps[q * 4 + 1] + gaps[q * 4 + 3]) / 2;
+      if cx > x0 - 0.6 && cx < x1 + 0.6 && cz > z0 - 0.6 && cz < z1 + 0.6 { hurt = true; }
+    }
+    if !hurt || !room {
+      if on < WALLS - 2 { put6(out[..], on, x0, y0, z0, x1, y1, z1); on += 1; } else { room = false; }
+      continue;
+    }
+    thin := x1 - x0 < 1.0 || z1 - z0 < 1.0;
+    sides := ifx thin then 1 else 4;
+    for side: 0..<sides {
+      // this side's box
+      a0 := x0; b0 := z0; a1 := x1; b1 := z1;
+      t := f32(EG_WALL);
+      if !thin {
+        if side == 0 { b1 = z0 + t; } else if side == 1 { b0 = z1 - t; } else if side == 2 { a1 = x0 + t; } else { a0 = x1 - t; }
+      }
+      along_x := a1 - a0 >= b1 - b0;
+      lo_ := ifx along_x then a0 else b0;
+      hi_ := ifx along_x then a1 else b1;
+      // walk along it, emitting what stands between the gaps over it
+      at := lo_;
+      while at < hi_ {
+        next := hi_;      // the nearest gap's start at or after `at`
+        gap_end := hi_;
+        for q: 0..<gn {
+          g0 := ifx along_x then gaps[q * 4] else gaps[q * 4 + 1];
+          g1 := ifx along_x then gaps[q * 4 + 2] else gaps[q * 4 + 3];
+          c0 := ifx along_x then (gaps[q * 4 + 1] + gaps[q * 4 + 3]) / 2 else (gaps[q * 4] + gaps[q * 4 + 2]) / 2;
+          over := ifx along_x then c0 > b0 - 0.8 && c0 < b1 + 0.8 else c0 > a0 - 0.8 && c0 < a1 + 0.8;
+          if !over || g1 <= at || g0 >= hi_ { continue; }
+          start := hi(g0, at);
+          if start < next { next = start; gap_end = g1; }
+        }
+        if next - at > 0.25 {
+          if on >= WALLS - 2 { room = false; break; }
+          if along_x { put6(out[..], on, at, y0, b0, next, y1, b1); } else { put6(out[..], on, a0, y0, at, a1, y1, next); }
+          on += 1;
+        }
+        at = hi(gap_end, next + 0.01);
+      }
+    }
+  }
+  if !room {
+    // out of room: the town's own walls
+    on = keep;
+    for k: 0..<keep * 6 { out[k] = s[0].sp.wall_keep[k]; }
+  }
+  // the bridge's rails after them
+  for k: 0..<12 { out[on * 6 + k] = s[0].sp.wall_keep[keep * 6 + k]; }
+  for k: 0..<(on + 2) * 6 { s[0].walls[k] = out[k]; }
+  s[0].wall_n = on;
 }
 
 // A broken building grows back whole after SP_REGROW s of rest with you SP_REGROW_AWAY m away.
@@ -999,6 +1085,8 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   // aim straight at the inn's middle, as a click there would
   g[0].sp.aim = v3(ix, ground_at(g[..], ix, iz) + 3, iz); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  kept: [WALLS * 6] f32;
+  for k: 0..<WALLS * 6 { kept[k] = g[0].walls[k]; }
   sp_cast(g[..]);
   #assert g[0].sp.casting == SP_METEOR && g[0].sp.armed == -1;
   w := sp_dm(g[..]);
@@ -1019,6 +1107,24 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   roof_down := false;
   for i: 0..<w[0].n { p := w[0].pieces[i]; if p.mesh == M_ROOF && p.group == EG_INN && p.state != DP_STANDING { roof_down = true; } }
   #assert roof_down;
+  // its broken walls no longer stand in your way: you walk in
+  // (a broken ground piece's middle that stood in a wall, clear of every wall now, is a way in)
+  ways := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if !p.anchored || p.state == DP_STANDING { continue; }
+    walled := false;
+    for k: 0..<g[0].sp.keep_n {
+      if p.cx > kept[k * 6] && p.cx < kept[k * 6 + 3] && p.cz > kept[k * 6 + 2] && p.cz < kept[k * 6 + 5] { walled = true; }
+    }
+    if !walled { continue; }
+    clear := true;
+    for k: 0..<g[0].wall_n {
+      if p.cx > g[0].walls[k * 6] && p.cx < g[0].walls[k * 6 + 3] && p.cz > g[0].walls[k * 6 + 2] && p.cz < g[0].walls[k * 6 + 5] { clear = false; }
+    }
+    if clear { ways += 1; }
+  }
+  #assert ways >= 3;
   // a broken piece draws nothing
   for i: 0..<w[0].n {
     p := w[0].pieces[i];
@@ -1032,6 +1138,8 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].sp.boxes[SP_REBUILD].x1 > 0;
   #assert everglade_key(g[..], 'r', 0) && w[0].broken_n == 0 && demo_chunks(w) == 0;
+  #assert g[0].wall_n == g[0].sp.keep_n;
+  for k: 0..<(g[0].wall_n + 2) * 6 { #assert g[0].walls[k] == kept[k]; }
   _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   for i: 0..<w[0].n { p := w[0].pieces[i]; #assert p.state == DP_STANDING && g[0].objects[p.object * OBJECT_FLOATS + 3] == w[0].rest[i * 12 + 3] && g[0].objects[p.object * OBJECT_FLOATS + 12] == w[0].tint[i * 3]; }
 }

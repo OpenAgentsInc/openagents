@@ -549,7 +549,11 @@ town's for it). Fire and lightning char what they break: its chunks come
 out darkened, some nearly to soot, with a plume of dust. A piece hit but still
 standing goes dark toward soot by how near it is to breaking, so a blast's
 edge shows on the walls left up. A roof comes down once a quarter of the
-walls under it are gone (other pieces once half their supports are). Fire and smoke
+walls under it are gone (other pieces once half their supports are). A
+break opens the way in: each of your walls with a broken ground piece in it
+is cut around the gap (a building's solid footprint first into its four
+0.4 m sides), so you walk in through the hole and out through another;
+stood back up, the town's own walls come back. Fire and smoke
 draw as the shapes' boxes and spheres (700 and 168 slots);
 fire and lightning are LOOK_GLOW in everglade.wgsl: unlit, three times
 their colour, blooming, no shadow.
