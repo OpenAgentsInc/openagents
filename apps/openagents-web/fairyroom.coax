@@ -35,7 +35,7 @@ OTHERS_NEAR :: 90.0;        // metres
 NAME_NEAR :: 45.0;          // their names, this near
 SOCIAL_TOAST_TIME :: 4.0;
 INBOX_EVERY :: 15.0;        // seconds between inbox asks while you're here
-FF_INBOX :: false;          // the INBOX button (ff-inbox)
+FF_INBOX :: true;           // the INBOX button (ff-inbox)
 
 // What a button does (SocialButton.kind).
 SB_CHAT :: 1; SB_SAY :: 2; SB_FOLD :: 3; SB_BLOCK_LINE :: 4; SB_REMOVE_LINE :: 5; SB_INBOX :: 6;

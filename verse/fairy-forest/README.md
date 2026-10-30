@@ -144,7 +144,13 @@ you told them and what you did for them).
   REMOVE on every line.
 - **The inbox:** direct messages between players. Send a message to any
   player you've met; it waits in their inbox until they read it, whether
-  they're online or not, and they can answer from there.
+  they're online or not, and they can answer from there. Built (ff-inbox):
+  INBOX on the chat box, with how many are new, opens a pane of the players
+  you have met (been in the forest with at once); OPEN shows what you said
+  to each other and a field to write. Messages are kept on the server
+  (`coax/web/api/migrations/0053_verse_social.sql`): at most 500
+  characters, five a minute and a hundred a day, only between players who
+  have met, and never from someone you block.
 
 ## Making the world: panes
 
@@ -204,7 +210,6 @@ Verse, and Fairy Forest is where they are tried first.
 - Gardens that grow over real days and change with care.
 - Creatures moving in and building homes.
 - Timed courses with shareable links and friends' times.
-- The chat room and the inbox.
 - Panes: the agent bringing up the right pane, the design board from a voice
   prompt, the lore and quest-design panes, and accept-or-decline cards for
   the world's owner.
