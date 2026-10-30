@@ -1,9 +1,13 @@
 # NIP-X402 — Lightning Payments
 
 `draft` `optional` — v1. The [shared contracts](contracts.md) are normative.
-Rust implements supported HTTP, MCP, and native Nostr roles in
-`crates/x402`, including durable proof consumption and purchase recovery.
-This does not claim every wallet adapter or live deployment. It assigns no event
+The Rust `crates/x402` that implemented the HTTP, MCP and native roles was
+removed with the rest of the Rust workspace (`0b401561a0`, 2026-10-27); read it
+there for reference only. What runs today is the HTTP server role under the
+[Spark receiver profile](#spark-receiver-profile) for inference credit
+(`coax/web/api/inference.c`), and its Coax client codec
+(`coax/lib/x402/x402.coax`). No other role, wallet adapter or deployment is
+claimed. It assigns no event
 kinds. It combines x402 Lightning payments with Nostr capability discovery,
 host spending policy, private purchase records, and recoverable execution.
 It does not change [MKT](NIP-MKT.md) or [LAB](NIP-LAB.md) payment timing.
@@ -33,7 +37,8 @@ before advertising native interoperability.
 
 This contract purchases a single exact operation or resource before execution.
 It supplies no escrow, credit, streaming balance, postpaid billing, automatic
-refund, swap, or assurance of delivery. A provider can receive payment and
+refund, swap, or assurance of delivery. (A top-up of prepaid credit can be that exact
+operation; the [Spark receiver profile](#spark-receiver-profile) sells one.) A provider can receive payment and
 then fail. The client MUST admit that risk before paying. Long-running labor
 paid after acceptance continues to use MKT/LAB. A worker's separately admitted
 purchase of a tool is an input cost, not buyer acceptance of the worker's labor.
@@ -437,6 +442,81 @@ unknown and do not execute, repay, release liability, or switch replay stores.
 Native status queries resume evidence retrieval; they do not mint another
 claim, invoice, or execution. New paid attempts after a terminal unpaid refusal
 require a new admitted purchase identity.
+
+## Spark receiver profile
+
+Profile name is exactly `openagents:spark-receiver:1`. It is an OpenAgents
+receiver profile for the HTTP role, carried in `extra.receiverProfile`. A
+payer or server that does not select it MUST refuse a challenge that names it,
+and MUST NOT treat it as the standard Lightning method.
+
+**Why it exists.** A Breez Spark wallet receives Lightning through Lightspark's
+service provider (SSP). The SSP's shared node signs every Spark BOLT11 invoice,
+for every Spark user, and the SDK's `receivePayment` takes a memo, not a
+description hash. So two standard rules cannot hold: the invoice's signer is
+not a key only the receiver holds, and its description hash cannot equal the
+request digest. This profile replaces those two rules, and only those, with
+the receiver's own records.
+
+**Binding.** The request digest is SHA-256 over the UTF-8 bytes of
+`openagents:spark-receiver:1|METHOD|PUBLIC-URL|FIELDS`, where FIELDS are the
+operation's decoded fields in a fixed order joined by `|` (for inference
+credit, `POST`, `https://openagents.com/api/v1/inference/credit`, the
+lowercase hex pubkey and the msat decimal). The server asks its wallet for an
+exact-amount invoice whose memo carries the digest in hex, then stores the
+invoice, its payment hash, the digest and the expiry in its own database
+before it answers 402. Only the server writes that row; the memo is
+informational and is never the binding.
+
+**Challenge.** `PAYMENT-REQUIRED` is base64 of an x402 v2 `PaymentRequired`
+with one `accepts` entry: scheme `exact`, mainnet network
+`lnbtc:000000000019d6689c085ae165831e93`, asset `BTC`, the msat `amount`
+string, `payTo` the wallet's Spark identity public key, `maxTimeoutSeconds`
+the invoice expiry, and `extra` with `method: "bolt11"`,
+`paymentFlow: "upfront"`, `receiverProfile`, `invoice`, `paymentHash` and
+`requestDigest`. The body repeats the same JSON for clients that do not read
+headers.
+
+**Proof.** The retry carries `PAYMENT-SIGNATURE`, base64 of a
+`PaymentPayload` whose `accepted` is the challenge's entry unchanged and whose
+`payload` holds `paymentHash` and, when the payer's wallet returned one,
+`preimage`. The server MUST, in order:
+
+- recompute the digest from the actual retry request and find its own issued
+  row by payment hash; the digest, the invoice (byte-identical), the amount
+  and the network must all match that row;
+- ask its own wallet for its record of that exact invoice; only a completed
+  receive counts, and the record's amount must be at least the invoice's;
+- check that the record's preimage hashes to the payment hash, and that a
+  payer's preimage, when sent, is that same value;
+- in one database transaction, insert the replay key
+  `network:payment_hash` once and apply the operation. A second insert is
+  `duplicate_settlement` and applies nothing.
+
+A payment still unseen by the wallet answers 402 with `payment_pending` and
+changes nothing, so a client may poll at a bounded rate until the invoice's
+expiry plus the 60-second skew. Because the proof is the receiver's record, a
+QR wallet with no preimage-return path is supported under this profile only.
+A payer's preimage alone never credits: the wallet's record must agree. The
+`PAYMENT-RESPONSE` names the payment hash as `transaction`; it never contains
+the preimage, and neither do logs.
+
+**Trust, stated plainly.**
+
+- The receiver trusts the SSP to deliver what it was paid, and the Spark
+  operators (two of three) not to double-spend received leaves
+  ([breez-spark.md](../../docs/lightning/breez-spark.md#trust-model)). A
+  payer's proof proves possession of a preimage, not that our wallet still
+  holds the funds.
+- The wallet is a hot server wallet. It holds small balances only: top-ups are
+  bounded per payment, and when its balance passes the sweep threshold the
+  owner sweeps it to a wallet of their own. It sends nothing on its own; it
+  only issues invoices, reports receives and reads the fiat rate.
+- Mainnet only; Bitcoin only. Stable balances, token and cross-chain
+  conversions stay off.
+- What a payment buys is prepaid credit on one account (the pubkey in the
+  request). It is the single exact operation of this challenge; spending the
+  credit later is the service's own metering, not another x402 purchase.
 
 ## Wallets, zaps, and related protocols
 

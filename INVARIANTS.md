@@ -1517,6 +1517,40 @@ tests (a phone with no wallet shows that and changes nothing, and
 request is made, sends are parsed and quoted, and an empty wallet's send is
 refused in words); and the owner's device showing the existing balance.
 
+## Inference credit is bought only with payments our own Spark wallet received
+
+`POST /api/v1/inference/credit` (`coax/web/api/inference.c`) sells prepaid
+inference credit under NIP-X402's `openagents:spark-receiver:1` profile.
+Credit is added only when all of these hold, checked by the server, never
+taken from the client:
+
+- the invoice was issued by this server for this exact request: its row in
+  `inference.topups` binds the payment hash, the invoice, the pubkey, the
+  msat amount and the request digest, and the retry recomputes the digest
+  from the actual request;
+- the server's own Spark wallet reports that exact invoice received and
+  complete, for at least its amount, with a preimage whose SHA-256 is the
+  payment hash; a payer's preimage, when sent, must equal it, and alone
+  never credits;
+- the replay key `lnbtc:000000000019d6689c085ae165831e93:<payment_hash>` is
+  inserted into `inference.used_payments` in the same transaction that adds
+  the credit, so one payment credits once (`duplicate_settlement` after);
+- the amount is within the top-up bounds; mainnet only, Bitcoin only.
+
+`/api/v1/inference` admits admins, the allowlist, and any signed key whose
+credit is above zero. A paying key's call is debited in msat at the cached
+BTC/USD rate when it is metered; with no rate younger than an hour, paid use
+is refused (503), never priced at a guess. The daily caps still apply to
+every key. The wallet process (`coax/web/api/spark/`) is the only code that
+imports the Breez SDK; it issues invoices, reports receives and reads the
+rate, and sends nothing. Its seed exists only in Secret Manager. The wallet
+is hot and holds small balances; the owner sweeps it.
+
+Check: `coax/web/api/test.sh` (the `credit:` and `drawdown:` checks in
+`test_inference.py`, against a fake wallet: unbound, unpaid, wrong amount,
+wrong preimage, replayed and out-of-bounds top-ups refuse; one payment
+credits once; no rate refuses paid use); `coax test coax/lib/x402/x402.coax`.
+
 ## Nostr projections cannot create authority or replace signed bytes
 
 New `nostr.*.v1alpha1` values are source-pinned projections. A SignedEvent keeps

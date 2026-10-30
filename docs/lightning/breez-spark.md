@@ -153,9 +153,19 @@ pay chain fees. We charge nothing on top.
   invoice, for every Spark user. NIP-X402 requires a payee that only the
   receiver can issue invoices for. The public `receivePayment` also takes
   only a memo, not a description hash.
-- An x402 receiver needs its own node (`ldk-node`), or a new NIP-X402
-  profile that proves settlement by the receiver's own record of the
-  payment. That profile needs an owner decision.
+- **Receiving works under a profile of its own** (owner decision
+  2026-10-30): NIP-X402's `openagents:spark-receiver:1` proves settlement
+  by the receiver's own wallet record of the exact invoice paid, with a
+  preimage that hashes to its payment hash, and keeps the request binding
+  in the server's database instead of the description hash. The SDK makes
+  this possible: a received Lightning payment's record carries the invoice,
+  `htlcDetails.paymentHash` and `htlcDetails.preimage` (the receiving
+  wallet made the preimage and shared it with the operators when it made
+  the invoice), and `defaultServerConfig` targets servers. The server
+  wallet (`coax/web/api/spark/`) uses it for inference credit.
+- A receiver that needs the standard rules (its own signing key,
+  description hash = request digest) still needs its own node
+  (`ldk-node`).
 
 ## Known gaps in the SDK
 
