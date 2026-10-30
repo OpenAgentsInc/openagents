@@ -27,6 +27,15 @@
 // lasts (gw_ours_fresh). The development keys stay behind it as fallbacks.
 // The URL stays opt-in until the route is released to openagents.com.
 //
+// Credit (NIP-X402, openagents:spark-receiver:1): a key that isn't an admin's
+// or on the route's list pays from prepaid credit, and our route answers 402
+// when there is none. Then the turn stays open: the Lab asks the route's
+// top-up (POST <route>/credit {pubkey, msat}, unsigned) for an invoice, shows
+// "Add credit: N sats" with the invoice as text to pay from any Lightning
+// wallet, and retries with PAYMENT-SIGNATURE every few seconds until our
+// wallet has the payment (200), the invoice expires, or STOP. The x402
+// headers are coax/lib/x402/x402.coax's. Then "Send your message again."
+//
 // The engine and its buffers are the host's (zeron-face.c allocates one
 // LabMc for the app's life); without it (the checks) the Lab doesn't offer
 // Microcoder.
@@ -35,6 +44,7 @@
 #load "../../../coax/lib/gateway/vertex.coax";
 #load "../../../coax/lib/gateway/openrouter.coax";
 #load "../../../coax/lib/gateway/ours.coax";
+#load "../../../coax/lib/x402/x402.coax";
 
 zr_random_u64 :: () -> int #foreign;
 zr_lab_unix_s :: () -> int #foreign;   // the time, for signatures (codex.coax has its own; lab.coax is checked without it)
@@ -52,6 +62,29 @@ LMC_VERTEX_KEYFILE :: "/work/.secrets/vertex-sa-inference.json";
 LMC_GCLOUD_CONFIG :: "/Library/Caches/OpenAgents/gcloud-lab";
 LMC_GCLOUDS :: [3] string.["/google-cloud-sdk/bin/gcloud", "/opt/homebrew/bin/gcloud", "/usr/local/bin/gcloud"];   // the first under $HOME
 LMC_EVENTS :: 32;
+LMC_CREDIT_MSAT :: 1_000_000;        // a top-up the Lab offers: 1,000 sats
+LMC_PAY_EVERY_S :: 4;                // how often it asks whether the invoice was paid
+LMC_PAY_SKEW_S :: 60;                // and for how long past the invoice's expiry
+
+// A top-up in progress (lab_mc_pay_*).
+LMC_PAY_IDLE :: 0;
+LMC_PAY_ASKING :: 1;                 // asking the route for an invoice
+LMC_PAY_WAITING :: 2;                // the invoice is on screen; between checks
+LMC_PAY_CHECKING :: 3;               // a retry with the proof is out
+LmcPay :: struct {
+  stage: int;
+  st: [1] GwStream;
+  line: [8192] u8;
+  head: [6000] u8; nh: int;          // the PAYMENT-REQUIRED or PAYMENT-RESPONSE header's value
+  bodyj: [6000] u8; nb: int;         // the answer's body
+  offer: [1] X402Offer;
+  scratch: [6000] u8;
+  sig: [8192] u8; nsig: int; sighdr: [8300] u8; nsh: int;
+  url: [600] u8; nu: int;
+  req: [200] u8; nr: int;            // {"pubkey":...,"msat":"..."}
+  part: int;                         // the transcript row
+  next_s: int; until_s: int;
+}
 
 LabMc :: struct {
   run: [1] McRun;
@@ -70,6 +103,7 @@ LabMc :: struct {
   config: [1200] u8; ncf: int;
   gurl: [512] u8;
   ours: [1] GwOurs; ours_on: bool;   // our route, when it is configured
+  pay: [1] LmcPay;                   // adding credit to it
   env: [1024] u8; route: [512] u8;
   v: [1] LmcView;
 }
@@ -80,6 +114,8 @@ LmcView :: struct {
   streamed: bool;                // reply text arrived in the current step
   step_streamed: bool;           // ... in the step that just ended
   attempts: int;                 // rows written, for their ids
+  need_credit: bool;             // our route answered 402 in this run
+  paying: bool;                  // the run ended for want of credit; the turn waits for a top-up
   why: [1024] u8;
 }
 
@@ -205,6 +241,7 @@ lab_mc_attempt :: (m: [] LmcView, s: [] Session, a: GwAttemptLog) {
   db: [300] u8; nd := e_set(db[..], 0, a.gateway); nd = e_set(db[..], nd, " · "); nd = e_set(db[..], nd, a.model);
   nd = e_set(db[..], nd, " · "); nd = e_set(db[..], nd, gw_outcome_name(a.outcome));
   lb: [512] u8;
+  if a.gateway == "ours" && a.status == 402 { m[0].need_credit = true; }
   s[0].parts[k] = SPart.{kind = P_TOOL, at = s[0].np, tk = TK_TOOL, id = s_put(s, e_str(ib[..], ni)), detail = s_put(s, e_str(db[..], nd)),
                          resolved = true, failed = a.outcome != GW_OUT_DONE && a.outcome != GW_OUT_STOPPED};
   s[0].parts[k].output = s_put(s, gw_attempt_line(a, lb[..]));
@@ -238,6 +275,7 @@ lab_mc_ended :: (m: [] LmcView, s: [] Session, e: McRunEvent) {
   m[0].running = false;
   if (e.ending == MC_END_FINISHED || e.ending == MC_END_ASKED) && !m[0].step_streamed && !m[0].streamed { s_delta(s, P_TEXT, e.text); }
   if e.ending == MC_END_FINISHED || e.ending == MC_END_ASKED || e.ending == MC_END_STOPPED { s_turn_end(s, false, ""); return; }
+  if m[0].need_credit { m[0].paying = true; return; }   // the turn stays open for the top-up (lab_mc_pay_pump)
   k := 0;
   if e.ending == MC_END_NO_CAPACITY { k = e_set(m[0].why[..], 0, "No model answered Microcoder"); if e.text.count > 0 { k = e_set(m[0].why[..], k, ": "); k = e_set(m[0].why[..], k, e.text); } }
   else if e.ending == MC_END_BAD_REPLIES { k = e_set(m[0].why[..], 0, "Microcoder stopped: three replies in a row didn't fit its action schema."); }
@@ -258,8 +296,175 @@ lab_mc_take :: (m: [] LmcView, s: [] Session, ev: [] McRunEvent, n: int) {
   }
 }
 
+// ---- adding credit (NIP-X402 over our Spark wallet)
+
+// The key's pubkey, from the signature our route last took (its event's "pubkey").
+lab_mc_pubkey :: (m: [] LabMc, out: [] u8) -> int { return lmc_pubkey_of(cast(string) m[0].ours[0].auth[0..<m[0].ours[0].na], out); }
+lmc_pubkey_of :: (auth: string, out: [] u8) -> int {
+  b: [2048] u8;
+  n := x402_b64_decode(auth, b[..]);
+  if n < 0 { return -1; }
+  t := cast(string) b[0..<n]; key := "\"pubkey\":\"";
+  i := 0;
+  while i + key.count + 64 <= t.count {
+    if t[i..<i + key.count] == key {
+      v := t[i + key.count..<i + key.count + 64];
+      if !x402_is_hex64(v) { return -1; }
+      for c, k: v { out[k] = c; }
+      return 64;
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+// The top-up's URL: our route's, with /credit.
+lmc_credit_url :: (route: string, out: [] u8) -> int {
+  if route.count + 7 > out.count { return -1; }
+  return e_set(out, e_set(out, 0, route), "/credit");
+}
+
+// "1,000" for 1000.
+lmc_sats_text :: (sats: int, out: [] u8) -> string {
+  d: [24] u8; k := 0; x := sats;
+  if x <= 0 { out[0] = '0'; return cast(string) out[0..<1]; }
+  while x > 0 { d[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; }
+  n := 0;
+  while k > 0 { k -= 1; out[n] = d[k]; n += 1; if k > 0 && k % 3 == 0 { out[n] = ','; n += 1; } }
+  return cast(string) out[0..<n];
+}
+
+// Sends the top-up request, with the proof when there is one.
+lab_mc_pay_send :: (m: [] LabMc, proof: bool) -> string {
+  p := m[0].pay[..];
+  c := GwClient.{url = e_str(p[0].url[..], p[0].nu), key_env = "", key_value = ""};
+  c.max_time_s = 60;
+  hs: [1] string;
+  n := 0;
+  if proof { hs[0] = e_str(p[0].sighdr[..], p[0].nsh); n = 1; }
+  why := gw_start(c, e_str(p[0].req[..], p[0].nr), hs[0..<n], p[0].st[..]);
+  if why.count > 0 { return why; }
+  p[0].st[0].headers = true; p[0].nh = 0; p[0].nb = 0;
+  return "";
+}
+
+// Reads the answer so far: true once it is over (status in st).
+lab_mc_pay_read :: (m: [] LabMc, want: string) -> bool {
+  p := m[0].pay[..];
+  for guard: 0..<64 {
+    r := gw_poll(p[0].st[..], p[0].line[..]);
+    if r.kind == GW_IDLE { return false; }
+    if r.kind == GW_END { return true; }
+    if r.kind == GW_HEADER {
+      v := gw_header_value(r.text, want);
+      if v.count > 0 && v.count <= p[0].head.count { p[0].nh = e_set(p[0].head[..], 0, v); }
+    } else if r.kind == GW_LINE {
+      p[0].nb = e_set(p[0].bodyj[..], p[0].nb, r.text);
+    }
+  }
+  return false;
+}
+
+// The row's end, and the turn's.
+lab_mc_pay_end :: (m: [] LabMc, s: [] Session, ok: bool, why: string) {
+  p := m[0].pay[..];
+  gw_close(p[0].st[..]);
+  p[0].stage = LMC_PAY_IDLE;
+  m[0].v[0].paying = false; m[0].v[0].need_credit = false; m[0].v[0].running = false;
+  if p[0].part >= 0 && p[0].part < s[0].n { s[0].parts[p[0].part].resolved = true; s[0].parts[p[0].part].failed = !ok; s[0].changed = true; }
+  if ok {
+    sb: [32] u8;
+    t: [160] u8; n := e_set(t[..], 0, "Credit added: ");
+    n = e_set(t[..], n, lmc_sats_text(p[0].offer[0].msat / 1000, sb[..])); n = e_set(t[..], n, " sats. Send your message again.");
+    s_delta(s, P_TEXT, e_str(t[..], n));
+    s_turn_end(s, false, "");
+    return;
+  }
+  s_turn_end(s, true, why);
+}
+
+// Starts the top-up: the request for an invoice.
+lab_mc_pay_start :: (m: [] LabMc, s: [] Session) {
+  p := m[0].pay[..];
+  p[0].part = -1;
+  pk: [64] u8;
+  if lab_mc_pubkey(m, pk[..]) != 64 { lab_mc_pay_end(m, s, false, "Our route needs credit, and the Lab could not read its key."); return; }
+  p[0].nu = lmc_credit_url(cast(string) m[0].ours[0].url[0..<m[0].ours[0].nu], p[0].url[..]);
+  if p[0].nu < 0 { lab_mc_pay_end(m, s, false, "Our route needs credit, and its URL is too long."); return; }
+  n := e_set(p[0].req[..], 0, "{\"pubkey\":\""); n = e_set(p[0].req[..], n, cast(string) pk[0..<64]);
+  n = e_set(p[0].req[..], n, "\",\"msat\":\""); n = put_int(p[0].req[..], n, LMC_CREDIT_MSAT); n = e_set(p[0].req[..], n, "\"}");
+  p[0].nr = n;
+  why := lab_mc_pay_send(m, false);
+  if why.count > 0 { lab_mc_pay_end(m, s, false, why); return; }
+  p[0].stage = LMC_PAY_ASKING;
+}
+
+// The invoice is here: its row, then checks every few seconds.
+lab_mc_pay_show :: (m: [] LabMc, s: [] Session) {
+  p := m[0].pay[..];
+  src := ifx p[0].nh > 0 then e_str(p[0].head[..], p[0].nh) else e_str(p[0].bodyj[..], p[0].nb);
+  why := x402_read_required(src, p[0].offer[..], p[0].scratch[..]);
+  if why.count > 0 { t: [200] u8; n := e_set(t[..], 0, "Our route needs credit, and its invoice was refused: "); n = e_set(t[..], n, why); lab_mc_pay_end(m, s, false, e_str(t[..], n)); return; }
+  p[0].nsig = x402_signature(p[0].offer[..], "", p[0].sig[..]);
+  if p[0].nsig < 0 { lab_mc_pay_end(m, s, false, "Our route needs credit, and the Lab could not build its proof."); return; }
+  p[0].nsh = e_set(p[0].sighdr[..], e_set(p[0].sighdr[..], 0, "PAYMENT-SIGNATURE: "), e_str(p[0].sig[..], p[0].nsig));
+  k := s_part(s, P_TOOL);
+  p[0].part = k;
+  if k >= 0 {
+    sb: [32] u8; d: [80] u8;
+    nd := e_set(d[..], 0, "Add credit: "); nd = e_set(d[..], nd, lmc_sats_text(p[0].offer[0].msat / 1000, sb[..])); nd = e_set(d[..], nd, " sats");
+    s[0].parts[k] = SPart.{kind = P_TOOL, at = s[0].np, tk = TK_TOOL, id = s_put(s, "mc-credit"), detail = s_put(s, e_str(d[..], nd)), resolved = false};
+    at := s[0].np;
+    q := s_put(s, "Pay this Lightning invoice from any wallet. The Lab adds the credit when the payment arrives.\n\n");
+    q = s_put(s, cast(string) p[0].offer[0].invoice[0..<p[0].offer[0].ni]);
+    s[0].parts[k].output = cast(string) s[0].pool[at..<s[0].np];
+    s[0].changed = true;
+  }
+  now := zr_lab_unix_s();
+  p[0].next_s = now + LMC_PAY_EVERY_S;
+  p[0].until_s = now + (ifx p[0].offer[0].timeout_s > 0 then p[0].offer[0].timeout_s else 600) + LMC_PAY_SKEW_S;
+  p[0].stage = LMC_PAY_WAITING;
+}
+
+// Each frame while the turn waits for credit.
+lab_mc_pay_pump :: (m: [] LabMc, s: [] Session) {
+  p := m[0].pay[..];
+  if p[0].stage == LMC_PAY_IDLE { lab_mc_pay_start(m, s); return; }
+  if p[0].stage == LMC_PAY_ASKING {
+    if !lab_mc_pay_read(m, "PAYMENT-REQUIRED") { return; }
+    status := p[0].st[0].status;
+    gw_close(p[0].st[..]);
+    if status == 402 { lab_mc_pay_show(m, s); return; }
+    t: [200] u8; n := e_set(t[..], 0, "Our route needs credit, and its top-up answered ");
+    n = put_int(t[..], n, status); n = e_set(t[..], n, ": "); n = e_set(t[..], n, e_str(p[0].bodyj[..], ifx p[0].nb < 120 then p[0].nb else 120));
+    lab_mc_pay_end(m, s, false, e_str(t[..], n));
+    return;
+  }
+  now := zr_lab_unix_s();
+  if p[0].stage == LMC_PAY_WAITING {
+    if now >= p[0].until_s { lab_mc_pay_end(m, s, false, "The invoice expired before it was paid. Send your message again for a new one."); return; }
+    if now < p[0].next_s { return; }
+    why := lab_mc_pay_send(m, true);
+    if why.count > 0 { p[0].next_s = now + LMC_PAY_EVERY_S; return; }
+    p[0].stage = LMC_PAY_CHECKING;
+    return;
+  }
+  if p[0].stage == LMC_PAY_CHECKING {
+    if !lab_mc_pay_read(m, "PAYMENT-RESPONSE") { return; }
+    status := p[0].st[0].status;
+    gw_close(p[0].st[..]);
+    if status == 200 && x402_read_response(e_str(p[0].head[..], p[0].nh), p[0].offer[..], p[0].scratch[..]) { lab_mc_pay_end(m, s, true, ""); return; }
+    if status == 409 { lab_mc_pay_end(m, s, true, ""); return; }   // duplicate_settlement: it was credited already
+    if status == 402 || status == 0 || status >= 500 { p[0].stage = LMC_PAY_WAITING; p[0].next_s = now + LMC_PAY_EVERY_S; return; }
+    t: [200] u8; n := e_set(t[..], 0, "The top-up was refused (");
+    n = put_int(t[..], n, status); n = e_set(t[..], n, "): "); n = e_set(t[..], n, e_str(p[0].bodyj[..], ifx p[0].nb < 120 then p[0].nb else 120));
+    lab_mc_pay_end(m, s, false, e_str(t[..], n));
+  }
+}
+
 // Each frame: what the run did since the last.
 lab_mc_pump :: (m: [] LabMc, s: [] Session) {
+  if m[0].v[0].paying { lab_mc_pay_pump(m, s); return; }
   if !m[0].v[0].running { return; }
   if m[0].ours_on && gw_ours_stale(m[0].ours[..], zr_lab_unix_s()) { x := lab_mc_ours_fresh(m); }
   ev: [LMC_EVENTS] McRunEvent;
@@ -269,6 +474,15 @@ lab_mc_pump :: (m: [] LabMc, s: [] Session) {
 
 // STOP: curl goes, the run ends stopped.
 lab_mc_stop :: (m: [] LabMc, s: [] Session) -> bool {
+  if m[0].v[0].paying {
+    s[0].stopping = true;
+    gw_close(m[0].pay[0].st[..]);
+    m[0].pay[0].stage = LMC_PAY_IDLE;
+    m[0].v[0].paying = false; m[0].v[0].need_credit = false; m[0].v[0].running = false;
+    if m[0].pay[0].part >= 0 && m[0].pay[0].part < s[0].n { s[0].parts[m[0].pay[0].part].resolved = true; }
+    s_turn_end(s, false, "");
+    return true;
+  }
   if !m[0].v[0].running { return false; }
   s[0].stopping = true;
   ev: [LMC_EVENTS] McRunEvent;

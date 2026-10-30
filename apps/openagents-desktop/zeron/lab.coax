@@ -627,6 +627,39 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
   lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_OTHER, 1200);
   #assert l[0].via != 3;
 }
+#test "our route's 402 keeps the turn open for a top-up; other refusals still end it" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  v: [1] LmcView; v[0].running = true;
+  s_user(ss[..], "hi");
+  ev: [4] McRunEvent;
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "ours", model = "google/gemini-3.8-flash", outcome = GW_OUT_BENCHED, status = 402, first_ms = -1, cost_usd_micros = -1}};
+  ev[1] = McRunEvent.{kind = MR_ENDED, ending = MC_END_NO_CAPACITY, text = "every gateway in the plan refused"};
+  lab_mc_take(v[..], ss[..], ev[..], 2);
+  #assert v[0].need_credit && v[0].paying && ss[0].live && ss[0].parts[ss[0].n - 1].kind == P_TOOL;
+  s_turn_end(ss[..], false, "");
+  s_user(ss[..], "hi"); v[0] = LmcView.{running = true};
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "vertex", model = "google/gemini-3.8-flash", outcome = GW_OUT_BENCHED, status = 402, first_ms = -1, cost_usd_micros = -1}};
+  lab_mc_take(v[..], ss[..], ev[..], 2);
+  #assert !v[0].need_credit && !v[0].paying && !ss[0].live;
+  s_user(ss[..], "hi"); v[0] = LmcView.{running = true};
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "ours", model = "google/gemini-3.8-flash", outcome = GW_OUT_DONE, status = 200, first_ms = 10, cost_usd_micros = -1}};
+  ev[1] = McRunEvent.{kind = MR_ENDED, ending = MC_END_FINISHED, text = "Hello."};
+  lab_mc_take(v[..], ss[..], ev[..], 2);
+  #assert !v[0].paying && !ss[0].live;
+}
+
+#test "the top-up's pieces: its URL, sats with commas, and the key's pubkey from the signed event" {
+  u: [64] u8; t: [32] u8;
+  n := lmc_credit_url("https://openagents.com/api/v1/inference", u[..]);
+  #assert cast(string) u[0..<n] == "https://openagents.com/api/v1/inference/credit";
+  #assert lmc_sats_text(1000, t[..]) == "1,000" && lmc_sats_text(21, t[..]) == "21" && lmc_sats_text(1234567, t[..]) == "1,234,567" && lmc_sats_text(0, t[..]) == "0";
+  ev := "{\"id\":\"00\",\"pubkey\":\"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798\",\"kind\":27235}";
+  b: [256] u8; k := x402_b64_encode(ev, b[..]);
+  pk: [64] u8;
+  #assert lmc_pubkey_of(cast(string) b[0..<k], pk[..]) == 64 && cast(string) pk[0..<64] == "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798";
+  #assert lmc_pubkey_of("e30=", pk[..]) == -1 && lmc_pubkey_of("!!", pk[..]) == -1;
+}
+
 LAB_TEST_OTHER :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"other\",\"confidence\":0.9,\"probabilities\":{\"claude_code\":0.03,\"psionic\":0.06,\"codex\":0.01,\"other\":0.9}},\"difficulty\":{\"type\":\"score\",\"score\":0.2,\"confidence\":0.9,\"probabilities\":{\"0\":0.9,\"1\":0.07,\"2\":0.01,\"3\":0.01,\"4\":0.01}},\"effort\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.9,\"probabilities\":{\"low\":0.9,\"medium\":0.05,\"high\":0.03,\"xhigh\":0.01,\"max\":0.01}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-haiku-5-5\",\"confidence\":0.9,\"probabilities\":{\"claude-opus-5-5\":0.05,\"claude-sonnet-5-5\":0.05,\"claude-haiku-5-5\":0.9}},\"local_work\":{\"type\":\"noul\",\"noul\":0.05}},\"latency_ms\":1100}";
 
 #test "Microcoder's run in the transcript: an attempt row, commands with exit codes, the reply streaming, the end" {

@@ -34,11 +34,13 @@ GwStream :: struct {
   ended: bool;                   // curl's output is over
   exit: int;                     // curl's exit status once ended (0 is a whole response)
   bytes: int;                    // body bytes so far
+  headers: bool;                 // gw_poll returns header lines too (GW_HEADER); set after gw_start
 }
 
 GW_IDLE :: 0;                    // nothing new yet
 GW_LINE :: 1;                    // a body line (text)
 GW_END :: 2;                     // the response is over: see status and exit
+GW_HEADER :: 3;                  // a header line ("Name: value"), when the stream asked for them
 
 GwRead :: struct {
   kind: int;
@@ -149,6 +151,7 @@ gw_poll :: (st: [] GwStream, line: [] u8) -> GwRead {
         if st[0].status == 100 { st[0].status = 0; continue; }
         st[0].in_headers = false;
       }
+      if k > 0 && st[0].headers && st[0].status > 0 && st[0].status != 100 && n <= line.count { return GwRead.{kind = GW_HEADER, text = text}; }
       continue;
     }
     st[0].bytes += n + 1;
@@ -177,6 +180,28 @@ gw_close :: (st: [] GwStream) {
 // Whether curl could not reach the server at all (exit 6, 7: no host, no
 // connection; 28 during connect is a timeout and is reported as such).
 gw_unreachable :: (st: [] GwStream) -> bool { return st[0].status == 0 && (st[0].exit == 6 || st[0].exit == 7); }
+
+// A header line's value when its name is name (any case), else "".
+gw_header_value :: (line: string, name: string) -> string {
+  if line.count <= name.count || line[name.count] != ':' { return ""; }
+  for i: 0..<name.count {
+    a := line[i]; b := name[i];
+    if a >= 'A' && a <= 'Z' { a += 32; }
+    if b >= 'A' && b <= 'Z' { b += 32; }
+    if a != b { return ""; }
+  }
+  i := name.count + 1; e := line.count;
+  while i < e && (line[i] == ' ' || line[i] == '\t') { i += 1; }
+  while e > i && (line[e - 1] == ' ' || line[e - 1] == '\r' || line[e - 1] == '\t') { e -= 1; }
+  return line[i..<e];
+}
+
+#test "header values by name, in any case" {
+  #assert gw_header_value("payment-required: abc=", "PAYMENT-REQUIRED") == "abc=";
+  #assert gw_header_value("PAYMENT-REQUIRED:abc\r", "payment-required") == "abc";
+  #assert gw_header_value("Payment-Response: x", "PAYMENT-REQUIRED") == "" && gw_header_value("PAYMENT-REQUIREDX: a", "PAYMENT-REQUIRED") == "";
+  #assert gw_header_value("PAYMENT", "PAYMENT-REQUIRED") == "";
+}
 
 #test "status lines" {
   #assert gw_status_of("HTTP/1.1 200 OK") == 200 && gw_status_of("HTTP/1.1 503 Service Unavailable") == 503;
