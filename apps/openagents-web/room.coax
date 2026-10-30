@@ -23,8 +23,8 @@ RoomState :: struct {
   others: int;
   id: [ROOM_OTHERS * ROOM_ID] u8; id_n: [ROOM_OTHERS] int;
   name: [ROOM_OTHERS * ROOM_NAME] u8; name_n: [ROOM_OTHERS] int;
-  to: [ROOM_OTHERS * 4] f32;      // where each is: x, y, z, yaw
-  at: [ROOM_OTHERS * 4] f32;      // where each is drawn, easing towards it
+  to: [ROOM_OTHERS * 4] f32;      // found_at each is: x, y, z, yaw
+  at: [ROOM_OTHERS * 4] f32;      // found_at each is drawn, easing towards it
   lines: int;                     // in the ring, up to ROOM_LINES
   head: int;                      // the oldest line's place in the ring
   line_name: [ROOM_LINES * ROOM_NAME] u8; line_name_n: [ROOM_LINES] int;
@@ -125,25 +125,25 @@ room_int :: (t: string) -> int {
 
 // A field's text (a string's, unescaped) into out at its slot; the bytes written.
 room_text :: (t: string, obj: int, key: string, out: [] u8, at: int, cap: int) -> int {
-  where: [1] int;
-  n := world_field(t, obj, key, where[..]);
-  if where[0] < 0 || n <= 0 { return 0; }
-  return world_unescape(t[where[0]..<where[0] + n], out[at..<at + cap]);
+  found_at: [1] int;
+  n := world_field(t, obj, key, found_at[..]);
+  if found_at[0] < 0 || n <= 0 { return 0; }
+  return world_unescape(t[found_at[0]..<found_at[0] + n], out[at..<at + cap]);
 }
 room_field_num :: (t: string, obj: int, key: string) -> f32 {
-  where: [1] int;
-  n := world_field(t, obj, key, where[..]);
-  if where[0] < 0 { return 0; }
-  return room_num(t[where[0]..<where[0] + n]);
+  found_at: [1] int;
+  n := world_field(t, obj, key, found_at[..]);
+  if found_at[0] < 0 { return 0; }
+  return room_num(t[found_at[0]..<found_at[0] + n]);
 }
 
 // An array field's elements: calls each with the object's start. Returns
 // where the array starts ('['), or -1.
 room_array :: (t: string, obj: int, key: string) -> int {
-  where: [1] int;
-  _ := world_field(t, obj, key, where[..]);
-  if where[0] < 0 || where[0] >= t.count || t[where[0]] != 91 { return -1; }
-  return where[0];
+  found_at: [1] int;
+  _ := world_field(t, obj, key, found_at[..]);
+  if found_at[0] < 0 || found_at[0] >= t.count || t[found_at[0]] != 91 { return -1; }
+  return found_at[0];
 }
 
 // The server's answer to a post ("STATUS\n" and the body): who is here and
@@ -198,9 +198,9 @@ room_take :: (s: [] RoomState, answer: string) -> int #export_c {
         if s[0].lines == ROOM_LINES { slot = s[0].head; s[0].head = (s[0].head + 1) % ROOM_LINES; } else { s[0].lines += 1; }
         s[0].line_name_n[slot] = room_text(t, i, "name", s[0].line_name[..], slot * ROOM_NAME, ROOM_NAME);
         s[0].line_text_n[slot] = room_text(t, i, "text", s[0].line_text[..], slot * ROOM_TEXT, ROOM_TEXT);
-        where: [1] int;
-        mn := world_field(t, i, "mine", where[..]);
-        s[0].line_mine[slot] = where[0] >= 0 && t[where[0]..<where[0] + mn] == "true";
+        found_at: [1] int;
+        mn := world_field(t, i, "mine", found_at[..]);
+        s[0].line_mine[slot] = found_at[0] >= 0 && t[found_at[0]..<found_at[0] + mn] == "true";
         s[0].line_num[slot] = num;
         s[0].line_from_n[slot] = room_text(t, i, "from", s[0].line_from[..], slot * ROOM_ID, ROOM_ID);
         if !s[0].line_mine[slot] && s[0].joined { s[0].unread += 1; s[0].heard += 1; }
@@ -315,7 +315,7 @@ room_line_text :: (s: [] RoomState, k: int) -> string #export_c {
   #assert s[0].last == 9 && s[0].unread == 0;   // what was said before you came isn't unread
   b := "200\n{\"last\": 10, \"others\": [{\"id\": \"p-3\", \"name\": \"C\", \"x\": 9, \"y\": 0, \"z\": 9, \"yaw\": 0}, {\"id\": \"p-2\", \"name\": \"B\", \"x\": 3.5, \"y\": 0, \"z\": -2, \"yaw\": 0.5}], \"messages\": [{\"n\": 10, \"name\": \"C\", \"text\": \"boo\", \"mine\": false}]}";
   #assert room_take(s[..], b) == 200;
-  #assert s[0].others == 2 && s[0].at[4] == 1.5 && s[0].to[4] == 3.5 && s[0].at[0] == 9;   // B eases on from where it was; C starts where it is
+  #assert s[0].others == 2 && s[0].at[4] == 1.5 && s[0].to[4] == 3.5 && s[0].at[0] == 9;   // B eases on from found_at it was; C starts found_at it is
   room_ease(s[..], 0.0625);
   #assert s[0].at[4] > 1.5 && s[0].at[4] < 3.5;
   room_ease(s[..], 1);

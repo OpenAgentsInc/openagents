@@ -1,0 +1,176 @@
+// Other players in Everglade (verse-eg-shared): the previous Everglade was a shared instance, other
+// players walking it with you (verse/everglade/previous/everglade.md). Here the page joins the
+// realm's room, "everglade" (room.coax; coax/web/api/room.c, the playtest service's rooms, no new
+// server): the face posts where you are about every second and is answered with everyone else seen
+// there in the last few seconds and the chat's lines since. The others are drawn where the room says,
+// eased from where they were, as a hooded ranger with their name over them (the nearest
+// ROOM_DRAWN, within ROOM_NEAR). The chat: on a computer Enter opens a line to type, Enter says it,
+// Esc closes it; the last lines show over the bar at the bottom left. On a phone the latest line
+// shows under the place's name, and a tap on it opens the line to type. Destruction and the watch
+// stay each page's own.
+
+#load "room.coax";
+
+EG_ROOM :: "everglade";
+ROOM_DRAWN :: 8;           // others drawn at most, the nearest
+ROOM_NEAR :: 80.0;         // m
+ROOM_SHOWN :: 4;           // chat lines over the bar on a computer
+ROOM_FRESH :: 30.0;        // s a line stays on screen
+CLOAK_RGB :: Point.{x = 0.16, y = 0.3, z = 0.14};
+
+EgChat :: struct {
+  typing: bool;            // the line is open (what you type goes in s[0].typed, as a talk's does)
+  send: bool;              // a line for the face to say
+  said: [ROOM_TEXT] u8; said_n: int;
+  box: Box;                // a phone's line: a tap opens it
+  finger: int;
+  seen: int;               // the number of the last line, when it came in
+  fresh: f32;              // s since the last line came in
+}
+
+everglade_room_name :: () -> string #export_c { return EG_ROOM; }
+// A line to say, once: the face takes it and posts it.
+everglade_chat_take :: (s: [] Everglade) -> string #export_c {
+  if !s[0].chat.send { return ""; }
+  s[0].chat.send = false;
+  return cast(string) s[0].chat.said[0..<s[0].chat.said_n];
+}
+
+chat_open :: (s: [] Everglade) {
+  if s[0].talk >= 0 || s[0].board { return; }
+  s[0].chat.typing = true; s[0].typed_n = 0;
+}
+chat_close :: (s: [] Everglade) { s[0].chat.typing = false; s[0].typed_n = 0; s[0].chat.finger = -1; }
+chat_say :: (s: [] Everglade) {
+  n := s[0].typed_n;
+  if n > 0 {
+    for k: 0..<n { s[0].chat.said[k] = s[0].typed[k]; }
+    s[0].chat.said_n = n; s[0].chat.send = true;
+  }
+  chat_close(s);
+}
+
+// Each frame: the others eased toward where they are, and who to draw.
+room_frame :: (s: [] Everglade, dt: f32) {
+  r := s[0].room[..];
+  room_ease(r, dt);
+  if r[0].last != s[0].chat.seen { s[0].chat.seen = r[0].last; s[0].chat.fresh = 0; }
+  else { s[0].chat.fresh += dt; }
+}
+
+// The others: a hooded figure each, the nearest first, within ROOM_NEAR.
+room_draw :: (s: [] Everglade, you: Point) {
+  r := s[0].room[..];
+  drawn := 0;
+  taken: [ROOM_OTHERS] bool;
+  for pass: 0..<ROOM_DRAWN {
+    best := -1; most := f32(ROOM_NEAR);
+    for i: 0..<r[0].others {
+      if taken[i] { continue; }
+      d := flat_gap(v3(r[0].at[i * 4], 0, r[0].at[i * 4 + 2]), you);
+      if d < most { most = d; best = i; }
+    }
+    if best < 0 { break; }
+    taken[best] = true;
+    x := r[0].at[best * 4]; z := r[0].at[best * 4 + 2]; yaw := r[0].at[best * 4 + 3];
+    g := walk_at(s, x, z) + r[0].at[best * 4 + 1];
+    shape(s, SHAPE_BOX, LOOK_MATTE, v3(x, g + 0.42, z), yaw, 0, 0.34, 0.84, 0.22, 0.2, 0.15, 0.1);
+    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 1.17, z), yaw, 0, 0.5, 0.72, 0.38, CLOAK_RGB.x, CLOAK_RGB.y, CLOAK_RGB.z);
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, v3(x + sin(yaw) * 0.04, g + 1.66, z + cos(yaw) * 0.04), yaw, 0, 0.26, 0.28, 0.26, 0.78, 0.6, 0.48);
+    shape(s, SHAPE_CONE, LOOK_MATTE, v3(x, g + 1.86, z), yaw, 0, 0.36, 0.42, 0.36, CLOAK_RGB.x, CLOAK_RGB.y, CLOAK_RGB.z);
+    drawn += 1;
+  }
+}
+
+// Their names over them, for labels(): how many written into ls from c.
+room_labels :: (s: [] Everglade, ls: [] Label, c: int, you: Point, k: f32) -> int {
+  r := s[0].room[..];
+  m := c;
+  for i: 0..<r[0].others {
+    if m >= ls.count { break; }
+    x := r[0].at[i * 4]; z := r[0].at[i * 4 + 2];
+    p := v3(x, walk_at(s, x, z) + r[0].at[i * 4 + 1] + 2.35, z);
+    d := flat_gap(p, you);
+    if d > f32(NAME_NEAR) { continue; }
+    name := room_other_name(r, i);
+    if name.count == 0 { continue; }
+    light := 0.85 * clamp01((f32(NAME_NEAR) - d) / f32(NAME_FADE));
+    ls[m] = Label.{text = name, p = p, cap = 6.5 * k, light = light, gold = true, d = d, done = false, person = true}; m += 1;
+  }
+  return m;
+}
+
+// The chat on screen: the last lines over the bar (a computer) or the latest under the place's name (a
+// phone), and the line you type in when it is open. x, y: where it starts (top left), in device pixels.
+room_chat_draw :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
+  n := n0;
+  r := s[0].room[..];
+  k := hi(s[0].dpr, 0.5);
+  cap := 7.5 * k; lead := cap * 1.9;
+  small := phone(s);
+  shown := ifx s[0].chat.typing || s[0].chat.fresh < f32(ROOM_FRESH) then (ifx small then 1 else ROOM_SHOWN) else 0;
+  shown = lo_i(shown, r[0].lines);
+  x := 16 * k;
+  w := ifx small then s[0].width - 32 * k else lo(s[0].width * 0.36, 520 * k);
+  y := ifx small then 86 * k else s[0].height - 150 * k - f32(shown) * lead;
+  s[0].chat.box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if shown > 0 {
+    b := Box.{x0 = x, y0 = y - cap - 6 * k, x1 = x + w, y1 = y + f32(shown - 1) * lead + 8 * k};
+    plate(s, u, b, 0.6, 1);
+    if small { s[0].chat.box = b; }
+    for q: 0..<shown {
+      line := r[0].lines - shown + q;
+      name := room_line_name(r, line);
+      text := room_line_text(r, line);
+      ly := y + f32(q) * lead;
+      n = draw_text(out, n, name, x + 10 * k, ly, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+      tx := x + 10 * k + text_width(name, cap) + cap;
+      shown_text := text;
+      while shown_text.count > 0 && text_width(shown_text, cap) > x + w - 10 * k - tx { shown_text = shown_text[0..<shown_text.count - 1]; }
+      while shown_text.count > 0 && (shown_text[shown_text.count - 1] & 0xC0) == 0x80 { shown_text = shown_text[0..<shown_text.count - 1]; }
+      if shown_text.count > 0 && shown_text[shown_text.count - 1] >= 0xC0 { shown_text = shown_text[0..<shown_text.count - 1]; }
+      n = draw_text(out, n, shown_text, tx, ly, cap, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+    }
+  }
+  if s[0].chat.typing {
+    fy := ifx small then y + f32(lo_i(shown, 1)) * lead + 20 * k else s[0].height - 128 * k;
+    f := Box.{x0 = x, y0 = fy - cap - 9 * k, x1 = x + w, y1 = fy + 9 * k};
+    s[0].field[0] = f.x0; s[0].field[1] = f.y0; s[0].field[2] = f.x1; s[0].field[3] = f.y1;
+    plate(s, u, f, 0.95, 1);
+    typed := typed_text(s);
+    while typed.count > 0 && text_width(typed, cap) > w - 24 * k { typed = typed[1..<typed.count]; while typed.count > 0 && (typed[0] & 0xC0) == 0x80 { typed = typed[1..<typed.count]; } }
+    if typed.count > 0 { n = draw_text(out, n, typed, x + 10 * k, fy, cap, GAP, SPACE, ink(k, 0.95, 1, 1, 1), false, false); }
+    else { n = draw_text(out, n, "SAY SOMETHING", x + 10 * k, fy, cap, GAP, SPACE, ink(k, 0.5, PARCH_R, PARCH_G, PARCH_B), false, false); }
+  }
+  return n;
+}
+
+// A key while the line is open: it types (as a talk's line does), Enter says it, Esc closes it.
+chat_key :: (s: [] Everglade, key: int, mods: int) -> bool {
+  if key == KEY_ESCAPE { chat_close(s); return true; }
+  if key == KEY_ENTER { chat_say(s); return true; }
+  return type_key(s, key, mods);
+}
+// A press on a phone's chat line opens it.
+chat_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  b := s[0].chat.box;
+  inside := b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1;
+  if phase == 0 && inside { s[0].chat.finger = id; return true; }
+  if s[0].chat.finger == id && phase == 2 { s[0].chat.finger = -1; if inside && !s[0].chat.typing { chat_open(s); } return true; }
+  return s[0].chat.finger == id;
+}
+
+#test "room: Enter opens a line, what you type is said once, Esc closes it" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  #assert everglade_key(g[..], KEY_ENTER, 0) && g[0].chat.typing && everglade_wants_text(g[..]);
+  everglade_message(g[..], MSG_TEXT, "hi all");
+  #assert typed_text(g[..]) == "hi all";
+  #assert everglade_key(g[..], KEY_ENTER, 0) && !g[0].chat.typing;
+  #assert everglade_chat_take(g[..]) == "hi all" && everglade_chat_take(g[..]) == "";
+  #assert everglade_key(g[..], KEY_ENTER, 0) && everglade_key(g[..], KEY_ESCAPE, 0) && !g[0].chat.typing && everglade_chat_take(g[..]) == "";
+  // someone else in the room is drawn where the room says, their name over them
+  answer := "200\n{\"others\":[{\"id\":\"p2\",\"name\":\"WREN\",\"x\":1,\"y\":0,\"z\":-80,\"yaw\":0}],\"messages\":[{\"n\":3,\"name\":\"WREN\",\"text\":\"hello\"}]}";
+  #assert room_take(g[0].room[..], answer) == 200;
+  #assert g[0].room[0].others == 1 && room_other_name(g[0].room[..], 0) == "WREN" && g[0].room[0].lines == 1;
+}

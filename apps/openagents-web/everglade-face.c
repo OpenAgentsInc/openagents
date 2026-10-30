@@ -54,6 +54,7 @@ static bool world_asked;
 static void edit_out(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
 static void ask_out(uint32_t state);
+static void room_out(uint32_t state, float dt);
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_t_River river;
 static bool river_built;
@@ -279,6 +280,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     }
   }
   ask_out(state);
+  room_out(state, dt);
   edit_out(state);
   place_frame(state);
   track_frame(tr(), dt, w, h, scale);
@@ -313,6 +315,48 @@ static void edit_out(uint32_t state) {
     everglade_edit_post_sent(at(state));
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }
+}
+
+// The realm's room (everglade-room.coax; coax/web/api/room.c): where you are about every second,
+// answered with the others and the chat's lines since; a line said goes on its own.
+#define ROOM_EVERY_S 1.0
+#define ROOM_WAIT_S 10.0
+static int32_t room_id = -1, chat_id = -1;
+static double room_at = -10, room_asked_at;
+static char room_url_buf[120], chat_url_buf[120];
+static uint8_t room_body[256], chat_body[1200];
+static coax_v_t_RoomState rooms(uint32_t state) { return (coax_v_t_RoomState){&city(state)->room.e[0], 1}; }
+static void room_out(uint32_t state, float dt) {
+  if (golden || !facts_seen) return;
+  if (!has_player && !mint_tried) {
+    mint_tried = true;
+    mint_id = coaxial_http((uint32_t)(uintptr_t)PLAYER_URL, sizeof PLAYER_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4);
+    if (mint_id < 0) mint_id = -1;
+    return;
+  }
+  if (mint_id >= 0 || !has_player) return;
+  (void)dt;
+  coax_string said = chat_id < 0 ? everglade_chat_take(at(state)) : (coax_string){"", 0};
+  if (said.count > 0) {
+    int64_t un = room_url(everglade_room_name(), true, (coax_v_u8){(uint8_t *)chat_url_buf, sizeof chat_url_buf});
+    coax_string sid = {(const char *)track_state.sid.e, track_state.sid_n};
+    int64_t bn = room_chat_body(said, sid, (coax_v_u8){chat_body, sizeof chat_body});
+    if (un > 0 && bn > 0) {
+      chat_id = coaxial_http((uint32_t)(uintptr_t)chat_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)chat_body, (uint32_t)bn, 1 | 4 | 8);
+      if (chat_id < 0) chat_id = -1;
+    }
+  }
+  if (room_id >= 0 && now - room_asked_at < ROOM_WAIT_S) return;
+  if (now - room_at < ROOM_EVERY_S) return;
+  room_at = now;
+  int64_t un = room_url(everglade_room_name(), false, (coax_v_u8){(uint8_t *)room_url_buf, sizeof room_url_buf});
+  coax_t_Vec3 feet = verse_player_feet(player);
+  float air = player.on_ground ? 0.0f : feet.y;
+  int64_t bn = room_presence_body(feet.x, air, feet.z, verse_player_face(player), city(state)->room.e[0].last, (coax_v_u8){room_body, sizeof room_body});
+  if (un <= 0 || bn <= 0) return;
+  room_id = coaxial_http((uint32_t)(uintptr_t)room_url_buf, (uint32_t)un, (uint32_t)(uintptr_t)room_body, (uint32_t)bn, 1 | 4 | 8);
+  if (room_id < 0) room_id = -1;
+  room_asked_at = now;
 }
 
 // The page's question, once the browser has a player key (or minting one failed).
@@ -417,6 +461,13 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     everglade_edit_saved(at(state), status);
     return;
   }
+  if (room_id >= 0 && kind == 512 + room_id) {
+    room_id = -1;
+    int64_t st = room_take(rooms(state), (coax_string){(const char *)inbox, length});
+    if (st == 403 && has_player) { has_player = false; mint_tried = false; }
+    return;
+  }
+  if (chat_id >= 0 && kind == 512 + chat_id) { chat_id = -1; room_at = -10; return; }   // a line said: the room asked now, so it shows
   if (ask_id >= 0 && kind == 512 + ask_id) {
     ask_id = -1;
     everglade_answer(at(state), (coax_string){(const char *)inbox, length});

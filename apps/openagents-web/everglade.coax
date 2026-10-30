@@ -73,6 +73,7 @@
 #load "everglade-hammer.coax";
 #load "everglade-lod.coax";
 #load "everglade-sky.coax";
+#load "everglade-room.coax";
 #load "../../verse/style-preset.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
@@ -407,6 +408,8 @@ Everglade :: struct {
   part_used: [PEOPLE_PARTS] int; shown_n: int; shown: [PEOPLE_SHOWN] int;
   answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
+  room: [1] RoomState;                     // the others in the realm's room and its chat (everglade-room.coax)
+  chat: EgChat;
   lod: Lod;                                // the small pieces drawn near you (everglade-lod.coax)
   hm: Hammer;                              // the sledgehammer (everglade-hammer.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
@@ -564,7 +567,7 @@ everglade_afloat :: (s: [] Everglade) -> bool #export_c { return s[0].water >= W
 
 everglade_start :: (s: [] Everglade) {
   s[0].started = true;
-  s[0].hm.t = -1; s[0].hm.target = -1;
+  s[0].hm.t = -1; s[0].hm.target = -1; s[0].chat.finger = -1;
   s[0].clock = 0.5; s[0].day.mode = STYLE_CLOCK_FIXED; s[0].day.at = 0.5; s[0].day_from = 0;   // noon until the page says
   ok := everglade_build_ground(s[0].heights[..]);
   s[0].ground_gen += 1;
@@ -956,6 +959,7 @@ hold_bit :: (key: int) -> int {
 everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
   if s[0].talk >= 0 { return talk_key(s, key, mods); }
+  if s[0].chat.typing { return chat_key(s, key, mods); }
   if s[0].board { return board_key(s, key, mods); }
   if everglade_voice_key(s, key, true) { return true; }
   if spells_key(s, key, mods) { return true; }
@@ -967,6 +971,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'm' || key == 'M' { s[0].above = !s[0].above; return true; }
   if key == KEY_ESCAPE && s[0].above { s[0].above = false; return true; }
+  if key == KEY_ENTER && !s[0].above && !s[0].ev.editing { chat_open(s); return true; }   // the room's chat (everglade-room.coax)
   b := hold_bit(key);
   if b == 0 { return false; }
   s[0].held = s[0].held | b;
@@ -992,6 +997,7 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
   if !s[0].started { everglade_start(s); }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
   if talk_pointer(s, x, y, phase, id) { return true; }
+  if chat_pointer(s, x, y, phase, id) { return true; }
   if everglade_voice_pointer(s, x, y, phase, id) { return true; }
   if spells_pointer(s, x, y, phase, kind, id) { return true; }
   if kind != 0 {
@@ -1255,6 +1261,11 @@ send_typed :: (s: [] Everglade) {
 talk_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if key == KEY_ESCAPE { end_talk(s); return true; }
   if key == KEY_ENTER { send_typed(s); return true; }
+  return type_key(s, key, mods);
+}
+// A key typed into the line (a talk's or the chat's): Backspace takes a letter back, a printable key
+// types. Keys with Ctrl or Cmd are the browser's.
+type_key :: (s: [] Everglade, key: int, mods: int) -> bool {
   if key == KEY_BACKSPACE {
     n := s[0].typed_n;
     while n > 0 { n -= 1; if (s[0].typed[n] & 0xC0) != 0x80 { break; } }
@@ -1281,12 +1292,12 @@ talk_key :: (s: [] Everglade, key: int, mods: int) -> bool {
 // Text from the keyboard field while you talk: it types, a line break says it.
 // A character is taken whole or not at all, so the line stays UTF-8.
 talk_typed :: (s: [] Everglade, text: string) {
-  if s[0].talk < 0 { return; }
+  if s[0].talk < 0 && !s[0].chat.typing { return; }
   i := 0;
   while i < text.count {
     c := text[i];
     size := ifx c < 0x80 then 1 else ifx (c & 0xE0) == 0xC0 then 2 else ifx (c & 0xF0) == 0xE0 then 3 else ifx (c & 0xF8) == 0xF0 then 4 else 1;
-    if c == '\n' || c == '\r' { send_typed(s); i += 1; continue; }
+    if c == '\n' || c == '\r' { if s[0].chat.typing { chat_say(s); return; } send_typed(s); i += 1; continue; }
     if c < 32 || c == 127 || (c >= 0x80 && size == 1) || i + size > text.count { i += 1; continue; }
     n := s[0].typed_n;
     if n + size > TYPED { return; }
@@ -1369,7 +1380,7 @@ everglade_action :: (s: [] Everglade) -> int #export_c { a := s[0].action; s[0].
 everglade_action_done :: (s: [] Everglade) #export_c { s[0].out_n = 0; }
 
 // While you talk, the phone's keyboard comes up over the typed line.
-everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0 || redit_typing(s[0].ev.ed[..]); }
+everglade_wants_text :: (s: [] Everglade) -> bool #export_c { return s[0].talk >= 0 || s[0].chat.typing || redit_typing(s[0].ev.ed[..]); }
 
 // ---- the scene
 
@@ -2892,7 +2903,7 @@ tag :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, text: string, p: Point,
 // The names over the world: the places, the houses and (on foot) the people. Nearest first, and one that
 // would overlap a name already drawn (the owner, October 29: GUILD ROW over THE COMMONS at the market)
 // moves up a line, or is left out when that overlaps too, so the farther one gives way.
-LABELS_MAX :: EG_PLACES + EG_BUILDINGS + EG_SPOTS;
+LABELS_MAX :: EG_PLACES + EG_BUILDINGS + EG_SPOTS + ROOM_OTHERS;
 Label :: struct { text: string; p: Point; cap: f32; light: f32; gold: bool; d: f32; done: bool; person: bool; }
 labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
   k := hi(s[0].dpr, 0.5);
@@ -2929,6 +2940,7 @@ labels :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, you: Point) -> int {
       ls[c] = Label.{text = EG_SPOT_NAME[i], p = pp, cap = 6.5 * k, light = light, gold = false, d = d, done = false, person = true}; c += 1;
     }
   }
+  if !overview { c = room_labels(s, ls[..], c, you, k); }   // the others' names (everglade-room.coax)
   boxes: [LABELS_MAX * 4] f32;
   placed := 0;
   m := n;
@@ -3238,6 +3250,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   w := s[0].width; h := s[0].height;
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   n := ifx s[0].paint_only then 0 else labels(s, out, u, 0, you);
+  if !s[0].paint_only && s[0].talk < 0 { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)
   gutter := 16 * k;
   cap := 11 * k;
   title := "EVERGLADE";
@@ -3348,6 +3361,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   figure(s, u, ifx s[0].water == WATER_BOAT then sub(shown, v3(0, 0.42, 0)) else shown, face, speed, act == 3, t, still);
   if s[0].flock && redit_row_on(s[0].ev.ed[..], "flock") { flock_frame(s[0].birds[..], shown, face, t); birds(s); }
   people(s, u, shown, t, still);
+  room_frame(s, t); room_draw(s, shown);   // the others in the realm's room (everglade-room.coax)
   s[0].answered += t;
   s[0].smoke_still = still;
   city(s, u);
