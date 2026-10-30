@@ -450,6 +450,7 @@ const PERSON_JOINTS = 65u;                         // verse/everglade/people-rig
 const BAND_FAR_MID = 0.6; const BAND_FAR_SHARE = 0.45; const BAND_FAR_FROM = 15.0; const BAND_FAR_TO = 60.0;
 const AUX_DISTANCE = 256.0;                          // aux.g: a painted pixel's distance from the eye over this
 const SOFT_FROM = 12.0; const SOFT_TO = 40.0;        // the far field's softening, from and to (m)
+const SOFT_PHONE = 0.7;                             // a phone's: from 8.4 to 28 m
 const CHARACTER_LOD_BIAS = 2.0;                    // spec 11: a character's textures two mip levels coarser
 const LOOK_CHARACTER = 8u;                         // the Ranger: textured, two bands and the stronger rim (spec 11)
 const LOOK_ROCK = 10u;                             // a kit rock (everglade.coax LOOK_ROCK): darker, mottled, mossy on top
@@ -2536,7 +2537,9 @@ fn water_meniscus(c: vec3f, pos: vec2f) -> vec3f {
   // the far field softened (spec 15, fine detail; the references' far forest is masses, not leaves): a
   // pixel painted past SOFT_FROM (aux.g, its distance, from paint) takes the mean of four linear taps
   // round it, all of it by SOFT_TO; the near ground and the sky stay as drawn
-  let far = smoothstep(SOFT_FROM, SOFT_TO, textureLoad(post_aux, vec2i(pos.xy), 0).g * AUX_DISTANCE);
+  // a phone's narrow canvas packs the same middle distance into fewer pixels: its softening starts nearer
+  let soft_k = select(1.0, SOFT_PHONE, st(31u).z > 0.5);
+  let far = smoothstep(SOFT_FROM * soft_k, SOFT_TO * soft_k, textureLoad(post_aux, vec2i(pos.xy), 0).g * AUX_DISTANCE);
   if (far > 0.0) {
     let t = 0.65 / u.size;
     let soft = (textureSampleLevel(post_light, post_lin, uv + t, 0.0).rgb + textureSampleLevel(post_light, post_lin, uv - t, 0.0).rgb

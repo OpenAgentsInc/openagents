@@ -1566,7 +1566,8 @@ GROUND_RGB :: [18] f32.[0.30, 0.42, 0.17,  0.16, 0.25, 0.11,  0.64, 0.51, 0.32, 
 // Painterly snow (art-styles.md, Made realms): the references' snow is never white paper but the sky's
 // blue in it, so the key's warm light and the haze still leave it a colour (white snow measured a
 // saturation of 0.08 to 0.10 at noon and dusk, under the style check's 0.22)
-PAINT_SNOW :: [3] f32.[0.5, 0.66, 1.0];
+PAINT_SNOW :: [12] f32.[0.5, 0.66, 1.0,  0.74, 0.54, 0.94,  0.74, 0.54, 0.94,  0.5, 0.66, 1.0];   // by time of day: day, dawn, dusk, night
+// (at dawn and dusk the snow takes the sky's rose and lilac: the warm low key alone turned the blue grey)
 SKY_RGB :: [12] f32.[0.28, 0.50, 0.86,  0.33, 0.38, 0.62,  0.17, 0.15, 0.34,  0.008, 0.01, 0.025];
 HORIZON_RGB :: [12] f32.[0.72, 0.82, 0.92,  0.96, 0.64, 0.46,  0.86, 0.44, 0.30,  0.04, 0.05, 0.085];
 SUN :: [16] f32.[0.35, 0.85, 0.4, 1.0,  -0.85, 0.3, -0.4, 0.75,  0.9, 0.2, -0.3, 0.5,  0.3, 0.8, 0.5, 0.14];
@@ -1620,7 +1621,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     uniforms[EYE_AT + i] = s[0].eye[i]; uniforms[RAY_AT + i] = s[0].fwd[i];
     uniforms[RAY_AT + 4 + i] = s[0].right[i]; uniforms[RAY_AT + 8 + i] = s[0].up[i];
     uniforms[SKY_AT + i] = SKY_RGB[tod * 3 + i]; uniforms[HORIZON_AT + i] = HORIZON_RGB[tod * 3 + i];
-    uniforms[GROUND_AT + i] = ifx snow_paint then PAINT_SNOW[i] else GROUND_RGB[gr * 3 + i];
+    uniforms[GROUND_AT + i] = ifx snow_paint then PAINT_SNOW[tod * 3 + i] else GROUND_RGB[gr * 3 + i];
     uniforms[SUN_AT + i] = SUN[tod * 4 + i];
   }
   uniforms[EYE_AT + 3] = GROUND_R;

@@ -153,8 +153,8 @@ stage (0.8; half for what glows and for her skin and clothes).
   tones by the depth of the bed under them (deep, open, and two light bands
   along the shore) with slow broken ripple lines drifting across the open
   water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`).
-- **Painterly snow** in a made realm is `PAINT_SNOW` (0.5, 0.66, 1.0),
-  not the low-poly ground's near white: white snow measured a saturation of
+- **Painterly snow** in a made realm is `PAINT_SNOW`: sky blue (0.5, 0.66, 1.0)
+  by day and night, lilac (0.74, 0.54, 0.94) at dawn and dusk, not the low-poly ground's near white: white snow measured a saturation of
   0.08 at noon and 0.10 at dusk, under the style check's 0.22, and read as
   paper rather than paint (`myrealm.coax`, October 30).
 - **Made realms** (`/realms/new`, style flat) take `FLAT_GARDEN` at their
