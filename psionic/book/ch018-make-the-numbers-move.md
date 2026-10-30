@@ -111,4 +111,3 @@ less repeated prefix readout, tokenization/allocation attribution, kernel and
 matrix improvements under the frozen parity profile, and batching/fairness
 under the later serving chapters. Each needs its own workload and before/after
 record. A faster toy CPU workload is not an Elephant throughput claim.
-

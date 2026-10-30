@@ -100,4 +100,3 @@ sanitizer checks. No original whole-model CPU decision is repeated.
 Continue with [the endpoint](ch016-serve-systemone.md), its
 [protobuf carriage](ch016b-the-protobuf-wire.md), then
 [supervised operation](ch017-run-it-live.md).
-

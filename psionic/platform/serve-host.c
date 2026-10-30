@@ -240,7 +240,7 @@ static void open_toy(Server *s, int64_t capacity) {
 static void open_elephant(Server *s, const char *dir, const char *table_path, int64_t capacity, bool gpu, int64_t device_mib) {
     coax_v_u8 config = map_named(dir, "config.json"), tokenizer = map_named(dir, "tokenizer.json"), readout = map_named(dir, "readout.json");
     coax_v_u8 index = {NULL, 0}, table = map_file(table_path);
-    coax_t_PaFile *file = zalloc(1, sizeof *file); 
+    coax_t_PaFile *file = zalloc(1, sizeof *file);
     char weights_path[4096]; snprintf(weights_path, sizeof weights_path, "%s/model.safetensors", dir);
     VfEntry *verified = zalloc(1, sizeof *verified); if(vf_map_file(verified, weights_path, file)){fprintf(stderr,"psionic-serve: checkpoint mapping failed\n");exit(2);}
     s->cached_pages=verified->cached_pages;s->total_pages=verified->total_pages;

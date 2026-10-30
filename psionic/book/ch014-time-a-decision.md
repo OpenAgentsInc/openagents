@@ -120,4 +120,3 @@ Run `psionic/check.sh --only live-decision` for the focused gate. The
 and [retained observations](../fixtures/serving/partIII-2026-10-29/README.md)
 name the qualified producer, raw samples, limitations and results.
 Next, [keep the model resident](ch015-keep-the-model-resident.md).
-

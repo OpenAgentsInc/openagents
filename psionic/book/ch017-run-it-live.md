@@ -124,4 +124,3 @@ The [verification record](../../docs/verification/psionic-partIII-2026-10-29.md)
 names the actual host/address, managed build, probes, restart check and first
 P50/P95/P99 observations. Continue with
 [measured improvements](ch018-make-the-numbers-move.md).
-
