@@ -31,7 +31,7 @@ measured.
   and lane sums, with its ordered f64 reductions computed as APPLE-FF-v1
   float-float pairs (chapter 31).
 
-Commits: `f937335f58` (engine and harness), `f575a47b93` (Responses
+Commits: `903752fd29` (engine and harness), `ea71590285` (Responses
 server `--metal` and desktop endpoint setting).
 
 ## Qualification

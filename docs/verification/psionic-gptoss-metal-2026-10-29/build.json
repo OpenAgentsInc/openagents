@@ -11,5 +11,5 @@
   "harness": "psionic/tests/run_gptoss_metal.sh (gptoss_metal.c, gptoss_cpu_greedy.c)",
   "model": "openai/gpt-oss-20b original, revision 6cee5e81ee83917806bbde320786a8fb61efebee, authenticated by Coax at admission",
   "numerical_profile": "gpt-oss-metal-f32-ff-v1: gpt-oss-cuda-f32-v1's f32 storage and lane sums; its f64 reductions as APPLE-FF-v1 float-float pairs",
-  "commit": "f937335f58"
+  "commit": "903752fd29"
 }
