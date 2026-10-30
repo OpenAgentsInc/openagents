@@ -3163,6 +3163,9 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   #assert g[0].grass_n == 64 * 64 * 24 + 14 * 14 * 32;
   everglade_pack_failed(g[..]);
   #assert !g[0].pack_failed;
+}
+// (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
+#test "the pack's catalog: a pack that fails before its catalog draws nothing" {
   h: [1] Everglade;
   everglade_start(h[..]);
   everglade_pack_failed(h[..]);
@@ -3196,11 +3199,16 @@ CATALOG :: "pack everglade\nM Pine_5 0 1464 0 0 0 0 1 8 1\nM Pine_5_Leaves 1464 
   for j: 0..<RANGER_JOINTS { p := skin_joint(rig, g[0].skin[..], j); top = hi(top, p.y); low = lo(low, p.y); }
   #assert g[0].skin[0].clip == SKIN_IDLE && top > 1.5 && top < 1.9 && low > -0.05 && low < 0.1;
   #assert RANGER_TRIANGLES == 31396 && g[0].kit_triangles >= RANGER_TRIANGLES;
-  // No C line, no Ranger: nothing drawn for it, the rest draws.
+}
+// (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
+#test "no C line, no Ranger: nothing drawn for it, the rest draws" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  d := RANGER_DRAW * 4;
   h: [1] Everglade;
   everglade_start(h[..]);
   everglade_catalog(h[..], "pack everglade\nI 43083 1024\n");
-  n = everglade_frame(h[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  n := everglade_frame(h[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert h[0].pack_ready && h[0].draws[d + 3] == 0;
 }
 
@@ -3657,11 +3665,17 @@ contains :: (text: string, part: string) -> bool {
   #assert u[U_SUN] == u[STYLE_AT + SU_KEY_DIR] && u[U_SUN + 1] == u[STYLE_AT + SU_KEY_DIR + 1];
   // the haze starts and thickens where the preset says on the ground
   #assert u[U_SUN + 3] == u[STYLE_AT + SU_HAZE] && u[U_EYE + 3] == u[STYLE_AT + SU_HAZE + 1];
+  #assert m > 0;
+}
+// (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
+#test "the painterly day: a cycling clock on a still page shows noon" {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
   c: [1] Everglade;
   everglade_message(c[..], MSG_FACTS, "realm=everglade\nclock=cycle\nnow=1000000");
   #assert c[0].day.mode == STYLE_CLOCK_CYCLE;
   n := everglade_frame(c[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, true, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  #assert m > 0 && n > 0 && c[0].clock == 0.5 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.5) < 0.001;
+  #assert n > 0 && c[0].clock == 0.5 && abs(u[STYLE_AT + SU_STYLE + 3] - 0.5) < 0.001;
 }
 
 #test "every look has its own number (everglade.wgsl's LOOK_*)" {

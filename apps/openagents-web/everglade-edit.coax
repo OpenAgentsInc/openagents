@@ -524,7 +524,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert everglade_edit_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 1) && !s[0].ev.editing;
 }
 
-#test "the shared layer: a realm admin's EDIT opens edit mode and the board; a visitor with BUILD sends a card; an accepted card is placed" {
+#test "the shared layer: a visitor with BUILD gets EDIT, the things only, each sent as a card; no UNDO or ORIGINAL" {
   s: [1] Everglade;
   everglade_start(s[..]);
   u: [UNIFORM_FLOATS] f32;
@@ -547,6 +547,11 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   #assert s[0].ev.edits.n == 0 && cast(string) e[0].place_thing[0..<e[0].place_thing_n] == "barrel" && s[0].ev.post_n == 0;
   n = everglade_edit_hud(s[..], out[..], u[..], 0, 840);
   #assert s[0].ev.boxes[EB_DONE].x1 > 0 && s[0].ev.boxes[EB_UNDO].x1 == 0 && s[0].ev.boxes[EB_ORIGINAL].x1 == 0;   // no UNDO or ORIGINAL for a visitor
+}
+// (its own check: two Everglades and a frame's vertices are over the compile-time storage cap)
+#test "the shared layer: a realm admin's EDIT opens edit mode and the board; an accepted card is placed; DONE closes it" {
+  u: [UNIFORM_FLOATS] f32;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   // a realm admin: the layer's EDIT stands where Everglade's was, and opens edit mode with the board
   a: [1] Everglade;
   everglade_start(a[..]);
@@ -557,7 +562,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   redit_requested(f, 3);
   #assert everglade_voice_message(a[..], HTTP_KIND + 3, "200\nrealm everglade\nrole admin\nowner 0\ntool build 1\nrow flock 0 The bird flock\nwaiting 1\n");
   edit_layer(a[..]);
-  n = everglade_edit_hud(a[..], out[..], u[..], 0, 840);
+  n := everglade_edit_hud(a[..], out[..], u[..], 0, 840);
   b := f[0].boxes[RB_EDIT];
   #assert a[0].ev.admin && f[0].shown[RB_EDIT] && b.x1 < 1360 && !redit_row_on(f, "flock");
   #assert everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1) && everglade_voice_pointer(a[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1);
