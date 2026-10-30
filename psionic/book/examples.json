@@ -52,6 +52,16 @@
       ]
     },
     {
+      "source": "psionic/examples/tensor-operators.coax",
+      "chapter": "psionic/book/ch003a-a-standard-library-of-tensor-operators.md",
+      "stdout": "psionic/fixtures/tensor-operators.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/read-weights.coax",
       "chapter": "psionic/book/ch004-reading-original-weights.md",
       "stdout": "psionic/fixtures/read-weights.out",

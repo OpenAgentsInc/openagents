@@ -1,0 +1,71 @@
+operator manifest: 27 CPU operators; independent scalar/central-difference cases: 38
+ok   #test a broadcast VJP sums every use of the smaller operand (1 case, 28265 steps)
+ok   #test matrix VJPs and stable value permutations have hand derivatives (1 case, 15666 steps)
+ok   #test comparisons have no VJP and derivative work has its own limit (1 case, 3015 steps)
+ok   #test ReLU at zero and maximum ties use their frozen subgradient conventions (1 case, 8042 steps)
+ok   #test broadcast arithmetic reductions and gradients use logical view order (1 case, 11314 steps)
+ok   #test stable sorting and topk retain lowest axis indices on ties (1 case, 5441 steps)
+ok   #test wide cancellation and empty sum preserve their explicit identities (1 case, 5494 steps)
+ok   #test loss and half-pixel interpolation have independent small oracles (1 case, 14538 steps)
+ok   #test domain overflow shape and alias refusals preserve public destinations (1 case, 8544 steps)
+ok   #test softmax and max pooling have stable shifted and first-tie behavior (1 case, 3822 steps)
+ok   #test broadcast inference includes scalars empty axes and explicit output dtypes (1 case, 2586 steps)
+ok   #test axis reductions and indexed operations infer exact shapes (1 case, 4883 steps)
+ok   #test sort topk matrix image and loss plans state their bounded subsets (1 case, 6539 steps)
+ok   #test empty identities undefined means and work ceilings are explicit (1 case, 6566 steps)
+ok   #test index searches and image parameters cannot hide unbounded work (1 case, 2446 steps)
+ok   #test scalar, empty and contiguous views have different element counts (1 case, 3701 steps)
+ok   #test rank dimensions products and storage records refuse before address arithmetic (1 case, 664 steps)
+ok   #test transpose reversal gaps and singleton strides have independent addresses (1 case, 9929 steps)
+ok   #test bounded slicing validates last selected element and canonicalizes empties (1 case, 7547 steps)
+ok   #test broadcasts are readable aliases and never writable destinations (1 case, 7170 steps)
+ok   #test foreign stale overflowing and out-of-storage views cannot be used (1 case, 1868 steps)
+ok   #test gather materializes logical order and preserves signed zero and tails (1 case, 6281 steps)
+ok   #test a successful alias write invalidates a saved value once, failures do not (1 case, 7588 steps)
+ok   #test empty gather and scatter do no data work and do not increment version (1 case, 1402 steps)
+ok   #test nonfinite representations are refused without evaluating them as Coax constants (1 case, 150 steps)
+ok   #forall rank-one strided coordinates use the absolute storage origin (49 cases, 64373 steps)
+ok   #test alias intervals can prove disjoint views but conservatively retain gaps (1 case, 8549 steps)
+27 checks, 27 passed, 0 failed
+independent scalar/VJP oracle: 38 cases x 3 layouts = 114; max scaled forward 2.50966926e-08, gradient 1.44320273e-08
+native refusals: nonfinite classes, short/foreign metadata, raw unknown tags, domains, invalid indices/axis, actual aliases and late forward/VJP publication pass
+tie subgradients, ReLU at zero, exact forward work ceiling and independent VJP/index-update work refusals pass
+independent scalar/VJP oracle: 38 cases x 3 layouts = 114; max scaled forward 2.50966926e-08, gradient 1.44320273e-08
+native refusals: nonfinite classes, short/foreign metadata, raw unknown tags, domains, invalid indices/axis, actual aliases and late forward/VJP publication pass
+tie subgradients, ReLU at zero, exact forward work ceiling and independent VJP/index-update work refusals pass
+ok   #test a broadcast VJP sums every use of the smaller operand (1 case, 28265 steps)
+ok   #test matrix VJPs and stable value permutations have hand derivatives (1 case, 15666 steps)
+ok   #test comparisons have no VJP and derivative work has its own limit (1 case, 3015 steps)
+ok   #test ReLU at zero and maximum ties use their frozen subgradient conventions (1 case, 8042 steps)
+ok   #test broadcast arithmetic reductions and gradients use logical view order (1 case, 11314 steps)
+ok   #test stable sorting and topk retain lowest axis indices on ties (1 case, 5441 steps)
+ok   #test wide cancellation and empty sum preserve their explicit identities (1 case, 5494 steps)
+ok   #test loss and half-pixel interpolation have independent small oracles (1 case, 14538 steps)
+ok   #test domain overflow shape and alias refusals preserve public destinations (1 case, 8544 steps)
+ok   #test softmax and max pooling have stable shifted and first-tie behavior (1 case, 3822 steps)
+ok   #test broadcast inference includes scalars empty axes and explicit output dtypes (1 case, 2586 steps)
+ok   #test axis reductions and indexed operations infer exact shapes (1 case, 4883 steps)
+ok   #test sort topk matrix image and loss plans state their bounded subsets (1 case, 6539 steps)
+ok   #test empty identities undefined means and work ceilings are explicit (1 case, 6566 steps)
+ok   #test index searches and image parameters cannot hide unbounded work (1 case, 2446 steps)
+ok   #test scalar, empty and contiguous views have different element counts (1 case, 3701 steps)
+ok   #test rank dimensions products and storage records refuse before address arithmetic (1 case, 664 steps)
+ok   #test transpose reversal gaps and singleton strides have independent addresses (1 case, 9929 steps)
+ok   #test bounded slicing validates last selected element and canonicalizes empties (1 case, 7547 steps)
+ok   #test broadcasts are readable aliases and never writable destinations (1 case, 7170 steps)
+ok   #test foreign stale overflowing and out-of-storage views cannot be used (1 case, 1868 steps)
+ok   #test gather materializes logical order and preserves signed zero and tails (1 case, 6281 steps)
+ok   #test a successful alias write invalidates a saved value once, failures do not (1 case, 7588 steps)
+ok   #test empty gather and scatter do no data work and do not increment version (1 case, 1402 steps)
+ok   #test nonfinite representations are refused without evaluating them as Coax constants (1 case, 150 steps)
+ok   #forall rank-one strided coordinates use the absolute storage origin (49 cases, 64373 steps)
+ok   #test alias intervals can prove disjoint views but conservatively retain gaps (1 case, 8549 steps)
+27 checks, 27 passed, 0 failed
+independent scalar/VJP oracle: 38 cases x 3 layouts = 114; max scaled forward 2.50966926e-08, gradient 1.44320273e-08
+native refusals: nonfinite classes, short/foreign metadata, raw unknown tags, domains, invalid indices/axis, actual aliases and late forward/VJP publication pass
+tie subgradients, ReLU at zero, exact forward work ceiling and independent VJP/index-update work refusals pass
+independent scalar/VJP oracle: 38 cases x 3 layouts = 114; max scaled forward 2.50966926e-08, gradient 1.44320273e-08
+native refusals: nonfinite classes, short/foreign metadata, raw unknown tags, domains, invalid indices/axis, actual aliases and late forward/VJP publication pass
+tie subgradients, ReLU at zero, exact forward work ceiling and independent VJP/index-update work refusals pass
+book structure: 43 programs, 182 source-linked listings, local links pass
+Tensor operators: all 27 families/entries, scalar/finite-difference references, strided layouts, debug/release, native plain/ASan/UBSan and exact book output pass

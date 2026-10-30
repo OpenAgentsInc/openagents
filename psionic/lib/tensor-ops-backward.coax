@@ -1,0 +1,98 @@
+// Explicit bounded VJPs. These are value-operator derivatives, not a tape,
+// allocator or backing-storage alias accumulation engine.
+#load "tensor-ops.coax";
+#authority;
+ToGradient :: struct {status:ToStatus;written_a:int;written_b:int;}
+
+#test "a broadcast VJP sums every use of the smaller operand" {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,3).storage];views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[2,3,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=1,dims=[4]int.[3,0,0,0]},false).view];
+    a:=[6]f32.[1,2,3,4,5,6];b:=[3]f32.[10,20,30];dy:=[6]f32.[1,2,3,4,5,6];ga:[7]f32;gb:[4]f32;sa:[7]f32;sb:[4]f32;idx:[1]int;
+    r:=to_vjp_checked(ToRequest.{op=ToOp.multiply},owners[..],views[..],a[..],b[..],idx[0..<0],dy[..],ga[..],gb[..],sa[..],sb[..],false);
+    #assert r.status==ToStatus.ok && r.written_a==6 && r.written_b==3 && ga[0]==10 && ga[1]==40 && ga[5]==180 && gb[0]==17 && gb[1]==29 && gb[2]==45;
+}
+#test "matrix VJPs and stable value permutations have hand derivatives" {
+    owners:=[2]TvStorage.[tv_owner(1,1,2).storage,tv_owner(2,1,2).storage];views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[1,2,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=2,dims=[4]int.[2,1,0,0]},false).view];
+    a:=[3]f32.[1,2,0];b:=[2]f32.[3,4];dy:=[3]f32.[2,0,0];ga:[3]f32;gb:[3]f32;sa:[3]f32;sb:[3]f32;idx:[1]int;
+    r:=to_vjp_checked(ToRequest.{op=ToOp.matmul},owners[..],views[..],a[0..<2],b[..],idx[0..<0],dy[0..<1],ga[..],gb[..],sa[..],sb[..],false);
+    #assert r.status==ToStatus.ok && ga[0]==6 && ga[1]==8 && gb[0]==2 && gb[1]==4;
+    owners[0].elements=3;owners[1]=tv_owner(2,1,0).storage;views[0]=tv_contiguous(owners[0],TvShape.{rank=1,dims=[4]int.[3,0,0,0]},false).view;views[1]=tv_contiguous(owners[1],TvShape.{rank=1},false).view;
+    a=[3]f32.[3,3,-1];dy=[3]f32.[1,2,3];r=to_vjp_checked(ToRequest.{op=ToOp.sort},owners[..],views[..],a[..],b[0..<0],idx[0..<0],dy[..],ga[..],gb[..],sa[..],sb[..],false);
+    #assert r.status==ToStatus.ok && ga[0]==1 && ga[1]==2 && ga[2]==3;
+}
+#test "comparisons have no VJP and derivative work has its own limit" {
+    a:=TvShape.{rank=2,dims=[4]int.[64,64,0,0]};p:=to_plan(ToRequest.{op=ToOp.matmul},a,a,0);#assert p.status==ToStatus.ok && !to_vjp_work(ToRequest.{op=ToOp.matmul},p,a,0);
+    owners:=[2]TvStorage.[tv_owner(1,1,1).storage,tv_owner(2,1,1).storage];views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{},false).view,tv_contiguous(owners[1],TvShape.{},false).view];
+    x:=[1]f32.[2];dy:=[1]f32.[1];ga:=[1]f32.[-7];gb:=[1]f32.[-8];sa:=[1]f32.[-9];sb:=[1]f32.[-10];idx:[1]int;
+    r:=to_vjp_checked(ToRequest.{op=ToOp.less},owners[..],views[..],x[..],x[..],idx[0..<0],dy[..],ga[..],gb[..],sa[..],sb[..],false);
+    #assert r.status==ToStatus.nondiff && ga[0]==-7 && gb[0]==-8 && sa[0]==-9 && sb[0]==-10;
+}
+
+#test "ReLU at zero and maximum ties use their frozen subgradient conventions" {
+    owners:=[2]TvStorage.[tv_owner(1,1,3).storage,tv_owner(2,1,0).storage];views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=1,dims=[4]int.[3,0,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=1},false).view];
+    a:=[3]f32.[-1,0,2];none:[1]f32;dy:=[3]f32.[1,2,3];ga:[3]f32;gb:[1]f32;sa:[3]f32;sb:[1]f32;idx:[1]int;
+    r:=to_vjp_checked(ToRequest.{op=ToOp.relu},owners[..],views[..],a[..],none[0..<0],idx[0..<0],dy[..],ga[..],gb[0..<0],sa[..],sb[0..<0],false);#assert r.status==ToStatus.ok && ga[0]==0 && ga[1]==0 && ga[2]==3;
+    a=[3]f32.[2,2,1];r=to_vjp_checked(ToRequest.{op=ToOp.maximum},owners[..],views[..],a[..],none[0..<0],idx[0..<0],dy[0..<1],ga[..],gb[0..<0],sa[..],sb[0..<0],false);#assert r.status==ToStatus.ok && ga[0]==1 && ga[1]==0 && ga[2]==0;
+}
+
+to_vjp_work :: (r:ToRequest,p:ToPlan,a:TvShape,indices:int)->bool {
+    n:=p.na+p.nb;if !to_work_fits(n,p.n) {return false;}pairs:=n*p.n;factor:=1;
+    if r.op==ToOp.maximum || r.op==ToOp.sort || r.op==ToOp.topk {factor=a.dims[r.axis];}
+    else if r.op==ToOp.softmax {factor=2*a.dims[r.axis];}
+    else if r.op==ToOp.maxpool2d {factor=p.inner;}
+    else if r.op==ToOp.update {factor=indices;if factor<1 {factor=1;}}
+    else if r.op==ToOp.cross_entropy {factor=a.dims[1];}
+    return to_work_fits(pairs,factor);
+}
+// One analytical Jacobian entry. The VJP contracts it with dy in output
+// order, using an independent work admission before any derivative is run.
+to_jacobian :: (r:ToRequest,p:ToPlan,av:TvView,bv:TvView,a:[]f32,b:[]f32,indices:[]int,operand:int,input:int,output:int)->f64 {
+    op:=r.op;
+    if cast(u8)op<=3 {ai:=to_broadcast_index(av.shape,p.shape,output);bi:=to_broadcast_index(bv.shape,p.shape,output);selected:=ai;if operand==1 {selected=bi;}if input!=selected {return 0;}x:=to_at(av,a,ai);y:=to_at(bv,b,bi);
+        if op==ToOp.add {return 1;}if op==ToOp.subtract {if operand==0 {return 1;}return -1;}if op==ToOp.multiply {if operand==0 {return y;}return x;}if operand==0 {return 1/y;}return -x/(y*y);
+    }
+    if op==ToOp.negate || op==ToOp.relu || op==ToOp.exponential || op==ToOp.logarithm {if input!=output {return 0;}x:=to_at(av,a,input);if op==ToOp.negate {return -1;}if op==ToOp.relu {if x>0 {return 1;}return 0;}if op==ToOp.exponential {return exp(x);}return 1/x;}
+    c:=to_coords(p.shape,output);shape:=av.shape;if operand==1 {shape=bv.shape;}ic:=to_coords(shape,input);
+    if op==ToOp.sum || op==ToOp.mean || op==ToOp.maximum {point:=to_reduce_coords(av.shape,p,r,output);for axis:0..<av.shape.rank {if axis!=r.axis && ic[axis]!=point[axis] {return 0;}}
+        if op==ToOp.sum {return 1;}if op==ToOp.mean {return 1/f64(av.shape.dims[r.axis]);}point[r.axis]=0;maximum:=to_read(av,a,point);best:=0;
+        for j:1..<av.shape.dims[r.axis] {point[r.axis]=j;x:=to_read(av,a,point);if x>maximum {maximum=x;best=j;}}if ic[r.axis]==best {return 1;}return 0;
+    }
+    if op==ToOp.softmax {for axis:0..<av.shape.rank {if axis!=r.axis && ic[axis]!=c[axis] {return 0;}}y:=to_soft(av,a,c,r.axis);x:=to_soft(av,a,ic,r.axis);diagonal:f64=0;if ic[r.axis]==c[r.axis] {diagonal=1;}return y*(diagonal-x);}
+    if op==ToOp.take {point:=c;point[r.axis]=indices[c[r.axis]];if input==to_flat(av.shape,point) {return 1;}return 0;}
+    if op==ToOp.update {selected:=-1;for j:0..<indices.count {if indices[j]==c[r.axis] {selected=j;}}
+        if operand==0 {if selected<0 && input==output {return 1;}return 0;}if selected<0 {return 0;}point:=c;point[r.axis]=selected;if input==to_flat(bv.shape,point) {return 1;}return 0;
+    }
+    if op==ToOp.concat {point:=c;if c[r.axis]<av.shape.dims[r.axis] {if operand==0 && input==to_flat(av.shape,point) {return 1;}return 0;}
+        point[r.axis]-=av.shape.dims[r.axis];if operand==1 && input==to_flat(bv.shape,point) {return 1;}return 0;
+    }
+    if op==ToOp.sort || op==ToOp.topk {for axis:0..<av.shape.rank {if axis!=r.axis && ic[axis]!=c[axis] {return 0;}}if to_rank(av,a,ic,r.axis,r.descending)==c[r.axis] {return 1;}return 0;}
+    if op==ToOp.matmul {if operand==0 {if ic[0]==c[0] {return to_read(bv,b,[4]int.[ic[1],c[1],0,0]);}return 0;}if ic[1]==c[1] {return to_read(av,a,[4]int.[c[0],ic[0],0,0]);}return 0;}
+    if op==ToOp.conv2d {if operand==0 {h:=ic[2]-c[2];w:=ic[3]-c[3];if ic[0]!=c[0] || h<0 || h>=bv.shape.dims[2] || w<0 || w>=bv.shape.dims[3] {return 0;}return to_read(bv,b,[4]int.[c[1],ic[1],h,w]);}
+        if ic[0]!=c[1] {return 0;}return to_read(av,a,[4]int.[c[0],ic[1],c[2]+ic[2],c[3]+ic[3]]);
+    }
+    if op==ToOp.maxpool2d {if input==to_pool_best(av,a,c,r) {return 1;}return 0;}
+    if op==ToOp.avgpool2d {h:=ic[2]-c[2]*r.stride;w:=ic[3]-c[3]*r.stride;if ic[0]==c[0] && ic[1]==c[1] && h>=0 && h<r.height && w>=0 && w<r.width {return 1/f64(p.inner);}return 0;}
+    if op==ToOp.nearest2d {if ic[0]==c[0] && ic[1]==c[1] && ic[2]==c[2]*av.shape.dims[2]/r.height && ic[3]==c[3]*av.shape.dims[3]/r.width {return 1;}return 0;}
+    if op==ToOp.bilinear2d {if ic[0]!=c[0] || ic[1]!=c[1] {return 0;}h:=to_point(c[2],av.shape.dims[2],r.height);w:=to_point(c[3],av.shape.dims[3],r.width);weight:f64=0;
+        if ic[2]==h.low && ic[3]==w.low {weight+=(1-h.fraction)*(1-w.fraction);}if ic[2]==h.low && ic[3]==w.high {weight+=(1-h.fraction)*w.fraction;}
+        if ic[2]==h.high && ic[3]==w.low {weight+=h.fraction*(1-w.fraction);}if ic[2]==h.high && ic[3]==w.high {weight+=h.fraction*w.fraction;}return weight;
+    }
+    if op==ToOp.mse {value:=2*(to_at(av,a,input)-to_at(bv,b,input))/f64(p.na);if operand==1 {value=-value;}return value;}
+    if op==ToOp.cross_entropy {value:=to_soft(av,a,ic,1);if ic[1]==indices[ic[0]] {value-=1;}return value/f64(av.shape.dims[0]);}
+    return 0;
+}
+// book:begin vjp
+to_vjp_checked :: (r:ToRequest,owners:[]TvStorage,views:[]TvView,a:[]f32,b:[]f32,indices:[]int,dy:[]f32,ga:[]f32,gb:[]f32,sa:[]f32,sb:[]f32,overlap:bool)->ToGradient #export_c {
+    p:=to_admit(r,owners,views,a,b,indices);if p.status!=ToStatus.ok {return ToGradient.{status=p.status};}
+    if !to_differentiable(r.op) {return ToGradient.{status=ToStatus.nondiff};}
+    if !to_vjp_work(r,p,views[0].shape,indices.count) {return ToGradient.{status=ToStatus.limit};}
+    if dy.count!=p.n || ga.count<p.na || gb.count<p.nb || sa.count<p.na || sb.count<p.nb {return ToGradient.{status=ToStatus.capacity};}
+    if overlap {return ToGradient.{status=ToStatus.alias};}for x:dy {if !tv_finite(x) {return ToGradient.{status=ToStatus.number};}}
+    // A derivative is admitted only where this forward profile succeeds.
+    for j:0..<p.n {value:=to_eval(r,p,views[0],views[1],a,b,indices,j);if value.status!=ToStatus.ok || !to_fits(value.value) {return ToGradient.{status=ToStatus.arithmetic};}}
+    for operand:0..<2 {count:=p.na;if operand==1 {count=p.nb;}
+        for i:0..<count {total:ToWide;for j:0..<p.n {entry:=to_jacobian(r,p,views[0],views[1],a,b,indices,operand,i,j);total=to_accumulate(total,entry*f64(dy[j]));}
+            value:=to_total(total);if !to_fits(value) {return ToGradient.{status=ToStatus.arithmetic};}if operand==0 {sa[i]=f32(value);}else {sb[i]=f32(value);}}
+    }
+    for i:0..<p.na {ga[i]=sa[i];}for i:0..<p.nb {gb[i]=sb[i];}return ToGradient.{written_a=p.na,written_b=p.nb};
+}
+// book:end vjp

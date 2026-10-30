@@ -6,7 +6,9 @@ chapter at a time. The first milestone trains a one-parameter model on
 bounded shapes, row-major indexing and a staged copy into caller-owned storage.
 [Chapter 2a](book/ch002a-a-tensor-is-a-view-of-memory.md) adds strided CPU views,
 empty tensors, broadcasting and storage-version checks for saved values.
-Chapter 3 adds checked CPU numerical operations over that storage. Chapter 4
+Chapter 3 adds checked CPU numerical operations over that storage.
+[Chapter 3a](book/ch003a-a-standard-library-of-tensor-operators.md) adds 27
+view-aware CPU operators, support metadata and explicit analytical value VJPs. Chapter 4
 reads original BF16/F32 weight files and complete pinned shard bundles.
 Chapter 5 renders typed text decisions and tokenizes original Qwen data.
 Chapter 6 executes a small causal dense attention block with a KV cache.

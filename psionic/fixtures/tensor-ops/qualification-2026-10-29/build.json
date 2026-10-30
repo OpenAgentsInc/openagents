@@ -1,0 +1,77 @@
+{
+  "schema": 1,
+  "base_commit": "9902a3eaf19a016c2da10ee4887562756064471e",
+  "profile": "CPU-f32-wide-views-v1",
+  "coax_version": "coax0 0.22.0",
+  "coax_sha256": "c5acf492faaef7ea8450245c44b454e69b208f83d9594e874be4d06eb3d3ae1a",
+  "native_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "machine": "Apple arm64; macOS 26.4",
+  "flags": [
+    "-std=c11",
+    "debug:-O0",
+    "release:-O3",
+    "-g",
+    "-ffp-contract=off",
+    "-fno-fast-math",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wno-unused-function",
+    "-Wno-unused-parameter",
+    "-Wno-unknown-pragmas"
+  ],
+  "sanitizers": [
+    "-fsanitize=address,undefined",
+    "-fno-omit-frame-pointer"
+  ],
+  "sanitizer_environment": {
+    "ASAN_OPTIONS": "detect_leaks=0:halt_on_error=1",
+    "UBSAN_OPTIONS": "halt_on_error=1"
+  },
+  "sources_sha256": {
+    "psionic/lib/tensor-view.coax": "5635cb23773453ea82a412aa7b5dc8b021d89f6ace10e28f6fc4f60a0d15b6de",
+    "psionic/lib/tensor-ops-contract.coax": "0a13372f9a617d0d064ac946027b0b3374acf71be218db62fd31b42854c9c96d",
+    "psionic/lib/tensor-ops.coax": "9d8e5163449eb9c1f2afe04f85c208f718d1c6245e347a0f02cca94c36a859f8",
+    "psionic/lib/tensor-ops-backward.coax": "9dbc44301a4e6544a5a86a7ad96c4cc180ccf85ef7d329366a562b707cf33c1e",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/platform/tensor-ops-memory.c": "3c9c0e705878899948df86726dd2dcf1f01d6c61f5087414cdbf6dd821c3bb3b",
+    "psionic/platform/tensor-ops-memory.h": "0c949862f73e9dc03b4513f01b3cb165b0848727d0e5f375d1e8047eb2cde118",
+    "psionic/tests/tensor_ops.c": "e00ccfd0a86e0b11c2534bb69f3d26923f4432941af6d88d63f71c663f30a546",
+    "psionic/tests/tensor_ops_oracle.py": "d9695ea37496550389bceec37638bd0afd4500958acfed8fef0a28791ae41531",
+    "psionic/tests/check_tensor_ops.sh": "11a196eef4fa6a607b84f0662fb4b6bd43880f4fd88a8a671d0de99eb270482c",
+    "psionic/fixtures/tensor-ops/operators.json": "0b4096d467f79993e6fd3a5e029f568272d962c29543eaff42a7ac0cd28186b5",
+    "psionic/examples/tensor-operators.coax": "9f5b5658923d7f126f0a8c78b6588f5ad20e2e43a3424f7ea515a1109783b671",
+    "psionic/fixtures/tensor-operators.out": "e934fb564fe7df61fd758e1a67b89c66b3e46d31f57bdcaa69e951ef42742c7f"
+  },
+  "regenerated_artifacts_sha256": {
+    "tensor-ops-debug.c": "baab97ba160426b58c7f54b080341070233c5c4974ac421728c5439fe471672f",
+    "tensor-ops-debug.h": "927e4e50b31f086b0b525f62db097112fc41a9b49952db3a16b5c0b59e11e7df",
+    "tensor-ops-release.c": "be40d6f2dc003110afa5d1489528b028f59cc2032da61dfb192682c137e78775",
+    "tensor-ops-release.h": "927e4e50b31f086b0b525f62db097112fc41a9b49952db3a16b5c0b59e11e7df",
+    "oracle-final.h": "5ee831882d06e2cc3634abcc393a5006dce0657ab8054c53d93a8657d79e0bf9"
+  },
+  "results": {
+    "coax_checks_per_mode": 27,
+    "operators": 27,
+    "oracle_cases": 38,
+    "layouts_per_case": 3,
+    "forward_calls_per_native_build": 114,
+    "vjp_calls_per_native_build": 114,
+    "expected_nondiff_calls_per_native_build": 6,
+    "native_configurations": 4,
+    "forward_scaled_error_bound": 2e-06,
+    "vjp_scaled_error_bound": 3e-05,
+    "maximum_observed_forward_scaled_error": 2.50966926e-08,
+    "maximum_observed_vjp_scaled_error": 1.44320273e-08
+  },
+  "notes": [
+    "The final focused script passed in one complete run after adding explicit convolution stride rejection. Earlier passing results were rerun only after new checks/contract changes.",
+    "C/header artifacts were regenerated from the same final source/compiler after the passing run; these are regenerated-source identities, not retained native executable hashes. The focused runner removes its temporary binaries.",
+    "Gradient references use central differences of independent wide scalar equations before narrowing; no product implementation or external framework is called by the oracle.",
+    "Native variants are contiguous, reversed-last-axis, and transposed rank-two physical storage. Dedicated checks cover ties, invalid metadata/domains/indices, actual float/integer/metadata aliases, work limits and transactional publication.",
+    "The root includes unchanged chapter 2a checks. No full-library suite/mutation roots, GPU use, original-model inference or new compiler bootstrap.",
+    "No zero-survivor mutation or leak-sanitizer claim. New units are registered in the full release gate; fast focused checks honor the owner instruction.",
+    "After the complete focused run, the runnable example gained a hand-derived conv2d -> MSE forward/reverse chain. Its complete image/filter gradients and frozen stdout were checked in debug/release, then book structure/links/listings passed. Unchanged library/native results were reused.",
+    "Three layout modes are attempted per oracle case; reversal and rank-two physical transposition apply where dimensions/rank permit, otherwise the valid original layout is retained."
+  ]
+}

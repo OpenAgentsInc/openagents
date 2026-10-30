@@ -1,0 +1,45 @@
+#load "../lib/tensor-ops-backward.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    owners:=[2]TvStorage.[tv_owner(1,1,6).storage,tv_owner(2,1,3).storage];
+    views:=[2]TvView.[tv_contiguous(owners[0],TvShape.{rank=2,dims=[4]int.[2,3,0,0]},false).view,tv_contiguous(owners[1],TvShape.{rank=1,dims=[4]int.[3,0,0,0]},false).view];
+    a:=[6]f32.[1,2,3,4,5,6];b:=[3]f32.[10,20,30];out:[8]f32;scratch:[8]f32;indices:[1]int;aux:[8]int;aux_stage:[8]int;
+    request:=ToRequest.{op=ToOp.multiply};
+    plan:=to_plan(request,views[0].shape,views[1].shape,0);
+    r:=to_forward_checked(request,owners[..],views[..],a[..],b[..],indices[0..<0],out[..],scratch[..],aux[0..<0],aux_stage[0..<0],false);
+    #assert plan.status==ToStatus.ok && r.status==ToStatus.ok;
+    print("multiply [2, 3] by [3] -> [%, %]: %, %, %, %, %, %\n",plan.shape.dims[0],plan.shape.dims[1],out[0],out[1],out[2],out[3],out[4],out[5]);
+    dy:=[6]f32.[1,1,1,1,1,1];ga:[6]f32;gb:[3]f32;sa:[6]f32;sb:[3]f32;
+    g:=to_vjp_checked(request,owners[..],views[..],a[..],b[..],indices[0..<0],dy[..],ga[..],gb[..],sa[..],sb[..],false);
+    #assert g.status==ToStatus.ok;
+    print("sum-of-products gradient for row weights: %, %, %\n",gb[0],gb[1],gb[2]);
+    owners[1]=tv_owner(2,1,0).storage;views[1]=tv_contiguous(owners[1],TvShape.{rank=1},false).view;
+    r=to_forward_checked(ToRequest.{op=ToOp.topk,axis=1,k=2},owners[..],views[..],a[..],b[0..<0],indices[0..<0],out[..],scratch[..],aux[..],aux_stage[..],false);
+    #assert r.status==ToStatus.ok;
+    print("top-2 per row: %, %, %, %; axis indices: %, %, %, %\n",out[0],out[1],out[2],out[3],aux[0],aux[1],aux[2],aux[3]);
+    print("operator registry: 27 CPU f32 operators; comparisons have no VJP\n");
+
+    // Compose two operators, then apply their VJPs in reverse order.
+    image:=[9]f32.[1,2,3,4,5,6,7,8,9];kernel:=[4]f32.[1,0,0,-1];
+    owners[0]=tv_owner(10,1,9).storage;owners[1]=tv_owner(11,1,4).storage;
+    views[0]=tv_contiguous(owners[0],TvShape.{rank=4,dims=[4]int.[1,1,3,3]},false).view;
+    views[1]=tv_contiguous(owners[1],TvShape.{rank=4,dims=[4]int.[1,1,2,2]},false).view;
+    conv_owners:=owners;conv_views:=views;request=ToRequest.{op=ToOp.conv2d};
+    conv_plan:=to_plan(request,views[0].shape,views[1].shape,0);y:[4]f32;y_stage:[4]f32;
+    r=to_forward_checked(request,owners[..],views[..],image[..],kernel[..],indices[0..<0],y[..],y_stage[..],aux[0..<0],aux_stage[0..<0],false);
+    #assert r.status==ToStatus.ok;for value:y {#assert value== -4;}
+    owners[0]=tv_owner(12,1,4).storage;owners[1]=tv_owner(13,1,4).storage;
+    views[0]=tv_contiguous(owners[0],conv_plan.shape,false).view;views[1]=tv_contiguous(owners[1],conv_plan.shape,false).view;
+    target:[4]f32;loss:[1]f32;loss_stage:[1]f32;root:=[1]f32.[1];dy_image:[4]f32;dy_target:[4]f32;sy:[4]f32;st:[4]f32;
+    r=to_forward_checked(ToRequest.{op=ToOp.mse},owners[..],views[..],y[..],target[..],indices[0..<0],loss[..],loss_stage[..],aux[0..<0],aux_stage[0..<0],false);
+    #assert r.status==ToStatus.ok && loss[0]==16;
+    g=to_vjp_checked(ToRequest.{op=ToOp.mse},owners[..],views[..],y[..],target[..],indices[0..<0],root[..],dy_image[..],dy_target[..],sy[..],st[..],false);#assert g.status==ToStatus.ok;
+    image_grad:[9]f32;kernel_grad:[4]f32;si:[9]f32;sk:[4]f32;
+    g=to_vjp_checked(request,conv_owners[..],conv_views[..],image[..],kernel[..],indices[0..<0],dy_image[..],image_grad[..],kernel_grad[..],si[..],sk[..],false);#assert g.status==ToStatus.ok;
+    expected_image:=[9]f32.[-2,-2,0,-2,0,2,0,2,2];for i:0..<9 {#assert image_grad[i]==expected_image[i];}
+    #assert kernel_grad[0]== -24 && kernel_grad[1]== -32 && kernel_grad[2]== -48 && kernel_grad[3]== -56;
+    print("conv -> mean squared loss: %; filter gradient: %, %, %, %\n",loss[0],kernel_grad[0],kernel_grad[1],kernel_grad[2],kernel_grad[3]);
+
+}
+// book:end example

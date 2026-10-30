@@ -1,0 +1,459 @@
+{
+  "schema": 1,
+  "profile": "CPU-f32-wide-views-v1",
+  "shape_inference": "to_plan",
+  "dispatch": "to_forward",
+  "vjp": "to_vjp",
+  "storage": "borrowed f32 views, rank 0..4, <=1048576 logical elements per input/output",
+  "work_limit": 1048576,
+  "gradient_work": "(na+nb)*outputs*branch_factor <= 1048576; plus the admitted forward validation",
+  "forward_tolerance": "abs(got-ref)/(1+abs(ref)) <= 2e-6",
+  "gradient_tolerance": "abs(got-central_difference)/(1+abs(central_difference)) <= 3e-5",
+  "gradient_semantics": "wide value equations at f32 inputs before final narrowing; discrete indices/parameters have no derivative; frozen subgradients at kinks",
+  "arithmetic": "f32 operands; f64 products and ordered compensated reductions; one checked f32 narrowing; no FMA/reassociation",
+  "publication": "public outputs publish together; arithmetic refusal may dirty scratch; all public counts zero on refusal",
+  "operators": [
+    {
+      "id": 0,
+      "name": "add",
+      "family": "elementwise",
+      "arity": 2,
+      "shape_rule": "broadcast(A,B)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 1,
+      "name": "subtract",
+      "family": "elementwise",
+      "arity": 2,
+      "shape_rule": "broadcast(A,B)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 2,
+      "name": "multiply",
+      "family": "elementwise",
+      "arity": 2,
+      "shape_rule": "broadcast(A,B)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 3,
+      "name": "divide",
+      "family": "elementwise",
+      "arity": 2,
+      "shape_rule": "broadcast(A,B)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 4,
+      "name": "negate",
+      "family": "elementwise",
+      "arity": 1,
+      "shape_rule": "A",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 5,
+      "name": "relu",
+      "family": "elementwise",
+      "arity": 1,
+      "shape_rule": "A",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 6,
+      "name": "exponential",
+      "family": "elementwise",
+      "arity": 1,
+      "shape_rule": "A",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 7,
+      "name": "logarithm",
+      "family": "elementwise",
+      "arity": 1,
+      "shape_rule": "A",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 8,
+      "name": "equal",
+      "family": "elementwise",
+      "arity": 2,
+      "shape_rule": "broadcast(A,B)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "not_differentiable",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 9,
+      "name": "less",
+      "family": "elementwise",
+      "arity": 2,
+      "shape_rule": "broadcast(A,B)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "not_differentiable",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 10,
+      "name": "sum",
+      "family": "reduction",
+      "arity": 1,
+      "shape_rule": "reduce(A,axis,keep)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 11,
+      "name": "mean",
+      "family": "reduction",
+      "arity": 1,
+      "shape_rule": "reduce(A,axis,keep)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 12,
+      "name": "maximum",
+      "family": "reduction",
+      "arity": 1,
+      "shape_rule": "reduce(A,axis,keep)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 13,
+      "name": "softmax",
+      "family": "normalization",
+      "arity": 1,
+      "shape_rule": "A",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 14,
+      "name": "take",
+      "family": "indexing",
+      "arity": 1,
+      "shape_rule": "A with axis=len(indices)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 15,
+      "name": "update",
+      "family": "indexing",
+      "arity": 2,
+      "shape_rule": "A; B=A with axis=len(indices)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 16,
+      "name": "concat",
+      "family": "joining",
+      "arity": 2,
+      "shape_rule": "A with axis=A.axis+B.axis; other axes equal",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 17,
+      "name": "sort",
+      "family": "ordering",
+      "arity": 1,
+      "shape_rule": "A; stable axis permutation",
+      "value_dtype": "f32",
+      "aux_dtype": "i64",
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 18,
+      "name": "topk",
+      "family": "ordering",
+      "arity": 1,
+      "shape_rule": "A with axis=k; 0<=k<=A.axis",
+      "value_dtype": "f32",
+      "aux_dtype": "i64",
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 19,
+      "name": "matmul",
+      "family": "matrix",
+      "arity": 2,
+      "shape_rule": "[A.rows,B.columns]; rank2 and A.columns=B.rows",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 20,
+      "name": "conv2d",
+      "family": "convolution",
+      "arity": 2,
+      "shape_rule": "[N,O,H-KH+1,W-KW+1]; NCHW/OIHW valid stride1 groups1",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 21,
+      "name": "maxpool2d",
+      "family": "pooling",
+      "arity": 1,
+      "shape_rule": "[N,C,floor((H-KH)/stride)+1,floor((W-KW)/stride)+1]",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 22,
+      "name": "avgpool2d",
+      "family": "pooling",
+      "arity": 1,
+      "shape_rule": "[N,C,floor((H-KH)/stride)+1,floor((W-KW)/stride)+1]",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 23,
+      "name": "nearest2d",
+      "family": "interpolation",
+      "arity": 1,
+      "shape_rule": "[N,C,height,width]; floor(dst*src/dst_size)",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 24,
+      "name": "bilinear2d",
+      "family": "interpolation",
+      "arity": 1,
+      "shape_rule": "[N,C,height,width]; clipped half-pixel align_corners=false",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 25,
+      "name": "mse",
+      "family": "loss",
+      "arity": 2,
+      "shape_rule": "scalar; equal nonempty shapes; mean squared error",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    },
+    {
+      "id": 26,
+      "name": "cross_entropy",
+      "family": "loss",
+      "arity": 1,
+      "shape_rule": "scalar; A=[rows,classes], nonempty; int64 row labels; mean stable log-softmax loss",
+      "value_dtype": "f32",
+      "aux_dtype": null,
+      "backends": [
+        "cpu"
+      ],
+      "gradient": "analytical_value_vjp",
+      "indices_gradient": false,
+      "parameters_gradient": false,
+      "automatic_tape": false
+    }
+  ],
+  "conventions": {
+    "sort": "stable value order, equal values lowest original axis index; indices are axis-local",
+    "maximum": "lowest axis position on ties",
+    "maxpool2d": "first row-major window position on ties",
+    "relu": "zero derivative at zero",
+    "update": "last indexed update wins; overwritten updates have zero value gradient",
+    "empty": "sum identity and empty outputs supported; mean/max/softmax reduced width and mean losses must be nonempty",
+    "gradient_coordinates": "dense logical input coordinates; backing-storage alias/view pullbacks and tape integration are separate",
+    "outputs": "fresh/unpublished caller-owned result spans; use tensor-view scatter to replace a registered tensor"
+  }
+}

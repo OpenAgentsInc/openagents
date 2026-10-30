@@ -1,0 +1,5 @@
+multiply [2, 3] by [3] -> [2, 3]: 10.0, 40.0, 90.0, 40.0, 100.0, 180.0
+sum-of-products gradient for row weights: 5.0, 7.0, 9.0
+top-2 per row: 3.0, 2.0, 6.0, 5.0; axis indices: 2, 1, 2, 1
+operator registry: 27 CPU f32 operators; comparisons have no VJP
+conv -> mean squared loss: 16.0; filter gradient: -24.0, -32.0, -48.0, -56.0

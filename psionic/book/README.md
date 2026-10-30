@@ -22,6 +22,7 @@ run examples directly without the check command.
 | [2. Shapes and storage](ch002-shapes-and-storage.md) | Runnable: CPU | Admit rank-zero through rank-four shapes, count bytes safely, locate values and stage a copy into caller storage. |
 | [2a. A tensor is a view of memory](ch002a-a-tensor-is-a-view-of-memory.md) | Runnable: bounded CPU f32 views | Signed strides, slicing, transposes, read-only broadcasting, empty tensors and saved-value mutation checks. |
 | [3. Numbers and matrices](ch003-numbers-and-matrices.md) | Runnable: CPU-f32-wide-v1 | Add, reduce, multiply matrices, gather rows, apply masked softmax and normalize rows with independent numerical checks. |
+| [3a. A standard library of tensor operators](ch003a-a-standard-library-of-tensor-operators.md) | Runnable: CPU-f32-wide-views-v1 | 27 operators, shape/dtype inference, support manifest and analytical value VJPs over strided views. |
 | [4. Reading original weights](ch004-reading-original-weights.md) | Runnable: original-weights-v1 | Inspect and bind original single/sharded BF16/F32 artifacts, decode finite windows and use imported values in shared kernels. |
 | [5. Text becomes a model request](ch005-text-becomes-a-model-request.md) | Runnable: qwen35-text-v1 | Render typed decisions, normalize/tokenize original Qwen data and validate complete shared-prefix/suffix layouts. |
 | [6. Attention without training](ch006-attention-without-training.md) | Runnable: bounded CPU | Execute a dense causal decoder block with grouped-query attention, rotary positions and a key/value cache. |

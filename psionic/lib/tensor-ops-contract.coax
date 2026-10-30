@@ -1,0 +1,114 @@
+// Chapter 3a: bounded CPU value operators over chapter 2a views.
+#load "tensor-view.coax";
+#authority;
+// book:begin contract
+ToOp :: enum u8 {add;subtract;multiply;divide;negate;relu;exponential;logarithm;equal;less;sum;mean;maximum;softmax;take;update;concat;sort;topk;matmul;conv2d;maxpool2d;avgpool2d;nearest2d;bilinear2d;mse;cross_entropy;}
+ToStatus :: enum u8 {ok;operation;shape;parameter;limit;capacity;alias;number;index;arithmetic;nondiff;view;}
+ToDtype :: enum u8 {none;f32;i64;}
+ToRequest :: struct {op:ToOp;axis:int;keep:bool;descending:bool=true;k:int;height:int;width:int;stride:int=1;}
+ToPlan :: struct {status:ToStatus;shape:TvShape;na:int;nb:int;n:int;aux:int;inner:int;work:int;value_dtype:ToDtype;aux_dtype:ToDtype;}
+ToResult :: struct {status:ToStatus;written:int;aux_written:int;}
+// book:end contract
+TO_NAMES :: [27]string.["add","subtract","multiply","divide","negate","relu","exponential","logarithm","equal","less","sum","mean","maximum","softmax","take","update","concat","sort","topk","matmul","conv2d","maxpool2d","avgpool2d","nearest2d","bilinear2d","mse","cross_entropy"];
+
+#test "broadcast inference includes scalars empty axes and explicit output dtypes" {
+    a:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};b:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};
+    p:=to_plan(ToRequest.{},a,b,0);#assert p.status==ToStatus.ok && p.shape.rank==2 && p.shape.dims[0]==2 && p.shape.dims[1]==3 && p.n==6 && p.na==6 && p.nb==3 && p.value_dtype==ToDtype.f32 && p.aux_dtype==ToDtype.none;
+    #assert to_plan(ToRequest.{},a,TvShape.{},0).n==6;
+    empty:=a;empty.dims[0]=0;b=TvShape.{rank=2,dims=[4]int.[1,3,0,0]};#assert to_plan(ToRequest.{},empty,b,0).n==0;
+    b.dims[0]=2;#assert to_plan(ToRequest.{},empty,b,0).status==ToStatus.shape;
+    #assert !to_known_tag(255);
+}
+#test "axis reductions and indexed operations infer exact shapes" {
+    a:=TvShape.{rank=3,dims=[4]int.[2,3,4,0]};none:=TvShape.{rank=1};
+    p:=to_plan(ToRequest.{op=ToOp.sum,axis=1},a,none,0);#assert p.status==ToStatus.ok && p.shape.rank==2 && p.shape.dims[0]==2 && p.shape.dims[1]==4 && p.n==8;
+    p=to_plan(ToRequest.{op=ToOp.mean,axis=1,keep=true},a,none,0);#assert p.shape.rank==3 && p.shape.dims[1]==1;
+    p=to_plan(ToRequest.{op=ToOp.take,axis=1},a,none,5);#assert p.status==ToStatus.ok && p.shape.dims[1]==5 && p.n==40;
+    b:=a;b.dims[1]=5;p=to_plan(ToRequest.{op=ToOp.update,axis=1},a,b,5);#assert p.status==ToStatus.ok && p.n==24;
+    b.dims[0]=3;#assert to_plan(ToRequest.{op=ToOp.update,axis=1},a,b,5).status==ToStatus.shape;
+    b=a;b.dims[1]=2;p=to_plan(ToRequest.{op=ToOp.concat,axis=1},a,b,0);#assert p.n==40 && p.shape.dims[1]==5;
+    #assert to_plan(ToRequest.{op=ToOp.sum,axis=-1},a,none,0).status==ToStatus.parameter;
+}
+#test "sort topk matrix image and loss plans state their bounded subsets" {
+    none:=TvShape.{rank=1};a:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};
+    p:=to_plan(ToRequest.{op=ToOp.topk,axis=1,k=2},a,none,0);#assert p.status==ToStatus.ok && p.n==4 && p.aux==4 && p.aux_dtype==ToDtype.i64 && p.work==36;
+    #assert to_plan(ToRequest.{op=ToOp.topk,axis=1,k=4},a,none,0).status==ToStatus.parameter;
+    #assert to_plan(ToRequest.{op=ToOp.topk,axis=1,k=0},a,none,0).n==0;
+    b:=TvShape.{rank=2,dims=[4]int.[3,4,0,0]};p=to_plan(ToRequest.{op=ToOp.matmul},a,b,0);#assert p.status==ToStatus.ok && p.n==8 && p.work==24;
+    a=TvShape.{rank=4,dims=[4]int.[1,2,4,5]};b=TvShape.{rank=4,dims=[4]int.[3,2,2,3]};p=to_plan(ToRequest.{op=ToOp.conv2d},a,b,0);#assert p.status==ToStatus.ok && p.n==27 && p.inner==12 && p.work==324;
+    #assert to_plan(ToRequest.{op=ToOp.conv2d,stride=2},a,b,0).status==ToStatus.parameter;
+    p=to_plan(ToRequest.{op=ToOp.avgpool2d,height=2,width=3,stride=2},a,none,0);#assert p.status==ToStatus.ok && p.shape.dims[2]==2 && p.shape.dims[3]==2 && p.n==8;
+    p=to_plan(ToRequest.{op=ToOp.bilinear2d,height=2,width=3},a,none,0);#assert p.status==ToStatus.ok && p.n==12;
+    a=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};p=to_plan(ToRequest.{op=ToOp.cross_entropy},a,none,2);#assert p.status==ToStatus.ok && p.shape.rank==0 && p.n==1;
+}
+#test "empty identities undefined means and work ceilings are explicit" {
+    none:=TvShape.{rank=1};a:=TvShape.{rank=2,dims=[4]int.[2,0,0,0]};
+    #assert to_plan(ToRequest.{op=ToOp.sum,axis=1},a,none,0).n==2;
+    #assert to_plan(ToRequest.{op=ToOp.mean,axis=1},a,none,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.maximum,axis=1},a,none,0).status==ToStatus.shape;
+    #assert to_plan(ToRequest.{op=ToOp.mse},a,a,0).status==ToStatus.shape;
+    b:=TvShape.{rank=2,dims=[4]int.[0,3,0,0]};p:=to_plan(ToRequest.{op=ToOp.matmul},a,b,0);#assert p.status==ToStatus.ok && p.n==6 && p.work==0;
+    #assert to_work_fits(1048576,1) && !to_work_fits(1048577,1) && to_work_fits(0,9223372036854775807);
+    a=TvShape.{rank=2,dims=[4]int.[1024,1024,0,0]};#assert to_plan(ToRequest.{op=ToOp.matmul},a,a,0).status==ToStatus.limit;
+    #assert to_plan(ToRequest.{op=ToOp.sort,axis=1},a,none,0).status==ToStatus.limit;
+    for tag:0..<27 {#assert to_name(tag)!="" && to_arity(cast(ToOp)tag)>=1 && to_arity(cast(ToOp)tag)<=2;}
+    #assert !to_differentiable(ToOp.equal) && !to_differentiable(ToOp.less) && to_differentiable(ToOp.conv2d);
+}
+
+#test "index searches and image parameters cannot hide unbounded work" {
+    vector:=TvShape.{rank=1,dims=[4]int.[1048576,0,0,0]};
+    #assert to_plan(ToRequest.{op=ToOp.update},vector,vector,1048576).status==ToStatus.limit;
+    image:=TvShape.{rank=4,dims=[4]int.[1,1,2,2]};none:=TvShape.{rank=1};
+    #assert to_plan(ToRequest.{op=ToOp.nearest2d,height=9223372036854775807,width=1},image,none,0).status==ToStatus.parameter;
+    #assert to_plan(ToRequest.{op=ToOp.maxpool2d,height=1,width=1,stride=0},image,none,0).status==ToStatus.parameter;
+    #assert to_plan(ToRequest.{op=ToOp.matmul},TvShape.{rank=2,dims=[4]int.[1024,1,0,0]},TvShape.{rank=2,dims=[4]int.[1,1024,0,0]},0).work==1048576;
+}
+
+to_known_tag :: (tag:u8)->bool #export_c {return tag<27;}
+to_name :: (tag:int)->string #export_c {if tag<0 || tag>=27 {return "";}return TO_NAMES[tag];}
+to_arity :: (op:ToOp)->int #export_c {if cast(u8)op<=3 || op==ToOp.equal || op==ToOp.less || op==ToOp.update || op==ToOp.concat || op==ToOp.matmul || op==ToOp.conv2d || op==ToOp.mse {return 2;}return 1;}
+to_differentiable :: (op:ToOp)->bool #export_c {return cast(u8)op<27 && op!=ToOp.equal && op!=ToOp.less;}
+to_same_shape :: (a:TvShape,b:TvShape)->bool {if a.rank!=b.rank {return false;}for i:0..<4 {if a.dims[i]!=b.dims[i] {return false;}}return true;}
+to_work_fits :: (n:int,inner:int)->bool {if n<0 || inner<0 {return false;}if n==0 || inner==0 {return true;}return n<=TV_LIMIT/inner;}
+// Pure inference: no pointer or coefficient is read here. Irrelevant request
+// fields have no semantics; named fields are checked in their operator branch.
+to_plan :: (r:ToRequest,a:TvShape,b:TvShape,indices:int)->ToPlan #export_c {
+    if !to_known_tag(cast(u8)r.op) {return ToPlan.{status=ToStatus.operation};}
+    ca:=tv_elements(a);cb:=tv_elements(b);if ca.status==TvStatus.limit || cb.status==TvStatus.limit {return ToPlan.{status=ToStatus.limit};}
+    if ca.status!=TvStatus.ok || cb.status!=TvStatus.ok {return ToPlan.{status=ToStatus.shape};}
+    if indices<0 || indices>TV_LIMIT {return ToPlan.{status=ToStatus.capacity};}
+    if to_arity(r.op)==1 && cb.elements!=0 {return ToPlan.{status=ToStatus.shape};}
+    p:=ToPlan.{shape=a,na=ca.elements,nb=cb.elements,value_dtype=ToDtype.f32,inner=1};op:=r.op;
+    if cast(u8)op<=3 || op==ToOp.equal || op==ToOp.less {
+        rank:=a.rank;if b.rank>rank {rank=b.rank;}p.shape=TvShape.{rank=rank};
+        for i:0..<rank {da:=1;db:=1;if i>=rank-a.rank {da=a.dims[i-(rank-a.rank)];}if i>=rank-b.rank {db=b.dims[i-(rank-b.rank)];}
+            if da!=db && da!=1 && db!=1 {return ToPlan.{status=ToStatus.shape};}d:=da;if da==1 {d=db;}p.shape.dims[i]=d;}
+    }else if op==ToOp.sum || op==ToOp.mean || op==ToOp.maximum || op==ToOp.softmax || op==ToOp.take || op==ToOp.update || op==ToOp.concat || op==ToOp.sort || op==ToOp.topk {
+        if r.axis<0 || r.axis>=a.rank {return ToPlan.{status=ToStatus.parameter};}width:=a.dims[r.axis];
+        if op==ToOp.sum || op==ToOp.mean || op==ToOp.maximum {
+            if op!=ToOp.sum && width==0 {return ToPlan.{status=ToStatus.shape};}p.inner=width;
+            if r.keep {p.shape.dims[r.axis]=1;}else {p.shape=TvShape.{rank=a.rank-1};cursor:=0;for i:0..<a.rank {if i!=r.axis {p.shape.dims[cursor]=a.dims[i];cursor+=1;}}}
+        }else if op==ToOp.softmax {if width==0 {return ToPlan.{status=ToStatus.shape};}p.inner=width;
+        }else if op==ToOp.take || op==ToOp.update {p.shape.dims[r.axis]=indices;if op==ToOp.update {if !to_same_shape(p.shape,b) {return ToPlan.{status=ToStatus.shape};}p.shape=a;p.inner=indices;if p.inner<1 {p.inner=1;}}
+        }else if op==ToOp.concat {if a.rank!=b.rank {return ToPlan.{status=ToStatus.shape};}for i:0..<a.rank {if i!=r.axis && a.dims[i]!=b.dims[i] {return ToPlan.{status=ToStatus.shape};}}if b.dims[r.axis]>TV_LIMIT-width {return ToPlan.{status=ToStatus.limit};}p.shape.dims[r.axis]=width+b.dims[r.axis];
+        }else {if op==ToOp.topk {if r.k<0 || r.k>width {return ToPlan.{status=ToStatus.parameter};}p.shape.dims[r.axis]=r.k;}p.inner=width;p.aux_dtype=ToDtype.i64;}
+    }else if op==ToOp.matmul {
+        if a.rank!=2 || b.rank!=2 || a.dims[1]!=b.dims[0] {return ToPlan.{status=ToStatus.shape};}p.shape=TvShape.{rank=2,dims=[4]int.[a.dims[0],b.dims[1],0,0]};p.inner=a.dims[1];
+    }else if op==ToOp.conv2d {
+        if r.stride!=1 {return ToPlan.{status=ToStatus.parameter};}
+        if a.rank!=4 || b.rank!=4 || a.dims[1]!=b.dims[1] || b.dims[2]<1 || b.dims[3]<1 || a.dims[2]<b.dims[2] || a.dims[3]<b.dims[3] {return ToPlan.{status=ToStatus.shape};}
+        p.shape=TvShape.{rank=4,dims=[4]int.[a.dims[0],b.dims[0],a.dims[2]-b.dims[2]+1,a.dims[3]-b.dims[3]+1]};p.inner=cb.elements;
+        if b.dims[0]>0 {p.inner=cb.elements/b.dims[0];}else {p.inner=0;}
+    }else if op==ToOp.maxpool2d || op==ToOp.avgpool2d || op==ToOp.nearest2d || op==ToOp.bilinear2d {
+        if a.rank!=4 {return ToPlan.{status=ToStatus.shape};}if r.height<1 || r.height>TV_LIMIT || r.width<1 || r.width>TV_LIMIT {return ToPlan.{status=ToStatus.parameter};}
+        if op==ToOp.maxpool2d || op==ToOp.avgpool2d {if r.stride<1 || r.stride>TV_LIMIT {return ToPlan.{status=ToStatus.parameter};}if r.height>a.dims[2] || r.width>a.dims[3] {return ToPlan.{status=ToStatus.shape};}
+            p.shape.dims[2]=(a.dims[2]-r.height)/r.stride+1;p.shape.dims[3]=(a.dims[3]-r.width)/r.stride+1;p.inner=r.height*r.width;
+        }else {if a.dims[2]<1 || a.dims[3]<1 {return ToPlan.{status=ToStatus.shape};}p.shape.dims[2]=r.height;p.shape.dims[3]=r.width;}
+    }else if op==ToOp.mse {if !to_same_shape(a,b) || ca.elements==0 {return ToPlan.{status=ToStatus.shape};}p.shape=TvShape.{};p.inner=ca.elements;
+    }else if op==ToOp.cross_entropy {if a.rank!=2 || a.dims[0]<1 || a.dims[1]<1 || indices!=a.dims[0] {return ToPlan.{status=ToStatus.shape};}p.shape=TvShape.{};p.inner=ca.elements;}
+    if op!=ToOp.take && op!=ToOp.update && op!=ToOp.cross_entropy && indices!=0 {return ToPlan.{status=ToStatus.capacity};}
+    c:=tv_elements(p.shape);if c.status!=TvStatus.ok {return ToPlan.{status=ToStatus.limit};}p.n=c.elements;
+    if op==ToOp.sort || op==ToOp.topk {p.aux=p.n;if !to_work_fits(p.n,p.inner) {return ToPlan.{status=ToStatus.limit};}partial:=p.n*p.inner;if !to_work_fits(partial,p.inner) {return ToPlan.{status=ToStatus.limit};}p.work=partial*p.inner;}
+    else {if !to_work_fits(p.n,p.inner) {return ToPlan.{status=ToStatus.limit};}p.work=p.n*p.inner;}
+    return p;
+}

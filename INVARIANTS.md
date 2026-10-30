@@ -738,6 +738,39 @@ plus all earlier chapters and source-linked book/transcript checks. See
 `docs/verification/psionic-ch03-2026-10-28.md`. This qualifies a bounded CPU
 profile, not learned affine layers, arbitrary layouts, gradients or devices.
 
+## Psionic tensor operators infer support and publish complete value results
+
+`psionic/lib/tensor-ops*.coax` owns `CPU-f32-wide-views-v1`: 27 bounded CPU
+operators with pure shape/dtype inference and explicit analytical value VJPs
+for 25 of them. The machine-readable `psionic/fixtures/tensor-ops/operators.json`
+records exact ranks/options, f32 values/masks, i64 indices/auxiliaries, CPU
+backend and differentiation status. It does not widen chapter 3's old profile.
+Operands reuse chapter 2a's admitted signed-stride views and allocation epochs.
+
+Forward work and direct VJP traversal pairs have separate 1,048,576-unit
+bounds. Products/reductions use f64 and ordered compensation before checked f32
+narrowing; FMA/fast-math are disabled. Empty identities, arithmetic domains,
+last-update-wins behavior and stable first-index subgradients are explicit.
+Only supported convolution stride one is admitted. Every logical operand is
+finite, including unselected/overwritten values. Public values/indices or both
+gradients publish only after all staging succeeds; arithmetic refusal may dirty
+scratch but preserves all public outputs and returns zero counts.
+
+C only observes address ranges, including metadata and integer buffers. Native
+caller obligations include truthful aligned/living spans, immutable inputs,
+exclusive access and fresh unpublished results. Registered tensors are replaced
+through chapter 2a's versioned scatter, and saved graphs must validate their
+version tokens before a functional VJP. Returned gradients use logical input
+coordinates; shared-backing/view accumulation and automatic tape integration
+remain separate. No dtype promotion, general operator options, GPU execution or
+large-model gradient throughput is inferred from this bounded CPU reference.
+
+Check: `psionic/check.sh --only tensor-ops`; authored debug/release checks,
+independent scalar and central-difference references for 38 cases in three
+layouts, explicit tie conventions, actual aliases/work/domain/late-publication
+refusals, native plain/ASan/UBSan and the exact book transcript. See
+[chapter 3a](docs/verification/psionic-ch003a-2026-10-29.md).
+
 ## Psionic CPU tensor views share one authoritative storage version
 
 `psionic/lib/tensor-view.coax` adds a separate bounded borrowed-f32 view layer;

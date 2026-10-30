@@ -27,6 +27,9 @@ cc=${COAX_CC:-cc}
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == tensor-ops || $chapter == tensor-ops-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ops.sh
+    fi
     if [[ $chapter == tensor-view ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_views.sh
     fi
@@ -80,6 +83,7 @@ phase() { local t; t=$(date +%s); echo "== $1: $((t - last)) s (total $((t - beg
 trap 'rm -rf "$out"' EXIT
 "$coax" version
 python3 -I psionic/tests/ops_oracle.py > "$out/ops-oracle.h"
+python3 -I psionic/tests/tensor_ops_oracle.py --header > "$out/tensor-ops-oracle.h"
 python3 -I psionic/tests/mxfp4_oracle.py --header > "$out/mxfp4-oracle.h"
 python3 -I psionic/tests/moe_oracle.py --header > "$out/moe-oracle.h"
 python3 -I psionic/tests/trace_oracle.py --header > "$out/trace-oracle.h"
@@ -117,10 +121,11 @@ python3 -I psionic/tests/mammoth_reference_fixture.py
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-output psionic/fixtures/models/mammoth/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
-native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
+coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view tensor-ops-backward ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
+native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view tensor-ops ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
+        tensor-ops) echo "psionic/lib/tensor-ops-backward.coax" ;;
         weights|rank5|rank5-bundle|access|layer-map|model-map) echo "psionic/lib/model-io/$1.coax" ;;
         *) echo "psionic/lib/$1.coax" ;;
     esac
@@ -142,6 +147,7 @@ native_harness() {
         route) adapter=psionic/platform/route-spans.c; harness=psionic/tests/route.c ;;
         threshold) adapter=psionic/platform/threshold-spans.c; harness=psionic/tests/threshold.c ;;
         calibrate) adapter=psionic/platform/calibrate-spans.c; harness=psionic/tests/calibrate.c ;;
+        tensor-ops) adapter=psionic/platform/tensor-ops-memory.c; harness=psionic/tests/tensor_ops.c ;;
         tensor-view) adapter=psionic/platform/tensor-view-memory.c; harness=psionic/tests/tensor_view.c ;;
         tensor) adapter=psionic/platform/tensor-memory.c; harness=psionic/tests/tensor.c ;;
         ops) adapter=psionic/platform/ops-memory.c; harness=psionic/tests/ops.c ;;
