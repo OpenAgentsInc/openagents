@@ -250,7 +250,7 @@
       "title": "Codex app-server client in Coax",
       "parent": "desk-codex",
       "size": "L",
-      "body": "coax/lib/agent/codex/: JSON-RPC 2.0 over stdio to `codex app-server`: initialize, thread start and resume, turns, streamed items, approvals, interrupt. Pull-based like the Claude library.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
+      "body": "coax/lib/agent/codex/: JSON-RPC 2.0 over stdio to `codex app-server`: initialize, thread start and resume, turns, streamed items, approvals, interrupt. Pull-based like the Claude library.\n\nSpec: docs/desktop/coax-desktop.md. Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
       "files": [
         "coax/lib/agent/codex/"
       ],
@@ -264,12 +264,12 @@
       "title": "One event model for both harnesses",
       "parent": "desk-codex",
       "size": "M",
-      "body": "coax/lib/agent/events.coax: message start, text delta, message done, thinking, tool call and result, approval asked and answered, turn done with cost, error. Both libraries write it; the transcript draws only it.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
+      "body": "One transcript model for every harness: the Session parts in apps/openagents-desktop/zeron/claude.coax (message, text, thinking, tool call with its result, diff and exit status, approval asked and answered, notice, stopped). The Claude, Psionic and Codex engines (claude.coax, psionic.coax, codex.coax) all write it, mapped as Zeron's harness/src/{claude,codex}/normalize.rs map theirs; the transcript draws only it.\n\nSpec: docs/desktop/coax-desktop.md. Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/, apps/shared/zeron/); no comments ship.",
       "files": [
-        "coax/lib/agent/"
+        "apps/openagents-desktop/zeron/"
       ],
       "acceptance": [
-        "Recorded Claude and Codex turns produce the same event shapes, checked in Coax tests"
+        "Recorded Claude and Codex sessions map into the same Session parts, checked in Coax tests (zeron/claude.coax, zeron/codex.coax)"
       ],
       "blocked_by": [
         "desk-codex-client"
@@ -280,12 +280,13 @@
       "title": "Codex sessions in the window",
       "parent": "desk-codex",
       "size": "M",
-      "body": "The composer's harness choice (CLAUDE CODE or CODEX) and Codex's models; a Codex session streams in the same transcript.\n\nSpec: docs/desktop/coax-desktop.md. The old GPUI app this follows is at 0b401561a0^:apps/openagents/ (feature inventory: docs/research/feature-inventory.md there). Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/); no comments ship.",
+      "body": "Codex as a mode in Zeron's model chip (its tab with the OpenAI mark, Codex's models from model/list, Zeron's effort ladder, plan mode); the access chip maps to Codex's approval policy and sandbox, Allow/Deny answer its approvals; a Codex conversation streams into the same Zeron transcript (text, reasoning, Run and Edit chips with diffs, notices, Stop); the Lab routes to Codex when Elephant picks it.\n\nSpec: docs/desktop/coax-desktop.md. Product logic is Coax; the Swift host only does window, Metal, input and OS dialogs. Everything visible is drawn by Coax in the Zeron UI (apps/openagents-desktop/zeron/, apps/shared/zeron/); no comments ship.",
       "files": [
         "apps/openagents-desktop/"
       ],
       "acceptance": [
-        "A person runs a Codex turn and a Claude turn in two conversations of one window"
+        "A person runs a Codex turn and a Claude turn in two conversations of one window",
+        "Live: a plain question, commands, an edit with its diff, a follow-up, Allow and Deny in Supervised, Stop, an attached image"
       ],
       "blocked_by": [
         "desk-events",
