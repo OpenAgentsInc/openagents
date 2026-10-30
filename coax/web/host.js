@@ -1451,7 +1451,6 @@ function draw(now) {
     }
   }
   document.documentElement.classList.add("gpu");
-  takeTouches();
   if (loading.on) loading.frame(globalThis.coaxial.sceneReady);
   if (readback) report(readback, texture);
   if (x.coaxial_sounds) playSounds(x);
@@ -1640,22 +1639,13 @@ addEventListener("paste", (e) => {
   const text = e.clipboardData?.getData("text") || "";
   if (text) { e.preventDefault(); send(1, text); }
 });
-// Touches on a phone, iOS WebKit (the OpenAgents app's WKWebView) above all: the page takes every
-// touch, so no pan, zoom, selection or callout starts a gesture that turns a tap's pointerup into a
-// pointercancel; a pointercancel that ends a short, still touch is that tap; and the mouse events
+// Touches on a phone, iOS WebKit (the OpenAgents app's WKWebView) above all: the canvas takes every
+// touch (touch-action none in the page's CSS, and its touchmove here), so no pan or zoom starts a
+// gesture that turns a tap's pointerup into a pointercancel; a pointercancel that ends a short, still touch is that tap; and the mouse events
 // a phone makes up after a touch (a hover over what was tapped) are not the app's.
 const TAP_MS = 600, TAP_MOVE = 24, AFTER_TOUCH_MS = 800;
 const touches = new Map();   // pointerId -> { t, x0, y0, x, y }
 let touchAt = -1e9;
-// (html and body too, once the app draws: a page without WebGPU keeps its scrolling text)
-let touchesTaken = false;
-function takeTouches() {
-  if (touchesTaken) return;
-  touchesTaken = true;
-  for (const el of [document.documentElement, document.body]) if (el) {
-    el.style.touchAction = "none"; el.style.webkitUserSelect = "none"; el.style.userSelect = "none"; el.style.webkitTouchCallout = "none";
-  }
-}
 canvas?.addEventListener("touchmove", (e) => { if (e.cancelable) e.preventDefault(); }, { passive: false });
 canvas?.addEventListener("contextmenu", (e) => e.preventDefault());
 for (const [type, phase] of [["pointerdown", 0], ["pointermove", 1], ["pointerup", 2], ["pointercancel", 3]])
