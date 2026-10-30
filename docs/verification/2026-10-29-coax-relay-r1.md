@@ -156,6 +156,7 @@ the "below 128" form.
 - **Rust differential beyond the recording.** The owner allows a sandboxed
   build of the Rust relay from history. It did not fit this time box, so it
   was not built. The differential uses the read-only recording only.
+  Done 2026-10-30: [2026-10-30-coax-relay-r1-rust-differential.md](2026-10-30-coax-relay-r1-rust-differential.md) (114 observations, 0 unexplained; one bug fixed, two questions for the owner).
 - **Known differences from the Rust relay.** A malformed EVENT (no
   readable id) gets a NOTICE, where Rust echoes an id hint in OK. Admission
   checks policy before the signature, so an event that is invalid in two

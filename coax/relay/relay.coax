@@ -36,7 +36,7 @@
 #assert RR_MS_OK == MS_OK && RR_MS_VERB == MS_VERB && RR_MS_SUB == MS_SUB && RR_MS_TOO_MANY == MS_TOO_MANY;
 #assert RR_MS_EVENT == MS_EVENT && RR_MS_REQ == MS_REQ && RR_MS_CLOSE == MS_CLOSE && RR_MS_AUTH == MS_AUTH && RR_MS_COUNT == MS_COUNT;
 #assert RR_RS_ACCEPT == RS_ACCEPT && RR_RS_BAD_EVENT == RS_BAD_EVENT && RR_RS_BAD_ID == RS_BAD_ID && RR_RS_SUBID == RS_SUBID;
-#assert RR_RS_FILTERS == RS_FILTERS && RR_RS_FRAME == RS_FRAME && RR_RS_VERB == RS_VERB && RR_RS_BINARY == RS_BINARY && RR_RS_COUNT == RS_COUNT;
+#assert RR_RS_FILTER == RS_FILTER && RR_RS_FILTERS == RS_FILTERS && RR_RS_FRAME == RS_FRAME && RR_RS_VERB == RS_VERB && RR_RS_BINARY == RS_BINARY && RR_RS_COUNT == RS_COUNT;
 #assert RR_WSS_OK == WSS_OK && RR_WSS_MORE == WSS_MORE && RR_WSS_NIP11 == WSS_NIP11;
 #assert RR_WS_FRAME_OK == WS_FRAME_OK && RR_WS_FRAME_MORE == WS_FRAME_MORE && RR_WS_FRAME_TOO_BIG == WS_FRAME_TOO_BIG && RR_WS_OP_TEXT == WS_OP_TEXT;
 #assert RR_WS_EV_PART == WS_EV_PART && RR_WS_EV_MESSAGE == WS_EV_MESSAGE && RR_WS_EV_PING == WS_EV_PING && RR_WS_EV_PONG == WS_EV_PONG && RR_WS_EV_CLOSE == WS_EV_CLOSE;
@@ -143,7 +143,8 @@ ry_event :: (conns: [] RyConn, at: int, w: [] RyWork, store: [] RsdStore, text: 
 ry_req :: (c: [] RyConn, w: [] RyWork, store: [] RsdStore, text: string, m: MsMsg) {
   mm := m;
   sub := cast(string) mm.sub[0..<mm.sub_n];
-  v := rs_req(m, text);
+  v := rr_req_filters(m.filters);
+  if v == RS_ACCEPT { v = rs_req(m, text); }
   if v != RS_ACCEPT { ok := ry_closed(c, w, sub, v); return; }
   slot := rs_sub_open(c[0].subs[..], m, text, RS_MAX_SUBS);
   if slot < 0 { ok := ry_closed(c, w, sub, -slot); return; }

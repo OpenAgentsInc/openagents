@@ -101,6 +101,22 @@ checkpoint published to a second machine, or a cloud object with versioning
 and a retention lock. Which provider to use is your call. It doesn't block R1
 on the tailnet.
 
+Two questions from the sandboxed Rust differential (2026-10-30,
+[record](docs/verification/2026-10-30-coax-relay-r1-rust-differential.md)).
+Each answer is yes or no:
+
+1. **Kind-specific structure checks.** The Rust relay refuses NIP-34 issues
+   without a `30617` `a` tag and NIP-22 comments on an event without a `P` tag
+   ("invalid: invalid event: ..."). The Coax relay checks only NIP-01 (id,
+   signature, time, tags, size) and stores both. The website's own events pass
+   both checks. Should R1 copy the Rust relay's per-kind checks?
+2. **Multi-filter REQs.** The Rust relay merges every filter's results into
+   one list, newest first, and shares 127 events across the filters (127/n
+   each, rounded up). The Coax relay answers one filter after another, and
+   each filter has its own `limit` of at most 127. A single-filter REQ (all
+   five on the project page) is the same on both. Should the Coax relay copy
+   the Rust relay's merged order and shared budget?
+
 ## Psionic Part III: public ingress and a sustained serving window (2026-10-29)
 
 The original Elephant service was installed and checked privately on

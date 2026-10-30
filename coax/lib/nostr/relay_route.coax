@@ -37,7 +37,7 @@ RR_MS_OK :: 0; RR_MS_VERB :: 3; RR_MS_SUB :: 4; RR_MS_TOO_MANY :: 5;
 RR_MS_EVENT :: 1; RR_MS_REQ :: 2; RR_MS_CLOSE :: 3; RR_MS_AUTH :: 4; RR_MS_COUNT :: 5;
 // relay_server.coax reasons
 RR_RS_ACCEPT :: 0; RR_RS_BAD_EVENT :: 3; RR_RS_BAD_ID :: 4; RR_RS_SUBID :: 12; RR_RS_FILTERS :: 13;
-RR_RS_FRAME :: 21; RR_RS_VERB :: 22; RR_RS_BINARY :: 23; RR_RS_COUNT :: 25;
+RR_RS_FILTER :: 19; RR_RS_FRAME :: 21; RR_RS_VERB :: 22; RR_RS_BINARY :: 23; RR_RS_COUNT :: 25;
 // ws_server.coax / ws.coax
 RR_WSS_OK :: 0; RR_WSS_MORE :: 1; RR_WSS_NIP11 :: 9;
 RR_WS_FRAME_OK :: 0; RR_WS_FRAME_MORE :: 1; RR_WS_FRAME_TOO_BIG :: 7;
@@ -106,6 +106,17 @@ rr_message :: (error: int, type: int, has_sub: bool) -> RrRoute {
   if type == RR_MS_COUNT { return RrRoute.{action = RR_CLOSED, reason = RR_RS_COUNT}; }
   if type == RR_MS_AUTH { return RrRoute.{action = RR_AUTH}; }
   return RrRoute.{action = RR_NOTICE, reason = RR_RS_VERB};
+}
+#test "a REQ needs at least one filter (the Rust relay's CLOSED invalid)" {
+  #assert rr_req_filters(0) == RR_RS_FILTER && rr_req_filters(-1) == RR_RS_FILTER;
+  #assert rr_req_filters(1) == RR_RS_ACCEPT && rr_req_filters(16) == RR_RS_ACCEPT;
+}
+// A REQ read with `filters` filters: none is refused (CLOSED "invalid: malformed
+// filter"), as the Rust relay refuses ["REQ", sub] (2026-10-30 differential).
+// message_server.coax already caps the count at 16.
+rr_req_filters :: (filters: int) -> int {
+  if filters < 1 { return RR_RS_FILTER; }
+  return RR_RS_ACCEPT;
 }
 
 // ---- HTTP and frames --------------------------------------------------------
