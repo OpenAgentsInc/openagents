@@ -1,0 +1,354 @@
+// Chapter 186: outcomes become training rows. A row set is built for one
+// artifact (a router, a calibration refit, a student) from a time-ordered
+// feed of decision outcomes and claimed traces. A decision outcome is
+// admitted only with a label from a check or a diff, never from an agent's
+// own summary. A trace is admitted only when chapter 173 replays it exactly.
+// Each group's split comes from the time cuts, and an exposure ledger shared
+// across artifacts gives every group one role: a group one artifact holds out
+// or calibrates on is never trained on by another, and the reverse.
+// Profile rows-v1: keys and the set digest are SHA-256 over 8-byte
+// little-endian words, with trace keys over chapter 173's claim digests.
+#load "replay.coax";
+#authority;
+
+TrReason :: enum u8 {admitted;shape;capacity;order;unlabelled;summary;unverifiable;failed;crosses;reserved;duplicate;}
+TrRole :: enum u8 {none;train;calibration;development;heldout;}
+TrSource :: enum u8 {decision;trace;}
+TrLabel :: enum u8 {none;check;diff;summary;replay;}
+// Times before calibration are train; then calibration, development, and
+// held out from heldout on. Equal cuts leave a split empty.
+TrCuts :: struct {calibration:int;development:int;heldout:int;}
+// One ledger entry per group: its role and the artifacts that used it, one
+// bit each.
+TrEntry :: struct {group:int;role:TrRole;artifacts:u64;}
+TrRow :: struct {source:TrSource;group:int;time:int;role:TrRole;label:int;from:TrLabel;key:[32]u8;}
+TrOutcome :: struct {group:int;time:int;decision:int;label:int;from:TrLabel;}
+// rows and entries are the caller's storage; the ledger's entries carry over
+// from one artifact's set to the next.
+TrSet :: struct {artifact:int;cuts:TrCuts;last:int;row:[]TrRow;count:int;entry:[]TrEntry;entries:int;}
+TrAdd :: struct {set:TrSet;reason:TrReason;}
+
+TR_ARTIFACTS :: 64;
+
+// book:begin split
+tr_cuts_ok :: (c:TrCuts)->bool {
+    return c.calibration>0 && c.calibration<=c.development && c.development<=c.heldout;
+}
+tr_role :: (c:TrCuts,time:int)->TrRole {
+    if time<c.calibration {return TrRole.train;}
+    if time<c.development {return TrRole.calibration;}
+    if time<c.heldout {return TrRole.development;}
+    return TrRole.heldout;
+}
+// book:end split
+
+tr_open :: (artifact:int,cuts:TrCuts,rows:[]TrRow,entry:[]TrEntry,entries:int)->TrSet {
+    return TrSet.{artifact=artifact,cuts=cuts,row=rows,entry=entry,entries=entries};
+}
+
+// book:begin keys
+tr_put :: (buf:[]u8,n:int,v:int)->int {
+    w:=cast(u64)v;
+    for i:0..<8 {buf[n+i]=cast(u8)((w>>cast(u64)(i*8))&0xff);}
+    return n+8;
+}
+tr_hash :: (buf:[]u8,n:int)->[32]u8 {
+    d:[32]u8;#assert sha256_hash_checked(buf[0..<n],d[..],false)==SHA_OK;
+    return d;
+}
+// The same decision at the same time in the same group is one outcome,
+// whatever its label says.
+tr_outcome_key :: (o:TrOutcome)->[32]u8 {
+    b:[32]u8;n:=tr_put(b[..],0,cast(int)TrSource.decision);
+    n=tr_put(b[..],n,o.group);n=tr_put(b[..],n,o.time);n=tr_put(b[..],n,o.decision);
+    return tr_hash(b[..],n);
+}
+// A trace is the run its claim names, whichever group it was filed under.
+tr_trace_key :: (c:RxClaim)->[32]u8 {
+    b:[112]u8;n:=tr_put(b[..],0,cast(int)TrSource.trace);
+    for i:0..<32 {b[n+i]=c.program[i];b[n+32+i]=c.trace[i];b[n+64+i]=c.outputs[i];}
+    n=tr_put(b[..],n+96,c.steps);
+    return tr_hash(b[..],n);
+}
+// book:end keys
+
+// book:begin admit
+// Checks the set and the row's place in the feed. A row that passes moves
+// the feed's time forward, even if a later check refuses it.
+tr_front :: (s:TrSet,group:int,time:int,ok:bool)->TrAdd {
+    a:=TrAdd.{set=s};
+    if !ok || s.artifact<0 || s.artifact>=TR_ARTIFACTS || !tr_cuts_ok(s.cuts) || group<0 || time<0 ||
+        s.count<0 || s.count>s.row.count || s.entries<0 || s.entries>s.entry.count {
+        a.reason=TrReason.shape;return a;
+    }
+    if time<s.last {a.reason=TrReason.order;return a;}
+    a.set.last=time;
+    return a;
+}
+tr_find :: (s:TrSet,group:int)->int {
+    for i:0..<s.entries {if s.entry[i].group==group {return i;}}
+    return -1;
+}
+// The ledger and the duplicate check, then the row is appended.
+tr_admit :: (s:TrSet,row:TrRow)->TrAdd {
+    a:=TrAdd.{set=s};r:=row;r.role=tr_role(s.cuts,r.time);
+    bit:=cast(u64)1<<cast(u64)s.artifact;e:=tr_find(s,r.group);
+    if e>=0 && s.entry[e].role!=r.role {
+        a.reason=ifx s.entry[e].artifacts!=bit then TrReason.reserved else TrReason.crosses;
+        return a;
+    }
+    for i:0..<s.count {if rx_same(s.row[i].key,r.key) {a.reason=TrReason.duplicate;return a;}}
+    if s.count==s.row.count || (e<0 && s.entries==s.entry.count) {a.reason=TrReason.capacity;return a;}
+    a.set.row[s.count]=r;a.set.count+=1;
+    if e<0 {e=s.entries;a.set.entry[e]=TrEntry.{group=r.group,role=r.role};a.set.entries+=1;}
+    a.set.entry[e].artifacts|=bit;
+    return a;
+}
+tr_add_outcome :: (s:TrSet,o:TrOutcome)->TrAdd {
+    a:=tr_front(s,o.group,o.time,o.label>=0 && o.label<=1 && o.from!=TrLabel.replay);
+    if a.reason!=TrReason.admitted {return a;}
+    if o.from==TrLabel.none {a.reason=TrReason.unlabelled;return a;}
+    if o.from==TrLabel.summary {a.reason=TrReason.summary;return a;}
+    return tr_admit(a.set,TrRow.{source=TrSource.decision,group=o.group,time=o.time,label=o.label,from=o.from,key=tr_outcome_key(o)});
+}
+// The trace is replayed here, whole, within budget steps; chapter 173
+// refuses a budget below 1 by shape.
+tr_add_trace :: (s:TrSet,program:[]TmOp,claim:RxClaim,rows:[]int,group:int,time:int,budget:int)->TrAdd {
+    a:=tr_front(s,group,time,true);
+    if a.reason!=TrReason.admitted {return a;}
+    r:=rx_check(program,claim,rows,0,claim.steps,budget);
+    if r.status!=RxStatus.ok {a.reason=TrReason.shape;return a;}
+    if r.verdict==RxVerdict.unverifiable {a.reason=TrReason.unverifiable;return a;}
+    if r.verdict==RxVerdict.failed {a.reason=TrReason.failed;return a;}
+    return tr_admit(a.set,TrRow.{source=TrSource.trace,group=group,time=time,label=1,from=TrLabel.replay,key=tr_trace_key(claim)});
+}
+// book:end admit
+
+// book:begin digest
+// The set's digest: its row count, then each row's source, group, time,
+// role, label and label source as words, and its key.
+tr_digest :: (s:TrSet)->[32]u8 {
+    sha:[112]u8;d:[32]u8;b:[80]u8;#assert sha256_init(sha[..])==SHA_OK;
+    n:=tr_put(b[..],0,s.count);#assert sha256_update_checked(sha[..],b[0..<n],false)==SHA_OK;
+    for i:0..<s.count {
+        r:=s.row[i];
+        n=tr_put(b[..],0,cast(int)r.source);n=tr_put(b[..],n,r.group);n=tr_put(b[..],n,r.time);
+        n=tr_put(b[..],n,cast(int)r.role);n=tr_put(b[..],n,r.label);n=tr_put(b[..],n,cast(int)r.from);
+        for k:0..<32 {b[n+k]=r.key[k];}
+        #assert sha256_update_checked(sha[..],b[..],false)==SHA_OK;
+    }
+    #assert sha256_final_checked(sha[..],d[..],false)==SHA_OK;
+    return d;
+}
+// Rows per role, indexed by the role's value.
+tr_counts :: (s:TrSet)->[5]int {
+    c:[5]int;
+    for i:0..<s.count {c[cast(int)s.row[i].role]+=1;}
+    return c;
+}
+// book:end digest
+
+// The example's feed: 48 outcomes in 12 groups of four consecutive times.
+// Entry 25 repeats entry 24. Labels come from a summary when the time is 3
+// mod 5, are missing when it is 6 mod 11, and otherwise come from a check at
+// even times and a diff at odd ones.
+tr_feed :: ()->[48]TrOutcome {
+    f:[48]TrOutcome;
+    for i:0..<48 {
+        t:=ifx i==25 then 24 else i;o:=TrOutcome.{group=i/4,time=t,decision=(t*13)%7};
+        o.label=ifx (t*5)%3==0 then 1 else 0;
+        o.from=ifx t%2==0 then TrLabel.check else TrLabel.diff;
+        if t%11==6 {o.from=TrLabel.none;}
+        if t%5==3 {o.from=TrLabel.summary;}
+        f[i]=o;
+    }
+    return f;
+}
+
+// Tests.
+TrStore :: struct {rows:[64]TrRow;entry:[64]TrEntry;}
+TR_CUTS :: TrCuts.{calibration=10,development=20,heldout=30};
+tr_out :: (group:int,time:int,decision:int,label:int,from:TrLabel)->TrOutcome {
+    return TrOutcome.{group=group,time=time,decision=decision,label=label,from=from};
+}
+tr_hex :: (d:[32]u8,text:string)->bool {
+    digits:="0123456789abcdef";
+    for i:0..<32 {
+        if text[2*i]!=digits[cast(int)(d[i]>>4)] || text[2*i+1]!=digits[cast(int)(d[i]&15)] {return false;}
+    }
+    return true;
+}
+
+#test "the cuts split time into four roles" {
+    c:=TR_CUTS;
+    #assert tr_cuts_ok(c) && tr_role(c,0)==TrRole.train && tr_role(c,9)==TrRole.train;
+    #assert tr_role(c,10)==TrRole.calibration && tr_role(c,19)==TrRole.calibration;
+    #assert tr_role(c,20)==TrRole.development && tr_role(c,29)==TrRole.development;
+    #assert tr_role(c,30)==TrRole.heldout && tr_role(c,1000)==TrRole.heldout;
+    e:=TrCuts.{calibration=5,development=5,heldout=5};
+    #assert tr_cuts_ok(e) && tr_role(e,4)==TrRole.train && tr_role(e,5)==TrRole.heldout;
+    #assert !tr_cuts_ok(TrCuts.{calibration=0,development=5,heldout=9});
+    #assert tr_cuts_ok(TrCuts.{calibration=1,development=5,heldout=9});
+    #assert !tr_cuts_ok(TrCuts.{calibration=6,development=5,heldout=9});
+    #assert !tr_cuts_ok(TrCuts.{calibration=4,development=10,heldout=9});
+}
+#test "an outcome labelled by a check or a diff becomes a row and claims its group" {
+    st:TrStore;s:=tr_open(3,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,tr_out(7,12,4,1,TrLabel.diff));
+    #assert a.reason==TrReason.admitted && a.set.count==1 && a.set.entries==1 && a.set.last==12;
+    r:=st.rows[0];
+    #assert r.source==TrSource.decision && r.group==7 && r.time==12 && r.role==TrRole.calibration;
+    #assert r.label==1 && r.from==TrLabel.diff && rx_same(r.key,tr_outcome_key(tr_out(7,12,4,1,TrLabel.diff)));
+    #assert st.entry[0].group==7 && st.entry[0].role==TrRole.calibration && st.entry[0].artifacts==8;
+    a=tr_add_outcome(a.set,tr_out(7,13,5,0,TrLabel.check));
+    #assert a.reason==TrReason.admitted && a.set.count==2 && a.set.entries==1 && st.rows[1].label==0;
+    #assert st.rows[1].from==TrLabel.check && st.entry[0].artifacts==8;
+    a=tr_add_outcome(a.set,tr_out(2,13,5,0,TrLabel.check));
+    #assert a.reason==TrReason.admitted && a.set.entries==2 && st.entry[1].group==2 && st.entry[1].artifacts==8;
+}
+#test "a missing label or an agent's own summary is refused" {
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,tr_out(1,2,0,1,TrLabel.none));
+    #assert a.reason==TrReason.unlabelled && a.set.count==0 && a.set.entries==0 && a.set.last==2;
+    a=tr_add_outcome(s,tr_out(1,3,0,1,TrLabel.summary));
+    #assert a.reason==TrReason.summary && a.set.count==0 && a.set.entries==0 && a.set.last==3;
+    #assert tr_add_outcome(s,tr_out(1,3,0,1,TrLabel.replay)).reason==TrReason.shape;
+    #assert tr_add_outcome(s,tr_out(1,3,0,2,TrLabel.check)).reason==TrReason.shape;
+    #assert tr_add_outcome(s,tr_out(1,3,0,-1,TrLabel.check)).reason==TrReason.shape;
+    #assert tr_add_outcome(s,tr_out(1,3,0,0,TrLabel.check)).reason==TrReason.admitted;
+}
+#test "the feed runs forward in time, refused rows included" {
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,tr_out(1,5,0,1,TrLabel.summary));
+    #assert a.reason==TrReason.summary;
+    b:=tr_add_outcome(a.set,tr_out(1,4,0,1,TrLabel.check));
+    #assert b.reason==TrReason.order && b.set.count==0 && b.set.last==5;
+    b=tr_add_outcome(a.set,tr_out(1,5,1,1,TrLabel.check));
+    #assert b.reason==TrReason.admitted && b.set.last==5;
+}
+#test "malformed sets and rows are refused by shape" {
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);o:=tr_out(1,5,0,1,TrLabel.check);
+    t:=s;t.artifact=-1;#assert tr_add_outcome(t,o).reason==TrReason.shape;
+    t=s;t.artifact=64;#assert tr_add_outcome(t,o).reason==TrReason.shape;
+    t=s;t.artifact=63;a:=tr_add_outcome(t,o);
+    #assert a.reason==TrReason.admitted && st.entry[0].artifacts==0x8000000000000000;
+    t=s;t.cuts.calibration=0;#assert tr_add_outcome(t,o).reason==TrReason.shape;
+    #assert tr_add_outcome(s,tr_out(-1,5,0,1,TrLabel.check)).reason==TrReason.shape;
+    #assert tr_add_outcome(s,tr_out(1,-1,0,1,TrLabel.check)).reason==TrReason.shape;
+    t=s;t.count=-1;#assert tr_add_outcome(t,o).reason==TrReason.shape;
+    t=s;t.count=65;#assert tr_add_outcome(t,o).reason==TrReason.shape;
+    t=s;t.entries=-1;#assert tr_add_outcome(t,o).reason==TrReason.shape;
+    t=s;t.entries=65;#assert tr_add_outcome(t,o).reason==TrReason.shape;
+    t=s;t.entries=64;t.count=64;
+    #assert tr_add_outcome(t,tr_out(1,5,6,1,TrLabel.check)).reason==TrReason.capacity;
+}
+#test "a group keeps one role: crossing a cut, or another artifact's role, is refused" {
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,tr_out(4,8,0,1,TrLabel.check));
+    b:=tr_add_outcome(a.set,tr_out(4,11,0,1,TrLabel.check));
+    #assert b.reason==TrReason.crosses && b.set.count==1 && b.set.last==11;
+    // A second artifact, with other cuts, on the same ledger.
+    rows:[8]TrRow;c:=tr_open(1,TrCuts.{calibration=5,development=6,heldout=7},rows[..],st.entry[..],a.set.entries);
+    d:=tr_add_outcome(c,tr_out(4,8,1,1,TrLabel.check));
+    #assert d.reason==TrReason.reserved && d.set.count==0 && st.entry[0].artifacts==1;
+    d=tr_add_outcome(c,tr_out(4,3,1,1,TrLabel.check));
+    #assert d.reason==TrReason.admitted && st.entry[0].artifacts==3 && rows[0].role==TrRole.train;
+    // Both artifacts on the group: still reserved for each.
+    #assert tr_add_outcome(d.set,tr_out(4,9,2,1,TrLabel.check)).reason==TrReason.reserved;
+    #assert tr_add_outcome(a.set,tr_out(4,12,2,1,TrLabel.check)).reason==TrReason.reserved;
+}
+#test "a repeated outcome is a duplicate, whatever its label" {
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,tr_out(1,2,3,1,TrLabel.check));
+    #assert tr_add_outcome(a.set,tr_out(1,2,3,0,TrLabel.diff)).reason==TrReason.duplicate;
+    #assert tr_add_outcome(a.set,tr_out(1,2,4,1,TrLabel.check)).reason==TrReason.admitted;
+    #assert tr_add_outcome(a.set,tr_out(1,3,3,1,TrLabel.check)).reason==TrReason.admitted;
+    #assert tr_add_outcome(a.set,tr_out(2,2,3,1,TrLabel.check)).reason==TrReason.admitted;
+    b:=tr_add_outcome(a.set,tr_out(1,2,4,1,TrLabel.check));
+    #assert tr_add_outcome(b.set,tr_out(1,2,3,1,TrLabel.check)).reason==TrReason.duplicate;
+    #assert tr_add_outcome(b.set,tr_out(1,2,4,1,TrLabel.check)).reason==TrReason.duplicate;
+}
+#test "a full set, or a full ledger for a new group, is refused" {
+    rows:[2]TrRow;entry:[1]TrEntry;s:=tr_open(0,TR_CUTS,rows[..],entry[..],0);
+    a:=tr_add_outcome(s,tr_out(1,2,0,1,TrLabel.check));
+    #assert tr_add_outcome(a.set,tr_out(2,3,0,1,TrLabel.check)).reason==TrReason.capacity;
+    b:=tr_add_outcome(a.set,tr_out(1,3,0,1,TrLabel.check));
+    #assert b.reason==TrReason.admitted && b.set.count==2;
+    c:=tr_add_outcome(b.set,tr_out(1,4,0,1,TrLabel.check));
+    #assert c.reason==TrReason.capacity && c.set.count==2;
+}
+#test "keys and the set digest match independent vectors" {
+    #assert tr_hex(tr_outcome_key(tr_out(7,12,4,1,TrLabel.diff)),"6581c352551340f3d628cbe9b9ef475ee745ce9f535d118a7180d992bf97b32a");
+    #assert tr_hex(tr_outcome_key(tr_out(0x0102030405060708,12,4,1,TrLabel.diff)),"5c1955a29930e4dc3b145f1369d59f5d9189b9312a3b59d0543c71e012c94d7e");
+    k:=tr_outcome_key(tr_out(7,12,4,1,TrLabel.diff));
+    #assert !tr_hex(k,"7581c352551340f3d628cbe9b9ef475ee745ce9f535d118a7180d992bf97b32a");
+    #assert !tr_hex(k,"6481c352551340f3d628cbe9b9ef475ee745ce9f535d118a7180d992bf97b32a");
+    #assert !tr_hex(k,"6581c352551340f3d628cbe9b9ef475ee745ce9f535d118a7180d992bf97b32b");
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    #assert tr_hex(tr_digest(s),"af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc");
+    a:=tr_add_outcome(s,tr_out(7,12,4,1,TrLabel.diff));a=tr_add_outcome(a.set,tr_out(2,31,1,0,TrLabel.check));
+    #assert tr_hex(tr_digest(a.set),"b434d43d7c5ad0a4073063e1a90e1608a088a8df05da07acf638c3a883a0c359");
+    n:=tr_counts(a.set);#assert n[0]==0 && n[1]==0 && n[2]==1 && n[3]==0 && n[4]==1;
+}
+#test "a trace key covers each digest and the step count" {
+    c:RxClaim;for i:0..<32 {c.program[i]=cast(u8)i;c.trace[i]=cast(u8)(32+i);c.outputs[i]=cast(u8)(64+i);}c.steps=53;
+    k:=tr_trace_key(c);#assert tr_hex(k,"f93fdd630d9c458f0f04853ffc48d3011dc4d493fe6af987803e0c585d0149e8");
+    d:=c;d.program[31]^=1;#assert !rx_same(k,tr_trace_key(d));
+    d=c;d.trace[0]^=1;#assert !rx_same(k,tr_trace_key(d));
+    d=c;d.outputs[31]^=1;#assert !rx_same(k,tr_trace_key(d));
+    d=c;d.steps=54;#assert !rx_same(k,tr_trace_key(d));
+}
+#test "a trace is admitted only when it replays exactly" {
+    p:=rx_squares();x:=rx_squares_run();rows:=x.rows[0..<212];
+    st:TrStore;s:=tr_open(2,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_trace(s,p[..],x.claim,rows,20,3,64);
+    #assert a.reason==TrReason.admitted && a.set.count==1 && a.set.entries==1 && a.set.last==3;
+    r:=st.rows[0];
+    #assert r.source==TrSource.trace && r.group==20 && r.time==3 && r.role==TrRole.train;
+    #assert r.label==1 && r.from==TrLabel.replay && rx_same(r.key,tr_trace_key(x.claim)) && st.entry[0].artifacts==4;
+    // The same run filed under another group is a duplicate.
+    #assert tr_add_trace(a.set,p[..],x.claim,rows,21,4,64).reason==TrReason.duplicate;
+    t:=rx_tampered(12*4+2,2);
+    b:=tr_add_trace(a.set,p[..],t.claim,t.rows[0..<212],22,5,64);
+    #assert b.reason==TrReason.failed && b.set.count==1 && b.set.entries==1 && b.set.last==5;
+}
+#test "a trace without enough budget is unverifiable, and a malformed one is refused" {
+    p:=rx_squares();x:=rx_squares_run();rows:=x.rows[0..<212];none:=x.rows[0..<0];
+    st:TrStore;s:=tr_open(2,TR_CUTS,st.rows[..],st.entry[..],0);
+    b:=tr_add_trace(s,p[..],x.claim,none,23,5,52);
+    #assert b.reason==TrReason.unverifiable && b.set.count==0 && b.set.last==5;
+    #assert tr_add_trace(s,p[..],x.claim,none,23,5,53).reason==TrReason.admitted;
+    #assert tr_add_trace(s,p[..],x.claim,rows,23,5,0).reason==TrReason.shape;
+    #assert tr_add_trace(s,p[..],x.claim,x.rows[0..<211],23,5,64).reason==TrReason.shape;
+    #assert tr_add_trace(b.set,p[..],x.claim,rows,23,4,64).reason==TrReason.order;
+}
+#test "a trace from a group another artifact holds out or calibrates on is refused" {
+    st:TrStore;s:=tr_open(0,TR_CUTS,st.rows[..],st.entry[..],0);
+    a:=tr_add_outcome(s,tr_out(9,25,0,1,TrLabel.check));
+    rows:[4]TrRow;all:=TrCuts.{calibration=100,development=100,heldout=100};
+    c:=tr_open(2,all,rows[..],st.entry[..],a.set.entries);
+    p:=rx_squares();x:=rx_squares_run();
+    #assert tr_add_trace(c,p[..],x.claim,x.rows[0..<212],9,30,64).reason==TrReason.reserved;
+    d:=tr_add_trace(c,p[..],x.claim,x.rows[0..<212],10,30,64);
+    #assert d.reason==TrReason.admitted && rows[0].role==TrRole.train && st.entry[1].group==10 && st.entry[1].artifacts==4;
+}
+TrTally :: struct {reasons:[11]int;set:TrSet;}
+tr_tally :: (s:TrSet,feed:[]TrOutcome)->TrTally {
+    t:=TrTally.{set=s};
+    for o:feed {a:=tr_add_outcome(t.set,o);t.set=a.set;t.reasons[cast(int)a.reason]+=1;}
+    return t;
+}
+#test "the example's feed, for two artifacts on one ledger" {
+    f:=tr_feed();st:TrStore;rows:[64]TrRow;
+    a:=tr_tally(tr_open(0,TrCuts.{calibration=22,development=30,heldout=38},st.rows[..],st.entry[..],0),f[..]);
+    r:=a.reasons;
+    #assert r[0]==32 && r[4]==3 && r[5]==9 && r[8]==3 && r[10]==1 && r[9]==0 && a.set.entries==12;
+    n:=tr_counts(a.set);#assert n[1]==16 && n[2]==4 && n[3]==5 && n[4]==7;
+    #assert tr_hex(tr_digest(a.set),"1fbc842157b4dd08d74714cd38ae3ec2ad50f1adc5006d22ca14caaff2401165");
+    b:=tr_tally(tr_open(1,TrCuts.{calibration=14,development=18,heldout=26},rows[..],st.entry[..],a.set.entries),f[..]);
+    r=b.reasons;#assert r[0]==17 && r[4]==3 && r[5]==9 && r[9]==19 && b.set.entries==12;
+    n=tr_counts(b.set);#assert n[1]==10 && n[4]==7;
+    #assert tr_hex(tr_digest(b.set),"09b055b532b1e9c36e75a05aa1358a176ff0c5699a6e9450d661ea696942432f");
+    #assert st.entry[9].group==9 && st.entry[9].role==TrRole.development && st.entry[9].artifacts==1;
+    #assert st.entry[10].artifacts==3 && st.entry[3].artifacts==3 && st.entry[4].artifacts==1;
+}

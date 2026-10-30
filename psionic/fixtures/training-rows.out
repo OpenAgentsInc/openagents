@@ -1,0 +1,11 @@
+artifact 0, cuts 22/30/38: admitted 32, unlabelled 3, summary 9, crosses 3, duplicate 1; rows: train 16, calibration 4, development 5, heldout 7; digest 1fbc842157b4dd08
+artifact 1, cuts 14/18/26: admitted 17, unlabelled 3, summary 9, reserved 19; rows: train 10, calibration 0, development 0, heldout 7; digest 09b055b532b1e9c3
+artifact 2, traces:
+  squares in group 20: admitted
+  squares again in group 21: duplicate
+  squares, one value changed in group 22: failed
+  squares, no rows, budget 10 in group 23: unverifiable
+  squares from 3 in group 24: admitted
+  squares from 3 in group 9: reserved
+artifact 2: 2 rows, digest 462297b4ba74a74e
+ledger: 14 groups, 6 shared by artifacts 0 and 1 in one role; group 9: development, artifact mask 1

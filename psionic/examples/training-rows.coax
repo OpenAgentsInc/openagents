@@ -1,0 +1,48 @@
+#import "Basic";
+#load "../lib/training-rows.coax";
+
+// book:begin example
+main :: () {
+    f:=tr_feed();rows:[64]TrRow;entry:[64]TrEntry;entries:=0;
+    cuts:=[2]TrCuts.[TrCuts.{calibration=22,development=30,heldout=38},TrCuts.{calibration=14,development=18,heldout=26}];
+    for k:0..<2 {
+        s:=tr_open(k,cuts[k],rows[..],entry[..],entries);reasons:[11]int;
+        for o:f {a:=tr_add_outcome(s,o);s=a.set;reasons[cast(int)a.reason]+=1;}
+        print("artifact %, cuts %/%/%: ",k,cuts[k].calibration,cuts[k].development,cuts[k].heldout);
+        first:=true;
+        for i:0..<11 {
+            if reasons[i]==0 {continue;}
+            if !first {print(", ");}
+            print("% %",cast(TrReason)i,reasons[i]);first=false;
+        }
+        n:=tr_counts(s);
+        print("; rows: train %, calibration %, development %, heldout %; digest ",n[1],n[2],n[3],n[4]);
+        short(tr_digest(s));print("\n");
+        entries=s.entries;
+    }
+    // A student trained on traces: every time is train.
+    all:=TrCuts.{calibration=100,development=100,heldout=100};own:[8]TrRow;
+    s:=tr_open(2,all,own[..],entry[..],entries);
+    p:=rx_squares();x:=rx_squares_run();t:=rx_tampered(12*4+2,2);
+    q:=p;q[0].arg=3;y:RxRun;outs:[4]int;y.claim=rx_claim(q[..],TM_STEPS_MAX,y.rows[..],outs[..]).claim;
+    print("artifact 2, traces:");
+    s=filed(s,"squares",p[..],x.claim,x.rows[0..<212],20,40,64);
+    s=filed(s,"squares again",p[..],x.claim,x.rows[0..<212],21,41,64);
+    s=filed(s,"squares, one value changed",p[..],t.claim,t.rows[0..<212],22,42,64);
+    s=filed(s,"squares, no rows, budget 10",p[..],x.claim,x.rows[0..<0],23,43,10);
+    s=filed(s,"squares from 3",q[..],y.claim,y.rows[0..<y.claim.steps*TM_TOKENS],24,44,64);
+    s=filed(s,"squares from 3",q[..],y.claim,y.rows[0..<y.claim.steps*TM_TOKENS],9,45,64);
+    print("\nartifact %: % rows, digest ",s.artifact,s.count);short(tr_digest(s));print("\n");
+    both:=0;for i:0..<s.entries {if s.entry[i].artifacts==3 {both+=1;}}
+    print("ledger: % groups, % shared by artifacts 0 and 1 in one role; group 9: %, artifact mask %\n",s.entries,both,s.entry[9].role,s.entry[9].artifacts);
+}
+filed :: (s:TrSet,name:string,program:[]TmOp,claim:RxClaim,rows:[]int,group:int,time:int,budget:int)->TrSet {
+    a:=tr_add_trace(s,program,claim,rows,group,time,budget);
+    print("\n  % in group %: %",name,group,a.reason);
+    return a.set;
+}
+short :: (d:[32]u8) {
+    digits:="0123456789abcdef";
+    for i:0..<8 {hi:=cast(int)(d[i]>>4);lo:=cast(int)(d[i]&15);print("%",digits[hi..<hi+1]);print("%",digits[lo..<lo+1]);}
+}
+// book:end example

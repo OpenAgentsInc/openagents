@@ -790,6 +790,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/training-rows.coax",
+      "chapter": "psionic/book/ch186-outcomes-become-training-rows.md",
+      "stdout": "psionic/fixtures/training-rows.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
