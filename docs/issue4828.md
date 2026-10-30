@@ -52,6 +52,34 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
+**Milestone at `5925b755cd` (`openagents-20`): the whole `nostr_sign_step`
+entry passes the large source audit.**
+- **Scope:** the signer's complete closure, 135 procedures, 6.4M analysis
+  steps, about 2 minutes.
+- **Result:** guard obligations only. The declared declassifications are:
+  - key validity and the public key (`sw_key`);
+  - R (`sw_nonce`);
+  - the self-check status (`sw_check`);
+  - validity and status (`sw_publish`);
+  - `secp_field`'s two public guards.
+
+  The return value is public.
+- **Classification manifest (v4):** key and aux are secret. `event_id`,
+  `out` and `overlap` are public. `work` is secret, except these public
+  fields:
+  - `SignWork`: stage, challenge, message;
+  - `SignPrepare.public_key`;
+  - `SignNoncePoint.r`;
+  - `SsvWork`: stage, bound, peer;
+  - `ShaOwned`: used, phase, total.
+- **Compiled-code agreement:** the target-level signer probe shows the same
+  decisions as the only key-dependent sites (`sw_key`, `sm_equation`,
+  `sw_publish`), with every other branch and address key-independent.
+- **Next for `openagents-20`:** the record,
+  `docs/verification/2026-10-30-signer-source-audit.md`, and a regression
+  test that runs the whole-entry audit.
+
+
 **`d017c8f902` (`openagents-d7`)** makes two audit-requested changes:
 - `ssv_prepare` stores the lifted public key before its copy loops, so the
   audit's loop rule doesn't taint `peer`.
