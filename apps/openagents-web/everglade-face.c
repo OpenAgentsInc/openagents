@@ -348,7 +348,7 @@ EXPORT("coaxial_stores") uint32_t coaxial_stores(void) { return 4; }
 EXPORT("coaxial_store_cap") uint32_t coaxial_store_cap(int32_t k) { return (uint32_t)(k == 3 ? everglade_river_node_bytes() : everglade_store_cap(k)); }
 EXPORT("coaxial_store") uint32_t coaxial_store(uint32_t state, int32_t k) {
   if (k == 3) return (uint32_t)(uintptr_t)river.nodes.e;
-  return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->heights.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
+  return (uint32_t)(uintptr_t)(k == 0 ? (void *)city(state)->ground_store.e : k == 1 ? (void *)city(state)->objects.e : (void *)city(state)->palette.e);
 }
 EXPORT("coaxial_store_bytes") uint32_t coaxial_store_bytes(uint32_t state, int32_t k) { (void)state; return coaxial_store_cap(k); }
 // What the host uploads: the ground and the river only when built, the objects and joints every frame.

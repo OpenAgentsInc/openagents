@@ -1,0 +1,88 @@
+// Everglade's distance detail (verse-eg-distance-lod): the previous Everglade drew its small plants and
+// props only nearer than 52 m and its shrubs nearer than 72 m, a cell keeping its level until the eye
+// had moved 2.5 m past the switch (verse/everglade/previous/everglade.md, Rendering). Here the town's
+// small pieces (the crates, barrels and apples, the inns' and shops' furniture, the flowers and the
+// planted things) draw only within LOD_NEAR of you, the shrubs and stones within LOD_FAR, a phone's at
+// LOD_PHONE of that. Which ones are near is worked out again only when the eye has moved LOD_STEP
+// from where it was last worked out (or the town's pieces changed), so nothing flickers at the edge.
+// The near ones' rows are copied each frame to their own run (LOD_AT) and their mesh's draw points
+// there, so a piece a spell moves or breaks shows as it is; the town's rows stay where they are.
+
+LOD_NEAR :: 52.0;         // m: the small props and plants
+LOD_FAR :: 72.0;          // m: the shrubs and stones
+LOD_PHONE :: 0.7;         // a phone's share of those
+LOD_STEP :: 2.5;          // m the eye moves before the near ones are chosen again
+LOD_OBJECTS :: 1600;      // the near ones' run
+
+Lod :: struct {
+  eye: Point;              // where the near ones were chosen from
+  chosen: bool;
+  used: [KIT_MESHES] int;  // each mesh's instances then
+  first: [KIT_MESHES] int; // each mesh's run in LOD_AT, -1 drawn whole
+  count: [KIT_MESHES] int;
+  rows: [LOD_OBJECTS] int; // the object each instance of the run copies
+  n: int;
+}
+
+// How near a mesh's instances draw: 0 always.
+lod_reach :: (m: int) -> f32 {
+  if m == M_SHRUB || m == M_STONE { return f32(LOD_FAR); }
+  if m == M_APPLES || m == M_BARREL || m == M_CRATE { return f32(LOD_NEAR); }
+  if m >= M_TABLE && m <= M_SCROLL && m != M_BANNER && m != M_GABLE { return f32(LOD_NEAR); }
+  if m >= M_CARROT && m <= M_PUMPKIN && m != M_CART { return f32(LOD_NEAR); }
+  return 0;
+}
+
+// Each frame, once every group is filled: choose again if the eye or the town moved, then copy the rows.
+lod_frame :: (s: [] Everglade, eye: Point) {
+  again := !s[0].lod.chosen;
+  dx := eye.x - s[0].lod.eye.x; dz := eye.z - s[0].lod.eye.z;
+  if dx * dx + dz * dz > f32(LOD_STEP) * f32(LOD_STEP) { again = true; }
+  for m: KIT_TREES * 2..<KIT_MESHES { if lod_reach(m) > 0 && s[0].kit_used[group_of(m)] != s[0].lod.used[m] { again = true; } }
+  if again { lod_choose(s, eye); }
+  for k: 0..<s[0].lod.n {
+    o := s[0].lod.rows[k] * OBJECT_FLOATS; d := (LOD_AT + k) * OBJECT_FLOATS;
+    for f: 0..<OBJECT_FLOATS { s[0].objects[d + f] = s[0].objects[o + f]; }
+  }
+}
+lod_choose :: (s: [] Everglade, eye: Point) {
+  s[0].lod.eye = eye; s[0].lod.chosen = true; s[0].lod.n = 0;
+  share := ifx phone(s) then f32(LOD_PHONE) else 1.0f32;
+  for m: 0..<KIT_MESHES {
+    s[0].lod.first[m] = -1; s[0].lod.count[m] = 0; s[0].lod.used[m] = 0;
+    reach := lod_reach(m) * share;
+    if m < KIT_TREES * 2 || reach <= 0 { continue; }
+    g := group_of(m);
+    s[0].lod.used[m] = s[0].kit_used[g];
+    if s[0].lod.n + s[0].lod.used[m] > LOD_OBJECTS { continue; }   // no room: it draws whole
+    s[0].lod.first[m] = s[0].lod.n;
+    for i: 0..<s[0].lod.used[m] {
+      o := s[0].group_at[g] + i;
+      x := s[0].objects[o * OBJECT_FLOATS + 3] - eye.x; z := s[0].objects[o * OBJECT_FLOATS + 11] - eye.z;
+      if x * x + z * z > reach * reach { continue; }
+      s[0].lod.rows[s[0].lod.n] = o; s[0].lod.n += 1; s[0].lod.count[m] += 1;
+    }
+  }
+}
+
+#test "lod: the small props draw near you, the rest of the town at every distance; it chooses again only past the step" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  eye := v3(0, 2, -10);
+  lod_frame(g[..], eye);
+  l := g[0].lod;
+  crates := g[0].kit_used[group_of(M_CRATE)];
+  #assert l.first[M_CRATE] >= 0 && l.count[M_CRATE] > 0 && l.count[M_CRATE] < crates;
+  #assert l.first[M_ROOF] < 0 && l.first[M_PLASTER] < 0;
+  for k: 0..<l.count[M_CRATE] {
+    o := l.rows[l.first[M_CRATE] + k] * OBJECT_FLOATS;
+    x := g[0].objects[o + 3] - eye.x; z := g[0].objects[o + 11] - eye.z;
+    #assert x * x + z * z <= f32(LOD_NEAR) * f32(LOD_NEAR);
+    #assert g[0].objects[(LOD_AT + l.first[M_CRATE] + k) * OBJECT_FLOATS + 3] == g[0].objects[o + 3];
+  }
+  // a step under LOD_STEP keeps the choice; past it, a new one
+  lod_frame(g[..], v3(1.5, 2, -10));
+  #assert g[0].lod.eye.x == 0;
+  lod_frame(g[..], v3(80, 2, -10));
+  #assert g[0].lod.eye.x == 80 && g[0].lod.count[M_CRATE] != l.count[M_CRATE];
+}

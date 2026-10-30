@@ -1,0 +1,161 @@
+// Everglade's rumours (verse-eg-rumours): the previous Everglade's villagers passed rumours when their
+// routines put them together (verse/everglade/previous/generative-agents.md, "Rumors travel by rule").
+// A rumour is a typed record: the fact, who starts it, on which day of the town's week and at what
+// time, how many days it travels, and how likely someone is to repeat it. It spreads over the day's
+// meetings by rule: every five town minutes, two people (not the cats) at the same door, or both out
+// within RUMOUR_MEET of each other where their routines (routines.coax) have them, meet, and one who
+// knows it tells one who doesn't with its repeat probability, by a roll hashed from the rumour, the
+// day, the step and the pair. No model and no message: every device works out the same who and
+// when from the shared clock. Someone who has heard one tells it when you talk to them
+// (everglade.coax quest_note: it rides in what they know). It points at nothing to do and earns nothing.
+//   coax/bin/coax test --library verse/everglade/rumours.coax --steps 2000000000
+
+#load "routines.coax";
+
+RUMOURS :: 6;
+RUMOUR_WEEK :: 7;           // town days a week
+RUMOUR_STEPS :: 288;        // five-minute steps a town day
+RUMOUR_MEET :: 12.5;        // m apart two people out of doors still talk
+RUMOUR_FACT :: [RUMOURS] string.[
+  "Marta the innkeeper has set a cask of dark ale aside for the guilds' feast.",
+  "Garrick the smith is forging a new blade for Rook, and won't say what it is for.",
+  "Vega the astronomer has watched a new light low over the north woods three nights running.",
+  "Fern says the apples came in early this year, and sweeter.",
+  "Brother Anselm rang the temple bell at midnight, and nobody knows why.",
+  "Oswin the crier lost his voice for a morning after shouting the market prices."
+];
+RUMOUR_SOURCE :: [RUMOURS] int.[5, 11, 18, 8, 17, 3];     // EG_SPOT: who starts it
+RUMOUR_WEEKDAY :: [RUMOURS] int.[0, 1, 2, 3, 4, 5];       // the day of the town's week it starts
+RUMOUR_AT :: [RUMOURS] f32.[0.35, 0.4, 0.78, 0.3, 0.3, 0.45];   // the time of day (0 midnight to 1)
+RUMOUR_DAYS :: [RUMOURS] int.[3, 2, 3, 2, 3, 2];          // how long it travels
+RUMOUR_REPEAT :: [RUMOURS] f32.[0.6, 0.5, 0.55, 0.4, 0.7, 0.5];   // how likely one who knows it tells it at a meeting
+
+// Where person i's routine has them at time of day t: at the stop of the row they are on (the day
+// before's last row before the first), or, the first steps of a stroll, at its points one by one;
+// a guard up and down their beat.
+rumour_at :: (i: int, t: f32) -> Placed {
+  g := FOLK_PATROL[i];
+  if g >= 0 {
+    // a guard on their beat: up it and back, a point a step
+    w := FOLK_VIA_N[g];
+    k := cast(int) (t * f32(RUMOUR_STEPS)) % (2 * w - 2);
+    if k >= w { k = 2 * w - 2 - k; }
+    p: Placed;
+    p.x = FOLK_VIA[(g * FOLK_WAYS + k) * 2]; p.z = FOLK_VIA[(g * FOLK_WAYS + k) * 2 + 1];
+    return p;
+  }
+  n := folk_rows(i);
+  if n == 0 { return folk_stop(i); }
+  row := n - 1;
+  for r: 0..<n { if folk_row_at(i, r) <= t { row = r; } }
+  v := folk_row_via(i, row);
+  if v >= 0 {
+    since := t - folk_row_at(i, row);
+    if since < 0 { since += 1; }
+    k := cast(int) (since * f32(RUMOUR_STEPS));
+    if k < FOLK_VIA_N[v] {
+      p: Placed;
+      p.x = FOLK_VIA[(v * FOLK_WAYS + k) * 2]; p.z = FOLK_VIA[(v * FOLK_WAYS + k) * 2 + 1];
+      return p;
+    }
+  }
+  return folk_stop(folk_row_stop(i, row));
+}
+// Whether two people there meet: both out of doors and near, or both in at the same door.
+rumour_meet :: (a: Placed, b: Placed) -> bool {
+  if a.indoors != b.indoors { return false; }
+  dx := a.x - b.x; dz := a.z - b.z;
+  reach := ifx a.indoors then 0.1 else f32(RUMOUR_MEET);
+  return dx * dx + dz * dz < reach * reach;
+}
+// A roll in [0, 1) from the rumour, its day, the step and the pair: the same on every device.
+rumour_roll :: (r: int, day: int, step: int, a: int, b: int) -> f32 {
+  h := ((day % 100000) * 7919 + r * 104729 + step * 131 + a * 31 + b * 7) % 2147483646 + 1;
+  for k: 0..<3 { h = (h * 48271) % 2147483647; }
+  return f32(h - 1) / 2147483647.0;
+}
+
+// Who knows rumour r on town day `day` (counted on the shared clock) at time t: knows[i] for each
+// spot. False everywhere when it isn't travelling then. Returns how many know it.
+rumour_spread :: (r: int, day: int, t: f32, knows: [] bool) -> int {
+  for i: 0..<EG_SPOTS { knows[i] = false; }
+  // the day it last started: this week's, or last week's if this week's is still to come
+  wd := cast(int) (((day % RUMOUR_WEEK) + RUMOUR_WEEK) % RUMOUR_WEEK);
+  back := (((wd - RUMOUR_WEEKDAY[r]) % RUMOUR_WEEK + RUMOUR_WEEK) % RUMOUR_WEEK);
+  if back == 0 && t < RUMOUR_AT[r] { back = RUMOUR_WEEK; }
+  start := day - back;
+  first := cast(int) (RUMOUR_AT[r] * f32(RUMOUR_STEPS));
+  now := back * RUMOUR_STEPS + cast(int) (t * f32(RUMOUR_STEPS));
+  if now - first > RUMOUR_DAYS[r] * RUMOUR_STEPS { return 0; }   // it has had its days
+  knows[RUMOUR_SOURCE[r]] = true;
+  heard: [EG_SPOTS] bool;
+  at: [EG_SPOTS] Placed;
+  for step: first..<now + 1 {
+    tod := f32(step % RUMOUR_STEPS) / f32(RUMOUR_STEPS);
+    d := start + (step / RUMOUR_STEPS);
+    for i: 0..<EG_SPOTS { at[i] = rumour_at(i, tod); heard[i] = knows[i]; }
+    for a: 0..<EG_SPOTS {
+      if !knows[a] || EG_SPOT_CAT[a] { continue; }
+      for b: 0..<EG_SPOTS {
+        if heard[b] || EG_SPOT_CAT[b] || !rumour_meet(at[a], at[b]) { continue; }
+        if rumour_roll(r, d, step, a, b) < RUMOUR_REPEAT[r] { heard[b] = true; }
+      }
+    }
+    for i: 0..<EG_SPOTS { knows[i] = heard[i]; }
+  }
+  m := 0;
+  for i: 0..<EG_SPOTS { if knows[i] { m += 1; } }
+  return m;
+}
+
+// What person i has heard by then, for their talk: each rumour they know, after `before`; the bytes written.
+rumour_note :: (i: int, day: int, t: f32, before: string, out: [] u8) -> int {
+  n := 0;
+  for k: 0..<before.count { if n < out.count { out[n] = before[k]; n += 1; } }
+  knows: [EG_SPOTS] bool;
+  first := true;
+  for r: 0..<RUMOURS {
+    if rumour_spread(r, day, t, knows[..]) == 0 || !knows[i] { continue; }
+    lead := ifx first then (ifx n > 0 then " Talk going round town that they have heard (share it if asked what's new): " else "Talk going round town that they have heard (share it if asked what's new): ") else " ";
+    first = false;
+    for k: 0..<lead.count { if n < out.count { out[n] = lead[k]; n += 1; } }
+    f := RUMOUR_FACT[r];
+    for k: 0..<f.count { if n < out.count { out[n] = f[k]; n += 1; } }
+  }
+  return n;
+}
+
+#test "rumours: one rumour over a day, the same every time; it starts with its source and spreads by meetings" {
+  knows: [EG_SPOTS] bool;
+  // Marta's rumour (day 0 of the week, 08:24), at noon that day
+  day := 7 * 3000;
+  m := rumour_spread(0, day, 0.5, knows[..]);
+  #assert knows[RUMOUR_SOURCE[0]] && m >= 1;
+  for i: 0..<EG_SPOTS { if EG_SPOT_CAT[i] { #assert !knows[i]; } }
+  again: [EG_SPOTS] bool;
+  #assert rumour_spread(0, day, 0.5, again[..]) == m;
+  for i: 0..<EG_SPOTS { #assert again[i] == knows[i]; }
+  // before it starts, and once its days are over, no one has it
+  #assert rumour_spread(0, day, 0.2, knows[..]) == 0;
+  #assert rumour_spread(0, day + 4, 0.5, knows[..]) == 0;
+  // by evening more know it than at its start: the inn's door and the commons are busy
+  #assert rumour_spread(0, day, 0.9, knows[..]) >= m;
+  // Fern's, on its second evening: it has gone round the market and further (a third of the town or more)
+  #assert rumour_spread(3, day + 3 + 1, 0.9, knows[..]) >= 6;
+  // and the one who started it tells it
+  out: [600] u8;
+  n := rumour_note(RUMOUR_SOURCE[3], day + 3, 0.5, "A note.", out[..]);
+  #assert n > 7 + RUMOUR_FACT[3].count && cast(string) out[0..<7] == "A note.";
+}
+
+#test "rumours: two out of doors far apart don't meet; the same door does" {
+  #assert rumour_meet(folk_stop(7), folk_stop(8)) && !rumour_meet(folk_stop(0), folk_stop(19));
+  #assert rumour_meet(folk_stop(FOLK_DOOR + 3), folk_stop(FOLK_DOOR + 3)) && !rumour_meet(folk_stop(FOLK_DOOR + 3), folk_stop(FOLK_DOOR + 2));
+  #assert !rumour_meet(folk_stop(FOLK_DOOR + 1), folk_stop(7));   // the shopkeeper's door and the stall beside it: one is in
+  // Sable's morning walk round the commons takes her by the crier
+  #assert rumour_meet(rumour_at(14, 0.36 + 3.5 / f32(RUMOUR_STEPS)), folk_stop(3));
+  out: [400] u8;
+  // someone who knows nothing adds nothing to what they know
+  n := rumour_note(19, 7 * 3000, 0.5, "", out[..]);
+  #assert n == 0;
+}

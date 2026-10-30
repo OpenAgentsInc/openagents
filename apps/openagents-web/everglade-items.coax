@@ -287,7 +287,8 @@ edit_relay_town :: (s: [] Everglade) {
   for g: KIT_FOREST..<KIT_GROUPS { s[0].ev.town_used[g] = s[0].kit_used[g]; }
   build_scenery(s);
   s[0].ev.wall_base = s[0].wall_n;
-  spells_start(s);   // the spells' breakable pieces are the town's again (nothing when the face gave them none)
+  spells_start(s);
+  sky_store(s);   // a hidden building's sky comes back   // the spells' breakable pieces are the town's again (nothing when the face gave them none)
 }
 // Whether a solid's box (five numbers at k) stands in a building an admin hid: its walls, inside and out.
 edit_in_hidden :: (s: [] Everglade, solids: [] f32, k: int) -> bool {

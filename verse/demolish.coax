@@ -116,6 +116,9 @@ DEMO_WALL_TALL :: 1.2;     // m: half heights over this are walls (or posts)
 DEMO_WALL_THIN :: 0.35;    // m: a half thickness under this
 DEMO_LEVEL :: 3.12;        // m a storey
 DEMO_TOWER_LEVELS :: 3;
+DEMO_TOWERS :: 16;         // towers the town keeps track of at most
+DEMO_TOWER_LV :: 8;        // levels a tower is counted by at most
+DEMO_TOWER_CELLS :: DEMO_TOWERS * DEMO_TOWER_LV;
 DEMO_TOWER_RATIO :: 0.9;
 DEMO_TOWER_HOLD :: 0.5;
 DEMO_TOWER_SPIN :: 0.7;    // rad/s the column starts turning at
@@ -215,6 +218,9 @@ DemoWorld :: struct {
   group_x: [DEMO_GROUPS] f32; group_z: [DEMO_GROUPS] f32;
   // each group's base, top and width (its footprint's least side), and whether it is a tower that tips
   group_y0: [DEMO_GROUPS] f32; group_y1: [DEMO_GROUPS] f32; group_w: [DEMO_GROUPS] f32; tower: [DEMO_GROUPS] bool;
+  // the towers, each a slot (a few longer than the groups: [256] and [257] int are types the river's
+  // library (verse/everglade/river.coax) names too, and two headers can't both define one)
+  tower_slot: [DEMO_GROUPS + 3] int; tower_g: [DEMO_TOWERS] int; tower_n: int;
   // a blast in progress (demo_blast_begin): where, how far, how fast it throws, and the wall's face (0 on the ground)
   blast_on: bool; blast_at: Point; blast_radius: f32; blast_speed: f32; blast_face: Point;
   dust: [DEMO_DUST] DemoDust;
@@ -429,9 +435,9 @@ demo_wallish :: (p: DemoPiece) -> bool { return !p.pitched && p.hy > f32(DEMO_WA
 demo_link_sides :: (w: [] DemoWorld) {
   w[0].side_n = 0;
   for i: 0..<w[0].n {
-    p := w[0].pieces[i];
-    p.side_at = w[0].side_n; p.side_n = 0;
-    if demo_wallish(p) {
+    w[0].pieces[i].side_at = w[0].side_n; w[0].pieces[i].side_n = 0;
+    if !w[0].pieces[i].pitched && w[0].pieces[i].hy > f32(DEMO_WALL_TALL) && lo(w[0].pieces[i].hx, w[0].pieces[i].hz) < f32(DEMO_WALL_THIN) {
+      p := w[0].pieces[i];
       g := f32(DEMO_SIDE_GAP);
       for cx: demo_cell(p.x0 - g)..<demo_cell(p.x1 + g) + 1 {
         for cz: demo_cell(p.z0 - g)..<demo_cell(p.z1 + g) + 1 {
@@ -439,9 +445,8 @@ demo_link_sides :: (w: [] DemoWorld) {
           for e: 0..<w[0].cell_n[c] {
             j := w[0].cell_list[w[0].cell_at[c] + e];
             if j == i || p.side_n >= DEMO_SIDE_CAP || w[0].side_n >= DEMO_SIDES { continue; }
-            q := w[0].pieces[j];
-            if q.pitched || q.hy < 0.6 || abs(q.y0 - p.y0) > 0.5 { continue; }
-            if q.x0 > p.x1 + g || q.x1 < p.x0 - g || q.z0 > p.z1 + g || q.z1 < p.z0 - g { continue; }
+            if w[0].pieces[j].pitched || w[0].pieces[j].hy < 0.6 || abs(w[0].pieces[j].y0 - p.y0) > 0.5 { continue; }
+            if w[0].pieces[j].x0 > p.x1 + g || w[0].pieces[j].x1 < p.x0 - g || w[0].pieces[j].z0 > p.z1 + g || w[0].pieces[j].z1 < p.z0 - g { continue; }
             seen := false;
             for k: 0..<p.side_n { if w[0].sides[p.side_at + k] == j { seen = true; } }
             if seen { continue; }
@@ -449,8 +454,8 @@ demo_link_sides :: (w: [] DemoWorld) {
           }
         }
       }
+      w[0].pieces[i] = p;
     }
-    w[0].pieces[i] = p;
   }
 }
 // Each group's base, top and least width, and so whether it is a tower.
@@ -470,6 +475,12 @@ demo_link_towers :: (w: [] DemoWorld) {
     // the town's groups past the buildings are cells of loose props, never towers
     w[0].tower[g] = g > 0 && tall >= f32(DEMO_LEVEL) * f32(DEMO_TOWER_LEVELS) - 0.3 && w[0].group_w[g] > 2 && tall >= f32(DEMO_TOWER_RATIO) * w[0].group_w[g];
   }
+  w[0].tower_n = 0;
+  for g: 0..<DEMO_GROUPS {
+    w[0].tower_slot[g] = -1;
+    if !w[0].tower[g] || w[0].tower_n >= DEMO_TOWERS { w[0].tower[g] = false; continue; }
+    w[0].tower_slot[g] = w[0].tower_n; w[0].tower_g[w[0].tower_n] = g; w[0].tower_n += 1;
+  }
 }
 
 // How many of a wall's neighbours still stand.
@@ -483,43 +494,46 @@ demo_standing_sides :: (w: [] DemoWorld, i: int) -> int {
 // A tower that lost too much of a level: everything standing over that level comes loose and
 // turns over toward the cut (from the level's standing pieces' middle toward its fallen ones'), as
 // if one column hinged on the level. Returns how many came loose.
+demo_clamp_i :: (v: int, a: int, b: int) -> int { return ifx v < a then a else ifx v > b then b else v; }
 demo_topple_towers :: (w: [] DemoWorld) -> int {
+  if w[0].tower_n == 0 { return 0; }
+  // one pass: each tower level's pieces, how many stand, and where the standing and the fallen are
+  all: [DEMO_TOWER_CELLS] int; up: [DEMO_TOWER_CELLS] int; sx: [DEMO_TOWER_CELLS] f32; sz: [DEMO_TOWER_CELLS] f32; fx: [DEMO_TOWER_CELLS] f32; fz: [DEMO_TOWER_CELLS] f32;
+  for i: 0..<w[0].n {
+    t := w[0].tower_slot[clamp_group(w[0].pieces[i].group)];
+    if t < 0 || w[0].pieces[i].pitched { continue; }
+    k := cast(int) floor((w[0].pieces[i].y0 - w[0].group_y0[w[0].tower_g[t]] + 0.3) / f32(DEMO_LEVEL));
+    c := t * DEMO_TOWER_LV + demo_clamp_i(k, 0, DEMO_TOWER_LV - 1);
+    all[c] += 1;
+    if w[0].pieces[i].state == DP_STANDING { up[c] += 1; sx[c] += w[0].pieces[i].cx; sz[c] += w[0].pieces[i].cz; }
+    else { fx[c] += w[0].pieces[i].cx; fz[c] += w[0].pieces[i].cz; }
+  }
   moved := 0;
-  for g: 1..<DEMO_GROUPS {
-    if !w[0].tower[g] { continue; }
+  for t: 0..<w[0].tower_n {
+    g := w[0].tower_g[t];
     base := w[0].group_y0[g];
-    levels := cast(int) ((w[0].group_y1[g] - base) / f32(DEMO_LEVEL) + 0.2);
+    levels := demo_clamp_i(cast(int) ((w[0].group_y1[g] - base) / f32(DEMO_LEVEL) + 0.2), 0, DEMO_TOWER_LV);
     for k: 0..<levels - 1 {
-      lo_y := base + f32(k) * f32(DEMO_LEVEL) - 0.3; hi_y := lo_y + f32(DEMO_LEVEL);
-      all := 0; up := 0; above := 0;
-      sx := 0.0f32; sz := 0.0f32; fx := 0.0f32; fz := 0.0f32;
-      for i: 0..<w[0].n {
-        p := w[0].pieces[i];
-        if clamp_group(p.group) != g || p.pitched { continue; }
-        if p.y0 >= hi_y { if p.state == DP_STANDING { above += 1; } continue; }
-        if p.y0 < lo_y { continue; }
-        all += 1;
-        if p.state == DP_STANDING { up += 1; sx += p.cx; sz += p.cz; } else { fx += p.cx; fz += p.cz; }
-      }
-      if all < 4 || above == 0 || f32(up) >= f32(DEMO_TOWER_HOLD) * f32(all) { continue; }
+      c := t * DEMO_TOWER_LV + k;
+      above := 0;
+      for j: k + 1..<DEMO_TOWER_LV { above += up[t * DEMO_TOWER_LV + j]; }
+      if all[c] < 4 || above == 0 || f32(up[c]) >= f32(DEMO_TOWER_HOLD) * f32(all[c]) { continue; }
       // toward the cut: from what stands to what fell (straight out from the middle if nothing stands)
-      fell := all - up;
-      dir := v3(fx / f32(fell) - w[0].group_x[g], 0, fz / f32(fell) - w[0].group_z[g]);
-      if up > 0 { dir = v3(fx / f32(fell) - sx / f32(up), 0, fz / f32(fell) - sz / f32(up)); }
+      fell := all[c] - up[c];
+      dir := v3(fx[c] / f32(fell) - w[0].group_x[g], 0, fz[c] / f32(fell) - w[0].group_z[g]);
+      if up[c] > 0 { dir = v3(fx[c] / f32(fell) - sx[c] / f32(up[c]), 0, fz[c] / f32(fell) - sz[c] / f32(up[c])); }
       d := d3_unit_or(d3(f64(dir.x), 0.0, f64(dir.z)), d3(1.0, 0.0, 0.0));
       about := d3(d.z, 0.0, -d.x);   // turning about it carries the top along d
-      hinge := hi_y;
+      hinge := base + f32(k + 1) * f32(DEMO_LEVEL) - 0.3;
       for i: 0..<w[0].n {
-        p := w[0].pieces[i];
-        if clamp_group(p.group) != g || p.state != DP_STANDING || p.y0 < hinge - 0.3 { continue; }
+        if clamp_group(w[0].pieces[i].group) != g || w[0].pieces[i].state != DP_STANDING || w[0].pieces[i].y0 < hinge - 0.3 { continue; }
         demo_loosen_toward(w, i, d, 0.25);
-        p = w[0].pieces[i];
-        if p.state != DP_LOOSE || p.body < 0 { continue; }
-        body := demo_body(w, p.body);
-        h := f64(p.cy - hinge);
+        if w[0].pieces[i].state != DP_LOOSE || w[0].pieces[i].body < 0 { continue; }
+        body := demo_body(w, w[0].pieces[i].body);
+        h := f64(w[0].pieces[i].cy - hinge);
         body.vel = d3_add(body.vel, d3_scale(d, f64(DEMO_TOWER_SPIN) * h));
         body.omega = d3_add(body.omega, dq_rotate(dq_conj(body.orientation), d3_scale(about, f64(DEMO_TOWER_SPIN))));   // omega is the body's own
-        demo_put(w, p.body, body);
+        demo_put(w, w[0].pieces[i].body, body);
         moved += 1;
       }
       break;

@@ -61,6 +61,7 @@
 #load "../../verse/flock.coax";
 #load "../../verse/everglade/ranger.coax";
 #load "../../verse/everglade/folk.coax";
+#load "../../verse/everglade/rumours.coax";
 #load "../../verse/everglade/watch.coax";
 #load "../../verse/water-weather.coax";
 #load "everglade-voice.coax";
@@ -70,6 +71,8 @@
 #load "everglade-items.coax";
 #load "everglade-dress.coax";
 #load "everglade-hammer.coax";
+#load "everglade-lod.coax";
+#load "everglade-sky.coax";
 #load "../../verse/style-preset.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
@@ -179,7 +182,9 @@ PEOPLE_AT :: LATHE_AT + LATHE_SLOTS;
 SHARD_AT :: PEOPLE_AT + PEOPLE_PARTS * PEOPLE_SHOWN;
 SHARD_OBJECTS :: DEMO_BODIES;
 CELL_AT :: SHARD_AT + SHARD_OBJECTS;
-ALL_OBJECTS :: CELL_AT + SHARD_OBJECTS * 2;
+// Then the town's small pieces near you, copied there each frame (everglade-lod.coax).
+LOD_AT :: CELL_AT + SHARD_OBJECTS * 2;
+ALL_OBJECTS :: LOD_AT + LOD_OBJECTS;
 // Store 2, the joints' skinning matrices (three rows of four a joint): yours,
 // then each person shown's, after theirs three rows of their colours: skin
 // (and their outfit's colourway), hair, and the dye on their cloth with how
@@ -328,6 +333,7 @@ Everglade :: struct {
   spawn: Point; spawn_face: f32;
   map_button: Box; map_finger: int;
   heights: [EG_GROUND_POINTS] f32;
+  ground_store: [EG_GROUND_POINTS * 2] f32;   // store 0: the heights, then the sky each point sees (everglade-sky.coax)
   objects: [ALL_OBJECTS * OBJECT_FLOATS] f32;
   counts: [5] int;
   lathe_n: int;
@@ -369,6 +375,7 @@ Everglade :: struct {
   typed: [TYPED] u8; typed_n: int;
   waiting: bool; waited: f32;
   ask: [ASK_BYTES] u8; ask_n: int;          // a question for the face to send
+  heard: [900] u8;                          // what the one you talk to knows: their quest's note and the rumours they have heard
   visit: [24] u8; visit_n: int;             // this visit's stamp: the page facts' now
   talk_button: Box; bye_button: Box; talk_finger: int;
   field: [4] f32;
@@ -400,6 +407,7 @@ Everglade :: struct {
   part_used: [PEOPLE_PARTS] int; shown_n: int; shown: [PEOPLE_SHOWN] int;
   answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
+  lod: Lod;                                // the small pieces drawn near you (everglade-lod.coax)
   hm: Hammer;                              // the sledgehammer (everglade-hammer.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
@@ -588,6 +596,7 @@ everglade_start :: (s: [] Everglade) {
   edit_start(s);
   spells_start(s);
   watch_page_start(s);
+  sky_store(s);   // the sky each place sees, once the town and the woods stand (everglade-sky.coax)
 }
 
 // The player's walls (every solid, from the floor up) and the camera's
@@ -1219,8 +1228,12 @@ end_talk :: (s: [] Everglade) { s[0].talk = -1; s[0].typed_n = 0; s[0].waiting =
 // What the one you talk to knows of your quest with them, for the character chat.
 quest_note :: (s: [] Everglade) -> string {
   q := s[0].talk_quest;
-  if q < 0 || q >= EG_QUESTS { return ""; }
-  return EG_QUEST_NOTE[q];
+  note := ifx q < 0 || q >= EG_QUESTS then "" else EG_QUEST_NOTE[q];
+  // and the talk going round town they have heard by now (verse/everglade/rumours.coax), on the shared clock
+  c := folk_clock(s, false);
+  day := cast(int) (c.world / f64(c.length));
+  n := rumour_note(s[0].talk, day, c.day, note, s[0].heard[..]);
+  return cast(string) s[0].heard[0..<n];
 }
 
 // What you typed goes to the face as a question, with the conversation so far.
@@ -3357,14 +3370,17 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
     s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then EG_CELLS * EG_CELLS else s[0].counts[kind]);
   }
   s[0].kit_triangles = 0; s[0].forest_triangles = 0;
+  lod_frame(s, shot.eye);   // the small pieces near you (everglade-lod.coax)
   for m: 0..<KIT_MESHES {
     group := group_of(m);
     d := (5 + m) * 4;
+    lod_on := m >= KIT_TREES * 2 && s[0].lod.first[m] >= 0;
+    drawn := ifx lod_on then s[0].lod.count[m] else s[0].kit_used[group];
     s[0].draws[d] = cast(u32) s[0].kit_first[m];
     s[0].draws[d + 1] = cast(u32) s[0].kit_count[m];
-    s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + s[0].group_at[group]);
-    s[0].draws[d + 3] = cast(u32) s[0].kit_used[group];
-    s[0].kit_triangles += s[0].kit_count[m] / 3 * s[0].kit_used[group];
+    s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + (ifx lod_on then LOD_AT + s[0].lod.first[m] else s[0].group_at[group]));
+    s[0].draws[d + 3] = cast(u32) drawn;
+    s[0].kit_triangles += s[0].kit_count[m] / 3 * drawn;
     if group < KIT_FOREST { s[0].forest_triangles += s[0].kit_count[m] / 3 * s[0].kit_used[group]; }
   }
   d := RANGER_DRAW * 4;
@@ -3486,7 +3502,7 @@ everglade_busy :: (s: [] Everglade) -> bool #export_c { return s[0].above || s[0
 // Nothing draws until the pack is in: its index buffer holds the shapes' indices too.
 everglade_draws :: (s: [] Everglade) -> int #export_c { return ifx s[0].pack_ready then DRAWS else 0; }
 everglade_store_cap :: (k: int) -> int #export_c {
-  if k == 0 { return EG_GROUND_POINTS * 4; }
+  if k == 0 { return EG_GROUND_POINTS * 2 * 4; }
   if k == 2 { return PALETTE_FLOATS * 4; }
   return ALL_OBJECTS * OBJECT_FLOATS * 4;
 }

@@ -1,0 +1,102 @@
+// Everglade's baked sky light (verse-eg-baked-shading): the previous Everglade baked, when the zone
+// loaded, how much of the sky each place saw, so the ground under the trees and in the streets' corners
+// and the rooms inside darkened in the ambient light (verse/everglade/previous/everglade.md, Rendering).
+// Here the bake is a grid on the ground's own points (2 m), made once the town and the woods are laid:
+// each building, as a box as tall as its walls and roof, and each tree's crown, as a leafy ball, takes
+// its share of the sky from the points around it (the cosine-weighted share a wall of that height and
+// width, or a ball of that size, covers), the shares multiplied, so two that cover the same sky
+// don't count twice. It goes up to the GPU after the heights (store 0, everglade.wgsl sky_seen); the
+// town, the ground and the people take their ambient light by it, more of the sky the higher they
+// stand off the ground. It costs no frame anything but one lookup a pixel.
+
+SKY_TREE_REACH :: 11.0;   // m round a tree its crown still takes sky
+SKY_HOUSE_REACH :: 18.0;  // m round a building
+SKY_INSIDE :: 0.35;       // the sky a room under a roof still sees (its windows and its door)
+SKY_LEAVES :: 0.7;        // how much of the sky behind a crown its leaves hold back
+SKY_CROWN_UP :: 5.5;      // a tree's crown's middle over the ground, by its size
+SKY_CROWN :: 2.8;         // and its radius
+
+// The share of the sky (cosine-weighted) a wall of height h and width l at distance d covers, seen from the ground.
+sky_wall :: (h: f32, l: f32, d: f32) -> f32 {
+  e := atan2(h, d);
+  across := 2 * atan2(l * 0.5, d);
+  return clamp(across / f32(TAU), 0, 0.5) * sin(e) * sin(e);
+}
+// And a ball of radius r whose middle stands h over the ground at distance d.
+sky_ball :: (r: f32, h: f32, d: f32) -> f32 {
+  far := sqrt(d * d + h * h);
+  if far <= r { return 1; }
+  a := r / far;
+  return a * a * (h / far);
+}
+
+// The bake: the sky each ground point sees, 0 to 1, into out (EG_GROUND_POINTS of them).
+sky_bake :: (s: [] Everglade, out: [] f32) {
+  n := EG_CELLS + 1;
+  for k: 0..<n * n { out[k] = 1; }
+  // the buildings
+  for b: 0..<EG_BUILDINGS {
+    if eg_hidden(s[0].ev.edits, b) { continue; }
+    k := b * EG_BOX;
+    x0 := EG_BUILDING[k]; z0 := EG_BUILDING[k + 1]; x1 := EG_BUILDING[k + 2]; z1 := EG_BUILDING[k + 3];
+    h := f32(storeys(b)) * f32(STOREY) + 3.5;
+    l := hi(x1 - x0, z1 - z0);
+    i0 := sky_cell(x0 - f32(SKY_HOUSE_REACH)); i1 := sky_cell(x1 + f32(SKY_HOUSE_REACH));
+    j0 := sky_cell(z0 - f32(SKY_HOUSE_REACH)); j1 := sky_cell(z1 + f32(SKY_HOUSE_REACH));
+    for j: j0..<j1 + 1 {
+      for i: i0..<i1 + 1 {
+        x := f32(EG_EDGE) + f32(i) * f32(EG_CELL); z := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+        dx := hi(hi(x0 - x, x - x1), 0); dz := hi(hi(z0 - z, z - z1), 0);
+        d := sqrt(dx * dx + dz * dz);
+        cover := ifx d <= 0 then 1 - f32(SKY_INSIDE) else sky_wall(h, l, hi(d, 0.3));
+        if d > f32(SKY_HOUSE_REACH) { continue; }
+        out[j * n + i] *= 1 - cover;
+      }
+    }
+  }
+  // the trees' crowns
+  for t: 0..<s[0].tree_n {
+    o := t * TREE_FLOATS;
+    tx := s[0].trees[o]; tz := s[0].trees[o + 1]; size := s[0].trees[o + 2];
+    r := f32(SKY_CROWN) * size; h := f32(SKY_CROWN_UP) * size;
+    for j: sky_cell(tz - f32(SKY_TREE_REACH))..<sky_cell(tz + f32(SKY_TREE_REACH)) + 1 {
+      for i: sky_cell(tx - f32(SKY_TREE_REACH))..<sky_cell(tx + f32(SKY_TREE_REACH)) + 1 {
+        x := f32(EG_EDGE) + f32(i) * f32(EG_CELL); z := f32(EG_EDGE) + f32(j) * f32(EG_CELL);
+        dx := x - tx; dz := z - tz;
+        d := sqrt(dx * dx + dz * dz);
+        if d > f32(SKY_TREE_REACH) { continue; }
+        out[j * n + i] *= 1 - f32(SKY_LEAVES) * sky_ball(r, h, d);
+      }
+    }
+  }
+}
+// The ground point column (or row) nearest x, kept on the grid.
+sky_cell :: (x: f32) -> int {
+  i := cast(int) floor((x - f32(EG_EDGE)) / f32(EG_CELL) + 0.5);
+  return ifx i < 0 then 0 else ifx i > EG_CELLS then EG_CELLS else i;
+}
+// Store 0 again: the heights, then the sky each point sees.
+sky_store :: (s: [] Everglade) {
+  p := EG_GROUND_POINTS;
+  for k: 0..<p { s[0].ground_store[k] = s[0].heights[k]; }
+  sky_bake(s, s[0].ground_store[p..<2 * p]);
+  s[0].ground_gen += 1;
+}
+// What the bake gives at (x, z), for the checks.
+sky_at :: (s: [] Everglade, x: f32, z: f32) -> f32 {
+  return s[0].ground_store[EG_GROUND_POINTS + sky_cell(z) * (EG_CELLS + 1) + sky_cell(x)];
+}
+
+#test "sky: open ground sees it all, the woods and the streets' corners less, a room under its roof least" {
+  #assert sky_wall(8, 10, 0.3) > 0.4 && sky_wall(8, 10, 12) < 0.1 && sky_ball(3, 5, 0) > 0.3 && sky_ball(3, 5, 10) < 0.1;
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  open := sky_at(g[..], 0, -80);          // the road in, by the Reed Pond's clearing
+  wood := sky_at(g[..], -75, -75);        // in the woods
+  k := EG_INN * EG_BOX;
+  inn := sky_at(g[..], (EG_BUILDING[k] + EG_BUILDING[k + 2]) / 2, (EG_BUILDING[k + 1] + EG_BUILDING[k + 3]) / 2);
+  corner := sky_at(g[..], EG_BUILDING[k + 2] + 1, EG_BUILDING[k + 1] - 1);   // beside the inn
+  commons := sky_at(g[..], 0, 6);
+  #assert commons > 0.85 && wood < commons - 0.15 && corner < commons - 0.1 && inn <= f32(SKY_INSIDE) + 0.01 && open > wood;
+  for q: 0..<EG_GROUND_POINTS { v := g[0].ground_store[EG_GROUND_POINTS + q]; #assert v >= 0 && v <= 1; }
+}

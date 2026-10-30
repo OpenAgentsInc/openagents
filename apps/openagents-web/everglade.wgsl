@@ -1077,6 +1077,26 @@ fn orb(s: S) -> Lit {
   let c = body + rim + vec3f(spec);
   return Lit(vec4f(c, select(0.0, 0.7, spec > 0.6)), vec4f(0.0));
 }
+// The sky a place sees (everglade-sky.coax, baked once after the heights in store 0): the ground
+// point's share between its four, the rest of the sky the higher it stands off the ground, and how much
+// of the ambient light follows it (the rest stays, so a room or a deep wood is darker, never black).
+const SKY_RISE = 7.0;
+const SKY_SHARE = 1.0;
+fn sky_seen(world: vec3f) -> f32 {
+  let n = i32(u.ground.x);
+  let gx = (world.x - u.ground.z) / u.ground.y;
+  let gz = (world.z - u.ground.w) / u.ground.y;
+  let ix = clamp(i32(floor(gx)), 0, n - 1);
+  let iz = clamp(i32(floor(gz)), 0, n - 1);
+  let fx = clamp(gx - f32(ix), 0.0, 1.0);
+  let fz = clamp(gz - f32(iz), 0.0, 1.0);
+  let p = (n + 1) * (n + 1);
+  let k = iz * (n + 1) + ix;
+  let sky = mix(mix(heights[u32(p + k)], heights[u32(p + k + 1)], fx), mix(heights[u32(p + k + n + 1)], heights[u32(p + k + n + 2)], fx), fz);
+  let ground = mix(mix(height(ix, iz), height(ix + 1, iz), fx), mix(height(ix, iz + 1), height(ix + 1, iz + 1), fx), fz);
+  let seen = mix(sky, 1.0, smoothstep(0.0, SKY_RISE, world.y - ground));
+  return mix(1.0, seen, SKY_SHARE);
+}
 // A lit room's colour: deep amber to a paler gold.
 fn room_warm(k: f32) -> vec3f { return mix(vec3f(1.0, 0.36, 0.08), vec3f(1.0, 0.5, 0.16), k); }
 // The painterly light (spec 1 to 4): the wrapped key times what of it reaches (lit: the shadow map and
@@ -1093,7 +1113,7 @@ fn paint(dry: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: boo
   // forty metres reads as one mass in its light, not a lace of lit and shadowed pieces
   let band = mix(band0, BAND_FAR_MID, BAND_FAR_SHARE * smoothstep(BAND_FAR_FROM, BAND_FAR_TO, length(u.eye.xyz - world)));
   let key = st(0u).xyz * st(0u).w;
-  let amb = vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
+  let amb = sky_seen(world) * vec3f(verse_style_ambient(n.y, st(5u).x, st(6u).x, st(5u).w), verse_style_ambient(n.y, st(5u).y, st(6u).y, st(5u).w), verse_style_ambient(n.y, st(5u).z, st(6u).z, st(5u).w));
   var c = banded(base, st(4u).xyz * amb, key + amb, band);
   c += base * lamp_light(world, n);
   // the shadow tint and the light may grey a surface only so far: 0.7 of its albedo's saturation stays

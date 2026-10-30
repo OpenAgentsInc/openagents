@@ -1,6 +1,6 @@
 // The sledgehammer (verse-eg-sledgehammer): the previous Everglade's town broke under a two-handed
 // maul as well as its spells (verse/everglade/previous/destructible-buildings.md, "The sledgehammer").
-// Under the SRD ruleset, standing within reach of a piece of the town and facing it, E swings it
+// Under the SRD ruleset, out of doors within reach of a piece of the town and facing it, E swings it
 // (on a phone the prompt over the bar: SWING THE HAMMER). A swing winds up for 0.6 s (the Ranger's
 // swing clip, the maul raised over the shoulder and brought down), then strikes the piece in front of
 // you then, if one still stands in reach: an attack roll, d20 + 6 (Strength +3, a 5th-level
@@ -26,8 +26,9 @@ Hammer :: struct {
 // The standing piece nearest in front of you within reach at chest height, -1 none.
 hm_target :: (s: [] Everglade) -> int {
   if !sp_on(s) || s[0].water >= WATER_WADING || s[0].ev.editing { return -1; }
-  w := sp_dm(s);
   you := s[0].feet;
+  if everglade_room_at(s, you.x, you.z) >= 0 { return -1; }   // not in a room: the town's walls are swung at from the street
+  w := sp_dm(s);
   y := walk_at(s, you.x, you.z) + you.y;
   fx := sin(s[0].face); fz := cos(s[0].face);
   best := -1; most := f32(HM_REACH) + f32(EG_RADIUS);
