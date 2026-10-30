@@ -90,6 +90,17 @@ Decided 2026-10-29: the old Rust relay may be built and run inside a sandbox
 for the comparison; the Coax relay aims for full NIP support, starting with
 what the website uses. Still yours: the R3 migration and DNS cutover.
 
+Open 2026-10-30: **a rollback-resistant checkpoint for the relay's store
+(#966b).** Crash recovery is done (`092c3e44a4`,
+[record](docs/verification/2026-10-30-nostr-store-recovery.md)). A torn tail
+is cut, and any other damage stops the relay with the file unchanged. But an
+older copy of the whole file, or a deleted file, still replays as a valid
+older or empty store. Closing that needs a checkpoint kept outside the file
+that can't be rolled back: for example a TPM monotonic counter, a signed
+checkpoint published to a second machine, or a cloud object with versioning
+and a retention lock. Which provider to use is your call. It doesn't block R1
+on the tailnet.
+
 ## Psionic Part III: public ingress and a sustained serving window (2026-10-29)
 
 The original Elephant service was installed and checked privately on
