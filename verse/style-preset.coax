@@ -19,6 +19,7 @@
 STYLE_LOWPOLY :: 0;
 STYLE_PAINTERLY :: 1;
 STYLE_PHOTOREAL :: 2;
+STYLE_FLAT :: 3;            // flat-shaded low poly in a realm's own few colours (verse_style_flat)
 STYLE_DESKTOP :: 0;
 STYLE_PHONE :: 1;
 STYLE_KEYS :: 4;            // midnight, dawn, noon, dusk
@@ -28,10 +29,10 @@ STYLE_FLOATS :: 128;        // 32 vec4f
 SU_KEY :: 0;                // key colour rgb, key strength
 SU_KEY_DIR :: 4;            // the key light's direction (toward it) xyz, 1 when it is the moon
 SU_RIM :: 8;                // rim colour rgb, world rim strength (the night's 0.6 applied)
-SU_RIM2 :: 12;              // character rim strength, N.V where it starts, N.V where it is full, 0
+SU_RIM2 :: 12;              // character rim strength, N.V where it starts, N.V where it is full, flat: a hem trim's width (m)
 SU_TINT :: 16;              // shadow tint rgb, blob (contact) shadow strength
 SU_SKY_AMB :: 20;           // ambient from the sky rgb, ambient scale
-SU_GROUND_AMB :: 24;        // ambient from the ground rgb, 0
+SU_GROUND_AMB :: 24;        // ambient from the ground rgb, flat: how much a tall shape darkens toward its foot
 SU_BANDS :: 28;             // edge 0, edge 1, softness, the mid band's value
 SU_BANDS2 :: 32;            // characters' edge, its softness, the dab's R.L cut, the dab's strength
 SU_HAZE :: 36;              // start (m), density (1/m, the tier's applied), cap, height falloff (m)
@@ -44,7 +45,7 @@ SU_CLOUDS :: 60;            // cover (0 to 0.6), height (m), drift (m/s), octave
 SU_CLOUDS2 :: 64;           // first scale (1/m), second scale (1/m), cut low, cut high
 SU_CLOUD_TOP :: 68;         // the clouds' lit top rgb, the underside's shadow tint factor
 SU_TONE :: 72;              // exposure, saturation, black lift, 1 when the post pass tones
-SU_BLOOM :: 76;             // threshold, soft knee, mix, 0
+SU_BLOOM :: 76;             // threshold, soft knee, mix, flat: the steps of that gradient
 SU_SHAFTS :: 80;            // samples, decay, weight, the frame-edge margin
 SU_SHADOW :: 84;            // shadow map size (texels), PCF taps, PCF radius (texels), how far the shadow band cools toward the tint
 SU_GRASS :: 88;             // blades per m2, radius (m), fade (m), least height (m)
@@ -112,6 +113,9 @@ StylePreset :: struct {
   sparkle_grid: f32; sparkle_angle: f32; twinkle: f32; foam_line: f32;
   // outlines
   outline_max: f32;
+  // flat: its palette (verse/style.coax FLAT_*, -1 for the other styles), a hem trim's width (m),
+  // how far a tall shape darkens toward its foot and in how many dithered steps
+  palette: int; hem_width: f32; dither_dark: f32; dither_steps: f32;
 }
 
 sk_light :: (kr: f32, kg: f32, kb: f32, ks: f32, rr: f32, rg: f32, rb: f32, rs: f32) -> StyleKey {
@@ -195,11 +199,80 @@ lowpoly_key :: () -> StyleKey {
   return k;
 }
 
-/** The preset of `style` (STYLE_LOWPOLY, STYLE_PAINTERLY, STYLE_PHOTOREAL) for
- *  `tier` (STYLE_DESKTOP, STYLE_PHONE). Photoreal has none yet: ok is false. */
+// Flat's key at clock key i (0 midnight, 1 dawn, 2 noon, 3 dusk) in `palette`'s colours
+// (verse/style.coax verse_style_flat_colour), with what the time does to them (verse_style_flat_time):
+// the key is the palette's lit light and the shadow tint its dark tone's; the ambient is one flat
+// colour, the same from the sky and the ground; the sky is the palette's flat colour over its horizon
+// band, and the haze slots hold the one far fade into the horizon colour.
+flat_rgb :: (palette: int, slot: int, i: int, ch: int) -> f32 {
+  dusk := ifx i == 1 || i == 3 then 1.0f32 else 0.0f32;
+  night := ifx i == 0 then 1.0f32 else 0.0f32;
+  return verse_style_flat_colour(f32(palette), f32(slot), f32(ch)) * verse_style_flat_time(f32(palette), f32(ch), dusk, night);
+}
+flat_key :: (palette: int, i: int) -> StyleKey {
+  k: StyleKey;
+  k = sk_light(flat_rgb(palette, FLAT_LIT, i, 0), flat_rgb(palette, FLAT_LIT, i, 1), flat_rgb(palette, FLAT_LIT, i, 2), 1.0, 0, 0, 0, 0);
+  k.tint_r = flat_rgb(palette, FLAT_SHADE, i, 0); k.tint_g = flat_rgb(palette, FLAT_SHADE, i, 1); k.tint_b = flat_rgb(palette, FLAT_SHADE, i, 2);
+  k.sky_r = k.tint_r; k.sky_g = k.tint_g; k.sky_b = k.tint_b; k.ambient = 1.0;
+  k.ground_r = k.tint_r; k.ground_g = k.tint_g; k.ground_b = k.tint_b;
+  k.haze_start = 40; k.haze_density = 1.0 / 80.0; k.haze_cap = 0.5; k.haze_falloff = 1000;   // the fade: from 40 m over 80 m, to half
+  k.haze_r = flat_rgb(palette, FLAT_HORIZON, i, 0); k.haze_g = flat_rgb(palette, FLAT_HORIZON, i, 1); k.haze_b = flat_rgb(palette, FLAT_HORIZON, i, 2);
+  k.hkey_r = k.haze_r; k.hkey_g = k.haze_g; k.hkey_b = k.haze_b;
+  k.zenith_r = flat_rgb(palette, FLAT_SKY, i, 0); k.zenith_g = flat_rgb(palette, FLAT_SKY, i, 1); k.zenith_b = flat_rgb(palette, FLAT_SKY, i, 2);
+  k.horizon_r = k.haze_r; k.horizon_g = k.haze_g; k.horizon_b = k.haze_b;
+  k.cloud_r = flat_rgb(palette, FLAT_LIGHT, i, 0); k.cloud_g = flat_rgb(palette, FLAT_LIGHT, i, 1); k.cloud_b = flat_rgb(palette, FLAT_LIGHT, i, 2);
+  k.exposure = 1.0; k.shaft_weight = 0;
+  return k;
+}
+
+/** Flat (docs/verse/art-styles.md, Flat) in `palette` (FLAT_CEMETERY, FLAT_GARDEN) for `tier`:
+ *  three hard tones, no specular, no rim and no outline, a flat sky and a flat translucent
+ *  shadow, no post pass but a little bloom on what glows. The realm's palette is its own. */
+verse_style_flat :: (palette: int, tier: int) -> StylePreset {
+  p: StylePreset;
+  p.style = STYLE_FLAT; p.tier = ifx tier == STYLE_PHONE then STYLE_PHONE else STYLE_DESKTOP;
+  on_phone := p.tier == STYLE_PHONE;
+  if palette < 0 || palette >= FLAT_PALETTES { p.ok = false; p.palette = -1; return p; }
+  p.ok = true; p.palette = palette;
+  for i: 0..<STYLE_KEYS { p.keys[i] = flat_key(palette, i); }
+  p.sun_azimuth = 0.6; p.sun_low = -20 * DEG; p.sun_high = 60 * DEG; p.moon_below = -6 * DEG;
+  p.band_e0 = 0.38; p.band_e1 = 0.62; p.band_soft = 0.01; p.band_mid = 0.5;      // verse_style_flat_band
+  p.char_edge = 0.45; p.char_soft = 0.01;                                         // verse_style_flat_band2
+  p.dab_cut = 2; p.dab_strength = 0;                                              // no specular, not even a dab
+  p.rim_world = 0; p.rim_char = 0; p.rim_start = 0.38; p.rim_full = 0.12;
+  p.blob = 0.45;                                                                  // a flat shadow's strength
+  p.haze_height_mix = 0; p.haze_glow = 0; p.haze_tier = 1;
+  p.sky_lift = 1; p.sky_power = 1;                                                // verse_style_flat_sky: the band all the way to the horizon colour
+  p.sun_disc = 1.5 * DEG;                                                         // a flat disc, no halo, no clouds
+  p.toned = 0; p.saturation = 1; p.black_lift = 0;                                // the palette shows as it is
+  p.bloom_threshold = 0.9; p.bloom_knee = 0.1; p.bloom_mix = 0.12;               // only what glows
+  p.shaft_decay = 0.94;
+  p.shadow_size = 0; p.shadow_cool = 0;                                           // no map: flat shapes on the ground
+  // a few short tufts where painterly has a field of blades
+  p.grass_density = ifx on_phone then 2.0 else 4.0; p.grass_radius = ifx on_phone then 18.0 else 32.0; p.grass_fade = 6;
+  p.grass_low = 0.15; p.grass_high = 0.29; p.grass_width = 0.08; p.grass_tip = 0; p.grass_jitter = 0;
+  p.wind_amp = 0.08; p.wind_wavelength = 12; p.wind_speed = 3; p.wind_gust = 1.0 / 25.0;
+  p.wind_x = 0.8; p.wind_z = 0.6; p.wind_tilt = 0; p.parting = 0.7;
+  p.canopy_mix = 0; p.sway = 0.03; p.canopy_gap = 0; p.grass_near = 0;
+  // water in two flat bands of the palette's water, no sparkle, a flat foam line
+  wr := verse_style_flat_colour(f32(palette), f32(FLAT_WATER), 0); wg := verse_style_flat_colour(f32(palette), f32(FLAT_WATER), 1); wb := verse_style_flat_colour(f32(palette), f32(FLAT_WATER), 2);
+  p.shallow_r = wr; p.shallow_g = wg; p.shallow_b = wb; p.shallow_depth = 0.4;
+  p.mid_r = wr * 0.78; p.mid_g = wg * 0.78; p.mid_b = wb * 0.78; p.mid_depth = 1.5;
+  p.deep_r = wr * 0.6; p.deep_g = wg * 0.6; p.deep_b = wb * 0.6; p.water_soft = 0.01;
+  p.sparkle_grid = 0; p.sparkle_angle = 0; p.twinkle = 0; p.foam_line = 0.25;
+  p.outline_max = 0;
+  p.hem_width = 0.06; p.dither_dark = 0.25; p.dither_steps = 4;
+  return p;
+}
+
+/** The preset of `style` (STYLE_LOWPOLY, STYLE_PAINTERLY, STYLE_PHOTOREAL, STYLE_FLAT) for
+ *  `tier` (STYLE_DESKTOP, STYLE_PHONE). Photoreal has none yet: ok is false. Flat comes in a
+ *  realm's palette (verse_style_flat); here it is the garden's. */
 verse_style_preset :: (style: int, tier: int) -> StylePreset {
+  if style == STYLE_FLAT { return verse_style_flat(FLAT_GARDEN, tier); }
   p: StylePreset;
   p.style = style; p.tier = ifx tier == STYLE_PHONE then STYLE_PHONE else STYLE_DESKTOP;
+  p.palette = -1;
   on_phone := p.tier == STYLE_PHONE;
   if style != STYLE_LOWPOLY && style != STYLE_PAINTERLY { p.ok = false; return p; }
   p.ok = true;
@@ -303,10 +376,10 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   put4(out, SU_KEY, k.key_r, k.key_g, k.key_b, k.key_strength);
   put4(out, SU_KEY_DIR, sx, sy, sz, ifx moon then 1.0 else 0.0);
   put4(out, SU_RIM, k.rim_r, k.rim_g, k.rim_b, p.rim_world * k.rim_scale);
-  put4(out, SU_RIM2, p.rim_char * k.rim_scale, p.rim_start, p.rim_full, 0);
+  put4(out, SU_RIM2, p.rim_char * k.rim_scale, p.rim_start, p.rim_full, p.hem_width);
   put4(out, SU_TINT, k.tint_r, k.tint_g, k.tint_b, p.blob);
   put4(out, SU_SKY_AMB, k.sky_r, k.sky_g, k.sky_b, k.ambient);
-  put4(out, SU_GROUND_AMB, k.ground_r, k.ground_g, k.ground_b, 0);
+  put4(out, SU_GROUND_AMB, k.ground_r, k.ground_g, k.ground_b, p.dither_dark);
   put4(out, SU_BANDS, p.band_e0, p.band_e1, p.band_soft, p.band_mid);
   put4(out, SU_BANDS2, p.char_edge, p.char_soft, p.dab_cut, p.dab_strength);
   put4(out, SU_HAZE, k.haze_start, k.haze_density * p.haze_tier, k.haze_cap, k.haze_falloff);
@@ -320,7 +393,7 @@ verse_style_at :: (p: StylePreset, clock: f32, out: [] f32) -> bool {
   put4(out, SU_CLOUDS2, p.cloud_scale1, p.cloud_scale2, p.cloud_cut_lo, p.cloud_cut_hi);
   put4(out, SU_CLOUD_TOP, k.cloud_r, k.cloud_g, k.cloud_b, p.cloud_under);
   put4(out, SU_TONE, k.exposure, p.saturation, p.black_lift, p.toned);
-  put4(out, SU_BLOOM, p.bloom_threshold, p.bloom_knee, p.bloom_mix, 0);
+  put4(out, SU_BLOOM, p.bloom_threshold, p.bloom_knee, p.bloom_mix, p.dither_steps);
   put4(out, SU_SHAFTS, p.shaft_samples, p.shaft_decay, k.shaft_weight, p.shaft_margin);
   put4(out, SU_SHADOW, p.shadow_size, p.shadow_taps, p.shadow_radius, p.shadow_cool);
   put4(out, SU_GRASS, p.grass_density, p.grass_radius, p.grass_fade, p.grass_low);
@@ -598,4 +671,95 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
     for n: 0..<STYLE_KEYED { j := STYLE_KEYED_AT[n]; #assert abs(b[j] - a[j]) <= abs(k1[j] - k0[j]) / 50.0 + 0.0001; }
     for j: 0..<STYLE_FLOATS { a[j] = b[j]; }
   }
+}
+
+// ---- flat (art-styles.md, Flat)
+sp_flat_lum :: (p: StylePreset, slot: int) -> f32 {
+  f := f32(p.palette);
+  return verse_style_luma(verse_style_flat_colour(f, f32(slot), 0), verse_style_flat_colour(f, f32(slot), 1), verse_style_flat_colour(f, f32(slot), 2));
+}
+#test "flat: three hard tones from the preset's own edges, two for characters, on both tiers" {
+  for t: 0..<2 {
+    p := verse_style_flat(FLAT_CEMETERY, t);
+    #assert p.ok && p.style == STYLE_FLAT && p.band_soft <= 0.01 && p.char_soft <= 0.01;
+    o: [STYLE_FLOATS] f32;
+    #assert verse_style_at(p, 0.5, o[..]);
+    for i: 0..<1001 {
+      w := f32(i) / 1000.0;
+      b := verse_style_bands(w, o[SU_BANDS], o[SU_BANDS + 1], o[SU_BANDS + 2], o[SU_BANDS + 3]);
+      #assert sp_near(b, verse_style_flat_band(w));   // the generated function is the preset
+      if abs(w - p.band_e0) > 0.011 && abs(w - p.band_e1) > 0.011 { #assert b == 0 || sp_near(b, 0.5) || b == 1; }
+      c := verse_style_bands2(w, o[SU_BANDS2], o[SU_BANDS2 + 1]);
+      #assert sp_near(c, verse_style_flat_band2(w));
+      if abs(w - p.char_edge) > 0.011 { #assert c == 0 || c == 1; }
+    }
+  }
+}
+#test "flat: no specular, no rim, no outline, no shafts, no clouds, no tone curve, at every hour" {
+  for pal: 0..<FLAT_PALETTES { for t: 0..<2 {
+    p := verse_style_flat(pal, t);
+    #assert p.dab_strength == 0 && verse_style_dab(1.0, p.dab_cut, p.dab_strength) == 0 && p.sparkle_angle == 0;
+    o: [STYLE_FLOATS] f32;
+    for c: 0..<24 {
+      #assert verse_style_at(p, f32(c) / 24.0, o[..]);
+      #assert o[SU_RIM + 3] == 0 && o[SU_RIM2] == 0 && o[SU_STYLE] == 0 && o[SU_SHAFTS + 2] == 0 && o[SU_CLOUDS] == 0;
+      #assert o[SU_TONE + 3] == 0 && o[SU_TONE] == 1 && o[SU_TONE + 1] == 1 && o[SU_TONE + 2] == 0;
+      #assert o[SU_SHADOW] == 0 && o[SU_FOLIAGE + 3] == 0 && o[SU_STYLE + 1] == f32(STYLE_FLAT);
+      // the ambient is one flat colour: as much from the ground as from the sky
+      for k: 0..<3 { #assert o[SU_SKY_AMB + k] == o[SU_GROUND_AMB + k]; }
+      #assert verse_style_rim(0.0, 1.0, o[SU_RIM2 + 1], o[SU_RIM2 + 2], o[SU_RIM + 3]) == 0;
+    }
+  } }
+  // painterly keeps its own: rim, dab, bands and outlines as before
+  q := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
+  #assert q.palette == -1 && q.rim_world == 0.30 && q.dab_strength == 0.35 && q.band_e0 == 0.20 && q.outline_max == 0.35 && q.hem_width == 0;
+}
+#test "flat: each realm its own palette; the cemetery's is night all day, the garden's turns" {
+  c := verse_style_flat(FLAT_CEMETERY, STYLE_DESKTOP); g := verse_style_flat(FLAT_GARDEN, STYLE_DESKTOP);
+  a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
+  // the cemetery: a dusty blue sky (blue the most, never saturated), near-black, ivory, a gold accent
+  #assert verse_style_at(c, 0.0, a[..]) && verse_style_at(c, 0.5, b[..]);
+  for i: 0..<STYLE_FLOATS - 4 { #assert a[i] == b[i] || (i >= SU_KEY_DIR && i < SU_KEY_DIR + 4) || (i >= SU_SUN && i < SU_SUN + 4); }
+  sky_r := verse_style_flat_srgb(0, FLAT_SKY, 0); sky_g := verse_style_flat_srgb(0, FLAT_SKY, 1); sky_b := verse_style_flat_srgb(0, FLAT_SKY, 2);
+  #assert sky_b > sky_g && sky_g > sky_r && sky_b - sky_r < 0.3 && sky_r > 0.25;
+  #assert sp_near(a[SU_ZENITH], pow(sky_r, 2.2)) && sp_near(a[SU_ZENITH + 2], pow(sky_b, 2.2));
+  #assert sp_flat_lum(c, FLAT_DARK) < 0.015 && sp_flat_lum(c, FLAT_LIGHT) > 0.7 && sp_flat_lum(c, FLAT_FOLIAGE) < 0.03;
+  #assert verse_style_flat_srgb(0, FLAT_LIGHT, 0) >= verse_style_flat_srgb(0, FLAT_LIGHT, 2);           // ivory, not blue-white
+  #assert verse_style_flat_srgb(0, FLAT_ACCENT, 0) > verse_style_flat_srgb(0, FLAT_ACCENT, 1) && verse_style_flat_srgb(0, FLAT_ACCENT, 1) > verse_style_flat_srgb(0, FLAT_ACCENT, 2);   // gold
+  // the garden: olive and lime greens, cattail orange, pale mint, lavender, a soft sky
+  for slot: 0..<3 {
+    f := ifx slot == 0 then FLAT_FOLIAGE else ifx slot == 1 then FLAT_FOLIAGE2 else FLAT_GROUND;
+    #assert verse_style_flat_srgb(1, f32(f), 1) > verse_style_flat_srgb(1, f32(f), 0) && verse_style_flat_srgb(1, f32(f), 0) > verse_style_flat_srgb(1, f32(f), 2);
+  }
+  #assert verse_style_flat_srgb(1, FLAT_WARM, 0) > 0.8 && verse_style_flat_srgb(1, FLAT_WARM, 0) > verse_style_flat_srgb(1, FLAT_WARM, 1) && verse_style_flat_srgb(1, FLAT_WARM, 1) > verse_style_flat_srgb(1, FLAT_WARM, 2);
+  #assert verse_style_flat_srgb(1, FLAT_MINT, 1) > verse_style_flat_srgb(1, FLAT_MINT, 2) && verse_style_flat_srgb(1, FLAT_MINT, 2) > verse_style_flat_srgb(1, FLAT_MINT, 0) && sp_flat_lum(g, FLAT_MINT) > 0.6;
+  #assert verse_style_flat_srgb(1, FLAT_LAVENDER, 2) > verse_style_flat_srgb(1, FLAT_LAVENDER, 0) && verse_style_flat_srgb(1, FLAT_LAVENDER, 0) > verse_style_flat_srgb(1, FLAT_LAVENDER, 1);
+  #assert sp_flat_lum(g, FLAT_SKY) > 0.5 && sp_flat_lum(g, FLAT_DARK) < 0.02;
+  // the two are not the same palette
+  differ := 0;
+  for slot: 0..<FLAT_SLOTS { for ch: 0..<3 { if abs(verse_style_flat_srgb(0, f32(slot), f32(ch)) - verse_style_flat_srgb(1, f32(slot), f32(ch))) > 0.1 { differ += 1; } } }
+  #assert differ > FLAT_SLOTS;
+  // the garden: its palette at noon, warmer at dusk, a blue dusk at night
+  #assert verse_style_at(g, 0.5, a[..]);
+  #assert sp_near(a[SU_ZENITH + 1], pow(verse_style_flat_srgb(1, FLAT_SKY, 1), 2.2)) && sp_near(a[SU_KEY], 1.0);
+  #assert verse_style_at(g, 0.0, b[..]);
+  #assert b[SU_ZENITH] < a[SU_ZENITH] * 0.3 && b[SU_ZENITH + 2] > b[SU_ZENITH] && b[SU_KEY + 2] > b[SU_KEY];
+  #assert verse_style_at(g, 0.75, b[..]) && b[SU_KEY] / b[SU_KEY + 2] > a[SU_KEY] / a[SU_KEY + 2];
+  // every slot of both is a colour (0 to 1), and only FLAT_SLOTS of them
+  for pal: 0..<FLAT_PALETTES { for slot: 0..<FLAT_SLOTS { for ch: 0..<3 { v := verse_style_flat_srgb(f32(pal), f32(slot), f32(ch)); #assert v >= 0 && v <= 1; } } }
+  #assert !verse_style_flat(2, STYLE_DESKTOP).ok && !verse_style_flat(-1, STYLE_DESKTOP).ok;
+  #assert verse_style_preset(STYLE_FLAT, STYLE_DESKTOP).ok && verse_style_preset(STYLE_FLAT, STYLE_DESKTOP).palette == FLAT_GARDEN;
+}
+#test "flat: the hem, the dither, flat shadows and the phone's fewer tufts" {
+  d := verse_style_flat(FLAT_GARDEN, STYLE_DESKTOP); f := verse_style_flat(FLAT_GARDEN, STYLE_PHONE);
+  o: [STYLE_FLOATS] f32;
+  #assert verse_style_at(d, 0.5, o[..]);
+  #assert sp_near(o[SU_RIM2 + 3], 0.06) && sp_near(o[SU_GROUND_AMB + 3], 0.25) && o[SU_BLOOM + 3] == 4;
+  #assert verse_style_flat_hem(0.0, o[SU_RIM2 + 3], 0.005) == 1 && verse_style_flat_hem(0.2, o[SU_RIM2 + 3], 0.005) == 0;
+  #assert o[SU_TINT + 3] == 0.45 && verse_style_flat_shadow(0.5) == 1;
+  #assert d.grass_density == 4 && f.grass_density == 2 && f.grass_radius < d.grass_radius && d.grass_high < 0.3;
+  // the same look on both: bands, palette and tone
+  b: [STYLE_FLOATS] f32;
+  #assert verse_style_at(f, 0.5, b[..]);
+  for i: 0..<4 { #assert o[SU_BANDS + i] == b[SU_BANDS + i] && o[SU_TINT + i] == b[SU_TINT + i] && o[SU_TONE + i] == b[SU_TONE + i] && o[SU_ZENITH + i] == b[SU_ZENITH + i]; }
 }

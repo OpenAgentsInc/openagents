@@ -1,20 +1,21 @@
-// Fairy Forest's passes in the painterly style (docs/verse/art-styles.md):
-// the painted sky, the scene (the ground of cells, every shape, the
-// wind-swept grass), the stream in the painted water preset, then the post
-// pass (gentle bloom, the soft tone curve, lifted blacks) and the HUD. Every
-// number comes from fairy.coax; the shading curves are verse/paint.coax's,
-// generated below. Light is linear until the post pass encodes it.
+// Fairy Forest's passes in the flat style (docs/verse/art-styles.md, Flat):
+// a flat sky over a soft horizon band, the scene in three flat tones (two for
+// characters) with flat translucent shadows, a few short tufts where the
+// meadow is, the stream in flat bands, then a post pass that blooms only what
+// glows, and the HUD. No specular, no rim, no outline, no tone curve. Every
+// number of the scene comes from fairy.coax; the shading curves and the
+// palette (FLAT_GARDEN: olive and lime, cattail orange, pale mint, lavender,
+// cream) are verse/style.coax's, generated below. Light is linear until the
+// post pass encodes it.
 //
 // The fade (verse/fairy-forest/forest.coax): colour is drained most of the
-// way to a cool grey of the same lightness (desaturated, never whitened)
-// everywhere but inside the bloom circles, which spread out from what you
-// restore; a circle's young front glows a moment.
+// way (four tenths) to a pale grey-green of the same lightness everywhere but inside the
+// bloom circles, which spread out from what you restore; a circle's young
+// front glows a moment.
 //
-// The palette is a clear, saturated daytime: yellow-green grass, rich
-// mid-green crowns, a teal-blue sky warming to cream round the sun, and a
-// haze only in the distance, teal in the middle distance shifting to
-// blue-violet far off. Its numbers are Fairy Forest's own, not the shared
-// painterly presets'.
+// Every shape's colour is drawn toward the palette's nearest (snap, in the
+// vertex stage, once a vertex): the realm keeps its shapes and the palette
+// decides their colours.
 
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, plates: f32, k: f32, you_z: f32,
@@ -35,32 +36,25 @@ struct U {
 }
 @group(0) @binding(0) var<uniform> u: U;
 
-// The painterly day key (art-styles.md 3 to 5): key, ambient, shadow tint, haze, sky.
-const KEY = vec3f(1.0, 0.95, 0.84);
-const SKY_AMB = vec3f(0.50, 0.68, 0.82);
-const GROUND_AMB = vec3f(0.42, 0.42, 0.24);
-const SHADOW_TINT = vec3f(0.46, 0.60, 0.86);
-const HAZE = vec3f(0.50, 0.78, 0.80);       // the horizon and the middle distance's haze: teal
-const HAZE_FAR = vec3f(0.52, 0.56, 0.86);   // the far haze: blue-violet
-const HAZE_KEY = vec3f(1.0, 0.90, 0.68);    // toward the sun: warm cream
-const ZENITH = vec3f(0.14, 0.46, 0.74);     // teal-blue overhead
-const HAZE_FROM = 28.0;                     // m: nothing nearer is hazed
-const RIM_DAY = vec3f(1.0, 0.84, 0.60);
-
-// Through the day (fairy.coax U_NIGHT, verse/fairy-forest/night.coax): the
-// day's numbers above at noon, warm and low at dawn and dusk, and by night a
-// moonlit blue: a cool key from the moon, a deep blue sky with stars, the
-// haze a dark blue so the lights carry.
-fn by_time(day: vec3f, dusk: vec3f, night: vec3f) -> vec3f { return mix(mix(day, dusk, u.night.y), night, u.night.x); }
-fn key_c() -> vec3f { return by_time(KEY, vec3f(1.0, 0.66, 0.40) * 0.9, vec3f(0.45, 0.56, 1.0) * 0.3); }
-fn sky_amb() -> vec3f { return by_time(SKY_AMB, vec3f(0.58, 0.52, 0.60), vec3f(0.12, 0.17, 0.38)); }
-fn ground_amb() -> vec3f { return by_time(GROUND_AMB, vec3f(0.42, 0.34, 0.26), vec3f(0.05, 0.06, 0.10)); }
-fn shadow_tint() -> vec3f { return by_time(SHADOW_TINT, vec3f(0.36, 0.56, 0.66), vec3f(0.34, 0.42, 0.74)); }
-fn haze_c() -> vec3f { return by_time(HAZE, vec3f(0.90, 0.60, 0.38), vec3f(0.05, 0.08, 0.20)); }
-fn haze_far() -> vec3f { return by_time(HAZE_FAR, vec3f(0.62, 0.46, 0.62), vec3f(0.05, 0.06, 0.17)); }
-fn haze_key() -> vec3f { return by_time(HAZE_KEY, vec3f(1.0, 0.62, 0.34), vec3f(0.36, 0.42, 0.66)); }
-fn zenith() -> vec3f { return by_time(ZENITH, vec3f(0.22, 0.30, 0.58), vec3f(0.015, 0.03, 0.10)); }
-fn rim_c() -> vec3f { return by_time(RIM_DAY, vec3f(1.0, 0.62, 0.40), vec3f(0.50, 0.62, 1.0)); }
+// The palette's slots (verse/style.coax FLAT_*), linear.
+const PALETTE = 1.0;   // FLAT_GARDEN
+const P_SKY = 0.0; const P_HORIZON = 1.0; const P_GROUND = 2.0; const P_GROUND2 = 3.0; const P_PATH = 4.0;
+const P_LIT = 5.0; const P_SHADE = 6.0; const P_SHADOW = 7.0; const P_ACCENT = 8.0; const P_DARK = 9.0;
+const P_LIGHT = 10.0; const P_FOLIAGE = 11.0; const P_FOLIAGE2 = 12.0; const P_WATER = 13.0; const P_WOOD = 14.0;
+const P_WARM = 15.0; const P_MINT = 16.0; const P_ROCK = 17.0; const P_LAVENDER = 18.0; const P_SAGE = 19.0;
+fn pal(slot: f32) -> vec3f {
+  return vec3f(verse_style_flat_colour(PALETTE, slot, 0.0), verse_style_flat_colour(PALETTE, slot, 1.0), verse_style_flat_colour(PALETTE, slot, 2.0));
+}
+// Through the day (fairy.coax U_NIGHT, verse/fairy-forest/night.coax): the palette at noon, warmer at
+// dawn and dusk, a blue dusk by night (verse_style_flat_time).
+fn by_time() -> vec3f {
+  return vec3f(verse_style_flat_time(PALETTE, 0.0, u.night.y, u.night.x), verse_style_flat_time(PALETTE, 1.0, u.night.y, u.night.x), verse_style_flat_time(PALETTE, 2.0, u.night.y, u.night.x));
+}
+fn tp(slot: f32) -> vec3f { return pal(slot) * by_time(); }
+// The flat preset's numbers (verse/style-preset.coax verse_style_flat): the far fade, the hem, a tall
+// shape's dithered darkening toward its foot and its steps.
+const FADE_FROM = 40.0; const FADE_OVER = 80.0; const FADE_CAP = 0.5;
+const HEM = 0.06; const DITHER = 0.25; const DITHER_STEPS = 4.0;
 const TAU = 6.2831853;
 
 struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
@@ -81,40 +75,19 @@ fn noise(p: vec2f) -> f32 {
 }
 fn sun_dir() -> vec3f { return normalize(u.sun.xyz); }
 
-// The painted sky along d: the gradient by the ray's elevation, the horizon
-// band lifted toward the haze, the sun with its halo and soft two-tone clouds.
-fn sky_colour(d: vec3f, clouds: bool) -> vec3f {
+// The flat sky along d: one colour over a soft band of the horizon's, the sun (or by night the
+// moon) a flat disc, and by night a few flat stars.
+fn sky_colour(d: vec3f) -> vec3f {
   let up = d.y;
-  var c = mix(haze_c(), zenith(), verse_paint_sky_mix(max(up, 0.0)));
-  c = mix(c, haze_c() * 1.08, verse_paint_sky_band(up));
-  let l = sun_dir();
-  let cs = dot(d, l);
-  // the horizon warms to cream toward the sun, and a warm bloom rings it
-  c = mix(c, haze_key() * 1.1, pow(max(cs, 0.0), 6.0) * (1.0 - smoothstep(0.0, 0.5, up)) * 0.8);
-  c += mix(haze_key(), vec3f(1.0, 0.97, 0.9), 0.5) * verse_paint_halo(cs) * 0.8 * (1.0 - 0.7 * u.night.x);
-  // the disc, drawn at 2 degrees: the sun, or by night the pale moon
-  if (cs > 0.99939) { c = mix(vec3f(1.0, 0.97, 0.9) * 4.0, vec3f(0.86, 0.9, 1.0) * 1.8, u.night.x); }
-  // the stars, by night: a few bright points on a fine grid of the sky, twinkling
+  var c = mix(tp(P_SKY), tp(P_HORIZON), verse_style_flat_sky(up));
+  let cs = dot(d, sun_dir());
+  if (cs > 0.99966) { c = mix(pal(P_LIGHT) * 1.1, pal(P_LIGHT) * 0.8, u.night.x); }
   if (u.night.x > 0.0 && up > 0.02) {
-    let q = d / max(abs(d.x), max(abs(d.y), abs(d.z))) * 260.0;
+    let q = d / max(abs(d.x), max(abs(d.y), abs(d.z))) * 160.0;
     let cell = floor(q);
     let h = hash(cell.xy + cell.yz * 7.13 + cell.zx * 3.71);
-    let f = fract(q) - vec3f(0.5);
-    let point = 1.0 - smoothstep(0.08, 0.3, length(f));
-    let twinkle = 0.6 + 0.4 * sin(u.time * (1.0 + h * 3.0) + h * 40.0);
-    c += vec3f(0.9, 0.93, 1.0) * point * step(0.985, h) * twinkle * u.night.x * smoothstep(0.02, 0.25, up) * 1.4;
-  }
-  if (clouds && up > 0.01) {
-    let drift = vec2f(u.time * 3.0, u.time * 1.2) * (1.0 - u.still);
-    let p = d.xz / up * 1500.0 + drift;
-    // the engine's clouds (verse/style.coax): two octaves, one on a phone
-    let octaves = select(1.0, 2.0, u.sun.w < 0.5);
-    let n = verse_style_cloud_field(p.x, p.y, 1.0 / 2000.0, 1.0 / 700.0, octaves);
-    let cover = verse_style_cloud_cover(n, 0.35, 0.48, 0.62);
-    let toward = normalize(l.xz + vec2f(0.0001)) * 260.0;
-    let lit = verse_style_cloud_lit(n, verse_style_cloud_field(p.x + toward.x, p.y + toward.y, 1.0 / 2000.0, 1.0 / 700.0, 1.0));
-    let cloud = mix(shadow_tint() * 1.4 * 0.9, by_time(vec3f(1.0, 0.98, 0.95) * 1.15, vec3f(1.0, 0.72, 0.56), vec3f(0.2, 0.24, 0.4)), lit) * (1.0 - 0.55 * u.night.x);
-    c = mix(c, cloud, cover * verse_style_cloud_fade(up));
+    let point = 1.0 - smoothstep(0.12, 0.2, length(fract(q) - vec3f(0.5)));
+    c = mix(c, pal(P_LIGHT) * 0.8, point * step(0.99, h) * u.night.x);
   }
   return c;
 }
@@ -135,42 +108,17 @@ fn restored(xz: vec2f) -> vec2f {
   }
   return vec2f(best, front);
 }
-// The faded world: the painted colour drained to a pale, cool grey.
+// The faded world: the colour drained to a pale grey-green of its lightness.
 fn faded(c: vec3f, r: f32) -> vec3f {
-  let l = dot(c, vec3f(0.3, 0.55, 0.15));
-  let grey = vec3f(l) * vec3f(0.92, 0.99, 1.02) * 0.84;
-  return mix(mix(grey, c, 0.45), c, r);
-}
-
-// The faded world at a place: still drained and cool, but in broken washes
-// and dabs of value (light straw, blue-grey shadow) instead of one flat tone.
-fn faded_at(c: vec3f, r: f32, world: vec3f) -> vec3f {
   if (r >= 1.0) { return c; }
-  let q = world.xz + vec2f(world.y * 0.7, -world.y * 0.4);
-  let broad = noise(q * 0.07);
-  let mid = noise(q * 0.31 + vec2f(7.0, 3.0));
-  let dab = noise(q * 1.9 + vec2f(1.0, 5.0));
   let l = dot(c, vec3f(0.3, 0.55, 0.15));
-  let value = 0.52 + 0.72 * smoothstep(0.2, 0.8, broad) + 0.4 * (mid - 0.5) + 0.3 * (dab - 0.5);
-  let warm = smoothstep(0.3, 0.7, noise(q * 0.045 + vec2f(3.0, 9.0)));
-  let tone = mix(vec3f(0.74, 0.86, 1.08), vec3f(1.06, 0.97, 0.76), warm);
-  let grey = vec3f(l) * tone * 0.86 * value;
-  let kept = mix(grey, c * value, 0.38);
-  return mix(kept, c, r);
+  let grey = vec3f(l) * vec3f(0.97, 1.0, 0.93) * 0.92;
+  return mix(mix(grey, c, 0.6), c, r);
 }
 
-// The haze over a surface at world seen from the eye.
-// It starts HAZE_FROM past the shared curve's own start, so the near and
-// middle distance stay crisp, and it shifts from teal to blue-violet far off.
-fn haze_colour(d: f32, to_sun: f32) -> vec3f {
-  let far = mix(haze_c(), haze_far(), smoothstep(60.0, 220.0, d));
-  return mix(far, haze_key(), verse_paint_haze_sun(to_sun));
-}
+// Far off, a surface goes over to the horizon colour: one soft fade, no fog layers.
 fn hazed(c: vec3f, world: vec3f) -> vec3f {
-  let to = world - u.eye.xyz;
-  let d = length(to);
-  let f = verse_paint_haze(max(d - HAZE_FROM, 0.0), world.y - 0.0, u.eye.w) * 0.85;
-  return mix(c, haze_colour(d, dot(to / max(d, 0.001), sun_dir())), f);
+  return mix(c, tp(P_HORIZON), verse_style_flat_fade(length(world - u.eye.xyz), FADE_FROM, FADE_OVER, FADE_CAP));
 }
 
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
@@ -205,8 +153,8 @@ fn encode(c: vec3f) -> vec3f { return pow(clamp(c, vec3f(0.0), vec3f(1.0)), vec3
 }
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let d = ray(pos.xy);
-  let c = sky_colour(d, true);
-  let share = select(0.0, 0.7, dot(d, sun_dir()) > 0.9993);
+  let c = sky_colour(d);
+  let share = select(0.0, 0.3, dot(d, sun_dir()) > 0.99966);
   return Lit(vec4f(c, share), vec4f(0.0));
 }
 
@@ -222,6 +170,7 @@ struct S {
   @location(2) tint: vec3f,
   @location(3) @interpolate(flat) look: u32,
   @location(4) local: vec3f,     // where on its shape (a unit shape, -0.5 to 0.5): a wing's veins
+  @location(5) @interpolate(flat) size: vec2f,   // its height (m), how tall it reads (0 to 1)
 }
 
 fn quad(v: u32) -> vec2f {
@@ -318,15 +267,32 @@ fn path_distance(p: vec2f) -> f32 {
   }
   return d;
 }
+// The cast shadows, flat translucent shapes: the light left (1 none, 0 all), the deepest where they overlap.
 fn blob_shadows(p: vec2f) -> f32 {
-  var s = 1.0;
+  var s = 0.0;
   for (var i = 0; i < 16; i++) {
     let b = u.shadow[i];
     if (b.z <= 0.0) { break; }
-    let d = length(p - b.xy) / b.z;
-    s *= 1.0 - b.w * (1.0 - smoothstep(0.35, 1.0, d));
+    s = max(s, verse_style_flat_shadow(length(p - b.xy) / b.z) * min(b.w * 1.4, 1.0));
   }
-  return s;
+  return 1.0 - s;
+}
+
+// A shape's colour drawn `k` of the way to the palette's nearest (by sRGB-ish distance).
+fn near(q: vec3f, slot: f32, best: vec4f) -> vec4f {
+  let p = pal(slot);
+  let e = sqrt(p) - q;
+  let dd = dot(e, e);
+  return select(best, vec4f(slot, dd, 0.0, 0.0), dd < best.y);
+}
+fn snap(c: vec3f, k: f32) -> vec3f {
+  let q = sqrt(max(c, vec3f(0.0)));
+  var b = vec4f(P_GROUND, 1e9, 0.0, 0.0);
+  b = near(q, P_GROUND, b); b = near(q, P_GROUND2, b); b = near(q, P_PATH, b); b = near(q, P_DARK, b);
+  b = near(q, P_LIGHT, b); b = near(q, P_FOLIAGE, b); b = near(q, P_FOLIAGE2, b); b = near(q, P_WATER, b);
+  b = near(q, P_WOOD, b); b = near(q, P_WARM, b); b = near(q, P_MINT, b); b = near(q, P_ROCK, b);
+  b = near(q, P_LAVENDER, b); b = near(q, P_SAGE, b);
+  return mix(c, pal(b.x), k);
 }
 
 // The wind (art-styles.md 8): a 12 m wave at 3 m/s along the wind, with gusts.
@@ -354,6 +320,8 @@ fn wind_bend(xz: vec2f) -> f32 {
     o.normal = normal;
     o.tint = vec3f(0.0);
     o.look = 99u;
+    o.local = vec3f(0.0);
+    o.size = vec2f(0.0);
     return o;
   }
   let objects_n = arrayLength(&objects);
@@ -382,16 +350,21 @@ fn wind_bend(xz: vec2f) -> f32 {
   o.pos = clip(w);
   o.world = w;
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
-  o.tint = m.colour.rgb;
+  // the palette: what glows, her wings and her skin and clothes keep more of their own colour
+  let own = look == 3u || look == 4u || look == 5u || look == 6u || look == 9u;
+  o.tint = snap(m.colour.rgb, select(0.8, 0.5, own));
   o.look = look + select(0u, 32u, code >= 128u);   // + 32: hers (fairy.coax MINE)
   o.local = v.p;
+  o.size = vec2f(length(c1), smoothstep(1.6, 3.2, length(c1)));
   return o;
 }
 
 // A blade of grass: one tapered triangle placed from a hash of its patch,
 // bent by the wind, leaning away from you, none on trails, water or under the heart tree.
+// Flat: a few short tufts, one blade in six (one in four on a phone) of the painterly field.
 fn grass_vertex(id: u32, cell: u32) -> S {
   var o: S;
+  if ((id / 3u) % select(6u, 4u, u.sun.w > 0.5) != 0u) { o.pos = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
   let side = u32(u.grass.z);
   let origin = u.grass.xy + vec2f(f32(cell % side), f32(cell / side)) * 2.0;
   let blade = id / 3u;
@@ -402,13 +375,13 @@ fn grass_vertex(id: u32, cell: u32) -> S {
   let centre = u.grass.xy + vec2f(f32(side));
   let reach = u.grass2.x;
   let r = distance(xz, centre);
-  var tall = (0.42 + 0.4 * h3) * (1.0 - smoothstep(reach - 6.0, reach, r));
+  var tall = (0.42 + 0.4 * h3) * 0.35 * (1.0 - smoothstep(reach - 6.0, reach, r));
   let gy = ground_h(xz);
   if (path_distance(xz) < u.grass2.z + 0.15 || gy < u.grass2.y + 0.08 || length(xz) < 5.0) { tall = 0.0; }
   if (tall < 0.02) { o.pos = vec4f(0.0, 0.0, 2.0, 1.0); return o; }
   tall *= mix(0.42, 1.25, restored(xz).x);   // restored meadows grow tall
   let yaw = h4 * TAU;
-  let across = vec3f(cos(yaw), 0.0, sin(yaw)) * 0.03;
+  let across = vec3f(cos(yaw), 0.0, sin(yaw)) * 0.05;
   let base = vec3f(xz.x, gy - 0.02, xz.y);
   var w = base;
   var along = 0.0;
@@ -418,7 +391,7 @@ fn grass_vertex(id: u32, cell: u32) -> S {
     // faded grass sways less, and each blade leans its own way, so a faded
     // meadow never reads as one slant of streaks
     let rr = restored(xz).x;
-    var lean = WIND * sin(wind_bend(xz)) * mix(0.4, 1.0, rr) + vec2f(cos(yaw * 1.7), sin(yaw * 1.7)) * 0.14;
+    var lean = WIND * sin(wind_bend(xz)) * mix(0.4, 1.0, rr) * 0.3 + vec2f(cos(yaw * 1.7), sin(yaw * 1.7)) * 0.14;
     let you = vec2f(u.grass2.w, u.you_z);
     let away = xz - you;
     let dy = length(away);
@@ -431,50 +404,43 @@ fn grass_vertex(id: u32, cell: u32) -> S {
   o.normal = vec3f(0.0, 1.0, 0.0);
   o.tint = vec3f(along, h3, 0.0);
   o.look = 98u;
+  o.local = vec3f(0.0);
+  o.size = vec2f(0.0);
   return o;
 }
 
-// The ground's painted colour at xz: broad meadow greens, warm trails, sandy banks.
-fn ground_colour(xz: vec2f) -> vec3f {
-  let broad = noise(xz * 0.06);
-  var base = mix(vec3f(0.10, 0.27, 0.035), vec3f(0.19, 0.35, 0.045), broad);
-  base *= 0.9 + 0.2 * noise(xz * 0.21 + vec2f(3.0, 1.0));
+// The ground's colour at xz: broad flat fills of lime and olive, the trails a flat tan band.
+fn ground_colour(xz: vec2f, aa: f32) -> vec3f {
+  var base = mix(pal(P_GROUND), pal(P_GROUND2), step(0.58, noise(xz * 0.035)));
   let d = path_distance(xz);
   let half = u.path_info.y;
-  let edge = 1.0 - smoothstep(half - 0.25, half + 0.25, d);
-  base = mix(base, vec3f(0.52, 0.36, 0.18), edge);
+  base = mix(base, pal(P_PATH), 1.0 - smoothstep(half - aa, half + aa, d));
   return base;
 }
 
-// The painterly light on albedo c with normal n at world: wrapped Lambert in
-// bands (two for characters), the shadow band tinted blue, a warm rim.
+// The flat light on albedo c with normal n at world: three flat tones (two for characters),
+// lit and shade from the palette, the cast shadow a flat translucent shape (shadow: the light
+// it leaves). No rim, no specular.
 fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> vec3f {
-  let l = sun_dir();
-  let v = normalize(u.eye.xyz - world);
-  let ndl = dot(n, l);
-  let w = verse_paint_wrap(ndl, shadow);
-  var band = verse_paint_band(w);
-  if (character) { band = verse_paint_band2(w); }
-  let ambient = mix(ground_amb(), sky_amb(), n.y * 0.5 + 0.5) * 0.55;
-  var shade = shadow_tint() * ambient * 1.25;
-  // a character's shadow side stays warm and light, so she reads against the greens
-  if (character) { shade = mix(shade, key_c() * 0.8, 0.5); }
-  var light = c * mix(shade, key_c() + ambient, band);
-  let strength = select(0.30, 0.45, character);
-  light += rim_c() * verse_paint_rim(abs(dot(n, v)), ndl, strength) * mix(vec3f(0.6), c * 1.6, 0.4) * (1.0 - 0.6 * u.night.x);
-  // by night, the light she carries (LIGHT): a warm pool round her
+  let w = verse_style_flat_light(dot(n, sun_dir()), 1.0);
+  var band = verse_style_flat_band(w);
+  if (character) { band = verse_style_flat_band2(w); }
+  var light = c * mix(tp(P_SHADE), tp(P_LIT), band);
+  light *= mix(pal(P_SHADOW), vec3f(1.0), shadow);
+  // by night, the light she carries (LIGHT): a warm pool round her, in two flat steps
   if (u.night.z > 0.0) {
     let to = vec3f(u.grass2.w, u.night.w, u.you_z) - world;
     let d2 = dot(to, to);
     let reach = max(u.night.z, 1.0);   // her lantern (fairytools.coax) sends it twice as far
-    let fall = min(u.night.z, 1.0) * 1.3 / (1.0 + d2 * 0.18 / (reach * reach)) * (1.0 - smoothstep(36.0 * reach * reach, 100.0 * reach * reach, d2));
-    let face = 0.45 + 0.55 * max(dot(n, to * inverseSqrt(max(d2, 0.0001))), 0.0);
-    light += c * vec3f(1.0, 0.76, 0.44) * fall * face;
+    let fall = min(u.night.z, 1.0) * (0.5 * step(d2, 36.0 * reach * reach) + 0.5 * step(d2, 9.0 * reach * reach));
+    light += c * pal(P_WARM) * 0.8 * fall;
   }
   return light;
 }
 
 @fragment fn scene_fs(s: S) -> Lit {
+  let ground_aa = max(length(fwidth(s.world.xz)), 0.002);   // derivatives first, while control flow is uniform
+  let local_aa = fwidth(s.local.y);
   var n = normalize(s.normal);
   var base = s.tint;
   let xz = s.world.xz;
@@ -498,16 +464,13 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     }
   }
   if (look == 99u) {
-    base = ground_colour(xz);
-    // the banks: sand where the ground dips to the water
-    base = mix(base, vec3f(0.58, 0.46, 0.26), smoothstep(u.grass2.y + 0.5, u.grass2.y - 0.1, s.world.y));
+    base = ground_colour(xz, ground_aa);
+    // the banks: a flat tan where the ground dips to the water
+    base = mix(base, pal(P_PATH), step(s.world.y, u.grass2.y + 0.2));
     shadow = blob_shadows(xz);
   } else if (look == 98u) {
-    // the root-to-tip shading flattens where the grass is faded, so faded
-    // blades read as soft grass rather than streaks
-    let rr = restored(xz).x;
-    base = ground_colour(xz) * mix(1.0 - 0.22 * (0.35 + 0.65 * rr), 1.0 + 0.2 * (0.35 + 0.65 * rr), s.tint.x) * (0.94 + 0.12 * s.tint.y);
-    base = mix(base, base * vec3f(1.2, 1.08, 0.7), s.tint.x * 0.6);
+    // a tuft: one flat step darker than the ground it grows from
+    base = ground_colour(xz, ground_aa) * 0.86;
     shadow = blob_shadows(xz);
   } else if (look == 3u || look == 6u) {
     character = true; keep = true;
@@ -537,7 +500,7 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     base = mix(base, vec3f(1.0, 0.36, 0.8), smoothstep(0.15, 0.55, along) * 0.85);
     base = mix(base, vec3f(1.0, 0.78, 0.3), smoothstep(0.55, 0.92, along) * 0.8);
     base = mix(base * 0.8, mix(base, vec3f(1.0), 0.3), solid);
-    base += vec3f(1.0, 0.92, 0.75) * rim * 0.7;
+    base = mix(base, pal(P_ACCENT), rim * 0.6);
     glow = 0.8; keep = true;
   } else if (look == 10u) {
     // falling water (fairypond.coax): streaks running down it, whiter toward
@@ -548,32 +511,35 @@ fn painted(c: vec3f, n: vec3f, world: vec3f, shadow: f32, character: bool) -> ve
     let white = clamp(smoothstep(0.5, 0.85, bands) * 0.8 + smoothstep(0.6, 0.9, streak) * 0.5 + smoothstep(-0.15, -0.5, q.y) * 0.7, 0.0, 1.0);
     let cell = vec2u(s.pos.xy) % 2u;
     if (white < 0.25 && (cell.x + cell.y) % 2u == 0u) { discard; }
-    base = mix(base, vec3f(0.96, 0.99, 1.0), white);
+    base = mix(pal(P_WATER), pal(P_LIGHT), step(0.5, white));
     glow = 0.0;
   } else if (look == 7u) {
     keep = true;
-  } else if (look == 8u) {
-    // bark: moss in patches up the trunk, darker toward its foot
-    let moss = smoothstep(0.35, 0.75, noise(vec2f(s.world.x + s.world.z, s.world.y * 1.3) * 1.7));
-    base = mix(base, vec3f(0.26, 0.40, 0.12), moss * 0.7);
-    base *= mix(0.5, 1.0, smoothstep(-0.5, 0.05, s.local.y));
+  }
+  // trim: a thin cream line along the hem of her clothes
+  if (look == 6u) {
+    let from_hem = (s.local.y + 0.5) * s.size.x;
+    base = mix(base, pal(P_ACCENT), verse_style_flat_hem(from_hem, HEM * 0.5, max(local_aa * s.size.x, 0.001)));
+  }
+  // a tall shape (a trunk, the heart tree) steps a little darker toward its foot, dithered where the steps meet
+  if (s.size.y > 0.0 && look < 98u) {
+    let t = verse_style_flat_dither(0.5 - s.local.y, s.pos.x, s.pos.y, DITHER_STEPS);
+    base = mix(base, base * pal(P_SHADE) * 0.8, t * DITHER * s.size.y);
   }
   let r = restored(xz);
-  if (!keep) { base = faded_at(base, r.x, s.world); }
+  if (!keep) { base = faded(base, r.x); }
   var c = vec3f(0.0);
   var share = 0.0;
   if (glow > 0.0) {
-    // what glows skips the bands; wings are pale light, brighter at their edges
-    let v = normalize(u.eye.xyz - s.world);
-    let edge = 1.0 - abs(dot(n, v));
-    c = base * (1.3 + 0.9 * edge) * select(1.0, 0.75, glow < 1.0);
+    // what glows skips the tones: one flat light colour
+    c = base * select(1.3, 1.0, glow < 1.0);
     if (!keep) { c *= mix(0.35, 1.0, r.x); }
     share = select(0.75, 0.45, glow < 1.0);
   } else {
     c = painted(base, n, s.world, shadow, character);
   }
   // a bloom's spreading front sparkles gold
-  c += vec3f(1.0, 0.86, 0.5) * r.y * 0.6;
+  c += pal(P_ACCENT) * r.y * 0.6;
   share = max(share, r.y * 0.5);
   c = hazed(c, s.world);
   return Lit(vec4f(c, share), vec4f(n, 0.0));
@@ -827,15 +793,10 @@ fn water_fresnel(c: f32) -> f32 {
   return WATER_F0 + (1.0 - WATER_F0) * m2 * m2 * m;
 }
 
-// ---- the painted water (art-styles.md 12): colour bands by depth, the sky's
-// gradient in a Fresnel reflection, sparkles where a cell's tilt catches the
-// sun, a clean white shore line and white rings. The mesh, the waves, the
-// detail and the ripples are the W2 shader's (everglade.wgsl), from
+// ---- the flat water: two flat bands of the palette's water by depth (verse_style_flat's
+// shallow, mid and deep), a flat cream shore line and rings, no reflection and no sparkle.
+// The mesh, the waves and the ripples are the W2 shader's (everglade.wgsl), from
 // verse/fairy-forest/stream.coax's nodes (store 2).
-
-const W_SHALLOW = vec3f(0.30, 0.72, 0.74);
-const W_MID = vec3f(0.10, 0.45, 0.55);
-const W_DEEP = vec3f(0.05, 0.22, 0.36);
 
 struct WaterShade { emit: vec3f, transmit: vec3f }
 
@@ -843,49 +804,23 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   var o: WaterShade;
   let world = i.world_depth.xyz;
   let rest = i.rest_flow.xy;
-  let flow = i.rest_flow.zw;
   let depth = i.world_depth.w;
-  let to_eye = u.eye.xyz - world;
-  let dist = length(to_eye);
-  let v = to_eye / max(dist, 0.001);
+  let dist = length(u.eye.xyz - world);
   if (u.eye.y < world.y) { o.emit = vec3f(0.0); o.transmit = vec3f(1.0); return o; }
-  let footprint = water_footprint(v, dist);
-  let swell = water_gerstner_slope(rest, depth, 1.0);
-  let detail = water_flow_detail(rest, flow, footprint);
-  let slope = swell.xy + detail.xy * 0.6 + water_ripples(rest);
-  let n = normalize(vec3f(-slope.x, 1.0 - swell.z, -slope.y));
-  let l = sun_dir();
-  // the bands, lit softly
-  var body = mix(mix(W_SHALLOW, W_MID, verse_paint_water_mid(depth)), W_DEEP, verse_paint_water_deep(depth));
-  body *= key_c() * 0.85 + sky_amb() * 0.35;
+  let w = pal(P_WATER);
+  var body = mix(mix(w, w * 0.78, step(0.4, depth)), w * 0.6, step(1.5, depth));
+  body *= tp(P_LIT);
   let r = restored(world.xz);
   body = faded(body, r.x);
-  let fresnel = water_fresnel(max(dot(n, v), 0.001));
-  var refl = faded(sky_colour(reflect(-v, n), false), max(r.x, 0.4));
-  // sparkles: a cell sparkles when its hashed tilt mirrors the sun
-  let grid = select(0.15, 0.25, u.sun.w > 0.5);
-  let cell = floor(rest / grid);
-  let jitter = vec2f(water_hash(vec3f(cell, 1.0)), water_hash(vec3f(cell, 2.0))) - vec2f(0.5);
-  let tilt = normalize(n + vec3f(jitter.x, 0.0, jitter.y) * 0.35);
-  let rdl = dot(reflect(-v, tilt), l);
-  let twinkle = 0.5 + 0.5 * sin(u.time * (1.0 - u.still) * 21.0 + water_hash(vec3f(cell, 3.0)) * 6.28);
-  let centre = (cell + vec2f(0.5)) * grid;
-  let dot_ = 1.0 - smoothstep(footprint * 1.2, footprint * 2.2, distance(rest, centre));
-  let sparkle = verse_paint_sparkle(rdl) * twinkle * dot_ * r.x;
-  // the shore line and the rings
   let shore = i.look.w;
-  let broken = noise(rest * 3.0) * 0.08;
-  let line = (1.0 - smoothstep(0.18 + broken, 0.25 + broken, shore)) * smoothstep(-0.02, 0.04, depth);
-  let rings = clamp(water_ripple_foam(rest) * 1.6, 0.0, 1.0);
+  let line = step(shore, 0.22) * step(0.0, depth);
+  let rings = step(0.5, water_ripple_foam(rest) * 1.6);
   let foam = max(line, rings);
-  let alpha = (0.55 + 0.4 * smoothstep(0.05, 0.9, depth)) * smoothstep(-0.05, 0.1, depth);
-  let white = vec3f(1.0, 0.98, 0.94) * (key_c() * 0.9 + sky_amb() * 0.3);
-  var emit = body * alpha * (1.0 - fresnel) + refl * fresnel * smoothstep(-0.05, 0.1, depth) + vec3f(1.0, 0.97, 0.88) * sparkle * 3.0;
-  emit = mix(emit, white, foam);
-  // the haze over the water, as over every surface
-  let hz = verse_paint_haze(max(dist - HAZE_FROM, 0.0), world.y, u.eye.w) * 0.85;
-  let trans = vec3f((1.0 - alpha) * (1.0 - fresnel) * (1.0 - foam));
-  o.emit = emit * (1.0 - hz) + mix(haze_c(), haze_key(), verse_paint_haze_sun(dot(-v, l))) * hz * (vec3f(1.0) - trans);
+  let alpha = (0.6 + 0.35 * step(0.4, depth)) * smoothstep(-0.05, 0.1, depth);
+  let emit = mix(body * alpha, pal(P_LIGHT) * tp(P_LIT), foam);
+  let hz = verse_style_flat_fade(dist, FADE_FROM, FADE_OVER, FADE_CAP);
+  let trans = vec3f((1.0 - alpha) * (1.0 - foam));
+  o.emit = emit * (1.0 - hz) + tp(P_HORIZON) * hz * (vec3f(1.0) - trans);
   o.transmit = trans;
   return o;
 }
@@ -900,7 +835,8 @@ fn water_fragment(i: WaterOut) -> WaterShade {
 }
 
 // ---- the post pass (host.js postLayouts): the bright share blurred at a quarter
-// and an eighth of the size, mixed back gently; then the painterly tone.
+// and an eighth of the size, mixed back gently (only what glows has a share); no tone curve,
+// so the palette shows as it is.
 struct Step { v: vec4f }
 @group(1) @binding(0) var bloom_src: texture_2d<f32>;
 @group(1) @binding(1) var bloom_lin: sampler;
@@ -929,26 +865,14 @@ struct Step { v: vec4f }
 @group(1) @binding(4) var post_depth: texture_depth_2d;
 @group(1) @binding(5) var post_lin: sampler;
 
-// The tone (art-styles.md 9): 1 - exp(-k c), blacks lifted (verse_paint_tone).
-// Fairy Forest's own: saturation up 1.28 and a little contrast round the middle, for a clear day.
-fn tone(c: vec3f) -> vec3f {
-  var t = vec3f(verse_paint_tone(c.r, 1.35), verse_paint_tone(c.g, 1.35), verse_paint_tone(c.b, 1.35));
-  let l = dot(t, vec3f(0.2126, 0.7152, 0.0722));
-  t = vec3f(l) + (t - vec3f(l)) * 1.28;
-  t = mix(t, t * t * (3.0 - 2.0 * t), 0.25);
-  return clamp(t, vec3f(0.0), vec3f(1.0));
-}
-
 @fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = vec2i(pos.xy);
   let uv = pos.xy / u.size;
   let light = textureLoad(post_light, p, 0).rgb;
   let near = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb;
   let far = textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb;
-  let mixback = select(0.26, 0.2, u.sun.w > 0.5);
-  var c = light + (near * 0.55 + far * 0.45) * mixback * 3.0;
-  c *= mix(vec3f(1.0), vec3f(0.78, 0.84, 1.0), u.night.x);   // the night's exposure, a touch blue
-  return vec4f(plates(pos.xy, encode(tone(c))), 1.0);
+  let c = light + (near * 0.55 + far * 0.45) * 0.6;
+  return vec4f(plates(pos.xy, encode(c)), 1.0);
 }
 
 // ---- the HUD's strokes
@@ -1087,7 +1011,7 @@ fn verse_paint_sparkle(l_rdl: f32) -> f32 {
 }
 // ---- end generated
 
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_flat_light, verse_style_flat_band, verse_style_flat_band2, verse_style_flat_sky, verse_style_flat_shadow, verse_style_flat_fade, verse_style_bayer, verse_style_flat_dither, verse_style_flat_hem, verse_style_flat_srgb, verse_style_flat_colour, verse_style_flat_time) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1537,5 +1461,247 @@ fn verse_style_jitter(l_c: f32, l_ch: f32, l_h: f32, l_jitter: f32) -> f32 {
     return l_c;
   }
   return (l_c * (1.0 - l_j));
+}
+fn verse_style_flat_light(l_fl_ndl: f32, l_fl_lit: f32) -> f32 {
+  var coax_t54: f32;
+  var coax_t55: f32;
+  coax_t54 = coax_p_st_sat(((l_fl_ndl * 0.5) + 0.5));
+  coax_t55 = coax_p_st_sat(l_fl_lit);
+  return (coax_t54 * coax_t55);
+}
+fn verse_style_flat_band(l_fl_w: f32) -> f32 {
+  return verse_style_bands(l_fl_w, 0.379999995, 0.620000005, 0.00999999978, 0.5);
+}
+fn verse_style_flat_band2(l_fl_w: f32) -> f32 {
+  return verse_style_soft_step(0.449999988, 0.00999999978, l_fl_w);
+}
+fn verse_style_flat_sky(l_fl_up: f32) -> f32 {
+  return (1.0 - verse_style_soft_step(0.119999997, 0.119999997, l_fl_up));
+}
+fn verse_style_flat_shadow(l_fl_d: f32) -> f32 {
+  return (1.0 - verse_style_soft_step(0.850000024, 0.150000006, l_fl_d));
+}
+fn verse_style_flat_fade(l_fl_d: f32, l_fl_start: f32, l_fl_reach: f32, l_fl_cap: f32) -> f32 {
+  var coax_t56: f32;
+  var coax_t57: f32;
+  coax_t56 = (l_fl_start + (l_fl_reach * 0.5));
+  coax_t57 = coax_p_st_max((l_fl_reach * 0.5), 0.00100000005);
+  return (l_fl_cap * verse_style_soft_step(coax_t56, coax_t57, l_fl_d));
+}
+fn coax_p_st_bayer2(l_fl_a: f32, l_fl_b: f32) -> f32 {
+  return (((2.0 * l_fl_a) + (3.0 * l_fl_b)) - ((4.0 * l_fl_a) * l_fl_b));
+}
+fn verse_style_bayer(l_fl_px: f32, l_fl_py: f32) -> f32 {
+  var coax_t58: f32;
+  var coax_t59: f32;
+  var l_fl_x: f32 = (l_fl_px - (4.0 * floor((l_fl_px * 0.25))));
+  var l_fl_y: f32 = (l_fl_py - (4.0 * floor((l_fl_py * 0.25))));
+  var l_fl_x0: f32 = (l_fl_x - (2.0 * floor((l_fl_x * 0.5))));
+  var l_fl_y0: f32 = (l_fl_y - (2.0 * floor((l_fl_y * 0.5))));
+  var l_fl_x1: f32 = floor((l_fl_x * 0.5));
+  var l_fl_y1: f32 = floor((l_fl_y * 0.5));
+  coax_t58 = (4.0 * coax_p_st_bayer2(l_fl_x0, l_fl_y0));
+  coax_t59 = coax_p_st_bayer2(l_fl_x1, l_fl_y1);
+  return (((coax_t58 + coax_t59) + 0.5) / 16.0);
+}
+fn verse_style_flat_dither(l_fl_t: f32, l_fl_px: f32, l_fl_py: f32, l_fl_steps: f32) -> f32 {
+  var coax_t60: f32;
+  var coax_t61: f32;
+  var l_fl_n: f32 = coax_p_st_max(l_fl_steps, 1.0);
+  coax_t60 = (coax_p_st_sat(l_fl_t) * l_fl_n);
+  coax_t61 = verse_style_bayer(l_fl_px, l_fl_py);
+  return coax_p_st_sat((floor((coax_t60 + coax_t61)) / l_fl_n));
+}
+fn verse_style_flat_hem(l_fl_y: f32, l_fl_width: f32, l_fl_aa: f32) -> f32 {
+  return (1.0 - verse_style_soft_step(l_fl_width, coax_p_st_max(l_fl_aa, 9.99999997e-07), l_fl_y));
+}
+fn coax_p_st_pick(l_fl_ch: f32, l_fl_r: f32, l_fl_g: f32, l_fl_b: f32) -> f32 {
+  if ((l_fl_ch < 0.5))
+  {
+    return l_fl_r;
+  }
+  if ((l_fl_ch < 1.5))
+  {
+    return l_fl_g;
+  }
+  return l_fl_b;
+}
+fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
+  if ((l_fl_realm < 0.5))
+  {
+    if ((l_fl_slot < 0.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.36500001, 0.442999989, 0.575999975);
+    }
+    if ((l_fl_slot < 1.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.540000021, 0.603999972, 0.698000014);
+    }
+    if ((l_fl_slot < 2.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.254999995, 0.317999989, 0.419999987);
+    }
+    if ((l_fl_slot < 3.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.289999992, 0.356999993, 0.455000013);
+    }
+    if ((l_fl_slot < 4.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.699999988, 0.699999988, 0.689999998);
+    }
+    if ((l_fl_slot < 5.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 1.0, 1.0, 0.980000019);
+    }
+    if ((l_fl_slot < 6.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.649999976, 0.800000012);
+    }
+    if ((l_fl_slot < 7.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.639999986, 0.680000007, 0.819999993);
+    }
+    if ((l_fl_slot < 8.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+    }
+    if ((l_fl_slot < 9.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.0820000023, 0.0939999968, 0.122000001);
+    }
+    if ((l_fl_slot < 10.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.925000012, 0.893999994, 0.811999977);
+    }
+    if ((l_fl_slot < 11.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.118000001, 0.157000005, 0.200000003);
+    }
+    if ((l_fl_slot < 12.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.216000006, 0.270999998);
+    }
+    if ((l_fl_slot < 13.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.497999996, 0.583999991, 0.702000022);
+    }
+    if ((l_fl_slot < 14.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.141000003, 0.152999997);
+    }
+    if ((l_fl_slot < 15.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+    }
+    if ((l_fl_slot < 16.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.779999971, 0.800000012, 0.779999971);
+    }
+    if ((l_fl_slot < 17.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.787999988, 0.768999994, 0.713999987);
+    }
+    if ((l_fl_slot < 18.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.419999987, 0.460000008, 0.600000024);
+    }
+    return coax_p_st_pick(l_fl_ch, 0.379999995, 0.430000007, 0.469999999);
+  }
+  if ((l_fl_slot < 0.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.662999988, 0.827000022, 0.815999985);
+  }
+  if ((l_fl_slot < 1.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.910000026, 0.936999977, 0.815999985);
+  }
+  if ((l_fl_slot < 2.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.624000013, 0.709999979, 0.289999992);
+  }
+  if ((l_fl_slot < 3.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.501999974, 0.600000024, 0.243000001);
+  }
+  if ((l_fl_slot < 4.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.851000011, 0.753000021, 0.541000009);
+  }
+  if ((l_fl_slot < 5.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 1.0, 0.980000019, 0.920000017);
+  }
+  if ((l_fl_slot < 6.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.699999988, 0.699999988, 0.839999974);
+  }
+  if ((l_fl_slot < 7.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.75999999, 0.75, 0.879999995);
+  }
+  if ((l_fl_slot < 8.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 1.0, 0.964999974, 0.878000021);
+  }
+  if ((l_fl_slot < 9.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.114, 0.122000001, 0.165000007);
+  }
+  if ((l_fl_slot < 10.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.949000001, 0.917999983, 0.824000001);
+  }
+  if ((l_fl_slot < 11.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.435000002, 0.541000009, 0.226999998);
+  }
+  if ((l_fl_slot < 12.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.709999979, 0.811999977, 0.352999985);
+  }
+  if ((l_fl_slot < 13.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.56099999, 0.811999977, 0.753000021);
+  }
+  if ((l_fl_slot < 14.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.658999979, 0.528999984, 0.352999985);
+  }
+  if ((l_fl_slot < 15.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.878000021, 0.518000007, 0.226999998);
+  }
+  if ((l_fl_slot < 16.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.768999994, 0.925000012, 0.838999987);
+  }
+  if ((l_fl_slot < 17.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.662999988, 0.638999999, 0.768999994);
+  }
+  if ((l_fl_slot < 18.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.787999988, 0.702000022, 0.878000021);
+  }
+  return coax_p_st_pick(l_fl_ch, 0.654999971, 0.709999979, 0.603999972);
+}
+fn verse_style_flat_colour(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
+  return pow(verse_style_flat_srgb(l_fl_realm, l_fl_slot, l_fl_ch), 2.20000005);
+}
+fn verse_style_flat_time(l_fl_realm: f32, l_fl_ch: f32, l_fl_dusk: f32, l_fl_night: f32) -> f32 {
+  var coax_t62: f32;
+  var coax_t63: f32;
+  var coax_t64: f32;
+  var coax_t65: f32;
+  if ((l_fl_realm < 0.5))
+  {
+    return 1.0;
+  }
+  coax_t62 = (coax_p_st_pick(l_fl_ch, 1.0, 0.800000012, 0.680000007) - 1.0);
+  coax_t63 = coax_p_st_sat(l_fl_dusk);
+  var l_fl_warm: f32 = (1.0 + (coax_t62 * coax_t63));
+  coax_t64 = (coax_p_st_pick(l_fl_ch, 0.200000003, 0.25, 0.439999998) - l_fl_warm);
+  coax_t65 = coax_p_st_sat(l_fl_night);
+  return (l_fl_warm + (coax_t64 * coax_t65));
 }
 // ---- end generated

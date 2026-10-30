@@ -5,13 +5,14 @@ Verse project's "Art styles" initiative (`apps/openagents-web/projects/verse/wor
 and Planetary Villa's "Hecate's Cemetery in painterly" milestone.
 
 The owner's rule: every zone on the Verse is drawn in one of a few art
-styles. For now there are three: **lowpoly**, **painterly** and **photoreal**
-(as close to photorealistic as we can get). A zone names its style; the
+styles. For now there are four: **lowpoly**, **painterly**, **photoreal**
+(as close to photorealistic as we can get) and **flat** (flat-shaded low
+poly in a realm's own few colours; built October 30, see [Flat](#flat)). A zone names its style; the
 engine owns what the style means. Realms declare a style; they don't
 hand-tune shading numbers.
 
-Painterly is the style Kiki wants for Planetary Villa and Hecate's
-Cemetery, and the owner wants it for Everglade too. This document defines
+Painterly is the style the owner wants for Everglade. Hecate's Cemetery and
+Fairy Forest moved to flat on October 30 (the owner's call). This document defines
 all three styles, defines painterly in full, and audits both realms against it.
 
 ## The three styles
@@ -35,7 +36,7 @@ when a zone needs it.
 ## The style field
 
 `apps/openagents-web/realms.json`: each realm gets a required `style`, one
-of `lowpoly`, `painterly`, `photoreal`. A realm whose parts differ (an
+of `lowpoly`, `painterly`, `photoreal`, `flat`. A realm whose parts differ (an
 interior, a dungeon under a city) lists them in `zones`, each with an `id`
 and a `style`; a zone without one takes the realm's.
 
@@ -45,7 +46,7 @@ and a `style`; a zone without one takes the realm's.
 ```
 
 - `coax/web/realms.ts --check` refuses a realm without a style, an unknown
-  style, a zone id that appears twice, and a painterly or photoreal realm
+  style, a zone id that appears twice, and a painterly, photoreal or flat realm
   whose `<module>.wgsl` lacks the style block that `wgsl.py` generates (below).
 - The style goes to the module in the page facts (message 600:
   `style=painterly`, and `zone.<id>=<style>` for each zone) and to the page
@@ -83,6 +84,71 @@ palette rules), where its key light points (sun or moon), what glows, and
 its clock. Nothing else: no realm-local fog constants, ambient colours or
 tone curves. A realm that needs a different look asks for a preset change
 in `verse/style.coax`, where every realm in that style gets it.
+
+## Flat
+
+Built October 30 for Hecate's Cemetery and Fairy Forest. The look of a cosy
+indie stylised game (the general style of *Alba*, *A Short Hike* or *Sky*,
+described in words; no reference images are committed and no particular
+artwork is copied): flat-shaded low poly, large solid fills of colour with
+almost no texture, hard-edged facets, a strongly limited palette per scene,
+and light that reads as two or three flat tones per form.
+
+| | Flat |
+| --- | --- |
+| Shading | Half Lambert (N.L folded to 0..1) quantised into three hard tones: dark under 0.38, shade (0.5) to 0.62, lit above. Each edge is a step antialiased over 0.01, never a gradient. Characters get two tones, one edge at 0.45 |
+| Light | The palette's lit colour and its shade colour; the ambient is that one flat shade colour (the same from sky and ground, no hemisphere) |
+| Specular | None: no dab, no sparkle, no Fresnel reflection, no highlight on water |
+| Rim and outline | None. No rim light, no toon outline, no outline pass |
+| Shadows | Flat translucent shapes on the ground: flat all through with a soft rim from 0.7 of the radius out (`verse_style_flat_shadow`), multiplying toward the palette's shadow colour; strength 0.45. No shadow map |
+| Sky | One flat colour, and a soft band of the horizon colour: all of it at the horizon, none 14 degrees up (`verse_style_flat_sky`). The sun or moon a flat disc, no halo; no clouds |
+| Distance | One soft fade into the horizon colour, from 40 m over 80 m to at most half (`verse_style_flat_fade`). No haze layers, no fog clutter |
+| Trim | A thin accent line along some hems and edges (`verse_style_flat_hem`, 0.06 m), where the realm asks: trim, not an outline |
+| Gradient | Now and then a slight one down a tall shape: up to 0.25 darker toward its foot in 4 flat steps with a 4x4 ordered dither where they meet (`verse_style_flat_dither`) |
+| Grass | A few short flat tufts (4 a square metre, 2 on a phone, 0.15 to 0.29 m), one flat step darker than their ground; no field of blades |
+| Water | Two flat bands of the palette's water by depth and a flat shore line; no reflection, no sparkle |
+| Post | No tone curve, no saturation or black lift: the palette shows as it is. A little bloom (0.12) on what glows only |
+| Phones | The same look; fewer tufts. Flat is cheaper than painterly: no shadow map, no shafts, no clouds, no noise |
+
+The preset is `verse_style_flat(palette, tier)` in `verse/style-preset.coax`
+(`STYLE_FLAT`; `verse_style_preset(STYLE_FLAT, tier)` is the garden's). Its
+spare block slots carry flat's own numbers: `SU_RIM2.w` the hem width,
+`SU_GROUND_AMB.w` the gradient's darkening, `SU_BLOOM.w` its steps. The
+shading functions are `verse_style_flat_*` and `verse_style_bayer` in
+`verse/style.coax`, generated into each flat realm's WGSL with the rest of
+the style block. The checks: `#test "flat: ..."` in both files pin the three
+hard tones (and that the generated band function is the preset's own edges),
+no specular, rim, outline, shafts or tone curve at any hour, the dither and
+the hem, and each realm's palette.
+
+### Palettes
+
+Each flat realm has its own palette, 20 roles (`FLAT_*` in
+`verse/style.coax`: sky, horizon, ground and a second ground, path, the lit,
+shade and shadow light, accent, dark, light, two foliage colours, water,
+wood, warm, mint, rock, lavender, sage), written once in sRGB in
+`verse_style_flat_srgb` and read by the preset and by the shaders alike. A
+realm keeps its shapes; its palette decides their colours. How it maps a
+shape to the palette is the realm's: Hecate's Cemetery by material (stone to
+ivory, iron near-black, trees blue-black), Fairy Forest by drawing every
+shape's colour most of the way to the palette's nearest in its vertex
+stage (0.8; half for what glows and for her skin and clothes).
+
+- **Hecate's Cemetery** (`FLAT_CEMETERY`), night all day: a dusty blue sky
+  over a paler dusty blue horizon band, a deep dusty blue ground in broad
+  patches of two, pale ivory-grey paths with a thin ivory trim along their
+  edges, ivory tombstones and walls with slate plaques, blue-black cypresses
+  and hedges, near-black iron with a thin gold line along its top, the dog
+  a flat ivory glow, you a near-black shadow, the moon a flat ivory disc in
+  its real phase. The moon's light is held at least 0.45 up, so a low moon
+  never drops the garden into its dark tone.
+- **Fairy Forest** (`FLAT_GARDEN`), a cosy pastel garden: a soft mint-blue
+  sky over a cream horizon band, lime and olive ground in broad fills, warm
+  tan trails, olive and lime crowns, tan wood, cattail orange, pale mint,
+  lavender and lavender-grey rock, cream trim along the hem of her clothes,
+  dark eyes. Dawn and dusk warm the palette and night takes it to a blue
+  dusk (`verse_style_flat_time`); the faded world is a pale grey-green of
+  the same lightness.
 
 ## Painterly
 
@@ -609,6 +675,9 @@ The fixture's painterly scene is each engine task's demo, and its golden
 
 ## Audit: Hecate's Cemetery
 
+Historical (October 29): Hecate's Cemetery moved to flat instead on October 30
+([Flat](#flat)); the audit is kept for the record.
+
 `/realms/hecates-cemetery`: `apps/openagents-web/villa.coax` (with
 `villafig`, `villapet`, `villaplay`, `villaroom`, `villatips`),
 `villa-face.c`, `villa.wgsl`. Kiki's design is
@@ -805,5 +874,5 @@ saturation, grey.
 3. Foliage, grass, bloom and shafts, water, characters, textures and the
    pack check.
 4. The phone tier and the style check in the release walk.
-5. Each realm adopts painterly as the pieces land: Everglade (Verse project)
-   and Hecate's Cemetery (Planetary Villa project, with Kiki's sign-off).
+5. Each realm adopts its style as the pieces land: Everglade painterly
+   (Verse project); Hecate's Cemetery and Fairy Forest flat (October 30).

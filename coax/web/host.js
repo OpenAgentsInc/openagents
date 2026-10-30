@@ -66,7 +66,7 @@
 //       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
 //       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, webdriver, fcp, dcl, player and account (the
 //       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none), ruleset (data-ruleset: realms.json "ruleset", "" none),
-//       style (the realm's art style, data-style: lowpoly, painterly or photoreal; "" not a realm), zone.<id>
+//       style (the realm's art style, data-style: lowpoly, painterly, photoreal or flat; "" not a realm), zone.<id>
 //       (a zone's style, data-zones "id:style ...") and clock (data-clock: cycle, real or fixed:T; the URL's
 //       ?clock=T, T from 0 to 1, pins it to fixed:T for shots; ?clock=cycle or real sets it), day (the visitor's
 //       local time of day, 0 midnight to 1)

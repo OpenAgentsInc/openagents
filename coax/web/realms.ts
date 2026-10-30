@@ -21,7 +21,7 @@ const KINDS = { locked: 0, open: 1, soon: 2 } as const
 export type Golden = { lit: number; settle: number; blocks: number }
 // style: the realm's art style (docs/verse/art-styles.md); style_views: the hashes the style check shoots it at (style-check.ts); zones: parts of it drawn in another;
 // clock: how its time of day runs (cycle, fixed:T with T 0 midnight to 1, or real: the visitor's time).
-export const STYLES = ["lowpoly", "painterly", "photoreal"] as const
+export const STYLES = ["lowpoly", "painterly", "photoreal", "flat"] as const
 export type Style = (typeof STYLES)[number]
 // ruleset: the rules a realm plays by (verse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
 export const RULESETS = ["srd5"]
@@ -31,7 +31,7 @@ export type World = { id: string; name: string; kind: keyof typeof KINDS; listed
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/
 export const CLOCK = /^(cycle|real|fixed:(0(\.\d{1,4})?|1(\.0{1,4})?))$/
-// What wgsl.py writes into a realm's WGSL from the style presets: a painterly or photoreal
+// What wgsl.py writes into a realm's WGSL from the style presets: a painterly, photoreal or flat
 // realm draws with it. Required once verse/style.coax exists (as-presets).
 export const STYLE_BLOCK = "// ---- generated: verse/style.coax"
 const STYLE_SOURCE = join(import.meta.dir, "../../verse/style.coax")
@@ -40,7 +40,7 @@ const PACKS = join(import.meta.dir, "../../verse/packs")
 // (Everglade: eg-paint-pack, #f300). A pack that names a style never passes by it.
 const PACK_STYLE_PENDING = new Set(["everglade"])
 /** The table, checked: unique ids, slugs and slots; an open world has a realm and a realm a module,
- *  a style, its zones' ids once each, and a clock; a painterly or photoreal realm's WGSL has the style block. */
+ *  a style, its zones' ids once each, and a clock; a painterly, photoreal or flat realm's WGSL has the style block. */
 export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; styleBlock?: boolean; packs?: string } = {}): World[] {
   const site = opts.site ?? SITE, styleBlock = opts.styleBlock ?? existsSync(STYLE_SOURCE), packs = opts.packs ?? PACKS
   const list: World[] = JSON.parse(readFileSync(file, "utf8")).worlds
@@ -65,7 +65,7 @@ export function worlds(file = join(SITE, "realms.json"), opts: { site?: string; 
       zones.add(z.id)
     }
     if (typeof r.clock !== "string" || !CLOCK.test(r.clock)) throw new Error(`realms.json: ${r.slug}: clock is cycle, real or fixed:T (T 0 to 1), not ${JSON.stringify(r.clock)}`)
-    if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal")) {
+    if (styleBlock && [r.style, ...(r.zones ?? []).map((z) => z.style)].some((st) => st === "painterly" || st === "photoreal" || st === "flat")) {
       const wgsl = join(site, `${r.module}.wgsl`)
       if (!existsSync(wgsl) || !readFileSync(wgsl, "utf8").includes(STYLE_BLOCK)) throw new Error(`realms.json: ${r.slug} is drawn ${r.style === "lowpoly" ? "partly painterly or photoreal" : r.style} but ${r.module}.wgsl has no style block (coax/web/wgsl.py verse/style.coax ... --into it)`)
     }
@@ -107,7 +107,7 @@ export function coax(list: World[]): string {
     `PLANET_LISTED :: ${col("bool", (w) => String(w.listed !== false))};`,
     `PLANET_PATH :: ${col("string", (w) => lit(w.realm ? `/realms/${w.realm.slug}` : ""))};`,
     "// Its art style (docs/verse/art-styles.md; a world without a realm is lowpoly) and its clock.",
-    "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2;   // verse/style-preset.coax STYLE_*",
+    "PLANET_LOWPOLY :: 0; PLANET_PAINTERLY :: 1; PLANET_PHOTOREAL :: 2; PLANET_FLAT :: 3;   // verse/style-preset.coax STYLE_*",
     `PLANET_STYLE :: ${col("int", (w) => `PLANET_${(w.realm?.style ?? "lowpoly").toUpperCase()}`)};`,
     `PLANET_CLOCK :: ${col("string", (w) => lit(w.realm?.clock ?? ""))};`,
     "",

@@ -288,6 +288,151 @@ verse_style_chroma_gain :: (have:f32,albedo:f32,keep:f32)->f32 #export_c {
  return st_min(2.5f32,st_max(1.0f32,albedo*keep/have));
 }
 
+// ---- Flat (art-styles.md, Flat): flat-shaded low poly in a strongly limited palette. Big solid
+// fills, two or three flat tones a form (lit, shade, dark), no specular, no rim, no outline; a flat
+// sky with one soft horizon band; cast shadows as flat translucent shapes; a thin trim line along
+// some hems; now and then a slight dithered gradient down a tall shape. The edges here are the
+// flat preset's (verse/style-preset.coax STYLE_FLAT), as literals because wgsl.py lowers these.
+// The light on a flat surface: half Lambert (N.L folded into 0 to 1) under the cast shadow's light.
+verse_style_flat_light :: (fl_ndl:f32,fl_lit:f32)->f32 #export_c {return st_sat(fl_ndl*0.5f32+0.5f32)*st_sat(fl_lit);}
+// Three flat tones from that light: dark (0) under 0.38, shade (0.5) to 0.62, lit (1) above it. Each
+// edge is a hard step, antialiased over 0.01 either side, never a gradient.
+verse_style_flat_band :: (fl_w:f32)->f32 #export_c {return verse_style_bands(fl_w,0.38f32,0.62f32,0.01f32,0.5f32);}
+// Two for characters: shade and lit, one edge at 0.45.
+verse_style_flat_band2 :: (fl_w:f32)->f32 #export_c {return verse_style_soft_step(0.45f32,0.01f32,fl_w);}
+// The sky: one flat colour, and toward the horizon a soft band of the horizon colour, all of it at
+// and under the horizon and none 0.24 (elevation sine, 14 degrees) up. Its share of the horizon colour.
+verse_style_flat_sky :: (fl_up:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(0.12f32,0.12f32,fl_up);}
+// A cast shadow's cover at d (its distance from the middle over its radius): flat all through, a
+// soft rim from 0.7 out to the radius. The realm darkens toward its shadow colour by cover times strength.
+verse_style_flat_shadow :: (fl_d:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(0.85f32,0.15f32,fl_d);}
+// Far off, a surface goes over to the horizon colour: nothing to `start` metres, then softly up to
+// `cap` by `start` plus `reach`. One fade, no fog layers.
+verse_style_flat_fade :: (fl_d:f32,fl_start:f32,fl_reach:f32,fl_cap:f32)->f32 #export_c {
+ return fl_cap*verse_style_soft_step(fl_start+fl_reach*0.5f32,st_max(fl_reach*0.5f32,0.001f32),fl_d);
+}
+// A 4 by 4 ordered (Bayer) threshold at pixel (px, py), 0 to 15/16 plus half a step.
+st_bayer2 :: (fl_a:f32,fl_b:f32)->f32 {return 2.0f32*fl_a+3.0f32*fl_b-4.0f32*fl_a*fl_b;}
+verse_style_bayer :: (fl_px:f32,fl_py:f32)->f32 #export_c {
+ fl_x:=fl_px-4.0f32*floor(fl_px*0.25f32); fl_y:=fl_py-4.0f32*floor(fl_py*0.25f32);
+ fl_x0:=fl_x-2.0f32*floor(fl_x*0.5f32); fl_y0:=fl_y-2.0f32*floor(fl_y*0.5f32);
+ fl_x1:=floor(fl_x*0.5f32); fl_y1:=floor(fl_y*0.5f32);
+ return (4.0f32*st_bayer2(fl_x0,fl_y0)+st_bayer2(fl_x1,fl_y1)+0.5f32)/16.0f32;
+}
+// A slight gradient down a tall shape, in `steps` flat steps dithered at pixel (px, py) where they meet:
+// t (0 at its top, 1 at its foot) to the step it shows, 0 to 1.
+verse_style_flat_dither :: (fl_t:f32,fl_px:f32,fl_py:f32,fl_steps:f32)->f32 #export_c {
+ fl_n:=st_max(fl_steps,1.0f32);
+ return st_sat(floor(st_sat(fl_t)*fl_n+verse_style_bayer(fl_px,fl_py))/fl_n);
+}
+// A hem's trim: 1 on a thin line `width` deep from the edge (y: the distance from it, in the same
+// units), antialiased over aa; 0 past it. Trim, not an outline: only where a realm asks for it.
+verse_style_flat_hem :: (fl_y:f32,fl_width:f32,fl_aa:f32)->f32 #export_c {return 1.0f32-verse_style_soft_step(fl_width,st_max(fl_aa,0.000001f32),fl_y);}
+
+// The palettes (art-styles.md, Flat: palettes): each flat realm's few colours, in sRGB 0 to 1. A slot
+// is a role; the realm draws only these (and mixes of them). The two realms in the style so far:
+FLAT_CEMETERY :: 0;   // Hecate's Cemetery, at night: dusty blue, near-black, ivory and a touch of gold
+FLAT_GARDEN :: 1;     // Fairy Forest: a cosy pastel garden, olive and lime, orange, mint and lavender
+FLAT_PALETTES :: 2;
+FLAT_SKY :: 0; FLAT_HORIZON :: 1; FLAT_GROUND :: 2; FLAT_GROUND2 :: 3; FLAT_PATH :: 4;
+FLAT_LIT :: 5; FLAT_SHADE :: 6; FLAT_SHADOW :: 7;     // light: the lit tone's, the dark tone's, a cast shadow's
+FLAT_ACCENT :: 8; FLAT_DARK :: 9; FLAT_LIGHT :: 10; FLAT_FOLIAGE :: 11; FLAT_FOLIAGE2 :: 12; FLAT_WATER :: 13;
+FLAT_WOOD :: 14; FLAT_WARM :: 15; FLAT_MINT :: 16; FLAT_ROCK :: 17; FLAT_LAVENDER :: 18; FLAT_SAGE :: 19;
+FLAT_SLOTS :: 20;
+st_pick :: (fl_ch:f32,fl_r:f32,fl_g:f32,fl_b:f32)->f32 {if fl_ch<0.5f32 {return fl_r;} if fl_ch<1.5f32 {return fl_g;} return fl_b;}
+// One channel (0 red, 1 green, 2 blue) of a slot of a palette, sRGB.
+verse_style_flat_srgb :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {
+ if fl_realm<0.5f32 {
+  if fl_slot<0.5f32 {return st_pick(fl_ch,0.365f32,0.443f32,0.576f32);}    // sky: dusty blue
+  if fl_slot<1.5f32 {return st_pick(fl_ch,0.540f32,0.604f32,0.698f32);}    // horizon: paler dusty blue
+  if fl_slot<2.5f32 {return st_pick(fl_ch,0.255f32,0.318f32,0.420f32);}    // ground: deep dusty blue
+  if fl_slot<3.5f32 {return st_pick(fl_ch,0.290f32,0.357f32,0.455f32);}    // ground2: a step lighter
+  if fl_slot<4.5f32 {return st_pick(fl_ch,0.700f32,0.700f32,0.690f32);}    // path: pale ivory-grey
+  if fl_slot<5.5f32 {return st_pick(fl_ch,1.000f32,1.000f32,0.980f32);}    // lit: the moon, near white
+  if fl_slot<6.5f32 {return st_pick(fl_ch,0.600f32,0.650f32,0.800f32);}    // shade: dusty blue
+  if fl_slot<7.5f32 {return st_pick(fl_ch,0.640f32,0.680f32,0.820f32);}    // shadow
+  if fl_slot<8.5f32 {return st_pick(fl_ch,0.851f32,0.706f32,0.353f32);}    // accent: gold
+  if fl_slot<9.5f32 {return st_pick(fl_ch,0.082f32,0.094f32,0.122f32);}    // dark: near-black
+  if fl_slot<10.5f32 {return st_pick(fl_ch,0.925f32,0.894f32,0.812f32);}   // light: ivory
+  if fl_slot<11.5f32 {return st_pick(fl_ch,0.118f32,0.157f32,0.200f32);}   // foliage: blue-black
+  if fl_slot<12.5f32 {return st_pick(fl_ch,0.165f32,0.216f32,0.271f32);}   // foliage2
+  if fl_slot<13.5f32 {return st_pick(fl_ch,0.498f32,0.584f32,0.702f32);}   // water: dusty blue, lighter
+  if fl_slot<14.5f32 {return st_pick(fl_ch,0.165f32,0.141f32,0.153f32);}   // wood: warm near-black
+  if fl_slot<15.5f32 {return st_pick(fl_ch,0.851f32,0.706f32,0.353f32);}   // warm: the gold
+  if fl_slot<16.5f32 {return st_pick(fl_ch,0.780f32,0.800f32,0.780f32);}   // mint: a pale grey
+  if fl_slot<17.5f32 {return st_pick(fl_ch,0.788f32,0.769f32,0.714f32);}   // rock: ivory-grey stone
+  if fl_slot<18.5f32 {return st_pick(fl_ch,0.420f32,0.460f32,0.600f32);}   // lavender: slate
+  return st_pick(fl_ch,0.380f32,0.430f32,0.470f32);                      // sage: blue-grey
+ }
+ if fl_slot<0.5f32 {return st_pick(fl_ch,0.663f32,0.827f32,0.816f32);}     // sky: soft mint-blue
+ if fl_slot<1.5f32 {return st_pick(fl_ch,0.910f32,0.937f32,0.816f32);}     // horizon: cream
+ if fl_slot<2.5f32 {return st_pick(fl_ch,0.624f32,0.710f32,0.290f32);}     // ground: lime-olive
+ if fl_slot<3.5f32 {return st_pick(fl_ch,0.502f32,0.600f32,0.243f32);}     // ground2: olive
+ if fl_slot<4.5f32 {return st_pick(fl_ch,0.851f32,0.753f32,0.541f32);}     // path: warm tan
+ if fl_slot<5.5f32 {return st_pick(fl_ch,1.000f32,0.980f32,0.920f32);}     // lit: warm white
+ if fl_slot<6.5f32 {return st_pick(fl_ch,0.700f32,0.700f32,0.840f32);}     // shade: lavender
+ if fl_slot<7.5f32 {return st_pick(fl_ch,0.760f32,0.750f32,0.880f32);}     // shadow
+ if fl_slot<8.5f32 {return st_pick(fl_ch,1.000f32,0.965f32,0.878f32);}     // accent: cream trim
+ if fl_slot<9.5f32 {return st_pick(fl_ch,0.114f32,0.122f32,0.165f32);}     // dark: the creatures' eyes
+ if fl_slot<10.5f32 {return st_pick(fl_ch,0.949f32,0.918f32,0.824f32);}    // light: cream
+ if fl_slot<11.5f32 {return st_pick(fl_ch,0.435f32,0.541f32,0.227f32);}    // foliage: olive
+ if fl_slot<12.5f32 {return st_pick(fl_ch,0.710f32,0.812f32,0.353f32);}    // foliage2: lime
+ if fl_slot<13.5f32 {return st_pick(fl_ch,0.561f32,0.812f32,0.753f32);}    // water: mint teal
+ if fl_slot<14.5f32 {return st_pick(fl_ch,0.659f32,0.529f32,0.353f32);}    // wood: tan
+ if fl_slot<15.5f32 {return st_pick(fl_ch,0.878f32,0.518f32,0.227f32);}    // warm: cattail orange
+ if fl_slot<16.5f32 {return st_pick(fl_ch,0.769f32,0.925f32,0.839f32);}    // mint: pale mint
+ if fl_slot<17.5f32 {return st_pick(fl_ch,0.663f32,0.639f32,0.769f32);}    // rock: lavender-grey
+ if fl_slot<18.5f32 {return st_pick(fl_ch,0.788f32,0.702f32,0.878f32);}    // lavender
+ return st_pick(fl_ch,0.655f32,0.710f32,0.604f32);                       // sage
+}
+// The same, linear (what the shaders compute in).
+verse_style_flat_colour :: (fl_realm:f32,fl_slot:f32,fl_ch:f32)->f32 #export_c {return pow(verse_style_flat_srgb(fl_realm,fl_slot,fl_ch),2.2f32);}
+// What the time of day does to a palette, one channel's factor: dusk warms it, night takes it down to
+// a blue dusk. The cemetery's palette is its night already, so it holds all day.
+verse_style_flat_time :: (fl_realm:f32,fl_ch:f32,fl_dusk:f32,fl_night:f32)->f32 #export_c {
+ if fl_realm<0.5f32 {return 1.0f32;}
+ fl_warm:=1.0f32+(st_pick(fl_ch,1.0f32,0.80f32,0.68f32)-1.0f32)*st_sat(fl_dusk);
+ return fl_warm+(st_pick(fl_ch,0.20f32,0.25f32,0.44f32)-fl_warm)*st_sat(fl_night);
+}
+
+#test "flat: three hard tones, never a gradient; two for characters" {
+ // every light lands on 0, 0.5 or 1 but within 0.01 of the two edges
+ for fl_i:0..<1001 {
+  fl_w:=cast(f32)fl_i/1000.0f32; fl_b:=verse_style_flat_band(fl_w);
+  if abs(fl_w-0.38f32)>0.011f32 && abs(fl_w-0.62f32)>0.011f32 {#assert fl_b==0.0f32 || abs(fl_b-0.5f32)<0.00001f32 || fl_b==1.0f32;}
+  fl_c:=verse_style_flat_band2(fl_w);
+  if abs(fl_w-0.45f32)>0.011f32 {#assert fl_c==0.0f32 || fl_c==1.0f32;}
+ }
+ #assert verse_style_flat_band(0.2f32)==0.0f32 && abs(verse_style_flat_band(0.5f32)-0.5f32)<0.00001f32 && verse_style_flat_band(0.9f32)==1.0f32;
+ // the light: lit facing the key, dark facing away, a cast shadow drops it to dark
+ #assert verse_style_flat_band(verse_style_flat_light(1.0f32,1.0f32))==1.0f32 && verse_style_flat_band(verse_style_flat_light(-1.0f32,1.0f32))==0.0f32;
+ #assert verse_style_flat_band(verse_style_flat_light(1.0f32,0.3f32))==0.0f32;
+}
+#test "flat: a flat sky with one soft horizon band; flat shadows with a soft rim; one far fade" {
+ #assert verse_style_flat_sky(-0.2f32)==1.0f32 && verse_style_flat_sky(0.0f32)==1.0f32 && verse_style_flat_sky(0.24f32)==0.0f32 && verse_style_flat_sky(0.9f32)==0.0f32;
+ #assert abs(verse_style_flat_sky(0.12f32)-0.5f32)<0.0001f32;
+ #assert verse_style_flat_shadow(0.0f32)==1.0f32 && verse_style_flat_shadow(0.7f32)==1.0f32 && verse_style_flat_shadow(1.0f32)==0.0f32;
+ #assert verse_style_flat_fade(10.0f32,40.0f32,80.0f32,0.5f32)==0.0f32 && verse_style_flat_fade(500.0f32,40.0f32,80.0f32,0.5f32)==0.5f32;
+}
+#test "flat: the dither steps a gradient in flat steps, each pixel one of them, the 4x4 pattern covering all 16 thresholds" {
+ fl_seen: [16] bool;
+ for fl_y:0..<4 { for fl_x:0..<4 {
+  fl_b:=verse_style_bayer(cast(f32)fl_x,cast(f32)fl_y);
+  #assert fl_b>0.0f32 && fl_b<1.0f32;
+  fl_seen[cast(int)floor(fl_b*16.0f32)]=true;
+  #assert verse_style_bayer(cast(f32)(fl_x+4),cast(f32)(fl_y+8))==fl_b;
+  for fl_i:0..<11 { fl_d:=verse_style_flat_dither(cast(f32)fl_i/10.0f32,cast(f32)fl_x,cast(f32)fl_y,3.0f32); #assert fl_d==0.0f32 || abs(fl_d-1.0f32/3.0f32)<0.0001f32 || abs(fl_d-2.0f32/3.0f32)<0.0001f32 || fl_d==1.0f32; }
+ } }
+ for fl_k:0..<16 {#assert fl_seen[fl_k];}
+ // on average the steps follow the gradient
+ fl_sum:=0.0f32;
+ for fl_y:0..<4 { for fl_x:0..<4 { fl_sum+=verse_style_flat_dither(0.5f32,cast(f32)fl_x,cast(f32)fl_y,4.0f32); } }
+ #assert abs(fl_sum/16.0f32-0.5f32)<0.07f32;
+}
+#test "flat: a hem's trim is a thin line at the edge, nothing past it" {
+ #assert verse_style_flat_hem(0.0f32,0.05f32,0.005f32)==1.0f32 && verse_style_flat_hem(0.03f32,0.05f32,0.005f32)==1.0f32;
+ #assert verse_style_flat_hem(0.06f32,0.05f32,0.005f32)==0.0f32 && verse_style_flat_hem(0.4f32,0.05f32,0.005f32)==0.0f32;
+}
 #test "the chroma cap: a greyed shadow gets back to 0.7 of its albedo's saturation, never past 2.5 times; a saturated one is left" {
  #assert abs(verse_style_chroma_gain(0.2f32,0.6f32,0.7f32)-2.1f32)<0.0001f32;
  #assert verse_style_chroma_gain(0.5f32,0.6f32,0.7f32)==1.0f32 && verse_style_chroma_gain(0.05f32,0.9f32,0.7f32)==2.5f32 && verse_style_chroma_gain(0.0f32,0.6f32,0.7f32)==1.0f32;

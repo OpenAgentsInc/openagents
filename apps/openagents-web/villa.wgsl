@@ -1,15 +1,17 @@
-// Hecate's Cemetery's passes (villa.coax): the night sky with the moon in
-// its real phase (or space, in the flight's first take), the scene, and a
-// post pass that draws a pale outline along edges (verse/look.coax), blooms
-// what glows and tones it, under the HUD's plates; then the HUD's strokes.
+// Hecate's Cemetery's passes (villa.coax) in the flat style (docs/verse/art-styles.md,
+// Flat): the night sky, one flat dusty blue over a soft horizon band, with
+// the moon a flat ivory disc in its real phase (or space, in the flight's
+// first take), the scene in three flat tones, and a post pass that blooms only
+// what glows, under the HUD's plates; then the HUD's strokes. No outline, no
+// specular, no rim: the palette (verse/style.coax FLAT_CEMETERY, dusty blue,
+// near-black, ivory and a touch of gold) does the work.
 // Every number comes from villa.coax: the view, the eye, the moon, the
 // ground's heights (store 0), each object's place, size, colour and shape
 // (store 1), the shadows, the paths and the plates.
 //
 // The look is Kiki's (verse/planetary-villa/README.md): simple low-poly
-// shapes, each face lit flat; the moon the only key light, not very bright,
-// cold blue; outlines so shapes and paths read in the dark. The dog glows
-// white; you are a shadow, black, your edges fuzzy.
+// shapes, each face lit flat; the moon the only key light. The dog glows
+// ivory; you are a shadow, near-black, your edges fuzzy.
 
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, plates: f32, k: f32, horizon: f32,
@@ -26,11 +28,21 @@ struct U {
 }
 @group(0) @binding(0) var<uniform> u: U;
 
-const NIGHT_TOP = vec3f(0.006, 0.009, 0.026);
-const NIGHT_LOW = vec3f(0.028, 0.038, 0.075);
-const FOG = vec3f(0.022, 0.03, 0.06);
-const MOONLIGHT = vec3f(0.42, 0.52, 0.8);
-const INK = vec3f(0.36, 0.43, 0.62);
+const MOONLIGHT = vec3f(0.42, 0.52, 0.8);   // the planet's rim in space only
+
+// The palette's slots (verse/style.coax FLAT_*), linear.
+const PALETTE = 0.0;   // FLAT_CEMETERY
+const P_SKY = 0.0; const P_HORIZON = 1.0; const P_GROUND = 2.0; const P_GROUND2 = 3.0; const P_PATH = 4.0;
+const P_LIT = 5.0; const P_SHADE = 6.0; const P_SHADOW = 7.0; const P_ACCENT = 8.0; const P_DARK = 9.0;
+const P_LIGHT = 10.0; const P_FOLIAGE = 11.0; const P_FOLIAGE2 = 12.0; const P_WATER = 13.0; const P_WOOD = 14.0;
+const P_ROCK = 17.0; const P_SLATE = 18.0;
+fn pal(slot: f32) -> vec3f {
+  return vec3f(verse_style_flat_colour(PALETTE, slot, 0.0), verse_style_flat_colour(PALETTE, slot, 1.0), verse_style_flat_colour(PALETTE, slot, 2.0));
+}
+// The flat preset's numbers (verse/style-preset.coax verse_style_flat): the far fade, the hem's
+// width, a tall shape's dithered darkening toward its foot and its steps, a flat shadow's strength.
+const FADE_FROM = 40.0; const FADE_OVER = 80.0; const FADE_CAP = 0.5;
+const HEM = 0.06; const DITHER = 0.25; const DITHER_STEPS = 4.0;
 
 struct Lit { @location(0) light: vec4f, @location(1) aux: vec4f }
 
@@ -71,9 +83,9 @@ fn stars(d: vec3f, many: f32) -> f32 {
   }
   return c;
 }
-// The moon: a disc lit as the real one is now (the sun's side from its
-// phase), a faint earthshine on the dark side, and a halo.
-fn moon(d: vec3f) -> vec4f {
+// The moon: a flat ivory disc lit as the real one is now (the sun's side from
+// its phase), the dark side a flat step of the sky; no halo, no texture.
+fn moon(d: vec3f, sky: vec3f) -> vec4f {
   let m = normalize(u.moon.xyz);
   let size = 0.045;
   let c = dot(d, m);
@@ -82,17 +94,14 @@ fn moon(d: vec3f) -> vec4f {
   let x = dot(d, side) / size;
   let y = dot(d, up) / size;
   let r = length(vec2f(x, y));
-  let halo = exp(-max(1.0 - c, 0.0) * 160.0) * 0.12 * (0.4 + 0.6 * u.sky.y) + exp(-max(1.0 - c, 0.0) * 1400.0) * 0.18 * u.sky.y;
-  if (r >= 1.0 || c < 0.0) { return vec4f(MOONLIGHT * halo, 0.0); }
+  if (r >= 1.0 || c < 0.0) { return vec4f(sky, 0.0); }
   let z = sqrt(max(0.0, 1.0 - r * r));
   let a = u.moon.w * 6.2831853;
   let toward_sun = vec3f(-sin(a), 0.0, -cos(a));
-  let lambert = dot(vec3f(x, y, z), toward_sun);
-  let lit = smoothstep(-0.04, 0.08, lambert);
-  let mare = 0.82 + 0.18 * noise(vec2f(x, y) * 3.2 + vec2f(7.0, 1.0));
-  let disc = vec3f(0.92, 0.94, 0.88) * mare * (0.05 + 1.85 * lit) + vec3f(0.02, 0.025, 0.04);
-  let edge = 1.0 - smoothstep(0.96, 1.0, r);
-  return vec4f(mix(MOONLIGHT * halo, disc, edge), edge * lit);
+  let lit = smoothstep(-0.02, 0.02, dot(vec3f(x, y, z), toward_sun));
+  let disc = mix(mix(sky, pal(P_SLATE), 0.5), pal(P_LIGHT), lit);
+  let edge = 1.0 - smoothstep(0.97, 1.0, r);
+  return vec4f(mix(sky, disc, edge), edge * lit);
 }
 
 @vertex fn bg_vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {
@@ -102,15 +111,13 @@ fn moon(d: vec3f) -> vec4f {
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let d = ray(pos.xy);
   let space = u.eye.w;
-  let up = clamp(d.y * 2.5, 0.0, 1.0);
-  var sky = mix(NIGHT_LOW, NIGHT_TOP, pow(up, 0.6));
-  sky = mix(sky, vec3f(0.004, 0.003, 0.012) + vec3f(0.02, 0.012, 0.04) * pow(1.0 - abs(dot(d, normalize(vec3f(0.3, 0.2, 1.0)))), 6.0), space);
-  let s = stars(d, space) * select(clamp(d.y * 6.0, 0.0, 1.0), 1.0, space > 0.5);
-  var c = sky + vec3f(0.85, 0.9, 1.0) * s * 1.2;
-  let mo = moon(d);
-  c = select(c + mo.rgb, mo.rgb, mo.a > 0.0);
-  c += vec3f(u.flash.x);
-  return Lit(vec4f(c, select(0.0, 1.0, mo.a > 0.2) + u.flash.x), vec4f(0.0));
+  // the sky: one flat dusty blue, a soft paler band at the horizon; space (the flight) keeps its stars
+  var sky = mix(pal(P_SKY), pal(P_HORIZON), verse_style_flat_sky(d.y));
+  let deep = vec3f(0.004, 0.003, 0.012) + vec3f(0.02, 0.012, 0.04) * pow(1.0 - abs(dot(d, normalize(vec3f(0.3, 0.2, 1.0)))), 6.0);
+  sky = mix(sky, deep + vec3f(0.85, 0.9, 1.0) * stars(d, space) * 1.2, space);
+  let mo = moon(d, sky);
+  let c = mo.rgb + vec3f(u.flash.x);
+  return Lit(vec4f(c, select(0.0, 0.3, mo.a > 0.2) + u.flash.x), vec4f(0.0));
 }
 
 // ---- the scene
@@ -125,6 +132,8 @@ struct S {
   @location(1) normal: vec3f,
   @location(2) tint: vec3f,
   @location(3) @interpolate(flat) look: u32,
+  @location(4) local: vec3f,                       // where on its shape (a unit shape, -0.5 to 0.5)
+  @location(5) @interpolate(flat) size: vec2f,     // its height (m), how tall it reads (0 to 1)
 }
 
 fn quad(v: u32) -> vec2f {
@@ -212,6 +221,8 @@ fn clip(w: vec3f) -> vec4f {
     o.normal = normalize(vec3f(height(gx - 1, gz) - height(gx + 1, gz), 2.0 * u.ground.y, height(gx, gz - 1) - height(gx, gz + 1)));
     o.tint = vec3f(0.1, 0.16, 0.12);
     o.look = 99u;
+    o.local = vec3f(0.0);
+    o.size = vec2f(0.0);
     return o;
   }
   let m = objects[instance - n * n];
@@ -235,6 +246,8 @@ fn clip(w: vec3f) -> vec4f {
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = m.colour.rgb;
   o.look = u32(m.colour.w) / 8u;
+  o.local = v.p;
+  o.size = vec2f(length(c1), smoothstep(1.6, 3.2, length(c1)));
   return o;
 }
 
@@ -251,13 +264,13 @@ fn path_distance(p: vec2f) -> f32 {
   }
   return d;
 }
+// The cast shadows: flat translucent shapes, the deepest one where they overlap (0 none, 1 all).
 fn shade_shadows(p: vec2f) -> f32 {
-  var s = 1.0;
+  var s = 0.0;
   for (var i = 0; i < 16; i++) {
     let b = u.shadow[i];
     if (b.z <= 0.0) { break; }
-    let d = length(p - b.xy) / b.z;
-    s *= 1.0 - b.w * (1.0 - smoothstep(0.35, 1.0, d));
+    s = max(s, verse_style_flat_shadow(length(p - b.xy) / b.z) * min(b.w * 1.4, 1.0));
   }
   return s;
 }
@@ -271,87 +284,101 @@ fn ink_of(look: u32) -> u32 {
   return 12u;
 }
 
+// The light from the moon held at least 0.45 up, so a low or set moon never puts the whole
+// garden in its dark tone: the cemetery is drawn at night, not in the dark.
+fn key_dir() -> vec3f {
+  let m = normalize(u.moon.xyz);
+  return normalize(vec3f(m.x, max(m.y, 0.45), m.z));
+}
+// A surface's colour in the palette by its look: the realm keeps its shapes, the palette
+// decides their colours.
+fn albedo(look: u32, tint: vec3f) -> vec3f {
+  let hi = max(tint.r, max(tint.g, tint.b));
+  if (look == 1u) { return mix(pal(P_FOLIAGE), pal(P_FOLIAGE2), smoothstep(0.17, 0.22, hi)); }   // cypresses, trees, hedges
+  if (look == 2u) {                                                                             // stone: ivory, plaques slate
+    if (hi < 0.3) { return pal(P_SLATE); }
+    return mix(pal(P_ROCK), pal(P_LIGHT), smoothstep(0.38, 0.5, hi));
+  }
+  if (look == 3u) { return pal(P_DARK); }                                                        // iron
+  if (look == 4u) { return pal(P_WATER); }
+  if (look == 9u) { return pal(P_FOLIAGE2); }                                                    // turned soil
+  if (look == 10u) { return pal(P_DARK); }
+  return pal(P_WOOD);                                                                            // trunks, benches
+}
+
 @fragment fn scene_fs(s: S) -> Lit {
   // Flat faces: the low-poly look comes from the face's own normal.
   let dx = dpdx(s.world);
   let dy = dpdy(s.world);
+  let ground_aa = max(length(fwidth(s.world.xz)), 0.002);   // derivatives first, while control flow is uniform
+  let local_aa = fwidth(s.local.y);
   let to_eye = normalize(u.eye.xyz - s.world);
   var facet = normalize(cross(dy, dx));
   if (dot(facet, to_eye) < 0.0) { facet = -facet; }
   let smooth_n = normalize(s.normal);
-  let moon_d = normalize(u.moon.xyz);
-  let key = u.sky.x;
   let d = length(u.eye.xyz - s.world);
-  let fog = clamp(1.0 - exp(-max(d - 18.0, 0.0) * 0.022), 0.0, 0.92);
+  let fade = verse_style_flat_fade(d, FADE_FROM, FADE_OVER, FADE_CAP);
 
-  // You: a shadow, black all through, fuzzy at the edge, a thin rim of moonlight.
+  // You: a shadow, near-black all through, fuzzy at the edge.
   if (s.look == 6u) {
     let facing = abs(dot(smooth_n, to_eye));
     let grain = hash(floor(s.pos.xy) + vec2f(floor(u.time * 24.0) * (1.0 - u.still) * 0.37, 0.0));
     if (grain > smoothstep(0.02, 0.5, facing) * 1.25) { discard; }
-    let rim = pow(1.0 - facing, 3.0) * max(dot(smooth_n, moon_d), 0.0) * 0.25 * key;
-    let c = mix(vec3f(0.004, 0.005, 0.009) + MOONLIGHT * rim, FOG, fog * 0.6);
-    return Lit(vec4f(c, 0.0), vec4f(smooth_n, f32(material(6u) * 16u)));
+    return Lit(vec4f(mix(pal(P_DARK) * 0.6, pal(P_HORIZON), fade * 0.6), 0.0), vec4f(smooth_n, f32(material(6u) * 16u)));
   }
-  // What glows: the dog's white light, softly brighter where it faces you.
+  // What glows: the dog's light, one flat ivory.
   if (s.look == 5u || s.look == 7u) {
-    let facing = abs(dot(smooth_n, to_eye));
-    let shade = 0.55 + 0.35 * facing + 0.2 * max(dot(smooth_n, moon_d), 0.0);
-    let c = s.tint * select(shade, 1.6, s.look == 7u);
-    return Lit(vec4f(mix(c, FOG, fog * 0.35), select(0.35, 0.9, s.look == 7u)), vec4f(smooth_n, f32(material(s.look) * 16u)));
+    let c = mix(pal(P_LIGHT), s.tint, 0.25) * select(1.15, 1.6, s.look == 7u);
+    return Lit(vec4f(mix(c, pal(P_HORIZON), fade * 0.35), select(0.35, 0.9, s.look == 7u)), vec4f(smooth_n, f32(material(s.look) * 16u)));
   }
+  // The planet, seen in the flight: two flat tones and its land in flat patches.
   if (s.look == 8u) {
     let n = smooth_n;
-    let lambert = max(dot(n, moon_d), 0.0);
-    let rim = pow(1.0 - abs(dot(n, to_eye)), 3.0);
-    let land = noise(vec2f(atan2(n.z, n.x) * 3.0, n.y * 4.0));
-    let base = mix(s.tint, vec3f(0.09, 0.16, 0.12), smoothstep(0.45, 0.6, land));
-    let c = base * (0.05 + lambert * 1.3) + vec3f(0.25, 0.35, 0.7) * rim * 0.9;
-    return Lit(vec4f(c, rim * 0.5), vec4f(n, f32(material(8u) * 16u)));
+    let lit = smoothstep(-0.02, 0.02, dot(n, normalize(u.moon.xyz)));
+    let land = step(0.52, noise(vec2f(atan2(n.z, n.x) * 3.0, n.y * 4.0)));
+    let base = mix(pal(P_SLATE), pal(P_GROUND2), land);
+    let c = base * mix(0.25, 1.0, lit);
+    return Lit(vec4f(c, 0.0), vec4f(n, f32(material(8u) * 16u)));
   }
 
   var n = facet;
-  var base = s.tint;
   let xz = s.world.xz;
-  var shadow = 1.0;
+  var base = albedo(s.look, s.tint);
+  var cover = 0.0;
   if (s.look == 99u) {
-    let broad = noise(xz * 0.11);
-    let fine = noise(xz * 2.3);
-    base = mix(vec3f(0.07, 0.12, 0.09), vec3f(0.11, 0.17, 0.12), broad) * (0.9 + 0.15 * fine);
+    // the ground: one flat dusty blue in broad patches of two, the paths a flat pale band
+    // with a thin ivory trim along their edges
+    base = mix(pal(P_GROUND), pal(P_GROUND2), step(0.6, noise(xz * 0.045)));
     let pd = path_distance(xz);
     let half = u.path_info.y;
-    let on_path = 1.0 - smoothstep(half - 0.08, half + 0.08, pd);
-    if (on_path > 0.0) {
-      let grit = noise(xz * 4.0) * 0.5 + noise(xz * 11.0) * 0.5;
-      base = mix(base, mix(vec3f(0.2, 0.2, 0.22), vec3f(0.27, 0.27, 0.29), grit), on_path);
-    }
-    // the path's edge: a pale line, so the way reads in the dark
-    let edge = 1.0 - smoothstep(0.0, 0.07, abs(pd - half));
-    base = mix(base, INK * 0.9, edge * 0.7);
-    shadow = shade_shadows(xz);
-  } else if (s.look == 1u) {
-    base *= 0.85 + 0.3 * noise(s.world.xy * 2.1 + s.world.zx * 1.7);
-  } else if (s.look == 2u) {
-    base *= 0.9 + 0.12 * noise(s.world.xz * 7.0 + s.world.y * 5.0);
-  } else if (s.look == 4u) {
-    n = smooth_n;
-    base = mix(base, vec3f(0.5, 0.6, 0.8), 0.3 * noise(xz * 2.0 + vec2f(u.time * 0.25 * (1.0 - u.still), 0.0)));
-  } else if (s.look == 10u) {
+    let aa = ground_aa;
+    base = mix(base, pal(P_PATH), 1.0 - smoothstep(half - aa, half + aa, pd));
+    base = mix(base, pal(P_LIGHT), verse_style_flat_hem(abs(pd - half), 0.035, aa) * 0.7);
+    cover = shade_shadows(xz);
+  } else if (s.look == 4u || s.look == 10u) {
     n = smooth_n;
   }
-  let lambert = max(dot(n, moon_d), 0.0);
-  let ambient = mix(vec3f(0.035, 0.04, 0.05), vec3f(0.07, 0.09, 0.15), n.y * 0.5 + 0.5);
-  var c = base * (ambient + MOONLIGHT * lambert * key * 0.95 * shadow) * mix(0.7, 1.0, shadow);
-  if (s.look == 4u) {   // the moon on the water
-    let r = reflect(-to_eye, n);
-    c += MOONLIGHT * pow(max(dot(r, moon_d), 0.0), 60.0) * 1.2 * key;
+  // a tall shape steps a little darker toward its foot, dithered where the steps meet
+  if (s.size.y > 0.0 && s.look != 99u) {
+    let t = verse_style_flat_dither(0.5 - s.local.y, s.pos.x, s.pos.y, DITHER_STEPS);
+    base = mix(base, base * pal(P_SHADE) * 0.8, t * DITHER * s.size.y);
   }
-  c = mix(c, FOG, fog);
+  // trim: a thin gold line along the top of the iron (the gate's bar, the railings' tips)
+  if (s.look == 3u) {
+    let from_top = (0.5 - s.local.y) * s.size.x;
+    base = mix(base, pal(P_ACCENT), verse_style_flat_hem(from_top, 0.03, max(local_aa * s.size.x, 0.001)));
+  }
+  // three flat tones, lit, shade and dark; no specular; the cast shadow a flat translucent shape
+  let band = verse_style_flat_band(verse_style_flat_light(dot(n, key_dir()), 1.0));
+  var c = base * mix(pal(P_SHADE), pal(P_LIT), band);
+  c *= mix(vec3f(1.0), pal(P_SHADOW), cover);
+  c = mix(c, pal(P_HORIZON), fade);
   return Lit(vec4f(c, 0.0), vec4f(n, f32(material(s.look) * 16u + ink_of(s.look))));
 }
 
 // ---- the post pass (host.js postLayouts): the bright share, blurred at a quarter and an
-// eighth of the size (bloom_fs), added back; the outlines; toned onto the screen under the plates.
+// eighth of the size (bloom_fs), added back gently (only what glows has a share); no outline and
+// no tone curve, so the palette shows as it is; under the plates.
 struct Step { v: vec4f }
 @group(1) @binding(0) var bloom_src: texture_2d<f32>;
 @group(1) @binding(1) var bloom_lin: sampler;
@@ -380,39 +407,6 @@ struct Step { v: vec4f }
 @group(1) @binding(4) var post_depth: texture_depth_2d;
 @group(1) @binding(5) var post_lin: sampler;
 
-// The outline (verse/look.coax): where the depth jumps, the surface creases
-// or the material changes, drawn as a pale moonlit line rather than ink, as
-// strongly as the nearer surface's material asks.
-fn outlined(p: vec2i, light: vec3f) -> vec3f {
-  let a = textureLoad(post_aux, p, 0);
-  let tag = u32(round(a.a));
-  let strength = f32(tag & 15u) / 15.0;
-  if (strength <= 0.0) { return light; }
-  let o = i32(max(1.0, floor(u.size.y / 800.0)));
-  let top = vec2i(textureDimensions(post_depth)) - 1;
-  let at = array(vec2i(-o, 0), vec2i(o, 0), vec2i(0, -o), vec2i(0, o));
-  let dc = textureLoad(post_depth, p, 0);
-  var d: array<f32, 4>;
-  var edge = 0.0;
-  for (var k = 0; k < 4; k++) {
-    let q = clamp(p + at[k], vec2i(0), top);
-    d[k] = textureLoad(post_depth, q, 0);
-    let b = textureLoad(post_aux, q, 0);
-    if (d[k] < 1.0) {
-      edge = max(edge, verse_outline_crease(dot(a.rgb, b.rgb)));
-      let other = u32(round(b.a)) >> 4u;
-      if (other != tag >> 4u && dc <= d[k] + 0.00001 && (tag >> 4u) > other) { edge = max(edge, 0.7); }
-    } else {
-      edge = 1.0;   // against the sky
-    }
-  }
-  let lap = max(abs(d[0] + d[1] - 2.0 * dc), abs(d[2] + d[3] - 2.0 * dc));
-  edge = max(edge, verse_outline_depth(lap, dc));
-  let fade = 1.0 - smoothstep(0.985, 0.999, dc);   // far edges fade into the night
-  return mix(light, max(light, INK * (0.35 + 0.65 * u.sky.x)), clamp(edge * strength * fade, 0.0, 1.0) * 0.55);
-}
-
-fn tone(c: vec3f) -> vec3f { return vec3f(1.0) - exp(-c * 2.1); }
 fn encode(c: vec3f) -> vec3f { return pow(clamp(c, vec3f(0.0), vec3f(1.0)), vec3f(1.0 / 2.2)); }
 
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
@@ -443,11 +437,11 @@ fn plates(p: vec2f, under: vec3f) -> vec3f {
 @fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let p = vec2i(pos.xy);
   let uv = pos.xy / u.size;
-  let light = outlined(p, textureLoad(post_light, p, 0).rgb);
+  let light = textureLoad(post_light, p, 0).rgb;
   let near = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb;
   let far = textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb;
-  let c = light + near * 0.55 + far * 0.45;
-  return vec4f(plates(pos.xy, encode(tone(c))), 1.0);
+  let c = light + (near * 0.55 + far * 0.45) * 0.6;
+  return vec4f(plates(pos.xy, encode(c)), 1.0);
 }
 
 // ---- the HUD's strokes
@@ -510,7 +504,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 // ---- end generated
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_flat_light, verse_style_flat_band, verse_style_flat_band2, verse_style_flat_sky, verse_style_flat_shadow, verse_style_flat_fade, verse_style_bayer, verse_style_flat_dither, verse_style_flat_hem, verse_style_flat_srgb, verse_style_flat_colour, verse_style_flat_time) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -960,5 +954,247 @@ fn verse_style_jitter(l_c: f32, l_ch: f32, l_h: f32, l_jitter: f32) -> f32 {
     return l_c;
   }
   return (l_c * (1.0 - l_j));
+}
+fn verse_style_flat_light(l_fl_ndl: f32, l_fl_lit: f32) -> f32 {
+  var coax_t54: f32;
+  var coax_t55: f32;
+  coax_t54 = coax_p_st_sat(((l_fl_ndl * 0.5) + 0.5));
+  coax_t55 = coax_p_st_sat(l_fl_lit);
+  return (coax_t54 * coax_t55);
+}
+fn verse_style_flat_band(l_fl_w: f32) -> f32 {
+  return verse_style_bands(l_fl_w, 0.379999995, 0.620000005, 0.00999999978, 0.5);
+}
+fn verse_style_flat_band2(l_fl_w: f32) -> f32 {
+  return verse_style_soft_step(0.449999988, 0.00999999978, l_fl_w);
+}
+fn verse_style_flat_sky(l_fl_up: f32) -> f32 {
+  return (1.0 - verse_style_soft_step(0.119999997, 0.119999997, l_fl_up));
+}
+fn verse_style_flat_shadow(l_fl_d: f32) -> f32 {
+  return (1.0 - verse_style_soft_step(0.850000024, 0.150000006, l_fl_d));
+}
+fn verse_style_flat_fade(l_fl_d: f32, l_fl_start: f32, l_fl_reach: f32, l_fl_cap: f32) -> f32 {
+  var coax_t56: f32;
+  var coax_t57: f32;
+  coax_t56 = (l_fl_start + (l_fl_reach * 0.5));
+  coax_t57 = coax_p_st_max((l_fl_reach * 0.5), 0.00100000005);
+  return (l_fl_cap * verse_style_soft_step(coax_t56, coax_t57, l_fl_d));
+}
+fn coax_p_st_bayer2(l_fl_a: f32, l_fl_b: f32) -> f32 {
+  return (((2.0 * l_fl_a) + (3.0 * l_fl_b)) - ((4.0 * l_fl_a) * l_fl_b));
+}
+fn verse_style_bayer(l_fl_px: f32, l_fl_py: f32) -> f32 {
+  var coax_t58: f32;
+  var coax_t59: f32;
+  var l_fl_x: f32 = (l_fl_px - (4.0 * floor((l_fl_px * 0.25))));
+  var l_fl_y: f32 = (l_fl_py - (4.0 * floor((l_fl_py * 0.25))));
+  var l_fl_x0: f32 = (l_fl_x - (2.0 * floor((l_fl_x * 0.5))));
+  var l_fl_y0: f32 = (l_fl_y - (2.0 * floor((l_fl_y * 0.5))));
+  var l_fl_x1: f32 = floor((l_fl_x * 0.5));
+  var l_fl_y1: f32 = floor((l_fl_y * 0.5));
+  coax_t58 = (4.0 * coax_p_st_bayer2(l_fl_x0, l_fl_y0));
+  coax_t59 = coax_p_st_bayer2(l_fl_x1, l_fl_y1);
+  return (((coax_t58 + coax_t59) + 0.5) / 16.0);
+}
+fn verse_style_flat_dither(l_fl_t: f32, l_fl_px: f32, l_fl_py: f32, l_fl_steps: f32) -> f32 {
+  var coax_t60: f32;
+  var coax_t61: f32;
+  var l_fl_n: f32 = coax_p_st_max(l_fl_steps, 1.0);
+  coax_t60 = (coax_p_st_sat(l_fl_t) * l_fl_n);
+  coax_t61 = verse_style_bayer(l_fl_px, l_fl_py);
+  return coax_p_st_sat((floor((coax_t60 + coax_t61)) / l_fl_n));
+}
+fn verse_style_flat_hem(l_fl_y: f32, l_fl_width: f32, l_fl_aa: f32) -> f32 {
+  return (1.0 - verse_style_soft_step(l_fl_width, coax_p_st_max(l_fl_aa, 9.99999997e-07), l_fl_y));
+}
+fn coax_p_st_pick(l_fl_ch: f32, l_fl_r: f32, l_fl_g: f32, l_fl_b: f32) -> f32 {
+  if ((l_fl_ch < 0.5))
+  {
+    return l_fl_r;
+  }
+  if ((l_fl_ch < 1.5))
+  {
+    return l_fl_g;
+  }
+  return l_fl_b;
+}
+fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
+  if ((l_fl_realm < 0.5))
+  {
+    if ((l_fl_slot < 0.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.36500001, 0.442999989, 0.575999975);
+    }
+    if ((l_fl_slot < 1.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.540000021, 0.603999972, 0.698000014);
+    }
+    if ((l_fl_slot < 2.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.254999995, 0.317999989, 0.419999987);
+    }
+    if ((l_fl_slot < 3.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.289999992, 0.356999993, 0.455000013);
+    }
+    if ((l_fl_slot < 4.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.699999988, 0.699999988, 0.689999998);
+    }
+    if ((l_fl_slot < 5.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 1.0, 1.0, 0.980000019);
+    }
+    if ((l_fl_slot < 6.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.649999976, 0.800000012);
+    }
+    if ((l_fl_slot < 7.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.639999986, 0.680000007, 0.819999993);
+    }
+    if ((l_fl_slot < 8.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+    }
+    if ((l_fl_slot < 9.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.0820000023, 0.0939999968, 0.122000001);
+    }
+    if ((l_fl_slot < 10.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.925000012, 0.893999994, 0.811999977);
+    }
+    if ((l_fl_slot < 11.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.118000001, 0.157000005, 0.200000003);
+    }
+    if ((l_fl_slot < 12.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.216000006, 0.270999998);
+    }
+    if ((l_fl_slot < 13.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.497999996, 0.583999991, 0.702000022);
+    }
+    if ((l_fl_slot < 14.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.141000003, 0.152999997);
+    }
+    if ((l_fl_slot < 15.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+    }
+    if ((l_fl_slot < 16.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.779999971, 0.800000012, 0.779999971);
+    }
+    if ((l_fl_slot < 17.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.787999988, 0.768999994, 0.713999987);
+    }
+    if ((l_fl_slot < 18.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.419999987, 0.460000008, 0.600000024);
+    }
+    return coax_p_st_pick(l_fl_ch, 0.379999995, 0.430000007, 0.469999999);
+  }
+  if ((l_fl_slot < 0.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.662999988, 0.827000022, 0.815999985);
+  }
+  if ((l_fl_slot < 1.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.910000026, 0.936999977, 0.815999985);
+  }
+  if ((l_fl_slot < 2.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.624000013, 0.709999979, 0.289999992);
+  }
+  if ((l_fl_slot < 3.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.501999974, 0.600000024, 0.243000001);
+  }
+  if ((l_fl_slot < 4.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.851000011, 0.753000021, 0.541000009);
+  }
+  if ((l_fl_slot < 5.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 1.0, 0.980000019, 0.920000017);
+  }
+  if ((l_fl_slot < 6.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.699999988, 0.699999988, 0.839999974);
+  }
+  if ((l_fl_slot < 7.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.75999999, 0.75, 0.879999995);
+  }
+  if ((l_fl_slot < 8.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 1.0, 0.964999974, 0.878000021);
+  }
+  if ((l_fl_slot < 9.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.114, 0.122000001, 0.165000007);
+  }
+  if ((l_fl_slot < 10.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.949000001, 0.917999983, 0.824000001);
+  }
+  if ((l_fl_slot < 11.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.435000002, 0.541000009, 0.226999998);
+  }
+  if ((l_fl_slot < 12.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.709999979, 0.811999977, 0.352999985);
+  }
+  if ((l_fl_slot < 13.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.56099999, 0.811999977, 0.753000021);
+  }
+  if ((l_fl_slot < 14.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.658999979, 0.528999984, 0.352999985);
+  }
+  if ((l_fl_slot < 15.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.878000021, 0.518000007, 0.226999998);
+  }
+  if ((l_fl_slot < 16.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.768999994, 0.925000012, 0.838999987);
+  }
+  if ((l_fl_slot < 17.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.662999988, 0.638999999, 0.768999994);
+  }
+  if ((l_fl_slot < 18.5))
+  {
+    return coax_p_st_pick(l_fl_ch, 0.787999988, 0.702000022, 0.878000021);
+  }
+  return coax_p_st_pick(l_fl_ch, 0.654999971, 0.709999979, 0.603999972);
+}
+fn verse_style_flat_colour(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
+  return pow(verse_style_flat_srgb(l_fl_realm, l_fl_slot, l_fl_ch), 2.20000005);
+}
+fn verse_style_flat_time(l_fl_realm: f32, l_fl_ch: f32, l_fl_dusk: f32, l_fl_night: f32) -> f32 {
+  var coax_t62: f32;
+  var coax_t63: f32;
+  var coax_t64: f32;
+  var coax_t65: f32;
+  if ((l_fl_realm < 0.5))
+  {
+    return 1.0;
+  }
+  coax_t62 = (coax_p_st_pick(l_fl_ch, 1.0, 0.800000012, 0.680000007) - 1.0);
+  coax_t63 = coax_p_st_sat(l_fl_dusk);
+  var l_fl_warm: f32 = (1.0 + (coax_t62 * coax_t63));
+  coax_t64 = (coax_p_st_pick(l_fl_ch, 0.200000003, 0.25, 0.439999998) - l_fl_warm);
+  coax_t65 = coax_p_st_sat(l_fl_night);
+  return (l_fl_warm + (coax_t64 * coax_t65));
 }
 // ---- end generated

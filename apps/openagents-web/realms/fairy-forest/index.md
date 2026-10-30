@@ -1,6 +1,6 @@
 # Fairy Forest
 
-A painterly Verse realm you walk in the browser at https://openagents.com/realms/fairy-forest. It is a first version, unlisted: the galaxy shows it only with `?realms=all`. The plan for the whole realm is in `verse/fairy-forest/README.md`.
+A Verse realm, drawn flat, you walk in the browser at https://openagents.com/realms/fairy-forest. It is a first version, unlisted: the galaxy shows it only with `?realms=all`. The plan for the whole realm is in `verse/fairy-forest/README.md`.
 
 ## The valley
 
@@ -24,7 +24,7 @@ Press E by a creature, or click or tap it (TALK on a phone), to talk to it. Type
 
 ## The look
 
-The painterly style (`docs/verse/art-styles.md`): banded toon shading with a warm rim light, blue and violet shadows, a blue haze that thickens with distance, a painted gradient sky with soft clouds, gentle bloom, swaying grass and broad flat colour on the ground. The water is painted too: bands of colour by depth, the sky in its reflection, sparkles and a white shore line. The shading functions are `verse/paint.coax` and `verse/style.coax`; the valley's layout, creatures and the restore loop are `verse/fairy-forest/forest.coax`, and the stream and pond are `verse/fairy-forest/stream.coax`.
+The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, a few short tufts of grass and the water in flat bands with a cream shore line. The shading functions and the palette are `verse/style.coax`; the valley's layout, creatures and the restore loop are `verse/fairy-forest/forest.coax`, and the stream and pond are `verse/fairy-forest/stream.coax`.
 
 ## Saving
 
