@@ -52,6 +52,8 @@ PS_SERVE :: "ssh coderos-4080 'systemctl --user start psionic-gpu-switch'";
 
 PS_ITEMS :: 128;
 PS_TOOL_REPLAY :: 600;           // bytes of a tool's output the model gets back (2048 positions in all)
+// list_folder: names only, dot names only when asked ($2 is -A), the first PS_LIST_MAX and a count of the rest.
+PS_LIST_SCRIPT :: "set -o pipefail; exec 2>&1; ls -1p $2 -- \"${1:-.}\" | awk 'NR<=60{print} END{if(NR>60) print \"… \" NR-60 \" more\"}'";
 PS_TOOL_SHRUNK :: 240;           // what an earlier output of this turn keeps when the turn outgrows the context
 PS_SHRUNK_NOTE :: "\n(shortened to fit the 2048-token context)";
 PS_TOOL_SHOW :: 6000;            // bytes the chip keeps
@@ -63,7 +65,7 @@ PsItem :: struct { at: int; n: int; turn: int; kind: int; }
 
 // The three tools (flat object schemas, as the profile admits).
 PT_READ :: 0; PT_LIST :: 1; PT_RUN :: 2;
-PS_TOOLS :: "[{\"type\":\"function\",\"name\":\"read_file\",\"description\":\"Read a text file on the user's Mac (its first 6000 bytes).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"list_folder\",\"description\":\"List a folder on the user's Mac: one name per line, folders end in /.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"run_command\",\"description\":\"Run a shell command (zsh) in the working folder on the user's Mac and return its output.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The command line\"}},\"required\":[\"command\"]}}]";
+PS_TOOLS :: "[{\"type\":\"function\",\"name\":\"read_file\",\"description\":\"Read a text file on the user's Mac (its first 6000 bytes).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"list_folder\",\"description\":\"List a folder on the user's Mac: one name per line, folders end in /, at most 60 names.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"},\"hidden\":{\"type\":\"boolean\",\"description\":\"Also list names that start with a dot\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"run_command\",\"description\":\"Run a shell command (zsh) in the working folder on the user's Mac and return its output.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The command line\"}},\"required\":[\"command\"]}}]";
 
 PsEngine :: struct {
   on: bool;                      // the host attached buffers (never in tests)
@@ -93,6 +95,12 @@ PsEngine :: struct {
   // the tool call being run or asked about
   call_part: int;                // its part, or -1
   call_kind: int;
+  call_hidden: bool;             // list_folder's hidden argument
+  wrap: bool;                    // this turn is out of room: the model answers without more calls
+  low_next: bool;                // the next request goes at Low effort (the retry of a turn cut off in its reasoning)
+  low_now: bool;                 // this request is that retry
+  retry: bool;                   // this response was cut off in its reasoning: retry it once at Low
+  retry_ni: int; retry_nh: int; retry_n: int; retry_np: int;   // the replay and transcript as they were when the request went
   call_id: [96] u8; call_id_n: int;
   call_h: int;
   call_out: [PS_TOOL_SHOW] u8; call_n: int;
@@ -406,16 +414,17 @@ ps_body :: (p: [] PsEngine, out: [] u8) -> string {
   efforts := PS_EFFORT_IDS;
   cl_put(o[..], "{\"model\":\""); cl_put(o[..], PS_MODEL);
   cl_put(o[..], "\",\"stream\":true,\"store\":false,\"max_output_tokens\":"); cl_put_int(o[..], PS_MAX_OUTPUT);
-  cl_put(o[..], ",\"reasoning\":{\"effort\":\""); cl_put(o[..], efforts[p[0].effort]); cl_put(o[..], "\"}");
+  cl_put(o[..], ",\"reasoning\":{\"effort\":\""); cl_put(o[..], efforts[ifx p[0].low_now then 0 else p[0].effort]); cl_put(o[..], "\"}");
   cl_put(o[..], ",\"instructions\":");
   ins: [1400] u8;
   k := e_set(ins[..], 0, "You are gpt-oss-20b on OpenAgents' own Psionic engine, chatting in the OpenAgents Mac app. Answer in Markdown.");
   if p[0].tools {
     k = e_set(ins[..], k, " Use the tools only when the request needs the user's files or a command. Working folder: ");
     k = e_set(ins[..], k, ifx p[0].cwd.count > 0 then p[0].cwd else "~");
+    if p[0].wrap { k = e_set(ins[..], k, ". This turn has no room for more tool calls: answer now from what the tools returned, briefly (a line or two per file, no whole files)."); }
   }
   cl_put_string(o[..], e_str(ins[..], k));
-  if p[0].tools { cl_put(o[..], ",\"tools\":"); cl_put(o[..], PS_TOOLS); cl_put(o[..], ",\"tool_choice\":\"auto\""); }
+  if p[0].tools { cl_put(o[..], ",\"tools\":"); cl_put(o[..], PS_TOOLS); cl_put(o[..], ifx p[0].wrap then ",\"tool_choice\":\"none\"" else ",\"tool_choice\":\"auto\""); }
   cl_put(o[..], ",\"input\":[");
   first := true;
   for i: 0..<p[0].ni {
@@ -468,6 +477,7 @@ ps_on_event :: (p: [] PsEngine, s: [] Session, name: string, data: string) -> in
       if !ps_hist_put(p, kind, item) { continue; }
       if ty == "function_call" && call < 0 { call = p[0].ni - 1; }
     }
+    if name == "response.incomplete" && call < 0 && !p[0].low_now && p[0].effort > 0 && ps_reasoning_only(p, out) { p[0].retry = true; return -1; }
     if name == "response.incomplete" && call < 0 {
       s_turn_end(s, true, "gpt-oss-20b used its whole output budget (512 tokens) before it finished. Ask for less, or set the effort lower.");
       return -1;
@@ -483,6 +493,25 @@ ps_on_event :: (p: [] PsEngine, s: [] Session, name: string, data: string) -> in
     return -1;
   }
   return -1;
+}
+
+// Whether a response's output is reasoning only: no message and no call.
+ps_reasoning_only :: (p: [] PsEngine, out: string) -> bool {
+  for i: 0..<cl_count(out) {
+    p[0].ar[0].at = 0;
+    if cl_str(p[0].ar[..], cl_json(out, cl_item(out, i)), "type") != "reasoning" { return false; }
+  }
+  return true;
+}
+// The response was cut off inside its reasoning: what it added leaves the replay and the
+// transcript, and the request goes again once at Low effort.
+ps_retry_low :: (p: [] PsEngine, s: [] Session) {
+  p[0].retry = false;
+  // (when the store forgot a turn meanwhile the marks moved: what the response added stays)
+  if p[0].retry_ni <= p[0].ni && (p[0].retry_ni == p[0].ni || p[0].items[p[0].retry_ni].at == p[0].retry_nh) { p[0].ni = p[0].retry_ni; p[0].nh = p[0].retry_nh; }
+  if p[0].retry_n <= s[0].n { s[0].n = p[0].retry_n; s[0].np = p[0].retry_np; s[0].changed = true; }
+  p[0].low_next = true;
+  ps_request(p, s);
 }
 
 // A server code as the transcript says it.
@@ -507,7 +536,7 @@ ps_call_part :: (p: [] PsEngine, s: [] Session, item_json: string) -> int {
   sp := SPart.{kind = P_TOOL, at = s[0].np, id = s_put(s, call_id), input = s_put(s, args)};
   q: [1] ClArena; qb: [8192] u8; q[0] = ClArena.{buf = qb[..]};
   if name == "read_file" { sp.tk = TK_READ; sp.arg = s_put(s, cl_str(q[..], args, "path")); p[0].call_kind = PT_READ; }
-  else if name == "list_folder" { sp.tk = TK_GLOB; sp.arg = s_put(s, cl_str(q[..], args, "path")); p[0].call_kind = PT_LIST; }
+  else if name == "list_folder" { sp.tk = TK_GLOB; sp.arg = s_put(s, cl_str(q[..], args, "path")); p[0].call_kind = PT_LIST; hb := cl_bool(args, "hidden"); p[0].call_hidden = hb.ok && hb.value; }
   else if name == "run_command" { sp.tk = TK_EXEC; sp.arg = s_put(s, cl_str(q[..], args, "command")); sp.detail = s_single(s, sp.arg); p[0].call_kind = PT_RUN; }
   else { sp.tk = TK_TOOL; sp.detail = s_put(s, name); sp.arg = sp.input; p[0].call_kind = -1; }
   s[0].parts[k] = sp;
@@ -541,7 +570,7 @@ ps_send_as :: (p: [] PsEngine, s: [] Session, shown: string, text: string) {
 }
 // A message already in the transcript goes to gpt-oss-20b (the Lab sends it here once Elephant has routed it).
 ps_forward :: (p: [] PsEngine, s: [] Session, text: string) {
-  p[0].turn += 1;
+  p[0].turn += 1; p[0].wrap = false;
   if p[0].hist.count == 0 { return; }   // no buffers (a check without the host): it only joins the transcript
   if !ps_user_item(p, text) {
     s_turn_end(s, true, "This message is too long for gpt-oss-20b's 2048-token context.");
@@ -552,6 +581,8 @@ ps_forward :: (p: [] PsEngine, s: [] Session, text: string) {
 }
 
 ps_request :: (p: [] PsEngine, s: [] Session) {
+  p[0].low_now = p[0].low_next; p[0].low_next = false; p[0].retry = false;
+  p[0].retry_ni = p[0].ni; p[0].retry_nh = p[0].nh; p[0].retry_n = s[0].n; p[0].retry_np = s[0].np;
   if !p[0].on { return; }
   ps_configure(p);
   if !p[0].key_from_env && p[0].key_n == 0 {
@@ -570,8 +601,10 @@ ps_request :: (p: [] PsEngine, s: [] Session) {
 }
 
 // The replay is too big for the model: the oldest turn leaves it and the
-// request goes again; with only this turn left, this turn's tool outputs are
-// shortened, oldest first, and only when none can shrink does the turn fail.
+// request goes again; with only this turn left, the model is asked to answer
+// without more calls (no tool section in the prompt), then this turn's tool
+// outputs are shortened, oldest first; only when nothing more can shrink does
+// the turn fail.
 ps_drop_or_fail :: (p: [] PsEngine, s: [] Session) {
   oldest := p[0].turn;
   for i: 0..<p[0].ni { if p[0].items[i].turn >= p[0].first_turn && p[0].items[i].turn < oldest { oldest = p[0].items[i].turn; } }
@@ -580,6 +613,7 @@ ps_drop_or_fail :: (p: [] PsEngine, s: [] Session) {
     ps_request(p, s);
     return;
   }
+  if p[0].tools && !p[0].wrap { p[0].wrap = true; ps_request(p, s); return; }
   if ps_shrink_output(p) { ps_request(p, s); return; }
   s_turn_end(s, true, "This turn no longer fits gpt-oss-20b's 2048-token context (the prompt and room for a 512-token answer). Start a new chat or ask for something shorter.");
 }
@@ -648,6 +682,7 @@ ps_finish :: (p: [] PsEngine, s: [] Session, call: int) {
     s_turn_end(s, true, ifx exit == 28 then "Psionic's answer timed out." else "The connection to Psionic closed before the answer finished.");
     return;
   }
+  if p[0].retry { ps_retry_low(p, s); return; }
   if call >= 0 { ps_call(p, s, call); return; }
   if s[0].live { s_turn_end(s, false, ""); }
 }
@@ -656,6 +691,7 @@ ps_finish :: (p: [] PsEngine, s: [] Session, call: int) {
 ps_call :: (p: [] PsEngine, s: [] Session, item: int) {
   k := ps_call_part(p, s, ps_item(p, item));
   if k < 0 { s_turn_end(s, true, "The transcript is full."); return; }
+  if p[0].wrap { ps_call_done(p, s, "No room for more tool calls in this turn. Answer from what the tools returned.", true); return; }
   if p[0].call_kind < 0 {
     // A name we don't offer (gpt-oss reaches for its trained browser.search
     // or python): nothing runs; the model hears what it can call and goes on.
@@ -692,7 +728,7 @@ ps_run :: (p: [] PsEngine, s: [] Session) {
   if h < 0 { ps_call_done(p, s, "No process slot is free.", true); return; }
   ok := true;
   if p[0].call_kind == PT_READ { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, "exec 2>&1; head -c 6000 -- \"$1\"") && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg); }
-  else if p[0].call_kind == PT_LIST { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, "exec 2>&1; ls -1Ap -- \"${1:-.}\"") && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg); }
+  else if p[0].call_kind == PT_LIST { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, PS_LIST_SCRIPT) && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg) && cl_push(h, CL_FIELD_ARG, ifx p[0].call_hidden then "-A" else "-1"); }
   else {
     script: [8192] u8;
     n := e_set(script[..], e_set(script[..], 0, "exec 2>&1 </dev/null\n"), arg);
@@ -922,6 +958,8 @@ ps_contains :: (text: string, needle: string) -> int {
   ps_test_end(p[..], s[..], 400, ctx, -1);
   #assert s[0].live && p[0].first_turn == 2 && p[0].dropped == 1;
   ps_test_end(p[..], s[..], 400, ctx, -1);
+  #assert s[0].live && p[0].wrap;   // then it is asked to answer without calls
+  ps_test_end(p[..], s[..], 400, ctx, -1);
   #assert !s[0].live && s[0].parts[s[0].n - 1].notice == N_ERROR && s_has(s_text_of(s[..], s[0].n - 1), "2048-token context");
   ps_send(p[..], s[..], "key");
   ps_test_end(p[..], s[..], 401, "{\"error\":{\"code\":\"invalid_api_key\"}}", -1);
@@ -970,7 +1008,7 @@ ps_contains :: (text: string, needle: string) -> int {
   #assert ok && p[0].ni == 3 && p[0].first_turn == 2 && ps_item(p[..], 0)[2] == 'b' && ps_item(p[..], 2)[2] == 'd';
 }
 
-#test "a turn whose tool outputs outgrow the context shortens the oldest output before it fails" {
+#test "a turn that outgrows the context is asked to answer without calls, then shortens its oldest output, before it fails" {
   p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
   ps_test_setup(p[..], s[..], b[..]);
   ps_send(p[..], s[..], "read some files");
@@ -982,11 +1020,61 @@ ps_contains :: (text: string, needle: string) -> int {
   last := p[0].ni - 1;
   before := p[0].items[last].n;
   ctx := "{\"error\":{\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\",\"param\":\"input\",\"message\":\"context_length_exceeded\"}}";
+  body: [65536] u8;
+  #assert ps_contains(ps_body(p[..], body[..]), "\"tool_choice\":\"auto\"") == 1;
+  // first the model is asked to answer without more calls
+  ps_test_end(p[..], s[..], 400, ctx, -1);
+  #assert s[0].live && p[0].wrap && p[0].items[last].n == before;
+  q := ps_body(p[..], body[..]);
+  #assert ps_contains(q, "\"tool_choice\":\"none\"") == 1 && ps_contains(q, "no room for more tool calls") == 1;
+  // then the oldest long output shrinks
   ps_test_end(p[..], s[..], 400, ctx, -1);
   #assert s[0].live && p[0].items[last].n < before && p[0].nh == p[0].items[last].at + p[0].items[last].n;
   p[0].ar[0].at = 0;
   out := cl_str(p[0].ar[..], ps_item(p[..], last), "output");
   #assert out.count == 239 + PS_SHRUNK_NOTE.count && s_has(out, "shortened to fit") && cl_str(p[0].ar[..], ps_item(p[..], last), "call_id") == "call_1";
+  // nothing left to shorten: the turn fails
   ps_test_end(p[..], s[..], 400, ctx, -1);
   #assert !s[0].live && s_has(s_text_of(s[..], s[0].n - 1), "2048-token context");
+  ps_send(p[..], s[..], "next");
+  #assert !p[0].wrap;
+}
+
+#test "list_folder offers hidden names only on request, and its listing is capped" {
+  p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
+  ps_test_setup(p[..], s[..], b[..]);
+  #assert ps_contains(PS_TOOLS, "\"hidden\":{\"type\":\"boolean\"") == 1 && ps_contains(PS_LIST_SCRIPT, "NR<=60") == 1 && ps_contains(PS_LIST_SCRIPT, "ls -1p $2") == 1;
+  ps_send(p[..], s[..], "list");
+  k := ps_call_part(p[..], s[..], "{\"type\":\"function_call\",\"name\":\"list_folder\",\"call_id\":\"call_1\",\"arguments\":\"{\\\"path\\\":\\\"~\\\",\\\"hidden\\\":true}\"}");
+  #assert k >= 0 && p[0].call_kind == PT_LIST && p[0].call_hidden && s[0].parts[k].arg == "~";
+  k = ps_call_part(p[..], s[..], "{\"type\":\"function_call\",\"name\":\"list_folder\",\"call_id\":\"call_2\",\"arguments\":\"{\\\"path\\\":\\\"~\\\"}\"}");
+  #assert k >= 0 && !p[0].call_hidden;
+}
+
+#test "a response cut off inside its reasoning goes again once at Low, quietly; a second cut shows the chip" {
+  p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
+  ps_test_setup(p[..], s[..], b[..]);
+  ps_send(p[..], s[..], "Do a few demo read files, please.");
+  ps_request(p[..], s[..]);
+  n0 := s[0].n; ni0 := p[0].ni;
+  cut := [3] string.["event: response.reasoning_text.delta", "data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"Let's read .clad... .clad...\"}", ""];
+  inc := [3] string.["event: response.incomplete", "data: {\"type\":\"response.incomplete\",\"response\":{\"status\":\"incomplete\",\"output\":[{\"id\":\"rs_1\",\"type\":\"reasoning\",\"status\":\"completed\",\"summary\":[],\"content\":[{\"type\":\"reasoning_text\",\"text\":\"a\"}]},{\"id\":\"rs_2\",\"type\":\"reasoning\",\"status\":\"incomplete\",\"summary\":[],\"content\":[{\"type\":\"reasoning_text\",\"text\":\"b\"}]}]}}", ""];
+  call := ps_test_feed(p[..], s[..], cut[..]);
+  #assert s[0].n == n0 + 1;
+  call = ps_test_feed(p[..], s[..], inc[..]);
+  #assert call < 0 && p[0].retry && p[0].ni == ni0 + 1;
+  ps_test_end(p[..], s[..], 200, "", call);
+  // no notice, the thought gone, the replay as it was, and the request at Low
+  #assert s[0].live && s[0].n == n0 && p[0].ni == ni0 && p[0].low_now && !p[0].retry;
+  body: [65536] u8;
+  q := ps_body(p[..], body[..]);
+  #assert ps_contains(q, "\"effort\":\"low\"") == 1;
+  call = ps_test_feed(p[..], s[..], cut[..]);
+  call = ps_test_feed(p[..], s[..], inc[..]);
+  #assert !p[0].retry && !s[0].live && s_has(s_text_of(s[..], s[0].n - 1), "output budget");
+  // the next request goes at the chosen effort again
+  ps_send(p[..], s[..], "again");
+  ps_request(p[..], s[..]);
+  q = ps_body(p[..], body[..]);
+  #assert !p[0].low_now && ps_contains(q, "\"effort\":\"medium\"") == 1;
 }
