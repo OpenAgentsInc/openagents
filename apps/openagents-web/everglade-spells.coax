@@ -1861,7 +1861,7 @@ sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
   return SpBarTop.{n = at, top = top};
 }
 
-// The cast bar (demolition/hotbar.rs draw_cast): 240 by 14 units at 0.68 of the screen's height
+// The cast bar (demolition/hotbar.rs draw_cast): 240 by 14 units at 0.80 of the screen's height (lower than the old 0.68, the owner asked)
 // (over the tray on a phone), a bronze frame round a dark well filling in fire orange, the spell's
 // name over it.
 sp_cast_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, tray: f32) -> int {
@@ -1871,7 +1871,7 @@ sp_cast_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, tray: f32) -> 
   spell := srd_spell(SP_SPELL[s[0].sp.casting]);
   cw := sp_round(240 * un); ch := sp_round(14 * un);
   x := sp_round((w - cw) / 2);
-  y := sp_round(lo(h * 0.68, tray - 40 * k - ch));
+  y := sp_round(lo(h * 0.80, tray - 40 * k - ch));
   sp_plate(s, u, Box.{x0 = x, y0 = y, x1 = x + cw, y1 = y + ch}, PLATE_METER, sp_round(un));
   f := clamp(s[0].sp.cast_t / spell.bar, 0, 1);
   if f > 0 { sp_plate(s, u, Box.{x0 = x + sp_round(un), y0 = y + sp_round(un), x1 = x + sp_round(un) + sp_round((cw - 2 * sp_round(un)) * f), y1 = y + ch - sp_round(un)}, PLATE_FILL, 0); }
