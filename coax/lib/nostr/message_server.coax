@@ -1,0 +1,242 @@
+// The relay side of NIP-01 frames: read what clients send (EVENT [event],
+// REQ [sub, filter...], CLOSE [sub]) and write what relays send (EVENT
+// [sub, event], OK [id, bool, "prefix: text"], EOSE [sub], CLOSED [sub,
+// "prefix: text"], NOTICE [text]). message.coax (#6015) is the client side.
+// The reader finds spans and decodes the subscription id; it does not parse
+// events or filters (event.coax, filter_read.coax) and decides no policy
+// (relay_server.coax). AUTH is reported by verb only: reading it is
+// nip42.coax's (#f426). Values follow message.coax: sub ids of 1..64
+// characters, frames up to MS_MAX_FRAME bytes, the NIP-01 machine-readable
+// prefixes plus NIP-42's auth-required.
+#load "json.coax";
+#authority;
+
+MS_MAX_FRAME :: 270336; MS_MAX_FILTERS :: 16; MS_SUB_MAX :: 64;
+// Message types.
+MS_EVENT :: 1; MS_REQ :: 2; MS_CLOSE :: 3; MS_AUTH :: 4; MS_COUNT :: 5;
+// Read results.
+MS_OK :: 0; MS_JSON :: 1; MS_SHAPE :: 2; MS_VERB :: 3; MS_SUB :: 4; MS_TOO_MANY :: 5; MS_TOO_BIG :: 6;
+MS_PREFIXES :: 9;
+MsMsg :: struct {
+  type: int; error: int;
+  has_sub: bool; sub: [256] u8; sub_n: int;          // the decoded id, when read
+  event_from: int; event_to: int;                    // EVENT/AUTH: the event object's bytes
+  filters: int; filter_from: [16] int; filter_to: [16] int;
+}
+
+#test "client frames: EVENT, REQ, CLOSE, AUTH" {
+  m := ms_read("[\"EVENT\",{\"id\":\"x\"}]");
+  #assert m.error == MS_OK && m.type == MS_EVENT && m.event_from == 9 && m.event_to == 19 && !m.has_sub;
+  t := " [ \"REQ\" , \"s\\u0031\" , {\"kinds\":[1]} , {} ] ";
+  m = ms_read(t);
+  #assert m.error == MS_OK && m.type == MS_REQ && m.has_sub && cast(string) m.sub[0..<m.sub_n] == "s1" && m.filters == 2;
+  #assert t[m.filter_from[0]..<m.filter_to[0]] == "{\"kinds\":[1]}" && t[m.filter_from[1]..<m.filter_to[1]] == "{}";
+  m = ms_read("[\"REQ\",\"s\"]");
+  #assert m.error == MS_OK && m.filters == 0;
+  m = ms_read("[\"CLOSE\",\"s\"]");
+  #assert m.error == MS_OK && m.type == MS_CLOSE && m.sub_n == 1;
+  m = ms_read("[\"AUTH\",{}]");
+  #assert m.error == MS_OK && m.type == MS_AUTH && m.event_to - m.event_from == 2;
+  m = ms_read("[\"COUNT\",\"q\",{}]");
+  #assert m.error == MS_OK && m.type == MS_COUNT;
+}
+#test "client frame refusals keep what was read" {
+  #assert ms_read("").error == MS_JSON && ms_read("{}").error == MS_SHAPE && ms_read("[").error == MS_JSON;
+  #assert ms_read("[]").error == MS_SHAPE && ms_read("[1]").error == MS_SHAPE;
+  m := ms_read("[\"PING\"]");
+  #assert m.error == MS_VERB && m.type == 0;
+  #assert ms_read("[\"EVENT\"]").error == MS_SHAPE && ms_read("[\"EVENT\",[]]").error == MS_SHAPE && ms_read("[\"EVENT\",{},{}]").error == MS_SHAPE;
+  #assert ms_read("[\"EVENT\",{}] x").error == MS_JSON;
+  #assert ms_read("[\"CLOSE\"]").error == MS_SHAPE && ms_read("[\"CLOSE\",1]").error == MS_SHAPE && ms_read("[\"CLOSE\",\"s\",1]").error == MS_SHAPE;
+  m = ms_read("[\"REQ\",\"s\",1]");
+  #assert m.error == MS_SHAPE && m.has_sub && m.sub_n == 1 && m.type == MS_REQ;
+  #assert ms_read("[\"REQ\",\"\",{}]").error == MS_SUB && ms_read("[\"REQ\",1,{}]").error == MS_SHAPE && ms_read("[\"REQ\"]").error == MS_SHAPE;
+  #assert ms_read("[\"REQ\",\"s\",{\"a\":[}]").error == MS_JSON && ms_read("[\"AUTH\"]").error == MS_SHAPE;
+  sub: [65] u8; for i: 0..<65 { sub[i] = 'a'; }
+  b: [100] u8; pre := "[\"CLOSE\",\"";
+  for i: 0..<pre.count { b[i] = pre[i]; }
+  for i: 0..<64 { b[pre.count + i] = 'a'; }
+  b[pre.count + 64] = '"'; b[pre.count + 65] = ']';
+  #assert ms_read(cast(string) b[0..<pre.count + 66]).error == MS_OK;
+  b[pre.count + 64] = 'a'; b[pre.count + 65] = '"'; b[pre.count + 66] = ']';
+  #assert ms_read(cast(string) b[0..<pre.count + 67]).error == MS_SUB;
+  // characters, not bytes: 64 two-byte characters are allowed
+  #assert ms_sub_ok("é") && ms_chars("ééa") == 3 && !ms_sub_ok("");
+  #assert ms_read("[\"EVENT\",{}]").error == MS_OK;
+  #assert ms_read("[\"EVENT\",{\"a\":}]").error == MS_JSON && ms_read("[\"EVENT\",x]").error == MS_JSON;
+  #assert ms_read("[\"CLOSE\",\"s\",{}]").error == MS_SHAPE && ms_read("[\"CLOSE\",\"s\" x]").error == MS_JSON;
+  long: [300] u8; long[0] = '['; long[1] = '"'; long[2] = 'R'; long[3] = 'E'; long[4] = 'Q'; long[5] = '"'; long[6] = ','; long[7] = '"';
+  for i: 8..<265 { long[i] = 'a'; }
+  long[265] = '"'; long[266] = ']';
+  #assert ms_read(cast(string) long[0..<267]).error == MS_SUB;
+}
+#test "at most sixteen filters; frame size limit" {
+  b: [200] u8; pre := "[\"REQ\",\"s\""; n := pre.count;
+  for i: 0..<n { b[i] = pre[i]; }
+  for k: 0..<17 { b[n] = ','; b[n + 1] = '{'; b[n + 2] = '}'; n += 3; }
+  b[n] = ']';
+  #assert ms_read(cast(string) b[0..<n + 1]).error == MS_TOO_MANY;
+  b[n - 3] = ']';
+  m := ms_read(cast(string) b[0..<n - 2]);
+  #assert m.error == MS_OK && m.filters == 16 && m.filter_to[15] == n - 3;
+  big: [MS_MAX_FRAME + 1] u8;
+  #assert ms_read(cast(string) big[..]).error == MS_TOO_BIG && ms_read(cast(string) big[0..<MS_MAX_FRAME]).error == MS_JSON;
+}
+
+ms_verb :: (raw: string) -> int {
+  verbs := [5] string.["EVENT", "REQ", "CLOSE", "AUTH", "COUNT"];
+  for i: 0..<5 { if json_is(raw, verbs[i]) { return i + 1; } }
+  return 0;
+}
+// UTF-8 characters in a valid string: bytes that do not continue one.
+ms_chars :: (s: string) -> int {
+  n := 0;
+  for c: s { if (c & 0xc0) != 0x80 { n += 1; } }
+  return n;
+}
+ms_sub_ok :: (s: string) -> bool { n := ms_chars(s); return n >= 1 && n <= MS_SUB_MAX; }
+// Reads one client frame. On a refusal, type and the subscription id say
+// what was read before it, so the relay can answer with CLOSED.
+ms_read :: (text: string) -> MsMsg {
+  m: MsMsg; m.error = MS_SHAPE;
+  if text.count > MS_MAX_FRAME { m.error = MS_TOO_BIG; return m; }
+  j: [1] Json; json_start(j[..], text);
+  t := json_next(j[..]);
+  if t == JSON_ERROR { m.error = MS_JSON; return m; }
+  if t != JSON_ARRAY { return m; }
+  t = json_next(j[..]);
+  if t == JSON_ERROR { m.error = MS_JSON; return m; }
+  if t != JSON_STRING { return m; }
+  verb := ms_verb(json_text(j[..]));
+  if verb == 0 { m.error = MS_VERB; return m; }
+  m.type = verb;
+  t = json_next(j[..]);
+  if verb == MS_EVENT || verb == MS_AUTH {
+    if t != JSON_OBJECT { return ms_tail(m, t); }
+    m.event_from = j[0].from;
+    if !json_skip(j[..]) { m.error = MS_JSON; return m; }
+    m.event_to = j[0].to;
+    return ms_end(j[..], m);
+  }
+  if t != JSON_STRING { return ms_tail(m, t); }
+  n := json_unescape(json_text(j[..]), m.sub[..]);
+  if n < 1 || !ms_sub_ok(cast(string) m.sub[0..<n]) { m.error = MS_SUB; return m; }
+  m.has_sub = true; m.sub_n = n;
+  if verb == MS_CLOSE { return ms_end(j[..], m); }
+  while true {
+    t = json_next(j[..]);
+    if t == JSON_ARRAY_END { break; }
+    if t != JSON_OBJECT { return ms_tail(m, t); }
+    if m.filters >= MS_MAX_FILTERS { m.error = MS_TOO_MANY; return m; }
+    m.filter_from[m.filters] = j[0].from;
+    if !json_skip(j[..]) { m.error = MS_JSON; return m; }
+    m.filter_to[m.filters] = j[0].to;
+    m.filters += 1;
+  }
+  return ms_close(j[..], m);
+}
+// A wrong token: a shape refusal, or JSON when the text itself is refused.
+ms_tail :: (msg: MsMsg, t: int) -> MsMsg {
+  m := msg;
+  m.error = ifx t == JSON_ERROR then MS_JSON else MS_SHAPE;
+  return m;
+}
+// The array closes now and nothing follows it.
+ms_end :: (j: [] Json, msg: MsMsg) -> MsMsg {
+  t := json_next(j);
+  if t != JSON_ARRAY_END { return ms_tail(msg, t); }
+  return ms_close(j, msg);
+}
+ms_close :: (j: [] Json, msg: MsMsg) -> MsMsg {
+  m := msg;
+  m.error = ifx json_next(j) == JSON_END then MS_OK else MS_JSON;
+  return m;
+}
+
+// ---- writers --------------------------------------------------------------
+
+#test "relay frames are exact" {
+  out: [256] u8; id: [32] u8; id[0] = 0xab; id[31] = 1;
+  n := ms_write_event("s\"1", "{\"id\":\"x\"}", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[\"EVENT\",\"s\\\"1\",{\"id\":\"x\"}]";
+  n = ms_write_ok(id[..], true, "", "", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[\"OK\",\"ab00000000000000000000000000000000000000000000000000000000000001\",true,\"\"]";
+  n = ms_write_ok(id[..], false, "invalid", "bad \"sig\"", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[\"OK\",\"ab00000000000000000000000000000000000000000000000000000000000001\",false,\"invalid: bad \\\"sig\\\"\"]";
+  n = ms_write_ok(id[..], true, "duplicate", "already have this event", out[..]);
+  #assert n > 0 && cast(string) out[n - 42..<n] == "true,\"duplicate: already have this event\"]";
+  n = ms_write_eose("s", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[\"EOSE\",\"s\"]";
+  n = ms_write_closed("s", "restricted", "too many filters", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[\"CLOSED\",\"s\",\"restricted: too many filters\"]";
+  n = ms_write_notice("error", "bad frame", out[..]);
+  #assert n > 0 && cast(string) out[0..<n] == "[\"NOTICE\",\"error: bad frame\"]";
+  #assert ms_write_closed("s", "nope", "x", out[..]) == -1 && ms_write_ok(id[..], false, "", "", out[..]) == -1;
+  #assert ms_write_ok(id[0..<31], true, "", "", out[..]) == -1 && ms_write_eose("s", out[0..<11]) == -1 && ms_write_eose("s", out[0..<12]) == 12;
+  #assert ms_write_ok(id[..], true, "", "x", out[..]) == -1 && ms_write_notice("", "plain", out[..]) == -1;
+  prefixes := [10] string.["duplicate", "pow", "blocked", "rate-limited", "invalid", "restricted", "mute", "error", "auth-required", "closed"];
+  for k: 0..<10 { #assert ms_prefix_ok(prefixes[k]) == (k < MS_PREFIXES); }
+  #assert !ms_prefix_ok("") && !ms_prefix_ok("Invalid");
+  #assert ms_write_closed("s", "", "", out[..]) == -1 && ms_write_notice("", "", out[..]) == -1;
+  text: [506] u8; for i: 0..<506 { text[i] = 'x'; }
+  big: [700] u8;
+  #assert ms_write_notice("error", cast(string) text[0..<505], big[..]) == 525 && ms_write_notice("error", cast(string) text[..], big[..]) == -1;
+}
+
+ms_prefix_ok :: (p: string) -> bool {
+  all := [9] string.["duplicate", "pow", "blocked", "rate-limited", "invalid", "restricted", "mute", "error", "auth-required"];
+  for s: all { if s == p { return true; } }
+  return false;
+}
+// "prefix: text" as one JSON string, or "" when both are empty.
+ms_reason :: (out: [] u8, at: int, prefix: string, text: string) -> int {
+  if prefix.count == 0 {
+    if text.count != 0 { return -1; }
+    return json_raw(out, at, "\"\"");
+  }
+  if !ms_prefix_ok(prefix) { return -1; }
+  buf: [512] u8;
+  if prefix.count + 2 + text.count > buf.count { return -1; }
+  for i: 0..<prefix.count { buf[i] = prefix[i]; }
+  buf[prefix.count] = ':'; buf[prefix.count + 1] = ' ';
+  for i: 0..<text.count { buf[prefix.count + 2 + i] = text[i]; }
+  return json_write_string(out, at, cast(string) buf[0..<prefix.count + 2 + text.count]);
+}
+// event is an admitted event's original JSON bytes, copied verbatim.
+ms_write_event :: (sub: string, event: string, out: [] u8) -> int {
+  n := json_raw(out, 0, "[\"EVENT\",");
+  n = json_write_string(out, n, sub);
+  n = json_raw(out, n, ",");
+  n = json_raw(out, n, event);
+  return json_raw(out, n, "]");
+}
+// An OK may be accepted with no reason; a refusal always has a prefix.
+ms_write_ok :: (id: [] u8, accepted: bool, prefix: string, text: string, out: [] u8) -> int {
+  if id.count != 32 || (!accepted && prefix.count == 0) { return -1; }
+  digits := "0123456789abcdef"; hex: [64] u8;
+  for i: 0..<32 { hex[i * 2] = digits[cast(int) (id[i] >> 4)]; hex[i * 2 + 1] = digits[cast(int) (id[i] & 15)]; }
+  n := json_raw(out, 0, "[\"OK\",\"");
+  n = json_raw(out, n, cast(string) hex[..]);
+  n = json_raw(out, n, ifx accepted then "\",true," else "\",false,");
+  n = ms_reason(out, n, prefix, text);
+  return json_raw(out, n, "]");
+}
+ms_write_eose :: (sub: string, out: [] u8) -> int {
+  n := json_raw(out, 0, "[\"EOSE\",");
+  n = json_write_string(out, n, sub);
+  return json_raw(out, n, "]");
+}
+ms_write_closed :: (sub: string, prefix: string, text: string, out: [] u8) -> int {
+  if prefix.count == 0 { return -1; }
+  n := json_raw(out, 0, "[\"CLOSED\",");
+  n = json_write_string(out, n, sub);
+  n = json_raw(out, n, ",");
+  n = ms_reason(out, n, prefix, text);
+  return json_raw(out, n, "]");
+}
+ms_write_notice :: (prefix: string, text: string, out: [] u8) -> int {
+  if prefix.count == 0 { return -1; }
+  n := json_raw(out, 0, "[\"NOTICE\",");
+  n = ms_reason(out, n, prefix, text);
+  return json_raw(out, n, "]");
+}
