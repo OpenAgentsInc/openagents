@@ -1,0 +1,12 @@
+// Public deterministic timing fixtures for #89db; no real identities or secrets.
+#load "../../lib/crypto/schnorr_self_verify.coax";
+#load "../../lib/crypto/schnorr_fast.coax";
+#load "../../../tools/coax-nostr/timing/fixtures.coax";
+ssvt_control_fixed :: (candidate: [] u8) -> u64 #export_c {
+  empty: [] u64; word: u64; for i: 0..<8 { word = (word << 8) | cast(u64) candidate[i]; }
+  return ct_fixed(word,empty);
+}
+ssvt_control_branch :: (candidate: [] u8) -> u64 #export_c {
+  empty: [] u64; word: u64; for i: 0..<8 { word = (word << 8) | cast(u64) candidate[i]; }
+  return ct_branch(word,empty);
+}

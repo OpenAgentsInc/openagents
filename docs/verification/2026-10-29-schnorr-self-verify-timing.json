@@ -1,0 +1,144 @@
+{
+  "binary_sha256": "13590ebcbf48848fd1d1599fc0f99195b12d254e693ed74f1b9a0d94398dcabf",
+  "cc": "gcc (GCC) 15.2.0",
+  "compiler": "coax0 0.24.0",
+  "compiler_sha256": "e5e7ea56860d688f2dfc78ba8961c919442e013375b295392d05853cb2fdb05a",
+  "flags": [
+    "-std=c11",
+    "-O2"
+  ],
+  "generated_c_sha256": "0344f2a4aeea17f1fc1b6c925af6e4007c3afc752c6c50546df207704cfb3d1a",
+  "runs": [
+    {
+      "coax": {
+        "acquisition_ns": 16706789,
+        "clock_resolution_ns": 1,
+        "degenerate": false,
+        "fixture": 2,
+        "mean0": 125.42803333333282,
+        "mean1": 390.1476666666661,
+        "minimum_clock_pair_ns": 13,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "branch-control",
+      "python": {
+        "median0": 23.0,
+        "median1": 338.0,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 353,
+        "t": -1.5258853184467054,
+        "t_trimmed_p95": -142.77024053714908
+      },
+      "raw_sha256": "fb5dc1b88bcd95cc40ada854d17fb14526085be0189988536c9c3cd674c84fe5",
+      "wall_s": 0.2
+    },
+    {
+      "coax": {
+        "acquisition_ns": 10907130,
+        "clock_resolution_ns": 1,
+        "degenerate": false,
+        "fixture": 1,
+        "mean0": 60.80563333333336,
+        "mean1": 161.12269999999992,
+        "minimum_clock_pair_ns": 13,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "fixed-control",
+      "python": {
+        "median0": 60.0,
+        "median1": 60.0,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 64,
+        "t": -1.001396404823419,
+        "t_trimmed_p95": -0.5428278135230525
+      },
+      "raw_sha256": "c3f0ae1f9458f3c8da1f327adf0410945d5288f32db8da3ee50b1f8aaa4326e0",
+      "wall_s": 0.2
+    },
+    {
+      "coax": {
+        "acquisition_ns": 85915386608,
+        "clock_resolution_ns": 1,
+        "degenerate": false,
+        "fixture": 3,
+        "mean0": 1409123.219166669,
+        "mean1": 1454512.6883999957,
+        "minimum_clock_pair_ns": 12,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "vartime-fast-verifier",
+      "python": {
+        "median0": 473615.5,
+        "median1": 473701.5,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 5497511,
+        "t": -1.1757957062527087,
+        "t_trimmed_p95": -0.7064860491780623
+      },
+      "raw_sha256": "2ea06db7f4249621f925b96ea744969a8424fcf04c605384ecf1d6f98289c4e7",
+      "wall_s": 97.0
+    },
+    {
+      "coax": {
+        "acquisition_ns": 506536401877,
+        "clock_resolution_ns": 1,
+        "degenerate": false,
+        "fixture": 0,
+        "mean0": 8337914.843066584,
+        "mean1": 8536478.412666617,
+        "minimum_clock_pair_ns": 12,
+        "n0": 30000,
+        "n1": 30000,
+        "status": 3,
+        "t": 0,
+        "variance0": 0,
+        "variance1": 0,
+        "warmup": 2000
+      },
+      "fixture": "fixed-work-self-verifier",
+      "python": {
+        "median0": 933446.5,
+        "median1": 933376.5,
+        "n0": 30000,
+        "n1": 30000,
+        "p95_ns": 43946290,
+        "t": -1.1613046512610004,
+        "t_trimmed_p95": -0.21464711608544793
+      },
+      "raw_sha256": "537a667b101214db95fdaab069dda3c3dec20aafe0bb728f7df66f817b760551",
+      "wall_s": 521.7
+    }
+  ],
+  "samples_per_fixture": 60000,
+  "schema": "coax.ssv-timing.v1",
+  "scope": "first-order Welch observations, fixed valid candidate versus seeded random candidates, this native target on a shared loaded machine; no object/JIT audit, no address probe beyond the source schedule, not production-secret approval",
+  "sources": {
+    "coax/lib/crypto/schnorr_self_verify.coax": "ede52c8f6f7392cf5128d95b8cdd673318052d1b319017132e126b7d2141c3d4",
+    "coax/tests/nostr/schnorr_self_verify_timing.c": "8b78bbc79faaf20e2f75c52b4c927d15e6f4d50903d32dc5316eb9dd416bc92d",
+    "coax/tests/nostr/schnorr_self_verify_timing.coax": "dc451d69496fbc8029da5a39e3def3431b206ad4fc48fbc51c5dc87dd8094269",
+    "coax/tests/nostr/schnorr_self_verify_timing.py": "90c191dca5439db25ba5d016fc1fe2c40534ad98cdeef6806409586a3e7b520a"
+  },
+  "target": "x86_64 Linux 6.18.49",
+  "threshold_abs_t": 10
+}
