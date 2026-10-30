@@ -61,6 +61,7 @@
 #load "../../verse/flock.coax";
 #load "../../verse/everglade/ranger.coax";
 #load "../../verse/everglade/folk.coax";
+#load "../../verse/water-weather.coax";
 #load "everglade-voice.coax";
 #load "everglade-place.coax";
 #load "everglade-spells.coax";
@@ -100,7 +101,8 @@ U_SOLID :: STYLE_AT + STYLE_FLOATS;
 U_LIGHT_INFO :: U_SOLID + SOLIDS * 4;
 LIGHTS :: 16; LIGHTS_PHONE :: 8;
 U_LIGHTS :: U_LIGHT_INFO + 4;
-UNIFORM_FLOATS :: U_LIGHTS + LIGHTS * 8;
+U_WEATHER :: U_LIGHTS + LIGHTS * 8;   // 3 rows: rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, 0, 0 (weather_frame)
+UNIFORM_FLOATS :: U_WEATHER + 12;
 
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_MESH :: 5; SHAPE_SKINNED :: 6;
 SHAPE_VERTICES :: [5] int.[6, 36, 960, 192, 96];
@@ -278,6 +280,11 @@ Everglade :: struct {
   above: bool;              // the map view: the camera over the city
   lift: f32;                // eased toward 1 in the map view, 0 at your shoulder
   sink: f32;                // eased toward 1 while you dive: the camera follows you under
+  // the weather (verse/water-weather.coax, W9): the zone's schedule at the world tick, from the
+  // page's clock; a ?weather=NAME pin; the sample now, the ground and the river's rise (each second)
+  weather: [1] WeatherSchedule; weather_ready: bool; weather_pin: int;
+  weather_ms: f64; weather_t0: f64; weather_at: f64;
+  sky: Weather; ground: WeatherGround; rise: f32; flow_gain: f32;
   warp: bool;               // the face should put you at spawn (a hash named a place)
   spawn: Point; spawn_face: f32;
   map_button: Box; map_finger: int;
@@ -650,6 +657,7 @@ everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
     if !s[0].started { everglade_start(s); }
     take_visit(s, text); take_player(s, text);
     spells_facts(s, text);
+    weather_facts(s, text);
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
     return;
@@ -2049,6 +2057,59 @@ woods_room :: (r: OrbitRay) -> f32 {
 ABOVE_EYE :: [3] f32.[0, 150, -128];
 ABOVE_AT :: [3] f32.[0, 0, 6];
 
+// ---- the weather (W9, verse/water-weather.coax): Everglade's temperate schedule at the world
+// tick, so every visitor sees the same sky; ?weather=clear|overcast|fog|rain|storm pins it. A
+// still page (a golden) has a calm sky unless it is pinned, and a pinned still page holds one tick.
+
+EG_WEATHER_SEED :: 0xe7e5;
+
+weather_facts :: (s: [] Everglade, text: string) {
+  weather_schedule(s[0].weather[..], weather_temperate(), EG_WEATHER_SEED);
+  s[0].weather_pin = weather_url_pin(fact(text, "url"));
+  if s[0].weather_pin >= 0 { weather_pin_all(s[0].weather[..], s[0].weather_pin); }
+  ms := sp_number(fact(text, "now"));
+  s[0].weather_ms = ifx is_finite(ms) && ms > 0.0 then ms else 0.0;
+  s[0].weather_t0 = s[0].time;
+  s[0].weather_at = -1000.0;
+  s[0].weather_ready = true;
+}
+
+weather_frame :: (s: [] Everglade, u: [] f32, still: bool) {
+  w := Weather.{state = WEATHER_CLEAR, rain = 0.0, wind_x = 0.0, wind_z = 0.0, fog = 0.0, cloud = 0.0, lightning = 0.0};
+  if s[0].weather_ready && (!still || s[0].weather_pin >= 0) {
+    tick := ifx still then 1000 * WEATHER_BLOCK else weather_tick_at(cast(u64) fmax(s[0].weather_ms + (s[0].time - s[0].weather_t0) * 1000.0, 0.0));
+    w = weather_sample(s[0].weather[..], tick);
+    if s[0].time - s[0].weather_at >= 1.0 || s[0].time < s[0].weather_at {
+      s[0].ground = weather_ground(s[0].weather[..], tick);
+      s[0].rise = cast(f32) weather_rise(s[0].weather[..], tick);
+      s[0].flow_gain = cast(f32) weather_flow_gain(s[0].weather[..], tick);
+      s[0].weather_at = s[0].time;
+    }
+  } else {
+    s[0].ground = WeatherGround.{wet = 0.0, puddles = 0.0}; s[0].rise = 0; s[0].flow_gain = 1;
+  }
+  s[0].sky = w;
+  u[U_WEATHER] = cast(f32) w.rain; u[U_WEATHER + 1] = cast(f32) w.wind_x; u[U_WEATHER + 2] = cast(f32) w.wind_z; u[U_WEATHER + 3] = cast(f32) w.lightning;
+  u[U_WEATHER + 4] = cast(f32) s[0].ground.wet; u[U_WEATHER + 5] = cast(f32) s[0].ground.puddles;
+  u[U_WEATHER + 6] = cast(f32) w.cloud; u[U_WEATHER + 7] = cast(f32) w.fog;
+  u[U_WEATHER + 8] = s[0].rise; u[U_WEATHER + 9] = s[0].flow_gain; u[U_WEATHER + 10] = 0; u[U_WEATHER + 11] = 0;
+  // under cloud the key light dims (a clear sky's thin cloud leaves it), and fog and rain thicken the haze
+  over := cast(f32) fmax(w.cloud - 0.15, 0.0) / 0.85;
+  u[STYLE_AT + SU_KEY + 3] *= 1 - 0.55 * over;
+  // and the painted sky and haze (style rows 10 to 13: haze, its glow, zenith, horizon) and the
+  // ambient (rows 5 and 6) go grey and dim toward a rain sky's blue-grey
+  for row: 5..<7 { for k: 0..<3 { u[STYLE_AT + row * 4 + k] *= 1 - 0.3 * over; } }
+  for row: 10..<14 {
+    at := STYLE_AT + row * 4;
+    y := 0.2126 * u[at] + 0.7152 * u[at + 1] + 0.0722 * u[at + 2];
+    grey := [3] f32.[0.82, 0.9, 1.0];
+    for k: 0..<3 { u[at + k] = lerp(u[at + k], y * grey[k] * 0.78, 0.8 * over); }
+  }
+  u[U_EYE + 3] *= 1 + 4.0 * cast(f32) w.fog + 1.5 * cast(f32) w.rain;
+}
+everglade_rise :: (s: [] Everglade) -> f32 #export_c { return s[0].rise; }
+everglade_flow_gain :: (s: [] Everglade) -> f32 #export_c { return ifx s[0].flow_gain > 0 then s[0].flow_gain else 1.0f32; }
+
 camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Shot {
   speed := sqrt(vx * vx + vz * vz);
   o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
@@ -2606,6 +2667,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // the haze (art-styles.md 4): the preset's density and start, thinned and pushed off over the map's lift
   u[U_EYE + 3] = lerp(u[STYLE_AT + SU_HAZE + 1], 0.004, s[0].lift);
   u[U_SUN + 3] = lerp(u[STYLE_AT + SU_HAZE], 170, s[0].lift);
+  weather_frame(s, u, still);
   // the grass (art-styles.md 8): a square two radii across round the eye, at the preset's density;
   // none from above (the map) or before the pack (the scene's groups) is in
   for k: 0..<SOLIDS * 4 { u[U_SOLID + k] = 0; }
@@ -2671,7 +2733,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && UNIFORM_FLOATS == 1216;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && U_WEATHER == 1216 && UNIFORM_FLOATS == 1228;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }

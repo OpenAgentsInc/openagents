@@ -23,6 +23,7 @@ struct U {
   solid: array<vec4f, 32>,  // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
   light_info: vec4f,        // the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps)
   lights: array<vec4f, 32>,  // each lamp: x, y, z, reach; r, g, b, strength
+  weather: array<vec4f, 3>,  // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain (everglade.coax weather_frame)
 }
 @group(0) @binding(0) var<uniform> u: U;
 
@@ -144,7 +145,7 @@ fn sky(d: vec3f, l: vec3f) -> vec3f {
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> Lit {
   let d = pixel_ray(pos.xy);
   let l = st(1u).xyz;
-  let c = water_under_view(sky(d, l), u.eye.xyz + d * 1000.0, d);   // diving: the underwater look (W7)
+  let c = water_under_view(weather_streaks(weather_sky(sky(d, l), d), d, 1000.0), u.eye.xyz + d * 1000.0, d);   // the weather (W9); diving, the underwater look (W7)
   let b = st(19u);
   return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(d, l)), 0.0, 0.0, 0.0));
 }
@@ -757,9 +758,10 @@ fn room_warm(k: f32) -> vec3f { return mix(vec3f(1.0, 0.36, 0.08), vec3f(1.0, 0.
 // the movers' blobs) in three soft bands (two for a character), the shadow band the albedo under the
 // cool tinted ambient, the warm rim along silhouettes (not on a blade: a field edge on would all be
 // rim), then the haze; with the share that blooms and the glow a hazed surface passes the shafts.
-fn paint(base: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bool) -> Lit {
+fn paint(dry: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bool) -> Lit {
   let l = st(1u).xyz;
   let v = normalize(world - u.eye.xyz);
+  let base = weather_wet_base(dry, n, character);   // rain darkens what it wets (W9)
   let w = verse_style_wrap(dot(n, l)) * lit;
   let band = select(verse_style_bands(w, st(7u).x, st(7u).y, st(7u).z, st(7u).w), verse_style_bands2(w, st(8u).x, st(8u).y), character);
   let key = st(0u).xyz * st(0u).w;
@@ -773,9 +775,11 @@ fn paint(base: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: bo
   let rs = select(st(2u).w, st(3u).x, character);
   if (rim) { c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit; }
   c += water_caustics(world, n) * base * key * lit;   // light the water focuses on what lies under it
+  c = weather_surface(c, base, n, world, v, lit, character);   // wet sheen, puddles, lightning (W9)
   let d = length(u.eye.xyz - world);
   let fog = haze_share(d, world.y);
   c = mix(c, haze_colour(fog, v), fog);
+  c = weather_streaks(c, v, d);   // the rain between you and it (W9)
   c = water_under_view(c, world, v);   // diving: the underwater look (W7)
   let b = st(19u);
   return Lit(vec4f(c, verse_style_bloom_share(verse_style_luma(c.x, c.y, c.z), b.x, b.y)), vec4f(verse_style_shaft_source(dot(v, l)) * fog, 0.0, 0.0, 0.0));
@@ -1047,6 +1051,122 @@ fn water_under_view(c: vec3f, world: vec3f, d: vec3f) -> vec3f {
   return col;
 }
 
+// ---- the weather (W9: verse/water-weather.coax samples Everglade's schedule; everglade.coax
+// weather_frame writes u.weather). The light and the haze under cloud are set on the CPU; here the
+// sky greys under cloud and flashes with lightning, rain falls as wind-tilted streaks in layers
+// round the eye (2 on a phone, 4 on a desktop), rings on the water where drops land, and the
+// ground darkens, shines and fills its hollows with puddles as it wets, and so do characters.
+fn weather_hash(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
+fn weather_desktop() -> bool { return u.water.control.x >= 8.0; }
+
+fn weather_sky(c: vec3f, d: vec3f) -> vec3f {
+  let cloud = max(u.weather[1].z - 0.15, 0.0) / 0.85;
+  let grey = vec3f(verse_style_luma(c.x, c.y, c.z)) * vec3f(0.86, 0.92, 0.98);
+  var o = mix(c, grey * (1.0 - 0.25 * cloud), cloud * 0.7);
+  o += vec3f(0.75, 0.8, 1.0) * u.weather[0].w * 0.8 * smoothstep(-0.1, 0.3, d.y);
+  return o;
+}
+
+// Rings where drops land on water at p (m): one drop in most 0.55 m cells every 0.7 s, each ring
+// running out 0.3 m and fading.
+fn weather_rain_slope(p: vec2f) -> vec2f {
+  let rain = u.weather[0].x;
+  if (rain <= 0.01) { return vec2f(0.0); }
+  let cell = 0.55;
+  let base = floor(p / cell);
+  let t = u.water.params.x;
+  var g = vec2f(0.0);
+  for (var j = -1; j <= 1; j++) {
+    for (var i = -1; i <= 1; i++) {
+      let c = base + vec2f(f32(i), f32(j));
+      let h = weather_hash(c);
+      if (h > 0.25 + 0.75 * rain) { continue; }
+      let clock = t / 0.7 + h * 7.13;
+      let phase = fract(clock);
+      let turn = floor(clock);
+      let at = (c + vec2f(weather_hash(c + turn * 1.37), weather_hash(c + 5.3 + turn * 2.11))) * cell;
+      let to = p - at;
+      let dist = length(to);
+      let x = dist - phase * 0.3;
+      let env = exp(-x * x / 0.0016) * (1.0 - phase) * (1.0 - phase);
+      g += to / max(dist, 1e-3) * env * cos(x * 55.0) * 1.4;
+    }
+  }
+  return g * rain;
+}
+
+// What rain does to a surface's colour as the ground wets: porous albedo darkens (Lagarde 2013),
+// what faces up most; a character all over.
+fn weather_wet_share(n: vec3f, character: bool) -> f32 {
+  return u.weather[1].x * select(smoothstep(-0.3, 0.7, n.y), 0.8, character);
+}
+fn weather_wet_base(base: vec3f, n: vec3f, character: bool) -> vec3f {
+  let wet = weather_wet_share(n, character);
+  if (wet <= 0.0) { return base; }
+  return base * (1.0 - 0.4 * wet);
+}
+
+// A painted sheen where wet surfaces mirror the key, puddles in the ground's hollows that mirror the
+// sky and ring with the rain, and the lightning's flash.
+fn weather_surface(c: vec3f, base: vec3f, n: vec3f, world: vec3f, v: vec3f, lit: f32, character: bool) -> vec3f {
+  var o = c;
+  let wet = weather_wet_share(n, character);
+  let l = st(1u).xyz;
+  let key = st(0u).xyz * st(0u).w;
+  if (wet > 0.0) {
+    let r = reflect(v, n);
+    o += key * smoothstep(0.93, 0.975, dot(r, l)) * wet * 0.35 * lit;
+  }
+  let puddles = u.weather[1].y;
+  if (puddles > 0.0 && !character && n.y > 0.97 && abs(world.y - ground_y(world.xz)) < 0.05) {
+    let m = water_noise(vec3f(world.xz * 0.45, 0.5)) * 0.7 + water_noise(vec3f(world.xz * 1.7, 2.5)) * 0.3;
+    let fill = 1.0 - smoothstep(puddles * 0.3, puddles * 0.3 + 0.03, m);
+    if (fill > 0.0) {
+      let s = weather_rain_slope(world.xz);
+      let pn = normalize(vec3f(-s.x, 1.0, -s.y));
+      let mirror = min(weather_sky(sky(reflect(v, pn), l), reflect(v, pn)), vec3f(1.0)) * 0.75;   // no sun's disc in a puddle under cloud
+      let f = 0.25 + 0.6 * pow(1.0 - max(-v.y, 0.0), 3.0);
+      o = mix(o, mix(c * 0.55, mirror, f), fill * 0.85);
+    }
+  }
+  o += base * vec3f(0.75, 0.8, 1.0) * u.weather[0].w * 1.2;
+  return o;
+}
+
+// Rain between the eye and a surface d metres off along v: streaks on cylinders round the eye at
+// 1.2, 2.4, 4.8 and 9.6 m, falling at 7 m/s and leaning with the wind across the view.
+fn weather_streaks(c: vec3f, v: vec3f, d: f32) -> vec3f {
+  let rain = u.weather[0].x;
+  if (rain <= 0.01) { return c; }
+  let layers = select(2, 4, weather_desktop());
+  let t = select(u.time, 0.0, u.still > 0.5);
+  let yaw = atan2(v.x, v.z);
+  let side = vec2f(cos(yaw), -sin(yaw));
+  let lean = dot(u.weather[0].yz, side) / 7.0;
+  let flat = max(length(v.xz), 0.05);
+  var a = 0.0;
+  for (var i = 0; i < 4; i++) {
+    if (i >= layers) { break; }
+    let r = 1.2 * exp2(f32(i));
+    let along = r / flat;   // how far along v the cylinder is
+    if (along > d) { break; }
+    let y = v.y * along;
+    let q = vec2f((yaw * r - lean * y) / 0.12, (y + t * 7.0 + f32(i) * 13.7) / 0.85);
+    let cell = floor(q);
+    let h = weather_hash(cell + vec2f(f32(i) * 17.0, 3.0));
+    if (h > rain * 0.55) { continue; }
+    let f = fract(q);
+    let off = weather_hash(cell + 9.1) * 0.7 + 0.15;
+    let width = max(u.water.rest.y * along * 1.1 / 0.12, 0.02);
+    let x = abs(f.x - off);
+    let streak = (1.0 - smoothstep(width * 0.5, width, x)) * smoothstep(0.0, 0.12, f.y) * (1.0 - smoothstep(0.35, 0.6, f.y));
+    a += streak * (0.55 - 0.1 * f32(i));
+  }
+  let key = st(0u).xyz * st(0u).w;
+  let tint = vec3f(0.78, 0.84, 0.9) * (0.45 + 0.55 * clamp(verse_style_luma(key.x, key.y, key.z), 0.0, 1.0));
+  return mix(c, tint, clamp(a, 0.0, 1.0) * 0.4);
+}
+
 fn water_shoal(k: f32, depth: f32) -> f32 { return sqrt(tanh(clamp(k * depth, 0.0, 10.0))); }
 
 // The Gerstner displacement (xyz, m) of rest point p0 and how tightly the
@@ -1306,14 +1426,14 @@ fn fountain_fall_shade(i: WaterOut, part: u32) -> WaterShade {
     low = min(low, -water_rest(corner).depth);
   }
   let r = water_rest(uv);
-  if (low > WATER_DRY || quad_id >= qa * ql) {
+  if (low - u.weather[2].x > WATER_DRY || quad_id >= qa * ql) {
     o.clip = vec4f(0.0, 0.0, 2.0, 1.0);
     return o;
   }
   let wave = water_gerstner(r.pos.xz, r.depth, 1.0);
-  let world = r.pos + wave.xyz;
+  let world = r.pos + wave.xyz + vec3f(0.0, u.weather[2].x, 0.0);   // risen by the rain (W9)
   o.clip = clip(world);
-  o.world_depth = vec4f(world, r.depth);
+  o.world_depth = vec4f(world, r.depth + u.weather[2].x);
   o.rest_flow = vec4f(r.pos.xz, r.flow);
   o.look = vec4f(r.foam, 0.0, wave.w, r.shore);
   o.extra = vec4f(0.0, world.y - r.pos.y, 0.0, 0.0);
@@ -1630,7 +1750,7 @@ fn water_fragment(i: WaterOut) -> WaterShade {
   // the normal, and the roughness its lost detail adds
   let swell = water_gerstner_slope(rest, depth, 1.0);
   let detail = water_flow_detail(rest, flow, footprint);
-  let slope = swell.xy + detail.xy + water_ripples(rest);
+  let slope = swell.xy + detail.xy + water_ripples(rest) + weather_rain_slope(world.xz);
   let n = normalize(vec3f(-slope.x, 1.0 - swell.z, -slope.y));
   let roughness = clamp(sqrt(u.water.body.x * u.water.body.x + detail.z), 0.02, 0.6);
   if (u.eye.y < world.y) {

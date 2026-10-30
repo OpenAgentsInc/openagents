@@ -152,6 +152,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     player.prev_pos = player.pos;
   }
   // the river: what water you are in, on the bridge's deck none
+  // the rain's rise on it and its current's gain (verse/water-weather.coax, W9)
+  everglade_river_weather(rv(), everglade_rise(at(state)), everglade_flow_gain(at(state)));
   coax_v_f32 heights = {g->heights.e, 105 * 105};
   if (everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2) {
     swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;

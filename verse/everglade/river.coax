@@ -81,6 +81,8 @@ FLOAT_STEP :: 1.0 / 120.0;
 
 River :: struct {
   ready: bool;
+  rise: f32;            // m the rain has raised the river (verse/water-weather.coax, at most 0.15; W9)
+  flow_boost: f32;      // and how much faster its current runs for it (0 to 0.6)
   n: int; cell: f32; west: f32; south: f32;      // the ground the bed is (verse/terrain.coax's grid)
   points: [RIVER_POINTS] D2; widths: [RIVER_POINTS] f64; lengths: [RIVER_POINTS] f64;
   profile: [RIVER_POINTS] D2;
@@ -224,13 +226,13 @@ everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f3
   b := r[0].bodies[0];
   inside := false;
   s := water_sample(r[0].set, f64(ex), f64(ez), river_tick(time));
-  if s.found && f64(ey) < s.height { inside = true; }
+  if s.found && f64(ey) < s.height + f64(r[0].rise) { inside = true; }
   water_look_body(u, 0, b.waves, time, r[0].preset, 1, inside);
   water_look_detail(u, 0, 3.0, 0.12, 2.4, 0.016);
   water_look_control(u, 0, phone);
   // the eye's height over the water (m; 100 when not over it): everglade.wgsl splits the view
   // at the near plane with it and draws what lies under in the underwater look (W7)
-  u[W_CONTROL + 3] = ifx s.found then ey - f32(s.height) else 100.0f32;
+  u[W_CONTROL + 3] = ifx s.found then ey - f32(s.height) - r[0].rise else 100.0f32;
   water_look_ripples(u, 0, r[0].ripples[..], cast(f32) u[W_PARAMS]);
   u[W_REST + 1] = pixel_angle;
   u[W_GRID] = f32(RIVER_COLS); u[W_GRID + 1] = f32(RIVER_ROWS);
@@ -247,6 +249,13 @@ everglade_river_frame :: (r: [] River, u: [] f32, time: f64, phone: bool, ex: f3
   u[W_FRAME + 3] = f32(RIVER_ACROSS); u[W_REST + 3] = f32(RIVER_ALONG);
 }
 
+// The rain's rise on the river (m, held to 0.15) and the current's gain for it (1 to 1.6), from
+// Everglade's weather each frame (verse/water-weather.coax weather_rise and weather_flow_gain).
+everglade_river_weather :: (r: [] River, rise: f32, gain: f32) #export_c {
+  r[0].rise = ifx rise == rise then clamp_f(rise, 0, 0.15) else 0.0f32;
+  r[0].flow_boost = ifx gain == gain then clamp_f(gain - 1, 0, 0.6) else 0.0f32;
+}
+
 // The water clock's tick at `time` s.
 river_tick :: (time: f64) -> u64 { return cast(u64) floor(fmax(time, 0.0) * 120.0); }
 
@@ -259,7 +268,7 @@ everglade_river_surface :: (r: [] River, x: f32, z: f32, time: f64) -> f32 #expo
   if !r[0].ready { return -1000; }
   s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
   if !s.found { return -1000; }
-  return cast(f32) s.height;
+  return cast(f32) s.height + r[0].rise;
 }
 
 // ---- the swimmer (medium.rs)
@@ -349,7 +358,7 @@ everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: boo
   if !r[0].ready { return out; }
   t := ifx dt == dt && dt > 0 then lo_f(dt, 0.25) else 0.0f32;
   s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
-  surface := ifx s.found then cast(f32) s.height else -1000.0f32;
+  surface := ifx s.found then cast(f32) s.height + r[0].rise else -1000.0f32;
   // Afloat, you keep your height in the water; on the bed, your feet are on it.
   feet := ifx r[0].afloat then r[0].feet else bed;
   if surface > -999 && surface - bed > f32(SWIM_DEPTH) && !r[0].afloat { feet = hi_f(bed, surface - f32(FLOAT_DEPTH)); }
@@ -367,7 +376,7 @@ everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: boo
   r[0].medium = medium; r[0].feet = feet; r[0].afloat = afloat;
   out.medium = medium; out.feet = feet; out.surface = surface;
   out.pace = pace_of(medium, r[0].levels);
-  if afloat && s.found { out.flow_x = cast(f32) s.flow.x; out.flow_z = cast(f32) s.flow.z; }
+  if afloat && s.found { out.flow_x = cast(f32) s.flow.x * (1 + r[0].flow_boost); out.flow_z = cast(f32) s.flow.z * (1 + r[0].flow_boost); }
   out.breath = cast(f32) (r[0].breath / hold_seconds(CON));
   out.levels = r[0].levels;
   if events & BREATH_DEFEAT != 0 {

@@ -1,0 +1,634 @@
+// Water for Verse, phase W9: weather. A port of the old
+// `physics::water::weather` (`git show
+// 0b401561a0^:crates/physics/src/water/weather.rs` and `weather_tests.rs`;
+// the design is verse/everglade/previous/water.md, "Weather").
+//
+// Weather is a pure function of a zone's climate, its seed and the world
+// tick, so every client, a late joiner, a replay and an offline session see
+// the same sky with no messages, as they already see the same waves.
+//
+// - The schedule: world time splits into 10-minute blocks; a hash of the
+//   seed and the block index draws each block's state (clear, overcast, fog,
+//   rain, storm) from the climate's weights, and states blend over 60 s at
+//   block boundaries. Seeded smooth noise varies the rain and the wind
+//   inside a block. weather_sample is the Weather at a tick.
+// - Pins: a development control that overrides the schedule from a tick on
+//   (`?weather=rain` on a realm, captures, tests). Players have no weather
+//   control except spells.
+// - Overlays: spell weather (Create Water's rain, Sleet Storm, Fog Cloud,
+//   Call Lightning's cloud, Storm of Vengeance) as bounded local areas over
+//   the schedule, each with a start tick and a duration. They never change
+//   the schedule.
+// - The ground: how wet surfaces are and how full the puddles are,
+//   integrated from the schedule's rain over the last hour on a grid fixed
+//   to the world tick, so it agrees across clients too.
+// - Rising water: the mean rain over the last 30 minutes times 0.15 m, so it
+//   is bounded and needs no event; the flow gain strengthens currents by it.
+//
+// Nothing here draws. The rain's look (streaks, splashes, ripples, wet
+// ground, puddles, wet characters) is in the realm's shader, fed from a
+// sample each frame.
+//   coax/bin/coax test --library verse/water-weather.coax --steps 2000000000
+
+#load "rigid.coax";
+
+WEATHER_TICK_HZ :: 120;          // the world tick (physics::water::event::TICK_HZ)
+WEATHER_BLOCK_SECONDS :: 600;
+WEATHER_BLEND_SECONDS :: 60;
+WEATHER_KNOT_SECONDS :: 90;      // the rain and wind vary through knots this far apart
+WEATHER_STRIKE_SECONDS :: 6;     // at most one lightning strike per window this long
+WEATHER_RISE_SECONDS :: 1800;
+WEATHER_MAX_RISE :: 0.15;        // m: the most rain raises a pond or a stream
+WEATHER_MAX_FLOW_GAIN :: 0.6;    // how much faster a fully risen stream runs (ours)
+WEATHER_GROUND_SECONDS :: 3600;
+WEATHER_GROUND_STEP :: 30;
+WEATHER_HEAVY_RAIN :: 0.5;       // SRD 5.2.1 Heavy Precipitation at or over this
+WEATHER_STRONG_WIND :: 9.0;      // m/s (20 mph): SRD 5.2.1 Strong Wind
+WEATHER_PINS :: 8;
+
+WEATHER_CLEAR :: 0; WEATHER_OVERCAST :: 1; WEATHER_FOG :: 2; WEATHER_RAIN :: 3; WEATHER_STORM :: 4;
+
+// Spell weather's kinds.
+OVERLAY_RAIN :: 0;     // Create Water's rain
+OVERLAY_SLEET :: 1;    // Sleet Storm: sleet as heavy as a storm's rain
+OVERLAY_FOG :: 2;      // Fog Cloud
+OVERLAY_CLOUD :: 3;    // Call Lightning's storm cloud
+OVERLAY_STORM :: 4;    // Storm of Vengeance: a storm under the cloud, strong wind included
+
+// What a state looks like at its steadiest.
+WeatherProfile :: struct {
+  rain: f64;
+  cloud: f64;
+  fog: f64;
+  wind: f64;      // a share of the climate's wind range (a storm runs past it)
+  storm: f64;
+}
+
+// A zone's climate: how often each state comes, and the range its wind
+// usually blows in, m/s.
+WeatherClimate :: struct {
+  weights: [5] f64;
+  wind_low: f64;
+  wind_high: f64;
+}
+
+// The weather at one place and tick.
+Weather :: struct {
+  state: int;       // the block's, or during a blend the one more than halfway in
+  rain: f64;        // 0 to 1, a storm's downpour at 1
+  wind_x: f64;      // m/s, where it blows toward
+  wind_z: f64;
+  fog: f64;
+  cloud: f64;
+  lightning: f64;   // the flash now, 0 to 1
+}
+
+// How the rain has left the ground, both 0 to 1.
+WeatherGround :: struct {
+  wet: f64;       // exposed surfaces: darker, glossier, streaked
+  puddles: f64;   // how full the puddles in low ground are
+}
+
+// Spell weather: a bounded local area over the schedule, as a host event.
+WeatherOverlay :: struct {
+  kind: int;
+  x: f64; z: f64; radius: f64;
+  start: u64;
+  duration: u64;   // ticks
+}
+
+// A zone's weather over time, with its development pins (from each tick on,
+// the state is pinned, in ascending order of tick).
+WeatherSchedule :: struct {
+  climate: WeatherClimate;
+  seed: u64;
+  pin_n: int;
+  pin_tick: [WEATHER_PINS] u64;
+  pin_state: [WEATHER_PINS] int;
+}
+
+WeatherBlend :: struct { before: int; after: int; t: f64; }
+
+weather_temperate :: () -> WeatherClimate {   // Everglade's glade: mostly clear
+  return WeatherClimate.{weights = [5] f64.[0.55, 0.2, 0.08, 0.13, 0.04], wind_low = 0.5, wind_high = 7.0};
+}
+weather_coastal :: () -> WeatherClimate {     // wetter and windier
+  return WeatherClimate.{weights = [5] f64.[0.32, 0.25, 0.1, 0.2, 0.13], wind_low = 2.0, wind_high = 12.0};
+}
+
+weather_profile :: (state: int) -> WeatherProfile {
+  if state == WEATHER_OVERCAST { return WeatherProfile.{rain = 0.0, cloud = 0.85, fog = 0.1, wind = 0.55, storm = 0.0}; }
+  if state == WEATHER_FOG { return WeatherProfile.{rain = 0.0, cloud = 0.7, fog = 1.0, wind = 0.1, storm = 0.0}; }
+  if state == WEATHER_RAIN { return WeatherProfile.{rain = 0.55, cloud = 0.95, fog = 0.25, wind = 0.6, storm = 0.0}; }
+  if state == WEATHER_STORM { return WeatherProfile.{rain = 1.0, cloud = 1.0, fog = 0.3, wind = 1.4, storm = 1.0}; }
+  return WeatherProfile.{rain = 0.0, cloud = 0.15, fog = 0.0, wind = 0.35, storm = 0.0};
+}
+
+weather_mix :: (a: WeatherProfile, b: WeatherProfile, t: f64) -> WeatherProfile {
+  return WeatherProfile.{rain = a.rain + (b.rain - a.rain) * t, cloud = a.cloud + (b.cloud - a.cloud) * t,
+    fog = a.fog + (b.fog - a.fog) * t, wind = a.wind + (b.wind - a.wind) * t, storm = a.storm + (b.storm - a.storm) * t};
+}
+
+// The state's name, as `?weather=` takes it, and back (-1 for none).
+weather_name :: (state: int) -> string {
+  if state == WEATHER_OVERCAST { return "overcast"; }
+  if state == WEATHER_FOG { return "fog"; }
+  if state == WEATHER_RAIN { return "rain"; }
+  if state == WEATHER_STORM { return "storm"; }
+  return "clear";
+}
+weather_next :: (state: int) -> int { return (state + 1) % 5; }
+weather_named :: (name: string) -> int {
+  for i: 0..<5 { if name == weather_name(i) { return i; } }
+  return -1;
+}
+// The state a page's URL pins with `?weather=NAME` (or `&weather=`), or -1.
+weather_url_pin :: (url: string) -> int {
+  key := "weather=";
+  i := 1;
+  while i + key.count <= url.count {
+    if (url[i - 1] == '?' || url[i - 1] == '&') && url[i..<i + key.count] == key {
+      e := i + key.count;
+      while e < url.count && url[e] != '&' && url[e] != '#' { e += 1; }
+      return weather_named(url[i + key.count..<e]);
+    }
+    i += 1;
+  }
+  return -1;
+}
+
+weather_valid :: (c: WeatherClimate) -> bool {
+  total := 0.0;
+  for i: 0..<5 {
+    if !is_finite(c.weights[i]) || c.weights[i] < 0.0 { return false; }
+    total += c.weights[i];
+  }
+  return total > 0.0 && is_finite(c.wind_low) && is_finite(c.wind_high) && c.wind_low >= 0.0 && c.wind_low <= c.wind_high;
+}
+
+// The state a uniform draw `u` in [0, 1) picks by the weights.
+weather_draw :: (c: WeatherClimate, u: f64) -> int {
+  total := 0.0;
+  for i: 0..<5 { total += c.weights[i]; }
+  left := u * total;
+  for i: 0..<5 {
+    if left < c.weights[i] { return i; }
+    left -= c.weights[i];
+  }
+  i := 4;
+  while i > 0 && !(c.weights[i] > 0.0) { i -= 1; }
+  return i;
+}
+
+weather_smooth :: (t: f64) -> f64 {
+  x := fmin(fmax(t, 0.0), 1.0);
+  return x * x * (3.0 - 2.0 * x);
+}
+
+// SplitMix64 over the seed, an index and a channel.
+weather_hash :: (seed: u64, index: u64, channel: u64) -> u64 {
+  z := add_wrap(add_wrap(mul_wrap(seed, 0x9e3779b97f4a7c15), mul_wrap(index, 0xd1b54a32d192ed03)), mul_wrap(channel, 0xbf58476d1ce4e5b9));
+  z = mul_wrap(z ^ (z >> 30), 0xbf58476d1ce4e5b9);
+  z = mul_wrap(z ^ (z >> 27), 0x94d049bb133111eb);
+  return z ^ (z >> 31);
+}
+weather_unit :: (h: u64) -> f64 { return f64(h >> 11) / 9007199254740992.0; }
+
+// The world tick at `ms` after the Unix epoch.
+weather_tick_at :: (ms: u64) -> u64 { return ms / 1000 * WEATHER_TICK_HZ + ms % 1000 * WEATHER_TICK_HZ / 1000; }
+
+weather_schedule :: (out: [] WeatherSchedule, climate: WeatherClimate, seed: u64) {
+  out[0].climate = climate;
+  out[0].seed = seed;
+  out[0].pin_n = 0;
+}
+
+// Pins `state` from `tick` on, replacing pins at or after it; it blends in
+// over 60 s as a block does. A full list drops its oldest pin.
+weather_pin :: (s: [] WeatherSchedule, tick: u64, state: int) {
+  n := 0;
+  while n < s[0].pin_n && s[0].pin_tick[n] < tick { n += 1; }
+  if n == WEATHER_PINS {
+    for i: 1..<WEATHER_PINS { s[0].pin_tick[i - 1] = s[0].pin_tick[i]; s[0].pin_state[i - 1] = s[0].pin_state[i]; }
+    n = WEATHER_PINS - 1;
+  }
+  s[0].pin_tick[n] = tick;
+  s[0].pin_state[n] = state;
+  s[0].pin_n = n + 1;
+}
+weather_pin_all :: (s: [] WeatherSchedule, state: int) { s[0].pin_n = 0; weather_pin(s, 0, state); }
+weather_unpin :: (s: [] WeatherSchedule) { s[0].pin_n = 0; }
+
+// The pinned state at `tick`, or -1.
+weather_pinned_at :: (s: [] WeatherSchedule, tick: u64) -> int {
+  i := s[0].pin_n - 1;
+  while i >= 0 && s[0].pin_tick[i] > tick { i -= 1; }
+  return ifx i >= 0 then s[0].pin_state[i] else -1;
+}
+
+// Block `index`'s state by the climate, pins aside.
+weather_block :: (s: [] WeatherSchedule, index: u64) -> int {
+  return weather_draw(s[0].climate, weather_unit(weather_hash(s[0].seed, index, 0x0b10c4ed)));
+}
+
+weather_scheduled :: (s: [] WeatherSchedule, tick: u64) -> WeatherBlend {
+  block_ticks := cast(u64) (WEATHER_BLOCK_SECONDS * WEATHER_TICK_HZ);
+  at := tick / block_ticks;
+  now := weather_block(s, at);
+  before := ifx at == 0 then now else weather_block(s, at - 1);
+  t := f64(tick % block_ticks) / f64(WEATHER_BLEND_SECONDS * WEATHER_TICK_HZ);
+  return WeatherBlend.{before = before, after = now, t = weather_smooth(fmin(t, 1.0))};
+}
+
+// The state before `tick`'s transition, the one after, and how far the
+// blend between them has run, 0 to 1 (eased).
+weather_states :: (s: [] WeatherSchedule, tick: u64) -> WeatherBlend {
+  i := s[0].pin_n - 1;
+  while i >= 0 && s[0].pin_tick[i] > tick { i -= 1; }
+  if i < 0 { return weather_scheduled(s, tick); }
+  start := s[0].pin_tick[i];
+  state := s[0].pin_state[i];
+  before := state;
+  if i > 0 { before = s[0].pin_state[i - 1]; }
+  else if start > 0 {
+    b := weather_scheduled(s, start - 1);
+    before = ifx b.t < 0.5 then b.before else b.after;
+  }
+  t := f64(tick - start) / f64(WEATHER_BLEND_SECONDS * WEATHER_TICK_HZ);
+  return WeatherBlend.{before = before, after = state, t = weather_smooth(fmin(t, 1.0))};
+}
+
+// Seeded smooth noise in [0, 1] on `channel`, cubic between knots.
+weather_noise :: (s: [] WeatherSchedule, tick: u64, channel: u64) -> f64 {
+  knot_ticks := cast(u64) (WEATHER_KNOT_SECONDS * WEATHER_TICK_HZ);
+  knot := tick / knot_ticks;
+  t := f64(tick % knot_ticks) / f64(knot_ticks);
+  a := weather_unit(weather_hash(s[0].seed, knot, channel));
+  b := weather_unit(weather_hash(s[0].seed, knot + 1, channel));
+  return a + (b - a) * weather_smooth(t);
+}
+
+// A storm's lightning at `tick`: in each 6 s window a strike at a seeded
+// moment, or none, flashing twice and fading.
+weather_flash :: (s: [] WeatherSchedule, tick: u64) -> f64 {
+  strike := cast(u64) (WEATHER_STRIKE_SECONDS * WEATHER_TICK_HZ);
+  window := tick / strike;
+  h := weather_hash(s[0].seed, window, 0x0f1a5400);
+  if weather_unit(h) > 0.45 { return 0.0; }
+  at := window * strike + (h >> 40) % (strike * 2 / 3);
+  if tick < at { return 0.0; }
+  age := f64(tick - at) / f64(WEATHER_TICK_HZ);
+  first := exp(-age / 0.08);
+  second := ifx age > 0.18 then 0.7 * exp(-(age - 0.18) / 0.15) else 0.0;
+  return fmin(fmax(first, second), 1.0);
+}
+
+weather_wind_speed :: (w: Weather) -> f64 { return sqrt(w.wind_x * w.wind_x + w.wind_z * w.wind_z); }
+weather_heavy :: (w: Weather) -> bool { return w.state == WEATHER_STORM || w.rain >= WEATHER_HEAVY_RAIN; }   // SRD Heavy Precipitation
+weather_strong_wind :: (w: Weather) -> bool { return weather_wind_speed(w) >= WEATHER_STRONG_WIND; }  // SRD Strong Wind
+
+// SRD 5.2.1 Strong Wind disperses fog.
+weather_disperse :: (w: Weather) -> Weather {
+  o := w;
+  if weather_strong_wind(o) { o.fog *= 0.2; }
+  return o;
+}
+
+// The weather over the whole zone at `tick`.
+weather_sample :: (s: [] WeatherSchedule, tick: u64) -> Weather {
+  b := weather_states(s, tick);
+  p := weather_mix(weather_profile(b.before), weather_profile(b.after), b.t);
+  rain_var := 0.7 + 0.6 * weather_noise(s, tick, 1);
+  wind_var := 0.75 + 0.5 * weather_noise(s, tick, 2);
+  c := s[0].climate;
+  speed := (c.wind_low + (c.wind_high - c.wind_low) * p.wind) * wind_var;
+  // The wind veers slowly about the seed's prevailing direction.
+  heading := weather_unit(weather_hash(s[0].seed, 0, 0x00dec1de)) * 6.283185307179586 + (weather_noise(s, tick, 3) - 0.5) * 1.6;
+  w := Weather.{state = ifx b.t < 0.5 then b.before else b.after, rain = fmin(fmax(p.rain * rain_var, 0.0), 1.0),
+    wind_x = sin(heading) * speed, wind_z = cos(heading) * speed, fog = p.fog, cloud = p.cloud,
+    lightning = ifx p.storm > 0.0 then p.storm * weather_flash(s, tick) else 0.0};
+  return weather_disperse(w);
+}
+
+// Only the rain at `tick`, as weather_sample has it.
+weather_rain :: (s: [] WeatherSchedule, tick: u64) -> f64 {
+  b := weather_states(s, tick);
+  p := weather_mix(weather_profile(b.before), weather_profile(b.after), b.t);
+  return fmin(fmax(p.rain * (0.7 + 0.6 * weather_noise(s, tick, 1)), 0.0), 1.0);
+}
+
+// How much of overlay `o` applies at (x, z) and `tick`: 1 inside, easing to
+// 0 over its last meter and its first and last 2 s.
+weather_overlay_weight :: (o: WeatherOverlay, x: f64, z: f64, tick: u64) -> f64 {
+  if tick < o.start || tick >= add_wrap(o.start, o.duration) { return 0.0; }
+  edge := f64(WEATHER_TICK_HZ) * 2.0;
+  age := f64(tick - o.start);
+  left := f64(o.start + o.duration - tick);
+  time := fmin(fmin(age / edge, left / edge), 1.0);
+  d := sqrt((x - o.x) * (x - o.x) + (z - o.z) * (z - o.z));
+  return weather_smooth(time) * weather_smooth(fmin(fmax(o.radius - d, 0.0), 1.0));
+}
+
+weather_lift :: (v: f64, to: f64, k: f64) -> f64 { return v + fmax(to - v, 0.0) * k; }
+
+// The weather at (x, z) and `tick` with the spells' overlays laid over the
+// schedule's.
+weather_sample_at :: (s: [] WeatherSchedule, x: f64, z: f64, tick: u64, overlays: [] WeatherOverlay) -> Weather {
+  w := weather_sample(s, tick);
+  for i: 0..<overlays.count {
+    o := overlays[i];
+    k := weather_overlay_weight(o, x, z, tick);
+    if k <= 0.0 { continue; }
+    if o.kind == OVERLAY_RAIN { w.rain = weather_lift(w.rain, 0.7, k); w.cloud = weather_lift(w.cloud, 0.9, k); }
+    else if o.kind == OVERLAY_SLEET { w.rain = weather_lift(w.rain, 1.0, k); w.fog = weather_lift(w.fog, 0.4, k); w.cloud = weather_lift(w.cloud, 1.0, k); }
+    else if o.kind == OVERLAY_FOG { w.fog = weather_lift(w.fog, 1.0, k); }
+    else if o.kind == OVERLAY_CLOUD { w.cloud = weather_lift(w.cloud, 1.0, k); }
+    else if o.kind == OVERLAY_STORM {
+      w.rain = weather_lift(w.rain, 1.0, k); w.cloud = weather_lift(w.cloud, 1.0, k);
+      speed := weather_wind_speed(w);
+      strong := WEATHER_STRONG_WIND + 1.0;
+      if speed < strong {
+        dx := 1.0; dz := 0.0;
+        if speed > 0.000000001 { dx = w.wind_x / speed; dz = w.wind_z / speed; }
+        to := speed + (strong - speed) * k;
+        w.wind_x = dx * to; w.wind_z = dz * to;
+      }
+      w.lightning = fmax(w.lightning, weather_flash(s, tick) * k);
+      if k >= 0.5 { w.state = WEATHER_STORM; }
+    }
+    if o.kind != OVERLAY_STORM && o.kind != OVERLAY_FOG && w.rain >= WEATHER_HEAVY_RAIN && w.state != WEATHER_STORM { w.state = WEATHER_RAIN; }
+  }
+  return weather_disperse(w);
+}
+
+weather_advance :: (g: WeatherGround, rain: f64, dt: f64) -> WeatherGround {
+  o := g;
+  if rain > 0.02 {
+    o.wet = fmin(o.wet + rain * dt / 45.0, 1.0);        // wet within a minute of heavy rain
+    o.puddles = fmin(o.puddles + rain * dt / 480.0, 1.0);   // puddles fill over 8 minutes
+  } else {
+    o.wet = fmax(o.wet - dt / 900.0, 0.0);              // dry over 15 minutes
+    o.puddles = fmax(o.puddles - dt / 1500.0, 0.0);     // and puddles over 25 (ours)
+  }
+  return o;
+}
+
+// The ground at `tick`, integrated over the last hour on a 30 s grid fixed
+// to the world tick, starting dry.
+weather_ground :: (s: [] WeatherSchedule, tick: u64) -> WeatherGround {
+  step := cast(u64) (WEATHER_GROUND_STEP * WEATHER_TICK_HZ);
+  span := cast(u64) (WEATHER_GROUND_SECONDS * WEATHER_TICK_HZ);
+  last := tick / step * step;
+  first := ifx last > span then last - span else 0;
+  g := WeatherGround.{wet = 0.0, puddles = 0.0};
+  at := first;
+  while at < last {
+    g = weather_advance(g, weather_rain(s, at), f64(WEATHER_GROUND_STEP));
+    at += step;
+  }
+  rest := f64(tick - last) / f64(WEATHER_TICK_HZ);
+  if rest > 0.0 { g = weather_advance(g, weather_rain(s, last), rest); }
+  // A downpour wets the ground now, whatever the grid has.
+  g.wet = fmax(g.wet, fmin(weather_rain(s, tick), 1.0) * 0.8);
+  return g;
+}
+
+// How far rain has raised ponds and streams at `tick`, m: the mean rain over
+// the last 30 minutes times 0.15 m, by the trapezoid rule on a grid fixed to
+// the world tick with the window's ends exact, so it moves smoothly.
+weather_rise :: (s: [] WeatherSchedule, tick: u64) -> f64 {
+  window := cast(u64) (WEATHER_RISE_SECONDS * WEATHER_TICK_HZ);
+  step := cast(u64) (WEATHER_GROUND_STEP * WEATHER_TICK_HZ);
+  start := ifx tick > window then tick - window else 0;
+  if tick == start { return 0.0; }
+  area := 0.0;
+  a := start;
+  ra := weather_rain(s, a);
+  b := (start / step + 1) * step;
+  while a < tick {
+    if b > tick { b = tick; }
+    rb := weather_rain(s, b);
+    area += (ra + rb) * 0.5 * f64(b - a);
+    a = b; ra = rb; b += step;
+  }
+  return fmin(fmax(area / f64(window) * WEATHER_MAX_RISE, 0.0), WEATHER_MAX_RISE);
+}
+
+// How much faster currents run for the risen water: 1, up to 1.6.
+weather_flow_gain :: (s: [] WeatherSchedule, tick: u64) -> f64 { return 1.0 + WEATHER_MAX_FLOW_GAIN * weather_rise(s, tick) / WEATHER_MAX_RISE; }
+
+// ---- checks (weather_tests.rs)
+
+WEATHER_HZ :: cast(u64) WEATHER_TICK_HZ;
+WEATHER_BLOCK :: cast(u64) (WEATHER_BLOCK_SECONDS * WEATHER_TICK_HZ);
+
+weather_everglade :: (out: [] WeatherSchedule) { weather_schedule(out, weather_temperate(), 0xe7e5); }
+
+weather_same :: (a: Weather, b: Weather) -> bool {
+  return a.state == b.state && a.rain == b.rain && a.wind_x == b.wind_x && a.wind_z == b.wind_z && a.fog == b.fog && a.cloud == b.cloud && a.lightning == b.lightning;
+}
+
+#test "two clients sample the same weather for the same seed and tick" {
+  a: [1] WeatherSchedule; b: [1] WeatherSchedule; c: [1] WeatherSchedule;
+  weather_everglade(a[..]);
+  weather_schedule(b[..], weather_temperate(), 0xe7e5);
+  ms: u64 = 1791000000000;
+  ta := weather_tick_at(ms); tb := weather_tick_at(ms + 3);
+  #assert ta == tb;
+  for k: 0..<200 {
+    tick := ta + cast(u64) k * 977;
+    #assert weather_same(weather_sample(a[..], tick), weather_sample(b[..], tick));
+  }
+  for k: 0..<4 {
+    tick := ta + cast(u64) k * 97777;
+    ga := weather_ground(a[..], tick); gb := weather_ground(b[..], tick);
+    #assert ga.wet == gb.wet && ga.puddles == gb.puddles;
+    #assert weather_rise(a[..], tick) == weather_rise(b[..], tick);
+  }
+  // another seed is another sky
+  weather_schedule(c[..], weather_temperate(), 0xe7e6);
+  differs := false;
+  for k: 0..<200 { if weather_block(a[..], cast(u64) k) != weather_block(c[..], cast(u64) k) { differs = true; } }
+  #assert differs;
+}
+
+#test "blocks follow the climate, and Everglade is mostly clear" {
+  s: [1] WeatherSchedule;
+  weather_everglade(s[..]);
+  counts: [5] int;
+  for i: 0..<5 { counts[i] = 0; }
+  for k: 0..<20000 { b := weather_block(s[..], cast(u64) k); counts[b] += 1; }
+  c := weather_temperate();
+  for i: 0..<5 { #assert abs(f64(counts[i]) / 20000.0 - c.weights[i]) < 0.02; }
+  for i: 1..<5 { #assert counts[0] > counts[i]; }
+}
+
+#test "transitions blend over sixty seconds" {
+  s: [1] WeatherSchedule;
+  weather_everglade(s[..]);
+  k: u64 = 1;
+  while k < 10000 && !(weather_block(s[..], k) == WEATHER_CLEAR && weather_block(s[..], k + 1) == WEATHER_RAIN) { k += 1; }
+  #assert k < 10000;
+  boundary := (k + 1) * WEATHER_BLOCK;
+  before := weather_states(s[..], boundary - 1);
+  #assert before.before == WEATHER_CLEAR && before.after == WEATHER_CLEAR && before.t == 1.0;
+  start := weather_states(s[..], boundary);
+  #assert start.before == WEATHER_CLEAR && start.after == WEATHER_RAIN && start.t == 0.0;
+  #assert weather_sample(s[..], boundary).rain == 0.0;
+  half := weather_sample(s[..], boundary + 30 * WEATHER_HZ);
+  full := weather_sample(s[..], boundary + 60 * WEATHER_HZ);
+  #assert half.rain > 0.0 && half.rain < full.rain;
+  #assert weather_states(s[..], boundary + 60 * WEATHER_HZ).t == 1.0;
+  // the rain rises without a jump from tick to tick (every 4th tick here)
+  last := weather_rain(s[..], boundary);
+  t := boundary;
+  while t < boundary + 60 * WEATHER_HZ {
+    now := weather_rain(s[..], t);
+    #assert abs(now - last) < 0.04;
+    last = now; t += 4;
+  }
+  // the state flips halfway through the blend
+  #assert weather_sample(s[..], boundary + 29 * WEATHER_HZ).state == WEATHER_CLEAR;
+  #assert weather_sample(s[..], boundary + 31 * WEATHER_HZ).state == WEATHER_RAIN;
+}
+
+#test "a pinned state overrides the schedule" {
+  tick := 9000 * WEATHER_BLOCK + 123;
+  s: [1] WeatherSchedule;
+  for state: 0..<5 {
+    weather_everglade(s[..]);
+    weather_pin_all(s[..], state);
+    #assert weather_sample(s[..], tick).state == state;
+    b := weather_states(s[..], tick);
+    #assert b.before == state && b.after == state && b.t == 1.0;
+  }
+  // a pin from a tick on blends in from what the schedule had
+  weather_everglade(s[..]);
+  at := 77 * WEATHER_BLOCK + 5 * WEATHER_HZ;
+  scheduled := weather_sample(s[..], at - 1).state;
+  to := ifx scheduled == WEATHER_STORM then WEATHER_CLEAR else WEATHER_STORM;
+  weather_pin(s[..], at, to);
+  #assert weather_sample(s[..], at - 1).state == scheduled;
+  #assert weather_states(s[..], at).before == scheduled;
+  #assert weather_sample(s[..], at + 60 * WEATHER_HZ).state == to;
+  #assert weather_pinned_at(s[..], at + 1) == to;
+  weather_unpin(s[..]);
+  #assert weather_pinned_at(s[..], at + 1) == -1;
+}
+
+#test "the SRD effects follow rain and wind" {
+  tick := 5000 * WEATHER_BLOCK;
+  s: [1] WeatherSchedule;
+  weather_everglade(s[..]); weather_pin_all(s[..], WEATHER_STORM);
+  #assert weather_heavy(weather_sample(s[..], tick));
+  weather_pin_all(s[..], WEATHER_CLEAR);
+  clear := weather_sample(s[..], tick);
+  #assert !weather_heavy(clear) && !weather_strong_wind(clear) && clear.rain == 0.0;
+  // a coastal storm blows a Strong Wind, which disperses the fog
+  weather_schedule(s[..], weather_coastal(), 3); weather_pin_all(s[..], WEATHER_STORM);
+  found := false;
+  for k: 0..<400 {
+    w := weather_sample(s[..], tick + cast(u64) k * 997);
+    if !found && weather_strong_wind(w) { found = true; #assert w.fog <= 0.3 * 0.2 + 0.000000001; }
+  }
+  #assert found;
+}
+
+#test "storms flash and clear skies do not" {
+  storm: [1] WeatherSchedule; clear: [1] WeatherSchedule;
+  weather_everglade(storm[..]); weather_pin_all(storm[..], WEATHER_STORM);
+  weather_everglade(clear[..]); weather_pin_all(clear[..], WEATHER_CLEAR);
+  flashes := 0;
+  t: u64 = 0;
+  while t < 120 * WEATHER_HZ {
+    if weather_sample(storm[..], t).lightning > 0.5 { flashes += 1; }
+    #assert weather_sample(clear[..], t).lightning == 0.0;
+    t += 4;
+  }
+  #assert flashes > 0;
+}
+
+#test "spell weather is local and bounded in time" {
+  s: [1] WeatherSchedule;
+  weather_everglade(s[..]); weather_pin_all(s[..], WEATHER_CLEAR);
+  o: [1] WeatherOverlay;
+  o[0] = WeatherOverlay.{kind = OVERLAY_RAIN, x = 10.0, z = 0.0, radius = 4.5, start = 1000, duration = 6 * WEATHER_HZ};
+  w := weather_sample_at(s[..], 10.0, 1.0, 1000 + 3 * WEATHER_HZ, o[..]);
+  #assert w.rain >= 0.69 && w.state == WEATHER_RAIN;
+  // outside the area, before and after: the schedule's own weather
+  #assert weather_sample_at(s[..], 0.0, 0.0, 1000 + 3 * WEATHER_HZ, o[..]).rain == 0.0;
+  #assert weather_sample_at(s[..], 10.0, 1.0, 999, o[..]).rain == 0.0;
+  #assert weather_sample_at(s[..], 10.0, 1.0, 1000 + 6 * WEATHER_HZ, o[..]).rain == 0.0;
+  #assert weather_sample(s[..], 1000 + 3 * WEATHER_HZ).rain == 0.0;   // the schedule never changes
+  // Storm of Vengeance: a storm with strong wind under the cloud
+  o[0].kind = OVERLAY_STORM; o[0].radius = 18.0; o[0].duration = 60 * WEATHER_HZ;
+  v := weather_sample_at(s[..], 10.0, 1.0, 1000 + 30 * WEATHER_HZ, o[..]);
+  #assert v.state == WEATHER_STORM && weather_strong_wind(v) && weather_heavy(v);
+  // Fog Cloud fogs
+  o[0] = WeatherOverlay.{kind = OVERLAY_FOG, x = 10.0, z = 0.0, radius = 4.5, start = 1000, duration = 6 * WEATHER_HZ};
+  #assert weather_sample_at(s[..], 10.0, 1.0, 1000 + 3 * WEATHER_HZ, o[..]).fog > 0.99;
+}
+
+#test "rising water is bounded" {
+  wet: [1] WeatherSchedule; dry: [1] WeatherSchedule;
+  weather_everglade(wet[..]); weather_pin_all(wet[..], WEATHER_STORM);
+  weather_everglade(dry[..]); weather_pin_all(dry[..], WEATHER_CLEAR);
+  t := 50 * WEATHER_BLOCK;
+  #assert weather_rise(wet[..], t) <= WEATHER_MAX_RISE + 0.000000000001;
+  #assert weather_rise(wet[..], t) > WEATHER_MAX_RISE * 0.6;
+  #assert weather_rise(dry[..], t) == 0.0;
+  #assert weather_flow_gain(wet[..], t) - 1.0 > 0.3;
+  #assert weather_flow_gain(dry[..], t) == 1.0;
+}
+
+#test "the schedule's rise stays in bounds and moves smoothly" {
+  s: [1] WeatherSchedule;
+  weather_schedule(s[..], weather_coastal(), 11);
+  last := weather_rise(s[..], 1000 * WEATHER_BLOCK);
+  for k: 1..<300 {
+    r := weather_rise(s[..], 1000 * WEATHER_BLOCK + cast(u64) k * 1200);
+    #assert r >= 0.0 && r <= WEATHER_MAX_RISE;
+    #assert abs(r - last) < 0.02;
+    last = r;
+  }
+}
+
+#test "the water rises in rain and falls back after" {
+  s: [1] WeatherSchedule;
+  weather_everglade(s[..]); weather_pin_all(s[..], WEATHER_CLEAR);
+  start := 300 * WEATHER_BLOCK;
+  weather_pin(s[..], start, WEATHER_RAIN);
+  weather_pin(s[..], start + 1800 * WEATHER_HZ, WEATHER_CLEAR);
+  peak := weather_rise(s[..], start + 1800 * WEATHER_HZ);
+  #assert peak > 0.05;
+  #assert weather_rise(s[..], start + 3600 * WEATHER_HZ + 60 * WEATHER_HZ) < 0.000000001;
+}
+
+#test "the ground wets in rain and dries after" {
+  s: [1] WeatherSchedule;
+  weather_everglade(s[..]); weather_pin_all(s[..], WEATHER_CLEAR);
+  start := 400 * WEATHER_BLOCK;
+  g := weather_ground(s[..], start);
+  #assert g.wet == 0.0 && g.puddles == 0.0;
+  weather_pin(s[..], start, WEATHER_RAIN);
+  weather_pin(s[..], start + 900 * WEATHER_HZ, WEATHER_CLEAR);
+  raining := weather_ground(s[..], start + 600 * WEATHER_HZ);
+  #assert raining.wet > 0.9 && raining.puddles > 0.4;
+  // five minutes after the rain: still wet, puddles still standing
+  after := weather_ground(s[..], start + 1200 * WEATHER_HZ);
+  #assert after.wet > 0.4 && after.wet < raining.wet + 0.1 && after.puddles > 0.2;
+  // long after: dry
+  later := weather_ground(s[..], start + 3000 * WEATHER_HZ);
+  #assert later.wet == 0.0 && later.puddles == 0.0;
+}
+
+#test "climates validate and states name" {
+  #assert weather_valid(weather_temperate()) && weather_valid(weather_coastal());
+  #assert !weather_valid(WeatherClimate.{weights = [5] f64.[0.0, 0.0, 0.0, 0.0, 0.0], wind_low = 0.0, wind_high = 1.0});
+  #assert weather_next(WEATHER_STORM) == WEATHER_CLEAR;
+  #assert weather_name(WEATHER_RAIN) == "rain";
+  for i: 0..<5 { #assert weather_named(weather_name(i)) == i; }
+  #assert weather_url_pin("https://x/realms/everglade?weather=storm#river") == WEATHER_STORM;
+  #assert weather_url_pin("https://x/realms/everglade?clock=0.5&weather=rain") == WEATHER_RAIN;
+  #assert weather_url_pin("https://x/realms/everglade?weather=hail") == -1 && weather_url_pin("https://x/realms/everglade") == -1;
+}

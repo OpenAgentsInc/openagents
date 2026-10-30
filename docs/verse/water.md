@@ -372,3 +372,54 @@ at device pixel ratio 2 (12.1 ms on the surface; the shafts cost 3 ms).
 ```sh
 coax/bin/coax test --library verse/water-under.coax --steps 2000000000
 ```
+
+## W9: weather (done)
+
+[`verse/water-weather.coax`](../../verse/water-weather.coax) ports the old
+`physics::water::weather` with its tests. The weather is a pure function of
+the zone's climate, its seed and the world tick (120 Hz from the page's
+clock), so every visitor, a late joiner and a replay see the same sky with
+no messages:
+
+- **The schedule.** Ten-minute blocks draw clear, overcast, fog, rain or a
+  storm from the climate's weights (`weather_temperate` for Everglade,
+  mostly clear; `weather_coastal`, wetter and windier), blend over 60 s, and
+  vary the rain and the wind with seeded smooth noise. A storm flashes with
+  lightning.
+- **SRD effects.** `weather_heavy` (Heavy Precipitation) and
+  `weather_strong_wind` (9 m/s and over; it disperses the fog).
+- **Spell weather.** `WeatherOverlay`s for Create Water's rain, Sleet Storm,
+  Fog Cloud, Call Lightning's cloud and Storm of Vengeance. Each is a local
+  area with a start tick and a duration that never changes the schedule.
+- **The ground and rising water.** `weather_ground` integrates the wetness
+  and the puddles over the last hour on a 30 s grid fixed to the tick.
+  `weather_rise` is the mean rain over the last 30 minutes times 0.15 m, and
+  `weather_flow_gain` (up to 1.6) speeds the current for it.
+
+**Everglade.** `weather_frame` in `everglade.coax` samples the schedule each
+frame and writes `u.weather` (three rows after the lamps). It also integrates
+the ground and the rise once a second.
+
+- **Under cloud.** The key light dims, the ambient dims, and the painted sky
+  and haze go blue-grey. Fog and rain thicken the haze.
+- **In `everglade.wgsl`.** Rain falls as wind-tilted streaks on cylinders
+  round the eye (2 layers on a phone, 4 on a desktop). Drops ring the river
+  and the puddles (`weather_rain_slope`). Wet surfaces and characters darken
+  and take a painted sheen. Puddles fill the ground's hollows and mirror the
+  grey sky, never the sun's disc. Lightning flashes the sky and the ground.
+- **The river.** `everglade_river_weather` raises the river by the rise, on
+  the surface and in the swimmer's rules, and speeds its current by the gain.
+- **Pinning it.** `?weather=clear|overcast|fog|rain|storm` pins the state.
+  A still page (a golden) keeps a calm sky unless it is pinned, so the
+  goldens don't change with the schedule.
+
+Not ported: the old splash-back and eave drips, and a swimmer staying wet
+after leaving the water.
+
+Measured headless (`frametime.ts`, GPU p50). In a storm: 4.76 ms at 390x844
+on the phone tier (3.60 ms clear), and 12.5 ms at 1440x900 at device pixel
+ratio 2 (8.7 ms clear).
+
+```sh
+coax/bin/coax test --library verse/water-weather.coax --steps 2000000000
+```
