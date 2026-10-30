@@ -2483,8 +2483,10 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
     right := v3(cos(heading), 0, -sin(heading));
     for side: 0..<2 {
       sign := ifx side == 0 then 1.0f32 else -1.0f32;
-      wing := add(add(p, times(right, 0.08 * sign)), v3(0, flap * 0.06, 0));
-      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.15 * (1 - abs(flap) * 0.5), 0.012, 0.13,
+      // a wing is a card raised as it beats, so it reads from eye height, not edge on
+      up := 0.05 + 0.08 * abs(flap);
+      wing := add(add(p, times(right, 0.07 * sign * (1 - abs(flap) * 0.4))), v3(0, up * 0.5, 0));
+      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.12 * (1 - abs(flap) * 0.4), up, 0.13,
             BUTTERFLY_RGB[k * 3], BUTTERFLY_RGB[k * 3 + 1], BUTTERFLY_RGB[k * 3 + 2]);
     }
   } }
@@ -2500,7 +2502,7 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
     for side: 0..<2 {
       sign := ifx side == 0 then 1.0f32 else -1.0f32;
       wing := add(add(p, times(right, 0.17 * sign)), v3(0, flap * 0.1, 0));
-      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.26 * (1 - abs(flap) * 0.35), 0.02, 0.12, 0.36, 0.26, 0.18);
+      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.26 * (1 - abs(flap) * 0.35), 0.03 + 0.1 * abs(flap), 0.12, 0.36, 0.26, 0.18);
     }
   } }
 }
