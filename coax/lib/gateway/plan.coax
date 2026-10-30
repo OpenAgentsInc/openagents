@@ -3,8 +3,9 @@
 // moves to the next attempt; after the first token nothing retries, so the
 // user never sees two half answers. A 401 or 402 benches that gateway for
 // the session (GwBench, kept by the caller across requests). Every attempt
-// is logged by gateway, model, status, latency and tokens, never the
-// prompt. From the old crates/inference router.rs (MAX_ATTEMPTS, Bench,
+// is logged by gateway, model, status, latency, tokens and its price on the
+// rates card (rates.coax), never the prompt; the done event carries the same
+// price. From the old crates/inference router.rs (MAX_ATTEMPTS, Bench,
 // fall_back) and microcoder-loop failover.rs and capacity.rs.
 //
 // The old router did not fall back on a 400 (one shared request, so the
@@ -13,7 +14,7 @@
 //
 // gw_plan_decide is the rule, pure, for tests; GwPlan runs it over GwCall.
 
-#load "gateway.coax";
+#load "rates.coax";
 
 GW_PLAN_MAX :: 3;
 GW_BENCH_MAX :: 16;
@@ -58,7 +59,9 @@ GwAttemptLog :: struct {
   latency_ms: int;               // to the end of the attempt
   input_tokens: int;
   output_tokens: int;
-  cost_usd_micros: int;
+  card_usd_micros: int;          // the rates card's price for its usage: 0 with none, -1 for a model off the card
+  cost_msats: int;               // that price in millisatoshis when the plan has a bitcoin price, else 0
+  cost_usd_micros: int;          // what the provider said it charged, -1 when it said nothing
 }
 
 gw_outcome_name :: (o: int) -> string {
@@ -72,7 +75,7 @@ gw_outcome_name :: (o: int) -> string {
   return "";
 }
 
-// One log entry as a line: gateway=vertex model=... outcome=done status=200 first_ms=... ms=... in=... out=... cost=...
+// One log entry as a line: gateway=vertex model=... outcome=done status=200 first_ms=... ms=... in=... out=... card_usd_micros=... msats=... cost_usd_micros=...
 gw_attempt_line :: (e: GwAttemptLog, out: [] u8) -> string {
   n := json_raw(out, 0, "gateway="); n = json_raw(out, n, e.gateway);
   n = json_raw(out, n, " model="); n = json_raw(out, n, e.model);
@@ -82,6 +85,8 @@ gw_attempt_line :: (e: GwAttemptLog, out: [] u8) -> string {
   n = json_raw(out, n, " ms="); n = json_write_int(out, n, e.latency_ms);
   n = json_raw(out, n, " in="); n = json_write_int(out, n, e.input_tokens);
   n = json_raw(out, n, " out="); n = json_write_int(out, n, e.output_tokens);
+  n = json_raw(out, n, " card_usd_micros="); n = json_write_int(out, n, e.card_usd_micros);
+  n = json_raw(out, n, " msats="); n = json_write_int(out, n, e.cost_msats);
   n = json_raw(out, n, " cost_usd_micros="); n = json_write_int(out, n, e.cost_usd_micros);
   if n < 0 { return ""; }
   return cast(string) out[0..<n];
@@ -113,6 +118,7 @@ GwPlan :: struct {
   first_ms: int;
   over: bool;
   why: string;                   // when every attempt refused: the last reason
+  usd_per_btc: int;              // whole dollars per bitcoin, for cost_msats; 0 leaves msats at 0
 }
 
 GwPlanBuffers :: struct {
@@ -132,11 +138,18 @@ gw_plan_add :: (p: [] GwPlan, g: Gateway, model: string, headers: [] string) -> 
   return true;
 }
 
-gw_plan_log :: (p: [] GwPlan, i: int, outcome: int, status: int, usage: GwUsage) {
+// usage priced on the card for attempt i.
+gw_plan_price :: (p: [] GwPlan, i: int, usage: GwUsage) -> GwUsage {
+  a := p[0].attempts[i];
+  return gw_price(a.gateway.name, a.model, usage, p[0].usd_per_btc);
+}
+
+gw_plan_log :: (p: [] GwPlan, i: int, outcome: int, status: int, raw: GwUsage) {
   if p[0].nlog >= GW_PLAN_MAX { return; }
   a := p[0].attempts[i];
+  usage := gw_plan_price(p, i, raw);
   now := cxproc_now_ms();
-  e := GwAttemptLog.{gateway = a.gateway.name, model = a.model, outcome = outcome, status = status, first_ms = -1, latency_ms = ifx outcome == GW_OUT_SKIPPED then 0 else now - p[0].started_ms, cost_usd_micros = usage.cost_usd_micros};
+  e := GwAttemptLog.{gateway = a.gateway.name, model = a.model, outcome = outcome, status = status, first_ms = -1, latency_ms = ifx outcome == GW_OUT_SKIPPED then 0 else now - p[0].started_ms, card_usd_micros = usage.card_usd_micros, cost_msats = usage.cost_msats, cost_usd_micros = usage.cost_usd_micros};
   if outcome != GW_OUT_SKIPPED && p[0].first_ms >= 0 { e.first_ms = p[0].first_ms - p[0].started_ms; }
   if usage.ok { e.input_tokens = usage.input_tokens; e.output_tokens = usage.output_tokens; }
   p[0].log[p[0].nlog] = e; p[0].nlog += 1;
@@ -194,6 +207,7 @@ gw_plan_poll :: (p: [] GwPlan, bench: [] GwBench, out: [] GwEvent) -> int {
       outcome := ifx x.kind == GW_EV_DONE then GW_OUT_DONE else ifx first then GW_OUT_CUT else GW_OUT_LAST;
       if x.kind == GW_EV_REFUSED && gw_bench_status(x.status) { gw_bench(bench, p[0].attempts[p[0].at].gateway.name); }
       gw_plan_log(p, p[0].at, outcome, ifx x.kind == GW_EV_DONE then 200 else x.status, x.usage);
+      if x.kind == GW_EV_DONE { x.usage = gw_plan_price(p, p[0].at, x.usage); }
       p[0].over = true; p[0].at = p[0].n;
       if x.kind == GW_EV_REFUSED && !first { p[0].why = x.reason; return k + gw_plan_no_capacity(p, out[k..<out.count], x.status); }
       return gw_put(out, k, x);
@@ -243,5 +257,5 @@ gw_plan_stop :: (p: [] GwPlan) {
   buf: [512] u8;
   e := GwAttemptLog.{gateway = "vertex", model = "google/gemini-3.8-flash", outcome = GW_OUT_BENCHED, status = 401, first_ms = -1, latency_ms = 120, cost_usd_micros = -1};
   line := gw_attempt_line(e, buf[..]);
-  #assert line == "gateway=vertex model=google/gemini-3.8-flash outcome=benched status=401 first_ms=-1 ms=120 in=0 out=0 cost_usd_micros=-1";
+  #assert line == "gateway=vertex model=google/gemini-3.8-flash outcome=benched status=401 first_ms=-1 ms=120 in=0 out=0 card_usd_micros=0 msats=0 cost_usd_micros=-1";
 }

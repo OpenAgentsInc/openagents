@@ -88,7 +88,7 @@ gw_anthropic_take_usage :: (ps: [] GwParse, usage: string) {
 gw_anthropic_usage :: (ps: [] GwParse) -> GwUsage {
   u: GwUsage;
   if !ps[0].in_ok || !ps[0].out_ok { return u; }
-  return GwUsage.{ok = true, input_tokens = ps[0].in_raw + ps[0].cache_read + ps[0].cache_write, cached_tokens = ps[0].cache_read, output_tokens = ps[0].out, cost_usd_micros = -1};
+  return GwUsage.{ok = true, input_tokens = ps[0].in_raw + ps[0].cache_read + ps[0].cache_write, cached_tokens = ps[0].cache_read, cache_write_tokens = ps[0].cache_write, output_tokens = ps[0].out, cost_usd_micros = -1};
 }
 
 gw_anthropic_ended :: (finish: int, usage: GwUsage, out: [] GwEvent, n: int) -> int {
@@ -200,7 +200,7 @@ gw_anthropic_whole :: (ar: [] ClArena, body: string, out: [] GwEvent) -> int {
   gw_replay(GW_WIRE_ANTHROPIC, fx[..], r[..]);
   #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive";
   #assert r[0].thoughts == 1 && r[0].done == 1 && r[0].refused == 0 && r[0].done_at_end && r[0].reason == "stop";
-  #assert r[0].usage.ok && r[0].usage.input_tokens == 25 + 100 + 10 && r[0].usage.cached_tokens == 100 && r[0].usage.output_tokens == 15;
+  #assert r[0].usage.ok && r[0].usage.input_tokens == 25 + 100 + 10 && r[0].usage.cached_tokens == 100 && r[0].usage.cache_write_tokens == 10 && r[0].usage.output_tokens == 15;
 }
 
 #test "a forced tool's input streams out as the answer's JSON" {

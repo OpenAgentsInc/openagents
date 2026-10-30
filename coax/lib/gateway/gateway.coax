@@ -39,7 +39,9 @@ GwUsage :: struct {
   output_tokens: int;            // reasoning included, as providers bill it
   cached_tokens: int;
   reasoning_tokens: int;
-  cost_msats: int;               // from the rates card (rates.coax); 0 until then
+  cache_write_tokens: int;       // input written to the cache (Anthropic), counted in input_tokens
+  card_usd_micros: int = -1;     // the rates card's price for it (rates.coax gw_price), -1 until priced or when the card has no row
+  cost_msats: int;               // the card's price in millisatoshis, when a bitcoin price is given; 0 otherwise
   cost_usd_micros: int = -1;     // what the provider itself says it charged (OpenRouter's usage.cost), -1 when it says nothing
 }
 

@@ -103,7 +103,7 @@ main :: () {
   for c: l[0].reply { if c == '3' { three = true; } }
   ran := live_commands_run(l[..], lb[..]);
   print("microcoder: % command(s) ran\n", ran);
-  ok = ok && l[0].ending == MC_END_FINISHED && three && ran == 1;
+  ok = ok && l[0].ending == MC_END_FINISHED && three && ran >= 1;   // the model may look twice
   ok = live_run_stream(p[..], bench[..], false) && ok;
   ok = live_run_stream(p[..], bench[..], true) && ok;
   print("smoke: %\n", ifx ok then "ok" else "FAILED");

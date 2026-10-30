@@ -116,12 +116,17 @@ smoke_plans :: (base: string, refuse: string, cut: string) -> bool {
   b: [1] GwPlanBuffers; p: [1] GwPlan;
   gw_plan_init(p[..], b[..]);
   x := gw_plan_add(p[..], Gateway.{name = "first", url = refuse, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "m1", none[0..<0]);
-  x = gw_plan_add(p[..], Gateway.{name = "second", url = base, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "m2", none[0..<0]);
+  // named for a row on the rates card, so its answer is priced (7 in, 3 out: 17 micro-USD)
+  x = gw_plan_add(p[..], Gateway.{name = "vercel", url = base, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES}, "google/gemini-3.8-flash", none[0..<0]);
+  p[0].usd_per_btc = 100000;
   text: [256] u8; nt: [1] int;
   last := plan_run(p[..], bench[..], text[..], nt[..]);
+  priced := last.usage.card_usd_micros == 17 && last.usage.cost_msats == 17 && p[0].log[1].card_usd_micros == 17 && p[0].log[1].cost_msats == 17 && p[0].log[0].card_usd_micros == -1;
+  print("plan: the answer and every log row carry the card's price: %\n", priced);
   ok := last.kind == GW_EV_DONE && p[0].nlog == 2 && p[0].log[0].outcome == GW_OUT_BENCHED && p[0].log[0].status == 401 && p[0].log[1].outcome == GW_OUT_DONE;
   ok = ok && gw_benched(bench[..], "first") && nt[0] > 0;
   print("plan: refused first attempt fell through: %\n", ok);
+  ok = ok && priced;
   // again: the benched gateway is skipped
   nt[0] = 0;
   last = plan_run(p[..], bench[..], text[..], nt[..]);
