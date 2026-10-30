@@ -90,7 +90,7 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
     @objc private func resume() {
         refreshBalance()
         guard clock == nil else { return }
-        turn.view = view
+        turn.view = view; turn.use = "web-grid"
         turn.start()
         let link = CADisplayLink(target: Tick(owner: self), selector: #selector(Tick.tick))
         link.add(to: .main, forMode: .common); clock = link
@@ -132,6 +132,7 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
             NSLog("OpenAgents grid: no WebGPU in the web view; using the native Grid")
             UserDefaults.standard.set(true, forKey: "OAGridSeen")
             self.suspend()
+            AppAnalytics.shared.gridFallback("no-webgpu")
             window.rootViewController = HomeViewController()
         }
     }
@@ -139,6 +140,7 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
     // MARK: log in and the wallet
 
     private func openSignIn() {
+        AppAnalytics.shared.loginOpen()
         let sheet = UINavigationController(rootViewController: SignInViewController())
         sheet.overrideUserInterfaceStyle = .dark
         sheet.view.tintColor = .white
@@ -158,6 +160,7 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
         }
     }
     private func openWallet() {
+        AppAnalytics.shared.walletOpen()
         let screen = WalletViewController(host: wallet)
         screen.closed = { [weak self] in self?.refreshBalance() }
         let sheet = UINavigationController(rootViewController: screen)

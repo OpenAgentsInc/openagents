@@ -90,6 +90,7 @@
 		BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD722D77A3244F05AAF6E9AA /* BreezKey.swift */; };
 		C81BC5971C4C8962601CCFF7 /* VoiceFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 219AD682C44ECBE0620A279B /* VoiceFixture.swift */; };
 		C88A368231BDEF444BAC3EB7 /* VoiceBar.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7EEAD5AF6BC22A503783C2DC /* VoiceBar.swift */; };
+		CA73A901ED4FB77F95048C73 /* AppAnalytics.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40876E5DB7A6133051DEFA5D /* AppAnalytics.swift */; };
 		D0D8E0EE075F0E31B1586907 /* voice.c in Sources */ = {isa = PBXBuildFile; fileRef = 0003C41E79E3C2F240E09456 /* voice.c */; };
 		D1B29687D239E5915B47D8CD /* VoiceWire.c in Sources */ = {isa = PBXBuildFile; fileRef = ED2325E916319DB296E06C49 /* VoiceWire.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		D38C966A113E24135AE7FFCA /* PhoneSignIn.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84398239DF707163D47256C2 /* PhoneSignIn.swift */; };
@@ -160,6 +161,7 @@
 		3948A19798BF6501022C32EA /* SignInLiveUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SignInLiveUITests.swift; sourceTree = "<group>"; };
 		3BE259AB44E619C281EC401B /* Grid.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Grid.c; sourceTree = "<group>"; };
 		3C2A091B46A3D2D9144CFE4C /* VoiceUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceUITests.swift; sourceTree = "<group>"; };
+		40876E5DB7A6133051DEFA5D /* AppAnalytics.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppAnalytics.swift; sourceTree = "<group>"; };
 		4176C3BB15A8996C7FB6B383 /* Wallet.c */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.c; path = Wallet.c; sourceTree = "<group>"; };
 		4192F1FB81E5DE4C9E398D28 /* HomeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeUITests.swift; sourceTree = "<group>"; };
 		4281FC9167BC6662FEB38F4B /* haunt-step_wood_3.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_wood_3.mp3"; sourceTree = "<group>"; };
@@ -435,6 +437,7 @@
 		A7B7CA3CC18D3E4990CFBB72 /* Platform */ = {
 			isa = PBXGroup;
 			children = (
+				40876E5DB7A6133051DEFA5D /* AppAnalytics.swift */,
 				C66F7AEEF75B7AFDC508706C /* Bridge.h */,
 				B1F14129101E502D2EB4F25C /* EngineHotbar.swift */,
 				5A3C742E2035F083D5EBF027 /* HauntAssets.swift */,
@@ -685,6 +688,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				40EBE76A352087D40B6D5955 /* App.swift in Sources */,
+				CA73A901ED4FB77F95048C73 /* AppAnalytics.swift in Sources */,
 				370C18328EFAC5841A1E0DA7 /* BIP39.swift in Sources */,
 				90A1BF200BAEF60AB8A87530 /* Benchmarks.c in Sources */,
 				BCF4E35944DC9701FA808F45 /* BreezKey.swift in Sources */,

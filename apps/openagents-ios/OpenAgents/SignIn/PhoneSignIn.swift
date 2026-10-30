@@ -88,6 +88,7 @@ struct PhoneSignIn {
             let (data, response) = try await session.data(for: try request())
             status = Int64((response as? HTTPURLResponse)?.statusCode ?? 0)
             answer = data.prefix(4096)
+            if (200..<300).contains(status) { AppAnalytics.shared.loginApproved("\(kind)") }
         } catch let failure as NostrKey.Failure {
             return failure.localizedDescription
         } catch {

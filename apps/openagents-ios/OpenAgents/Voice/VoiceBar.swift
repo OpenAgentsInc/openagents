@@ -181,6 +181,7 @@ final class VoiceBar: UIView {
         s.onChange = { [weak self] in self?.refresh() }
         session = s
         s.start()
+        AppAnalytics.shared.voiceOn()
         toggle.setImage(UIImage(systemName: "mic.fill"), for: .normal)
         toggle.backgroundColor = UIColor(white: 0.9, alpha: 0.85); toggle.tintColor = .black
         level.isHidden = false

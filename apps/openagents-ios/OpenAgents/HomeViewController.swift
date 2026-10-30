@@ -141,7 +141,7 @@ final class HomeViewController: UIViewController {
     }
     @objc private func resume() {
         refreshBalance()
-        turn.view = view; turn.start()
+        turn.view = view; turn.use = "native-grid"; turn.start()
         guard house == nil, renderer != nil, clock == nil else { return }
         verse_home_resume(handle)
         let link = CADisplayLink(target: DisplayTarget(owner: self), selector: #selector(DisplayTarget.tick(_:)))
@@ -205,6 +205,7 @@ final class HomeViewController: UIViewController {
         ])
     }
     private func openSignIn() {
+        AppAnalytics.shared.loginOpen()
         let sheet = UINavigationController(rootViewController: SignInViewController())
         sheet.overrideUserInterfaceStyle = .dark
         sheet.view.tintColor = .white
@@ -231,6 +232,7 @@ final class HomeViewController: UIViewController {
         }
     }
     private func openWallet() {
+        AppAnalytics.shared.walletOpen()
         let screen = WalletViewController(host: wallet)
         // The wallet closed: show the balance it may have changed.
         screen.closed = { [weak self] in self?.refreshBalance() }

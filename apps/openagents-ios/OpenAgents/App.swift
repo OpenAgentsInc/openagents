@@ -17,6 +17,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
+        AppAnalytics.shared.launch()
         // iOS 26 draws the web's WebGPU pages in the app: open straight on the
         // web's Grid. Earlier systems keep the native home.
         if #available(iOS 26, *), !UserDefaults.standard.bool(forKey: "OANativeHome") {
@@ -24,6 +25,7 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         } else {
             // Straight into the Grid: no Start screen (tests ask for it with -OAGridSeen NO).
             UserDefaults.standard.set(true, forKey: "OAGridSeen")
+            AppAnalytics.shared.gridFallback(UserDefaults.standard.bool(forKey: "OANativeHome") ? "native-home-set" : "before-ios-26")
             window.rootViewController = HomeViewController()
         }
         window.makeKeyAndVisible()

@@ -9,6 +9,7 @@ final class PhoneTurn {
     private let motion = CMMotionManager()
     private var yaw = 0.0, pitch = 0.0
     weak var view: UIView?
+    var use = "camera"   // what the turn moves, for the app's analytics (once each time on screen)
 
     func start() {
         guard motion.isDeviceMotionAvailable, !motion.isDeviceMotionActive else { return }
@@ -27,6 +28,7 @@ final class PhoneTurn {
         let r = m.rotationRate, g = m.gravity, dt = motion.deviceMotionUpdateInterval
         let len = (g.x * g.x + g.y * g.y + g.z * g.z).squareRoot()
         guard len > 0.1 else { return }
+        if abs(r.x) + abs(r.y) + abs(r.z) > 0.6 { AppAnalytics.shared.gyro(use) }
         let up = (x: -g.x / len, y: -g.y / len, z: -g.z / len)
         yaw += (r.x * up.x + r.y * up.y + r.z * up.z) * dt
         // The screen's across, in the phone's own axes, for how it's held.

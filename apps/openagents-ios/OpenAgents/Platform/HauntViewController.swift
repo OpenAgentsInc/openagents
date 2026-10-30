@@ -45,7 +45,8 @@ final class HauntViewController: UIViewController, UIDocumentPickerDelegate {
             NotificationCenter.default.addObserver(self, selector: #selector(suspend), name: UIApplication.willResignActiveNotification, object: nil)
             NotificationCenter.default.addObserver(self, selector: #selector(resume), name: UIApplication.didBecomeActiveNotification, object: nil)
             resume()
-        } catch { showFailure(error.localizedDescription) }
+            AppAnalytics.shared.worldEnter("haunted-house")
+        } catch { AppAnalytics.shared.fail("haunted-house"); showFailure(error.localizedDescription) }
     }
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
