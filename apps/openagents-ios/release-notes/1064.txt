@@ -1,0 +1,1 @@
+LOG IN and your wallet show only on the Grid, so they no longer cover Everglade's HP, WANTED and place name.

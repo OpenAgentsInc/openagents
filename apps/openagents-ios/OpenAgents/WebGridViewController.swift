@@ -17,6 +17,7 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
     private let turn = PhoneTurn()
     private var clock: CADisplayLink?
     private var pendingCode: String?
+    private var urlWatch: NSKeyValueObservation?
 
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
@@ -43,6 +44,11 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
         #endif
         view.addSubview(web)
         web.load(URLRequest(url: Self.start))
+        // LOG IN and the wallet sit under the Grid's GALAXY; other pages have
+        // their own corners (Everglade's HP and WANTED), so they hide there.
+        urlWatch = web.observe(\.url, options: [.initial, .new]) { [weak self] web, _ in
+            DispatchQueue.main.async { self?.placeCorner(web.url) }
+        }
 
         signIn.accessibilityLabel = "Log in to openagents.com"
         signIn.addAction(UIAction { [weak self] _ in self?.openSignIn() }, for: .touchUpInside)
@@ -65,6 +71,12 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         if let code = pendingCode { pendingCode = nil; SignInRouter.open(code, from: self) }
+    }
+
+    private func placeCorner(_ url: URL?) {
+        let onGrid = url?.path.hasPrefix("/realms/the-grid") ?? true
+        signIn.isHidden = !onGrid
+        if !onGrid { balance.isHidden = true } else { walletTask = nil; refreshBalance() }
     }
 
     /// A sign-in code or project link opened from outside (a URL, a universal link).
@@ -139,7 +151,7 @@ final class WebGridViewController: UIViewController, WKNavigationDelegate, WKUID
             await MainActor.run {
                 guard let self, !Task.isCancelled else { return }
                 // The wallet shows once there is one on this phone.
-                if case .balance(let sats) = state { self.balance.setTitle("₿" + String(sats), for: .normal); self.balance.isHidden = false }
+                if case .balance(let sats) = state { self.balance.setTitle("₿" + String(sats), for: .normal); self.balance.isHidden = self.signIn.isHidden }
                 else { self.balance.isHidden = true }
                 self.walletTask = nil
             }
