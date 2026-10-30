@@ -15,8 +15,13 @@
 // projects, their tasks and milestones from their relays, the agents on
 // tasks, the commits from git. Simulated: the people, their names and keys,
 // and where they walk (a function of the clock, so every visit is the same).
+// The Pylons stand in bays by the projects they serve, drawn as the old Grid's
+// Pylon Bay drew them; LAND_PYLONS holds a row per Pylon in its NIP-PYLON
+// beacon's terms. Today every row is a demo (its first field says demo): the
+// real feed plugs in at coax/web/project/pylons.ts (PYLON_SOURCE "relay"
+// reads the 30200 beacons), and nothing here changes.
 //
-// Checks: coax/bin/coax test apps/openagents-web/newland.coax --steps 300000000
+// Checks: coax/bin/coax test apps/openagents-web/newland.coax --steps 400000000
 
 #load "font.coax";
 #load "newland-data.coax";
@@ -39,6 +44,7 @@ MAX_PLOTS :: 8;
 MAX_COMMITS :: 48;
 PEOPLE :: 14;
 MAX_AGENTS :: 12;
+MAX_PYLONS :: 16;
 PLOT :: 2.4;      // a place's half size, grid units
 GRID :: 34;       // grid lines each way from the view's centre
 FIG :: 0.5;       // a figure's scale: metres to grid units
@@ -50,6 +56,16 @@ ACT_NAVIGATE :: 1;
 
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
+
+// A Pylon as the last frame drew it: its LAND_PYLONS row, where it stands,
+// what it is and how busy, and where it was on screen.
+FAM_UNIFIED :: 0; FAM_GPU :: 1; FAM_CPU :: 2;
+ST_ONLINE :: 0; ST_DRAINING :: 1; ST_OFFLINE :: 2;
+Pyl :: struct {
+  row: int; plot: int; x: f32; z: f32;
+  family: int; status: int; total: int; free: int; jobs: int; demo: bool;
+  ok: bool; sx: f32; sy: f32;   // the machine's middle on screen
+}
 
 // A place as the last frame drew it, and what it holds.
 Plot :: struct {
@@ -68,6 +84,7 @@ LandState :: struct {
   ready: bool;
   plots: int; plot: [MAX_PLOTS] Plot;
   agents: int; agent_row: [MAX_AGENTS] int; agent_plot: [MAX_AGENTS] int;
+  pylons: int; pyl: [MAX_PYLONS] Pyl;
   login: Box; make: Box;
   action: int; outbox: [96] u8; out_n: int;
   // the view: drifting on its own until the visitor moves it, then theirs
@@ -84,7 +101,7 @@ LandState :: struct {
   head_ok: [PEOPLE] bool; head_x: [PEOPLE] f32; head_y: [PEOPLE] f32;
   agent_ok: [MAX_AGENTS] bool; agent_x: [MAX_AGENTS] f32; agent_y: [MAX_AGENTS] f32;
 }
-CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3;
+CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3; CARD_PYLON :: 4;
 
 ease :: (x: f32) -> f32 { return smooth01(x); }
 hash01 :: (a: f32) -> f32 { return fract(sin(a * 12.9898 + 4.1414) * 43758.5453); }
@@ -175,6 +192,22 @@ read_tables :: (s: [] LandState) {
     s[0].agents += 1;
     at = next_row(LAND_WORKING, at);
   }
+  s[0].pylons = 0; at = 0;
+  while at < LAND_PYLONS.count && s[0].pylons < MAX_PYLONS {
+    q: Pyl;
+    q.row = at;
+    q.demo = same(cell(LAND_PYLONS, at, 0), "demo");
+    q.plot = parse_int(cell(LAND_PYLONS, at, 1));
+    q.x = parse_f(cell(LAND_PYLONS, at, 2)); q.z = parse_f(cell(LAND_PYLONS, at, 3));
+    fam := cell(LAND_PYLONS, at, 8);
+    q.family = ifx same(fam, "gpu") then FAM_GPU else ifx same(fam, "cpu") then FAM_CPU else FAM_UNIFIED;
+    st := cell(LAND_PYLONS, at, 7);
+    q.status = ifx same(st, "online") then ST_ONLINE else ifx same(st, "draining") then ST_DRAINING else ST_OFFLINE;
+    q.total = parse_int(cell(LAND_PYLONS, at, 11)); q.free = parse_int(cell(LAND_PYLONS, at, 12));
+    q.jobs = parse_int(cell(LAND_PYLONS, at, 20));
+    if q.plot >= 0 && q.plot < n { s[0].pyl[s[0].pylons] = q; s[0].pylons += 1; }
+    at = next_row(LAND_PYLONS, at);
+  }
   s[0].ready = true;
 }
 
@@ -210,15 +243,24 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
 }
 
 Pen :: struct { d: f32; fade: f32; time: f32; still: bool; phone: bool; }
-INK_WHITE :: 0; INK_DIM :: 1; INK_ORANGE :: 2; INK_PALE :: 3; INK_FAINT :: 4; INK_COOL :: 5;
+// The page's two accents, each named once. ACCENT is Arwes's electric blue:
+// its theme's primary main(3), hsl(180, 68.07%, 53.33%) (arwes/arwes
+// apps/docs/src/config/theme.ts), with main(2), hsl(180, 67.41%, 73.53%), as
+// its pale. BITCOIN orange is for Bitcoin payments only, and nothing here pays
+// yet. newland.wgsl and new-land/index.html name the same two.
+ACCENT_R :: 0.216; ACCENT_G :: 0.851; ACCENT_B :: 0.851;
+ACCENT_PALE_R :: 0.557; ACCENT_PALE_G :: 0.914; ACCENT_PALE_B :: 0.914;
+BITCOIN_R :: 1.0; BITCOIN_G :: 0.55; BITCOIN_B :: 0.12;
+INK_WHITE :: 0; INK_DIM :: 1; INK_ACCENT :: 2; INK_PALE :: 3; INK_FAINT :: 4; INK_COOL :: 5; INK_BITCOIN :: 6;
 ink :: (p: Pen, kind: int) -> Ink {
   k := Ink.{core = 0.5 * p.d, light = 0.9, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
   if kind == INK_DIM { k.light = 0.5; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
   if kind == INK_FAINT { k.light = 0.3; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
-  if kind == INK_ORANGE { k.light = 1.0; k.red = 1.0; k.green = 0.55; k.blue = 0.12; k.glow = 4.5 * p.d; }
-  if kind == INK_PALE { k.light = 0.95; k.red = 1.0; k.green = 0.8; k.blue = 0.58; }
+  if kind == INK_ACCENT { k.light = 1.0; k.red = ACCENT_R; k.green = ACCENT_G; k.blue = ACCENT_B; k.glow = 4.5 * p.d; }
+  if kind == INK_BITCOIN { k.light = 1.0; k.red = BITCOIN_R; k.green = BITCOIN_G; k.blue = BITCOIN_B; k.glow = 4.5 * p.d; }
+  if kind == INK_PALE { k.light = 0.95; k.red = ACCENT_PALE_R; k.green = ACCENT_PALE_G; k.blue = ACCENT_PALE_B; }
   if kind == INK_COOL { k.light = 0.85; k.red = 0.72; k.green = 0.86; k.blue = 1.0; }
-  k.sans = kind != INK_ORANGE;
+  k.sans = kind != INK_ACCENT && kind != INK_BITCOIN;
   return k;
 }
 dimmed :: (k: Ink, f: f32) -> Ink { r := k; r.light = k.light * f; return r; }
@@ -372,7 +414,7 @@ place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int 
   v := at;
   g := grown(p, k);
   if g <= 0 { return v; }
-  orange := ink(p, INK_ORANGE); white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
+  accent := ink(p, INK_ACCENT); white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
   // its edge: the done share of it bright, the rest faint
   share: f32 = ifx pl.tasks > 0 then cast(f32) pl.done / cast(f32) pl.tasks else 0.0f32;
   pieces := 48;
@@ -380,21 +422,21 @@ place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int 
     s0 := cast(f32) i / cast(f32) pieces; s1 := cast(f32) (i + 1) / cast(f32) pieces;
     if s0 > g { break; }
     bright := s1 <= share * g + 0.0001;
-    v = seg(out, v, c, edge(pl, s0, 0.02), edge(pl, s1, 0.02), ifx bright then orange else dim, (ifx bright then 0.95f32 else 0.3f32) * g);
+    v = seg(out, v, c, edge(pl, s0, 0.02), edge(pl, s1, 0.02), ifx bright then accent else dim, (ifx bright then 0.95f32 else 0.3f32) * g);
   }
-  // a tick per task round the edge: done ones tall and orange
+  // a tick per task round the edge: done ones tall and lit
   for i: 0..<lo_int(pl.tasks, 220) {
     sf := (cast(f32) i + 0.5) / cast(f32) pl.tasks;
     if sf > g { break; }
     done := i < pl.done;
     h: f32 = ifx done then 0.32f32 else 0.12f32;
     base := edge(pl, sf, 0.02);
-    v = seg(out, v, c, base, fv(base.x, h, base.z), ifx done then orange else dim, (ifx done then 0.75f32 else 0.4f32) * g);
+    v = seg(out, v, c, base, fv(base.x, h, base.z), ifx done then accent else dim, (ifx done then 0.75f32 else 0.4f32) * g);
   }
   // corner posts
   for q: 0..<4 {
     cp := edge(pl, cast(f32) q * 0.25, 0);
-    v = seg(out, v, c, cp, fv(cp.x, 0.9, cp.z), orange, 0.55 * g);
+    v = seg(out, v, c, cp, fv(cp.x, 0.9, cp.z), accent, 0.55 * g);
   }
   // the tree: the trunk, the spiral through the commits, a twig to each
   n := pl.commits;
@@ -407,7 +449,7 @@ place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int 
   for i: 0..<shown {
     a := node(pl, i, k);
     recent := i >= n - 3;
-    if i > 0 { v = seg(out, v, c, node(pl, i - 1, k), a, ifx recent then orange else twig, ifx recent then 0.85f32 else 0.42f32); }
+    if i > 0 { v = seg(out, v, c, node(pl, i - 1, k), a, ifx recent then accent else twig, ifx recent then 0.85f32 else 0.42f32); }
     if i % 3 == 0 || recent { v = seg(out, v, c, fv(pl.x, a.y, pl.z), a, twig, 0.18); }
   }
   for i: 0..<shown {
@@ -417,13 +459,13 @@ place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int 
     vig := vignette(c, q.x, q.y);
     if recent {
       pulse := 0.6 + 0.4 * sin(p.time * 3.0 + cast(f32) i);
-      v = diamond(out, v, q.x, q.y, 3.0 * p.d, orange, pulse * vig);
+      v = diamond(out, v, q.x, q.y, 3.0 * p.d, accent, pulse * vig);
     } else {
       v = diamond(out, v, q.x, q.y, 1.9 * p.d, white, 0.55 * vig);
     }
     if i == n - 1 {
       r := 5 * p.d + 6 * p.d * fract(p.time * 0.6);
-      v = diamond(out, v, q.x, q.y, r, orange, 0.55 * (1 - fract(p.time * 0.6)) * vig);
+      v = diamond(out, v, q.x, q.y, r, accent, 0.55 * (1 - fract(p.time * 0.6)) * vig);
     }
   }
   return v;
@@ -432,7 +474,7 @@ place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int 
 // Roads between related places: a dashed line from each to its cluster's first.
 roads :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen) -> int {
   v := at;
-  road := ink(p, INK_ORANGE); road.core = 0.45 * p.d; road.glow = 2.4 * p.d;
+  road := ink(p, INK_ACCENT); road.core = 0.45 * p.d; road.glow = 2.4 * p.d;
   for k: 1..<s[0].plots {
     hub := -1;
     for j: 0..<k { if hub < 0 && s[0].plot[j].cluster == s[0].plot[k].cluster { hub = j; } }
@@ -466,7 +508,7 @@ place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -
   base := spot(c, fv(pl.x, 0, pl.z));
   v := at; d := p.d;
   name := field(LAND_PROJECTS, k, 1);
-  white := chrome(dimmed(ink(p, INK_WHITE), shown)); orange := dimmed(ink(p, INK_ORANGE), shown);
+  white := chrome(dimmed(ink(p, INK_WHITE), shown)); accent := dimmed(ink(p, INK_ACCENT), shown);
   dim := dimmed(ink(p, INK_DIM), shown);
   hover := !s[0].touch && s[0].pointed && inside(was, s[0].px, s[0].py);
   cap := (ifx p.phone then 7.0f32 else 8.5f32) * d;
@@ -475,18 +517,18 @@ place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -
   pct := ifx pl.tasks > 0 then (pl.done * 100 + pl.tasks / 2) / pl.tasks else 0;
   m := number(pct, buf[..]); buf[m] = '%'; m += 1;
   pcts := cast(string) buf[0..<m];
-  nw := text_width(name, cap, white); pw := text_width(pcts, big, orange);
+  nw := text_width(name, cap, white); pw := text_width(pcts, big, accent);
   wide := nw + 10 * d + pw;
   // kept on screen, its lead still pointing at the tree
   x0 := clamp(q.x - wide * 0.5, c.clip.x0 + 10 * d, c.clip.x1 - 10 * d - wide); y := q.y;
   mid := x0 + wide * 0.5;
   v = put(out, v, name, x0, y, cap, ifx hover then chrome(ink(p, INK_PALE)) else white);
-  v = put(out, v, pcts, x0 + nw + 10 * d, y + (big - cap) * 0.15, big, orange);
+  v = put(out, v, pcts, x0 + nw + 10 * d, y + (big - cap) * 0.15, big, accent);
   // the bar
   bw := hi(wide, 70 * d); bx := mid - bw * 0.5; by := y + 7 * d;
   v = rule(out, v, bx, by, bx + bw, by, dim, 0.35 * shown);
   share: f32 = ifx pl.tasks > 0 then cast(f32) pl.done / cast(f32) pl.tasks else 0.0f32;
-  if share > 0 { v = rule(out, v, bx, by, bx + bw * share, by, orange, 0.95 * shown); }
+  if share > 0 { v = rule(out, v, bx, by, bx + bw * share, by, accent, 0.95 * shown); }
   y1 := by;
   if !p.phone {
     ms := field(LAND_PROJECTS, k, 8);
@@ -653,7 +695,7 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
   seen := ease((p.time - 3.2) / 1.4);
   if p.still { seen = 1; }
   if seen <= 0 { return v; }
-  pale := ink(p, INK_PALE); orange := ink(p, INK_ORANGE); dim := ink(p, INK_DIM);
+  pale := ink(p, INK_PALE); accent := ink(p, INK_ACCENT); dim := ink(p, INK_DIM);
   sh: Shape; sh.size = 0.95;
   k := verse_figure_skeleton(sh);
   slot: [MAX_PLOTS] int;
@@ -677,12 +719,12 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
     target := node(pl, hi_int(0, pl.commits - 1 - j % 3), pk);
     from := spot(c, fv(x, 1.2 * FIG, z)); to := spot(c, target);
     if from.ok && to.ok && pl.commits > 0 {
-      beam := orange; beam.mode = MODE_LINK; beam.core = 0.45 * p.d;
+      beam := accent; beam.mode = MODE_LINK; beam.core = 0.45 * p.d;
       vig := vignette(c, from.x, from.y);
       v = rule(out, v, from.x, from.y, to.x, to.y, beam, 0.32 * seen * vig);
       f := fract(t * 0.9 + cast(f32) a * 0.37);
       hx := from.x + (to.x - from.x) * f; hy := from.y + (to.y - from.y) * f;
-      if lit(out, v, hx - (to.x - from.x) * 0.07, hy - (to.y - from.y) * 0.07, hx, hy, 1.1 * p.d, 0.85 * seen * vig, 4.5 * p.d, 1.0, 0.55, 0.12, MODE_PULSE) { v += 6; }
+      if lit(out, v, hx - (to.x - from.x) * 0.07, hy - (to.y - from.y) * 0.07, hx, hy, 1.1 * p.d, 0.85 * seen * vig, 4.5 * p.d, ACCENT_R, ACCENT_G, ACCENT_B, MODE_PULSE) { v += 6; }
     }
     // the first two at each place are named, with their task
     if top[0].ok && j == 0 && inside(c.clip, top[0].x, top[0].y) && !under_tag(s, top[0].x, top[0].y - 8 * p.d) {
@@ -710,12 +752,359 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
 }
 hi_int :: (a: int, b: int) -> int { if a > b { return a; } return b; }
 
+// ---------------------------------------------------------------- the Pylons
+
+// As the old Grid's Pylon Bay drew them: line art on a sloped plinth, a Mac a
+// slim tower with a crystal cap, a GPU a rack of blades with two fans on top,
+// a CPU a squat box with a chip on its front and fins on top. The beam over a
+// machine shows its load: short and faint idle, taller and brighter as its
+// slots fill, broken while it drains, none offline. A spark climbs the beam of
+// a busy one, and a job's receipt sends a ring across the floor.
+
+// A box's edges, less the three that meet at its back bottom corner (the
+// view looks from +x +z, so that corner is hidden behind it).
+box3 :: (out: [] f32, at: int, c: Cam, x: f32, z: f32, hx: f32, hz: f32, y0: f32, y1: f32, k: Ink, light: f32) -> int {
+  v := at;
+  a := fv(x - hx, 0, z - hz); b := fv(x + hx, 0, z - hz); e := fv(x + hx, 0, z + hz); f := fv(x - hx, 0, z + hz);
+  cs := [4] Fv.[a, b, e, f];
+  for i: 0..<4 {
+    p0 := cs[i]; p1 := cs[(i + 1) % 4];
+    v = seg(out, v, c, fv(p0.x, y1, p0.z), fv(p1.x, y1, p1.z), k, light);                  // the top
+    if i != 0 { v = seg(out, v, c, fv(p0.x, y0, p0.z), fv(p0.x, y1, p0.z), k, light); }   // the uprights
+    if i == 1 || i == 2 { v = seg(out, v, c, fv(p0.x, y0, p0.z), fv(p1.x, y0, p1.z), k, light); }   // the front bottom
+  }
+  return v;
+}
+// A circle on a level, round (x, z).
+loop3 :: (out: [] f32, at: int, c: Cam, x: f32, y: f32, z: f32, r: f32, k: Ink, light: f32) -> int {
+  v := at; n := 14;
+  for i: 0..<n {
+    a0 := cast(f32) i * 2 * PI / cast(f32) n; a1 := cast(f32) (i + 1) * 2 * PI / cast(f32) n;
+    v = seg(out, v, c, fv(x + r * cos(a0), y, z + r * sin(a0)), fv(x + r * cos(a1), y, z + r * sin(a1)), k, light);
+  }
+  return v;
+}
+PLINTH :: 0.12;
+// How tall a machine stands, to its top.
+machine_top :: (q: Pyl) -> f32 {
+  if q.family == FAM_UNIFIED { return 1.22; }
+  if q.family == FAM_GPU { return 0.86; }
+  return 0.62;
+}
+// A Pylon's beam: its height over the machine and its light, from its load.
+beam_height :: (q: Pyl) -> f32 {
+  if q.status == ST_OFFLINE { return 0; }
+  busy := q.total - q.free;
+  if busy <= 0 || q.total <= 0 { return 0.55; }
+  return 1.0 + 2.6 * cast(f32) busy / cast(f32) q.total;
+}
+// Seconds between the demo's receipts, from its jobs in the last day.
+receipt_every :: (q: Pyl) -> f32 { return clamp(40 / (1 + cast(f32) q.jobs / 25), 3.5, 16); }
+
+machine :: (out: [] f32, at: int, s: [] LandState, c: Cam, i: int, p: Pen, t: f32, seen: f32) -> int {
+  q := s[0].pyl[i];
+  v := at;
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_ACCENT); cool := ink(p, INK_COOL);
+  off := q.status == ST_OFFLINE;
+  busy := q.total - q.free;
+  body: f32 = (ifx off then 0.28f32 else 0.72f32) * seen;
+  // details light up while it works
+  lamp := ifx busy > 0 && !off then pale_of(p) else dim;
+  lamp_light: f32 = (ifx busy > 0 && !off then 0.5 + 0.25 * sin(t * 4 + cast(f32) i) else 0.3f32) * seen;
+  x := q.x; z := q.z;
+  // the plinth: a sloped step
+  v = box3(out, v, c, x, z, 0.44, 0.44, 0, 0.001, dim, 0.5 * seen);
+  v = box3(out, v, c, x, z, 0.36, 0.36, PLINTH, PLINTH + 0.001, dim, 0.5 * seen);
+  for k: 1..<4 {
+    sx: f32 = ifx k == 2 then 1.0f32 else ifx k == 1 then 1.0f32 else -1.0f32;
+    sz: f32 = ifx k == 2 then 1.0f32 else ifx k == 1 then -1.0f32 else 1.0f32;
+    v = seg(out, v, c, fv(x + 0.44 * sx, 0, z + 0.44 * sz), fv(x + 0.36 * sx, PLINTH, z + 0.36 * sz), dim, 0.45 * seen);
+  }
+  y0: f32 = PLINTH;
+  if q.family == FAM_UNIFIED {
+    v = box3(out, v, c, x, z, 0.14, 0.14, y0, 0.95, white, body);
+    // the crystal cap
+    top := fv(x, 1.22, z); bot := fv(x, 0.95, z);
+    for k: 0..<4 {
+      a0 := cast(f32) k * PI * 0.5 + 0.785; a1 := a0 + PI * 0.5;
+      m0 := fv(x + 0.13 * cos(a0), 1.06, z + 0.13 * sin(a0)); m1 := fv(x + 0.13 * cos(a1), 1.06, z + 0.13 * sin(a1));
+      v = seg(out, v, c, m0, m1, white, body);
+      v = seg(out, v, c, m0, top, white, body);
+      v = seg(out, v, c, m0, bot, white, 0.6 * body);
+    }
+    // a seam down its front
+    v = seg(out, v, c, fv(x + 0.04, 0.3, z + 0.141), fv(x + 0.04, 0.85, z + 0.141), lamp, lamp_light);
+  } else if q.family == FAM_GPU {
+    v = box3(out, v, c, x, z, 0.3, 0.22, y0, 0.86, white, body);
+    // the blades, across its two faces
+    for b: 0..<5 {
+      y := 0.24 + cast(f32) b * 0.12;
+      v = seg(out, v, c, fv(x - 0.25, y, z + 0.221), fv(x + 0.25, y, z + 0.221), lamp, lamp_light);
+      v = seg(out, v, c, fv(x + 0.301, y, z - 0.17), fv(x + 0.301, y, z + 0.17), lamp, 0.7 * lamp_light);
+    }
+    // two fans on top, turning while it works
+    for f: 0..<2 {
+      fx := x - 0.14 + cast(f32) f * 0.28;
+      v = loop3(out, v, c, fx, 0.861, z, 0.11, white, 0.6 * body);
+      spin := ifx busy > 0 && !off then t * 6 else 0.0f32;
+      for b: 0..<2 {
+        a := spin + cast(f32) b * PI * 0.5 + cast(f32) f;
+        v = seg(out, v, c, fv(fx - 0.09 * cos(a), 0.862, z - 0.09 * sin(a)), fv(fx + 0.09 * cos(a), 0.862, z + 0.09 * sin(a)), lamp, 0.8 * lamp_light);
+      }
+    }
+  } else {
+    v = box3(out, v, c, x, z, 0.32, 0.3, y0, 0.52, white, body);
+    // the chip on its front, with its pins
+    cz := z + 0.301;
+    v = seg(out, v, c, fv(x - 0.1, 0.22, cz), fv(x + 0.1, 0.22, cz), lamp, lamp_light);
+    v = seg(out, v, c, fv(x + 0.1, 0.22, cz), fv(x + 0.1, 0.42, cz), lamp, lamp_light);
+    v = seg(out, v, c, fv(x + 0.1, 0.42, cz), fv(x - 0.1, 0.42, cz), lamp, lamp_light);
+    v = seg(out, v, c, fv(x - 0.1, 0.42, cz), fv(x - 0.1, 0.22, cz), lamp, lamp_light);
+    for k: 0..<3 {
+      py := 0.26 + cast(f32) k * 0.06;
+      v = seg(out, v, c, fv(x - 0.15, py, cz), fv(x - 0.1, py, cz), lamp, 0.7 * lamp_light);
+      v = seg(out, v, c, fv(x + 0.1, py, cz), fv(x + 0.15, py, cz), lamp, 0.7 * lamp_light);
+    }
+    // fins on top
+    for k: 0..<5 {
+      fz := z - 0.22 + cast(f32) k * 0.11;
+      v = seg(out, v, c, fv(x - 0.26, 0.52, fz), fv(x - 0.26, 0.6, fz), white, 0.6 * body);
+      v = seg(out, v, c, fv(x - 0.26, 0.6, fz), fv(x + 0.26, 0.6, fz), white, 0.6 * body);
+    }
+  }
+  // the beam
+  top := machine_top(q);
+  h := beam_height(q);
+  if h > 0 {
+    beam := white; beam.core = 0.9 * p.d; beam.glow = 6 * p.d;
+    load: f32 = ifx q.total > 0 then cast(f32) busy / cast(f32) q.total else 0.0f32;
+    bl: f32 = (ifx busy > 0 then 0.5 + 0.45 * load else 0.22f32) * seen;
+    if q.status == ST_DRAINING {
+      // broken: pieces with gaps, fading up
+      for k: 0..<5 {
+        f0 := cast(f32) k / 5; f1 := f0 + 0.12;
+        v = seg(out, v, c, fv(x, top + h * f0, z), fv(x, top + h * f1, z), beam, bl * (1 - 0.15 * cast(f32) k) * 0.8);
+      }
+    } else {
+      v = seg(out, v, c, fv(x, top, z), fv(x, top + h, z), beam, bl);
+    }
+    tip := spot(c, fv(x, top + h, z));
+    if tip.ok && inside(c.clip, tip.x, tip.y) {
+      v = diamond(out, v, tip.x, tip.y, 3.2 * p.d, white, 0.8 * seen * vignette(c, tip.x, tip.y));
+      if busy > 0 && q.status == ST_ONLINE {
+        v = diamond(out, v, tip.x, tip.y, (5.5 + 1.5 * sin(t * 2 + cast(f32) i)) * p.d, cool, 0.35 * seen);
+      }
+    }
+    // a spark climbing it
+    if busy > 0 && q.status == ST_ONLINE {
+      f := fract(t * 0.55 + cast(f32) i * 0.37);
+      sp := spot(c, fv(x, top + h * f, z));
+      if sp.ok && inside(c.clip, sp.x, sp.y) { v = diamond(out, v, sp.x, sp.y, 2.2 * p.d, cool, 0.9 * seen * sin(f * PI)); }
+    }
+  }
+  // a receipt: a ring across the floor (the demo's come at its rate)
+  if q.demo && q.jobs > 0 && q.status != ST_OFFLINE && busy > 0 {
+    f := fract(t / receipt_every(q) + cast(f32) i * 0.21);
+    if f < 0.6 {
+      g := f / 0.6;
+      v = loop3(out, v, c, x, 0.01, z, 0.5 + 1.3 * g, accent, 0.55 * (1 - g) * seen);
+    }
+  }
+  mid := spot(c, fv(x, top * 0.55, z));
+  s[0].pyl[i].ok = mid.ok && inside(c.clip, mid.x, mid.y);
+  s[0].pyl[i].sx = mid.x; s[0].pyl[i].sy = mid.y;
+  return v;
+}
+pale_of :: (p: Pen) -> Ink { return ink(p, INK_PALE); }
+
+pylon_bay :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int {
+  v := at;
+  seen := ifx p.still then 1.0f32 else ease((p.time - 2.2) / 1.6);
+  if seen <= 0 { for i: 0..<s[0].pylons { s[0].pyl[i].ok = false; } return v; }
+  for i: 0..<s[0].pylons { v = machine(out, v, s, c, i, p, t, seen); }
+  return v;
+}
+
+// Is the pointer on Pylon i (by where the last frame drew it)?
+on_pylon :: (s: [] LandState, i: int) -> bool {
+  if s[0].touch || !s[0].pointed || !s[0].pyl[i].ok { return false; }
+  d := hi(s[0].dpr, 1);
+  dx := s[0].px - s[0].pyl[i].sx; dy := s[0].py - s[0].pyl[i].sy;
+  return dx * dx + dy * dy < 20 * d * 20 * d;
+}
+// The names: each bay's over it (PYLONS, how many, and on a wide screen how
+// many are online and how many of their slots are busy), and a Pylon's own over its beam when the
+// view is close, the pointer is on it or its card is open.
+pylon_labels :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen) -> int {
+  v := at; d := p.d;
+  seen := ifx p.still then 1.0f32 else ease((p.time - 2.8) / 1.2);
+  if seen <= 0 { return v; }
+  white := chrome(dimmed(ink(p, INK_WHITE), seen)); accent := dimmed(ink(p, INK_ACCENT), seen);
+  dim := dimmed(ink(p, INK_DIM), seen); pale := dimmed(ink(p, INK_PALE), seen);
+  for k: 0..<s[0].plots {
+    n := 0; online := 0; slots := 0; busy := 0; sx := 0.0f32; sz := 0.0f32; back := 1.0e9f32;
+    for i: 0..<s[0].pylons {
+      q := s[0].pyl[i];
+      if q.plot != k { continue; }
+      n += 1; sx += q.x; sz += q.z;
+      if q.status != ST_OFFLINE { online += 1; slots += q.total; busy += q.total - q.free; }
+      back = lo(back, q.x + q.z);
+    }
+    if n == 0 { continue; }
+    mx := sx / cast(f32) n; mz := sz / cast(f32) n;
+    // over the bay's back row
+    lift := (back - (mx + mz)) * 0.5;
+    q0 := spot(c, fv(mx + lift, 4.6, mz + lift));
+    if !q0.ok || !inside(c.clip, q0.x, q0.y) || under_tag(s, q0.x, q0.y) { continue; }
+    cap := (ifx p.phone then 7.0f32 else 8.5f32) * d;
+    big := (ifx p.phone then 10.0f32 else 13.0f32) * d;
+    name := "PYLONS";
+    buf: [16] u8; m := number(n, buf[..]);
+    nw := text_width(name, cap, white); pw := text_width(cast(string) buf[0..<m], big, accent);
+    wide := nw + 10 * d + pw;
+    x0 := q0.x - wide * 0.5;
+    v = put(out, v, name, x0, q0.y, cap, white);
+    v = put(out, v, cast(string) buf[0..<m], x0 + nw + 10 * d, q0.y + (big - cap) * 0.15, big, accent);
+    if !p.phone {
+      line: [64] u8; ln := app_int(line[..], 0, online);
+      ln = app(line[..], ln, " online, "); ln = app_int(line[..], ln, busy); ln = app(line[..], ln, " of "); ln = app_int(line[..], ln, slots); ln = app(line[..], ln, " slots busy");
+      small := 6.2 * d;
+      lw := text_width(cast(string) line[0..<ln], small, dim);
+      v = put(out, v, cast(string) line[0..<ln], q0.x - lw * 0.5, q0.y + 13 * d, small, dim);
+    }
+  }
+  for i: 0..<s[0].pylons {
+    q := s[0].pyl[i];
+    picked := s[0].card == CARD_PYLON && s[0].card_k == i;
+    close := !p.phone && s[0].zoom < 0.62;
+    if !(close || picked || on_pylon(s, i)) { continue; }
+    tip := spot(c, fv(q.x, machine_top(q) + beam_height(q) + 0.35, q.z));
+    if !tip.ok || !inside(c.clip, tip.x, tip.y) { continue; }
+    cap := 6.4 * d;
+    label := cell(LAND_PYLONS, q.row, 5);
+    lw := lo(text_width(label, cap, pale), 150 * d);
+    v = put_fit(out, v, label, tip.x - lw * 0.5, tip.y, cap, ifx picked || on_pylon(s, i) then chrome(pale) else pale, 150 * d);
+  }
+  return v;
+}
+
+// ---- text for the card
+
+app :: (buf: [] u8, n: int, text: string) -> int {
+  m := n;
+  for i: 0..<text.count { if m < buf.count { buf[m] = text[i]; m += 1; } }
+  return m;
+}
+app_int :: (buf: [] u8, n: int, value: int) -> int {
+  tmp: [24] u8; c := number(value, tmp[..]);
+  return app(buf, n, cast(string) tmp[0..<c]);
+}
+// A span of seconds as a person says it: 18 s, 21 min, 6 h 12 min, 2 d 3 h.
+say_span :: (buf: [] u8, n: int, secs: int) -> int {
+  sec := hi_int(0, secs);
+  if sec < 60 { return app(buf, app_int(buf, n, sec), " s"); }
+  if sec < 3600 { return app(buf, app_int(buf, n, sec / 60), " min"); }
+  if sec < 86400 {
+    m := app(buf, app_int(buf, n, sec / 3600), " h");
+    if (sec % 3600) / 60 > 0 { m = app(buf, app_int(buf, app(buf, m, " "), (sec % 3600) / 60), " min"); }
+    return m;
+  }
+  m := app(buf, app_int(buf, n, sec / 86400), " d");
+  if (sec % 86400) / 3600 > 0 { m = app(buf, app_int(buf, app(buf, m, " "), (sec % 86400) / 3600), " h"); }
+  return m;
+}
+// A row of the card: its name on the left, its value on the right.
+kv :: (out: [] f32, at: int, key: string, value: string, x: f32, right: f32, y: f32, p: Pen) -> int {
+  d := p.d;
+  dim := ink(p, INK_DIM); val := ink(p, INK_WHITE); val.light = 0.85;
+  v := put(out, at, key, x, y, 6.8 * d, dim);
+  room := right - x - text_width(key, 6.8 * d, dim) - 14 * d;
+  vw := lo(text_width(value, 7 * d, val), room);
+  v = put_fit(out, v, value, right - vw, y, 7 * d, val, room);
+  return rule(out, v, x, y + 7 * d, right, y + 7 * d, dim, 0.08);
+}
+// A Pylon's card. Its ages run from the capture plus the page's time, and a
+// demo Pylon's last job is its last receipt ring.
+// Returns the vertex count; ys[0] is where it starts and, after, where it ended.
+pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32, p: Pen, ys: [] f32) -> int {
+  d := p.d; v := at; y := ys[0];
+  q := s[0].pyl[i]; r := q.row;
+  w := right - x;
+  white := chrome(ink(p, INK_WHITE)); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
+  clock := cast(int) floor(s[0].time);
+  v = put_fit(out, v, cell(LAND_PYLONS, r, 5), x, y, 11 * d, white, w - 50 * d);
+  y += 18 * d;
+  // its state and its key
+  tone := ifx q.status == ST_ONLINE then INK_COOL else ifx q.status == ST_DRAINING then INK_PALE else INK_DIM;
+  word: string = ifx q.status == ST_ONLINE then "Online" else ifx q.status == ST_DRAINING then "Draining" else "Offline";
+  v = diamond(out, v, x + 3 * d, y - 3.4 * d, 2.6 * d, ink(p, tone), 1);
+  v = put(out, v, word, x + 11 * d, y, 7 * d, ink(p, tone));
+  v = put(out, v, cell(LAND_PYLONS, r, 6), x + 11 * d + text_width(word, 7 * d, ink(p, tone)) + 12 * d, y, 7 * d, dim);
+  y += 20 * d;
+  // a square a slot, filled while busy
+  busy := q.total - q.free;
+  sq := 7 * d; shown := lo_int(q.total, 16);
+  for j: 0..<shown {
+    bx := x + cast(f32) j * (sq + 4 * d); by := y - sq;
+    k := ifx j < busy then ink(p, INK_COOL) else dim;
+    v = rule(out, v, bx, by, bx + sq, by, k, 0.8); v = rule(out, v, bx + sq, by, bx + sq, by + sq, k, 0.8);
+    v = rule(out, v, bx + sq, by + sq, bx, by + sq, k, 0.8); v = rule(out, v, bx, by + sq, bx, by, k, 0.8);
+    if j < busy { for f: 1..<3 { fy := by + cast(f32) f * sq / 3; v = rule(out, v, bx + 1.5 * d, fy, bx + sq - 1.5 * d, fy, k, 0.9); } }
+  }
+  line: [64] u8; n := app_int(line[..], 0, busy); n = app(line[..], n, " of "); n = app_int(line[..], n, q.total); n = app(line[..], n, " busy");
+  v = put(out, v, cast(string) line[0..<n], x + cast(f32) shown * (sq + 4 * d) + 6 * d, y, 7 * d, ink(p, INK_WHITE));
+  y += 22 * d;
+  v = section(out, v, "MACHINE", x, y, right, p);
+  y += 20 * d;
+  hw: [64] u8;
+  m := app(hw[..], 0, ifx q.family == FAM_GPU then "GPU, " else ifx q.family == FAM_CPU then "CPU, " else "Unified memory, ");
+  m = app_int(hw[..], m, parse_int(cell(LAND_PYLONS, r, 10))); m = app(hw[..], m, " GB");
+  v = kv(out, v, "Hardware", cast(string) hw[0..<m], x, right, y, p); y += 18 * d;
+  v = kv(out, v, "Models", cell(LAND_PYLONS, r, 13), x, right, y, p); y += 18 * d;
+  v = kv(out, v, "Takes", cell(LAND_PYLONS, r, 14), x, right, y, p); y += 24 * d;
+  v = section(out, v, "WORK, LAST 24 H", x, y, right, p);
+  y += 20 * d;
+  jb: [64] u8; jn := app_int(jb[..], 0, q.jobs); jn = app(jb[..], jn, " done, ");
+  jn = app_int(jb[..], jn, parse_int(cell(LAND_PYLONS, r, 21))); jn = app(jb[..], jn, " not");
+  v = kv(out, v, "Jobs", cast(string) jb[0..<jn], x, right, y, p); y += 18 * d;
+  avg := parse_int(cell(LAND_PYLONS, r, 22));
+  ab: [32] u8; an := ifx avg > 0 then say_span(ab[..], 0, avg) else app(ab[..], 0, "None yet");
+  v = kv(out, v, "Average job time", cast(string) ab[0..<an], x, right, y, p); y += 18 * d;
+  last := parse_int(cell(LAND_PYLONS, r, 23));
+  if q.demo && q.jobs > 0 && busy > 0 && q.status != ST_OFFLINE {
+    every := receipt_every(q);
+    last = cast(int) floor(every * fract(s[0].time / every + cast(f32) i * 0.21));
+  } else if last >= 0 { last += clock; }
+  lb: [32] u8; ln := ifx last >= 0 then app(lb[..], say_span(lb[..], 0, last), " ago") else app(lb[..], 0, "None yet");
+  v = kv(out, v, "Last job", cast(string) lb[0..<ln], x, right, y, p); y += 24 * d;
+  v = section(out, v, "BEACON", x, y, right, p);
+  y += 20 * d;
+  ob: [32] u8; on := say_span(ob[..], 0, parse_int(cell(LAND_PYLONS, r, 18)) + clock);
+  if q.status == ST_OFFLINE { on = app(ob[..], 0, "Offline"); }
+  v = kv(out, v, "Online for", cast(string) ob[0..<on], x, right, y, p); y += 18 * d;
+  // a live beacon comes again within the minute; an offline one's age just grows
+  heard := parse_int(cell(LAND_PYLONS, r, 19)) + clock;
+  if q.status != ST_OFFLINE { heard = heard % 60; }
+  hb: [32] u8; hn := app(hb[..], say_span(hb[..], 0, heard), " ago");
+  v = kv(out, v, "Last heard from", cast(string) hb[0..<hn], x, right, y, p); y += 18 * d;
+  pools := cell(LAND_PYLONS, r, 16);
+  if pools.count > 0 { v = kv(out, v, "Pools", pools, x, right, y, p); y += 18 * d; }
+  price := parse_int(cell(LAND_PYLONS, r, 17));
+  pb: [32] u8; pn := 0;
+  if price > 0 { pn = app(pb[..], app_int(pb[..], 0, price), " msat"); }
+  else if price == 0 || same(cell(LAND_PYLONS, r, 15), "free-v1") { pn = app(pb[..], 0, "Free"); }
+  else { pn = app(pb[..], 0, cell(LAND_PYLONS, r, 15)); }
+  v = kv(out, v, "Price", cast(string) pb[0..<pn], x, right, y, p); y += 18 * d;
+  ys[0] = y;
+  return v;
+}
+
 // ---------------------------------------------------------------- the floor
 
 floor_grid :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen) -> int {
   v := at;
   grid := ink(p, INK_DIM); grid.glow = 2.0 * p.d; grid.core = hi(0.42 * p.d, 0.7);
-  warm := ink(p, INK_ORANGE); warm.glow = 2.2 * p.d; warm.core = grid.core;
+  warm := ink(p, INK_ACCENT); warm.glow = 2.2 * p.d; warm.core = grid.core;
   ox := floor(look.x); oz := floor(look.z);
   // the floor spreads out from the middle as the page fades up
   reach: f32 = ifx p.still then 99.0f32 else 2 + 44 * ease((p.time - 0.4) / 4.2);
@@ -789,9 +1178,9 @@ wordmark :: (out: [] f32, at: int, l: Layout, p: Pen) -> int {
 button :: (out: [] f32, at: int, b: Box, text: string, main: bool, hover: bool, p: Pen, light: f32) -> int {
   if light <= 0 { return at; }
   d := p.d;
-  k := ink(p, ifx main then INK_ORANGE else INK_WHITE); k.sans = false;
+  k := ink(p, ifx main then INK_ACCENT else INK_WHITE); k.sans = false;
   glow: f32 = ifx hover then 1.0f32 else 0.72f32;
-  v := frame(out, at, b, 7 * d, ink(p, INK_ORANGE), light * glow, p);
+  v := frame(out, at, b, 7 * d, ink(p, INK_ACCENT), light * glow, p);
   cap := 7.6 * d;
   tw := measure(text, 0.5, 1.2, false) * cap;
   v = draw_text(out, v, text, (b.x0 + b.x1 - tw) * 0.5, (b.y0 + b.y1 + cap) * 0.5, cap, 0.5, 1.2, dimmed(k, light * (ifx hover then 1.15f32 else 0.95f32)), false, false);
@@ -803,8 +1192,8 @@ FEED_STEP :: 3.4;   // seconds a row holds
 feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
   if light <= 0 { return at; }
   d := p.d; b := l.feed;
-  v := frame(out, at, b, 10 * d, ink(p, INK_ORANGE), 0.8 * light, p);
-  o := dimmed(ink(p, INK_ORANGE), light);
+  v := frame(out, at, b, 10 * d, ink(p, INK_ACCENT), 0.8 * light, p);
+  o := dimmed(ink(p, INK_ACCENT), light);
   cap := 7.6 * d;
   ty := b.y0 + 20 * d;
   v = rule(out, v, b.x0 + 12 * d, ty - cap * 0.5, b.x0 + 18 * d, ty - cap * 0.5, o, light);
@@ -837,7 +1226,7 @@ feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
     x := b.x0 + 16 * d;
     small := 6.4 * d;
     line1 := y - (ifx l.phone then 7.0f32 else 9.0f32) * d;
-    pname := dimmed(ink(p, INK_ORANGE), shade);
+    pname := dimmed(ink(p, INK_ACCENT), shade);
     v = put(out, v, name, x, line1, small, pname);
     x2 := x + text_width(name, small, pname) + 8 * d;
     mark: string = ifx same(kind, "WORKING") then "working" else ifx same(kind, "DONE") then "done" else "commit";
@@ -955,9 +1344,9 @@ frame_view :: (s: [] LandState, l: Layout, t: f32, step: f32, still: bool, width
 
 // ---------------------------------------------------------------- the card
 
-// The place, person or agent under a screen point: CARD_* in kind, its
-// index in which. People and agents first (small, on top), then a place's
-// name, tree or floor.
+// The place, person, agent or Pylon under a screen point: CARD_* in kind,
+// its index in which. People, agents and Pylons first (small, on top), then a
+// place's name, tree or floor.
 Pick :: struct { kind: int; which: int; }
 pick :: (s: [] LandState, x: f32, y: f32) -> Pick {
   d := hi(s[0].dpr, 1);
@@ -975,6 +1364,12 @@ pick :: (s: [] LandState, x: f32, y: f32) -> Pick {
     dx := x - s[0].agent_x[a]; dy := y - (s[0].agent_y[a] + 12 * d);
     r := sqrt(dx * dx + dy * dy * 0.5);
     if r < best { best = r; got = Pick.{kind = CARD_AGENT, which = a}; }
+  }
+  for i: 0..<s[0].pylons {
+    if !s[0].pyl[i].ok { continue; }
+    dx := x - s[0].pyl[i].sx; dy := y - s[0].pyl[i].sy;
+    r := sqrt(dx * dx + dy * dy * 0.5);
+    if r < best { best = r; got = Pick.{kind = CARD_PYLON, which = i}; }
   }
   if got.kind != CARD_NONE { return got; }
   k := hit_slug(s, x, y);
@@ -999,7 +1394,7 @@ card_place :: (s: [] LandState) -> int {
 }
 
 section :: (out: [] f32, at: int, name: string, x: f32, y: f32, right: f32, p: Pen) -> int {
-  o := ink(p, INK_ORANGE); cap := 6.6 * p.d;
+  o := ink(p, INK_ACCENT); cap := 6.6 * p.d;
   v := rule(out, at, x, y - cap * 0.5, x + 5 * p.d, y - cap * 0.5, o, 1);
   v = put(out, v, name, x + 10 * p.d, y, cap, o);
   return rule(out, v, x + 10 * p.d + text_width(name, cap, o) + 8 * p.d, y - cap * 0.5, right, y - cap * 0.5, ink(p, INK_DIM), 0.14);
@@ -1016,7 +1411,7 @@ stat :: (out: [] f32, at: int, n: int, name: string, x: f32, y: f32, tone: int, 
 card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t: f32, h: [] f32) -> int {
   d := p.d; v := at;
   x := x0 + 20 * d; right := x1 - 20 * d; w := right - x;
-  white := chrome(ink(p, INK_WHITE)); orange := ink(p, INK_ORANGE); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
+  white := chrome(ink(p, INK_WHITE)); accent := ink(p, INK_ACCENT); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
   body := ink(p, INK_WHITE); body.light = 0.82;
   y := 34 * d;
   title := 11.0 * d;
@@ -1039,12 +1434,12 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     pct := ifx pl.tasks > 0 then (pl.done * 100 + pl.tasks / 2) / pl.tasks else 0;
     m := number(pct, buf[..]); buf[m] = '%'; m += 1;
     big := 15.0 * d;
-    pw := text_width(cast(string) buf[0..<m], big, orange);
-    v = put(out, v, cast(string) buf[0..<m], right - 40 * d - pw, y + 2 * d, big, orange);
+    pw := text_width(cast(string) buf[0..<m], big, accent);
+    v = put(out, v, cast(string) buf[0..<m], right - 40 * d - pw, y + 2 * d, big, accent);
     y += 14 * d;
     share: f32 = ifx pl.tasks > 0 then cast(f32) pl.done / cast(f32) pl.tasks else 0.0f32;
     v = rule(out, v, x, y, right, y, dim, 0.3);
-    if share > 0 { v = rule(out, v, x, y, x + w * share, y, orange, 1); }
+    if share > 0 { v = rule(out, v, x, y, x + w * share, y, accent, 1); }
     y += 22 * d;
     ms := field(LAND_PROJECTS, k, 8);
     if ms.count > 0 {
@@ -1061,7 +1456,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     col := w / 3;
     v = stat(out, v, open_n, "OPEN", x, y + 6 * d, INK_WHITE, p);
     v = stat(out, v, pl.working, "IN PROGRESS", x + col, y + 6 * d, INK_COOL, p);
-    v = stat(out, v, pl.done, "DONE", x + col * 2, y + 6 * d, INK_ORANGE, p);
+    v = stat(out, v, pl.done, "DONE", x + col * 2, y + 6 * d, INK_ACCENT, p);
     y += 44 * d;
     // who's on it now
     v = section(out, v, "WORKING NOW", x, y, right, p);
@@ -1091,7 +1486,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     for j: 0..<lo_int(3, pl.commits) {
       row := pl.commit_row[pl.commits - 1 - j];
       hash := cell(LAND_COMMITS, row, 1);
-      hk := dim; hk.red = 1; hk.green = 0.7; hk.blue = 0.45;
+      hk := dim; hk.red = ACCENT_PALE_R; hk.green = ACCENT_PALE_G; hk.blue = ACCENT_PALE_B;
       hw := text_width(hash[0..<lo_int(7, hash.count)], 6.8 * d, hk);
       v = put(out, v, hash[0..<lo_int(7, hash.count)], x, y, 6.8 * d, hk);
       v = put_fit(out, v, cell(LAND_COMMITS, row, 3), x + hw + 10 * d, y, 7 * d, body, w - hw - 10 * d);
@@ -1132,6 +1527,10 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     v = put(out, v, what, x, y, 7.2 * d, body);
     v = put(out, v, field(LAND_PROJECTS, near, 1), x + ww + 6 * d, y, 7.2 * d, pale);
     y += 22 * d;
+  } else if s[0].card == CARD_PYLON && s[0].card_k >= 0 && s[0].card_k < s[0].pylons {
+    ys: [1] f32; ys[0] = y;
+    v = pylon_card(out, v, s, s[0].card_k, x, right, p, ys[..]);
+    y = ys[0] + 4 * d;
   } else if s[0].card == CARD_AGENT && k >= 0 {
     a := s[0].card_k;
     v = put_fit(out, v, cell(LAND_WORKING, s[0].agent_row[a], 0), x, y, title, white, w - 50 * d);
@@ -1174,7 +1573,7 @@ card :: (out: [] f32, at: int, s: [] LandState, l: Layout, p: Pen, t: f32, width
   s[0].open_box.y0 += y0; s[0].open_box.y1 += y0;
   box := Box.{x0 = x0, y0 = y0, x1 = x1, y1 = ifx l.phone then height + 20 * d else y0 + h[0]};
   s[0].card_box = box;
-  lit_edge := ink(p, INK_ORANGE);
+  lit_edge := ink(p, INK_ACCENT);
   if l.phone {
     // a sheet: its top edge lit, a grip in the middle
     v = rule(out, v, box.x0, box.y0, box.x1, box.y0, lit_edge, 0.75 * rise);
@@ -1209,7 +1608,7 @@ go_project :: (s: [] LandState, k: int) {
   go(s, cast(string) buf[0..<n]);
 }
 // A click: the card's buttons, LOG IN and MAKE YOUR OWN navigate; a place,
-// person or agent opens its card (never navigates); anywhere else closes it.
+// person, agent or Pylon opens its card (never navigates); anywhere else closes it.
 click :: (s: [] LandState, x: f32, y: f32) -> bool {
   if s[0].card != CARD_NONE {
     if inside(s[0].close_box, x, y) { close_card(s); return true; }
@@ -1341,9 +1740,11 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   v := floor_grid(out, 0, s, c, s[0].look, p);
   v = roads(out, v, s, c, p);
   for k: 0..<s[0].plots { v = place(out, v, s, c, k, p); }
+  v = pylon_bay(out, v, s, c, p, t);
   v = people(out, v, s, c, p, motion);
   v = agents(out, v, s, c, p, motion);
   for k: 0..<s[0].plots { v = place_label(out, v, s, c, k, p); }
+  v = pylon_labels(out, v, s, c, p);
   scene_end := v;
   // the HUD over it
   hud := ifx still then 1.0f32 else ease((t - 2.0) / 1.0);
@@ -1547,4 +1948,51 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   press(s[..], 760, 400, POINTER_UP, 1, 6);
   press(s[..], 600, 400, POINTER_UP, 1, 5);
   #assert s[0].card == CARD_NONE && s[0].action == 0 && s[0].touches == 0;
+}
+
+#test "the Pylons read: each in its project's bay, off the places and apart" {
+  s: [1] LandState;
+  read_tables(s[..]);
+  #assert s[0].pylons == rows(LAND_PYLONS) && s[0].pylons >= 6;
+  for i: 0..<s[0].pylons {
+    q := s[0].pyl[i];
+    #assert q.plot >= 0 && q.plot < s[0].plots && q.total >= q.free && q.free >= 0;
+    #assert !on_plot(s[..], q.x, q.z);
+    for j: i + 1..<s[0].pylons {
+      o := s[0].pyl[j];
+      #assert abs(q.x - o.x) + abs(q.z - o.z) > 1.2;
+    }
+  }
+}
+
+#test "a span of seconds reads as a person says it" {
+  b: [32] u8;
+  #assert same(cast(string) b[0..<say_span(b[..], 0, 18)], "18 s");
+  #assert same(cast(string) b[0..<say_span(b[..], 0, 1260)], "21 min");
+  #assert same(cast(string) b[0..<say_span(b[..], 0, 6 * 3600 + 720)], "6 h 12 min");
+  #assert same(cast(string) b[0..<say_span(b[..], 0, 7200)], "2 h");
+  #assert same(cast(string) b[0..<say_span(b[..], 0, 2 * 86400 + 3 * 3600)], "2 d 3 h");
+}
+
+#test "a click on a Pylon opens its card, which never navigates" {
+  s: [1] LandState; u: [UNIFORM_FLOATS] f32;
+  out: [TEST_VERTICES * VERTEX_FLOATS] f32;
+  settled(s[..], out[..], u[..]);
+  i := -1;
+  for j: 0..<s[0].pylons { if i < 0 && s[0].pyl[j].ok { i = j; } }
+  #assert i >= 0;
+  x := s[0].pyl[i].sx; y := s[0].pyl[i].sy;
+  press(s[..], x, y, POINTER_DOWN, 0, 1);
+  #assert coaxial_land_pointer(s[..], x, y, POINTER_UP, 0, 1);
+  #assert s[0].card == CARD_PYLON && s[0].action == 0;
+  tick(s[..], out[..], u[..], 1440, 900, 1, 0.3, false);
+  #assert s[0].close_box.x1 > s[0].close_box.x0 && s[0].open_box.x1 == s[0].open_box.x0;
+  #assert s[0].card_box.y1 - s[0].card_box.y0 > 300 && s[0].card_box.y1 < 900;
+  // on a phone, the sheet
+  tick(s[..], out[..], u[..], 390 * 3, 844 * 3, 3, 0.3, false);
+  #assert s[0].card == CARD_PYLON;
+  c := s[0].close_box;
+  press(s[..], (c.x0 + c.x1) * 0.5, (c.y0 + c.y1) * 0.5, POINTER_DOWN, 1, 2);
+  press(s[..], (c.x0 + c.x1) * 0.5, (c.y0 + c.y1) * 0.5, POINTER_UP, 1, 2);
+  #assert s[0].card == CARD_NONE && s[0].action == 0;
 }

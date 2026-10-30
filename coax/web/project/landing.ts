@@ -10,6 +10,7 @@ import { npubEncode } from "nostr-effect/nip19"
 import { createHash } from "node:crypto"
 import { Relay } from "./relay"
 import { filters, fold, followups, KIND_ISSUE, type Folded, type ProjectConfig } from "./model"
+import { pylons, pylonNow, pylonRows, PYLON_COLUMNS } from "./pylons"
 
 const ROOT = join(import.meta.dir, "../../..")
 // The places on the grid, by cluster: one owner's stack together, the worlds together.
@@ -130,6 +131,11 @@ const people = NAMES.map((n) => {
   const npub = npubEncode(createHash("sha256").update(`new-land person ${n}`).digest("hex"))
   return `${n}|${npub.slice(0, 9)}...${npub.slice(-4)}`
 })
+// The Pylons: demo machines until pylons.ts reads the real beacons (its PYLON_SOURCE).
+const places = new Map(PLACES.map(([slug, , x, z], k) => [slug, [k, x, z] as [number, number, number]]))
+const pylonList = await pylons("wss://relay.openagents.com", (url) => Relay.open(url, null))
+const pylonTable = pylonRows(pylonList, places, pylonNow(pylonList))
+console.error(`landing: ${pylonTable.length} pylons (${pylonList.filter((p) => p.demo).length} demo)`)
 const lit = (rows: string[]) => JSON.stringify(rows.map((r) => r + "\n").join(""))
 const out = join(ROOT, "apps/openagents-web/newland-data.coax")
 writeFileSync(out, [
@@ -145,6 +151,8 @@ writeFileSync(out, [
   `LAND_PEOPLE :: ${lit(people)};`,
   "// LAND_COMMITS, oldest first per project: project|hash|author|subject",
   `LAND_COMMITS :: ${lit(commits)};`,
+  `// LAND_PYLONS, from coax/web/project/pylons.ts (a demo row says demo): ${PYLON_COLUMNS}`,
+  `LAND_PYLONS :: ${lit(pylonTable)};`,
   "",
 ].join("\n"))
 console.error(`landing: wrote ${out}`)

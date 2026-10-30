@@ -29,6 +29,12 @@ fn fbm(q: vec2f) -> f32 {
   for (var k = 0; k < 5; k++) { v += a * noise(p); p = p * 2.03 + vec2f(1.7, 9.2); a *= 0.5; }
   return v;
 }
+// The page's two accents, as newland.coax names them: Arwes's electric blue
+// (its theme's primary main(3), hsl(180, 68.07%, 53.33%)) for everything, and
+// Bitcoin orange for Bitcoin payments only.
+const ACCENT = vec3f(0.216, 0.851, 0.851);
+const BITCOIN = vec3f(1.0, 0.55, 0.12);
+
 @fragment fn bg_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   let uv = (pos.xy - 0.5 * u.size) / u.size.y;
   let t = u.time * 0.032;
@@ -37,8 +43,8 @@ fn fbm(q: vec2f) -> f32 {
   let glow = exp(-1.9 * dot(uv, uv));
   let tint = mix(vec3f(0.04, 0.045, 0.06), vec3f(0.17, 0.18, 0.23), n * n);
   var c = tint * glow * (0.2 + 0.8 * n) * 0.85;
-  // a faint warm horizon behind the Grid
-  c += vec3f(0.05, 0.025, 0.006) * exp(-pow((uv.y + 0.05) * 5.0, 2.0)) * glow;
+  // a faint horizon in the accent behind the Grid
+  c += ACCENT * 0.055 * exp(-pow((uv.y + 0.05) * 5.0, 2.0)) * glow;
   let star = step(0.998, hash(floor(pos.xy * 0.5))) * (0.5 + 0.5 * sin(u.time * 1.3 + hash(floor(pos.xy)) * 40.0));
   c += vec3f(star * 0.35 * (1.0 - glow * 0.6));
   // the vignette, as newland.coax's for the strokes
@@ -54,7 +60,7 @@ fn fbm(q: vec2f) -> f32 {
 }
 
 // A HUD panel's glass: dark, its plain corners (top right, bottom left) clipped at 45°, faint scanlines and
-// an orange glow inside its edge.
+// the accent's glow inside its edge.
 fn panel(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   let alpha = s.y * u.fade;
   if (alpha <= 0.0) { return under; }
@@ -63,9 +69,9 @@ fn panel(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   let corner = min((w - x) + y, x + (h - y)) - s.x;
   let inside = min(side, corner * 0.7071);
   if (inside <= 0.0) { return under; }
-  let tint = vec3f(1.0, 0.55, 0.12);
+  let tint = ACCENT;
   let warm = select(0.0, 1.0, s.z > 0.5);
-  let shade = mix(vec3f(0.03, 0.022, 0.016), vec3f(0.01, 0.011, 0.016), clamp(y / max(h, 1.0), 0.0, 1.0));
+  let shade = mix(vec3f(0.012, 0.026, 0.028), vec3f(0.01, 0.013, 0.016), clamp(y / max(h, 1.0), 0.0, 1.0));
   let line = select(0.0, 0.018, fract(p.y / 3.0) < 0.34);
   let edge = exp(-inside / 22.0) * (0.07 + 0.1 * warm) + 0.035 * warm;
   let glass = mix(under * 0.25, shade, 0.85) + vec3f(line) + tint * edge;
@@ -107,7 +113,7 @@ struct V {
     let tail = select(1.0, mix(0.08, 1.0, clamp(v.place.x / v.shape.x, 0.0, 1.0)), v.shape.x > 1.0);
     let g = exp(-r * r * 5.0) * (1.0 - r);
     let hot = exp(-r * r * 36.0) * v.shape.y;
-    let c = (v.tint.rgb * g + vec3f(1.0, 0.95, 0.86) * hot) * tail * v.shape.z * u.fade;
+    let c = (v.tint.rgb * g + vec3f(0.9, 1.0, 1.0) * hot) * tail * v.shape.z * u.fade;
     return vec4f(c, 1.0);
   }
   let core = 1.0 - smoothstep(v.shape.y - 0.5, v.shape.y + 0.6, d);
@@ -120,7 +126,7 @@ struct V {
   }
   if (mode > 2.5) {
     // An amount: a near-white core in a coloured glow.
-    let c = (mix(v.tint.rgb, vec3f(1.0, 0.97, 0.92), 0.75) * core + v.tint.rgb * halo * 1.8) * v.shape.z * u.fade;
+    let c = (mix(v.tint.rgb, vec3f(0.92, 1.0, 1.0), 0.75) * core + v.tint.rgb * halo * 1.8) * v.shape.z * u.fade;
     return vec4f(c, 1.0);
   }
   return vec4f(v.tint.rgb * (core + halo) * v.shape.z * u.fade, 1.0);
