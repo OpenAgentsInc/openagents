@@ -938,6 +938,107 @@
         "A headless 1440x900 survey shows the whole notice"
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "qa-me-signed-out",
+      "parent": "qa-1030",
+      "title": "Every page: a logged-out visitor's who-am-I is no console error",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "Every page asked GET /api/auth/me for who is logged in, and a logged-out visitor's answer was a 401, a red error in the console on every page. Pages now ask GET /api/auth/viewer: the same lines, or 200 with an empty body when nobody is logged in. /api/auth/me keeps its 401 for other callers.",
+      "files": [
+        "coax/web/api/private.c",
+        "coax/web/host.js",
+        "apps/openagents-web/private.coax",
+        "coax/web/smoke.sh"
+      ],
+      "acceptance": [
+        "coax/web/api/test.sh passes with /api/auth/viewer signed out 200 and empty",
+        "A headless logged-out visit to /, /verse and /realms/everglade shows no 401 in the console"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-villa-flight-once",
+      "parent": "qa-1030",
+      "title": "Hecate's Cemetery: the opening flight plays on a first visit only",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "The flight in from space replayed on every reload unless you had walked (the kept place skips it). Once it has played or been skipped, this browser keeps that with the tips (\"tips=Nf\"), and later visits start at the gate.",
+      "files": [
+        "apps/openagents-web/villa.coax",
+        "apps/openagents-web/villatips.coax"
+      ],
+      "acceptance": [
+        "coax test apps/openagents-web/villa.coax passes, with a check that a kept flight starts no flight",
+        "A headless second visit to /realms/hecates-cemetery starts at the gate"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-icm-tour-walk",
+      "parent": "qa-1030",
+      "title": "Ice Cream Man: walking closes the first tip",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "The tour's first card says to walk with W A S D, but every key went to the card, so you couldn't move until it was closed. W, A, S, D and the up and down arrows now close the tour and walk; the left and right arrows still page it, and the stick on a phone closes it too.",
+      "files": [
+        "verse/icecream/play.coax"
+      ],
+      "acceptance": [
+        "coax test verse/icecream/play.coax passes, with a check that W during the tour ends it and walks"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-galaxy-setup-hint",
+      "parent": "qa-1030",
+      "title": "The galaxy: MAKE YOUR REALM hides the orange-planet hint",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "The setup hides the planets but kept CLICK THE ORANGE PLANET at the bottom. The hint now shows only while the planets do.",
+      "files": [
+        "apps/openagents-web/verse.coax"
+      ],
+      "acceptance": [
+        "A headless /verse with MAKE YOUR REALM open shows no orange-planet hint"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-eg-shouts-stack",
+      "parent": "qa-1030",
+      "title": "Everglade: two guards' shouts never overlap",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "Two guards near each other drew their shouts over each other. A shout that would cross one already drawn now goes above it.",
+      "files": [
+        "apps/openagents-web/everglade-watch.coax"
+      ],
+      "acceptance": [
+        "coax test apps/openagents-web/everglade-watch.coax passes, with a check that two shouts at one spot don't overlap"
+      ],
+      "blocked_by": []
     }
   ]
 }
