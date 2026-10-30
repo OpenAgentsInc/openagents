@@ -552,12 +552,13 @@ const storageImports = byteStorage.imports;
 
 // ---- the page: what the browser knows about this visit, for the app
 const PAGE_KIND = 600, HIDDEN_KIND = 601, SHOWN_KIND = 602, LEAVE_KIND = 603, ERROR_KIND = 604, VIEWER_KIND = 606;
-// Who is logged in, the same on every page: /api/auth/me's lines (K| npub, H| hex key, M| a member key it
-// speaks for, J| a private project), or "" when nobody is. Apps that care read VIEWER_KIND.
+// Who is logged in, the same on every page: /api/auth/viewer's lines (/api/auth/me's: K| npub, H| hex key,
+// M| a member key it speaks for, J| a private project), or "" when nobody is (a 200, so no console error).
+// Apps that care read VIEWER_KIND.
 function viewer() {
   if (!engine?.exports.coaxial_message || location.protocol === "file:") return;
-  fetch("/api/auth/me", { credentials: "same-origin" })
-    // read the body either way: an unread one (the signed-out 401) never finishes loading
+  fetch("/api/auth/viewer", { credentials: "same-origin" })
+    // read the body either way: an unread one never finishes loading
     .then((r) => r.text().then((t) => (r.ok ? t : "")), () => "")
     .then((t) => send(VIEWER_KIND, t), () => send(VIEWER_KIND, ""));
 }

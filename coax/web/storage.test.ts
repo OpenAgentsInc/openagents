@@ -90,7 +90,7 @@ beforeAll(async () => {
     if (['/entropy.js', '/entropy-import.js', '/drop.js', '/uploads.js', '/voice.js', '/loader.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
     if (path === '/probe.wasm') return new Response(readFileSync(join(temp, 'probe.wasm')), { headers: { 'Content-Type': 'application/wasm' } })
     if (path === '/probe.wgsl') return new Response(shader)
-    if (path === '/api/auth/me') return new Response('', { status: 401 })
+    if (path === '/api/auth/viewer') return new Response('')
     return new Response('<!doctype html><html><body><canvas id="coaxial"></canvas><script type="module" src="/host.js" data-app="probe" data-wasm="/probe.wasm"></script></body></html>', { headers: { 'Content-Type': 'text/html' } })
   } })
   chrome = Bun.spawn([chromePath(), '--headless=new', '--mute-audio', `--user-data-dir=${join(temp, 'chrome')}`, '--no-first-run', '--hide-scrollbars', ...gpuFlags(), '--remote-debugging-port=0', 'about:blank'], { stdout: 'ignore', stderr: 'ignore' })

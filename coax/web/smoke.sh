@@ -161,6 +161,9 @@ for (path, kind, start), (s, h, body) in zip(agent, fetch([p for p, _, _ in agen
 check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="2"' in b1, f"/login is the login page ({s1})")
 check(s2 == 200 and "json" in h2.get("content-type", "") and b"HQWSG26L43.com.openagents.app" in b2, f"the app's universal links are served as JSON ({s2}, {h2.get('content-type')})")
 check(s3 == 401 and "no-store" in h3.get("cache-control", ""), f"/api/auth/me signed out is 401 ({s3})")
+# every page asks /api/auth/viewer: nobody logged in is a 200 with nothing, so no console error
+(s4, h4, b4), = fetch(["/api/auth/viewer"])
+check(s4 == 200 and b4 == b"" and "no-store" in h4.get("cache-control", ""), f"/api/auth/viewer signed out is 200 and empty ({s4})")
 # /chat (docs/chat.md): the page, and its API refuses anyone signed out like the dashboard's.
 (s1, h1, b1), (s2, h2, b2) = fetch(["/chat", "/api/chat/state"])
 check(s1 == 200 and b'data-app="chat"' in b1, f"/chat is the chat page ({s1})")

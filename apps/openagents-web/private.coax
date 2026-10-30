@@ -363,7 +363,7 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
   }
   if id == s[0].ask_id && s[0].ask_kind != ASK_ME {
     s[0].ask_id = -1;
-    if code == 200 {
+    if code == 200 && i < bytes.count {
       n := 0;
       while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
       s[0].data_n = n; pv_index(s);
@@ -378,12 +378,12 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
   }
   if id == s[0].ask_id && s[0].ask_kind == ASK_ME {
     s[0].ask_id = -1;
-    if code == 200 {
+    if code == 200 && i < bytes.count {
       n := 0;
       while i < bytes.count && n < s[0].data.count { s[0].data[n] = bytes[i]; n += 1; i += 1; }
       s[0].data_n = n; pv_index(s); s[0].me_status = 200;
     } else {
-      s[0].me_status = ifx code == 401 then 401 else 599; s[0].data_n = 0; s[0].line_n = 0;
+      s[0].me_status = ifx code == 401 || code == 200 then 401 else 599; s[0].data_n = 0; s[0].line_n = 0;
     }
     s[0].me_at = s[0].time;
     return;
@@ -521,7 +521,7 @@ pv_poll_due :: (s: [] PrivateState) {
 }
 pv_ask_me :: (s: [] PrivateState) {
   if s[0].ask_id >= 0 || s[0].ask_n > 0 { return; }
-  s[0].ask_n = pv_put(s[0].ask[..], 0, "/api/auth/me");
+  s[0].ask_n = pv_put(s[0].ask[..], 0, "/api/auth/viewer");   // nobody logged in: a 200 with nothing, not a console error
   s[0].ask_kind = ASK_ME; s[0].me_status = 0; s[0].me_at = s[0].time;
 }
 // The QR: a light square (the grid's light modules and a 4-module quiet zone)
@@ -2020,9 +2020,9 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   coaxial_private_page(s[..], 2);
   n := 0;
   n = pv_fresh(s[..], out[..], u[..], 1440, 900);
-  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/auth/me" && s[0].ask_kind == ASK_ME && n > 0;
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/auth/viewer" && s[0].ask_kind == ASK_ME && n > 0;
   coaxial_private_asked(s[..], 1);
-  pv_answer(s[..], 1, "401\n{\"error\":\"not signed in\"}");
+  pv_answer(s[..], 1, "200\n");   // nobody logged in
   #assert s[0].me_status == 401;
   n = pv_fresh(s[..], out[..], u[..], 1440, 900);
   #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/challenge" && cast(string) s[0].body[0..<s[0].body_n] == "{}";
@@ -2057,7 +2057,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   #assert s[0].action == PV_KEEP_PLAYER && cast(string) s[0].outbox[0..<s[0].out_n] == "{\"id\": \"p1\", \"key\": \"kkkkkkkkkkkkkkkkkkkkkkkk\", \"account\": \"n-ab\"}";
   coaxial_private_action_done(s[..]);
   n = pv_fresh(s[..], out[..], u[..], 390, 844);
-  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/auth/me";
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/auth/viewer";
   coaxial_private_asked(s[..], 5);
   pv_answer(s[..], 5, "200\nK|npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\nJ|proj\nJ|other\n");
   #assert s[0].me_status == 200 && pv_count(s[..], 'J') == 2;
