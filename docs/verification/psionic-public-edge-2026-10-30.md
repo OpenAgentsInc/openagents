@@ -17,14 +17,14 @@ checks. Hash drift does.
 - `coax mutate coax/web/api/mesh-policy.coax --root-only --jobs 6 --run-steps 250000000`:
   194 mutants, 194 killed, 0 survivors. Mutation selected only new policy source;
   imported JSON checks remained in every baseline.
-- `COAX=... coax/web/api/mesh-test.sh`: 37 scoped HTTP/database/upstream checks
+- `COAX=... coax/web/api/mesh-test.sh`: 38 scoped HTTP/database/upstream checks
   passed against a throwaway PostgreSQL 16 database and HTTP fleet fixture, using
   freshly generated keys. Full compatibility API and signer built with native
   ASan/UBSan and `-Werror`; no sanitizer findings. Coverage: signature method/URL/
   payload/freshness/replay, browser session/expiry/CSRF, explicit bad-header refusal,
   raw body preservation, no credential forwarding, malformed/duplicate models,
   no caller-selected URL, model/checkpoint/provider substitution, oversized replies,
-  redirect refusal, upstream availability, per-account and global quotas, expired
+  redirect/IAM refusal, upstream availability, per-account and global quotas, expired
   leases and concurrent lease ownership/completion. No live API or Pylon touched.
 - `clang -std=c11 -O1 -g -Wall -Wextra -Werror -fsanitize=address,undefined
   psionic/platform/fleet-host-test.c -lpthread -o /tmp/fleet-host-test` then run:

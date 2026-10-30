@@ -114,7 +114,7 @@ static void answer(const request *q, coax_t_MgRoute route, const char *id) {
   int status = rc == CURLE_OPERATION_TIMEDOUT ? 504 : 502;
   if (rc == CURLE_OK) {
     if (http == 200 && mg_response((coax_string){q->body, (int64_t)q->body_len}, (coax_string){b.data, (int64_t)b.count}, route)) status = 200;
-    else if (http == 400 || http == 403 || http == 413 || http == 422 || http == 429 || http == 503) status = (int)http;
+    else if (http == 400 || http == 413 || http == 422 || http == 429 || http == 503) status = (int)http;
   }
   PGconn *db = api_db_new();
   if (db && PQstatus(db) == CONNECTION_OK) finish(db, id, status);

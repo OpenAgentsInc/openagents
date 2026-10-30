@@ -57,7 +57,7 @@ class Fleet(http.server.BaseHTTPRequestHandler):
                      "probabilities": {"yes": 1.0, "no": 0.0}}}, "service": {"identity": IDENTITY, "provider": HASH}}
         if current in ("model", "identity", "provider"):
             (response if current == "model" else response["service"])[current] = "substituted"
-        status = 503 if current == "503" else 302 if current == "redirect" else 200
+        status = 503 if current == "503" else 403 if current == "403" else 302 if current == "redirect" else 200
         raw = b"x" * 262145 if current == "oversized" else json.dumps(response).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
@@ -137,7 +137,7 @@ check("malformed JSON refuses", signed(b'{"model":')[0] == 400)
 check("duplicate model refuses", signed(b'{"model":"elephant-1","model":"other"}')[0] == 400)
 check("request cannot select another upstream or provider", signed(body(url="http://invalid.invalid", provider="not-ours"))[0] == 200 and seen[-1][0] == "/v1/systemone")
 reset()
-for value in ["model", "identity", "provider", "oversized", "redirect"]:
+for value in ["model", "identity", "provider", "oversized", "redirect", "403"]:
     mode["value"] = value
     check(value + " substitution/refusal returns502", signed()[0] == 502)
 mode["value"] = "503"
