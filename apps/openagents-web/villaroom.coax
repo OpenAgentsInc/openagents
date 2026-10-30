@@ -118,7 +118,7 @@ room_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   if p[0].view != PV_NONE && !c[0].typing { return m; }
   ph := phone(s);
   cap := 7.5 * k; row := 15 * k; pad := 10 * k;
-  bw := ifx ph then (ifx c[0].typing then w - 32 * k else w - 32 * k - text_width("BRING YOUR PET", 9 * k) - 36 * k - 8 * k) else lo(390 * k, w * 0.32);
+  bw := ifx ph then (ifx c[0].typing then w - 32 * k else w - 32 * k - text_width("BRING YOUR DOG", 9 * k) - 36 * k - 8 * k) else lo(390 * k, w * 0.32);
   shown := ifx ph then (ifx c[0].typing then 3 else 1) else ROOM_LINES;
   lines := lo(f32(r[0].lines), f32(shown));
   head := ifx r[0].others > 0 then 1 else 0;

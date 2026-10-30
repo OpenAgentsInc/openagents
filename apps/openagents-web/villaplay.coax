@@ -37,9 +37,9 @@ hand_of :: (s: [] Villa) -> Point { return verse_hand(s[0].feet, s[0].face, f32(
 play_has :: (s: [] Villa, skill: int, word: string) -> bool {
   if s[0].pet[0].skills & skill != 0 { return true; }
   t: [120] u8;
-  n := pet_put(t[..], 0, "Your pet doesn't know ");
+  n := pet_put(t[..], 0, "Your dog doesn't know ");
   n = pet_put(t[..], n, word);
-  n = pet_put(t[..], n, " yet: choose it in YOUR PET");
+  n = pet_put(t[..], n, " yet: choose it in YOUR DOG");
   if n > 0 { pet_toast(s[0].pet[..], cast(string) t[0..<n]); }
   return false;
 }

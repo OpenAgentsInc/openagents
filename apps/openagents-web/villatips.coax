@@ -22,7 +22,7 @@ tips_text :: (s: [] Villa, step: int) -> string {
   ph := phone(s);
   p := s[0].pet[..];
   if step == TIP_WALK { return ifx ph then "Welcome to Hecate's Cemetery. Walk with your left thumb" else "Welcome to Hecate's Cemetery. Walk with WASD, and drag to look around"; }
-  if step == TIP_PET { return ifx ph then "Bring your pet: tap BRING YOUR PET and tell us about them" else "Bring your pet: click BRING YOUR PET and tell us about them"; }
+  if step == TIP_PET { return ifx ph then "Bring your dog: tap BRING YOUR DOG and tell us about them" else "Bring your dog: click BRING YOUR DOG and tell us about them"; }
   if step == TIP_FETCH { return ifx ph then "Play fetch: tap BALL to take the ball, and again to throw it" else "Play fetch: press F to take the ball, and F again to throw it"; }
   if step == TIP_FIELD { return ifx ph then "Glowing flowers grow in the field, through the east gate. Walk up to one and tap PICK" else "Glowing flowers grow in the field, through the east gate. Walk up to one and press E"; }
   if step == TIP_VASE { return ifx ph then "Tap VASE to arrange your flowers" else "Press V to arrange your flowers in a vase"; }

@@ -1256,7 +1256,7 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height; g := 16 * k;
   m := n;
   if p[0].view == PV_NONE {
-    word := ifx p[0].has then "YOUR PET" else "BRING YOUR PET";
+    word := ifx p[0].has then "YOUR DOG" else "BRING YOUR DOG";
     cap := 9 * k;
     bw := text_width(word, cap) + 36 * k;
     top := ifx phone(s) then g + 11 * k + 24 * k + 8 * k else g;   // a phone's is under the place's name
@@ -1283,7 +1283,7 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
     x0 := b.x0 + pad; x1 := b.x1 - pad;
     m = btn(s, out, m, Box.{x0 = x1 - 70 * k, y0 = b.y0 + 12 * k, x1 = x1, y1 = b.y0 + 40 * k}, "CLOSE", B_CLOSE, 0, false);
     if p[0].view == PV_PET {
-      m = pt(out, m, ifx p[0].has then "YOUR PET" else "BRING YOUR PET", x0, b.y0 + 32 * k, 11 * k, k, 1);
+      m = pt(out, m, ifx p[0].has then "YOUR DOG" else "BRING YOUR DOG", x0, b.y0 + 32 * k, 11 * k, k, 1);
       tw := (x1 - x0 - 8 * k) / 2;
       ty := b.y0 + 52 * k;
       m = btn(s, out, m, Box.{x0 = x0, y0 = ty, x1 = x0 + tw, y1 = ty + 30 * k}, "ABOUT THEM", B_TAB, 0, p[0].tab == 0);

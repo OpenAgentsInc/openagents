@@ -1080,7 +1080,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     // EDIT, left of YOUR PET, for its owner and admins (verse/edit/edit.coax); the pet's pane closes it
     k := hi(s[0].dpr, 0.5); g := 16 * k;
     if s[0].pet[0].view != PV_NONE { s[0].ed[0].pane = REDIT_SHUT; }
-    pw := text_width(ifx s[0].pet[0].has then "YOUR PET" else "BRING YOUR PET", 9 * k) + 36 * k;
+    pw := text_width(ifx s[0].pet[0].has then "YOUR DOG" else "BRING YOUR DOG", 9 * k) + 36 * k;
     top := ifx phone(s) then g + 11 * k + 24 * k + 8 * k else g;
     ew := text_width("EDIT", 9 * k) + 32 * k;
     if s[0].pet[0].view == PV_NONE {
@@ -1380,7 +1380,7 @@ villa_my_emote_text :: (s: [] Villa, i: int) -> string #export_c {
   e := a[0].ed[0].boxes[RB_EDIT];
   #assert villa_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 0, 0, 1) && villa_pointer(a[..], (e.x0 + e.x1) / 2, (e.y0 + e.y1) / 2, 2, 0, 1);
   #assert a[0].ed[0].pane == REDIT_BOARD;
-  #assert e.x1 < 1280 - 16 - text_width("BRING YOUR PET", 9) - 36 && e.x0 > 600;   // left of the pet's button
+  #assert e.x1 < 1280 - 16 - text_width("BRING YOUR DOG", 9) - 36 && e.x0 > 600;   // left of the pet's button
 }
 
 #test "a placed pet's panel draws to its last button at desktop and phone, and its tabs switch" {
