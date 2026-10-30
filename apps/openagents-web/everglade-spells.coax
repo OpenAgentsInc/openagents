@@ -1773,7 +1773,7 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
   line := "";
   colour := HB_HINT;
   if s[0].sp.casting >= 0 {
-    line = SP_CASTING[s[0].sp.casting];
+    line = ifx phone_ then SP_CASTING_TAP[s[0].sp.casting] else SP_CASTING[s[0].sp.casting];
   } else if s[0].sp.armed >= 0 {
     if s[0].sp.armed >= SP_SLOTS { line = ab_hint(s, s[0].sp.armed - SP_SLOTS, phone_); }
     else {
@@ -1826,6 +1826,11 @@ SP_CASTING :: [4] string.["CASTING METEOR SWARM · KEEP MOVING IF YOU LIKE · ES
                           "CASTING THUNDERBOLT · KEEP MOVING IF YOU LIKE · ESC STOPS IT",
                           "CASTING MEGA THUNDERBOLT · KEEP MOVING IF YOU LIKE · ESC STOPS IT",
                           "CASTING WATER ORB · KEEP MOVING IF YOU LIKE · ESC STOPS IT"];
+// A phone has no Esc and no way to stop a cast, so its line names none.
+SP_CASTING_TAP :: [4] string.["CASTING METEOR SWARM · KEEP MOVING IF YOU LIKE",
+                              "CASTING THUNDERBOLT · KEEP MOVING IF YOU LIKE",
+                              "CASTING MEGA THUNDERBOLT · KEEP MOVING IF YOU LIKE",
+                              "CASTING WATER ORB · KEEP MOVING IF YOU LIKE"];
 
 sp_round :: (v: f32) -> f32 { return floor(v + 0.5); }
 // One CSS unit of the tray in device pixels.
