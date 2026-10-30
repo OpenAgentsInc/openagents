@@ -76,6 +76,43 @@ DEATH_HOLD :: 2.2;        // s YOU DIED shows before you stand again
 RISE_FADE :: 0.8;         // s the view takes to come back
 SAVE_DC_W :: 15;          // a spell's DC (everglade-spells.coax SP_DC)
 BLAST_PAD :: 0.4;         // m: a body's half width, what a blast reaches past its edge
+// Reach is in three dimensions: a blow lands only on a body whose span (feet to head, BODY_TALL) comes
+// within REACH of the swinger's; one out of it above them (Levitate, a roof, a Wind Wall's throw, Reverse
+// Gravity) is out of reach of a sword. A guard below throws a spear at you instead (SRD 5.2.1 Guard:
+// Spear, ranged 20/60 ft, +3 to hit, 1d6 + 1 piercing, with disadvantage past 20 ft) and shouts at you.
+BODY_TALL :: 1.8;
+SPEAR_NEAR :: 6.096;      // m: 20 ft, the spear's normal range
+SPEAR_FAR :: 18.288;      // m: 60 ft, its long range
+SPEAR_EVERY :: 3.2;       // s between throws (each guard carries a few)
+SPEAR_AT :: 0.55;         // s into the throw it leaves the hand
+SPEAR_SPEED :: 16.0;      // m/s it flies
+SPEARS :: 8;
+UP_SHOUT :: 101;          // the line a guard shouts up at you (WATCH_UP_SHOUT)
+WATCH_UP_SHOUT :: "COME DOWN AND FACE ME!";
+// A body a blast throws (Tumble): the whole body as one rigid thing about its pelvis, tumbling end over
+// end under gravity, bouncing on the ground (the walkable height: the bridge's deck too) and off walls,
+// sliding to rest and rolling onto its back, as verse/demolish.coax throws the debris. Then the clip's
+// lying pose (PEOPLE_KNOCK or PEOPLE_DIE end on their backs, the pelvis TUMBLE_LIE_BACK m behind the feet)
+// blends in over TUMBLE_SETTLE as the rigid turn blends out.
+TUMBLE_PELVIS :: 0.95;    // m the pelvis stands over the feet
+TUMBLE_LIE :: 0.15;       // m it lies over the ground
+TUMBLE_LIE_BACK :: 0.3;
+TUMBLE_SETTLE :: 0.3;
+TUMBLE_STEP :: 0.008333333;
+TUMBLE_LONGEST :: 6.0;    // s at most in the air and sliding
+TUMBLE_G :: 9.81;
+// How hard each spell's blast throws a body at its heart (m/s), as SP_THROW throws debris, a person
+// heavier than a chunk: the meteors, the bolt, the mega bolt, the orb's water.
+WATCH_THROW :: [4] f32.[13.0, 9.0, 15.0, 7.5];
+Tumble :: struct {
+  on: bool;                       // in the air or sliding
+  x: f32; y: f32; z: f32;         // the pelvis, in the world
+  vx: f32; vy: f32; vz: f32;
+  yaw: f32; pitch: f32; spin: f32;   // facing, the tumble about the body's side (negative falls back), its rate
+  age: f32; still_t: f32;
+  settle: f32;                    // s since it came to rest (the lying pose blends in), -1 never thrown
+}
+Spear :: struct { live: bool; ax: f32; ay: f32; az: f32; bx: f32; by: f32; bz: f32; t: f32; flight: f32; hit: bool; damage: int; }
 
 // The modes.
 WM_CALM :: 0;    // on their day (routines.coax) or beat
@@ -139,6 +176,8 @@ Actor :: struct {
   seen_x: f32; seen_z: f32;       // where they last saw you (or heard the crime): where they run
   ready: bool;
   homed: bool;                    // the realm has said where their day has them (one an admin took away never is)
+  body: Tumble;                   // thrown by a blast
+  spear_cool: f32; throwing: bool; up_shouted: bool;
 }
 
 Watch :: struct {
@@ -150,6 +189,7 @@ Watch :: struct {
   respawn: bool;                  // the realm puts you at the Road In (taken once)
   hurt_t: f32;                    // seconds since a blow landed on you
   hits: int; misses: int;         // blows at you, for the checks
+  spear_hits: int; spear_misses: int;   // and spears
   crimes: int;
   dice: [1] SrdDice;
   day: f32;                       // the town's clock as last read, for the dawn
@@ -159,6 +199,10 @@ Watch :: struct {
   // segment (ax, az, bx, bz) and its half thickness; no one stands in one, and a way that runs into
   // one goes round its nearer end (watch_way)
   fences: [WATCH_FENCES * 5] f32; fence_n: int;
+  deck: f32;                      // the bridge's deck (plan.coax everglade_deck): where its walkers' feet are
+  spears: [SPEARS] Spear;
+  you_body: Tumble;               // your body, thrown by what killed you
+  you_fall: f32;                  // s since you fell (your topple)
 }
 WATCH_FENCES :: 8;
 WATCH_FENCE_CLEAR :: 0.45;   // m past a fence's end a way round it keeps
@@ -177,6 +221,9 @@ watch_start :: (w: [] Watch, heights: [] f32) {
   w[0].day = -1;
   w[0].solid_n = everglade_solids(w[0].solids[..]);
   w[0].fence_n = 0;
+  w[0].deck = everglade_deck(heights);
+  for k: 0..<SPEARS { w[0].spears[k].live = false; }
+  w[0].you_body.on = false; w[0].you_body.settle = -1; w[0].you_fall = 0;
   for i: 0..<WATCH_ACTORS { watch_revive(w, i); }
   for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
   w[0].beats_ok = heights.count >= EG_GROUND_POINTS;
@@ -188,6 +235,8 @@ watch_revive :: (w: [] Watch, i: int) {
   a[0].swing = -1; a[0].struck = false; a[0].cool = 0; a[0].shout = -1; a[0].shout_t = 0;
   a[0].hold = false; a[0].clip = PEOPLE_IDLE; a[0].speed = 0; a[0].sees = false;
   a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw;
+  a[0].body.on = false; a[0].body.settle = -1;
+  a[0].spear_cool = 0; a[0].throwing = false; a[0].up_shouted = false;
   a[0].ready = true;
 }
 
@@ -258,12 +307,56 @@ watch_sees :: (boxes: [] f32, n: int, x: f32, z: f32, eye_y: f32, p: Point, reac
   if flat_gap(v3(x, 0, z), p) > reach { return false; }
   return !watch_hidden(boxes, n, v3(x, eye_y, z), p);
 }
-// Whether (x, z) is open to a runner: no solid within a body's width, inside the world.
+// Whether (x, z) is open to a runner: no solid within a body's width, inside the world, not on the
+// bridge's rails (its deck is reached from its ends, never climbed onto from the water under it), and
+// clear of the fences a spell stands up (a Wall of Stone).
 watch_open :: (w: [] Watch, x: f32, z: f32) -> bool {
   if abs(x) > f32(EG_BOUND) - 0.5 || abs(z) > f32(EG_BOUND) - 0.5 { return false; }
   for k: 0..<w[0].solid_n { if box_gap(w[0].solids[..], k, x, z) < f32(EG_RADIUS) { return false; } }
   for k: 0..<w[0].fence_n { if watch_fence_gap(w, k, x, z) < f32(EG_RADIUS) { return false; } }
+  if watch_on_rail(x, z, f32(EG_RADIUS)) { return false; }
   return true;
+}
+// Whether (x, z) is within `pad` of the bridge's rails (everglade.coax walls: 0.12 m either side of a
+// line 0.18 m in from each long side of EG_BRIDGE).
+watch_on_rail :: (x: f32, z: f32, pad: f32) -> bool {
+  br := EG_BRIDGE;
+  if x < br[0] - pad || x > br[2] + pad { return false; }
+  return abs(z - (br[1] + 0.18)) < 0.12 + pad || abs(z - (br[3] - 0.18)) < 0.12 + pad;
+}
+// Where a walker's feet are at (x, z): the ground, or on the bridge the deck (as the player's: everglade.coax walk_at).
+watch_feet_y :: (w: [] Watch, heights: [] f32, x: f32, z: f32) -> f32 {
+  if heights.count < EG_GROUND_POINTS { return 0; }
+  return everglade_walk_height(heights, w[0].deck, x, z);
+}
+// Which side of the river (x) is on: -1 west of the bridge's span, 1 east, 0 in it.
+watch_bank :: (x: f32) -> int { if x < EG_BRIDGE[0] { return -1; } if x > EG_BRIDGE[2] { return 1; } return 0; }
+WATCH_DETOUR :: 120.0;    // m out of the way a runner goes to cross by the bridge rather than wade
+// Where one at (x, z) heads for (gx, gz): straight there, unless the river is between and the bridge
+// is not too far out of the way, then by the bridge: its near end, along its deck, off its far end.
+watch_bridge_way :: (x: f32, z: f32, gx: f32, gz: f32) -> Point {
+  br := EG_BRIDGE;
+  from := watch_bank(x); to := watch_bank(gx);
+  inner_lo := br[1] + 0.9; inner_hi := br[3] - 0.9;
+  if from == 0 {
+    // on the deck: along it to the end the goal is past, then off it
+    if z >= br[1] && z <= br[3] && to != 0 {
+      ex := ifx to < 0 then br[0] - 1.2 else br[2] + 1.2;
+      return v3(ex, 0, clamp(z, inner_lo, inner_hi));
+    }
+    return v3(gx, 0, gz);
+  }
+  if to == 0 || to == from { return v3(gx, 0, gz); }
+  zc := clamp((z + gz) / 2, inner_lo, inner_hi);
+  detour := abs(zc - z) + abs(zc - gz) - abs(gz - z);
+  if detour > f32(WATCH_DETOUR) { return v3(gx, 0, gz); }
+  near_x := ifx from < 0 then br[0] - 1.2 else br[2] + 1.2;
+  far_x := ifx from < 0 then br[2] + 1.2 else br[0] - 1.2;
+  // at the near end, step on: the deck's far end
+  // (between the near end and the deck: on toward the far one)
+  past := ifx from < 0 then x - near_x else near_x - x;
+  if past > -0.9 && abs(z - zc) < 0.9 { return v3(far_x, 0, zc); }
+  return v3(near_x, 0, zc);
 }
 // The fences standing now: n of them from `f`, five numbers each.
 watch_fences :: (w: [] Watch, f: [] f32, n: int) {
@@ -328,6 +421,55 @@ watch_stride :: (w: [] Watch, a: [] Actor, to: f32, step: f32) -> bool {
   }
   return false;
 }
+// How far apart two bodies are up and down: one's span from `feet` to BODY_TALL over them, yours from `you_y`.
+watch_span_gap :: (feet: f32, you_y: f32) -> f32 {
+  return hi(hi(you_y - (feet + f32(BODY_TALL)), feet - (you_y + f32(BODY_TALL))), 0);
+}
+// Guard i throws a spear from their hand at `to`, `dist` m off: the attack is rolled as it leaves the
+// hand (disadvantage past 20 ft: the lower of two d20s), and it lands, or flies past, when it gets there.
+watch_spear :: (w: [] Watch, i: int, feet: f32, to: Point, dist: f32) {
+  k := -1;
+  for q: 0..<SPEARS { if k < 0 && !w[0].spears[q].live { k = q; } }
+  if k < 0 { return; }
+  a := w[0].actors[i];
+  roll := srd_attack(w[0].dice[..], watch_block(i), w[0].ac);
+  if dist > f32(SPEAR_NEAR) {
+    other := srd_attack(w[0].dice[..], watch_block(i), w[0].ac);
+    if other.roll < roll.roll { roll = other; }
+  }
+  from := v3(a.x + sin(a.yaw) * 0.3, feet + 1.7, a.z + cos(a.yaw) * 0.3);
+  aim := to;
+  if !roll.hit { aim = add(to, v3(sin(a.yaw + 1.3) * 1.4, 0.9, cos(a.yaw + 1.3) * 1.4)); }   // wide and high
+  far := length(sub(aim, from));
+  w[0].spears[k] = Spear.{live = true, ax = from.x, ay = from.y, az = from.z, bx = aim.x, by = aim.y, bz = aim.z, t = 0,
+                          flight = hi(far / f32(SPEAR_SPEED), 0.05), hit = roll.hit, damage = roll.damage};
+}
+// The spears in the air for dt: one that gets there hurts you if it hit.
+watch_spears_step :: (w: [] Watch, dt: f32) {
+  for k: 0..<SPEARS {
+    if !w[0].spears[k].live { continue; }
+    w[0].spears[k].t += dt;
+    if w[0].spears[k].t < w[0].spears[k].flight + 0.6 { continue; }
+    w[0].spears[k].live = false;
+  }
+  for k: 0..<SPEARS {
+    sp := w[0].spears[k];
+    if !sp.live || sp.t < sp.flight || sp.t - dt >= sp.flight { continue; }
+    if sp.hit { w[0].spear_hits += 1; watch_hurt_you(w, sp.damage); } else { w[0].spear_misses += 1; }
+  }
+}
+// Where spear k is now (its flight's arc, a little up in the middle) and the way it points; past its
+// flight it lies where it ended for a moment.
+SpearAt :: struct { at: Point; dir: Point; }
+watch_spear_at :: (sp: Spear) -> SpearAt {
+  u := clamp01(sp.t / hi(sp.flight, 0.01));
+  a := v3(sp.ax, sp.ay, sp.az); b := v3(sp.bx, sp.by, sp.bz);
+  lift := sp.flight * sp.flight * 2.4;
+  o: SpearAt;
+  o.at = add(mix(a, b, u), v3(0, lift * 4 * u * (1 - u), 0));
+  o.dir = unit_or(add(sub(b, a), v3(0, lift * 4 * (1 - 2 * u), 0)), v3(0, 0, 1));
+  return o;
+}
 watch_turn :: (from: f32, to: f32, most: f32) -> f32 {
   d := folk_wrap_r(to - from);
   return folk_wrap_r(from + clamp(d, -hi(most, 0.08), hi(most, 0.08)));
@@ -372,7 +514,7 @@ watch_crime :: (w: [] Watch, at: Point, heard: f32, you: Point, boxes: [] f32, n
     a := w[0].actors[i];
     if a.mode == WM_DEAD { continue; }
     if a.mode == WM_CALM && a.home_in { continue; }   // indoors: they neither see nor come
-    eye := watch_ground_y(heights, a.x, a.z) + f32(WATCH_EYE);
+    eye := watch_feet_y(w, heights, a.x, a.z) + f32(WATCH_EYE);
     d := flat_gap(v3(a.x, 0, a.z), at);
     if watch_is_guard(i) {
       saw_you := watch_sees(boxes, nb, a.x, a.z, eye, chest, f32(WATCH_SIGHT));
@@ -398,8 +540,10 @@ watch_ground_y :: (heights: [] f32, x: f32, z: f32) -> f32 {
 }
 
 // A spell's blast of `radius` m at `at`: everyone in it takes its damage (rolled once, a Dexterity save
-// for half); one who lives is knocked down, one at 0 HP dies. How many it hit.
-watch_blast :: (w: [] Watch, at: Point, radius: f32, dmg: SrdDamage, you: Point) -> int {
+// for half); one who lives is knocked down, one at 0 HP dies; and each is thrown, out from it and up at
+// up to `power` m/s (WATCH_THROW), the nearer the harder (as verse/demolish.coax demo_kick throws the
+// debris), to land and lie where they come down. How many it hit.
+watch_blast :: (w: [] Watch, at: Point, radius: f32, dmg: SrdDamage, you: Point, power: f32, heights: [] f32) -> int {
   if !w[0].on { return 0; }
   hit := 0;
   for i: 0..<WATCH_ACTORS {
@@ -411,8 +555,128 @@ watch_blast :: (w: [] Watch, at: Point, radius: f32, dmg: SrdDamage, you: Point)
     hit += 1;
     took := srd_creature_takes(w[0].dice[..], watch_block(i), dmg, SAVE_DEX, ON_SAVE_HALF, SAVE_DC_W);
     watch_harm(w, i, took, you);
+    if power > 0 {
+      k := clamp01(1 - d / (radius + f32(BLAST_PAD)));
+      feet := watch_feet_y(w, heights, a[0].x, a[0].z);
+      watch_throw(w, i, watch_kick(at, v3(a[0].x, feet + f32(TUMBLE_PELVIS), a[0].z), power * (0.45 + 0.55 * k)), heights);
+    }
   }
   return hit;
+}
+// The way and speed a blast at `at` throws a body whose pelvis is at p: out from it and up (at least a
+// third up, so a blast at their feet lifts them), `speed` m/s.
+watch_kick :: (at: Point, p: Point, speed: f32) -> Point {
+  out := v3(p.x - at.x, 0, p.z - at.z);
+  l := sqrt(out.x * out.x + out.z * out.z);
+  if l < 0.05 { out = v3(0, 0, 1); l = 1; }
+  up := clamp(0.55 + (p.y - at.y) * 0.15, 0.35, 0.9);
+  side := sqrt(1 - up * up);
+  return v3(out.x / l * side * speed, up * speed, out.z / l * side * speed);
+}
+// i thrown at velocity v (a blast, a wave, a gust): their body leaves their feet and tumbles.
+watch_throw :: (w: [] Watch, i: int, v: Point, heights: [] f32) {
+  a := w[0].actors[i..<i + 1];
+  if !a[0].ready { return; }
+  feet := watch_feet_y(w, heights, a[0].x, a[0].z);
+  if !a[0].body.on { a[0].body.pitch = 0; a[0].body.x = a[0].x; a[0].body.z = a[0].z; a[0].body.y = feet + f32(TUMBLE_PELVIS); }
+  a[0].body = tumble_kicked(a[0].body, v);
+  a[0].swing = -1; a[0].throwing = false; a[0].shout = -1;
+}
+
+// ---- a thrown body
+
+// b kicked at velocity v: in the air, facing back the way it is thrown (so it goes over backwards), spinning.
+tumble_kicked :: (b: Tumble, v: Point) -> Tumble {
+  n := b;
+  n.on = true; n.age = 0; n.still_t = 0; n.settle = -1;
+  n.vx = v.x; n.vy = hi(v.y, 0.5); n.vz = v.z;
+  flat := sqrt(v.x * v.x + v.z * v.z);
+  if flat > 0.1 { n.yaw = atan2(-v.x, -v.z); }
+  n.spin = -(1.5 + 0.55 * flat + 0.2 * abs(v.y));
+  return n;
+}
+// The pelvis's height over the ground with the body turned `pitch` from standing (lying: TUMBLE_LIE).
+tumble_rest_y :: (pitch: f32) -> f32 { return lerp(f32(TUMBLE_LIE), f32(TUMBLE_PELVIS), abs(cos(pitch))); }
+// Whether a body's pelvis at (x, y, z) is in a wall: a solid within its half width, under the solid's top.
+tumble_blocked :: (w: [] Watch, heights: [] f32, x: f32, y: f32, z: f32) -> bool {
+  if abs(x) > f32(EG_BOUND) - 0.4 || abs(z) > f32(EG_BOUND) - 0.4 { return true; }
+  g := watch_feet_y(w, heights, x, z);
+  for k: 0..<w[0].solid_n {
+    if box_gap(w[0].solids[..], k, x, z) < 0.25 && y - 0.3 < g + w[0].solids[k * EG_BOX + 4] { return true; }
+  }
+  if y - 0.3 < w[0].deck + 1.05 && watch_on_rail(x, z, 0.2) { return true; }
+  for k: 0..<w[0].fence_n { if watch_fence_gap(w, k, x, z) < 0.25 && y - 0.3 < g + 3.1 { return true; } }
+  return false;
+}
+// b for dt seconds: gravity, the walls (it bounces back off them), the ground (a bounce, then it slides,
+// rolling onto its back, and rests); at rest the lying pose blends in.
+tumble_stepped :: (w: [] Watch, b: Tumble, dt: f32, heights: [] f32) -> Tumble {
+  n := b;
+  t := ifx finite(dt) then clamp(dt, 0, 0.25) else 0.0f32;
+  if !n.on {
+    if n.settle >= 0 && n.settle < f32(TUMBLE_SETTLE) { n.settle = lo(n.settle + t, f32(TUMBLE_SETTLE)); }
+    return n;
+  }
+  steps := clamp_w(cast(int) (t / f32(TUMBLE_STEP)) + 1, 1, 40);
+  h := t / f32(steps);
+  back := -f32(PI) * 0.5;
+  for q: 0..<steps {
+    n.age += h;
+    n.vy -= f32(TUMBLE_G) * h;
+    nx := n.x + n.vx * h; nz := n.z + n.vz * h; ny := n.y + n.vy * h;
+    if tumble_blocked(w, heights, nx, ny, n.z) { n.vx = -n.vx * 0.35; nx = n.x; n.spin *= 0.7; }
+    if tumble_blocked(w, heights, n.x, ny, nz) { n.vz = -n.vz * 0.35; nz = n.z; n.spin *= 0.7; }
+    if tumble_blocked(w, heights, nx, ny, nz) { nx = n.x; nz = n.z; n.vx = 0; n.vz = 0; }
+    n.x = nx; n.z = nz; n.y = ny;
+    n.pitch += n.spin * h;
+    g := watch_feet_y(w, heights, n.x, n.z);
+    rest := g + tumble_rest_y(n.pitch);
+    if n.y <= rest + 0.12 {
+      if n.y <= rest { n.y = rest; if n.vy < 0 { n.vy = ifx n.vy < -2.5 then -n.vy * 0.25 else 0.0f32; } }
+      // the ground drags it (friction, about 0.6 g, and a scrape) and turns it onto its back
+      sp := sqrt(n.vx * n.vx + n.vz * n.vz);
+      if sp > 0.0001 {
+        slow := lo(sp, (6 + 4 * sp) * h);
+        n.vx -= n.vx / sp * slow; n.vz -= n.vz / sp * slow;
+      }
+      to := back + f32(TAU) * floor((n.pitch - back) / f32(TAU) + 0.5);
+      n.spin = n.spin * (1 - clamp01(12 * h)) + (to - n.pitch) * 40 * h;
+      if n.vx * n.vx + n.vz * n.vz + n.vy * n.vy < 0.16 && abs(to - n.pitch) < 0.15 && n.y <= rest + 0.02 { n.still_t += h; } else { n.still_t = 0; }
+    } else { n.still_t = 0; }
+    if n.still_t >= 0.2 || n.age >= f32(TUMBLE_LONGEST) {
+      n.on = false; n.settle = 0;
+      n.pitch = back; n.spin = 0; n.vx = 0; n.vy = 0; n.vz = 0;
+      n.y = watch_feet_y(w, heights, n.x, n.z) + f32(TUMBLE_LIE);
+      return n;
+    }
+  }
+  return n;
+}
+clamp_w :: (a: int, low: int, high: int) -> int { if a < low { return low; } if a > high { return high; } return a; }
+// How much of the rigid turn still shows (1 in the air, falling to 0 as the lying pose comes in).
+tumble_turn :: (b: Tumble) -> f32 {
+  if b.on { return 1; }
+  if b.settle < 0 { return 0; }
+  u := clamp01(b.settle / f32(TUMBLE_SETTLE));
+  return 1 - u * u * (3 - 2 * u);
+}
+// Where the clip's lying pose puts its feet so its pelvis lies where the thrown pelvis came down.
+tumble_feet :: (b: Tumble) -> Point {
+  return v3(b.x + sin(b.yaw) * f32(TUMBLE_LIE_BACK), 0, b.z + cos(b.yaw) * f32(TUMBLE_LIE_BACK));
+}
+// The body's rows (3 of 4) drawn thrown: its pelvis at the body's, turned `yaw` then `pitch` about its
+// side, blended toward standing at `feet` (the clip's lying pose) by 1 - tumble_turn.
+TumbleRows :: struct { r: [12] f32; }
+tumble_rows :: (b: Tumble, feet: Point) -> TumbleRows {
+  k := tumble_turn(b);
+  p := b.pitch * k;
+  c := cos(b.yaw); sn := sin(b.yaw); cp := cos(p); sp := sin(p);
+  piv := f32(TUMBLE_PELVIS) * k;
+  // the pelvis's place blends from the thrown body's to the lying clip's
+  px := lerp(feet.x, b.x, k); pz := lerp(feet.z, b.z, k); py := lerp(feet.y + piv, b.y, k);
+  o: TumbleRows;
+  o.r = [12] f32.[c, sn * sp, sn * cp, px - sn * sp * piv,   0, cp, -sp, py - cp * piv,   -sn, c * sp, c * cp, pz - c * sp * piv];
+  return o;
 }
 // i takes `amount`: dead at 0, else knocked down and then up to what fright makes them.
 watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
@@ -426,11 +690,34 @@ watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
   a[0].mode = WM_DOWN; a[0].t = 0;
 }
 
-// You take a blow: at 0 you fall, and the town stands down.
+// You take a blow: at 0 you fall (you topple: watch_you_fall), and the town stands down.
 watch_hurt_you :: (w: [] Watch, amount: int) {
   if w[0].dead { return; }
   w[0].hp -= amount; w[0].hurt_t = 0;
-  if w[0].hp <= 0 { w[0].hp = 0; w[0].dead = true; w[0].dead_t = 0; }
+  if w[0].hp <= 0 { w[0].hp = 0; w[0].dead = true; w[0].dead_t = 0; w[0].you_fall = 0; w[0].you_body.on = false; w[0].you_body.settle = -1; }
+}
+// You take a blast's `amount`, your feet at `feet`, thrown at v if it kills you: your body tumbles as the
+// town's do and lies where it comes down.
+watch_hurt_you_thrown :: (w: [] Watch, amount: int, feet: Point, face: f32, v: Point) {
+  if w[0].dead { return; }
+  watch_hurt_you(w, amount);
+  if !w[0].dead { return; }
+  b := w[0].you_body;
+  b.x = feet.x; b.y = feet.y + f32(TUMBLE_PELVIS); b.z = feet.z; b.pitch = 0; b.yaw = face;
+  w[0].you_body = tumble_kicked(b, v);
+}
+// Your fall, not thrown: you topple over backwards from your feet as a stick falls (no clip of the
+// Ranger's is a death), and lie there through YOU DIED. How far over you are (0 standing, -pi/2 lying).
+WATCH_TOPPLE :: 0.75;     // s to the ground
+watch_you_fall :: (w: [] Watch) -> f32 {
+  if !w[0].dead { return 0; }
+  u := clamp01(w[0].you_fall / f32(WATCH_TOPPLE));
+  // falling faster as it goes, and a small bounce as it lands
+  over := u * u;
+  bounce := ifx u >= 1 then 0.0f32 else 0.0f32;
+  late := w[0].you_fall - f32(WATCH_TOPPLE);
+  if late > 0 && late < 0.25 { bounce = 0.12 * sin(late / 0.25 * f32(PI)); }
+  return -f32(PI) * 0.5 * (over - bounce);
 }
 
 // Everyone the R of the spell bar or the dawn stands up again: alive, whole and on their day.
@@ -465,6 +752,8 @@ watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: in
   // the dawn stands the dead up again
   if w[0].day >= 0 && w[0].day < 0.25 && day >= 0.25 && day < 0.5 { _ := watch_restore(w); }
   w[0].day = day;
+  watch_spears_step(w, t);
+  if w[0].dead { w[0].you_fall += t; w[0].you_body = tumble_stepped(w, w[0].you_body, t, heights); }
   if w[0].dead {
     w[0].dead_t += t;
     if w[0].dead_t >= f32(DEATH_FADE) + f32(DEATH_HOLD) && !w[0].respawn {
@@ -503,6 +792,17 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
   a[0].speed = 0; a[0].hold = false;
   if a[0].shout >= 0 { a[0].shout_t += dt; if a[0].shout_t > f32(SHOUT_FOR) { a[0].shout = -1; } }
   a[0].sees = false;
+  // thrown: the body flies and comes to rest, and only then do they lie (their fall's clock waits)
+  if a[0].body.on || (a[0].body.settle >= 0 && a[0].body.settle < f32(TUMBLE_SETTLE)) {
+    was := a[0].body.on;
+    a[0].body = tumble_stepped(w, a[0].body, dt, heights);
+    if a[0].body.on {
+      a[0].x = a[0].body.x; a[0].z = a[0].body.z; a[0].yaw = a[0].body.yaw;
+      a[0].t = 0; a[0].clip = PEOPLE_KNOCK; a[0].hold = true; a[0].swing = -1;
+      return;
+    }
+    if was { ft := tumble_feet(a[0].body); a[0].x = ft.x; a[0].z = ft.z; a[0].yaw = a[0].body.yaw; a[0].t = 0; }
+  }
   gap := flat_gap(v3(a[0].x, 0, a[0].z), you);
   toward := atan2(you.x - a[0].x, you.z - a[0].z);
   m := a[0].mode;
@@ -529,7 +829,11 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
   }
   if m == WM_CHASE || m == WM_FIGHT {
     guard := m == WM_CHASE;
-    eye := watch_ground_y(heights, a[0].x, a[0].z) + f32(WATCH_EYE);
+    feet := watch_feet_y(w, heights, a[0].x, a[0].z);
+    eye := feet + f32(WATCH_EYE);
+    // how far your body is from theirs, up and down (their spans, feet to head), and in all
+    up := watch_span_gap(feet, you.y);
+    reach3 := sqrt(gap * gap + up * up);
     a[0].sees = watch_sees(boxes, nb, a[0].x, a[0].z, eye, add(you, v3(0, 1.2, 0)), f32(WATCH_SIGHT));
     if a[0].sees { a[0].seen_x = you.x; a[0].seen_z = you.z; }
     if w[0].dead { a[0].mode = WM_BACK; a[0].t = 0; a[0].swing = -1; return; }
@@ -541,9 +845,17 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
       a[0].swing += dt;
       a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
       a[0].clip = PEOPLE_SLASH; a[0].hold = true;
+      if a[0].throwing {
+        if !a[0].struck && a[0].swing >= f32(SPEAR_AT) {
+          a[0].struck = true;
+          watch_spear(w, i, feet, add(you, v3(0, 1.1, 0)), reach3);
+        }
+        if a[0].swing >= length_ { a[0].swing = -1; a[0].throwing = false; a[0].spear_cool = f32(SPEAR_EVERY); a[0].cool = every - length_; }
+        return;
+      }
       if !a[0].struck && a[0].swing >= strike {
         a[0].struck = true;
-        if gap <= f32(REACH) + 0.5 {
+        if reach3 <= f32(REACH) + 0.5 {
           roll := srd_attack(w[0].dice[..], watch_block(i), w[0].ac);
           if roll.hit { w[0].hits += 1; watch_hurt_you(w, roll.damage); } else { w[0].misses += 1; }
         }
@@ -551,7 +863,20 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
       if a[0].swing >= length_ { a[0].swing = -1; a[0].cool = every - length_; }
       return;
     }
-    if gap <= f32(REACH) && a[0].sees {
+    a[0].spear_cool -= dt;
+    // you are up out of a sword's reach: a guard below shouts up at you and throws a spear; the brave wait
+    if up > 0.3 && a[0].sees && gap <= f32(REACH) + 6 {
+      a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
+      if !a[0].up_shouted { a[0].up_shouted = true; a[0].shout = UP_SHOUT; a[0].shout_t = 0; }
+      if guard && a[0].spear_cool <= 0 && reach3 <= f32(SPEAR_FAR) {
+        a[0].swing = 0; a[0].struck = false; a[0].throwing = true;
+        a[0].clip = PEOPLE_SLASH; a[0].hold = true;
+        return;
+      }
+      if gap <= f32(REACH) * 0.8 { a[0].clip = PEOPLE_IDLE; return; }
+    }
+    if up <= 0.3 { a[0].up_shouted = false; }
+    if reach3 <= f32(REACH) && a[0].sees {
       a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
       a[0].clip = ifx guard then PEOPLE_IDLE else PEOPLE_IDLE;
       if a[0].cool <= 0 { a[0].swing = 0; a[0].struck = false; }
@@ -561,8 +886,10 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     // to you while they see you, else to where they last did, and there they look about
     goal := ifx a[0].sees then you else v3(a[0].seen_x, 0, a[0].seen_z);
     left := flat_gap(v3(a[0].x, 0, a[0].z), goal) - (ifx a[0].sees then f32(REACH) * 0.8 else 0.3f32);
-    step := lo(run * dt, left);
-    if step > 0 && watch_stride(w, a, watch_way(w, a[0].x, a[0].z, goal.x, goal.z), step) { a[0].speed = step / hi(dt, 0.0001); }
+    // over the river by the bridge, round a fence
+    by := watch_bridge_way(a[0].x, a[0].z, goal.x, goal.z);
+    step := lo(run * dt, hi(left, 0));
+    if step > 0 && watch_stride(w, a, watch_way(w, a[0].x, a[0].z, by.x, by.z), step) { a[0].speed = step / hi(dt, 0.0001); }
     a[0].clip = ifx a[0].speed > 0.1 then PEOPLE_RUN else (ifx guard then PEOPLE_IDLE else PEOPLE_IDLE);
     return;
   }
@@ -591,7 +918,8 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
     a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw; a[0].clip = -1;
     return;
   }
-  home := watch_way(w, a[0].x, a[0].z, a[0].home_x, a[0].home_z);
+  hw := watch_bridge_way(a[0].x, a[0].z, a[0].home_x, a[0].home_z);
+  home := watch_way(w, a[0].x, a[0].z, hw.x, hw.z);
   step := lo(f32(BACK_WALK) * dt, d);
   if watch_stride(w, a, home, step) { a[0].speed = f32(BACK_WALK); }
   else if w[0].fence_n == 0 { a[0].x = a[0].home_x; a[0].z = a[0].home_z; }   // shut in: put back on their day (never through a fence)
@@ -759,7 +1087,7 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   you := v3(0, 0, -30);
   // 20d6 + 20d6 on the market's stalls: everyone there falls dead (40 to 240, half at least 20 > 11)
   big := SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 70, kind2 = DMG_BLUDGEONING};
-  n := watch_blast(w[..], v3(EG_SPOT[8 * 3], 0, EG_SPOT[8 * 3 + 1]), 4, big, you);
+  n := watch_blast(w[..], v3(EG_SPOT[8 * 3], 0, EG_SPOT[8 * 3 + 1]), 4, big, you, 0, heights[..]);
   #assert n >= 2 && w[0].actors[8].mode == WM_DEAD && w[0].actors[7].mode == WM_DEAD;
   // a light blow knocks one down, and they get up and run
   watch_harm(w[..], 9, 1, you);
@@ -808,4 +1136,155 @@ watch_test_town :: (w: [] Watch, heights: [] f32) {
   #assert w[0].actors[0].mode == WM_BACK || w[0].actors[0].mode == WM_CALM;
   for f: 0..<1200 { watch_tick(w[..], 0.1, far, 0.5, wall[..], 1, heights[..]); }
   #assert w[0].actors[0].mode == WM_CALM;
+}
+
+#test "a guard chasing you over the river runs on the bridge's deck, at its height, the whole way" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  br := EG_BRIDGE;
+  g := EG_SPOTS + 4;   // the East Gate's guard
+  for trip: 0..<2 {
+    // from the west bank, south of the bridge, to you on the east bank north of it (and back)
+    sx := ifx trip == 0 then br[0] - 8 else br[2] + 5;
+    yx := ifx trip == 0 then br[2] + 5 else br[0] - 10;
+    w[0].actors[g].mode = WM_CHASE; w[0].actors[g].x = sx; w[0].actors[g].z = br[1] - 6; w[0].actors[g].cool = 100;
+    you := v3(yx, 0, br[3] + 5);
+    you.y = watch_feet_y(w[..], heights[..], you.x, you.z);
+    w[0].actors[g].seen_x = you.x; w[0].actors[g].seen_z = you.z;
+    w[0].wanted = true;
+    crossed := false; on_deck := 0;
+    for f: 0..<60 * 30 {
+      w[0].unseen = 0;
+      watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
+      a := w[0].actors[g];
+      if a.x >= br[0] && a.x <= br[2] {
+        // in the river's span only on the deck, and there at the deck's height
+        #assert a.z >= br[1] + 0.3 && a.z <= br[3] - 0.3;
+        #assert watch_feet_y(w[..], heights[..], a.x, a.z) == w[0].deck;
+        on_deck += 1;
+      }
+      if (trip == 0 && a.x > br[2] + 1) || (trip == 1 && a.x < br[0] - 1) { crossed = true; }
+    }
+    #assert crossed;
+    #assert on_deck > 60;
+  }
+  // the bridge's rails stand in a runner's way; its deck between them does not
+  #assert !watch_open(w[..], 88, br[1] + 0.18) && !watch_open(w[..], 88, br[3] - 0.18) && watch_open(w[..], 88, -11.5);
+  #assert watch_feet_y(w[..], heights[..], 88, -11.5) == w[0].deck && w[0].deck > watch_feet_y(w[..], heights[..], 88, br[1] - 3) + 0.5;
+}
+
+#test "out of a sword's reach above them (levitating 6 m up), no blow lands; a guard below throws spears; on the ground they cut" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  g := 1;
+  x := EG_SPOT[g * 3]; z := EG_SPOT[g * 3 + 1] - 3;
+  ground := watch_feet_y(w[..], heights[..], x, z);
+  you := v3(x, ground + 6, z);
+  _ := watch_crime(w[..], v3(x, ground, z - 3), WATCH_HEAR[0], you, nob[..], 0, heights[..]);
+  w[0].hp = 100000; w[0].max = 100000;
+  shouted := false;
+  for f: 0..<60 * 40 {
+    watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
+    if w[0].actors[g].shout == UP_SHOUT { shouted = true; }
+  }
+  #assert w[0].hits == 0 && w[0].misses == 0;
+  #assert w[0].spear_hits + w[0].spear_misses >= 8 && shouted;
+  // Tilda stands under you
+  #assert flat_gap(v3(w[0].actors[g].x, 0, w[0].actors[g].z), you) < f32(REACH) + 0.5;
+  // you come down: the sword lands
+  you.y = ground;
+  for f: 0..<60 * 30 { watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
+  #assert w[0].hits > 0;
+  #assert watch_span_gap(0, 6) > 4 && watch_span_gap(0, 1.0) == 0 && watch_span_gap(5, 0) > 3;
+}
+
+#test "a blast throws a guard out from it and up: they tumble, land, lie on their backs, and get up where they came down" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  you := v3(0, 0, -30);
+  g := EG_SPOTS + 1;   // round the commons: open ground
+  gx := w[0].actors[g].x; gz := w[0].actors[g].z;
+  at := v3(gx - 1.5, watch_feet_y(w[..], heights[..], gx, gz), gz);
+  // a light blast (it knocks them down, it doesn't kill)
+  light := SrdDamage.{amount = 1, kind = DMG_FIRE, amount2 = 0, kind2 = DMG_FIRE};
+  #assert watch_blast(w[..], at, 3.4, light, you, WATCH_THROW[1], heights[..]) == 1;
+  a := w[0].actors[g];
+  #assert a.mode == WM_DOWN && a.body.on && a.body.vx > 2 && a.body.vy > 2;
+  top := 0.0f32; landed_at := -1;
+  land := v3(0, 0, 0); rose := v3(0, 0, 0); risen := false; lay := false;
+  for f: 0..<60 * 8 {
+    watch_tick(w[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]);
+    b := w[0].actors[g].body;
+    feet := watch_feet_y(w[..], heights[..], b.x, b.z);
+    top = hi(top, b.y - feet);
+    // never under the ground
+    #assert b.y >= feet + f32(TUMBLE_LIE) - 0.01;
+    if b.on { #assert w[0].actors[g].mode == WM_DOWN && w[0].actors[g].t == 0 && w[0].actors[g].clip == PEOPLE_KNOCK; }
+    if !b.on && landed_at < 0 { landed_at = f; land = v3(w[0].actors[g].x, 0, w[0].actors[g].z); lay = b.pitch == -f32(PI) * 0.5; }
+    if landed_at >= 0 && !risen && w[0].actors[g].mode == WM_DOWN && tumble_turn(b) == 0 { #assert w[0].actors[g].clip == PEOPLE_KNOCK || w[0].actors[g].clip == PEOPLE_IDLE; }
+    if landed_at >= 0 && !risen && w[0].actors[g].mode != WM_DOWN { risen = true; rose = v3(w[0].actors[g].x, 0, w[0].actors[g].z); }
+  }
+  // thrown away from the blast (east), up into the air, came down and lay on its back
+  #assert landed_at > 20 && landed_at < 60 * 6 && top > 1.5;
+  #assert land.x > gx + 2.5 && lay;
+  // and up again where they landed, not back where they stood
+  #assert risen && flat_gap(rose, land) < 0.5 && flat_gap(rose, v3(gx, 0, gz)) > 2;
+  // a killing blast throws them too, and they lie dead where they land; R stands them up
+  w2: [1] Watch;
+  watch_test_town(w2[..], heights[..]);
+  big := SrdDamage.{amount = 70, kind = DMG_FIRE, amount2 = 70, kind2 = DMG_BLUDGEONING};
+  _ := watch_blast(w2[..], at, 4, big, you, WATCH_THROW[0], heights[..]);
+  #assert w2[0].actors[g].mode == WM_DEAD && w2[0].actors[g].body.on;
+  for f: 0..<60 * 8 { watch_tick(w2[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
+  #assert w2[0].actors[g].mode == WM_DEAD && !w2[0].actors[g].body.on && w2[0].actors[g].clip == PEOPLE_DIE && w2[0].actors[g].x > gx + 2.5;
+  #assert watch_restore(w2[..]) >= 1 && w2[0].actors[g].mode == WM_CALM && !w2[0].actors[g].body.on && w2[0].actors[g].body.settle < 0;
+  // the dawn does it too
+  _ = watch_blast(w2[..], at, 4, big, you, WATCH_THROW[0], heights[..]);
+  for f: 0..<60 * 8 { watch_tick(w2[..], 1.0 / 60.0, you, 0.2, nob[..], 0, heights[..]); }
+  watch_tick(w2[..], 0.1, you, 0.26, nob[..], 0, heights[..]);
+  #assert w2[0].actors[g].mode == WM_CALM;
+  // a wall stops a thrown body: it comes back off it
+  w3: [1] Watch;
+  watch_test_town(w3[..], heights[..]);
+  w3[0].actors[g].body.on = false;
+  wall := [5] f32.[gx + 1.5, gz - 5, gx + 1.5, gz + 5, 0.1];
+  watch_fences(w3[..], wall[..], 1);
+  watch_harm(w3[..], g, 0, you);
+  watch_throw(w3[..], g, v3(9, 3, 0), heights[..]);
+  for f: 0..<60 * 8 { watch_tick(w3[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); #assert w3[0].actors[g].body.x < gx + 1.5; }
+}
+
+#test "you die: you topple and lie there through YOU DIED; a blast that kills you throws your body" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  watch_test_town(w[..], heights[..]);
+  you := v3(0, watch_feet_y(w[..], heights[..], 0, -30), -30);
+  #assert watch_you_fall(w[..]) == 0;
+  watch_hurt_you(w[..], 100);
+  #assert w[0].dead && watch_you_fall(w[..]) == 0;
+  for f: 0..<6 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert watch_you_fall(w[..]) < -0.3 && watch_you_fall(w[..]) > -1.5;
+  for f: 0..<14 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  #assert abs(watch_you_fall(w[..]) + f32(PI) * 0.5) < 0.001 && watch_died_shown(w[..]);
+  w2: [1] Watch;
+  watch_test_town(w2[..], heights[..]);
+  watch_hurt_you_thrown(w2[..], 10, you, 0, v3(0, 5, 6));
+  #assert !w2[0].dead && !w2[0].you_body.on;
+  watch_hurt_you_thrown(w2[..], 100, you, 0, v3(0, 5, 6));
+  #assert w2[0].dead && w2[0].you_body.on;
+  for f: 0..<60 * 3 { watch_tick(w2[..], 1.0 / 60.0, you, 0.5, nob[..], 0, heights[..]); }
+  #assert !w2[0].you_body.on;
+  #assert w2[0].you_body.z > you.z + 2;
+  #assert w2[0].you_body.pitch == -f32(PI) * 0.5;
 }

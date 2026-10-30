@@ -36,6 +36,8 @@ WatchView :: struct {
   // each one drawn's sword and shield (12 numbers each), how many
   arms: [WATCH_OBJECTS * 12] f32; arm_group: [WATCH_OBJECTS] int; arm_n: int;
   started: bool;
+  knock: Point; knocked: bool;    // a blast's throw for your living body, for the face to add to your velocity once
+  you_slot: int; you_t: f64;      // the spell that last caught you and when (a Meteor Swarm's spheres hurt you once)
 }
 
 watch_cap :: (group: int) -> int {
@@ -88,9 +90,31 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
     s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z)); s[0].spawn_face = 0;
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
     s[0].sp.armed = -1; s[0].sp.casting = -1;
+    watch_end_effects(s);
   }
   if s[0].talk >= 0 && watch_off(w, s[0].talk) { end_talk(s); }
   if w[0].dead && s[0].talk >= 0 { end_talk(s); }
+}
+
+// You stand again: every effect on you ends (Levitate, Feather Fall, Reverse Gravity's hold, the gust that
+// follows you, a throw), so you stand at the Road In on the ground, still; the face takes you out of the
+// water and any rowboat (everglade-face.c, on the warp).
+watch_end_effects :: (s: [] Everglade) {
+  a := ab_of(s);
+  a[0].lev_on = false; a[0].lev_up = false; a[0].lev_sink = false; a[0].lev_t = 0;
+  a[0].ff_on = false; a[0].ff_air = false;
+  a[0].gust_on = false;
+  if a[0].rg_on { a[0].rg_on = false; ab_fall_all(s); }
+  for k: 0..<AB_N { a[0].keys[k] = false; }
+  s[0].wv.knocked = false; s[0].wv.knock = v3(0, 0, 0);
+  w := watch_w(s);
+  w[0].you_body.on = false; w[0].you_body.settle = -1; w[0].you_fall = 0;
+}
+// A blast's throw for your living body, taken once by the face (everglade-face.c adds it to your velocity).
+everglade_knock :: (s: [] Everglade) -> Point #export_c {
+  if !s[0].wv.knocked { return v3(0, 0, 0); }
+  s[0].wv.knocked = false;
+  return s[0].wv.knock;
 }
 
 // Person i (a spot's) off their day: drawn where the watch has them.
@@ -106,12 +130,26 @@ watch_apply :: (s: [] Everglade, i: int) {
 watch_pose :: (r: SkinRig, a: Actor, sk: [] Skin, dt: f32, out: [] f32) {
   clip := clamp_i(a.clip, 0, PEOPLE_CLIPS - 1);
   step := ifx finite(dt) then hi(dt, 0) else 0.0f32;
+  sk[0].fade = 0.16;
+  if a.body.on {
+    // limp in the air: the knock's first moment, arms flung, held
+    if sk[0].clip != PEOPLE_KNOCK { skin_advance(r, sk, PEOPLE_KNOCK, 0, 0.18); }
+    else { skin_advance(r, sk, PEOPLE_KNOCK, 0, clamp(0.18 - sk[0].time, 0, step)); }
+    skin_palette(r, sk, out);
+    return;
+  }
+  if a.body.settle >= 0 && a.body.settle < f32(TUMBLE_SETTLE) && a.hold && (sk[0].clip != clip || sk[0].time < r.duration[clip] - 0.1) {
+    // come to rest: the fall's lying end blends in as the rigid turn blends out
+    sk[0].clip = ifx clip == PEOPLE_IDLE then PEOPLE_KNOCK else PEOPLE_IDLE;
+    skin_advance(r, sk, clip, 0, r.duration[clip] - 0.04);
+    skin_palette(r, sk, out);
+    return;
+  }
   if a.hold && sk[0].clip == clip {
     left := r.duration[clip] - 0.03 - sk[0].time;
     step = clamp(step, 0, hi(left, 0));
   }
   speed := ifx clip == PEOPLE_RUN || clip == PEOPLE_WALK then hi(a.speed, 0.6) else 0.0f32;
-  sk[0].fade = 0.16;
   skin_advance(r, sk, clip, speed, step);
   if a.hold && step == 0 { sk[0].clock += ifx finite(dt) then hi(dt, 0) else 0.0f32; }   // the blend still finishes
   skin_palette(r, sk, out);
@@ -212,8 +250,10 @@ watch_spell :: (s: [] Everglade, at: Point, slot: int) {
   w := watch_w(s);
   if !w[0].on || slot < 0 || slot >= SP_SLOTS { return; }
   radius := SP_BLAST[slot];
-  you := add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z), 0));
-  hit := watch_blast(w, at, radius, s[0].sp.dmg, you);
+  you := ab_you(s);
+  power := ifx slot < 4 then WATCH_THROW[slot] else 8.0f32;
+  hit := watch_blast(w, at, radius, s[0].sp.dmg, you, power, s[0].heights[..]);
+  watch_spell_you(s, at, radius, power);
   touched := 0;
   dm := sp_dm(s);
   for i: 0..<dm[0].n {
@@ -223,6 +263,44 @@ watch_spell :: (s: [] Everglade, at: Point, slot: int) {
     if length(sub(c, at)) < radius { touched += 1; break; }
   }
   if hit > 0 || touched > 0 { _ := watch_crime(w, at, WATCH_HEAR[slot], you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+}
+
+// Your own blast on you: if your body is in it (in three dimensions: its span, feet to head) you take its
+// damage, a Dexterity save for half (SRD 5.2.1 Meteor Swarm, the bolts, the orb's splash), and it throws
+// you as it throws the town: alive, the face adds the throw to your velocity; dead, your body flies.
+watch_spell_you :: (s: [] Everglade, at: Point, radius: f32, power: f32) {
+  w := watch_w(s);
+  if !w[0].on || w[0].dead { return; }
+  if s[0].wv.you_slot == s[0].sp.casting + 1000 && s[0].time - s[0].wv.you_t < 2.5 { return; }
+  you := ab_you(s);
+  flat := flat_gap(you, at);
+  up := hi(hi(at.y - (you.y + f32(BODY_TALL)), you.y - at.y), 0);
+  d := sqrt(flat * flat + up * up);
+  if d >= radius + f32(BLAST_PAD) { return; }
+  s[0].wv.you_slot = s[0].sp.casting + 1000; s[0].wv.you_t = s[0].time;
+  took := srd_creature_takes(w[0].dice[..], SRD_RANGER_5, s[0].sp.dmg, SAVE_DEX, ON_SAVE_HALF, SAVE_DC_W);
+  k := clamp01(1 - d / (radius + f32(BLAST_PAD)));
+  kick := watch_kick(at, add(you, v3(0, f32(TUMBLE_PELVIS), 0)), power * (0.45 + 0.55 * k));
+  watch_hurt_you_thrown(w, took, you, s[0].face, kick);
+  if !w[0].dead { s[0].wv.knock = add(s[0].wv.knock, times(kick, 0.6)); s[0].wv.knocked = true; }
+  if took > 0 { sp_say(s, "YOU ARE CAUGHT IN IT", took, "DAMAGE"); }
+}
+
+// The spears in the air (watch_spear_at): a shaft with a dark head, the way it flies.
+watch_spears_draw :: (s: [] Everglade) {
+  if !s[0].wv.started { return; }
+  w := watch_w(s);
+  for k: 0..<SPEARS {
+    sp := w[0].spears[k];
+    if !sp.live { continue; }
+    p := watch_spear_at(sp);
+    d := p.dir;
+    fl := hi(sqrt(d.x * d.x + d.z * d.z), 0.0001);
+    tilt := -atan2(d.y, fl);
+    yaw := yaw_of(d.x, d.z);
+    shape(s, SHAPE_BOX, LOOK_WOOD, sub(p.at, times(d, 0.55)), yaw, tilt, 0.04, 0.04, 1.6, 0.5, 0.36, 0.22);
+    shape(s, SHAPE_CONE, LOOK_MATTE, add(p.at, times(d, 0.3)), yaw, tilt + f32(PI) * 0.5, 0.07, 0.22, 0.07, 0.2, 0.2, 0.22);
+  }
 }
 
 // The town stands again (the spell bar's Rebuild): the fallen too.
@@ -274,7 +352,7 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
   for i: 0..<WATCH_ACTORS {
     a := w[0].actors[i];
     if a.shout < 0 || !s[0].wv.head_on[i] { continue; }
-    line := ifx a.shout == 100 then BRAVE_SHOUT else ifx watch_is_guard(i) then WATCH_SHOUT[a.shout % WATCH_SHOUTS] else FOLK_SHOUT[a.shout % FOLK_SHOUTS];
+    line := ifx a.shout == 100 then BRAVE_SHOUT else ifx a.shout == UP_SHOUT then WATCH_UP_SHOUT else ifx watch_is_guard(i) then WATCH_SHOUT[a.shout % WATCH_SHOUTS] else FOLK_SHOUT[a.shout % FOLK_SHOUTS];
     sc := on_screen(u, add(s[0].wv.heads[i], v3(0, 0.55, 0)), s[0].width, s[0].height);
     if !sc.ok { continue; }
     cap := 8 * k;
@@ -339,4 +417,67 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   watch_harm(w, fallen, 99, you);
   #assert everglade_key(g[..], 'r', 0) && w[0].actors[fallen].mode == WM_CALM;
   for i: 0..<WATCH_ACTORS { #assert w[0].actors[i].mode != WM_DEAD; }
+}
+
+#test "watch: your own Thunderbolt at your feet hurts you and throws you; a Meteor Swarm on you kills you and you fall" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  x := 0.0f32; z := -30.0f32;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := watch_w(g[..]);
+  #assert w[0].on && w[0].hp == SRD_RANGER_5.hp;
+  #assert everglade_key(g[..], '2', 0) && g[0].sp.armed == SP_BOLT;
+  g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  for f: 0..<30 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].hp < SRD_RANGER_5.hp || w[0].dead;
+  k := everglade_knock(g[..]);
+  #assert w[0].dead || k.y > 0;
+  // the meteors on you: 20d6 + 20d6, at least half of 40 even on a save, past your 44 HP
+  w[0].hp = w[0].max; w[0].dead = false;
+  #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
+  g[0].sp.aim = v3(x, ground_at(g[..], x, z), z); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  dead_at := -1;
+  for f: 0..<40 {
+    _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 0, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    if w[0].dead && dead_at < 0 { dead_at = f; }
+    if dead_at >= 0 && f >= dead_at + 20 { break; }
+  }
+  #assert dead_at >= 0;
+  // your body is down, not standing: its up (the rows' second column) lies over
+  o := RANGER_AT * OBJECT_FLOATS;
+  #assert w[0].dead && abs(g[0].objects[o + 5]) < 0.5;
+}
+
+#test "watch: you die levitating 10 m up and stand again at the Road In on the ground, Levitate ended" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  x := 0.0f32; z := -30.0f32;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  ab_press(g[..], AB_LEVITATE);
+  a := ab_of(g[..]);
+  #assert a[0].lev_on;
+  a[0].lev_up = false; a[0].lev_hold = walk_at(g[..], x, z) + 10;
+  w := watch_w(g[..]);
+  watch_hurt_you(w, 999);
+  #assert w[0].dead;
+  for f: 0..<8 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  // toppled, lying: not standing
+  o := RANGER_AT * OBJECT_FLOATS;
+  #assert abs(g[0].objects[o + 5]) < 0.3;
+  for f: 0..<40 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, x, 10, z, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !w[0].dead && !a[0].lev_on && !a[0].ff_on && !a[0].rg_on;
+  #assert everglade_warp(g[..]);
+  sp := everglade_spawn(g[..]);
+  #assert sp.y == 0 && sp.x == f32(EG_SPAWN_X) && sp.z == f32(EG_SPAWN_Z);
+  // standing there on the ground nothing lifts you
+  lift := everglade_lift(g[..], sp.x, sp.z, 0, 0, 0, 0, 1.0 / 60.0);
+  #assert !lift.on;
 }

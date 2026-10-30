@@ -2232,6 +2232,7 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
     watch_home(watch_w(s), EG_SPOTS + k, s[0].wv.at[k].x, s[0].wv.at[k].z, s[0].wv.at[k].yaw, false);
   }
   watch_frame(s, you, dt, c);
+  watch_spears_draw(s);
   for i: 0..<WATCH_ACTORS {
     if i < EG_SPOTS && eg_gone(s[0].ev.edits, i) { continue; }   // an admin took them away
     if i < EG_SPOTS && EG_SPOT_CAT[i] {
@@ -2322,6 +2323,8 @@ folk_clock :: (s: [] Everglade, still: bool) -> FolkClock {
 // A person's feet at (x, z): on the ground, or in a pond wading on its bed or swimming at the float line
 // (verse/water-wade.coax, the player's rules).
 folk_feet :: (s: [] Everglade, x: f32, z: f32) -> f32 {
+  // on the bridge they walk on its deck, as you do (walk_at), never in the river under it
+  if everglade_on_bridge(s, x, z) { return walk_at(s, x, z); }
   bed := ground_at(s, x, z);
   w := water_at(s, x, z);
   return feet_walking(ifx w <= f32(DEMO_DRY) + 1 then -1000.0f32 else w, bed);
@@ -2364,11 +2367,15 @@ pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   head := v3(c * hp.x + sn * hp.z + x, hp.y + y, -sn * hp.x + c * hp.z + z);
   if spot { s[0].heads[i] = head; s[0].head_on[i] = true; }
   s[0].wv.heads[i] = head; s[0].wv.head_on[i] = true;
-  if watch_is_guard(i) {
+  // thrown by a blast: the body as the watch tumbles it (watch.coax Tumble), its sword and shield dropped
+  body := s[0].wt[0].actors[i].body;
+  thrown := watch_busy(s, i) && (body.on || tumble_turn(body) > 0);
+  if watch_is_guard(i) && !thrown {
     m := s[0].wt[0].actors[i].mode;
     watch_arm_guard(s, rig, sk, x, y, z, yaw, watch_busy(s, i) && (m == WM_CHASE || m == WM_DOWN));
   }
   rows := [12] f32.[c, 0, sn, x,   0, 1, 0, y,   -sn, 0, c, z];
+  if thrown { tr := tumble_rows(body, v3(x, y, z)); rows = tr.r; }
   parts: [FOLK_PARTS_MAX] int;
   n := ifx spot then folk_parts(i, parts[..]) else watch_parts(w, parts[..]);
   for p: 0..<n {
@@ -2430,7 +2437,8 @@ birds :: (s: [] Everglade) {
 // idle's first pose, so every shot of it is the same to the pixel however long the page ran first.
 figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airborne: bool, dt: f32, still: bool) {
   rig := ranger_rig(s[0].rig[..]);
-  motion := skin_motion(speed, airborne);
+  dead := s[0].wv.started && s[0].wt[0].dead;
+  motion := ifx dead then SKIN_IDLE else skin_motion(speed, airborne);
   skin_advance(rig, s[0].skin[..], motion, speed, dt);
   fade := ifx s[0].skin[0].fade > 0 then s[0].skin[0].fade else f32(SKIN_FADE);
   if still && motion == SKIN_IDLE && s[0].skin[0].clock - s[0].skin[0].changed >= fade {
@@ -2441,6 +2449,22 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   o := RANGER_AT * OBJECT_FLOATS;
   c := cos(face); sn := sin(face);
   rows := [12] f32.[c, 0, sn, feet.x,   0, 1, 0, feet.y,   -sn, 0, c, feet.z];
+  if dead {
+    // dead: thrown by what killed you, your body where it flew; else you topple over backwards from your
+    // feet (watch.coax watch_you_fall) and lie there through YOU DIED
+    w := s[0].wt[..];
+    b := w[0].you_body;
+    if b.on || b.settle >= 0 {
+      b.settle = -1;   // the Ranger has no lying clip: the rigid turn holds
+      if !b.on { b.pitch = -f32(PI) * 0.5; }
+      b.on = true;
+      tr := tumble_rows(b, feet); rows = tr.r;
+    } else {
+      p := watch_you_fall(w);
+      cp := cos(p); sp := sin(p);
+      rows = [12] f32.[c, sn * sp, sn * cp, feet.x,   0, cp, -sp, feet.y + 0.12 * abs(sp),   -sn, c * sp, c * cp, feet.z];
+    }
+  }
   for i: 0..<12 { s[0].objects[o + i] = rows[i]; }
   s[0].objects[o + 12] = f32(s[0].ranger_word); s[0].objects[o + 13] = 1; s[0].objects[o + 14] = 1;
   s[0].objects[o + 15] = f32(SHAPE_SKINNED + 8 * LOOK_KIT);

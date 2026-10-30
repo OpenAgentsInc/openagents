@@ -180,6 +180,7 @@ Swim :: struct {
   levels: int;          // Exhaustion from suffocating
   defeated: bool;       // the sixth level: you come to on the bank
   bank_x: f32; bank_z: f32;
+  aloft: bool;          // over the water, not in it (Levitate, a fall, a throw): no swim, no boat to board
 }
 
 // ---- the bed
@@ -439,6 +440,12 @@ breath_tick :: (r: [] River, dt: f64, under: bool) -> int {
 // One frame of you in the river: your feet at (x, z) over the carved
 // ground, `dive` held, `dt` s, at `time` on the water clock.
 everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c {
+  return everglade_river_swim_over(r, heights, x, z, 0, dive, dt, time);
+}
+// The same with your feet `over` m above the bed under you (the controller's height over its floor): feet
+// above the water's surface are out of it, whatever is under them (you levitate over a pond, you fall
+// toward it), and you go into it only when they come down to it.
+everglade_river_swim_over :: (r: [] River, heights: [] f32, x: f32, z: f32, over: f32, dive: bool, dt: f32, time: f64) -> Swim #export_c {
   out: Swim;
   out.surface = -1000; out.pace = 1; out.breath = 1; out.medium = MEDIUM_GROUND;
   bed := river_bed(r, heights, x, z);
@@ -456,6 +463,14 @@ everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: boo
   t := ifx dt == dt && dt > 0 then lo_f(dt, 0.25) else 0.0f32;
   s := water_sample(r[0].set, f64(x), f64(z), river_tick(time));
   surface := ifx s.found then cast(f32) s.height + r[0].rise else -1000.0f32;
+  if surface > -999 && over == over && over > 0.05 && bed + over > surface + 0.02 {
+    _ := breath_tick(r, f64(t), false);
+    r[0].medium = MEDIUM_GROUND; r[0].feet = bed + over; r[0].afloat = false;
+    out.surface = surface; out.aloft = true;
+    out.breath = cast(f32) (r[0].breath / hold_seconds(CON));
+    out.levels = r[0].levels;
+    return out;
+  }
   // Afloat, you keep your height in the water; on the bed, your feet are on it.
   feet := ifx r[0].afloat then r[0].feet else bed;
   if surface > -999 && surface - bed > f32(SWIM_DEPTH) && !r[0].afloat { feet = hi_f(bed, surface - f32(FLOAT_DEPTH)); }
@@ -492,6 +507,14 @@ everglade_river_swim :: (r: [] River, heights: [] f32, x: f32, z: f32, dive: boo
   }
   river_wake(r, x, z, medium, surface, time);
   return out;
+}
+
+// You stand again whole (a death, a warp): out of the water and out of any rowboat, breath full.
+everglade_river_reset :: (r: [] River) #export_c {
+  if r[0].aboard >= 0 { i := r[0].aboard; b := r[0].floats[i]; r[0].homes[i * 3] = b.pos.x; r[0].homes[i * 3 + 1] = b.pos.z; r[0].homes[i * 3 + 2] = yaw_of_q(b.orientation); }
+  r[0].aboard = -1; r[0].row_ahead = 0; r[0].row_turn = 0;
+  r[0].medium = MEDIUM_GROUND; r[0].afloat = false; r[0].feet = 0;
+  r[0].breath = hold_seconds(CON); r[0].levels = 0; r[0].out = 0.0;
 }
 
 // ---- ripples, your wake and splash (phase W6's ripple field)
@@ -1404,6 +1427,15 @@ test_ground :: (heights: [] f32, levels: [] f32) {
   // the middle swims, the shallows wade
   w := everglade_river_swim(r[..], heights[..], -40, 20, false, 0.1, 0);
   #assert w.medium == MEDIUM_SWIMMING && w.pace == 0.5 && w.flow_x == 0 && w.flow_z == 0;
+  // levitating 5 m over it (feet 5 m over the bed, far above its surface) you are out of it: no swim
+  bed := river_bed(r[..], heights[..], -40, 20);
+  for n: 0..<30 {
+    up := everglade_river_swim_over(r[..], heights[..], -40, 20, 0.75 + 5 - bed, false, 0.1, 0);
+    #assert up.aloft && up.medium == MEDIUM_GROUND && !r[0].afloat;
+  }
+  // come down into it and you swim again
+  down := everglade_river_swim_over(r[..], heights[..], -40, 20, 0, false, 0.1, 0);
+  #assert !down.aloft && down.medium == MEDIUM_SWIMMING;
   r[0].afloat = false;
   shallow := everglade_river_swim(r[..], heights[..], -35, 20, false, 0.1, 0);
   #assert shallow.medium == MEDIUM_WADING || shallow.medium == MEDIUM_GROUND;

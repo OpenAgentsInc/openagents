@@ -1060,19 +1060,14 @@ ab_gust_people :: (s: [] Everglade) -> int {
   if n > 0 { _ := watch_crime(w, a[0].gust_at, f32(AB_HEAR_GUST), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
   return n;
 }
-// Person i, at (x, z), shoved `far` m the way `dir` points (stopped short of a wall), and hurt by `hurt`:
-// knocked off their day where the watch's rules take them.
+// Person i, at (x, z), shoved `far` m the way `dir` points and hurt by `hurt`: knocked off their day where
+// the watch's rules take them, and thrown (watch.coax watch_throw: up a little and about `far` along,
+// tumbling, stopped by the walls), to lie where they land.
 ab_shove :: (s: [] Everglade, i: int, x: f32, z: f32, dir: Point, far: f32, hurt: int) {
   w := watch_w(s);
   watch_harm(w, i, hurt, ab_you(s));
-  if w[0].actors[i].mode == WM_DEAD && hurt > 0 { }
-  gone := 0.0f32;
-  while gone + 0.25 <= far {
-    nx := x + dir.x * (gone + 0.25); nz := z + dir.z * (gone + 0.25);
-    if ab_wall_near(s, nx, nz, 0.3) || water_at(s, nx, nz) >= WATER_SWIMMING { break; }
-    gone += 0.25;
-  }
-  w[0].actors[i].x = x + dir.x * gone; w[0].actors[i].z = z + dir.z * gone;
+  w[0].actors[i].x = x; w[0].actors[i].z = z;
+  watch_throw(w, i, v3(dir.x * far * 1.1, 3.0, dir.z * far * 1.1), s[0].heights[..]);
 }
 
 // ---- Thunderwave

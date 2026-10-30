@@ -150,6 +150,17 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (everglade_warp(at(state))) {
     coax_t_Point spawn = everglade_spawn(at(state));
     player = verse_player_place(spawn.x, spawn.y, spawn.z, everglade_spawn_face(at(state)));
+    // you stand there on the ground: out of the water and any rowboat, breathing, still
+    if (river_built) everglade_river_reset(rv());
+    swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
+  }
+  {
+    // a blast's throw on you (everglade-watch.coax watch_spell_you): once, into your velocity
+    coax_t_Point k = everglade_knock(at(state));
+    if (k.x != 0 || k.y != 0 || k.z != 0) {
+      player.vel.x += k.x; player.vel.z += k.z;
+      if (k.y > 0) { player.vel.y = k.y > player.vel.y ? k.y : player.vel.y; player.on_ground = false; }
+    }
   }
   bool busy = everglade_busy(at(state));
   if (busy) sticks = verse_sticks_reset();
@@ -198,7 +209,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2) {
     swim = (coax_t_Swim){0}; swim.pace = 1; swim.breath = 1; swim.surface = -1000;
   } else {
-    swim = everglade_river_swim(rv(), heights, player.pos.x, player.pos.z, g->dive && !busy, dt, now);
+    // your feet's height over the bed: over the water's surface (levitating, falling) you are not in it
+    swim = everglade_river_swim_over(rv(), heights, player.pos.x, player.pos.z, player.pos.y, g->dive && !busy, dt, now);
   }
   if (swim.defeated) {
     // the sixth level of Exhaustion: you come to on the nearer bank
@@ -210,7 +222,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   everglade_river_fields(rv(), (coax_v_f32){spell_fields, 16 * 10}, everglade_spell_fields(at(state), (coax_v_f32){spell_fields, 16 * 10}));
   int64_t floats = everglade_river_floats(rv(), dt, (coax_v_f32){river_floats, 28 * 8});
   // a rowboat near you to board, or E (the prompt) to board it or step ashore
-  everglade_boat_near(at(state), swim.medium == 3 || busy ? -1 : everglade_river_boat_near(rv(), player.pos.x, player.pos.z));
+  everglade_boat_near(at(state), swim.medium == 3 || swim.aloft || busy ? -1 : everglade_river_boat_near(rv(), player.pos.x, player.pos.z));
   if (everglade_boat_start(at(state)) && river.aboard < 0) everglade_river_board(rv(), everglade_river_first_boat(rv()));
   if (everglade_boat_take(at(state))) {
     if (river.aboard >= 0) {

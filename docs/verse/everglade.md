@@ -636,9 +636,36 @@ beat, in hand when they hunt you); the kits have no plate armour.
 - **Townsfolk** flee and cower; three brave ones (the smith, the
   fighters' master, the rangers' warden) fight back. R or REBUILD stands everyone up,
   and they come back at dawn. A fallen guard is replaced after 40 s.
-- **You** die at 0 HP: the view darkens, YOU DIED, and you stand at the Road
-  In whole, no longer wanted. Out of every guard's sight for 18 s, the
-  watch stand down.
+- **Thrown:** a blast throws everyone it hits (Meteor Swarm, the bolts, the
+  Water Orb's splash): out from it and up, harder the nearer and the bigger
+  the spell, as the debris is thrown. The body tumbles whole about its
+  pelvis under gravity, bounces off the ground (the bridge's deck too),
+  walls and Walls of Stone, slides to rest and rolls onto its back; then the
+  fall clip's lying pose blends in. Only then do they lie knocked down or
+  dead, and one who lives gets up where they came down. R and the dawn
+  stand them up.
+- **Reach is 3D:** a sword reaches 1.5 m from one body's span (feet to head)
+  to the other's, height included. Levitating, on a roof, thrown up by a
+  Wind Wall or held by Reverse Gravity, you are out of it: a guard below
+  stands under you, shouts COME DOWN AND FACE ME! and throws spears (SRD
+  Guard, Spear 20/60 ft, +3, 1d6 + 1 piercing, disadvantage past 20 ft);
+  the brave wait.
+- **The bridge:** guards and townsfolk walk on the deck at the deck's
+  height, as you do (`everglade_walk_height`). A chase or a walk back over
+  the river goes by the bridge (onto its deck from an end, never over the
+  rails) unless that is over 120 m out of the way.
+- **Your own spells** hurt you too: in a blast (in 3D: your span to it) you
+  take its damage, a Dex save for half, and it knocks you back and up; a
+  Meteor Swarm on yourself kills you.
+- **You** die at 0 HP: you topple over backwards (the Ranger kit has no
+  death clip), or a blast throws your body; the view darkens, YOU DIED, and
+  you stand at the Road In whole, on the ground, no longer wanted, with
+  Levitate, Feather Fall, Reverse Gravity, the gust, any throw, swimming and
+  any rowboat ended. Out of every guard's sight for 18 s, the watch stand
+  down.
+- **Over water:** levitating or falling over a pond or the river you stay in
+  the air; you swim only when your feet come down to its surface, and no
+  rowboat is offered from above.
 
 Hostility is your page's alone, like a broken building: each player has
 their own watch, and the beats are a function of the shared clock, so
