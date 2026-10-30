@@ -148,8 +148,8 @@ WAVE :: [24] int.[
 WATCH_GATE :: [8] f32.[0.0, -51.0,   -59.0, 0.0,   59.0, 0.0,   44.0, 55.0];
 // The casters' spells (SRD 5.2.1) as missiles in the air.
 MS_SPEAR :: 0; MS_FIRE_BOLT :: 1; MS_FROST :: 2; MS_HOLD :: 3; MS_FIREBALL :: 4; MS_GUIDING :: 5; MS_WEAPON :: 6;
-MS_LIGHTNING :: 7; MS_COLD :: 8; MS_HEAL :: 9;
-MISSILES :: 12;
+MS_LIGHTNING :: 7; MS_COLD :: 8; MS_HEAL :: 9; MS_MAGIC_MISSILE :: 10; MS_EARTHBIND :: 11;
+MISSILES :: 18;
 MS_SPEED :: 22.0;          // m/s a bolt flies (you can step out of its way)
 MS_DODGE :: 1.4;           // m from where it was aimed that it still finds you
 CAST_WIND :: 0.8;          // s a caster's hands glow before the spell leaves them
@@ -163,6 +163,26 @@ HOLD_FOR :: 3.0;           // s held before your next save (at most HOLD_SAVES o
 HOLD_SAVES :: 2;
 FROST_FOR :: 6.0; FROST_PACE :: 0.67;   // Ray of Frost: 10 ft off your 30 for a round
 WEAPON_FOR :: 15.0; WEAPON_EVERY :: 2.0;
+// Against you up out of reach (levitating, thrown, on a roof), WANTED 4 and up: the Mages and the
+// Archmage cast what finds you in the air (SRD 5.2.1).
+//   Magic Missile: darts that seek you and always hit, 1d4 + 1 force each: three (1st level); at
+//   WANTED 5 a Mage's 2nd-level slot makes four and the Archmage's 3rd-level five.
+//   Earthbind (WANTED 5): a Strength save (the Ranger's +4, proficient) or you can't rise and
+//   sink 60 feet a round to the ground, for a minute or while the caster keeps it (down, it ends).
+// And their bolts lead you: aimed where you will be when they get there.
+AIR_UP :: 1.5;             // m clear above their heads that is out of reach (REACH)
+AIR_LEVEL :: 4;
+MM_SPEED :: 16.0;          // m/s a dart flies, slower than a bolt so you see it turn
+MM_STEER :: 5.0;           // how hard it turns to you (per s, rising as it flies)
+MM_LIFE :: 5.0;            // s before an unspent dart fades
+MM_HIT :: 0.7;             // m from your middle a dart strikes
+MM_EVERY :: 7.0;           // s between a caster's Magic Missiles
+MM_WIND :: 1.0; BIND_WIND :: 1.2;   // s their hands glow first (the cast bar over them)
+BIND_EVERY :: 24.0;        // s before a caster tries Earthbind again
+BIND_FOR :: 60.0;          // 1 minute
+BIND_FALL :: 3.048;        // m/s: 60 feet a 6-second round
+YOU_STR_SAVE :: 4;
+LEAD_MOST :: 12.0;         // m/s of your motion they lead at most
 // Their looks: which kit clothes them (folk.coax PART_*), dyed by rank.
 RANK_DYE :: [28] f32.[
   0.32, 0.03, 0.025, 1,   0.07, 0.075, 0.085, 1,   0.05, 0.07, 0.42, 1,   0.62, 0.62, 0.64, 1,
@@ -178,6 +198,7 @@ Missile :: struct {
   hit: bool; damage: int; dc: int;
   shown: bool;               // the realm has drawn its burst
   next: f32;                 // a Spiritual Weapon's next blow
+  vx: f32; vy: f32; vz: f32; // a Magic Missile dart's velocity (ax, ay, az is where it is)
 }
 
 // The modes.
@@ -247,6 +268,7 @@ Actor :: struct {
   rank: int;                      // a reinforcement's (RANK_*)
   casting: f32; cast_kind: int; cast_cool: f32;   // a caster: into the spell (-1 none), which, till the next
   fireball_cool: f32; hold_cool: f32; weapon_cool: f32;
+  mm_cool: f32; bind_cool: f32;   // Magic Missile, Earthbind
   heal_to: int;                   // a priest's: who the healing is for
   temp: int;                      // Temporary Hit Points (a beast's shape: Polymorph), lost first
   blind: bool;                    // Blinded (Sunbeam, Sunburst): their attack rolls at you have Disadvantage
@@ -287,6 +309,10 @@ Watch :: struct {
   temp: int;                      // your Temporary Hit Points (a beast's shape: Wild Shape, Polymorph, Shapechange), lost first
   knock: Point; knocked: bool;    // a hunter's spell's throw for your living body (the realm takes it)
   face: f32;                      // your facing, for a body thrown
+  you_last: Point; you_v: Point; you_seen: bool;   // where you were last frame, how you move (for their lead)
+  bound_t: f32; bound_by: int;    // Earthbind: how long more, and who keeps it
+  bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
+  darts_hit: int;                 // for the checks
 }
 WATCH_FENCES :: 8;
 WATCH_FENCE_CLEAR :: 0.45;   // m past a fence's end a way round it keeps
@@ -321,6 +347,7 @@ watch_start :: (w: [] Watch, heights: [] f32) {
   w[0].level = 0; w[0].heat = 0; w[0].enemy_fire = false; w[0].waves = 0; w[0].spawned = 0;
   for k: 0..<MISSILES { w[0].missiles[k].live = false; }
   w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false; w[0].knocked = false; w[0].temp = 0;
+  w[0].you_seen = false; w[0].you_v = v3(0, 0, 0); w[0].bound_t = 0; w[0].bound_by = -1; w[0].bound_said = 0; w[0].darts_hit = 0;
   for i: 0..<WATCH_ACTORS { w[0].actors[i].homed = false; w[0].actors[i].rank = RANK_GUARD; watch_revive(w, i); }
   for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
   w[0].beats_ok = heights.count >= EG_GROUND_POINTS;
@@ -335,6 +362,7 @@ watch_revive :: (w: [] Watch, i: int) {
   a[0].body.on = false; a[0].body.settle = -1;
   a[0].spear_cool = 0; a[0].throwing = false; a[0].up_shouted = false;
   a[0].casting = -1; a[0].cast_cool = 1.0; a[0].fireball_cool = 0; a[0].hold_cool = 2.0; a[0].weapon_cool = 0; a[0].heal_to = -1;
+  a[0].mm_cool = 0; a[0].bind_cool = 3.0;
   a[0].temp = 0; a[0].blind = false;
   a[0].ready = true;
 }
@@ -548,18 +576,19 @@ watch_cast_step :: (w: [] Watch, i: int, dt: f32, you: Point, feet: f32, gap: f3
   a := w[0].actors[i..<i + 1];
   r := watch_rank(w, i);
   a[0].cast_cool -= dt; a[0].fireball_cool -= dt; a[0].hold_cool -= dt; a[0].weapon_cool -= dt;
+  a[0].mm_cool -= dt; a[0].bind_cool -= dt;
   if a[0].casting >= 0 {
     a[0].casting += dt;
     a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
     a[0].clip = PEOPLE_SPELL; a[0].hold = true;
-    if a[0].casting >= f32(CAST_WIND) {
+    if a[0].casting >= watch_wind(a[0].cast_kind) {
       watch_cast(w, i, a[0].cast_kind, feet, you, heights);
       a[0].casting = -1; a[0].cast_cool = CAST_EVERY[r];
     }
     return;
   }
   if a[0].sees && dist <= f32(CAST_RANGE) && a[0].cast_cool <= 0 {
-    k := watch_choose(w, i, gap);
+    k := watch_choose(w, i, gap, watch_span_gap(feet, you.y));
     if k >= 0 { a[0].casting = 0; a[0].cast_kind = k; a[0].clip = PEOPLE_SPELL; a[0].hold = true; return; }
   }
   // keep their distance: in, out, or stand and face you
@@ -575,10 +604,22 @@ watch_cast_step :: (w: [] Watch, i: int, dt: f32, you: Point, feet: f32, gap: f3
     a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt);
   } else { a[0].yaw = watch_turn(a[0].yaw, toward, 6 * dt); }
 }
-// Which spell caster i casts now (MS_*), or -1: by rank, what is ready, and a roll.
-watch_choose :: (w: [] Watch, i: int, gap: f32) -> int {
+// How long a caster's hands glow before spell `kind` leaves them.
+watch_wind :: (kind: int) -> f32 {
+  if kind == MS_MAGIC_MISSILE { return f32(MM_WIND); }
+  if kind == MS_EARTHBIND { return f32(BIND_WIND); }
+  return f32(CAST_WIND);
+}
+// Which spell caster i casts now (MS_*), or -1: by rank, what is ready, and a roll. `up` is how far
+// you are above their reach (watch_span_gap): out of it at WANTED 4 and up, the Mages and the Archmage
+// pull you down (Earthbind) or send what finds you in the air (Magic Missile) before their bolts.
+watch_choose :: (w: [] Watch, i: int, gap: f32, up: f32) -> int {
   a := w[0].actors[i..<i + 1];
   r := watch_rank(w, i);
+  if up > f32(AIR_UP) && w[0].level >= AIR_LEVEL && (r == RANK_MAGE || r == RANK_ARCHMAGE) {
+    if w[0].level >= 5 && a[0].bind_cool <= 0 && w[0].bound_t <= 0 && !watch_flying(w, MS_EARTHBIND) { a[0].bind_cool = BIND_EVERY; return MS_EARTHBIND; }
+    if a[0].mm_cool <= 0 { a[0].mm_cool = MM_EVERY; return MS_MAGIC_MISSILE; }
+  }
   if r == RANK_MAGE {
     if a[0].fireball_cool <= 0 && gap > f32(FIREBALL_R) + 1 { a[0].fireball_cool = 14; return MS_FIREBALL; }
     if a[0].hold_cool <= 0 && w[0].held_t <= 0 { a[0].hold_cool = 18; return MS_HOLD; }
@@ -605,6 +646,16 @@ watch_choose :: (w: [] Watch, i: int, gap: f32) -> int {
   }
   return -1;
 }
+// Whether a spell of `kind` is in the air now.
+watch_flying :: (w: [] Watch, kind: int) -> bool {
+  for q: 0..<MISSILES { if w[0].missiles[q].live && w[0].missiles[q].kind == kind && w[0].missiles[q].t < w[0].missiles[q].flight { return true; } }
+  return false;
+}
+// How many darts caster i's Magic Missile has (1st level three, one more a slot level up).
+watch_darts :: (w: [] Watch, i: int) -> int {
+  if watch_rank(w, i) == RANK_ARCHMAGE { return 5; }
+  return ifx w[0].level >= 5 then 4 else 3;
+}
 // A free missile slot (the oldest if none).
 watch_missile_slot :: (w: [] Watch) -> int {
   k := 0;
@@ -619,9 +670,14 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
   r := watch_rank(w, i);
   hand := v3(a.x + sin(a.yaw) * 0.35, feet + 1.45, a.z + cos(a.yaw) * 0.35);
   aim := add(you, v3(0, 1.0, 0));
+  if kind == MS_MAGIC_MISSILE { watch_darts_cast(w, i, hand, aim); return; }
+  if w[0].level >= AIR_LEVEL && (kind == MS_FIRE_BOLT || kind == MS_GUIDING || kind == MS_FIREBALL || kind == MS_LIGHTNING) {
+    // where you will be when it gets there
+    aim = add(aim, times(w[0].you_v, length(sub(aim, hand)) / f32(MS_SPEED)));
+  }
   k := watch_missile_slot(w);
   m := Missile.{live = true, kind = kind, caster = i, ax = hand.x, ay = hand.y, az = hand.z, bx = aim.x, by = aim.y, bz = aim.z,
-                t = 0, flight = 0.2, life = 0.6, hit = false, damage = 0, dc = RANK_DC[r], shown = false, next = 0};
+                t = 0, flight = 0.2, life = 0.6, hit = false, damage = 0, dc = RANK_DC[r], shown = false, next = 0, vx = 0, vy = 0, vz = 0};
   far := length(sub(aim, hand));
   if kind == MS_FIRE_BOLT || kind == MS_GUIDING || kind == MS_FIREBALL {
     m.flight = hi(far / f32(MS_SPEED), 0.1);
@@ -642,6 +698,7 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
     if roll.hit { m.damage = srd_sum(w[0].dice[..], ifx roll.crit then 4 else 2, 8); }
   }
   if kind == MS_HOLD { m.flight = 0.25; m.life = 0.5; }
+  if kind == MS_EARTHBIND { m.flight = 0.35; m.life = 0.6; }
   if kind == MS_LIGHTNING {
     // a line 100 ft long from their hand through where you are
     d := unit_or(sub(aim, hand), v3(0, 0, 1));
@@ -659,6 +716,48 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
   }
   w[0].missiles[k] = m;
 }
+// Caster i's Magic Missile leaves their hand: its darts fan out up and to the sides, then turn to you.
+watch_darts_cast :: (w: [] Watch, i: int, hand: Point, aim: Point) {
+  n := watch_darts(w, i);
+  fwd := unit_or(sub(aim, hand), v3(0, 0, 1));
+  side := unit_or(v3(fwd.z, 0, -fwd.x), v3(1, 0, 0));
+  for q: 0..<n {
+    k := watch_missile_slot(w);
+    spread := f32(q) - f32(n - 1) * 0.5;
+    v := times(unit_or(add(add(times(fwd, 0.45), times(side, spread * 0.55)), v3(0, 0.75, 0)), fwd), f32(MM_SPEED) * 0.6);
+    w[0].missiles[k] = Missile.{live = true, kind = MS_MAGIC_MISSILE, caster = i, ax = hand.x, ay = hand.y, az = hand.z,
+                                bx = aim.x, by = aim.y, bz = aim.z, t = -0.07 * f32(q), flight = f32(MM_LIFE), life = 0.3,
+                                hit = false, damage = srd_sum(w[0].dice[..], 1, 4) + 1, dc = 0, shown = false, next = 0,
+                                vx = v.x, vy = v.y, vz = v.z};
+  }
+}
+// Dart k for dt: it speeds up and turns ever harder toward you, wherever you go, and strikes you.
+watch_dart_step :: (w: [] Watch, k: int, dt: f32, you: Point) {
+  m := w[0].missiles[k..<k + 1];
+  if m[0].hit || m[0].t < 0 { return; }
+  steps := clamp_w(cast(int) (dt / 0.02) + 1, 1, 15);
+  h := dt / f32(steps);
+  for q: 0..<steps {
+    to := add(you, v3(0, 1.0, 0));
+    p := v3(m[0].ax, m[0].ay, m[0].az);
+    v := v3(m[0].vx, m[0].vy, m[0].vz);
+    if length(sub(to, p)) <= f32(MM_HIT) {
+      m[0].hit = true; m[0].bx = p.x; m[0].by = p.y; m[0].bz = p.z;
+      m[0].flight = hi(m[0].t, 0.001);   // spent: its burst shows, then it is gone
+      if !w[0].dead { w[0].spell_hits += 1; w[0].darts_hit += 1; watch_hurt_you(w, m[0].damage); }
+      return;
+    }
+    speed := lo(length(v) + 30 * h, f32(MM_SPEED));
+    want := times(unit_or(sub(to, p), v3(0, 1, 0)), speed);
+    turn := clamp01(f32(MM_STEER) * (1 + 2 * m[0].t) * h);
+    v = times(unit_or(add(v, times(sub(want, v), turn)), v3(0, 1, 0)), speed);
+    p = add(p, times(v, h));
+    m[0].ax = p.x; m[0].ay = p.y; m[0].az = p.z; m[0].vx = v.x; m[0].vy = v.y; m[0].vz = v.z;
+    m[0].bx = to.x; m[0].by = to.y; m[0].bz = to.z;
+  }
+}
+// Whether you are Earthbound (you can't rise, and you sink 60 feet a round).
+watch_bound :: (w: [] Watch) -> bool { return w[0].bound_t > 0 && !w[0].dead; }
 // Whether your body (feet at `you`) is within `pad` of the point p.
 watch_near_you :: (you: Point, p: Point, pad: f32) -> bool {
   flat := flat_gap(you, p);
@@ -674,6 +773,7 @@ watch_missiles_step :: (w: [] Watch, dt: f32, you: Point, heights: [] f32) {
     m.t += dt;
     if m.t >= m.flight + m.life { m.live = false; w[0].missiles[k] = m; continue; }
     w[0].missiles[k] = m;
+    if m.kind == MS_MAGIC_MISSILE { watch_dart_step(w, k, dt, you); continue; }
     if was < m.flight && m.t >= m.flight { watch_arrive(w, k, you, heights); }
     if m.kind == MS_WEAPON && m.t >= m.flight { watch_weapon_step(w, k, dt, you); }
   }
@@ -697,6 +797,13 @@ watch_arrive :: (w: [] Watch, k: int, you: Point, heights: [] f32) {
   if m.kind == MS_HOLD {
     // Hold Person: a Wisdom save (the Ranger's +1) against their DC, or held
     if !srd_save(w[0].dice[..], 1, m.dc).success { w[0].held_t = f32(HOLD_FOR); w[0].held_saves = 0; w[0].spell_hits += 1; } else { w[0].spell_misses += 1; }
+    return;
+  }
+  if m.kind == MS_EARTHBIND {
+    // Earthbind: a Strength save, or bound while its caster keeps it
+    if !srd_save(w[0].dice[..], YOU_STR_SAVE, m.dc).success {
+      w[0].bound_t = f32(BIND_FOR); w[0].bound_by = m.caster; w[0].bound_said = 1; w[0].spell_hits += 1;
+    } else { w[0].bound_said = 2; w[0].spell_misses += 1; }
     return;
   }
   if m.kind == MS_FIREBALL {
@@ -1132,7 +1239,22 @@ watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: in
     }
   }
   if w[0].slow_t > 0 { w[0].slow_t = hi(w[0].slow_t - t, 0); }
-  if w[0].dead { w[0].held_t = 0; w[0].slow_t = 0; }
+  // how you move, for their lead (a warp is no motion)
+  if t > 0 {
+    if w[0].you_seen && length(sub(you, w[0].you_last)) < 4 {
+      v := times(sub(you, w[0].you_last), 1 / t);
+      if length(v) > f32(LEAD_MOST) { v = times(unit_or(v, v3(0, 0, 0)), f32(LEAD_MOST)); }
+      w[0].you_v = mix(w[0].you_v, v, clamp01(t * 6));
+    } else { w[0].you_v = v3(0, 0, 0); }
+    w[0].you_last = you; w[0].you_seen = true;
+  }
+  // Earthbind lasts while its caster keeps it: down, dead or gone, it ends
+  if w[0].bound_t > 0 {
+    w[0].bound_t = hi(w[0].bound_t - t, 0);
+    c := w[0].bound_by;
+    if c < 0 || c >= WATCH_ACTORS || !w[0].actors[c].homed || w[0].actors[c].mode != WM_CHASE || !w[0].wanted { w[0].bound_t = 0; }
+  }
+  if w[0].dead { w[0].held_t = 0; w[0].slow_t = 0; w[0].bound_t = 0; }
   if w[0].dead { w[0].you_fall += t; w[0].you_body = tumble_stepped(w, w[0].you_body, t, heights); }
   if w[0].dead {
     w[0].dead_t += t;
@@ -1229,8 +1351,8 @@ watch_wave :: (w: [] Watch, l: int, you: Point) -> int {
 watch_stand_down :: (w: [] Watch) {
   w[0].wanted = false; w[0].unseen = 0;
   // the heat clears: the reinforcements go back out of their gate, the fallen are carried off
-  w[0].level = 0; w[0].heat = 0; w[0].marked = false;
-  for k: 0..<MISSILES { if w[0].missiles[k].kind == MS_WEAPON { w[0].missiles[k].live = false; } }
+  w[0].level = 0; w[0].heat = 0; w[0].marked = false; w[0].bound_t = 0;
+  for k: 0..<MISSILES { if w[0].missiles[k].kind == MS_WEAPON || w[0].missiles[k].kind == MS_MAGIC_MISSILE { w[0].missiles[k].live = false; } }
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
     if w[0].actors[i].mode == WM_DEAD || w[0].actors[i].mode == WM_DOWN { w[0].actors[i].homed = false; }
   }
@@ -1943,4 +2065,40 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   watch_cast(w2[..], j, MS_LIGHTNING, feet, you, heights[..]);
   for f: 0..<3 { watch_tick(w2[..], 0.1, v3(you.x, you.y, you.z + 8), 0.5, nob[..], 0, heights[..]); }
   #assert w2[0].hp == before;
+}
+
+#test "WANTED 5, you levitating 18 m up out of reach: the Archmage's Magic Missile darts turn after you and strike; Earthbind pulls you down" {
+  heights: [EG_GROUND_POINTS] f32;
+  watch_ground(heights[..]);
+  w: [1] Watch;
+  nob: [6] f32;
+  you := v3(0, 0, 9);
+  you.y = watch_feet_y(w[..], heights[..], you.x, you.z) + 18;
+  i := watch_test_caster(w[..], heights[..], RANK_ARCHMAGE, you);
+  w[0].hp = 100000; w[0].max = 100000;
+  feet := watch_feet_y(w[..], heights[..], w[0].actors[i].x, w[0].actors[i].z);
+  up := watch_span_gap(feet, you.y);
+  // out of reach: Earthbind first, then Magic Missile (its five darts), before any bolt
+  w[0].actors[i].bind_cool = 0; w[0].actors[i].mm_cool = 0;
+  #assert watch_choose(w[..], i, 12, up) == MS_EARTHBIND;
+  #assert watch_choose(w[..], i, 12, up) == MS_MAGIC_MISSILE && watch_darts(w[..], i) == 5;
+  // on the ground the old choices stand
+  #assert watch_choose(w[..], i, 12, 0) != MS_MAGIC_MISSILE;
+  // the darts: you fly on sideways at 6 m/s and they turn after you; each hits for 1d4 + 1
+  before := w[0].hp;
+  watch_cast(w[..], i, MS_MAGIC_MISSILE, feet, you, heights[..]);
+  w[0].actors[i].cast_cool = 1000;
+  for f: 0..<40 { you.x += 0.3; watch_tick(w[..], 0.05, you, 0.5, nob[..], 0, heights[..]); }
+  #assert w[0].darts_hit == 5 && before - w[0].hp >= 10 && before - w[0].hp <= 25;
+  // Earthbind: until a Strength save fails, then you are bound while the caster stands
+  for q: 0..<30 {
+    if watch_bound(w[..]) { break; }
+    watch_cast(w[..], i, MS_EARTHBIND, feet, you, heights[..]);
+    for f: 0..<5 { watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]); }
+  }
+  #assert watch_bound(w[..]) && w[0].bound_by == i;
+  // knocked down, they lose it
+  watch_harm(w[..], i, 1, you);
+  watch_tick(w[..], 0.1, you, 0.5, nob[..], 0, heights[..]);
+  #assert !watch_bound(w[..]);
 }

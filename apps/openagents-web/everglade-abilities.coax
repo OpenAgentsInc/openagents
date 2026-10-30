@@ -1056,6 +1056,7 @@ ab_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int) -> int 
 ab_levitate :: (s: [] Everglade) {
   a := ab_of(s);
   if a[0].lev_on && !a[0].lev_up { a[0].lev_on = false; a[0].lev_sink = false; sp_say(s, "LEVITATE ENDS", -1, ""); return; }
+  if s[0].wv.started && watch_bound(watch_w(s)) { sp_say(s, "EARTHBOUND", -1, ""); return; }
   a[0].lev_on = true; a[0].lev_up = true; a[0].lev_sink = false; a[0].lev_t = 0; a[0].lev_hold = ab_you(s).y;
   sp_say(s, "LEVITATE", -1, "");
 }
@@ -1431,6 +1432,8 @@ everglade_lift :: (s: [] Everglade, x: f32, z: f32, y0: f32, vy0: f32, y1: f32, 
     if a[0].lev_up { v = f32(AB_LEV_RISE); }
     else if a[0].lev_sink { v = -f32(AB_LEV_SINK); }
     else { v = clamp((a[0].lev_hold - (floor_y + y0)) * 1.5, -2, 2); }
+    // Earthbound (the watch's Earthbind): no rising, and down 60 feet a round to the ground
+    if s[0].wv.started && watch_bound(watch_w(s)) { a[0].lev_up = false; a[0].lev_sink = true; v = -f32(BIND_FALL); a[0].lev_hold = floor_y; }
     y := hi(y0 + v * dt, 0);
     if y > f32(AB_LEV_TOP) { y = f32(AB_LEV_TOP); v = lo(v, 0); if a[0].lev_up { a[0].lev_up = false; a[0].lev_hold = floor_y + y; } }
     if a[0].lev_sink && y <= 0.001 { a[0].lev_on = false; a[0].lev_sink = false; }
@@ -1956,4 +1959,24 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   // the wall gone, the way is straight again
   ab_frame(g[..], 700);
   #assert w[0].fence_n == 0 && near(watch_way(w, 0, -21, 0, -30), atan2(0, -9), 0.001);
+}
+
+#test "abilities: Earthbound (the watch's Earthbind), Levitate can't rise and sinks you 60 feet a round to the ground, where it ends; it can't be cast again" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  g[0].feet = v3(0, 0, -30);
+  a := ab_of(g[..]);
+  #assert spells_key(g[..], '7', 0) && a[0].lev_on;
+  y := f32(AB_LEV_TOP); v := 0.0f32;
+  g[0].wv.started = true;
+  w := watch_w(g[..]);
+  w[0].dead = false; w[0].bound_t = 60;
+  l := everglade_lift(g[..], 0, -30, y, v, y, v, 1.0);
+  #assert l.on && near(l.y, f32(AB_LEV_TOP) - f32(BIND_FALL), 0.01) && !a[0].lev_up;
+  y = l.y;
+  for k: 0..<10 { l = everglade_lift(g[..], 0, -30, y, v, y, v, 1.0); y = l.y; }
+  #assert !a[0].lev_on && y <= 0.001;
+  _ := spells_key_up(g[..], '7', 0);
+  #assert spells_key(g[..], '7', 0) && !a[0].lev_on;
 }

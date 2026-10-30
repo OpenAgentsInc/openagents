@@ -106,6 +106,9 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   w[0].face = s[0].face;
   watch_tick(w, dt, you, c.day, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
   // a hunter's spell threw you: the face adds it to your velocity
+  if w[0].bound_said == 1 { sp_say(s, "EARTHBIND", -1, ""); }
+  if w[0].bound_said == 2 { sp_say(s, "YOU RESIST EARTHBIND", -1, ""); }
+  w[0].bound_said = 0;
   if w[0].knocked { s[0].wv.knock = add(s[0].wv.knock, w[0].knock); s[0].wv.knocked = true; w[0].knocked = false; w[0].knock = v3(0, 0, 0); }
   if w[0].respawn {
     w[0].respawn = false;
@@ -373,6 +376,18 @@ watch_missiles_draw :: (s: [] Everglade) {
         }
         for q: 0..<4 { sp_add_puff(s, add(a, times(d, 4 + f32(q) * 3.5)), times(d, 2), 1.8, 1.6, 0.96); }
       }
+    } else if m.kind == MS_MAGIC_MISSILE {
+      // a dart: a bright violet-white head and a streak behind it along the way it turned
+      if m.t >= 0 && flying {
+        at := v3(m.ax, m.ay, m.az); v := v3(m.vx, m.vy, m.vz);
+        shape(s, SHAPE_SPHERE, LOOK_FLAME, at, 0, 0, 0.09, 0.09, 0.09, 0.85, 0.75, 1);
+        sp_add_spark(s, at, times(v, -0.18), 0.28, 0.08, v3(0.62, 0.45, 1), 0);
+      } else if burst { sp_burst(s, b, v3(0, 1, 0), 6, 3, 0.35, 0.07, v3(0.9, 0.8, 1), v3(0.55, 0.35, 1), 0); }
+    } else if m.kind == MS_EARTHBIND {
+      // yellow strips of magic from the hand to you
+      if flying {
+        for q: 0..<3 { sp_add_spark(s, add(p, times(sp_spray(s, 0), 0.2)), times(sub(b, a), -0.15), 0.2, 0.07, v3(1, 0.85, 0.2), 0); }
+      }
     } else if m.kind == MS_HEAL {
       if burst { sp_burst(s, b, v3(0, 1, 0), 12, 1.6, 0.9, 0.09, v3(0.75, 1, 0.65), v3(0.95, 1, 0.8), -2); }
     } else if m.kind == MS_WEAPON && !flying {
@@ -382,14 +397,30 @@ watch_missiles_draw :: (s: [] Everglade) {
       shape(s, SHAPE_SPHERE, LOOK_FLAME, add(b, v3(sin(turn) * 0.38, 0.22, cos(turn) * 0.38)), 0, 0, 0.16, 0.16, 0.16, 1, 0.9, 0.6);
     }
   }
-  // a caster's hands glow as they cast
+  // a caster's hands glow as they cast, and a bar over their head fills to the spell
   for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
     a := w[0].actors[i];
     if !a.homed || a.casting < 0 || a.mode == WM_DEAD { continue; }
-    hand := v3(a.x + sin(a.yaw) * 0.35, folk_feet(s, a.x, a.z) + 1.45, a.z + cos(a.yaw) * 0.35);
+    feet := folk_feet(s, a.x, a.z);
+    hand := v3(a.x + sin(a.yaw) * 0.35, feet + 1.45, a.z + cos(a.yaw) * 0.35);
     colour := ifx a.cast_kind == MS_FROST || a.cast_kind == MS_COLD || a.cast_kind == MS_LIGHTNING then v3(0.7, 0.88, 1)
-              else ifx a.cast_kind == MS_HOLD then v3(0.72, 0.45, 1) else ifx a.cast_kind == MS_HEAL || a.cast_kind == MS_GUIDING || a.cast_kind == MS_WEAPON then v3(1, 0.93, 0.6) else v3(1, 0.6, 0.2);
+              else ifx a.cast_kind == MS_HOLD || a.cast_kind == MS_MAGIC_MISSILE then v3(0.72, 0.45, 1) else ifx a.cast_kind == MS_EARTHBIND then v3(1, 0.85, 0.2)
+              else ifx a.cast_kind == MS_HEAL || a.cast_kind == MS_GUIDING || a.cast_kind == MS_WEAPON then v3(1, 0.93, 0.6) else v3(1, 0.6, 0.2);
     sp_add_spark(s, add(hand, times(sp_spray(s, 0), 0.12)), v3(0, 0.6, 0), 0.25, 0.07, colour, -1);
+    fill := clamp01(a.casting / hi(watch_wind(a.cast_kind), 0.01));
+    top := v3(a.x, feet + 2.35, a.z);
+    yaw := yaw_of(s[0].sp.shot.eye.x - top.x, s[0].sp.shot.eye.z - top.z);
+    shape(s, SHAPE_BOX, LOOK_MATTE, top, yaw, 0, 0.42, 0.045, 0.02, 0.06, 0.06, 0.07);
+    ax := v3(cos(yaw), 0, -sin(yaw));
+    shape(s, SHAPE_BOX, LOOK_FLAME, add(top, times(ax, -0.4 * (1 - fill))), yaw, 0, 0.4 * fill + 0.001, 0.035, 0.025, colour.x, colour.y, colour.z);
+  }
+  // Earthbind on you: yellow strips loop round you
+  if watch_bound(w) {
+    you := ab_you(s);
+    for q: 0..<2 {
+      ang := f32(s[0].time) * 4 + f32(q) * f32(PI);
+      sp_add_spark(s, v3(you.x + 0.6 * cos(ang), you.y + 0.3 + 0.6 * f32(q), you.z + 0.6 * sin(ang)), v3(-sin(ang), 0, cos(ang)), 0.3, 0.06, v3(1, 0.85, 0.2), 0);
+    }
   }
 }
 

@@ -696,6 +696,17 @@ Fireball throws the townsfolk too. The reinforcements wear the kit's
 leathers dyed by rank, and a Gladiator wears peasant's cloth. The casters
 are hooded and carry no sword or shield.
 
+From WANTED 4, staying up out of reach (levitating, or on a roof) no
+longer keeps you safe. The Mages and the Archmage cast what finds you in
+the air. Magic Missile sends darts that turn after you wherever you go
+and always hit, for 1d4 + 1 force each. A Mage sends three darts (four
+at WANTED 5) and the Archmage five, at most once every 7 s each. At
+WANTED 5 they also cast Earthbind. On a failed Strength save (+4) you
+can't rise, and you sink 60 feet a round to the ground. It lasts a
+minute, or until its caster is knocked down. Their bolts lead you,
+aimed at where you will be when they arrive. A bar over a caster's head
+fills while they cast, in the spell's colour.
+
 The heat clears when you die, or when you stay out of every hunter's
 sight long enough: 18 s at level 1, plus 9 s for each level above it
 (54 s at level 5). Then the reinforcements walk back out
