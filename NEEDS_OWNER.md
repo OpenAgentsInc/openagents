@@ -84,3 +84,20 @@ tailnet. Left for you: approval of the data migration and the DNS cutover (R3). 
 Decided 2026-10-29: the old Rust relay may be built and run inside a sandbox
 for the comparison; the Coax relay aims for full NIP support, starting with
 what the website uses. Still yours: the R3 migration and DNS cutover.
+
+## Psionic Part III: public ingress and a sustained serving window (2026-10-29)
+
+The original Elephant service was installed and checked privately on
+`coderos-4080`, `127.0.0.1:8798`, as the user unit
+`psionic-systemone.service`. Readiness, the retained golden answer, SIGKILL
+recovery with re-warm, and clean stop passed. It is now stopped, installed
+without boot enablement, so it does not reserve the shared card between uses.
+Start it with `systemctl --user start psionic-systemone.service` for a serving
+window. Its versioned artifacts and tokenizer persist in the user's data
+directory; its private usage journal lives in the user's state directory.
+
+For continuous or public serving, choose the host/GPU allocation, memory and
+spending budget, domain, TLS ingress and access policy. This work grants no
+public listener, DNS cutover or billing. The existing GPT-OSS service was left
+running; idle Elephant instances were stopped only under the owner's earlier
+authorization. Evidence: [Part III verification](docs/verification/psionic-partIII-2026-10-29.md).

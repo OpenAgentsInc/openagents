@@ -1,0 +1,66 @@
+{
+  "schema": "psionic-managed-operations-v1",
+  "address": "http://127.0.0.1:8798",
+  "unit": "psionic-systemone.service",
+  "initial_health": {
+    "schema": "psionic-health-v1",
+    "ready": true,
+    "checkpoint": "682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+    "build": "5f51c9ee090328ea588587e4784dc4743c01d9d8f728b22b89d164dcd0bf8a02"
+  },
+  "before": {
+    "model": "elephant-1",
+    "answers": {
+      "owned": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.757202773,
+        "probabilities": {
+          "yes": 0.757202773,
+          "no": 0.242797227
+        }
+      }
+    },
+    "usage": null,
+    "service": {
+      "door": "psionic",
+      "version": "psionic-serve-v1",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"
+    },
+    "latency_ms": 753
+  },
+  "supervisor_pid": 740951,
+  "killed_child_pid": 740958,
+  "replacement_child_pid": 780138,
+  "restart_ready_ms": 13735.055703902617,
+  "after_health": {
+    "schema": "psionic-health-v1",
+    "ready": true,
+    "checkpoint": "682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+    "build": "5f51c9ee090328ea588587e4784dc4743c01d9d8f728b22b89d164dcd0bf8a02"
+  },
+  "after": {
+    "model": "elephant-1",
+    "answers": {
+      "owned": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.757202773,
+        "probabilities": {
+          "yes": 0.757202773,
+          "no": 0.242797227
+        }
+      }
+    },
+    "usage": null,
+    "service": {
+      "door": "psionic",
+      "version": "psionic-serve-v1",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"
+    },
+    "latency_ms": 798
+  },
+  "success": true,
+  "final_state": "inactive",
+  "boot_state": "static"
+}

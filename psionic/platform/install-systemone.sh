@@ -4,7 +4,7 @@
 set -euo pipefail
 if [[ $# -lt 3 || $# -gt 5 ]];then echo 'usage: install-systemone.sh BUILD MODEL_DIRECTORY TOKENIZER_PST [PORT [DEVICE_MIB]]' >&2;exit 2;fi
 build=$1 model=$2 table=$3 port=${4:-8798} device=${5:-1024}
-[[ $port =~ ^[0-9]+$ && $port -ge 1 && $port -le 65535 && $device =~ ^[0-9]+$ && $device -ge 1 ]] || exit 2
+[[ $port =~ ^[0-9]+$ && $port -ge 1 && $port -le 65535 && $device =~ ^[0-9]+$ && $device -ge 1 && $device -le 1048576 ]] || exit 2
 for path in "$build" "$model" "$table";do [[ $path == /* && $path != *$'\n'* && $path != *$'\r'* ]] || { echo 'absolute paths without line breaks required' >&2;exit 2; };done
 identity=$(awk -F'"' '/^#define PSIONIC_BUILD_ID /{print $2}' "$build/serve-build-id.h")
 [[ $identity =~ ^[0-9a-f]{64}$ ]] || exit 2
@@ -18,6 +18,8 @@ for name in psionic-serve psionic-supervise serve-build.json serve-build-id.h pr
     if [[ -f $root/$name ]];then cmp "$build/$name" "$root/$name";else cp "$build/$name" "$root/$name";fi
 done
 chmod 755 "$root/psionic-serve" "$root/psionic-supervise"
+if [[ -f $root/qwen35.pst ]];then cmp "$table" "$root/qwen35.pst";else cp "$table" "$root/qwen35.pst";fi
+table=$root/qwen35.pst
 unit=$units/psionic-systemone.service
 if [[ -e $unit ]] && ! rg -q '^# Managed by Psionic Part III$' "$unit";then echo 'existing unit is not managed by this installer' >&2;exit 2;fi
 quote_unit() { local value=$1;value=${value//\\/\\\\};value=${value//\"/\\\"};value=${value//%/%%};value=${value//\$/\$\$};printf '"%s"' "$value"; }

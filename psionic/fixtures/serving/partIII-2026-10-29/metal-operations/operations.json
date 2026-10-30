@@ -1,0 +1,76 @@
+{
+  "schema": "psionic-device-operations-v1",
+  "health": {
+    "schema": "psionic-health-v1",
+    "ready": true,
+    "checkpoint": "682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+    "build": "2d54d91ccf6477e1eeb15d617fc46e6bb7ba36af7bc815862204b4e44aafc57b"
+  },
+  "busy_response_ms": 23.085083987098187,
+  "primary_after_busy": {
+    "model": "elephant-1",
+    "answers": {
+      "0": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.981998169,
+        "probabilities": {
+          "yes": 0.981998169,
+          "no": 0.018001831
+        }
+      },
+      "1": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.981998169,
+        "probabilities": {
+          "yes": 0.981998169,
+          "no": 0.018001831
+        }
+      },
+      "2": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.981998169,
+        "probabilities": {
+          "yes": 0.981998169,
+          "no": 0.018001831
+        }
+      }
+    },
+    "usage": null,
+    "service": {
+      "door": "psionic",
+      "version": "psionic-serve-v1",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"
+    },
+    "latency_ms": 1969
+  },
+  "answer_after_cancel": {
+    "model": "elephant-1",
+    "answers": {
+      "0": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.757192428,
+        "probabilities": {
+          "yes": 0.757192428,
+          "no": 0.242807572
+        }
+      }
+    },
+    "usage": null,
+    "service": {
+      "door": "psionic",
+      "version": "psionic-serve-v1",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"
+    },
+    "latency_ms": 330
+  },
+  "success": true,
+  "prefix_hit_rows": [
+    2,
+    2,
+    2
+  ]
+}

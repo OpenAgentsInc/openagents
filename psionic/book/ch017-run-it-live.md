@@ -79,6 +79,17 @@ binds and sends its optional native Unix-datagram readiness notification.
 There is no systemd library or Python runtime dependency, no root installation
 and no automatic boot enablement.
 
+The owned RTX 4080 deployment passed readiness and the original golden answer
+on port 8798. Killing its child with SIGKILL caused the same supervisor to
+start a replacement, authenticate, place, warm and return ready in 13.735
+seconds; its answer was identical. The
+[managed-service check](../tests/service_managed.py) records both child IDs,
+the probe identities and the journal. The unit was then stopped cleanly to
+release the shared GPU; it is installed but not boot-enabled. Start it with
+`systemctl --user start psionic-systemone.service` when a serving window is
+available. This is a checked private deployment, not a public availability
+claim.
+
 Promotion means passing the retained golden gate before an endpoint becomes
 ready. This first service does not implement zero-downtime rolling replacement,
 canaries or availability during restart; those belong to the later serving

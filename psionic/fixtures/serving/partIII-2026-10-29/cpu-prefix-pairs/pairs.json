@@ -1,0 +1,1746 @@
+{
+  "schema": "psionic-prefix-pairs-v1",
+  "binary_sha256": "1e07c87e62a8aa12b92d65a15c3db55d4d77c0c1acf8fa3998f675b9304b5278",
+  "load_at_start": [
+    22.52099609375,
+    29.1044921875,
+    28.3046875
+  ],
+  "workloads": [
+    {
+      "repeat": 1,
+      "request": {
+        "model": "psionic-toy",
+        "state": "Water is wet.",
+        "questions": {
+          "0": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          },
+          "1": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          },
+          "2": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          }
+        }
+      },
+      "retained_answer": {
+        "0": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562052749,
+          "probabilities": {
+            "yes": 0.437947251,
+            "no": 0.562052749
+          }
+        },
+        "1": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562052749,
+          "probabilities": {
+            "yes": 0.437947251,
+            "no": 0.562052749
+          }
+        },
+        "2": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562052749,
+          "probabilities": {
+            "yes": 0.437947251,
+            "no": 0.562052749
+          }
+        }
+      },
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+      "pairs": [
+        {
+          "before_us": 93905,
+          "after_us": 68650,
+          "first": "before"
+        },
+        {
+          "before_us": 96711,
+          "after_us": 65381,
+          "first": "after"
+        },
+        {
+          "before_us": 96396,
+          "after_us": 63157,
+          "first": "before"
+        },
+        {
+          "before_us": 93957,
+          "after_us": 61552,
+          "first": "after"
+        },
+        {
+          "before_us": 92865,
+          "after_us": 58875,
+          "first": "before"
+        },
+        {
+          "before_us": 89166,
+          "after_us": 59002,
+          "first": "after"
+        },
+        {
+          "before_us": 88778,
+          "after_us": 58867,
+          "first": "before"
+        },
+        {
+          "before_us": 86538,
+          "after_us": 56181,
+          "first": "after"
+        },
+        {
+          "before_us": 83765,
+          "after_us": 52958,
+          "first": "before"
+        },
+        {
+          "before_us": 83281,
+          "after_us": 55701,
+          "first": "after"
+        },
+        {
+          "before_us": 85168,
+          "after_us": 59670,
+          "first": "before"
+        },
+        {
+          "before_us": 88549,
+          "after_us": 59327,
+          "first": "after"
+        },
+        {
+          "before_us": 86439,
+          "after_us": 56536,
+          "first": "before"
+        },
+        {
+          "before_us": 81580,
+          "after_us": 56780,
+          "first": "after"
+        },
+        {
+          "before_us": 90115,
+          "after_us": 60872,
+          "first": "before"
+        },
+        {
+          "before_us": 93477,
+          "after_us": 62720,
+          "first": "after"
+        },
+        {
+          "before_us": 94670,
+          "after_us": 62092,
+          "first": "before"
+        },
+        {
+          "before_us": 92412,
+          "after_us": 60808,
+          "first": "after"
+        },
+        {
+          "before_us": 89264,
+          "after_us": 59678,
+          "first": "before"
+        },
+        {
+          "before_us": 92272,
+          "after_us": 58314,
+          "first": "after"
+        },
+        {
+          "before_us": 88189,
+          "after_us": 61095,
+          "first": "before"
+        },
+        {
+          "before_us": 93018,
+          "after_us": 58828,
+          "first": "after"
+        },
+        {
+          "before_us": 92393,
+          "after_us": 57102,
+          "first": "before"
+        },
+        {
+          "before_us": 90602,
+          "after_us": 59270,
+          "first": "after"
+        },
+        {
+          "before_us": 89192,
+          "after_us": 57528,
+          "first": "before"
+        },
+        {
+          "before_us": 88970,
+          "after_us": 59487,
+          "first": "after"
+        },
+        {
+          "before_us": 90046,
+          "after_us": 59388,
+          "first": "before"
+        },
+        {
+          "before_us": 88942,
+          "after_us": 58799,
+          "first": "after"
+        },
+        {
+          "before_us": 87118,
+          "after_us": 57071,
+          "first": "before"
+        },
+        {
+          "before_us": 85962,
+          "after_us": 57055,
+          "first": "after"
+        },
+        {
+          "before_us": 87674,
+          "after_us": 54103,
+          "first": "before"
+        },
+        {
+          "before_us": 84921,
+          "after_us": 57050,
+          "first": "after"
+        },
+        {
+          "before_us": 84735,
+          "after_us": 57663,
+          "first": "before"
+        },
+        {
+          "before_us": 84236,
+          "after_us": 57292,
+          "first": "after"
+        },
+        {
+          "before_us": 86595,
+          "after_us": 53682,
+          "first": "before"
+        },
+        {
+          "before_us": 88028,
+          "after_us": 55081,
+          "first": "after"
+        },
+        {
+          "before_us": 82753,
+          "after_us": 61955,
+          "first": "before"
+        },
+        {
+          "before_us": 88962,
+          "after_us": 55762,
+          "first": "after"
+        },
+        {
+          "before_us": 88993,
+          "after_us": 60014,
+          "first": "before"
+        },
+        {
+          "before_us": 91986,
+          "after_us": 59147,
+          "first": "after"
+        },
+        {
+          "before_us": 89739,
+          "after_us": 55163,
+          "first": "before"
+        },
+        {
+          "before_us": 83584,
+          "after_us": 59142,
+          "first": "after"
+        },
+        {
+          "before_us": 86389,
+          "after_us": 57060,
+          "first": "before"
+        },
+        {
+          "before_us": 86502,
+          "after_us": 54638,
+          "first": "after"
+        },
+        {
+          "before_us": 85210,
+          "after_us": 56265,
+          "first": "before"
+        },
+        {
+          "before_us": 85696,
+          "after_us": 58671,
+          "first": "after"
+        },
+        {
+          "before_us": 88075,
+          "after_us": 57200,
+          "first": "before"
+        },
+        {
+          "before_us": 87878,
+          "after_us": 58108,
+          "first": "after"
+        },
+        {
+          "before_us": 91470,
+          "after_us": 59490,
+          "first": "before"
+        },
+        {
+          "before_us": 89759,
+          "after_us": 58258,
+          "first": "after"
+        },
+        {
+          "before_us": 86571,
+          "after_us": 55367,
+          "first": "before"
+        },
+        {
+          "before_us": 86561,
+          "after_us": 58228,
+          "first": "after"
+        },
+        {
+          "before_us": 85104,
+          "after_us": 54895,
+          "first": "before"
+        },
+        {
+          "before_us": 84244,
+          "after_us": 54321,
+          "first": "after"
+        },
+        {
+          "before_us": 84018,
+          "after_us": 57575,
+          "first": "before"
+        },
+        {
+          "before_us": 78584,
+          "after_us": 55597,
+          "first": "after"
+        },
+        {
+          "before_us": 78997,
+          "after_us": 53929,
+          "first": "before"
+        },
+        {
+          "before_us": 82807,
+          "after_us": 53190,
+          "first": "after"
+        },
+        {
+          "before_us": 79568,
+          "after_us": 53581,
+          "first": "before"
+        },
+        {
+          "before_us": 79295,
+          "after_us": 53641,
+          "first": "after"
+        },
+        {
+          "before_us": 78876,
+          "after_us": 52817,
+          "first": "before"
+        },
+        {
+          "before_us": 81648,
+          "after_us": 53692,
+          "first": "after"
+        },
+        {
+          "before_us": 79038,
+          "after_us": 52133,
+          "first": "before"
+        },
+        {
+          "before_us": 79692,
+          "after_us": 53537,
+          "first": "after"
+        },
+        {
+          "before_us": 78800,
+          "after_us": 52776,
+          "first": "before"
+        },
+        {
+          "before_us": 77784,
+          "after_us": 51914,
+          "first": "after"
+        },
+        {
+          "before_us": 79264,
+          "after_us": 51731,
+          "first": "before"
+        },
+        {
+          "before_us": 78395,
+          "after_us": 51861,
+          "first": "after"
+        },
+        {
+          "before_us": 77947,
+          "after_us": 51419,
+          "first": "before"
+        },
+        {
+          "before_us": 80787,
+          "after_us": 56723,
+          "first": "after"
+        },
+        {
+          "before_us": 78768,
+          "after_us": 50354,
+          "first": "before"
+        },
+        {
+          "before_us": 77454,
+          "after_us": 51065,
+          "first": "after"
+        },
+        {
+          "before_us": 77774,
+          "after_us": 53091,
+          "first": "before"
+        },
+        {
+          "before_us": 79194,
+          "after_us": 52424,
+          "first": "after"
+        },
+        {
+          "before_us": 80479,
+          "after_us": 53047,
+          "first": "before"
+        },
+        {
+          "before_us": 78844,
+          "after_us": 52268,
+          "first": "after"
+        },
+        {
+          "before_us": 77903,
+          "after_us": 51877,
+          "first": "before"
+        },
+        {
+          "before_us": 77344,
+          "after_us": 51434,
+          "first": "after"
+        },
+        {
+          "before_us": 77121,
+          "after_us": 50307,
+          "first": "before"
+        },
+        {
+          "before_us": 76946,
+          "after_us": 50912,
+          "first": "after"
+        },
+        {
+          "before_us": 79132,
+          "after_us": 51300,
+          "first": "before"
+        },
+        {
+          "before_us": 78672,
+          "after_us": 53810,
+          "first": "after"
+        },
+        {
+          "before_us": 78564,
+          "after_us": 52210,
+          "first": "before"
+        },
+        {
+          "before_us": 78710,
+          "after_us": 52105,
+          "first": "after"
+        },
+        {
+          "before_us": 79112,
+          "after_us": 51944,
+          "first": "before"
+        },
+        {
+          "before_us": 79490,
+          "after_us": 51740,
+          "first": "after"
+        },
+        {
+          "before_us": 78303,
+          "after_us": 51280,
+          "first": "before"
+        },
+        {
+          "before_us": 78483,
+          "after_us": 54935,
+          "first": "after"
+        },
+        {
+          "before_us": 78315,
+          "after_us": 52077,
+          "first": "before"
+        },
+        {
+          "before_us": 77879,
+          "after_us": 51402,
+          "first": "after"
+        },
+        {
+          "before_us": 80296,
+          "after_us": 52021,
+          "first": "before"
+        },
+        {
+          "before_us": 79681,
+          "after_us": 51868,
+          "first": "after"
+        },
+        {
+          "before_us": 78477,
+          "after_us": 50357,
+          "first": "before"
+        },
+        {
+          "before_us": 78590,
+          "after_us": 51320,
+          "first": "after"
+        },
+        {
+          "before_us": 76941,
+          "after_us": 49950,
+          "first": "before"
+        },
+        {
+          "before_us": 76922,
+          "after_us": 50956,
+          "first": "after"
+        },
+        {
+          "before_us": 77664,
+          "after_us": 51487,
+          "first": "before"
+        },
+        {
+          "before_us": 78985,
+          "after_us": 52064,
+          "first": "after"
+        },
+        {
+          "before_us": 78351,
+          "after_us": 51032,
+          "first": "before"
+        },
+        {
+          "before_us": 78741,
+          "after_us": 51914,
+          "first": "after"
+        }
+      ],
+      "before": {
+        "p50_us": 83765,
+        "p95_us": 93477,
+        "p99_us": 96396
+      },
+      "after": {
+        "p50_us": 55081,
+        "p95_us": 61955,
+        "p99_us": 65381
+      }
+    },
+    {
+      "repeat": 4,
+      "request": {
+        "model": "psionic-toy",
+        "state": "Water is wet. Water is wet. Water is wet. Water is wet.",
+        "questions": {
+          "0": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          },
+          "1": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          },
+          "2": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          }
+        }
+      },
+      "retained_answer": {
+        "0": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562380824,
+          "probabilities": {
+            "yes": 0.437619176,
+            "no": 0.562380824
+          }
+        },
+        "1": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562380824,
+          "probabilities": {
+            "yes": 0.437619176,
+            "no": 0.562380824
+          }
+        },
+        "2": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562380824,
+          "probabilities": {
+            "yes": 0.437619176,
+            "no": 0.562380824
+          }
+        }
+      },
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+      "pairs": [
+        {
+          "before_us": 102016,
+          "after_us": 63017,
+          "first": "before"
+        },
+        {
+          "before_us": 101888,
+          "after_us": 64835,
+          "first": "after"
+        },
+        {
+          "before_us": 101191,
+          "after_us": 63352,
+          "first": "before"
+        },
+        {
+          "before_us": 101567,
+          "after_us": 62786,
+          "first": "after"
+        },
+        {
+          "before_us": 102551,
+          "after_us": 62984,
+          "first": "before"
+        },
+        {
+          "before_us": 101590,
+          "after_us": 62518,
+          "first": "after"
+        },
+        {
+          "before_us": 105601,
+          "after_us": 63395,
+          "first": "before"
+        },
+        {
+          "before_us": 103131,
+          "after_us": 63784,
+          "first": "after"
+        },
+        {
+          "before_us": 105095,
+          "after_us": 64527,
+          "first": "before"
+        },
+        {
+          "before_us": 103523,
+          "after_us": 68354,
+          "first": "after"
+        },
+        {
+          "before_us": 102152,
+          "after_us": 63449,
+          "first": "before"
+        },
+        {
+          "before_us": 109571,
+          "after_us": 65671,
+          "first": "after"
+        },
+        {
+          "before_us": 109276,
+          "after_us": 64683,
+          "first": "before"
+        },
+        {
+          "before_us": 106856,
+          "after_us": 67247,
+          "first": "after"
+        },
+        {
+          "before_us": 106429,
+          "after_us": 70170,
+          "first": "before"
+        },
+        {
+          "before_us": 108387,
+          "after_us": 64883,
+          "first": "after"
+        },
+        {
+          "before_us": 108153,
+          "after_us": 69679,
+          "first": "before"
+        },
+        {
+          "before_us": 110474,
+          "after_us": 66065,
+          "first": "after"
+        },
+        {
+          "before_us": 123968,
+          "after_us": 82686,
+          "first": "before"
+        },
+        {
+          "before_us": 117178,
+          "after_us": 72060,
+          "first": "after"
+        },
+        {
+          "before_us": 115282,
+          "after_us": 70288,
+          "first": "before"
+        },
+        {
+          "before_us": 109113,
+          "after_us": 69919,
+          "first": "after"
+        },
+        {
+          "before_us": 110508,
+          "after_us": 68074,
+          "first": "before"
+        },
+        {
+          "before_us": 107226,
+          "after_us": 67220,
+          "first": "after"
+        },
+        {
+          "before_us": 109121,
+          "after_us": 67092,
+          "first": "before"
+        },
+        {
+          "before_us": 109712,
+          "after_us": 72036,
+          "first": "after"
+        },
+        {
+          "before_us": 113872,
+          "after_us": 70491,
+          "first": "before"
+        },
+        {
+          "before_us": 111944,
+          "after_us": 69451,
+          "first": "after"
+        },
+        {
+          "before_us": 111052,
+          "after_us": 66973,
+          "first": "before"
+        },
+        {
+          "before_us": 106807,
+          "after_us": 67412,
+          "first": "after"
+        },
+        {
+          "before_us": 116004,
+          "after_us": 74567,
+          "first": "before"
+        },
+        {
+          "before_us": 124101,
+          "after_us": 75034,
+          "first": "after"
+        },
+        {
+          "before_us": 124453,
+          "after_us": 73779,
+          "first": "before"
+        },
+        {
+          "before_us": 112494,
+          "after_us": 69395,
+          "first": "after"
+        },
+        {
+          "before_us": 115254,
+          "after_us": 70684,
+          "first": "before"
+        },
+        {
+          "before_us": 115816,
+          "after_us": 71831,
+          "first": "after"
+        },
+        {
+          "before_us": 113394,
+          "after_us": 69797,
+          "first": "before"
+        },
+        {
+          "before_us": 115132,
+          "after_us": 70222,
+          "first": "after"
+        },
+        {
+          "before_us": 115316,
+          "after_us": 71966,
+          "first": "before"
+        },
+        {
+          "before_us": 111239,
+          "after_us": 71231,
+          "first": "after"
+        },
+        {
+          "before_us": 111590,
+          "after_us": 69454,
+          "first": "before"
+        },
+        {
+          "before_us": 124343,
+          "after_us": 68290,
+          "first": "after"
+        },
+        {
+          "before_us": 114558,
+          "after_us": 70787,
+          "first": "before"
+        },
+        {
+          "before_us": 110652,
+          "after_us": 69922,
+          "first": "after"
+        },
+        {
+          "before_us": 113079,
+          "after_us": 67645,
+          "first": "before"
+        },
+        {
+          "before_us": 130629,
+          "after_us": 77187,
+          "first": "after"
+        },
+        {
+          "before_us": 126509,
+          "after_us": 90546,
+          "first": "before"
+        },
+        {
+          "before_us": 137762,
+          "after_us": 89216,
+          "first": "after"
+        },
+        {
+          "before_us": 135181,
+          "after_us": 76201,
+          "first": "before"
+        },
+        {
+          "before_us": 114575,
+          "after_us": 72425,
+          "first": "after"
+        },
+        {
+          "before_us": 119561,
+          "after_us": 73986,
+          "first": "before"
+        },
+        {
+          "before_us": 120859,
+          "after_us": 75178,
+          "first": "after"
+        },
+        {
+          "before_us": 141431,
+          "after_us": 91142,
+          "first": "before"
+        },
+        {
+          "before_us": 154656,
+          "after_us": 95646,
+          "first": "after"
+        },
+        {
+          "before_us": 160121,
+          "after_us": 97824,
+          "first": "before"
+        },
+        {
+          "before_us": 168010,
+          "after_us": 114189,
+          "first": "after"
+        },
+        {
+          "before_us": 201205,
+          "after_us": 124755,
+          "first": "before"
+        },
+        {
+          "before_us": 234954,
+          "after_us": 115908,
+          "first": "after"
+        },
+        {
+          "before_us": 208755,
+          "after_us": 104230,
+          "first": "before"
+        },
+        {
+          "before_us": 174630,
+          "after_us": 106996,
+          "first": "after"
+        },
+        {
+          "before_us": 191783,
+          "after_us": 116600,
+          "first": "before"
+        },
+        {
+          "before_us": 166765,
+          "after_us": 116366,
+          "first": "after"
+        },
+        {
+          "before_us": 170355,
+          "after_us": 105719,
+          "first": "before"
+        },
+        {
+          "before_us": 163775,
+          "after_us": 103802,
+          "first": "after"
+        },
+        {
+          "before_us": 166535,
+          "after_us": 98711,
+          "first": "before"
+        },
+        {
+          "before_us": 166414,
+          "after_us": 99409,
+          "first": "after"
+        },
+        {
+          "before_us": 162149,
+          "after_us": 97914,
+          "first": "before"
+        },
+        {
+          "before_us": 162302,
+          "after_us": 97076,
+          "first": "after"
+        },
+        {
+          "before_us": 162027,
+          "after_us": 99135,
+          "first": "before"
+        },
+        {
+          "before_us": 161247,
+          "after_us": 99413,
+          "first": "after"
+        },
+        {
+          "before_us": 160729,
+          "after_us": 95976,
+          "first": "before"
+        },
+        {
+          "before_us": 158747,
+          "after_us": 96192,
+          "first": "after"
+        },
+        {
+          "before_us": 160906,
+          "after_us": 96058,
+          "first": "before"
+        },
+        {
+          "before_us": 167015,
+          "after_us": 97916,
+          "first": "after"
+        },
+        {
+          "before_us": 189796,
+          "after_us": 132020,
+          "first": "before"
+        },
+        {
+          "before_us": 209926,
+          "after_us": 117125,
+          "first": "after"
+        },
+        {
+          "before_us": 214508,
+          "after_us": 134231,
+          "first": "before"
+        },
+        {
+          "before_us": 209112,
+          "after_us": 128835,
+          "first": "after"
+        },
+        {
+          "before_us": 195588,
+          "after_us": 118682,
+          "first": "before"
+        },
+        {
+          "before_us": 188549,
+          "after_us": 130013,
+          "first": "after"
+        },
+        {
+          "before_us": 220053,
+          "after_us": 128173,
+          "first": "before"
+        },
+        {
+          "before_us": 200658,
+          "after_us": 129644,
+          "first": "after"
+        },
+        {
+          "before_us": 219163,
+          "after_us": 118064,
+          "first": "before"
+        },
+        {
+          "before_us": 217515,
+          "after_us": 116770,
+          "first": "after"
+        },
+        {
+          "before_us": 195349,
+          "after_us": 124920,
+          "first": "before"
+        },
+        {
+          "before_us": 195230,
+          "after_us": 126652,
+          "first": "after"
+        },
+        {
+          "before_us": 186412,
+          "after_us": 118362,
+          "first": "before"
+        },
+        {
+          "before_us": 230491,
+          "after_us": 132685,
+          "first": "after"
+        },
+        {
+          "before_us": 204562,
+          "after_us": 166808,
+          "first": "before"
+        },
+        {
+          "before_us": 203211,
+          "after_us": 160337,
+          "first": "after"
+        },
+        {
+          "before_us": 170427,
+          "after_us": 160350,
+          "first": "before"
+        },
+        {
+          "before_us": 206579,
+          "after_us": 134808,
+          "first": "after"
+        },
+        {
+          "before_us": 203115,
+          "after_us": 125246,
+          "first": "before"
+        },
+        {
+          "before_us": 171788,
+          "after_us": 126121,
+          "first": "after"
+        },
+        {
+          "before_us": 199869,
+          "after_us": 118700,
+          "first": "before"
+        },
+        {
+          "before_us": 231849,
+          "after_us": 123093,
+          "first": "after"
+        },
+        {
+          "before_us": 224391,
+          "after_us": 165770,
+          "first": "before"
+        },
+        {
+          "before_us": 176963,
+          "after_us": 116533,
+          "first": "after"
+        },
+        {
+          "before_us": 160125,
+          "after_us": 108196,
+          "first": "before"
+        },
+        {
+          "before_us": 178469,
+          "after_us": 119182,
+          "first": "after"
+        }
+      ],
+      "before": {
+        "p50_us": 130629,
+        "p95_us": 219163,
+        "p99_us": 231849
+      },
+      "after": {
+        "p50_us": 82686,
+        "p95_us": 134231,
+        "p99_us": 165770
+      }
+    },
+    {
+      "repeat": 8,
+      "request": {
+        "model": "psionic-toy",
+        "state": "Water is wet. Water is wet. Water is wet. Water is wet. Water is wet. Water is wet. Water is wet. Water is wet.",
+        "questions": {
+          "0": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          },
+          "1": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          },
+          "2": {
+            "type": "choice",
+            "instructions": "Is the water wet?",
+            "criteria": {
+              "yes": null,
+              "no": null
+            }
+          }
+        }
+      },
+      "retained_answer": {
+        "0": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562598907,
+          "probabilities": {
+            "yes": 0.437401093,
+            "no": 0.562598907
+          }
+        },
+        "1": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562598907,
+          "probabilities": {
+            "yes": 0.437401093,
+            "no": 0.562598907
+          }
+        },
+        "2": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562598907,
+          "probabilities": {
+            "yes": 0.437401093,
+            "no": 0.562598907
+          }
+        }
+      },
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+      "pairs": [
+        {
+          "before_us": 321920,
+          "after_us": 194651,
+          "first": "before"
+        },
+        {
+          "before_us": 301749,
+          "after_us": 211581,
+          "first": "after"
+        },
+        {
+          "before_us": 505330,
+          "after_us": 205320,
+          "first": "before"
+        },
+        {
+          "before_us": 317295,
+          "after_us": 208921,
+          "first": "after"
+        },
+        {
+          "before_us": 477043,
+          "after_us": 183142,
+          "first": "before"
+        },
+        {
+          "before_us": 273880,
+          "after_us": 160966,
+          "first": "after"
+        },
+        {
+          "before_us": 260612,
+          "after_us": 174127,
+          "first": "before"
+        },
+        {
+          "before_us": 262445,
+          "after_us": 167164,
+          "first": "after"
+        },
+        {
+          "before_us": 237183,
+          "after_us": 136513,
+          "first": "before"
+        },
+        {
+          "before_us": 251049,
+          "after_us": 144183,
+          "first": "after"
+        },
+        {
+          "before_us": 266945,
+          "after_us": 158504,
+          "first": "before"
+        },
+        {
+          "before_us": 254063,
+          "after_us": 144238,
+          "first": "after"
+        },
+        {
+          "before_us": 246731,
+          "after_us": 151444,
+          "first": "before"
+        },
+        {
+          "before_us": 274368,
+          "after_us": 170628,
+          "first": "after"
+        },
+        {
+          "before_us": 282753,
+          "after_us": 155709,
+          "first": "before"
+        },
+        {
+          "before_us": 273402,
+          "after_us": 147386,
+          "first": "after"
+        },
+        {
+          "before_us": 342857,
+          "after_us": 189485,
+          "first": "before"
+        },
+        {
+          "before_us": 271494,
+          "after_us": 160752,
+          "first": "after"
+        },
+        {
+          "before_us": 358577,
+          "after_us": 155009,
+          "first": "before"
+        },
+        {
+          "before_us": 278486,
+          "after_us": 150525,
+          "first": "after"
+        },
+        {
+          "before_us": 255832,
+          "after_us": 178246,
+          "first": "before"
+        },
+        {
+          "before_us": 260656,
+          "after_us": 141986,
+          "first": "after"
+        },
+        {
+          "before_us": 257567,
+          "after_us": 150660,
+          "first": "before"
+        },
+        {
+          "before_us": 271546,
+          "after_us": 168884,
+          "first": "after"
+        },
+        {
+          "before_us": 258037,
+          "after_us": 148281,
+          "first": "before"
+        },
+        {
+          "before_us": 259485,
+          "after_us": 145354,
+          "first": "after"
+        },
+        {
+          "before_us": 266061,
+          "after_us": 141511,
+          "first": "before"
+        },
+        {
+          "before_us": 270851,
+          "after_us": 134972,
+          "first": "after"
+        },
+        {
+          "before_us": 263819,
+          "after_us": 147538,
+          "first": "before"
+        },
+        {
+          "before_us": 257153,
+          "after_us": 145640,
+          "first": "after"
+        },
+        {
+          "before_us": 252309,
+          "after_us": 144213,
+          "first": "before"
+        },
+        {
+          "before_us": 268519,
+          "after_us": 182503,
+          "first": "after"
+        },
+        {
+          "before_us": 259417,
+          "after_us": 158316,
+          "first": "before"
+        },
+        {
+          "before_us": 265650,
+          "after_us": 131237,
+          "first": "after"
+        },
+        {
+          "before_us": 240328,
+          "after_us": 156572,
+          "first": "before"
+        },
+        {
+          "before_us": 377374,
+          "after_us": 161469,
+          "first": "after"
+        },
+        {
+          "before_us": 351000,
+          "after_us": 212152,
+          "first": "before"
+        },
+        {
+          "before_us": 261865,
+          "after_us": 255340,
+          "first": "after"
+        },
+        {
+          "before_us": 304399,
+          "after_us": 139878,
+          "first": "before"
+        },
+        {
+          "before_us": 273391,
+          "after_us": 156367,
+          "first": "after"
+        },
+        {
+          "before_us": 248379,
+          "after_us": 168569,
+          "first": "before"
+        },
+        {
+          "before_us": 381092,
+          "after_us": 231695,
+          "first": "after"
+        },
+        {
+          "before_us": 286769,
+          "after_us": 148243,
+          "first": "before"
+        },
+        {
+          "before_us": 269517,
+          "after_us": 149261,
+          "first": "after"
+        },
+        {
+          "before_us": 253277,
+          "after_us": 137818,
+          "first": "before"
+        },
+        {
+          "before_us": 296854,
+          "after_us": 142960,
+          "first": "after"
+        },
+        {
+          "before_us": 296735,
+          "after_us": 187236,
+          "first": "before"
+        },
+        {
+          "before_us": 270892,
+          "after_us": 171001,
+          "first": "after"
+        },
+        {
+          "before_us": 278627,
+          "after_us": 178301,
+          "first": "before"
+        },
+        {
+          "before_us": 362796,
+          "after_us": 190463,
+          "first": "after"
+        },
+        {
+          "before_us": 361748,
+          "after_us": 192975,
+          "first": "before"
+        },
+        {
+          "before_us": 306539,
+          "after_us": 160365,
+          "first": "after"
+        },
+        {
+          "before_us": 290655,
+          "after_us": 142937,
+          "first": "before"
+        },
+        {
+          "before_us": 274180,
+          "after_us": 157312,
+          "first": "after"
+        },
+        {
+          "before_us": 358794,
+          "after_us": 219399,
+          "first": "before"
+        },
+        {
+          "before_us": 323212,
+          "after_us": 176268,
+          "first": "after"
+        },
+        {
+          "before_us": 329226,
+          "after_us": 188752,
+          "first": "before"
+        },
+        {
+          "before_us": 303566,
+          "after_us": 161524,
+          "first": "after"
+        },
+        {
+          "before_us": 490825,
+          "after_us": 204329,
+          "first": "before"
+        },
+        {
+          "before_us": 482784,
+          "after_us": 244779,
+          "first": "after"
+        },
+        {
+          "before_us": 377659,
+          "after_us": 143551,
+          "first": "before"
+        },
+        {
+          "before_us": 239973,
+          "after_us": 157058,
+          "first": "after"
+        },
+        {
+          "before_us": 316065,
+          "after_us": 242957,
+          "first": "before"
+        },
+        {
+          "before_us": 338901,
+          "after_us": 224444,
+          "first": "after"
+        },
+        {
+          "before_us": 294280,
+          "after_us": 177039,
+          "first": "before"
+        },
+        {
+          "before_us": 313576,
+          "after_us": 192646,
+          "first": "after"
+        },
+        {
+          "before_us": 606483,
+          "after_us": 199349,
+          "first": "before"
+        },
+        {
+          "before_us": 306311,
+          "after_us": 232847,
+          "first": "after"
+        },
+        {
+          "before_us": 322414,
+          "after_us": 213196,
+          "first": "before"
+        },
+        {
+          "before_us": 324689,
+          "after_us": 220924,
+          "first": "after"
+        },
+        {
+          "before_us": 320221,
+          "after_us": 170964,
+          "first": "before"
+        },
+        {
+          "before_us": 271310,
+          "after_us": 171213,
+          "first": "after"
+        },
+        {
+          "before_us": 281447,
+          "after_us": 213419,
+          "first": "before"
+        },
+        {
+          "before_us": 245532,
+          "after_us": 257288,
+          "first": "after"
+        },
+        {
+          "before_us": 263579,
+          "after_us": 170792,
+          "first": "before"
+        },
+        {
+          "before_us": 309982,
+          "after_us": 179566,
+          "first": "after"
+        },
+        {
+          "before_us": 338609,
+          "after_us": 199445,
+          "first": "before"
+        },
+        {
+          "before_us": 316801,
+          "after_us": 159522,
+          "first": "after"
+        },
+        {
+          "before_us": 314308,
+          "after_us": 242600,
+          "first": "before"
+        },
+        {
+          "before_us": 307419,
+          "after_us": 198535,
+          "first": "after"
+        },
+        {
+          "before_us": 341457,
+          "after_us": 168951,
+          "first": "before"
+        },
+        {
+          "before_us": 257814,
+          "after_us": 189512,
+          "first": "after"
+        },
+        {
+          "before_us": 298426,
+          "after_us": 177160,
+          "first": "before"
+        },
+        {
+          "before_us": 273561,
+          "after_us": 178342,
+          "first": "after"
+        },
+        {
+          "before_us": 271055,
+          "after_us": 170675,
+          "first": "before"
+        },
+        {
+          "before_us": 337677,
+          "after_us": 205758,
+          "first": "after"
+        },
+        {
+          "before_us": 360378,
+          "after_us": 183157,
+          "first": "before"
+        },
+        {
+          "before_us": 267833,
+          "after_us": 168304,
+          "first": "after"
+        },
+        {
+          "before_us": 260783,
+          "after_us": 149094,
+          "first": "before"
+        },
+        {
+          "before_us": 287001,
+          "after_us": 174007,
+          "first": "after"
+        },
+        {
+          "before_us": 271943,
+          "after_us": 159231,
+          "first": "before"
+        },
+        {
+          "before_us": 310277,
+          "after_us": 179587,
+          "first": "after"
+        },
+        {
+          "before_us": 306978,
+          "after_us": 177616,
+          "first": "before"
+        },
+        {
+          "before_us": 269019,
+          "after_us": 190569,
+          "first": "after"
+        },
+        {
+          "before_us": 287617,
+          "after_us": 178739,
+          "first": "before"
+        },
+        {
+          "before_us": 271423,
+          "after_us": 142045,
+          "first": "after"
+        },
+        {
+          "before_us": 275633,
+          "after_us": 202954,
+          "first": "before"
+        },
+        {
+          "before_us": 310076,
+          "after_us": 181141,
+          "first": "after"
+        },
+        {
+          "before_us": 289118,
+          "after_us": 185865,
+          "first": "before"
+        },
+        {
+          "before_us": 363285,
+          "after_us": 162793,
+          "first": "after"
+        }
+      ],
+      "before": {
+        "p50_us": 282753,
+        "p95_us": 381092,
+        "p99_us": 505330
+      },
+      "after": {
+        "p50_us": 170964,
+        "p95_us": 232847,
+        "p99_us": 255340
+      }
+    }
+  ],
+  "limitations": [
+    "Owned toy CPU model; no Elephant throughput claim.",
+    "Alternating pair order reduces batch-order bias, but this remains a shared-host observation.",
+    "Nearest-rank percentiles; all raw pairs and metadata are retained."
+  ],
+  "load_at_end": [
+    22.93701171875,
+    27.1884765625,
+    27.61572265625
+  ]
+}

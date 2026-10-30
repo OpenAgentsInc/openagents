@@ -80,3 +80,13 @@ The start still takes about 17 s more to pin 14.45 GiB of streamed weights
   release builds with and without `gpu` pass, and `--toy --device-mib`
   is refused.
 - Pinning the streamed weights (17 s) is the next start-up cost.
+
+## Part III follow-up, same date
+
+The [Part III record](psionic-partIII-2026-10-29.md) closes the mapped-path
+replacement race with descriptor-bound `fstat`, adds the native race check
+under debug/release plain and ASan/UBSan, and runs the existing HTTP/native
+sanitizer checks. It also measures cold pages/full hash, warm pages/full hash
+and warm pages/verified-record reuse separately. The earlier observations
+above remain historical; the deferred full session mutation run remains
+omitted under the owner's focused-check instruction.

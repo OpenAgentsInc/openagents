@@ -31,6 +31,12 @@ weights, fixed HTTP/protobuf storage, allocator overhead and page cache have
 separate costs. A memory plan is arithmetic, not a reservation guarantee from
 the operating system. Chapter 14 records observations alongside the plans.
 
+For the measured original Elephant at capacity 512, the device host plan is
+3,288,560 bytes, versus 691,746,800 bytes for the conservative CPU execution
+plan. Removing 656.6 MiB of reserved execution payload does not remove the
+mapped weights, pinned streaming weights or driver memory, and is not a
+656.6 MiB measured RSS claim.
+
 ## Bind verification records to the mapped file
 
 The [first verification-cache work](../../docs/verification/psionic-ch15-verified-files-2026-10-29.md)

@@ -4,7 +4,7 @@ Before changing the engine, establish what a decision costs. The
 [measurement harness](../tests/service_bench.py) starts the real server, waits
 for its ready address, warms each owned workload, and retains every latency
 sample and answer. The same harness works on the toy CPU model and original
-Elephant on CUDA. It downloads nothing and is verification tooling; Python is
+Elephant on CUDA or Metal. It downloads nothing and is verification tooling; Python is
 absent from the serving runtime.
 
 ## Read clocks around real work
@@ -27,8 +27,9 @@ impossible phase totals cannot become a successful measurement.
 | `total_us` | Server time through answer preparation, including phase and process/HTTP overhead |
 | Client samples | Time through reading the complete HTTP response body |
 
-These intervals have different boundaries. Device execution computes prefix
-and suffix in a joint masked program: its separate prefix/suffix fields are
+These intervals have different boundaries. A single device question computes prefix
+and suffix in a joint masked program; a forked multi-question call is timed
+across its actual prefix/suffix passes: its separate prefix/suffix fields are
 unused, not measurements of zero-cost work. CPU suffix includes readout;
 separate CPU readout timing is not claimed. Transport and process overhead
 make client and phase totals different. Initialization is never folded into
@@ -52,6 +53,14 @@ The retained record separates a fresh verification-cache start from reuse.
 An opt-in `posix_fadvise(DONTNEED)` on our checkpoint is only an eviction hint;
 the measured page inventory decides the label. We do not drop the machine's
 global caches or claim exclusive use of a shared host.
+
+The [authentication-only probe](../tests/service_auth_probe.c) calls the
+production mapper and session constructor without executing a model decision.
+On the M5 Max, a fresh CoW copy had zero of 1,148,665 pages resident and took
+144.348 seconds to authenticate. With every page resident but a fresh
+verification directory, hashing still took 88.518 seconds. Reusing its verified
+record took 0.093 seconds. File warmth and trusted verification evidence are
+different observations; these numbers isolate startup, not inference.
 
 `peak_host_bytes` is peak process RSS, the larger parent/worker observation
 for CPU requests. Linux's KiB observation is converted to bytes; macOS

@@ -1,0 +1,43 @@
+Oct 29 22:47:10 coderos-4080 systemd[1218]: Starting Psionic resident Elephant decision API (loopback)...
+Oct 29 22:47:10 coderos-4080 psionic-supervise[549754]: psionic-supervise: child=549773 attempt=0
+Oct 29 22:47:10 coderos-4080 psionic-supervise[549773]: psionic-serve: no CUDA device or compiler: cuDevicePrimaryCtxRetain failed: CUDA error 2 (out of memory)
+Oct 29 22:47:10 coderos-4080 psionic-supervise[549754]: psionic-supervise: restart=1 backoff_ms=250 exit=1
+Oct 29 22:47:10 coderos-4080 psionic-supervise[549754]: psionic-supervise: child=550341 attempt=1
+Oct 29 22:47:10 coderos-4080 psionic-supervise[550341]: psionic-serve: no CUDA device or compiler: cuDevicePrimaryCtxRetain failed: CUDA error 2 (out of memory)
+Oct 29 22:47:10 coderos-4080 psionic-supervise[549754]: psionic-supervise: restart=2 backoff_ms=500 exit=1
+Oct 29 22:47:11 coderos-4080 psionic-supervise[549754]: psionic-supervise: child=551243 attempt=2
+Oct 29 22:47:11 coderos-4080 psionic-supervise[551243]: psionic-serve: no CUDA device or compiler: cuDevicePrimaryCtxRetain failed: CUDA error 2 (out of memory)
+Oct 29 22:47:11 coderos-4080 psionic-supervise[549754]: psionic-supervise: restart=3 backoff_ms=1000 exit=1
+Oct 29 22:47:12 coderos-4080 psionic-supervise[549754]: psionic-supervise: child=552659 attempt=3
+Oct 29 22:47:12 coderos-4080 psionic-supervise[552659]: psionic-serve: no CUDA device or compiler: cuDevicePrimaryCtxRetain failed: CUDA error 2 (out of memory)
+Oct 29 22:47:12 coderos-4080 psionic-supervise[549754]: psionic-supervise: restart=4 backoff_ms=2000 exit=1
+Oct 29 22:47:14 coderos-4080 psionic-supervise[549754]: psionic-supervise: child=555693 attempt=4
+Oct 29 22:47:15 coderos-4080 psionic-supervise[555693]: psionic-serve: no CUDA device or compiler: cuDevicePrimaryCtxRetain failed: CUDA error 2 (out of memory)
+Oct 29 22:47:15 coderos-4080 psionic-supervise[549754]: psionic-supervise: restart=5 backoff_ms=4000 exit=1
+Oct 29 22:47:19 coderos-4080 psionic-supervise[549754]: psionic-supervise: child=561116 attempt=5
+Oct 29 22:47:19 coderos-4080 psionic-supervise[561116]: psionic-serve: no CUDA device or compiler: cuDevicePrimaryCtxRetain failed: CUDA error 2 (out of memory)
+Oct 29 22:47:19 coderos-4080 systemd[1218]: psionic-systemone.service: Main process exited, code=exited, status=1/FAILURE
+Oct 29 22:47:19 coderos-4080 systemd[1218]: psionic-systemone.service: Failed with result 'exit-code'.
+Oct 29 22:47:19 coderos-4080 systemd[1218]: Failed to start Psionic resident Elephant decision API (loopback).
+Oct 29 22:47:19 coderos-4080 systemd[1218]: psionic-systemone.service: Consumed 1.134s CPU time over 8.949s wall clock time, 21.5M memory peak.
+Oct 29 22:52:21 coderos-4080 systemd[1218]: Starting Psionic resident Elephant decision API (loopback)...
+Oct 29 22:52:21 coderos-4080 psionic-supervise[740951]: psionic-supervise: child=740958 attempt=0
+Oct 29 22:52:25 coderos-4080 psionic-supervise[740958]: psionic-serve: NVIDIA GeForce RTX 4080; compiled 21 generated kernels in 3222 ms
+Oct 29 22:52:25 coderos-4080 psionic-supervise[740958]: psionic-serve: authenticating elephant-1 (a verified-file record names this checkpoint; its hash is skipped)
+Oct 29 22:52:26 coderos-4080 psionic-supervise[740958]: psionic-serve: authenticated in 222 ms
+Oct 29 22:52:40 coderos-4080 psionic-supervise[740958]: psionic-serve: placed 0.33 GiB resident and 14.45 GiB pinned for streaming in 14734 ms (plan budget 1.00 GiB)
+Oct 29 22:52:44 coderos-4080 psionic-supervise[740958]: psionic-serve: elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba on http://127.0.0.1:8798/v1/systemone
+Oct 29 22:52:44 coderos-4080 systemd[1218]: Started Psionic resident Elephant decision API (loopback).
+Oct 29 22:54:47 coderos-4080 psionic-supervise[740958]: psionic-serve: 200 ok 753ms
+Oct 29 22:54:49 coderos-4080 psionic-supervise[740951]: psionic-supervise: restart=1 backoff_ms=250 exit=137
+Oct 29 22:54:49 coderos-4080 psionic-supervise[740951]: psionic-supervise: child=780138 attempt=1
+Oct 29 22:54:50 coderos-4080 psionic-supervise[780138]: psionic-serve: NVIDIA GeForce RTX 4080; compiled 21 generated kernels in 230 ms
+Oct 29 22:54:50 coderos-4080 psionic-supervise[780138]: psionic-serve: authenticating elephant-1 (a verified-file record names this checkpoint; its hash is skipped)
+Oct 29 22:54:50 coderos-4080 psionic-supervise[780138]: psionic-serve: authenticated in 249 ms
+Oct 29 22:54:58 coderos-4080 psionic-supervise[780138]: psionic-serve: placed 0.16 GiB resident and 14.62 GiB pinned for streaming in 7985 ms (plan budget 0.82 GiB)
+Oct 29 22:55:00 coderos-4080 psionic-supervise[780138]: psionic-serve: elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba on http://127.0.0.1:8798/v1/systemone
+Oct 29 22:55:01 coderos-4080 psionic-supervise[780138]: psionic-serve: 200 ok 798ms
+Oct 29 22:55:01 coderos-4080 systemd[1218]: Stopping Psionic resident Elephant decision API (loopback)...
+Oct 29 22:55:01 coderos-4080 psionic-supervise[780138]: psionic-serve: stopped
+Oct 29 22:55:04 coderos-4080 systemd[1218]: Stopped Psionic resident Elephant decision API (loopback).
+Oct 29 22:55:04 coderos-4080 systemd[1218]: psionic-systemone.service: Consumed 36.267s CPU time over 2min 42.380s wall clock time, 14.7G memory peak.

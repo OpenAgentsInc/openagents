@@ -2,9 +2,10 @@
 
 An optimization has three obligations: identify the work removed, preserve
 the previous answer, and measure before/after with chapter 14's harness.
-We make two bounded changes here: reuse a CPU prefix within one request, and
-remove CPU model-state arenas from a device-only host. The original GPU kernels
-and their numerical profile are unchanged.
+This chapter combines the [GPU prefix-fork work](../../docs/verification/psionic-ch31-fast-2026-10-29.md)
+already landed on main with exact CPU prefix reuse, explicit per-request
+snapshot ownership and removal of redundant CPU model-state arenas. Its
+underlying model arithmetic retains its existing numerical profile.
 
 ## Keep a prefix snapshot separate from suffix work
 
@@ -38,6 +39,17 @@ chapter-10 calls. Timing records prove the three-identical-question workload
 has one prefix miss and two hits, including a fresh miss after the next
 request changes its state. Unused snapshot capacity is not live history.
 
+The CUDA/Metal host retains main's complete per-layer prefix forks. A request
+with more than one question may use them; a single-question request uses the
+joint program because it has no second question to benefit from a snapshot.
+The fork metadata is reset at every request boundary. `--no-prefix-reuse`
+disables the CPU or device path for a controlled comparison. On a miss, a
+device prefix pass and suffix pass are both included in its observed model
+time; hit/reused-token counters distinguish later suffixes. Streaming weights
+can make the extra first pass expensive, so a short streamed workload need
+not improve. The original fully resident CUDA/Metal comparison stays credited
+to its own record.
+
 ## Do not reserve a CPU model that will run on the device
 
 The old host used `sv_plan`'s CPU state/scratch allocation even for CUDA/Metal
@@ -59,18 +71,30 @@ ceiling. Host-allocation removal is not presented as a faster GPU kernel.
 ## Change one thing, keep the raw samples
 
 ```shell
-python3 -I psionic/tests/service_bench.py --binary /absolute/psionic-serve \
-  --samples 100 --questions 3 --repeats 1,4,8 \
-  --no-prefix-reuse --out /tmp/decision-before
-python3 -I psionic/tests/service_bench.py --binary /absolute/psionic-serve \
-  --samples 100 --questions 3 --repeats 1,4,8 --out /tmp/decision-after
+python3 -I psionic/tests/service_prefix_bench.py \
+  --binary /absolute/psionic-serve --samples 100 --out /tmp/decision-pairs
 ```
 
-Both variants use one producer and the same workload. The only CPU switch is
-prefix reuse. Raw requests, identities, answers, phase/token accounting and all
-samples remain with the [verification record](../../docs/verification/psionic-partIII-2026-10-29.md).
-Sequential batches on a shared host are weaker evidence than alternating
-quiet-host pairs; the report retains load and does not hide that limitation.
+Both variants use one binary and the same workload, with two toy processes
+and only one active call. The only CPU switch is prefix reuse. Each pair flips
+which variant runs first. All 100 pairs retain exact serialized answer parity.
+
+| State repetitions, three questions | CPU P50 without reuse | CPU P50 with reuse | Reduction |
+| --- | --- | --- | --- |
+| 1 | 83.765 ms | 55.081 ms | 34.2% |
+| 4 | 130.629 ms | 82.686 ms | 36.7% |
+| 8 | 282.753 ms | 170.964 ms | 39.5% |
+
+Original Elephant on Metal, three questions with 32 state repetitions, took
+2,602.223 ms P50 without forks and 1,317.730 ms with them (49.4% reduction).
+All answers were identical and two hits restored 346 prefix tokens per
+request. Those ten-sample sequential batches are a smoke comparison, weaker
+than the alternating CPU pairs, and do not qualify tail latency. They measure
+the existing device forks under this chapter's per-request ownership policy.
+
+Raw requests, identities, answers, phase/token accounting and all samples
+remain with the [verification record](../../docs/verification/psionic-partIII-2026-10-29.md).
+Both hosts were shared; load and that limitation are retained.
 
 ## Follow the actual execution path
 
@@ -82,7 +106,7 @@ the two changes above. It does not claim a new CPU worker pool or general decode
 weight cache: deterministic CPU parallelism remains chapter 24, wider cache
 policy chapter 25 and later device/kernel tuning Part V.
 
-Next useful experiments are GPU prefix snapshots with complete per-layer state,
+Next useful experiments are broader GPU prefix-fork workloads,
 less repeated prefix readout, tokenization/allocation attribution, kernel and
 matrix improvements under the frozen parity profile, and batching/fairness
 under the later serving chapters. Each needs its own workload and before/after

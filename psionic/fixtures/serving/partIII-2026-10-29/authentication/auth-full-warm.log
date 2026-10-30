@@ -1,0 +1,4 @@
+psionic-serve: authenticating elephant-1 (hashes the 18.8 GB checkpoint once; later starts skip it)
+psionic-serve: authenticated in 88518 ms
+psionic-serve: kept a verified-file record at /tmp/psionic-live-part3/auth-cache-full-warm/16777233-2863994356.rec
+{"schema":"psionic-decision-metrics-v1","build":"production-auth-only-probe","checkpoint":"682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba","phase_profile":"cpu-prefix-v1","file_cache_at_open":"warm","status":0,"total_us":89086801,"prepare_us":0,"prefix_us":0,"suffix_us":0,"readout_us":0,"joint_model_us":0,"tokens":0,"prefix_tokens":0,"questions":0,"prefix_hits":0,"peak_host_bytes":18859065344,"authenticate_us":88517700,"place_us":0,"kind":1,"compile_us":0,"reused_tokens":0,"cached_pages":1148665,"total_pages":1148665,"execution_payload_bytes":461912048,"cpu_execution_payload_bytes":461912048,"question_phases_us":[]}

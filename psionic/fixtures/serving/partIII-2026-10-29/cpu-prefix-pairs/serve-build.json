@@ -1,0 +1,27 @@
+{
+  "backend": "cpu",
+  "build": "44dc6ca8ce0e4afd9bc6e41902490ec075a496e35695b32079b628c0871280f7",
+  "cc": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "coax_sha256": "69f5cbac6cdce1b5c7c80e94bd453608eb876cb30daa31d778fbe8bb912ea4ba",
+  "metal_coax_sha256": null,
+  "mode": "release",
+  "native": "plain",
+  "schema": "psionic-serve-build-v1",
+  "source_sha256": {
+    "/tmp/psionic-live-part3/cpu-final-profile/serve.c": "75a0a0f179ab9ca2767fa27feb53e14ba238e48cb51d2a79270a5528c785ae34",
+    "/tmp/psionic-live-part3/cpu-final-profile/serve.h": "a10bd30047d45eeabbe4e7bf57f0263b19f0e94bbb15ae810baa9d4f0ca16374",
+    "psionic/platform/decision-session-memory.c": "7739ffae557314c673ca222751489d73c64a9e29d75645f1e9a997c74ca330db",
+    "psionic/platform/decision-session-memory.h": "21f674ad906a8dd0c5e78051e9d8b2c8da36d406fd9424bd36e4a53ddab94c0f",
+    "psionic/platform/serve-build.sh": "24c4cb5c1091129c4f34f4c5731bf08b469e46c388aa531a31444eece5dea040",
+    "psionic/platform/serve-busy.c": "a54f70f77b55666e5a1357701ff153632c876d4d6826084a4d41efc3f11b9e60",
+    "psionic/platform/serve-busy.h": "bd69ad219c1c701db3ceb3044cec87d0574658dcaa32cbf2d020ed822efd405a",
+    "psionic/platform/serve-host.c": "5282ad62dc696f0902659112fd0efecd5ac73f2a20ee2ad95ce7c27326d0c371",
+    "psionic/platform/serve-notify.c": "7db335ce9cfe0dfa082e19adff39e3483a4e11d273225c3ee672bce4b651ddb2",
+    "psionic/platform/serve-notify.h": "2a66ed6bb25ee1d0ffaab611bf9d72578fc20b638b1611eb734986ac79692e22",
+    "psionic/platform/serve-supervisor.c": "77d5ce31f655b2963153dee663da02045b80a43a6078b7e14af76fbafa990e72",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/platform/verified-file.c": "e450b73296ddfb0dea0095f72d4594c61a28a4354eebe2f62c9cb473bad4f21e",
+    "psionic/platform/verified-file.h": "e5d1c1e755f6175fa98f871f0b9df2fd192928083bf7ce9919f49331719e8410",
+    "psionic/tests/serve_build_id.py": "2d9059a3da46bc6cfeca7f87b2c8a6c28860d8c6a69df6e94d3004e1916d3867"
+  }
+}

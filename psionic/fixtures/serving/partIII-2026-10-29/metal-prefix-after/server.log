@@ -1,0 +1,17 @@
+psionic-serve: Apple M5 Max; compiled 23 generated kernels in 76 ms
+psionic-serve: authenticating elephant-1 (a verified-file record names this checkpoint; its hash is skipped)
+psionic-serve: authenticated in 222 ms
+psionic-serve: placed 14.79 GiB resident and 0.00 GiB pinned for streaming in 7184 ms (plan budget 103.52 GiB)
+psionic-serve: elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba on http://127.0.0.1:65106/v1/systemone
+psionic-serve: 200 ok 1524ms
+psionic-serve: 200 ok 1573ms
+psionic-serve: 200 ok 1466ms
+psionic-serve: 200 ok 1463ms
+psionic-serve: 200 ok 1429ms
+psionic-serve: 200 ok 1291ms
+psionic-serve: 200 ok 1264ms
+psionic-serve: 200 ok 1282ms
+psionic-serve: 200 ok 1318ms
+psionic-serve: 200 ok 1317ms
+psionic-serve: 200 ok 1223ms
+psionic-serve: stopped

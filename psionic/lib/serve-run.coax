@@ -78,7 +78,7 @@ sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrRes
 LS_US_DAY :: 86400000000;
 // book:begin metrics
 LsPhase :: struct {prepare:int;prefix:int;suffix:int;model:int;readout:int;tokens:int;prefix_tokens:int;hit:int;}
-LsSample :: struct {ok:bool;total:int;prepare:int;prefix:int;suffix:int;readout:int;model:int;tokens:int;prefix_tokens:int;questions:int;hits:int;peak_bytes:int;auth:int;place:int;device:bool;kind:int;compile:int;reused:int;cached_pages:int;total_pages:int;phases:[64]LsPhase;}
+LsSample :: struct {ok:bool;total:int;prepare:int;prefix:int;suffix:int;readout:int;model:int;tokens:int;prefix_tokens:int;questions:int;hits:int;peak_bytes:int;auth:int;place:int;device:bool;kind:int;compile:int;reused:int;cached_pages:int;total_pages:int;execution_bytes:int;cpu_execution_bytes:int;phases:[64]LsPhase;}
 LsPercentiles :: struct {ok:bool;count:int;p50:int;p95:int;p99:int;min:int;max:int;}
 LsUsage :: struct {requests:int;answered:int;refused:int;cancelled:int;tokens:int;microseconds:int;}
 LsUsageResult :: struct {ok:bool;usage:LsUsage;}
@@ -131,9 +131,9 @@ ls_record :: (build:string,identity:string,status:int,s:LsSample,out:[]u8)->int 
     at:=json_raw(out,0,"{\"schema\":\"psionic-decision-metrics-v1\",\"build\":");at=json_write_string(out,at,build);at=json_raw(out,at,",\"checkpoint\":");at=json_write_string(out,at,identity);
     at=json_raw(out,at,",\"phase_profile\":");at=json_write_string(out,at,ifx s.device then "device-joint-v1" else "cpu-prefix-v1");
     at=json_raw(out,at,",\"file_cache_at_open\":");at=json_write_string(out,at,ls_cache_label(s.cached_pages,s.total_pages));
-    names:=[19]string.["status","total_us","prepare_us","prefix_us","suffix_us","readout_us","joint_model_us","tokens","prefix_tokens","questions","prefix_hits","peak_host_bytes","authenticate_us","place_us","kind","compile_us","reused_tokens","cached_pages","total_pages"];
-    values:=[19]int.[status,s.total,s.prepare,s.prefix,s.suffix,s.readout,s.model,s.tokens,s.prefix_tokens,s.questions,s.hits,s.peak_bytes,s.auth,s.place,s.kind,s.compile,s.reused,s.cached_pages,s.total_pages];
-    for i:0..<19 {at=json_raw(out,at,",");at=json_write_string(out,at,names[i]);at=json_raw(out,at,":");at=json_write_int(out,at,values[i]);}at=json_raw(out,at,",\"question_phases_us\":[");
+    names:=[21]string.["status","total_us","prepare_us","prefix_us","suffix_us","readout_us","joint_model_us","tokens","prefix_tokens","questions","prefix_hits","peak_host_bytes","authenticate_us","place_us","kind","compile_us","reused_tokens","cached_pages","total_pages","execution_payload_bytes","cpu_execution_payload_bytes"];
+    values:=[21]int.[status,s.total,s.prepare,s.prefix,s.suffix,s.readout,s.model,s.tokens,s.prefix_tokens,s.questions,s.hits,s.peak_bytes,s.auth,s.place,s.kind,s.compile,s.reused,s.cached_pages,s.total_pages,s.execution_bytes,s.cpu_execution_bytes];
+    for i:0..<21 {at=json_raw(out,at,",");at=json_write_string(out,at,names[i]);at=json_raw(out,at,":");at=json_write_int(out,at,values[i]);}at=json_raw(out,at,",\"question_phases_us\":[");
     fields:=[8]string.["prepare","prefix","suffix_with_readout","joint_model","readout","tokens","prefix_tokens","prefix_hit"];
     for q:0..<s.questions {if q>0 {at=json_raw(out,at,",");}at=json_raw(out,at,"{");v:=s.phases[q];counts:=[8]int.[v.prepare,v.prefix,v.suffix,v.model,v.readout,v.tokens,v.prefix_tokens,v.hit];for j:0..<8 {if j>0 {at=json_raw(out,at,",");}at=json_write_string(out,at,fields[j]);at=json_raw(out,at,":");at=json_write_int(out,at,counts[j]);}at=json_raw(out,at,"}");}
     return json_raw(out,at,"]}\n");
@@ -319,3 +319,8 @@ LsBusyPolicy :: struct {capacity:int;accepts:int;drain_bytes:int;linger_ms:int;w
 }
 ls_busy_policy :: ()->LsBusyPolicy #export_c {return LsBusyPolicy.{capacity=16,accepts=4,drain_bytes=262144,linger_ms=200,write_ms=1};}
 ls_busy_left :: (started:int,now:int)->int #export_c {if started<0 || now<started || now-started>=200 {return 0;}return 200-(now-started);}
+
+#test "a device prefix fork is useful only when a request has another question" {
+    #assert !ls_device_fork(1,true) && ls_device_fork(2,true) && !ls_device_fork(2,false) && !ls_device_fork(65,true);
+}
+ls_device_fork :: (questions:int,enabled:bool)->bool #export_c {return enabled && questions>1 && questions<=64;}

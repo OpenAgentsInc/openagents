@@ -143,9 +143,9 @@ rollout.
 | [18. Make the numbers move](ch018-make-the-numbers-move.md) — runnable | Exact per-request CPU and device prefix snapshots, isolated suffixes and device host-arena elimination, with parity and measured changes. The [CUDA/Metal prefix work](../../docs/verification/psionic-ch31-fast-2026-10-29.md) retains its bit-identical whole-decision comparison (M5 Max Lab 4.1–5.4 s → 2.3–2.5 s; RTX 4080 1.84 → 1.17 s). Deterministic CPU worker pools remain chapter 24 and wider decoded-cache work remains later. |
 
 The hosting machine, domain, budget and any public access are owner
-decisions recorded in `NEEDS_OWNER.md`. Hosted Linux serving waits for a
-qualified Coax Linux target; until then the first deployment runs on a
-qualified host.
+decisions recorded in `NEEDS_OWNER.md`. The first owned loopback deployment is now
+checked on Linux/CUDA, with its emitted-C producer, native compiler and
+operational evidence in the [Part III record](../../docs/verification/psionic-partIII-2026-10-29.md).
 
 ## IV. A first mesh of Pylons
 

@@ -150,7 +150,7 @@ typedef struct {
     coax_v_u8 scratch, proto, arena; bool proto_out;
     coax_v_s64 cached_tokens; coax_v_f32 cached_state; bool reuse;
     coax_t_LsSample *sample; coax_t_LsLife life; coax_t_LsUsage usage;
-    int metrics_fd; int64_t host_budget, warmup_ms, auth_us, place_us, compile_us, cached_pages,total_pages; /* chapter 16b */
+    int metrics_fd; int64_t host_budget, warmup_ms, auth_us, place_us, compile_us, cached_pages,total_pages,execution_bytes,cpu_execution_bytes; /* chapter 16b */
 #ifdef PSIONIC_SERVE_GPU
     EgEngine *gpu; int stop_fd; int64_t stop_at; int listener; PsBusy busy;
 #endif
@@ -192,6 +192,7 @@ static void allocate(Server *s) {
 #endif
     coax_t_LsMemory admitted=ls_memory_for(s->engine,s->host_budget,device);
     if(admitted.code){coax_string code=sv_code_name(admitted.code);fprintf(stderr,"psionic-serve: request memory refused %.*s: need %lld bytes, budget %lld\n",(int)code.count,code.data,(long long)admitted.bytes,(long long)s->host_budget);exit(1);}
+    s->execution_bytes=admitted.bytes;s->cpu_execution_bytes=ls_memory_for(s->engine,INT64_C(68719476736),false).bytes;
     s->cached_tokens=(coax_v_s64){zalloc((size_t)plan.tokens,8),plan.tokens};
     s->cached_state=(coax_v_f32){zalloc((size_t)admitted.state,4),admitted.state};
     s->rx = (coax_v_u8){zalloc((size_t)z.request, 1), z.request};
@@ -384,6 +385,8 @@ static int gpu_stop(void *context) {
    would have written it. Returns the frame length, or -1 when stopped. */
 static int64_t decide_gpu(Server *s, coax_t_SvRequest request, int64_t started) {
     coax_t_SvCode code = sv_admit(s->engine, request, s->pools);
+    s->gpu->fork_length=0; /* Snapshot ownership is one request, never another tenant. */
+    bool use_fork=ls_device_fork(request.questions,s->reuse);
     for (int64_t i = 0; code == COAX_SvCode_none && i < request.questions; i++) {
         int64_t measured=now_us();
         coax_t_SvStaged staged = ls_stage_device(s->engine, request, s->pools, s->work, i);
@@ -391,7 +394,9 @@ static int64_t decide_gpu(Server *s, coax_t_SvRequest request, int64_t started) 
         if ((code = staged.code) != COAX_SvCode_none) break;
         s->sample->tokens+=staged.prepared.written;s->sample->prefix_tokens+=staged.prepared.prefix;s->sample->phases.e[i].tokens=staged.prepared.written;s->sample->phases.e[i].prefix_tokens=staged.prepared.prefix;measured=now_us();
         /* Keep main's device prefix forks and the measured host integration. */
-        int r = eg_decide_fork(s->gpu, s->work.tokens.data, staged.prepared.written, staged.prepared.prefix, gpu_stop, s);
+        int64_t passes=s->gpu->prefix_passes;
+        int r = use_fork?eg_decide_fork(s->gpu,s->work.tokens.data,staged.prepared.written,staged.prepared.prefix,gpu_stop,s):eg_decide(s->gpu,s->work.tokens.data,staged.prepared.written,staged.prepared.prefix,gpu_stop,s);
+        if(!r && use_fork && s->gpu->forked && staged.prepared.prefix>0 && s->gpu->prefix_passes==passes){s->sample->hits++;s->sample->reused+=staged.prepared.prefix;s->sample->phases.e[i].hit=1;}
         s->sample->phases.e[i].model=ls_elapsed(measured,now_us());s->sample->model+=s->sample->phases.e[i].model;
         if (r == EG_STOPPED) return -1;
         if (r) { code = COAX_SvCode_internal; break; }
@@ -504,7 +509,7 @@ int main(int argc, char **argv) {
     if (toy) open_toy(&s, capacity ? capacity : 2048); else open_elephant(&s, elephant, table, capacity ? capacity : gpu ? 128 : 512, gpu, device_mib);
     if (!s.engine.sealed) { fprintf(stderr, "psionic-serve: buffers overlap; refusing to serve\n"); return 1; }
     warm(&s,bad_golden);
-    *s.sample=(coax_t_LsSample){.auth=s.auth_us,.place=s.place_us,.kind=1,.compile=s.compile_us,.cached_pages=s.cached_pages,.total_pages=s.total_pages};
+    *s.sample=(coax_t_LsSample){.auth=s.auth_us,.place=s.place_us,.kind=1,.compile=s.compile_us,.cached_pages=s.cached_pages,.total_pages=s.total_pages,.execution_bytes=s.execution_bytes,.cpu_execution_bytes=s.cpu_execution_bytes};
 #ifdef PSIONIC_SERVE_GPU
     s.sample->device=s.gpu!=NULL;
 #endif

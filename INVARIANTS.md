@@ -284,6 +284,45 @@ probabilities and near ties, exact boundary checks, native debug/release
 plain/ASan/UBSan and exact book output. See the
 [chapter 59 record](docs/verification/psionic-ch59-2026-10-29.md).
 
+## Psionic resident decisions have bounded lifecycle and private measurements
+
+`psionic/lib/serve-run.coax` owns Part III's execution-payload admission,
+observed-time statistics, private metrics, readiness and bounded restart
+policy. C performs file/socket/clock/allocation/process/device effects.
+One authenticated session and reserved arenas serve one active request.
+Device execution allocates no redundant CPU model-state/work arenas; its
+device/pinned/mapped payloads remain separate from the host execution budget.
+
+Verified-file evidence is attached through `fstat` of the same descriptor
+that was mapped. Path replacement cannot bind another inode to those bytes.
+Local cached records are trusted prior evidence, not signatures. Checkpoint
+files must stay immutable for the complete borrowed session lifetime.
+`mincore` observes file-page warmth independently of verification-cache reuse.
+
+CPU and device snapshots belong to one request. A hit needs the authenticated
+identity and every prefix token to match; the retained prefix is separate
+from mutable suffix state. Request boundaries clear metadata. One-question
+device requests keep the joint path. No cross-request/tenant cache is implied.
+Device safe points refuse busy connections; the bounded socket cleanup pool
+never queues model work. Cancellation publishes no answer and the next request
+starts fresh. Driver and caller lifetime obligations remain unchanged.
+
+Readiness follows authentication, disjoint buffers and three retained golden
+decisions under the pre-existing tolerance. Default restart policy allows five
+restarts with 250 ms exponential backoff capped at ten seconds; owner stops
+and clean exits do not restart. The native systemd readiness effect follows
+the same gate. The first deployment is loopback-only and not boot-enabled.
+Private metrics contain identities, outcomes, counts and clocks, never state,
+question IDs, option/answer text or probabilities. They authorize no payment;
+HTTP usage remains null. Peak process RSS is not aggregate host/GPU usage.
+
+Check: `psionic/check.sh --only live-decision` runs focused Coax checks,
+native debug/release plain/ASan/UBSan, transport/lifecycle and descriptor-race
+checks and exact book outputs. Actual original Metal operations and managed
+CUDA crash/re-warm/restart, paired measurements, producer identities and the
+owner-requested omission of full mutation and original CPU inference are in
+the [Part III record](docs/verification/psionic-partIII-2026-10-29.md).
+
 ## Psionic Responses serving preserves typed state and exclusive GPU access
 
 `psionic/lib/responses/` owns `psionic-gptoss-responses-v1`: bounded HTTP/JSON

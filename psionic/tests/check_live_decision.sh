@@ -22,6 +22,7 @@ for mode in ${PSIONIC_LIVE_MODES:-debug release};do
         ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 "$dir/serve-test" "$dir/psionic-serve" "$dir/logs"
         ASAN_OPTIONS=detect_leaks=0:halt_on_error=1 UBSAN_OPTIONS=halt_on_error=1 python3 -I psionic/tests/service_live.py "$dir/psionic-serve" "$dir/operations"
         if [[ $mode == release && $kind == plain ]];then
+            python3 -I psionic/tests/serve_build_id_test.py "$dir" "$coax" "$cc"
             "$cc" "${common[@]}" psionic/tests/service_host_probe.c "$dir/serve.o" -lm -o "$dir/host-probe"
             "$dir/host-probe" > "$dir/host-probe.json"
         fi

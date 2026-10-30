@@ -11,7 +11,7 @@ def post(url,body):
     return (time.perf_counter_ns()-start)//1000,answer
 
 def main():
-    a=argparse.ArgumentParser();a.add_argument('--binary',required=True);a.add_argument('--engine',choices=['toy','elephant-gpu'],default='toy');a.add_argument('--device-mib',type=int);a.add_argument('--model-dir');a.add_argument('--table');a.add_argument('--out',required=True);a.add_argument('--samples',type=int,default=100);a.add_argument('--repeats',default='1,4,8');a.add_argument('--questions',type=int,default=1);a.add_argument('--legacy',action='store_true');a.add_argument('--no-prefix-reuse',action='store_true');a.add_argument('--startup-seconds',type=int,default=720);args=a.parse_args()
+    a=argparse.ArgumentParser();a.add_argument('--binary',required=True);a.add_argument('--engine',choices=['toy','elephant-gpu','elephant-metal'],default='toy');a.add_argument('--device-mib',type=int);a.add_argument('--model-dir');a.add_argument('--table');a.add_argument('--out',required=True);a.add_argument('--samples',type=int,default=100);a.add_argument('--repeats',default='1,4,8');a.add_argument('--questions',type=int,default=1);a.add_argument('--legacy',action='store_true');a.add_argument('--no-prefix-reuse',action='store_true');a.add_argument('--startup-seconds',type=int,default=720);args=a.parse_args()
     assert 1<=args.samples<=4096 and 1<=args.questions<=64
     out=Path(args.out).resolve();out.mkdir(parents=True,exist_ok=True);metrics=out/'metrics.jsonl';log=out/'server.log';binary=str(Path(args.binary).resolve())
     command=[binary,'--'+args.engine]+([] if args.engine=='toy' else [args.model_dir,'--table',args.table])+['--port','0','--capacity','512']
