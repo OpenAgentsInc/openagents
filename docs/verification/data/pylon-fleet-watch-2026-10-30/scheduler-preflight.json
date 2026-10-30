@@ -1,0 +1,113 @@
+{
+  "apiVersion": "run.googleapis.com/v1",
+  "kind": "Execution",
+  "metadata": {
+    "annotations": {
+      "run.googleapis.com/client-name": "gcloud",
+      "run.googleapis.com/client-version": "562.0.0",
+      "run.googleapis.com/creator": "pylon-watch-scheduler@openagentsgemini.iam.gserviceaccount.com",
+      "run.googleapis.com/execution-environment": "gen2",
+      "run.googleapis.com/lastModifier": "pylon-watch-scheduler@openagentsgemini.iam.gserviceaccount.com",
+      "run.googleapis.com/operation-id": "0f24bab7-8cdd-4082-892d-ab2b9d5dbc0c"
+    },
+    "creationTimestamp": "2026-10-30T21:05:30.153373Z",
+    "generation": 1,
+    "labels": {
+      "client.knative.dev/nonce": "goh_jod_vog",
+      "cloud.googleapis.com/location": "us-central1",
+      "openagents-component": "pylon-fleet-watch",
+      "run.googleapis.com/job": "pylon-fleet-watch",
+      "run.googleapis.com/jobGeneration": "1",
+      "run.googleapis.com/jobResourceVersion": "1793394309031976",
+      "run.googleapis.com/jobUid": "46a5df56-8139-4ff5-be1a-17e504fd0580"
+    },
+    "name": "pylon-fleet-watch-2jw7g",
+    "namespace": "157437760789",
+    "ownerReferences": [
+      {
+        "apiVersion": "serving.knative.dev/v1",
+        "blockOwnerDeletion": true,
+        "controller": true,
+        "kind": "Job",
+        "name": "pylon-fleet-watch",
+        "uid": "46a5df56-8139-4ff5-be1a-17e504fd0580"
+      }
+    ],
+    "resourceVersion": "AAZfFS0BN0Y",
+    "selfLink": "/apis/run.googleapis.com/v1/namespaces/157437760789/executions/pylon-fleet-watch-2jw7g",
+    "uid": "2fb9c196-0de3-4fff-8c03-b9603d49d8fe"
+  },
+  "spec": {
+    "parallelism": 1,
+    "taskCount": 1,
+    "template": {
+      "spec": {
+        "containers": [
+          {
+            "env": [
+              {
+                "name": "PYLON_WATCH_START",
+                "value": "1793394294"
+              },
+              {
+                "name": "PYLON_WATCH_END",
+                "value": "1793415894"
+              },
+              {
+                "name": "PYLON_WATCH_DRY_RUN",
+                "value": "1"
+              },
+              {
+                "name": "PYLON_WATCH_GPTOSS_PROVIDER",
+                "value": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599"
+              }
+            ],
+            "image": "us-central1-docker.pkg.dev/openagentsgemini/openagents/pylon-fleet-watch@sha256:40c566373f3a74c2f34daab5ff3cf76de14bab977db8327cf741ebe1b803c736",
+            "resources": {
+              "limits": {
+                "cpu": "1",
+                "memory": "512Mi"
+              }
+            }
+          }
+        ],
+        "maxRetries": 0,
+        "serviceAccountName": "pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com",
+        "timeoutSeconds": "240"
+      }
+    }
+  },
+  "status": {
+    "completionTime": "2026-10-30T21:06:53.110099Z",
+    "conditions": [
+      {
+        "lastTransitionTime": "2026-10-30T21:06:53.110099Z",
+        "message": "Execution completed successfully in 1m6.75s.",
+        "status": "True",
+        "type": "Completed"
+      },
+      {
+        "lastTransitionTime": "2026-10-30T21:05:32.129243Z",
+        "message": "Provisioned imported containers.",
+        "status": "True",
+        "type": "ResourcesAvailable"
+      },
+      {
+        "lastTransitionTime": "2026-10-30T21:06:40.333560Z",
+        "message": "Started deployed execution in 1m8.2s.",
+        "status": "True",
+        "type": "Started"
+      },
+      {
+        "lastTransitionTime": "2026-10-30T21:05:32.024731Z",
+        "message": "Imported container image in 1.87s.",
+        "status": "True",
+        "type": "ContainerReady"
+      }
+    ],
+    "logUri": "https://console.cloud.google.com/logs/viewer?project=openagentsgemini&advancedFilter=resource.type%3D%22cloud_run_job%22%0Aresource.labels.job_name%3D%22pylon-fleet-watch%22%0Aresource.labels.location%3D%22us-central1%22%0Alabels.%22run.googleapis.com/execution_name%22%3D%22pylon-fleet-watch-2jw7g%22",
+    "observedGeneration": 1,
+    "startTime": "2026-10-30T21:05:46.354804Z",
+    "succeededCount": 1
+  }
+}

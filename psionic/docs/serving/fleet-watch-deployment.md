@@ -49,6 +49,12 @@ qualified immutable watcher image. The script refuses mutable tags, a different
 registry/repository, an unrelated resource sharing its name, or an existing
 custom role with different permissions.
 
+New custom IAM roles can take a short time to propagate to Compute. If the
+first binding immediately reports that the just-created role does not exist
+in the resource hierarchy, let it propagate and repeat the same deployment.
+Do not replace it with a broader role. The initial deployment encountered this
+delay; the identical narrow bindings succeeded on retry.
+
 ```sh
 START=$(date +%s)
 END=$((START + 21600))

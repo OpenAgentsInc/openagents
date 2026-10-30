@@ -1,0 +1,584 @@
+{
+  "base": "https://openagents.com",
+  "started_at": "2026-10-30T21:03:58.279Z",
+  "errors": [],
+  "snapshots": [
+    {
+      "ready": true,
+      "presented": true,
+      "now": 1793394241,
+      "probe": 395007,
+      "beacons": 6,
+      "online": 6,
+      "free": 19,
+      "controls": [
+        [
+          1104,
+          28,
+          1254,
+          68
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0
+        ]
+      ],
+      "rows": [
+        {
+          "live": true,
+          "provider": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968",
+          "slug": "christohersmbp2",
+          "label": "Mac M5 Max (network lane)",
+          "npub": "npub1rqplkvjtja2g0w7fn36jsxq97dqhpy9wf76v7qspe9r9hkvvr95qm99mt5",
+          "models": "qwen3.5-0.8b-q8_0, clef-flash@gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3",
+          "lanes": "cj-conversation, cj-decision",
+          "family": "unified-memory",
+          "memory_gb": "128",
+          "status": 0,
+          "free": 2,
+          "total": 2,
+          "generation": 12,
+          "observed_at": 1793394225,
+          "valid_until": 1793394465,
+          "received_at": 1793394239,
+          "age_s": 16,
+          "remaining_s": 224
+        },
+        {
+          "live": true,
+          "provider": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+          "slug": "oct30-gcloud-gptoss20b",
+          "label": "GPT-OSS20B CLOUD",
+          "npub": "npub1ywnzj37wnyf734sazeh6w23wf5hprv2nl8z8chhr0evra3cz7kvsv5artu",
+          "models": "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed",
+          "lanes": "nip90-5050",
+          "family": "gpu",
+          "memory_gb": "16",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 2,
+          "observed_at": 1793394223,
+          "valid_until": 1793394403,
+          "received_at": 1793394239,
+          "age_s": 18,
+          "remaining_s": 162
+        },
+        {
+          "live": true,
+          "provider": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+          "slug": "oct30-mac-demo",
+          "label": "Mac (demo)",
+          "npub": "npub17kf9p8g4xvp3q9vcfzwxyk46e77q96c4vr8kkzaq7q90rja9wyjq9gwsws",
+          "models": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+          "lanes": "cj-decision",
+          "family": "cpu",
+          "memory_gb": "16",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 1,
+          "observed_at": 1793394199,
+          "valid_until": 1793394379,
+          "received_at": 1793394239,
+          "age_s": 42,
+          "remaining_s": 138
+        },
+        {
+          "live": true,
+          "provider": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+          "slug": "oct30-gcloud-mammoth",
+          "label": "oct30-gcloud-mammoth",
+          "npub": "npub16flvuprwwc3r2lers4j4lckp6lwtvd99rmk35mnf4v34gl36aq5s6884gu",
+          "models": "mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019",
+          "lanes": "cj-decision",
+          "family": "gpu",
+          "memory_gb": "64",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 2,
+          "observed_at": 1793394198,
+          "valid_until": 1793394378,
+          "received_at": 1793394239,
+          "age_s": 43,
+          "remaining_s": 137
+        },
+        {
+          "live": true,
+          "provider": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+          "slug": "oct30-gcloud-elephant-rtx",
+          "label": "oct30-gcloud-elephant-rtx",
+          "npub": "npub1t8jy8hhskht3s8adtp4jlz9p26yap8y3l5l5f4rtnrt63yx0nmnstucj6u",
+          "models": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+          "lanes": "cj-decision",
+          "family": "gpu",
+          "memory_gb": "64",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 2,
+          "observed_at": 1793394193,
+          "valid_until": 1793394373,
+          "received_at": 1793394239,
+          "age_s": 48,
+          "remaining_s": 132
+        },
+        {
+          "live": true,
+          "provider": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+          "slug": "att-tdx",
+          "label": "Sealed Clef (Intel TDX, Confidential Space)",
+          "npub": "npub1atwcsmdeap9nlgrfappg9lkpjsec3kzt4u0r44f5y494ynksmlqqs868qc",
+          "models": "clef-flash@sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+          "lanes": "cj-decision",
+          "family": "cpu",
+          "memory_gb": "16",
+          "status": 0,
+          "free": 1,
+          "total": 1,
+          "generation": 1,
+          "observed_at": 1793394184,
+          "valid_until": 1793394424,
+          "received_at": 1793394239,
+          "age_s": 57,
+          "remaining_s": 183
+        }
+      ]
+    },
+    {
+      "ready": true,
+      "presented": true,
+      "now": 1793394261,
+      "probe": 461567,
+      "beacons": 10,
+      "online": 6,
+      "free": 19,
+      "controls": [
+        [
+          1104,
+          28,
+          1254,
+          68
+        ],
+        [
+          44,
+          156,
+          263,
+          196
+        ],
+        [
+          273,
+          156,
+          492,
+          196
+        ],
+        [
+          464,
+          92,
+          500,
+          128
+        ]
+      ],
+      "rows": [
+        {
+          "live": true,
+          "provider": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968",
+          "slug": "christohersmbp2",
+          "label": "Mac M5 Max (network lane)",
+          "npub": "npub1rqplkvjtja2g0w7fn36jsxq97dqhpy9wf76v7qspe9r9hkvvr95qm99mt5",
+          "models": "qwen3.5-0.8b-q8_0, clef-flash@gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3",
+          "lanes": "cj-conversation, cj-decision",
+          "family": "unified-memory",
+          "memory_gb": "128",
+          "status": 0,
+          "free": 2,
+          "total": 2,
+          "generation": 12,
+          "observed_at": 1793394225,
+          "valid_until": 1793394465,
+          "received_at": 1793394239,
+          "age_s": 36,
+          "remaining_s": 204
+        },
+        {
+          "live": true,
+          "provider": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+          "slug": "oct30-gcloud-gptoss20b",
+          "label": "GPT-OSS20B CLOUD",
+          "npub": "npub1ywnzj37wnyf734sazeh6w23wf5hprv2nl8z8chhr0evra3cz7kvsv5artu",
+          "models": "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed",
+          "lanes": "nip90-5050",
+          "family": "gpu",
+          "memory_gb": "16",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 2,
+          "observed_at": 1793394223,
+          "valid_until": 1793394403,
+          "received_at": 1793394239,
+          "age_s": 38,
+          "remaining_s": 142
+        },
+        {
+          "live": true,
+          "provider": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+          "slug": "oct30-mac-demo",
+          "label": "Mac (demo)",
+          "npub": "npub17kf9p8g4xvp3q9vcfzwxyk46e77q96c4vr8kkzaq7q90rja9wyjq9gwsws",
+          "models": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+          "lanes": "cj-decision",
+          "family": "cpu",
+          "memory_gb": "16",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 1,
+          "observed_at": 1793394259,
+          "valid_until": 1793394439,
+          "received_at": 1793394259,
+          "age_s": 2,
+          "remaining_s": 178
+        },
+        {
+          "live": true,
+          "provider": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+          "slug": "oct30-gcloud-mammoth",
+          "label": "oct30-gcloud-mammoth",
+          "npub": "npub16flvuprwwc3r2lers4j4lckp6lwtvd99rmk35mnf4v34gl36aq5s6884gu",
+          "models": "mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019",
+          "lanes": "cj-decision",
+          "family": "gpu",
+          "memory_gb": "64",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 2,
+          "observed_at": 1793394258,
+          "valid_until": 1793394438,
+          "received_at": 1793394258,
+          "age_s": 3,
+          "remaining_s": 177
+        },
+        {
+          "live": true,
+          "provider": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+          "slug": "oct30-gcloud-elephant-rtx",
+          "label": "oct30-gcloud-elephant-rtx",
+          "npub": "npub1t8jy8hhskht3s8adtp4jlz9p26yap8y3l5l5f4rtnrt63yx0nmnstucj6u",
+          "models": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+          "lanes": "cj-decision",
+          "family": "gpu",
+          "memory_gb": "64",
+          "status": 0,
+          "free": 4,
+          "total": 4,
+          "generation": 2,
+          "observed_at": 1793394253,
+          "valid_until": 1793394433,
+          "received_at": 1793394252,
+          "age_s": 8,
+          "remaining_s": 172
+        },
+        {
+          "live": true,
+          "provider": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+          "slug": "att-tdx",
+          "label": "Sealed Clef (Intel TDX, Confidential Space)",
+          "npub": "npub1atwcsmdeap9nlgrfappg9lkpjsec3kzt4u0r44f5y494ynksmlqqs868qc",
+          "models": "clef-flash@sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+          "lanes": "cj-decision",
+          "family": "cpu",
+          "memory_gb": "16",
+          "status": 0,
+          "free": 1,
+          "total": 1,
+          "generation": 1,
+          "observed_at": 1793394244,
+          "valid_until": 1793394484,
+          "received_at": 1793394256,
+          "age_s": 17,
+          "remaining_s": 223
+        }
+      ]
+    }
+  ],
+  "beacons": [
+    {
+      "id": "f72a61aa8a1661d2c540184c563de71af3949bebc6f1eecb2116ee2bca3e014b",
+      "pubkey": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968",
+      "created_at": 1793394225,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "christohersmbp2"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "8b7a424238a609e15e4381a5be894bcf0144864c494aa7ad499577cf89687bcd"
+        ],
+        [
+          "expiration",
+          "1793394465"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"unified-memory\",\"memory_gb\":128,\"tier\":\"xl\"},\"generation\":12,\"label\":\"Mac M5 Max (network lane)\",\"observed_at\":1793394225,\"pools\":[\"everglade\"],\"provider\":\"1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968\",\"pylon\":\"christohersmbp2\",\"requires\":[],\"services\":[{\"capability\":\"1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968:pylon/text-generation\",\"lanes\":[\"cj-conversation\"],\"model\":\"qwen3.5-0.8b-q8_0\",\"offering\":null,\"price_hint_msat\":null},{\"capability\":\"1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"clef-flash@gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793056146,\"slots\":{\"free\":2,\"total\":2},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394465}",
+      "sig": "0bfb917c977e82f181efda8e8d70c5d09d03b7f6c734f942531c9047317685e686102cad65d16be3189fd8d4139245bd9dc12ee5dfc4d89448b7b2ddfef56a3c"
+    },
+    {
+      "id": "465e378c024f70f9f7b425557766fa3b932e6c284bdc7d472dc69e3cdeadab41",
+      "pubkey": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+      "created_at": 1793394223,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "oct30-gcloud-gptoss20b"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "1cac762297ede3b04419c2c17c777cbf70afed596b60b8f970381a1565fa4869"
+        ],
+        [
+          "expiration",
+          "1793394403"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":16,\"tier\":\"medium\"},\"generation\":2,\"label\":\"GPT-OSS20B CLOUD\",\"meta\":{\"backend_profile\":\"psionic-gptoss-responses-v1\",\"input\":\"public-text\",\"max_input_bytes\":1024,\"max_output_tokens\":128},\"observed_at\":1793394223,\"pools\":[],\"provider\":\"23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599\",\"pylon\":\"oct30-gcloud-gptoss20b\",\"requires\":[],\"services\":[{\"capability\":\"23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599:pylon/text\",\"lanes\":[\"nip90-5050\"],\"model\":\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793394171,\"slots\":{\"free\":4,\"total\":4},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394403}",
+      "sig": "2850fa60e33ff480da8eb7f5291aaf0896fc98e8f0cee030ac90ae0906790b0597f6d4ba25360cc8f10f7bdbbce946f513b6a6d047bd1ad31661db7adbea27ed"
+    },
+    {
+      "id": "6920685e4dc59f0ef288bec08a49786630024985401c0ec36447a539a0e19bd5",
+      "pubkey": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+      "created_at": 1793394199,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "oct30-mac-demo"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "0f358abde3a963c0cd962b7413cfbebeb09944779f49b1e18439dcb075cc1505"
+        ],
+        [
+          "expiration",
+          "1793394379"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"cpu\",\"memory_gb\":16,\"tier\":\"large\"},\"generation\":1,\"label\":\"Mac (demo)\",\"observed_at\":1793394199,\"pools\":[],\"provider\":\"f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124\",\"pylon\":\"oct30-mac-demo\",\"requires\":[],\"services\":[{\"capability\":\"f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793372555,\"slots\":{\"free\":4,\"total\":4},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394379}",
+      "sig": "db5372c413bcb549c3f2022c952009dee8aa0ec5888811036c1ce00dca14574fabd23d07675aca9def7526eb0258c30087d1139bb3a7012d86ee6a934e861e22"
+    },
+    {
+      "id": "b6a5d4189352c46fed576e037346e087ba851991b78475fe770a3ff4a99ecec9",
+      "pubkey": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+      "created_at": 1793394198,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "oct30-gcloud-mammoth"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "58e58ddd3cd3da5b09337e0ebe9880d3fb539f403b43e8a1114ca99cede36b29"
+        ],
+        [
+          "expiration",
+          "1793394378"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":2,\"label\":\"oct30-gcloud-mammoth\",\"observed_at\":1793394198,\"pools\":[],\"provider\":\"d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829\",\"pylon\":\"oct30-gcloud-mammoth\",\"requires\":[],\"services\":[{\"capability\":\"d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793384847,\"slots\":{\"free\":4,\"total\":4},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394378}",
+      "sig": "7aa7c7804505c8b8a665ba75b11e3c4c643ebed539b8c5495360311001bcc94757079c2cb00eb5095d4fcb8e26b5eabba7986cd7aa577cb13bb79adbb7f0d0de"
+    },
+    {
+      "id": "b3dd5c1f9b2778185c1bced30e0bfb0576cdbfd31ae0c07e81afc2719c77198e",
+      "pubkey": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+      "created_at": 1793394193,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "oct30-gcloud-elephant-rtx"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "de1f9f8f7c1e122a9cc710d1d8dc00872e083258cb12b4fe485a751b5d9158dc"
+        ],
+        [
+          "expiration",
+          "1793394373"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":2,\"label\":\"oct30-gcloud-elephant-rtx\",\"observed_at\":1793394193,\"pools\":[],\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\",\"pylon\":\"oct30-gcloud-elephant-rtx\",\"requires\":[],\"services\":[{\"capability\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793384654,\"slots\":{\"free\":4,\"total\":4},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394373}",
+      "sig": "83294d1f28e29f685c62183d954939ea7d6decc82aed24fb3f8b9c9c0d09ebbc7a17e91c65e1f747a491008c58cc0ef67bcf0aa857bf8f04571532669aa01094"
+    },
+    {
+      "id": "b4e6f5735547cd22e31396c59c3a5bdf6b9605f12a2f399184a9c2757e768f42",
+      "pubkey": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+      "created_at": 1793394184,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "att-tdx"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "27214c90114507b537eb972b2f306ec89bd1ac44636ca7da4cb30c1cf5d9cb12"
+        ],
+        [
+          "expiration",
+          "1793394424"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"cpu\",\"memory_gb\":16,\"tier\":\"small\"},\"generation\":1,\"label\":\"Sealed Clef (Intel TDX, Confidential Space)\",\"meta\":{\"attested_endpoint\":\"30203:eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:ca928b0e77366c2ac81d77cd4d8f65925f4c48c4451041b70d99898d7792ed72\",\"claimed_level\":\"tee-cloud\"},\"observed_at\":1793394184,\"pools\":[],\"provider\":\"eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0\",\"pylon\":\"att-tdx\",\"requires\":[],\"services\":[{\"capability\":\"eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"clef-flash@sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793383100,\"slots\":{\"free\":1,\"total\":1},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394424}",
+      "sig": "c9c0a054f58b2290fc3a4ac0092656ecc27d37c51765b5ef2db83d804237ed2be6a98b38efcb4bb4f1a0fc6e0388095d72c520e773ce4b5bfe39ea74556c4743"
+    },
+    {
+      "id": "6bb03cafcfa08db431fced6a195941d850f9579e3c8c165c5770a2dc53390b5e",
+      "pubkey": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+      "created_at": 1793394253,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "oct30-gcloud-elephant-rtx"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "c8c76978fca5581e3c3ea866f8b74c0b927586670d2ff2788655ad5dc1dd11e0"
+        ],
+        [
+          "expiration",
+          "1793394433"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":2,\"label\":\"oct30-gcloud-elephant-rtx\",\"observed_at\":1793394253,\"pools\":[],\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\",\"pylon\":\"oct30-gcloud-elephant-rtx\",\"requires\":[],\"services\":[{\"capability\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793384654,\"slots\":{\"free\":4,\"total\":4},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394433}",
+      "sig": "eac8640f665191cff2a52ff5e4572cb8125cb32098a1675238743627e8ccf29ac913babc517b802be6cc6fa0693c1c9669cc953b4950cddb24f66f242d79ed43"
+    },
+    {
+      "id": "74715e792190acfd4c5c4933170b8cab29fc17c2dace2a8b34ee1f2a0c496b0a",
+      "pubkey": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+      "created_at": 1793394244,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "att-tdx"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "54b6ac326bd8207db02ef2498575717fbb398663397246e0a4d971629f1eb4df"
+        ],
+        [
+          "expiration",
+          "1793394484"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"cpu\",\"memory_gb\":16,\"tier\":\"small\"},\"generation\":1,\"label\":\"Sealed Clef (Intel TDX, Confidential Space)\",\"meta\":{\"attested_endpoint\":\"30203:eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:ca928b0e77366c2ac81d77cd4d8f65925f4c48c4451041b70d99898d7792ed72\",\"claimed_level\":\"tee-cloud\"},\"observed_at\":1793394244,\"pools\":[],\"provider\":\"eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0\",\"pylon\":\"att-tdx\",\"requires\":[],\"services\":[{\"capability\":\"eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"clef-flash@sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793383100,\"slots\":{\"free\":1,\"total\":1},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394484}",
+      "sig": "ec189e2d35a4b32f5583cb8bfad35d62d1d73dbe8fb5b0fe1bf2d94491a524c7ee6697e37fe485a50bb5581b533a92d7f6dec223aaeb55cc422448ff7bdd46f1"
+    },
+    {
+      "id": "9638531dd86816f7cf4a602f41bdeb2a89ef30b6acc8ff9494b641ac54f42b91",
+      "pubkey": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+      "created_at": 1793394258,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "oct30-gcloud-mammoth"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "ff1f7a3ef74f9b35cb01062e3ad83b8982e7bb5422e9b1aaa337915ed012f288"
+        ],
+        [
+          "expiration",
+          "1793394438"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"gpu\",\"memory_gb\":64,\"tier\":\"xl\"},\"generation\":2,\"label\":\"oct30-gcloud-mammoth\",\"observed_at\":1793394258,\"pools\":[],\"provider\":\"d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829\",\"pylon\":\"oct30-gcloud-mammoth\",\"requires\":[],\"services\":[{\"capability\":\"d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793384847,\"slots\":{\"free\":4,\"total\":4},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394438}",
+      "sig": "80d717b817472bb6d0f167827b6620b803c22adbfebb6bb6ca07881e7a3b7fa7d22207163e6289b3c88fb8058369be98904076591260649fc50b9667c0722b45"
+    },
+    {
+      "id": "4ec569b3abf0182ec0ea376437bb17031b19d3269f6898d49594c5fbcaf847f7",
+      "pubkey": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+      "created_at": 1793394259,
+      "kind": 30200,
+      "tags": [
+        [
+          "d",
+          "oct30-mac-demo"
+        ],
+        [
+          "t",
+          "oa:pylon-beacon:v1"
+        ],
+        [
+          "x",
+          "858ce9408071c75078e2594389a71e53e04206a0a3de8328dd0bae10db60766f"
+        ],
+        [
+          "expiration",
+          "1793394439"
+        ]
+      ],
+      "content": "{\"class\":{\"family\":\"cpu\",\"memory_gb\":16,\"tier\":\"large\"},\"generation\":1,\"label\":\"Mac (demo)\",\"observed_at\":1793394259,\"pools\":[],\"provider\":\"f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124\",\"pylon\":\"oct30-mac-demo\",\"requires\":[],\"services\":[{\"capability\":\"f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124:pylon/decision\",\"lanes\":[\"cj-decision\"],\"model\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"offering\":null,\"price_hint_msat\":null}],\"settlement\":[\"free-v1\"],\"since\":1793372555,\"slots\":{\"free\":4,\"total\":4},\"status\":\"online\",\"v\":\"openagents.pylon-beacon.v1\",\"valid_until\":1793394439}",
+      "sig": "e233d69762b34edccd389ccd6d4df9f08fade6101dc8d7d2dd9c2df531d593366c06909dd2c1b002c965d58cdff48bd0006a592e2db06b111ec61f7caedac596"
+    }
+  ],
+  "completed_at": "2026-10-30T21:04:21.516Z"
+}

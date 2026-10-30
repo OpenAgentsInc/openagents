@@ -1,0 +1,108 @@
+{
+  "observed_at": "2026-10-30T21:08:23.421Z",
+  "project": "openagentsgemini",
+  "runtime": "pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com",
+  "scheduler": "pylon-watch-scheduler@openagentsgemini.iam.gserviceaccount.com",
+  "scope": "Direct resource and project bindings for only these two principals; not an inherited organization/effective-access audit.",
+  "roles": [
+    {
+      "name": "projects/openagentsgemini/roles/pylonFleetWatchReadOnly",
+      "includedPermissions": [
+        "compute.instances.get"
+      ],
+      "stage": "GA"
+    },
+    {
+      "name": "projects/openagentsgemini/roles/pylonFleetWatchStartOnly",
+      "includedPermissions": [
+        "compute.instances.start"
+      ],
+      "stage": "GA"
+    },
+    {
+      "name": "projects/openagentsgemini/roles/pylonFleetWatchInvokeOnly",
+      "includedPermissions": [
+        "run.jobs.run"
+      ],
+      "stage": "GA"
+    }
+  ],
+  "resources": [
+    {
+      "resource": "compute/psionic-rtx6000-pylon",
+      "bindings": [
+        {
+          "role": "projects/openagentsgemini/roles/pylonFleetWatchReadOnly",
+          "members": [
+            "serviceAccount:pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com"
+          ]
+        }
+      ]
+    },
+    {
+      "resource": "compute/oct30-att-tdx-clef",
+      "bindings": [
+        {
+          "role": "projects/openagentsgemini/roles/pylonFleetWatchReadOnly",
+          "members": [
+            "serviceAccount:pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com"
+          ]
+        },
+        {
+          "role": "projects/openagentsgemini/roles/pylonFleetWatchStartOnly",
+          "members": [
+            "serviceAccount:pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com"
+          ]
+        }
+      ]
+    },
+    {
+      "resource": "jobs/pylon-spot-recovery",
+      "bindings": [
+        {
+          "role": "projects/openagentsgemini/roles/pylonFleetWatchInvokeOnly",
+          "members": [
+            "serviceAccount:pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com"
+          ]
+        }
+      ]
+    },
+    {
+      "resource": "jobs/pylon-fleet-watch",
+      "bindings": [
+        {
+          "role": "projects/openagentsgemini/roles/pylonFleetWatchInvokeOnly",
+          "members": [
+            "serviceAccount:pylon-watch-scheduler@openagentsgemini.iam.gserviceaccount.com"
+          ]
+        }
+      ]
+    },
+    {
+      "resource": "services/oa-mesh-elephant",
+      "bindings": [
+        {
+          "role": "roles/run.invoker",
+          "members": [
+            "serviceAccount:pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com"
+          ]
+        }
+      ]
+    },
+    {
+      "resource": "services/oa-mesh-mammoth",
+      "bindings": [
+        {
+          "role": "roles/run.invoker",
+          "members": [
+            "serviceAccount:pylon-watch-runtime@openagentsgemini.iam.gserviceaccount.com"
+          ]
+        }
+      ]
+    },
+    {
+      "resource": "project/openagentsgemini",
+      "bindings": []
+    }
+  ]
+}
