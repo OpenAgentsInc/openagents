@@ -18,5 +18,7 @@ COPY fleet-watch-run.sh /app/run.sh
 COPY probe-gptoss.sh /app/probe-gptoss.sh
 COPY SOURCE_COMMIT COAX_SHA256 SOURCES.sha256 /usr/share/pylon-watch/
 USER 10001:10001
-ENV PYLON_WATCH_DRY_RUN=1
+ENV PYLON_WATCH_DRY_RUN=1 \
+    OA_ATT_ORACLE_BIN=/opt/oa-confidential/oa-att \
+    SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt
 ENTRYPOINT ["/bin/bash","/app/run.sh"]
