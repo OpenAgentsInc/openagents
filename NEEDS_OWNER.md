@@ -62,9 +62,8 @@ Chapter 19 runs a Pylon that answers Elephant decisions over Nostr
 (psionic/book/PLAN.md, "Before chapter 19"). The code is being built now;
 these four choices are yours:
 
-1. **Where the Pylon key lives on the Linux machine.** There is no Keychain.
-   Options: a 0600 file under `~/work/.secrets/`, the desktop secret service,
-   or a hardware key. The key is generated once and never printed.
+1. ~~**Where the Pylon key lives.**~~ Decided 2026-10-29: a 0600 file in
+   `~/work/.secrets/` on the owner's Mac, generated once and never printed.
 2. **Your `auth` signature.** The beacon carries your key's signature over the
    Pylon key (`["auth", <owner key>, "kind=30200", <signature>]`). You sign
    that once per Pylon key.

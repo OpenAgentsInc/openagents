@@ -189,8 +189,9 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 | 6 | Decision jobs: `25910` plaintext to the server's request, the answer to `26910`, `27010` status, cancel onto the server's deadline | claude-pylon | landed `2f489e00d9`: built to the deployed wire (`outcome: "answered"`, refusals as `27010`); 2,346 mutants, 0 survivors. The execution receipt is still the caller's |
 | 7 | NIP-65 relay list (kind `10002`) | claude-pylon | landed `2f489e00d9`; 1,237 mutants, 0 survivors |
 
-Owner decisions are in `NEEDS_OWNER.md`: where the Pylon key lives on Linux,
-the owner's `auth` signature over it, and which relays. The owner allowed a
+Owner decisions are in `NEEDS_OWNER.md`: the owner's `auth` signature over the
+Pylon key, and which relays. The key itself is a 0600 file in
+`~/work/.secrets/` on the owner's Mac (owner, 2026-10-29). The owner allowed a
 TLS library in the C host for `wss://` on 2026-10-29 (AGENTS.md).
 
 ## V. Make execution measurable, parallel and portable
