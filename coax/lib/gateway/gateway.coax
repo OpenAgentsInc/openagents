@@ -125,10 +125,17 @@ gw_env :: (name: string, out: [] u8) -> string {
 // timeout_ms. Its stderr is dropped: a credential helper's message never
 // reaches a log through here.
 gw_run_line :: (args: [] string, out: [] u8, timeout_ms: int) -> string {
+  none: [1] string;
+  return gw_run_line_env(args, none[0..<0], out, timeout_ms);
+}
+
+// The same, with env ("NAME=value" each) set in the child's environment only.
+gw_run_line_env :: (args: [] string, env: [] string, out: [] u8, timeout_ms: int) -> string {
   h := cxproc_new();
   if h < 0 { return ""; }
   ok := true;
   for a: args { ok = ok && gw_arg(h, a); }
+  for v: env { ok = ok && gw_part(h, CL_FIELD_ENV, v) && cxproc_end(h, CL_FIELD_ENV) == 0; }
   if !ok || cxproc_spawn(h) != 0 { x := cxproc_release(h); return ""; }
   x := cxproc_close_stdin(h);
   n := cxproc_read_line(h, timeout_ms);

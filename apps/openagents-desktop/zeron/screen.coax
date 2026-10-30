@@ -653,6 +653,13 @@ coaxial_zeron_attach_codex :: (s: [] ZeronState, x: [] CxEngine, line: [] u8, ar
   x[0].att = s[0].att[..]; x[0].prompt = s[0].prompt;
   zr_catalogs(s);
 }
+// Microcoder for the Lab's other route (microcoder.coax), the host's for the app's life; it works in the chat's folder.
+coaxial_zeron_attach_mc :: (s: [] ZeronState, m: [] LabMc) #export_c {
+  if s.count < 1 || m.count < 1 { return; }
+  e := s[0].engine[..];
+  m[0].ncwd = e_set(m[0].cwd[..], 0, e_str(e[0].cwd[..], e[0].cwd_n));
+  s[0].lab[0].mc = m;
+}
 // The bytes the Codex engine's own buffer needs (the mem above).
 coaxial_zeron_codex_mem :: () -> int #export_c { return CX_MEM; }
 // The demo conversation (--demo).

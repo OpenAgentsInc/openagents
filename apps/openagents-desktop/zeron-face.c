@@ -89,6 +89,9 @@ void zr_attach(void *state, const uint8_t *cwd, int32_t length) {
   if (codex && cline && carena && cout && cm)
     coaxial_zeron_attach_codex(at(state), (coax_v_t_CxEngine){codex, 1}, (coax_v_u8){cline, ZR_LINE}, (coax_v_u8){carena, ZR_ARENA},
                                (coax_v_u8){cout, ZR_LINE}, (coax_v_u8){cm, cmem});
+  // Microcoder for the Lab's other route (zeron/microcoder.coax): its loop, plan and buffers, kept for the app's life.
+  coax_t_LabMc *mc = calloc(1, sizeof(coax_t_LabMc));
+  if (mc) coaxial_zeron_attach_mc(at(state), (coax_v_t_LabMc){mc, 1});
 }
 // The clock Codex's usage-limit notices count from (zeron/codex.coax).
 int64_t zr_unix_s(void) { return (int64_t)time(NULL); }

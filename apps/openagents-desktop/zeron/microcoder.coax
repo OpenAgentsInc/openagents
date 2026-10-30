@@ -1,0 +1,232 @@
+// Microcoder in the Lab (docs/coder/microcoder.md, "What the Lab shows"):
+// a Lab message Elephant routes to other runs Microcoder, the small agent
+// loop in coax/lib/microcoder, through a gateway plan (Vertex Gemini Flash,
+// then the Gemini API, then OpenRouter), on whichever of them this Mac has a
+// credential for. Lab only: the Claude, Psionic and Codex modes and web /chat
+// never come here.
+//
+// The transcript: the route chip first (lab.coax), then a row per model
+// attempt (gateway, model, how it ended, tokens and its price on the rates
+// card), a row per command with its exit code and output, a row per viewed
+// file, and the reply as text that streams as its JSON arrives (the screen's
+// 120 ms coalescing draws it). STOP ends the run and kills curl.
+//
+// Credentials, during development (as the Lab's router reads baseten.env):
+// files under ~/work/.secrets go into curl's child environment only
+// (Gateway.key_value), and Vertex's token is minted by gcloud with the
+// service-account key file and a gcloud config of its own set in gcloud's
+// environment only (gw_vertex_token_file). This process's environment, and
+// so every other engine's, is untouched. A Mac without any of them gets an
+// error chip naming what to add. The hosted route (/v1/inference) replaces
+// these before the app ships.
+//
+// The engine and its buffers are the host's (zeron-face.c allocates one
+// LabMc for the app's life); without it (the checks) the Lab doesn't offer
+// Microcoder.
+
+#load "../../../coax/lib/microcoder/run.coax";
+#load "../../../coax/lib/gateway/vertex.coax";
+#load "../../../coax/lib/gateway/openrouter.coax";
+
+LMC_SECRETS :: "/work/.secrets/";                       // under $HOME
+LMC_VERTEX_KEYFILE :: "/work/.secrets/vertex-sa-inference.json";
+LMC_GCLOUD_CONFIG :: "/Library/Caches/OpenAgents/gcloud-lab";
+LMC_GCLOUDS :: [3] string.["/google-cloud-sdk/bin/gcloud", "/opt/homebrew/bin/gcloud", "/usr/local/bin/gcloud"];   // the first under $HOME
+LMC_EVENTS :: 32;
+
+LabMc :: struct {
+  run: [1] McRun;
+  sb: [1] McStateBuffers;
+  lb: [1] McLoopBuffers;
+  plan: [1] GwPlan;
+  pb: [1] GwPlanBuffers;
+  bench: [1] GwBench;            // gateways benched (401, 402) for the app's life
+  vx: [1] GwVertex;
+  cwd: [1024] u8; ncwd: int;
+  keys_read: bool;
+  or_key: [512] u8; nor: int;
+  gm_key: [512] u8; ngm: int;
+  keyfile: [1200] u8; nkf: int;   // Vertex's service-account key file, when there is one
+  gcloud: [1200] u8; ngc: int;
+  config: [1200] u8; ncf: int;
+  gurl: [512] u8;
+  env: [1024] u8; route: [512] u8;
+  v: [1] LmcView;
+}
+
+// What the transcript side keeps of a run (apart, so the checks can drive it without the buffers).
+LmcView :: struct {
+  running: bool;
+  streamed: bool;                // reply text arrived in the current step
+  step_streamed: bool;           // ... in the step that just ended
+  attempts: int;                 // rows written, for their ids
+  why: [1024] u8;
+}
+
+// Whether a file is there (cat prints it; an empty file counts as missing).
+lmc_exists :: (path: string) -> bool { b: [64] u8; return ps_read_file(path, b[..]) > 0; }
+
+// The credentials this Mac has, read once (lab_mc_keys).
+lab_mc_keys :: (m: [] LabMc) {
+  if m[0].keys_read { return; }
+  m[0].keys_read = true;
+  home: [1024] u8; h := cl_getenv("HOME", home[..]);
+  if h.count == 0 { return; }
+  path: [1400] u8; file: [8192] u8;
+  np := e_set(path[..], e_set(path[..], e_set(path[..], 0, h), LMC_SECRETS), "openrouter.env");
+  nf := ps_read_file(e_str(path[..], np), file[..]);
+  v := ps_env_value(cast(string) file[0..<nf], GW_OPENROUTER_KEY_ENV);
+  if v.count <= m[0].or_key.count { m[0].nor = e_set(m[0].or_key[..], 0, v); }
+  for k: 0..<file.count { file[k] = 0; }
+  np = e_set(path[..], e_set(path[..], e_set(path[..], 0, h), LMC_SECRETS), "openagents-gemini-provider.env");
+  nf = ps_read_file(e_str(path[..], np), file[..]);
+  v = ps_env_value(cast(string) file[0..<nf], "GEMINI_API_KEY");
+  if v.count <= m[0].gm_key.count { m[0].ngm = e_set(m[0].gm_key[..], 0, v); }
+  for k: 0..<file.count { file[k] = 0; }
+  kf := e_set(m[0].keyfile[..], e_set(m[0].keyfile[..], 0, h), LMC_VERTEX_KEYFILE);
+  if lmc_exists(e_str(m[0].keyfile[..], kf)) { m[0].nkf = kf; }
+  gclouds := LMC_GCLOUDS;
+  for g, i: gclouds {
+    n := ifx i == 0 then e_set(m[0].gcloud[..], e_set(m[0].gcloud[..], 0, h), g) else e_set(m[0].gcloud[..], 0, g);
+    if lmc_exists(e_str(m[0].gcloud[..], n)) { m[0].ngc = n; break; }
+  }
+  m[0].ncf = e_set(m[0].config[..], e_set(m[0].config[..], 0, h), LMC_GCLOUD_CONFIG);
+}
+
+// Vertex's token: from this process's environment when it has one (a shell
+// launch), else from the key file through gcloud. "" when there is a token.
+lab_mc_vertex :: (m: [] LabMc) -> string {
+  // The host callocs LabMc, which skips GwVertex's field defaults.
+  if m[0].vx[0].project.count == 0 { m[0].vx[0].project = GW_VERTEX_PROJECT; }
+  if m[0].vx[0].location.count == 0 { m[0].vx[0].location = GW_VERTEX_LOCATION; }
+  t: [16] u8; c: [16] u8;
+  if cl_getenv("VERTEX_ACCESS_TOKEN", t[..]).count > 0 || cl_getenv("GOOGLE_APPLICATION_CREDENTIALS", c[..]).count > 0 { return gw_vertex_token(m[0].vx[..]); }
+  if m[0].nkf == 0 { return "no Vertex key file"; }
+  if m[0].ngc == 0 { return "gcloud isn't installed"; }
+  return gw_vertex_token_file(m[0].vx[..], e_str(m[0].gcloud[..], m[0].ngc), e_str(m[0].keyfile[..], m[0].nkf), e_str(m[0].config[..], m[0].ncf));
+}
+
+// The plan for one message: every gateway this Mac has a credential for, Vertex first. How many.
+lab_mc_plan :: (m: [] LabMc) -> int {
+  gw_plan_init(m[0].plan[..], m[0].pb[..]);
+  none: [1] string;
+  if lab_mc_vertex(m).count == 0 { x := gw_plan_add(m[0].plan[..], gw_vertex(m[0].vx[..]), GW_VERTEX_FLASH, none[0..<0]); }
+  if m[0].ngm > 0 {
+    g := gw_gemini(GW_GEMINI_FLASH, true, m[0].gurl[..]); g.key_value = e_str(m[0].gm_key[..], m[0].ngm);
+    x := gw_plan_add(m[0].plan[..], g, GW_GEMINI_FLASH, none[0..<0]);
+  }
+  if m[0].nor > 0 {
+    g := gw_openrouter(false); g.key_value = e_str(m[0].or_key[..], m[0].nor);
+    h := GW_OPENROUTER_HEADERS;
+    x := gw_plan_add(m[0].plan[..], g, GW_OPENROUTER_FLASH, h[..]);
+  }
+  return m[0].plan[0].n;
+}
+
+LMC_EFFORTS :: [5] string.["low", "medium", "high", "high", "high"];   // EFFORT_IDS to what Gemini takes
+
+// Starts Microcoder on the message: the facts it is told, Elephant's route, the plan.
+// What went wrong before anything ran, or "".
+lab_mc_start :: (m: [] LabMc, task: string, effort: int, level: int, local_work: f64) -> string {
+  lab_mc_keys(m);
+  if lab_mc_plan(m) == 0 { return "Microcoder has no model to call on this Mac: add ~/work/.secrets/vertex-sa-inference.json (with gcloud installed), openagents-gemini-provider.env or openrouter.env."; }
+  cwd := e_str(m[0].cwd[..], m[0].ncwd);
+  en := e_set(m[0].env[..], 0, "{\"os\":\"macOS\",\"app\":\"OpenAgents for Mac, the Lab\",\"cwd\":");
+  en = json_write_string(m[0].env[..], en, cwd);
+  en = e_set(m[0].env[..], en, "}");
+  names := LAB_LEVEL_NAMES; efforts := LMC_EFFORTS;
+  e := ifx effort >= 0 && effort < 5 then efforts[effort] else "low";
+  rn := e_set(m[0].route[..], 0, "{\"route\":\"other\",\"difficulty\":");
+  rn = json_write_string(m[0].route[..], rn, ifx level >= 0 && level < 5 then names[level] else "easy");
+  rn = e_set(m[0].route[..], rn, ",\"effort\":");
+  rn = json_write_string(m[0].route[..], rn, e);
+  rn = e_set(m[0].route[..], rn, ",\"local_work\":");
+  rn = lab_prob(m[0].route[..], rn, local_work);
+  rn = e_set(m[0].route[..], rn, "}");
+  if en < 0 || rn < 0 { return "The Lab's facts for Microcoder don't fit."; }
+  r := m[0].run[..];
+  mc_init(r[0].l[..], m[0].sb[..], m[0].lb[..], e_str(m[0].env[..], en), task, e_str(m[0].route[..], rn), local_work);
+  m[0].v[0] = LmcView.{running = true};
+  mc_run_start(r, m[0].plan[..], m[0].bench[..], cwd, e);
+  return "";
+}
+
+// One attempt's row: "vertex · google/gemini-3.8-flash", its log line in the fold.
+lab_mc_attempt :: (m: [] LmcView, s: [] Session, a: GwAttemptLog) {
+  k := s_part(s, P_TOOL);
+  if k < 0 { return; }
+  ib: [32] u8; ni := e_set(ib[..], 0, "mc-attempt-"); ni = put_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
+  db: [300] u8; nd := e_set(db[..], 0, a.gateway); nd = e_set(db[..], nd, " · "); nd = e_set(db[..], nd, a.model);
+  nd = e_set(db[..], nd, " · "); nd = e_set(db[..], nd, gw_outcome_name(a.outcome));
+  lb: [512] u8;
+  s[0].parts[k] = SPart.{kind = P_TOOL, at = s[0].np, tk = TK_TOOL, id = s_put(s, e_str(ib[..], ni)), detail = s_put(s, e_str(db[..], nd)),
+                         resolved = true, failed = a.outcome != GW_OUT_DONE && a.outcome != GW_OUT_STOPPED};
+  s[0].parts[k].output = s_put(s, gw_attempt_line(a, lb[..]));
+}
+
+// A command's row, as Claude Code's Bash rows are drawn: the command, its output, failed on a nonzero exit.
+lab_mc_command :: (m: [] LmcView, s: [] Session, e: McRunEvent) {
+  k := s_part(s, P_TOOL);
+  if k < 0 { return; }
+  ib: [32] u8; ni := e_set(ib[..], 0, "mc-cmd-"); ni = put_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
+  p := SPart.{kind = P_TOOL, at = s[0].np, tk = TK_EXEC, id = s_put(s, e_str(ib[..], ni)), resolved = true, failed = e.exit != 0};
+  p.arg = s_put(s, e.text); p.detail = s_single(s, p.arg);
+  ob: [64] u8; no := 0;
+  if e.timed_out { no = e_set(ob[..], 0, "\n[timed out]"); }
+  else if e.exit != 0 { no = e_set(ob[..], 0, "\n[exit "); no = put_int(ob[..], no, e.exit); no = e_set(ob[..], no, "]"); }
+  at := s[0].np; q := s_put(s, e.output); q = s_put(s, e_str(ob[..], no));
+  p.output = cast(string) s[0].pool[at..<s[0].np];
+  s[0].parts[k] = p;
+}
+
+lab_mc_view :: (m: [] LmcView, s: [] Session, e: McRunEvent) {
+  k := s_part(s, P_TOOL);
+  if k < 0 { return; }
+  ib: [32] u8; ni := e_set(ib[..], 0, "mc-view-"); ni = put_int(ib[..], ni, m[0].attempts); m[0].attempts += 1;
+  s[0].parts[k] = SPart.{kind = P_TOOL, at = s[0].np, tk = TK_READ, id = s_put(s, e_str(ib[..], ni)), resolved = true, failed = !e.found};
+  s[0].parts[k].arg = s_put(s, e.text);
+}
+
+// The run's end in the transcript.
+lab_mc_ended :: (m: [] LmcView, s: [] Session, e: McRunEvent) {
+  m[0].running = false;
+  if (e.ending == MC_END_FINISHED || e.ending == MC_END_ASKED) && !m[0].step_streamed && !m[0].streamed { s_delta(s, P_TEXT, e.text); }
+  if e.ending == MC_END_FINISHED || e.ending == MC_END_ASKED || e.ending == MC_END_STOPPED { s_turn_end(s, false, ""); return; }
+  k := 0;
+  if e.ending == MC_END_NO_CAPACITY { k = e_set(m[0].why[..], 0, "No model answered Microcoder"); if e.text.count > 0 { k = e_set(m[0].why[..], k, ": "); k = e_set(m[0].why[..], k, e.text); } }
+  else if e.ending == MC_END_BAD_REPLIES { k = e_set(m[0].why[..], 0, "Microcoder stopped: three replies in a row didn't fit its action schema."); }
+  else if e.ending == MC_END_IDLE { k = e_set(m[0].why[..], 0, "Microcoder stopped: three steps in a row did nothing."); }
+  else { k = e_set(m[0].why[..], 0, "Microcoder stopped."); }
+  s_turn_end(s, true, e_str(m[0].why[..], k));
+}
+
+lab_mc_take :: (m: [] LmcView, s: [] Session, ev: [] McRunEvent, n: int) {
+  for i: 0..<n {
+    e := ev[i];
+    if e.kind == MR_REPLY { if e.text.count > 0 { m[0].streamed = true; s_delta(s, P_TEXT, e.text); } }
+    else if e.kind == MR_ATTEMPT { lab_mc_attempt(m, s, e.log); }
+    else if e.kind == MR_COMMAND { lab_mc_command(m, s, e); }
+    else if e.kind == MR_VIEW { lab_mc_view(m, s, e); }
+    else if e.kind == MR_STEP { m[0].step_streamed = m[0].streamed; m[0].streamed = false; }
+    else if e.kind == MR_ENDED { lab_mc_ended(m, s, e); }
+  }
+}
+
+// Each frame: what the run did since the last.
+lab_mc_pump :: (m: [] LabMc, s: [] Session) {
+  if !m[0].v[0].running { return; }
+  ev: [LMC_EVENTS] McRunEvent;
+  n := mc_run_poll(m[0].run[..], ev[..]);
+  lab_mc_take(m[0].v[..], s, ev[..], n);
+}
+
+// STOP: curl goes, the run ends stopped.
+lab_mc_stop :: (m: [] LabMc, s: [] Session) -> bool {
+  if !m[0].v[0].running { return false; }
+  s[0].stopping = true;
+  ev: [LMC_EVENTS] McRunEvent;
+  n := mc_run_stop(m[0].run[..], ev[..]);
+  lab_mc_take(m[0].v[..], s, ev[..], n);
+  if m[0].v[0].running { m[0].v[0].running = false; s_turn_end(s, false, ""); }
+  return true;
+}

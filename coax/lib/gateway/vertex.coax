@@ -97,6 +97,27 @@ gw_vertex_keep :: (v: [] GwVertex, t: string, source: string, now_ms: int) -> bo
 }
 
 // Mints a token when there is none or it is old. What went wrong, or "".
+// A token minted by gcloud (at its full path) from a service-account key
+// file, with the key file, a gcloud config directory of its own and PATH set
+// in gcloud's environment only: nothing in this process's environment, or the
+// user's own gcloud config, changes. For an app opened from Finder, which
+// has no shell environment (the desktop Lab). Cached like gw_vertex_token.
+gw_vertex_token_file :: (v: [] GwVertex, gcloud: string, keyfile: string, config: string) -> string {
+  if v[0].nt > 0 && cxproc_now_ms() - v[0].minted_ms < GW_VERTEX_TOKEN_TTL_MS { return ""; }
+  v[0].nt = 0;
+  eb: [3072] u8;
+  n := json_raw(eb[..], 0, "GOOGLE_APPLICATION_CREDENTIALS="); n = json_raw(eb[..], n, keyfile);
+  m := json_raw(eb[..], n, "CLOUDSDK_CONFIG="); m = json_raw(eb[..], m, config);
+  k := json_raw(eb[..], m, "PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
+  if k < 0 { return "the gcloud environment does not fit"; }
+  env: [3] string;
+  env[0] = cast(string) eb[0..<n]; env[1] = cast(string) eb[n..<m]; env[2] = cast(string) eb[m..<k];
+  args: [4] string; args[0] = gcloud; args[1] = "auth"; args[2] = "application-default"; args[3] = "print-access-token";
+  buf: [4096] u8;
+  t := gw_run_line_env(args[..], env[..], buf[..], 30000);
+  return ifx gw_vertex_keep(v, t, "gcloud", cxproc_now_ms()) then "" else "gcloud could not mint a Vertex token from the key file";
+}
+
 gw_vertex_token :: (v: [] GwVertex) -> string {
   if v[0].nt > 0 && cxproc_now_ms() - v[0].minted_ms < GW_VERTEX_TOKEN_TTL_MS { return ""; }
   v[0].nt = 0;

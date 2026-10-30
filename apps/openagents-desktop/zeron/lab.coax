@@ -28,6 +28,7 @@
 // screen hands it over.
 
 #load "gpu.coax";
+#load "microcoder.coax";
 #load "../../../coax/lib/systemone/systemone.coax";
 
 LAB_TUNNEL :: "ssh -N -L 8790:127.0.0.1:8790 coderos-4080";
@@ -40,12 +41,16 @@ LAB_LOCAL_START :: "launchctl kickstart gui/$(id -u)/com.openagents.psionic-elep
 LAB_IDLE :: 0; LAB_ASKING :: 1; LAB_LOADING :: 2;   // loading: Elephant is loading on the GPU (gpu.coax)
 
 // The agents a message can go to (the harness question's keys).
-LAB_CLAUDE :: "claude_code"; LAB_PSIONIC :: "psionic"; LAB_CODEX :: "codex";
-LAB_HARNESS_LABELS :: [3] string.[
+LAB_CLAUDE :: "claude_code"; LAB_PSIONIC :: "psionic"; LAB_CODEX :: "codex"; LAB_OTHER :: "other";
+LAB_HARNESS_LABELS :: [4] string.[
   "Claude Code, Anthropic's coding agent on this Mac: strong at reading, writing and refactoring code, running commands, and long careful tasks",
   "Psionic, our own open model (gpt-oss-20b) on our GPU: fast for small talk, plain questions and short explanations",
-  "Codex, OpenAI's coding agent CLI: strong at code changes, terminal work and quick fixes"];
-LAB_HARNESS_NAMES :: [3] string.["Claude Code", "Psionic", "Codex"];
+  "Codex, OpenAI's coding agent CLI: strong at code changes, terminal work and quick fixes",
+  "Microcoder, our small agent on hosted models (Gemini Flash), answering in seconds: the default for plain questions, small talk, quick facts, explanations and small jobs on this Mac"];
+// With Microcoder on offer, Psionic keeps the turns that ask for our own model.
+LAB_PSIONIC_BESIDE_MC :: "Psionic, our own open model (gpt-oss-20b) on our GPU, which can take 40 seconds to load: for when the user asks for our own model, or wants the text kept off hosted providers";
+LAB_HARNESS_NAMES :: [4] string.["Claude Code", "Psionic", "Codex", "Microcoder"];
+LAB_HARNESS_KEYS :: [4] string.[LAB_CLAUDE, LAB_PSIONIC, LAB_CODEX, LAB_OTHER];
 // The router's levels, efforts and Claude models (router.coax), keys first.
 LAB_LEVELS :: [5] string.["Trivial: a one-line answer", "Easy: a short answer or a small edit", "Moderate: a few files or steps",
                           "Hard: many files, debugging or design", "Very hard: a long, open-ended or risky task"];
@@ -62,7 +67,8 @@ Lab :: struct {
   q: [1] SoBody;                  // the questions asked, for so_check
   part: int;                      // the user's message (a session part)
   route: int;                     // its decision part, or -1
-  via: int;                       // the engine running it: 0 Claude Code, 1 Psionic, 2 Codex
+  via: int;                       // the engine running it: 0 Claude Code, 1 Psionic, 2 Codex, 3 Microcoder
+  mc: [] LabMc;                   // Microcoder, the host's (microcoder.coax): offered as other when attached
   codex_due: bool;                // routed to Codex: the screen gives the message to the Codex engine
   codex_effort: int;              // ... at this effort (EFFORT_IDS)
   fallback: bool;                 // Psionic failed and Claude Code took it
@@ -95,7 +101,7 @@ lab_url :: (l: [] Lab) -> string { return ifx l[0].url_n > 0 then e_str(l[0].url
 
 // The state Elephant reads: the message (cut to LAB_MESSAGE_MAX bytes on a
 // character boundary) and what this Mac can run.
-lab_state :: (out: [] u8, message: string, codex: bool) -> string {
+lab_state :: (out: [] u8, message: string, codex: bool, mc: bool) -> string {
   k := e_set(out, 0, "Request: ");
   n := message.count;
   if n > LAB_MESSAGE_MAX { n = LAB_MESSAGE_MAX; while n > 0 && (message[n] & 0xC0) == 0x80 { n -= 1; } }
@@ -103,15 +109,30 @@ lab_state :: (out: [] u8, message: string, codex: bool) -> string {
   if n < message.count { k = e_set(out, k, " ..."); }
   k = e_set(out, k, "\nThis Mac can run: Claude Code, Psionic (gpt-oss-20b)");
   if codex { k = e_set(out, k, ", Codex"); }
+  if mc { k = e_set(out, k, ", Microcoder"); }
   return cast(string) out[0..<k];
 }
 
+// The agents offered, in order: Claude Code, Psionic, then Codex when it is
+// installed and Microcoder (other) when it is attached. Their keys and labels; how many.
+lab_offered :: (keys: [] string, labels: [] string, codex: bool, mc: bool) -> int {
+  all := LAB_HARNESS_KEYS; all_labels := LAB_HARNESS_LABELS;
+  n := 0;
+  for i: 0..<4 {
+    if (i == 2 && !codex) || (i == 3 && !mc) { continue; }
+    keys[n] = all[i]; labels[n] = all_labels[i];
+    if i == 1 && mc { labels[n] = LAB_PSIONIC_BESIDE_MC; }
+    n += 1;
+  }
+  return n;
+}
+
 // The request: the router's five questions over the message.
-lab_body :: (b: [] SoBody, buf: [] u8, state: string, codex: bool) {
-  keys := [3] string.[LAB_CLAUDE, LAB_PSIONIC, LAB_CODEX]; labels := LAB_HARNESS_LABELS;
+lab_body :: (b: [] SoBody, buf: [] u8, state: string, codex: bool, mc: bool) {
+  keys: [4] string; labels: [4] string;
   levels := LAB_LEVELS; efforts := EFFORT_IDS; effort_labels := LAB_EFFORT_LABELS;
   models := MODEL_IDS; model_labels := LAB_CLAUDE_LABELS;
-  agents := ifx codex then 3 else 2;
+  agents := lab_offered(keys[..], labels[..], codex, mc);
   so_begin(b, buf, SO_PSIONIC_ELEPHANT, "");
   so_state_text(b, state);
   so_choice(b, "harness", "Which agent should handle the user's request? Only choose an agent this Mac can run.", keys[0..<agents], labels[0..<agents]);
@@ -138,7 +159,7 @@ lab_index :: (key: string, keys: [] string) -> int { for i: 0..<keys.count { if 
 lab_read :: (text: string) -> LabDecision {
   d: LabDecision;
   ab: [256] u8; ar: [1] ClArena; ar[0].buf = ab[..];
-  keys := [3] string.[LAB_CLAUDE, LAB_PSIONIC, LAB_CODEX]; efforts := EFFORT_IDS; models := MODEL_IDS;
+  keys := LAB_HARNESS_KEYS; efforts := EFFORT_IDS; models := MODEL_IDS;
   h := so_choice_of(ar[..], text, "harness");
   e := so_choice_of(ar[..], text, "effort");
   m := so_choice_of(ar[..], text, "claude_model");
@@ -181,6 +202,7 @@ lab_headline :: (out: [] u8, d: LabDecision, round_ms: int) -> string {
   names := LAB_HARNESS_NAMES; models := MODEL_NAMES; efforts := EFFORT_NAMES;
   k := e_set(out, 0, "Routed to "); k = e_set(out, k, names[d.harness]);
   if d.harness == 1 { k = e_set(out, k, " · gpt-oss-20b"); }
+  else if d.harness == 3 { k = e_set(out, k, " · Gemini Flash"); }
   else if d.harness == 0 { k = e_set(out, k, " · "); k = e_set(out, k, models[d.model]); }
   k = e_set(out, k, " · "); k = e_set(out, k, efforts[d.effort]);
   k = e_set(out, k, " · "); k = put_int(out, k, round_ms / 1000); k = e_set(out, k, ".");
@@ -189,10 +211,11 @@ lab_headline :: (out: [] u8, d: LabDecision, round_ms: int) -> string {
 }
 
 // The chip's body: every distribution, the latency, the usage, who served it.
-lab_details :: (out: [] u8, text: string, d: LabDecision, codex: bool, round_ms: int) -> string {
-  keys := [3] string.[LAB_CLAUDE, LAB_PSIONIC, LAB_CODEX]; efforts := EFFORT_IDS; models := MODEL_IDS;
+lab_details :: (out: [] u8, text: string, d: LabDecision, codex: bool, mc: bool, round_ms: int) -> string {
+  keys: [4] string; labels: [4] string; efforts := EFFORT_IDS; models := MODEL_IDS;
+  offered := lab_offered(keys[..], labels[..], codex, mc);
   levels := [5] string.["0", "1", "2", "3", "4"]; names := LAB_LEVEL_NAMES;
-  k := e_set(out, 0, "harness       "); k = lab_ranked(out, k, text, "harness", keys[0..<(ifx codex then 3 else 2)]);
+  k := e_set(out, 0, "harness       "); k = lab_ranked(out, k, text, "harness", keys[0..<offered]);
   k = e_set(out, k, "\ndifficulty    "); k = put_int(out, k, cast(int) d.difficulty); k = e_set(out, k, ".");
   k = put_int(out, k, (cast(int) (d.difficulty * 10.0 + 0.5)) % 10);
   k = e_set(out, k, " of 4, most likely "); k = e_set(out, k, names[d.level]); k = e_set(out, k, " · levels ");
@@ -247,8 +270,8 @@ lab_problem :: (out: [] u8, r: SoResult, url: string) -> string {
 
 // A Lab message: it joins the transcript, and Elephant is asked where it goes.
 lab_send :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, text: string) {
-  l[0].route = -1; l[0].via = 0; l[0].fallback = false; l[0].codex_due = false;
   if l[0].phase != LAB_IDLE || s[0].live { s_notice(s, N_ERROR, "Wait for this turn to finish, or stop it, before sending to the Lab again."); return; }
+  l[0].route = -1; l[0].via = 0; l[0].fallback = false; l[0].codex_due = false;
   s_user(s, text);
   l[0].part = s[0].n - 1; l[0].secs = 0;
   l[0].codex = e[0].codex;
@@ -265,7 +288,8 @@ lab_send :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Ses
 // Elephant is asked where the message goes.
 lab_ask :: (l: [] Lab, s: [] Session) {
   st: [1400] u8;
-  lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], s_text_of(s, l[0].part), l[0].codex), l[0].codex);
+  mc := l[0].mc.count > 0;
+  lab_body(l[0].q[..], l[0].body[..], lab_state(st[..], s_text_of(s, l[0].part), l[0].codex, mc), l[0].codex, mc);
   body := so_finish(l[0].q[..]);
   l[0].phase = LAB_IDLE; l[0].secs = 0;
   if body.count == 0 { lab_fail(s, l[0].q[0].problem); return; }
@@ -291,7 +315,7 @@ lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Se
   s[0].parts[k].tk = TK_ROUTE; s[0].parts[k].resolved = true;
   s[0].parts[k].arg = s_put(s, cast(string) ib[0..<ik]);
   s[0].parts[k].detail = s_put(s, cast(string) det[0..<n]);
-  s[0].parts[k].output = s_put(s, lab_details(db[..], text, d, l[0].codex, round_ms));
+  s[0].parts[k].output = s_put(s, lab_details(db[..], text, d, l[0].codex, l[0].mc.count > 0, round_ms));
   l[0].route = k;
   // Psionic runs it with the effort mapped to its three (low, medium, high)
   if d.harness == 1 {
@@ -301,6 +325,13 @@ lab_route :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Se
     if p[0].on { ps_configure(p); }
     p[0].hold = gs_want(g, s, GS_GPTOSS, GT_LAB_PSIONIC, lab_url(l), ps_url(p));
     ps_forward(p, s, s_text_of(s, l[0].part));
+    return;
+  }
+  // Microcoder runs it through the gateway plan (microcoder.coax)
+  if d.harness == 3 && l[0].mc.count > 0 {
+    l[0].via = 3;
+    why := lab_mc_start(l[0].mc, s_text_of(s, l[0].part), d.effort, d.level, d.local_work);
+    if why.count > 0 { lab_fail(s, why); }
     return;
   }
   // Codex runs it (the screen hands it to the Codex engine) at the chosen effort
@@ -333,6 +364,7 @@ lab_unanswered :: (l: [] Lab, s: [] Session) -> bool {
 
 // Stop while Elephant decides: curl goes, the turn ends.
 lab_stop :: (l: [] Lab, s: [] Session) -> bool {
+  if l[0].via == 3 && l[0].mc.count > 0 && lab_mc_stop(l[0].mc, s) { return true; }
   if l[0].phase == LAB_IDLE { return false; }
   if l[0].phase == LAB_ASKING { so_cancel(l[0].call[..]); }
   l[0].phase = LAB_IDLE;
@@ -351,6 +383,7 @@ lab_fall_back :: (l: [] Lab, g: [] GpuSwitch, problem: string) -> bool {
 
 // Each frame: what curl wrote; once done, the decision or the error chip.
 lab_pump :: (l: [] Lab, e: [] Engine, p: [] PsEngine, g: [] GpuSwitch, s: [] Session, dt: f32) {
+  if l[0].via == 3 && l[0].mc.count > 0 { lab_mc_pump(l[0].mc, s); }
   // Psionic gave no answer: Claude Code takes the message (Sonnet, medium), after Psionic's chip
   if l[0].phase == LAB_IDLE && l[0].via == 1 && !l[0].fallback && lab_unanswered(l, s) {
     l[0].fallback = true;
@@ -409,18 +442,18 @@ LAB_TEST_BODY :: "{\"model\":\"elephant-1\",\"state\":\"Request: fix the failing
 
 #test "a Lab message asks Elephant the router's five questions, with the agents this Mac can run" {
   buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
-  lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false), false);
+  lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false, false), false, false);
   body := so_finish(b[..]);
   #assert body == LAB_TEST_BODY && json_valid(body) && b[0].questions == 5;
   #assert b[0].names[0] == "harness" && b[0].options[0] == 2 && b[0].kinds[1] == SoKind.score && b[0].options[1] == 5;
   #assert b[0].names[2] == "effort" && b[0].names[3] == "claude_model" && b[0].kinds[4] == SoKind.noul;
   // with Codex installed it is a third choice, and the state says so
-  lab_body(b[..], buf[..], lab_state(st[..], "hi", true), true);
+  lab_body(b[..], buf[..], lab_state(st[..], "hi", true, false), true, false);
   body = so_finish(b[..]);
   #assert b[0].options[0] == 3 && s_has(body, "\"codex\":\"codex, openai") && s_has(body, "can run: claude code, psionic (gpt-oss-20b), codex\"");
   // a long message is cut on a character boundary
   long: [1300] u8; for i: 0..<1300 { long[i] = ifx i % 2 == 0 then 0xC3 else 0xA9; }
-  state := lab_state(st[..], cast(string) long[..], false);
+  state := lab_state(st[..], cast(string) long[..], false, false);
   #assert state.count == 9 + 1200 + 4 + 53 && s_has(state, " ...\nthis mac");
 }
 
@@ -430,7 +463,7 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
 
 #test "Elephant's recorded answer becomes the decision, its headline and its distributions" {
   buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
-  lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false), false);
+  lab_body(b[..], buf[..], lab_state(st[..], "fix the failing test in coax/web", false, false), false, false);
   body := so_finish(b[..]);
   #assert so_check(b[..], LAB_TEST_ANSWER) == "";
   d := lab_read(LAB_TEST_ANSWER);
@@ -442,7 +475,7 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
 #test "the decision's chip opens onto every distribution, the latency, the usage and who served it" {
   d := LabDecision.{ok = true, harness = 0, effort = 1, model = 1, difficulty = 1.882631565, level = 2, local_work = 0.982787513, latency_ms = 1819};
   db: [4096] u8; hb: [256] u8;
-  text := lab_details(db[..], LAB_TEST_ANSWER, d, false, 1900);
+  text := lab_details(db[..], LAB_TEST_ANSWER, d, false, false, 1900);
   #assert s_has(text, "harness       claude_code 0.99 · psionic 0.01\ndifficulty    1.9 of 4, most likely moderate · levels 2 0.49 · 1 0.25 · 3 0.19 · 0 0.04 · 4 0.02\n");
   #assert s_has(text, "\neffort        medium 0.43 · high 0.36 · low 0.09 · xhigh 0.08 · max 0.04\n");
   #assert s_has(text, "\nclaude_model  claude-sonnet-5-5 0.65 · claude-haiku-5-5 0.20 · claude-opus-5-5 0.15\nlocal_work    yes 0.98\n");
@@ -456,7 +489,7 @@ LAB_TEST_ANSWER :: "{\"model\":\"elephant-1\",\"answers\":{\"harness\":{\"type\"
   #assert lab_headline(hb[..], d, 1700) == "Routed to Psionic · gpt-oss-20b · Low · 1.7 s";
   d.harness = 2;
   #assert lab_headline(hb[..], d, 1700) == "Routed to Codex · Low · 1.7 s";
-  #assert !s_has(lab_details(db[..], LAB_TEST_ANSWER, d, true, 1900), "note");
+  #assert !s_has(lab_details(db[..], LAB_TEST_ANSWER, d, true, false, 1900), "note");
   pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
   e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
   e[0].codex = true;
@@ -573,4 +606,70 @@ LAB_TEST_PSIONIC :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\
   p[0].hold = false; s_notice(ss[..], N_OFFLINE, gs_why(g[..])); s_turn_end(ss[..], false, "");
   lab_pump(l[..], e[..], p[..], g[..], ss[..], 0.016);
   #assert l[0].fallback && l[0].via == 0 && ss[0].live;
+}
+
+#test "with Microcoder attached the Lab offers other, and Elephant's other is Microcoder's route" {
+  buf: [8192] u8; st: [1400] u8; b: [1] SoBody;
+  lab_body(b[..], buf[..], lab_state(st[..], "what is 2+2", false, true), false, true);
+  body := so_finish(b[..]);
+  #assert b[0].options[0] == 3 && s_has(body, "\"other\":\"microcoder, our small agent") && s_has(body, "can run: claude code, psionic (gpt-oss-20b), microcoder\"");
+  lab_body(b[..], buf[..], lab_state(st[..], "what is 2+2", true, true), true, true);
+  body = so_finish(b[..]);
+  #assert b[0].options[0] == 4 && so_check(b[..], LAB_TEST_OTHER) == "";
+  d := lab_read(LAB_TEST_OTHER);
+  hb: [256] u8; db: [4096] u8;
+  #assert d.ok && d.harness == 3 && lab_headline(hb[..], d, 1200) == "Routed to Microcoder · Gemini Flash · Low · 1.2 s";
+  #assert s_has(lab_details(db[..], LAB_TEST_OTHER, d, true, true, 1200), "harness       other 0.90 · psionic 0.06 · claude_code 0.03 · codex 0.01\n");
+  // without it attached (the checks, or a host that didn't give one) the route never starts it
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  e: [1] Engine; l: [1] Lab; p: [1] PsEngine; g: [1] GpuSwitch; gs_init(g[..]);
+  lab_send(l[..], e[..], p[..], g[..], ss[..], "what is 2+2");
+  lab_route(l[..], e[..], p[..], g[..], ss[..], LAB_TEST_OTHER, 1200);
+  #assert l[0].via != 3;
+}
+LAB_TEST_OTHER :: "{\"answers\":{\"harness\":{\"type\":\"choice\",\"choice\":\"other\",\"confidence\":0.9,\"probabilities\":{\"claude_code\":0.03,\"psionic\":0.06,\"codex\":0.01,\"other\":0.9}},\"difficulty\":{\"type\":\"score\",\"score\":0.2,\"confidence\":0.9,\"probabilities\":{\"0\":0.9,\"1\":0.07,\"2\":0.01,\"3\":0.01,\"4\":0.01}},\"effort\":{\"type\":\"choice\",\"choice\":\"low\",\"confidence\":0.9,\"probabilities\":{\"low\":0.9,\"medium\":0.05,\"high\":0.03,\"xhigh\":0.01,\"max\":0.01}},\"claude_model\":{\"type\":\"choice\",\"choice\":\"claude-haiku-5-5\",\"confidence\":0.9,\"probabilities\":{\"claude-opus-5-5\":0.05,\"claude-sonnet-5-5\":0.05,\"claude-haiku-5-5\":0.9}},\"local_work\":{\"type\":\"noul\",\"noul\":0.05}},\"latency_ms\":1100}";
+
+#test "Microcoder's run in the transcript: an attempt row, commands with exit codes, the reply streaming, the end" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  v: [1] LmcView; v[0].running = true;
+  s_user(ss[..], "how many swift files");
+  ev: [8] McRunEvent;
+  ev[0] = McRunEvent.{kind = MR_ATTEMPT, log = GwAttemptLog.{gateway = "vertex", model = "google/gemini-3.8-flash", outcome = GW_OUT_DONE, status = 200, first_ms = 900, latency_ms = 1200, input_tokens = 461, output_tokens = 98, card_usd_micros = 713, cost_usd_micros = -1}};
+  ev[1] = McRunEvent.{kind = MR_COMMAND, text = "ls *.swift | wc -l", exit = 0, output = "3\n"};
+  ev[2] = McRunEvent.{kind = MR_COMMAND, text = "cat missing", exit = 1, output = "cat: missing: No such file or directory\n"};
+  ev[3] = McRunEvent.{kind = MR_STEP, step = 1};
+  lab_mc_take(v[..], ss[..], ev[..], 4);
+  #assert ss[0].n == 4 && ss[0].parts[1].tk == TK_TOOL && ss[0].parts[1].detail == "vertex · google/gemini-3.8-flash · done" && !ss[0].parts[1].failed;
+  #assert s_has(ss[0].parts[1].output, "in=461 out=98 card_usd_micros=713");
+  #assert ss[0].parts[2].tk == TK_EXEC && ss[0].parts[2].arg == "ls *.swift | wc -l" && ss[0].parts[2].output == "3\n" && !ss[0].parts[2].failed;
+  #assert ss[0].parts[3].failed && s_has(ss[0].parts[3].output, "[exit 1]") && ss[0].live;
+  // the finishing step: the reply streams in pieces, then the turn ends with no second copy of it
+  ev[0] = McRunEvent.{kind = MR_REPLY, text = "There are "};
+  ev[1] = McRunEvent.{kind = MR_REPLY, text = "3 Swift files."};
+  ev[2] = McRunEvent.{kind = MR_STEP, step = 2};
+  ev[3] = McRunEvent.{kind = MR_ENDED, ending = MC_END_FINISHED, text = "There are 3 Swift files."};
+  lab_mc_take(v[..], ss[..], ev[..], 4);
+  #assert ss[0].parts[4].kind == P_TEXT && s_text_of(ss[..], 4) == "There are 3 Swift files." && ss[0].n == 5 && !ss[0].live && !v[0].running;
+}
+
+#test "Microcoder's endings: a reply that never streamed is shown whole; no capacity and STOP are chips" {
+  pool: [65536] u8; ss: [1] Session; s_init(ss[..], pool[..]);
+  v: [1] LmcView; v[0].running = true;
+  s_user(ss[..], "hi");
+  ev: [4] McRunEvent;
+  ev[0] = McRunEvent.{kind = MR_STEP, step = 1};
+  ev[1] = McRunEvent.{kind = MR_ENDED, ending = MC_END_FINISHED, text = "Hello."};
+  lab_mc_take(v[..], ss[..], ev[..], 2);
+  #assert s_text_of(ss[..], 1) == "Hello." && !ss[0].live;
+  s_user(ss[..], "hi"); v[0] = LmcView.{running = true};
+  ev[0] = McRunEvent.{kind = MR_ENDED, ending = MC_END_NO_CAPACITY, text = "every gateway in the plan refused"};
+  lab_mc_take(v[..], ss[..], ev[..], 1);
+  #assert ss[0].parts[ss[0].n - 1].kind == P_NOTICE && s_text_of(ss[..], ss[0].n - 1) == "No model answered Microcoder: every gateway in the plan refused" && !ss[0].live;
+  s_user(ss[..], "count slowly"); v[0] = LmcView.{running = true};
+  ev[0] = McRunEvent.{kind = MR_REPLY, text = "One, "};
+  lab_mc_take(v[..], ss[..], ev[..], 1);
+  ss[0].stopping = true;
+  ev[0] = McRunEvent.{kind = MR_ENDED, ending = MC_END_STOPPED};
+  lab_mc_take(v[..], ss[..], ev[..], 1);
+  #assert ss[0].parts[ss[0].n - 1].notice == N_STOPPED && !ss[0].live && s_text_of(ss[..], ss[0].n - 2) == "One, ";
 }
