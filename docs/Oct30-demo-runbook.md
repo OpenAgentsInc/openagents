@@ -1,6 +1,34 @@
 # Oct 30 demo runbook
 
-The live page is <https://openagents.com/pylon>. Open it before sending
+## Current public entry points
+
+The homepage at <https://openagents.com/> includes the Pylon HUD. The
+canonical user/agent quickstart is
+<https://openagents.com/docs/connect-a-pylon>, with its exact Markdown at
+<https://openagents.com/docs/connect-a-pylon/index.md>.
+
+`POST https://openagents.com/api/v1/systemone` is now live with existing
+browser-session or body-bound NIP-98 authentication. Both `elephant-1` and
+`mammoth-1` have passed real authenticated production calls. Follow the
+quickstart's native client command; model ports are not public.
+
+Both learned-model Pylons currently share **one RTX PRO 6000** on
+`psionic-rtx6000-pylon` in `us-central1-b`. The old L4 was preempted twice
+and remains stopped. These are two providers, not two independent GPUs.
+Current keys, persistent paths, units and stop commands are in the
+[cloud operator runbook](../psionic/docs/serving/cloud-pylons.md).
+The [public edge proof](verification/psionic-public-edge-production-2026-10-30.md)
+records actual responses, auth refusals and immutable deployment identities.
+
+The recovered confidential Clef worker is a separate CPU NIP-ATT lane on
+`oct30-att-tdx-clef` (Intel TDX / Google Confidential Space). Its
+[fresh attestation and sealed-round proof](verification/2026-10-30-confidential-pylon.md)
+does not change the ordinary API's trust boundary or claim a Coax NIP-ATT
+client has shipped.
+
+## Retained local walkthrough
+
+The standalone page is <https://openagents.com/pylon>. Open it before sending
 jobs: its counters show activity observed during that page session.
 The [agent guide](https://openagents.com/pylon/index.md) has prerequisites
 and troubleshooting.

@@ -1,0 +1,61 @@
+{
+  "schema": "openagents.private-fleet-deployment.v1",
+  "checked_at": "2026-10-30T18:23:09.955Z",
+  "source": "da0bbfa0573afa595cab6c6eba80688fe0f7f228",
+  "cloud_build": "f9fc82b2-1194-4e81-99e0-51257961921b",
+  "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:48c948cef4297f850f8f8a9d4fd0bf5d98e6a2767d4a5fd3bf5c31cd09b33ec8",
+  "services": [
+    {
+      "name": "oa-mesh-elephant",
+      "url": "https://oa-mesh-elephant-ezxz4mgdsq-uc.a.run.app",
+      "revision": "oa-mesh-elephant-00002-dgz",
+      "ready": true,
+      "service_account": "oa-mesh-runtime@openagentsgemini.iam.gserviceaccount.com",
+      "env": [
+        {
+          "name": "OA_MESH_IDENTITY",
+          "value": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba"
+        },
+        {
+          "name": "OA_MESH_PROVIDER",
+          "value": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7"
+        }
+      ],
+      "invoker_bindings": [
+        {
+          "members": [
+            "serviceAccount:157437760789-compute@developer.gserviceaccount.com"
+          ],
+          "role": "roles/run.invoker"
+        }
+      ],
+      "unauthenticated_http": 403
+    },
+    {
+      "name": "oa-mesh-mammoth",
+      "url": "https://oa-mesh-mammoth-ezxz4mgdsq-uc.a.run.app",
+      "revision": "oa-mesh-mammoth-00001-4gv",
+      "ready": true,
+      "service_account": "oa-mesh-runtime@openagentsgemini.iam.gserviceaccount.com",
+      "env": [
+        {
+          "name": "OA_MESH_IDENTITY",
+          "value": "mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019"
+        },
+        {
+          "name": "OA_MESH_PROVIDER",
+          "value": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829"
+        }
+      ],
+      "invoker_bindings": [
+        {
+          "members": [
+            "serviceAccount:157437760789-compute@developer.gserviceaccount.com"
+          ],
+          "role": "roles/run.invoker"
+        }
+      ],
+      "unauthenticated_http": 403
+    }
+  ]
+}
