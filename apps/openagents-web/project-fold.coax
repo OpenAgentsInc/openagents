@@ -765,7 +765,9 @@ write_log :: (s: [] Store, f: [] Fold, t: [] Tables) {
       if who.count > 0 { n = json_raw(w, n, who); n = json_raw(w, n, ": "); }
       n = json_raw(w, n, trimmed(content_of(s, e)));
     } else if ty == LOG_DONE {
-      c := str(s, f[0].commit[r]);
+      // Historical rows describe this event, not the issue's latest commit.
+      commit := tag_value(s, e, "commit");
+      c := ifx commit.ok then str(s, commit.ref) else "";
       n = json_raw(w, n, "DONE IN "); n = json_raw(w, n, c[0..<(ifx c.count > 10 then 10 else c.count)]);
       if who.count > 0 { n = json_raw(w, n, " BY "); n = json_raw(w, n, who); }
     } else if ty == LOG_CLAIM {

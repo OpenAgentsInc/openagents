@@ -1,0 +1,12 @@
+// Exercises the actual public relay projection and log writer through C-owned
+// production-sized storage. The fixture is a parsing/folding test, not a
+// signature, relay-completeness, or authorization check.
+#load "../../../apps/openagents-web/project-fold.coax";
+history_feed :: (s:[]Store,frame:string,key:string)->int #export_c {
+  result:=read_frame(s,frame,key);return result.kept;
+}
+history_write :: (s:[]Store,f:[]Fold,t:[]Tables)->int #export_c {
+  fold(s,f,"coax");write_tables(s,f,t);
+  if !t[0].complete {return -1;}return t[0].log_n;
+}
+main :: () {}
