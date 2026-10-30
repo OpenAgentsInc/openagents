@@ -51,7 +51,9 @@ PS_TUNNEL_HOST :: "127.0.0.1:8080 coderos-4080";
 PS_SERVE :: "ssh coderos-4080 'systemctl --user start psionic-gpu-switch'";
 
 PS_ITEMS :: 128;
-PS_TOOL_REPLAY :: 1200;          // bytes of a tool's output the model gets back (2048 positions in all)
+PS_TOOL_REPLAY :: 600;           // bytes of a tool's output the model gets back (2048 positions in all)
+PS_TOOL_SHRUNK :: 240;           // what an earlier output of this turn keeps when the turn outgrows the context
+PS_SHRUNK_NOTE :: "\n(shortened to fit the 2048-token context)";
 PS_TOOL_SHOW :: 6000;            // bytes the chip keeps
 PS_TOOL_SECONDS :: 60;
 
@@ -61,7 +63,7 @@ PsItem :: struct { at: int; n: int; turn: int; kind: int; }
 
 // The three tools (flat object schemas, as the profile admits).
 PT_READ :: 0; PT_LIST :: 1; PT_RUN :: 2;
-PS_TOOLS :: "[{\"type\":\"function\",\"name\":\"read_file\",\"description\":\"Read a text file on the user's Mac (its first 6000 bytes).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"list_folder\",\"description\":\"List a folder on the user's Mac.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"run_command\",\"description\":\"Run a shell command (zsh) in the working folder on the user's Mac and return its output.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The command line\"}},\"required\":[\"command\"]}}]";
+PS_TOOLS :: "[{\"type\":\"function\",\"name\":\"read_file\",\"description\":\"Read a text file on the user's Mac (its first 6000 bytes).\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"list_folder\",\"description\":\"List a folder on the user's Mac: one name per line, folders end in /.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"path\":{\"type\":\"string\",\"description\":\"A path, absolute or relative to the working folder\"}},\"required\":[\"path\"]}},{\"type\":\"function\",\"name\":\"run_command\",\"description\":\"Run a shell command (zsh) in the working folder on the user's Mac and return its output.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"command\":{\"type\":\"string\",\"description\":\"The command line\"}},\"required\":[\"command\"]}}]";
 
 PsEngine :: struct {
   on: bool;                      // the host attached buffers (never in tests)
@@ -352,6 +354,37 @@ ps_hist_put :: (p: [] PsEngine, kind: int, json: string) -> bool {
   p[0].ni += 1;
   return true;
 }
+// Shortens this turn's oldest long tool output in the store to PS_TOOL_SHRUNK
+// bytes (at a UTF-8 boundary) with a note; whether one shrank.
+ps_shrink_output :: (p: [] PsEngine) -> bool {
+  for i: 0..<p[0].ni {
+    im := p[0].items[i];
+    if im.kind != PI_CALL_OUTPUT || im.turn != p[0].turn { continue; }
+    p[0].ar[0].at = 0;
+    json := ps_item(p, i);
+    output := cl_str(p[0].ar[..], json, "output");
+    if output.count <= PS_TOOL_SHRUNK + PS_SHRUNK_NOTE.count { continue; }
+    cut := PS_TOOL_SHRUNK;
+    while cut > 0 && (cast(int) output[cut] & 192) == 128 { cut -= 1; }
+    ob: [400] u8;
+    on := e_set(ob[..], e_set(ob[..], 0, cast(string) output[0..<cut]), PS_SHRUNK_NOTE);
+    idb: [200] u8;
+    idn := e_set(idb[..], 0, cl_str(p[0].ar[..], json, "call_id"));
+    buf: [1200] u8;
+    o: [1] ClOut; o[0] = ClOut.{buf = buf[..]};
+    cl_put(o[..], "{\"type\":\"function_call_output\",\"call_id\":"); cl_put_string(o[..], e_str(idb[..], idn));
+    cl_put(o[..], ",\"output\":"); cl_put_string(o[..], e_str(ob[..], on)); cl_put(o[..], "}");
+    if o[0].failed || o[0].len >= im.n { continue; }
+    d := im.n - o[0].len;
+    for k: 0..<o[0].len { p[0].hist[im.at + k] = buf[k]; }
+    for k: im.at + im.n..<p[0].nh { p[0].hist[k - d] = p[0].hist[k]; }
+    p[0].nh -= d;
+    p[0].items[i].n = o[0].len;
+    for j: i + 1..<p[0].ni { p[0].items[j].at -= d; }
+    return true;
+  }
+  return false;
+}
 ps_item :: (p: [] PsEngine, k: int) -> string { im := p[0].items[k]; return cast(string) p[0].hist[im.at..<im.at + im.n]; }
 // Removes the oldest turn's items from the store (it is full); whether one went.
 ps_forget_turn :: (p: [] PsEngine) -> bool {
@@ -537,7 +570,8 @@ ps_request :: (p: [] PsEngine, s: [] Session) {
 }
 
 // The replay is too big for the model: the oldest turn leaves it and the
-// request goes again; with only this turn left, the turn fails.
+// request goes again; with only this turn left, this turn's tool outputs are
+// shortened, oldest first, and only when none can shrink does the turn fail.
 ps_drop_or_fail :: (p: [] PsEngine, s: [] Session) {
   oldest := p[0].turn;
   for i: 0..<p[0].ni { if p[0].items[i].turn >= p[0].first_turn && p[0].items[i].turn < oldest { oldest = p[0].items[i].turn; } }
@@ -546,6 +580,7 @@ ps_drop_or_fail :: (p: [] PsEngine, s: [] Session) {
     ps_request(p, s);
     return;
   }
+  if ps_shrink_output(p) { ps_request(p, s); return; }
   s_turn_end(s, true, "This turn no longer fits gpt-oss-20b's 2048-token context (the prompt and room for a 512-token answer). Start a new chat or ask for something shorter.");
 }
 
@@ -657,7 +692,7 @@ ps_run :: (p: [] PsEngine, s: [] Session) {
   if h < 0 { ps_call_done(p, s, "No process slot is free.", true); return; }
   ok := true;
   if p[0].call_kind == PT_READ { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, "exec 2>&1; head -c 6000 -- \"$1\"") && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg); }
-  else if p[0].call_kind == PT_LIST { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, "exec 2>&1; ls -la -- \"${1:-.}\"") && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg); }
+  else if p[0].call_kind == PT_LIST { ok = cl_push(h, CL_FIELD_ARG, "/bin/sh") && cl_push(h, CL_FIELD_ARG, "-c") && cl_push(h, CL_FIELD_ARG, "exec 2>&1; ls -1Ap -- \"${1:-.}\"") && cl_push(h, CL_FIELD_ARG, "sh") && cl_push(h, CL_FIELD_ARG, arg); }
   else {
     script: [8192] u8;
     n := e_set(script[..], e_set(script[..], 0, "exec 2>&1 </dev/null\n"), arg);
@@ -933,4 +968,25 @@ ps_contains :: (text: string, needle: string) -> int {
   p[0].turn = 3; ok = ps_hist_put(p[..], PI_USER, "{\"c\":3333333333333333333333333333333333333333333333333333333333333333333}");
   p[0].turn = 4; ok = ps_hist_put(p[..], PI_USER, "{\"d\":4444444444444444444444444444444444444444444444444444444444444444444}");
   #assert ok && p[0].ni == 3 && p[0].first_turn == 2 && ps_item(p[..], 0)[2] == 'b' && ps_item(p[..], 2)[2] == 'd';
+}
+
+#test "a turn whose tool outputs outgrow the context shortens the oldest output before it fails" {
+  p: [1] PsEngine; s: [1] Session; b: [1] PsTest;
+  ps_test_setup(p[..], s[..], b[..]);
+  ps_send(p[..], s[..], "read some files");
+  ok := ps_hist_put(p[..], PI_OUTPUT, "{\"id\":\"fc_1\",\"type\":\"function_call\",\"status\":\"completed\",\"name\":\"read_file\",\"call_id\":\"call_1\",\"arguments\":\"{\\\"path\\\":\\\"a\\\"}\"}");
+  long: [1000] u8; for k: 0..<1000 { long[k] = cast(u8) (97 + k % 26); }
+  long[239] = 0xC3; long[240] = 0xA9;   // an é across the cut stays whole or goes
+  ok = ok && ps_call_output_item(p[..], "call_1", cast(string) long[..]);
+  #assert ok;
+  last := p[0].ni - 1;
+  before := p[0].items[last].n;
+  ctx := "{\"error\":{\"type\":\"invalid_request_error\",\"code\":\"context_length_exceeded\",\"param\":\"input\",\"message\":\"context_length_exceeded\"}}";
+  ps_test_end(p[..], s[..], 400, ctx, -1);
+  #assert s[0].live && p[0].items[last].n < before && p[0].nh == p[0].items[last].at + p[0].items[last].n;
+  p[0].ar[0].at = 0;
+  out := cl_str(p[0].ar[..], ps_item(p[..], last), "output");
+  #assert out.count == 239 + PS_SHRUNK_NOTE.count && s_has(out, "shortened to fit") && cl_str(p[0].ar[..], ps_item(p[..], last), "call_id") == "call_1";
+  ps_test_end(p[..], s[..], 400, ctx, -1);
+  #assert !s[0].live && s_has(s_text_of(s[..], s[0].n - 1), "2048-token context");
 }
