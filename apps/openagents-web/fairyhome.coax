@@ -1,0 +1,309 @@
+// Your home (ff-home, verse/fairy-forest/README.md "Your home and the
+// community"): a hollow under a great root in Mossbank's west, with the
+// mirror pool, and a room more for each root of the heart tree you wake (the
+// garden, the table room, the shelves, the green). BUILD, in your home, puts
+// a bar along the bottom: the pieces (bed, table, stool, shelf, lamp, rug,
+// flowers, toadstool) and PLACE, MOVE, TURN, SIZE and UNDO, the same verbs
+// as the realm edit tools, for the piece in front of you. What you build is
+// kept in the save's tail (verse/fairy-forest/life.coax), yours alone.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFB_ACTS :: 6;
+FFB_PLACE :: 0; FFB_MOVE :: 1; FFB_TURN :: 2; FFB_SIZE :: 3; FFB_UNDO :: 4; FFB_DONE :: 5;
+FFB_ACT_WORDS :: [6] string.["PLACE", "MOVE", "TURN", "SIZE", "UNDO", "DONE"];
+FFB_REACH :: 1.3;          // metres ahead of you: where a piece goes and which one is yours to move
+FFB_PICK :: 2.2;
+FFB_HOME_NEAR :: 12.0;     // in your home: BUILD shows
+
+Build :: struct {
+  open: bool;
+  kind: int;                 // the piece PLACE puts down
+  carry: int;                // the piece MOVE is carrying (-1 none)
+  chips: [FFH_KINDS + FFB_ACTS] Box;
+  panel: Box;
+  press: int; finger: int;   // a chip pressed (chip + 1)
+  picked: int;               // the piece in front of you this frame (-1 none)
+}
+
+ffb_ahead :: (s: [] Fairy) -> Point {
+  return add(s[0].feet, v3(sin(s[0].face) * f32(FFB_REACH), 0, cos(s[0].face) * f32(FFB_REACH)));
+}
+ffb_roots :: (s: [] Fairy) -> int { return ff_roots_awake(s[0].forest[..]); }
+
+ffb_open :: (s: [] Fairy) { s[0].build[0].open = true; s[0].build[0].carry = -1; s[0].build[0].press = 0; }
+ffb_close :: (s: [] Fairy) {
+  ffb_put_down(s);
+  s[0].build[0].open = false;
+}
+// MOVE again (or DONE): the piece carried is put down where it is, in an open room; else back where it was.
+ffb_put_down :: (s: [] Fairy) {
+  b := s[0].build[..]; l := s[0].life[..];
+  i := b[0].carry;
+  if i < 0 { return; }
+  b[0].carry = -1;
+  p := l[0].home.piece[i];
+  if ffh_room_at(p.x, p.z, ffb_roots(s)) < 0 { _ := ffh_undo(l); return; }
+  l[0].changes += 1;
+}
+
+ffb_act :: (s: [] Fairy, act: int) {
+  b := s[0].build[..]; l := s[0].life[..];
+  at := ffb_ahead(s);
+  i := ifx b[0].carry >= 0 then b[0].carry else b[0].picked;
+  if act == FFB_PLACE {
+    ffb_put_down(s);
+    _ := ffh_place(l, b[0].kind, at.x, at.z, wrap_angle(s[0].face + f32(PI)), ffb_roots(s));
+  }
+  if act == FFB_MOVE {
+    if b[0].carry >= 0 { ffb_put_down(s); }
+    else if i >= 0 { ffh_keep(l); b[0].carry = i; }
+  }
+  if act == FFB_TURN { ffh_turn(l, i); }
+  if act == FFB_SIZE { ffh_size(l, i); }
+  if act == FFB_UNDO { b[0].carry = -1; _ := ffh_undo(l); }
+  if act == FFB_DONE { ffb_close(s); }
+}
+
+// Each frame: the rooms open are furnished; the piece carried follows you; the one in front of you is picked.
+ffb_step :: (s: [] Fairy) {
+  b := s[0].build[..]; l := s[0].life[..];
+  ffh_furnish(l, ffb_roots(s));
+  if b[0].open && !ffh_near(s[0].feet.x, s[0].feet.z, f32(FFB_HOME_NEAR) + 4) { ffb_close(s); }
+  at := ffb_ahead(s);
+  if b[0].open && b[0].carry >= 0 && b[0].carry < l[0].home.n {
+    l[0].home.piece[b[0].carry].x = at.x; l[0].home.piece[b[0].carry].z = at.z;
+    l[0].home.piece[b[0].carry].yaw = wrap_angle(s[0].face + f32(PI));
+  }
+  b[0].picked = ifx b[0].open then ffh_piece_near(l, at.x, at.z, f32(FFB_PICK)) else -1;
+}
+
+ffb_key :: (s: [] Fairy, key: int) -> bool {
+  if !s[0].build[0].open { return false; }
+  if key == KEY_ESCAPE { ffb_close(s); return true; }
+  return false;
+}
+
+ffb_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  b := s[0].build[..];
+  if !b[0].open { return false; }
+  if phase == 0 {
+    b[0].press = 0;
+    for c: 0..<FFH_KINDS + FFB_ACTS { if in_box(b[0].chips[c], x, y) { b[0].press = c + 1; b[0].finger = id; return true; } }
+    return in_box(b[0].panel, x, y);
+  }
+  if b[0].press == 0 || id != b[0].finger { return false; }
+  if phase == 1 { return true; }
+  c := b[0].press - 1; b[0].press = 0;
+  if phase == 2 && in_box(b[0].chips[c], x, y) {
+    if c < FFH_KINDS { b[0].kind = c; } else { ffb_act(s, c - FFH_KINDS); }
+  }
+  return true;
+}
+
+// The bar along the bottom: the pieces, then the verbs. Returns where its top is.
+ffb_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
+  b := s[0].build[..];
+  for c: 0..<FFH_KINDS + FFB_ACTS { b[0].chips[c] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  b[0].panel = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if !b[0].open { return at; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width;
+  ph := phone(s);
+  row := ifx ph then 36 * k else 34 * k;
+  pw := ifx ph then w - 32 * k else lo(640 * k, w - 32 * k);
+  bx0 := (w - pw) / 2;
+  bh := 2 * row + 30 * k;
+  pb := Box.{x0 = bx0, y0 = bottom - bh, x1 = bx0 + pw, y1 = bottom};
+  b[0].panel = pb;
+  plate(s, u, pb, 0.84, 0);
+  n := draw_text(out, at, "BUILD", pb.x0 + 12 * k, pb.y0 + 18 * k, 8 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  cap := 7 * k;
+  for r: 0..<2 {
+    count := ifx r == 0 then FFH_KINDS else FFB_ACTS;
+    y := pb.y0 + 24 * k + f32(r) * row;
+    slot := (pw - 16 * k) / f32(count);
+    for c: 0..<count {
+      chip := ifx r == 0 then c else FFH_KINDS + c;
+      word := ifx r == 0 then FFH_KIND_WORDS[c] else FFB_ACT_WORDS[c];
+      if r == 1 && c == FFB_MOVE && b[0].carry >= 0 { word = "PUT DOWN"; }
+      x0 := pb.x0 + 8 * k + slot * f32(c);
+      cb := Box.{x0 = x0, y0 = y, x1 = x0 + slot, y1 = y + row};
+      b[0].chips[chip] = cb;
+      wc := lo(cap, cap * slot * 0.86 / hi(text_width(word, cap), 1));
+      ww := text_width(word, wc);
+      on := (r == 0 && c == b[0].kind) || b[0].press == chip + 1;
+      // a verb with nothing in front of you to do it to is dimmed
+      idle := r == 1 && (c == FFB_TURN || c == FFB_SIZE || c == FFB_MOVE) && b[0].picked < 0 && b[0].carry < 0;
+      inkc := ifx on then ink(k, 0.98, GOLD_R, GOLD_G, GOLD_B) else ink(k, ifx idle then 0.35f32 else 0.85f32, CREAM_R, CREAM_G, CREAM_B);
+      n = draw_text(out, n, word, (cb.x0 + cb.x1 - ww) / 2, (cb.y0 + cb.y1 + wc) / 2, wc, GAP, SPACE, inkc, false, false);
+      if r == 0 && c == b[0].kind { if lit(out, n, (cb.x0 + cb.x1 - ww) / 2, (cb.y0 + cb.y1 + wc) / 2 + 5 * k, (cb.x0 + cb.x1 + ww) / 2, (cb.y0 + cb.y1 + wc) / 2 + 5 * k, 0.7 * k, 0.9, 1.2 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; } }
+    }
+  }
+  return n;
+}
+
+// ---- drawing the home
+
+ffb_room_floor :: (s: [] Fairy, r: int, open: bool) {
+  cx := f32(FFH_X) + FFH_ROOM[r * 3]; cz := f32(FFH_Z) + FFH_ROOM[r * 3 + 1]; rr := FFH_ROOM[r * 3 + 2];
+  g := ground_at(s, cx, cz);
+  if !open {
+    // a room still to come: a ring of grey stones only
+    for i: 0..<6 {
+      a := f32(i) * f32(TAU) / 6 + f32(r);
+      shape(s, SHAPE_SPHERE, LOOK_STONE, v3(cx + cos(a) * rr, ground_at(s, cx + cos(a) * rr, cz + sin(a) * rr) + 0.05, cz + sin(a) * rr), a, 0, 0.22, 0.14, 0.18, 0.55, 0.56, 0.54);
+    }
+    return;
+  }
+  // soft moss, a ring of mossy stones and little flowers between them
+  shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(cx, g + 0.03, cz), 0, 0, rr, 0.05, rr, 0.42, 0.72, 0.3);
+  for i: 0..<12 {
+    a := f32(i) * f32(TAU) / 12 + f32(r) * 0.4;
+    px := cx + cos(a) * (rr + 0.1); pz := cz + sin(a) * (rr + 0.1);
+    pg := ground_at(s, px, pz);
+    if i % 2 == 0 { shape(s, SHAPE_SPHERE, LOOK_STONE, v3(px, pg + 0.08, pz), a, 0, 0.3, 0.2, 0.24, 0.5, 0.6, 0.42); }
+    else { shape(s, SHAPE_SPHERE, LOOK_GLOW, v3(px, pg + 0.22, pz), 0, 0, 0.08, 0.08, 0.08, 1.0, 0.7 + 0.3 * hash1(f32(i), f32(r)), 0.5 + 0.4 * hash1(f32(r), f32(i))); }
+  }
+}
+
+// The great root over the hollow: two arches of bark crossing over it.
+ffb_root :: (s: [] Fairy) {
+  cx := f32(FFH_X); cz := f32(FFH_Z);
+  for arch: 0..<2 {
+    yaw := ifx arch == 0 then 0.5f32 else 2.1f32;
+    across := v3(cos(yaw), 0, sin(yaw));
+    reach := ifx arch == 0 then 3.6f32 else 3.2f32;
+    top := ifx arch == 0 then 3.8f32 else 3.2f32;
+    for i: 0..<14 {
+      t0 := f32(i) / 14; t1 := f32(i + 1) / 14;
+      a0 := f32(PI) * t0; a1 := f32(PI) * t1;
+      p0 := add(v3(cx, 0, cz), times(across, -cos(a0) * reach)); p1 := add(v3(cx, 0, cz), times(across, -cos(a1) * reach));
+      y0 := ground_at(s, p0.x, p0.z) + sin(a0) * top; y1 := ground_at(s, p1.x, p1.z) + sin(a1) * top;
+      wd := 0.95 - 0.4 * sin(a0);
+      limb(s, SHAPE_CYLINDER, LOOK_BARK, v3(p0.x, y0, p0.z), v3(p1.x, y1, p1.z), wd, 0.46, 0.34, 0.24);
+      shape(s, SHAPE_SPHERE, LOOK_BARK, v3(p1.x, y1, p1.z), yaw, 0, wd, wd, wd, 0.46, 0.34, 0.24);
+    }
+    // moss along its top
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(cx, ground_at(s, cx, cz) + top + 0.25, cz), yaw, 0, 1.4, 0.35, 0.6, 0.38, 0.66, 0.28);
+  }
+}
+
+ffb_piece :: (s: [] Fairy, p: Piece, lit_up: bool) {
+  sizes := FFH_SIZES;
+  m := sizes[ifx p.size < 0 || p.size > 2 then 0 else p.size];
+  g := ground_at(s, p.x, p.z);
+  at := v3(p.x, g, p.z);
+  y := p.yaw;
+  ahead := v3(sin(y), 0, cos(y)); right := v3(-cos(y), 0, sin(y));
+  if p.kind == FFH_BED {
+    shape(s, SHAPE_BOX, LOOK_BARK, add(at, v3(0, 0.15 * m, 0)), y, 0, 1.0 * m, 0.3 * m, 1.9 * m, 0.5, 0.36, 0.24);
+    shape(s, SHAPE_SPHERE, LOOK_LEAVES, add(at, v3(0, 0.36 * m, 0)), y, 0, 0.9 * m, 0.22 * m, 1.75 * m, 0.4, 0.7, 0.3);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, add(times(ahead, 0.65 * m), v3(0, 0.52 * m, 0))), y, 0, 0.6 * m, 0.16 * m, 0.34 * m, 1.0, 0.78, 0.86);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, add(times(ahead, -0.3 * m), v3(0, 0.5 * m, 0))), y, 0.1, 0.92 * m, 0.1 * m, 0.9 * m, 0.95, 0.6, 0.75);
+  } else if p.kind == FFH_TABLE {
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, at, add(at, v3(0, 0.7 * m, 0)), 0.22 * m, 0.5, 0.36, 0.24);
+    shape(s, SHAPE_CYLINDER, LOOK_BARK, add(at, v3(0, 0.74 * m, 0)), y, 0, 0.75 * m, 0.08 * m, 0.75 * m, 0.62, 0.46, 0.3);
+    shape(s, SHAPE_SPHERE, LOOK_GLOW, add(at, v3(0.15 * m, 0.86 * m, 0.1 * m)), 0, 0, 0.09 * m, 0.09 * m, 0.09 * m, 1.0, 0.5, 0.4);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, v3(-0.2 * m, 0.84 * m, -0.1 * m)), 0, 0, 0.12 * m, 0.06 * m, 0.12 * m, 0.9, 0.88, 0.8);
+  } else if p.kind == FFH_STOOL {
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, at, add(at, v3(0, 0.42 * m, 0)), 0.3 * m, 0.55, 0.4, 0.26);
+    shape(s, SHAPE_CYLINDER, LOOK_LEAVES, add(at, v3(0, 0.44 * m, 0)), y, 0, 0.32 * m, 0.05 * m, 0.32 * m, 0.4, 0.68, 0.3);
+  } else if p.kind == FFH_SHELF {
+    for side: 0..<2 {
+      sg := ifx side == 0 then 1.0f32 else -1.0f32;
+      limb(s, SHAPE_CYLINDER, LOOK_BARK, add(at, times(right, 0.7 * m * sg)), add(at, add(times(right, 0.7 * m * sg), v3(0, 1.6 * m, 0))), 0.09 * m, 0.46, 0.34, 0.22);
+    }
+    for b: 0..<3 {
+      h := (0.35 + f32(b) * 0.5) * m;
+      shape(s, SHAPE_BOX, LOOK_BARK, add(at, v3(0, h, 0)), y, 0, 1.5 * m, 0.05 * m, 0.4 * m, 0.6, 0.45, 0.3);
+      for j: 0..<3 {
+        o := (f32(j) - 1) * 0.42 * m;
+        c := v3(0.5 + 0.5 * hash1(f32(b), f32(j)), 0.5 + 0.5 * hash1(f32(j), f32(b) + 2), 0.6 + 0.4 * hash1(f32(b) + 1, f32(j) + 1));
+        shape(s, SHAPE_SPHERE, ifx (b + j) % 3 == 0 then LOOK_GLOW else LOOK_CLOTH, add(at, add(times(right, o), v3(0, h + 0.13 * m, 0))), y, 0, 0.1 * m, 0.13 * m, 0.1 * m, c.x, c.y, c.z);
+      }
+    }
+  } else if p.kind == FFH_LAMP {
+    limb(s, SHAPE_CYLINDER, LOOK_LEAVES, at, add(at, v3(0, 1.3 * m, 0)), 0.05 * m, 0.36, 0.58, 0.28);
+    limb(s, SHAPE_CONE, LOOK_LEAVES, add(at, v3(0, 1.3 * m, 0)), add(at, add(times(ahead, 0.3 * m), v3(0, 1.45 * m, 0))), 0.06 * m, 0.36, 0.58, 0.28);
+    shape(s, SHAPE_SPHERE, LOOK_GLOW, add(at, add(times(ahead, 0.3 * m), v3(0, 1.32 * m, 0))), 0, 0, 0.18 * m, 0.22 * m, 0.18 * m, 1.0, 0.86, 0.45);
+  } else if p.kind == FFH_RUG {
+    shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(at, v3(0, 0.07, 0)), y, 0, 1.0 * m, 0.02, 0.75 * m, 0.86, 0.42, 0.52);
+    shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(at, v3(0, 0.085, 0)), y, 0, 0.7 * m, 0.02, 0.5 * m, 1.0, 0.78, 0.5);
+  } else if p.kind == FFH_FLOWERS {
+    for j: 0..<6 {
+      a := f32(j) * 1.05 + y;
+      base := add(at, v3(cos(a) * 0.25 * m, 0, sin(a) * 0.25 * m));
+      top := add(base, v3(cos(a) * 0.1 * m, (0.45 + 0.2 * hash1(f32(j), 9)) * m, sin(a) * 0.1 * m));
+      limb(s, SHAPE_CYLINDER, LOOK_LEAVES, base, top, 0.035 * m, 0.34, 0.6, 0.26);
+      c := ifx j % 3 == 0 then v3(1.0, 0.55, 0.7) else ifx j % 3 == 1 then v3(1.0, 0.85, 0.35) else v3(0.7, 0.6, 1.0);
+      shape(s, SHAPE_SPHERE, LOOK_GLOW, top, 0, 0, 0.12 * m, 0.08 * m, 0.12 * m, c.x, c.y, c.z);
+    }
+  } else {
+    // a toadstool: a red cap with white spots
+    limb(s, SHAPE_CYLINDER, LOOK_CLOTH, at, add(at, v3(0, 0.6 * m, 0)), 0.16 * m, 0.95, 0.92, 0.84);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, v3(0, 0.66 * m, 0)), y, 0, 0.55 * m, 0.3 * m, 0.55 * m, 0.92, 0.22, 0.2);
+    for j: 0..<5 {
+      a := f32(j) * 1.2566 + y;
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, v3(cos(a) * 0.32 * m, 0.82 * m, sin(a) * 0.32 * m)), 0, 0, 0.07 * m, 0.04 * m, 0.07 * m, 1.0, 0.98, 0.94);
+    }
+  }
+  if lit_up {
+    // the piece in front of you: a ring of light round its foot
+    for j: 0..<8 {
+      a := f32(j) * 0.7854 + effect_time(s) * 0.8;
+      shape(s, SHAPE_SPHERE, LOOK_SPARK, add(at, v3(cos(a) * 0.9 * m, 0.12, sin(a) * 0.9 * m)), 0, 0, 0.05, 0.05, 0.05, 1.0, 0.85, 0.45);
+    }
+  }
+}
+
+ffb_home :: (s: [] Fairy, eye: Point) {
+  dx := eye.x - f32(FFH_X); dz := eye.z - f32(FFH_Z);
+  if dx * dx + dz * dz > 90 * 90 { return; }
+  roots := ffb_roots(s);
+  ffb_root(s);
+  for r: 0..<FFH_ROOMS { ffb_room_floor(s, r, r < ffh_rooms_open(roots)); }
+  l := s[0].life[..]; b := s[0].build[..];
+  for i: 0..<l[0].home.n {
+    ffb_piece(s, l[0].home.piece[i], b[0].open && (i == b[0].picked || i == b[0].carry));
+  }
+}
+
+#test "BUILD in your home: PLACE puts the piece ahead of you, MOVE carries it, TURN, SIZE and UNDO; outside it is put back" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  s[0].width = 1280; s[0].height = 800; s[0].dpr = 1;
+  s[0].feet = v3(f32(FFH_X) + 0.5, 0, f32(FFH_Z) + 1.5); s[0].face = 0;
+  ffb_step(s[..]);
+  l := s[0].life[..];
+  #assert l[0].home.n == 2;   // the hollow: a bed and a lamp
+  ffb_open(s[..]);
+  out: [60000] f32; u: [UNIFORM_FLOATS] f32;
+  _n := ffb_hud(s[..], out[..], u[..], 0, 780);
+  // choose FLOWERS and PLACE them
+  c := s[0].build[0].chips[FFH_FLOWERS];
+  #assert fairy_pointer(s[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 0, 0, 1) && fairy_pointer(s[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 2, 0, 1);
+  #assert s[0].build[0].kind == FFH_FLOWERS;
+  p := s[0].build[0].chips[FFH_KINDS + FFB_PLACE];
+  #assert fairy_pointer(s[..], (p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2, 0, 0, 1) && fairy_pointer(s[..], (p.x0 + p.x1) / 2, (p.y0 + p.y1) / 2, 2, 0, 1);
+  #assert l[0].home.n == 3 && l[0].home.piece[2].kind == FFH_FLOWERS;
+  ffb_step(s[..]);
+  #assert l[0].home.n == 3;
+  #assert s[0].build[0].open;
+  #assert s[0].build[0].picked == 2;
+  #assert l[0].home.undo_count == 1;
+  ffb_act(s[..], FFB_TURN); ffb_act(s[..], FFB_SIZE);
+  #assert l[0].home.undo_count == 3;
+  #assert l[0].home.piece[2].size == 1;
+  // carry it out of the home: it goes back
+  ffb_act(s[..], FFB_MOVE);
+  #assert l[0].home.undo_count == 4 && s[0].build[0].carry == 2;
+  s[0].feet = v3(f32(FFH_X) + 9, 0, f32(FFH_Z)); ffb_step(s[..]);
+  ffb_act(s[..], FFB_MOVE);
+  #assert abs(l[0].home.piece[2].x - (f32(FFH_X) + 0.5)) < 0.01;
+  #assert l[0].home.undo_count == 3;
+  #assert l[0].home.piece[2].size == 1;
+  ffb_act(s[..], FFB_UNDO);
+  #assert l[0].home.undo_count == 2;
+  #assert l[0].home.piece[2].size == 0;
+  // Esc puts the bar away; E near your home opens it
+  #assert fairy_key(s[..], KEY_ESCAPE, 0) && !s[0].build[0].open;
+}

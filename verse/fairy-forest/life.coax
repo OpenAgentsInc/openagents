@@ -1,0 +1,336 @@
+// Fairy Forest's life after the story (verse/fairy-forest/README.md, milestone
+// ff-life): what a player makes their own, kept with what they restored. This
+// file is the data and its save; the page (apps/openagents-web/fairy.coax and
+// fairymaker.coax) draws it and takes the taps.
+//
+// The save: ff_progress's bytes (forest.coax) and after them a tail, 'L' then
+// sections of [tag, length, bytes]. A save from before has no tail and still
+// opens; a section this page doesn't know is skipped.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000   (these checks run with the page's)
+
+FFL_MAGIC :: 76;           // 'L'
+FFL_TAG_LOOK :: 1; FFL_TAG_HOME :: 2;
+FFL_BYTES :: 1024;         // the most the tail takes
+
+// ---- your fairy (ff-maker): each part an index into its choices
+FFL_PARTS :: 9;
+FFL_BODY :: 0; FFL_SKIN :: 1; FFL_HAIR :: 2; FFL_STYLE :: 3; FFL_EYES :: 4; FFL_OUTFIT :: 5;
+FFL_WINGS :: 6; FFL_WING_HUE :: 7; FFL_GLOW :: 8;
+FFL_PART_NAMES :: [9] string.["BODY", "SKIN", "HAIR", "STYLE", "EYES", "OUTFIT", "WINGS", "WING COLOUR", "GLOW"];
+FFL_CHOICES :: [9] int.[3, 6, 7, 3, 5, 6, 3, 5, 3];
+// Parts chosen by word, not by colour.
+FFL_WORDS :: [9] bool.[true, false, false, true, false, false, true, false, true];
+FFL_BODY_WORDS :: [3] string.["SLENDER", "PETITE", "TALL"];
+FFL_STYLE_WORDS :: [3] string.["LONG", "SHORT", "BUNS"];
+FFL_WING_WORDS :: [3] string.["JEWEL", "BUTTERFLY", "DRAGONFLY"];
+FFL_GLOW_WORDS :: [3] string.["BRIGHT", "SOFT", "DAZZLING"];
+// The body's size: up and across.
+FFL_BODY_UP :: [3] f32.[1.0, 0.9, 1.08];
+FFL_BODY_ACROSS :: [3] f32.[1.0, 1.06, 0.96];
+FFL_SKIN_RGB :: [18] f32.[0.98, 0.78, 0.66,   1.0, 0.87, 0.78,   0.86, 0.62, 0.46,   0.62, 0.42, 0.3,   0.42, 0.27, 0.2,   0.8, 0.8, 0.98];
+FFL_HAIR_RGB :: [21] f32.[0.95, 0.2, 0.6,   1.0, 0.8, 0.3,   0.85, 0.36, 0.16,   0.42, 0.24, 0.14,   0.14, 0.14, 0.32,   0.9, 0.92, 0.97,   0.36, 0.88, 0.68];
+FFL_EYES_RGB :: [15] f32.[0.2, 0.5, 0.62,   0.25, 0.58, 0.25,   0.4, 0.25, 0.12,   0.5, 0.3, 0.8,   0.85, 0.6, 0.15];
+// An outfit: the bodice, the skirt, and the gloves, boots and under-skirt.
+FFL_OUTFIT_RGB :: [54] f32.[
+  0.12, 0.78, 0.76,   0.16, 0.7, 0.74,   0.62, 0.36, 0.95,
+  0.98, 0.45, 0.6,    1.0, 0.62, 0.74,   1.0, 0.82, 0.4,
+  0.4, 0.75, 0.3,     0.6, 0.84, 0.36,   0.55, 0.35, 0.2,
+  0.45, 0.7, 1.0,     0.92, 0.95, 1.0,   0.35, 0.5, 0.95,
+  1.0, 0.56, 0.2,     1.0, 0.36, 0.3,    0.75, 0.2, 0.45,
+  0.25, 0.22, 0.58,   0.4, 0.34, 0.74,   0.86, 0.87, 0.96
+];
+// Wing colours: the upper pair, the lower, the tails.
+FFL_WING_RGB :: [45] f32.[
+  0.45, 0.92, 1.0,   0.95, 0.55, 1.0,   0.7, 0.6, 1.0,
+  1.0, 0.85, 0.35,   1.0, 0.6, 0.3,     1.0, 0.75, 0.5,
+  0.55, 1.0, 0.55,   0.8, 1.0, 0.4,     0.45, 0.9, 0.75,
+  0.6, 0.55, 1.0,    0.4, 0.7, 1.0,     0.8, 0.5, 1.0,
+  1.0, 0.95, 0.98,   1.0, 0.75, 0.88,   0.85, 0.9, 1.0
+];
+FFL_GLOW_GAIN :: [3] f32.[1.0, 0.72, 1.3];
+// The wings' shapes: how long and how broad each pair is, against the jewel's.
+FFL_WING_LONG :: [9] f32.[1.0, 1.0, 1.0,   0.86, 1.08, 0.7,   1.12, 1.05, 1.15];
+FFL_WING_WIDE :: [9] f32.[1.0, 1.0, 1.0,   0.9, 1.45, 0.8,   0.6, 0.62, 0.55];
+
+FairyLook :: struct {
+  part: [FFL_PARTS] int;
+  made: bool;        // made in the maker (else the first visit opens it)
+}
+
+// ---- your home (ff-home): a hollow under a great root in Mossbank's west,
+// its rooms opening one by one as the heart tree's roots wake, and the
+// pieces you place in them.
+FFH_X :: -46.0; FFH_Z :: -44.0;   // the hollow's middle
+FFH_CLEAR :: 10.0;                 // trees keep this far off
+FFH_ROOMS :: 5;
+FFH_ROOM_NAMES :: [5] string.["THE HOLLOW", "THE GARDEN", "THE TABLE ROOM", "THE SHELVES", "THE GREEN"];
+// Each room: its middle from the hollow's (x, z) and its radius.
+FFH_ROOM :: [15] f32.[0, 0, 3.4,   5.6, -1.6, 2.6,   4.4, 3.9, 2.4,   0.2, 5.8, 2.4,   -4.6, 3.4, 2.6];
+FFH_PIECES :: 32;
+FFH_KINDS :: 8;
+FFH_BED :: 0; FFH_TABLE :: 1; FFH_STOOL :: 2; FFH_SHELF :: 3; FFH_LAMP :: 4; FFH_RUG :: 5; FFH_FLOWERS :: 6; FFH_TOADSTOOL :: 7;
+FFH_KIND_WORDS :: [8] string.["BED", "TABLE", "STOOL", "SHELF", "LAMP", "RUG", "FLOWERS", "TOADSTOOL"];
+FFH_SIZES :: [3] f32.[1.0, 1.3, 0.75];
+FFH_UNDO :: 8;
+
+Piece :: struct { kind: int; x: f32; z: f32; yaw: f32; size: int; }
+
+Home :: struct {
+  piece: [FFH_PIECES] Piece; n: int;
+  furnished: int;          // the rooms given their first pieces (a bit each)
+  undo: [FFH_UNDO * FFH_PIECES] Piece; undo_n: [FFH_UNDO] int; undo_count: int;
+}
+
+Life :: struct {
+  look: FairyLook;
+  home: Home;
+  changes: int;      // grows with every change, so the face keeps it (not saved)
+}
+
+// How many rooms are open: the hollow, and one more for each root awake.
+ffh_rooms_open :: (roots: int) -> int { return ifx roots + 1 > FFH_ROOMS then FFH_ROOMS else roots + 1; }
+// The open room (x, z) is in, or -1.
+ffh_room_at :: (x: f32, z: f32, roots: int) -> int {
+  for r: 0..<ffh_rooms_open(roots) {
+    dx := x - (f32(FFH_X) + FFH_ROOM[r * 3]); dz := z - (f32(FFH_Z) + FFH_ROOM[r * 3 + 1]);
+    if dx * dx + dz * dz < FFH_ROOM[r * 3 + 2] * FFH_ROOM[r * 3 + 2] { return r; }
+  }
+  return -1;
+}
+ffh_near :: (x: f32, z: f32, reach: f32) -> bool {
+  dx := x - f32(FFH_X); dz := z - f32(FFH_Z);
+  return dx * dx + dz * dz < reach * reach;
+}
+// The piece nearest (x, z) within reach, or -1.
+ffh_piece_near :: (l: [] Life, x: f32, z: f32, reach: f32) -> int {
+  best := -1; bd := reach * reach;
+  for i: 0..<l[0].home.n {
+    p := l[0].home.piece[i];
+    dx := p.x - x; dz := p.z - z;
+    if dx * dx + dz * dz < bd { bd = dx * dx + dz * dz; best = i; }
+  }
+  return best;
+}
+// Before a change: what it was, for UNDO.
+ffh_keep :: (l: [] Life) {
+  if l[0].home.undo_count == FFH_UNDO {
+    for u: 1..<FFH_UNDO {
+      for i: 0..<FFH_PIECES { l[0].home.undo[(u - 1) * FFH_PIECES + i] = l[0].home.undo[u * FFH_PIECES + i]; }
+      l[0].home.undo_n[u - 1] = l[0].home.undo_n[u];
+    }
+    l[0].home.undo_count = FFH_UNDO - 1;
+  }
+  u := l[0].home.undo_count;
+  for i: 0..<FFH_PIECES { l[0].home.undo[u * FFH_PIECES + i] = l[0].home.piece[i]; }
+  l[0].home.undo_n[u] = l[0].home.n;
+  l[0].home.undo_count = u + 1;
+}
+ffh_undo :: (l: [] Life) -> bool {
+  if l[0].home.undo_count == 0 { return false; }
+  u := l[0].home.undo_count - 1;
+  for i: 0..<FFH_PIECES { l[0].home.piece[i] = l[0].home.undo[u * FFH_PIECES + i]; }
+  l[0].home.n = l[0].home.undo_n[u];
+  l[0].home.undo_count = u;
+  l[0].changes += 1;
+  return true;
+}
+// A piece of a kind at (x, z), when that is in an open room; its index, or -1.
+ffh_place :: (l: [] Life, kind: int, x: f32, z: f32, yaw: f32, roots: int) -> int {
+  if kind < 0 || kind >= FFH_KINDS || l[0].home.n >= FFH_PIECES || ffh_room_at(x, z, roots) < 0 { return -1; }
+  ffh_keep(l);
+  i := l[0].home.n;
+  l[0].home.piece[i] = Piece.{kind = kind, x = x, z = z, yaw = yaw, size = 0};
+  l[0].home.n = i + 1;
+  l[0].changes += 1;
+  return i;
+}
+ffh_move :: (l: [] Life, i: int, x: f32, z: f32, roots: int) -> bool {
+  if i < 0 || i >= l[0].home.n || ffh_room_at(x, z, roots) < 0 { return false; }
+  ffh_keep(l);
+  l[0].home.piece[i].x = x; l[0].home.piece[i].z = z;
+  l[0].changes += 1;
+  return true;
+}
+ffh_turn :: (l: [] Life, i: int) {
+  if i < 0 || i >= l[0].home.n { return; }
+  ffh_keep(l);
+  l[0].home.piece[i].yaw = wrap_angle(l[0].home.piece[i].yaw + 0.7854);
+  l[0].changes += 1;
+}
+ffh_size :: (l: [] Life, i: int) {
+  if i < 0 || i >= l[0].home.n { return; }
+  ffh_keep(l);
+  l[0].home.piece[i].size = (l[0].home.piece[i].size + 1) % 3;
+  l[0].changes += 1;
+}
+// A room as it opens is given its first pieces: the hollow a bed of moss, the table room a table and stool, the shelves a shelf.
+ffh_furnish :: (l: [] Life, roots: int) {
+  for r: 0..<ffh_rooms_open(roots) {
+    bit := 1 << r;
+    if l[0].home.furnished & bit != 0 { continue; }
+    l[0].home.furnished = l[0].home.furnished | bit;
+    cx := f32(FFH_X) + FFH_ROOM[r * 3]; cz := f32(FFH_Z) + FFH_ROOM[r * 3 + 1];
+    if r == 0 { ffh_add(l, FFH_BED, cx - 1.6, cz - 1.0, 0.6); ffh_add(l, FFH_LAMP, cx - 0.2, cz - 2.2, 0); }
+    if r == 2 { ffh_add(l, FFH_TABLE, cx, cz, 0.3); ffh_add(l, FFH_STOOL, cx + 1.0, cz + 0.2, 0); }
+    if r == 3 { ffh_add(l, FFH_SHELF, cx, cz + 1.2, 3.1416); }
+    if r == 4 { ffh_add(l, FFH_TOADSTOOL, cx, cz, 0); }
+    l[0].changes += 1;
+  }
+}
+ffh_add :: (l: [] Life, kind: int, x: f32, z: f32, yaw: f32) {
+  if l[0].home.n >= FFH_PIECES { return; }
+  l[0].home.piece[l[0].home.n] = Piece.{kind = kind, x = x, z = z, yaw = yaw, size = 0};
+  l[0].home.n += 1;
+}
+
+ffl_part :: (l: [] Life, p: int) -> int {
+  if p < 0 || p >= FFL_PARTS { return 0; }
+  v := l[0].look.part[p];
+  return ifx v < 0 || v >= FFL_CHOICES[p] then 0 else v;
+}
+ffl_set :: (l: [] Life, p: int, v: int) {
+  if p < 0 || p >= FFL_PARTS || v < 0 || v >= FFL_CHOICES[p] { return; }
+  if l[0].look.part[p] == v { return; }
+  l[0].look.part[p] = v;
+  l[0].changes += 1;
+}
+ffl_made :: (l: [] Life) {
+  if l[0].look.made { return; }
+  l[0].look.made = true;
+  l[0].changes += 1;
+}
+ffl_rgb :: (table: [] f32, at: int) -> Point { return v3(table[at * 3], table[at * 3 + 1], table[at * 3 + 2]); }
+// A part's swatch colour (for the maker), or the cream ink for the parts chosen by word.
+ffl_swatch :: (p: int, v: int) -> Point {
+  if p == FFL_SKIN { t := FFL_SKIN_RGB; return ffl_rgb(t[..], v); }
+  if p == FFL_HAIR { t := FFL_HAIR_RGB; return ffl_rgb(t[..], v); }
+  if p == FFL_EYES { t := FFL_EYES_RGB; return ffl_rgb(t[..], v); }
+  if p == FFL_OUTFIT { t := FFL_OUTFIT_RGB; return ffl_rgb(t[..], v * 3); }
+  if p == FFL_WING_HUE { t := FFL_WING_RGB; return ffl_rgb(t[..], v * 3); }
+  return v3(0.97, 0.94, 0.86);
+}
+ffl_word :: (p: int, v: int) -> string {
+  if p == FFL_BODY { return FFL_BODY_WORDS[v]; }
+  if p == FFL_STYLE { return FFL_STYLE_WORDS[v]; }
+  if p == FFL_WINGS { return FFL_WING_WORDS[v]; }
+  if p == FFL_GLOW { return FFL_GLOW_WORDS[v]; }
+  return "";
+}
+
+// ---- the save's tail
+
+ffl_save :: (l: [] Life, out: [] u8) -> int {
+  if out.count < 3 + FFL_PARTS + 1 { return 0; }
+  n := 0;
+  out[n] = cast(u8) FFL_MAGIC; n += 1;
+  out[n] = cast(u8) FFL_TAG_LOOK; out[n + 1] = cast(u8) (FFL_PARTS + 1); n += 2;
+  for p: 0..<FFL_PARTS { out[n] = cast(u8) ffl_part(l, p); n += 1; }
+  out[n] = ifx l[0].look.made then 1 else 0; n += 1;
+  // the home: which rooms are furnished, then each piece (kind, x and z in cm from the hollow, yaw, size)
+  hn := l[0].home.n;
+  size := 2 + hn * 7;
+  if n + 2 + size > out.count { return n; }
+  out[n] = cast(u8) FFL_TAG_HOME; out[n + 1] = cast(u8) size; n += 2;
+  out[n] = cast(u8) l[0].home.furnished; out[n + 1] = cast(u8) hn; n += 2;
+  for i: 0..<hn {
+    p := l[0].home.piece[i];
+    x := ffl_i16(p.x - f32(FFH_X)); z := ffl_i16(p.z - f32(FFH_Z));
+    out[n] = cast(u8) p.kind;
+    out[n + 1] = cast(u8) (x & 255); out[n + 2] = cast(u8) ((x >> 8) & 255);
+    out[n + 3] = cast(u8) (z & 255); out[n + 4] = cast(u8) ((z >> 8) & 255);
+    out[n + 5] = cast(u8) (cast(int) floor(wrap_angle(p.yaw) / 6.2832 * 256 + 256.5) % 256);
+    out[n + 6] = cast(u8) p.size;
+    n += 7;
+  }
+  return n;
+}
+// Metres as centimetres in two bytes (to +-327 m), and back.
+ffl_i16 :: (m: f32) -> int { c := cast(int) floor(m * 100 + 0.5); c = ifx c < -32767 then -32767 else ifx c > 32767 then 32767 else c; return c & 65535; }
+ffl_m :: (lo8: u8, hi8: u8) -> f32 { c := cast(int) lo8 + cast(int) hi8 * 256; if c >= 32768 { c -= 65536; } return f32(c) / 100; }
+
+// Opens a tail; false when it isn't one. What it doesn't know it skips.
+ffl_open :: (l: [] Life, b: [] u8) -> bool {
+  if b.count < 1 || cast(int) b[0] != FFL_MAGIC { return false; }
+  i := 1;
+  for _step: 0..<64 {
+    if i + 2 > b.count { break; }
+    tag := cast(int) b[i]; size := cast(int) b[i + 1];
+    i += 2;
+    if i + size > b.count { return false; }
+    if tag == FFL_TAG_LOOK && size >= FFL_PARTS + 1 {
+      for p: 0..<FFL_PARTS {
+        v := cast(int) b[i + p];
+        l[0].look.part[p] = ifx v < FFL_CHOICES[p] then v else 0;
+      }
+      l[0].look.made = l[0].look.made || b[i + FFL_PARTS] == 1;
+    }
+    if tag == FFL_TAG_HOME && size >= 2 {
+      count := cast(int) b[i + 1];
+      if 2 + count * 7 > size || count > FFH_PIECES { return false; }
+      l[0].home.furnished = cast(int) b[i];
+      l[0].home.n = 0;
+      for k: 0..<count {
+        o := i + 2 + k * 7;
+        kind := cast(int) b[o];
+        if kind >= FFH_KINDS { continue; }
+        p := Piece.{kind = kind, x = f32(FFH_X) + ffl_m(b[o + 1], b[o + 2]), z = f32(FFH_Z) + ffl_m(b[o + 3], b[o + 4]),
+                    yaw = wrap_angle(f32(b[o + 5]) / 256 * 6.2832), size = ifx b[o + 6] < 3 then cast(int) b[o + 6] else 0};
+        l[0].home.piece[l[0].home.n] = p; l[0].home.n += 1;
+      }
+      l[0].home.undo_count = 0;
+    }
+    i += size;
+  }
+  return true;
+}
+
+#test "a fairy's look is kept in the save's tail and comes back; a broken tail or a stray part is refused" {
+  a: [1] Life;
+  ffl_set(a[..], FFL_HAIR, 3); ffl_set(a[..], FFL_WINGS, 2); ffl_set(a[..], FFL_GLOW, 9);
+  #assert a[0].changes == 2 && ffl_part(a[..], FFL_GLOW) == 0;
+  ffl_made(a[..]);
+  b: [64] u8;
+  n := ffl_save(a[..], b[..]);
+  #assert n == 3 + FFL_PARTS + 1 + 4;   // the look, then an empty home
+  c: [1] Life;
+  #assert ffl_open(c[..], b[0..<n]);
+  #assert c[0].look.made && ffl_part(c[..], FFL_HAIR) == 3 && ffl_part(c[..], FFL_WINGS) == 2;
+  // a section it doesn't know is skipped
+  d: [80] u8;
+  d[0] = cast(u8) FFL_MAGIC; d[1] = 99; d[2] = 2; d[3] = 7; d[4] = 7;
+  for i: 1..<n { d[4 + i] = b[i]; }
+  e: [1] Life;
+  #assert ffl_open(e[..], d[0..<n + 4]) && ffl_part(e[..], FFL_HAIR) == 3;
+  // cut short: refused
+  #assert !ffl_open(e[..], b[0..<n - 7]);
+  #assert !ffl_open(e[..], b[1..<n]);
+  for p: 0..<FFL_PARTS { #assert FFL_CHOICES[p] > 1 && FFL_PART_NAMES[p].count > 0; }
+}
+
+#test "the home opens a room for each root awake; pieces go only in open rooms, turn, size, move, undo, and are kept" {
+  a: [1] Life;
+  ffh_furnish(a[..], 0);
+  #assert a[0].home.n == 2 && a[0].home.piece[0].kind == FFH_BED && ffh_rooms_open(0) == 1;
+  // the table room isn't open yet
+  tx := f32(FFH_X) + FFH_ROOM[6]; tz := f32(FFH_Z) + FFH_ROOM[7];
+  #assert ffh_place(a[..], FFH_LAMP, tx, tz, 0, 1) < 0;
+  #assert ffh_place(a[..], FFH_LAMP, tx, tz, 0, 2) == 2;
+  ffh_turn(a[..], 2); ffh_size(a[..], 2);
+  #assert abs(a[0].home.piece[2].yaw - 0.7854) < 0.001 && a[0].home.piece[2].size == 1;
+  #assert !ffh_move(a[..], 2, f32(FFH_X) + 40, f32(FFH_Z), 2) && ffh_move(a[..], 2, f32(FFH_X) + 0.5, f32(FFH_Z), 2);
+  #assert ffh_undo(a[..]) && abs(a[0].home.piece[2].x - tx) < 0.001;
+  ffh_furnish(a[..], 2);
+  #assert a[0].home.n == 3 + 2;
+  b: [256] u8;
+  n := ffl_save(a[..], b[..]);
+  c: [1] Life;
+  #assert ffl_open(c[..], b[0..<n]);
+  #assert c[0].home.n == a[0].home.n && c[0].home.furnished == a[0].home.furnished;
+  for i: 0..<c[0].home.n {
+    p := c[0].home.piece[i]; q := a[0].home.piece[i];
+    #assert p.kind == q.kind && abs(p.x - q.x) < 0.01 && abs(p.z - q.z) < 0.01 && abs(wrap_angle(p.yaw - q.yaw)) < 0.03 && p.size == q.size;
+  }
+  // rooms open once: furnishing again adds nothing
+  ffh_furnish(c[..], 2);
+  #assert c[0].home.n == a[0].home.n;
+}

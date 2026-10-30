@@ -111,8 +111,8 @@ static void start(uint32_t state) {
 #define PROGRESS_URL "/api/playtest/progress/fairy-forest/main"
 #define KEEP_EVERY 1.0             /* seconds between saves while it grows */
 static const coax_string save_world = {"fairy-forest", 12};
-static uint8_t slot_bytes[4096], server_bytes[4096], container[512], payload[64];
-static char kept[8192], post[2048];
+static uint8_t slot_bytes[16384], server_bytes[16384], container[2048], payload[1536];   /* the forest, then what you made (life.coax's tail) */
+static char kept[24576], post[8192];
 static uint32_t keep_n;            // the record's length while the host is to keep it (action 4)
 static coax_t_SaveSlots slots, server_slots;
 static double loaded_at;           // when the save that was added back was made (ms), 0 none
@@ -207,6 +207,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   now += dt;
   fairy_golden(at(state), golden);
   fairy_controls(at(state), dt, sticks.dyaw, sticks.dpitch);
+  // the save has had its chance to come (an account's from the server): a first visit makes its fairy
+  if (!golden && now > 2.0 && (progress_ask == -2 || (now > 6.0 && progress_ask != -1) || !place_keeper.account)) fairy_life_ready(at(state));
   // while you talk you stand still: no walking, no wing beats
   bool talking = fairy_still(at(state));
   if (talking) { sticks.pad_x = 0; sticks.pad_y = 0; sticks.jump = false; sticks.run = false; g->key_x = 0; g->key_y = 0; g->jump = false; g->run = false; }

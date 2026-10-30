@@ -56,6 +56,13 @@ it.
   and wings (shape, colour, pattern, glow). As much choice as the engine's
   figures allow; more pieces are added over time.
 - **Change it any time** at the mirror pool in your home.
+- Built (ff-maker, `apps/openagents-web/fairymaker.coax`,
+  `verse/fairy-forest/life.coax`): the first visit opens YOUR FAIRY, a pane
+  of rows (body, skin, hair, style, eyes, outfit, wings, wing colour, glow)
+  with choices to tap while she turns to face you; DONE wakes you. The
+  mirror pool in Mossbank, west of where you wake (E or MIRROR), opens it
+  again. The look is kept in the save's tail, so a reload or another device
+  with an account keeps it.
 - **Grows with you:** wings and outfit gain detail as you learn skills, so
   how you look says how far you have come.
 - **Moving:** walk, run, and fly in short hops that get longer as your wings
@@ -111,6 +118,16 @@ you told them and what you did for them).
   your finds, a garden, the mirror pool.
 - **Build** with the edit tools the Haunted House and the Sandbox already
   have: place, move, turn, size, undo, by hand or in one sentence.
+- Built (ff-home, `apps/openagents-web/fairyhome.coax`): the hollow sits
+  under a great root in Mossbank's west (about -46, -44), with a bed of
+  moss, a lamp and the mirror pool. Each root you wake opens one more room:
+  the garden, the table room (a table and stool), the shelves, the green.
+  E (BUILD) in your home puts a bar along the bottom: eight pieces (bed,
+  table, stool, shelf, lamp, rug, flowers, toadstool) and PLACE, MOVE, TURN,
+  SIZE, UNDO for the piece in front of you, the edit tools' verbs. Pieces go
+  only in open rooms. It is kept in the save's tail, yours alone: the shared
+  edit layer's placing is realm-wide and the owner's, so the home keeps the
+  verbs but not that path. Not yet: building by one sentence.
 - **The community:** creatures you help can come to live near you. Each one
   that moves in builds its own small home on the plot you give it, and comes
   by to visit. The village around your home grows with how much you have
@@ -217,8 +234,6 @@ its steps (apps/openagents-web/fairyquest.coax).
 
 ## What it needs that isn't built yet
 
-- A character creator for the fairy (body, face, hair, outfit, wings), and
-  wings on the figure rig.
 - Flight and gliding in the controller.
 - The fade: per-area colour restoration that spreads, saved per player.
 - Gardens that grow over real days and change with care.

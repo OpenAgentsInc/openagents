@@ -1,0 +1,218 @@
+// Making your fairy (ff-maker, verse/fairy-forest/README.md "You: a fairy you
+// make"): a pane of rows, each part of her (body, skin, hair and its style,
+// eyes, outfit, wings, their colour and glow) with its choices to tap, and
+// she turns to face you while you choose. The first visit opens it; the
+// mirror pool in Mossbank brings it back. What you choose is kept in the
+// save's tail (verse/fairy-forest/life.coax).
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFM_CHIPS :: 64;
+// The mirror pool: in your home's hollow (fairyhome.coax).
+FFM_POOL_X :: -44.4; FFM_POOL_Z :: -42.6; FFM_POOL_R :: 1.0;
+FFM_POOL_NEAR :: 2.0;
+
+Maker :: struct {
+  open: bool;
+  by_visit: bool;              // opened by the first visit (a save that comes after with a look closes it)
+  offered: bool;           // the first visit's is done
+  chips: [FFM_CHIPS] Box; chip_part: [FFM_CHIPS] int; chip_val: [FFM_CHIPS] int; chip_n: int;
+  done: Box; panel: Box;
+  press: int; finger: int;  // a chip pressed (chip + 1, FFM_CHIPS + 1 DONE), and by which finger
+  zoom_was: f32; yaw_was: f32;
+}
+
+ffm_open :: (s: [] Fairy, first: bool) {
+  m := s[0].maker[..];
+  if m[0].open { return; }
+  m[0].open = true; m[0].by_visit = first; m[0].offered = true; m[0].press = 0;
+  m[0].zoom_was = s[0].orbit.want; m[0].yaw_was = s[0].orbit.yaw;
+  s[0].orbit.want = ifx phone(s) then 3.8f32 else 3.4f32;
+  s[0].orbit.yaw = wrap_angle(s[0].face + f32(PI));   // to look her in the face
+  s[0].orbit.pitch = 0.12;
+  s[0].held = 0;
+  if s[0].talk > 0 { end_talk(s); }
+}
+ffm_close :: (s: [] Fairy) {
+  m := s[0].maker[..];
+  if !m[0].open { return; }
+  m[0].open = false; m[0].press = 0;
+  s[0].orbit.want = ifx m[0].zoom_was > 0 then m[0].zoom_was else s[0].orbit.want;
+  s[0].orbit.yaw = m[0].yaw_was;
+  ffl_made(s[0].life[..]);
+}
+// The face says the save has had its chance to come: a first visit opens the maker.
+ffm_ready :: (s: [] Fairy) {
+  m := s[0].maker[..];
+  if m[0].offered || s[0].golden { return; }
+  m[0].offered = true;
+  if !s[0].life[0].look.made { ffm_open(s, true); }
+}
+// A save came with a look made: the first visit's maker goes.
+ffm_loaded :: (s: [] Fairy) {
+  if s[0].maker[0].open && s[0].maker[0].by_visit && s[0].life[0].look.made { s[0].maker[0].open = false; s[0].orbit.want = s[0].maker[0].zoom_was; }
+}
+
+ffm_near_pool :: (you: Point) -> bool {
+  dx := you.x - f32(FFM_POOL_X); dz := you.z - f32(FFM_POOL_Z);
+  return dx * dx + dz * dz < f32(FFM_POOL_NEAR * FFM_POOL_NEAR);
+}
+
+ffm_key :: (s: [] Fairy, key: int) -> bool {
+  if !s[0].maker[0].open { return false; }
+  if key == KEY_ESCAPE || key == KEY_ENTER { ffm_close(s); }
+  return true;
+}
+
+ffm_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  m := s[0].maker[..];
+  if !m[0].open { return false; }
+  if phase == 0 {
+    m[0].press = 0;
+    if in_box(m[0].done, x, y) { m[0].press = FFM_CHIPS + 1; m[0].finger = id; return true; }
+    for i: 0..<m[0].chip_n { if in_box(m[0].chips[i], x, y) { m[0].press = i + 1; m[0].finger = id; return true; } }
+    return in_box(m[0].panel, x, y);   // elsewhere: a drag turns the camera round her
+  }
+  if m[0].press == 0 || id != m[0].finger { return in_box(m[0].panel, x, y); }
+  if phase == 1 { return true; }
+  p := m[0].press; m[0].press = 0;
+  if phase != 2 { return true; }
+  if p == FFM_CHIPS + 1 { if in_box(m[0].done, x, y) { ffm_close(s); } return true; }
+  i := p - 1;
+  if in_box(m[0].chips[i], x, y) { ffl_set(s[0].life[..], m[0].chip_part[i], m[0].chip_val[i]); }
+  return true;
+}
+
+// A ring of light round (x, y).
+ffm_ring :: (out: [] f32, at: int, x: f32, y: f32, r: f32, k: f32, c: Point) -> int {
+  n := at;
+  for i: 0..<18 {
+    a0 := f32(i) * f32(TAU) / 18; a1 := f32(i + 1) * f32(TAU) / 18;
+    if lit(out, n, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, 0.9 * k, 0.95, 1.6 * k, c.x, c.y, c.z, 0) { n += 6; }
+  }
+  return n;
+}
+
+// The pane: on a computer at the right, on a phone under the title; she stands in the rest.
+ffm_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
+  m := s[0].maker[..]; l := s[0].life[..];
+  m[0].chip_n = 0;
+  k := hi(s[0].dpr, 0.5); w := s[0].width; h := s[0].height;
+  ph := phone(s);
+  gutter := 16 * k;
+  row := ifx ph then 31 * k else 40 * k;
+  pad := 14 * k;
+  head := 34 * k; foot := 54 * k;
+  ph_ := head + f32(FFL_PARTS) * row + foot;
+  pw := ifx ph then w - 2 * gutter else lo(380 * k, w * 0.42);
+  top := gutter + 11 * k + 7.5 * k + 34 * k + 10 * k;   // under the title
+  b := ifx ph then Box.{x0 = gutter, y0 = top, x1 = w - gutter, y1 = top + ph_}
+       else Box.{x0 = w - gutter - pw, y0 = hi(gutter, (h - ph_) / 2), x1 = w - gutter, y1 = hi(gutter, (h - ph_) / 2) + ph_};
+  m[0].panel = b;
+  plate(s, u, b, 0.84, 0);
+  n := draw_text(out, at, "YOUR FAIRY", b.x0 + pad, b.y0 + pad + 10 * k, 10 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  cap := 7 * k;
+  label_w := ifx ph then 78 * k else 96 * k;
+  gold := v3(GOLD_R, GOLD_G, GOLD_B);
+  for p: 0..<FFL_PARTS {
+    y := b.y0 + head + f32(p) * row;
+    mid := y + row / 2;
+    n = draw_text(out, n, FFL_PART_NAMES[p], b.x0 + pad, mid + cap / 2, lo(cap, cap * (label_w - 8 * k) / hi(text_width(FFL_PART_NAMES[p], cap), 1)), GAP, SPACE,
+                  ink(k, 0.8, CREAM_R, CREAM_G, CREAM_B), false, false);
+    x0 := b.x0 + pad + label_w; x1 := b.x1 - pad;
+    count := FFL_CHOICES[p];
+    slot := (x1 - x0) / f32(count);
+    chosen := ffl_part(l, p);
+    for v: 0..<count {
+      cx := x0 + slot * (f32(v) + 0.5);
+      if m[0].chip_n < FFM_CHIPS {
+        i := m[0].chip_n;
+        m[0].chips[i] = Box.{x0 = cx - slot / 2, y0 = y + 2 * k, x1 = cx + slot / 2, y1 = y + row - 2 * k};
+        m[0].chip_part[i] = p; m[0].chip_val[i] = v;
+        m[0].chip_n = i + 1;
+      }
+      pressed := m[0].press > 0 && m[0].press <= m[0].chip_n && m[0].chip_part[m[0].press - 1] == p && m[0].chip_val[m[0].press - 1] == v;
+      if FFL_WORDS[p] {
+        word := ffl_word(p, v);
+        wc := lo(cap, cap * slot * 0.9 / hi(text_width(word, cap), 1));
+        ww := text_width(word, wc);
+        on := v == chosen;
+        c := ifx on then gold else v3(CREAM_R, CREAM_G, CREAM_B);
+        n = draw_text(out, n, word, cx - ww / 2, mid + wc / 2, wc, GAP, SPACE, ink(k, ifx on || pressed then 0.98f32 else 0.6f32, c.x, c.y, c.z), false, false);
+        if on { if lit(out, n, cx - ww / 2, mid + wc / 2 + 5 * k, cx + ww / 2, mid + wc / 2 + 5 * k, 0.7 * k, 0.9, 1.2 * k, c.x, c.y, c.z, 0) { n += 6; } }
+      } else {
+        r := lo(slot * 0.3, 10 * k);
+        c := ffl_swatch(p, v);
+        if v == chosen { n = ffm_ring(out, n, cx, mid, r + 4 * k, k, gold); }
+        else { n = ffm_ring(out, n, cx, mid, r + 1.5 * k, k * 0.5, v3(CREAM_R * 0.55, CREAM_G * 0.55, CREAM_B * 0.55)); }
+        if lit(out, n, cx - 0.01, mid, cx + 0.01, mid, r * (ifx pressed then 0.85f32 else 1.0f32), 1.0, 1.5 * k, c.x, c.y, c.z, 0) { n += 6; }
+      }
+    }
+  }
+  // DONE
+  dc := 9 * k;
+  dw := text_width("DONE", dc) + 48 * k; dh := 36 * k;
+  d := Box.{x0 = (b.x0 + b.x1 - dw) / 2, y0 = b.y1 - pad - dh, x1 = (b.x0 + b.x1 + dw) / 2, y1 = b.y1 - pad};
+  m[0].done = d;
+  plate(s, u, d, 0.9, ifx m[0].press == FFM_CHIPS + 1 then 3.0f32 else 1.0f32);
+  n = draw_text(out, n, "DONE", (d.x0 + d.x1 - text_width("DONE", dc)) / 2, (d.y0 + d.y1 + dc) / 2, dc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  return n;
+}
+
+// The mirror pool: a still round of sky in a ring of mossy stones.
+ffm_pool :: (s: [] Fairy) {
+  x := f32(FFM_POOL_X); z := f32(FFM_POOL_Z);
+  g := ground_at(s, x, z);
+  t := effect_time(s);
+  shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(x, g + 0.03, z), 0, 0, f32(FFM_POOL_R), 0.03, f32(FFM_POOL_R), 0.62, 0.86, 0.96);
+  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.0, z), 0, 0, f32(FFM_POOL_R) + 0.12, 0.05, f32(FFM_POOL_R) + 0.12, 0.42, 0.46, 0.4);
+  for i: 0..<10 {
+    a := f32(i) * f32(TAU) / 10 + 0.2;
+    rr := f32(FFM_POOL_R) + 0.18;
+    size := 0.2 + 0.08 * hash1(f32(i), 3);
+    shape(s, SHAPE_SPHERE, LOOK_STONE, v3(x + cos(a) * rr, g + size * 0.4, z + sin(a) * rr), a, 0, size * 1.3, size, size, 0.58, 0.62, 0.52);
+  }
+  // a glint drifting over the water
+  shape(s, SHAPE_SPHERE, LOOK_SPARK, v3(x + sin(t * 0.7) * 0.5, g + 0.08, z + cos(t * 0.5) * 0.4), 0, 0, 0.06, 0.02, 0.06, 0.9, 0.98, 1.0);
+}
+
+#test "the maker: the first visit opens it, a tap on a choice sets it, DONE closes it and she is made" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  s[0].width = 1280; s[0].height = 800; s[0].dpr = 1;
+  ffm_ready(s[..]);
+  #assert s[0].maker[0].open && fairy_still(s[..]);
+  out: [60000] f32; u: [UNIFORM_FLOATS] f32;
+  _n := ffm_hud(s[..], out[..], u[..], 0);
+  #assert s[0].maker[0].chip_n == 3 + 6 + 7 + 3 + 5 + 6 + 3 + 5 + 3;
+  // the third hair colour
+  hit := -1;
+  for i: 0..<s[0].maker[0].chip_n { if s[0].maker[0].chip_part[i] == FFL_HAIR && s[0].maker[0].chip_val[i] == 2 { hit = i; } }
+  b := s[0].maker[0].chips[hit];
+  #assert fairy_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 0, 1) && fairy_pointer(s[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 0, 1);
+  #assert ffl_part(s[0].life[..], FFL_HAIR) == 2;
+  // E and the sticks wait while it is open; DONE closes it
+  #assert fairy_key(s[..], 'e', 0) && !s[0].use;
+  d := s[0].maker[0].done;
+  #assert fairy_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 0, 1) && fairy_pointer(s[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 2, 0, 1);
+  #assert !s[0].maker[0].open && s[0].life[0].look.made && !fairy_still(s[..]);
+  // not again this visit; the mirror pool brings it back
+  ffm_ready(s[..]);
+  #assert !s[0].maker[0].open;
+  s[0].feet = v3(f32(FFM_POOL_X) + 1, 0, f32(FFM_POOL_Z));
+  #assert ffm_near_pool(s[0].feet);
+  s[0].use = true;
+  play(s[..], s[0].feet);
+  #assert s[0].maker[0].open;
+  #assert fairy_key(s[..], KEY_ESCAPE, 0) && !s[0].maker[0].open;
+}
+
+#test "a save with a look made closes the first visit's maker; one without leaves it" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  ffm_ready(s[..]);
+  ffm_loaded(s[..]);
+  #assert s[0].maker[0].open;
+  s[0].life[0].look.made = true;
+  ffm_loaded(s[..]);
+  #assert !s[0].maker[0].open;
+}
