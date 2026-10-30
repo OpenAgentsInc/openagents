@@ -1,0 +1,13 @@
+{
+  "commit": "cb2bac2549ddebe41d4281ad2220d90d2a3f430e",
+  "stamp": "20261030T155016Z",
+  "elapsed_seconds": 570.2,
+  "staged": true,
+  "production_mode": "fast",
+  "held_pages": [
+    "everglade"
+  ],
+  "homepage_held": false,
+  "outcome": "passed",
+  "coalesced_release": "another normal local release already shipped this exact commit; the queued release verified it was live and exited 0"
+}

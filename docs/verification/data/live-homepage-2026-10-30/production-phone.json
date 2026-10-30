@@ -1,0 +1,13 @@
+{
+  "ready": true,
+  "probe": 460031,
+  "ready_projects": 63,
+  "watch_connected": true,
+  "beacon_history_ended": true,
+  "beacon_observations": 4,
+  "project_refreshes": 7,
+  "viewport": [
+    390,
+    844
+  ]
+}

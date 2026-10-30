@@ -1,0 +1,10 @@
+{
+  "base": "https://openagents.com",
+  "home_app": "newland",
+  "alias_app": "newland",
+  "canonical": "https://openagents.com/",
+  "wasm_path": "/build/newland.f748469b376a.wasm",
+  "wasm_sha256": "f748469b376a0f7c3b80d0f41464af98db372f050141676340d609cc50fd85f6",
+  "bytes": 510564,
+  "release_artifact_matches": true
+}

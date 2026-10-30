@@ -1,0 +1,13 @@
+{
+  "base": "https://openagents.com",
+  "ready_projects": 63,
+  "watch_connected": true,
+  "beacon_history_ended": true,
+  "beacon_observations": 3,
+  "project_refreshes": 6,
+  "connections": 2,
+  "received_frames": 5381,
+  "sent_frames": 172,
+  "errors": [],
+  "elapsed_ms": 13227
+}

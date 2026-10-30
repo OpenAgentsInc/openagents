@@ -113,7 +113,7 @@ and phone screenshots were inspected and only the homepage goldens updated.
 The shared verifier did not change during this rebase, so its passing checks
 were not repeated.
 
-The production receipt is appended after the normal staged release completes.
+The production receipt is recorded below.
 
 
 ## Snapshot-to-watch counter correction
@@ -130,3 +130,33 @@ release capture rather than the developer checkout's older capture.
 Compiler qualification completed normally in 259.8 seconds, with provenance
 matching `9322269a89`'s compiler inputs. No qualification receipt was edited or
 bypassed. The final release receipt follows below.
+
+
+## Production result
+
+**Live at https://openagents.com/.** Initial launch `541e288437` passed the
+normal staging, complete visual walk, performance and production checks:
+receipt `20261030T154527Z`. The final counter fix is live as
+`cb2bac2549ddebe41d4281ad2220d90d2a3f430e`, receipt
+`20261030T155016Z` (`staged fast`). A local release already in progress picked
+up this exact final commit; our queued release then verified that production
+contained it and exited successfully without repeating the upload.
+
+Both homepage goldens matched with zero changed blocks. Staging and production
+ordinary-browser gates each completed all six projects, the watch and beacon
+EOSE with no JS exceptions. Final production caught up in 13.247 seconds over
+two sockets. The production phone screenshot was inspected: it shows
+**Live Nostr / 6 of 6 projects** and actual task/claim activity. Its probe had
+already completed a seventh project refresh. `/new-land` also serves the same
+module and canonical root.
+
+An independent HTTP check downloaded the production Wasm and matched it to the
+exact final release artifact: SHA-256
+`f748469b376a0f7c3b80d0f41464af98db372f050141676340d609cc50fd85f6`
+(510,564 bytes). Root and alias name that same immutable asset. The bucket's
+[PASSED receipt](data/live-homepage-2026-10-30/production-PASSED.txt), browser
+results, artifact identities and compact check records are saved alongside it.
+
+The final site release held **Everglade** at its existing production page for
+an unrelated golden mismatch attributed to `c70f7ae0c4`. The homepage passed
+and shipped. No unrelated golden was approved or overwritten for this launch.
