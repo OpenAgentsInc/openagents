@@ -1,0 +1,7 @@
+process flush timeout: real pipe, partial retry, total deadline, flags, closed pipe, owned-only, opaque stderr, cleanup passed
+29d160361e7f3e5830ef8402566eb0a08d60f73ce5b95423c8e3a0955a7ef4c3  coax/platform/process-native.c
+6e4d40b4531cb2e894d5e64ba0655686fd20581cd77bb41cd0bdd4f7b44e5516  coax/platform/process-native.h
+1bfac90eda07b4a08a46a81af2def5451144093ae141bf63620615cb9a1a836a  coax/tests/process/flush_timeout.c
+fb5280f55ad29ea5e2ca0e6687844cff9953ca0bdba62a28925bdab2568aecbf  coax/tests/process/flush_timeout.sh
+gcc (GCC) 15.2.0
+Linux gate directory: /tmp/oct30-proc-flush.WUIwHy

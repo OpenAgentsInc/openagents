@@ -2081,3 +2081,14 @@ v2 groups, payments, receipts, durable retries or production provider trust.
 C owns socket/lifecycle effects only; Coax owns the protocol and routing.
 Check scope and actual commands: `docs/verification/psionic-ch20-2026-10-30.md`;
 the host has its separate Mac/Linux sanitizer record.
+
+## Private child input uses an owned pipe and one write deadline
+
+`cxproc_flush_timeout` is the bounded native write effect for private
+checker input. It accepts only registered child stdin on a writable FIFO
+fd >= 3, preserves unsent bytes after timeout/error, restores mutable flags
+and never forwards opaque child output. Partial retries cannot replay an
+already delivered prefix. The original blocking flush remains unchanged.
+The caller in Coax controls the checker program, trust, payload bounds
+and deadline. Native Mac/Linux sanitizer evidence is in
+`docs/verification/2026-10-30-process-flush-timeout.md`.

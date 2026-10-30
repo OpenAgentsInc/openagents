@@ -1,0 +1,4 @@
+coax/tests/process/flush_timeout.c:47:10: error: call to undeclared function 'cxproc_flush_timeout'; ISO C99 and later do not support implicit function declarations [-Wimplicit-function-declaration]
+   47 |   assert(cxproc_flush_timeout(-1,10)==CXPROC_ERROR);
+      |          ^
+1 error generated.

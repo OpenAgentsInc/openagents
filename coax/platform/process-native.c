@@ -6,12 +6,14 @@
 #include "process-native.h"
 #include <errno.h>
 #include <fcntl.h>
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
@@ -294,6 +296,78 @@ int64_t cxproc_flush(int64_t h) {
   }
   p->wbuf.count = 0;
   return 0;
+}
+
+/* A bounded write to this handle's owned child-stdin pipe. Unlike the
+   legacy flush, a retry keeps only the suffix that has not been sent. */
+int64_t cxproc_flush_timeout(int64_t h, int64_t timeout_ms) {
+  Proc *p = get(h);
+  struct stat info;
+  if (!p || !p->started || p->in < 3 || timeout_ms < 0 ||
+      timeout_ms > INT_MAX || fstat(p->in, &info) || !S_ISFIFO(info.st_mode))
+    return CXPROC_ERROR;
+  int flags = fcntl(p->in, F_GETFL);
+  if (flags < 0 || (flags & O_ACCMODE) != O_WRONLY ||
+      fcntl(p->in, F_SETFL, flags | O_NONBLOCK) < 0)
+    return CXPROC_ERROR;
+  int64_t start = cxproc_now_ms(), result = 0;
+  size_t done = 0;
+  if (start < 0 || start > INT64_MAX - timeout_ms) result = CXPROC_ERROR;
+  int64_t deadline = result ? 0 : start + timeout_ms;
+  int attempted = 0;
+  while (!result && done < p->wbuf.count) {
+    if (attempted && cxproc_now_ms() >= deadline) {
+      result = CXPROC_TIMEOUT;
+      break;
+    }
+    attempted = 1; /* timeout 0 permits one nonblocking attempt */
+    size_t count = p->wbuf.count - done;
+    if (count > 65536) count = 65536;
+    ssize_t n = write(p->in, p->wbuf.data + done, count);
+    if (n > 0) { done += (size_t)n; continue; }
+    if (!n) { result = CXPROC_ERROR; break; }
+    if (errno == EINTR) continue;
+    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+      result = CXPROC_ERROR;
+      break;
+    }
+    int64_t left = deadline - cxproc_now_ms();
+    if (left <= 0) { result = CXPROC_TIMEOUT; break; }
+    struct pollfd fds[2] = {{p->in, POLLOUT, 0}, {p->err, POLLIN, 0}};
+    int ready = poll(fds, p->err >= 0 ? 2 : 1, (int)left);
+    if (ready < 0) {
+      if (errno == EINTR) continue;
+      result = CXPROC_ERROR;
+      break;
+    }
+    if (!ready) { result = CXPROC_TIMEOUT; break; }
+    if (fds[0].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+      result = CXPROC_ERROR;
+      break;
+    }
+    /* One bounded stderr read per turn: a noisy child cannot deadlock on
+       its stderr pipe or extend this operation's total deadline. */
+    if (p->err >= 0 &&
+        (fds[1].revents & (POLLIN | POLLHUP | POLLERR))) {
+      char bytes[4096];
+      ssize_t got = read(p->err, bytes, sizeof bytes);
+      if (got > 0) keep_stderr(p, bytes, got);
+      else if (!got) { close(p->err); p->err = -1; }
+      else if (errno != EINTR && errno != EAGAIN && errno != EWOULDBLOCK) {
+        result = CXPROC_ERROR;
+        break;
+      }
+    }
+  }
+  if (done) {
+    size_t remain = p->wbuf.count - done;
+    memmove(p->wbuf.data, p->wbuf.data + done, remain);
+    volatile unsigned char *retired = (volatile unsigned char *)p->wbuf.data;
+    for (size_t i = remain; i < p->wbuf.count; i++) retired[i] = 0;
+    p->wbuf.count = remain;
+  }
+  if (fcntl(p->in, F_SETFL, flags) < 0) result = CXPROC_ERROR;
+  return result;
 }
 
 int64_t cxproc_close_stdin(int64_t h) {

@@ -38,6 +38,12 @@ int64_t cxproc_read_line(int64_t h, int64_t timeout_ms);
 int64_t cxproc_line_byte(int64_t h, int64_t i);
 int64_t cxproc_write(int64_t h, int64_t byte);
 int64_t cxproc_flush(int64_t h);
+/* Owned child-stdin pipes only. timeout_ms is 0..INT_MAX; zero makes one
+   nonblocking attempt. One monotonic deadline covers all writes and waits.
+   Returns 0 complete, CXPROC_TIMEOUT, or CXPROC_ERROR. Only unsent bytes stay
+   buffered on timeout/error, so retry never repeats a delivered prefix.
+   The original fd flags are restored; stderr stays in the existing ring. */
+int64_t cxproc_flush_timeout(int64_t h, int64_t timeout_ms);
 int64_t cxproc_close_stdin(int64_t h);
 int64_t cxproc_kill(int64_t h, int64_t sig);
 int64_t cxproc_wait(int64_t h, int64_t timeout_ms);
