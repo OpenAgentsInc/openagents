@@ -53,6 +53,7 @@
 #load "everglade-tide.coax";
 #load "everglade-grove.coax";
 #load "everglade-wild.coax";
+#load "everglade-circle.coax";
 
 SP_SLOTS :: 4;
 SP_MEDIA_BYTES :: 5600;
@@ -193,6 +194,7 @@ Spells :: struct {
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // the row a phone's bar shows
+  ci: [1] Circle;              // the circle spells after it: Conjure Animals, Polymorph, Mass Cure Wounds, Sunbeam, Wall of Thorns, Fire Storm (everglade-circle.coax)
   wd: [1] Wild;                // the rest of its third row: Faerie Fire, Healing Word, Spike Growth, Call Lightning, Wall of Fire, and fire on the grass (everglade-wild.coax)
   gv: [1] Grove;               // the old Grove's druid spells: Moonbeam, Produce Flame, Starry Wisp, Shillelagh, Poison Spray, Elementalism, Entangle (everglade-grove.coax)
   td: [1] Tide;                // Water Walk, Control Water, Create or Destroy Water, Water Breathing (everglade-tide.coax)
@@ -425,6 +427,7 @@ sp_press :: (s: [] Everglade, slot: int) {
   if slot == SP_SWITCH { sp_next_row(s); return; }
   if slot == SP_REBUILD { sp_rebuild(s); return; }
   if slot >= SP_SLOTS { ab_press(s, slot - SP_SLOTS); return; }
+  if ci_no_casting(s, slot) { return; }   // a beast casts no spells (everglade-circle.coax)
   ab_cancel(s);
   s[0].sp.armed = ifx s[0].sp.armed == slot then -1 else slot;
 }

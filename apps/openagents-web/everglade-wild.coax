@@ -67,8 +67,10 @@ wd_start :: (s: [] Everglade) {
   for i: 0..<WATCH_ACTORS { v[0].lit[i] = false; v[0].sg_was[i] = false; v[0].wf_next[i] = 0; v[0].fire_next[i] = 0; }
   for k: 0..<WD_FIRES { v[0].fires[k].live = false; }
   v[0].burnt_n = 0; v[0].you_was = false;
+  ci_start(s);
 }
 wd_active :: (s: [] Everglade, k: int) -> bool {
+  if k >= AB_CONJURE { return ci_active(s, k); }
   v := wd_of(s);
   if k == AB_FAERIE { return v[0].ff_on; }
   if k == AB_SPIKE { return v[0].sg_on; }
@@ -77,6 +79,7 @@ wd_active :: (s: [] Everglade, k: int) -> bool {
   return false;
 }
 wd_press :: (s: [] Everglade, k: int) {
+  if k >= AB_CONJURE { ci_press(s, k); return; }
   v := wd_of(s);
   b := SP_SLOTS + k;
   picked := s[0].sp.armed == b;
@@ -89,6 +92,7 @@ wd_press :: (s: [] Everglade, k: int) {
   s[0].sp.armed = ifx picked then -1 else b;
 }
 wd_cast :: (s: [] Everglade, k: int) {
+  if k >= AB_CONJURE { ci_cast(s, k); return; }
   if k == AB_FAERIE { wd_ff_cast(s); return; }
   if k == AB_HEALING { wd_hw_cast(s); return; }
   if k == AB_SPIKE { wd_sg_cast(s); return; }
@@ -99,10 +103,11 @@ wd_concentration_lost :: (s: [] Everglade) {
   v := wd_of(s);
   if v[0].ff_on { wd_ff_end(s); }
   v[0].sg_on = false; v[0].cl_on = false; v[0].wf_on = false;
+  ci_concentration_lost(s);
 }
 wd_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
   v := wd_of(s);
-  return v[0].sg_on && flat_gap(v3(x, 0, z), v[0].sg_at) <= f32(WD_SG_R);
+  return (v[0].sg_on && flat_gap(v3(x, 0, z), v[0].sg_at) <= f32(WD_SG_R)) || ci_rough(s, x, z);
 }
 // A d20 for an attack at person i: two, the higher, while Faerie Fire outlines them.
 wd_d20 :: (s: [] Everglade, i: int) -> int {
@@ -437,9 +442,12 @@ wd_wf_frame :: (s: [] Everglade, dt: f32) {
 // numbers each.
 wd_fences :: (s: [] Everglade, f: [] f32, n: int) -> int {
   v := wd_of(s);
-  if !v[0].wf_on || (n + 1) * 5 > f.count { return n; }
-  f[n * 5] = v[0].wf_a.x; f[n * 5 + 1] = v[0].wf_a.z; f[n * 5 + 2] = v[0].wf_b.x; f[n * 5 + 3] = v[0].wf_b.z; f[n * 5 + 4] = f32(WD_WF_HALF);
-  return n + 1;
+  m := n;
+  if v[0].wf_on && (m + 1) * 5 <= f.count {
+    f[m * 5] = v[0].wf_a.x; f[m * 5 + 1] = v[0].wf_a.z; f[m * 5 + 2] = v[0].wf_b.x; f[m * 5 + 3] = v[0].wf_b.z; f[m * 5 + 4] = f32(WD_WF_HALF);
+    m += 1;
+  }
+  return ci_fences(s, f, m);   // Wall of Thorns's (everglade-circle.coax)
 }
 
 // ---- fire on the grass
@@ -555,6 +563,7 @@ wd_frame :: (s: [] Everglade, dt: f32) {
   wd_cl_frame(s, dt);
   wd_wf_frame(s, dt);
   wd_fires_frame(s, dt);
+  ci_frame(s, dt);
 }
 wd_flick :: (t: f32, k: f32) -> f32 { return 0.8 + 0.2 * sin(t * 17 + k * 2.3) * sin(t * 6.1 + k); }
 wd_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
@@ -584,7 +593,7 @@ wd_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
     if v[0].you_lit { n = sp_lamp(u, n, most, add(ab_you(s), v3(0, 1, 0)), f32(WD_FF_DIM), hue, 0.6); }
   }
   if v[0].hw_t < f32(WD_HW_LIFE) { f := 1 - v[0].hw_t / f32(WD_HW_LIFE); n = sp_lamp(u, n, most, wd_hw_place(s), 5, WD_HEAL_RGB, 1.2 * f); }
-  return n;
+  return ci_lamps(s, u, n, most);
 }
 wd_fire_on :: (f: WdFire) -> f32 { return clamp(f.t / 0.6, 0, 1) * clamp((f.life - f.t) / 1.5, 0, 1); }
 wd_wf_rise :: (s: [] Everglade) -> f32 {
@@ -595,6 +604,7 @@ wd_draw :: (s: [] Everglade) {
   v := wd_of(s);
   few := phone(s);
   t := v[0].time;
+  ci_draw(s);
   wd_wf_draw(s, few);
   // the ground fires: a low blaze licking up off the grass, its glow, its smoke; black where it was
   for q: 0..<WD_FIRES {
@@ -744,6 +754,7 @@ wd_sg_draw :: (s: [] Everglade, few: bool) {
 }
 
 wd_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
+  if k >= AB_CONJURE { return ci_hint(s, k, phone_, far); }
   v := wd_of(s);
   you := ab_you(s);
   if k == AB_FAERIE {
@@ -771,6 +782,7 @@ wd_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
   return "";
 }
 wd_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
+  if k >= AB_CONJURE { return ci_aim_ring(s, out, u, n, k, pulse); }
   if k == AB_HEALING { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, WD_HEAL_RGB, pulse); }
   if k == AB_SPIKE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(WD_SG_R), WD_THORN_RGB, pulse); }
   if k == AB_CALL { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(WD_CL_HIT), WD_BOLT_RGB, pulse); }

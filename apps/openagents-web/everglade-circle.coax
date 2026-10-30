@@ -1,0 +1,1131 @@
+// The old Grove's circle spells after the third row (eg-grove), loaded by everglade-spells.coax after
+// everglade-wild.coax, whose wd_* hand these on (SRD 5.2.1, cast at the realm's caster's tier: DC 15,
+// Wisdom +3, a druid of level 9 for what the level sets):
+//
+//  C- CONJURE ANIMALS (level 3, Concentration up to 10 minutes) Click the ground within 60 feet: a Large
+//                   pack of spectral wolves, nature spirits, gathers there. Click again and it runs up
+//                   to 30 feet. Whoever the pack comes within 10 feet of, comes within 10 feet of it,
+//                   or ends a round there (you too) makes a Dexterity save or takes 3d10 slashing, once
+//                   a round. Ctrl+- with it picked ends it.
+//  A1 POLYMORPH     (level 4, Concentration up to an hour) Click someone within 60 feet: a Wisdom save,
+//                   or they are a frog (Temporary Hit Points 1, the frog's; it bites no one) until the
+//                   frog's are gone or it ends. Click anywhere else and it is you: a brown bear (22
+//                   Temporary Hit Points, Speed 40 feet, a bite and a claw at whoever you click in
+//                   reach; a bear casts no spells). Alt+1 with it picked ends it.
+//  A2 MASS CURE WOUNDS (level 5) Click a point within 60 feet: up to six creatures within 30 feet of it
+//                   (you too, if you are) regain 5d8 + 3 Hit Points. The dead it does not reach.
+//  A3 SUNBEAM       (level 6, Concentration up to a minute) A beam of sunlight 5 feet wide and 60 feet
+//                   long flashes from your hand the way you point: each creature in it makes a
+//                   Constitution save, 6d8 radiant and Blinded until your next turn on a failure, half
+//                   on a success. While it holds you shed Bright Light 30 feet round, and each click
+//                   flashes another (a Magic action, one a second here); Alt+3 with it picked ends it.
+//                   Blinded, their attack rolls at you have Disadvantage.
+//  A4 WALL OF THORNS (level 6, Concentration up to 10 minutes) Click the ground within 120 feet: a wall
+//                   of tangled brush bristling with thorns, 60 feet long, 10 feet high and 5 feet thick,
+//                   rises across your view. Each creature in its space as it rises makes a Dexterity
+//                   save, 7d8 piercing, half on a success; whoever enters it or ends a round in it (you
+//                   too) makes the save again, 7d8 slashing, half on a success, and its ground is
+//                   Difficult Terrain. The townsfolk walk round it, as the Wall of Fire.
+//  A5 FIRE STORM    (level 7) Click the ground within 150 feet: ten 10-foot cubes of roaring flame, two
+//                   rows of five across your view: each creature in them makes a Dexterity save, 7d10
+//                   fire, half on a success (you too), and the grass and the debris in them catch.
+//
+// Every save or blow on a person is a crime the watch answers (healing is not).
+
+AB_CONJURE :: 28; AB_POLYMORPH :: 29; AB_MASSCURE :: 30; AB_SUNBEAM :: 31; AB_THORNS :: 32; AB_FIRESTORM :: 33;
+
+CI_LEVEL :: 9;
+CI_CA_RANGE :: 18.288; CI_CA_MOVE :: 9.144; CI_CA_HALF :: 1.524; CI_CA_REACH :: 3.048; CI_CA_LIFE :: 600.0; CI_CA_SPEED :: 9.0; CI_HEAR_CA :: 20.0;
+CI_WOLVES :: 4;
+CI_PM_RANGE :: 18.288; CI_PM_LIFE :: 3600.0; CI_HEAR_PM :: 15.0;
+CI_MC_RANGE :: 18.288; CI_MC_R :: 9.144; CI_MC_MOST :: 6; CI_MC_LIFE :: 1.8;
+CI_SB_LONG :: 18.288; CI_SB_WIDE :: 1.524; CI_SB_LIFE :: 60.0; CI_SB_COOL :: 1.0; CI_SB_BLIND :: 6.0; CI_SB_SHOW :: 1.0; CI_SB_LIGHT :: 9.144; CI_HEAR_SB :: 30.0;
+CI_WT_RANGE :: 36.576; CI_WT_LONG :: 18.288; CI_WT_TALL :: 3.048; CI_WT_HALF :: 0.762; CI_WT_LIFE :: 600.0; CI_HEAR_WT :: 20.0;
+CI_FS_RANGE :: 45.72; CI_FS_CUBE :: 3.048; CI_FS_SHOW :: 2.4; CI_FS_N :: 10; CI_HEAR_FS :: 60.0;
+CI_ROUND :: 6.0;
+CI_REACH :: 1.524;   // a beast's bite: 5 feet
+
+// Your beast's shapes, and the frog: a wolf (Wild Shape), a brown bear (Polymorph, Shapechange), a frog
+// (the townsfolk Polymorph takes). Speed, the shape's Hit Points (Temporary ones here), the bite.
+CI_FORM_NONE :: 0; CI_FORM_WOLF :: 1; CI_FORM_BEAR :: 2; CI_FORM_FROG :: 3;
+CI_FORM_NAME :: [4] string.["", "WOLF", "BROWN BEAR", "FROG"];
+CI_FORM_HP :: [4] int.[0, 11, 22, 1];
+CI_FORM_PACE :: [4] f32.[1.0, 1.333, 1.333, 0.667];
+CI_FORM_ATTACKS :: [4] int.[0, 1, 2, 0];
+CI_WOLF_BITE :: SrdCreature.{name = "Wolf", ac = 12, hp = 11, dex = 2, attack = 4, dice = 1, sides = 6, bonus = 2, kind = DMG_PIERCING};
+CI_BEAR_BITE :: SrdCreature.{name = "Brown Bear", ac = 11, hp = 22, dex = 0, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_PIERCING};
+CI_BEAR_CLAW :: SrdCreature.{name = "Brown Bear", ac = 11, hp = 22, dex = 0, attack = 5, dice = 1, sides = 4, bonus = 3, kind = DMG_SLASHING};
+
+CI_SPIRIT_RGB :: Point.{x = 0.45, y = 0.95, z = 0.8};
+CI_SHIFT_RGB :: Point.{x = 0.76, y = 0.62, z = 1.0};
+CI_CURE_RGB :: Point.{x = 0.55, y = 1.0, z = 0.5};
+CI_SUN_RGB :: Point.{x = 1.0, y = 0.92, z = 0.6};
+CI_BRUSH_RGB :: Point.{x = 0.16, y = 0.2, z = 0.08};
+CI_THORN_RGB :: Point.{x = 0.42, y = 0.36, z = 0.2};
+CI_WOLF_RGB :: Point.{x = 0.36, y = 0.33, z = 0.3};
+CI_BEAR_RGB :: Point.{x = 0.3, y = 0.19, z = 0.1};
+CI_FROG_RGB :: Point.{x = 0.32, y = 0.5, z = 0.16};
+
+Circle :: struct {
+  time: f32;
+  ca_on: bool; ca_t: f32; ca_at: Point; ca_to: Point; ca_face: f32; ca_run: f32;   // the pack: where, where it runs, its way, its gait's clock
+  ca_near: [WATCH_ACTORS] bool; ca_next: [WATCH_ACTORS] f32; you_ca_near: bool; you_ca_next: f32;
+  pm_on: bool; pm_t: f32; pm_who: int;                // Polymorph: on whom (-1 you)
+  form: int; form_by: int; form_walk: f32; form_move: f32; form_last: Point; form_cool: f32;   // your beast's shape, by which spell, its gait
+  shift_t: f32; shift_at: Point;                      // a shape changing: its burst
+  mc_t: f32; mc_at: Point; mc_n: int; mc_who: [CI_MC_MOST] int;   // Mass Cure Wounds: whom (-1 you)
+  sb_on: bool; sb_t: f32; sb_cool: f32; sb_shot: f32; sb_a: Point; sb_b: Point;   // Sunbeam: the last beam
+  blind: [WATCH_ACTORS] f32;                          // Blinded, s left
+  wt_on: bool; wt_t: f32; wt_a: Point; wt_b: Point; wt_n: Point;   // Wall of Thorns: its ends, its face
+  wt_next: [WATCH_ACTORS] f32; you_wt_next: f32;
+  fs_t: f32; fs_c: [CI_FS_N] Point;                   // Fire Storm: since, its cubes' middles on the ground
+}
+ci_of :: (s: [] Everglade) -> [] Circle { return s[0].sp.ci[..]; }
+ci_start :: (s: [] Everglade) {
+  v := ci_of(s);
+  v[0].time = 0; v[0].ca_on = false; v[0].pm_on = false; v[0].pm_who = -1; v[0].form = CI_FORM_NONE; v[0].form_by = -1; v[0].form_cool = 0;
+  v[0].shift_t = 100; v[0].mc_t = 100; v[0].mc_n = 0; v[0].sb_on = false; v[0].sb_cool = 0; v[0].sb_shot = 100;
+  v[0].wt_on = false; v[0].fs_t = 100; v[0].you_ca_near = false; v[0].you_ca_next = 0; v[0].you_wt_next = 0;
+  for i: 0..<WATCH_ACTORS { v[0].ca_near[i] = false; v[0].ca_next[i] = 0; v[0].blind[i] = 0; v[0].wt_next[i] = 0; }
+}
+ci_active :: (s: [] Everglade, k: int) -> bool {
+  v := ci_of(s);
+  if k == AB_CONJURE { return v[0].ca_on; }
+  if k == AB_POLYMORPH { return v[0].pm_on; }
+  if k == AB_SUNBEAM { return v[0].sb_on; }
+  if k == AB_THORNS { return v[0].wt_on; }
+  if k == AB_MASSCURE { return v[0].mc_t < 0.4; }
+  if k == AB_FIRESTORM { return v[0].fs_t < f32(CI_FS_SHOW); }
+  return false;
+}
+ci_press :: (s: [] Everglade, k: int) {
+  v := ci_of(s);
+  b := SP_SLOTS + k;
+  picked := s[0].sp.armed == b;
+  if picked {
+    if k == AB_CONJURE && v[0].ca_on { v[0].ca_on = false; sp_say(s, "CONJURE ANIMALS ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_POLYMORPH && v[0].pm_on { ci_pm_end(s); sp_say(s, "POLYMORPH ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_SUNBEAM && v[0].sb_on { v[0].sb_on = false; sp_say(s, "SUNBEAM ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if k == AB_THORNS && v[0].wt_on { v[0].wt_on = false; sp_say(s, "WALL OF THORNS ENDS", -1, ""); s[0].sp.armed = -1; return; }
+  }
+  s[0].sp.armed = ifx picked then -1 else b;
+}
+ci_cast :: (s: [] Everglade, k: int) {
+  v := ci_of(s);
+  if v[0].form != CI_FORM_NONE && k == v[0].form_by { ci_bite(s); return; }
+  if k == AB_CONJURE { ci_ca_cast(s); return; }
+  if k == AB_POLYMORPH { ci_pm_cast(s); return; }
+  if k == AB_MASSCURE { ci_mc_cast(s); return; }
+  if k == AB_SUNBEAM { ci_sb_cast(s); return; }
+  if k == AB_THORNS { ci_wt_cast(s); return; }
+  if k == AB_FIRESTORM { ci_fs_cast(s); return; }
+}
+ci_concentration_lost :: (s: [] Everglade) {
+  v := ci_of(s);
+  v[0].ca_on = false; v[0].sb_on = false; v[0].wt_on = false;
+  if v[0].pm_on { ci_pm_end(s); }
+}
+ci_rough :: (s: [] Everglade, x: f32, z: f32) -> bool { return ci_wt_where(s, v3(x, ground_at(s, x, z), z)) == 1; }
+
+// In a beast's shape you cast no spells (Polymorph, Wild Shape; Shapechange's beasts have none): only the
+// shape's own slot, which bites, or ends it. Whether slot b's press is refused.
+ci_no_casting :: (s: [] Everglade, b: int) -> bool {
+  v := ci_of(s);
+  if v[0].form == CI_FORM_NONE || b == SP_SLOTS + v[0].form_by || b < 0 || b >= SP_REBUILD { return false; }
+  sp_say(s, ci_cant(v[0].form), -1, "");
+  return true;
+}
+ci_cant :: (form: int) -> string {
+  if form == CI_FORM_WOLF { return "A WOLF CASTS NO SPELLS"; }
+  if form == CI_FORM_BEAR { return "A BEAR CASTS NO SPELLS"; }
+  return "A FROG CASTS NO SPELLS";
+}
+// Your Speed in the shape you wear, against your own.
+ci_pace :: (s: [] Everglade) -> f32 { v := ci_of(s); return CI_FORM_PACE[clamp_i(v[0].form, 0, 3)]; }
+// Whether the Ranger is drawn (not while you wear a beast's shape).
+ci_you_shown :: (s: [] Everglade) -> bool { return !sp_on(s) || ci_of(s)[0].form == CI_FORM_NONE; }
+// Whether person i is drawn as themselves (not while a frog).
+ci_person_shown :: (s: [] Everglade, i: int) -> bool {
+  if !sp_on(s) { return true; }
+  v := ci_of(s);
+  return !(v[0].pm_on && v[0].pm_who == i);
+}
+ci_crime :: (s: [] Everglade, at: Point, heard: f32) { gv_crime(s, at, heard); }
+ci_con :: (s: [] Everglade, i: int) -> bool { return srd_save(s[0].sp.dice[..], ifx watch_is_guard(i) then 1 else 0, GV_DC).success; }
+// One of the town's: they neither strike nor cast this frame (a frog bites no one).
+ci_still :: (s: [] Everglade, i: int) {
+  a := watch_w(s)[0].actors[i..<i + 1];
+  a[0].swing = -1; a[0].casting = -1; a[0].throwing = false;
+  a[0].cool = hi(a[0].cool, 0.5); a[0].spear_cool = hi(a[0].spear_cool, 0.5); a[0].cast_cool = hi(a[0].cast_cool, 0.5);
+}
+
+// ---- your shape
+
+// You take a beast's shape `form` by spell k: its Hit Points as Temporary ones (the first shape's, for
+// Shapechange), and the shape's own slot is picked, a click its bite.
+ci_take_shape :: (s: [] Everglade, form: int, k: int, fresh: bool) {
+  v := ci_of(s);
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  if w[0].dead { return; }
+  v[0].form = form; v[0].form_by = k; v[0].form_last = ab_you(s); v[0].form_walk = 0; v[0].form_move = 0;
+  if fresh { w[0].temp = CI_FORM_HP[form]; }
+  v[0].shift_t = 0; v[0].shift_at = ab_you(s);
+  s[0].sp.armed = SP_SLOTS + k;
+}
+ci_leave_shape :: (s: [] Everglade) {
+  v := ci_of(s);
+  if v[0].form == CI_FORM_NONE { return; }
+  if s[0].sp.armed == SP_SLOTS + v[0].form_by { s[0].sp.armed = -1; }
+  v[0].form = CI_FORM_NONE; v[0].form_by = -1;
+  if watch_on(s) { watch_w(s)[0].temp = 0; }
+  v[0].shift_t = 0; v[0].shift_at = ab_you(s);
+}
+// The shape's bite (and a bear's claw) at whoever the click shows in reach.
+ci_bite :: (s: [] Everglade) {
+  v := ci_of(s);
+  if v[0].form_cool > 0 { return; }
+  pick := ab_tk_pick(s);
+  if pick.kind != 2 { sp_say(s, ifx v[0].form == CI_FORM_WOLF then "CLICK SOMEONE IN REACH TO BITE" else "CLICK SOMEONE IN REACH TO MAUL", -1, ""); return; }
+  i := pick.idx;
+  if flat_gap(ab_person_at(s, i), ab_you(s)) > f32(CI_REACH) + 0.6 { sp_say(s, "TOO FAR · 5 FEET AT MOST", -1, ""); return; }
+  v[0].form_cool = 1.0;
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  ac := watch_stats(w, i).ac;
+  total := 0; hits := 0;
+  for q: 0..<CI_FORM_ATTACKS[clamp_i(v[0].form, 0, 3)] {
+    c := ifx v[0].form == CI_FORM_WOLF then CI_WOLF_BITE else ifx q == 0 then CI_BEAR_BITE else CI_BEAR_CLAW;
+    roll := srd_attack(d, c, ac);
+    if roll.hit { total += roll.damage; hits += 1; }
+  }
+  at := ab_person_at(s, i);
+  ci_crime(s, at, 10);
+  if hits == 0 { sp_say(s, ifx v[0].form == CI_FORM_WOLF then "THE BITE MISSES" else "THE BEAR MISSES", -1, ""); return; }
+  watch_harm(w, i, total, ab_you(s));
+  for q: 0..<8 { sp_add_spark(s, at, times(sp_spray(s, 0.4), 2.5), 0.3, 0.025, v3(0.6, 0.08, 0.05), 9.81); }
+  sp_say(s, ifx v[0].form == CI_FORM_WOLF then "BITE" else "BITE AND CLAW", total, "DAMAGE");
+}
+ci_form_frame :: (s: [] Everglade, dt: f32) {
+  v := ci_of(s);
+  v[0].form_cool = hi(v[0].form_cool - dt, 0);
+  if v[0].form == CI_FORM_NONE { return; }
+  you := ab_you(s);
+  step := flat_gap(you, v[0].form_last);
+  if step < 2 { v[0].form_walk += step; }
+  moving := ifx step > 0.004 && step < 2 then 1.0f32 else 0.0f32;
+  v[0].form_move += (moving - v[0].form_move) * clamp(dt * 8, 0, 1);
+  v[0].form_last = you;
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  // the shape's Hit Points spent, or you fell: you stand in your own again
+  if w[0].dead || w[0].temp <= 0 {
+    name := v[0].form;
+    if v[0].form_by == AB_POLYMORPH { v[0].pm_on = false; }
+    ci_leave_shape(s);
+    if !w[0].dead { sp_say(s, ifx name == CI_FORM_WOLF then "THE WOLF'S SHAPE IS SPENT" else "THE BEAR'S SHAPE IS SPENT", -1, ""); }
+  }
+}
+
+// ---- Conjure Animals
+
+ci_ca_cast :: (s: [] Everglade) {
+  v := ci_of(s);
+  if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  if v[0].ca_on {
+    if flat_gap(at, v[0].ca_at) > f32(CI_CA_MOVE) + 0.3 { sp_say(s, "TOO FAR · THE PACK RUNS 30 FEET AT MOST", -1, ""); return; }
+    if flat_gap(at, ab_you(s)) > f32(CI_CA_RANGE) { sp_say(s, "TOO FAR · 60 FEET AT MOST", -1, ""); return; }
+    v[0].ca_to = v3(at.x, ground_at(s, at.x, at.z), at.z);
+    return;
+  }
+  if wd_aim_far(s, f32(CI_CA_RANGE), "POINT AT THE GROUND") { return; }
+  ci_ca_at(s, at);
+}
+ci_ca_at :: (s: [] Everglade, at: Point) {
+  v := ci_of(s);
+  g := v3(at.x, ground_at(s, at.x, at.z), at.z);
+  v[0].ca_on = true; v[0].ca_t = 0; v[0].ca_at = g; v[0].ca_to = g; v[0].ca_run = 0;
+  f := sub(g, ab_you(s));
+  v[0].ca_face = atan2(f.x, f.z);
+  for i: 0..<WATCH_ACTORS { v[0].ca_near[i] = false; v[0].ca_next[i] = 0; }
+  v[0].you_ca_near = false; v[0].you_ca_next = 0;
+  for q: 0..<(ifx phone(s) then 14 else 28) {
+    a := f32(TAU) * sp_rand(s); r := f32(CI_CA_HALF) * sp_rand(s);
+    sp_add_spark(s, add(g, v3(cos(a) * r, 0.2, sin(a) * r)), v3(0, 0.8 + sp_rand(s), 0), 0.9 + 0.6 * sp_rand(s), 0.03, times(CI_SPIRIT_RGB, 1.3), -0.3);
+  }
+  sp_say(s, "CONJURE ANIMALS", -1, "");
+}
+ci_ca_frame :: (s: [] Everglade, dt: f32) {
+  v := ci_of(s);
+  if !v[0].ca_on { return; }
+  v[0].ca_t += dt;
+  if v[0].ca_t >= f32(CI_CA_LIFE) { v[0].ca_on = false; sp_say(s, "CONJURE ANIMALS ENDS", -1, ""); return; }
+  // the pack runs to where you sent it
+  d := sub(v[0].ca_to, v[0].ca_at); d.y = 0;
+  l := length(d);
+  step := f32(CI_CA_SPEED) * dt;
+  if l > 0.05 {
+    v[0].ca_face = atan2(d.x, d.z);
+    m := lo(step, l);
+    v[0].ca_at = add(v[0].ca_at, times(d, m / l));
+    v[0].ca_at.y = ground_at(s, v[0].ca_at.x, v[0].ca_at.z);
+    v[0].ca_run += m;
+  }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  dice := s[0].sp.dice[..];
+  you := ab_you(s);
+  reach := f32(CI_CA_HALF) + f32(CI_CA_REACH) + 0.3;
+  hurt := 0; total := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) { v[0].ca_near[i] = false; continue; }
+    p := wd_feet(s, i);
+    close := flat_gap(p, v[0].ca_at) <= reach && abs(p.y - v[0].ca_at.y) < 3;
+    // coming within 10 feet of it (or it of them), or ending a round there: once a round
+    if close && v[0].time >= v[0].ca_next[i] {
+      v[0].ca_next[i] = v[0].time + f32(CI_ROUND);
+      if !srd_save(dice, watch_block(i).dex, GV_DC).success {
+        took := srd_sum(dice, 3, 10);
+        watch_harm(w, i, took, you);
+        hurt += 1; total += took;
+        for q: 0..<6 { sp_add_spark(s, add(p, v3(0, 0.9, 0)), times(sp_spray(s, 0.3), 3), 0.35, 0.025, times(CI_SPIRIT_RGB, 1.4), 4); }
+      }
+      ci_crime(s, p, f32(CI_HEAR_CA));
+    }
+    v[0].ca_near[i] = close;
+  }
+  if hurt > 0 { sp_say(s, "CONJURE ANIMALS · 3D10 SLASHING", total, ifx hurt == 1 then "· 1 TORN" else "· TORN"); }
+  if w[0].dead { return; }
+  close := flat_gap(you, v[0].ca_at) <= reach && abs(you.y - v[0].ca_at.y) < 3;
+  if close && v[0].time >= v[0].you_ca_next {
+    v[0].you_ca_next = v[0].time + f32(CI_ROUND);
+    if !srd_save(w[0].dice[..], SP_DEX, GV_DC).success { wd_hurt_you(s, srd_sum(dice, 3, 10), "THE PACK TURNS ON YOU · 3D10 SLASHING"); }
+  }
+  v[0].you_ca_near = close;
+}
+// Wolf q of the pack: where it stands, the way it faces, how far it has gone (its gait).
+CiWolf :: struct { at: Point; face: f32; walk: f32; }
+ci_wolf :: (s: [] Everglade, q: int) -> CiWolf {
+  v := ci_of(s);
+  t := v[0].ca_t;
+  // each paces its own small round in the pack, the way the pack runs when it runs
+  base := f32(TAU) * f32(q) / f32(CI_WOLVES) + 0.4;
+  turn := t * (0.35 + 0.08 * f32(q)) * (ifx q % 2 == 0 then 1.0f32 else -1.0f32);
+  r := 0.75 + 0.25 * sin(t * 0.7 + f32(q) * 1.7);
+  a := base + turn;
+  o := v3(cos(a) * r, 0, sin(a) * r);
+  at := add(v[0].ca_at, o);
+  at.y = ground_at(s, at.x, at.z);
+  moving := flat_gap(v[0].ca_to, v[0].ca_at) > 0.05;
+  side := ifx q % 2 == 0 then 1.0f32 else -1.0f32;
+  face := ifx moving then v[0].ca_face else atan2(-sin(a) * side, cos(a) * side);
+  return CiWolf.{at = at, face = face, walk = v[0].ca_run + t * 0.9 * r + f32(q) * 0.37};
+}
+
+// ---- Polymorph
+
+ci_pm_cast :: (s: [] Everglade) {
+  v := ci_of(s);
+  pick := ab_tk_pick(s);
+  who := ifx pick.kind == 2 then pick.idx else -1;
+  if who >= 0 && flat_gap(ab_person_at(s, who), ab_you(s)) > f32(CI_PM_RANGE) { sp_say(s, "TOO FAR · 60 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  ci_pm_on(s, who);
+}
+// Polymorph on person `who` (-1 you).
+ci_pm_on :: (s: [] Everglade, who: int) {
+  v := ci_of(s);
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  if v[0].pm_on { ci_pm_end(s); }
+  if who < 0 {
+    if w[0].dead { return; }
+    v[0].pm_on = true; v[0].pm_t = 0; v[0].pm_who = -1;
+    ci_take_shape(s, CI_FORM_BEAR, AB_POLYMORPH, true);
+    sp_say(s, "POLYMORPH · YOU ARE A BROWN BEAR", CI_FORM_HP[CI_FORM_BEAR], "TEMPORARY HIT POINTS");
+    return;
+  }
+  at := ab_person_at(s, who);
+  ci_crime(s, at, f32(CI_HEAR_PM));
+  for q: 0..<(ifx phone(s) then 10 else 20) { sp_add_spark(s, add(at, times(sp_spray(s, 0), 0.3)), times(sp_spray(s, 0.5), 1.4), 0.6 + 0.4 * sp_rand(s), 0.03, times(CI_SHIFT_RGB, 1.4), -0.4); }
+  if srd_save(s[0].sp.dice[..], 0, GV_DC).success { sp_say(s, "POLYMORPH · THEY RESIST", -1, ""); return; }
+  v[0].pm_on = true; v[0].pm_t = 0; v[0].pm_who = who;
+  w[0].actors[who].temp = CI_FORM_HP[CI_FORM_FROG];
+  v[0].shift_t = 0; v[0].shift_at = wd_feet(s, who);
+  sp_say(s, "POLYMORPH · A FROG", -1, "");
+}
+ci_pm_end :: (s: [] Everglade) {
+  v := ci_of(s);
+  if !v[0].pm_on { return; }
+  v[0].pm_on = false;
+  if v[0].pm_who < 0 { ci_leave_shape(s); return; }
+  if watch_on(s) { watch_w(s)[0].actors[v[0].pm_who].temp = 0; }
+  v[0].shift_t = 0; v[0].shift_at = wd_feet(s, v[0].pm_who);
+}
+ci_pm_frame :: (s: [] Everglade, dt: f32) {
+  v := ci_of(s);
+  if !v[0].pm_on { return; }
+  v[0].pm_t += dt;
+  if v[0].pm_t >= f32(CI_PM_LIFE) { ci_pm_end(s); sp_say(s, "POLYMORPH ENDS", -1, ""); return; }
+  i := v[0].pm_who;
+  if i < 0 || !watch_on(s) { return; }
+  // the frog's Hit Points gone (or theirs): back in their own shape
+  if !ab_person_ok(s, i) || watch_w(s)[0].actors[i].temp <= 0 { ci_pm_end(s); sp_say(s, "POLYMORPH ENDS · BACK IN THEIR SHAPE", -1, ""); return; }
+  ci_still(s, i);
+}
+
+// ---- Mass Cure Wounds
+
+ci_mc_cast :: (s: [] Everglade) {
+  if wd_aim_far(s, f32(CI_MC_RANGE), "POINT AT THE GROUND") { return; }
+  s[0].sp.armed = -1;
+  ci_mc_at(s, s[0].sp.aim);
+}
+ci_mc_at :: (s: [] Everglade, at: Point) {
+  v := ci_of(s);
+  c := v3(at.x, ground_at(s, at.x, at.z), at.z);
+  v[0].mc_t = 0; v[0].mc_at = c; v[0].mc_n = 0;
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  R := f32(CI_MC_R) + f32(BLAST_PAD);
+  // the six nearest its middle, you among them
+  gaps: [CI_MC_MOST] f32;
+  you := ab_you(s);
+  if !w[0].dead && flat_gap(you, c) <= R { v[0].mc_who[0] = -1; gaps[0] = flat_gap(you, c); v[0].mc_n = 1; }
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) { continue; }
+    g := flat_gap(wd_feet(s, i), c);
+    if g > R { continue; }
+    k := v[0].mc_n;
+    if k == CI_MC_MOST { if g >= gaps[k - 1] { continue; } k -= 1; } else { v[0].mc_n += 1; }
+    while k > 0 && gaps[k - 1] > g { gaps[k] = gaps[k - 1]; v[0].mc_who[k] = v[0].mc_who[k - 1]; k -= 1; }
+    gaps[k] = g; v[0].mc_who[k] = i;
+  }
+  got := 0;
+  for q: 0..<v[0].mc_n {
+    i := v[0].mc_who[q];
+    amount := srd_sum(d, 5, 8) + GV_WIS;
+    if i < 0 { h := lo_i(w[0].max, w[0].hp + amount) - w[0].hp; w[0].hp += h; got += h; continue; }
+    a := w[0].actors[i..<i + 1];
+    h := lo_i(a[0].max, a[0].hp + amount) - a[0].hp;
+    a[0].hp += h; got += h;
+  }
+  sp_add_shock(s, add(c, v3(0, 0.06, 0)), R, 0.9, CI_CURE_RGB);
+  sp_say(s, ifx v[0].mc_n == 0 then "MASS CURE WOUNDS" else "MASS CURE WOUNDS · 5D8 + 3", ifx v[0].mc_n == 0 then -1 else got, "HIT POINTS");
+}
+ci_mc_place :: (s: [] Everglade, q: int) -> Point {
+  v := ci_of(s);
+  i := v[0].mc_who[q];
+  if i < 0 { return ab_you(s); }
+  return wd_feet(s, i);
+}
+
+// ---- Sunbeam
+
+ci_sb_cast :: (s: [] Everglade) {
+  v := ci_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT WHERE IT SHINES", -1, ""); return; }
+  if v[0].sb_cool > 0 { return; }
+  s[0].sp.armed = -1;
+  if !v[0].sb_on { v[0].sb_on = true; v[0].sb_t = 0; }
+  ci_sb_line(s, gv_hand(s), s[0].sp.aim);
+}
+// A beam from `from` toward `to`, 60 feet long.
+ci_sb_line :: (s: [] Everglade, from: Point, to: Point) {
+  v := ci_of(s);
+  dir := unit_or(sub(to, from), ab_forward(s));
+  v[0].sb_cool = f32(CI_SB_COOL); v[0].sb_shot = 0;
+  v[0].sb_a = from; v[0].sb_b = add(from, times(dir, f32(CI_SB_LONG)));
+  hurt := 0; total := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    d := s[0].sp.dice[..];
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) || !ci_in_line(from, dir, f32(CI_SB_LONG), f32(CI_SB_WIDE) * 0.5, wd_feet(s, i)) { continue; }
+      amount := srd_sum(d, 6, 8);
+      ok := ci_con(s, i);
+      took := ifx ok then amount / 2 else amount;
+      watch_harm(w, i, took, ab_you(s));
+      if !ok { v[0].blind[i] = f32(CI_SB_BLIND); }
+      hurt += 1; total += took;
+    }
+    if hurt > 0 { ci_crime(s, mix(from, v[0].sb_b, 0.5), f32(CI_HEAR_SB)); }
+  }
+  if hurt > 0 { sp_say(s, "SUNBEAM · 6D8 RADIANT", total, ifx hurt == 1 then "· 1 BLINDED OR BURNT" else "· BLINDED OR BURNT"); }
+  else { sp_say(s, "SUNBEAM", -1, ""); }
+  // where it ends on the ground, a scorch of light; the debris it crosses catches
+  for q: 0..<(ifx phone(s) then 10 else 20) {
+    p := mix(from, v[0].sb_b, sp_rand(s));
+    sp_add_spark(s, p, times(sp_spray(s, 0), 0.8), 0.5 + 0.4 * sp_rand(s), 0.03, v3(1.6, 1.4, 0.9), -0.2);
+  }
+  s[0].sp.shake = hi(s[0].sp.shake, 0.12f32);
+}
+// Whether feet p's body is in the line from `from` along dir, `long` and `half` wide each side.
+ci_in_line :: (from: Point, dir: Point, long: f32, half: f32, p: Point) -> bool {
+  for k: 0..<3 {
+    q := add(p, v3(0, 0.3 + 0.6 * f32(k), 0));
+    along := dot(sub(q, from), dir);
+    if along < 0 || along > long { continue; }
+    off := length(sub(sub(q, from), times(dir, along)));
+    if off <= half + f32(BLAST_PAD) { return true; }
+  }
+  return false;
+}
+ci_sb_frame :: (s: [] Everglade, dt: f32) {
+  v := ci_of(s);
+  v[0].sb_shot += dt;
+  if v[0].sb_cool > 0 { v[0].sb_cool = hi(v[0].sb_cool - dt, 0); }
+  if v[0].sb_on {
+    v[0].sb_t += dt;
+    if v[0].sb_t >= f32(CI_SB_LIFE) { v[0].sb_on = false; sp_say(s, "SUNBEAM ENDS", -1, ""); }
+  }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  for i: 0..<WATCH_ACTORS {
+    if v[0].blind[i] > 0 { v[0].blind[i] = hi(v[0].blind[i] - dt, 0); }
+    w[0].actors[i].blind = v[0].blind[i] > 0 && ab_person_ok(s, i);
+  }
+}
+
+// ---- Wall of Thorns
+
+ci_wt_cast :: (s: [] Everglade) {
+  if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  if wd_aim_far(s, f32(CI_WT_RANGE), "POINT AT THE GROUND") { return; }
+  s[0].sp.armed = -1;
+  ci_wt_at(s, s[0].sp.aim, ab_forward(s));
+}
+ci_wt_at :: (s: [] Everglade, at: Point, ahead: Point) {
+  v := ci_of(s);
+  n := unit_or(v3(ahead.x, 0, ahead.z), v3(0, 0, 1));
+  side := v3(-n.z, 0, n.x);
+  h := f32(CI_WT_LONG) * 0.5;
+  v[0].wt_on = true; v[0].wt_t = 0; v[0].wt_n = n;
+  v[0].wt_a = sub(at, times(side, h)); v[0].wt_b = add(at, times(side, h));
+  v[0].wt_a.y = ground_at(s, v[0].wt_a.x, v[0].wt_a.z); v[0].wt_b.y = ground_at(s, v[0].wt_b.x, v[0].wt_b.z);
+  for i: 0..<WATCH_ACTORS { v[0].wt_next[i] = v[0].time + f32(CI_ROUND); }
+  v[0].you_wt_next = v[0].time + f32(CI_ROUND);
+  hurt := 0; total := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    d := s[0].sp.dice[..];
+    you := ab_you(s);
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) || ci_wt_where(s, wd_feet(s, i)) != 1 { continue; }
+      took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 7, 8), kind = DMG_PIERCING, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+      watch_harm(w, i, took, you);
+      hurt += 1; total += took;
+    }
+    if hurt > 0 { ci_crime(s, at, f32(CI_HEAR_WT)); }
+    if !w[0].dead && ci_wt_where(s, you) == 1 {
+      amount := srd_sum(d, 7, 8);
+      wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "WALL OF THORNS · YOU ARE IN IT");
+    }
+  }
+  if hurt > 0 { sp_say(s, "WALL OF THORNS · 7D8 PIERCING", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  else { sp_say(s, "WALL OF THORNS", -1, ""); }
+  for q: 0..<8 {
+    p := mix(v[0].wt_a, v[0].wt_b, (f32(q) + 0.5) / 8); p.y = ground_at(s, p.x, p.z);
+    sp_add_puff(s, add(p, v3(0, 0.3, 0)), v3(0, 0.6, 0), 0.9, 1.4, 0.55);
+  }
+}
+// Where p stands to the wall: 0 clear of it, 1 in it.
+ci_wt_where :: (s: [] Everglade, p: Point) -> int {
+  v := ci_of(s);
+  if !v[0].wt_on { return 0; }
+  a := v[0].wt_a; n := v[0].wt_n;
+  side := v3(-n.z, 0, n.x);
+  along := (p.x - a.x) * side.x + (p.z - a.z) * side.z;
+  off := (p.x - a.x) * n.x + (p.z - a.z) * n.z;
+  if along < -0.3 || along > f32(CI_WT_LONG) + 0.3 || p.y > a.y + f32(CI_WT_TALL) + 0.5 { return 0; }
+  return ifx abs(off) <= f32(CI_WT_HALF) + f32(EG_RADIUS) then 1 else 0;
+}
+ci_wt_rise :: (s: [] Everglade) -> f32 { v := ci_of(s); return clamp(v[0].wt_t / 0.9, 0, 1) * clamp((f32(CI_WT_LIFE) - v[0].wt_t) / 1.0, 0, 1); }
+ci_wt_frame :: (s: [] Everglade, dt: f32) {
+  v := ci_of(s);
+  if !v[0].wt_on { return; }
+  v[0].wt_t += dt;
+  if v[0].wt_t >= f32(CI_WT_LIFE) { v[0].wt_on = false; sp_say(s, "WALL OF THORNS ENDS", -1, ""); return; }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  hurt := 0; total := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || ci_wt_where(s, wd_feet(s, i)) == 0 || v[0].time < v[0].wt_next[i] { continue; }
+    // in it: entering, or ending a round there, the save once a round
+    v[0].wt_next[i] = v[0].time + f32(CI_ROUND);
+    took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 7, 8), kind = DMG_SLASHING, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+    watch_harm(w, i, took, you);
+    hurt += 1; total += took;
+  }
+  if hurt > 0 { ci_crime(s, mix(v[0].wt_a, v[0].wt_b, 0.5), f32(CI_HEAR_WT)); sp_say(s, "WALL OF THORNS · 7D8 SLASHING", total, "DAMAGE"); }
+  if !w[0].dead && ci_wt_where(s, you) == 1 && v[0].time >= v[0].you_wt_next {
+    v[0].you_wt_next = v[0].time + f32(CI_ROUND);
+    amount := srd_sum(d, 7, 8);
+    wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "THE THORNS · 7D8 SLASHING");
+  }
+}
+// The walls the townsfolk walk round (wd_fences, everglade-abilities.coax ab_stone_folk).
+ci_fences :: (s: [] Everglade, f: [] f32, n: int) -> int {
+  v := ci_of(s);
+  if !v[0].wt_on || (n + 1) * 5 > f.count { return n; }
+  f[n * 5] = v[0].wt_a.x; f[n * 5 + 1] = v[0].wt_a.z; f[n * 5 + 2] = v[0].wt_b.x; f[n * 5 + 3] = v[0].wt_b.z; f[n * 5 + 4] = f32(CI_WT_HALF);
+  return n + 1;
+}
+
+// ---- Fire Storm
+
+ci_fs_cast :: (s: [] Everglade) {
+  if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  if wd_aim_far(s, f32(CI_FS_RANGE), "POINT AT THE GROUND") { return; }
+  s[0].sp.armed = -1;
+  ci_fs_at(s, s[0].sp.aim, ab_forward(s));
+}
+// Cube q's middle on the ground: two rows of five across `ahead`, about `at`.
+ci_fs_cube :: (at: Point, ahead: Point, q: int) -> Point {
+  n := unit_or(v3(ahead.x, 0, ahead.z), v3(0, 0, 1));
+  side := v3(-n.z, 0, n.x);
+  e := f32(CI_FS_CUBE);
+  return add(at, add(times(side, (f32(q % 5) - 2) * e), times(n, (f32(q / 5) - 0.5) * e)));
+}
+ci_in_cube :: (c: Point, p: Point) -> bool {
+  h := f32(CI_FS_CUBE) * 0.5 + f32(BLAST_PAD);
+  return abs(p.x - c.x) <= h && abs(p.z - c.z) <= h && p.y + f32(BODY_TALL) >= c.y - 0.3 && p.y <= c.y + f32(CI_FS_CUBE);
+}
+ci_fs_at :: (s: [] Everglade, at: Point, ahead: Point) {
+  v := ci_of(s);
+  v[0].fs_t = 0;
+  for q: 0..<CI_FS_N {
+    c := ci_fs_cube(at, ahead, q);
+    c.y = ground_at(s, c.x, c.z);
+    v[0].fs_c[q] = c;
+  }
+  hurt := 0; total := 0;
+  if watch_on(s) {
+    w := watch_w(s);
+    d := s[0].sp.dice[..];
+    you := ab_you(s);
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) { continue; }
+      p := wd_feet(s, i);
+      inside := false;
+      for q: 0..<CI_FS_N { if ci_in_cube(v[0].fs_c[q], p) { inside = true; } }
+      if !inside { continue; }
+      took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 7, 10), kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+      watch_harm(w, i, took, you);
+      hurt += 1; total += took;
+    }
+    ci_crime(s, at, f32(CI_HEAR_FS));
+    inside := false;
+    for q: 0..<CI_FS_N { if ci_in_cube(v[0].fs_c[q], you) { inside = true; } }
+    if !w[0].dead && inside {
+      amount := srd_sum(d, 7, 10);
+      wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "FIRE STORM · YOU ARE IN IT");
+    }
+  }
+  if hurt > 0 { sp_say(s, "FIRE STORM · 7D10 FIRE", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  else { sp_say(s, "FIRE STORM", -1, ""); }
+  // what burns in it catches: the grass, the debris; a scorch where each cube stood
+  for q: 0..<CI_FS_N {
+    c := v[0].fs_c[q];
+    if !fr_wet(s, c.x, c.z) { sp_add_scorch(s, c, 1.3, false); wd_light(s, c, WD_GEN - 3); }
+    wd_debris_catch(s, add(c, v3(0, 1, 0)), 2.2);
+  }
+  fr_melt(s, at, f32(CI_FS_CUBE) * 2.5);
+  s[0].sp.shake = hi(s[0].sp.shake, 0.4f32);
+}
+ci_fs_on :: (s: [] Everglade) -> f32 { v := ci_of(s); return clamp(v[0].fs_t / 0.25, 0, 1) * clamp((f32(CI_FS_SHOW) - v[0].fs_t) / 0.9, 0, 1); }
+
+// ---- each frame, the light and the drawing
+
+ci_frame :: (s: [] Everglade, dt: f32) {
+  v := ci_of(s);
+  v[0].time += dt;
+  v[0].mc_t += dt; v[0].fs_t += dt; v[0].shift_t += dt;
+  ci_form_frame(s, dt);
+  ci_ca_frame(s, dt);
+  ci_pm_frame(s, dt);
+  ci_sb_frame(s, dt);
+  ci_wt_frame(s, dt);
+}
+ci_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  v := ci_of(s);
+  n := k;
+  t := v[0].time;
+  if v[0].fs_t < f32(CI_FS_SHOW) {
+    on := ci_fs_on(s);
+    for q: 0..<3 { n = sp_lamp(u, n, most, add(v[0].fs_c[q * 3 + 1], v3(0, 2, 0)), 18, v3(1.0, 0.5, 0.18), 3.0 * on * wd_flick(t, f32(q))); }
+  }
+  if v[0].sb_on { n = sp_lamp(u, n, most, add(ab_you(s), v3(0, 1.6, 0)), f32(CI_SB_LIGHT), CI_SUN_RGB, 1.4); }
+  if v[0].sb_shot < f32(CI_SB_SHOW) {
+    f := 1 - v[0].sb_shot / f32(CI_SB_SHOW);
+    n = sp_lamp(u, n, most, mix(v[0].sb_a, v[0].sb_b, 0.5), 14, CI_SUN_RGB, 3.0 * f);
+  }
+  if v[0].ca_on { n = sp_lamp(u, n, most, add(v[0].ca_at, v3(0, 0.8, 0)), 5, CI_SPIRIT_RGB, 0.7); }
+  if v[0].mc_t < f32(CI_MC_LIFE) { f := 1 - v[0].mc_t / f32(CI_MC_LIFE); n = sp_lamp(u, n, most, add(v[0].mc_at, v3(0, 1, 0)), 10, CI_CURE_RGB, 1.6 * f); }
+  return n;
+}
+ci_draw :: (s: [] Everglade) {
+  v := ci_of(s);
+  few := phone(s);
+  t := v[0].time;
+  // Conjure Animals: the spectral pack, pale green light in a wolf's shape, a haze of motes about it
+  if v[0].ca_on {
+    on := clamp(v[0].ca_t / 0.8, 0, 1) * clamp((f32(CI_CA_LIFE) - v[0].ca_t) / 1.0, 0, 1);
+    for q: 0..<CI_WOLVES {
+      wf := ci_wolf(s, q);
+      ci_beast(s, CI_FORM_WOLF, wf.at, wf.face, wf.walk, 1, true, on);
+    }
+    if sp_rand(s) < (ifx few then 0.25f32 else 0.5f32) {
+      a := f32(TAU) * sp_rand(s); r := f32(CI_CA_HALF) * sp_rand(s);
+      sp_add_spark(s, add(v[0].ca_at, v3(cos(a) * r, 0.3 + 0.6 * sp_rand(s), sin(a) * r)), v3(0, 0.5, 0), 0.8, 0.02, times(CI_SPIRIT_RGB, 1.2), -0.2);
+    }
+  }
+  // the frog, and you in a beast's shape
+  if v[0].pm_on && v[0].pm_who >= 0 && watch_on(s) {
+    i := v[0].pm_who;
+    pl := person_place(s, i);
+    feet := wd_feet(s, i);
+    moving := pl.walking || watch_busy(s, i);
+    ci_beast(s, CI_FORM_FROG, feet, pl.face, t * 2.2, ifx moving then 1.0f32 else 0.0f32, false, 1);
+  }
+  if v[0].form != CI_FORM_NONE && !(watch_on(s) && watch_w(s)[0].dead) {
+    ci_beast(s, v[0].form, ab_you(s), s[0].face, v[0].form_walk, v[0].form_move, false, 1);
+  }
+  // a shape changing: a swirl of violet light
+  if v[0].shift_t < 0.8 {
+    f := v[0].shift_t / 0.8;
+    sp_glow(s, add(v[0].shift_at, v3(0, 0.8, 0)), 2.2 * (1 - f), times(CI_SHIFT_RGB, 0.4));
+    for q: 0..<(ifx few then 6 else 12) {
+      a := f32(q) * 0.52 + f * 9;
+      sp_glow(s, add(v[0].shift_at, v3(cos(a) * 0.55 * (1 - f * 0.5), 0.2 + 1.6 * f, sin(a) * 0.55 * (1 - f * 0.5))), 0.1, times(CI_SHIFT_RGB, 1.5 * (1 - f)));
+    }
+  }
+  // Mass Cure Wounds: green-gold light rising through each it heals
+  if v[0].mc_t < f32(CI_MC_LIFE) {
+    f := v[0].mc_t / f32(CI_MC_LIFE);
+    sp_glow(s, add(v[0].mc_at, v3(0, 0.3, 0)), 6 * (1 - f), times(CI_CURE_RGB, 0.15));
+    for q: 0..<v[0].mc_n {
+      p := ci_mc_place(s, q);
+      sp_glow(s, add(p, v3(0, 1, 0)), 1.3 * (1 - f), times(CI_CURE_RGB, 0.3));
+      for e: 0..<(ifx few then 5 else 10) {
+        a := f32(e) * 0.63 + f * 6 + f32(q);
+        y := 2.4 * clamp(f * 1.4 - f32(e) * 0.05, 0, 1);
+        sp_glow(s, add(p, v3(cos(a) * 0.4, y, sin(a) * 0.4)), 0.09, times(v3(1.1, 1.4, 0.7), 1 - f));
+      }
+    }
+  }
+  // Sunbeam: the beam, a white-hot core in a golden sheath, fading
+  if v[0].sb_on { sp_glow(s, gv_hand(s), 0.35 + 0.05 * sin(t * 9), times(CI_SUN_RGB, 0.9)); }
+  if v[0].sb_shot < f32(CI_SB_SHOW) {
+    f := v[0].sb_shot / f32(CI_SB_SHOW);
+    k := clamp(v[0].sb_shot / 0.06, 0, 1) * clamp((1 - f) * 1.6, 0, 1);
+    a := v[0].sb_a; b := v[0].sb_b;
+    sp_rod(s, a, b, 0.05 + 0.2 * k, times(CI_SUN_RGB, 1.2));
+    for q: 0..<(ifx few then 6 else 12) { sp_glow(s, mix(a, b, (f32(q) + 0.5) / 12), 1.6 * k, times(CI_SUN_RGB, 0.25)); }
+    sp_glow(s, b, 2.5 * k, times(CI_SUN_RGB, 0.5));
+  }
+  ci_wt_draw(s, few);
+  ci_fs_draw(s, few);
+  // picked: where it would fall
+  armed := s[0].sp.armed - SP_SLOTS;
+  if s[0].sp.aim_ok && v[0].form == CI_FORM_NONE {
+    pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+    you := ab_you(s);
+    if armed == AB_CONJURE {
+      far := ifx v[0].ca_on then flat_gap(s[0].sp.aim, v[0].ca_at) > f32(CI_CA_MOVE) + 0.3 else flat_gap(s[0].sp.aim, you) > f32(CI_CA_RANGE);
+      ab_square(s, s[0].sp.aim, f32(CI_CA_HALF), times(ifx far then v3(0.6, 0.25, 0.2) else CI_SPIRIT_RGB, 0.7 * pulse));
+    }
+    if armed == AB_SUNBEAM {
+      a := gv_hand(s);
+      d := unit_or(sub(s[0].sp.aim, a), ab_forward(s));
+      for q: 0..<10 { ab_line(s, add(a, times(d, f32(CI_SB_LONG) * f32(q) / 10)), add(a, times(d, f32(CI_SB_LONG) * (f32(q) + 0.6) / 10)), times(CI_SUN_RGB, 0.6 * pulse)); }
+    }
+    if armed == AB_THORNS || armed == AB_FIRESTORM {
+      reach := ifx armed == AB_THORNS then f32(CI_WT_RANGE) else f32(CI_FS_RANGE);
+      far := flat_gap(s[0].sp.aim, you) > reach;
+      fw := ab_forward(s);
+      if armed == AB_THORNS {
+        side := unit_or(v3(-fw.z, 0, fw.x), v3(1, 0, 0));
+        h := f32(CI_WT_LONG) * 0.5;
+        c := ifx far then v3(0.6, 0.25, 0.2) else v3(0.6, 0.75, 0.35);
+        for q: 0..<12 {
+          p0 := add(s[0].sp.aim, times(side, -h + f32(CI_WT_LONG) * f32(q) / 12)); p0.y = ground_at(s, p0.x, p0.z) + 0.08;
+          p1 := add(s[0].sp.aim, times(side, -h + f32(CI_WT_LONG) * f32(q + 1) / 12)); p1.y = ground_at(s, p1.x, p1.z) + 0.08;
+          ab_line(s, p0, p1, times(c, 0.8 * pulse));
+        }
+      } else {
+        for q: 0..<CI_FS_N { ab_square(s, ci_fs_cube(s[0].sp.aim, fw, q), f32(CI_FS_CUBE) * 0.5 - 0.05, times(ifx far then v3(0.6, 0.25, 0.2) else GV_FLAME_RGB, 0.6 * pulse)); }
+      }
+    }
+  }
+}
+// The wall: a thicket of brambles, dark tangled bushes shoulder to shoulder (the trees' leafy look),
+// thorny canes as thick as a thumb arching up out of them and over, brown thorns along each; it grows
+// up out of the ground.
+ci_wt_draw :: (s: [] Everglade, few: bool) {
+  v := ci_of(s);
+  if !v[0].wt_on { return; }
+  grow := ci_wt_rise(s);
+  n := v[0].wt_n; side := v3(-n.z, 0, n.x);
+  H := f32(CI_WT_TALL) * grow;
+  // the bushes: mounds of tangled leaf, low and wide at the foot, smaller and tipped every way above
+  bushes := ifx few then 8 else 13;
+  for q: 0..<bushes {
+    for e: 0..<3 {
+      j := q * 3 + e;
+      u := (f32(q) + 0.2 + 0.6 * ab_h(89.0, j, 0)) / f32(bushes);
+      base := mix(v[0].wt_a, v[0].wt_b, u);
+      at := add(base, times(n, (ab_h(89.0, j, 5) - 0.5) * f32(CI_WT_HALF) * 0.8));
+      at.y = ground_at(s, at.x, at.z);
+      tier := f32(e);
+      wide := (2.1 - 0.45 * tier + 0.5 * ab_h(89.0, j, 2)) * (0.4 + 0.6 * grow);
+      tall := (1.7 - 0.2 * tier) * grow;
+      lift := (0.75 + 0.85 * tier) * H / f32(CI_WT_TALL);
+      tilt := ifx e == 0 then 0.25 * ab_h(89.0, j, 1) else 0.5 + 0.9 * ab_h(89.0, j, 1);
+      tone := 0.8 + 0.4 * ab_h(89.0, j, 3);
+      shape(s, SHAPE_CONE, LOOK_LEAVES, add(at, v3(0, lift, 0)), f32(TAU) * ab_h(89.0, j, 4), tilt, wide, tall, wide * 0.85, 0.2 * tone, 0.24 * tone, 0.1 * tone);
+    }
+  }
+  // the canes arching out of them
+  cols := ifx few then 14 else 26;
+  for q: 0..<cols {
+    j := q;
+    u := (f32(q) + ab_h(91.0, j, 0)) / f32(cols);
+    base := mix(v[0].wt_a, v[0].wt_b, u);
+    out := ifx q % 2 == 0 then 1.0f32 else -1.0f32;
+    root := add(base, times(n, out * f32(CI_WT_HALF) * (0.4 + 0.5 * ab_h(91.0, j, 1)))); root.y = ground_at(s, root.x, root.z) - 0.05;
+    lean := (ab_h(91.0, j, 2) - 0.5) * 2.0;
+    tall := H * (0.85 + 0.35 * ab_h(91.0, j, 3));
+    // up out of the bush, over its top, and down its far side
+    p0 := root;
+    p1 := add(root, add(times(side, lean * 0.3), add(times(n, out * 0.25), v3(0, tall * 0.7, 0))));
+    p2 := add(root, add(times(side, lean * 0.7), add(times(n, -out * 0.35), v3(0, tall * 1.05, 0))));
+    p3 := add(root, add(times(side, lean), add(times(n, -out * 1.2), v3(0, tall * 0.75, 0))));
+    thick := 0.05 + 0.03 * ab_h(91.0, j, 6);
+    tone := 0.8 + 0.4 * ab_h(91.0, j, 7);
+    c := times(v3(0.2, 0.17, 0.08), tone);
+    ci_cane(s, p0, p1, thick, c);
+    ci_cane(s, p1, p2, thick * 0.8, c);
+    ci_cane(s, p2, p3, thick * 0.6, c);
+    // thorns along the cane
+    for e: 0..<(ifx few then 3 else 6) {
+      k := (f32(e) + 0.5) / 6;
+      p := ifx k < 0.4 then mix(p0, p1, k / 0.4) else ifx k < 0.75 then mix(p1, p2, (k - 0.4) / 0.35) else mix(p2, p3, (k - 0.75) / 0.25);
+      a := f32(TAU) * ab_h(93.0, j * 7 + e, 0);
+      o := unit_or(add(times(side, cos(a)), add(times(n, sin(a)), v3(0, 0.2, 0))), n);
+      l := 0.16 * grow;
+      sp_shape(s, SHAPE_CONE, LOOK_MATTE, add(p, times(o, l * 0.5 + thick * 0.4)), times(unit_or(cross(o, v3(0, 1, 0.01)), side), 0.04), times(o, l), times(v3(0, 1, 0), 0.04), CI_THORN_RGB);
+    }
+  }
+}
+// A cane of the brambles from a to b, tapering.
+ci_cane :: (s: [] Everglade, a: Point, b: Point, thick: f32, colour: Point) {
+  ax := sub(b, a);
+  l := length(ax);
+  if l < 0.02 { return; }
+  up := times(ax, 1.0 / l);
+  x := unit_or(cross(up, v3(0, 0.001, 1)), v3(1, 0, 0));
+  z := cross(x, up);
+  sp_shape(s, SHAPE_CONE, LOOK_MATTE, mix(a, b, 0.5), times(x, thick), times(ax, 1.08), times(z, thick), colour);
+}
+// Fire Storm: each cube a column of roaring flame, billows climbing off it, its glow on the ground.
+ci_fs_draw :: (s: [] Everglade, few: bool) {
+  v := ci_of(s);
+  if v[0].fs_t >= f32(CI_FS_SHOW) { return; }
+  on := ci_fs_on(s);
+  t := v[0].fs_t;
+  e := f32(CI_FS_CUBE);
+  for q: 0..<CI_FS_N {
+    c := v[0].fs_c[q];
+    for r: 0..<(ifx few then 3 else 6) {
+      k := (f32(r) + 0.5) / 6;
+      a := f32(TAU) * ab_h(97.0, q * 9 + r, 0) + t * 1.7;
+      rr := e * 0.32 * ab_h(97.0, q * 9 + r, 1);
+      p := add(c, v3(cos(a) * rr, e * k * on, sin(a) * rr));
+      sp_fx(s, FX_FIRE, p, (1.25 - 0.5 * k) * on, sp_flame_rgb(0.08 + 0.55 * k), lerp(0.7, 0.2, k), v3(0.9, 0, 0), t * 2.9 + f32(q * 11 + r) * 0.41);
+    }
+    sp_glow(s, add(c, v3(0, 0.5, 0)), 3.2 * on, v3(0.4, 0.15, 0.03));
+    if on > 0.4 && sp_rand(s) < (ifx few then 0.3f32 else 0.65f32) {
+      p := add(c, v3((sp_rand(s) - 0.5) * e, sp_rand(s) * e * 0.6, (sp_rand(s) - 0.5) * e));
+      sp_add_flame(s, p, v3(0, 2.2, 0), 0.6 + 0.4 * sp_rand(s), 1.8, 0.5 + 0.3 * sp_rand(s), 4.0, 0.2);
+    }
+    if on > 0.4 && sp_rand(s) < 0.08 { sp_add_smoke(s, add(c, v3(0, e, 0)), v3(0, 1.4, 0), 1.6, 5.0, 0.3, 0.45, 0.5, 0.3); }
+    if sp_rand(s) < 0.2 { sp_add_spark(s, add(c, v3((sp_rand(s) - 0.5) * e, 0.3, (sp_rand(s) - 0.5) * e)), add(v3(0, 4, 0), times(sp_spray(s, 0), 1.5)), 1.0 + sp_rand(s), 0.02, v3(1.4, 0.6, 0.15), -0.5); }
+  }
+}
+// A beast at `feet` facing `face`, `walk` m into its gait (`move` 0 standing to 1 on the move): a wolf,
+// a bear or a frog, in the matte of its coat, or spectral (the pack: pale green light, `on` of it there).
+ci_beast :: (s: [] Everglade, form: int, feet: Point, face: f32, walk: f32, move: f32, spirit: bool, on: f32) {
+  if on <= 0.01 { return; }
+  f := v3(sin(face), 0, cos(face)); r := v3(f.z, 0, -f.x); up := v3(0, 1, 0);
+  if form == CI_FORM_FROG {
+    hop := abs(sin(walk * 2.4)) * 0.18 * move;
+    b := add(feet, v3(0, 0.07 + hop, 0));
+    ci_part(s, SHAPE_SPHERE, add(b, times(f, 0.02)), times(r, 0.2), v3(0, 0.12, 0), times(f, 0.24), CI_FROG_RGB, spirit, on);
+    for e: 0..<2 {
+      sd := ifx e == 0 then 1.0f32 else -1.0f32;
+      ci_part(s, SHAPE_SPHERE, add(b, add(times(f, 0.09), add(times(r, sd * 0.06), v3(0, 0.06, 0)))), v3(0.05, 0, 0), v3(0, 0.05, 0), v3(0, 0, 0.05), v3(0.75, 0.62, 0.1), spirit, on);
+      ci_limb(s, add(b, add(times(r, sd * 0.08), times(f, -0.06))), add(feet, add(times(r, sd * 0.13), times(f, -0.02))), 0.045, CI_FROG_RGB, spirit, on);
+      ci_limb(s, add(b, add(times(r, sd * 0.06), times(f, 0.08))), add(feet, add(times(r, sd * 0.08), times(f, 0.12))), 0.03, CI_FROG_RGB, spirit, on);
+    }
+    return;
+  }
+  bear := form == CI_FORM_BEAR;
+  k := ifx bear then 1.35f32 else 1.0f32;
+  coat := ifx bear then CI_BEAR_RGB else CI_WOLF_RGB;
+  hip := 0.55 * k;
+  // the trot: diagonal pairs, the back rising and falling with them
+  stride := ifx bear then 1.3f32 else 1.1f32;
+  ph := walk / stride * f32(TAU);
+  bob := 0.025 * k * abs(sin(ph)) * move;
+  back := add(feet, v3(0, hip + 0.08 * k + bob, 0));
+  ci_part(s, SHAPE_SPHERE, back, times(r, (ifx bear then 0.62f32 else 0.34f32) * k), v3(0, (ifx bear then 0.6f32 else 0.36f32) * k, 0), times(f, 1.05 * k), coat, spirit, on);
+  chest := add(back, add(times(f, 0.32 * k), v3(0, 0.03 * k, 0)));
+  ci_part(s, SHAPE_SPHERE, chest, times(r, (ifx bear then 0.6f32 else 0.34f32) * k), v3(0, (ifx bear then 0.62f32 else 0.42f32) * k, 0), times(f, 0.5 * k), coat, spirit, on);
+  head := add(back, add(times(f, (ifx bear then 0.66f32 else 0.62f32) * k), v3(0, (ifx bear then 0.12f32 else 0.22f32) * k + 0.02 * sin(ph * 0.5), 0)));
+  ci_part(s, SHAPE_SPHERE, head, times(r, 0.26 * k), v3(0, 0.25 * k, 0), times(f, 0.3 * k), coat, spirit, on);
+  if bear {
+    // a short broad muzzle, paler, a dark nose; round ears
+    m := add(head, add(times(f, 0.17 * k), v3(0, -0.05 * k, 0)));
+    ci_part(s, SHAPE_BOX, m, times(r, 0.15 * k), v3(0, 0.12 * k, 0), times(f, 0.2 * k), v3(0.42, 0.3, 0.2), spirit, on);
+    ci_part(s, SHAPE_BOX, add(m, add(times(f, 0.1 * k), v3(0, 0.03 * k, 0))), times(r, 0.07 * k), v3(0, 0.05 * k, 0), times(f, 0.03 * k), v3(0.04, 0.03, 0.03), spirit, on);
+    for e: 0..<2 {
+      sd := ifx e == 0 then 1.0f32 else -1.0f32;
+      ear := add(head, add(times(r, sd * 0.1 * k), add(times(f, -0.04 * k), v3(0, 0.11 * k, 0))));
+      ci_part(s, SHAPE_BOX, ear, times(r, 0.07 * k), v3(0, 0.07 * k, 0), times(f, 0.03 * k), times(coat, 0.8), spirit, on);
+    }
+  } else {
+    ci_limb(s, add(head, add(times(f, 0.1 * k), v3(0, -0.03 * k, 0))), add(head, add(times(f, 0.38 * k), v3(0, -0.07 * k, 0))), 0.07 * k, times(coat, 0.85), spirit, on);
+    for e: 0..<2 {
+      sd := ifx e == 0 then 1.0f32 else -1.0f32;
+      ear := add(head, add(times(r, sd * 0.08 * k), add(times(f, -0.03 * k), v3(0, 0.09 * k, 0))));
+      ci_limb(s, ear, add(ear, v3(0, 0.09 * k, 0)), 0.04 * k, coat, spirit, on);
+    }
+  }
+  // the legs, swinging
+  for e: 0..<4 {
+    front := e < 2;
+    sd := ifx e % 2 == 0 then 1.0f32 else -1.0f32;
+    pair := ifx (e == 0 || e == 3) then 0.0f32 else f32(PI);
+    swing := sin(ph + pair) * 0.32 * k * move;
+    lift := hi(cos(ph + pair), 0) * 0.07 * k * move;
+    top := add(back, add(times(f, (ifx front then 0.33f32 else -0.33f32) * k), add(times(r, sd * (ifx bear then 0.17f32 else 0.1f32) * k), v3(0, -0.06 * k, 0))));
+    foot := add(feet, add(times(f, (ifx front then 0.33f32 else -0.33f32) * k + swing), add(times(r, sd * (ifx bear then 0.18f32 else 0.1f32) * k), v3(0, lift, 0))));
+    ci_leg(s, top, foot, (ifx bear then 0.15f32 else 0.065f32) * k, times(coat, 0.85), spirit, on);
+  }
+  tail := add(back, add(times(f, -0.5 * k), v3(0, 0.02 * k, 0)));
+  tl := ifx bear then 0.1f32 else 0.42f32;
+  ci_limb(s, tail, add(tail, add(times(f, -tl * k), v3(0, -tl * 0.45 * k, 0))), (ifx bear then 0.06f32 else 0.07f32) * k, coat, spirit, on);
+}
+// A part of a beast: its shape, or for a spirit its light (a glowing shell and a haze).
+ci_part :: (s: [] Everglade, kind: int, at: Point, ax: Point, ay: Point, az: Point, colour: Point, spirit: bool, on: f32) {
+  if spirit {
+    sp_part(s, kind, LOOK_SMOKE, at, ax, ay, az, v3(0.62, 0.98, 0.86), 0.8 * on);
+    sp_glow(s, at, (length(ax) + length(az)) * 0.5, times(CI_SPIRIT_RGB, 0.07 * on));
+    return;
+  }
+  sp_shape(s, kind, LOOK_MATTE, at, ax, ay, az, colour);
+}
+// A leg from a to b, `thick` square.
+ci_leg :: (s: [] Everglade, a: Point, b: Point, thick: f32, colour: Point, spirit: bool, on: f32) {
+  ax := sub(b, a);
+  l := length(ax);
+  if l < 0.01 { return; }
+  up := times(ax, 1.0 / l);
+  x := unit_or(cross(up, v3(0, 0.001, 1)), v3(1, 0, 0));
+  z := cross(x, up);
+  ci_part(s, SHAPE_BOX, mix(a, b, 0.5), times(x, thick), ax, times(z, thick), colour, spirit, on);
+}
+// A snout, an ear, a tail: from a, thick there, to a point at b.
+ci_limb :: (s: [] Everglade, a: Point, b: Point, thick: f32, colour: Point, spirit: bool, on: f32) {
+  ax := sub(b, a);
+  l := length(ax);
+  if l < 0.01 { return; }
+  up := times(ax, 1.0 / l);
+  x := unit_or(cross(up, v3(0, 0.001, 1)), v3(1, 0, 0));
+  z := cross(x, up);
+  if spirit { sp_part(s, SHAPE_CONE, LOOK_SMOKE, mix(a, b, 0.5), times(x, thick * 2), ax, times(z, thick * 2), v3(0.62, 0.98, 0.86), 0.8 * on); return; }
+  sp_shape(s, SHAPE_CONE, LOOK_MATTE, mix(a, b, 0.5), times(x, thick * 2), ax, times(z, thick * 2), colour);
+}
+
+ci_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
+  v := ci_of(s);
+  you := ab_you(s);
+  if v[0].form != CI_FORM_NONE && k == v[0].form_by {
+    return ifx phone_ then "TAP SOMEONE IN REACH TO BITE · TAP ITS SLOT TO END THE SHAPE" else "CLICK SOMEONE IN REACH TO BITE · ITS KEY ENDS THE SHAPE";
+  }
+  if k == AB_CONJURE {
+    if v[0].ca_on {
+      if far && flat_gap(s[0].sp.aim, v[0].ca_at) > f32(CI_CA_MOVE) + 0.3 { return "TOO FAR · THE PACK RUNS 30 FEET AT MOST"; }
+      return ifx phone_ then "TAP THE GROUND TO SEND THE PACK · TAP ITS SLOT TO END IT" else "CLICK THE GROUND TO SEND THE PACK · CTRL+- ENDS IT";
+    }
+    if far && flat_gap(s[0].sp.aim, you) > f32(CI_CA_RANGE) { return "TOO FAR · 60 FEET AT MOST"; }
+    return ifx phone_ then "TAP THE GROUND FOR CONJURE ANIMALS · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR CONJURE ANIMALS · ESC CANCELS";
+  }
+  if k == AB_POLYMORPH {
+    if v[0].pm_on { return ifx phone_ then "TAP SOMEONE, OR ANYWHERE FOR YOU · TAP ITS SLOT TO END IT" else "CLICK SOMEONE, OR ANYWHERE ELSE FOR YOU · ALT+1 ENDS IT"; }
+    return ifx phone_ then "TAP SOMEONE TO TURN THEM INTO A FROG, OR ANYWHERE FOR A BEAR" else "CLICK SOMEONE TO TURN THEM INTO A FROG, OR ANYWHERE ELSE TO BE A BEAR · ESC CANCELS";
+  }
+  if k == AB_MASSCURE {
+    if far && flat_gap(s[0].sp.aim, you) > f32(CI_MC_RANGE) { return "TOO FAR · 60 FEET AT MOST"; }
+    return ifx phone_ then "TAP THE GROUND FOR MASS CURE WOUNDS · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR MASS CURE WOUNDS · ESC CANCELS";
+  }
+  if k == AB_SUNBEAM {
+    if v[0].sb_on { return ifx phone_ then "TAP FOR ANOTHER BEAM · TAP ITS SLOT TO END IT" else "CLICK FOR ANOTHER BEAM · ALT+3 ENDS IT"; }
+    return ifx phone_ then "TAP WHERE THE SUNBEAM SHINES · TAP ITS SLOT TO CANCEL" else "CLICK WHERE THE SUNBEAM SHINES · ESC CANCELS";
+  }
+  if k == AB_THORNS {
+    if far && flat_gap(s[0].sp.aim, you) > f32(CI_WT_RANGE) { return "TOO FAR · 120 FEET AT MOST"; }
+    if v[0].wt_on { return ifx phone_ then "TAP THE GROUND TO RAISE IT AGAIN · TAP ITS SLOT TO END IT" else "CLICK THE GROUND TO RAISE IT AGAIN · ALT+4 ENDS IT"; }
+    return ifx phone_ then "TAP THE GROUND FOR A WALL OF THORNS ACROSS YOUR VIEW · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR A WALL OF THORNS ACROSS YOUR VIEW · ESC CANCELS";
+  }
+  if k == AB_FIRESTORM {
+    if far && flat_gap(s[0].sp.aim, you) > f32(CI_FS_RANGE) { return "TOO FAR · 150 FEET AT MOST"; }
+    return ifx phone_ then "TAP THE GROUND FOR A FIRE STORM ACROSS YOUR VIEW · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR A FIRE STORM ACROSS YOUR VIEW · ESC CANCELS";
+  }
+  return "";
+}
+ci_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
+  if ci_of(s)[0].form != CI_FORM_NONE { return n; }
+  if k == AB_POLYMORPH { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, CI_SHIFT_RGB, pulse); }
+  if k == AB_MASSCURE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(CI_MC_R), CI_CURE_RGB, pulse); }
+  return n;
+}
+
+// ---- checks
+
+#test "circle: Conjure Animals' pack tears whoever comes within 10 feet (you too), Polymorph makes a frog of them or a bear of you, Mass Cure Wounds heals six" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := ci_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  #assert sp_key_place('-', 2) == 34 && sp_key_place('1', 4) == 36 && sp_key_place(0xA3, 0) == 38;
+  #assert spells_key(g[..], '-', 2) && g[0].sp.armed == SP_SLOTS + AB_CONJURE;
+  ku := spells_key_up(g[..], '-', 2);
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x + 30, 0, pl.z);
+  hp := w[0].actors[who].hp;
+  for k: 0..<20 {
+    if w[0].actors[who].hp < hp { break; }
+    w[0].actors[who].hp = hp; w[0].actors[who].mode = WM_CALM;
+    ci_ca_at(g[..], v3(pl.x + 2, 0, pl.z));
+    ci_ca_frame(g[..], 1.0 / 30);
+  }
+  #assert v[0].ca_on && ab_active(g[..], AB_CONJURE) && w[0].actors[who].hp < hp && w[0].crimes > 0;
+  // you, beside it
+  you := ab_you(g[..]);
+  hp = w[0].hp;
+  for k: 0..<20 { if w[0].hp < hp { break; } v[0].you_ca_next = 0; ci_ca_at(g[..], add(you, v3(1, 0, 0))); ci_ca_frame(g[..], 1.0 / 30); }
+  #assert w[0].hp < hp;
+  // it runs where it is sent, 30 feet at most
+  g[0].sp.armed = SP_SLOTS + AB_CONJURE;
+  g[0].sp.aim = add(v[0].ca_at, v3(6, 0, 0)); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  for k: 0..<60 { ci_ca_frame(g[..], 1.0 / 30); }
+  #assert flat_gap(v[0].ca_at, g[0].sp.aim) < 0.2;
+  g[0].sp.armed = SP_SLOTS + AB_CONJURE;
+  #assert spells_key(g[..], '-', 2) && !v[0].ca_on;
+  ku = spells_key_up(g[..], '-', 2);
+  // Polymorph: a frog who fails (the frog's 1 Hit Point first), back when it is gone
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  w[0].actors[other].mode = WM_CALM; w[0].actors[other].hp = w[0].actors[other].max;
+  for k: 0..<20 { if v[0].pm_on { break; } ci_pm_on(g[..], other); }
+  #assert v[0].pm_on && v[0].pm_who == other && w[0].actors[other].temp == 1 && !ci_person_shown(g[..], other);
+  hp = w[0].actors[other].hp;
+  watch_harm(w, other, 1, ab_you(g[..]));
+  #assert w[0].actors[other].hp == hp && w[0].actors[other].temp == 0;
+  ci_pm_frame(g[..], 1.0 / 30);
+  #assert !v[0].pm_on && ci_person_shown(g[..], other);
+  // on you: a bear, 22 Temporary Hit Points spent first, no spells but its bite
+  ci_pm_on(g[..], -1);
+  #assert v[0].form == CI_FORM_BEAR && w[0].temp == 22 && !ci_you_shown(g[..]) && ci_pace(g[..]) > 1;
+  hp = w[0].hp;
+  watch_hurt_you(w, 5);
+  #assert w[0].hp == hp && w[0].temp == 17;
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], '1', 0) && g[0].sp.armed == -1;   // Meteor Swarm: a bear casts no spells
+  watch_hurt_you(w, 20);
+  #assert w[0].hp == hp - 3;
+  ci_form_frame(g[..], 1.0 / 30);
+  #assert v[0].form == CI_FORM_NONE && ci_you_shown(g[..]) && !v[0].pm_on;
+  // Mass Cure Wounds: them and you
+  watch_harm(w, other, 2, ab_you(g[..]));
+  w[0].hp = w[0].max - 8;
+  op := wd_feet(g[..], other);
+  g[0].feet = v3(op.x + 2, 0, op.z);
+  ci_mc_at(g[..], op);
+  #assert w[0].actors[other].hp == w[0].actors[other].max && w[0].hp == w[0].max && v[0].mc_n >= 2 && v[0].mc_n <= 6;
+}
+
+#test "circle: Sunbeam blinds or burns down its line (Blinded, their blows at you have Disadvantage), Wall of Thorns tears who is in it (you too) and the town walks round it, Fire Storm's ten cubes burn and catch the grass" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := ci_of(g[..]);
+  w := watch_w(g[..]);
+  who := wd_test_one(g[..], -1);
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x, 0, pl.z - 8);
+  hp := w[0].actors[who].hp;
+  blinded := false;
+  for k: 0..<20 {
+    if v[0].blind[who] > 0 { blinded = true; break; }
+    w[0].actors[who].hp = 500; w[0].actors[who].mode = WM_CALM;   // they live through it, to be Blinded
+    v[0].sb_cool = 0;
+    ci_sb_line(g[..], add(ab_you(g[..]), v3(0, 1.2, 0)), add(wd_feet(g[..], who), v3(0, 1, 0)));
+  }
+  #assert blinded && w[0].crimes > 0;
+  ci_sb_frame(g[..], 1.0 / 30);
+  #assert w[0].actors[who].blind;
+  // Disadvantage: the lower of two d20s, about 7.2 to hit against one's 10.5
+  sum := 0;
+  for k: 0..<400 { sum += watch_roll_at_you(w, who, 0, SRD_GUARD).roll; }
+  #assert sum < 400 * 9;
+  for k: 0..<80 { ci_sb_frame(g[..], 0.1); }
+  #assert !w[0].actors[who].blind;
+  // Wall of Thorns
+  w[0].actors[who].hp = w[0].actors[who].max; w[0].actors[who].mode = WM_CALM;
+  hp = w[0].actors[who].hp;
+  at := v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z);
+  ci_wt_at(g[..], at, v3(0, 0, 1));
+  #assert v[0].wt_on && ab_active(g[..], AB_THORNS) && ci_wt_where(g[..], at) == 1 && ci_wt_where(g[..], add(at, v3(0, 0, 3))) == 0;
+  #assert gv_rough(g[..], at.x + 2, at.z) && !gv_rough(g[..], at.x + 2, at.z + 3);
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].fence_n >= 1;
+  g[0].feet = v3(at.x + 3, 0, at.z);
+  hp = w[0].hp;
+  v[0].you_wt_next = 0;
+  ci_wt_frame(g[..], 1.0 / 30);
+  #assert w[0].hp < hp;
+  g[0].sp.armed = -1;
+  #assert spells_key(g[..], 0xA2, 0) && g[0].sp.armed == SP_SLOTS + AB_THORNS;
+  ku := spells_key_up(g[..], 0xA2, 0);
+  #assert spells_key(g[..], 0xA2, 0) && !v[0].wt_on;
+  ku = spells_key_up(g[..], 0xA2, 0);
+  // Fire Storm: two rows of five across the way, 7d10 to who is in them, you too
+  other := wd_test_one(g[..], who);
+  #assert other >= 0;
+  w[0].actors[other].hp = w[0].actors[other].max; w[0].actors[other].mode = WM_CALM;
+  op := wd_feet(g[..], other);
+  g[0].feet = v3(op.x + f32(CI_FS_CUBE), 0, op.z);
+  hp = w[0].hp;
+  ohp := w[0].actors[other].hp;
+  ci_fs_at(g[..], op, v3(0, 0, 1));
+  #assert w[0].actors[other].hp < ohp && w[0].hp < hp && ab_active(g[..], AB_FIRESTORM);
+  #assert flat_gap(ci_fs_cube(op, v3(0, 0, 1), 0), ci_fs_cube(op, v3(0, 0, 1), 4)) > 12 && flat_gap(ci_fs_cube(op, v3(0, 0, 1), 0), ci_fs_cube(op, v3(0, 0, 1), 5)) < 3.1;
+}

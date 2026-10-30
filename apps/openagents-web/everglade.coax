@@ -2262,6 +2262,7 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
     }
     g := folk_feet(s, x, z);
     gap := flat_gap(v3(x, 0, z), you);
+    if !ci_person_shown(s, i) { continue; }   // a frog now (everglade-circle.coax)
     if gap < 30 { shadow(s, u, x, z, g, 0.5, 0.5); }
     if gap > reach || !in_view(u, x, g + 1, z, 1.3) { continue; }
     // the nearest `cap`, nearest first; but whoever hunts you first of all (never an unseen attacker)
@@ -3205,7 +3206,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   s[0].draws[d] = cast(u32) s[0].ranger_first;
   s[0].draws[d + 1] = cast(u32) s[0].ranger_count;
   s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + RANGER_AT);
-  s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 then 1 else 0);
+  s[0].draws[d + 3] = cast(u32) (ifx s[0].ranger_count > 0 && ci_you_shown(s) then 1 else 0);   // not in a beast's shape (everglade-circle.coax)
   s[0].kit_triangles += s[0].ranger_count / 3;
   d = LATHE_DRAW * 4;
   s[0].draws[d] = first;

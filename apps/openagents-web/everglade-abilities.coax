@@ -66,7 +66,7 @@
 // at its base and its top); a Wind Wall its grounded outline and the updraft's streaks rising through
 // it (wind_wall.rs wall_lines), in the old guide lines' cyan.
 
-AB_N :: 28;                // abilities on the bar, after the four aimed spells
+AB_N :: 34;                // abilities on the bar, after the four aimed spells
 AB_REVERSE :: 0; AB_WIND :: 1; AB_LEVITATE :: 2; AB_FEATHER :: 3; AB_GUST :: 4; AB_THUNDER :: 5; AB_STONE :: 6;
 AB_TK :: 7; AB_TENTACLES :: 8;
 AB_KNIFE :: 9; AB_STORM :: 10; AB_SLEET :: 11;   // everglade-frost.coax
@@ -74,8 +74,9 @@ AB_WWALK :: 12; AB_CONTROL :: 13; AB_CREATE :: 14; AB_BREATH :: 15;   // evergla
 AB_MOON :: 16;   // everglade-grove.coax, and the old Grove's druid spells after it
 AB_FLAME :: 17; AB_WISP :: 18; AB_SHILLELAGH :: 19; AB_POISON :: 20; AB_ELEMENTS :: 21; AB_ENTANGLE :: 22;
 // Each one's place on the bar, row * 12 + column (everglade-spells.coax sp_place): 5 to 0, then the
-// second row's Shift+1 on, then the third's Ctrl+1 on.
-AB_PLACE :: [AB_N] int.[4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35];
+// second row's Shift+1 on, then the third's Ctrl+1 on, then Ctrl+- and the fourth's Alt+1 on
+// (everglade-circle.coax).
+AB_PLACE :: [AB_N] int.[4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 35, 34, 36, 37, 38, 39, 40];
 // The ones you point with (picked, then a click or a tap casts them where it points).
 ab_aimed :: (k: int) -> bool { return k == AB_TK || k == AB_TENTACLES || k == AB_KNIFE || k == AB_STORM || k == AB_SLEET || k == AB_CONTROL || k == AB_CREATE || k >= AB_MOON; }
 AB_FOOT :: 0.3048;
@@ -192,6 +193,7 @@ ab_you :: (s: [] Everglade) -> Point { f := s[0].feet; return v3(f.x, f.y + walk
 ab_press :: (s: [] Everglade, k: int) {
   a := ab_of(s);
   b := SP_SLOTS + k;
+  if ci_no_casting(s, b) { return; }   // a beast casts no spells (everglade-circle.coax)
   if k == AB_TK && a[0].tk_kind != AB_TK_NONE {
     if s[0].sp.armed == b { ab_tk_release(s); sp_say(s, "TELEKINESIS ENDS", -1, ""); s[0].sp.armed = -1; } else { s[0].sp.armed = b; }
     return;

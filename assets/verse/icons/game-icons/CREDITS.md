@@ -31,6 +31,10 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/thorny-vine.svg` (Spike Growth)
 - `lorc/lightning-storm.svg` (Call Lightning)
 - `lorc/fire-ring.svg` (Wall of Fire)
+- `lorc/wolf-howl.svg` (Conjure Animals)
+- `lorc/sunbeams.svg` (Sunbeam)
+- `lorc/thorn-helix.svg` (Wall of Thorns)
+- `lorc/burning-embers.svg` (Fire Storm)
 
 Icons made by Delapouite (<https://delapouite.com>):
 
@@ -43,6 +47,8 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/moon-orbit.svg` (Moonbeam)
 - `delapouite/vines.svg` (Entangle)
 - `delapouite/fairy.svg` (Faerie Fire)
+- `delapouite/frog-prince.svg` (Polymorph)
+- `delapouite/healing.svg` (Mass Cure Wounds)
 - `delapouite/plain-arrow.svg` (a phone bar's next row, drawn upside down)
 
 Icons made by Carl Olsen (<https://twitter.com/unstoppableCarl>):

@@ -135,7 +135,7 @@ watch_end_effects :: (s: [] Everglade) {
   td_you_reset(s);
 }
 // Ray of Frost's slow on your pace, and Hold Person's hold (you can't move), for the face.
-everglade_slow :: (s: [] Everglade) -> f32 #export_c { return ifx s[0].wv.started then watch_pace(watch_w(s)) else 1.0f32; }
+everglade_slow :: (s: [] Everglade) -> f32 #export_c { return (ifx s[0].wv.started then watch_pace(watch_w(s)) else 1.0f32) * ci_pace(s); }   // and a beast's Speed (everglade-circle.coax)
 everglade_held :: (s: [] Everglade) -> bool #export_c { return s[0].wv.started && watch_held(watch_w(s)); }
 // A blast's throw for your living body, taken once by the face (everglade-face.c adds it to your velocity).
 everglade_knock :: (s: [] Everglade) -> Point #export_c {

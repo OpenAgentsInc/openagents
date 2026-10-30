@@ -172,5 +172,11 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Spike Growth | `lorc/thorny-vine.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Call Lightning | `lorc/lightning-storm.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Wall of Fire | `lorc/fire-ring.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Conjure Animals | `lorc/wolf-howl.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Polymorph | `delapouite/frog-prince.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Mass Cure Wounds | `delapouite/healing.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Sunbeam | `lorc/sunbeams.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Wall of Thorns | `lorc/thorn-helix.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Fire Storm | `lorc/burning-embers.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

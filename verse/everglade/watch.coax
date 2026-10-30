@@ -248,6 +248,8 @@ Actor :: struct {
   casting: f32; cast_kind: int; cast_cool: f32;   // a caster: into the spell (-1 none), which, till the next
   fireball_cool: f32; hold_cool: f32; weapon_cool: f32;
   heal_to: int;                   // a priest's: who the healing is for
+  temp: int;                      // Temporary Hit Points (a beast's shape: Polymorph), lost first
+  blind: bool;                    // Blinded (Sunbeam, Sunburst): their attack rolls at you have Disadvantage
 }
 
 Watch :: struct {
@@ -282,6 +284,7 @@ Watch :: struct {
   held_t: f32; held_saves: int;   // Hold Person: how long more, the saves made
   slow_t: f32;                    // Ray of Frost
   marked: bool;                   // Guiding Bolt: the next attack at you has advantage
+  temp: int;                      // your Temporary Hit Points (a beast's shape: Wild Shape, Polymorph, Shapechange), lost first
   knock: Point; knocked: bool;    // a hunter's spell's throw for your living body (the realm takes it)
   face: f32;                      // your facing, for a body thrown
 }
@@ -317,7 +320,7 @@ watch_start :: (w: [] Watch, heights: [] f32) {
   w[0].you_body.on = false; w[0].you_body.settle = -1; w[0].you_fall = 0;
   w[0].level = 0; w[0].heat = 0; w[0].enemy_fire = false; w[0].waves = 0; w[0].spawned = 0;
   for k: 0..<MISSILES { w[0].missiles[k].live = false; }
-  w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false; w[0].knocked = false;
+  w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false; w[0].knocked = false; w[0].temp = 0;
   for i: 0..<WATCH_ACTORS { w[0].actors[i].homed = false; w[0].actors[i].rank = RANK_GUARD; watch_revive(w, i); }
   for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
   w[0].beats_ok = heights.count >= EG_GROUND_POINTS;
@@ -332,6 +335,7 @@ watch_revive :: (w: [] Watch, i: int) {
   a[0].body.on = false; a[0].body.settle = -1;
   a[0].spear_cool = 0; a[0].throwing = false; a[0].up_shouted = false;
   a[0].casting = -1; a[0].cast_cool = 1.0; a[0].fireball_cool = 0; a[0].hold_cool = 2.0; a[0].weapon_cool = 0; a[0].heal_to = -1;
+  a[0].temp = 0; a[0].blind = false;
   a[0].ready = true;
 }
 
@@ -516,15 +520,22 @@ watch_stride :: (w: [] Watch, a: [] Actor, to: f32, step: f32) -> bool {
   }
   return false;
 }
-// An attack at you, +`bonus` to hit with c's damage: Guiding Bolt's mark gives it advantage (the higher
-// of two d20s) and is spent.
-watch_roll_at_you :: (w: [] Watch, bonus: int, c: SrdCreature) -> SrdAttack {
+// An attack at you by i (-1 none of the town's), +`bonus` to hit with c's damage: Guiding Bolt's mark
+// gives it advantage (the higher of two d20s) and is spent; i Blinded, disadvantage (the lower); both,
+// they cancel.
+watch_roll_at_you :: (w: [] Watch, i: int, bonus: int, c: SrdCreature) -> SrdAttack {
   b := c; b.attack = bonus;
   roll := srd_attack(w[0].dice[..], b, w[0].ac);
+  blind := i >= 0 && i < WATCH_ACTORS && w[0].actors[i].blind;
   if w[0].marked {
     w[0].marked = false;
+    if !blind {
+      other := srd_attack(w[0].dice[..], b, w[0].ac);
+      if other.roll > roll.roll { roll = other; }
+    }
+  } else if blind {
     other := srd_attack(w[0].dice[..], b, w[0].ac);
-    if other.roll > roll.roll { roll = other; }
+    if other.roll < roll.roll { roll = other; }
   }
   return roll;
 }
@@ -616,7 +627,7 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
     m.flight = hi(far / f32(MS_SPEED), 0.1);
     if kind == MS_FIREBALL { m.by = you.y + 0.2; m.flight = hi(far / (f32(MS_SPEED) * 0.8), 0.1); }
     else {
-      roll := watch_roll_at_you(w, c.attack, c);
+      roll := watch_roll_at_you(w, i, c.attack, c);
       m.hit = roll.hit;
       if roll.hit {
         n := ifx kind == MS_FIRE_BOLT then 2 else 4; sides := ifx kind == MS_FIRE_BOLT then 10 else 6;
@@ -626,7 +637,7 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
     }
   }
   if kind == MS_FROST {
-    roll := watch_roll_at_you(w, c.attack, c);
+    roll := watch_roll_at_you(w, i, c.attack, c);
     m.hit = roll.hit; m.flight = 0.15; m.life = 0.35;
     if roll.hit { m.damage = srd_sum(w[0].dice[..], ifx roll.crit then 4 else 2, 8); }
   }
@@ -748,7 +759,7 @@ watch_weapon_step :: (w: [] Watch, k: int, dt: f32, you: Point) {
   m[0].next -= dt;
   if m[0].next > 0 || w[0].dead { return; }
   m[0].next = f32(WEAPON_EVERY);
-  roll := watch_roll_at_you(w, 5, SRD_PRIEST);
+  roll := watch_roll_at_you(w, m[0].caster, 5, SRD_PRIEST);
   if roll.hit { w[0].spell_hits += 1; watch_hurt_you(w, srd_sum(w[0].dice[..], ifx roll.crit then 2 else 1, 8) + 3); } else { w[0].spell_misses += 1; }
 }
 // A hunter's spell hits you for `amount`, throwing you at v: alive, the realm adds it to your
@@ -774,7 +785,7 @@ watch_spear :: (w: [] Watch, i: int, feet: f32, to: Point, dist: f32) {
   if k < 0 { return; }
   a := w[0].actors[i];
   roll := srd_attack(w[0].dice[..], watch_stats(w, i), w[0].ac);
-  if dist > f32(SPEAR_NEAR) {
+  if dist > f32(SPEAR_NEAR) || a.blind {
     other := srd_attack(w[0].dice[..], watch_stats(w, i), w[0].ac);
     if other.roll < roll.roll { roll = other; }
   }
@@ -1025,7 +1036,9 @@ watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
   a := w[0].actors[i..<i + 1];
   if a[0].mode == WM_DEAD { return; }
   if a[0].mode == WM_CALM { a[0].x = a[0].home_x; a[0].z = a[0].home_z; a[0].yaw = a[0].home_yaw; }
-  a[0].hp -= amount;
+  took := lo_w(a[0].temp, hi_w(amount, 0));
+  a[0].temp -= took;
+  a[0].hp -= amount - took;
   a[0].swing = -1; a[0].casting = -1; a[0].throwing = false;
   hunter := watch_is_guard(i) && !w[0].enemy_fire && amount > 0;
   if a[0].hp <= 0 {
@@ -1041,8 +1054,10 @@ watch_harm :: (w: [] Watch, i: int, amount: int, you: Point) {
 // You take a blow: at 0 you fall (you topple: watch_you_fall), and the town stands down.
 watch_hurt_you :: (w: [] Watch, amount: int) {
   if w[0].dead { return; }
-  w[0].hp -= amount; w[0].hurt_t = 0;
-  if w[0].hp <= 0 { w[0].hp = 0; w[0].dead = true; w[0].dead_t = 0; w[0].you_fall = 0; w[0].you_body.on = false; w[0].you_body.settle = -1; }
+  took := lo_w(w[0].temp, hi_w(amount, 0));
+  w[0].temp -= took;
+  w[0].hp -= amount - took; w[0].hurt_t = 0;
+  if w[0].hp <= 0 { w[0].hp = 0; w[0].temp = 0; w[0].dead = true; w[0].dead_t = 0; w[0].you_fall = 0; w[0].you_body.on = false; w[0].you_body.settle = -1; }
 }
 // You take a blast's `amount`, your feet at `feet`, thrown at v if it kills you: your body tumbles as the
 // town's do and lies where it comes down.
@@ -1153,6 +1168,7 @@ watch_level_for :: (heat: int) -> int {
 // How long out of every hunter's sight clears it: WANTED_LOSE, and half again for each level past 1.
 watch_lose_after :: (w: [] Watch) -> f32 { return f32(WANTED_LOSE) * (1 + 0.5 * f32(hi_w(w[0].level - 1, 0))); }
 hi_w :: (a: int, b: int) -> int { return ifx a > b then a else b; }
+lo_w :: (a: int, b: int) -> int { return ifx a < b then a else b; }
 // How many hunt you now (alive and after you).
 watch_hunters :: (w: [] Watch) -> int {
   n := 0;
@@ -1300,7 +1316,7 @@ watch_step :: (w: [] Watch, i: int, dt: f32, you: Point, boxes: [] f32, nb: int,
         if reach3 <= f32(REACH) + 0.5 {
           // Multiattack: a Veteran's or a Knight's two blows, a Gladiator's three
           for q: 0..<RANK_ATTACKS[watch_rank(w, i)] {
-            roll := watch_roll_at_you(w, watch_stats(w, i).attack, watch_stats(w, i));
+            roll := watch_roll_at_you(w, i, watch_stats(w, i).attack, watch_stats(w, i));
             if roll.hit { w[0].hits += 1; watch_hurt_you(w, roll.damage); } else { w[0].misses += 1; }
           }
         }
@@ -1907,7 +1923,7 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   #assert w[0].heals >= 1 && w[0].actors[g].hp >= 2 + 5;
   // Guiding Bolt: the next attack at you has advantage, then the mark is spent
   w[0].marked = true;
-  _ := watch_roll_at_you(w[..], 3, SRD_GUARD);
+  _ := watch_roll_at_you(w[..], -1, 3, SRD_GUARD);
   #assert !w[0].marked;
   // the Archmage: a Lightning Bolt down a line through you, a Cone of Cold on you; both throw you
   w2: [1] Watch;
