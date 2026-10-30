@@ -1741,10 +1741,20 @@ lamp_posts :: (s: [] Everglade) {
       kit(s, group_of(M_CAULDRON), m.x, g, m.z, 0, 1.6);
       brazier_fire(s, m.x, g + 1.15, m.z);
     } else {
-      shape(s, SHAPE_BOX, LOOK_MATTE, v3(m.x, g + m.up / 2 - 0.1, m.z), 0, 0, 0.12, m.up - 0.2, 0.12, 0.22, 0.15, 0.1);
-      shape(s, SHAPE_BOX, LOOK_FLAME, v3(m.x, g + m.up, m.z), f32(i) * 0.7, 0, 0.24, 0.32, 0.24, LAMP_COLOUR[c], LAMP_COLOUR[c + 1], LAMP_COLOUR[c + 2]);
+      lantern(s, m.x, g, m.z, m.up, f32(i) * 0.7, LAMP_COLOUR[c], LAMP_COLOUR[c + 1], LAMP_COLOUR[c + 2]);
     }
   }
+}
+// A lantern on its post (eg-paint-props: the owner, October 29, "the street lamps are plain orange
+// boxes"): a dark timber post, then the lantern, its flame at `up`: an iron base flaring up under it, the
+// glass glowing (LOOK_FLAME, so it blooms and lights by the lamps' clock), and a pointed iron cap over
+// it. Two boxes and two cones a lamp, written into the frame's slots like every shape.
+LANTERN_IRON :: [3] f32.[0.07, 0.065, 0.07];
+lantern :: (s: [] Everglade, x: f32, g: f32, z: f32, up: f32, yaw: f32, r: f32, gr: f32, b: f32) {
+  shape(s, SHAPE_BOX, LOOK_WOOD, v3(x, g + (up - 0.2) / 2, z), yaw, 0, 0.12, up - 0.2, 0.12, 0.3, 0.19, 0.11);
+  shape(s, SHAPE_CONE, LOOK_MATTE, v3(x, up + g - 0.2, z), yaw, 3.14159, 0.2, 0.1, 0.2, LANTERN_IRON[0], LANTERN_IRON[1], LANTERN_IRON[2]);
+  shape(s, SHAPE_BOX, LOOK_FLAME, v3(x, g + up, z), yaw, 0, 0.19, 0.3, 0.19, r, gr, b);
+  shape(s, SHAPE_CONE, LOOK_MATTE, v3(x, g + up + 0.24, z), yaw, 0, 0.3, 0.2, 0.3, LANTERN_IRON[0], LANTERN_IRON[1], LANTERN_IRON[2]);
 }
 // The quest board: a timber notice board between the commons (+z) and the street (-z): two posts, a planked panel in a
 // frame, a little gabled roof of planks over it, and papers pinned on it, each its own size, tilt and
@@ -2819,6 +2829,10 @@ everglade_store_cap :: (k: int) -> int #export_c {
   n := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -84, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert n > 0 && n <= MAX_VERTICES;
   for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
+  // and the lamps' lanterns (drawn once the pack is in) still fit
+  g[0].pack_ready = true; lamp_posts(g[..]);
+  for k: 1..<5 { #assert g[0].counts[k] < SLOTS[k]; }
+  g[0].pack_ready = false;
   #assert g[0].tree_n > 600 && g[0].small_n > 150;
   // The town is the kit's: every piece within its group, none crowded out.
   for t: KIT_FOREST..<KIT_GROUPS { #assert g[0].kit_used[t] < g[0].group_cap[t]; }
