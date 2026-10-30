@@ -1,0 +1,121 @@
+{
+  "recorded_at_utc": "2026-10-30T19:40:03Z",
+  "runtime_source_commit": "a4a6ec949cbad1068f4afb582407aea02168c1b9",
+  "runtime_source_files_sha256": {
+    "scripts/join-pylon.sh": "f7490fb022bdd8d3d035ae8fedf495687bc4c4b2ad47cb1defee11ef3ca61f9f",
+    "scripts/pylon-fetch-model.py": "192d95d79b400fae68b76741a0e53077605855aaf998ab32d8089aacbdcd8431",
+    "psionic/platform/serve-host.c": "1de4fecddae158ad6ede21b4bac30616b36ac2eea80909582c5709b686ad9833"
+  },
+  "source_checkout_base_commit": "b9845e5aaa3ffeed302e49e08a892e4b747fe57c",
+  "compiler_sha256": "ef1d331f194f53985a5bd679ea83e9edb4e19de6446f28c74d81113cc348cd2d",
+  "native_build": "fcd7b5d44b7259ac241fe8ac44efb0bce0c06cdd455d0f288e357daa209732cc",
+  "platform": {
+    "os": "Linux-7.0.0-1014-gcp-x86_64-with-glibc2.39",
+    "gpu_after_cleanup": "NVIDIA RTX PRO 6000 Blackwell Server Edition, 595.91.07, 66590 MiB, 97887 MiB",
+    "backend": "CUDA"
+  },
+  "preflight": {
+    "generated_kernels": 21,
+    "capacity": 512,
+    "resident_mib": 15140,
+    "streamed_mib": 0,
+    "checkpoint_opened": false
+  },
+  "cold_download": {
+    "initial_cache_empty": true,
+    "existing_original_cache_reused": false,
+    "all_four_public_downloads_and_full_checksums_completed": true,
+    "artifacts": [
+      {
+        "name": "config.json",
+        "bytes": 3146,
+        "expected_sha256": "f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab",
+        "url": "https://huggingface.co/baselabs/elephant-1/resolve/b3f8a93462fb1051a9de031e94a7ff380e254072/config.json",
+        "downloaded_from_public_url": true,
+        "validation": "complete installer SHA-256, then independent native admission",
+        "links": 1
+      },
+      {
+        "name": "tokenizer.json",
+        "bytes": 19989339,
+        "expected_sha256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+        "url": "https://huggingface.co/baselabs/elephant-1/resolve/b3f8a93462fb1051a9de031e94a7ff380e254072/tokenizer.json",
+        "downloaded_from_public_url": true,
+        "validation": "complete installer SHA-256, then independent native admission",
+        "links": 1
+      },
+      {
+        "name": "readout.json",
+        "bytes": 63,
+        "expected_sha256": "96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba",
+        "url": "https://huggingface.co/baselabs/elephant-1/resolve/b3f8a93462fb1051a9de031e94a7ff380e254072/readout.json",
+        "downloaded_from_public_url": true,
+        "validation": "complete installer SHA-256, then independent native admission",
+        "links": 1
+      },
+      {
+        "name": "model.safetensors",
+        "bytes": 18819722392,
+        "expected_sha256": "682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+        "url": "https://huggingface.co/baselabs/elephant-1/resolve/b3f8a93462fb1051a9de031e94a7ff380e254072/model.safetensors",
+        "downloaded_from_public_url": true,
+        "validation": "complete installer SHA-256, then independent native admission",
+        "links": 1
+      }
+    ]
+  },
+  "model": "elephant-1",
+  "revision": "b3f8a93462fb1051a9de031e94a7ff380e254072",
+  "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+  "doctor": {
+    "passed": true,
+    "cases": 6,
+    "elapsed_ms": 745,
+    "largest_error_ppb": 4910,
+    "tolerance_ppb": 500000,
+    "observed": "doctor: self-check passed: 6 cases in 745 ms, largest error 4910 billionths (tolerance 500000)"
+  },
+  "relay": "wss://relay.openagents.com",
+  "result": {
+    "answers": {
+      "wet": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.757197863,
+        "probabilities": {
+          "yes": 0.757197863,
+          "no": 0.242802137
+        }
+      }
+    },
+    "latency_ms": 91,
+    "model": "elephant-1",
+    "service": {
+      "door": "pylon:pylon-psionic-rtx6000-pylon--e229",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+      "provider": "3a2b63db8c26dbb5bf183bac8234240a08ceed9c751f5a8188e9690eac872d17",
+      "version": "psionic-pylon-v1"
+    },
+    "usage": null
+  },
+  "observed_setup_seconds_from_launch_marker_to_answer": 375.82,
+  "cleanup": {
+    "join_lock_removed": true,
+    "model_loopback_listener_closed": true,
+    "offline_beacon_sent": true,
+    "demo_label_mode": "0o600",
+    "production_units": {
+      "psionic-mammoth": "active",
+      "openagents-pylon-oct30-gcloud-mammoth": "active",
+      "psionic-elephant-rtx": "active",
+      "openagents-pylon-oct30-gcloud-elephant-rtx": "active"
+    },
+    "additional_vm_or_gpu": false,
+    "test_provider_stopped": true
+  },
+  "limits": [
+    "Private throwaway demo identity; production key audit gate unchanged.",
+    "No hosted-API fallback; new provider is not automatically allowlisted in hosted API.",
+    "Signed advertisements do not attest hardware or arbitrary operators model provenance."
+  ]
+}

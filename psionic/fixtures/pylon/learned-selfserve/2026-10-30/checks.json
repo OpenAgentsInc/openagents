@@ -1,0 +1,50 @@
+{
+  "schema": "pylon-learned-selfserve-checks-v1",
+  "date": "2026-10-30",
+  "source": "a4a6ec949cbad1068f4afb582407aea02168c1b9",
+  "source_sha256": {
+    "scripts/join-pylon.sh": "f7490fb022bdd8d3d035ae8fedf495687bc4c4b2ad47cb1defee11ef3ca61f9f",
+    "scripts/pylon-fetch-model.py": "192d95d79b400fae68b76741a0e53077605855aaf998ab32d8089aacbdcd8431",
+    "psionic/platform/serve-host.c": "1de4fecddae158ad6ede21b4bac30616b36ac2eea80909582c5709b686ad9833"
+  },
+  "installer_transport": {
+    "command": "python3 psionic/tests/pylon/fetch_model.py",
+    "tests": 8,
+    "result": "passed",
+    "coverage": [
+      "real HTTPS trust validation",
+      "resumable Range transfer",
+      "completed partial promotion",
+      "full SHA-256 on cache hit",
+      "same-length corruption repair",
+      "bad complete download never promoted",
+      "metadata with unknown size still requires SHA-256",
+      "plaintext and HTTPS downgrade refused",
+      "symlink targets unchanged",
+      "exclusive cache lock",
+      "one-second timeout retains progress and next invocation resumes it"
+    ]
+  },
+  "installer_lifecycle": {
+    "command": "python3 psionic/tests/pylon/join_script.py",
+    "tests": 4,
+    "result": "passed",
+    "coverage": [
+      "private label absent from argv/output",
+      "foreground start/stop",
+      "same label and slug retained across restart",
+      "stop during build cancels owned child and never launches Pylon",
+      "stop during warmup cancels owned engine and never launches Pylon",
+      "stop symlink refused",
+      "standalone clone excludes private state/models/build with actual Git",
+      "developer --source exclude file untouched"
+    ]
+  },
+  "native_preflight": {
+    "command": "python3 psionic/tests/pylon/device_probe.py GPU_BINARY [CPU_BINARY]",
+    "macos_m5_max_metal": "real generated Metal kernels;512-token placement passes;1MiB memory and513-token shape refused before model/listener",
+    "linux_rtx_pro_cuda": "real generated CUDA kernels;512-token placement passes;1MiB memory and513-token shape refused before model/listener",
+    "cpu": "separate CPU build returns2 with no CPU fallback"
+  },
+  "requalification": "Existing model arithmetic, Nostr crypto and compiler bootstrap gates were not rerun for unrelated remote commits. The exact CUDA model-view adapter was exercised on the actual GPU; the added stdout phase lines need no behavioral requalification."
+}
