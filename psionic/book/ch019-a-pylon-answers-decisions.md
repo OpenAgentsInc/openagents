@@ -591,6 +591,27 @@ fleet keeps its old provider epoch while the same Pylon key restarts, and both
 encrypted tasks must succeed. Duplicate ownership, corrupt state and failed
 durable commits must refuse before any relay publication.
 
+## An original GPT-OSS model answers public text
+
+The same native Pylon now has a `--nip90` mode for the existing `nip90-5050`
+lane. It serves the complete original GPT-OSS20B checkpoint through the Coax
+[Responses engine](ch048b-serve-responses.md). Its startup doctor requires a
+completed final PONG before advertising the pinned checkpoint. The public
+subset accepts one targeted inline text input, greedy generation and zero
+payment; reasoning and incomplete output stay out of the result.
+
+The native `text-probe-build.sh` buyer creates a fresh ephemeral key, discovers
+the pinned signed beacon, submits a unique request, and verifies the signed
+correlated final result. Its portable generated C runs in the managed cloud
+watcher without a model or Python dependency. Original GPT-OSS now shares the
+existing cloud card with Elephant and Mammoth; the three services retain
+separate model servers, provider identities and restart state.
+
+See the [operator runbook](../docs/serving/gptoss-cloud-pylon.md) and
+[real NIP-90 verification](../../docs/verification/gptoss-cloud-nip90-2026-10-30.md)
+for model pins, reproducible client commands, Mac/Linux results, sanitizer
+coverage and the unchanged decision-mode regression.
+
 ## What this does not do yet
 
 - **Real keys.** The signer still refuses production key files pending the

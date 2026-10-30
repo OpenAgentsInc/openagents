@@ -9,8 +9,9 @@ build fingerprints are in [the rollout record](../../../docs/verification/psioni
 
 Project `openagentsgemini`, VM `psionic-rtx6000-pylon`, zone `us-central1-b`:
 one NVIDIA RTX PRO 6000 Blackwell Server Edition, 96 GB device memory,
-176 GiB host RAM, `g4-standard-48`, 200 GB Hyperdisk. It runs two independent
-Coax model servers and Pylons. Combined measured device use is 66,590 MiB.
+176 GiB host RAM, `g4-standard-48`, 200 GB Hyperdisk. It runs three independent
+Coax model servers and Pylons on the shared card. Combined measured device use
+after adding original GPT-OSS20B is 80,783 MiB of 97,887 MiB.
 The old L4 VM `psionic-l4-elephant` stays stopped after repeated preemption;
 its earlier provider is not the current Elephant route.
 
@@ -18,20 +19,28 @@ its earlier provider is not the current Elephant route.
 | --- | --- | --- | --- |
 | `elephant-1` | `59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7` | `oct30-gcloud-elephant-rtx` | `psionic-elephant-rtx` / `openagents-pylon-oct30-gcloud-elephant-rtx` |
 | `mammoth-1` | `d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829` | `oct30-gcloud-mammoth` | `psionic-mammoth` / `openagents-pylon-oct30-gcloud-mammoth` |
+| `gpt-oss-20b` | `23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599` | `oct30-gcloud-gptoss20b` | `psionic-gptoss20b` / `openagents-pylon-oct30-gcloud-gptoss20b` |
 
 Exact identities:
 
 ```
 elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba
 mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019
+gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed
 ```
+
+Elephant and Mammoth use SystemOne decisions. GPT-OSS uses public NIP-90
+text generation and the native pinned buyer described in the
+[GPT-OSS operator runbook](gptoss-cloud-pylon.md).
 
 These are declared/checkpoint-checked provider identities, not remote hardware
 attestation. The authenticated public endpoint forwards only its configured
 models through private native fleets and the relay. The model listeners
-remain `127.0.0.1:8796` (Elephant) and `127.0.0.1:8797` (Mammoth).
-Ingress is denied except IAP SSH. There are no API keys on the model VM,
-no service account/scopes, and no outside inference service.
+remain `127.0.0.1:8796` (Elephant), `127.0.0.1:8797` (Mammoth), and
+`127.0.0.1:8795` (GPT-OSS). Ingress is denied except IAP SSH. There are no
+upstream provider API keys, service-account scopes or outside inference
+services. GPT-OSS's local Responses bearer is retained in a private mode 0600
+file and never enters public events or argv.
 
 ## Inspect and recover
 
@@ -53,10 +62,10 @@ gcloud compute instances start psionic-rtx6000-pylon \
 
 gcloud compute ssh psionic-rtx6000-pylon --tunnel-through-iap \
   --project=openagentsgemini --zone=us-central1-b \
-  --command='sudo journalctl -u psionic-mammoth -u psionic-elephant-rtx -n 30 --no-pager'
+  --command='sudo journalctl -u psionic-mammoth -u psionic-elephant-rtx -u psionic-gptoss20b -n 30 --no-pager'
 ```
 
-All four units are enabled. A boot starts the backends and Pylons; the Pylons
+All six plain-model units are enabled. A boot starts the backends and Pylons; the Pylons
 retry while models authenticate/place and advertise only after their real
 reference checks pass. First-ever Mammoth authentication reads/hashes the
 54.7 GB originals and took about six minutes here. Retained verified-file
@@ -88,8 +97,15 @@ All runtime dependencies survive reboot; nothing depends on `/tmp`:
 - TLS runtime: immutable Nix OpenSSL/glibc closure in `/nix/store`; system
   CA bundle `/etc/ssl/certs/ca-certificates.crt`.
 - Per-provider state: `/var/lib/openagents-pylon/<slug>`.
+- GPT-OSS's source, stable native executable/kernels and portable Pylon build
+  context: `/home/christopherdavid/gptoss-pylon-source`, `gptoss-runtime`, and
+  `gptoss-probe-context` respectively. Its original files are in the pinned
+  `~/.cache/psionic/gptoss-original/20b/<revision>/original` directory.
+- GPT-OSS's private label, bearer, identity and epoch:
+  `/home/christopherdavid/.openagents/pylon-cloud/gptoss20b`.
 
-Each state directory belongs to the unprivileged `openagents-pylon` account.
+The Elephant/Mammoth state directories belong to `openagents-pylon`;
+GPT-OSS runs as `christopherdavid` and owns its separate private directory.
 `demo-label` is private, mode 0600: do not print it, put it in argv, commit it
 or clone it into another active provider. `identity` retains the checkpoint
 identity; `identity.generation` retains the provider-bound public epoch, and

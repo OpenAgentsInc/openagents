@@ -757,3 +757,35 @@ the receipt, and has created_at<to. Latest (created_at,event ID) per
 (checker,receipt) wins. Missing checks imply nothing. Totals label accepted
 jobs as buyer-reported; trusted check observations remain separate. Paid
 buckets are zero; this profile authorizes no payment or credit.
+
+## Coax original GPT-OSS20B public-text implementation profile
+
+The `psionic-gptoss-nip90-public-text-v1` implementation uses the existing
+`nip90-5050` lane and NIP-90 events. Its beacon has a `provider:pylon/text`
+capability and an original-checkpoint identity obtained from Coax's
+`G20_ARTIFACTS`. This is a text-generation service alongside the decision lane.
+
+A verified request is kind 5050, addressed to exactly one provider with a `p`
+tag. It has empty content and exactly one inline `i` tag of type `text`,
+containing 1–1024 UTF-8 bytes. Accepted parameters are model `gpt-oss-20b`,
+`max_tokens` 1–128 (default 64), and temperature `0`. The output type may be
+`text/plain` or `text/markdown`. The optional bid must be zero. Encrypted
+parameters, remote input resolution, other models/sampling options and paid
+work receive an explicit refusal. Creation times are admitted within 120 seconds
+past or 30 seconds future; an optional expiration must be later than now and
+at most 120 seconds ahead.
+
+An admitted request becomes a bounded greedy request to the owned native
+Responses engine. Only a completed assistant final message becomes kind 6050
+content. Reasoning, function calls and incomplete output grant no text result.
+Results retain `request` (the original event), `e` and `p` correlation tags,
+include the checkpoint identity in `model`, and set `amount` to `0`.
+Kind 7000 error feedback uses the same correlation/model/zero-amount tags.
+No invoice or settlement is performed.
+
+The native buyer pins a fresh signed beacon's provider, model and lane, then
+accepts only a verified signed 6050 from that provider correlated to the newly
+signed request and buyer, with the exact model and zero amount. Its monitor
+profile also requires the expected final control word within a finite deadline.
+This declares a bounded implementation subset of NIP-90; it adds no new
+published payload version or event kind.

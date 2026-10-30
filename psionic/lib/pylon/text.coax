@@ -1,0 +1,288 @@
+// Free, public NIP-90 5050/6050 text on the original GPT-OSS20B profile.
+// One targeted inline-text input, greedy sampling, at most128 output tokens.
+// Encrypted params, remote inputs, tools and paid work are not admitted.
+#load "template.coax";
+#load "../responses/http.coax";
+#load "../gptoss/weights.coax";
+#authority;
+P90Code :: enum u8 {ok;malformed;not_addressed;stale;unsupported;capacity;busy;engine;}
+P90Envelope :: struct {kind:int;id:string;caller:string;created:int;tags:string;content:string;}
+P90Work :: struct {nodes:[]RsNode;arena:[]u8;stage:[]u8;}
+P90Job :: struct {code:P90Code;answerable:bool;written:int;limit:int=64;deadline:int=-1;}
+P90Tag :: struct {count:int;size:int;values:[4]string;}
+P90_KEY :: "f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9";
+P90_CALLER :: "5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc";
+P90_ID :: "b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f";
+P90_TAGS :: "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"i\",\"Say \\\"PONG\\\".\",\"text\"],[\"param\",\"model\",\"gpt-oss-20b\"],[\"param\",\"max_tokens\",\"32\"],[\"param\",\"temperature\",\"0\"],[\"output\",\"text/plain\"],[\"bid\",\"0\"]]";
+P90_RESPONSE :: "{\"model\":\"gpt-oss-20b\",\"status\":\"completed\",\"output\":[{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"PRIVATE ANALYSIS\"}]},{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"PONG\"}]}]}";
+p90_fixture :: ()->P90Envelope {return P90Envelope.{kind=5050,id=P90_ID,caller=P90_CALLER,created=1000,tags=P90_TAGS};}
+#test "targeted public text becomes a bounded real Responses request, atomically" {
+    ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;out:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    j:=p90_admit(p90_fixture(),P90_KEY,1000,w,out[..],false);
+    #assert j.code==P90Code.ok && j.answerable && j.limit==32 && j.deadline==-1;
+    #assert cast(string)out[0..<j.written]=="{\"model\":\"gpt-oss-20b\",\"input\":\"Say \\\"PONG\\\".\",\"max_output_tokens\":32,\"temperature\":0,\"reasoning\":{\"effort\":\"low\"}}";
+    out[0]=77;#assert p90_admit(p90_fixture(),P90_KEY,1000,w,out[0..<1],false).code==P90Code.capacity && out[0]==77;
+    #assert p90_admit(p90_fixture(),P90_KEY,1000,w,out[..],true).code==P90Code.capacity;
+    #assert p90_identity(stage[..])=="gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed";
+    #assert p90_identity(stage[0..<10])=="";
+}
+#test "freshness boundaries and private or paid work refuse" {
+    #assert p90_fresh(1000,1000) && p90_fresh(880,1000) && !p90_fresh(879,1000) && p90_fresh(1030,1000) && !p90_fresh(1031,1000);
+    #assert !p90_fresh(-1,0) && !p90_fresh(0,-1) && p90_fresh(0,0) && !p90_fresh(9007199254740992,1000) && !p90_fresh(1000,9007199254740992);
+    #assert p90_fresh(9007199254740991,9007199254740991);
+    ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;out:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    e:=p90_fixture();e.kind=5051;#assert !p90_admit(e,P90_KEY,1000,w,out[..],false).answerable;
+    e=p90_fixture();e.id="bad";#assert !p90_admit(e,P90_KEY,1000,w,out[..],false).answerable;
+    e=p90_fixture();e.caller="bad";#assert !p90_admit(e,P90_KEY,1000,w,out[..],false).answerable;
+    #assert p90_admit(p90_fixture(),P90_CALLER,1000,w,out[..],false).code==P90Code.not_addressed;
+    e=p90_fixture();e.created=879;#assert p90_admit(e,P90_KEY,1000,w,out[..],false).code==P90Code.stale;
+    e=p90_fixture();e.content="encrypted";#assert p90_admit(e,P90_KEY,1000,w,out[..],false).code==P90Code.unsupported;
+    #assert rs_settings("0123456789abcdef",8795) && !rs_settings("0123456789abcde\n",8795);
+}
+#test "only completed final text is published, never reasoning, calls or partial output" {
+    ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;out:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    n:=p90_final(P90_RESPONSE,w,out[..]);#assert n==4 && cast(string)out[0..<n]=="PONG";
+    out[0]=99;#assert p90_final(P90_RESPONSE,w,out[0..<3])==-1 && out[0]==99;
+    #assert p90_final("{}",w,out[..])==-1 && p90_final("{} {}",w,out[..])==-1;
+    #assert p90_final("{\"model\":\"gpt-oss-20b\",\"status\":\"incomplete\",\"output\":[]}",w,out[..])==-1;
+    #assert p90_final("{\"model\":\"other\",\"status\":\"completed\",\"output\":[]}",w,out[..])==-1;
+    #assert p90_final("{\"model\":\"gpt-oss-20b\",\"status\":\"completed\",\"output\":[{\"type\":\"function_call\"}]}",w,out[..])==-1;
+    #assert p90_pong(" \r\nPONG\t") && !p90_pong("PONG!") && !p90_pong("private PONG") && !p90_pong("");
+}
+#test "configuration, advertisement and response pins are exact" {
+    key:="0123456789abcdef";
+    #assert p90_config("gpt-oss-20b","127.0.0.1",8795,key,1) && p90_config("gpt-oss-20b","127.0.0.1",8795,key,60000);
+    #assert !p90_config("other","127.0.0.1",8795,key,1) && !p90_config("gpt-oss-20b","example.com",8795,key,1) && !p90_config("gpt-oss-20b","127.0.0.1",80,key,1);
+    #assert !p90_config("gpt-oss-20b","127.0.0.1",8795,"short",1) && !p90_config("gpt-oss-20b","127.0.0.1",8795,key,0) && !p90_config("gpt-oss-20b","127.0.0.1",8795,key,60001);
+    names:=[8]string.["ok","malformed","not_addressed","stale","unsupported","capacity","busy","engine_refused"];for i:0..<8 {#assert p90_code(cast(P90Code)i)==names[i];}
+    ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    #assert p90_advertises("{\"services\":[{\"model\":\"a\",\"lanes\":[\"cj-decision\",\"nip90-5050\"]}]}","a",w);
+    #assert !p90_advertises("{\"services\":[{\"model\":\"b\",\"lanes\":[\"nip90-5050\"]}]}","a",w) && !p90_advertises("{\"services\":[{\"model\":\"a\",\"lanes\":[\"cj-decision\"]}]}","a",w);
+    for s:[6]string.["bad","{}","{\"services\":1}","{\"services\":[1]}","{\"services\":[{\"model\":\"a\"}]}","{\"services\":[{\"model\":\"a\",\"lanes\":[1]}]}"] {#assert !p90_advertises(s,"a",w);}
+    tags:="[[\"e\",\"request\"],[\"p\",\"caller\"],[\"model\",\"identity\"],[\"amount\",\"0\"]]";
+    #assert p90_reply_tags(tags,"identity","request","caller",w) && !p90_reply_tags(tags,"other","request","caller",w) && !p90_reply_tags(tags,"identity","other","caller",w) && !p90_reply_tags(tags,"identity","request","other",w);
+    #assert !p90_reply_tags("bad","identity","request","caller",w) && !p90_reply_tags("{}","identity","request","caller",w);
+}
+#test "text parameters and unsupported work cover the complete bounded profile" {
+    ns:[256]RsNode;arena:[16384]u8;stage:[16384]u8;out:[16384]u8;tags:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    tails:=[30]string.[
+      "[\"i\",\"x\",\"text\"]","[\"i\",\"x\",\"url\"]","[\"i\",\"\",\"text\"]","[\"i\",\"x\"]","[\"i\",\"x\",\"text\",\"extra\"]","[\"i\",\"x\",\"text\"],[\"i\",\"y\",\"text\"]",
+      "[\"i\",\"x\",\"text\"],[\"output\",\"text/markdown\"]","[\"i\",\"x\",\"text\"],[\"output\",\"other\"]","[\"i\",\"x\",\"text\"],[\"bid\",\"1\"]","[\"i\",\"x\",\"text\"],[\"encrypted\"]",
+      "[\"i\",\"x\",\"text\"],[\"param\",\"max_tokens\",\"1\"]","[\"i\",\"x\",\"text\"],[\"param\",\"max_tokens\",\"128\"]","[\"i\",\"x\",\"text\"],[\"param\",\"max_tokens\",\"0\"]","[\"i\",\"x\",\"text\"],[\"param\",\"max_tokens\",\"129\"]","[\"i\",\"x\",\"text\"],[\"param\",\"max_tokens\",\"x\"]",
+      "[\"i\",\"x\",\"text\"],[\"param\",\"temperature\",\"1\"]","[\"i\",\"x\",\"text\"],[\"param\",\"model\",\"other\"]","[\"i\",\"x\",\"text\"],[\"param\",\"top_k\",\"3\"]","[\"i\",\"x\",\"text\"],[\"param\",\"model\"]",
+      "[\"i\",\"x\",\"text\"],[\"param\",\"model\",\"gpt-oss-20b\"],[\"param\",\"model\",\"gpt-oss-20b\"]",
+      "[\"i\",\"x\",\"text\"],[\"expiration\",\"1001\"]","[\"i\",\"x\",\"text\"],[\"expiration\",\"1120\"]","[\"i\",\"x\",\"text\"],[\"expiration\",\"1121\"]","[\"i\",\"x\",\"text\"],[\"expiration\",\"1000\"]","[\"i\",\"x\",\"text\"],[\"expiration\",\"x\"]",
+      "[\"i\",\"x\",\"text\"],[]","[\"i\",\"x\",\"text\"],[\"meta\",\"a\",\"b\",\"c\"]",
+      "[\"i\",\"x\",\"text\"],[\"param\"]","[\"i\",\"x\",\"text\"],[\"param\",\"max_tokens\",\"2\"],[\"param\",\"max_tokens\",\"2\"]","[\"i\",\"x\",\"text\"],[\"param\",\"temperature\",\"0\"],[\"param\",\"temperature\",\"0\"]"];
+    for i:0..<tails.count {
+        n:=json_raw(tags[..],0,"[[\"p\",");n=json_write_string(tags[..],n,P90_KEY);n=json_raw(tags[..],n,"],");n=json_raw(tags[..],n,tails[i]);n=json_raw(tags[..],n,"]");
+        e:=p90_fixture();e.tags=cast(string)tags[0..<n];r:=p90_admit(e,P90_KEY,1000,w,out[..],false);
+        accepted:=i==0 || i==6 || i==10 || i==11 || i==20 || i==21 || i==25 || i==26;
+        #assert r.code==(ifx accepted then P90Code.ok else ifx i>=22 && i<=24 then P90Code.stale else P90Code.unsupported);
+        if i==0 {#assert r.limit==64;}if i==10 {#assert r.limit==1;}if i==11 {#assert r.limit==128;}
+        if i==20 {#assert r.deadline==1001;}if i==21 {#assert r.deadline==1120;}
+    }
+    for raw:[6]string.["{}","bad","[[1]]","[1]","[[\"p\"]]","[[\"p\",\"x\"]]"] {e:=p90_fixture();e.tags=raw;#assert p90_admit(e,P90_KEY,1000,w,out[..],false).code!=P90Code.ok;}
+    #assert p90_admit(p90_fixture(),"bad",1000,w,out[..],false).code==P90Code.malformed;
+    large:[8193]u8;e:=p90_fixture();e.tags=cast(string)large[..];#assert p90_admit(e,P90_KEY,1000,w,out[..],false).code==P90Code.malformed;
+    n:=json_raw(tags[..],0,"[[\"param\",\"model\",\"other\"],[\"p\",");n=json_write_string(tags[..],n,P90_KEY);n=json_raw(tags[..],n,"],[\"i\",\"x\",\"text\"]]");
+    e=p90_fixture();e.tags=cast(string)tags[0..<n];#assert p90_admit(e,P90_KEY,1000,w,out[..],false).code==P90Code.unsupported;
+}
+#test "tag structure admits exactly32 string arrays and preserves bounded tag fields" {
+    ns:[256]RsNode;arena:[16384]u8;raw:[8193]u8;
+    #assert p90_fixture().created==1000;
+    #assert !p90_fresh(9007199254740992,9007199254740991) && !p90_fresh(9007199254740991,9007199254740992);
+    #assert !p90_structure(ns[0..<0]);
+    for body:[6]string.["[]","{}","[1]","[[1]]","[[\"a\",1]]","[[],[\"a\"]]"] {
+        p:=rs_json(body,ns[..],arena[..]);#assert p.ok;
+        #assert p90_structure(ns[0..<p.count])==(body=="[]" || body=="[[],[\"a\"]]");
+    }
+    for count:32..<34 {
+        n:=json_raw(raw[..],0,"[");for k:0..<count {if k>0 {n=json_raw(raw[..],n,",");}n=json_raw(raw[..],n,"[\"x\"]");}n=json_raw(raw[..],n,"]");
+        p:=rs_json(cast(string)raw[0..<n],ns[..],arena[..]);#assert p.ok;
+        #assert p90_structure(ns[0..<p.count])==(count==32);
+    }
+    p:=rs_json("[[\"x\",\"1\",\"2\",\"3\",\"4\"],[\"x\",\"second\"],[]]",ns[..],arena[..]);#assert p.ok;
+    tag:=p90_tag(ns[0..<p.count],"x");#assert tag.count==2 && tag.size==5;
+    #assert tag.values[0]=="x" && tag.values[1]=="1" && tag.values[2]=="2" && tag.values[3]=="3";
+}
+#test "request caps accept their exact boundary and reject the first excess without output mutation" {
+    ns:[256]RsNode;arena:[16384]u8;stage:[16384]u8;out:[16384]u8;tags:[8193]u8;prompt:[1025]u8;
+    w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    for k:0..<prompt.count {prompt[k]='x';}
+    for count:1024..<1026 {
+        n:=json_raw(tags[..],0,"[[\"p\",");n=json_write_string(tags[..],n,P90_KEY);n=json_raw(tags[..],n,"],[\"i\",");n=json_write_string(tags[..],n,cast(string)prompt[0..<count]);n=json_raw(tags[..],n,",\"text\"]]");
+        e:=p90_fixture();e.tags=cast(string)tags[0..<n];j:=p90_admit(e,P90_KEY,1000,w,out[..],false);
+        #assert j.code==(ifx count==1024 then P90Code.ok else P90Code.unsupported);
+    }
+    n:=json_raw(tags[..],0,P90_TAGS);for k:n..<tags.count {tags[k]=' ';}
+    e:=p90_fixture();e.tags=cast(string)tags[0..<8192];j:=p90_admit(e,P90_KEY,1000,w,out[..],false);#assert j.code==P90Code.ok;
+    #assert p90_admit(e,P90_KEY,1000,w,out[0..<j.written],false).code==P90Code.ok;
+    e.tags=cast(string)tags[..];#assert p90_admit(e,P90_KEY,1000,w,out[..],false).code==P90Code.malformed;
+    tiny:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[0..<1]};out[0]=77;
+    #assert p90_admit(p90_fixture(),P90_KEY,1000,tiny,out[..],false).code==P90Code.capacity && out[0]==77;
+}
+#test "duplicate or extended routing, output, payment and expiry tags never weaken admission" {
+    ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;out:[8192]u8;tags:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    tails:=[8]string.["[\"output\",\"text/plain\"],[\"output\",\"text/plain\"]","[\"output\",\"text/plain\",\"extra\"]","[\"bid\",\"0\"],[\"bid\",\"0\"]","[\"bid\",\"0\",\"extra\"]","[\"expiration\",\"1001\"],[\"expiration\",\"1001\"]","[\"expiration\",\"1001\",\"extra\"]","[\"expiration\"]","[\"expiration\",\"1001x\"]"];
+    for i:0..<tails.count {
+        n:=json_raw(tags[..],0,"[[\"p\",");n=json_write_string(tags[..],n,P90_KEY);n=json_raw(tags[..],n,"],[\"i\",\"x\",\"text\"],");n=json_raw(tags[..],n,tails[i]);n=json_raw(tags[..],n,"]");
+        e:=p90_fixture();e.tags=cast(string)tags[0..<n];j:=p90_admit(e,P90_KEY,1000,w,out[..],false);
+        #assert j.code==(ifx i<4 then P90Code.unsupported else P90Code.stale) && j.answerable;
+    }
+    for extended:[2]bool.[false,true] {
+        n:=json_raw(tags[..],0,"[[\"p\",");n=json_write_string(tags[..],n,P90_KEY);
+        if extended {n=json_raw(tags[..],n,",\"extra\"");}else {n=json_raw(tags[..],n,"],[\"p\",");n=json_write_string(tags[..],n,P90_KEY);}
+        n=json_raw(tags[..],n,"],[\"i\",\"x\",\"text\"]]");e:=p90_fixture();e.tags=cast(string)tags[0..<n];j:=p90_admit(e,P90_KEY,1000,w,out[..],false);
+        #assert j.code==P90Code.not_addressed && !j.answerable;
+    }
+}
+#test "final text requires every completed assistant field independently and fits exactly" {
+    ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;out:[8192]u8;raw:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    valid:="{\"model\":\"gpt-oss-20b\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"A\"}]}]}";
+    #assert p90_final(valid,w,out[0..<1])==1 && out[0]=='A';
+    for header:[2]string.["{\"model\":\"other\",\"status\":\"completed\",\"output\":","{\"model\":\"gpt-oss-20b\",\"status\":\"incomplete\",\"output\":"] {
+        n:=json_raw(raw[..],0,header);n=json_raw(raw[..],n,"[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"A\"}]}]}");
+        #assert p90_final(cast(string)raw[0..<n],w,out[..])==-1;
+    }
+    bodies:=[10]string.["1","[1]","[{\"type\":\"message\",\"role\":\"user\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"A\"}]}]","[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"incomplete\",\"content\":[{\"type\":\"output_text\",\"text\":\"A\"}]}]","[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":1}]","[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":1}]}]","[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"refusal\",\"text\":\"A\"}]}]","[{\"type\":\"reasoning\",\"content\":[{\"type\":\"reasoning_text\",\"text\":\"PRIVATE\"}]}]","[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[1]}]","[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[]}]" ];
+    for body:bodies {
+        n:=json_raw(raw[..],0,"{\"model\":\"gpt-oss-20b\",\"status\":\"completed\",\"output\":");n=json_raw(raw[..],n,body);n=json_raw(raw[..],n,"}");out[0]=77;
+        #assert p90_final(cast(string)raw[0..<n],w,out[..])==-1 && out[0]==77;
+    }
+    multiple:="{\"model\":\"gpt-oss-20b\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"A\"}]},{\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"B\"}]}]}";
+    n:=p90_final(multiple,w,out[0..<3]);#assert n==3 && cast(string)out[0..<n]=="A\nB";
+    tiny:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[0..<0]};out[0]=77;
+    #assert p90_final(valid,tiny,out[..])==-1 && out[0]==77;
+}
+#test "each whitespace edge is trimmed and NIP90 pins reject malformed multiplicity" {
+    ns:[256]RsNode;arena:[8192]u8;stage:[8192]u8;raw:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    #assert p90_trim("")=="" && p90_trim(" \n\r\t")=="" && p90_trim("PONG")=="PONG";
+    for white:[4]string.[" ","\n","\r","\t"] {
+        n:=json_raw(raw[..],0,white);n=json_raw(raw[..],n,"PONG");#assert p90_pong(cast(string)raw[0..<n]);
+        n=json_raw(raw[..],0,"PONG");n=json_raw(raw[..],n,white);#assert p90_pong(cast(string)raw[0..<n]);
+    }
+    #assert p90_advertises("{\"services\":[{\"model\":\"a\",\"lanes\":[\"nip90-5050\"]}]}","a",w);
+    #assert !p90_advertises("{\"services\":[{\"model\":\"nip90-5050\",\"lanes\":[]}]}","nip90-5050",w);
+    base:=[4]string.["[\"e\",\"request\"]","[\"p\",\"caller\"]","[\"model\",\"identity\"]","[\"amount\",\"0\"]"];
+    extra:=[4]string.["[\"e\",\"request\",\"extra\"]","[\"p\",\"caller\",\"extra\"]","[\"model\",\"identity\",\"extra\"]","[\"amount\",\"0\",\"extra\"]"];
+    for target:0..<4 {for shape:0..<3 {
+        n:=json_raw(raw[..],0,"[");written:=0;
+        for k:0..<4 {if k==target && shape==0 {continue;}if written>0 {n=json_raw(raw[..],n,",");}n=json_raw(raw[..],n,ifx k==target && shape==1 then extra[k] else base[k]);written+=1;if k==target && shape==2 {n=json_raw(raw[..],n,",");n=json_raw(raw[..],n,base[k]);}}
+        n=json_raw(raw[..],n,"]");#assert !p90_reply_tags(cast(string)raw[0..<n],"identity","request","caller",w);
+    }}
+}
+p90_identity :: (out:[]u8)->string {
+    n:=json_raw(out,0,"gpt-oss-20b@sha256:");n=json_raw(out,n,G20_ARTIFACTS[2].sha);
+    if n==-1 {return "";}return cast(string)out[0..<n];
+}
+p90_fresh :: (created:int,now:int)->bool {
+    if created<0 || now<0 || created>9007199254740991 || now>9007199254740991 {return false;}
+    delta:=created-now;return delta>= -120 && delta<=30;
+}
+p90_structure :: (nodes:[]RsNode)->bool {
+    if nodes.count<1 || nodes[0].kind!=JSON_ARRAY {return false;}
+    i:=1;count:=0;
+    while i<nodes[0].next {
+        if nodes[i].kind!=JSON_ARRAY {return false;}
+        for k:i+1..<nodes[i].next {if nodes[k].kind!=JSON_STRING {return false;}}
+        count+=1;if count>32 {return false;}i=nodes[i].next;
+    }
+    return true;
+}
+p90_tag :: (nodes:[]RsNode,name:string)->P90Tag {
+    result:P90Tag;i:=1;
+    while i<nodes[0].next {
+        if nodes[i].next>i+1 && nodes[i+1].text==name {
+            result.count+=1;
+            if result.count==1 {
+                result.size=nodes[i].next-i-1;
+                for k:0..<result.size {if k<4 {result.values[k]=nodes[i+1+k].text;}}
+            }
+        }
+        i=nodes[i].next;
+    }
+    return result;
+}
+p90_admit :: (e:P90Envelope,worker:string,now:int,w:P90Work,out:[]u8,overlap:bool)->P90Job {
+    bad:=P90Job.{code=P90Code.malformed};
+    if e.kind!=5050 || !pt_hex64(e.id) || !pt_hex64(e.caller) || !pt_hex64(worker) {return bad;}
+    if overlap {bad.code=P90Code.capacity;return bad;}
+    if e.tags.count>8192 {return bad;}
+    tree:=rs_json(e.tags,w.nodes,w.arena);if !tree.ok {return bad;}
+    nodes:=w.nodes[0..<tree.count];if !p90_structure(nodes) {return bad;}
+    p:=p90_tag(nodes,"p");
+    if p.count!=1 || p.size!=2 || p.values[1]!=worker {bad.code=P90Code.not_addressed;return bad;}
+    bad.answerable=true;
+    if !p90_fresh(e.created,now) {bad.code=P90Code.stale;return bad;}
+    if e.content.count!=0 {bad.code=P90Code.unsupported;return bad;}
+    input:=p90_tag(nodes,"i");output:=p90_tag(nodes,"output");bid:=p90_tag(nodes,"bid");encrypted:=p90_tag(nodes,"encrypted");expiration:=p90_tag(nodes,"expiration");
+    if input.count!=1 || input.size!=3 || input.values[2]!="text" || input.values[1].count<1 || input.values[1].count>1024 {bad.code=P90Code.unsupported;return bad;}
+    if encrypted.count!=0 || (output.count>0 && (output.count!=1 || output.size!=2 || (output.values[1]!="text/plain" && output.values[1]!="text/markdown"))) || (bid.count>0 && (bid.count!=1 || bid.size!=2 || bid.values[1]!="0")) {bad.code=P90Code.unsupported;return bad;}
+    if expiration.count>0 {
+        v:=json_int(expiration.values[1]);
+        if expiration.count!=1 || expiration.size!=2 || !v.ok || v.value<=now || v.value>now+120 {bad.code=P90Code.stale;return bad;}
+        bad.deadline=v.value;
+    }
+    seen:=0;i:=1;
+    while i<nodes[0].next {
+        if nodes[i].next>i+1 && nodes[i+1].text=="param" {
+            if nodes[i].next!=i+4 {bad.code=P90Code.unsupported;return bad;}
+            name:=nodes[i+2].text;value:=nodes[i+3].text;bit:int;
+            if name=="model" {bit=1;if value!="gpt-oss-20b" {bad.code=P90Code.unsupported;return bad;}}
+            else if name=="max_tokens" {bit=2;v:=json_int(value);if !v.ok || v.value<1 || v.value>128 {bad.code=P90Code.unsupported;return bad;}bad.limit=v.value;}
+            else if name=="temperature" {bit=4;if value!="0" {bad.code=P90Code.unsupported;return bad;}}
+            else {bad.code=P90Code.unsupported;return bad;}
+            if (seen&bit)!=0 {bad.code=P90Code.unsupported;return bad;}seen|=bit;
+        }
+        i=nodes[i].next;
+    }
+    n:=json_raw(w.stage,0,"{\"model\":\"gpt-oss-20b\",\"input\":");n=json_write_string(w.stage,n,input.values[1]);n=json_raw(w.stage,n,",\"max_output_tokens\":");n=json_write_int(w.stage,n,bad.limit);
+    n=json_raw(w.stage,n,",\"temperature\":0,\"reasoning\":{\"effort\":\"low\"}}");
+    if n==-1 || n>out.count {bad.code=P90Code.capacity;return bad;}
+    for k:0..<n {out[k]=w.stage[k];}bad.written=n;bad.code=P90Code.ok;return bad;
+}
+p90_final :: (body:string,w:P90Work,out:[]u8)->int {
+    parsed:=rs_json(body,w.nodes,w.arena);if !parsed.ok {return -1;}nodes:=w.nodes[0..<parsed.count];
+    // rs_get's named fields exist only on an admitted object; no second
+    // object-kind gate is necessary once both required strings are present.
+    if rs_string(nodes,rs_get(nodes,0,"model"))!="gpt-oss-20b" || rs_string(nodes,rs_get(nodes,0,"status"))!="completed" {return -1;}
+    outputs:=rs_get(nodes,0,"output");if !rs_kind(nodes,outputs,JSON_ARRAY) {return -1;}
+    n:=0;have_message:=false;i:=outputs+1;
+    while i<nodes[outputs].next {
+        kind:=rs_string(nodes,rs_get(nodes,i,"type"));
+        if kind=="message" {
+            if rs_string(nodes,rs_get(nodes,i,"role"))!="assistant" || rs_string(nodes,rs_get(nodes,i,"status"))!="completed" {return -1;}
+            content:=rs_get(nodes,i,"content");if !rs_kind(nodes,content,JSON_ARRAY) {return -1;}
+            if have_message {n=json_raw(w.stage,n,"\n");}have_message=true;k:=content+1;
+            while k<nodes[content].next {
+                text:=rs_get(nodes,k,"text");
+                if rs_string(nodes,rs_get(nodes,k,"type"))!="output_text" || !rs_kind(nodes,text,JSON_STRING) {return -1;}
+                n=json_raw(w.stage,n,nodes[text].text);k=nodes[k].next;
+            }
+        }else if kind!="reasoning" {return -1;}
+        i=nodes[i].next;
+    }
+    if n<1 || n>out.count {return -1;}
+    for k:0..<n {out[k]=w.stage[k];}return n;
+}
+p90_trim :: (s:string)->string {a:=0;b:=s.count;while a<b {c:=s[a];if c!=' ' && c!='\n' && c!='\r' && c!='\t' {break;}a+=1;}while b>a {c:=s[b-1];if c!=' ' && c!='\n' && c!='\r' && c!='\t' {break;}b-=1;}return s[a..<b];}
+p90_pong :: (text:string)->bool {return p90_trim(text)=="PONG";}
+p90_config :: (model:string,host:string,port:int,key:string,deadline:int)->bool {return model=="gpt-oss-20b" && host=="127.0.0.1" && rs_settings(key,port) && deadline>=1 && deadline<=60000;}
+p90_code :: (c:P90Code)->string {names:=[8]string.["ok","malformed","not_addressed","stale","unsupported","capacity","busy","engine_refused"];return names[cast(int)c];}
+p90_advertises :: (content:string,identity:string,w:P90Work)->bool {
+    p:=rs_json(content,w.nodes,w.arena);if !p.ok {return false;}ns:=w.nodes[0..<p.count];services:=rs_get(ns,0,"services");if !rs_kind(ns,services,JSON_ARRAY) {return false;}
+    i:=services+1;
+    while i<ns[services].next {
+        if rs_string(ns,rs_get(ns,i,"model"))==identity {
+            lanes:=rs_get(ns,i,"lanes");if rs_kind(ns,lanes,JSON_ARRAY) {for k:lanes+1..<ns[lanes].next {if ns[k].kind==JSON_STRING && ns[k].text=="nip90-5050" {return true;}}}
+        }
+        i=ns[i].next;
+    }
+    return false;
+}
+p90_reply_tags :: (tags:string,identity:string,request:string,caller:string,w:P90Work)->bool {
+    parsed:=rs_json(tags,w.nodes,w.arena);if !parsed.ok {return false;}ns:=w.nodes[0..<parsed.count];if !p90_structure(ns) {return false;}
+    e:=p90_tag(ns,"e");p:=p90_tag(ns,"p");m:=p90_tag(ns,"model");amount:=p90_tag(ns,"amount");
+    return e.count==1 && e.size==2 && e.values[1]==request && p.count==1 && p.size==2 && p.values[1]==caller && m.count==1 && m.size==2 && m.values[1]==identity && amount.count==1 && amount.size==2 && amount.values[1]=="0";
+}

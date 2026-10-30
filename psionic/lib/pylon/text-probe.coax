@@ -1,0 +1,41 @@
+// One ephemeral buyer. Prints only a verified, pinned, correlated final result.
+#load "run.coax";
+p90_probe_run :: (p:[]Py)->int {
+    c:=p[0].cfg[..];c[0].probe=true;c[0].text=true;c[0].relay=PY_DEFAULT_LIST;
+    q:=p[0].probe[..];q[0].expected="PONG";i:=1;
+    while i<pyh_argc() {
+        name:=py_arg(c,i);if i+1>=pyh_argc() {return 2;}value:=py_arg(c,i+1);i+=2;
+        if name=="--relay" {c[0].relay=value;}
+        else if name=="--provider" {q[0].provider=value;}
+        else if name=="--identity" {q[0].identity=value;}
+        else if name=="--prompt" {q[0].prompt=value;}
+        else if name=="--expect" {q[0].expected=value;}
+        else if name=="--timeout-ms" {q[0].timeout=py_int(value);}
+        else {return 2;}
+    }
+    id:[160]u8;
+    if !relay_uri(c[0].relay).ok || !p90_probe_config(q[0].provider,q[0].identity,p90_identity(id[..]),q[0].prompt,q[0].expected,q[0].timeout) {return 2;}
+    ready:=false;for attempt:0..<4 {if py_draw(32,p[0].key[..]) && py_public(p) {ready=true;break;}}if !ready {return 2;}
+    if nip42_init(p[0].n42[..],c[0].relay)!=N42_OK {return 2;}
+    p[0].first_since=pyh_now_s()-300;p[0].sub=rl_subscribe(p[0].rl[..]);if p[0].sub<0 {return 2;}
+    started:=cxsock_now_ms();deadline:=started+q[0].timeout;
+    while cxsock_now_ms()<deadline && pyh_stop()!=1 {
+        py_pump(p,100);
+        if q[0].beacon && q[0].job_n==0 && p[0].rl[0].auth==RA_OK {
+            tags:[8192]u8;event:[16384]u8;n:=p90_probe_tags(q[0].provider,q[0].prompt,pyh_now_s(),tags[..]);if n<0 {return 2;}
+            k:=pt_template(event[..],py_me(p),pyh_now_s(),5050,cast(string)tags[0..<n],"");if k<0 {return 2;}
+            slot:=py_publish(p,cast(string)event[0..<k],"NIP-90 probe");if slot<0 {return 2;}
+            frame:=p[0].outbox[slot].text[..];if p[0].outbox[slot].n<80 {return 2;}
+            for z:0..<64 {q[0].jid[z]=frame[16+z];}q[0].job_n=64;
+        }
+        if q[0].answered || q[0].failed {break;}
+    }
+    rl_shutdown(p[0].rl[..]);closed:=relay_conn_close(p[0].conn[..],WS_CLOSE_NORMAL);
+    for k:0..<32 {p[0].key[k]=0;}
+    if !q[0].answered || q[0].failed {print("pylon-text-probe: no verified correlated final answer before deadline\n");return 1;}
+    out:[16384]u8;n:=json_raw(out[..],0,"{\"ok\":true,\"verified\":true,\"provider\":");n=json_write_string(out[..],n,q[0].provider);n=json_raw(out[..],n,",\"identity\":");n=json_write_string(out[..],n,q[0].identity);
+    n=json_raw(out[..],n,",\"request\":");n=json_write_string(out[..],n,cast(string)q[0].jid[..]);n=json_raw(out[..],n,",\"result\":");n=json_write_string(out[..],n,cast(string)q[0].result[..]);
+    n=json_raw(out[..],n,",\"text\":");n=json_write_string(out[..],n,cast(string)q[0].answer[0..<q[0].answer_n]);n=json_raw(out[..],n,",\"elapsed_ms\":");n=json_write_int(out[..],n,cxsock_now_ms()-started);n=json_raw(out[..],n,"}");
+    if n<0 {return 1;}print("%\n",cast(string)out[0..<n]);return 0;
+}
+p90_probe_entry :: () #export_c {p:[1]Py;code:=p90_probe_run(p[..]);x:=pyh_status(code);}

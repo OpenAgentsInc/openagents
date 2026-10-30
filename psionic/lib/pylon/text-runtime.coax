@@ -1,0 +1,77 @@
+// Native effects/wiring; admission and final-output policy is text.coax.
+P90Probe :: struct {provider:string;identity:string;prompt:string;expected:string;timeout:int=20000;beacon:bool;answered:bool;failed:bool;jid:[64]u8;job_n:int;result:[64]u8;answer:[8192]u8;answer_n:int;}
+p90_http :: (p:[]Py,body:string,budget:int,out:[]u8)->PyHttp {return py_http_at(p,"/v1/responses",cast(string)p[0].engine_key[0..<p[0].engine_key_n],body,budget,out);}
+p90_start :: (p:[]Py,persist:bool)->bool {
+    c:=p[0].cfg[0];
+    r:=pyh_file_path_clear();for b:c.engine_key_file {if pyh_file_path_push(cast(int)b)!=0 {return false;}}
+    count:=pyh_label_read();if count<0 || count>128 {print("pylon: private engine key file unavailable\n");return false;}
+    for i:0..<count {p[0].engine_key[i]=cast(u8)pyh_label_byte(i);}r=pyh_label_clear();p[0].engine_key_n=count;
+    if !p90_config(c.model,c.engine_host,c.engine_port,cast(string)p[0].engine_key[0..<count],c.decide_ms) {print("pylon: unsupported text engine configuration\n");return false;}
+    id:=p90_identity(p[0].identity[..]);p[0].identity_n=id.count;
+    prior:[256]u8;n:=py_read_file(c.state,prior[..]);
+    if n==-1 || (n>=0 && cast(string)prior[0..<n]!=id) {print("pylon: text identity state refused\n");return false;}
+    response:[PY_HTTP]u8;started:=cxsock_now_ms();
+    probe:="{\"model\":\"gpt-oss-20b\",\"input\":\"Reply with exactly PONG and no other words.\",\"max_output_tokens\":64,\"temperature\":0,\"reasoning\":{\"effort\":\"low\"}}";
+    answer:=p90_http(p,probe,c.decide_ms,response[..]);
+    ns:[1024]RsNode;arena:[65536]u8;stage:[16384]u8;text:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    size:=ifx answer.reached && answer.status==200 then p90_final(answer.body,w,text[..]) else -1;
+    if size<1 || !p90_pong(cast(string)text[0..<size]) {print("pylon: original GPT-OSS final-text doctor refused (HTTP %)\n",answer.status);return false;}
+    print("doctor: original GPT-OSS20B completed final PONG in % ms; identity %\n",cxsock_now_ms()-started,id);
+    if persist && n==-2 && !py_write_file(c.state,id) {return false;}
+    return true;
+}
+p90_send :: (p:[]Py,jb:PdJob,original:string,kind:int,body:string,code:string)->bool {
+    tags:[32768]u8;n:=json_raw(tags[..],0,"[[\"e\",");n=json_write_string(tags[..],n,jb.id);n=json_raw(tags[..],n,"],[\"p\",");n=json_write_string(tags[..],n,jb.caller);
+    n=json_raw(tags[..],n,"],[\"model\",");n=json_write_string(tags[..],n,py_identity(p));n=json_raw(tags[..],n,"],[\"amount\",\"0\"]");
+    if kind==6050 {n=json_raw(tags[..],n,",[\"request\",");n=json_write_string(tags[..],n,original);n=json_raw(tags[..],n,"]");}
+    else {n=json_raw(tags[..],n,",[\"status\",\"error\",");n=json_write_string(tags[..],n,code);n=json_raw(tags[..],n,"]");}
+    n=json_raw(tags[..],n,"]");if n<0 {return false;}
+    event:[65536]u8;k:=pt_template(event[..],py_me(p),pyh_now_s(),kind,cast(string)tags[0..<n],body);if k<0 {return false;}
+    slot:=py_publish(p,cast(string)event[0..<k],"NIP-90 answer");if slot<0 {return false;}
+    kept:=p[0].kept_at;p[0].kept_at=(kept+1)%PY_KEPT;p[0].kept[kept].used=py_unhex(jb.id,p[0].kept[kept].jid[..]);
+    for i:0..<p[0].outbox[slot].n {p[0].kept[kept].frame[i]=p[0].outbox[slot].text[i];}p[0].kept[kept].n=p[0].outbox[slot].n;
+    return true;
+}
+p90_event :: (p:[]Py,event:NostrEvent) {
+    ev:=event;
+    if !pq_seen(p[0].q[..],ev.id[..]) {p[0].duplicates+=1;py_again(p,ev.id[..]);return;}
+    idbuf:[64]u8;callerbuf:[64]u8;id:=py_hex(ev.id[..],idbuf[..]);caller:=py_hex(ev.public_key[..],callerbuf[..]);
+    ns:[256]RsNode;arena:[16384]u8;stage:[16384]u8;body:[16384]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    e:=P90Envelope.{kind=ev.kind,id=id,caller=caller,created=ev.created_at,tags=ev.original[ev.tags_from..<ev.tags_to],content=ev.original[ev.content_from..<ev.content_to]};
+    j:=p90_admit(e,py_me(p),pyh_now_s(),w,body[..],false);
+    jb:=PdJob.{id=id,caller=caller,request=id,attempt=1,deadline=j.deadline,type=PdType.call,answerable=j.answerable};
+    if j.code!=P90Code.ok {if j.answerable {ok:=p90_send(p,jb,"",7000,"request refused",p90_code(j.code));p[0].refusals+=1;}else {p[0].ignored+=1;}return;}
+    if p[0].life.status!=PbStatus.online || ev.original.count>16384 {ok:=p90_send(p,jb,"",7000,"request unavailable","busy");return;}
+    slot:=pq_put(p[0].q[..]);if slot<0 {ok:=p90_send(p,jb,"",7000,"request unavailable","busy");return;}
+    py_keep(p,slot,jb,cast(string)body[0..<j.written]);
+    for i:0..<ev.original.count {p[0].slots[slot].original[i]=ev.original[i];}p[0].slots[slot].original_n=ev.original.count;
+    print("pylon: queued NIP-90 job %\n",py_short(id));
+}
+p90_run :: (p:[]Py,slot:int) {
+    jb:=p[0].slots[slot].held;budget:=pq_budget(pd_left_ms(jb,pyh_now_s()),p[0].cfg[0].decide_ms);
+    response:[PY_HTTP]u8;r:PyHttp;started:=cxsock_now_ms();if budget.ms>0 {r=p90_http(p,cast(string)p[0].slots[slot].body[0..<p[0].slots[slot].n],budget.ms,response[..]);}
+    ns:[1024]RsNode;arena:[65536]u8;stage:[16384]u8;out:[8192]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    n:=ifx r.reached && r.status==200 then p90_final(r.body,w,out[..]) else -1;
+    if n>0 {
+        p[0].answered+=1;ok:=p90_send(p,jb,cast(string)p[0].slots[slot].original[0..<p[0].slots[slot].original_n],6050,cast(string)out[0..<n],"");
+        print("pylon: NIP-90 job % ->6050 final text from % in % ms\n",py_short(jb.id),py_identity(p),cxsock_now_ms()-started);
+    }else {p[0].refusals+=1;ok:=p90_send(p,jb,"",7000,"model did not complete final text","engine_refused");}
+    done:=pq_done(p[0].q[..],slot);
+}
+p90_observe :: (p:[]Py,event:NostrEvent) {
+    ev:=event;
+    pkbuf:[64]u8;signer:=py_hex(ev.public_key[..],pkbuf[..]);if signer!=p[0].probe[0].provider {return;}
+    content:[65536]u8;n:=json_unescape(ev.original[ev.content_from..<ev.content_to],content[..]);if n<0 {return;}
+    tags:=ev.original[ev.tags_from..<ev.tags_to];text:=cast(string)content[0..<n];ns:[1024]RsNode;arena:[65536]u8;stage:[16384]u8;w:=P90Work.{nodes=ns[..],arena=arena[..],stage=stage[..]};
+    if ev.kind==30200 {
+        b:=ph_read_beacon(ev.kind,signer,tags,text);
+        if b.code==PbCode.ok && b.status==PbStatus.online && b.free>0 && pb_fresh(b,pyh_now_s(),PbHeld.{})==PbFresh.fresh && p90_advertises(text,p[0].probe[0].identity,w) {p[0].probe[0].beacon=true;}
+        return;
+    }
+    if p[0].probe[0].job_n!=64 || !p90_fresh(ev.created_at,pyh_now_s()) {return;}
+    if !p90_reply_tags(tags,p[0].probe[0].identity,cast(string)p[0].probe[0].jid[..],py_me(p),w) {return;}
+    if ev.kind==7000 {if p90_feedback_error(tags) {p[0].probe[0].failed=true;}return;}
+    if ev.kind!=6050 || n<1 || n>8192 || p90_trim(text)!=p[0].probe[0].expected {return;}
+    for i:0..<n {p[0].probe[0].answer[i]=content[i];}p[0].probe[0].answer_n=n;
+    result:=py_hex(ev.id[..],p[0].probe[0].result[..]);p[0].probe[0].answered=true;
+}

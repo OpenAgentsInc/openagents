@@ -1,0 +1,186 @@
+{
+  "schema": "psionic-gptoss-cloud-nip90-verification-v1",
+  "observed_utc": "2026-10-30T21:11:32.623636+00:00",
+  "project": "openagentsgemini",
+  "instance": "psionic-rtx6000-pylon",
+  "zone": "us-central1-b",
+  "source_base_commit": "37eecad7b1",
+  "new_gpu_or_vm_allocations": 0,
+  "provider": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+  "slug": "oct30-gcloud-gptoss20b",
+  "model_identity": "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed",
+  "lane": "nip90-5050",
+  "runtime_budget_bytes": 17179869184,
+  "artifact_manifest": {
+    "schema": 1,
+    "sources": {
+      "20b": {
+        "repository": "openai/gpt-oss-20b",
+        "revision": "6cee5e81ee83917806bbde320786a8fb61efebee",
+        "files": [
+          {
+            "name": "original/config.json",
+            "bytes": 376,
+            "sha256": "317522155fc243327ee341857d0c752d0094a0817e0e9aee2890d5ad8e009e04"
+          },
+          {
+            "name": "original/dtypes.json",
+            "bytes": 13082,
+            "sha256": "566c9e6aded8957f41f1589cabaf73e39f2d1fcda3351d63efdfb7e9e78d376b"
+          },
+          {
+            "name": "original/model.safetensors",
+            "bytes": 13761300984,
+            "sha256": "3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed"
+          }
+        ]
+      }
+    }
+  },
+  "context_manifest": {
+    "schema": "pylon-gptoss-native-probe-context-v1",
+    "checkpoint_identity": "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed",
+    "compiler_sha256": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+    "source_sha256": {
+      "psionic/lib/pylon/run.coax": "3197779cf87593391a1b2ad15e4628e7db9177fd3c5bcd7225d02c22c2c3d613",
+      "psionic/lib/pylon/text.coax": "07a13286da39fc505bef8c01b0aa5cde1f0cece8111b3a9e9d36069bc2343ed8",
+      "psionic/lib/pylon/text-runtime.coax": "711ab8c5e917de0d78adb7b70f0fb01ea619c66585485186402fd30fde5840f3",
+      "psionic/lib/pylon/text-probe.coax": "470a4c37f464c3767aacb27c06880630f0d0c1d3240e11f974c87a792000e8d4",
+      "psionic/lib/pylon/text-probe-policy.coax": "031f61eae3fb6f86b12b8b54fcae608fdad0b141f2aa27de52aebe29b6426a3c",
+      "psionic/platform/text-probe-build.sh": "07ce25fa358f7de356580cd1891a2a0fd97fc7b7d05dbb3ff084cb387190b0d2",
+      "psionic/platform/text-probe-entry.c": "44e0089b08cd9c01e15624827878a39df2ee31a1998de361dc72099a634778dc"
+    },
+    "context_sha256": {
+      "text-probe-entry.c": "44e0089b08cd9c01e15624827878a39df2ee31a1998de361dc72099a634778dc",
+      "text-probe.h": "8c8fafdc4f40bf7094c93905090f091b659bbaebfb6819d1b5469a9dec470fd4",
+      "text-probe.c": "a2c7a686f074c3cacf12fb6b81e59c7635c09675bfed9f00f8d7a50ade0e8709",
+      "pylon.c": "b23a982f63237c370db3fa2412fc596574754d44dd6d2dec53ff354004f28084",
+      "pylon-host.c": "1bbdbb156c894a52bc1aab604293a5431693fb5da5df545ae7e05f04efdbe36c",
+      "entropy-policy.h": "9a874cb761aaa64ae6a5e268e41441d7962e6fba7b11fed1dcc726d455f4b11f",
+      "platform/socket-native.c": "847a8cbce466fe8a314c7af6e424daaa0e4c7ca60490ae87f8587a4b9ba003df",
+      "platform/tls-native.h": "07988aab83b80bbe4756dce800651e174434c411156cb13c1fa9391fd77e5df8",
+      "platform/entropy-native.c": "c24f1fb976094e1a41bb3b5c72d50d2a2013e7cc188a5769d26caa448db40af0",
+      "platform/socket-native.h": "c8707acbdb43ccd7f9f583e2f92594148962d1334ae494edfe11a8b7227c54e0",
+      "platform/tls-native.c": "1f9d58076acda10391b7fd16450ba2ee5b3e1c26966763517eae726b48e32dae",
+      "platform/entropy-native.h": "0dc938532bc0fc5d2dcd3600886523c63c0ca06d69cbf1aa3852976b05f20109",
+      "platform/entropy-foreign.c": "366a3c86b3f6a48e017d4054bb412fcbb3c6d75ff1c201177825c5ce843b5852",
+      "platform/entropy-foreign.h": "45f9b637d52b0e62da665255171b5abc7750b3e6e8f73b011d814345bf8736e2"
+    }
+  },
+  "native_sha256": {
+    "gptoss-runtime/responses-server": "6bcc261bda46fdbfff5f4f5ecb65056280243149205b08c0404b1ba545e9743b",
+    "gptoss-runtime/device-kernels.src": "72df8e2ef7ee4f5342697087df1d09822956ac7671b6677d45bf2a311b6b8759",
+    "gptoss-probe-context/pylon": "266ce3070e59c0c4712ef98e24bb6f078c91bceaa7366ef51c9a02f26465b067",
+    "gptoss-probe-context/pylon-text-probe": "6afad634924b037d298ed6a7b16644f0f25d84c36eb05332a6d49f0cfb00f163"
+  },
+  "units_active": {
+    "psionic-elephant-rtx": "active",
+    "openagents-pylon-oct30-gcloud-elephant-rtx": "active",
+    "psionic-mammoth": "active",
+    "openagents-pylon-oct30-gcloud-mammoth": "active",
+    "psionic-gptoss20b": "active",
+    "openagents-pylon-oct30-gcloud-gptoss20b": "active"
+  },
+  "linux_native_signed_request": {
+    "ok": true,
+    "verified": true,
+    "provider": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+    "identity": "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed",
+    "request": "d1b9481f1f1149056679162a4e1f858b9fde52c257f8fa8d01419c4b46b04899",
+    "result": "831f2373be78d24637ec5a27b5a4d8c2389bf5c3e8253bd7a09adbf0829ce391",
+    "text": "PONG",
+    "elapsed_ms": 525
+  },
+  "direct_responses": {
+    "model": "gpt-oss-20b",
+    "status": "completed",
+    "usage": {
+      "input_tokens": 66,
+      "output_tokens": 19,
+      "total_tokens": 85,
+      "input_tokens_details": {
+        "cached_tokens": 0
+      },
+      "output_tokens_details": {
+        "reasoning_tokens": 7
+      }
+    },
+    "final_text": [
+      "PONG"
+    ]
+  },
+  "mac_native_signed_request": {
+    "ok": true,
+    "verified": true,
+    "provider": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+    "identity": "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed",
+    "request": "ff36e869b395ad93edca6cbfdc68afd8e26e21229a7579ea520006b87ab2935b",
+    "result": "0d5c7fdd88b9f8db420c91b6fc334ee28288e031a7aa58f660ad2b5cc143b71c",
+    "text": "PONG",
+    "elapsed_ms": 907
+  },
+  "mac_asan_ubsan_signed_request": {
+    "ok": true,
+    "verified": true,
+    "provider": "23a62947ce9913e8d61d166fa72a2e4d2e11b153f9c47c5ee37e583ec702f599",
+    "identity": "gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed",
+    "request": "45e71bb17c9e12fc1301786d58f7ee108e4fd4a3cd1c87f52f6a33b69f16ec71",
+    "result": "a44d715415327560fa7c7932cf5675047dd333ef204e3414b998bc68e57d7c39",
+    "text": "PONG",
+    "elapsed_ms": 837
+  },
+  "qualification": {
+    "text_policy": {
+      "checks": 134,
+      "release_checks": 134,
+      "mutants": 406,
+      "killed": 406,
+      "survived": 0
+    },
+    "probe_policy": {
+      "checks": 49,
+      "mutants": 85,
+      "killed": 85,
+      "survived": 0
+    },
+    "legacy_decision_regression": {
+      "engine": "psionic-toy",
+      "frozen_cases": 2,
+      "elapsed_ms": 103,
+      "max_error_billionths": 0,
+      "identity_written": false,
+      "verdict": "healthy"
+    },
+    "native_refusals": [
+      "malformed provider pin returns 2",
+      "unreachable loopback relay returns 1 within finite deadline"
+    ],
+    "native_variants": [
+      "Mac plain",
+      "Mac ASan/UBSan",
+      "Linux GCC13 portable C context"
+    ]
+  },
+  "mac_native_sha256": {
+    "/tmp/p90-probe-native/pylon-text-probe": "0b5f3e346e293622ceb4df768b0ca67176c8735202bd15752ede4e3ad2b83af0",
+    "/tmp/p90-probe-sanitized/pylon-text-probe": "3b995dfe7dd5f38c2294efcf5674bf5a9056c44d19ba6ec9a9803f80138cab31",
+    "/tmp/p90-pylon-native/pylon": "c65d7570f6f4f8bea96a6bb046f0ff00efe81f22ad8994e8e1e445049ee91190"
+  },
+  "hardware_observation": {
+    "name": "RTX PRO 6000 Blackwell, 96 GB",
+    "used_mib_after_gptoss": 80783,
+    "total_mib": 97887,
+    "plain_models_sharing_card": [
+      "elephant-1",
+      "mammoth-1",
+      "gpt-oss-20b"
+    ]
+  },
+  "claims": {
+    "own_coax_model_execution": true,
+    "external_inference_runtime": false,
+    "production_key_gate_bypass": false,
+    "hardware_or_model_remote_attestation": false,
+    "six_hour_availability_complete": false
+  }
+}

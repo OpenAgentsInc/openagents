@@ -34,6 +34,9 @@
 #import "Basic";
 #load "demo-label.coax";
 #load "generation.coax";
+#load "text.coax";
+#load "text-probe-policy.coax";
+#load "text-runtime.coax";
 #load "../../../coax/lib/nostr/nip19-core.coax";
 #load "host.coax";
 #load "queue.coax";
@@ -113,6 +116,7 @@ PyConfig :: struct {
     label_key:string;label_file:string;key_file:string;stop_file:string;
     decide_ms:int;refresh:int;ttl:int;
     references:string;state:string;declared:string;doctor:bool;
+    text:bool;probe:bool;engine_key_file:string;
 }
 py_arg :: (c:[]PyConfig,i:int)->string {
     n:=pyh_arg_len(i);if n<0 || c[0].used+n>PY_ARGS {return "";}
@@ -145,6 +149,7 @@ py_config :: (c:[]PyConfig)->bool {
     while i<argc {
         name:=py_arg(c,i);
         if name=="--doctor" {c[0].doctor=true;i+=1;continue;}
+        if name=="--nip90" {c[0].text=true;i+=1;continue;}
         if i+1>=argc {print("pylon: % needs a value\n",name);return false;}
         v:=py_arg(c,i+1);i+=2;
         if name=="--relay" {c[0].relay=v;}
@@ -165,10 +170,11 @@ py_config :: (c:[]PyConfig)->bool {
         else if name=="--references" {c[0].references=v;}
         else if name=="--identity-state" {c[0].state=v;}
         else if name=="--declare-identity" {c[0].declared=v;}
+        else if name=="--engine-key-file" {c[0].engine_key_file=v;}
         else {print("pylon: unknown option %\n",name);return false;}
     }
     if c[0].engine_port<0 || c[0].engine_host.count==0 {print("pylon: --engine must be http://HOST:PORT\n");return false;}
-    if c[0].references.count==0 || c[0].state.count==0 {print("pylon: --references and --identity-state are required: a Pylon checks itself before it serves (chapter 159)\n");py_usage();return false;}
+    if (!c[0].text && c[0].references.count==0) || c[0].state.count==0 {print("pylon: --references and --identity-state are required: a Pylon checks itself before it serves (chapter 159)\n");py_usage();return false;}
     if c[0].model.count==0 {py_usage();return false;}
     if c[0].doctor {return true;}
     if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
@@ -201,7 +207,7 @@ py_connect :: (host:string,port:int)->int {
 
 // ---- the Pylon ----------------------------------------------------------------
 
-PySlot :: struct {held:PdJob;id:[64]u8;caller:[64]u8;request:[128]u8;body:[16384]u8;n:int;}
+PySlot :: struct {held:PdJob;id:[64]u8;caller:[64]u8;request:[128]u8;body:[16384]u8;n:int;original:[16384]u8;original_n:int;}
 // A signed ["EVENT",...] frame kept for relay.coax's publish slot of the same
 // index, so it can go again on the next connection until its OK comes.
 PyOutbox :: struct {text:[131072]u8;n:int;}
@@ -225,6 +231,7 @@ Py :: struct {
     sent:int;accepted:int;refused:int;forged:int;duplicates:int;ignored:int;
     answered:int;refusals:int;cancelled:int;beacons:int;
     connects:int;drops:int;auths:int;caught_up:int;
+    engine_key:[128]u8;engine_key_n:int;probe:[1]P90Probe;
 }
 py_me :: (p:[]Py)->string {return cast(string)p[0].me[..];}
 py_identity :: (p:[]Py)->string {return cast(string)p[0].identity[0..<p[0].identity_n];}
@@ -362,9 +369,13 @@ py_status :: (p:[]Py,jb:PdJob,code:PdCode)->bool {
 PyHttp :: struct {reached:bool;timed_out:bool;status:int;body:string;}
 // POST body to the engine; at most budget_ms for the whole exchange.
 py_http :: (p:[]Py,body:string,budget_ms:int,resp:[]u8)->PyHttp {
+    return py_http_at(p,"/v1/systemone","",body,budget_ms,resp);
+}
+py_http_at :: (p:[]Py,path:string,key:string,body:string,budget_ms:int,resp:[]u8)->PyHttp {
     r:PyHttp;c:=p[0].cfg[0];end:=cxsock_now_ms()+budget_ms;
     h:=py_connect(c.engine_host,c.engine_port);if h<0 {return r;}
-    head:[512]u8;n:=json_raw(head[..],0,"POST /v1/systemone HTTP/1.1\r\nHost: ");n=json_raw(head[..],n,c.engine_host);
+    head:[1024]u8;n:=json_raw(head[..],0,"POST ");n=json_raw(head[..],n,path);n=json_raw(head[..],n," HTTP/1.1\r\nHost: ");n=json_raw(head[..],n,c.engine_host);
+    if key.count>0 {n=json_raw(head[..],n,"\r\nAuthorization: Bearer ");n=json_raw(head[..],n,key);}
     n=json_raw(head[..],n,"\r\nContent-Type: application/json\r\nContent-Length: ");n=json_write_int(head[..],n,body.count);
     n=json_raw(head[..],n,"\r\nConnection: close\r\n\r\n");
     if n<0 || !py_write(h,cast(string)head[0..<n]) || !py_write(h,body) {x:=cxsock_close(h);return r;}
@@ -424,13 +435,15 @@ py_beacon :: (p:[]Py,now:int)->bool {
     c:=p[0].cfg[0];
     observed:=ifx now>p[0].observed then now else p[0].observed+1;
     lanes:[1]string;services:[1]PbService;settlement:[1]string;cap:[160]u8;
-    lanes[0]="cj-decision";settlement[0]="free-v1";
+    lanes[0]=ifx c.text then "nip90-5050" else "cj-decision";settlement[0]="free-v1";
     k:=pb_capability(cap[..],py_me(p));if k<0 {return false;}
+    if c.text {k=json_raw(cap[..],0,py_me(p));k=json_raw(cap[..],k,":pylon/text");if k<0 {return false;}}
     services[0]=PbService.{capability=cast(string)cap[0..<k],model=py_identity(p),lanes=lanes[0..<1]};
     free:=pq_free(p[0].q[..]);if p[0].life.status!=PbStatus.online {free=0;}
     b:=PbBeacon.{provider=py_me(p),pylon=c.slug,label=c.label,status=p[0].life.status,generation=p[0].life.generation,since=p[0].life.since,
         observed_at=observed,valid_until=pb_valid_until(observed,c.ttl),hardware=PbClass.{family=c.family,tier=pb_tier(c.family,c.memory_gb),memory_gb=c.memory_gb},
         total=PQ_SLOTS,free=free,services=services[0..<1],settlement=settlement[0..<1]};
+    if c.text {b.meta="{\"backend_profile\":\"psionic-gptoss-responses-v1\",\"input\":\"public-text\",\"max_input_bytes\":1024,\"max_output_tokens\":128}";}
     scratch:[8192]u8;out:[16384]u8;n:=ph_beacon(b,PbAuth.{},scratch[..],out[..]);
     if n<0 {print("pylon: the beacon writer refused\n");return false;}
     p[0].observed=observed;
@@ -465,6 +478,8 @@ py_keep :: (p:[]Py,slot:int,jb:PdJob,body:string) {
 // book:begin event
 // ev is verified (py_take) and relay.coax delivered it once.
 py_event :: (p:[]Py,event:NostrEvent) {
+    if p[0].cfg[0].probe {p90_observe(p,event);return;}
+    if p[0].cfg[0].text {p90_event(p,event);return;}
     ev:=event;
     if !pq_seen(p[0].q[..],ev.id[..]) {p[0].duplicates+=1;py_again(p,ev.id[..]);return;}
     idh:[64]u8;pkh:[64]u8;id:=py_hex(ev.id[..],idh[..]);caller:=py_hex(ev.public_key[..],pkh[..]);
@@ -502,6 +517,7 @@ py_event :: (p:[]Py,event:NostrEvent) {
 }
 // book:end event
 py_run :: (p:[]Py,slot:int) {
+    if p[0].cfg[0].text {p90_run(p,slot);return;}
     jb:=p[0].slots[slot].held;now:=pyh_now_s();
     budget:=pq_budget(pd_left_ms(jb,now),p[0].cfg[0].decide_ms);
     r:PyHttp;resp:[PY_HTTP]u8;started:=cxsock_now_ms();
@@ -606,9 +622,11 @@ py_flush :: (p:[]Py)->bool {
         ok:=false;
         if o.kind==RL_OUT_REQ {
             since:=pq_since(o.has_since,o.since,p[0].first_since);
-            kinds:=[1]int.[25910];me:=[1]string.[py_me(p)];
+            kinds:=[1]int.[ifx p[0].cfg[0].text then 5050 else 25910];me:=[1]string.[py_me(p)];
             tags:=[1]NostrTagFilter.[NostrTagFilter.{name='p',values=me[..]}];
             f:NostrFilter;f.has_kinds=true;f.kinds=kinds[..];f.tags=tags[..];f.has_since=true;f.since=since.since;
+            probe_kinds:=[3]int.[30200,6050,7000];authors:=[1]string.[p[0].probe[0].provider];
+            if p[0].cfg[0].probe {f.kinds=probe_kinds[..];f.tags=tags[0..<0];f.has_authors=true;f.authors=authors[..];f.has_limit=true;f.limit=32;}
             filters:=[1]NostrFilter.[f];
             req:[512]u8;n:=nostr_message_write_req(id,filters[..],req[..],false);
             print("pylon: REQ % since % (connection %)%\n",id,since.since,p[0].gen,ifx since.resumed then ", resumed from the newest job delivered" else "");
@@ -647,7 +665,7 @@ py_step :: (p:[]Py,wait_ms:int)->int {
     if w==PqWire.auth && !py_auth(p) {py_drop(p,"AUTH not sent");return RC_NONE;}
     if w==PqWire.announce {
         p[0].announced=p[0].gen;
-        if !py_beacon(p,pyh_now_s()) {print("pylon: the beacon for connection % was not queued\n",p[0].gen);}
+        if !p[0].cfg[0].probe && !py_beacon(p,pyh_now_s()) {print("pylon: the beacon for connection % was not queued\n",p[0].gen);}
     }
     if (w==PqWire.announce || w==PqWire.flow) && !py_flush(p) {py_drop(p,"send failed");return RC_NONE;}
     ev:=relay_conn_poll(c,wait_ms);
@@ -760,6 +778,7 @@ py_main :: (p:[]Py)->int {
     }
     c:=p[0].cfg[0];
     if c.doctor {
+        if c.text {return ifx p90_start(p,false) then 0 else 6;}
         // Read-only: no key, no relay, no state written.
         w:[1]PyCheckRun;
         if !py_probe(p) {print("doctor: verdict engine\n");return 3;}
@@ -789,11 +808,15 @@ py_main :: (p:[]Py)->int {
         encoded:=nip19_encode_checked(N19_NPUB,cast(string)public_key[..],public_text[..],false);
         if encoded.error==NC_OK {print("pylon: npub %\n",cast(string)public_text[0..<encoded.written]);}
     }
+    if c.text {
+        if !p90_start(p,true) {return 6;}
+    } else {
     if !py_probe(p) {return 3;}
     {
         w:[1]PyCheckRun;py_selfcheck(p,w[..]);py_report(p,w[..]);
         if !ps_may_serve(w[0].facts) {print("pylon: not serving: the self-check did not pass (%)\n",PS_STEP_NAMES[cast(int)ps_doctor(w[0].facts)]);return 6;}
         if w[0].gate!=PsGate.same && !py_write_file(c.state,py_identity(p)) {print("pylon: the identity state % can't be written\n",c.state);return 6;}
+    }
     }
     generation:=py_generation(p);if generation==0 {return 6;}
     if nip42_init(p[0].n42[..],c.relay)!=N42_OK {print("pylon: NIP-42 refuses the relay URL\n");return 4;}
