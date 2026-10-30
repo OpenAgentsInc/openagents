@@ -206,8 +206,8 @@ colour   = mix(colour, haze, f)
 
 | | day | dusk/dawn | night |
 | --- | --- | --- | --- |
-| `start` | 20 m | 45 m | 30 m |
-| `density` (desktop) | 0.017 /m | 0.009 /m | 0.010 /m |
+| `start` | 40 m | 45 m | 30 m |
+| `density` (desktop) | 0.020 /m | 0.009 /m | 0.010 /m |
 | `cap` | 0.88 | 0.72 | 0.6 |
 | `falloff` | 60 m | 50 m | 40 m |
 | `haze_colour` | (0.56, 0.74, 0.90) | (0.96, 0.68, 0.56) | (0.025, 0.04, 0.09) |
@@ -757,6 +757,13 @@ read milky. The references keep what stands within a street's length crisp and s
 mist take the wood beyond. The day key's haze starts at 20 m at 0.017 a metre: 0 at 20 m, 0.16 at 30 m,
 0.29 at 40 m, still 0.74 at 100 m and the 0.88 cap by 200 m. Noon's remaining wash is the light, not the
 haze (a roof 25 m off holds 0.2 saturation at noon, 0.64 at dusk): the next round is the noon key and tone.
+
+**Comparison round 5** (noon): it was the haze after all. With the haze off, the commons' roofs hold 0.59
+saturation at noon (0.2 with it): the third-person eye stands 40 to 50 m from the commons' houses, not 25,
+so the town sat in 0.3 to 0.4 of pale mist; the exposure (1.6, tried at 1.3) changed nothing. The day key's
+haze now starts at 40 m at 0.020 a metre: 0.10 at 45 m, 0.33 at 60 m, 0.70 at 100 m, the 0.88 cap by 150 m.
+The town reads in full colour at noon, as the references' near ground does, and the wood and the ridges
+beyond still step back into the teal mist.
 
 ## Order of the work
 
