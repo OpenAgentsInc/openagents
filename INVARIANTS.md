@@ -782,6 +782,46 @@ plus all earlier chapters and source-linked book/transcript checks. See
 `docs/verification/psionic-ch03-2026-10-28.md`. This qualifies a bounded CPU
 profile, not learned affine layers, arbitrary layouts, gradients or devices.
 
+## Psionic owned tensor placement keeps device policy and arithmetic in Coax
+
+`psionic/lib/tensor-placement.coax` and `tensor-device-host.coax` own the
+`tensor-device-v1` bounded device/dtype contract. Opaque native sessions and
+handles hold authoritative Coax records; metadata snapshots do not retain
+allocations. Views retain a root, copies own a new root, and ready storage is
+immutable. Host API access is exclusive. Storage/session IDs never repeat.
+Pending outputs and borrowed inputs cannot be freed. Explicit wait/cancel
+drains work before releasing input reader claims; aliased input roots count
+both reads, and independent pending outputs release only their own claims.
+Cancellation invalidates its output, numerical failure invalidates only the
+result, and a driver error poisons further session execution. Idle references
+can still be released; close refuses live allocations. There is no implicit
+wait, implicit placement or CPU fallback.
+
+`tensor-device-kernels.coax` supplies the actual CPU/CUDA/Metal finite packed
+casts, dtype-grid uniform generator and add/ReLU/dropout program. Integer RNE
+preserves finite f16/bf16 encodings, signed zero and subnormal cast bits.
+Equal dtypes retain their type; mixed pairs produce f32. Program arithmetic
+uses f32 then one output narrowing; numerical flags prevent publication of a
+partial/nonfinite result. Counter32-v1 uses explicit seed/stream/logical ranges
+without wrap; allocation or scheduling consumes no hidden random state. It is
+a reproducibility primitive with no cryptographic/training-quality claim.
+
+Native code allocates Coax-admitted resident/temporary buffers and performs
+copy/driver effects. Export stages a complete disjoint logical readback;
+GPU copies/programs run the requested generated kernels. CPU work completes
+eagerly but waits logically; CUDA queues immediately; Metal commits its batch
+at wait. Tensor payload budgets exclude driver/module/allocator overhead and
+separately bounded host transport scratch. This small profile does not extend
+all 27 CPU operators to GPUs or supply in-place updates/autograd.
+
+Check: `psionic/check.sh --only tensor-device`, with explicit `--metal` and
+`--cuda` device harnesses, qualifies independent integer/format references,
+every finite half/bfloat16 encoding, RNE boundary vectors, all dtype pairs,
+strided transfers, completion/lifetimes, failure preservation and native
+ASan/UBSan in debug/release. Numerical bounds/device behavior and the owner's
+omission of full mutation runs are recorded in
+[chapter 3b verification](docs/verification/psionic-ch03b-2026-10-29.md).
+
 ## Psionic tensor operators infer support and publish complete value results
 
 `psionic/lib/tensor-ops*.coax` owns `CPU-f32-wide-views-v1`: 27 bounded CPU

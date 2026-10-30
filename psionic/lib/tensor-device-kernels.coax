@@ -1,0 +1,89 @@
+// Shared CPU/CUDA/Metal arithmetic. All dtypes are packed little-endian bytes;
+// every work item owns one output and one numeric flag. No atomics/reductions.
+#authority;
+
+#test "binary16 and bfloat16 decode exact finite and nonfinite representations" {
+    #assert tdk_decode_bits(0x8000,1)==0x80000000 && tdk_decode_bits(0x3c00,1)==0x3f800000;
+    #assert tdk_decode_bits(1,1)==0x33800000 && tdk_decode_bits(0x7bff,1)==0x477fe000;
+    #assert tdk_decode_bits(0x7c00,1)==0x7f800000 && !tdk_finite(tdk_decode_bits(0x7e01,1));
+    #assert tdk_decode_bits(1,2)==0x00010000 && tdk_decode_bits(0x3f80,2)==0x3f800000;
+    #assert !tdk_finite(tdk_decode_bits(0x7f81,2)) && tdk_decode_bits(0x8000,2)==0x80000000;
+}
+#test "round-to-nearest-even conversions include subnormals and saturation" {
+    #assert tdk_encode_bits(0x3f801000,1)==0x3c00 && tdk_encode_bits(0x3f803000,1)==0x3c02;
+    #assert tdk_encode_bits(0x33800000,1)==1 && tdk_encode_bits(0x33000000,1)==0 && tdk_encode_bits(0x33c00000,1)==2;
+    #assert tdk_encode_bits(0x477fe000,1)==0x7bff && tdk_encode_bits(0x477ff000,1)==0x7c00;
+    #assert tdk_encode_bits(0x80000000,1)==0x8000 && tdk_encode_bits(0x3f808000,2)==0x3f80 && tdk_encode_bits(0x3f818000,2)==0x3f82;
+    #assert tdk_encode_bits(0x00008000,2)==0 && tdk_encode_bits(0x00018000,2)==2;
+    #assert tdk_encode_bits(0x7f7fffff,2)==0x7f80 && tdk_encode_bits(0x80000000,2)==0x8000;
+}
+#test "packed kernels preserve byte order and cast before publication" {
+    meta:=[15]int.[1,3,0,0,0,0,1,0,0,0,0,1,0,0,0];source:=[12]u8.[0,0,128,63,0,0,0,128,0,0,0,64];out:[6]u8;flags:[3]u8;
+    for i:0..<3 {tdk_cast(i,0,1,meta[..],source[..],out[..],flags[..]);#assert flags[i]==0;}
+    #assert out[0]==0 && out[1]==0x3c && out[2]==0 && out[3]==0x80 && out[4]==0 && out[5]==0x40;
+    #assert tdk_get(out[..],1,1)==0x8000;
+}
+#test "counter words and chunked uniform values have independent frozen vectors" {
+    expected:=[8]u32.[0x69ce05b4,0xa8736e7e,0xecde33c3,0x1a54cbf9,0x8377b394,0x6c9e2360,0x6fa8dc06,0xb499e5f3];
+    // Filled with independently generated modulo-2^32 integer vectors below.
+    for i:0..<8 {#assert tdk_word(123,7,cast(u32)i)==expected[i];}
+}
+#test "dropout masks are indexed logically and evaluation mode is identity" {
+    meta:=[15]int.[1,2,0,0,0,0,1,0,0,0,0,1,0,0,0];a:=[8]u8.[0,0,128,63,0,0,0,192];b:=[8]u8.[0,0,0,64,0,0,128,63];out:[8]u8;flags:[2]u8;
+    for i:0..<2 {tdk_program(i,0,0,0,123,7,0,0,0,meta[..],a[..],b[..],out[..],flags[..]);#assert flags[i]==0;}
+    #assert tdk_get(out[..],0,0)==0x40400000 && tdk_get(out[..],1,0)==0;
+    for i:0..<2 {tdk_program(i,0,0,0,123,7,0,0,1,meta[..],a[..],b[..],out[..],flags[..]);#assert tdk_get(out[..],i,0)==0;}
+    uniform:[8]u8;for i:0..<2 {tdk_uniform(i,0,123,7,3,uniform[..],flags[..]);#assert flags[i]==0;#assert tdk_get(uniform[..],i,0)==f32_bits(tdk_unit(123,7,cast(u32)(i+3),0));}
+}
+
+tdk_width :: (dtype:int)->int {if dtype==0 {return 4;}return 2;}
+tdk_finite :: (bits:u32)->bool {return (bits&0x7fffffff)<0x7f800000;}
+tdk_get :: (bytes:[]u8,index:int,dtype:int)->u32 {at:=index*tdk_width(dtype);word:=u32(bytes[at])|(u32(bytes[at+1])<<8);if dtype==0 {word|=(u32(bytes[at+2])<<16)|(u32(bytes[at+3])<<24);}return word;}
+tdk_put :: (bytes:[]u8,index:int,dtype:int,word:u32) {at:=index*tdk_width(dtype);bytes[at]=cast,trunc(u8)word;bytes[at+1]=cast,trunc(u8)(word>>8);if dtype==0 {bytes[at+2]=cast,trunc(u8)(word>>16);bytes[at+3]=cast,trunc(u8)(word>>24);}}
+// book:begin decode
+tdk_decode_bits :: (word:u32,dtype:int)->u32 {
+    if dtype==0 {return word;}if dtype==2 {return word<<16;}
+    sign:=(word&0x8000)<<16;exponent:=int((word>>10)&31);fraction:=word&1023;
+    if exponent==31 {return sign|0x7f800000|(fraction<<13);}
+    if exponent==0 {if fraction==0 {return sign;}exponent=-14;for shift:0..<10 {if fraction<1024 {fraction<<=1;exponent-=1;}}return sign|(u32(exponent+127)<<23)|((fraction&1023)<<13);}
+    return sign|(u32(exponent+112)<<23)|(fraction<<13);
+}
+// book:end decode
+tdk_round :: (mantissa:u32,shift:int)->u32 {base:=mantissa>>u32(shift);mask:=(u32(1)<<u32(shift))-1;remainder:=mantissa&mask;half:=u32(1)<<u32(shift-1);if remainder>half || (remainder==half && (base&1)!=0) {base+=1;}return base;}
+tdk_encode_bits :: (bits:u32,dtype:int)->u32 {
+    if dtype==0 {return bits;}if dtype==2 {return add_wrap(bits,0x7fff+((bits>>16)&1))>>16;}
+    sign:=(bits>>16)&0x8000;exponent:=int((bits>>23)&255)-127;fraction:=bits&0x7fffff;
+    if exponent>15 {return sign|0x7c00;}if exponent< -25 {return sign;}
+    if exponent< -14 {return sign|tdk_round(fraction|0x800000,-exponent-1);}
+    base:=(u32(exponent+15)<<10)|(fraction>>13);remainder:=fraction&8191;if remainder>4096 || (remainder==4096 && (base&1)!=0) {base+=1;}return sign|base;
+}
+// Counter32-v1: bijective odd multiplies/xors over one u32 counter space.
+// It is a reproducible teaching generator, not a cryptographic generator.
+// book:begin rng
+tdk_word :: (seed:u32,stream:u32,counter:u32)->u32 {
+    x:=add_wrap(seed,mul_wrap(0x9e3779b9,add_wrap(counter,1)));x^=mul_wrap(stream,0x85ebca6b);
+    x^=x>>16;x=mul_wrap(x,0x7feb352d);x^=x>>15;x=mul_wrap(x,0x846ca68b);x^=x>>16;return x;
+}
+// book:end rng
+tdk_unit :: (seed:u32,stream:u32,counter:u32,dtype:int)->f32 {
+    word:=tdk_word(seed,stream,counter);if dtype==1 {return f32(word>>21)*(1.0f32/2048.0f32);}if dtype==2 {return f32(word>>24)*(1.0f32/256.0f32);}return f32(word>>8)*(1.0f32/16777216.0f32);
+}
+tdk_address :: (item:int,meta:[]int,second:bool)->int {offset:=meta[5];base:=6;if second {offset=meta[10];base=11;}n:=item;for pass:0..<4 {if pass<meta[0] {axis:=meta[0]-1-pass;offset+=(n%meta[1+axis])*meta[base+axis];n/=meta[1+axis];}}return offset;}
+// GPU entries: nonfinite values are classified as bits before f32 materialization.
+tdk_cast :: (item:int,source_dtype:int,target_dtype:int,meta:[]int,source:[]u8,out:[]u8,flags:[]u8) #export_c {
+    word:=tdk_get(source,tdk_address(item,meta,false),source_dtype);bits:=tdk_decode_bits(word,source_dtype);flags[item]=0;
+    if !tdk_finite(bits) {flags[item]=1;return;}value:=tdk_encode_bits(bits,target_dtype);if !tdk_finite(tdk_decode_bits(value,target_dtype)) {flags[item]=2;return;}tdk_put(out,item,target_dtype,value);
+}
+tdk_uniform :: (item:int,dtype:int,seed:u32,stream:u32,first:int,out:[]u8,flags:[]u8) #export_c {
+    value:=tdk_unit(seed,stream,cast(u32)(first+item),dtype);tdk_put(out,item,dtype,tdk_encode_bits(f32_bits(value),dtype));flags[item]=0;
+}
+// book:begin program
+tdk_program :: (item:int,ad:int,bd:int,od:int,seed:u32,stream:u32,first:int,keep:int,training:int,meta:[]int,a:[]u8,b:[]u8,out:[]u8,flags:[]u8) #export_c {
+    ab:=tdk_decode_bits(tdk_get(a,tdk_address(item,meta,false),ad),ad);bb:=tdk_decode_bits(tdk_get(b,tdk_address(item,meta,true),bd),bd);flags[item]=0;
+    if !tdk_finite(ab) || !tdk_finite(bb) {flags[item]=1;return;}
+    sum:=f32_from_bits(ab)+f32_from_bits(bb);if !tdk_finite(f32_bits(sum)) {flags[item]=2;return;}
+    value:f32=0;if sum>0 {value=sum;}
+    if training!=0 {if keep==0 || int(tdk_word(seed,stream,cast(u32)(first+item))>>16)>=keep {value=0;}else {scale:=65536.0f32/f32(keep);value*=scale;}}
+    if !tdk_finite(f32_bits(value)) {flags[item]=2;return;}word:=tdk_encode_bits(f32_bits(value),od);if !tdk_finite(tdk_decode_bits(word,od)) {flags[item]=2;return;}tdk_put(out,item,od,word);
+}
+// book:end program

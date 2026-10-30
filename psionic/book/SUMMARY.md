@@ -6,6 +6,7 @@
 - [2a. A tensor is a view of memory](ch002a-a-tensor-is-a-view-of-memory.md)
 - [3. Numbers and matrices](ch003-numbers-and-matrices.md)
 - [3a. A standard library of tensor operators](ch003a-a-standard-library-of-tensor-operators.md)
+- [3b. One tensor, several devices and dtypes](ch003b-one-tensor-several-devices-and-dtypes.md)
 - [4. Reading original weights](ch004-reading-original-weights.md)
 - [5. Text becomes a model request](ch005-text-becomes-a-model-request.md)
 - [6. Attention without training](ch006-attention-without-training.md)

@@ -30,6 +30,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == tensor-ops || $chapter == tensor-ops-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_ops.sh
     fi
+    if [[ $chapter == tensor-device || $chapter == tensor-placement || $chapter == tensor-device-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_device.sh
+    fi
     if [[ $chapter == tensor-view ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_views.sh
     fi
@@ -212,17 +215,19 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0
+picks_tensor_device() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-device || $n == tensor-placement || $n == tensor-device-* ]]; }
 picks_deepseek() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == deepseek || $n == deepseek/* ]]; }
 picks_qualify() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == qualify || $n == qualify-elephant ]]; }
 picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n == gptoss/* ]]; }
 if [[ ${#only[@]} -eq 0 ]]; then
-    selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1; deepseek=1; qualify=1
+    selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1; deepseek=1; qualify=1; tensor_device=1
 else
     for unit in "${coax_units[@]}"; do if picks_coax "$unit" "${only[@]}"; then selected_coax+=("$unit"); fi; done
     for unit in "${native_units[@]}"; do if picks_native "$unit" "${only[@]}"; then selected_native+=("$unit"); fi; done
     for n in "${only[@]}"; do
         hit=0
+        if picks_tensor_device "$n"; then hit=1; tensor_device=1; fi
         if picks_gptoss "$n"; then hit=1; gptoss=1; fi
         if picks_deepseek "$n"; then hit=1; deepseek=1; fi
         if picks_qualify "$n"; then hit=1; qualify=1; fi
@@ -299,6 +304,12 @@ if [[ $gptoss == 1 ]]; then
     phase "gpt-oss chapters"
 fi
 
+# Owned tensor effects have their own focused runner; actual GPUs are opt-in.
+if [[ $tensor_device == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_tensor_device.sh
+    phase "tensor-device-v1 (focused gate, no full mutation claim)"
+fi
+
 # Chapter 13's qualification gate has its own runner; --only qualify selects it.
 if [[ $qualify == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/qualify.sh
@@ -339,4 +350,7 @@ if [[ ${#only[@]} -gt 0 ]]; then
     echo "(--only checks the named units; run psionic/check.sh without --only before release)"
 else
     echo "Psionic completed chapters pass: Coax debug/release checks, zero-survivor mutation, native debug/release, ASan/UBSan and book"
+fi
+if [[ $tensor_device == 1 ]]; then
+    echo "tensor-device-v1 uses its focused gate; full mutation runs are not claimed"
 fi

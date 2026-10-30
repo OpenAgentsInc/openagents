@@ -57,6 +57,9 @@ PmStatus pm_memory(PmDeviceInfo *info);
 /* Compile generated Metal (coax metal-compute output) with fast math off. */
 PmStatus pm_compile(const char *source, size_t length, const char *name, PmModule *module, double *seconds);
 PmStatus pm_kernel(PmModule module, const char *name, PmKernel *kernel);
+/* Release only after every batch using these objects has completed. */
+PmStatus pm_kernel_free(PmKernel kernel);
+PmStatus pm_unload(PmModule module);
 
 /* Shared storage: pm_contents is the CPU address of the same bytes. */
 PmStatus pm_alloc(size_t bytes, PmBuffer *buffer);

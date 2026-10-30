@@ -1,0 +1,155 @@
+// Chapter 3b: placement, dtype/ownership and synchronization policy. Native
+// code owns opaque allocations and device calls; these records decide effects.
+#load "tensor-view.coax";
+#authority;
+// book:begin records
+TdDevice :: enum u8 {cpu;cuda;metal;}
+TdDtype :: enum u8 {f32;f16;bf16;}
+TdStatus :: enum u8 {ok;device;dtype;shape;capacity;budget;state;busy;number;arithmetic;counter;alias;driver;absent;cancelled;memory;}
+TdIds :: struct {session:int=1;storage:int=1;}
+TdSessionState :: struct {identity:int;device:TdDevice;budget:int;bytes:int;allocations:int;pending:int;live:bool;poisoned:bool;}
+TdState :: struct {owner:TvStorage;session:int;device:TdDevice;dtype:TdDtype;resident:int;temporary:int;refs:int;readers:int;pending:bool;error:TdStatus;}
+TdDropout :: struct {seed:u32;stream:u32;first:int;keep:int=32768;training:bool=true;}
+TdRng :: struct {seed:u32;stream:u32;next:int;}
+// book:end records
+TdIssued :: struct {status:TdStatus;identity:int;next:TdIds;}
+TdSessionResult :: struct {status:TdStatus;state:TdSessionState;}
+TdAllocation :: struct {status:TdStatus;elements:int;payload:int;flags:int;meta:int;resident:int;temporary:int;total:int;input_bytes:int;}
+TdChange :: struct {status:TdStatus;applied:bool;session:TdSessionState;state:TdState;}
+TdStateResult :: struct {status:TdStatus;state:TdState;}
+TdCopyPlan :: struct {status:TdStatus;direct:bool;temporary:int;}
+TdProgramPlan :: struct {status:TdStatus;shape:TvShape;dtype:TdDtype;elements:int;borrow_a:int;borrow_b:int;}
+TdRange :: struct {status:TdStatus;first:int;count:int;next:TdRng;}
+TD_BUDGET_LIMIT :: 1073741824;
+
+#test "placement is explicit and low precision types promote without a fallback" {
+    #assert td_promote(TdDtype.f16,TdDtype.f16)==TdDtype.f16 && td_promote(TdDtype.bf16,TdDtype.bf16)==TdDtype.bf16;
+    #assert td_promote(TdDtype.f16,TdDtype.bf16)==TdDtype.f32 && td_promote(TdDtype.f32,TdDtype.bf16)==TdDtype.f32;
+    #assert !td_device_known(255) && !td_dtype_known(255);
+    #assert td_session(1,TdDevice.cuda,1000000,false,true).status==TdStatus.absent;
+    #assert td_session(1,TdDevice.cpu,1000000,true,false).status==TdStatus.device;
+    #assert td_session(1,TdDevice.cpu,-1,true,true).status==TdStatus.budget;
+    ids:=TdIds.{};a:=td_issue(ids,true);b:=td_issue(a.next,false);#assert a.identity==1 && b.identity==1 && b.next.storage==2 && b.next.session==2;
+    ids.storage=9223372036854775807;#assert td_issue(ids,false).status==TdStatus.capacity;
+}
+#test "resident and transient allocations are both admitted before effects" {
+    s:=td_session(1,TdDevice.cpu,1000000,true,true).state;shape:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};p:=td_allocate_plan(s,shape,TdDtype.f16,12,true);
+    #assert p.status==TdStatus.ok && p.payload==6 && p.flags==16 && p.meta==32 && p.resident==160 && p.total==172;
+    s.budget=171;#assert td_allocate_plan(s,shape,TdDtype.f16,12,true).status==TdStatus.budget;s.budget=172;
+    c:=td_commit(s,shape,TdDtype.f16,12,1);#assert c.status==TdStatus.ok && c.session.bytes==172 && c.session.pending==1 && c.state.pending && c.state.refs==1;
+    #assert td_access(c.session,c.state)==TdStatus.busy && td_drop(c.session,c.state).status==TdStatus.busy;
+    flags:=[3]u8.[0,0,0];done:=td_finish(c.session,c.state,flags[..],TdStatus.ok);#assert done.status==TdStatus.ok && done.session.bytes==160 && done.session.pending==0 && !done.state.pending && done.state.temporary==0;
+    released:=td_drop(done.session,done.state);#assert released.status==TdStatus.ok && released.state.refs==0 && !released.state.owner.live && released.session.bytes==0 && released.session.allocations==0;
+    #assert td_close_plan(released.session)==TdStatus.ok;
+}
+#test "views share allocation references and pending readers prevent release" {
+    s:=td_session(1,TdDevice.cpu,1000000,true,true).state;shape:=TvShape.{rank=1,dims=[4]int.[3,0,0,0]};c:=td_commit(s,shape,TdDtype.f32,0,1);flags:=[3]u8.[0,0,0];c=td_finish(c.session,c.state,flags[..],TdStatus.ok);
+    view:=tv_contiguous(c.state.owner,shape,false).view;retained:=td_retain(c.session,c.state,view,true);#assert retained.status==TdStatus.ok && retained.state.refs==2;
+    borrowed:=td_borrow(retained.state,2);#assert borrowed.status==TdStatus.ok && borrowed.state.readers==2 && td_drop(c.session,borrowed.state).status==TdStatus.busy;
+    returned:=td_return(borrowed.state,2);#assert returned.status==TdStatus.ok && returned.state.readers==0;#assert td_return(returned.state,1).status==TdStatus.state;
+    dropped:=td_drop(c.session,returned.state);#assert dropped.state.refs==1 && dropped.state.owner.live && dropped.session.bytes==c.session.bytes;
+    #assert td_close_plan(dropped.session)==TdStatus.busy;
+}
+#test "programs require co-placement and account for aliased input borrows" {
+    s:=td_session(1,TdDevice.cpu,1000000,true,true).state;shape:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};c:=td_commit(s,shape,TdDtype.bf16,0,1);flags:=[2]u8.[0,0];c=td_finish(c.session,c.state,flags[..],TdStatus.ok);v:=tv_contiguous(c.state.owner,shape,false).view;
+    p:=td_program_plan(c.session,c.state,v,c.state,v,TdDropout.{},true);#assert p.status==TdStatus.ok && p.dtype==TdDtype.bf16 && p.borrow_a==2 && p.borrow_b==0;
+    other:=c.state;other.session=2;#assert td_program_plan(c.session,c.state,v,other,v,TdDropout.{},true).status==TdStatus.device;
+    #assert td_program_plan(c.session,c.state,v,c.state,v,TdDropout.{keep=65537},true).status==TdStatus.capacity;
+    #assert td_program_plan(c.session,c.state,v,c.state,v,TdDropout.{first=4294967295},true).status==TdStatus.counter;
+    #assert td_program_plan(c.session,c.state,v,c.state,v,TdDropout.{},false).status==TdStatus.state;
+}
+#test "numeric failure and cancellation release pending state without data access" {
+    s:=td_session(1,TdDevice.cpu,1000000,true,true).state;shape:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};c:=td_commit(s,shape,TdDtype.f32,0,1);flags:=[2]u8.[0,2];r:=td_finish(c.session,c.state,flags[..],TdStatus.ok);
+    #assert r.status==TdStatus.arithmetic && !r.state.pending && r.session.pending==0 && td_access(r.session,r.state)==TdStatus.arithmetic;
+    #assert td_drop(r.session,r.state).status==TdStatus.ok;
+    r=td_finish(c.session,c.state,flags[..],TdStatus.cancelled);#assert r.status==TdStatus.cancelled && !r.session.poisoned;
+    r=td_finish(c.session,c.state,flags[..],TdStatus.driver);#assert r.status==TdStatus.driver && r.session.poisoned && td_access(r.session,r.state)==TdStatus.driver;
+    #assert td_allocate_plan(r.session,shape,TdDtype.f32,0,true).status==TdStatus.driver;
+    flags[0]=9;#assert td_numeric(flags[..]).status==TdStatus.state;
+}
+#test "copy plans disclose host staging and reads require a completed result" {
+    s:=td_session(1,TdDevice.cpu,1000000,true,true).state;t:=td_session(2,TdDevice.cuda,1000000,true,true).state;shape:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};c:=td_commit(s,shape,TdDtype.f16,0,1);flags:=[2]u8.[0,0];c=td_finish(c.session,c.state,flags[..],TdStatus.ok);v:=tv_contiguous(c.state.owner,shape,false).view;
+    p:=td_copy_plan(t,c.session,c.state,v,TdDtype.f32,true);#assert p.status==TdStatus.ok && !p.direct && p.temporary==4;
+    p=td_copy_plan(c.session,c.session,c.state,v,TdDtype.f32,true);#assert p.status==TdStatus.ok && p.direct && p.temporary==0;
+    #assert td_export_plan(c.session,c.state,v,4,false)==TdStatus.ok && td_export_plan(c.session,c.state,v,3,false)==TdStatus.capacity;
+    #assert td_export_plan(c.session,c.state,v,4,true)==TdStatus.alias;
+    meta:[15]int;#assert td_bind(c.state.owner,v,c.state.owner,v,meta[..])==TdStatus.ok && meta[0]==1 && meta[1]==2 && meta[6]==1 && meta[11]==1;
+}
+#test "counter reservations do not wrap and are independent of allocation identity" {
+    rng:=TdRng.{seed=123,stream=7};a:=td_rng_reserve(rng,3);b:=td_rng_reserve(a.next,5);#assert a.first==0 && b.first==3 && b.next.next==8 && b.next.seed==123 && b.next.stream==7;
+    rng.next=4294967295;#assert td_rng_reserve(rng,1).next.next==4294967296 && td_rng_reserve(rng,2).status==TdStatus.counter;
+    rng.next=4294967296;#assert td_rng_reserve(rng,0).status==TdStatus.ok && td_rng_reserve(rng,1).status==TdStatus.counter;
+}
+
+td_device_known :: (tag:u8)->bool #export_c {return tag<3;}
+td_dtype_known :: (tag:u8)->bool #export_c {return tag<3;}
+td_width :: (dtype:TdDtype)->int #export_c {if dtype==TdDtype.f32 {return 4;}return 2;}
+td_promote :: (a:TdDtype,b:TdDtype)->TdDtype #export_c {if a==b {return a;}return TdDtype.f32;}
+td_issue :: (ids:TdIds,session:bool)->TdIssued #export_c {n:=ids.storage;if session {n=ids.session;}if n<1 || n==9223372036854775807 {return TdIssued.{status=TdStatus.capacity};}next:=ids;if session {next.session+=1;}else {next.storage+=1;}return TdIssued.{identity=n,next=next};}
+td_session :: (identity:int,device:TdDevice,budget:int,available:bool,little_endian:bool)->TdSessionResult #export_c {
+    if !td_device_known(cast(u8)device) || !little_endian {return TdSessionResult.{status=TdStatus.device};}if !available {return TdSessionResult.{status=TdStatus.absent};}
+    if identity<1 {return TdSessionResult.{status=TdStatus.state};}if budget<0 || budget>TD_BUDGET_LIMIT {return TdSessionResult.{status=TdStatus.budget};}
+    return TdSessionResult.{state=TdSessionState.{identity=identity,device=device,budget=budget,live=true}};
+}
+td_session_valid :: (s:TdSessionState)->bool {return s.live && s.identity>0 && td_device_known(cast(u8)s.device) && s.budget>=0 && s.budget<=TD_BUDGET_LIMIT && s.bytes>=0 && s.bytes<=s.budget && s.allocations>=0 && s.allocations<=TV_LIMIT && s.pending>=0 && s.pending<=s.allocations;}
+td_access :: (s:TdSessionState,a:TdState)->TdStatus #export_c {
+    if !td_session_valid(s) || !tv_storage_valid(a.owner) || a.session!=s.identity || a.device!=s.device || a.refs<1 || a.refs>TV_LIMIT || a.readers<0 || a.readers>TV_LIMIT {return TdStatus.state;}
+    if !td_dtype_known(cast(u8)a.dtype) {return TdStatus.dtype;}if s.poisoned {return TdStatus.driver;}if a.pending {return TdStatus.busy;}return a.error;
+}
+td_align :: (bytes:int)->int {return (bytes+15)/16*16;}
+td_allocate_plan :: (s:TdSessionState,shape:TvShape,dtype:TdDtype,temporary:int,empty_slot:bool)->TdAllocation #export_c {
+    if !td_session_valid(s) || !empty_slot {return TdAllocation.{status=TdStatus.state};}if s.poisoned {return TdAllocation.{status=TdStatus.driver};}
+    if !td_dtype_known(cast(u8)dtype) {return TdAllocation.{status=TdStatus.dtype};}n:=tv_elements(shape);if n.status!=TvStatus.ok {return TdAllocation.{status=TdStatus.shape};}
+    if temporary<0 || temporary>4*TV_LIMIT || s.allocations>=TV_LIMIT {return TdAllocation.{status=TdStatus.capacity};}
+    p:=TdAllocation.{elements=n.elements,payload=n.elements*td_width(dtype),temporary=temporary};p.flags=td_align(p.payload);p.meta=p.flags+td_align(n.elements);p.resident=p.meta+128;p.total=p.resident+temporary;
+    if p.total>s.budget-s.bytes {return TdAllocation.{status=TdStatus.budget};}return p;
+}
+td_commit :: (s:TdSessionState,shape:TvShape,dtype:TdDtype,temporary:int,identity:int)->TdChange #export_c {
+    p:=td_allocate_plan(s,shape,dtype,temporary,true);if p.status!=TdStatus.ok {return TdChange.{status=p.status};}owner:=tv_owner(identity,1,p.elements);if owner.status!=TvStatus.ok {return TdChange.{status=TdStatus.state};}
+    next:=s;next.bytes+=p.total;next.allocations+=1;next.pending+=1;
+    return TdChange.{applied=true,session=next,state=TdState.{owner=owner.storage,session=s.identity,device=s.device,dtype=dtype,resident=p.resident,temporary=temporary,refs=1,pending=true}};
+}
+td_numeric :: (flags:[]u8)->TdStateResult #export_c {for value:flags {if value==1 {return TdStateResult.{status=TdStatus.number};}if value==2 {return TdStateResult.{status=TdStatus.arithmetic};}if value!=0 {return TdStateResult.{status=TdStatus.state};}}return TdStateResult.{};}
+td_finish :: (s:TdSessionState,a:TdState,flags:[]u8,effect:TdStatus)->TdChange #export_c {
+    if !td_session_valid(s) || !a.owner.live || a.session!=s.identity || !a.pending || s.pending<1 || a.temporary<0 || a.temporary>s.bytes {return TdChange.{status=TdStatus.state};}
+    if effect==TdStatus.ok && flags.count!=a.owner.elements {return TdChange.{status=TdStatus.capacity};}
+    status:=effect;if status==TdStatus.ok {status=td_numeric(flags).status;}
+    next:=s;out:=a;next.pending-=1;next.bytes-=a.temporary;out.temporary=0;out.pending=false;out.error=status;if status==TdStatus.driver {next.poisoned=true;}
+    return TdChange.{status=status,applied=true,session=next,state=out};
+}
+td_retain :: (s:TdSessionState,a:TdState,v:TvView,empty_slot:bool)->TdStateResult #export_c {
+    status:=td_access(s,a);if status!=TdStatus.ok {return TdStateResult.{status=status};}if !empty_slot || v.writable || tv_layout(a.owner,v).status!=TvStatus.ok {return TdStateResult.{status=TdStatus.state};}
+    if a.refs>=TV_LIMIT {return TdStateResult.{status=TdStatus.capacity};}next:=a;next.refs+=1;return TdStateResult.{state=next};
+}
+td_borrow :: (a:TdState,count:int)->TdStateResult #export_c {if !a.owner.live || a.pending || a.error!=TdStatus.ok || count<1 || count>TV_LIMIT || a.readers<0 || a.readers>TV_LIMIT-count {return TdStateResult.{status=TdStatus.busy};}next:=a;next.readers+=count;return TdStateResult.{state=next};}
+td_return :: (a:TdState,count:int)->TdStateResult #export_c {if !a.owner.live || count<1 || count>a.readers {return TdStateResult.{status=TdStatus.state};}next:=a;next.readers-=count;return TdStateResult.{state=next};}
+td_drop :: (s:TdSessionState,a:TdState)->TdChange #export_c {
+    if !td_session_valid(s) || !a.owner.live || a.session!=s.identity || a.refs<1 || a.resident<128 || a.resident>s.bytes {return TdChange.{status=TdStatus.state};}
+    if a.pending || a.readers>0 {return TdChange.{status=TdStatus.busy};}next:=s;out:=a;out.refs-=1;
+    if out.refs==0 {next.bytes-=a.resident;next.allocations-=1;out.owner.live=false;}return TdChange.{applied=true,session=next,state=out};
+}
+td_close_plan :: (s:TdSessionState)->TdStatus #export_c {if !td_session_valid(s) {return TdStatus.state;}if s.allocations!=0 || s.pending!=0 || s.bytes!=0 {return TdStatus.busy;}return TdStatus.ok;}
+td_counter :: (first:int,count:int)->bool {return count>=0 && count<=TV_LIMIT && first>=0 && first<=4294967296-count;}
+td_program_plan :: (s:TdSessionState,a:TdState,av:TvView,b:TdState,bv:TvView,r:TdDropout,empty_slot:bool)->TdProgramPlan #export_c {
+    if a.session!=s.identity || b.session!=s.identity || a.device!=s.device || b.device!=s.device {return TdProgramPlan.{status=TdStatus.device};}
+    status:=td_access(s,a);if status!=TdStatus.ok {return TdProgramPlan.{status=status};}status=td_access(s,b);if status!=TdStatus.ok {return TdProgramPlan.{status=status};}
+    al:=tv_layout(a.owner,av);bl:=tv_layout(b.owner,bv);if al.status!=TvStatus.ok || bl.status!=TvStatus.ok || av.shape.rank!=bv.shape.rank {return TdProgramPlan.{status=TdStatus.shape};}
+    for i:0..<4 {if av.shape.dims[i]!=bv.shape.dims[i] {return TdProgramPlan.{status=TdStatus.shape};}}
+    if !empty_slot {return TdProgramPlan.{status=TdStatus.state};}if r.keep<0 || r.keep>65536 {return TdProgramPlan.{status=TdStatus.capacity};}if !td_counter(r.first,al.elements) {return TdProgramPlan.{status=TdStatus.counter};}
+    p:=TdProgramPlan.{shape=av.shape,dtype=td_promote(a.dtype,b.dtype),elements=al.elements,borrow_a=1,borrow_b=1};if a.owner.identity==b.owner.identity {p.borrow_a=2;p.borrow_b=0;}
+    if td_borrow(a,p.borrow_a).status!=TdStatus.ok {return TdProgramPlan.{status=TdStatus.busy};}if p.borrow_b>0 && td_borrow(b,p.borrow_b).status!=TdStatus.ok {return TdProgramPlan.{status=TdStatus.busy};}return p;
+}
+td_copy_plan :: (target:TdSessionState,source:TdSessionState,a:TdState,v:TvView,dtype:TdDtype,empty_slot:bool)->TdCopyPlan #export_c {
+    status:=td_access(source,a);if status!=TdStatus.ok {return TdCopyPlan.{status=status};}if !td_session_valid(target) || !empty_slot {return TdCopyPlan.{status=TdStatus.state};}if target.poisoned {return TdCopyPlan.{status=TdStatus.driver};}
+    if !td_dtype_known(cast(u8)dtype) {return TdCopyPlan.{status=TdStatus.dtype};}if tv_layout(a.owner,v).status!=TvStatus.ok {return TdCopyPlan.{status=TdStatus.shape};}
+    direct:=target.device==source.device && (target.device==TdDevice.cpu || target.identity==source.identity);temporary:=0;if !direct {temporary=a.owner.elements*td_width(a.dtype);}return TdCopyPlan.{direct=direct,temporary=temporary};
+}
+td_export_plan :: (s:TdSessionState,a:TdState,v:TvView,capacity:int,overlap:bool)->TdStatus #export_c {
+    status:=td_access(s,a);if status!=TdStatus.ok {return status;}layout:=tv_layout(a.owner,v);if layout.status!=TvStatus.ok {return TdStatus.shape;}
+    if capacity<layout.elements*td_width(a.dtype) {return TdStatus.capacity;}if overlap {return TdStatus.alias;}return TdStatus.ok;
+}
+td_bind :: (ao:TvStorage,a:TvView,bo:TvStorage,b:TvView,meta:[]int)->TdStatus #export_c {
+    if meta.count!=15 {return TdStatus.capacity;}if tv_layout(ao,a).status!=TvStatus.ok || tv_layout(bo,b).status!=TvStatus.ok {return TdStatus.shape;}
+    meta[0]=a.shape.rank;for i:0..<4 {meta[1+i]=a.shape.dims[i];meta[6+i]=a.strides[i];meta[11+i]=b.strides[i];}meta[5]=a.offset;meta[10]=b.offset;return TdStatus.ok;
+}
+td_rng_reserve :: (rng:TdRng,count:int)->TdRange #export_c {if !td_counter(rng.next,count) {return TdRange.{status=TdStatus.counter};}next:=rng;next.next+=count;return TdRange.{first=rng.next,count=count,next=next};}

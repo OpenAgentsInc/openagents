@@ -460,6 +460,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/tensor-devices.coax",
+      "chapter": "psionic/book/ch003b-one-tensor-several-devices-and-dtypes.md",
+      "stdout": "psionic/fixtures/tensor-devices.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

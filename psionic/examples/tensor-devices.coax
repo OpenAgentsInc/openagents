@@ -1,0 +1,21 @@
+#load "../lib/tensor-device-host.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    shape:=TvShape.{rank=1,dims=[4]int.[4,0,0,0]};
+    s:=td_session(1,TdDevice.cpu,4096,true,true).state;
+    c:=td_commit(s,shape,TdDtype.f32,0,1);
+    a:=[4]f32.[-1,0,1,2];b:=[4]f32.[1,2,3,4];packed_a:[16]u8;packed_b:[16]u8;out:[16]u8;flags:[4]u8;
+    for i:0..<4 {tdk_put(packed_a[..],i,0,f32_bits(a[i]));tdk_put(packed_b[..],i,0,f32_bits(b[i]));}
+    v:=tv_contiguous(c.state.owner,shape,false).view;meta:[15]int;
+    #assert td_bind(c.state.owner,v,c.state.owner,v,meta[..])==TdStatus.ok;
+    for i:0..<4 {tdk_program(i,0,0,0,123,7,0,32768,1,meta[..],packed_a[..],packed_b[..],out[..],flags[..]);}
+    c=td_finish(c.session,c.state,flags[..],TdStatus.ok);#assert c.status==TdStatus.ok;
+    print("dropout(relu(a+b)), seed 123 stream 7: %, %, %, %\n",f32_from_bits(tdk_get(out[..],0,0)),f32_from_bits(tdk_get(out[..],1,0)),f32_from_bits(tdk_get(out[..],2,0)),f32_from_bits(tdk_get(out[..],3,0)));
+    print("promotion: f16 + f16 stays f16; f16 + bf16 becomes f32\n");
+    range:=td_rng_reserve(TdRng.{seed=123,stream=7},4);#assert range.status==TdStatus.ok && range.next.next==4;
+    print("counter reservation: first %, count %, next %\n",range.first,range.count,range.next.next);
+    dropped:=td_drop(c.session,c.state);#assert dropped.status==TdStatus.ok && td_close_plan(dropped.session)==TdStatus.ok;
+    print("released: % bytes, % pending operations\n",dropped.session.bytes,dropped.session.pending);
+}
+// book:end example

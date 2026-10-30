@@ -81,6 +81,19 @@ PmStatus pm_kernel(PmModule module, const char *name, PmKernel *kernel) {
     }
 }
 
+PmStatus pm_kernel_free(PmKernel kernel) {
+    if (!kernel) return PM_OK;
+    id<MTLComputePipelineState> object = (__bridge_transfer id<MTLComputePipelineState>)kernel;
+    (void)object;
+    return PM_OK;
+}
+PmStatus pm_unload(PmModule module) {
+    if (!module) return PM_OK;
+    id<MTLLibrary> object = (__bridge_transfer id<MTLLibrary>)module;
+    (void)object;
+    return PM_OK;
+}
+
 PmStatus pm_alloc(size_t bytes, PmBuffer *buffer) {
     @autoreleasepool {
         if (!device) return PM_ABSENT;

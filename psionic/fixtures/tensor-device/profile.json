@@ -1,0 +1,74 @@
+{
+  "profile": "tensor-device-v1",
+  "devices": [
+    "cpu",
+    "cuda",
+    "metal"
+  ],
+  "dtypes": [
+    "f32",
+    "f16",
+    "bf16"
+  ],
+  "promotion": [
+    [
+      "f32",
+      "f32",
+      "f32"
+    ],
+    [
+      "f32",
+      "f16",
+      "f32"
+    ],
+    [
+      "f32",
+      "f32",
+      "bf16"
+    ]
+  ],
+  "operations": [
+    "finite cast",
+    "owned placement copy",
+    "strided logical export",
+    "counter32 uniform",
+    "dropout(relu(a+b))"
+  ],
+  "rounding": "integer round-to-nearest-even; f32 compute then one output narrowing",
+  "counter": "Counter32-v1; explicit seed, stream and nonwrapping logical range",
+  "counter_vectors": [
+    "69ce05b4",
+    "a8736e7e",
+    "ecde33c3",
+    "1a54cbf9",
+    "8377b394",
+    "6c9e2360",
+    "6fa8dc06",
+    "b499e5f3"
+  ],
+  "exact": [
+    "finite packed casts",
+    "uniform bytes",
+    "power-of-two dropout normal fixtures",
+    "logical counter masks"
+  ],
+  "arithmetic_scaled_tolerance": {
+    "f32": 2e-06,
+    "f16": 0.001953125,
+    "bf16": 0.015625
+  },
+  "bounds": {
+    "rank": 4,
+    "logical_elements": 1048576,
+    "session_bytes": 1073741824
+  },
+  "limits": [
+    "exclusive host access",
+    "immutable ready storage",
+    "no implicit placement or CPU fallback",
+    "not all chapter 3a operators",
+    "no autograd or training RNG quality claim",
+    "device arithmetic may flush f32 subnormals; integer casts preserve them",
+    "CUDA device 0 and default Metal device only; no physical GPU ordinal selection"
+  ]
+}

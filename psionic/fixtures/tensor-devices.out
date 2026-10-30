@@ -1,0 +1,4 @@
+dropout(relu(a+b)), seed 123 stream 7: 0.0, 0.0, 0.0, 12.0
+promotion: f16 + f16 stays f16; f16 + bf16 becomes f32
+counter reservation: first 0, count 4, next 4
+released: 0 bytes, 0 pending operations

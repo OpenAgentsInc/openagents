@@ -1,0 +1,43 @@
+#authority;
+#load "tensor-placement.coax";
+#load "tensor-device-kernels.coax";
+#test "a failed logical read never publishes partially staged bytes" {
+    flags:=[2]u8.[0,2];stage:=[2]u8.[1,2];out:=[3]u8.[7,7,7];#assert td_export_commit(flags[..],stage[..],out[..])==TdStatus.arithmetic && out[0]==7;
+    flags[1]=0;#assert td_export_commit(flags[..],stage[..],out[..])==TdStatus.ok && out[0]==1 && out[1]==2 && out[2]==7;
+}
+
+#test "native binding IDs and typed import sizes are admitted without effects" {
+    ids:=td_initial_ids();#assert ids.session==1 && ids.storage==1 && td_entry(0)=="tdk_cast" && td_entry(2)=="tdk_program" && td_entry(3)=="";
+    s:=td_session(1,TdDevice.cuda,10000,true,true).state;#assert td_poison(s).poisoned;
+    shape:=TvShape.{rank=1,dims=[4]int.[2,0,0,0]};p:=td_import_plan(s,shape,TdDtype.f32,TdDtype.f16,2,true,true,true);
+    #assert p.status==TdStatus.ok && p.input_bytes==8 && p.temporary==8 && p.payload==4;
+    #assert td_import_plan(s,shape,TdDtype.f32,TdDtype.f16,1,true,true,true).status==TdStatus.capacity;
+    #assert td_import_plan(s,shape,TdDtype.f16,TdDtype.f32,4,false,false,true).status==TdStatus.capacity;
+}
+
+#test "export staging sizes follow the logical view rather than the allocation" {
+    s:=td_session(1,TdDevice.cpu,10000,true,true).state;c:=td_commit(s,TvShape.{rank=1,dims=[4]int.[3,0,0,0]},TdDtype.f16,0,1);
+    v:=tv_contiguous(c.state.owner,TvShape.{rank=1,dims=[4]int.[3,0,0,0]},false).view;
+    #assert td_export_layout(c.state,v).payload==6;
+}
+
+// Exact host publication of a staged logical packed tensor.
+td_export_commit :: (flags:[]u8,stage:[]u8,out:[]u8)->TdStatus #export_c {
+    status:=td_numeric(flags).status;if status!=TdStatus.ok {return status;}if out.count<stage.count {return TdStatus.capacity;}
+    for i:0..<stage.count {out[i]=stage[i];}return TdStatus.ok;
+}
+
+// Native adapters bind these names, and use one process-local ID ledger.
+td_initial_ids :: ()->TdIds #export_c {return TdIds.{};}
+td_entry :: (id:int)->string #export_c {names:=[3]string.["tdk_cast","tdk_uniform","tdk_program"];if id<0 || id>=3 {return "";}return names[id];}
+td_poison :: (s:TdSessionState)->TdSessionState #export_c {out:=s;out.poisoned=true;return out;}
+td_import_plan :: (s:TdSessionState,shape:TvShape,source:TdDtype,target:TdDtype,count:int,float_units:bool,present:bool,empty_slot:bool)->TdAllocation #export_c {
+    if !td_dtype_known(cast(u8)source) {return TdAllocation.{status=TdStatus.dtype};}n:=tv_elements(shape);if n.status!=TvStatus.ok {return TdAllocation.{status=TdStatus.shape};}
+    bytes:=n.elements*td_width(source);if float_units {if source!=TdDtype.f32 || count!=n.elements {return TdAllocation.{status=TdStatus.capacity};}}else if count!=bytes {return TdAllocation.{status=TdStatus.capacity};}
+    if bytes>0 && !present {return TdAllocation.{status=TdStatus.capacity};}temporary:=bytes;if s.device==TdDevice.cpu {temporary=0;}out:=td_allocate_plan(s,shape,target,temporary,empty_slot);if out.status==TdStatus.ok {out.input_bytes=bytes;}return out;
+}
+
+td_export_layout :: (a:TdState,v:TvView)->TdAllocation #export_c {
+    if tv_layout(a.owner,v).status!=TvStatus.ok {return TdAllocation.{status=TdStatus.shape};}
+    return td_allocate_plan(td_session(1,TdDevice.cpu,TD_BUDGET_LIMIT,true,true).state,v.shape,a.dtype,0,true);
+}
