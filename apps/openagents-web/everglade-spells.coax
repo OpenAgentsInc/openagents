@@ -177,8 +177,7 @@ Spells :: struct {
   flash: f32; flash_rgb: Point;
   shock: WaterShock;         // what the last bolt did to you through the water (water-spells.coax)
   white: f32;                // the strike's white-out over the view, a few frames
-  shake: f32;                // the camera's shake, 0 to 1 (spells_camera)
-  look: f32;                 // how far the camera looks up while meteors fall, 0 to 1
+  dome_y: f32; dome_vy: f32; dome_on: bool;   // the observatory's dome: its middle's height and fall (sp_dome)
   rn: f32;                   // the looks' own random stream (sp_rand), apart from the dice
   broke: int;                // pieces this cast broke
   pushed: int;               // pieces the orb's water shoved loose
@@ -726,7 +725,8 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   if !wet { sp_add_scorch(s, under, ifx kind == 0 then 1.4f32 else radius * 0.45, kind == 2); }
   if kind != 2 {
     // the old engine's meteor_explosion and thunderbolt_strike: sparks thrown out and falling, a
-    // shockwave racing along the ground, dust shoved out with it, a pall of smoke, and the camera shaken
+    // shockwave racing along the ground, dust shoved out with it and a pall of smoke (the camera is
+    // the player's: no spell lifts, pulls or shakes it)
     low := at.y - floor_y < 2.5;
     up := v3(0, 1, 0);
     face := up;
@@ -755,10 +755,6 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
                    v3((sp_rand(s) - 0.5) * 1.2, 1.4 + 1.2 * sp_rand(s), (sp_rand(s) - 0.5) * 1.2),
                    1.4 + sp_rand(s), 4.0, 0.3, 0.3, 0.6, 0.3);
     }
-    eye := s[0].sp.shot.eye;
-    reach := clamp(1 - length(sub(at, eye)) / 65, 0, 1);
-    jolt := ifx mega then 1.0f32 else ifx lightning then 0.7f32 else 0.55f32 * reach;
-    s[0].sp.shake = lo(s[0].sp.shake + (ifx lightning then hi(jolt * reach, 0.3) else jolt), 1);
   }
   if kind == 2 {
     for q: 0..<SP_DROPS {
@@ -984,6 +980,7 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   }
   // the debris (verse/demolish.coax), its dust, and what grows back
   demo_step_wet(w, everglade_ground(), s[0].heights[..], s[0].water_grid[..], dt);
+  sp_dome(s, dt);
   for e: 0..<w[0].event_n {
     ev := w[0].events[e];
     // falling into the water: a splash, not dust
@@ -1010,29 +1007,6 @@ spells_frame :: (s: [] Everglade, u: [] f32, shot: Shot, dt: f32) {
   if s[0].sp.news_t > 0 { s[0].sp.news_t = hi(s[0].sp.news_t - dt, 0); }
   s[0].sp.flash = hi(s[0].sp.flash - dt * 4, 0);
   s[0].sp.white = hi(s[0].sp.white - dt * 10, 0);
-}
-
-// The camera, before the frame is drawn: while meteors are in the air it looks up a little so their
-// fall shows, and a blast shakes it (the old engine's shake: a jolt that settles over a second).
-spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
-  if !sp_on(s) { return shot; }
-  want := 0.0f32;
-  for m: 0..<SP_METEORS { if s[0].sp.meteors[m].live { want = 1; } }
-  if s[0].sp.casting == SP_METEOR && s[0].sp.cast_t > srd_spell(SPELL_METEOR_SWARM).bar - 0.6 { want = 1; }
-  s[0].sp.look += (want - s[0].sp.look) * settle(ifx want > 0 then 2.5f32 else 1.2f32, dt);
-  s[0].sp.shake = hi(s[0].sp.shake - dt, 0);
-  out := shot;
-  if s[0].sp.look > 0.001 {
-    k := s[0].sp.look * s[0].sp.look * (3 - 2 * s[0].sp.look);
-    out.at.y += k * length(sub(shot.at, shot.eye)) * 0.22;
-  }
-  if s[0].sp.shake > 0.001 {
-    a := s[0].sp.shake * s[0].sp.shake * 0.28;
-    t := f32(s[0].time);
-    jolt := times(v3(sin(t * 47) + 0.5 * sin(t * 83), sin(t * 53 + 1), sin(t * 61 + 2) + 0.5 * sin(t * 97)), a);
-    out.eye = add(out.eye, jolt); out.at = add(out.at, jolt);
-  }
-  return out;
 }
 
 // Piece i's tint: its own, times `whole` (1 its own, toward 0 soot).
@@ -1887,6 +1861,80 @@ sp_cast_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, tray: f32) -> 
 // The town meshes' bounds as the pack's catalog gives them (pack 2026-10-29), for the checks.
 SP_TEST_BOUNDS :: "M Wall_Plaster_Straight 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_Window_Wide_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_Door_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_Plaster_WoodGrid 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Straight 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Window_Wide_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Wall_UnevenBrick_Door_Round 0 1 0 -1 -0.002 -0.314 1 3.123 0.092\nM Window_Wide_Round1 0 1 0 -0.682 1.016 -0.1 0.682 2.742 0.1\nM Door_1_Round 0 1 0 -0.046 0 -0.1 1.074 2.351 0.1\nM Corner_Exterior_Wood 0 1 0 -0.105 0 -0.12 0.105 3 0.12\nM Roof_RoundTiles_6x8 0 1 0 -4.125 -0.782 -4.829 4.125 4.89 4.854\nM Roof_Tower_RoundTiles 0 1 0 -2 0 -2 2 4 2\nM Roof_Log 0 1 0 -0.586 3.849 -5.348 0.563 5.236 5.348\nM Floor_WoodDark 0 1 0 -1 -0.1 -1 1 0 1\nM Floor_Brick 0 1 0 -1 -0.1 -1 1 0 1\nM Prop_Chimney 0 1 0 -0.4 0 -0.4 0.4 3.178 0.4\nM Stall_Empty 0 1 0 -0.922 0 -0.466 0.922 2.627 0.466\nM Barrel 0 1 0 -0.349 0 -0.349 0.349 0.898 0.349\nM Crate_Wooden 0 1 0 -0.421 0 -0.454 0.421 0.931 0.454\nM Bench 0 1 0 -1.388 0 -0.267 1.388 0.533 0.267\nM Prop_WoodenFence_Single 0 1 0 -1.03 0 -0.06 1.03 0.81 0.06\nM Roof_Front_Brick6 0 1 0 -3.347 -0.132 -0.335 3.348 4.384 0.794\n";
 
+// The observatory's dome (the engine's sphere on its tower, everglade.coax city): where it would rest
+// now: as built while its tower stands; down a storey for each it has lost; on the ground, bedded a
+// little in the rubble, once none holds it.
+SP_DOME_R :: 3.7;
+sp_dome_spot :: (s: [] Everglade) -> Point {
+  ob := EG_OBSERVATORY * EG_BOX;
+  ox := (EG_BUILDING[ob] + EG_BUILDING[ob + 2]) / 2; oz := (EG_BUILDING[ob + 1] + EG_BUILDING[ob + 3]) / 2;
+  return v3(ox, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS), oz);
+}
+// How many of the tower's storeys still hold the dome: counting up from the ground, each storey whose
+// pieces (in the observatory's footprint) at least half stand; the first that doesn't ends it.
+sp_dome_storeys :: (s: [] Everglade) -> int {
+  if !s[0].sp.ready || s[0].sp.dm.count < 1 { return OBSERVATORY_STOREYS; }
+  w := sp_dm(s);
+  ob := EG_OBSERVATORY * EG_BOX;
+  x0 := EG_BUILDING[ob] - 0.5; z0 := EG_BUILDING[ob + 1] - 0.5; x1 := EG_BUILDING[ob + 2] + 0.5; z1 := EG_BUILDING[ob + 3] + 0.5;
+  base := 1e9f32;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.cx < x0 || p.cx > x1 || p.cz < z0 || p.cz > z1 { continue; }
+    base = lo(base, p.y0);
+  }
+  all: [OBSERVATORY_STOREYS] int; up: [OBSERVATORY_STOREYS] int;
+  for k: 0..<OBSERVATORY_STOREYS { all[k] = 0; up[k] = 0; }
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.cx < x0 || p.cx > x1 || p.cz < z0 || p.cz > z1 { continue; }
+    k := clamp_i(cast(int) floor((p.cy - base) / f32(STOREY)), 0, OBSERVATORY_STOREYS - 1);
+    all[k] += 1;
+    if p.state == DP_STANDING { up[k] += 1; }
+  }
+  for k: 0..<OBSERVATORY_STOREYS { if all[k] > 0 && up[k] * 2 < all[k] { return k; } }
+  return OBSERVATORY_STOREYS;
+}
+sp_dome_rest :: (s: [] Everglade) -> f32 {
+  at := sp_dome_spot(s);
+  lost := OBSERVATORY_STOREYS - sp_dome_storeys(s);
+  if lost == 0 { return at.y; }
+  return hi(at.y - f32(lost) * f32(STOREY), ground_at(s, at.x, at.z) + f32(SP_DOME_R) * 0.4);
+}
+// The dome falls when what held it breaks: under gravity onto what stands below it, or the ground,
+// bouncing once on a hard landing with a burst of stone dust, then lying still. Stood up
+// again (R, or the town regrowing), it is back on its tower.
+sp_dome :: (s: [] Everglade, dt: f32) {
+  if !s[0].sp.dome_on { s[0].sp.dome_on = true; s[0].sp.dome_y = sp_dome_spot(s).y; s[0].sp.dome_vy = 0; return; }
+  rest := sp_dome_rest(s);
+  if s[0].sp.dome_y > rest + 0.001 || s[0].sp.dome_vy != 0 {
+    s[0].sp.dome_vy -= 9.81 * dt;
+    s[0].sp.dome_y += s[0].sp.dome_vy * dt;
+    if s[0].sp.dome_y <= rest {
+      hit := -s[0].sp.dome_vy;
+      s[0].sp.dome_y = rest;
+      s[0].sp.dome_vy = 0;
+      if hit > 2.5 {
+        s[0].sp.dome_vy = hit * 0.22;
+        if s[0].sp.ready && s[0].sp.dm.count > 0 {
+          w := sp_dm(s);
+          at := sp_dome_spot(s);
+          for q: 0..<(ifx hit > 6 then 10 else 4) {
+            a := (f32(q) + sp_rand(s)) * f32(TAU) / 10;
+            out := v3(cos(a), 0, sin(a));
+            demo_dust(w, add(v3(at.x, rest - f32(SP_DOME_R) * 0.6, at.z), times(out, f32(SP_DOME_R) * 0.9)), add(times(out, 1.5 + sp_rand(s)), v3(0, 0.4, 0)),
+                      1.2 + 0.6 * sp_rand(s), v3(0.62, 0.6, 0.57));
+          }
+        }
+      }
+    }
+  } else if rest > s[0].sp.dome_y + 0.01 {
+    s[0].sp.dome_y = rest;   // stood up again
+  }
+}
+// Where city() draws the dome's middle: its own fall's once the spells run, else on its tower.
+spells_dome_y :: (s: [] Everglade, on_tower: f32) -> f32 { return ifx s[0].sp.dome_on then s[0].sp.dome_y else on_tower; }
+
 sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   everglade_start(g);
   everglade_attach_demolish(g, dm);
@@ -2085,9 +2133,70 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
     #assert me.live && abs(me.from.y - me.to.y - f32(SP_HEIGHT)) < 0.01 && flat_gap(me.from, me.to) <= f32(SP_TILT) * 1.35 + 0.01;
   }
   for f: 0..<14 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
-  // a blast shook the camera, and nothing it drew took the town's last slots
-  #assert g[0].sp.shake > 0 || g[0].sp.look > 0;
+  // nothing it drew took the town's last slots
   #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] < SLOTS[SHAPE_SPHERE];
+}
+
+#test "spells: nothing a spell leaves stays up in the air: the observatory's dome falls when its tower breaks, lies still, and stands again with it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  at := sp_dome_spot(g[..]);
+  _ := 0;
+  for f: 0..<3 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, at.x - 4, 0, at.z - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  // whole, it sits on its tower as built
+  #assert g[0].sp.dome_on && abs(g[0].sp.dome_y - at.y) < 0.01 && g[0].sp.dome_vy == 0;
+  // the tower broken under it
+  broke := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state == DP_STANDING && p.cy < at.y && abs(p.cx - at.x) < 6 && abs(p.cz - at.z) < 6 { demo_break(w, i, v3(at.x, p.cy, at.z - 6), 4); broke += 1; }
+  }
+  #assert broke > 0 && sp_dome_storeys(g[..]) == 0;
+  ground := ground_at(g[..], at.x, at.z);
+  fell := false;
+  // (the dome's own fall stepped alone, so the test stays inside the compile-time budget)
+  for f: 0..<110 {
+    sp_dome(g[..], 1.0 / 40.0);
+    if g[0].sp.dome_vy < -1 { fell = true; }
+  }
+  // it fell under gravity and lies at rest on what is left, low: not hanging where the tower's top was
+  #assert fell;
+  #assert g[0].sp.dome_vy == 0 && abs(g[0].sp.dome_y - sp_dome_rest(g[..])) < 0.001;
+  #assert g[0].sp.dome_y < at.y - 3 && g[0].sp.dome_y >= ground;
+  // stood up again, it is back on its tower
+  _ = sp_restore(g[..], -1);
+  sp_dome(g[..], 1.0 / 60.0);
+  #assert abs(g[0].sp.dome_y - at.y) < 0.01;
+}
+
+#test "spells: casting leaves the camera where the player has it: no lift, no pull, no shake, a meteor swarm's or any spell's" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  // standing still, the camera settles where the player left it
+  _ := 0;
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  still := g[0].sp.shot;
+  for slot: 0..<4 {
+    ground := v3(ix - 4, ground_at(g[..], ix - 4, iz - 14), iz - 14);
+    g[0].sp.armed = slot; g[0].sp.aim = ground; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true; g[0].sp.far = false;
+    sp_cast(g[..]);
+    #assert g[0].sp.casting == slot;
+    g[0].sp.cast_t = srd_spell(SP_SPELL[slot]).bar - 0.05;
+    // the cast, the fall and the blasts: the drawn camera never moves
+    for f: 0..<8 {
+      _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+      #assert length(sub(g[0].sp.shot.eye, still.eye)) < 0.001 && length(sub(g[0].sp.shot.at, still.at)) < 0.001;
+    }
+  }
 }
 
 #test "spells: the Water Orb is water: cast at the inn every piece stands whole, and by a barrel the splash sends it rolling" {

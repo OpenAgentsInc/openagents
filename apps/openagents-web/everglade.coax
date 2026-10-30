@@ -1404,10 +1404,11 @@ block :: (s: [] Everglade, look: int, x0: f32, z0: f32, x1: f32, z1: f32, h: f32
 
 city :: (s: [] Everglade, u: [] f32) {
   // The palisade and the buildings are the kit's (build_town); the
-  // observatory's dome is the engine's sphere, as the kits have none.
+  // observatory's dome is the engine's sphere, as the kits have none; it falls when its tower breaks
+  // (everglade-spells.coax sp_dome).
   ob := EG_OBSERVATORY * EG_BOX;
   ox := (EG_BUILDING[ob] + EG_BUILDING[ob + 2]) / 2; oz := (EG_BUILDING[ob + 1] + EG_BUILDING[ob + 3]) / 2;
-  if !eg_hidden(s[0].ev.edits, EG_OBSERVATORY) { shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82); }
+  if !eg_hidden(s[0].ev.edits, EG_OBSERVATORY) { shape(s, SHAPE_SPHERE, LOOK_STONE, v3(ox, spells_dome_y(s, ground_at(s, ox, oz) + f32(STOREY) * f32(OBSERVATORY_STOREYS)), oz), 0, 0, 7.4, 7.4, 7.4, 0.78, 0.78, 0.82); }
   // The commons: the fountain, the quest board.
   g := ground_at(s, 0, 0);
   // the fountain: a carved basin and a column with an upper bowl, its water the water shader's
@@ -3103,7 +3104,6 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   else if s[0].water == WATER_WADING { shown.y = s[0].swim_feet + feet.y; }
 
   shot := camera_frame(s, shown, vx, vz, t);
-  shot = spells_camera(s, shot, t);   // looks up while meteors fall, shakes when a blast lands
 
   for k: 0..<5 { s[0].counts[k] = 0; }
   s[0].lathe_n = 0;
