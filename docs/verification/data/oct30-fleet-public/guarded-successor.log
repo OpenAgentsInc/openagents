@@ -1,0 +1,3 @@
+fleet: ready on http://127.0.0.1:8798/v1/systemone, identity psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 (throwaway buyer key)
+fleet: relay AUTH accepted
+fleet: remote answer from d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f (987 ms)

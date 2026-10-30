@@ -1,0 +1,56 @@
+{
+  "pid": 48404,
+  "argv": [
+    "/tmp/oct30-fleet-live/psionic-fleet",
+    "--identity",
+    "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+    "--port",
+    "8798",
+    "--fallback",
+    "http://127.0.0.1:63826",
+    "--timeout-ms",
+    "8000",
+    "--attempt-ms",
+    "2000",
+    "--discover-ms",
+    "750"
+  ],
+  "endpoint": "http://127.0.0.1:8798/v1/systemone",
+  "logs": "/tmp/oct30-fleet-live/fleet.log",
+  "stop": "kill -TERM 48404",
+  "key": "fresh throwaway buyer key in memory only",
+  "previous_pid": 2871,
+  "binary_sha256": "b406aa3483d08308214fb07ddf90252c61addf7fe767e6da1b8aad725a031bfb",
+  "tested_at_utc": "2026-10-30T15:40:37Z",
+  "smoke": {
+    "status": 200,
+    "elapsed_ms": 990.763,
+    "response": {
+      "answers": {
+        "wet": {
+          "type": "choice",
+          "choice": "no",
+          "confidence": 0.562371685,
+          "probabilities": {
+            "yes": 0.437628315,
+            "no": 0.562371685
+          }
+        }
+      },
+      "latency_ms": 49,
+      "model": "psionic-toy",
+      "service": {
+        "door": "pylon:oct30-coderos-demo",
+        "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+        "provider": "d3bb657d4da78f582267617412f3623e25e3b2115c70244829be3b11f6a3a73f",
+        "version": "psionic-pylon-v1"
+      },
+      "usage": null
+    }
+  },
+  "sources_sha256": {
+    "psionic/lib/fleet/protocol.coax": "76eb9c3e70c1c2efb57e3906dea81dee8abba0bce077c0951f4dd63195470f03",
+    "psionic/lib/fleet/service.coax": "f96085e07d85d2e8918428a3b1d56e1a64d909688260c955cd796cbb39d3594d",
+    "psionic/lib/fleet/run.coax": "6358e013019c1589d76371c96f2eeac10372c2aabe9043e5c5217b2aeddc75a7"
+  }
+}

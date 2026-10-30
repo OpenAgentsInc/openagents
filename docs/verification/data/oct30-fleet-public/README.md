@@ -30,3 +30,17 @@ The returned `service` identifies the actual route: `pylon:SLUG` and provider
 for remote work, or `psionic` for explicit local fallback. Neither a toy
 model's choice nor this demo is a model-quality claim. The production cloud
 API is not connected to this loopback process.
+
+## Guarded successor
+
+At 2026-10-30 15:40 UTC the adapter was replaced with the guarded sanitized
+binary `b406aa3483d08308214fb07ddf90252c61addf7fe767e6da1b8aad725a031bfb`,
+after affected numeric/native/framing checks passed. The original evidence
+above remains tied to its original binary and source hashes.
+
+Exactly one new public HTTP smoke returned200 via the real Linux
+`oct30-coderos-demo` in991ms with the exact toy identity. The source/binary
+hashes, response and command are in `guarded-successor.json`; the public log
+is `guarded-successor.log`. The loopback endpoint remains127.0.0.1:8798,
+now PID48404. Stop this successor with `kill -TERM 48404`. The previous
+binary and log were preserved locally, and both Pylons remained running.
