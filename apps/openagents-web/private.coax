@@ -69,6 +69,8 @@ H_KEYOPEN :: 15; H_KFIELD :: 16; H_KSAVE :: 17; H_KREPLACE :: 18; H_KREMOVE :: 1
 PV_KEY :: 400;             // a pasted credential's most
 H_UNDO :: 100; H_STOP :: 140; H_AGREE :: 200;   // + the turn's (or goal's) index
 H_MINE :: 300;                                  // + a project's index on /signin
+H_IPHONE :: 30;                                 // GET THE IPHONE APP (/login, /download)
+PV_IPHONE_APP :: "https://testflight.apple.com/join/dvQdns5B";   // the TestFlight group OpenAgents Beta Testers
 H_WSHOW :: 20; H_WCOPY :: 21; H_SWFIELD :: 22; H_SWAP :: 23; H_SWYES :: 24; H_SWNO :: 25; H_WORDS_IN :: 26; H_OUTYES :: 27; H_OUTNO :: 28; H_NEWACCT :: 29;   // /login's words account
 POST_WORDS :: 14;          // /api/auth/key: the words' key logs in (a NIP-98 signed event)
 // The words account (docs/web-log-in.md, owner 2026-10-30): 16 bytes of entropy made on
@@ -90,7 +92,7 @@ K_BACK :: -3; K_ESC :: -1;
 PrivateState :: struct {
   time: f32; ready: bool;
   width: f32; height: f32; d: f32;
-  page: int;                     // 0 the member's shell, 1 locked, 2 /signin
+  page: int;                     // 0 the member's shell, 1 locked, 2 /signin, 3 /download
   slug: [64] u8; slug_n: int;
   status: int;                   // -1 nothing asked, 0 waiting for the first answer, else its HTTP status
   live: bool; since: f32;        // the last good answer's time
@@ -857,8 +859,29 @@ pv_signin :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   }
   side := lo(colw, 300 * d);
   v = pv_code_panel(s, out, v, cx, py + 30 * d, side, "SCAN THIS WITH THE OPENAGENTS APP ON YOUR PHONE", "LOGGED IN", p);
-  s[0].content = py + 30 * d + side + 90 * d + s[0].scroll;
+  // no app yet: its TestFlight link
+  by := py + 30 * d + side + 100 * d;
+  bw := chip_width("GET THE IPHONE APP", 7 * d, p);
+  v = pv_chip(s, out, v, "GET THE IPHONE APP", cx - bw * 0.5, by, H_IPHONE, true, p, true, 0);
+  s[0].content = by + 30 * d + s[0].scroll;
   return v;
+}
+// /download: the iPhone app's TestFlight link.
+pv_download :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
+  d := p.d; w := s[0].width; h := s[0].height;
+  v := pv_crumbs(s, out, 0, "DOWNLOAD", p);
+  cap := ifx w / d < 520 then 14 * d else 20 * d;
+  y := hi(h * 0.38, 130 * d);
+  v = pv_center(out, v, "DOWNLOAD", w * 0.5, y, cap, pv_chrome(p, INK_WHITE));
+  line := "OpenAgents for iPhone (TestFlight beta)";
+  lc := ifx w / d < 520 then 7 * d else 8 * d;
+  v = put_fit(out, v, line, hi(16 * d, w * 0.5 - text_width(line, lc) * 0.5), y + 34 * d, lc, pv_ink(p, INK_DIM), w - 32 * d);
+  bc := ifx w / d < 520 then 9 * d else 11 * d;
+  label := "GET THE IPHONE APP";
+  bx := w * 0.5 - chip_width(label, bc, p) * 0.5; by := y + 34 * d + 30 * d + bc;
+  b := chip_box(label, bx, by, bc, p);
+  pv_hit(s, b, H_IPHONE);
+  return chip(out, v, label, bx, by, bc, ifx s[0].hot == H_IPHONE then pv_chrome(p, INK_WHITE) else pv_chrome(p, INK_ORANGE), p);
 }
 // LINK A PHONE, over a member's page.
 pv_link_panel :: (s: [] PrivateState, out: [] f32, v0: int, top: f32, p: Pen) -> int {
@@ -1489,6 +1512,7 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
     s[0].scroll = clamp(s[0].scroll, 0, hi(s[0].content - height + 40 * d, 0));
     return pv_signin(s, out, p);
   }
+  if s[0].page == 3 { s[0].typing = false; return pv_download(s, out, p); }
   if !pv_shows_project(s) {
     s[0].typing = false;
     if s[0].page == 0 && (s[0].status <= 0) {
@@ -1611,6 +1635,7 @@ pv_act :: (s: [] PrivateState, target: int) {
     if j >= 0 { n := pv_put(s[0].outbox[..], 0, "/projects/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_cell(s, j, 1)); s[0].action = PV_NAVIGATE; }
   }
   else if target == H_PROJECTS { pv_go(s, "/projects"); }
+  else if target == H_IPHONE { pv_go(s, PV_IPHONE_APP); }
   else if target == H_SIGNOUT { if s[0].post_kind == 0 { pv_post(s, "logout", POST_LOGOUT, "", ""); } }
   else if target == H_PREV { s[0].day = pv_day(s) - 1; if s[0].day < 0 { s[0].day = 0; } }
   else if target == H_NEXT { s[0].day = pv_day(s) + 1; if s[0].day >= pv_count(s, 'D') { s[0].day = pv_count(s, 'D') - 1; } }
@@ -1760,7 +1785,7 @@ coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
   s[0].token_n = pv_put(s[0].token[..], 0, t);
   s[0].out_n = 0; s[0].action = PV_SET_HASH;
 }
-coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 then page else 1; } }
+coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 || page == 3 then page else 1; } }
 coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && (pv_shows_project(s) || s[0].page == 2); }
 coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
 coaxial_private_action :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
@@ -2302,4 +2327,39 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   #assert s[0].acct_hex[0] == '0' && s[0].acct_want == WANT_DERIVE && s[0].acct_force && s[0].acct_keep && s[0].swap_n == 0 && s[0].acct_npub_n == 0;
   pv_act(s[..], H_SWNO);
   #assert !s[0].swap_ok;
+}
+
+// Taps a drawn control by its hit id, as a pointer down and up at its middle; false when it isn't drawn.
+pv_tap :: (s: [] PrivateState, id: int) -> bool {
+  for i: 0..<s[0].hit_n {
+    if s[0].hit_id[i] == id {
+      b := s[0].hit_box[i];
+      x := (b.x0 + b.x1) * 0.5; y := (b.y0 + b.y1) * 0.5;
+      down := coaxial_private_pointer(s, x, y, P_DOWN, 1);
+      up := coaxial_private_pointer(s, x, y, P_UP, 1);
+      return down && up;
+    }
+  }
+  return false;
+}
+
+#test "GET THE IPHONE APP on /download and /login opens the TestFlight link" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  // /download asks nothing and draws the button, on a desktop and on a phone
+  coaxial_private_page(s[..], 3);
+  #assert s[0].page == 3;
+  n := pv_fresh(s[..], out[..], u[..], 2880, 1800);
+  #assert n > 0 && s[0].ask_n == 0 && s[0].post_n == 0;
+  #assert pv_tap(s[..], H_IPHONE) && s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == PV_IPHONE_APP;
+  coaxial_private_action_done(s[..]);
+  n = pv_fresh(s[..], out[..], u[..], 780, 1688);
+  #assert pv_tap(s[..], H_IPHONE) && cast(string) s[0].outbox[0..<s[0].out_n] == PV_IPHONE_APP;
+  coaxial_private_action_done(s[..]);
+  #assert pv_tap(s[..], H_HOME) && cast(string) s[0].outbox[0..<s[0].out_n] == "/";
+  coaxial_private_action_done(s[..]);
+  // /login: under the phone app's QR, beside the account on a desktop
+  coaxial_private_page(s[..], 2);
+  n = pv_fresh(s[..], out[..], u[..], 2880, 1800);
+  #assert pv_tap(s[..], H_IPHONE) && s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == PV_IPHONE_APP;
 }
