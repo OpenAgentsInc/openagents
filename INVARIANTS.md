@@ -429,6 +429,20 @@ zero-survivor mutation, CUDA emission and the device projection; the
 [chapter 30](docs/verification/psionic-ch30-2026-10-29.md) records hold the
 device evidence and limits.
 
+The same kernels run on an Apple GPU through `coax metal-compute`
+(chapter 31): `psionic/platform/elephant-metal.c` performs the plan's
+launches through `psionic/platform/metal-host.m` and decides nothing. On
+unified memory every weight is resident; a plan that would stream is refused,
+never silently degraded. There is no CPU fallback: no Metal device is
+`PM_ABSENT`, and a launch in which any Coax check failed is `PM_CHECK` and its
+results are discarded. Apple GPUs have no binary64, so `f64` is a float-float
+pair (APPLE-FF-v1) whose arithmetic and `exp`/`log`/`sqrt` are qualified
+against binary64 within frozen bounds (`psionic/tests/run_metal_kernels.sh`),
+and the whole decision meets chapter 30's frozen 0.0005 rule against the CPU
+reference (`psionic/tests/run_elephant_metal.sh`); the
+[chapter 31 record](docs/verification/psionic-ch31-2026-10-29.md) holds the
+evidence.
+
 ## Psionic complete model mapping publishes the layer stack together
 
 `psionic/lib/model-io/model-map.coax` binds the authenticated inventory's
