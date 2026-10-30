@@ -1294,6 +1294,79 @@
       "blocks": []
     },
     {
+      "slug": "eg-voice-fast",
+      "parent": "eg",
+      "title": "Everglade voice edits: an answer in under 3 s at p95",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "voice"
+      ],
+      "body": "The edit planner is gemini-2.5-flash on Vertex with its thinking off (migration 0054), 4 s a try and one retry; verse.voice_edits.ms_taken keeps each sentence's time. Before: p50 1941 ms, p95 9986 ms on production. After: p50 981 ms, p95 1368 ms on production (edit_live.sh, 24 sentences, all answered as before).",
+      "files": [
+        "coax/web/api/npc.c",
+        "coax/web/api/migrations/0054_voice_edit_fast.sql",
+        "coax/web/api/test_sandbox_pieces.py"
+      ],
+      "acceptance": [
+        "p95 under 3 s on production",
+        "a failed or stalled try is tried once more (test.sh)",
+        "ms_taken logged per sentence"
+      ],
+      "blocked_by": [
+        "eg-voice-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-voice-queue",
+      "parent": "eg",
+      "title": "Everglade voice edits: sentences said meanwhile wait their turn",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "voice"
+      ],
+      "body": "A sentence said while another is with the server waits in order (six at most) and none replaces another; the line shows the last result, then the sentence with the server and how many wait. The server's one-at-a-time is one with the model, so the next goes the moment the last is answered.",
+      "files": [
+        "apps/openagents-web/everglade-voice.coax",
+        "apps/openagents-web/everglade-face.c"
+      ],
+      "acceptance": [
+        "three sentences said at once are all done, in order (staging)",
+        "each is shown, then its result"
+      ],
+      "blocked_by": [
+        "eg-voice-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "eg-voice-purple",
+      "parent": "eg",
+      "title": "Everglade voice edits: purple flowers come out purple",
+      "size": "S",
+      "labels": [
+        "realms",
+        "everglade",
+        "voice"
+      ],
+      "body": "Purple was colour 1, which the patch took for unsaid, so purple flowers were the texture's pink. A said colour now dyes the petals in the shader (everglade.wgsl, dye 6); stems stay green.",
+      "files": [
+        "apps/openagents-web/everglade-items.coax",
+        "apps/openagents-web/everglade.wgsl"
+      ],
+      "acceptance": [
+        "'fill the field with purple flowers' shows purple petals (staging shot)"
+      ],
+      "blocked_by": [
+        "eg-voice-live"
+      ],
+      "blocks": []
+    },
+    {
       "slug": "ff-moods",
       "parent": "ff-life",
       "title": "Fairy Forest: creature moods at a glance and passing remarks",
