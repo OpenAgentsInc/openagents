@@ -1,0 +1,137 @@
+// Chapter21's bounded, free-only pool.v2 profile. t must be the caller's
+// independent mt_recompute(p, admitted inputs) result, never advertised
+// totals decoded from the aggregate. Raw Nostr ID/signature verification is
+// a precondition of mp_admit; this unit grants no trust to its signer.
+#load "totals.coax";
+#load "receipt.coax";
+#authority;
+
+MP_KIND :: 30201; MP_VERSION :: "openagents.pylon-pool.v2";
+MP_MARKER :: "oa:pylon-pool:v2"; MP_PROFILE :: "psionic-free-mesh-v1";
+MpConfig :: struct {aggregator:string;pool:string;generated_at:int;valid_until:int;}
+MP_POLICY_GOLDEN :: "{\"buyers\":[\"1111111111111111111111111111111111111111111111111111111111111111\"],\"checkers\":[\"5555555555555555555555555555555555555555555555555555555555555555\"],\"exclude_failed\":false,\"payment_issuers\":[],\"profile\":\"psionic-free-mesh-v1\",\"providers\":[\"2222222222222222222222222222222222222222222222222222222222222222\"]}";
+MP_BODY_GOLDEN :: "{\"aggregator\":\"5555555555555555555555555555555555555555555555555555555555555555\",\"generated_at\":120,\"inputs\":{\"beacons\":{\"count\":1,\"digest\":\"3138bb9bc78df27c473ecfd1410f7bd45ebac1f59cf3ff9cfe4db77aab7aedd3\"},\"checks\":{\"count\":1,\"digest\":\"f435f2420b50c70ec80865cf8e20b169874165fb8576b48633caf2a8176d2e4a\"},\"receipts\":{\"count\":1,\"digest\":\"79bd7d7fd684b399857c582b1b7172ddf277d4fe1b027ec52b28da3ae381e675\"}},\"policy\":\"9a550553c27b7946d22e1f6cd0aa2420b9450d3ac1fe99830eec60f27f986e9b\",\"pool\":\"demo\",\"rate\":[1],\"requires\":[],\"totals\":{\"by_family\":{\"cpu\":0,\"gpu\":0,\"unified-memory\":1},\"checks\":{\"fail\":0,\"inconclusive\":0,\"pass\":1},\"jobs\":{\"accepted\":1,\"failed\":0,\"rejected\":0,\"timeout\":0},\"paid_msat\":{\"bitcoin\":0,\"regtest\":0,\"signet\":0,\"testnet\":0},\"pylons_online\":1,\"slots_free\":2,\"slots_total\":3,\"units\":{\"jobs\":1,\"seconds\":0,\"tokens\":0}},\"v\":\"openagents.pylon-pool.v2\",\"valid_until\":180,\"window\":{\"from\":0,\"to\":120}}";
+mp_fixture_config :: ()->MpConfig {return MpConfig.{aggregator=MT_E,pool="demo",generated_at=120,valid_until=180};}
+
+#test "independent pool and policy JCS goldens bind every published free-profile field" {
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};c:=mp_fixture_config();pool_beacons:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+  pool_receipts:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  pool_checks:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  t:=mt_recompute(p,pool_beacons[..],pool_receipts[..],pool_checks[..]);
+  out:[4096]u8;n:=mp_policy(p,out[..]);#assert n>0 && cast(string)out[0..<n]==MP_POLICY_GOLDEN && mr_jcs(cast(string)out[0..<n]);
+  n=mp_content(c,p,t,out[..]);#assert n>0 && cast(string)out[0..<n]==MP_BODY_GOLDEN && mr_jcs(cast(string)out[0..<n]);
+  #assert mp_matches(MP_BODY_GOLDEN,c,p,t) && !mp_matches("{}",c,p,t);
+  hex:[64]u8;done:=ph_digest(MP_BODY_GOLDEN,hex[..]);#assert cast(string)hex[..]=="61c589575270914b56e5f4fbb89ddf56d372e4e7f2248bdf6b07188edcc3d32c";
+  #assert mp_content(c,p,t,out[0..<10])==-1 && mp_policy(p,out[0..<10])==-1;
+}
+#test "policy is a window-independent commitment to sorted unique role sets" {
+  a:=[3]string.[MT_B,MT_A,MT_B];b:=[2]string.[MT_A,MT_B];p:=MtPolicy.{providers=a[..],buyers=a[..],checkers=a[..]};q:=MtPolicy.{from=60,to=120,providers=b[..],buyers=b[..],checkers=b[..]};x:[4096]u8;y:[4096]u8;
+  n:=mp_policy(p,x[..]);k:=mp_policy(q,y[..]);#assert n>0 && n==k && cast(string)x[0..<n]==cast(string)y[0..<k];
+  p.providers=b[0..<0];#assert mp_policy(p,x[..])>0;p.buyers=b[0..<0];p.checkers=b[0..<0];#assert mp_policy(p,x[..])>0;
+  p.providers=a[..];a[0]="bad";#assert mp_policy(p,x[..])==-1;
+}
+#test "maximum role sets fit the canonical policy scratch and overflow refuses" {
+  bytes:[224*64]u8;keys:[224]string;digits:="0123456789abcdef";
+  for i:0..<224 {for j:0..<62 {bytes[64*i+j]='a';}bytes[64*i+62]=digits[i>>4];bytes[64*i+63]=digits[i&15];keys[i]=cast(string)bytes[64*i..<64*i+64];}
+  p:=MtPolicy.{from=0,to=120,providers=keys[0..<32],buyers=keys[32..<96],checkers=keys[96..<224]};out:[32768]u8;n:=mp_policy(p,out[..]);#assert n>0 && n<16384;
+  body:=cast(string)out[0..<n];#assert mr_array_count(mf_get(body,"providers").raw)==32 && mr_array_count(mf_get(body,"buyers").raw)==64 && mr_array_count(mf_get(body,"checkers").raw)==128;
+  canonical:[32768]u8;render:=jcs_canonicalize_checked(body,canonical[..],false);#assert render.error==JCS_OK && cast(string)canonical[0..<render.written]==body;
+  p.providers=keys[0..<33];#assert mp_policy(p,out[..])==-1;p.providers=keys[0..<32];p.buyers=keys[32..<97];#assert mp_policy(p,out[..])==-1;p.buyers=keys[32..<96];p.checkers=keys[95..<224];#assert mp_policy(p,out[..])==-1;
+}
+#test "configuration is pinned to closed Unix-second windows and bounded expiry" {
+  p:=MtPolicy.{from=0,to=120};c:=mp_fixture_config();#assert mp_config(c,p);c.valid_until=420;#assert mp_config(c,p);c.valid_until=121;#assert mp_config(c,p);
+  for i:0..<11 {c=mp_fixture_config();q:=p;if i==0 {c.aggregator="bad";}if i==1 {c.pool="-bad";}if i==2 {c.pool="";}if i==3 {c.generated_at=119;}if i==4 {c.valid_until=120;}if i==5 {c.valid_until=119;}if i==6 {c.valid_until=421;}if i==7 {c.generated_at=-1;}if i==8 {c.valid_until=MT_SAFE+1;}if i==9 {q.to=121;}if i==10 {q.to=0;}#assert !mp_config(c,q);}
+  c.generated_at=MT_SAFE;c.valid_until=MT_SAFE;#assert !mp_config(c,p);c.generated_at=MT_SAFE-1;c.valid_until=MT_SAFE;#assert mp_config(c,p);
+  badkeys:=[1]string.["bad"];p.providers=badkeys[..];#assert !mp_config(c,p);
+}
+#forall "each computed field digest role and window is independently matched" which:0..<22 {
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};c:=mp_fixture_config();pool_beacons:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+  pool_receipts:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  pool_checks:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  t:=mt_recompute(p,pool_beacons[..],pool_receipts[..],pool_checks[..]);
+  if which==0 {t.beacon_count+=1;}if which==1 {t.receipt_count+=1;}if which==2 {t.check_count+=1;}if which==3 {t.beacon_digest[0]+=1;}if which==4 {t.receipt_digest[0]+=1;}if which==5 {t.check_digest[0]+=1;}
+  if which==6 {t.pylons_online+=1;}if which==7 {t.slots_total+=1;}if which==8 {t.slots_free+=1;}if which==9 {t.by_family[0]+=1;}if which==10 {t.by_family[1]+=1;}if which==11 {t.by_family[2]+=1;}
+  if which==12 {t.jobs_accepted+=1;}if which==13 {t.units_jobs+=1;}if which==14 {t.checks_pass+=1;}if which==15 {t.checks_fail+=1;}if which==16 {t.checks_inconclusive+=1;}if which==17 {t.rate+=1;}
+  if which==18 {p.from=60;}if which==19 {providers[0]=MT_A;}if which==20 {buyers[0]=MT_B;}if which==21 {checkers[0]=MT_D;}
+  #assert !mp_matches(MP_BODY_GOLDEN,c,p,t);
+}
+#test "recomputed failure cannot emit; unsupported extensions and money never match" {
+  p:=MtPolicy.{from=0,to=120};c:=mp_fixture_config();pool_beacons:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+  pool_receipts:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  pool_checks:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  t:=mt_recompute(p,pool_beacons[..],pool_receipts[..],pool_checks[..]);out:[4096]u8;t.code=MT_RECORD;#assert mp_content(c,p,t,out[..])==-1 && !mp_matches(MP_BODY_GOLDEN,c,p,t);
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p.providers=providers[..];p.buyers=buyers[..];p.checkers=checkers[..];t=mt_recompute(p,pool_beacons[..],pool_receipts[..],pool_checks[..]);
+  for pair:[4]string.["\"bitcoin\":0","\"requires\":[]","openagents.pylon-pool.v2","\"rate\":[1]"] {bad:=pd_swap(out[..],MP_BODY_GOLDEN,pair,"\"unsupported\":1");#assert !mp_matches(bad,c,p,t);}
+}
+#test "post-crypto admission binds parsed mandatory tags and exact signed envelope" {
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};c:=mp_fixture_config();pool_beacons:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+  pool_receipts:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  pool_checks:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  t:=mt_recompute(p,pool_beacons[..],pool_receipts[..],pool_checks[..]);tags:[1024]u8;n:=mp_tags(c,p,t,MP_BODY_GOLDEN,tags[..]);#assert n>0;
+  tag:=cast(string)tags[0..<n];#assert mp_admit(MP_KIND,c.aggregator,120,tag,MP_BODY_GOLDEN,c,p,t);
+  shuffled:=" [ [\"expiration\",\"180\"], [\"x\",\"61c589575270914b56e5f4fbb89ddf56d372e4e7f2248bdf6b07188edcc3d32c\"], [\"t\",\"oa:pylon-pool:v2\"], [\"d\",\"demo\"] ] ";
+  #assert mp_admit(MP_KIND,c.aggregator,120,shuffled,MP_BODY_GOLDEN,c,p,t);
+  #assert !mp_admit(30200,c.aggregator,120,tag,MP_BODY_GOLDEN,c,p,t) && !mp_admit(MP_KIND,MT_D,120,tag,MP_BODY_GOLDEN,c,p,t) && !mp_admit(MP_KIND,c.aggregator,121,tag,MP_BODY_GOLDEN,c,p,t);
+  #assert mp_tags(c,p,t,"{}",tags[..])==-1 && mp_tags(c,p,t,MP_BODY_GOLDEN,tags[0..<10])==-1;
+}
+#forall "missing duplicate padded and altered pool tags refuse" which:0..<9 {
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};c:=mp_fixture_config();pool_beacons:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+  pool_receipts:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  pool_checks:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  t:=mt_recompute(p,pool_beacons[..],pool_receipts[..],pool_checks[..]);tags:[1024]u8;n:=mp_tags(c,p,t,MP_BODY_GOLDEN,tags[..]);original:=cast(string)tags[0..<n];out:[2048]u8;
+  from:=[9]string.["\"demo\"","oa:pylon-pool:v2","61c589","\"180\"","[\"d\",\"demo\"]","[\"t\",\"oa:pylon-pool:v2\"]","[\"x\",\"61c589575270914b56e5f4fbb89ddf56d372e4e7f2248bdf6b07188edcc3d32c\"]","[\"expiration\",\"180\"]","[["];
+  to:=[9]string.["\"other\"","oa:pylon-pool:v1","71c589","\"0180\"","[\"d\",\"demo\",\"extra\"]","[\"t\",\"oa:pylon-pool:v2\",\"extra\"]","[\"x\",\"61c589575270914b56e5f4fbb89ddf56d372e4e7f2248bdf6b07188edcc3d32c\",\"extra\"]","[\"expiration\",\"180\",\"extra\"]","[[\"extra\",\"x\"],["];
+  bad:=pd_swap(out[..],original,from[which],to[which]);#assert !mp_admit(MP_KIND,c.aggregator,120,bad,MP_BODY_GOLDEN,c,p,t);
+}
+#forall "each missing required tag refuses even when the array has four elements" which:0..<5 {
+  providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};c:=mp_fixture_config();pool_beacons:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+  pool_receipts:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+  pool_checks:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];
+  t:=mt_recompute(p,pool_beacons[..],pool_receipts[..],pool_checks[..]);tags:[1024]u8;n:=mp_tags(c,p,t,MP_BODY_GOLDEN,tags[..]);out:[2048]u8;
+  names:=[5]string.["\"d\"","\"t\"","\"x\"","\"expiration\"","\"d\""];replacement:=ifx which==4 then "\"t\"" else "\"unknown\"";
+  bad:=pd_swap(out[..],cast(string)tags[0..<n],names[which],replacement);#assert mr_array_count(bad)==4 && !mp_admit(MP_KIND,c.aggregator,120,bad,MP_BODY_GOLDEN,c,p,t);
+}
+
+// mt_policy bounds every role (32/64/128); its keys are already lowercase
+// hex. Canonicalization treats these as sets, not CLI argument order.
+mp_keys :: (keys:[]string,out:[]u8,at:int)->int {
+  sorted:[MT_CHECKS]string;for i:0..<keys.count {sorted[i]=keys[i];}mt_sort(sorted[0..<keys.count]);n:=json_raw(out,at,"[");last:="";separator:="";
+  for key:sorted[0..<keys.count] {if key!=last {n=json_raw(out,n,separator);n=json_write_string(out,n,key);separator=",";last=key;}}
+  return json_raw(out,n,"]");
+}
+mp_policy :: (p:MtPolicy,out:[]u8)->int #export_c {
+  if !mt_policy(p) {return -1;}n:=json_raw(out,0,"{\"buyers\":");n=mp_keys(p.buyers,out,n);n=json_raw(out,n,",\"checkers\":");n=mp_keys(p.checkers,out,n);
+  n=json_raw(out,n,",\"exclude_failed\":false,\"payment_issuers\":[],\"profile\":");n=json_write_string(out,n,MP_PROFILE);n=json_raw(out,n,",\"providers\":");n=mp_keys(p.providers,out,n);return json_raw(out,n,"}");
+}
+mp_config :: (c:MpConfig,p:MtPolicy)->bool {
+  return mt_policy(p) && mt_window(p.from,p.to) && mt_hex(c.aggregator) && mr_slug(c.pool) && mt_time(c.generated_at) && mt_time(c.valid_until) && c.generated_at>=p.to && c.valid_until>c.generated_at && c.valid_until-c.generated_at<=300;
+}
+mp_hex :: (sum:[32]u8,out:[]u8,at:int)->int {
+  hex:[64]u8;digits:="0123456789abcdef";for i:0..<32 {hex[2*i]=digits[sum[i]>>4];hex[2*i+1]=digits[sum[i]&15];}return json_write_string(out,at,cast(string)hex[..]);
+}
+mp_input :: (count:int,digest:[32]u8,out:[]u8,at:int)->int {n:=json_raw(out,at,"{\"count\":");n=json_write_int(out,n,count);n=json_raw(out,n,",\"digest\":");n=mp_hex(digest,out,n);return json_raw(out,n,"}");}
+mp_content :: (c:MpConfig,p:MtPolicy,t:MtResult,out:[]u8)->int #export_c {
+  if !mp_config(c,p) || t.code!=MT_OK {return -1;}
+  // Bounded role keys fit <16KiB. Fixed output spans establish the existing
+  // checked hash API's success/nonalias preconditions by construction.
+  policy:[32768]u8;k:=mp_policy(p,policy[..]);hash:[64]u8;done:=ph_digest(cast(string)policy[0..<k],hash[..]);
+  n:=json_raw(out,0,"{\"aggregator\":");n=json_write_string(out,n,c.aggregator);n=json_raw(out,n,",\"generated_at\":");n=json_write_int(out,n,c.generated_at);
+  n=json_raw(out,n,",\"inputs\":{\"beacons\":");n=mp_input(t.beacon_count,t.beacon_digest,out,n);n=json_raw(out,n,",\"checks\":");n=mp_input(t.check_count,t.check_digest,out,n);n=json_raw(out,n,",\"receipts\":");n=mp_input(t.receipt_count,t.receipt_digest,out,n);
+  n=json_raw(out,n,"},\"policy\":");n=json_write_string(out,n,cast(string)hash[..]);n=json_raw(out,n,",\"pool\":");n=json_write_string(out,n,c.pool);n=json_raw(out,n,",\"rate\":[");n=json_write_int(out,n,t.rate);
+  n=json_raw(out,n,"],\"requires\":[],\"totals\":{\"by_family\":{\"cpu\":");n=json_write_int(out,n,t.by_family[2]);n=json_raw(out,n,",\"gpu\":");n=json_write_int(out,n,t.by_family[1]);n=json_raw(out,n,",\"unified-memory\":");n=json_write_int(out,n,t.by_family[0]);
+  n=json_raw(out,n,"},\"checks\":{\"fail\":");n=json_write_int(out,n,t.checks_fail);n=json_raw(out,n,",\"inconclusive\":");n=json_write_int(out,n,t.checks_inconclusive);n=json_raw(out,n,",\"pass\":");n=json_write_int(out,n,t.checks_pass);
+  n=json_raw(out,n,"},\"jobs\":{\"accepted\":");n=json_write_int(out,n,t.jobs_accepted);n=json_raw(out,n,",\"failed\":0,\"rejected\":0,\"timeout\":0},\"paid_msat\":{\"bitcoin\":0,\"regtest\":0,\"signet\":0,\"testnet\":0},\"pylons_online\":");n=json_write_int(out,n,t.pylons_online);
+  n=json_raw(out,n,",\"slots_free\":");n=json_write_int(out,n,t.slots_free);n=json_raw(out,n,",\"slots_total\":");n=json_write_int(out,n,t.slots_total);n=json_raw(out,n,",\"units\":{\"jobs\":");n=json_write_int(out,n,t.units_jobs);
+  n=json_raw(out,n,",\"seconds\":0,\"tokens\":0}},\"v\":");n=json_write_string(out,n,MP_VERSION);n=json_raw(out,n,",\"valid_until\":");n=json_write_int(out,n,c.valid_until);n=json_raw(out,n,",\"window\":{\"from\":");n=json_write_int(out,n,p.from);n=json_raw(out,n,",\"to\":");n=json_write_int(out,n,p.to);return json_raw(out,n,"}}");
+}
+mp_matches :: (content:string,c:MpConfig,p:MtPolicy,t:MtResult)->bool #export_c {out:[4096]u8;n:=mp_content(c,p,t,out[..]);return n!=-1 && content==cast(string)out[0..<n];}
+mp_tags :: (c:MpConfig,p:MtPolicy,t:MtResult,content:string,out:[]u8)->int #export_c {
+  if !mp_matches(content,c,p,t) {return -1;}hash:[64]u8;done:=ph_digest(content,hash[..]);expiry:[32]u8;e:=json_write_int(expiry[..],0,c.valid_until);
+  n:=json_raw(out,0,"[[\"d\",");n=json_write_string(out,n,c.pool);n=json_raw(out,n,"],[\"t\",");n=json_write_string(out,n,MP_MARKER);n=json_raw(out,n,"],[\"x\",");n=json_write_string(out,n,cast(string)hash[..]);n=json_raw(out,n,"],[\"expiration\",");n=json_write_string(out,n,cast(string)expiry[0..<e]);return json_raw(out,n,"]]");
+}
+mp_admit :: (kind:int,signer:string,created_at:int,tags:string,content:string,c:MpConfig,p:MtPolicy,t:MtResult)->bool #export_c {
+  if kind!=MP_KIND || signer!=c.aggregator || created_at!=c.generated_at || !mp_matches(content,c,p,t) || mr_array_count(tags)!=4 {return false;}
+  d:=pt_tag(tags,"d");marker:=pt_tag(tags,"t");x:=pt_tag(tags,"x");expiration:=pt_tag(tags,"expiration");if d.size!=2 || marker.size!=2 || x.size!=2 || expiration.size!=2 {return false;}
+  hash:[64]u8;done:=ph_digest(content,hash[..]);expiry:[32]u8;e:=json_write_int(expiry[..],0,c.valid_until);
+  return d.v[1]==c.pool && marker.v[1]==MP_MARKER && x.v[1]==cast(string)hash[..] && expiration.v[1]==cast(string)expiry[0..<e];
+}
