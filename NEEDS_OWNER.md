@@ -79,11 +79,8 @@ gate in coax/nostr.md.
 
 coax/nostr.md section 17 plans a Coax relay to replace relay.openagents.com
 (the Rust relay, removed from the tree at the Nuke). Phase R1 runs only on the
-tailnet. Two choices are yours later: which of the 16 advertised NIPs and 11
-extensions the Coax relay keeps (R2), and approval of the data migration and
-the DNS cutover (R3). Nothing touches the production relay before that.
+tailnet. Left for you: approval of the data migration and the DNS cutover (R3). Nothing touches the production relay before that.
 
-A third, sooner: may an agent build and run the old Rust relay
-(`crates/nostr-relay` from `0b401561a0^`) inside a sandbox, to compare the Coax
-relay against it session by session? AGENTS.md says history is for reading
-only, so until you say yes the comparison uses recordings of the live relay.
+Decided 2026-10-29: the old Rust relay may be built and run inside a sandbox
+for the comparison; the Coax relay aims for full NIP support, starting with
+what the website uses. Still yours: the R3 migration and DNS cutover.

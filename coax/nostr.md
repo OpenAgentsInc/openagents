@@ -612,12 +612,24 @@ replay and durable commit).
 
 | Phase | What | Exit evidence |
 | --- | --- | --- |
-| R1. A tailnet relay | Server WebSocket (accept the handshake, read masked frames, write unmasked ones, limits, close); NIP-01 server: EVENT admission with id and signature verification, REQ subscriptions matched by `filter.coax` over stored and new events, EOSE, CLOSE, OK and CLOSED with the standard prefixes, NOTICE; NIP-11; NIP-40 expiration; replaceable and addressable ordering; storage through `nostr-event-store` (#8eb5) and the `store_*.coax` slices (#f539 verified dedup, #966b trusted recovery), not a second store; NIP-42 required for writes; the Rust relay's limits | A differential test against the Rust relay's recorded behaviour: read-only sessions captured from relay.openagents.com (as `coax/lib/nostr/fixtures/coax_relay.coax` was) and its NIP-11 document; the same OKs, CLOSED reasons and event sets where the recordings cover them. Building or running the old Rust crate from history needs the owner's explicit yes (AGENTS.md: history is for reading) and is listed in NEEDS_OWNER.md. The client relay machine from #7de9 and the chapter 19 Pylon talk to it; ASan/UBSan; bounded memory under a flood |
-| R2. Feature parity | NIP-09 deletion with tombstones, NIP-45 COUNT, NIP-50 search (the Rust relay's semantics), NIP-77 negentropy sync, NIP-29 groups, NIP-59/17 gift wraps, NIP-70 protected events, NIP-65, 67, 94, 98 as the Rust relay implements them, and the 11 extensions | Each NIP's vectors and differential sessions; the owner decides which advertised NIPs survive |
+| R1. A tailnet relay | Server WebSocket (accept the handshake, read masked frames, write unmasked ones, limits, close); NIP-01 server: EVENT admission with id and signature verification, REQ subscriptions matched by `filter.coax` over stored and new events, EOSE, CLOSE, OK and CLOSED with the standard prefixes, NOTICE; NIP-11; NIP-40 expiration; replaceable and addressable ordering; storage through `nostr-event-store` (#8eb5) and the `store_*.coax` slices (#f539 verified dedup, #966b trusted recovery), not a second store; NIP-42 required for writes; the Rust relay's limits | A differential test against the Rust relay's recorded behaviour: read-only sessions captured from relay.openagents.com (as `coax/lib/nostr/fixtures/coax_relay.coax` was) and its NIP-11 document; the same OKs, CLOSED reasons and event sets where the recordings cover them. Building and running the old Rust crate from history inside a sandbox is owner-approved (2026-10-29) for side-by-side sessions. The client relay machine from #7de9 and the chapter 19 Pylon talk to it; ASan/UBSan; bounded memory under a flood |
+| R2. Full NIP support | NIP-09 deletion with tombstones, NIP-45 COUNT, NIP-50 search (the Rust relay's semantics), NIP-77 negentropy sync, NIP-29 groups, NIP-59/17 gift wraps, NIP-70 protected events, NIP-65, 67, 94, 98 as the Rust relay implements them, and the 11 extensions | Each NIP's vectors and differential sessions; the owner decides which advertised NIPs survive |
 | R3. Data and cutover | Export from the Rust relay's Postgres (read-only), import with re-verification of every event, a shadow period where both relays receive writes and readers compare, then DNS/proxy cutover with the Rust relay kept as a read-only fallback | Event-set equality at cutover; a rollback rehearsed; **owner sign-off before any DNS or production change** |
 
 Board: milestone m10-coax-relay, tasks relay-server-r1, -r2, -r3 (3abbde2a52).
 R1 waits on #6015 nostr-nip01-messages, #f426 nostr-nip42 and nostr-event-store.
+
+Owner, 2026-10-29: the goal is full NIP support eventually; R1 starts with
+what openagents.com and the queue tools use today. That is NIP-01 (EVENT,
+REQ, CLOSE with `ids`, `authors`, `kinds`, `since`, `until`, `limit` and tag
+filters such as `#a`, `#e`, `#p`, `#d`), NIP-11, NIP-42 AUTH (kind `22242`),
+NIP-40, and storage of the kinds they read and write: `0` metadata, NIP-34
+repository `30617`, issues `1621` and statuses `1630`–`1633`, NIP-22 comments
+`1111`, and the addressable project kinds `30621` and `30623`. R2 then covers
+every NIP a relay can implement, beyond the Rust relay's sixteen. The owner
+also approved building and running the old Rust relay from history inside a
+sandbox for the differential test (no network beyond fetching its pinned
+crates, never against production data).
 
 R1 is useful on its own: chapter 19's Pylon and the queue tools can use a
 Coax relay on the tailnet while relay.openagents.com is unchanged. Nothing in
