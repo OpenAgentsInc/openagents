@@ -61,6 +61,8 @@ Run the same join command to start again. Private state and logs live under `~/.
 
 The pooled production endpoint is `POST https://openagents.com/api/v1/systemone`. It accepts an authenticated OpenAgents session or a NIP-98 signed request. Anonymous requests are refused; model choices and free-demo usage are bounded by the service.
 
+The full UTF-8 JSON request, including whitespace, is limited to 16 KiB. Responses are bounded to 256 KiB.
+
 Save this decision request as `/tmp/decision.json`:
 
 ```json

@@ -43,6 +43,7 @@ bash /tmp/join-pylon.sh</code></p>
 <p>Run the same join command to start again. Private state and logs live under ~/.openagents/pylon/state; set OPENAGENTS_PYLON_HOME to use a different directory. Do not publish that private state or its label file. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.</p>
 <h2>Send a decision</h2>
 <p>The pooled production endpoint is POST https://openagents.com/api/v1/systemone. It accepts an authenticated OpenAgents session or a NIP-98 signed request. Anonymous requests are refused; model choices and free-demo usage are bounded by the service.</p>
+<p>The full UTF-8 JSON request, including whitespace, is limited to 16 KiB. Responses are bounded to 256 KiB.</p>
 <p>Save this decision request as /tmp/decision.json:</p>
 <p><code>{&quot;model&quot;:&quot;elephant-1&quot;,&quot;state&quot;:&quot;Water is wet.&quot;,&quot;questions&quot;:{&quot;wet&quot;:{&quot;type&quot;:&quot;choice&quot;,&quot;instructions&quot;:&quot;Is the water wet?&quot;,&quot;criteria&quot;:{&quot;yes&quot;:null,&quot;no&quot;:null}}}}</code></p>
 <p>Use elephant-1 or mammoth-1 for the hosted demo. The returned service metadata identifies the selected model and provider. Unknown model names are refused; clients cannot choose a backend URL. Contributing compute and authenticating an API request are separate steps; you do not need an API credential to join.</p>
