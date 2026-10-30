@@ -178,7 +178,7 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 
 | # | Prerequisite | Who | State |
 | --- | --- | --- | --- |
-| 1 | BIP-340 signer (`coax/lib/crypto/schnorr_sign.coax`) and a fixed-work self-check (`schnorr_self_verify.coax`) | openagents-d7, claude-sigcheck (#51f4, #89db) | landed: signer `0cc86015e7` (3,384 mutants, 0 survivors; the 8 BIP-340 signing rows), self-check `c9eed2394b` (2,865, 0). The signer still calls the variable-time self-check; switching needs checks under mutation's 20M-step cap. Test keys only until the #4828 secret audit (openagents-20) and the review gate |
+| 1 | BIP-340 signer (`coax/lib/crypto/schnorr_sign.coax`) and a fixed-work self-check (`schnorr_self_verify.coax`) | openagents-d7, claude-sigcheck (#51f4, #89db) | landed: signer `0cc86015e7` (3,384 mutants, 0 survivors; the 8 BIP-340 signing rows), self-check `c9eed2394b` (2,865, 0). The signer runs the fixed-work self-check in its own three stages since `936ef03f7b` (3,742, 0; event_sign re-gated 5,552, 0; native and Wasm agree; 10,000 signed-event round trips). Test keys only until the #4828 secret audit (openagents-20) and the review gate |
 | 2 | NIP-01 event builder (`coax/lib/nostr/event_sign.coax`) | openagents-d7 (#bab4) | landed `7bef91d26c` (5,194, 0); native under ASan/UBSan |
 | 3 | NIP-44 v2 (`nip44.coax`, `nip44-key.coax`) | claude-nip44, openagents-d7 (#4878, #71e7) | landed: `f74988b29a` (1,700, 0), the conversation key from two keys `a7589e2c90` (3,434, 0; 35/35 valid and 8/8 invalid vectors), the signed-event round trip `c13fad8d84` |
 | 4a | NIP-01 relay messages (`message.coax`), tags, kind 0 metadata | openagents-d7 (#6015) | landed `c7f0d7a222` (4,162, 0), `1df209e1ca`; all 237 recorded events verify natively |
