@@ -587,3 +587,34 @@ idempotent revisions/new tasks, read back and verify, then regenerate the projec
 snapshot and release through staging/smoke if the snapshot page needs refreshing.
 Do not rerun compiler/bootstrap/iOS suites for Markdown or unrelated rebases.
 Changes to the page capacity require its focused Coax checks.
+
+## 17. A Coax relay to replace relay.openagents.com
+
+Added 2026-10-29 at the owner's request. relay.openagents.com still runs the
+Rust `crates/nostr-relay` ("one binary, one Postgres": tokio, tungstenite,
+tokio-postgres, secp256k1), whose source the Nuke removed; it lives only in
+history at `0b401561a0^` with its backup/restore units under `deploy/backup/`.
+Its NIP-11 document advertises NIPs 1, 9, 11, 17, 29, 40, 42, 45, 50, 59, 65,
+67, 70, 77, 94 and 98 plus 11 OpenAgents extensions, `max_message_length`
+131072, 32 subscriptions, `max_limit` 127 and 64-byte subscription ids. The
+replacement is Coax: every admission, matching, storage and policy decision
+in `#authority` units with zero-survivor mutation; the C host does sockets,
+TLS, clocks and files only.
+
+What exists: event read/verify (`event.coax`), filters (`filter.coax`), the
+client WebSocket (`coax/lib/net/ws.coax`), TLS (`coax/platform/tls-native.c`),
+the client relay machine (`relay.coax`), the NIP-01 message layer (#6015,
+`message.coax`), the NIP-42 relay-side check (#f426, `nip42.coax`) and the
+verified-store slices (`store_*.coax`, which still lack replacement, deletion,
+replay and durable commit).
+
+| Phase | What | Exit evidence |
+| --- | --- | --- |
+| R1. A tailnet relay | Server WebSocket (accept the handshake, read masked frames, write unmasked ones, limits, close); NIP-01 server: EVENT admission with id and signature verification, REQ subscriptions matched by `filter.coax` over stored and new events, EOSE, CLOSE, OK and CLOSED with the standard prefixes, NOTICE; NIP-11; NIP-40 expiration; replaceable and addressable ordering; an append-only verified log with an index, fsync'd, replayed on start; NIP-42 required for writes; the Rust relay's limits | A differential test: the same scripted sessions against our relay and against the Rust relay built from history (in a sandbox, never on the owner's Mac), same OKs, CLOSED reasons and event sets; the client relay machine from #7de9 and the chapter 19 Pylon talk to it; ASan/UBSan; bounded memory under a flood |
+| R2. Feature parity | NIP-09 deletion with tombstones, NIP-45 COUNT, NIP-50 search (the Rust relay's semantics), NIP-77 negentropy sync, NIP-29 groups, NIP-59/17 gift wraps, NIP-70 protected events, NIP-65, 67, 94, 98 as the Rust relay implements them, and the 11 extensions | Each NIP's vectors and differential sessions; the owner decides which advertised NIPs survive |
+| R3. Data and cutover | Export from the Rust relay's Postgres (read-only), import with re-verification of every event, a shadow period where both relays receive writes and readers compare, then DNS/proxy cutover with the Rust relay kept as a read-only fallback | Event-set equality at cutover; a rollback rehearsed; **owner sign-off before any DNS or production change** |
+
+R1 is useful on its own: chapter 19's Pylon and the queue tools can use a
+Coax relay on the tailnet while relay.openagents.com is unchanged. Nothing in
+R1 or R2 touches the production relay or its database.
+

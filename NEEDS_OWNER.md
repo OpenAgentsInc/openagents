@@ -74,3 +74,11 @@ these four choices are yours:
 
 Signing with a real key also waits on the #4828 secret audit and the review
 gate in coax/nostr.md.
+
+## Coax relay: which NIPs survive, and the cutover (2026-10-29)
+
+coax/nostr.md section 17 plans a Coax relay to replace relay.openagents.com
+(the Rust relay, removed from the tree at the Nuke). Phase R1 runs only on the
+tailnet. Two choices are yours later: which of the 16 advertised NIPs and 11
+extensions the Coax relay keeps (R2), and approval of the data migration and
+the DNS cutover (R3). Nothing touches the production relay before that.
