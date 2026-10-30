@@ -1,0 +1,108 @@
+{
+  "recorded_at": "2026-10-30T19:33:12.920299+00:00",
+  "source_commit": "a4a6ec949cbad1068f4afb582407aea02168c1b9",
+  "tested_runtime_files_sha256": {
+    "scripts/join-pylon.sh": "f7490fb022bdd8d3d035ae8fedf495687bc4c4b2ad47cb1defee11ef3ca61f9f",
+    "scripts/pylon-fetch-model.py": "192d95d79b400fae68b76741a0e53077605855aaf998ab32d8089aacbdcd8431",
+    "psionic/platform/serve-host.c": "1de4fecddae158ad6ede21b4bac30616b36ac2eea80909582c5709b686ad9833"
+  },
+  "compiler_sha256": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+  "platform": {
+    "os": "macOS 26.4",
+    "gpu": "Apple M5 Max",
+    "ram_bytes": 137438953472,
+    "backend": "Metal"
+  },
+  "preflight": {
+    "generated_kernels": 23,
+    "capacity": 512,
+    "resident_mib": 15140,
+    "streamed_mib": 0,
+    "checkpoint_opened": false
+  },
+  "artifacts": [
+    {
+      "name": "config.json",
+      "bytes": 3146,
+      "expected_sha256": "f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab",
+      "validation": "installer full SHA-256 and independent native admission"
+    },
+    {
+      "name": "tokenizer.json",
+      "bytes": 19989339,
+      "expected_sha256": "a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",
+      "validation": "installer full SHA-256 and independent native admission"
+    },
+    {
+      "name": "readout.json",
+      "bytes": 63,
+      "expected_sha256": "96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba",
+      "validation": "installer full SHA-256 and independent native admission"
+    },
+    {
+      "name": "model.safetensors",
+      "bytes": 18819722392,
+      "expected_sha256": "682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+      "validation": "installer full SHA-256 and independent native admission"
+    }
+  ],
+  "cold_download_on_this_mac": {
+    "completed": false,
+    "initial_cache_empty": true,
+    "transport_error": "curl56: Recv failure: Cannot assign requested address",
+    "resume_from_bytes": 8838048281,
+    "retained_after_explicit_stop_bytes": 8886970905,
+    "stop_exit_code": 0,
+    "join_lock_removed": true,
+    "engine_and_pylon_not_launched": true,
+    "real_http206_one_mib_ranges_match_original": true,
+    "retained_partial_start_resume_boundary_and_tail_samples_match_original": true,
+    "reason_for_using_existing_checkpoint": "Slow public model transfer after interruption. The Linux receipt records the completed cold public download."
+  },
+  "metal_cache": "Isolated APFS clones of existing original public artifacts; original user files unchanged; all artifacts checked against the Coax manifest.",
+  "doctor": {
+    "passed": true,
+    "cases": 6,
+    "elapsed_ms": 1917,
+    "largest_error_ppb": 10345,
+    "tolerance_ppb": 500000,
+    "observed": "doctor: self-check passed: 6 cases in 1917 ms, largest error 10345 billionths (tolerance 500000)"
+  },
+  "relay": "wss://relay.openagents.com",
+  "setup_seconds_with_authenticated_artifact_cache": 166.121,
+  "result": {
+    "answers": {
+      "wet": {
+        "type": "choice",
+        "choice": "yes",
+        "confidence": 0.757192428,
+        "probabilities": {
+          "yes": 0.757192428,
+          "no": 0.242807572
+        }
+      }
+    },
+    "latency_ms": 438,
+    "model": "elephant-1",
+    "service": {
+      "door": "pylon:oct30-mac-elephant-learned",
+      "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+      "provider": "1c9599a342973507c598a616e74aca52214626b73d34f49fc5568c725a1dc3bd",
+      "version": "psionic-pylon-v1"
+    },
+    "usage": null
+  },
+  "cleanup": {
+    "own_pylon_offline_beacon_sent": true,
+    "own_engine_stopped": true,
+    "gpu_released_before_web_performance_checks": true
+  },
+  "manifest_generator_qualification": {
+    "coax_checks": "passed",
+    "root_mutants": 68,
+    "killed": 68,
+    "survived": 0,
+    "native_asan_ubsan_tests": 2,
+    "native_assertions": 24
+  }
+}

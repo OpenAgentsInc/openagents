@@ -13,6 +13,36 @@ defines the precise edge contract and limits. This chapter explains the trust
 boundaries; changing one line of operator configuration is not cryptographic
 proof of a stronger trust level.
 
+## Join with a learned checkpoint
+
+The installer supports the original Elephant checkpoint as well as the small
+toy. Follow the quickstart's hardware requirements before the 18.8 GB download:
+
+```shell
+curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh
+bash /tmp/join-pylon.sh --model elephant-1 --self-test
+```
+
+The native device probe compiles the real Metal or CUDA kernels and checks the
+Coax memory plan before fetching weights. The download manifest is emitted from
+the same Coax target registry used by model admission, including immutable
+revision, artifact hashes and checkpoint identity. Interrupted downloads resume;
+an unsupported device or failed checksum never selects the toy automatically.
+The explicit small alternative is `--model psionic-toy --self-test`.
+
+The engine authenticates the original files and passes the numerical doctor
+before the Pylon advertises capacity. Then `--self-test` starts a fresh native
+buyer pinned to this new provider's key and exact checkpoint. It sends an
+encrypted decision through the relay and checks the returned provider and model.
+A local health response or a call answered by an operator's existing GPU is
+insufficient proof of this join.
+
+The self-test leaves the Pylon serving until it is stopped. It does not grant
+the new provider admission to the hosted API's operator-approved routes. The
+quickstart remains the source of truth for prerequisites, cache/state locations,
+stop commands and troubleshooting. Report setup failures or unclear instructions
+in [the repository's issue tracker](https://github.com/OpenAgentsInc/openagents/issues).
+
 ## Keep the layers separate
 
 The public route is `POST /api/v1/systemone`. Its JSON is the existing NIP-DEC
