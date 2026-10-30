@@ -14,7 +14,9 @@
 # in headless Chrome against its golden screenshots (goldens.ts): each page
 # must start and draw, not only answer 200, and the pages must send every
 # event of the analytics contract (analytics-contract.json); a missing one is
-# named and nothing is promoted.
+# named and nothing is promoted. Then Everglade's frame rate (perf.ts): at
+# dpr 1 and 2 it walks four places and casts, and must hold 60 FPS (p95 at
+# most 17.5 ms, no frame over 33 ms), or nothing is promoted.
 #
 # Production, after the promote, in one of two modes (owner decision, 2026-10-29):
 #   FAST (the default)  smoke.sh's HTTP checks plus a brief check that each
@@ -272,6 +274,11 @@ if $stage; then
     bun "$tree/coax/web/style-check.ts" https://staging.openagents.com --out "$repo/coax/web/style" || echo "  style check: views out of range (a report; nothing is held back)"
     lap style "$t"
   fi
+  # Everglade must hold 60 FPS at dpr 1 and 2 (perf.ts: p95 <= 17.5 ms, no frame over 33 ms, walking and casting).
+  t=$(now)
+  bun "$tree/coax/web/perf.ts" https://staging.openagents.com ||
+    { echo "release $commit: Everglade misses 60 FPS on staging (perf.ts above); production is untouched" >&2; exit 1; }
+  lap perf "$t"
 fi
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s${held_names:+; would hold back $held_names}"; exit 0; }
 if ! $stage; then
