@@ -423,11 +423,16 @@ AG_memo_value :: (value:AgValue)->AgValue {
 AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
  if level>0 {memory[0].scope[level-1]|=closure;if memory[0].height[level-1]<=height {memory[0].height[level-1]=height+1;}}
 }
+// Distinct procedures one audit may reach.
+#test "the procedure cap and its closure bits are exact" {
+ #assert AG_procedure_limit()==64;
+}
+AG_procedure_limit :: ()->int {return 64;}
 AG_procedure :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,args:[]AgValue,memory:[]AgMemory,state:[]ScAudit)->AgValue {
  if !AG_tick(state,id) {return AgValue.{};}if state[0].depth==16 || args.count>8 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}
  for i:0..<state[0].depth {if state[0].stack[i]==id {SC_fail(state,SC_RECURSION,id);return AgValue.{};}}
  p:=nodes[id];if p.kind!=64 || p.flag2 {SC_fail(state,SC_CALL,id);return AgValue.{};}if AG_public_only(p.name) {SC_fail(state,SC_VARTIME,id);return AgValue.{};}
- seen:=-1;for i:0..<state[0].count {if state[0].seen[i]==id {seen=i;}}if seen<0 {if state[0].count==64 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}seen=state[0].count;state[0].seen[seen]=id;state[0].count+=1;}
+ seen:=-1;for i:0..<state[0].count {if state[0].seen[i]==id {seen=i;}}if seen<0 {if state[0].count==AG_procedure_limit() {SC_fail(state,SC_LIMIT,id);return AgValue.{};}seen=state[0].count;state[0].seen[seen]=id;state[0].count+=1;}
  level:=state[0].depth;state[0].stack[level]=id;state[0].depth+=1;memory[0].scope[level]=cast(u64)1<<seen;memory[0].height[level]=1;env:=[1]AgEnv.[AgEnv.{procedure=id}];at:=p.head;count:=0;keys:[8]AgValue;cacheable:=true;
  while at!=0 {if !AG_tick(state,at) {return AgValue.{};}if count>=args.count || nodes[at].kind!=68 {SC_fail(state,SC_CALL,at);return AgValue.{};}
   type:=AG_resolved(nodes,values,roots,types,p,nodes[at],"parameter",state);if !AG_match(nodes,values,roots,nodes[at].a,AG_parameter_name(types,p,nodes[at]),state,0) {SC_fail(state,SC_TYPE,at);}
