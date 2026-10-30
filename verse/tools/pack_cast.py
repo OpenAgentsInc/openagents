@@ -7,7 +7,8 @@ aethyr-cpp's assets (read only) and writes:
   cast-layerN.jpg    the character's texture layers, copied as they are
 
 The cast is the default character aethyr's player wears (LookSpec{}: the
-male body, dressed as a peasant, the bun hair in the second hair colour) at
+male body, dressed as a peasant, in the second hair colour) with short
+parted hair in place of aethyr's default buns, at
 its nearest level of detail, with the six clips the player plays, and the
 Grid's near robot (its faces and line art) with its clips and the recorded
 patrols. The characters are Quaternius's CC0 kits (Universal Base Characters,
@@ -25,7 +26,7 @@ start on 16-byte boundaries.
 import hashlib, math, os, shutil, struct, sys
 
 CLIPS = ["Idle_Loop", "Walk_Loop", "Sprint_Loop", "Jump_Start", "Jump_Loop", "Jump_Land", "Dance_Loop"]
-PARTS = ["Male_Peasant_Arms", "Male_Peasant_Body", "Male_Peasant_Legs", "Male_Peasant_Feet", "Male_head", "Hair_Buns_M"]
+PARTS = ["Male_Peasant_Arms", "Male_Peasant_Body", "Male_Peasant_Legs", "Male_Peasant_Feet", "Male_head", "Hair_SimpleParted_M"]
 LAYERS = [5, 9, 10, 11, 12, 16]          # texture slot i is assets/layer{LAYERS[i]}.jpg
 HAIR = (0.22, 0.11, 0.05)                 # kHairColors[1], the default; layers 10 and 11 take it
 UNLIT = 255                               # the slot of a flat, unlit colour
