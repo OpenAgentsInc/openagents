@@ -382,12 +382,12 @@ watch_missiles_draw :: (s: [] Everglade) {
         for q: 0..<4 { sp_add_puff(s, add(a, times(d, 4 + f32(q) * 3.5)), times(d, 2), 1.8, 1.6, 0.96); }
       }
     } else if m.kind == MS_MAGIC_MISSILE {
-      // a dart: a bright violet-white head and a streak behind it along the way it turned
+      // a dart: a bright blue-white head and a streak behind it along the way it turned
       if m.t >= 0 && flying {
         at := v3(m.ax, m.ay, m.az); v := v3(m.vx, m.vy, m.vz);
-        shape(s, SHAPE_SPHERE, LOOK_FLAME, at, 0, 0, 0.09, 0.09, 0.09, 0.85, 0.75, 1);
-        sp_add_spark(s, at, times(v, -0.18), 0.28, 0.08, v3(0.62, 0.45, 1), 0);
-      } else if burst { sp_burst(s, b, v3(0, 1, 0), 6, 3, 0.35, 0.07, v3(0.9, 0.8, 1), v3(0.55, 0.35, 1), 0); }
+        shape(s, SHAPE_SPHERE, LOOK_FLAME, at, 0, 0, 0.17, 0.17, 0.17, 0.8, 0.95, 1);
+        sp_add_spark(s, at, times(v, -0.3), 0.4, 0.13, v3(0.4, 0.7, 1), 0);
+      } else if burst { sp_burst(s, b, v3(0, 1, 0), 8, 3, 0.4, 0.09, v3(0.85, 0.95, 1), v3(0.35, 0.6, 1), 0); }
     } else if m.kind == MS_EARTHBIND {
       // yellow strips of magic from the hand to you
       if flying {
@@ -409,7 +409,7 @@ watch_missiles_draw :: (s: [] Everglade) {
     feet := folk_feet(s, a.x, a.z);
     hand := v3(a.x + sin(a.yaw) * 0.35, feet + 1.45, a.z + cos(a.yaw) * 0.35);
     colour := ifx a.cast_kind == MS_FROST || a.cast_kind == MS_COLD || a.cast_kind == MS_LIGHTNING then v3(0.7, 0.88, 1)
-              else ifx a.cast_kind == MS_HOLD || a.cast_kind == MS_MAGIC_MISSILE then v3(0.72, 0.45, 1) else ifx a.cast_kind == MS_EARTHBIND then v3(1, 0.85, 0.2)
+              else ifx a.cast_kind == MS_HOLD then v3(0.72, 0.45, 1) else ifx a.cast_kind == MS_MAGIC_MISSILE then v3(0.5, 0.78, 1) else ifx a.cast_kind == MS_EARTHBIND then v3(1, 0.85, 0.2)
               else ifx a.cast_kind == MS_HEAL || a.cast_kind == MS_GUIDING || a.cast_kind == MS_WEAPON then v3(1, 0.93, 0.6) else v3(1, 0.6, 0.2);
     sp_add_spark(s, add(hand, times(sp_spray(s, 0), 0.12)), v3(0, 0.6, 0), 0.25, 0.07, colour, -1);
     fill := clamp01(a.casting / hi(watch_wind(a.cast_kind), 0.01));

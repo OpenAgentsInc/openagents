@@ -169,7 +169,8 @@ WEAPON_FOR :: 15.0; WEAPON_EVERY :: 2.0;
 //   WANTED 5 a Mage's 2nd-level slot makes four and the Archmage's 3rd-level five.
 //   Earthbind (WANTED 5): a Strength save (the Ranger's +4, proficient) or you can't rise and
 //   sink 60 feet a round to the ground, for a minute or while the caster keeps it (down, it ends).
-// And their bolts lead you: aimed where you will be when they get there.
+// And their bolts lead you: aimed where you will be when they get there (a Fireball still goes where
+// you were: step out of it).
 AIR_UP :: 1.5;             // m clear above their heads that is out of reach (REACH)
 AIR_LEVEL :: 4;
 MM_SPEED :: 16.0;          // m/s a dart flies, slower than a bolt so you see it turn
@@ -668,7 +669,7 @@ watch_cast :: (w: [] Watch, i: int, kind: int, feet: f32, you: Point, heights: [
   hand := v3(a.x + sin(a.yaw) * 0.35, feet + 1.45, a.z + cos(a.yaw) * 0.35);
   aim := add(you, v3(0, 1.0, 0));
   if kind == MS_MAGIC_MISSILE { watch_darts_cast(w, i, hand, aim); return; }
-  if w[0].level >= AIR_LEVEL && (kind == MS_FIRE_BOLT || kind == MS_GUIDING || kind == MS_FIREBALL || kind == MS_LIGHTNING) {
+  if w[0].level >= AIR_LEVEL && (kind == MS_FIRE_BOLT || kind == MS_GUIDING || kind == MS_LIGHTNING) {
     // where you will be when it gets there
     aim = add(aim, times(w[0].you_v, length(sub(aim, hand)) / f32(MS_SPEED)));
   }

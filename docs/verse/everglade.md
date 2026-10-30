@@ -714,7 +714,9 @@ at WANTED 5) and the Archmage five, at most once every 7 s each. At
 WANTED 5 they also cast Earthbind. On a failed Strength save (+4) you
 can't rise, and you sink 60 feet a round to the ground. It lasts a
 minute, or until its caster is knocked down. Their bolts lead you,
-aimed at where you will be when they arrive. A bar over a caster's head
+aimed at where you will be when they arrive. A Fireball still lands
+where you were, so you can move out of it. The company casts Magic
+Missile or Earthbind at most once every 3.5 s between them. A bar over a caster's head
 fills while they cast, in the spell's colour.
 
 The heat clears when you die, or when you stay out of every hunter's
