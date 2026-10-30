@@ -43,6 +43,8 @@ HTTP_POST :: 1; HTTP_BEACON :: 2; HTTP_ANSWER :: 4;
 TRACK_KEY :: 8;
 
 TRACK_HELD :: 8;
+TRACK_TALLY :: 14;       // kinds a tally holds; a 15th sends it at once
+TRACK_ONCE :: 96;
 
 Track :: struct {
   ready: bool;             // the page facts arrived
@@ -60,6 +62,11 @@ Track :: struct {
   down: bool; down_x: f32; down_y: f32; dragged: bool;
   loaded: bool; ended: bool; automated: bool; mobile: bool;
   fcp: f64; dcl: f64;      // the browser's first paint and DOM-ready, ms (0 unknown)
+  // What a realm's player does often (spells, kills, fires), counted and sent
+  // as one "tally" every 30 s and on leaving (track_tally), never per frame.
+  tally_k: [TRACK_TALLY * 24] u8; tally_kn: [TRACK_TALLY] int; tally_c: [TRACK_TALLY] int; tallies: int;
+  once: [TRACK_ONCE] int; once_n: int;   // what was recorded once this page (track_once): its hashes
+  meters: f64; meters_at: int;           // walked in the world (track_walk) and the last milestone sent
   buf: [TRACK_BUF] u8; buf_n: int; count: int; first_at: f64;
   cur: int; props: int; open: bool; spill: bool;   // the event being written
   out: [TRACK_OUT] u8; out_n: int; flags: int;     // a batch for the face (sent and cleared after every call)
@@ -119,6 +126,8 @@ text_has :: (text: string, needle: string) -> bool {
   }
   return false;
 }
+// The path of the page facts' url ("/realms/sandbox"): which page this is, for a face that serves two.
+track_facts_path :: (facts: string) -> string #export_c { return track_url_path(fact_of(facts, "url")); }
 // The value of key in key=value lines, or "".
 fact_of :: (facts: string, key: string) -> string {
   i := 0;
@@ -349,6 +358,7 @@ track_message :: (t: [] Track, kind: int, bytes: string) -> bool #export_c {
   if kind == HOST_PAGE { track_facts(t, bytes); return true; }
   if kind == HOST_HIDDEN {
     if !t[0].hidden { t[0].hidden = true; t[0].hidden_at = t[0].t; t[0].bg = true; }
+    track_tally_send(t);
     if track_begin(t, "hidden") { track_num(t, "ms", track_now_ms(t)); track_end(t); }
     track_flush(t, HTTP_BEACON);
     return true;
@@ -360,6 +370,7 @@ track_message :: (t: [] Track, kind: int, bytes: string) -> bool #export_c {
   }
   if kind == HOST_LEAVE {
     ev := ifx t[0].world_n > 0 then "world-leave" else "page-leave";
+    track_tally_send(t);
     if track_begin(t, ev) { track_num(t, "ms", track_now_ms(t)); track_num(t, "active", track_active(t)); track_int(t, "walked", t[0].walked); track_end(t); }
     track_flush(t, HTTP_BEACON);
     return true;
@@ -396,6 +407,7 @@ track_frame :: (t: [] Track, dt: f32, w: f32, h: f32, dpr: f32) #export_c {
   }
   if !t[0].hidden && t[0].t - t[0].alive_at >= TRACK_ALIVE {
     t[0].alive_at = t[0].t;
+    track_tally_send(t);
     if track_begin(t, "alive") {
       track_num(t, "ms", track_now_ms(t)); track_num(t, "active", track_active(t)); track_int(t, "walked", t[0].walked);
       if t[0].world_n > 0 { track_str(t, "world", cast(string) t[0].world[0..<t[0].world_n]); }
@@ -465,6 +477,108 @@ track_pointer :: (t: [] Track, x: f32, y: f32, phase: int, kind: int, label: str
   } else if phase == 3 { t[0].down = false; }
 }
 
+// ---- what people do in a realm (every realm's face and module calls these;
+// docs/verse/analytics-events.md lists each realm's events). No words: a
+// chat is its length, an id is the game's own name for a thing.
+
+// The world's name on an event, when the page shows one.
+tw_world :: (t: [] Track) { if t[0].world_n > 0 { track_str(t, "world", cast(string) t[0].world[0..<t[0].world_n]); } }
+
+// Something done, now: ev with the game's id for it ("talk", "keeper").
+track_act :: (t: [] Track, ev: string, id: string) #export_c {
+  if track_begin(t, ev) { if id.count > 0 { track_str(t, "id", id); } tw_world(t); track_end(t); }
+}
+// The same with a number (a WANTED level, a count, a score).
+track_act_n :: (t: [] Track, ev: string, id: string, n: int) #export_c {
+  if track_begin(t, ev) { if id.count > 0 { track_str(t, "id", id); } track_int(t, "n", n); tw_world(t); track_end(t); }
+}
+// A setting changed: which, and on or off.
+track_setting :: (t: [] Track, id: string, on: bool) #export_c {
+  if track_begin(t, "setting") { track_str(t, "id", id); track_bool(t, "on", on); tw_world(t); track_end(t); }
+}
+// A chat line sent: only how long it was.
+track_chat :: (t: [] Track, via: string, length: int) #export_c {
+  if track_begin(t, "chat-sent") { track_str(t, "via", via); track_int(t, "len", length); tw_world(t); track_end(t); }
+}
+// Something that should have worked and didn't (a load, a request).
+track_fail :: (t: [] Track, what: string, status: int) #export_c {
+  if track_begin(t, "fail") { track_str(t, "id", what); track_int(t, "n", status); tw_world(t); track_end(t); }
+}
+
+tw_hash :: (a: string, b: string) -> int {
+  h := 2166136261;
+  for c: a { h = ((h ^ cast(int) c) * 16777619) & 4294967295; }
+  h = ((h ^ 47) * 16777619) & 4294967295;
+  for c: b { h = ((h ^ cast(int) c) * 16777619) & 4294967295; }
+  return h + 1;
+}
+// ev with id, only the first time this page load (a place entered, a thing
+// found): true when it was recorded now.
+track_once :: (t: [] Track, ev: string, id: string) -> bool #export_c {
+  if !t[0].ready { return false; }
+  h := tw_hash(ev, id);
+  for i: 0..<t[0].once_n { if t[0].once[i] == h { return false; } }
+  if t[0].once_n >= TRACK_ONCE { return false; }
+  t[0].once[t[0].once_n] = h; t[0].once_n += 1;
+  if track_begin(t, ev) { if id.count > 0 { track_str(t, "id", id); } tw_world(t); track_end(t); }
+  return true;
+}
+// A place in the world entered for the first time this visit.
+track_area :: (t: [] Track, id: string) #export_c { if !track_once(t, "visit", id) { return; } }
+
+// Distance walked in the world, in metres: "walk" at 10, 50, 100, 250, 500, 1000 and 2500 m.
+TRACK_MARKS :: [7] int.[10, 50, 100, 250, 500, 1000, 2500];
+track_walk :: (t: [] Track, metres: f64) #export_c {
+  if !(metres > 0) || metres > 50 { return; }    // a teleport isn't walking
+  t[0].meters += metres;
+  marks := TRACK_MARKS;
+  for m: marks {
+    if m > t[0].meters_at && t[0].meters >= cast(f64) m {
+      t[0].meters_at = m;
+      if track_begin(t, "walk") { track_int(t, "m", m); track_num(t, "s", t[0].t); tw_world(t); track_end(t); }
+    }
+  }
+}
+
+// Counted, sent later: what happens many times a minute (a spell cast, a
+// kill, a fire lit). The key is ev_id as a property name (letters, digits, _).
+track_tally :: (t: [] Track, ev: string, id: string) #export_c { track_tally_n(t, ev, id, 1); }
+track_tally_n :: (t: [] Track, ev: string, id: string, n: int) #export_c {
+  if !t[0].ready { return; }
+  key: [24] u8; kn := 0;
+  for c: ev { if kn < 24 { key[kn] = tw_keychar(c); kn += 1; } }
+  if id.count > 0 && kn < 23 { key[kn] = 95; kn += 1; for c: id { if kn < 24 { key[kn] = tw_keychar(c); kn += 1; } } }
+  if kn == 0 || !((key[0] >= 97 && key[0] <= 122) || (key[0] >= 65 && key[0] <= 90)) { return; }
+  for i: 0..<t[0].tallies {
+    if t[0].tally_kn[i] == kn {
+      same := true;
+      for j: 0..<kn { if t[0].tally_k[i * 24 + j] != key[j] { same = false; break; } }
+      if same { t[0].tally_c[i] += n; return; }
+    }
+  }
+  if t[0].tallies >= TRACK_TALLY { track_tally_send(t); }
+  i := t[0].tallies;
+  for j: 0..<kn { t[0].tally_k[i * 24 + j] = key[j]; }
+  t[0].tally_kn[i] = kn; t[0].tally_c[i] = n; t[0].tallies += 1;
+}
+tw_keychar :: (c: u8) -> u8 {
+  if (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) { return c; }
+  return 95;
+}
+// The counts so far as one "tally" event, then from zero.
+track_tally_send :: (t: [] Track) #export_c {
+  if t[0].tallies == 0 { return; }
+  if track_begin(t, "tally") {
+    for i: 0..<t[0].tallies {
+      tw_key(t, cast(string) t[0].tally_k[i * 24..<i * 24 + t[0].tally_kn[i]]);
+      tw_int(t, t[0].tally_c[i]);
+    }
+    tw_world(t);
+    track_end(t);
+  }
+  t[0].tallies = 0;
+}
+
 // What the playtest's pages say about saving, where they say it (Settings,
 // Privacy on main's pages).
 TRACK_DISCLOSURE :: "We save what you do here, including what you say and type, with an anonymous id. It helps the Verse understand more.";
@@ -524,4 +638,27 @@ TRACK_DISCLOSURE :: "We save what you do here, including what you say and type, 
   #assert track_version("Mozilla/5.0 (iPhone) Version/18.0 Mobile/15E148 Safari/604.1", "Safari") == "18";
   #assert track_url_host("https://openagents.com/a?b") == "openagents.com" && track_url_path("https://openagents.com/a/b?c#d") == "/a/b";
   #assert track_url_query("https://x.com/p?a=1#z") == "a=1" && track_url_host("") == "";
+}
+
+#test "a realm's acts: once, tallies, walking milestones and chat length" {
+  t: [1] Track;
+  track_init(t[..], "everglade");
+  #assert track_message(t[..], HOST_PAGE, "tab=0123456789abcdef\nvisitor=ab\nnow=1000\nnav=0");
+  t[0].buf_n = 0; t[0].count = 0;
+  track_world(t[..], "everglade");
+  #assert track_once(t[..], "visit", "dock") && !track_once(t[..], "visit", "dock") && track_once(t[..], "visit", "swamp");
+  track_tally(t[..], "spell", "magic-missile"); track_tally(t[..], "spell", "magic-missile"); track_tally(t[..], "kill", "");
+  track_walk(t[..], 6); track_walk(t[..], 6); track_walk(t[..], 900);
+  track_chat(t[..], "chat", 12);
+  track_act_n(t[..], "wanted", "", 3);
+  body := cast(string) t[0].buf[0..<t[0].buf_n];
+  #assert text_has(body, "\"ev\":\"visit\",\"page\":\"everglade\",\"ct\":1000,\"p\":{\"id\":\"dock\",\"world\":\"everglade\"}}");
+  #assert text_has(body, "\"ev\":\"walk\"") && text_has(body, "\"m\":10,") && !text_has(body, "\"m\":50");
+  #assert text_has(body, "\"p\":{\"via\":\"chat\",\"len\":12,\"world\":\"everglade\"}}") && text_has(body, "\"p\":{\"n\":3,\"world\":\"everglade\"}}");
+  #assert !text_has(body, "tally");
+  track_frame(t[..], 31.0, 100, 100, 1);
+  body2 := cast(string) t[0].buf[0..<t[0].buf_n];
+  out := cast(string) t[0].out[0..<t[0].out_n];
+  #assert text_has(body2, "\"p\":{\"spell_magic_missile\":2,\"kill\":1,\"world\":\"everglade\"}}") || text_has(out, "\"p\":{\"spell_magic_missile\":2,\"kill\":1,\"world\":\"everglade\"}}");
+  #assert t[0].tallies == 0;
 }

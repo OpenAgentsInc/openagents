@@ -92,3 +92,16 @@ post(batch("c00000000000000r9", [ev("page-view", 1, {"path": "/realm/everglade"}
 text = call("GET", reports, headers={"Cookie": "oa_session=" + "a" * 64})[1].decode()
 pages = text.split("#PAGES|")[1].split("\n#")[0] if "#PAGES|" in text else ""
 check("pages: /realm/everglade and /realms/everglade are one row", "\n/realms/everglade|2" in pages and "/realm/everglade|" not in pages, pages[:400])
+
+# ---- every realm's card: how far visits got and what they did, a tally's counts summed, the app's visits counted
+app_ua = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148 OpenAgentsApp/412"}
+eg = lambda e, i, p=None: dict(ev(e, i, p), page="everglade")
+post(batch("c00000000000000e1", [eg("page-view", 1), eg("load-engine", 2), eg("world-enter", 3, {"world": "everglade"}),
+     eg("spell", 4, {"id": "magic-missile"}), eg("tally", 5, {"spell_magic_missile": 6, "kill": 2}), eg("walk", 6, {"m": 50})]), app_ua)
+text = call("GET", reports, headers={"Cookie": "oa_session=" + "a" * 64})[1].decode()
+card = text.split("#EVERGLADE|")[1].split("\n#")[0] if "#EVERGLADE|" in text else ""
+check("a realm's card: its steps, then the most done, a tally summed",
+      "|WHAT|SESSIONS|TIMES" in card and "\nIn the world|1|" in card and "\nWalked 50 m|1|" in card and "\nspell_magic_missile|1|6" in card
+      and "\nkill|1|2" in card and "\nspell magic-missile|1|1" in card, card[:600])
+realms = text.split("#REALMS|")[1].split("\n#")[0] if "#REALMS|" in text else ""
+check("the realms table counts the app's visits", "\neverglade|1|1|1|1|" in realms and realms.split("\neverglade|")[1].split("\n")[0].endswith("|1"), realms[:400])

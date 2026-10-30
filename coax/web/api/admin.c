@@ -272,6 +272,19 @@ static void section(out_buf *o, PGconn *db, const char *title, const char *flags
   "WHEN ev IN ('survey-sent', 'survey-answer', 'survey-submit') THEN 9 ELSE 1 END"
 #define STEP_NAMES "ARRAY['visited', 'loaded', 'in a world', 'editing', 'placed', 'published', 'shared', 'invited', 'answered']"
 
+// The events every visit sends on its own; the rest are what people did.
+#define REALM_NOISE \
+  "'session-start', 'page-view', 'load-engine', 'load-landing', 'world-enter', 'world-leave', 'page-leave', 'alive', " \
+  "'hidden', 'visible', 'resize', 'click', 'key', 'error', 'fail', 'tally', 'app-launch', 'app-background', 'app-foreground'"
+#define REALM_PAGES \
+  "'haunt', 'sandbox', 'the-grid', 'everglade', 'dead-gears', 'ice-cream-man', 'fairy-forest', 'hecates-cemetery', " \
+  "'realm-made', 'realm', 'realm-builder', 'galaxy', 'landing', 'home', 'app'"
+static const struct { const char *page, *title; } realm_cards[] = {
+  {"home", "HOMEPAGE"}, {"galaxy", "GALAXY"}, {"haunt", "HAUNTED HOUSE"}, {"sandbox", "SANDBOX"}, {"the-grid", "THE GRID"},
+  {"everglade", "EVERGLADE"}, {"dead-gears", "DEAD GEARS"}, {"ice-cream-man", "ICE CREAM MAN"}, {"fairy-forest", "FAIRY FOREST"},
+  {"hecates-cemetery", "HECATE'S CEMETERY: WHAT THEY DID"}, {"realm-builder", "REALM BUILDER"}, {"realm-made", "MADE REALMS"},
+  {"app", "IPHONE APP"}, {NULL, NULL}};
+
 static void overview(out_buf *o, PGconn *db, const char *const *f) {
   section(o, db, "HEALTH", "", "SURFACE|LAST EVENT|LAST HOUR|LAST DAY|CONTRACT EVENTS MISSING",
     "SELECT surface, coalesce(" CHI("last_ms") " || ' ' || last_ev, 'never'), hour::text, day::text, "
@@ -286,6 +299,7 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "UNION ALL SELECT 'Entered a world', count(DISTINCT sid)::text FROM e WHERE ev = 'world-enter' "
     "UNION ALL SELECT 'Said or typed something', count(DISTINCT sid)::text FROM e WHERE p ? 'text' "
     "UNION ALL SELECT 'Errors', count(*)::text FROM e WHERE ev = 'error' "
+    "UNION ALL SELECT 'In the iPhone app', count(*)::text FROM k JOIN analytics.sessions x USING (sid) WHERE x.ua LIKE '%OpenAgentsApp/%' OR k.sid LIKE 'a%' "
     "UNION ALL SELECT 'Playtesters', count(DISTINCT lower(email))::text FROM pt "
     "UNION ALL SELECT 'Playtester visits', count(*)::text FROM pt "
     "UNION ALL SELECT 'Automated, ' || CASE WHEN $3::boolean THEN 'counted' ELSE 'left out' END, count(*)::text FROM s WHERE automated "
@@ -308,6 +322,38 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "SELECT label, count(DISTINCT e.sid)::text FROM steps LEFT JOIN e ON e.ev = ANY (evs) AND "
     "  CASE WHEN i = 1 THEN e.page = 'galaxy' AND e.p->>'label' = 'villa' ELSE e.page = 'hecates-cemetery' END "
     "GROUP BY i, label ORDER BY i", 4, f);
+  // Every realm and the app, one card each (migrations/0069_analytics_realm_actions.sql,
+  // docs/verse/analytics-events.md): how far visits got, then what people did most.
+  // A 'tally' event's properties are counts; every other action counts once.
+  // Same filter as the rest: the team and automation are left out.
+  section(o, db, "REALMS", "w", "REALM|VISITS|LOADED|IN THE WORLD|DID SOMETHING|MEDIAN MINUTES|IN THE APP", KEPT
+    ", v AS (SELECT page, sid, bool_or(ev = 'load-engine') AS loaded, bool_or(ev = 'world-enter') AS entered, "
+    "  bool_or(ev NOT IN (" REALM_NOISE ")) AS acted, (max(coalesce(ct, ms)) - min(coalesce(ct, ms))) / 60000.0 AS mins "
+    "  FROM e WHERE page IN (" REALM_PAGES ") GROUP BY page, sid) "
+    "SELECT v.page, count(*)::text, count(*) FILTER (WHERE loaded)::text, count(*) FILTER (WHERE entered)::text, "
+    "  count(*) FILTER (WHERE acted)::text, round((percentile_cont(0.5) WITHIN GROUP (ORDER BY mins))::numeric, 1)::text, "
+    "  count(*) FILTER (WHERE x.ua LIKE '%OpenAgentsApp/%')::text "
+    "FROM v LEFT JOIN analytics.sessions x USING (sid) GROUP BY v.page ORDER BY count(*) DESC", 4, f);
+  for (int i = 0; realm_cards[i].page; i++) {
+    const char *g[5] = {f[0], f[1], f[2], f[3], realm_cards[i].page};
+    section(o, db, realm_cards[i].title, "", "WHAT|SESSIONS|TIMES", KEPT
+      ", pe AS (SELECT * FROM e WHERE page = $5), "
+      "steps(i, label, n) AS (VALUES "
+      "  (1, 'Visited', (SELECT count(DISTINCT sid) FROM pe)), "
+      "  (2, 'Loaded', (SELECT count(DISTINCT sid) FROM pe WHERE ev IN ('load-engine', 'load-landing', 'app-launch'))), "
+      "  (3, 'In the world', (SELECT count(DISTINCT sid) FROM pe WHERE ev = 'world-enter')), "
+      "  (4, 'Did something', (SELECT count(DISTINCT sid) FROM pe WHERE ev NOT IN (" REALM_NOISE "))), "
+      "  (5, 'Walked 50 m', (SELECT count(DISTINCT sid) FROM pe WHERE ev = 'walk' AND (p->>'m')::int >= 50)), "
+      "  (6, 'Stayed 5 minutes', (SELECT count(*) FROM (SELECT sid FROM pe GROUP BY sid HAVING max(coalesce(ct, ms)) - min(coalesce(ct, ms)) >= 300000) l)), "
+      "  (7, 'Failed to load or errored', (SELECT count(DISTINCT sid) FROM pe WHERE ev IN ('error', 'fail')))), "
+      "acts AS (SELECT sid, ev || coalesce(' ' || coalesce(p->>'id', p->>'area', p->>'label', p->>'m'), '') AS what, 1::bigint AS n "
+      "  FROM pe WHERE ev NOT IN (" REALM_NOISE ") "
+      "  UNION ALL SELECT pe.sid, j.key, (j.value #>> '{}')::numeric::bigint FROM pe, jsonb_each(pe.p) j "
+      "  WHERE pe.ev = 'tally' AND jsonb_typeof(j.value) = 'number'), "
+      "top AS (SELECT what, count(DISTINCT sid) AS s, sum(n) AS t FROM acts GROUP BY what ORDER BY sum(n) DESC, what LIMIT 15) "
+      "SELECT label, n::text, '' FROM steps "
+      "UNION ALL SELECT * FROM (SELECT what, s::text, t::text FROM top ORDER BY t DESC, what) tt", 5, g);
+  }
   section(o, db, "WHERE THEY STOPPED", "", "LAST THING DONE|SESSIONS", KEPT
     "SELECT ev, count(*)::text FROM (SELECT DISTINCT ON (sid) sid, ev FROM e "
     "  WHERE ev NOT IN ('alive', 'hidden', 'visible', 'resize', 'world-leave', 'page-leave', 'session-end', 'error') "

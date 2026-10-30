@@ -4,5 +4,9 @@
   "haunt": ["page-view", "world-enter", "load-engine", "area", "objective", "quest", "click", "world-leave"],
   "ice-cream-man": ["page-view", "world-enter", "load-engine", "world-leave"],
   "dead-gears": ["page-view", "world-enter", "load-engine", "wave", "world-leave"],
-  "hecates-cemetery": ["page-view", "world-enter", "load-engine", "world-leave"]
+  "hecates-cemetery": ["page-view", "world-enter", "load-engine", "world-leave"],
+  "sandbox": ["page-view", "world-enter", "load-engine", "world-leave"],
+  "the-grid": ["page-view", "world-enter", "load-engine", "world-leave"],
+  "everglade": ["page-view", "world-enter", "load-engine", "world-leave"],
+  "fairy-forest": ["page-view", "world-enter", "load-engine", "world-leave"]
 }

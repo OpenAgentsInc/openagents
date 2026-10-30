@@ -1480,6 +1480,11 @@ quest_done_event :: (n: int) -> string {
   return "";
 }
 HAUNT_WORLD :: "haunted-house";
+// The world on the house's events: the Sandbox runs the same page (realm-face.c names it "sandbox").
+realm_world :: (t: [] Track) -> string {
+  if cast(string) t[0].page[0..<t[0].page_n] == "sandbox" { return "sandbox"; }
+  return HAUNT_WORLD;
+}
 
 // Every frame, after realm_draw: the house's changes as events.
 realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera: int) #export_c {
@@ -1488,16 +1493,16 @@ realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera:
   if !v.ready { return; }
   if !s[0].started {
     s[0].started = true; s[0].quest = v.quest; s[0].camera = camera;
-    track_world(t, HAUNT_WORLD);
+    track_world(t, realm_world(t));
     track_loaded(t, "load-engine");
   }
   if !seen_same(s[0].room[..], s[0].room_n, v.title) {
     s[0].room_n = tw_copy(s[0].room[..], 0, v.title);
-    if track_begin(t, "area") { track_str(t, "area", v.title); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+    if track_begin(t, "area") { track_str(t, "area", v.title); track_str(t, "world", realm_world(t)); track_end(t); }
   }
   if v.quest != s[0].quest {
     done := quest_done_event(s[0].quest);
-    if v.quest > s[0].quest && done.count > 0 && track_begin(t, done) { track_str(t, "world", HAUNT_WORLD); track_end(t); }
+    if v.quest > s[0].quest && done.count > 0 && track_begin(t, done) { track_str(t, "world", realm_world(t)); track_end(t); }
     if track_begin(t, "quest") { track_int(t, "step", v.quest); track_int(t, "n", QUEST_STEPS); track_end(t); }
     s[0].quest = v.quest;
   }
@@ -1518,7 +1523,7 @@ realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera:
     if track_begin(t, "view") { track_int(t, "camera", camera); track_end(t); }
   }
   if !seen_same(s[0].with[..], s[0].with_n, v.talking) {
-    if v.talking.count > 0 { if track_begin(t, "npc") { track_str(t, "who", v.talking); track_str(t, "world", HAUNT_WORLD); track_end(t); } }
+    if v.talking.count > 0 { if track_begin(t, "npc") { track_str(t, "who", v.talking); track_str(t, "world", realm_world(t)); track_end(t); } }
     else if track_begin(t, "npc-end") { track_str(t, "who", cast(string) s[0].with[0..<s[0].with_n]); track_end(t); }
     s[0].with_n = tw_copy(s[0].with[..], 0, v.talking);
   }
@@ -1528,7 +1533,7 @@ realm_track :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView, camera:
   }
   if r[0].typing != s[0].typing {
     s[0].typing = r[0].typing;
-    if r[0].typing && r[0].typing_for == TYPE_SURVEY && track_begin(t, "survey-show") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+    if r[0].typing && r[0].typing_for == TYPE_SURVEY && track_begin(t, "survey-show") { track_str(t, "q", "how it went"); track_str(t, "world", realm_world(t)); track_end(t); }
   }
   realm_track_voice(r, s, t, v);
 }
@@ -1541,21 +1546,21 @@ realm_track_voice :: (r: [] Realm, s: [] RealmSeen, t: [] Track, v: RealmView) {
   if !seen_same(s[0].voice[..], s[0].voice_n, phase) {
     was := cast(string) s[0].voice[0..<s[0].voice_n];
     if was == "connecting" && (phase == "listening" || phase == "notice" || phase == "off") && track_begin(t, "voice-on") {
-      track_str(t, "to", to); track_bool(t, "ok", phase == "listening"); track_str(t, "world", HAUNT_WORLD); track_end(t);
+      track_str(t, "to", to); track_bool(t, "ok", phase == "listening"); track_str(t, "world", realm_world(t)); track_end(t);
     }
     s[0].voice_n = tw_copy(s[0].voice[..], 0, phase);
   }
   if r[0].heard_no != s[0].heard_no {
     s[0].heard_no = r[0].heard_no;
     if track_begin(t, "voice") {
-      track_str(t, "to", to); track_str(t, "world", HAUNT_WORLD);
+      track_str(t, "to", to); track_str(t, "world", realm_world(t));
       track_words(t, cast(string) r[0].heard[0..<r[0].heard_n]); track_end(t);
     }
   }
 }
 // The survey's answer, sent: the words, with consent (the box says they're saved).
 realm_track_answer :: (t: [] Track, text: string) #export_c {
-  if track_begin(t, "survey-sent") { track_str(t, "q", "how it went"); track_str(t, "world", HAUNT_WORLD); track_words(t, text); track_end(t); }
+  if track_begin(t, "survey-sent") { track_str(t, "q", "how it went"); track_str(t, "world", realm_world(t)); track_words(t, text); track_end(t); }
 }
 realm_put :: (out: [] u8, o: int, s: string) -> int {
   if o + s.count > out.count { return out.count + 1; }
@@ -1699,7 +1704,7 @@ realm_npc_text :: (body: string, out: [] u8) -> int #export_c {
 // A question to a character, and whether the server answered it (else their own lines did).
 realm_track_ask :: (t: [] Track, who: string, question: string, ok: bool) #export_c {
   if track_begin(t, "prompt") {
-    track_str(t, "via", "npc"); track_str(t, "who", who); track_bool(t, "ok", ok); track_str(t, "world", HAUNT_WORLD);
+    track_str(t, "via", "npc"); track_str(t, "who", who); track_bool(t, "ok", ok); track_str(t, "world", realm_world(t));
     track_words(t, question); track_end(t);
   }
 }
@@ -1707,12 +1712,12 @@ realm_track_ask :: (t: [] Track, who: string, question: string, ok: bool) #expor
 realm_track_teach :: (t: [] Track, who: string, lesson: string) #export_c {
   if track_begin(t, "prompt") {
     track_str(t, "via", "npc"); track_str(t, "who", who); track_bool(t, "teach", true); track_bool(t, "ok", true);
-    track_str(t, "world", HAUNT_WORLD); track_words(t, lesson); track_end(t);
+    track_str(t, "world", realm_world(t)); track_words(t, lesson); track_end(t);
   }
 }
 // A line said in the room's chat.
 realm_track_chat :: (t: [] Track, room: string, text: string) #export_c {
-  if track_begin(t, "chat") { track_str(t, "room", room); track_str(t, "world", HAUNT_WORLD); track_words(t, text); track_end(t); }
+  if track_begin(t, "chat") { track_str(t, "room", room); track_str(t, "world", realm_world(t)); track_words(t, text); track_end(t); }
 }
 // Who is in the room: when you come in, and whenever the number here changes.
 realm_track_presence :: (t: [] Track, room: string, here: int, full: bool) #export_c {
@@ -1730,7 +1735,7 @@ realm_track_presence :: (t: [] Track, room: string, here: int, full: bool) #expo
 }
 // Something placed from edit mode's hotbar or the quest's orb.
 realm_track_place :: (t: [] Track, item: string, via: string) #export_c {
-  if track_begin(t, "place") { track_str(t, "item", item); track_str(t, "via", via); track_str(t, "world", HAUNT_WORLD); track_end(t); }
+  if track_begin(t, "place") { track_str(t, "item", item); track_str(t, "via", via); track_str(t, "world", realm_world(t)); track_end(t); }
 }
 // The label of the button at (x, y), for a click ("" none).
 realm_button_label :: (r: [] Realm, x: f32, y: f32) -> string #export_c {
@@ -1756,7 +1761,7 @@ realm_track_edit :: (t: [] Track, op: int) #export_c {
     else if op == OP_MIND || op == OP_HERE { track_str(t, "person", ifx op == OP_MIND then "mind" else "here"); }
     else if op >= OP_ZONE_LEFT && op <= OP_ZONE_NEAR { track_str(t, "zone", ZONE_LABELS[op - OP_ZONE_LEFT]); }
     else if op >= OP_ZONE_BIGGER && op <= OP_ZONE_RESET { track_str(t, "zone", ifx op == OP_ZONE_BIGGER then "bigger" else ifx op == OP_ZONE_SMALLER then "smaller" else ifx op == OP_ZONE_ONCE then "once" else "reset"); }
-    track_str(t, "world", HAUNT_WORLD);
+    track_str(t, "world", realm_world(t));
     track_end(t);
   }
 }
