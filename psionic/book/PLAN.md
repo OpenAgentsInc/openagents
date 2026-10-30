@@ -349,7 +349,9 @@ the model ladder from a small distill to V4.1 Flash, V4.1's distinctive
 components, and the engine techniques behind its efficiency. Each technique
 is exact unless its profile says otherwise. The old Rust attempt ran V4.1 end
 to end but never passed numerical parity; chapter 13's rules come from that
-failure.
+failure. It also served V4.1 Flash from one RTX PRO 6000 the way
+[Project Maya](https://github.com/mw00/project-maya) does on home PCs (chapter
+68a).
 
 | Chapter | What we build and check |
 | --- | --- |
@@ -366,6 +368,7 @@ failure.
 | [66. Pack the cache exactly](ch066-pack-the-cache-exactly.md) — runnable: exact CPU BF16 grid codec and cache/work inventory | Window KV in FP8 and compressed and index keys in FP4 where the reference already rounds to those grids, bit-checked against it; the memory of step buffers, which scale with chunk size, budgeted separately from the cache. |
 | 67. A decode step with no host waits | The whole decode step as one recorded device command sequence: expert ids that stay on the device, sampling on the device so a stage returns a token rather than logits, and a host that schedules step N+1 while step N runs, with buffer lifetimes that allow speculative lengths to be learned a step late. |
 | 68. Execute DeepSeek V4.1 Flash on one machine | The complete model, 510.3 GB of originals: one large GPU or a large-memory Mac with experts from the cache of chapter 64 and Engram from disk, qualified under chapter 13 against a reference capture and measured for time to first token, tokens per second and memory. |
+| 68a. Maya's recipe: V4.1 Flash on one card | [Project Maya](https://github.com/mw00/project-maya) (MIT) serves V4.1 Flash from one PC with a hot-expert cache and 2–3-bit experts. The pre-reset Rust stage did the same on one RTX PRO 6000 (96 GB, 176 GiB of RAM, a rented `g4-standard-48`), not on an RTX 4080. Rebuild that box in Coax from chapters 62, 64, 65 and 66, plus routed experts requantized to about 2.6 bits a weight (178 GB) by importance-weighted GPTQ, the exact skip of layers 21–39 for all but the last 19 × 127 + 1 = 2,414 prompt tokens, and a per-machine calibration of cache size and miss lane. The quant is a separate `consumer-q` profile: never qualified, never in a qualified group, scored by its own card against the reference (top-1 agreement, KL, G2 answers). Targets from the old run: 24.5 tokens/s decode, 91% top-1 and mean KL 0.117; Maya's own engine on the same machine reached 35 tokens/s, 54 with drafts. Then the same build on a 16 GB card such as the 4080: what fits beside its host RAM, the decode it reaches, or a stated refusal. |
 | 69. Verify drafts by expected gain | The checkpoint's own draft layers, fixed-length verification first, then variable-length verification chosen from a trained confidence head and a measured cost curve, reported as committed tokens per unit time rather than projected acceptance. |
 
 The reference implementation's exact arithmetic depended on its hardware and

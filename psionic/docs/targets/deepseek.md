@@ -142,9 +142,47 @@ remaining chapter, including 141, explicit.
 - **Resource limits were wrong.** Step buffers sized by context, not chunk,
   hit a codec limit. A parser re-decoded the whole answer every token, which
   was quadratic.
-- **Shortcuts failed silently.** A lossy 2–3-bit profile produced unusable
-  text. DeepSeek's own draft layers made single-request decode slower
+- **Shortcuts failed silently.** The first lossy 2–3-bit profile produced
+  unusable text from its first token; the GPTQ rebuild of it worked (see
+  below). DeepSeek's own draft layers made single-request decode slower
   (1.17 versus 3.95 tokens/s).
+
+## One card, the way Maya does it
+
+[Project Maya](https://github.com/mw00/project-maya) (`mw00/project-maya` at
+`451f9cb6a2`, MIT; notes in `docs/research/deepseek/2026-10-21-project-maya.md`
+before the reset) is a C++/CUDA engine that serves V4.1 Flash from one PC. On
+2026-10-21/22 we ran Maya itself, then rebuilt its designs in the Rust stage
+(issues #12462–#12471, `docs/psionic/v41-single-box.md`). Both ran on one
+rented RTX PRO 6000 Blackwell (96 GB) in a spot `g4-standard-48` in
+`asia-northeast1-b`, with 176 GiB of RAM, 48 threads and a 900 GB disk. None
+of it ran on the RTX 4080.
+
+- **Maya on that machine** (Maya-S, its 2–3-bit GGUF): 35.3 tokens/s decode,
+  53.6 with drafting; prefill 214 tokens/s at 2K and 292 at 8K. 48% of the
+  routed experts sat in VRAM; the rest ran on CPU threads from the page
+  cache.
+- **Our stage, exact weights:** a VRAM cache of 30% of the experts, the rest
+  read from the mapped shards, Engram rows read from the shards per token.
+  24.3 tokens/s with a routing profile (89% hits); prefill 83 tokens/s at 2K
+  after the layer-major work. With every expert a hit a token takes about
+  33 ms, so exact weights can't pass about 30 tokens/s on this card.
+- **Our stage, `consumer-q`:** experts requantized to about 2.6 bits a weight
+  (178 GB) by importance-weighted GPTQ from 16 calibration streams. 24.5
+  tokens/s; against the reference, 91% top-1 agreement and mean KL 0.117
+  (exact weights: 98.8% and 0.011); 5 of 6 G2 answers, as the reference.
+  Two Pylons served it to Foreman for real coding work on 2026-10-22, as a
+  lossy, unqualified profile.
+- **Maya's prompt skip is exact within a bound:** layers 21–39 read earlier
+  tokens only through layer 20's compressed state and their own 128-token
+  window, so only the last 19 × 127 + 1 = 2,414 prompt tokens need them.
+
+On a 16 GB card such as the 4080, the native model doesn't fit: 289 GB of
+routed experts and 203 GB of Engram need that much RAM beside the card, and
+with experts in host memory one layer took about 7 ms against 0.8 ms on the
+RTX PRO 6000. The 178 GB quant fits only beside about 192 GB of RAM, or
+reads its misses from disk. Chapter 68a measures that card as its own
+device class, or refuses it.
 
 ## Efficiency techniques to rebuild in Coax
 
@@ -155,6 +193,7 @@ remaining chapter, including 141, explicit.
 | FP8/FP4 packed KV where the reference already rounds | Maya; NVIDIA FLARE's compact records (528/288/68 bytes per entry) | 66 |
 | One recorded device sequence per decode step; device-side routing ids and sampling; host one step ahead | Old CUDA-graph stages; DeepSeek's asynchronous scheduler (after SGLang and NanoFlow) | 67 |
 | Engram served from mapped files or disk by row | FLARE's direct-I/O Engram; old host-mapped gather (3.2 µs) | 62 |
+| Low-bit routed experts by importance-weighted GPTQ, as a separate unqualified profile; exact prompt skip of layers 21–39; per-machine calibration | Maya; old #12465, #12470 | 68a |
 | Fixed then variable-length draft verification from a confidence head and a cost curve | DeepSeek's DSpark (+6% at its batch sizes) | 69 |
 | Prefix cache of 128-token pages via content-hashed chains, storage independent of compute, per-traffic retention | DeepSeek 3FS cache (96% hit rate on 77K-token average inputs) | 119 |
 | Prefill cost model, length buckets, pull scheduling; decode balancing on requests plus cache length | DeepSeek's load balancers | 120 |
