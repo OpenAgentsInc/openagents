@@ -59,7 +59,7 @@ class AggregateAudit(Audit):
                 extents=(C.c_int64*labels)(*[(row['view']['extent'] if row['view'] else 0) for row in rows],*[0]*len(fields));access=(C.c_uint32*labels)(*[({'read':1,'write':2}[row['view']['access']] if row['view'] else 0) for row in rows],*[3]*len(fields))
                 result=self.lib.ag_bridge_public_views(sources,len(sources),types,len(types),entry,guards,256,C.byref(count),classification['mask'],names,parameter_types,labels,compiled_runs,extents,access)
             else:result=self.lib.ag_bridge_classified(sources,len(sources),types,len(types),entry,guards,256,C.byref(count),classification['mask'],names,parameter_types,len(rows),compiled_runs)
-        self.guards=[{'node':x.node,'unit':x.unit,'line':x.line,'column':x.column,'origin_mask':x.mask,'kind':{1:'authored-assertion',2:'declassification'}.get(x.kind,'unknown')} for x in guards[:count.value]];return result
+        self.guards=[{'node':x.node,'unit':x.unit,'line':x.line,'column':x.column,'origin_mask':x.mask,'kind':{1:'authored-assertion',2:'declassification',3:'public-output'}.get(x.kind,'unknown')} for x in guards[:count.value]];return result
     def audit(self,*args,classification=UNCLASSIFIED,**kwargs):
         self.guards=[]
         if classification is UNCLASSIFIED:self.classification=UNCLASSIFIED

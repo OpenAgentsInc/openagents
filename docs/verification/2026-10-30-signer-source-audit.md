@@ -43,6 +43,7 @@ The verdict is `guard-obligations`, with a public return value (mask 0):
 | declassification | `schnorr_sign.coax:240` | the self-check's per-stage status |
 | declassification | `schnorr_sign.coax:257` (×2) | the publish decision: validity and verdict |
 | authored guard, origin public | `secp_field.coax:239`, `:492` | public assertions on the lifted public key's field values |
+| public output | `nostr_sign_step`'s `out` | the published signature, whose s is derived from the key |
 
 These are the points where the signer is designed to reveal a fact: whether
 the key and nonce are valid, the public key, R, and whether the finished
@@ -81,7 +82,24 @@ Later pushes on the same day added:
 accepts with a single cause (loop marks skipped for-each bodies) and an
 over-broad declassification. Both were fixed, and the reproducers are
 regression cases in `test_public_views.py`. A second review of the later
-changes is recorded in `docs/issue4828.md`.
+changes found two more false accepts and one weaker case:
+1. declassifying part of a field, or one of several copies of it, cleared
+   the whole field;
+2. secrets written into public outputs (a public write view or a public
+   field) were accepted with no report;
+3. a declassification inside one branch also counted on the other path.
+
+The fixes:
+- a view resets a public field only if it covers the whole array field and
+  the field occurs exactly once in a one-element root view;
+- the taint a declassification can lower is joined separately for each path
+  through unresolved branches, keeping only branches that fall through;
+- every public writable root view and public field that ends holding secret
+  data is reported as a `public-output` obligation. In the signer that is
+  only `out`, which receives the signature.
+
+The reproducers are regression cases in `test_public_views.py` and
+`secret_field_cases.coax`.
 
 **Signer source changes.** Each computes the same values. They were made
 with the signer's owner (`openagents-d7`), who also changed the
@@ -98,10 +116,10 @@ self-verifier:
 
 ## Gates
 
-**Large profile (`aggregate.coax`):** 231 of 231 checks, and mutation in 20
-shards killed **3,701 of 3,701**
-([log](data/signer-source-audit-2026-10-30/large-mutation.log)). The visit
-budget was raised afterwards; that constant is pinned by an exact check.
+**Large profile (`aggregate.coax`, after the second review's fixes):** 235 of
+235 checks, and mutation in 20 shards killed **3,818 of 3,818**
+([log](data/signer-source-audit-2026-10-30/large-mutation.log)). These are
+ordinary mutation runs; a full reference-mode run is not done.
 
 **Shared refactor:** checks and mutation (all 0 survived):
 
@@ -111,7 +129,7 @@ budget was raised afterwards; that constant is pinned by an exact check.
 | `public-view-check` | 199 | [2,866/2,866](data/signer-source-audit-2026-10-30/public-view-mutation.log) |
 | `inventory` | 44 | [840/840](data/signer-source-audit-2026-10-30/inventory-mutation.log) |
 
-**Python suites:** `test_public_views.py` (11 of 11), `test_large_closure.py`,
+**Python suites:** `test_public_views.py` (12 of 12), `test_large_closure.py`,
 `test_correspondence.py` (exact blocks against the pinned public-view
 profile) and `test_signer_entry.py` pass.
 

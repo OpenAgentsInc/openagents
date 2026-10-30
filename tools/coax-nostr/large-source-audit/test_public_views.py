@@ -44,7 +44,8 @@ class PublicViews(unittest.TestCase):
         p,_,m=self.source('secret_cast','candidate :: (v:[]u8)->u64 #export_c {return cast(u64)v[0];}', [('v','[] u8','secret','read',2)])
         r=self.audit(p,m,0);self.assertTrue(r['accepted']);self.assertEqual(r['return_dependency_mask'],1)
         p,_,m=self.source('tainted_alias_cast','candidate :: (v:[]u8,x:u8)->u64 #export_c {w:[]u8=v[0..<1];v[0]=x;return cast(u64)w[0];}', [('v','[] u8','public','write',2),('x','u8','secret',None,0)])
-        r=self.audit(p,m,0);self.assertTrue(r['accepted']);self.assertEqual(r['return_dependency_mask'],2)
+        # x lands in the public v, which is reported as a public output.
+        r=self.audit(p,m,14);self.assertEqual(r['return_dependency_mask'],2);self.assertEqual([g['kind'] for g in r['authored_guard_obligations']],['public-output'])
         # Classified scalars are u64, so narrower secrets come from explicit truncation.
         for name,body,ret,error in [
             ('widen_u8_u32','b:=cast,trunc(u8)x;return cast(u32)b;','u32',0),
@@ -116,6 +117,18 @@ class PublicViews(unittest.TestCase):
         src='W :: struct {stage:u64;val:u64;}\nok_declassify :: (s:u64)->u64 {return s;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].stage=1;w[1].stage=k;\n d:=ok_declassify(w[0].stage);\n if w[1].stage==0 {return 1;}\n return d;\n}'
         p,_,m=self.source('declassify_one_element',src,[('w','[] W','secret','write',2),K])
         r=self.tool.audit(p,'candidate',classification=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=[['W','stage']]));self.assertEqual(r['error'],6,r['error_name'])
+    def test_second_review_false_accepts_refuse(self):
+        # Reproducers from the second independent review: partial or repeated-field
+        # declassification, declassification on one path only, and secrets left in
+        # public outputs.
+        cases=[('declassify_subslice', 'W :: struct {arr:[2]u64;v:u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].arr[1]=k;\n d:=ok_declassify(w[0].arr[0..<1]);\n if w[0].arr[1]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'arr']]), ('nested_items', 'I :: struct {arr:[2]u64;}\nW :: struct {items:[2]I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].items[0].arr[0]=1;w[0].items[1].arr[0]=k;\n d:=ok_declassify(w[0].items[0].arr[0..<2]);\n if w[0].items[1].arr[0]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['I', 'arr']]), ('two_fields_same_struct', 'I :: struct {arr:[2]u64;}\nW :: struct {a:I;b:I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].a.arr[0]=1;w[0].b.arr[0]=k;\n d:=ok_declassify(w[0].a.arr[0..<2]);\n if w[0].b.arr[0]==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['I', 'arr']]), ('struct_field_subarray', 'I :: struct {arr:[2]u64;s:u64;}\nW :: struct {inner:I;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n w[0].inner.s=k;\n d:=ok_declassify(w[0].inner.arr[0..<1]);\n if w[0].inner.s==0 {return 1;}\n return d;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'inner']]), ('loop_declassify_order', 'W :: struct {stage:[2]u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {\n r:=cast(u64)0;\n for i:0..<3 {\n  d:=ok_declassify(w[0].stage[0..<1]);\n  if w[0].stage[1]==0 {r=r|1;}\n  w[0].stage[1]=k;\n }\n return r;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'stage']]), ('arm_declassify', 'W :: struct {arr:[2]u64;}\nok_declassify :: (s:[]u64)->u64 {return 0;}\ncandidate :: (w:[]W,k:u64,p:u64)->u64 #export_c {\n w[0].arr[1]=k;\n if p==0 {d:=ok_declassify(w[0].arr[0..<2]);}\n if w[0].arr[1]==0 {return 1;}\n return 2;\n}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0), ('p', 'u64', 'public', None, 0)], [['W', 'arr']]), ('field_out', 'W :: struct {stage:u64;val:u64;}\ncandidate :: (w:[]W,k:u64)->u64 #export_c {w[0].stage=k;return 0;}', [('w', '[] W', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], [['W', 'stage']]), ('out_view', 'candidate :: (d:[]u64,k:u64)->u64 #export_c {d[0]=k;return 0;}', [('d', '[] u64', 'public', 'write', 1), ('k', 'u64', 'secret', None, 0)], None)]
+        for name,src,params,fields in cases:
+            p,_,m=self.source(name,src,params)
+            if fields:m=dict(m,schema='coax.secret-large-classification-views.v4',public_fields=fields)
+            r=self.tool.audit(p,'candidate',classification=m,run_steps=250000000);self.assertFalse(r['accepted'],name)
+            if name in ('field_out','out_view'):
+                self.assertEqual(r['error'],14,name);self.assertIn('public-output',[g['kind'] for g in r['authored_guard_obligations']],name)
+            else:self.assertEqual(r['error'],6,(name,r['error_name']))
     def test_taint_alias_and_readonly_effects(self):
         cases=[
           ('branch','candidate :: (v:[]u8)->u8 #export_c {if v[0]==0 {return 1;}return 2;}',[('v','[] u8','secret','read',2)],6),
@@ -142,7 +155,8 @@ class PublicViews(unittest.TestCase):
         for n,text,access in cases:
             p,_,m=self.source(n,text,[('v','[] u8','public',access,2)]);self.audit(p,m,0)
         p,_,m=self.source('secret_copy','candidate :: (s:[]u8,d:[]u8)->u8 #export_c {d[0]=s[0];return d[0];}', [('s','[] u8','secret','read',2),('d','[] u8','public','write',2)])
-        self.assertEqual(self.audit(p,m,0)['return_dependency_mask'],1)
+        # The secret copied into the public d is reported as a public output.
+        r=self.audit(p,m,14);self.assertEqual(r['return_dependency_mask'],1);self.assertEqual([g['kind'] for g in r['authored_guard_obligations']],['public-output'])
         p,_,m=self.source('public_guard','candidate :: (v:[]u8)->u8 #export_c {#assert v[0]==0;return 0;}', [('v','[] u8','public','read',2)])
         r=self.audit(p,m,14);self.assertFalse(r['accepted']);self.assertEqual([g['origin_mask'] for g in r['authored_guard_obligations']],[0])
     def test_manifest_and_tool_identity_mismatches_refuse(self):
@@ -187,6 +201,8 @@ class PublicViews(unittest.TestCase):
         # With wrapping limb products and masked limb conversion, the whole entry's
         # dataflow is analyzed; only the two public authored guards remain.
         self.assertEqual(r['reached_procedures'],61);self.assertEqual(r['return_dependency_mask'],1)
-        self.assertEqual([(g['line'],g['origin_mask']) for g in r['authored_guard_obligations']],[(239,0),(492,0)])
+        # work is classified public yet ends holding the secret scalar and the staged
+        # shared secret, which the audit now reports as a public output.
+        self.assertEqual([(g['kind'],g['origin_mask']) for g in r['authored_guard_obligations']],[('authored-assertion',0),('authored-assertion',0),('public-output',1)])
         self.observations.append({'case':'real_ecdh_entry','expected':14,'report':r})
 if __name__=='__main__':unittest.main()

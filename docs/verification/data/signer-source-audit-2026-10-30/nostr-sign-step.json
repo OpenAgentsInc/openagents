@@ -105,7 +105,7 @@
       "$REPO/coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
       "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
       "$REPO/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
-      "$REPO/tools/coax-nostr/large-source-audit/aggregate.coax": "4782ed8d8af14f1d34ce1a2b289705e128e26f9b80615f4e79b038d3c35d66c5",
+      "$REPO/tools/coax-nostr/large-source-audit/aggregate.coax": "ee96ec206bb58b2c65aa83e7ba6edcefdd87f57d519271a854471983c1694ac6",
       "$REPO/tools/coax-nostr/large-source-audit/inventory.coax": "b4f881a94d15e6c130afc94c8684927802f3bcb9f2f215e2f21abcf1ae22cb61",
       "$REPO/coax/lib/crypto/secret-flow.coax": "f0f7abd1dbca1e3849ce9f0c375b797bed8ebd567ffd6a00648e9d6624d0621d",
       "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
@@ -113,12 +113,12 @@
       "$REPO/coax/tests/nostr/secret_aggregate.coax": "e6c6a9f7a48ffdf756e0ffb02bfb36715e57808ace137f63654e5f4c6fd1cf9c",
       "$REPO/coax/tests/nostr/secret_aggregate_cases.coax": "8a6374863101d92d1a97d0c8369890f69a600299a5bbd72fcbd0844d98fe7b4f",
       "$REPO/coax/tests/nostr/secret_range_cases.coax": "78f6aae98b8b1ad7484f71cf83cdf6ff4ad6d1a6ef736b6aea685679f697e0bd",
-      "$REPO/coax/tests/nostr/secret_field_cases.coax": "e70e7198eae3922890362b84a774b66634b098d2afcf1e9f883ef5c8577f6e18",
+      "$REPO/coax/tests/nostr/secret_field_cases.coax": "7e921e182766aa670e27958db2fa5b0859cf8ca92509374a7004b786818dcb4a",
       "$REPO/tools/coax-nostr/large-source-audit/bridge-aggregate.cpp": "9da4c4f51f5ace00d56df17ff5d4ba98cbc85a8d040875e1f1a5b0febc569ccf",
       "$REPO/tools/coax-nostr/large-source-audit/check.py": "811e7f65169eff6254e6509b7f84bb2fe111d6e85632c6a04457632b04257e4f",
-      "$REPO/tools/coax-nostr/large-source-audit/aggregate.py": "983e703d5d138ab18e9b143a14d8dd3ab62e6fd1d28dabaf01d03afd2daa62d7"
+      "$REPO/tools/coax-nostr/large-source-audit/aggregate.py": "a7fdf77e007c2d03b8faea692926fcac4712710463e8689c50850e50e69bcd36"
     },
-    "audit_artifact_sha256": "55cf7a472f16f708c76833f3baaff954a25b683c648125aa35e1ec63cf2166a2",
+    "audit_artifact_sha256": "748152e83525f75acdd496199a48e4612949eaee37215ba1db06075846dc3e73",
     "profile": "native-c-checked-library",
     "public_fields": [
       [
@@ -176,7 +176,7 @@
     "compiler_sha256": "cd94879ecc21e72cc0d41a5e66c38194a0638a7167d01eb3a05380b4bf07fcfd",
     "compiler": "coax0 0.24.0",
     "compiler_run_steps": 250000000,
-    "audit_artifact_sha256": "55cf7a472f16f708c76833f3baaff954a25b683c648125aa35e1ec63cf2166a2",
+    "audit_artifact_sha256": "748152e83525f75acdd496199a48e4612949eaee37215ba1db06075846dc3e73",
     "audit_input_sha256": {
       "$REPO/tools/coax-nostr/secret-check/frontend.coax": "570f71b622640f2a2f55fb4fe1a05b78a36a2f606bf5e288f2150a3ba1b0de0c",
       "$REPO/coax/lib/compiler/lexer.coax": "2a193c698aab87f24384bdd4443dc02d15a2a699cea5b371762392fc5925ad0b",
@@ -187,7 +187,7 @@
       "$REPO/coax/lib/crypto/bytes.coax": "601c1e9e1bff31eb8adea5599c4b66f338819010d1c2b0b075f197543e448b1b",
       "$REPO/coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
       "$REPO/tools/coax-nostr/secret-check/source-policy.coax": "e0822835f32f266d4ca97b26d47ea158ffc58bed62eb5096d3eeec1dc9c628c5",
-      "$REPO/tools/coax-nostr/large-source-audit/aggregate.coax": "4782ed8d8af14f1d34ce1a2b289705e128e26f9b80615f4e79b038d3c35d66c5",
+      "$REPO/tools/coax-nostr/large-source-audit/aggregate.coax": "ee96ec206bb58b2c65aa83e7ba6edcefdd87f57d519271a854471983c1694ac6",
       "$REPO/tools/coax-nostr/large-source-audit/inventory.coax": "b4f881a94d15e6c130afc94c8684927802f3bcb9f2f215e2f21abcf1ae22cb61",
       "$REPO/coax/lib/crypto/secret-flow.coax": "f0f7abd1dbca1e3849ce9f0c375b797bed8ebd567ffd6a00648e9d6624d0621d",
       "$REPO/coax/lib/crypto/secret-types.coax": "e7a6a4632ab555ac12b3765d97bf18fcad5e18248f182889b31fb965682117e7",
@@ -195,10 +195,10 @@
       "$REPO/coax/tests/nostr/secret_aggregate.coax": "e6c6a9f7a48ffdf756e0ffb02bfb36715e57808ace137f63654e5f4c6fd1cf9c",
       "$REPO/coax/tests/nostr/secret_aggregate_cases.coax": "8a6374863101d92d1a97d0c8369890f69a600299a5bbd72fcbd0844d98fe7b4f",
       "$REPO/coax/tests/nostr/secret_range_cases.coax": "78f6aae98b8b1ad7484f71cf83cdf6ff4ad6d1a6ef736b6aea685679f697e0bd",
-      "$REPO/coax/tests/nostr/secret_field_cases.coax": "e70e7198eae3922890362b84a774b66634b098d2afcf1e9f883ef5c8577f6e18",
+      "$REPO/coax/tests/nostr/secret_field_cases.coax": "7e921e182766aa670e27958db2fa5b0859cf8ca92509374a7004b786818dcb4a",
       "$REPO/tools/coax-nostr/large-source-audit/bridge-aggregate.cpp": "9da4c4f51f5ace00d56df17ff5d4ba98cbc85a8d040875e1f1a5b0febc569ccf",
       "$REPO/tools/coax-nostr/large-source-audit/check.py": "811e7f65169eff6254e6509b7f84bb2fe111d6e85632c6a04457632b04257e4f",
-      "$REPO/tools/coax-nostr/large-source-audit/aggregate.py": "983e703d5d138ab18e9b143a14d8dd3ab62e6fd1d28dabaf01d03afd2daa62d7"
+      "$REPO/tools/coax-nostr/large-source-audit/aggregate.py": "a7fdf77e007c2d03b8faea692926fcac4712710463e8689c50850e50e69bcd36"
     },
     "object_timing_approved": false,
     "checked_runtime_guards_proved": false,
@@ -9710,7 +9710,7 @@
       ]
     },
     "resolved_type_inventory_scope": "compiler-typed physical closure; only reached procedures flow-analyzed",
-    "classification_manifest_sha256": "82a904a94047eb6b976dd5bf44117e312665fd10d6dd5abf68afef679f775ef5",
+    "classification_manifest_sha256": "84082a09831bd42d1a0624d0377cbe52d41316dc2ad824f4d5af1e52171e9027",
     "classified_parameters": [
       {
         "name": "key",
@@ -9776,7 +9776,7 @@
     "line": 0,
     "column": 0,
     "reached_procedures": 135,
-    "visited_nodes": 6396067,
+    "visited_nodes": 6293147,
     "return_dependency_mask": 0,
     "supported_algorithm_dataflow": true,
     "source_status": "analyzed-with-guard-obligations",
@@ -9906,6 +9906,16 @@
         "column": 37,
         "origin_mask": 11,
         "kind": "declassification",
+        "file": "$REPO/coax/lib/crypto/schnorr_sign.coax",
+        "source_sha256": "3e9702566ce8892c3cb94b0a05789b332f84c8f20b44948efe1e1ec3a17139c1",
+        "classification": "secret-derived"
+      },
+      {
+        "node": 3335,
+        "line": 275,
+        "column": 69,
+        "origin_mask": 11,
+        "kind": "public-output",
         "file": "$REPO/coax/lib/crypto/schnorr_sign.coax",
         "source_sha256": "3e9702566ce8892c3cb94b0a05789b332f84c8f20b44948efe1e1ec3a17139c1",
         "classification": "secret-derived"

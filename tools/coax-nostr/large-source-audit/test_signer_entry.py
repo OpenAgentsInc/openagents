@@ -3,8 +3,9 @@
 
 Runs the large profile over nostr_sign_step, the signer's complete closure,
 and checks that analysis completes with only declared obligations: every
-remaining item is either a *_declassify call in schnorr_sign.coax or an
-authored guard whose origin is public. Writes the report for the record."""
+remaining item is a *_declassify call in schnorr_sign.coax, an authored guard
+whose origin is public, or the one public output: out, which receives the
+published signature. Writes the report for the record."""
 import json
 import os
 import unittest
@@ -40,7 +41,13 @@ class SignerEntry(unittest.TestCase):
         self.assertGreaterEqual(r['reached_procedures'], 100)
         declassified = [g for g in r['authored_guard_obligations'] if g['kind'] == 'declassification']
         guards = [g for g in r['authored_guard_obligations'] if g['kind'] == 'authored-assertion']
-        self.assertEqual(len(declassified) + len(guards), len(r['authored_guard_obligations']))
+        outputs = [g for g in r['authored_guard_obligations'] if g['kind'] == 'public-output']
+        self.assertEqual(len(declassified) + len(guards) + len(outputs), len(r['authored_guard_obligations']))
+        # The only public output is the entry's out parameter (bit 4 of the
+        # parameters): no public field ends holding a secret.
+        entry_line = next(i+1 for i,l in enumerate(SIGNER.read_text().splitlines()) if l.startswith('nostr_sign_step ::'))
+        self.assertEqual([(g['file'].endswith('/crypto/schnorr_sign.coax'), g['line']) for g in outputs], [(True, entry_line)])
+        self.assertTrue(outputs[0]['origin_mask'] & 1)
         self.assertTrue(declassified and all(g['file'].endswith('/crypto/schnorr_sign.coax') for g in declassified))
         self.assertTrue(all(g['origin_mask'] == 0 for g in guards))
         source = SIGNER.read_text().splitlines()
