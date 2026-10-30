@@ -1,0 +1,261 @@
+// A wheeled vehicle on verse/rigid.coax and verse/contact.coax
+// (docs/verse/space.md): one rigid body (its chassis), four wheels as
+// suspension rays from mounts on the chassis, and tyres that grip.
+//
+// Each step, each wheel casts down the chassis's own -Y to the nearest
+// static plane. A wheel that reaches one pushes up with a spring and damper
+// along that surface's normal, and its tyre pushes along the ground: drive or
+// brake along the wheel, grip against sliding sideways, together never past
+// mu times the wheel's load (the friction circle). The front wheels steer,
+// less at speed; the handbrake takes most of the rear's side grip (a drift).
+//
+// Driving on any surface: the rays follow the chassis, not gravity, so a
+// wheel meets a wall or a ceiling as well as a floor; while wheels touch, a
+// `stick` pull holds the car to the surface it drives on (car-ball games'
+// sticky wheels). In the air, `air` turns the chassis (pitch from throttle,
+// yaw from steer, roll with the handbrake held), and a jump pushes it off the
+// surface, a second within DOUBLE_JUMP_WINDOW seconds once.
+//
+// The world is a list of planes (a box arena is six); a curved arena gives
+// its tangent planes under each wheel. Gravity comes in as an acceleration
+// (verse/gravity.coax gravity_at). Body collisions are vehicle_collide: the
+// chassis box against the same planes.
+//   coax/bin/coax test --library verse/vehicle.coax
+
+#load "contact.coax";
+
+WHEELS :: 4;
+DOUBLE_JUMP_WINDOW :: 1.25;
+
+VehicleSpec :: struct {
+  half: D3;               // the chassis box's half extents, metres
+  mount: [WHEELS] D3;     // where each wheel's suspension hangs, body frame (0, 1 front; 2, 3 rear)
+  wheel_r: f64;           // wheel radius
+  rest: f64;              // suspension travel at rest (unloaded), mount to wheel centre
+  stiffness: f64;         // N/m a wheel
+  damping: f64;           // N s/m a wheel
+  mu: f64;                // tyre friction
+  grip: f64;              // 1/s: how fast the tyres kill sideways sliding
+  drive: f64;             // N, all wheels together
+  brake: f64;             // N, all wheels together
+  coast: f64;             // 1/s: slowing with no throttle
+  top_speed: f64;         // m/s under drive alone
+  steer: f64;             // rad, front wheels at full lock, standing
+  steer_fade: f64;        // the share of lock lost at top speed
+  stick: f64;             // m/s^2 toward the surface while wheels touch
+  jump: f64;              // m/s along the chassis's up
+  air: f64;               // rad/s turn rate in the air
+}
+
+VehicleInput :: struct { throttle: f64; steer: f64; handbrake: bool; jump: bool; }
+
+VehicleState :: struct {
+  touching: [WHEELS] bool;
+  compression: [WHEELS] f64;
+  contact: [WHEELS] D3;      // where each touching wheel meets the ground
+  ground_n: D3;              // the mean normal under the touching wheels
+  wheels: int;               // how many touch
+  steer_now: f64;
+  air_time: f64;
+  jumps: int;                // since leaving the ground
+  jump_held: bool;
+}
+
+VehicleStep :: struct { body: RigidBody; state: VehicleState; }
+
+// A small electric roadster: 4.2 m long, 1.9 wide, 1000 kg.
+vehicle_roadster :: () -> VehicleSpec {
+  v: VehicleSpec;
+  v.half = d3(0.95, 0.4, 2.1);
+  v.mount[0] = d3(-0.85, -0.25, 1.4); v.mount[1] = d3(0.85, -0.25, 1.4);
+  v.mount[2] = d3(-0.85, -0.25, -1.4); v.mount[3] = d3(0.85, -0.25, -1.4);
+  v.wheel_r = 0.4; v.rest = 0.45;
+  v.stiffness = 30000.0; v.damping = 3500.0;
+  v.mu = 1.3; v.grip = 12.0;
+  v.drive = 9000.0; v.brake = 16000.0; v.coast = 0.35;
+  v.top_speed = 23.0;
+  v.steer = 0.55; v.steer_fade = 0.6;
+  v.stick = 5.0; v.jump = 5.5; v.air = 3.2;
+  return v;
+}
+
+// The chassis as a body: a box's inertia, made half again larger so the
+// car rolls less than a real box would.
+vehicle_body :: (spec: VehicleSpec, mass: f64, pos: D3, q: DQ) -> RigidBody {
+  return rigid_body(mass, d3_scale(rigid_box_inertia(mass, d3_scale(spec.half, 2.0)), 1.5), pos, q);
+}
+
+// The nearest plane a ray meets within reach: its t and normal (t < 0: none).
+RayHit :: struct { t: f64; n: D3; }
+ray_planes :: (o: D3, dir: D3, planes: [] Plane, reach: f64) -> RayHit {
+  best := RayHit.{t = -1.0, n = D3_Y};
+  for p: planes {
+    t := ray_plane(o, dir, p);
+    if t >= 0.0 && t <= reach && (best.t < 0.0 || t < best.t) { best = RayHit.{t = t, n = p.n}; }
+  }
+  return best;
+}
+
+// The speed along the chassis's forward (z).
+vehicle_forward_speed :: (b: RigidBody) -> f64 { return d3_dot(b.vel, rigid_axis(b, D3_Z)); }
+
+// One step: the wheels' forces and the jump go on the body for the next
+// rigid_step (gravity too, as gravity m).
+vehicle_step :: (b0: RigidBody, spec: VehicleSpec, st0: VehicleState, input: VehicleInput, planes: [] Plane, gravity: D3, dt: f64) -> VehicleStep {
+  b := b0; st := st0;
+  up := rigid_axis(b, D3_Y); fwd := rigid_axis(b, D3_Z);
+  down := d3_neg(up);
+  speed := vehicle_forward_speed(b);
+  lock := spec.steer * (1.0 - spec.steer_fade * fmin(abs(speed) / spec.top_speed, 1.0));
+  want := fclamp(input.steer, -1.0, 1.0) * lock;
+  st.steer_now += fclamp(want - st.steer_now, -4.0 * dt, 4.0 * dt);
+  share := b.mass / f64(WHEELS);
+  reach := spec.rest + spec.wheel_r;
+  n_sum := D3_ZERO;
+  st.wheels = 0;
+  throttle := fclamp(input.throttle, -1.0, 1.0);
+  for i: 0..<WHEELS {
+    mount := d3_add(b.pos, dq_rotate(b.orientation, spec.mount[i]));
+    hit := ray_planes(mount, down, planes, reach);
+    st.touching[i] = hit.t >= 0.0;
+    if !st.touching[i] { st.compression[i] = 0.0; continue; }
+    n := hit.n;
+    st.wheels += 1;
+    n_sum = d3_add(n_sum, n);
+    compression := reach - hit.t;
+    st.compression[i] = compression;
+    p := d3_add(mount, d3_scale(down, hit.t));
+    st.contact[i] = p;
+    v := rigid_point_velocity(b, p);
+    load := fmax(spec.stiffness * compression - spec.damping * d3_dot(v, n), 0.0);
+    b = rigid_force_at(b, d3_scale(n, load), mount);
+    // the wheel's heading on the ground
+    heading := ifx i < 2 then dq_rotate(dq_mul(b.orientation, dq_y(-st.steer_now)), D3_Z) else fwd;
+    f := d3_unit_or(d3_sub(heading, d3_scale(n, d3_dot(heading, n))), fwd);
+    side := d3_cross(n, f);
+    vf := d3_dot(v, f); vs := d3_dot(v, side);
+    grip := ifx i >= 2 && input.handbrake then spec.grip * 0.15 else spec.grip;
+    lateral := -vs * grip * share;
+    along := 0.0;
+    if throttle != 0.0 {
+      if vf * throttle < -0.5 { along = throttle * spec.brake / f64(WHEELS); }
+      else if abs(vf) < spec.top_speed || vf * throttle < 0.0 { along = throttle * spec.drive / f64(WHEELS); }
+    } else {
+      along = -vf * spec.coast * share;
+    }
+    if input.handbrake && i >= 2 { along -= vf * 0.6 * share; }
+    // the friction circle
+    limit := spec.mu * load;
+    total := sqrt(lateral * lateral + along * along);
+    if total > limit && total > 0.0 { k := limit / total; lateral *= k; along *= k; }
+    b = rigid_force_at(b, d3_add(d3_scale(f, along), d3_scale(side, lateral)), mount);
+  }
+  st.ground_n = d3_unit_or(n_sum, up);
+  if st.wheels > 0 {
+    st.air_time = 0.0; st.jumps = 0;
+    b.force = d3_sub(b.force, d3_scale(st.ground_n, spec.stick * b.mass));
+  } else {
+    st.air_time += dt;
+    // air control: a rate the chassis turns toward, about its own axes
+    wl := dq_rotate(dq_conj(b.orientation), rigid_omega_world(b));
+    target := d3(throttle * spec.air, -fclamp(input.steer, -1.0, 1.0) * spec.air, 0.0);
+    if input.handbrake { target = d3(target.x, 0.0, fclamp(input.steer, -1.0, 1.0) * spec.air); }
+    err := d3_sub(target, wl);
+    b.torque = d3_add(b.torque, dq_rotate(b.orientation, d3_scale(d3_mul(err, b.inertia), 6.0)));
+  }
+  b.force = d3_add(b.force, d3_scale(gravity, b.mass));
+  // a jump on the press, from the ground (two wheels), or once more soon after
+  if input.jump && !st.jump_held {
+    if st.wheels >= 2 {
+      b = rigid_impulse_at(b, d3_scale(up, spec.jump * b.mass), b.pos);
+      st.jumps = 1; st.wheels = 0; st.air_time = 0.0;
+    } else if st.jumps == 1 && st.air_time < DOUBLE_JUMP_WINDOW {
+      b = rigid_impulse_at(b, d3_scale(up, spec.jump * 0.8 * b.mass), b.pos);
+      st.jumps = 2;
+    }
+  }
+  st.jump_held = input.jump;
+  return VehicleStep.{body = b, state = st};
+}
+
+// The chassis box against the planes: each corner under one is answered
+// (restitution e, friction mu). Returns the body.
+vehicle_collide :: (b0: RigidBody, spec: VehicleSpec, planes: [] Plane, e: f64, mu: f64) -> RigidBody {
+  b := b0;
+  into: [8] Contact;
+  for p: planes {
+    n := contact_box_plane(b.pos, b.orientation, spec.half, p, into[..]);
+    for k: 0..<n { b = contact_resolve_static(b, into[k], e, mu); }
+  }
+  return b;
+}
+
+// Upside down or on its side, slow, and on the ground: true. A game rights it.
+vehicle_stuck :: (b: RigidBody, st: VehicleState, ground_up: D3) -> bool {
+  return st.wheels == 0 && d3_dot(rigid_axis(b, D3_Y), ground_up) < 0.3 && d3_len(b.vel) < 2.0;
+}
+
+// Checks.
+
+flat :: () -> [1] Plane { g: [1] Plane; g[0] = plane(D3_Y, 0.0); return g; }
+
+drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: VehicleInput, planes: [] Plane, gravity: D3, steps: int) -> VehicleState {
+  w := rigid_world(1.0 / 120.0, store);
+  s := st;
+  for k: 0..<steps {
+    out := vehicle_step(store[0], spec, s, input, planes, gravity, w.dt);
+    store[0] = out.body; s = out.state;
+    w = rigid_step(w, D3_ZERO);
+    store[0] = vehicle_collide(store[0], spec, planes, 0.1, 0.6);
+  }
+  return s;
+}
+
+#test "a roadster settles on its springs, level, and holds still" {
+  spec := vehicle_roadster();
+  store: [1] RigidBody;
+  store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.5, 0.0), DQ.{});
+  g := flat();
+  st := drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], d3(0.0, -9.81, 0.0), 480);
+  #assert st.wheels == 4;
+  // each wheel holds a quarter: k x = m g / 4
+  #assert near_d(st.compression[0], 1000.0 * (9.81 + spec.stick) / 4.0 / spec.stiffness, 0.01);
+  #assert d3_len(store[0].vel) < 0.01 && rigid_axis(store[0], D3_Y).y > 0.999;
+}
+
+#test "full throttle reaches top speed; steering turns it; the brake stops it" {
+  spec := vehicle_roadster();
+  store: [1] RigidBody;
+  store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
+  g := flat();
+  gravity := d3(0.0, -9.81, 0.0);
+  st := drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 120);
+  st = drive(store[..], spec, st, VehicleInput.{throttle = 1.0}, g[..], gravity, 720);
+  #assert vehicle_forward_speed(store[0]) > spec.top_speed * 0.95 && vehicle_forward_speed(store[0]) < spec.top_speed * 1.1;
+  #assert abs(store[0].pos.x) < 0.05;
+  before := rigid_axis(store[0], D3_Z);
+  st = drive(store[..], spec, st, VehicleInput.{throttle = 0.5, steer = 1.0}, g[..], gravity, 120);
+  after := rigid_axis(store[0], D3_Z);
+  #assert d3_angle(before, after) > 0.3 && rigid_axis(store[0], D3_Y).y > 0.9;
+  was := vehicle_forward_speed(store[0]);
+  st = drive(store[..], spec, st, VehicleInput.{throttle = -1.0}, g[..], gravity, 60);
+  #assert vehicle_forward_speed(store[0]) < was - 6.0;
+}
+
+#test "a jump leaves the ground, and a car on a wall sticks while it drives" {
+  spec := vehicle_roadster();
+  store: [1] RigidBody;
+  store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
+  g := flat();
+  gravity := d3(0.0, -6.5, 0.0);
+  st := drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 240);
+  st = drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 30);
+  #assert st.wheels == 0 && store[0].pos.y > 1.8;
+  // a wall at x = 0 facing +x; the car's up along +x, driving along +z, gravity -y
+  wall: [1] Plane;
+  wall[0] = plane(D3_X, 0.0);
+  store[0] = vehicle_body(spec, 1000.0, d3(0.97, 0.0, 0.0), dq_z(-PI_D / 2.0));
+  store[0].vel = d3(0.0, 0.0, 15.0);
+  st = drive(store[..], spec, VehicleState.{}, VehicleInput.{throttle = 1.0}, wall[..], gravity, 120);
+  #assert st.wheels >= 2 && store[0].pos.x < 1.3;
+}

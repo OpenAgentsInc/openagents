@@ -1,0 +1,351 @@
+// Contacts for verse/rigid.coax bodies (docs/verse/space.md): finding where
+// two shapes touch, and the impulse that answers it, in f64.
+//
+// Shapes: a sphere (a centre and a radius), an oriented box (a body's pose
+// and half extents), a static plane (n . x = d, n pointing into free space)
+// and a static triangle mesh (a triangle at a time). Every finder returns a
+// Contact: its normal points from the second shape toward the first (the way
+// to push the first out), its depth how far they overlap, its point where
+// they meet. Swept tests give the share of a step at which a moving sphere
+// first touches, so a fast ball never passes through a wall or a goal frame.
+//
+// The answer is a sequential impulse (Catto's, one contact at a time): the
+// normal impulse with restitution (none under REST_SPEED, so resting things
+// rest), Coulomb friction up to mu times it, and a positional push for the
+// overlap past SLOP. A body with mass 0 is static (it never moves).
+// Forces and impulses at a point (rigid_force_at, rigid_impulse_at) are here
+// too: verse/vehicle.coax and verse/thrust.coax push bodies with them.
+//   coax/bin/coax test --library verse/contact.coax
+
+#load "rigid.coax";
+
+REST_SPEED :: 0.4;     // m/s: slower approaches don't bounce
+SLOP :: 0.002;         // m of overlap left alone
+PUSH_SHARE :: 0.8;     // of the overlap past SLOP pushed out each solve
+NO_HIT :: 2.0;         // a swept test's "never in this step"
+
+Contact :: struct { hit: bool; normal: D3; depth: f64; point: D3; }
+Plane :: struct { n: D3; d: f64; }
+// The answer to a contact between two bodies.
+BodyPair :: struct { a: RigidBody; b: RigidBody; }
+
+plane :: (n: D3, d: f64) -> Plane { return Plane.{n = d3_unit(n), d = d}; }
+plane_through :: (n: D3, at: D3) -> Plane { u := d3_unit(n); return Plane.{n = u, d = d3_dot(u, at)}; }
+plane_distance :: (p: Plane, x: D3) -> f64 { return d3_dot(p.n, x) - p.d; }
+
+no_contact :: () -> Contact { c: Contact; return c; }
+contact_of :: (normal: D3, depth: f64, point: D3) -> Contact { return Contact.{hit = true, normal = normal, depth = depth, point = point}; }
+
+// ---- forces, impulses and the velocity at a point
+
+inverse_mass :: (b: RigidBody) -> f64 { return ifx b.mass > 0.0 then 1.0 / b.mass else 0.0; }
+// The world inverse inertia applied to v: R (I^-1 (R^T v)); zero for a static body.
+inverse_inertia_apply :: (b: RigidBody, v: D3) -> D3 {
+  if !(b.mass > 0.0) { return D3_ZERO; }
+  return dq_rotate(b.orientation, d3_div(dq_rotate(dq_conj(b.orientation), v), b.inertia));
+}
+rigid_point_velocity :: (b: RigidBody, at: D3) -> D3 { return d3_add(b.vel, d3_cross(rigid_omega_world(b), d3_sub(at, b.pos))); }
+// A force at a world point, for the next rigid_step: it adds its torque about the centre.
+rigid_force_at :: (b: RigidBody, force: D3, at: D3) -> RigidBody {
+  next := b;
+  next.force = d3_add(b.force, force);
+  next.torque = d3_add(b.torque, d3_cross(d3_sub(at, b.pos), force));
+  return next;
+}
+// An impulse (N s) at a world point, now.
+rigid_impulse_at :: (b: RigidBody, impulse: D3, at: D3) -> RigidBody {
+  if !(b.mass > 0.0) { return b; }
+  next := rigid_wake(b);
+  next.vel = d3_add(next.vel, d3_scale(impulse, 1.0 / b.mass));
+  return rigid_angular_impulse(next, d3_cross(d3_sub(at, b.pos), impulse));
+}
+// A body's axes in the world: its right (x), up (y) and forward (z).
+rigid_axis :: (b: RigidBody, local: D3) -> D3 { return dq_rotate(b.orientation, local); }
+
+// ---- finding contacts
+
+contact_sphere_plane :: (c: D3, r: f64, p: Plane) -> Contact {
+  s := plane_distance(p, c);
+  if s >= r { return no_contact(); }
+  return contact_of(p.n, r - s, d3_sub(c, d3_scale(p.n, s)));
+}
+
+contact_sphere_sphere :: (ca: D3, ra: f64, cb: D3, rb: f64) -> Contact {
+  between := d3_sub(ca, cb);
+  d := d3_len(between);
+  if d >= ra + rb { return no_contact(); }
+  n := d3_unit_or(between, D3_Y);
+  return contact_of(n, ra + rb - d, d3_add(cb, d3_scale(n, rb - (ra + rb - d) * 0.5)));
+}
+
+// A sphere against an oriented box (centre, attitude, half extents); the
+// normal pushes the sphere out of the box.
+contact_sphere_box :: (c: D3, r: f64, centre: D3, q: DQ, half: D3) -> Contact {
+  local := dq_rotate(dq_conj(q), d3_sub(c, centre));
+  near := d3(fclamp(local.x, -half.x, half.x), fclamp(local.y, -half.y, half.y), fclamp(local.z, -half.z, half.z));
+  out := d3_sub(local, near);
+  d := d3_len(out);
+  if d > 0.0 {
+    if d >= r { return no_contact(); }
+    return contact_of(dq_rotate(q, d3_scale(out, 1.0 / d)), r - d, d3_add(centre, dq_rotate(q, near)));
+  }
+  // the centre is inside: out through the nearest face
+  gx := half.x - abs(local.x); gy := half.y - abs(local.y); gz := half.z - abs(local.z);
+  n := d3(ifx local.x < 0.0 then -1.0 else 1.0, 0.0, 0.0); g := gx;
+  if gy < g { g = gy; n = d3(0.0, ifx local.y < 0.0 then -1.0 else 1.0, 0.0); }
+  if gz < g { g = gz; n = d3(0.0, 0.0, ifx local.z < 0.0 then -1.0 else 1.0); }
+  return contact_of(dq_rotate(q, n), g + r, c);
+}
+
+// An oriented box against a plane: its corners under the plane, the deepest
+// first, into `into`; returns how many.
+contact_box_plane :: (centre: D3, q: DQ, half: D3, p: Plane, into: [] Contact) -> int {
+  n := 0;
+  for k: 0..<8 {
+    corner := d3(ifx (k & 1) != 0 then half.x else -half.x, ifx (k & 2) != 0 then half.y else -half.y, ifx (k & 4) != 0 then half.z else -half.z);
+    w := d3_add(centre, dq_rotate(q, corner));
+    s := plane_distance(p, w);
+    if s < 0.0 && n < into.count {
+      c := contact_of(p.n, -s, w);
+      // keep the deepest first
+      if n > 0 && c.depth > into[0].depth { into[n] = into[0]; into[0] = c; } else { into[n] = c; }
+      n += 1;
+    }
+  }
+  return n;
+}
+
+// The point of triangle abc nearest p (Ericson, Real-Time Collision Detection 5.1.5).
+closest_on_triangle :: (p: D3, a: D3, b: D3, c: D3) -> D3 {
+  ab := d3_sub(b, a); ac := d3_sub(c, a); ap := d3_sub(p, a);
+  e1d := d3_dot(ab, ap); e2d := d3_dot(ac, ap);
+  if e1d <= 0.0 && e2d <= 0.0 { return a; }
+  bp := d3_sub(p, b);
+  e3d := d3_dot(ab, bp); e4d := d3_dot(ac, bp);
+  if e3d >= 0.0 && e4d <= e3d { return b; }
+  vc := e1d * e4d - e3d * e2d;
+  if vc <= 0.0 && e1d >= 0.0 && e3d <= 0.0 { return d3_add(a, d3_scale(ab, e1d / (e1d - e3d))); }
+  cp := d3_sub(p, c);
+  e5d := d3_dot(ab, cp); e6d := d3_dot(ac, cp);
+  if e6d >= 0.0 && e5d <= e6d { return c; }
+  vb := e5d * e2d - e1d * e6d;
+  if vb <= 0.0 && e2d >= 0.0 && e6d <= 0.0 { return d3_add(a, d3_scale(ac, e2d / (e2d - e6d))); }
+  va := e3d * e6d - e5d * e4d;
+  if va <= 0.0 && (e4d - e3d) >= 0.0 && (e5d - e6d) >= 0.0 { return d3_add(b, d3_scale(d3_sub(c, b), (e4d - e3d) / ((e4d - e3d) + (e5d - e6d)))); }
+  denom := 1.0 / (va + vb + vc);
+  return d3_add(a, d3_add(d3_scale(ab, vb * denom), d3_scale(ac, vc * denom)));
+}
+
+// A sphere against one triangle of a static mesh.
+contact_sphere_triangle :: (c: D3, r: f64, a: D3, b: D3, t: D3) -> Contact {
+  near := closest_on_triangle(c, a, b, t);
+  out := d3_sub(c, near);
+  d := d3_len(out);
+  if d >= r { return no_contact(); }
+  face := d3_unit_or(d3_cross(d3_sub(b, a), d3_sub(t, a)), D3_Y);
+  n := ifx d > 0.0 then d3_scale(out, 1.0 / d) else face;
+  return contact_of(n, r - d, near);
+}
+
+// A sphere against a static mesh (xyz triples, three a triangle): the deepest contact.
+contact_sphere_mesh :: (c: D3, r: f64, xyz: [] f64) -> Contact {
+  best := no_contact();
+  t := 0;
+  while t + 9 <= xyz.count {
+    k := contact_sphere_triangle(c, r, d3(xyz[t], xyz[t + 1], xyz[t + 2]), d3(xyz[t + 3], xyz[t + 4], xyz[t + 5]), d3(xyz[t + 6], xyz[t + 7], xyz[t + 8]));
+    if k.hit && (!best.hit || k.depth > best.depth) { best = k; }
+    t += 9;
+  }
+  return best;
+}
+
+// ---- rays and sweeps
+
+// Where a ray o + t dir meets the plane from its free side, t >= 0, or -1.
+ray_plane :: (o: D3, dir: D3, p: Plane) -> f64 {
+  den := d3_dot(p.n, dir);
+  if !(den < 0.0) { return -1.0; }
+  t := -plane_distance(p, o) / den;
+  return ifx t >= 0.0 then t else -1.0;
+}
+
+ray_sphere :: (o: D3, dir: D3, c: D3, r: f64) -> f64 {
+  m := d3_sub(o, c);
+  a := d3_dot(dir, dir);
+  b := d3_dot(m, dir);
+  q := d3_dot(m, m) - r * r;
+  if q > 0.0 && b > 0.0 { return -1.0; }
+  disc := b * b - a * q;
+  if disc < 0.0 { return -1.0; }
+  t := (-b - sqrt(disc)) / a;
+  return ifx t < 0.0 then 0.0 else t;
+}
+
+// Moller-Trumbore, either side; t >= 0 or -1.
+ray_triangle :: (o: D3, dir: D3, a: D3, b: D3, c: D3) -> f64 {
+  e1 := d3_sub(b, a); e2 := d3_sub(c, a);
+  p := d3_cross(dir, e2);
+  det := d3_dot(e1, p);
+  if abs(det) < 0.000000000001 { return -1.0; }
+  inv := 1.0 / det;
+  s := d3_sub(o, a);
+  u := d3_dot(s, p) * inv;
+  if u < 0.0 || u > 1.0 { return -1.0; }
+  q := d3_cross(s, e1);
+  v := d3_dot(dir, q) * inv;
+  if v < 0.0 || u + v > 1.0 { return -1.0; }
+  t := d3_dot(e2, q) * inv;
+  return ifx t >= 0.0 then t else -1.0;
+}
+
+// The share (0..1) of a move by `delta` at which a sphere first touches the
+// plane, or NO_HIT; 0 when it already does.
+sweep_sphere_plane :: (c: D3, r: f64, delta: D3, p: Plane) -> f64 {
+  s := plane_distance(p, c);
+  if s <= r { return 0.0; }
+  den := d3_dot(p.n, delta);
+  if !(den < 0.0) { return NO_HIT; }
+  t := (r - s) / den;
+  return ifx t <= 1.0 then t else NO_HIT;
+}
+
+// The same against another sphere, both moving (deltas over the step).
+sweep_sphere_sphere :: (ca: D3, ra: f64, da: D3, cb: D3, rb: f64, db: D3) -> f64 {
+  rel := d3_sub(da, db);
+  if d3_len2(rel) == 0.0 { return ifx d3_dist(ca, cb) <= ra + rb then 0.0 else NO_HIT; }
+  t := ray_sphere(ca, rel, cb, ra + rb);
+  return ifx t >= 0.0 && t <= 1.0 then t else NO_HIT;
+}
+
+// ---- answering a contact
+
+// The impulse answer between a and b at contact ct (its normal toward a),
+// restitution e and friction mu; a static b has mass 0.
+contact_resolve :: (a: RigidBody, b: RigidBody, ct: Contact, e: f64, mu: f64) -> BodyPair {
+  out := BodyPair.{a = a, b = b};
+  if !ct.hit { return out; }
+  ima := inverse_mass(a); imb := inverse_mass(b);
+  if ima + imb == 0.0 { return out; }
+  n := ct.normal;
+  // push apart along the normal, shared by inverse mass
+  push := fmax(ct.depth - SLOP, 0.0) * PUSH_SHARE / (ima + imb);
+  out.a.pos = d3_add(a.pos, d3_scale(n, push * ima));
+  out.b.pos = d3_sub(b.pos, d3_scale(n, push * imb));
+  ra := d3_sub(ct.point, a.pos); rb := d3_sub(ct.point, b.pos);
+  rel := d3_sub(rigid_point_velocity(a, ct.point), rigid_point_velocity(b, ct.point));
+  vn := d3_dot(rel, n);
+  if vn >= 0.0 { return out; }
+  k := ima + imb + d3_dot(n, d3_add(d3_cross(inverse_inertia_apply(a, d3_cross(ra, n)), ra), d3_cross(inverse_inertia_apply(b, d3_cross(rb, n)), rb)));
+  bounce := ifx -vn > REST_SPEED then e else 0.0;
+  j := -(1.0 + bounce) * vn / k;
+  impulse := d3_scale(n, j);
+  // friction against the sliding, at most mu j
+  slide := d3_sub(rel, d3_scale(n, vn));
+  sl := d3_len(slide);
+  if sl > 0.000000001 && mu > 0.0 {
+    t := d3_scale(slide, 1.0 / sl);
+    kt := ima + imb + d3_dot(t, d3_add(d3_cross(inverse_inertia_apply(a, d3_cross(ra, t)), ra), d3_cross(inverse_inertia_apply(b, d3_cross(rb, t)), rb)));
+    jt := fmin(sl / kt, mu * j);
+    impulse = d3_sub(impulse, d3_scale(t, jt));
+  }
+  out.a = rigid_impulse_at(out.a, impulse, d3_add(out.a.pos, ra));
+  out.b = rigid_impulse_at(out.b, d3_neg(impulse), d3_add(out.b.pos, rb));
+  return out;
+}
+
+// Against the static world (a plane, a mesh): b is fixed.
+contact_resolve_static :: (a: RigidBody, ct: Contact, e: f64, mu: f64) -> RigidBody {
+  fixed: RigidBody;
+  fixed.pos = ct.point;
+  return contact_resolve(a, fixed, ct, e, mu).a;
+}
+
+// Checks.
+
+ball :: (r: f64, mass: f64, at: D3) -> RigidBody {
+  i := 0.4 * mass * r * r;
+  return rigid_body(mass, d3(i, i, i), at, DQ.{});
+}
+
+#test "a ball dropped on the ground bounces back to e^2 of its height" {
+  store: [1] RigidBody;
+  store[0] = ball(1.0, 30.0, d3(0.0, 11.0, 0.0));
+  w := rigid_world(1.0 / 480.0, store[..]);
+  ground := plane(D3_Y, 0.0);
+  top := 0.0; falling := true;
+  for s: 0..<4000 {
+    w = rigid_step(w, d3(0.0, -9.81, 0.0));
+    ct := contact_sphere_plane(store[0].pos, 1.0, ground);
+    if ct.hit { store[0] = contact_resolve_static(store[0], ct, 0.6, 0.0); falling = false; }
+    if !falling { top = fmax(top, store[0].pos.y - 1.0); }
+  }
+  #assert near_d(top, 10.0 * 0.36, 0.08);
+}
+
+#test "equal spheres head on swap velocities at e = 1 and keep momentum at any e" {
+  a := ball(1.0, 2.0, d3(-0.99, 0.0, 0.0)); a.vel = d3(3.0, 0.0, 0.0);
+  b := ball(1.0, 2.0, d3(0.99, 0.0, 0.0));
+  p := contact_resolve(a, b, contact_sphere_sphere(a.pos, 1.0, b.pos, 1.0), 1.0, 0.0);
+  #assert near_d(p.a.vel.x, 0.0, 0.000000001) && near_d(p.b.vel.x, 3.0, 0.000000001);
+  c := ball(1.0, 5.0, d3(-0.99, 0.1, 0.0)); c.vel = d3(3.0, 0.5, -1.0);
+  d := ball(0.5, 1.0, d3(0.45, 0.0, 0.2)); d.vel = d3(-1.0, 0.0, 0.0);
+  q := contact_resolve(c, d, contact_sphere_sphere(c.pos, 1.0, d.pos, 0.5), 0.4, 0.5);
+  before := d3_add(d3_scale(c.vel, 5.0), d3_scale(d.vel, 1.0));
+  after := d3_add(d3_scale(q.a.vel, 5.0), d3_scale(q.b.vel, 1.0));
+  #assert d3_dist(before, after) < 0.000000001;
+}
+
+#test "a sliding ball starts to roll, at 5/7 of its speed" {
+  store: [1] RigidBody;
+  store[0] = ball(1.0, 30.0, d3(0.0, 0.999, 0.0));
+  store[0].vel = d3(7.0, 0.0, 0.0);
+  w := rigid_world(1.0 / 480.0, store[..]);
+  ground := plane(D3_Y, 0.0);
+  for s: 0..<2000 {
+    w = rigid_step(w, d3(0.0, -9.81, 0.0));
+    ct := contact_sphere_plane(store[0].pos, 1.0, ground);
+    if ct.hit { store[0] = contact_resolve_static(store[0], ct, 0.0, 0.5); }
+  }
+  #assert near_d(store[0].vel.x, 5.0, 0.05);
+  // rolling without slipping: omega r = v
+  #assert near_d(d3_len(rigid_omega_world(store[0])), 5.0, 0.05);
+}
+
+#test "a sphere meets a turned box on the face it is nearest and is pushed out of it" {
+  q := dq_y(PI_D / 4.0);
+  ct := contact_sphere_box(d3(0.0, 0.0, 2.3), 1.0, D3_ZERO, q, d3(1.0, 1.0, 1.0));
+  #assert ct.hit && ct.normal.z > 0.99 && near_d(ct.depth, 1.0 + 1.4142135623730951 - 2.3, 0.000000001);
+  inside := contact_sphere_box(d3(0.0, 0.8, 0.0), 0.5, D3_ZERO, DQ.{}, d3(2.0, 1.0, 2.0));
+  #assert inside.hit && inside.normal.y > 0.99 && near_d(inside.depth, 0.7, 0.000000001);
+  #assert !contact_sphere_box(d3(3.0, 0.0, 0.0), 1.0, D3_ZERO, DQ.{}, d3(1.0, 1.0, 1.0)).hit;
+  // a box resting tilted on the ground: two corners under it
+  into: [8] Contact;
+  n := contact_box_plane(d3(0.0, 0.95, 0.0), dq_z(0.3), d3(2.0, 0.5, 1.0), plane(D3_Y, 0.0), into[..]);
+  #assert n == 2 && into[0].depth >= into[1].depth;
+}
+
+#test "rays and sweeps find walls, triangles and a fast ball before it tunnels" {
+  #assert near_d(ray_plane(d3(0.0, 5.0, 0.0), d3(0.0, -1.0, 0.0), plane(D3_Y, 1.0)), 4.0, 0.000000001);
+  #assert ray_plane(d3(0.0, 5.0, 0.0), d3(0.0, 1.0, 0.0), plane(D3_Y, 1.0)) < 0.0;
+  #assert near_d(ray_sphere(d3(-5.0, 0.0, 0.0), D3_X, D3_ZERO, 1.0), 4.0, 0.000000001);
+  #assert near_d(ray_triangle(d3(0.2, 3.0, 0.2), d3(0.0, -1.0, 0.0), D3_ZERO, d3(1.0, 0.0, 0.0), d3(0.0, 0.0, 1.0)), 3.0, 0.000000001);
+  #assert ray_triangle(d3(2.0, 3.0, 2.0), d3(0.0, -1.0, 0.0), D3_ZERO, d3(1.0, 0.0, 0.0), d3(0.0, 0.0, 1.0)) < 0.0;
+  // 200 m/s at 60 Hz is 3.3 m a step: the wall 2 m away would be jumped
+  wall := plane(d3(-1.0, 0.0, 0.0), -3.0);
+  t := sweep_sphere_plane(d3(0.0, 0.0, 0.0), 1.0, d3(200.0 / 60.0, 0.0, 0.0), wall);
+  #assert near_d(t, 2.0 / (200.0 / 60.0), 0.000000001);
+  #assert sweep_sphere_plane(D3_ZERO, 1.0, d3(-3.0, 0.0, 0.0), wall) == NO_HIT;
+  #assert near_d(sweep_sphere_sphere(D3_ZERO, 1.0, d3(10.0, 0.0, 0.0), d3(5.0, 0.0, 0.0), 1.0, D3_ZERO), 0.3, 0.000000001);
+  mesh := [9] f64.[-5.0, 0.0, -5.0, 5.0, 0.0, -5.0, 0.0, 0.0, 5.0];
+  m := contact_sphere_mesh(d3(0.0, 0.5, 0.0), 1.0, mesh[..]);
+  #assert m.hit && m.normal.y > 0.99 && near_d(m.depth, 0.5, 0.000000001);
+}
+
+#test "a force off the centre turns a body" {
+  b := ball(1.0, 1.0, D3_ZERO);
+  b = rigid_force_at(b, d3(0.0, 0.0, 2.0), d3(1.0, 0.0, 0.0));
+  #assert near_d(b.torque.y, -2.0, 0.000000001) && near_d(b.force.z, 2.0, 0.000000001);
+  c := rigid_impulse_at(ball(1.0, 2.0, D3_ZERO), d3(0.0, 4.0, 0.0), D3_ZERO);
+  #assert near_d(c.vel.y, 2.0, 0.000000001) && d3_eq(c.omega, D3_ZERO);
+  #assert near_d(rigid_point_velocity(c, d3(5.0, 0.0, 0.0)).y, 2.0, 0.000000001);
+}

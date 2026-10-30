@@ -1,0 +1,139 @@
+// Thrusters and RCS for verse/rigid.coax bodies (docs/verse/space.md): a
+// force at a point of the body along a direction, both in the body's frame,
+// fed from a tank. Ships, jet packs and a car's boost all use it.
+//
+// A thruster burns mass at F / ve (ve its exhaust speed, Isp g0), so a
+// burn's delta-v follows Tsiolkovsky's ve ln(m0 / m1); the tank's fuel is
+// part of the body's mass when `carried` (a ship), or a game's budget that
+// weighs nothing when not (a car's boost meter, 0 to 100). RCS turns a
+// wanted torque into the body's torque, clamped to what its jets give.
+//   coax/bin/coax test --library verse/thrust.coax
+
+#load "contact.coax";
+
+G0 :: 9.80665;
+
+Thruster :: struct {
+  at: D3;          // where it pushes, body frame, metres from the centre of mass
+  dir: D3;         // the way it pushes the body, body frame, a unit vector
+  force: f64;      // full thrust, N
+  ve: f64;         // exhaust speed, m/s (Isp G0); 0: it burns `rate` fuel a second instead
+  rate: f64;       // budget units a second at full thrust, when ve is 0
+}
+
+Tank :: struct {
+  fuel: f64;       // kg (carried) or budget units
+  capacity: f64;
+  carried: bool;   // the fuel is the body's mass
+}
+
+Burn :: struct { body: RigidBody; tank: Tank; thrust: f64; }
+
+thruster :: (at: D3, dir: D3, force: f64, ve: f64) -> Thruster { return Thruster.{at = at, dir = d3_unit(dir), force = force, ve = ve, rate = 0.0}; }
+// A thruster that spends a game's budget: rate units a second at full thrust.
+thruster_budget :: (at: D3, dir: D3, force: f64, rate: f64) -> Thruster { return Thruster.{at = at, dir = d3_unit(dir), force = force, ve = 0.0, rate = rate}; }
+tank :: (fuel: f64, capacity: f64, carried: bool) -> Tank { return Tank.{fuel = fuel, capacity = capacity, carried = carried}; }
+ve_of_isp :: (isp: f64) -> f64 { return isp * G0; }
+
+// Tsiolkovsky: the delta-v of burning from m0 down to m1.
+delta_v :: (ve: f64, m0: f64, m1: f64) -> f64 { return ve * log(m0 / m1); }
+// The fuel a burn of dv takes from a body of mass m0.
+fuel_for :: (ve: f64, m0: f64, dv: f64) -> f64 { return m0 * (1.0 - exp(-dv / ve)); }
+// What the tank still gives a body of mass m: its delta-v left.
+delta_v_left :: (t: Thruster, k: Tank, m: f64) -> f64 {
+  if !k.carried || t.ve <= 0.0 { return 0.0; }
+  return delta_v(t.ve, m, m - k.fuel);
+}
+
+// One step of thrust at throttle 0..1 over dt: the force and its torque go
+// on the body for the next rigid_step, and the fuel burns (an empty tank
+// gives what was left in it this step).
+thrust_apply :: (b: RigidBody, t: Thruster, k: Tank, throttle: f64, dt: f64) -> Burn {
+  out := Burn.{body = b, tank = k, thrust = 0.0};
+  th := fclamp(throttle, 0.0, 1.0);
+  if th <= 0.0 || k.fuel <= 0.0 || dt <= 0.0 { return out; }
+  f := t.force * th;
+  burn := ifx t.ve > 0.0 then f / t.ve * dt else t.rate * th * dt;
+  if burn > k.fuel { f *= k.fuel / burn; burn = k.fuel; }
+  out.tank.fuel = k.fuel - burn;
+  if k.carried && t.ve > 0.0 { out.body.mass = b.mass - burn; }
+  world_dir := dq_rotate(b.orientation, t.dir);
+  at := d3_add(b.pos, dq_rotate(b.orientation, t.at));
+  out.body = rigid_force_at(out.body, d3_scale(world_dir, f), at);
+  out.thrust = f;
+  return out;
+}
+
+// RCS: the torque (world frame) wanted, clamped per axis of the body to max
+// N m, goes on the body; fuel burns at rate a second per N m used over the
+// full max (a budget), never below empty.
+rcs_apply :: (b: RigidBody, k: Tank, torque: D3, max: D3, rate: f64, dt: f64) -> Burn {
+  out := Burn.{body = b, tank = k, thrust = 0.0};
+  if k.fuel <= 0.0 { return out; }
+  local := dq_rotate(dq_conj(b.orientation), torque);
+  c := d3(fclamp(local.x, -max.x, max.x), fclamp(local.y, -max.y, max.y), fclamp(local.z, -max.z, max.z));
+  use := (abs(c.x) / fmax(max.x, 0.000001) + abs(c.y) / fmax(max.y, 0.000001) + abs(c.z) / fmax(max.z, 0.000001)) / 3.0;
+  burn := fmin(use * rate * dt, k.fuel);
+  out.tank.fuel = k.fuel - burn;
+  out.body.torque = d3_add(b.torque, dq_rotate(b.orientation, c));
+  out.thrust = use;
+  return out;
+}
+
+// The torque that brings omega (world) toward `want` in about `settle` seconds.
+rcs_hold :: (b: RigidBody, want: D3, settle: f64) -> D3 {
+  err := d3_sub(want, rigid_omega_world(b));
+  local := dq_rotate(dq_conj(b.orientation), err);
+  return dq_rotate(b.orientation, d3_scale(d3_mul(local, b.inertia), 1.0 / fmax(settle, 0.001)));
+}
+
+// Checks.
+
+#test "a burn's delta-v is Tsiolkovsky's" {
+  store: [1] RigidBody;
+  m0 := 1000.0;
+  store[0] = rigid_body(m0, d3(100.0, 100.0, 100.0), D3_ZERO, DQ.{});
+  k := tank(400.0, 400.0, true);
+  t := thruster(d3(0.0, 0.0, -1.0), D3_Z, 20000.0, ve_of_isp(300.0));
+  w := rigid_world(0.01, store[..]);
+  for s: 0..<10000 {
+    burn := thrust_apply(store[0], t, k, 1.0, w.dt);
+    store[0] = burn.body; k = burn.tank;
+    w = rigid_step(w, D3_ZERO);
+  }
+  #assert k.fuel == 0.0 && near_d(store[0].mass, 600.0, 0.000001);
+  want := delta_v(ve_of_isp(300.0), m0, 600.0);
+  #assert near_d(store[0].vel.z, want, want * 0.001);
+  #assert near_d(fuel_for(ve_of_isp(300.0), m0, want), 400.0, 0.000001);
+  #assert near_d(delta_v_left(t, tank(400.0, 400.0, true), m0), want, 0.000001);
+}
+
+#test "a thruster off the centre turns the body; a budget thruster weighs nothing" {
+  b := rigid_body(10.0, d3(1.0, 1.0, 1.0), D3_ZERO, DQ.{});
+  t := thruster_budget(d3(1.0, 0.0, 0.0), D3_Z, 50.0, 33.0);
+  burn := thrust_apply(b, t, tank(100.0, 100.0, false), 1.0, 0.5);
+  #assert near_d(burn.body.force.z, 50.0, 0.000000001) && near_d(burn.body.torque.y, -50.0, 0.000000001);
+  #assert near_d(burn.tank.fuel, 83.5, 0.000000001) && burn.body.mass == 10.0;
+  // empty: nothing
+  none := thrust_apply(b, t, tank(0.0, 100.0, false), 1.0, 0.5);
+  #assert d3_eq(none.body.force, D3_ZERO) && none.thrust == 0.0;
+  // the last of the tank gives its share
+  last := thrust_apply(b, t, tank(3.3, 100.0, false), 1.0, 0.5);
+  #assert near_d(last.thrust, 10.0, 0.000000001) && last.tank.fuel == 0.0;
+}
+
+#test "RCS holds a spin rate and clamps to its jets" {
+  store: [1] RigidBody;
+  store[0] = rigid_body(50.0, d3(4.0, 6.0, 8.0), D3_ZERO, dq_x(0.4));
+  k := tank(1000.0, 1000.0, false);
+  w := rigid_world(0.01, store[..]);
+  for s: 0..<400 {
+    burn := rcs_apply(store[0], k, rcs_hold(store[0], d3(0.0, 0.5, 0.0), 0.3), d3(20.0, 20.0, 20.0), 1.0, w.dt);
+    store[0] = burn.body; k = burn.tank;
+    w = rigid_step(w, D3_ZERO);
+  }
+  #assert d3_dist(rigid_omega_world(store[0]), d3(0.0, 0.5, 0.0)) < 0.02;
+  #assert k.fuel < 1000.0;
+  big := rcs_apply(store[0], k, d3(0.0, 0.0, 1000.0), d3(20.0, 20.0, 20.0), 1.0, 0.01);
+  #assert d3_len(big.body.torque) <= sqrt(3.0) * 20.0 + 0.000001;
+}

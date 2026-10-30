@@ -1,0 +1,146 @@
+// Gravity as a field (docs/verse/space.md): every controller asks
+// gravity_at(field, pos) for the acceleration where it is, instead of a
+// constant. A field is one of
+//   none      zero-g: free fall, a station whose spin has stopped
+//   constant  a uniform pull (a planet's surface, a flat arena), m/s^2
+//   point     a point mass, inverse-square: mu / r^2 toward its centre
+//             (mu = G M, m^3/s^2; the Earth's is 3.986004418e14)
+//   drum      a spinning drum (a ring station): the felt "down" in the
+//             drum's rotating frame is centrifugal, omega^2 r away from
+//             its axis, with Coriolis -2 omega x v on anything moving
+// and `scale` multiplies it (a station spinning down to 0 and back up).
+// Units are metres, seconds and radians, f64 (verse/rigid.coax).
+//   coax/bin/coax test --library verse/gravity.coax
+
+#load "rigid.coax";
+
+GRAVITY_NONE :: 0;
+GRAVITY_CONSTANT :: 1;
+GRAVITY_POINT :: 2;
+GRAVITY_DRUM :: 3;
+
+G_EARTH :: 9.80665;
+MU_EARTH :: 398600441800000.0;
+
+GravityField :: struct {
+  kind: int;
+  g: D3;          // constant: the acceleration
+  centre: D3;     // point: the mass's centre; drum: a point on its axis
+  mu: f64;        // point: G M
+  axis: D3;       // drum: its spin axis, a unit vector
+  spin: f64;      // drum: rad/s about axis
+  scale: f64 = 1.0;
+}
+
+gravity_none :: () -> GravityField { f: GravityField; f.kind = GRAVITY_NONE; return f; }
+gravity_constant :: (g: D3) -> GravityField { f: GravityField; f.kind = GRAVITY_CONSTANT; f.g = g; return f; }
+gravity_point :: (centre: D3, mu: f64) -> GravityField { f: GravityField; f.kind = GRAVITY_POINT; f.centre = centre; f.mu = mu; return f; }
+gravity_drum :: (centre: D3, axis: D3, spin: f64) -> GravityField {
+  f: GravityField; f.kind = GRAVITY_DRUM; f.centre = centre; f.axis = d3_unit_or(axis, D3_Z); f.spin = spin; return f;
+}
+// The spin (rad/s) that gives a drum of `radius` metres `g` at its rim: omega = sqrt(g / r).
+drum_spin_for :: (radius: f64, g: f64) -> f64 { return sqrt(g / radius); }
+// A drum's rim speed, m/s.
+drum_rim_speed :: (radius: f64, spin: f64) -> f64 { return radius * spin; }
+
+// pos's offset from the axis, perpendicular to it.
+drum_radial :: (f: GravityField, pos: D3) -> D3 {
+  r := d3_sub(pos, f.centre);
+  return d3_sub(r, d3_scale(f.axis, d3_dot(r, f.axis)));
+}
+
+// The acceleration at pos, m/s^2.
+gravity_at :: (f: GravityField, pos: D3) -> D3 {
+  if f.kind == GRAVITY_CONSTANT { return d3_scale(f.g, f.scale); }
+  if f.kind == GRAVITY_POINT {
+    r := d3_sub(f.centre, pos);
+    q := d3_len2(r);
+    if !(q > 0.0) { return D3_ZERO; }
+    return d3_scale(r, f.scale * f.mu / (q * sqrt(q)));
+  }
+  if f.kind == GRAVITY_DRUM {
+    w := f.spin * f.scale;
+    return d3_scale(drum_radial(f, pos), w * w);
+  }
+  return D3_ZERO;
+}
+
+// The velocity-dependent part, for a body moving at vel in the field's frame:
+// in a drum, Coriolis -2 omega x v; nothing in the others.
+gravity_coriolis :: (f: GravityField, vel: D3) -> D3 {
+  if f.kind != GRAVITY_DRUM { return D3_ZERO; }
+  return d3_scale(d3_cross(f.axis, vel), -2.0 * f.spin * f.scale);
+}
+
+// The whole acceleration on a body at pos moving at vel.
+gravity_on :: (f: GravityField, pos: D3, vel: D3) -> D3 { return d3_add(gravity_at(f, pos), gravity_coriolis(f, vel)); }
+
+// Which way is up at pos: against the pull, or `otherwise` in zero-g.
+gravity_up :: (f: GravityField, pos: D3, otherwise: D3) -> D3 { return d3_unit_or(d3_neg(gravity_at(f, pos)), otherwise); }
+
+// One step of rigid_step for bodies in a field: each body's pull goes in as
+// a force (m a) where it is, then the world steps with no uniform gravity.
+gravity_step :: (w: RigidWorld, f: GravityField) -> RigidWorld {
+  for i: 0..<w.bodies.count {
+    b := w.bodies[i];
+    if !b.sleeping { b.force = d3_add(b.force, d3_scale(gravity_on(f, b.pos, b.vel), b.mass)); }
+    w.bodies[i] = b;
+  }
+  return rigid_step(w, D3_ZERO);
+}
+
+// The speed of a circular orbit at radius r about mu, and its period.
+circular_speed :: (mu: f64, r: f64) -> f64 { return sqrt(mu / r); }
+circular_period :: (mu: f64, r: f64) -> f64 { return TAU_D * sqrt(r * r * r / mu); }
+
+// Checks.
+
+#test "a constant field is the same everywhere and scales" {
+  f := gravity_constant(d3(0.0, -G_EARTH, 0.0));
+  #assert d3_eq(gravity_at(f, d3(5.0, 2.0, -100.0)), d3(0.0, -G_EARTH, 0.0));
+  f.scale = 0.5;
+  #assert near_d(gravity_at(f, D3_ZERO).y, -G_EARTH * 0.5, 0.000000000001);
+  #assert d3_eq(gravity_at(gravity_none(), d3(1.0, 1.0, 1.0)), D3_ZERO);
+  #assert d3_eq(gravity_up(gravity_none(), D3_ZERO, D3_Y), D3_Y);
+}
+
+#test "a point mass pulls inverse-square: the Earth's surface is about 9.8" {
+  f := gravity_point(D3_ZERO, MU_EARTH);
+  g := gravity_at(f, d3(6371000.0, 0.0, 0.0));
+  #assert near_d(d3_len(g), 9.82, 0.01) && g.x < 0.0;
+  far := gravity_at(f, d3(0.0, 12742000.0, 0.0));
+  #assert near_d(d3_len(far) * 4.0, d3_len(g), 0.000000001);
+  // the ISS's orbit, about 92 minutes
+  #assert near_d(circular_period(MU_EARTH, 6371000.0 + 410000.0) / 60.0, 92.6, 0.5);
+}
+
+#test "a circular orbit stays circular under gravity_step" {
+  store: [1] RigidBody;
+  r := 7000000.0;
+  store[0] = rigid_body(1.0, d3(1.0, 1.0, 1.0), d3(r, 0.0, 0.0), DQ.{});
+  store[0].vel = d3(0.0, 0.0, circular_speed(MU_EARTH, r));
+  w := rigid_world(1.0, store[..]);
+  f := gravity_point(D3_ZERO, MU_EARTH);
+  for s: 0..<600 { w = gravity_step(w, f); }
+  #assert near_d(d3_len(store[0].pos), r, r * 0.0005);
+}
+
+#test "a drum gives 1 g at its rim, none on its axis, and Coriolis on what moves" {
+  radius := 100.0;
+  spin := drum_spin_for(radius, G_EARTH);
+  f := gravity_drum(D3_ZERO, D3_Z, spin);
+  rim := gravity_at(f, d3(0.0, -radius, 7.0));
+  #assert near_d(rim.y, -G_EARTH, 0.000000001) && near_d(rim.x, 0.0, 0.000000001) && near_d(rim.z, 0.0, 0.000000001);
+  #assert d3_eq(gravity_at(f, d3(0.0, 0.0, 30.0)), D3_ZERO);
+  #assert near_d(d3_len(gravity_at(f, d3(50.0, 0.0, 0.0))), G_EARTH * 0.5, 0.000000001);
+  // up is toward the axis
+  up := gravity_up(f, d3(0.0, -radius, 0.0), D3_Y);
+  #assert near_d(up.y, 1.0, 0.000000001);
+  // spun down to zero, nothing
+  f.scale = 0.0;
+  #assert d3_eq(gravity_at(f, d3(0.0, -radius, 0.0)), d3(0.0, 0.0, 0.0)) || d3_len(gravity_at(f, d3(0.0, -radius, 0.0))) == 0.0;
+  f.scale = 1.0;
+  c := gravity_coriolis(f, d3(1.0, 0.0, 0.0));
+  #assert near_d(d3_len(c), 2.0 * spin, 0.000000001);
+  #assert near_d(drum_rim_speed(radius, spin), 31.3, 0.05);
+}
