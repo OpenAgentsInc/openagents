@@ -6,10 +6,14 @@
 
 #load "../../coax/lib/systemone/systemone.coax";
 
+// The labels split Claude Code and Codex by the job's size, not by "code":
+// router-labels.tsv is the labelled set (22 to tune, 22 held out). On
+// mammoth-1 on 2026-10-30 both routed 22/22, the held-out picks at 0.80 or
+// more; the old labels sent refactors and one-liners near 50/50.
 ROUTE_HARNESSES :: [3] string.["claude_code", "codex", "other"];
 ROUTE_HARNESS_LABELS :: [3] string.[
-  "Claude Code, Anthropic's coding agent CLI: strong at reading, writing and refactoring code, running commands, and long careful tasks",
-  "Codex, OpenAI's coding agent CLI: strong at code changes, terminal work and quick fixes",
+  "Claude Code, Anthropic's coding agent CLI: for work that spans files or needs understanding first: refactors, restructuring, new features, debugging, reviews, design, and explaining a codebase",
+  "Codex, OpenAI's coding agent CLI: for quick, contained jobs: a one-line or one-file edit, a typo, a version bump, running tests, a build, git or other terminal commands",
   "Neither: another agent, or no coding agent is needed (small talk, a plain question, or neither CLI is installed)"];
 ROUTE_LEVELS :: [5] string.["Trivial: a one-line answer", "Easy: a short answer or a small edit", "Moderate: a few files or steps",
                             "Hard: many files, debugging or design", "Very hard: a long, open-ended or risky task"];

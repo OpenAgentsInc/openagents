@@ -1,0 +1,45 @@
+split	label	message
+train	claude_code	refactor the session store into its own module and update every caller
+train	claude_code	split lab.coax into routing and transcript files
+train	claude_code	find out why the websocket reconnect loops forever and fix it
+train	claude_code	design a caching layer for the gateway plan and implement it
+train	claude_code	review the changes in this branch for bugs
+train	claude_code	migrate the parser from regexes to a hand-written tokenizer
+train	claude_code	explain how the build pipeline in this repo works, end to end
+train	claude_code	add pagination to the projects API, server and client
+train	codex	fix the typo in README.md
+train	codex	run the tests and tell me what fails
+train	codex	bump the version in package.json to 1.2.0
+train	codex	rename the variable tmp to buffer in main.c
+train	codex	show me the git log for the last 5 commits
+train	codex	delete the unused import at the top of app.ts
+train	codex	make the build script executable
+train	codex	change the default port from 8080 to 9090 in config.toml
+train	other	hi
+train	other	what's the capital of Japan?
+train	other	tell me a joke
+train	other	how are you today?
+train	other	what does HTTP 418 mean?
+train	other	thanks!
+held	claude_code	refactor the payment code so each provider is its own class
+held	claude_code	restructure the desktop app's settings into separate panes and files
+held	claude_code	track down the memory leak in the renderer
+held	claude_code	rewrite the auth flow to use sessions instead of JWTs across the app
+held	claude_code	audit this repo for SQL injection and fix what you find
+held	claude_code	extract the shared validation logic from the three handlers into one helper
+held	claude_code	implement offline mode for the mobile client
+held	claude_code	refactor the CLI argument parsing into a reusable library
+held	codex	fix the missing semicolon on line 40 of index.js
+held	codex	run cargo fmt
+held	codex	list the files in this folder
+held	codex	add a .gitignore entry for node_modules
+held	codex	change the button color in styles.css to blue
+held	codex	commit these changes with the message 'wip'
+held	codex	install the dependencies
+held	codex	update the copyright year in LICENSE to 2026
+held	other	hello there
+held	other	who wrote Hamlet?
+held	other	what's 17 times 23?
+held	other	good morning
+held	other	what is a monad, briefly?
+held	other	recommend a good sci-fi book
