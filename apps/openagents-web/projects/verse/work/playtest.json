@@ -46,6 +46,12 @@
       "title": "Playtest redesign",
       "body": "Kiki's playtest feedback of 2026-10-29: say what the playtest is, the Agent orb as a voice guide, almost no buttons in the Haunted House, Minecraft-style placing, touch that knows what you mean, no sharing, one camera that never blocks the view, livelier characters.",
       "parent": "playtest-port"
+    },
+    {
+      "slug": "qa-1030",
+      "title": "Production QA sweep, October 30",
+      "body": "A headless sweep of everything the Verse and Planetary Villa shipped on October 30, as a first-time visitor on a computer (1440x900) and a phone (390x844): the playtest flow, the galaxy, every public realm, Everglade's spells, watch, chat and sledgehammer, and the analytics events. Each defect found is a task here.",
+      "parent": "playtest-port"
     }
   ],
   "tasks": [
@@ -853,6 +859,83 @@
       ],
       "acceptance": [
         "A headless 390 px run taps a character and the talk pane opens"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-villa-mint",
+      "parent": "qa-1030",
+      "title": "Hecate's Cemetery: a first visit mints one player, with no 403s",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "On a first visit (no verse.player yet) /realms/hecates-cemetery asked /api/villa/pets and the presence in the same frame it handed the new player's key to the host, so both went without the key: two 403s in the console, and the presence's 403 minted a second player (two players a visitor in the analytics). The pets and the presence now wait a frame (the presence its second) after the mint, as realm-room.c does.",
+      "files": [
+        "apps/openagents-web/villa-face.c"
+      ],
+      "acceptance": [
+        "A headless first visit to /realms/hecates-cemetery shows no 403 in the console and one POST /api/playtest/player"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-eg-phone-chat",
+      "parent": "qa-1030",
+      "title": "Everglade on a phone: the chat line no longer runs under HP and WANTED",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "On a 390 px phone the room's latest chat line was drawn at the place name's height across the whole width, under the HP plate on the right. It now sits below HP, and below WANTED when that shows.",
+      "files": [
+        "apps/openagents-web/everglade-room.coax"
+      ],
+      "acceptance": [
+        "A headless 390x844 run with a chat line shows it clear of HP and WANTED"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-eg-phone-cast-line",
+      "parent": "qa-1030",
+      "title": "Everglade on a phone: the cast line names no Esc",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "While a spell casts, a phone's line said ESC STOPS IT; a phone has no Esc and no way to stop a cast. A phone's line is CASTING ... · KEEP MOVING IF YOU LIKE.",
+      "files": [
+        "apps/openagents-web/everglade-spells.coax"
+      ],
+      "acceptance": [
+        "A headless 390x844 cast shows no ESC in the line"
+      ],
+      "blocked_by": []
+    },
+    {
+      "slug": "qa-house-text-fits",
+      "parent": "qa-1030",
+      "title": "Haunted House: the first step and the save notice fit the screen",
+      "size": "S",
+      "labels": [
+        "playtest",
+        "web",
+        "qa"
+      ],
+      "body": "On a phone the first step, WALK IN THROUGH THE FRONT DOOR, was cut to WALK IN THROUGH THE FRONT D... by the minimap; it now wraps. At 1440x900 the survey's notice (what we save) ran off the bottom of the screen under TELL US HOW IT WENT; under a box at the screen's bottom it now goes over the box.",
+      "files": [
+        "apps/openagents-web/realm.coax"
+      ],
+      "acceptance": [
+        "A headless 390x844 run shows the whole first step",
+        "A headless 1440x900 survey shows the whole notice"
       ],
       "blocked_by": []
     }
