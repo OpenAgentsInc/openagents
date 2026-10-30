@@ -176,8 +176,35 @@ A separate agent reviewed the self-verifier, the signer's stages 3–5 and
   bool from challenge-derived data (`secp_scalar.coax:110,116`), which a
   target compiler could turn into a branch.
 
+## Compiled-code secret-flow probe (2026-10-30)
+
+`coax/tests/nostr/schnorr_self_verify_secret_probe.sh` runs ctgrind-style
+under Valgrind 3.26 memcheck (nixpkgs), on x86_64 with GCC -O2. The 64-byte
+candidate is marked undefined, `ssv_step` runs to the end, and only its final
+mask is declassified. Memcheck then reports any conditional jump, move or
+memory address in the compiled code that depends on the candidate.
+
+- **Release build** (the one served and shipped): no report for a valid
+  candidate (3 calls, valid) or an invalid one (`s` changed: 3 calls,
+  refused).
+- **Positive control:** with the same undefined candidate, the variable-time
+  verifier `schnorr_verify_vartime` is flagged 51 times in release and 104
+  times in checked. So the probe sees a real leak.
+- **Checked build:** 126 reports, all from checked mode's own runtime traps:
+  the overflow and underflow checks in `coax_add_u64`/`coax_sub_u64`
+  (SHA-256's sums, the field and scalar carries) and the bounds checks in
+  `coax_index`/`cb_span`/`cb_load_word32`. A trap fires only when an
+  operation would overflow or index out of range, and the count is the same
+  for the valid and the invalid candidate. But the trap tests are branches
+  on candidate-derived values, so checked builds are not for secrets. This is
+  the same class #4828 removed from the ECDH path with `mul_wrap`
+  (`7ca28e856e`).
+- **iOS:** the checked and release builds both run in the iOS Simulator
+  (arm64) through `coax/tests/nostr/schnorr_sign.py` and agree with native.
+
 ## Open
 
-- The iOS checked build: only release ran in the Simulator.
-- Object-code and JIT timing, address-trace probes and production-secret
-  approval remain separate gates, as for `secp_mult_const.coax`.
+- Object-code timing and address probes on the other targets (arm64,
+  Wasm under a JIT), and checked-mode arithmetic that doesn't branch on
+  secrets (#4828). Production-secret approval remains a separate gate, as
+  for `secp_mult_const.coax`.

@@ -7,8 +7,8 @@ verifier and NIP-01 serializer.
   --round-trips N  also signs N random events (Unicode, control characters,
                    empty fields, edge kinds and times) in the release build
   --no-wasm        skips the Wasm build
-COAX_IOS_SIMULATOR=<device> (on a Mac) also runs the release build in that
-iOS Simulator (arm64), as coax/tests/nostr/aead_host.py does."""
+COAX_IOS_SIMULATOR=<device> (on a Mac) also runs the checked and release
+builds in that iOS Simulator (arm64), as coax/tests/nostr/aead_host.py does."""
 if not __debug__: raise SystemExit('tests require Python assertions')
 import csv,hashlib,json,os,random,subprocess,sys,tempfile
 from pathlib import Path
@@ -78,8 +78,8 @@ with tempfile.TemporaryDirectory(prefix='coax-sign-') as temp:
    run=subprocess.run(['node',str(R/'coax/tests/nostr/schnorr_sign_wasm.cjs'),str(w)],input='\n'.join(requests)+'\n',capture_output=True,text=True,check=True)
    check(run.stdout.split());print(mode,'wasm',len(requests),'requests agree with native','wasm',hashlib.sha256(w.read_bytes()).hexdigest()[:16],flush=True)
   sim=os.environ.get('COAX_IOS_SIMULATOR')
-  if mode=='release' and sim:
-   sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip();ios=d/'release-ios'
+  if sim:
+   sdk=subprocess.check_output(['xcrun','--sdk','iphonesimulator','--show-sdk-path'],text=True).strip();ios=d/(mode+'-ios')
    subprocess.run(['xcrun','--sdk','iphonesimulator','clang','-arch','arm64','-isysroot',sdk,'-std=c11','-O2','-I'+str(d),str(c),str(R/'coax/tests/nostr/schnorr_sign_driver.c'),'-o',str(ios)],check=True)
    run=subprocess.run(['xcrun','simctl','spawn',sim,str(ios)],input='\n'.join(requests)+'\n',capture_output=True,text=True,check=True)
    check(run.stdout.split());print(mode,'iOS Simulator',len(requests),'requests agree with native',hashlib.sha256(ios.read_bytes()).hexdigest()[:16],flush=True)

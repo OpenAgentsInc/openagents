@@ -57,9 +57,9 @@ below.
 - **Native and Wasm:** `coax/tests/nostr/schnorr_sign.py` drives the signer
   and the event builder through the generated C. Checked and release, plain
   and ASan/UBSan, 44 requests each, all pass. The release build also runs as
-  Wasm (wasm32-wasip1 under Node's WASI) and in the iOS Simulator (arm64,
-  iOS 26.5, `COAX_IOS_SIMULATOR=<device>` on the Mac), and both agree on the
-  same 44 requests.
+  Wasm (wasm32-wasip1 under Node's WASI). The checked and release builds
+  both run in the iOS Simulator (arm64, iOS 26.5, `COAX_IOS_SIMULATOR=<device>`
+  on the Mac). All of them agree on the same 44 requests.
   The requests are:
   - all 8 official signing rows byte for byte, including rows 15–18 (0, 1,
     17 and 100-byte messages);
