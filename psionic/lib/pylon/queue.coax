@@ -1,0 +1,218 @@
+// Chapter 19: what the running Pylon does with each job. The units beside
+// this one say what a job is (decision.coax), what a beacon says
+// (beacon.coax) and what the engine answers (chapter 16). This unit decides
+// the loop's own questions: which events are answered at all, which wait in
+// the bounded queue, which are refused busy, which job runs next, what a
+// cancel removes, how long the engine may take, which answer goes back after
+// the engine replied, and when shutdown turns the beacon draining and then
+// offline.
+//
+// It loads nothing. It takes the other units' verdicts as integers (the
+// event's signature check, NIP-44's result, pd_admit's code and type), so
+// mutating it never re-mutates Schnorr, JSON or decision.coax. run.coax ties
+// the mirrored codes to PdCode with top-level #asserts.
+#authority;
+
+PQ_SLOTS :: 4;          // jobs held at once: one running, three waiting
+PQ_SEEN :: 64;          // event ids remembered against relay resends
+PQ_REQUEST :: 25910;
+PQ_RETRY_MS :: 2000;    // a busy refusal's retry_after_ms
+// PdCode values this unit names (run.coax asserts they equal decision.coax's).
+PQ_NONE :: 0; PQ_BUSY :: 12; PQ_TIMEOUT :: 13; PQ_CANCELLED :: 14; PQ_MISMATCH :: 15; PQ_INTERNAL :: 16; PQ_CODES :: 17;
+// PdType values.
+PQ_CALL :: 1; PQ_CANCEL :: 2;
+
+PqRoute :: enum u8 {ignore;refuse;busy;queue;cancel;}
+PqState :: enum u8 {free;waiting;running;}
+PqSlot :: struct {state:PqState;order:int;}
+PqQueue :: struct {slots:[4]PqSlot;order:int;seen:[2048]u8;seen_count:int;seen_at:int;}
+PqAnswer :: struct {result:bool;code:int;}
+// ms -1: answer timeout without asking the engine. deadline: the job's own
+// deadline, not the host's limit, set the budget.
+PqBudget :: struct {ms:int;deadline:bool;}
+PqLife :: enum u8 {run;drain;off;}
+
+#test "an event is answered only when it is verified, a request, and decrypted" {
+    #assert pq_route(false,25910,true,0,1,true,false,4)==PqRoute.ignore;
+    #assert pq_route(true,25911,true,0,1,true,false,4)==PqRoute.ignore && pq_route(true,25909,true,0,1,true,false,4)==PqRoute.ignore;
+    #assert pq_route(true,25910,false,0,1,true,false,4)==PqRoute.ignore;
+    #assert pq_route(true,25910,true,0,1,true,false,4)==PqRoute.queue;
+}
+#test "a refusal goes back only when it can be addressed" {
+    #assert pq_route(true,25910,true,5,1,true,false,4)==PqRoute.refuse;
+    #assert pq_route(true,25910,true,5,1,false,false,4)==PqRoute.ignore;
+    #assert pq_route(true,25910,true,1,2,true,false,0)==PqRoute.refuse && pq_route(true,25910,true,16,0,true,true,0)==PqRoute.refuse;
+}
+#test "a cancel is a cancel even when the queue is full or draining" {
+    #assert pq_route(true,25910,true,0,2,false,false,4)==PqRoute.cancel;
+    #assert pq_route(true,25910,true,0,2,false,true,0)==PqRoute.cancel;
+}
+#test "a call while draining or with no free slot is busy; an untyped job is ignored" {
+    #assert pq_route(true,25910,true,0,1,true,true,4)==PqRoute.busy;
+    #assert pq_route(true,25910,true,0,1,true,false,0)==PqRoute.busy;
+    #assert pq_route(true,25910,true,0,1,true,false,1)==PqRoute.queue;
+    #assert pq_route(true,25910,true,0,0,true,false,4)==PqRoute.ignore && pq_route(true,25910,true,0,3,true,false,4)==PqRoute.ignore;
+    #assert pq_route(true,25910,true,0,1,false,false,4)==PqRoute.ignore;
+}
+#test "an event id is taken once; the window holds the last 64" {
+    q:[1]PqQueue;a:[32]u8;b:[32]u8;for i:0..<32 {a[i]=cast(u8)i;b[i]=cast(u8)i;}b[31]=200;
+    #assert pq_seen(q[..],a[..]) && !pq_seen(q[..],a[..]) && pq_seen(q[..],b[..]) && !pq_seen(q[..],b[..]);
+    #assert q[0].seen_count==2 && !pq_seen(q[..],a[0..<31]);
+    c:[32]u8;for k:0..<64 {c[0]=cast(u8)k;c[1]=7;#assert pq_seen(q[..],c[..]);}
+    #assert q[0].seen_count==64 && q[0].seen_at==2;
+    c[0]=63;c[1]=7;#assert !pq_seen(q[..],c[..]);c[0]=0;#assert !pq_seen(q[..],c[..]);
+    #assert pq_seen(q[..],a[..]) && q[0].seen_at==3 && q[0].seen_count==64;
+    c[0]=0;#assert pq_seen(q[..],c[..]);c[0]=2;#assert !pq_seen(q[..],c[..]);
+}
+#test "slots: put fills the lowest free slot, next runs the oldest waiting, done frees" {
+    q:[1]PqQueue;
+    #assert pq_free(q[..])==4 && pq_next(q[..])==-1 && pq_held(q[..])==0;
+    #assert pq_put(q[..])==0 && pq_put(q[..])==1 && pq_put(q[..])==2 && pq_put(q[..])==3 && pq_put(q[..])==-1;
+    #assert pq_free(q[..])==0 && pq_held(q[..])==4 && q[0].order==4 && q[0].slots[0].order==1 && q[0].slots[3].order==4;
+    #assert pq_done(q[..],1) && !pq_done(q[..],1) && !pq_done(q[..],4) && !pq_done(q[..],-1);
+    #assert pq_put(q[..])==1 && pq_next(q[..])==0 && q[0].slots[0].state==PqState.running;
+    #assert pq_next(q[..])==2 && pq_next(q[..])==3 && pq_next(q[..])==1 && pq_next(q[..])==-1;
+    #assert pq_free(q[..])==0 && pq_held(q[..])==4;
+    #assert pq_done(q[..],0) && pq_free(q[..])==1 && pq_held(q[..])==3;
+}
+#test "of two waiting jobs with the same order the lower slot runs first" {
+    q:[1]PqQueue;q[0].slots[1]=PqSlot.{state=PqState.waiting,order=5};q[0].slots[2]=PqSlot.{state=PqState.waiting,order=5};
+    #assert pq_next(q[..])==1 && pq_next(q[..])==2;
+}
+#test "a cancel removes a waiting job, stops a running one, or does nothing" {
+    q:[1]PqQueue;s:=pq_put(q[..]);t:=pq_put(q[..]);#assert pq_next(q[..])==s;
+    #assert pq_cancel(q[..],t)==1 && q[0].slots[t].state==PqState.free;
+    #assert pq_cancel(q[..],s)==2 && q[0].slots[s].state==PqState.running;
+    #assert pq_cancel(q[..],t)==0 && pq_cancel(q[..],4)==0 && pq_cancel(q[..],-1)==0;
+}
+#test "the engine's budget is the smaller of the job's deadline and the decide limit" {
+    b:=pq_budget(-2,5000);#assert b.ms==5000 && !b.deadline;
+    b=pq_budget(3000,5000);#assert b.ms==3000 && b.deadline;
+    b=pq_budget(4999,5000);#assert b.ms==4999 && b.deadline;
+    b=pq_budget(5000,5000);#assert b.ms==5000 && !b.deadline;
+    b=pq_budget(5001,5000);#assert b.ms==5000 && !b.deadline;
+    b=pq_budget(1,5000);#assert b.ms==1 && b.deadline;
+    b=pq_budget(-2,1);#assert b.ms==1 && !b.deadline;
+    #assert pq_budget(-1,5000).ms==-1 && pq_budget(0,5000).ms==-1 && pq_budget(-3,5000).ms==-1;
+    #assert pq_budget(-2,0).ms==-1 && pq_budget(100,0).ms==-1 && pq_budget(-1,5000).deadline;
+}
+#test "what goes back after the engine replied" {
+    r:=pq_answer(true,false,200,PQ_NONE,0);#assert r.result && r.code==PQ_NONE;
+    r=pq_answer(true,false,200,PQ_MISMATCH,0);#assert !r.result && r.code==PQ_MISMATCH;
+    r=pq_answer(true,false,200,PQ_INTERNAL,0);#assert !r.result && r.code==PQ_INTERNAL;
+    r=pq_answer(true,false,400,PQ_NONE,5);#assert !r.result && r.code==5;
+    r=pq_answer(true,false,400,PQ_NONE,1);#assert !r.result && r.code==1;
+    r=pq_answer(true,false,503,PQ_NONE,PQ_BUSY);#assert !r.result && r.code==PQ_BUSY;
+    r=pq_answer(true,false,400,PQ_NONE,0);#assert !r.result && r.code==PQ_INTERNAL;
+    r=pq_answer(true,false,400,PQ_NONE,PQ_CODES);#assert !r.result && r.code==PQ_INTERNAL;
+    r=pq_answer(true,false,400,PQ_NONE,-1);#assert !r.result && r.code==PQ_INTERNAL;
+    r=pq_answer(true,false,400,PQ_NONE,PQ_CODES-1);#assert !r.result && r.code==PQ_CODES-1;
+    r=pq_answer(true,false,199,PQ_NONE,0);#assert !r.result && r.code==PQ_INTERNAL;
+    r=pq_answer(true,false,201,PQ_NONE,0);#assert !r.result && r.code==PQ_INTERNAL;
+    r=pq_answer(false,true,0,PQ_NONE,0);#assert !r.result && r.code==PQ_TIMEOUT;
+    r=pq_answer(false,false,200,PQ_NONE,0);#assert !r.result && r.code==PQ_INTERNAL;
+    r=pq_answer(true,true,200,PQ_NONE,0);#assert r.result;
+}
+#test "a beacon goes out when due, and at once when shutdown changes its status" {
+    #assert pq_beacon_now(true,false,false) && pq_beacon_now(true,true,true) && pq_beacon_now(false,true,true);
+    #assert !pq_beacon_now(false,false,false) && !pq_beacon_now(false,true,false) && !pq_beacon_now(false,false,true);
+}
+#test "shutdown drains while jobs are held, then goes offline" {
+    #assert pq_life(false,3)==PqLife.run && pq_life(false,0)==PqLife.run;
+    #assert pq_life(true,1)==PqLife.drain && pq_life(true,4)==PqLife.drain && pq_life(true,0)==PqLife.off;
+}
+
+// book:begin route
+// What a received event gets. verified: its id and BIP-340 signature checked;
+// decrypted: NIP-44 opened its content; code, type and answerable are
+// pd_admit's; free is pq_free.
+pq_route :: (verified:bool,kind:int,decrypted:bool,code:int,type:int,answerable:bool,draining:bool,free:int)->PqRoute #export_c {
+    if !verified || kind!=PQ_REQUEST || !decrypted {return PqRoute.ignore;}
+    if code!=PQ_NONE {return ifx answerable then PqRoute.refuse else PqRoute.ignore;}
+    if type==PQ_CANCEL {return PqRoute.cancel;}
+    if type!=PQ_CALL || !answerable {return PqRoute.ignore;}
+    if draining || free<1 {return PqRoute.busy;}
+    return PqRoute.queue;
+}
+// book:end route
+// True the first time an event id is offered; false for a repeat inside the
+// window (a relay's resend, or since's boundary after a reconnect).
+pq_seen :: (q:[]PqQueue,id:[]u8)->bool #export_c {
+    if id.count!=32 {return false;}
+    for k:0..<q[0].seen_count {
+        same:=true;for i:0..<32 {if q[0].seen[32*k+i]!=id[i] {same=false;}}
+        if same {return false;}
+    }
+    for i:0..<32 {q[0].seen[32*q[0].seen_at+i]=id[i];}
+    q[0].seen_at=(q[0].seen_at+1)%PQ_SEEN;
+    if q[0].seen_count<PQ_SEEN {q[0].seen_count+=1;}
+    return true;
+}
+pq_free :: (q:[]PqQueue)->int #export_c {n:=0;for s:q[0].slots {if s.state==PqState.free {n+=1;}}return n;}
+pq_held :: (q:[]PqQueue)->int #export_c {return PQ_SLOTS-pq_free(q);}
+// The lowest free slot, now waiting, or -1 when every slot is held.
+pq_put :: (q:[]PqQueue)->int #export_c {
+    for i:0..<PQ_SLOTS {
+        if q[0].slots[i].state==PqState.free {q[0].order+=1;q[0].slots[i]=PqSlot.{state=PqState.waiting,order=q[0].order};return i;}
+    }
+    return -1;
+}
+// The oldest waiting slot, now running, or -1.
+pq_next :: (q:[]PqQueue)->int #export_c {
+    best:=-1;
+    for i:0..<PQ_SLOTS {
+        s:=q[0].slots[i];
+        if s.state==PqState.waiting && (best==-1 || s.order<q[0].slots[best].order) {best=i;}
+    }
+    if best>=0 {q[0].slots[best].state=PqState.running;}
+    return best;
+}
+pq_done :: (q:[]PqQueue,slot:int)->bool #export_c {
+    if slot<0 || slot>=PQ_SLOTS || q[0].slots[slot].state==PqState.free {return false;}
+    q[0].slots[slot]=PqSlot.{};return true;
+}
+// A cancel matched (pd_cancel) to slot: 1 it was waiting and is gone, 2 it is
+// running and the host must stop it, 0 nothing held there.
+pq_cancel :: (q:[]PqQueue,slot:int)->int #export_c {
+    if slot<0 || slot>=PQ_SLOTS {return 0;}
+    s:=q[0].slots[slot].state;
+    if s==PqState.waiting {q[0].slots[slot]=PqSlot.{};return 1;}
+    if s==PqState.running {return 2;}
+    return 0;
+}
+// The engine's decide budget in ms: the smaller of the job's time left
+// (pd_left_ms: -2 none, -1 passed) and the host's limit; -1 means answer
+// timeout without asking the engine.
+pq_budget :: (left_ms:int,limit_ms:int)->PqBudget #export_c {
+    if limit_ms<1 {return PqBudget.{ms=-1};}
+    if left_ms<1 && left_ms!=-2 {return PqBudget.{ms=-1,deadline=true};}
+    if left_ms!=-2 && left_ms<limit_ms {return PqBudget.{ms=left_ms,deadline=true};}
+    return PqBudget.{ms=limit_ms};
+}
+// book:begin answer
+// The answer after the engine call. reached: a whole HTTP response came back;
+// timed_out: the budget ran out first; status: its HTTP status; written: the
+// code pd_result gave for a 200 body (none when the 26910 was written);
+// refused: the PdCode the server's refusal body named (0 when none was read).
+pq_answer :: (reached:bool,timed_out:bool,status:int,written:int,refused:int)->PqAnswer #export_c {
+    if !reached {return PqAnswer.{code=ifx timed_out then PQ_TIMEOUT else PQ_INTERNAL};}
+    if status==200 {
+        if written==PQ_NONE {return PqAnswer.{result=true};}
+        return PqAnswer.{code=written};
+    }
+    if refused<=PQ_NONE || refused>=PQ_CODES {return PqAnswer.{code=PQ_INTERNAL};}
+    return PqAnswer.{code=refused};
+}
+// book:end answer
+// The beacon's lifecycle step: run until asked to stop, then draining while
+// any job is held, then offline.
+pq_life :: (stopping:bool,held:int)->PqLife #export_c {
+    if !stopping {return PqLife.run;}
+    if held>0 {return PqLife.drain;}
+    return PqLife.off;
+}
+// Whether to publish the beacon now. due: pb_due's answer (the refresh and
+// the 10 s spacing between changes); a status change made by shutdown
+// (draining, offline) goes out at once, so a buyer stops routing to a pylon
+// that is leaving rather than learning it up to 10 s later.
+pq_beacon_now :: (due:bool,changed:bool,stopping:bool)->bool #export_c {return due || (changed && stopping);}

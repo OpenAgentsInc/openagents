@@ -1,0 +1,36 @@
+#import "Basic";
+#load "../lib/pylon/decision.coax";
+#load "../lib/pylon/queue.coax";
+
+// book:begin example
+// A decrypted 25910 from the chapter's fixtures, at the clock the job was made.
+CLOCK :: 1791400000;
+
+main :: () {
+    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,CLOCK,body[..]);
+    print("admit: %, request %, attempt %, % ms left\n",jb.code,jb.request,jb.attempt,pd_left_ms(jb,CLOCK));
+    print("server body: %\n",cast(string)body[0..<jb.body]);
+    q:[1]PqQueue;
+    route:=pq_route(true,25910,true,cast(int)jb.code,cast(int)jb.type,jb.answerable,false,pq_free(q[..]));
+    slot:=pq_put(q[..]);print("route: %, slot %, % of % free\n",route,slot,pq_free(q[..]),PQ_SLOTS);
+    budget:=pq_budget(pd_left_ms(jb,CLOCK),30000);print("budget: % ms, set by the deadline: %\n",budget.ms,budget.deadline);
+    // The engine answered 200 with chapter 16's body.
+    out:[4096]u8;receipt:="{\"attempt_id\":\"r-1#1\",\"schema\":\"openagents.receipt.execution.v1\",\"transport\":\"relay\"}";
+    r:=pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"psionic-pylon-v1",PB_IDENTITY,receipt);
+    a:=pq_answer(true,false,200,cast(int)r.code,PQ_NONE);
+    print("answer: 26910 %, %\n",a.result,cast(string)out[0..<r.written]);
+    // The same body from an engine serving other weights.
+    other:=pq_answer(true,false,200,cast(int)pd_result(out[..],jb,PD_ANSWER,"studio-gpu",PD_WORKER,"psionic-pylon-v1","elephant-1@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",receipt).code,PQ_NONE);
+    print("other identity: 26910 %, code %\n",other.result,pd_code_name(cast(PdCode)other.code));
+    done:=pq_done(q[..],slot);
+    // A version the pylon does not speak: refused with a 27010 the caller can match.
+    old:=pd_admit(pd_env(pd_swap(out[..],PD_CALL,"systemone.v1","systemone.v0")),PD_WORKER,CLOCK,body[..]);
+    route=pq_route(true,25910,true,cast(int)old.code,cast(int)old.type,old.answerable,false,pq_free(q[..]));
+    n:=pd_status(body[..],old,PdStatus.error,old.code,-1);
+    print("v0: %, %\n",route,cast(string)body[0..<n]);
+    // Two jobs wait; a cancel names the second.
+    first:=pq_put(q[..]);second:=pq_put(q[..]);running:=pq_next(q[..]);
+    print("running slot %, cancel: % then %\n",running,pq_cancel(q[..],second),pq_cancel(q[..],running));
+    print("stop with % held: %; with none: %\n",pq_held(q[..]),pq_life(true,pq_held(q[..])),pq_life(true,0));
+}
+// book:end example

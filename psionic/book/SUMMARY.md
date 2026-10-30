@@ -24,6 +24,7 @@
 - [16b. The protobuf wire](ch016b-the-protobuf-wire.md)
 - [17. Run it live](ch017-run-it-live.md)
 - [18. Make the numbers move](ch018-make-the-numbers-move.md)
+- [19. A Pylon answers decisions](ch019-a-pylon-answers-decisions.md) — first mesh chapter
 - [70. Learning with arrays](ch070-learning-with-arrays.md) — first learning chapter
 - [71. Gradients as a program](ch071-gradients-as-a-program.md)
 - [26. A Coax compute subset](ch026-a-coax-compute-subset.md) — first device chapter

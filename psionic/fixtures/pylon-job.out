@@ -1,0 +1,9 @@
+admit: none, request r-1, attempt 1, 60000 ms left
+server body: {"model":"elephant-1","state":{"ticket":"I was billed twice"},"questions":{"refund":{"type":"noul","instructions":"Does the customer ask for money back?"}}}
+route: queue, slot 0, 3 of 4 free
+budget: 30000 ms, set by the deadline: false
+answer: 26910 true, {"attempt":1,"outcome":"answered","receipt":{"attempt_id":"r-1#1","schema":"openagents.receipt.execution.v1","transport":"relay"},"request":"r-1","requires":[],"response":{"answers":{"refund":{"type":"noul","noul":0.93}},"latency_ms":412,"model":"elephant-1","service":{"door":"pylon:studio-gpu","identity":"elephant-1@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","provider":"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9","version":"psionic-pylon-v1"},"usage":null},"type":"result","v":"openagents.systemone.v1"}
+other identity: 26910 false, code identity_mismatch
+v0: refuse, {"attempt":1,"code":"unsupported_version","message":"this pylon reads openagents.systemone.v1 only","request":"r-1","requires":[],"status":"error","type":"status","v":"openagents.systemone.v1"}
+running slot 0, cancel: 1 then 2
+stop with 1 held: drain; with none: off

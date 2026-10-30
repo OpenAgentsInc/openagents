@@ -262,6 +262,16 @@
       ]
     },
     {
+      "source": "psionic/examples/pylon-job.coax",
+      "chapter": "psionic/book/ch019-a-pylon-answers-decisions.md",
+      "stdout": "psionic/fixtures/pylon-job.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/gptoss-device-plan.coax",
       "chapter": "psionic/book/ch045a-original-weights-stay-on-the-gpu.md",
       "stdout": "psionic/fixtures/gptoss-device-plan.out",
