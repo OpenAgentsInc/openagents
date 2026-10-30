@@ -86,6 +86,8 @@ WAVE_DELAY :: [30] f32.[
 
 START_GOLD :: 140;
 START_LIVES :: 50;
+// How many defenders go on the field in one round: three, and one more every two waves.
+ROUND_BASE :: 3; ROUND_EVERY :: 2;
 BEASTS :: 320;
 DEFENDERS :: 48;
 FX :: 160;
@@ -98,7 +100,7 @@ BUILD :: 0; FIGHT :: 1; WON :: 2; LOST :: 3;
 FX_NUM :: 1; FX_MISS :: 2; FX_IMMUNE :: 3; FX_BOLT :: 4; FX_SLASH :: 5; FX_POP :: 6; FX_FLAME :: 7; FX_DART :: 8; FX_SAVED :: 9;
 
 // Buttons
-B_START :: 0; B_FAST :: 1; B_GALAXY :: 2; B_FIGHTER :: 3; B_WIZARD :: 4; B_CLERIC :: 5; B_SELL :: 6; B_CLOSE :: 7; B_AGAIN :: 8; BUTTONS :: 9;
+B_START :: 0; B_FAST :: 1; B_GALAXY :: 2; B_FIGHTER :: 3; B_WIZARD :: 4; B_CLERIC :: 5; B_SELL :: 6; B_CLOSE :: 7; B_AGAIN :: 8; B_PAUSE :: 9; BUTTONS :: 10;
 
 OUTBOX_CAP :: 128;
 ACT_NAVIGATE :: 1;
@@ -133,7 +135,9 @@ Stair :: struct {
   spawned: [GROUPS] int; spawn_t: [GROUPS] f32; wave_t: f32;
   beasts: [BEASTS] Beast;
   party: [DEFENDERS] Defender;
-  pops: int; leaked: int; placed: int;
+  pops: int; leaked: int; placed: int; placed_round: int;
+  pick: int;                // the class armed for placing (-1 none)
+  paused: bool;
   fx: [FX] Fx; fx_next: int;
   hurt: f32;
   selected: int;            // a cell (-1 none)
@@ -292,7 +296,8 @@ stair_reset :: (s: [] Stair) {
   for i: 0..<BEASTS { s[0].beasts[i].live = false; }
   for i: 0..<DEFENDERS { s[0].party[i].live = false; }
   for i: 0..<FX { s[0].fx[i].life = 0; }
-  s[0].pops = 0; s[0].leaked = 0; s[0].placed = 0;
+  s[0].pops = 0; s[0].leaked = 0; s[0].placed = 0; s[0].placed_round = 0;
+  s[0].pick = -1; s[0].paused = false;
   s[0].selected = -1; s[0].card = -1; s[0].hurt = 0;
   s[0].path_len = path_length();
   lay_cells(s);
@@ -446,8 +451,17 @@ start_wave :: (s: [] Stair) -> bool {
   s[0].wave += 1; s[0].phase = FIGHT; s[0].wave_t = 0;
   for g: 0..<GROUPS { s[0].spawned[g] = 0; s[0].spawn_t[g] = WAVE_DELAY[(s[0].wave - 1) * GROUPS + g]; }
   for i: 0..<DEFENDERS { s[0].party[i].slots = MM_SLOTS; }
+  s[0].placed_round = 0;
+  if round_allowance(s[0].wave) > round_allowance(s[0].wave - 1) {
+    buf: [48] u8;
+    n := put(buf[..], 0, "NOW "); n = put_int(buf[..], n, round_allowance(s[0].wave)); n = put(buf[..], n, " DEFENDERS A ROUND");
+    say(s, cast(string) buf[0..<n]);
+  }
   return true;
 }
+// Defenders allowed in the round that a wave opens (wave 0 is the build before the first).
+round_allowance :: (wave: int) -> int { return ROUND_BASE + hi_i(wave, 0) / ROUND_EVERY; }
+round_left :: (s: [] Stair) -> int { return hi_i(round_allowance(s[0].wave) - s[0].placed_round, 0); }
 
 step :: (s: [] Stair, dt: f32) {
   for i: 0..<FX { if s[0].fx[i].life > 0 { s[0].fx[i].t += dt; if s[0].fx[i].t >= s[0].fx[i].life { s[0].fx[i].life = 0; } } }
@@ -504,7 +518,7 @@ step :: (s: [] Stair, dt: f32) {
 }
 
 place :: (s: [] Stair, cell: int, cls: int) -> bool {
-  if !free_cell(s, cell) || s[0].gold < CLASS_COST[cls] || s[0].phase == WON || s[0].phase == LOST { return false; }
+  if !free_cell(s, cell) || s[0].gold < CLASS_COST[cls] || s[0].phase == WON || s[0].phase == LOST || round_left(s) <= 0 { return false; }
   for i: 0..<DEFENDERS {
     if !s[0].party[i].live {
       d: Defender;
@@ -514,7 +528,7 @@ place :: (s: [] Stair, cell: int, cls: int) -> bool {
       d.roll = -1;
       s[0].party[i] = d;
       s[0].gold -= CLASS_COST[cls];
-      s[0].placed += 1;
+      s[0].placed += 1; s[0].placed_round += 1;
       lay_cells(s);
       track_tally(s[0].track[..], "place", CLASS_NAME[cls]);
       return true;
@@ -526,6 +540,7 @@ sell :: (s: [] Stair, k: int) {
   if k < 0 || !s[0].party[k].live { return; }
   s[0].gold += CLASS_COST[s[0].party[k].cls] * 7 / 10;
   s[0].party[k].live = false;
+  s[0].placed_round = hi_i(s[0].placed_round - 1, 0);   // a sold defender gives its place in the round back
   lay_cells(s);
 }
 
@@ -534,7 +549,7 @@ sell :: (s: [] Stair, k: int) {
 layout :: (s: [] Stair, w: f32, h: f32, k: f32) {
   s[0].portrait = h > w * 1.1;
   top := 52 * k;
-  bottom := ifx s[0].portrait then 176 * k else 100 * k;
+  bottom := ifx s[0].portrait then 176 * k else 118 * k;
   s[0].scols = ifx s[0].portrait then ROWS else COLS;
   s[0].srows = ifx s[0].portrait then COLS else ROWS;
   aw := w - 24 * k; ah := h - top - bottom - 16 * k;
@@ -574,14 +589,15 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
   bh := 46 * k;
   if s[0].portrait {
     y1 := h - 14 * k; y0 := y1 - bh;
-    set_button(s, B_START, Rect.{x0 = 14 * k, y0 = y0, x1 = w - 96 * k, y1 = y1}, s[0].phase == BUILD);
+    set_button(s, B_START, Rect.{x0 = 14 * k, y0 = y0, x1 = w - 178 * k, y1 = y1}, s[0].phase == BUILD);
+    set_button(s, B_PAUSE, Rect.{x0 = w - 168 * k, y0 = y0, x1 = w - 96 * k, y1 = y1}, true);
     set_button(s, B_FAST, Rect.{x0 = w - 86 * k, y0 = y0, x1 = w - 14 * k, y1 = y1}, true);
     ry1 := y0 - 12 * k; ry0 := ry1 - bh - 18 * k;
-    if s[0].selected >= 0 && s[0].card < 0 {
+    if s[0].card < 0 {
       bw := (w - 28 * k - 16 * k) / 3;
       for c: 0..<CLASSES {
         x0 := 14 * k + f32(c) * (bw + 8 * k);
-        set_button(s, B_FIGHTER + c, Rect.{x0 = x0, y0 = ry0, x1 = x0 + bw, y1 = ry1}, s[0].gold >= CLASS_COST[c]);
+        set_button(s, B_FIGHTER + c, Rect.{x0 = x0, y0 = ry0, x1 = x0 + bw, y1 = ry1}, can_pick(s, c));
       }
     }
     if s[0].card >= 0 {
@@ -590,19 +606,21 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
     return;
   }
   y1 := h - 22 * k; y0 := y1 - bh - 8 * k;
-  set_button(s, B_START, Rect.{x0 = w - 300 * k, y0 = y0, x1 = w - 110 * k, y1 = y1}, s[0].phase == BUILD);
+  set_button(s, B_START, Rect.{x0 = w - 386 * k, y0 = y0, x1 = w - 196 * k, y1 = y1}, s[0].phase == BUILD);
+  set_button(s, B_PAUSE, Rect.{x0 = w - 186 * k, y0 = y0, x1 = w - 110 * k, y1 = y1}, true);
   set_button(s, B_FAST, Rect.{x0 = w - 100 * k, y0 = y0, x1 = w - 24 * k, y1 = y1}, true);
-  if s[0].selected >= 0 && s[0].card < 0 {
+  if s[0].card < 0 {
     bw := 170 * k;
     for c: 0..<CLASSES {
       x0 := 24 * k + f32(c) * (bw + 10 * k);
-      set_button(s, B_FIGHTER + c, Rect.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y1}, s[0].gold >= CLASS_COST[c]);
+      set_button(s, B_FIGHTER + c, Rect.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y1}, can_pick(s, c));
     }
   }
   if s[0].card >= 0 {
-    set_button(s, B_SELL, Rect.{x0 = w - 420 * k, y0 = y0, x1 = w - 316 * k, y1 = y1}, true);
+    set_button(s, B_SELL, Rect.{x0 = w - 500 * k, y0 = y0, x1 = w - 396 * k, y1 = y1}, true);
   }
 }
+can_pick :: (s: [] Stair, c: int) -> bool { return s[0].gold >= CLASS_COST[c] && round_left(s) > 0; }
 button_at :: (s: [] Stair, x: f32, y: f32) -> int {
   for b: 0..<BUTTONS { if s[0].shown[b] && in_rect(s[0].boxes[b], x, y) { return b; } }
   return -1;
@@ -612,13 +630,11 @@ press :: (s: [] Stair, b: int) {
   if !s[0].enabled[b] { return; }
   if b == B_START { if start_wave(s) { s[0].selected = -1; s[0].card = -1; } return; }
   if b == B_FAST { s[0].speed = ifx s[0].speed >= 3 then 1 else s[0].speed + 1; return; }
+  if b == B_PAUSE { s[0].paused = !s[0].paused; return; }
   if b == B_GALAXY { leave_to(s, "/verse/galaxy"); return; }
   if b == B_AGAIN { stair_reset(s); s[0].tracked_wave = 0; return; }
   if b == B_SELL { sell(s, s[0].card); s[0].card = -1; s[0].selected = -1; return; }
-  if b >= B_FIGHTER && b <= B_CLERIC {
-    if place(s, s[0].selected, b - B_FIGHTER) { s[0].selected = -1; }
-    return;
-  }
+  if b >= B_FIGHTER && b <= B_CLERIC { pick(s, b - B_FIGHTER); return; }
 }
 leave_to :: (s: [] Stair, url: string) {
   if s[0].action != 0 { return; }
@@ -631,8 +647,34 @@ tap_cell :: (s: [] Stair, cell: int) {
   d := defender_at(s, cell);
   if d >= 0 { s[0].card = ifx s[0].card == d then -1 else d; s[0].selected = -1; return; }
   s[0].card = -1;
-  if free_cell(s, cell) { s[0].selected = ifx s[0].selected == cell then -1 else cell; return; }
-  s[0].selected = -1;
+  if !free_cell(s, cell) { s[0].selected = -1; return; }
+  if s[0].pick < 0 { s[0].selected = -1; say(s, "PICK A DEFENDER FIRST"); return; }
+  // On a phone the first tap shows the defender's reach on that tile; the second places it.
+  if s[0].touch && s[0].selected != cell { s[0].selected = cell; return; }
+  drop(s, cell);
+}
+// Arm a class for placing (again to put it down).
+pick :: (s: [] Stair, c: int) {
+  if s[0].pick == c { s[0].pick = -1; s[0].selected = -1; return; }
+  if round_left(s) <= 0 { say(s, "NO MORE DEFENDERS THIS ROUND"); return; }
+  if s[0].gold < CLASS_COST[c] { say(s, "NOT ENOUGH GOLD"); return; }
+  s[0].pick = c; s[0].card = -1;
+}
+drop :: (s: [] Stair, cell: int) {
+  c := s[0].pick;
+  if c < 0 { return; }
+  if round_left(s) <= 0 { say(s, "NO MORE DEFENDERS THIS ROUND"); s[0].pick = -1; s[0].selected = -1; return; }
+  if s[0].gold < CLASS_COST[c] { say(s, "NOT ENOUGH GOLD"); s[0].pick = -1; s[0].selected = -1; return; }
+  if place(s, cell, c) {
+    s[0].selected = -1;
+    if !can_pick(s, c) { s[0].pick = -1; }
+  }
+}
+// The tile whose reach shows: the one tapped on a phone, the one under the mouse otherwise.
+aim_cell :: (s: [] Stair) -> int {
+  if s[0].pick < 0 { return -1; }
+  c := ifx s[0].touch then s[0].selected else s[0].hover;
+  return ifx free_cell(s, c) then c else -1;
 }
 
 // ---- in from the host
@@ -667,7 +709,7 @@ stair_pointer :: (s: [] Stair, x: f32, y: f32, phase: int, kind: int, id: int) -
       s[0].down_on = false;
       if phase == 2 && !s[0].long_done && cell == s[0].down_cell {
         if cell >= 0 { tap_cell(s, cell); return true; }
-        s[0].selected = -1; s[0].card = -1;
+        s[0].selected = -1; s[0].card = -1; s[0].pick = -1;
       }
       return cell >= 0;
     }
@@ -685,13 +727,14 @@ long_press :: (s: [] Stair) {
 stair_key :: (s: [] Stair, key: int, mods: int) -> bool #export_c {
   stair_start(s);
   track_key(s[0].track[..], key, false);
-  if key == KEY_ESCAPE { s[0].selected = -1; s[0].card = -1; return true; }
+  if key == KEY_ESCAPE { s[0].selected = -1; s[0].card = -1; s[0].pick = -1; return true; }
+  if key == 'p' || key == 'P' { press(s, B_PAUSE); return true; }
   if key == KEY_ENTER || key == ' ' {
     if s[0].phase == WON || s[0].phase == LOST { stair_reset(s); return true; }
     ok := start_wave(s); if ok { s[0].selected = -1; s[0].card = -1; }
     return true;
   }
-  if key >= '1' && key <= '3' && s[0].selected >= 0 { ok := place(s, s[0].selected, key - '1'); if ok { s[0].selected = -1; } return true; }
+  if key >= '1' && key <= '3' { pick(s, key - '1'); return true; }
   if key == 'f' || key == 'F' { press(s, B_FAST); return true; }
   return false;
 }
@@ -779,6 +822,28 @@ draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
     cap := t * 0.28;
     n = say_mid(out, n, letters[d.cls], q.x, y + cap / 2, cap, ink(k, 1.0, 1, 1, 1));
   }
+  // the armed defender's reach where it would go, before it is put down
+  a := aim_cell(s);
+  if a >= 0 {
+    c := s[0].pick;
+    q := to_screen(s, cell_xy(a).x, cell_xy(a).y);
+    r := CLASS_R[c]; g := CLASS_G[c]; b := CLASS_B[c];
+    pulse := 0.75 + 0.25 * sin(s[0].clock * 5);
+    n = disc(out, n, q.x, q.y, CLASS_RANGE[c] * t, 0.07, 0, r, g, b);
+    n = ring(out, n, q.x, q.y, CLASS_RANGE[c] * t, hi(1, 1.6 * k), 0.7 * pulse, r, g, b, 48);
+    y := q.y - t * 0.12;
+    n = ring(out, n, q.x, y, t * 0.3, hi(1.5, t * 0.035), 0.5, r, g, b, 18);
+    cap := t * 0.28;
+    n = say_mid(out, n, letters[c], q.x, y + cap / 2, cap, ink(k, 0.6, 1, 1, 1));
+    for i: 0..<BEASTS {
+      if !s[0].beasts[i].live { continue; }
+      p := path_at(s[0].beasts[i].d); cc := cell_xy(a);
+      if (p.x - cc.x) * (p.x - cc.x) + (p.y - cc.y) * (p.y - cc.y) <= CLASS_RANGE[c] * CLASS_RANGE[c] {
+        bq := to_screen(s, p.x, p.y);
+        n = ring(out, n, bq.x, bq.y - t * 0.22, LAYER_SIZE[s[0].beasts[i].kind] * t * 1.5, hi(1, t * 0.02), 0.8, r, g, b, 12);
+      }
+    }
+  }
   return n;
 }
 draw_fx :: (s: [] Stair, out: [] f32, at: int) -> int {
@@ -847,6 +912,7 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
   }
   if b == B_FAST { n := put(buf, 0, "SPEED "); return put_int(buf, n, s[0].speed); }
   if b == B_GALAXY { return put(buf, 0, "GALAXY"); }
+  if b == B_PAUSE { return put(buf, 0, ifx s[0].paused then "RESUME" else "PAUSE"); }
   if b == B_AGAIN { return put(buf, 0, "AGAIN"); }
   if b == B_SELL { n := put(buf, 0, "SELL +"); return put_int(buf, n, CLASS_COST[s[0].party[s[0].card].cls] * 7 / 10); }
   c := b - B_FIGHTER;
@@ -874,7 +940,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   title := "HOLD THE STAIR";
   if !s[0].portrait && lx + text_width(title, cap) + 24 * k < w { n = say_at(out, n, title, w - text_width(title, cap) - 24 * k, 32 * k, cap, ink(k, 0.7, GOLD_R, GOLD_G, GOLD_B)); }
   // the bottom panel
-  bottom := ifx s[0].portrait then 176 * k else 100 * k;
+  bottom := ifx s[0].portrait then 176 * k else 118 * k;
   plate(s, u, Rect.{x0 = 0, y0 = h - bottom, x1 = w, y1 = h}, 0.85, 0);
   // the defender card, or a hint
   if s[0].card >= 0 && s[0].party[s[0].card].live {
@@ -905,16 +971,38 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     m = put(buf[..], 0, "HITS "); m = put_int(buf[..], m, d.hits); m = put(buf[..], m, " · MISSES "); m = put_int(buf[..], m, d.misses);
     m = put(buf[..], m, " · POPS "); m = put_int(buf[..], m, d.pops);
     if !s[0].portrait { n = say_at(out, n, cast(string) buf[0..<m], x0 + 520 * k, y0, 10 * k, ink(k, 0.7, INK_R, INK_G, INK_B)); }
-  } else if s[0].selected < 0 && s[0].phase == BUILD && s[0].placed == 0 {
-    hint := ifx s[0].touch then "TAP A FLOOR TILE BESIDE THE STAIR" else "CLICK A FLOOR TILE BESIDE THE STAIR";
-    yy := ifx s[0].portrait then h - bottom + 50 * k else h - bottom + 58 * k;
-    n = say_at(out, n, hint, ifx s[0].portrait then 14 * k else 24 * k, yy, 11 * k, ink(k, 0.7, INK_R, INK_G, INK_B));
+  } else if s[0].phase != WON && s[0].phase != LOST {
+    // how many more this round, and what to do next
+    left := round_left(s);
+    m = put(buf[..], 0, "PLACE "); m = put_int(buf[..], m, left); m = put(buf[..], m, " MORE THIS ROUND (");
+    m = put_int(buf[..], m, round_allowance(s[0].wave)); m = put(buf[..], m, " A ROUND)");
+    hint := "PICK A DEFENDER, THEN A TILE BESIDE THE STAIR";
+    if left <= 0 { hint = ifx s[0].phase == BUILD then "START THE WAVE FOR MORE" else "MORE WHEN THE NEXT WAVE STARTS"; }
+    else if s[0].pick >= 0 {
+      if s[0].touch { hint = ifx aim_cell(s) >= 0 then "TAP IT AGAIN TO PLACE · TAP OFF THE MAP TO STOP" else "TAP A TILE TO SEE ITS REACH"; }
+      else { hint = "CLICK A TILE TO PLACE · ESC TO STOP"; }
+    }
+    x0 := ifx s[0].portrait then 14 * k else 24 * k;
+    yy := ifx s[0].portrait then h - bottom + 22 * k else h - bottom + 22 * k;
+    c := 11 * k;
+    count := cast(string) buf[0..<m];
+    if s[0].portrait {
+      while text_width(count, c) > w - 28 * k && c > 7 * k { c -= 0.5 * k; }
+      n = say_at(out, n, count, x0, yy, c, ink(k, 1, GOLD_R, GOLD_G, GOLD_B));
+      c2 := 10 * k;
+      while text_width(hint, c2) > w - 28 * k && c2 > 6 * k { c2 -= 0.5 * k; }
+      n = say_at(out, n, hint, x0, yy + 16 * k, c2, ink(k, 0.75, INK_R, INK_G, INK_B));
+    } else {
+      n = say_at(out, n, count, x0, yy, c, ink(k, 1, GOLD_R, GOLD_G, GOLD_B));
+      n = say_at(out, n, hint, x0 + text_width(count, c) + 24 * k, yy, c, ink(k, 0.75, INK_R, INK_G, INK_B));
+    }
   }
   // buttons
   for b: 0..<BUTTONS {
     if !s[0].shown[b] { continue; }
     r := s[0].boxes[b];
-    style := ifx !s[0].enabled[b] then 3.0f32 else ifx s[0].press == b || s[0].hover_b == b then 2.0f32 else 1.0f32;
+    armed := (b >= B_FIGHTER && b <= B_CLERIC && s[0].pick == b - B_FIGHTER) || (b == B_PAUSE && s[0].paused);
+    style := ifx armed then 2.0f32 else ifx !s[0].enabled[b] then 3.0f32 else ifx s[0].press == b || s[0].hover_b == b then 2.0f32 else 1.0f32;
     plate(s, u, r, 1, style);
     m = button_label(s, b, buf[..]);
     lab := cast(string) buf[0..<m];
@@ -932,6 +1020,9 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     tt := cast(string) s[0].toast[0..<s[0].toast_n];
     c := 14 * k;
     n = say_mid(out, n, tt, w / 2, 86 * k, c, ink(k, clamp01(s[0].toast_t), GOLD_R, GOLD_G, GOLD_B));
+  }
+  if s[0].paused && s[0].phase != WON && s[0].phase != LOST {
+    n = say_mid(out, n, "PAUSED", w / 2, 118 * k, 20 * k, ink(k, 1, INK_R, INK_G, INK_B));
   }
   // the end
   if s[0].phase == WON || s[0].phase == LOST {
@@ -960,7 +1051,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].clock += step_dt;
   s[0].toast_t = hi(0, s[0].toast_t - step_dt);
   long_press(s);
-  s[0].acc += step_dt * f32(s[0].speed);
+  if !s[0].paused { s[0].acc += step_dt * f32(s[0].speed); }
   guard := 0;
   while s[0].acc >= f32(STEP) && guard < 64 { step(s, f32(STEP)); s[0].acc -= f32(STEP); guard += 1; }
   if guard >= 64 { s[0].acc = 0; }
@@ -976,7 +1067,7 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   u[U_MAP] = s[0].ox; u[U_MAP + 1] = s[0].oy; u[U_MAP + 2] = s[0].tile; u[U_MAP + 3] = f32(SQUASH);
   u[U_INFO] = f32(s[0].scols); u[U_INFO + 1] = f32(s[0].srows); u[U_INFO + 2] = ifx s[0].portrait then 1.0f32 else 0.0f32;
   u[U_INFO + 3] = f32(ifx s[0].hover >= 0 && free_cell(s, s[0].hover) then s[0].hover else -1);
-  u[U_INFO2] = s[0].hurt; u[U_INFO2 + 1] = f32(s[0].selected);
+  u[U_INFO2] = s[0].hurt; u[U_INFO2 + 1] = f32(aim_cell(s));
   for i: 0..<CELLS { u[U_CELLS + i] = f32(s[0].cells[i]); }
   s[0].plate_n = 0;
   n := 0;
@@ -1062,4 +1153,45 @@ play_through :: (s: [] Stair, builds: bool) -> int {
   #assert play_through(s[..], false) == LOST;
   stair_reset(s[..]);
   #assert play_through(s[..], true) == WON && s[0].wave == WAVES;
+}
+
+#test "a defender is picked before it goes down, a round allows only so many, and the allowance grows" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  s[0].gold = 2000;
+  tap_cell(s[..], cell_of(4, 6));
+  #assert s[0].placed == 0;                     // nothing picked: nothing placed
+  pick(s[..], FIGHTER);
+  #assert s[0].pick == FIGHTER;
+  s[0].hover = cell_of(4, 6);
+  #assert aim_cell(s[..]) == cell_of(4, 6);     // its reach shows before it is put down
+  tap_cell(s[..], cell_of(4, 6));
+  #assert s[0].placed == 1 && s[0].pick == FIGHTER;
+  s[0].touch = true;
+  tap_cell(s[..], cell_of(4, 5));
+  #assert s[0].placed == 1 && s[0].selected == cell_of(4, 5);   // a phone's first tap only aims
+  tap_cell(s[..], cell_of(4, 5));
+  #assert s[0].placed == 2;
+  #assert round_allowance(0) == 3 && round_allowance(1) == 3 && round_allowance(2) == 4 && round_allowance(9) == 7;
+  tap_cell(s[..], cell_of(2, 4)); tap_cell(s[..], cell_of(2, 4));
+  #assert s[0].placed == 3 && round_left(s[..]) == 0 && s[0].pick == -1;
+  #assert !place(s[..], cell_of(4, 3), FIGHTER);
+  #assert start_wave(s[..]) && round_left(s[..]) == 3;
+  pick(s[..], WIZARD); pick(s[..], WIZARD);
+  #assert s[0].pick == -1;                      // the same button again stops placing
+}
+
+#test "pause stops the clock and resume starts it" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  #assert start_wave(s[..]);
+  s[0].enabled[B_PAUSE] = true; press(s[..], B_PAUSE);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := stair_frame(s[..], out[..], u[..], 1440, 900, 1, 0.05, false);
+  t0 := s[0].wave_t;
+  n = stair_frame(s[..], out[..], u[..], 1440, 900, 1, 0.05, false);
+  #assert s[0].wave_t == t0;
+  s[0].enabled[B_PAUSE] = true; press(s[..], B_PAUSE);
+  n = stair_frame(s[..], out[..], u[..], 1440, 900, 1, 0.05, false);
+  #assert s[0].wave_t > t0;
 }
