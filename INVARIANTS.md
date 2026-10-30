@@ -1947,3 +1947,22 @@ lifetimes and exclusive synchronous output access remain caller duties.
 Check: `psionic/tests/check_byte_lm.sh --mutate --jobs 8` (CPU only): independent
 full-table SGD/likelihood/sample capture, finite differences, real aliases,
 debug/release, native plain/ASan/UBSan and exact book output.
+
+## Learned byte BPE keeps training and inference boundaries identical
+
+`psionic/lib/bpe-train.coax` owns `byte-bpe-nanochat2-u17-v1`: the pinned
+nanochat two-digit regex over Unicode-17 properties, no normalization or added
+tokens, and 256 byte IDs followed by at most 64 merge IDs. Highest overlapping
+pair count wins, ties choose the lowest pair of IDs, and replacements are
+disjoint left to right. No pair crosses a piece or document boundary.
+Up to 16 documents / 4096 UTF-8 bytes and 64-byte expanded tokens are admitted;
+late growth failure returns an empty model. PST5 packing validates rule order,
+references and uniqueness, checks capacities/actual aliases before writes and
+publishes only a completed table. The new encoder shares chapter 5's layout,
+span reader and ranked BPE core, with its own explicit splitting profile.
+Inputs/class tables retain immutable valid storage and recorded identities.
+C observes spans and performs verification file effects only.
+
+Check: `psionic/tests/check_bpe_train.sh --mutate --jobs 8` (CPU only): full
+64-merge independent recount, exact persisted PST5, 147 Unicode/ID/byte round
+trips, 20 tiny training traces, debug/release and ASan/UBSan.

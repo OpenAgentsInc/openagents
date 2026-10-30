@@ -780,6 +780,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/bpe-train.coax",
+      "chapter": "psionic/book/ch077-learn-a-tokenizer.md",
+      "stdout": "psionic/fixtures/bpe-train.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

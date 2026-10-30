@@ -238,3 +238,5 @@ retained; routine checks do not rerun it.
 [Chapter 36](book/ch036-tokenizers-and-chat-templates.md): WordPiece, SentencePiece-style Unigram and bounded Jinja, checked against original BERT/T5 tables and TinyLlama templates. Run `psionic/check.sh --only tokenizer-families`.
 
 [Chapter 73](book/ch073-bytes-and-a-small-language-model.md): Train a complete 256-byte bigram model on fixed CC0 synthetic documents, evaluate disjoint held-out splits and sample with a named counter RNG. Run `psionic/check.sh --only byte-lm`.
+
+[Chapter 77](book/ch077-learn-a-tokenizer.md): Deterministic Coax byte-BPE training, pinned nanochat two-digit splitting, independent merges and persisted chapter-5 PST5 round trips. Run `psionic/check.sh --only bpe-train`.

@@ -1,0 +1,148 @@
+#load "text/tokenizer.coax";
+#load "../fixtures/bpe-train/training-goldens.coax";
+#authority;
+BtRule :: struct {left:int;right:int;frequency:int;replaced:int;}
+BtModel :: struct {status:PtStatus;merges:int;source_bytes:int;pieces:int;remaining:int;rules:[64]BtRule;}
+BtVocabulary :: struct {status:PtStatus;count:int;pool:int;lengths:[320]int;bytes:[320][64]u8;}
+BtEncoding :: struct {status:PtStatus;written:int;ids:[4096]int;}
+BtText :: struct {status:PtStatus;written:int;bytes:[4096]u8;}
+BtSplits :: struct {status:PtStatus;written:int;ends:[4096]int;}
+#test "byte BPE counts overlapping pairs but replaces disjoint occurrences and ties by pair IDs" {
+ table:=PT_TOY;docs:=[2]string.["abab","cdcd"];m:=bt_train(table[..],docs[..],2);#assert m.status==PtStatus.ok && m.merges==2 && m.source_bytes==8 && m.pieces==2 && m.remaining==4 && m.rules[0].left==97 && m.rules[0].right==98 && m.rules[0].frequency==2 && m.rules[0].replaced==2 && m.rules[1].left==99 && m.rules[1].right==100;
+ docs[0]="cdcd";docs[1]="abab";r:=bt_train(table[..],docs[..],2);#assert r.rules[0].left==97 && r.rules[1].left==99;
+ docs[0]="aaaaa";r=bt_train(table[..],docs[0..<1],3);#assert r.merges==1 && r.rules[0].frequency==4 && r.rules[0].replaced==2 && r.remaining==3;
+ docs[0]="12 12 1234";r=bt_train(table[..],docs[0..<1],8);#assert r.merges==1 && r.rules[0].left==49 && r.rules[0].right==50;
+}
+#test "nanochat split keeps two numbers letters and marks distinct without normalization" {
+ table:=PT_TOY;t:=pt_layout(table[..]);#assert bt_piece(table[..],t,"12345",0)==2 && bt_piece(table[..],t,"12345",2)==4;
+ #assert bt_piece(table[..],t,"é",0)==1 && bt_piece(table[..],t,"́a",0)==3;
+ s:=bt_split(table[..],"  a\r\n!!!123");#assert s.status==PtStatus.ok && s.written==6 && s.ends[0]==1 && s.ends[1]==3 && s.ends[2]==5 && s.ends[3]==8 && s.ends[4]==10 && s.ends[5]==11;
+}
+#test "training shape UTF8 and token-growth admission returns an empty model on refusal" {
+ #assert bt_docs(1) && bt_docs(16) && !bt_docs(0) && !bt_docs(17);#assert bt_bytes(0) && bt_bytes(4096) && !bt_bytes(4097);#assert bt_merges(0) && bt_merges(64) && !bt_merges(-1) && !bt_merges(65);
+ table:=PT_TOY;docs:=[1]string.[""];#assert bt_train(table[..],docs[..],0).status==PtStatus.ok && bt_train(table[..],docs[0..<0],1).status==PtStatus.size;
+ bad:=[1]u8.[255];docs[0]=cast(string)bad[..];#assert bt_train(table[..],docs[..],1).status==PtStatus.utf8;
+ #assert bt_train(table[0..<0],docs[..],1).status==PtStatus.artifact;
+ bytes:[4097]u8;for i:0..<4097 {bytes[i]='a';}docs[0]=cast(string)bytes[..];#assert bt_train(table[..],docs[..],1).status==PtStatus.size;
+ docs[0]=cast(string)bytes[0..<256];r:=bt_train(table[..],docs[..],7);#assert r.status==PtStatus.budget && r.merges==0 && r.source_bytes==0;
+ #assert bt_train(table[..],docs[..],65).status==PtStatus.size;
+}
+bt_docs :: (n:int)->bool {return n>=1 && n<=16;}
+bt_bytes :: (n:int)->bool {return n<=4096;}
+bt_merges :: (n:int)->bool {return n>=0 && n<=64;}
+// Pinned nanochat pattern, Unicode-17 properties, no normalization or specials.
+// book:begin split
+bt_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int {
+ end:=pt_contraction(s,at);if end>at {return end;}r:=pt_rune(s,at);
+ if pt_has(table,t,r.cp,4) {end=r.next;if end==s.count {return end;}next:=pt_rune(s,end);if pt_has(table,t,next.cp,4) {end=next.next;}return end;}
+ pos:=at;if r.cp!=13 && r.cp!=10 && !pt_has(table,t,r.cp,5) {pos=r.next;}end=pt_run(table,t,s,pos,1,true);if end>pos {return end;}
+ pos=at;if r.cp==32 {pos=r.next;}end=pt_run(table,t,s,pos,13,false);
+ if end>pos {while true {if end==s.count {return end;}c:=pt_rune(s,end);if c.cp!=13 && c.cp!=10 {return end;}end=c.next;}return end;}
+ space:=at;last_newline:=at;last_space:=at;while true {if space==s.count {break;}c:=pt_rune(s,space);if !pt_has(table,t,c.cp,8) {break;}last_space=space;space=c.next;if c.cp==13 || c.cp==10 {last_newline=space;}}
+ if last_newline>at {return last_newline;}if space==s.count {return space;}if last_space>at {return last_space;}return space;
+}
+// book:end split
+bt_split :: (table:[]u8,text:string)->BtSplits #export_c {
+ if !bt_bytes(text.count) {return BtSplits.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtSplits.{status=t.status};}status:=pt_utf8_validate(text);if status!=PtStatus.ok {return BtSplits.{status=status};}r:=BtSplits.{};at:=0;while at<text.count {at=bt_piece(table,t,text,at);r.ends[r.written]=at;r.written+=1;}return r;
+}
+// book:begin train
+bt_train :: (table:[]u8,documents:[]string,requested:int)->BtModel #export_c {
+ if !bt_docs(documents.count) || !bt_merges(requested) {return BtModel.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtModel.{status=t.status};}total:=0;for text:documents {if !bt_bytes(text.count) || !bt_bytes(total+text.count) {return BtModel.{status=PtStatus.size};}total+=text.count;status:=pt_utf8_validate(text);if status!=PtStatus.ok {return BtModel.{status=status};}}
+ symbols:[4096]int;groups:[4096]int;n:=0;pieces:=0;for text:documents {at:=0;while at<text.count {end:=bt_piece(table,t,text,at);for i:at..<end {symbols[n]=cast(int)text[i];groups[n]=pieces;n+=1;}pieces+=1;at=end;}}
+ counts:[102400]int;touched:[4096]int;model:=BtModel.{source_bytes=total,pieces=pieces};
+ for rank:0..<requested {used:=bt_histogram(symbols[..],groups[..],n,counts[..],touched[..]);
+  winner:=bt_best(counts[..],touched[0..<used]);for i:0..<used {counts[touched[i]]=0;}if winner.frequency<2 {break;}left:=winner.key/320;right:=winner.key%320;candidate:=model;candidate.rules[rank]=BtRule.{left=left,right=right};candidate.merges=rank+1;v:=bt_vocabulary(candidate);if v.status!=PtStatus.ok {return BtModel.{status=v.status};}
+  write:=0;i:=0;replaced:=0;while i<n {group:=groups[i];value:=symbols[i];if i+1<n && group==groups[i+1] && value==left && symbols[i+1]==right {value=256+rank;i+=2;replaced+=1;}else {i+=1;}symbols[write]=value;groups[write]=group;write+=1;}
+  n=write;model.rules[rank]=BtRule.{left=left,right=right,frequency=winner.frequency,replaced=replaced};model.merges+=1;
+ }
+ model.remaining=n;return model;
+}
+// book:end train
+bt_vocabulary :: (m:BtModel)->BtVocabulary {
+ if m.status!=PtStatus.ok || !bt_merges(m.merges) {return BtVocabulary.{status=PtStatus.artifact};}v:=BtVocabulary.{count=256+m.merges,pool=256};for i:0..<256 {v.lengths[i]=1;v.bytes[i][0]=cast(u8)i;}
+ for rank:0..<m.merges {rule:=m.rules[rank];id:=256+rank;if rule.left<0 || rule.left>=id || rule.right<0 || rule.right>=id {return BtVocabulary.{status=PtStatus.artifact};}for j:0..<rank {if m.rules[j].left==rule.left && m.rules[j].right==rule.right {return BtVocabulary.{status=PtStatus.artifact};}}
+  a:=v.lengths[rule.left];b:=v.lengths[rule.right];if a+b>64 {return BtVocabulary.{status=PtStatus.budget};}v.lengths[id]=a+b;v.pool+=a+b;for i:0..<a {v.bytes[id][i]=v.bytes[rule.left][i];}for i:0..<b {v.bytes[id][a+i]=v.bytes[rule.right][i];}
+ }return v;
+}
+bt_put :: (bytes:[]u8,at:int,n:int) {for i:0..<4 {bytes[at+i]=cast(u8)((cast(u32)n>>(i*8))&255);}}
+bt_less :: (a:BtRule,b:BtRule)->bool {return a.left<b.left || (a.left==b.left && a.right<b.right);}
+// PST5 stores raw bytes and chapter 5's rank/id records; the profile is separate.
+bt_pack :: (m:BtModel,classes:[]u8,out:[]u8,stage:[]u8,overlap:bool)->PtResult #export_c {
+ if overlap {return PtResult.{status=PtStatus.alias};}t:=pt_layout(classes);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}v:=bt_vocabulary(m);if v.status!=PtStatus.ok {return PtResult.{status=v.status};}
+ needed:=1056+v.count*8+m.merges*16+t.counts[2]*16+v.pool;if out.count<needed || stage.count<needed {return PtResult.{status=PtStatus.capacity};}
+
+ at:=1056;offset:=0;for i:0..<v.count {bt_put(stage,at,offset);bt_put(stage,at+4,v.lengths[i]);offset+=v.lengths[i];at+=8;}
+ stage[0]='P';stage[1]='S';stage[2]='T';stage[3]='5';counts:=[7]int.[v.count,m.merges,t.counts[2],0,0,0,v.pool];for k:0..<7 {bt_put(stage,4+k*4,counts[k]);}for i:0..<256 {bt_put(stage,32+i*4,i);}
+ order:[64]int;for i:0..<m.merges {j:=i;while j>0 && bt_less(m.rules[i],m.rules[order[j-1]-1]) {order[j]=order[j-1];j-=1;}order[j]=i+1;}
+ for i:0..<m.merges {rank:=order[i]-1;rule:=m.rules[rank];bt_put(stage,at,rule.left);bt_put(stage,at+4,rule.right);bt_put(stage,at+8,rank);bt_put(stage,at+12,256+rank);at+=16;}
+ for i:0..<t.counts[2]*16 {stage[at+i]=classes[t.starts[2]+i];}at+=t.counts[2]*16;
+ for i:0..<v.count {for j:0..<v.lengths[i] {stage[at]=v.bytes[i][j];at+=1;}}
+ for i:0..<needed {out[i]=stage[i];}return PtResult.{written=needed};
+}
+bt_profile :: (t:PtLayout)->bool {return t.counts[0]==256+t.counts[1] && bt_merges(t.counts[1]) && t.counts[3]==0 && t.counts[4]==0 && t.counts[5]==0;}
+bt_encode :: (table:[]u8,text:string)->BtEncoding #export_c {
+ if !bt_bytes(text.count) {return BtEncoding.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtEncoding.{status=t.status};}if !bt_profile(t) {return BtEncoding.{status=PtStatus.artifact};}status:=pt_utf8_validate(text);if status!=PtStatus.ok {return BtEncoding.{status=status};}
+ r:=BtEncoding.{};symbols:[4096]int;at:=0;while at<text.count {end:=bt_piece(table,t,text,at);bpe:=pt_bpe(table,t,text[at..<end],symbols[..]);if bpe.status!=PtStatus.ok {return BtEncoding.{status=bpe.status};}for i:0..<bpe.written {r.ids[r.written]=symbols[i];r.written+=1;}at=end;}return r;
+}
+bt_decode :: (table:[]u8,ids:[]int)->BtText #export_c {
+ if !bt_bytes(ids.count) {return BtText.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return BtText.{status=t.status};}if !bt_profile(t) {return BtText.{status=PtStatus.artifact};}r:=BtText.{};
+ for id:ids {s:=pt_span(table,t,id);if s.status!=PtStatus.ok {return BtText.{status=s.status};}n:=s.end-s.begin;if n>4096-r.written {return BtText.{status=PtStatus.budget};}for i:s.begin..<s.end {r.bytes[r.written]=table[i];r.written+=1;}}return r;
+}
+#test "learned PST5 reopens in chapter five and preserves original bytes" {
+ classes:=PT_TOY;docs:=[1]string.["abab 12 12"];m:=bt_train(classes[..],docs[..],4);v:=bt_vocabulary(m);#assert v.status==PtStatus.ok && v.count==256+m.merges && v.pool>256;
+ out:[65536]u8;stage:[65536]u8;out[65535]=77;for i:0..<65536 {stage[i]=165;}packed:=bt_pack(m,classes[..],out[..],stage[..],false);#assert packed.status==PtStatus.ok && out[65535]==77;t:=pt_layout(out[0..<packed.written]);#assert t.status==PtStatus.ok && t.counts[0]==v.count && t.counts[1]==m.merges && t.counts[3]==0 && t.counts[4]==0 && t.counts[5]==0;
+ text:="abab 1212 é";e:=bt_encode(out[0..<packed.written],text);#assert e.status==PtStatus.ok;d:=bt_decode(out[0..<packed.written],e.ids[0..<e.written]);#assert d.status==PtStatus.ok && cast(string)d.bytes[0..<d.written]==text;
+ for i:0..<256 {#assert pt_u32(out[..],32+i*4)==i;}for i:0..<t.counts[2]*16 {#assert out[t.starts[2]+i]==classes[pt_layout(classes[..]).starts[2]+i];}
+ ids:[256]int;for i:0..<256 {ids[i]=i;}d=bt_decode(out[0..<packed.written],ids[..]);#assert d.written==256;for i:0..<256 {#assert d.bytes[i]==cast(u8)i;}
+ numbers:=bt_encode(out[0..<packed.written],"1212");#assert numbers.written==2 && numbers.ids[0]==numbers.ids[1] && numbers.ids[0]>=256;
+ #assert bt_pack(m,classes[..],out[0..<packed.written-1],stage[..],false).status==PtStatus.capacity;
+ #assert bt_pack(m,classes[..],out[..],stage[0..<packed.written-1],false).status==PtStatus.capacity;
+ #assert bt_pack(m,classes[..],out[..],stage[..],true).status==PtStatus.alias;
+ #assert bt_pack(m,classes[0..<0],out[..],stage[..],false).status==PtStatus.artifact;
+ #assert bt_encode(out[0..<0],"a").status==PtStatus.artifact && bt_decode(out[0..<0],ids[..]).status==PtStatus.artifact;
+ #assert bt_encode(classes[..],"a").status==PtStatus.artifact && bt_decode(classes[..],ids[..]).status==PtStatus.artifact;
+ bad:=[1]u8.[255];#assert bt_encode(out[0..<packed.written],cast(string)bad[..]).status==PtStatus.utf8;
+ ids[0]=-1;#assert bt_decode(out[0..<packed.written],ids[0..<1]).status==PtStatus.range;ids[0]=v.count;#assert bt_decode(out[0..<packed.written],ids[0..<1]).status==PtStatus.range;
+}
+#test "vocabulary expansion rejects forward references duplicate pairs and oversized pieces" {
+ m:=BtModel.{};v:=bt_vocabulary(m);#assert v.status==PtStatus.ok && v.count==256 && v.pool==256 && v.lengths[0]==1 && v.bytes[255][0]==255;
+ m.status=PtStatus.budget;#assert bt_vocabulary(m).status==PtStatus.artifact;m.status=PtStatus.ok;m.merges=65;#assert bt_vocabulary(m).status==PtStatus.artifact;m.merges=-1;#assert bt_vocabulary(m).status==PtStatus.artifact;m.merges=1;
+ for which:0..<4 {m.rules[0]=BtRule.{left=97,right=98};if which==0 {m.rules[0].left=-1;}else if which==1 {m.rules[0].left=256;}else if which==2 {m.rules[0].right=-1;}else {m.rules[0].right=256;}#assert bt_vocabulary(m).status==PtStatus.artifact;}
+ m.rules[0]=BtRule.{left=97,right=98};m.rules[1]=m.rules[0];m.merges=2;#assert bt_vocabulary(m).status==PtStatus.artifact;
+ m.merges=7;for rank:0..<7 {id:=ifx rank==0 then 97 else 255+rank;m.rules[rank]=BtRule.{left=id,right=id};}#assert bt_vocabulary(m).status==PtStatus.budget;
+ b:[8]u8;b[7]=77;bt_put(b[..],2,0x12345678);#assert b[2]==120 && b[3]==86 && b[4]==52 && b[5]==18 && b[7]==77;
+ #assert bt_less(BtRule.{left=1,right=5},BtRule.{left=2,right=0}) && bt_less(BtRule.{left=1,right=2},BtRule.{left=1,right=3}) && !bt_less(BtRule.{left=1,right=2},BtRule.{left=1,right=2});
+ t:=PtLayout.{};t.counts[0]=256;#assert bt_profile(t);for k:0..<6 {q:=t;q.counts[k]+=1;if k==2 {#assert bt_profile(q);}else {#assert !bt_profile(q);}}
+}
+
+BtBest :: struct {key:int=-1;frequency:int;slot:int=-1;}
+bt_best :: (counts:[]int,keys:[]int)->BtBest {r:=BtBest.{};for i:0..<keys.count {key:=keys[i];f:=counts[key];if f>r.frequency || (f==r.frequency && (r.key==-1 || key<r.key)) {r=BtBest.{key=key,frequency=f,slot=i};}}return r;}
+#forall "independent full recount training traces include controls boundaries and corpus permutations" c:0..<BT_REQUEST.count {
+ table:=PT_TOY;docs:=BT_DOCS[c];m:=bt_train(table[..],docs[0..<BT_DOC_COUNT[c]],BT_REQUEST[c]);#assert m.status==PtStatus.ok && m.merges==BT_MERGES[c] && m.source_bytes==BT_SOURCE_BYTES[c] && m.pieces==BT_PIECES[c] && m.remaining==BT_REMAINING[c];
+ for i:0..<m.merges {r:=m.rules[i];#assert r.left==BT_LEFT[c][i] && r.right==BT_RIGHT[c][i] && r.frequency==BT_FREQUENCY[c][i] && r.replaced==BT_REPLACED[c][i];}
+}
+#test "histogram winner query retains exact counts lowest key and first duplicate slot" {
+ counts:=[4]int.[1,3,3,0];keys:=[3]int.[2,1,1];r:=bt_best(counts[..],keys[..]);#assert r.key==1 && r.frequency==3 && r.slot==1;r=bt_best(counts[..],keys[0..<0]);#assert r.key==-1 && r.frequency==0 && r.slot==-1;keys[0]=0;r=bt_best(counts[..],keys[0..<1]);#assert r.key==0 && r.frequency==1 && r.slot==0;
+}
+#test "numeric and punctuation alternatives retain exact regex endpoints" {
+ table:=PT_TOY;t:=pt_layout(table[..]);#assert bt_piece(table[..],t,"1",0)==1 && bt_piece(table[..],t,"1a",0)==1;
+ texts:=[10]string.["\ra","\na"," !!!","!a","!!!\r\n","\r\n","\t\t "," \t\r","  \r  x","x "];
+ ends:=[10]int.[1,1,4,2,5,2,3,3,3,1];for i:0..<texts.count {#assert bt_piece(table[..],t,texts[i],0)==ends[i];}
+ docs:[2]string;bytes:[4096]u8;for i:0..<4096 {bytes[i]='a';}docs[0]=cast(string)bytes[0..<3000];docs[1]=cast(string)bytes[0..<2000];#assert bt_train(table[..],docs[..],0).status==PtStatus.size;
+ counts:=[4]int.[0,0,0,0];keys:=[1]int.[3];winner:=bt_best(counts[..],keys[..]);#assert winner.key==3 && winner.frequency==0 && winner.slot==0;
+}
+#test "zero byte references maximal token length and unsorted rank serialization are exact" {
+ m:=BtModel.{merges=2};m.rules[0]=BtRule.{left=0,right=1};m.rules[1]=BtRule.{left=0,right=2};v:=bt_vocabulary(m);#assert v.status==PtStatus.ok && v.bytes[256][0]==0 && v.bytes[256][1]==1 && v.bytes[257][1]==2;
+ m=BtModel.{};v=bt_vocabulary(m);for i:256..<320 {#assert v.lengths[i]==0;}
+ m.merges=6;for rank:0..<6 {id:=ifx rank==0 then 97 else 255+rank;m.rules[rank]=BtRule.{left=id,right=id};}v=bt_vocabulary(m);#assert v.status==PtStatus.ok && v.lengths[261]==64;m.merges=7;m.rules[6]=BtRule.{left=261,right=98};#assert bt_vocabulary(m).status==PtStatus.budget;
+ m=BtModel.{merges=3};m.rules[0]=BtRule.{left=98,right=97};m.rules[1]=BtRule.{left=97,right=98};m.rules[2]=BtRule.{left=97,right=99};classes:=PT_TOY;out:[65536]u8;stage:[65536]u8;for i:0..<65536 {stage[i]=165;}
+ p:=bt_pack(m,classes[..],out[..],stage[..],false);#assert p.status==PtStatus.ok;t:=pt_layout(out[0..<p.written]);for i:0..<3 {rank:=ifx i==0 then 1 else ifx i==1 then 2 else 0;row:=t.starts[1]+i*16;#assert pt_u32(out[..],row)==m.rules[rank].left && pt_u32(out[..],row+4)==m.rules[rank].right && pt_u32(out[..],row+8)==rank && pt_u32(out[..],row+12)==256+rank;}
+ p2:=bt_pack(m,classes[..],out[0..<p.written],stage[0..<p.written],false);#assert p2.status==PtStatus.ok && p2.written==p.written;
+ ids:[4096]int;for i:0..<4096 {ids[i]=97;}text:=bt_decode(out[0..<p.written],ids[..]);#assert text.status==PtStatus.ok && text.written==4096 && text.bytes[4095]==97;ids[4095]=256;#assert bt_decode(out[0..<p.written],ids[..]).status==PtStatus.budget;
+}
+
+bt_histogram :: (symbols:[]int,groups:[]int,n:int,counts:[]int,touched:[]int)->int {used:int;for i:0..<n-1 {if groups[i]!=groups[i+1] {continue;}key:=symbols[i]*320+symbols[i+1];if counts[key]==0 {touched[used]=key;used+=1;}counts[key]+=1;}return used;}
+#test "histogram publishes exactly its distinct candidate keys and compound right tokens expand in order" {
+ s:=[4]int.[0,0,0,1];g:[4]int;c:[102400]int;keys:[4]int;n:=bt_histogram(s[..],g[..],4,c[..],keys[..]);#assert n==2 && keys[0]==0 && keys[1]==1 && c[0]==2 && c[1]==1;
+ m:=BtModel.{merges=2};m.rules[0]=BtRule.{left=98,right=99};m.rules[1]=BtRule.{left=97,right=256};v:=bt_vocabulary(m);#assert v.status==PtStatus.ok && v.lengths[257]==3 && v.bytes[257][0]==97 && v.bytes[257][1]==98 && v.bytes[257][2]==99;
+}

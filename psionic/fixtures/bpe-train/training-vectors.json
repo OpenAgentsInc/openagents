@@ -1,0 +1,764 @@
+[
+  {
+    "documents": [
+      "aaaa",
+      "bbbb",
+      "aaaa",
+      "bbbb"
+    ],
+    "requested": 8,
+    "model": {
+      "merges": 4,
+      "source_bytes": 16,
+      "pieces": 4,
+      "remaining": 4,
+      "rules": [
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 6,
+          "replaced": 4
+        },
+        {
+          "left": 98,
+          "right": 98,
+          "frequency": 6,
+          "replaced": 4
+        },
+        {
+          "left": 256,
+          "right": 256,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 257,
+          "right": 257,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "xy ababab"
+    ],
+    "requested": 3,
+    "model": {
+      "merges": 2,
+      "source_bytes": 9,
+      "pieces": 2,
+      "remaining": 5,
+      "rules": [
+        {
+          "left": 97,
+          "right": 98,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 256,
+          "right": 256,
+          "frequency": 2,
+          "replaced": 1
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "a0a0"
+    ],
+    "requested": 2,
+    "model": {
+      "merges": 0,
+      "source_bytes": 4,
+      "pieces": 4,
+      "remaining": 4,
+      "rules": []
+    }
+  },
+  {
+    "documents": [
+      "\u0000\u0000\u0000\u0000\u0000"
+    ],
+    "requested": 3,
+    "model": {
+      "merges": 1,
+      "source_bytes": 5,
+      "pieces": 1,
+      "remaining": 3,
+      "rules": [
+        {
+          "left": 0,
+          "right": 0,
+          "frequency": 4,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 128,
+      "pieces": 1,
+      "remaining": 2,
+      "rules": [
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 127,
+          "replaced": 64
+        },
+        {
+          "left": 256,
+          "right": 256,
+          "frequency": 63,
+          "replaced": 32
+        },
+        {
+          "left": 257,
+          "right": 257,
+          "frequency": 31,
+          "replaced": 16
+        },
+        {
+          "left": 258,
+          "right": 258,
+          "frequency": 15,
+          "replaced": 8
+        },
+        {
+          "left": 259,
+          "right": 259,
+          "frequency": 7,
+          "replaced": 4
+        },
+        {
+          "left": 260,
+          "right": 260,
+          "frequency": 3,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "abc",
+      "abc"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 2,
+      "source_bytes": 6,
+      "pieces": 2,
+      "remaining": 2,
+      "rules": [
+        {
+          "left": 97,
+          "right": 98,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 256,
+          "right": 99,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "a",
+      "a",
+      "b",
+      "b"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 0,
+      "source_bytes": 4,
+      "pieces": 4,
+      "remaining": 4,
+      "rules": []
+    }
+  },
+  {
+    "documents": [
+      "aaaaa"
+    ],
+    "requested": 0,
+    "model": {
+      "merges": 0,
+      "source_bytes": 5,
+      "pieces": 1,
+      "remaining": 5,
+      "rules": []
+    }
+  },
+  {
+    "documents": [
+      "xaaaaay",
+      "aaaaa"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 3,
+      "source_bytes": 12,
+      "pieces": 2,
+      "remaining": 4,
+      "rules": [
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 8,
+          "replaced": 4
+        },
+        {
+          "left": 256,
+          "right": 97,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 256,
+          "right": 257,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "z",
+      "a",
+      "x"
+    ],
+    "requested": 64,
+    "model": {
+      "merges": 0,
+      "source_bytes": 3,
+      "pieces": 3,
+      "remaining": 3,
+      "rules": []
+    }
+  },
+  {
+    "documents": [
+      " !111b \n\t\u000010\t\ta a\n01\t\r0!!bb\t \t\n1",
+      "11bb1\t\n\u0000\tbb1!bb\u0000\nb\tb \n\tb!\ta\r\u0000\u0000\t1",
+      "1\u0000\n\r0\raaa\na!\rb \t\u0000\na\nb0 \tba\n!\r\u0000aa"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 59,
+      "remaining": 80,
+      "rules": [
+        {
+          "left": 9,
+          "right": 98,
+          "frequency": 4,
+          "replaced": 4
+        },
+        {
+          "left": 0,
+          "right": 10,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 3,
+          "replaced": 2
+        },
+        {
+          "left": 98,
+          "right": 98,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 9,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 9,
+          "right": 97,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "\n0aa1b\nb\r\nb01 1b000aa1\t\r\u0000\u0000\r\n\t \u0000b",
+      "\n\u0000\r \t  \n1a\u0000\nbaa0abb\t1b\r0b\r \n\n\t\r1",
+      "\r  b\t!!1 !\n\t\r\t\t\r \r\t b b00!a1\u0000\u0000\t\u0000"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 56,
+      "remaining": 80,
+      "rules": [
+        {
+          "left": 9,
+          "right": 13,
+          "frequency": 4,
+          "replaced": 4
+        },
+        {
+          "left": 32,
+          "right": 98,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 0,
+          "right": 0,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 13,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 32,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "\u0000a\ta\u0000b0 0!a\t\u0000\u0000\rb b!\n\u0000aa\n0\n\r\tb\rab",
+      "a\r0a \u0000 0\tbba\t\r\tb0\n1\t\u0000!!\n11\n\u0000\r\u0000\r\t",
+      "1\rb1\u0000 !!\r1\t\t!1 !10!0 \t\n  \n1b\n\u0000b "
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 60,
+      "remaining": 82,
+      "rules": [
+        {
+          "left": 0,
+          "right": 13,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 9,
+          "right": 98,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 0,
+          "right": 97,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 0,
+          "right": 98,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 32,
+          "right": 33,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 33,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      " 0a \u0000\r\r\t\t\u0000\r\rb\n\t!\n\n\r0\r\r\t\r\u0000 a\u0000  \n\t",
+      "\n\u0000a\u0000b\r!! \u0000b!!0b\n00a\n\u0000 !!b 00!\ra\n",
+      "\u0000b\t\r11\u0000a\nb\u0000\rabaa!\n\n \r\tb1\t!\t1\u0000a\u00000"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 59,
+      "remaining": 81,
+      "rules": [
+        {
+          "left": 0,
+          "right": 13,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 0,
+          "right": 97,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 33,
+          "right": 33,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 0,
+          "right": 98,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 9,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 10,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "0\t1 ! a\t\tb\t1!\n\n1b\t\n\n\r\r\u0000\nb!0b\n1 \t",
+      "! !\n!!1aaa\t1\u0000a\rb1\r1\u0000\n1 !1b!\n\u0000\u0000\n0",
+      "\r\n\r00aaa0a!\n \t\n\tb \r\tb\u0000\na0!\n0b0\t "
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 60,
+      "remaining": 78,
+      "rules": [
+        {
+          "left": 33,
+          "right": 10,
+          "frequency": 5,
+          "replaced": 5
+        },
+        {
+          "left": 0,
+          "right": 10,
+          "frequency": 4,
+          "replaced": 4
+        },
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 4,
+          "replaced": 2
+        },
+        {
+          "left": 9,
+          "right": 98,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 9,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 10,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      " b!\t a0  \n1\r !0a\t\n0aa\r\r1\r0b b! 1",
+      "\u0000\n1\t \rb0ab\t\u0000a0 \rb\n \u000001\t0\nb!\u0000\t1\r\r",
+      "\r\ra11a\u00001\r\rbb\t0\t\u0000!\u0000\t\u0000\t00 \n0b\tbba\r"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 66,
+      "remaining": 82,
+      "rules": [
+        {
+          "left": 13,
+          "right": 13,
+          "frequency": 4,
+          "replaced": 4
+        },
+        {
+          "left": 32,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 32,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 32,
+          "right": 98,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 33,
+          "right": 0,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 98,
+          "right": 98,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      " \r 0\t1\na\r\n\r\r !ab1 a\t\u0000b  b\n\r1\r!ba",
+      " \r!  a  !b1a\n\t\nb!\ra\u0000\r 1\t0\u00001a\r\na\r",
+      "\r!\u0000 baa\t1\r\t a1\r!\n\t!\r\t\u0000a\r\u0000\r\r1a\u0000ab"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 64,
+      "remaining": 83,
+      "rules": [
+        {
+          "left": 32,
+          "right": 97,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 0,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 0,
+          "right": 97,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 10,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 32,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 32,
+          "right": 33,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "b\n 1!! 1\n\t0!0\t!!\u0000a0\r0\r\r\r0a\u0000\tb\t\u0000\r",
+      "01\u0000\t00\rb0\ta!11\raa\u0000\n\n\t\n\nba\u0000 0\n aa",
+      "b\u00000\nb! b\ra\t\u000010bb\n!\u0000b  \r\n! b\n\nb0a"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 5,
+      "source_bytes": 96,
+      "pieces": 68,
+      "remaining": 86,
+      "rules": [
+        {
+          "left": 10,
+          "right": 10,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 13,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 1
+        },
+        {
+          "left": 32,
+          "right": 98,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 33,
+          "right": 0,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      " baa!\n\rb\t\n1\u00001 \n\t\r!b\ta\t0000\t\n\t1\u0000b",
+      "0!10!\u0000 a\ra\r!!0b\u0000\u0000\t1a!\r1!b!!aa\u0000aa",
+      "0\t!aa\n0\r 0b \nb \n\t0a\n\r\tb1\nb\n0\n!\t "
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 6,
+      "source_bytes": 96,
+      "pieces": 63,
+      "remaining": 81,
+      "rules": [
+        {
+          "left": 97,
+          "right": 97,
+          "frequency": 4,
+          "replaced": 4
+        },
+        {
+          "left": 32,
+          "right": 10,
+          "frequency": 3,
+          "replaced": 3
+        },
+        {
+          "left": 9,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 10,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 33,
+          "right": 33,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 33,
+          "right": 98,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  },
+  {
+    "documents": [
+      "!0\u0000\n\r\n\t\n\t\t\t0\r\r\u0000 0\u0000\n!1 \n0\n\u0000\t!\u0000ab ",
+      "\t\r1\u00001\r\u0000\t\u0000b\n0a00a!1\n\r\r!0\u0000!\u00000\n\n\ra\u0000",
+      "!a\u0000\n\t  \t!1\n\rba1\r1b\t\ra10a \n0b\r\tb\r"
+    ],
+    "requested": 6,
+    "model": {
+      "merges": 5,
+      "source_bytes": 96,
+      "pieces": 67,
+      "remaining": 84,
+      "rules": [
+        {
+          "left": 10,
+          "right": 13,
+          "frequency": 4,
+          "replaced": 4
+        },
+        {
+          "left": 0,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 9,
+          "right": 13,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 32,
+          "right": 10,
+          "frequency": 2,
+          "replaced": 2
+        },
+        {
+          "left": 33,
+          "right": 0,
+          "frequency": 2,
+          "replaced": 2
+        }
+      ]
+    }
+  }
+]

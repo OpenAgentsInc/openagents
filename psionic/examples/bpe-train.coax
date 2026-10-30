@@ -1,0 +1,15 @@
+#import "Basic";
+#load "../lib/bpe-train.coax";
+// book:begin example
+main :: () {
+    classes:=PT_TOY;documents:=[1]string.["abab abab 12 12 é"];
+    model:=bt_train(classes[..],documents[..],8);#assert model.status==PtStatus.ok;
+    print("trained: % merges, % source bytes, % pieces, % remaining symbols\n",model.merges,model.source_bytes,model.pieces,model.remaining);
+    print("first merge: % + %, overlapping count %, disjoint replacements %\n",model.rules[0].left,model.rules[0].right,model.rules[0].frequency,model.rules[0].replaced);
+    packed:[65536]u8;scratch:[65536]u8;written:=bt_pack(model,classes[..],packed[..],scratch[..],false);#assert written.status==PtStatus.ok;
+    text:="abab 1212 é";encoded:=bt_encode(packed[0..<written.written],text);#assert encoded.status==PtStatus.ok;
+    decoded:=bt_decode(packed[0..<written.written],encoded.ids[0..<encoded.written]);#assert decoded.status==PtStatus.ok && cast(string)decoded.bytes[0..<decoded.written]==text;
+    print("PST5: % bytes; encoded % IDs; exact UTF-8 byte round trip\n",written.written,encoded.written);
+    digits:=bt_split(classes[..],"12345");print("two-digit spans end at % % %\n",digits.ends[0],digits.ends[1],digits.ends[2]);
+}
+// book:end example

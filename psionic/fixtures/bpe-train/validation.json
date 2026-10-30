@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "base": "68666bba03",
+  "cpu_only": true,
+  "checks_per_mode": 24,
+  "mutants": {
+    "total": 1126,
+    "killed": 1126,
+    "survived": 0
+  },
+  "inputs": {
+    "coax/bin/coax": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+    "psionic/examples/bpe-train.coax": "b7fb9e60b6356318aa71aaad98589ce3193e69b925dc05bce5c49f93fa712fa2",
+    "psionic/fixtures/bpe-train.out": "9d01b8389b31907c9e034ad06dccdb689136f6a78dac7e8b3fafdbf2449ff48b",
+    "psionic/fixtures/bpe-train/learned.pst": "dd2b37ce759ede8fcff1777a6a97dce5d75267c807a6c5ae25827b5c305c0f39",
+    "psionic/fixtures/bpe-train/reference.json": "d463c7d43a8578773a52320d841def0a38abfc74066c679560ae23779f7fdc06",
+    "psionic/fixtures/bpe-train/training-goldens.coax": "e24b2af74cc9d93c4f7568e7b25d2c103e58a9d0a82ef90522d9a3fb473e23dc",
+    "psionic/fixtures/bpe-train/training-vectors.json": "80b768d234b6696acb292886dbc042d04ed6a6c3cf1a8a8e4464a8a1ecee639b",
+    "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+    "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+    "psionic/lib/bpe-train.coax": "f5c6161a69c0e39afe87930252985ea85a9626001990cb631f1318c92b24823b",
+    "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+    "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681",
+    "psionic/platform/bpe-train-memory.c": "2b5c91d15999ca36383031a683578b39b02056dc4b4b2c0ed8b6253ed2ff7aee",
+    "psionic/platform/bpe-train-memory.h": "6022b6583a0355917cba1f2327ae92fac4c2d2978fc2186c00b5039f56cedb2d",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/bpe_train_native.c": "7a858037be5a72fccaa763fa42ebe727727d36f69ab5b9a66e560674b1fa5b08",
+    "psionic/tests/bpe_train_oracle.py": "75536d0d828aa85f4e93ab8ef0139bbc1f17f99889ff582cca283c326186454f",
+    "psionic/tests/check_bpe_train.sh": "54214795d4fee529bcd0dade1151c05d2eaa44e3af7a9f975f88ceae0032170d"
+  },
+  "logs": {
+    "psionic-ch77-unit4.log": {
+      "sha256": "8fbd902efb61346608d3b40e64518afcb96b714c4b424ea7acabef41e9682116",
+      "last_line": "24 checks, 24 passed, 0 failed"
+    },
+    "psionic-ch77-release.log": {
+      "sha256": "8fbd902efb61346608d3b40e64518afcb96b714c4b424ea7acabef41e9682116",
+      "last_line": "24 checks, 24 passed, 0 failed"
+    },
+    "psionic-ch77-mutate2.log": {
+      "sha256": "909492c8c25c7c19e08c6dfa6b3994342be984af4c8400d450257c482ad74b5a",
+      "last_line": "1126 mutants, 1126 killed, 0 survived"
+    },
+    "psionic-ch77-final-native-debug-plain.log": {
+      "sha256": "ac260c830a8aea06ba475d7e306770e120ce3df13ce79e761001178567b47df0",
+      "last_line": "BPE: all 64 merge rules, exact PST5 persistence, 147 independent Unicode regex/ID/byte round trips pass"
+    },
+    "psionic-ch77-final-native-debug-sanitized.log": {
+      "sha256": "ac260c830a8aea06ba475d7e306770e120ce3df13ce79e761001178567b47df0",
+      "last_line": "BPE: all 64 merge rules, exact PST5 persistence, 147 independent Unicode regex/ID/byte round trips pass"
+    },
+    "psionic-ch77-final-native-release-plain.log": {
+      "sha256": "ac260c830a8aea06ba475d7e306770e120ce3df13ce79e761001178567b47df0",
+      "last_line": "BPE: all 64 merge rules, exact PST5 persistence, 147 independent Unicode regex/ID/byte round trips pass"
+    },
+    "psionic-ch77-final-native-release-sanitized.log": {
+      "sha256": "ac260c830a8aea06ba475d7e306770e120ce3df13ce79e761001178567b47df0",
+      "last_line": "BPE: all 64 merge rules, exact PST5 persistence, 147 independent Unicode regex/ID/byte round trips pass"
+    }
+  }
+}

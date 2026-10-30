@@ -1,0 +1,2929 @@
+{
+  "schema": 1,
+  "profile": "byte-bpe-nanochat2-u17-v1",
+  "tie_rule": "maximum overlapping adjacent-pair count; lowest (left ID,right ID); disjoint left-to-right replacements",
+  "normalization": "none",
+  "source": {
+    "repo": "karpathy/nanochat",
+    "revision": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+    "files": {
+      "nanochat/tokenizer.py": {
+        "url": "https://raw.githubusercontent.com/karpathy/nanochat/92d63d4e8bb4df75c3b71618f31ddde2378b2bcd/nanochat/tokenizer.py",
+        "bytes": 12911,
+        "sha256": "e6f12cb88fead3e6d0d45a7dd2af4192280712d92bfde83e2399cc4b3a0860fb"
+      },
+      "LICENSE": {
+        "url": "https://raw.githubusercontent.com/karpathy/nanochat/92d63d4e8bb4df75c3b71618f31ddde2378b2bcd/LICENSE",
+        "bytes": 1072,
+        "sha256": "42bb09f339a8af8b90d3b4969b6f6e4ba4aff3b5c614103b031fccdf71c8f772"
+      }
+    }
+  },
+  "pattern": "'(?i:[sdmt]|ll|ve|re)|[^\\r\\n\\p{L}\\p{N}]?+\\p{L}+|\\p{N}{1,2}| ?[^\\s\\p{L}\\p{N}]++[\\r\\n]*|\\s*[\\r\\n]|\\s+(?!\\S)|\\s+",
+  "regex_version": "2026.9.29",
+  "classes_sha256": "09eed4956d3394e254e92d9d2cc4cf83d31ac2cc92f5d9986090a1bff9b15223",
+  "dataset_sha256": "45e2cfa7d70194bdb9c444f26e8ab7add81b927319ab3482ea150fb342a7a1ec",
+  "license": "CC0-1.0 for chapter 73 synthetic training documents and numeric fixture; pinned nanochat source retains its LICENSE",
+  "documents": [
+    "The gardener opened the gate before sunrise. Small birds waited near the path. She carried water to the young trees and checked the leaves. The soil was cool and the air was still. After the work she closed the gate and walked home.",
+    "A wooden box stood on the bench. Inside were a hammer, a ruler, and a folded plan. The builder measured each board twice before making a cut. Fine dust covered the floor. By evening the shelf was level and every tool was back in its place.",
+    "At the station a clock marked the hour. People read their tickets and waited for the train. A child counted the windows as the cars came into view. The doors opened with a soft sound. Everyone stepped aboard, and the train moved slowly out of town.",
+    "The cook set a pot on the stove and sliced an onion. A spoon rested beside a clean bowl. Soon the room smelled of warm bread and herbs. Friends arrived with apples from the market. They shared the meal and washed the dishes together.",
+    "In the quiet library a reader found a map between two pages. The map showed a river, a bridge, and a road through the hills. Notes in the margin named the nearby villages. The reader copied the names carefully and returned the book before closing time.",
+    "12 12 1212 34 34 3434 56 56 5656 78 78 7878 90 90 9090"
+  ],
+  "model": {
+    "merges": 64,
+    "source_bytes": 1258,
+    "pieces": 288,
+    "remaining": 720,
+    "rules": [
+      {
+        "left": 104,
+        "right": 101,
+        "frequency": 44,
+        "replaced": 44
+      },
+      {
+        "left": 32,
+        "right": 116,
+        "frequency": 40,
+        "replaced": 40
+      },
+      {
+        "left": 32,
+        "right": 97,
+        "frequency": 31,
+        "replaced": 31
+      },
+      {
+        "left": 257,
+        "right": 256,
+        "frequency": 28,
+        "replaced": 28
+      },
+      {
+        "left": 101,
+        "right": 100,
+        "frequency": 24,
+        "replaced": 24
+      },
+      {
+        "left": 32,
+        "right": 115,
+        "frequency": 18,
+        "replaced": 18
+      },
+      {
+        "left": 32,
+        "right": 99,
+        "frequency": 16,
+        "replaced": 16
+      },
+      {
+        "left": 32,
+        "right": 119,
+        "frequency": 16,
+        "replaced": 16
+      },
+      {
+        "left": 110,
+        "right": 100,
+        "frequency": 16,
+        "replaced": 16
+      },
+      {
+        "left": 32,
+        "right": 98,
+        "frequency": 15,
+        "replaced": 15
+      },
+      {
+        "left": 97,
+        "right": 114,
+        "frequency": 14,
+        "replaced": 14
+      },
+      {
+        "left": 101,
+        "right": 114,
+        "frequency": 13,
+        "replaced": 13
+      },
+      {
+        "left": 258,
+        "right": 264,
+        "frequency": 12,
+        "replaced": 12
+      },
+      {
+        "left": 111,
+        "right": 111,
+        "frequency": 11,
+        "replaced": 11
+      },
+      {
+        "left": 105,
+        "right": 110,
+        "frequency": 10,
+        "replaced": 10
+      },
+      {
+        "left": 114,
+        "right": 101,
+        "frequency": 10,
+        "replaced": 10
+      },
+      {
+        "left": 32,
+        "right": 109,
+        "frequency": 9,
+        "replaced": 9
+      },
+      {
+        "left": 263,
+        "right": 97,
+        "frequency": 9,
+        "replaced": 9
+      },
+      {
+        "left": 32,
+        "right": 111,
+        "frequency": 8,
+        "replaced": 8
+      },
+      {
+        "left": 84,
+        "right": 256,
+        "frequency": 8,
+        "replaced": 8
+      },
+      {
+        "left": 101,
+        "right": 115,
+        "frequency": 8,
+        "replaced": 8
+      },
+      {
+        "left": 101,
+        "right": 110,
+        "frequency": 7,
+        "replaced": 7
+      },
+      {
+        "left": 32,
+        "right": 275,
+        "frequency": 6,
+        "replaced": 6
+      },
+      {
+        "left": 101,
+        "right": 116,
+        "frequency": 6,
+        "replaced": 6
+      },
+      {
+        "left": 102,
+        "right": 111,
+        "frequency": 6,
+        "replaced": 6
+      },
+      {
+        "left": 105,
+        "right": 108,
+        "frequency": 6,
+        "replaced": 6
+      },
+      {
+        "left": 114,
+        "right": 105,
+        "frequency": 6,
+        "replaced": 6
+      },
+      {
+        "left": 32,
+        "right": 112,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 32,
+        "right": 271,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 97,
+        "right": 100,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 101,
+        "right": 97,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 105,
+        "right": 116,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 111,
+        "right": 117,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 111,
+        "right": 119,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 261,
+        "right": 116,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 273,
+        "right": 115,
+        "frequency": 5,
+        "replaced": 5
+      },
+      {
+        "left": 32,
+        "right": 104,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 32,
+        "right": 110,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 49,
+        "right": 50,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 51,
+        "right": 52,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 53,
+        "right": 54,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 55,
+        "right": 56,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 57,
+        "right": 48,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 97,
+        "right": 109,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 97,
+        "right": 116,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 99,
+        "right": 107,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 118,
+        "right": 267,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 262,
+        "right": 108,
+        "frequency": 4,
+        "replaced": 4
+      },
+      {
+        "left": 32,
+        "right": 65,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 32,
+        "right": 83,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 32,
+        "right": 100,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 32,
+        "right": 103,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 32,
+        "right": 108,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 32,
+        "right": 114,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 32,
+        "right": 270,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 32,
+        "right": 280,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 101,
+        "right": 280,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 105,
+        "right": 114,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 108,
+        "right": 97,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 108,
+        "right": 108,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 109,
+        "right": 101,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 111,
+        "right": 110,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 262,
+        "right": 266,
+        "frequency": 3,
+        "replaced": 3
+      },
+      {
+        "left": 265,
+        "right": 312,
+        "frequency": 3,
+        "replaced": 3
+      }
+    ]
+  },
+  "vectors": [
+    {
+      "text": "",
+      "ids": [],
+      "ends": []
+    },
+    {
+      "text": "123456789",
+      "ids": [
+        294,
+        295,
+        296,
+        297,
+        57
+      ],
+      "ends": [
+        2,
+        4,
+        6,
+        8,
+        9
+      ]
+    },
+    {
+      "text": "12 12",
+      "ids": [
+        294,
+        32,
+        294
+      ],
+      "ends": [
+        2,
+        3,
+        5
+      ]
+    },
+    {
+      "text": "Hello, world!",
+      "ids": [
+        72,
+        101,
+        315,
+        111,
+        44,
+        263,
+        111,
+        114,
+        108,
+        100,
+        33
+      ],
+      "ends": [
+        5,
+        6,
+        12,
+        13
+      ]
+    },
+    {
+      "text": "We're I'LL I'ſ hello's",
+      "ids": [
+        87,
+        101,
+        39,
+        271,
+        32,
+        73,
+        39,
+        76,
+        76,
+        32,
+        73,
+        39,
+        197,
+        191,
+        32,
+        256,
+        315,
+        111,
+        39,
+        115
+      ],
+      "ends": [
+        2,
+        5,
+        7,
+        10,
+        12,
+        15,
+        21,
+        23
+      ]
+    },
+    {
+      "text": "é é ́a",
+      "ids": [
+        101,
+        204,
+        129,
+        32,
+        195,
+        169,
+        32,
+        204,
+        129,
+        97
+      ],
+      "ends": [
+        1,
+        3,
+        6,
+        9,
+        10
+      ]
+    },
+    {
+      "text": "😀😺 hi",
+      "ids": [
+        240,
+        159,
+        152,
+        128,
+        240,
+        159,
+        152,
+        186,
+        292,
+        105
+      ],
+      "ends": [
+        8,
+        11
+      ]
+    },
+    {
+      "text": "क ख १२३४५",
+      "ids": [
+        224,
+        164,
+        149,
+        32,
+        224,
+        164,
+        150,
+        32,
+        224,
+        165,
+        167,
+        224,
+        165,
+        168,
+        224,
+        165,
+        169,
+        224,
+        165,
+        170,
+        224,
+        165,
+        171
+      ],
+      "ends": [
+        3,
+        7,
+        8,
+        14,
+        20,
+        23
+      ]
+    },
+    {
+      "text": "١٢٣٤٥ ⅣⅤⅥ",
+      "ids": [
+        217,
+        161,
+        217,
+        162,
+        217,
+        163,
+        217,
+        164,
+        217,
+        165,
+        32,
+        226,
+        133,
+        163,
+        226,
+        133,
+        164,
+        226,
+        133,
+        165
+      ],
+      "ends": [
+        4,
+        8,
+        10,
+        11,
+        17,
+        20
+      ]
+    },
+    {
+      "text": "  x",
+      "ids": [
+        32,
+        32,
+        120
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "   ",
+      "ids": [
+        32,
+        32,
+        32
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "\r\n \t\n x",
+      "ids": [
+        13,
+        10,
+        32,
+        9,
+        10,
+        32,
+        120
+      ],
+      "ends": [
+        5,
+        7
+      ]
+    },
+    {
+      "text": "!!!\r\n",
+      "ids": [
+        33,
+        33,
+        33,
+        13,
+        10
+      ],
+      "ends": [
+        5
+      ]
+    },
+    {
+      "text": "\t x",
+      "ids": [
+        9,
+        32,
+        120
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "[MASK] <|bos|>",
+      "ids": [
+        91,
+        77,
+        65,
+        83,
+        75,
+        93,
+        32,
+        60,
+        124,
+        98,
+        111,
+        115,
+        124,
+        62
+      ],
+      "ends": [
+        5,
+        6,
+        9,
+        12,
+        14
+      ]
+    },
+    {
+      "text": "a\u0000b",
+      "ids": [
+        97,
+        0,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0001b",
+      "ids": [
+        97,
+        1,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0002b",
+      "ids": [
+        97,
+        2,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0003b",
+      "ids": [
+        97,
+        3,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0004b",
+      "ids": [
+        97,
+        4,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0005b",
+      "ids": [
+        97,
+        5,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0006b",
+      "ids": [
+        97,
+        6,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0007b",
+      "ids": [
+        97,
+        7,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\bb",
+      "ids": [
+        97,
+        8,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\tb",
+      "ids": [
+        97,
+        9,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\nb",
+      "ids": [
+        97,
+        10,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a\u000bb",
+      "ids": [
+        97,
+        11,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\fb",
+      "ids": [
+        97,
+        12,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\rb",
+      "ids": [
+        97,
+        13,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a\u000eb",
+      "ids": [
+        97,
+        14,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u000fb",
+      "ids": [
+        97,
+        15,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0010b",
+      "ids": [
+        97,
+        16,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0011b",
+      "ids": [
+        97,
+        17,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0012b",
+      "ids": [
+        97,
+        18,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0013b",
+      "ids": [
+        97,
+        19,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0014b",
+      "ids": [
+        97,
+        20,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0015b",
+      "ids": [
+        97,
+        21,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0016b",
+      "ids": [
+        97,
+        22,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0017b",
+      "ids": [
+        97,
+        23,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0018b",
+      "ids": [
+        97,
+        24,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u0019b",
+      "ids": [
+        97,
+        25,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u001ab",
+      "ids": [
+        97,
+        26,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u001bb",
+      "ids": [
+        97,
+        27,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u001cb",
+      "ids": [
+        97,
+        28,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u001db",
+      "ids": [
+        97,
+        29,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u001eb",
+      "ids": [
+        97,
+        30,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\u001fb",
+      "ids": [
+        97,
+        31,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a b",
+      "ids": [
+        97,
+        265
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a!b",
+      "ids": [
+        97,
+        33,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\"b",
+      "ids": [
+        97,
+        34,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a#b",
+      "ids": [
+        97,
+        35,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a$b",
+      "ids": [
+        97,
+        36,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a%b",
+      "ids": [
+        97,
+        37,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a&b",
+      "ids": [
+        97,
+        38,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a'b",
+      "ids": [
+        97,
+        39,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a(b",
+      "ids": [
+        97,
+        40,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a)b",
+      "ids": [
+        97,
+        41,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a*b",
+      "ids": [
+        97,
+        42,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a+b",
+      "ids": [
+        97,
+        43,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a,b",
+      "ids": [
+        97,
+        44,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a-b",
+      "ids": [
+        97,
+        45,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a.b",
+      "ids": [
+        97,
+        46,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a/b",
+      "ids": [
+        97,
+        47,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a0b",
+      "ids": [
+        97,
+        48,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a1b",
+      "ids": [
+        97,
+        49,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a2b",
+      "ids": [
+        97,
+        50,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a3b",
+      "ids": [
+        97,
+        51,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a4b",
+      "ids": [
+        97,
+        52,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a5b",
+      "ids": [
+        97,
+        53,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a6b",
+      "ids": [
+        97,
+        54,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a7b",
+      "ids": [
+        97,
+        55,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a8b",
+      "ids": [
+        97,
+        56,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a9b",
+      "ids": [
+        97,
+        57,
+        98
+      ],
+      "ends": [
+        1,
+        2,
+        3
+      ]
+    },
+    {
+      "text": "a:b",
+      "ids": [
+        97,
+        58,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a;b",
+      "ids": [
+        97,
+        59,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a<b",
+      "ids": [
+        97,
+        60,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a=b",
+      "ids": [
+        97,
+        61,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a>b",
+      "ids": [
+        97,
+        62,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a?b",
+      "ids": [
+        97,
+        63,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a@b",
+      "ids": [
+        97,
+        64,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "aAb",
+      "ids": [
+        97,
+        65,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aBb",
+      "ids": [
+        97,
+        66,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aCb",
+      "ids": [
+        97,
+        67,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aDb",
+      "ids": [
+        97,
+        68,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aEb",
+      "ids": [
+        97,
+        69,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aFb",
+      "ids": [
+        97,
+        70,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aGb",
+      "ids": [
+        97,
+        71,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aHb",
+      "ids": [
+        97,
+        72,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aIb",
+      "ids": [
+        97,
+        73,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aJb",
+      "ids": [
+        97,
+        74,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aKb",
+      "ids": [
+        97,
+        75,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aLb",
+      "ids": [
+        97,
+        76,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aMb",
+      "ids": [
+        97,
+        77,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aNb",
+      "ids": [
+        97,
+        78,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aOb",
+      "ids": [
+        97,
+        79,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aPb",
+      "ids": [
+        97,
+        80,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aQb",
+      "ids": [
+        97,
+        81,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aRb",
+      "ids": [
+        97,
+        82,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aSb",
+      "ids": [
+        97,
+        83,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aTb",
+      "ids": [
+        97,
+        84,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aUb",
+      "ids": [
+        97,
+        85,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aVb",
+      "ids": [
+        97,
+        86,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aWb",
+      "ids": [
+        97,
+        87,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aXb",
+      "ids": [
+        97,
+        88,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aYb",
+      "ids": [
+        97,
+        89,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aZb",
+      "ids": [
+        97,
+        90,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "a[b",
+      "ids": [
+        97,
+        91,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a\\b",
+      "ids": [
+        97,
+        92,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a]b",
+      "ids": [
+        97,
+        93,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a^b",
+      "ids": [
+        97,
+        94,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a_b",
+      "ids": [
+        97,
+        95,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a`b",
+      "ids": [
+        97,
+        96,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "aab",
+      "ids": [
+        97,
+        97,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "abb",
+      "ids": [
+        97,
+        98,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "acb",
+      "ids": [
+        97,
+        99,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "adb",
+      "ids": [
+        285,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aeb",
+      "ids": [
+        97,
+        101,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "afb",
+      "ids": [
+        97,
+        102,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "agb",
+      "ids": [
+        97,
+        103,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "ahb",
+      "ids": [
+        97,
+        104,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aib",
+      "ids": [
+        97,
+        105,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "ajb",
+      "ids": [
+        97,
+        106,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "akb",
+      "ids": [
+        97,
+        107,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "alb",
+      "ids": [
+        97,
+        108,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "amb",
+      "ids": [
+        299,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "anb",
+      "ids": [
+        97,
+        110,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aob",
+      "ids": [
+        97,
+        111,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "apb",
+      "ids": [
+        97,
+        112,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aqb",
+      "ids": [
+        97,
+        113,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "arb",
+      "ids": [
+        266,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "asb",
+      "ids": [
+        97,
+        115,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "atb",
+      "ids": [
+        300,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "aub",
+      "ids": [
+        97,
+        117,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "avb",
+      "ids": [
+        97,
+        118,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "awb",
+      "ids": [
+        97,
+        119,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "axb",
+      "ids": [
+        97,
+        120,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "ayb",
+      "ids": [
+        97,
+        121,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "azb",
+      "ids": [
+        97,
+        122,
+        98
+      ],
+      "ends": [
+        3
+      ]
+    },
+    {
+      "text": "a{b",
+      "ids": [
+        97,
+        123,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a|b",
+      "ids": [
+        97,
+        124,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a}b",
+      "ids": [
+        97,
+        125,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "a~b",
+      "ids": [
+        97,
+        126,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "ab",
+      "ids": [
+        97,
+        127,
+        98
+      ],
+      "ends": [
+        1,
+        3
+      ]
+    },
+    {
+      "text": "Waves reached the shore under a grey sky. A fisher repaired a net while a small boat rested on the sand. The wind turned and the clouds began to break. Far away a light appeared on the water.",
+      "ids": [
+        87,
+        97,
+        118,
+        276,
+        284,
+        97,
+        99,
+        256,
+        100,
+        259,
+        261,
+        104,
+        111,
+        271,
+        32,
+        117,
+        264,
+        267,
+        258,
+        307,
+        271,
+        121,
+        261,
+        107,
+        121,
+        46,
+        304,
+        32,
+        102,
+        105,
+        115,
+        256,
+        114,
+        284,
+        112,
+        97,
+        313,
+        260,
+        258,
+        293,
+        279,
+        263,
+        104,
+        281,
+        101,
+        258,
+        261,
+        109,
+        97,
+        315,
+        265,
+        111,
+        300,
+        284,
+        115,
+        116,
+        260,
+        274,
+        110,
+        259,
+        261,
+        97,
+        264,
+        46,
+        278,
+        263,
+        105,
+        264,
+        257,
+        117,
+        114,
+        110,
+        260,
+        268,
+        259,
+        303,
+        288,
+        100,
+        115,
+        265,
+        101,
+        103,
+        97,
+        110,
+        257,
+        111,
+        265,
+        271,
+        97,
+        107,
+        46,
+        32,
+        70,
+        266,
+        258,
+        119,
+        97,
+        121,
+        258,
+        308,
+        105,
+        103,
+        104,
+        116,
+        258,
+        112,
+        112,
+        101,
+        266,
+        260,
+        274,
+        110,
+        259,
+        273,
+        116,
+        267,
+        46
+      ],
+      "ends": [
+        5,
+        13,
+        17,
+        23,
+        29,
+        31,
+        36,
+        40,
+        41,
+        43,
+        50,
+        59,
+        61,
+        65,
+        71,
+        73,
+        79,
+        84,
+        91,
+        94,
+        98,
+        103,
+        104,
+        108,
+        113,
+        120,
+        124,
+        128,
+        135,
+        141,
+        144,
+        150,
+        151,
+        155,
+        160,
+        162,
+        168,
+        177,
+        180,
+        184,
+        190,
+        191
+      ]
+    },
+    {
+      "text": "The museum opened a new room for old clocks. Each label told where a clock was made and how it worked. Visitors watched a brass wheel turn. A guide answered questions and pointed to the smallest spring.",
+      "ids": [
+        275,
+        272,
+        117,
+        115,
+        101,
+        117,
+        109,
+        274,
+        112,
+        277,
+        260,
+        258,
+        293,
+        101,
+        119,
+        309,
+        269,
+        109,
+        311,
+        114,
+        274,
+        108,
+        100,
+        303,
+        111,
+        301,
+        115,
+        46,
+        32,
+        69,
+        97,
+        99,
+        104,
+        308,
+        97,
+        98,
+        101,
+        108,
+        257,
+        111,
+        108,
+        100,
+        263,
+        256,
+        271,
+        258,
+        303,
+        111,
+        301,
+        291,
+        272,
+        285,
+        101,
+        268,
+        292,
+        289,
+        32,
+        287,
+        263,
+        111,
+        114,
+        107,
+        260,
+        46,
+        32,
+        86,
+        105,
+        115,
+        287,
+        111,
+        114,
+        115,
+        273,
+        116,
+        99,
+        256,
+        100,
+        258,
+        265,
+        114,
+        97,
+        115,
+        115,
+        263,
+        256,
+        101,
+        108,
+        257,
+        117,
+        114,
+        110,
+        46,
+        304,
+        307,
+        117,
+        105,
+        100,
+        101,
+        258,
+        110,
+        115,
+        119,
+        267,
+        260,
+        32,
+        113,
+        117,
+        276,
+        116,
+        105,
+        317,
+        115,
+        268,
+        283,
+        111,
+        270,
+        116,
+        260,
+        257,
+        111,
+        259,
+        261,
+        109,
+        97,
+        315,
+        276,
+        116,
+        261,
+        112,
+        114,
+        270,
+        103,
+        46
+      ],
+      "ends": [
+        3,
+        10,
+        17,
+        19,
+        23,
+        28,
+        32,
+        36,
+        43,
+        44,
+        49,
+        55,
+        60,
+        66,
+        68,
+        74,
+        78,
+        83,
+        87,
+        91,
+        94,
+        101,
+        102,
+        111,
+        119,
+        121,
+        127,
+        133,
+        138,
+        139,
+        141,
+        147,
+        156,
+        166,
+        170,
+        178,
+        181,
+        185,
+        194,
+        201,
+        202
+      ]
+    },
+    {
+      "text": "A telescope waited beneath the open dome. The observer wrote the time in a notebook and adjusted the lens. Stars became visible as the last light faded. One bright point moved across the field and vanished beyond the edge.",
+      "ids": [
+        65,
+        257,
+        101,
+        108,
+        276,
+        99,
+        111,
+        112,
+        101,
+        273,
+        287,
+        260,
+        265,
+        277,
+        286,
+        116,
+        104,
+        259,
+        274,
+        112,
+        277,
+        306,
+        111,
+        316,
+        46,
+        278,
+        274,
+        98,
+        115,
+        267,
+        302,
+        263,
+        114,
+        111,
+        116,
+        101,
+        259,
+        257,
+        105,
+        316,
+        310,
+        258,
+        293,
+        111,
+        116,
+        101,
+        98,
+        269,
+        107,
+        268,
+        258,
+        100,
+        106,
+        117,
+        115,
+        116,
+        260,
+        259,
+        308,
+        277,
+        115,
+        46,
+        305,
+        116,
+        266,
+        115,
+        265,
+        101,
+        99,
+        299,
+        101,
+        32,
+        118,
+        105,
+        115,
+        105,
+        98,
+        108,
+        101,
+        258,
+        115,
+        259,
+        308,
+        97,
+        115,
+        116,
+        308,
+        105,
+        103,
+        104,
+        116,
+        32,
+        102,
+        285,
+        260,
+        46,
+        32,
+        79,
+        110,
+        101,
+        265,
+        282,
+        103,
+        104,
+        116,
+        283,
+        111,
+        270,
+        116,
+        272,
+        111,
+        118,
+        260,
+        258,
+        99,
+        114,
+        111,
+        115,
+        115,
+        259,
+        32,
+        102,
+        105,
+        101,
+        108,
+        100,
+        268,
+        32,
+        118,
+        97,
+        110,
+        105,
+        115,
+        256,
+        100,
+        265,
+        101,
+        121,
+        111,
+        264,
+        259,
+        32,
+        260,
+        103,
+        101,
+        46
+      ],
+      "ends": [
+        1,
+        11,
+        18,
+        26,
+        30,
+        35,
+        40,
+        41,
+        45,
+        54,
+        60,
+        64,
+        69,
+        72,
+        74,
+        83,
+        87,
+        96,
+        100,
+        105,
+        106,
+        112,
+        119,
+        127,
+        130,
+        134,
+        139,
+        145,
+        151,
+        152,
+        156,
+        163,
+        169,
+        175,
+        182,
+        186,
+        192,
+        196,
+        205,
+        212,
+        216,
+        221,
+        222
+      ]
+    },
+    {
+      "text": "The cyclist stopped beside a stone wall to mend a loose chain. Rain had left small pools along the road. After checking both wheels, the cyclist packed the tools and continued toward the next village.",
+      "ids": [
+        275,
+        262,
+        121,
+        99,
+        108,
+        105,
+        115,
+        116,
+        290,
+        111,
+        112,
+        112,
+        260,
+        265,
+        276,
+        105,
+        100,
+        101,
+        258,
+        290,
+        317,
+        101,
+        273,
+        315,
+        257,
+        111,
+        272,
+        101,
+        264,
+        258,
+        308,
+        269,
+        115,
+        101,
+        262,
+        104,
+        97,
+        270,
+        46,
+        32,
+        82,
+        97,
+        270,
+        292,
+        285,
+        308,
+        101,
+        102,
+        116,
+        261,
+        109,
+        97,
+        315,
+        283,
+        269,
+        108,
+        115,
+        258,
+        108,
+        317,
+        103,
+        259,
+        309,
+        111,
+        285,
+        46,
+        304,
+        102,
+        116,
+        267,
+        262,
+        256,
+        301,
+        270,
+        103,
+        265,
+        111,
+        116,
+        104,
+        263,
+        256,
+        101,
+        108,
+        115,
+        44,
+        259,
+        262,
+        121,
+        99,
+        108,
+        105,
+        115,
+        116,
+        283,
+        97,
+        301,
+        260,
+        259,
+        257,
+        269,
+        108,
+        115,
+        268,
+        262,
+        317,
+        116,
+        270,
+        117,
+        260,
+        257,
+        289,
+        266,
+        100,
+        259,
+        293,
+        101,
+        120,
+        116,
+        32,
+        118,
+        281,
+        314,
+        103,
+        101,
+        46
+      ],
+      "ends": [
+        3,
+        11,
+        19,
+        26,
+        28,
+        34,
+        39,
+        42,
+        47,
+        49,
+        55,
+        61,
+        62,
+        67,
+        71,
+        76,
+        82,
+        88,
+        94,
+        98,
+        103,
+        104,
+        110,
+        119,
+        124,
+        131,
+        132,
+        136,
+        144,
+        151,
+        155,
+        161,
+        165,
+        175,
+        182,
+        186,
+        191,
+        199,
+        200
+      ]
+    }
+  ],
+  "packed_sha256": "dd2b37ce759ede8fcff1777a6a97dce5d75267c807a6c5ae25827b5c305c0f39",
+  "training_vectors_sha256": "80b768d234b6696acb292886dbc042d04ed6a6c3cf1a8a8e4464a8a1ecee639b",
+  "training_goldens_sha256": "e24b2af74cc9d93c4f7568e7b25d2c103e58a9d0a82ef90522d9a3fb473e23dc"
+}

@@ -1,0 +1,4 @@
+trained: 3 merges, 19 source bytes, 8 pieces, 11 remaining symbols
+first merge: 97 + 98, overlapping count 4, disjoint replacements 4
+PST5: 17120 bytes; encoded 8 IDs; exact UTF-8 byte round trip
+two-digit spans end at 2 4 5
