@@ -734,6 +734,12 @@ the references' meadow and forest floor sit at 0.25 to 0.4 at 0.35 to 0.55. The 
 alike, `meadow_srgb`) now runs in broad patches from a cool deep green (0.25, 0.38, 0.22) to a warm olive
 (0.41, 0.49, 0.25), sRGB: 0.39 to 0.46 saturation at 0.55 on screen.
 
+**Comparison round 2**: the green between the trunks. The references' near haze is a green-teal mist
+(the light has crossed the grass and the leaves); ours was a clear sky blue. Looking level, Everglade's
+haze now takes the meadow's hue (`haze_colour`: up to 0.38 of the way, none looking more than about 20
+degrees up or down, by day only), so the deep wood's far trunks, the far ridges and the valley seen from
+the map step back into teal-green rather than blue-grey.
+
 ## Order of the work
 
 1. The style field and presets, and the style fixture, which everything else

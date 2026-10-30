@@ -41,7 +41,13 @@ fn st(i: u32) -> vec4f { return u.style[i]; }
 fn haze_share(d: f32, y: f32) -> f32 { return verse_style_haze(d, y, u.eye.y - 2.5, u.sun.w, u.eye.w, st(9u).z, st(9u).w); }
 fn haze_colour(f: f32, v: vec3f) -> vec3f {
   let hz = st(10u).xyz; let cap = st(9u).z;
-  let h = vec3f(verse_style_haze_hue(hz.x, 0.0, f, cap), verse_style_haze_hue(hz.y, 1.0, f, cap), verse_style_haze_hue(hz.z, 2.0, f, cap));
+  var h = vec3f(verse_style_haze_hue(hz.x, 0.0, f, cap), verse_style_haze_hue(hz.y, 1.0, f, cap), verse_style_haze_hue(hz.z, 2.0, f, cap));
+  // the green between the trunks (comparison round 2: the references' near haze is a green-teal mist,
+  // ours a clear sky blue): looking level, the haze takes the meadow's hue, the light it has crossed
+  // the grass and the leaves to reach; by day only, none looking up or down
+  let green = meadow_srgb(0.5) / dot(meadow_srgb(0.5), vec3f(0.3333));
+  let level = 1.0 - smoothstep(0.05, 0.35, abs(v.y));
+  h = mix(h, h * green, 0.38 * level * (1.0 - st(14u).w));
   return mix(h, st(11u).xyz, verse_style_haze_glow(dot(v, st(1u).xyz)));
 }
 
