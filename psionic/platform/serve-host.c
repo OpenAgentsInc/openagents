@@ -12,6 +12,7 @@
  *   psionic-serve --toy [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]
  *   psionic-serve --elephant DIR --table FILE [the same options]
  *   psionic-serve --elephant-gpu DIR --table FILE [the same options]
+ *   psionic-serve --elephant-metal DIR --table FILE [the same options]
  *
  * --fixture-delay-ms N (toy only) holds each decision for N ms before it
  * starts, so tests can observe busy refusals, deadlines and cancellation.
@@ -21,13 +22,27 @@
  * A CUDA context does not survive fork, so the decision runs in this process,
  * one at a time; between layers it asks whether the deadline has passed or
  * the client has gone, and a stopped decision publishes nothing. The kernels
- * are the generated project.cu, layer.cu and warp.cu next to this binary. */
+ * are the generated project.cu, layer.cu and warp.cu next to this binary.
+ *
+ * --elephant-metal answers on an Apple GPU (psionic/platform/elephant-metal.c,
+ * built with PSIONIC_SERVE_METAL) the same way, with project.metal,
+ * layer.metal and warp.metal next to this binary. */
 #define _GNU_SOURCE
 #include "serve.h"
 #include "spans.h"
 #include "elephant-inventory.h"
-#ifdef PSIONIC_SERVE_GPU
+#if defined(PSIONIC_SERVE_METAL)
+#include "elephant-metal.h"
+#include <mach-o/dyld.h>
+#define PSIONIC_SERVE_GPU 1 /* the same in-process device path */
+#define DEVICE_FLAG "--elephant-metal"
+#define DEVICE_KIND "Metal"
+static const char *kernel_names[3] = {"project.metal", "layer.metal", "warp.metal"};
+#elif defined(PSIONIC_SERVE_GPU)
 #include "elephant-gpu.h"
+#define DEVICE_FLAG "--elephant-gpu"
+#define DEVICE_KIND "CUDA"
+static const char *kernel_names[3] = {"project.cu", "layer.cu", "warp.cu"};
 #endif
 #include <arpa/inet.h>
 #include <errno.h>
@@ -263,16 +278,21 @@ static void decide(Server *s, coax_t_SvRequest request, int64_t started, int fd)
 
 #ifdef PSIONIC_SERVE_GPU
 static void open_gpu(Server *s) {
-    char exe[4096]; ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+    char exe[4096];
+#if defined(PSIONIC_SERVE_METAL)
+    uint32_t size = sizeof exe;
+    ssize_t n = _NSGetExecutablePath(exe, &size) == 0 ? (ssize_t)strlen(exe) : -1;
+#else
+    ssize_t n = readlink("/proc/self/exe", exe, sizeof exe - 1);
+#endif
     if (n <= 0) { fprintf(stderr, "psionic-serve: cannot find the kernels\n"); exit(2); }
     exe[n] = 0; char *slash = strrchr(exe, '/'); if (slash) *slash = 0;
-    static const char *names[3] = {"project.cu", "layer.cu", "warp.cu"};
     EgSources src;
-    for (int i = 0; i < 3; i++) { coax_v_u8 text = map_named(exe, names[i]); src.text[i] = (const char *)text.data; src.length[i] = (size_t)text.count; }
+    for (int i = 0; i < 3; i++) { coax_v_u8 text = map_named(exe, kernel_names[i]); src.text[i] = (const char *)text.data; src.length[i] = (size_t)text.count; }
     s->gpu = zalloc(1, sizeof *s->gpu);
     int64_t t0 = now_ms();
     int r = eg_compile(s->gpu, &src);
-    if (r) { fprintf(stderr, "psionic-serve: no CUDA device or NVRTC: %s\n", pc_log()); exit(1); }
+    if (r) { fprintf(stderr, "psionic-serve: no " DEVICE_KIND " device or compiler: %s\n", eg_log()); exit(1); }
     printf("psionic-serve: %s; compiled %d generated kernels in %lld ms\n", s->gpu->device.name, EG_KERNELS, (long long)(now_ms() - t0)); fflush(stdout);
 }
 /* Asked between layers: stop when the deadline has passed or the client has closed. */
@@ -327,29 +347,33 @@ static long option(const char *v, long lo, long hi, const char *name) {
 }
 
 int main(int argc, char **argv) {
-    const char *elephant = NULL, *table = NULL; bool toy = false, gpu = false;
+    const char *elephant = NULL, *table = NULL, *device_flag = NULL; bool toy = false, gpu = false;
     long port = 8790, read_ms = 10000, deadline_ms = 30000, capacity = 0, delay = 0;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if (!strcmp(a, "--toy")) { toy = true; continue; }
         if (!v) { fprintf(stderr, "psionic-serve: %s needs a value\n", a); return 2; }
         if (!strcmp(a, "--elephant")) elephant = v;
-        else if (!strcmp(a, "--elephant-gpu")) { elephant = v; gpu = true; }
+        else if (!strcmp(a, "--elephant-gpu")) { elephant = v; gpu = true; device_flag = a; }
+        else if (!strcmp(a, "--elephant-metal")) { elephant = v; gpu = true; device_flag = a; }
         else if (!strcmp(a, "--table")) table = v;
         else if (!strcmp(a, "--port")) port = option(v, 0, 65535, a);
         else if (!strcmp(a, "--read-ms")) read_ms = option(v, 1, 600000, a);
         else if (!strcmp(a, "--deadline-ms")) deadline_ms = option(v, 1, 86400000, a);
         else if (!strcmp(a, "--capacity")) capacity = option(v, 1, 16384, a);
         else if (!strcmp(a, "--fixture-delay-ms")) delay = option(v, 0, 600000, a);
-        else { fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]\n"); return 2; }
+        else { fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]\n"); return 2; }
         i++;
     }
 #ifndef PSIONIC_SERVE_GPU
-    if (gpu) { fprintf(stderr, "psionic-serve: built without the CUDA host; build with serve-build.sh OUT release plain gpu\n"); return 2; }
+    (void)device_flag;
+    if (gpu) { fprintf(stderr, "psionic-serve: built without a device host; build with serve-build.sh OUT release plain gpu|metal\n"); return 2; }
+#else
+    if (gpu && strcmp(device_flag, DEVICE_FLAG)) { fprintf(stderr, "psionic-serve: built for " DEVICE_FLAG ", not %s\n", device_flag); return 2; }
 #endif
     if (gpu && capacity > 512) { fprintf(stderr, "psionic-serve: the device plan takes at most 512 tokens\n"); return 2; }
     if (toy == (elephant != NULL) || (elephant && !table) || (delay && !toy)) {
-        fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]\n"); return 2;
+        fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N]\n"); return 2;
     }
     signal(SIGPIPE, SIG_IGN); signal(SIGTERM, on_signal); signal(SIGINT, on_signal);
     Server s = {0}; s.limits = (coax_t_SvLimits){read_ms, deadline_ms}; s.delay_ms = delay;

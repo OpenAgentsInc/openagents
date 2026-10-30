@@ -62,7 +62,7 @@ class MetalCompute(unittest.TestCase):
         r=self.run_metal(WARP,'--release');self.assertEqual(r.returncode,0,r.stderr)
         out=r.stdout
         self.assertIn('int64_t coax_item = (int64_t)(coax_gid >> 5);',out)
-        self.assertIn('coax_mma_bf16_16x8x16(l_fa, l_fb, l_fc, coax_lane);',out)
+        self.assertIn('coax_mma_bf16_16x8x16(l_fa, l_fb, l_fc, coax_lane, coax_mc);',out);self.assertIn('coax_mma_cache coax_mc = {};',out)
         self.assertIn('simd_shuffle',out)
         self.assertNotIn('coax_p_cu_mma',out)
     def test_f64_is_float_float(self):

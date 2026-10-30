@@ -776,8 +776,11 @@ struct Emitter {
         }
         if (opts.metal_compute && g_warp.mma_calls.count(e)) {
           // The simdgroup's 16x8x16 product, lane by lane (coax_mma_bf16_16x8x16 in the runtime).
+          // coax_mc keeps the A fragment's gathered rows between calls on the same A.
+          static const std::string cache = "coax_mma_cache coax_mc = {};";
+          if (std::find(temps.begin(), temps.end(), cache) == temps.end()) temps.push_back(cache);
           return "coax_mma_bf16_16x8x16(" + local_name(e->args[0]->lhs->text) + ", " + local_name(e->args[1]->lhs->text) + ", " +
-                 local_name(e->args[2]->lhs->text) + ", coax_lane)";
+                 local_name(e->args[2]->lhs->text) + ", coax_lane, coax_mc)";
         }
         std::vector<Operand> ops;
         for (const Expr *a : e->args) ops.push_back({a, false});
@@ -1861,16 +1864,30 @@ COAX_DEV coax_ff coax_ff_log(coax_ff a) {
    f32 in k order and adds that sum into C. */
 COAX_DEV float coax_bf16_lo(uint w) { return as_type<float>(w << 16); }
 COAX_DEV float coax_bf16_hi(uint w) { return as_type<float>(w & 0xffff0000u); }
-COAX_DEV void coax_mma_bf16_16x8x16(thread uint *a, thread uint *b, thread float *c, uint lane) {
+/* The gathered rows of A (the shuffles below) depend only on the
+   simdgroup's A fragments, so a caller that multiplies one A by many B
+   (dw_project) keeps them in coax_mc and gathers again only when some lane's
+   A changed (simd_all keeps the branch uniform). */
+typedef struct { uint a[4]; uint x[16]; bool ok; } coax_mma_cache;
+COAX_DEV void coax_mma_bf16_16x8x16(thread uint *a, thread uint *b, thread float *c, uint lane, thread coax_mma_cache &mc) {
   uint g = lane >> 2, t = lane & 3u;
   uint a0 = a[0], a1 = a[1], a2 = a[2], a3 = a[3], b0 = b[0], b1 = b[1];
+  bool same = mc.ok && a0 == mc.a[0] && a1 == mc.a[1] && a2 == mc.a[2] && a3 == mc.a[3];
+  if (!simd_all(same)) {
+    for (uint j = 0; j < 4; j++) {
+      ushort sa = (ushort)(4 * g + j);
+      mc.x[2 * j] = simd_shuffle(a0, sa); mc.x[2 * j + 1] = simd_shuffle(a1, sa);
+      mc.x[8 + 2 * j] = simd_shuffle(a2, sa); mc.x[9 + 2 * j] = simd_shuffle(a3, sa);
+    }
+    mc.a[0] = a0; mc.a[1] = a1; mc.a[2] = a2; mc.a[3] = a3; mc.ok = true;
+  }
   float s00 = 0.0f, s01 = 0.0f, s10 = 0.0f, s11 = 0.0f;
   /* A product of two bf16 values is exact in f32, so fma(x, y, s) rounds
      exactly as s + x * y. Step J of half H covers k = 8H + 2J and 8H + 2J + 1. */
 #define COAX_MMA_STEP(J, H)                                                                        \
   {                                                                                                \
-    ushort sa = (ushort)(4 * g + J), sb0 = (ushort)(8 * t + J), sb1 = (ushort)(8 * t + 4 + J);     \
-    uint x0 = simd_shuffle(H ? a2 : a0, sa), x1 = simd_shuffle(H ? a3 : a1, sa);                   \
+    ushort sb0 = (ushort)(8 * t + J), sb1 = (ushort)(8 * t + 4 + J);                               \
+    uint x0 = mc.x[8 * H + 2 * J], x1 = mc.x[8 * H + 2 * J + 1];                                   \
     uint y0 = simd_shuffle(H ? b1 : b0, sb0), y1 = simd_shuffle(H ? b1 : b0, sb1);                 \
     float r0l = coax_bf16_lo(x0), r0h = coax_bf16_hi(x0), r1l = coax_bf16_lo(x1), r1h = coax_bf16_hi(x1); \
     float c0l = coax_bf16_lo(y0), c0h = coax_bf16_hi(y0), c1l = coax_bf16_lo(y1), c1h = coax_bf16_hi(y1); \

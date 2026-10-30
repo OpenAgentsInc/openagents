@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Build the chapter-16 /v1/systemone host: OUT MODE(debug|release) NATIVE(plain|sanitized) [gpu].
+# Build the chapter-16 /v1/systemone host: OUT MODE(debug|release) NATIVE(plain|sanitized) [gpu|metal].
 # Coax emits one C library from psionic/lib/serve-proto.coax (which loads
 # serve-run.coax); the host links it.
 # gpu adds the CUDA engine (--elephant-gpu): the device plan's C library, the
 # generated kernels next to the binary, and the CUDA host, loaded at run time.
+# metal adds the Apple GPU engine (--elephant-metal, chapter 31): the same plan,
+# the generated .metal kernels next to the binary, and the Metal host.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
-if [[ $# != 3 && ( $# != 4 || $4 != gpu ) ]]; then echo "usage: psionic/platform/serve-build.sh OUT debug|release plain|sanitized [gpu]" >&2; exit 2; fi
+if [[ $# != 3 && ( $# != 4 || ( $4 != gpu && $4 != metal ) ) ]]; then echo "usage: psionic/platform/serve-build.sh OUT debug|release plain|sanitized [gpu|metal]" >&2; exit 2; fi
 out=$1 mode=$2 native=$3 gpu=${4:-}
 coax=${COAX:-$PWD/coax/bin/coax}
 cc=${COAX_CC:-cc}
@@ -31,6 +33,14 @@ if [[ $gpu == gpu ]]; then
     "$cc" "${common[@]}" -Wno-missing-field-initializers -c psionic/platform/cuda-host.c -o "$out/cuda-host.o"
     "$cc" "${common[@]}" -Wno-missing-field-initializers -DPSIONIC_SERVE_GPU psionic/platform/serve-host.c "$out/serve.o" "$out/session.o" \
         "$out/plan.o" "$out/elephant-gpu.o" "$out/cuda-host.o" -ldl -lm -o "$out/psionic-serve"
+elif [[ $gpu == metal ]]; then
+    "$coax" c psionic/lib/device/plan.coax --library --release --header "$out/plan.h" > "$out/plan.c"
+    for unit in project layer warp; do "$coax" metal-compute "psionic/lib/device/$unit.coax" --release > "$out/$unit.metal"; done
+    "$cc" "${common[@]}" -Wno-missing-field-initializers -c "$out/plan.c" -o "$out/plan.o"
+    "$cc" "${common[@]}" -Wno-missing-field-initializers -c psionic/platform/elephant-metal.c -o "$out/elephant-metal.o"
+    "$cc" -fobjc-arc -mmacosx-version-min=15.0 "$opt" -g -Wall -Wextra -Werror "${sanitizers[@]}" -c psionic/platform/metal-host.m -o "$out/metal-host.o"
+    "$cc" "${common[@]}" -Wno-missing-field-initializers -DPSIONIC_SERVE_METAL psionic/platform/serve-host.c "$out/serve.o" "$out/session.o" \
+        "$out/plan.o" "$out/elephant-metal.o" "$out/metal-host.o" -framework Metal -framework Foundation -lm -o "$out/psionic-serve"
 else
     "$cc" "${common[@]}" psionic/platform/serve-host.c "$out/serve.o" "$out/session.o" -lm -o "$out/psionic-serve"
 fi
