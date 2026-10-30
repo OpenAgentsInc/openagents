@@ -59,6 +59,10 @@ production gateway. Sources are read from pre-nuke history, and the reduced
 dependency lock is pinned beside the evidence. The verifier is not restored
 as a current Rust application workspace.
 
+Use a full-history checkout for this optional oracle. The minimal sparse,
+depth-one checkout in the ordinary API quickstart does not contain its
+script, dependency lock or historical source objects.
+
 ```sh
 scripts/inspect-confidential-pylon.sh verify
 scripts/inspect-confidential-pylon.sh round

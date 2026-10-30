@@ -14,10 +14,11 @@ labels are project-authored claims. Git trees are the deployment's real history.
 No simulated people are drawn.
 
 The homepage's PYLONS control opens a scrollable board in the same canvas.
-It shows online machines, free slots and current advertised capacity; machine
-inspection keeps full npub and model identities available. Provider answers
+It shows online providers, free slots and current advertised capacity; provider
+inspection keeps full npub and model identities available. Multiple Pylons
+can share one physical host. Provider answers
 and statuses remain observation counts, not completed-job claims. COPY COMMAND
-copies the portable join command below; GUIDE opens `/pylon/index.md`.
+copies the portable join command below; GUIDE opens `/docs/connect-a-pylon`.
 The HTML and Markdown twins also carry both for agents and non-WebGPU readers.
 
 ```sh

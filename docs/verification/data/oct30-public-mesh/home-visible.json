@@ -1,0 +1,688 @@
+{
+  "base": "https://openagents.com",
+  "at": "2026-10-30T18:35:05.561Z",
+  "job_api": null,
+  "scenarios": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "touch": false
+      },
+      "errors": [],
+      "sockets": 2,
+      "received_frames": 5673,
+      "sent_frames": 183,
+      "documents": [
+        "https://openagents.com/",
+        "https://openagents.com/docs/connect-a-pylon"
+      ],
+      "document_responses": [
+        {
+          "url": "https://openagents.com/",
+          "status": 200
+        },
+        {
+          "url": "https://openagents.com/docs/connect-a-pylon",
+          "status": 200
+        }
+      ],
+      "beacon_events": [
+        {
+          "id": "3c792303bb9ec76b1bc0ad236a324566d709378bafe76b1b32ab922fe138d696",
+          "pubkey": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+          "created_at": 1793385306,
+          "body": {
+            "class": {
+              "family": "gpu",
+              "memory_gb": 64,
+              "tier": "xl"
+            },
+            "generation": 2,
+            "label": "oct30-gcloud-mammoth",
+            "observed_at": 1793385306,
+            "pools": [],
+            "provider": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+            "pylon": "oct30-gcloud-mammoth",
+            "requires": [],
+            "services": [
+              {
+                "capability": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829:pylon/decision",
+                "lanes": [
+                  "cj-decision"
+                ],
+                "model": "mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019",
+                "offering": null,
+                "price_hint_msat": null
+              }
+            ],
+            "settlement": [
+              "free-v1"
+            ],
+            "since": 1793384847,
+            "slots": {
+              "free": 4,
+              "total": 4
+            },
+            "status": "online",
+            "v": "openagents.pylon-beacon.v1",
+            "valid_until": 1793385486
+          }
+        },
+        {
+          "id": "497a74ea1fbda75bc6217fdf68cb6816649b5c16548ad7bf8af27116b46051cf",
+          "pubkey": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+          "created_at": 1793385300,
+          "body": {
+            "class": {
+              "family": "gpu",
+              "memory_gb": 64,
+              "tier": "xl"
+            },
+            "generation": 2,
+            "label": "oct30-gcloud-elephant-rtx",
+            "observed_at": 1793385300,
+            "pools": [],
+            "provider": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+            "pylon": "oct30-gcloud-elephant-rtx",
+            "requires": [],
+            "services": [
+              {
+                "capability": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7:pylon/decision",
+                "lanes": [
+                  "cj-decision"
+                ],
+                "model": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+                "offering": null,
+                "price_hint_msat": null
+              }
+            ],
+            "settlement": [
+              "free-v1"
+            ],
+            "since": 1793384654,
+            "slots": {
+              "free": 4,
+              "total": 4
+            },
+            "status": "online",
+            "v": "openagents.pylon-beacon.v1",
+            "valid_until": 1793385480
+          }
+        },
+        {
+          "id": "8201ed2e54c8e3db6315eb2f8286fbab09bb9a31f6ca69d049f6b7f092eae0ca",
+          "pubkey": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+          "created_at": 1793385285,
+          "body": {
+            "class": {
+              "family": "cpu",
+              "memory_gb": 16,
+              "tier": "small"
+            },
+            "generation": 1,
+            "label": "Sealed Clef (Intel TDX, Confidential Space)",
+            "meta": {
+              "attested_endpoint": "30203:eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:ca928b0e77366c2ac81d77cd4d8f65925f4c48c4451041b70d99898d7792ed72",
+              "claimed_level": "tee-cloud"
+            },
+            "observed_at": 1793385285,
+            "pools": [],
+            "provider": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+            "pylon": "att-tdx",
+            "requires": [],
+            "services": [
+              {
+                "capability": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:pylon/decision",
+                "lanes": [
+                  "cj-decision"
+                ],
+                "model": "clef-flash@sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+                "offering": null,
+                "price_hint_msat": null
+              }
+            ],
+            "settlement": [
+              "free-v1"
+            ],
+            "since": 1793383100,
+            "slots": {
+              "free": 1,
+              "total": 1
+            },
+            "status": "online",
+            "v": "openagents.pylon-beacon.v1",
+            "valid_until": 1793385525
+          }
+        },
+        {
+          "id": "f05f966f04df2924cab80363c2975d46b427fa9fd666b6c90a6693152d34b01b",
+          "pubkey": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+          "created_at": 1793385275,
+          "body": {
+            "class": {
+              "family": "cpu",
+              "memory_gb": 16,
+              "tier": "large"
+            },
+            "generation": 1,
+            "label": "Mac (demo)",
+            "observed_at": 1793385275,
+            "pools": [],
+            "provider": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124",
+            "pylon": "oct30-mac-demo",
+            "requires": [],
+            "services": [
+              {
+                "capability": "f592509d153303101598489c625abacfbc02eb1560cf6b0ba0f00af1cba57124:pylon/decision",
+                "lanes": [
+                  "cj-decision"
+                ],
+                "model": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+                "offering": null,
+                "price_hint_msat": null
+              }
+            ],
+            "settlement": [
+              "free-v1"
+            ],
+            "since": 1793372555,
+            "slots": {
+              "free": 4,
+              "total": 4
+            },
+            "status": "online",
+            "v": "openagents.pylon-beacon.v1",
+            "valid_until": 1793385455
+          }
+        },
+        {
+          "id": "6479d80e21699b441f1de8ac4ca5ff6159fd37c1c4c8bf574e28673eafdc2df4",
+          "pubkey": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968",
+          "created_at": 1793385264,
+          "body": {
+            "class": {
+              "family": "unified-memory",
+              "memory_gb": 128,
+              "tier": "xl"
+            },
+            "generation": 12,
+            "label": "Mac M5 Max (network lane)",
+            "observed_at": 1793385264,
+            "pools": [
+              "everglade"
+            ],
+            "provider": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968",
+            "pylon": "christohersmbp2",
+            "requires": [],
+            "services": [
+              {
+                "capability": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968:pylon/text-generation",
+                "lanes": [
+                  "cj-conversation"
+                ],
+                "model": "qwen3.5-0.8b-q8_0",
+                "offering": null,
+                "price_hint_msat": null
+              },
+              {
+                "capability": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968:pylon/decision",
+                "lanes": [
+                  "cj-decision"
+                ],
+                "model": "clef-flash@gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3",
+                "offering": null,
+                "price_hint_msat": null
+              }
+            ],
+            "settlement": [
+              "free-v1"
+            ],
+            "since": 1793056146,
+            "slots": {
+              "free": 2,
+              "total": 2
+            },
+            "status": "online",
+            "v": "openagents.pylon-beacon.v1",
+            "valid_until": 1793385504
+          }
+        },
+        {
+          "id": "1dca6c3ea6c9457f6a5a03af6c59f249734bff3855a40c9980fa9a4d2b82ed56",
+          "pubkey": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968",
+          "created_at": 1793385324,
+          "body": {
+            "class": {
+              "family": "unified-memory",
+              "memory_gb": 128,
+              "tier": "xl"
+            },
+            "generation": 12,
+            "label": "Mac M5 Max (network lane)",
+            "observed_at": 1793385324,
+            "pools": [
+              "everglade"
+            ],
+            "provider": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968",
+            "pylon": "christohersmbp2",
+            "requires": [],
+            "services": [
+              {
+                "capability": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968:pylon/text-generation",
+                "lanes": [
+                  "cj-conversation"
+                ],
+                "model": "qwen3.5-0.8b-q8_0",
+                "offering": null,
+                "price_hint_msat": null
+              },
+              {
+                "capability": "1803fb324b975487bbc99c75281805f3417090ae4fb4cf0201c9465bd98c1968:pylon/decision",
+                "lanes": [
+                  "cj-decision"
+                ],
+                "model": "clef-flash@gguf-tensors:sha256:2e417b2214d9a0b8736d850a1d80ffa4709be32056673b2f201f59cf8e6d07a3",
+                "offering": null,
+                "price_hint_msat": null
+              }
+            ],
+            "settlement": [
+              "free-v1"
+            ],
+            "since": 1793056146,
+            "slots": {
+              "free": 2,
+              "total": 2
+            },
+            "status": "online",
+            "v": "openagents.pylon-beacon.v1",
+            "valid_until": 1793385564
+          }
+        }
+      ],
+      "home": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 394751,
+        "ready_projects": 63,
+        "beacons": 5,
+        "refreshes": 6,
+        "refused": 0,
+        "count": 5,
+        "online": 5,
+        "free": 15,
+        "open": 0,
+        "scroll": 0,
+        "controls": [
+          [
+            1104,
+            28,
+            1254,
+            68
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 1,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "browser": {
+        "width": 1440,
+        "height": 900,
+        "dpr": 1
+      },
+      "home_screenshot": "/tmp/oct30-home-live-final2-desktop-home.png",
+      "panel": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 460543,
+        "ready_projects": 63,
+        "beacons": 6,
+        "refreshes": 7,
+        "refused": 0,
+        "count": 5,
+        "online": 5,
+        "free": 15,
+        "open": 1,
+        "scroll": 0,
+        "controls": [
+          [
+            1104,
+            28,
+            1254,
+            68
+          ],
+          [
+            44,
+            156,
+            263,
+            196
+          ],
+          [
+            273,
+            156,
+            492,
+            196
+          ],
+          [
+            464,
+            92,
+            500,
+            128
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 1,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "panel_screenshot": "/tmp/oct30-home-live-final2-desktop-panel.png",
+      "scrolled": [
+        {
+          "observation": {
+            "ready": true,
+            "sceneReady": false,
+            "probe": 460543,
+            "ready_projects": 63,
+            "beacons": 6,
+            "refreshes": 7,
+            "refused": 0,
+            "count": 5,
+            "online": 5,
+            "free": 15,
+            "open": 1,
+            "scroll": 100,
+            "controls": [
+              [
+                1104,
+                28,
+                1254,
+                68
+              ],
+              [
+                44,
+                156,
+                263,
+                196
+              ],
+              [
+                273,
+                156,
+                492,
+                196
+              ],
+              [
+                464,
+                92,
+                500,
+                128
+              ]
+            ],
+            "rows": [
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 1,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 2,
+                "answers": 0,
+                "updates": 0
+              }
+            ]
+          },
+          "screenshot": "/tmp/oct30-home-live-final2-desktop-scroll0.png"
+        },
+        {
+          "observation": {
+            "ready": true,
+            "sceneReady": false,
+            "probe": 460543,
+            "ready_projects": 63,
+            "beacons": 6,
+            "refreshes": 7,
+            "refused": 0,
+            "count": 5,
+            "online": 5,
+            "free": 15,
+            "open": 1,
+            "scroll": 100,
+            "controls": [
+              [
+                1104,
+                28,
+                1254,
+                68
+              ],
+              [
+                44,
+                156,
+                263,
+                196
+              ],
+              [
+                273,
+                156,
+                492,
+                196
+              ],
+              [
+                464,
+                92,
+                500,
+                128
+              ]
+            ],
+            "rows": [
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 1,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 2,
+                "answers": 0,
+                "updates": 0
+              }
+            ]
+          },
+          "screenshot": "/tmp/oct30-home-live-final2-desktop-scroll1.png"
+        },
+        {
+          "observation": {
+            "ready": true,
+            "sceneReady": false,
+            "probe": 460543,
+            "ready_projects": 63,
+            "beacons": 6,
+            "refreshes": 7,
+            "refused": 0,
+            "count": 5,
+            "online": 5,
+            "free": 15,
+            "open": 1,
+            "scroll": 100,
+            "controls": [
+              [
+                1104,
+                28,
+                1254,
+                68
+              ],
+              [
+                44,
+                156,
+                263,
+                196
+              ],
+              [
+                273,
+                156,
+                492,
+                196
+              ],
+              [
+                464,
+                92,
+                500,
+                128
+              ]
+            ],
+            "rows": [
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 1,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 4,
+                "answers": 0,
+                "updates": 0
+              },
+              {
+                "status": 0,
+                "free": 2,
+                "answers": 0,
+                "updates": 0
+              }
+            ]
+          },
+          "screenshot": "/tmp/oct30-home-live-final2-desktop-scroll2.png"
+        }
+      ],
+      "guide": "https://openagents.com/docs/connect-a-pylon",
+      "elapsed_ms": 24055
+    }
+  ],
+  "passed": true
+}
