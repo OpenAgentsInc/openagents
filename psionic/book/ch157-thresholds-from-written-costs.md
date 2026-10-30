@@ -393,7 +393,8 @@ has the commands and results.
   right-or-wrong reading.
 - **One validation draw** and normal intervals. No interval on ρ carries into
   the record.
-- **No live traffic.** Chapter 158 records each decision, its band and its
-  later outcome, so the costs can be checked against what happened.
+- **No live traffic.** [Chapter 158](ch158-record-readings-join-outcomes-watch-drift.md)
+  records each decision and its later outcome, so the costs can be checked
+  against what happened.
 - **One question with two answers.** Multi-way choices and scores need a cost
   per pair of answers.

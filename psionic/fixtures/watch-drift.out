@@ -1,0 +1,27 @@
+first map, 3000 calibration rows, gated against the raw probabilities:
+  in use (raw) error 0.1025, log loss 0.555; temperature 0.0293, 0.4679; binned 0.0286, 0.476; isotonic 0.0269, 0.4723
+  -> temperature
+outcomes: 10817 joined, 1183 never arrived; 818 decisions explored
+refit at decision 4000:
+  in use (temperature) error 0.0407, log loss 0.4228; temperature 0.0357, 0.4194; binned 0.0322, 0.423; isotonic 0.0272, 0.421
+  -> temperature
+refit at decision 8000:
+  in use (temperature) error 0.0758, log loss 0.5772; temperature 0.0246, 0.5574; binned 0.0278, 0.4364; isotonic 0.0409, 0.4405
+  -> binned
+window  map  joined  calibration error  draws reaching it (of 200)
+0  1  901  0.0276  109  
+1  1  909  0.0272  115  
+2  1  887  0.0407  21  
+3  1  900  0.0229  146  
+4  2  905  0.0665  0  ALERT
+5  2  912  0.0899  0  ALERT
+6  2  904  0.0758  0  ALERT
+7  2  913  0.0941  0  ALERT
+8  3  905  0.0226  93  
+9  3  904  0.0089  192  
+10  3  886  0.0233  94  
+11  3  891  0.0138  177  
+record 4321: map 2, policy 1, raw 0.2429, calibrated 0.3568, threshold 0.25, eligible 3, action 1, selection probability 0.9, joined at 4355, label 0, cost 1.0
+threshold 0.25: from the log 0.3746 ± 0.0131, true 0.3743
+threshold 0.5: from the log 0.402 ± 0.0427, true 0.4082
+threshold 0.05: unsupported

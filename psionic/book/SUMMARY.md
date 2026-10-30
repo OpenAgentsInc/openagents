@@ -45,6 +45,7 @@
 
 - [156. Fit our own calibration, and refuse a stale one](ch156-fit-our-own-calibration.md)
 - [157. Thresholds from written costs](ch157-thresholds-from-written-costs.md)
+- [158. Record readings, join outcomes, watch drift](ch158-record-readings-join-outcomes-watch-drift.md)
 - [164a. Learn which model to call](ch164a-learn-which-model-to-call.md)
 
 - [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md)
@@ -59,6 +60,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–59, 61, 70–71, 156–157, 164a, 165–169 and 172 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–59, 61, 70–71, 156–158, 164a, 165–169 and 172 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–40 and the remaining outlines
 remain proposed.

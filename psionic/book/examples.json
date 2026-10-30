@@ -430,6 +430,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/watch-drift.coax",
+      "chapter": "psionic/book/ch158-record-readings-join-outcomes-watch-drift.md",
+      "stdout": "psionic/fixtures/watch-drift.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

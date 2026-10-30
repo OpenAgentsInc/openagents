@@ -354,7 +354,8 @@ has the commands and results.
 ## What this does not do yet
 
 - **Synthetic data.** Real Elephant probabilities and labels need a
-  calibration set drawn from logged traffic, which chapter 158 records.
+  calibration set drawn from logged traffic, which
+  [chapter 158](ch158-record-readings-join-outcomes-watch-drift.md) records.
 - **One draw per split.** No interval on the calibration error, and the gate
   compares point estimates. Chapter 180's gates can say "unverifiable".
 - **Identity by number.** A map names a model and a question set by number. A

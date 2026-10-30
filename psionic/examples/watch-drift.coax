@@ -1,0 +1,48 @@
+#import "Basic";
+#load "../lib/drift.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+kinds :: [4]string.["raw","temperature","binned","isotonic"];
+gate :: (g:DrGate,in_use:CfKind) {
+    print("  in use (%) error %, log loss %",kinds[cast(int)in_use],r4(g.ece[0]),r4(g.loss[0]));
+    for k:1..<4 {print("; % %, %",kinds[k],r4(g.ece[k]),r4(g.loss[k]));}
+    print("\n  -> %\n",ifx g.adopted then kinds[cast(int)g.kind] else "keep the map in use");
+}
+
+// book:begin example
+main :: () {
+    policy:=DrPolicy.{version=1,threshold=0.25,explore=0.1,sure=0.1,wrong_yes=1,wrong_no=3};
+    calibration:[3000]DrRecord;
+    #assert dr_calibration(158,calibration[..])==DrStatus.ok;
+    first:=dr_first(calibration[..],1000,1,1);#assert first.gate.adopted;
+    print("first map, 3000 calibration rows, gated against the raw probabilities:\n");gate(first.gate,CfKind.none);
+
+    // 12 windows of 1000 decisions; from decision 4000 the labels drift.
+    entries:[12000]DrRecord;
+    run:=dr_run(158,policy,first.map,1000,4000,1.5,entries[..]);#assert run.status==DrStatus.ok;
+    print("outcomes: % joined, % never arrived; % decisions explored\n",run.joined,run.lost,run.explored);
+    in_use:=first.gate.kind;
+    for k:0..<run.refits {
+        print("refit at decision %:\n",4000*(k+1));gate(run.refit[k],in_use);in_use=run.refit[k].kind;
+    }
+
+    // The watcher reads only the log.
+    watch:=dr_watch(entries[..],1000,160);#assert watch.status==DrStatus.ok;
+    print("window  map  joined  calibration error  draws reaching it (of 200)\n");
+    for w:0..<watch.windows {
+        print("%  %  %  %  %  %\n",w,run.version[w],watch.joined[w],r4(watch.ece[w]),watch.exceed[w],ifx watch.alert[w] then "ALERT" else "");
+    }
+    r:=entries[4321];
+    print("record 4321: map %, policy %, raw %, calibrated %, threshold %, eligible %, action %, selection probability %, joined at %, label %, cost %\n",
+        r.map_version,r.policy_version,r4(r.raw),r4(r.calibrated),r.threshold,r.eligible,r.action,r.propensity,r.joined_at,cast(int)r.label,r.cost);
+
+    // Other thresholds, judged from the log alone; the simulator knows the truth.
+    thresholds:=[3]f64.[0.25,0.5,0.05];
+    for th:thresholds {
+        v:=dr_ips(entries[..],th);
+        if v.status==DrStatus.ok {
+            print("threshold %: from the log % ± %, true %\n",th,r4(v.value),r4(v.half),r4(dr_truth(158,4000,1.5,policy,entries[..],th)));
+        } else {print("threshold %: %\n",th,v.status);}
+    }
+}
+// book:end example

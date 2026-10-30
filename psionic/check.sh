@@ -96,6 +96,7 @@ python3 -I psionic/tests/tape_oracle.py --header > "$out/tape-oracle.h"
 python3 -I psionic/tests/route_oracle.py --header > "$out/route-oracle.h"
 python3 -I psionic/tests/threshold_oracle.py --header > "$out/threshold-oracle.h"
 python3 -I psionic/tests/calibrate_oracle.py --header > "$out/calibrate-oracle.h"
+python3 -I psionic/tests/drift_oracle.py --header > "$out/drift-oracle.h"
 "$text_python" -I psionic/tests/harmony_fixtures.py
 "$text_python" -I psionic/tests/harmony_oracle.py --header > "$out/harmony-goldens.h"
 python3 -I psionic/tests/weights_fixtures.py --header > "$out/weights-fixtures.h"
@@ -121,8 +122,8 @@ python3 -I psionic/tests/mammoth_reference_fixture.py
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-output psionic/fixtures/models/mammoth/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view tensor-ops-backward ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
-native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate tensor tensor-view tensor-ops ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
+coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift tensor tensor-view tensor-ops-backward ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine)
+native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift tensor tensor-view tensor-ops ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
         tensor-ops) echo "psionic/lib/tensor-ops-backward.coax" ;;
@@ -149,6 +150,7 @@ native_harness() {
         calibrate) adapter=psionic/platform/calibrate-spans.c; harness=psionic/tests/calibrate.c ;;
         tensor-ops) adapter=psionic/platform/tensor-ops-memory.c; harness=psionic/tests/tensor_ops.c ;;
         tensor-view) adapter=psionic/platform/tensor-view-memory.c; harness=psionic/tests/tensor_view.c ;;
+        drift) adapter=psionic/platform/drift-spans.c; harness=psionic/tests/drift.c ;;
         tensor) adapter=psionic/platform/tensor-memory.c; harness=psionic/tests/tensor.c ;;
         ops) adapter=psionic/platform/ops-memory.c; harness=psionic/tests/ops.c ;;
         weights) adapter=psionic/platform/weights-memory.c; harness=psionic/tests/weights.c ;;
