@@ -1699,6 +1699,35 @@
         "Kept in the save",
         "Tests pass"
       ]
+    },
+    {
+      "slug": "grid-walk",
+      "parent": "rl-later",
+      "title": "The Grid from the homepage: WALK AROUND, human players, and everyone walking it",
+      "size": "L",
+      "labels": [
+        "grid",
+        "homepage",
+        "multiplayer"
+      ],
+      "body": "A WALK AROUND button on the homepage dives the camera into the Grid at the start spot (/realms/the-grid?from=home picks the dive up), HOME goes back. The Grid's player is the human character from Cast.bin (verse/cast.coax, the same character the app's native Grid wears), not a robot. Everyone on the Grid (web or the iOS app, which loads the web page) joins the playtest room the-grid (coax/web/api/room.c, no new server): ~5 updates a second, eased positions, walk/run/idle clips, the presence timeout, names over them; automation is seen only by itself. The homepage reads the room (GET /api/playtest/presence/the-grid) and draws the real walkers as named figures on its grid, the simulated people only while nobody is there.",
+      "files": [
+        "apps/openagents-web/newland.coax",
+        "apps/openagents-web/thegrid.coax",
+        "apps/openagents-web/thegrid-face.c",
+        "apps/openagents-web/thegrid.wgsl",
+        "coax/web/api/migrations/0069_room_presence_automation.sql",
+        "coax/web/host.js"
+      ],
+      "acceptance": [
+        "coax test passes on thegrid.coax and newland.coax",
+        "Two browsers on the Grid see each other as named humans walking, and both show on the homepage",
+        "An automation session is seen only by itself",
+        "Homepage and Grid hold 60 FPS in the release walk",
+        "No new GCP service"
+      ],
+      "blocked_by": [],
+      "blocks": []
     }
   ]
 }
