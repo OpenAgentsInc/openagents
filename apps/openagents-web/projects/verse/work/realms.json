@@ -1520,6 +1520,109 @@
       ],
       "blocked_by": [],
       "blocks": []
+    },
+    {
+      "slug": "ff-night",
+      "parent": "ff-life",
+      "title": "Nights in Lanternwood: glowing fruit, moths, and places only LIGHT shows",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Night falls on the real clock: Lanternwood's fruit glows and moths gather to lights; with LIGHT, hidden places (a path of stones, a hollow) show in the dark. The night is the moment LIGHT is learned.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "Night comes with the clock and is visible",
+        "Lanternwood's fruit glows and moths fly at night",
+        "Places only show in the dark with LIGHT",
+        "Tests and a staging check pass"
+      ]
+    },
+    {
+      "slug": "ff-pond",
+      "parent": "ff-life",
+      "title": "Filling the pond with WATER, and the waterfall",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "With WATER, E at the low pond fills it over a short while; the waterfall runs once the stream is cleared. Kept in the save.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "The pond fills with WATER",
+        "The waterfall runs after the stream is cleared",
+        "Kept across reloads",
+        "Tests pass"
+      ]
+    },
+    {
+      "slug": "ff-woodcutter",
+      "parent": "ff-life",
+      "title": "The woodcutter who gives you the axe",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "A woodcutter by the home's clearing, talked to like the creatures, gives the axe that teaches CRAFT (in place of the axe in the stump).\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "A woodcutter stands near your home",
+        "Talking to them gives the axe and CRAFT",
+        "Tests pass"
+      ]
+    },
+    {
+      "slug": "ff-mend",
+      "parent": "ff-life",
+      "title": "Mending broken things with MEND",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "Broken things about the forest (a fence, a bridge plank, a birdhouse) are mended with MEND; each mended stays mended.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "Broken things show broken",
+        "MEND mends them and it is kept",
+        "Tests pass"
+      ]
+    },
+    {
+      "slug": "ff-tools",
+      "parent": "ff-life",
+      "title": "Tools: made with CRAFT from what you gather",
+      "size": "M",
+      "labels": [
+        "realms",
+        "web"
+      ],
+      "body": "CRAFT makes tools from wood and finds (a watering can, a basket, a lantern); each tool does something.\n\nPlan: `verse/fairy-forest/README.md`.",
+      "files": [
+        "apps/openagents-web/fairy.coax",
+        "verse/fairy-forest/"
+      ],
+      "acceptance": [
+        "Tools are made from wood and finds",
+        "Each tool has a use",
+        "Kept in the save",
+        "Tests pass"
+      ]
     }
   ]
 }
