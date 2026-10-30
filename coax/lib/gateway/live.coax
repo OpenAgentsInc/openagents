@@ -8,6 +8,7 @@
 #load "vercel.coax";
 #load "openai.coax";
 #load "psionic.coax";
+#load "zai.coax";
 
 LiveRun :: struct { text: [8192] u8; nt: int; first_ms: int = -1; end_ms: int; done: bool; usage: GwUsage; why: string; status: int; quota: bool; }
 
@@ -109,6 +110,8 @@ main :: () {
     if probe[0].status == 402 || (probe[0].status == 429 && probe[0].quota) { print("smoke: skipped (% %: the account has no credit)\n", name, probe[0].status); return; }
     ok = live_count(g, model, hs);
     ok = live_schema(g, model, hs) && ok;
+  } else if name == "zai" {
+    ok = live_count(gw_zai(), GW_ZAI_FLASH, none[0..<0]);   // no strict schema on GLM: the count only
   } else if name == "psionic" {
     bb: [512] u8; ub: [512] u8; mb: [256] u8;
     base := gw_psionic_base(bb[..]);
