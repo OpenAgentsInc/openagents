@@ -13,8 +13,11 @@
 // bushes, ferns and rocks along the tree line, out of the realm's pack
 // (verse/packs/everglade.json). The trees near you and in view are the
 // kit's meshes; the rest are cones, so a phone draws a few hundred kit
-// trees at most. You can't walk into the woods: everglade_hold keeps you
-// on the open ground after each step.
+// trees at most. You walk into the woods as anywhere: each trunk and rock
+// near you is a round body as wide as its mesh (forest_bodies), and at the
+// world's edge (plan.coax EG_BOUND) a thicket of brush and close-set trees
+// stands (plant_thicket), where everglade_hold stops you. Nothing you can
+// see as open ground is behind an invisible wall.
 //
 // You walk it with the engine's controller (verse/player.coax, its own
 // library) among the plan's solids and see it through the free orbit
@@ -272,6 +275,17 @@ WALLS :: 128;          // the player's walls (player.coax WALL numbers each)
 // The player's round bodies (player.coax BODY numbers each): the fountain's basin, then the
 // bridge's six piles, which stand in a swimmer's way and not a walker's on the deck above them.
 BODIES :: 7;
+// Then the trunks and rocks round you (forest_bodies), the nearest first: a trunk at waist height
+// and a rock's middle and girth from the pack's meshes (verse/packs/everglade.json), at size 1.
+FOREST_BODIES :: 24;
+FOREST_NEAR :: 3.0;    // metres past its girth that a trunk or rock is in your way
+TRUNK_RADIUS :: [4] f32.[0.36, 0.36, 0.48, 0.52];   // Pine_5, Pine_4, CommonTree_3, CommonTree_4
+ROCK_SHAPE :: [8] f32.[-0.11, 0.34, 1.40, 1.99,   -0.15, 0.08, 1.30, 1.85];   // Rock_Medium_1, _2: middle x, z, girth, top
+// The thicket at the world's edge: two rows of brush (thicket_brush, worked out where it's
+// needed, not kept) and a row of close-set trees behind (plant_thicket, among the trees).
+THICKET_ROW :: 160;    // brush a row a side, 1.3 m apart
+THICKET_BRUSH :: 4 * 2 * THICKET_ROW;
+THICKET_NEAR :: 22.0;  // metres: its brush nearer than this is drawn, the nearest first
 FOUNTAIN_RADIUS :: 3.32;   // the plinth's (everglade.wgsl lathe_point's basin)
 BOXES :: 128;          // the camera's boxes (camera.coax BOX numbers each)
 TREES :: 1500;         // the forest: x, z, size, yaw, kind each
@@ -340,7 +354,7 @@ Everglade :: struct {
   lathe_n: int;
   draws: [DRAWS * 4] u32;
   walls: [WALLS * 6] f32; wall_n: int;   // and after wall_n the bridge's two rails
-  bodies: [(BODIES + AB_STONES * AB_ST_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax)
+  bodies: [(BODIES + AB_STONES * AB_ST_BODIES + FOREST_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), then the trunks and rocks round you
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;
@@ -589,6 +603,7 @@ everglade_start :: (s: [] Everglade) {
   s[0].answered = 1000;
   build_scenery(s);
   plant_forest(s);
+  plant_thicket(s);
   at := KIT_AT;
   for g: 0..<KIT_GROUPS {
     cap := ifx g < KIT_FOREST then KIT_CAP else TOWN_CAP[g - KIT_FOREST] + edit_cap(g) + spells_cap(g) + watch_cap(g);
@@ -712,14 +727,108 @@ plant_forest :: (s: [] Everglade) {
   s[0].small_n = m;
 }
 
-// Keeps you out of the woods: from where a step began (ox, oz) to where it
-// ended (nx, nz), the farthest of the end, a slide along x or along z, or
-// staying put that stands on open ground.
+// The world's edge (plan.coax EG_BOUND), shown before you reach it: a front row of brush whose
+// leaves come to the bound, a second row behind it, and a row of close-set trees behind both,
+// all the way round; where the river runs out, rocks across the water instead of brush.
+Brush :: struct { x: f32; z: f32; size: f32; yaw: f32; kind: int; }
+// Brush k of THICKET_BRUSH: side k / (2 THICKET_ROW) (south, north, west, east), row, place along.
+thicket_brush :: (k: int) -> Brush {
+  out: Brush;
+  side := k / (2 * THICKET_ROW); row := (k / THICKET_ROW) % 2; i := k % THICKET_ROW;
+  seed := next_seed(next_seed(k * 7919 + 7177)); ja := rand01(seed);
+  seed = next_seed(seed); jb := rand01(seed);
+  seed = next_seed(seed); out.yaw = rand01(seed) * f32(TAU);
+  along := -103.5 + (f32(i) + ifx row == 1 then 0.5f32 else 0.0f32) * 1.3;
+  d := f32(EG_THICKET) + f32(row) * 1.2 + (ja - 0.5) * 0.3;
+  out.x = ifx side < 2 then along else ifx side == 2 then -d else d;
+  out.z = ifx side >= 2 then along else ifx side == 0 then -d else d;
+  water := everglade_in_river(out.x, 1.0) && side < 2;
+  if water && row == 1 { out.kind = -1; return out; }
+  if water { out.size = 0.9 + jb * 0.1; out.kind = ifx jb < 0.5 then 6 else 7; return out; }
+  out.size = 1.25 + jb * 0.3 + f32(row) * 0.15; out.kind = 4;
+  return out;
+}
+plant_thicket :: (s: [] Everglade) {
+  seed := 7177;
+  n := s[0].tree_n;
+  for side: 0..<4 {
+    for i: 0..<83 {
+      seed = next_seed(seed); ja := rand01(seed);
+      seed = next_seed(seed); jb := rand01(seed);
+      seed = next_seed(seed); yaw := rand01(seed) * f32(TAU);
+      along := -103.5 + f32(i) * 2.5;
+      d := f32(EG_THICKET) + 2.4 + (ja - 0.5) * 0.3;
+      x := ifx side < 2 then along else ifx side == 2 then -d else d;
+      z := ifx side >= 2 then along else ifx side == 0 then -d else d;
+      if (everglade_in_river(x, 1.0) && side < 2) || n >= TREES { continue; }
+      kind := ifx jb < 0.75 then cast(int) (jb / 0.375) else 2 + cast(int) ((jb - 0.75) * 8) % 2;
+      put_tree(s[0].trees[..], n, x, z, 0.9 + ja * 0.3, yaw, kind);
+      n += 1;
+    }
+  }
+  s[0].tree_n = n;
+}
+
+// Keeps you inside the world's edge (plan.coax EG_BOUND), where the thicket stands: a step past
+// it slides along it. The woods are open; their trunks and rocks stand in your way as bodies.
 everglade_hold :: (s: [] Everglade, ox: f32, oz: f32, nx: f32, nz: f32) -> Point #export_c {
-  if !everglade_in_woods(nx, nz) { return v3(nx, 0, nz); }
-  if !everglade_in_woods(nx, oz) { return v3(nx, 0, oz); }
-  if !everglade_in_woods(ox, nz) { return v3(ox, 0, nz); }
-  return v3(ox, 0, oz);
+  b := f32(EG_BOUND);
+  return v3(clamp(nx, -b, b), 0, clamp(nz, -b, b));
+}
+
+// A trunk's or a rock's body: middle x, z, girth and top over the ground, for tree t (smalls false)
+// or undergrowth t (true); girth 0 for a bush or a fern, which you walk through.
+Girth :: struct { x: f32; z: f32; r: f32; top: f32; }
+tree_girth :: (s: [] Everglade, list: [] f32, t: int) -> Girth {
+  o := t * TREE_FLOATS;
+  return girth_of(list[o], list[o + 1], list[o + 2], list[o + 3], cast(int) list[o + 4]);
+}
+brush_girth :: (k: int) -> Girth { b := thicket_brush(k); return girth_of(b.x, b.z, b.size, b.yaw, b.kind); }
+girth_of :: (x: f32, z: f32, size: f32, yaw: f32, kind: int) -> Girth {
+  g: Girth;
+  g.x = x; g.z = z;
+  if kind >= 0 && kind < KIT_TREES { g.r = TRUNK_RADIUS[kind] * size; g.top = 5; return g; }
+  if kind != 6 && kind != 7 { return g; }
+  k := (kind - 6) * 4;
+  lx := ROCK_SHAPE[k] * size; lz := ROCK_SHAPE[k + 1] * size;
+  c := cos(yaw); sn := sin(yaw);
+  g.x = x + c * lx + sn * lz; g.z = z - sn * lx + c * lz;
+  g.r = ROCK_SHAPE[k + 2] * size; g.top = ROCK_SHAPE[k + 3] * size;
+  return g;
+}
+
+// The trunks and rocks within FOREST_NEAR of (x, z) as round bodies after the others, the
+// nearest first: a rock only while it is drawn (the pack in, the undergrowth on).
+forest_bodies :: (s: [] Everglade, out: [] f32, at: int, x: f32, z: f32) -> int {
+  pick: [64] Girth; far: [64] f32; n := 0;
+  rocks := s[0].pack_ready && redit_row_on(s[0].ev.ed[..], "undergrowth");
+  for list: 0..<3 {
+    count := ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH;
+    if list > 0 && !rocks { continue; }
+    for t: 0..<count {
+      g := ifx list == 0 then tree_girth(s, s[0].trees[..], t) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
+      if g.r <= 0 { continue; }
+      dx := g.x - x; dz := g.z - z; reach := g.r + f32(FOREST_NEAR);
+      if abs(dx) > reach || abs(dz) > reach { continue; }
+      d := sqrt(dx * dx + dz * dz) - g.r;
+      if d > f32(FOREST_NEAR) { continue; }
+      // keep the nearest 64, then the nearest FOREST_BODIES of them
+      if n < 64 { pick[n] = g; far[n] = d; n += 1; continue; }
+      worst := 0; for k: 1..<64 { if far[k] > far[worst] { worst = k; } }
+      if d < far[worst] { pick[worst] = g; far[worst] = d; }
+    }
+  }
+  kept := 0;
+  while kept < FOREST_BODIES && kept < n && (at + kept + 1) * 7 <= out.count {
+    best := kept;
+    for k: kept + 1..<n { if far[k] < far[best] { best = k; } }
+    gb := pick[best]; db := far[best];
+    pick[best] = pick[kept]; far[best] = far[kept]; pick[kept] = gb; far[kept] = db;
+    y := ground_at(s, gb.x, gb.z);
+    put7(out, at + kept, gb.x, y - 1, gb.z, gb.x, y + hi(gb.top - gb.r, 0), gb.z, gb.r);
+    kept += 1;
+  }
+  return kept;
 }
 
 // ---- the pack (verse/tools/pack_realm.py): its catalog, a line each; the
@@ -824,6 +933,122 @@ everglade_walls_on :: (s: [] Everglade, deck: bool) -> int #export_c { return ev
 everglade_bodies_on :: (s: [] Everglade, deck: bool) -> int #export_c {
   if !s[0].started { everglade_start(s); }
   return ifx deck then 1 else BODIES + ab_stone_bodies(s, s[0].bodies[..], BODIES);
+}
+// ---- the reach check: anything drawn that looks reachable is. Over the plan's reach grid
+// (EG_REACH_CELL a side inside EG_BOUND, plan.coax), a cell is in the way only where a walker's
+// middle can't stand: within RADIUS of a wall too high to step onto, the fountain's basin, or a
+// trunk's or a rock's girth (the same bodies forest_bodies puts in your way). Filled from the
+// spawn, every other cell must be reached: an open cell left over is ground you can see and
+// not get to. The river and the ponds count as open: you swim them.
+stamp_round :: (grid: [] u8, x: f32, z: f32, r: f32) {
+  c := f32(EG_REACH_CELL); w := f32(EG_REACH_WEST);
+  i0 := hi_i(cast(int) floor((x - r - w) / c), 0); i1 := lo_i(cast(int) floor((x + r - w) / c), EG_REACH_N - 1);
+  j0 := hi_i(cast(int) floor((z - r - w) / c), 0); j1 := lo_i(cast(int) floor((z + r - w) / c), EG_REACH_N - 1);
+  for j: j0..<j1 + 1 {
+    for i: i0..<i1 + 1 {
+      cx := w + (f32(i) + 0.5) * c - x; cz := w + (f32(j) + 0.5) * c - z;
+      if cx * cx + cz * cz < r * r { grid[j * EG_REACH_N + i] = 0; }
+    }
+  }
+}
+everglade_walk_open :: (s: [] Everglade, grid: [] u8) {
+  for k: 0..<EG_REACH_N * EG_REACH_N { grid[k] = 1; }
+  c := f32(EG_REACH_CELL); w := f32(EG_REACH_WEST); pad := f32(EG_RADIUS);
+  for b: 0..<s[0].wall_n {
+    k := b * 6;
+    x0 := s[0].walls[k]; z0 := s[0].walls[k + 2]; x1 := s[0].walls[k + 3]; top := s[0].walls[k + 4]; z1 := s[0].walls[k + 5];
+    if top - ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2) <= 0.55 { continue; }   // a top you step onto (player.coax STEP_UP)
+    i0 := hi_i(cast(int) floor((x0 - pad - w) / c), 0); i1 := lo_i(cast(int) floor((x1 + pad - w) / c), EG_REACH_N - 1);
+    j0 := hi_i(cast(int) floor((z0 - pad - w) / c), 0); j1 := lo_i(cast(int) floor((z1 + pad - w) / c), EG_REACH_N - 1);
+    for j: j0..<j1 + 1 {
+      for i: i0..<i1 + 1 {
+        x := w + (f32(i) + 0.5) * c; z := w + (f32(j) + 0.5) * c;
+        dx := hi(hi(x0 - x, x - x1), 0); dz := hi(hi(z0 - z, z - z1), 0);
+        if dx * dx + dz * dz < pad * pad { grid[j * EG_REACH_N + i] = 0; }
+      }
+    }
+  }
+  stamp_round(grid, 0, 0, f32(FOUNTAIN_RADIUS) + pad);
+  rocks := s[0].pack_ready && redit_row_on(s[0].ev.ed[..], "undergrowth");
+  for list: 0..<3 {
+    count := ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH;
+    if list > 0 && !rocks { continue; }
+    for t: 0..<count {
+      g := ifx list == 0 then tree_girth(s, s[0].trees[..], t) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
+      if g.r > 0 { stamp_round(grid, g.x, g.z, g.r + pad); }
+    }
+  }
+}
+// The open ground the fill from the spawn doesn't reach: each patch of unreached open cells a
+// metre square or more (a sliver between two trunks is no ground you see), its cells counted and
+// the first few patches' middles at `at` (x, z each).
+REACH_PATCH :: 4;
+everglade_unreached :: (s: [] Everglade, grid: [] u8, queue: [] u32, at: [] f32) -> int {
+  everglade_walk_open(s, grid);
+  filled := everglade_fill(grid, queue);
+  N := EG_REACH_N;
+  n := 0; patches := 0;
+  for k: 0..<N * N {
+    if grid[k] != 1 { continue; }
+    // this patch, breadth first, marked 3
+    grid[k] = 3; queue[0] = cast(u32) k; head := 0; tail := 1;
+    while head < tail {
+      c := cast(int) queue[head]; head += 1;
+      i := c % N;
+      if i > 0 && grid[c - 1] == 1 { grid[c - 1] = 3; queue[tail] = cast(u32) (c - 1); tail += 1; }
+      if i < N - 1 && grid[c + 1] == 1 { grid[c + 1] = 3; queue[tail] = cast(u32) (c + 1); tail += 1; }
+      if c >= N && grid[c - N] == 1 { grid[c - N] = 3; queue[tail] = cast(u32) (c - N); tail += 1; }
+      if c < N * N - N && grid[c + N] == 1 { grid[c + N] = 3; queue[tail] = cast(u32) (c + N); tail += 1; }
+    }
+    if tail < REACH_PATCH { continue; }
+    if patches * 2 + 1 < at.count {
+      at[patches * 2] = f32(EG_REACH_WEST) + (f32(k % N) + 0.5) * f32(EG_REACH_CELL);
+      at[patches * 2 + 1] = f32(EG_REACH_WEST) + (f32(k / N) + 0.5) * f32(EG_REACH_CELL);
+    }
+    patches += 1; n += tail;
+  }
+  return n;
+}
+
+// A walker's way from `from` toward `to` among the city's walls and bodies, the trunks and rocks
+// round it and the world's edge, as verse/player.coax moves you (a stride a step, then out of each
+// body and wall too high to step onto, sideways): where it stands after `steps` steps, or once there.
+walk_toward :: (s: [] Everglade, from: Point, to: Point, steps: int) -> Point {
+  p := from;
+  r := f32(EG_RADIUS);
+  for f: 0..<steps {
+    dx := to.x - p.x; dz := to.z - p.z; d := sqrt(dx * dx + dz * dz);
+    if d < 0.0001 { break; }
+    stride := lo(d, 7.5 / 64.0);
+    x := p.x + dx / d * stride; z := p.z + dz / d * stride;
+    n := everglade_bodies_near(s, false, p.x, p.z);
+    for pass: 0..<3 {
+      for i: 0..<n {
+        k := i * 7;
+        bx := s[0].bodies[k] - x; bz := s[0].bodies[k + 2] - z; need := s[0].bodies[k + 6] + r;
+        h := sqrt(bx * bx + bz * bz);
+        if h >= need || h < 0.0001 { continue; }
+        x -= bx / h * (need - h); z -= bz / h * (need - h);
+      }
+      for b: 0..<s[0].wall_n {
+        k := b * 6;
+        if s[0].walls[k + 4] <= ground_at(s, x, z) + 0.55 { continue; }
+        ex := clamp(x, s[0].walls[k], s[0].walls[k + 3]); ez := clamp(z, s[0].walls[k + 2], s[0].walls[k + 5]);
+        e := sqrt((x - ex) * (x - ex) + (z - ez) * (z - ez));
+        if e >= r || e < 0.0001 { continue; }
+        x += (x - ex) / e * (r - e); z += (z - ez) / e * (r - e);
+      }
+    }
+    p = everglade_hold(s, p.x, p.z, x, z);
+  }
+  return p;
+}
+
+// The same with the trunks and rocks round (x, z), where you stand (forest_bodies).
+everglade_bodies_near :: (s: [] Everglade, deck: bool, x: f32, z: f32) -> int #export_c {
+  n := everglade_bodies_on(s, deck);
+  if deck { return n; }
+  return n + forest_bodies(s, s[0].bodies[..], n, x, z);
 }
 everglade_spawn :: (s: [] Everglade) -> Point #export_c { if !s[0].started { everglade_start(s); } return s[0].spawn; }
 everglade_spawn_face :: (s: [] Everglade) -> f32 #export_c { return s[0].spawn_face; }
@@ -2262,7 +2487,24 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
       kit(s, cast(int) s[0].trees[o + 4], s[0].trees[o], pick_y[t] - 0.1, s[0].trees[o + 1], s[0].trees[o + 3], s[0].trees[o + 2]);
     }
   }
-  if !kit_on || !redit_row_on(s[0].ev.ed[..], "undergrowth") { return; }
+  if !kit_on { return; }
+  // the thicket at the world's edge, the nearest first, whatever the undergrowth row says
+  brush := ifx phone(s) then f32(THICKET_NEAR) * 0.6 else f32(THICKET_NEAR);
+  edge_near := hi(abs(eye.x), abs(eye.z)) > f32(EG_THICKET) - brush - 1;
+  for pass: 0..<2 {
+    if !edge_near { break; }
+    for t: 0..<THICKET_BRUSH {
+      b := thicket_brush(t);
+      if b.kind < 0 { continue; }
+      d := sqrt((b.x - eye.x) * (b.x - eye.x) + (b.z - eye.z) * (b.z - eye.z));
+      if d >= brush || (pass == 0) != (d < brush * 0.5) { continue; }
+      if s[0].kit_used[b.kind] >= cap { continue; }
+      base := ground_at(s, b.x, b.z);
+      if !in_view(u, b.x, base + 0.8, b.z, 2) { continue; }
+      kit(s, b.kind, b.x, base - 0.05, b.z, b.yaw, b.size);
+    }
+  }
+  if !redit_row_on(s[0].ev.ed[..], "undergrowth") { return; }
   for t: 0..<s[0].small_n {
     o := t * TREE_FLOATS;
     x := s[0].smalls[o]; z := s[0].smalls[o + 1];
@@ -2710,15 +2952,36 @@ ground_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
   return verse_terrain_ray(everglade_ground(), s[0].heights[..], lifted, r.dir, r.far);
 }
 
-// How far the camera may back out along r before the woods: it stays over
-// open ground, half a metre short of the tree line, so it never sits in a tree.
-woods_room :: (r: OrbitRay) -> f32 {
-  steps := cast(int) (r.far / 0.5) + 1;
-  for i: 1..<steps + 1 {
-    t := lo(f32(i) * 0.5, r.far);
-    if everglade_in_woods(r.from.x + r.dir.x * t, r.from.z + r.dir.z * t) { return hi(t - 0.5, 0); }
+// How far the camera may back out along r before a trunk or a rock (forest_bodies' girths and
+// tops): it stays CAM_TRUNK_CLEAR clear of each, so it never sits in a tree, among the trees too.
+CAM_TRUNK_CLEAR :: 0.25;   // under your own girth, so the line never starts inside one
+trunks_room :: (s: [] Everglade, r: OrbitRay) -> f32 {
+  room := r.far;
+  hd2 := r.dir.x * r.dir.x + r.dir.z * r.dir.z;
+  if hd2 < 0.0001 { return room; }
+  rocks := s[0].pack_ready && redit_row_on(s[0].ev.ed[..], "undergrowth");
+  for list: 0..<3 {
+    count := ifx list == 0 then s[0].tree_n else ifx list == 1 then s[0].small_n else THICKET_BRUSH;
+    if list > 0 && !rocks { continue; }
+    for t: 0..<count {
+      g := ifx list == 0 then tree_girth(s, s[0].trees[..], t) else ifx list == 1 then tree_girth(s, s[0].smalls[..], t) else brush_girth(t);
+      if g.r <= 0 { continue; }
+      dx := g.x - r.from.x; dz := g.z - r.from.z; reach := r.far + g.r + 1;
+      if abs(dx) > reach || abs(dz) > reach { continue; }
+      along := (dx * r.dir.x + dz * r.dir.z) / hd2;
+      if along <= 0 { continue; }
+      px := r.dir.x * along - dx; pz := r.dir.z * along - dz;
+      clear := g.r + f32(CAM_TRUNK_CLEAR);
+      side2 := px * px + pz * pz;
+      if side2 >= clear * clear { continue; }
+      t_in := along - sqrt((clear * clear - side2) / hd2);
+      if dx * dx + dz * dz < clear * clear { continue; }
+      // over its top the line is clear
+      if r.from.y + r.dir.y * hi(t_in, 0) > ground_at(s, g.x, g.z) + g.top + 0.3 { continue; }
+      room = lo(room, hi(t_in, 0));
+    }
   }
-  return r.far;
+  return room;
 }
 
 // The map view: high over the city's south edge, looking north and down
@@ -2784,7 +3047,7 @@ camera_frame :: (s: [] Everglade, feet: Point, vx: f32, vz: f32, dt: f32) -> Sho
   o := verse_orbit_follow(s[0].orbit, feet, yaw_of(vx, vz), finite(speed) && speed > 0.6, dt);
   room := verse_orbit_room(o, s[0].boxes[0..<0], s[0].boxes[0..<s[0].box_n * 6]);
   room = lo(room, ground_room(s, verse_orbit_ray(o)));
-  room = lo(room, woods_room(verse_orbit_ray(o)));
+  room = lo(room, trunks_room(s, verse_orbit_ray(o)));
   o = verse_orbit_limit(o, room, dt);
   s[0].orbit = o;
   shot := verse_orbit_shot(o);
@@ -3580,6 +3843,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
   nodes := EG_NODE_XZ; links := EG_LINK_AB;
   for t: 0..<g[0].tree_n {
     x := g[0].trees[t * TREE_FLOATS]; z := g[0].trees[t * TREE_FLOATS + 1];
+    if abs(x) > f32(EG_THICKET) || abs(z) > f32(EG_THICKET) { continue; }   // the thicket's row, past the edge
     #assert woods_all_round(x, z, 0.99) && everglade_in_woods(x + 0.7, z + 0.7) && everglade_in_woods(x - 0.7, z - 0.7);
     #assert verse_path_nearest(nodes[..], links[..], x, z).d >= f32(EG_TRAIL_FREE) + 0.7;
     #assert !(x > -70 && x < 70 && z > -62 && z < 66);
@@ -3820,32 +4084,105 @@ moving_frame :: (g: [] Everglade, out: [] f32, u: [] f32, act: int, vz: f32) {
   #assert g[0].water_triangles == 5760 && whole + g[0].water_triangles < 700000;
 }
 
-#test "the camera stays out of the woods: at a clearing's edge it pulls in before the trees" {
+#test "the camera stays out of the trees: among them it pulls in before a trunk" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
-  everglade_hash(g[..], "deep-wood");
-  sp := everglade_spawn(g[..]);
-  for i: 0..<8 {
-    n := everglade_frame(g[..], out[..], u[..], 390, 844, 3, 1.0 / 30.0, false, sp.x, 0, sp.z, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  everglade_start(g[..]);
+  // in the woods west of the road in, facing each way in turn
+  for turn: 0..<4 {
+    g[0].orbit.yaw = f32(turn) * f32(PI) / 2;
+    for i: 0..<6 {
+      n := everglade_frame(g[..], out[..], u[..], 390, 844, 3, 1.0 / 30.0, false, -20, 0, -75, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    }
     eye := v3(u[U_EYE], u[U_EYE + 1], u[U_EYE + 2]);
-    #assert !everglade_in_woods(eye.x, eye.z);
+    for t: 0..<g[0].tree_n {
+      trunk := tree_girth(g[..], g[0].trees[..], t);
+      #assert (eye.x - trunk.x) * (eye.x - trunk.x) + (eye.z - trunk.z) * (eye.z - trunk.z) > trunk.r * trunk.r;
+    }
   }
 }
 
-#test "the woods hold you: a step into them slides along their edge or stops" {
+#test "the woods are open and the world's edge is the thicket: a step stops only at EG_BOUND" {
   g: [1] Everglade;
   everglade_start(g[..]);
-  // Straight out from the south wall, west of the gate: the apron ends at z -63.5.
+  // Straight out from the south wall, west of the gate, into the trees: nothing stops you.
   a := everglade_hold(g[..], -40, -62, -40, -64);
-  #assert a.x == -40 && a.z == -62;
-  b := everglade_hold(g[..], -40, -62, -39, -64);
-  #assert b.x == -39 && b.z == -62;
-  // On the road in and in the apron you walk freely.
-  c := everglade_hold(g[..], 0, -80, 0, -80.2);
-  #assert c.z == -80.2;
-  d := everglade_hold(g[..], 70, 30, 70.1, 30.2);
-  #assert d.x == 70.1 && d.z == 30.2;
+  #assert a.x == -40 && a.z == -64;
+  b := everglade_hold(g[..], -30, -80, -31, -81);
+  #assert b.x == -31 && b.z == -81;
+  // At the edge you slide along it.
+  c := everglade_hold(g[..], 99.9, 10, 100.4, 10.3);
+  #assert c.x == 100 && c.z == 10.3;
+  d := everglade_hold(g[..], -50, -99.9, -50.2, -100.5);
+  #assert d.x == -50.2 && d.z == -100;
+  // The thicket stands all round, just past the edge: from every half metre along it, brush (or,
+  // across the river, rock) reaches within a stride of the bound, and nothing of it stands inside.
+  for side: 0..<4 {
+    for i: 0..<401 {
+      along := -100 + f32(i) * 0.5;
+      bx := ifx side < 2 then along else ifx side == 2 then -f32(EG_BOUND) else f32(EG_BOUND);
+      bz := ifx side >= 2 then along else ifx side == 0 then -f32(EG_BOUND) else f32(EG_BOUND);
+      least := 1000.0f32;
+      for t: side * 2 * THICKET_ROW..<(side + 1) * 2 * THICKET_ROW {
+        br := thicket_brush(t);
+        if br.kind < 0 { continue; }
+        reach := ifx br.kind == 4 then 0.95 * br.size else 1.3 * br.size;
+        least = lo(least, sqrt((br.x - bx) * (br.x - bx) + (br.z - bz) * (br.z - bz)) - reach);
+      }
+      #assert least < 0.6;
+    }
+  }
+  for t: 0..<THICKET_BRUSH {
+    br := thicket_brush(t);
+    #assert abs(br.x) > f32(EG_BOUND) || abs(br.z) > f32(EG_BOUND);
+  }
+}
+
+#test "from the road in past the boulder by it: round the rock and on into the trees" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  everglade_catalog(g[..], CATALOG);
+  // The mossy boulder west of the road below the stables (the owner's screenshot, 2026-10-30): the
+  // undergrowth's Rock_Medium_1 at (-4.76, -75.37). Find it, and its girth.
+  rock := -1;
+  for t: 0..<g[0].small_n {
+    o := t * TREE_FLOATS;
+    if abs(g[0].smalls[o] + 4.76) < 0.05 && abs(g[0].smalls[o + 1] + 75.37) < 0.05 { rock = t; }
+  }
+  #assert rock >= 0;
+  stone := tree_girth(g[..], g[0].smalls[..], rock);
+  #assert stone.r > 1.4 && stone.r < 1.7;
+  // It stands in your way where it is drawn: walking at its middle you stop at its face.
+  face := walk_toward(g[..], v3(0, 0, stone.z), v3(stone.x, 0, stone.z), 400);
+  gap := sqrt((face.x - stone.x) * (face.x - stone.x) + (face.z - stone.z) * (face.z - stone.z));
+  #assert gap > stone.r && gap < stone.r + f32(EG_RADIUS) + 0.05;
+  // From the spawn up the road, then round the pine on its north side (its trunk touches the
+  // rock) and on west and south into the woods behind it.
+  a := walk_toward(g[..], everglade_spawn(g[..]), v3(0, 0, -72), 2000);
+  #assert abs(a.x) < 0.01 && abs(a.z + 72) < 0.01;
+  b := walk_toward(g[..], a, v3(-5.2, 0, -72.2), 2000);
+  b = walk_toward(g[..], b, v3(-8, 0, -72.6), 2000);
+  #assert abs(b.x + 8) < 0.01 && abs(b.z + 72.6) < 0.01;
+  c := walk_toward(g[..], b, v3(-12, 0, -78), 2000);
+  #assert abs(c.x + 12) < 0.01 && abs(c.z + 78) < 0.01;
+  // and on to the woods' far corner, the thicket at the edge
+  e := walk_toward(g[..], c, v3(-99.5, 0, -99.5), 30000);
+  #assert abs(e.x + 99.5) < 0.01 && abs(e.z + 99.5) < 0.01;
+}
+
+#test "the reach check: every open spot inside the edge is one you walk to" {
+  g: [1] Everglade;
+  everglade_start(g[..]);
+  everglade_catalog(g[..], CATALOG);
+  grid: [EG_REACH_N * EG_REACH_N] u8;
+  queue: [EG_REACH_N * EG_REACH_N] u32;
+  at: [16] f32;
+  left := everglade_unreached(g[..], grid[..], queue[..], at[..]);
+  #assert left == 0;
+  // the woods are reached, and the trails' ends, the ruins and the crypt beside them
+  #assert reached(grid[..], -40, -64) && reached(grid[..], -70, 70) && reached(grid[..], 60, -80) && reached(grid[..], -95, -95);
+  #assert reached(grid[..], 22, 95) && reached(grid[..], 66, 89.5) && reached(grid[..], 96, -16) && reached(grid[..], 95, 40);
 }
 
 #test "M lifts the camera over the city and back; you stand still meanwhile" {

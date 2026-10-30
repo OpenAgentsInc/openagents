@@ -3,7 +3,7 @@
 // links it) and verse/grid.coax reads a phone's thumbs. Once a frame it
 // passes values between them in order: the page's controls, the player's
 // step among the city's walls, then the page's frame with where you
-// ended up, after the city keeps you out of the woods (everglade_hold).
+// ended up, after the city keeps you inside the world's edge (everglade_hold).
 // The pack's catalog (asset 0) goes to the page. A question the page writes
 // for a character goes to the character chat (/api/playtest/npc/ask) with the
 // browser's player key, so the character remembers that player; a browser
@@ -66,12 +66,13 @@ static coax_v_t_River rv(void) { return (coax_v_t_River){&river, 1}; }
 // The walls' round bodies, then each rowboat's hull as a capsule along its keel (river.coax W6): so
 // you swim and wade round a hull, not through it. 7 numbers each, as the page's bodies.
 #define BOAT_BODIES 3
-static float hull_bodies[(16 + BOAT_BODIES) * 7];
+#define CITY_BODIES 48   /* the city's: the fountain, the piles, the Walls of Stone, the trunks and rocks round you */
+static float hull_bodies[(CITY_BODIES + BOAT_BODIES) * 7];
 static int64_t with_hulls(coax_t_Everglade *g, int64_t bodies) {
-  int64_t n = bodies < 16 ? bodies : 16;
+  int64_t n = bodies < CITY_BODIES ? bodies : CITY_BODIES;
   memcpy(hull_bodies, g->bodies.e, (size_t)n * 7 * sizeof(float));
   if (river.aboard >= 0) return n;
-  for (int64_t i = 0; i < g->float_n && n < 16 + BOAT_BODIES; i++) {
+  for (int64_t i = 0; i < g->float_n && n < CITY_BODIES + BOAT_BODIES; i++) {
     const float *f = g->floats.e + i * 8;
     if (f[7] < 1.5f) continue;
     float ax = __builtin_sinf(f[3]), az = __builtin_cosf(f[3]), half = 1.6f - 0.55f;
@@ -138,6 +139,12 @@ EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return 
 // golden mode (goldens.ts): the frame runs still, so the clock holds at noon and the river and leaves hold one moment
 static bool golden;
 EXPORT("coaxial_golden") void coaxial_golden(uint32_t on) { golden = on != 0; }
+// Where you stand, for a headless walk (globalThis.coaxial.probe()): x and z to a tenth of a metre,
+// as (x + 500) * 10 * 10000 + (z + 500) * 10.
+EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) {
+  (void)state;
+  return (int32_t)(player.pos.x * 10 + 5000.5f) * 10000 + (int32_t)(player.pos.z * 10 + 5000.5f);
+}
 
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
@@ -182,7 +189,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   // on the bridge's deck its rails are in your way; off it (in the river under it) its piles are
   bool deck = everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2;
   int64_t walls = everglade_walls_on(at(state), deck);
-  int64_t bodies = with_hulls(g, everglade_bodies_on(at(state), deck));
+  int64_t bodies = with_hulls(g, everglade_bodies_near(at(state), deck, player.pos.x, player.pos.z));
   coax_t_Vec3 was = player.pos;
   if (river.aboard >= 0) {
     // in a rowboat: W and S row, A and D turn (a thumb's stick too); you sit where it takes you

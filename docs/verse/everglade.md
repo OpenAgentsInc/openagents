@@ -382,8 +382,18 @@ Past a 6 m apron of open grass round the palisade, everything is woods
 their middle, and six clearings where they end: the stables, where you
 arrive on the road in, the deep wood's waystone, the ruins, the crypt and
 the river's far bank, and the river's glade either side of the bridge
-(an ellipse 14 m across and 52 m along it). You can't walk into the woods and the camera never
-backs into them, so the only ways out of the city are the trails.
+(an ellipse 14 m across and 52 m along it). The woods are open: you walk
+among the trees, and each trunk and rock near you stands in your way as a
+round body as wide as its mesh (`forest_bodies` in `everglade.coax`), which
+the camera also keeps clear of. Anything drawn that looks reachable is: no
+invisible wall stands short of visible geometry (the reach check,
+`everglade_unreached`, fills from the spawn over the whole map and its test
+fails on any patch of open ground left over).
+
+- **The edge:** 100 m from the middle (`EG_BOUND`) a thicket runs all the
+  way round, two rows of `Bush_Common_Flowers` whose leaves reach the bound
+  and a row of close-set trees behind them, with rocks across the river
+  where it runs out (`plant_thicket`). You stop at the brush.
 
 - **Trees:** one every 4.2 m, jittered, wherever the woods are, with a
   metre clear of open ground round each trunk and none in the river (about

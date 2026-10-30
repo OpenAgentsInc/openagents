@@ -21,6 +21,10 @@ EG_CELLS :: 104;        // the ground's cells a side
 EG_CELL :: 2.0;         // metres each
 EG_EDGE :: -104.0;      // its west and south edge
 EG_BOUND :: 100.0;      // metres from the middle you may walk
+// The woods are open: you walk among the trees, round their trunks and rocks, out to EG_BOUND
+// (the ruins' pillars stand at 98.5). Past it a thicket stands (everglade.coax plant_thicket):
+// dense brush backed by close-set trees, so the world's end shows before you reach it.
+EG_THICKET :: 101.3;    // the thicket's front row, where its brush's middles stand
 EG_RIM_FROM :: 80.0;    // the forest's hills rise from here
 EG_RIM :: 0.004;
 EG_PATH_HALF :: 1.5;    // a street's half width: three metres across
@@ -504,10 +508,12 @@ inside_walls :: (box: [] f32, i: int) -> bool {
   return box[k] > -63.6 && box[k + 2] < 63.6 && box[k + 1] > -55.6 && box[k + 3] < 59.6;
 }
 
-// ---- the woods: past a clear apron round the palisade the forest stands
-// too thick to walk into, but for the trails (EG_TRAIL_FREE either side of
-// a link's middle: its 3 m and a verge) and the clearings where they end.
-// The realm plants its trees only in the woods and keeps you out of them.
+// ---- the woods: past a clear apron round the palisade the forest stands,
+// but for the trails (EG_TRAIL_FREE either side of a link's middle: its 3 m
+// and a verge) and the clearings where they end. The realm plants its trees
+// only in the woods; you walk among them (round their trunks: everglade.coax
+// forest_bodies), while the city's people and an admin's placings keep to
+// the open ground (the reach grid below).
 EG_APRON :: 6.0;        // metres of open grass outside the palisade
 EG_TRAIL_FREE :: 3.0;
 EG_CLEARINGS :: 6;
@@ -713,7 +719,7 @@ reached :: (grid: [] u8, x: f32, z: f32) -> bool {
   #assert reached(grid[..], -88, 22) && reached(grid[..], 22, 95) && reached(grid[..], 66, 89.5) && reached(grid[..], 96, -16);
 }
 
-#test "the woods keep you to the trails: past the apron only a trail or a clearing is open" {
+#test "the open ground: past the apron only a trail or a clearing is, where the people walk and an admin places" {
   grid: [EG_REACH_N * EG_REACH_N] u8;
   queue: [EG_REACH_N * EG_REACH_N] u32;
   count := everglade_reach(grid[..], queue[..]);
