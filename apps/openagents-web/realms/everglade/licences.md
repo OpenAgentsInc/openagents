@@ -149,4 +149,7 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Gust of Wind | `lorc/wind-slap.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Thunderwave | `lorc/sonic-boom.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Wall of Stone | `delapouite/stone-wall.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Telekinesis | `lorc/juggler.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Black Tentacles | `delapouite/tentacles-barrier.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
+| Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

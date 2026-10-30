@@ -37,11 +37,28 @@
 //                      a failure is pushed 10 feet away; the loose things wholly in it and the props it
 //                      frees are pushed 10 feet (5.5 m/s), the floats with them, and the boom is heard
 //                      300 feet off.
-//   ! WALL OF STONE    (Shift+1, the bar's second row) Another pair of granite panels, each 10 feet
-//                      square and 6 inches thick, side by side across your way 4 m ahead on level
-//                      ground, for ten minutes (the oldest of 4 goes): they stop you as a wall does,
-//                      and the debris, the floats and rowboats and the townsfolk too (the watch's
-//                      chase and walk back go round them), and a name isn't seen through them.
+//
+// The second row, on Shift (everglade-spells.coax sp_key_place, the old Grove's rows):
+//
+//  S1 WALL OF STONE    Another pair of granite panels, each 10 feet square and 6 inches thick, side
+//                      by side across your way 4 m ahead on level ground, for ten minutes (the oldest
+//                      of 4 goes): they stop you as a wall does, and the debris and townsfolk too,
+//                      and a name isn't seen through them.
+//  S2 TELEKINESIS      (old verse-world telekinesis.rs) Pick it, then click a loose thing, one of the
+//                      town's unsecured props or a person within 60 feet you can see: a person makes a
+//                      Strength save against DC 15 or is Restrained and lifted; the thing rises 20 feet
+//                      in your grip (a 1 Hz critically damped hold, so it still strikes what it meets).
+//                      Each later click moves it up to 30 feet toward where you point, within 60 feet
+//                      of you (a person saves again each time); Shift+2 or Esc lets go, and what was
+//                      held keeps the grip's motion: a throw. A person held lets go of after two
+//                      rounds without a move. Concentration, ten minutes.
+//  S3 BLACK TENTACLES  (old verse-world black_tentacles.rs) Pick it, then click the ground within 90
+//                      feet: nine writhing tentacles 2.4 m long on a 3 by 3 grid fill a 20-foot square
+//                      for a minute. Each person in it as it rises, coming in, or ending a round (6 s)
+//                      there makes a Strength save against DC 15: 3d6 bludgeoning and Restrained until
+//                      the spell ends on a failure; a Restrained one tries to break free (DC 15) each
+//                      round. The tentacles wrap who they hold and seize the loose things and the
+//                      unsecured props in reach, holding them up. Shift+3 while they stand ends them.
 //
 // No cooldown, as the old bar. They draw as the old engine drew them: Reverse Gravity only its
 // particles (motes.rs: dust, violet sparks, pebbles and leaves falling upward and gathering under its
@@ -49,8 +66,14 @@
 // at its base and its top); a Wind Wall its grounded outline and the updraft's streaks rising through
 // it (wind_wall.rs wall_lines), in the old guide lines' cyan.
 
-AB_N :: 7;                 // abilities on the bar, after the four aimed spells
+AB_N :: 9;                 // abilities on the bar, after the four aimed spells
 AB_REVERSE :: 0; AB_WIND :: 1; AB_LEVITATE :: 2; AB_FEATHER :: 3; AB_GUST :: 4; AB_THUNDER :: 5; AB_STONE :: 6;
+AB_TK :: 7; AB_TENTACLES :: 8;
+// Each one's place on the bar, row * 12 + column (everglade-spells.coax sp_place): 5 to 0, then the
+// second row's Shift+1 on.
+AB_PLACE :: [AB_N] int.[4, 5, 6, 7, 8, 9, 12, 13, 14];
+// The ones you point with (picked, then a click or a tap casts them where it points).
+ab_aimed :: (k: int) -> bool { return k == AB_TK || k == AB_TENTACLES; }
 AB_FOOT :: 0.3048;
 // Reverse Gravity (SRD 5.2.1, level 7): a 50-foot-radius, 100-foot-high cylinder, a minute.
 AB_RG_R :: 15.24; AB_RG_H :: 30.48; AB_RG_LIFE :: 60.0;
@@ -78,6 +101,18 @@ AB_HEAR_GUST :: 20.0;
 // (everglade.coax bodies, verse/player.coax capsules) at knee and head height.
 AB_ST_PANEL :: 3.048; AB_ST_THICK :: 0.1524; AB_ST_LIFE :: 600.0; AB_STONES :: 4; AB_ST_BODIES :: 2;
 AB_TW_CUBE :: 4.572; AB_TW_PUSH :: 3.048; AB_TW_SPEED :: 5.5; AB_HEAR_TW :: 91.44;
+// Telekinesis (level 5): 60 feet, 30 feet a move, the hand at 6 m/s, ten minutes; a person held lets
+// go of after two rounds with no move (Restrained until the end of your next turn).
+AB_TK_RANGE :: 18.288; AB_TK_MOVE :: 9.144; AB_TK_LIFT :: 6.096; AB_TK_HAND :: 6.0; AB_TK_LIFE :: 600.0; AB_TK_HOLD :: 12.0;
+AB_HEAR_TK :: 20.0;
+AB_TK_NONE :: 0; AB_TK_BODY :: 1; AB_TK_PERSON :: 2;
+// Black Tentacles (level 4): 90 feet, a 20-foot square, a minute, 3d6; nine tentacles of eight
+// segments, 2.4 m long, tapering 0.1 m to 0.045 m, standing 1.8 m tall at rest, reaching 2.6 m.
+AB_BT_RANGE :: 27.432; AB_BT_SIDE :: 6.096; AB_BT_LIFE :: 60.0; AB_BT_ROUND :: 6.0;
+AB_BT_N :: 9; AB_BT_SEG :: 8; AB_BT_LEN :: 2.4; AB_BT_REACH :: 2.6; AB_BT_IDLE :: 1.8;
+AB_BT_BASE_R :: 0.1; AB_BT_TIP_R :: 0.045; AB_BT_TIP_SPEED :: 5.0;
+AB_HEAR_BT :: 30.0;
+AB_BT_FREE :: -1; AB_BT_BODY :: 1000;   // a tentacle's hold: none, a person (their index), a body (1000 + it)
 
 AbWall :: struct { live: bool; ax: f32; az: f32; bx: f32; bz: f32; base: f32; t: f32; seed: f32; }   // a Wind Wall's, or a Wall of Stone's
 Abilities :: struct {
@@ -94,6 +129,14 @@ Abilities :: struct {
   gust_on: bool; gust_t: f32; gust_at: Point; gust_dir: Point; gust_in: [WATCH_ACTORS] bool; gust_next: [WATCH_ACTORS] f32;
   tw_t: f32; tw_at: Point; tw_dir: Point;   // the last Thunderwave: since when, from where, which way
   stones: [AB_STONES] AbWall;
+  // Telekinesis: what it holds (AB_TK_*), the body or person, the hand and where it goes, where this
+  // move began, how long it has held, since the last move
+  tk_kind: int; tk_body: int; tk_who: int; tk_hand: Point; tk_goal: Point; tk_from: Point; tk_t: f32; tk_moved: f32;
+  // Black Tentacles: where (the square's middle on the ground), how long; each tentacle's joints
+  // (root first) and tip goal and what it holds; who is Restrained and where, each one's next save
+  bt_on: bool; bt_at: Point; bt_t: f32;
+  bt_joint: [AB_BT_N * (AB_BT_SEG + 1)] Point; bt_tip: [AB_BT_N] Point; bt_hold: [AB_BT_N] int;
+  bt_held: [WATCH_ACTORS] bool; bt_x: [WATCH_ACTORS] f32; bt_z: [WATCH_ACTORS] f32; bt_next: [WATCH_ACTORS] f32;
   st_px: [WATCH_ACTORS] f32; st_pz: [WATCH_ACTORS] f32;   // where each person was last frame (the panels stop them)
 }
 AB_FIELD_FLOATS :: 10;
@@ -107,6 +150,8 @@ ab_start :: (s: [] Everglade) {
   for i: 0..<WATCH_ACTORS { a[0].feather[i] = false; a[0].gust_in[i] = false; a[0].gust_next[i] = 0; }
   for k: 0..<AB_WALLS { a[0].walls[k].live = false; }
   for k: 0..<AB_STONES { a[0].stones[k].live = false; }
+  a[0].tk_kind = AB_TK_NONE; a[0].bt_on = false;
+  for i: 0..<WATCH_ACTORS { a[0].bt_held[i] = false; a[0].bt_next[i] = 0; }
   for i: 0..<WATCH_ACTORS { a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].up[i] = false; a[0].held[i] = false; a[0].saved[i] = false; }
 }
 // Whether slot `k` (an ability's) shows as on: Reverse Gravity holding, a Wind Wall standing.
@@ -119,14 +164,25 @@ ab_active :: (s: [] Everglade, k: int) -> bool {
   if k == AB_GUST { return a[0].gust_on; }
   if k == AB_THUNDER { return a[0].tw_t < 0.4; }
   if k == AB_STONE { for q: 0..<AB_STONES { if a[0].stones[q].live { return true; } } }
+  if k == AB_TK { return a[0].tk_kind != AB_TK_NONE; }
+  if k == AB_TENTACLES { return a[0].bt_on; }
   return false;
 }
 ab_forward :: (s: [] Everglade) -> Point { return v3(sin(s[0].face), 0, cos(s[0].face)); }
 // Your feet in the world (the page's feet are over the floor you walk on).
 ab_you :: (s: [] Everglade) -> Point { f := s[0].feet; return v3(f.x, f.y + walk_at(s, f.x, f.z), f.z); }
 
-// A press on ability k's slot (its key, a click or a tap).
+// A press on ability k's slot (its key, a click or a tap). One you point with is picked (again puts
+// it away); Telekinesis holding lets go, Black Tentacles standing end.
 ab_press :: (s: [] Everglade, k: int) {
+  a := ab_of(s);
+  b := SP_SLOTS + k;
+  if k == AB_TK && a[0].tk_kind != AB_TK_NONE {
+    if s[0].sp.armed == b { ab_tk_release(s); sp_say(s, "TELEKINESIS ENDS", -1, ""); s[0].sp.armed = -1; } else { s[0].sp.armed = b; }
+    return;
+  }
+  if k == AB_TENTACLES && a[0].bt_on { ab_bt_end(s); sp_say(s, "BLACK TENTACLES END", -1, ""); return; }
+  if ab_aimed(k) { s[0].sp.armed = ifx s[0].sp.armed == b then -1 else b; return; }
   s[0].sp.armed = -1;
   if k == AB_REVERSE { ab_reverse(s); return; }
   if k == AB_WIND { ab_wind(s); return; }
@@ -136,35 +192,43 @@ ab_press :: (s: [] Everglade, k: int) {
   if k == AB_THUNDER { ab_thunder(s); return; }
   if k == AB_STONE { ab_stone(s); return; }
 }
-// The abilities' keys (everglade-spells.coax spells_key and spells_key_up): 5 to 0 press their slot
-// once a hold (Levitate rises while 7 is held), X sinks while levitating.
-ab_key :: (s: [] Everglade, key: int) -> bool {
+// A click or a tap with ability k picked, where the pointer points (everglade-spells.coax sp_cast).
+ab_cast :: (s: [] Everglade, k: int) {
+  if k == AB_TK { ab_tk_click(s); return; }
+  if k == AB_TENTACLES { ab_bt_cast(s); return; }
+}
+// Esc with an ability picked: Telekinesis lets go.
+ab_cancel :: (s: [] Everglade) {
   a := ab_of(s);
-  k := ab_slot_of(key);
-  if k >= 0 {
-    if !a[0].keys[k] { a[0].keys[k] = true; ab_press(s, k); }
-    return true;
-  }
+  if s[0].sp.armed == SP_SLOTS + AB_TK && a[0].tk_kind != AB_TK_NONE { ab_tk_release(s); sp_say(s, "TELEKINESIS ENDS", -1, ""); }
+}
+// Ability k's key down (everglade-spells.coax spells_key): pressed once a hold (Levitate rises while
+// 7 is held).
+ab_key :: (s: [] Everglade, k: int) {
+  a := ab_of(s);
+  if !a[0].keys[k] { a[0].keys[k] = true; ab_press(s, k); }
+}
+// Keys of their own: X sinks while levitating.
+ab_key_other :: (s: [] Everglade, key: int) -> bool {
+  a := ab_of(s);
   if (key == 'x' || key == 'X') && a[0].lev_on { a[0].lev_sink = true; a[0].lev_up = false; return true; }
   return false;
 }
-ab_key_up :: (s: [] Everglade, key: int) -> bool {
+// A key in column `col` (-1 none) let go: every ability in that column is up, whichever row its
+// press was in (a Shift let go first changes the key's character, not its column).
+ab_key_up :: (s: [] Everglade, col: int, key: int) -> bool {
   a := ab_of(s);
-  k := ab_slot_of(key);
-  if k >= 0 {
+  any := false;
+  for k: 0..<AB_N {
+    if col < 0 || AB_PLACE[k] % HB_COLS != col { continue; }
+    any = true;
+    if !a[0].keys[k] { continue; }
     a[0].keys[k] = false;
     if k == AB_LEVITATE && a[0].lev_up { a[0].lev_up = false; a[0].lev_hold = ab_you(s).y; }
-    return true;
   }
+  if any { return true; }
   if (key == 'x' || key == 'X') && a[0].lev_sink { a[0].lev_sink = false; a[0].lev_hold = ab_you(s).y; return true; }
   return false;
-}
-// Ability k's key: 5 to 9, then 0, then the second row's Shift+1.
-ab_slot_of :: (key: int) -> int {
-  if key == '0' { return ifx AB_N > 5 then 5 else -1; }
-  if key == '!' { return ifx AB_N > 6 then 6 else -1; }
-  k := key - ('1' + SP_SLOTS);
-  return ifx k >= 0 && k < AB_N && k < 5 then k else -1;
 }
 
 // ---- Reverse Gravity
@@ -448,7 +512,7 @@ ab_stone_folk :: (s: [] Everglade) {
     pl := person_place(s, i);
     act := w[0].actors[i..<i + 1];
     for k: 0..<n {
-      if watch_fence_gap(w, k, pl.x, pl.z) >= f32(EG_RADIUS) - 0.02 || act[0].mode == WM_DEAD { continue; }
+      if watch_fence_gap(w, k, pl.x, pl.z) >= f32(EG_RADIUS) - 0.02 || act[0].mode == WM_DEAD || ab_tk_holds(a, i) || a[0].bt_held[i] { continue; }
       if act[0].mode == WM_CALM && watch_fence_gap(w, k, a[0].st_px[i], a[0].st_pz[i]) >= f32(EG_RADIUS) - 0.02 {
         act[0].mode = WM_BACK; act[0].t = 0; act[0].swing = -1;
         act[0].x = a[0].st_px[i]; act[0].z = a[0].st_pz[i];
@@ -481,6 +545,446 @@ ab_stone_hides :: (s: [] Everglade, p: Point, q2: Point) -> bool {
     if ab_stone_off(st, x, z).along && ab_stone_tall(st, y) { return true; }
   }
   return false;
+}
+
+// ---- Telekinesis
+
+// The pointer's ray (as sp_aim's: the middle of the view until the pointer is seen).
+ab_ray :: (s: [] Everglade) -> OrbitRay {
+  x := s[0].sp.px; y := s[0].sp.py;
+  if !s[0].sp.seen { x = s[0].width / 2; y = s[0].height * 0.55; }
+  return sp_ray(s, x, y);
+}
+// Your chest, where the spells you point with come from.
+ab_chest :: (s: [] Everglade) -> Point { return add(ab_you(s), v3(0, 1.3, 0)); }
+// Person i's middle as drawn (off their feet as the spells have them).
+ab_person_at :: (s: [] Everglade, i: int) -> Point {
+  pl := person_place(s, i);
+  return v3(pl.x, folk_feet(s, pl.x, pl.z) + ab_air(s, i) + 0.9, pl.z);
+}
+ab_person_ok :: (s: [] Everglade, i: int) -> bool {
+  if !watch_on(s) { return false; }
+  w := watch_w(s);
+  if !watch_here(w, i) { return false; }
+  act := w[0].actors[i];
+  return act.mode != WM_DEAD && !(act.mode == WM_CALM && act.home_in);
+}
+AbPick :: struct { kind: int; idx: int; t: f32; }   // kind: 0 nothing, 1 a body, 2 a person, 3 a standing prop
+// What the pointer's ray meets first that Telekinesis can take: a person, a loose body or one of the
+// town's unsecured props; a wall or the ground before it hides it (nothing).
+ab_tk_pick :: (s: [] Everglade) -> AbPick {
+  w := sp_dm(s);
+  r := ab_ray(s);
+  pick := AbPick.{kind = 0, idx = -1, t = verse_terrain_ray(everglade_ground(), s[0].heights[..], r.from, r.dir, 400)};
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING { continue; }
+    h := sp_ray_box(r.from, r.dir, p);
+    if !h.ok || h.t <= 0.3 || h.t >= pick.t { continue; }
+    pick = AbPick.{kind = ifx ab_prop(p.mesh) then 3 else 0, idx = i, t = h.t};
+  }
+  for b: 0..<DEMO_BODIES {
+    if w[0].meta[b].kind == 0 { continue; }
+    c := pd3(demo_body(w, b).pos);
+    along := dot(sub(c, r.from), r.dir);
+    rad := clamp(f32(w[0].meta[b].radius), 0.25, 1.5);
+    if along <= 0.3 || along - rad >= pick.t { continue; }
+    if length(sub(add(r.from, times(r.dir, along)), c)) > rad { continue; }
+    pick = AbPick.{kind = 1, idx = b, t = hi(along - rad, 0.31)};
+  }
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) { continue; }
+    c := ab_person_at(s, i);
+    along := dot(sub(c, r.from), r.dir);
+    if along <= 0.3 || along - 0.4 >= pick.t { continue; }
+    if length(sub(add(r.from, times(r.dir, along)), c)) > 0.6 { continue; }
+    pick = AbPick.{kind = 2, idx = i, t = hi(along - 0.4, 0.31)};
+  }
+  if pick.kind == 0 { pick.idx = -1; }
+  return pick;
+}
+// Where what Telekinesis holds is now.
+ab_tk_at :: (s: [] Everglade) -> Point {
+  a := ab_of(s);
+  if a[0].tk_kind == AB_TK_BODY { return pd3(demo_body(sp_dm(s), a[0].tk_body).pos); }
+  if a[0].tk_kind == AB_TK_PERSON { return ab_person_at(s, a[0].tk_who); }
+  return a[0].tk_hand;
+}
+// A person's Strength save against the spells' DC (the guards' +1, the rest's +0).
+ab_str_save :: (s: [] Everglade, i: int) -> bool { return srd_save(s[0].sp.dice[..], ifx watch_is_guard(i) then 1 else 0, AB_DC).success; }
+// A click with Telekinesis picked: take hold of what the pointer shows, or move what is held toward
+// where it points.
+ab_tk_click :: (s: [] Everglade) {
+  a := ab_of(s);
+  you := ab_chest(s);
+  if a[0].tk_kind != AB_TK_NONE {
+    if !s[0].sp.aim_ok { sp_say(s, "POINT WHERE TO MOVE IT", -1, ""); return; }
+    // up to 30 feet from where it is, within 60 feet of you, held over what it points at
+    at := ab_tk_at(s);
+    to := add(s[0].sp.aim, add(times(s[0].sp.aim_n, 0.8), v3(0, 0.6, 0)));
+    d := sub(to, at);
+    if length(d) > f32(AB_TK_MOVE) { to = add(at, times(unit_or(d, v3(0, 1, 0)), f32(AB_TK_MOVE))); }
+    e := sub(to, you);
+    if length(e) > f32(AB_TK_RANGE) { to = add(you, times(unit_or(e, v3(0, 1, 0)), f32(AB_TK_RANGE))); }
+    if a[0].tk_kind == AB_TK_PERSON {
+      // each move is a new grip on them: a save lets them go
+      i := a[0].tk_who;
+      if ab_str_save(s, i) { ab_tk_release(s); sp_say(s, "TELEKINESIS · THEY BREAK FREE", -1, ""); s[0].sp.armed = -1; return; }
+      _ := watch_crime(watch_w(s), at, f32(AB_HEAR_TK), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+    }
+    a[0].tk_goal = to; a[0].tk_from = at; a[0].tk_moved = 0;
+    sp_say(s, "TELEKINESIS", -1, "");
+    return;
+  }
+  ab_tk_take(s, ab_tk_pick(s));
+}
+// Telekinesis takes hold of what was picked (a person saves first), and lifts it.
+ab_tk_take :: (s: [] Everglade, pick: AbPick) {
+  a := ab_of(s);
+  you := ab_chest(s);
+  if pick.kind == 0 { sp_say(s, "NOTHING THERE TELEKINESIS CAN MOVE", -1, ""); return; }
+  w := sp_dm(s);
+  at := v3(0, 0, 0);
+  if pick.kind == 1 { at = pd3(demo_body(w, pick.idx).pos); }
+  else if pick.kind == 2 { at = ab_person_at(s, pick.idx); }
+  else { p := w[0].pieces[pick.idx]; at = v3(p.cx, p.cy, p.cz); }
+  if length(sub(at, you)) > f32(AB_TK_RANGE) { sp_say(s, "TOO FAR · 60 FEET AT MOST", -1, ""); return; }
+  crime := false;
+  if pick.kind == 2 {
+    i := pick.idx;
+    if ab_str_save(s, i) { sp_say(s, "TELEKINESIS · THEY SAVE", -1, ""); s[0].sp.armed = -1; return; }
+    ww := watch_w(s);
+    if ww[0].actors[i].mode != WM_DOWN { watch_harm(ww, i, 0, ab_you(s)); }
+    if !a[0].up[i] { a[0].air[i] = 0; a[0].air_v[i] = 0; a[0].air_top[i] = 0; }
+    a[0].up[i] = true; a[0].feather[i] = false;
+    a[0].tk_kind = AB_TK_PERSON; a[0].tk_who = i;
+    crime = true;
+  } else {
+    b := pick.idx;
+    if pick.kind == 3 {
+      if demo_loose(w) >= w[0].loose_cap { sp_say(s, "TELEKINESIS CAN'T TAKE MORE LOOSE", -1, ""); return; }
+      demo_loosen(w, pick.idx);
+      if w[0].pieces[pick.idx].state != DP_LOOSE { return; }
+      b = w[0].pieces[pick.idx].body;
+      s[0].sp.walls_dirty = true;
+      crime = true;
+    }
+    a[0].tk_kind = AB_TK_BODY; a[0].tk_body = b;
+  }
+  a[0].tk_t = 0; a[0].tk_moved = 0; a[0].tk_hand = at; a[0].tk_from = at;
+  // it rises 20 feet in your grip, within your reach
+  to := add(at, v3(0, f32(AB_TK_LIFT), 0));
+  e := sub(to, you);
+  if length(e) > f32(AB_TK_RANGE) { to = add(you, times(unit_or(e, v3(0, 1, 0)), f32(AB_TK_RANGE))); }
+  a[0].tk_goal = to;
+  if crime && watch_on(s) { _ := watch_crime(watch_w(s), at, f32(AB_HEAR_TK), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  sp_add_shock(s, at, 0.9, 0.4, AB_TK_RGB);
+  sp_say(s, ifx pick.kind == 2 then "TELEKINESIS · RESTRAINED AND LIFTED" else "TELEKINESIS", -1, "");
+}
+AB_TK_RGB :: Point.{x = 0.76, y = 0.62, z = 1.0};   // the old bar's transmutation violet
+// Lets go: a body keeps the grip's motion (a throw), a person falls from where they were held.
+ab_tk_release :: (s: [] Everglade) {
+  a := ab_of(s);
+  if a[0].tk_kind == AB_TK_BODY {
+    w := sp_dm(s);
+    w[0].meta[a[0].tk_body].rest_time = 0;
+  }
+  a[0].tk_kind = AB_TK_NONE;
+}
+// Each frame: the hand goes on toward its goal at 6 m/s; a body is held to it by the demolition's
+// grip (DF_HOLD, ab_fields), a person carried with it; ten minutes, out of reach, or a person not
+// moved for two rounds lets go.
+ab_tk_frame :: (s: [] Everglade, dt: f32) {
+  a := ab_of(s);
+  if a[0].tk_kind == AB_TK_NONE { return; }
+  a[0].tk_t += dt; a[0].tk_moved += dt;
+  w := sp_dm(s);
+  if a[0].tk_t >= f32(AB_TK_LIFE) { ab_tk_release(s); return; }
+  if a[0].tk_kind == AB_TK_BODY && w[0].meta[a[0].tk_body].kind == 0 { a[0].tk_kind = AB_TK_NONE; return; }
+  if a[0].tk_kind == AB_TK_PERSON && (!ab_person_ok(s, a[0].tk_who) || a[0].tk_moved >= f32(AB_TK_HOLD)) { ab_tk_release(s); return; }
+  d := sub(a[0].tk_goal, a[0].tk_hand);
+  l := length(d);
+  step := f32(AB_TK_HAND) * dt;
+  a[0].tk_hand = ifx l <= step then a[0].tk_goal else add(a[0].tk_hand, times(d, step / l));
+  if length(sub(a[0].tk_hand, ab_chest(s))) > f32(AB_TK_RANGE) + 3 { ab_tk_release(s); return; }
+  h := a[0].tk_hand;
+  if a[0].tk_kind == AB_TK_BODY {
+    b := a[0].tk_body;
+    w[0].state[b * DB_FLOATS + 23] = 0.0; w[0].state[b * DB_FLOATS + 24] = 0.0; w[0].meta[b].rest_time = 0;
+  } else {
+    i := a[0].tk_who;
+    ww := watch_w(s);
+    act := ww[0].actors[i..<i + 1];
+    k := lo(1, dt * 6);
+    act[0].x += (h.x - act[0].x) * k; act[0].z += (h.z - act[0].z) * k;
+    feet := folk_feet(s, act[0].x, act[0].z);
+    y := hi(h.y - 0.9 - feet, 0);
+    a[0].air_v[i] = (y - a[0].air[i]) / hi(dt, 0.001);
+    a[0].air[i] = hi(y, 0.02); a[0].air_top[i] = hi(a[0].air_top[i], y);
+    if act[0].mode == WM_DOWN { act[0].t = lo(act[0].t, 0.25); }
+  }
+  // the grip's glimmer: violet motes round what it holds
+  at := ab_tk_at(s);
+  rate := ifx phone(s) then 18.0f32 else 36.0f32;
+  count := cast(int) (a[0].tk_t * rate) - cast(int) ((a[0].tk_t - dt) * rate);
+  for q: 0..<count {
+    dir := sp_spray(s, 0.3);
+    sp_add_spark(s, add(at, times(dir, 0.45 + 0.35 * sp_rand(s))), add(times(dir, 0.3), v3(0, 0.4, 0)), 0.5 + 0.4 * sp_rand(s), 0.03, mix(AB_TK_RGB, v3(1, 1, 1), 0.4 * sp_rand(s)), -0.6);
+  }
+}
+ab_tk_holds :: (a: [] Abilities, i: int) -> bool { return a[0].tk_kind == AB_TK_PERSON && a[0].tk_who == i; }
+
+// ---- Black Tentacles
+
+// Tentacle j's root: the 3 by 3 grid across the square.
+ab_bt_root :: (s: [] Everglade, j: int) -> Point {
+  a := ab_of(s);
+  step := f32(AB_BT_SIDE) / 3;
+  x := a[0].bt_at.x + (f32(j % 3) - 1) * step; z := a[0].bt_at.z + (f32(j / 3) - 1) * step;
+  return v3(x, ground_at(s, x, z) + f32(AB_BT_BASE_R) + 0.02, z);
+}
+ab_in_square :: (a: [] Abilities, x: f32, z: f32) -> bool {
+  h := f32(AB_BT_SIDE) * 0.5;
+  return abs(x - a[0].bt_at.x) <= h && abs(z - a[0].bt_at.z) <= h;
+}
+ab_bt_cast :: (s: [] Everglade) {
+  a := ab_of(s);
+  if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  if flat_gap(at, ab_you(s)) > f32(AB_BT_RANGE) { sp_say(s, "TOO FAR · 90 FEET AT MOST", -1, ""); return; }
+  if a[0].bt_on { ab_bt_end(s); }
+  s[0].sp.armed = -1;
+  a[0].bt_on = true; a[0].bt_t = 0; a[0].bt_at = v3(at.x, ground_at(s, at.x, at.z), at.z);
+  for j: 0..<AB_BT_N {
+    r := ab_bt_root(s, j);
+    for q: 0..<AB_BT_SEG + 1 { a[0].bt_joint[j * (AB_BT_SEG + 1) + q] = add(r, v3(0, 0.01 * f32(q), 0)); }
+    a[0].bt_tip[j] = r; a[0].bt_hold[j] = AB_BT_FREE;
+  }
+  for i: 0..<WATCH_ACTORS { a[0].bt_held[i] = false; a[0].bt_next[i] = 0; }
+  // the ground churns where they burst up
+  for j: 0..<AB_BT_N { sp_add_puff(s, add(ab_bt_root(s, j), v3(0, 0.2, 0)), v3(0, 0.6, 0), 0.8, 1.6, 0.6); }
+  n := ab_bt_saves(s);
+  if n > 0 { sp_say(s, "BLACK TENTACLES · 3D6 BLUDGEONING", n, "RESTRAINED"); }
+  else { sp_say(s, "BLACK TENTACLES", -1, ""); }
+}
+ab_bt_end :: (s: [] Everglade) {
+  a := ab_of(s);
+  a[0].bt_on = false;
+  for i: 0..<WATCH_ACTORS { a[0].bt_held[i] = false; }
+  w := sp_dm(s);
+  for j: 0..<AB_BT_N { h := a[0].bt_hold[j]; if h >= AB_BT_BODY && w[0].meta[h - AB_BT_BODY].kind != 0 { w[0].meta[h - AB_BT_BODY].rest_time = 0; } a[0].bt_hold[j] = AB_BT_FREE; }
+}
+// Everyone in the square whose save is due makes it (once a round: as it rises, coming in, at the
+// end of each round there): a failure takes 3d6 and is Restrained; a Restrained one tries to break
+// free first. How many it caught.
+ab_bt_saves :: (s: [] Everglade) -> int {
+  a := ab_of(s);
+  if !a[0].bt_on || !watch_on(s) { return 0; }
+  w := watch_w(s);
+  n := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) { a[0].bt_held[i] = false; continue; }
+    if ab_tk_holds(a, i) { continue; }
+    pl := person_place(s, i);
+    x := ifx a[0].bt_held[i] then a[0].bt_x[i] else pl.x;
+    z := ifx a[0].bt_held[i] then a[0].bt_z[i] else pl.z;
+    if !ab_in_square(a, x, z) || ab_air(s, i) > 1.0 { a[0].bt_next[i] = 0; continue; }
+    if a[0].bt_t < a[0].bt_next[i] { continue; }
+    a[0].bt_next[i] = a[0].bt_t + f32(AB_BT_ROUND);
+    if a[0].bt_held[i] && ab_str_save(s, i) { a[0].bt_held[i] = false; continue; }   // an Athletics check against the DC
+    if ab_str_save(s, i) { continue; }
+    watch_harm(w, i, srd_sum(s[0].sp.dice[..], 3, 6), ab_you(s));
+    if !a[0].bt_held[i] { a[0].bt_held[i] = true; a[0].bt_x[i] = pl.x; a[0].bt_z[i] = pl.z; n += 1; }
+  }
+  if n > 0 { _ := watch_crime(w, a[0].bt_at, f32(AB_HEAR_BT), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  return n;
+}
+// Each frame: who they hold stays put and down; each tentacle reaches for what it holds or seizes
+// what comes in reach (the Restrained first, then the loose things and the unsecured props), and
+// writhes; the joints follow its tip (a chain of fixed lengths from its root).
+ab_bt_frame :: (s: [] Everglade, dt: f32) {
+  a := ab_of(s);
+  if !a[0].bt_on { return; }
+  a[0].bt_t += dt;
+  if a[0].bt_t >= f32(AB_BT_LIFE) { ab_bt_end(s); return; }
+  n := ab_bt_saves(s);
+  if n > 0 { sp_say(s, "BLACK TENTACLES · 3D6 BLUDGEONING", n, "RESTRAINED"); }
+  w := sp_dm(s);
+  if watch_on(s) {
+    ww := watch_w(s);
+    for i: 0..<WATCH_ACTORS {
+      if !a[0].bt_held[i] { continue; }
+      act := ww[0].actors[i..<i + 1];
+      act[0].x = a[0].bt_x[i]; act[0].z = a[0].bt_z[i];
+      if act[0].mode == WM_DOWN { act[0].t = lo(act[0].t, 0.25); }
+    }
+  }
+  // let go of what is gone or out of reach
+  for j: 0..<AB_BT_N {
+    h := a[0].bt_hold[j];
+    if h == AB_BT_FREE { continue; }
+    if h >= AB_BT_BODY { if w[0].meta[h - AB_BT_BODY].kind == 0 { a[0].bt_hold[j] = AB_BT_FREE; } continue; }
+    if !a[0].bt_held[h] { a[0].bt_hold[j] = AB_BT_FREE; }
+  }
+  // seize: the nearest free tentacle in reach of each Restrained one, then the loose and the props
+  if cast(int) (a[0].bt_t * 4) != cast(int) ((a[0].bt_t - dt) * 4) {
+    for i: 0..<WATCH_ACTORS {
+      if !a[0].bt_held[i] || ab_bt_holder(a, i) >= 0 { continue; }
+      j := ab_bt_free_near(s, v3(a[0].bt_x[i], 0, a[0].bt_z[i]));
+      if j >= 0 { a[0].bt_hold[j] = i; }
+    }
+    for b: 0..<DEMO_BODIES {
+      if w[0].meta[b].kind == 0 || ab_bt_holder(a, AB_BT_BODY + b) >= 0 || (a[0].tk_kind == AB_TK_BODY && a[0].tk_body == b) { continue; }
+      p := pd3(demo_body(w, b).pos);
+      if !ab_in_square(a, p.x, p.z) || p.y > a[0].bt_at.y + f32(AB_BT_REACH) { continue; }
+      j := ab_bt_free_near(s, p);
+      if j >= 0 { a[0].bt_hold[j] = AB_BT_BODY + b; }
+    }
+    freed := 0;
+    for i: 0..<w[0].n {
+      p := w[0].pieces[i];
+      if p.state != DP_STANDING || !ab_prop(p.mesh) || !ab_in_square(a, p.cx, p.cz) || p.y0 > a[0].bt_at.y + f32(AB_BT_REACH) { continue; }
+      j := ab_bt_free_near(s, v3(p.cx, p.cy, p.cz));
+      if j < 0 || demo_loose(w) >= w[0].loose_cap { continue; }
+      demo_loosen(w, i);
+      if w[0].pieces[i].state == DP_LOOSE { a[0].bt_hold[j] = AB_BT_BODY + w[0].pieces[i].body; freed += 1; }
+    }
+    if freed > 0 {
+      s[0].sp.walls_dirty = true;
+      if watch_on(s) { _ := watch_crime(watch_w(s), a[0].bt_at, f32(AB_HEAR_BT), ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+    }
+  }
+  // each tentacle: its tip's goal, the tip toward it at 5 m/s, the chain after it
+  rise := clamp(a[0].bt_t / 0.6, 0, 1);
+  seg := f32(AB_BT_LEN) / f32(AB_BT_SEG) * (0.2 + 0.8 * rise);
+  for j: 0..<AB_BT_N {
+    r := ab_bt_root(s, j);
+    ph := f32(j) * 2.4;
+    t := a[0].bt_t;
+    sway := v3(sin(t * 1.6 + ph) * 0.55 + sin(t * 3.8 + ph * 1.7) * 0.15, 0, cos(t * 1.3 + ph * 0.9) * 0.55 + cos(t * 3.4 + ph) * 0.15);
+    goal := add(r, add(sway, v3(0, f32(AB_BT_IDLE) * (0.85 + 0.15 * sin(t * 1.1 + ph)), 0)));
+    h := a[0].bt_hold[j];
+    if h >= AB_BT_BODY {
+      b := h - AB_BT_BODY;
+      p := pd3(demo_body(w, b).pos);
+      if length(sub(p, a[0].bt_tip[j])) < 0.6 {
+        // seized: held up over the root, writhing (the body follows the tip, ab_fields)
+        goal = add(r, add(times(sway, 0.6), v3(0, 1.4, 0)));
+        w[0].state[b * DB_FLOATS + 23] = 0.0; w[0].state[b * DB_FLOATS + 24] = 0.0; w[0].meta[b].rest_time = 0;
+      } else { goal = p; }
+    } else if h >= 0 {
+      // wrapped round a Restrained one's middle, squeezing
+      pl := v3(a[0].bt_x[h], 0, a[0].bt_z[h]);
+      goal = v3(pl.x + 0.25 * sin(t * 3 + ph), folk_feet(s, pl.x, pl.z) + 0.35 + 0.15 * sin(t * 2.2 + ph), pl.z + 0.25 * cos(t * 3 + ph));
+    }
+    off := sub(goal, r);
+    if length(off) > f32(AB_BT_REACH) { goal = add(r, times(unit_or(off, v3(0, 1, 0)), f32(AB_BT_REACH))); }
+    d := sub(goal, a[0].bt_tip[j]);
+    l := length(d);
+    stp := f32(AB_BT_TIP_SPEED) * dt;
+    a[0].bt_tip[j] = ifx l <= stp then goal else add(a[0].bt_tip[j], times(d, stp / l));
+    ab_bt_chain(a, j, r, a[0].bt_tip[j], seg, t + ph);
+  }
+}
+// The tentacle holding h (a person's index or AB_BT_BODY + a body), -1 none.
+ab_bt_holder :: (a: [] Abilities, h: int) -> int { for j: 0..<AB_BT_N { if a[0].bt_hold[j] == h { return j; } } return -1; }
+// The free tentacle whose root is nearest p within its reach, -1 none.
+ab_bt_free_near :: (s: [] Everglade, p: Point) -> int {
+  a := ab_of(s);
+  best := -1; bd := f32(AB_BT_REACH) + 0.6;
+  for j: 0..<AB_BT_N {
+    if a[0].bt_hold[j] != AB_BT_FREE { continue; }
+    r := ab_bt_root(s, j);
+    d := length(v3(p.x - r.x, 0, p.z - r.z));
+    if d < bd { bd = d; best = j; }
+  }
+  return best;
+}
+// FABRIK (forward and backward reaching) over tentacle j's joints, its root fixed at r and its tip
+// reaching for `tip`, each segment `seg` long; a ripple runs along it first so it curls.
+ab_bt_chain :: (a: [] Abilities, j: int, r: Point, tip: Point, seg: f32, t: f32) {
+  base := j * (AB_BT_SEG + 1);
+  for q: 1..<AB_BT_SEG {
+    u := f32(q) / f32(AB_BT_SEG);
+    ripple := v3(sin(t * 2.6 - u * 5) * 0.04, 0, cos(t * 2.1 - u * 5) * 0.04);
+    a[0].bt_joint[base + q] = add(a[0].bt_joint[base + q], ripple);
+  }
+  for pass: 0..<3 {
+    a[0].bt_joint[base + AB_BT_SEG] = tip;
+    for q: 0..<AB_BT_SEG {
+      k := AB_BT_SEG - 1 - q;
+      d := sub(a[0].bt_joint[base + k], a[0].bt_joint[base + k + 1]);
+      a[0].bt_joint[base + k] = add(a[0].bt_joint[base + k + 1], times(unit_or(d, v3(0, -1, 0)), seg));
+    }
+    a[0].bt_joint[base] = r;
+    for k: 1..<AB_BT_SEG + 1 {
+      d := sub(a[0].bt_joint[base + k], a[0].bt_joint[base + k - 1]);
+      a[0].bt_joint[base + k] = add(a[0].bt_joint[base + k - 1], times(unit_or(d, v3(0, 1, 0)), seg));
+    }
+  }
+}
+// Each tentacle as eight tapering cones end to end, glossy black with a bruised violet sheen; the
+// square's edge faintly on the ground.
+AB_BT_RGB :: Point.{x = 0.07, y = 0.045, z = 0.08};
+ab_bt_draw :: (s: [] Everglade) {
+  a := ab_of(s);
+  if !a[0].bt_on { return; }
+  for j: 0..<AB_BT_N {
+    base := j * (AB_BT_SEG + 1);
+    for q: 0..<AB_BT_SEG {
+      p0 := a[0].bt_joint[base + q]; p1 := a[0].bt_joint[base + q + 1];
+      ax := sub(p1, p0);
+      l := length(ax);
+      if l < 0.01 { continue; }
+      u := f32(q) / f32(AB_BT_SEG);
+      rad := lerp(f32(AB_BT_BASE_R), f32(AB_BT_TIP_R), u) * 2.6;
+      up := times(ax, 1.0 / l);
+      side := unit_or(cross(up, v3(0, 1, 0.001)), v3(1, 0, 0));
+      fwd := cross(side, up);
+      // a cone from this joint reaching 1.6 segments on, so the next one's base covers its point
+      along := times(up, l * 1.6);
+      tone := 1.0 + 0.25 * f32(q % 2);
+      sp_shape(s, SHAPE_CONE, LOOK_SKIN, add(p0, times(along, 0.5)), times(side, rad), along, times(fwd, rad), times(AB_BT_RGB, tone));
+    }
+  }
+  h := f32(AB_BT_SIDE) * 0.5;
+  c := a[0].bt_at;
+  on := clamp(a[0].bt_t / 0.6, 0, 1) * clamp((f32(AB_BT_LIFE) - a[0].bt_t) / 1.0, 0, 1);
+  ab_square(s, c, h, times(v3(0.42, 0.25, 0.55), 0.35 * on));
+}
+// A square's edge lying on the ground round c, half side h, as the old guide lines.
+ab_square :: (s: [] Everglade, c: Point, h: f32, colour: Point) {
+  for e: 0..<4 {
+    for q: 0..<4 {
+      u0 := -1 + f32(q) * 0.5; u1 := u0 + 0.5;
+      a0 := ifx e == 0 then v3(u0, 0, -1) else ifx e == 1 then v3(1, 0, u0) else ifx e == 2 then v3(-u0, 0, 1) else v3(-1, 0, -u0);
+      a1 := ifx e == 0 then v3(u1, 0, -1) else ifx e == 1 then v3(1, 0, u1) else ifx e == 2 then v3(-u1, 0, 1) else v3(-1, 0, -u1);
+      x0 := c.x + a0.x * h; z0 := c.z + a0.z * h; x1 := c.x + a1.x * h; z1 := c.z + a1.z * h;
+      ab_line(s, v3(x0, ground_at(s, x0, z0) + 0.06, z0), v3(x1, ground_at(s, x1, z1) + 0.06, z1), colour);
+    }
+  }
+}
+
+// ---- pointing: the line over the bar, and where it would land
+
+ab_hint :: (s: [] Everglade, k: int, phone_: bool) -> string {
+  a := ab_of(s);
+  if k == AB_TK {
+    if a[0].tk_kind != AB_TK_NONE { return ifx phone_ then "TAP WHERE TO MOVE IT · TAP ITS SLOT TO LET GO" else "CLICK WHERE TO MOVE IT, 30 FEET AT MOST · SHIFT+2 OR ESC LETS GO"; }
+    return ifx phone_ then "TAP A THING OR A PERSON WITHIN 60 FEET · TAP ITS SLOT TO CANCEL" else "CLICK A THING OR A PERSON WITHIN 60 FEET TO TAKE HOLD · ESC CANCELS";
+  }
+  if k == AB_TENTACLES {
+    if s[0].sp.aim_ok && flat_gap(s[0].sp.aim, ab_you(s)) > f32(AB_BT_RANGE) { return "TOO FAR · 90 FEET AT MOST"; }
+    return ifx phone_ then "TAP THE GROUND FOR BLACK TENTACLES · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR BLACK TENTACLES · ESC CANCELS";
+  }
+  return "";
+}
+// Where ability k would land, as strokes: Telekinesis's small ring where it points; Black
+// Tentacles' square is drawn in the world (ab_draw).
+ab_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int) -> int {
+  if k != AB_TK || !s[0].sp.aim_ok { return n; }
+  pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+  return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.6, AB_TK_RGB, pulse);
 }
 
 // ---- Levitate, Feather Fall
@@ -655,6 +1159,8 @@ ab_frame_more :: (s: [] Everglade, dt: f32) {
   a := ab_of(s);
   a[0].tw_t += dt;
   for k: 0..<AB_STONES { if a[0].stones[k].live { a[0].stones[k].t += dt; if a[0].stones[k].t >= f32(AB_ST_LIFE) { a[0].stones[k].live = false; } } }
+  ab_tk_frame(s, dt);
+  ab_bt_frame(s, dt);
   ab_stone_folk(s);
   if a[0].lev_on { a[0].lev_t += dt; if a[0].lev_t >= f32(AB_LEV_LIFE) { a[0].lev_on = false; } }
   if a[0].ff_on { a[0].ff_t += dt; if a[0].ff_t >= f32(AB_FF_LIFE) { a[0].ff_on = false; } }
@@ -732,6 +1238,23 @@ ab_fields :: (s: [] Everglade, out: [] DemoField) -> int {
     out[n] = DemoField.{kind = DF_PUSH, ax = g.x, az = g.z, bx = d.x, bz = d.z, base = g.y, top = g.y + f32(AB_GUST_WIDE), r = f32(AB_GUST_LEN), wide = f32(AB_GUST_WIDE), force = f32(AB_GUST_FORCE), seed = 0, body = -1};
     n += 1;
   }
+  // Telekinesis's grip and the tentacles' on what they hold: each held to its hand or its tip
+  if a[0].tk_kind == AB_TK_BODY && n < out.count {
+    h := a[0].tk_hand;
+    out[n] = DemoField.{kind = DF_HOLD, ax = h.x, az = h.z, bx = 0, bz = 0, base = h.y, top = h.y, r = 0, wide = 0, force = 0, seed = 0, body = a[0].tk_body};
+    n += 1;
+  }
+  if a[0].bt_on {
+    w := sp_dm(s);
+    for j: 0..<AB_BT_N {
+      hb := a[0].bt_hold[j] - AB_BT_BODY;
+      if hb < 0 || n >= out.count { continue; }
+      tip := a[0].bt_tip[j];
+      if length(sub(pd3(demo_body(w, hb).pos), tip)) > 0.6 { continue; }
+      out[n] = DemoField.{kind = DF_HOLD, ax = tip.x, az = tip.z, bx = 0, bz = 0, base = tip.y, top = tip.y, r = 0, wide = 0, force = 0, seed = 0, body = hb};
+      n += 1;
+    }
+  }
   return n;
 }
 // The same fields for the river's floats (everglade-face.c hands them to river.coax
@@ -778,7 +1301,7 @@ ab_people :: (s: [] Everglade, dt: f32) {
   steps := clamp_i(cast(int) (dt * 120) + 1, 1, 30);
   h := dt / f32(steps);
   for i: 0..<WATCH_ACTORS {
-    if !a[0].up[i] { continue; }
+    if !a[0].up[i] || ab_tk_holds(a, i) { continue; }
     pl := person_place(s, i);
     feet := folk_feet(s, pl.x, pl.z);
     y := a[0].air[i]; v := a[0].air_v[i];
@@ -926,6 +1449,13 @@ ab_draw :: (s: [] Everglade) {
   a := ab_of(s);
   eye := s[0].sp.shot.eye;
   ab_draw_more(s, eye);
+  ab_bt_draw(s);
+  // Black Tentacles picked: its square where the pointer points
+  if s[0].sp.armed == SP_SLOTS + AB_TENTACLES && s[0].sp.aim_ok {
+    pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+    far := flat_gap(s[0].sp.aim, ab_you(s)) > f32(AB_BT_RANGE);
+    ab_square(s, s[0].sp.aim, f32(AB_BT_SIDE) * 0.5, times(ifx far then v3(0.6, 0.25, 0.2) else v3(0.62, 0.4, 1.0), 0.7 * pulse));
+  }
   // each Wall of Stone: its two granite panels, rising out of the ground over a third of a second
   for q: 0..<AB_STONES {
     st := a[0].stones[q];
@@ -1171,26 +1701,26 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   sp_ready_city(g[..], dm[..]);
   g[0].feet = v3(0, 0, -30);
   a := ab_of(g[..]);
-  #assert spells_key(g[..], '7') && a[0].lev_on && a[0].lev_up;
-  #assert spells_key(g[..], '7') && a[0].lev_on;   // a held key's repeat changes nothing
+  #assert spells_key(g[..], '7', 0) && a[0].lev_on && a[0].lev_up;
+  #assert spells_key(g[..], '7', 0) && a[0].lev_on;   // a held key's repeat changes nothing
   y := 0.0f32; v := 0.0f32;
   for k: 0..<60 { l := everglade_lift(g[..], 0, -30, y, v, y + v / 60 - 0.007, v - 0.4, 1.0 / 60); #assert l.on; y = l.y; v = l.vy; }
   #assert near(y, f32(AB_LEV_RISE), 0.1);
   g[0].feet = v3(0, y, -30);
-  #assert spells_key_up(g[..], '7') && !a[0].lev_up;
+  #assert spells_key_up(g[..], '7', 0) && !a[0].lev_up;
   for k: 0..<120 { l := everglade_lift(g[..], 0, -30, y, v, y + v / 60 - 0.007, v - 0.4, 1.0 / 60); y = l.y; v = l.vy; }
   #assert near(y, f32(AB_LEV_RISE), 0.15);
   // never over 18 m
-  #assert spells_key_up(g[..], '7') || true;
+  #assert spells_key_up(g[..], '7', 0) || true;
   a[0].lev_up = true;
   for k: 0..<600 { l := everglade_lift(g[..], 0, -30, y, v, y, v, 1.0 / 60); y = l.y; v = l.vy; }
   #assert y <= f32(AB_LEV_TOP) + 0.001 && !a[0].lev_up;
-  #assert spells_key(g[..], 'x') && a[0].lev_sink;
+  #assert spells_key(g[..], 'x', 0) && a[0].lev_sink;
   for k: 0..<600 { if !a[0].lev_on { break; } l := everglade_lift(g[..], 0, -30, y, v, y, v, 1.0 / 60); y = l.y; v = l.vy; }
   #assert !a[0].lev_on && y <= 0.001;
   // Feather Fall: a fall at 10 m/s is held to 3.05 m/s, and landing ends it
-  _ := spells_key_up(g[..], 'x');
-  #assert spells_key(g[..], '8') && a[0].ff_on;
+  _ := spells_key_up(g[..], 'x', 0);
+  #assert spells_key(g[..], '8', 0) && a[0].ff_on;
   l := everglade_lift(g[..], 0, -30, 5, -10, 4.8, -10.4, 1.0 / 60);
   #assert l.on && near(l.vy, -f32(AB_FF_SPEED), 0.001) && l.y > 4.9;
   last := everglade_lift(g[..], 0, -30, 0.01, -3, 0, 0, 1.0 / 60);
@@ -1230,7 +1760,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   sp_ready_city(g[..], dm[..]);
   g[0].feet = v3(0, 0, -30); g[0].face = 0;
   #assert everglade_bodies_on(g[..], false) == BODIES;
-  #assert spells_key(g[..], '!');
+  #assert spells_key(g[..], '!', 1);
   #assert everglade_bodies_on(g[..], false) == BODIES + AB_ST_BODIES;
   b := g[0].bodies[BODIES * 7..<(BODIES + 1) * 7];
   #assert near(b[2], -26, 0.01) && near(b[5], -26, 0.01) && near(abs(b[3] - b[0]), 2 * f32(AB_ST_PANEL), 0.01);
@@ -1247,6 +1777,87 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   #assert everglade_bodies_on(g[..], false) == BODIES;
 }
 
+#test "abilities: Telekinesis takes a prop, lifts it 20 feet, moves it 30 feet at most a click, and lets it fall" {
+  g: [1] Everglade;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  a := ab_of(g[..]);
+  prop := -1;
+  for i: 0..<w[0].n { if ab_prop(w[0].pieces[i].mesh) && w[0].pieces[i].state == DP_STANDING { prop = i; break; } }
+  #assert prop >= 0;
+  p := w[0].pieces[prop];
+  g[0].feet = v3(p.cx - 6, 0, p.cz); g[0].face = atan2(1, 0);
+  g[0].feet.y = p.y0 - walk_at(g[..], g[0].feet.x, g[0].feet.z);
+  #assert spells_key(g[..], '@', 1) && g[0].sp.armed == SP_SLOTS + AB_TK;
+  _ := spells_key_up(g[..], '@', 1);
+  ab_tk_take(g[..], AbPick.{kind = 3, idx = prop, t = 5});
+  #assert a[0].tk_kind == AB_TK_BODY && w[0].pieces[prop].state == DP_LOOSE && ab_active(g[..], AB_TK);
+  b := a[0].tk_body;
+  for k: 0..<300 { ab_frame(g[..], 1.0 / 60); demo_step(w, everglade_ground(), g[0].heights[..], 1.0 / 60); }
+  #assert f32(demo_pos(w, b).y) > p.cy + 5.0;
+  // a click far off moves it 30 feet toward there, no more
+  at := pd3(demo_pos(w, b));
+  g[0].sp.aim = v3(p.cx + 40, ground_at(g[..], p.cx + 40, p.cz), p.cz); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert near(length(sub(a[0].tk_goal, at)), f32(AB_TK_MOVE), 0.05);
+  // Shift+2 again lets go: it falls
+  #assert spells_key(g[..], '@', 1) && a[0].tk_kind == AB_TK_NONE && g[0].sp.armed == -1;
+  for k: 0..<300 { ab_frame(g[..], 1.0 / 60); demo_step(w, everglade_ground(), g[0].heights[..], 1.0 / 60); }
+  #assert f32(demo_pos(w, b).y) < p.cy + 2.0 || w[0].meta[b].kind == 0;
+}
+
+#test "abilities: Black Tentacles rise in a 20-foot square, seize the props in reach and hold them up, and restrain who fails" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  a := ab_of(g[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  // a townsperson out of doors, and the props
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  // a hardy one, who lives through 3d6 (a commoner's 4 hit points would not)
+  wh := watch_w(g[..]); wh[0].actors[who].max = 40; wh[0].actors[who].hp = 40;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x - 8, 0, pl.z); g[0].face = atan2(1, 0);
+  g[0].feet.y = 0;
+  #assert spells_key(g[..], '#', 1) && g[0].sp.armed == SP_SLOTS + AB_TENTACLES;
+  up := spells_key_up(g[..], '#', 1);
+  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert a[0].bt_on && g[0].sp.armed == -1 && ab_in_square(a, pl.x, pl.z);
+  // within a few rounds they fail a save: hurt, Restrained, held where they stood, a crime
+  caught := false;
+  for k: 0..<240 {
+    ab_frame(g[..], 0.1); demo_step(w, everglade_ground(), g[0].heights[..], 0.1);
+    if a[0].bt_held[who] { caught = true; break; }
+  }
+  ww := watch_w(g[..]);
+  #assert caught && ww[0].actors[who].hp < ww[0].actors[who].max && ww[0].actors[who].mode == WM_DOWN && ww[0].crimes > 0;
+  for k: 0..<20 { ab_frame(g[..], 0.1); }
+  #assert ab_bt_holder(a, who) >= 0 && near(ww[0].actors[who].x, a[0].bt_x[who], 0.001);
+  // the tentacles stand their length from the root, the tips within reach
+  for j: 0..<AB_BT_N { #assert length(sub(a[0].bt_tip[j], ab_bt_root(g[..], j))) <= f32(AB_BT_REACH) + 0.01; }
+  // Shift+3 while they stand ends them, and lets go
+  #assert spells_key(g[..], '#', 1) && !a[0].bt_on && !a[0].bt_held[who];
+  // on the market's props: they come loose and are held up off the ground
+  prop := -1;
+  for i: 0..<w[0].n { if ab_prop(w[0].pieces[i].mesh) && w[0].pieces[i].state == DP_STANDING { prop = i; break; } }
+  p := w[0].pieces[prop];
+  g[0].feet = v3(p.cx - 8, 0, p.cz);
+  ab_press(g[..], AB_TENTACLES);
+  g[0].sp.aim = v3(p.cx, ground_at(g[..], p.cx, p.cz), p.cz); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  for k: 0..<360 { ab_frame(g[..], 1.0 / 60); demo_step(w, everglade_ground(), g[0].heights[..], 1.0 / 60); }
+  #assert w[0].pieces[prop].state == DP_LOOSE;
+  b := w[0].pieces[prop].body;
+  #assert ab_bt_holder(a, AB_BT_BODY + b) >= 0 && f32(demo_pos(w, b).y) > p.y0 + 0.6;
+}
+
 #test "abilities: a guard hunting you on a Wall of Stone's far side runs round it, never through it; when it falls, straight on" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
@@ -1255,7 +1866,7 @@ ab_line :: (s: [] Everglade, a: Point, b: Point, c: Point) {
   sp_ready_city(g[..], dm[..]);
   _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   g[0].feet = v3(0, 0, -30); g[0].face = 0;
-  #assert spells_key(g[..], '!');
+  #assert spells_key(g[..], '!', 1);
   ab_frame(g[..], 0.5);
   w := watch_w(g[..]);
   #assert w[0].on && w[0].fence_n == 1;

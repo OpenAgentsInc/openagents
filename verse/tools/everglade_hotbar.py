@@ -64,6 +64,7 @@ TRANSMUTATION = (0.76, 0.62, 1.0)
 WIND = (0.6, 0.95, 0.9)
 STORM = (0.55, 0.75, 1.0)
 STONE = (0.82, 0.76, 0.66)
+ROT = (0.55, 0.9, 0.5)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -102,12 +103,22 @@ SLOTS = [
     ("thunderwave", "lorc/sonic-boom.svg", STORM, "0", "Thunderwave",
      "A wave of thunder sweeps out from you through a 15-foot cube ahead: 2d8 thunder, and townsfolk and loose things in it are pushed 10 feet away, with a boom heard 300 feet off.",
      [("Key 0", KEY), FREE]),
-    ("wall-of-stone", "delapouite/stone-wall.svg", STONE, "!", "Wall of Stone",
+    ("wall-of-stone", "delapouite/stone-wall.svg", STONE, "S1", "Wall of Stone",
      "Raises another pair of granite panels 4 m ahead that block your way for ten minutes.",
      [("Shift+1", KEY), FREE, ("10 minutes", TIME)]),
+    ("telekinesis", "lorc/juggler.svg", TRANSMUTATION, "S2", "Telekinesis",
+     "Take hold of a loose thing, a prop or a person within 60 feet and lift it 20 feet; click again to move it up to 30 feet, and let go to throw it. A person makes a Strength save or is held.",
+     [("Shift+2", KEY), FREE, ("60 ft range", RULE), ("Concentration, up to 10 minutes", TIME)]),
+    ("black-tentacles", "delapouite/tentacles-barrier.svg", ROT, "S3", "Black Tentacles",
+     "Writhing tentacles fill a 20-foot square of ground: townsfolk in it make a Strength save or take 3d6 bludgeoning and are held, and the tentacles seize the loose things in reach.",
+     [("Shift+3", KEY), FREE, ("90 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),
+    # a phone's row switcher (the old Grove's Compact layout, its rise-icon)
+    ("next-row", "delapouite/plain-arrow.svg^", TRANSMUTATION, "", "Next row",
+     "Shows the bar's next row of spells.",
+     []),
 ]
 
 

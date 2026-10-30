@@ -72,7 +72,7 @@
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
 MAX_VERTICES :: 30000;
-PLATES :: 32;
+PLATES :: 64;   // the spell bar's four rows of slots take most (everglade-spells.coax sp_bar)
 // The uniforms: width, height, time, fade, still, plates, dpr, horizon; the
 // view's four rows; the eye and the fog's density; the sun and where the
 // fog starts; the ground; SHADOWS blobs; PATHS path pieces and their count
@@ -932,7 +932,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if s[0].board { return board_key(s, key, mods); }
   if everglade_voice_key(s, key, true) { return true; }
   if watch_key(s, key) { return true; }
-  if spells_key(s, key) { return true; }
+  if spells_key(s, key, mods) { return true; }
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
   if (key == 'e' || key == 'E') && boat_prompt_on(s) { s[0].boat_ask = true; return true; }
@@ -948,7 +948,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
 
 everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if everglade_voice_key(s, key, false) { return true; }
-  if spells_key_up(s, key) { return true; }
+  if spells_key_up(s, key, mods) { return true; }
   b := hold_bit(key);
   if b == 0 { return false; }
   if s[0].held & b != 0 { s[0].held = s[0].held - b; }
@@ -3290,7 +3290,7 @@ everglade_store_cap :: (k: int) -> int #export_c {
 
 #test "the uniforms and shape slots line up with everglade.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 504 && STYLE_AT == 828 && U_SOLID == 956 && U_LIGHT_INFO == 1084 && U_LIGHTS == 1088 && U_WEATHER == 1216 && U_PONDS == 1228 && U_FX == 1244 && UNIFORM_FLOATS == 1244 + 149 * 4;
+  #assert U_PATH == 100 && U_PATH_INFO == 228 && U_SQUARE == 232 && U_PLATE == 248 && U_WATER == 760 && STYLE_AT == 1084 && U_SOLID == 1212 && U_LIGHT_INFO == 1340 && U_LIGHTS == 1344 && U_WEATHER == 1472 && U_PONDS == 1484 && U_FX == 1500 && UNIFORM_FLOATS == 1500 + 149 * 4;
   #assert SLOT_AT[4] + SLOTS[4] == SHAPE_OBJECTS;
   total := 0;
   for g: 0..<KIT_GROUPS - KIT_FOREST { total += TOWN_CAP[g]; }

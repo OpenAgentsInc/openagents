@@ -17,7 +17,7 @@ struct U {
   path: array<vec4f, 32>,
   path_info: vec4f,
   square: array<vec4f, 4>,
-  plate: array<vec4f, 64>,
+  plate: array<vec4f, 128>,
   water: WaterU,   // the river's waves, look and mesh (verse/water-look.coax W_* rows)
   style: array<vec4f, 32>,  // the painterly preset at the clock (verse/style-preset.coax SU_*: row = SU / 4)
   solid: array<vec4f, 32>,  // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
@@ -98,7 +98,7 @@ fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
 }
 fn plates(p: vec2f, under: vec3f) -> vec3f {
   var c = under;
-  for (var k = 0; k < 32; k++) {
+  for (var k = 0; k < 64; k++) {
     if (f32(k) >= u.plates) { break; }
     c = plate(p, c, u.plate[k * 2], u.plate[k * 2 + 1]);
   }

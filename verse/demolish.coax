@@ -148,7 +148,7 @@ DemoBody :: struct {
 // wall along (ax, az) to (bx, bz) r thick from base to top (Wind Wall), or a push along the unit
 // (bx, bz) from (ax, az) out to r, `wide` across, from base to top (Gust of Wind), or a hold at
 // (ax, base, az) (Telekinesis, body `body`). `seed` turns a wall's spiral.
-DEMO_FIELDS :: 16;
+DEMO_FIELDS :: 32;
 DF_RISE :: 1; DF_UPDRAFT :: 2; DF_PUSH :: 3; DF_HOLD :: 4;
 DemoField :: struct { kind: int; ax: f32; az: f32; bx: f32; bz: f32; base: f32; top: f32; r: f32; wide: f32; force: f32; seed: f32; body: int; }
 // Reverse Gravity's (verse-world cad-world reverse_gravity.rs Gravity::at): gravity upward, and
