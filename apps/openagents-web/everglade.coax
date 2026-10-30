@@ -2161,7 +2161,15 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
       if total > cap { cut[g] = b; break; }
     }
   }
+  // Which trees the kit draws (the nearest of each kind, up to its cap), then those nearest first:
+  // a near crown's depth is down before the crowns behind it shade, so their hidden leaf cards are
+  // turned away unshaded (a crown is hundreds of overlapping cards; art-styles.md 14).
+  pick: [TREES] int;      // the bucket of a tree the kit draws, else -1
+  pick_y: [TREES] f32;    // and the ground under it
+  taken: [KIT_TREES] int;
+  for g: 0..<KIT_TREES { taken[g] = 0; }
   for t: 0..<s[0].tree_n {
+    pick[t] = -1;
     o := t * TREE_FLOATS;
     x := s[0].trees[o]; z := s[0].trees[o + 1]; size := s[0].trees[o + 2]; yaw := s[0].trees[o + 3];
     kind := cast(int) s[0].trees[o + 4];
@@ -2169,10 +2177,17 @@ forest :: (s: [] Everglade, u: [] f32, eye: Point) {
     if !in_view(u, x, base + 4, z, 6) { continue; }
     d := sqrt((x - eye.x) * (x - eye.x) + (z - eye.z) * (z - eye.z));
     b := lo_i(cast(int) (d / reach * f32(KIT_BUCKETS)), KIT_BUCKETS - 1);
-    if kit_on && d < reach && (b < cut[kind] || (b == cut[kind] && s[0].kit_used[kind] < cap)) {
-      kit(s, kind, x, base - 0.1, z, yaw, size);
+    if kit_on && d < reach && (b < cut[kind] || (b == cut[kind] && taken[kind] < cap)) {
+      pick[t] = b; pick_y[t] = base; taken[kind] += 1;
     } else {
       far_tree(s, x, base, z, size, yaw, kind);
+    }
+  }
+  for b: 0..<KIT_BUCKETS {
+    for t: 0..<s[0].tree_n {
+      if pick[t] != b { continue; }
+      o := t * TREE_FLOATS;
+      kit(s, cast(int) s[0].trees[o + 4], s[0].trees[o], pick_y[t] - 0.1, s[0].trees[o + 1], s[0].trees[o + 3], s[0].trees[o + 2]);
     }
   }
   if !kit_on || !redit_row_on(s[0].ev.ed[..], "undergrowth") { return; }

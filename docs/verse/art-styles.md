@@ -524,6 +524,27 @@ the commons at night, 5.2 ms p50 and 8.6 ms p95; the market at night, 4.4 ms
 p50; the fixture at noon, 1.0 ms p50. Hecate's Cemetery doesn't read the preset yet (hc-paint-light waits on
 the designer), so it has no phone-tier number.
 
+**The crowns round the ponds** (October 30, eg-paint-review): the view from
+a pond's bank was the phone's dearest, its GPU frame a fifth to a quarter
+over the road's. Measured in one page, toggling draws between alternate
+seconds (so the machine's load falls on both alike), at `#lantern-pond` on
+the phone tier: the kit crowns' leaves were 30% of the frame, their trunks
+4%, the shadow pass's trees 3%, and the whole town's 465,000 triangles 1%
+in the main pass and 7% in the shadow pass. The leaves' cost doesn't grow
+with the canvas (390 to 780 css px wide, 0.66 to 0.71 ms): a crown is
+hundreds of overlapping leaf cards, and every opaque layer is shaded. Three
+changes that leave the picture as it was (0.6% of the pond view's pixels
+move by more than 8 of 255, the desktop's none): the kit's trees are drawn
+nearest first, so a near crown's depth turns away the cards behind it
+unshaded; a crown's leaves past 24 m on a phone take one shadow tap, not
+four, and skip the caustics; no surface computes a rim of strength 0
+(Everglade draws without outlines). The pond view's frame went from 1.40
+to 1.29 ms, 1.43 to 1.34 and 1.15 to 1.10 in three runs (4 to 8%).
+Drawing the crowns past 28 m as the far cones instead would have saved a
+third, but a cone at 30 m in clear air reads as a cone, not a painted tree;
+the rest wants a lighter crown for the far trees (fewer, larger cards, from
+the pack) rather than less shading.
+
 ### 15. Judging "looks painterly"
 
 Two checks, both headless (`bun coax/web/shot.ts`, never a visible browser):

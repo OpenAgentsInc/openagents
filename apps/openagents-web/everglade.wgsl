@@ -715,12 +715,18 @@ fn shard_cap(shard: u32, p: vec3f) -> vec3f {
 @group(2) @binding(0) var shadow_map: texture_depth_2d;
 @group(2) @binding(1) var shadow_cmp: sampler_comparison;
 // How much of the key reaches p (normal n): 1 lit, 0 in shadow, the map's taps averaged; outside it, lit.
+// A kit crown's leaves past LEAF_FAR on a phone (scene_fs sets it): one shadow tap, not the tier's four,
+// and no caustics (a crown never stands in water). A crown is hundreds of overlapping leaf cards and
+// every opaque layer is shaded, so the crowns ringing the ponds were a third of a phone's frame there
+// (art-styles.md 14); at that distance the taps' penumbra is under a pixel, so the picture is the same.
+const LEAF_FAR = 24.0;
+var<private> paint_leaf_far: bool;
 fn map_lit(p: vec3f, n: vec3f) -> f32 {
   if (st(21u).x < 1.0) { return 1.0; }
   let q = shadow_place(p + n * 0.08, light_space());
   let uv = vec2f(0.5 + 0.5 * q.x, 0.5 - 0.5 * q.y);
   let texel = 1.0 / f32(textureDimensions(shadow_map).x);
-  let phone = st(31u).z; let taps = st(21u).y; let r = st(21u).z;
+  let phone = st(31u).z; let taps = select(st(21u).y, 1.0, paint_leaf_far); let r = st(21u).z;
   // the taps' disc 1.6 times the preset's: the penumbra spans several texels, so the map's stair-steps
   // melt into a soft edge; the average then firmed (smoothstep) so a thin caster's shade keeps its depth
   var lit = 0.0;
@@ -894,6 +900,7 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
     return Lit(vec4f(f, select(0.0, 0.9, glow > 0.05)), vec4f(0.0));
   }
   if (s.look == LOOK_WINDOW && s.dye.y > 0.75) { return glass(s, front); }
+  paint_leaf_far = s.look == LOOK_CANOPY && st(31u).z > 0.5 && length(u.eye.xyz - s.world) > LEAF_FAR;
   let lit = verse_style_contact(map_lit(s.world, n), 1.0 - shadow, st(4u).w);
   var res = paint(base, n, s.world, lit, s.look == LOOK_CHARACTER || s.look == 3u, s.look != 99u);
   let figure = s.look == LOOK_CHARACTER || s.look == 3u;
@@ -1009,8 +1016,8 @@ fn paint(dry: vec3f, n: vec3f, world: vec3f, lit: f32, character: bool, rim: boo
   let cy = verse_style_luma(c.x, c.y, c.z);
   c = max(vec3f(cy) + (c - vec3f(cy)) * gain, vec3f(0.0));
   let rs = select(st(2u).w, st(3u).x, character);
-  if (rim) { c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit; }
-  c += water_caustics(world, n) * base * key * lit;   // light the water focuses on what lies under it
+  if (rim && rs > 0.0) { c += st(2u).xyz * verse_style_rim(dot(n, -v), dot(n, l), st(3u).y, st(3u).z, rs) * lit; }   // (none without outlines: verse_style_no_outlines)
+  if (!paint_leaf_far) { c += water_caustics(world, n) * base * key * lit; }   // light the water focuses on what lies under it
   c = weather_surface(c, base, n, world, v, lit, character);   // wet sheen, puddles, lightning (W9)
   let d = length(u.eye.xyz - world);
   let fog = haze_share(d, world.y);
