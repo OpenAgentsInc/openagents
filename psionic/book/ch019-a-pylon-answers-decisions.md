@@ -35,12 +35,13 @@ so wherever it appears.
   file in `~/work/.secrets/`) and refused until the secret-handling audit
   (#4828) admits real keys.
 
-Relay frames were a stand-in too. They are `coax/lib/nostr/message.coax`
-(#6015) now: `nostr_message_read` reads the relay's EVENT, OK, EOSE, CLOSED
-and NOTICE frames, the Pylon verifies an EVENT's id and signature before
-the relay machine sees it, an AUTH challenge (which `message.coax` leaves to
-NIP-42) goes to `nip42_input`, and `nostr_message_write_req`, `_close` and
-`_event` write what the Pylon sends.
+Relay frames were a stand-in too. They are read by `rl_read` in
+`coax/lib/nostr/relay_read.coax` now: `message.coax` (#6015) reads the
+relay's EVENT, OK, EOSE, CLOSED and NOTICE frames, an EVENT's id and
+signature are checked with the fast verifier, and NIP-42's `auth-required:`
+is mapped onto the relay machine's input before the machine sees it. An
+AUTH challenge (`rl_read`'s kind 0) goes to `nip42_input`, and
+`nostr_message_write_req`, `_close` and `_event` write what the Pylon sends.
 
 Signing and NIP-44 were stand-ins in the first version of this chapter and
 are Coax now. Every event is signed by `nostr_event_sign_step` in

@@ -22,11 +22,11 @@
 // a fresh 32-byte aux from the OS for each), and NIP-44's conversation key
 // is nip44-key.coax.
 //
-// Relay frames are coax/lib/nostr/message.coax's (#6015): nostr_message_read
-// reads EVENT, OK, EOSE, CLOSED and NOTICE; an EVENT's event is verified
-// here with nostr_event_verify_vartime before relay.coax sees it; AUTH (which
-// message.coax reports as NM_TYPE) goes to nip42_input. REQ, CLOSE and EVENT
-// are written with nostr_message_write_req/close/event.
+// Relay frames are relay_read.coax's rl_read: message.coax (#6015) reads
+// EVENT, OK, EOSE, CLOSED and NOTICE, an EVENT's id and signature are
+// checked with the fast verifier, and auth-required is mapped onto RlIn,
+// before relay.coax sees it. AUTH (rl_read's kind 0) goes to nip42_input.
+// REQ, CLOSE and EVENT are written with nostr_message_write_req/close/event.
 //
 // TEST-ONLY (see the record, docs/verification/psionic-ch19-2026-10-29.md):
 //   - The key is sha256 of --test-key-label. --key-file is refused until the
@@ -43,7 +43,7 @@
 #load "../../../coax/lib/nostr/nip44.coax";
 #load "../../../coax/lib/nostr/nip44-key.coax";
 #load "../../../coax/lib/nostr/nip42.coax";
-#load "../../../coax/lib/nostr/message.coax";
+#load "../../../coax/lib/nostr/relay_read.coax";
 
 // queue.coax names these PdCode and PdType values as integers.
 #assert PQ_NONE==cast(int)PdCode.none && PQ_BUSY==cast(int)PdCode.busy && PQ_TIMEOUT==cast(int)PdCode.timeout;
@@ -515,55 +515,53 @@ py_run :: (p:[]Py,slot:int) {
     } else {ok:=py_status(p,jb,cast(PdCode)a.code);}
     done:=pq_done(p[0].q[..],slot);
 }
-// One relay message, read by message.coax, through relay.coax's machine.
+// An OK, CLOSED or NOTICE frame's message, for the log ("" for others).
+py_message :: (text:string)->string {
+    m:=nostr_message_read(text);if m.error!=NM_OK {return "";}
+    return nm_text(m,m.message);
+}
+// One relay message: relay_read.coax's rl_read reads it (message.coax) and
+// checks an EVENT's id and signature, then relay.coax's machine decides.
 py_take :: (p:[]Py) {
     c:=p[0].conn[..];r:=p[0].rl[..];
-    text:=cast(string)c[0].text[0..<c[0].text_n];f:=nostr_message_read(text);
-    if f.error==NM_TYPE {
-        // AUTH is the one relay-to-client label message.coax leaves to NIP-42.
+    text:=cast(string)c[0].text[0..<c[0].text_n];
+    scratch:[NE_MAX_OUTPUT]u8;in:=rl_read(text,scratch[..],false);
+    if in.kind==0 {
+        // A refused frame, or an AUTH challenge (message.coax's NM_TYPE):
+        // nip42_input takes a challenge; anything else counts as RL_BAD.
         if nip42_input(r,p[0].n42[..],p[0].gen,text)>=0 {return;}
-        print("pylon: unreadable frame (% bytes, error %)\n",text.count,f.error);return;
+        d:=rl_input(r,p[0].gen,in);print("pylon: unreadable frame (% bytes)\n",text.count);return;
     }
-    if f.error!=NM_OK {print("pylon: unreadable frame (% bytes, error %)\n",text.count,f.error);return;}
-    sub:=nm_text(f,f.sub);message:=nm_text(f,f.message);
-    if f.type==NM_EVENT {
-        scratch:[262144]u8;
-        ev:=nostr_event_verify_vartime(text[f.event.from..<f.event.to],scratch[..],false);
-        m:=RlIn.{kind=RL_IN_EVENT,sub=sub,created_at=ev.created_at,verified=ev.error==NE_OK && ev.verified};
-        m.id=ev.id;
-        d:=rl_input(r,p[0].gen,m);
-        if d==RL_FORGED {p[0].forged+=1;print("pylon: event refused by verification (error %)\n",ev.error);return;}
-        if d==RL_DUPLICATE {p[0].duplicates+=1;py_again(p,ev.id[..]);return;}
-        if d!=RL_DELIVER {p[0].ignored+=1;print("pylon: event for % not taken (%)\n",sub,d);return;}
+    d:=rl_input(r,p[0].gen,in);
+    if in.kind==RL_IN_EVENT {
+        if d==RL_FORGED {p[0].forged+=1;print("pylon: event refused by verification\n");return;}
+        if d==RL_DUPLICATE {p[0].duplicates+=1;py_again(p,in.id[..]);return;}
+        if d!=RL_DELIVER {p[0].ignored+=1;print("pylon: event for % not taken (%)\n",in.sub,d);return;}
+        // rl_read verified these bytes; read them again for the event's fields.
+        m:=nostr_message_read(text);ev:=nostr_event_read(text[m.event.from..<m.event.to],scratch[..],false);
+        same:=ev.error==NE_OK;for i:0..<32 {if ev.id[i]!=in.id[i] {same=false;}}
+        if !same {p[0].ignored+=1;print("pylon: delivered event unreadable\n");return;}
         py_event(p,ev);
         return;
     }
-    if f.type==NM_ACCEPT {
-        m:=RlIn.{kind=RL_IN_OK,accepted=f.accepted};m.id=f.id;
-        d:=rl_input(r,p[0].gen,m);
+    if in.kind==RL_IN_OK {
         if d==RL_AUTH {
-            if f.accepted {p[0].auths+=1;print("pylon: authenticated to % as % (connection %)\n",p[0].cfg[0].relay,py_me(p),p[0].gen);}
-            else {print("pylon: the relay refused NIP-42 AUTH: %\n",message);}
+            if in.accepted {p[0].auths+=1;print("pylon: authenticated to % as % (connection %)\n",p[0].cfg[0].relay,py_me(p),p[0].gen);}
+            else {print("pylon: the relay refused NIP-42 AUTH: %\n",py_message(text));}
             return;
         }
         if d==RL_ACK {
             hex:[64]u8;
-            if f.accepted {p[0].accepted+=1;}else {p[0].refused+=1;print("pylon: relay refused %: %\n",py_short(py_hex(f.id[..],hex[..])),message);}
+            if in.accepted {p[0].accepted+=1;}else {p[0].refused+=1;print("pylon: relay refused %: %\n",py_short(py_hex(in.id[..],hex[..])),py_message(text));}
         }
         return;
     }
-    if f.type==NM_EOSE {
-        if rl_input(r,p[0].gen,RlIn.{kind=RL_IN_EOSE,sub=sub})==RL_EOSE {p[0].caught_up+=1;print("pylon: caught up on % (connection %)\n",sub,p[0].gen);}
+    if in.kind==RL_IN_EOSE {
+        if d==RL_EOSE {p[0].caught_up+=1;print("pylon: caught up on % (connection %)\n",in.sub,p[0].gen);}
         return;
     }
-    if f.type==NM_CLOSED {
-        // message.coax reads NIP-42's auth-required as another prefix word.
-        need:=f.prefix==NM_PREFIX_OTHER && message.count>=14 && message[0..<14]=="auth-required:";
-        d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_CLOSED,sub=sub,auth_required=need});
-        print("pylon: relay closed %: %\n",sub,message);return;
-    }
-    // NM_NOTICE
-    d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_NOTICE});print("pylon: notice %\n",message);
+    if in.kind==RL_IN_CLOSED {print("pylon: relay closed %: %\n",in.sub,py_message(text));return;}
+    print("pylon: notice %\n",py_message(text));
 }
 py_jitter :: ()->int {
     b:[4]u8;if !py_draw(4,b[..]) {return 0;}
