@@ -17,13 +17,12 @@
 // orbit (verse/camera.coax); every Space press is one wing beat up, with no
 // limit, holding it beats on and climbs, and letting go glides down (the face does the flight).
 //
-// The look (fairy.wgsl, verse/paint.coax): three soft toon bands with a warm
-// rim, shadows tinted blue, blue-cyan haze that steps the ridges back, a
-// painted sky with a sun and soft clouds, blob canopies (no grass in the park),
-// and a post pass with gentle bloom, a soft tone curve
-// and lifted blacks. Everything is drawn from the engine's five shapes in
-// code: a ground of cells (store 0), every object as a shape (store 1), the
-// stream's nodes (store 2), the grass from a hash of its cell.
+// The look (fairy.wgsl, the flat style of docs/verse/art-styles.md): three
+// flat tones (two for characters) in the realm's palette, flat translucent
+// shadows, a flat sky over a horizon band, the stream and the lakes in flat
+// bands, no grass, and a post pass that blooms only what glows. Everything is
+// drawn from the engine's five shapes in code: a ground of cells (store 0),
+// every object as a shape (store 1), the stream's nodes (store 2).
 //
 // This file is the page: the controls, the scene, the HUD. fairy-face.c binds
 // it for the browser and runs the player and the stream between its calls.
@@ -54,12 +53,13 @@
 #load "fairymend.coax";    // broken things mended
 #load "fairytools.coax";   // tools made with CRAFT
 #load "fairypark.coax";    // the park drawn: lakes, trees, landmarks, signs
+#load "fairymap.coax";     // the map: the park from above with its names
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
 PLATES :: 16;
 // The uniforms (fairy.wgsl U).
-U_VIEW :: 8; U_EYE :: 24; U_SUN :: 28; U_GROUND :: 32; U_GRASS :: 36; U_GRASS2 :: 40; U_SHADOW :: 44;
+U_VIEW :: 8; U_EYE :: 24; U_SUN :: 28; U_GROUND :: 32; U_MAP :: 36; U_HERE :: 40; U_SHADOW :: 44;
 SHADOWS :: 16;
 U_PATH :: U_SHADOW + SHADOWS * 4;
 PATHS :: 32;
@@ -81,16 +81,11 @@ OBJECTS :: 5360;
 OBJECT_FLOATS :: 16;
 // Looks (fairy.wgsl): how a surface takes the light and the fade.
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_SKIN :: 3; LOOK_GLOW :: 4; LOOK_WING :: 5;
-LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8; LOOK_SPARK :: 9; LOOK_FALL :: 10;   // LOOK_FALL: falling water (fairypond.coax)   // her own light: glows, and the fade never dims it
+LOOK_CLOTH :: 6; LOOK_RIDGE :: 7; LOOK_BARK :: 8; LOOK_SPARK :: 9; LOOK_FALL :: 10; LOOK_LAKE :: 11;   // LOOK_FALL: falling water (fairypond.coax); LOOK_LAKE: a lake's flat water (fairypark.coax)   // her own light: glows, and the fade never dims it
 MINE :: 128;   // added to a shape's code when it is hers: what is near the lens fades, but never she
-// The draws: the ground and four shapes, the grass, then the water (last: the host draws it after the rest).
-DRAWS :: 7;
-GRASS_DRAW :: 5;
-WATER_DRAW :: 6;
-GRASS_BLADES :: 96;        // blades a 2 m patch draws on a computer (24 a square metre)
-GRASS_BLADES_PHONE :: 32;  // and on a phone (8)
-GRASS_PATCHES :: 32;       // patches a side on a computer: out to 32 m
-GRASS_PATCHES_PHONE :: 18; // on a phone: out to 18 m
+// The draws: the ground and four shapes, then the water (last: the host draws it after the rest).
+DRAWS :: 6;
+WATER_DRAW :: 5;
 
 WALLS :: 2900;
 // Thornfall's fallen giant: a trunk lying east-west, its root plate at the west end.
@@ -176,7 +171,7 @@ Fairy :: struct {
   pane_top: f32;                            // the talk pane's top edge, while you talk
   seen_x: [FF_CREATURES] f32; seen_y: [FF_CREATURES] f32; seen_r: [FF_CREATURES] f32; seen_on: [FF_CREATURES] bool;
   tap_creature: int; tap_finger: int;       // a finger put down on a creature (creature + 1, 0 none)
-  // The shared edit layer: its board switches the sparkles, the grass and the ridges; SETTINGS has flight
+  // The shared edit layer: its board switches the sparkles and the ridges; SETTINGS has flight
   ed: [1] RealmEdit;
   ed_out: [256] u8; ed_out_n: int;
   // the others in the forest, the chat room and the inbox (fairyroom.coax)
@@ -187,6 +182,7 @@ Fairy :: struct {
   maker: [1] Maker;     // making your fairy (fairymaker.coax)
   build: [1] Build;     // building in your home (fairyhome.coax)
   race: [1] Race;       // a course of hoops, made or opened by link (fairycourse.coax)
+  map: [1] FfMap;       // the park from above (fairymap.coax)
   k_news: int; k_news_at: f64;   // a skill just learned (1 + it) or a find (100 + its kind) (fairyskills.coax)
   bird_flew: f64;                // when the hurt bird was mended (it flies off)
   now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
@@ -240,7 +236,9 @@ ground :: () -> Ground {
   return g;
 }
 ground_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return verse_terrain_height(ground(), s[0].heights[..], x, z); }
-fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return ground_at(s, x, z); }
+fairy_ground :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return walk_at(s, x, z); }
+// How far a bridge's deck stands over the ground at (x, z) (0 off one): the stream's say on the water adds it to your height.
+fairy_deck_lift :: (s: [] Fairy, x: f32, z: f32) -> f32 #export_c { return walk_at(s, x, z) - ground_at(s, x, z); }
 
 fairy_start :: (s: [] Fairy) {
   s[0].build[0].carry = -1; s[0].build[0].picked = -1;
@@ -464,7 +462,9 @@ build_scenery :: (s: [] Fairy) {
     if w < WALLS { put6(wl, w, st.x - 0.5, 0, st.z - 0.5, st.x + 0.5, 3.1, st.z + 0.5); w += 1; }
   }
   // the waterfall's rocks (fairypond.coax)
-  if w < WALLS { put6(wl, w, f32(FFP_FALL_X) + 0.2, 0, f32(FFP_FALL_Z) - 3.4, f32(FFP_FALL_X) + 4.6, 2.6, f32(FFP_FALL_Z) + 3.4); w += 1; }
+  // (the box round them, turned along the stream: upstream of the lip, either bank)
+  fr0 := ffp_at(0.2, -4.6, 0); fr1 := ffp_at(4.6, 4.6, 0); fr2 := ffp_at(0.2, 4.6, 0); fr3 := ffp_at(4.6, -4.6, 0);
+  if w < WALLS { put6(wl, w, lo(lo(fr0.x, fr1.x), lo(fr2.x, fr3.x)), 0, lo(lo(fr0.z, fr1.z), lo(fr2.z, fr3.z)), hi(hi(fr0.x, fr1.x), hi(fr2.x, fr3.x)), 2.6, hi(hi(fr0.z, fr1.z), hi(fr2.z, fr3.z))); w += 1; }
   rc := v3(FF_GLADE[FF_OLD_RING * 3], 0, FF_GLADE[FF_OLD_RING * 3 + 1]);
   if w < WALLS { put6(wl, w, rc.x - 0.75, 0, rc.z - 0.75, rc.x + 0.75, 0.85, rc.z + 0.75); w += 1; }
   // the park's wall: Central Park West, Fifth Avenue, 59th and 110th Streets
@@ -547,7 +547,7 @@ fairy_life_ready :: (s: [] Fairy) #export_c { if !s[0].started { fairy_start(s);
 fairy_place_open :: (s: [] Fairy, x: f32, z: f32) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
   if !finite(x) || !finite(z) || x < f32(FF_PARK_W) + 1 || x > f32(FF_PARK_E) - 1 || z < f32(FF_PARK_S) + 1 || z > f32(FF_PARK_N) - 1 { return false; }
-  if ground_at(s, x, z) < f32(FF_LEVEL) + 0.1 { return false; }
+  if walk_at(s, x, z) < f32(FF_LEVEL) + 0.1 { return false; }
   return verse_place_clear(s[0].walls[..], s[0].wall_n, x, 0, z, 0.35);
 }
 // A kept place made good: itself when open, else the nearest open spot, else the spawn.
@@ -564,7 +564,7 @@ fairy_place_fix :: (s: [] Fairy, p: Place) -> Place #export_c {
 // The camera behind you at a kept place, as it was kept.
 fairy_place_camera :: (s: [] Fairy, p: Place) #export_c {
   if !s[0].started { fairy_start(s); }
-  s[0].feet = v3(p.x, ground_at(s, p.x, p.z), p.z); s[0].face = p.face;
+  s[0].feet = v3(p.x, walk_at(s, p.x, p.z), p.z); s[0].face = p.face;
   s[0].orbit = verse_place_orbit(p, s[0].feet);
 }
 fairy_place_of :: (s: [] Fairy, x: f32, y: f32, z: f32, face: f32) -> Place #export_c { return verse_place_of(x, y, z, face, s[0].orbit, FF_LAYOUT); }
@@ -595,6 +595,7 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if ffs_key(s, key, mods) { return true; }
   if s[0].talk > 0 { return talk_key(s, key, mods); }
+  if ffmap_key(s, key) { return true; }
   if (key == 'l' || key == 'L') && ffm_can(s) { ffm_open(s, false); return true; }   // LOOK: your fairy
   if ffc_key(s, key) { return true; }
   if key == KEY_ENTER { ffs_start_chat(s); return true; }
@@ -625,6 +626,7 @@ fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -
   if !s[0].started { fairy_start(s); }
   if ffm_pointer(s, x, y, phase, id) { return true; }
   if ffb_pointer(s, x, y, phase, id) { return true; }
+  if !s[0].maker[0].open && ffmap_pointer(s, x, y, phase, id) { return true; }
   if !s[0].maker[0].open && ffc_pointer(s, x, y, phase, id) { return true; }
   if s[0].maker[0].open && kind != 0 { s[0].touch = true; return false; }   // the sticks turn the camera round her
   if s[0].maker[0].open { return look_drag(s, x, y, phase, id); }
@@ -860,8 +862,8 @@ fairy_facts :: (s: [] Fairy, facts: string) #export_c {
 // While you talk, the phone's keyboard comes up over the typed line, and you stand still.
 fairy_wants_text :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || redit_typing(s[0].ed[..]) || ffs_typing(s); }
 fairy_talking :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0; }
-// Talking to a creature or typing a line or a message: you stand still, and no key is tracked.
-fairy_still :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || ffs_typing(s) || s[0].maker[0].open; }
+// Talking to a creature, typing a line or a message, or the map open: you stand still, and no key is tracked.
+fairy_still :: (s: [] Fairy) -> bool #export_c { return s[0].talk > 0 || ffs_typing(s) || s[0].maker[0].open || s[0].map[0].on; }
 
 // ---- the scene
 
@@ -1722,19 +1724,21 @@ sparkle :: (s: [] Fairy, feet: Point, face: f32, moving: bool, dt: f32) {
 
 // The camera as clip-space rows (WebGPU: depth 0 near to 1 far).
 NEAR :: 0.1; FAR :: 700.0;
-view :: (shot: Shot, width: f32, height: f32, u: [] f32, at: int) {
+view :: (shot: Shot, width: f32, height: f32, u: [] f32, at: int) { view_range(shot, width, height, u, at, f32(NEAR), f32(FAR)); }
+// The same from z0 to z1 m (the map reaches further).
+view_range :: (shot: Shot, width: f32, height: f32, u: [] f32, at: int, z0: f32, z1: f32) {
   f := unit_or(sub(shot.at, shot.eye), v3(0, 0, 1));
   r := unit_or(cross(f, v3(0, 1, 0)), v3(1, 0, 0));
   up := cross(r, f);
   aspect := width / hi(height, 1);
   fy := clamp(aspect * 1.25, 0.95, 1.9);
   fx := fy / aspect;
-  depth := f32(FAR / (FAR - NEAR));
+  depth := z1 / (z1 - z0);
   e := shot.eye;
   rows := [16] f32.[
     r.x * fx, r.y * fx, r.z * fx, -dot(r, e) * fx,
     up.x * fy, up.y * fy, up.z * fy, -dot(up, e) * fy,
-    f.x * depth, f.y * depth, f.z * depth, (-dot(f, e) - f32(NEAR)) * depth,
+    f.x * depth, f.y * depth, f.z * depth, (-dot(f, e) - z0) * depth,
     f.x, f.y, f.z, -dot(f, e)
   ];
   for i: 0..<16 { u[at + i] = rows[i]; }
@@ -1933,23 +1937,32 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k}, 0.78, 0);
   n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = draw_text(out, n, line2, gutter + 14 * k, gutter + 22 * k + cap + small, small, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
-  // COURSE and LOOK beside the title; where EDIT leaves no room for both side by side, one over the other
+  // COURSE, LOOK and MAP beside the title; where EDIT leaves no room for all three side by side,
+  // COURSE over LOOK and MAP beside them, where it fits
   chip_x := gutter + tw + 36 * k; chip_y1 := gutter + cap + small + 34 * k;
   course_w := text_width("COURSE", 7.5 * k) + 26 * k;
   right := w - gutter - (ifx s[0].ed[0].ready && redit_may(s[0].ed[..]) then text_width("EDIT", 9 * k) + 40 * k else 0.0f32);
-  if chip_x + course_w + 8 * k + ffm_chip_w(s) <= right {
+  if chip_x + course_w + 8 * k + ffm_chip_w(s) + 8 * k + ffmap_chip_w(s) <= right {
     n = ffc_chip(s, out, u, n, chip_x, gutter, chip_y1);
     n = ffm_chip(s, out, u, n, ifx s[0].race[0].chip.x1 > 0 then s[0].race[0].chip.x1 + 8 * k else chip_x, gutter, chip_y1, 0);
+    after := hi(chip_x - 8 * k, hi(s[0].race[0].chip.x1, s[0].maker[0].chip.x1));
+    n = ffmap_chip(s, out, u, n, after + 8 * k, gutter, chip_y1);
   } else {
     mid := (gutter + chip_y1) / 2;
     n = ffc_chip(s, out, u, n, chip_x, gutter, mid - 3 * k);
     n = ffm_chip(s, out, u, n, chip_x, ifx s[0].race[0].chip.x1 > 0 then mid + 3 * k else gutter, chip_y1, course_w);
+    after := hi(chip_x - 8 * k, hi(s[0].race[0].chip.x1, s[0].maker[0].chip.x1));
+    // (an admin on a phone, EDIT beside them: no room left for MAP)
+    s[0].map[0].chip = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+    if after + 8 * k + ffmap_chip_w(s) <= right { n = ffmap_chip(s, out, u, n, after + 8 * k, gutter, chip_y1); }
   }
   n = ffc_pane(s, out, u, n, gutter + cap + small + 42 * k + (ifx phone(s) then 38 * k else 0.0f32));   // on a phone, under the chat's line
-  if !s[0].maker[0].open { n = ffpk_signs(s, out, u, n, you); }   // (not over the maker's pane)
+  over := s[0].map[0].lift >= 0.5;   // the map (fairymap.coax): its own names, none of these
+  if !s[0].maker[0].open && !over { n = ffpk_signs(s, out, u, n, you); }   // (not over the maker's pane)
   // the mood glyphs over the creatures in view
   for c: 0..<FF_CREATURES {
     s[0].seen_on[c] = false;
+    if over { continue; }
     x := FF_CREATURE[c * 4]; z := FF_CREATURE[c * 4 + 1];
     lift := ifx cast(int) FF_CREATURE[c * 4 + 3] == 4 then 2.9f32 else 1.6f32;   // the owl sits on its stone
     p := project(u, v3(x, ground_at(s, x, z) + lift, z), w, h);
@@ -1967,6 +1980,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   s[0].pane_top = 0;
   s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].maker[0].open { return ffm_hud(s, out, u, n); }
+  if over { return ffmap_foot(s, out, u, ffmap_hud(s, out, u, n, you)); }
   if s[0].talk > 0 { n = conversation(s, out, u, n); return ffs_hud(s, out, u, n, s[0].pane_top); }
   // the hint at the foot
   line := hint(s);
@@ -2185,7 +2199,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   s[0].air = ifx finite(air) then hi(air, 0) else 0.0f32;
   speed := sqrt(vx * vx + vz * vz);
   if finite(speed) { s[0].stride += speed * t / 1.6; }
-  shown := add(v3(feet.x, 0, feet.z), v3(0, ground_at(s, feet.x, feet.z) + feet.y, 0));
+  shown := add(v3(feet.x, 0, feet.z), v3(0, walk_at(s, feet.x, feet.z) + feet.y, 0));   // on a bridge, its deck
   s[0].feet = shown;
   ffq_step(s);
   ffn_frame(s, t);
@@ -2197,7 +2211,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
     if s[0].waited > f32(ANSWER_WAIT) { s[0].ask_n = 0; fairy_answer(s, "0\n"); }
   }
 
-  shot := camera_frame(s, shown, vx, vz, t);
+  shot := ffmap_frame(s, camera_frame(s, shown, vx, vz, t), t);   // the map lifts it over the park
 
   for k: 0..<5 { s[0].counts[k] = 0; }
   s[0].shadow_n = 0; s[0].plate_n = 0;
@@ -2241,30 +2255,20 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
     s[0].draws[d + 2] = cast(u32) (ifx kind == 0 then 0 else CELLS * FF_ROWS + SLOT_AT[kind]);
     s[0].draws[d + 3] = cast(u32) (ifx kind == 0 then CELLS * FF_ROWS else s[0].counts[kind]);
   }
-  side := ifx ph then GRASS_PATCHES_PHONE else GRASS_PATCHES;
-  blades := ifx ph then GRASS_BLADES_PHONE else GRASS_BLADES;
-  g := GRASS_DRAW * 4;
-  s[0].draws[g] = 0; s[0].draws[g + 1] = cast(u32) (blades * 3);
-  s[0].draws[g + 2] = cast(u32) (CELLS * FF_ROWS + OBJECTS); s[0].draws[g + 3] = 0;   // no grass in the park
   wd := WATER_DRAW * 4;
   s[0].draws[wd] = 0; s[0].draws[wd + 1] = cast(u32) s[0].water_vertices; s[0].draws[wd + 2] = 0; s[0].draws[wd + 3] = cast(u32) s[0].water_patches;
 
   u[0] = width; u[1] = height; u[2] = effect_time(s); u[3] = 1; u[4] = ifx still || s[0].golden then 1.0f32 else 0.0f32;
   u[6] = s[0].dpr;
-  view(shot, width, height, u, U_VIEW);
+  view_range(shot, width, height, u, U_VIEW, ffmap_near(s), ffmap_far(s));
   u[U_EYE] = shot.eye.x; u[U_EYE + 1] = shot.eye.y; u[U_EYE + 2] = shot.eye.z;
   u[U_EYE + 3] = ifx ph then 0.006f32 * 1.25f32 else 0.006f32;   // the far haze's density (fairy.wgsl hazed: none nearer than 48 m)
   sun := ffn_key_dir(s);
   u[U_SUN] = sun.x; u[U_SUN + 1] = sun.y; u[U_SUN + 2] = sun.z; u[U_SUN + 3] = ifx ph then 1.0f32 else 0.0f32;
   u[U_GROUND] = f32(CELLS); u[U_GROUND + 1] = f32(FF_CELL); u[U_GROUND + 2] = f32(FF_WEST); u[U_GROUND + 3] = f32(FF_SOUTH);
-  // the grass round the camera's ground point, patch-snapped so it doesn't swim
-  // the grass round your feet (the camera's look point is up in the air when you fly), and none once the eye is 30 m up
-  gx := floor(shown.x / 2) * 2 - f32(side); gz := floor(shown.z / 2) * 2 - f32(side);
-  if shot.eye.y - ground_at(s, shot.eye.x, shot.eye.z) > 30 { s[0].draws[g + 3] = 0; }
-  u[U_GRASS] = gx; u[U_GRASS + 1] = gz; u[U_GRASS + 2] = f32(side); u[U_GRASS + 3] = f32(blades);
-  u[U_GRASS2] = f32(side) - 1; u[U_GRASS2 + 1] = f32(FF_LEVEL); u[U_GRASS2 + 2] = f32(FF_PATH_HALF); u[U_GRASS2 + 3] = shown.x;
-  // you part the grass where you stand
-  u[U_SUN + 3] = u[U_SUN + 3];
+  // the water's level (the banks, the lakes' depth) and your x (her light, what near the lens clears)
+  u[U_HERE + 1] = f32(FF_LEVEL); u[U_HERE + 3] = shown.x;
+  u[U_MAP] = ffmap_clear(s);   // over the park, no haze
   paths(u);
   blooms(s, u);
   ffn_uniforms(s, u);
@@ -2287,7 +2291,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert U_SHADOW == 44 && U_PATH == 108 && U_PATH_INFO == 236 && U_BLOOM == 240 && U_BLOOM_INFO == 336 && U_PLATE == 340 && U_WATER == 468 && U_NIGHT == 792;
   #assert SLOT_AT[4] + SLOTS[4] == OBJECTS;
   for k: 2..<5 { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
-  #assert GRASS_BLADES * 3 <= 1024 && SHAPE_VERTICES[2] <= 1024;
+  #assert SHAPE_VERTICES[2] <= 1024 && WATER_DRAW == DRAWS - 1;
 }
 
 #test "a frame lays the valley out within its slots and sees you" {
@@ -2306,7 +2310,7 @@ fairy_store_cap :: (k: int) -> int #export_c {
   // the triangles a frame draws stay inside a phone's budget
   tris := CELLS * FF_ROWS * 2;
   for k: 1..<5 { tris += g[0].counts[k] * SHAPE_VERTICES[k] / 3; }
-  #assert tris < 700000 && g[0].draws[GRASS_DRAW * 4 + 3] == 0;
+  #assert tris < 700000 && fairy_draws(g[..]) == DRAWS && g[0].draws[WATER_DRAW * 4 + 1] == cast(u32) g[0].water_vertices;
 }
 
 #test "E at the first flower blooms it; the hedgehog's three patches make it happy and wake a root" {
@@ -2559,7 +2563,7 @@ dist2 :: (a: Point, b: Point) -> f32 { dx := a.x - b.x; dy := a.y - b.y; return 
   #assert g[0].ed[0].req_ready && cast(string) g[0].ed[0].req_url[0..<g[0].ed[0].req_url_n] == "/api/playtest/realms/fairy-forest";
   spheres := g[0].counts[SHAPE_SPHERE];
   boxes := g[0].counts[SHAPE_BOX];
-  #assert g[0].draws[GRASS_DRAW * 4 + 3] == 0 && fairy_may_fly(g[..]);
+  #assert fairy_may_fly(g[..]);
   redit_requested(g[0].ed[..], 5);
   used := redit_message(g[0].ed[..], HTTP_KIND + 5, "200\nrealm fairy-forest\nrole visitor\nowner 0\ntool fly 0\nrow sparkles 1 Sparkles\nrow ridges 0 The city round the park\n");
   n = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0.7, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);

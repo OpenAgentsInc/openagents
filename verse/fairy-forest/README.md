@@ -16,8 +16,8 @@ things until they change, helping people, building a home and a community,
 making your own character, and making things to share with friends. This
 page puts as much of that as fits sensibly into one realm.
 
-Style: **painterly** ([art-styles.md](../../docs/verse/art-styles.md)). It is
-the realm that style is for.
+Style: **flat** since October 30 ([art-styles.md](../../docs/verse/art-styles.md),
+"Flat", the `FLAT_GARDEN` palette).
 
 ## The story in one line
 
@@ -46,6 +46,16 @@ it.
   Thornfall at the north edge; the Old Ring by Cleopatra's Needle. Only the
   glades and the heart tree are faded; the rest of the park keeps its
   colour. A place kept from the old valley opens at the spawn.
+  Gapstow Bridge over the Pond, Bow Bridge over the Lake and the footbridge
+  over the Loch (once mended) carry you on their decks, as Everglade's
+  bridge does (`walk_at`: the deck's height where it spans the water, level
+  with the path at each end); off the side you wade. The lakes are flat
+  water in a few tones by depth, light bands along the shore and slow
+  ripple lines.
+- **The map:** M, or MAP by the title, lifts the camera over the whole park
+  (its long side across a wide screen, up a tall one) with every landmark's
+  and glade's name and a ring where you are; M, Esc or WALK brings you back
+  (`apps/openagents-web/fairymap.coax`). The address's `#map` opens on it.
 - **The glades:** each has its own character and its own trouble.
   - **Mossbank:** soft hills and mushrooms; where you wake and where your home
     grows.
@@ -124,7 +134,8 @@ light, a warm pool round you in the dark; WATER the sticks dammed across the str
 pond (E: CLEAR), and then WATER at one bed waters your whole garden. Each one
 learned puts a gem on her upper wings. Kept in the save's tail. The pond (ff-pond, `apps/openagents-web/fairypond.coax`) starts low,
 its water drawn back into the middle of its bed with sand round it; the
-waterfall on its east bank is a trickle down dry rocks until the dam is
+waterfall at its head, where the stream comes in over boulders on either
+bank, is a trickle down dry rocks until the dam is
 cleared, and then it runs. With WATER, E by the low pond (FILL THE POND)
 fills it over a few seconds, kept in the save. MEND also mends broken things (ff-mend,
 `apps/openagents-web/fairymend.coax`): an old fence by the trail out of

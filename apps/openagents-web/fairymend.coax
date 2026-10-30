@@ -34,6 +34,20 @@ ffx_mend :: (s: [] Fairy, you: Point) {
   s[0].k_news = FFX_NEWS + i; s[0].k_news_at = s[0].time;
 }
 
+// The footbridge's planks under (x, z) once it is mended (as ffx_draw lays
+// them: an arch 3.4 m either side of its middle, 0.6 m across), else -1000.
+FFX_SPAN :: 3.4;
+ffx_deck :: (s: [] Fairy, x: f32, z: f32) -> f32 {
+  i := FFX_BRIDGE;
+  if !ffx_mended(s[0].life[..], i) { return -1000; }
+  cx := FFX_THING[i * 4]; cz := FFX_THING[i * 4 + 1]; yaw := FFX_THING[i * 4 + 2];
+  dx := x - cx; dz := z - cz;
+  f := (dx * cos(yaw) - dz * sin(yaw)) / (f32(FFX_SPAN) * 0.95);
+  side := dx * sin(yaw) + dz * cos(yaw);
+  if abs(f) > 1 || abs(side) > 0.6 { return -1000; }
+  return f32(FF_LEVEL) + 0.42 + 0.4 * (1 - f * f) + 0.035;
+}
+
 ffx_draw :: (s: [] Fairy, eye: Point) {
   if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 30 { return; }   // the forest first
   t := effect_time(s);
@@ -68,7 +82,7 @@ ffx_draw :: (s: [] Fairy, eye: Point) {
     } else if i == FFX_BRIDGE {
       // two beams over the stream, a gentle arch of planks, a rope rail; broken, three planks gone and one hanging
       level := f32(FF_LEVEL);
-      half := 3.4f32;
+      half := f32(FFX_SPAN);
       for side: 0..<2 {
         sg := ifx side == 0 then 1.0f32 else -1.0f32;
         p0 := v3(x - across.x * half + along.x * 0.55 * sg, level + 0.35, z - across.z * half + along.z * 0.55 * sg);
@@ -164,4 +178,14 @@ ffx_draw :: (s: [] Fairy, eye: Point) {
     #assert !ffk_at(v3(f32(FFW_X), 0, f32(FFW_Z)), x, z, r + f32(FFW_NEAR));
     #assert !ffk_at(v3(f32(FFK_DAM_X), 0, f32(FFK_DAM_Z)), x, z, r + 3);
   }
+}
+
+#test "the footbridge, once mended, carries you over the Loch on its planks" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  x := FFX_THING[FFX_BRIDGE * 4]; z := FFX_THING[FFX_BRIDGE * 4 + 1];
+  #assert ffx_deck(s[..], x, z) == -1000 && walk_at(s[..], x, z) == ground_at(s[..], x, z);
+  s[0].life[0].deeds.mended = s[0].life[0].deeds.mended | (1 << FFX_BRIDGE);
+  #assert walk_at(s[..], x, z) > f32(FF_LEVEL) + 0.8 && walk_at(s[..], x, z) > ground_at(s[..], x, z);
+  #assert ffx_deck(s[..], x + 20, z) == -1000;
 }

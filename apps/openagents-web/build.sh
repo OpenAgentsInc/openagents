@@ -32,12 +32,10 @@ for w in fixture everglade; do
 done
 # The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.
 flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 verse_style_flat_sky verse_style_flat_shadow verse_style_flat_fade verse_style_bayer verse_style_flat_dither verse_style_flat_hem verse_style_flat_srgb verse_style_flat_colour verse_style_flat_time"
-for w in villa fairy; do
-  (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into "apps/openagents-web/$w.wgsl")
-done
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/villa.wgsl)
+# Fairy Forest draws in the flat style only: no painterly or grass functions.
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/fairy.wgsl)
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
-# Fairy Forest's painterly shading (verse/paint.coax).
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/paint.coax verse_paint_wrap verse_paint_band verse_paint_band2 verse_paint_rim verse_paint_haze verse_paint_haze_sun verse_paint_sky_mix verse_paint_sky_band verse_paint_halo verse_paint_cloud verse_paint_tone verse_paint_bloom verse_paint_water_mid verse_paint_water_deep verse_paint_sparkle --into apps/openagents-web/fairy.wgsl)
 m="$here/../../verse"
 # The voice engine for pages that talk (data-voice: the Haunted House), coax/web/voice.js.
 "$here/../../coax/web/voice/build.sh" "$here/build/voice.wasm" &

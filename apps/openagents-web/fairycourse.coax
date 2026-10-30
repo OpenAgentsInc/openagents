@@ -156,6 +156,7 @@ ffc_step :: (s: [] Fairy) {
 // The location's hash: course=<id> opens that course.
 fairy_hash :: (s: [] Fairy, hash: string) #export_c {
   if !s[0].started { fairy_start(s); }
+  if hash == "map" { s[0].map[0].on = true; s[0].map[0].lift = 1; return; }   // #map opens on the map (fairymap.coax), as Everglade's
   r := s[0].race[..];
   if hash.count < 15 || hash[0..<7] != "course=" { return; }
   id := hash[7..<hash.count];

@@ -115,6 +115,8 @@ ffpk_trees :: (s: [] Fairy, u: [] f32, eye: Point) {
   far := ifx phone(s) then f32(FFPK_TREE_FAR_PHONE) else f32(FFPK_TREE_FAR);
   up := eye.y - ground_at(s, eye.x, eye.z);
   if up > 30 { far *= clamp(up / 30, 1, 3); }
+  over := s[0].map[0].lift >= 0.5;   // over the map (fairymap.coax): every tree, crowns only
+  if over { far = 1400; }
   for pass: 0..<3 {
     r0 := far * f32(pass) / 3; r1 := far * f32(pass + 1) / 3;
     for t: 0..<s[0].tree_n {
@@ -126,7 +128,7 @@ ffpk_trees :: (s: [] Fairy, u: [] f32, eye: Point) {
       h := s[0].trees[k + 2]; r := s[0].trees[k + 3]; hue := s[0].trees[k + 4];
       if hue >= 0.25 && s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 60 { continue; }
       g := ground_at(s, x, z);
-      shape(s, SHAPE_BOX, LOOK_BARK, v3(x, g + h * 0.5 - 0.2, z), hue * 5, 0, 0.42, h + 0.4, 0.42, 0.42, 0.33, 0.22);
+      if !over { shape(s, SHAPE_BOX, LOOK_BARK, v3(x, g + h * 0.5 - 0.2, z), hue * 5, 0, 0.42, h + 0.4, 0.42, 0.42, 0.33, 0.22); }
       gr := 0.16 + hue * 0.12; gg := 0.42 + hue * 0.14; gb := 0.07 + hue * 0.04;
       if hue > 0.9 { gr = 0.6; gg = 0.52; gb = 0.14; }   // a few gold crowns
       y0 := g + h;
@@ -153,13 +155,14 @@ ffpk_trees :: (s: [] Fairy, u: [] f32, eye: Point) {
 
 // The lakes' water: a flat sheet at the water's level over each ellipse; the
 // ground stands over it everywhere but in the carved beds, so its shore is
-// the ground's.
+// the ground's. fairy.wgsl (LOOK_LAKE) colours it in flat tones by the depth
+// of the bed under it, with light bands along the shore and slow ripple lines.
 ffpk_lakes :: (s: [] Fairy) {
   level := f32(FF_LEVEL);
   for i: 0..<FFP_BLOBS {
     rx := FFP_BLOB[i * 4 + 2]; rz := FFP_BLOB[i * 4 + 3];
     if rx <= 0 { continue; }
-    shape(s, SHAPE_BOX, LOOK_MATTE, v3(FFP_BLOB[i * 4], level - 0.6, FFP_BLOB[i * 4 + 1]), 0, 0, rx * 2 + 1, 1.2, rz * 2 + 1, 0.26, 0.5, 0.6);
+    shape(s, SHAPE_BOX, LOOK_LAKE, v3(FFP_BLOB[i * 4], level - 0.6, FFP_BLOB[i * 4 + 1]), 0, 0, rx * 2 + 1, 1.2, rz * 2 + 1, 0.26, 0.5, 0.6);
   }
 }
 
@@ -188,24 +191,52 @@ ffpk_cyl :: (s: [] Fairy, look: int, x: f32, z: f32, y: f32, rad: f32, sy: f32, 
 // (x, z) turned yaw about a landmark's middle: its local across (ax) and along (az).
 at_turn :: (c: Point, yaw: f32, ax: f32, az: f32) -> Point { return v3(c.x + cos(yaw) * ax + sin(yaw) * az, 0, c.z - sin(yaw) * ax + cos(yaw) * az); }
 
-// A bridge from a to b over water: a deck, its parapets, and piers.
-ffpk_bridge :: (s: [] Fairy, a: Point, b: Point, deck: f32, wide: f32, r: f32, g: f32, bl: f32, iron: bool) {
+// The deck's top under (x, z), or -1000 off every bridge (park.coax
+// FFP_BRIDGE, and the footbridge over the Loch once mended).
+ffpk_deck :: (s: [] Fairy, x: f32, z: f32) -> f32 {
+  for i: 0..<FFP_BRIDGES {
+    d := ffp_deck_at(i, x, z);
+    if !ffp_on_deck(i, d) { continue; }
+    return ffp_deck_y(i, ground_at(s, FFP_BRIDGE[i * 6], FFP_BRIDGE[i * 6 + 1]), ground_at(s, FFP_BRIDGE[i * 6 + 2], FFP_BRIDGE[i * 6 + 3]), d.t);
+  }
+  return ffx_deck(s, x, z);
+}
+// Where you walk at (x, z), as Everglade's walk_at: the ground, or on a
+// bridge its deck, so you cross over the water instead of wading under it.
+walk_at :: (s: [] Fairy, x: f32, z: f32) -> f32 { return hi(ground_at(s, x, z), ffpk_deck(s, x, z)); }
+
+// Bridge i: its deck in short lengths along the arch (the same ffp_deck_y
+// you walk on), a parapet either side, and piers down to the bed.
+FFPK_DECK_LENGTHS :: 8;
+ffpk_bridge :: (s: [] Fairy, i: int, r: f32, g: f32, bl: f32, iron: bool) {
+  a := v3(FFP_BRIDGE[i * 6], 0, FFP_BRIDGE[i * 6 + 1]); b := v3(FFP_BRIDGE[i * 6 + 2], 0, FFP_BRIDGE[i * 6 + 3]);
+  wide := FFP_BRIDGE[i * 6 + 4];
+  ya := ground_at(s, a.x, a.z); yb := ground_at(s, b.x, b.z);
   yaw := yaw_of(b.x - a.x, b.z - a.z);
   l := sqrt((b.x - a.x) * (b.x - a.x) + (b.z - a.z) * (b.z - a.z));
   m := mix(a, b, 0.5);
-  for half: 0..<2 {
-    sg := ifx half == 0 then -1.0f32 else 1.0f32;
-    c := at_turn(m, yaw, 0, sg * l * 0.25);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(c.x, deck + 0.25, c.z), yaw, -sg * 0.08, wide, 0.4, l * 0.52, r, g, bl);
+  seg := l / f32(FFPK_DECK_LENGTHS);
+  rail := ifx iron then 0.5f32 else 0.8f32;
+  for k: 0..<FFPK_DECK_LENGTHS {
+    t0 := f32(k) / f32(FFPK_DECK_LENGTHS); t1 := f32(k + 1) / f32(FFPK_DECK_LENGTHS);
+    y0 := ffp_deck_y(i, ya, yb, t0); y1 := ffp_deck_y(i, ya, yb, t1);
+    tilt := -atan2(y1 - y0, seg);
+    long := sqrt(seg * seg + (y1 - y0) * (y1 - y0)) + 0.06;
+    c := at_turn(m, yaw, 0, ((t0 + t1) * 0.5 - 0.5) * l);
+    y := (y0 + y1) * 0.5;
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(c.x, y - 0.2, c.z), yaw, tilt, wide, 0.4, long, r, g, bl);
     for side: 0..<2 {
       ss := ifx side == 0 then -1.0f32 else 1.0f32;
-      p := at_turn(m, yaw, ss * wide * 0.46, sg * l * 0.25);
-      shape(s, SHAPE_BOX, LOOK_STONE, v3(p.x, deck + 0.85, p.z), yaw, -sg * 0.08, 0.18, ifx iron then 0.5f32 else 0.8f32, l * 0.52, r * 0.95, g * 0.95, bl * 0.95);
+      p := at_turn(m, yaw, ss * (wide * 0.5 - 0.09), ((t0 + t1) * 0.5 - 0.5) * l);
+      shape(s, SHAPE_BOX, LOOK_STONE, v3(p.x, y + rail * 0.5, p.z), yaw, tilt, 0.18, rail, long, r * 0.95, g * 0.95, bl * 0.95);
     }
   }
   for k: 0..<3 {
-    p := at_turn(m, yaw, 0, (f32(k) - 1) * l * 0.36);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(p.x, deck - 0.8, p.z), yaw, 0, wide * 0.8, 2.0, 0.8, r * 0.85, g * 0.85, bl * 0.85);
+    t := 0.25 + f32(k) * 0.25;
+    top := ffp_deck_y(i, ya, yb, t) - 0.4;
+    foot := f32(FF_LEVEL) - f32(FFP_BED) - 0.2;
+    p := at_turn(m, yaw, 0, (t - 0.5) * l);
+    shape(s, SHAPE_BOX, LOOK_STONE, v3(p.x, (top + foot) * 0.5, p.z), yaw, 0, wide * 0.8, top - foot, 0.8, r * 0.85, g * 0.85, bl * 0.85);
   }
 }
 
@@ -217,14 +248,12 @@ ffpk_marks :: (s: [] Fairy, eye: Point) {
   for i: 0..<FFP_MARKS {
     c := mark_xz(i);
     dx := c.x - eye.x; dz := c.z - eye.z;
-    far := dx * dx + dz * dz > f32(FFPK_MARK_FAR * FFPK_MARK_FAR);
+    far := dx * dx + dz * dz > f32(FFPK_MARK_FAR * FFPK_MARK_FAR) && s[0].map[0].lift < 0.5;
     if far && i != FFP_BELVEDERE && i != FFP_NEEDLE { continue; }
     if s[0].counts[SHAPE_BOX] > SLOTS[SHAPE_BOX] - 60 { return; }
     g := ground_at(s, c.x, c.z);
     if i == FFP_GAPSTOW {
-      a := v3(FF_NODE_XZ[ffpk_node(54, -318) * 2], 0, FF_NODE_XZ[ffpk_node(54, -318) * 2 + 1]);
-      b := v3(FF_NODE_XZ[ffpk_node(64, -342) * 2], 0, FF_NODE_XZ[ffpk_node(64, -342) * 2 + 1]);
-      ffpk_bridge(s, a, b, level + 1.2, 3.4, 0.62, 0.56, 0.48, false);
+      ffpk_bridge(s, 0, 0.62, 0.56, 0.48, false);
     } else if i == FFP_WOLLMAN {
       shape(s, SHAPE_BOX, LOOK_MATTE, v3(c.x, g + 0.06, c.z), 0, 0, 30, 0.16, 18, 0.86, 0.92, 0.96);
       for side: 0..<4 {
@@ -287,7 +316,7 @@ ffpk_marks :: (s: [] Fairy, eye: Point) {
         shape(s, SHAPE_BOX, LOOK_FALL, v3(fx + cos(a) * 1.75, g + 1.6, fz + sin(a) * 1.75), -a, 0, 0.5, 2.0, 0.05, 0.62, 0.84, 0.9);
       }
     } else if i == FFP_BOW {
-      ffpk_bridge(s, v3(-8, 0, -73), v3(-8, 0, -51), level + 1.0, 3.0, 0.92, 0.9, 0.84, true);
+      ffpk_bridge(s, 1, 0.92, 0.9, 0.84, true);
     } else if i == FFP_BOATHOUSE {
       ffpk_box(s, c.x, c.z, g - 0.4, 0.3, 14, 3.6, 6, 0.8, 0.74, 0.62);
       ffpk_box(s, c.x, c.z, g + 3.1, 0.3, 15, 0.7, 7, 0.34, 0.5, 0.4);
@@ -350,16 +379,6 @@ ffpk_marks :: (s: [] Fairy, eye: Point) {
     }
   }
 }
-// The node nearest (x, z): landmarks find their paths' ends by where they are.
-ffpk_node :: (x: f32, z: f32) -> int {
-  best := 0; bd := 1000000.0f32;
-  for i: 0..<FF_NODES {
-    dx := FF_NODE_XZ[i * 2] - x; dz := FF_NODE_XZ[i * 2 + 1] - z;
-    if dx * dx + dz * dz < bd { bd = dx * dx + dz * dz; best = i; }
-  }
-  return best;
-}
-
 // The low stone wall round the park, in 40 m lengths, and the avenues' blocks beyond it.
 ffpk_city :: (s: [] Fairy) {
   w := f32(FF_PARK_W); e := f32(FF_PARK_E); so := f32(FF_PARK_S); no := f32(FF_PARK_N);
@@ -464,4 +483,33 @@ ffpk_walls :: (s: [] Fairy, at: int) -> int {
   c = mark_xz(FFP_NEEDLE);
   if w < WALLS { put6(wl, w, c.x - 1.6, 0, c.z - 1.6, c.x + 1.6, 10, c.z + 1.6); w += 1; }
   return w;
+}
+
+#test "the bridges carry you on their decks over the water, stepping on and off level with the path" {
+  g: [1] Fairy;
+  fairy_start(g[..]);
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  for i: 0..<FFP_BRIDGES {
+    ax := FFP_BRIDGE[i * 6]; az := FFP_BRIDGE[i * 6 + 1]; bx := FFP_BRIDGE[i * 6 + 2]; bz := FFP_BRIDGE[i * 6 + 3];
+    mx := (ax + bx) * 0.5; mz := (az + bz) * 0.5;
+    // the middle: on the deck, clear of the water, the bed far under it
+    #assert ground_at(g[..], mx, mz) < f32(FF_LEVEL) && walk_at(g[..], mx, mz) >= f32(FF_LEVEL) + f32(FFP_DECK_CLEAR) - 0.01;
+    // the ends: level with the path, so you walk on with no step
+    #assert abs(walk_at(g[..], ax, az) - ground_at(g[..], ax, az)) < 0.01 && abs(walk_at(g[..], bx, bz) - ground_at(g[..], bx, bz)) < 0.01;
+    // all along: no step a walker can't take, never under the water
+    prev := walk_at(g[..], ax, az);
+    for k: 1..<41 {
+      t := f32(k) / 40;
+      y := walk_at(g[..], lerp(ax, bx, t), lerp(az, bz, t));
+      #assert abs(y - prev) < 0.3 && y > f32(FF_LEVEL) + 0.1;
+      prev = y;
+    }
+    // you are drawn standing on it
+    n := fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, mx, 0, mz, 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+    #assert n > 0 && abs(g[0].feet.y - walk_at(g[..], mx, mz)) < 0.001 && fairy_deck_lift(g[..], mx, mz) > 1;
+    // off to the side, in the lake, you wade
+    side := ffp_deck_at(i, mx + 3, mz);
+    if !ffp_on_deck(i, side) { #assert walk_at(g[..], mx + 3, mz) == ground_at(g[..], mx + 3, mz); }
+  }
 }

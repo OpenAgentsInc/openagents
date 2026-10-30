@@ -1,0 +1,223 @@
+// The map (as Everglade's MAP): M, or MAP by the title, lifts the camera
+// over the park, its long side across a wide screen and up a tall one, with
+// every landmark's and glade's name over it and a ring where you are. M,
+// Esc or WALK brings you back. While it is open you stand still. The
+// address's #map opens the page on it.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FfMap :: struct {
+  on: bool;
+  lift: f32;            // 0 walking, 1 over the park; it eases between
+  chip: Box; press: bool; finger: int;
+}
+
+FFMAP_TILT :: 0.22;     // radians the map's eye leans off straight down, so the landmarks stand up
+FFMAP_ROOM :: 1.08;     // the park and a little round it
+FFMAP_NEAR :: 1.0; FFMAP_FAR :: 1600.0;
+
+ffmap_open :: (s: [] Fairy) -> bool { return s[0].map[0].on; }
+ffmap_toggle :: (s: [] Fairy) {
+  m := s[0].map[..];
+  m[0].on = !m[0].on;
+  s[0].held = 0; s[0].use = false;
+}
+
+// M toggles it; Esc closes it; while open, nothing else.
+ffmap_key :: (s: [] Fairy, key: int) -> bool {
+  if key == 'm' || key == 'M' { ffmap_toggle(s); return true; }
+  if !ffmap_open(s) { return false; }
+  if key == KEY_ESCAPE { ffmap_toggle(s); }
+  return true;
+}
+// MAP (WALK while open) by the title; while open, every other touch is the map's.
+ffmap_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  m := s[0].map[..];
+  if phase == 0 && in_box(m[0].chip, x, y) { m[0].press = true; m[0].finger = id; return true; }
+  if m[0].press && id == m[0].finger {
+    if phase >= 2 { m[0].press = false; if phase == 2 && in_box(m[0].chip, x, y) { ffmap_toggle(s); } }
+    return true;
+  }
+  return ffmap_open(s);
+}
+
+// The eye over the park for a screen of this shape: the park's 5:1 across
+// a wide screen (north to the right), up a tall one (north up).
+ffmap_shot :: (s: [] Fairy, width: f32, height: f32) -> Shot {
+  aspect := width / hi(height, 1);
+  fy := clamp(aspect * 1.25, 0.95, 1.9);
+  fx := fy / aspect;
+  cx := (f32(FF_PARK_W) + f32(FF_PARK_E)) * 0.5; cz := (f32(FF_PARK_S) + f32(FF_PARK_N)) * 0.5;
+  long := (f32(FF_PARK_N) - f32(FF_PARK_S)) * 0.5 * f32(FFMAP_ROOM);
+  short := (f32(FF_PARK_E) - f32(FF_PARK_W)) * 0.5 * f32(FFMAP_ROOM);
+  wide := aspect >= 1;
+  // how far off the eye stands so the park fits (half its length over the
+  // screen's half width, or its width over the height, whichever needs more)
+  // (up a tall screen the eye leans along the park, so its near end looms: a little more room)
+  d := ifx wide then hi(long * fx, short * fy) else hi(long * fy * 1.3, short * fx);
+  d = d / cos(f32(FFMAP_TILT));
+  at := v3(cx, 0, cz);
+  back := v3(ifx wide then -1.0f32 else 0.0f32, 0, ifx wide then 0.0f32 else -1.0f32);
+  eye := add(at, add(times(back, d * sin(f32(FFMAP_TILT))), v3(0, d * cos(f32(FFMAP_TILT)), 0)));
+  return Shot.{eye = eye, at = at};
+}
+
+// The walking camera eased toward the map's (and back) as it opens and closes.
+ffmap_frame :: (s: [] Fairy, shot: Shot, dt: f32) -> Shot {
+  m := s[0].map[..];
+  m[0].lift += ((ifx m[0].on then 1.0f32 else 0.0f32) - m[0].lift) * settle(4.0, dt);
+  if !m[0].on && m[0].lift < 0.001 { m[0].lift = 0; }
+  if m[0].on && m[0].lift > 0.999 { m[0].lift = 1; }
+  if m[0].lift <= 0 { return shot; }
+  high := ffmap_shot(s, s[0].width, s[0].height);
+  t := m[0].lift * m[0].lift * (3 - 2 * m[0].lift);
+  return Shot.{eye = mix(shot.eye, high.eye, t), at = mix(shot.at, high.at, t)};
+}
+// Over the park, the view reaches all of it.
+ffmap_near :: (s: [] Fairy) -> f32 { return lerp(f32(NEAR), f32(FFMAP_NEAR), s[0].map[0].lift); }
+ffmap_far :: (s: [] Fairy) -> f32 { return lerp(f32(FAR), f32(FFMAP_FAR), s[0].map[0].lift); }
+// How far the haze is pushed back (fairy.wgsl hazed): none walking, past the whole park over it.
+ffmap_clear :: (s: [] Fairy) -> f32 { return s[0].map[0].lift * f32(FFMAP_FAR); }
+
+ffmap_word :: (s: [] Fairy) -> string { return ifx ffmap_open(s) then "WALK" else "MAP"; }
+ffmap_chip_w :: (s: [] Fairy) -> f32 {
+  k := hi(s[0].dpr, 0.5); cap := 7.5 * k;
+  return (ifx ffm_keyed(s) then text_width("M", cap) + 10 * k else 0.0f32) + text_width(ffmap_word(s), cap) + 26 * k;
+}
+// MAP by the title: on a computer "M MAP", the key in gold, like LOOK.
+ffmap_chip :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, x0: f32, y0: f32, y1: f32) -> int {
+  m := s[0].map[..];
+  m[0].chip = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if s[0].maker[0].open || s[0].talk > 0 { return at; }
+  k := hi(s[0].dpr, 0.5); cap := 7.5 * k;
+  word := ffmap_word(s);
+  keyw := ifx ffm_keyed(s) then text_width("M", cap) + 10 * k else 0.0f32;
+  b := Box.{x0 = x0, y0 = y0, x1 = x0 + ffmap_chip_w(s), y1 = y1};
+  m[0].chip = b;
+  on := m[0].press || m[0].on;
+  plate(s, u, b, 0.78, ifx m[0].on then 2.0f32 else 0.0f32);
+  tx := (b.x0 + b.x1 - keyw - text_width(word, cap)) / 2; ty := (b.y0 + b.y1 + cap) / 2;
+  n := at;
+  if keyw > 0 { n = draw_text(out, n, "M", tx, ty, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false); }
+  return draw_text(out, n, word, tx + keyw, ty, cap, GAP, SPACE,
+                   ink(k, 0.95, ifx on then GOLD_R else CREAM_R, ifx on then GOLD_G else CREAM_G, ifx on then GOLD_B else CREAM_B), false, false);
+}
+
+// Over the park: every landmark's and glade's name (the lakes and lawns a
+// little larger, a name that would overlap one already drawn left out), and
+// a ring where you are.
+FFMAP_NAMES :: FFP_MARKS + FF_GLADES;
+ffmap_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, you: Point) -> int {
+  if s[0].map[0].lift < 0.6 { return at; }
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  n := at;
+  a := clamp01((s[0].map[0].lift - 0.6) / 0.3);
+  boxes: [FFMAP_NAMES * 4] f32;
+  placed := 0;
+  // the glades first (where the story is), then the lakes and lawns, then the rest
+  for pass: 0..<3 {
+    for i: 0..<FFMAP_NAMES {
+      glade := i >= FFP_MARKS;
+      big := !glade && FFP_MARK[i * 4 + 2] == 0;
+      if (ifx glade then 0 else ifx big then 1 else 2) != pass { continue; }
+      x := 0.0f32; z := 0.0f32; name := "";
+      if glade { g := i - FFP_MARKS; x = FF_GLADE[g * 3]; z = FF_GLADE[g * 3 + 1]; name = FF_GLADE_NAMES[g]; }
+      else { x = FFP_MARK[i * 4]; z = FFP_MARK[i * 4 + 1]; name = FFP_MARK_NAMES[i]; }
+      p := project(u, v3(x, hi(ground_at(s, x, z), f32(FF_LEVEL)), z), w, h);
+      if p.x < -1000 { continue; }
+      cap := (ifx glade then 8.0f32 else ifx big then 7.0f32 else 6.0f32) * k;
+      tw := text_width(name, cap);
+      bx0 := p.x - tw / 2 - 3 * k; bx1 := p.x + tw / 2 + 3 * k; by0 := p.y - cap / 2 - 3 * k; by1 := p.y + cap / 2 + 3 * k;
+      if bx0 < 0 || bx1 > w || by0 < 0 || by1 > h { continue; }
+      clash := false;
+      for j: 0..<placed {
+        if bx0 < boxes[j * 4 + 2] && bx1 > boxes[j * 4] && by0 < boxes[j * 4 + 3] && by1 > boxes[j * 4 + 1] { clash = true; break; }
+      }
+      if clash { continue; }
+      boxes[placed * 4] = bx0; boxes[placed * 4 + 1] = by0; boxes[placed * 4 + 2] = bx1; boxes[placed * 4 + 3] = by1;
+      placed += 1;
+      r := ifx glade then f32(GOLD_R) else f32(CREAM_R); g := ifx glade then f32(GOLD_G) else f32(CREAM_G); b := ifx glade then f32(GOLD_B) else f32(CREAM_B);
+      n = draw_text(out, n, name, p.x - tw / 2, p.y + cap / 2, cap, GAP, SPACE, ink(k, 0.95 * a, r, g, b), false, false);
+    }
+  }
+  // you: a gold ring and a dot
+  p := project(u, you, w, h);
+  if p.x > -1000 {
+    rr := 7 * k;
+    for i: 0..<20 {
+      a0 := f32(i) * f32(TAU) / 20; a1 := f32(i + 1) * f32(TAU) / 20;
+      if lit(out, n, p.x + cos(a0) * rr, p.y + sin(a0) * rr, p.x + cos(a1) * rr, p.y + sin(a1) * rr, 1.4 * k, 0.95 * a, 3 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+    }
+    if lit(out, n, p.x - 0.01, p.y, p.x + 0.01, p.y, 2.6 * k, 0.95 * a, 3 * k, GOLD_R, GOLD_G, GOLD_B, 0) { n += 6; }
+  }
+  return n;
+}
+
+// The line at the foot over the map: how to walk again.
+ffmap_foot :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  gutter := 16 * k;
+  line := ffmap_hint(s);
+  hs := 7.5 * k;
+  lw := text_width(line, hs);
+  y1 := h - gutter;
+  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.68, 0);
+  return draw_text(out, at, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
+}
+ffmap_hint :: (s: [] Fairy) -> string {
+  if phone(s) { return "THE MAP · TAP WALK TO WALK AGAIN"; }
+  return "THE MAP · M OR ESC TO WALK AGAIN";
+}
+
+#test "M opens the map over the whole park and stands you still; M or Esc brings you back" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  n := fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert !ffmap_open(g[..]) && !fairy_still(g[..]) && g[0].map[0].chip.x1 > g[0].map[0].chip.x0;
+  #assert fairy_key(g[..], 'm', 0) && ffmap_open(g[..]) && fairy_still(g[..]);
+  #assert fairy_key(g[..], 'w', 0) && g[0].held == 0;   // no walking while it is open
+  n = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.25, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && g[0].map[0].lift > 0.5 && g[0].map[0].lift < 0.99;   // it eases up
+  g[0].map[0].lift = 1;
+  n = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert n > 0 && g[0].map[0].lift == 1;
+  // the park's four corners and you are on the screen, its long side across it
+  sw := project(u[..], v3(f32(FF_PARK_W), 0, f32(FF_PARK_S)), 1280, 800); ne := project(u[..], v3(f32(FF_PARK_E), 0, f32(FF_PARK_N)), 1280, 800);
+  se := project(u[..], v3(f32(FF_PARK_E), 0, f32(FF_PARK_S)), 1280, 800); nw := project(u[..], v3(f32(FF_PARK_W), 0, f32(FF_PARK_N)), 1280, 800);
+  for c: 0..<4 {
+    p := ifx c == 0 then sw else ifx c == 1 then ne else ifx c == 2 then se else nw;
+    #assert p.x > 0 && p.x < 1280 && p.y > 0 && p.y < 800;
+  }
+  #assert abs(ne.x - sw.x) > 900 && ne.x > sw.x;   // north to the right
+  #assert ffmap_hint(g[..]) == "THE MAP · M OR ESC TO WALK AGAIN";
+  #assert fairy_key(g[..], KEY_ESCAPE, 0) && !ffmap_open(g[..]);
+  #assert fairy_key(g[..], 'M', 0) && ffmap_open(g[..]) && fairy_key(g[..], 'm', 0) && !ffmap_open(g[..]);
+  fairy_hash(g[..], "map");
+  #assert ffmap_open(g[..]) && g[0].map[0].lift == 1;
+  ffmap_toggle(g[..]);
+  for f: 0..<8 { n = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 0.25, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].map[0].lift == 0;
+}
+
+#test "on a phone the park runs up the screen, and a tap on MAP opens it and on WALK closes it" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  g[0].touch = true;
+  n := fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  c := g[0].map[0].chip;
+  #assert c.x1 > c.x0 && c.x1 <= 1170;
+  #assert fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 0, 1, 7) && fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 2, 1, 7);
+  #assert ffmap_open(g[..]) && ffmap_hint(g[..]) == "THE MAP · TAP WALK TO WALK AGAIN";
+  g[0].map[0].lift = 1;
+  n = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  sw := project(u[..], v3(f32(FF_PARK_W), 0, f32(FF_PARK_S)), 1170, 2532); ne := project(u[..], v3(f32(FF_PARK_E), 0, f32(FF_PARK_N)), 1170, 2532);
+  #assert sw.y < 2532;
+  #assert ne.y > 0;
+  #assert sw.y - ne.y > 1600;   // north up
+  #assert sw.x > 0 && sw.x < 1170 && ne.x > 0 && ne.x < 1170;
+  c = g[0].map[0].chip;
+  #assert fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 0, 1, 8) && fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 2, 1, 8) && !ffmap_open(g[..]);
+}

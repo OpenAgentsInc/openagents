@@ -290,10 +290,12 @@ ffm_frame :: (g: [] Fairy, out: [] f32, u: [] f32, w: f32, h: f32) {
   ffm_frame(g[..], out[..], u[..], 1440, 900);
   #assert g[0].maker[0].chip.x1 == 0;
   end_talk(g[..]);
-  // on a phone it is a tap, inside the screen; with EDIT there for an admin it sits under COURSE
+  // on a phone it is a tap, inside the screen, under COURSE with MAP beside them; with EDIT there for an admin, still under COURSE
   ffm_frame(g[..], out[..], u[..], 390, 844);
   c = g[0].maker[0].chip; r = g[0].race[0].chip;
-  #assert c.x1 > c.x0 && c.x1 <= 390 - 16 && c.x0 > r.x1;
+  mp := g[0].map[0].chip;
+  #assert c.x1 > c.x0 && c.x1 <= 390 - 16 && c.x0 == r.x0 && c.y0 > r.y1;
+  #assert mp.x0 > hi(c.x1, r.x1) && mp.x1 <= 390 - 16;
   #assert fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 0, 1, 7) && fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 2, 1, 7);
   #assert g[0].maker[0].open;
   ffm_close(g[..]);

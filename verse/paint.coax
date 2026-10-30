@@ -1,7 +1,7 @@
 // The painterly look's shading functions (docs/verse/art-styles.md,
 // Painterly), as plain f32 functions a realm's WGSL calls through
 // coax/web/wgsl.py, as verse/look.coax's outlines are. One source for every
-// painterly realm: Fairy Forest uses them first (apps/openagents-web/fairy.wgsl);
+// painterly realm (Fairy Forest used them first, before it was drawn flat);
 // the presets task (as-presets, verse/style.coax) is meant to take them in
 // with its preset record. The numbers here are the spec's day keys; colours
 // are per channel so the WGSL lowerer (scalars only) can carry them.

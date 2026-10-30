@@ -148,7 +148,10 @@ stage (0.8; half for what glows and for her skin and clothes).
   lavender and lavender-grey rock, cream trim along the hem of her clothes,
   dark eyes. Dawn and dusk warm the palette and night takes it to a blue
   dusk (`verse_style_flat_time`); the faded world is a pale grey-green of
-  the same lightness.
+  the same lightness. It draws no grass. Its lakes are flat water in three
+  tones by the depth of the bed under them (deep, open, and two light bands
+  along the shore) with slow broken ripple lines drifting across the open
+  water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`).
 
 ## Painterly
 

@@ -4,7 +4,9 @@ A Verse realm, drawn flat, you walk in the browser at https://openagents.com/rea
 
 ## The park
 
-Central Park at a quarter of its size: a long rectangle about 1 km from 59th Street in the south to 110th Street in the north and 208 m across, between Central Park West and Fifth Avenue, with low blocks of the avenues round it. Gentle rolling ground with Umpire Rock, Vista Rock and other outcrops; the Pond with Gapstow Bridge, the Lake with Bow Bridge and the Loeb Boathouse, Turtle Pond, the Reservoir, Harlem Meer and Conservatory Water; the drives' loop, footpaths and the Mall's Literary Walk to Bethesda Terrace and the Angel of the Waters. Simple low-poly trees and bushes, and as plain shapes the Carousel, the Dairy, Wollman Rink, the Bandshell, Strawberry Fields' Imagine circle, Alice in Wonderland, Belvedere Castle, the Delacorte Theater, Cleopatra's Needle and the Conservatory Garden's gate. Each landmark's name shows over it as you come near.
+Central Park at a quarter of its size: a long rectangle about 1 km from 59th Street in the south to 110th Street in the north and 208 m across, between Central Park West and Fifth Avenue, with low blocks of the avenues round it. Gentle rolling ground with Umpire Rock, Vista Rock and other outcrops; the Pond with Gapstow Bridge, the Lake with Bow Bridge and the Loeb Boathouse, Turtle Pond, the Reservoir, Harlem Meer and Conservatory Water; the drives' loop, footpaths and the Mall's Literary Walk to Bethesda Terrace and the Angel of the Waters. Simple low-poly trees and bushes, and as plain shapes the Carousel, the Dairy, Wollman Rink, the Bandshell, Strawberry Fields' Imagine circle, Alice in Wonderland, Belvedere Castle, the Delacorte Theater, Cleopatra's Needle and the Conservatory Garden's gate. Each landmark's name shows over it as you come near. You walk over Gapstow and Bow Bridges on their decks, and over the footbridge on the Loch once it is mended.
+
+Press M (or MAP by the title) to see the whole park from above with every landmark's and glade's name and a ring where you are; M, Esc or WALK takes you back. `/realms/fairy-forest#map` opens on it.
 
 The heart tree stands in the Ramble. Five glades: Mossbank by the Pond, where you wake; The Reeds at the Pool, where the Loch runs into a pond on its way to Harlem Meer; Lanternwood in the North Woods; Thornfall at the north edge, brambles round a fallen giant tree; and the Old Ring by Cleopatra's Needle, nine standing stones. The glades and the heart tree start faded, grey and pale, and colour spreads outward from everything you restore.
 
@@ -26,7 +28,7 @@ Press E by a creature, or click or tap it (TALK on a phone), to talk to it. Type
 
 ## The look
 
-The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, a few short tufts of grass and the water in flat bands with a cream shore line. The shading functions and the palette are `verse/style.coax`; the layout, creatures and the restore loop are `verse/fairy-forest/forest.coax` and `verse/fairy-forest/park.coax`, and the stream and pond are `verse/fairy-forest/stream.coax`.
+The flat style (`docs/verse/art-styles.md`, Flat): flat-shaded low poly in a cosy pastel palette of olive and lime, cattail orange, pale mint, lavender and cream, three flat tones of light a shape, flat translucent shadows, a flat sky over a soft horizon band, no grass, the stream in flat bands with a cream shore line, and the lakes in a few flat tones by depth with light bands along the shore and slow ripple lines. The shading functions and the palette are `verse/style.coax`; the layout, creatures and the restore loop are `verse/fairy-forest/forest.coax` and `verse/fairy-forest/park.coax`, and the stream and pond are `verse/fairy-forest/stream.coax`.
 
 ## Saving
 
@@ -34,4 +36,4 @@ Where you are and what you restored (the bloomed patches and the woken roots) is
 
 ## Not yet
 
-No voice talk, no home or garden, and no chat room yet.
+No voice talk yet.

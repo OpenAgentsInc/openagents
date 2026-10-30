@@ -511,7 +511,7 @@ ffs_names :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
   tag := 7 * k;
   for i: 0..<r[0].others {
     x := r[0].at[i * 4]; y := r[0].at[i * 4 + 1]; z := r[0].at[i * 4 + 2];
-    p := project(u, v3(x, ground_at(s, x, z) + hi(y, 0) + 2.05, z), s[0].width, s[0].height);
+    p := project(u, v3(x, walk_at(s, x, z) + hi(y, 0) + 2.05, z), s[0].width, s[0].height);
     if p.x < -1000 || p.z > f32(NAME_NEAR) { continue; }
     name := room_other_name(r, i);
     n = draw_text(out, n, name, p.x - text_width(name, tag) / 2, p.y, tag, GAP, SPACE, ink(k, 0.9, CREAM_R, CREAM_G, CREAM_B), false, false);
@@ -542,7 +542,7 @@ ffs_others :: (s: [] Fairy, u: [] f32, you: Point) {
     x := r[0].at[i * 4]; y := hi(r[0].at[i * 4 + 1], 0); z := r[0].at[i * 4 + 2]; face := r[0].at[i * 4 + 3];
     moving := abs(r[0].to[i * 4] - x) + abs(r[0].to[i * 4 + 2] - z) > 0.03;
     flap := t * (ifx y > 0.2 then 11.0f32 else 3.0f32) + f32(i) * 1.7;
-    fairy_figure(s, u, v3(x, ground_at(s, x, z) + y, z), face, t * 2.4, ifx moving then 1 else 0, y, flap);
+    fairy_figure(s, u, v3(x, walk_at(s, x, z) + y, z), face, t * 2.4, ifx moving then 1 else 0, y, flap);
   }
 }
 

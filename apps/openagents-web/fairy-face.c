@@ -248,7 +248,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_t_Vec3 feet = verse_player_feet(player);
   coax_v_f32 heights = {g->heights.e, fairy_heights(at(state))};
   fairy_stream_drop(sv(), heights, fairy_pond_drop(at(state)));   /* the pond: low until filled (fairypond.coax) */
-  swim = fairy_stream_swim(sv(), heights, player.pos.x, player.pos.z, feet.y, false, dt, now);
+  /* on a bridge's deck you stand over the water by the deck's height (fairypark.coax walk_at) */
+  swim = fairy_stream_swim(sv(), heights, player.pos.x, player.pos.z, feet.y + fairy_deck_lift(at(state), feet.x, feet.z), false, dt, now);
   // the wings: a slow beat standing, a full stroke after each press, fast strokes while you climb, a flutter as you glide
   flap_phase += dt * (player.on_ground ? 3.0f : jump ? 22.0f : 11.0f);
   if (diving) flap_phase = 4.7124f;   /* sin = -1: the wings held down */
