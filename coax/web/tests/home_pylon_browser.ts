@@ -2,6 +2,9 @@
 // sockets and data remain untouched. Only read-only observation exports are
 // captured; input and clipboard/navigation use the browser's ordinary paths.
 // bun coax/web/tests/home_pylon_browser.ts ORIGIN [--out /tmp/home-pylons]
+//   [--job-api http://127.0.0.1:8798/v1/systemone]
+// --job-api sends one synthetic toy decision after the desktop watch/panel
+// is ready, then observes its answer-counter increase before leaving.
 import {existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync} from 'node:fs'
 import {tmpdir} from 'node:os'
 import {join} from 'node:path'
@@ -11,7 +14,10 @@ const args = process.argv.slice(2)
 const base = args[0]?.replace(/\/$/, '')
 const outAt = args.indexOf('--out')
 const prefix = outAt < 0 ? '/tmp/home-pylons' : args[outAt + 1]
-if (!base?.startsWith('http') || !prefix) throw Error('usage: home_pylon_browser.ts ORIGIN [--out PREFIX]')
+const jobAt = args.indexOf('--job-api')
+const jobAPI = jobAt < 0 ? undefined : args[jobAt + 1]
+if (!base?.startsWith('http') || !prefix || (jobAt >= 0 && !jobAPI?.startsWith('http'))) throw Error('usage: home_pylon_browser.ts ORIGIN [--out PREFIX] [--job-api URL]')
+if (jobAPI) new URL(jobAPI)
 const origin = new URL(base).origin
 const joinCommand = 'curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh'
 const profile = mkdtempSync(join(tmpdir(), 'coax-home-pylons-'))
@@ -19,7 +25,7 @@ const proc = Bun.spawn([chrome(), '--headless=new', '--mute-audio', `--user-data
   '--no-first-run', '--hide-scrollbars', ...gpuFlags(), '--window-size=1440,900',
   '--remote-debugging-port=0', 'about:blank'], {stdout:'ignore', stderr:'ignore'})
 let ws:WebSocket | undefined
-const evidence:any = {base, at:new Date().toISOString(), scenarios:[]}
+const evidence:any = {base, at:new Date().toISOString(), job_api:jobAPI ?? null, scenarios:[]}
 
 try {
   const portFile = join(profile, 'DevToolsActivePort')
@@ -148,6 +154,34 @@ try {
     recording.panel_screenshot = await shot('panel')
     console.log('PANEL ' + JSON.stringify({viewport:viewport.name, screenshot:recording.panel_screenshot, probe:recording.panel.probe,
       pylons:recording.panel.count, online:recording.panel.online, free:recording.panel.free, beacons:recording.panel.beacons, input:viewport.touch ? 'touch' : 'mouse'}))
+    if (jobAPI && viewport.name === 'desktop') {
+      const before = await observe()
+      const totalAnswers = (state:any) => state.rows.reduce((sum:number, row:any) => sum + row.answers, 0)
+      const answersBefore = totalAnswers(before), started = Date.now()
+      recording.job = {endpoint:jobAPI, answers_before:answersBefore, post_count:1}
+      // This one request is issued by Bun through the existing operator API.
+      // The page only receives its ordinary live signed relay observations.
+      const response = await fetch(jobAPI, {
+        method:'POST', redirect:'error', headers:{'content-type':'application/json'},
+        body:JSON.stringify({model:'psionic-toy', state:'Water is wet.', questions:{wet:{type:'choice', criteria:{yes:null, no:null}}}}),
+        signal:AbortSignal.timeout(60000),
+      })
+      recording.job.http_status = response.status
+      if (response.status !== 200) throw Error('synthetic toy decision returned HTTP ' + response.status)
+      const result = await response.json()
+      recording.job.provider = result.service?.provider ?? null
+      if (!/^[0-9a-f]{64}$/.test(recording.job.provider ?? '')) throw Error('synthetic toy decision did not identify a public Pylon provider')
+      await until(async () => {
+        const state = await observe()
+        recording.job.answers_after = totalAnswers(state)
+        recording.job.counter_delta = recording.job.answers_after - answersBefore
+        return state.open === 1 && recording.job.counter_delta > 0
+      }, 'desktop live answer-counter increase after synthetic toy decision', 60000)
+      recording.job.elapsed_ms = Date.now() - started
+      recording.job_screenshot = await shot('job')
+      writeFileSync(prefix + '.json', JSON.stringify(evidence, null, 2) + '\n')
+      console.log('JOB ' + JSON.stringify(recording.job))
+    }
     await click(1)
     await until(async () => {
       // Never return or log unrelated clipboard contents if the write fails.

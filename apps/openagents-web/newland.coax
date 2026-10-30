@@ -1798,7 +1798,7 @@ network_panel :: (out:[]f32,at:int,s:[]LandState,l:Layout,p:Pen,width:f32,height
   }
   for i:first..<v {if out[i*VERTEX_FLOATS+1]<list.y0 || out[i*VERTEX_FLOATS+1]>list.y1 {out[i*VERTEX_FLOATS+6]=0;}}
   s[0].network_scroll_max=hi(0,(y+s[0].network_scroll*d-list.y1)/d);s[0].network_scroll=clamp(s[0].network_scroll,0,s[0].network_scroll_max);
-  v=put_fit(out,v,"Free toy network / observed provider events",left,bottom-14*d,6.2*d,dim,room);return v;
+  v=put_fit(out,v,"Advertised capacity / observed events",left,bottom-14*d,6.2*d,dim,room);return v;
 }
 
 // The card over the page: on the left under the wordmark on a wide screen,

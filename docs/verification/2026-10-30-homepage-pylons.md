@@ -39,7 +39,8 @@ clipboard action with the complete 96-byte shell command.
   mouse/touch input, actual clipboard readback and guide navigation/HTTP 200.
   Both views saw 3 fresh Pylons / 10 advertised free slots, with all six projects
   caught up and no JS exceptions. This local browser proof preceded the
-  gesture-only fix; the changed gesture paths have their separate regression.
+  gesture fix and a footer wording correction for non-toy models; the changed
+  gesture paths have their separate regression.
 - Desktop/phone screenshots were inspected. Only `home` and `home-phone`
   goldens were approved. GPU-hidden markup checks and whitespace checks passed.
 
