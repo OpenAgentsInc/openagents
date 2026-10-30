@@ -295,3 +295,29 @@ and E. Then F. G about an hour before the talk.
   the exact `psionic-toy@sha256:b6680707…d633573` identity. The browser
   portion of G remains to be done after the page release; no historic
   answer count is claimed. Both nodes remain running for that rehearsal.
+
+- **D/E implemented and locally qualified, 2026-10-30 15:05 UTC,
+  `7a403d2203` (page introduced in `4c80bfc97c`).** `/pylon` is a Coaxial
+  read-only board with the existing host clipboard/navigation controls,
+  live verified beacons, label/model/slots/age/full npub, and explicit demo
+  limits. Original event bytes use the shared Coax ID/BIP-340 verifier and
+  beacon digest/schema/provider/freshness admission; no new signer or
+  browser Nostr implementation. Ephemeral answers/statuses count only
+  within a bounded, de-duplicated live window since opening. No history
+  counts or fabricated live rows. The Markdown twin includes prerequisites,
+  join/stop commands, an agent walkthrough, buyer steps and troubleshooting;
+  `/llms.txt` links it. Build/release stages the tested join script verbatim.
+  Checks: **60/60 source**, authority display policy **12 mutants killed,
+  0 survived**, actual linked page Wasm **2 tests / 20 assertions** with
+  independently signed fixtures and tamper/old/duplicate refusal. Headless
+  WebGPU desktop and phone starts/goldens passed, **0 changed blocks**, and
+  the actual live page observed both `oct30-mac-demo` and
+  `oct30-coderos-demo` on the public relay (plus the existing M5 node), with
+  0 refused events. This is a local page/public relay observation, not a
+  production deployment or the G answer rehearsal. Evidence:
+  `docs/verification/data/oct30-pylon-page/local-live.json`.
+  `/pylon` desktop/phone are registered in the release's golden/start
+  catalog; smoke requires the guide and `/pylon/join.sh`. Owner deploys once
+  the coordinated build is ready. `coax/web/tests/pylon-live.ts` opens the
+  real page first, prints READY for expected verified slugs, waits for real
+  per-provider answer counts, and saves a screenshot plus JSON for G.

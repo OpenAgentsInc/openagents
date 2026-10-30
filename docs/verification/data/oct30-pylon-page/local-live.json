@@ -1,0 +1,46 @@
+{
+  "url": "http://127.0.0.1:18217/pylon",
+  "at": "2026-10-30T15:04:50.861Z",
+  "expected": [
+    "oct30-coderos-demo"
+  ],
+  "minimum_answers": 0,
+  "per_provider": 0,
+  "ready": true,
+  "count": 3,
+  "slugs": [
+    "christohersmbp2",
+    "oct30-mac-demo",
+    "oct30-coderos-demo"
+  ],
+  "rows": [
+    {
+      "slug": "christohersmbp2",
+      "answers": 0,
+      "statuses": 0
+    },
+    {
+      "slug": "oct30-mac-demo",
+      "answers": 0,
+      "statuses": 0
+    },
+    {
+      "slug": "oct30-coderos-demo",
+      "answers": 0,
+      "statuses": 0
+    }
+  ],
+  "answers": 0,
+  "statuses": 0,
+  "refused": 0,
+  "source_commit": "7a403d2203fe427d3333c91ca44fd24e96b79604",
+  "compiler_fingerprint": "79ce85ed9bdde9eb75b1f8a24d3227990f57506709ad8729af7bcd9758a926e2",
+  "wasm_sha256": "c158d021beebece738a524cea2b0ea2cb243b2ed4af538da5aeef3618f0ad118",
+  "checks": {
+    "source": "60/60",
+    "pylon_policy_mutants": "12 killed, 0 survived",
+    "actual_page_wasm": "2 tests, 20 assertions",
+    "headless_goldens": "desktop and phone, no errors, 0 changed blocks"
+  },
+  "scope": "Local real Coaxial page against the public relay. Live signed row observation only; public job/answer counters and deployment are separate G acceptance."
+}
