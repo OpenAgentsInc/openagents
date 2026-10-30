@@ -18,6 +18,6 @@ if [[ $native == sanitized ]]; then flags+=(-fsanitize=address,undefined -fno-sa
 "$cc" "${flags[@]}" -Dmain=coax_fleet_main -c "$out/fleet.c" -o "$out/fleet.o"
 # shellcheck disable=SC2086
 "$cc" "${flags[@]}" $CXTLS_CFLAGS -I"$out" -Icoax/platform "$host" coax/platform/socket-native.c \
-  coax/platform/tls-native.c coax/platform/entropy-native.c coax/platform/entropy-foreign.c \
+  coax/platform/tls-native.c coax/platform/entropy-native.c coax/platform/entropy-foreign.c coax/platform/process-native.c \
   "$out/fleet.o" $CXTLS_LIBS -lm -lpthread -o "$out/psionic-fleet"
 echo "built $out/psionic-fleet"

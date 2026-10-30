@@ -1,0 +1,107 @@
+// Private replay worker. Platform effects expose bytes; existing checked units
+// admit signatures, envelopes, openings, receipts and semantic comparisons.
+#load "../fleet/runtime.coax";
+#load "binding.coax";
+#load "compare.coax";
+mw_stdin_kind :: ()->int #foreign;
+mw_stdin_read :: (timeout_ms:int)->int #foreign;
+mw_stdin_byte :: (i:int)->int #foreign;
+mw_stdin_clear :: ()->int #foreign;
+MchOptions :: struct {input:bool;profile:string;distance:int=-1;backend:string;}
+MchVerified :: struct {ok:bool;receipt:MrReceipt;receipt_id:[64]u8;original:string;body_n:int;}
+
+mch_config :: (f:[]Fm,o:[]MchOptions)->bool {
+    i:=1;while i<fh_argc() {
+        name:=fm_arg(f[0].cfg[..],i);i+=1;if name=="--witness-stdin" {if o[0].input {return false;}o[0].input=true;continue;}
+        if i==fh_argc() {return false;}v:=fm_arg(f[0].cfg[..],i);i+=1;
+        if name=="--trusted-provider" {f[0].cfg[0].route_provider=v;}
+        else if name=="--identity" {f[0].cfg[0].identity=v;}
+        else if name=="--relay" {f[0].cfg[0].relay=v;}
+        else if name=="--profile" {o[0].profile=v;}
+        else if name=="--maximum-distance-ppb" {o[0].distance=fm_int(v);}
+        else if name=="--backend-profile" {o[0].backend=v;}
+        else {return false;}
+    }
+    return o[0].input && o[0].profile==MW_PROFILE && o[0].distance>=0 && o[0].distance<=1000000000 && o[0].backend.count<=64 && pb_identity(f[0].cfg[0].identity) && pt_hex64(f[0].cfg[0].route_provider) && relay_uri(f[0].cfg[0].relay).ok;
+}
+mch_verify :: (f:[]Fm,d:MwData,o:MchOptions,receipt_content:[]u8,application:[]u8)->MchVerified {
+    bad:MchVerified;if !mb_context(d.identity,f[0].cfg[0].identity,d.profile,o.profile,d.distance,o.distance) {return bad;}
+    scratch:[NE_MAX_OUTPUT]u8;
+    receipt:=nostr_event_verify_vartime(cast(string)d.receipt,scratch[..],false);if receipt.error!=NE_OK || !receipt.verified {return bad;}
+    buyer:[64]u8;signer:=fm_hex(receipt.public_key[..],buyer[..]);n:=json_unescape(receipt.original[receipt.content_from..<receipt.content_to],receipt_content);if n<0 {return bad;}
+    r:=mr_read(receipt.kind,signer,receipt.created_at,receipt.original[receipt.tags_from..<receipt.tags_to],cast(string)receipt_content[0..<n]);if !r.ok {return bad;}
+    request:=nostr_event_verify_vartime(cast(string)d.request_event,scratch[..],false);if request.error!=NE_OK || !request.verified {return bad;}
+    result:=nostr_event_verify_vartime(cast(string)d.result_event,scratch[..],false);if result.error!=NE_OK || !result.verified {return bad;}
+    if !mb_times(r.started_at,r.finished_at,request.created_at,result.created_at) {return bad;}
+    request_payload:[FM_BUFFER]u8;result_payload:[FM_BUFFER]u8;
+    qn:=json_unescape(request.original[request.content_from..<request.content_to],request_payload[..]);rn:=json_unescape(result.original[result.content_from..<result.content_to],result_payload[..]);
+    if qn<0 || rn<0 || !mo_authenticate(d.request_keys,cast(string)request_payload[0..<qn],d.request_plain) || !mo_authenticate(d.result_keys,cast(string)result_payload[0..<rn],d.result) {return bad;}
+    request_id:[64]u8;request_key:[64]u8;result_key:[64]u8;request_digest:[64]u8;result_digest:[64]u8;
+    qid:=fm_hex(request.id[..],request_id[..]);qa:=fm_hex(request.public_key[..],request_key[..]);ra:=fm_hex(result.public_key[..],result_key[..]);
+    qtags:=request.original[request.tags_from..<request.tags_to];rtags:=result.original[result.tags_from..<result.tags_to];qp:=pt_tag(qtags,"p");rp:=pt_tag(rtags,"p");re:=pt_tag(rtags,"e");
+    if !qp.ok || qp.count!=1 || qp.size!=2 || !rp.ok || rp.count!=1 || rp.size!=2 || !re.ok || re.count!=1 || re.size!=2 {return bad;}
+    admitted:=pd_admit(PdEnvelope.{kind=request.kind,id=qid,pubkey=qa,created_at=request.created_at,tags=qtags,plaintext=cast(string)d.request_plain},r.provider,r.started_at,application);
+    if admitted.code!=PdCode.none || admitted.type!=PdType.call {return bad;}
+    answer:=mf_result(cast(string)d.result,admitted.request,admitted.attempt);if !answer.ok {return bad;}
+    if !ph_digest(cast(string)d.request_plain,request_digest[..]) || !ph_digest(cast(string)d.result,result_digest[..]) {return bad;}
+    e:=MbEvidence.{request_kind=request.kind,result_kind=result.kind,request_id=qid,request_author=qa,request_recipient=qp.v[1],result_author=ra,result_recipient=rp.v[1],result_request=re.v[1],request_nonce=admitted.request,result_nonce=admitted.request,request_attempt=admitted.attempt,result_attempt=admitted.attempt,request_digest=cast(string)request_digest[..],result_digest=cast(string)result_digest[..]};
+    if !mb_bind(r,e) {return bad;}
+    f[0].admitted=sv_decode(cast(string)application[0..<admitted.body],sv_test_pools(f[0].storage[..]));
+    if f[0].admitted.code!=SvCode.none || f[0].admitted.model!=pb_identity_name(d.identity) || !mf_answer(answer.response,f[0].admitted,sv_test_pools(f[0].storage[..]),d.identity,r.provider,r.pylon) {return bad;}
+    good:=MchVerified.{ok=true,receipt=r,original=answer.response,body_n=admitted.body};id:=fm_hex(receipt.id[..],good.receipt_id[..]);return good;
+}
+mch_public_receipt :: (f:[]Fm,id:string)->bool {
+    until:=cxsock_now_ms()+5000;while cxsock_now_ms()<until && !f[0].subscribed && fh_stop()==0 {fm_connect(f);fm_pump(f,20);}if !f[0].subscribed {return false;}
+    f[0].observe_sub="mesh-receipt";f[0].observed_n=0;f[0].observed_eose=false;
+    frame:[512]u8;n:=json_raw(frame[..],0,"[\"REQ\",\"mesh-receipt\",{\"ids\":[\"");n=json_raw(frame[..],n,id);n=json_raw(frame[..],n,"\"],\"kinds\":[3201],\"limit\":2}]");
+    if n<0 || !relay_conn_send(f[0].conn[..],cast(string)frame[0..<n]) {return false;}
+    until=cxsock_now_ms()+3000;
+    while cxsock_now_ms()<until && fh_stop()==0 {
+        f[0].observed_n=0;fm_pump(f,20);
+        if f[0].observed_n>0 {scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_read(cast(string)f[0].observed[0..<f[0].observed_n],scratch[..],false);hex:[64]u8;if e.error==NE_OK && e.kind==3201 && fm_hex(e.id[..],hex[..])==id {return true;}}
+        if f[0].observed_eose {return false;}
+    }return false;
+}
+mch_observation :: (receipt:string,reason:int,out:[]u8)->int {
+    n:=json_raw(out,0,"{\"profile\":\"");n=json_raw(out,n,MW_PROFILE);n=json_raw(out,n,"\",\"reason\":");n=json_write_int(out,n,reason);n=json_raw(out,n,",\"receipt\":\"");n=json_raw(out,n,receipt);n=json_raw(out,n,"\",\"reference\":null,\"v\":\"openagents.psionic.mesh-inconclusive.v1\"}");return n;
+}
+mch_publish :: (f:[]Fm,v:MchVerified,o:MchOptions,comparison:McComparison,replayed:bool)->bool {
+    receipt_id:=v.receipt_id;digest:[64]u8;reference:="checker-inconclusive-v1";
+    if replayed {if !ph_digest(cast(string)f[0].result_plain[0..<f[0].result_plain_n],digest[..]) {return false;}reference="nip-dec-result";}
+    else {observation:[512]u8;k:=mch_observation(cast(string)receipt_id[..],comparison.reason,observation[..]);if k<0 || !ph_digest(cast(string)observation[0..<k],digest[..]) {return false;}}
+    method:[512]u8;n:=json_raw(method[..],0,"psionic-free-mesh-v1;profile=");n=json_raw(method[..],n,o.profile);n=json_raw(method[..],n,";limit_ppb=");n=json_write_int(method[..],n,o.distance);n=json_raw(method[..],n,";reason=");n=json_write_int(method[..],n,comparison.reason);n=json_raw(method[..],n,";reference=");n=json_raw(method[..],n,reference);if n<0 {return false;}
+    c:=MrCheck.{ok=true,checker=cast(string)f[0].me[..],receipt=cast(string)receipt_id[..],provider=v.receipt.provider,result_digest=cast(string)digest[..],method=cast(string)method[0..<n],created_at=fh_now_s(),verdict=comparison.verdict};
+    tags:[2048]u8;t:=mr_check_tags(c,tags[..]);if t<0 {return false;}
+    scratch:[NE_MAX_OUTPUT]u8;event:[8192]u8;s:=fm_sign(f,1985,cast(string)tags[0..<t],c.method,scratch[..],event[..]);if s<0 {return false;}
+    parsed:=nostr_event_read(cast(string)event[0..<s],scratch[..],false);if parsed.error!=NE_OK {return false;}id:=fm_hex(parsed.id[..],f[0].receipt_id[..]);f[0].receipt_event_n=s;f[0].receipt_ack=0;
+    frame:[16384]u8;k:=nostr_message_write_event(cast(string)event[0..<s],frame[..],false);if k<0 || !relay_conn_send(f[0].conn[..],cast(string)frame[0..<k]) {return false;}
+    until:=cxsock_now_ms()+2000;while f[0].receipt_ack==0 && cxsock_now_ms()<until && fh_stop()==0 {fm_pump(f,20);}if f[0].receipt_ack!=1 {return false;}
+    // Only an ACKed signed public label goes to the parent; no private bytes.
+    print("%\n",cast(string)event[0..<s]);return true;
+}
+mch_run :: () {
+    f:[1]Fm;o:[1]MchOptions;
+    if !mch_config(f[..],o[..]) {print("usage: psionic-mesh-check --witness-stdin --trusted-provider KEY --identity ID --profile centred-log-f64-max8-v1 --maximum-distance-ppb N [--backend-profile psionic-toy-cpu-v1] [--relay URL]\n");x:=fh_status(2);return;}
+    if !ms_private_input(mw_stdin_kind()) {print("mesh-checker: private pipe required\n");x:=fh_status(2);return;}
+    n:=mw_stdin_read(5000);if n<=0 {print("mesh-checker: private input unavailable\n");x:=fh_status(2);return;}
+    wire:[262144]u8;for i:0..<n {wire[i]=cast(u8)mw_stdin_byte(i);}cleared:=mw_stdin_clear();d:=mw_decode(wire[0..<n]);
+    receipt_content:[8192]u8;application:[32768]u8;v:MchVerified;
+    if d.ok {v=mch_verify(f[..],d,o[0],receipt_content[..],application[..]);}
+    if !v.ok {for i:0..<n {wire[i]=0;}print("mesh-checker: invalid witness\n");x:=fh_status(2);return;}
+    if !fm_key(f[..]) || !mb_checker(cast(string)f[0].me[..],v.receipt.buyer,v.receipt.provider) {x:=fh_status(3);return;}
+    print("mesh-checker: key %\n",cast(string)f[0].me[..]);
+    if !mch_public_receipt(f[..],cast(string)v.receipt_id[..]) {print("mesh-checker: receipt not observed\n");x:=fh_status(4);return;}
+    comparison:=McComparison.{reason=8};replayed:=false;
+    compatible:=o[0].backend=="psionic-toy-cpu-v1" && f[0].cfg[0].identity==MF_ID;
+    if f[0].cfg[0].route_provider==v.receipt.provider {comparison.reason=7;}
+    else if !compatible {comparison.reason=MC_CONTEXT;}
+    else if fh_stop()==0 {
+        f[0].capture=true;response:[FM_BUFFER]u8;k:=fm_dispatch(f[..],cast(string)application[0..<v.body_n],response[..]);
+        replayed=f[0].remote_completed;
+        if replayed {comparison=mc_compare(v.original,cast(string)f[0].response[0..<f[0].response_n],f[0].admitted,sv_test_pools(f[0].storage[..]),f[0].cfg[0].identity,o[0].profile,compatible,o[0].distance);}
+    }
+    ok:=false;if fh_stop()==0 {ok=mch_publish(f[..],v,o[0],comparison,replayed);}
+    relay_conn_drop(f[0].conn[..]);for i:0..<32 {f[0].key[i]=0;}for i:0..<n {wire[i]=0;}
+    if !ok {print("mesh-checker: verdict publication unavailable\n");x:=fh_status(4);}
+}
+main :: () {mch_run();}

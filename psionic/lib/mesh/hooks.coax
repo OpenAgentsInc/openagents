@@ -1,0 +1,73 @@
+// Runtime observation/transport adapter. Checked receipt, witness, sampling
+// and ciphertext-opening policy remain in their authored authority units.
+#load "receipt.coax";
+#load "witness-encode.coax";
+#load "opening.coax";
+
+cxproc_new :: ()->int #foreign;
+cxproc_push :: (h:int,field:int,byte:int)->int #foreign;
+cxproc_end :: (h:int,field:int)->int #foreign;
+cxproc_spawn :: (h:int)->int #foreign;
+cxproc_write :: (h:int,byte:int)->int #foreign;
+cxproc_flush_timeout :: (h:int,timeout:int)->int #foreign;
+cxproc_close_stdin :: (h:int)->int #foreign;
+cxproc_read_line :: (h:int,timeout:int)->int #foreign;
+cxproc_line_byte :: (h:int,index:int)->int #foreign;
+cxproc_wait :: (h:int,timeout:int)->int #foreign;
+cxproc_release :: (h:int)->int #foreign;
+mh_arg :: (h:int,value:string)->bool {for b:value {if cxproc_push(h,0,cast(int)b)!=0 {return false;}}return cxproc_end(h,0)==0;}
+mh_stop_children :: (f:[]Fm) {for i:0..<f[0].child_count {x:=cxproc_release(f[0].children[i]);}f[0].child_count=0;}
+mh_poll_children :: (f:[]Fm) {
+    i:=0;while i<f[0].child_count {
+        h:=f[0].children[i];
+        // Drain bounded public output before reaping, so a startup line cannot
+        // hide the final signed verdict from a child that already exited.
+        for turn:0..<32 {
+            n:=cxproc_read_line(h,0);if n<0 {break;}if n==0 || n>8192 {continue;}
+            line:[8192]u8;for k:0..<n {line[k]=cast(u8)cxproc_line_byte(h,k);}text:=cast(string)line[0..<n];
+            prefix:="mesh-checker: key ";
+            if n==prefix.count+64 && text[0..<prefix.count]==prefix && pt_hex64(text[prefix.count..<n]) && !f[0].child_key_present[i] {
+                for k:0..<64 {f[0].child_keys[i][k]=line[prefix.count+k];}f[0].child_key_present[i]=true;
+                if !f[0].quiet {print("mesh: checker key % receipt %\n",cast(string)f[0].child_keys[i][..],cast(string)f[0].child_receipts[i][..]);}continue;
+            }
+            scratch:[NE_MAX_OUTPUT]u8;e:=nostr_event_verify_vartime(text,scratch[..],false);
+            if e.error==NE_OK && e.verified && e.kind==1985 && f[0].child_key_present[i] {
+                public_key:[64]u8;checker:=fm_hex(e.public_key[..],public_key[..]);content:[2048]u8;m:=json_unescape(e.original[e.content_from..<e.content_to],content[..]);
+                if m>=0 {
+                    c:=mr_check_read(e.kind,checker,e.created_at,e.original[e.tags_from..<e.tags_to],cast(string)content[0..<m]);
+                    if c.ok && c.checker==cast(string)f[0].child_keys[i][..] && c.checker!=cast(string)f[0].me[..] && c.checker!=cast(string)f[0].child_providers[i][..] && c.provider==cast(string)f[0].child_providers[i][..] && c.receipt==cast(string)f[0].child_receipts[i][..] {if !f[0].quiet {print("mesh: check % checker % verdict %\n",c.receipt,c.checker,c.verdict);}}
+                }
+            }
+        }
+        status:=cxproc_wait(h,0);if status!=-2 || cxsock_now_ms()>=f[0].child_deadlines[i] {
+            x:=cxproc_release(h);f[0].child_count-=1;last:=f[0].child_count;
+            f[0].children[i]=f[0].children[last];f[0].child_receipts[i]=f[0].child_receipts[last];f[0].child_keys[i]=f[0].child_keys[last];f[0].child_key_present[i]=f[0].child_key_present[last];f[0].child_providers[i]=f[0].child_providers[last];f[0].child_deadlines[i]=f[0].child_deadlines[last];
+        }else {i+=1;}
+    }
+}
+mh_record :: (f:[]Fm) {
+    f[0].record_pending=false;if fh_stop()!=0 {return;}c:=f[0].cfg[0];row:=f[0].rows[f[0].active];provider:=cast(string)row.provider[..];
+    request_digest:[64]u8;result_digest:[64]u8;
+    if !ph_digest(cast(string)f[0].job_plain[0..<f[0].job_plain_n],request_digest[..]) || !ph_digest(cast(string)f[0].result_plain[0..<f[0].result_plain_n],result_digest[..]) {return;}
+    receipt:=MrReceipt.{ok=true,buyer=cast(string)f[0].me[..],provider=provider,pylon=cast(string)row.slug[0..<row.slug_n],request=cast(string)f[0].jid[..],request_digest=cast(string)request_digest[..],result_digest=cast(string)result_digest[..],started_at=f[0].started,finished_at=f[0].finished,created_at=fh_now_s()};
+    body:[8192]u8;tags:[1024]u8;n:=mr_body(receipt,body[..]);if n<0 {return;}t:=mr_tags(receipt,cast(string)body[0..<n],tags[..]);if t<0 {return;}
+    scratch:[NE_MAX_OUTPUT]u8;s:=fm_sign(f,3201,cast(string)tags[0..<t],cast(string)body[0..<n],scratch[..],f[0].receipt_event[..]);if s<0 {return;}
+    e:=nostr_event_read(cast(string)f[0].receipt_event[0..<s],scratch[..],false);if e.error!=NE_OK {return;}receipt_id:=fm_hex(e.id[..],f[0].receipt_id[..]);f[0].receipt_event_n=s;f[0].receipt_ack=0;
+    frame:[16384]u8;k:=nostr_message_write_event(cast(string)f[0].receipt_event[0..<s],frame[..],false);if k<0 || !relay_conn_send(f[0].conn[..],cast(string)frame[0..<k]) {return;}
+    until:=cxsock_now_ms()+2000;while f[0].receipt_ack==0 && cxsock_now_ms()<until && fh_stop()==0 {fm_pump(f,20);}if f[0].receipt_ack!=1 {if !f[0].quiet {print("mesh: receipt publication unconfirmed\n");}return;}
+    if !f[0].quiet {print("mesh: receipt % buyer % provider %\n",receipt_id,receipt.buyer,provider);}
+    draw:[1]u8;if !rc_draw(1,draw[..]) || !ms_selected(cast(int)draw[0],c.sample) || f[0].child_count==4 {return;}
+    ck:[32]u8;request_keys:[76]u8;result_keys:[76]u8;if !fm_ck(f,provider,ck[..]) {return;}
+    req:=nostr_event_read(cast(string)f[0].job_event[0..<f[0].job_event_n],scratch[..],false);res:=nostr_event_read(cast(string)f[0].result_event[0..<f[0].result_event_n],scratch[..],false);
+    request_payload:[FM_BUFFER]u8;result_payload:[FM_BUFFER]u8;qn:=json_unescape(req.original[req.content_from..<req.content_to],request_payload[..]);rn:=json_unescape(res.original[res.content_from..<res.content_to],result_payload[..]);
+    if qn<0 || rn<0 || !mo_keys(ck[..],cast(string)request_payload[0..<qn],request_keys[..]) || !mo_keys(ck[..],cast(string)result_payload[0..<rn],result_keys[..]) {return;}for j:0..<32 {ck[j]=0;}
+    d:=MwData.{receipt=f[0].receipt_event[0..<s],request_event=f[0].job_event[0..<f[0].job_event_n],result_event=f[0].result_event[0..<f[0].result_event_n],request_plain=f[0].job_plain[0..<f[0].job_plain_n],result=f[0].result_plain[0..<f[0].result_plain_n],request_keys=request_keys[..],result_keys=result_keys[..],identity=c.identity,profile=MW_PROFILE,draw=cast(int)draw[0],threshold=c.sample,distance=c.distance};
+    if !mw_shape(d) {return;}out:[262144]u8;work:[262144]u8;w:=mw_encode(d,out[..],work[..]);if w.error!=0 || !mw_decode(w.wire).ok {return;}
+    h:=cxproc_new();if h<0 {return;}number:[32]u8;nn:=json_write_int(number[..],0,c.distance);
+    args:=[13]string.[c.mesh_checker,"--witness-stdin","--trusted-provider",c.checker_provider,"--identity",c.identity,"--profile",MW_PROFILE,"--maximum-distance-ppb",cast(string)number[0..<nn],"--backend-profile",c.backend_profile,"--relay"];
+    ok:=true;for a:args {if !mh_arg(h,a) {ok=false;}}if !mh_arg(h,c.relay) {ok=false;}
+    if !ok || cxproc_spawn(h)!=0 {x:=cxproc_release(h);return;}for b:w.wire {if cxproc_write(h,cast(int)b)!=0 {ok=false;}}
+    if !ok || cxproc_flush_timeout(h,5000)!=0 || cxproc_close_stdin(h)!=0 {x:=cxproc_release(h);if !f[0].quiet {print("mesh: checker pipe unavailable\n");}return;}
+    i:=f[0].child_count;f[0].children[i]=h;f[0].child_receipts[i]=f[0].receipt_id;f[0].child_key_present[i]=false;f[0].child_providers[i]=row.provider;f[0].child_deadlines[i]=cxsock_now_ms()+20000;f[0].child_count+=1;
+    for j:0..<76 {request_keys[j]=0;result_keys[j]=0;}
+}
