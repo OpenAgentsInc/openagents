@@ -12,6 +12,8 @@ notched panel. The page draws pictures through the host's media
 (coax/web/host.js coaxial_media), so this writes those pictures:
 
   apps/openagents-web/realms/everglade/hotbar/NAME-SIZE.jpg   a slot's icon and key, SIZE px a side
+  apps/openagents-web/realms/everglade/hotbar/NAME-bare-SIZE.jpg the icon without its key, for a slot moved
+  apps/openagents-web/realms/everglade/hotbar/key-R-C-SIZE.jpg the key tab of row R, column C, drawn over a moved slot
   apps/openagents-web/realms/everglade/hotbar/NAME-card-Sx.jpg a slot's card at S device px a CSS px
   apps/openagents-web/everglade-hotbar.coax                    their names and sizes, for the page
 
@@ -274,7 +276,34 @@ def text(draw, font, ascent, x, y, line, colour):
     draw.text((round(x), round(y + ascent)), line, font=font, fill=tuple(byte(c) for c in srgb(colour)), anchor="ls")
 
 
-def icon(name, svg, tint, key, size):
+def tab_size(key, size):
+    """The dark tab a key sits on, px: its width and height at an icon size px a side."""
+    s = size / 36
+    _, advance, _, ascent = metrics(max(7, round(8.5 * s)))
+    return advance * len(key) + round(3 * s), ascent + round(2.2 * s)
+
+
+def draw_tab(image, key, size):
+    s = size / 36
+    font, advance, _, ascent = metrics(max(7, round(8.5 * s)))
+    w, h = tab_size(key, size)
+    tab = Image.new("L", image.size, 0)
+    td = ImageDraw.Draw(tab)
+    cut = round(2.5 * s)
+    td.polygon([(0, 0), (w, 0), (w, h - cut), (w - cut, h), (0, h)], fill=round(255 * 0.82))
+    image = Image.composite(Image.new("RGB", image.size, tuple(byte(c) for c in (0.03, 0.035, 0.045))), image, tab)
+    draw = ImageDraw.Draw(image)
+    text(draw, font, ascent, round(1.5 * s), round(1.0 * s), key, KEY_INK)
+    return image
+
+
+def key_tab(key, size):
+    """A key's tab alone, over the slot's dark ground (a moved slot's key: the key stays with the place)."""
+    w, h = tab_size(key, size)
+    return draw_tab(Image.new("RGB", (w, h), tuple(byte(b) for b in BACKGROUND)), key, size)
+
+
+def icon(name, svg, tint, key, size, bare=False):
     flip = svg.endswith("^")
     cover = svg_coverage(ICONS / svg.rstrip("^"), size)
     if flip:
@@ -287,19 +316,8 @@ def icon(name, svg, tint, key, size):
             c = cv[x, y] / 255
             px[x, y] = tuple(byte(b * (1 - c) + t * c) for t, b in zip(tint, BACKGROUND))
     # the key small in the top left corner on a dark tab (the owner, October 30: big keys over the
-    # top right of the icons collided with the art and could not be read)
-    s = size / 36
-    font, advance, _, ascent = metrics(max(7, round(8.5 * s)))
-    w = advance * len(key) + round(3 * s)
-    h = ascent + round(2.2 * s)
-    tab = Image.new("L", (size, size), 0)
-    td = ImageDraw.Draw(tab)
-    cut = round(2.5 * s)
-    td.polygon([(0, 0), (w, 0), (w, h - cut), (w - cut, h), (0, h)], fill=round(255 * 0.82))
-    image = Image.composite(Image.new("RGB", (size, size), tuple(byte(c) for c in (0.03, 0.035, 0.045))), image, tab)
-    draw = ImageDraw.Draw(image)
-    text(draw, font, ascent, round(1.5 * s), round(1.0 * s), key, KEY_INK)
-    return image
+    # top right of the icons collided with the art and could not be read); none: the bare icon
+    return image if bare else draw_tab(image, key, size)
 
 
 def wrap(words, width, advance):
@@ -371,6 +389,13 @@ def card(title, body, details, scale):
     return image
 
 
+# The keys' labels by place (row * 12 + column): the row's modifier and the column's key. A slot
+# moved on the bar (everglade-arrange.coax) takes the key of the place it is moved to.
+ROW_MARK = ("", "S", "C", "A")
+COL_KEY = "1234567890-="
+MOVES = ("rebuild", "next-row")   # these never move
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     names, cards = [], []
@@ -378,10 +403,19 @@ def main():
         names.append(name)
         for size in SIZES:
             icon(name, svg, tint, key, size).save(OUT / f"{name}-{size}.jpg", quality=90, subsampling=0)
+            if name not in MOVES:
+                icon(name, svg, tint, key, size, bare=True).save(OUT / f"{name}-bare-{size}.jpg", quality=90, subsampling=0)
+        # the card names no key: the slot shows it, and a slot moved takes its place's
+        details = [d for d in details if d[1] is not KEY]
         for scale in SCALES:
             image = card(title, body, details, scale)
             image.save(OUT / f"{name}-card-{scale}x.jpg", quality=90, subsampling=0)
             cards.append(image.size)
+    for r, mark in enumerate(ROW_MARK):
+        for c, k in enumerate(COL_KEY):
+            for size in SIZES:
+                key_tab(mark + k, size).save(OUT / f"key-{r}-{c}-{size}.jpg", quality=90, subsampling=0)
+    tabs = [tab_size("1" * n, size) for n in (1, 2) for size in SIZES]
     n = len(SLOTS)
     table = [
         "// Everglade's spell bar pictures (realms/everglade/hotbar/), as the previous engine drew the bar:",
@@ -393,6 +427,9 @@ def main():
         f"HB_SIZE :: [{len(SIZES)}] int.[{', '.join(str(s) for s in SIZES)}];",
         f"HB_CARD_W :: [{len(cards)}] f32.[{', '.join(str(w) for w, _ in cards)}];",
         f"HB_CARD_H :: [{len(cards)}] f32.[{', '.join(str(h) for _, h in cards)}];",
+        "// A key's tab (key-R-C-SIZE.jpg, a moved slot's), px at each icon size: one character's, then two's.",
+        f"HB_TAB_W :: [{len(tabs)}] f32.[{', '.join(str(w) for w, _ in tabs)}];",
+        f"HB_TAB_H :: [{len(tabs)}] f32.[{', '.join(str(h) for _, h in tabs)}];",
         "",
     ]
     TABLE.write_text("\n".join(table))

@@ -261,7 +261,7 @@ ab_key_up :: (s: [] Everglade, col: int, key: int) -> bool {
   a := ab_of(s);
   any := false;
   for k: 0..<AB_N {
-    if col < 0 || AB_PLACE[k] % HB_COLS != col { continue; }
+    if col < 0 || sp_place(s, SP_SLOTS + k) % HB_COLS != col { continue; }
     any = true;
     if !a[0].keys[k] { continue; }
     a[0].keys[k] = false;

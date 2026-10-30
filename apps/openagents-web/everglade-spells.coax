@@ -48,6 +48,7 @@
 #load "../../verse/demolish.coax";
 #load "../../verse/water-spells.coax";
 #load "everglade-hotbar.coax";
+#load "everglade-arrange.coax";
 #load "everglade-abilities.coax";
 #load "everglade-frost.coax";
 #load "everglade-tide.coax";
@@ -62,7 +63,7 @@
 #load "everglade-audit.coax";
 
 SP_SLOTS :: 4;
-SP_MEDIA_BYTES :: 5600;
+SP_MEDIA_BYTES :: 5600;    // the bar as it comes (the face gives a larger one: media_big)
 SP_METEOR :: 0; SP_BOLT :: 1; SP_MEGA :: 2; SP_ORB :: 3; SP_REBUILD :: SP_SLOTS + AB_N;
 SP_BAR :: SP_REBUILD + 1;   // the bar's slots: the four aimed spells, the abilities (everglade-abilities.coax), Rebuild
 SP_SWITCH :: SP_BAR;        // and on a phone the row switcher after them (its picture HB_NAME[SP_SWITCH])
@@ -169,6 +170,7 @@ Spells :: struct {
   tip_slot: int; tip_since: f64; tip_hid: f64; // the slot the mouse rests on, since when; when a card last hid
   tip_on: bool;                                // a card showed last frame (the hint stays off it)
   media: [SP_MEDIA_BYTES] u8; media_n: int;    // the bar's pictures for the host (coaxial_media)
+  media_big: [] u8;          // the face's room for them, when it gives it: every slot moved adds its key tab (everglade-arrange.coax)
   aim: Point; aim_n: Point; aim_ok: bool; far: bool;   // aim_n: the face it points at (up on the ground or a roof)
   shot: Shot; fx: f32; fy: f32;
   casting: int; cast_t: f32; cast_at: Point; cast_n: Point; cast_from: Point;
@@ -200,6 +202,7 @@ Spells :: struct {
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // the row a phone's bar shows
+  ar: Arrange;               // where its player moved the slots, and a slot in hand (everglade-arrange.coax)
   po: [1] Polar;               // and the last four: Ray of Frost, Fog Cloud, Hold Person, Cone of Cold (everglade-polar.coax)
   st: [1] Storm;               // and after those: Sunburst, Storm of Vengeance, Shapechange, Speak with Animals, Wild Resurgence (everglade-storm.coax)
   ci: [1] Circle;              // the circle spells after it: Conjure Animals, Polymorph, Mass Cure Wounds, Sunbeam, Wall of Thorns, Fire Storm (everglade-circle.coax)
@@ -287,6 +290,7 @@ spells_start :: (s: [] Everglade) {
   s[0].sp.dice[0] = srd_dice(20261029);
   s[0].sp.armed = -1; s[0].sp.casting = -1; s[0].sp.slot_finger = -1; s[0].sp.down_id = -1;
   s[0].sp.slot_held = -1; s[0].sp.tip_slot = -1; s[0].sp.tip_hid = -100; s[0].sp.row = 0;
+  s[0].sp.ar.held = false; s[0].sp.ar.moving = false; s[0].sp.ar.eat = false;
   ab_start(s);
   for g: 0..<SP_GROUPS { s[0].sp.group_x[g] = 0; s[0].sp.group_z[g] = 0; s[0].sp.group_n[g] = 0; }
   rows: [12] f32;
@@ -305,7 +309,7 @@ spells_start :: (s: [] Everglade) {
 }
 
 // The page facts: ruleset=srd5 turns the bar on.
-spells_facts :: (s: [] Everglade, facts: string) { s[0].sp.on = fact(facts, "ruleset") == SRD_RULESET; }
+spells_facts :: (s: [] Everglade, facts: string) { s[0].sp.on = fact(facts, "ruleset") == SRD_RULESET; ar_facts(s, facts); }
 
 // The pack's catalog: each mesh's bounds ("M NAME FIRST COUNT K X0 Y0 Z0 X1 Y1 Z1"), then every piece's shape and supports.
 spells_catalog :: (s: [] Everglade, text: string) {
@@ -398,22 +402,16 @@ sp_key_place :: (key: int, mods: int) -> int {
   if (mods & 4) != 0 || option { row = 3; } else if (mods & 2) != 0 { row = 2; } else if (mods & 1) != 0 || shifted { row = 1; }
   return row * HB_COLS + col;
 }
-// Slot b's place on the bar: row * 12 + column.
-sp_place :: (b: int) -> int {
-  if b < SP_SLOTS { return b; }
-  if b == SP_REBUILD { return 10; }
-  if b < SP_REBUILD { return AB_PLACE[b - SP_SLOTS]; }
-  return -1;
-}
+// Slot b's place on the bar, row * 12 + column: sp_place (everglade-arrange.coax, as its player arranged it).
 // The slot shown at place p, -1 none.
 sp_at_place :: (s: [] Everglade, p: int) -> int {
-  for b: 0..<sp_count(s) { if sp_place(b) == p { return b; } }
+  for b: 0..<sp_count(s) { if sp_place(s, b) == p { return b; } }
   return -1;
 }
 // How many columns row r uses (its last slot's, plus one), 0 an empty row.
 sp_row_used :: (s: [] Everglade, r: int) -> int {
   n := 0;
-  for b: 0..<sp_count(s) { p := sp_place(b); if p / HB_COLS == r { n = hi_int(n, p % HB_COLS + 1); } }
+  for b: 0..<sp_count(s) { p := sp_place(s, b); if p / HB_COLS == r { n = hi_int(n, p % HB_COLS + 1); } }
   return n;
 }
 spells_key :: (s: [] Everglade, key: int, mods: int) -> bool {
@@ -468,6 +466,7 @@ spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: i
   if !sp_on(s) || s[0].above || s[0].ev.editing || s[0].talk >= 0 || s[0].board { return false; }
   k := hi(s[0].dpr, 0.5);
   if kind == 0 || phase == 0 { s[0].sp.px = x; s[0].sp.py = y; s[0].sp.seen = true; s[0].sp.mouse = kind == 0; }
+  if ar_pointer(s, x, y, phase, kind, id) { return true; }   // a slot picked up, carried, put down
   if phase == 0 {
     for b: 0..<SP_BAR + 1 {
       if in_box(s[0].sp.boxes[b], x, y) {
@@ -1887,7 +1886,7 @@ sp_plate :: (s: [] Everglade, u: [] f32, b: Box, look: f32, w: f32) {
 // A line for the host's media: "image URL X0 Y0 X1 Y1" (under the strokes) or "over URL ..." (over
 // them, as a card is), whole device pixels.
 sp_media :: (s: [] Everglade, kind: string, name: string, tail: string, b: Box) {
-  m := s[0].sp.media[..];
+  m := ifx s[0].sp.media_big.count > 0 then s[0].sp.media_big else s[0].sp.media[..];
   n := s[0].sp.media_n;
   if n + 120 > m.count { return; }
   if n > 0 { m[n] = 10; n += 1; }
@@ -1929,6 +1928,7 @@ SpBarTop :: struct { n: int; top: f32; }
 // layout; a phone shows one row and the switcher at its end (Compact), the row in lines of six, the
 // first on top, over the thumbs' sticks.
 sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
+  ar_frame(s);
   k := hi(s[0].dpr, 0.5);
   w := s[0].width; h := s[0].height;
   un := sp_unit(s);
@@ -1968,11 +1968,11 @@ sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
       x := sp_round(left + (f32(HB_PAD) + f32(HB_STEP) * f32(c % per)) * un);
       y := sp_round(y0 + (f32(HB_PAD) + f32(HB_STEP) * f32(c / per)) * un);
       s[0].sp.boxes[b] = Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
-      on := s[0].sp.armed == b || (b < SP_SLOTS && s[0].sp.casting == b) || (b >= SP_SLOTS && b < SP_REBUILD && ab_active(s, b - SP_SLOTS));
+      on := s[0].sp.armed == b || (b < SP_SLOTS && s[0].sp.casting == b) || (b >= SP_SLOTS && b < SP_REBUILD && ab_active(s, b - SP_SLOTS)) || ar_lit(s, b);
       sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
       // a picked slot's gold frame is two pixels, its inner one over the icon's edge
       inset := ifx on then edge else 0.0f32;
-      sp_media(s, "image", HB_NAME[b], size, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
+      ar_icon(s, b, icon, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
     }
   }
   return sp_bar_card(s, at, top);
@@ -2004,10 +2004,10 @@ sp_bar_desk :: (s: [] Everglade, u: [] f32, at: int, shown: [] int, shown_n: int
       if sl < 0 { continue; }
       x := sp_round(bx + (f32(HB_DESK_PAD) + f32(HB_DESK_STEP) * f32(c)) * un);
       s[0].sp.boxes[sl] = Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
-      on := s[0].sp.armed == sl || (sl < SP_SLOTS && s[0].sp.casting == sl) || (sl >= SP_SLOTS && sl < SP_REBUILD && ab_active(s, sl - SP_SLOTS));
+      on := s[0].sp.armed == sl || (sl < SP_SLOTS && s[0].sp.casting == sl) || (sl >= SP_SLOTS && sl < SP_REBUILD && ab_active(s, sl - SP_SLOTS)) || ar_lit(s, sl);
       sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
       inset := ifx on then edge else 0.0f32;
-      sp_media(s, "image", HB_NAME[sl], size, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
+      ar_icon(s, sl, icon, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
     }
   }
   return sp_bar_card(s, at, top);
@@ -2024,6 +2024,7 @@ sp_bar_card :: (s: [] Everglade, at: int, top: f32) -> SpBarTop {
     if s[0].sp.mouse && s[0].sp.seen { for b: 0..<SP_BAR + 1 { if in_box(s[0].sp.boxes[b], s[0].sp.px, s[0].sp.py) { over = b; } } }
     tip = sp_dwell(s, over, s[0].time);
   }
+  if !ar_card_ok(s) { tip = -1; }
   s[0].sp.tip_on = tip >= 0 && tip <= SP_SWITCH && s[0].sp.boxes[tip].x1 > 0;
   if s[0].sp.tip_on {
     sc := clamp_i(cast(int) sp_round(k), 1, 3);
@@ -2039,6 +2040,7 @@ sp_bar_card :: (s: [] Everglade, at: int, top: f32) -> SpBarTop {
     tail = sp_put(card[..], tail, "x.jpg");
     sp_media(s, "over", HB_NAME[tip], cast(string) card[0..<tail], Box.{x0 = cx, y0 = cy, x1 = cx + sp_round(cw), y1 = cy + sp_round(ch)});
   }
+  ar_carried(s, sp_round(f32(ifx phone(s) then HB_ICON else HB_DESK_ICON) * sp_unit(s)));
   return SpBarTop.{n = at, top = top};
 }
 

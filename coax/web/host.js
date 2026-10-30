@@ -37,7 +37,9 @@
 //                             localStorage verse.player, which the landing's join writes too), 11 keeps it as the
 //                             player's place in this realm (localStorage coaxial.<slot>.place, synchronous, so a page
 //                             being left keeps it; given back as message 11 after the page facts; never in golden
-//                             mode: apps/openagents-web/place.coax); others go to the page's
+//                             mode: apps/openagents-web/place.coax), 12 keeps it as the player's spell bar
+//                             (localStorage coaxial.<slot>.bar, given back as message 12 after the place;
+//                             never in golden mode: apps/openagents-web/everglade-arrange.coax); others go to the page's
 //                             scripts as a "coaxial" event (0 when an engine loads), which
 //                             answer with coaxial.send(kind, text)
 // and, optionally, sockets: a WebSocket byte pipe, text frames only, at most 4 open. The app (its C face)
@@ -300,6 +302,8 @@ async function loadEngine(bytes, generation) {
   // Where the player was in this realm (action 11), before the first frame: a reload never waits on the network.
   const place = golden ? "" : local(placeKey);
   if (place) send(PLACE_KIND, place);
+  const bar = golden ? "" : local(barKey);
+  if (bar) send(BAR_KIND, bar);
   viewer();
   dispatchEvent(new CustomEvent("coaxial", { detail: { code: 0, text: "" } }));
   return true;
@@ -1127,7 +1131,7 @@ function bindScene() {
 }
 
 // ---- media: pictures and videos the app names (coaxial_media), each a texture drawn into its box
-const MEDIA_KIND = 607, MEDIA_MAX = 64;   // Everglade's spell bar names up to 53 (four rows of slots, a phone row's switcher and a card)
+const MEDIA_KIND = 607, MEDIA_MAX = 112;   // Everglade's spell bar names up to 100 (four rows of slots, each moved one's key tab, a phone row's switcher, a card and the slot in hand)
 const media = new Map();   // "kind url" -> { kind, url, el, texture, w, h, ready, failed, unseen, buffer, group }
 const MEDIA_WGSL = `
 struct M { rect: vec4f, look: vec4f };
@@ -1497,6 +1501,8 @@ function keep(text) {
 // The player's place in this realm (action 11 keeps it, message 11 gives it back): small, so
 // localStorage, whose write is done before a page being left goes.
 const PLACE_KIND = 11, placeKey = `coaxial.${slot}.place`;
+// The player's spell bar as they arranged it (action 12 keeps it, message 12 gives it back).
+const BAR_KIND = 12, barKey = `coaxial.${slot}.bar`;
 function local(key) { try { return localStorage.getItem(key) || ""; } catch { return ""; } }
 // The browser's playtest player: {key, id, account} from the landing's join or a guest's key.
 function player() {
@@ -1559,6 +1565,7 @@ function after(gesture, tap = false) {
     else if (code === 3) { if (location.hash.slice(1) !== text) history.replaceState(history.state, "", text ? `#${encodeURIComponent(text)}` : location.pathname + location.search); }
     else if (code === 4) keep(text);
     else if (code === PLACE_KIND) { if (!golden) try { localStorage.setItem(placeKey, text); } catch {} }
+    else if (code === BAR_KIND) { if (!golden) try { localStorage.setItem(barKey, text); } catch {} }
     else if (code === 6) setQuality(text);
     else if (code === ACT_VOICE && voice) voice.toggle(text === "end" ? "end" : text === "on");
     else if (code === ACT_VOICE_TO && voice) voice.face(text);

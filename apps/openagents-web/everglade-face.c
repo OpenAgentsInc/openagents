@@ -53,6 +53,7 @@ static int32_t ask_id = -1, mint_id = -1;
 static int32_t world_id = -1, edit_id = -1, post_id = -1;
 static bool world_asked;
 static void edit_out(uint32_t state);
+static void bar_frame(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
 static void ask_out(uint32_t state);
 static void room_out(uint32_t state, float dt);
@@ -92,9 +93,15 @@ static coax_t_Everglade *city(uint32_t state) { return (coax_t_Everglade *)(uint
 // The town's breakable pieces and their debris (everglade-spells.coax), handed to the city on its first use.
 static coax_t_DemoWorld demo_world;
 static bool demo_attached;
+// The spell bar's pictures for the host, room for every slot moved (everglade-arrange.coax).
+static uint8_t media_big[10240];
 static coax_v_t_Everglade at(uint32_t state) {
   coax_v_t_Everglade v = {city(state), 1};
-  if (!demo_attached) { demo_attached = true; everglade_attach_demolish(v, (coax_v_t_DemoWorld){&demo_world, 1}); }
+  if (!demo_attached) {
+    demo_attached = true;
+    everglade_attach_demolish(v, (coax_v_t_DemoWorld){&demo_world, 1});
+    everglade_attach_media(v, (coax_v_u8){media_big, sizeof media_big});
+  }
   return v;
 }
 static void start(uint32_t state) {
@@ -294,12 +301,35 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   place_frame(state);
   if (placed) everglade_track(at(state), (coax_v_t_EgSeen){&track_seen, 1}, tr(), player.pos.x, player.pos.z);
 
+  bar_frame(state);
   track_frame(tr(), dt, w, h, scale);
   // world-enter and load-engine once it draws, like every realm (the analytics contract, analytics-contract.json)
   static bool entered;
   if (n > 0 && !entered) { entered = true; track_world(tr(), track_cstr("everglade")); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
+}
+
+// The spell bar as its player arranged it (everglade-arrange.coax): kept in this browser by the
+// host's action 12 (message 12 gives it back at load), and for an account on the server at
+// /api/playtest/progress/<slot>/hotbar, asked for once and sent at each change. Not in golden mode.
+#define BAR_ACTION 12
+static uint8_t bar_text[400], bar_url[128], bar_body[1024];
+static uint32_t bar_text_n;
+static bool bar_out_now;
+static int32_t bar_ask_id = -1;
+static void bar_frame(uint32_t state) {
+  if (golden || !facts_seen) return;
+  if (everglade_bar_ask(at(state))) {
+    int64_t un = everglade_bar_url(at(state), (coax_v_u8){bar_url, sizeof bar_url});
+    if (un > 0) bar_ask_id = coaxial_http((uint32_t)(uintptr_t)bar_url, (uint32_t)un, 0, 0, 4 | 8);
+  }
+  if (!bar_text_n) { int64_t n = everglade_bar_keep(at(state), (coax_v_u8){bar_text, sizeof bar_text}); if (n > 0) bar_text_n = (uint32_t)n; }
+  int64_t bn = everglade_bar_send(at(state), (coax_v_u8){bar_body, sizeof bar_body});
+  if (bn > 0) {
+    int64_t un = everglade_bar_url(at(state), (coax_v_u8){bar_url, sizeof bar_url});
+    if (un > 0) coaxial_http((uint32_t)(uintptr_t)bar_url, (uint32_t)un, (uint32_t)(uintptr_t)bar_body, (uint32_t)bn, 1 | 8);
+  }
 }
 
 // The published edits once, then an admin's heard words, ORIGINAL's reset and new list, one request each at a time.
@@ -438,7 +468,7 @@ EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, floa
   return kind != 0 ? 1u : 0u;
 }
 // The spell bar's icons and card for the host to draw (coax/web/host.js coaxial_media): everglade-spells.coax sp_media.
-EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->sp.media.e; }
+EXPORT("coaxial_media") uint32_t coaxial_media(uint32_t state) { coax_t_Everglade *g = city(state); return g->sp.media_big.count ? (uint32_t)(uintptr_t)g->sp.media_big.data : (uint32_t)(uintptr_t)g->sp.media.e; }
 EXPORT("coaxial_media_len") uint32_t coaxial_media_len(uint32_t state) { return (uint32_t)city(state)->sp.media_n; }
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { everglade_wheel(at(state), dy); }
 
@@ -448,6 +478,8 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (length > sizeof inbox) return;
   start(state);
   if (place_message(state, kind, inbox, length)) return;
+  if (kind == BAR_ACTION) { if (!golden) everglade_bar_kept(at(state), (coax_string){(const char *)inbox, length}); return; }
+  if (bar_ask_id >= 0 && kind == 512 + bar_ask_id) { bar_ask_id = -1; everglade_bar_server(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (kind == 600) { facts_seen = true; if (has_line(length, "player=")) has_player = true; }
   if (mint_id >= 0 && kind == 512 + mint_id) {
     mint_id = -1;
@@ -514,11 +546,13 @@ EXPORT("coaxial_hash") void coaxial_hash(uint32_t state, uint32_t length) {
 
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) {
   int32_t a = (int32_t)everglade_action(at(state));
-  return a ? a : place_action();
+  if (!a) a = place_action();
+  if (!a && bar_text_n) { bar_out_now = true; a = BAR_ACTION; }
+  return a;
 }
-EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return place_out_now ? place_outbox() : (uint32_t)(uintptr_t)city(state)->outbox.e; }
-EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (place_out_now) place_done(); else everglade_action_done(at(state)); }
+EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return bar_out_now ? (uint32_t)(uintptr_t)bar_text : place_out_now ? place_outbox() : (uint32_t)(uintptr_t)city(state)->outbox.e; }
+EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return bar_out_now ? bar_text_n : place_out_now ? place_outbox_len() : (uint32_t)city(state)->out_n; }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { if (bar_out_now) { bar_out_now = false; bar_text_n = 0; } else if (place_out_now) place_done(); else everglade_action_done(at(state)); }
 EXPORT("coaxial_wants_text") int32_t coaxial_wants_text(uint32_t state) { return everglade_wants_text(at(state)) ? 1 : 0; }
 // ---- the spells' fire and smoke, drawn after the scene (everglade-fx.wgsl, host.js particles)
 EXPORT("coaxial_particle_cap") uint32_t coaxial_particle_cap(void) { return (uint32_t)sizeof(((coax_t_Everglade *)0)->sp.sprites); }

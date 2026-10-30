@@ -1,0 +1,314 @@
+// Everglade's spell bar as its player arranges it (eg-bar-arrange), loaded by everglade-spells.coax.
+// Hold Shift and drag a slot onto another to swap them; on a phone hold a slot until its card shows
+// (that picks it up too), then drag it onto another. Let go anywhere else, or where it was, and
+// nothing moves (the card closes). The spell moves and the key stays with the place: a moved
+// slot draws its bare icon with the key tab of the place it is in (verse/tools/everglade_hotbar.py).
+// Rebuild and the switcher stay where they are.
+//
+// Kept as your place is (place.coax): in this browser by the host's action 12 (localStorage
+// coaxial.<slot>.bar, given back as message 12 at load) and, for a player with an account, as an
+// AESV container of the same text at /api/playtest/progress/<slot>/hotbar (everglade-face.c); the
+// newer wins. Golden mode keeps and restores nothing. The text, a line each:
+//   eg-bar 1 / at=MS / places=P,P,... (each slot's place, row * 12 + column, in the bar's order)
+
+AR_HEAD :: "eg-bar 1\n";
+AR_WORLD :: "hotbar";       // the AESV container's world on the server
+AR_SCHEMA :: 1;
+AR_SLOTS :: SP_REBUILD;     // the slots that move: the four spells and the abilities
+AR_TEXT :: 400;
+AR_SLOT :: 32;
+AR_PICK :: 6.0;             // CSS px the pointer moves before the icon follows it
+
+Arrange :: struct {
+  on: bool;                    // a slot was moved: `place` holds where each one is
+  place: [AR_SLOTS] int;
+  at: f64;                     // when it last changed (ms since 1970)
+  keep: bool; send: bool;      // a change for this browser, and for the server
+  slot: [AR_SLOT] u8; slot_n: int;   // the realm's save slot (the page facts' slot=)
+  account: bool; asked: bool;  // the server keeps a copy; it was asked for
+  held: bool; from: int; id: int;   // a slot picked up, and the pointer that holds it
+  moving: bool;                // its icon follows the pointer
+  x: f32; y: f32; x0: f32; y0: f32;
+  eat: bool; eat_id: int;      // the rest of a pointer whose press was the bar's
+}
+
+// Slot b's place when nobody moved it: row * 12 + column.
+sp_place_default :: (b: int) -> int {
+  if b < SP_SLOTS { return b; }
+  if b == SP_REBUILD { return 10; }
+  if b < SP_REBUILD { return AB_PLACE[b - SP_SLOTS]; }
+  return -1;
+}
+// Slot b's place on the bar, as its player arranged it.
+sp_place :: (s: [] Everglade, b: int) -> int {
+  if b >= 0 && b < AR_SLOTS && s[0].sp.ar.on { return s[0].sp.ar.place[b]; }
+  return sp_place_default(b);
+}
+ar_moves :: (b: int) -> bool { return b >= 0 && b < AR_SLOTS; }
+ar_now :: (s: [] Everglade) -> f64 { return ifx s[0].now_s > 0 then (s[0].now_s + (s[0].time - s[0].day_from)) * 1000 else 0.0; }
+
+// Swap two slots' places.
+ar_swap :: (s: [] Everglade, a: int, b: int) {
+  if !ar_moves(a) || !ar_moves(b) || a == b { return; }
+  if !s[0].sp.ar.on { for k: 0..<AR_SLOTS { s[0].sp.ar.place[k] = sp_place_default(k); } s[0].sp.ar.on = true; }
+  t := s[0].sp.ar.place[a]; s[0].sp.ar.place[a] = s[0].sp.ar.place[b]; s[0].sp.ar.place[b] = t;
+  now := ar_now(s);
+  s[0].sp.ar.at = ifx now > s[0].sp.ar.at then now else s[0].sp.ar.at + 1;
+  s[0].sp.ar.keep = true; s[0].sp.ar.send = s[0].sp.ar.account;
+}
+
+// ---- the text
+
+ar_text :: (s: [] Everglade, out: [] u8) -> int {
+  n := sp_put(out, 0, AR_HEAD);
+  n = sp_put(out, n, "at="); n = put_digits(out, n, cast(int) s[0].sp.ar.at);
+  n = sp_put(out, n, "\nplaces=");
+  for b: 0..<AR_SLOTS { if b > 0 { n = sp_put(out, n, ","); } n = put_digits(out, n, sp_place(s, b)); }
+  n = sp_put(out, n, "\n");
+  return ifx n < out.count then n else 0;
+}
+// A kept text's places and time; false when it isn't one, or isn't every slot on a place of its own
+// among the bar's places.
+ar_read :: (text: string, places: [] int, at: [] f64) -> bool {
+  if text.count < AR_HEAD.count || text[0..<AR_HEAD.count] != AR_HEAD { return false; }
+  seen := 0;
+  line_at: [1] int; line_at[0] = AR_HEAD.count;
+  ok: [1] bool; ok[0] = true;
+  while line_at[0] < text.count {
+    l := save_line(text, line_at[..]);
+    if l.count > 3 && l[0..<3] == "at=" { at[0] = cast(f64) place_int(l[3..<l.count], ok[..]); seen |= 1; continue; }
+    if l.count <= 7 || l[0..<7] != "places=" { continue; }
+    n := 0; i := 7;
+    while i <= l.count {
+      e := i; while e < l.count && l[e] != ',' { e += 1; }
+      if n >= places.count { return false; }
+      places[n] = place_int(l[i..<e], ok[..]); n += 1;
+      i = e + 1;
+    }
+    if n != AR_SLOTS { return false; }
+    seen |= 2;
+  }
+  if !ok[0] || seen != 3 || at[0] <= 0 { return false; }
+  for b: 0..<AR_SLOTS {
+    known := false;
+    for k: 0..<AR_SLOTS { if sp_place_default(k) == places[b] { known = true; } }
+    if !known { return false; }
+    for c: 0..<b { if places[c] == places[b] { return false; } }
+  }
+  return true;
+}
+// A kept arrangement: in force when it is newer than the one in force. Any slot in hand goes back.
+ar_take :: (s: [] Everglade, text: string) -> bool {
+  places: [AR_SLOTS] int; at: [1] f64;
+  if !ar_read(text, places[..], at[..]) || at[0] <= s[0].sp.ar.at { return false; }
+  for b: 0..<AR_SLOTS { s[0].sp.ar.place[b] = places[b]; }
+  s[0].sp.ar.on = true; s[0].sp.ar.at = at[0];
+  ar_drop(s);
+  return true;
+}
+// The page facts: the save slot, and whether the server keeps a copy.
+ar_facts :: (s: [] Everglade, facts: string) {
+  slot := fact(facts, "slot");
+  if slot.count > 0 && slot.count <= AR_SLOT { for i: 0..<slot.count { s[0].sp.ar.slot[i] = slot[i]; } s[0].sp.ar.slot_n = slot.count; }
+  s[0].sp.ar.account = fact(facts, "account").count > 0;
+}
+
+// ---- the face's half (everglade-face.c): this browser's copy and the server's
+
+// The text to keep in this browser (action 12) since the last change; 0 none.
+everglade_bar_keep :: (s: [] Everglade, out: [] u8) -> int #export_c {
+  if !s[0].sp.ar.keep { return 0; }
+  s[0].sp.ar.keep = false;
+  return ar_text(s, out);
+}
+everglade_bar_kept :: (s: [] Everglade, text: string) #export_c { _ := ar_take(s, text); }
+// The face's room for the bar's pictures (every slot moved draws two).
+everglade_attach_media :: (s: [] Everglade, room: [] u8) #export_c { s[0].sp.media_big = room; }
+// /api/playtest/progress/<slot>/hotbar
+everglade_bar_url :: (s: [] Everglade, out: [] u8) -> int #export_c {
+  if s[0].sp.ar.slot_n == 0 { return 0; }
+  n := sp_put(out, 0, "/api/playtest/progress/");
+  n = sp_put(out, n, cast(string) s[0].sp.ar.slot[0..<s[0].sp.ar.slot_n]);
+  n = sp_put(out, n, "/hotbar");
+  return ifx n < out.count then n else 0;
+}
+// Whether to ask the server for its copy now (once, with an account).
+everglade_bar_ask :: (s: [] Everglade) -> bool #export_c {
+  if s[0].sp.ar.asked || !s[0].sp.ar.account || s[0].sp.ar.slot_n == 0 { return false; }
+  s[0].sp.ar.asked = true;
+  return true;
+}
+// The body that keeps the arrangement on the server since the last change ({"bytes", "at"}); 0 none.
+everglade_bar_send :: (s: [] Everglade, out: [] u8) -> int #export_c {
+  if !s[0].sp.ar.send { return 0; }
+  s[0].sp.ar.send = false;
+  text: [AR_TEXT] u8;
+  n := ar_text(s, text[..]);
+  if n <= 0 { return 0; }
+  c: [AR_TEXT + 96] u8;
+  cn := save_pack(AR_WORLD, AR_SCHEMA, text[..], n, c[..]);
+  if cn <= 0 { return 0; }
+  b := save_post_body(c[..], cn, s[0].sp.ar.at, out);
+  return ifx b > 0 then b else 0;
+}
+// The server's answer ("STATUS\n" then {current, previous}).
+everglade_bar_server :: (s: [] Everglade, answer: string) #export_c {
+  bytes: [2048] u8;
+  got := save_from_server(answer, bytes[..]);
+  pick := save_pick(bytes[..], got, AR_WORLD, AR_SCHEMA, 1);
+  if pick.which == 0 { return; }
+  _ := ar_take(s, cast(string) bytes[pick.at..<pick.at + pick.count]);
+}
+
+// ---- picking up and putting down
+
+ar_slot_at :: (s: [] Everglade, x: f32, y: f32) -> int {
+  for b: 0..<SP_BAR + 1 { if in_box(s[0].sp.boxes[b], x, y) { return b; } }
+  return -1;
+}
+ar_pick :: (s: [] Everglade, b: int, id: int, x: f32, y: f32) {
+  s[0].sp.ar.held = true; s[0].sp.ar.from = b; s[0].sp.ar.id = id; s[0].sp.ar.moving = false;
+  s[0].sp.ar.x = x; s[0].sp.ar.y = y; s[0].sp.ar.x0 = x; s[0].sp.ar.y0 = y;
+}
+ar_drop :: (s: [] Everglade) {
+  if s[0].sp.ar.held { s[0].sp.slot_finger = -1; s[0].sp.slot_held = -1; }
+  s[0].sp.ar.held = false; s[0].sp.ar.moving = false;
+}
+// A finger held on a slot long enough picks it up (its card shows too, until it moves).
+ar_frame :: (s: [] Everglade) {
+  h := s[0].sp.slot_held;
+  if !s[0].sp.ar.held && ar_moves(h) && s[0].time - s[0].sp.slot_t >= f64(HB_LONG) { ar_pick(s, h, s[0].sp.slot_finger, s[0].sp.px, s[0].sp.py); }
+}
+// The pointer, before the bar's own handling: true when it was the arrangement's.
+ar_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
+  if s[0].sp.ar.eat && id == s[0].sp.ar.eat_id {
+    if phase >= 2 { s[0].sp.ar.eat = false; }
+    return true;
+  }
+  if s[0].sp.ar.held {
+    if id != s[0].sp.ar.id { return false; }
+    s[0].sp.ar.x = x; s[0].sp.ar.y = y;
+    if abs(x - s[0].sp.ar.x0) + abs(y - s[0].sp.ar.y0) > f32(AR_PICK) * hi(s[0].dpr, 0.5) { s[0].sp.ar.moving = true; }
+    if phase < 2 { return true; }
+    t := ar_slot_at(s, x, y);
+    if phase == 2 && ar_moves(t) && t != s[0].sp.ar.from { ar_swap(s, s[0].sp.ar.from, t); }
+    ar_drop(s);
+    return true;
+  }
+  // Shift and a click on a slot picks it up, and casts nothing
+  if phase == 0 && kind == 0 && (s[0].held & HOLD_RUN) != 0 {
+    b := ar_slot_at(s, x, y);
+    if b < 0 { return false; }
+    if ar_moves(b) { ar_pick(s, b, id, x, y); } else { s[0].sp.ar.eat = true; s[0].sp.ar.eat_id = id; }
+    return true;
+  }
+  return false;
+}
+
+// ---- drawing
+
+// The slot the dragged one would swap with, -1 none.
+ar_target :: (s: [] Everglade) -> int {
+  if !s[0].sp.ar.held || !s[0].sp.ar.moving { return -1; }
+  t := ar_slot_at(s, s[0].sp.ar.x, s[0].sp.ar.y);
+  return ifx ar_moves(t) && t != s[0].sp.ar.from then t else -1;
+}
+// Whether slot b's frame is lit: the one it would swap with.
+ar_lit :: (s: [] Everglade, b: int) -> bool { return b >= 0 && b == ar_target(s); }
+// Whether a card may show: not while a slot is in hand.
+ar_card_ok :: (s: [] Everglade) -> bool { return !s[0].sp.ar.held || (!s[0].sp.ar.moving && s[0].sp.slot_held >= 0); }
+ar_size_index :: (px: f32) -> int {
+  for i: 0..<HB_SIZES { if f32(HB_SIZE[i]) >= px - 0.5 { return i; } }
+  return HB_SIZES - 1;
+}
+// Slot b's picture in box b (icon px a side): at its own place its icon, its key in it; moved, the
+// bare icon and its place's key tab over it; carried, nothing (the icon follows the pointer).
+ar_icon :: (s: [] Everglade, b: int, icon: f32, box: Box) {
+  size := sp_icon_size(icon);
+  if s[0].sp.ar.held && s[0].sp.ar.moving && b == s[0].sp.ar.from { return; }
+  p := sp_place(s, b);
+  if !ar_moves(b) || p == sp_place_default(b) { sp_media(s, "image", HB_NAME[b], size, box); return; }
+  tail: [24] u8;
+  n := sp_put(tail[..], 0, "-bare"); n = sp_put(tail[..], n, size);
+  sp_media(s, "image", HB_NAME[b], cast(string) tail[0..<n], box);
+  zi := ar_size_index(icon);
+  f := (box.x1 - box.x0) / f32(HB_SIZE[zi]);
+  two := ifx p >= HB_COLS then 1 else 0;
+  tw := HB_TAB_W[two * HB_SIZES + zi] * f; th := HB_TAB_H[two * HB_SIZES + zi] * f;
+  name: [16] u8;
+  m := sp_put(name[..], 0, "key-"); m = put_digits(name[..], m, p / HB_COLS); m = sp_put(name[..], m, "-"); m = put_digits(name[..], m, p % HB_COLS);
+  sp_media(s, "image", cast(string) name[0..<m], size, Box.{x0 = box.x0, y0 = box.y0, x1 = sp_round(box.x0 + tw), y1 = sp_round(box.y0 + th)});
+}
+// The icon in hand, over everything, under the pointer.
+ar_carried :: (s: [] Everglade, icon: f32) {
+  if !s[0].sp.ar.held || !s[0].sp.ar.moving { return; }
+  b := s[0].sp.ar.from;
+  side := s[0].sp.boxes[b].x1 - s[0].sp.boxes[b].x0;
+  if side <= 0 { side = icon; }
+  size := sp_icon_size(side);
+  tail: [24] u8;
+  n := sp_put(tail[..], 0, "-bare"); n = sp_put(tail[..], n, size);
+  x := sp_round(s[0].sp.ar.x - side / 2); y := sp_round(s[0].sp.ar.y - side / 2);
+  sp_media(s, "over", HB_NAME[b], cast(string) tail[0..<n], Box.{x0 = x, y0 = y, x1 = x + side, y1 = y + side});
+}
+
+#test "the bar: a swap moves the spells, not the keys; its text round-trips; a bad or older text is refused" {
+  g: [1] Everglade;
+  #assert sp_place(g[..], SP_METEOR) == 0 && sp_place(g[..], SP_SLOTS + AB_STONE) == 12 && sp_at_place(g[..], 10) == SP_REBUILD;
+  g[0].now_s = 1793000000; g[0].sp.ar.account = true;
+  ar_swap(g[..], SP_METEOR, SP_SLOTS + AB_STONE);
+  #assert sp_at_place(g[..], 0) == SP_SLOTS + AB_STONE && sp_at_place(g[..], 12) == SP_METEOR && sp_place(g[..], SP_BOLT) == 1;
+  // Shift+1 is still place 12, now Meteor Swarm's; 1 is Wall of Stone's
+  #assert sp_at_place(g[..], sp_key_place('!', 1)) == SP_METEOR && sp_at_place(g[..], sp_key_place('1', 0)) == SP_SLOTS + AB_STONE;
+  #assert g[0].sp.ar.keep && g[0].sp.ar.send && g[0].sp.ar.at == 1793000000000;
+  out: [AR_TEXT] u8;
+  n := everglade_bar_keep(g[..], out[..]);
+  text := cast(string) out[0..<n];
+  #assert n > 0 && !g[0].sp.ar.keep && everglade_bar_keep(g[..], out[..]) == 0;
+  #assert text[0..<35] == "eg-bar 1\nat=1793000000000\nplaces=12" && contains(text, ",1,2,3,4,");
+  h: [1] Everglade;
+  #assert ar_take(h[..], text) && sp_at_place(h[..], 12) == SP_METEOR && sp_at_place(h[..], 0) == SP_SLOTS + AB_STONE;
+  #assert !ar_take(h[..], text);                                   // no newer
+  #assert !ar_take(h[..], "eg-bar 1\nat=1793000000001\nplaces=0,0\n");   // not every slot
+  #assert !ar_take(h[..], "eg-bar 2\nat=1793000000001\nplaces=12\n");
+  // the server's copy goes as an AESV container
+  body: [1024] u8;
+  #assert everglade_bar_send(g[..], body[..]) > 0 && everglade_bar_send(g[..], body[..]) == 0;
+  g[0].sp.ar.slot_n = 0; ar_facts(g[..], "slot=everglade\naccount=e-1\n");
+  #assert cast(string) out[0..<everglade_bar_url(g[..], out[..])] == "/api/playtest/progress/everglade/hotbar" && everglade_bar_ask(g[..]) && !everglade_bar_ask(g[..]);
+}
+
+#test "the bar: Shift and a drag swaps two slots and casts nothing; let go off the bar, nothing moves; a phone holds and drags" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  a := g[0].sp.boxes[SP_METEOR]; b := g[0].sp.boxes[SP_ORB];
+  #assert everglade_key(g[..], KEY_SHIFT, 1);
+  #assert everglade_pointer(g[..], a.x0 + 5, a.y0 + 5, 0, 0, 1) && g[0].sp.armed == -1 && !g[0].drag_on;
+  #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 1, 0, 1) && ar_target(g[..]) == SP_ORB;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/meteor-swarm-bare-");
+  #assert everglade_pointer(g[..], b.x0 + 5, b.y0 + 5, 2, 0, 1) && sp_place(g[..], SP_ORB) == 0 && sp_place(g[..], SP_METEOR) == 3 && g[0].sp.armed == -1;
+  _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  m := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
+  #assert contains(m, "water-orb-bare-48.jpg") && contains(m, "key-0-0-48.jpg") && contains(m, "key-0-3-48.jpg") && !contains(m, "over ");
+  // let go off the bar: nothing moves; Shift let go, 4 casts Meteor Swarm where it now is
+  #assert everglade_pointer(g[..], a.x0 + 5, a.y0 + 5, 0, 0, 1) && everglade_pointer(g[..], 640, 300, 1, 0, 1) && everglade_pointer(g[..], 640, 300, 2, 0, 1);
+  #assert sp_place(g[..], SP_ORB) == 0 && !g[0].sp.ar.held;
+  #assert everglade_key_up(g[..], KEY_SHIFT, 0) && everglade_key(g[..], '4', 0) && g[0].sp.armed == SP_METEOR;
+  // a phone: hold Thunderbolt until its card shows, drag it onto Mega Thunderbolt; held and let go in place, nothing moves
+  g[0].sp.armed = -1; g[0].touch = true;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  p := g[0].sp.boxes[SP_BOLT]; q := g[0].sp.boxes[SP_MEGA];
+  #assert everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 0, 1, 7);
+  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].sp.ar.held && g[0].sp.tip_on && everglade_pointer(g[..], q.x0 + 5, q.y0 + 5, 1, 1, 7) && ar_target(g[..]) == SP_MEGA;
+  #assert everglade_pointer(g[..], q.x0 + 5, q.y0 + 5, 2, 1, 7) && sp_place(g[..], SP_BOLT) == 2 && sp_place(g[..], SP_MEGA) == 1 && !g[0].sp.ar.held;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 0, 1, 8);
+  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].sp.ar.held && g[0].sp.ar.from == SP_MEGA && everglade_pointer(g[..], p.x0 + 5, p.y0 + 5, 2, 1, 8) && !g[0].sp.ar.held && g[0].sp.slot_held == -1 && sp_place(g[..], SP_MEGA) == 1;
+}
