@@ -17,15 +17,16 @@ int main(int argc,char **argv) {
   int control=argc>1&&!strcmp(argv[1],"control");
   uint8_t candidate[64];memcpy(candidate,sig,64);
   if(argc>2)candidate[40]^=1;              /* an invalid candidate: same work */
+  uint8_t r_public[32];memcpy(r_public,candidate,32);  /* R as the signer's public, declassified view */
   VALGRIND_MAKE_MEM_UNDEFINED(candidate,64);
-  coax_v_u8 m={message,32},p={key,32},s={candidate,64};
+  coax_v_u8 m={message,32},p={key,32},s={candidate,64},rv={r_public,32};
   if(control){
     int ok=schnorr_verify_vartime(m,p,s);
     VALGRIND_MAKE_MEM_DEFINED(&ok,sizeof ok);printf("control %d\n",ok);return 0;
   }
   coax_v_t_SsvWork view={&work,1};uint64_t mask;int calls=0;
   for(;;){
-    mask=ssv_step(m,p,s,view,false);calls++;
+    mask=ssv_step(m,p,rv,s,view,false);calls++;
     VALGRIND_MAKE_MEM_DEFINED(&mask,sizeof mask);   /* stage status, then the published decision */
     if(mask!=1||calls>3)break;
   }

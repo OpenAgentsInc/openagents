@@ -17,10 +17,10 @@ EXPORT("ssv_case") int ssv_case(const uint8_t *m,int64_t mn,const uint8_t *p,int
   coax_t_SsvWork *work=(coax_t_SsvWork *)(region+32);
   /* A stale workspace starts at stage 0 unless the case faults the stage too. */
   if(!garbage_stage)work->stage=0;
-  coax_v_u8 message={(uint8_t *)m,mn},pub={(uint8_t *)p,pn},sig={(uint8_t *)s,sn};
+  coax_v_u8 message={(uint8_t *)m,mn},pub={(uint8_t *)p,pn},sig={(uint8_t *)s,sn},r={(uint8_t *)s,sn<32?sn:32};
   coax_v_t_SsvWork view={work,work_count};
   uint64_t mask;int calls=0;
-  do{mask=nostr?ssv_nostr_step(message,pub,sig,view,overlap!=0):ssv_step(message,pub,sig,view,overlap!=0);calls++;}while(mask==1&&calls<8);
+  do{mask=nostr?ssv_nostr_step(message,pub,r,sig,view,overlap!=0):ssv_step(message,pub,r,sig,view,overlap!=0);calls++;}while(mask==1&&calls<8);
   if(calls>3)return -3;
   for(int i=0;i<32;i++)if(region[i]!=0xA5||region[32+sizeof(coax_t_SsvWork)+i]!=0xA5)return -1;
   int zero=1,untouched=1;

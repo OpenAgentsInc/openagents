@@ -52,6 +52,36 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
+**Self-verifier changes for the audit (`openagents-d7`, this push).** These
+are `openagents-20`'s four findings in `schnorr_self_verify.coax`:
+1. `ssv_views` inlines the length checks instead of calling `sv_lengths_vartime`.
+2. A second `for i` loop on the same line is renamed `j`.
+3. The challenge uses the `ShaOwned` `so_*` workspace (`SsvWork.sha`) instead of the packed SHA-256 state.
+4. `ssv_step` and `ssv_nostr_step` take a separate public `r` view. The challenge hashes `r`, never the candidate. `r` must equal `candidate[0..<32]` under a masked compare, or the result is refused. The signer passes `nonce.r`, which `sw_nonce` declassifies.
+
+The new check uses an oracle-built candidate that is valid under another r's
+challenge but is not a BIP-340 signature. It is refused, and with the bound
+forced it would verify, so the compare is what refuses it.
+
+Fast checks:
+- `schnorr_self_verify` 205/205, `schnorr_sign` 258/258, `event_sign` 330/330;
+- the differential, native and Wasm, 381 cases;
+- `schnorr_sign.py` with 1,000 round trips, native and Wasm;
+- both secret probes pass.
+
+Mutation is owed for these three files.
+
+**Survivors in the `934852b008` gates, passed to `openagents-20`:**
+- `schnorr_sign.coax:209:3` and `:214:3`: the `sw_bytes_declassify` calls
+  can be removed, because declassify is a no-op at run time.
+- `sha256_workspace.coax:57:13`: 16 can become 17 (the schedule split).
+- `sha256_workspace.coax:92:44`: 0 can become 1.
+
+The other runs were clean: `schnorr_sign` 3,704/3,708, `schnorr_nonce_point`
+2,831/2,833, `sha256_workspace` 1,074/1,076. The Mac `event_sign` run on
+`934852b008` is superseded by this push.
+
+
 **Source audit at `934852b008` (`openagents-20`, classification v4):** the key
 and aux are secret. The stage, challenge, message, public key, r and SHA
 length fields are public.

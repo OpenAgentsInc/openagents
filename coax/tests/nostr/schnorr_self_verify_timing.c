@@ -18,8 +18,8 @@ static const uint8_t KEY[32]={249,48,138,1,146,88,195,16,73,52,79,133,248,157,82
 static const uint8_t SIG[64]={233,7,131,31,128,132,141,16,105,165,55,27,64,36,16,54,75,223,28,95,131,7,176,8,76,85,241,206,45,202,130,21,37,246,106,74,133,234,139,113,228,130,167,79,56,45,44,229,235,238,232,253,178,23,47,71,125,244,144,13,49,5,54,192};
 static uint8_t message[32],key[32];static coax_t_SsvWork work;static int which;
 static uint64_t call(uint8_t*candidate){
- coax_v_u8 m={message,32},k={key,32},c={candidate,64};
- if(which==0){coax_v_t_SsvWork w={&work,1};uint64_t r;do r=ssv_step(m,k,c,w,false);while(r==1);return r;}
+ coax_v_u8 m={message,32},k={key,32},c={candidate,64},rv={candidate,32};
+ if(which==0){coax_v_t_SsvWork w={&work,1};uint64_t r;do r=ssv_step(m,k,rv,c,w,false);while(r==1);return r;}
  if(which==1)return ssvt_control_fixed(c);
  if(which==2)return ssvt_control_branch(c);
  return schnorr_fast_verify_vartime(m,k,c);

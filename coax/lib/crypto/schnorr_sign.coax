@@ -66,14 +66,14 @@ SIGN_REFUSED :: 0; SIGN_MORE :: 1; SIGN_DONE :: 2;
 #test "stage four starts the self-check on the candidate" {
   v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;
   m:=v.message;ss_bind(m[..],work[..]);
-  work[0].stage=3;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
+  work[0].stage=3;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;work[0].nonce[0].r=v.r;
   #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_MORE && work[0].stage==4;
   #assert work[0].check[0].stage==1;for i:0..<64 {#assert out[i]==0 && work[0].check[0].candidate[i]==v.sig[i];}
 }
 #test "an invalid key point stops the self-check and clears" {
   v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;
   m:=v.message;ss_bind(m[..],work[..]);
-  work[0].stage=3;for i:0..<32 {work[0].prep[0].public_key[i]=255;}work[0].sig=v.sig;
+  work[0].stage=3;for i:0..<32 {work[0].prep[0].public_key[i]=255;}work[0].sig=v.sig;work[0].nonce[0].r=v.r;
   #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_REFUSED;
   #assert work[0].stage==0 && work[0].sig[0]==0 && work[0].check[0].stage==0;
 }
@@ -82,7 +82,7 @@ SIGN_REFUSED :: 0; SIGN_MORE :: 1; SIGN_DONE :: 2;
   // the lifted key and challenge, so the product must be 2G.
   v:=SIGN_VECTORS[0];work:[1]SignWork;out:[64]u8;
   m:=v.message;ss_bind(m[..],work[..]);
-  work[0].stage=4;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
+  work[0].stage=4;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;work[0].nonce[0].r=v.r;
   work[0].check[0].stage=1;work[0].check[0].bound=CB_MAX64;work[0].check[0].peer=sg_generator();work[0].check[0].negative_e=sc_small(2);
   for i:0..<32 {work[0].check[0].key[i]=v.pub[i];}for i:0..<64 {work[0].check[0].candidate[i]=v.sig[i];}
   #assert schnorr_sign_step(v.key[..],v.aux[..],v.message[..],work[..],out[..],false)==SIGN_MORE && work[0].stage==5;
@@ -178,8 +178,9 @@ ss_bind :: (message:[]u8,work:[]SignWork) {status:=sha256_hash_checked(message,w
 ss_final :: (v:SignVector,work:[]SignWork) {
   work[0].stage=5;work[0].prep[0].public_key=v.pub;work[0].sig=v.sig;
   work[0].prep[0].valid=1;work[0].nonce[0].valid=1;work[0].math[0].valid=1;
-  pub:=v.pub;sig:=v.sig;message:=v.message;
-  r:=ssv_step(message[..],pub[..],sig[..],work[0].check[..],false);
+  pub:=v.pub;sig:=v.sig;message:=v.message;rr:=v.r;
+  work[0].nonce[0].r=v.r;
+  r:=ssv_step(message[..],pub[..],rr[..],sig[..],work[0].check[..],false);
   work[0].check[0].ep=SSV_EP;work[0].check[0].stage=2;
 }
 SignWork :: struct {stage:int;prep:[1]SignPrepare;nonce:[1]SignNoncePoint;math:[1]SignMath;challenge:[32]u8;sig:[64]u8;check:[1]SsvWork;message:[32]u8;}
@@ -233,7 +234,7 @@ sw_scalar :: (key:[]u8,message:[]u8,work:[]SignWork)->int {
 // verifies. The unpublished candidate is checked only by ssv_step, one of
 // its stages per call, and only its final mask decides publication.
 sw_check :: (message:[]u8,work:[]SignWork)->int {
-  r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].sig[..],work[0].check[..],false);
+  r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],work[0].sig[..],work[0].check[..],false);
   if r!=cast(u64)SSV_MORE {return sw_clear(work);}
   work[0].stage+=1;return SIGN_MORE;
 }
@@ -249,7 +250,7 @@ sw_same_message :: (message:[]u8,work:[]SignWork)->bool {
 // The self-check always finishes before the validity bits are read, so a
 // refusal does the same work as a publication.
 sw_publish :: (message:[]u8,work:[]SignWork,out:[]u8)->int {
-  r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].sig[..],work[0].check[..],false);
+  r:=ssv_step(message,work[0].prep[0].public_key[..],work[0].nonce[0].r[..],work[0].sig[..],work[0].check[..],false);
   valid:=work[0].prep[0].valid & work[0].nonce[0].valid & work[0].math[0].valid;
   if valid!=1 || r!=SSV_VALID {return sw_clear(work);}
   for i:0..<64 {out[i]=work[0].sig[i];}

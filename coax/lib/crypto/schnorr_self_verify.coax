@@ -21,6 +21,7 @@
 #load "secp_mult_const.coax";
 #load "ecdh_fast.coax";
 #load "schnorr.coax";
+#load "sha256_workspace.coax";
 #authority;
 SSV_VALID :: CB_MAX64;
 SSV_MORE :: 1;
@@ -32,7 +33,7 @@ SsvAffine :: struct {x:Sf32;finite:u64;even:u64;}
 // SSV_MORE; the host still wipes the region (crypto_secure_zero) afterwards.
 SsvWork :: struct {
   stage:u64;bound:u64;key:[32]u8;candidate:[64]u8;peer:SgPoint;
-  tag:[32]u8;state:[112]u8;digest:[32]u8;
+  tag:[32]u8;sha:[1]ShaOwned;digest:[32]u8;
   r:[1]SsvField;s:[1]SsvScalar;negative_e:ScScalar;
   sg:Sg32;ep:Sg32;sum:Sg32;affine:[1]SsvAffine;
 }
@@ -48,7 +49,8 @@ SSV_NEG_E :: ScScalar.{limbs=[8]u32.[349747827,36148612,4098338157,1274856864,16
 SSV_EP :: Sg32.{x=Sf32.{limb=[8]u32.[2937904500,3194218660,1788718318,3240692724,63033429,3192549047,3678484726,3261118877]},y=Sf32.{limb=[8]u32.[2779812506,3456191338,1531934662,2592375517,628585005,2972270915,3562684465,3070154552]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}};
 ssv_test_clear :: (work:[]SsvWork)->bool {
   w:=work[0];bits:u64;
-  for i:0..<32 {bits|=cast(u64)(w.tag[i]|w.digest[i]|w.key[i]);}for i:0..<112 {bits|=cast(u64)w.state[i];}
+  for i:0..<32 {bits|=cast(u64)(w.tag[i]|w.digest[i]|w.key[i]);}for j:0..<64 {bits|=cast(u64)w.sha[0].block[j]|cast(u64)w.sha[0].schedule[j];}
+  for i:0..<8 {bits|=cast(u64)w.sha[0].h[i];}bits|=w.sha[0].total|cast(u64)w.sha[0].used|cast(u64)w.sha[0].phase;
   for i:0..<64 {bits|=cast(u64)w.candidate[i];}
   for i:0..<8 {
     bits|=cast(u64)(w.r[0].value.limb[i]|w.s[0].value.limbs[i]|w.negative_e.limbs[i]|w.affine[0].x.limb[i]);
@@ -62,13 +64,13 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
   work:[1]SsvWork;#assert ssv_test_clear(work[..]);fresh:SsvWork;
   for i:0..<31 {
     work[0]=fresh;
-    if i==0 {work[0].tag[31]=1;} if i==1 {work[0].state[111]=1;} if i==2 {work[0].digest[0]=1;}
+    if i==0 {work[0].tag[31]=1;} if i==1 {work[0].sha[0].h[7]=1;} if i==2 {work[0].digest[0]=1;}
     if i==3 {work[0].r[0].value.limb[7]=1;} if i==4 {work[0].r[0].below=1;} if i==5 {work[0].s[0].value.limbs[7]=1;}
     if i==6 {work[0].s[0].below=1;} if i==7 {work[0].negative_e.limbs[7]=1;} if i==8 {work[0].sg.x.limb[7]=1;}
     if i==9 {work[0].sg.y.limb[0]=1;} if i==10 {work[0].sg.z.limb[0]=1;} if i==11 {work[0].ep.x.limb[0]=1;}
     if i==12 {work[0].ep.y.limb[0]=1;} if i==13 {work[0].ep.z.limb[0]=1;} if i==14 {work[0].sum.x.limb[0]=1;}
     if i==15 {work[0].sum.y.limb[0]=1;} if i==16 {work[0].affine[0].x.limb[3]=1;} if i==17 {work[0].affine[0].finite=1;}
-    if i==18 {work[0].affine[0].even=1;} if i==19 {work[0].sum.z.limb[7]=1;} if i==20 {work[0].state[0]=1;} if i==21 {work[0].tag[0]=1;}
+    if i==18 {work[0].affine[0].even=1;} if i==19 {work[0].sum.z.limb[7]=1;} if i==20 {work[0].sha[0].block[0]=1;} if i==21 {work[0].tag[0]=1;}
     if i==22 {work[0].key[0]=1;} if i==23 {work[0].candidate[0]=1;} if i==24 {work[0].candidate[63]=1;} if i==25 {work[0].peer.x.limb[0]=1;}
     if i==26 {work[0].peer.y.limb[9]=1;} if i==27 {work[0].peer.z.limb[0]=1;} if i==28 {work[0].stage=1;} if i==29 {work[0].bound=1;}
     if i==30 {work[0].key[31]=1;}
@@ -76,20 +78,22 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
   }
 }
 #test "public view metadata refuses before any work is touched" {
-  #assert ssv_views(0,32,64,1,false) && ssv_views(SV_MAX_MESSAGE,32,64,1,false);
-  #assert !ssv_views(-1,32,64,1,false) && !ssv_views(SV_MAX_MESSAGE+1,32,64,1,false);
-  #assert !ssv_views(0,31,64,1,false) && !ssv_views(0,33,64,1,false);
-  #assert !ssv_views(0,32,63,1,false) && !ssv_views(0,32,65,1,false);
-  #assert !ssv_views(0,32,64,0,false) && !ssv_views(0,32,64,2,false);
-  #assert !ssv_views(0,32,64,1,true);
+  #assert ssv_views(0,32,32,64,1,false) && ssv_views(SV_MAX_MESSAGE,32,32,64,1,false);
+  #assert !ssv_views(-1,32,32,64,1,false) && !ssv_views(SV_MAX_MESSAGE+1,32,32,64,1,false);
+  #assert !ssv_views(0,31,32,64,1,false) && !ssv_views(0,33,32,64,1,false);
+  #assert !ssv_views(0,32,32,63,1,false) && !ssv_views(0,32,32,65,1,false);
+  #assert !ssv_views(0,32,32,64,0,false) && !ssv_views(0,32,32,64,2,false);
+  #assert !ssv_views(0,32,32,64,1,true);
+  #assert !ssv_views(0,32,31,64,1,false) && !ssv_views(0,32,33,64,1,false);
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;work[0].tag[0]=7;
-  #assert ssv_step(message[..],key[0..<31],sig[..],work[..],false)==0;
-  #assert ssv_step(message[..],key[..],sig[0..<63],work[..],false)==0;
-  #assert ssv_step(message[..],key[..],sig[..],work[..],true)==0;
-  #assert ssv_step(message[..],key[..],sig[..],work[0..<0],false)==0;
+  #assert ssv_step(message[..],key[0..<31],sig[0..<32],sig[..],work[..],false)==0;
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[0..<63],work[..],false)==0;
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],true)==0;
+  #assert ssv_step(message[..],key[..],sig[0..<31],sig[..],work[..],false)==0;
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[0..<0],false)==0;
   #assert work[0].tag[0]==7;
-  #assert ssv_nostr_step(message[0..<31],key[..],sig[..],work[..],false)==0;
-  #assert ssv_nostr_step(message[0..<0],key[..],sig[..],work[..],false)==0;
+  #assert ssv_nostr_step(message[0..<31],key[..],sig[0..<32],sig[..],work[..],false)==0;
+  #assert ssv_nostr_step(message[0..<0],key[..],sig[0..<32],sig[..],work[..],false)==0;
   #assert work[0].tag[0]==7;
 }
 #test "field candidate R: canonical range mask and reduction at the boundary" {
@@ -135,18 +139,18 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
 }
 #test "stage 0 refuses invalid public keys publicly and clears the work" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
-  key[31]^=1;work[0].tag[0]=7;work[0].s[0].below=CB_MAX64;#assert ssv_step(message[..],key[..],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
-  for i:0..<32 {key[i]=255;}work[0].digest[5]=1;#assert ssv_step(message[..],key[..],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
-  work[0].digest[5]=1;#assert ssv_nostr_step(message[..],key[..],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
+  key[31]^=1;work[0].tag[0]=7;work[0].s[0].below=CB_MAX64;#assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
+  for i:0..<32 {key[i]=255;}work[0].digest[5]=1;#assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
+  work[0].digest[5]=1;#assert ssv_nostr_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
 }
 #test "an unknown stage clears the work and refuses" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;work[0].stage=3;work[0].bound=CB_MAX64;work[0].sum.x.limb[0]=1;
-  #assert ssv_step(message[..],key[..],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
 }
 #test "stage 0 overwrites a stale workspace and binds the inputs" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
-  for i:0..<112 {work[0].state[i]=5;}work[0].affine[0].even=CB_MAX64;work[0].ep.x.limb[0]=9;work[0].sum.z.limb[0]=9;
-  #assert ssv_nostr_step(message[..],key[..],sig[..],work[..],false)==SSV_MORE;
+  for i:0..<64 {work[0].sha[0].block[i]=5;}work[0].affine[0].even=CB_MAX64;work[0].ep.x.limb[0]=9;work[0].sum.z.limb[0]=9;
+  #assert ssv_nostr_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==SSV_MORE;
   #assert work[0].stage==1 && work[0].bound==CB_MAX64 && sc_equal(work[0].negative_e,SSV_NEG_E);
   #assert work[0].r[0].below==CB_MAX64 && work[0].s[0].below==CB_MAX64 && work[0].ep.x.limb[0]==0 && work[0].sum.z.limb[0]==0 && work[0].affine[0].even==0;
   for i:0..<32 {#assert work[0].key[i]==key[i] && work[0].candidate[i]==sig[i] && work[0].candidate[32+i]==sig[32+i];}
@@ -157,20 +161,20 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
 #test "stage 1 multiplies the stored peer by -e and keeps the binding" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
   work[0].stage=1;work[0].bound=CB_MAX64;work[0].peer=sg_generator();work[0].negative_e=sc_small(2);
-  for i:0..<32 {work[0].key[i]=key[i];}for i:0..<64 {work[0].candidate[i]=sig[i];}
-  #assert ssv_step(message[..],key[..],sig[..],work[..],false)==SSV_MORE && work[0].stage==2 && work[0].bound==CB_MAX64;
+  for i:0..<32 {work[0].key[i]=key[i];}for j:0..<64 {work[0].candidate[j]=sig[j];}
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==SSV_MORE && work[0].stage==2 && work[0].bound==CB_MAX64;
   #assert sg_equal_mask(sg32_to_point(work[0].ep),sg_double_valid(sg_generator()))==CB_MAX64;
 }
 #test "stage 1 masks a candidate changed since stage 0" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
   work[0].stage=1;work[0].bound=CB_MAX64;work[0].peer=sg_generator();work[0].negative_e=sc_small(1);
-  for i:0..<32 {work[0].key[i]=key[i];}for i:0..<64 {work[0].candidate[i]=sig[i];}sig[63]^=1;
-  #assert ssv_step(message[..],key[..],sig[..],work[..],false)==SSV_MORE && work[0].stage==2 && work[0].bound==0;
+  for i:0..<32 {work[0].key[i]=key[i];}for j:0..<64 {work[0].candidate[j]=sig[j];}sig[63]^=1;
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==SSV_MORE && work[0].stage==2 && work[0].bound==0;
 }
 ssv_test_final :: (message:[]u8,key:[]u8,sig:[]u8,work:[]SsvWork)->u64 {
   // Stage 0 on official vector 0, then the recorded (-e)*P in place of stage 1.
-  zero:[32]u8;k:=SSV_KEY;s:=SSV_SIG;#assert ssv_step(zero[..],k[..],s[..],work,false)==SSV_MORE;
-  work[0].ep=SSV_EP;work[0].stage=2;return ssv_step(message,key,sig,work,false);
+  zero:[32]u8;k:=SSV_KEY;s:=SSV_SIG;#assert ssv_step(zero[..],k[..],s[0..<32],s[..],work,false)==SSV_MORE;
+  work[0].ep=SSV_EP;work[0].stage=2;return ssv_step(message,key,sig[0..<32],sig,work,false);
 }
 #test "stage 2 accepts official vector zero and clears the work" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
@@ -188,22 +192,41 @@ ssv_test_final :: (message:[]u8,key:[]u8,sig:[]u8,work:[]SsvWork)->u64 {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;sig[40]^=1;
   #assert ssv_test_final(message[..],key[..],sig[..],work[..])==0 && ssv_test_clear(work[..]);
 }
+// A candidate (R, s) that is valid under the challenge of another r, built
+// by tools/coax-nostr/fuzz/oracle.py: s = k + e*d with e = H(r || P || m),
+// d = 3 and R = k*G. It is not a BIP-340 signature; only the masked r == R
+// compare refuses it.
+SSV_ALT_R :: [32]u8.[17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17];
+SSV_ALT_SIG :: [64]u8.[187,80,226,216,154,78,215,6,99,208,128,101,159,224,173,75,155,195,224,108,23,162,39,67,57,102,203,89,206,238,2,13,203,43,86,115,174,106,33,73,168,215,104,201,124,120,0,35,122,41,16,248,129,76,166,225,30,30,127,42,249,88,134,15];
+SSV_ALT_EP :: Sg32.{x=Sf32.{limb=[8]u32.[4059365033,2740183597,536602856,1697533193,2739219414,2733235257,731660178,2825721139]},y=Sf32.{limb=[8]u32.[549387907,1443222206,1344134176,3075718841,3407576582,543034256,3944609949,422000609]},z=Sf32.{limb=[8]u32.[1,0,0,0,0,0,0,0]}};
+#test "a public r that is not the candidate's R refuses, even when the equation holds for r" {
+  message:[32]u8;key:=SSV_KEY;r:=SSV_ALT_R;sig:=SSV_ALT_SIG;work:[1]SsvWork;
+  #assert ssv_step(message[..],key[..],r[..],sig[..],work[..],false)==SSV_MORE && work[0].bound==0;
+  work[0].ep=SSV_ALT_EP;work[0].stage=2;
+  #assert ssv_step(message[..],key[..],r[..],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
+}
+#test "the same equation with the bound forced passes, so the compare is what refuses" {
+  message:[32]u8;key:=SSV_KEY;r:=SSV_ALT_R;sig:=SSV_ALT_SIG;work:[1]SsvWork;
+  #assert ssv_step(message[..],key[..],r[..],sig[..],work[..],false)==SSV_MORE;
+  work[0].ep=SSV_ALT_EP;work[0].stage=2;work[0].bound=CB_MAX64;
+  #assert ssv_step(message[..],key[..],r[..],sig[..],work[..],false)==SSV_VALID;
+}
 #test "stage 2 refuses a key changed since stage 0" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;key[0]^=1;
   #assert ssv_test_final(message[..],key[..],sig[..],work[..])==0 && ssv_test_clear(work[..]);
 }
 #test "stage 2 refuses a wrong peer product" {
   message:[32]u8;key:=SSV_KEY;sig:=SSV_SIG;work:[1]SsvWork;
-  #assert ssv_step(message[..],key[..],sig[..],work[..],false)==SSV_MORE;
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==SSV_MORE;
   zero:Sf32;work[0].ep=SSV_EP;work[0].ep.y=sf32_sub(zero,SSV_EP.y);work[0].stage=2;
-  #assert ssv_step(message[..],key[..],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
+  #assert ssv_step(message[..],key[..],sig[0..<32],sig[..],work[..],false)==0 && ssv_test_clear(work[..]);
 }
 
 // ---------- implementation ----------
 // Public metadata only: lengths, the single work record and the host's
 // truthful observation that work overlaps an input view.
-ssv_views :: (message_count:int,public_count:int,candidate_count:int,work_count:int,overlap:bool)->bool {
-  return sv_lengths_vartime(message_count,public_count,candidate_count) && work_count==1 && !overlap;
+ssv_views :: (message_count:int,public_count:int,r_count:int,candidate_count:int,work_count:int,overlap:bool)->bool {
+  return message_count>=0 && message_count<=SV_MAX_MESSAGE && public_count==32 && r_count==32 && candidate_count==64 && work_count==1 && !overlap;
 }
 // R as a field element: value is R mod p and below is the R<p mask, from one
 // fixed borrow chain and a masked select. R is the first 32 bytes of bytes,
@@ -226,15 +249,10 @@ ssv_scalar_mask_equal :: (a:ScScalar,b:ScScalar)->u64 {
 // e = H_challenge(R||P||m) mod n, stored negated. SHA-256 work depends only
 // on the public message length; statuses depend only on view metadata.
 ssv_challenge :: (message:[]u8,public_key:[]u8,r:[]u8,work:[]SsvWork)->bool {
-  digest:=SV_TAG_HASH;status:=sha256_emit(digest.words[..],work[0].tag[..]);
-  if status==SHA_OK {status=sha256_init(work[0].state[..]);}
-  if status==SHA_OK {status=sha256_update_checked(work[0].state[..],work[0].tag[..],false);}
-  if status==SHA_OK {status=sha256_update_checked(work[0].state[..],work[0].tag[..],false);}
-  if status==SHA_OK {status=sha256_update_checked(work[0].state[..],r,false);}
-  if status==SHA_OK {status=sha256_update_checked(work[0].state[..],public_key,false);}
-  if status==SHA_OK {status=sha256_update_checked(work[0].state[..],message,false);}
-  if status==SHA_OK {status=sha256_final_checked(work[0].state[..],work[0].digest[..],false);}
-  work[0].negative_e=sc_negate(sc_reduce_bytes(work[0].digest[..]).value);return status==SHA_OK;
+  digest:=SV_TAG_HASH;ok:=sha256_emit(digest.words[..],work[0].tag[..])==SHA_OK;
+  sha:=work[0].sha[..];
+  ok=ok && so_init(sha) && so_update(sha,work[0].tag[..],false) && so_update(sha,work[0].tag[..],false) && so_update(sha,r,false) && so_update(sha,public_key,false) && so_update(sha,message,false) && so_finish(sha,work[0].digest[..],false);
+  work[0].negative_e=sc_negate(sc_reduce_bytes(work[0].digest[..]).value);return ok;
 }
 // Fixed-chain affine conversion; infinity (z=0) inverts to zero and is
 // carried only by the finite mask.
@@ -253,11 +271,14 @@ ssv_bind :: (public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
   return cb_ct_equal(public_key,work[0].key[..])&cb_ct_equal(candidate,work[0].candidate[..]);
 }
 ssv_clear :: (work:[]SsvWork)->u64 {fresh:SsvWork;work[0]=fresh;return 0;}
-ssv_prepare :: (message:[]u8,public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
+// r is the candidate's R as a separate public view: the challenge hashes r,
+// never the candidate, and r must equal candidate[0..<32] (a masked compare),
+// or the result is refused.
+ssv_prepare :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
   point:=sg_lift_x_public(public_key);cleared:=ssv_clear(work);if !point.ok {return cleared;}
-  for i:0..<32 {work[0].key[i]=public_key[i];}for i:0..<64 {work[0].candidate[i]=candidate[i];}
-  work[0].peer=point.value;work[0].bound=CB_MAX64;
-  if !ssv_challenge(message,public_key,candidate[0..<32],work) {return ssv_clear(work);}
+  for i:0..<32 {work[0].key[i]=public_key[i];}for j:0..<64 {work[0].candidate[j]=candidate[j];}
+  work[0].peer=point.value;work[0].bound=cb_ct_equal(r,candidate[0..<32]);
+  if !ssv_challenge(message,public_key,r,work) {return ssv_clear(work);}
   work[0].r[0]=ssv_load_field(candidate);work[0].s[0]=ssv_load_scalar(candidate[32..<64]);
   work[0].stage=1;return SSV_MORE;
 }
@@ -266,9 +287,9 @@ ssv_peer :: (public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
   work[0].ep=sg32_from_point(smc_multiply(work[0].negative_e,work[0].peer).value);
   work[0].stage=2;return SSV_MORE;
 }
-ssv_finish :: (message:[]u8,public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
+ssv_finish :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork)->u64 {
   work[0].bound&=ssv_bind(public_key,candidate,work);stored:=work[0].negative_e;
-  if !ssv_challenge(message,public_key,candidate[0..<32],work) {return ssv_clear(work);}
+  if !ssv_challenge(message,public_key,r,work) {return ssv_clear(work);}
   work[0].bound&=ssv_scalar_mask_equal(stored,work[0].negative_e);
   work[0].sg=sg32_from_point(smb_multiply_web(work[0].s[0].value));
   work[0].sum=sg32_add(work[0].sg,work[0].ep);ssv_affine(work[0].sum,work);
@@ -280,15 +301,15 @@ ssv_finish :: (message:[]u8,public_key:[]u8,candidate:[]u8,work:[]SsvWork)->u64 
 // SSV_VALID for a valid BIP-340 signature of message under public_key, or 0.
 // The candidate is never written. Refused views leave work untouched; every
 // other non-SSV_MORE return leaves work cleared. No caller success input.
-ssv_step :: (message:[]u8,public_key:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c {
-  if !ssv_views(message.count,public_key.count,candidate.count,work.count,overlap) {return 0;}
+ssv_step :: (message:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c {
+  if !ssv_views(message.count,public_key.count,r.count,candidate.count,work.count,overlap) {return 0;}
   stage:=work[0].stage;
-  if stage==0 {return ssv_prepare(message,public_key,candidate,work);}
+  if stage==0 {return ssv_prepare(message,public_key,r,candidate,work);}
   if stage==1 {return ssv_peer(public_key,candidate,work);}
-  if stage==2 {return ssv_finish(message,public_key,candidate,work);}
+  if stage==2 {return ssv_finish(message,public_key,r,candidate,work);}
   return ssv_clear(work);
 }
 // Nostr: the message is exactly the 32-byte event id.
-ssv_nostr_step :: (event_id:[]u8,public_key:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c {
-  if event_id.count!=32 {return 0;}return ssv_step(event_id,public_key,candidate,work,overlap);
+ssv_nostr_step :: (event_id:[]u8,public_key:[]u8,r:[]u8,candidate:[]u8,work:[]SsvWork,overlap:bool)->u64 #export_c {
+  if event_id.count!=32 {return 0;}return ssv_step(event_id,public_key,r,candidate,work,overlap);
 }
