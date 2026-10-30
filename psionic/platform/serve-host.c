@@ -386,6 +386,34 @@ static void open_gpu(Server *s) {
     if (r) { fprintf(stderr, "psionic-serve: no " DEVICE_KIND " device or compiler: %s\n", eg_log()); exit(1); }
     printf("psionic-serve: %s; compiled %d generated kernels in %lld ms\n", s->gpu->device.name, EG_KERNELS, (long long)(now_ms() - t0)); fflush(stdout);
 }
+/* No checkpoint, listener or model allocation: compile the actual generated
+   kernels and ask the existing Coax plan whether this device can place an
+   Elephant decision. Used before downloading original model files. */
+static int check_device(int64_t capacity,int64_t device_mib) {
+    Server probe={0};open_gpu(&probe);
+    int64_t budget;
+#if defined(PSIONIC_SERVE_METAL)
+    budget=(int64_t)probe.gpu->device.working_set_bytes-(INT64_C(4)<<30);
+#else
+    size_t available,total;
+    if(pc_memory(&available,&total)!=PC_OK){fprintf(stderr,"psionic-serve: cannot observe device memory\n");return 2;}
+    budget=(int64_t)available-(INT64_C(256)<<20)-dp_fork_bytes_of(dp_model(0));
+#endif
+    if(device_mib>0&&device_mib*1048576<budget)budget=device_mib*1048576;
+    _Bool *stream=zalloc(EG_STREAMABLE,sizeof *stream);
+    coax_t_DpOp *ops=zalloc(8192,sizeof *ops);
+#if defined(PSIONIC_SERVE_METAL)
+    coax_t_DpPlan plan=dp_plan_metal(capacity,0,budget,(coax_v_bool){stream,EG_STREAMABLE},(coax_v_t_DpOp){ops,8192});
+    bool fits=!plan.status&&!plan.streamed_tensors&&plan.resident<=(int64_t)probe.gpu->device.max_buffer_bytes&&plan.workspace<=(int64_t)probe.gpu->device.max_buffer_bytes;
+#else
+    coax_t_DpPlan plan=dp_plan_model(0,false,capacity,0,budget,(coax_v_bool){stream,EG_STREAMABLE},(coax_v_t_DpOp){ops,8192});
+    bool fits=!plan.status;
+#endif
+    free(ops);free(stream);
+    if(!fits){fprintf(stderr,"psionic-serve: device preflight refused Elephant memory/shape (plan %u, budget %lld bytes)\n",plan.status,(long long)budget);return 2;}
+    printf("psionic-serve: device preflight passed for Elephant (%lld tokens, %lld MiB resident, %lld MiB streamed); no checkpoint opened\n",(long long)capacity,(long long)(plan.resident/1048576),(long long)(plan.streamed/1048576));
+    return 0;
+}
 /* Asked between layers: stop when the deadline has passed or the client has closed. */
 static void record_busy(void *context){busy_record((Server*)context);}
 static int gpu_stop(void *context) {
@@ -475,13 +503,14 @@ static long option(const char *v, long lo, long hi, const char *name) {
 }
 
 int main(int argc, char **argv) {
-    const char *elephant = NULL, *table = NULL, *device_flag = NULL, *metrics_path=NULL; bool reuse=true,bad_golden=false; bool toy = false, gpu = false;uint8_t kind=0;
+    const char *elephant = NULL, *table = NULL, *device_flag = NULL, *metrics_path=NULL; bool reuse=true,bad_golden=false; bool toy = false, gpu = false,device_check=false;uint8_t kind=0;
     long port = 8790, read_ms = 10000, deadline_ms = 30000, capacity = 0, delay = 0, device_mib = 0, host_mib=65536, warmup_ms=0;
     for (int i = 1; i < argc; i++) {
         const char *a = argv[i], *v = i + 1 < argc ? argv[i + 1] : NULL;
         if(!strcmp(a,"--no-prefix-reuse")){reuse=false;continue;}
         if(!strcmp(a,"--fixture-bad-golden")){bad_golden=true;continue;}
         if (!strcmp(a, "--toy")) { toy = true; continue; }
+        if (!strcmp(a, "--check-device")) {device_check=true;continue;}
         if (!v) { fprintf(stderr, "psionic-serve: %s needs a value\n", a); return 2; }
         if (!strcmp(a, "--elephant")) { elephant = v; kind = 0; }
         else if (!strcmp(a, "--elephant-gpu")) { elephant = v; kind = 0; gpu = true; device_flag = a; }
@@ -500,6 +529,13 @@ int main(int argc, char **argv) {
         else if (!strcmp(a, "--fixture-delay-ms")) delay = option(v, 0, 600000, a);
         else { fprintf(stderr, "usage: psionic-serve (--toy | --elephant DIR | --elephant-gpu DIR | --elephant-metal DIR | --mammoth DIR | --mammoth-gpu DIR) --table FILE [--port N] [--read-ms N] [--deadline-ms N] [--capacity N] [--device-mib N]\n"); return 2; }
         i++;
+    }
+    if(device_check){
+#ifdef PSIONIC_SERVE_GPU
+        return check_device(capacity?capacity:512,device_mib);
+#else
+        fprintf(stderr,"psionic-serve: device preflight needs a GPU build (serve-build.sh OUT release plain gpu|metal); no CPU fallback\n");return 2;
+#endif
     }
 #ifndef PSIONIC_SERVE_GPU
     (void)device_flag;
