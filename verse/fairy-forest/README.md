@@ -92,6 +92,13 @@ you told them and what you did for them).
   wrong today", "is it far to the reeds?"). Visitors to your home do the same.
   Making the forest's people happier is the point; the moods make that
   visible.
+  Built (ff-moods): five feelings, happy, worried, lost, hungry and tired.
+  Grey, each creature feels what its trouble gives it (Bramble hungry, Pip
+  and Hollow tired, Clover worried, Burdock lost) and shows it in its face
+  (brows, mouth, half-shut eyes), how it moves (a shiver, looking about,
+  sniffing low, a slow sag) and its glyph (a ?, a z, an acorn, a drop, or
+  sparkles once happy); paler while partly helped. Passing within 12 m it
+  says one of three remarks, the next each time you come by, two once happy.
 - **Helping changes the place.** Solving a glade's troubles restores it: the
   fade lifts there, its people move in closer, and new creatures arrive.
 - **The story's spine:** each glade restored wakes one of the heart tree's
@@ -214,7 +221,6 @@ its steps (apps/openagents-web/fairyquest.coax).
   wings on the figure rig.
 - Flight and gliding in the controller.
 - The fade: per-area colour restoration that spreads, saved per player.
-- Creature moods shown at a glance, and passing remarks.
 - Gardens that grow over real days and change with care.
 - Creatures moving in and building homes.
 - Timed courses with shareable links and friends' times.

@@ -30,18 +30,30 @@ FF_TROUBLE :: [5] string.[
   "Brambles have grown over your way home, thorns everywhere round the fallen giant tree. There are three bramble thickets in Thornfall; bloomed, they turn into wild roses.",
   "The Old Ring's stones have gone dark, and with them what the forest remembers. Three of the stones can be lit again. You know the fade came when the heart tree fell asleep, and that the heart tree is the forest's own heart."
 ];
-// What each says as you pass, a little way off: while its glade is grey, and once it is green.
-FF_REMARKS :: [10] string.[
-  "THE MOSS SMELLS OF NOTHING TODAY.",           "MY BURROW IS COSY AGAIN.",
-  "IS IT FAR TO THE REEDS? I'VE NOT HOPPED THAT FAR IN AGES.", "LISTEN TO THE CHOIR.",
-  "IT'S SO DARK UNDER THESE TREES.",              "THE FRUIT IS GLOWING. LOOK!",
-  "MIND THE THORNS, LITTLE ONE.",                 "SMELL THOSE ROSES.",
-  "THE STONES ARE COLD AND QUIET.",               "THE STONES ARE SINGING TONIGHT."
+// What each says as you pass, a little way off: three while its glade is grey
+// (how it feels), two once it is green. Each time you come by it says the next.
+FF_GREY_REMARKS :: 3; FF_GREEN_REMARKS :: 2;
+FF_REMARKS :: [25] string.[
+  "THE MOSS SMELLS OF NOTHING TODAY.", "NOT ONE BERRY ON THE BUSHES.", "MY TUMMY IS RUMBLING.",
+  "MY BURROW IS COSY AGAIN.", "THE MUSHROOMS ARE BACK. SUPPER!",
+  "IS IT FAR TO THE REEDS? I'VE NOT HOPPED THAT FAR IN AGES.", "SO SLEEPY. THE POND IS TOO QUIET.", "MY VOICE IS ALL WORN OUT.",
+  "LISTEN TO THE CHOIR.", "BRRRUP! I FEEL TEN YEARS YOUNGER.",
+  "IT'S SO DARK UNDER THESE TREES.", "DID SOMETHING MOVE OVER THERE?", "PLEASE DON'T GO TOO FAR.",
+  "THE FRUIT IS GLOWING. LOOK!", "I'M NOT SCARED ANY MORE.",
+  "MIND THE THORNS, LITTLE ONE.", "WHICH WAY IS HOME? I FORGET.", "EVERY PATH LOOKS THE SAME.",
+  "SMELL THOSE ROSES.", "HOME IS JUST THERE. I CAN SEE IT.",
+  "THE STONES ARE COLD AND QUIET.", "I HAVEN'T SLEPT IN DAYS.", "YAWN. THE STONES KEEP ME UP.",
+  "THE STONES ARE SINGING TONIGHT.", "A GOOD DAY TO REMEMBER."
 ];
+FF_REMARKS_EACH :: FF_GREY_REMARKS + FF_GREEN_REMARKS;
+FF_FEEL_WORDS :: [5] string.["happy", "worried", "lost", "hungry", "tired"];
 
-ff_remark :: (f: [] Forest, c: int) -> string {
+// Its passing remark the turn'th time you come by: never the same twice running.
+ff_remark :: (f: [] Forest, c: int, turn: int) -> string {
   if c < 0 || c >= FF_CREATURES { return ""; }
-  return FF_REMARKS[c * 2 + (ifx ff_mood(f, c) == MOOD_HAPPY then 1 else 0)];
+  t := ifx turn < 0 then 0 else turn;
+  if ff_feel(f, c) == FEEL_HAPPY { return FF_REMARKS[c * FF_REMARKS_EACH + FF_GREY_REMARKS + t % FF_GREEN_REMARKS]; }
+  return FF_REMARKS[c * FF_REMARKS_EACH + t % FF_GREY_REMARKS];
 }
 // A creature's name as it goes by: "BRAMBLE" is Bramble.
 ff_name :: (c: int, out: [] u8) -> int {
@@ -105,6 +117,9 @@ ff_knows :: (out: [] u8, at: int, f: [] Forest, c: int) -> int {
   } else {
     n = ff_json(out, n, " Ask the fairy for help with it, kindly.");
   }
+  n = ff_json(out, n, " You feel ");
+  n = ff_json(out, n, FF_FEEL_WORDS[ff_feel(f, c)]);
+  n = ff_json(out, n, " now.");
   n = ff_json(out, n, " Roots of the heart tree awake: ");
   n = ff_digit(out, n, ff_roots_awake(f)); n = ff_json(out, n, " of 5.");
   if f[0].heart { n = ff_json(out, n, " The heart tree has bloomed and colour is back in the whole valley: the fairy saved the forest."); }
@@ -185,11 +200,18 @@ ff_has :: (text: string, part: string) -> bool {
   return false;
 }
 
-#test "every creature has a persona under the server's cap, a trouble and two remarks" {
+#test "every creature has a persona under the server's cap, a trouble and its remarks, never the same twice running" {
+  f: [1] Forest; f[0].news = -1;
   for c: 0..<FF_CREATURES {
     #assert FF_PERSONA[c].count > 20 && FF_PERSONA[c].count <= 120;
-    #assert FF_TROUBLE[c].count > 20 && FF_REMARKS[c * 2].count > 0 && FF_REMARKS[c * 2 + 1].count > 0;
+    #assert FF_TROUBLE[c].count > 20;
+    for r: 0..<FF_REMARKS_EACH { #assert FF_REMARKS[c * FF_REMARKS_EACH + r].count > 0 && FF_REMARKS[c * FF_REMARKS_EACH + r].count < 64; }
+    for t: 0..<6 { #assert ff_remark(f[..], c, t) != ff_remark(f[..], c, t + 1); }
+    #assert ff_feel(f[..], c) == FF_TROUBLE_FEEL[c] && ff_feel(f[..], c) != FEEL_HAPPY;
   }
+  // helped: a happy creature says its green remarks
+  for i: 0..<FF_PATCHES { if cast(int) FF_PATCH[i * 4 + 3] == cast(int) FF_CREATURE[2] { #assert ff_bloom(f[..], i, 1); } }
+  #assert ff_feel(f[..], 0) == FEEL_HAPPY && ff_remark(f[..], 0, 0) == FF_REMARKS[FF_GREY_REMARKS];
   name: [16] u8;
   #assert cast(string) name[0..<ff_name(3, name[..])] == "Burdock";
 }

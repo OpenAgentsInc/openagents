@@ -108,6 +108,14 @@ FF_SAYS :: [15] string.[
   "THE RING IS LIT. THE HEART TREE IS THE FOREST'S OWN HEART. WAKE IT."
 ];
 MOOD_WORRIED :: 0; MOOD_HOPEFUL :: 1; MOOD_HAPPY :: 2;
+// How a creature feels, shown at a glance (its face and the glyph over it):
+// while its glade is grey, the feeling its trouble gives it; once green, happy.
+FEEL_HAPPY :: 0; FEEL_WORRIED :: 1; FEEL_LOST :: 2; FEEL_HUNGRY :: 3; FEEL_TIRED :: 4;
+FEELS :: 5;
+FF_FEEL_NAMES :: [5] string.["HAPPY", "WORRIED", "LOST", "HUNGRY", "TIRED"];
+// Bramble's flowers won't wake (nothing to eat), Pip's choir is worn out,
+// Clover is afraid of the dark, Burdock can't find his way home, Hollow's stones have gone dark and she can't sleep.
+FF_TROUBLE_FEEL :: [5] int.[FEEL_HUNGRY, FEEL_TIRED, FEEL_WORRIED, FEEL_LOST, FEEL_TIRED];
 
 // The heart tree's five roots: where each tip lies (x, z), and the glade that wakes it.
 FF_ROOTS :: 5;
@@ -217,6 +225,12 @@ ff_mood :: (f: [] Forest, c: int) -> int {
   if done >= ff_glade_patches(g) { return MOOD_HAPPY; }
   if done > 0 { return MOOD_HOPEFUL; }
   return MOOD_WORRIED;
+}
+
+ff_feel :: (f: [] Forest, c: int) -> int {
+  if c < 0 || c >= FF_CREATURES { return FEEL_HAPPY; }
+  if f[0].heart || ff_mood(f, c) == MOOD_HAPPY { return FEEL_HAPPY; }
+  return FF_TROUBLE_FEEL[c];
 }
 
 // What each says once the heart tree has bloomed: the ending.

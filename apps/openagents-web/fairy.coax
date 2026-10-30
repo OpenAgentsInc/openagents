@@ -146,7 +146,7 @@ Fairy :: struct {
   taps: int;   // Space presses not yet taken by the face: each is one wing beat
   mine: bool;  // shapes now laid out are her own: the near fade (fairy.wgsl) leaves them be
   // talking: a creature passing by, who you talk to (creature + 1, 0 none), what was said and what you type
-  remark_creature: int;
+  remark_creature: int; remark_turn: int; remark_heard: bool;   // its remark: the next each time you come by
   talk: int;
   line_npc: [TALK_LINES] bool; line_len: [TALK_LINES] int; line_text: [TALK_LINES * LINE_BYTES] u8; line_n: int;
   typed: [TYPED] u8; typed_n: int;
@@ -1177,9 +1177,16 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
     x := FF_CREATURE[c * 4]; z := FF_CREATURE[c * 4 + 1]; kind := cast(int) FF_CREATURE[c * 4 + 3];
     g := ground_at(s, x, z);
     mood := ff_mood(s[0].forest[..], c);
+    feel := ff_feel(s[0].forest[..], c);
     dx := you.x - x; dz := you.z - z;
     face := ifx dx * dx + dz * dz < 100 then yaw_of(dx, dz) else f32(c) * 2.0;
-    hop := ifx mood == MOOD_HAPPY then abs(sin(t * 3.0 + f32(c))) * 0.25 else 0.0f32;
+    // how it feels, in how it moves: happy hops, worried shivers, lost looks
+    // about, hungry sniffs low, tired sags and sways slowly
+    hop := ifx feel == FEEL_HAPPY then abs(sin(t * 3.0 + f32(c))) * 0.25 else 0.0f32;
+    if feel == FEEL_WORRIED { face += sin(t * 11.0 + f32(c)) * 0.06; }
+    if feel == FEEL_LOST { face += sin(t * 0.8 + f32(c)) * 1.1; }
+    if feel == FEEL_HUNGRY { hop = -abs(sin(t * 2.4 + f32(c))) * 0.07; }
+    if feel == FEEL_TIRED { hop = -0.05 + sin(t * 0.7 + f32(c)) * 0.02; face += sin(t * 0.5) * 0.12; }
     base := v3(x, g + hop, z);
     ahead := v3(sin(face), 0, cos(face));
     right := v3(-cos(face), 0, sin(face));
@@ -1194,6 +1201,7 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
       head := add(body, add(times(ahead, 0.36), v3(0, -0.02, 0)));
       shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, 0.32, 0.28, 0.4, 0.86, 0.72, 0.56);
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, times(ahead, 0.2)), 0, 0, 0.08, 0.08, 0.08, 0.2, 0.14, 0.12);
+      expression(s, add(head, add(times(ahead, 0.13), v3(0, 0.07, 0))), ahead, right, 0.09, 0.8, feel, true, t);
       shadow(s, u, x, z, 0.6, 0.55);
     } else if kind == 1 {
       body := add(base, v3(0, 0.3, 0));
@@ -1206,6 +1214,7 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
         shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(eye, times(ahead, 0.07)), 0, 0, 0.1, 0.1, 0.1, 0.12, 0.1, 0.1);
         shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(base, add(times(right, 0.3 * sign), v3(0, 0.08, -0.05))), face, 0, 0.3, 0.16, 0.42, 0.32, 0.6, 0.26);
       }
+      expression(s, add(body, add(times(ahead, 0.3), v3(0, 0.25, 0))), ahead, right, 0.17, 1.1, feel, false, t);
       shadow(s, u, x, z, 0.6, 0.55);
     } else if kind == 3 {
       // a badger: long and low, grey, a white-striped black face
@@ -1228,6 +1237,7 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
         shape(s, SHAPE_SPHERE, LOOK_SPARK, add(head, add(times(ahead, 0.17), add(times(right, 0.1 * sign), v3(0, 0.05, 0)))), 0, 0, 0.045, 0.045, 0.045, 0.1, 0.08, 0.08);
       }
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, times(ahead, 0.24)), 0, 0, 0.08, 0.07, 0.07, 0.08, 0.07, 0.07);
+      expression(s, add(head, add(times(ahead, 0.19), v3(0, 0.06, 0))), ahead, right, 0.1, 0.8, feel, false, t);
       shadow(s, u, x, z, 0.75, 0.55);
     } else if kind == 4 {
       // an owl on the middle stone: round, tawny, with great gold eyes and ear tufts
@@ -1237,7 +1247,7 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(body, add(times(ahead, 0.16), v3(0, -0.06, 0))), face, 0, 0.46, 0.58, 0.32, 0.9, 0.8, 0.62);
       head := add(body, v3(0, 0.46, 0));
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, head, face, 0, 0.56, 0.46, 0.5, 0.6, 0.44, 0.28);
-      blink := ifx mood == MOOD_HAPPY then 1.0f32 else 0.75f32;
+      blink := ifx feel == FEEL_HAPPY then 1.0f32 else ifx feel == FEEL_TIRED then 0.3f32 else 0.75f32;
       for side: 0..<2 {
         sign := ifx side == 0 then 1.0f32 else -1.0f32;
         disc := add(head, add(times(ahead, 0.2), add(times(right, 0.13 * sign), v3(0, 0.02, 0))));
@@ -1250,13 +1260,14 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
         shape(s, SHAPE_SPHERE, LOOK_CLOTH, wing, face, 0.15 * sign, 0.16, 0.66, 0.42, 0.46, 0.32, 0.2);
       }
       limb(s, SHAPE_CONE, LOOK_CLOTH, add(head, add(times(ahead, 0.24), v3(0, -0.06, 0))), add(head, add(times(ahead, 0.32), v3(0, -0.14, 0))), 0.07, 0.92, 0.72, 0.3);
+      expression(s, add(head, add(times(ahead, 0.3), v3(0, 0.03, 0))), ahead, right, 0.13, 1.0, feel, false, t);
     } else {
       body := add(base, v3(0, 0.38, 0));
       fur := v3(0.86, 0.82, 0.78);
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, body, face, 0, 0.6, 0.62, 0.72, fur.x, fur.y, fur.z);
       head := add(body, add(times(ahead, 0.3), v3(0, 0.36, 0)));
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, head, face, 0, 0.4, 0.38, 0.42, fur.x, fur.y, fur.z);
-      perk := ifx mood == MOOD_HAPPY then 0.15f32 else -0.45f32;
+      perk := ifx feel == FEEL_HAPPY then 0.15f32 else ifx feel == FEEL_TIRED then -0.8f32 else -0.45f32;
       for side: 0..<2 {
         sign := ifx side == 0 then 1.0f32 else -1.0f32;
         ear := add(head, add(times(right, 0.1 * sign), v3(0, 0.2, -0.04)));
@@ -1265,7 +1276,52 @@ creatures :: (s: [] Fairy, u: [] f32, you: Point) {
       }
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, times(ahead, 0.2)), 0, 0, 0.07, 0.06, 0.07, 0.95, 0.6, 0.66);
       shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(body, times(ahead, -0.36)), 0, 0, 0.22, 0.22, 0.22, 0.96, 0.95, 0.92);
+      expression(s, add(head, add(times(ahead, 0.14), v3(0, 0.08, 0))), ahead, right, 0.11, 0.85, feel, true, t);
       shadow(s, u, x, z, 0.6, 0.55);
+    }
+  }
+}
+
+// A creature's face, how it feels: eyes (when its body has none), brows and a
+// mouth just in front of `at`, the point between its eyes. Happy smiles;
+// worried and lost raise their brows, worried frowns; hungry opens its mouth;
+// tired half shuts its eyes.
+expression :: (s: [] Fairy, at: Point, ahead: Point, right: Point, spread: f32, size: f32, feel: int, eyes: bool, t: f32) {
+  dark := v3(0.1, 0.07, 0.06);
+  up := v3(0, 1, 0);
+  if eyes {
+    shut := ifx feel == FEEL_TIRED then 0.28f32 else 1.0f32;
+    for side: 0..<2 {
+      sign := ifx side == 0 then 1.0f32 else -1.0f32;
+      e := add(at, add(times(right, spread * sign), times(ahead, 0.02 * size)));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, e, yaw_of(ahead.x, ahead.z), 0, 0.05 * size, 0.055 * size * shut, 0.04 * size, dark.x, dark.y, dark.z);
+      if feel != FEEL_TIRED { shape(s, SHAPE_SPHERE, LOOK_SPARK, add(e, add(times(ahead, 0.025 * size), add(times(right, 0.012 * size), v3(0, 0.016 * size, 0)))), 0, 0, 0.014 * size, 0.014 * size, 0.014 * size, 0.95, 0.95, 0.95); }
+    }
+  }
+  if feel == FEEL_WORRIED || feel == FEEL_LOST || feel == FEEL_TIRED {
+    // brows: worried pinched up in the middle, lost raised, tired low and flat
+    lift := ifx feel == FEEL_LOST then 0.11f32 else ifx feel == FEEL_TIRED then 0.055f32 else 0.08f32;
+    tip := ifx feel == FEEL_WORRIED then 0.035f32 else 0.0f32;
+    for side: 0..<2 {
+      sign := ifx side == 0 then 1.0f32 else -1.0f32;
+      outer := add(at, add(times(right, (spread + 0.05 * size) * sign), add(times(up, lift * size), times(ahead, 0.02 * size))));
+      inner := add(at, add(times(right, (spread - 0.04 * size) * sign), add(times(up, (lift + tip) * size), times(ahead, 0.03 * size))));
+      limb(s, SHAPE_CYLINDER, LOOK_CLOTH, outer, inner, 0.018 * size, dark.x, dark.y, dark.z);
+    }
+  }
+  mouth := add(at, add(times(up, -0.12 * size), times(ahead, 0.03 * size)));
+  if feel == FEEL_HUNGRY {
+    gape := 0.7 + 0.3 * abs(sin(t * 2.4));
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, mouth, yaw_of(ahead.x, ahead.z), 0, 0.045 * size, 0.05 * size * gape, 0.03 * size, 0.32, 0.08, 0.1);
+  } else if feel == FEEL_TIRED {
+    limb(s, SHAPE_CYLINDER, LOOK_CLOTH, add(mouth, times(right, -0.03 * size)), add(mouth, times(right, 0.03 * size)), 0.012 * size, dark.x, dark.y, dark.z);
+  } else {
+    // a smile, or a frown for worried and lost: three dots on a curve
+    bend := ifx feel == FEEL_HAPPY then 0.028f32 else -0.022f32;
+    for i: 0..<3 {
+      a := f32(i - 1);
+      p := add(mouth, add(times(right, a * 0.04 * size), times(up, bend * size * a * a)));
+      shape(s, SHAPE_SPHERE, LOOK_CLOTH, p, 0, 0, 0.016 * size, 0.016 * size, 0.016 * size, dark.x, dark.y, dark.z);
     }
   }
 }
@@ -1677,6 +1733,9 @@ play :: (s: [] Fairy, you: Point) {
     if d < rd { rd = d; s[0].remark_creature = c; }
   }
   if s[0].near_creature >= 0 { s[0].remark_creature = -1; }
+  // come by again and it says something new
+  if s[0].remark_creature >= 0 && !s[0].remark_heard { s[0].remark_turn += 1; }
+  s[0].remark_heard = s[0].remark_creature >= 0 || s[0].near_creature >= 0;
 }
 
 // ---- the HUD
@@ -1697,33 +1756,77 @@ hint :: (s: [] Fairy) -> string {
   return "WASD MOVE · DRAG TURNS · SPACE FLAPS UP, HOLD TO CLIMB · SHIFT WALKS, IN THE AIR DIVES";
 }
 
-// A mood glyph over a creature: a face in a ring, its colour and mouth the mood.
-mood_glyph :: (s: [] Fairy, out: [] f32, n: int, x: f32, y: f32, r: f32, mood: int, k: f32) -> int {
+// A mood glyph over a creature: a face in a ring, its colour and face how it
+// feels (happy, worried, lost, hungry, tired); paler while it is partly helped.
+FEEL_COLOUR :: [15] f32.[0.98, 0.82, 0.46,   0.62, 0.72, 0.94,   0.56, 0.86, 0.9,   0.98, 0.62, 0.4,   0.8, 0.68, 0.96];
+mood_glyph :: (s: [] Fairy, out: [] f32, n: int, x: f32, y: f32, r: f32, mood: int, feel: int, k: f32) -> int {
   m := n;
-  cr := 0.66f32; cg := 0.74f32; cb := 0.92f32;
-  if mood == MOOD_HOPEFUL { cr = 0.84; cg = 0.86; cb = 0.7; }
-  if mood == MOOD_HAPPY { cr = GOLD_R; cg = GOLD_G; cb = GOLD_B; }
+  f := ifx feel < 0 || feel >= FEELS then FEEL_HAPPY else feel;
+  cr := FEEL_COLOUR[f * 3]; cg := FEEL_COLOUR[f * 3 + 1]; cb := FEEL_COLOUR[f * 3 + 2];
+  if mood == MOOD_HOPEFUL && feel != FEEL_HAPPY { cr = (cr + CREAM_R) / 2; cg = (cg + CREAM_G) / 2; cb = (cb + CREAM_B) / 2; }
+  w := 0.9 * k; gl := 1.5 * k;
   for i: 0..<20 {
     a0 := f32(i) * f32(TAU) / 20; a1 := f32(i + 1) * f32(TAU) / 20;
     if lit(out, m, x + cos(a0) * r, y + sin(a0) * r, x + cos(a1) * r, y + sin(a1) * r, 1.0 * k, 0.9, 2.5 * k, cr, cg, cb, 0) { m += 6; }
   }
+  // the eyes: dots, shut lines when tired
   for e: 0..<2 {
-    ex := x + (ifx e == 0 then -0.36f32 else 0.36f32) * r;
-    if lit(out, m, ex - 0.01, y - 0.25 * r, ex + 0.01, y - 0.25 * r, 1.6 * k, 0.9, 1.5 * k, cr, cg, cb, 0) { m += 6; }
+    sg := ifx e == 0 then -1.0f32 else 1.0f32;
+    ex := x + sg * 0.36 * r; ey := y - 0.22 * r;
+    if feel == FEEL_TIRED {
+      if lit(out, m, ex - 0.16 * r, ey + 0.04 * r, ex + 0.16 * r, ey + 0.04 * r, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    } else if lit(out, m, ex - 0.01, ey, ex + 0.01, ey, 1.6 * k, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    // brows: worried pinched up in the middle, lost raised
+    if feel == FEEL_WORRIED { if lit(out, m, ex + sg * 0.2 * r, ey - 0.2 * r, ex - sg * 0.14 * r, ey - 0.34 * r, w, 0.9, gl, cr, cg, cb, 0) { m += 6; } }
+    if feel == FEEL_LOST { if lit(out, m, ex - 0.16 * r, ey - 0.36 * r, ex + 0.16 * r, ey - 0.36 * r, w, 0.9, gl, cr, cg, cb, 0) { m += 6; } }
   }
-  // the mouth: up for happy, flat for hopeful, down for worried
-  bend := ifx mood == MOOD_HAPPY then 0.32f32 else ifx mood == MOOD_HOPEFUL then 0.0f32 else -0.26f32;
-  for i: 0..<6 {
-    t0 := f32(i) / 6 * 2 - 1; t1 := f32(i + 1) / 6 * 2 - 1;
-    y0 := y + 0.3 * r + bend * r * (1 - t0 * t0); y1 := y + 0.3 * r + bend * r * (1 - t1 * t1);
-    if lit(out, m, x + t0 * 0.42 * r, y0, x + t1 * 0.42 * r, y1, 0.9 * k, 0.9, 1.5 * k, cr, cg, cb, 0) { m += 6; }
+  // the mouth: a smile, a frown, a wobble for lost, an open O for hungry, a small line for tired
+  if feel == FEEL_HUNGRY {
+    for i: 0..<10 {
+      a0 := f32(i) * f32(TAU) / 10; a1 := f32(i + 1) * f32(TAU) / 10;
+      if lit(out, m, x + cos(a0) * 0.16 * r, y + 0.36 * r + sin(a0) * 0.2 * r, x + cos(a1) * 0.16 * r, y + 0.36 * r + sin(a1) * 0.2 * r, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    }
+  } else if feel == FEEL_TIRED {
+    if lit(out, m, x - 0.16 * r, y + 0.38 * r, x + 0.16 * r, y + 0.38 * r, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+  } else {
+    bend := ifx feel == FEEL_HAPPY then 0.32f32 else ifx feel == FEEL_LOST then 0.0f32 else -0.26f32;
+    for i: 0..<6 {
+      t0 := f32(i) / 6 * 2 - 1; t1 := f32(i + 1) / 6 * 2 - 1;
+      w0 := ifx feel == FEEL_LOST then sin(t0 * 6.0) * 0.07 * r else 0.0f32;
+      w1 := ifx feel == FEEL_LOST then sin(t1 * 6.0) * 0.07 * r else 0.0f32;
+      y0 := y + 0.3 * r + bend * r * (1 - t0 * t0) + w0; y1 := y + 0.3 * r + bend * r * (1 - t1 * t1) + w1;
+      if lit(out, m, x + t0 * 0.42 * r, y0, x + t1 * 0.42 * r, y1, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    }
   }
-  if mood == MOOD_HAPPY {
+  // beside it: sparkles for happy, a ? for lost, a z for tired, a drop for worried, a crumb for hungry
+  bx := x + 1.25 * r; by := y - 0.95 * r; q := 0.42 * r;
+  if feel == FEEL_HAPPY {
     for i: 0..<4 {
       a := f32(i) * 1.5708 + effect_time(s) * 1.2;
       sx := x + cos(a) * r * 1.55; sy := y + sin(a) * r * 1.55;
       if lit(out, m, sx - 0.01, sy, sx + 0.01, sy, 1.2 * k, 1.0, 3 * k, cr, cg, cb, 0) { m += 6; }
     }
+  } else if feel == FEEL_LOST {
+    for i: 0..<6 {
+      a0 := f32(PI) + f32(i) / 6 * 3.6; a1 := f32(PI) + f32(i + 1) / 6 * 3.6;
+      if lit(out, m, bx + cos(a0) * q, by + sin(a0) * q, bx + cos(a1) * q, by + sin(a1) * q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    }
+    if lit(out, m, bx + cos(f32(PI) + 3.6) * q, by + sin(f32(PI) + 3.6) * q, bx, by + 1.25 * q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    if lit(out, m, bx - 0.01, by + 1.9 * q, bx + 0.01, by + 1.9 * q, 1.4 * k, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+  } else if feel == FEEL_TIRED {
+    zz := 0.5 + 0.5 * sin(effect_time(s) * 1.5);
+    zy := by - zz * 0.4 * r;
+    if lit(out, m, bx - q, zy - q, bx + q, zy - q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    if lit(out, m, bx + q, zy - q, bx - q, zy + q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    if lit(out, m, bx - q, zy + q, bx + q, zy + q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+  } else if feel == FEEL_WORRIED {
+    if lit(out, m, bx, by - q, bx - 0.5 * q, by + 0.4 * q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    if lit(out, m, bx, by - q, bx + 0.5 * q, by + 0.4 * q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    if lit(out, m, bx - 0.5 * q, by + 0.4 * q, bx + 0.5 * q, by + 0.4 * q, w, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+  } else if feel == FEEL_HUNGRY {
+    // an acorn: its cap and its nut
+    if lit(out, m, bx - 0.7 * q, by - 0.3 * q, bx + 0.7 * q, by - 0.3 * q, 1.2 * k, 0.9, gl, cr, cg, cb, 0) { m += 6; }
+    if lit(out, m, bx - 0.01, by + 0.35 * q, bx + 0.01, by + 0.35 * q, 2.6 * k, 0.9, gl, cr, cg, cb, 0) { m += 6; }
   }
   return m;
 }
@@ -1752,7 +1855,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
     p := project(u, v3(x, ground_at(s, x, z) + lift, z), w, h);
     if p.x < -1000 || p.z > 60 { continue; }
     r := clamp(150 * k / hi(p.z, 1), 5 * k, 15 * k);
-    n = mood_glyph(s, out, n, p.x, p.y, r, ff_mood(f, c), k);
+    n = mood_glyph(s, out, n, p.x, p.y, r, ff_mood(f, c), ff_feel(f, c), k);
     // where a click or a tap on it talks to it: its glyph and its body under it
     if p.z < f32(TAP_TALK_NEAR) {
       s[0].seen_on[c] = true;
@@ -1779,7 +1882,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   said := "";
   who := "";
   if s[0].near_creature >= 0 { said = ff_says(f, s[0].near_creature); who = FF_CREATURE_NAMES[s[0].near_creature]; }
-  else if s[0].remark_creature >= 0 { said = ff_remark(f, s[0].remark_creature); who = FF_CREATURE_NAMES[s[0].remark_creature]; }
+  else if s[0].remark_creature >= 0 { said = ff_remark(f, s[0].remark_creature, s[0].remark_turn); who = FF_CREATURE_NAMES[s[0].remark_creature]; }
   if f[0].news >= 0 && f[0].news < FF_ROOTS && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
   if f[0].news == FF_NEWS_HEART && s[0].time - f[0].news_at < f64(HEART_NEWS_TIME) { said = "THE FOREST IS AWAKE, AND IT IS YOURS TO WANDER"; who = "THE HEART TREE BLOOMS"; }
   if said.count > 0 {
