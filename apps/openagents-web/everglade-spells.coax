@@ -475,7 +475,8 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     burn := ifx kind == 2 then 1.0f32 else 0.3 + 0.6 * srd_unit(s[0].sp.dice[..]);
     w[0].meta[b].cr *= burn; w[0].meta[b].cg *= burn * 0.94; w[0].meta[b].cb *= burn * 0.88;
   }
-  sp_add_blast(s, at, radius, kind);
+  // (a splash bursts on what is under the point: the ground or a roof, not in the air against a wall)
+  sp_add_blast(s, ifx kind == 2 then v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z) else at, radius, kind);
   sp_add_scorch(s, v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z), ifx kind == 0 then 1.4f32 else radius * 0.45, kind == 2);
   for q: 0..<(ifx kind == 2 then 0 else 4) {
     sp_add_puff(s, add(at, v3((srd_unit(s[0].sp.dice[..]) - 0.5) * 2, 0.5, (srd_unit(s[0].sp.dice[..]) - 0.5) * 2)),
@@ -838,7 +839,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if bl.kind == 2 {
       // the splash: a low dome of water thrown up and out, flattening as it goes
       wide := bl.radius * (0.5 + 0.9 * grow) * close_k;
-      sp_shape(s, SHAPE_SPHERE, LOOK_ORB, add(bl.at, v3(0, 0.1, 0)), v3(wide, 0, 0), v3(0, wide * 0.45 * fade, 0), v3(0, 0, wide), v3(0.3, 0.55, 0.68));
+      sp_shape(s, SHAPE_SPHERE, LOOK_ORB, add(bl.at, v3(0, 0.1, 0)), v3(wide, 0, 0), v3(0, wide * 0.6 * fade, 0), v3(0, 0, wide), v3(0.3, 0.55, 0.68));
     } else {
       hot := ifx bl.kind == 0 then mix(v3(1.0, 0.85, 0.5), v3(0.85, 0.2, 0.05), 1 - fade) else mix(v3(0.95, 0.97, 1.0), v3(0.45, 0.6, 1.0), 1 - fade);
       sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 2, hot);
