@@ -136,7 +136,7 @@ import hashlib,json,os,pathlib,subprocess,sys
 r=pathlib.Path(sys.argv[1]);h=hashlib.sha256()
 inputs=set()
 for entry in ('psionic/lib/pylon/run.coax','psionic/lib/serve-proto.coax','coax/lib/crypto/entropy.coax'):
-    report=json.loads(subprocess.check_output([str(r/'coax/bin/coax'),'deps',str(r/entry)]))
+    report=json.loads(subprocess.check_output([str(r/'coax/bin/coax'),'deps',str(r/entry),'--run-steps','250000000']))
     inputs.update(pathlib.Path(p) for p in report['sources'])
 for folder in ('psionic/platform','coax/platform'):
     inputs.update(p for p in (r/folder).glob('*') if p.is_file() and p.suffix in ('.c','.h','.sh'))
