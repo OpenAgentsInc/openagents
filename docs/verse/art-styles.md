@@ -206,8 +206,8 @@ colour   = mix(colour, haze, f)
 
 | | day | dusk/dawn | night |
 | --- | --- | --- | --- |
-| `start` | 10 m | 45 m | 30 m |
-| `density` (desktop) | 0.015 /m | 0.009 /m | 0.010 /m |
+| `start` | 20 m | 45 m | 30 m |
+| `density` (desktop) | 0.017 /m | 0.009 /m | 0.010 /m |
 | `cap` | 0.88 | 0.72 | 0.6 |
 | `falloff` | 60 m | 50 m | 40 m |
 | `haze_colour` | (0.56, 0.74, 0.90) | (0.96, 0.68, 0.56) | (0.025, 0.04, 0.09) |
@@ -751,6 +751,12 @@ the map step back into teal-green rather than blue-grey.
 darker, saturated near ground to a pale misty middle distance within 20 to 40 m; ours held the trees
 at 40 m as dark and crisp as those beside you. The day key's haze starts at 10 m (from 20) at 0.015 a
 metre (from 0.011): 0.36 at 40 m, 0.74 at 100 m. Dawn, dusk and night keep theirs.
+
+**Comparison round 4** (noon and dusk sheets, after the outlines came off): dusk holds; noon's town
+read milky. The references keep what stands within a street's length crisp and saturated and let the
+mist take the wood beyond. The day key's haze starts at 20 m at 0.017 a metre: 0 at 20 m, 0.16 at 30 m,
+0.29 at 40 m, still 0.74 at 100 m and the 0.88 cap by 200 m. Noon's remaining wash is the light, not the
+haze (a roof 25 m off holds 0.2 saturation at noon, 0.64 at dusk): the next round is the noon key and tone.
 
 ## Order of the work
 
