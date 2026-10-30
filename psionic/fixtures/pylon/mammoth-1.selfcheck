@@ -1,0 +1,6 @@
+psionic.selfcheck.v1
+identity mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019
+tolerance 500000
+case wet
+request {"model":"mammoth-1","state":"Water is wet.","questions":{"wet":{"type":"choice","instructions":"Is the water wet?","criteria":{"yes":null,"no":null}}}}
+expect choice yes yes=944611910 no=55388090
