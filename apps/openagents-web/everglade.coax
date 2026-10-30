@@ -2576,8 +2576,7 @@ hint :: (s: [] Everglade) -> string {
   if s[0].water == WATER_WADING { return "WADING · HALF SPEED IN THE WATER"; }
   if s[0].water == WATER_SWIMMING { return ifx phone(s) then "SWIMMING · HALF SPEED" else "SWIMMING · HOLD C TO DIVE"; }
   if s[0].water == WATER_DIVING { return ifx phone(s) then "UNDER WATER" else "UNDER WATER · LET GO OF C TO COME UP"; }
-  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP JUMPS"; }
-  return "WASD MOVE · DRAG OR ARROWS TURN · WHEEL ZOOMS · SHIFT WALKS · M MAP";
+  return "";   // no standing controls line: the bottom is the spell bar's
 }
 
 // Out of breath (river.coax, SRD 5.2.1): an Exhaustion level each 6 s; the sixth, you come to on the bank.
@@ -3009,7 +3008,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   if lw > room { hs = hs * room / lw; lw = room; }
   y1 := h - hi(gutter, spells_reserve(s));   // over the spell bar, which keeps the bottom as the old engine's did
   // (not under a spell slot's card, which the hint's strokes would draw over: everglade-spells.coax sp_bar)
-  if !s[0].sp.tip_on {
+  if !s[0].sp.tip_on && line.count > 0 {
     plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
     n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
   }
@@ -3033,7 +3032,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   y1 -= s[0].sp.lift;
   // An admin's EDIT and edit mode (everglade-edit.coax) and TALK TO EDIT (everglade-voice.coax), over the hint; whoever is near is asked above it.
   lift := 0.0f32;
-  if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) then 100 * k else 0.0f32; }
+  if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) && ev_text(s).count > 0 then 50 * k else 0.0f32; }
   // Someone near: E (or TALK, on a phone) talks to them.
   if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s)) && !s[0].above && !s[0].ev.editing {
     ask := talk_prompt(s);

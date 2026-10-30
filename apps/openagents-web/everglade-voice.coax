@@ -989,23 +989,25 @@ ev_text :: (s: [] Everglade) -> string {
   return cast(string) s[0].ev.shown[0..<n];
 }
 ev_hint :: () -> string {
-  return "SAY: PUT SIX PUMPKINS ON THE STALL · WHAT CAN I PUT DOWN?";
+  return "";   // nothing to say until you talk
 }
 
-// The button at the bottom middle, over the hint; returns its top.
+// TALK, a small button left of EDIT at the top; what was heard and done goes over the hint, only when there is some.
 everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
   s[0].ev.button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   n := everglade_edit_hud(s, out, u, at, bottom);
   if !voice_on(s) || s[0].ev.editing || s[0].talk >= 0 || s[0].board || s[0].above { return n; }
   k := hi(s[0].dpr, 0.5); w := s[0].width;
-  word := ifx s[0].ev.held then "LISTENING" else ifx phone(s) then "HOLD TO TALK" else "HOLD TO TALK · V";
-  ts := 10 * k;
-  bw := hi(text_width(word, ts) + 48 * k, 200 * k); bh := 52 * k;
-  b := Box.{x0 = floor((w - bw) / 2), y0 = floor(bottom - bh), x1 = floor((w + bw) / 2), y1 = floor(bottom)};
+  word := ifx s[0].ev.held then "LISTENING" else ifx phone(s) then "TALK" else "TALK · V";
+  mb := s[0].map_button;
+  ew := ifx eg_builder(s) then text_width("EDIT", 9 * k) + 40 * k else 0.0f32;   // EDIT's width and its gap (everglade-edit.coax)
+  bw := text_width(word, 9 * k) + 32 * k;
+  b := Box.{x0 = mb.x0 - ew - 8 * k - bw, y0 = mb.y0, x1 = mb.x0 - ew - 8 * k, y1 = mb.y1};
   s[0].ev.button = b;
-  plate(s, u, b, 0.92, ifx s[0].ev.held then 2.0f32 else 1.0f32);
-  n = draw_text(out, n, word, floor((w - text_width(word, ts)) / 2), floor(b.y1 - 20 * k), ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  plate(s, u, b, 0.85, ifx s[0].ev.held then 2.0f32 else 1.0f32);
+  n = draw_text(out, n, word, b.x0 + 16 * k, b.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   line := ev_text(s);
+  if line.count == 0 { return n; }
   ls := 7.5 * k;
   room := hi(lo(w - 48 * k, 760 * k), 120 * k);
   // a long line ("I CAN PLACE ...") wraps at its words, up to four rows, then gets smaller
@@ -1016,7 +1018,7 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   for r: 0..<rows { lw = hi(lw, text_width(line[cuts[r]..<ev_row_end(line, cuts[..], r, rows)], ls)); }
   lw = lo(lw, room);
   lead := ls + 8 * k;
-  y1 := b.y0 - 8 * k;
+  y1 := bottom;
   plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - ls - 20 * k - f32(rows - 1) * lead, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
   for r: 0..<rows {
     part := line[cuts[r]..<ev_row_end(line, cuts[..], r, rows)];
