@@ -2461,7 +2461,7 @@ birds :: (s: [] Everglade) {
 // some of the 8 m cells of open ground round you, never on a street, and two pairs of songbirds
 // circling over the commons and the market. None from dusk to dawn. A still page holds them at one moment.
 BUTTERFLY_RGB :: [12] f32.[0.98, 0.78, 0.25,  0.96, 0.95, 0.9,  0.55, 0.72, 0.98,  0.96, 0.52, 0.32];
-SONG_RINGS :: [8] f32.[0, 0, 13, 15,  34, 0, 10, 13];   // x, z, radius, height over the ground
+SONG_RINGS :: [8] f32.[0, 0, 11, 9,  34, 0, 9, 8];   // x, z, radius, height over the ground
 wl_hash :: (x: f32, z: f32) -> f32 { h := sin(x * 127.1 + z * 311.7) * 43758.547; return h - floor(h); }
 wildlife :: (s: [] Everglade, you: Point, still: bool) {
   if s[0].clock < 0.3 || s[0].clock > 0.72 { return; }
@@ -2476,15 +2476,15 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
     if verse_path_nearest(nodes[..], links[..], ax, az).d < f32(EG_PATH_HALF) + 2 { continue; }
     w := t * (0.6 + h) + h * 40;
     p := v3(ax + 1.6 * sin(w) + 0.5 * sin(w * 2.3), 0, az + 1.6 * cos(w * 0.8));
-    p.y = ground_at(s, p.x, p.z) + 0.7 + 0.35 * sin(w * 1.7);
+    p.y = ground_at(s, p.x, p.z) + 1.3 + 0.4 * sin(w * 1.7);   // over the grass's tips
     heading := yaw_of(cos(w), -0.8 * sin(w * 0.8));
     flap := sin(t * 19 + h * 30);
     k := cast(int) (h * 14.0) % 4;
     right := v3(cos(heading), 0, -sin(heading));
     for side: 0..<2 {
       sign := ifx side == 0 then 1.0f32 else -1.0f32;
-      wing := add(add(p, times(right, 0.05 * sign)), v3(0, flap * 0.04, 0));
-      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.09 * (1 - abs(flap) * 0.5), 0.01, 0.08,
+      wing := add(add(p, times(right, 0.08 * sign)), v3(0, flap * 0.06, 0));
+      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.15 * (1 - abs(flap) * 0.5), 0.012, 0.13,
             BUTTERFLY_RGB[k * 3], BUTTERFLY_RGB[k * 3 + 1], BUTTERFLY_RGB[k * 3 + 2]);
     }
   } }
@@ -2494,13 +2494,13 @@ wildlife :: (s: [] Everglade, you: Point, still: bool) {
     x := SONG_RINGS[o] + SONG_RINGS[o + 2] * cos(a); z := SONG_RINGS[o + 1] + SONG_RINGS[o + 2] * sin(a);
     p := v3(x, ground_at(s, x, z) + SONG_RINGS[o + 3] + 0.8 * sin(a * 3), z);
     heading := yaw_of(-sin(a), cos(a));
-    shape(s, SHAPE_SPHERE, LOOK_MATTE, p, heading, 0, 0.09, 0.08, 0.17, 0.42, 0.3, 0.2);
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, p, heading, 0, 0.14, 0.12, 0.26, 0.42, 0.3, 0.2);
     right := v3(cos(heading), 0, -sin(heading));
     flap := sin(t * 14 + f32(r * 2 + b));
     for side: 0..<2 {
       sign := ifx side == 0 then 1.0f32 else -1.0f32;
-      wing := add(add(p, times(right, 0.11 * sign)), v3(0, flap * 0.07, 0));
-      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.17 * (1 - abs(flap) * 0.35), 0.015, 0.08, 0.36, 0.26, 0.18);
+      wing := add(add(p, times(right, 0.17 * sign)), v3(0, flap * 0.1, 0));
+      shape(s, SHAPE_BOX, LOOK_MATTE, wing, heading, 0, 0.26 * (1 - abs(flap) * 0.35), 0.02, 0.12, 0.36, 0.26, 0.18);
     }
   } }
 }
