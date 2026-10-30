@@ -39,6 +39,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == operator-registry || $chapter == operator-registry-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_operator_registry.sh
     fi
+    if [[ $chapter == gguf || $chapter == gguf-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_gguf.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == interchange || $chapter == interchange-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
     fi
@@ -265,9 +268,10 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; operator_registry=0; tensor_template=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; gguf=0; operator_registry=0; tensor_template=0
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_operator_registry() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == operator-registry || $n == operator-registry-* ]]; }
+picks_gguf() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gguf || $n == gguf-* ]]; }
 picks_interchange() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == interchange || $n == interchange-* ]]; }
 picks_tensor_ir() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-ir || $n == tensor-ir-* ]]; }
 picks_tensor_device() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-device || $n == tensor-placement || $n == tensor-device-* ]]; }
@@ -277,6 +281,7 @@ picks_gptoss() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gptoss || $n 
 if [[ ${#only[@]} -eq 0 ]]; then
     live_decision=1
     interchange=1
+    gguf=1
     operator_registry=1
     tensor_template=1
     selected_coax=("${coax_units[@]}"); selected_native=("${native_units[@]}"); gptoss=1; deepseek=1; qualify=1; tensor_device=1; tensor_ir=1
@@ -285,6 +290,7 @@ else
     for unit in "${native_units[@]}"; do if picks_native "$unit" "${only[@]}"; then selected_native+=("$unit"); fi; done
     for n in "${only[@]}"; do
         hit=0
+        if picks_gguf "$n"; then hit=1; gguf=1; fi
         if picks_interchange "$n"; then hit=1; interchange=1; fi
         if picks_operator_registry "$n"; then hit=1; operator_registry=1; fi
         if picks_tensor_template "$n"; then hit=1; tensor_template=1; fi
@@ -388,6 +394,10 @@ if [[ $operator_registry == 1 ]]; then
     phase "operator-registry (focused gate, no full mutation claim)"
 fi
 
+if [[ $gguf == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_gguf.sh --mutate --jobs "$jobs"
+    phase "GGUF structural reader"
+fi
 if [[ $interchange == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
     phase "interchange (focused gate, no full mutation claim)"

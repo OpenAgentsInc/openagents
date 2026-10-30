@@ -229,3 +229,5 @@ greedy continuation and separate reasoning/final intervals. Run
 and book checks, or `psionic/check.sh --only deepseek --jobs 8` to include the
 zero-survivor authority mutation gates. The original full-model capture is
 retained; routine checks do not rerun it.
+
+[Chapter 33](book/ch033-read-a-gguf-file.md) reads bounded little-endian GGUF v3 metadata and tensor ranges, checked against original upstream headers without model execution. Run `psionic/check.sh --only gguf`.

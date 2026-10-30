@@ -1,0 +1,76 @@
+#load "gguf-values.coax";
+#authority;
+
+#test "owned GGUF retains every metadata type nested arrays and both tensor layouts" {
+    bytes:=PG_OWNED;m:[15]PgMeta;ms:[15]PgMeta;t:[2]PgTensor;ts:[2]PgTensor;
+    r:=pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],false);
+    #assert r.status==PgStatus.ok && r.metadata==15 && r.tensors==2 && r.data==576 && r.alignment==64;
+    #assert m[0].key=="general.architecture" && m[0].kind==8 && m[14].kind==12;
+    #assert t[0].name=="matrix" && t[0].rank==2 && t[0].dims[0]==4 && t[0].elements==8 && t[0].bytes==32 && t[0].begin==576 && t[0].end==608;
+    #assert t[1].kind==2 && t[1].offset==64 && t[1].bytes==36 && t[1].begin==640 && t[1].end==676;
+    a:=pg_atom(PgCursor.{data=bytes[..],at=m[2].begin},m[2].kind);#assert a.word==255;
+    a=pg_atom(PgCursor.{data=bytes[..],at=m[10].begin},m[10].kind);#assert a.text=="é 😀";
+    a=pg_atom(PgCursor.{data=bytes[..],at=m[11].begin},m[11].kind);#assert a.item==9 && a.count==2;
+    #assert pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],true).status==PgStatus.alias;
+    for which:0..<4 {a1:=m[..];a2:=ms[..];b1:=t[..];b2:=ts[..];if which==0 {a1=m[0..<14];}else if which==1 {a2=ms[0..<14];}else if which==2 {b1=t[0..<1];}else {b2=ts[0..<1];}#assert pg_read(bytes[..],bytes.count,a1,a2,b1,b2,false).status==PgStatus.capacity;}
+}
+#test "every pinned GGML layout yields independently constructed exact payload extents" {
+    bytes:=PG_LAYOUTS;m:[15]PgMeta;ms:[15]PgMeta;t:[36]PgTensor;ts:[36]PgTensor;r:=pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],false);
+    #assert r.status==PgStatus.ok && r.tensors==36 && r.data==2176;
+    for i:0..<36 {#assert t[i].elements==2*t[i].dims[0] && t[i].begin==r.data+t[i].offset && t[i].end-t[i].begin==t[i].bytes;}
+}
+#test "GGUF truncations late failures padding and version refusals preserve public descriptors" {
+    bytes:=PG_OWNED;m:[16]PgMeta;ms:[15]PgMeta;t:[3]PgTensor;ts:[2]PgTensor;m[0].kind=77;t[0].kind=77;m[15].kind=66;t[2].kind=66;
+    for n:0..<576 {r:=pg_read(bytes[0..<n],bytes.count,m[..],ms[..],t[..],ts[..],false);#assert r.status!=PgStatus.ok && r.metadata==0 && r.tensors==0 && m[0].kind==77 && t[0].kind==77;}
+    bytes[575]=1;#assert pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],false).status==PgStatus.padding && m[0].kind==77;bytes[575]=0;
+    bytes[4]=2;#assert pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],false).status==PgStatus.unsupported;bytes[4]=3;
+    bytes[0]=0;#assert pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],false).status==PgStatus.format;
+    bytes=PG_OWNED;#assert pg_read(bytes[..],bytes.count,m[..],ms[..],t[..],ts[..],false).status==PgStatus.ok && m[15].kind==66 && t[2].kind==66;
+}
+#forall "independent wire faults refuse atomically with their exact category" fault:0..<PG_BAD_AT.count {
+    bytes:=PG_OWNED;at:=PG_BAD_AT[fault];n:=PG_BAD_WIDTH[fault];word:=PG_BAD_WORD[fault];for i:0..<n {bytes[at+i]=cast(u8)((word>>(i*8))&255);}
+    m:[15]PgMeta;mw:[15]PgMeta;t:[2]PgTensor;tw:[2]PgTensor;m[0].kind=77;t[0].kind=77;
+    r:=pg_read(bytes[..],bytes.count,m[..],mw[..],t[..],tw[..],false);#assert cast(int)(cast(u8)r.status)==PG_BAD_STATUS[fault] && r.metadata==0 && r.tensors==0 && m[0].kind==77 && t[0].kind==77;
+}
+#test "metadata-only GGUF admits both upstream unpadded and zero-padded headers" {
+    bytes:[33]u8;bytes[0]='G';bytes[1]='G';bytes[2]='U';bytes[3]='F';bytes[4]=3;m:[1]PgMeta;t:[1]PgTensor;ms:[1]PgMeta;ts:[1]PgTensor;
+    r:=pg_read(bytes[0..<24],24,m[..],ms[..],t[..],ts[..],false);#assert r.status==PgStatus.ok && r.metadata==0 && r.tensors==0 && r.data==0 && r.alignment==32;
+    #assert pg_read(bytes[0..<32],32,m[..],ms[..],t[..],ts[..],false).status==PgStatus.ok;
+    #assert pg_read(bytes[..],33,m[..],ms[..],t[..],ts[..],false).status==PgStatus.offsets;
+    #assert pg_read(bytes[0..<24],32,m[..],ms[..],t[..],ts[..],false).status==PgStatus.truncated;
+    #assert pg_read(bytes[0..<24],PG_FILE_MAX+1,m[..],ms[..],t[..],ts[..],false).status==PgStatus.size;
+}
+// book:begin inspect
+pg_read :: (header:[]u8,file_bytes:int,meta:[]PgMeta,meta_work:[]PgMeta,tensors:[]PgTensor,tensor_work:[]PgTensor,overlap:bool)->PgResult #export_c {
+    if overlap {return PgResult.{status=PgStatus.alias};}if !pg_file(file_bytes) {return PgResult.{status=PgStatus.size};}if header.count<24 {return PgResult.{status=PgStatus.truncated};}if !pg_prefix(header.count,file_bytes) {return PgResult.{status=PgStatus.size};}
+    c:=pg_uint(PgCursor.{data=header},4);if c.word!=0x46554747 {return PgResult.{status=PgStatus.format};}c=pg_uint(c,4);if c.word!=3 {return PgResult.{status=PgStatus.unsupported};}
+    c=pg_count(c,4096);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}nt:=cast(int)c.word;c=pg_count(c,4096);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}nm:=cast(int)c.word;
+    if meta.count<nm || meta_work.count<nm || tensors.count<nt || tensor_work.count<nt {return PgResult.{status=PgStatus.capacity};}alignment:=32;
+    for i:0..<nm {c=pg_string(c,256);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}key:=c.text;if !pg_key(key) {return PgResult.{status=PgStatus.format};}for j:0..<i {if meta_work[j].key==key {return PgResult.{status=PgStatus.duplicate};}}
+        c=pg_uint(c,4);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}kind:=cast(int)c.word;begin:=c.at;c=pg_skip(c,kind);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}
+        meta_work[i]=PgMeta.{key=key,kind=kind,begin=begin,end=c.at};
+        if key=="general.alignment" {if kind!=4 {return PgResult.{status=PgStatus.format};}a:=pg_uint(PgCursor.{data=header,at=begin},4);alignment=cast(int)a.word;if !pg_alignment(alignment) {return PgResult.{status=PgStatus.offsets};}}
+    }
+    for i:0..<nt {c=pg_name(c);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}name:=c.text;if name.count==0 {return PgResult.{status=PgStatus.format};}for j:0..<i {if tensor_work[j].name==name {return PgResult.{status=PgStatus.duplicate};}}
+        c=pg_uint(c,4);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}if c.word<1 || c.word>4 {return PgResult.{status=PgStatus.shape};}rank:=cast(int)c.word;dims:[4]int;
+        for axis:0..<rank {c=pg_dimension(c);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}dims[axis]=cast(int)c.word;}for axis:rank..<4 {dims[axis]=1;}
+        c=pg_uint(c,4);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}kind:=cast(int)c.word;size:=pg_size(rank,dims,kind);if size.status!=PgStatus.ok {return PgResult.{status=size.status};}
+        c=pg_count(c,PG_FILE_MAX);if c.status!=PgStatus.ok {return PgResult.{status=c.status};}offset:=cast(int)c.word;if offset%alignment!=0 {return PgResult.{status=PgStatus.offsets};}
+        tensor_work[i]=PgTensor.{name=name,rank=rank,dims=dims,kind=kind,elements=size.elements,offset=offset,bytes=size.bytes};
+    }
+    data:=pg_align(c.at,alignment);padding_end:=data;
+    if nt==0 {if file_bytes>data {return PgResult.{status=PgStatus.offsets};}padding_end=file_bytes;}
+    for i:0..<nt {t:=tensor_work[i];if !pg_range(file_bytes,data,t.offset,t.bytes) {return PgResult.{status=PgStatus.offsets};}t.begin=data+t.offset;t.end=t.begin+t.bytes;
+        for j:0..<i {other:=tensor_work[j];if pg_intersects(t.begin,t.end,other.begin,other.end) {return PgResult.{status=PgStatus.offsets};}}tensor_work[i]=t;
+    }
+    if padding_end>header.count {return PgResult.{status=PgStatus.truncated};}for i:c.at..<padding_end {if header[i]!=0 {return PgResult.{status=PgStatus.padding};}}
+    for i:0..<nm {meta[i]=meta_work[i];}for i:0..<nt {tensors[i]=tensor_work[i];}return PgResult.{metadata=nm,tensors=nt,data=ifx nt==0 then 0 else data,alignment=alignment};
+}
+// book:end inspect
+
+#test "all ranks canonical trailing dimensions and first duplicate keys are checked" {
+    b:=PG_RANKS;m:[2]PgMeta;mw:[2]PgMeta;t:[4]PgTensor;tw:[4]PgTensor;r:=pg_read(b[..],b.count,m[..],mw[..],t[..],tw[..],false);#assert r.status==PgStatus.ok && r.tensors==4 && t[0].name.count==64 && t[1].name.count==1;
+    for i:0..<4 {#assert t[i].rank==i+1;for axis:0..<4 {#assert t[i].dims[axis]==(ifx axis<=i then 4 else 1);}}
+    wire:[64]u8;wire[0]='G';wire[1]='G';wire[2]='U';wire[3]='F';wire[4]=3;wire[16]=2;wire[24]=1;wire[32]='x';wire[38]=1;wire[46]='x';
+    #assert pg_read(wire[..],64,m[..],mw[..],t[..],tw[..],false).status==PgStatus.duplicate;
+}

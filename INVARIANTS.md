@@ -1873,3 +1873,17 @@ ordinary loop, so the C build is the oracle the device must match bit for bit.
 Check: `coax/lib/compiler/compute.coax` (`coax test`, zero-survivor
 `coax mutate`), `coax/tests/cuda.py`, `coax/tests/metal_compute.py`,
 `psionic/tests/run_group_kernels.sh` (Metal locally, CUDA on `coderos-4080`).
+
+## GGUF descriptors publish only after bounded structural admission
+
+`gguf-v3-le-v1` (`psionic/lib/gguf.coax`) accepts little-endian v3, pinned
+GGML layout IDs and explicit header/file/count/value budgets. Every dimension
+product, encoded block size, aligned offset and payload end fits before use;
+keys/names are unique, UTF-8 is valid, booleans canonical, ranges disjoint and
+header padding zero. Zero-tensor upstream headers may omit final padding.
+The immutable header owns borrowed strings. Public descriptor arrays change
+only on success; separate scratch may change on refusal. C observes address
+spans only. Reading structure does not authenticate or execute tensor bytes.
+
+Check: `psionic/tests/check_gguf.sh --mutate --jobs 8` (CPU only, independent
+struct oracle, pinned original headers, debug/release and ASan/UBSan).

@@ -1,0 +1,133 @@
+{
+  "metadata": [
+    {
+      "key": "general.architecture",
+      "kind": 8,
+      "begin": 56,
+      "end": 68,
+      "value": "gpt2"
+    },
+    {
+      "key": "general.name",
+      "kind": 8,
+      "begin": 92,
+      "end": 105,
+      "value": "gpt-2"
+    },
+    {
+      "key": "gpt2.block_count",
+      "kind": 4,
+      "begin": 133,
+      "end": 137,
+      "value": 12
+    },
+    {
+      "key": "gpt2.context_length",
+      "kind": 4,
+      "begin": 168,
+      "end": 172,
+      "value": 1024
+    },
+    {
+      "key": "gpt2.embedding_length",
+      "kind": 4,
+      "begin": 205,
+      "end": 209,
+      "value": 768
+    },
+    {
+      "key": "gpt2.feed_forward_length",
+      "kind": 4,
+      "begin": 245,
+      "end": 249,
+      "value": 3072
+    },
+    {
+      "key": "gpt2.attention.head_count",
+      "kind": 4,
+      "begin": 286,
+      "end": 290,
+      "value": 12
+    },
+    {
+      "key": "gpt2.attention.layer_norm_epsilon",
+      "kind": 6,
+      "begin": 335,
+      "end": 339,
+      "value": 9.999999747378752e-06
+    },
+    {
+      "key": "general.file_type",
+      "kind": 4,
+      "begin": 368,
+      "end": 372,
+      "value": 1
+    },
+    {
+      "key": "tokenizer.ggml.model",
+      "kind": 8,
+      "begin": 404,
+      "end": 416,
+      "value": "gpt2"
+    },
+    {
+      "key": "tokenizer.ggml.pre",
+      "kind": 8,
+      "begin": 446,
+      "end": 459,
+      "value": "gpt-2"
+    },
+    {
+      "key": "tokenizer.ggml.tokens",
+      "kind": 9,
+      "begin": 492,
+      "end": 759295,
+      "value": {
+        "element_type": 8,
+        "count": 50257,
+        "wire_sha256": "a16483244638354334e9eed472d1c174a1df32216883444c28aa935f30334519"
+      }
+    },
+    {
+      "key": "tokenizer.ggml.token_type",
+      "kind": 9,
+      "begin": 759332,
+      "end": 960372,
+      "value": {
+        "element_type": 5,
+        "count": 50257,
+        "wire_sha256": "dcf629e53e9545acc2324f403e6f53681b5544455e54e32490f83811b87fa09b"
+      }
+    },
+    {
+      "key": "tokenizer.ggml.merges",
+      "kind": 9,
+      "begin": 960405,
+      "end": 1766721,
+      "value": {
+        "element_type": 8,
+        "count": 50000,
+        "wire_sha256": "244d62325e4fb0b3b7e731e6991e5d64265bd0cf76c261d3d207d017f4f32463"
+      }
+    },
+    {
+      "key": "tokenizer.ggml.bos_token_id",
+      "kind": 4,
+      "begin": 1766760,
+      "end": 1766764,
+      "value": 50256
+    },
+    {
+      "key": "tokenizer.ggml.eos_token_id",
+      "kind": 4,
+      "begin": 1766803,
+      "end": 1766807,
+      "value": 50256
+    }
+  ],
+  "tensors": [],
+  "header_end": 1766807,
+  "data": 0,
+  "alignment": 32,
+  "file_bytes": 1766807
+}

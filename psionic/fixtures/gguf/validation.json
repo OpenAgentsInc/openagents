@@ -1,0 +1,62 @@
+{
+  "schema": 1,
+  "profile": "gguf-v3-le-v1",
+  "base": "2b6b1fcbd4dc0ce6fc25dd983ac8261a3525e390",
+  "cpu_only": true,
+  "compiler": "coax0 0.23.0",
+  "cc": "GCC 15.2.0",
+  "checks_per_mode": 33,
+  "mutation": {
+    "total": 1353,
+    "killed": 1353,
+    "survived": 0
+  },
+  "inputs": {
+    "coax/bin/coax": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+    "coax/lib/nostr/fixtures/coax_relay.coax": "fe9a9500458039ca208c5188ddddbfb049a531e2884940a6a1bba22385461046",
+    "coax/lib/nostr/fixtures/json_suite.coax": "04093909c70433228f1e418e0f2c9bc02093e7ce47ca178903d66ac8df4b0eb2",
+    "coax/lib/nostr/json.coax": "87d55aa85f17d824338046ec27903684e51bd7a70b11a30f9c3da65255280f5f",
+    "psionic/examples/gguf.coax": "8cdd07752e215411aab61b3b813d5121c1a28911320e2f2e7c7635a270be36a2",
+    "psionic/fixtures/gguf.out": "9478e4266205bb8d4efd579e6a25aa18ad6b61e487aa94428f2c7e877e94d43c",
+    "psionic/fixtures/gguf/goldens.coax": "b768822d37fc1733a35e849831bd51bb8235d2350bcc3acd1700a83ca1330d7a",
+    "psionic/lib/gguf-types.coax": "4ef13c3176cbb4756d7bcc90f7d1560de120c4c6f010b2043da8201713f73f67",
+    "psionic/lib/gguf-values.coax": "b49145d13c26925619e13c589c0e410e4b7c49816dbc9e8e804b42f764fa0925",
+    "psionic/lib/gguf.coax": "272cc0484fdcb81c90cce8fcec371dfaa007b38e92714b5deae92576cc8b224c",
+    "psionic/platform/gguf-memory.c": "516e5e8046591d2287133edcdab785d9556b7510d86441b46db7a6d447346420",
+    "psionic/platform/gguf-memory.h": "efd7e7df0e78ad1a014c017a96f70a182a9ce232803da3a544b2f104974f3e4a",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/check_gguf.sh": "90dc48b46be60d81317a50e30135d9d63eb2a543796af390d5e9d87b071a3873",
+    "psionic/tests/gguf_fixtures.py": "1911a5e3b097a074ab8f405c21805501c12457382d5419d6adecba3bc9a2a031",
+    "psionic/tests/gguf_native.c": "1da6a4518f6346659be06156fe0860e10d57c96ed2b96ac53880407db8e332ca"
+  },
+  "logs": {
+    "psionic-ch33-unit5.log": {
+      "sha256": "d5ac3f853ba22f750cba02fa86488ac4334e6a913f2e8557d19652c1d9222336",
+      "last_line": "33 checks, 33 passed, 0 failed"
+    },
+    "psionic-ch33-release.log": {
+      "sha256": "d5ac3f853ba22f750cba02fa86488ac4334e6a913f2e8557d19652c1d9222336",
+      "last_line": "33 checks, 33 passed, 0 failed"
+    },
+    "psionic-ch33-mutate3.log": {
+      "sha256": "b516b728d74494eb5c6cce1ad8e6b7b706906bd0e96b5bec4de5f132a99f51aa",
+      "last_line": "1353 mutants, 1353 killed, 0 survived"
+    },
+    "psionic-ch33-native-debug-plain.log": {
+      "sha256": "cb689446b5d1bcb8ac6e26441baafdf8fa952af3459ba2204e1bd0f1b2557095",
+      "last_line": "GGUF: pinned big-endian file refuses explicitly"
+    },
+    "psionic-ch33-native-release-sanitized.log": {
+      "sha256": "cb689446b5d1bcb8ac6e26441baafdf8fa952af3459ba2204e1bd0f1b2557095",
+      "last_line": "GGUF: pinned big-endian file refuses explicitly"
+    },
+    "psionic-ch33-native-release-plain.log": {
+      "sha256": "cb689446b5d1bcb8ac6e26441baafdf8fa952af3459ba2204e1bd0f1b2557095",
+      "last_line": "GGUF: pinned big-endian file refuses explicitly"
+    },
+    "psionic-ch33-native-debug-sanitized.log": {
+      "sha256": "cb689446b5d1bcb8ac6e26441baafdf8fa952af3459ba2204e1bd0f1b2557095",
+      "last_line": "GGUF: pinned big-endian file refuses explicitly"
+    }
+  }
+}

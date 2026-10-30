@@ -1,0 +1,4 @@
+GGUF v3: 15 metadata, 2 tensors, data at 576
+matrix: type 0, 8 elements, bytes [576 , 608)
+quants: type 2, 64 elements, bytes [640 , 676)
+nonzero padding: refused; published descriptors preserved

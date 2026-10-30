@@ -1,0 +1,604 @@
+{
+  "metadata": [
+    {
+      "key": "general.architecture",
+      "kind": 8,
+      "begin": 56,
+      "end": 71,
+      "value": "fixture"
+    },
+    {
+      "key": "general.alignment",
+      "kind": 4,
+      "begin": 100,
+      "end": 104,
+      "value": 64
+    },
+    {
+      "key": "test.k0",
+      "kind": 0,
+      "begin": 123,
+      "end": 124,
+      "value": 255
+    },
+    {
+      "key": "test.k1",
+      "kind": 1,
+      "begin": 143,
+      "end": 144,
+      "value": -128
+    },
+    {
+      "key": "test.k2",
+      "kind": 2,
+      "begin": 163,
+      "end": 165,
+      "value": 65535
+    },
+    {
+      "key": "test.k3",
+      "kind": 3,
+      "begin": 184,
+      "end": 186,
+      "value": -32768
+    },
+    {
+      "key": "test.k4",
+      "kind": 4,
+      "begin": 205,
+      "end": 209,
+      "value": 4294967295
+    },
+    {
+      "key": "test.k5",
+      "kind": 5,
+      "begin": 228,
+      "end": 232,
+      "value": -2147483648
+    },
+    {
+      "key": "test.k6",
+      "kind": 6,
+      "begin": 251,
+      "end": 255,
+      "value": 1.25
+    },
+    {
+      "key": "test.k7",
+      "kind": 7,
+      "begin": 274,
+      "end": 275,
+      "value": 1
+    },
+    {
+      "key": "test.k8",
+      "kind": 8,
+      "begin": 294,
+      "end": 310,
+      "value": "é 😀"
+    },
+    {
+      "key": "test.k9",
+      "kind": 9,
+      "begin": 329,
+      "end": 384,
+      "value": {
+        "element_type": 9,
+        "count": 2,
+        "wire_sha256": "2a2e992ffdcffe4dc5668b7513d1a5306a73f35463e9c59578b5e574f6a71a58"
+      }
+    },
+    {
+      "key": "test.k10",
+      "kind": 10,
+      "begin": 404,
+      "end": 412,
+      "value": 18446744073709551615
+    },
+    {
+      "key": "test.k11",
+      "kind": 11,
+      "begin": 432,
+      "end": 440,
+      "value": -9223372036854775808
+    },
+    {
+      "key": "test.k12",
+      "kind": 12,
+      "begin": 460,
+      "end": 468,
+      "value": -2.5
+    }
+  ],
+  "tensors": [
+    {
+      "name": "type.0",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 0,
+      "offset": 0,
+      "elements": 2,
+      "bytes": 8
+    },
+    {
+      "name": "type.1",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 1,
+      "offset": 64,
+      "elements": 2,
+      "bytes": 4
+    },
+    {
+      "name": "type.2",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 2,
+      "offset": 128,
+      "elements": 64,
+      "bytes": 36
+    },
+    {
+      "name": "type.3",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 3,
+      "offset": 192,
+      "elements": 64,
+      "bytes": 40
+    },
+    {
+      "name": "type.6",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 6,
+      "offset": 256,
+      "elements": 64,
+      "bytes": 44
+    },
+    {
+      "name": "type.7",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 7,
+      "offset": 320,
+      "elements": 64,
+      "bytes": 48
+    },
+    {
+      "name": "type.8",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 8,
+      "offset": 384,
+      "elements": 64,
+      "bytes": 68
+    },
+    {
+      "name": "type.9",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 9,
+      "offset": 512,
+      "elements": 64,
+      "bytes": 72
+    },
+    {
+      "name": "type.10",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 10,
+      "offset": 640,
+      "elements": 512,
+      "bytes": 168
+    },
+    {
+      "name": "type.11",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 11,
+      "offset": 832,
+      "elements": 512,
+      "bytes": 220
+    },
+    {
+      "name": "type.12",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 12,
+      "offset": 1088,
+      "elements": 512,
+      "bytes": 288
+    },
+    {
+      "name": "type.13",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 13,
+      "offset": 1408,
+      "elements": 512,
+      "bytes": 352
+    },
+    {
+      "name": "type.14",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 14,
+      "offset": 1792,
+      "elements": 512,
+      "bytes": 420
+    },
+    {
+      "name": "type.15",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 15,
+      "offset": 2240,
+      "elements": 512,
+      "bytes": 584
+    },
+    {
+      "name": "type.16",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 16,
+      "offset": 2880,
+      "elements": 512,
+      "bytes": 132
+    },
+    {
+      "name": "type.17",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 17,
+      "offset": 3072,
+      "elements": 512,
+      "bytes": 148
+    },
+    {
+      "name": "type.18",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 18,
+      "offset": 3264,
+      "elements": 512,
+      "bytes": 196
+    },
+    {
+      "name": "type.19",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 19,
+      "offset": 3520,
+      "elements": 512,
+      "bytes": 100
+    },
+    {
+      "name": "type.20",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 20,
+      "offset": 3648,
+      "elements": 64,
+      "bytes": 36
+    },
+    {
+      "name": "type.21",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 21,
+      "offset": 3712,
+      "elements": 512,
+      "bytes": 220
+    },
+    {
+      "name": "type.22",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 22,
+      "offset": 3968,
+      "elements": 512,
+      "bytes": 164
+    },
+    {
+      "name": "type.23",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 23,
+      "offset": 4160,
+      "elements": 512,
+      "bytes": 272
+    },
+    {
+      "name": "type.24",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 24,
+      "offset": 4480,
+      "elements": 2,
+      "bytes": 2
+    },
+    {
+      "name": "type.25",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 25,
+      "offset": 4544,
+      "elements": 2,
+      "bytes": 4
+    },
+    {
+      "name": "type.26",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 26,
+      "offset": 4608,
+      "elements": 2,
+      "bytes": 8
+    },
+    {
+      "name": "type.27",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 27,
+      "offset": 4672,
+      "elements": 2,
+      "bytes": 16
+    },
+    {
+      "name": "type.28",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 28,
+      "offset": 4736,
+      "elements": 2,
+      "bytes": 16
+    },
+    {
+      "name": "type.29",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 29,
+      "offset": 4800,
+      "elements": 512,
+      "bytes": 112
+    },
+    {
+      "name": "type.30",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 30,
+      "offset": 4928,
+      "elements": 2,
+      "bytes": 4
+    },
+    {
+      "name": "type.34",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 34,
+      "offset": 4992,
+      "elements": 512,
+      "bytes": 108
+    },
+    {
+      "name": "type.35",
+      "rank": 2,
+      "dims": [
+        256,
+        2
+      ],
+      "kind": 35,
+      "offset": 5120,
+      "elements": 512,
+      "bytes": 132
+    },
+    {
+      "name": "type.39",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 39,
+      "offset": 5312,
+      "elements": 64,
+      "bytes": 34
+    },
+    {
+      "name": "type.40",
+      "rank": 2,
+      "dims": [
+        64,
+        2
+      ],
+      "kind": 40,
+      "offset": 5376,
+      "elements": 128,
+      "bytes": 72
+    },
+    {
+      "name": "type.41",
+      "rank": 2,
+      "dims": [
+        128,
+        2
+      ],
+      "kind": 41,
+      "offset": 5504,
+      "elements": 256,
+      "bytes": 36
+    },
+    {
+      "name": "type.42",
+      "rank": 2,
+      "dims": [
+        64,
+        2
+      ],
+      "kind": 42,
+      "offset": 5568,
+      "elements": 128,
+      "bytes": 36
+    },
+    {
+      "name": "type.43",
+      "rank": 2,
+      "dims": [
+        1,
+        2
+      ],
+      "kind": 43,
+      "offset": 5632,
+      "elements": 2,
+      "bytes": 2
+    }
+  ],
+  "header_end": 2152,
+  "data": 2176,
+  "alignment": 64,
+  "file_bytes": 7872,
+  "marks": {
+    "general.architecture": 24,
+    "general.alignment": 71,
+    "test.k0": 104,
+    "test.k1": 124,
+    "test.k2": 144,
+    "test.k3": 165,
+    "test.k4": 186,
+    "test.k5": 209,
+    "test.k6": 232,
+    "test.k7": 255,
+    "test.k8": 275,
+    "test.k9": 310,
+    "test.k10": 384,
+    "test.k11": 412,
+    "test.k12": 440,
+    "type.0": 468,
+    "type.1": 514,
+    "type.2": 560,
+    "type.3": 606,
+    "type.6": 652,
+    "type.7": 698,
+    "type.8": 744,
+    "type.9": 790,
+    "type.10": 836,
+    "type.11": 883,
+    "type.12": 930,
+    "type.13": 977,
+    "type.14": 1024,
+    "type.15": 1071,
+    "type.16": 1118,
+    "type.17": 1165,
+    "type.18": 1212,
+    "type.19": 1259,
+    "type.20": 1306,
+    "type.21": 1353,
+    "type.22": 1400,
+    "type.23": 1447,
+    "type.24": 1494,
+    "type.25": 1541,
+    "type.26": 1588,
+    "type.27": 1635,
+    "type.28": 1682,
+    "type.29": 1729,
+    "type.30": 1776,
+    "type.34": 1823,
+    "type.35": 1870,
+    "type.39": 1917,
+    "type.40": 1964,
+    "type.41": 2011,
+    "type.42": 2058,
+    "type.43": 2105
+  }
+}

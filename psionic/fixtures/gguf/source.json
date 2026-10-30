@@ -1,0 +1,222 @@
+{
+  "schema": 1,
+  "llama_cpp_revision": "e0f142d5ddc1461ce721644d92af33db23545105",
+  "ggml_spec_revision": "facdc44a67da17df4433adcc468b424f48e9ded2",
+  "layouts": {
+    "0": [
+      1,
+      4
+    ],
+    "1": [
+      1,
+      2
+    ],
+    "2": [
+      32,
+      18
+    ],
+    "3": [
+      32,
+      20
+    ],
+    "6": [
+      32,
+      22
+    ],
+    "7": [
+      32,
+      24
+    ],
+    "8": [
+      32,
+      34
+    ],
+    "9": [
+      32,
+      36
+    ],
+    "10": [
+      256,
+      84
+    ],
+    "11": [
+      256,
+      110
+    ],
+    "12": [
+      256,
+      144
+    ],
+    "13": [
+      256,
+      176
+    ],
+    "14": [
+      256,
+      210
+    ],
+    "15": [
+      256,
+      292
+    ],
+    "16": [
+      256,
+      66
+    ],
+    "17": [
+      256,
+      74
+    ],
+    "18": [
+      256,
+      98
+    ],
+    "19": [
+      256,
+      50
+    ],
+    "20": [
+      32,
+      18
+    ],
+    "21": [
+      256,
+      110
+    ],
+    "22": [
+      256,
+      82
+    ],
+    "23": [
+      256,
+      136
+    ],
+    "24": [
+      1,
+      1
+    ],
+    "25": [
+      1,
+      2
+    ],
+    "26": [
+      1,
+      4
+    ],
+    "27": [
+      1,
+      8
+    ],
+    "28": [
+      1,
+      8
+    ],
+    "29": [
+      256,
+      56
+    ],
+    "30": [
+      1,
+      2
+    ],
+    "34": [
+      256,
+      54
+    ],
+    "35": [
+      256,
+      66
+    ],
+    "39": [
+      32,
+      17
+    ],
+    "40": [
+      64,
+      36
+    ],
+    "41": [
+      128,
+      18
+    ],
+    "42": [
+      64,
+      18
+    ],
+    "43": [
+      1,
+      1
+    ]
+  },
+  "files": {
+    "tiny": {
+      "url": "https://huggingface.co/ggml-org/models-moved/resolve/499bc8821c6b12b4e53c5bffcb21ec206f212d81/tinyllamas/stories260K.gguf",
+      "bytes": 1185376,
+      "sha256": "270cba1bd5109f42d03350f60406024560464db173c0e387d91f0426d3bd256d"
+    },
+    "vocab": {
+      "url": "https://raw.githubusercontent.com/ggml-org/llama.cpp/e0f142d5ddc1461ce721644d92af33db23545105/models/ggml-vocab-gpt-2.gguf",
+      "sha256": "cedc56ca6e2e89f63e781696d1fd76b4b1d49e6720dee86463e915f6e90016ac",
+      "bytes": 1766807
+    },
+    "big-endian": {
+      "url": "https://huggingface.co/ggml-org/models-moved/resolve/499bc8821c6b12b4e53c5bffcb21ec206f212d81/tinyllamas/stories260K-be.gguf",
+      "sha256": "276d6f9d9050e79670a113492331dc52b3568690b03f5e633521cbed020bfc1c",
+      "bytes": 1185376
+    }
+  },
+  "artifacts": {
+    "source-constants-py.gz": {
+      "bytes": 34597,
+      "sha256": "befab7470cd705dd4c9dcfb24921910c95b632b21d5fa2b6c279dbb11fdac94e"
+    },
+    "source-gguf-cpp.gz": {
+      "bytes": 10256,
+      "sha256": "8c9912843337f849a0bf06e4313d639cd90bcf51f0ba7109afcc172a974b13d2"
+    },
+    "source-gguf-md.gz": {
+      "bytes": 13577,
+      "sha256": "fc4270356bd5649592e3f13cd27664e8f3b357601c59343a2c0664be560e0537"
+    },
+    "owned.gguf.gz": {
+      "bytes": 235,
+      "sha256": "6f3db71320aff22b125ef7a2979f4344f1752cf8651eb79753b37df045ebe35f"
+    },
+    "owned.json": {
+      "bytes": 2752,
+      "sha256": "1eeef506209b24f039938f879df91de703abdb98a49fbe527e5c9fb2afbeeb21"
+    },
+    "layouts.gguf.gz": {
+      "bytes": 526,
+      "sha256": "f0d0ff7de72d67d5e709ae023650c9d8a400c029fa7499735ec48911fab6adda"
+    },
+    "layouts.json": {
+      "bytes": 9650,
+      "sha256": "4309d520def95f888c7b667d35e5a92a30a68d4b068e0f0531d5262d09b3acea"
+    },
+    "tiny.gguf.gz": {
+      "bytes": 1088286,
+      "sha256": "ff7f55ef54dd1052eb61d25250ec00e5323c6706b06b3794e3b81ad1f379eac1"
+    },
+    "tiny.json": {
+      "bytes": 12669,
+      "sha256": "a632e0fa16f419779303d405cd1e2ae549e6f2734695c80205d94361921f60ef"
+    },
+    "vocab.gguf.gz": {
+      "bytes": 509121,
+      "sha256": "5d9dfe049ee75c31c3d7c3c33c5e2ebefd9f8f21ff2e40fc95c66a184bf16e5f"
+    },
+    "vocab.json": {
+      "bytes": 2636,
+      "sha256": "310549de68a11146ef1f3deeb3174886a6bb40cddeeaf6c10ce205036a3df94b"
+    },
+    "big-endian.gguf.gz": {
+      "bytes": 1088543,
+      "sha256": "410ccec0e08cce92eb7e61b05e829709254033f388341a69e03ee922e7a69368"
+    },
+    "goldens.coax": {
+      "bytes": 23577,
+      "sha256": "b768822d37fc1733a35e849831bd51bb8235d2350bcc3acd1700a83ca1330d7a"
+    }
+  }
+}

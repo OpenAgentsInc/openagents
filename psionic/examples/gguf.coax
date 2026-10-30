@@ -1,0 +1,15 @@
+#import "Basic";
+#load "../lib/gguf.coax";
+// book:begin example
+main :: () {
+    bytes:=PG_OWNED;metadata:[15]PgMeta;meta_work:[15]PgMeta;tensors:[2]PgTensor;tensor_work:[2]PgTensor;
+    r:=pg_read(bytes[..],bytes.count,metadata[..],meta_work[..],tensors[..],tensor_work[..],false);
+    #assert r.status==PgStatus.ok;
+    print("GGUF v3: % metadata, % tensors, data at %\n",r.metadata,r.tensors,r.data);
+    for i:0..<r.tensors {t:=tensors[i];print("%: type %, % elements, bytes [% , %)\n",t.name,t.kind,t.elements,t.begin,t.end);}
+    bytes[575]=1;
+    refused:=pg_read(bytes[..],bytes.count,metadata[..],meta_work[..],tensors[..],tensor_work[..],false);
+    #assert refused.status==PgStatus.padding && tensors[0].begin==576;
+    print("nonzero padding: refused; published descriptors preserved\n");
+}
+// book:end example

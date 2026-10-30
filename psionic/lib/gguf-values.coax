@@ -1,0 +1,72 @@
+#load "gguf-types.coax";
+#load "../../coax/lib/nostr/json.coax";
+#authority;
+
+#test "GGUF integers and UTF8 string lengths refuse before slicing" {
+    bytes:=[16]u8.[0,1,2,3,4,5,6,255,2,0,0,0,0,0,0,0];c:=PgCursor.{data=bytes[..]};r:=pg_uint(c,8);#assert r.status==PgStatus.ok && r.at==8 && r.word==0xff06050403020100;
+    #assert pg_uint(PgCursor.{data=bytes[..],at=16},1).status==PgStatus.truncated;
+    #assert pg_uint(PgCursor.{data=bytes[..],at= -1},1).status==PgStatus.truncated;
+    #assert pg_uint(c,0).status==PgStatus.truncated && pg_uint(c,9).status==PgStatus.truncated;
+    #assert pg_uint(PgCursor.{status=PgStatus.padding},1).status==PgStatus.padding;
+    #assert pg_count(c,255).status==PgStatus.budget;
+    #assert pg_string(PgCursor.{data=bytes[..],at=8},2).status==PgStatus.truncated;
+    #assert pg_utf8("é 😀") && !pg_key("has space") && pg_key("general.alignment") && !pg_key("");
+    bad:=[1]u8.[255];#assert !pg_utf8(cast(string)bad[..]);
+}
+#test "GGUF typed values retain signed and float encodings and validate bools" {
+    bytes:=[16]u8.[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0];c:=PgCursor.{data=bytes[..]};
+    #assert pg_atom(c,7).word==1 && pg_atom(c,0).at==1 && pg_atom(c,2).at==2 && pg_atom(c,6).at==4 && pg_atom(c,12).at==8;
+    bytes[0]=2;#assert pg_atom(PgCursor.{data=bytes[..]},7).status==PgStatus.format;
+    #assert pg_atom(c,13).status==PgStatus.unsupported && pg_atom(c,-1).status==PgStatus.unsupported;
+    #assert pg_skip(PgCursor.{data=bytes[..],work=1048576},0).status==PgStatus.budget;
+}
+pg_fail :: (c:PgCursor,status:PgStatus)->PgCursor {r:=c;if r.status==PgStatus.ok {r.status=status;}return r;}
+pg_uint :: (c:PgCursor,width:int)->PgCursor {
+    r:=c;if r.status!=PgStatus.ok {return r;}r.word=0;
+    if width<1 || width>8 || !pg_have(r.data.count,r.at,width) {return pg_fail(r,PgStatus.truncated);}
+    for i:0..<width {r.word |= cast(u64)r.data[r.at+i]<<(i*8);}r.at+=width;return r;
+}
+pg_count :: (c:PgCursor,limit:int)->PgCursor {r:=pg_uint(c,8);if r.status==PgStatus.ok && r.word>cast(u64)limit {return pg_fail(r,PgStatus.budget);}return r;}
+pg_utf8 :: (s:string)->bool {at:=0;while at!=s.count {n:=json_utf8(s,at);if n==0 {return false;}at+=n;}return true;}
+pg_string :: (c:PgCursor,limit:int)->PgCursor {
+    r:=pg_count(c,limit);if r.status!=PgStatus.ok {return r;}n:=cast(int)r.word;
+    if !pg_have(r.data.count,r.at,n) {return pg_fail(r,PgStatus.truncated);}r.text=cast(string)r.data[r.at..<r.at+n];if !pg_utf8(r.text) {return pg_fail(r,PgStatus.utf8);}r.at+=n;return r;
+}
+pg_key :: (s:string)->bool {if s.count==0 {return false;}for c:s {if c<33 || c>126 {return false;}}return true;}
+// Preserve primitive wire bits. This reader does not impose numerical finiteness
+// on metadata and does not decode tensor payloads.
+pg_atom :: (c:PgCursor,kind:int)->PgCursor {
+    if kind<0 || kind>12 {return pg_fail(c,PgStatus.unsupported);}if kind==8 {return pg_string(c,1048576);}
+    if kind==9 {r:=pg_uint(c,4);if r.status!=PgStatus.ok {return r;}if r.word>12 {return pg_fail(r,PgStatus.unsupported);}item:=cast(int)r.word;r=pg_count(r,1048576);if r.status!=PgStatus.ok {return r;}r.item=item;r.count=cast(int)r.word;return r;}
+    r:=pg_uint(c,pg_width(kind));if r.status==PgStatus.ok && kind==7 && r.word>1 {return pg_fail(r,PgStatus.format);}return r;
+}
+pg_skip :: (c:PgCursor,kind:int)->PgCursor {
+    r:=c;remaining:[9]int;types:[9]int;remaining[0]=1;types[0]=kind;depth:=0;
+    while true {remaining[depth]-=1;if !pg_work(r.work,1) {return pg_fail(r,PgStatus.budget);}r.work+=1;
+        t:=types[depth];if t==9 && depth==8 {return pg_fail(r,PgStatus.budget);}r=pg_atom(r,t);if r.status!=PgStatus.ok {return r;}
+        if t==9 {if !pg_work(r.work,r.count) {return pg_fail(r,PgStatus.budget);}if r.count!=0 {depth+=1;remaining[depth]=r.count;types[depth]=r.item;}}
+        while remaining[depth]==0 {if depth==0 {return r;}depth-=1;}
+    }return r;
+}
+pg_have :: (total:int,at:int,n:int)->bool {return at>=0 && n>=0 && at<=total && n<=total-at;}
+pg_name :: (c:PgCursor)->PgCursor {return pg_string(c,64);}
+#test "metadata cursor limits arrays strings and nesting preserve their exact boundaries" {
+    #assert pg_have(0,0,0) && pg_have(8,8,0) && pg_have(8,7,1) && !pg_have(8,9,0) && !pg_have(8,7,2) && !pg_have(8,-1,1) && !pg_have(8,0,-1);
+    #assert pg_key("!") && pg_key("~") && !pg_key(" ");bad:=[1]u8.[127];#assert !pg_key(cast(string)bad[..]);
+    b:[73]u8;b[0]=64;for i:8..<73 {b[i]='x';}r:=pg_name(PgCursor.{data=b[..]});#assert r.status==PgStatus.ok && r.text.count==64;b[0]=65;#assert pg_name(PgCursor.{data=b[..]}).status==PgStatus.budget;
+    b[0]=0;#assert pg_string(PgCursor.{data=b[0..<8]},0).status==PgStatus.ok;
+    array:[12]u8;array[0]=12;r=pg_atom(PgCursor.{data=array[..]},9);#assert r.status==PgStatus.ok && r.item==12 && r.count==0;
+    array[0]=13;#assert pg_atom(PgCursor.{data=array[..]},9).status==PgStatus.unsupported;array[0]=0;array[6]=16;r=pg_atom(PgCursor.{data=array[..]},9);#assert r.status==PgStatus.ok && r.count==1048576;array[4]=1;#assert pg_atom(PgCursor.{data=array[..]},9).status==PgStatus.budget;
+    a:=PG_DEPTH8;r=pg_skip(PgCursor.{data=a[..]},9);#assert r.status==PgStatus.ok && r.at==a.count && r.work==9;
+    deep:=PG_DEPTH9;#assert pg_skip(PgCursor.{data=deep[..]},9).status==PgStatus.budget;
+    one:=[1]u8.[7];r=pg_skip(PgCursor.{data=one[..],work=1048575},0);#assert r.status==PgStatus.ok && r.at==1 && r.work==1048576;
+    zero:[12]u8;r=pg_skip(PgCursor.{data=zero[..]},9);#assert r.status==PgStatus.ok && r.at==12 && r.work==1;
+}
+
+// Width query for admitted wire tags; strings and arrays are variable-size.
+pg_width :: (kind:int)->int {widths:=[13]int.[1,1,2,2,4,4,4,1,0,0,8,8,8];return widths[kind];}
+pg_dimension :: (c:PgCursor)->PgCursor {return pg_count(c,PG_ELEMENTS_MAX);}
+#test "variable-width tags and dimension conversion retain independent wire contracts" {
+    #assert pg_width(8)==0 && pg_width(9)==0 && pg_width(0)==1 && pg_width(7)==1 && pg_width(12)==8;
+    b:=[8]u8.[0,0,0,0,0,16,0,0];#assert pg_dimension(PgCursor.{data=b[..]}).status==PgStatus.ok;b[0]=1;#assert pg_dimension(PgCursor.{data=b[..]}).status==PgStatus.budget;
+}

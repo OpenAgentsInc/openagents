@@ -34,6 +34,7 @@
 - [30. Elephant on CUDA](ch030-elephant-on-cuda.md)
 - [30a. Share the card](ch030a-share-the-card.md)
 - [30b. Mammoth on CUDA](ch030b-mammoth-on-cuda.md)
+- [33. Read a GGUF file](ch033-read-a-gguf-file.md)
 - [41. Original MXFP4 weights](ch041-original-mxfp4-weights.md) — first gpt-oss branch chapter
 - [42. A few experts, then a router](ch042-a-few-experts-then-a-router.md)
 - [43. Attention with sinks and a window](ch043-attention-with-sinks-and-a-window.md)
@@ -90,6 +91,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–61, 63, 66, 70–71, 115, 156–158, 160, 164a, 165–169, 172 and 178–183 are
-runnable. Chapters 14, 15, 17–25, 27–29, 31–40 and the remaining outlines
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 41–48, 56–61, 63, 66, 70–71, 115, 156–158, 160, 164a, 165–169, 172 and 178–183 are
+runnable. Chapters 14, 15, 17–25, 27–29, 31–32, 34–40 and the remaining outlines
 remain proposed.

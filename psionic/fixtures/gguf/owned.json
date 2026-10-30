@@ -1,0 +1,162 @@
+{
+  "metadata": [
+    {
+      "key": "general.architecture",
+      "kind": 8,
+      "begin": 56,
+      "end": 71,
+      "value": "fixture"
+    },
+    {
+      "key": "general.alignment",
+      "kind": 4,
+      "begin": 100,
+      "end": 104,
+      "value": 64
+    },
+    {
+      "key": "test.k0",
+      "kind": 0,
+      "begin": 123,
+      "end": 124,
+      "value": 255
+    },
+    {
+      "key": "test.k1",
+      "kind": 1,
+      "begin": 143,
+      "end": 144,
+      "value": -128
+    },
+    {
+      "key": "test.k2",
+      "kind": 2,
+      "begin": 163,
+      "end": 165,
+      "value": 65535
+    },
+    {
+      "key": "test.k3",
+      "kind": 3,
+      "begin": 184,
+      "end": 186,
+      "value": -32768
+    },
+    {
+      "key": "test.k4",
+      "kind": 4,
+      "begin": 205,
+      "end": 209,
+      "value": 4294967295
+    },
+    {
+      "key": "test.k5",
+      "kind": 5,
+      "begin": 228,
+      "end": 232,
+      "value": -2147483648
+    },
+    {
+      "key": "test.k6",
+      "kind": 6,
+      "begin": 251,
+      "end": 255,
+      "value": 1.25
+    },
+    {
+      "key": "test.k7",
+      "kind": 7,
+      "begin": 274,
+      "end": 275,
+      "value": 1
+    },
+    {
+      "key": "test.k8",
+      "kind": 8,
+      "begin": 294,
+      "end": 310,
+      "value": "é 😀"
+    },
+    {
+      "key": "test.k9",
+      "kind": 9,
+      "begin": 329,
+      "end": 384,
+      "value": {
+        "element_type": 9,
+        "count": 2,
+        "wire_sha256": "2a2e992ffdcffe4dc5668b7513d1a5306a73f35463e9c59578b5e574f6a71a58"
+      }
+    },
+    {
+      "key": "test.k10",
+      "kind": 10,
+      "begin": 404,
+      "end": 412,
+      "value": 18446744073709551615
+    },
+    {
+      "key": "test.k11",
+      "kind": 11,
+      "begin": 432,
+      "end": 440,
+      "value": -9223372036854775808
+    },
+    {
+      "key": "test.k12",
+      "kind": 12,
+      "begin": 460,
+      "end": 468,
+      "value": -2.5
+    }
+  ],
+  "tensors": [
+    {
+      "name": "matrix",
+      "rank": 2,
+      "dims": [
+        4,
+        2
+      ],
+      "kind": 0,
+      "offset": 0,
+      "elements": 8,
+      "bytes": 32
+    },
+    {
+      "name": "quants",
+      "rank": 2,
+      "dims": [
+        32,
+        2
+      ],
+      "kind": 2,
+      "offset": 64,
+      "elements": 64,
+      "bytes": 36
+    }
+  ],
+  "header_end": 560,
+  "data": 576,
+  "alignment": 64,
+  "file_bytes": 704,
+  "marks": {
+    "general.architecture": 24,
+    "general.alignment": 71,
+    "test.k0": 104,
+    "test.k1": 124,
+    "test.k2": 144,
+    "test.k3": 165,
+    "test.k4": 186,
+    "test.k5": 209,
+    "test.k6": 232,
+    "test.k7": 255,
+    "test.k8": 275,
+    "test.k9": 310,
+    "test.k10": 384,
+    "test.k11": 412,
+    "test.k12": 440,
+    "matrix": 468,
+    "quants": 514
+  }
+}

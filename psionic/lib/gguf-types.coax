@@ -1,0 +1,56 @@
+// gguf-v3-le-v1: bounded structural metadata, not model/payload authentication.
+#load "../fixtures/gguf/goldens.coax";
+#authority;
+PgStatus :: enum u8 {ok;size;capacity;alias;truncated;format;unsupported;budget;utf8;duplicate;shape;offsets;padding;}
+PgCursor :: struct {data:[]u8;at:int;status:PgStatus;word:u64;text:string;item:int;count:int;work:int;}
+PgMeta :: struct {key:string;kind:int;begin:int;end:int;}
+PgTensor :: struct {name:string;rank:int;dims:[4]int=[4]int.[1,1,1,1];kind:int;elements:int;offset:int;bytes:int;begin:int;end:int;}
+PgResult :: struct {status:PgStatus;metadata:int;tensors:int;data:int;alignment:int;}
+PgSize :: struct {status:PgStatus;elements:int;bytes:int;}
+PG_FILE_MAX :: 1099511627776;
+PG_HEADER_MAX :: 67108864;
+PG_ELEMENTS_MAX :: 17592186044416;
+
+#test "GGUF budgets alignment and overflow limits have independent endpoints" {
+    #assert pg_file(24) && pg_file(PG_FILE_MAX) && !pg_file(23) && !pg_file(PG_FILE_MAX+1);
+    #assert pg_prefix(24,24) && pg_prefix(PG_HEADER_MAX,PG_HEADER_MAX) && !pg_prefix(PG_HEADER_MAX+1,PG_HEADER_MAX+1) && !pg_prefix(25,24);
+    #assert pg_alignment(8) && pg_alignment(32) && pg_alignment(1048576) && !pg_alignment(2097152) && !pg_alignment(0) && !pg_alignment(4) && !pg_alignment(24) && !pg_alignment(1048577);
+    #assert pg_product(1,PG_ELEMENTS_MAX,PG_ELEMENTS_MAX) && !pg_product(2,PG_ELEMENTS_MAX,PG_ELEMENTS_MAX) && !pg_product(0,1,10) && !pg_product(1,0,10);
+    #assert pg_work(1048575,1) && !pg_work(1048576,1) && pg_work(0,1048576) && !pg_work(0,1048577);
+    #assert pg_align(32,32)==32 && pg_align(33,32)==64 && pg_align(PG_FILE_MAX-1,32)==PG_FILE_MAX;
+    #assert pg_type(0) && pg_type(43) && !pg_type(-1) && !pg_type(44) && !pg_type(4) && !pg_type(31);
+}
+#test "GGUF rows use block divisibility on dimension zero before any product" {
+    d:=[4]int.[32,2,1,1];r:=pg_size(2,d,2);#assert r.status==PgStatus.ok && r.elements==64 && r.bytes==36;
+    d[0]=16;d[1]=4;#assert pg_size(2,d,2).status==PgStatus.shape;
+    d[0]=4;d[1]=2;#assert pg_size(2,d,0).bytes==32;
+    #assert pg_size(0,d,0).status==PgStatus.shape && pg_size(5,d,0).status==PgStatus.shape;
+    d[0]=0;#assert pg_size(1,d,0).status==PgStatus.shape;d[0]=PG_ELEMENTS_MAX+1;#assert pg_size(1,d,0).status==PgStatus.budget;
+    d=[4]int.[PG_ELEMENTS_MAX,2,1,1];#assert pg_size(2,d,0).status==PgStatus.budget;
+    d=[4]int.[PG_FILE_MAX/4,1,1,1];#assert pg_size(4,d,0).bytes==PG_FILE_MAX;d[0]+=1;#assert pg_size(4,d,0).status==PgStatus.size;
+    #assert pg_size(1,d,4).status==PgStatus.unsupported;
+}
+pg_file :: (n:int)->bool {return n>=24 && n<=PG_FILE_MAX;}
+pg_prefix :: (n:int,file:int)->bool {return n>=24 && n<=PG_HEADER_MAX && n<=file;}
+pg_alignment :: (n:int)->bool {return n>=8 && n<2097152 && pg_power(cast(u64)n);}
+pg_align :: (n:int,a:int)->int {return n+(a-n%a)%a;}
+pg_product :: (a:int,b:int,limit:int)->bool {return a>=1 && b>=1 && b<=limit/a;}
+pg_work :: (used:int,more:int)->bool {return more<=1048576-used;}
+pg_type :: (kind:int)->bool {if kind<0 || kind>=44 {return false;}return PG_BLOCKS[kind]!=0;}
+pg_size :: (rank:int,dims:[4]int,kind:int)->PgSize {
+    if rank<1 || rank>4 {return PgSize.{status=PgStatus.shape};}if !pg_type(kind) {return PgSize.{status=PgStatus.unsupported};}n:=1;
+    for i:0..<rank {if dims[i]<1 {return PgSize.{status=PgStatus.shape};}if !pg_product(n,dims[i],PG_ELEMENTS_MAX) {return PgSize.{status=PgStatus.budget};}n*=dims[i];}
+    if dims[0]%PG_BLOCKS[kind]!=0 {return PgSize.{status=PgStatus.shape};}blocks:=n/PG_BLOCKS[kind];if !pg_product(blocks,PG_WIDTHS[kind],PG_FILE_MAX) {return PgSize.{status=PgStatus.size};}
+    return PgSize.{elements=n,bytes=blocks*PG_WIDTHS[kind]};
+}
+
+pg_power :: (n:u64)->bool {return n!=0 && (n&(n-1))==0;}
+pg_range :: (file:int,data:int,offset:int,n:int)->bool {return data>=0 && data<=file && offset>=0 && n>=0 && n<=file-data-offset;}
+pg_intersects :: (begin:int,end:int,other_begin:int,other_end:int)->bool {return begin<other_end && other_begin<end;}
+#test "power and interval contracts distinguish empty adjacent and one-byte endpoints" {
+    #assert !pg_power(0) && pg_power(1) && pg_power(2) && !pg_power(3) && pg_power(9223372036854775808) && !pg_power(9223372036854775809);
+    #assert pg_range(32,32,0,0) && pg_range(32,0,32,0) && pg_range(32,1,30,1);
+    #assert !pg_range(32,33,0,0) && !pg_range(32,0,33,0) && !pg_range(32,1,30,2) && !pg_range(32,-1,0,0) && !pg_range(32,0,-1,0) && !pg_range(32,0,0,-1);
+    #assert !pg_intersects(0,1,1,2) && !pg_intersects(1,2,0,1) && pg_intersects(0,2,1,3) && pg_intersects(1,3,0,2);
+    d:=[4]int.[PG_FILE_MAX,1,1,1];#assert pg_size(1,d,24).bytes==PG_FILE_MAX;d[0]+=1;#assert pg_size(1,d,24).status==PgStatus.size;
+}

@@ -700,6 +700,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/gguf.coax",
+      "chapter": "psionic/book/ch033-read-a-gguf-file.md",
+      "stdout": "psionic/fixtures/gguf.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
