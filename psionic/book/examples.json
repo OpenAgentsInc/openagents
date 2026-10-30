@@ -560,6 +560,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/model-interchange.coax",
+      "chapter": "psionic/book/ch004a-models-travel-between-frameworks.md",
+      "stdout": "psionic/fixtures/model-interchange.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

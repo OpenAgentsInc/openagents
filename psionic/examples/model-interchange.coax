@@ -1,0 +1,22 @@
+#load "../lib/interchange.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    // The external artifact supplies a parameter; the architecture stays y=w*x.
+    trained:=ic_continue(0.5,16);#assert trained.status==IcStatus.ok;
+    tensor:=IcTensor.{name_count=12,shape=TvShape.{rank=1,dims=[4]int.[1,0,0,0]},bytes=4};
+    name:="scale.weight";for i:0..<name.count {tensor.name[i]=name[i];}
+    parameters:=[1]IcTensor.[tensor];payload:[4]u8;bits:=f32_bits(trained.weight);
+    for i:0..<4 {payload[i]=cast,trunc(u8)(bits>>(8*i));}
+    file:[512]u8;stage:[512]u8;written:=ic_write(parameters[..],payload[..],file[..],stage[..],false);
+    #assert written.status==IcStatus.ok;
+    names:[16]IcTensor;read:=ic_inspect(file[0..<written.written],names[..],false);
+    #assert read.status==IcStatus.ok && read.written==1 && names[0].name_count==12;
+    reloaded:=f32_from_bits(pw_word(file[..],names[0].source,4).bits);
+    #assert abs(reloaded*3-6)<0.000003f32;
+    print("Portable parameter: scale.weight, F32 [1], % bytes\n",names[0].bytes);
+    print("Continued in Coax from 0.5: weight = %\n",reloaded);
+    print("Reloaded prediction at x=3: %\n",reloaded*3);
+    print("No object deserialization or original framework executes.\n");
+}
+// book:end example

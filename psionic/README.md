@@ -13,6 +13,9 @@ view-aware CPU operators, support metadata and explicit analytical value VJPs.
 CPU/CUDA/Metal placement, f32/f16/bf16 storage, explicit synchronization and
 seeded uniform/dropout through shared Coax kernels. Chapter 4
 reads original BF16/F32 weight files and complete pinned shard bundles.
+[Chapter 4a](book/ch004a-models-travel-between-frameworks.md) adds named
+Safetensors export, a versioned C interface and leased CPU DLPack exchange,
+with a NumPy-to-Coax training and portable inference round trip.
 Chapter 5 renders typed text decisions and tokenizes original Qwen data.
 Chapter 6 executes a small causal dense attention block with a KV cache.
 Chapter 7 composes Qwen-style linear and full-attention layers with separate states.
@@ -123,6 +126,7 @@ credentials, or downloads at run time.
 | [lib/gptoss-attention.coax](lib/gptoss-attention.coax), [lib/gptoss-math.coax](lib/gptoss-math.coax) | Bounded sink/window attention, split-half YaRN, biased projection and interleaved clamped SwiGLU under an explicit wide CPU profile. |
 | [lib/moe.coax](lib/moe.coax) | Bounded top-k selection, selected-only normalization and tiny resident affine expert mixtures with atomic output. |
 | [lib/mxfp4.coax](lib/mxfp4.coax) | Original gpt-oss MXFP4 byte decoding: exact finite CPU values, shape/count/scale admission and unchanged output on refusal; separate from complete artifact admission. |
+| [lib/interchange.coax](lib/interchange.coax), [platform/interchange.h](platform/interchange.h) | Bounded named F32/BF16 parameter files, stable ABI v1 and zero-copy leased CPU f32 DLPack. |
 | [lib/learn.coax](lib/learn.coax) | Checks first, admission, loss/gradient, fixed-rate SGD, prediction. |
 | [lib/tensor.coax](lib/tensor.coax) | Checked rank/shape/byte/stride metadata, indexing and staged finite-f32 copy. |
 | [lib/qwen-model.coax](lib/qwen-model.coax) | Ordered hybrid layers with staged complete-block state and activations; original-weight qualification is recorded in chapter 10. |

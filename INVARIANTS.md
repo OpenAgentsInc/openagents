@@ -866,6 +866,38 @@ the book gate. See `docs/verification/psionic-ch05-2026-10-29.md`. The retained
 corpus uses an owned oracle; broader upstream-runtime parity and whole-model
 execution remain separate qualification gates.
 
+## Psionic interchange carries inert weights and explicit storage leases
+
+`psionic/lib/interchange.coax` owns `psionic-interchange-v1`: 1–16 uniquely
+named nonempty rank 0–4 F32/BF16 tensors, at most 1,048,576 elements per tensor,
+4 MiB aggregate payload and 16 KiB header. It writes canonical lexicographic
+Safetensors maps without dtype/layout/name conversion and rejects nonfinite
+encodings. Inspected names are owned metadata; payload offsets borrow the
+file. Refusals preserve public output and report zero written. This separate
+profile leaves the original bundle contract below unchanged.
+
+`psionic/platform/interchange.h` exposes fixed-width versioned ABI v1 on LP64
+little-endian binary32 hosts, without generated Coax types. DLPack accepts
+legacy and versioned 1.0–1.2 CPU:0 contiguous f32, including scalar/empty tensors;
+exports are read-only versioned 1.0 with explicit strides. Coax owns layout,
+address-observation admission and reference transitions; C performs allocation,
+byte copies and managed-deleter effects. Raw transport preserves f32 bits;
+weight/numerical admission remains stricter.
+
+A recognized nonnull carrier and empty nonnull output transfer ownership,
+including validation refusal; earlier argument errors do not consume it. A
+versioned major mismatch reads only its stable prefix and calls its deleter.
+Successful imports pin the producer until the last explicit lease; exports
+own another lease. Opaque capabilities, truthful pointers/extents, producer
+lifetime for null deleters and exclusive coordinated access remain caller
+duties. No GPU stream, arbitrary graph or optimizer conversion is claimed.
+
+Check: `psionic/check.sh --only interchange` exercises debug/release Coax,
+native plain/ASan/UBSan and real NumPy producer/consumer lifetimes, with an
+independent external-weight to Coax-training to portable-inference round trip.
+Full mutation is omitted under owner instruction. See
+`docs/verification/psionic-ch4a-2026-10-29.md`.
+
 ## Psionic original-weight admission binds complete immutable byte inventories
 
 `psionic/lib/model-io/` owns `original-weights-v1`: rank 0–4 BF16/F32

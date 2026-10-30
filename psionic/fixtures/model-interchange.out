@@ -1,0 +1,4 @@
+Portable parameter: scale.weight, F32 [1], 4 bytes
+Continued in Coax from 0.5: weight = 1.9999998
+Reloaded prediction at x=3: 5.999999
+No object deserialization or original framework executes.

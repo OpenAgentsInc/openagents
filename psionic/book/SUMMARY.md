@@ -8,6 +8,7 @@
 - [3a. A standard library of tensor operators](ch003a-a-standard-library-of-tensor-operators.md)
 - [3b. One tensor, several devices and dtypes](ch003b-one-tensor-several-devices-and-dtypes.md)
 - [4. Reading original weights](ch004-reading-original-weights.md)
+- [4a. Models travel between frameworks](ch004a-models-travel-between-frameworks.md)
 - [5. Text becomes a model request](ch005-text-becomes-a-model-request.md)
 - [6. Attention without training](ch006-attention-without-training.md)
 - [7. A hybrid sequence model](ch007-a-hybrid-sequence-model.md)

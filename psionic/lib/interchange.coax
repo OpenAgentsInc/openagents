@@ -1,0 +1,125 @@
+// Chapter 4a: bounded inert parameter maps and contiguous CPU exchange policy.
+#load "model-io/reader.coax";
+#load "tensor-view.coax";
+#load "learn.coax";
+#authority;
+IC_MAX_BYTES :: 4194304;
+// book:begin records
+IcStatus :: enum u32 {ok;argument;version;dtype;shape;capacity;alias;number;format;name;ownership;memory;range;training;}
+IcTensor :: struct {name:[128]u8;name_count:int;shape:TvShape;dtype:u32;source:int;bytes:int;present:bool=true;version:u32=1;flags:u32;}
+IcPlan :: struct {status:IcStatus;count:int;payload:int;header:int;total:int;order:[16]int;source:[16]int;offset:[16]int;}
+IcResult :: struct {status:IcStatus;written:int;}
+IcDlPlan :: struct {status:IcStatus;shape:TvShape;elements:int;bytes:int;strides:[4]int;}
+IcLease :: struct {refs:int=1;live:bool=true;}
+IcLeaseChange :: struct {status:IcStatus;next:IcLease;dispose:bool;}
+IcFit :: struct {status:IcStatus;weight:f32;loss:f32;}
+// book:end records
+#test "a named parameter map sizes a canonical inert file before data access" {
+    name:="scale.weight";t:IcTensor;t.name_count=name.count;for i:0..<name.count {t.name[i]=name[i];}t.shape=TvShape.{rank=1,dims=[4]int.[1,0,0,0]};t.bytes=4;
+    tensors:=[1]IcTensor.[t];p:=ic_plan(tensors[..]);#assert p.status==IcStatus.ok && p.payload==4 && p.total==p.header+12 && p.header%8==0;
+    data:=[4]u8.[0,0,0,63];out:[512]u8;stage:[512]u8;r:=ic_write(tensors[..],data[..],out[..],stage[..],false);#assert r.status==IcStatus.ok && r.written==p.total;
+    parsed:[16]IcTensor;#assert ic_inspect(out[0..<r.written],parsed[..],false).written==1 && parsed[0].name_count==12 && parsed[0].bytes==4;
+    tensors[0].dtype=8;#assert ic_plan(tensors[..]).status==IcStatus.dtype;
+}
+#test "writer aliases duplicate names and bad values preserve public output" {
+    t:IcTensor;t.name[0]=97;t.name_count=1;t.shape=TvShape.{};t.bytes=4;
+    ts:=[2]IcTensor.[t,t];#assert ic_plan(ts[..]).status==IcStatus.name;
+    data:=[4]u8.[0,0,128,127];out:=[8]u8.[7,7,7,7,7,7,7,7];stage:[512]u8;
+    #assert ic_write(ts[0..<1],data[..],out[..],stage[..],true).status==IcStatus.alias && out[0]==7;
+    big:[512]u8;big[0]=7;#assert ic_write(ts[0..<1],data[..],big[..],stage[..],false).status==IcStatus.number && big[0]==7;
+}
+#test "DLPack prefix and contiguous layout guards precede pointer reads" {
+    #assert ic_dl_version(1,1,0)==IcStatus.ok && ic_dl_version(1,2,0)==IcStatus.version && ic_dl_version(0,0,0)==IcStatus.ok;
+    #assert ic_dl_prefix(1,0,2,0,2,2,32,1,0,true,false)==IcStatus.dtype;
+    #assert ic_dl_prefix(1,2,1,0,2,2,32,1,0,true,false)==IcStatus.shape;
+    shape:=TvShape.{rank=2,dims=[4]int.[2,3,0,0]};p:=ic_dl_layout(shape,[4]int.[3,1,0,0],true);#assert p.status==IcStatus.ok && p.bytes==24;
+    #assert ic_dl_layout(shape,[4]int.[1,2,0,0],true).status==IcStatus.shape;
+    #assert ic_pointer(p,0,true,true,true)==IcStatus.ok && ic_pointer(p,1,true,false,true)==IcStatus.argument;
+    #assert ic_descriptor(1,0,shape,24,true,0).status==IcStatus.ok && ic_descriptor(2,0,shape,24,true,0).status==IcStatus.version;
+}
+#test "export leases keep data alive and continuation uses the original Coax trainer" {
+    lease:=IcLease.{};a:=ic_retain(lease);#assert a.status==IcStatus.ok && a.next.refs==2;b:=ic_release(a.next);#assert !b.dispose && b.next.refs==1;c:=ic_release(b.next);#assert c.dispose && !c.next.live;
+    #assert ic_access(c.next)==IcStatus.ownership && !ic_count(17) && ic_count(1) && ic_bytes(4194304) && !ic_bytes(4194305);
+    fit:=ic_continue(0.5,16);#assert fit.status==IcStatus.ok && abs(fit.weight-2.0f32)<0.000001f32 && fit.loss<0.00000000001f32;
+}
+#test "metadata guards and layout edges are explicit" {
+    #assert ic_fields(1,0,1,12,4,0,true)==IcStatus.ok && ic_fields(1,0,5,12,4,0,true)==IcStatus.shape;
+    #assert ic_fields(1,0,1,128,4,0,true)==IcStatus.name && ic_fields(1,0,1,12,4194305,0,true)==IcStatus.range;
+    #assert ic_dl_layout(TvShape.{},[4]int.[0,0,0,0],false).bytes==4;
+    #assert ic_dl_layout(TvShape.{rank=2,dims=[4]int.[3,0,0,0]},[4]int.[0,0,0,0],true).bytes==0;
+    #assert ic_dl_prefix(1,0,1,0,1,2,32,1,4,true,true)==IcStatus.argument;
+    #assert ic_retain(IcLease.{refs=1024}).status==IcStatus.ownership;
+    #assert ic_release(IcLease.{live=false}).status==IcStatus.ownership;
+    #assert ic_continue(0.5,0).status==IcStatus.training;
+}
+#forall "contiguous strides match independent rank-two formulas" rows:1..<5,columns:1..<5 {
+    shape:=TvShape.{rank=2,dims=[4]int.[rows,columns,0,0]};r:=ic_dl_layout(shape,[4]int.[columns,1,0,0],true);
+    #assert r.status==IcStatus.ok && r.elements==rows*columns && r.bytes==4*rows*columns && r.strides[0]==columns;
+    #assert (ic_dl_layout(shape,[4]int.[columns,2,0,0],true).status==IcStatus.ok)==(columns==1);
+}
+#test "native destinations are admitted before allocation or publication" {
+    p:=IcPlan.{total=132};#assert ic_write_destination(p,132,true,false)==IcStatus.ok;
+    #assert ic_write_destination(p,131,true,false)==IcStatus.capacity;
+    #assert ic_write_destination(p,132,true,true)==IcStatus.alias;
+    #assert ic_destination(false,false)==IcStatus.argument && ic_destination(true,true)==IcStatus.alias;
+}
+ic_destination :: (present:bool,overlap:bool)->IcStatus #export_c {
+    if !present {return IcStatus.argument;}if overlap {return IcStatus.alias;}return IcStatus.ok;
+}
+ic_write_destination :: (p:IcPlan,capacity:u64,present:bool,overlap:bool)->IcStatus #export_c {
+    if p.status!=IcStatus.ok {return p.status;}z:=ic_destination(present,overlap);if z!=IcStatus.ok {return z;}
+    if capacity<u64(p.total) {return IcStatus.capacity;}return IcStatus.ok;
+}
+ic_fields :: (version:u32,dtype:u32,rank:int,n:u64,bytes:u64,flags:u32,present:bool)->IcStatus #export_c {
+    if version!=1 {return IcStatus.version;}if dtype>1 {return IcStatus.dtype;}if rank<0 || rank>4 {return IcStatus.shape;}
+    if n<1 || n>127 {return IcStatus.name;}if !ic_bytes(bytes) {return IcStatus.range;}if flags>1 || !present {return IcStatus.argument;}return IcStatus.ok;
+}
+ic_count :: (n:int)->bool #export_c {return n>=1 && n<=16;}
+ic_bytes :: (n:u64)->bool #export_c {return n<=u64(IC_MAX_BYTES);}
+ic_name :: (t:IcTensor)->bool {if t.name_count<1 || t.name_count>=128 {return false;}for i:0..<t.name_count {c:=t.name[i];if c<33 || c>126 || c==34 || c==92 {return false;}}reserved:="__metadata__";if t.name_count==reserved.count {same:=true;for i:0..<reserved.count {if t.name[i]!=reserved[i] {same=false;}}if same {return false;}}return true;}
+ic_compare :: (a:IcTensor,b:IcTensor)->int {n:=a.name_count;if b.name_count<n {n=b.name_count;}for i:0..<n {if a.name[i]<b.name[i] {return -1;}if a.name[i]>b.name[i] {return 1;}}if a.name_count<b.name_count {return -1;}if a.name_count>b.name_count {return 1;}return 0;}
+ic_text :: (out:[]u8,at:int,text:string)->int {cursor:=at;for c:text {out[cursor]=c;cursor+=1;}return cursor;}
+ic_decimal :: (out:[]u8,at:int,n:int)->int {digits:[20]u8;value:=n;used:=0;for pass:0..<20 {if pass==0 || value>0 {digits[used]=cast(u8)(48+value%10);used+=1;value/=10;}}for j:0..<used {out[at+j]=digits[used-1-j];}return at+used;}
+ic_header :: (t:[]IcTensor,p:IcPlan,out:[]u8)->int {at:=ic_text(out,0,"{\"__metadata__\":{\"format\":\"psionic-interchange-v1\"}");for i:0..<t.count {id:=p.order[i];tensor:=t[id];at=ic_text(out,at,",\"");for j:0..<tensor.name_count {out[at]=tensor.name[j];at+=1;}at=ic_text(out,at,"\":{\"dtype\":\"");if tensor.dtype==0 {at=ic_text(out,at,"F32");}else {at=ic_text(out,at,"BF16");}at=ic_text(out,at,"\",\"shape\":[");for axis:0..<tensor.shape.rank {if axis>0 {at=ic_text(out,at,",");}at=ic_decimal(out,at,tensor.shape.dims[axis]);}at=ic_text(out,at,"],\"data_offsets\":[");at=ic_decimal(out,at,p.offset[id]);at=ic_text(out,at,",");at=ic_decimal(out,at,p.offset[id]+tensor.bytes);at=ic_text(out,at,"]}");}at=ic_text(out,at,"}");for pass:0..<7 {if at%8!=0 {out[at]=32;at+=1;}}return at;}
+ic_plan :: (t:[]IcTensor)->IcPlan #export_c {
+    if !ic_count(t.count) {return IcPlan.{status=IcStatus.capacity};}p:=IcPlan.{count=t.count};
+    for i:0..<t.count {x:=t[i];if x.version!=1 {return IcPlan.{status=IcStatus.version};}if x.dtype>1 {return IcPlan.{status=IcStatus.dtype};}if x.flags>1 || !x.present {return IcPlan.{status=IcStatus.argument};}if !ic_name(x) {return IcPlan.{status=IcStatus.name};}n:=tv_elements(x.shape);if n.status!=TvStatus.ok || n.elements==0 {return IcPlan.{status=IcStatus.shape};}width:=4;if x.dtype==1 {width=2;}if x.bytes!=n.elements*width || x.bytes>IC_MAX_BYTES-p.payload {return IcPlan.{status=IcStatus.range};}p.source[i]=p.payload;p.payload+=x.bytes;p.order[i]=i;
+        for j:0..<i {if ic_compare(x,t[j])==0 {return IcPlan.{status=IcStatus.name};}}
+    }
+    for i:0..<t.count {for j:i+1..<t.count {if ic_compare(t[p.order[j]],t[p.order[i]])<0 {tmp:=p.order[i];p.order[i]=p.order[j];p.order[j]=tmp;}}}
+    at:=0;for i:0..<t.count {id:=p.order[i];p.offset[id]=at;at+=t[id].bytes;}header:[16384]u8;p.header=ic_header(t,p,header[..]);p.total=8+p.header+p.payload;return p;
+}
+ic_finite_payload :: (t:IcTensor,bytes:[]u8)->bool {width:=4;dtype:=PwDtype.f32;if t.dtype==1 {width=2;dtype=PwDtype.bf16;}for i:0..<t.bytes/width {if pw_word(bytes,i*width,width).status!=PwStatus.ok {return false;}word:=pw_word(bytes,i*width,width).bits;if dtype==PwDtype.bf16 {word<<=16;}if (word&0x7fffffff)>=0x7f800000 {return false;}}return true;}
+ic_write :: (t:[]IcTensor,data:[]u8,out:[]u8,stage:[]u8,overlap:bool)->IcResult #export_c {p:=ic_plan(t);if p.status!=IcStatus.ok {return IcResult.{status=p.status};}if overlap {return IcResult.{status=IcStatus.alias};}if data.count!=p.payload || out.count<p.total || stage.count<p.total {return IcResult.{status=IcStatus.capacity};}
+    for i:0..<t.count {if !ic_finite_payload(t[i],data[p.source[i]..<p.source[i]+t[i].bytes]) {return IcResult.{status=IcStatus.number};}}
+    for j:0..<8 {stage[j]=cast,trunc(u8)(u64(p.header)>>u64(8*j));}header:[16384]u8;#assert ic_header(t,p,header[..])==p.header;for j:0..<p.header {stage[8+j]=header[j];}
+    for i:0..<t.count {for j:0..<t[i].bytes {stage[8+p.header+p.offset[i]+j]=data[p.source[i]+j];}}for i:0..<p.total {out[i]=stage[i];}return IcResult.{written=p.total};
+}
+ic_inspect :: (file:[]u8,out:[]IcTensor,overlap:bool)->IcResult #export_c {
+    if file.count<10 || file.count>IC_MAX_BYTES+16392 {return IcResult.{status=IcStatus.format};}if overlap {return IcResult.{status=IcStatus.alias};}h:=pw_header(file);if h.status!=PwStatus.ok || h.data>16392 || file.count-h.data>IC_MAX_BYTES {return IcResult.{status=IcStatus.format};}draft:[16]PwTensor;parsed:[16]PwTensor;r:=pw_inspect_checked(file,parsed[..],draft[..],false);if r.status!=PwStatus.ok {return IcResult.{status=IcStatus.format};}if out.count<r.written {return IcResult.{status=IcStatus.capacity};}stage:[16]IcTensor;
+    for i:0..<r.written {x:=parsed[i];if x.name.count>=128 || x.elements>TV_LIMIT {return IcResult.{status=IcStatus.range};}t:=IcTensor.{name_count=x.name.count,shape=TvShape.{rank=x.shape.rank,dims=x.shape.dims},dtype=0,source=x.begin,bytes=x.end-x.begin};if x.dtype==PwDtype.bf16 {t.dtype=1;}for j:0..<x.name.count {t.name[j]=x.name[j];}if !ic_name(t) {return IcResult.{status=IcStatus.name};}if !ic_finite_payload(t,file[t.source..<t.source+t.bytes]) {return IcResult.{status=IcStatus.number};}stage[i]=t;}
+    for i:0..<r.written {out[i]=stage[i];}return IcResult.{written=r.written};
+}
+// book:begin dlpack
+ic_dl_version :: (kind:int,major:int,minor:int)->IcStatus #export_c {if kind<0 || kind>1 {return IcStatus.argument;}if kind==1 && (major!=1 || minor<0 || minor>2) {return IcStatus.version;}return IcStatus.ok;}
+ic_dl_prefix :: (kind:int,minor:int,device:int,index:int,rank:int,code:int,bits:int,lanes:int,flags:u64,shape:bool,strides:bool)->IcStatus #export_c {if device!=1 || index!=0 || code!=2 || bits!=32 || lanes!=1 {return IcStatus.dtype;}if rank<0 || rank>4 || (rank>0 && !shape) || (kind==1 && minor>=2 && rank>0 && !strides) {return IcStatus.shape;}if flags>3 {return IcStatus.argument;}return IcStatus.ok;}
+ic_dl_layout :: (shape:TvShape,strides:[4]int,present:bool)->IcDlPlan #export_c {n:=tv_elements(shape);if n.status!=TvStatus.ok {return IcDlPlan.{status=IcStatus.shape};}expected:=tv_contiguous(tv_owner(1,1,n.elements).storage,shape,false).view.strides;if present && n.elements>0 {for i:0..<shape.rank {if shape.dims[i]>1 && strides[i]!=expected[i] {return IcDlPlan.{status=IcStatus.shape};}}}return IcDlPlan.{shape=shape,elements=n.elements,bytes=4*n.elements,strides=expected};}
+ic_pointer :: (p:IcDlPlan,offset:u64,present:bool,aligned:bool,span:bool)->IcStatus #export_c {if p.status!=IcStatus.ok {return p.status;}if offset>u64(IC_MAX_BYTES) {return IcStatus.range;}if p.bytes>0 && (!present || !aligned || !span || offset%4!=0) {return IcStatus.argument;}return IcStatus.ok;}
+ic_descriptor :: (version:u32,dtype:u32,shape:TvShape,bytes:u64,present:bool,flags:u32)->IcDlPlan #export_c {if version!=1 {return IcDlPlan.{status=IcStatus.version};}if dtype!=0 {return IcDlPlan.{status=IcStatus.dtype};}p:=ic_dl_layout(shape,[4]int.[0,0,0,0],false);if p.status!=IcStatus.ok {return p;}if bytes!=u64(p.bytes) || (p.bytes>0 && !present) || flags>1 {return IcDlPlan.{status=IcStatus.argument};}return p;}
+// book:end dlpack
+// book:begin leases
+ic_access :: (s:IcLease)->IcStatus #export_c {
+    if !s.live || s.refs<1 || s.refs>1024 {return IcStatus.ownership;}
+    return IcStatus.ok;
+}
+ic_retain :: (s:IcLease)->IcLeaseChange #export_c {
+    if ic_access(s)!=IcStatus.ok || s.refs>=1024 {return IcLeaseChange.{status=IcStatus.ownership};}
+    n:=s;n.refs+=1;return IcLeaseChange.{next=n};
+}
+ic_release :: (s:IcLease)->IcLeaseChange #export_c {
+    if ic_access(s)!=IcStatus.ok {return IcLeaseChange.{status=IcStatus.ownership};}
+    n:=s;n.refs-=1;if n.refs==0 {n.live=false;}
+    return IcLeaseChange.{next=n,dispose=n.refs==0};
+}
+// book:end leases
+ic_continue :: (weight:f32,steps:int)->IcFit #export_c {x:=[2]f32.[1,2];y:=[2]f32.[2,4];trace:[65]f32;scratch:[65]f32;r:=psionic_train_checked(x[..],y[..],weight,steps,trace[..],scratch[..],false);if r.status!=PsionicStatus.ok {return IcFit.{status=IcStatus.training};}return IcFit.{weight=r.weight,loss=r.loss};}
