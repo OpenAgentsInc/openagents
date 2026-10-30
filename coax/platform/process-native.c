@@ -211,7 +211,9 @@ static void drain_stderr(Proc *p) {
 /* A complete line in buf from scan on, or 0. */
 static int find_line(Proc *p) {
   char *nl = p->scan < p->buf.count ? memchr(p->buf.data + p->scan, '\n', p->buf.count - p->scan) : NULL;
-  if (!nl) { p->scan = p->buf.count; return 0; }
+  /* No newline yet: nothing is consumed (scan marks what the next call forgets,
+     so a partial line read before a timeout must stay in the buffer). */
+  if (!nl) return 0;
   size_t end = (size_t)(nl - p->buf.data);
   p->line_start = 0; p->line_len = end;
   if (p->line_len && p->buf.data[p->line_len - 1] == '\r') p->line_len--;

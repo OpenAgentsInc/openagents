@@ -5,8 +5,9 @@
 // goes on curl's stdin; curl prints the status line and headers (-i), then
 // the body unbuffered (-N), one line at a time. The key never passes
 // through curl's arguments: curl reads it from the environment variable
-// named key_env (--variable) and expands it into the Authorization header
-// itself. When the caller has the key from a file (key_value), it goes into
+// named key_env (--variable) and expands it into the key header
+// (Authorization unless key_header says otherwise) itself. A keyless door
+// (key_env "", a server on loopback) sends no key header. When the caller has the key from a file (key_value), it goes into
 // that variable in the child's environment only, never into an argument or a
 // log. Closing the stream (gw_close) kills curl, which closes the
 // connection: a server that watches for disconnects stops its work.
@@ -19,7 +20,8 @@ GwClient :: struct {
   url: string;                   // the full endpoint, e.g. http://127.0.0.1:8080/v1/responses
   key_env: string;               // the variable curl reads the key from
   key_value: string;             // "" when the variable is already in this process's environment
-  scheme: string = "Bearer";
+  key_header: string = "Authorization";   // Gemini's API takes x-goog-api-key, Anthropic's x-api-key
+  scheme: string = "Bearer";     // "" sends the key alone: "x-goog-api-key: KEY"
   curl: string = "curl";         // found on PATH; needs curl 8.3 or later (--variable)
   connect_timeout_s: int = 5;
   max_time_s: int = 300;
@@ -48,6 +50,11 @@ gw_name_ok :: (s: string) -> bool {
   for c: s { if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') { return false; } }
   return true;
 }
+gw_header_name_ok :: (s: string) -> bool {
+  if s.count == 0 { return false; }
+  for c: s { if !((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
 gw_part :: (h: int, field: int, s: string) -> bool {
   for c: s { if c == 0 || cxproc_push(h, field, cast(int) c) != 0 { return false; } }
   return true;
@@ -66,8 +73,11 @@ gw_digits :: (out: [] u8, v: int) -> string {
 // value" each). What went wrong, or "" (st is then live until gw_close).
 gw_start :: (c: GwClient, body: string, headers: [] string, st: [] GwStream) -> string {
   st[0] = GwStream.{};
-  if !gw_name_ok(c.key_env) { return "key_env must be a plain variable name"; }
-  if c.key_value.count == 0 {
+  keyed := c.key_env.count > 0;
+  if keyed && !gw_name_ok(c.key_env) { return "key_env must be a plain variable name"; }
+  if !keyed && c.key_value.count > 0 { return "a key needs a key_env to travel in"; }
+  if !gw_header_name_ok(c.key_header) { return "key_header must be a plain header name"; }
+  if keyed && c.key_value.count == 0 {
     for ch: c.key_env { k := cxproc_getenv_push(cast(int) ch); }
     if cxproc_getenv() <= 0 { return "the API key is not set"; }
   }
@@ -79,9 +89,12 @@ gw_start :: (c: GwClient, body: string, headers: [] string, st: [] GwStream) -> 
   ok := gw_arg(h, c.curl) && gw_arg(h, "-sS") && gw_arg(h, "-N") && gw_arg(h, "-i");
   ok = ok && gw_arg(h, "--connect-timeout") && gw_arg(h, gw_digits(num[..], c.connect_timeout_s));
   ok = ok && gw_arg(h, "--max-time") && gw_arg(h, gw_digits(num2[..], c.max_time_s));
-  ok = ok && gw_arg(h, "--variable") && gw_part(h, CL_FIELD_ARG, "%") && gw_arg(h, c.key_env);
-  ok = ok && gw_arg(h, "--expand-header") && gw_part(h, CL_FIELD_ARG, "Authorization: ") && gw_part(h, CL_FIELD_ARG, c.scheme)
-          && gw_part(h, CL_FIELD_ARG, " {{") && gw_part(h, CL_FIELD_ARG, c.key_env) && gw_arg(h, "}}");
+  if keyed {
+    ok = ok && gw_arg(h, "--variable") && gw_part(h, CL_FIELD_ARG, "%") && gw_arg(h, c.key_env);
+    ok = ok && gw_arg(h, "--expand-header") && gw_part(h, CL_FIELD_ARG, c.key_header) && gw_part(h, CL_FIELD_ARG, ": ");
+    if c.scheme.count > 0 { ok = ok && gw_part(h, CL_FIELD_ARG, c.scheme) && gw_part(h, CL_FIELD_ARG, " "); }
+    ok = ok && gw_part(h, CL_FIELD_ARG, "{{") && gw_part(h, CL_FIELD_ARG, c.key_env) && gw_arg(h, "}}");
+  }
   ok = ok && gw_arg(h, "-H") && gw_arg(h, "Content-Type: application/json");
   ok = ok && gw_arg(h, "-H") && gw_arg(h, "Accept: text/event-stream");
   ok = ok && gw_arg(h, "-H") && gw_arg(h, "Expect:");
@@ -171,4 +184,5 @@ gw_unreachable :: (st: [] GwStream) -> bool { return st[0].status == 0 && (st[0]
   d: [24] u8;
   #assert gw_digits(d[..], 300) == "300" && gw_digits(d[..], 0) == "0";
   #assert gw_name_ok("PSIONIC_API_KEY") && !gw_name_ok("A B") && !gw_name_ok("");
+  #assert gw_header_name_ok("x-goog-api-key") && gw_header_name_ok("Authorization") && !gw_header_name_ok("A: b") && !gw_header_name_ok("");
 }

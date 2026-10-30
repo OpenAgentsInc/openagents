@@ -1,0 +1,162 @@
+event: response.created
+data: {"type":"response.created","sequence_number":0,"response":{"id":"gen_01M2YE8SJTQ7H57B8QEXG9951J","object":"response","created_at":1789875482,"status":"in_progress","completed_at":null,"incomplete_details":null,"error":null,"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}},"model":"zai/glm-5.3-flash","instructions":"You are terse. Answer with the words asked for and nothing else.","previous_response_id":null,"temperature":1,"top_p":1,"max_output_tokens":null,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_tool_calls":null,"text":{"format":{"type":"text"}},"truncation":"disabled","reasoning":null,"store":false,"background":false,"service_tier":"auto","metadata":{},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_retention":null}}
+
+event: response.in_progress
+data: {"type":"response.in_progress","sequence_number":1,"response":{"id":"gen_01M2YE8SJTQ7H57B8QEXG9951J","object":"response","created_at":1789875482,"status":"in_progress","completed_at":null,"incomplete_details":null,"error":null,"output":[],"usage":{"input_tokens":0,"output_tokens":0,"total_tokens":0,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}},"model":"zai/glm-5.3-flash","instructions":"You are terse. Answer with the words asked for and nothing else.","previous_response_id":null,"temperature":1,"top_p":1,"max_output_tokens":null,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_tool_calls":null,"text":{"format":{"type":"text"}},"truncation":"disabled","reasoning":null,"store":false,"background":false,"service_tier":"auto","metadata":{},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_retention":null}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":2,"output_index":0,"item":{"type":"reasoning","id":"rs_1789875482589_57sinzpov04","summary":[]}}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":3,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"The"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":4,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" user"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":5,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" wants"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":6,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" me"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":7,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" to"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":8,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" count"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":9,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" from"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":10,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" one"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":11,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" to"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":12,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" five"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":13,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":","}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":14,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" one"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":15,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" word"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":16,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" per"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":17,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" line"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":18,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"."}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":19,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" So"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":20,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" I"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":21,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" should"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":22,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" write"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":23,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":":\n\n"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":24,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"one"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":25,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"\n"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":26,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"two"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":27,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"\n"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":28,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"three"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":29,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"\n"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":30,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"four"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":31,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"\n"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":32,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"five"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":33,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"\n\n"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":34,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"Nothing"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":35,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":" else"}
+
+event: response.reasoning.delta
+data: {"type":"response.reasoning.delta","sequence_number":36,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"delta":"."}
+
+event: response.reasoning.done
+data: {"type":"response.reasoning.done","sequence_number":37,"item_id":"rs_1789875482589_57sinzpov04","output_index":0,"content_index":0,"text":"The user wants me to count from one to five, one word per line. So I should write:\n\none\ntwo\nthree\nfour\nfive\n\nNothing else."}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":38,"output_index":0,"item":{"type":"reasoning","id":"rs_1789875482589_57sinzpov04","summary":[],"content":[{"type":"reasoning_text","text":"The user wants me to count from one to five, one word per line. So I should write:\n\none\ntwo\nthree\nfour\nfive\n\nNothing else."}]}}
+
+event: response.output_item.added
+data: {"type":"response.output_item.added","sequence_number":39,"output_index":1,"item":{"type":"message","id":"msg_1789875482592_2gyag0s9uuq","status":"in_progress","role":"assistant","content":[{"type":"output_text","text":"","annotations":[],"logprobs":[]}]}}
+
+event: response.content_part.added
+data: {"type":"response.content_part.added","sequence_number":40,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"part":{"type":"output_text","text":"","annotations":[],"logprobs":[]}}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":41,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"one","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":42,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"\n","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":43,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"two","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":44,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"\n","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":45,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"three","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":46,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"\n","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":47,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"four","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":48,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"\n","logprobs":[]}
+
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","sequence_number":49,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"delta":"five","logprobs":[]}
+
+event: response.output_text.done
+data: {"type":"response.output_text.done","sequence_number":50,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"text":"one\ntwo\nthree\nfour\nfive","logprobs":[]}
+
+event: response.content_part.done
+data: {"type":"response.content_part.done","sequence_number":51,"item_id":"msg_1789875482592_2gyag0s9uuq","output_index":1,"content_index":0,"part":{"type":"output_text","text":"one\ntwo\nthree\nfour\nfive","annotations":[],"logprobs":[]}}
+
+event: response.output_item.done
+data: {"type":"response.output_item.done","sequence_number":52,"output_index":1,"item":{"type":"message","id":"msg_1789875482592_2gyag0s9uuq","status":"completed","role":"assistant","content":[{"type":"output_text","text":"one\ntwo\nthree\nfour\nfive","annotations":[],"logprobs":[]}]}}
+
+event: response.completed
+data: {"type":"response.completed","sequence_number":53,"response":{"id":"gen_01M2YE8SJTQ7H57B8QEXG9951J","object":"response","created_at":1789875482,"status":"completed","completed_at":1789875482,"incomplete_details":null,"error":null,"output":[{"type":"reasoning","id":"rs_1789875482589_57sinzpov04","summary":[],"content":[{"type":"reasoning_text","text":"The user wants me to count from one to five, one word per line. So I should write:\n\none\ntwo\nthree\nfour\nfive\n\nNothing else."}]},{"type":"message","id":"msg_1789875482592_2gyag0s9uuq","status":"completed","role":"assistant","content":[{"type":"output_text","text":"one\ntwo\nthree\nfour\nfive","annotations":[],"logprobs":[]}]}],"usage":{"input_tokens":38,"output_tokens":45,"total_tokens":83,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":34}},"model":"glm-5.3-flash","instructions":"You are terse. Answer with the words asked for and nothing else.","previous_response_id":null,"temperature":1,"top_p":1,"max_output_tokens":null,"presence_penalty":0,"frequency_penalty":0,"top_logprobs":0,"tools":[],"tool_choice":"none","parallel_tool_calls":true,"max_tool_calls":null,"text":{"format":{"type":"text"}},"truncation":"disabled","reasoning":null,"store":false,"background":false,"service_tier":"auto","metadata":{},"safety_identifier":null,"prompt_cache_key":null,"prompt_cache_retention":null,"provider_metadata":{"zai":{},"gateway":{"routing":{"originalModelId":"zai/glm-5.3-flash","resolvedProvider":"baseten","fallbacksAvailable":["runware","fireworks","wafer","particle","zai","togetherai","streamlake","parasail","digitalocean","friendli","novita","modal","morph","deepinfra","relace","runinfra","boundless","inference-net","gmicloud"],"planningReasoning":"Weighted tie pick: runware won tier 1 over fireworks. BYOK credentials available for: zai. BYOK execution order prioritizes zai over routing preference baseten. System credentials planned for: baseten, runware, fireworks, wafer, particle, zai, togetherai, streamlake, parasail, digitalocean, friendli, novita, modal, morph, deepinfra, relace, runinfra, boundless, inference-net, gmicloud. Total execution order: zai(BYOK) → baseten(system) → runware(system) → fireworks(system) → wafer(system) → particle(system) → zai(system) → togetherai(system) → streamlake(system) → parasail(system) → digitalocean(system) → friendli(system) → novita(system) → modal(system) → morph(system) → deepinfra(system) → relace(system) → runinfra(system) → boundless(system) → inference-net(system) → gmicloud(system)","canonicalSlug":"zai/glm-5.3-flash","finalProvider":"zai","modelAttemptCount":1,"modelAttempts":[{"canonicalSlug":"zai/glm-5.3-flash","success":true,"providerAttemptCount":1,"providerAttempts":[{"provider":"zai","credentialType":"byok","success":true,"startTime":1789875480192,"endTime":1789875482589,"providerRequestId":"20260920113800d863c90ebf1741f0","statusCode":200,"providerResponseId":"20260920113800d863c90ebf1741f0"}]}],"totalProviderAttemptCount":1},"cost":"0","marketCost":"0.0000282","surchargeCost":"0","gatewayCost":"0","generationId":"gen_01M2YE8SJTQ7H57B8QEXG9951J"}}}}
+

@@ -1,0 +1,89 @@
+// The gateway transport against a local server (smoke.sh runs it): a
+// streamed answer must hand back its text deltas while the response is
+// still coming, the key must reach the server in its header and nowhere
+// else, and a 401 must come back as one refused event.
+
+#import "Basic";
+#load "gateway.coax";
+
+KEY_ENV :: "GW_SMOKE_KEY";
+
+stream :: (url: string) -> bool {
+  b: [1] GwCallBuffers; call: [1] GwCall;
+  gw_call_init(call[..], b[..]);
+  g := Gateway.{name = "local", url = url, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES};
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "count"};
+  body := gw_translate(g, GwRequest.{model = "local", messages = msgs[..]}, out[..], why[..]);
+  none: [1] string;
+  e := gw_call_start(call[..], g, body, none[0..<0]);
+  if e.count > 0 { print("start: %\n", e); return false; }
+  t0 := cxproc_now_ms(); first_ms := -1; end_ms := -1;
+  text: [256] u8; nt := 0; done := false; leak := false;
+  ev: [8] GwEvent;
+  while !call[0].finished {
+    n := gw_call_poll(call[..], ev[..]);
+    for i: 0..<n {
+      x := ev[i];
+      if x.kind == GW_EV_TEXT {
+        if first_ms < 0 { first_ms = cxproc_now_ms() - t0; }
+        for c: x.text { if nt < text.count { text[nt] = c; nt += 1; } }
+      }
+      if x.kind == GW_EV_DONE { done = x.usage.input_tokens == 7; end_ms = cxproc_now_ms() - t0; }
+      if x.kind == GW_EV_REFUSED { print("refused: % %\n", x.status, x.reason); end_ms = cxproc_now_ms() - t0; }
+    }
+  }
+  got := cast(string) text[0..<nt];
+  print("stream: first delta at %ms, done at %ms, text %\n", first_ms, end_ms, got);
+  ok := done && got == "One\nTwo\nkey_ok,args_clean,body_ok";
+  ok = ok && first_ms >= 0 && end_ms - first_ms >= 500;   // three 400 ms gaps: the first delta came well before the end
+  return ok;
+}
+
+refuse :: (url: string) -> bool {
+  b: [1] GwCallBuffers; call: [1] GwCall;
+  gw_call_init(call[..], b[..]);
+  g := Gateway.{name = "local", url = url, key_env = KEY_ENV, wire = GW_WIRE_RESPONSES};
+  none: [1] string;
+  e := gw_call_start(call[..], g, "{\"model\":\"local\"}", none[0..<0]);
+  if e.count > 0 { print("start: %\n", e); return false; }
+  ev: [8] GwEvent; got: GwEvent; count := 0; 
+  while !call[0].finished {
+    n := gw_call_poll(call[..], ev[..]);
+    for i: 0..<n { got = ev[i]; count += 1; }
+  }
+  print("refuse: % events, status %, reason %, first %\n", count, got.status, got.reason, call[0].first);
+  return count == 1 && got.kind == GW_EV_REFUSED && got.status == 401 && got.reason == "bad key" && !call[0].first;
+}
+
+unreachable :: () -> bool {
+  b: [1] GwCallBuffers; call: [1] GwCall;
+  gw_call_init(call[..], b[..]);
+  g := Gateway.{name = "nowhere", url = "http://127.0.0.1:9/v1/responses", key_env = KEY_ENV, wire = GW_WIRE_RESPONSES};
+  none: [1] string;
+  e := gw_call_start(call[..], g, "{\"model\":\"local\"}", none[0..<0]);
+  if e.count > 0 { print("start: %\n", e); return false; }
+  ev: [8] GwEvent; got: GwEvent;
+  while !call[0].finished {
+    n := gw_call_poll(call[..], ev[..]);
+    for i: 0..<n { got = ev[i]; }
+  }
+  print("unreachable: status %, reason %\n", got.status, got.reason);
+  return got.kind == GW_EV_REFUSED && got.status == 0 && got.reason == "the server is unreachable";
+}
+
+main :: () {
+  for ch: "GW_SMOKE_URL" { k := cxproc_getenv_push(cast(int) ch); }
+  n := cxproc_getenv();
+  url: [256] u8;
+  if n <= 0 || n > url.count { print("set GW_SMOKE_URL\n"); return; }
+  for i: 0..<n { url[i] = cast(u8) cxproc_getenv_byte(i); }
+  base := cast(string) url[0..<n];
+  ok := stream(base);
+  ru: [300] u8;
+  for i: 0..<n { ru[i] = url[i]; }
+  for c, i: "refuse" { ru[n + i] = c; }
+  ok = refuse(cast(string) ru[0..<n + 6]) && ok;
+  ok = unreachable() && ok;
+  print("smoke: %\n", ifx ok then "ok" else "FAILED");
+}
