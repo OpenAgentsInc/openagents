@@ -626,7 +626,10 @@ goes further out where it doesn't fit, saying how many didn't; it refuses
 a place in a building, the woods or another thing; and publishes the edits as
 Everglade's world (`POST /api/playtest/world/everglade`, admin site session
 only). Everyone sees them. `POST /api/playtest/world/everglade/reset` puts
-the designed city back; every version is kept in the realm's log. The
+the designed city back; every version is kept in the realm's log. A golden
+shot (goldens.ts, host.js golden mode) never asks for the published world:
+it is the designed city, so edits made while testing can't hold a release
+back. The
 switch is per realm: `"voice": "everglade"` in `apps/openagents-web/realms.json`.
 
 ### The verbs and the catalogue (eg-voice-verbs, eg-voice-catalogue, eg-voice-fallback)

@@ -196,7 +196,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
 static void edit_out(uint32_t state) {
   coax_t_Everglade *g = city(state);
   edit_face_drain((coax_v_t_RealmEdit){g->ev.ed.e, 1});   /* the shared edit layer's one request */
-  if (facts_seen && !world_asked) {
+  // a golden shot is the designed city: what admins published (test edits too) never holds a release back
+  if (facts_seen && !world_asked && !golden) {
     world_asked = true;
     world_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, 0, 0, 4);
   }
