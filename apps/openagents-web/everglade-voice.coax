@@ -960,8 +960,8 @@ edit_walls :: (s: [] Everglade) {
 
 ev_text :: (s: [] Everglade) -> string {
   p := cast(string) s[0].ev.phase[0..<s[0].ev.phase_n];
-  if s[0].ev.held && (p == "" || p == "off" || p == "connecting") { return "CONNECTING · KEEP HOLDING"; }
-  if s[0].ev.held && p == "listening" { return "LISTENING · SAY WHAT TO CHANGE"; }
+  if s[0].ev.held && (p == "" || p == "off" || p == "connecting") { return "CONNECTING"; }
+  if s[0].ev.held && p == "listening" { return "LISTENING"; }
   if p == "hearing" && s[0].ev.caption_n > 0 { return cast(string) s[0].ev.caption[0..<s[0].ev.caption_n]; }
   if p == "notice" && s[0].ev.caption_n > 0 { return cast(string) s[0].ev.caption[0..<s[0].ev.caption_n]; }
   // the last result, then the sentence with the server (or next), as heard, and how many wait after it
