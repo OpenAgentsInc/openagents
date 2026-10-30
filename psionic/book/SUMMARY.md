@@ -73,6 +73,7 @@
 - [178. A suite is three digests](ch178-a-suite-is-three-digests.md)
 - [179. How far a metric moves by itself](ch179-how-far-a-metric-moves-by-itself.md)
 - [180. Gates that can say unverifiable](ch180-gates-that-can-say-unverifiable.md)
+- [181. Environments with checkers](ch181-environments-with-checkers.md)
 - [182. Fit settings on recorded answers](ch182-fit-settings-on-recorded-answers.md)
 - [183. Search a policy, cheapest first](ch183-search-a-policy-cheapest-first.md)
 
@@ -81,6 +82,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–61, 63, 66, 70–71, 115, 156–158, 160, 164a, 165–169, 172, 178–180, 182 and 183 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–61, 63, 66, 70–71, 115, 156–158, 160, 164a, 165–169, 172 and 178–183 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–40 and the remaining outlines
 remain proposed.

@@ -620,6 +620,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/checked-environments.coax",
+      "chapter": "psionic/book/ch181-environments-with-checkers.md",
+      "stdout": "psionic/fixtures/checked-environments.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

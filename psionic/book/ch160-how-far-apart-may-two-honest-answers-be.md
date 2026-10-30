@@ -337,9 +337,8 @@ round is struck.
 - **An independent oracle,** [distance_oracle.py](../tests/distance_oracle.py),
   writes the items, backends, distance, percentiles, rounds, limits and live
   round again. The example's output equals its figures.
-- **Mutation testing** of `distance.coax`: the first run killed 2,372 of
-  2,395 mutants. The fixes below followed; the rerun's result is in the
-  verification record.
+- **Mutation testing** of `distance.coax` kills all 2,398 mutants. The first
+  run killed 2,372 of 2,395; the fixes below followed.
   Writing it for mutation changed several things:
   - **The distance names its option.** A running maximum whose `>=` variant
     stores the same value can't be told apart; naming the option can.

@@ -1,0 +1,11 @@
+40 environments (16 sort, 9 dedupe, 15 prefix sums), exact checkers, 3 attempts each: 40 admitted
+  the first: sort [6 9 4 4 2 3 9 3] -> [2 3 3 4 4 6 9 9], digest 2432ec011b437478
+the same task with a weak checker or a wrong reference:
+  anything checker: refused: empty work passes
+  length only checker: refused: a near miss passes
+  exact checker, reference [3 3 3 4 4 6 9 9]: refused: the reference fails
+agent with skill 0.35: solved 32 of 40, 18 on the first attempt, 78 attempts in all; 40 of 40 replay exactly
+agent with skill 0.75: solved 39 of 40, 29 on the first attempt, 53 attempts in all; 40 of 40 replay exactly
+  its first rollout: solved false, 3 attempts, digest db5a0f2fd029bd9d
+  claimed in 1 attempt instead: replay refuses
+  replayed against a changed environment: refuses

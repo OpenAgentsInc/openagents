@@ -1,0 +1,58 @@
+#import "Basic";
+#load "../lib/env.coax";
+
+KIND :: [3]string.["sort","dedupe","prefix sums"];
+CHECKER :: [3]string.["exact","length only","anything"];
+ADMIT :: [4]string.["admitted","refused: empty work passes","refused: the reference fails","refused: a near miss passes"];
+print_digest :: (d:[32]u8) {
+    digits:="0123456789abcdef";text:[16]u8;
+    for i:0..<8 {text[2*i]=digits[cast(int)(d[i]>>4)];text[2*i+1]=digits[cast(int)(d[i]&15)];}
+    print("%",cast(string)text[..]);
+}
+show_work :: (w:EnWork) {print("[");for i:0..<w.size {if i>0 {print(" ");}print("%",w.v[i]);}print("]");}
+
+// book:begin example
+main :: () {
+    tasks:[40]EnTask;#assert en_tasks(181,tasks[..])==EnStatus.ok;
+    envs:[40]EnEnv;kinds:[3]int;admitted:=0;
+    for t,i:tasks {
+        envs[i]=EnEnv.{task=t,checker=EnChecker.exact,attempts=3,reference=en_solve(t)};
+        kinds[cast(int)t.kind]+=1;
+        if en_admit(envs[i])==EnAdmit.admitted {admitted+=1;}
+    }
+    print("40 environments (% sort, % dedupe, % prefix sums), exact checkers, 3 attempts each: % admitted\n",
+        kinds[0],kinds[1],kinds[2],admitted);
+    e:=envs[0];
+    print("  the first: % ",KIND[cast(int)e.task.kind]);show_work(e.task.work);print(" -> ");show_work(e.reference);
+    print(", digest ");print_digest(en_digest(e));print("\n");
+
+    // Three environments that must not be admitted.
+    print("the same task with a weak checker or a wrong reference:\n");
+    for c:0..<2 {
+        x:=e;x.checker=cast(EnChecker)(2-c);
+        print("  % checker: %\n",CHECKER[2-c],ADMIT[cast(int)en_admit(x)]);
+    }
+    x:=e;x.reference.v[0]+=1;print("  exact checker, reference ");show_work(x.reference);print(": %\n",ADMIT[cast(int)en_admit(x)]);
+
+    // Two simulated agents, one rollout per environment.
+    agents:=[2]EnAgent.[EnAgent.{seed=1810,skill=0.35},EnAgent.{seed=1811,skill=0.75}];
+    first:[2]EnRollout;
+    for g,k:agents {
+        solved:=0;once:=0;spent:=0;replayed:=0;
+        for env,i:envs {
+            r:=en_rollout(env,g,i);if i==0 {first[k]=r;}
+            if r.solved {solved+=1;if r.attempts==1 {once+=1;}}
+            spent+=r.attempts;
+            if en_replay(env,g,i,r) {replayed+=1;}
+        }
+        print("agent with skill %: solved % of 40, % on the first attempt, % attempts in all; % of 40 replay exactly\n",
+            g.skill,solved,once,spent,replayed);
+    }
+    r:=first[0];
+    print("  its first rollout: solved %, % attempts, digest ",r.solved,r.attempts);print_digest(r.digest);print("\n");
+    claimed:=r;claimed.attempts=1;
+    print("  claimed in 1 attempt instead: replay %\n",ifx en_replay(envs[0],agents[0],0,claimed) then "accepts" else "refuses");
+    other:=envs[0];other.reference.v[0]+=1;
+    print("  replayed against a changed environment: %\n",ifx en_replay(other,agents[0],0,r) then "accepts" else "refuses");
+}
+// book:end example
