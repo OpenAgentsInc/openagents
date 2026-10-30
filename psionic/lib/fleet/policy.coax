@@ -1,0 +1,74 @@
+// Chapter 20: bounded fleet admission, selection and reply publication.
+// The caller supplies verified parser/crypto observations; this unit never
+// turns an unverified observation into authority. No allocation or I/O.
+#authority;
+
+MF_PEERS :: 32;
+MfPeer :: struct {present:bool;tried:bool;generation:int;observed:int;valid_until:int;status:int;free:int;identity:string;}
+
+#test "every beacon gate is required and owner-auth is unsupported" {
+    for bits:0..<16 {
+        #assert mf_offer((bits&1)!=0,(bits&2)!=0,(bits&4)!=0,(bits&8)!=0)==(bits==11);
+    }
+}
+#test "a generation may advance but an old sample never overwrites it" {
+    #assert mf_newer(false,0,0,99,99);
+    #assert mf_newer(true,8,10,7,100) && mf_newer(true,7,101,7,100);
+    #assert !mf_newer(true,6,101,7,100) && !mf_newer(true,7,100,7,100) && !mf_newer(true,7,99,7,100);
+}
+#test "only fresh, available, online and exact-identity peers can route" {
+    p:=[2]MfPeer.[MfPeer.{present=true,generation=1,observed=100,valid_until=200,status=0,free=1,identity="toy@sha256:x"},MfPeer.{}];
+    #assert mf_choose(p[..],100,"toy@sha256:x")==0 && mf_choose(p[..],200,"toy@sha256:x")==0;
+    #assert mf_choose(p[..],201,"toy@sha256:x")==-1 && mf_choose(p[..],69,"toy@sha256:x")==-1 && mf_choose(p[..],70,"toy@sha256:x")==0;
+    #assert mf_choose(p[..],100,"other")==-1 && mf_choose(p[..],100,"")==-1 && mf_choose(p[..],-1,"toy@sha256:x")==-1;
+    for i:0..<10 {
+        bad:=p[0];
+        if i==0 {bad.present=false;}if i==1 {bad.tried=true;}if i==2 {bad.status=1;}if i==3 {bad.status=2;}
+        if i==4 {bad.free=0;}if i==5 {bad.free=65;}if i==6 {bad.observed=-1;}if i==7 {bad.valid_until=99;}
+        if i==8 {bad.valid_until=401;}if i==9 {bad.generation=-1;}
+        q:=[1]MfPeer.[bad];#assert mf_choose(q[..],100,"toy@sha256:x")==-1;
+    }
+    p[1]=p[0];p[1].free=2;#assert mf_choose(p[..],100,"toy@sha256:x")==1;
+    p[0].free=2;#assert mf_choose(p[..],100,"toy@sha256:x")==0;
+    many:[33]MfPeer;many[0]=p[0];#assert mf_choose(many[..],100,"toy@sha256:x")==-1;
+    empty:[1]MfPeer;#assert mf_choose(empty[0..<0],100,"toy@sha256:x")==-1;
+    old:=p[0];old.observed=0;old.valid_until=300;q:=[1]MfPeer.[old];
+    #assert mf_choose(q[..],300,"toy@sha256:x")==0 && mf_choose(q[..],301,"toy@sha256:x")==-1;
+}
+#test "capacity, zero clocks and exact scalar boundaries remain usable" {
+    p:=[1]MfPeer.[MfPeer.{present=true,generation=0,observed=0,valid_until=0,status=0,free=64,identity="x"}];
+    #assert mf_choose(p[..],0,"x")==0;
+    full:[32]MfPeer;full[31]=p[0];#assert mf_choose(full[..],0,"x")==31;
+}
+#test "every reply observation gates publication" {
+    for bits:0..<128 {#assert mf_reply((bits&1)!=0,(bits&2)!=0,(bits&4)!=0,(bits&8)!=0,(bits&16)!=0,(bits&32)!=0,(bits&64)!=0)==(bits==127);}
+}
+#test "local fallback preserves exact identity and remaining budget" {
+    #assert mf_fallback(true,true,1) && mf_fallback(true,true,30000);
+    #assert !mf_fallback(false,true,1) && !mf_fallback(true,false,1) && !mf_fallback(true,true,0) && !mf_fallback(true,true,-1);
+}
+
+// verified: full Nostr event check. parsed: pb_read returned ok. auth: owner
+// auth tag present; this first fleet cannot verify that tag and refuses it.
+// fresh: pb_fresh accepted the receipt time and held generation.
+mf_offer :: (verified:bool,parsed:bool,auth:bool,fresh:bool)->bool #export_c {return verified && parsed && !auth && fresh;}
+mf_newer :: (held:bool,generation:int,observed:int,old_generation:int,old_observed:int)->bool #export_c {
+    return !held || generation>old_generation || (generation==old_generation && observed>old_observed);
+}
+// The greatest advertised free count wins; a tie retains the earlier slot.
+// A failed attempt is marked tried and cannot be selected again for this call.
+mf_choose :: (peers:[]MfPeer,now:int,identity:string)->int #export_c {
+    if peers.count>MF_PEERS || now<0 || identity.count==0 {return -1;}
+    best:=-1;free:=0;
+    for i:0..<peers.count {
+        p:=peers[i];
+        if !p.present || p.tried || p.generation<0 || p.status!=0 || p.free<1 || p.free>64 || p.identity!=identity {continue;}
+        if p.observed<0 || p.observed>now+30 || p.valid_until<p.observed || p.valid_until>p.observed+300 || now>p.valid_until {continue;}
+        if p.free>free {best=i;free=p.free;}
+    }
+    return best;
+}
+mf_reply :: (verified:bool,decrypted:bool,provider:bool,correlated:bool,request:bool,identity:bool,timely:bool)->bool #export_c {
+    return verified && decrypted && provider && correlated && request && identity && timely;
+}
+mf_fallback :: (configured:bool,identity:bool,left_ms:int)->bool #export_c {return configured && identity && left_ms>0;}

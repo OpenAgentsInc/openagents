@@ -890,6 +890,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/fleet-route.coax",
+      "chapter": "psionic/book/ch020-the-api-fans-out.md",
+      "stdout": "psionic/fixtures/fleet-route.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

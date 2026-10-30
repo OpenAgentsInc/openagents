@@ -1,0 +1,52 @@
+// Free decision selection inside an already admitted v1 beacon. The whole
+// beacon still goes through ph_read_beacon; this never grants event authority.
+#load "protocol.coax";
+#authority;
+
+#test "array membership reads values, never nested text or fragments" {
+    #assert mf_contains("[\"other\",\"free-v1\"]","free-v1") && mf_contains("[\"fr\\u0065e-v1\"]","free-v1");
+    #assert !mf_contains("[]","free-v1") && !mf_contains("[1]","free-v1") && !mf_contains("{}","free-v1") && !mf_contains("[\"free-v1\"] x","free-v1");
+}
+#test "free service binds exact model, capability, lane and terms" {
+    #assert mf_free_service(PB_CONTENT,PB_KEY,PB_IDENTITY);
+    from:=[7]string.["\"free-v1\"","pylon/decision","cj-decision","\"offering\":null","\"price_hint_msat\":null","elephant-1@","\"services\":["];
+    to:=[7]string.["\"paid-v1\"","pylon/other","cj-execution","\"offering\":\"30192:k:paid\"","\"price_hint_msat\":1","other@","\"services\":[] ,\"extra\":["];
+    out:[4096]u8;for i:0..<7 {#assert !mf_free_service(pd_swap(out[..],PB_CONTENT,from[i],to[i]),PB_KEY,PB_IDENTITY);}
+    #assert !mf_free_service(PB_CONTENT,PB_OWNER,PB_IDENTITY) && !mf_free_service("{}",PB_KEY,PB_IDENTITY);
+    #assert mf_free_service(pd_swap(out[..],PB_CONTENT,"\"price_hint_msat\":null","\"price_hint_msat\":0"),PB_KEY,PB_IDENTITY);
+}
+mf_contains :: (raw:string,value:string)->bool {
+    if !json_valid(raw) {return false;}j:[1]Json;json_start(j[..],raw);if json_next(j[..])!=JSON_ARRAY {return false;}found:=false;
+    t:=json_next(j[..]);while t!=JSON_ARRAY_END {if t!=JSON_STRING {return false;}if json_is(json_text(j[..]),value) {found=true;}t=json_next(j[..]);}return found;
+}
+mf_free_service :: (content:string,provider:string,identity:string)->bool #export_c {
+    settlement:=mf_get(content,"settlement");services:=mf_get(content,"services");
+    if !settlement.ok || !mf_contains(settlement.raw,"free-v1") || !services.ok || services.token!=JSON_ARRAY {return false;}
+    cap:[128]u8;n:=json_raw(cap[..],0,provider);n=json_raw(cap[..],n,":pylon/decision");
+    j:[1]Json;json_start(j[..],services.raw);t:=json_next(j[..]);
+    while true {
+        t=json_next(j[..]);if t==JSON_ARRAY_END {break;}raw:=pt_raw(j[..],t);
+        model:=mf_get(raw,"model");capability:=mf_get(raw,"capability");lane:=mf_get(raw,"lanes");offering:=mf_get(raw,"offering");price:=mf_get(raw,"price_hint_msat");v:=json_int(price.text);
+        if mf_string(model,identity) && mf_string(capability,cast(string)cap[0..<n]) && lane.ok && mf_contains(lane.raw,"cj-decision") && offering.token==JSON_NULL && (price.token==JSON_NULL || (price.token==JSON_NUMBER && v.ok && v.value==0)) {return true;}
+    }
+    return false;
+}
+
+#test "local HTTP framing is complete, exact200 and unambiguous" {
+    good:="HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\n{}";
+    #assert mf_local_http(good).ok && mf_local_http(good).response=="{}";
+    from:=[7]string.["200 OK","200 OK","Content-Length: 2","Content-Length: 2","Content-Length: 2","\r\n\r\n{}","HTTP/1.1"];
+    to:=[7]string.["2000 OK","503 Busy","Content-Length: 3","Content-Length: 2\r\nContent-Length: 3","Transfer-Encoding: chunked","\r\n{}","HTTP/1.0"];
+    out:[512]u8;for i:0..<7 {#assert !mf_local_http(pd_swap(out[..],good,from[i],to[i])).ok;}
+    #assert !mf_local_http("").ok && !mf_local_http("HTTP/1.1 200 ").ok;
+}
+// Reuse chapter16's checked header parser for framing: only the response's
+// fixed200 status line is replaced with that parser's known request line.
+// This does not turn response JSON into a request or select its identity.
+mf_local_http :: (text:string)->MfResult #export_c {
+    bad:MfResult;if text.count<13 || text[0..<13]!="HTTP/1.1 200 " {return bad;}
+    line:=pb_index(text,"\r\n");at:=pb_index(text,"\r\n\r\n");if line<13 || at<line {return bad;}
+    head:[8192]u8;n:=json_raw(head[..],0,"POST /v1/systemone HTTP/1.1\r\n");n=json_raw(head[..],n,text[line+2..<at+4]);if n<0 {return bad;}
+    h:=sv_head(cast(string)head[0..<n]);if h.status!=SvHeadStatus.ready || h.body!=text.count-at-4 {return bad;}
+    return MfResult.{ok=true,response=text[at+4..<text.count]};
+}

@@ -587,7 +587,7 @@ compilation is checked; iOS runtime remains unqualified.
   `schema` and `transport`, not yet the request digest the deployed reader
   checks.
 - **The owner's `auth` tag** on the beacon, and many Pylons together:
-  [chapter 20](PLAN.md) fans the API out across them, and
+  [chapter 20](ch020-the-api-fans-out.md) fans the API out across them, and
   [chapter 21](PLAN.md) adds receipts and checks.
 
 See the [verification record](../../docs/verification/psionic-ch19-2026-10-29.md)

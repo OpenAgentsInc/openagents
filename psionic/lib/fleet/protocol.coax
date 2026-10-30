@@ -1,0 +1,142 @@
+// Chapter 20 wire projection. JSON and request admission are existing checked
+// units; this file adds the buyer's correlation, answer shape and identity
+// checks. All strings borrow immutable request/result buffers.
+#load "../pylon/host.coax";
+#load "../serve-request.coax";
+#authority;
+
+MfField :: struct {ok:bool;token:int;raw:string;text:string;}
+MfNumber :: struct {ok:bool;units:int;}
+MfDistribution :: struct {ok:bool;best:int;maximum:int;score:int;}
+MfResult :: struct {ok:bool;response:string;}
+MF_UNIT :: 1000000000;
+MF_TOL :: 1000; // one part per million; each emitted value has nine decimals
+MF_ID :: "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573";
+MF_CALL :: "{\"model\":\"psionic-toy\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"criteria\":{\"yes\":null,\"no\":null}}}}";
+MF_RESPONSE :: "{\"model\":\"psionic-toy\",\"answers\":{\"wet\":{\"type\":\"choice\",\"choice\":\"yes\",\"confidence\":0.7,\"probabilities\":{\"yes\":0.7,\"no\":0.3}}},\"service\":{\"door\":\"pylon:studio-gpu\",\"provider\":\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\"}}";
+
+#test "field access preserves raw values, requires one key and a whole object" {
+    f:=mf_get("{\"k\":{\"x\":[1]},\"s\":\"a\\nb\"}","k");#assert f.ok && f.token==JSON_OBJECT && f.raw=="{\"x\":[1]}";
+    #assert mf_get("{\"\\u006b\":3}","k").raw=="3";
+    #assert !mf_get("{\"k\":1,\"k\":2}","k").ok && !mf_get("{\"k\":1,\"\\u006b\":2}","k").ok;
+    #assert !mf_get("[]","k").ok && !mf_get("{","k").ok && !mf_get("{} x","k").ok && !mf_get("{}","k").ok;
+    #assert mf_empty("[ ]") && !mf_empty("[0]") && !mf_empty("{}");
+}
+#test "the emitted decimal profile has exact bounded integer units" {
+    #assert mf_number("0").ok && mf_number("0").units==0 && mf_number("9").units==9*MF_UNIT;
+    #assert mf_number("0.000000001").units==1 && mf_number("1.25").units==1250000000 && mf_number("1.000000000").units==MF_UNIT;
+    for s:[12]string.["","-1",".1","1.","1.0000000001","10","1e0","x","1x","1..0","01","1.a"] {#assert !mf_number(s).ok;}
+    #assert mf_less("a","b") && mf_less("a","aa") && !mf_less("a","a") && !mf_less("aa","a") && !mf_less("b","a");
+}
+#test "a job carries only admitted model, state and questions with fresh correlation" {
+    out:[2048]u8;n:=mf_job(MF_CALL,"demo-1",1,100,out[..]);#assert n>0;
+    #assert mf_get(cast(string)out[0..<n],"model").raw=="\"psionic-toy\"" && mf_get(cast(string)out[0..<n],"request").raw=="\"demo-1\"";
+    #assert mf_get(cast(string)out[0..<n],"state").raw=="\"Water is wet.\"" && mf_get(cast(string)out[0..<n],"attempt").raw=="1" && mf_get(cast(string)out[0..<n],"deadline").raw=="100";
+    #assert mf_job(MF_CALL,"",1,100,out[..])==-1 && mf_job(MF_CALL,"r",0,100,out[..])==-1 && mf_job(MF_CALL,"r",1,0,out[..])==-1;
+    #assert mf_job("{}","r",1,100,out[..])==-1 && mf_job(MF_CALL,"r",1,100,out[0..<10])==-1;
+}
+#test "remote body identity and every question bind the answer" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);#assert r.code==SvCode.none;
+    #assert mf_answer(MF_RESPONSE,r,pools,MF_ID,PB_KEY,"studio-gpu");
+    from:=[14]string.["\"model\":\"psionic-toy\"","\"identity\":\"psionic-toy@","\"provider\":\"f930","\"door\":\"pylon:studio-gpu\"","\"wet\":{","\"type\":\"choice\"","\"choice\":\"yes\"","\"confidence\":0.7","\"no\":0.3","\"yes\":0.7","\"probabilities\":{","\"answers\":{","\"service\":{","\"no\":0.3"];
+    to:=[14]string.["\"model\":\"other\"","\"identity\":\"other@","\"provider\":\"e930","\"door\":\"pylon:other\"","\"other\":{","\"type\":\"noul\"","\"choice\":\"no\"","\"confidence\":0.2","\"no\":0.4","\"yes\":1.7","\"probabilities\":[] ,\"extra\":{","\"answers\":[] ,\"extra\":{","\"service\":[] ,\"extra\":{","\"no\":\"0.3\""];
+    out:[4096]u8;for i:0..<14 {#assert !mf_answer(pd_swap(out[..],MF_RESPONSE,from[i],to[i]),r,pools,MF_ID,PB_KEY,"studio-gpu");}
+    #assert !mf_answer("{}",r,pools,MF_ID,PB_KEY,"studio-gpu");
+    // A tie chooses the lexicographically first name, independent of key order.
+    tie:=pd_swap(out[..],MF_RESPONSE,"0.7","0.5");other:[4096]u8;tie1:=pd_swap(other[..],tie,"0.7","0.5");third:[4096]u8;tie2:=pd_swap(third[..],tie1,"0.3","0.5");fourth:[4096]u8;
+    #assert mf_answer(pd_swap(fourth[..],tie2,"\"choice\":\"yes\"","\"choice\":\"no\""),r,pools,MF_ID,PB_KEY,"studio-gpu");
+}
+#test "noul and score answers validate all asked options" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+    call:="{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"n\":{\"type\":\"noul\"},\"s\":{\"type\":\"score\",\"criteria\":[null,null]}}}";r:=sv_decode(call,pools);
+    body:="{\"model\":\"psionic-toy\",\"answers\":{\"n\":{\"type\":\"noul\",\"noul\":0.3},\"s\":{\"type\":\"score\",\"score\":0.7,\"confidence\":0.7,\"selected\":\"1\",\"probabilities\":{\"0\":0.3,\"1\":0.7}}},\"service\":{\"door\":\"psionic\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\"}}";
+    #assert mf_answer(body,r,pools,MF_ID,"","");out:[4096]u8;
+    #assert !mf_answer(pd_swap(out[..],body,"\"score\":0.7","\"score\":0.2"),r,pools,MF_ID,"","");
+    #assert !mf_answer(pd_swap(out[..],body,"\"noul\":0.3","\"noul\":1.3"),r,pools,MF_ID,"","");
+    #assert !mf_answer(pd_swap(out[..],body,"\"selected\":\"1\"","\"selected\":\"0\""),r,pools,MF_ID,"","");
+}
+#test "result wrapper binds version, request, attempt and deployed outcome" {
+    out:[4096]u8;n:=json_raw(out[..],0,"{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"result\",\"request\":\"demo-1\",\"attempt\":1,\"outcome\":\"answered\",\"response\":");n=json_raw(out[..],n,MF_RESPONSE);n=json_raw(out[..],n,"}");text:=cast(string)out[0..<n];
+    #assert mf_result(text,"demo-1",1).ok && mf_result(text,"demo-1",1).response==MF_RESPONSE;
+    #assert !mf_result(text,"other",1).ok && !mf_result(text,"demo-1",2).ok && !mf_result("{}","demo-1",1).ok;
+}
+
+mf_get :: (text:string,name:string)->MfField {
+    bad:MfField;if !json_valid(text) {return bad;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return bad;}
+    r:MfField;
+    while true {
+        t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}key:=json_text(j[..]);t=json_next(j[..]);value:=json_text(j[..]);raw:=pt_raw(j[..],t);
+        if json_is(key,name) {if r.ok {return bad;}r=MfField.{ok=true,token=t,raw=raw,text=value};}
+    }
+    return r;
+}
+mf_string :: (f:MfField,value:string)->bool {return f.ok && f.token==JSON_STRING && json_is(f.text,value);}
+mf_empty :: (raw:string)->bool {j:[1]Json;json_start(j[..],raw);return json_next(j[..])==JSON_ARRAY && json_next(j[..])==JSON_ARRAY_END && json_next(j[..])==JSON_END;}
+// The exact format emitted by Coax's decision serializer: one digit and up
+// to nine fractional digits. Unsupported exponent/long-precision peers refuse.
+mf_number :: (text:string)->MfNumber {
+    if text.count<1 || text.count>11 || text[0]<'0' || text[0]>'9' {return MfNumber.{};}
+    value:=cast(int)(text[0]-'0')*MF_UNIT;if text.count==1 {return MfNumber.{ok=true,units=value};}
+    if text[1]!='.' || text.count<3 {return MfNumber.{};}place:=MF_UNIT/10;
+    for i:2..<text.count {c:=text[i];if c<'0' || c>'9' {return MfNumber.{};}value+=cast(int)(c-'0')*place;place/=10;}
+    return MfNumber.{ok=true,units=value};
+}
+mf_less :: (a:string,b:string)->bool {for i:0..<a.count {if i>=b.count {return false;}if a[i]!=b[i] {return a[i]<b[i];}}return a.count<b.count;}
+mf_job :: (body:string,request:string,attempt:int,deadline:int,out:[]u8)->int #export_c {
+    if !pd_id(request) || attempt<1 || deadline<1 {return -1;}
+    model:=mf_get(body,"model");state:=mf_get(body,"state");questions:=mf_get(body,"questions");
+    if !model.ok || !state.ok || !questions.ok {return -1;}
+    n:=json_raw(out,0,"{\"v\":\"openagents.systemone.v1\",\"requires\":[],\"type\":\"systemone\",\"request\":");n=json_write_string(out,n,request);
+    n=json_raw(out,n,",\"attempt\":");n=json_write_int(out,n,attempt);n=json_raw(out,n,",\"deadline\":");n=json_write_int(out,n,deadline);
+    n=json_raw(out,n,",\"model\":");n=json_raw(out,n,model.raw);n=json_raw(out,n,",\"state\":");n=json_raw(out,n,state.raw);n=json_raw(out,n,",\"questions\":");n=json_raw(out,n,questions.raw);return json_raw(out,n,"}");
+}
+mf_option :: (q:SvQuestion,index:int,pools:SvPools,out:[]u8)->string {
+    if q.kind==PtQuestionKind.score {n:=json_write_int(out,0,index);return cast(string)out[0..<n];}
+    return pools.options[q.first+index].name;
+}
+mf_distribution :: (raw:string,q:SvQuestion,pools:SvPools)->MfDistribution {
+    bad:MfDistribution;j:[1]Json;json_start(j[..],raw);if json_next(j[..])!=JSON_OBJECT {return bad;}
+    seen:[255]bool;sum:=0;count:=0;best:=-1;maximum:=-1;score:=0;
+    while true {
+        t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}if t!=JSON_STRING {return bad;}key:=json_text(j[..]);index:=-1;
+        for i:0..<q.count {name:[16]u8;if json_is(key,mf_option(q,i,pools,name[..])) {index=i;}}
+        if index<0 || seen[index] {return bad;}seen[index]=true;count+=1;
+        if json_next(j[..])!=JSON_NUMBER {return bad;}v:=mf_number(json_text(j[..]));if !v.ok || v.units>MF_UNIT {return bad;}
+        sum+=v.units;score+=index*v.units;
+        left:[16]u8;right:[16]u8;
+        if v.units>maximum || (v.units==maximum && mf_less(mf_option(q,index,pools,left[..]),mf_option(q,best,pools,right[..]))) {best=index;maximum=v.units;}
+    }
+    if count!=q.count || abs(cast(f64)(sum-MF_UNIT))>MF_TOL {return bad;}
+    return MfDistribution.{ok=true,best=best,maximum=maximum,score=score};
+}
+mf_one :: (raw:string,q:SvQuestion,pools:SvPools)->bool {
+    type:=mf_get(raw,"type");
+    if q.kind==PtQuestionKind.noul {v:=mf_get(raw,"noul");n:=mf_number(v.text);return mf_string(type,"noul") && v.token==JSON_NUMBER && n.ok && n.units<=MF_UNIT;}
+    d:=mf_get(raw,"probabilities");if !d.ok {return false;}p:=mf_distribution(d.raw,q,pools);if !p.ok {return false;}
+    confidence:=mf_get(raw,"confidence");c:=mf_number(confidence.text);if confidence.token!=JSON_NUMBER || !c.ok || abs(cast(f64)(c.units-p.maximum))>MF_TOL {return false;}
+    if q.kind==PtQuestionKind.choice {return mf_string(type,"choice") && mf_string(mf_get(raw,"choice"),pools.options[q.first+p.best].name);}
+    s:=mf_get(raw,"score");number:=mf_number(s.text);name:[16]u8;return mf_string(type,"score") && s.token==JSON_NUMBER && number.ok && abs(cast(f64)(number.units-p.score))<=MF_TOL && mf_string(mf_get(raw,"selected"),mf_option(q,p.best,pools,name[..]));
+}
+mf_answer :: (body:string,r:SvRequest,pools:SvPools,identity:string,provider:string,slug:string)->bool #export_c {
+    if !mf_string(mf_get(body,"model"),pb_identity_name(identity)) {return false;}
+    service:=mf_get(body,"service");if !service.ok || !mf_string(mf_get(service.raw,"identity"),identity) {return false;}
+    if provider.count>0 {
+        door:[80]u8;n:=json_raw(door[..],0,"pylon:");n=json_raw(door[..],n,slug);
+        if !mf_string(mf_get(service.raw,"provider"),provider) || !mf_string(mf_get(service.raw,"door"),cast(string)door[0..<n]) {return false;}
+    }else if !mf_string(mf_get(service.raw,"door"),"psionic") {return false;}
+    answers:=mf_get(body,"answers");if !answers.ok || answers.token!=JSON_OBJECT {return false;}
+    seen:[64]bool;count:=0;j:[1]Json;json_start(j[..],answers.raw);t:=json_next(j[..]);
+    while true {
+        t=json_next(j[..]);if t==JSON_OBJECT_END {break;}key:=json_text(j[..]);index:=-1;
+        for i:0..<r.questions {if json_is(key,pools.questions[i].id) {index=i;}}
+        if index<0 || seen[index] {return false;}seen[index]=true;count+=1;t=json_next(j[..]);raw:=pt_raw(j[..],t);
+        if !mf_one(raw,pools.questions[index],pools) {return false;}
+    }
+    return count==r.questions;
+}
+mf_result :: (text:string,request:string,attempt:int)->MfResult #export_c {
+    version:=mf_get(text,"v");requires:=mf_get(text,"requires");type:=mf_get(text,"type");req:=mf_get(text,"request");a:=mf_get(text,"attempt");outcome:=mf_get(text,"outcome");response:=mf_get(text,"response");
+    n:=json_int(a.text);
+    if !mf_string(version,PD_VERSION) || !requires.ok || !mf_empty(requires.raw) || !mf_string(type,"result") || !mf_string(req,request) || a.token!=JSON_NUMBER || !n.ok || n.value!=attempt || !mf_string(outcome,"answered") || !response.ok || response.token!=JSON_OBJECT {return MfResult.{};}
+    return MfResult.{ok=true,response=response.raw};
+}

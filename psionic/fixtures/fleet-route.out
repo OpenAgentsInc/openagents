@@ -1,0 +1,5 @@
+remote slot: 1
+after failed attempt: -1
+expired fleet: -1
+local, same identity: true
+local, other identity: false

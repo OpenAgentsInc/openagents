@@ -2057,3 +2057,27 @@ Frozen real data is used only for deterministic golden checks. Release readiness
 also opens the ordinary homepage with real sockets in muted headless Chrome and
 requires all six featured projects, the watch and beacon EOSE. A genuine empty
 provider set is allowed. Scope and checks: [live homepage record](docs/verification/2026-10-30-live-network-homepage.md).
+
+## Psionic fleet results retain the selected identity and attempt
+
+`psionic/lib/fleet/` is the chapter 20 opt-in loopback JSON adapter. A verified
+fresh v1 beacon routes only an online free slot advertising the configured
+exact decision identity and free terms. Held generations do not roll back;
+a newer withdrawal removes the old route. Unknown unrelated services never
+consume route slots. The bounded 32-coordinate history lives until restart.
+
+A remote result publishes only after relay acceptance and full event
+verification, NIP-44 opening, exact provider/buyer/job/request/attempt binding,
+matching service identity/door, valid asked answer shapes and a live budget.
+An older generation's result cannot replace a current attempt. Local fallback
+is explicitly loopback, completely framed HTTP200, and validates the same
+exact identity and answer contract. Stop does not start new fallback work.
+No timeout or lost ephemeral event is represented as a completed decision.
+
+The signing identity is fresh, random and test-grade, in memory only. Public
+beacons remain signed provider declarations, not remote model attestation.
+This does not approve production keys, public ingress, owner-auth beacons,
+v2 groups, payments, receipts, durable retries or production provider trust.
+C owns socket/lifecycle effects only; Coax owns the protocol and routing.
+Check scope and actual commands: `docs/verification/psionic-ch20-2026-10-30.md`;
+the host has its separate Mac/Linux sanitizer record.

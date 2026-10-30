@@ -193,10 +193,12 @@ and E. Then F. G about an hour before the talk.
   owner decision (Psionic PLAN, Part IV).
 - **Privacy.** A Pylon that serves a request reads it. NIP-44 hides jobs only
   from the relay and other observers.
-- **Routing.** Chapter 20 now has a native loopback `psionic-fleet` adapter
-  for `/v1/systemone` fan-out to discovered Pylons and explicitly configured
-  same-identity local fallback. The production cloud API is not wired to it.
-  The stage buyer (F) remains available independently.
+- **Routing is opt-in.** [Chapter 20](../psionic/book/ch020-the-api-fans-out.md)
+  adds a native loopback `psionic-fleet` adapter for JSON `/v1/systemone`
+  requests, exact-identity Pylons, checked answers and same-identity local
+  fallback. Its public-relay rehearsal is recorded below. The production
+  cloud API is not wired to it; the stage buyer (F) remains available
+  independently.
 - **Ephemeral events.** Jobs and answers aren't stored by relays (NIP-DEC).
   A Pylon that's offline when a job is sent misses it.
 

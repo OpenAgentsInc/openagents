@@ -1,0 +1,13 @@
+#import "Basic";
+#load "../lib/fleet/policy.coax";
+main :: () {
+    peers:=[3]MfPeer.[
+        MfPeer.{present=true,generation=1,observed=100,valid_until=200,status=1,free=4,identity="toy@sha256:x"},
+        MfPeer.{present=true,generation=1,observed=100,valid_until=200,status=0,free=1,identity="toy@sha256:x"},
+        MfPeer.{present=true,generation=2,observed=100,valid_until=200,status=0,free=8,identity="other"}];
+    first:=mf_choose(peers[..],120,"toy@sha256:x");print("remote slot: %\n",first);
+    peers[first].tried=true;print("after failed attempt: %\n",mf_choose(peers[..],120,"toy@sha256:x"));
+    print("expired fleet: %\n",mf_choose(peers[..],201,"toy@sha256:x"));
+    print("local, same identity: %\n",mf_fallback(true,true,1000));
+    print("local, other identity: %\n",mf_fallback(true,false,1000));
+}

@@ -28,6 +28,9 @@ Coax restart supervision and exact CPU prefix reuse. The first managed
 deployment is private loopback; [operations](book/ch017-run-it-live.md)
 describe its install and stop commands. Run the focused gate with
 `psionic/check.sh --only live-decision`.
+[Chapter 20](book/ch020-the-api-fans-out.md) adds an opt-in loopback fleet adapter:
+fresh exact-identity Pylons, encrypted correlated jobs, checked answers, and
+same-identity local fallback. It uses throwaway buyer keys and is not public ingress.
 [Chapter 41](book/ch041-original-mxfp4-weights.md) starts the independent gpt-oss
 branch with an exact bounded decoder for its original MXFP4 byte groups.
 [Chapter 42](book/ch042-a-few-experts-then-a-router.md) adds sorted top-k routing
