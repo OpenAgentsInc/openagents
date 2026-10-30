@@ -1,0 +1,5 @@
+operations: 1882, launches: 1132, copies: 250
+resident: 524345344 bytes, slots: 2 of 100663296 bytes, workspace: 91447808 bytes
+copied per decision: 15351152640 bytes
+first copies: weights 6 and 7; last: weight 512, bytes 2013265920 to 2034237440
+smallest budget: 297026048 bytes; one byte less: memory

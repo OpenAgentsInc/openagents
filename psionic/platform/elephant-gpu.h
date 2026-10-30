@@ -11,6 +11,7 @@
 
 #define EG_KERNELS 19   /* DP_KERNELS */
 #define EG_WEIGHTS 514  /* DP_WEIGHTS */
+#define EG_STREAMABLE 277 /* DP_STREAMABLE */
 #define EG_WIDTH 4096   /* DP_WIDTH */
 #define EG_VOCAB 248320 /* DP_VOCAB */
 
@@ -26,7 +27,7 @@ typedef struct {
     PcModule modules[3];
     PcKernel kernels[EG_KERNELS];
     coax_t_DpPlan placed, plan;   /* the opening placement; the current decision */
-    _Bool stream[96];
+    _Bool stream[EG_STREAMABLE];
     coax_t_DpOp *ops;
     PcBuffer workspace, slots[2], arena;
     PcBuffer address[EG_WEIGHTS];
@@ -46,7 +47,7 @@ typedef struct {
 int eg_compile(EgEngine *e, const EgSources *src);
 /* Place the authenticated session's weights for decisions of up to
    max_tokens tokens within budget bytes (0: the free device memory less
-   512 MiB; a larger budget is lowered to that). */
+   256 MiB; a larger budget is lowered to that). */
 int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budget);
 /* Why the last call refused or failed. */
 const char *eg_log(void);

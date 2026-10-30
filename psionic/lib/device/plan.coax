@@ -93,13 +93,24 @@ dp_layout :: (tokens:int)->DpLayout {
 }
 
 // book:begin residency
-// Which weights stream from pinned host memory: the feed-forward matrices,
-// all down projections first, then up, then gate, as many as the budget
-// requires; two 96 MiB slots hold them in turn. Within a kind, layers are
-// taken in bit-reversed order (0, 16, 8, 24, ...), so any number of them is
-// spread across the model. stream[3*layer+k] is set for matrix k (0 gate,
-// 1 up, 2 down) of a layer. Everything else is resident.
-DP_STREAMABLE :: 96;
+// Which weights stream from pinned host memory, through two slots of 96 MiB
+// that hold them in turn. The feed-forward matrices go first: all down
+// projections, then up, then gate, in bit-reversed layer order (0, 16, 8,
+// 24, ...) so any number of them is spread across the model. If that is not
+// enough the head streams, in 21 chunks of up to 12,288 rows, and then the
+// mixer matrices (the projections before each layer's attention or scan),
+// a whole layer at a time in the same spread order. Only the small vectors
+// and the workspace must fit: everything else can stream.
+//
+// Streaming indices: 3*layer+k for feed-forward matrix k (0 gate, 1 up,
+// 2 down); 96+5*layer+k for mixer matrix k (linear: qkv, z, a, b, out; full:
+// q, k, v, out, and k = 4 is no matrix); 256+c for head chunk c.
+DP_FFN_STREAMS :: 96;
+DP_MIXER_BASE :: 96;
+DP_HEAD_BASE :: 256;
+DP_HEAD_ROWS :: 12288;
+DP_HEAD_CHUNKS :: 21;
+DP_STREAMABLE :: 277;
 dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {
     if stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
     total:=0;
@@ -107,36 +118,74 @@ dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {
     slot:=dp_align(2*DP_WIDTH*DP_HIDDEN);
     for i:0..<DP_STREAMABLE {stream[i]=false;}
     if workspace+total<=budget {return DpPlan.{workspace=workspace,resident=total};}
-    over:=workspace+total+2*slot-budget;need:=(over+slot-1)/slot;
-    if need>DP_STREAMABLE {return DpPlan.{status=DpStatus.memory};}
+    over:=workspace+total+2*slot-budget;saved:=0;n:=0;
     kinds:=[3]int.[2,1,0];
-    for i:0..<need {stream[3*dp_spread(i%DP_LAYERS)+kinds[i/DP_LAYERS]]=true;}
-    return DpPlan.{workspace=workspace,resident=total-need*slot,streamed=need*slot,slot=slot,streamed_tensors=need};
+    for i:0..<DP_FFN_STREAMS {if saved<over {stream[3*dp_spread(i%DP_LAYERS)+kinds[i/DP_LAYERS]]=true;saved+=slot;n+=1;}}
+    if saved<over {for c:0..<DP_HEAD_CHUNKS {stream[DP_HEAD_BASE+c]=true;}saved+=dp_weight_bytes(DP_HEAD);n+=DP_HEAD_CHUNKS;}
+    for i:0..<DP_LAYERS {
+        layer:=dp_spread(i);
+        for k:0..<dp_mixers(layer) {
+            x:=DP_MIXER_BASE+5*layer+k;
+            if saved<over {stream[x]=true;saved+=dp_weight_bytes(dp_stream_weight(x));n+=1;}
+        }
+    }
+    if saved<over {return DpPlan.{status=DpStatus.memory};}
+    return DpPlan.{workspace=workspace,resident=total-saved,streamed=saved,slot=slot,streamed_tensors=n};
 }
 // book:end residency
 // Position i of the bit-reversed order of the 32 layers.
 dp_spread :: (i:int)->int {
     return ((i&1)<<4) | (((i>>1)&1)<<3) | (((i>>2)&1)<<2) | (((i>>3)&1)<<1) | ((i>>4)&1);
 }
-// The streaming index of weight w (3*layer+k), or -1 for a weight that never streams.
+// Mixer matrices in a layer: qkv, z, a, b and out in a linear layer; q, k,
+// v and out in a full-attention layer.
+dp_mixers :: (layer:int)->int {if dp_full(layer) {return 4;}return 5;}
+// The streaming index of weight w (the first chunk for the head), or -1 for
+// a weight that never streams. A negative w has a negative j.
 dp_stream_index :: (w:int)->int {
-    layer:=w/DP_PER_LAYER;
-    if layer<0 || layer>=DP_LAYERS {return -1;}
-    k:=w%DP_PER_LAYER-11;
-    if dp_full(layer) {k=w%DP_PER_LAYER-8;}
-    if k<0 || k>2 {return -1;}
-    return 3*layer+k;
+    if w==DP_HEAD {return DP_HEAD_BASE;}
+    layer:=w/DP_PER_LAYER;j:=w%DP_PER_LAYER;
+    if layer>=DP_LAYERS {return -1;}
+    mixer:=6;if dp_full(layer) {mixer=4;}
+    if j>=mixer && j<mixer+dp_mixers(layer) {return DP_MIXER_BASE+5*layer+j-mixer;}
+    ffn:=mixer+dp_mixers(layer);
+    if j>=ffn && j<ffn+3 {return 3*layer+j-ffn;}
+    return -1;
 }
-// The weight of streaming index i.
+// The weight of streaming index i, or -1 for an index that names no matrix.
 dp_stream_weight :: (i:int)->int {
-    layer:=i/3;j:=11+i%3;
-    if dp_full(layer) {j=8+i%3;}
-    return dp_weight(layer,j);
+    if i<0 || i>=DP_STREAMABLE {return -1;}
+    if i>=DP_HEAD_BASE {return DP_HEAD;}
+    if i<DP_FFN_STREAMS {
+        layer:=i/3;j:=11+i%3;
+        if dp_full(layer) {j=8+i%3;}
+        return dp_weight(layer,j);
+    }
+    layer:=(i-DP_MIXER_BASE)/5;k:=(i-DP_MIXER_BASE)%5;
+    if !dp_full(layer) {return dp_weight(layer,6+k);}
+    if k==4 {return -1;}
+    return dp_weight(layer,4+k);
 }
 dp_streamed :: (w:int,stream:[]bool)->bool #export_c {
     i:=dp_stream_index(w);
     return i>=0 && i<stream.count && stream[i];
 }
+// Rows in head chunk c.
+dp_head_rows :: (c:int)->int {
+    if c<DP_HEAD_CHUNKS-1 {return DP_HEAD_ROWS;}
+    return DP_VOCAB-c*DP_HEAD_ROWS;
+}
+// book:begin copy
+// The copy that fills a slot with streaming index x. Its one argument names
+// the host bytes: weight 3+w, a byte offset into it and a byte count.
+dp_copy :: (x:int,slot:int)->DpOp {
+    w:=dp_stream_weight(x);offset:=0;bytes:=dp_weight_bytes(w);
+    if x>=DP_HEAD_BASE {c:=x-DP_HEAD_BASE;offset=2*c*DP_HEAD_ROWS*DP_WIDTH;bytes=2*dp_head_rows(c)*DP_WIDTH;}
+    op:=DpOp.{kind=DpOpKind.copy,tensor=w,slot=slot,count=1};
+    op.args[0]=DpArg.{kind=4,buffer=3+w,offset=offset,count=bytes};
+    return op;
+}
+// book:end copy
 
 // Argument builders.
 dp_int :: (v:int)->DpArg {return DpArg.{kind=0,value=v};}
@@ -146,9 +195,9 @@ dp_w :: (w:int,count:int)->DpArg {return DpArg.{kind=4,buffer=3+w,count=count};}
 // A BF16 matrix; the projection that reads it sets its count.
 dp_matrix :: (w:int)->DpArg {return DpArg.{kind=4,buffer=3+w};}
 
-// The builder also tracks streaming: the streamed weights in schedule order,
+// The builder also tracks streaming: the streaming indices in schedule order,
 // how many there are and how many have been used.
-DpBuilder :: struct {ops:[]DpOp;n:int;ok:bool;stream:[]bool;order:[96]int;count:int;at:int;}
+DpBuilder :: struct {ops:[]DpOp;n:int;ok:bool;stream:[]bool;order:[]int;count:int;at:int;}
 dp_push :: (b:DpBuilder,op:DpOp)->DpBuilder {
     r:=b;
     if b.n>=b.ops.count {r.ok=false;return r;}
@@ -203,17 +252,24 @@ dp_project :: (b:DpBuilder,p:DpLayout,weight:DpArg,rows:int,cols:int,tokens:int,
     e:[12]DpArg;e[0]=dp_int(tokens*rows);e[1]=dp_int(s);e[2]=dp_ws(p.partial,s*tokens*rows);e[3]=dp_ws(output,tokens*rows);
     return dp_push(r,dp_launch(DpKernel.reduce,tokens*rows,e,4));
 }
-// A matrix projection whose weight may stream: wait for its slot, project,
-// then release the slot and prefetch the streamed weight after next.
-dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
-    if !dp_streamed(w,b.stream) {return dp_project(b,p,dp_matrix(w),rows,cols,tokens,input,output);}
+// book:begin take
+// A streamed matrix is read from slot at%2: wait for its copy, use it, then
+// release the slot and start the copy of the streamed matrix after next.
+dp_take :: (b:DpBuilder)->DpBuilder {return dp_push(b,DpOp.{kind=DpOpKind.wait,slot=b.at%2});}
+dp_give :: (b:DpBuilder)->DpBuilder {
     slot:=b.at%2;
-    r:=dp_push(b,DpOp.{kind=DpOpKind.wait,slot=slot});
-    r=dp_project(r,p,DpArg.{kind=4,buffer=1+slot},rows,cols,tokens,input,output);
-    r=dp_push(r,DpOp.{kind=DpOpKind.release,slot=slot});
-    if r.at+2<r.count {r=dp_push(r,DpOp.{kind=DpOpKind.copy,tensor=r.order[r.at+2],slot=slot});}
+    r:=dp_push(b,DpOp.{kind=DpOpKind.release,slot=slot});
+    if r.at+2<r.count {r=dp_push(r,dp_copy(r.order[r.at+2],slot));}
     r.at+=1;return r;
 }
+// A matrix projection whose weight may stream.
+dp_project_weight :: (b:DpBuilder,p:DpLayout,w:int,rows:int,cols:int,tokens:int,input:int,output:int)->DpBuilder {
+    if !dp_streamed(w,b.stream) {return dp_project(b,p,dp_matrix(w),rows,cols,tokens,input,output);}
+    r:=dp_take(b);
+    r=dp_project(r,p,DpArg.{kind=4,buffer=1+b.at%2},rows,cols,tokens,input,output);
+    return dp_give(r);
+}
+// book:end take
 // The offset norm of `rows` rows of x: partial squares, then the scaled rows.
 dp_norm_rows :: (b:DpBuilder,p:DpLayout,rows:int,input:int,scale:DpArg,output:int)->DpBuilder {
     d:=DP_WIDTH;
@@ -245,10 +301,10 @@ dp_finish :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)-
 dp_linear :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)->DpBuilder {
     t:=tokens;d:=DP_WIDTH;w:=layer*DP_PER_LAYER;
     r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
-    r=dp_project(r,p,dp_matrix(w+6),8192,d,t,p.norm,p.qkv);
-    r=dp_project(r,p,dp_matrix(w+7),4096,d,t,p.norm,p.z);
-    r=dp_project(r,p,dp_matrix(w+8),32,d,t,p.norm,p.a);
-    r=dp_project(r,p,dp_matrix(w+9),32,d,t,p.norm,p.b);
+    r=dp_project_weight(r,p,w+6,8192,d,t,p.norm,p.qkv);
+    r=dp_project_weight(r,p,w+7,4096,d,t,p.norm,p.z);
+    r=dp_project_weight(r,p,w+8,32,d,t,p.norm,p.a);
+    r=dp_project_weight(r,p,w+9,32,d,t,p.norm,p.b);
     c:[12]DpArg;c[0]=dp_int(8192);c[1]=dp_int(t);c[2]=dp_ws(p.qkv,t*8192);c[3]=dp_w(w+2,4*8192);c[4]=dp_ws(p.conv,t*8192);
     r=dp_push(r,dp_launch(DpKernel.conv,8192,c,5));
     g:[12]DpArg;g[0]=dp_int(32);g[1]=dp_ws(p.a,t*32);g[2]=dp_ws(p.b,t*32);g[3]=dp_w(w+3,32);g[4]=dp_w(w+4,32);g[5]=dp_ws(p.beta,t*32);g[6]=dp_ws(p.decay,t*32);
@@ -260,15 +316,15 @@ dp_linear :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,input:int,output:int)-
     r=dp_push(r,dp_launch(DpKernel.scan,32*128,s,10));
     n:[12]DpArg;n[0]=dp_f32(0.000001);n[1]=dp_ws(p.draft,t*4096);n[2]=dp_w(w+5,128);n[3]=dp_ws(p.z,t*4096);n[4]=dp_ws(p.mix,t*4096);
     r=dp_push(r,dp_launch(DpKernel.gate_norm,t*32,n,5));
-    r=dp_project(r,p,dp_matrix(w+10),d,4096,t,p.mix,p.out);
+    r=dp_project_weight(r,p,w+10,d,4096,t,p.mix,p.out);
     return dp_finish(r,p,layer,t,input,output);
 }
 dp_attention :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,prefix:int,input:int,output:int)->DpBuilder {
     t:=tokens;d:=DP_WIDTH;w:=layer*DP_PER_LAYER;
     r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
-    r=dp_project(r,p,dp_matrix(w+4),8192,d,t,p.norm,p.qkv);
-    r=dp_project(r,p,dp_matrix(w+5),1024,d,t,p.norm,p.k);
-    r=dp_project(r,p,dp_matrix(w+6),1024,d,t,p.norm,p.v);
+    r=dp_project_weight(r,p,w+4,8192,d,t,p.norm,p.qkv);
+    r=dp_project_weight(r,p,w+5,1024,d,t,p.norm,p.k);
+    r=dp_project_weight(r,p,w+6,1024,d,t,p.norm,p.v);
     a:[12]DpArg;a[0]=dp_int(16);a[1]=dp_int(4);a[2]=dp_ws(p.qkv,t*8192);a[3]=dp_ws(p.k,t*1024);a[4]=dp_w(w+2,256);a[5]=dp_w(w+3,256);
     a[6]=dp_ws(p.rope,t*64);a[7]=dp_ws(p.aq,t*4096);a[8]=dp_ws(p.ak,t*1024);a[9]=dp_f32(0.000001);
     r=dp_push(r,dp_launch(DpKernel.prepare,t*20,a,10));
@@ -279,7 +335,7 @@ dp_attention :: (b:DpBuilder,p:DpLayout,layer:int,tokens:int,prefix:int,input:in
     r=dp_push(r,dp_launch(DpKernel.softmax,t*16,m,6));
     o:[12]DpArg;o[0]=dp_int(t);o[1]=dp_int(16);o[2]=dp_int(4);o[3]=probs;o[4]=dp_ws(p.v,t*1024);o[5]=dp_ws(p.qkv,t*8192);o[6]=dp_ws(p.mix,t*4096);
     r=dp_push(r,dp_launch(DpKernel.attend,t*16*256,o,7));
-    r=dp_project(r,p,dp_matrix(w+7),d,4096,t,p.mix,p.out);
+    r=dp_project_weight(r,p,w+7,d,4096,t,p.mix,p.out);
     return dp_finish(r,p,layer,t,input,output);
 }
 
@@ -311,11 +367,17 @@ dp_replan :: (tokens:int,prefix:int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpP
 dp_stop_point :: (op:DpOp)->bool #export_c {return op.kind==DpOpKind.launch && op.kernel==cast(u8)DpKernel.squares;}
 dp_schedule :: (tokens:int,prefix:int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
     p:=dp_layout(tokens);plan:=placed;
-    b:=DpBuilder.{ops=ops,ok=true,stream=stream};
-    // Streamed weights in schedule order: gate, up, then down of each layer.
-    for i:0..<DP_STREAMABLE {if stream[i] {b.order[b.count]=dp_stream_weight(i);b.count+=1;}}
+    order:[DP_STREAMABLE]int;
+    b:=DpBuilder.{ops=ops,ok=true,stream=stream,order=order[..]};
+    // Streaming indices in schedule order: each layer's mixer matrices, then
+    // its gate, up and down; then the head chunks.
+    for layer:0..<DP_LAYERS {
+        for k:0..<5 {x:=DP_MIXER_BASE+5*layer+k;if stream[x] {order[b.count]=x;b.count+=1;}}
+        for k:0..<3 {x:=3*layer+k;if stream[x] {order[b.count]=x;b.count+=1;}}
+    }
+    for c:0..<DP_HEAD_CHUNKS {x:=DP_HEAD_BASE+c;if stream[x] {order[b.count]=x;b.count+=1;}}
     // Prefetch the first two.
-    for i:0..<2 {if i<b.count {b=dp_push(b,DpOp.{kind=DpOpKind.copy,tensor=b.order[i],slot=i});}}
+    for i:0..<2 {if i<b.count {b=dp_push(b,dp_copy(order[i],i));}}
     input:=p.x0;output:=p.x1;
     for layer:0..<DP_LAYERS {
         if dp_full(layer) {b=dp_attention(b,p,layer,tokens,prefix,input,output);}
@@ -323,13 +385,28 @@ dp_schedule :: (tokens:int,prefix:int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->D
         swap:=input;input=output;output=swap;
     }
     b=dp_norm_last(b,p,tokens,input);
-    a:[12]DpArg;a[0]=dp_int(DP_VOCAB);a[1]=dp_int(DP_WIDTH);a[2]=dp_w(DP_HEAD,DP_VOCAB*DP_WIDTH/4);a[3]=dp_ws(p.final,DP_WIDTH);a[4]=dp_ws(p.lanes,16*DP_VOCAB);
-    b=dp_push(b,dp_launch(DpKernel.matvec,16*DP_VOCAB,a,5));
-    r:[12]DpArg;r[0]=dp_int(DP_VOCAB);r[1]=dp_int(16);r[2]=dp_ws(p.lanes,16*DP_VOCAB);r[3]=dp_ws(p.logits,DP_VOCAB);
-    b=dp_push(b,dp_launch(DpKernel.reduce,DP_VOCAB,r,4));
+    if dp_streamed(DP_HEAD,stream) {
+        for c:0..<DP_HEAD_CHUNKS {
+            slot:=b.at%2;b=dp_take(b);
+            b=dp_readout(b,p,DpArg.{kind=4,buffer=1+slot},c*DP_HEAD_ROWS,dp_head_rows(c),true);
+        }
+    } else {b=dp_readout(b,p,dp_matrix(DP_HEAD),0,DP_VOCAB,false);}
     if !b.ok {return DpPlan.{status=DpStatus.capacity};}
     plan.ops=b.n;return plan;
 }
+// book:begin readout
+// The head's rows first..first+rows: one-token products into 16 lane
+// partials, then their sums into those logits. A streamed chunk's slot is
+// released between the two.
+dp_readout :: (b:DpBuilder,p:DpLayout,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder {
+    a:[12]DpArg;w:=weight;w.count=rows*DP_WIDTH/4;
+    a[0]=dp_int(rows);a[1]=dp_int(DP_WIDTH);a[2]=w;a[3]=dp_ws(p.final,DP_WIDTH);a[4]=dp_ws(p.lanes,16*rows);
+    r:=dp_push(b,dp_launch(DpKernel.matvec,16*rows,a,5));
+    if streamed {r=dp_give(r);}
+    e:[12]DpArg;e[0]=dp_int(rows);e[1]=dp_int(16);e[2]=dp_ws(p.lanes,16*rows);e[3]=dp_ws(p.logits+4*first,rows);
+    return dp_push(r,dp_launch(DpKernel.reduce,rows,e,4));
+}
+// book:end readout
 dp_down :: (layer:int)->int {if dp_full(layer) {return dp_weight(layer,10);}return dp_weight(layer,13);}
 dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder {
     return dp_norm_rows(b,p,1,input+4*(tokens-1)*DP_WIDTH,dp_w(DP_FINAL,DP_WIDTH),p.final);
@@ -395,19 +472,19 @@ dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
     #assert p.total==91447808 && p.lo-p.hi==dp_align(4*88*6144);
     #assert dp_align(0)==0 && dp_align(1)==256 && dp_align(256)==256 && dp_align(257)==512;
 }
-#test "residency streams spread feed-forward matrices only when it must" {
-    stream:[96]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
-    for i:0..<96 {stream[i]=true;}
+#test "residency streams spread feed-forward matrices first, and only when it must" {
+    stream:[277]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    for i:0..<277 {stream[i]=true;}
     fit:=dp_residency(w+all,w,stream[..]);
     #assert fit.status==DpStatus.ok && fit.streamed==0 && fit.resident==all && fit.slot==0 && fit.streamed_tensors==0;
-    for i:0..<96 {#assert !stream[i];}
+    for i:0..<277 {#assert !stream[i];}
     slot:=dp_align(2*4096*12288);
     one:=dp_residency(w+all-1,w,stream[..]);
     #assert one.status==DpStatus.ok && one.streamed_tensors==3 && one.slot==slot && one.resident==all-3*slot && one.streamed==3*slot;
     // Down projections (k = 2) of layers 0, 16 and 8.
     #assert stream[2] && stream[3*16+2] && stream[3*8+2] && !stream[0] && !stream[1] && !stream[3*24+2] && !stream[95];
     nine:=dp_residency(w+all-7*slot,w,stream[..]);
-    #assert nine.streamed_tensors==9;n:=0;for i:0..<96 {if stream[i] {n+=1;}}#assert n==9 && stream[3*2+2] && stream[3*28+2] && !stream[3*18+2];
+    #assert nine.streamed_tensors==9;n:=0;for i:0..<277 {if stream[i] {n+=1;}}#assert n==9 && stream[3*2+2] && stream[3*28+2] && !stream[3*18+2];
     downs:=dp_residency(w+all-30*slot,w,stream[..]);
     #assert downs.status==DpStatus.ok && downs.streamed_tensors==32;for l:0..<32 {#assert stream[3*l+2] && !stream[3*l+1];}
     // Past 32 down projections, up projections join, then gates.
@@ -418,24 +495,59 @@ dp_embed :: (tokens:[]int,width:int,embedding:[]u8,out:[]f32)->bool #export_c {
     gates:=dp_residency(w+all-70*slot,w,stream[..]);
     #assert gates.streamed_tensors==72 && stream[0] && stream[3*16] && stream[3*24] && stream[3*4] && !stream[3*2] && stream[3*2+1];
     every:=dp_residency(w+all-94*slot,w,stream[..]);
-    #assert every.status==DpStatus.ok && every.streamed_tensors==96;for i:0..<96 {#assert stream[i];}
-    #assert dp_residency(w+all-95*slot,w,stream[..]).status==DpStatus.memory;
-    #assert dp_residency(w+all,w,stream[0..<95]).status==DpStatus.capacity;
+    #assert every.status==DpStatus.ok && every.streamed_tensors==96;for i:0..<96 {#assert stream[i];}for i:96..<277 {#assert !stream[i];}
+    #assert dp_residency(w+all,w,stream[0..<276]).status==DpStatus.capacity && dp_residency(w+all,w,stream[0..<96]).status==DpStatus.capacity;
+}
+#test "past the feed-forward matrices the head streams in chunks, then the mixers a layer at a time" {
+    stream:[277]bool;w:=dp_workspace_bytes(86);all:=0;matrices:=0;
+    for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));if dp_weight_bf16(i) {matrices+=dp_weight_bytes(i);}}
+    slot:=dp_align(2*4096*12288);head:=2*248320*4096;
+    one:=dp_residency(w+all-94*slot-1,w,stream[..]);
+    #assert one.status==DpStatus.ok && one.streamed_tensors==96+21 && one.streamed==96*slot+head && one.resident==all-96*slot-head;
+    for c:0..<21 {#assert stream[256+c];}for i:96..<256 {#assert !stream[i];}
+    exact:=dp_residency(w+all-94*slot-head,w,stream[..]);#assert exact.streamed_tensors==117 && !stream[96];
+    // The first mixer is layer 0's qkv; then the rest of layer 0, then layer 16.
+    qkv:=dp_residency(w+all-94*slot-head-1,w,stream[..]);
+    #assert qkv.streamed_tensors==118 && qkv.streamed==96*slot+head+2*8192*4096 && stream[96] && !stream[97];
+    layer0:=dp_residency(w+all-94*slot-head-2*(8192+4096+32+32+4096)*4096,w,stream[..]);
+    #assert layer0.streamed_tensors==122 && stream[100] && !stream[96+5*16];
+    next:=dp_residency(w+all-94*slot-head-2*(8192+4096+32+32+4096)*4096-1,w,stream[..]);
+    #assert next.streamed_tensors==123 && stream[96+5*16] && !stream[96+5*16+1] && !stream[96+5*8];
+    // Everything streams: only the vectors, the workspace and two slots stay.
+    vectors:=all-matrices;
+    least:=dp_residency(w+vectors+2*slot,w,stream[..]);
+    #assert least.status==DpStatus.ok && least.streamed_tensors==96+21+152 && least.resident==vectors && least.streamed==matrices;
+    for i:0..<277 {#assert stream[i]==(dp_stream_weight(i)>=0);}
+    #assert !stream[96+5*3+4] && !stream[96+5*31+4] && stream[96+5*31+3] && stream[96+5*30+4];
+    #assert dp_residency(w+vectors+2*slot-1,w,stream[..]).status==DpStatus.memory;
 }
 #forall "the spread order is the 5-bit reversal" i:0..<32 {
     r:=dp_spread(i);
     #assert r>=0 && r<32 && dp_spread(r)==i;
     #assert ((r>>4)&1)==(i&1) && ((r>>3)&1)==((i>>1)&1) && ((r>>2)&1)==((i>>2)&1) && ((r>>1)&1)==((i>>3)&1) && (r&1)==((i>>4)&1);
 }
-#test "only the feed-forward matrices stream" {
-    stream:[96]bool;for i:0..<96 {stream[i]=true;}
+#test "every matrix and the head have a streaming index" {
+    stream:[277]bool;for i:0..<277 {stream[i]=true;}
     #assert dp_stream_index(dp_weight(0,11))==0 && dp_stream_index(dp_weight(0,12))==1 && dp_stream_index(dp_weight(0,13))==2;
     #assert dp_stream_index(dp_weight(3,8))==9 && dp_stream_index(dp_weight(3,10))==11 && dp_stream_index(dp_weight(31,10))==95;
-    #assert dp_stream_index(dp_weight(0,10))==-1 && dp_stream_index(dp_weight(0,14))==-1 && dp_stream_index(dp_weight(3,7))==-1 && dp_stream_index(dp_weight(3,11))==-1;
-    #assert dp_stream_index(DP_HEAD)==-1 && dp_stream_index(-1)==-1 && dp_stream_index(DP_FINAL)==-1 && dp_stream_index(DP_HEAD+11)==-1 && dp_stream_index(-5)==-1;
-    #assert dp_streamed(dp_weight(0,11),stream[..]) && dp_stream_weight(0)==dp_weight(0,11) && dp_stream_weight(11)==dp_weight(3,10) && dp_stream_weight(95)==dp_weight(31,10) && dp_stream_weight(4)==dp_weight(1,12);
-    #assert dp_streamed(dp_weight(5,13),stream[..]) && !dp_streamed(dp_weight(5,6),stream[..]);
-    stream[17]=false;#assert !dp_streamed(dp_weight(5,13),stream[..]) && !dp_streamed(dp_weight(31,10),stream[0..<95]);
+    #assert dp_stream_index(dp_weight(0,6))==96 && dp_stream_index(dp_weight(0,10))==100 && dp_stream_index(dp_weight(1,6))==101 && dp_stream_index(dp_weight(0,5))==-1;
+    #assert dp_stream_index(dp_weight(3,4))==96+15 && dp_stream_index(dp_weight(3,7))==96+18 && dp_stream_index(dp_weight(3,3))==-1 && dp_stream_index(dp_weight(31,7))==96+5*31+3;
+    #assert dp_stream_index(dp_weight(0,14))==-1 && dp_stream_index(dp_weight(3,11))==-1 && dp_stream_index(dp_weight(0,0))==-1 && dp_stream_index(dp_weight(31,15))==-1;
+    #assert dp_stream_index(DP_HEAD)==256 && dp_stream_index(-1)==-1 && dp_stream_index(DP_FINAL)==-1 && dp_stream_index(-5)==-1 && dp_stream_index(-16)==-1;
+    #assert dp_stream_weight(0)==dp_weight(0,11) && dp_stream_weight(11)==dp_weight(3,10) && dp_stream_weight(95)==dp_weight(31,10) && dp_stream_weight(4)==dp_weight(1,12);
+    #assert dp_stream_weight(96)==dp_weight(0,6) && dp_stream_weight(100)==dp_weight(0,10) && dp_stream_weight(96+15)==dp_weight(3,4) && dp_stream_weight(96+18)==dp_weight(3,7);
+    #assert dp_stream_weight(96+19)==-1 && dp_stream_weight(255)==-1 && dp_stream_weight(254)==dp_weight(31,7) && dp_stream_weight(256)==DP_HEAD && dp_stream_weight(276)==DP_HEAD;
+    #assert dp_stream_weight(277)==-1 && dp_stream_weight(-1)==-1;
+    for i:0..<256 {x:=dp_stream_weight(i);if x>=0 {#assert dp_stream_index(x)==i && dp_weight_bf16(x);}}
+    #assert dp_streamed(dp_weight(0,11),stream[..]) && dp_streamed(DP_HEAD,stream[..]) && dp_streamed(dp_weight(5,6),stream[..]) && !dp_streamed(dp_weight(5,0),stream[..]);
+    stream[17]=false;stream[256]=false;#assert !dp_streamed(dp_weight(5,13),stream[..]) && !dp_streamed(DP_HEAD,stream[..]) && !dp_streamed(dp_weight(31,7),stream[0..<254]) && dp_streamed(dp_weight(31,7),stream[0..<255]);
+    #assert dp_stream_index(DP_HEAD+6)==-1 && dp_stream_index(DP_HEAD+11)==-1 && dp_stream_index(DP_FINAL+2)==-1 && dp_stream_index(-10)==-1 && dp_stream_index(-4)==-1;
+    #assert dp_mixers(0)==5 && dp_mixers(3)==4 && dp_stream_index(dp_weight(3,8))==9 && dp_stream_index(dp_weight(0,11))==0;
+    #assert dp_head_rows(0)==12288 && dp_head_rows(19)==12288 && dp_head_rows(20)==248320-20*12288 && DP_HEAD_CHUNKS*DP_HEAD_ROWS>=DP_VOCAB && (DP_HEAD_CHUNKS-1)*DP_HEAD_ROWS<DP_VOCAB;
+    c:=dp_copy(256+20,1);
+    #assert c.kind==DpOpKind.copy && c.tensor==DP_HEAD && c.slot==1 && c.count==1 && c.args[0].kind==4 && c.args[0].buffer==3+DP_HEAD && c.args[0].offset==2*20*12288*4096 && c.args[0].count==2*2560*4096;
+    f:=dp_copy(2,0);#assert f.tensor==dp_weight(0,13) && f.args[0].buffer==3+dp_weight(0,13) && f.args[0].offset==0 && f.args[0].count==2*4096*12288 && f.slot==0;
+    h:=dp_copy(256,0);#assert h.args[0].offset==0 && h.args[0].count==2*12288*4096;
 }
 dp_digest :: (ops:[]DpOp,n:int)->u64 {
     h:u64=14695981039346656037;
@@ -452,7 +564,7 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     return h;
 }
 #test "the decision plan: resident, then streamed through two slots" {
-    ops:[1500]DpOp;stream:[96]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    ops:[2500]DpOp;stream:[277]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
     plan:=dp_plan(86,49,w+all,stream[..],ops[..]);
     #assert plan.status==DpStatus.ok && plan.ops==1092 && plan.streamed==0;
     launches:=0;for i:0..<plan.ops {if ops[i].kind==DpOpKind.launch {launches+=1;}#assert ops[i].count<=12 && ops[i].block==128;}
@@ -473,7 +585,7 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
         if op.kind==DpOpKind.release {releases+=1;#assert ops[i-1].kind==DpOpKind.launch;}
     }
     #assert waits==9 && copies==9 && releases==9;
-    #assert dp_digest(ops[..],streamed.ops)==4555201676792927755;
+    #assert dp_digest(ops[..],streamed.ops)==4120621289546768460;
     #assert dp_plan(0,0,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan(DP_MAX_TOKENS+1,0,w+all,stream[..],ops[..]).status==DpStatus.shape;
     #assert dp_plan(86,86,w+all,stream[..],ops[..]).status==DpStatus.shape && dp_plan(86,-1,w+all,stream[..],ops[..]).status==DpStatus.shape;
     #assert dp_plan(86,49,w+all,stream[..],ops[0..<1091]).status==DpStatus.capacity;
@@ -489,6 +601,89 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     #assert all96.status==DpStatus.ok && all96.streamed_tensors==96 && ops[0].tensor==dp_weight(0,11) && ops[1].tensor==dp_weight(0,12);
     copies96:=0;for i:0..<all96.ops {if ops[i].kind==DpOpKind.copy {copies96+=1;}}#assert copies96==96;
 }
+// Replaces each slot view in a streamed plan with the host bytes the slot
+// holds at that point, checking that every copy fills an empty slot, every
+// wait follows its copy, every use falls between the wait and the release
+// and no slot is left full.
+// Writes the launches to out and returns how many, or -1.
+dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int {
+    held:=[2]DpArg.[DpArg.{},DpArg.{}];filled:=[2]bool.[false,false];ready:=[2]bool.[false,false];m:=0;
+    for i:0..<n {
+        op:=ops[i];
+        if op.kind==DpOpKind.copy {if filled[op.slot] {return -1;}held[op.slot]=op.args[0];filled[op.slot]=true;}
+        if op.kind==DpOpKind.wait {if !filled[op.slot] || ready[op.slot] {return -1;}ready[op.slot]=true;}
+        if op.kind==DpOpKind.release {if !ready[op.slot] {return -1;}ready[op.slot]=false;filled[op.slot]=false;}
+        if op.kind==DpOpKind.launch {
+            r:=op;
+            for k:0..<op.count {
+                a:=op.args[k];
+                if a.kind==4 && a.buffer>=1 && a.buffer<=2 {
+                    if !ready[a.buffer-1] {return -1;}
+                    h:=held[a.buffer-1];r.args[k].buffer=h.buffer;r.args[k].offset=h.offset;
+                }
+            }
+            out[m]=r;m+=1;
+        }
+    }
+    if filled[0] || filled[1] {return -1;}
+    return m;
+}
+#test "a streamed plan computes what the resident plan computes" {
+    ops:[2500]DpOp;stream:[277]bool;resident:[2500]DpOp;resolved:[2500]DpOp;
+    w:=dp_workspace_bytes(86);all:=0;matrices:=0;
+    for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));if dp_weight_bf16(i) {matrices+=dp_weight_bytes(i);}}
+    slot:=dp_align(2*4096*12288);
+    base:=dp_plan(86,49,w+all,stream[..],resident[..]);#assert base.status==DpStatus.ok && base.ops==1092;
+    // Feed-forward matrices only: the launches are the resident plan's.
+    some:=dp_plan(86,49,w+all-40*slot,stream[..],ops[..]);
+    #assert some.streamed_tensors==42 && dp_resolve(ops[..],some.ops,resolved[..])==1092 && dp_digest(resolved[..],1092)==dp_digest(resident[..],1092);
+    // Everything: the same launches up to the readout, which reads the head in 21 chunks.
+    least:=dp_plan(86,49,w+all-matrices+2*slot,stream[..],ops[..]);
+    #assert least.status==DpStatus.ok && least.streamed_tensors==269 && least.ops==1092+3*269+2*20;
+    m:=dp_resolve(ops[..],least.ops,resolved[..]);
+    #assert m==1092+2*20 && dp_digest(resolved[..],1090)==dp_digest(resident[..],1090);
+    lg:=dp_logits_offset(86);rows:=0;
+    for c:0..<21 {
+        mv:=resolved[1090+2*c];rd:=resolved[1091+2*c];n:=dp_head_rows(c);
+        #assert mv.kernel==cast(u8)DpKernel.matvec && mv.items==16*n && mv.args[0].value==n && mv.args[2].buffer==3+DP_HEAD && mv.args[2].offset==2*c*12288*4096 && mv.args[2].count==n*1024;
+        #assert rd.kernel==cast(u8)DpKernel.reduce && rd.items==n && rd.args[0].value==n && rd.args[3].offset==lg+4*c*12288 && rd.args[3].count==n && rd.args[2].count==16*n;
+        rows+=n;
+    }
+    #assert rows==248320;
+    // The first two copies are layer 0's qkv and z; the last is the head's last chunk.
+    #assert ops[0].kind==DpOpKind.copy && ops[0].tensor==dp_weight(0,6) && ops[0].slot==0 && ops[1].tensor==dp_weight(0,7) && ops[1].slot==1;
+    last:=0;for i:0..<least.ops {if ops[i].kind==DpOpKind.copy {last=i;}}
+    #assert ops[last].tensor==DP_HEAD && ops[last].args[0].offset==2*20*12288*4096;
+    #assert dp_digest(ops[..],least.ops)==14444508989034962209;
+    // A broken schedule is caught: a launch reading a slot before its wait.
+    first:=0;while ops[first].kind!=DpOpKind.wait {first+=1;}
+    #assert dp_resolve(ops[..],first+2,resolved[..])==-1;
+    ops[first]=ops[first+1];#assert dp_resolve(ops[..],least.ops,resolved[..])==-1;
+}
+#test "the plan checker refuses each broken use of a slot" {
+    out:[8]DpOp;held:=DpArg.{kind=4,buffer=3+DP_HEAD,offset=512,count=1024};
+    copy:=DpOp.{kind=DpOpKind.copy,slot=0,count=1};copy.args[0]=held;
+    copy1:=copy;copy1.slot=1;
+    wait:=DpOp.{kind=DpOpKind.wait,slot=0};free:=DpOp.{kind=DpOpKind.release,slot=0};
+    use:=DpOp.{kind=DpOpKind.launch,count=2};use.args[0]=DpArg.{kind=4,buffer=1,count=8};use.args[1]=DpArg.{kind=4,buffer=0,offset=64,count=8};
+    good:=[4]DpOp.[copy,wait,use,free];
+    #assert dp_resolve(good[..],4,out[..])==1 && out[0].args[0].buffer==3+DP_HEAD && out[0].args[0].offset==512 && out[0].args[0].count==8;
+    #assert out[0].args[1].buffer==0 && out[0].args[1].offset==64;
+    twice:=[2]DpOp.[copy,copy];#assert dp_resolve(twice[..],2,out[..])==-1;
+    early:=[1]DpOp.[wait];#assert dp_resolve(early[..],1,out[..])==-1;
+    again:=[3]DpOp.[copy,wait,wait];#assert dp_resolve(again[..],3,out[..])==-1;
+    loose:=[2]DpOp.[copy,free];#assert dp_resolve(loose[..],2,out[..])==-1;
+    unready:=[2]DpOp.[copy,use];#assert dp_resolve(unready[..],2,out[..])==-1;
+    full0:=[1]DpOp.[copy];#assert dp_resolve(full0[..],1,out[..])==-1;
+    full1:=[1]DpOp.[copy1];#assert dp_resolve(full1[..],1,out[..])==-1;
+    other:=use;other.args[0].buffer=2;w1:=wait;w1.slot=1;f1:=free;f1.slot=1;
+    second:=[4]DpOp.[copy1,w1,other,f1];#assert dp_resolve(second[..],4,out[..])==1 && out[0].args[0].offset==512;
+}
+#test "the largest decision plans and replans" {
+    ops:[2500]DpOp;stream:[277]bool;again:[2500]DpOp;all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    big:=dp_plan(DP_MAX_TOKENS,0,dp_workspace_bytes(DP_MAX_TOKENS)+all,stream[..],ops[..]);
+    #assert big.status==DpStatus.ok && dp_replan(DP_MAX_TOKENS,0,big,stream[..],again[..]).status==DpStatus.ok;
+}
 #test "prefill projections use sixteen interleaved slices when they fit" {
     #assert dp_slices(8192,4096,98304)==8 && dp_slices(12288,4096,98304)==8 && dp_slices(4096,12288,98304)==16 && dp_slices(4096,4096,98304)==16;
     #assert dp_slices(1024,4096,98304)==16 && dp_slices(32,4096,98304)==16 && dp_slices(6144,4096,98304)==16 && dp_slices(6145,4096,98304)==8;
@@ -496,14 +691,14 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     #assert dp_slices(49152,4096,98304)==2 && dp_slices(49153,4096,98304)==1 && dp_slices(98305,4096,98304)==1 && dp_slices(12289,4096,98304)==4;
 }
 #test "a decision may stop before each layer and the readout" {
-    ops:[1500]DpOp;stream:[96]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
+    ops:[2500]DpOp;stream:[277]bool;w:=dp_workspace_bytes(86);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
     plan:=dp_plan(86,49,w+all,stream[..],ops[..]);stops:=0;
     for i:0..<plan.ops {if dp_stop_point(ops[i]) {stops+=1;}}
     #assert stops==33 && dp_stop_point(ops[0]) && !dp_stop_point(ops[1]);
     copy:=DpOp.{kind=DpOpKind.copy,kernel=cast(u8)DpKernel.squares};#assert !dp_stop_point(copy);
 }
 #test "a later decision reuses the opened placement" {
-    ops:[1500]DpOp;stream:[96]bool;again:[1500]DpOp;
+    ops:[2500]DpOp;stream:[277]bool;again:[2500]DpOp;
     w:=dp_workspace_bytes(128);all:=0;for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));}
     slot:=dp_align(2*4096*12288);
     opened:=dp_plan(128,0,w+all-7*slot,stream[..],ops[..]);
@@ -514,11 +709,11 @@ dp_digest :: (ops:[]DpOp,n:int)->u64 {
     #assert dp_digest(again[..],later.ops)==dp_digest(ops[..],direct.ops);
     #assert dp_replan(DP_MAX_TOKENS+1,0,opened,stream[..],again[..]).status==DpStatus.shape && dp_replan(86,86,opened,stream[..],again[..]).status==DpStatus.shape;
     #assert dp_replan(0,0,opened,stream[..],again[..]).status==DpStatus.shape && dp_replan(86,-1,opened,stream[..],again[..]).status==DpStatus.shape;
-    #assert dp_replan(86,49,opened,stream[0..<95],again[..]).status==DpStatus.capacity;
+    #assert dp_replan(86,49,opened,stream[0..<276],again[..]).status==DpStatus.capacity;
     small:=opened;small.workspace=dp_workspace_bytes(64);
     #assert dp_replan(65,0,small,stream[..],again[..]).status==DpStatus.capacity && dp_replan(64,0,small,stream[..],again[..]).status==DpStatus.ok;
     bad:=opened;bad.status=DpStatus.memory;#assert dp_replan(86,49,bad,stream[..],again[..]).status==DpStatus.capacity;
-    other:[96]bool;for i:0..<96 {other[i]=stream[i];}other[0]=!other[0];
+    other:[277]bool;for i:0..<277 {other[i]=stream[i];}other[0]=!other[0];
     #assert dp_replan(86,49,opened,other[..],again[..]).status==DpStatus.capacity;
     fewer:=opened;fewer.streamed_tensors=8;#assert dp_replan(86,49,fewer,stream[..],again[..]).status==DpStatus.capacity;
     #assert dp_replan(1,0,opened,stream[..],again[..]).status==DpStatus.ok && dp_replan(128,127,opened,stream[..],again[..]).status==DpStatus.ok;

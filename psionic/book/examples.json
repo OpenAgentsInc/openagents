@@ -242,6 +242,16 @@
       ]
     },
     {
+      "source": "psionic/examples/share-the-card.coax",
+      "chapter": "psionic/book/ch030a-share-the-card.md",
+      "stdout": "psionic/fixtures/share-the-card.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/gptoss-device-plan.coax",
       "chapter": "psionic/book/ch045a-original-weights-stay-on-the-gpu.md",
       "stdout": "psionic/fixtures/gptoss-device-plan.out",

@@ -53,7 +53,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     e->op_cap = 4096;
     e->ops = calloc((size_t)e->op_cap, sizeof *e->ops);
     if (!e->ops) return EG_FAILED;
-    e->placed = dp_plan(max_tokens, 0, e->budget, (coax_v_bool){e->stream, 96}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    e->placed = dp_plan(max_tokens, 0, e->budget, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->placed.status) { eg_note("the plan refused %lld tokens in %lld bytes: status %u", (long long)max_tokens, (long long)e->budget, e->placed.status); return EG_REFUSED; }
     if (e->placed.streamed_tensors) { eg_note("the plan streams %lld weights; unified memory keeps every weight resident", (long long)e->placed.streamed_tensors); return EG_REFUSED; }
     double t0 = seconds_now();
@@ -80,7 +80,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
 
 int eg_prepare(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix) {
     if (count < 1 || count > e->max_tokens) return EG_REFUSED;
-    e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, 96}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->plan.status) return EG_REFUSED;
     uint8_t *ws = pm_contents(e->workspace);
     float *x = (float *)(ws + dp_input_offset(count)), *rope = (float *)(ws + dp_rope_offset(count));

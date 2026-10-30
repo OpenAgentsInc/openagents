@@ -53,13 +53,13 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
     size_t free_bytes, total_bytes;
     CHECK(pc_memory(&free_bytes, &total_bytes));
     e->free_before = (int64_t)free_bytes;
-    e->budget = (int64_t)free_bytes - ((int64_t)512 << 20); /* left for other processes and the driver */
+    e->budget = (int64_t)free_bytes - ((int64_t)256 << 20); /* left for the driver and for other processes, whose own plans are already placed */
     if (budget > 0 && budget < e->budget) e->budget = budget;
     e->op_cap = 4096;
     e->ops = calloc((size_t)e->op_cap, sizeof *e->ops);
     if (!e->ops) return EG_FAILED;
     /* Place for the largest decision; later decisions reuse the placement. */
-    e->placed = dp_plan(max_tokens, 0, e->budget, (coax_v_bool){e->stream, 96}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    e->placed = dp_plan(max_tokens, 0, e->budget, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->placed.status) { eg_note("the plan refused %lld tokens in %lld bytes: status %u", (long long)max_tokens, (long long)e->budget, e->placed.status); return EG_REFUSED; }
     double t0 = seconds_now();
     CHECK(pc_alloc((size_t)e->placed.workspace, &e->workspace));
@@ -75,7 +75,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
         /* The head is bytes; the final norm and the other non-bf16 weights are f32. */
         int64_t element = w == EG_WEIGHTS - 2 ? 1 : w == EG_WEIGHTS - 1 ? 4 : dp_weight_bf16(w) ? 1 : 4;
         if (element * v.count != e->bytes[w]) { eg_note("weight %lld: the session has %lld bytes, the plan expects %lld", (long long)w, (long long)(element * v.count), (long long)e->bytes[w]); return EG_REFUSED; }
-        if (dp_streamed(w, (coax_v_bool){e->stream, 96})) {
+        if (dp_streamed(w, (coax_v_bool){e->stream, EG_STREAMABLE})) {
             CHECK(pc_host_alloc((size_t)e->bytes[w], &e->pinned[w]));
             memcpy(e->pinned[w], v.data, (size_t)e->bytes[w]);
             e->pinned_bytes += e->bytes[w];
@@ -98,7 +98,7 @@ int eg_place(EgEngine *e, coax_t_QxModel model, int64_t max_tokens, int64_t budg
 
 int eg_prepare(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix) {
     if (count < 1 || count > e->max_tokens) return EG_REFUSED;
-    e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, 96}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, EG_STREAMABLE}, (coax_v_t_DpOp){e->ops, e->op_cap});
     if (e->plan.status) return EG_REFUSED;
     if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, EG_WIDTH, e->model.embedding, (coax_v_f32){e->x, count * EG_WIDTH})) return EG_REFUSED;
     coax_t_QwResult r = qw_rope(0, count, (coax_v_f32){e->rope, count * 64}, (coax_v_f32){e->rope_work, count * 64}, 0);
@@ -112,7 +112,10 @@ int eg_issue(EgEngine *e, int64_t i, PcStream compute) {
     coax_t_DpOp *op = &e->ops[i];
     if (op->kind == COAX_DpOpKind_copy) {
         CHECK(pc_wait(e->copy, e->released[op->slot]));
-        CHECK(pc_upload(e->slots[op->slot], e->pinned[op->tensor], (size_t)e->bytes[op->tensor], e->copy));
+        /* The copy's one argument names the host bytes: weight, offset, count. */
+        coax_t_DpArg *from = &op->args.e[0];
+        if (!e->pinned[op->tensor] || from->offset < 0 || from->count < 1 || from->offset + from->count > e->bytes[op->tensor] || from->count > e->placed.slot) return EG_FAILED;
+        CHECK(pc_upload(e->slots[op->slot], (const char *)e->pinned[op->tensor] + from->offset, (size_t)from->count, e->copy));
         CHECK(pc_record(e->filled[op->slot], e->copy));
         return EG_OK;
     }

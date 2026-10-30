@@ -75,13 +75,24 @@ is free for us; Elephant's text weights are 15.9 GB. So some must stream:
 
 <!-- source: psionic/lib/device/plan.coax residency -->
 ```jai
-// Which weights stream from pinned host memory: the feed-forward matrices,
-// all down projections first, then up, then gate, as many as the budget
-// requires; two 96 MiB slots hold them in turn. Within a kind, layers are
-// taken in bit-reversed order (0, 16, 8, 24, ...), so any number of them is
-// spread across the model. stream[3*layer+k] is set for matrix k (0 gate,
-// 1 up, 2 down) of a layer. Everything else is resident.
-DP_STREAMABLE :: 96;
+// Which weights stream from pinned host memory, through two slots of 96 MiB
+// that hold them in turn. The feed-forward matrices go first: all down
+// projections, then up, then gate, in bit-reversed layer order (0, 16, 8,
+// 24, ...) so any number of them is spread across the model. If that is not
+// enough the head streams, in 21 chunks of up to 12,288 rows, and then the
+// mixer matrices (the projections before each layer's attention or scan),
+// a whole layer at a time in the same spread order. Only the small vectors
+// and the workspace must fit: everything else can stream.
+//
+// Streaming indices: 3*layer+k for feed-forward matrix k (0 gate, 1 up,
+// 2 down); 96+5*layer+k for mixer matrix k (linear: qkv, z, a, b, out; full:
+// q, k, v, out, and k = 4 is no matrix); 256+c for head chunk c.
+DP_FFN_STREAMS :: 96;
+DP_MIXER_BASE :: 96;
+DP_HEAD_BASE :: 256;
+DP_HEAD_ROWS :: 12288;
+DP_HEAD_CHUNKS :: 21;
+DP_STREAMABLE :: 277;
 dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {
     if stream.count!=DP_STREAMABLE {return DpPlan.{status=DpStatus.capacity};}
     total:=0;
@@ -89,11 +100,19 @@ dp_residency :: (budget:int,workspace:int,stream:[]bool)->DpPlan #export_c {
     slot:=dp_align(2*DP_WIDTH*DP_HIDDEN);
     for i:0..<DP_STREAMABLE {stream[i]=false;}
     if workspace+total<=budget {return DpPlan.{workspace=workspace,resident=total};}
-    over:=workspace+total+2*slot-budget;need:=(over+slot-1)/slot;
-    if need>DP_STREAMABLE {return DpPlan.{status=DpStatus.memory};}
+    over:=workspace+total+2*slot-budget;saved:=0;n:=0;
     kinds:=[3]int.[2,1,0];
-    for i:0..<need {stream[3*dp_spread(i%DP_LAYERS)+kinds[i/DP_LAYERS]]=true;}
-    return DpPlan.{workspace=workspace,resident=total-need*slot,streamed=need*slot,slot=slot,streamed_tensors=need};
+    for i:0..<DP_FFN_STREAMS {if saved<over {stream[3*dp_spread(i%DP_LAYERS)+kinds[i/DP_LAYERS]]=true;saved+=slot;n+=1;}}
+    if saved<over {for c:0..<DP_HEAD_CHUNKS {stream[DP_HEAD_BASE+c]=true;}saved+=dp_weight_bytes(DP_HEAD);n+=DP_HEAD_CHUNKS;}
+    for i:0..<DP_LAYERS {
+        layer:=dp_spread(i);
+        for k:0..<dp_mixers(layer) {
+            x:=DP_MIXER_BASE+5*layer+k;
+            if saved<over {stream[x]=true;saved+=dp_weight_bytes(dp_stream_weight(x));n+=1;}
+        }
+    }
+    if saved<over {return DpPlan.{status=DpStatus.memory};}
+    return DpPlan.{workspace=workspace,resident=total-saved,streamed=saved,slot=slot,streamed_tensors=n};
 }
 ```
 
@@ -123,7 +142,7 @@ first launch: dl_squares over 1376 work items
 // Chapter 30's schedule for the 86-token sample with a 14 GiB device budget.
 // Nothing runs: the plan is data that the host executes.
 main :: () {
-    ops:[1500]DpOp;stream:[96]bool;
+    ops:[1500]DpOp;stream:[277]bool;
     budget:=14*1073741824;
     plan:=dp_plan(86,49,budget,stream[..],ops[..]);
     #assert plan.status==DpStatus.ok;
@@ -186,7 +205,8 @@ has the measurements, the per-kernel profile and the headroom runs.
 
 This is one request, one machine and one arithmetic profile. The tensor-core
 projections share no tiles between warps yet; chapters 27 to 29 and 32 are where
-they come from. Only the feed-forward matrices stream, so the plan refuses a
-budget below about 6.1 GiB. The session is still the CPU's, so a cold start is
+they come from. When the feed-forward matrices are not enough, the head and the
+mixer matrices stream too: [chapter 30a](ch030a-share-the-card.md) runs the
+decision in a few hundred MiB beside another model. The session is still the CPU's, so a cold start is
 dominated by authentication. There is no batching, no prefix reuse across
 requests and no service.

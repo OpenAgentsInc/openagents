@@ -170,7 +170,7 @@ int main(int argc, char **argv) {
     if (eg_prepare(e, tokens, T, P)) { fprintf(stderr, "plan refused the decision\n"); return 1; }
     coax_t_DpPlan plan = e->plan;
     coax_t_DpOp *ops = e->ops;
-    printf("plan: %lld operations; workspace %.1f MiB, resident %.2f GiB, streamed %.2f GiB in %lld feed-forward matrices through 2 slots of %.1f MiB (budget %.2f GiB)\n",
+    printf("plan: %lld operations; workspace %.1f MiB, resident %.2f GiB, streamed %.2f GiB in %lld copies through 2 slots of %.1f MiB (budget %.2f GiB)\n",
            (long long)plan.ops, plan.workspace / 1048576.0, plan.resident / 1073741824.0, plan.streamed / 1073741824.0, (long long)plan.streamed_tensors,
            plan.slot / 1048576.0, e->budget / 1073741824.0);
     printf("session: authenticated in %.1f s; uploaded %.2f GiB resident in %.2f s (%.1f GB/s); pinned %.2f GiB for streaming\n",

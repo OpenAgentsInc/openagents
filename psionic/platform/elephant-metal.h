@@ -13,6 +13,7 @@
 
 #define EG_KERNELS 19   /* DP_KERNELS */
 #define EG_WEIGHTS 514  /* DP_WEIGHTS */
+#define EG_STREAMABLE 277 /* DP_STREAMABLE */
 #define EG_WIDTH 4096   /* DP_WIDTH */
 #define EG_VOCAB 248320 /* DP_VOCAB */
 
@@ -28,7 +29,7 @@ typedef struct {
     PmModule modules[3];
     PmKernel kernels[EG_KERNELS];
     coax_t_DpPlan placed, plan;
-    _Bool stream[96];
+    _Bool stream[EG_STREAMABLE];
     coax_t_DpOp *ops;
     PmBuffer workspace, arena;
     int64_t offset[EG_WEIGHTS]; /* each resident weight's byte offset in the arena */
