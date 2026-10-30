@@ -1,0 +1,197 @@
+// Builds and signs one NIP-01 event in resumable stages: key, ID, the
+// BIP-340 signature (several calls), then the event JSON. The JSON is
+// published only after the shared reader recomputes its ID from it, so the
+// preimage is the one event.coax verifies. Call until the result is not
+// EVENT_MORE: a positive result is the event's length in out.
+#load "../crypto/schnorr_sign.coax";
+#load "event.coax";
+#load "../../tests/nostr/event_sign_vectors.coax";
+#authority;
+
+EVENT_REFUSED :: -1; EVENT_MORE :: 0;
+
+#test "status values are the host ABI" {
+  #assert EVENT_REFUSED==-1 && EVENT_MORE==0;
+}
+#forall "inputs admit kinds 0 to 65535, nonnegative times and JSON tags" kind:-1..<3,at:-1..<2 {
+  k:=ifx kind==2 then 65536 else ifx kind==1 then 65535 else kind;
+  #assert es_inputs(at,k,"[]")==(at>=0 && k>=0 && k<=65535);
+}
+#test "tags must be one complete JSON value" {
+  #assert es_inputs(0,1,"[[\"a\",\"b\"]]") && !es_inputs(0,1,"[[\"a\"]] x") && !es_inputs(0,1,"[[") && !es_inputs(0,1,"");
+}
+#test "stage one derives the author key" {
+  key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==EVENT_MORE;
+  #assert work[0].stage==1 && work[0].sign[0].stage==1;for i:0..<32 {#assert work[0].pub[i]==ES_PUB[i];}
+}
+#test "a zero key refuses at the first stage" {
+  key:[32]u8;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[64]u8;out:[64]u8;out[0]=7;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED;
+  #assert work[0].stage==0 && out[0]==7;
+}
+#test "stage two writes the NIP-01 preimage and its ID" {
+  key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  work[0].stage=1;work[0].pub=ES_PUB;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==EVENT_MORE;
+  #assert work[0].stage==2;for i:0..<32 {#assert work[0].id[i]==ES_ID[i];}
+  for i:0..<ES_PREIMAGE.count {#assert scratch[i]==ES_PREIMAGE[i];}
+}
+#test "a tag value that is not a string refuses the preimage" {
+  key:=ES_KEY;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  work[0].stage=1;work[0].pub=ES_PUB;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[[\"a\",1]]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].stage==0;
+}
+#test "a preimage larger than scratch refuses" {
+  // [0,"<64 hex>",0,1,[],""] is 80 bytes.
+  key:=ES_KEY;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[80]u8;out:[1024]u8;
+  work[0].stage=1;work[0].pub=ES_PUB;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[0..<79],out[..],false)==EVENT_REFUSED && work[0].stage==0;
+  work[0].stage=1;work[0].pub=ES_PUB;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_MORE && work[0].stage==2;
+}
+#test "stage three stays while the signature needs more calls" {
+  key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  v:=SIGN_VECTORS[1];work[0].stage=2;work[0].id=v.message;
+  work[0].sign[0].stage=2;work[0].sign[0].prep[0].public_key=v.pub;work[0].sign[0].prep[0].point[0].odd=v.key_odd;
+  work[0].sign[0].nonce[0].hash=v.hash;work[0].sign[0].nonce[0].r=v.r;work[0].sign[0].nonce[0].point[0].odd=v.nonce_odd;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==EVENT_MORE;
+  #assert work[0].stage==2 && work[0].sign[0].stage==3;for i:0..<64 {#assert work[0].sign[0].sig[i]==v.sig[i] && work[0].sig[i]==0;}
+}
+#test "stage three moves on when the signature is published" {
+  key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  work[0].stage=2;work[0].id=ES_ID;
+  work[0].sign[0].stage=3;work[0].sign[0].prep[0].public_key=ES_PUB;work[0].sign[0].sig=ES_SIG;
+  work[0].sign[0].prep[0].valid=1;work[0].sign[0].nonce[0].valid=1;work[0].sign[0].math[0].valid=1;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==EVENT_MORE;
+  #assert work[0].stage==3;for i:0..<64 {#assert work[0].sig[i]==ES_SIG[i];}
+}
+#test "stage three refuses when the signature fails" {
+  key:=ES_KEY;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  work[0].stage=2;work[0].sign[0].stage=3;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].stage==0;
+}
+#test "stage four writes the event JSON, checks its ID, then clears" {
+  key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  work[0].stage=3;work[0].pub=ES_PUB;work[0].id=ES_ID;work[0].sig=ES_SIG;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==ES_EVENT.count;
+  for i:0..<ES_EVENT.count {#assert out[i]==ES_EVENT[i];}
+  #assert work[0].stage==0 && work[0].pub[0]==0 && work[0].id[0]==0 && work[0].sig[0]==0;
+}
+#test "the independently signed event verifies with the shared reader" {
+  event:=ES_EVENT;scratch:[1024]u8;
+  // The reader recomputes the ID; the fast verifier checks the signature.
+  e:=nostr_event_read(cast(string)event[..],scratch[..],false);
+  #assert e.error==NE_OK && e.written==ES_PREIMAGE.count;for i:0..<32 {#assert e.id[i]==ES_ID[i] && e.public_key[i]==ES_PUB[i];}
+  #assert nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]);
+}
+#test "stage four refuses an ID that is not the event's, and clears out" {
+  key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  work[0].stage=3;work[0].pub=ES_PUB;work[0].id=ES_ID;work[0].id[0]^=1;work[0].sig=ES_SIG;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==EVENT_REFUSED;
+  for i:0..<1024 {#assert out[i]==0;}#assert work[0].stage==0 && work[0].sig[0]==0;
+}
+#test "stage four refuses when the event does not fit out" {
+  key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
+  work[0].stage=3;work[0].pub=ES_PUB;work[0].id=ES_ID;work[0].sig=ES_SIG;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[0..<ES_EVENT.count-1],false)==EVENT_REFUSED;
+  for i:0..<1024 {#assert out[i]==0;}
+  work[0].stage=3;work[0].pub=ES_PUB;work[0].id=ES_ID;work[0].sig=ES_SIG;
+  #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[0..<ES_EVENT.count],false)==ES_EVENT.count;
+}
+#forall "a corrupt stage clears the workspace" stage:-1..<6 {
+  if stage>=0 && stage<4 {return;}
+  key:=ES_KEY;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[64]u8;out:[64]u8;
+  work[0].stage=stage;work[0].id[0]=9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].id[0]==0;
+}
+#test "views and inputs are admitted before the workspace changes" {
+  key:=ES_KEY;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[64]u8;out:[64]u8;
+  work[0].stage=4;work[0].id[0]=9;
+  #assert nostr_event_sign_step(key[0..<31],aux[..],0,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].id[0]==9;
+  #assert nostr_event_sign_step(key[..],aux[0..<31],0,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].id[0]==9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[0..<0],scratch[..],out[..],false)==EVENT_REFUSED;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[..],out[..],true)==EVENT_REFUSED && work[0].id[0]==9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[0..<0],out[..],false)==EVENT_REFUSED && work[0].id[0]==9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[..],out[0..<0],false)==EVENT_REFUSED && work[0].id[0]==9;
+  #assert nostr_event_sign_step(key[..],aux[..],-1,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].id[0]==9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].id[0]==9;
+  two:[2]NostrSignWork;two[0].stage=4;two[0].id[0]=9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",two[..],scratch[..],out[..],false)==EVENT_REFUSED && two[0].id[0]==9;
+  // The smallest admitted views reach the stage switch (which then clears).
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[0..<1],out[0..<1],false)==EVENT_REFUSED && work[0].id[0]==0;
+}
+#test "scratch is bounded by the shared reader's preimage limit" {
+  key:=ES_KEY;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[262145]u8;out:[64]u8;
+  work[0].stage=4;work[0].id[0]=9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[..],out[..],false)==EVENT_REFUSED && work[0].id[0]==9;
+  #assert nostr_event_sign_step(key[..],aux[..],0,1,"[]","",work[..],scratch[0..<262144],out[..],false)==EVENT_REFUSED && work[0].id[0]==0;
+}
+
+NostrSignWork :: struct {stage:int;sign:[1]SignWork;pub:[32]u8;id:[32]u8;sig:[64]u8;}
+
+es_inputs :: (created_at:int,kind:int,tags:string)->bool {
+  return created_at>=0 && kind>=0 && kind<=65535 && json_valid(tags);
+}
+es_views :: (key:[]u8,aux:[]u8,work:[]NostrSignWork,scratch:[]u8,out:[]u8,overlap:bool)->bool {
+  return work.count==1 && key.count==32 && aux.count==32 && scratch.count>0 && scratch.count<=NE_MAX_OUTPUT && out.count>0 && !overlap;
+}
+es_clear :: (work:[]NostrSignWork)->int {fresh:NostrSignWork;work[0]=fresh;return EVENT_REFUSED;}
+// Stage one runs only the signer's key stage; the message is not used yet.
+es_key :: (key:[]u8,aux:[]u8,work:[]NostrSignWork)->int {
+  if schnorr_sign_step(key,aux,work[0].id[..],work[0].sign[..],work[0].sig[..],false)!=SIGN_MORE {return es_clear(work);}
+  work[0].pub=work[0].sign[0].prep[0].public_key;work[0].stage=1;return EVENT_MORE;
+}
+// [0,pubkey,created_at,kind,tags,content], written exactly as ne_serialize does.
+es_id :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8)->int {
+  decoded:[65536]u8;pub:[64]u8;key:=work[0].pub;
+  h:=hex_encode_checked(cast(string)key[..],pub[..],false);
+  n:=json_raw(scratch,ne_writer_start(h.error),"[0,");n=json_write_string(scratch,n,cast(string)pub[..]);
+  n=json_raw(scratch,n,",");n=json_write_int(scratch,n,created_at);
+  n=json_raw(scratch,n,",");n=json_write_int(scratch,n,kind);n=json_raw(scratch,n,",");
+  n=ne_write_tags(tags,scratch,n,decoded[..]);n=json_raw(scratch,n,",");
+  n=json_write_string(scratch,n,content);n=json_raw(scratch,n,"]");
+  if n==NE_WRITE_FAILED {return es_clear(work);}
+  // A failed hash leaves an ID the final read check refuses.
+  hashed:=sha256_hash_checked(scratch[0..<n],work[0].id[..],false);
+  work[0].stage=2;return EVENT_MORE;
+}
+es_sign :: (key:[]u8,aux:[]u8,work:[]NostrSignWork)->int {
+  status:=schnorr_sign_step(key,aux,work[0].id[..],work[0].sign[..],work[0].sig[..],false);
+  if status==SIGN_REFUSED {return es_clear(work);}
+  if status==SIGN_DONE {work[0].stage=3;}
+  return EVENT_MORE;
+}
+es_fail :: (work:[]NostrSignWork,out:[]u8)->int {for i:0..<out.count {out[i]=0;}return es_clear(work);}
+// The reader recomputes the ID from the written JSON: any difference between
+// this writer and ne_serialize, or inputs changed between calls, refuses.
+es_write :: (created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8,out:[]u8)->int {
+  decoded:[65536]u8;id:[64]u8;pub:[64]u8;sig:[128]u8;a:=work[0].id;b:=work[0].pub;c:=work[0].sig;
+  h:=hex_encode_checked(cast(string)a[..],id[..],false);
+  hb:=hex_encode_checked(cast(string)b[..],pub[..],false);hc:=hex_encode_checked(cast(string)c[..],sig[..],false);
+  n:=json_raw(out,ne_writer_start(h.error),"{\"id\":");n=json_write_string(out,n,cast(string)id[..]);
+  n=json_raw(out,n,",\"pubkey\":");n=json_write_string(out,n,cast(string)pub[..]);
+  n=json_raw(out,n,",\"created_at\":");n=json_write_int(out,n,created_at);
+  n=json_raw(out,n,",\"kind\":");n=json_write_int(out,n,kind);
+  n=json_raw(out,n,",\"tags\":");n=ne_write_tags(tags,out,n,decoded[..]);
+  n=json_raw(out,n,",\"content\":");n=json_write_string(out,n,content);
+  n=json_raw(out,n,",\"sig\":");n=json_write_string(out,n,cast(string)sig[..]);n=json_raw(out,n,"}");
+  if n==NE_WRITE_FAILED {return es_fail(work,out);}
+  e:=nostr_event_read(cast(string)out[0..<n],scratch,false);
+  if e.error!=NE_OK {return es_fail(work,out);}
+  cleared:=es_clear(work);return n;
+}
+// Pass the same key, aux, fields and content on every call. aux is 32 fresh
+// random bytes from the host. Views must be stable and disjoint, and overlap
+// is the host's truthful observation. Refused views and inputs change
+// nothing; any other refusal clears the workspace. Only the last stage
+// writes out, and its refusal clears out too.
+nostr_event_sign_step :: (key:[]u8,aux:[]u8,created_at:int,kind:int,tags:string,content:string,work:[]NostrSignWork,scratch:[]u8,out:[]u8,overlap:bool)->int #export_c {
+  if !es_views(key,aux,work,scratch,out,overlap) || !es_inputs(created_at,kind,tags) {return EVENT_REFUSED;}
+  stage:=work[0].stage;
+  if stage==0 {return es_key(key,aux,work);}
+  if stage==1 {return es_id(created_at,kind,tags,content,work,scratch);}
+  if stage==2 {return es_sign(key,aux,work);}
+  if stage==3 {return es_write(created_at,kind,tags,content,work,scratch,out);}
+  return es_clear(work);
+}
