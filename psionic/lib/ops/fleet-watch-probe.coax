@@ -1,0 +1,29 @@
+// The monitor reuses the native fleet's complete typed response validation.
+// It cannot count HTTP200, a beacon, another provider or an empty answer as work.
+#load "../fleet/protocol.coax";
+#authority;
+
+#test "a complete pinned typed answer is required" {
+  #assert fw_probe_success(MF_CALL,MF_RESPONSE,MF_ID,PB_KEY,"studio-gpu");
+  #assert !fw_probe_success("{}",MF_RESPONSE,MF_ID,PB_KEY,"studio-gpu");
+  #assert !fw_probe_success(MF_CALL,"{}",MF_ID,PB_KEY,"studio-gpu");
+  #assert !fw_probe_success(MF_CALL,MF_RESPONSE,"other",PB_KEY,"studio-gpu");
+  #assert !fw_probe_success(MF_CALL,MF_RESPONSE,MF_ID,"other","studio-gpu");
+  #assert !fw_probe_success(MF_CALL,MF_RESPONSE,MF_ID,PB_KEY,"other");
+}
+#test "a real wet choice must agree with the probe and remain well shaped" {
+  out:[4096]u8;
+  bad:=pd_swap(out[..],MF_RESPONSE,"\"yes\":0.7","\"yes\":1.7");
+  #assert !fw_probe_success(MF_CALL,bad,MF_ID,PB_KEY,"studio-gpu");
+  second:[4096]u8;
+  no:=pd_swap(second[..],MF_RESPONSE,"\"choice\":\"yes\"","\"choice\":\"no\"");
+  #assert !fw_probe_success(MF_CALL,no,MF_ID,PB_KEY,"studio-gpu");
+}
+fw_probe_success :: (request:string,response:string,identity:string,provider:string,slug:string)->bool #export_c {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+  r:=sv_decode(request,pools);
+  if r.code!=SvCode.none {return false;}
+  if !mf_answer(response,r,pools,identity,provider,slug) {return false;}
+  answers:=mf_get(response,"answers");wet:=mf_get(answers.raw,"wet");
+  return mf_string(mf_get(wet.raw,"choice"),"yes");
+}
