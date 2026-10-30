@@ -44,6 +44,18 @@ class Join(unittest.TestCase):
     self.assertEqual(p.wait(timeout=10),0);self.assertFalse((state/'state/join.lock').exists())
    finally:
     if p.poll() is None:p.send_signal(signal.SIGTERM);p.wait(timeout=10)
+ def test_failed_start_and_stop_never_follow_a_stop_symlink(self):
+  with tempfile.TemporaryDirectory(prefix='join-link-') as t:
+   d=pathlib.Path(t);r=d/'source';state=d/'install/state';state.mkdir(parents=True)
+   for folder in ['coax','psionic/platform','psionic/fixtures/pylon']:(r/folder).mkdir(parents=True,exist_ok=True)
+   (r/'psionic/platform/pylon-build.sh').write_text('')
+   (r/'psionic/fixtures/pylon/psionic-toy.selfcheck').write_text('{}')
+   (r/'coax/provenance.sh').write_text('#!/bin/sh\nexit 1\n');(r/'coax/provenance.sh').chmod(0o755)
+   target=d/'keep';target.write_text('preserve this');(state/'stop').symlink_to(target)
+   env={**os.environ,'OPENAGENTS_PYLON_HOME':str(state.parent)}
+   for options in [['--source',str(r)],['--stop']]:
+    p=subprocess.run(['bash',str(ROOT/'scripts/join-pylon.sh'),*options],env=env,capture_output=True,text=True)
+    self.assertNotEqual(p.returncode,0);self.assertEqual(target.read_text(),'preserve this')
  def test_help(self):
   r=subprocess.run(['bash',str(ROOT/'scripts/join-pylon.sh'),'--help'],capture_output=True,text=True);self.assertEqual(r.returncode,0);self.assertIn('--source',r.stdout)
 if __name__=='__main__':unittest.main()

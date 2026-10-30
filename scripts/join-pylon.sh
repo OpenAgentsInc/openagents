@@ -92,7 +92,7 @@ stop_owned() {
 }
 cleanup() {
   trap - EXIT INT TERM HUP
-  : > "$state/stop"
+  [[ -L "$state/stop" ]] || : > "$state/stop"
   stop_owned "$pylon_pid" 30
   stop_owned "$engine_pid" 0
   rm -f "$lock/pid"; rmdir "$lock" 2>/dev/null || true
