@@ -56,7 +56,7 @@ ZeronState :: struct {
   demo: bool;                    // Zeron's demo conversation instead of a chat
   since_build: f32;              // seconds since the transcript was rebuilt
   host_action: int;              // HOST_*, until the host takes it
-  own_pool: [4096] u8;           // the conversation's text until the host attaches its pool
+  own_pool: [3072] u8;           // the conversation's text until the host attaches its pool (3 KiB: the checks run at the compile-time aggregate limit)
   // the mode, and the Psionic engine with its buffers
   mode: int;                     // MODE_*
   lab: [1] Lab;                  // the Lab's routing (MODE_LAB)
@@ -68,6 +68,7 @@ ZeronState :: struct {
   cats: [MODE_COUNT] PkCatalog;
   cat_gen: int;                    // the engine's catalog these copy
   cx_gen: int;                     // the Codex engine's catalog these copy
+  ps_place_gen: int;               // the Psionic engine's place these copy
   att: [1] Attachments;
   own_store: [256] u8;           // the attachments' bytes until the host attaches its store
   prompt: [] u8;                 // a message as its engine reads it (the store's last 512 KiB)
@@ -330,6 +331,7 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
   if e[0].cat_gen != s[0].cat_gen { s[0].cat_gen = e[0].cat_gen; zr_catalogs(s); zr_labels(s); }   // the CLI listed its models
   s[0].psionic[0].access = e[0].access;
   ps_pump(s[0].psionic[..], ss, dt1);
+  if s[0].psionic[0].place_gen != s[0].ps_place_gen { zr_catalogs(s); }   // it found where gpt-oss-20b answers from
   // Codex: started ahead of a message once its tab is in view (its model/list fills the picker)
   cx := s[0].codex;
   if cx.count > 0 {
@@ -417,6 +419,8 @@ zr_frame :: (s: [] ZeronState, out: [] f32, width: f32, height: f32, dpr: f32, d
 zr_catalogs :: (s: [] ZeronState) {
   s[0].cats[MODE_CLAUDE] = s[0].engine[0].cat[0];
   s[0].cats[MODE_PSIONIC] = mode_catalog(MODE_PSIONIC);
+  s[0].cats[MODE_PSIONIC].place = ps_where(s[0].psionic[..]);   // "coderos-4080 · RTX 4080"
+  s[0].ps_place_gen = s[0].psionic[0].place_gen;
   s[0].cats[MODE_LAB] = mode_catalog(MODE_LAB);
   cxe_init(s[0].codex);
   s[0].cats[MODE_CODEX] = ifx s[0].codex.count > 0 then s[0].codex[0].cat[0] else codex_catalog();
@@ -601,6 +605,14 @@ coaxial_zeron_fixture :: (s: [] ZeronState, open: bool) #export_c {
   t := s[0].transcript[..];
   for g: 0..<t[0].ng { t_set_open(t, g, -1, open); for k: 0..<t[0].groups[g].tools { t_set_open(t, g, k, false); } }
   if open { t_set_open(t, 0, 0, true); t_set_open(t, 0, 3, true); t_set_open(t, 0, 4, true); t_set_open(t, 1, 0, true); }
+}
+// The shot step `fixture table`: a reply with GFM tables.
+coaxial_zeron_fixture_table :: (s: [] ZeronState) #export_c {
+  if s.count < 1 { return; }
+  zr_demo(s);
+  t := s[0].transcript[..];
+  t_reset(t);
+  t_table_demo(t);
 }
 // The engine's buffers (the host allocates them: a conversation's text, a
 // stdout line, its decoded strings, the frames owed to the CLI, the

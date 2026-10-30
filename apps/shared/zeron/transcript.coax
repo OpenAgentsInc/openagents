@@ -40,6 +40,11 @@ QUOTE_RAIL :: 2.0; QUOTE_PAD_L :: 12.0; QUOTE_PAD_R :: 10.0; QUOTE_PAD_Y :: 6.0;
 INLINE_CODE_RADIUS :: 4.5; INLINE_CODE_PAD_X :: 2.0; INLINE_CODE_INSET_Y :: 2.0;
 CODE_RADIUS :: 10.0; CODE_HEADER_HEIGHT :: 28.0; CODE_PADDING_X :: 12.0; CODE_PADDING_Y :: 10.0;
 CODE_LINE_HEIGHT :: 18.0; CODE_ACTION_SIZE :: 22.0;
+// A GFM table (render.rs TABLE_*, mugen-markdown's TableBlock under Zeron's
+// md theme): frameless, a 1px white@10% hairline between rows the only
+// chrome, 12px cell padding, a column's natural width floored at 48 (plus
+// padding), its minimum min(natural, 96).
+TABLE_CELL_PADDING :: 12.0; TABLE_DIVIDER :: 1.0; TABLE_MIN_COLUMN_CONTENT :: 48.0; TABLE_MIN_COLUMN_WIDTH :: 96.0;
 PHI :: 1.618034;                // GPUI's default line height, relative
 
 R_USER :: 0; R_MD :: 1; R_GROUP :: 2; R_NOTICE :: 3;
@@ -99,6 +104,9 @@ TItem :: struct {
   icon: int; joined: bool; end_x: f32;
   text: string; font: int; sel: int; off: int;
 }
+// A table wider than the column: the boxes and texts it laid out, cut at its right edge.
+TClip :: struct { box0: int; box1: int; text0: int; text1: int; right: f32; }
+T_CLIPS :: 16;
 // A selectable line of text: its segments texts[item0..<item0+items], and
 // whether a line break follows it when copied (a soft wrap has none).
 TSel :: struct { x: f32; y: f32; h: f32; item0: int; items: int; hard: bool; }
@@ -132,6 +140,7 @@ Transcript :: struct {
   working: bool; work_secs: f32; spin: f32; seed: int;
   // the pointer (window logical px)
   px: f32; py: f32; inside: bool;
+  clips: [T_CLIPS] TClip; nclip: int;
   hover_kind: int; hover_a: int; hover_b: int;
   press_kind: int; press_a: int; press_b: int;
   selecting: bool; has_sel: bool; anchor: SelPos; focus: SelPos;
@@ -234,6 +243,18 @@ t_diff_line :: (t: [] Transcript, kind: int, old_no: int, new_no: int, text: str
 
 // Zeron's demo conversation (the transcript-fixture capture uses the same).
 DEMO_REPLY :: "Done — the header keeps `text_muted` even on failure; only the chip label and the summary segment (\"1 failed\") pick up `danger`:\n\n- the header reads the group's **summary**, never its children\n- a failed chip tints its own label\n- the count lands in the summary as `· 1 failed`\n\n```rust\nfn header_color(_group: &ToolGroup, theme: &Theme) -> Hsla {\n    theme.text_muted\n}\n```\n\nMatches the desktop fix in `1749890`.";
+
+// A reply with GFM tables (the shot step `fixture table`): one right after
+// a paragraph line, aligned columns with bold, code and an escaped pipe in
+// its cells and a short row; then one wider than the column.
+TABLE_DEMO_REPLY :: "Here are the tools I can reach from this Mac:\n| Tool | Purpose | Example |\n|:-----|:-------:|--------:|\n| **read_file** | Read a text file, up to its first 6000 bytes | `read_file(\"notes.md\")` |\n| list_folder | List a folder | `ls ~/work` |\n| run_command | Run a shell command in the working folder and return its output, so long answers wrap inside their cell | `rg TODO \\| head` |\n| web_search |\n\nAnd a wide one:\n\n| Mon | Tue | Wed | Thu | Fri | Sat | Sun | Week total |\n|---|---|---|---|---|---|---|---|\n| 4.2 h on the parser | 3.9 h | 5.1 h | 4.4 h | 2.0 h | 0.5 h | 0 h | 20.1 hours in all |";
+
+t_table_demo :: (t: [] Transcript) {
+  t_user(t, "What tools do you have? A table, please.");
+  t_entry(t);
+  t_text(t, TABLE_DEMO_REPLY);
+  t_mark_ends(t);
+}
 
 t_demo :: (t: [] Transcript) {
   t_user(t, "Tool group headers turn red when any child fails — they should stay quiet, chips carry the error.");
@@ -432,6 +453,7 @@ lay_md :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: 
   doc := t[0].md[..];
   kind := doc[0].blocks[b].kind;
   if kind == MB_CODE { return lay_code(t, a, th, b, x, y, w); }
+  if kind == MB_TABLE { return lay_table(t, a, th, b, x, y, w); }
   if kind == MB_PARA { return t_rich(t, a, th, md_block_text(doc, b), md_block_runs(doc, b), x, y, w, MD_LINE_HEIGHT, th.text); }
   i0 := doc[0].blocks[b].item0;
   if kind == MB_QUOTE {
@@ -471,6 +493,115 @@ lay_md :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: 
       t_quad(t, ix_x + 1, y + h + (MD_LINE_HEIGHT - LIST_DISC) / 2, LIST_DISC, LIST_DISC, LIST_DISC / 2, th.accent);
     }
     h += t_rich(t, a, th, md_item_text(doc, ix), md_item_runs(doc, ix), ix_x + col, y + h, x + w - ix_x - col, MD_LINE_HEIGHT, th.text);
+  }
+  return h;
+}
+
+// A GFM table (render.rs render_table): every cell's natural width is its
+// text unwrapped (the header row in its weight); a column's natural is the
+// widest, floored at 48, plus its padding; its minimum min(natural, 96).
+// The table spans the column, columns sharing it in proportion to their
+// naturals (flex-grow natural on a zero basis), none below its minimum (CSS
+// flex's frozen violations, as Taffy resolves them); when the minimums
+// overflow the column, each column takes its minimum. Cells wrap their text
+// at the column's width less the padding and align it as the delimiter row
+// says; a row is as tall as its tallest cell; a hairline between rows. Copy
+// reads the cells in order, one to a line.
+TableLayout :: struct { cols: int; rows: int; w: [MD_TABLE_COLS] f32; x: [MD_TABLE_COLS + 1] f32; total: f32; }
+
+// The column widths for naturals and minimums sharing width avail.
+table_share :: (naturals: [] f32, minimums: [] f32, cols: int, avail: f32, out: [] f32) -> f32 {
+  sum_min: f32 = 0;
+  for c: 0..<cols { sum_min += minimums[c]; }
+  space := ifx sum_min > avail then sum_min else avail;
+  frozen: [MD_TABLE_COLS] bool;
+  for c: 0..<cols { frozen[c] = false; }
+  // freeze the columns whose share falls under their minimum until none does
+  rounds := 0;
+  while rounds <= cols {
+    rounds += 1;
+    left := space; grow: f32 = 0;
+    for c: 0..<cols { if frozen[c] { left -= minimums[c]; } else { grow += naturals[c]; } }
+    any := false;
+    for c: 0..<cols {
+      if frozen[c] { out[c] = minimums[c]; continue; }
+      out[c] = ifx grow > 0 then left * naturals[c] / grow else 0.0f32;
+    }
+    for c: 0..<cols { if !frozen[c] && out[c] < minimums[c] { frozen[c] = true; any = true; } }
+    if !any { break; }
+  }
+  return space;
+}
+
+table_measure :: (t: [] Transcript, a: [] Atlas, b: int, w: f32) -> TableLayout {
+  doc := t[0].md[..];
+  L: TableLayout;
+  L.cols = doc[0].blocks[b].cols; L.rows = md_table_rows(doc, b);
+  i0 := doc[0].blocks[b].item0;
+  content: [MD_TABLE_COLS] f32; naturals: [MD_TABLE_COLS] f32; minimums: [MD_TABLE_COLS] f32;
+  for c: 0..<L.cols { content[c] = 0; }
+  for r: 0..<L.rows {
+    for c: 0..<L.cols {
+      k := i0 + r * L.cols + c;
+      text := md_item_text(doc, k);
+      cw := md_width(a, text, md_item_runs(doc, k), 0, text.count, false);
+      if cw > content[c] { content[c] = cw; }
+    }
+  }
+  for c: 0..<L.cols {
+    naturals[c] = (ifx content[c] > TABLE_MIN_COLUMN_CONTENT then content[c] else TABLE_MIN_COLUMN_CONTENT) + 2 * TABLE_CELL_PADDING;
+    minimums[c] = ifx naturals[c] < TABLE_MIN_COLUMN_WIDTH then naturals[c] else TABLE_MIN_COLUMN_WIDTH;
+  }
+  L.total = table_share(naturals[..], minimums[..], L.cols, w, L.w[..]);
+  // edges on whole layout pixels, as GPUI rounds Taffy's layout
+  acc: f32 = 0; L.x[0] = 0;
+  for c: 0..<L.cols { acc += L.w[c]; L.x[c + 1] = round_layout(acc); }
+  return L;
+}
+
+lay_table :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: f32) -> f32 {
+  doc := t[0].md[..];
+  L := table_measure(t, a, b, w);
+  if L.cols == 0 || L.rows == 0 { return 0; }
+  i0 := doc[0].blocks[b].item0;
+  wider := L.total > w + 0.5;
+  box0 := t[0].nbox; text0 := t[0].ntext;
+  h: f32 = 0;
+  lines: [64] MdLine;
+  for r: 0..<L.rows {
+    if r > 0 { t_quad(t, x, y + h, L.total, TABLE_DIVIDER, 0, ink(0.10)); h += TABLE_DIVIDER; }
+    // the row's height: its tallest cell
+    tall := 1;
+    for c: 0..<L.cols {
+      k := i0 + r * L.cols + c;
+      iw := L.x[c + 1] - L.x[c] - 2 * TABLE_CELL_PADDING;
+      n := md_wrap(a, md_item_text(doc, k), md_item_runs(doc, k), iw, false, lines[..]);
+      if n > tall { tall = n; }
+    }
+    for c: 0..<L.cols {
+      k := i0 + r * L.cols + c;
+      text := md_item_text(doc, k); runs := md_item_runs(doc, k);
+      cx := x + L.x[c] + TABLE_CELL_PADDING;
+      iw := L.x[c + 1] - L.x[c] - 2 * TABLE_CELL_PADDING;
+      n := md_wrap(a, text, runs, iw, false, lines[..]);
+      if text.count == 0 { continue; }
+      for q: 0..<n {
+        lx := cx;
+        al := doc[0].items[k].number;
+        if al != MA_LEFT {
+          lw := md_width(a, text, runs, lines[q].from, lines[q].to, false);
+          // a wrapped line's trailing space doesn't count toward its alignment
+          if lines[q].to > lines[q].from && text[lines[q].to - 1] == ' ' { lw -= md_width(a, text, runs, lines[q].to - 1, lines[q].to, false); }
+          lx = ifx al == MA_CENTER then cx + (iw - lw) / 2 else cx + iw - lw;
+        }
+        t_rich_line(t, a, th, text, runs, lines[q].from, lines[q].to, lx, y + h + TABLE_CELL_PADDING + cast(f32) q * MD_LINE_HEIGHT, MD_LINE_HEIGHT, false, th.text, q + 1 == n);
+      }
+    }
+    h += cast(f32) tall * MD_LINE_HEIGHT + 2 * TABLE_CELL_PADDING;
+  }
+  if wider && t[0].nclip < T_CLIPS {
+    t[0].clips[t[0].nclip] = TClip.{box0 = box0, box1 = t[0].nbox, text0 = text0, text1 = t[0].ntext, right = x + w};
+    t[0].nclip += 1;
   }
   return h;
 }
@@ -788,7 +919,7 @@ top_gap :: (t: [] Transcript, r: int) -> f32 {
 // Lays out every row in the column (x, w) and remakes the display list.
 // bottom_pad: the last row's clearance (the composer stack, the fade band, 8).
 t_layout :: (t: [] Transcript, a: [] Atlas, th: Theme, x: f32, w: f32, bottom_pad: f32) {
-  t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0;
+  t[0].nbox = 0; t[0].ntext = 0; t[0].nsel = 0; t[0].nhit = 0; t[0].nclip = 0;
   // what the last layout wrote to the pool goes; the conversation's text stays
   if t[0].laid { t[0].np = t[0].np_base; } else { t[0].np_base = t[0].np; t[0].laid = true; }
   y: f32 = 0;
@@ -867,6 +998,16 @@ t_line_x :: (t: [] Transcript, a: [] Atlas, s: int, off: int) -> f32 {
   return last.x + last.w;
 }
 
+// The right edge a box (or text) k is cut at, 0 when it isn't in a too-wide table.
+t_clip_right :: (t: [] Transcript, k: int, box: bool) -> f32 {
+  for c: 0..<t[0].nclip {
+    cl := t[0].clips[c];
+    if box && k >= cl.box0 && k < cl.box1 { return cl.right; }
+    if !box && k >= cl.text0 && k < cl.text1 { return cl.right; }
+  }
+  return 0;
+}
+
 // Paints the display list: content y 0 at window y offset; everything fades
 // under the titlebar (top band) and toward the window's bottom (bottom band,
 // opaque at the composer's top). view_w for culling.
@@ -878,9 +1019,13 @@ t_paint :: (out: [] f32, at: int, t: [] Transcript, a: [] Atlas, th: Theme, d: f
     b := t[0].boxes[k];
     y := b.y + off;
     if y > view_h + 4 || y + b.h + (ifx b.kind == TI_ELBOW then b.radius + 1 else 0.0f32) < -4 { continue; }
+    right := t_clip_right(t, k, true);
+    if right > 0 && b.x >= right { continue; }
+    v0 := v;
     if b.kind == TI_QUAD { v = paint_quad(out, v, d, b.x, y, b.w, b.h, b.radius, b.border, b.fill, b.edge); }
     else if b.kind == TI_ICON { v = paint_icon(out, v, a, d, b.icon, b.x, y, b.w, b.h, b.fill); }
     else if b.kind == TI_ELBOW { v = paint_elbow(out, v, d, b.x, y, b.radius, b.end_x, b.joined, b.fill); }
+    if right > 0 { gp_clip(out, v0, v, d, -GP_NO_CLIP, -GP_NO_CLIP, right + GP_NO_CLIP, 2 * GP_NO_CLIP); }
   }
   // the selection, under the glyphs
   if t[0].has_sel {
@@ -900,7 +1045,11 @@ t_paint :: (out: [] f32, at: int, t: [] Transcript, a: [] Atlas, th: Theme, d: f
     ti := t[0].texts[k];
     y := ti.y + off;
     if y > view_h || y + ti.h < 0 { continue; }
+    right := t_clip_right(t, k, false);
+    if right > 0 && ti.x >= right { continue; }
+    v0 := v;
     v = paint_text(out, v, a, d, ti.font, ti.text, ti.x, y, ti.h, ti.fill);
+    if right > 0 { gp_clip(out, v0, v, d, -GP_NO_CLIP, -GP_NO_CLIP, right + GP_NO_CLIP, 2 * GP_NO_CLIP); }
   }
   gp_fade(out, at, v, d, TITLEBAR_HEIGHT, TRANSCRIPT_FADE_BAND, view_h, fade_bottom_band);
   return v;
@@ -1202,4 +1351,47 @@ t_row_of :: (t: [] Transcript, kind: int, n: int) -> int {
   out: [400000] f32;
   n := t_paint(out[..], 0, t[..], a[..], zeron_dark(), 2, 880, 89);
   #assert n > 600 && out[24] == 76 && out[27] == 178;
+}
+
+#test "a table lays out as Zeron's: columns share the width by natural size, rows as tall as the tallest cell, hairlines between" {
+  t: [1] Transcript; a: [1] Atlas; t_test_setup(t[..], a[..]);
+  t_reset(t[..]);
+  t_user(t[..], "q"); t_entry(t[..]);
+  t_text(t[..], "| A | Bee |\n|---|--:|\n| 1 | two words |\n| x |\n");
+  th := zeron_dark();
+  t_layout(t[..], a[..], th, 48, 736, 0);
+  r := t_row_of(t[..], R_MD, 0);
+  b := t[0].rows[r].block;
+  #assert t[0].md[0].blocks[b].kind == MB_TABLE && t[0].md[0].blocks[b].cols == 2 && md_table_rows(t[0].md[..], b) == 3;
+  // naturals (8px a glyph): A -> 48+24 = 72, "two words" 72 -> 96; grow by naturals over 736
+  L := table_measure(t[..], a[..], b, 736);
+  #assert L.x[1] == round_layout(736 * 72.0 / 168.0) && L.x[2] == 736 && L.total == 736;
+  // three rows of one line, two hairlines: 3 * (22 + 24) + 2
+  #assert t[0].rows[r].h == 3 * 46 + 2;
+  // the right-aligned column's text ends at its right padding
+  found := false;
+  for k: 0..<t[0].ntext {
+    ti := t[0].texts[k];
+    if ti.text == "two words" { found = true; #assert ti.x + ti.w == 48 + 736 - TABLE_CELL_PADDING; }
+  }
+  #assert found;
+  // the header row is bold
+  hdr := false;
+  for k: 0..<t[0].ntext { if t[0].texts[k].text == "Bee" { hdr = t[0].texts[k].font == FONT_BOLD; } }
+  #assert hdr;
+}
+
+#test "a table wider than the column keeps each column's minimum and is cut at the column's edge" {
+  t: [1] Transcript; a: [1] Atlas; t_test_setup(t[..], a[..]);
+  t_reset(t[..]);
+  t_user(t[..], "q"); t_entry(t[..]);
+  t_text(t[..], "| aaaaaaaaaaaaaaaaaaaa | b | cccccccccccccccccccc | dddddddddddddddddddd |\n|---|---|---|---|\n| 1 | 2 | 3 | 4 |");
+  th := zeron_dark();
+  t_layout(t[..], a[..], th, 48, 300, 0);
+  b := t[0].rows[t_row_of(t[..], R_MD, 0)].block;
+  L := table_measure(t[..], a[..], b, 300);
+  // minimums: 96, 72, 96, 96 = 360 > 300
+  #assert L.total == 360 && L.x[1] == 96 && L.x[2] == 168;
+  #assert t[0].nclip == 1 && t[0].clips[0].right == 348 && t[0].clips[0].text1 == t[0].ntext && t[0].clips[0].text0 == 1;   // all but the user's bubble
+  #assert t_clip_right(t[..], 0, false) == 0 && t_clip_right(t[..], 1, false) == 348;
 }

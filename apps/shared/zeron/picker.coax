@@ -70,6 +70,7 @@ PkCatalog :: struct {
   icon: int; tint: Rgba;        // its 14px brand mark and tint
   n: int;
   id: [PK_MODELS] string; label: [PK_MODELS] string; desc: [PK_MODELS] string;
+  place: string; place_model: int;   // where one model runs ("This Mac"), shown after its name as a device row's detail
   ladder: [PK_MODELS] int;      // bit k: level k on that model's slider
   levels: int;
   level_id: [PK_LEVELS] string; level_label: [PK_LEVELS] string;
@@ -604,19 +605,39 @@ pk_paint_list :: (out: [] f32, at: int, p: [] Picker, cat: [] PkCatalog, sel: Pk
     ty := ry + round_half_toward_zero((COMPACT_ROW_HEIGHT - lh) / 2);
     label := pk_fit(a, FONT_CHIP, cat[0].label[m], room, buf[..]);
     v = paint_text(out, v, a, d, FONT_CHIP, label, lx, ty, lh, th.text);
-    if cat[0].desc[m].count > 0 && pk_ambiguous(cat, m) {
+    // the muted detail after the name: where the model runs (as pickers.rs's
+    // device rows put a checkout's path), else the description that tells
+    // identically named rows apart
+    detail := ifx m == cat[0].place_model && cat[0].place.count > 0 then cat[0].place else ifx pk_ambiguous(cat, m) then cat[0].desc[m] else "";
+    if detail.count > 0 {
       dx := lx + text_width(a, FONT_CHIP, label) + 6;
+      // a place may run into the star's room (no star is drawn); a description keeps clear of it
+      if m == cat[0].place_model && cat[0].place.count > 0 {
+        room = rx + rw - 8 - lx;
+        // too long: its first part ("coderos-4080 · RTX 4080" -> "coderos-4080") before an ellipsis
+        if text_width(a, FONT_MENU_SMALL, detail) > room - (dx - lx) { detail = pk_first_part(detail); }
+      }
       if room - (dx - lx) > 12 {
         // baseline-aligned with the name
         dlh: f32 = 11 * PHI;
         base := ty + (lh - a[0].fonts[FONT_CHIP].ascent - a[0].fonts[FONT_CHIP].descent) / 2 + a[0].fonts[FONT_CHIP].ascent;
         dty := base - a[0].fonts[FONT_MENU_SMALL].ascent - (dlh - a[0].fonts[FONT_MENU_SMALL].ascent - a[0].fonts[FONT_MENU_SMALL].descent) / 2;
-        v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, cat[0].desc[m], room - (dx - lx), dbuf[..]), dx, dty, dlh, th.muted);
+        v = paint_text(out, v, a, d, FONT_MENU_SMALL, pk_fit(a, FONT_MENU_SMALL, detail, room - (dx - lx), dbuf[..]), dx, dty, dlh, th.muted);
       }
     }
   }
   gp_clip(out, clip_from, v, d, ix, ly, iw, list_h);
   return v;
+}
+
+// A detail's text before its first " · " (all of it when there is none).
+pk_first_part :: (s: string) -> string {
+  for k: 0..<s.count { if k + 1 < s.count && s[k] == ' ' && s[k + 1] == 0xC2 { return cast(string) s[0..<k]; } }
+  return s;
+}
+
+#test "a place too long for its row keeps its first part" {
+  #assert pk_first_part("coderos-4080 · RTX 4080") == "coderos-4080" && pk_first_part("This Mac") == "This Mac";
 }
 
 // A menu row's description wrapped to w (11px, at spaces): line ends into ends; how many lines.

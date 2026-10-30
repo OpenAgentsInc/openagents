@@ -16,7 +16,11 @@
 // Inline styles of a run.
 MD_PLAIN :: 0; MD_BOLD :: 1; MD_CODE :: 2;
 // Block kinds.
-MB_PARA :: 0; MB_LIST :: 1; MB_CODE :: 2; MB_QUOTE :: 3;
+MB_PARA :: 0; MB_LIST :: 1; MB_CODE :: 2; MB_QUOTE :: 3; MB_TABLE :: 4;
+// A table's column alignment (parser.rs TableAlign; none reads as left).
+MA_LEFT :: 0; MA_CENTER :: 1; MA_RIGHT :: 2;
+MD_TABLE_COLS :: 16;          // columns kept; a row's cells past them are dropped
+MD_CELL :: 2048;              // a cell's source bytes read
 MD_DEPTHS :: 4;               // list nesting drawn: deeper items sit at the last level
 
 MD_TEXT :: 65536;
@@ -26,16 +30,19 @@ MD_ITEMS :: 256;
 
 // A styled stretch of a block's (or an item's) display text, in bytes.
 MdRun :: struct { from: int; to: int; style: int; }
-// One list item (or one paragraph of a quote): its display text
-// (doc.text[at..<at+n]) and runs, its nesting depth and whether it's numbered.
+// One list item (or one paragraph of a quote, or one table cell): its display
+// text (doc.text[at..<at+n]) and runs, its nesting depth and whether it's
+// numbered; a cell's number is its column's alignment (MA_*).
 MdItem :: struct { at: int; n: int; run0: int; runs: int; number: int; depth: int; ordered: bool; }
 // A block: a paragraph (text and runs), a list (items, numbered or not, each
-// at its depth), a quote (its paragraphs as items) or fenced code (its raw
-// lines as text, the fence's language).
+// at its depth), a quote (its paragraphs as items), a table (its cells as
+// items, row by row, the header row first, cols to a row) or fenced code
+// (its raw lines as text, the fence's language).
 MdBlock :: struct {
   kind: int;
   at: int; n: int; run0: int; runs: int;
   item0: int; items: int; ordered: bool;
+  cols: int;
   lang_at: int; lang_n: int;
   part: int;                  // which source text it came from (a row id's part)
 }
@@ -170,6 +177,150 @@ md_line_end :: (src: string, i: int) -> int {
   return j;
 }
 
+// ---------------------------------------------------------------- tables
+// GFM tables as pulldown-cmark 0.12 reads them (Zeron's parser.rs runs it
+// with ENABLE_TABLES; firstpass.rs parse_table, scan_table_head,
+// count_header_cols): a header row with a pipe, then a delimiter row
+// (`---`, `:--`, `:-:`, `--:` between pipes) with as many columns; body rows
+// until a blank line or a line that starts another block (a row without a
+// pipe still counts). A table may start a paragraph, and one whose header
+// begins with `|` may interrupt one. A row's cells past the header's count
+// are dropped, missing ones are empty; `\|` is a pipe inside a cell.
+
+// A row's columns as the header counts them: its unescaped pipes, less a
+// leading one, less a trailing one with only blanks after it; 0 without a pipe.
+md_table_cols :: (line: string) -> int {
+  pipes := 0; last := -1; k := 0;
+  while k < line.count {
+    if line[k] == '\\' && k + 1 < line.count { k += 2; continue; }
+    if line[k] == '|' { pipes += 1; last = k; }
+    k += 1;
+  }
+  if pipes == 0 { return 0; }
+  t := md_trim_left(line);
+  if t.count > 0 && t[0] == '|' { pipes -= 1; }
+  if md_blank(cast(string) line[last + 1..<line.count]) { return pipes; }
+  return pipes + 1;
+}
+
+// A delimiter row: its column count (each column's alignment into align), 0 if it isn't one.
+md_delim :: (line: string, align: [] int) -> int {
+  if md_indent(line) > 3 { return 0; }
+  t := md_trim_left(line);
+  if t.count == 0 { return 0; }
+  i := 0; cols := 0; active := -1; start := true; pipe := false; hyphen := false; in_col := false;
+  if t[0] == '|' { i = 1; pipe = true; }
+  while i < t.count {
+    c := t[i];
+    if c == '\r' { i += 1; continue; }
+    if c == ' ' || c == '\t' {
+    } else if c == ':' {
+      if start && active < 0 { active = MA_LEFT; }
+      else if !start && active == MA_LEFT { active = MA_CENTER; }
+      else if !start && active < 0 { active = MA_RIGHT; }
+      start = false;
+    } else if c == '-' {
+      start = false; hyphen = true; in_col = true;
+    } else if c == '|' {
+      if !in_col { return 0; }
+      if cols < align.count { align[cols] = ifx active < 0 then MA_LEFT else active; }
+      cols += 1; start = true; pipe = true; active = -1; in_col = false;
+    } else { return 0; }
+    i += 1;
+  }
+  if !start {
+    if cols < align.count { align[cols] = ifx active < 0 then MA_LEFT else active; }
+    cols += 1;
+  }
+  if !pipe || !hyphen { return 0; }
+  return cols;
+}
+
+// Whether the line at src[i..<e] heads a table (its delimiter row next):
+// its column count, else 0. interrupt: it would end a paragraph, so it must
+// begin with a pipe.
+md_table_head :: (src: string, i: int, e: int, interrupt: bool) -> int {
+  if e >= src.count { return 0; }
+  line := cast(string) src[i..<e];
+  if md_indent(line) > 3 { return 0; }
+  if interrupt { t := md_trim_left(line); if t.count == 0 || t[0] != '|' { return 0; } }
+  cols := md_table_cols(line);
+  if cols == 0 { return 0; }
+  e2 := md_line_end(src, e + 1);
+  align: [MD_TABLE_COLS] int;
+  if md_delim(cast(string) src[e + 1..<e2], align[..]) != cols { return 0; }
+  return cols;
+}
+
+// A line that ends a table's body (pulldown's scan_paragraph_interrupt_no_table).
+md_ends_table :: (line: string) -> bool {
+  return md_blank(line) || md_heading(md_trim_left(line)) > 0 || md_fence(line) || md_quote_at(line) >= 0
+    || md_rule(md_trim_left(line)) || md_marker(line) > 0;
+}
+
+// One row's cells appended as items (cols of them: extra cells dropped,
+// missing ones empty), each inlined with `\|` read as a pipe; strong: the
+// header row, set bold (render.rs sets it at weight 700; the atlas's
+// boldest Geist is SemiBold, 600, as for **bold**).
+md_table_row :: (doc: [] MdDoc, line: string, cols: int, align: [] int, strong: bool) {
+  i := 0; c := 0;
+  t := md_trim_left(line);
+  buf: [MD_CELL] u8;
+  while c < cols {
+    if i < t.count && t[i] == '|' { i += 1; }
+    while i < t.count && (t[i] == ' ' || t[i] == '\t') { i += 1; }
+    if i >= t.count || md_blank(cast(string) t[i..<t.count]) { break; }
+    // the cell: up to the next unescaped pipe, `\|` unescaped, trailing blanks dropped
+    nb := 0;
+    while i < t.count && t[i] != '|' {
+      if t[i] == '\\' && i + 1 < t.count && t[i + 1] == '|' { if nb < MD_CELL { buf[nb] = '|'; nb += 1; } i += 2; continue; }
+      if t[i] == '\\' && i + 1 < t.count { if nb + 1 < MD_CELL { buf[nb] = t[i]; buf[nb + 1] = t[i + 1]; nb += 2; } i += 2; continue; }
+      if nb < MD_CELL { buf[nb] = t[i]; nb += 1; }
+      i += 1;
+    }
+    while nb > 0 && (buf[nb - 1] == ' ' || buf[nb - 1] == '\t' || buf[nb - 1] == '\r') { nb -= 1; }
+    md_table_cell(doc, cast(string) buf[0..<nb], align[c], strong);
+    c += 1;
+  }
+  while c < cols { md_table_cell(doc, "", align[c], strong); c += 1; }
+  // cells past the header's count are dropped
+}
+md_table_cell :: (doc: [] MdDoc, src: string, align: int, strong: bool) {
+  if doc[0].ni >= MD_ITEMS { return; }
+  k := doc[0].ni; doc[0].ni += 1;
+  at := doc[0].n; r0 := doc[0].nr;
+  r := md_inline(doc, src, at);
+  if strong { for z: r0..<doc[0].nr { if doc[0].runs[z].style != MD_CODE { doc[0].runs[z].style = MD_BOLD; } } }
+  doc[0].items[k] = MdItem.{at = at, n = doc[0].n - at, run0 = r0, runs = doc[0].nr - r0, number = align};
+}
+// Parses the table whose header is the line at i (cols columns): returns where the source goes on.
+md_table :: (doc: [] MdDoc, src: string, i: int, cols: int, part: int) -> int {
+  b := md_new_block(doc, MB_TABLE, part);
+  e := md_line_end(src, i);
+  e2 := md_line_end(src, e + 1);
+  if b < 0 { return e2 + 1; }
+  align: [MD_TABLE_COLS] int;
+  q := md_delim(cast(string) src[e + 1..<e2], align[..]);
+  kept := ifx cols > MD_TABLE_COLS then MD_TABLE_COLS else cols;
+  doc[0].blocks[b].cols = kept;
+  md_table_row(doc, cast(string) src[i..<e], kept, align[..], true);
+  j := e2 + 1;
+  while j < src.count {
+    le := md_line_end(src, j);
+    line := cast(string) src[j..<le];
+    if md_ends_table(line) { break; }
+    if doc[0].ni + kept > MD_ITEMS { j = le + 1; continue; }
+    md_table_row(doc, line, kept, align[..], false);
+    j = le + 1;
+  }
+  doc[0].blocks[b].items = doc[0].ni - doc[0].blocks[b].item0;
+  return j;
+}
+md_table_rows :: (doc: [] MdDoc, b: int) -> int {
+  c := doc[0].blocks[b].cols;
+  return ifx c > 0 then doc[0].blocks[b].items / c else 0;
+}
+
 md_new_block :: (doc: [] MdDoc, kind: int, part: int) -> int {
   if doc[0].nb >= MD_BLOCKS { return -1; }
   b := doc[0].nb; doc[0].nb += 1;
@@ -207,6 +358,8 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
       doc[0].blocks[b].n = doc[0].n - doc[0].blocks[b].at;
       continue;
     }
+    tc := md_table_head(src, i, e, false);
+    if tc > 0 { i = md_table(doc, src, i, tc, part); continue; }
     if md_marker(line) > 0 {
       // a list: items at any indent (deeper indents nest, as CommonMark reads
       // them), an indented line without a marker continuing the item above,
@@ -310,7 +463,7 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
     while i < src.count {
       e2 := md_line_end(src, i);
       l2 := cast(string) src[i..<e2];
-      if md_blank(l2) || md_marker(l2) > 0 || md_heading(l2) > 0 || md_fence(l2) || md_quote_at(l2) >= 0 { break; }
+      if md_blank(l2) || md_marker(l2) > 0 || md_heading(l2) > 0 || md_fence(l2) || md_quote_at(l2) >= 0 || md_table_head(src, i, e2, true) > 0 { break; }
       to = e2; i = e2 + 1;
     }
     r0 := doc[0].nr;
@@ -564,4 +717,38 @@ md_test_atlas :: (a: [] Atlas) {
   #assert md_item_text(doc[..], 0) == "Scratch" && md_item_text(doc[..], 1) == "a quoted paragraph";
   #assert md_item_text(doc[..], 2) == "• point";
   #assert md_block_text(doc[..], 1) == "After.";
+}
+
+#test "a GFM table: header, alignments, body rows with bold, code and an escaped pipe, a short row padded, extra cells dropped" {
+  doc: [1] MdDoc;
+  src := "| Tool | Purpose | Example |\n|:-----|:-------:|--------:|\n| **read_file** | Read a file | `cat a \\| b` |\n| short |\n| a | b | c | d |\n\nAfter.";
+  #assert md_parse(doc[..], src, 0) == 2;
+  #assert doc[0].blocks[0].kind == MB_TABLE && doc[0].blocks[0].cols == 3 && md_table_rows(doc[..], 0) == 4;
+  i0 := doc[0].blocks[0].item0;
+  #assert md_item_text(doc[..], i0) == "Tool" && doc[0].items[i0].number == MA_LEFT && doc[0].items[i0 + 1].number == MA_CENTER && doc[0].items[i0 + 2].number == MA_RIGHT;
+  #assert md_item_runs(doc[..], i0)[0].style == MD_BOLD;
+  #assert md_item_text(doc[..], i0 + 3) == "read_file" && md_item_runs(doc[..], i0 + 3)[0].style == MD_BOLD;
+  #assert md_item_text(doc[..], i0 + 5) == "cat a | b" && md_item_runs(doc[..], i0 + 5)[0].style == MD_CODE;
+  #assert md_item_text(doc[..], i0 + 6) == "short" && doc[0].items[i0 + 7].n == 0 && doc[0].items[i0 + 8].n == 0;
+  #assert md_item_text(doc[..], i0 + 11) == "c";
+  #assert md_block_text(doc[..], 1) == "After.";
+}
+
+#test "a table after a paragraph line: a header starting with a pipe interrupts it, one without doesn't" {
+  doc: [1] MdDoc;
+  #assert md_parse(doc[..], "Here they are:\n| a | b |\n|---|---|\n| 1 | 2 |", 0) == 2;
+  #assert doc[0].blocks[0].kind == MB_PARA && md_block_text(doc[..], 0) == "Here they are:" && doc[0].blocks[1].kind == MB_TABLE;
+  doc2: [1] MdDoc;
+  #assert md_parse(doc2[..], "Here they are:\na | b\n--|--", 0) == 1 && doc2[0].blocks[0].kind == MB_PARA;
+  // a table may start a paragraph without outer pipes; rows run until a blank line or another block
+  doc3: [1] MdDoc;
+  #assert md_parse(doc3[..], "a | b\n--|--\n1 | 2\nplain line\n- item", 0) == 2;
+  #assert doc3[0].blocks[0].kind == MB_TABLE && md_table_rows(doc3[..], 0) == 3 && md_item_text(doc3[..], doc3[0].blocks[0].item0 + 4) == "plain line";
+  #assert doc3[0].blocks[1].kind == MB_LIST;
+  // a delimiter row whose count differs isn't one
+  doc4: [1] MdDoc;
+  #assert md_parse(doc4[..], "| a | b |\n|---|\n", 0) == 1 && doc4[0].blocks[0].kind == MB_PARA;
+  al: [4] int;
+  #assert md_delim("|---|:-:|", al[..]) == 2 && al[1] == MA_CENTER && md_delim("| -- || -- |", al[..]) == 0 && md_delim("---", al[..]) == 0;
+  #assert md_table_cols("| a | b |") == 2 && md_table_cols("a | b") == 2 && md_table_cols("| a \\| b |") == 1;
 }

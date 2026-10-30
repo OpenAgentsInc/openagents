@@ -415,6 +415,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   //   menus           print the menu bar
   //   move X,Y        the pointer moving to device pixel X,Y (hover)
   //   fixture open|closed   the transcript as the Zeron capture opens it (transcript-fixture.rs)
+  //   fixture table   a reply with GFM tables (transcript.coax TABLE_DEMO_REPLY)
   //   scroll PX       the transcript scrolled PX from its top    pasteboard  print the pasteboard
   //   send TEXT       type TEXT into the composer and press Enter    stop  press Escape (stops a running turn)
   //   model NAME      a chip's choice (also effort NAME, access NAME, as the flags take them; plan on|off)
@@ -481,7 +482,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       _ = zr_pointer(state, nums[2], nums[3], 2, 1, 0)
     case "wheel" where nums.count == 1: _ = zr_wheel(state, nums[0])
     case "move" where nums.count == 2: _ = zr_pointer(state, nums[0], nums[1], 1, 1, 0)
-    case "fixture": zr_fixture(state, arg == "closed" ? 0 : 1)
+    case "fixture": zr_fixture(state, arg == "closed" ? 0 : arg == "table" ? 2 : 1)
     case "newchat": zr_new_chat(state)
     case "send": typed(arg); _ = zr_key(state, -2, 0)
     case "stop": _ = zr_key(state, -1, 0)

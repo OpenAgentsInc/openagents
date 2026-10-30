@@ -128,7 +128,12 @@ How it works:
   nothing listening shows the tunnel command; Stop closes the connection.
   Config: `PSIONIC_URL` and `PSIONIC_API_KEY` from the environment or
   `~/work/.secrets/psionic-responses.env` (gitignored, chmod 600), default
-  `http://127.0.0.1:8080`. The server, `~/psionic-responses/serve.sh` on
+  `http://127.0.0.1:8080`. The model list says where gpt-oss-20b answers
+  from after its name ("coderos-4080 · RTX 4080", "This Mac"): the
+  endpoint's host, or on this Mac's loopback the machine the ssh forward on
+  its port goes to (lsof and ps, every 10 s), else `PSIONIC_HOST`; the card is
+  `PSIONIC_GPU`, else the RTX 4080 for coderos-4080 (the server reports no
+  machine of its own). The server, `~/psionic-responses/serve.sh` on
   coderos-4080 (wraps `psionic/serve-gptoss.sh` on port 8080 with the key
   from `~/.config/psionic-responses.env`), is started by the GPU switch
   below, and the app opens the tunnel itself. gpt-oss-20b needs most of the
@@ -161,7 +166,12 @@ How it works:
   code blocks, `changes.rs`'s diff rows) showing a fixed demo conversation,
   Zeron's own (`crates/client/src/demo/transcripts.rs`): user bubbles,
   Markdown (paragraphs, bold, inline code, lists, a fenced code block with
-  Zeron Dark's Rust highlighting and its wrap and Copy buttons), and tool
+  Zeron Dark's Rust highlighting and its wrap and Copy buttons, GFM tables as
+  `render.rs` draws them: frameless, a white@10% hairline between rows, 12px
+  cell padding, the header bold (Geist SemiBold; Zeron's is weight 700), columns sharing the width by their
+  natural widths with a 96px floor, cells wrapping and aligned as the
+  delimiter row says; a table wider than the column is cut at its edge, where
+  Zeron scrolls it sideways), and tool
   groups that open to the activity rail and chips (thought, search, read and
   edit with file badges, a failed run, a run still going, a fetch), each chip
   opening to its invocation and its output, thought or diff. Wheel and

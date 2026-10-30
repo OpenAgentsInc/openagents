@@ -65,7 +65,7 @@ int32_t zr_cell(void *state, int32_t cell, float *out) { return coaxial_zeron_ce
 void zr_cell_ready(void *state, int32_t cell) { coaxial_zeron_cell_ready(at(state), cell); }
 int32_t zr_can_cut(void *state) { return coaxial_zeron_can_cut(at(state)) ? 1 : 0; }
 int32_t zr_take_copy(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_take_copy(at(state), (coax_v_u8){out, cap}); }
-void zr_fixture(void *state, int32_t open) { coaxial_zeron_fixture(at(state), open != 0); }
+void zr_fixture(void *state, int32_t open) { if (open == 2) coaxial_zeron_fixture_table(at(state)); else coaxial_zeron_fixture(at(state), open != 0); }
 void zr_scroll_to(void *state, float px) { coaxial_zeron_scroll_to(at(state), px); }
 // The chat's engine (zeron/claude.coax): its buffers, the folder Claude Code
 // works in, and what the host does for it.
