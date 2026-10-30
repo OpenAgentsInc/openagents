@@ -1,4 +1,4 @@
-// Our gateway (gw-ours): POST /v1/inference on openagents.com
+// Our gateway (gw-ours): POST /api/v1/inference on openagents.com
 // (coax/web/api/inference.c), Chat Completions in and out, which calls
 // Vertex AI with the service's own account and meters the call by the
 // caller's Nostr key. The app holds no provider key: each request carries
@@ -10,7 +10,7 @@
 // build it as a unit of its own beside code whose names the crypto's clash with.
 #load "gateway.coax";
 
-GW_OURS_URL :: "https://openagents.com/v1/inference";
+GW_OURS_URL :: "https://openagents.com/api/v1/inference";
 GW_OURS_KEY_ENV :: "GW_OURS_AUTH";
 GW_OURS_FLASH :: "google/gemini-3.8-flash";
 GW_OURS_RESIGN_S :: 20;                       // the server takes a signature for 60 s

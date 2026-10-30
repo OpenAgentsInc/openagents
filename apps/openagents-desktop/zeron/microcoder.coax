@@ -19,7 +19,7 @@
 // so every other engine's, is untouched. A Mac without any of them gets an
 // error chip naming what to add.
 //
-// Our route (gw-ours): with OA_LAB_INFERENCE_URL set (our /v1/inference,
+// Our route (gw-ours): with OA_LAB_INFERENCE_URL set (our /api/v1/inference,
 // coax/web/api/inference.c) and a Nostr key in OA_LAB_NOSTR_KEY (a file of
 // 64 hex digits; by default ~/Library/Application Support/OpenAgents/lab-nostr.key),
 // the plan asks our route first: no provider key on this Mac at all, the

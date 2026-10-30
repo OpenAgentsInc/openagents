@@ -49,7 +49,7 @@ export GCS_PORT=$((55000 + RANDOM % 1000))
 export RELAY_PORT=$((52000 + RANDOM % 1000))
 # The project agent: only the fixture project "agent-proj" is approved; wakes go to test_private_agent.py's fake runner.
 export WAKE_PORT=$((59000 + RANDOM % 1000))
-# /v1/inference (test_inference.py): a fake Vertex on INFER_PORT, a key that may use the route, five requests a day.
+# /api/v1/inference (test_inference.py): a fake Vertex on INFER_PORT, a key that may use the route, five requests a day.
 export INFER_PORT=$((50000 + RANDOM % 1000)) INFER_KEY="$work/infer.key"
 export OA_INFERENCE_PUBKEYS="$("$SIGN" --new "$INFER_KEY")"
 # /chat (test_zchat.py): its own runner on CHAT_PORT, a $1 daily cap.

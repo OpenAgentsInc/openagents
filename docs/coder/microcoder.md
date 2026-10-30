@@ -186,7 +186,7 @@ Gateway    { name, url, key_env, scheme, translate(req) -> body, parse(line) -> 
 - **During development:** the files under `~/work/.secrets/` (`openrouter.env`,
   `vertex-sa-inference.json`, `openagents-gemini-provider.env`), loaded the
   way `Router.loadKey` loads `baseten.env` today.
-- **Ours, for users without keys:** through `coax/web/api` (`/v1/inference`),
+- **Ours, for users without keys:** through `coax/web/api` (`/api/v1/inference`),
   which holds our keys in Secret Manager and meters by account. The Mammoth
   key moves behind the same route before the Mac app ships.
 
@@ -209,7 +209,7 @@ Each row is a task in the Coder project. Order: what Microcoder needs first.
 | 11 | Text-action fallback parser | `microcoder-loop/text_action.rs` | `coax/lib/microcoder/text_action.coax` | For providers without strict schemas |
 | 12 | psionic local | `upstream/psionic.rs` | `psionic.coax` | Chat Completions on localhost |
 | 13 | Pylon | `upstream/pylon.rs` | `pylon.coax` | After Pylon's own Coax client |
-| 14 | Our route `/v1/inference` | `crates/gateway` (BYOK, public, rates) | `coax/web/api` | Keys in Secret Manager; meter by account |
+| 14 | Our route `/api/v1/inference` | `crates/gateway` (BYOK, public, rates) | `coax/web/api` | Keys in Secret Manager; meter by account |
 
 **Not carried over:** the door proxy (`pro.rs`), the `coder` upstream, x402
 (not a Bitcoin rail) and the old repository adapters (Devin, Grok, OpenCode).

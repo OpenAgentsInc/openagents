@@ -20,7 +20,7 @@
 //   the admin routes in admin.c    NIP-98 signed, for the pubkeys in OA_ADMIN_PUBKEYS
 //   the playtest's player routes   players, guests, saves and published worlds (player.c)
 //   POST /api/playtest/npc/ask     character chat, Gemini first (npc.c)
-//   POST /v1/inference             our models for the Mac app, NIP-98 signed, metered (inference.c)
+//   POST /api/v1/inference             our models for the Mac app, NIP-98 signed, metered (inference.c)
 //   presence and chat in a room    /api/playtest/presence/<room>, /api/playtest/chat/<room> (room.c)
 //   private projects               /projects/<slug> and /api/private/<slug>/*, members only (private.c)
 //   drops for a new project        /api/drops/*, private to who dropped them (drops.c)

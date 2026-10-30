@@ -1,7 +1,7 @@
 // Our inference route (gw-ours, docs/coder/microcoder.md): the Mac app's Lab
 // asks models through us, so the app ships with no provider key.
 //
-//   POST /v1/inference   a Chat Completions request (model, messages, stream, response_format ...),
+//   POST /api/v1/inference   a Chat Completions request (model, messages, stream, response_format ...),
 //                        signed NIP-98 ("Authorization: Nostr <base64>") by the user's Nostr key
 //                        -> Vertex AI's answer as it comes: its status, then its JSON or its
 //                           server-sent events; 400 a bad request or a model we don't serve,
@@ -163,7 +163,7 @@ static void answer(int fd, const char *who, const char *model, const char *reque
 }
 
 bool inference_route(const request *q) {
-  if (strcmp(q->path, "/v1/inference")) return false;
+  if (strcmp(q->path, "/api/v1/inference")) return false;
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a Chat Completions request\"}"); return true; }
   char auth[4096];
   if (!api_header(q, "Authorization", auth, sizeof auth) || strncmp(auth, "Nostr ", 6)) {

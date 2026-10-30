@@ -1,4 +1,4 @@
-# /v1/inference (gw-ours): a signed Lab request reaches a fake Vertex that
+# /api/v1/inference (gw-ours): a signed Lab request reaches a fake Vertex that
 # test.sh points the service at; the answer comes back as Vertex gave it and
 # the call is metered by account. test.py runs this file.
 import http.server
@@ -37,14 +37,14 @@ threading.Thread(target=infer_fake.serve_forever, daemon=True).start()
 
 
 def infer_sign(keyfile, url=None):
-    return subprocess.run([os.environ["SIGN"], "--key", keyfile, "POST", url or API + "/v1/inference"], capture_output=True, text=True, check=True).stdout.strip()
+    return subprocess.run([os.environ["SIGN"], "--key", keyfile, "POST", url or API + "/api/v1/inference"], capture_output=True, text=True, check=True).stdout.strip()
 
 
 def infer(body, keyfile=os.environ["INFER_KEY"], auth=None):
     headers = {"Content-Type": "application/json"}
     if keyfile or auth:
         headers["Authorization"] = auth or "Nostr " + infer_sign(keyfile)
-    return call("POST", "/v1/inference", json.dumps(body).encode(), headers)
+    return call("POST", "/api/v1/inference", json.dumps(body).encode(), headers)
 
 
 def infer_pubkey(keyfile):
@@ -55,7 +55,7 @@ infer_ask = {"model": "google/gemini-3.8-flash", "messages": [{"role": "user", "
 infer_user = infer_pubkey(os.environ["INFER_KEY"])
 
 check("inference: unsigned is a 401", infer(infer_ask, keyfile=None)[0] == 401)
-check("inference: a GET is a 405", call("GET", "/v1/inference")[0] == 405)
+check("inference: a GET is a 405", call("GET", "/api/v1/inference")[0] == 405)
 check("inference: a signature for another URL is a 401", infer(infer_ask, auth="Nostr " + infer_sign(os.environ["INFER_KEY"], API + "/v1/other"))[0] == 401)
 check("inference: a key not on the list is a 403", infer(infer_ask, keyfile=os.environ["OTHER_KEY"])[0] == 403)
 s, b, _ = infer({"model": "gpt-6", "messages": infer_ask["messages"]})
