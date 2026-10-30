@@ -1,0 +1,10 @@
+{
+  "name": "oa-spark",
+  "private": true,
+  "description": "The API's Spark receiver wallet (wallet.cjs)",
+  "main": "wallet.cjs",
+  "dependencies": {
+    "@breeztech/breez-sdk-spark": "0.26.1",
+    "better-sqlite3": "12.11.1"
+  }
+}
