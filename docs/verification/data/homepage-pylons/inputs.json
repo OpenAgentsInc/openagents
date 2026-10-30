@@ -1,0 +1,19 @@
+{
+  "base": "9b5c36017b",
+  "compiler_sha256": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+  "final_wasm_sha256": "e22d6db004eaa85a3dc2a14e34b5f775b35db9191bd748006827d11ca583a1ea",
+  "source": {
+    "apps/openagents-web/newland.coax": "b07c38aea7abd6c49840f931a693192682063e70bf8d4bd1a171a5b324609f57",
+    "apps/openagents-web/newland-network.coax": "3f5212e83544effe42330d3e9a4c7023b2f205f51dfb8c66b8bfd8e85f5b968a",
+    "apps/openagents-web/newland-face.c": "815a91f2cadf85b66f2312156da11f1606fbce884eab0c9babe88b9c1c98e94f",
+    "coax/web/tests/home_pylon_ui.test.ts": "5b732008ccdfbbd0b168e4931aa0f4c2fa8f135b97070a0da121a47d48a33183",
+    "coax/web/tests/home_pylon_browser.ts": "f5d10d26bdacda1cb631df4d3a5bea3ee676c34631fb0467095164116f5ced89"
+  },
+  "coax_checks": 67,
+  "ui_initial_cases": 5,
+  "ui_initial_assertions": 205,
+  "new_scroll_regressions": 2,
+  "scroll_assertions": 29,
+  "initial_browser_before_gesture_only_fix": true,
+  "policy": "Reuse unchanged shared Nostr/crypto gates. Final scroll regressions cover both lift orders and CSS wheel units. Staging and production proof recorded separately."
+}

@@ -2052,6 +2052,9 @@ become unknown; signed answer/status counts are deduplicated observations since
 this tab's watch began, not completed-job or latency measurements. Worker labels
 are project-authored claims. Featured identities/layout and Git trees are deploy
 snapshots; no simulated people enter the production view.
+The homepage PYLONS board shares that same verified watch and owned rows.
+Its join/guide actions use the generic host; full model identities and public
+keys wrap in Coax, and panel scrolling never launches an action or moves the Grid.
 
 Frozen real data is used only for deterministic golden checks. Release readiness
 also opens the ordinary homepage with real sockets in muted headless Chrome and

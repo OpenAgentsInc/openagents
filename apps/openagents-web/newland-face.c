@@ -89,3 +89,14 @@ EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)&state_at(state)->outbox; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)state_at(state)->out_n; }
 EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { coaxial_land_action_done(view(state)); }
+
+/* Read-only UI probes exercise the same Coax layout and presentation state. */
+EXPORT("coaxial_land_network_open") uint32_t network_open(uint32_t state) {return state_at(state)->card==5;}
+EXPORT("coaxial_land_network_online") uint32_t network_online(uint32_t state) {return (uint32_t)network_counts(view(state)).online;}
+EXPORT("coaxial_land_network_free") uint32_t network_free(uint32_t state) {return (uint32_t)network_counts(view(state)).free;}
+EXPORT("coaxial_land_network_scroll") float network_scroll(uint32_t state) {return state_at(state)->network_scroll;}
+EXPORT("coaxial_land_pylon_control") float pylon_control(uint32_t state,uint32_t which,uint32_t axis) {
+  coax_t_LandState *s=state_at(state);coax_t_Box b={0};
+  if(which==0)b=s->network_box;else if(which==1)b=s->network_join;else if(which==2)b=s->network_guide;else if(which==3)b=s->close_box;
+  if(axis==0)return b.x0;if(axis==1)return b.y0;if(axis==2)return b.x1;if(axis==3)return b.y1;return 0;
+}

@@ -42,6 +42,28 @@ HomeIssue :: struct {id:string;kind:string;status:string;title:string;parent:str
   fresh:=hn_pylon_base(held,true);#assert fresh.jobs==0 && fresh.updates==0 && fresh.last_answer==0 && !fresh.demo;
   update:=hn_pylon_base(held,false);#assert update.jobs==9 && update.updates==3 && update.last_answer==10;
 }
+#test "Pylon rows preserve complete provider and bounded model identities in their own columns" {
+  npub:="npub1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqujme5y";
+  model:="abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZabcd@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  #assert npub.count==63 && model.count==128;
+  source:[1024]u8;z:=json_raw(source[..],0,"{\"pylon\":\"identity-test\",\"label\":\"Identity test\",\"status\":\"online\",\"observed_at\":95,\"valid_until\":200,\"services\":[{\"model\":");
+  z=json_write_string(source[..],z,model);z=json_raw(source[..],z,",\"lanes\":[\"cj-decision\"]}]}");
+  q:Pyl;q.plot=1;q.total=2;q.free=1;row:[HOME_ROW]u8;
+  n:=hn_beacon_row(cast(string)source[0..<z],q,"",npub,100,row[..]);#assert n>0;
+  text:=cast(string)row[0..<n];
+  #assert cell(text,0,6)==npub && cell(text,0,7)=="online";
+  #assert cell(text,0,11)=="2" && cell(text,0,12)=="1";
+  #assert cell(text,0,13)==model && cell(text,0,14)=="cj-decision";
+  #assert hn_beacon_row(cast(string)source[0..<z],q,"",npub,100,row[0..<32])<0;
+}
+#test "the four-model display bound is explicit and preserves every retained algorithm and digest" {
+  source:[2048]u8;z:=json_raw(source[..],0,"{\"pylon\":\"identity-test\",\"status\":\"online\",\"services\":[");
+  models:=[5]string.["a@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","b@gguf-tensors:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","c@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","d@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef","e@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"];
+  for i:0..<5 {if i>0 {z=json_raw(source[..],z,",");}z=json_raw(source[..],z,"{\"model\":");z=json_write_string(source[..],z,models[i]);z=json_raw(source[..],z,",\"lanes\":[]}");}
+  z=json_raw(source[..],z,"]}");q:Pyl;row:[HOME_ROW]u8;
+  n:=hn_beacon_row(cast(string)source[0..<z],q,"","",100,row[..]);#assert n>0;
+  #assert cell(cast(string)row[0..<n],0,13)=="a@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef, b@gguf-tensors:sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef, c@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef, d@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef, ...";
+}
 hn_pylon_base :: (held:Pyl,fresh:bool)->Pyl {return ifx fresh then Pyl.{} else held;}
 hn_raw_json :: (text:string,kind:int)->string {j:[1]Json;json_start(j[..],text);if json_next(j[..])!=kind {return "";}return text;}
 hn_raw :: (j:[]Json,t:int)->string {
@@ -116,6 +138,23 @@ hn_join_strings :: (array:string,out:[]u8,limit:int)->int {
   j:[1]Json;json_start(j[..],array);if json_next(j[..])!=JSON_ARRAY {return 0;}n:=0;count:=0;
   while true {t:=json_next(j[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_STRING {return n;}if count>=4 {return json_raw(out,n,", ...");}if count>0 {n=json_raw(out,n,", ");}n=hn_cell(out,n,json_text(j[..]),limit);count+=1;}return n;
 }
+// Presentation only: the shared verifier already admitted this beacon.
+// Keep the complete identities needed to match a machine and its services.
+hn_beacon_row :: (text:string,q:Pyl,pooltext:string,npub:string,now:int,row:[]u8)->int {
+  provider:=hn_string(text,"provider");slug:=hn_string(text,"pylon");generation:=hn_number(text,"generation");observed:=hn_number(text,"observed_at");until:=hn_number(text,"valid_until");
+  status:=hn_string(text,"status");hardware:=hn_field(text,"class");family:=hn_string(hardware,"family");
+  n:=json_raw(row,0,"beacon|");n=json_write_int(row,n,q.plot);n=json_raw(row,n,"|0|0|");n=hn_cell(row,n,slug,64);n=json_raw(row,n,"|");n=hn_cell(row,n,hn_string(text,"label"),64);n=json_raw(row,n,"|");
+  n=json_raw(row,n,npub);
+  n=json_raw(row,n,"|");n=json_raw(row,n,status);n=json_raw(row,n,"|");n=json_raw(row,n,family);n=json_raw(row,n,"|");n=json_raw(row,n,hn_string(hardware,"tier"));n=json_raw(row,n,"|");n=json_write_int(row,n,hn_number(hardware,"memory_gb"));n=json_raw(row,n,"|");n=json_write_int(row,n,q.total);n=json_raw(row,n,"|");n=json_write_int(row,n,q.free);n=json_raw(row,n,"|");
+  models:[768]u8;lanes:[768]u8;mn:=0;ln:=0;service:[1]Json;json_start(service[..],hn_field(text,"services"));t:=json_next(service[..]);count:=0;price:= -1;
+  while t==JSON_ARRAY || t==JSON_OBJECT {
+    t=json_next(service[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT {break;}raw:=hn_raw(service[..],t);
+    if count<4 {model:=hn_string(raw,"model");if count>0 {mn=json_raw(models[..],mn,", ");ln=json_raw(lanes[..],ln,", ");}mn=hn_cell(models[..],mn,model,128);temp:[256]u8;tn:=hn_join_strings(hn_field(raw,"lanes"),temp[..],64);ln=json_raw(lanes[..],ln,cast(string)temp[0..<hi_int(0,tn)]);}
+    p:=json_int(hn_field(raw,"price_hint_msat"));if p.ok && (price<0 || p.value<price) {price=p.value;}count+=1;
+  }
+  if count>4 {mn=json_raw(models[..],mn,", ...");}n=json_raw(row,n,cast(string)models[0..<hi_int(0,mn)]);n=json_raw(row,n,"|");n=json_raw(row,n,cast(string)lanes[0..<hi_int(0,ln)]);n=json_raw(row,n,"|");settlements:[512]u8;an:=hn_join_strings(hn_field(text,"settlement"),settlements[..],64);n=json_raw(row,n,cast(string)settlements[0..<hi_int(0,an)]);n=json_raw(row,n,"|");n=json_raw(row,n,pooltext);n=json_raw(row,n,"|");n=json_write_int(row,n,price);n=json_raw(row,n,"|");n=json_write_int(row,n,hi_int(0,now-hn_number(text,"since")));n=json_raw(row,n,"|");n=json_write_int(row,n,hi_int(0,now-observed));n=json_raw(row,n,"|0|0|-1|-1|");n=json_write_int(row,n,until-now);n=json_raw(row,n,"|");n=json_write_int(row,n,generation);n=json_raw(row,n,"|");n=json_raw(row,n,provider);n=json_raw(row,n,"\n");
+  return n;
+}
 hn_beacon :: (s:[]LandState,text:string,now:int) {
   provider:=hn_string(text,"provider");slug:=hn_string(text,"pylon");generation:=hn_number(text,"generation");observed:=hn_number(text,"observed_at");until:=hn_number(text,"valid_until");
   if provider.count!=64 || slug.count==0 || until<=now {return;}
@@ -131,17 +170,8 @@ hn_beacon :: (s:[]LandState,text:string,now:int) {
   status:=hn_string(text,"status");q.captured_status=ifx status=="online" then ST_ONLINE else ifx status=="draining" then ST_DRAINING else ST_OFFLINE;q.status=q.captured_status;
   hardware:=hn_field(text,"class");slots:=hn_field(text,"slots");family:=hn_string(hardware,"family");q.family=ifx family=="gpu" then FAM_GPU else ifx family=="cpu" then FAM_CPU else FAM_UNIFIED;
   q.total=hn_number(slots,"total");q.free=hn_number(slots,"free");
-  row:[HOME_ROW]u8;n:=json_raw(row[..],0,"beacon|");n=json_write_int(row[..],n,bay);n=json_raw(row[..],n,"|0|0|");n=hn_cell(row[..],n,slug,64);n=json_raw(row[..],n,"|");n=hn_cell(row[..],n,hn_string(text,"label"),64);n=json_raw(row[..],n,"|");
-  short:[128]u8;sn:=0;if hn_put(0,provider) && home_call(14,0,0,now)==1 {sn=hn_output(short[..]);}
-  if sn>=13 {n=json_raw(row[..],n,cast(string)short[0..<9]);n=json_raw(row[..],n,"...");n=json_raw(row[..],n,cast(string)short[sn-4..<sn]);}
-  n=json_raw(row[..],n,"|");n=json_raw(row[..],n,status);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,family);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,hn_string(hardware,"tier"));n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,hn_number(hardware,"memory_gb"));n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,q.total);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,q.free);n=json_raw(row[..],n,"|");
-  models:[768]u8;lanes:[768]u8;mn:=0;ln:=0;service:[1]Json;json_start(service[..],hn_field(text,"services"));t:=json_next(service[..]);count:=0;price:= -1;
-  while t==JSON_ARRAY || t==JSON_OBJECT {
-    t=json_next(service[..]);if t==JSON_ARRAY_END {break;}if t!=JSON_OBJECT {break;}raw:=hn_raw(service[..],t);
-    if count<4 {model:=hn_string(raw,"model");end:=0;while end<model.count && model[end]!='@' {end+=1;}if count>0 {mn=json_raw(models[..],mn,", ");ln=json_raw(lanes[..],ln,", ");}mn=hn_cell(models[..],mn,model[0..<end],128);temp:[256]u8;tn:=hn_join_strings(hn_field(raw,"lanes"),temp[..],64);ln=json_raw(lanes[..],ln,cast(string)temp[0..<hi_int(0,tn)]);}
-    p:=json_int(hn_field(raw,"price_hint_msat"));if p.ok && (price<0 || p.value<price) {price=p.value;}count+=1;
-  }
-  if count>4 {mn=json_raw(models[..],mn,", ...");}n=json_raw(row[..],n,cast(string)models[0..<hi_int(0,mn)]);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,cast(string)lanes[0..<hi_int(0,ln)]);n=json_raw(row[..],n,"|");settlements:[512]u8;an:=hn_join_strings(hn_field(text,"settlement"),settlements[..],64);n=json_raw(row[..],n,cast(string)settlements[0..<hi_int(0,an)]);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,pooltext);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,price);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,hi_int(0,now-hn_number(text,"since")));n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,hi_int(0,now-observed));n=json_raw(row[..],n,"|0|0|-1|-1|");n=json_write_int(row[..],n,until-now);n=json_raw(row[..],n,"|");n=json_write_int(row[..],n,generation);n=json_raw(row[..],n,"|");n=json_raw(row[..],n,provider);n=json_raw(row[..],n,"\n");
+  npub:[128]u8;npub_n:=0;if hn_put(0,provider) && home_call(14,0,0,now)==1 {npub_n=hn_output(npub[..]);}
+  row:[HOME_ROW]u8;n:=hn_beacon_row(text,q,pooltext,cast(string)npub[0..<hi_int(0,npub_n)],now,row[..]);
   if n<0 {s[0].net[0].refused+=1;return;}if first {s[0].pylons=0;s[0].live_beacons=true;if s[0].card==CARD_PYLON {close_card(s);}}if at==s[0].pylons {s[0].pylons+=1;}for i:0..<n {s[0].pylon_rows[at][i]=row[i];}s[0].pylon_n[at]=n;s[0].pyl[at]=q;s[0].beacons_received+=1;
 }
 hn_activity :: (s:[]LandState,text:string) {

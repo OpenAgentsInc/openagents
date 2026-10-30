@@ -1,0 +1,325 @@
+{
+  "base": "http://127.0.0.1:18843",
+  "at": "2026-10-30T17:12:54.808Z",
+  "scenarios": [
+    {
+      "viewport": {
+        "name": "desktop",
+        "width": 1440,
+        "height": 900,
+        "touch": false
+      },
+      "errors": [],
+      "sockets": 16,
+      "received_frames": 5579,
+      "sent_frames": 183,
+      "documents": [
+        "http://127.0.0.1:18843/",
+        "http://127.0.0.1:18843/pylon/index.md"
+      ],
+      "document_responses": [
+        {
+          "url": "http://127.0.0.1:18843/",
+          "status": 200
+        },
+        {
+          "url": "http://127.0.0.1:18843/pylon/index.md",
+          "status": 200
+        }
+      ],
+      "home": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 394751,
+        "ready_projects": 63,
+        "beacons": 5,
+        "refreshes": 6,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 0,
+        "scroll": 0,
+        "controls": [
+          [
+            1104,
+            28,
+            1254,
+            68
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "browser": {
+        "width": 1440,
+        "height": 900,
+        "dpr": 1
+      },
+      "home_screenshot": "/tmp/home-pylons-desktop-home.png",
+      "panel": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 460287,
+        "ready_projects": 63,
+        "beacons": 5,
+        "refreshes": 7,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 1,
+        "scroll": 0,
+        "controls": [
+          [
+            1104,
+            28,
+            1254,
+            68
+          ],
+          [
+            44,
+            156,
+            263,
+            196
+          ],
+          [
+            273,
+            156,
+            492,
+            196
+          ],
+          [
+            464,
+            92,
+            500,
+            128
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "panel_screenshot": "/tmp/home-pylons-desktop-panel.png",
+      "clipboard": {
+        "matches": true,
+        "bytes": 96
+      },
+      "guide": "http://127.0.0.1:18843/pylon/index.md",
+      "elapsed_ms": 13752
+    },
+    {
+      "viewport": {
+        "name": "phone",
+        "width": 390,
+        "height": 844,
+        "touch": true
+      },
+      "errors": [],
+      "sockets": 16,
+      "received_frames": 5982,
+      "sent_frames": 190,
+      "documents": [
+        "http://127.0.0.1:18843/",
+        "http://127.0.0.1:18843/pylon/index.md"
+      ],
+      "document_responses": [
+        {
+          "url": "http://127.0.0.1:18843/",
+          "status": 200
+        },
+        {
+          "url": "http://127.0.0.1:18843/pylon/index.md",
+          "status": 200
+        }
+      ],
+      "home": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 394239,
+        "ready_projects": 63,
+        "beacons": 3,
+        "refreshes": 6,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 0,
+        "scroll": 0,
+        "controls": [
+          [
+            16,
+            636,
+            189,
+            684
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            0,
+            0,
+            0,
+            0
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "browser": {
+        "width": 390,
+        "height": 844,
+        "dpr": 1
+      },
+      "home_screenshot": "/tmp/home-pylons-phone-home.png",
+      "panel": {
+        "ready": true,
+        "sceneReady": false,
+        "probe": 394239,
+        "ready_projects": 63,
+        "beacons": 3,
+        "refreshes": 6,
+        "refused": 0,
+        "count": 3,
+        "online": 3,
+        "free": 10,
+        "open": 1,
+        "scroll": 0,
+        "controls": [
+          [
+            0,
+            0,
+            0,
+            0
+          ],
+          [
+            32,
+            176,
+            190,
+            216
+          ],
+          [
+            200,
+            176,
+            358,
+            216
+          ],
+          [
+            330,
+            112,
+            366,
+            148
+          ]
+        ],
+        "rows": [
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 2,
+            "answers": 0,
+            "updates": 0
+          },
+          {
+            "status": 0,
+            "free": 4,
+            "answers": 0,
+            "updates": 0
+          }
+        ]
+      },
+      "panel_screenshot": "/tmp/home-pylons-phone-panel.png",
+      "clipboard": {
+        "matches": true,
+        "bytes": 96
+      },
+      "guide": "http://127.0.0.1:18843/pylon/index.md",
+      "elapsed_ms": 14161
+    }
+  ],
+  "passed": true
+}

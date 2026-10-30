@@ -42,7 +42,8 @@ WALK :: 1.05;     // grid units a second
 RUN :: 2.6;
 
 POINTER_DOWN :: 0; POINTER_MOVE :: 1; POINTER_UP :: 2; POINTER_CANCEL :: 3;
-ACT_NAVIGATE :: 1;
+ACT_NAVIGATE :: 1; ACT_COPY :: 2;
+HOME_PYLON_JOIN :: "curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh";
 
 Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 inside :: (b: Box, x: f32, y: f32) -> bool { return x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
@@ -115,8 +116,9 @@ LandState :: struct {
   plots: int; plot: [MAX_PLOTS] Plot;
   agents: int; agent_row: [MAX_AGENTS] int; agent_plot: [MAX_AGENTS] int;
   pylons: int; pyl: [MAX_PYLONS] Pyl;
-  playtest: Box;
-  action: int; outbox: [96] u8; out_n: int;
+  playtest: Box;network_box:Box;network_join:Box;network_guide:Box;network_list:Box;
+  network_scroll:f32;network_scroll_max:f32;network_scroll_start:f32;network_down:bool;network_list_down:bool;network_copied:bool;network_rows:[MAX_PYLONS]Box;
+  action: int; outbox: [256] u8; out_n: int;
   // the view: drifting on its own until the visitor moves it, then theirs
   user: bool; look: Fv; zoom: f32; zoom_to: f32; yaw: f32;
   anchor_x: f32; anchor_y: f32;          // the screen point a zoom keeps still
@@ -136,7 +138,7 @@ LandState :: struct {
   gal_box: Box; gal_open: Box; gal_over: int; gal_sel: int; gal_down: bool;
   gal_x: [PLANETS] f32; gal_y: [PLANETS] f32; gal_r: [PLANETS] f32;
 }
-CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3; CARD_PYLON :: 4;
+CARD_NONE :: 0; CARD_PLACE :: 1; CARD_PERSON :: 2; CARD_AGENT :: 3; CARD_PYLON :: 4; CARD_NETWORK :: 5;
 
 ease :: (x: f32) -> f32 { return smooth01(x); }
 hash01 :: (a: f32) -> f32 { return fract(sin(a * 12.9898 + 4.1414) * 43758.5453); }
@@ -1083,7 +1085,7 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
   word: string = ifx q.status == ST_ONLINE then "Online" else ifx q.status == ST_DRAINING then "Draining" else ifx q.status == ST_STALE then "Expired beacon" else "Offline";
   v = diamond(out, v, x + 3 * d, y - 3.4 * d, 2.6 * d, ink(p, ifx q.status == ST_ONLINE then INK_BLUE else tone), 1);
   v = put(out, v, word, x + 11 * d, y, 7 * d, ink(p, tone));
-  v = put(out, v, pylon_value(s,q,6), x + 11 * d + text_width(word, 7 * d, ink(p, tone)) + 12 * d, y, 7 * d, dim);
+  key_x:=x+23*d+text_width(word,7*d,ink(p,tone));v=put_fit(out,v,pylon_value(s,q,6),key_x,y,7*d,dim,right-key_x);
   y += 20 * d;
   // a square a slot, filled while busy
   busy := q.total - q.free;
@@ -1173,7 +1175,7 @@ floor_grid :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen) 
 
 // ---------------------------------------------------------------- the HUD
 
-Layout :: struct { phone: bool; title: Box; playtest: Box; feed: Box; scene: Box; galaxy: Box; }
+Layout :: struct { phone: bool; title: Box; playtest: Box; network:Box; feed: Box; scene: Box; galaxy: Box; }
 layout :: (width: f32, height: f32, d: f32) -> Layout {
   w := width / d; h := height / d;
   l: Layout;
@@ -1183,18 +1185,20 @@ layout :: (width: f32, height: f32, d: f32) -> Layout {
     l.title = Box.{x0 = m, y0 = m, x1 = w - m, y1 = m + 54};
     l.feed = Box.{x0 = m, y0 = h - m - 132, x1 = w - m, y1 = h - m};
     l.playtest = Box.{x0 = m, y0 = l.feed.y0 - 12 - 48, x1 = w - m, y1 = l.feed.y0 - 12};
+    mid:=(w*0.5);l.network=l.playtest;l.network.x1=mid-6;l.playtest.x0=mid+6;
     l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
     l.galaxy = Box.{x0 = w - m - 156, y0 = m + 82, x1 = w - m, y1 = m + 82 + 136};
   } else {
     l.title = Box.{x0 = m, y0 = m, x1 = w * 0.5, y1 = m + 70};
     l.playtest = Box.{x0 = w - m - 148, y0 = m, x1 = w - m, y1 = m + 40};
+    l.network=Box.{x0=w-m-308,y0=m,x1=w-m-158,y1=m+40};
     fw: f32 = 320;
     l.feed = Box.{x0 = w - m - fw, y0 = h - m - lo(330, h * 0.42), x1 = w - m, y1 = h - m};
     l.scene = Box.{x0 = 0, y0 = 0, x1 = w, y1 = h};
     l.galaxy = Box.{x0 = m, y0 = h - 32 - 184, x1 = m + 248, y1 = h - 32};
   }
   l.galaxy = scaled(l.galaxy, d);
-  l.title = scaled(l.title, d); l.playtest = scaled(l.playtest, d);
+  l.title = scaled(l.title, d); l.playtest = scaled(l.playtest, d);l.network=scaled(l.network,d);
   l.feed = scaled(l.feed, d); l.scene = scaled(l.scene, d);
   return l;
 }
@@ -1338,6 +1342,12 @@ gal_step :: (s: [] LandState, forward: bool) {
 // A click in the panel: a planet opens (a finger's first tap only selects it),
 // OPEN opens the selected one, and the rest of the panel is the panel's.
 gal_click :: (s: [] LandState, x: f32, y: f32) -> bool {
+  if inside(s[0].network_box,x,y) {if s[0].card==CARD_NETWORK {close_card(s);}else {open_card(s,CARD_NETWORK,-1);}return true;}
+  if s[0].card==CARD_NETWORK {
+    if inside(s[0].network_join,x,y) {network_copy(s);return true;}
+    if inside(s[0].network_guide,x,y) {go(s,"/pylon/index.md");return true;}
+    if inside(s[0].network_list,x,y) {for i:0..<s[0].pylons {if inside(s[0].network_rows[i],x,y) {open_card(s,CARD_PYLON,i);return true;}}}
+  }
   if !inside(s[0].gal_box, x, y) { return false; }
   if s[0].gal_sel >= 0 && inside(s[0].gal_open, x, y) { gal_go(s, s[0].gal_sel); return true; }
   p := gal_at(s, x, y);
@@ -1548,6 +1558,7 @@ pick :: (s: [] LandState, x: f32, y: f32) -> Pick {
 }
 open_card :: (s: [] LandState, k: int, which: int) {
   if s[0].card != k || s[0].card_k != which { s[0].card_t = 0; }
+  if k==CARD_NETWORK {s[0].network_copied=false;s[0].network_scroll=0;}
   s[0].card = k; s[0].card_k = which;
 }
 close_card :: (s: [] LandState) { s[0].card = CARD_NONE; s[0].card_k = -1; }
@@ -1723,9 +1734,77 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
   return v;
 }
 
+// The homepage's Pylon board uses its existing verified watch and owned rows.
+NetworkCounts :: struct {online:int;free:int;draining:int;}
+network_counts :: (s:[]LandState)->NetworkCounts #export_c {
+  result:NetworkCounts;now:=land_now(s);
+  for i:0..<s[0].pylons {q:=s[0].pyl[i];until:=ifx q.live then q.valid_until else LAND_CAPTURED+q.valid_for;
+    if q.status==ST_ONLINE && until>now {result.online+=1;result.free+=q.free;}
+    else if q.status==ST_DRAINING && until>now {result.draining+=1;}}
+  return result;
+}
+network_copy :: (s:[]LandState) {
+  if HOME_PYLON_JOIN.count>s[0].outbox.count {return;}
+  for i:0..<HOME_PYLON_JOIN.count {s[0].outbox[i]=HOME_PYLON_JOIN[i];}
+  s[0].out_n=HOME_PYLON_JOIN.count;s[0].action=ACT_COPY;s[0].network_copied=true;
+}
+network_line_end :: (text:string,start:int,width:f32,cap:f32,k:Ink)->int {
+  at:=start;while at<text.count {if at>start && text_width(text[start..<at+1],cap,k)>width {break;}at+=1;}return at;
+}
+network_lines :: (text:string,width:f32,cap:f32,k:Ink)->int {
+  count:=0;at:=0;while at<text.count {at=network_line_end(text,at,width,cap,k);count+=1;}return hi_int(1,count);
+}
+network_wrap :: (out:[]f32,v:int,text:string,x:f32,y:f32,width:f32,cap:f32,step:f32,k:Ink)->int {
+  at:=0;line:=0;n:=v;while at<text.count {end:=network_line_end(text,at,width,cap,k);n=put(out,n,text[at..<end],x,y+cast(f32)line*step,cap,k);at=end;line+=1;}return n;
+}
+network_panel :: (out:[]f32,at:int,s:[]LandState,l:Layout,p:Pen,width:f32,height:f32)->int {
+  d:=p.d;x:=ifx l.phone then 16*d else 28*d;right:=ifx l.phone then width-16*d else lo(width-28*d,x+480*d);
+  top:=ifx l.phone then 104*d else 84*d;bottom:=ifx l.phone then height-16*d else lo(height-28*d,top+584*d);
+  b:=Box.{x0=x,y0=top,x1=right,y1=bottom};s[0].card_box=b;s[0].open_box=Box.{};
+  white:=ink(p,INK_WHITE);dim:=ink(p,INK_DIM);bright:=ink(p,INK_BRIGHT);v:=frame(out,at,b,10*d,bright,0.95,p);
+  left:=x+16*d;inner_right:=right-16*d;room:=inner_right-left;hover:= !s[0].touch && s[0].pointed;
+  v=put(out,v,"PYLONS",left,top+32*d,12*d,chrome(white));
+  cb:=Box.{x0=right-44*d,y0=top+8*d,x1=right-8*d,y1=top+44*d};s[0].close_box=cb;
+  cx:=(cb.x0+cb.x1)*0.5;cy:=(cb.y0+cb.y1)*0.5;
+  v=rule(out,v,cx-5*d,cy-5*d,cx+5*d,cy+5*d,white,0.8);v=rule(out,v,cx-5*d,cy+5*d,cx+5*d,cy-5*d,white,0.8);
+  counts:=network_counts(s);line:[160]u8;n:=app_int(line[..],0,counts.online);n=app(line[..],n," ONLINE / ");n=app_int(line[..],n,counts.free);n=app(line[..],n," FREE");
+  if counts.draining>0 {n=app(line[..],n," / ");n=app_int(line[..],n,counts.draining);n=app(line[..],n," DRAINING");}
+  v=put_fit(out,v,cast(string)line[0..<n],left,top+56*d,7*d,white,room);
+  mid:=(left+inner_right)*0.5;s[0].network_join=Box.{x0=left,y0=top+72*d,x1=mid-5*d,y1=top+112*d};s[0].network_guide=Box.{x0=mid+5*d,y0=top+72*d,x1=inner_right,y1=top+112*d};
+  v=button(out,v,s[0].network_join,ifx s[0].network_copied then "COPIED" else "COPY COMMAND",true,hover && inside(s[0].network_join,s[0].px,s[0].py),false,p,1);
+  v=button(out,v,s[0].network_guide,"GUIDE",false,hover && inside(s[0].network_guide,s[0].px,s[0].py),false,p,1);
+  state:=ifx s[0].golden then "SNAPSHOT" else ifx s[0].net[0].watch_state==2 then (ifx s[0].net[0].beacon_ended then "LIVE" else "SYNCING") else "CONNECTING";
+  v=put(out,v,state,left,top+135*d,6.5*d,dim);
+  v=put_fit(out,v,"Mac / Linux",inner_right-100*d,top+135*d,6.5*d,dim,100*d);
+  list:=Box.{x0=left,y0=top+146*d,x1=inner_right,y1=bottom-38*d};s[0].network_list=list;
+  for i:0..<MAX_PYLONS {s[0].network_rows[i]=Box.{};}
+  y:=list.y0-s[0].network_scroll*d;first:=v;
+  if s[0].pylons==0 {v=put_fit(out,v,ifx s[0].net[0].beacon_ended then "No Pylons online" else "Waiting for Pylons",left,list.y0+26*d,8*d,white,room);}
+  for i:0..<s[0].pylons {
+    q:=s[0].pyl[i];model:=pylon_value(s,q,13);npub:=pylon_value(s,q,6);
+    ml:=network_lines(model,room,6.5*d,white);kl:=network_lines(npub,room,6*d,dim);row_h:=(60+14*cast(f32)ml+12*cast(f32)kl)*d;
+    if y+row_h<list.y0 || y>list.y1 {y+=row_h;continue;}
+    s[0].network_rows[i]=Box.{x0=left,y0=hi(y,list.y0),x1=inner_right,y1=lo(y+row_h,list.y1)};
+    tone:=ifx q.status==ST_ONLINE then white else dim;
+    v=put_fit(out,v,pylon_value(s,q,5),left,y+18*d,9*d,chrome(tone),room);
+    row:[128]u8;rn:=0;
+    if q.status==ST_ONLINE {rn=app_int(row[..],rn,q.free);rn=app(row[..],rn," / ");rn=app_int(row[..],rn,q.total);rn=app(row[..],rn," free");}
+    else {rn=app(row[..],rn,ifx q.status==ST_DRAINING then "Draining" else ifx q.status==ST_STALE then "Expired" else "Offline");}
+    rn=app(row[..],rn," / ");rn=app(row[..],rn,ifx q.family==FAM_GPU then "GPU" else ifx q.family==FAM_CPU then "CPU" else "Unified");rn=app(row[..],rn," / ");rn=app_int(row[..],rn,q.jobs);rn=app(row[..],rn," answers");
+    v=put_fit(out,v,cast(string)row[0..<rn],left,y+36*d,6.5*d,dim,room);
+    v=network_wrap(out,v,model,left,y+54*d,room,6.5*d,14*d,tone);
+    v=network_wrap(out,v,npub,left,y+(54+14*cast(f32)ml)*d,room,6*d,12*d,dim);
+    v=rule(out,v,left,y+row_h-4*d,inner_right,y+row_h-4*d,dim,0.2);y+=row_h;
+  }
+  for i:first..<v {if out[i*VERTEX_FLOATS+1]<list.y0 || out[i*VERTEX_FLOATS+1]>list.y1 {out[i*VERTEX_FLOATS+6]=0;}}
+  s[0].network_scroll_max=hi(0,(y+s[0].network_scroll*d-list.y1)/d);s[0].network_scroll=clamp(s[0].network_scroll,0,s[0].network_scroll_max);
+  v=put_fit(out,v,"Free toy network / observed provider events",left,bottom-14*d,6.2*d,dim,room);return v;
+}
+
 // The card over the page: on the left under the wordmark on a wide screen,
 // a sheet from the bottom on a phone. Returns the vertex count; box gets where.
 card :: (out: [] f32, at: int, s: [] LandState, l: Layout, p: Pen, t: f32, width: f32, height: f32) -> int {
+  if s[0].card==CARD_NETWORK {return network_panel(out,at,s,l,p,width,height);}
   d := p.d;
   x0 := ifx l.phone then 0.0f32 else 28 * d;
   x1 := ifx l.phone then width else 28 * d + 384 * d;
@@ -1761,7 +1840,7 @@ hit_slug :: (s: [] LandState, x: f32, y: f32) -> int {
   return -1;
 }
 go :: (s: [] LandState, url: string) {
-  n := lo_int(url.count, 95);
+  n := lo_int(url.count, s[0].outbox.count);
   for i: 0..<n { s[0].outbox[i] = url[i]; }
   s[0].out_n = n; s[0].action = ACT_NAVIGATE;
 }
@@ -1776,6 +1855,12 @@ go_project :: (s: [] LandState, k: int) {
 // A click: the card's buttons and PLAYTEST navigate; a place,
 // person, agent or Pylon opens its card (never navigates); anywhere else closes it.
 click :: (s: [] LandState, x: f32, y: f32) -> bool {
+  if inside(s[0].network_box,x,y) {if s[0].card==CARD_NETWORK {close_card(s);}else {open_card(s,CARD_NETWORK,-1);}return true;}
+  if s[0].card==CARD_NETWORK {
+    if inside(s[0].network_join,x,y) {network_copy(s);return true;}
+    if inside(s[0].network_guide,x,y) {go(s,"/pylon/index.md");return true;}
+    if inside(s[0].network_list,x,y) {for i:0..<s[0].pylons {if inside(s[0].network_rows[i],x,y) {open_card(s,CARD_PYLON,i);return true;}}}
+  }
   if s[0].card != CARD_NONE {
     if inside(s[0].close_box, x, y) { close_card(s); return true; }
     k := card_place(s);
@@ -1804,10 +1889,11 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
     if k < 0 { return false; }
     s[0].tx[k] = x; s[0].ty[k] = y;
     s[0].vel_x = 0; s[0].vel_z = 0;
-    if s[0].touches == 1 { s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; s[0].gal_down = inside(s[0].gal_box, x, y); }
+    if s[0].touches == 1 {s[0].network_down=s[0].card==CARD_NETWORK && inside(s[0].card_box,x,y);s[0].network_list_down=inside(s[0].network_list,x,y);s[0].network_scroll_start=s[0].network_scroll;s[0].down = true; s[0].down_x = x; s[0].down_y = y; s[0].moved = false; s[0].gal_down = inside(s[0].gal_box, x, y); }
     else {
       // two fingers: a pinch, never a click
       s[0].moved = true;
+      if s[0].network_down {return true;}
       take(s);
       dx := s[0].tx[1] - s[0].tx[0]; dy := s[0].ty[1] - s[0].ty[0];
       s[0].pinch = hi(sqrt(dx * dx + dy * dy), 1);
@@ -1821,6 +1907,11 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
       s[0].gal_over = ifx inside(s[0].gal_box, x, y) then gal_at(s, x, y) else -1;
     }
     if k < 0 { return false; }
+    if s[0].network_down {
+      s[0].tx[k]=x;s[0].ty[k]=y;
+      if abs(x-s[0].down_x)+abs(y-s[0].down_y)>CLICK*d {s[0].moved=true;}
+      if s[0].moved && s[0].network_list_down && s[0].touches==1 {s[0].network_scroll=clamp(s[0].network_scroll_start-(y-s[0].down_y)/d,0,s[0].network_scroll_max);}return true;
+    }
     if s[0].touches == 1 && s[0].gal_down {   // a press on the galaxy never pans the Grid
       if abs(x - s[0].down_x) + abs(y - s[0].down_y) > CLICK * d { s[0].moved = true; }
       return false;
@@ -1855,6 +1946,7 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
   if s[0].touches == 1 {
     // one finger left after a pinch: it carries on panning from where it is
     s[0].down_x = s[0].tx[0]; s[0].down_y = s[0].ty[0];
+    if s[0].network_down {s[0].network_scroll_start=s[0].network_scroll;}
     return true;
   }
   if phase == POINTER_CANCEL || !s[0].down || was != 1 { s[0].down = false; return false; }
@@ -1865,6 +1957,7 @@ coaxial_land_pointer :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int,
 // The wheel (and a trackpad's pinch) zooms toward the pointer.
 coaxial_land_wheel :: (s: [] LandState, dy: f32) #export_c {
   if s.count < 1 { return; }
+  if s[0].card==CARD_NETWORK {s[0].network_scroll=clamp(s[0].network_scroll+dy,0,s[0].network_scroll_max);return;}
   take(s);
   s[0].zoom_to = clamp(s[0].zoom_to * exp(clamp(dy, -400, 400) * 0.0016), ZOOM_IN, ZOOM_OUT);
   s[0].anchor_x = ifx s[0].pointed then s[0].px else s[0].width * 0.5;
@@ -1875,6 +1968,7 @@ KEY_ESCAPE :: -1; KEY_ENTER :: -2; KEY_LEFT :: -4; KEY_RIGHT :: -5; KEY_UP :: -6
 coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
   if s.count < 1 { return false; }
   if key == KEY_ESCAPE && s[0].card != CARD_NONE { close_card(s); return true; }
+  if s[0].card==CARD_NETWORK {if key==KEY_UP || key==KEY_DOWN {s[0].network_scroll=clamp(s[0].network_scroll+(ifx key==KEY_DOWN then 48 else -48),0,s[0].network_scroll_max);return true;}return false;}
   if s[0].card != CARD_NONE { return false; }
   if key == KEY_LEFT || key == KEY_UP || key == KEY_RIGHT || key == KEY_DOWN { gal_step(s, key == KEY_RIGHT || key == KEY_DOWN); return true; }
   if key == KEY_ENTER && s[0].gal_sel >= 0 { gal_go(s, s[0].gal_sel); return true; }
@@ -1884,6 +1978,8 @@ coaxial_land_key :: (s: [] LandState, key: int, mods: int) -> bool #export_c {
 coaxial_land_cursor :: (s: [] LandState) -> int #export_c {
   if s.count < 1 || s[0].touch || !s[0].pointed || (s[0].down && s[0].moved) { return 0; }
   x := s[0].px; y := s[0].py;
+  if inside(s[0].network_box,x,y) {return 1;}
+  if s[0].card==CARD_NETWORK && (inside(s[0].network_join,x,y) || inside(s[0].network_guide,x,y)) {return 1;}
   if s[0].card != CARD_NONE {
     if inside(s[0].close_box, x, y) || inside(s[0].open_box, x, y) { return 1; }
     if inside(s[0].card_box, x, y) { return 0; }
@@ -1933,7 +2029,7 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   scene_end := v;
   // the HUD over it
   hud := ifx still then 1.0f32 else ease((t - 2.0) / 1.0);
-  s[0].playtest = l.playtest;
+  s[0].playtest = l.playtest;s[0].network_box=l.network;
   hover := !s[0].touch && s[0].pointed;
   sheet := l.phone && s[0].card != CARD_NONE;
   v = wordmark(out, v, l, p);
@@ -1951,11 +2047,14 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
   if !sheet {
     v = button(out, v, l.playtest, "PLAYTEST", true, hover && inside(l.playtest, s[0].px, s[0].py), false, p, hud);
+    counts:=network_counts(s);label:[48]u8;ln:=app(label[..],0,"PYLONS ");ln=app_int(label[..],ln,counts.online);
+    v=button(out,v,l.network,cast(string)label[0..<ln],false,hover && inside(l.network,s[0].px,s[0].py),true,p,hud);
+    glass(uniforms,2,l.network,7*d,0.95*hud,0);
     v = feed(out, v, s, l, p, t, feed_on);
     glass(uniforms, 0, l.feed, 10 * d, 0.92 * feed_on, 0);
     glass(uniforms, 1, l.playtest, 7 * d, 0.95 * hud, 1);
   } else {
-    s[0].playtest = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+    s[0].playtest = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};s[0].network_box=s[0].playtest;
   }
   if s[0].card == CARD_NONE {
     // the small galaxy, in the glass the card uses while it's up
@@ -2231,4 +2330,35 @@ press :: (s: [] LandState, x: f32, y: f32, phase: int, kind: int, id: int) {
   press(s[..], (c.x0 + c.x1) * 0.5, (c.y0 + c.y1) * 0.5, POINTER_DOWN, 1, 2);
   press(s[..], (c.x0 + c.x1) * 0.5, (c.y0 + c.y1) * 0.5, POINTER_UP, 1, 2);
   #assert s[0].card == CARD_NONE && s[0].action == 0;
+}
+
+#test "Pylons opens on the homepage and copies the complete join command" {
+  s:[1]LandState;s[0].dpr=1;s[0].network_box=Box.{x0=10,y0=10,x1=150,y1=50};
+  #assert click(s[..],20,20) && s[0].card==CARD_NETWORK && s[0].action==0;
+  s[0].network_join=Box.{x0=20,y0=80,x1=180,y1=120};
+  #assert click(s[..],30,90) && s[0].action==ACT_COPY && cast(string)s[0].outbox[0..<s[0].out_n]==HOME_PYLON_JOIN;
+  #assert s[0].out_n==96 && s[0].network_copied;
+  coaxial_land_action_done(s[..]);s[0].network_guide=Box.{x0=190,y0=80,x1=300,y1=120};
+  #assert click(s[..],200,90) && s[0].action==ACT_NAVIGATE && cast(string)s[0].outbox[0..<s[0].out_n]=="/pylon/index.md";
+}
+#test "Pylon controls fit desktop phone and high density viewports" {
+  widths:=[3]f32.[1440,390,780];heights:=[3]f32.[900,844,1688];ds:=[3]f32.[1,1,2];
+  for i:0..<3 {l:=layout(widths[i],heights[i],ds[i]);#assert l.network.x0>=0 && l.network.y0>=0 && l.network.x1<=widths[i] && l.network.y1<=heights[i];#assert l.network.x1<l.playtest.x0;}
+}
+#test "Pylon summary uses current online advertisements and counts draining separately" {
+  s:[1]LandState;s[0].pylons=4;s[0].wall=100;s[0].wall_age=0;
+  for i:0..<4 {s[0].pyl[i].live=true;s[0].pyl[i].valid_until=101;s[0].pyl[i].status=ST_ONLINE;s[0].pyl[i].free=4;}
+  s[0].pyl[1].status=ST_DRAINING;s[0].pyl[2].valid_until=100;s[0].pyl[3].status=ST_STALE;
+  counts:=network_counts(s[..]);#assert counts.online==1 && counts.free==4 && counts.draining==1;
+}
+#test "scrolling the Pylon panel never zooms or launches its command" {
+  s:[1]LandState;s[0].card=CARD_NETWORK;s[0].dpr=1;s[0].zoom=1;s[0].zoom_to=1;s[0].network_scroll_max=500;
+  s[0].card_box=Box.{x0=0,y0=0,x1=390,y1=800};s[0].network_list=Box.{x0=10,y0=200,x1=380,y1=740};
+  pressed:=coaxial_land_pointer(s[..],100,400,POINTER_DOWN,1,1);
+  moved:=coaxial_land_pointer(s[..],100,300,POINTER_MOVE,1,1);
+  released:=coaxial_land_pointer(s[..],100,300,POINTER_UP,1,1);
+  #assert s[0].network_scroll==100 && s[0].zoom==1 && s[0].action==0;
+  coaxial_land_wheel(s[..],100);#assert s[0].network_scroll==200 && s[0].zoom_to==1;
+  pressed=coaxial_land_pointer(s[..],30,100,POINTER_DOWN,1,2);
+  released=coaxial_land_pointer(s[..],30,100,POINTER_CANCEL,1,2);#assert s[0].action==0;
 }

@@ -13,6 +13,17 @@ are observations during this tab's watch, with unknown reply timing. Worker
 labels are project-authored claims. Git trees are the deployment's real history.
 No simulated people are drawn.
 
+The homepage's PYLONS control opens a scrollable board in the same canvas.
+It shows online machines, free slots and current advertised capacity; machine
+inspection keeps full npub and model identities available. Provider answers
+and statuses remain observation counts, not completed-job claims. COPY COMMAND
+copies the portable join command below; GUIDE opens `/pylon/index.md`.
+The HTML and Markdown twins also carry both for agents and non-WebGPU readers.
+
+```sh
+curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh
+```
+
 Build only this page:
 
 ```sh
