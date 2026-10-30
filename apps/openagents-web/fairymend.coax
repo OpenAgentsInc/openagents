@@ -1,0 +1,167 @@
+// Mending broken things (ff-mend, verse/fairy-forest/README.md "What you
+// learn": MEND, "heal creatures and repair broken things"). About the forest
+// stand three broken things: a wattle fence by the trail out of Mossbank,
+// its middle fallen; a footbridge over the stream north of the dam, planks
+// gone; and a birdhouse on a post by the trail to the Reeds, knocked askew,
+// its roof on the ground. Once you know MEND (the hurt bluebird teaches it),
+// E by one (MEND) puts it right in a shimmer, and a bird moves into the
+// birdhouse. Each one mended stays mended (the save's deeds).
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFX_THINGS :: 3;
+FFX_FENCE :: 0; FFX_BRIDGE :: 1; FFX_BIRDHOUSE :: 2;
+// x, z, yaw, reach (metres from its middle where E mends it)
+FFX_THING :: [12] f32.[-15.0, -24.0, 0.785, 3.0,   22.0, 30.0, -0.38, 3.6,   9.0, -14.0, 0.4, 2.0];
+FFX_NAMES :: [3] string.["THE OLD FENCE", "THE FOOTBRIDGE", "THE BIRDHOUSE"];
+FFX_NEWS :: 300;          // k_news for a thing mended: 300 + which
+FFX_SHIMMER :: 2.5;       // seconds it shimmers once mended
+
+ffx_mended :: (l: [] Life, i: int) -> bool { return (l[0].deeds.mended >> i) & 1 == 1; }
+// The broken thing in reach of you, or -1.
+ffx_thing_near :: (s: [] Fairy, you: Point) -> int {
+  for i: 0..<FFX_THINGS {
+    if !ffx_mended(s[0].life[..], i) && ffk_at(you, FFX_THING[i * 4], FFX_THING[i * 4 + 1], FFX_THING[i * 4 + 3]) { return i; }
+  }
+  return -1;
+}
+ffx_can_mend :: (s: [] Fairy, you: Point) -> bool { return ffk_knows(s[0].life[..], FFK_MEND) && ffx_thing_near(s, you) >= 0; }
+ffx_mend :: (s: [] Fairy, you: Point) {
+  i := ffx_thing_near(s, you);
+  if i < 0 { return; }
+  l := s[0].life[..];
+  l[0].deeds.mended = l[0].deeds.mended | (1 << i); l[0].changes += 1;
+  s[0].mend_at[i] = s[0].time;
+  s[0].k_news = FFX_NEWS + i; s[0].k_news_at = s[0].time;
+}
+
+ffx_draw :: (s: [] Fairy, eye: Point) {
+  if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 30 { return; }   // the forest first
+  t := effect_time(s);
+  l := s[0].life[..];
+  for i: 0..<FFX_THINGS {
+    x := FFX_THING[i * 4]; z := FFX_THING[i * 4 + 1]; yaw := FFX_THING[i * 4 + 2];
+    if !ffk_at(eye, x, z, 55) { continue; }
+    ok := ffx_mended(l, i);
+    along := v3(sin(yaw), 0, cos(yaw)); across := v3(cos(yaw), 0, -sin(yaw));
+    g := ground_at(s, x, z);
+    if i == FFX_FENCE {
+      // five posts and two rails of woven withies; broken, the middle three lean or lie and a rail is down
+      for p: 0..<5 {
+        f := f32(p) - 2;
+        base := v3(x + along.x * f * 1.2, ground_at(s, x + along.x * f * 1.2, z + along.z * f * 1.2), z + along.z * f * 1.2);
+        lean := ifx ok || p == 0 || p == 4 then 0.0f32 else (ifx p == 2 then 1.35f32 else 0.5f32 * (ifx p == 1 then 1.0f32 else -1.0f32));
+        top := add(base, add(times(across, sin(lean) * 1.0), v3(0, cos(lean) * 1.0, 0)));
+        limb(s, SHAPE_CYLINDER, LOOK_BARK, base, top, 0.1, 0.5, 0.38, 0.24);
+      }
+      a := v3(x - along.x * 2.4, 0, z - along.z * 2.4); b := v3(x + along.x * 2.4, 0, z + along.z * 2.4);
+      for r: 0..<2 {
+        h := 0.45 + f32(r) * 0.35;
+        if ok || r == 0 {
+          limb(s, SHAPE_CYLINDER, LOOK_BARK, v3(a.x, ground_at(s, a.x, a.z) + h, a.z), v3(b.x, ground_at(s, b.x, b.z) + h, b.z), 0.07, 0.56, 0.42, 0.26);
+        } else {
+          limb(s, SHAPE_CYLINDER, LOOK_BARK, v3(a.x, ground_at(s, a.x, a.z) + h, a.z), v3(x + across.x * 0.9, g + 0.06, z + across.z * 0.9), 0.07, 0.56, 0.42, 0.26);
+        }
+      }
+      if ok {   // a flowering vine along it once mended
+        for k: 0..<4 { f := f32(k) * 1.3 - 1.95; shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + along.x * f, g + 0.85, z + along.z * f), yaw, 0, 0.5, 0.22, 0.3, 0.36, 0.6, 0.26); }
+      }
+    } else if i == FFX_BRIDGE {
+      // two beams over the stream, a gentle arch of planks, a rope rail; broken, three planks gone and one hanging
+      level := f32(FF_LEVEL);
+      half := 3.4f32;
+      for side: 0..<2 {
+        sg := ifx side == 0 then 1.0f32 else -1.0f32;
+        p0 := v3(x - across.x * half + along.x * 0.55 * sg, level + 0.35, z - across.z * half + along.z * 0.55 * sg);
+        p1 := v3(x + across.x * half + along.x * 0.55 * sg, level + 0.35, z + across.z * half + along.z * 0.55 * sg);
+        mid := v3(x + along.x * 0.55 * sg, level + 0.75, z + along.z * 0.55 * sg);
+        limb(s, SHAPE_CYLINDER, LOOK_BARK, p0, mid, 0.12, 0.46, 0.34, 0.22);
+        limb(s, SHAPE_CYLINDER, LOOK_BARK, mid, p1, 0.12, 0.46, 0.34, 0.22);
+        // the rail: posts at each end and a rope between
+        q0 := add(p0, v3(0, 0.9, 0)); q1 := add(p1, v3(0, 0.9, 0));
+        limb(s, SHAPE_CYLINDER, LOOK_BARK, p0, q0, 0.08, 0.46, 0.34, 0.22);
+        limb(s, SHAPE_CYLINDER, LOOK_BARK, p1, q1, 0.08, 0.46, 0.34, 0.22);
+        if ok || side == 0 {
+          limb(s, SHAPE_CYLINDER, LOOK_CLOTH, q0, add(mid, v3(0, 0.75, 0)), 0.03, 0.78, 0.7, 0.5);
+          limb(s, SHAPE_CYLINDER, LOOK_CLOTH, add(mid, v3(0, 0.75, 0)), q1, 0.03, 0.78, 0.7, 0.5);
+        }
+      }
+      for k: 0..<11 {
+        f := (f32(k) - 5) / 5;
+        if !ok && (k == 4 || k == 5 || k == 7) { continue; }
+        y := level + 0.42 + 0.4 * (1 - f * f);
+        c := v3(x + across.x * f * half * 0.95, y, z + across.z * f * half * 0.95);
+        if !ok && k == 6 {   // one hangs by a corner
+          shape(s, SHAPE_BOX, LOOK_BARK, add(c, v3(0, -0.3, 0)), yaw, 1.1, 1.4, 0.07, 0.5, 0.62, 0.46, 0.3);
+          continue;
+        }
+        shape(s, SHAPE_BOX, LOOK_BARK, c, yaw, -f * 0.25, 1.4, 0.07, 0.55, 0.62 + 0.04 * sin(f32(k) * 2.3), 0.46, 0.3);
+      }
+    } else {
+      // a post and a little house with a round door; broken, it tips and its roof lies at the foot
+      top := v3(x, g + 1.6, z);
+      limb(s, SHAPE_CYLINDER, LOOK_BARK, v3(x, g, z), top, 0.09, 0.5, 0.38, 0.24);
+      tip := ifx ok then 0.0f32 else 0.6f32;
+      up := add(times(across, sin(tip)), v3(0, cos(tip), 0));
+      house := add(top, times(up, 0.25));
+      oriented(s, SHAPE_BOX, LOOK_CLOTH, house, times(across, 0.42 * cos(tip)) , times(up, 0.42), times(along, 0.42), 0.86, 0.66, 0.4);
+      shape(s, SHAPE_SPHERE, LOOK_MATTE, add(house, times(along, 0.215)), yaw, 0, 0.13, 0.13, 0.02, 0.12, 0.08, 0.06);   // the door
+      if ok {
+        for side: 0..<2 {
+          sg := ifx side == 0 then 1.0f32 else -1.0f32;
+          shape(s, SHAPE_BOX, LOOK_CLOTH, add(house, add(times(across, 0.14 * sg), v3(0, 0.3, 0))), yaw + 1.5708, 0.7 * sg, 0.06, 0.4, 0.6, 0.72, 0.28, 0.22);
+        }
+        // its bird, at the door
+        bird := add(house, add(times(along, 0.3), v3(0, -0.02 + 0.03 * sin(t * 3.1), 0)));
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, bird, yaw, 0, 0.16, 0.14, 0.2, 0.96, 0.72, 0.3);
+        shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(bird, add(times(along, 0.08), v3(0, 0.1, 0))), yaw, 0, 0.11, 0.11, 0.11, 0.96, 0.72, 0.3);
+        limb(s, SHAPE_CONE, LOOK_MATTE, add(bird, add(times(along, 0.13), v3(0, 0.1, 0))), add(bird, add(times(along, 0.2), v3(0, 0.1, 0))), 0.03, 0.3, 0.2, 0.1);
+      } else {
+        for side: 0..<2 {
+          sg := ifx side == 0 then 1.0f32 else -1.0f32;
+          shape(s, SHAPE_BOX, LOOK_CLOTH, v3(x + across.x * (0.7 + 0.3 * sg), g + 0.04, z + across.z * (0.7 + 0.3 * sg) + 0.2 * sg), yaw + 0.4 * sg, 1.5708, 0.06, 0.4, 0.6, 0.72, 0.28, 0.22);
+        }
+      }
+    }
+    // just mended: a shimmer round it
+    since := s[0].time - s[0].mend_at[i];
+    if ok && s[0].mend_at[i] > 0 && since < f64(FFX_SHIMMER) {
+      a := f32(since) / f32(FFX_SHIMMER);
+      for k: 0..<8 {
+        ang := f32(k) * 0.785 + a * 3;
+        r := 1.0 + a * 1.4;
+        shape(s, SHAPE_SPHERE, LOOK_SPARK, v3(x + cos(ang) * r, g + 0.4 + a * 1.6 + 0.2 * sin(f32(k)), z + sin(ang) * r), 0, 0, 0.09 * (1 - a) + 0.02, 0.09 * (1 - a) + 0.02, 0.09 * (1 - a) + 0.02, 1.0, 0.9, 0.6);
+      }
+    }
+  }
+}
+
+#test "mending: the fence, the footbridge and the birdhouse show broken; with MEND, E mends each, and it stays mended" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  l := s[0].life[..];
+  fence := v3(FFX_THING[0] + 1, 0, FFX_THING[1]);
+  #assert ffx_thing_near(s[..], fence) == FFX_FENCE && !ffx_can_mend(s[..], fence) && ffk_verb(s[..], fence) != FFK_V_FIX;   // MEND not yet known
+  bird := v3(f32(FFK_BIRD_X), 0, f32(FFK_BIRD_Z));
+  #assert ffk_use(s[..], bird) && ffk_knows(l, FFK_MEND);
+  for i: 0..<FFX_THINGS {
+    p := v3(FFX_THING[i * 4] + FFX_THING[i * 4 + 3] * 0.6, 0, FFX_THING[i * 4 + 1]);
+    #assert ffk_verb(s[..], p) == FFK_V_FIX && FFK_VERB_WORDS[FFK_V_FIX] == "MEND";
+    #assert ffk_use(s[..], p) && ffx_mended(l, i) && ffk_verb(s[..], p) != FFK_V_FIX;
+    who: [1] string; said: [1] string;
+    #assert ffk_news(s[..], who[..], said[..]) && who[0] == "MENDED" && said[0] == FFX_NAMES[i];
+  }
+  b: [FFL_BYTES] u8;
+  n := ffl_save(l, b[..]);
+  c: [1] Life;
+  #assert ffl_open(c[..], b[0..<n]) && ffx_mended(c[..], 0) && ffx_mended(c[..], 1) && ffx_mended(c[..], 2);
+  // each in reach of nothing else's E: patches, creatures, finds, logs, the bird, Rowan
+  for i: 0..<FFX_THINGS {
+    x := FFX_THING[i * 4]; z := FFX_THING[i * 4 + 1]; r := FFX_THING[i * 4 + 3];
+    for q: 0..<FF_PATCHES { #assert !ffk_at(v3(FF_PATCH[q * 4], 0, FF_PATCH[q * 4 + 1]), x, z, r + f32(FF_BLOOM_NEAR)); }
+    for c2: 0..<FF_CREATURES { #assert !ffk_at(v3(FF_CREATURE[c2 * 4], 0, FF_CREATURE[c2 * 4 + 1]), x, z, r + f32(FF_TALK_NEAR)); }
+    for j: 0..<FFK_FINDS { #assert !ffk_at(v3(FFK_FIND[j * 3], 0, FFK_FIND[j * 3 + 1]), x, z, r + f32(FFK_NEAR)); }
+    for j: 0..<FFK_LOGS { #assert !ffk_at(v3(FFK_LOG[j * 3], 0, FFK_LOG[j * 3 + 1]), x, z, r + 2.4); }
+    #assert !ffk_at(v3(f32(FFW_X), 0, f32(FFW_Z)), x, z, r + f32(FFW_NEAR));
+    #assert !ffk_at(v3(f32(FFK_DAM_X), 0, f32(FFK_DAM_Z)), x, z, r + 3);
+  }
+}

@@ -20,7 +20,8 @@
 FFK_V_MEND :: 1; FFK_V_AXE :: 2; FFK_V_CUT :: 3; FFK_V_LANTERN :: 4; FFK_V_DAM :: 5; FFK_V_GATHER :: 6;
 FFK_V_REST :: 7; FFK_V_MORNING :: 8;   // at the lantern flower: rest till night, or in the night till morning
 FFK_V_FILL :: 9;                       // by the low pond, with WATER (fairypond.coax)
-FFK_VERB_WORDS :: [10] string.["", "MEND", "TALK TO ROWAN", "CUT", "LIGHT", "CLEAR", "GATHER", "REST TILL NIGHT", "REST TILL MORNING", "FILL THE POND"];
+FFK_V_FIX :: 10;                       // by a broken thing, with MEND (fairymend.coax)
+FFK_VERB_WORDS :: [11] string.["", "MEND", "TALK TO ROWAN", "CUT", "LIGHT", "CLEAR", "GATHER", "REST TILL NIGHT", "REST TILL MORNING", "FILL THE POND", "MEND"];
 FFK_LEARNED :: [7] string.["YOU LEARNED BLOOM", "YOU LEARNED SPEAK", "YOU LEARNED MEND", "YOU LEARNED GATHER",
                            "YOU LEARNED CRAFT", "YOU LEARNED LIGHT", "YOU LEARNED WATER"];
 FFK_FOUND :: [3] string.["A BERRY", "AN ACORN", "A SEED"];
@@ -58,6 +59,7 @@ ffk_verb :: (s: [] Fairy, you: Point) -> int {
   if !k.dam && ffk_at(you, f32(FFK_DAM_X), f32(FFK_DAM_Z), 3.0) { return FFK_V_DAM; }
   if k.learned[FFK_CRAFT] && ffk_log_near(s, you) >= 0 { return FFK_V_CUT; }
   if ffp_can_fill(s, you) { return FFK_V_FILL; }
+  if ffx_can_mend(s, you) { return FFK_V_FIX; }
   if ffk_find_near(s, you) >= 0 { return FFK_V_GATHER; }
   return 0;
 }
@@ -70,6 +72,7 @@ ffk_use :: (s: [] Fairy, you: Point) -> bool {
   if v == FFK_V_REST || v == FFK_V_MORNING { ffn_rest(s[0].clock[..], s[0].time); return true; }
   if v == FFK_V_DAM { l[0].skills.dam = true; ffk_note(s, FFK_WATER); }
   if v == FFK_V_FILL { ffp_fill(s); }
+  if v == FFK_V_FIX { ffx_mend(s, you); }
   if v == FFK_V_CUT { l[0].skills.cut[ffk_log_near(s, you)] = true; l[0].changes += 1; }
   if v == FFK_V_GATHER {
     knew := ffk_knows(l, FFK_GATHER);
@@ -85,6 +88,7 @@ ffk_use :: (s: [] Fairy, you: Point) -> bool {
 ffk_news :: (s: [] Fairy, who: [] string, said: [] string) -> bool {
   n := s[0].k_news;
   if n <= 0 || s[0].time - s[0].k_news_at > f64(FFK_NEWS_TIME) { return false; }
+  if n >= FFX_NEWS && n < FFX_NEWS + FFX_THINGS { who[0] = "MENDED"; said[0] = FFX_NAMES[n - FFX_NEWS]; return true; }
   if n == FFN_NEWS_HOLLOW { who[0] = "THE MOON HOLLOW"; said[0] = "LANTERN MOTHS FOLLOW YOUR LIGHT"; return true; }
   if n >= 100 && n < 100 + FFK_FIND_KINDS { who[0] = FFK_FOUND[n - 100]; said[0] = FFK_FOR[n - 100]; return true; }
   if n > FFK_SKILLS { return false; }

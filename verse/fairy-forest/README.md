@@ -113,8 +113,12 @@ learned puts a gem on her upper wings. Kept in the save's tail. The pond (ff-pon
 its water drawn back into the middle of its bed with sand round it; the
 waterfall on its east bank is a trickle down dry rocks until the dam is
 cleared, and then it runs. With WATER, E by the low pond (FILL THE POND)
-fills it over a few seconds, kept in the save. Not yet: making tools,
-mending broken things.
+fills it over a few seconds, kept in the save. MEND also mends broken things (ff-mend,
+`apps/openagents-web/fairymend.coax`): an old fence by the trail out of
+Mossbank with its middle fallen, a footbridge over the stream north of the
+dam with planks gone, and a birdhouse by the trail to the Reeds knocked
+askew; E by one (MEND) puts it right in a shimmer, a bird moves into the
+birdhouse, and each stays mended. Not yet: making tools.
 
 ## The core: helping people
 

@@ -50,6 +50,7 @@
 #load "fairynight.coax";   // day and night, Lanternwood by night
 #load "fairypond.coax";    // the pond filled, the waterfall
 #load "fairywoodcutter.coax";   // Rowan, who gives you his axe
+#load "fairymend.coax";    // broken things mended
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -185,7 +186,7 @@ Fairy :: struct {
   bird_flew: f64;                // when the hurt bird was mended (it flies off)
   now_min: f64;         // the wall clock, minutes since 1970 (the face's; 0 not yet)
   fig_on: bool; fig_at: Point; fig_up: f32; fig_across: f32;   // her body's size, while she is laid out
-  pond_at: f64;                                                 // when you filled the pond this visit (0: before it, or it was full)
+  pond_at: f64; mend_at: [3] f64;                                                 // when you filled the pond this visit (0: before it, or it was full)
   clock: [1] FfClock; tod: f32; night: f32; dusk: f32;          // the time of day (verse/fairy-forest/night.coax), how dark, dusk's warmth
 }
 
@@ -2246,6 +2247,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   ffn_draw(s, shot.eye);
   ffp_draw(s, shot.eye);
   ffw_draw(s, u, shown, shot.eye);
+  ffx_draw(s, shot.eye);
   ffs_others(s, u, shown);   // last: if the shapes run out, they go first
   ph := phone(s);
   for kind: 0..<5 {
