@@ -402,7 +402,7 @@ take_answer :: (s: [] Builder, t: [] Track, text: string) {
     choose(s, t, got, "voice");
     return;
   }
-  if status != 200 { say_why(s, status, body); return; }
+  if status != 200 { track_fail(t, ifx what == REQ_PLAN then "builder-plan" else "builder-make", status); say_why(s, status, body); return; }
   if what == REQ_PLAN {
     if !read_board(s, body) { fail(s, "The board didn't come back. Try again."); return; }
     s[0].phase = PH_BOARD;

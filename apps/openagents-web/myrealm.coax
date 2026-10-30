@@ -1650,7 +1650,9 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   }
   next_request(s);
   if s[0].req_id >= 0 && s[0].time - s[0].req_at > WAIT { s[0].req_id = -1; s[0].req_what = REQ_NONE; if !s[0].spec_ready { s[0].spec_failed = true; } }
+  walk_x0 := s[0].x; walk_z0 := s[0].z;
   realm_step(s, dt);
+  track_walk(t, cast(f64) sqrt((s[0].x - walk_x0) * (s[0].x - walk_x0) + (s[0].z - walk_z0) * (s[0].z - walk_z0)));   // walking milestones
   if s[0].laid { actors(s); }
   // the talk ends when you walk away, or when the owner takes TALK away
   if s[0].talk_p >= 0 {

@@ -72,23 +72,34 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms,
   int64_t n = coaxial_land_frame(view(state), out, u, width, height, dpr, dt, still != 0 || golden_mode != 0);
   drain(state);
   if(!track_state.page_n)track_init(tr(),track_cstr("home"));
-  track_frame(tr(),dt,width,height,dpr);track_drain(&track_state);
+  track_frame(tr(),dt,width,height,dpr);
+  // what people do here (analytics.coax): the page drawn, each card opened (CARD_*)
+  static int64_t card_seen;
+  if(n>0)track_loaded(tr(),track_cstr("load-engine"));
+  if(state_at(state)->card!=card_seen){card_seen=state_at(state)->card;if(card_seen>0)track_act_n(tr(),track_cstr("card"),track_cstr(""),card_seen);}
+  track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }
 
 // Input: the pointer pans and pinches the view, opens a card, and PLAYTEST
 // and a card's OPEN PROJECT navigate (action 1 and its URL).
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
+  track_pointer(tr(),x,y,phase,kind,track_cstr(""));track_drain(&track_state);
   return coaxial_land_pointer(view(state), x, y, phase, kind, id) ? 1u : 0u;
 }
 // The wheel and a trackpad's pinch zoom; Esc closes the card.
 EXPORT("coaxial_wheel") void coaxial_wheel(uint32_t state, float dy) { coaxial_land_wheel(view(state), dy); }
-EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { return coaxial_land_key(view(state), key, mods) ? 1u : 0u; }
+EXPORT("coaxial_key") uint32_t coaxial_key(uint32_t state, int32_t key, int32_t mods) { track_key(tr(),key,0);track_key_up(tr(),key);track_drain(&track_state); return coaxial_land_key(view(state), key, mods) ? 1u : 0u; }
 EXPORT("coaxial_cursor") int32_t coaxial_cursor(uint32_t state) { return (int32_t)coaxial_land_cursor(view(state)); }
 EXPORT("coaxial_action") int32_t coaxial_action(uint32_t state) { return (int32_t)coaxial_land_action(view(state)); }
 EXPORT("coaxial_outbox") uint32_t coaxial_outbox(uint32_t state) { return (uint32_t)(uintptr_t)&state_at(state)->outbox; }
 EXPORT("coaxial_outbox_len") uint32_t coaxial_outbox_len(uint32_t state) { return (uint32_t)state_at(state)->out_n; }
-EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) { coaxial_land_action_done(view(state)); }
+EXPORT("coaxial_action_done") void coaxial_action_done(uint32_t state) {
+  coax_t_LandState *s=state_at(state);   // where PLAYTEST or OPEN PROJECT went
+  if(s->out_n>0)track_act(tr(),track_cstr("open"),(coax_string){(const char *)&s->outbox,s->out_n<80?s->out_n:80});
+  track_drain(&track_state);
+  coaxial_land_action_done(view(state));
+}
 
 /* Read-only UI probes exercise the same Coax layout and presentation state. */
 EXPORT("coaxial_land_network_open") uint32_t network_open(uint32_t state) {return state_at(state)->card==5;}

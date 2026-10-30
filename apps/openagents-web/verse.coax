@@ -652,7 +652,7 @@ world_key :: (s: [] VerseState, t: [] Track, key: int) -> bool {
   p := ifx s[0].over >= 0 then s[0].over else ifx key == KEY_RIGHT then n - 1 else 0;
   for i: 0..<n {
     p = (p + step) % n;
-    if planet_shown(s, p) && realm_kind_at(s, p) == KIND_OPEN { s[0].over = p; return true; }
+    if planet_shown(s, p) && realm_kind_at(s, p) == KIND_OPEN { s[0].over = p; track_tally(t, "nav", realm_id_at(s, p)); return true; }
   }
   return false;
 }

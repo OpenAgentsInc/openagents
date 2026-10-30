@@ -752,7 +752,7 @@ static void ask_piece(coax_string typed) {
   if (!sandbox || piece_ask >= 0) { if (piece_ask >= 0) toast("Still making the last one"); return; }
   int64_t n = verse_piece_body(typed, (coax_v_u8){piece_body, sizeof piece_body});
   piece_ask = n > 0 ? coaxial_http((uint32_t)(uintptr_t)PIECE_URL, sizeof PIECE_URL - 1, (uint32_t)(uintptr_t)piece_body, (uint32_t)n, HTTP_ASK) : -1;
-  if (piece_ask < 0) { toast("That didn't reach the server; try again"); return; }
+  if (piece_ask < 0) { track_fail(tr(), text("piece"), 0); toast("That didn't reach the server; try again"); return; }
   piece_asked_at = now;
   toast("Making it...");
 }
@@ -797,6 +797,7 @@ static void take_piece(uint32_t length) {
     coax_t_SetPiece p = verse_piece_read((coax_string){nl + 1, (int64_t)(b + length - nl - 1)});
     if (p.piece >= 0) { make_piece(p); return; }
   }
+  track_fail(tr(), text("piece"), status);
   toast(status == 422 ? "The Sandbox can't make that yet: try birds, lanterns, trees or a pond"
       : status == 429 ? "A little slower: one set piece at a time" : "That didn't reach the server; try again");
 }
@@ -891,6 +892,7 @@ static void step(float dt) {
   player = verse_player_constrain(player, kept.x, kept.z);
   coax_t_Vec3 feet = verse_player_feet(player);
   float distance = hypotf(feet.x - was.x, feet.z - was.z);
+  track_walk(tr(), distance);   // walking milestones (analytics.coax)
   house.facing = verse_player_face(player);
   if (now - emote_at < 0.8) house.facing += (float)((now - emote_at) / 0.8) * 6.2831853f;   // the emote: a spin
   coax_t_Vec3 eye = verse_player_view_eye(player, house.camera);
