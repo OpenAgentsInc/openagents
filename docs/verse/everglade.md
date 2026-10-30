@@ -637,8 +637,10 @@ and the whole row the nearest was placed with: migration
 `0046_realm_voice_remove.sql`, every field always answered and a name
 kept only for one person: `0047_realm_voice_fields.sql`); or undo. No words are matched. While the
 server answers, what was heard shows; then the result (PLACED 4 CRATES,
-PLACED A BARREL, REMOVED MARTA). A sentence with no edit in it shows only
-DIDN'T CATCH AN EDIT IN: '...'. Sentences said while one is with the
+PLACED A BARREL, REMOVED MARTA). A sentence with no edit in it (a
+question, small talk) gets a short answer, shown and spoken ("what time is
+it": the time in Chicago; `migrations/0056_voice_edit_chat.sql`); only when
+there is no answer either does it show DIDN'T CATCH THAT: '...'. Sentences said while one is with the
 server wait their turn in the order said (six at most); none replaces
 another. The line shows the last result, then the sentence with the server
 and how many wait after it ("PLACED 2 BARRELS · 'turn it around' · 1 MORE

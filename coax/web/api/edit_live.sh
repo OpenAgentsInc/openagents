@@ -53,5 +53,7 @@ ask "place a dragon" '"edit": "missing"' '"name": "dragon"'
 ask "remove Bob" '"edit": "missing"' '"name": "Bob"'
 ask "turn it around" '"edit": "rotate"' '"turn": 180'
 ask "bring back the temple" '"edit": "restore"' '"building": "temple"'
+ask "what time is it" '"edit": "chat"' '"reply": "'
+ask "who lives here?" '"edit": "chat"' '"reply": "'
 ask "Is this working?" ' 422'
 exit $failed

@@ -7,7 +7,9 @@
 // face sends them to the server's typed selector (POST
 // /api/playtest/realm/everglade/edit, an admin only), which answers one edit
 // of the realm's catalogue: place an item (with a count), remove the
-// nearest placed thing, or undo. Nothing here reads the words: only that
+// nearest placed thing, or undo; or, when what was said is no edit (a
+// question, small talk), a short answer to it, shown and spoken back
+// ("chat", migrations/0056_voice_edit_chat.sql). Nothing here reads the words: only that
 // typed answer, held again to verse/everglade/edits.coax. The edit is done in
 // front of you (or takes away the things or people it names: a whole row
 // for "these crates"), the list published as Everglade's world (an admin's
@@ -228,12 +230,12 @@ everglade_edit_answer :: (s: [] Everglade, answer: string) #export_c {
 ev_answered :: (s: [] Everglade, answer: string) {
   if answer.count < 4 || answer[0..<4] != "200\n" {
     if answer.count >= 4 && answer[0..<4] == "422\n" {
-      // nothing in the catalogue fits: what was heard, and nothing more
-      n := ev_put(s[0].ev.line[..], "DIDN'T CATCH AN EDIT IN: '");
+      // no edit and no answer to it: what was heard, and nothing more
+      n := ev_put(s[0].ev.line[..], "DIDN'T CATCH THAT: '");
       for c: 0..<s[0].ev.asking_n { if n < EDIT_LINE - 1 { s[0].ev.line[n] = s[0].ev.asking[c]; n += 1; } }
       n += ev_put(s[0].ev.line[n..<EDIT_LINE], "'");
       s[0].ev.line_n = n;
-      ev_say(s, "I didn't catch an edit.");
+      ev_say(s, "Sorry, I didn't catch that.");
       return;
     }
     ev_line(s, "THAT DIDN'T WORK · TRY AGAIN");
@@ -244,6 +246,13 @@ ev_answered :: (s: [] Everglade, answer: string) {
   e := eg_json_at(body, "edit");
   if e < 0 || body[e] != '"' { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
   word := ev_word(body, e);
+  // not an edit: the server's answer to what was said, shown and spoken as it is
+  if word == "chat" {
+    reply := ev_field(body, "reply");
+    if reply.count == 0 { ev_line(s, "THAT DIDN'T WORK · TRY AGAIN"); return; }
+    ev_line(s, reply); ev_say(s, reply);
+    return;
+  }
   if word == "undo" { edit_undo(s, true); return; }
   if word == "list" { edit_list(s); return; }
   if word == "missing" { edit_missing(s, ev_field(body, "name"), false); return; }
@@ -1078,7 +1087,7 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   #assert everglade_edit_ask(s[..]) > 0 && cast(string) s[0].ev.ask[0..<s[0].ev.ask_n] == "{\"sentence\":\"what time is it\"}";
   everglade_edit_ask_sent(s[..]);
   everglade_edit_answer(s[..], "422\n{\"error\": \"none fit\"}");
-  #assert ev_text(s[..]) == "DIDN'T CATCH AN EDIT IN: 'what time is it' · 'put a crate here'";
+  #assert ev_text(s[..]) == "DIDN'T CATCH THAT: 'what time is it' · 'put a crate here'";
   #assert everglade_edit_ask(s[..]) > 0 && cast(string) s[0].ev.ask[0..<s[0].ev.ask_n] == "{\"sentence\":\"put a crate here\"}";
   everglade_edit_ask_sent(s[..]);
   everglade_edit_answer(s[..], "200\n{\"edit\": \"place\", \"item\": \"crate\", \"model\": \"m\"}");
@@ -1107,9 +1116,21 @@ ev_row_end :: (text: string, cuts: [] int, r: int, rows: int) -> int {
   everglade_message(s[..], MSG_VOICE, "heard|what time is it");
   shown := ev_text(s[..]);   // the heard words while the server answers, after the last result
   #assert shown.count > 17 && shown[shown.count - 17..<shown.count] == "'what time is it'";
+  // a question is answered, shown and spoken; nothing is edited
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"chat\", \"reply\": \"It is 8:58 PM, Central time.\", \"model\": \"m\"}");
+  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "It is 8:58 PM, Central time.";
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "It is 8:58 PM, Central time." && ev_text(s[..]) == "It is 8:58 PM, Central time.";
+  s[0].ev.say_n = 0;
+  everglade_message(s[..], MSG_VOICE, "heard|what time is it");
+  #assert everglade_edit_ask(s[..]) > 0;
+  everglade_edit_answer(s[..], "200\n{\"edit\": \"chat\", \"reply\": \"\"}");
+  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "THAT DIDN'T WORK · TRY AGAIN" && s[0].ev.say_n == 0;
+  // no edit and no answer: what was heard
+  everglade_message(s[..], MSG_VOICE, "heard|what time is it");
+  #assert everglade_edit_ask(s[..]) > 0;
   everglade_edit_answer(s[..], "422\n{\"error\": \"none fit\"}");
-  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "DIDN'T CATCH AN EDIT IN: 'what time is it'";
-  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "I didn't catch an edit.";
+  #assert s[0].ev.edits.n == 2 && cast(string) s[0].ev.line[0..<s[0].ev.line_n] == "DIDN'T CATCH THAT: 'what time is it'";
+  #assert cast(string) s[0].ev.say[0..<s[0].ev.say_n] == "Sorry, I didn't catch that.";
   // what was published is what everyone's page lays over the plan
   t: [1] Everglade;
   everglade_start(t[..]);
