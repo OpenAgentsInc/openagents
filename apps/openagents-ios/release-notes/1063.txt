@@ -1,0 +1,5 @@
+The app opens straight into the Grid, with no Start screen. On iOS 26 it is the same Grid as openagents.com: the stations, the Game Lab, the gym, the gate to Everglade and the galaxy. Turn your phone to look around, as well as dragging with your right thumb. LOG IN and your wallet sit under GALAXY at the top right.
+
+If your phone can't draw the web's Grid, the app opens the built-in Grid instead, which also turns with your phone.
+
+After approving a code, the phone now says "Logged in".

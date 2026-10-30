@@ -24,6 +24,7 @@ final class HomeViewController: UIViewController {
     private var lastSize = CGSize.zero
     private var invocationCount: Int64 = 0
     private let wallet = SparkHost()
+    private let turn = PhoneTurn()
     private let balanceLabel = UILabel()
     private let walletButton = UIButton(type: .custom)
     private var walletTask: Task<Void, Never>?
@@ -126,6 +127,7 @@ final class HomeViewController: UIViewController {
     }
     @objc private func suspend() {
         clock?.invalidate(); clock = nil; trackedTouch = nil
+        turn.stop()
         verse_home_resume(handle)
         sticks = verse_sticks_reset(); gridTouches = [:]; lastTick = nil
     }
@@ -139,6 +141,7 @@ final class HomeViewController: UIViewController {
     }
     @objc private func resume() {
         refreshBalance()
+        turn.view = view; turn.start()
         guard house == nil, renderer != nil, clock == nil else { return }
         verse_home_resume(handle)
         let link = CADisplayLink(target: DisplayTarget(owner: self), selector: #selector(DisplayTarget.tick(_:)))
@@ -376,7 +379,9 @@ final class HomeViewController: UIViewController {
         #endif
         let frame = Float(min(max(timestamp - (lastTick ?? timestamp), 0), 0.25)); lastTick = timestamp
         if playing {
-            player = verse_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw, sticks.dpitch)
+            // The phone's turn looks too, as the right thumb does.
+            let turned = turn.take()
+            player = verse_player_input(player, 0, 0, sticks.pad_x, sticks.pad_y, sticks.run, sticks.jump, sticks.dyaw + Float(turned.yaw), sticks.dpitch + Float(turned.pitch))
             if sticks.dance || danceRequested { anim = verse_cast_dance(anim); danceRequested = false }
             sticks = verse_sticks_used(sticks)
         }

@@ -94,7 +94,7 @@ final class SignInUITests: XCTestCase {
 
     private func launch(_ code: String) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments += ["-OAGridSeen", "NO", "-OASignInOpen", code]
+        app.launchArguments += ["-OAGridSeen", "NO", "-OANativeHome", "YES", "-OASignInOpen", code]
         app.launch()
         return app
     }
@@ -168,7 +168,7 @@ final class SignInUITests: XCTestCase {
     /// VoiceOver, Copy says so, and Done closes it.
     func testKeyScreen() {
         let app = XCUIApplication()
-        app.launchArguments += ["-OAGridSeen", "NO"]
+        app.launchArguments += ["-OAGridSeen", "NO", "-OANativeHome", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 30))
         app.buttons["signin.open"].tap()

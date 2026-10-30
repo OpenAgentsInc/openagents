@@ -44,7 +44,7 @@ final class VoiceUITests: XCTestCase {
 
         let app = XCUIApplication()
 
-        app.launchArguments += ["-OAGridSeen", "NO"]  // every test starts from the first-launch overview
+        app.launchArguments += ["-OAGridSeen", "NO", "-OANativeHome", "YES"]  // every test starts from the first-launch overview
         app.launchArguments += voiceArguments(env, host: host, fixture: fixture)
         app.launch()
         let start = app.buttons["home.start"]
@@ -135,7 +135,7 @@ final class VoiceUITests: XCTestCase {
         let host = env["OA_VOICE_HOST"] ?? "ws://127.0.0.1:8787"
         let fixture = env["OA_VOICE_FIXTURE"] ?? "hello-foreman"
         let app = XCUIApplication()
-        app.launchArguments += ["-OAGridSeen", "NO"]  // every test starts from the first-launch overview
+        app.launchArguments += ["-OAGridSeen", "NO", "-OANativeHome", "YES"]  // every test starts from the first-launch overview
         app.launchArguments += voiceArguments(env, host: host, fixture: fixture) + ["-OAVoiceBarge", "wait-stop"]
         app.launch()
         let start = app.buttons["home.start"]

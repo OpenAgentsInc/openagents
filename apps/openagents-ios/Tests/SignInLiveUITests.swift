@@ -11,7 +11,7 @@ final class SignInLiveUITests: XCTestCase {
         let env = ProcessInfo.processInfo.environment
         let code = try XCTUnwrap(env["OA_SIGNIN_CODE"].flatMap { $0.isEmpty ? nil : $0 }, "no OA_SIGNIN_CODE")
         let app = XCUIApplication()
-        app.launchArguments += ["-OAGridSeen", "NO"]
+        app.launchArguments += ["-OAGridSeen", "NO", "-OANativeHome", "YES"]
         app.launch()
         XCTAssertTrue(app.buttons["signin.open"].waitForExistence(timeout: 30))
         // openagents://HOST/… goes through the scheme; an https link would open Safari without the app's domain file.

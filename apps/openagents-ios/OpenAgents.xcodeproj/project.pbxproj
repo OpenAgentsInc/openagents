@@ -80,6 +80,7 @@
 		A5B6AF72BD610C316262A8C2 /* haunt-boo.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */; };
 		A711923FCA51E11FAD70A5A7 /* precomputed_ecmult_gen.c in Sources */ = {isa = PBXBuildFile; fileRef = BCFF9E80B2B385BCA6700E60 /* precomputed_ecmult_gen.c */; };
 		A82532704621FA268D0CA249 /* secp256k1.c in Sources */ = {isa = PBXBuildFile; fileRef = 29CE2F09F9A0B3457456014E /* secp256k1.c */; settings = {COMPILER_FLAGS = "-DENABLE_MODULE_EXTRAKEYS=1 -DENABLE_MODULE_SCHNORRSIG=1 -DECMULT_WINDOW_SIZE=8 -Wno-unused-function -Wno-shorten-64-to-32"; }; };
+		A95DFBD890907028562D37A4 /* PhoneTurn.swift in Sources */ = {isa = PBXBuildFile; fileRef = D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */; };
 		AB6D5B362735767EF7D5E89E /* Hud.c in Sources */ = {isa = PBXBuildFile; fileRef = FE9115742188118078C4592C /* Hud.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		AE693718C3CEF6987F044510 /* HomeViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */; };
 		B249BB3820777CB13E66E317 /* haunt-step_metal_3.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 57F9F980CEAB73A38FBA7D8F /* haunt-step_metal_3.mp3 */; };
@@ -107,6 +108,7 @@
 		EF21CDB56CA1090F8B6AB09B /* haunt-wind_loop.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = F143D07CA3DB048AFD8682B9 /* haunt-wind_loop.mp3 */; };
 		F00BEDDD5F191D796915C44E /* haunt-step_wood_2.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 1F0BB5C1FEBCC604A19475A8 /* haunt-step_wood_2.mp3 */; };
 		F4F275877B25EE6C8FCD494C /* Home.c in Sources */ = {isa = PBXBuildFile; fileRef = CA34DB580151D40597358639 /* Home.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
+		F4F3F74BFA70EF47DC1AEE8E /* WebGridViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F085B718701CD4BF59EC41F /* WebGridViewController.swift */; };
 		F5D72357EDBC9C2C7A705B08 /* host.c in Sources */ = {isa = PBXBuildFile; fileRef = 4B5B3339D798BBE8F8C653F5 /* host.c */; };
 		F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */ = {isa = PBXBuildFile; fileRef = 1EB43B9790841620D29A9F92 /* PhoneSignin.c */; settings = {COMPILER_FLAGS = "-Wno-comma -Wno-unused-function -Wno-unused-variable -Wno-unused-but-set-variable"; }; };
 		F7115CC7DD2F3496387C333A /* haunt-creak.mp3 in Resources */ = {isa = PBXBuildFile; fileRef = 996C843717D33E65529B5F2B /* haunt-creak.mp3 */; };
@@ -196,6 +198,7 @@
 		99E1E3472391E665C5D030F9 /* haunt-step_grass_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_grass_2.mp3"; sourceTree = "<group>"; };
 		9AE44FED01ADF77410F4FD26 /* haunt-layer22.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer22.jpg"; sourceTree = "<group>"; };
 		9B7CE77A2EE685E4D933032D /* haunt-layer26.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer26.jpg"; sourceTree = "<group>"; };
+		9F085B718701CD4BF59EC41F /* WebGridViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebGridViewController.swift; sourceTree = "<group>"; };
 		9F87878C2541D03D0BB35D30 /* haunt-slam.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-slam.mp3"; sourceTree = "<group>"; };
 		A0E91A4368889291453CA5E9 /* cast-layer5.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "cast-layer5.jpg"; sourceTree = "<group>"; };
 		A552CDD5935D80B4192A9E4D /* wait-stop.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "wait-stop.wav"; sourceTree = "<group>"; };
@@ -226,6 +229,7 @@
 		D1FF8EBFA4A63F702F0F578A /* HauntUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HauntUITests.swift; sourceTree = "<group>"; };
 		D2B60B64BD044AC100DF2301 /* haunt-layer19.jpg */ = {isa = PBXFileReference; lastKnownFileType = image.jpeg; path = "haunt-layer19.jpg"; sourceTree = "<group>"; };
 		D32F73555F56FD1F4D920AD5 /* garden-pause.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "garden-pause.wav"; sourceTree = "<group>"; };
+		D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneTurn.swift; sourceTree = "<group>"; };
 		DC6C49C69E0079F4626B3B80 /* haunt-boo.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-boo.mp3"; sourceTree = "<group>"; };
 		E4D57E9776762973386F3D8E /* haunt-step_stone_2.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_2.mp3"; sourceTree = "<group>"; };
 		E63041B894166B46A3E46D9D /* haunt-step_stone_1.mp3 */ = {isa = PBXFileReference; lastKnownFileType = audio.mp3; path = "haunt-step_stone_1.mp3"; sourceTree = "<group>"; };
@@ -450,6 +454,8 @@
 				73B73CC5A17FE246BB0A3643 /* App.swift */,
 				776F82566A59AA4CF6654437 /* Assets.xcassets */,
 				1074B541D9ABC68D13FD5CB0 /* HomeViewController.swift */,
+				D51B7CDE8E484F58DDB2D8EE /* PhoneTurn.swift */,
+				9F085B718701CD4BF59EC41F /* WebGridViewController.swift */,
 				A7B7CA3CC18D3E4990CFBB72 /* Platform */,
 				00BFE8813FC6529C85B1547B /* Resources */,
 				4D7B029870A78279D13B70E1 /* SignIn */,
@@ -699,6 +705,7 @@
 				78B8BF182A2A8E0DC101918C /* NostrSign.c in Sources */,
 				D38C966A113E24135AE7FFCA /* PhoneSignIn.swift in Sources */,
 				F63C92AB22EF7A80B98AB547 /* PhoneSignin.c in Sources */,
+				A95DFBD890907028562D37A4 /* PhoneTurn.swift in Sources */,
 				83FD88F53E028589CEE45BCA /* Player.c in Sources */,
 				08FD3CD4E2C9A833159DF179 /* R0FrameCapture.swift in Sources */,
 				4D13D1CE142E9E69C7438C66 /* SignInScreens.swift in Sources */,
@@ -716,6 +723,7 @@
 				471BAC12DE71796F5764F900 /* WalletKeychain.swift in Sources */,
 				502E6C47D6754A400252B96D /* WalletRules.swift in Sources */,
 				1A440D16806FE261B821F982 /* WalletScreens.swift in Sources */,
+				F4F3F74BFA70EF47DC1AEE8E /* WebGridViewController.swift in Sources */,
 				F5D72357EDBC9C2C7A705B08 /* host.c in Sources */,
 				5FCD0C43CB70DA62BB5DE214 /* precomputed_ecmult.c in Sources */,
 				6367A5818F65ABDE05883A8E /* precomputed_ecmult_gen.c in Sources */,
@@ -759,7 +767,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1062;
+				CURRENT_PROJECT_VERSION = 1063;
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				HEADER_SEARCH_PATHS = (
@@ -853,7 +861,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = OpenAgents/OpenAgents.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CURRENT_PROJECT_VERSION = 1062;
+				CURRENT_PROJECT_VERSION = 1063;
 				EXCLUDED_SOURCE_FILE_NAMES = "*.wav";
 				GCC_OPTIMIZATION_LEVEL = 2;
 				GENERATE_INFOPLIST_FILE = YES;
