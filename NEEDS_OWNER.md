@@ -64,9 +64,10 @@ these four choices are yours:
 
 1. ~~**Where the Pylon key lives.**~~ Decided 2026-10-29: a 0600 file in
    `~/work/.secrets/` on the owner's Mac, generated once and never printed.
-2. **Your `auth` signature.** The beacon carries your key's signature over the
-   Pylon key (`["auth", <owner key>, "kind=30200", <signature>]`). You sign
-   that once per Pylon key.
+2. ~~**Your `auth` signature.**~~ Delegated 2026-10-30: the agent producing
+   the real Pylon key signs the beacon's `auth` tag with the owner key when it
+   is needed, after the #4828 audit and review gate clear signing for real
+   keys. Neither key is printed or logged.
 3. ~~**Which relays.**~~ Decided 2026-10-30: relay.openagents.com (the current
    Rust relay) and every Coax relay we run (coax/nostr.md section 17) as it
    comes up. Both go in the Pylon's NIP-65 list.
