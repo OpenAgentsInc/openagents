@@ -132,3 +132,28 @@ documented pause/drain for `pylon-fleet-watch`, disable the thread heartbeat,
 and preserve all execution/probe/recovery evidence. Leave the standing RTX
 controller and existing workers intact. The native time fence stops new
 watch actions after expiry even if the supervisory Mac is asleep.
+
+## Supervisory continuation
+
+The first three active managed executions (`h4t5q`, `k6btz`, `6z7qb`) completed
+successfully at `21:12:00Z`, `21:17:03Z` and `21:22:00Z`. The bounded production
+browser sampler also found all four cloud rows fresh at `21:11:37Z`,
+`21:16:41Z` and `21:21:40Z`; its [receipts and coverage limits](../../../docs/verification/data/pylon-fleet-watch-2026-10-30/live-observations/README.md)
+are on main. That sampler has stopped; the managed job and thread heartbeat
+remain active. These observations do not complete the six-hour objective.
+
+For another operational homepage observation on this Mac, the existing muted,
+headless, read-only harness can be reused without a website deployment:
+
+```sh
+bun /tmp/pylon-observe-browser.ts /tmp/pylon-observation-NAME 10
+bun /tmp/validate-pylon-observation.ts /tmp/pylon-observation-NAME.json
+```
+
+It requires `/tmp/pylon-observe-layout/offsets.json` and the retained
+`/tmp/oct30-connect-pylon-guide` checkout. It writes JSON and PNG; the
+validator checks exact cloud identities, status and unexpired leases.
+These temporary operational tools are not a portable product installer.
+Inspect structured Cloud Run cycle logs with a sufficiently large result
+limit (200 entries per execution); the confidential summary spans many
+lines, so a 30-entry limit can omit a later successful cycle record.
