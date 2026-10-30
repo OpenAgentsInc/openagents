@@ -1,0 +1,42 @@
+ok   the relay sent a NIP-42 challenge
+ok   the buyer authenticated (NIP-42) with its test key
+ok   the Pylon's 30200 beacon is on the relay
+ok   the beacon's id and BIP-340 signature verify
+ok   the beacon says online, v1
+ok   the beacon names the served identity psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+ok   the service is this key's pylon/decision, lane cj-decision
+ok   the x tag is the content's SHA-256
+ok   the Pylon's NIP-65 relay list is on the relay
+ok   the list names wss://relay.openagents.com and wss://localhost:64238
+ok   job r-1 (25910, NIP-44 to the Pylon) accepted by the relay
+ok   r-1 answered with a 26910
+     r-1 answer after 2599 ms: {"wet":{"type":"choice","choice":"no","confidence":0.562052749,"probabilities":{"yes":0.437947251,"no":0.562052749}}}
+ok   the 26910 is signed by the Pylon, to the buyer, naming the job
+ok   outcome answered for request r-1, attempt 1
+ok   the answer names the beacon's identity psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+ok   service door pylon:ch19-local, provider the Pylon's key
+ok   the choice's probabilities sum to 1
+ok   job r-2 (v0) accepted by the relay
+ok   r-2 refused: 27010 error unsupported_version
+ok   jobs r-3 and r-4 accepted by the relay
+ok   the cancel for r-4 accepted by the relay
+ok   r-3, already running, answered
+ok   r-4, still waiting, cancelled: 27010 error cancelled
+ok   no 26910 for r-4
+ok   job r-7 accepted by the relay
+ok   the harness restarted the relay
+ok   the buyer reconnected and re-authenticated to the restarted relay
+ok   job r-8 accepted by the restarted relay
+ok   the Pylon republished its beacon to the restarted relay
+     r-7: answer arrived without a resend
+     r-8: no answer yet; the same signed job sent again after the Pylon's beacon came back
+ok   r-7, in flight during the restart, answered after it
+ok   r-8, sent while the Pylon was away, answered after it
+ok   jobs r-5 and r-6 accepted by the relay
+ok   r-5 and r-6 both answered after the stop
+ok   the beacon went offline
+     beacon statuses seen: online -> draining -> offline
+ok   draining before offline
+ok   every job got exactly one answer event
+ok   the offline beacon verifies and offers no free slot
+buyer: ok

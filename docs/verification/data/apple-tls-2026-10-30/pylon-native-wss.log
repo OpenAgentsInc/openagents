@@ -1,0 +1,99 @@
+built in 0 s
+ok   the Coax relay listens on 127.0.0.1:64235 (NIP-42 URL wss://localhost:64238, --store)
+ok   psionic-serve --toy listens on 127.0.0.1:64263
+ok   the Pylon authenticated, published its list and beacon, and subscribed
+     relay stopped at 10.2 s; down for 4 s
+ok   the relay restarted on the same port and store
+ok   the relay sent a NIP-42 challenge
+ok   the buyer authenticated (NIP-42) with its test key
+ok   the Pylon's 30200 beacon is on the relay
+ok   the beacon's id and BIP-340 signature verify
+ok   the beacon says online, v1
+ok   the beacon names the served identity psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+ok   the service is this key's pylon/decision, lane cj-decision
+ok   the x tag is the content's SHA-256
+ok   the Pylon's NIP-65 relay list is on the relay
+ok   the list names wss://relay.openagents.com and wss://localhost:64238
+ok   job r-1 (25910, NIP-44 to the Pylon) accepted by the relay
+ok   r-1 answered with a 26910
+     r-1 answer after 2599 ms: {"wet":{"type":"choice","choice":"no","confidence":0.562052749,"probabilities":{"yes":0.437947251,"no":0.562052749}}}
+ok   the 26910 is signed by the Pylon, to the buyer, naming the job
+ok   outcome answered for request r-1, attempt 1
+ok   the answer names the beacon's identity psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573
+ok   service door pylon:ch19-local, provider the Pylon's key
+ok   the choice's probabilities sum to 1
+ok   job r-2 (v0) accepted by the relay
+ok   r-2 refused: 27010 error unsupported_version
+ok   jobs r-3 and r-4 accepted by the relay
+ok   the cancel for r-4 accepted by the relay
+ok   r-3, already running, answered
+ok   r-4, still waiting, cancelled: 27010 error cancelled
+ok   no 26910 for r-4
+ok   job r-7 accepted by the relay
+ok   the harness restarted the relay
+ok   the buyer reconnected and re-authenticated to the restarted relay
+ok   job r-8 accepted by the restarted relay
+ok   the Pylon republished its beacon to the restarted relay
+     r-7: answer arrived without a resend
+     r-8: no answer yet; the same signed job sent again after the Pylon's beacon came back
+ok   r-7, in flight during the restart, answered after it
+ok   r-8, sent while the Pylon was away, answered after it
+ok   jobs r-5 and r-6 accepted by the relay
+ok   r-5 and r-6 both answered after the stop
+ok   the beacon went offline
+     beacon statuses seen: online -> draining -> offline
+ok   draining before offline
+ok   every job got exactly one answer event
+ok   the offline beacon verifies and offers no free slot
+buyer: ok
+ok   the buyer's checks held
+--- pylon log ---
+pylon: TEST-ONLY key, signed in Coax; pubkey 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b
+pylon: engine psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 answered the probe in 2542 ms
+pylon: relay list of 2
+pylon: connection 1 open to wss://localhost:64238
+pylon: authenticated to wss://localhost:64238 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 1)
+pylon: beacon online generation 1 free 4 of 4 (connection 1)
+pylon: REQ s0.1 since 1793342119 (connection 1)
+pylon: caught up on s0.1 (connection 1)
+pylon: online, waiting for jobs
+pylon: event babbacd5cb35 kind 25910 -> queue (none)
+pylon: job babbacd5cb35 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2541 ms
+pylon: event e2dc32d0d119 kind 25910 -> refuse (unsupported_version)
+pylon: job e2dc32d0d119 -> 27010 error unsupported_version
+pylon: event 431b7e4a57ae kind 25910 -> queue (none)
+pylon: job 431b7e4a57ae -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2539 ms
+pylon: event b212c1efb624 kind 25910 -> queue (none)
+pylon: event 64562af2731d kind 25910 -> cancel (none)
+pylon: cancel 64562af2731d drops waiting job b212c1efb624
+pylon: job b212c1efb624 -> 27010 error cancelled
+pylon: event 67dc1bd1dac7 kind 25910 -> queue (none)
+pylon: job 67dc1bd1dac7 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2541 ms
+pylon: connection 1 ended (failed); reconnecting in 615 ms
+pylon: connection 2 ended (no WebSocket); reconnecting in 1128 ms
+pylon: connection 3 ended (no WebSocket); reconnecting in 2194 ms
+pylon: connection 4 open to wss://localhost:64238
+pylon: authenticated to wss://localhost:64238 as 1a2f3c48c45139da6541f87126d63da040222dde2219b93b405ec7570813345b (connection 4)
+pylon: beacon online generation 1 free 4 of 4 (connection 4)
+pylon: REQ s0.1 since 1793342245 (connection 4), resumed from the newest job delivered
+pylon: caught up on s0.1 (connection 4)
+pylon: event bc9efc4421e9 kind 25910 -> queue (none)
+pylon: job bc9efc4421e9 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2540 ms
+pylon: event f672d2ab7057 kind 25910 -> queue (none)
+pylon: job f672d2ab7057 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2543 ms
+pylon: event 77c0f84920e4 kind 25910 -> queue (none)
+pylon: beacon draining generation 1 free 0 of 4 (connection 4)
+pylon: job 77c0f84920e4 -> 26910 answered by psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573 in 2540 ms
+pylon: beacon offline generation 1 free 0 of 4 (connection 4)
+pylon: offline. sent 15, accepted 13, refused 0, answered 6, refusals 2, cancelled 1, forged 0, duplicates 0, ignored 0, beacons 4, connections 4, drops 3, auths 2, catch-ups 2
+--- end ---
+ok   the Pylon stopped cleanly after the offline beacon
+ok   the relay accepted every event the Pylon published; no forged input
+ok   the Pylon saw the drop and reconnected (2 connections opened)
+ok   it re-authenticated on each connection, once per new challenge (2 AUTHs)
+ok   it resubscribed with since moved to the newest job delivered (1793342119 -> 1793342245)
+ok   it republished its beacon on the new connection
+ok   no sanitizer report from the Pylon
+ok   no sanitizer report from the relay
+ok   the Pylon spoke TLS to the proxy (4 TLS handshakes)
+pylon e2e (wss): ok

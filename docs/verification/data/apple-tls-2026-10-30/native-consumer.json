@@ -1,0 +1,24 @@
+{
+  "schema": "coax-apple-native-pylon-v1",
+  "consumer_revision": "f831fb5e9d",
+  "emitter_platform": "Linux x86-64, Coax 0.24.0, 128-unit source limit",
+  "emitter_sha256": "1de40db57ff1808ac920228e00778f5184b2d9c8e6fd9140dc190de9a44d18bb",
+  "execution_platform": "macOS arm64, Apple clang 21.0.0, ASan/UBSan, Network/Security frameworks",
+  "checks": 51,
+  "signer": "Coax event_sign.coax, test key only",
+  "original_model_inference": false,
+  "artifact_sha256": {
+    "pylon-native/pylon-build/pylon.c": "6832a73b747cd8338140512e2916508fb2b73762caa5b35b150506558831234a",
+    "pylon-native/pylon-build/entropy-policy.h": "9a874cb761aaa64ae6a5e268e41441d7962e6fba7b11fed1dcc726d455f4b11f",
+    "pylon-native/pylon-build/pylon": "46c0f08b20ea6bd626cc27f08b2dacf61bef3fb4c3bf1bba7daed6fa481976f9"
+  },
+  "platform_sha256": {
+    "coax/platform/tls-native.c": "b6600dd7a2226a84ff568e18c61fc4ce51ffb5b52d58df72a5b256a6e2f320a8",
+    "coax/platform/tls-apple.inc": "a8a728170c0472790266ed8ce22afc9eda7c2cebbc567eeb1a1894dc8909001e",
+    "coax/platform/tls-native.h": "17cafc12ee386973766b3a22e7ff0f0206c573f6ddd64fd24b20c1ed0553c573",
+    "coax/platform/socket-native.c": "847a8cbce466fe8a314c7af6e424daaa0e4c7ca60490ae87f8587a4b9ba003df",
+    "coax/platform/socket-native.h": "c8707acbdb43ccd7f9f583e2f92594148962d1334ae494edfe11a8b7227c54e0",
+    "psionic/platform/pylon-host.c": "541f011d6b835bfe7a41858ba46337120d49a4381c2d9f1666503d4078618c3a",
+    "psionic/tests/pylon/pylon_e2e.py": "1b575f222d17be6820b424555989b1a1afd0cebccced9d85d716eb7413729b41"
+  }
+}

@@ -1,6 +1,10 @@
 {
   "schema": "coax-apple-tls-observations-v1",
   "files": {
+    "book-rebased.log": {
+      "sha256": "fe64a356a000e8497b1762ff660864b98324f3be952dc28c45d870d38565ed02",
+      "bytes": 74
+    },
     "book.log": {
       "sha256": "68f006637dea18934f206da6575eb817bf80d17149835aa85c229a79f267d18c",
       "bytes": 74
@@ -41,9 +45,33 @@
       "sha256": "da37b45dc36ce49931b81ab7b48feee52c515f5a04a3cc984ec74e81e0ba97df",
       "bytes": 1297
     },
+    "native-buyer.log": {
+      "sha256": "f0560dd9c4aa40c71f09165e8c0351bff92b5cbed6e12e2852044f49b7b5f07c",
+      "bytes": 2279
+    },
+    "native-consumer.json": {
+      "sha256": "9070d79e49aa95a8b95e5d50d60662588bb6d8688df57a48aa681337896b251c",
+      "bytes": 1563
+    },
+    "native-producer.log": {
+      "sha256": "805cb7c6ab5947bc4f8aaef3d318edf6287484c13aa5b9039e96ae35c46d43c7",
+      "bytes": 325
+    },
+    "native-pylon.err": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "native-pylon.log": {
+      "sha256": "34d17bc39482707f5eb6e252d04bf31f17e59ae70b95cbcd39acc7bb861d2dea",
+      "bytes": 2981
+    },
+    "native-source-closure.json": {
+      "sha256": "33ab10c4a58de55f6efcc0c2d79eb8b922cc9ad4eadfc9b17344937207b764ce",
+      "bytes": 7118
+    },
     "producers.json": {
-      "sha256": "ca4df4b9794402f35d9eb445e21c2274102fa5dcce6b4453fa246ab82dde4d3e",
-      "bytes": 3576
+      "sha256": "f5befd92a6d0e58250c0a275977cdf9b8f0571706eb164864af9db7a3bee2545",
+      "bytes": 3606
     },
     "public-nos-lol.log": {
       "sha256": "6850a64a9883bcf063bb1ec197b02ae99d6137717a2580f71d873a9c1d39ac6c",
@@ -56,6 +84,10 @@
     "pylon-buyer.log": {
       "sha256": "c9a26cb5afb35fc70bc7e75d72d44b4549fdc805a3c70fa75d98b822ac9861b6",
       "bytes": 2328
+    },
+    "pylon-native-wss.log": {
+      "sha256": "90af92922a7aaed17a05709084233271c607e275f1bf0a5778b680b05af8e2b7",
+      "bytes": 6223
     },
     "pylon-wss.log": {
       "sha256": "eb684364ca108ecce63cb62c8e05daaef11e7c663034e89511b5faae55924074",

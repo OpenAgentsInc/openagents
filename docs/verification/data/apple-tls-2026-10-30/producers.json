@@ -37,7 +37,7 @@
   },
   "scope": [
     "macOS runtime; Linux regression; iOS production compilation only",
-    "Sources at publication; annotation-only source/header edits followed the sanitizer runs.",
+    "First consumer snapshot before native signer swap; native-consumer.json separately pins the final fully Coax consumer.",
     "No full mutation runs or unrelated model/library gates.",
     "No production key or public event publication."
   ],
