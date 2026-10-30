@@ -1,0 +1,26 @@
+schedule, seed 115:
+  at 0.0 ms: 8 words, up to 16 tokens, topic 0, effort medium
+  at 2005.708 ms: 8 words, up to 32 tokens, topic 2, effort low
+  at 6935.126 ms: 128 words, up to 16 tokens, topic 0, effort high
+  at 9275.753 ms: 8 words, up to 32 tokens, topic 3, effort medium
+  at 12275.826 ms: 32 words, up to 32 tokens, topic 0, effort medium
+  at 17572.702 ms: 32 words, up to 16 tokens, topic 3, effort high
+  at 19940.358 ms: 8 words, up to 16 tokens, topic 3, effort medium
+  at 23575.182 ms: 32 words, up to 32 tokens, topic 2, effort medium
+seed 116 starts at 2528.88 ms, 7388.47, 10055.148, 15829.976
+request 0's body: {"model":"gpt-oss-20b","input":"Summarize these words: clock garden clock stone eleven green cloud silver","max_output_tokens":16,"stream":true,"reasoning":{"effort":"medium"}}
+shadow at 200 percent: 1002.854 ms, 3467.563 ms, ... 11787.591 ms
+three requests by hand: 2 answered, 1 refused, 7 tokens in 4500 us, 1555.555 tokens/s in total
+  time to first token, us: n 2, P50 200.0, P90 300.0, P95 300.0, P99 300.0
+  inter-token latency, us: n 5, P50 100.0, P90 500.0, P95 500.0, P99 500.0
+  end to end, us: n 2, P50 500.0, P90 1200.0, P95 1200.0, P99 1200.0
+  inference, us: n 1, P50 400.0, P90 400.0, P95 400.0, P99 400.0
+  per-user tokens/s: n 2, P50 3333.333, P90 6000.0, P95 6000.0, P99 6000.0
+gpt-oss, gap 4000 ms -> 2000 ms, margin 2 percent:
+  time to first token: better better better better
+  inter-token latency: within within worse within
+  end to end: within within within within
+  inference: unmeasured unmeasured unmeasured unmeasured
+  end to end less inference: unmeasured unmeasured unmeasured unmeasured
+  per-user tokens/s: within within within within
+and the seed changed too: 2 variables changed -> refused

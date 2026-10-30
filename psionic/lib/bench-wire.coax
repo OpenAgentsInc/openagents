@@ -1,0 +1,213 @@
+// Chapter 115: the wire side of the load generator. The built-in workloads
+// for the two targets, the request bodies a schedule's requests become, which
+// SSE lines are token arrivals, and the server's own reported time. The host
+// (psionic/platform/bench-drive.c) only connects, sends, reads and keeps
+// clocks; everything it decides comes from here and from bench.coax.
+#load "bench.coax";
+#authority;
+
+// responses: gpt-oss over /v1/responses with SSE (chapter 48b), one event per
+// token. systemone: a NIP-DEC decision over /v1/systemone (chapter 16), one
+// answer with latency_ms.
+BwTarget :: enum u8 {responses;systemone;}
+BwEvent :: enum u8 {other;token;end;}
+
+// The words request contents are made of, and the content and sampling
+// choices of each target.
+BW_WORDS :: [16]string.["river","lamp","seven","green","window","quiet","paper","stone","north","bread","clock","yellow","garden","eleven","cloud","silver"];
+BW_TOPICS :: [4]string.["Summarize these words","Sort these words alphabetically","Count these words","Write one sentence using these words"];
+BW_EFFORTS :: [3]string.["low","medium","high"];
+BW_QUESTIONS :: [2]string.[
+    "\"hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"}",
+    "\"drink\":{\"type\":\"choice\",\"criteria\":{\"tea\":null,\"soup\":\"a meal\"}}"];
+
+#test "the built-in workloads" {
+    w:=bw_workload(BwTarget.responses,115,12,2000000,50);
+    #assert w.seed==115 && w.requests==12 && w.gap_us==2000000 && w.jitter_pct==50 && w.contents==4 && w.samplings==3;
+    #assert w.input.count==3 && w.input.len[0]==8 && w.input.len[1]==32 && w.input.len[2]==128 && w.input.weight[0]==4 && w.input.weight[1]==2 && w.input.weight[2]==1;
+    #assert w.output.count==2 && w.output.len[0]==16 && w.output.len[1]==32 && w.output.weight[0]==2 && w.output.weight[1]==1;
+    d:=bw_workload(BwTarget.systemone,7,3,500000,0);
+    #assert d.seed==7 && d.requests==3 && d.gap_us==500000 && d.jitter_pct==0 && d.contents==2 && d.samplings==1;
+    #assert d.input.count==3 && d.input.len[0]==1 && d.input.len[1]==4 && d.input.len[2]==16 && d.input.weight[0]==2 && d.input.weight[1]==1 && d.input.weight[2]==1;
+    #assert d.output.count==1 && d.output.len[0]==1 && d.output.weight[0]==1;
+    out:[12]BnRequest;#assert bn_schedule(w,out[..])==BnStatus.ok && bn_schedule(d,out[..])==BnStatus.ok;
+}
+
+#test "a responses body by hand" {
+    out:[512]u8;r:=BnRequest.{input=3,output=16,content=2,sampling=1};
+    n:=bw_body(out[..],BwTarget.responses,"gpt-oss-20b",r,5,115);
+    w0:=BW_WORDS[cast(int)(bn_bits(115,(cast(u64)1<<32)+cast(u64)(64*5))%(cast(u64)16))];
+    w1:=BW_WORDS[cast(int)(bn_bits(115,(cast(u64)1<<32)+cast(u64)(64*5+1))%(cast(u64)16))];
+    w2:=BW_WORDS[cast(int)(bn_bits(115,(cast(u64)1<<32)+cast(u64)(64*5+2))%(cast(u64)16))];
+    want:="{\"model\":\"gpt-oss-20b\",\"input\":\"Count these words:";
+    #assert n>want.count && cast(string)out[0..<want.count]==want;
+    tail:="\",\"max_output_tokens\":16,\"stream\":true,\"reasoning\":{\"effort\":\"medium\"}}";
+    mid:=cast(string)out[want.count..<n-tail.count];
+    #assert cast(string)out[n-tail.count..<n]==tail;
+    #assert mid.count==3+w0.count+w1.count+w2.count && mid[0]==' ' && cast(string)mid[1..<1+w0.count]==w0;
+    #assert cast(string)mid[2+w0.count..<2+w0.count+w1.count]==w1 && cast(string)mid[mid.count-w2.count..<mid.count]==w2;
+    // Another request index draws other words; the same index the same ones.
+    again:[512]u8;#assert bw_body(again[..],BwTarget.responses,"gpt-oss-20b",r,5,115)==n;
+    for i:0..<n {#assert again[i]==out[i];}
+    // Too little room: -1.
+    #assert bw_body(out[0..<n-1],BwTarget.responses,"gpt-oss-20b",r,5,115)==-1 && bw_body(out[0..<n],BwTarget.responses,"gpt-oss-20b",r,5,115)==n;
+}
+
+#test "a decision body by hand" {
+    out:[512]u8;r:=BnRequest.{input=2,output=1,content=1,sampling=0};
+    n:=bw_body(out[..],BwTarget.systemone,"psionic-toy",r,0,1);
+    want:="{\"model\":\"psionic-toy\",\"state\":\"The kettle has boiled. The kettle has boiled.\",\"questions\":{\"drink\":{\"type\":\"choice\",\"criteria\":{\"tea\":null,\"soup\":\"a meal\"}}}}";
+    #assert n==want.count && cast(string)out[0..<n]==want;
+    r.content=0;r.input=1;n=bw_body(out[..],BwTarget.systemone,"elephant-1",r,3,9);
+    want="{\"model\":\"elephant-1\",\"state\":\"The kettle has boiled.\",\"questions\":{\"hot\":{\"type\":\"noul\",\"instructions\":\"Is the water hot?\"}}}";
+    #assert n==want.count && cast(string)out[0..<n]==want;
+    #assert bw_body(out[0..<n-1],BwTarget.systemone,"elephant-1",r,3,9)==-1;
+    // Requests outside the target's choices are refused.
+    r.sampling=1;#assert bw_body(out[..],BwTarget.systemone,"elephant-1",r,3,9)==-1;r.sampling=0;
+    r.content=2;#assert bw_body(out[..],BwTarget.systemone,"elephant-1",r,3,9)==-1;
+    r.content=-1;#assert bw_body(out[..],BwTarget.systemone,"elephant-1",r,3,9)==-1;
+    r.content=0;r.input=0;#assert bw_body(out[..],BwTarget.systemone,"elephant-1",r,3,9)==-1;
+    q:=BnRequest.{input=1,output=1,content=4,sampling=0};#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)==-1;
+    q.content=3;q.sampling=3;#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)==-1;
+    q.sampling=-1;#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)==-1;
+    q.sampling=2;#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)>0;
+    q.content=-1;#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)==-1;
+    q.content=0;q.output=0;#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)==-1;
+    q.output=1;q.input=0;#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)==-1;
+    q.input=1;#assert bw_body(out[..],BwTarget.responses,"m",q,0,1)>0;
+    // Output limits print in decimal.
+    tens:=[4]int.[9,10,123,7008];names:=[4]string.["9","10","123","7008"];
+    for k:0..<4 {
+        q.output=tens[k];n=bw_body(out[..],BwTarget.responses,"m",q,0,1);
+        t:="\",\"max_output_tokens\":";at:=0;
+        for i:0..<n-t.count {if cast(string)out[i..<i+t.count]==t {at=i+t.count;}}
+        #assert at>0 && cast(string)out[at..<at+names[k].count]==names[k] && out[at+names[k].count]==',';
+    }
+}
+
+#test "which SSE lines are tokens" {
+    #assert bw_event("data: {\"type\":\"response.output_text.delta\",\"delta\":\"7\"}")==BwEvent.token;
+    #assert bw_event("data: {\"type\":\"response.reasoning_text.delta\",\"delta\":\"x\"}")==BwEvent.token;
+    #assert bw_event("data: {\"type\":\"response.completed\",\"response\":{}}")==BwEvent.end;
+    #assert bw_event("data: {\"type\":\"response.incomplete\"}")==BwEvent.end;
+    #assert bw_event("data: {\"type\":\"response.failed\"}")==BwEvent.end;
+    #assert bw_event("data: {\"type\":\"response.created\"}")==BwEvent.other;
+    #assert bw_event("data: {\"type\":\"response.output_text.done\"}")==BwEvent.other;
+    #assert bw_event("data: {\"type\":\"response.completedx\"}")==BwEvent.other;
+    #assert bw_event("data: {\"type\":\"delta\"}")==BwEvent.other;
+    #assert bw_event("data: {\"type\":\".delta\"}")==BwEvent.token;
+    #assert bw_event("event: response.output_text.delta")==BwEvent.other;
+    #assert bw_event("data: {\"type\":\"response.output_text.delta")==BwEvent.other;
+    #assert bw_event("data: {\"type\":\"ab\"")==BwEvent.other && bw_event("data: {\"type\":\"a\"")==BwEvent.other;
+    #assert bw_event("data: {\"type\":")==BwEvent.other;
+    #assert bw_event("data: {\"kind\":\"response.output_text.delta\"}")==BwEvent.other;
+    #assert bw_event("")==BwEvent.other && bw_event("data: ")==BwEvent.other;
+    #assert bw_starts("abc","abc") && bw_starts("abcd","abc") && !bw_starts("ab","abc") && !bw_starts("abd","abc") && bw_starts("","");
+    #assert bw_event("Data: {\"type\":\"response.output_text.delta\"}")==BwEvent.other;
+}
+
+#test "the server's own time" {
+    #assert bw_latency_us("{\"answers\":{},\"latency_ms\":147}")==147000;
+    #assert bw_latency_us("{\"latency_ms\":0}")==0 && bw_latency_us("\"latency_ms\":9,")==9000;
+    #assert bw_latency_us("{\"latency_ms\":1234567}")==1234567000;
+    #assert bw_latency_us("{\"answers\":{}}")==-1 && bw_latency_us("")==-1;
+    #assert bw_latency_us("{\"latency_ms\":}")==-2 && bw_latency_us("{\"latency_ms\":x1}")==-2 && bw_latency_us("{\"latency_ms\":")==-2;
+    #assert bw_latency_us("{\"latency_ms\":12345678901}")==-2 && bw_latency_us("{\"latency_ms\":1234567890}")==1234567890000;
+    #assert bw_latency_us("{\"latency_ms\":12345678900}")==-2 && bw_latency_us("{\"latency_ms\":12345678909}")==-2;
+    #assert bw_latency_us("{\"latency_ms\":1234567890:}")==1234567890000 && bw_latency_us("{\"latency_ms\":1234567890/}")==1234567890000;
+    #assert bw_latency_us("\"latency_ms\":9")==9000 && bw_latency_us("\"latency_ms\":1234567890")==1234567890000;
+    #assert bw_latency_us("{\"latency_ms\":/}")==-2 && bw_latency_us("{\"latency_ms\"::}")==-2 && bw_latency_us("{\"latency_ms\":9}")==9000;
+    #assert bw_latency_us("\"latency_ms\"")==-1 && bw_latency_us("\"latency_ms\":")==-2;
+}
+
+// book:begin workload
+bw_workload :: (target:BwTarget,seed:u64,requests:int,gap_us:int,jitter_pct:int)->BnWorkload #export_c {
+    w:=BnWorkload.{seed=seed,requests=requests,gap_us=gap_us,jitter_pct=jitter_pct,contents=4,samplings=3};
+    // Input words 8, 32 or 128 in 4:2:1; output limits 16 or 32 in 2:1.
+    w.input.count=3;w.input.len[0]=8;w.input.len[1]=32;w.input.len[2]=128;w.input.weight[0]=4;w.input.weight[1]=2;w.input.weight[2]=1;
+    w.output.count=2;w.output.len[0]=16;w.output.len[1]=32;w.output.weight[0]=2;w.output.weight[1]=1;
+    if target==BwTarget.systemone {
+        // Sentences of state 1, 4 or 16 in 2:1:1; one answer; two questions.
+        w.contents=2;w.samplings=1;
+        w.input.len[0]=1;w.input.len[1]=4;w.input.len[2]=16;w.input.weight[0]=2;w.input.weight[1]=1;// weight[2] stays 1
+        w.output.count=1;w.output.len[0]=1;w.output.weight[0]=1;
+    }
+    return w;
+}
+// book:end workload
+
+bw_put :: (out:[]u8,at:int,s:string)->int {
+    if at<0 || at+s.count>out.count {return -1;}
+    for i:0..<s.count {out[at+i]=s[i];}
+    return at+s.count;
+}
+bw_int :: (out:[]u8,at:int,v:int)->int {
+    digits:[20]u8;n:=0;x:=v;
+    while x>9 {digits[n]=cast(u8)(48+x%10);x/=10;n+=1;}
+    digits[n]=cast(u8)(48+x);n+=1;
+    to:=at;for i:0..<n {to=bw_put(out,to,cast(string)digits[n-1-i..<n-i]);}
+    return to;
+}
+
+// book:begin body
+// Request i's body. Its words are counters 2^32+64i onward of the run's seed,
+// so the same schedule always sends the same bytes. -1: no room, or a choice
+// the target does not have.
+bw_body :: (out:[]u8,target:BwTarget,model:string,r:BnRequest,i:int,seed:u64)->int #export_c {
+    if r.input<1 || r.output<1 || r.content<0 || r.sampling<0 {return -1;}
+    at:=bw_put(out,0,"{\"model\":\"");at=bw_put(out,at,model);
+    if target==BwTarget.systemone {
+        if r.content>1 || r.sampling>0 {return -1;}
+        at=bw_put(out,at,"\",\"state\":\"The kettle has boiled.");
+        for k:1..<r.input {at=bw_put(out,at," The kettle has boiled.");}
+        at=bw_put(out,at,"\",\"questions\":{");at=bw_put(out,at,BW_QUESTIONS[r.content]);
+        return bw_put(out,at,"}}");
+    }
+    if r.content>3 || r.sampling>2 {return -1;}
+    at=bw_put(out,at,"\",\"input\":\"");at=bw_put(out,at,BW_TOPICS[r.content]);at=bw_put(out,at,":");
+    base:=(cast(u64)1<<32)+cast(u64)(64*i);
+    for k:0..<r.input {
+        at=bw_put(out,at," ");
+        at=bw_put(out,at,BW_WORDS[cast(int)(bn_bits(seed,base+cast(u64)k)%(cast(u64)16))]);
+    }
+    at=bw_put(out,at,"\",\"max_output_tokens\":");at=bw_int(out,at,r.output);
+    at=bw_put(out,at,",\"stream\":true,\"reasoning\":{\"effort\":\"");at=bw_put(out,at,BW_EFFORTS[r.sampling]);
+    return bw_put(out,at,"\"}}");
+}
+// book:end body
+
+bw_starts :: (s:string,p:string)->bool {
+    if s.count<p.count {return false;}
+    return cast(string)s[0..<p.count]==p;
+}
+
+// book:begin event
+// A token arrival is an SSE data line whose type ends in ".delta"; a response
+// ends at completed, incomplete or failed.
+bw_event :: (line:string)->BwEvent #export_c {
+    head:="data: {\"type\":\"";
+    if !bw_starts(line,head) {return BwEvent.other;}
+    end:=head.count;
+    while end<line.count && line[end]!='"' {end+=1;}
+    if end==line.count {return BwEvent.other;}
+    t:=cast(string)line[head.count..<end];
+    if t.count>=6 && cast(string)t[t.count-6..<t.count]==".delta" {return BwEvent.token;}
+    if t=="response.completed" || t=="response.incomplete" || t=="response.failed" {return BwEvent.end;}
+    return BwEvent.other;
+}
+// book:end event
+
+// The decision's own "latency_ms", in microseconds; -1 when absent, -2 when
+// it is not a number of one to ten digits.
+bw_latency_us :: (body:string)->int #export_c {
+    key:="\"latency_ms\":";
+    for i:0..<body.count-key.count+1 {
+        if cast(string)body[i..<i+key.count]==key {
+            j:=i+key.count;v:=0;
+            while j<body.count && j<i+key.count+10 && body[j]>='0' && body[j]<='9' {v=v*10+cast(int)(body[j]-'0');j+=1;}
+            if j==i+key.count || (j<body.count && body[j]>='0' && body[j]<='9') {return -2;}
+            return v*1000;
+        }
+    }
+    return -1;
+}

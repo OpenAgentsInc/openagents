@@ -1,0 +1,44 @@
+ 22:03:05  up 14 days 11:50,  1 user,  load average: 133.21, 145.20, 130.68
+== gpt-oss baseline
+responses, 8 requests: 6 answered, 2 refused busy, 0 failed; 126 token events in 24.371 s, 5.17 tokens/s in total
+  time to first token                n=6    P50     362.7  P90     657.8  P95     657.8  P99     657.8 ms
+  inter-token latency                n=120  P50      15.8  P90      18.0  P95      41.6  P99     150.8 ms
+  end to end                         n=6    P50     727.5  P90     851.3  P95     851.3  P99     851.3 ms
+  inference (server's latency_ms)    n=0
+  end to end less inference          n=0
+  per-user tokens/s                  n=6    P50      26.9  P90      39.9  P95      39.9  P99      39.9 tok/s
+ 22:03:29  up 14 days 11:50,  1 user,  load average: 144.21, 146.58, 131.51
+== gpt-oss repeat
+responses, 8 requests: 8 answered, 0 refused busy, 0 failed; 168 token events in 24.380 s, 6.89 tokens/s in total
+  time to first token                n=8    P50     369.0  P90     665.0  P95     665.0  P99     665.0 ms
+  inter-token latency                n=160  P50      15.7  P90      22.0  P95      46.9  P99     105.0 ms
+  end to end                         n=8    P50     725.1  P90     858.9  P95     858.9  P99     858.9 ms
+  inference (server's latency_ms)    n=0
+  end to end less inference          n=0
+  per-user tokens/s                  n=8    P50      26.0  P90      40.0  P95      40.0  P99      40.0 tok/s
+ 22:03:56  up 14 days 11:51,  1 user,  load average: 157.34, 149.47, 132.87
+== gpt-oss candidate: twice the rate (gap 2000 ms)
+responses, 8 requests: 8 answered, 0 refused busy, 0 failed; 168 token events in 12.555 s, 13.38 tokens/s in total
+  time to first token                n=8    P50     322.0  P90     644.0  P95     644.0  P99     644.0 ms
+  inter-token latency                n=160  P50      15.6  P90      21.0  P95      66.8  P99     123.0 ms
+  end to end                         n=8    P50     734.8  P90     849.0  P95     849.0  P99     849.0 ms
+  inference (server's latency_ms)    n=0
+  end to end less inference          n=0
+  per-user tokens/s                  n=8    P50      26.5  P90      39.5  P95      39.5  P99      39.5 tok/s
+ 22:04:11  up 14 days 11:51,  1 user,  load average: 167.26, 152.07, 133.98
+bench-drive: 1 of 8 run variables changed
+  time to first token                P50 better     P90 better     P95 better     P99 better    
+  inter-token latency                P50 within     P90 within     P95 worse      P99 within    
+  end to end                         P50 within     P90 within     P95 within     P99 within    
+  inference (server's latency_ms)    P50 unmeasured P90 unmeasured P95 unmeasured P99 unmeasured
+  end to end less inference          P50 unmeasured P90 unmeasured P95 unmeasured P99 unmeasured
+  per-user tokens/s                  P50 within     P90 within     P95 within     P99 within    
+== Elephant
+systemone, 6 requests: 0 answered, 0 refused busy, 6 failed; 0 token events in 13.941 s, 0.00 tokens/s in total
+  time to first token                n=0
+  inter-token latency                n=0
+  end to end                         n=0
+  inference (server's latency_ms)    n=0
+  end to end less inference          n=0
+  per-user tokens/s                  n=0
+ 22:04:27  up 14 days 11:51,  1 user,  load average: 166.32, 152.62, 134.46

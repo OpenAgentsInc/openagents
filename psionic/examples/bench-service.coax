@@ -1,0 +1,65 @@
+#import "Basic";
+#load "../lib/bench-wire.coax";
+
+ms :: (us:int)->f64 {return f64(us)/1000;}
+EFFORTS :: [3]string.["low","medium","high"];
+VERDICTS :: [7]string.["none","refused","repeat","better","worse","within","unmeasured"];
+METRICS :: [6]string.["time to first token","inter-token latency","end to end","inference","end to end less inference","per-user tokens/s"];
+show :: (name:string,s:BnStats,scale:f64) {
+    if s.n==0 {print("  %: none\n",name);return;}
+    print("  %: n %, P50 %, P90 %, P95 %, P99 %\n",name,s.n,f64(s.p[0])*scale,f64(s.p[1])*scale,f64(s.p[2])*scale,f64(s.p[3])*scale);
+}
+
+// Chapter 115's recorded gpt-oss runs (psionic/fixtures/bench/2026-10-29/),
+// measured on a host whose load average was 133 to 167: the identity words,
+// then n and P50/P90/P95/P99 for each of the six metrics.
+RunFile :: struct {run:BnRun;st:[6]BnStats;}
+rf :: (v:[8]u64,rows:[30]int)->RunFile {
+    f:=RunFile.{run=BnRun.{v=v}};
+    for k:0..<6 {f.st[k].n=rows[5*k];for q:0..<4 {f.st[k].p[q]=rows[5*k+1+q];}}
+    return f;
+}
+
+// book:begin example
+main :: () {
+    // The responses workload: seed 115, 8 requests, a 4 s mean gap moved by up to half.
+    w:=bw_workload(BwTarget.responses,115,8,4000000,50);plan:[8]BnRequest;
+    #assert bn_schedule(w,plan[..])==BnStatus.ok;
+    print("schedule, seed 115:\n");
+    for r:plan {print("  at % ms: % words, up to % tokens, topic %, effort %\n",ms(r.at_us),r.input,r.output,r.content,EFFORTS[r.sampling]);}
+    other:[8]BnRequest;w.seed=116;#assert bn_schedule(w,other[..])==BnStatus.ok;
+    print("seed 116 starts at % ms, %, %, %\n",ms(other[1].at_us),ms(other[2].at_us),ms(other[3].at_us),ms(other[4].at_us));
+    body:[2048]u8;n:=bw_body(body[..],BwTarget.responses,"gpt-oss-20b",plan[0],0,115);
+    print("request 0's body: %\n",cast(string)body[0..<n]);
+
+    // A shadow replays the recorded arrivals twice as fast.
+    shadow:[8]BnRequest;#assert bn_replay(plan[..],200,shadow[..])==BnStatus.ok;
+    print("shadow at 200 percent: % ms, % ms, ... % ms\n",ms(shadow[1].at_us),ms(shadow[2].at_us),ms(shadow[7].at_us));
+
+    // Timings as the client saw them: two streamed answers, one busy refusal.
+    times:=[7]int.[1300,1400,1600,2100, 5200,5300,5400];
+    obs:=[3]BnObs.[BnObs.{code=200,sent_us=1000,done_us=2200,server_us=-1,first=0,count=4},
+        BnObs.{code=503,sent_us=2000,done_us=2010,server_us=-1},
+        BnObs.{code=200,sent_us=5000,done_us=5500,server_us=400,first=4,count=3}];
+    v:[16]int;m:=bn_summarize(obs[..],times[..],5500,v[..]);#assert m.status==BnStatus.ok;
+    print("three requests by hand: % answered, % refused, % tokens in % us, % tokens/s in total\n",m.ok,m.refused,m.tokens,m.span_us,f64(m.total_milli)/1000);
+    show("time to first token, us",m.ttft,1);show("inter-token latency, us",m.itl,1);show("end to end, us",m.e2e,1);
+    show("inference, us",m.infer,1);show("per-user tokens/s",m.user_milli,0.001);
+
+    // gpt-oss on a loaded host: baseline, its repeat, and twice the rate.
+    id:=[8]u64.[14083256802920332290,7141579509623044411,0,115,8,4000,50,100];
+    base:=rf(id,[30]int.[6,362699,657751,657751,657751, 120,15843,18003,41554,150837, 6,727479,851285,851285,851285, 0,0,0,0,0, 0,0,0,0,0, 6,26863,39863,39863,39863]);
+    rep:=rf(id,[30]int.[8,368994,664980,664980,664980, 160,15653,21989,46854,104993, 8,725134,858891,858891,858891, 0,0,0,0,0, 0,0,0,0,0, 8,26041,39992,39992,39992]);
+    id[5]=2000;
+    cand:=rf(id,[30]int.[8,321996,644000,644000,644000, 160,15558,21046,66847,123001, 8,734784,849021,849021,849021, 0,0,0,0,0, 0,0,0,0,0, 8,26503,39467,39467,39467]);
+    print("gpt-oss, gap 4000 ms -> 2000 ms, margin 2 percent:\n");
+    for k:0..<6 {
+        print("  %:",METRICS[k]);
+        for q:0..<4 {c:=bn_compare(base.run,rep.run,cand.run,base.st[k],rep.st[k],cand.st[k],q,k!=5,2);print(" %",VERDICTS[cast(int)c.verdict]);}
+        print("\n");
+    }
+    two:=cand.run;two.v[3]=116;
+    c:=bn_compare(base.run,rep.run,two,base.st[0],rep.st[0],cand.st[0],0,true,2);
+    print("and the seed changed too: % variables changed -> %\n",c.changed,VERDICTS[cast(int)c.verdict]);
+}
+// book:end example

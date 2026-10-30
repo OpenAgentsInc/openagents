@@ -580,6 +580,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/bench-service.coax",
+      "chapter": "psionic/book/ch115-benchmark-a-service-not-a-kernel.md",
+      "stdout": "psionic/fixtures/bench-service.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

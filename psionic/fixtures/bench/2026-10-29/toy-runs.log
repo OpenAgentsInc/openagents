@@ -1,0 +1,24 @@
+ 22:01:20  up 14 days 11:48,  1 user,  load average: 163.82, 152.44, 130.96
+systemone, 12 requests: 11 answered, 1 refused busy, 0 failed; 0 token events in 14.106 s, 0.00 tokens/s in total
+  time to first token                n=0
+  inter-token latency                n=0
+  end to end                         n=11   P50     436.6  P90    1022.1  P95    1400.7  P99    1400.7 ms
+  inference (server's latency_ms)    n=11   P50     433.0  P90     990.0  P95    1386.0  P99    1386.0 ms
+  end to end less inference          n=11   P50       4.2  P90      25.1  P95      32.1  P99      32.1 ms
+  per-user tokens/s                  n=0
+systemone, 12 requests: 12 answered, 0 refused busy, 0 failed; 0 token events in 13.687 s, 0.00 tokens/s in total
+  time to first token                n=0
+  inter-token latency                n=0
+  end to end                         n=12   P50     637.6  P90     931.3  P95     991.7  P99     991.7 ms
+  inference (server's latency_ms)    n=12   P50     625.0  P90     930.0  P95     978.0  P99     978.0 ms
+  end to end less inference          n=12   P50       4.5  P90      13.7  P95      26.0  P99      26.0 ms
+  per-user tokens/s                  n=0
+== shadow replay of the recorded schedule at real time
+systemone, 12 requests (shadow replay): 11 answered, 1 refused busy, 0 failed; 0 token events in 13.871 s, 0.00 tokens/s in total
+  time to first token                n=0
+  inter-token latency                n=0
+  end to end                         n=11   P50     299.9  P90     897.1  P95    1154.1  P99    1154.1 ms
+  inference (server's latency_ms)    n=11   P50     298.0  P90     883.0  P95    1146.0  P99    1146.0 ms
+  end to end less inference          n=11   P50       3.8  P90       9.7  P95      14.1  P99      14.1 ms
+  per-user tokens/s                  n=0
+ 22:02:01  up 14 days 11:49,  1 user,  load average: 147.95, 150.16, 131.12
