@@ -13,10 +13,10 @@ static coax_t_Cp *at(uint32_t p){return (coax_t_Cp *)(uintptr_t)p;}
 static coax_v_t_Cp view(uint32_t p){return (coax_v_t_Cp){at(p),1};}
 EXPORT("coaxial_layout") uint32_t layout(void){return sizeof(coax_t_Cp)*1000003u+(uint32_t)cp_revision();}
 EXPORT("coaxial_state_size") uint32_t state_size(void){return sizeof(coax_t_Cp);}
-EXPORT("coaxial_max_vertices") uint32_t max_vertices(void){return 120000;}
-EXPORT("coaxial_vertex_floats") uint32_t vertex_floats(void){return 12;}
-EXPORT("coaxial_uniform_floats") uint32_t uniform_floats(void){return 40;}
-EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t vertices,uint32_t uniforms,float w,float h,float d,float dt,uint32_t still){int64_t n=cp_frame(view(p),(coax_v_t_LandState){0,0},(coax_v_f32){(float *)(uintptr_t)vertices,120000*12},(coax_v_f32){(float *)(uintptr_t)uniforms,40},w,h,d,dt,still!=0||golden_mode!=0);track_ready();track_frame(tr(),dt,w,h,d);track_drain(&tracking);return (uint32_t)n;}
+EXPORT("coaxial_max_vertices") uint32_t max_vertices(void){return (uint32_t)cp_max_vertices();}
+EXPORT("coaxial_vertex_floats") uint32_t vertex_floats(void){return (uint32_t)coaxial_land_vertex_floats();}
+EXPORT("coaxial_uniform_floats") uint32_t uniform_floats(void){return (uint32_t)coaxial_land_uniform_floats();}
+EXPORT("coaxial_frame") uint32_t frame(uint32_t p,uint32_t vertices,uint32_t uniforms,float w,float h,float d,float dt,uint32_t still){int64_t n=cp_frame(view(p),(coax_v_t_LandState){0,0},(coax_v_f32){(float *)(uintptr_t)vertices,cp_max_vertices()*coaxial_land_vertex_floats()},(coax_v_f32){(float *)(uintptr_t)uniforms,coaxial_land_uniform_floats()},w,h,d,dt,still!=0||golden_mode!=0);track_ready();track_frame(tr(),dt,w,h,d);track_drain(&tracking);return (uint32_t)n;}
 EXPORT("coaxial_pointer") uint32_t pointer(uint32_t p,float x,float y,int32_t phase,int32_t kind,int32_t id){return cp_pointer(view(p),x,y,phase,kind,id);}
 EXPORT("coaxial_wheel") void wheel(uint32_t p,float dy){cp_wheel(view(p),dy);}
 EXPORT("coaxial_key") uint32_t key(uint32_t p,int32_t k,int32_t mods){(void)mods;return cp_key(view(p),k);}

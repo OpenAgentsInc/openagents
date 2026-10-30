@@ -52,6 +52,7 @@
 }
 
 CP_MAX_VERTICES :: 120000;
+cp_max_vertices :: ()->int #export_c {return CP_MAX_VERTICES;}
 cp_revision :: ()->int #export_c {return CP_REVISION;}
 Cp :: struct {
   ready:bool;w:f32;h:f32;dpr:f32;time:f32;scroll:f32;limit:f32;body:Box;markdown:Box;command:Box;home:Box;
