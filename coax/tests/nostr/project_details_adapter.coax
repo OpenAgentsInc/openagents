@@ -1,0 +1,7 @@
+// Actual project details path over caller-owned production Tables storage.
+#load "../../../apps/openagents-web/project-fold.coax";
+details_body :: (t:[]Tables, input:string, out:[]u8)->int #export_c {
+  if !split_acceptance(t,input) {return -1;}
+  return prose_field(t,out,0,cast(string)t[0].body[0..<t[0].body_n]);
+}
+main :: () {}

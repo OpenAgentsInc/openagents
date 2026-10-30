@@ -41,7 +41,7 @@ export function unescapeDetail(field: string): string[][] {
 export function splitAcceptance(body: string): { body: string; acceptance: string[] } {
   const lines = body.replace(/\r\n?/g, "\n").split("\n")
   const at = lines.findIndex((l) => /^##\s+Acceptance\s*$/i.test(l.trim()))
-  if (at < 0) return { body: body.trim(), acceptance: [] }
+  if (at < 0) return { body: lines.join("\n").trim(), acceptance: [] }
   let end = lines.findIndex((l, i) => i > at && /^##\s/.test(l.trim()))
   if (end < 0) end = lines.length
   const acceptance: string[] = []

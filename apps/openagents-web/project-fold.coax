@@ -960,8 +960,8 @@ split_acceptance :: (t: [] Tables, body: string) -> bool {
   at := -1;
   for k: 0..<ln[0].n { if at < 0 && acceptance_head(text[ln[0].from[k]..<ln[0].to[k]]) { at = k; } }
   if at < 0 {
-    // no acceptance section: the body as it came, trimmed
-    b := trimmed(body);
+    // Keep the normalized line endings when there is no acceptance section.
+    b := trimmed(text);
     if b.count > t[0].body.count { return false; }
     for k: 0..<b.count { t[0].body[k] = b[k]; }
     t[0].body_n = b.count;

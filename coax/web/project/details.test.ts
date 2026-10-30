@@ -25,3 +25,7 @@ test("the acceptance section comes out of the body as a list", () => {
   expect(s.body).toBe("Do the thing.\n\n## Files\n\n- `a.coax`")
   expect(splitAcceptance("plain").acceptance).toEqual([])
 })
+
+test("normalizes lone CR and CRLF even without an acceptance section", () => {
+  expect(splitAcceptance("  first\rsecond\r\nthird  ")).toEqual({ body: "first\nsecond\nthird", acceptance: [] })
+})
