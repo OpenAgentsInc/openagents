@@ -87,6 +87,7 @@
 - [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md)
 - [173. Exact replay as a verification class](ch173-exact-replay-as-a-verification-class.md)
 - [174. Can gradient descent learn exact execution?](ch174-can-gradient-descent-learn-exact-execution.md)
+- [175. A frozen exact core with a learned interface](ch175-a-frozen-exact-core-with-a-learned-interface.md)
 - [176. Composable weight modules](ch176-composable-weight-modules.md)
 
 - [178. A suite is three digests](ch178-a-suite-is-three-digests.md)
@@ -109,6 +110,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 77, 115, 156–161, 161a, 164, 164a, 165–174, 176, 178–183 and 186–187 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 77, 115, 156–161, 161a, 164, 164a, 165–176, 178–183 and 186–187 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–32, 34–35, 37–40 and the remaining outlines
 remain proposed.

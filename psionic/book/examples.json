@@ -852,6 +852,16 @@
       ]
     },
     {
+      "source": "psionic/examples/core-interface.coax",
+      "chapter": "psionic/book/ch175-a-frozen-exact-core-with-a-learned-interface.md",
+      "stdout": "psionic/fixtures/core-interface.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/interpreter-weights.coax",
       "chapter": "psionic/book/ch170-an-interpreter-in-weights-or-one-program-in-weights.md",
       "stdout": "psionic/fixtures/interpreter-weights.out",

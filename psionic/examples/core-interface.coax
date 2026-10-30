@@ -1,0 +1,107 @@
+#import "Basic";
+#load "../lib/core-interface.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+FAMILY :: [5]string.["count","sum","stride","squares","fact"];
+CODE :: [11]string.["push","get","set","add","sub","mul","load","store","brif","out","ret"];
+SOURCE :: [12]string.["zero","arg","top","second","local","depth+1","depth-1","outputs+1","add","sub","mul","branch"];
+FIELD :: [4]string.["ip","code","x","y"];
+// Times before 64 are train.
+CUTS :: TrCuts.{calibration=64,development=64,heldout=64};
+
+build :: (family:int,n:int,out:[]TmOp)->int {
+    if family==4 {return fc_program(n,out);}
+    return es_program(cast(EsFamily)family,n,out);
+}
+// The training traces for one controller: each claimed, replayed and
+// admitted by chapter 186 into a set of its own, over the shared ledger.
+Rows :: struct {ex:[1024]EsExample;count:int;traces:int;entries:int;}
+gather :: (artifact:int,families:[]int,entry:[]TrEntry,entries:int)->Rows {
+    out:Rows;rows:[64]TrRow;s:=tr_open(artifact,CUTS,rows[..],entry,entries);time:=0;
+    for family:families {
+        for n:1..<5 {
+            p:[17]TmOp;k:=build(family,n,p[..]);trace:[2048]int;outs:[TM_OUTPUTS]int;
+            m:=rx_claim(p[0..<k],TM_STEPS_MAX,trace[..],outs[..]);#assert m.status==TmStatus.ok;
+            a:=tr_add_trace(s,p[0..<k],m.claim,trace[0..<m.claim.steps*TM_TOKENS],family*1000+n,time,TM_STEPS_MAX);
+            #assert a.reason==TrReason.admitted && a.set.row[a.set.count-1].role==TrRole.train;
+            s=a.set;time+=1;out.traces+=1;
+            out.count=es_examples(p[0..<k],trace[..],m.claim.steps,out.ex[..],out.count);#assert out.count>0;
+        }
+    }
+    out.entries=s.entries;
+    return out;
+}
+show_routes :: (c:FcController) {
+    print("  routes, with sources training never told apart after a slash:\n   ");
+    for code:0..<ES_CODES {
+        if !c.seen[code] {continue;}
+        print(" %",CODE[code]);
+        for t:0..<2 {
+            print("%",ifx t==0 then " " else ", ");print("%",SOURCE[cast(int)fc_route(c,code,t)]);
+            ties:=fc_ties(c,code,t);
+            for s:0..<FC_SOURCES {if ((ties>>s)&1)==1 {print("/%",SOURCE[s]);}}
+        }
+        print(";");
+    }
+    print("\n    never seen:");
+    for code:0..<ES_CODES {if !c.seen[code] {print(" %",CODE[code]);}}
+    print("\n");
+}
+Tally :: struct {exact:int;refused:int;wrong:int;}
+evaluate :: (core:FcCore,c:FcController)->Tally {
+    t:Tally;rows:[4096]int;truth:[4096]int;outs:[TM_OUTPUTS]int;
+    for family:0..<5 {
+        print("  %:",FAMILY[family]);last:FcScore;
+        ns:=ifx family==4 then [4]int.[4,8,11,12] else [4]int.[4,8,16,32];
+        for n,i:ns {
+            p:[17]TmOp;k:=build(family,n,p[..]);
+            s:=fc_score(core,c,p[0..<k],rows[..],truth[..],outs[..]);#assert s.status==FcStatus.ok;
+            print("%n=% ",ifx i==0 then " " else ", ",n);
+            if s.exact {t.exact+=1;print("exact");}
+            else if s.refused {t.refused+=1;print("refused at step % of %",s.step,s.tokens/TM_TOKENS);}
+            else {t.wrong+=1;print("token % of %",s.token,s.tokens);}
+            last=s;
+        }
+        if !last.exact && !last.refused {
+            print("\n    first miss at n=%: step % (%) wrote % for %, where the machine has %",ns[3],last.step,
+                CODE[truth[last.step*TM_TOKENS+1]],last.wrote,FIELD[last.token%TM_TOKENS],last.want);
+        }
+        if last.refused {
+            print("\n    at n=%, step % (%) needs a core output past 2^26",ns[3],last.step,CODE[truth[last.step*TM_TOKENS+1]]);
+        }
+        print("\n");
+    }
+    return t;
+}
+
+// book:begin example
+main :: () {
+    core:=fc_core();
+    print("core: chapter 168's block for inputs second, top, ip and arg, with outputs second + top,\n");
+    print("  second - top, second * top, and ip + 1 when top is 0, else arg; exact within 2^26\n");
+    print("  chapter 176's admission: %\n",ifx fc_admit(core)==WmStatus.ok then "exact (pin, 4 cases, source recompiled to the pin)" else "refused");
+    print("interface: each token is copied from one of 12 sources:\n  ");
+    for s:0..<FC_SOURCES {print("%",SOURCE[s]);print("%",ifx s==FC_SOURCES-1 then "\n" else ", ");}
+    print("controller: per instruction and token, a softmax over the sources that sees only the instruction,\n");
+    print("trained from zero by 200 full-batch steps on -log P(a source that gives the machine's token)\n");
+
+    entry:[64]TrEntry;
+    names:=[2]string.["A","B"];
+    sets:=[2][4]int.[[4]int.[0,1,-1,-1],[4]int.[0,1,2,4]];sizes:=[2]int.[2,4];
+    tally:[2]Tally;entries:=0;
+    for k:0..<2 {
+        fams:=sets[k];
+        r:=gather(1+k,fams[0..<sizes[k]],entry[..],entries);
+        entries=r.entries;
+        print("controller %: trained on",names[k]);
+        for i:0..<sizes[k] {print("%",ifx i==0 then " " else ifx i==sizes[k]-1 then " and " else ", ");print("%",FAMILY[fams[i]]);}
+        print(" at n = 1..4: % traces admitted by chapter 186, % rows\n",r.traces,r.count);
+        f:=fc_train(core,r.ex[0..<r.count],200,1);#assert f.status==FcStatus.ok && f.unroutable==0;
+        print("  loss %\n",r4(f.loss));
+        show_routes(f.controller);
+        tally[k]=evaluate(core,f.controller);
+    }
+    print("of 20 runs each: A % exact, % refused, % wrong; B % exact, % refused, % wrong\n",
+        tally[0].exact,tally[0].refused,tally[0].wrong,tally[1].exact,tally[1].refused,tally[1].wrong);
+}
+// book:end example

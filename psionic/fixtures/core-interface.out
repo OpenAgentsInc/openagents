@@ -1,0 +1,32 @@
+core: chapter 168's block for inputs second, top, ip and arg, with outputs second + top,
+  second - top, second * top, and ip + 1 when top is 0, else arg; exact within 2^26
+  chapter 176's admission: exact (pin, 4 cases, source recompiled to the pin)
+interface: each token is copied from one of 12 sources:
+  zero, arg, top, second, local, depth+1, depth-1, outputs+1, add, sub, mul, branch
+controller: per instruction and token, a softmax over the sources that sees only the instruction,
+trained from zero by 200 full-batch steps on -log P(a source that gives the machine's token)
+controller A: trained on count and sum at n = 1..4: 8 traces admitted by chapter 186, 220 rows
+  loss 0.0062
+  routes, with sources training never told apart after a slash:
+    push arg, depth+1; get local, arg; set top/add, arg; add add, depth-1/outputs+1; sub sub, top/depth-1; brif top/add, branch; out top/add, outputs+1; ret zero/arg/top/second/local/add/sub/mul, zero/arg/top/second/local/add/sub/mul;
+    never seen: mul load store
+  count: n=4 exact, n=8 exact, n=16 exact, n=32 exact
+  sum: n=4 exact, n=8 exact, n=16 exact, n=32 exact
+  stride: n=4 token 27 of 140, n=8 token 27 of 268, n=16 token 27 of 524, n=32 token 27 of 1036
+    first miss at n=32: step 6 (sub) wrote 2 for y, where the machine has 1
+  squares: n=4 token 18 of 172, n=8 token 18 of 332, n=16 token 18 of 652, n=32 token 18 of 1292
+    first miss at n=32: step 4 (mul) wrote 0 for x, where the machine has 1024
+  fact: n=4 token 26 of 188, n=8 token 26 of 348, n=11 token 26 of 468, n=12 token 26 of 508
+    first miss at n=12: step 6 (mul) wrote 0 for x, where the machine has 12
+controller B: trained on count, sum, stride and fact at n = 1..4: 16 traces admitted by chapter 186, 440 rows
+  loss 0.006
+  routes, with sources training never told apart after a slash:
+    push arg, depth+1; get local, arg; set top/add, arg; add add, depth-1/outputs+1; sub sub, depth-1; mul mul, depth-1/outputs+1; brif top/add, branch; out top/add, outputs+1; ret zero/arg/top/second/local/add/sub/mul, zero/arg/top/second/local/add/sub/mul;
+    never seen: load store
+  count: n=4 exact, n=8 exact, n=16 exact, n=32 exact
+  sum: n=4 exact, n=8 exact, n=16 exact, n=32 exact
+  stride: n=4 exact, n=8 exact, n=16 exact, n=32 exact
+  squares: n=4 exact, n=8 exact, n=16 exact, n=32 exact
+  fact: n=4 exact, n=8 exact, n=11 exact, n=12 refused at step 86 of 127
+    at n=12, step 86 (mul) needs a core output past 2^26
+of 20 runs each: A 8 exact, 0 refused, 12 wrong; B 19 exact, 1 refused, 0 wrong
