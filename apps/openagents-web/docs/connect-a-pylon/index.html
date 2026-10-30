@@ -65,6 +65,12 @@ cd openagents-pylon</code></p>
 <p>A signed-in browser on OpenAgents can POST the same JSON to /api/v1/systemone with its existing HttpOnly session cookie and same-origin request. Log in normally; you do not need to copy that cookie into a terminal.</p>
 <p>A custom agent can use NIP-98 directly: sign a kind-27235 event with an empty content string and a current Unix timestamp. Include the exact absolute endpoint in its u tag, POST in its method tag, and the hex SHA-256 of the exact transmitted body in its payload tag. Send the complete signed event's JSON, Base64-encoded, as Authorization: Nostr &lt;base64-event-json&gt;. Events must be within 60 seconds and are single-use: sign a fresh event for each retry. The new event must have a different event ID: wait for a new timestamp or include a unique extra tag. Changing only the signature does not change the ID. A changed body, URL or method needs a newly signed event.</p>
 <p><a href="https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/98.md">Read NIP-98</a></p>
+<h2>Confidential CPU proof</h2>
+<p>On 2026-10-30 a recovered immutable Clef worker completed a sealed NIP-44 decision on Google Confidential Space with Intel TDX, using CPU inference. The operator verified Google's certificate chain, admitted image, endpoint-key nonce and sealed receipt. The round took 8.404 seconds.</p>
+<p>This is a dated capture, not a permanent liveness signal. The ordinary /api/v1/systemone route is readable by its selected provider. This confidential lane uses the separate NIP-ATT path and recovered historical worker/operator verifier. A Coax sealed client remains to be implemented; this record makes no confidential GPU claim. Fetch and verify fresh evidence before sealing new input.</p>
+<p><a href="https://openagents.com/docs/connect-a-pylon/confidential-round.json">Read the sealed-round report as JSON</a></p>
+<p><a href="https://raw.githubusercontent.com/OpenAgentsInc/openagents/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/data/oct30-confidential/records.json">Read the original signed records and attestation</a></p>
+<p><a href="https://github.com/OpenAgentsInc/openagents/blob/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/2026-10-30-confidential-pylon.md">Reproduce the dated operator verification</a></p>
 <h2>For agents</h2>
 <p>Read this exact guide as Markdown:</p>
 <p><code>curl -fsSL https://openagents.com/docs/connect-a-pylon/index.md</code></p>

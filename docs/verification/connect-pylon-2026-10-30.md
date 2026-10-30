@@ -72,3 +72,27 @@ Actual packaging passed the publication-boundary regression: exact Markdown,
 content-named module/shader and only the explicitly allowlisted public proof
 JSON; a sibling `private.json` fixture stayed unpublished.
 Publication remains coordinated with the real fleet/API readiness.
+
+## Final source proof, before coordinated publication
+
+The canonical document is now 10,266 UTF-8 bytes. Its SHA-256 is
+`1b54506a329052b1c1c2b82fdf15e623527212ecfdb825824d8255f1267e7f09`.
+Final muted desktop and DPR-2 touch browser cases copied every byte and the
+96-byte join command, and scrolled correctly. Six source checks plus five
+native Wasm cases pass. The updated author-reviewed desktop/phone golden
+walk still starts and draws with no errors. The qualified compiler was
+installed with the existing provenance verifier/cache; no provenance was
+forged and no unchanged compiler/bootstrap suite was repeated.
+
+The public `confidential-round.json` is an exact 4,480-byte copy of root's
+`docs/verification/data/oct30-confidential/round.json` from `da0bbfa057`,
+SHA-256 `9bd363515e84f9776bef13fa5381ed512030e51efd6e051f01d4d93b37b55fa3`.
+The guide labels it as a dated Intel TDX CPU capture and links the original
+signed records and reproduction report at that immutable source commit.
+Presentation checks cover byte parity, the CPU hardware label, absent GPU
+claim and presence of the checked receipt. They do not substitute for the
+operator's certificate, measurement, key-binding and receipt verification.
+
+Hosted availability is gated on fresh fleet/API rollout. No production web
+release was started while the GPU hosts were being recovered from capacity
+stockouts; the guide makes no permanent-availability or GPU-attestation claim.

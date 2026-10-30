@@ -111,6 +111,18 @@ A custom agent can use NIP-98 directly: sign a kind-27235 event with an empty co
 
 [Read NIP-98](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/98.md)
 
+## Confidential CPU proof
+
+On 2026-10-30 a recovered immutable Clef worker completed a sealed NIP-44 decision on Google Confidential Space with Intel TDX, using CPU inference. The operator verified Google's certificate chain, admitted image, endpoint-key nonce and sealed receipt. The round took 8.404 seconds.
+
+This is a dated capture, not a permanent liveness signal. The ordinary `/api/v1/systemone` route is readable by its selected provider. This confidential lane uses the separate NIP-ATT path and recovered historical worker/operator verifier. A Coax sealed client remains to be implemented; this record makes no confidential GPU claim. Fetch and verify fresh evidence before sealing new input.
+
+[Read the sealed-round report as JSON](https://openagents.com/docs/connect-a-pylon/confidential-round.json)
+
+[Read the original signed records and attestation](https://raw.githubusercontent.com/OpenAgentsInc/openagents/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/data/oct30-confidential/records.json)
+
+[Reproduce the dated operator verification](https://github.com/OpenAgentsInc/openagents/blob/da0bbfa0573afa595cab6c6eba80688fe0f7f228/docs/verification/2026-10-30-confidential-pylon.md)
+
 ## For agents
 
 Read this exact guide as Markdown:

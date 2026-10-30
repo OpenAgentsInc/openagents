@@ -168,6 +168,16 @@ for path, (fs, fh, fb) in zip(guide_files, fetch([f.decode() for f in guide_file
     check(fs == 200 and (not path.endswith(b".wasm") or fb[:4] == b"\0asm"), f"Pylon guide file {path.decode()} ({fs})")
 (ls, _, lb), (fs, _, fb), (ss, _, sb) = fetch(["/llms.txt", "/llms-full.txt", "/sitemap.xml"])
 check(ls == 200 and b"/docs/connect-a-pylon/index.md" in lb and fs == 200 and mb in fb and ss == 200 and b"https://openagents.com/docs/connect-a-pylon" in sb, "agents discover the complete Pylon guide from llms and the sitemap")
+ps, ph, pb = get(guide + "/confidential-round.json")
+import json
+try:
+    public_round = json.loads(pb)
+    proof_steps = public_round.get("steps", [])
+    proof_receipt = next((r for r in proof_steps if r.get("step") == "receipt"), None)
+    proof_measure = next((r.get("measured", {}) for r in proof_steps if r.get("step") == "measure"), {})
+except (ValueError, TypeError):
+    proof_receipt, proof_measure = None, {}
+check(ps == 200 and ph.get("content-type", "").startswith("application/json") and proof_receipt is not None and proof_measure.get("hwmodel") == "GCP_INTEL_TDX" and proof_measure.get("gpu") is None, "the dated confidential CPU report is public JSON (not a GPU/live-counter claim)")
 # Signing in with the phone (docs/phone-sign-in.md): the page, the app's universal links, the API.
 (s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/login", "/.well-known/apple-app-site-association", "/api/auth/me"])
 check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="2"' in b1, f"/login is the login page ({s1})")

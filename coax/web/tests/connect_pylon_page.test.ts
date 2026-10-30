@@ -28,3 +28,11 @@ test('quickstart does not suggest a paid credential, inbound port or unshipped m
  expect(source).toContain('It does not download or pretend to serve a larger model')
  expect(source).not.toMatch(/ANTHROPIC_API_KEY|OPENAI_API_KEY|Bearer /)
 })
+test('public confidential report preserves the dated source and explicitly reports a CPU capture',()=>{
+ const original=readFileSync(resolve(root,'docs/verification/data/oct30-confidential/round.json'),'utf8')
+ expect(readFileSync(resolve(root,'apps/openagents-web/docs/connect-a-pylon/confidential-round.json'),'utf8')).toBe(original)
+ const steps=JSON.parse(original).steps,measure=steps.find((s:any)=>s.step==='measure').measured,receipt=steps.find((s:any)=>s.step==='receipt').checked
+ expect(measure.hwmodel).toBe('GCP_INTEL_TDX');expect(measure.gpu).toBeNull();expect(measure.reported).toBe(measure.expected)
+ expect(receipt.level).toBe('tee-cloud');expect(steps.some((s:any)=>s.step==='refused')).toBe(false)
+ expect(source).toContain('dated capture');expect(source).toContain('A Coax sealed client remains to be implemented')
+})
