@@ -101,7 +101,7 @@ U_SOLID :: STYLE_AT + STYLE_FLOATS;
 U_LIGHT_INFO :: U_SOLID + SOLIDS * 4;
 LIGHTS :: 16; LIGHTS_PHONE :: 8;
 U_LIGHTS :: U_LIGHT_INFO + 4;
-U_WEATHER :: U_LIGHTS + LIGHTS * 8;   // 3 rows: rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, 0, 0 (weather_frame)
+U_WEATHER :: U_LIGHTS + LIGHTS * 8;   // 3 rows: rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, the bridge deck's top (m), the buildings among the solids (weather_frame; the rain's cover)
 // The ponds (plan.coax EG_POND): x, z, rim radius and level each (everglade.wgsl pond_vertex).
 U_PONDS :: U_WEATHER + 12;
 // The water's wakes, particles and the weir's sheet (W6, verse/everglade/river.coax everglade_river_fx
@@ -2369,7 +2369,7 @@ weather_frame :: (s: [] Everglade, u: [] f32, still: bool) {
   u[U_WEATHER] = cast(f32) w.rain; u[U_WEATHER + 1] = cast(f32) w.wind_x; u[U_WEATHER + 2] = cast(f32) w.wind_z; u[U_WEATHER + 3] = cast(f32) w.lightning;
   u[U_WEATHER + 4] = cast(f32) s[0].ground.wet; u[U_WEATHER + 5] = cast(f32) s[0].ground.puddles;
   u[U_WEATHER + 6] = cast(f32) w.cloud; u[U_WEATHER + 7] = cast(f32) w.fog;
-  u[U_WEATHER + 8] = s[0].rise; u[U_WEATHER + 9] = s[0].flow_gain; u[U_WEATHER + 10] = 0; u[U_WEATHER + 11] = 0;
+  u[U_WEATHER + 8] = s[0].rise; u[U_WEATHER + 9] = s[0].flow_gain; u[U_WEATHER + 10] = s[0].deck; u[U_WEATHER + 11] = f32(EG_BUILDINGS);
   // under cloud the key light dims (a clear sky's thin cloud leaves it), and fog and rain thicken the haze
   over := cast(f32) fmax(w.cloud - 0.15, 0.0) / 0.85;
   u[STYLE_AT + SU_KEY + 3] *= 1 - 0.55 * over;

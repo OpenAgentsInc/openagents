@@ -23,7 +23,7 @@ struct U {
   solid: array<vec4f, 32>,  // where no grass grows: the buildings' and props' footprints (x0, z0, x1, z1)
   light_info: vec4f,        // the lamps lit, how lit (0 by day to 1 at night) (everglade.coax lamps)
   lights: array<vec4f, 32>,  // each lamp: x, y, z, reach; r, g, b, strength
-  weather: array<vec4f, 3>,  // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain (everglade.coax weather_frame)
+  weather: array<vec4f, 3>,  // rain, wind x, wind z, lightning; wet, puddles, cloud, fog; rise (m), flow gain, deck top (m), buildings in solid (everglade.coax weather_frame)
   ponds: array<vec4f, 4>,   // the ponds: x, z, rim radius, level (everglade.coax U_PONDS; pond_vertex)
   // W6 (verse/everglade/river.coax everglade_river_fx): the weir's sheet (west, east, z, on; the level
   // above, below, the water's speed over the sill), the rowboats' hulls (x, z, yaw, on), the wakes'
@@ -133,7 +133,11 @@ fn sky(d: vec3f, l: vec3f) -> vec3f {
   // curve whitens it; at dusk it is deep orange), round the moon its light is added
   if (moon) { c += st(0u).xyz * halo * 0.5; }
   else { c = mix(c, st(11u).xyz * 1.5, clamp(halo * 1.1, 0.0, 0.9)); }
-  c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), disc);
+  // under cloud (storm, rain, overcast) the disc goes, leaving a soft bright patch where it is, by the
+  // weather's cover; clear (cover up to 0.15) it is the disc as drawn
+  let overcast = clamp((u.weather[1].z - 0.15) / 0.55, 0.0, 1.0);
+  let glow_patch = smoothstep(cos(st(14u).x * 7.0), 1.0, ct) * 0.12;
+  c = mix(c, select(vec3f(1.0, 0.97, 0.88) * 4.0, vec3f(0.85, 0.88, 1.0) * 1.6, moon), mix(disc, glow_patch, overcast));
   let cl = st(15u); let c2 = st(16u);
   if (up > 0.01 && cl.x > 0.0) {
     let t = select(u.time, 0.0, u.still > 0.5);
@@ -1284,6 +1288,20 @@ fn weather_surface(c: vec3f, base: vec3f, n: vec3f, world: vec3f, v: vec3f, lit:
 // axis: on screen all streaks stay straight and run to the fall's vanishing point, never circling it.
 // A drop is 7 cm long near, 20 cm far, and at least a pixel wide, so it shrinks with distance; near the
 // vanishing point, where a pixel would span many drops, the layer fades instead of shimmering.
+// Whether rain at p falls under cover: below the bridge's deck (plan.coax EG_BRIDGE), or inside a
+// building's footprint (the first u.weather[2].w of u.solid, under its roof; a hidden one is far off).
+// weather_streaks draws no drop where its cylinder's point is covered.
+const RAIN_BRIDGE = vec4f(84.0, -18.0, 92.0, -5.0);
+fn weather_covered(p: vec3f) -> bool {
+  if (all(p.xz >= RAIN_BRIDGE.xy) && all(p.xz <= RAIN_BRIDGE.zw) && p.y < u.weather[2].z) { return true; }
+  let n = u32(u.weather[2].w);
+  for (var i = 0u; i < 32u; i++) {
+    if (i >= n) { break; }
+    let b = u.solid[i];
+    if (all(p.xz >= b.xy) && all(p.xz <= b.zw)) { return true; }
+  }
+  return false;
+}
 fn weather_streaks(c: vec3f, v: vec3f, d: f32) -> vec3f {
   let rain = u.weather[0].x;
   if (rain <= 0.01) { return c; }
@@ -1302,6 +1320,7 @@ fn weather_streaks(c: vec3f, v: vec3f, d: f32) -> vec3f {
     let r = 1.2 * exp2(f32(i));
     let along = r / flat;   // how far along v the cylinder is
     if (along > d) { break; }
+    if (weather_covered(u.eye.xyz + v * along)) { continue; }
     let fade = 1.0 - smoothstep(0.04, 0.12, px * along / k);   // a pixel's run up the axis, m
     if (fade <= 0.0) { continue; }
     let y = w.y * along;
