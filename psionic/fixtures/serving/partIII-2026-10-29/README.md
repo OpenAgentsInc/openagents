@@ -9,6 +9,7 @@ fixture.
 | Artifact | Content |
 | --- | --- |
 | `focused-checks.log`, `linux-checks.log` | Successful focused Coax/native/sanitizer/book and Linux operational checks |
+| `final-book.log`, `build-identity-check.log` | Book after the final merge and the generated-inventory identity check |
 | `authentication/` | Raw production authentication-only logs and parsed page/hash observations; no model inference |
 | `cpu-prefix-pairs/` | 100 alternating pairs for each of three toy CPU workloads, exact requests/answers and private phase records |
 | `cuda/` | 100 original Elephant observations at each of three lengths, raw phases, retained answers and actual producer metadata |

@@ -2,8 +2,8 @@
   "schema": "psionic-observation-manifest-v1",
   "files": {
     "README.md": {
-      "sha256": "664251b4ca500ea7e987c2573d8ad66aad5bc407b42f56161b5c1908a6ba06fa",
-      "bytes": 2045
+      "sha256": "77e40b58368cf7acb935751bda5ec578d6b518e4a3c4e352195e97ce796bb045",
+      "bytes": 2166
     },
     "authentication/auth-cold.log": {
       "sha256": "496f7e31976468270cf5893502c9beaee4260cee2330bc53543b8046908aa45b",
@@ -64,6 +64,10 @@
     "cuda/server.log": {
       "sha256": "7bcea03c2cc4991984ff51fe9fafe125531b2dc0eae5b32273443ae06ccb21f0",
       "bytes": 8995
+    },
+    "final-book.log": {
+      "sha256": "4a1b14c657f47e22e5182ba90a6dabf435bb07cb9d67d072b16040d288403eb5",
+      "bytes": 74
     },
     "focused-checks.log": {
       "sha256": "5d66988917490188815fd0929d35b943af7ff75643a6b24637f86f65141481ef",

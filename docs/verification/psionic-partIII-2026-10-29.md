@@ -89,9 +89,16 @@ COAX=/tmp/psionic-placement/coax-metal \
 - All four new runnable examples matched their committed stdout in debug
   and release. The gate's book check passed **64 programs / 243 source-linked
   listings**, with local links. The final book structure is checked again
-  only for subsequent prose/index changes and main's new chapters.
+  only for subsequent prose/index changes and main's new chapters: **67
+  programs / 260 listings** passed after the final rebase (`final-book.log`).
 - The final rebased Linux/CUDA build also passed `service_live.py` against its
   toy engine (`linux-checks.log`).
+- The final inventory-header build-identity change passed the standalone
+  `serve_build_id_test.py`: relocation leaves identity unchanged, changing the
+  actual generated inventory bytes changes it (`build-identity-check.log`).
+  `service_observations.py` independently verified retained digests, ranks,
+  request hashes, reuse counters, memory arithmetic and operational parity.
+  Shell syntax and Python compilation checks passed for the new tooling.
 
 An early native attempt exposed missing log-directory setup and deprecated
 fixture `sprintf` under Xcode's sanitizer warnings; those were fixed before
