@@ -793,6 +793,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
     u[o] = b.x0; u[o + 1] = b.y0; u[o + 2] = b.x1; u[o + 3] = b.y1;
     u[o + 4] = s[0].dpr; u[o + 5] = s[0].plate_alpha[i]; u[o + 6] = s[0].plate_look[i]; u[o + 7] = 0;
   }
+  if n > 0 { track_loaded(s[0].track[..], "load-engine"); }
   track_frame(s[0].track[..], dt, width, height, dpr);
   return n;
 }
