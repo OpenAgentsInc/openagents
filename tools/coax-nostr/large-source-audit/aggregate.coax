@@ -2,9 +2,10 @@
 #load "inventory.coax";
 #load "../../../coax/tests/nostr/secret_aggregate.coax";
 #load "../../../coax/tests/nostr/secret_aggregate_cases.coax";
+#load "../../../coax/tests/nostr/secret_range_cases.coax";
 #authority;
 AG_GUARDS :: 14;
-AgValue :: struct {mask:u64;type:int;literal:int;lo:int;hi:int;known:bool;region:int;extent:int;view:bool;}
+AgValue :: struct {mask:u64;type:int;literal:int;lo:int;hi:int;known:bool;region:int;extent:int;view:bool;ranged:bool;rlo:u64;rhi:u64;}
 AgBinding :: struct {name:string;value:AgValue;induction:bool;}
 AgEnv :: struct {bindings:[64]AgBinding;count:int;procedure:int;binding_floor:int;}
 AgGuard :: struct {node:int;unit:int;line:int;column:int;mask:u64;kind:u32;}
@@ -55,6 +56,87 @@ AgLabel :: struct {name:string;type:string;extent:int;access:u32;}
  // The forbidden-name gate runs even when no declaration exists.
  f.nodes[7]=ScNode.{kind=21,name="missing_vartime"};env:[1]AgEnv;state:[1]ScAudit;memory[0]=AgMemory.{public_views=true};
  ignored:=AG_call(f.nodes[..],values[..],f.roots[..],f.types[0..<2],7,env[..],memory[..],state[..],0);#assert state[0].error==SC_VARTIME;
+}
+#test "range facts follow types, literals and explicit bounds" {
+ #assert AG_max(-1)==0xFFFFFFFFFFFFFFFF && AG_max(-2)==4294967295 && AG_max(-5)==255 && AG_max(-3)==1 && AG_max(-4)==0 && AG_max(0)==0;
+ #assert AG_unsigned(-1) && AG_unsigned(-2) && AG_unsigned(-5) && AG_unsigned(-3) && !AG_unsigned(-4) && !AG_unsigned(0) && !AG_unsigned(-6);
+ #assert AG_width(-1)==64 && AG_width(-2)==32 && AG_width(-5)==8 && AG_width(-3)==0 && AG_width(-4)==0;
+ u:=AgValue.{type=-2};i:=AgValue.{type=-4};#assert AG_bounded(u) && !AG_bounded(i) && AG_hi(u)==4294967295 && AG_lo(u)==0;
+ r:=AG_with(u,3,9);#assert r.ranged && AG_lo(r)==3 && AG_hi(r)==9 && AG_bounded(AG_with(i,1,1));
+ x:=AG_unranged(r);#assert !x.ranged && x.rlo==0 && x.rhi==0 && AG_hi(x)==4294967295;
+ #assert AG_fill(0)==0 && AG_fill(1)==1 && AG_fill(2)==3 && AG_fill(4)==7 && AG_fill(7)==7 && AG_fill(4294967296)==8589934591 && AG_fill(0xFFFFFFFFFFFFFFFF)==0xFFFFFFFFFFFFFFFF;
+ for k:0..<64 {bit:=cast(u64)1<<cast(u64)k;#assert AG_fill(bit)==bit|(bit-1) && AG_fill(bit|1)==bit|(bit-1);}
+}
+#test "ranges survive bindings and casts only where the value is unchanged" {
+ lit:=AG_with(AgValue.{type=-4},4294967296,4294967296);u64:=AG_with(AgValue.{type=-1},0,1);u32:=AG_with(AgValue.{type=-2},0,4294967295);
+ #assert AG_keeps(lit,-1) && !AG_keeps(lit,-2) && AG_keeps(u64,-1) && !AG_keeps(u64,-2) && !AG_keeps(u64,-4) && !AG_keeps(u64,-3);
+ #assert !AG_keeps(AgValue.{type=-1},-1) && AG_keeps(AG_with(AgValue.{type=-5},0,255),-5) && !AG_keeps(AG_with(AgValue.{type=-1},0,256),-5);
+ #assert AG_keeps(AG_with(AgValue.{type=-2},0,7),-2) && AG_keeps(AG_with(AgValue.{type=-4},0,7),-2) && !AG_keeps(AG_with(AgValue.{type=-3},0,1),-3);
+ #assert AG_fits(u64,-2) && AG_fits(u64,-5) && !AG_fits(u64,-1) && !AG_fits(u64,-3) && !AG_fits(u64,-4) && AG_fits(u32,-1) && !AG_fits(u32,-5);
+ #assert AG_fits(lit,-1) && !AG_fits(lit,-2) && !AG_fits(AgValue.{type=-4},-1) && !AG_fits(AgValue.{type=-1},-2) && AG_fits(AgValue.{type=-5},-2);
+ #assert !AG_fits(AG_with(AgValue.{type=-3},0,1),-1) && !AG_fits(AG_with(AgValue.{type=-1},0,4294967296),-2) && AG_fits(AG_with(AgValue.{type=-1},0,4294967295),-2);
+}
+#test "secret checked arithmetic is admitted only when its range excludes the trap" {
+ base:=AG_with(AgValue.{type=-1},4294967296,4294967296);limb:=AgValue.{type=-2};wide:=AG_with(AgValue.{type=-1},0,4294967295);bit:=AG_with(AgValue.{type=-1},0,1);
+ #assert AG_no_trap(base,wide,34,-1) && !AG_no_trap(AgValue.{type=-1},bit,34,-1) && AG_no_trap(AG_with(AgValue.{type=-1},0,0xFFFFFFFFFFFFFFFE),bit,34,-1);
+ #assert !AG_no_trap(AG_with(AgValue.{type=-1},0,0xFFFFFFFFFFFFFFFF),bit,34,-1);
+ #assert AG_no_trap(base,wide,35,-1) && !AG_no_trap(wide,bit,35,-1) && AG_no_trap(AG_with(AgValue.{type=-1},1,2),bit,35,-1) && !AG_no_trap(AG_with(AgValue.{type=-1},0,2),bit,35,-1);
+ #assert !AG_no_trap(bit,bit,36,-1) && AG_no_trap(AG_with(AgValue.{type=-2},0,65535),AG_with(AgValue.{type=-2},0,65537),36,-2);
+ #assert !AG_no_trap(AG_with(AgValue.{type=-2},0,65536),AG_with(AgValue.{type=-2},0,65536),36,-2) && AG_no_trap(limb,AG_with(AgValue.{type=-2},0,0),36,-2);
+ #assert !AG_no_trap(bit,bit,37,-1) && !AG_no_trap(bit,bit,38,-1) && !AG_no_trap(bit,bit,39,-1) && !AG_no_trap(bit,bit,34,-3) && !AG_no_trap(bit,bit,34,-4);
+ max:=AG_with(AgValue.{type=-1},0,0xFFFFFFFFFFFFFFFF);zero:=AG_with(AgValue.{type=-1},0,0);izero:=AG_with(AgValue.{type=-4},0,0);
+ #assert AG_no_trap(max,zero,34,-1) && AG_no_trap(zero,max,34,-1) && !AG_no_trap(izero,izero,34,-4) && !AG_no_trap(AG_with(AgValue.{type=-3},0,0),zero,34,-3);
+ #assert AG_no_trap(AG_with(AgValue.{type=-2},0,5),AG_with(AgValue.{type=-2},0,5),34,-2);
+ #assert !AG_no_trap(AgValue.{type=-4},bit,34,-1) && !AG_no_trap(bit,AgValue.{type=-4},34,-1) && !AG_no_trap(AG_with(AgValue.{type=-1},0,256),bit,34,-5) && !AG_no_trap(bit,AG_with(AgValue.{type=-1},0,256),34,-5);
+ #assert AG_no_trap(AG_with(AgValue.{type=-5},0,254),AG_with(AgValue.{type=-5},0,1),34,-5) && !AG_no_trap(AG_with(AgValue.{type=-5},0,255),AG_with(AgValue.{type=-5},0,1),34,-5);
+}
+#test "binary ranges are sound for arithmetic, masks and public shifts" {
+ r:=AgValue.{type=-1};a:=AG_with(r,2,10);b:=AG_with(r,1,3);k:=AgValue.{type=-4,lo=4,hi=4,known=true};
+ s:=AG_binary_range(a,b,34,r);#assert s.ranged && s.rlo==3 && s.rhi==13;
+ s=AG_binary_range(a,AG_with(r,1,2),35,r);#assert s.ranged && s.rlo==0 && s.rhi==9;s=AG_binary_range(a,b,35,r);#assert !s.ranged;
+ s=AG_binary_range(b,a,35,r);#assert !s.ranged;
+ s=AG_binary_range(a,b,36,r);#assert s.ranged && s.rlo==2 && s.rhi==30;
+ s=AG_binary_range(a,AG_with(r,0,0),36,r);#assert s.ranged && s.rhi==0;s=AG_binary_range(AG_with(r,0,0),AgValue.{type=-1},36,r);#assert s.ranged && s.rhi==0;
+ s=AG_binary_range(AgValue.{type=-1},AG_with(r,2,2),36,r);#assert !s.ranged;
+ s=AG_binary_range(a,b,39,r);#assert s.ranged && s.rlo==0 && s.rhi==3;s=AG_binary_range(a,b,40,r);#assert s.ranged && s.rlo==0 && s.rhi==15;s=AG_binary_range(a,b,41,r);#assert s.ranged && s.rlo==0 && s.rhi==15;
+ s=AG_binary_range(AG_with(r,3,10),b,40,r);#assert s.rlo==0;s=AG_binary_range(AG_with(r,3,10),b,41,r);#assert s.rlo==0;s=AG_binary_range(AG_with(r,3,10),b,39,r);#assert s.rlo==0;
+ z:=AgValue.{type=-4,lo=0,hi=0,known=true};s=AG_binary_range(a,z,43,r);#assert s.ranged && s.rlo==2 && s.rhi==10;s=AG_binary_range(a,z,42,r);#assert s.ranged && s.rlo==2 && s.rhi==10;
+ s=AG_binary_range(AG_with(r,0,0xFFFFFFFFFFFFFFFA),AG_with(r,0,5),34,r);#assert s.ranged && s.rhi==0xFFFFFFFFFFFFFFFF;s=AG_binary_range(AG_with(r,3,10),AG_with(r,0,0),36,r);#assert s.ranged && s.rlo==0 && s.rhi==0;
+ i0:=AG_with(AgValue.{type=-4},0,0);s=AG_binary_range(i0,i0,34,AgValue.{type=-4});#assert !s.ranged;s=AG_binary_range(AG_with(r,0,1),AG_with(r,0,1),39,AgValue.{type=-3});#assert !s.ranged;
+ w:=AgValue.{type=-2};s=AG_binary_range(AG_with(w,0,9),AG_with(w,0,6),34,w);#assert s.ranged && s.rhi==15;
+ s=AG_binary_range(a,b,37,r);#assert !s.ranged;s=AG_binary_range(a,b,44,AgValue.{type=-3});#assert !s.ranged;
+ s=AG_binary_range(a,k,42,r);#assert s.ranged && s.rlo==32 && s.rhi==160;s=AG_binary_range(a,k,43,r);#assert s.ranged && s.rlo==0 && s.rhi==0;
+ s=AG_binary_range(AG_with(r,32,320),AgValue.{type=-4,lo=2,hi=4,known=true},43,r);#assert s.ranged && s.rlo==2 && s.rhi==80;
+ s=AG_binary_range(a,AgValue.{type=-4,lo=2,hi=4,known=true},42,r);#assert !s.ranged;
+ s=AG_binary_range(AgValue.{type=-1},k,42,r);#assert !s.ranged;s=AG_binary_range(AgValue.{type=-1},AgValue.{type=-4,lo=32,hi=32,known=true},43,r);#assert s.ranged && s.rhi==4294967295;
+ s=AG_binary_range(a,AgValue.{type=-4,lo=64,hi=64,known=true},43,r);#assert !s.ranged;s=AG_binary_range(a,AgValue.{type=-4},43,r);#assert !s.ranged;
+ s=AG_binary_range(a,AgValue.{type=-4,lo= -1,hi=1,known=true},43,r);#assert !s.ranged;
+ s=AG_binary_range(AG_with(r,0,0xFFFFFFFFFFFFFFFF),b,34,r);#assert !s.ranged;s=AG_binary_range(a,AgValue.{type=-4},34,r);#assert !s.ranged;
+ s=AG_binary_range(AgValue.{type=-4},b,34,AgValue.{type=-4});#assert !s.ranged;
+ u8:=AgValue.{type=-5};s=AG_binary_range(AG_with(u8,0,300),AG_with(u8,0,1),34,u8);#assert !s.ranged;s=AG_binary_range(AG_with(u8,0,3),AG_with(u8,0,300),34,u8);#assert !s.ranged;
+ s=AG_binary_range(AG_with(u8,0,200),AG_with(u8,0,100),34,u8);#assert !s.ranged;s=AG_binary_range(AG_with(u8,0,15),AgValue.{type=-4,lo=4,hi=4,known=true},42,u8);#assert s.ranged && s.rhi==240;
+ s=AG_binary_range(AG_with(u8,0,16),AgValue.{type=-4,lo=4,hi=4,known=true},42,u8);#assert !s.ranged;
+ s=AG_binary_range(AG_with(r,5,5),AG_with(r,7,7),36,r);#assert s.rlo==35 && s.rhi==35;s=AG_binary_range(AG_with(r,0,0xFFFFFFFF),AG_with(r,0,0x100000002),36,r);#assert !s.ranged;s=AG_binary_range(AG_with(r,0,0xFFFFFFFF),AG_with(r,0,0x100000001),36,r);#assert s.ranged && s.rhi==0xFFFFFFFFFFFFFFFF;
+}
+#test "bindings and unions carry ranges only when both sides are bounded" {
+ nodes:[1]ScNode;values:[1]u64;roots:[1]int;memory:[1]AgMemory;state:[1]ScAudit;
+ v:=AG_new(nodes[..],values[..],roots[0..<0],AG_with(AgValue.{type=-1},0,5),-1,memory[..],state[..]);#assert v.ranged && v.rhi==5 && v.type==-1;
+ v=AG_new(nodes[..],values[..],roots[0..<0],AG_with(AgValue.{type=-1},0,5),-2,memory[..],state[..]);#assert !v.ranged && v.type==-2;
+ v=AG_new(nodes[..],values[..],roots[0..<0],AG_with(AgValue.{type=-4},3,3),-2,memory[..],state[..]);#assert v.ranged && v.rlo==3 && v.type==-2 && state[0].error==0;
+ u:=AG_union(AG_with(AgValue.{type=-1},4,5),AG_with(AgValue.{type=-1},6,9),memory[..]);#assert u.ranged && u.rlo==4 && u.rhi==15;
+ u=AG_union(AG_with(AgValue.{type=-1},4,5),AgValue.{type=-4},memory[..]);#assert !u.ranged;u=AG_union(AgValue.{type=-4},AG_with(AgValue.{type=-1},4,5),memory[..]);#assert !u.ranged;
+ u=AG_union(AgValue.{type=-1},AG_with(AgValue.{type=-4},0,1),memory[..]);#assert u.ranged && u.rhi==0xFFFFFFFFFFFFFFFF;u=AG_union(AgValue.{type=-4},AgValue.{type=-4},memory[..]);#assert !u.ranged;
+ u=AG_union(AG_with(AgValue.{type=-4},2,2),AG_with(AgValue.{type=-1},8,8),memory[..]);#assert u.ranged && u.rlo==0 && u.rhi==15;
+}
+#test "loop ranges widen to all-ones steps and only shrink by assumption" {
+ r:=AgValue.{type=-1};s:=AG_with(r,0,0);
+ #assert AG_inside(AG_with(r,0,0),s) && !AG_inside(AG_with(r,0,1),s) && !AG_inside(AG_with(r,1,1),AG_with(r,2,3)) && AG_inside(AG_with(r,2,3),AG_with(r,2,3));
+ #assert AG_inside(AgValue.{type=-1},AgValue.{type=-1}) && !AG_inside(AgValue.{type=-1},s) && !AG_inside(AgValue.{type=-4},s) && AG_inside(AgValue.{type=-4},AgValue.{type=-4});
+ w:=AG_widen(AG_with(r,0,5),AG_with(r,0,0xFFFFFFFFFFFFFFFF));#assert w.ranged && w.rhi==0xFFFFFFFFFFFFFFFF;
+ w=AG_widen(s,AG_with(r,0,1));#assert w.ranged && w.rlo==0 && w.rhi==1;w=AG_widen(AG_with(r,5,6),AG_with(r,1,9));#assert w.ranged && w.rlo==1 && w.rhi==15;
+ w=AG_widen(AG_with(r,5,6),AG_with(r,7,9));#assert w.ranged && w.rlo==5 && w.rhi==15;
+ w=AG_widen(s,AgValue.{type=-4});#assert !w.ranged;w=AG_widen(AgValue.{type=-1},AG_with(r,0,1));#assert !w.ranged;
+ b:=AgValue.{type=-5};w=AG_widen(AG_with(b,0,200),AG_with(b,0,256));#assert !w.ranged;w=AG_widen(AG_with(AgValue.{type=-4},0,1),AG_with(AgValue.{type=-4},0,0x100000000));#assert w.ranged && w.rhi==0x1FFFFFFFF;
 }
 #test "only range-contained checked casts admit a secret operand" {
  #assert !AG_contained(-5,-5) && AG_contained(-5,-2) && AG_contained(-5,-1) && !AG_contained(-5,-4);
@@ -281,6 +363,7 @@ AG_resolved :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,p:ScNode,
 }
 AG_new :: (nodes:[]ScNode,values:[]u64,roots:[]int,value:AgValue,type:int,memory:[]AgMemory,state:[]ScAudit)->AgValue {
  result:=value;result.mask=AG_origin(value,memory);result.type=AG_type(nodes,roots,type,state);result.region=0;result.view=false;
+ if !AG_keeps(value,result.type) {result=AG_unranged(result);}
  // A copied or borrowed aggregate cannot recover facts from its original
  // literal after any write through its source region, even a public write.
  if value.region!=0 && memory[0].dirty[value.region] {result.literal=0;}
@@ -297,7 +380,8 @@ AG_guard :: (nodes:[]ScNode,memory:[]AgMemory,state:[]ScAudit,id:int,mask:u64) {
  if memory[0].guard_count==256 {SC_fail(state,SC_LIMIT,id);return;}n:=nodes[id];at:=memory[0].guard_count;memory[0].guards[at]=AgGuard.{node=id,unit=n.unit,line=n.line,column=n.column,mask=mask,kind=1};memory[0].guard_count+=1;
 }
 AG_union :: (a:AgValue,b:AgValue,memory:[]AgMemory)->AgValue {
- r:=a;r.mask=AG_origin(a,memory)|AG_origin(b,memory);r.region=0;r.literal=0;bounds:=AG_join_bounds(a,b);r.known=bounds.known;r.lo=bounds.lo;r.hi=bounds.hi;return r;
+ r:=a;r.mask=AG_origin(a,memory)|AG_origin(b,memory);r.region=0;r.literal=0;bounds:=AG_join_bounds(a,b);r.known=bounds.known;r.lo=bounds.lo;r.hi=bounds.hi;
+ r=AG_unranged(r);if AG_bounded(a) && AG_bounded(b) {r=AG_with(r,AG_lo(a)&AG_lo(b),AG_fill(AG_hi(a)|AG_hi(b)));}return r;
 }
 
 AG_valid_type :: (nodes:[]ScNode,values:[]u64,roots:[]int,type:int,secret:bool,state:[]ScAudit,depth:int)->bool {
@@ -311,7 +395,7 @@ AG_binary :: (a:AgValue,b:AgValue,op:u32,memory:[]AgMemory,state:[]ScAudit,id:in
  r:=AgValue.{mask=AG_origin(a,memory)|AG_origin(b,memory),type=a.type};if a.type==-4 {r.type=b.type;}
  if (op==50 || op==51) && AG_origin(a,memory)!=0 {SC_fail(state,SC_BRANCH,id);}
  if (op==42 || op==43) && AG_origin(b,memory)!=0 {SC_fail(state,SC_SHIFT,id);}
- if op>=34 && op<=38 && r.mask!=0 {SC_fail(state,SC_UNSUPPORTED,id);}
+ if op>=34 && op<=38 && r.mask!=0 && !AG_no_trap(a,b,op,r.type) {SC_fail(state,SC_UNSUPPORTED,id);}
  if op<34 || op>51 {SC_fail(state,SC_UNSUPPORTED,id);return r;}
  if op>=44 {r.type=-3;r.known=true;r.hi=1;}
  if a.known && b.known {
@@ -332,7 +416,7 @@ AG_binary :: (a:AgValue,b:AgValue,op:u32,memory:[]AgMemory,state:[]ScAudit,id:in
  // Byte arithmetic can wrap in release builds. Bounds outside the byte range
  // cannot be used to eliminate a branch or establish an index.
  if r.type==-5 && r.known && r.hi>255 {r.known=false;}
- return r;
+ return AG_binary_range(a,b,op,r);
 }
 AG_literal_field :: (nodes:[]ScNode,values:[]u64,id:int,field:ScNode,state:[]ScAudit,depth:int)->AgValue {
  if depth>=AG_type_limit()-1 || !AG_tick(state,id) {SC_fail(state,SC_LIMIT,id);return AgValue.{};}n:=nodes[id];
@@ -343,29 +427,29 @@ AG_literal_field :: (nodes:[]ScNode,values:[]u64,id:int,field:ScNode,state:[]ScA
 }
 AG_expr :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int)->AgValue {
  if !AG_tick(state,id) {return AgValue.{};}if id==0 || depth>=16 {SC_fail(state,SC_LIMIT,id);return AgValue.{};}n:=nodes[id];
- if n.kind==16 || n.kind==18 {if n.kind==18 && values[id]>1 {SC_fail(state,SC_GRAPH,id);return AgValue.{};}r:=AgValue.{type=ifx n.kind==18 then -3 else -4};if values[id]<=cast(u64)AG_interval_limit() {r.known=true;r.lo=cast(int)values[id];r.hi=r.lo;}return r;}
+ if n.kind==16 || n.kind==18 {if n.kind==18 && values[id]>1 {SC_fail(state,SC_GRAPH,id);return AgValue.{};}r:=AgValue.{type=ifx n.kind==18 then -3 else -4};if values[id]<=cast(u64)AG_interval_limit() {r.known=true;r.lo=cast(int)values[id];r.hi=r.lo;}if n.kind==16 {r=AG_with(r,values[id],values[id]);}return r;}
  // Only the checked-source driver may attest that the pinned compiler has
  // successfully evaluated the same source graph. No value or type is guessed.
  if n.kind==24 {if !memory[0].compiled_runs {SC_fail(state,SC_UNSUPPORTED,id);}return AgValue.{};}
  if n.kind==20 {slot:=AG_slot(env,n.name);if slot>=0 {return env[0].bindings[slot].value;}d:=AG_decl(nodes,roots,n.name,state);if nodes[d].kind!=65 {SC_fail(state,SC_CALL,id);return AgValue.{};}empty:[1]AgEnv;return AG_expr(nodes,values,roots,types,nodes[d].a,empty[..],memory,state,depth+1);}
- if n.kind==22 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);r:=a;r.mask=AG_origin(a,memory);r.region=0;r.literal=0;if (n.op!=35 && n.op!=52) || (n.op==35 && r.mask!=0) {SC_fail(state,SC_UNSUPPORTED,id);return r;}
+ if n.kind==22 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);r:=AG_unranged(a);r.mask=AG_origin(a,memory);r.region=0;r.literal=0;if (n.op!=35 && n.op!=52) || (n.op==35 && r.mask!=0) {SC_fail(state,SC_UNSUPPORTED,id);return r;}
   if n.op==52 {r.type=-3;if a.known {r.lo=ifx a.hi==0 then 1 else 0;r.hi=ifx a.lo!=0 then 0 else 1;}}
   else {r.known=false;}return r;}
  if n.kind==23 {a:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);return AG_binary(a,b,n.op,memory,state,id);}
- if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);if r.mask!=0 && !n.flag && !AG_contained(r.type,AG_cast_primitive(nodes,n.d)) {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.region=0;r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
+ if n.kind==30 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_primitive_name(r.type)=="" {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.mask=AG_origin(r,memory);fits:=AG_fits(r,AG_cast_primitive(nodes,n.d));if r.mask!=0 && !n.flag && !AG_contained(r.type,AG_cast_primitive(nodes,n.d)) && !fits {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}r.region=0;if fits {r=AG_with(r,AG_lo(r),AG_hi(r));}else {r=AG_unranged(r);}r.type=AG_type(nodes,roots,n.d,state);if r.type==-5 && r.known && (r.lo<0 || r.hi>255) {r.known=false;}return r;}
  if n.kind==31 {condition:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);if AG_origin(condition,memory)!=0 {SC_fail(state,SC_BRANCH,id);return AgValue.{};}
   a:=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);b:=AG_expr(nodes,values,roots,types,n.c,env,memory,state,depth+1);if condition.known && condition.lo==condition.hi {return ifx condition.lo!=0 then a else b;}return AG_union(a,b,memory);}
  if n.kind==25 {base:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);
   if SC_ref(base.type,nodes.count) && (nodes[base.type].kind==2 || nodes[base.type].kind==3) && n.name=="count" {if base.extent<1 {SC_fail(state,SC_TYPE,id);return AgValue.{};}return AG_number(base.extent);}
-  field:=AG_field(nodes,base.type,n.name,state);r:=base;r.mask=AG_origin(base,memory);r.type=AG_type(nodes,roots,nodes[field].a,state);r.literal=0;r.known=false;r.view=false;r.extent=0;
+  field:=AG_field(nodes,base.type,n.name,state);r:=AG_unranged(base);r.mask=AG_origin(base,memory);r.type=AG_type(nodes,roots,nodes[field].a,state);r.literal=0;r.known=false;r.view=false;r.extent=0;
   if SC_ref(r.type,nodes.count) && nodes[r.type].kind==2 {r.extent=AG_length(nodes,values,r.type,state);}
   if base.literal!=0 && (base.region==0 || !memory[0].dirty[base.region]) {bounds:=AG_literal_field(nodes,values,base.literal,nodes[field],state,0);r.known=bounds.known;r.lo=bounds.lo;r.hi=bounds.hi;}return r;}
  if n.kind==26 || n.kind==27 {base:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,depth+1);lo:=AG_number(0);if n.b!=0 {lo=AG_expr(nodes,values,roots,types,n.b,env,memory,state,depth+1);}
   if AG_origin(lo,memory)!=0 {SC_fail(state,SC_INDEX,id);return AgValue.{};}element:=AG_element(nodes,roots,base.type,state);if base.extent<1 {SC_fail(state,SC_TYPE,id);return AgValue.{};}
-  if n.kind==26 {if !lo.known || lo.lo<0 || lo.hi>=base.extent {SC_fail(state,SC_LIMIT,id);}r:=base;r.mask=AG_origin(base,memory);r.type=element;r.extent=0;r.view=false;r.known=false;return r;}
+  if n.kind==26 {if !lo.known || lo.lo<0 || lo.hi>=base.extent {SC_fail(state,SC_LIMIT,id);}r:=AG_unranged(base);r.mask=AG_origin(base,memory);r.type=element;r.extent=0;r.view=false;r.known=false;return r;}
   hi:=AG_number(base.extent);if n.c!=0 {hi=AG_expr(nodes,values,roots,types,n.c,env,memory,state,depth+1);}if AG_origin(hi,memory)!=0 {SC_fail(state,SC_INDEX,id);}
   if !lo.known || !hi.known || lo.lo!=lo.hi || hi.lo!=hi.hi || lo.lo<0 || hi.lo<lo.lo || hi.lo>base.extent || base.region==0 {SC_fail(state,SC_UNSUPPORTED,id);return AgValue.{};}
-  r:=base;r.mask=AG_origin(base,memory);r.extent=hi.lo-lo.lo;r.view=true;r.literal=0;r.known=false;return r;}
+  r:=AG_unranged(base);r.mask=AG_origin(base,memory);r.extent=hi.lo-lo.lo;r.view=true;r.literal=0;r.known=false;return r;}
  if n.kind==28 || n.kind==29 {r:=AgValue.{type=AG_type(nodes,roots,n.d,state),literal=id};at:=n.head;
   while at!=0 {if !AG_tick(state,at) {break;}if n.kind==28 && nodes[at].kind!=71 {SC_fail(state,SC_GRAPH,at);break;}value:=ifx n.kind==28 then nodes[at].a else at;item:=AG_expr(nodes,values,roots,types,value,env,memory,state,depth+1);r.mask|=AG_origin(item,memory);at=nodes[at].next;}
   if !AG_valid_type(nodes,values,roots,r.type,r.mask!=0,state,0) {SC_fail(state,SC_TYPE,id);}if n.kind==29 {r.extent=AG_length(nodes,values,r.type,state);}return r;}
@@ -379,7 +463,7 @@ AG_call :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[]
  d:=AG_decl(nodes,roots,n.name,state);builtin:=SC_builtin(n.name);if AG_slot(env,n.name)>=0 {SC_fail(state,SC_CALL,id);return AgValue.{};}
  if builtin!=0 {
   if d!=0 || count!=ifx builtin==1 then 1 else 2 {SC_fail(state,SC_CALL,id);return AgValue.{};}
-  r:=args[0];r.mask=AG_origin(r,memory);r.region=0;r.known=false;r.literal=0;
+  r:=AG_unranged(args[0]);r.mask=AG_origin(r,memory);r.region=0;r.known=false;r.literal=0;
   if builtin!=1 {r.mask|=AG_origin(args[1],memory);if builtin==3 && AG_origin(args[1],memory)!=0 {SC_fail(state,SC_SHIFT,id);}}return r;
  }
  if nodes[d].kind!=64 {SC_fail(state,SC_CALL,id);return AgValue.{};}return AG_procedure(nodes,values,roots,types,d,args[0..<count],memory,state);
@@ -405,7 +489,7 @@ AG_write :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,rhs:A
 // direct-callee view writes, rather than trusting one iteration as a fixed point.
 AG_loop_marks :: (nodes:[]ScNode,id:int,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,mask:u64,depth:int) {
  if depth>=16 || !AG_tick(state,id) {SC_fail(state,SC_LIMIT,id);return;}n:=nodes[id];
- if n.kind==43 {root:=AG_target_root(nodes,n.c,state);slot:=AG_slot(env,nodes[root].name);if slot>=0 {env[0].bindings[slot].value.mask|=mask;env[0].bindings[slot].value.known=false;}}
+ if n.kind==43 {root:=AG_target_root(nodes,n.c,state);slot:=AG_slot(env,nodes[root].name);if slot>=0 {env[0].bindings[slot].value.mask|=mask;env[0].bindings[slot].value.known=false;env[0].bindings[slot].value=AG_unranged(env[0].bindings[slot].value);}}
  if n.kind==40 {at:=n.head;while at!=0 {AG_loop_marks(nodes,at,env,memory,state,mask,depth+1);at=nodes[at].next;}}
  else if n.kind==47 || n.kind==45 {AG_loop_marks(nodes,n.c,env,memory,state,mask,depth+1);if n.d!=0 {AG_loop_marks(nodes,n.d,env,memory,state,mask,depth+1);}}
 }
@@ -443,7 +527,7 @@ AG_block :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[
  if depth>=16 || !AG_tick(state,id) {SC_fail(state,SC_LIMIT,id);return AgBlock.{};}if nodes[id].kind!=40 {SC_fail(state,SC_UNSUPPORTED,id);return AgBlock.{};}
  at:=nodes[id].head;result:AgBlock;
  while at!=0 && state[0].error==0 {if !AG_tick(state,at) {break;}n:=nodes[at];if result.returned {SC_fail(state,SC_UNSUPPORTED,at);break;}
-  if n.kind==42 {if n.flag {SC_fail(state,SC_UNSUPPORTED,at);break;}type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,"local",state);r:=AG_number(0);if n.a!=0 {r=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);}r=AG_new(nodes,values,roots,r,type,memory,state);AG_bind(env,n.name,r,state,at);}
+  if n.kind==42 {if n.flag {SC_fail(state,SC_UNSUPPORTED,at);break;}type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,"local",state);r:=AG_with(AG_number(0),0,0);if n.a!=0 {r=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);}r=AG_new(nodes,values,roots,r,type,memory,state);AG_bind(env,n.name,r,state,at);}
   else if n.kind==43 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);AG_write(nodes,values,roots,types,n.c,r,n.op,env,memory,state);}
   else if n.kind==44 {value:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);part:=AgBlock.{value=value,returned=true,possible=true};result=AG_accumulate(result,part,memory);}
   else if n.kind==52 {r:=AG_expr(nodes,values,roots,types,n.a,env,memory,state,0);mask:=AG_origin(r,memory);if mask==0 && r.known && r.hi==0 {SC_fail(state,SC_UNSUPPORTED,at);}else if mask!=0 || !r.known || r.lo!=1 {AG_guard(nodes,memory,state,at,mask);}}
@@ -463,20 +547,20 @@ AG_block :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,env:[
    readonly:=false;if memory[0].classified {readonly=AG_readonly_block(nodes,n.c,state,0);}
    incoming:=cast(u64)0;for i:0..<env[0].count {incoming|=AG_origin(env[0].bindings[i].value,memory);}
    if !readonly {for i:0..<env[0].count {region:=env[0].bindings[i].value.region;if region!=0 {memory[0].taint[region]|=incoming;memory[0].dirty[region]=true;}}}
-   AG_loop_marks(nodes,n.c,env,memory,state,incoming,0);saved:=env[0].count;
+   entry:=env[0].bindings;AG_loop_marks(nodes,n.c,env,memory,state,incoming,0);saved:=env[0].count;
    loop_type:=AG_resolved(nodes,values,roots,types,nodes[env[0].procedure],n,"loop",state);if loop_type!=-4 {SC_fail(state,SC_TYPE,at);break;}
-   loop:=AgValue.{type=loop_type,lo=start.lo,hi=end.hi-1,known=true};AG_bind(env,n.name,loop,state,at);if env[0].count>saved {env[0].bindings[saved].induction=true;}
-   part:=AG_block(nodes,values,roots,types,n.c,env,memory,state,depth+1);env[0].count=saved;if part.possible {if !readonly {SC_fail(state,SC_UNSUPPORTED,at);}else {part.returned=false;result=AG_accumulate(result,part,memory);}}
+   marked:=env[0].bindings;loop:=AgValue.{type=loop_type,lo=start.lo,hi=end.hi-1,known=true};
+   part:=AG_loop_body(nodes,values,roots,types,n,loop,entry[..],marked[..],env,memory,state,depth,at);env[0].count=saved;if part.possible {if !readonly {SC_fail(state,SC_UNSUPPORTED,at);}else {part.returned=false;result=AG_accumulate(result,part,memory);}}
   }
   else {SC_fail(state,SC_UNSUPPORTED,at);}at=n.next;
  }
  return result;
 }
 AG_memo_equal :: (a:AgValue,b:AgValue)->bool {
- return a.mask==b.mask && a.type==b.type && a.literal==b.literal && a.lo==b.lo && a.hi==b.hi && a.known==b.known && a.extent==b.extent;
+ return a.mask==b.mask && a.type==b.type && a.literal==b.literal && a.lo==b.lo && a.hi==b.hi && a.known==b.known && a.extent==b.extent && a.ranged==b.ranged && a.rlo==b.rlo && a.rhi==b.rhi;
 }
 AG_memo_value :: (value:AgValue)->AgValue {
- return AgValue.{mask=value.mask,type=value.type,literal=value.literal,lo=value.lo,hi=value.hi,known=value.known,extent=value.extent};
+ return AgValue.{mask=value.mask,type=value.type,literal=value.literal,lo=value.lo,hi=value.hi,known=value.known,extent=value.extent,ranged=value.ranged,rlo=value.rlo,rhi=value.rhi};
 }
 AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
  if level>0 {memory[0].scope[level-1]|=closure;if memory[0].height[level-1]<=height {memory[0].height[level-1]=height+1;}}
@@ -504,6 +588,88 @@ AG_procedure :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,id:int,a
  result:=AG_new(nodes,values,roots,block.value,p.a,memory,state);if result.view {SC_fail(state,SC_UNSUPPORTED,id);}
  if cacheable && state[0].error==0 && memory[0].memo_count<128 {at_memo:=memory[0].memo_count;memory[0].memo_count+=1;memory[0].memo[at_memo].procedure=id;memory[0].memo[at_memo].count=count;memory[0].memo[at_memo].args=keys;memory[0].memo[at_memo].result=AG_memo_value(result);memory[0].memo[at_memo].closure=memory[0].scope[level];memory[0].memo[at_memo].height=memory[0].height[level];}
  AG_memo_scope(memory,level,memory[0].scope[level],memory[0].height[level]);state[0].depth-=1;return result;
+}
+// Unsigned range facts, used only to prove that a checked operation's trap
+// cannot fire. They never decide a branch, an index or a loop bound. A value
+// without a range has its type's whole range; int has none.
+AG_max :: (type:int)->u64 {if type==-1 {return 0xFFFFFFFFFFFFFFFF;}if type==-2 {return 4294967295;}if type==-5 {return 255;}if type==-3 {return 1;}return 0;}
+AG_unsigned :: (type:int)->bool {return type==-1 || type==-2 || type==-5 || type==-3;}
+AG_width :: (type:int)->u64 {if type==-1 {return 64;}if type==-2 {return 32;}if type==-5 {return 8;}return 0;}
+AG_bounded :: (v:AgValue)->bool {return v.ranged || AG_unsigned(v.type);}
+AG_hi :: (v:AgValue)->u64 {if v.ranged {return v.rhi;}return AG_max(v.type);}
+AG_lo :: (v:AgValue)->u64 {if v.ranged {return v.rlo;}return 0;}
+AG_with :: (v:AgValue,lo:u64,hi:u64)->AgValue {r:=v;r.ranged=true;r.rlo=lo;r.rhi=hi;return r;}
+AG_unranged :: (v:AgValue)->AgValue {r:=v;r.ranged=false;r.rlo=0;r.rhi=0;return r;}
+// The smallest all-ones value at or above x. Every value at most x has its
+// bits inside AG_fill(x), which bounds masks and widens loop ranges.
+AG_fill :: (x:u64)->u64 {r:=x|(x>>1);r|=r>>2;r|=r>>4;r|=r>>8;r|=r>>16;r|=r>>32;return r;}
+// A range survives a binding or return only into the same unsigned type
+// (or from an int literal) and only if it lies inside that type.
+AG_keeps :: (value:AgValue,type:int)->bool {
+ return value.ranged && (value.type==type || value.type==-4) && AG_unsigned(type) && type!=-3 && value.rhi<=AG_max(type);
+}
+// A cast whose source range lies inside a different unsigned non-bool target
+// leaves the value unchanged, so neither the checked trap nor truncation can
+// apply. Identity casts are excluded, as in AG_contained.
+AG_fits :: (v:AgValue,target:int)->bool {
+ return AG_bounded(v) && (AG_unsigned(v.type) || v.type==-4) && v.type!=-3 && v.type!=target && AG_unsigned(target) && target!=-3 && AG_hi(v)<=AG_max(target);
+}
+// Checked + and - on secret unsigned values whose ranges rule out the trap.
+// u64 * refuses always: its emitted check branches on a zero operand and
+// divides by it. u32 and u8 * are checked in int64 without division.
+AG_no_trap :: (a:AgValue,b:AgValue,op:u32,type:int)->bool {
+ if !AG_unsigned(type) || type==-3 || !AG_bounded(a) || !AG_bounded(b) {return false;}
+ max:=AG_max(type);ha:=AG_hi(a);hb:=AG_hi(b);if ha>max || hb>max {return false;}
+ if op==34 {return ha<=max-hb;}
+ if op==35 {return AG_lo(a)>=hb;}
+ if op==36 {return type!=-1 && (hb==0 || ha<=max/hb);}
+ return false;
+}
+AG_binary_range :: (a:AgValue,b:AgValue,op:u32,base:AgValue)->AgValue {
+ r:=AG_unranged(base);if !AG_unsigned(r.type) || r.type==-3 || !AG_bounded(a) {return r;}
+ max:=AG_max(r.type);la:=AG_lo(a);ha:=AG_hi(a);if ha>max {return r;}
+ if op==42 || op==43 {
+  if !b.known || b.lo<0 || cast(u64)b.hi>=AG_width(r.type) {return r;}
+  if op==43 {return AG_with(r,la>>cast(u64)b.hi,ha>>cast(u64)b.lo);}
+  if b.lo!=b.hi || ha>(max>>cast(u64)b.lo) {return r;}return AG_with(r,la<<cast(u64)b.lo,ha<<cast(u64)b.lo);
+ }
+ if !AG_bounded(b) {return r;}lb:=AG_lo(b);hb:=AG_hi(b);if hb>max {return r;}
+ if op==34 && ha<=max-hb {return AG_with(r,la+lb,ha+hb);}
+ if op==35 && la>=hb {return AG_with(r,la-hb,ha-lb);}
+ if op==36 {if hb==0 {return AG_with(r,0,0);}if ha<=max/hb {return AG_with(r,la*lb,ha*hb);}}
+ if op==39 {return AG_with(r,0,AG_fill(ha)&AG_fill(hb));}
+ if op==40 || op==41 {return AG_with(r,0,AG_fill(ha|hb));}
+ return r;
+}
+// Is every value of e inside the range assumed by s?
+AG_inside :: (e:AgValue,s:AgValue)->bool {return !s.ranged || (AG_bounded(e) && AG_lo(e)>=s.rlo && AG_hi(e)<=s.rhi);}
+AG_widen :: (s:AgValue,e:AgValue)->AgValue {
+ if !s.ranged || !AG_bounded(e) {return AG_unranged(s);}hi:=AG_fill(s.rhi|AG_hi(e));
+ if AG_unsigned(s.type) && hi>AG_max(s.type) {return AG_unranged(s);}return AG_with(s,s.rlo&AG_lo(e),hi);
+}
+// Loop-carried scalars start from their entry ranges. Each pass is a complete
+// analysis of the body; if a pass leaves every binding's range inside the one
+// it assumed, that assumption is an inductive invariant and the pass stands.
+// Otherwise the ranges widen and the body is analyzed again. Narrower ranges
+// only admit more, so a refusal in any pass is also one under the final
+// ranges. Bindings the loop never assigns keep their range, which is
+// unchanged by every pass. After four passes the body is analyzed once more
+// with the marked bindings, whose carried scalars have type ranges.
+AG_loop_body :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,n:ScNode,loop:AgValue,entry:[]AgBinding,marked:[]AgBinding,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int,at:int)->AgBlock {
+ saved:=env[0].count;assume:[64]AgValue;
+ for i:0..<saved {assume[i]=marked[i].value;if entry[i].value.ranged {assume[i]=AG_with(assume[i],entry[i].value.rlo,entry[i].value.rhi);}}
+ for pass:0..<4 {
+  for i:0..<saved {env[0].bindings[i].value=assume[i];}
+  part:=AG_loop_pass(nodes,values,roots,types,n,loop,env,memory,state,depth,at,saved);if state[0].error!=0 {return part;}
+  stable:=true;for i:0..<saved {if !AG_inside(env[0].bindings[i].value,assume[i]) {stable=false;assume[i]=AG_widen(assume[i],env[0].bindings[i].value);}}
+  if stable {return part;}
+ }
+ for i:0..<saved {env[0].bindings[i]=marked[i];}
+ return AG_loop_pass(nodes,values,roots,types,n,loop,env,memory,state,depth,at,saved);
+}
+AG_loop_pass :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType,n:ScNode,loop:AgValue,env:[]AgEnv,memory:[]AgMemory,state:[]ScAudit,depth:int,at:int,saved:int)->AgBlock {
+ env[0].count=saved;AG_bind(env,n.name,loop,state,at);if env[0].count>saved {env[0].bindings[saved].induction=true;}
+ return AG_block(nodes,values,roots,types,n.c,env,memory,state,depth+1);
 }
 // A checked cast whose source type's whole range lies inside the target's
 // cannot reach its range trap, so the emitted check's branch never depends

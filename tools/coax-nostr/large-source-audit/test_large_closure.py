@@ -41,7 +41,7 @@ class LargeClosure(unittest.TestCase):
         report = self.tool.audit(root, 'candidate')
         self.assertTrue(report['accepted'], report)
         self.assertEqual(len(report['source_sha256']), 27)
-        self.assertEqual(report['profile'], 'large-aggregate-source-v2')
+        self.assertEqual(report['profile'], 'large-aggregate-source-v3')
         self.assertEqual(report['return_dependency_mask'], 1)
 
         root = self.graph(27, branch=True)

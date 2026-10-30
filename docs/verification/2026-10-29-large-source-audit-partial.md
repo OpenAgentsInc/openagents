@@ -4,6 +4,8 @@
 admits a secret checked cast only for unsigned strict widening; see
 [the contained-cast record](2026-10-30-secret-audit-contained-cast.md).
 Reports naming `large-aggregate-source-v1` describe the earlier rule.
+Version 3 adds unsigned ranges for checked operations and loop invariants;
+see [the range record](2026-10-30-secret-audit-ranges.md).
 
 **Security correction:** this is historical evidence for the original
 snapshot, which accepted a secret-dependent checked narrowing cast even

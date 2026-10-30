@@ -62,6 +62,25 @@ class PublicViews(unittest.TestCase):
             p,_,m=self.source(name,text,[('x','u64','secret',None,0)]);r=self.audit(p,m,error);self.assertEqual(r['accepted'],error==0,name)
             if error==0:self.assertEqual(r['return_dependency_mask'],1,name)
             else:self.assertEqual(r['error_name'],'unsupported',name)
+        # v3: unsigned ranges prove checked + and - and narrowing casts safe, with
+        # loop-carried ranges from an inductive invariant; u64 * always refuses.
+        for name,body,error in [
+            ('carry_chain','carry:=cast(u64)0;for i:0..<8 {wide:=(x&0xFFFFFFFF)+(x>>32)+carry;carry=wide>>32;}return carry;',0),
+            ('borrow_chain','borrow:=cast(u64)0;for i:0..<8 {wide:=(cast(u64)1<<32)+(x&0xFFFFFFFF)-(x>>32)-borrow;borrow=1-(wide>>32);}return borrow;',0),
+            ('growing_sum','acc:=cast(u64)0;for i:0..<8 {acc=acc+(x&1);}return acc;',5),
+            ('u64_mul','return (x&1)*3;',5),
+            ('u32_mul','w:=cast,trunc(u32)x;return cast(u64)((w&0xFFFF)*(w&0xFFFF));',0),
+            ('u32_mul_overflow','w:=cast,trunc(u32)x;return cast(u64)((w&0x1FFFF)*(w&0xFFFF));',5),
+            ('narrow_masked','return cast(u64)(cast(u32)(x&0xFFFFFFFF));',0),
+            ('narrow_shifted','return cast(u64)(cast(u32)(x>>32));',0),
+            ('add_overflow','return x+1;',5),
+            ('sub_underflow','return (x&0xFF)-(x>>60);',5),
+            ('sub_safe','return (cast(u64)256+(x&0xFF))-(x>>60);',0),
+            ('carry_escapes','carry:=cast(u64)0;for i:0..<8 {carry=(x&0xFFFFFFFF)+carry;}return carry;',5)]:
+            text='candidate :: (x:u64)->u64 #export_c {'+body+'}'
+            p,_,m=self.source(name,text,[('x','u64','secret',None,0)]);r=self.audit(p,m,error);self.assertEqual(r['accepted'],error==0,name)
+            if error==0:self.assertEqual(r['return_dependency_mask'],1,name)
+            else:self.assertEqual(r['error_name'],'unsupported',name)
         p,_,m=self.source('narrow_view_shift','candidate :: (v:[]u8)->u8 #export_c {return cast(u8)(cast(u32)v[0]<<1);}',[('v','[] u8','secret','read',2)])
         r=self.audit(p,m,5);self.assertFalse(r['accepted'])
         p,_,m=self.source('public_narrow','candidate :: (x:u64)->u32 #export_c {return cast(u32)x;}',[('x','u64','public',None,0)])
@@ -134,9 +153,9 @@ class PublicViews(unittest.TestCase):
         rows=[{'name':'secret','type':'[] u8','classification':'secret','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'peer','type':'[] u8','classification':'public','view':{'element_type':'u8','extent':32,'access':'read'}},{'name':'work','type':'[] EcdhScratch','classification':'public','view':{'element_type':'EcdhScratch','extent':1,'access':'write'}}]
         m={'schema':'coax.secret-large-classification-views.v3','entry':'ecdh_stage','sources':base['source_sha256'],'parameters':rows,'views_disjoint':True,'live_aligned_exclusive':True,'public_only':True,'compiler_sha256':self.tool.compiler_fingerprint,'audit_inputs':self.tool.inputs,'audit_artifact_sha256':metadata_sha(self.tool.artifact),'profile':'native-c-checked-library'}
         r=self.tool.audit(p,'ecdh_stage',classification=m);self.assertEqual(r['error'],5,r);self.assertFalse(r['accepted']);self.assertLess(r['visited_nodes'],262144)
-        # v2 admits the widening at bytes.coax:108:28 and in sc_subtract_n; the
-        # secret checked addition SC_BASE+cast(u64)a[i] still refuses.
-        self.assertTrue(r['file'].endswith('/crypto/secp_scalar.coax'));self.assertEqual((r['line'],r['column']),(99,18));self.assertEqual(r['reached_procedures'],30)
+        # v3 also proves the scalar carry chains; cb_mask's checked u64 multiply
+        # of a secret bit still refuses (its emitted check branches on the bit).
+        self.assertTrue(r['file'].endswith('/crypto/bytes.coax'));self.assertEqual((r['line'],r['column']),(179,73));self.assertEqual(r['reached_procedures'],33)
         self.assertEqual([(g['line'],g['origin_mask']) for g in r['authored_guard_obligations']],[(239,0),(492,0)])
         self.observations.append({'case':'real_ecdh_entry','expected':5,'report':r})
 if __name__=='__main__':unittest.main()
