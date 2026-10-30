@@ -1,0 +1,74 @@
+// Long-message and extended-prefix boundary fixtures for nip44.coax. Kept
+// out of nip44.coax's own check graph so its mutation gate stays fast:
+//   coax/bin/coax test coax/tests/nostr/nip44_long.coax --library --steps 4000000000
+// Sources: encrypt_decrypt_long_msg (tests/vectors/upstream/nip44/nip44.vectors.json)
+// and the pinned NIP's extended-length table (tests/vectors/upstream/nips/44.md,
+// indexed in tests/vectors/derived/catalog.json "nip44_extended").
+#load "../../lib/nostr/nip44.coax";
+LONG_WORK :: 163917;
+LONG_CHARS :: 109324;
+long_case :: (profile:u32,ck:[]u8,nonce:[]u8,pattern:[]u8,repeat:int,plain_sha:[]u8,payload_sha:[]u8)->u32 {
+  n:=pattern.count*repeat;
+  plain:[65537]u8;for i:0..<n {plain[i]=pattern[i%pattern.count];}
+  digest:[32]u8;
+  if sha256_hash_checked(plain[0..<n],digest[..],false)!=SHA_OK {return 100;}
+  if cb_ct_equal(digest[..],plain_sha)!=CB_MAX64 {return 101;}
+  work:[LONG_WORK]u8;for i:0..<LONG_WORK {work[i]=165;}
+  out:[LONG_CHARS]u8;
+  r:=nip44_encrypt_checked(profile,ck,nonce,plain[0..<n],work[..],out[..],false);
+  if r.error!=NIP44_OK {return r.error;}
+  if r.written!=nip44_payload_size(profile,n) {return 102;}
+  if sha256_hash_checked(out[0..<r.written],digest[..],false)!=SHA_OK {return 103;}
+  if cb_ct_equal(digest[..],payload_sha)!=CB_MAX64 {return 104;}
+  dwork:[LONG_WORK+8]u8;back:[65537]u8;
+  d:=nip44_decrypt_checked(profile,ck,cast(string)out[0..<r.written],dwork[..],back[..],false);
+  if d.error!=NIP44_OK {return d.error;}
+  if d.written!=n || cb_ct_equal(back[0..<n],plain[0..<n])!=CB_MAX64 {return 105;}
+  return 0;
+}
+
+#test "NIP-44 encrypt_decrypt_long_msg upstream row 0 (65535 bytes)" {
+  ck:=[32]u8.[143,194,98,9,156,224,208,187,155,137,186,192,91,185,224,79,155,192,9,10,204,24,31,239,104,64,204,238,71,3,113,237];nonce:=[32]u8.[50,107,203,44,148,60,214,187,113,117,136,201,229,167,231,56,237,246,237,20,236,95,83,68,202,166,239,86,240,185,207,247];pattern:=[1]u8.[120];
+  ps:=[32]u8.[9,171,116,149,211,230,26,118,240,222,177,44,176,48,111,6,150,203,177,127,252,18,19,19,104,199,169,57,241,47,86,211];ys:=[32]u8.[144,113,68,146,34,95,171,160,99,16,191,242,242,73,235,220,42,94,96,157,101,166,41,241,200,127,45,79,252,85,51,10];
+  #assert long_case(NIP44_COMPAT,ck[..],nonce[..],pattern[..],65535,ps[..],ys[..])==0;
+  #assert long_case(NIP44_EXTENDED,ck[..],nonce[..],pattern[..],65535,ps[..],ys[..])==0;
+}
+#test "NIP-44 encrypt_decrypt_long_msg upstream row 1 (65535 bytes)" {
+  ck:=[32]u8.[86,173,190,55,32,51,147,99,171,156,59,133,38,255,206,159,215,118,0,146,116,136,191,196,181,159,122,104,255,229,234,224];nonce:=[32]u8.[173,104,218,129,131,60,42,143,246,9,195,210,192,51,95,212,79,229,149,79,133,187,88,12,106,141,70,122,169,252,93,208];pattern:=[1]u8.[33];
+  ps:=[32]u8.[106,242,151,121,59,114,174,9,44,66,46,85,44,59,179,203,195,16,218,39,75,209,207,158,49,2,58,127,228,162,215,94];ys:=[32]u8.[128,19,228,90,16,159,173,51,98,19,49,50,180,96,162,213,188,226,53,254,113,200,184,244,1,71,147,251,82,164,152,68];
+  #assert long_case(NIP44_COMPAT,ck[..],nonce[..],pattern[..],65535,ps[..],ys[..])==0;
+  #assert long_case(NIP44_EXTENDED,ck[..],nonce[..],pattern[..],65535,ps[..],ys[..])==0;
+}
+#test "NIP-44 encrypt_decrypt_long_msg upstream row 2 (65532 bytes)" {
+  ck:=[32]u8.[127,197,64,119,153,121,228,114,187,141,18,72,11,68,61,30,94,177,9,142,174,84,110,242,57,11,238,73,155,191,70,190];nonce:=[32]u8.[52,144,94,130,16,92,32,222,154,47,108,211,133,160,213,65,230,188,193,6,1,209,36,129,255,58,117,117,220,98,32,51];pattern:=[4]u8.[240,159,166,132];
+  ps:=[32]u8.[162,73,85,141,22,27,119,41,123,192,203,49,29,222,125,119,25,15,101,113,178,92,126,68,41,205,25,4,70,52,166,31];ys:=[32]u8.[179,52,132,34,71,29,161,243,197,157,121,172,254,47,225,3,243,205,36,72,129,9,229,177,135,52,205,181,149,58,253,21];
+  #assert long_case(NIP44_COMPAT,ck[..],nonce[..],pattern[..],16383,ps[..],ys[..])==0;
+  #assert long_case(NIP44_EXTENDED,ck[..],nonce[..],pattern[..],16383,ps[..],ys[..])==0;
+}
+#test "NIP-44 extended-prefix boundary 65535 bytes (u16 (2 bytes), padded 65536)" {
+  ck:=[32]u8.[196,28,119,83,86,253,146,234,220,99,255,90,13,193,218,33,27,38,140,190,162,35,22,118,112,149,178,135,30,161,65,45];nonce:=[32]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1];pattern:=[1]u8.[97];
+  ps:=[32]u8.[110,27,235,202,106,130,41,54,74,22,42,114,239,6,72,38,196,205,116,87,191,84,241,144,239,120,43,217,222,255,62,66];ys:=[32]u8.[109,140,40,16,209,232,112,251,170,31,10,9,55,18,108,202,131,122,21,249,38,14,39,6,12,51,29,112,163,192,188,132];
+  #assert long_case(NIP44_EXTENDED,ck[..],nonce[..],pattern[..],65535,ps[..],ys[..])==0;
+  #assert long_case(NIP44_COMPAT,ck[..],nonce[..],pattern[..],65535,ps[..],ys[..])==0;
+}
+#test "NIP-44 extended-prefix boundary 65536 bytes (extended (6 bytes), padded 65536)" {
+  ck:=[32]u8.[196,28,119,83,86,253,146,234,220,99,255,90,13,193,218,33,27,38,140,190,162,35,22,118,112,149,178,135,30,161,65,45];nonce:=[32]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1];pattern:=[1]u8.[97];
+  ps:=[32]u8.[191,113,139,111,101,59,235,193,132,225,71,159,25,53,184,218,151,77,112,27,137,58,252,244,158,112,31,62,47,159,156,90];ys:=[32]u8.[183,180,237,179,107,169,46,38,125,50,45,86,217,174,188,34,231,250,150,255,82,227,193,42,220,7,240,122,67,203,198,22];
+  #assert long_case(NIP44_EXTENDED,ck[..],nonce[..],pattern[..],65536,ps[..],ys[..])==0;
+  #assert long_case(NIP44_COMPAT,ck[..],nonce[..],pattern[..],65536,ps[..],ys[..])==NIP44_CAPACITY;
+}
+#test "NIP-44 extended-prefix boundary 65537 bytes (extended (6 bytes), padded 81920)" {
+  ck:=[32]u8.[196,28,119,83,86,253,146,234,220,99,255,90,13,193,218,33,27,38,140,190,162,35,22,118,112,149,178,135,30,161,65,45];nonce:=[32]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1];pattern:=[1]u8.[97];
+  ps:=[32]u8.[0,143,252,136,211,201,106,159,48,117,36,235,54,30,71,197,34,42,136,127,196,95,160,193,251,141,66,156,92,35,180,48];ys:=[32]u8.[238,183,199,197,55,56,148,234,44,21,71,207,211,204,177,93,90,11,45,97,157,168,82,229,199,157,247,146,220,201,228,53];
+  #assert long_case(NIP44_EXTENDED,ck[..],nonce[..],pattern[..],65537,ps[..],ys[..])==0;
+  #assert long_case(NIP44_COMPAT,ck[..],nonce[..],pattern[..],65537,ps[..],ys[..])==NIP44_CAPACITY;
+}
+#test "a compat reader refuses the 65536-byte extended payload as capacity; out untouched" {
+  ck:=[32]u8.[196,28,119,83,86,253,146,234,220,99,255,90,13,193,218,33,27,38,140,190,162,35,22,118,112,149,178,135,30,161,65,45];nonce:=[32]u8.[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1];plain:[65536]u8;for i:0..<65536 {plain[i]=97;}
+  work:[LONG_WORK]u8;out:[LONG_CHARS]u8;
+  r:=nip44_encrypt_checked(NIP44_EXTENDED,ck[..],nonce[..],plain[..],work[..],out[..],false);
+  #assert r.error==NIP44_OK && r.written==87476;
+  dwork:[LONG_WORK]u8;back:=[1]u8.[165];
+  #assert nip44_decrypt_checked(NIP44_COMPAT,ck[..],cast(string)out[0..<r.written],dwork[..],back[..],false).error==NIP44_CAPACITY;
+  #assert back[0]==165;
+}

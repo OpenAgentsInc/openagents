@@ -1,0 +1,19 @@
+// Runtime address observations only. nip44.coax owns every NIP-44 size,
+// profile, MAC and padding decision; these exports pass truthful overlap facts.
+#load "nip44.coax";
+nip44_message_keys :: (conversation_key:[]u8,nonce:[]u8,keys:[]u8)->u32 #export_c {
+  return nip44_message_keys_checked(conversation_key,nonce,keys,bytes_overlap(conversation_key,keys)||bytes_overlap(nonce,keys));
+}
+nip44_conversation_key :: (shared_x:[]u8,out:[]u8)->u32 #export_c {
+  return nip44_conversation_key_checked(shared_x,out,bytes_overlap(shared_x,out));
+}
+nip44_encrypt :: (profile:u32,conversation_key:[]u8,nonce:[]u8,plaintext:[]u8,work:[]u8,out:[]u8)->Nip44Result #export_c {
+  overlap:=bytes_overlap(work,conversation_key)||bytes_overlap(work,nonce)||bytes_overlap(work,plaintext)||bytes_overlap(work,out);
+  overlap=overlap||bytes_overlap(out,conversation_key)||bytes_overlap(out,nonce)||bytes_overlap(out,plaintext);
+  return nip44_encrypt_checked(profile,conversation_key,nonce,plaintext,work,out,overlap);
+}
+nip44_decrypt :: (profile:u32,conversation_key:[]u8,payload:string,work:[]u8,out:[]u8)->Nip44Result #export_c {
+  overlap:=bytes_overlap(work,conversation_key)||bytes_overlap(work,payload)||bytes_overlap(work,out);
+  overlap=overlap||bytes_overlap(out,conversation_key)||bytes_overlap(out,payload);
+  return nip44_decrypt_checked(profile,conversation_key,payload,work,out,overlap);
+}
