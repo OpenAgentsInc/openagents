@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "profile": "deepseek-engram-lookup-v1",
+  "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+  "sources": {
+    "inference/engram.py": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/engram.py",
+      "archive": "engram-reference.txt.gz",
+      "bytes": 8138,
+      "sha256": "11f35ecbead8150c35aa002b3d180ef290b05a25afe883a11884f94d476d3897"
+    },
+    "inference/config.json": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/config.json",
+      "archive": "cache-reference-config.txt.gz",
+      "bytes": 1982,
+      "sha256": "2e84f45cf1dac8c7fcbb200e96667d4b913275690668ed496f24c7747207a809"
+    },
+    "tokenizer.json": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/tokenizer.json",
+      "archive": "engram-tokenizer.json.gz",
+      "bytes": 6367257,
+      "sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b"
+    }
+  },
+  "headers": [
+    {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/model-00047-of-00048.safetensors",
+      "archive": "engram-header-47.bin.gz",
+      "layer": 1,
+      "prefix_bytes": 664,
+      "file_bytes": 101535150936,
+      "prefix_sha256": "9055d06658af74f431f6675f6880f187b24a3f648b3f70ae949edc328b7702fc",
+      "scope": "HTTP range prefix only; this does not authenticate the complete original weight file"
+    },
+    {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/model-00048-of-00048.safetensors",
+      "archive": "engram-header-48.bin.gz",
+      "layer": 14,
+      "prefix_bytes": 672,
+      "file_bytes": 101537926640,
+      "prefix_sha256": "ffc9da89096525ea191d967531f8063db66327b0880a9d2f4d7d73a42d641f28",
+      "scope": "HTTP range prefix only; this does not authenticate the complete original weight file"
+    }
+  ],
+  "normalization": {
+    "raw": 129280,
+    "compressed": 99092,
+    "pad_raw": 2,
+    "pad_compressed": 2,
+    "map_sha256": "c60a86322ec17b4142bfef3c57a8d81fb428550cdf487f88a4320cb59fe46481",
+    "independent_python_unicode": "15.1.0",
+    "external_tokenizers": "0.22.2",
+    "external_numpy": "2.4.4"
+  },
+  "scope": "Original tokenizer normalization and hashing; original table headers and full-size sparse owned row I/O. Original table payloads and learned Engram projections/gates are not executed."
+}

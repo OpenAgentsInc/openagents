@@ -1,5 +1,37 @@
 # Invariants
 
+## Psionic Engram lookup binds the normalized map and reads only planned rows
+
+`psionic/lib/deepseek/engram*.coax` owns `deepseek-engram-lookup-v1`:
+original 129,280-ID tokenizer bytes derive 99,092 normalized classes, with the
+complete little-endian map authenticated before use. Compressed vocabulary
+size determines fixed per-layer multipliers. The original 48 distinct primes,
+cumulative ranges and odd multipliers select 24 rows each at layers 1 and 14.
+Three compressed history IDs, including dead markers, cross chunk boundaries.
+A dead/missing lookback pads itself and every older lookback with ID 2.
+
+Each selected row has 256 E4M3 codes and eight per-row/per-32 UE8M0 scales.
+Independent 64-bit tensor extents and whole-file length are checked before
+Coax publishes read ranges. C observes actual addresses/file length and performs
+lazy read-only mapping or pread; it does not decide hashes, ranges or arithmetic.
+Decoded BF16 words and hash IDs publish only after complete success. Late bad
+rows or I/O failure preserve all public output and spare tails; private work
+may change. The adapter allocates bounded range metadata, never whole tables.
+
+Callers own valid immutable allocations/extents, successful unmodified map
+metadata, authenticated immutable files and matching table/model/history
+identity, FD lifetime and exclusive disjoint writes. File-size observation is
+not authentication; changing/truncating a mapped file violates its lifetime.
+Owned sparse files qualify bounded I/O at original shard sizes and offsets.
+They do not qualify original embedding payloads, learned lookup projections,
+gated residual injection, GPU behavior or complete model execution.
+
+Check: `psionic/tests/check_deepseek_engram.sh` covers independent original
+normalization/map, full-prefix hashes/history, range layouts, mmap/pread,
+BF16 rows and native debug/release plain/ASan/UBSan failures. The unit
+`psionic/check.sh --only deepseek/engram --jobs 8` adds zero-survivor authority
+mutation. Actual evidence: [chapter 62 record](docs/verification/psionic-ch62-2026-10-29.md).
+
 ## Psionic compressed attention keeps source ownership and causal prefixes explicit
 
 `psionic/lib/deepseek/sparse-*.coax` owns `deepseek-sparse-cpu-wide-v1` at

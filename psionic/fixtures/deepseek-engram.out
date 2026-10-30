@@ -1,0 +1,5 @@
+Engram: 19 tokens, 912 row IDs, 3 retained history tokens
+table 0: 384006168 rows, 101377628352 code and scale bytes
+table 1: 384016682 rows, 101380404048 code and scale bytes
+one layer lookup: 48 reads, 6336 bytes, 6144 BF16 values
+row decode: 256 values, independent scales per 32

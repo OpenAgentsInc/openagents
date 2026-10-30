@@ -1,0 +1,20 @@
+#import "Basic";
+#load "../lib/deepseek/engram.coax";
+// book:begin example
+main :: () {
+    // An owned map keeps the example small. The native gate admits the complete
+    // original 129,280-ID map, then hashes the same original prefix independently.
+    bytes:=EGG_MAP;map:=eg_admit_map(bytes[..],8,99092,2,EGG_MAP_SHA);#assert map.status==EgStatus.ok;
+    tokens:=EGG_TOKENS;mask:=EGG_MASK;ids:[912]int;work:[912]int;
+    r:=eg_hash(map.value,eg_start(),tokens[..],mask[..],ids[..],work[..],false);#assert r.status==EgStatus.ok;
+    for i:0..<912 {#assert ids[i]==EGG_HASHES[i];}
+    print("Engram: % tokens, % row IDs, % retained history tokens\n",r.next.next,r.written,3);
+    for layer:0..<2 {print("table %: % rows, % code and scale bytes\n",layer,EG_ROWS[layer],EG_ROWS[layer]*264);}
+    table:=EgTable.{rows=EG_ROWS[0],data=4096,scales=4096+EG_ROWS[0]*256,file_bytes=4096+EG_ROWS[0]*264};
+    reads:[48]EgRead;draft:[48]EgRead;p:=eg_reads(table,ids[0..<24],reads[..],draft[..],false);#assert p.status==EgStatus.ok;
+    print("one layer lookup: % reads, % bytes, % BF16 values\n",p.written,p.bytes,24*256);
+    packet:[264]u8;for i:0..<256 {packet[i]=0x38;}for i:0..<8 {packet[256+i]=u8(127+i);}
+    values:[256]u16;stage:[256]u16;decoded:=eg_decode(1,packet[..],values[..],stage[..],false);#assert decoded.status==EgStatus.ok && values[0]==0x3f80 && values[255]==0x4300;
+    print("row decode: % values, independent scales per 32\n",decoded.written);
+}
+// book:end example

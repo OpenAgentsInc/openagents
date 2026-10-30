@@ -1,0 +1,11 @@
+#load "cache.coax";
+#load "../model-io/identity.coax";
+EgStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;format;budget;token;state;identity;io;}
+EgMap :: struct {raw:int;compressed:int;pad:int;data:[]u8;}
+EgAdmission :: struct {status:EgStatus;value:EgMap;}
+EgHistory :: struct {next:int;last:[3]int;}
+EgHash :: struct {status:EgStatus;written:int;next:EgHistory;}
+EgResult :: struct {status:EgStatus;written:int;bytes:int;}
+EgTable :: struct {rows:int;data:int;scales:int;file_bytes:int;}
+EgRead :: struct {offset:int;bytes:int;destination:int;}
+EgMapContract :: struct {raw:int;compressed:int;pad:int;sha:string;}

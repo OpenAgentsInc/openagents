@@ -47,6 +47,9 @@ comparison records used by chapter 58’s complete V2-Lite decoder.
 [Chapter 61](book/ch061-many-residual-streams.md) adds V4.1's four residual
 streams, fixed Sinkhorn mixing and the previous pre-mix carried between
 sub-blocks and into final readout.
+[Chapter 62](book/ch062-memory-by-lookup.md) adds Engram's exact original
+token map and n-gram hashes, three-token continuation, file range planning
+and bounded mapped/direct FP8 row reads at original table sizes.
 [Chapter 63](book/ch063-v41s-expert-weights.md) adds exact FP4/FP8 expert
 formats, activation grids and pre-down route weighting, including an
 independently qualified original 384/6 MoE component.

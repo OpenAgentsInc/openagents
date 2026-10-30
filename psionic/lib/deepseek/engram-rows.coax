@@ -1,0 +1,83 @@
+#load "engram-hash.coax";
+#authority;
+
+#test "table extents admit both original tensor orders and preserve 64-bit offsets" {
+    a:=EgTable.{rows=384006168,data=4096,scales=98305583104,file_bytes=101377636576};#assert eg_table_valid(a);
+    b:=EgTable.{rows=384016682,data=3072137552,scales=4096,file_bytes=101380408576};#assert eg_table_valid(b);
+    #assert eg_table_valid(EgTable.{rows=1,data=0,scales=256,file_bytes=264});
+    #assert eg_table_valid(EgTable.{rows=1,data=8,scales=0,file_bytes=264});
+    #assert eg_table_valid(EgTable.{rows=1073741824,data=0,scales=274877906944,file_bytes=1099511627776});
+    for field:0..<8 {t:=a;if field==0 {t.rows=0;}else if field==1 {t.rows=1073741825;}else if field==2 {t.data=-1;}else if field==3 {t.scales=-1;}else if field==4 {t.file_bytes=0;}else if field==5 {t.file_bytes=1099511627777;}else if field==6 {t.data=t.file_bytes;}else {t.scales=t.file_bytes;}#assert !eg_table_valid(t);}
+    #assert !eg_table_valid(EgTable.{rows=1,data=0,scales=255,file_bytes=264});
+    #assert !eg_table_valid(EgTable.{rows=1,data=7,scales=0,file_bytes=264});
+    #assert eg_observed(a,a.file_bytes)==EgStatus.ok && eg_observed(a,a.file_bytes-1)==EgStatus.io;
+}
+#test "one request per data and scale row has independent exact endpoints and destinations" {
+    t:=EgTable.{rows=384006168,data=4096,scales=98305583104,file_bytes=101377636576};ids:=[3]int.[0,123456789,384006167];out:[7]EgRead;stage:[6]EgRead;out[6].offset=77;
+    r:=eg_reads(t,ids[..],out[..],stage[..],false);#assert r.status==EgStatus.ok && r.written==6 && r.bytes==792;
+    for i:0..<3 {#assert out[2*i].offset==t.data+ids[i]*256 && out[2*i].bytes==256 && out[2*i].destination==i*264;#assert out[2*i+1].offset==t.scales+ids[i]*8 && out[2*i+1].bytes==8 && out[2*i+1].destination==i*264+256;}
+    #assert out[6].offset==77;
+    ids[2]=t.rows;#assert eg_reads(t,ids[..],out[..],stage[..],false).status==EgStatus.token && out[6].offset==77;ids[2]=-1;#assert eg_reads(t,ids[..],out[..],stage[..],false).status==EgStatus.token;
+    #assert eg_read_count(1) && eg_read_count(24) && !eg_read_count(0) && !eg_read_count(25);
+    #assert eg_reads(t,ids[0..<0],out[..],stage[..],false).status==EgStatus.shape;
+    bad:=t;bad.rows=0;#assert eg_reads(bad,ids[..],out[..],stage[..],false).status==EgStatus.shape;
+    #assert eg_reads(t,ids[..],out[0..<5],stage[..],false).status==EgStatus.capacity && eg_reads(t,ids[..],out[..],stage[0..<5],false).status==EgStatus.capacity && eg_reads(t,ids[..],out[..],stage[..],true).status==EgStatus.alias;
+}
+#test "row packets use per-row scales and decode BF16 atomically on late invalid encodings" {
+    packet:[528]u8;out:[513]u16;stage:[512]u16;for j:0..<256 {packet[j]=0x38;packet[264+j]=0xb8;}for j:0..<8 {packet[256+j]=127;packet[520+j]=128;}out[512]=77;
+    r:=eg_decode(2,packet[..],out[0..<512],stage[..],false);#assert r.status==EgStatus.ok && r.written==512 && r.bytes==528;
+    for j:0..<256 {#assert out[j]==0x3f80 && out[256+j]==0xc000;}#assert out[512]==77;
+    packet[527]=255;#assert eg_decode(2,packet[..],out[..],stage[..],false).status==EgStatus.number;for j:0..<256 {#assert out[j]==0x3f80 && out[256+j]==0xc000;}
+    packet[527]=128;packet[519]=127;#assert eg_decode(2,packet[..],out[..],stage[..],false).status==EgStatus.number;
+    packet[519]=126;packet[527]=254;#assert eg_decode(2,packet[..],out[..],stage[..],false).status==EgStatus.arithmetic;
+    #assert eg_decode(0,packet[..],out[..],stage[..],false).status==EgStatus.shape && eg_decode(25,packet[..],out[..],stage[..],false).status==EgStatus.shape;
+    #assert eg_decode(2,packet[0..<527],out[..],stage[..],false).status==EgStatus.capacity && eg_decode(2,packet[..],out[0..<511],stage[..],false).status==EgStatus.capacity && eg_decode(2,packet[..],out[..],stage[0..<511],false).status==EgStatus.capacity && eg_decode(2,packet[..],out[..],stage[..],true).status==EgStatus.alias;
+}
+
+#test "file row and offset predicates include their exact endpoints" {
+    #assert eg_table_rows(1) && eg_table_rows(1073741824) && !eg_table_rows(0) && !eg_table_rows(1073741825);
+    #assert eg_file_size(1) && eg_file_size(1099511627776) && !eg_file_size(0) && !eg_file_size(1099511627777);
+    #assert eg_offset(0,1) && eg_offset(1,1) && !eg_offset(-1,1) && !eg_offset(2,1);
+    t:=EgTable.{rows=1,data=0,scales=256,file_bytes=264};ids:=[1]int.[0];out:[2]EgRead;stage:[2]EgRead;
+    #assert eg_reads(t,ids[..],out[..],stage[..],false).status==EgStatus.ok;
+    packet:[264]u8;values:[256]u16;work:[256]u16;for i:0..<256 {packet[i]=0x38;}for i:0..<8 {packet[256+i]=u8(127+i);}
+    #assert eg_decode(1,packet[..],values[..],work[..],false).status==EgStatus.ok;
+    for i:0..<256 {#assert values[i]==u16(0x3f80+(i/32)*128);}
+}
+
+#test "lookup work is checked before any file effect or publication" {
+    #assert eg_lookup_ready(1,264,256,256,false)==EgStatus.ok;
+    #assert eg_lookup_ready(24,6336,6144,6144,false)==EgStatus.ok;
+    #assert eg_lookup_ready(0,0,0,0,false)==EgStatus.shape && eg_lookup_ready(25,6600,6400,6400,false)==EgStatus.shape;
+    #assert eg_lookup_ready(1,263,256,256,false)==EgStatus.capacity && eg_lookup_ready(1,265,256,256,false)==EgStatus.capacity;
+    #assert eg_lookup_ready(1,264,255,256,false)==EgStatus.capacity && eg_lookup_ready(1,264,256,255,false)==EgStatus.capacity;
+    #assert eg_lookup_ready(1,264,257,257,false)==EgStatus.ok && eg_lookup_ready(1,264,256,256,true)==EgStatus.alias;
+}
+eg_lookup_ready :: (rows:int,packet:int,out:int,stage:int,overlap:bool)->EgStatus #export_c {
+    if !eg_read_count(rows) {return EgStatus.shape;}
+    if packet!=rows*264 || out<rows*256 || stage<rows*256 {return EgStatus.capacity;}
+    if overlap {return EgStatus.alias;}return EgStatus.ok;
+}
+
+eg_table_rows :: (n:int)->bool {return n>=1 && n<=1073741824;}
+eg_file_size :: (n:int)->bool {return n>=1 && n<=1099511627776;}
+eg_offset :: (n:int,size:int)->bool {return n>=0 && n<=size;}
+eg_table_valid :: (t:EgTable)->bool #export_c {
+    if !eg_table_rows(t.rows) || !eg_file_size(t.file_bytes) || !eg_offset(t.data,t.file_bytes) || !eg_offset(t.scales,t.file_bytes) {return false;}
+    data_end:=t.data+t.rows*256;scale_end:=t.scales+t.rows*8;
+    return data_end<=t.file_bytes && scale_end<=t.file_bytes && (data_end<=t.scales || scale_end<=t.data);
+}
+eg_observed :: (t:EgTable,bytes:int)->EgStatus #export_c {return ifx bytes==t.file_bytes then EgStatus.ok else EgStatus.io;}
+eg_read_count :: (n:int)->bool {return n>=1 && n<=24;}
+eg_reads :: (t:EgTable,ids:[]int,out:[]EgRead,stage:[]EgRead,overlap:bool)->EgResult #export_c {
+    if !eg_table_valid(t) || !eg_read_count(ids.count) {return EgResult.{status=EgStatus.shape};}
+    count:=2*ids.count;if out.count<count || stage.count<count {return EgResult.{status=EgStatus.capacity};}if overlap {return EgResult.{status=EgStatus.alias};}
+    for i:0..<ids.count {if ids[i]<0 || ids[i]>=t.rows {return EgResult.{status=EgStatus.token};}
+        stage[2*i]=EgRead.{offset=t.data+ids[i]*256,bytes=256,destination=i*264};stage[2*i+1]=EgRead.{offset=t.scales+ids[i]*8,bytes=8,destination=i*264+256};}
+    for i:0..<count {out[i]=stage[i];}return EgResult.{written=count,bytes=264*ids.count};
+}
+eg_decode :: (rows:int,packet:[]u8,out:[]u16,stage:[]u16,overlap:bool)->EgResult #export_c {
+    status:=eg_lookup_ready(rows,packet.count,out.count,stage.count,overlap);if status!=EgStatus.ok {return EgResult.{status=status};}n:=rows*256;
+    for row:0..<rows {for col:0..<256 {r:=dk_lane(0,packet[row*264+col],packet[row*264+256+col/32]);if r.status!=DkStatus.ok {return EgResult.{status=cast(EgStatus)(cast(u8)r.status)};}stage[row*256+col]=r.bits;}}
+    for i:0..<n {out[i]=stage[i];}return EgResult.{written=n,bytes=rows*264};
+}

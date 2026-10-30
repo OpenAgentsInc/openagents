@@ -570,6 +570,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-engram.coax",
+      "chapter": "psionic/book/ch062-memory-by-lookup.md",
+      "stdout": "psionic/fixtures/deepseek-engram.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

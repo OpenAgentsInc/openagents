@@ -50,6 +50,7 @@
 - [59. Routers that balance themselves](ch059-routers-that-balance-themselves.md)
 - [60. Compressed and shared attention](ch060-compressed-and-shared-attention.md)
 - [61. Many residual streams](ch061-many-residual-streams.md)
+- [62. Memory by lookup](ch062-memory-by-lookup.md)
 - [63. V4.1's expert weights](ch063-v41s-expert-weights.md)
 - [66. Pack the cache exactly](ch066-pack-the-cache-exactly.md)
 
