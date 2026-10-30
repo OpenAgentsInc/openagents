@@ -52,7 +52,9 @@ os.makedirs(site, exist_ok=True)
 # Markdown twins, icons and link-preview cards (.jpg). Work files, builds and sources stay behind.
 pages = []
 for root, dirs, files in os.walk(app):
-    dirs[:] = sorted(d for d in dirs if d not in ("build", "work", "node_modules") and not d.startswith("."))
+    # A directory holding a DEV-ONLY file is a page for development only (new-land/): never released.
+    dirs[:] = sorted(d for d in dirs if d not in ("build", "work", "node_modules") and not d.startswith(".")
+                     and not os.path.exists(os.path.join(root, d, "DEV-ONLY")))
     for f in sorted(files):
         rel = os.path.relpath(os.path.join(root, f), app)
         agent = rel in ("llms.txt", "robots.txt") or (rel.startswith("cli" + os.sep) and f.endswith((".sh", ".ps1")))
