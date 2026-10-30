@@ -1,0 +1,27 @@
+// The private checker calls this only after original wire/witness admission.
+// This example is synthetic; it never signs or publishes a public verdict.
+#load "../lib/mesh/compare.coax";
+#import "Basic";
+
+main :: () {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);request:=sv_decode(MF_CALL,pools);
+  same:=mc_compare(MF_RESPONSE,MF_RESPONSE,request,pools,MF_ID,MC_PROFILE,true,0);
+  #assert same.verdict==1 && same.reason==MC_OK && same.worst==0;
+  print("configured compatible: pass %, distance %\n",same.verdict,same.worst);
+  unknown:=mc_compare(MF_RESPONSE,MF_RESPONSE,request,pools,MF_ID,MC_PROFILE,false,0);
+  #assert unknown.verdict==3 && unknown.reason==MC_CONTEXT;
+  print("unknown backend: inconclusive %\n",unknown.verdict);
+  a:[4096]u8;b:[4096]u8;c:[4096]u8;
+  shifted:=pd_swap(a[..],MF_RESPONSE,"\"yes\":0.7","\"yes\":0.6");shifted2:=pd_swap(b[..],shifted,"\"no\":0.3","\"no\":0.4");shifted3:=pd_swap(c[..],shifted2,"\"confidence\":0.7","\"confidence\":0.6");
+  changed:=mc_compare(MF_RESPONSE,shifted3,request,pools,MF_ID,MC_PROFILE,true,0);
+  #assert changed.verdict==2 && changed.reason==MC_DISTANCE && abs(changed.worst-0.2209163761395196)<1.0e-14;
+  print("changed probabilities: fail %, distance %\n",changed.verdict,changed.worst);
+
+  call:="{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"n\":{\"type\":\"noul\"},\"s\":{\"type\":\"score\",\"criteria\":[null,null,null]}}}";
+  request=sv_decode(call,pools);
+  answer:="{\"model\":\"psionic-toy\",\"answers\":{\"n\":{\"type\":\"noul\",\"noul\":0.3},\"s\":{\"type\":\"score\",\"score\":1.5,\"confidence\":0.75,\"selected\":\"2\",\"probabilities\":{\"0\":0.25,\"1\":0,\"2\":0.75}}},\"service\":{\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\"}}";
+  all:=mc_compare(answer,answer,request,pools,MF_ID,MC_PROFILE,true,0);#assert all.verdict==1 && all.worst==0 && all.question==0;
+  invalid:=pd_swap(a[..],answer,"\"score\":1.5","\"score\":2.000000001");
+  #assert mc_compare(answer,invalid,request,pools,MF_ID,MC_PROFILE,true,1000000000).verdict==3;
+  print("noul and three-level score: pass %; out-of-range replica: inconclusive\n",all.verdict);
+}

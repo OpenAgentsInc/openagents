@@ -1,0 +1,15 @@
+{
+  "date": "2026-10-30",
+  "base": "adefd63fbc",
+  "compiler": "coax0 0.24.0",
+  "compilerSourceFingerprint": "81ad04b7877f29c0f424154fb27589c1b1839ef1d05ed28d724c488fc72f28c5",
+  "profile": "centred-log-f64-max8-v1",
+  "sourceSha256": "dc848847cf92b512fe42b9f7592bea7262f61516f2399fdb505653cb0d2a5938",
+  "unchangedChapter20ProtocolSha256": "76eb9c3e70c1c2efb57e3906dea81dee8abba0bce077c0951f4dd63195470f03",
+  "emittedExampleCSha256": "5f1ef37079c1a433af547b6465dd457bc3706cc7dfac6cd0d013e0009dba701f",
+  "sanitizedExampleSha256": "89ca2ad55044c0408f04f38595031475f98f295436da0f0bc961b707af63da22",
+  "checks": {"total":216,"passed":216,"failed":0,"dependencyBaselineRetained":true},
+  "mutation": {"scope":"entry-source procedures only","total":168,"killed":168,"survived":0,"waivers":0},
+  "native": {"optimized":"passed","asanUbsan":"passed","outputsIdentical":true},
+  "publicReplayOrSignerQualification": false
+}

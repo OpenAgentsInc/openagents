@@ -1,0 +1,14 @@
+mutation scope: root-only (entry-source procedures; dependency checks retained)
+psionic/lib/mesh/compare.coax:113:97: mutant survived: 64 became 65
+    if r.code!=SvCode.none || r.model!=pb_identity_name(identity) || r.questions<1 || r.questions>64 || r.questions>pools.questions.count {return false;}
+                                                                                                  ^
+psionic/lib/mesh/compare.coax:122:20: mutant survived: '==' became '!='
+    count:=ifx q.kind==PtQuestionKind.noul then 2 else q.count;
+                     ^
+psionic/lib/mesh/compare.coax:122:47: mutant survived: 2 became 3
+    count:=ifx q.kind==PtQuestionKind.noul then 2 else q.count;
+                                                ^
+psionic/lib/mesh/compare.coax:123:15: mutant survived: '<' became '<='
+    if out.count<count || !mf_one(raw,q,pools) {return McVector.{};}
+                ^
+168 mutants, 164 killed, 4 survived

@@ -1,0 +1,168 @@
+// Private Chapter21 checker policy. r/pools belong to the same admitted
+// request. Identity/profile/threshold/backend compatibility are CHECKER-owned
+// configuration, never claims read from a witness, receipt or beacon.
+// Compatibility is an operator-approved comparison scope, not attestation or
+// empirical calibration. No signing, replay, keys or network effects here.
+#load "../fleet/protocol.coax";
+#authority;
+
+MC_PROFILE :: "centred-log-f64-max8-v1";
+MC_OK :: 0; MC_CONTEXT :: 1; MC_REQUEST :: 2; MC_ORIGINAL :: 3;
+MC_REPLICA :: 4; MC_DECISION :: 5; MC_DISTANCE :: 6;
+McComparison :: struct {verdict:int=3;reason:int=MC_CONTEXT;worst:f64;question:int=-1;}
+McProjection :: struct {ok:bool;body:string;}
+McVector :: struct {ok:bool;count:int;decision:int=-1;}
+McDistance :: struct {ok:bool;worst:f64;option:int;floored:int;}
+
+#test "comparison context is explicit and witnesses cannot approve a backend" {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);
+  a:=mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,true,0);
+  #assert a.verdict==1 && a.reason==MC_OK && a.worst==0 && a.question==0;
+  #assert mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,false,0).reason==MC_CONTEXT;
+  #assert mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,MF_ID,"other",true,0).verdict==3;
+  #assert mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,"bad",MC_PROFILE,true,0).verdict==3;
+  #assert mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,true,-1).verdict==3;
+  #assert mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,true,1000000001).verdict==3;
+  #assert mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,true,1000000000).verdict==1;
+  poisoned:[4096]u8;claim:=pd_swap(poisoned[..],MF_RESPONSE,"\"service\":{","\"compatible_backend\":true,\"backend_profile\":\"psionic-toy-cpu-v1\",\"service\":{");
+  b:=mc_compare(claim,claim,r,pools,MF_ID,MC_PROFILE,false,1000000000);#assert b.verdict==3 && b.reason==MC_CONTEXT && b.worst==0 && b.question==-1;
+  #assert mc_compare(claim,claim,r,pools,MF_ID,MC_PROFILE,true,0).verdict==1;
+}
+#test "semantic projection ignores route timing order usage and correlation metadata" {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);a:[4096]u8;b:[4096]u8;
+  local:=pd_swap(a[..],MF_RESPONSE,"pylon:studio-gpu","psionic");
+  local2:=pd_swap(b[..],local,"\"service\":{","\"latency_ms\":123,\"usage\":{\"tokens\":9},\"request\":\"new\",\"attempt\":99,\"service\":{");
+  c:=mc_compare(MF_RESPONSE,local2,r,pools,MF_ID,MC_PROFILE,true,0);#assert c.verdict==1 && c.worst==0;
+  reordered:="{\"service\":{\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\",\"door\":\"another-route\",\"provider\":\"different\"},\"answers\":{\"wet\":{\"probabilities\":{\"no\":0.3,\"yes\":0.7},\"confidence\":0.7,\"choice\":\"y\\u0065s\",\"type\":\"choice\"}},\"model\":\"psionic-toy\"}";
+  #assert mc_compare(MF_RESPONSE,reordered,r,pools,MF_ID,MC_PROFILE,true,0).verdict==1;
+  out:[4096]u8;pr:=mc_project(reordered,out[..]);#assert pr.ok && mf_answer(pr.body,r,pools,MF_ID,"","");
+  #assert !mc_project(reordered,out[0..<10]).ok;
+  for body:[7]string.["{}","[]","{}x","{\"model\":\"m\",\"answers\":{},\"service\":{}}","{\"model\":1,\"answers\":{},\"service\":{\"identity\":\"i\"}}","{\"model\":\"m\",\"answers\":[],\"service\":{\"identity\":\"i\"}}","{\"model\":\"m\",\"answers\":{},\"service\":{\"identity\":1}}"] {#assert !mc_project(body,out[..]).ok;}
+}
+#forall "invalid identity and shape are inconclusive before tolerance" i:0..<5 {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);out:[4096]u8;
+  from:=[10]string.["psionic-toy@sha256:b","\"model\":\"psionic-toy\"","\"answers\":{","\"wet\":{","\"confidence\":0.7","\"yes\":0.7","\"no\":0.3","\"choice\":\"yes\"","\"service\":{","\"identity\":"];
+  to:=[10]string.["psionic-toy@sha256:a","\"model\":\"other\"","\"answers\":[],\"ignored\":{","\"other\":{","\"confidence\":1.000000001","\"yes\":1.000000001","\"no\":-0.3","\"choice\":\"no\"","\"service\":[],\"ignored\":{","\"identity\":\"other\",\"identity\":"];
+  bad:=pd_swap(out[..],MF_RESPONSE,from[i],to[i]);a:=mc_compare(bad,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,true,1000000000);b:=mc_compare(MF_RESPONSE,bad,r,pools,MF_ID,MC_PROFILE,true,1000000000);#assert a.verdict==3 && a.reason==MC_ORIGINAL && b.verdict==3 && b.reason==MC_REPLICA && a.worst==0 && b.question==-1;
+  r.code=SvCode.malformed;#assert mc_compare(MF_RESPONSE,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,true,0).reason==MC_REQUEST;
+}
+#forall "invalid numeric and duplicate result fields are inconclusive" i:0..<5 {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);out:[4096]u8;
+  from:=[5]string.["\"yes\":0.7","\"no\":0.3","\"choice\":\"yes\"","\"service\":{","\"identity\":"];
+  to:=[5]string.["\"yes\":1.000000001","\"no\":-0.3","\"choice\":\"no\"","\"service\":[],\"ignored\":{","\"identity\":\"other\",\"identity\":"];
+  bad:=pd_swap(out[..],MF_RESPONSE,from[i],to[i]);a:=mc_compare(bad,MF_RESPONSE,r,pools,MF_ID,MC_PROFILE,true,1000000000);b:=mc_compare(MF_RESPONSE,bad,r,pools,MF_ID,MC_PROFILE,true,1000000000);#assert a.verdict==3 && a.reason==MC_ORIGINAL && b.verdict==3 && b.reason==MC_REPLICA;
+}
+#test "centred log distance has a pinned floor and fixed-order binary64 sums" {
+  p:=[2]f64.[0.5,0.5];q:=[2]f64.[0.8,0.2];d:=mc_distance(p[..],q[..]);
+  #assert d.ok && abs(d.worst-log(2.0))<1.0e-15 && d.option==0 && d.floored==0;
+  #assert mc_distance(q[..],q[..]).worst==0;
+  a:=[3]f64.[0.5,0.25,0.25];b:=[3]f64.[0.25,0.25,0.5];d=mc_distance(a[..],b[..]);#assert d.option==2 && abs(d.worst-log(2.0))<1.0e-15;
+  at:=[2]f64.[0.000001,0.999999];zero:=[2]f64.[0,1];tiny:=[2]f64.[0.000000001,0.999999999];
+  #assert mc_distance(at[..],at[..]).floored==0 && mc_distance(zero[..],at[..]).floored==1 && mc_distance(at[..],zero[..]).floored==1 && mc_distance(zero[..],tiny[..]).floored==2;
+  #assert mc_distance(zero[..],zero[..]).worst==0;
+  wide:[9]f64;for i:0..<9 {wide[i]=0.125;}#assert mc_distance(wide[0..<8],wide[0..<8]).ok;
+  #assert !mc_distance(wide[0..<1],wide[0..<1]).ok && !mc_distance(wide[..],wide[..]).ok && !mc_distance(p[..],wide[0..<3]).ok;
+  for x:[4]f64.[-0.000000001,1.000000001,0.0/0.0,1.0e300] {bad:=[2]f64.[x,0.5];#assert !mc_distance(bad[..],p[..]).ok && !mc_distance(p[..],bad[..]).ok;}
+  #assert mc_within(0,0) && !mc_within(0.000000001,0) && mc_within(0.5,500000000) && !mc_within(0.500000001,500000000) && mc_within(1,1000000000);
+}
+#test "supported request and vector bounds never read unadmitted spans" {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);#assert mc_request(r,pools,MF_ID);
+  bad:=r;bad.questions=0;#assert !mc_request(bad,pools,MF_ID);bad.questions=65;#assert !mc_request(bad,pools,MF_ID);bad=r;bad.model="other";#assert !mc_request(bad,pools,MF_ID);
+  short:=pools;short.questions=pools.questions[0..<0];#assert !mc_request(r,short,MF_ID);
+  for count:[4]int.[-1,0,1,9] {pools.questions[0].count=count;#assert !mc_request(r,pools,MF_ID);}
+  pools.questions[0].count=8;#assert mc_request(r,pools,MF_ID);pools.questions[0].kind=PtQuestionKind.score;#assert mc_request(r,pools,MF_ID);pools.questions[0].count=9;#assert !mc_request(r,pools,MF_ID);
+  pools.questions[0].kind=PtQuestionKind.noul;#assert mc_request(r,pools,MF_ID);
+  r=sv_decode(MF_CALL,pools);pools.questions[0].first=-1;#assert !mc_request(r,pools,MF_ID);pools.questions[0].first=pools.options.count-1;#assert !mc_request(r,pools,MF_ID);pools.questions[0].first=pools.options.count-2;#assert mc_request(r,pools,MF_ID);
+  r=sv_decode(MF_CALL,pools);v:[8]f64;raw:=mf_get(mf_get(MF_RESPONSE,"answers").raw,"wet").raw;q:=pools.questions[0];vector:=mc_vector(raw,q,pools,v[..]);#assert vector.ok && vector.count==2 && vector.decision==0 && v[0]==0.7 && v[1]==0.3;
+  #assert !mc_vector(raw,q,pools,v[0..<1]).ok && !mc_vector("{}",q,pools,v[..]).ok;
+  short=pools;short.questions=pools.questions[0..<1];#assert mc_request(r,short,MF_ID);
+  for i:0..<64 {pools.questions[i].kind=PtQuestionKind.noul;}r.questions=64;#assert mc_request(r,pools,MF_ID);
+  oversized:[65]SvQuestion;for i:0..<65 {oversized[i].kind=PtQuestionKind.noul;}short.questions=oversized[..];r.questions=65;#assert !mc_request(r,short,MF_ID);
+}
+#test "noul and score compare probabilities while preserving discrete selections" {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+  call:="{\"model\":\"psionic-toy\",\"state\":\"s\",\"questions\":{\"n\":{\"type\":\"noul\"},\"s\":{\"type\":\"score\",\"criteria\":[null,null]}}}";r:=sv_decode(call,pools);
+  body:="{\"model\":\"psionic-toy\",\"answers\":{\"n\":{\"type\":\"noul\",\"noul\":0.3},\"s\":{\"type\":\"score\",\"score\":0.7,\"confidence\":0.7,\"selected\":\"1\",\"probabilities\":{\"0\":0.3,\"1\":0.7}}},\"service\":{\"door\":\"psionic\",\"identity\":\"psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573\"}}";
+  d:=mc_compare(body,body,r,pools,MF_ID,MC_PROFILE,true,0);#assert d.verdict==1 && d.reason==MC_OK && d.worst==0 && d.question==0;
+  v:[8]f64;vec:=mc_vector("{\"type\":\"noul\",\"noul\":0.3}",pools.questions[0],pools,v[..]);#assert vec.ok && vec.count==2 && vec.decision==-1 && v[0]==0.3 && v[1]==0.7;
+  #assert mc_vector("{\"type\":\"noul\",\"noul\":0.3}",pools.questions[0],pools,v[0..<2]).ok;
+  #assert !mc_vector("{\"type\":\"noul\",\"noul\":0.3}",pools.questions[0],pools,v[0..<0]).ok;
+  #assert !mc_vector("{\"type\":\"noul\",\"noul\":1.000000001}",pools.questions[0],pools,v[..]).ok;
+  a:[4096]u8;b:[4096]u8;c:[4096]u8;different:=pd_swap(a[..],body,"\"noul\":0.3","\"noul\":0.4");
+  d=mc_compare(body,different,r,pools,MF_ID,MC_PROFILE,true,221000000);#assert d.verdict==1 && d.question==0 && d.worst>0.22;
+  score:=pd_swap(a[..],body,"\"0\":0.3,\"1\":0.7","\"0\":0.4,\"1\":0.6");score2:=pd_swap(b[..],score,"\"score\":0.7","\"score\":0.6");score3:=pd_swap(c[..],score2,"\"confidence\":0.7","\"confidence\":0.6");
+  d=mc_compare(body,score3,r,pools,MF_ID,MC_PROFILE,true,0);#assert d.verdict==2 && d.reason==MC_DISTANCE && d.question==1 && d.worst>0.22;
+  flip:=pd_swap(a[..],body,"\"0\":0.3,\"1\":0.7","\"0\":0.7,\"1\":0.3");flip2:=pd_swap(b[..],flip,"\"score\":0.7","\"score\":0.3");flip3:=pd_swap(c[..],flip2,"\"selected\":\"1\"","\"selected\":\"0\"");
+  d=mc_compare(body,flip3,r,pools,MF_ID,MC_PROFILE,true,1000000000);#assert d.verdict==2 && d.reason==MC_DECISION && d.question==1;
+  invalid:=pd_swap(a[..],body,"\"score\":0.7","\"score\":1.000000001");#assert mc_compare(body,invalid,r,pools,MF_ID,MC_PROFILE,true,1000000000).verdict==3;
+}
+#test "valid changed decisions fail even when distance is permitted" {
+  storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(MF_CALL,pools);a:[4096]u8;b:[4096]u8;c:[4096]u8;
+  shifted:=pd_swap(a[..],MF_RESPONSE,"\"yes\":0.7","\"yes\":0.6");shifted2:=pd_swap(b[..],shifted,"\"no\":0.3","\"no\":0.4");shifted3:=pd_swap(c[..],shifted2,"\"confidence\":0.7","\"confidence\":0.6");
+  d:=mc_compare(MF_RESPONSE,shifted3,r,pools,MF_ID,MC_PROFILE,true,0);#assert d.verdict==2 && d.reason==MC_DISTANCE && abs(d.worst-0.2209163761395196)<1.0e-14 && d.question==0;
+  #assert mc_compare(MF_RESPONSE,shifted3,r,pools,MF_ID,MC_PROFILE,true,221000000).verdict==1;
+  flip:=pd_swap(a[..],MF_RESPONSE,"\"yes\":0.7","\"yes\":0.3");flip2:=pd_swap(b[..],flip,"\"no\":0.3","\"no\":0.7");flip3:=pd_swap(c[..],flip2,"\"choice\":\"yes\"","\"choice\":\"no\"");
+  d=mc_compare(MF_RESPONSE,flip3,r,pools,MF_ID,MC_PROFILE,true,1000000000);#assert d.verdict==2 && d.reason==MC_DECISION && d.worst>0.8;
+}
+
+// Only semantic fields are copied. Metadata cannot approve a comparison or
+// make a valid same-identity answer fail simply because the route changed.
+mc_project :: (body:string,out:[]u8)->McProjection {
+  model:=mf_get(body,"model");answers:=mf_get(body,"answers");identity:=mf_get(mf_get(body,"service").raw,"identity");
+  if model.token!=JSON_STRING || answers.token!=JSON_OBJECT || identity.token!=JSON_STRING {return McProjection.{};}
+  n:=json_raw(out,0,"{\"model\":");n=json_raw(out,n,model.raw);n=json_raw(out,n,",\"answers\":");n=json_raw(out,n,answers.raw);
+  n=json_raw(out,n,",\"service\":{\"door\":\"psionic\",\"identity\":");n=json_raw(out,n,identity.raw);n=json_raw(out,n,"}}");
+  if n==-1 {return McProjection.{};}return McProjection.{ok=true,body=cast(string)out[0..<n]};
+}
+mc_request :: (r:SvRequest,pools:SvPools,identity:string)->bool {
+  if r.code!=SvCode.none || r.model!=pb_identity_name(identity) || r.questions<1 || r.questions>64 || r.questions>pools.questions.count {return false;}
+  for i:0..<r.questions {q:=pools.questions[i];if q.kind==PtQuestionKind.noul {continue;}
+    if q.count<2 || q.count>8 {return false;}
+    if q.kind==PtQuestionKind.choice && (q.first<0 || q.first>pools.options.count-q.count) {return false;}
+  }return true;
+}
+// q and its option spans have passed mc_request; this helper also validates a
+// single answer independently so it never feeds malformed numbers to log.
+mc_vector :: (raw:string,q:SvQuestion,pools:SvPools,out:[]f64)->McVector {
+  count:=ifx q.kind==PtQuestionKind.noul then 2 else q.count;
+  if out.count<count || !mf_one(raw,q,pools) {return McVector.{};}
+  if q.kind==PtQuestionKind.noul {out[0]=f64(mf_number(mf_get(raw,"noul").text).units)/f64(MF_UNIT);out[1]=1-out[0];return McVector.{ok=true,count=2};}
+  probabilities:=mf_get(raw,"probabilities").raw;
+  for i:0..<count {name:[16]u8;key:=mf_option(q,i,pools,name[..]);out[i]=f64(mf_number(mf_get(probabilities,key).text).units)/f64(MF_UNIT);}
+  return McVector.{ok=true,count=count,decision=mf_distribution(probabilities,q,pools).best};
+}
+// Bounded Chapter160 primitive, without its simulated-round experiment.
+// Floor each input before log, subtract each vector's mean log, then take
+// the largest absolute coordinate difference. Ties keep the first option.
+mc_distance :: (p:[]f64,q:[]f64)->McDistance {
+  if p.count<2 || p.count>8 || p.count!=q.count {return McDistance.{};}
+  a:[8]f64;b:[8]f64;sa:=0.0;sb:=0.0;r:=McDistance.{ok=true};
+  for i:0..<p.count {x:=p[i];y:=q[i];if !(x>=0 && x<=1 && y>=0 && y<=1) {return McDistance.{};}
+    if x<0.000001 {x=0.000001;r.floored+=1;}if y<0.000001 {y=0.000001;r.floored+=1;}
+    a[i]=log(x);b[i]=log(y);sa+=a[i];sb+=b[i];
+  }
+  for i:0..<p.count {e:=abs((a[i]-sa/f64(p.count))-(b[i]-sb/f64(p.count)));if i==0 || e>r.worst {r.worst=e;r.option=i;}}
+  return r;
+}
+mc_within :: (distance:f64,maximum_distance_ppb:int)->bool {return distance<=f64(maximum_distance_ppb)/1000000000.0;}
+// Binary64 profile, fixed request/option order, inclusive distance threshold.
+// Noul is a Bernoulli [noul,1-noul]; score compares its level probabilities.
+// Selected choice/score disagreement is a failure independently of distance.
+mc_compare :: (original:string,replica:string,r:SvRequest,pools:SvPools,identity:string,profile:string,compatible_backend:bool,maximum_distance_ppb:int)->McComparison #export_c {
+  if !compatible_backend || profile!=MC_PROFILE || !pb_identity(identity) || maximum_distance_ppb<0 || maximum_distance_ppb>1000000000 {return McComparison.{};}
+  if !mc_request(r,pools,identity) {return McComparison.{reason=MC_REQUEST};}
+  a:[262144]u8;b:[262144]u8;left:=mc_project(original,a[..]);right:=mc_project(replica,b[..]);
+  if !left.ok || !mf_answer(left.body,r,pools,identity,"","") {return McComparison.{reason=MC_ORIGINAL};}
+  if !right.ok || !mf_answer(right.body,r,pools,identity,"","") {return McComparison.{reason=MC_REPLICA};}
+  aa:=mf_get(left.body,"answers").raw;bb:=mf_get(right.body,"answers").raw;
+  result:=McComparison.{verdict=1,reason=MC_OK};different:=false;
+  for i:0..<r.questions {q:=pools.questions[i];p:[8]f64;s:[8]f64;
+    pv:=mc_vector(mf_get(aa,q.id).raw,q,pools,p[..]);sv:=mc_vector(mf_get(bb,q.id).raw,q,pools,s[..]);
+    // Whole-answer validation above establishes both vector shapes/ranges.
+    d:=mc_distance(p[0..<pv.count],s[0..<sv.count]);
+    if pv.decision!=sv.decision {different=true;}
+    if i==0 || d.worst>result.worst {result.worst=d.worst;result.question=i;}
+  }
+  if different {result.verdict=2;result.reason=MC_DECISION;}else if !mc_within(result.worst,maximum_distance_ppb) {result.verdict=2;result.reason=MC_DISTANCE;}
+  return result;
+}
