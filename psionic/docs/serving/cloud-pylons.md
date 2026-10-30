@@ -35,6 +35,12 @@ no service account/scopes, and no outside inference service.
 
 ## Inspect and recover
 
+The fixed host now has a keyless five-minute recovery controller. See
+[managed Spot recovery](spot-recovery.md) for its tested runtime and minimal
+roles. Before an intentional stop or capacity conversion, run its `pause`
+command and wait for the dry/cancel/quiescent drain; settle any Compute start
+already accepted before stopping. Resume only when automatic starts are wanted.
+
 Use an authorized Google Cloud account and IAP; never open a model port:
 
 ```sh
