@@ -153,9 +153,31 @@ clang 21.1.8 (wasm32-wasip1), Node v24.19.0.
   through the signer harness (`coax/tests/nostr/schnorr_sign.py` with
   `COAX_IOS_SIMULATOR`), and agrees with native on all 44 requests.
 
+## Independent review (2026-10-30)
+
+A separate agent reviewed the self-verifier, the signer's stages 3–5 and
+`event_sign.coax` without seeing this record.
+
+- **Candidate data:** nothing derived from the unpublished candidate reaches
+  a branch, loop bound, index or variable-time callee before the publication
+  decision. It traced every callee of `ssv_step`, the multipliers and the
+  field and group kernels. The only candidate-derived branch is the
+  publication decision itself.
+- **Return paths:** every return from stages 3–5 clears the workspace and
+  leaves `out` untouched unless the signature verified. No partial or
+  invalid signature can be released.
+- **Fixed now:** two findings in the signer stages before the self-check
+  (`2026-10-30-schnorr-sign.md`):
+  - **Medium:** stages 1 and 2 didn't bind the message. A nonce from one
+    message could sign another, and done twice that would reveal the key.
+  - **Low:** a refusal on the validity bits skipped the final self-check
+    stage.
+- **Referred to #4828's target-code audit:** `sc_reduce_bytes` computes a
+  bool from challenge-derived data (`secp_scalar.coax:110,116`), which a
+  target compiler could turn into a branch.
+
 ## Open
 
-- Independent review of the source, the path table and the staged binding.
 - The iOS checked build: only release ran in the Simulator.
 - Object-code and JIT timing, address-trace probes and production-secret
   approval remain separate gates, as for `secp_mult_const.coax`.

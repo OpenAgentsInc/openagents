@@ -34,12 +34,13 @@ also clears `out`.
     aux, and escapes in its tags and content, matched byte for byte;
   - refusal of each bad input;
   - workspace clearing.
-- **Mutation:** 5,552 mutants, 5,552 killed, 0 survived, none marked
-  equivalent, with the signer's staged fixed-work self-check, on main at
-  `944651321f`. The count includes the signer's and the self-verifier's
+- **Mutation:** 5,564 mutants, 5,564 killed, 0 survived, none marked
+  equivalent, with the signer's staged fixed-work self-check and message
+  binding, on main at `84f1cb2222`. An earlier run before the binding fix
+  killed 5,552 of 5,552. The count includes the signer's and the self-verifier's
   mutants, because `coax mutate` mutates every `#authority` file a unit
   loads. It ran as 120 shards on the Mac, merged. The first version killed
-  5,194 of 5,194. Checks: 326 of 326.
+  5,194 of 5,194. Checks: 330 of 330.
 - **Round trips:** `coax/tests/nostr/schnorr_sign.py --round-trips 10000`
   (230 s) signed 10,000 random events in the release build. Each had a fresh
   random key, and between them they cover:

@@ -23,6 +23,15 @@ ssv's final mask, with the three validity bits, decides publication. (Until
 2026-10-30 this was one call to `schnorr_fast_verify_vartime` at
 `0cc86015e7`.)
 
+Stage 1 records a SHA-256 digest of the message its nonce came from. Stage
+2, the scalar equation, refuses and clears unless the message has the same
+digest. Later stages need no extra check: the self-check verifies against
+each call's message, so a message changed after stage 2 fails it. One nonce over two messages would reveal the key, so this closes the
+medium finding of the 2026-10-30 independent review
+(`2026-10-29-schnorr-self-verify.md`). The final stage always runs the
+self-check's last step before it reads the validity bits, so a refusal does
+the same work as a publication.
+
 Staging keeps every check under `coax mutate`'s 20M-step cap. One whole
 signature through the fixed-work check is about 30.4M interpreter steps, so
 the checks for stages 5 and 6 start from recorded states, as
@@ -33,14 +42,16 @@ below.
 
 ## Evidence
 
-- **Checks:** 252 of 252 pass, including the loaded suites. Earlier count, at `0cc86015e7`: 216 of 216 pass (`coax test coax/lib/crypto/schnorr_sign.coax
+- **Checks:** 256 of 256 pass, including the loaded suites. Earlier count, at `0cc86015e7`: 216 of 216 pass (`coax test coax/lib/crypto/schnorr_sign.coax
   --run-steps 250000000`, 34 s). Vectors 0–3 are checked stage by stage
   against independent pure-Python intermediates
   (`coax/tests/nostr/schnorr_sign_vectors.py`). The checks also cover a zero
   key, the group order as a key, an even key, an even nonce point, and refusal
   clearing the workspace.
-- **Mutation:** 3,742 mutants, 3,742 killed, 0 survived, none marked
-  equivalent, with the staged self-check on main at `944651321f`. It ran as
+- **Mutation:** 3,754 mutants, 3,754 killed, 0 survived, none marked
+  equivalent, with the staged self-check and the message binding, on main at
+  `84f1cb2222`. The staged self-check before the binding fix killed 3,742
+  of 3,742 at `944651321f`. It ran as
   80 shards on the Mac (`--run-steps 250000000 --jobs 1`), merged. The
   earlier single-call version killed 3,384 of 3,384.
 - **Native and Wasm:** `coax/tests/nostr/schnorr_sign.py` drives the signer

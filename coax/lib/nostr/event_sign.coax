@@ -52,7 +52,7 @@ EVENT_REFUSED :: -1; EVENT_MORE :: 0;
 }
 #test "stage three stays while the signature needs more calls" {
   key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
-  v:=SIGN_VECTORS[1];work[0].stage=2;work[0].id=v.message;
+  v:=SIGN_VECTORS[1];work[0].stage=2;work[0].id=v.message;ss_bind(work[0].id[..],work[0].sign[..]);
   work[0].sign[0].stage=2;work[0].sign[0].prep[0].public_key=v.pub;work[0].sign[0].prep[0].point[0].odd=v.key_odd;
   work[0].sign[0].nonce[0].hash=v.hash;work[0].sign[0].nonce[0].r=v.r;work[0].sign[0].nonce[0].point[0].odd=v.nonce_odd;
   #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==EVENT_MORE;
