@@ -14,13 +14,28 @@ challenge, relay, time, kind, tags, signature, id), writes refused until
 AUTH, kind 22242 never stored or delivered, and a new challenge after a
 reconnect. Tooling only; nothing here ships. Never points at a public relay.
 
+With --tls every session above runs over wss:// (and NIP-11 over https://)
+against the relay started with --tls-cert/--tls-key, with a one-day test CA
+and leaf that openssl generates into the temp dir (none is committed); NIP-42
+answers then name wss://127.0.0.1:PORT. It adds the TLS cases: the key file's
+mode, a mismatched key and a ws:// --url refused at start; a client that
+trusts another CA, or expects another name, refuses the relay; a plaintext
+client on the TLS port is closed without an answer while others are served; a
+stalled handshake does not hold up another client and is closed after the
+host's handshake limit; and with --client EXE (coax/tests/net/tls.sh builds
+relay_tls_client.coax) the Coax client transport relay_conn talks to it, and
+refuses it when it trusts another CA.
+
   python3 coax/tests/nostr/relay_session.py      # COAX=..., BUN=..., NOBLE=... override
+  python3 coax/tests/nostr/relay_session.py --tls [--client EXE]
 """
 import base64
 import hashlib
 import json
 import os
+import shutil
 import socket
+import ssl
 import struct
 import subprocess
 import sys
@@ -33,6 +48,9 @@ ROOT = HERE.parents[2]
 NOBLE = os.environ.get('NOBLE', '/home/christopherdavid/oa-board/coax/web/project/node_modules')
 BUN = os.environ.get('BUN', 'bun')
 failures = []
+SCHEME = 'ws'       # 'wss' with --tls
+TLS_CTX = None      # the client context that trusts the test CA, with --tls
+TLS_ARGS = []       # --tls-cert/--tls-key for start()
 
 
 def check(ok, what):
@@ -51,9 +69,15 @@ def sign(templates, label=None):
     return [json.loads(l) for l in out.stdout.splitlines() if l.strip()]
 
 
+def connect(port, ctx=None, name='localhost'):
+    s = socket.create_connection(('127.0.0.1', port), timeout=5)
+    ctx = ctx or TLS_CTX
+    return ctx.wrap_socket(s, server_hostname=name) if ctx else s
+
+
 class Ws:
     def __init__(self, port):
-        self.s = socket.create_connection(('127.0.0.1', port), timeout=5)
+        self.s = connect(port)
         key = base64.b64encode(os.urandom(16)).decode()
         self.s.sendall(('GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
                         'Sec-WebSocket-Key: %s\r\nSec-WebSocket-Version: 13\r\n\r\n' % key).encode())
@@ -70,7 +94,7 @@ class Ws:
 
     def auth_event(self, **change):
         t = {"kind": 22242, "created_at": int(time.time()), "content": "",
-             "tags": [["relay", "ws://127.0.0.1:%d" % self.port], ["challenge", self.challenge]]}
+             "tags": [["relay", "%s://127.0.0.1:%d" % (SCHEME, self.port)], ["challenge", self.challenge]]}
         label = change.pop('label', None)
         t.update(change)
         return sign([t], label)[0]
@@ -80,7 +104,7 @@ class Ws:
         self.send(['AUTH', e])
         return self.recv()
 
-    def send_frame(self, op, payload):
+    def send_frame(self, op, payload, cut=None):
         mask = os.urandom(4)
         n = len(payload)
         head = bytes([0x80 | op])
@@ -90,7 +114,8 @@ class Ws:
             head += bytes([0x80 | 126]) + struct.pack('>H', n)
         else:
             head += bytes([0x80 | 127]) + struct.pack('>Q', n)
-        self.s.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload)))
+        data = head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(payload))
+        self.s.sendall(data if cut is None else data[:cut])
 
     def send(self, msg):
         self.send_frame(1, json.dumps(msg, separators=(',', ':')).encode())
@@ -113,7 +138,7 @@ class Ws:
                 if not chunk:
                     return None
                 self.buf += chunk
-        except (socket.timeout, ConnectionError):
+        except (socket.timeout, ConnectionError, ssl.SSLError):
             return None
 
     def recv(self, timeout=3.0):
@@ -136,7 +161,7 @@ class Ws:
 
 
 def start(exe, log, store=None):
-    args = [str(exe), '--listen', '127.0.0.1', '--port', '0'] + (['--store', str(store)] if store else [])
+    args = [str(exe), '--listen', '127.0.0.1', '--port', '0'] + (['--store', str(store)] if store else []) + TLS_ARGS
     p = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=log, text=True,
                          env={**os.environ, 'ASAN_OPTIONS': 'abort_on_error=0:halt_on_error=1:detect_leaks=0',
                               'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'})
@@ -277,9 +302,11 @@ def session(port, now):
     b.send(['REQ', 'exp', {'ids': [ev[12]['id']]}])
     got, _ = b.until_eose('exp')
     check(got == [], 'an expired event is no longer served')
-    a.send_frame(1, b'[' + b' ' * 131072 + b']')
+    # Only the header and 1 KiB: the relay refuses on the header, and writing
+    # the rest after its close would race the reset (EPIPE, seen over TLS).
+    a.send_frame(1, b'[' + b' ' * 131072 + b']', cut=1024)
     f = a.frame()
-    check(f is not None and f[0] == 8 and f[1][:2] == b'\x03\xf1', 'a 131074-byte frame: close 1009')
+    check(f is not None and f[0] == 8 and f[1][:2] == b'\x03\xf1', 'a 131074-byte frame: close 1009 on its header')
     b.send_frame(8, b'\x03\xe8')
     f = b.frame()
     check(f is not None and f[0] == 8, 'close 1000 is answered')
@@ -293,11 +320,11 @@ def nip42(port, a, b, first):
     a.send(['REQ', 'auth', {'kinds': [22242]}])
     check(a.until_eose('auth') == ([], ['EOSE', 'auth']), 'NIP-42: reading needs no AUTH')
     now = int(time.time())
-    url = "ws://127.0.0.1:%d" % port
+    url = "%s://127.0.0.1:%d" % (SCHEME, port)
     for what, e, text in [
             ('a wrong challenge', b.auth_event(tags=[["relay", url], ["challenge", a.challenge]]),
              'authentication challenge does not match'),
-            ('another relay', b.auth_event(tags=[["relay", "ws://127.0.0.1:%d" % (port + 1)], ["challenge", b.challenge]]),
+            ('another relay', b.auth_event(tags=[["relay", "%s://127.0.0.1:%d" % (SCHEME, port + 1)], ["challenge", b.challenge]]),
              'authentication relay URL does not match'),
             ('created 601 s ago', b.auth_event(created_at=now - 601),
              "the authentication event's timestamp is more than 10 minutes from the relay's clock"),
@@ -305,7 +332,7 @@ def nip42(port, a, b, first):
             ('two challenge tags', b.auth_event(tags=[["relay", url], ["challenge", b.challenge], ["challenge", b.challenge]]),
              'authentication event must have exactly one relay tag and one challenge tag')]:
         check(b.auth(e) == ['OK', e['id'], False, 'invalid: ' + text], 'NIP-42: AUTH with %s is refused' % what)
-    good = b.auth_event(tags=[["relay", "WS://127.0.0.1:%d/" % port], ["challenge", b.challenge]])
+    good = b.auth_event(tags=[["relay", "%s://127.0.0.1:%d/" % (SCHEME.upper(), port)], ["challenge", b.challenge]])
     bad = dict(good); bad['sig'] = ('0' if bad['sig'][0] != '0' else '1') + bad['sig'][1:]
     check(b.auth(bad) == ['OK', bad['id'], False, 'invalid: bad signature'], 'NIP-42: AUTH with a bad signature is refused')
     forged = dict(good); forged['content'] = 'x'
@@ -329,7 +356,7 @@ def nip42(port, a, b, first):
 
 
 def nip11(port):
-    s = socket.create_connection(('127.0.0.1', port), timeout=5)
+    s = connect(port)
     s.sendall(b'GET / HTTP/1.1\r\nHost: x\r\nAccept: application/nostr+json\r\n\r\n')
     data = b''
     while True:
@@ -346,9 +373,126 @@ def nip11(port):
     check(lim['auth_required'] is False and lim['restricted_writes'] is True, 'NIP-11: reads open, writes need AUTH')
 
 
+def certs(d):
+    """A one-day test CA, a CA nobody trusts, and a leaf for localhost and
+    127.0.0.1 from the test CA, in d, plus a second key. Key files are 0600."""
+    def run(*args):
+        subprocess.run(['openssl', *args], check=True, capture_output=True)
+    for ca in ('ca', 'rogue'):
+        run('req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '1',
+            '-keyout', str(d / (ca + '.key')), '-out', str(d / (ca + '.pem')), '-subj', '/CN=Coax relay TLS test ' + ca,
+            '-addext', 'basicConstraints=critical,CA:TRUE', '-addext', 'keyUsage=critical,keyCertSign,cRLSign')
+    for leaf in ('leaf', 'other'):
+        run('req', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',
+            '-keyout', str(d / (leaf + '.key')), '-out', str(d / (leaf + '.csr')), '-subj', '/CN=localhost')
+    (d / 'leaf.ext').write_text('subjectAltName=DNS:localhost,IP:127.0.0.1\nbasicConstraints=critical,CA:FALSE\n'
+                                'keyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n')
+    run('x509', '-req', '-in', str(d / 'leaf.csr'), '-CA', str(d / 'ca.pem'), '-CAkey', str(d / 'ca.key'),
+        '-set_serial', '0x' + os.urandom(8).hex(), '-days', '1', '-extfile', str(d / 'leaf.ext'), '-out', str(d / 'leaf.pem'))
+    for k in d.glob('*.key'):
+        k.chmod(0o600)
+
+
+def refused_start(exe, args, what, want):
+    """The relay must refuse to start with args, saying want, printing no key."""
+    p = subprocess.run([str(exe), '--listen', '127.0.0.1', '--port', '0', *args], capture_output=True, text=True, timeout=30,
+                       env={**os.environ, 'ASAN_OPTIONS': 'detect_leaks=0'})
+    out = p.stdout + p.stderr
+    # The C host exits 2; a URL the Coax side refuses ends main without listening.
+    check(want in out and 'PRIVATE KEY' not in out and 'listening' not in out,
+          'TLS: %s refused at start (%r)' % (what, out.strip()[:120]))
+
+
+def closed_within(s, seconds):
+    """True when the relay closes s (EOF or reset, nothing sent) within seconds."""
+    s.settimeout(seconds)
+    try:
+        return s.recv(4096) == b''
+    except ConnectionError:
+        return True
+    except socket.timeout:
+        return False
+
+
+def tls_cases(exe, d, log, store, client):
+    key0 = d / 'open.key'
+    shutil.copy(d / 'leaf.key', key0); key0.chmod(0o644)
+    refused_start(exe, ['--tls-cert', str(d / 'leaf.pem'), '--tls-key', str(key0)], 'a group- or world-readable key (0644)', '0600')
+    (d / 'link.key').symlink_to(d / 'leaf.key')
+    refused_start(exe, ['--tls-cert', str(d / 'leaf.pem'), '--tls-key', str(d / 'link.key')], 'a key path that is a symbolic link', '0600')
+    refused_start(exe, ['--tls-cert', str(d / 'leaf.pem'), '--tls-key', str(d / 'other.key')], "a key that is not the certificate's", "certificate's key")
+    refused_start(exe, ['--tls-cert', str(d / 'leaf.pem')], 'a certificate without a key', 'go together')
+    refused_start(exe, TLS_ARGS + ['--url', 'ws://127.0.0.1:7447'], 'a ws:// --url on a TLS relay', 'wss://')
+    p, port = start(exe, log, store)
+    try:
+        rogue = ssl.create_default_context(cafile=str(d / 'rogue.pem'))
+        try:
+            connect(port, rogue).close(); ok = False
+        except ssl.SSLCertVerificationError:
+            ok = True
+        check(ok, 'TLS: a client that trusts another CA refuses the relay (certificate verify failed)')
+        try:
+            connect(port, name='other.test').close(); ok = False
+        except ssl.SSLCertVerificationError:
+            ok = True
+        check(ok, 'TLS: a client that expects another name refuses the relay (hostname mismatch)')
+        # A plaintext WebSocket client on the TLS port: closed, no HTTP answer.
+        plain = socket.create_connection(('127.0.0.1', port), timeout=5)
+        plain.sendall(b'GET / HTTP/1.1\r\nHost: 127.0.0.1\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n'
+                      b'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\r\nSec-WebSocket-Version: 13\r\n\r\n')
+        check(closed_within(plain, 3), 'TLS: a plaintext client on the TLS port is closed without an answer')
+        plain.close()
+        # Two stalled handshakes: one sends nothing, one the first bytes of a ClientHello.
+        t0 = time.monotonic()
+        quiet = socket.create_connection(('127.0.0.1', port), timeout=5)
+        part = socket.create_connection(('127.0.0.1', port), timeout=5)
+        part.sendall(b'\x16\x03\x01\x02\x00\x01\x00\x01\xfc\x03')
+        time.sleep(0.2)
+        t1 = time.monotonic()
+        w = Ws(port)
+        w.send(['REQ', 'k1', {'kinds': [1]}])
+        k1, end = w.until_eose('k1')
+        took = time.monotonic() - t1
+        check(w.ok and bool(w.challenge) and end == ['EOSE', 'k1'] and took < 2.0,
+              'TLS: with two stalled handshakes open, another client connects, gets its challenge and REQ to EOSE in %.2f s' % took)
+        w.close()
+        q, r = closed_within(quiet, 14), closed_within(part, 2)
+        gone = time.monotonic() - t0
+        check(q and r and 9.0 <= gone <= 14.0, 'TLS: the stalled handshakes are closed after the 10 s handshake limit (%.1f s)' % gone)
+        quiet.close(); part.close()
+        w = Ws(port)
+        w.send(['REQ', 'after', {'kinds': [1]}])
+        again, end = w.until_eose('after')
+        check(end == ['EOSE', 'after'] and again == k1, 'TLS: the relay still serves after the refused and timed-out connections')
+        w.close()
+        if client:
+            env = {**os.environ, 'RX_PORT': str(port), 'CXTLS_TEST_CA': str(d / 'ca.pem'),
+                   'ASAN_OPTIONS': 'detect_leaks=1:abort_on_error=1', 'UBSAN_OPTIONS': 'print_stacktrace=1:halt_on_error=1'}
+            out = subprocess.run([str(client)], capture_output=True, text=True, timeout=60, env=env)
+            want = 'relay tls client: challenge 1 events %d eose 1 close 1' % len(k1)
+            check(out.returncode == 0 and want in out.stdout and len(k1) > 0,
+                  'TLS: the Coax client (relay_conn) over wss://: challenge, %d stored kind 1 events, EOSE, close 1000 (%r)'
+                  % (len(k1), (out.stdout + out.stderr).strip()[-200:]))
+            env['CXTLS_TEST_CA'] = str(d / 'rogue.pem')
+            out = subprocess.run([str(client)], capture_output=True, text=True, timeout=60, env=env)
+            check(out.returncode == 0 and 'relay tls client: refused' in out.stdout,
+                  'TLS: the Coax client refuses the relay when it trusts another CA (%r)' % (out.stdout + out.stderr).strip()[-200:])
+    finally:
+        p.terminate(); p.wait(10)
+
+
 def main():
+    global SCHEME, TLS_CTX, TLS_ARGS
+    args = sys.argv[1:]
+    tls = '--tls' in args
+    client = Path(args[args.index('--client') + 1]).resolve() if '--client' in args else None
     with tempfile.TemporaryDirectory(prefix='coax-relay-session-') as tmp:
         d = Path(tmp)
+        if tls:
+            certs(d)
+            SCHEME = 'wss'
+            TLS_CTX = ssl.create_default_context(cafile=str(d / 'ca.pem'))
+            TLS_ARGS = ['--tls-cert', str(d / 'leaf.pem'), '--tls-key', str(d / 'leaf.key')]
         exe = d / 'relay'
         t0 = time.monotonic()
         subprocess.run([str(ROOT / 'coax/relay/build.sh'), str(exe), '--sanitize'], check=True, stdout=subprocess.DEVNULL)
@@ -384,6 +528,8 @@ def main():
                 w.close()
             finally:
                 p.terminate(); p.wait(10)
+            if tls:
+                tls_cases(exe, d, log, store, client)
         err = (d / 'relay.err').read_text()
         check('runtime error' not in err and 'AddressSanitizer' not in err, 'no sanitizer report')
         if err.strip():

@@ -20,7 +20,17 @@ extern "C" {
    through cxsrv_byte(h, i) until the next read, 0 when nothing is ready,
    CXSRV_EOF or CXSRV_ERROR. cxsrv_write buffers a byte (CXSRV_FULL past
    CXSRV_MAX_OUT); cxsrv_flush(h, timeout_ms) sends every buffered byte or
-   fails. cxsrv_close releases the handle. SIGPIPE is ignored. */
+   fails. cxsrv_close releases the handle. SIGPIPE is ignored.
+
+   cxsrv_set_tls(1), after tls-native.c's cxtls_server_load, makes every
+   accepted connection TLS (wss:// and https://). Nothing above changes for
+   the caller: reads and writes are plaintext. The handshake runs inside
+   cxsrv_read without blocking (0 while it waits, so a stalled client never
+   holds up the others); a client that is not TLS, offers nothing at TLS 1.2
+   or above, or does not finish within CXSRV_TLS_HANDSHAKE_MS gets
+   CXSRV_ERROR on that handle only. cxsrv_poll returns at once while
+   decrypted bytes wait inside TLS. Link tls-native.c and socket-native.c
+   with the flags from coax/platform/tls-env.sh. */
 #define CXSRV_NONE (0)
 #define CXSRV_EOF (-1)
 #define CXSRV_ERROR (-3)
@@ -28,7 +38,9 @@ extern "C" {
 #define CXSRV_MAX (32)
 #define CXSRV_MAX_IN (65536)
 #define CXSRV_MAX_OUT (4194304)
+#define CXSRV_TLS_HANDSHAKE_MS (10000)
 void cxsrv_set_address(const char *address);
+void cxsrv_set_tls(int on);
 int64_t cxsrv_listen(int64_t port);
 int64_t cxsrv_bound_port(void);
 int64_t cxsrv_poll(int64_t timeout_ms);

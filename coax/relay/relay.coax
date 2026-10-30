@@ -9,8 +9,11 @@
 // --store FILE every stored original is appended to FILE and synced before
 // it is stored, and a restart replays FILE, verifying every event again.
 // Without --store the store is in memory only. Not trusted recovery (#966b):
-// an older copy of FILE replays as an older store. TLS: none here (ws:// only); put it
-// behind a TLS proxy or add tls-native's server mode later.
+// an older copy of FILE replays as an older store. TLS: with --tls-cert and
+// --tls-key the host makes every connection TLS (tls-native.c's server mode,
+// under socket-server-native.c), so this file reads and writes the same
+// plaintext bytes; only the default relay URL's scheme (wss://) and the
+// check that --url agrees with it change here.
 //
 // Routing (which reply goes to which connection and subscription) is
 // relay_route.coax's (#authority); this file moves bytes and calls it.
@@ -57,6 +60,7 @@ ry_host_address_count :: () -> int #foreign;
 ry_host_address_byte :: (i: int) -> int #foreign;
 ry_host_random :: () -> int #foreign;
 ry_host_store :: () -> int #foreign;
+ry_host_tls :: () -> int #foreign;
 
 RY_CONNS :: 16; RY_IN :: 147456; RY_OUT :: 140000; RY_IO_MS :: 2000;
 RY_SENT :: 2032;   // 16 filters x 127 events
@@ -267,15 +271,30 @@ ry_serve :: (conns: [] RyConn, w: [] RyWork, store: [] RsdStore) {
     }
   }
 }
-// The relay URL NIP-42 answers must name: --url, or ws://ADDRESS:PORT.
+// True when url's scheme is wss (any case), the scheme a TLS relay's URL must have.
+ry_url_wss :: (url: string) -> bool {
+  if url.count < 6 { return false; }
+  want := "wss://";
+  for i: 0..<6 {
+    b := url[i];
+    if b >= 'A' && b <= 'Z' { b = b + 32; }
+    if b != want[i] { return false; }
+  }
+  return true;
+}
+// The relay URL NIP-42 answers must name: --url, or ws://ADDRESS:PORT
+// (wss:// with TLS). A TLS relay refuses a --url that is not wss://, and a
+// plain one a --url that is.
 ry_url :: (port: int, out: [] u8) -> int {
   k := 0;
+  tls := ry_host_tls() == 1;
   if ry_host_url_count() > 0 {
     if ry_host_url_count() > out.count { return -1; }
     for i: 0..<ry_host_url_count() { out[i] = cast(u8) ry_host_url_byte(i); }
+    if ry_url_wss(cast(string) out[0..<ry_host_url_count()]) != tls { return -1; }
     return ry_host_url_count();
   }
-  pre := "ws://";
+  pre := ifx tls then "wss://" else "ws://";
   if pre.count + ry_host_address_count() + 7 > out.count { return -1; }
   for i: 0..<pre.count { out[k] = pre[i]; k += 1; }
   for i: 0..<ry_host_address_count() { out[k] = cast(u8) ry_host_address_byte(i); k += 1; }
@@ -291,7 +310,7 @@ main :: () {
   w: [1] RyWork;
   url: [512] u8; u := ry_url(cxsrv_bound_port(), url[..]);
   if u < 0 || nip42_init(w[0].n42[..], cast(string) url[0..<u]) != N42_OK {
-    print("relay: NIP-42 needs a ws:// or wss:// relay URL without brackets: pass --url\n"); return;
+    print("relay: NIP-42 needs a ws:// (wss:// with TLS) relay URL without brackets: pass --url\n"); return;
   }
   arena: [RSD_ARENA] u8; recs: [RSD_MAX] RsdRec;
   store: [1] RsdStore; store[0].arena = arena[..]; store[0].recs = recs[..];

@@ -1,4 +1,5 @@
-/* TLS client streams for Coax; see tls-native.h for the contract. */
+/* TLS client streams for Coax, and the server mode for C hosts; see
+   tls-native.h for the contract. */
 #define _POSIX_C_SOURCE 200809L
 #define _DARWIN_C_SOURCE 1
 #include "tls-native.h"
@@ -8,11 +9,24 @@
 
 #if defined(__APPLE__)
 #include "tls-apple.inc"
+/* Server mode is not written for Network.framework yet (nw_listener). */
+int64_t cxtls_server_load(const char *cert_path, const char *key_path) { (void)cert_path; (void)key_path; return CXTLS_UNSUPPORTED; }
+cxtls_server *cxtls_server_new(int fd) { (void)fd; return NULL; }
+int64_t cxtls_server_handshake(cxtls_server *s) { (void)s; return CXTLS_UNSUPPORTED; }
+int cxtls_server_want(cxtls_server *s) { (void)s; return 0; }
+int64_t cxtls_server_read(cxtls_server *s, unsigned char *buf, int64_t cap) { (void)s; (void)buf; (void)cap; return CXTLS_UNSUPPORTED; }
+int64_t cxtls_server_pending(cxtls_server *s) { (void)s; return 0; }
+int64_t cxtls_server_write(cxtls_server *s, const unsigned char *buf, int64_t n, int64_t deadline_ms) { (void)s; (void)buf; (void)n; (void)deadline_ms; return CXTLS_UNSUPPORTED; }
+void cxtls_server_free(cxtls_server *s) { (void)s; }
 #else
 
 #include <errno.h>
+#include <fcntl.h>
 #include <poll.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <openssl/err.h>
+#include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/x509v3.h>
 
@@ -235,5 +249,142 @@ int64_t cxtls_close(int64_t h) {
   s->ssl = NULL; s->fd = -1; s->in_count = 0; s->out_count = 0;
   free(s->out); s->out = NULL;
   return cxsock_close(h);
+}
+/* ---- Server mode (C hosts only; see tls-native.h). ---- */
+
+struct cxtls_server {
+  SSL *ssl;
+  int want;               /* POLLIN or POLLOUT: what the last call waits for */
+};
+static SSL_CTX *cxtls_server_ctx = NULL;
+
+/* The private key, read only from a regular file this user owns with no
+   group or other bits, opened without following a link and checked on the
+   open descriptor (no window between the check and the read). */
+static EVP_PKEY *cxtls_server_key(const char *path, int64_t *why) {
+  *why = CXTLS_KEY;
+  int fd = open(path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NOCTTY);
+  if (fd < 0) { if (errno == ELOOP) *why = CXTLS_KEY_MODE; return NULL; }
+  struct stat st;
+  if (fstat(fd, &st) != 0 || !S_ISREG(st.st_mode) || st.st_uid != geteuid() || (st.st_mode & 077) != 0) {
+    close(fd); *why = CXTLS_KEY_MODE; return NULL;
+  }
+  BIO *b = BIO_new_fd(fd, BIO_CLOSE);
+  if (b == NULL) { close(fd); return NULL; }
+  EVP_PKEY *k = PEM_read_bio_PrivateKey(b, NULL, NULL, NULL);
+  BIO_free(b);
+  return k;
+}
+
+int64_t cxtls_server_load(const char *cert_path, const char *key_path) {
+  if (cxtls_server_ctx != NULL || cert_path == NULL || key_path == NULL) return CXTLS_ERROR;
+  ERR_clear_error();
+  int64_t why = 0;
+  EVP_PKEY *key = cxtls_server_key(key_path, &why);
+  if (key == NULL) { ERR_clear_error(); return why; }
+  SSL_CTX *c = SSL_CTX_new(TLS_server_method());
+  if (c == NULL) { EVP_PKEY_free(key); ERR_clear_error(); return CXTLS_ERROR; }
+  int64_t result = 0;
+  if (SSL_CTX_set_min_proto_version(c, TLS1_2_VERSION) != 1) result = CXTLS_ERROR;
+  SSL_CTX_set_options(c, SSL_OP_NO_COMPRESSION | SSL_OP_NO_RENEGOTIATION | SSL_OP_CIPHER_SERVER_PREFERENCE);
+  SSL_CTX_set_mode(c, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+  SSL_CTX_set_verify(c, SSL_VERIFY_NONE, NULL);
+  if (result == 0 && SSL_CTX_use_certificate_chain_file(c, cert_path) != 1) result = CXTLS_CERT;
+  if (result == 0 && SSL_CTX_use_PrivateKey(c, key) != 1) result = CXTLS_KEY;
+  if (result == 0 && SSL_CTX_check_private_key(c) != 1) result = CXTLS_KEY;
+  EVP_PKEY_free(key);   /* the context holds its own reference */
+  ERR_clear_error();
+  if (result != 0) { SSL_CTX_free(c); return result; }
+  cxtls_server_ctx = c;
+  return 0;
+}
+
+cxtls_server *cxtls_server_new(int fd) {
+  if (cxtls_server_ctx == NULL || fd < 0) return NULL;
+  cxtls_server *s = (cxtls_server *)calloc(1, sizeof *s);
+  if (s == NULL) return NULL;
+  s->ssl = SSL_new(cxtls_server_ctx);
+  if (s->ssl == NULL || SSL_set_fd(s->ssl, fd) != 1) {
+    SSL_free(s->ssl); free(s); ERR_clear_error(); return NULL;
+  }
+  SSL_set_accept_state(s->ssl);
+  s->want = POLLIN;
+  return s;
+}
+
+int64_t cxtls_server_handshake(cxtls_server *s) {
+  if (s == NULL) return CXTLS_ERROR;
+  if (SSL_is_init_finished(s->ssl)) return 1;
+  ERR_clear_error();
+  int r = SSL_do_handshake(s->ssl);
+  if (r == 1) {
+    s->want = POLLIN;
+    ERR_clear_error();
+    return SSL_version(s->ssl) < TLS1_2_VERSION ? CXTLS_VERSION : 1;
+  }
+  int err = SSL_get_error(s->ssl, r);
+  if (err == SSL_ERROR_WANT_READ) { s->want = POLLIN; return 0; }
+  if (err == SSL_ERROR_WANT_WRITE) { s->want = POLLOUT; return 0; }
+  int64_t result = CXTLS_HANDSHAKE;
+  if (err == SSL_ERROR_SSL) {
+    unsigned long e;
+    while ((e = ERR_get_error()) != 0) {
+      if (ERR_GET_LIB(e) != ERR_LIB_SSL) continue;
+      int reason = ERR_GET_REASON(e);
+      if (reason == SSL_R_UNSUPPORTED_PROTOCOL || reason == SSL_R_NO_PROTOCOLS_AVAILABLE ||
+          reason == SSL_R_VERSION_TOO_LOW) result = CXTLS_VERSION;
+    }
+  }
+  ERR_clear_error();
+  return result;
+}
+
+int cxtls_server_want(cxtls_server *s) { return s == NULL ? 0 : s->want; }
+
+int64_t cxtls_server_read(cxtls_server *s, unsigned char *buf, int64_t cap) {
+  if (s == NULL || buf == NULL || cap <= 0 || !SSL_is_init_finished(s->ssl)) return CXTLS_ERROR;
+  ERR_clear_error();
+  size_t n = 0;
+  int r = SSL_read_ex(s->ssl, buf, (size_t)cap, &n);
+  if (r == 1) { s->want = POLLIN; return (int64_t)n; }
+  int err = SSL_get_error(s->ssl, r);
+  ERR_clear_error();
+  if (err == SSL_ERROR_WANT_READ) { s->want = POLLIN; return 0; }
+  if (err == SSL_ERROR_WANT_WRITE) { s->want = POLLOUT; return 0; }
+  if (err == SSL_ERROR_ZERO_RETURN) return CXTLS_EOF;
+  return CXTLS_ERROR;
+}
+
+int64_t cxtls_server_pending(cxtls_server *s) {
+  return s != NULL && SSL_is_init_finished(s->ssl) && SSL_has_pending(s->ssl) ? 1 : 0;
+}
+
+int64_t cxtls_server_write(cxtls_server *s, const unsigned char *buf, int64_t n, int64_t deadline_ms) {
+  if (s == NULL || n < 0 || (n > 0 && buf == NULL) || !SSL_is_init_finished(s->ssl)) return CXTLS_ERROR;
+  int fd = SSL_get_fd(s->ssl);
+  int64_t at = 0;
+  ERR_clear_error();
+  while (at < n) {
+    size_t w = 0;
+    int r = SSL_write_ex(s->ssl, buf + at, (size_t)(n - at), &w);
+    if (r == 1) { at += (int64_t)w; continue; }
+    int err = SSL_get_error(s->ssl, r);
+    if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_WRITE) {
+      int64_t wait = cxtls_wait(fd, err, deadline_ms < 0 ? 0 : deadline_ms);
+      if (wait != 0) { ERR_clear_error(); return wait; }
+      continue;
+    }
+    ERR_clear_error();
+    return CXTLS_ERROR;
+  }
+  return 0;
+}
+
+void cxtls_server_free(cxtls_server *s) {
+  if (s == NULL) return;
+  if (SSL_is_init_finished(s->ssl)) SSL_shutdown(s->ssl);   /* one nonblocking close_notify */
+  SSL_free(s->ssl);
+  ERR_clear_error();
+  free(s);
 }
 #endif

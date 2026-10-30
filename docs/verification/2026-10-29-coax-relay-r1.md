@@ -173,6 +173,7 @@ the "below 128" form.
   `relay_route.coax` (`#authority`, second part below).
 - **TLS.** None. ws:// only, on 127.0.0.1 or a tailnet literal. Use
   tls-native's server mode later or a TLS proxy.
+  Update 2026-10-30: done, `--tls-cert`/`--tls-key` serve wss:// through tls-native.c's server mode: [2026-10-30-coax-relay-r1-tls.md](2026-10-30-coax-relay-r1-tls.md).
 
 ## Second part: NIP-42 and the routing unit (claude-relay-r1b)
 

@@ -1,0 +1,63 @@
+// The Coax client relay machine's transport (relay_conn.coax) against the
+// Coax relay over wss:// (coax/relay with --tls-cert/--tls-key), started by
+// coax/tests/nostr/relay_session.py --tls, which builds this file through
+// coax/tests/net/tls.sh with ASan, UBSan and -DCXTLS_TEST_TRUST (it trusts
+// only $CXTLS_TEST_CA). The relay is wss://localhost:$RX_PORT.
+// The script: open (TCP, TLS with the chain and the name verified, the
+// opening handshake), read the relay's NIP-42 challenge, REQ kind 1, count
+// the stored events until EOSE, and close with 1000. It prints one line the
+// session reads: "relay tls client: refused" when the open failed (a wrong
+// CA must give that), or "relay tls client: challenge C events N eose E
+// close K".
+#import "Basic";
+#load "../../lib/net/relay_conn.coax";
+#load "../../lib/crypto/entropy.coax";
+
+cxproc_getenv_push :: (byte: int) -> int #foreign;
+cxproc_getenv :: () -> int #foreign;
+cxproc_getenv_byte :: (i: int) -> int #foreign;
+
+rt_env_int :: (name: string) -> int {
+  for c: name { r := cxproc_getenv_push(cast(int) c); }
+  n := cxproc_getenv();
+  if n < 1 || n > 9 { return -1; }
+  v := 0;
+  for i: 0..<n {
+    d := cxproc_getenv_byte(i) - cast(int) '0';
+    if d < 0 || d > 9 { return -1; }
+    v = v * 10 + d;
+  }
+  return v;
+}
+// True when text starts with prefix.
+rt_starts :: (text: string, prefix: string) -> bool {
+  if text.count < prefix.count { return false; }
+  for i: 0..<prefix.count { if text[i] != prefix[i] { return false; } }
+  return true;
+}
+
+main :: () {
+  port := rt_env_int("RX_PORT");
+  if port < 1 || port > 65535 { print("relay tls client: set RX_PORT\n"); return; }
+  url: [40] u8; pre := "wss://localhost:";
+  for i: 0..<pre.count { url[i] = pre[i]; }
+  n := ws_digits(url[..], pre.count, port);
+  c: [1] RelayConn;
+  if n < 0 || !relay_conn_open(c[..], cast(string) url[0..<n]) { print("relay tls client: refused\n"); return; }
+  challenge := 0; events := 0; eose := 0;
+  // The challenge comes first: ["AUTH","<64 hex>"], 75 bytes.
+  if relay_conn_poll(c[..], 3000) == RC_TEXT {
+    t := cast(string) c[0].text[0..<c[0].text_n];
+    if t.count == 75 && rt_starts(t, "[\"AUTH\",\"") { challenge = 1; }
+  }
+  if relay_conn_send(c[..], "[\"REQ\",\"coax-tls\",{\"kinds\":[1]}]") {
+    while eose == 0 {
+      if relay_conn_poll(c[..], 3000) != RC_TEXT { break; }
+      t := cast(string) c[0].text[0..<c[0].text_n];
+      if rt_starts(t, "[\"EVENT\",\"coax-tls\",") { events += 1; }
+      else if t == "[\"EOSE\",\"coax-tls\"]" { eose = 1; }
+    }
+  }
+  closed := ifx relay_conn_close(c[..], WS_CLOSE_NORMAL) && c[0].close_code == WS_CLOSE_NORMAL then 1 else 0;
+  print("relay tls client: challenge % events % eose % close %\n", challenge, events, eose, closed);
+}

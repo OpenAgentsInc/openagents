@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-/* TLS client streams for Coax over socket-native handles, through #foreign
+/* TLS client streams for Coax (and a server mode for C hosts, below) over socket-native handles, through #foreign
    scalars only. Owner exception 2026-10-29 (AGENTS.md, Rules): this file
    does the TLS handshake, certificate verification and record encryption
    and nothing else. Whether a URL needs TLS, which host and port, and every
@@ -90,6 +90,52 @@ int64_t cxtls_read(int64_t h, int64_t timeout_ms);
 int64_t cxtls_byte(int64_t h, int64_t i);
 int64_t cxtls_version(int64_t h);
 int64_t cxtls_close(int64_t h);
+
+/* Server mode, for C hosts only (coax/platform/socket-server-native.c, the
+   relay's listener); these take pointers and are not #foreign imports. The
+   same owner exception and the same rule: the TLS handshake and record
+   encryption only. What the plaintext bytes mean (HTTP, WebSocket, Nostr,
+   NIP-42) stays in Coax, which reads them through cxsrv_* unchanged.
+
+   cxtls_server_load(cert, key) loads a PEM certificate chain and its PEM
+   private key once per process. The key file must be a regular file owned
+   by this user with no group or other permission bits (0600 or 0400) and is
+   opened without following a symbolic link; otherwise it returns
+   CXTLS_KEY_MODE and loads nothing. It returns CXTLS_KEY (unreadable or not
+   the certificate's key), CXTLS_CERT (unreadable certificate) or 0. Nothing
+   it reports or logs contains key material. Policy, fixed: TLS 1.2 minimum
+   (1.3 preferred), no compression, no renegotiation, no client
+   certificates.
+
+   cxtls_server_new(fd) wraps an accepted nonblocking socket (the caller
+   still owns fd and closes it after cxtls_server_free). Each call below
+   returns at once and never waits on the peer, so one stalled client never
+   blocks the others: cxtls_server_handshake returns 1 when the handshake is
+   done, 0 while it waits for the peer, or CXTLS_HANDSHAKE / CXTLS_VERSION
+   (the peer is not TLS, offers nothing at 1.2 or above, or failed).
+   cxtls_server_want(s) says what the pending call waits for (POLLIN or
+   POLLOUT bits, for poll). cxtls_server_read(s, buf, cap) returns the count
+   of plaintext bytes, 0 when none are ready, CXTLS_EOF (close_notify) or
+   CXTLS_ERROR (including a TCP close without close_notify).
+   cxtls_server_pending(s) is 1 when decrypted bytes wait inside TLS, so the
+   caller must read again before it polls. cxtls_server_write(s, buf, n,
+   deadline_ms) sends all n bytes by deadline (cxsock_now_ms scale) or
+   returns CXTLS_TIMEOUT / CXTLS_ERROR. cxtls_server_free(s) sends one
+   nonblocking close_notify after a finished handshake and frees s. Apple:
+   cxtls_server_load returns CXTLS_UNSUPPORTED (a Network.framework listener
+   is not written yet). */
+#define CXTLS_KEY_MODE (-13)
+#define CXTLS_KEY (-14)
+#define CXTLS_CERT (-15)
+typedef struct cxtls_server cxtls_server;
+int64_t cxtls_server_load(const char *cert_path, const char *key_path);
+cxtls_server *cxtls_server_new(int fd);
+int64_t cxtls_server_handshake(cxtls_server *s);
+int cxtls_server_want(cxtls_server *s);
+int64_t cxtls_server_read(cxtls_server *s, unsigned char *buf, int64_t cap);
+int64_t cxtls_server_pending(cxtls_server *s);
+int64_t cxtls_server_write(cxtls_server *s, const unsigned char *buf, int64_t n, int64_t deadline_ms);
+void cxtls_server_free(cxtls_server *s);
 #ifdef __cplusplus
 }
 #endif

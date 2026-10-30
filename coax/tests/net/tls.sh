@@ -139,6 +139,19 @@ for pair in "stream $port_stream" "eof $port_end" "truncate $port_truncate" "sta
   "$work/tls_stream" "$mode" "$port" || fail=1
 done
 
+# wss:// on the server side: the Coax relay (coax/relay, ASan/UBSan) with
+# --tls-cert/--tls-key runs every relay session over TLS
+# (relay_session.py --tls), plus the TLS refusals, a stalled handshake, and
+# the Coax client transport (relay_conn, relay_tls_client.coax) against it.
+"$coax" c "$repo/coax/lib/crypto/entropy.coax" --library --header "$work/entropy-policy.h" > /dev/null
+"$coax" c "$here/relay_tls_client.coax" > "$work/relay_tls_client.c"
+# shellcheck disable=SC2086
+"$cc" -std=c11 -g -O1 "${san[@]}" -DCXTLS_TEST_TRUST $CXTLS_CFLAGS -I"$work" -I"$repo/coax/platform" \
+  "$work/relay_tls_client.c" "$repo/coax/platform/socket-native.c" "$repo/coax/platform/tls-native.c" \
+  "$repo/coax/platform/entropy-native.c" "$repo/coax/platform/entropy-foreign.c" "$repo/coax/platform/process-native.c" \
+  -o "$work/relay_tls_client" $CXTLS_LIBS -lm
+COAX="$coax" python3 "$repo/coax/tests/nostr/relay_session.py" --tls --client "$work/relay_tls_client" || fail=1
+
 if [[ "${1:-}" == "--public" ]]; then
   CXTLS_TEST_CA= timeout 20 "$work/tls_prod" eose "${2:-wss://nos.lol}" || echo "NOTE public relay check failed (network policy or relay); not a local failure"
 fi
