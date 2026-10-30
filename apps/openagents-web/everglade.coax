@@ -69,6 +69,7 @@
 #load "everglade-watch.coax";
 #load "everglade-items.coax";
 #load "everglade-dress.coax";
+#load "everglade-hammer.coax";
 #load "../../verse/style-preset.coax";
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as the Garden's
@@ -399,6 +400,7 @@ Everglade :: struct {
   part_used: [PEOPLE_PARTS] int; shown_n: int; shown: [PEOPLE_SHOWN] int;
   answered: f32;                           // seconds since the one you talk to last said something
   ev: EditVoice;                           // an admin's voice edits and what's published over the plan (everglade-voice.coax)
+  hm: Hammer;                              // the sledgehammer (everglade-hammer.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
 }
@@ -554,6 +556,7 @@ everglade_afloat :: (s: [] Everglade) -> bool #export_c { return s[0].water >= W
 
 everglade_start :: (s: [] Everglade) {
   s[0].started = true;
+  s[0].hm.t = -1; s[0].hm.target = -1;
   s[0].clock = 0.5; s[0].day.mode = STYLE_CLOCK_FIXED; s[0].day.at = 0.5; s[0].day_from = 0;   // noon until the page says
   ok := everglade_build_ground(s[0].heights[..]);
   s[0].ground_gen += 1;
@@ -950,6 +953,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if (key == 'e' || key == 'E') && s[0].near_board && !s[0].above { open_board(s); return true; }
   if (key == 'e' || key == 'E') && s[0].near >= 0 && !s[0].above { talk_to(s, s[0].near); return true; }
   if (key == 'e' || key == 'E') && boat_prompt_on(s) { s[0].boat_ask = true; return true; }
+  if (key == 'e' || key == 'E') && hm_prompt_on(s) && !s[0].above { _ := hm_swing(s); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if key == 'm' || key == 'M' { s[0].above = !s[0].above; return true; }
@@ -1290,6 +1294,7 @@ talk_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
     else if s[0].talk < 0 && s[0].near_board && in_box(s[0].talk_button, x, y) { open_board(s); }
     else if s[0].talk < 0 && s[0].near >= 0 && in_box(s[0].talk_button, x, y) { talk_to(s, s[0].near); }
     else if boat_prompt_on(s) && in_box(s[0].talk_button, x, y) { s[0].boat_ask = true; }
+    else if hm_prompt_on(s) && in_box(s[0].talk_button, x, y) { _ := hm_swing(s); }
   }
   if phase >= 2 { s[0].talk_finger = -1; }
   return true;
@@ -2598,6 +2603,7 @@ figure :: (s: [] Everglade, u: [] f32, feet: Point, face: f32, speed: f32, airbo
   rig := ranger_rig(s[0].rig[..]);
   dead := s[0].wv.started && s[0].wt[0].dead;
   motion := ifx dead then SKIN_IDLE else skin_motion(speed, airborne);
+  if !dead && hm_swinging(s) { motion = SKIN_SWING; }   // the sledgehammer (everglade-hammer.coax)
   skin_advance(rig, s[0].skin[..], motion, speed, dt);
   fade := ifx s[0].skin[0].fade > 0 then s[0].skin[0].fade else f32(SKIN_FADE);
   if still && motion == SKIN_IDLE && s[0].skin[0].clock - s[0].skin[0].changed >= fade {
@@ -2998,6 +3004,7 @@ talk_prompt :: (s: [] Everglade) -> string {
     if s[0].water == WATER_BOAT { return ifx phone(s) then "STEP ASHORE" else "E · STEP ASHORE"; }
     return ifx phone(s) then "BOARD THE ROWBOAT" else "E · BOARD THE ROWBOAT";
   }
+  if s[0].near < 0 && hm_prompt_on(s) { return hm_prompt(s); }
   if s[0].near < 0 { return ""; }
   s[0].prompt_n = join_into(s[0].prompt[..], ifx phone(s) then "TALK TO " else "E · TALK TO ", EG_PERSON[s[0].near]);
   return cast(string) s[0].prompt[0..<s[0].prompt_n];
@@ -3274,7 +3281,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   lift := 0.0f32;
   if s[0].ev.admin { n = everglade_voice_hud(s, out, u, n, y1 - hs - 28 * k); lift = ifx voice_on(s) && ev_text(s).count > 0 then 50 * k else 0.0f32; }
   // Someone near: E (or TALK, on a phone) talks to them.
-  if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s)) && !s[0].above && !s[0].ev.editing {
+  if (s[0].near >= 0 || s[0].near_board || boat_prompt_on(s) || hm_prompt_on(s)) && !s[0].above && !s[0].ev.editing {
     ask := talk_prompt(s);
     ts := 9 * k;
     aw := text_width(ask, ts) + 32 * k;
@@ -3338,6 +3345,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   lamp_posts(s);   // after the edits' draw, which sets the town's groups back to the town's own
   kit_cats(s);
   watch_arms(s);
+  hm_frame(s, t); hm_draw(s, shown);   // the sledgehammer (everglade-hammer.coax)
   spells_frame(s, u, shot, t);
   wildlife(s, shown, still);   // last: it takes only the shapes' slots left over
   first := cast(u32) hi_i(s[0].identity_first, 0);

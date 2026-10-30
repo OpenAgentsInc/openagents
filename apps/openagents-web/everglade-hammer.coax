@@ -1,0 +1,130 @@
+// The sledgehammer (verse-eg-sledgehammer): the previous Everglade's town broke under a two-handed
+// maul as well as its spells (verse/everglade/previous/destructible-buildings.md, "The sledgehammer").
+// Under the SRD ruleset, standing within reach of a piece of the town and facing it, E swings it
+// (on a phone the prompt over the bar: SWING THE HAMMER). A swing winds up for 0.6 s (the Ranger's
+// swing clip, the maul raised over the shoulder and brought down), then strikes the piece in front of
+// you then, if one still stands in reach: an attack roll, d20 + 6 (Strength +3, a 5th-level
+// proficiency +3) against its armor class, a natural 20 a critical (its dice twice) and a natural 1
+// a miss; a hit does the SRD maul's 2d6 + 3 bludgeoning, doubled against an object (Wrecking, as
+// the Siege Monster trait), so a plaster wall section (AC 15, 27 hp) breaks in two or three. What it
+// breaks is thrown away from the swing (verse/demolish.coax demo_damage), what it held up falls, and
+// the watch sees it as a crime. A swing takes 1 s, then you may swing again.
+
+HM_REACH :: 2.0;           // m from your body's edge to the piece's
+HM_WIND :: 0.6;            // s before the blow lands
+HM_SWING :: 1.0;           // s a swing takes
+HM_TO_HIT :: 6;
+HM_DICE :: 2; HM_SIDES :: 6; HM_BONUS :: 3;
+HM_THROW :: 5.0;           // m/s the blow throws what it breaks
+HM_HEAR :: 30.0;           // m the watch hears a blow from
+
+Hammer :: struct {
+  t: f32;                  // into the swing (s), -1 resting
+  target: int;             // the piece in reach you face, -1 none
+}
+
+// The standing piece nearest in front of you within reach at chest height, -1 none.
+hm_target :: (s: [] Everglade) -> int {
+  if !sp_on(s) || s[0].water >= WATER_WADING || s[0].ev.editing { return -1; }
+  w := sp_dm(s);
+  you := s[0].feet;
+  y := walk_at(s, you.x, you.z) + you.y;
+  fx := sin(s[0].face); fz := cos(s[0].face);
+  best := -1; most := f32(HM_REACH) + f32(EG_RADIUS);
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.state != DP_STANDING || p.y1 < y + 0.3 || p.y0 > y + 2.0 { continue; }
+    cx := clamp(you.x, p.x0, p.x1); cz := clamp(you.z, p.z0, p.z1);
+    dx := cx - you.x; dz := cz - you.z;
+    d := sqrt(dx * dx + dz * dz);
+    if d >= most { continue; }
+    // in front: the nearest point of it within 60 degrees of your facing (or you stand in it)
+    if d > 0.05 && (dx * fx + dz * fz) / d < 0.5 { continue; }
+    best = i; most = d;
+  }
+  return best;
+}
+
+hm_prompt_on :: (s: [] Everglade) -> bool { return s[0].hm.target >= 0 && s[0].hm.t < 0; }
+hm_prompt :: (s: [] Everglade) -> string { return ifx phone(s) then "SWING THE HAMMER" else "E · SWING THE HAMMER"; }
+hm_swinging :: (s: [] Everglade) -> bool { return s[0].hm.t >= 0; }
+
+hm_swing :: (s: [] Everglade) -> bool {
+  if s[0].hm.t >= 0 || s[0].hm.target < 0 { return false; }
+  s[0].hm.t = 0;
+  return true;
+}
+
+// The blow on piece i: the roll, the damage, what breaks; the line it leaves.
+HmBlow :: struct { roll: int; hit: bool; crit: bool; amount: int; broke: bool; }
+hm_strike :: (s: [] Everglade, i: int) -> HmBlow {
+  w := sp_dm(s);
+  p := w[0].pieces[i];
+  o := sp_object(p.mesh);
+  d := s[0].sp.dice[..];
+  b: HmBlow;
+  b.roll = srd_roll(d, 20);
+  b.crit = b.roll == 20;
+  b.hit = b.roll != 1 && (b.crit || b.roll + HM_TO_HIT >= o.ac);
+  if b.hit {
+    dice := srd_sum(d, ifx b.crit then HM_DICE * 2 else HM_DICE, HM_SIDES);
+    b.amount = srd_object_damage(o, (dice + HM_BONUS) * 2, DMG_BLUDGEONING);
+    you := s[0].feet;
+    from := v3(you.x, walk_at(s, you.x, you.z) + you.y + 1.2, you.z);
+    b.broke = demo_damage(w, i, b.amount, from, HM_THROW);
+    if b.broke { s[0].sp.broke += 1; _ := demo_settle(w); s[0].sp.walls_dirty = true; }
+    // the dust of the blow where it struck, and the watch's eyes on it
+    at := v3(clamp(from.x, p.x0, p.x1), clamp(from.y, p.y0, p.y1), clamp(from.z, p.z0, p.z1));
+    sp_add_puff(s, at, v3(0, 0.4, 0), 0.5, 1.6, 0.66);
+    ww := watch_w(s);
+    if ww[0].on { _ := watch_crime(ww, at, HM_HEAR, ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
+  }
+  // the spells' line over the bar: HAMMER · 17 HITS · 18 BLUDGEONING · BROKE
+  buf := s[0].sp.news[..];
+  n := sp_put(buf, 0, "HAMMER · ");
+  n = put_digits(buf, n, b.roll + HM_TO_HIT);
+  if !b.hit { n = sp_put(buf, n, " MISSES"); }
+  else {
+    n = sp_put(buf, n, ifx b.crit then " CRITICAL · " else " HITS · ");
+    n = put_digits(buf, n, b.amount); n = sp_put(buf, n, " BLUDGEONING");
+    if b.broke { n = sp_put(buf, n, " · BROKE"); }
+  }
+  s[0].sp.news_n = n; s[0].sp.news_t = 3;
+  return b;
+}
+
+// Each frame (before the town's pieces are drawn): what is in reach, and the swing.
+hm_frame :: (s: [] Everglade, dt: f32) {
+  if s[0].hm.t < 0 { s[0].hm.target = hm_target(s); return; }
+  before := s[0].hm.t;
+  s[0].hm.t += dt;
+  if before < f32(HM_WIND) && s[0].hm.t >= f32(HM_WIND) {
+    i := hm_target(s);
+    if i >= 0 { _ := hm_strike(s, i); }
+  }
+  if s[0].hm.t >= f32(HM_SWING) { s[0].hm.t = -1; s[0].hm.target = hm_target(s); }
+}
+
+// The maul in your hands while you swing: a haft and an iron head, raised over your shoulder and
+// brought down in front of you as the blow lands.
+hm_draw :: (s: [] Everglade, feet: Point) {
+  if s[0].hm.t < 0 { return; }
+  f := clamp(s[0].hm.t / f32(HM_WIND), 0, 1);
+  a := ifx s[0].hm.t < f32(HM_WIND) then lerp(-0.6, 2.3, f * f) else lerp(2.3, 1.9, clamp((s[0].hm.t - f32(HM_WIND)) / 0.4, 0, 1));
+  fx := sin(s[0].face); fz := cos(s[0].face);
+  hand := add(feet, v3(fx * 0.35, 1.2, fz * 0.35));
+  dir := v3(fx * sin(a), cos(a), fz * sin(a));
+  head := add(hand, times(dir, 0.95));
+  mid := add(hand, times(dir, 0.45));
+  yaw := s[0].face;
+  shape(s, SHAPE_BOX, LOOK_WOOD, mid, yaw, a, 0.05, 1.0, 0.05, 0.45, 0.32, 0.2);
+  shape(s, SHAPE_BOX, LOOK_STONE, head, yaw, a, 0.17, 0.17, 0.34, 0.3, 0.3, 0.32);
+}
+
+#test "hammer: a plaster wall section breaks in a few blows, a miss on a 1 and a crit on a 20" {
+  o := srd_object(MAT_WOOD, SIZE_LARGE, true);
+  // the maul's least, its mean and its most against it, doubled for Wrecking
+  #assert (2 + HM_BONUS) * 2 == 10 && (7 + HM_BONUS) * 2 == 20 && (12 + HM_BONUS) * 2 == 30;
+  #assert o.hp >= 20 && o.hp <= 30;   // two blows at the mean, three at the least but one
+  #assert 2 + HM_TO_HIT < o.ac && 19 + HM_TO_HIT >= o.ac;   // it can miss, and mostly hits
+}

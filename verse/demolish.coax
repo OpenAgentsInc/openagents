@@ -104,6 +104,21 @@ DEMO_ROUSE :: 3.0;         // m: a break or a loosening rouses rubble this near
 DEMO_HASH :: 1024;         // the chunks' hash, 32 by 32 cells of DEMO_HASH_CELL m
 DEMO_HASH_CELL :: 2.5;
 DEMO_GROUPS :: 256;        // groups whose middles the pieces tip away from
+// Toppling (verse/everglade/previous/destructible-buildings.md, "Leaning and sagging", "Toppling"): a
+// wall section (taller than DEMO_WALL_TALL, thinner than DEMO_WALL_THIN) whose neighbours on every
+// side are gone turns about its base and falls; a tower (at least DEMO_TOWER_LEVELS levels of
+// DEMO_LEVEL, as tall as DEMO_TOWER_RATIO of its width) with fewer than DEMO_TOWER_HOLD of a level's
+// pieces standing tips everything over that level toward the cut, as one column turning about it.
+DEMO_SIDES :: 12000;
+DEMO_SIDE_CAP :: 8;
+DEMO_SIDE_GAP :: 0.15;     // m: how near a neighbour's box comes
+DEMO_WALL_TALL :: 1.2;     // m: half heights over this are walls (or posts)
+DEMO_WALL_THIN :: 0.35;    // m: a half thickness under this
+DEMO_LEVEL :: 3.12;        // m a storey
+DEMO_TOWER_LEVELS :: 3;
+DEMO_TOWER_RATIO :: 0.9;
+DEMO_TOWER_HOLD :: 0.5;
+DEMO_TOWER_SPIN :: 0.7;    // rad/s the column starts turning at
 DEMO_DUST :: 56;           // dust puffs alive at once (each a sphere of the realm's few)
 DEMO_BITS :: 120;          // splinters alive at once
 DEMO_BIT_LIFE :: 40.0;     // s a splinter lies before it goes
@@ -124,6 +139,7 @@ DemoPiece :: struct {
   material: int; ac: int; hp: int; max_hp: int;
   state: int; body: int;       // DP_*, its body while loose
   sup_at: int; sup_n: int;     // the pieces holding it up (DemoWorld.supports)
+  side_at: int; side_n: int;   // a wall's: the pieces it stands beside (DemoWorld.sides), 0 for anything else
   hit_at: f64;                 // when it last took damage
   stamp: int;                  // the last contact search that met it
 }
@@ -175,6 +191,7 @@ DemoWorld :: struct {
   mesh_rgb: [DEMO_MESHES * 3] f32;   // and its chunks' colour (sRGB)
   tint: [DEMO_PIECES * 3] f32;       // each piece's own instance tint, whole (a realm darkens it as it's hurt)
   supports: [DEMO_SUPPORTS] int; sup_n: int;
+  sides: [DEMO_SIDES] int; side_n: int;
   state: [DEMO_BODIES * DB_FLOATS] f64;
   meta: [DEMO_BODIES] DemoBody;
   // each body's frame: its piece's mesh space into the body's (3 rows of 4), so the piece's mesh,
@@ -196,6 +213,8 @@ DemoWorld :: struct {
   hash_head: [DEMO_HASH] int; hash_next: [DEMO_BODIES] int;
   // each group's middle (the pieces' centres' mean)
   group_x: [DEMO_GROUPS] f32; group_z: [DEMO_GROUPS] f32;
+  // each group's base, top and width (its footprint's least side), and whether it is a tower that tips
+  group_y0: [DEMO_GROUPS] f32; group_y1: [DEMO_GROUPS] f32; group_w: [DEMO_GROUPS] f32; tower: [DEMO_GROUPS] bool;
   // a blast in progress (demo_blast_begin): where, how far, how fast it throws, and the wall's face (0 on the ground)
   blast_on: bool; blast_at: Point; blast_radius: f32; blast_speed: f32; blast_face: Point;
   dust: [DEMO_DUST] DemoDust;
@@ -392,6 +411,7 @@ demo_link :: (w: [] DemoWorld) {
     }
     w[0].pieces[i] = p;
   }
+  demo_link_sides(w);
   counts: [DEMO_GROUPS] int;
   for g: 0..<DEMO_GROUPS { counts[g] = 0; w[0].group_x[g] = 0; w[0].group_z[g] = 0; }
   for i: 0..<w[0].n {
@@ -399,7 +419,113 @@ demo_link :: (w: [] DemoWorld) {
     counts[g] += 1; w[0].group_x[g] += w[0].pieces[i].cx; w[0].group_z[g] += w[0].pieces[i].cz;
   }
   for g: 0..<DEMO_GROUPS { if counts[g] > 0 { w[0].group_x[g] /= f32(counts[g]); w[0].group_z[g] /= f32(counts[g]); } }
+  demo_link_towers(w);
   w[0].linked = true;
+}
+
+// Whether a piece is a wall section or a post: tall and thin.
+demo_wallish :: (p: DemoPiece) -> bool { return !p.pitched && p.hy > f32(DEMO_WALL_TALL) && lo(p.hx, p.hz) < f32(DEMO_WALL_THIN); }
+// Each wall's neighbours: the tall pieces standing beside it on its own level, their boxes within a seam.
+demo_link_sides :: (w: [] DemoWorld) {
+  w[0].side_n = 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    p.side_at = w[0].side_n; p.side_n = 0;
+    if demo_wallish(p) {
+      g := f32(DEMO_SIDE_GAP);
+      for cx: demo_cell(p.x0 - g)..<demo_cell(p.x1 + g) + 1 {
+        for cz: demo_cell(p.z0 - g)..<demo_cell(p.z1 + g) + 1 {
+          c := cz * DEMO_GRID + cx;
+          for e: 0..<w[0].cell_n[c] {
+            j := w[0].cell_list[w[0].cell_at[c] + e];
+            if j == i || p.side_n >= DEMO_SIDE_CAP || w[0].side_n >= DEMO_SIDES { continue; }
+            q := w[0].pieces[j];
+            if q.pitched || q.hy < 0.6 || abs(q.y0 - p.y0) > 0.5 { continue; }
+            if q.x0 > p.x1 + g || q.x1 < p.x0 - g || q.z0 > p.z1 + g || q.z1 < p.z0 - g { continue; }
+            seen := false;
+            for k: 0..<p.side_n { if w[0].sides[p.side_at + k] == j { seen = true; } }
+            if seen { continue; }
+            w[0].sides[w[0].side_n] = j; w[0].side_n += 1; p.side_n += 1;
+          }
+        }
+      }
+    }
+    w[0].pieces[i] = p;
+  }
+}
+// Each group's base, top and least width, and so whether it is a tower.
+demo_link_towers :: (w: [] DemoWorld) {
+  x0: [DEMO_GROUPS] f32; x1: [DEMO_GROUPS] f32; z0: [DEMO_GROUPS] f32; z1: [DEMO_GROUPS] f32;
+  for g: 0..<DEMO_GROUPS { w[0].group_y0[g] = 1e9; w[0].group_y1[g] = -1e9; x0[g] = 1e9; x1[g] = -1e9; z0[g] = 1e9; z1[g] = -1e9; }
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    g := clamp_group(p.group);
+    if p.pitched { continue; }   // a roof isn't a level
+    w[0].group_y0[g] = lo(w[0].group_y0[g], p.y0); w[0].group_y1[g] = hi(w[0].group_y1[g], p.y1);
+    x0[g] = lo(x0[g], p.x0); x1[g] = hi(x1[g], p.x1); z0[g] = lo(z0[g], p.z0); z1[g] = hi(z1[g], p.z1);
+  }
+  for g: 0..<DEMO_GROUPS {
+    w[0].group_w[g] = lo(x1[g] - x0[g], z1[g] - z0[g]);
+    tall := w[0].group_y1[g] - w[0].group_y0[g];
+    // the town's groups past the buildings are cells of loose props, never towers
+    w[0].tower[g] = g > 0 && tall >= f32(DEMO_LEVEL) * f32(DEMO_TOWER_LEVELS) - 0.3 && w[0].group_w[g] > 2 && tall >= f32(DEMO_TOWER_RATIO) * w[0].group_w[g];
+  }
+}
+
+// How many of a wall's neighbours still stand.
+demo_standing_sides :: (w: [] DemoWorld, i: int) -> int {
+  at := w[0].pieces[i].side_at;
+  m := 0;
+  for e: 0..<w[0].pieces[i].side_n { if w[0].pieces[w[0].sides[at + e]].state == DP_STANDING { m += 1; } }
+  return m;
+}
+
+// A tower that lost too much of a level: everything standing over that level comes loose and
+// turns over toward the cut (from the level's standing pieces' middle toward its fallen ones'), as
+// if one column hinged on the level. Returns how many came loose.
+demo_topple_towers :: (w: [] DemoWorld) -> int {
+  moved := 0;
+  for g: 1..<DEMO_GROUPS {
+    if !w[0].tower[g] { continue; }
+    base := w[0].group_y0[g];
+    levels := cast(int) ((w[0].group_y1[g] - base) / f32(DEMO_LEVEL) + 0.2);
+    for k: 0..<levels - 1 {
+      lo_y := base + f32(k) * f32(DEMO_LEVEL) - 0.3; hi_y := lo_y + f32(DEMO_LEVEL);
+      all := 0; up := 0; above := 0;
+      sx := 0.0f32; sz := 0.0f32; fx := 0.0f32; fz := 0.0f32;
+      for i: 0..<w[0].n {
+        p := w[0].pieces[i];
+        if clamp_group(p.group) != g || p.pitched { continue; }
+        if p.y0 >= hi_y { if p.state == DP_STANDING { above += 1; } continue; }
+        if p.y0 < lo_y { continue; }
+        all += 1;
+        if p.state == DP_STANDING { up += 1; sx += p.cx; sz += p.cz; } else { fx += p.cx; fz += p.cz; }
+      }
+      if all < 4 || above == 0 || f32(up) >= f32(DEMO_TOWER_HOLD) * f32(all) { continue; }
+      // toward the cut: from what stands to what fell (straight out from the middle if nothing stands)
+      fell := all - up;
+      dir := v3(fx / f32(fell) - w[0].group_x[g], 0, fz / f32(fell) - w[0].group_z[g]);
+      if up > 0 { dir = v3(fx / f32(fell) - sx / f32(up), 0, fz / f32(fell) - sz / f32(up)); }
+      d := d3_unit_or(d3(f64(dir.x), 0.0, f64(dir.z)), d3(1.0, 0.0, 0.0));
+      about := d3(d.z, 0.0, -d.x);   // turning about it carries the top along d
+      hinge := hi_y;
+      for i: 0..<w[0].n {
+        p := w[0].pieces[i];
+        if clamp_group(p.group) != g || p.state != DP_STANDING || p.y0 < hinge - 0.3 { continue; }
+        demo_loosen_toward(w, i, d, 0.25);
+        p = w[0].pieces[i];
+        if p.state != DP_LOOSE || p.body < 0 { continue; }
+        body := demo_body(w, p.body);
+        h := f64(p.cy - hinge);
+        body.vel = d3_add(body.vel, d3_scale(d, f64(DEMO_TOWER_SPIN) * h));
+        body.omega = d3_add(body.omega, dq_rotate(dq_conj(body.orientation), d3_scale(about, f64(DEMO_TOWER_SPIN))));   // omega is the body's own
+        demo_put(w, p.body, body);
+        moved += 1;
+      }
+      break;
+    }
+  }
+  return moved;
 }
 
 // How many of its supports still stand.
@@ -809,7 +935,10 @@ demo_piece_mass :: (p: DemoPiece) -> f32 { return hi(p.hx * p.hy * p.hz * 8 * 30
 // Piece i comes loose: its whole self a body, falling from where it stood, its top tipped out
 // from its building's middle so a wall topples outward. A roof's body is its box over the walls'
 // tops (its eaves hang past them), so it lands on what stands.
-demo_loosen :: (w: [] DemoWorld, i: int) {
+demo_loosen :: (w: [] DemoWorld, i: int) { demo_loosen_toward(w, i, d3(0.0, 0.0, 0.0), -1); }
+// The same, its top tipped along `out` at `tip` m/s (out zero: away from its building's middle; tip
+// below zero: the piece's own, DEMO_TIP or a roof's nudge).
+demo_loosen_toward :: (w: [] DemoWorld, i: int, toward: D3, speed: f32) {
   p := w[0].pieces[i];
   if p.state != DP_STANDING { return; }
   b := demo_free_body(w, DEMO_WHOLE);
@@ -830,7 +959,8 @@ demo_loosen :: (w: [] DemoWorld, i: int) {
   // tipped out at its top from its building's middle (a roof only nudged)
   g := clamp_group(p.group);
   out := d3_unit_or(d3(f64(p.cx - w[0].group_x[g]), 0.0, f64(p.cz - w[0].group_z[g])), d3(f64(demo_signed(w)), 0.0, f64(demo_signed(w))));
-  tip := ifx p.pitched then 0.25 else DEMO_TIP;
+  if d3_len(toward) > 0.5 { out = toward; }
+  tip := ifx speed >= 0 then f64(speed) else ifx p.pitched then 0.25 else f64(DEMO_TIP);
   top := d3_add(centre, d3(0.0, half.y, 0.0));
   body = demo_impulse(body, d3_scale(out, f64(mass) * tip), d3_sub(top, centre));
   body.omega = d3_add(body.omega, d3(f64(demo_signed(w) * 0.2), f64(demo_signed(w) * 0.1), f64(demo_signed(w) * 0.2)));
@@ -856,7 +986,16 @@ demo_settle :: (w: [] DemoWorld) -> int {
   rounds := 0;
   while changed && rounds < 24 {
     changed = false; rounds += 1;
+    // a tower cut through tips over first, so what it held falls with it, not straight down
+    tipped := demo_topple_towers(w);
+    if tipped > 0 { moved += tipped; changed = true; }
     for i: 0..<w[0].n {
+      // a wall left with nothing standing beside it turns about its base and falls
+      if w[0].pieces[i].state == DP_STANDING && w[0].pieces[i].side_n > 0 && demo_standing_sides(w, i) == 0 {
+        demo_loosen(w, i);
+        if w[0].pieces[i].state != DP_STANDING { moved += 1; changed = true; }
+        continue;
+      }
       if w[0].pieces[i].state != DP_STANDING || w[0].pieces[i].anchored || w[0].pieces[i].sup_n == 0 { continue; }
       hold := ifx w[0].pieces[i].pitched then f32(DEMO_ROOF_HOLD) else f32(DEMO_HOLD);
       if f32(demo_standing_supports(w, i)) < hold * f32(w[0].pieces[i].sup_n) {
@@ -1807,4 +1946,60 @@ demo_cottage :: (w: [] DemoWorld) {
       #assert up.z < -0.02;
     }
   }
+}
+
+#test "demolish: a wall left with nothing beside it topples; one with a neighbour stands" {
+  w: [1] DemoWorld;
+  g := Ground.{n = 8, cell = 40, west = -160, south = -160};
+  heights: [81] f32;
+  demo_cottage(w[..]);
+  demo_link(w[..]);
+  // the south wall's lower sections either side of the second gone: it stands alone
+  #assert w[0].pieces[1].side_n == 2 && w[0].pieces[0].side_n == 2;
+  a0 := demo_damage(w[..], 0, 99, v3(-3, 1, -8), 2);
+  a2 := demo_damage(w[..], 2, 99, v3(1, 1, -8), 2);
+  #assert a0 && a2 && demo_settle(w[..]) >= 1;
+  #assert w[0].pieces[1].state != DP_STANDING && w[0].pieces[3].state == DP_STANDING;
+  b := w[0].pieces[1].body;
+  for k: 0..<45 { demo_step(w[..], g, heights[..], 1.0 / 60.0); }
+  // it has turned over (or already broken on the ground)
+  if w[0].pieces[1].state == DP_LOOSE && b >= 0 { #assert dq_rotate(demo_body(w[..], b).orientation, D3_Y).y < 0.9; }
+}
+
+// A tower of the test's own: four storeys of two 2 m walls a side (4 m square), group 9.
+demo_tower :: (w: [] DemoWorld) {
+  demo_new(w, false);
+  for f: 0..<4 {
+    for side: 0..<4 {
+      for m: 0..<2 {
+        t := -1.0f32 + f32(m) * 2;
+        x := 0.0f32; z := 0.0f32; yaw := 0.0f32;
+        if side == 0 { x = t; z = -2; } else if side == 1 { x = t; z = 2; } else if side == 2 { x = -2; z = t; yaw = f32(PI) / 2; } else { x = 2; z = t; yaw = f32(PI) / 2; }
+        c := cos(yaw); sn := sin(yaw);
+        rows := [12] f32.[c, 0, sn, x, 0, 1, 0, f32(f) * 3.12, -sn, 0, c, z];
+        i := demo_add(w, 1, 0, 9, rows[..]);
+        demo_shape(w, i, v3(-1, 0, -0.2), v3(1, 3.12, 0.2), 0, 1, 17, 27, v3(0.6, 0.6, 0.6), false);
+      }
+    }
+  }
+}
+
+#test "demolish: a tower cut through at a level tips over toward the cut, its top fastest" {
+  w: [1] DemoWorld;
+  demo_tower(w[..]);
+  demo_link(w[..]);
+  #assert w[0].tower[9] && !w[0].tower[0];
+  // the second storey's south and west walls and one north one gone (pieces 8 to 15)
+  for i: 8..<13 { _ := demo_damage(w[..], i, 99, v3(0, 4, -6), 2); }
+  #assert demo_settle(w[..]) >= 16;
+  // everything over it came loose, thrown toward the cut (south and west: -z, -x) the faster the higher
+  low := 0.0f64; high := 0.0f64;
+  for i: 16..<32 {
+    p := w[0].pieces[i];
+    #assert p.state == DP_LOOSE && p.body >= 0;
+    v := demo_body(w[..], p.body).vel;
+    #assert v.z < 0.0;
+    if i < 24 { low += -v.z; } else { high += -v.z; }
+  }
+  #assert high > low;
 }
