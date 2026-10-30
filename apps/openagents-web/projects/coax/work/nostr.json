@@ -132,6 +132,12 @@
       "title": "Consumer conformance and support publication",
       "body": "Advertise only target/profile behavior backed by executable positive and negative evidence.",
       "parent": "coax-nostr"
+    },
+    {
+      "slug": "m10-coax-relay",
+      "title": "A Coax relay to replace relay.openagents.com",
+      "body": "coax/nostr.md section 17: a Coax relay on the tailnet (R1), parity with the advertised NIPs (R2), then migration and cutover with the owner's sign-off (R3). Every admission, matching, storage and policy decision in #authority Coax; the C host does sockets, TLS, clocks and files only.",
+      "parent": "coax-nostr"
     }
   ],
   "tasks": [
@@ -1451,7 +1457,8 @@
         "nostr-relay-state-machine",
         "block-owner-admission",
         "web-nostr-api-publisher",
-        "web-nostr-agent-publisher"
+        "web-nostr-agent-publisher",
+        "relay-server-r1"
       ]
     },
     {
@@ -2605,7 +2612,8 @@
         "reach-freshness",
         "block-channel-pagination",
         "block-artifact-cas",
-        "agent-private-data"
+        "agent-private-data",
+        "relay-server-r1"
       ]
     },
     {
@@ -3942,7 +3950,8 @@
       ],
       "blocks": [
         "nip01-page",
-        "nostr-nip34-nip22"
+        "nostr-nip34-nip22",
+        "relay-server-r1"
       ]
     },
     {
@@ -4037,6 +4046,83 @@
       ],
       "blocked_by": [
         "nostr-bech32"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "relay-server-r1",
+      "parent": "m10-coax-relay",
+      "title": "R1: a Coax relay on the tailnet",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "relay"
+      ],
+      "body": "coax/nostr.md section 17, R1. A server WebSocket (handshake, masked reads, unmasked writes, limits, close) and the NIP-01 server: EVENT admission with id and BIP-340 verification, REQ subscriptions matched by filter.coax over stored and new events, EOSE, CLOSE, OK and CLOSED with the standard prefixes, NOTICE; NIP-11; NIP-40 expiration; replaceable and addressable ordering (newest, lowest id on a tie); NIP-42 required for writes; the Rust relay's advertised limits. Storage is the verified append-only log of nostr-event-store and the store_*.coax slices (fsync'd, indexed, replayed on start), not a second store. Uses message.coax (#6015) and nip42.coax (#f426). Never touches relay.openagents.com or its database.",
+      "files": [
+        "coax/lib/nostr/relay_server.coax",
+        "coax/lib/net/",
+        "coax/platform/"
+      ],
+      "acceptance": [
+        "A differential test of the same scripted sessions against this relay and the Rust relay's recorded behaviour gives the same OKs, CLOSED reasons and event sets; how the Rust side is obtained (built from 0b401561a0^ in a sandbox, or read-only recordings) is an owner decision, since AGENTS.md keeps history read-only and other toolchains out",
+        "The client relay machine from #7de9 and the chapter 19 Pylon talk to it on the tailnet; ASan/UBSan clean; memory stays bounded under a flood",
+        "coax mutate on every #authority unit leaves no survivors"
+      ],
+      "blocked_by": [
+        "nostr-nip01-messages",
+        "nostr-nip42",
+        "nostr-event-store"
+      ],
+      "blocks": [
+        "relay-server-r2"
+      ]
+    },
+    {
+      "slug": "relay-server-r2",
+      "parent": "m10-coax-relay",
+      "title": "R2: the Coax relay reaches parity with the advertised NIPs",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "relay"
+      ],
+      "body": "coax/nostr.md section 17, R2: NIP-09 deletion with tombstones, NIP-45 COUNT, NIP-50 search with the Rust relay's semantics, NIP-77 negentropy, NIP-29 groups, NIP-59/17 gift wraps, NIP-70 protected events, NIP-65, 67, 94 and 98 as the Rust relay implements them, and the 11 OpenAgents extensions. The owner decides which advertised NIPs survive before each is built.",
+      "files": [
+        "coax/lib/nostr/"
+      ],
+      "acceptance": [
+        "Each kept NIP's vectors and differential sessions pass",
+        "coax mutate on every #authority unit leaves no survivors"
+      ],
+      "blocked_by": [
+        "relay-server-r1"
+      ],
+      "blocks": [
+        "relay-server-r3"
+      ]
+    },
+    {
+      "slug": "relay-server-r3",
+      "parent": "m10-coax-relay",
+      "title": "R3: migrate relay.openagents.com's data and cut over to the Coax relay",
+      "size": "L",
+      "labels": [
+        "nostr",
+        "relay"
+      ],
+      "body": "coax/nostr.md section 17, R3: a read-only export from the Rust relay's Postgres, import with every event re-verified, a shadow period where both relays take writes and readers compare, then the DNS or proxy cutover with the Rust relay kept as a read-only fallback. The owner signs off before any DNS or production change.",
+      "files": [
+        "deploy/",
+        "coax/nostr.md"
+      ],
+      "acceptance": [
+        "Event sets are equal at cutover",
+        "A rollback is rehearsed",
+        "The owner's sign-off is recorded in NEEDS_OWNER.md before any DNS or production change"
+      ],
+      "blocked_by": [
+        "relay-server-r2"
       ],
       "blocks": []
     }
