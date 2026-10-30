@@ -90,16 +90,22 @@ async function check(name: string): Promise<string> {
     for (const m of r.walk.split(" ")) await key(m[0], Number(m.slice(1)))
     await Bun.sleep(2000)
     const left = await place()
-    if (!left || far(left, spawn) < 6) return `${name}: the walk didn't get away from the spawn (${left ? far(left, spawn).toFixed(1) : "none"} m)`
+    if (!left || far(left, spawn) < 14) return `${name}: the walk didn't get away from the spawn (${left ? far(left, spawn).toFixed(1) : "none"} m)`
     if (r.hash && (await ev("location.hash"))) return `${name}: the hash stayed after walking off the place it named`
     await send("Page.reload", {})
     await Bun.sleep(WAIT)
     await send("Input.dispatchMouseEvent", { type: "mouseMoved", x: 640, y: 400 })
-    await key(r.step || "w", STEP); await Bun.sleep(1500)
-    const back = await place()
+    // one step; when a wall is ahead of where you came back, another way
+    let back: Place | null = null
+    for (const k of [r.step || "w", "s", "a", "d"]) {
+      await key(k, STEP); await Bun.sleep(1500)
+      back = await place()
+      if (back && back.at > left.at) break
+    }
     if (!back || back.at <= left.at) { if (process.env.PLACE_SHOTS) await shot(send, `${process.env.PLACE_SHOTS}/${name}.png`); return `${name}: nothing kept after the reload's step` }
     const d = far(back, left), s = far(back, spawn)
-    const ok = d < step * 1.5 + 0.3 && d < s / 2 && turned(back.yaw, left.yaw) < 0.15 && Math.abs(back.zoom - left.zoom) < 0.3
+    // a step is at most about 3 m (a run's 0.4 s); the camera may swing behind you as you step
+    const ok = d < Math.max(step * 1.5, 4.5) && d < s / 3 && turned(back.yaw, left.yaw) < 0.6 && Math.abs(back.zoom - left.zoom) < 0.3
     console.log(`${ok ? "ok  " : "LOST"} ${name}: ${d.toFixed(2)} m from where you were (a step is ${step.toFixed(2)} m), ${s.toFixed(1)} m from the spawn, yaw ${left.yaw} -> ${back.yaw}, zoom ${left.zoom} -> ${back.zoom}`)
     ws.close()
     return ok ? "" : `${name}: the reload lost the place`
