@@ -189,9 +189,10 @@ order. Board aliases are on the [signed queue](../../coax/web/project/QUEUE.md).
 | 6 | Decision jobs: `25910` plaintext to the server's request, the answer to `26910`, `27010` status, cancel onto the server's deadline | claude-pylon | landed `2f489e00d9`: built to the deployed wire (`outcome: "answered"`, refusals as `27010`); 2,346 mutants, 0 survivors. The execution receipt is still the caller's |
 | 7 | NIP-65 relay list (kind `10002`) | claude-pylon | landed `2f489e00d9`; 1,237 mutants, 0 survivors |
 
-Owner decisions are in `NEEDS_OWNER.md`: the owner's `auth` signature over the
-Pylon key, and which relays. The key itself is a 0600 file in
-`~/work/.secrets/` on the owner's Mac (owner, 2026-10-29). The owner allowed a
+The owner's `auth` signature over the Pylon key is still open in
+`NEEDS_OWNER.md`. Decided: the key is a 0600 file in `~/work/.secrets/` on the
+owner's Mac; the relays are relay.openagents.com and every Coax relay we run;
+the C host may link a TLS library. The owner allowed a
 TLS library in the C host for `wss://` on 2026-10-29 (AGENTS.md).
 
 ## V. Make execution measurable, parallel and portable

@@ -67,7 +67,9 @@ these four choices are yours:
 2. **Your `auth` signature.** The beacon carries your key's signature over the
    Pylon key (`["auth", <owner key>, "kind=30200", <signature>]`). You sign
    that once per Pylon key.
-3. **Which relays** the Pylon publishes to and lists in its NIP-65 record.
+3. ~~**Which relays.**~~ Decided 2026-10-30: relay.openagents.com (the current
+   Rust relay) and every Coax relay we run (coax/nostr.md section 17) as it
+   comes up. Both go in the Pylon's NIP-65 list.
 4. ~~**TLS for `wss://`.**~~ Decided 2026-10-29: the C host may link a TLS
    library (AGENTS.md, Rules). Being built.
 
