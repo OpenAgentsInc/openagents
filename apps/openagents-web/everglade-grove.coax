@@ -93,8 +93,8 @@ gv_draw :: (s: [] Everglade) {
   r := f32(GV_MB_R) * (0.96 + 0.04 * sin(v[0].mb_t * 3));
   H := f32(GV_MB_H);
   // the beam: a pale shaft, brighter at its heart, and its pool of light on the ground
-  sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(c.x, c.y + H * 0.5, c.z), v3(r * 2, 0, 0), v3(0, H * 0.5, 0), v3(0, 0, r * 2), times(GV_MOON_RGB, 0.55 * on));
-  sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(c.x, c.y + H * 0.5, c.z), v3(r * 0.5, 0, 0), v3(0, H * 0.5, 0), v3(0, 0, r * 0.5), times(GV_MOON_RGB, 0.5 * on));
+  sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(c.x, c.y + H * 0.5, c.z), v3(r * 2, 0, 0), v3(0, H, 0), v3(0, 0, r * 2), times(GV_MOON_RGB, 0.55 * on));
+  sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(c.x, c.y + H * 0.5, c.z), v3(r * 0.5, 0, 0), v3(0, H, 0), v3(0, 0, r * 0.5), times(GV_MOON_RGB, 0.5 * on));
   sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(c.x, c.y + 0.02, c.z), v3(r * 2.2, 0, 0), v3(0, 0.01, 0), v3(0, 0, r * 2.2), times(GV_MOON_RGB, 0.35 * on));
   sp_glow(s, v3(c.x, c.y + 0.4, c.z), 2.4 * on, times(GV_MOON_RGB, 0.25));
   // motes drifting up through it

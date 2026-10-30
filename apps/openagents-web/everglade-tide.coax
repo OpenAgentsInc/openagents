@@ -346,7 +346,7 @@ td_draw :: (s: [] Everglade) {
         if lv <= f32(DEMO_DRY) + 1 { continue; }
         bed := ground_at(s, p.x, p.z);
         top := lv + 0.25;
-        sp_shape(s, SHAPE_BOX, LOOK_ORB, v3(p.x, (bed + top) * 0.5, p.z), times(dir, seg * 0.52), v3(0, (top - bed) * 0.5, 0), times(side, 0.35), TD_WALL_RGB);
+        sp_shape(s, SHAPE_BOX, LOOK_ORB, v3(p.x, (bed + top) * 0.5, p.z), times(dir, seg * 1.04), v3(0, top - bed, 0), times(side, 0.7), TD_WALL_RGB);   // whole sizes
       }
     }
   }
@@ -355,7 +355,7 @@ td_draw :: (s: [] Everglade) {
       // the pond risen over its rim
       p := d[0].pond;
       r := EG_POND[p * 4 + 2] + 2.5 * clamp(d[0].mode_t / 1.5, 0, 1);
-      sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(EG_POND[p * 4], d[0].level + td_rise(d) * 0.5, EG_POND[p * 4 + 1]), v3(r * 2, 0, 0), v3(0, td_rise(d) * 0.5 + 0.02, 0), v3(0, 0, r * 2), TD_WALL_RGB);
+      sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(EG_POND[p * 4], d[0].level + td_rise(d) * 0.5, EG_POND[p * 4 + 1]), v3(r * 2, 0, 0), v3(0, td_rise(d) + 0.04, 0), v3(0, 0, r * 2), TD_WALL_RGB);
     }
     along := td_wave(d);
     if along >= 0 {
@@ -368,7 +368,7 @@ td_draw :: (s: [] Everglade) {
         lv := water_at(s, p.x, p.z);
         if lv <= f32(DEMO_DRY) + 1 { continue; }
         h := f32(TD_WAVE_TALL) * rise * (0.85 + 0.15 * sin(f32(q) * 1.7 + d[0].mode_t * 3));
-        sp_shape(s, SHAPE_BOX, LOOK_ORB, v3(p.x, lv + h * 0.5, p.z), times(d[0].dir, 1.4), v3(0, h * 0.5 + 0.05, 0), times(side, 0.85), TD_WALL_RGB);
+        sp_shape(s, SHAPE_BOX, LOOK_ORB, v3(p.x, lv + h * 0.5, p.z), times(d[0].dir, 2.8), v3(0, h + 0.1, 0), times(side, 1.7), TD_WALL_RGB);
         if !few || q % 2 == 0 { sp_add_puff(s, v3(p.x, lv + h, p.z), add(times(d[0].dir, 3), v3(0, 0.6, 0)), 0.6, 0.6, 0.0); }
       }
     }
@@ -388,7 +388,7 @@ td_draw :: (s: [] Everglade) {
       // the whirlpool: a funnel down from its eye, foam spiralling in round it
       c := d[0].at; on := clamp(d[0].mode_t / 1.0, 0, 1);
       eye := f32(TD_WHIRL_EYE) * on;
-      sp_shape(s, SHAPE_CONE, LOOK_ORB, v3(c.x, c.y - 1.1 * on, c.z), v3(-eye * 2, 0, 0), v3(0, -1.1 * on, 0), v3(0, 0, eye * 2), v3(0.12, 0.3, 0.38));
+      sp_shape(s, SHAPE_CONE, LOOK_ORB, v3(c.x, c.y - 0.55 * on, c.z), v3(-eye * 2, 0, 0), v3(0, -1.1 * on, 0), v3(0, 0, eye * 2), v3(0.12, 0.3, 0.38));
       arms := ifx few then 3 else 5;
       for a: 0..<arms {
         for q: 0..<10 {
