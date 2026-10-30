@@ -1,0 +1,100 @@
+// A relay frame as relay.coax's input: message.coax reads it, and an EVENT's
+// id and signature are checked here with the shared fast verifier (as
+// store_admit.coax does) before relay.coax sees `verified`. Pure: no I/O,
+// no clock, no randomness.
+//
+// The host calls rl_read on each text frame and passes the result to
+// rl_input. Kind 0 means message.coax refused the frame, or it is an AUTH
+// challenge: the host routes a frame whose label is "AUTH" (message.coax
+// reports NM_TYPE) to nip42_input, and gives everything else of kind 0 to
+// rl_input, which counts it as RL_BAD.
+//
+// Subscription ids and OK/CLOSED messages are compared as their raw JSON
+// string bytes. relay.coax's ids ("s3.17") need no escapes, so a relay that
+// escapes one anyway names no current subscription (RL_UNKNOWN).
+//
+// "auth-required:" (NIP-42) on an OK or CLOSED message sets auth_required.
+// A verified EVENT grants no author, subscription or freshness authority;
+// relay.coax decides admission.
+#load "message.coax";
+#load "relay.coax";
+#load "../crypto/schnorr_fast.coax";
+#load "../../tests/nostr/relay_read_fixtures.coax";
+#authority;
+
+RLR_AUTH_REQUIRED :: "auth-required:";
+
+#test "an EVENT frame for a current subscription is verified and delivered" {
+  r: [1] Relay; g := rl_open_at(r[..], 1000); slot := rl_subscribe(r[..]);
+  o := rl_next(r[..], 1000);#assert o.kind == RL_OUT_REQ && o.slot == slot;
+  frame: [4096] u8; scratch: [4096] u8;
+  in := rl_read(rlr_event_frame("s0.1", RLR_REAL, frame[..]), scratch[..], false);
+  #assert in.kind == RL_IN_EVENT && in.verified && in.sub == "s0.1" && in.created_at == RLR_REAL_AT;
+  #assert in.id[0] == RLR_REAL_ID0 && in.id[31] == RLR_REAL_ID31;
+  #assert rl_input(r[..], g, in) == RL_DELIVER && rl_input(r[..], g, in) == RL_DUPLICATE;
+}
+#test "a changed signature is read but not verified, and relay.coax counts it forged" {
+  r: [1] Relay; g := rl_open_at(r[..], 1000); slot := rl_subscribe(r[..]);o := rl_next(r[..], 1000);
+  frame: [4096] u8; scratch: [4096] u8;
+  in := rl_read(rlr_event_frame("s0.1", RLR_BAD_SIG, frame[..]), scratch[..], false);
+  #assert in.kind == RL_IN_EVENT && !in.verified && in.created_at == 0 && in.id[0] == 0;
+  #assert rl_input(r[..], g, in) == RL_FORGED && r[0].forged == 1;
+  // Scratch too small for the id preimage, or aliased, verifies nothing.
+  in = rl_read(rlr_event_frame("s0.1", RLR_REAL, frame[..]), scratch[0..<64], false);#assert in.kind == RL_IN_EVENT && !in.verified;
+  in = rl_read(rlr_event_frame("s0.1", RLR_REAL, frame[..]), scratch[..], true);#assert in.kind == RL_IN_EVENT && !in.verified;
+}
+#test "OK, EOSE, CLOSED and NOTICE frames" {
+  scratch: [64] u8;
+  in := rl_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",true,\"\"]", scratch[..], false);
+  #assert in.kind == RL_IN_OK && in.accepted && !in.auth_required && in.id[0] == 0xb1 && in.id[31] == 0x30 && !in.verified;
+  in = rl_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"auth-required: sign in\"]", scratch[..], false);
+  #assert in.kind == RL_IN_OK && !in.accepted && in.auth_required;
+  in = rl_read("[\"OK\",\"b1a649ebe8b435ec71d3784793f3bbf4b93e64e17568a741aecd4c7ddeafce30\",false,\"blocked: no\"]", scratch[..], false);
+  #assert in.kind == RL_IN_OK && !in.accepted && !in.auth_required;
+  in = rl_read("[\"EOSE\",\"s2.7\"]", scratch[..], false);#assert in.kind == RL_IN_EOSE && in.sub == "s2.7";
+  in = rl_read("[\"CLOSED\",\"s2.7\",\"auth-required: who are you\"]", scratch[..], false);
+  #assert in.kind == RL_IN_CLOSED && in.sub == "s2.7" && in.auth_required;
+  in = rl_read("[\"CLOSED\",\"s2.7\",\"error: shutting down\"]", scratch[..], false);#assert in.kind == RL_IN_CLOSED && !in.auth_required;
+  in = rl_read("[\"NOTICE\",\"auth-required: x\"]", scratch[..], false);#assert in.kind == RL_IN_NOTICE && !in.auth_required && in.sub == "";
+}
+#test "refused frames and AUTH read as kind 0, which relay.coax counts as bad" {
+  scratch: [64] u8;
+  #assert rl_read("[\"AUTH\",\"challenge\"]", scratch[..], false).kind == 0;
+  #assert rl_read("[\"EOSE\"]", scratch[..], false).kind == 0 && rl_read("not json", scratch[..], false).kind == 0;
+  #assert rl_read("[\"OK\",\"b1a6\",true,\"\"]", scratch[..], false).kind == 0;
+  r: [1] Relay; g := rl_open_at(r[..], 1000);
+  #assert rl_input(r[..], g, rl_read("[\"EOSE\"]", scratch[..], false)) == RL_BAD;
+}
+#test "auth-required is the exact NIP-42 prefix" {
+  #assert rlr_auth_required("auth-required:") && rlr_auth_required("auth-required: x");
+  #assert !rlr_auth_required("auth-required") && !rlr_auth_required("Auth-required: x") && !rlr_auth_required("") && !rlr_auth_required("xauth-required: x");
+}
+
+// ["EVENT",<sub>,<event>] in out, for checks.
+rlr_event_frame :: (sub: string, event: string, out: [] u8) -> string {
+  n := json_raw(out, 0, "[\"EVENT\",");n = json_write_string(out, n, sub);n = json_raw(out, n, ",");
+  n = json_raw(out, n, event);n = json_raw(out, n, "]");return cast(string) out[0..<n];
+}
+rlr_auth_required :: (message: string) -> bool {
+  return message.count >= RLR_AUTH_REQUIRED.count && message[0..<RLR_AUTH_REQUIRED.count] == RLR_AUTH_REQUIRED;
+}
+// The relay.coax input for one relay text frame. scratch is the event
+// verifier's id-preimage scratch (NE_MAX_OUTPUT bytes covers any event);
+// overlap is the host's truthful observation that scratch aliases text.
+rl_read :: (text: string, scratch: [] u8, overlap: bool) -> RlIn {
+  in: RlIn; m := nostr_message_read(text);
+  if m.error != NM_OK { return in; }
+  if m.type == NM_NOTICE { in.kind = RL_IN_NOTICE; return in; }
+  if m.type == NM_ACCEPT {
+    in.kind = RL_IN_OK; in.id = m.id; in.accepted = m.accepted; in.auth_required = rlr_auth_required(nm_text(m, m.message));
+    return in;
+  }
+  in.sub = nm_text(m, m.sub);
+  if m.type == NM_EOSE { in.kind = RL_IN_EOSE; return in; }
+  if m.type == NM_CLOSED { in.kind = RL_IN_CLOSED; in.auth_required = rlr_auth_required(nm_text(m, m.message)); return in; }
+  in.kind = RL_IN_EVENT;
+  e := nostr_event_read(text[m.event.from..<m.event.to], scratch, overlap);
+  if e.error != NE_OK || !nostr_fast_verify_vartime(e.id[..], e.public_key[..], e.signature[..]) { return in; }
+  in.verified = true; in.id = e.id; in.created_at = e.created_at;
+  return in;
+}
