@@ -1213,34 +1213,46 @@ fn weather_surface(c: vec3f, base: vec3f, n: vec3f, world: vec3f, v: vec3f, lit:
   return o;
 }
 
-// Rain between the eye and a surface d metres off along v: streaks on cylinders round the eye at
-// 1.2, 2.4, 4.8 and 9.6 m, falling at 7 m/s and leaning with the wind across the view.
+// Rain between the eye and a surface d metres off along v: drops on cylinders round the eye at
+// 1.2, 2.4, 4.8 and 9.6 m (2 on a phone), falling at 7 m/s with the wind. The view ray is sheared
+// into rain space, where every drop falls straight down, so a drop is a short segment along the fall
+// axis: on screen all streaks stay straight and run to the fall's vanishing point, never circling it.
+// A drop is 7 cm long near, 20 cm far, and at least a pixel wide, so it shrinks with distance; near the
+// vanishing point, where a pixel would span many drops, the layer fades instead of shimmering.
 fn weather_streaks(c: vec3f, v: vec3f, d: f32) -> vec3f {
   let rain = u.weather[0].x;
   if (rain <= 0.01) { return c; }
   let layers = select(2, 4, weather_desktop());
   let t = select(u.time, 0.0, u.still > 0.5);
-  let yaw = atan2(v.x, v.z);
-  let side = vec2f(cos(yaw), -sin(yaw));
-  let lean = dot(u.weather[0].yz, side) / 7.0;
-  let flat = max(length(v.xz), 0.05);
+  let lean = u.weather[0].yz / 7.0;
+  let w = vec3f(v.x + lean.x * v.y, v.y, v.z + lean.y * v.y);   // the ray in rain space (same s as along v)
+  let flat = length(w.xz);
+  let k = flat / max(length(w), 1e-4);   // the sine of the ray's angle off the fall axis
+  if (k < 0.06) { return c; }
+  let around = atan2(w.x, w.z) * 0.15915494 + 0.5;   // 0..1 round the axis
+  let px = max(u.water.rest.y, 1e-4);
   var a = 0.0;
   for (var i = 0; i < 4; i++) {
     if (i >= layers) { break; }
     let r = 1.2 * exp2(f32(i));
     let along = r / flat;   // how far along v the cylinder is
     if (along > d) { break; }
-    let y = v.y * along;
-    let q = vec2f((yaw * r - lean * y) / 0.12, (y + t * 7.0 + f32(i) * 13.7) / 0.85);
+    let fade = 1.0 - smoothstep(0.04, 0.12, px * along / k);   // a pixel's run up the axis, m
+    if (fade <= 0.0) { continue; }
+    let y = w.y * along;
+    let cells = round(6.2831853 * r / 0.12);   // whole cells round, so no seam
+    let q = vec2f(around * cells, (y + t * 7.0 + f32(i) * 13.7) / 0.85);
     let cell = floor(q);
     let h = weather_hash(cell + vec2f(f32(i) * 17.0, 3.0));
     if (h > rain * 0.55) { continue; }
     let f = fract(q);
     let off = weather_hash(cell + 9.1) * 0.7 + 0.15;
-    let width = max(u.water.rest.y * along * 1.1 / 0.12, 0.02);
+    let top = weather_hash(cell + 4.7) * 0.7;
+    let width = max(px * along * 1.1 / 0.12, 0.02);   // a pixel, in cells
     let x = abs(f.x - off);
-    let streak = (1.0 - smoothstep(width * 0.5, width, x)) * smoothstep(0.0, 0.12, f.y) * (1.0 - smoothstep(0.35, 0.6, f.y));
-    a += streak * (0.55 - 0.1 * f32(i));
+    let len = 0.07 * exp2(f32(i) * 0.5) / 0.85;   // 7 cm near, 20 cm at 9.6 m: shorter on screen the farther
+    let streak = (1.0 - smoothstep(width * 0.5, width, x)) * smoothstep(top, top + 0.02, f.y) * (1.0 - smoothstep(top + len - 0.02, top + len, f.y));
+    a += streak * (0.55 - 0.1 * f32(i)) * fade;
   }
   let key = st(0u).xyz * st(0u).w;
   let tint = vec3f(0.78, 0.84, 0.9) * (0.45 + 0.55 * clamp(verse_style_luma(key.x, key.y, key.z), 0.0, 1.0));
