@@ -2233,8 +2233,10 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
   }
   watch_frame(s, you, dt, c);
   watch_spears_draw(s);
+  watch_missiles_draw(s);
   for i: 0..<WATCH_ACTORS {
     if i < EG_SPOTS && eg_gone(s[0].ev.edits, i) { continue; }   // an admin took them away
+    if watch_is_rein(i) && !s[0].wt[0].actors[i].homed { continue; }   // a reinforcement not called in
     if i < EG_SPOTS && EG_SPOT_CAT[i] {
       if s[0].pack_ready { continue; }   // the kit's cat (cats), once the pack is in
       x := EG_SPOT[i * 3]; z := EG_SPOT[i * 3 + 1]; face := EG_SPOT[i * 3 + 2];
@@ -2259,7 +2261,8 @@ people :: (s: [] Everglade, u: [] f32, you: Point, dt: f32, still: bool) {
     gap := flat_gap(v3(x, 0, z), you);
     if gap < 30 { shadow(s, u, x, z, g, 0.5, 0.5); }
     if gap > reach || !in_view(u, x, g + 1, z, 1.3) { continue; }
-    // the nearest `cap`, nearest first
+    // the nearest `cap`, nearest first; but whoever hunts you first of all (never an unseen attacker)
+    if watch_busy(s, i) && s[0].wt[0].actors[i].mode == WM_CHASE { gap -= 1000; }
     k := s[0].shown_n;
     if k == cap { if gap >= gaps[k - 1] { continue; } k -= 1; } else { s[0].shown_n += 1; }
     while k > 0 && gaps[k - 1] > gap { gaps[k] = gaps[k - 1]; s[0].shown[k] = s[0].shown[k - 1]; k -= 1; }
@@ -2288,7 +2291,7 @@ person_place :: (s: [] Everglade, i: int) -> Placed {
   p: Placed;
   if i < EG_SPOTS { p.x = s[0].folk[i].x; p.z = s[0].folk[i].z; p.face = s[0].folk[i].yaw; p.walking = s[0].folk[i].walking; return p; }
   k := i - EG_SPOTS;
-  if watch_busy(s, i) { a := s[0].wt[0].actors[i]; p.x = a.x; p.z = a.z; p.face = a.yaw; return p; }
+  if watch_busy(s, i) || watch_is_rein(i) { a := s[0].wt[0].actors[i]; p.x = a.x; p.z = a.z; p.face = a.yaw; return p; }
   p.x = s[0].wv.at[k].x; p.z = s[0].wv.at[k].z; p.face = s[0].wv.at[k].yaw; p.walking = s[0].wv.at[k].walking;
   return p;
 }
@@ -2334,7 +2337,8 @@ folk_feet :: (s: [] Everglade, x: f32, z: f32) -> f32 {
 // a guard's sword and shield (everglade-watch.coax). Past the spots' people, the new watch (WATCH_*).
 pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   spot := i < EG_SPOTS;
-  w := i - EG_SPOTS;
+  w := watch_look(i);
+  rein := watch_is_rein(i);
   female := ifx spot then FOLK_FEMALE[i] else WATCH_FEMALE[w];
   rig := people_rig(s[0].people_rig[..], female);
   at := RANGER_JOINTS * 12 + k * PERSON_ROWS * 4;
@@ -2344,7 +2348,7 @@ pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   else if spot { folk_pose(rig, s[0].folk[i..<i + 1], sk, dt, pal); }
   else {
     // a new guard on their beat: walking, or standing with folded arms
-    walking := s[0].wv.at[w].walking;
+    walking := !rein && s[0].wv.at[w].walking;
     sk[0].fade = f32(FOLK_FADE);
     skin_advance(rig, sk, ifx walking then PEOPLE_WALK else PEOPLE_FOLD, ifx walking then f32(FOLK_WALK) else 0.0f32, dt);
     skin_palette(rig, sk, pal);
@@ -2356,7 +2360,7 @@ pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   }
   s[0].palette[h + 3] = f32(ifx spot then FOLK_VARIANT[i] else WATCH_VARIANT[w]);
   s[0].palette[h + 7] = 0;
-  for c: 0..<4 { s[0].palette[h + 8 + c] = ifx spot then FOLK_DYE[i * 4 + c] else WATCH_DYE[c]; }
+  for c: 0..<4 { s[0].palette[h + 8 + c] = ifx spot then FOLK_DYE[i * 4 + c] else ifx rein then RANK_DYE[watch_rank(s[0].wt[..], i) * 4 + c] else WATCH_DYE[c]; }
   pl := person_place(s, i);
   x := pl.x; z := pl.z;
   y := folk_feet(s, x, z) + ab_air(s, i);   // off their feet in a spell (everglade-abilities.coax)
@@ -2370,14 +2374,14 @@ pose_person :: (s: [] Everglade, i: int, k: int, slot: int, dt: f32) {
   // thrown by a blast: the body as the watch tumbles it (watch.coax Tumble), its sword and shield dropped
   body := s[0].wt[0].actors[i].body;
   thrown := watch_busy(s, i) && (body.on || tumble_turn(body) > 0);
-  if watch_is_guard(i) && !thrown {
+  if watch_is_guard(i) && !thrown && !watch_caster(s[0].wt[..], i) {
     m := s[0].wt[0].actors[i].mode;
     watch_arm_guard(s, rig, sk, x, y, z, yaw, watch_busy(s, i) && (m == WM_CHASE || m == WM_DOWN));
   }
   rows := [12] f32.[c, 0, sn, x,   0, 1, 0, y,   -sn, 0, c, z];
   if thrown { tr := tumble_rows(body, v3(x, y, z)); rows = tr.r; }
   parts: [FOLK_PARTS_MAX] int;
-  n := ifx spot then folk_parts(i, parts[..]) else watch_parts(w, parts[..]);
+  n := ifx spot then folk_parts(i, parts[..]) else ifx rein then watch_rein_parts(s, i, parts[..]) else watch_parts(w, parts[..]);
   for p: 0..<n {
     part := parts[p];
     if s[0].part_count[part] <= 0 { continue; }

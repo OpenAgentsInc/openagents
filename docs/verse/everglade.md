@@ -667,6 +667,40 @@ beat, in hand when they hunt you); the kits have no plate armour.
   the air; you swim only when your feet come down to its surface, and no
   rowboat is offered from above.
 
+### The heat (WANTED 1 to 5)
+
+Under your HP, WANTED shows five stars, lit up to your level. Every
+crime adds 1 heat, downing a hunter adds 2, and killing one adds 4.
+Hurt the hunters' own spells do to the town adds nothing. At 8 heat you
+are at level 2, at 18 level 3, at 32 level 4, and at 50 level 5. Each
+new level calls a wave in by the gate nearest you (South, West, East or
+North). No more than 12 hunters are ever out at once. All stat blocks
+are SRD 5.2.1.
+
+1. The watch.
+2. Two more guards and two Veterans (Multiattack: two blows).
+3. A Veteran and two Mages: Fire Bolt and Ray of Frost (it slows you to
+   two thirds), Hold Person (a Wisdom save, or you can't move until you
+   break free), and Fireball.
+4. Two Knights and a Priest. The Priest heals the hurt among them, and
+   casts Guiding Bolt (your next attacker has advantage) and a Spiritual
+   Weapon that follows you.
+5. An Archmage (Lightning Bolt down a 100 ft line, Cone of Cold) and three
+   Gladiators.
+
+The casters keep 8 to 15 m from you. Each spell leaves the caster's hand
+after a short glow and flies, so you can step out of a bolt's way. The
+Fireball, the Lightning Bolt and the Cone of Cold allow a Dexterity save
+for half, and they throw you with the same physics as your own blasts. A
+Fireball throws the townsfolk too. The reinforcements wear the kit's
+leathers dyed by rank, and a Gladiator wears peasant's cloth. The casters
+are hooded and carry no sword or shield.
+
+The heat clears when you die, or when you stay out of every hunter's
+sight long enough: 18 s at level 1, plus 9 s for each level above it
+(54 s at level 5). Then the reinforcements walk back out
+of their gate.
+
 Hostility is your page's alone, like a broken building: each player has
 their own watch, and the beats are a function of the shared clock, so
 everyone sees the guards in the same place until one of them is hunted.

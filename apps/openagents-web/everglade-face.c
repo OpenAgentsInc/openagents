@@ -162,7 +162,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
       if (k.y > 0) { player.vel.y = k.y > player.vel.y ? k.y : player.vel.y; player.on_ground = false; }
     }
   }
-  bool busy = everglade_busy(at(state));
+  // Hold Person holds you where you stand (everglade-watch.coax)
+  bool busy = everglade_busy(at(state)) || everglade_held(at(state));
   if (busy) sticks = verse_sticks_reset();
   if (busy) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
   else player = verse_player_input(player, g->key_x, g->key_y, sticks.pad_x, sticks.pad_y, verse_runs(g->run, sticks.run, sticks.pad_x, sticks.pad_y), (g->jump || sticks.jump) && !everglade_afloat(at(state)), 0, 0);
@@ -171,7 +172,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
     // slush your pace; Prone or caught in the ice you can't move
     coax_t_FrFooting foot = everglade_footing(at(state), player.pos.x, player.pos.z, player.pos.y);
     if (foot.still) player = verse_player_input(player, 0, 0, 0, 0, false, false, 0, 0);
-    player.pace = swim.pace * foot.pace;
+    player.pace = swim.pace * foot.pace * everglade_slow(at(state));   // and Ray of Frost slows you
     player.grip = foot.grip;
   }
   player.theta = everglade_player_theta(at(state));

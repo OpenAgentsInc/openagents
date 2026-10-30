@@ -57,6 +57,24 @@ watch_parts :: (k: int, out: [] int) -> int {
   return n;
 }
 
+// Which new guard's face, skin and hair person i (a new guard, or a reinforcement) wears.
+watch_look :: (i: int) -> int { return ifx watch_is_rein(i) then (i - WATCH_FIRST_REIN) % WATCH_NEW else i - EG_SPOTS; }
+// The parts reinforcement i wears by their rank: the kit's leathers (a Gladiator's bare peasant's
+// cloth), a head, hair, a beard, and a caster's hood.
+watch_rein_parts :: (s: [] Everglade, i: int, out: [] int) -> int {
+  if !watch_is_rein(i) || out.count < FOLK_PARTS_MAX { return 0; }
+  k := watch_look(i);
+  r := watch_rank(s[0].wt[..], i);
+  f := WATCH_FEMALE[k];
+  out[0] = ifx RANK_BARE[r] then (ifx f then PART_FEMALE_PEASANT else PART_MALE_PEASANT) else (ifx f then PART_FEMALE_RANGER else PART_MALE_RANGER);
+  out[1] = ifx f then PART_FEMALE_HEAD else PART_MALE_HEAD;
+  out[2] = WATCH_HAIR[k];
+  n := 3;
+  if WATCH_BEARD[k] && !f { out[n] = PART_BEARD; n += 1; }
+  if RANK_HOOD[r] { out[n] = ifx f then PART_FEMALE_HOOD else PART_MALE_HOOD; n += 1; }
+  return n;
+}
+
 watch_w :: (s: [] Everglade) -> [] Watch { return s[0].wt[..]; }
 watch_on :: (s: [] Everglade) -> bool { return s[0].wt[0].on; }
 // Whether person i (a spot, or EG_SPOTS + a new guard) is off their day.
@@ -84,7 +102,10 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   w := watch_w(s);
   w[0].on = sp_on(s) && !c.still;
   if !w[0].on { return; }
+  w[0].face = s[0].face;
   watch_tick(w, dt, you, c.day, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+  // a hunter's spell threw you: the face adds it to your velocity
+  if w[0].knocked { s[0].wv.knock = add(s[0].wv.knock, w[0].knock); s[0].wv.knocked = true; w[0].knocked = false; w[0].knock = v3(0, 0, 0); }
   if w[0].respawn {
     w[0].respawn = false;
     s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z)); s[0].spawn_face = 0;
@@ -111,6 +132,9 @@ watch_end_effects :: (s: [] Everglade) {
   w[0].you_body.on = false; w[0].you_body.settle = -1; w[0].you_fall = 0;
   fr_you_reset(s);
 }
+// Ray of Frost's slow on your pace, and Hold Person's hold (you can't move), for the face.
+everglade_slow :: (s: [] Everglade) -> f32 #export_c { return ifx s[0].wv.started then watch_pace(watch_w(s)) else 1.0f32; }
+everglade_held :: (s: [] Everglade) -> bool #export_c { return s[0].wv.started && watch_held(watch_w(s)); }
 // A blast's throw for your living body, taken once by the face (everglade-face.c adds it to your velocity).
 everglade_knock :: (s: [] Everglade) -> Point #export_c {
   if !s[0].wv.knocked { return v3(0, 0, 0); }
@@ -287,6 +311,86 @@ watch_spell_you :: (s: [] Everglade, at: Point, radius: f32, power: f32) {
   if took > 0 { sp_say(s, "YOU ARE CAUGHT IN IT", took, "DAMAGE"); }
 }
 
+// The hunters' spells in the air (watch.coax Missile): bolts that fly and burst, the frost ray, the
+// Fireball's blast, the Lightning Bolt's line and the Cone of Cold's spray (sparks: everglade-spells.coax),
+// Hold Person's ring on you, the Priest's healing and Spiritual Weapon; and a caster's hands as they cast.
+watch_missiles_draw :: (s: [] Everglade) {
+  if !s[0].wv.started { return; }
+  w := watch_w(s);
+  for k: 0..<MISSILES {
+    m := w[0].missiles[k];
+    if !m.live { continue; }
+    a := v3(m.ax, m.ay, m.az); b := v3(m.bx, m.by, m.bz);
+    u := clamp01(m.t / hi(m.flight, 0.001));
+    p := add(a, times(sub(b, a), u));
+    flying := m.t < m.flight;
+    burst := !flying && !m.shown;
+    if burst { w[0].missiles[k].shown = true; }
+    if m.kind == MS_FIRE_BOLT || m.kind == MS_FIREBALL || m.kind == MS_GUIDING {
+      hot := ifx m.kind == MS_GUIDING then v3(1, 0.95, 0.65) else v3(1, 0.7, 0.25);
+      cool := ifx m.kind == MS_GUIDING then v3(0.95, 0.75, 0.3) else v3(0.9, 0.25, 0.06);
+      if flying {
+        size := ifx m.kind == MS_FIREBALL then 0.22f32 else 0.14f32;
+        shape(s, SHAPE_SPHERE, LOOK_FLAME, p, 0, 0, size, size, size, hot.x, hot.y, hot.z);
+        sp_add_spark(s, p, v3(0, 0.4, 0), 0.3, size * 0.8, cool, -1);
+      } else if burst {
+        if m.kind == MS_FIREBALL {
+          sp_add_blast(s, b, f32(FIREBALL_R), 0);
+          sp_add_scorch(s, b, 1.4, false);
+          sp_add_shock(s, b, f32(FIREBALL_R), 0.6, v3(1, 0.55, 0.2));
+        } else { sp_burst(s, b, v3(0, 1, 0), 10, 4, 0.5, 0.1, hot, cool, 6); }
+      }
+    } else if m.kind == MS_FROST {
+      // a pale blue-white beam from the hand to you
+      if m.t < m.flight + 0.3 {
+        d := sub(b, a); l := length(d);
+        if l > 0.1 {
+          for q: 0..<6 { sp_add_spark(s, add(a, times(d, (f32(q) + 0.5) / 6)), v3(0, 0, 0), 0.12, 0.09, v3(0.75, 0.92, 1), 0); }
+        }
+      }
+      if burst { sp_burst(s, b, v3(0, 1, 0), 8, 2.5, 0.6, 0.08, v3(0.85, 0.95, 1), v3(0.5, 0.75, 1), 2); }
+    } else if m.kind == MS_HOLD {
+      if burst { sp_add_shock(s, v3(b.x, b.y - 0.9, b.z), 1.1, 0.7, v3(0.7, 0.4, 1)); }
+    } else if m.kind == MS_LIGHTNING {
+      // the bolt's line, 100 ft from the hand, crackling
+      if burst {
+        d := unit_or(sub(b, a), v3(0, 0, 1));
+        for q: 0..<40 {
+          at := add(a, times(d, f32(LIGHTNING_LONG) * f32(q) / 40));
+          sp_add_spark(s, add(at, times(sp_spray(s, 0), 0.25)), times(sp_spray(s, 0), 0.6), 0.35, 0.14, v3(0.8, 0.88, 1), 0);
+        }
+        sp_add_shock(s, b, 2.0, 0.4, v3(0.7, 0.8, 1));
+      }
+    } else if m.kind == MS_COLD {
+      // a spray of frost, 60 ft wide as it is long
+      if burst {
+        d := unit_or(sub(b, a), v3(0, 0, 1));
+        for q: 0..<36 {
+          spray := unit_or(add(d, times(sp_spray(s, 0), 0.5)), d);
+          sp_add_spark(s, a, times(spray, 14 + 12 * sp_rand(s)), 0.8, 0.16, v3(0.82, 0.93, 1), 1);
+        }
+        for q: 0..<4 { sp_add_puff(s, add(a, times(d, 4 + f32(q) * 3.5)), times(d, 2), 1.8, 1.6, 0.96); }
+      }
+    } else if m.kind == MS_HEAL {
+      if burst { sp_burst(s, b, v3(0, 1, 0), 12, 1.6, 0.9, 0.09, v3(0.75, 1, 0.65), v3(0.95, 1, 0.8), -2); }
+    } else if m.kind == MS_WEAPON && !flying {
+      // a spectral mace over your shoulder, turning
+      turn := f32(s[0].time) * 5;
+      shape(s, SHAPE_BOX, LOOK_FLAME, b, turn, 0.6, 0.06, 0.06, 0.8, 1, 0.88, 0.55);
+      shape(s, SHAPE_SPHERE, LOOK_FLAME, add(b, v3(sin(turn) * 0.38, 0.22, cos(turn) * 0.38)), 0, 0, 0.16, 0.16, 0.16, 1, 0.9, 0.6);
+    }
+  }
+  // a caster's hands glow as they cast
+  for i: WATCH_FIRST_REIN..<WATCH_ACTORS {
+    a := w[0].actors[i];
+    if !a.homed || a.casting < 0 || a.mode == WM_DEAD { continue; }
+    hand := v3(a.x + sin(a.yaw) * 0.35, folk_feet(s, a.x, a.z) + 1.45, a.z + cos(a.yaw) * 0.35);
+    colour := ifx a.cast_kind == MS_FROST || a.cast_kind == MS_COLD || a.cast_kind == MS_LIGHTNING then v3(0.7, 0.88, 1)
+              else ifx a.cast_kind == MS_HOLD then v3(0.72, 0.45, 1) else ifx a.cast_kind == MS_HEAL || a.cast_kind == MS_GUIDING || a.cast_kind == MS_WEAPON then v3(1, 0.93, 0.6) else v3(1, 0.6, 0.2);
+    sp_add_spark(s, add(hand, times(sp_spray(s, 0), 0.12)), v3(0, 0.6, 0), 0.25, 0.07, colour, -1);
+  }
+}
+
 // The spears in the air (watch_spear_at): a shaft with a dark head, the way it flies.
 watch_spears_draw :: (s: [] Everglade) {
   if !s[0].wv.started { return; }
@@ -341,13 +445,25 @@ watch_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, top: f32) -> int
   share := clamp01(f32(w[0].hp) / f32(hi_i(w[0].max, 1)));
   if share > 0 && lit(out, n, bx0, by, bx0 + (bx1 - bx0) * share, by, 3 * k, 0.95, 2.2 * k, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B, 0) { n += 6; }
   if w[0].wanted {
+    // WANTED, and its level as five stars, lit up to it (watch.coax HEAT_AT)
     cap := 9 * k;
     word := "WANTED";
-    tw := text_width(word, cap);
     pulse := 0.75 + 0.25 * sin(f32(s[0].time) * 6);
-    wb := Box.{x0 = b.x1 - tw - 28 * k, y0 = b.y1 + 8 * k, x1 = b.x1, y1 = b.y1 + 8 * k + cap + 20 * k};
+    wb := Box.{x0 = b.x0, y0 = b.y1 + 8 * k, x1 = b.x1, y1 = b.y1 + 8 * k + cap + 20 * k};
     plate(s, u, wb, 0.82, 1);
-    n = draw_text(out, n, word, wb.x0 + 14 * k, wb.y1 - 10 * k, cap, GAP, SPACE, ink(k, pulse, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B), false, false);
+    n = draw_text(out, n, word, wb.x0 + 12 * k, wb.y1 - 10 * k, cap, GAP, SPACE, ink(k, pulse, WATCH_RED_R, WATCH_RED_G, WATCH_RED_B), false, false);
+    sr := 6.5 * k;
+    cy := (wb.y0 + wb.y1) / 2;
+    for q: 0..<5 {
+      cx := wb.x1 - 14 * k - sr - f32(4 - q) * (sr * 2 + 3 * k);
+      on := q < w[0].level;
+      for e: 0..<5 {
+        a0 := f32(PI) * (-0.5 + 0.8 * f32(e)); a1 := f32(PI) * (-0.5 + 0.8 * f32(e + 1));
+        if lit(out, n, cx + cos(a0) * sr, cy + sin(a0) * sr, cx + cos(a1) * sr, cy + sin(a1) * sr, ifx on then 1.6 * k else 0.9 * k,
+               ifx on then 0.95f32 else 0.3f32, ifx on then 1.6 * k else 0.0f32,
+               ifx on then 0.98f32 else 0.6f32, ifx on then 0.78f32 else 0.55f32, ifx on then 0.3f32 else 0.5f32, 0) { n += 6; }
+      }
+    }
   }
   // the shouts
   for i: 0..<WATCH_ACTORS {
@@ -481,4 +597,33 @@ watch_overlay :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> int {
   // standing there on the ground nothing lifts you
   lift := everglade_lift(g[..], sp.x, sp.z, 0, 0, 0, 0, 1.0 / 60.0);
   #assert !lift.on;
+}
+
+#test "watch: WANTED 5 calls the company in at the gate; they are drawn in their ranks' colours, casters bare-handed, with five stars lit" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  yx := 1.6f32; yz := -40.0f32;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, yx, 0, yz, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := watch_w(g[..]);
+  nob: [6] f32;
+  _ = watch_crime(w, v3(yx, 0, yz), 100, v3(yx, 0, yz), nob[..], 0, g[0].heights[..]);
+  w[0].heat = 60; w[0].hp = 100000; w[0].max = 100000;
+  // walking south (the camera turns to follow, looking at the South Gate)
+  for f: 0..<14 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, -3, false, 0, 0, 0, 0); }
+  #assert w[0].level == 5 && watch_hunters(w) <= HUNTERS_MAX;
+  shown := 0; caster := -1;
+  for k: 0..<g[0].shown_n { if watch_is_rein(g[0].shown[k]) { shown += 1; if watch_caster(w, g[0].shown[k]) { caster = g[0].shown[k]; } } }
+  #assert shown >= 2;
+  // the casters cast at you: their spells are in the air or have caught you
+  for i: WATCH_FIRST_REIN..<WATCH_ACTORS { w[0].actors[i].cast_cool = 0; }
+  for f: 0..<50 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, yx, 0, yz, f32(PI), 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert w[0].spell_hits + w[0].spell_misses > 0;
+  // Ray of Frost on you: the face slows you
+  w[0].slow_t = 3;
+  #assert everglade_slow(g[..]) < 1;
+  w[0].held_t = 2;
+  #assert everglade_held(g[..]);
 }

@@ -24,6 +24,22 @@ SrdCreature :: struct {
 SRD_GUARD :: SrdCreature.{name = "Guard", ac = 16, hp = 11, dex = 1, attack = 3, dice = 1, sides = 6, bonus = 1, kind = DMG_SLASHING};
 // Commoner (SRD 5.2.1): AC 10, 4 HP (1d8), Dex +0; a club, +2 for 1d4 bludgeoning.
 SRD_COMMONER :: SrdCreature.{name = "Commoner", ac = 10, hp = 4, dex = 0, attack = 2, dice = 1, sides = 4, bonus = 0, kind = DMG_BLUDGEONING};
+// The heat's ranks (SRD 5.2.1 stat blocks; Everglade's WANTED levels, verse/everglade/watch.coax).
+// Warrior Veteran: AC 17 (splint), 65 HP, Dex +1; Multiattack, two Greatsword, +5 for 2d6 + 3.
+SRD_VETERAN :: SrdCreature.{name = "Warrior Veteran", ac = 17, hp = 65, dex = 1, attack = 5, dice = 2, sides = 6, bonus = 3, kind = DMG_SLASHING};
+// Mage: AC 15, 81 HP, Dex +2; Arcane Burst +6 for 3d8 + 3 force; casts (DC 14, +6): Fire Bolt, Ray of
+// Frost, Hold Person, Fireball.
+SRD_MAGE :: SrdCreature.{name = "Mage", ac = 15, hp = 81, dex = 2, attack = 6, dice = 3, sides = 8, bonus = 3, kind = DMG_FORCE};
+// Knight: AC 18 (plate), 52 HP, Dex +0; Multiattack, two Greatsword, +5 for 2d6 + 3.
+SRD_KNIGHT :: SrdCreature.{name = "Knight", ac = 18, hp = 52, dex = 0, attack = 5, dice = 2, sides = 6, bonus = 3, kind = DMG_SLASHING};
+// Priest: AC 13, 38 HP, Dex +0; Mace +5 for 1d6 + 3; casts (DC 13, +5): Guiding Bolt, Spiritual Weapon,
+// and heals (2d8 + 3).
+SRD_PRIEST :: SrdCreature.{name = "Priest", ac = 13, hp = 38, dex = 0, attack = 5, dice = 1, sides = 6, bonus = 3, kind = DMG_BLUDGEONING};
+// Archmage: AC 17, 170 HP, Dex +2; Arcane Burst +9 for 4d10 + 4 force; casts (DC 17, +9): Lightning Bolt,
+// Cone of Cold.
+SRD_ARCHMAGE :: SrdCreature.{name = "Archmage", ac = 17, hp = 170, dex = 2, attack = 9, dice = 4, sides = 10, bonus = 4, kind = DMG_FORCE};
+// Gladiator: AC 16, 112 HP, Dex +2; Multiattack, three Spear, +7 for 2d6 + 4.
+SRD_GLADIATOR :: SrdCreature.{name = "Gladiator", ac = 16, hp = 112, dex = 2, attack = 7, dice = 2, sides = 6, bonus = 4, kind = DMG_PIERCING};
 // The player, a 5th-level Ranger (SRD 5.2.1: d10 hit dice, Con +2: 10 + 2 + 4 x (6 + 2) = 44 HP;
 // studded leather, Dex +3: AC 15).
 SRD_RANGER_5 :: SrdCreature.{name = "Ranger", ac = 15, hp = 44, dex = 3, attack = 6, dice = 1, sides = 8, bonus = 3, kind = DMG_PIERCING};
