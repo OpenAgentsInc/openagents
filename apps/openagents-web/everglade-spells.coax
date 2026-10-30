@@ -5,7 +5,9 @@
 //
 // The realm plays by the SRD 5e ruleset (realms.json "ruleset": "srd5", the
 // page facts' ruleset= line; verse/rules/srd5.coax). Without it there is no
-// bar and nothing breaks. With it, along the bottom:
+// bar and nothing breaks. With it, the old engine's tray of game-icons.net
+// art along the bottom (on a phone, above the thumbs' sticks), each slot's
+// key at its top right and its card over it (sp_bar):
 //
 //   1 METEOR   Meteor Swarm: six meteors on a 3.5 m ring, each a 4 m blast of
 //              20d6 fire and 20d6 bludgeoning (rolled once a cast); 2.5 s cast.
@@ -19,7 +21,7 @@
 // A number key picks a spell (again, or Esc, puts it away); a ring follows
 // the pointer over whatever it points at, lying flat on the ground or a roof
 // and standing up against a wall, and a click casts there. On a phone
-// tap a slot, then tap where it lands. No mana, no cooldown, as the old
+// tap a slot, then tap where it lands; holding a slot shows its card. No mana, no cooldown, as the old
 // engine's destruction bar; the cast bar stays, and you may walk through it.
 //
 // What a blast reaches takes its damage as an unattended object (full
@@ -45,8 +47,10 @@
 #load "../../verse/rules/srd5.coax";
 #load "../../verse/demolish.coax";
 #load "../../verse/water-spells.coax";
+#load "everglade-hotbar.coax";
 
 SP_SLOTS :: 4;
+SP_MEDIA_BYTES :: 600;
 SP_METEOR :: 0; SP_BOLT :: 1; SP_MEGA :: 2; SP_ORB :: 3; SP_REBUILD :: 4;
 SP_SPELL :: [4] int.[SPELL_METEOR_SWARM, SPELL_THUNDERBOLT, SPELL_MEGA_THUNDERBOLT, SPELL_WATER_ORB];
 SP_WORD :: [5] string.["METEOR", "BOLT", "MEGA", "ORB", "REBUILD"];
@@ -133,6 +137,10 @@ Spells :: struct {
   armed: int;                // the slot aimed, -1 none
   px: f32; py: f32; seen: bool;            // the pointer, device pixels
   down: bool; down_x: f32; down_y: f32; down_id: int; down_touch: bool; slot_finger: int;
+  slot_held: int; slot_t: f64; mouse: bool;   // the slot a finger holds, since when; the pointer is a mouse
+  tip_slot: int; tip_since: f64; tip_hid: f64; // the slot the mouse rests on, since when; when a card last hid
+  tip_on: bool;                                // a card showed last frame (the hint stays off it)
+  media: [SP_MEDIA_BYTES] u8; media_n: int;    // the bar's pictures for the host (coaxial_media)
   aim: Point; aim_n: Point; aim_ok: bool; far: bool;   // aim_n: the face it points at (up on the ground or a roof)
   shot: Shot; fx: f32; fy: f32;
   casting: int; cast_t: f32; cast_at: Point; cast_n: Point; cast_from: Point;
@@ -243,6 +251,7 @@ spells_start :: (s: [] Everglade) {
   demo_new(w, false);
   s[0].sp.dice[0] = srd_dice(20261029);
   s[0].sp.armed = -1; s[0].sp.casting = -1; s[0].sp.slot_finger = -1; s[0].sp.down_id = -1;
+  s[0].sp.slot_held = -1; s[0].sp.tip_slot = -1; s[0].sp.tip_hid = -100;
   for g: 0..<SP_GROUPS { s[0].sp.group_x[g] = 0; s[0].sp.group_z[g] = 0; s[0].sp.group_n[g] = 0; }
   rows: [12] f32;
   for g: KIT_FOREST..<KIT_GROUPS {
@@ -349,19 +358,30 @@ sp_rebuild :: (s: [] Everglade) {
   sp_say(s, "THE TOWN STANDS AGAIN", n, "PIECES");
 }
 
-// The pointer: a click (or a tap) on a slot presses it; with a spell picked
+// The pointer: a click on a slot presses it, a tap when it lifts (unless it
+// was held for the card, as the old engine's bar); with a spell picked
 // the pointer aims and a click or a tap casts where it points. A mouse drag
 // still turns the camera.
 spells_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool {
   if !sp_on(s) || s[0].above || s[0].ev.editing || s[0].talk >= 0 || s[0].board { return false; }
   k := hi(s[0].dpr, 0.5);
-  if kind == 0 || phase == 0 { s[0].sp.px = x; s[0].sp.py = y; s[0].sp.seen = true; }
+  if kind == 0 || phase == 0 { s[0].sp.px = x; s[0].sp.py = y; s[0].sp.seen = true; s[0].sp.mouse = kind == 0; }
   if phase == 0 {
     for b: 0..<SP_SLOTS + 1 {
-      if in_box(s[0].sp.boxes[b], x, y) { sp_press(s, b); s[0].sp.slot_finger = id; return true; }
+      if in_box(s[0].sp.boxes[b], x, y) {
+        s[0].sp.slot_finger = id; s[0].sp.slot_held = -1;
+        if kind == 0 { sp_press(s, b); } else { s[0].sp.slot_held = b; s[0].sp.slot_t = s[0].time; }
+        return true;
+      }
     }
   }
-  if id == s[0].sp.slot_finger && phase >= 2 { s[0].sp.slot_finger = -1; return true; }
+  if id == s[0].sp.slot_finger && s[0].sp.slot_finger >= 0 {
+    if phase >= 2 {
+      if phase == 2 && s[0].sp.slot_held >= 0 && s[0].time - s[0].sp.slot_t < f64(HB_LONG) { sp_press(s, s[0].sp.slot_held); }
+      s[0].sp.slot_finger = -1; s[0].sp.slot_held = -1;
+    }
+    return true;
+  }
   if s[0].sp.armed < 0 { return false; }
   if phase == 0 { s[0].sp.down = true; s[0].sp.down_x = x; s[0].sp.down_y = y; s[0].sp.down_id = id; s[0].sp.down_touch = kind != 0; return kind != 0; }
   if phase == 1 { if kind != 0 && id == s[0].sp.down_id { s[0].sp.px = x; s[0].sp.py = y; return true; } return false; }
@@ -1349,7 +1369,7 @@ sp_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, at: Point, nrm: Poi
 }
 
 spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
-  s[0].sp.lift = 0;
+  s[0].sp.lift = 0; s[0].sp.tip_on = false;
   for b: 0..<SP_SLOTS + 1 { s[0].sp.boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
   if !sp_on(s) { return at; }
   k := hi(s[0].dpr, 0.5);
@@ -1415,64 +1435,199 @@ spells_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom: f32) ->
     n = sp_ring(s, out, u, n, spot, face, sp_ring_r(slot, face), colour, pulse);
     n = sp_ring(s, out, u, n, spot, face, SP_BLAST[slot] * 0.25, colour, pulse * 0.7);
   }
-  // the bar: a slot a spell, and REBUILD once something broke; along the
-  // bottom, or on a phone down the right edge, clear of the thumbs' stick
+  // the bar, the old engine's tray; what it says over it; the cast bar
+  top := sp_bar(s, out, u, n);
+  n = top.n;
   phone_ := phone(s);
-  count := ifx sp_broken(s) then SP_SLOTS + 1 else SP_SLOTS;
-  bw := (ifx phone_ then 66.0f32 else 96.0f32) * k;
-  bh := 44 * k; gap := 6 * k;
-  total := f32(count) * bw + f32(count - 1) * gap;
-  x := floor((w - total) / 2);
-  y1 := floor(bottom);
-  ts := (ifx phone_ then 7.5f32 else 8.5f32) * k;
-  cy := floor(h * 0.3);
-  for b: 0..<count {
-    box := Box.{x0 = x, y0 = y1 - bh, x1 = x + bw, y1 = y1};
-    if phone_ { box = Box.{x0 = w - 16 * k - bw, y0 = cy, x1 = w - 16 * k, y1 = cy + bh}; cy += bh + gap; }
-    s[0].sp.boxes[b] = box;
-    lit_ := b < SP_SLOTS && (s[0].sp.armed == b || s[0].sp.casting == b);
-    plate(s, u, box, 0.88, ifx lit_ then 2.0f32 else 1.0f32);
-    word := SP_WORD[b];
-    size := ts;
-    room := bw - 14 * k;
-    if text_width(word, size) > room { size = size * room / text_width(word, size); }
-    if !phone_ { n = draw_text(out, n, SP_KEY[b], box.x0 + 6 * k, box.y0 + 13 * k, 6 * k, GAP, SPACE, ink(k, 0.55, PARCH_R, PARCH_G, PARCH_B), false, false); }
-    n = draw_text(out, n, word, floor(box.x0 + (bw - text_width(word, size)) / 2), floor(box.y1 - 12 * k), size, GAP, SPACE,
-                  ink(k, ifx lit_ then 1.0f32 else 0.9f32, GOLD_R, GOLD_G, GOLD_B), false, false);
-    x += bw + gap;
-  }
-  top := ifx phone_ then y1 else y1 - bh - 8 * k;
-  // the cast bar over it
-  if s[0].sp.casting >= 0 {
-    spell := srd_spell(SP_SPELL[s[0].sp.casting]);
-    cw := hi(total * 0.6, 200 * k);
-    back := Box.{x0 = floor((w - cw) / 2), y0 = top - 30 * k, x1 = floor((w + cw) / 2), y1 = top};
-    plate(s, u, back, 0.8, 0);
-    fill := (cw - 16 * k) * clamp(s[0].sp.cast_t / spell.bar, 0, 1);
-    if fill > 2 * k { plate(s, u, Box.{x0 = back.x0 + 8 * k, y0 = back.y1 - 10 * k, x1 = back.x0 + 8 * k + fill, y1 = back.y1 - 5 * k}, 0.95, 2); }
-    up: [24] u8;
-    name := sp_upper(up[..], spell.name);
-    n = draw_text(out, n, name, back.x0 + 10 * k, back.y0 + 15 * k, 7 * k, GAP, SPACE, ink(k, 0.95, PARCH_R, PARCH_G, PARCH_B), false, false);
-    top = back.y0 - 6 * k;
-  }
-  // one line: how to cast the picked spell, or what the last cast did
+  y := top.top;
+  if s[0].sp.casting >= 0 { n = sp_cast_bar(s, out, u, n, top.top); }
+  // one line over the tray: how to cast the picked spell, what is casting, or what the last cast did
+  // (the old engine's help line, in its green)
   line := "";
-  if s[0].sp.armed >= 0 && s[0].sp.casting < 0 {
-    line = ifx phone_ then "TAP WHERE IT LANDS · TAP THE SLOT TO PUT IT AWAY" else "CLICK WHERE IT LANDS · ESC PUTS IT AWAY";
+  colour := HB_HINT;
+  if s[0].sp.casting >= 0 {
+    line = SP_CASTING[s[0].sp.casting];
+  } else if s[0].sp.armed >= 0 {
+    line = ifx phone_ then SP_TAP[s[0].sp.armed] else SP_CLICK[s[0].sp.armed];
     if s[0].sp.far { line = "TOO FAR · 140 M AT MOST"; }
   } else if s[0].sp.news_t > 0 {
     line = cast(string) s[0].sp.news[0..<s[0].sp.news_n];
+    colour = v3(PARCH_R, PARCH_G, PARCH_B);
   }
   if line.count > 0 {
     ls := 7 * k;
     lw := text_width(line, ls);
-    if lw > w - 40 * k { ls = ls * (w - 40 * k) / lw; lw = w - 40 * k; }
-    plate(s, u, Box.{x0 = (w - lw) / 2 - 10 * k, y0 = top - ls - 18 * k, x1 = (w + lw) / 2 + 10 * k, y1 = top}, 0.72, 0);
-    n = draw_text(out, n, line, floor((w - lw) / 2), floor(top - 9 * k), ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
-    top -= ls + 24 * k;
+    if lw > w - 32 * k { ls = ls * (w - 32 * k) / lw; lw = w - 32 * k; }
+    n = draw_text(out, n, line, floor((w - lw) / 2), floor(y - 8 * k), ls, GAP, SPACE, ink(k, 0.95, colour.x, colour.y, colour.z), false, false);
   }
-  s[0].sp.lift = bottom - top;
+  // (the hint and what sits over it start over the bar: spells_reserve; on a phone the bar
+  // stands above the sticks, clear of them, so lift stays 0 and `bottom` is not needed)
   return n;
+}
+
+// ---- the bar, as the previous engine drew it (`0b401561a0^:crates/verse-zone-everglade/src/zones/
+// everglade/hotbar.rs` draw_of and tooltip.rs): a beveled tray of game-icons.net art, a slot 36
+// units square and 42 apart, padded 8, the tray's bottom 8 above the screen's, a unit the screen's
+// CSS height over 768 (never under a pixel); each slot's icon over a dark slot with its key at the
+// top right (pictures from verse/tools/everglade_hotbar.py, drawn by the host), framed in bronze,
+// or in gold and twice as thick while its spell is picked or casting. The mouse resting on a slot
+// for 0.35 s, or a finger holding it for 0.45 s, shows its card over it. On a phone the tray stands
+// above the thumbs' sticks, as the old phone app's (24 points and two 56-point stick radii up).
+
+HB_ICON :: 36.0; HB_STEP :: 42.0; HB_PAD :: 8.0; HB_MARGIN :: 8.0;
+HB_HOVER :: 0.35; HB_LONG :: 0.45; HB_WARM :: 0.3;   // tooltip.rs HOVER_DELAY, LONG_PRESS, WARM
+HB_PHONE_BOTTOM :: 136.0;    // CSS px: the old phone app's hotbar_bottom, over its sticks
+HB_RESERVE :: 22.0;          // CSS px over the tray for its line
+HB_URL :: "/realms/everglade/hotbar/";
+// everglade.wgsl hud_rect's looks: the tray's bevel, a slot's frame, a picked slot's, a meter and its fill
+PLATE_TRAY :: 3.0; PLATE_SLOT :: 4.0; PLATE_SLOT_ON :: 5.0; PLATE_METER :: 6.0; PLATE_FILL :: 7.0;
+// the old help line's green and the cast bar's title (demolition/hotbar.rs HINT, CAST_TEXT), sRGB
+HB_HINT :: Point.{x = 0.88, y = 0.95, z = 0.77};
+HB_CAST_TEXT :: Point.{x = 1.0, y = 0.94, z = 0.80};
+SP_CLICK :: [4] string.["CLICK THE GROUND OR A WALL TO CALL DOWN METEOR SWARM · ESC CANCELS",
+                        "CLICK A WALL OR THE GROUND TO CALL DOWN THUNDERBOLT · ESC CANCELS",
+                        "CLICK A WALL OR THE GROUND TO CALL DOWN MEGA THUNDERBOLT · ESC CANCELS",
+                        "CLICK WHERE THE WATER ORB LANDS · ESC CANCELS"];
+SP_TAP :: [4] string.["TAP WHERE METEOR SWARM LANDS · TAP ITS SLOT TO CANCEL",
+                      "TAP WHERE THUNDERBOLT STRIKES · TAP ITS SLOT TO CANCEL",
+                      "TAP WHERE MEGA THUNDERBOLT STRIKES · TAP ITS SLOT TO CANCEL",
+                      "TAP WHERE THE WATER ORB LANDS · TAP ITS SLOT TO CANCEL"];
+SP_CASTING :: [4] string.["CASTING METEOR SWARM · KEEP MOVING IF YOU LIKE · ESC STOPS IT",
+                          "CASTING THUNDERBOLT · KEEP MOVING IF YOU LIKE · ESC STOPS IT",
+                          "CASTING MEGA THUNDERBOLT · KEEP MOVING IF YOU LIKE · ESC STOPS IT",
+                          "CASTING WATER ORB · KEEP MOVING IF YOU LIKE · ESC STOPS IT"];
+
+sp_round :: (v: f32) -> f32 { return floor(v + 0.5); }
+// One CSS unit of the tray in device pixels.
+sp_unit :: (s: [] Everglade) -> f32 { k := hi(s[0].dpr, 0.5); return hi(s[0].height / k / 768, 1) * k; }
+// The tray's bottom over the screen's, device pixels.
+sp_bar_bottom :: (s: [] Everglade) -> f32 { return ifx phone(s) then f32(HB_PHONE_BOTTOM) * hi(s[0].dpr, 0.5) else 0.0f32; }
+// How much of the screen's bottom the bar and its line keep from the hint (none on a phone, where
+// the bar stands over the sticks), device pixels.
+spells_reserve :: (s: [] Everglade) -> f32 {
+  if !sp_on(s) || s[0].above || s[0].ev.editing || phone(s) { return 0; }
+  un := sp_unit(s);
+  return f32(HB_MARGIN + HB_ICON + 2 * HB_PAD) * un + f32(HB_RESERVE) * hi(s[0].dpr, 0.5);
+}
+// Slots shown: the four spells, and Rebuild once something broke.
+sp_count :: (s: [] Everglade) -> int { return ifx sp_broken(s) then SP_SLOTS + 1 else SP_SLOTS; }
+
+// A plate of one of hud_rect's looks; w its unit or its edge, device pixels.
+sp_plate :: (s: [] Everglade, u: [] f32, b: Box, look: f32, w: f32) {
+  at := s[0].plate_n;
+  plate(s, u, b, 1, look);
+  if s[0].plate_n > at { u[U_PLATE + at * 8 + 7] = w; }
+}
+// A line for the host's media: "image URL X0 Y0 X1 Y1" (under the strokes) or "over URL ..." (over
+// them, as a card is), whole device pixels.
+sp_media :: (s: [] Everglade, kind: string, name: string, tail: string, b: Box) {
+  m := s[0].sp.media[..];
+  n := s[0].sp.media_n;
+  if n + 120 > m.count { return; }
+  if n > 0 { m[n] = 10; n += 1; }
+  n = sp_put(m, n, kind); n = sp_put(m, n, " "); n = sp_put(m, n, HB_URL); n = sp_put(m, n, name); n = sp_put(m, n, tail);
+  e := [4] f32.[b.x0, b.y0, b.x1, b.y1];
+  for i: 0..<4 { n = sp_put(m, n, " "); if e[i] < 0 { n = sp_put(m, n, "-"); } n = put_digits(m, n, cast(int) abs(sp_round(e[i]))); }
+  s[0].sp.media_n = n;
+}
+// The icon picture for a slot `px` device pixels square: the smallest at least that large.
+sp_icon_size :: (px: f32) -> string {
+  for i: 0..<HB_SIZES { if f32(HB_SIZE[i]) >= px - 0.5 { return HB_SIZE_NAME[i]; } }
+  return HB_SIZE_NAME[HB_SIZES - 1];
+}
+HB_SIZE_NAME :: [HB_SIZES] string.["-48.jpg", "-72.jpg", "-96.jpg", "-128.jpg"];
+
+// The card the mouse's rest shows (tooltip.rs Dwell): after 0.35 s on a slot, at once moving from a
+// card shown, or one hidden 0.3 s ago, to the next.
+sp_dwell :: (s: [] Everglade, slot: int, now: f64) -> int {
+  shown := sp_tip_shown(s, now);
+  if slot >= 0 {
+    if slot != s[0].sp.tip_slot {
+      warm := shown >= 0 || now - s[0].sp.tip_hid <= f64(HB_WARM);
+      s[0].sp.tip_slot = slot; s[0].sp.tip_since = ifx warm then now - f64(HB_HOVER) else now;
+    }
+  } else {
+    if shown >= 0 { s[0].sp.tip_hid = now; }
+    s[0].sp.tip_slot = -1;
+  }
+  return sp_tip_shown(s, now);
+}
+sp_tip_shown :: (s: [] Everglade, now: f64) -> int {
+  if s[0].sp.tip_slot >= 0 && now - s[0].sp.tip_since >= f64(HB_HOVER) - 0.0001 { return s[0].sp.tip_slot; }
+  return -1;
+}
+
+SpBarTop :: struct { n: int; top: f32; }
+// The tray, its slots, their pictures and the card shown; where its top is, device pixels.
+sp_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int) -> SpBarTop {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  un := sp_unit(s);
+  count := sp_count(s);
+  width := (2 * f32(HB_PAD) + f32(HB_STEP) * f32(count - 1) + f32(HB_ICON)) * un;
+  height := (f32(HB_ICON) + 2 * f32(HB_PAD)) * un;
+  left := sp_round((w - width) / 2);
+  top := sp_round(h - sp_bar_bottom(s) - f32(HB_MARGIN) * un - height);
+  sp_plate(s, u, Box.{x0 = left, y0 = top, x1 = left + sp_round(width), y1 = top + sp_round(height)}, PLATE_TRAY, un);
+  icon := sp_round(f32(HB_ICON) * un);
+  size := sp_icon_size(icon);
+  for b: 0..<count {
+    x := sp_round(left + (f32(HB_PAD) + f32(HB_STEP) * f32(b)) * un);
+    y := sp_round(top + f32(HB_PAD) * un);
+    slot := Box.{x0 = x, y0 = y, x1 = x + icon, y1 = y + icon};
+    s[0].sp.boxes[b] = slot;
+    on := b < SP_SLOTS && (s[0].sp.armed == b || s[0].sp.casting == b);
+    edge := sp_round(k);
+    sp_plate(s, u, Box.{x0 = x - edge, y0 = y - edge, x1 = x + icon + edge, y1 = y + icon + edge}, ifx on then PLATE_SLOT_ON else PLATE_SLOT, ifx on then 2 * edge else edge);
+    // a picked slot's gold frame is two pixels, its inner one over the icon's edge
+    inset := ifx on then edge else 0.0f32;
+    sp_media(s, "image", HB_NAME[b], size, Box.{x0 = x + inset, y0 = y + inset, x1 = x + icon - inset, y1 = y + icon - inset});
+  }
+  // the card: the slot a finger has held long enough, or the one the mouse rests on
+  tip := -1;
+  if s[0].sp.slot_held >= 0 {
+    if s[0].time - s[0].sp.slot_t >= f64(HB_LONG) { tip = s[0].sp.slot_held; }
+  } else {
+    over := -1;
+    if s[0].sp.mouse && s[0].sp.seen { for b: 0..<count { if in_box(s[0].sp.boxes[b], s[0].sp.px, s[0].sp.py) { over = b; } } }
+    tip = sp_dwell(s, over, s[0].time);
+  }
+  s[0].sp.tip_on = tip >= 0 && tip < count;
+  if s[0].sp.tip_on {
+    sc := clamp_i(cast(int) sp_round(k), 1, 3);
+    cw := HB_CARD_W[tip * 3 + sc - 1] * k / f32(sc); ch := HB_CARD_H[tip * 3 + sc - 1] * k / f32(sc);
+    room := w - 16 * k;
+    if cw > room { ch = ch * room / cw; cw = room; }
+    sb := s[0].sp.boxes[tip];
+    cx := clamp(sp_round((sb.x0 + sb.x1) / 2 - cw / 2), 8 * k, hi(w - 8 * k - cw, 8 * k));
+    cy := sp_round(top - 6 * k - ch);
+    card: [12] u8;
+    tail := sp_put(card[..], 0, "-card-");
+    tail = put_digits(card[..], tail, sc);
+    tail = sp_put(card[..], tail, "x.jpg");
+    sp_media(s, "over", HB_NAME[tip], cast(string) card[0..<tail], Box.{x0 = cx, y0 = cy, x1 = cx + sp_round(cw), y1 = cy + sp_round(ch)});
+  }
+  return SpBarTop.{n = at, top = top};
+}
+
+// The cast bar (demolition/hotbar.rs draw_cast): 240 by 14 units at 0.68 of the screen's height
+// (over the tray on a phone), a bronze frame round a dark well filling in fire orange, the spell's
+// name over it.
+sp_cast_bar :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, tray: f32) -> int {
+  k := hi(s[0].dpr, 0.5);
+  w := s[0].width; h := s[0].height;
+  un := sp_unit(s);
+  spell := srd_spell(SP_SPELL[s[0].sp.casting]);
+  cw := sp_round(240 * un); ch := sp_round(14 * un);
+  x := sp_round((w - cw) / 2);
+  y := sp_round(lo(h * 0.68, tray - 40 * k - ch));
+  sp_plate(s, u, Box.{x0 = x, y0 = y, x1 = x + cw, y1 = y + ch}, PLATE_METER, sp_round(un));
+  f := clamp(s[0].sp.cast_t / spell.bar, 0, 1);
+  if f > 0 { sp_plate(s, u, Box.{x0 = x + sp_round(un), y0 = y + sp_round(un), x1 = x + sp_round(un) + sp_round((cw - 2 * sp_round(un)) * f), y1 = y + ch - sp_round(un)}, PLATE_FILL, 0); }
+  up: [24] u8;
+  name := sp_upper(up[..], spell.name);
+  ts := 8 * k;
+  return draw_text(out, at, name, floor((w - text_width(name, ts)) / 2), y - 7 * k, ts, GAP, SPACE, ink(k, 1.0, HB_CAST_TEXT.x, HB_CAST_TEXT.y, HB_CAST_TEXT.z), false, false);
 }
 
 // ---- checks
@@ -1598,8 +1753,9 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   _ := everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
   b := g[0].sp.boxes[SP_BOLT];
   #assert b.x1 > b.x0 && b.x1 <= 780;
-  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 3) && g[0].sp.armed == SP_BOLT;
-  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 3);
+  // the slot acts when the finger lifts, as the old engine's bar (a held finger shows its card)
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 0, 1, 3) && g[0].sp.armed == -1;
+  #assert everglade_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 3) && g[0].sp.armed == SP_BOLT;
   // a tap in the middle of the screen casts there
   #assert everglade_pointer(g[..], 390, 1200, 0, 1, 4);
   #assert everglade_pointer(g[..], 390, 1200, 2, 1, 4);
@@ -1728,4 +1884,44 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   pos := demo_body(w, moved.body).pos;
   #assert flat_gap(v3(f32(pos.x), 0, f32(pos.z)), v3(b.cx, 0, b.cz)) > 0.3;
   for i: 0..<w[0].n { p := w[0].pieces[i]; if sp_object(p.mesh).size == SIZE_LARGE { #assert p.state == DP_STANDING && p.hp == p.max_hp; } }
+}
+
+#test "spells: the bar is the old engine's tray: 36-unit icons 42 apart, 8 over the bottom, each slot's picture; a held finger shows its card and doesn't cast" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  // a desktop window: a unit is 800 / 768 of a pixel, the tray along the bottom with the hint over it
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  un := 800.0f32 / 768;
+  b0 := g[0].sp.boxes[0]; b1 := g[0].sp.boxes[1];
+  #assert abs(b0.x1 - b0.x0 - 36 * un) < 1 && abs(b1.x0 - b0.x0 - 42 * un) < 1;
+  #assert abs(800 - b0.y1 - (8 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
+  #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS - 1].x1) / 2 - 640) < 2;   // centred
+  media := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
+  #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && !contains(media, "rebuild") && !contains(media, "over ");
+  // the mouse resting on Thunderbolt's slot shows its card after 0.35 s
+  if everglade_pointer(g[..], (b1.x0 + b1.x1) / 2, (b1.y0 + b1.y1) / 2, 1, 0, 1) {}
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over ");
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/thunderbolt-card-1x.jpg ") && g[0].sp.tip_on;
+  // a phone: the tray stands over the sticks, 136 points up, at 2 pixels a point
+  g[0].touch = true; g[0].sp.px = 0; g[0].sp.py = 0;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  p1 := g[0].sp.boxes[SP_BOLT];
+  pu := 2 * 844.0f32 / 768;
+  #assert abs(1688 - p1.y1 - 136 * 2 - 16 * pu) < 2 && contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "thunderbolt-96.jpg");
+  // a finger held on the slot shows the card (at 2x) and, lifted, casts nothing
+  #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 0, 1, 7);
+  for f: 0..<32 { _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert contains(cast(string) g[0].sp.media[0..<g[0].sp.media_n], "over /realms/everglade/hotbar/thunderbolt-card-2x.jpg ");
+  #assert everglade_pointer(g[..], (p1.x0 + p1.x1) / 2, (p1.y0 + p1.y1) / 2, 2, 1, 7) && g[0].sp.armed == -1;
+  // picked, its frame is the gold one, two pixels, over the icon's edge: the icon draws a pixel in
+  #assert everglade_key(g[..], '2', 0) && g[0].sp.armed == SP_BOLT;
+  _ = everglade_frame(g[..], out[..], u[..], 780, 1688, 2, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  on := false;
+  for k: 0..<g[0].plate_n { if u[U_PLATE + k * 8 + 5] == PLATE_SLOT_ON && u[U_PLATE + k * 8 + 7] == 4 { on = true; } }
+  #assert on;
 }

@@ -131,3 +131,15 @@ Every asset in `everglade.pack` (8,332,776 bytes of its 8,700,000-byte budget) a
 | texture 33 (T_Superhero_Male_Dark.png_(cut)) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | texture 34 (T_Hair_2_BaseColor.png) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
 | texture 35 (T_Superhero_Female_Dark_BaseColor.png_(cut)) | texture | Quaternius Universal Base Characters, Modular Character Outfits - Fantasy and Universal Animation Library 1 and 2 [Standard] |
+
+## The HUD's icons
+
+The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack under /realms/everglade/hotbar/, not in it. game-icons.net, CC BY 3.0, https://game-icons.net; the credits are in `assets/verse/icons/game-icons/CREDITS.md`.
+
+| Icon | File | Credit |
+| --- | --- | --- |
+| Meteor Swarm | `lorc/meteor-impact.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Thunderbolt | `lorc/lightning-frequency.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Mega Thunderbolt | `lorc/lightning-frequency.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Water Orb | `lorc/frozen-orb.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

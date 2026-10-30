@@ -84,6 +84,7 @@ static const char *content_type(const char *path) {
   if (ends_with(path, ".svg")) return "image/svg+xml";
   if (ends_with(path, ".json")) return "application/json";
   if (ends_with(path, ".png")) return "image/png";
+  if (ends_with(path, ".jpg")) return "image/jpeg";
   if (ends_with(path, ".bin")) return "application/octet-stream";
   return "text/plain; charset=utf-8";
 }

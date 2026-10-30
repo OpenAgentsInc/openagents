@@ -132,6 +132,7 @@
 // Pictures and videos from this site, optionally, drawn where the app says, over the scene and under
 // its strokes (Hecate's Cemetery's memorials):
 //   coaxial_media(state), coaxial_media_len(state)  a line each: "image URL X0 Y0 X1 Y1" or "video URL X0 Y0 X1 Y1",
+//                             or "over URL X0 Y0 X1 Y1", a picture drawn over the strokes too (a HUD's card),
 //                             URL this site's ("/..."), the box in the canvas's device pixels; the picture fits
 //                             inside it, centred. A video plays muted and loops; one no longer listed is let go.
 //                             At most 8. Message 607 says how each one came in, a line each: "URL W H" (0 0: it failed).
@@ -1121,17 +1122,20 @@ function mediaClose(key, m) {
   if (m.el) { m.el.pause(); m.el.removeAttribute("src"); m.el.load(); }
   m.texture?.destroy(); m.buffer?.destroy();
 }
-// The media this frame wants, opened as they're first named; the ready ones drawn into pass.
-function drawMedia(x, pass, w, h, depth) {
+// The media this frame wants, opened as they're first named; the ready ones drawn into pass: the
+// pictures and videos under the strokes, or (over) the ones drawn over them.
+function drawMedia(x, pass, w, h, depth, over = false) {
   const n = x.coaxial_media && x.coaxial_media_len ? x.coaxial_media_len(arena.state) : 0;
   const wanted = new Set();
   if (n > 0) {
     const text = new TextDecoder().decode(new Uint8Array(memory.buffer, x.coaxial_media(arena.state), n).slice());
     for (const line of text.split("\n").slice(0, MEDIA_MAX)) {
-      const [kind, url, ...b] = line.split(" ");
+      const [named, url, ...b] = line.split(" ");
       const box = b.map(Number);
+      const kind = named === "over" ? "image" : named;
       if ((kind !== "image" && kind !== "video") || !url?.startsWith("/") || url.startsWith("//") || box.length !== 4 || box.some((v) => !Number.isFinite(v))) continue;
       const key = `${kind} ${url}`;
+      if ((named === "over") !== over) { wanted.add(key); continue; }
       wanted.add(key);
       if (!media.has(key)) mediaOpen(kind, url);
       const m = media.get(key);
@@ -1145,7 +1149,7 @@ function drawMedia(x, pass, w, h, depth) {
       pass.setPipeline(mediaPipeline(depth)); pass.setBindGroup(0, m.group); pass.draw(6);
     }
   }
-  for (const [key, m] of media) if (!wanted.has(key) && ++m.unseen > 60) mediaClose(key, m); else if (wanted.has(key)) m.unseen = 0;
+  if (!over) for (const [key, m] of media) if (!wanted.has(key) && ++m.unseen > 60) mediaClose(key, m); else if (wanted.has(key)) m.unseen = 0;
   if (n > 0 || media.size) pass.setBindGroup(0, gpu.bindGroup);
 }
 
@@ -1330,6 +1334,7 @@ function frame(now) {
   }
   if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post);
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
+  if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post, true);
   pass.end();
   const texture = context.getCurrentTexture();
   const readback = probe && ++frames >= 1 && !gpu.probed ? readBack(encoder, texture) : null;

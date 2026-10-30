@@ -731,7 +731,22 @@ def licences_md(m, keys, mesh_lines, layer_lines, sound_lines, total):
     for x in sound_lines:
         p = x.split()
         lines.append(f"| {p[1]} | sound | {name(p[2])} |")
+    lines += hud_md(m)
     return "\n".join(lines) + "\n"
+
+
+def hud_md(m):
+    """The HUD's pictures a realm serves beside its pack ("hud" in its JSON), with their credits."""
+    hud = m.get("hud")
+    if not hud:
+        return []
+    l = hud["licence"]
+    lines = ["", "## The HUD's icons", "",
+             f"{hud['about']}. {l['name']}, {l['licence']}, {l['url']}; the credits are in `{l['credits']}`.", "",
+             "| Icon | File | Credit |", "| --- | --- | --- |"]
+    for a in hud["assets"]:
+        lines.append(f"| {a['name']} | `{a['file']}` | Icons made by {a['author']}, {l['name']} ({l['licence']}) |")
+    return lines
 
 
 if __name__ == "__main__":

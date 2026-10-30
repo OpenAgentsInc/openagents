@@ -2943,9 +2943,12 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   room := w - 2 * gutter - 24 * k;
   lw := text_width(line, hs);
   if lw > room { hs = hs * room / lw; lw = room; }
-  y1 := h - gutter;
-  plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
-  n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  y1 := h - hi(gutter, spells_reserve(s));   // over the spell bar, which keeps the bottom as the old engine's did
+  // (not under a spell slot's card, which the hint's strokes would draw over: everglade-spells.coax sp_bar)
+  if !s[0].sp.tip_on {
+    plate(s, u, Box.{x0 = (w - lw) / 2 - 12 * k, y0 = y1 - hs - 20 * k, x1 = (w + lw) / 2 + 12 * k, y1 = y1}, 0.72, 0);
+    n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
   // Under water, or out of breath: your breath over the hint, and the Exhaustion it costs.
   breathing := 0.0f32;
   if (s[0].breath < 0.999 || s[0].gasps > 0) && !s[0].above && !s[0].ev.editing {
@@ -3013,7 +3016,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
 
   for k: 0..<5 { s[0].counts[k] = 0; }
   s[0].lathe_n = 0;
-  s[0].shadow_n = 0; s[0].plate_n = 0;
+  s[0].shadow_n = 0; s[0].plate_n = 0; s[0].sp.media_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   view(shot, width, height, u, U_VIEW);
   // in a rowboat you sit on its thwart: your legs go down under it, out of sight

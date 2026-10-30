@@ -1,0 +1,244 @@
+#!/usr/bin/env python3
+"""Everglade's spell bar art, as the previous engine drew it.
+
+    python3 verse/tools/everglade_hotbar.py
+
+The old engine's Everglade bar (`git show 0b401561a0^:crates/verse-zone-everglade/
+src/zones/everglade/hotbar.rs`) drew each slot as a game-icons.net SVG,
+rasterized white, tinted and laid over a dark slot (`crates/verse-content/src/
+compiler/icons.rs` rasterize), its key in Paper Mono at the top right, and a
+slot's card (`crates/verse-core/src/tooltip.rs`) in Paper Mono on a dark
+notched panel. The page draws pictures through the host's media
+(coax/web/host.js coaxial_media), so this writes those pictures:
+
+  apps/openagents-web/realms/everglade/hotbar/NAME-SIZE.jpg   a slot's icon and key, SIZE px a side
+  apps/openagents-web/realms/everglade/hotbar/NAME-card-Sx.jpg a slot's card at S device px a CSS px
+  apps/openagents-web/everglade-hotbar.coax                    their names and sizes, for the page
+
+It needs rsvg-convert and Pillow. The icons' credits are in
+assets/verse/icons/game-icons/CREDITS.md, and the realm's licences page lists them.
+"""
+import io
+import math
+import subprocess
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFont
+
+ROOT = Path(__file__).resolve().parents[2]
+ICONS = ROOT / "assets/verse/icons/game-icons"
+FONT = ROOT / "assets/verse/fonts/paper-mono/PaperMono-Medium.ttf"
+OUT = ROOT / "apps/openagents-web/realms/everglade/hotbar"
+TABLE = ROOT / "apps/openagents-web/everglade-hotbar.coax"
+
+# The old rasterizer's slot background and padding (icons.rs BACKGROUND, PADDING).
+BACKGROUND = (18 / 255, 21 / 255, 29 / 255)
+PADDING = 0.12
+# Icon sizes written: the page draws the smallest at least as large as the slot (36 units).
+SIZES = (48, 72, 96, 128)
+# Card densities: 1x, 2x and 3x, the page picks its device pixel ratio's.
+SCALES = (1, 2, 3)
+KEY_INK = (0.75, 0.75, 0.75)   # hotbar.rs draw_of: the key's label
+
+# tooltip.rs palette (linear, as the old HUD kept its colours) and metrics, in CSS px at 1x
+SURFACE = (0.04, 0.03, 0.018)
+BORDER = (0.55, 0.45, 0.28)
+SHADOW = (0.05, 0.03, 0.012)
+TITLE = (0.98, 0.82, 0.38)
+BODY = (0.88, 0.82, 0.68)
+KEY = (0.78, 0.68, 0.48)
+MANA = (0.62, 0.78, 1.0)
+TIME = (0.64, 0.8, 0.5)
+RULE = (0.8, 0.7, 0.95)
+SEPARATOR = (0.46, 0.39, 0.24)
+MAX_WIDTH, PAD_X, PAD_Y, GAP = 360.0, 9.0, 7.0, 3.0
+FONT_PX = 14.0   # the HUD atlas: Paper Mono at 14 CSS px (everglade-web web.rs)
+
+# icons.rs tints
+METEOR = (1.0, 0.42, 0.18)
+SUNLIGHT = (1.0, 0.9, 0.5)
+MEGA = (0.82, 0.48, 1.0)
+WATER = (0.35, 0.72, 1.0)
+OIL = (0.86, 0.7, 0.36)
+
+FREE = ("No mana, no cooldown", MANA)
+RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
+# Each slot in the bar's order: its name, SVG, tint, key, card title, sentence and details.
+# The four spells' sentences and details are the old dev bar's (hotbar.rs SLOTS), with
+# this realm's cast bars (verse/rules/srd5.coax) and reach.
+SLOTS = [
+    ("meteor-swarm", "lorc/meteor-impact.svg", METEOR, "1", "Meteor Swarm",
+     "Calls down six blazing meteors on a circle of ground you choose, blasting apart the town's buildings they reach; R restores the town.",
+     [("Key 1", KEY), FREE, ("2.5 s cast", TIME), RANGE]),
+    ("thunderbolt", "lorc/lightning-frequency.svg", SUNLIGHT, "2", "Thunderbolt",
+     "Calls one huge bolt of lightning down on the wall or ground you choose, blasting a hole through the building it strikes; R restores the town.",
+     [("Key 2", KEY), FREE, ("1.2 s cast", TIME), RANGE]),
+    ("mega-thunderbolt", "lorc/lightning-frequency.svg", MEGA, "3", "Mega Thunderbolt",
+     "Calls down a bolt five times as destructive as the Thunderbolt on the wall or ground you choose, tearing through the building it strikes; R restores the town.",
+     [("Key 3", KEY), FREE, ("0.5 s cast", TIME), RANGE]),
+    ("water-orb", "lorc/frozen-orb.svg", WATER, "4", "Water Orb",
+     "Gathers an orb of water over you and throws it at the spot you choose, where it bursts and sends loose things rolling without breaking them.",
+     [("Key 4", KEY), FREE, ("0.6 s cast", TIME), RANGE]),
+    ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
+     "Stands every broken building in the town back up whole.",
+     [("Key R", KEY)]),
+]
+
+
+def byte(v):
+    return max(0, min(255, round(v * 255)))
+
+
+def srgb(colour):
+    """The old HUD's colours are linear: its batch wrote them to an sRGB target, which encoded them."""
+    return tuple(12.92 * c if c <= 0.0031308 else 1.055 * c ** (1 / 2.4) - 0.055 for c in colour)
+
+
+def svg_coverage(svg, size):
+    """The white artwork's coverage at size x size, padded as icons.rs pads it."""
+    inner = round(size * (1 - 2 * PADDING))
+    png = subprocess.run(["rsvg-convert", "-w", str(inner), "-h", str(inner), "-a", str(svg)],
+                         check=True, capture_output=True).stdout
+    art = Image.open(io.BytesIO(png)).convert("RGBA")
+    cover = Image.new("L", (size, size), 0)
+    at = round(size * PADDING)
+    cover.paste(art.getchannel("A"), (at + (inner - art.width) // 2, at + (inner - art.height) // 2))
+    return cover
+
+
+def metrics(px):
+    """The atlas's metrics at px (ui.rs rasterize): the advance of M, the line and the ascent, whole pixels."""
+    font = ImageFont.truetype(str(FONT), px)
+    head = FONT.read_bytes()
+    import struct
+    n = struct.unpack(">H", head[4:6])[0]
+    tables = {}
+    for i in range(n):
+        tag, _, off, _ = struct.unpack(">4sIII", head[12 + 16 * i:28 + 16 * i])
+        tables[tag] = off
+    upm = struct.unpack(">H", head[tables[b"head"] + 18:tables[b"head"] + 20])[0]
+    asc, desc, gap = struct.unpack(">hhh", head[tables[b"hhea"] + 4:tables[b"hhea"] + 10])
+    return font, math.ceil(font.getlength("M")), math.ceil(px * (asc - desc + gap) / upm), math.ceil(px * asc / upm)
+
+
+def text(draw, font, ascent, x, y, line, colour):
+    """ui.rs text: the pen at x, the baseline at y + ascent, both whole pixels."""
+    draw.text((round(x), round(y + ascent)), line, font=font, fill=tuple(byte(c) for c in srgb(colour)), anchor="ls")
+
+
+def icon(name, svg, tint, key, size):
+    cover = svg_coverage(ICONS / svg, size)
+    image = Image.new("RGB", (size, size))
+    px = image.load()
+    cv = cover.load()
+    for y in range(size):
+        for x in range(size):
+            c = cv[x, y] / 255
+            px[x, y] = tuple(byte(b * (1 - c) + t * c) for t, b in zip(tint, BACKGROUND))
+    # the key at the top right, 14 CSS px on a 36-unit slot (hotbar.rs draw_of)
+    s = size / 36
+    font, advance, _, ascent = metrics(round(FONT_PX * s))
+    draw = ImageDraw.Draw(image)
+    text(draw, font, ascent, size - 3 * s - advance * len(key), 1 * s, key, KEY_INK)
+    return image
+
+
+def wrap(words, width, advance):
+    """ui.rs wrap, for a monospace face."""
+    lines, line = [], ""
+    for word in words.split(" "):
+        while True:
+            candidate = word if not line else f"{line} {word}"
+            if len(candidate) * advance <= width:
+                line = candidate
+                break
+            if line:
+                lines.append(line)
+                line = ""
+                continue
+            per = max(1, int(width // advance))
+            lines.append(word[:per])
+            word = word[per:]
+            if not word:
+                break
+    if line or not lines:
+        lines.append(line)
+    return lines
+
+
+def card(title, body, details, scale):
+    """tooltip.rs measure and draw at scale device px a CSS px, as an opaque picture."""
+    font, advance, line_h, ascent = metrics(round(FONT_PX * scale))
+    pad_x, pad_y, gap = PAD_X * scale, PAD_Y * scale, GAP * scale
+    inner = MAX_WIDTH * scale - 2 * pad_x
+    titles = wrap(title, inner, advance)
+    bodies = wrap(body, inner, advance) if body else []
+    dot = " · "
+    rows = []
+    for d, colour in details:
+        piece = len(d) * advance
+        if rows and sum(len(t) for t, _ in rows[-1]) * advance + len(dot) * advance + piece <= inner:
+            rows[-1] += [(dot, SEPARATOR), (d, colour)]
+        else:
+            rows.append([(d, colour)])
+    width = max([len(t) * advance for t in titles + bodies] + [sum(len(t) for t, _ in r) * advance for r in rows])
+    lines = len(titles) + len(bodies) + len(rows)
+    height = lines * line_h + (lines - 1) * gap
+    w, h = math.ceil(min(width, inner) + 2 * pad_x), math.ceil(height + 2 * pad_y)
+    image = Image.new("RGB", (w, h), tuple(byte(c) for c in srgb(SHADOW)))
+    draw = ImageDraw.Draw(image)
+
+    def notched(x, y, ww, hh, r, colour):
+        fill = tuple(byte(c) for c in srgb(colour))
+        draw.rectangle([x + r, y, x + ww - r - 1, y + hh - 1], fill=fill)
+        draw.rectangle([x, y + r, x + ww - 1, y + hh - r - 1], fill=fill)
+
+    notched(0, 0, w, h, round(2 * scale), BORDER)
+    notched(round(scale), round(scale), w - 2 * round(scale), h - 2 * round(scale), round(scale), SURFACE)
+    y = pad_y
+    for t in titles:
+        text(draw, font, ascent, pad_x, y, t, TITLE)
+        text(draw, font, ascent, pad_x + scale, y, t, TITLE)
+        y += line_h + gap
+    for t in bodies:
+        text(draw, font, ascent, pad_x, y, t, BODY)
+        y += line_h + gap
+    for r in rows:
+        pen = pad_x
+        for t, colour in r:
+            text(draw, font, ascent, pen, y, t, colour)
+            pen += len(t) * advance
+        y += line_h + gap
+    return image
+
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    names, cards = [], []
+    for name, svg, tint, key, title, body, details in SLOTS:
+        names.append(name)
+        for size in SIZES:
+            icon(name, svg, tint, key, size).save(OUT / f"{name}-{size}.jpg", quality=90, subsampling=0)
+        for scale in SCALES:
+            image = card(title, body, details, scale)
+            image.save(OUT / f"{name}-card-{scale}x.jpg", quality=90, subsampling=0)
+            cards.append(image.size)
+    n = len(SLOTS)
+    table = [
+        "// Everglade's spell bar pictures (realms/everglade/hotbar/), as the previous engine drew the bar:",
+        "// written by verse/tools/everglade_hotbar.py, do not edit. Each slot's name, the icon sizes",
+        "// (px a side), and each slot's card at 1x, 2x and 3x (device px, slot * 3 + scale - 1).",
+        f"HB_SLOTS :: {n};",
+        f"HB_NAME :: [{n}] string.[{', '.join(f'\"{x}\"' for x in names)}];",
+        f"HB_SIZES :: {len(SIZES)};",
+        f"HB_SIZE :: [{len(SIZES)}] int.[{', '.join(str(s) for s in SIZES)}];",
+        f"HB_CARD_W :: [{len(cards)}] f32.[{', '.join(str(w) for w, _ in cards)}];",
+        f"HB_CARD_H :: [{len(cards)}] f32.[{', '.join(str(h) for _, h in cards)}];",
+        "",
+    ]
+    TABLE.write_text("\n".join(table))
+    print(f"{n} slots: {len(SIZES)} icon sizes and {len(SCALES)} cards each into {OUT.relative_to(ROOT)}")
+
+
+if __name__ == "__main__":
+    main()

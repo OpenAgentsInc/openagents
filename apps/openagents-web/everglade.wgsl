@@ -51,8 +51,37 @@ fn haze_colour(f: f32, v: vec3f) -> vec3f {
   return mix(h, st(11u).xyz, verse_style_haze_glow(dot(v, st(1u).xyz)));
 }
 
+// The spell bar's square pieces (everglade-spells.coax sp_bar), as the previous engine's HUD drew
+// them (hotbar.rs draw_of, demolition/hotbar.rs meter): a pixel is in the rect when its centre is,
+// as a quad covers it, and s.w is the piece's unit (the tray's, the meter's) or edge (a slot's frame),
+// device pixels. Its colours are the old HUD's, sRGB-encoded as its target encoded them.
+fn hud_rect(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
+  if (p.x < r.x || p.y < r.y || p.x >= r.z || p.y >= r.w) { return under; }
+  let e = min(min(p.x - r.x, r.z - p.x), min(p.y - r.y, r.w - p.y));   // to the nearest edge
+  let t = max(s.w, 1.0);
+  let look = s.y;
+  if (look < 3.5) {
+    // the tray: a dark rim, a bronze line, a lighter bevel, the dark well (insets 0, 1, 2, 4 units)
+    if (e < t) { return mix(under, vec3f(0.313, 0.293, 0.272), 0.96); }
+    if (e < 2.0 * t) { return vec3f(0.708, 0.658, 0.527); }
+    if (e < 4.0 * t) { return vec3f(0.473, 0.449, 0.396); }
+    return mix(under, vec3f(0.206, 0.190, 0.172), 0.96);
+  }
+  if (look < 5.5) {
+    // a slot's frame, bronze, or gold while its spell is picked or casting; inside it, what lies under
+    if (e >= t) { return under; }
+    return select(vec3f(0.767, 0.701, 0.566), vec3f(0.991, 0.916, 0.650), look > 4.5);
+  }
+  if (look < 6.5) {
+    // a meter: a bronze line round a dark well
+    if (e < t) { return vec3f(0.708, 0.658, 0.527); }
+    return mix(under, vec3f(0.437, 0.313, 0.221), 0.94);
+  }
+  return vec3f(1.0, 0.735, 0.381);   // the cast's fill, fire orange
+}
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
   if (s.x <= 0.0) { return under; }
+  if (s.y > 2.5) { return hud_rect(p, under, r, s); }
   let half = (r.zw - r.xy) * 0.5;
   let corner = 6.0 * s.z;
   let q = abs(p - (r.xy + half)) - half + vec2f(corner);
