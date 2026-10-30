@@ -1,0 +1,24 @@
+{
+  "slug": "belt-2200",
+  "name": "Belt 2200",
+  "description": "Hard sci-fi strategy in the solar system of 2200: ships fly real orbits, ice and fuel are the economy, and orders arrive at the speed of light. Pitched by Ted.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "docs/verse/game-ideas/belt-2200.md",
+  "contributions": "open",
+  "visibility": "public",
+  "license": "Apache-2.0",
+  "owner": "Ted",
+  "pubkey": "28811ece1def04dda3a21f384ed4ac6c447c9b240851dec6d7ef74a9ebe53896",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
+}

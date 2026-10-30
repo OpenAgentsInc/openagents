@@ -1,0 +1,532 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "belt-2200",
+  "initiative": {
+    "slug": "b22-v1",
+    "title": "Belt 2200: a solar-system strategy game with real orbits and light lag",
+    "body": "Run a faction in a settled solar system where ships obey real orbits, fuel is everything, and every order you send arrives late, at the speed of light. Three powers: the Terran Compact, the Mars Union and the Free Belt, with the Unknown as an optional fourth side. Pitched by Ted on the October 30, 2026 recording. The factions, ships, places, words and story are ours.",
+    "labels": [
+      "belt-2200",
+      "verse"
+    ],
+    "spec": "docs/verse/game-ideas/belt-2200.md"
+  },
+  "milestones": [
+    {
+      "slug": "b22-first-playable",
+      "title": "First playable",
+      "body": "The solar system moving and one ship you send somewhere, playable in the browser and on a phone at openagents.com/realms/belt-2200.",
+      "parent": "b22-v1"
+    },
+    {
+      "slug": "b22-orrery",
+      "title": "Orrery: the real solar system, Sun to station",
+      "body": "Kepler orbits for the bodies, a camera that zooms from the Sun to a station, and a floating origin so nothing jitters.",
+      "parent": "b22-v1"
+    },
+    {
+      "slug": "b22-one-ship",
+      "title": "One ship: plan a transfer, burn, coast, arrive",
+      "body": "Patched conics and the transfer planner, with fuel and time shown.",
+      "parent": "b22-v1"
+    },
+    {
+      "slug": "b22-economy",
+      "title": "Economy: ice, metal and people",
+      "body": "Mine ice and metal, refine at stations, ship it on freighters and build ships.",
+      "parent": "b22-v1"
+    },
+    {
+      "slug": "b22-war",
+      "title": "War: fleets, intercepts and the tactical view",
+      "body": "Fleets meet when their paths cross; missiles, rail guns and point defense in a short tactical view.",
+      "parent": "b22-v1"
+    },
+    {
+      "slug": "b22-light-lag",
+      "title": "Light lag: delayed sight and orders",
+      "body": "Each faction sees things as they were when their light left; orders take the light time; flagships act on standing orders.",
+      "parent": "b22-v1"
+    },
+    {
+      "slug": "b22-rivals",
+      "title": "Rivals: AI factions, then lockstep multiplayer",
+      "body": "AI opponents in two layers, saves for long campaigns, and deterministic lockstep multiplayer.",
+      "parent": "b22-v1"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "b22-first-playable-live",
+      "parent": "b22-first-playable",
+      "title": "First playable at openagents.com/realms/belt-2200",
+      "size": "L",
+      "labels": [
+        "first-playable"
+      ],
+      "body": "The first version anyone can play: the Sun, the inner planets and a field of named Belt rocks moving on their orbits as time runs, with pause and a time-speed control. Pick your faction's ship at a station, pick a destination, see the planned route with its fuel and travel time, launch, and watch it arrive. A goal for the session: deliver ice from a Belt rock to your capital. Tap to select and long-press for orders on a phone; mouse on desktop. Mark this done when the page plays.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "https://openagents.com/realms/belt-2200 loads and the planets move on their orbits",
+        "A ship can be sent to a Belt rock and back with its fuel and time shown, on desktop and on a phone",
+        "The realm is listed or linked from this project's page"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "b22-fp-hud",
+        "b22-fp-ice-run",
+        "b22-fp-playtest",
+        "b22-ship-orders"
+      ]
+    },
+    {
+      "slug": "b22-fp-hud",
+      "parent": "b22-first-playable",
+      "title": "Time controls, selection and the route on the map",
+      "size": "S",
+      "labels": [],
+      "body": "Pause, three time speeds, tap or click select, and the planned route drawn on the map (burn, coast, arrival) before launch.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "Pausing stops every orbit and ship",
+        "The route is drawn before launch and matches where the ship goes"
+      ],
+      "blocked_by": [
+        "b22-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-fp-ice-run",
+      "parent": "b22-first-playable",
+      "title": "An ice run: load at a rock, deliver home, score it",
+      "size": "S",
+      "labels": [],
+      "body": "Ice is loaded at a Belt rock and counted when delivered to the capital; the session goal and its progress are shown.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "Delivering a load raises the delivered count",
+        "Running out of fuel strands the ship and says so"
+      ],
+      "blocked_by": [
+        "b22-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-fp-playtest",
+      "parent": "b22-first-playable",
+      "title": "Play the first version and write down what to fix",
+      "size": "S",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Play the first playable on desktop and a phone for ten minutes each and post a note on this task with what to fix (time speed, readability, orders), as new tasks where they are clear.",
+      "files": [],
+      "acceptance": [
+        "A note on this task lists what was found on desktop and on phone",
+        "Each clear fix is a new task in this project"
+      ],
+      "blocked_by": [
+        "b22-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-kepler",
+      "parent": "b22-orrery",
+      "title": "Kepler orbits for the bodies in f64",
+      "size": "M",
+      "labels": [
+        "engine"
+      ],
+      "body": "A new verse/orbit.coax: Kepler orbits from orbital elements for the Sun's planets, Jupiter's and Saturn's major moons and named Belt rocks, scaled for play, in f64 like verse/rigid.coax.",
+      "files": [
+        "verse/orbit.coax"
+      ],
+      "acceptance": [
+        "coax test verse/orbit.coax passes",
+        "A planet's position after one period matches its start to within 1e-9 of its orbit radius in a test"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "b22-belt-field",
+        "b22-patched-conics",
+        "b22-sight-history"
+      ]
+    },
+    {
+      "slug": "b22-floating-origin",
+      "parent": "b22-orrery",
+      "title": "Floating origin, camera-relative drawing and logarithmic depth",
+      "size": "L",
+      "labels": [
+        "engine"
+      ],
+      "body": "The scene spans billions of kilometres and also shows a ship a few hundred metres long. Draw relative to the camera with a floating origin and logarithmic depth so nothing jitters at any zoom.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "Zooming from the whole system to a 300 m ship shows no jitter or z-fighting in a headless capture"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "b22-zoom-camera"
+      ]
+    },
+    {
+      "slug": "b22-zoom-camera",
+      "parent": "b22-orrery",
+      "title": "A camera that zooms from the Sun to a station",
+      "size": "M",
+      "labels": [],
+      "body": "Smooth zoom and focus from the whole system to one body to one station, with level of detail (as Everglade's) for far bodies.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "Selecting a station zooms to it in one motion; zooming out returns to the system view"
+      ],
+      "blocked_by": [
+        "b22-floating-origin"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-belt-field",
+      "parent": "b22-orrery",
+      "title": "Thousands of Belt rocks, instanced",
+      "size": "M",
+      "labels": [
+        "engine"
+      ],
+      "body": "The Belt as thousands of rocks drawn instanced, with simulation off the main thread, holding 60 frames per second on a phone.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "5,000 rocks hold 60 FPS (p95 frame <= 17.5 ms) in the perf run"
+      ],
+      "blocked_by": [
+        "b22-kepler"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-patched-conics",
+      "parent": "b22-one-ship",
+      "title": "Patched conics: ships hand off between spheres of influence",
+      "size": "L",
+      "labels": [
+        "engine"
+      ],
+      "body": "Ship trajectories as patched conics with sphere-of-influence handoff, in verse/orbit.coax.",
+      "files": [
+        "verse/orbit.coax"
+      ],
+      "acceptance": [
+        "A test ship leaving Earth's sphere of influence continues on the matching heliocentric orbit"
+      ],
+      "blocked_by": [
+        "b22-kepler"
+      ],
+      "blocks": [
+        "b22-transfer-planner"
+      ]
+    },
+    {
+      "slug": "b22-transfer-planner",
+      "parent": "b22-one-ship",
+      "title": "The transfer planner: go there becomes a burn, a coast and its fuel",
+      "size": "L",
+      "labels": [
+        "engine"
+      ],
+      "body": "Solve Lambert's problem to turn a destination and arrival time into a burn, a coast and the reaction mass it costs; a faster route costs more. A simplified planner first if full Lambert is too heavy on a phone.",
+      "files": [
+        "verse/orbit.coax"
+      ],
+      "acceptance": [
+        "Planned transfers reach their target within tolerance in tests",
+        "A faster arrival always costs more fuel in a test"
+      ],
+      "blocked_by": [
+        "b22-patched-conics"
+      ],
+      "blocks": [
+        "b22-ship-orders"
+      ]
+    },
+    {
+      "slug": "b22-ship-orders",
+      "parent": "b22-one-ship",
+      "title": "Plan, launch and follow one ship with fuel and time shown",
+      "size": "M",
+      "labels": [],
+      "body": "The first playable's ship flies the planned transfer: the planned burn drawn on the map, a timeline scrubber, and fuel and arrival time.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/",
+        "verse/command.coax"
+      ],
+      "acceptance": [
+        "A launched ship follows its drawn route and arrives at the shown time"
+      ],
+      "blocked_by": [
+        "b22-transfer-planner",
+        "b22-first-playable-live"
+      ],
+      "blocks": [
+        "b22-resources",
+        "b22-fleets"
+      ]
+    },
+    {
+      "slug": "b22-resources",
+      "parent": "b22-economy",
+      "title": "Ice, metal and people, mined and refined",
+      "size": "M",
+      "labels": [],
+      "body": "Mines at rocks and moons produce water ice and metals; stations refine ice into air, water and reaction mass; people crew ships and work stations.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "A test station turns ice into reaction mass at its rate"
+      ],
+      "blocked_by": [
+        "b22-ship-orders"
+      ],
+      "blocks": [
+        "b22-freighters",
+        "b22-build-ships",
+        "b22-saves"
+      ]
+    },
+    {
+      "slug": "b22-freighters",
+      "parent": "b22-economy",
+      "title": "Freighters and routes",
+      "size": "M",
+      "labels": [],
+      "body": "Set a standing route for freighters between a mine and a station; the cargo moves on real transfers.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "A standing route keeps delivering without new orders"
+      ],
+      "blocked_by": [
+        "b22-resources"
+      ],
+      "blocks": [
+        "b22-ai"
+      ]
+    },
+    {
+      "slug": "b22-build-ships",
+      "parent": "b22-economy",
+      "title": "Build ships from metal and crews",
+      "size": "S",
+      "labels": [],
+      "body": "Shipyards at stations build ships from metal and people.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "Building a ship spends its metal and crew and the ship appears at the yard"
+      ],
+      "blocked_by": [
+        "b22-resources"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-fleets",
+      "parent": "b22-war",
+      "title": "Fleets, box select and groups",
+      "size": "M",
+      "labels": [],
+      "body": "Box select, control groups and a command queue in verse/command.coax; on phones tap select and long-press for orders (the hotbar's rules).",
+      "files": [
+        "verse/command.coax",
+        "verse/hud.coax"
+      ],
+      "acceptance": [
+        "Selecting three ships and giving one order moves all three"
+      ],
+      "blocked_by": [
+        "b22-ship-orders"
+      ],
+      "blocks": [
+        "b22-intercepts",
+        "b22-order-delay"
+      ]
+    },
+    {
+      "slug": "b22-intercepts",
+      "parent": "b22-war",
+      "title": "Intercepts: fleets meet when their paths cross",
+      "size": "M",
+      "labels": [],
+      "body": "Detect when two fleets' trajectories come within combat range and start an engagement.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "Two crossing fleets in a test start an engagement at the crossing time"
+      ],
+      "blocked_by": [
+        "b22-fleets"
+      ],
+      "blocks": [
+        "b22-tactical"
+      ]
+    },
+    {
+      "slug": "b22-tactical",
+      "parent": "b22-war",
+      "title": "The tactical view: missiles, rail guns and point defense",
+      "size": "L",
+      "labels": [],
+      "body": "A short tactical battle where ships keep their momentum and turning to fire costs time; missiles burn and coast, rail guns fire straight, point defense shoots missiles down. Then back to the strategic map.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "A tactical battle resolves and returns to the map with losses applied"
+      ],
+      "blocked_by": [
+        "b22-intercepts"
+      ],
+      "blocks": [
+        "b22-ai"
+      ]
+    },
+    {
+      "slug": "b22-sight-history",
+      "parent": "b22-light-lag",
+      "title": "Light-lag visibility from a position history",
+      "size": "L",
+      "labels": [
+        "engine"
+      ],
+      "body": "Each faction sees each object as it was distance/c ago: keep a short position history per object and answer where-did-they-see-it queries. The same history serves replay.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "A test object 10 light-minutes away is seen at its position 10 minutes earlier"
+      ],
+      "blocked_by": [
+        "b22-kepler"
+      ],
+      "blocks": [
+        "b22-order-delay"
+      ]
+    },
+    {
+      "slug": "b22-order-delay",
+      "parent": "b22-light-lag",
+      "title": "Orders arrive late, flagships act on standing orders",
+      "size": "M",
+      "labels": [],
+      "body": "Orders to a far fleet take the light time to arrive; a flagship with authority follows its standing orders meanwhile.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "An order to a fleet 20 light-minutes away takes effect 20 game-minutes later"
+      ],
+      "blocked_by": [
+        "b22-sight-history",
+        "b22-fleets"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-ai",
+      "parent": "b22-rivals",
+      "title": "AI factions: plain code for tactics, the Decisions API for strategy",
+      "size": "L",
+      "labels": [],
+      "body": "Tactics (intercepts, point defense, routes) in plain code; strategy (which route to open, when to attack) through our Decisions API (/v1/decisions, Clef first), with every choice logged.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "A match against two AI factions plays to a win condition",
+        "Every strategic choice is in the match log"
+      ],
+      "blocked_by": [
+        "b22-tactical",
+        "b22-freighters"
+      ],
+      "blocks": [
+        "b22-lockstep",
+        "b22-win"
+      ]
+    },
+    {
+      "slug": "b22-saves",
+      "parent": "b22-rivals",
+      "title": "Save and resume a campaign",
+      "size": "M",
+      "labels": [],
+      "body": "Save and resume long campaigns, as Fairy Forest saves (verse/fairy-forest/), only bigger.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "A saved match resumes with every ship, cargo and orbit where it was"
+      ],
+      "blocked_by": [
+        "b22-resources"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-lockstep",
+      "parent": "b22-rivals",
+      "title": "Deterministic lockstep multiplayer with a desync checker",
+      "size": "L",
+      "labels": [],
+      "body": "Only orders cross the network; the same orders give the same results on every client. A state hash is compared every few seconds and a desync is reported.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Two clients given the same orders have equal state hashes after ten game-days in a test"
+      ],
+      "blocked_by": [
+        "b22-ai"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "b22-win",
+      "parent": "b22-rivals",
+      "title": "Win conditions: control the ice, starve a capital, or reach the Unknown",
+      "size": "M",
+      "labels": [],
+      "body": "Victory by controlling the ice supply, starving a capital, or, with the Unknown on, reaching it first and holding it. Tune game time so a match is about 45 minutes.",
+      "files": [
+        "apps/openagents-web/realms/belt-2200/"
+      ],
+      "acceptance": [
+        "Each win condition ends a test match"
+      ],
+      "blocked_by": [
+        "b22-ai"
+      ],
+      "blocks": []
+    }
+  ]
+}

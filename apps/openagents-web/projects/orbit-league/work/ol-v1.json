@@ -1,0 +1,469 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "orbit-league",
+  "initiative": {
+    "slug": "ol-v1",
+    "title": "Orbit League: car ball in a spinning arena in orbit",
+    "body": "Electric roadsters with rocket packs play three-a-side ball in a glass arena in orbit, where gravity is whatever the arena is spinning at. Pitched by Topher on the October 30, 2026 recording: \"a racing game like Rocket League, but with Tesla Roadsters, in space.\" The cars, driver and badge are our own design; no carmaker's name, logo or trade dress.",
+    "labels": [
+      "orbit-league",
+      "verse"
+    ],
+    "spec": "docs/verse/game-ideas/orbit-league.md"
+  },
+  "milestones": [
+    {
+      "slug": "ol-first-playable",
+      "title": "First playable",
+      "body": "A car, a ball and two goals you can play in the browser and on a phone at openagents.com/realms/orbit-league.",
+      "parent": "ol-v1"
+    },
+    {
+      "slug": "ol-pitch",
+      "title": "Pitch: one car, one ball, a goal in 1 g",
+      "body": "Rigid-body contacts and the vehicle controller, so the car drives, jumps, dodges and boosts and hits the ball the same way every time. Offline.",
+      "parent": "ol-v1"
+    },
+    {
+      "slug": "ol-space",
+      "title": "Space: the drum arena, spin and zero-g",
+      "body": "The ring-station drum arena, gravity from its spin, half spin, spin-down events, boost pads and driving on every surface.",
+      "parent": "ol-v1"
+    },
+    {
+      "slug": "ol-bots",
+      "title": "Bots: 1v1 and 2v2 alone",
+      "body": "Car-ball bots in plain code, so a match plays offline against the computer.",
+      "parent": "ol-v1"
+    },
+    {
+      "slug": "ol-online",
+      "title": "Online: quick match",
+      "body": "A 60 Hz authoritative room with prediction and rollback, and a matchmaking queue per mode.",
+      "parent": "ol-v1"
+    },
+    {
+      "slug": "ol-show-off",
+      "title": "Show-off: replays, clips and car paint",
+      "body": "Goal replays from three cameras, shareable clips, and colours and decals players make.",
+      "parent": "ol-v1"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "ol-first-playable-live",
+      "parent": "ol-first-playable",
+      "title": "First playable at openagents.com/realms/orbit-league",
+      "size": "L",
+      "labels": [
+        "first-playable"
+      ],
+      "body": "The first version anyone can play: one roadster of our own design on a flat floor in 1 g, a two-metre ball and two goals. Drive, steer, jump, boost and hit the ball; a goal scores and resets the kickoff. Five-minute match clock and a score. Phone thumbs (left steers; JUMP and BOOST on the right) and keyboard. Offline, single player. Mark this done when the page plays.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "https://openagents.com/realms/orbit-league loads and plays: the car drives, jumps and boosts, and hitting the ball into a goal scores",
+        "The same page plays on a phone with on-screen thumbs",
+        "The realm is listed or linked from this project's page"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "ol-fp-ball-cam",
+        "ol-fp-goal-moment",
+        "ol-fp-playtest",
+        "ol-hit-feel"
+      ]
+    },
+    {
+      "slug": "ol-fp-ball-cam",
+      "parent": "ol-first-playable",
+      "title": "Ball cam and the chase camera",
+      "size": "S",
+      "labels": [],
+      "body": "A chase camera behind the car and a ball cam toggled with one button (on screen on a phone) that keeps the ball in view, blended with verse/camera.coax shots.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/",
+        "verse/camera.coax"
+      ],
+      "acceptance": [
+        "Toggling ball cam keeps the ball on screen while the car drives away from it",
+        "The toggle works by key and by on-screen button"
+      ],
+      "blocked_by": [
+        "ol-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ol-fp-goal-moment",
+      "parent": "ol-first-playable",
+      "title": "A goal explodes in the team's colour and knocks cars back",
+      "size": "S",
+      "labels": [],
+      "body": "When the ball crosses a goal line: a particle burst in the scoring team's colour (verse/particles.coax), every car pushed back from the goal, a short pause, then kickoff positions.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "Scoring shows the burst and pushes the car back",
+        "Kickoff resets the ball to the centre and the car to its spot"
+      ],
+      "blocked_by": [
+        "ol-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ol-fp-playtest",
+      "parent": "ol-first-playable",
+      "title": "Play the first version and write down what to fix",
+      "size": "S",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Play the first playable on a desktop browser and a phone for ten minutes each and post a note on this task with what feels wrong (car handling, hits, camera, thumbs), as new tasks where they are clear.",
+      "files": [],
+      "acceptance": [
+        "A note on this task lists what was found on desktop and on phone",
+        "Each clear fix is a new task in this project"
+      ],
+      "blocked_by": [
+        "ol-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ol-contacts",
+      "parent": "ol-pitch",
+      "title": "Contacts for rigid bodies: sphere, box and mesh, with friction and restitution",
+      "size": "L",
+      "labels": [
+        "engine"
+      ],
+      "body": "Add contacts to verse/rigid.coax: sphere against box, box against box (the car as an oriented box), sphere against mesh (the arena), with friction and restitution. Swept tests for the ball at speed so it never passes through a goal frame. Generalise Dead Gears' arena_sweep (verse/deadgears/arena.coax).",
+      "files": [
+        "verse/rigid.coax"
+      ],
+      "acceptance": [
+        "coax test verse/rigid.coax passes with tests for each contact pair",
+        "A ball at 100 m/s fired at a goal post never passes through it in a test"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "ol-vehicle",
+        "ol-drum-arena"
+      ]
+    },
+    {
+      "slug": "ol-vehicle",
+      "parent": "ol-pitch",
+      "title": "A vehicle controller: wheels, suspension, grip, handbrake, jump, dodge",
+      "size": "L",
+      "labels": [
+        "engine"
+      ],
+      "body": "A new verse/vehicle.coax: four wheel rays, suspension springs, tyre grip, a handbrake drift, and sticky driving on walls and ceilings when the wheels touch and the car is fast enough. Jump, double jump and dodge impulses are fixed numbers so skill shots repeat exactly. Boost is a rear rocket that works in the air.",
+      "files": [
+        "verse/vehicle.coax"
+      ],
+      "acceptance": [
+        "coax test verse/vehicle.coax passes",
+        "The same inputs from the same start give the same car path bit for bit in a test"
+      ],
+      "blocked_by": [
+        "ol-contacts"
+      ],
+      "blocks": [
+        "ol-hit-feel",
+        "ol-prediction"
+      ]
+    },
+    {
+      "slug": "ol-hit-feel",
+      "parent": "ol-pitch",
+      "title": "Hits take their direction from contact point, speed and spin",
+      "size": "M",
+      "labels": [],
+      "body": "The ball's response to a car hit depends on where on the car it lands, the car's speed and spin, tuned so a front-flip shot and a side dodge feel distinct. The first playable moves onto the vehicle controller and contacts.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/",
+        "verse/vehicle.coax"
+      ],
+      "acceptance": [
+        "A test hits the ball with the nose, a corner and the roof and gets three distinct directions",
+        "The realm uses verse/vehicle.coax"
+      ],
+      "blocked_by": [
+        "ol-vehicle",
+        "ol-first-playable-live"
+      ],
+      "blocks": [
+        "ol-bot",
+        "ol-replay"
+      ]
+    },
+    {
+      "slug": "ol-gravity-field",
+      "parent": "ol-space",
+      "title": "Gravity as a field, not a constant",
+      "size": "M",
+      "labels": [
+        "engine"
+      ],
+      "body": "Gravity points toward the drum's outer wall, scaled by spin. verse/player.coax and verse/throw.coax take a gravity function instead of a constant; existing realms keep their constant through it.",
+      "files": [
+        "verse/player.coax",
+        "verse/throw.coax"
+      ],
+      "acceptance": [
+        "Existing realms' tests still pass",
+        "A test drops a ball in a spinning drum and it falls toward the outer wall"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "ol-drum-arena"
+      ]
+    },
+    {
+      "slug": "ol-drum-arena",
+      "parent": "ol-space",
+      "title": "The drum arena: a curved floor that becomes the walls and ceiling",
+      "size": "L",
+      "labels": [],
+      "body": "The inside of a drum as the drivable surface and collision mesh, drawn in the flat or ink style (docs/verse/art-styles.md), with goals at each end.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "The car drives from the floor up the curve onto the ceiling at speed",
+        "The ball collides with the curved mesh in a test"
+      ],
+      "blocked_by": [
+        "ol-gravity-field",
+        "ol-contacts"
+      ],
+      "blocks": [
+        "ol-spin-down",
+        "ol-boost-pads",
+        "ol-sphere-arena"
+      ]
+    },
+    {
+      "slug": "ol-spin-down",
+      "parent": "ol-space",
+      "title": "Full spin, half spin and spin-down every 90 seconds",
+      "size": "M",
+      "labels": [],
+      "body": "The station's spin sets gravity: full (about 1 g), half (about 0.4 g), and every 90 seconds a 15-second spin-down to zero g where every car gets a full boost tank. The interval is a setting so playtests can try 60 s, 90 s and off.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "A match shows a spin-down at 90 s lasting 15 s with full tanks",
+        "The interval setting changes it to 60 s or off"
+      ],
+      "blocked_by": [
+        "ol-drum-arena"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ol-boost-pads",
+      "parent": "ol-space",
+      "title": "Boost pads on the floor and walls",
+      "size": "S",
+      "labels": [],
+      "body": "Small and large boost pads placed on the arena floor and walls that refill boost when driven over and come back after a delay.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "Driving over a pad refills boost and the pad comes back after its delay"
+      ],
+      "blocked_by": [
+        "ol-drum-arena"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ol-sphere-arena",
+      "parent": "ol-space",
+      "title": "The sphere arena with goals at the poles",
+      "size": "M",
+      "labels": [],
+      "body": "A second arena shape: a sphere with goals at the poles.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "The sphere arena is selectable and plays a full match"
+      ],
+      "blocked_by": [
+        "ol-drum-arena"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ol-bot",
+      "parent": "ol-bots",
+      "title": "A car-ball bot that drives to an intercept and shoots at the goal",
+      "size": "L",
+      "labels": [],
+      "body": "Plain code, no model calls: predict the ball, pick an intercept point, drive and jump to it and hit toward the opponent's goal; defend when the ball heads for its own goal.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "A bot scores against an empty goal in a test",
+        "A full 1v1 against a bot plays to the clock"
+      ],
+      "blocked_by": [
+        "ol-hit-feel"
+      ],
+      "blocks": [
+        "ol-bot-modes"
+      ]
+    },
+    {
+      "slug": "ol-bot-modes",
+      "parent": "ol-bots",
+      "title": "1v1 and 2v2 against bots, 2v2 the default",
+      "size": "S",
+      "labels": [],
+      "body": "Pick a mode; bots fill every empty seat. 2v2 is the default for phones.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "Both modes start and finish with bots in every empty seat"
+      ],
+      "blocked_by": [
+        "ol-bot"
+      ],
+      "blocks": [
+        "ol-quick-match"
+      ]
+    },
+    {
+      "slug": "ol-room",
+      "parent": "ol-online",
+      "title": "A 60 Hz WebSocket room with the server's ball",
+      "size": "L",
+      "labels": [
+        "engine"
+      ],
+      "body": "A WebSocket room on the API with a 60 Hz server tick; the server owns the ball. Today's rooms are HTTP at five posts a second (coax/web/api/room.c).",
+      "files": [
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Two browsers in one room see the same ball",
+        "The server tick holds 60 Hz under four players in a load test"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "ol-prediction"
+      ]
+    },
+    {
+      "slug": "ol-prediction",
+      "parent": "ol-online",
+      "title": "Prediction for your car, interpolation for others, rollback on correction",
+      "size": "L",
+      "labels": [],
+      "body": "Client prediction for your own car through the deterministic vehicle controller, interpolation for other cars, and rollback when the server corrects.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "With 150 ms simulated latency your car responds at once and corrections don't snap visibly"
+      ],
+      "blocked_by": [
+        "ol-room",
+        "ol-vehicle"
+      ],
+      "blocks": [
+        "ol-quick-match"
+      ]
+    },
+    {
+      "slug": "ol-quick-match",
+      "parent": "ol-online",
+      "title": "Quick match: a queue per mode, bots fill empty seats",
+      "size": "M",
+      "labels": [],
+      "body": "Matchmaking with a queue per mode; a match starts after a short wait with bots in any empty seat.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Two players pressing QUICK MATCH land in the same match"
+      ],
+      "blocked_by": [
+        "ol-prediction",
+        "ol-bot-modes"
+      ],
+      "blocks": [
+        "ol-paint"
+      ]
+    },
+    {
+      "slug": "ol-replay",
+      "parent": "ol-show-off",
+      "title": "Goal replays of the last five seconds from three cameras",
+      "size": "M",
+      "labels": [],
+      "body": "Record inputs per tick and replay them through the same deterministic physics, as Ice Cream Man's trace and replay do (verse/icecream/). After a goal, the last five seconds play from three cameras.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "A replay of recorded inputs ends with the same ball position as the live match in a test"
+      ],
+      "blocked_by": [
+        "ol-hit-feel"
+      ],
+      "blocks": [
+        "ol-clips"
+      ]
+    },
+    {
+      "slug": "ol-clips",
+      "parent": "ol-show-off",
+      "title": "Shareable clips from replays",
+      "size": "M",
+      "labels": [],
+      "body": "Save a replay as a link anyone can open and watch.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "A saved clip's link plays the same replay in another browser"
+      ],
+      "blocked_by": [
+        "ol-replay"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "ol-paint",
+      "parent": "ol-show-off",
+      "title": "Car colours and decals made by players",
+      "size": "M",
+      "labels": [],
+      "body": "Pick a car colour and place decals players make; others see them online.",
+      "files": [
+        "apps/openagents-web/realms/orbit-league/"
+      ],
+      "acceptance": [
+        "A painted car shows the same paint to another player in a match"
+      ],
+      "blocked_by": [
+        "ol-quick-match"
+      ],
+      "blocks": []
+    }
+  ]
+}

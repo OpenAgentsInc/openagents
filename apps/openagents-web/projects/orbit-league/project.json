@@ -1,0 +1,24 @@
+{
+  "slug": "orbit-league",
+  "name": "Orbit League",
+  "description": "Car ball in orbit: electric roadsters with rocket boost play three-a-side in a spinning glass arena where gravity comes and goes. Pitched by Topher.",
+  "relay": "wss://relay.openagents.com",
+  "repo": {
+    "d": "openagents",
+    "name": "OpenAgents",
+    "description": "The OpenAgents monorepo: the apps, the protocol, Coax and the Grid.",
+    "web": "https://github.com/OpenAgentsInc/openagents",
+    "clone": "https://github.com/OpenAgentsInc/openagents.git",
+    "euc": "0aa2d953dd48f0d402ea7c826bad90b2548524c2"
+  },
+  "path": "docs/verse/game-ideas/orbit-league.md",
+  "contributions": "open",
+  "visibility": "public",
+  "license": "Apache-2.0",
+  "owner": "Topher",
+  "pubkey": "b1f4e34fca9f4d8162725a2970a9965a8b06dea825da54a4d503799c53d40fe0",
+  "maintainers": [
+    "9f4b4c7e5944ddb3404651d3ba1a9985dc4261ccbca4e81d769a54e43614e27a",
+    "1e60e1b4820b482c593da4d7745f479fd1a5018ba374f50978b99bad9963c423"
+  ]
+}

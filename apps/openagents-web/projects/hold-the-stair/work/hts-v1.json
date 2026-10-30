@@ -1,0 +1,449 @@
+{
+  "v": "openagents.project-work-seed.v1",
+  "project": "hold-the-stair",
+  "initiative": {
+    "slug": "hts-v1",
+    "title": "Hold the Stair: popping tower defense with real dice",
+    "body": "A wizard's tower is under siege by swarms of conjured bubble-beasts that split when they burst. Hold the stair with a party of adventurers whose attacks roll real dice. Rules from the SRD 5e only (System Reference Document 5.2.1, CC BY 4.0), as Everglade uses. Pitched by Marc on the October 30, 2026 recording.",
+    "labels": [
+      "hold-the-stair",
+      "verse"
+    ],
+    "spec": "docs/verse/game-ideas/hold-the-stair.md"
+  },
+  "milestones": [
+    {
+      "slug": "hts-first-playable",
+      "title": "First playable",
+      "body": "One map, a few waves and two defenders with real dice, playable in the browser and on a phone at openagents.com/realms/hold-the-stair.",
+      "parent": "hts-v1"
+    },
+    {
+      "slug": "hts-one-lane",
+      "title": "One lane: motes to embers, a fighter and a wizard",
+      "body": "Paths as lanes, splitting enemies, real-time turns and seeded dice.",
+      "parent": "hts-v1"
+    },
+    {
+      "slug": "hts-party",
+      "title": "The party: seven classes, levels one to five",
+      "body": "Fighter, rogue, wizard, cleric, ranger, bard and paladin, with upgrades.",
+      "parent": "hts-v1"
+    },
+    {
+      "slug": "hts-layers",
+      "title": "The layers: all eight bubble-beasts",
+      "body": "Every layer with its resistances, shadows and detection, and the hulk boss.",
+      "parent": "hts-v1"
+    },
+    {
+      "slug": "hts-tower",
+      "title": "The tower: three maps, forty waves, your own spells",
+      "body": "Three dungeon maps, forty waves with a hulk every ten, and the tower wizard's spells.",
+      "parent": "hts-v1"
+    },
+    {
+      "slug": "hts-together",
+      "title": "Together: two-player co-op",
+      "body": "Two players share the gold and each places their own party, on the room service.",
+      "parent": "hts-v1"
+    }
+  ],
+  "tasks": [
+    {
+      "slug": "hts-first-playable-live",
+      "parent": "hts-first-playable",
+      "title": "First playable at openagents.com/realms/hold-the-stair",
+      "size": "L",
+      "labels": [
+        "first-playable"
+      ],
+      "body": "The first version anyone can play: one dungeon floor with a winding stair path, ten waves of motes, wisps and glimmers that split into their inner layers when popped, and two defenders to place (a fighter and a wizard with Fire Bolt) whose attacks roll a d20 against AC with crits on a natural 20. Gold from pops buys defenders; the tower's hit points are your lives. Tap to place on a phone, click on desktop. Mark this done when the page plays.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "https://openagents.com/realms/hold-the-stair loads and plays ten waves",
+        "Popping a wisp releases two motes; attacks show their rolls",
+        "It plays on a phone with tap to place",
+        "The realm is listed or linked from this project's page"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "hts-fp-damage-numbers",
+        "hts-fp-defender-card",
+        "hts-fp-playtest",
+        "hts-content-tables"
+      ]
+    },
+    {
+      "slug": "hts-fp-damage-numbers",
+      "parent": "hts-first-playable",
+      "title": "Red damage numbers and misses over each target",
+      "size": "S",
+      "labels": [],
+      "body": "Rising red damage numbers over each hit (Everglade's), MISS on a miss and a bigger number on a crit.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Hits, misses and crits each show over the target"
+      ],
+      "blocked_by": [
+        "hts-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hts-fp-defender-card",
+      "parent": "hts-first-playable",
+      "title": "Long-press a defender to see its card",
+      "size": "S",
+      "labels": [],
+      "body": "Long-press (or hover) a placed defender for its card: class, attack bonus, damage dice, turn timer. The hotbar's long-press rules.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Long-pressing a defender on a phone shows its card"
+      ],
+      "blocked_by": [
+        "hts-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hts-fp-playtest",
+      "parent": "hts-first-playable",
+      "title": "Play the first version and write down what to fix",
+      "size": "S",
+      "labels": [
+        "playtest"
+      ],
+      "body": "Play the first playable on desktop and a phone for ten minutes each and post a note on this task with what to fix (pace, how much of the dice to show, placement), as new tasks where they are clear.",
+      "files": [],
+      "acceptance": [
+        "A note on this task lists what was found on desktop and on phone",
+        "Each clear fix is a new task in this project"
+      ],
+      "blocked_by": [
+        "hts-first-playable-live"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hts-lanes",
+      "parent": "hts-one-lane",
+      "title": "Paths as lanes with distance along them",
+      "size": "M",
+      "labels": [
+        "engine"
+      ],
+      "body": "A path in verse/terrain.coax carries distance along it, enemies move along it at their speed, and first, last, strongest and closest targeting are cheap.",
+      "files": [
+        "verse/terrain.coax"
+      ],
+      "acceptance": [
+        "coax test verse/terrain.coax passes with targeting tests for first, last, strongest and closest"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "hts-split",
+        "hts-area-queries"
+      ]
+    },
+    {
+      "slug": "hts-split",
+      "parent": "hts-one-lane",
+      "title": "Enemies that split into their inner layers",
+      "size": "M",
+      "labels": [],
+      "body": "At 0 hit points an entity spawns its inner layers at its spot on the path with their own SRD stat blocks; the split is an event in the rules log so replays and analytics see it.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "A test pops a glimmer and gets two wisps at its distance along the path",
+        "The split appears in the rules log"
+      ],
+      "blocked_by": [
+        "hts-lanes"
+      ],
+      "blocks": [
+        "hts-all-layers"
+      ]
+    },
+    {
+      "slug": "hts-turns",
+      "parent": "hts-one-lane",
+      "title": "Turn timers in real time, resolved in a fixed order",
+      "size": "M",
+      "labels": [],
+      "body": "Each defender has an initiative and a turn every few seconds (the SRD six-second round, scaled; try two seconds). Simultaneous turns resolve in a fixed order so the game is deterministic.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Two runs with the same seed give the same wave result in a test"
+      ],
+      "blocked_by": [],
+      "blocks": [
+        "hts-seeded-dice",
+        "hts-classes"
+      ]
+    },
+    {
+      "slug": "hts-seeded-dice",
+      "parent": "hts-one-lane",
+      "title": "Seeded dice for replays and co-op",
+      "size": "S",
+      "labels": [],
+      "body": "One seed per map so a replay or a shared match rolls the same dice, as Ice Cream Man is seeded.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Replaying a map with its seed reproduces every roll in a test"
+      ],
+      "blocked_by": [
+        "hts-turns"
+      ],
+      "blocks": [
+        "hts-coop"
+      ]
+    },
+    {
+      "slug": "hts-content-tables",
+      "parent": "hts-one-lane",
+      "title": "Layers, defenders, levels and maps as text tables",
+      "size": "M",
+      "labels": [],
+      "body": "Content as data an agent can write and the engine checks, like motions (verse/motion.coax) and set pieces (verse/setpiece.coax).",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "A malformed table is refused with the line it fails on",
+        "The first playable's content loads from the tables"
+      ],
+      "blocked_by": [
+        "hts-first-playable-live"
+      ],
+      "blocks": [
+        "hts-maps"
+      ]
+    },
+    {
+      "slug": "hts-classes",
+      "parent": "hts-party",
+      "title": "All seven classes: fighter, rogue, wizard, cleric, ranger, bard, paladin",
+      "size": "L",
+      "labels": [],
+      "body": "Each SRD class as a placeable defender: Sneak Attack, area spells, Spirit Guardians and Daylight, a favoured enemy layer, Bardic Inspiration and a paladin's aura, using verse/rules/srd5.coax and verse/rules/srd5-combat.coax.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Each class has a test of its signature feature"
+      ],
+      "blocked_by": [
+        "hts-turns"
+      ],
+      "blocks": [
+        "hts-upgrades",
+        "hts-shadows"
+      ]
+    },
+    {
+      "slug": "hts-area-queries",
+      "parent": "hts-party",
+      "title": "Area queries against hundreds of moving enemies",
+      "size": "M",
+      "labels": [
+        "engine"
+      ],
+      "body": "Everything in a 20-foot sphere and everything in a line, every turn, from a spatial grid in the entity system.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "A Fireball query over 500 enemies runs under 1 ms in a test"
+      ],
+      "blocked_by": [
+        "hts-lanes"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hts-upgrades",
+      "parent": "hts-party",
+      "title": "Levels one to five bought with gold, subclass at three",
+      "size": "M",
+      "labels": [],
+      "body": "Upgrades are SRD class features picked from a short list; subclass at level 3 (an evoker sculpts spells around defenders, a life cleric heals the tower).",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Levelling a fighter to 5 gives Extra Attack"
+      ],
+      "blocked_by": [
+        "hts-classes"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hts-all-layers",
+      "parent": "hts-layers",
+      "title": "All eight bubble-beasts with their resistances",
+      "size": "M",
+      "labels": [],
+      "body": "Mote, wisp, glimmer, ember, frostling, ironskin, shadow and hulk with their SRD stat blocks, resistances and immunities, and what each pops into.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "A fire attack on an ember does no damage in a test",
+        "Each layer pops into the layers in the design doc"
+      ],
+      "blocked_by": [
+        "hts-split"
+      ],
+      "blocks": [
+        "hts-shadows",
+        "hts-waves"
+      ]
+    },
+    {
+      "slug": "hts-shadows",
+      "parent": "hts-layers",
+      "title": "Shadows and detection",
+      "size": "S",
+      "labels": [],
+      "body": "Shadows can't be targeted without truesight or detection; a cleric's Daylight reveals them.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "A defender without detection skips a shadow; after Daylight it targets it"
+      ],
+      "blocked_by": [
+        "hts-all-layers",
+        "hts-classes"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hts-instanced",
+      "parent": "hts-layers",
+      "title": "Hundreds of bubbles on a phone",
+      "size": "M",
+      "labels": [
+        "engine"
+      ],
+      "body": "Instanced bubbles (one mesh, per-instance colour and size) and particles for pops, holding 60 FPS on a phone.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "500 bubbles hold 60 FPS (p95 frame <= 17.5 ms) in the perf run"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "hts-maps",
+      "parent": "hts-tower",
+      "title": "Three maps with winding stairs, some with two paths",
+      "size": "M",
+      "labels": [],
+      "body": "Three dungeon floors from the cellar to the top of the tower, paths winding, one with two paths.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Each map plays a full run"
+      ],
+      "blocked_by": [
+        "hts-content-tables"
+      ],
+      "blocks": [
+        "hts-your-spells"
+      ]
+    },
+    {
+      "slug": "hts-waves",
+      "parent": "hts-tower",
+      "title": "Forty waves with a hulk every ten",
+      "size": "M",
+      "labels": [],
+      "body": "Forty waves to win a map, a hulk boss every ten, gold between waves.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "A full forty-wave run finishes in a test with a seeded party"
+      ],
+      "blocked_by": [
+        "hts-all-layers"
+      ],
+      "blocks": [
+        "hts-coop"
+      ]
+    },
+    {
+      "slug": "hts-your-spells",
+      "parent": "hts-tower",
+      "title": "Your own spells: Wall of Stone, Wall of Fire, Slow",
+      "size": "M",
+      "labels": [],
+      "body": "The tower's wizard (you) has a few spells per map: Wall of Stone across the path (verse/demolish.coax), Wall of Fire, Slow on a wave.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/"
+      ],
+      "acceptance": [
+        "Wall of Stone blocks the path until it breaks"
+      ],
+      "blocked_by": [
+        "hts-maps"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "hts-camera",
+      "parent": "hts-tower",
+      "title": "A top-down tactical camera with pinch zoom",
+      "size": "S",
+      "labels": [],
+      "body": "Pinch zoom, pan and a slight tilt in verse/camera.coax.",
+      "files": [
+        "verse/camera.coax"
+      ],
+      "acceptance": [
+        "Pinch zoom and pan work on a phone"
+      ],
+      "blocked_by": [],
+      "blocks": []
+    },
+    {
+      "slug": "hts-coop",
+      "parent": "hts-together",
+      "title": "Two-player co-op: shared gold, each places their own party",
+      "size": "L",
+      "labels": [],
+      "body": "Two players in one room share the gold and each places their own defenders, on the room service with the map's seed shared.",
+      "files": [
+        "apps/openagents-web/realms/hold-the-stair/",
+        "coax/web/api/"
+      ],
+      "acceptance": [
+        "Two browsers in one match see the same waves and each other's defenders"
+      ],
+      "blocked_by": [
+        "hts-seeded-dice",
+        "hts-waves"
+      ],
+      "blocks": []
+    }
+  ]
+}
