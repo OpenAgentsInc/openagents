@@ -386,8 +386,10 @@ Part XX.
 | 71a. Make a model fail, then find out why | A working classifier broken on purpose (gradients that accumulate across steps, targets paired with the wrong examples, a loss mask that includes padding, a learning rate too large, initialization that makes hidden units identical, a training-only random operation left on at evaluation), and diagnostics for each: activation distributions, gradient norms, update sizes, train and validation curves, and overfitting one small batch first. Each fault must produce a diagnostic that points at it, and repairing it must restore the expected behavior. |
 | 71b. Differentiate any tensor program | General reverse mode over 26a's IR: vector-Jacobian rules per operator, shared subexpressions, a parameter used more than once, unused gradients, custom derivatives, gradient-mode control and saved-tensor lifetimes. 71's tape stays the teaching version; this is the permanent one. An MLP built from registered operators, including a custom one, trains with checked gradients. Framework track. |
 | 71c. Transform functions, not just tensors | `grad`, `value_and_grad`, `vjp`, `jvp`, `vmap`, Jacobians, Hessian-vector products and their composition. Per-example gradients and Jacobians are computed without a hand-written loop and checked against explicit calculation; robotics, differentiable physics and batched optimization use them. Framework track. |
+| 71d. Choose the next example to learn from | An active-learning loop over an owned pool: a small classifier chooses examples by uncertainty, diversity or a mixture, then an independent checker supplies the requested labels; unqueried labels stay hidden from the selector. Compare with random selection using the same trainer, initial labeled set and total label budget, including the initial labels, over several fixed seeds. Keep held-out groups outside acquisition and tuning; record each query and label, quality versus labels acquired, and acquisition and training cost. Include a confidently wrong region that uncertainty alone can miss. The chapter reports whether choosing better data helps, including a negative result; the selector never supplies its own labels. |
 | 72. Learn a physical system | A supervised oscillator or cooling surrogate from our own deterministic solver; held-out parameters, one-step error and repeated rollout stability. |
 | 72a. A grid world that learns, plans and recovers | A headless grid or 2D navigation scene with obstacles, goals and resettable state. An exact planner supplies demonstrations for a small policy, which then collects labels on the states it actually visits (DAgger); a second route plans with chapter 72's learned model, executes one action and replans, and shows the optimizer exploiting the model's errors. Whole episodes on held-out maps and parameters, completion, collisions, recovery and computation per decision, with tiny cases checked against exhaustive search. A Verse character that navigates and recovers follows from here. |
+| 72b. Recover the physics from the motion | Differentiate through an owned, bounded smooth simulator to infer a spring constant and damping from observed motion, with mass and the other simulator constants fixed. Check parameter gradients against independent finite differences and parameter recovery against known synthetic ground truth, then predict trajectories under held-out initial conditions and forcing. Compare gradient-based fitting with a bounded grid search under a stated compute budget, and measure sensitivity to observation noise and sampling. Include observations that cannot distinguish two parameter choices: report the ambiguity rather than claiming a unique recovery. This learns the simulator's parameters directly, complementing chapter 72's learned surrogate. |
 | 73. Bytes and a small language model | A real byte vocabulary, bigram likelihood, fixed licensed splits, named RNG and complete tiny training/generation. |
 | 74. Differentiate a decoder | Backward operations for the complete causal attention/FFN path; causal isolation and gradient coverage. |
 | 74a. Compile the backward pass | Differentiate the IR itself, plan saved activations, choose recomputation, fuse backward operations and compile the optimizer update. Eager and compiled training agree on loss, gradients and updates over several steps, with memory and time measured. Framework track. |
@@ -395,11 +397,17 @@ Part XX.
 | 75a. Train within a memory budget | Where training memory goes (parameters, gradients, optimizer state, saved activations and workspace, each with its own lifetime), gradient accumulation with correct loss normalization and update timing, activation checkpointing that recomputes chosen blocks, and a precision policy per operation (storage, multiplication, accumulation, gradients, optimizer state) with loss scaling. The tiny decoder trained under a fixed memory cap three ways, with gradients and updates against the reference, random-number replay for recomputed operations, measured savings and extra time, and overflow and underflow fixtures. |
 | 75b. Models are compositions of modules | `Module` and `Parameter`, named submodules and parameter trees, persistent and non-persistent buffers, train and eval modes, initialization, freezing and parameter sharing. The gate: someone who has never worked on Psionic builds an MLP, a CNN, a small residual network and a transformer from the documented public API without touching runtime code. Framework track. |
 | 75c. One trainer for every model | One model, loss and optimizer interface with epochs and steps, gradient clipping and accumulation, validation, schedulers, callbacks and cancellation; an image classifier and a tiny language model train through the same interface. Framework track. |
+| 75d. Change an activation, change the answer | Train a tiny decoder on an owned task with a known shortcut, then capture and replace activations at named layers on paired clean and corrupted inputs. Ablate a candidate feature, patch it from the paired run, and try to remove and restore the shortcut's effect. No-op patches and unrelated-feature controls come first; restoring the original activation must reproduce the original output under the declared profile. Choose sites on development examples, then measure effects and retained task ability on held-out counterfactuals. Reuse appendix D's bounded inspection tools, but judge the explanation by interventions rather than an attention picture; report any failure to isolate the behavior. |
 
 Chapter 72 needs 70–71, not language-model training. It is our first physics
 chapter, much earlier than pretrained geometry or weather models. It uses
-ordinary supervised learning; higher-order physics-informed derivatives are
-a separate extension in appendix C.
+ordinary supervised learning; 72b differentiates through a smooth solver and
+can start after 71 and 72, without navigation or higher-order derivatives.
+Higher-order physics-informed derivatives are a separate extension in
+appendix C. Active learning in 71d needs only 70–71, not the general framework
+of 71b–71c; 75d needs the trained tiny decoder in 75 and bounded activation
+capture and replacement. These experiments begin on owned CPU fixtures and
+do not require another pretrained model or a GPU.
 
 ## XI. Data, tokenizers, state and optimization
 
@@ -635,6 +643,7 @@ built from, and is removed otherwise.
 | 146. Keep the prefix stable | Prompt assembly in a fixed order (system sections, tool schemas, then history) so each turn only appends to the model-visible bytes; request metadata stays outside the model's input. Measured against chapter 119's prefix cache: hit rate, prefill saved and time to first token across a long session. |
 | 147. Tools as typed capabilities | A tool registry whose schemas come from `proto/`, a guarded pipeline (before, run, after) with structured errors, arguments constrained by chapter 37 so a malformed call is never generated, and filesystem and process tools that share one execution world. |
 | 148. A sandbox and approvals | Spawned processes confined to declared roots and resources, an approval policy for anything outside them, per-tool timeouts and a guard against repeating the same failing call. No tool inherits the host's authority by default. |
+| 148a. A document tries to become the system prompt | A replayable prompt-injection lab for chapter 38c's documentation assistant and the harness: plant hostile instructions in retrieved passages and tool results, including forged role markers, requests to reveal a synthetic sentinel and attempts to expand a tool grant. Local simulated tools, disposable files and a captured outbound sink make every effect inspectable. Deterministic checks send unauthorized calls directly through the capability gate and require zero unauthorized effects; real model runs report attempted calls, admitted effects, answer leakage and legitimate-task completion separately. Compare paired benign and hostile runs, freezing grants, budgets, model/build identities, seeds, acceptance bounds and held-out attack variants before comparison. Retrieved and tool bytes cannot grant authority, and refusing every task cannot pass the utility gate. |
 | 149. Condense the history | Older history replaced by one marked summary when the context fills, bracketed in the log so a crash leaves a visible record; tool results pruned by rule. Each condensation breaks the stable prefix, so it is scheduled to minimize recomputed prefill, and that cost is measured. |
 | 150. Programs as tool calls | A model-written program run once against host-provided functions in a bounded, sandboxed runtime, returning one structured result instead of many round trips; output, time and memory limits refuse rather than truncate. |
 | 151. Forks, subagents and jobs | A session forked at a turn boundary from its own log, reusing the parent's cached prefix state on the server; subagents with their own scope and budget; background jobs that outlive a turn; a goal that a session works toward across turns. |
@@ -648,6 +657,10 @@ built from, and is removed otherwise.
 The harness is product logic, so it is Coax, with the host doing processes,
 files and network. Coder's own agent loop can consume these chapters; nothing
 here replaces its simple loop with more machinery.
+Chapter 148a starts after 38c and 144–148; its fixtures and capability gates
+stay local, and its behavioral measurements use a pinned Psionic-served model.
+Any policy change is checked in Coax before the attacks are run. A clean run
+establishes the measured scope, not immunity to every future instruction.
 
 ## XXII. Decisions in production
 
@@ -809,7 +822,7 @@ Python to tooling. The stable C ABI and DLPack (4a) let others build one.
 | A. A small imported decoder | SmolLM2-135M after 4–6; a deliberately non-NVIDIA, smaller-memory tokenizer/checkpoint lab. |
 | B. Other assistant architectures | Nemotron-Mini-4B-Instruct after 32, with an inert conversion of its original `.bin`; Bolt-E4B as a distinct Gemma-4-derived profile. Neither is automatic dense-model compatibility. |
 | C. Derivatives inside derivatives | Higher-order/input derivatives and a tiny PINN after 71–72; independent derivative and PDE-residual checks. |
-| D. Look inside a model | Bounded activation capture at named layers, logit lens over the residual stream, attention and recurrent-state inspection; doubles as the tool for localizing a reference mismatch in 10–11. |
+| D. Look inside a model | Bounded activation capture at named layers, logit lens over the residual stream, attention and recurrent-state inspection; doubles as the tool for localizing a reference mismatch in 10–11. Chapter 75d extends this instrumentation with checked activation replacement and causal experiments. |
 
 ## Prerequisites, not a waiting list
 
@@ -817,6 +830,8 @@ Python to tooling. The stable C ABI and DLPack (4a) let others build one.
 | --- | --- | --- |
 | Urgent decisions | 1–3, then 4–9 | Elephant 10, Mammoth 11, published semantics 12; Metal 26–31 advances alongside. |
 | A first model of your own | 1–3 | Deadline prediction 70 → gradients 71 → failure diagnosis 71a; a grid-world policy 72a after 72. |
+| Active learning | 70–71 and an owned pool with independently checked labels | Choose examples 71d → compare quality at equal label budgets against random selection, with held-out groups never queried. |
+| Causal activation experiments | 75's trained tiny decoder and appendix D's bounded inspection tools, extended with activation replacement | Remove and restore a known shortcut in 75d, with control patches and held-out counterfactuals. |
 | A framework, not only engines | 2–3 and 26a; 71 and 75 for training; 30 and 26 for the GPU; 129 for distribution | Tensors and operators 2a–3b → modules, autodiff and custom operators 75b, 71b–71c, 26c → trainer, data, optimizers 75c, 76a, 78a → GPU training and compilation 81a–81c, 26b, 74a → checkpoints and interchange 76b, 4a, 161a → distribution 129a–129c → can someone use it 189. |
 | Live decision API | 10–11 and 13; an owner-approved host | Timing 14 → resident model 15 → `/v1/systemone` 16 → running live 17 → measured optimizations 18. |
 | First Pylon mesh | Part III's API and `coax/lib/nostr` | A Pylon answering decisions 19 → the API fanning out 20 → receipts and checks 21. |
@@ -828,7 +843,7 @@ Python to tooling. The stable C ABI and DLPack (4a) let others build one.
 | Retrieval / dense continuation | Shared storage, artifacts, tokenizer and attention; each exact model profile | 38 → approximate index 38a → reranking 38b → grounded answers 38c / 39; browser search 40 once Coax Wasm/WebGPU compute exists. |
 | Training / nanochat | 70–71, 73–78 and exact nanochat forward/backward | Tiny pretraining 81 → SFT 82 → the specific rollout recipe 85. |
 | Decision post-training | 10–12, 71 and hybrid backward | Adaptation 86; Mammoth-to-Elephant distillation 87. |
-| Early physics | 70–71 and an owned deterministic solver | Surrogate and rollout checks 72. |
+| Early physics | 70–71 and an owned deterministic solver; a differentiable smooth solver for 72b | Surrogate and rollout checks 72 → recover physical parameters from motion 72b, including ambiguous observations; navigation 72a branches independently. |
 | Vision | Shared forward core and 88; gradients for a trained head | Elephant/Mammoth images 89; C-RADIO 90; learned image codec 91 is a separate branch. |
 | Verse motion | Shared forward core, required codec operators and 93–94 | MotionBricks 95 → Verse 96. |
 | Speech | Shared convolution/attention and 97–98 | Parakeet 99 → streaming 100; text-to-speech 101 after its target is selected. |
@@ -841,6 +856,7 @@ Python to tooling. The stable C ABI and DLPack (4a) let others build one.
 | Voice / training scale | 12, 115 and the voice gate / a resumable trainer plus backend | Voice pipeline 127 and decision steering 128 / distributed training 129. |
 | Mesh inference | 130's two-stage parity, 22's measurements and network transport | Packages and placement 131–134 → experts and routing 135–137 → trust and verification 138–139 → Mesh-LLM interoperation 140 → DeepSeek V4.1 across stages 141 → Mistral Large 3 142 → Le Chonk 143. |
 | Harness | Part III's API; chapter 37's constrained decoding; chapter 119's prefix cache for the stable-prefix measurements | The simplest loop 144 → session log 145 → stable prefix 146 → tools, sandbox and condensation 147–149 → programs, forks and plugins 150–152 → protocols, measurement and consent 153–155. |
+| Adversarial harness | 38c and 144–148; a pinned served model for behavioral measurements | Hostile retrieved passages and tool results 148a → checked capability boundaries plus measured legitimate-task completion on held-out attacks. |
 | Decisions in production | 12 and 16–17 for calibration, thresholds and outcomes; 19–21 for Pylon checks; Part III for the encoder branch | Own calibration 156 → cost thresholds 157 → outcomes and drift 158; Pylon self-check 159 → honest-distance limits 160; ONNX 161 → millisecond encoder 162 → distilled router 163 → shadow promotion 164. |
 | Programs compiled into weights | 1–3 and 6; 75 and 150 for the learned chapters; the wallet and Pylon mesh for 177 | Trace machine 165 → exact memory and arithmetic 166–167 → compiler and harness 168–169 → interpreter or baked program, fast decode, softmax limits 170–172 → replay verification 173 → learned execution and a frozen core 174–175 → composable modules 176 → paid verified work 177. |
 | Measure, then improve | 12, then 144, 158 and 173 | Suites, noise floors and gates 178–180 → environments, settings fitting and policy search 181–183 → prompt evolution and judges 184–185 → outcomes as rows and loop accounting 186–187. |
