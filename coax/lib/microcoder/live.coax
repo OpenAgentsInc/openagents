@@ -106,5 +106,19 @@ main :: () {
   ok = ok && l[0].ending == MC_END_FINISHED && three && ran >= 1;   // the model may look twice
   ok = live_run_stream(p[..], bench[..], false) && ok;
   ok = live_run_stream(p[..], bench[..], true) && ok;
+  // a gateway that drops the schema (as Z.ai does): Vertex told not to send it, so
+  // the reply comes back as text with the reminder's shape and is read out of it
+  if v[0].nt > 0 {
+    tp: [1] GwPlan; tpb: [1] GwPlanBuffers; tbench: [1] GwBench;
+    gw_plan_init(tp[..], tpb[..]);
+    loose := gw_vertex(v[..]); loose.flags = loose.flags | GW_NO_STRICT_SCHEMA;
+    x = gw_plan_add(tp[..], loose, GW_VERTEX_FLASH, none[0..<0]);
+    mc_init(l[..], sb[..], lb[..], cast(string) facts[0..<fn], "how many Swift files are in this folder", "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
+    calls = live_task(l[..], tp[..], tbench[..], dir, tb[..]);
+    three = false;
+    for c: l[0].reply { if c == '3' { three = true; } }
+    print("microcoder (text action, no schema sent): ending %, % call(s), bad replies %: %\n", mc_ending_name(l[0].ending), calls, l[0].bad, l[0].reply);
+    ok = ok && l[0].ending == MC_END_FINISHED && three;
+  }
   print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

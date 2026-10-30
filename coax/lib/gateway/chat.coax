@@ -25,14 +25,26 @@ GW_NO_STRICT_SCHEMA :: 32;       // Chat and Gemini wires: the provider has no s
 // The request: system message first, then the messages; response_format
 // json_schema (strict) for a schema; the cap; the effort; stream with
 // stream_options.include_usage.
+// a and b as one JSON string.
+gw_write_joined :: (out: [] u8, at: int, a: string, b: string) -> int {
+  n := json_write_string(out, at, a);
+  if n < 1 { return -1; }
+  m := json_write_string(out, n - 1, b);
+  if m < 0 { return -1; }
+  for i: n - 1..<m - 1 { out[i] = out[i + 1]; }   // b's opening quote goes
+  return m - 1;
+}
+
 gw_chat_body :: (req: GwRequest, flags: int, out: [] u8) -> int {
   n := json_raw(out, 0, "{\"model\":");
   n = json_write_string(out, n, req.model);
   n = json_raw(out, n, ",\"messages\":[");
   first := true;
-  if req.system.count > 0 {
+  // without a strict schema, the caller's hint about the reply's shape joins the system prompt
+  hint := ifx req.schema.count > 0 && (flags & GW_NO_STRICT_SCHEMA) != 0 then req.schema_hint else "";
+  if req.system.count > 0 || hint.count > 0 {
     n = json_raw(out, n, "{\"role\":\"system\",\"content\":");
-    n = json_write_string(out, n, req.system);
+    n = gw_write_joined(out, n, req.system, hint);
     n = json_raw(out, n, "}");
     first = false;
   }

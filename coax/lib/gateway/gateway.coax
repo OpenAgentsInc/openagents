@@ -64,6 +64,7 @@ GwRequest :: struct {
   messages: [] GwMessage;
   schema: string;                // a JSON Schema object for strict structured output, "" for plain text
   schema_name: string = "reply";
+  schema_hint: string;           // added to the system prompt by a gateway that drops the schema (GW_NO_STRICT_SCHEMA), "" for none
   effort: string;                // "low" | "medium" | "high", "" to leave it to the provider
   max_tokens: int;               // 0 to leave it to the provider
   stream: bool = true;

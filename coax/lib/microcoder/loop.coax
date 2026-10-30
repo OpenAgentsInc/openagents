@@ -20,7 +20,7 @@
 // reply). Microcoder adds no step or time limit of its own: the user sets
 // limits.
 
-#load "action.coax";
+#load "text_action.coax";
 
 MC_END_NONE :: 0;
 MC_END_FINISHED :: 1;
@@ -55,6 +55,7 @@ McLoopBuffers :: struct {
   prompt: [327680] u8;
   raw: [32768] u8;
   arena: [32768] u8;
+  norm: [32768] u8;              // a text reply's action, rewritten whole
 }
 
 McLoop :: struct {
@@ -62,6 +63,7 @@ McLoop :: struct {
   local_work: f64;
   prompt: [] u8;
   raw: [] u8; nr: int;           // this step's reply as it streams
+  norm: [] u8;
   got_text: bool;
   ar: [1] ClArena;
   pending: [1] McAction;
@@ -76,7 +78,7 @@ McLoop :: struct {
 
 // The state's buffers and the loop's are separate (sb, b), each live as long as the loop.
 mc_init :: (l: [] McLoop, sb: [] McStateBuffers, b: [] McLoopBuffers, environment: string, task: string, route: string, local_work: f64) {
-  l[0] = McLoop.{prompt = b[0].prompt[..], raw = b[0].raw[..], local_work = local_work};
+  l[0] = McLoop.{prompt = b[0].prompt[..], raw = b[0].raw[..], norm = b[0].norm[..], local_work = local_work};
   l[0].ar[0] = ClArena.{buf = b[0].arena[..]};
   mc_state_init(l[0].st[..], sb, environment, task, route);
 }
@@ -88,7 +90,7 @@ mc_request :: (l: [] McLoop) -> GwRequest {
   l[0].nr = 0; l[0].got_text = false;
   state := mc_state_json(l[0].st[..], l[0].prompt);
   l[0].msgs[0] = GwMessage.{role = "user", text = state};
-  return GwRequest.{system = MC_SYSTEM, messages = l[0].msgs[..], schema = MC_SCHEMA, schema_name = MC_SCHEMA_NAME};
+  return GwRequest.{system = MC_SYSTEM, messages = l[0].msgs[..], schema = MC_SCHEMA, schema_name = MC_SCHEMA_NAME, schema_hint = MC_TEXT_REMINDER};
 }
 
 mc_end :: (l: [] McLoop, ending: int) -> int { l[0].ending = ending; return MC_ENDED; }
@@ -128,6 +130,11 @@ mc_bad :: (l: [] McLoop, why: string) -> int {
 mc_take :: (l: [] McLoop, text: string) -> int {
   l[0].ar[0].at = 0; l[0].ar[0].full = false;
   why := mc_action_parse(l[0].ar[..], text, l[0].pending[..]);
+  if why.count > 0 {
+    // a gateway without strict schemas answers in text: read the action out of it
+    l[0].ar[0].at = 0; l[0].ar[0].full = false;
+    why = mc_text_action(l[0].ar[..], text, l[0].norm, l[0].pending[..]);
+  }
   if why.count > 0 { return mc_bad(l, why); }
   l[0].steps += 1;
   l[0].bad = 0;
@@ -248,13 +255,25 @@ mc_script_run :: (l: [] McLoop, s: [] McScript) {
   mc_init(l[..], sb[..], lb[..], "{}", "hi", "{}", 1.0);
   replies: [4] string;
   replies[0] = "Hello! How can I help?";
-  replies[1] = "{\"rationale\":\"x\"}";
+  replies[1] = "{\"finished\":\"soon\"}";
   replies[2] = "!cut:{\"rationale\":\"x\",\"comm";
   replies[3] = "{\"rationale\":\"x\",\"commands\":[],\"view\":[],\"finished\":true,\"reply\":\"hi\",\"ask\":\"none\"}";
   s: [1] McScript; s[0].replies = replies[..];
   mc_script_run(l[..], s[..]);
   #assert l[0].ending == MC_END_BAD_REPLIES && s[0].calls == 3 && l[0].reply == "";
   #assert ps_count(cast(string) l[0].st[0].notes[0..<l[0].st[0].nn], "Your last reply was refused") == 2;
+}
+
+#test "an action in prose (a gateway without strict schemas) is read out of the text" {
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "how many files", "{}", 1.0);
+  replies: [2] string;
+  replies[0] = "<think>count them</think>I'll look first:\n```json\n{\"rationale\": \"look\", \"commands\": \"ls | wc -l\"}\n```";
+  replies[1] = "{\"finished\": true, \"reply\": \"3 files\"}";
+  s: [1] McScript; s[0].replies = replies[..];
+  mc_script_run(l[..], s[..]);
+  #assert l[0].ending == MC_END_FINISHED && l[0].reply == "3 files" && s[0].nran == 1 && s[0].ran[0] == "ls | wc -l" && l[0].bad == 0;
+  #assert mc_request(l[..]).schema_hint == MC_TEXT_REMINDER;
 }
 
 #test "a good reply between bad ones resets the count" {

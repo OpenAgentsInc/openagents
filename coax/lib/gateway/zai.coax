@@ -27,6 +27,20 @@ gw_zai :: () -> Gateway {
   #assert gw_translate(gw_zai(), req, out[..], why[..]) == "{\"model\":\"glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"You are terse.\"},{\"role\":\"user\",\"content\":\"Count from one to five.\"}],\"max_tokens\":256,\"stream\":true,\"stream_options\":{\"include_usage\":true},\"thinking\":{\"type\":\"enabled\"}}";
 }
 
+#test "without a strict schema, the caller's schema hint joins the system prompt" {
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "2+2?"};
+  req := GwRequest.{model = GW_ZAI_FLASH, system = "Be terse.", messages = msgs[..], schema = "{\"type\":\"object\"}", schema_hint = "\nReply with JSON: {\"answer\": \"...\"}"};
+  #assert gw_translate(gw_zai(), req, out[..], why[..]) == "{\"model\":\"glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"Be terse.\\nReply with JSON: {\\\"answer\\\": \\\"...\\\"}\"},{\"role\":\"user\",\"content\":\"2+2?\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"thinking\":{\"type\":\"enabled\"}}";
+  // no system prompt: the hint alone; a gateway that holds the schema leaves it out
+  bare := req; bare.system = "";
+  #assert gw_translate(gw_zai(), bare, out[..], why[..]) == "{\"model\":\"glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"\\nReply with JSON: {\\\"answer\\\": \\\"...\\\"}\"},{\"role\":\"user\",\"content\":\"2+2?\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true},\"thinking\":{\"type\":\"enabled\"}}";
+  holds := Gateway.{name = "openai", url = "https://api.openai.com/v1/chat/completions", key_env = "OPENAI_API_KEY", wire = GW_WIRE_CHAT};
+  body := gw_translate(holds, req, out[..], why[..]);
+  head := "{\"model\":\"glm-5.3-flash\",\"messages\":[{\"role\":\"system\",\"content\":\"Be terse.\"},{\"role\":\"user\",\"content\":\"2+2?\"}],\"response_format\"";
+  #assert json_valid(body) && body.count > head.count && body[0..<head.count] == head;
+}
+
 #test "the recorded Z.ai stream parses: 34 reasoning deltas, none in the answer" {
   r: [1] GwReplay; fx := GW_FX_ZAI_GLM_5_3_FLASH;
   gw_replay(GW_WIRE_RESPONSES, fx[..], r[..]);

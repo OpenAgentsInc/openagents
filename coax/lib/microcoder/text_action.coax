@@ -1,0 +1,194 @@
+// The action in plain text (docs/coder/microcoder.md, "The action"), for a
+// gateway that can't hold a reply to a strict schema (GW_NO_STRICT_SCHEMA:
+// Z.ai's GLM; a local or Pylon model that carries text only). From the old
+// microcoder-loop text_action.rs:
+//
+//   MC_TEXT_REMINDER  goes after the system prompt and spells out the object.
+//   mc_text_action    reads a reply robustly: it drops a leaked <think>
+//                     block, takes the first JSON object in the text (after
+//                     prose, inside a code fence) that reads as an action,
+//                     fills the members a small model leaves out with their
+//                     empty values, takes commands written as one string,
+//                     as objects that hold the script ({"bash": "ls"}), or
+//                     inside a nested action, and then holds the result to
+//                     the schema and its meaning with mc_action_parse. A
+//                     reply with no JSON object, or none that reads as an
+//                     action, is a bad reply with a reason.
+//
+// The loop (loop.coax) sends the reminder as the request's schema_hint, which
+// a gateway adds to the system prompt only when it drops the schema, and
+// reads every reply strictly first, then this way: one plan can mix gateways
+// that hold the schema with ones that don't.
+
+#load "action.coax";
+
+MC_TEXT_REMINDER :: "\n\n# Reply format\n\nReply with exactly one JSON object and nothing else (no prose, no code fences), with these members: rationale (string), commands (array of shell commands as strings), view (array of file paths), finished (boolean), reply (string), ask (\"none\" or \"question\"). Example: {\"rationale\": \"See what is here.\", \"commands\": [\"ls -la\"], \"view\": [], \"finished\": false, \"reply\": \"\", \"ask\": \"none\"}\n";
+
+MC_SCRIPT_KEYS :: [5] string.["bash", "command", "cmd", "script", "run"];
+MC_ACTION_KEYS :: [4] string.["commands", "finished", "rationale", "reply"];
+
+// text after the last </think>, or all of it.
+mc_without_reasoning :: (text: string) -> string {
+  end := "</think>";
+  at := -1;
+  for i: 0..<text.count { if i + end.count <= text.count && text[i..<i + end.count] == end { at = i + end.count; } }
+  if at < 0 { return text; }
+  return cast(string) text[at..<text.count];
+}
+
+// The JSON object that starts at text[i] ('{'), or "" when none does.
+mc_object_at :: (text: string, i: int) -> string {
+  rest := cast(string) text[i..<text.count];
+  j: [1] Json; cl_parse(j[..], rest);
+  if json_next(j[..]) != JSON_OBJECT { return ""; }
+  v := cl_value_here(j[..]);
+  if !v.ok { return ""; }
+  return cast(string) rest[v.from..<v.to];
+}
+
+// Writes the scripts in a commands value (all of v), in order: strings as
+// they are; from an object its bash, command, cmd, script or run string, or
+// a nested action's commands; arrays item by item. Anything else is dropped.
+// count[0]: scripts written so far (for the commas).
+mc_flatten :: (v: string, out: [] u8, n: int, count: [] int) -> int {
+  r := cl_root(v);
+  if !r.ok { return n; }
+  m := n;
+  if r.tok == JSON_STRING {
+    if count[0] > 0 { m = json_raw(out, m, ","); }
+    count[0] += 1;
+    return json_raw(out, m, v);
+  }
+  if r.tok == JSON_ARRAY {
+    for i: 0..<cl_count(v) { m = mc_flatten(cl_json(v, cl_item(v, i)), out, m, count); }
+    return m;
+  }
+  if r.tok == JSON_OBJECT {
+    keys := MC_SCRIPT_KEYS;
+    for k: keys {
+      s := cl_find(v, k);
+      if s.ok && s.tok == JSON_STRING {
+        if count[0] > 0 { m = json_raw(out, m, ","); }
+        count[0] += 1;
+        return json_raw(out, m, cl_json(v, s));
+      }
+    }
+    nested := cl_find(v, "commands");
+    if nested.ok { return mc_flatten(cl_json(v, nested), out, m, count); }
+  }
+  return m;
+}
+
+// A member copied as it is when it has type tok, its empty value when it is
+// missing or null; false when it has another type.
+mc_member :: (obj: string, key: string, tok: int, empty: string, out: [] u8, n: [] int) -> bool {
+  v := cl_find(obj, key);
+  n[0] = json_raw(out, n[0], ",\"");
+  n[0] = json_raw(out, n[0], key);
+  n[0] = json_raw(out, n[0], "\":");
+  if !v.ok || v.tok == JSON_NULL { n[0] = json_raw(out, n[0], empty); return true; }
+  ok := v.tok == tok || (tok == JSON_TRUE && v.tok == JSON_FALSE);
+  if !ok { return false; }
+  n[0] = json_raw(out, n[0], cl_json(obj, v));
+  return true;
+}
+
+// obj as a whole next_action in out, or why not ("" and why[0]).
+mc_normalize :: (ar: [] ClArena, obj: string, out: [] u8, why: [] string) -> string {
+  any := false;
+  members := MC_ACTION_KEYS;
+  for k: members { if cl_find(obj, k).ok { any = true; } }
+  if !any { why[0] = "an object with none of the action's members"; return ""; }
+  n: [1] int;
+  n[0] = json_raw(out, 0, "{\"commands\":[");
+  c := cl_find(obj, "commands");
+  count: [1] int;
+  if c.ok { n[0] = mc_flatten(cl_json(obj, c), out, n[0], count[..]); }
+  n[0] = json_raw(out, n[0], "]");
+  if !mc_member(obj, "rationale", JSON_STRING, "\"\"", out, n[..]) { why[0] = "rationale is not a string"; return ""; }
+  if !mc_member(obj, "reply", JSON_STRING, "\"\"", out, n[..]) { why[0] = "reply is not a string"; return ""; }
+  if !mc_member(obj, "view", JSON_ARRAY, "[]", out, n[..]) { why[0] = "view is not an array"; return ""; }
+  if !mc_member(obj, "finished", JSON_TRUE, "false", out, n[..]) { why[0] = "finished is not a boolean"; return ""; }
+  ask := cl_text(ar, obj, cl_find(obj, "ask"));
+  n[0] = json_raw(out, n[0], ifx ask == "question" then ",\"ask\":\"question\"}" else ",\"ask\":\"none\"}");
+  if n[0] < 0 { why[0] = "the reply does not fit its buffer"; return ""; }
+  return cast(string) out[0..<n[0]];
+}
+
+// The action in a reply's text, decoded into ar (its normalized JSON in
+// norm). What's wrong with it, or "".
+mc_text_action :: (ar: [] ClArena, raw: string, norm: [] u8, a: [] McAction) -> string {
+  a[0] = McAction.{};
+  text := mc_without_reasoning(raw);
+  first_why := "";
+  for i: 0..<text.count {
+    if text[i] != '{' { continue; }
+    obj := mc_object_at(text, i);
+    if obj.count == 0 { continue; }
+    why: [1] string;
+    whole := mc_normalize(ar, obj, norm, why[..]);
+    if whole.count == 0 { if first_why.count == 0 { first_why = why[0]; } continue; }
+    w := mc_action_parse(ar, whole, a);
+    if w.count == 0 { return ""; }
+    if first_why.count == 0 { first_why = w; }
+  }
+  if first_why.count > 0 {
+    if first_why == "an object with none of the action's members" { return "the reply holds no next_action object"; }
+    return first_why;
+  }
+  return "the reply holds no JSON object";
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "a fenced object after prose and a leaked reasoning block" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [2048] u8; a: [1] McAction;
+  raw := "<think>{\"commands\": [\"rm -rf /\"]}</think>Here it is:\n```json\n{\"rationale\": \"look\", \"commands\": [\"ls\"], \"finished\": false}\n```\nDone.";
+  #assert mc_text_action(ar[..], raw, norm[..], a[..]) == "";
+  #assert a[0].nc == 1 && a[0].commands[0] == "ls" && a[0].rationale == "look" && !a[0].finished && a[0].nv == 0;
+}
+
+#test "missing members are filled, and one command may be a string" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [2048] u8; a: [1] McAction;
+  #assert mc_text_action(ar[..], "{\"commands\": \"swift test\", \"ask\": null}", norm[..], a[..]) == "";
+  #assert a[0].nc == 1 && a[0].commands[0] == "swift test" && !a[0].asks;
+  #assert mc_text_action(ar[..], "{\"finished\": true, \"reply\": \"Fixed it.\"}", norm[..], a[..]) == "";
+  #assert a[0].finished && a[0].reply == "Fixed it.";
+  #assert mc_text_action(ar[..], "{\"reply\": \"Which file?\", \"ask\": \"question\"}", norm[..], a[..]) == "" && a[0].asks;
+}
+
+#test "commands written as objects or inside a nested action" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [2048] u8; a: [1] McAction;
+  raw := "{\"rationale\": \"look\", \"commands\": [{\"reply\": \"\", \"commands\": [{\"bash\": \"pwd\"}]}, {\"command\": \"ls\"}, \"id\", 7], \"finished\": false}";
+  #assert mc_text_action(ar[..], raw, norm[..], a[..]) == "";
+  #assert a[0].nc == 3 && a[0].commands[0] == "pwd" && a[0].commands[1] == "ls" && a[0].commands[2] == "id";
+}
+
+#test "objects that are not actions are skipped" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [2048] u8; a: [1] McAction;
+  #assert mc_text_action(ar[..], "The schema is {\"type\": \"object\"}; my action: {\"commands\": [\"pwd\"], \"finished\": false}", norm[..], a[..]) == "";
+  #assert a[0].nc == 1 && a[0].commands[0] == "pwd";
+}
+
+#test "replies without an action are bad, with a reason" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [2048] u8; a: [1] McAction;
+  #assert mc_text_action(ar[..], "I will run ls now.", norm[..], a[..]) == "the reply holds no JSON object";
+  #assert mc_text_action(ar[..], "{\"finished\": \"soon\"}", norm[..], a[..]) == "finished is not a boolean";
+  #assert mc_text_action(ar[..], "{\"type\": \"object\"}", norm[..], a[..]) == "the reply holds no next_action object";
+  #assert mc_text_action(ar[..], "{\"finished\": true, \"reply\": \"\"}", norm[..], a[..]) == "finished is true but reply is empty";
+  #assert mc_text_action(ar[..], "{\"commands\": [\"ls\" ", norm[..], a[..]) == "the reply holds no JSON object";
+}
+
+#test "the reminder's example is itself an action" {
+  ab: [2048] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  norm: [2048] u8; a: [1] McAction;
+  r := MC_TEXT_REMINDER;
+  at := 0;
+  for i: 0..<r.count { if r[i] == '{' { at = i; break; } }
+  #assert mc_text_action(ar[..], cast(string) r[at..<r.count], norm[..], a[..]) == "" && a[0].nc == 1 && a[0].commands[0] == "ls -la";
+}
