@@ -1,0 +1,284 @@
+{
+  "schema": "psionic-public-edge-production-v1",
+  "recorded_at": "2026-10-30T18:31:12.890516+00:00",
+  "api": {
+    "source": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:e3daa959d6c199a39cdaea61f6903828fa1b64486efb9eb3204c22ec4bf6e68f",
+    "cloud_build": "e46d1398-8a8f-46ea-9b61-f633d1f18c6f"
+  },
+  "fleet": {
+    "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/psionic-fleet@sha256:48c948cef4297f850f8f8a9d4fd0bf5d98e6a2767d4a5fd3bf5c31cd09b33ec8",
+    "elephant_revision": "oa-mesh-elephant-00002-dgz",
+    "mammoth_revision": "oa-mesh-mammoth-00001-4gv",
+    "unauthenticated_status": 403
+  },
+  "limits": {
+    "request_bytes": 16384,
+    "response_bytes": 262144,
+    "upstream_deadline_ms": 30000,
+    "per_identity_minute": 12,
+    "per_identity_day": 120,
+    "global_day": 1200,
+    "active_per_identity": 1,
+    "global_active": 4
+  },
+  "qualification": {
+    "coax_checks": 34,
+    "policy_mutants": 194,
+    "mutants_killed": 194,
+    "sanitized_route_checks": 41,
+    "legacy_api_named_checks": 1106
+  },
+  "environments": {
+    "staging": {
+      "health": {
+        "ok": true,
+        "database": "oa_analytics_staging",
+        "migration": "0068_mesh_systemone.sql",
+        "at": "2026-10-30T18:28:12Z",
+        "roundTripMs": 4.1,
+        "build": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+        "release": "5fc96d17-f5dc-40fe-89e2-7693bb50f333",
+        "service": "oa-api-staging",
+        "revision": "oa-api-staging-00087-9ww"
+      },
+      "native_model_calls": [
+        {
+          "environment": "staging",
+          "origin": "https://staging.openagents.com",
+          "source": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+          "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:e3daa959d6c199a39cdaea61f6903828fa1b64486efb9eb3204c22ec4bf6e68f",
+          "revision": "oa-api-staging-00087-9ww",
+          "request_bytes": 167,
+          "elapsed_ms": 5689,
+          "response": {
+            "answers": {
+              "wet": {
+                "type": "choice",
+                "choice": "yes",
+                "confidence": 0.757197863,
+                "probabilities": {
+                  "yes": 0.757197863,
+                  "no": 0.242802137
+                }
+              }
+            },
+            "latency_ms": 91,
+            "model": "elephant-1",
+            "service": {
+              "door": "pylon:oct30-gcloud-elephant-rtx",
+              "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+              "provider": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+              "version": "psionic-pylon-v1"
+            },
+            "usage": null
+          }
+        },
+        {
+          "environment": "staging",
+          "origin": "https://staging.openagents.com",
+          "source": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+          "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:e3daa959d6c199a39cdaea61f6903828fa1b64486efb9eb3204c22ec4bf6e68f",
+          "revision": "oa-api-staging-00087-9ww",
+          "request_bytes": 166,
+          "elapsed_ms": 5864,
+          "response": {
+            "answers": {
+              "wet": {
+                "type": "choice",
+                "choice": "yes",
+                "confidence": 0.944614404,
+                "probabilities": {
+                  "yes": 0.944614404,
+                  "no": 0.055385596
+                }
+              }
+            },
+            "latency_ms": 266,
+            "model": "mammoth-1",
+            "service": {
+              "door": "pylon:oct30-gcloud-mammoth",
+              "identity": "mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019",
+              "provider": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+              "version": "psionic-pylon-v1"
+            },
+            "usage": null
+          }
+        },
+        {
+          "environment": "staging",
+          "origin": "https://staging.openagents.com",
+          "source": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+          "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:e3daa959d6c199a39cdaea61f6903828fa1b64486efb9eb3204c22ec4bf6e68f",
+          "revision": "oa-api-staging-00087-9ww",
+          "request_bytes": 16384,
+          "elapsed_ms": 5599,
+          "response": {
+            "answers": {
+              "wet": {
+                "type": "choice",
+                "choice": "yes",
+                "confidence": 0.757197863,
+                "probabilities": {
+                  "yes": 0.757197863,
+                  "no": 0.242802137
+                }
+              }
+            },
+            "latency_ms": 91,
+            "model": "elephant-1",
+            "service": {
+              "door": "pylon:oct30-gcloud-elephant-rtx",
+              "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+              "provider": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+              "version": "psionic-pylon-v1"
+            },
+            "usage": null
+          }
+        }
+      ],
+      "auth_admission_checks": {
+        "origin": "https://staging.openagents.com",
+        "checks": [
+          "fresh disposable NIP98 identity authenticates before model refusal",
+          "anonymous POST refuses",
+          "exact body signature refuses changed bytes",
+          "same-origin-bound signed request reaches model admission",
+          "same signed event cannot replay",
+          "body payload tag is required",
+          "signed cross-site POST refuses",
+          "16385 bytes refuse before auth/transport",
+          "oversize code is not a model context result",
+          "wrong method refuses",
+          "wrong content type refuses"
+        ],
+        "passed": 11
+      }
+    },
+    "production": {
+      "health": {
+        "ok": true,
+        "database": "oa_analytics",
+        "migration": "0068_mesh_systemone.sql",
+        "at": "2026-10-30T18:28:57Z",
+        "roundTripMs": 5.1,
+        "build": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+        "release": "30e5dcce-6028-4e26-be3b-9e5c30a8d5ef",
+        "service": "oa-api",
+        "revision": "oa-api-00064-52b"
+      },
+      "native_model_calls": [
+        {
+          "environment": "production",
+          "origin": "https://openagents.com",
+          "source": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+          "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:e3daa959d6c199a39cdaea61f6903828fa1b64486efb9eb3204c22ec4bf6e68f",
+          "revision": "oa-api-00064-52b",
+          "request_bytes": 167,
+          "elapsed_ms": 5641,
+          "response": {
+            "answers": {
+              "wet": {
+                "type": "choice",
+                "choice": "yes",
+                "confidence": 0.757197863,
+                "probabilities": {
+                  "yes": 0.757197863,
+                  "no": 0.242802137
+                }
+              }
+            },
+            "latency_ms": 92,
+            "model": "elephant-1",
+            "service": {
+              "door": "pylon:oct30-gcloud-elephant-rtx",
+              "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+              "provider": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+              "version": "psionic-pylon-v1"
+            },
+            "usage": null
+          }
+        },
+        {
+          "environment": "production",
+          "origin": "https://openagents.com",
+          "source": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+          "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:e3daa959d6c199a39cdaea61f6903828fa1b64486efb9eb3204c22ec4bf6e68f",
+          "revision": "oa-api-00064-52b",
+          "request_bytes": 166,
+          "elapsed_ms": 5987,
+          "response": {
+            "answers": {
+              "wet": {
+                "type": "choice",
+                "choice": "yes",
+                "confidence": 0.944614404,
+                "probabilities": {
+                  "yes": 0.944614404,
+                  "no": 0.055385596
+                }
+              }
+            },
+            "latency_ms": 267,
+            "model": "mammoth-1",
+            "service": {
+              "door": "pylon:oct30-gcloud-mammoth",
+              "identity": "mammoth-1@sha256:4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019",
+              "provider": "d27ece046e7622357f2385655fe2c1d7dcb634a51eed1a6e69ab23547e3ae829",
+              "version": "psionic-pylon-v1"
+            },
+            "usage": null
+          }
+        },
+        {
+          "environment": "production",
+          "origin": "https://openagents.com",
+          "source": "9e6d3b76f8cd986c717f7916f7b530ae15d8385c",
+          "image": "us-central1-docker.pkg.dev/openagentsgemini/cloud-run-source-deploy/oa-api@sha256:e3daa959d6c199a39cdaea61f6903828fa1b64486efb9eb3204c22ec4bf6e68f",
+          "revision": "oa-api-00064-52b",
+          "request_bytes": 16384,
+          "elapsed_ms": 5551,
+          "response": {
+            "answers": {
+              "wet": {
+                "type": "choice",
+                "choice": "yes",
+                "confidence": 0.757197863,
+                "probabilities": {
+                  "yes": 0.757197863,
+                  "no": 0.242802137
+                }
+              }
+            },
+            "latency_ms": 91,
+            "model": "elephant-1",
+            "service": {
+              "door": "pylon:oct30-gcloud-elephant-rtx",
+              "identity": "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",
+              "provider": "59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7",
+              "version": "psionic-pylon-v1"
+            },
+            "usage": null
+          }
+        }
+      ],
+      "auth_admission_checks": {
+        "origin": "https://openagents.com",
+        "checks": [
+          "fresh disposable NIP98 identity authenticates before model refusal",
+          "anonymous POST refuses",
+          "exact body signature refuses changed bytes",
+          "same-origin-bound signed request reaches model admission",
+          "same signed event cannot replay",
+          "body payload tag is required",
+          "signed cross-site POST refuses",
+          "16385 bytes refuse before auth/transport",
+          "oversize code is not a model context result",
+          "wrong method refuses",
+          "wrong content type refuses"
+        ],
+        "passed": 11
+      }
+    }
+  }
+}
