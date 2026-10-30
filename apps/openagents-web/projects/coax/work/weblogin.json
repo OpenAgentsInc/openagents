@@ -1,0 +1,151 @@
+{
+ "v": "openagents.project-work-seed.v1",
+ "project": "coax",
+ "initiative": {
+  "slug": "web-login",
+  "title": "Log in on the web without the phone app",
+  "body": "openagents.com/login works from the browser alone: an account made on the device from 12 BIP-39 words, its NIP-06 Nostr key signing a NIP-98 login. Passkeys come later (docs/web-log-in.md).",
+  "spec": "docs/web-log-in.md",
+  "labels": [
+   "auth",
+   "web"
+  ]
+ },
+ "milestones": [
+  {
+   "slug": "web-login-words",
+   "title": "An account from 12 words, logged in by a signed event",
+   "body": "SHA-512, BIP-39, BIP-32/NIP-06 in Coax, the /api/auth/key route, the /login panel and its copy.",
+   "parent": "web-login"
+  }
+ ],
+ "tasks": [
+  {
+   "slug": "sha512",
+   "parent": "web-login-words",
+   "title": "SHA-512 and HMAC-SHA512 in Coax",
+   "size": "S",
+   "labels": [
+    "crypto",
+    "coax"
+   ],
+   "body": "SHA-512 and HMAC-SHA512 (`coax/lib/crypto/sha512.coax`, HMAC next to `hmac.coax`).",
+   "files": [
+    "coax/lib/crypto/sha512.coax"
+   ],
+   "acceptance": [
+    "coax/bin/coax test --library coax/lib/crypto/sha512.coax passes the NIST short and long message vectors and the RFC 4231 HMAC vectors"
+   ],
+   "blocked_by": [],
+   "blocks": []
+  },
+  {
+   "slug": "bip39",
+   "parent": "web-login-words",
+   "title": "BIP-39 words and seed in Coax",
+   "size": "S",
+   "labels": [
+    "crypto",
+    "coax"
+   ],
+   "body": "Entropy to 12 words, words to entropy with checksum validation, the seed by PBKDF2-HMAC-SHA512 (2048 rounds, no passphrase). The English list is checked against SHA-256 2f5eed53a4727b4bf8880d8f3f199efc90e58503646d9ff8eff3a2ed3b24dbda.",
+   "files": [
+    "coax/lib/crypto/bip39.coax"
+   ],
+   "acceptance": [
+    "coax/bin/coax test --library coax/lib/crypto/bip39.coax passes the official BIP-39 vectors without passphrase"
+   ],
+   "blocked_by": [
+    "sha512"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "bip32-nip06",
+   "parent": "web-login-words",
+   "title": "BIP-32 private derivation and the NIP-06 key",
+   "size": "S",
+   "labels": [
+    "crypto",
+    "nostr",
+    "coax"
+   ],
+   "body": "BIP-32 private derivation on the existing secp256k1 code, and the NIP-06 key at m/44'/1237'/0'/0/0.",
+   "files": [
+    "coax/lib/crypto/bip32.coax",
+    "coax/lib/nostr/nip06.coax"
+   ],
+   "acceptance": [
+    "coax/bin/coax test --library coax/lib/nostr/nip06.coax passes BIP-32 vectors 1 and 2 and the two NIP-06 vectors"
+   ],
+   "blocked_by": [
+    "bip39"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "auth-key-route",
+   "parent": "web-login-words",
+   "title": "POST /api/auth/key: log in with a NIP-98 signed event",
+   "size": "S",
+   "labels": [
+    "api",
+    "auth"
+   ],
+   "body": "`POST /api/auth/key` in `coax/web/api/private.c`: NIP-98 Authorization (kind 27235; u, method, payload = SHA-256 of the body), body {\"kind\":\"login\"}. Sets the same oa_session cookie as /api/auth/poll and moves the Verse player key by poll's rule. Existing freshness window, each event id accepted once, rate limited like approve, this site's Origin required.",
+   "files": [
+    "coax/web/api/private.c",
+    "coax/web/api/test.sh"
+   ],
+   "acceptance": [
+    "coax/web/api/test.sh: good login, replay, wrong u, wrong payload, stale timestamp, rate limit"
+   ],
+   "blocked_by": [],
+   "blocks": []
+  },
+  {
+   "slug": "login-page",
+   "parent": "web-login-words",
+   "title": "/login makes an account on this device from 12 words",
+   "size": "M",
+   "labels": [
+    "web",
+    "auth"
+   ],
+   "body": "Owner change 2026-10-30: the words are the account. On first visit the page makes 16 bytes of entropy (crypto.getRandomValues), keeps them in localStorage (oa.account.entropy, hex; never cookies, logs, analytics or the URL), derives the NIP-06 key in Coax (memory only), signs the NIP-98 login and calls /api/auth/key. The panel shows YOUR ACCOUNT (short npub, the 12 words behind SHOW WORDS, COPY) and SWAP ACCOUNT (paste 12 words, checksum, confirm 'This device forgets the current words. Write them down first.'). The phone-app QR stays as a secondary option. Log in, never Sign in.",
+   "files": [
+    "apps/openagents-web/private.coax",
+    "coax/web/host.js"
+   ],
+   "acceptance": [
+    "coax/bin/coax test --library apps/openagents-web/private.coax",
+    "headless Chrome against staging: the account is made on load, swap to other words and back reaches the same npub"
+   ],
+   "blocked_by": [
+    "bip32-nip06",
+    "auth-key-route"
+   ],
+   "blocks": []
+  },
+  {
+   "slug": "login-copy",
+   "parent": "web-login-words",
+   "title": "/login copy: the phone app is no longer required",
+   "size": "S",
+   "labels": [
+    "web",
+    "copy"
+   ],
+   "body": "apps/openagents-web/login/index.md, the page's <h1> and hidden text: 'Your account is made for you on this device; keep your 12 words to use it elsewhere.' A Coaxial page's <main> is the name and one link; prose in index.md.",
+   "files": [
+    "apps/openagents-web/login/index.md",
+    "apps/openagents-web/login/index.html"
+   ],
+   "acceptance": [
+    "the /login page and index.md no longer say the phone app is required"
+   ],
+   "blocked_by": [],
+   "blocks": []
+  }
+ ]
+}
