@@ -1,0 +1,147 @@
+// Everglade's druid spells from the old Grove's bar (eg-grove), loaded by everglade-spells.coax after
+// everglade-tide.coax (`0b401561a0^:crates/verse-zone-grove/src/zones/grove/hotbar.rs`, `kit.rs`):
+//
+//  S- MOONBEAM  (SRD 5.2.1, level 2, Concentration up to a minute) Pick it, then click the ground within
+//               120 feet: a silvery beam of pale light shines down in a cylinder 5 feet in radius and 40
+//               feet high. Whoever is in it when it appears, comes into it, or is in it as a round ends
+//               makes a Constitution save against DC 15: 2d10 radiant, half on a success (once a round
+//               each). While it shines, Shift+- picks it again and a click moves it up to 60 feet; Shift+-
+//               with it picked ends it. It is dim light: the town sees it. You in it take it too.
+
+GV_MB_RANGE :: 36.576; GV_MB_R :: 1.524; GV_MB_H :: 12.192; GV_MB_MOVE :: 18.288; GV_MB_LIFE :: 60.0;
+GV_DC :: 15; GV_YOU_CON :: 1;         // your Constitution save: a Ranger's Constitution 12, not proficient
+GV_HEAR :: 30.0;
+GV_MOON_RGB :: Point.{x = 0.88, y = 0.9, z = 1.0};
+
+Grove :: struct {
+  time: f32;
+  mb_on: bool; mb_at: Point; mb_t: f32;
+  mb_next: [WATCH_ACTORS] f32; mb_in: [WATCH_ACTORS] bool;   // each one's next save, and whether they were in it
+  you_next: f32; you_in: bool;
+}
+gv_of :: (s: [] Everglade) -> [] Grove { return s[0].sp.gv[..]; }
+gv_start :: (s: [] Everglade) {
+  v := gv_of(s);
+  v[0].time = 0; v[0].mb_on = false; v[0].you_in = false;
+  for i: 0..<WATCH_ACTORS { v[0].mb_next[i] = 0; v[0].mb_in[i] = false; }
+}
+
+// A click with Moonbeam picked: it shines there, or moves there while it shines.
+gv_mb_cast :: (s: [] Everglade) {
+  v := gv_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  if v[0].mb_on {
+    if flat_gap(at, v[0].mb_at) > f32(GV_MB_MOVE) { sp_say(s, "TOO FAR · IT MOVES 60 FEET AT MOST", -1, ""); return; }
+  } else if flat_gap(at, ab_you(s)) > f32(GV_MB_RANGE) { sp_say(s, "TOO FAR · 120 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  if !v[0].mb_on { v[0].mb_t = 0; sp_say(s, "MOONBEAM", -1, ""); }
+  v[0].mb_on = true;
+  v[0].mb_at = v3(at.x, hi(ground_at(s, at.x, at.z), water_at(s, at.x, at.z)), at.z);
+  // whoever it now shines on saves as it comes to them
+  for i: 0..<WATCH_ACTORS { v[0].mb_in[i] = false; }
+  v[0].you_in = false;
+}
+gv_mb_end :: (s: [] Everglade) { gv_of(s)[0].mb_on = false; }
+gv_in_beam :: (c: Point, p: Point) -> bool { return flat_gap(c, p) <= f32(GV_MB_R) + f32(BLAST_PAD) && p.y + f32(BODY_TALL) >= c.y - 0.3 && p.y <= c.y + f32(GV_MB_H); }
+
+// Each frame: the beam's saves, on the townsfolk and on you.
+gv_frame :: (s: [] Everglade, dt: f32) {
+  v := gv_of(s);
+  v[0].time += dt;
+  if !v[0].mb_on { return; }
+  v[0].mb_t += dt;
+  if v[0].mb_t >= f32(GV_MB_LIFE) { gv_mb_end(s); sp_say(s, "MOONBEAM ENDS", -1, ""); return; }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  you := ab_you(s);
+  c := v[0].mb_at;
+  d := s[0].sp.dice[..];
+  hurt := 0; total := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) { v[0].mb_in[i] = false; continue; }
+    pl := person_place(s, i);
+    feet := v3(pl.x, folk_feet(s, pl.x, pl.z) + ab_air(s, i), pl.z);
+    inside := gv_in_beam(c, feet);
+    if inside && (!v[0].mb_in[i] || v[0].time >= v[0].mb_next[i]) {
+      v[0].mb_next[i] = v[0].time + f32(FR_ROUND);
+      took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 2, 10), kind = DMG_RADIANT, amount2 = 0, kind2 = DMG_NONE}, SAVE_CON, ON_SAVE_HALF, GV_DC);
+      watch_harm(w, i, took, you);
+      hurt += 1; total += took;
+    }
+    v[0].mb_in[i] = inside;
+  }
+  if hurt > 0 {
+    _ := watch_crime(w, c, f32(GV_HEAR), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+    sp_say(s, "MOONBEAM · 2D10 RADIANT", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT");
+  }
+  inside := !w[0].dead && gv_in_beam(c, you);
+  if inside && (!v[0].you_in || v[0].time >= v[0].you_next) {
+    v[0].you_next = v[0].time + f32(FR_ROUND);
+    amount := srd_sum(d, 2, 10);
+    took := ifx srd_save(w[0].dice[..], GV_YOU_CON, GV_DC).success then amount / 2 else amount;
+    watch_hurt_you_thrown(w, took, you, s[0].face, v3(0, 0, 0));
+    if took > 0 { sp_say(s, "YOU ARE CAUGHT IN IT", took, "DAMAGE"); }
+  }
+  v[0].you_in = inside;
+}
+gv_draw :: (s: [] Everglade) {
+  v := gv_of(s);
+  if !v[0].mb_on { return; }
+  c := v[0].mb_at;
+  on := clamp(v[0].mb_t / 0.5, 0, 1) * clamp((f32(GV_MB_LIFE) - v[0].mb_t) / 0.5, 0, 1);
+  r := f32(GV_MB_R) * (0.96 + 0.04 * sin(v[0].mb_t * 3));
+  H := f32(GV_MB_H);
+  // the beam: a pale shaft, brighter at its heart, and its pool of light on the ground
+  sp_shape(s, SHAPE_CYLINDER, LOOK_ORB, v3(c.x, c.y + H * 0.5, c.z), v3(r * 2, 0, 0), v3(0, H * 0.5, 0), v3(0, 0, r * 2), times(GV_MOON_RGB, 0.55 * on));
+  sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(c.x, c.y + H * 0.5, c.z), v3(r * 0.5, 0, 0), v3(0, H * 0.5, 0), v3(0, 0, r * 0.5), times(GV_MOON_RGB, 0.5 * on));
+  sp_shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(c.x, c.y + 0.02, c.z), v3(r * 2.2, 0, 0), v3(0, 0.01, 0), v3(0, 0, r * 2.2), times(GV_MOON_RGB, 0.35 * on));
+  sp_glow(s, v3(c.x, c.y + 0.4, c.z), 2.4 * on, times(GV_MOON_RGB, 0.25));
+  // motes drifting up through it
+  few := phone(s);
+  for q: 0..<(ifx few then 8 else 16) {
+    h0 := ab_h(97.0, q, 0); h1 := ab_h(97.0, q, 1); h2 := ab_h(97.0, q, 2);
+    a := f32(TAU) * h0 + v[0].mb_t * 0.6; rr := r * sqrt(h1) * 0.9;
+    up := v[0].mb_t * 0.8 + h2 * H; up = up - H * floor(up / H);
+    at := v3(c.x + cos(a) * rr, c.y + up, c.z + sin(a) * rr);
+    ab_line(s, at, add(at, v3(0, 0.25, 0)), times(GV_MOON_RGB, 0.6 * on));
+  }
+}
+
+// ---- checks
+
+#test "grove: Moonbeam shines where you click, its radiance falls on who stands in it (you too), a click moves it, and Shift+- ends it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := gv_of(g[..]);
+  w := watch_w(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  pl := person_place(g[..], who);
+  g[0].feet = v3(pl.x - 10, 0, pl.z);
+  #assert spells_key(g[..], '_', 1) && g[0].sp.armed == SP_SLOTS + AB_MOON;
+  up0 := spells_key_up(g[..], '_', 1);
+  g[0].sp.aim = v3(pl.x, ground_at(g[..], pl.x, pl.z), pl.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert v[0].mb_on && ab_active(g[..], AB_MOON);
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].crimes > 0 && v[0].mb_in[who];
+  // moved onto you: you take it
+  hp := w[0].hp;
+  #assert spells_key(g[..], '_', 1) && g[0].sp.armed == SP_SLOTS + AB_MOON;
+  up1 := spells_key_up(g[..], '_', 1);
+  g[0].sp.aim = ab_you(g[..]); g[0].sp.aim_ok = true;
+  sp_cast(g[..]);
+  #assert v[0].mb_on && flat_gap(v[0].mb_at, ab_you(g[..])) < 0.1;
+  ab_frame(g[..], 1.0 / 30);
+  #assert w[0].hp < hp;
+  // picked while it shines, again: it ends
+  #assert spells_key(g[..], '_', 1);
+  up2 := spells_key_up(g[..], '_', 1);
+  #assert spells_key(g[..], '_', 1) && !v[0].mb_on;
+}

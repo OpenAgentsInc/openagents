@@ -158,5 +158,6 @@ The spell bar's icons (verse/tools/everglade_hotbar.py), served beside the pack 
 | Control Water | `lorc/tornado-discs.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
 | Create or Destroy Water | `delapouite/fog.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Water Breathing | `lorc/shield-reflect.svg` | Icons made by Lorc, game-icons.net (CC BY 3.0) |
+| Moonbeam | `delapouite/moon-orbit.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Rebuild | `delapouite/house.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |
 | Next row (a phone's bar) | `delapouite/plain-arrow.svg` | Icons made by Delapouite, game-icons.net (CC BY 3.0) |

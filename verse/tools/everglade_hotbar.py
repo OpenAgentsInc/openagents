@@ -67,6 +67,7 @@ STONE = (0.82, 0.76, 0.66)
 ROT = (0.55, 0.9, 0.5)
 ICE = (0.65, 0.92, 1.0)
 MIST = (0.72, 0.86, 1.0)
+MOON = (0.88, 0.9, 1.0)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -135,6 +136,9 @@ SLOTS = [
     ("water-breathing", "lorc/shield-reflect.svg", MIST, "S0", "Water Breathing",
      "You breathe under water, so you can dive and stay down. Press again to end it.",
      [("Shift+0", KEY), FREE, ("24 hours", TIME)]),
+    ("moonbeam", "delapouite/moon-orbit.svg", MOON, "S-", "Moonbeam",
+     "A beam of pale light shines down in a 5-foot-radius cylinder: whoever is in it makes a Constitution save each round or takes 2d10 radiant, half on a success. Click again to move it 60 feet.",
+     [("Shift+-", KEY), FREE, ("120 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),

@@ -34,4 +34,5 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/stone-wall.svg` (Wall of Stone)
 - `delapouite/tentacles-barrier.svg` (Black Tentacles)
 - `delapouite/fog.svg` (Create or Destroy Water)
+- `delapouite/moon-orbit.svg` (Moonbeam)
 - `delapouite/plain-arrow.svg` (a phone bar's next row, drawn upside down)

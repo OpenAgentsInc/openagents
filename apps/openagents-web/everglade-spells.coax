@@ -51,6 +51,7 @@
 #load "everglade-abilities.coax";
 #load "everglade-frost.coax";
 #load "everglade-tide.coax";
+#load "everglade-grove.coax";
 
 SP_SLOTS :: 4;
 SP_MEDIA_BYTES :: 5600;
@@ -190,6 +191,7 @@ Spells :: struct {
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // the row a phone's bar shows
+  gv: [1] Grove;               // the old Grove's druid spells: Moonbeam (everglade-grove.coax)
   td: [1] Tide;                // Water Walk, Control Water, Create or Destroy Water, Water Breathing (everglade-tide.coax)
   fr: [1] Frost;               // Ice Knife, Ice Storm, Sleet Storm and their ice (everglade-frost.coax)
   ab: [1] Abilities;           // Reverse Gravity and the Wind Walls (everglade-abilities.coax)
@@ -2403,7 +2405,7 @@ spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
   b0 := g[0].sp.boxes[0]; b1 := g[0].sp.boxes[1];
   #assert abs(b0.x1 - b0.x0 - 36 * un) < 1 && abs(b1.x0 - b0.x0 - 42 * un) < 1;
   #assert abs(800 - b0.y1 - (8 + 8) * un) < 1.5;               // the slot's padding and the tray's margin
-  #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS + AB_THUNDER].x1) / 2 - 640) < 2;   // centred
+  #assert abs((b0.x0 + g[0].sp.boxes[SP_SLOTS + AB_MOON].x1) / 2 - 640) < 2;   // centred: its columns from 1 to Moonbeam's Shift+-
   media := cast(string) g[0].sp.media[0..<g[0].sp.media_n];
   #assert contains(media, "image /realms/everglade/hotbar/meteor-swarm-48.jpg ") && contains(media, "water-orb-48.jpg") && !contains(media, "rebuild") && !contains(media, "over ");
   // the mouse resting on Thunderbolt's slot shows its card after 0.35 s
