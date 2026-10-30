@@ -496,6 +496,15 @@ The preset gives colours and strengths, and the realm gives where the light is.
 Bands, rim, tint, palette and tone are the same on both: a phone looks like
 the same painting, with less in it.
 
+**Built** (October 29, #056b): the tier's numbers are pinned by `#test "the
+phone tier"` in `verse/style-preset.coax`. The release walk compares the
+fixture at 390×844 css px (`fixture-painterly-phone-<clock>`, goldens.ts
+takes a page's own `size`) at each clock key. GPU frame time,
+headless on this Mac's Metal (frametime.ts, 390×844 at 3×): Everglade,
+the commons at night, 5.2 ms p50 and 8.6 ms p95; the market at night, 4.4 ms
+p50; the fixture at noon, 1.0 ms p50. Hecate's Cemetery doesn't read the preset yet (hc-paint-light waits on
+the designer), so it has no phone-tier number.
+
 ### 15. Judging "looks painterly"
 
 Two checks, both headless (`bun coax/web/shot.ts`, never a visible browser):
@@ -529,6 +538,18 @@ Two checks, both headless (`bun coax/web/shot.ts`, never a visible browser):
    the haze, at noon, dusk and night. The owner (and Kiki for her realms)
    judge the look on that sheet; their approval is what moves a realm's
    golden.
+
+**Built** (October 29, #a490): `coax/web/style-check.ts` with the image
+measures (fine detail, dark ink, near black, saturation) in
+`style-measures.ts`, each tested on a synthetic image that should fail it
+(grainy, inked, grey-shadowed, milky). The HUD plates are masked (top and
+bottom bands, and a phone's right-hand column of buttons). The shadow-hue
+and bands rows need the realm's `?probe=shadow` mask (the fixture has one,
+Everglade not yet), and the haze row needs the horizon's row, so those three
+are still to come. Everglade today, `road`, `river` and `commons`: desktop
+fine detail 0.024 to 0.044 (the grass blades push the day views over
+0.035), ink and near black in range, saturation 0.29 to 0.39; phones over on
+fine detail (0.039 to 0.057). `release.sh --style-check` runs it as a report.
 
 The fixture's painterly scene is each engine task's demo, and its golden
 (one per clock key) is how an engine change shows up for review.

@@ -19,14 +19,14 @@ const KINDS = { locked: 0, open: 1, soon: 2 } as const
 // golden: what the release walk (goldens.ts) asks of the realm's page: the least share of
 // its pixels lit, how long it settles before its shot, how many 8 px blocks may differ.
 export type Golden = { lit: number; settle: number; blocks: number }
-// style: the realm's art style (docs/verse/art-styles.md); zones: parts of it drawn in another;
+// style: the realm's art style (docs/verse/art-styles.md); style_views: the hashes the style check shoots it at (style-check.ts); zones: parts of it drawn in another;
 // clock: how its time of day runs (cycle, fixed:T with T 0 midnight to 1, or real: the visitor's time).
 export const STYLES = ["lowpoly", "painterly", "photoreal"] as const
 export type Style = (typeof STYLES)[number]
 // ruleset: the rules a realm plays by (verse/rules/srd5.coax), read by its page as ruleset=; none casts nothing.
 export const RULESETS = ["srd5"]
 export type Zone = { id: string; style?: Style }
-export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; style: Style; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
+export type Realm = { slug: string; title: string; description: string; alt: string; module: string; slot: string; slot_was?: string; voice?: string; ruleset?: string; uploads?: string; card?: string; style: Style; style_views?: string[]; zones?: Zone[]; clock: string; assets: string[]; golden: Golden }
 export type World = { id: string; name: string; kind: keyof typeof KINDS; listed?: boolean; orbit: { r: number; a: number; size: number }; realm?: Realm }
 
 const ID = /^[a-z0-9][a-z0-9-]{0,47}$/

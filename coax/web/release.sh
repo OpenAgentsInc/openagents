@@ -8,6 +8,7 @@
 #   release.sh --skip-staging --yes-skip-staging   # emergencies only: straight to production
 #   release.sh --full-walk         # compare every page with its golden, unchanged or not
 #   release.sh --thorough          # production gets the full walk too (default: the brief check)
+#   release.sh --style-check       # staging's painterly realms measured and their sheets written (style-check.ts)
 #
 # Staging's smoke is the HTTP checks (smoke.sh), then the playtest flow walked
 # in headless Chrome against its golden screenshots (goldens.ts): each page
@@ -97,6 +98,7 @@ while (($#)); do
     --yes-skip-staging) skip_ok=1; shift ;;
     --full-walk) full_walk=1; shift ;;
     --thorough) thorough=true; shift ;;
+    --style-check) style_check=1; shift ;;
     *) echo "release: unknown option $1" >&2; exit 2 ;;
   esac
 done
@@ -262,6 +264,14 @@ if $stage; then
     echo "  the commit's author fixes the page or approves its look: bun coax/web/goldens.ts https://staging.openagents.com --update, look at the shot, commit coax/web/goldens/"
   fi
   lap goldens "$t"
+  # --style-check: the painterly realms measured on staging and their side-by-side sheets written
+  # (style-check.ts; art-styles.md 15). A report for now, not a gate: Everglade doesn't pass it yet
+  # (eg-paint-review), and it takes a few minutes, so it runs when asked.
+  if [[ -n "${style_check:-}" ]]; then
+    t=$(now)
+    bun "$tree/coax/web/style-check.ts" https://staging.openagents.com --out "$repo/coax/web/style" || echo "  style check: views out of range (a report; nothing is held back)"
+    lap style "$t"
+  fi
 fi
 $prod || { echo "release $commit: staging only, done in $(secs $(( $(now) - start ))) s${held_names:+; would hold back $held_names}"; exit 0; }
 if ! $stage; then

@@ -1,1 +1,3 @@
 build/
+# the style check's side-by-side sheets (style-check.ts), for looking at, never committed
+style/
