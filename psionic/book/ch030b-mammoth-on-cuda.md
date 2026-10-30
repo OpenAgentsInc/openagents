@@ -164,6 +164,32 @@ copies, what helps is fewer passes over the weights, not fewer tokens per
 pass: running the five questions' suffixes together, one pass after the
 prefix, would cost about two passes instead of six.
 
+## On a 96 GB card
+
+On a Google Cloud RTX PRO 6000 (Blackwell, compute 12.0, 94.97 GiB usable)
+nothing has to stream. The same code runs unchanged: NVRTC compiles the
+kernels for `compute_120`, and chapter 26's check of the tensor-core
+primitive passes on sm_120. The whole model stays resident in 48.1 GiB, and
+the decision passes the same frozen rule against chapter 11's CPU result
+(largest difference 1.4e-5, slot mass):
+
+| | RTX PRO 6000, all resident | Same card, 4080's 13.09 GiB budget | RTX 4080, 13.09 GiB budget |
+| --- | --- | --- | --- |
+| Streamed per decision | 0 | 37.8 GB | 37.8 GB |
+| Single decision | P50 265.2 ms, P95 265.4 ms (100 runs) | 668 ms | 1.60 s |
+| Lab request, five questions | 1.29 s | 3.34 s | 8.0 s |
+| Device memory | 48.1 GiB | 13.3 GiB | 13.3 GiB |
+| Cold open, first / restart | 325 s / 244 s | 250 s | 255 s |
+
+p(yes) is 0.944614404 there against the 4080's 0.944615702: Blackwell's
+tensor cores round some partial sums differently. With the 4080's budget the
+same plan streams at about 57 GB/s instead of 24, so the link is still the
+bound, just a faster one. The cold open is the checkpoint hash on one CPU core;
+the upload of 47.7 GiB takes 1.8 s. The server does not place Mammoth yet, so
+chapter 115's load generator was not run. Elephant on the same card answers in
+90.5 ms. The [RTX PRO 6000 record](../../docs/verification/psionic-rtx6000-mammoth-2026-10-30.md)
+has the rest.
+
 ## Limits
 
 One request shape, one machine, card free during the runs. Every decision
