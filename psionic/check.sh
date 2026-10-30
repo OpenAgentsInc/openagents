@@ -72,6 +72,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == deepseek/cache || $chapter == deepseek/cache-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_cache.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == deepseek/hot || $chapter == deepseek/hot-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_hot.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == deepseek/engram || $chapter == deepseek/engram-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_engram.sh --mutate --jobs "$jobs"
     fi
@@ -88,7 +91,8 @@ if [[ ${#only[@]} -eq 1 ]]; then
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_expert.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_cache.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_sparse.sh --mutate --jobs "$jobs"
-        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_engram.sh --mutate --jobs "$jobs"
+        env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_engram.sh --mutate --jobs "$jobs"
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_hot.sh --mutate --jobs "$jobs"
     fi
     if [[ $chapter == deepseek || $chapter == deepseek/* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
@@ -394,6 +398,7 @@ if [[ $deepseek == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_cache.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_sparse.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_engram.sh --mutate --jobs "$jobs"
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_hot.sh --mutate --jobs "$jobs"
     phase "DeepSeek implemented units"
 fi
 # Chapter 16: the toy model, the serve-run loop and real loopback servers.

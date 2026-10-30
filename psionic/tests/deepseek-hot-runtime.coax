@@ -1,0 +1,7 @@
+#load "../lib/deepseek/hot.coax";
+#load "../lib/deepseek/router.coax";
+// Owned fixture constructors, never original or downloaded executable code.
+dc_test_packet :: (which:int,out:[]u8)->DeExpert #export_c {
+    if which==0 {return de_fixture_0(out);}if which==1 {return de_fixture_1(out);}return de_fixture_2(out);
+}
+dc_test_input :: (out:[]f32)->int #export_c {for i:0..<64 {out[i]=DEG_INPUT[i];}return 64;}

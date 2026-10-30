@@ -1,0 +1,53 @@
+#load "hot-cache.coax";
+#load "expert.coax";
+#authority;
+
+#test "immutable packets preserve all six routed byte spans with unequal matrix roles" {
+    p:=dc_packet(64,32);#assert p.status==DsStatus.ok && p.width==64 && p.hidden==32 && p.bytes==3264;
+    expected:=[7]int.[0,1024,1088,2112,2176,3200,3264];for i:0..<7 {#assert p.begin[i]==expected[i];}
+    bytes:[3265]u8;for i:0..<3265 {bytes[i]=u8(i%251);}b:=dc_bind(64,32,bytes[0..<3264]);#assert b.status==DsStatus.ok;
+    matrices:=[3]DeMatrix.[b.value.gate,b.value.up,b.value.down];for i:0..<3 {m:=matrices[i];#assert m.kind==DeKind.fp4 && m.data.count==1024 && m.scales.count==64 && m.data[0]==bytes[expected[2*i]] && m.data[1023]==bytes[expected[2*i+1]-1] && m.scales[0]==bytes[expected[2*i+1]] && m.scales[63]==bytes[expected[2*i+2]-1];
+        #assert m.rows==(ifx i==2 then 64 else 32) && m.columns==(ifx i==2 then 32 else 64);}
+    #assert dc_bind(64,32,bytes[..]).status==DsStatus.capacity && dc_bind(64,32,bytes[0..<3263]).status==DsStatus.capacity;
+    p=dc_packet(32,64);#assert p.status==DsStatus.ok && p.bytes==3264;#assert dc_packet(5120,2304).bytes==18800640;
+    #assert dc_packet(32,32).status==DsStatus.ok && dc_packet(8192,8192).status==DsStatus.ok;
+    #assert dc_packet(0,32).status==DsStatus.shape && dc_packet(31,32).status==DsStatus.shape && dc_packet(33,32).status==DsStatus.shape && dc_packet(8224,32).status==DsStatus.shape;
+    #assert dc_packet(32,0).status==DsStatus.shape && dc_packet(32,31).status==DsStatus.shape && dc_packet(32,33).status==DsStatus.shape && dc_packet(32,8224).status==DsStatus.shape;
+    #assert dc_bind(0,32,bytes[..]).status==DsStatus.shape;
+    #assert dc_blocks(1) && dc_blocks(256) && !dc_blocks(0) && !dc_blocks(257);
+}
+#test "prefetch ranges and packets are bounded by actual storage and preserve output on late invalid keys" {
+    keys:=[2]int.[0,5];out:[3]int;stage:[2]int;out[2]=77;
+    r:=dc_ranges(6,10,7,67,keys[..],out[..],stage[..],false);#assert r.status==DsStatus.ok && r.written==2 && out[0]==7 && out[1]==57 && out[2]==77;
+    #assert dc_ranges(6,10,7,67,keys[..],out[0..<2],stage[..],false).status==DsStatus.ok;
+    #assert dc_ranges(6,10,7,66,keys[..],out[..],stage[..],false).status==DsStatus.capacity;
+    for field:0..<5 {n:=6;stride:=10;base:=7;bytes:=67;if field==0 {n=0;}else if field==1 {n=16513;}else if field==2 {stride=0;}else if field==3 {base=-1;}else {bytes=-1;}#assert dc_ranges(n,stride,base,bytes,keys[..],out[..],stage[..],false).status==DsStatus.shape;}
+    #assert dc_keys(1) && dc_keys(16512) && !dc_keys(0) && !dc_keys(16513);
+    #assert dc_file_extent(0,0) && dc_file_extent(1099511627776,1099511627776) && !dc_file_extent(-1,1) && !dc_file_extent(2,1) && !dc_file_extent(0,1099511627777);
+    #assert dc_ranges(6,10,7,67,keys[..],out[0..<1],stage[..],false).status==DsStatus.capacity && dc_ranges(6,10,7,67,keys[..],out[..],stage[0..<1],false).status==DsStatus.capacity && dc_ranges(6,10,7,67,keys[..],out[..],stage[..],true).status==DsStatus.alias;
+    keys[1]=6;#assert dc_ranges(6,10,7,67,keys[..],out[..],stage[..],false).status==DsStatus.token && out[0]==7 && out[1]==57;keys[1]=-1;#assert dc_ranges(6,10,7,67,keys[..],out[..],stage[..],false).status==DsStatus.token;
+    #assert dc_ranges(6,10,7,67,keys[0..<0],out[..],stage[..],false).status==DsStatus.ok;
+}
+
+dc_blocks :: (n:int)->bool {return n>=1 && n<=256;}
+dc_dimension :: (n:int)->bool {return n%32==0 && dc_blocks(n/32);}
+dc_packet :: (width:int,hidden:int)->DcPacket #export_c {
+    if !dc_dimension(width) || !dc_dimension(hidden) {return DcPacket.{status=DsStatus.shape};}
+    count:=width*hidden;codes:=count/2;scales:=count/32;pair:=codes+scales;
+    return DcPacket.{width=width,hidden=hidden,bytes=3*pair,begin=[7]int.[0,codes,pair,pair+codes,2*pair,2*pair+codes,3*pair]};
+}
+// book:begin bind
+dc_bind :: (width:int,hidden:int,packet:[]u8)->DcBound #export_c {
+    p:=dc_packet(width,hidden);if p.status!=DsStatus.ok {return DcBound.{status=p.status};}if packet.count!=p.bytes {return DcBound.{status=DsStatus.capacity};}
+    matrices:[3]DeMatrix;for i:0..<3 {matrices[i]=DeMatrix.{kind=DeKind.fp4,rows=ifx i==2 then width else hidden,columns=ifx i==2 then hidden else width,data=packet[p.begin[2*i]..<p.begin[2*i+1]],scales=packet[p.begin[2*i+1]..<p.begin[2*i+2]]};}
+    return DcBound.{value=DeExpert.{gate=matrices[0],up=matrices[1],down=matrices[2]}};
+}
+// book:end bind
+dc_keys :: (n:int)->bool {return n>=1 && n<=16512;}
+dc_file_extent :: (base:int,bytes:int)->bool {return base>=0 && bytes>=base && bytes<=1099511627776;}
+dc_ranges :: (keys:int,stride:int,base:int,file_bytes:int,ids:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c {
+    if !dc_keys(keys) || !dc_stride(stride) || !dc_file_extent(base,file_bytes) {return DcResult.{status=DsStatus.shape};}if keys*stride>file_bytes-base {return DcResult.{status=DsStatus.capacity};}
+    if out.count<ids.count || stage.count<ids.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
+    for i:0..<ids.count {if ids[i]<0 || ids[i]>=keys {return DcResult.{status=DsStatus.token};}stage[i]=base+ids[i]*stride;}
+    for i:0..<ids.count {out[i]=stage[i];}return DcResult.{written=ids.count};
+}

@@ -1,0 +1,55 @@
+{
+  "schema": 1,
+  "source_pin": {
+    "repo": "deepseek-ai/DeepSeek-V4.1-Flash-1017",
+    "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+    "name": "model-00003-of-00048.safetensors",
+    "bytes": 7389759032,
+    "sha256": "41611994fc9b27829b757d72257570d65a976fe65b8c6df8641adcd139d65ded"
+  },
+  "admission_reused_from": "docs/verification/psionic-ch63-2026-10-29.md",
+  "scope": "Six original byte intervals from the previously admitted unchanged local shard. Complete-shard hash was not redundantly rerun.",
+  "source_stat": {
+    "bytes": 7389759032,
+    "mtime_ns": 1793315430908614171
+  },
+  "ranges": [
+    {
+      "name": "layers.0.ffn.experts.0.w1.weight",
+      "offset": 594986552,
+      "bytes": 5898240,
+      "sha256": "9a0cf041a3068d6d85b96e1913b3f5e32372fec11e5dd7e7bf7cb75476879e07"
+    },
+    {
+      "name": "layers.0.ffn.experts.0.w1.scale",
+      "offset": 8273720,
+      "bytes": 368640,
+      "sha256": "ee0272b2df85c11f4988eb2364d40564793fdac74685b4ee9f0abd34007e215b"
+    },
+    {
+      "name": "layers.0.ffn.experts.0.w3.weight",
+      "offset": 606783032,
+      "bytes": 5898240,
+      "sha256": "2304ee0b6dfd6c864b05bdc0d33d925e600fc211616a630749dae329b1314c98"
+    },
+    {
+      "name": "layers.0.ffn.experts.0.w3.scale",
+      "offset": 9011000,
+      "bytes": 368640,
+      "sha256": "ff2f72958fb8cb1f23b3b14762b26ced3b760e2b6705ee26e0f3adfbb674c796"
+    },
+    {
+      "name": "layers.0.ffn.experts.0.w2.weight",
+      "offset": 600884792,
+      "bytes": 5898240,
+      "sha256": "137fd794efef66a53e6ff3619ce8ea161631114cdd6e33488c940d61caa9ef3f"
+    },
+    {
+      "name": "layers.0.ffn.experts.0.w2.scale",
+      "offset": 8642360,
+      "bytes": 368640,
+      "sha256": "555d4898fada4b35b9dbc40eb6c40d4a81f21a9a51c64c3132abb66116b05b93"
+    }
+  ],
+  "packet_sha256": "d1c709b803465fefae9846441e8e7829d955651ea84e7c54c6f34797446467b7"
+}

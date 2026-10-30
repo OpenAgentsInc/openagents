@@ -52,6 +52,7 @@
 - [61. Many residual streams](ch061-many-residual-streams.md)
 - [62. Memory by lookup](ch062-memory-by-lookup.md)
 - [63. V4.1's expert weights](ch063-v41s-expert-weights.md)
+- [64. Hot experts in fast memory](ch064-hot-experts-in-fast-memory.md)
 - [66. Pack the cache exactly](ch066-pack-the-cache-exactly.md)
 
 - [115. Benchmark a service, not a kernel](ch115-benchmark-a-service-not-a-kernel.md) — first production-hosting chapter

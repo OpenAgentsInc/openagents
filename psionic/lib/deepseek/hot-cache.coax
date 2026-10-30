@@ -1,0 +1,139 @@
+#load "hot-types.coax";
+#authority;
+
+#test "configuration budgets and deterministic heat endpoints are explicit" {
+    c:=DcConfig.{layers=2,experts=4,slots=2,stride=10,budget=40,identity="fixture"};#assert dc_config(c)==DsStatus.ok;
+    for field:0..<9 {v:=c;if field==0 {v.layers=0;}else if field==1 {v.layers=44;}else if field==2 {v.experts=0;}else if field==3 {v.experts=385;}else if field==4 {v.slots=-1;}else if field==5 {v.slots=5;}else if field==6 {v.stride=0;}else if field==7 {v.budget=39;}else {v.identity="";}
+        #assert dc_config(v)==(ifx field==7 then DsStatus.budget else DsStatus.shape);}
+    #assert dc_layers(1) && dc_layers(43) && !dc_layers(0) && !dc_layers(44);
+    #assert dc_experts(1) && dc_experts(384) && !dc_experts(0) && !dc_experts(385);
+    #assert dc_stride(1) && dc_stride(1073741824) && !dc_stride(0) && !dc_stride(1073741825);
+    #assert dc_heat(0) && dc_heat(1125899906842624) && !dc_heat(-1) && !dc_heat(1125899906842625);
+    #assert dc_count(0) && dc_count(1000000000) && !dc_count(-1) && !dc_count(1000000001);
+    #assert dc_clock(0) && dc_clock(1048576) && !dc_clock(-1) && !dc_clock(1048577);
+    #assert !dc_replace(1024,0) && dc_replace(1025,0) && !dc_replace(2304,1024) && dc_replace(2305,1024);
+    #assert dc_addable(1125899906841600) && !dc_addable(1125899906841601);
+}
+#test "recorded profiles seed hottest IDs with deterministic ties and zero slots are allowed" {
+    c:=DcConfig.{layers=2,experts=4,slots=2,stride=10,budget=40,identity="fixture"};profile:=[8]int.[2,5,5,0,0,0,9,1];heat:[9]int;slots:[5]int;wh:[8]int;ws:[4]int;heat[8]=77;slots[4]=88;
+    r:=dc_seed(c,profile[..],heat[..],slots[..],wh[..],ws[..],false);#assert r.status==DsStatus.ok && r.head.identity=="fixture" && !r.head.busy && r.head.step==0 && r.head.revision==0 && r.written==4;
+    expected:=[4]int.[-1,-1,-1,-1];for i:0..<4 {#assert slots[i]==expected[i];}for i:0..<8 {#assert heat[i]==profile[i]*1024;}#assert heat[8]==77 && slots[4]==88;
+    for field:0..<5 {h:=heat[..];s:=slots[..];a:=wh[..];b:=ws[..];alias:=false;if field==0 {h=heat[0..<7];}else if field==1 {s=slots[0..<3];}else if field==2 {a=wh[0..<7];}else if field==3 {b=ws[0..<3];}else {alias=true;}
+        #assert dc_seed(c,profile[..],h,s,a,b,alias).status==(ifx alias then DsStatus.alias else DsStatus.capacity);}
+    #assert dc_seed(c,profile[0..<7],heat[..],slots[..],wh[..],ws[..],false).status==DsStatus.capacity;
+    profile[7]=-1;#assert dc_seed(c,profile[..],heat[..],slots[..],wh[..],ws[..],false).status==DsStatus.number;
+    c.slots=0;c.budget=0;profile[7]=0;#assert dc_seed(c,profile[..],heat[..],slots[0..<0],wh[..],ws[0..<0],false).status==DsStatus.ok;
+}
+#test "active routing leaves residency stable and returns misses in exact input order" {
+    c:=DcConfig.{layers=1,experts=4,slots=2,stride=10,budget=20,identity="fixture"};heat:=[4]int.[0,1024,2048,3072];slots:=[2]int.[2,3];state:=DcState.{head=DcHeader.{identity="fixture"},heat=heat[..],slots=slots[..]};
+    #assert dc_state(c,state)==DsStatus.ok;begin:=dc_begin(c,state);#assert begin.status==DsStatus.ok && begin.head.busy;state.head=begin.head;
+    #assert dc_begin(c,state).status==DsStatus.state;
+    ids:=[3]int.[3,0,2];out:[4]DcLane;draft:[3]DcLane;out[3].key=77;
+    r:=dc_dispatch(c,state,0,ids[..],out[..],draft[..],false);#assert r.status==DsStatus.ok && r.written==3;
+    #assert out[0].key==3 && out[0].slot==1 && out[1].key==0 && out[1].slot==-1 && out[2].key==2 && out[2].slot==0 && out[3].key==77;
+    #assert slots[0]==2 && slots[1]==3;
+    #assert dc_dispatch(c,state,-1,ids[..],out[..],draft[..],false).status==DsStatus.shape && dc_dispatch(c,state,1,ids[..],out[..],draft[..],false).status==DsStatus.shape;
+    #assert dc_dispatch(c,state,0,ids[0..<0],out[..],draft[..],false).status==DsStatus.shape;
+    #assert dc_dispatch(c,state,0,ids[..],out[0..<2],draft[..],false).status==DsStatus.capacity && dc_dispatch(c,state,0,ids[..],out[..],draft[0..<2],false).status==DsStatus.capacity && dc_dispatch(c,state,0,ids[..],out[..],draft[..],true).status==DsStatus.alias;
+    ids[2]=0;#assert dc_dispatch(c,state,0,ids[..],out[..],draft[..],false).status==DsStatus.token;ids[2]=4;#assert dc_dispatch(c,state,0,ids[..],out[..],draft[..],false).status==DsStatus.token;ids[2]=-1;#assert dc_dispatch(c,state,0,ids[..],out[..],draft[..],false).status==DsStatus.token;
+    state.head.busy=false;#assert dc_dispatch(c,state,0,ids[..],out[..],draft[..],false).status==DsStatus.state;
+}
+#test "only finished steps advance heat and the 256th step decays all experts after uses" {
+    c:=DcConfig.{layers=1,experts=3,slots=1,stride=1,budget=1,identity="fixture"};heat:=[3]int.[1024,2048,3072];slots:=[1]int.[0];state:=DcState.{head=DcHeader.{step=255,busy=true,identity="fixture"},heat=heat[..],slots=slots[..]};used:=[2]int.[0,2];out:[4]int;work:[3]int;out[3]=77;
+    r:=dc_finish(c,state,used[..],out[..],work[..],false);#assert r.status==DsStatus.ok && r.head.step==256 && !r.head.busy && r.head.revision==0 && r.head.identity=="fixture";
+    #assert out[0]==1843 && out[1]==1843 && out[2]==3686 && out[3]==77;
+    state.head.step=254;r=dc_finish(c,state,used[..],out[..],work[..],false);#assert r.status==DsStatus.ok && out[0]==2048 && out[1]==2048 && out[2]==4096;
+    #assert dc_finish(c,state,used[..],out[0..<2],work[..],false).status==DsStatus.capacity && dc_finish(c,state,used[..],out[..],work[0..<2],false).status==DsStatus.capacity && dc_finish(c,state,used[..],out[..],work[..],true).status==DsStatus.alias;
+    used[1]=0;#assert dc_finish(c,state,used[..],out[..],work[..],false).status==DsStatus.token;used[1]=3;#assert dc_finish(c,state,used[..],out[..],work[..],false).status==DsStatus.token;used[1]=-1;#assert dc_finish(c,state,used[..],out[..],work[..],false).status==DsStatus.token;
+    state.head.step=1048576;#assert dc_finish(c,state,used[..],out[..],work[..],false).status==DsStatus.state;state.head.step=0;state.head.busy=false;#assert dc_finish(c,state,used[..],out[..],work[..],false).status==DsStatus.state;
+}
+#test "state identity metadata duplicate slots and every independent bound refuse" {
+    c:=DcConfig.{layers=1,experts=2,slots=1,stride=1,budget=1,identity="fixture"};heat:=[2]int.[0,0];slots:=[2]int.[-1,-1];state:=DcState.{head=DcHeader.{identity="fixture"},heat=heat[..],slots=slots[0..<1]};#assert dc_state(c,state)==DsStatus.ok;
+    bad:=state;bad.head.identity="other";#assert dc_state(c,bad)==DsStatus.weights;bad=state;bad.head.step=-1;#assert dc_state(c,bad)==DsStatus.state;bad=state;bad.head.revision=1048577;#assert dc_state(c,bad)==DsStatus.state;
+    bad=state;bad.heat=heat[0..<1];#assert dc_state(c,bad)==DsStatus.capacity;bad=state;bad.slots=slots[0..<0];#assert dc_state(c,bad)==DsStatus.capacity;
+    heat[1]=-1;#assert dc_state(c,state)==DsStatus.number;heat[1]=0;slots[0]=2;#assert dc_state(c,state)==DsStatus.token;slots[0]=-2;#assert dc_state(c,state)==DsStatus.token;
+    slots[0]=0;slots[1]=0;c.slots=2;c.budget=2;state.slots=slots[..];#assert dc_state(c,state)==DsStatus.token;
+    c.layers=0;#assert dc_state(c,state)==DsStatus.shape;
+}
+
+#test "route counts maxima first IDs and exact output capacities are observable" {
+    c:=DcConfig.{layers=2,experts=9,slots=0,stride=1,budget=0,identity="fixture"};heat:[18]int;slots:[1]int;state:=DcState.{head=DcHeader.{identity="fixture",busy=true},heat=heat[..],slots=slots[0..<0]};
+    ids:=[9]int.[0,1,2,3,4,5,6,7,8];out:[8]DcLane;work:[8]DcLane;
+    #assert dc_dispatch(c,state,1,ids[0..<1],out[0..<1],work[0..<1],false).status==DsStatus.ok;
+    #assert dc_dispatch(c,state,1,ids[0..<8],out[..],work[..],false).status==DsStatus.ok && out[7].key==16 && out[7].slot==-1;
+    #assert dc_dispatch(c,state,1,ids[..],out[..],work[..],false).status==DsStatus.shape;
+    ids[0]=-1;#assert dc_ids(c,ids[0..<1],8)==DsStatus.token;ids[0]=1;#assert dc_ids(c,ids[0..<2],8)==DsStatus.token;
+    #assert dc_used_count(1,8) && !dc_used_count(1,9) && dc_used_count(2,16) && !dc_used_count(2,17);
+    state.head.busy=false;state.head.step=1048576;#assert dc_begin(c,state).status==DsStatus.state;
+    #assert dc_replace(1028,3);
+    c=DcConfig.{layers=1,experts=1,slots=0,stride=1,budget=0,identity="fixture"};profile:=[1]int.[0];h:[1]int;s:[1]int;wh:[1]int;ws:[1]int;
+    #assert dc_seed(c,profile[..],h[..],s[0..<0],wh[..],ws[0..<0],false).status==DsStatus.ok;
+    state=DcState.{head=DcHeader.{identity="fixture",busy=true},heat=h[..],slots=s[0..<0]};h[0]=1125899906842624;used:=[1]int.[0];
+    #assert dc_finish(c,state,used[..],wh[..],profile[..],false).status==DsStatus.arithmetic;
+    h[0]=0;#assert dc_finish(c,state,used[..],wh[..],profile[..],false).status==DsStatus.ok;
+    c.layers=2;c.experts=3;c.slots=3;c.budget=6;heats:[6]int;ss:=[6]int.[0,1,2,0,1,2];state=DcState.{head=DcHeader.{identity="fixture"},heat=heats[..],slots=ss[..]};#assert dc_state(c,state)==DsStatus.ok;
+
+}
+
+#test "finished uses enforce the per-layer route bound as well as total count" {
+    c:=DcConfig.{layers=2,experts=9,slots=0,stride=1,budget=0,identity="fixture"};heat:[18]int;empty:[1]int;state:=DcState.{head=DcHeader.{identity="fixture",busy=true},heat=heat[..],slots=empty[0..<0]};
+    used:=[16]int.[0,1,2,3,4,5,6,7,9,10,11,12,13,14,15,16];out:[18]int;stage:[18]int;
+    #assert dc_finish(c,state,used[..],out[..],stage[..],false).status==DsStatus.ok;
+    used[8]=8;#assert dc_finish(c,state,used[0..<9],out[..],stage[..],false).status==DsStatus.shape;
+    #assert dc_layer_count(0) && dc_layer_count(8) && !dc_layer_count(9);
+}
+
+dc_layer_count :: (n:int)->bool {return n<=8;}
+dc_used_count :: (layers:int,n:int)->bool {return n<=layers*8;}
+dc_layers :: (n:int)->bool {return n>=1 && n<=43;}
+dc_experts :: (n:int)->bool {return n>=1 && n<=384;}
+dc_stride :: (n:int)->bool {return n>=1 && n<=1073741824;}
+dc_heat :: (n:int)->bool {return n>=0 && n<=1125899906842624;}
+dc_count :: (n:int)->bool {return n>=0 && n<=1000000000;}
+dc_clock :: (n:int)->bool {return n>=0 && n<=1048576;}
+dc_addable :: (n:int)->bool {return n<=1125899906841600;}
+dc_replace :: (incoming:int,cold:int)->bool {return incoming*4>cold*5+4096;}
+dc_config :: (c:DcConfig)->DsStatus #export_c {
+    if !dc_layers(c.layers) || !dc_experts(c.experts) || c.slots<0 || c.slots>c.experts || !dc_stride(c.stride) || c.identity=="" {return DsStatus.shape;}
+    if c.budget<c.layers*c.slots*c.stride {return DsStatus.budget;}return DsStatus.ok;
+}
+dc_slot :: (c:DcConfig,slots:[]int,layer:int,id:int)->int {for s:0..<c.slots {at:=layer*c.slots+s;if slots[at]==id {return at;}}return -1;}
+dc_state :: (c:DcConfig,s:DcState)->DsStatus #export_c {
+    status:=dc_config(c);if status!=DsStatus.ok {return status;}if s.head.identity!=c.identity {return DsStatus.weights;}
+    if !dc_clock(s.head.step) || !dc_clock(s.head.revision) {return DsStatus.state;}if s.heat.count!=c.layers*c.experts || s.slots.count!=c.layers*c.slots {return DsStatus.capacity;}
+    for h:s.heat {if !dc_heat(h) {return DsStatus.number;}}
+    for layer:0..<c.layers {for j:0..<c.slots {id:=s.slots[layer*c.slots+j];if id<-1 || id>=c.experts {return DsStatus.token;}
+        if id>=0 {for k:0..<j {if s.slots[layer*c.slots+k]==id {return DsStatus.token;}}}}}return DsStatus.ok;
+}
+dc_seed :: (c:DcConfig,profile:[]int,heat:[]int,slots:[]int,heat_work:[]int,slot_work:[]int,overlap:bool)->DcResult #export_c {
+    status:=dc_config(c);if status!=DsStatus.ok {return DcResult.{status=status};}n:=c.layers*c.experts;k:=c.layers*c.slots;
+    if profile.count!=n || heat.count<n || slots.count<k || heat_work.count<n || slot_work.count<k {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
+    for i:0..<n {if !dc_count(profile[i]) {return DcResult.{status=DsStatus.number};}heat_work[i]=profile[i]*1024;}
+    for i:0..<k {slot_work[i]=-1;}
+    for i:0..<n {heat[i]=heat_work[i];}for i:0..<k {slots[i]=slot_work[i];}return DcResult.{written=k,head=DcHeader.{identity=c.identity}};
+}
+dc_begin :: (c:DcConfig,state:DcState)->DcResult #export_c {
+    status:=dc_state(c,state);if status!=DsStatus.ok {return DcResult.{status=status};}if state.head.busy || state.head.step==1048576 {return DcResult.{status=DsStatus.state};}
+    h:=state.head;h.busy=true;return DcResult.{head=h};
+}
+dc_ids :: (c:DcConfig,ids:[]int,limit:int)->DsStatus {
+    if ids.count<1 || ids.count>limit {return DsStatus.shape;}for i:0..<ids.count {if ids[i]<0 || ids[i]>=c.experts {return DsStatus.token;}for j:0..<i {if ids[i]==ids[j] {return DsStatus.token;}}}return DsStatus.ok;
+}
+// book:begin dispatch
+dc_dispatch :: (c:DcConfig,state:DcState,layer:int,ids:[]int,out:[]DcLane,stage:[]DcLane,overlap:bool)->DcResult #export_c {
+    status:=dc_state(c,state);if status!=DsStatus.ok {return DcResult.{status=status};}if !state.head.busy {return DcResult.{status=DsStatus.state};}
+    if layer<0 || layer>=c.layers {return DcResult.{status=DsStatus.shape};}status=dc_ids(c,ids,8);if status!=DsStatus.ok {return DcResult.{status=status};}
+    if out.count<ids.count || stage.count<ids.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
+    for i:0..<ids.count {stage[i]=DcLane.{key=layer*c.experts+ids[i],slot=dc_slot(c,state.slots,layer,ids[i])};}for i:0..<ids.count {out[i]=stage[i];}return DcResult.{written=ids.count,head=state.head};
+}
+// book:end dispatch
+dc_finish :: (c:DcConfig,state:DcState,used:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c {
+    status:=dc_state(c,state);if status!=DsStatus.ok {return DcResult.{status=status};}if !state.head.busy || state.head.step==1048576 {return DcResult.{status=DsStatus.state};}
+    n:=c.layers*c.experts;if !dc_used_count(c.layers,used.count) {return DcResult.{status=DsStatus.shape};}if out.count<n || stage.count<n {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
+    for i:0..<n {stage[i]=state.heat[i];}
+    per_layer:[43]int;for i:0..<used.count {if used[i]<0 || used[i]>=n {return DcResult.{status=DsStatus.token};}for j:0..<i {if used[i]==used[j] {return DcResult.{status=DsStatus.token};}}
+        layer:=used[i]/c.experts;per_layer[layer]+=1;if !dc_layer_count(per_layer[layer]) {return DcResult.{status=DsStatus.shape};}
+        if !dc_addable(stage[used[i]]) {return DcResult.{status=DsStatus.arithmetic};}stage[used[i]]+=1024;}
+    next:=state.head;next.step+=1;next.busy=false;if next.step%256==0 {for i:0..<n {stage[i]=stage[i]*9/10;}}
+    for i:0..<n {out[i]=stage[i];}return DcResult.{written=n,head=next};
+}

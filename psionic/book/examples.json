@@ -610,6 +610,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-hot.coax",
+      "chapter": "psionic/book/ch064-hot-experts-in-fast-memory.md",
+      "stdout": "psionic/fixtures/deepseek-hot.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

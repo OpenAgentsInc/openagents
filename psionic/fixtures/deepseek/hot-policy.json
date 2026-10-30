@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "profile": "deepseek-hot-exact-cpu-v1",
+  "placement": {
+    "heat_units_per_use": 1024,
+    "decay_interval": 256,
+    "decay_numerator": 9,
+    "decay_denominator": 10,
+    "decay_rounding": "floor, after this step adds recorded uses",
+    "swap": "4 * incoming > 5 * cold + 4096",
+    "tie_seed_and_incoming": "lowest expert ID",
+    "tie_eviction": "lowest physical slot",
+    "one_move_per_slot_per_plan": true,
+    "evicted_ids_reconsidered": "next plan",
+    "frozen": "fills empty slots, never replaces populated slots"
+  },
+  "limits": {
+    "layers": 43,
+    "experts": 384,
+    "routes_per_layer": 8,
+    "step_and_revision": 1048576,
+    "source_file_bytes": 1099511627776
+  },
+  "reference": {
+    "commit": "853417f290e7cae1df18c081b89b0818432e60af",
+    "path": "docs/psionic/v41-single-box.md",
+    "url": "https://github.com/OpenAgentsInc/openagents/blob/853417f290e7cae1df18c081b89b0818432e60af/docs/psionic/v41-single-box.md",
+    "excerpt_archive": "hot-reference.txt.gz",
+    "excerpt_sha256": "572e9f52ed6808fda979d1debf7fb48529757ccf5d5a29819c3562c04a289a3b"
+  },
+  "scope": "Exact packed-byte placement and CPU wide expert results. Deterministic integer heat is an owned placement policy, not a reproduction of the old engine floating-point heat. GPU execution, device event fencing, overlap and measured speed remain open."
+}

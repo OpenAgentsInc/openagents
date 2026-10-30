@@ -1,0 +1,137 @@
+{
+  "schema": 1,
+  "profile": "deepseek-hot-exact-cpu-v1",
+  "base_commit": "8668e2ad47c09b4b18ca18428716ab6a0b10100c",
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93"
+  },
+  "host_cc": {
+    "version": "gcc (GCC) 15.2.0",
+    "sha256": "de18d4626aecd4386163e674e3c40937427ac1deb18653c049edcf03994af9b6"
+  },
+  "sources": {
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-original/executed.c.gz": "df648dd66057c2f8925dd3970ca5dacbb6dc4a2f094e33eadc03d2f53d49ce1f",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-original/executed.h.gz": "f10c625716629c37958d36689276178ad8d3041022ba0063bac8fd70560f661f",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-original/output.f32.gz": "26cbfec81dc2838e9f5ef7e349ddd37e53450e584d71f6b7f36e1c248f0b278f",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-original/run.log": "d7cb5351b4cd0dcc841bb5a4522a860e139b11c917f49503bf429a334e9964ca",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-original/source.json": "fe4b953c2619b2631654b9e3b77106add671270cbbcb77f7254519f78955972b",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-original/validation.json": "553c5e8563020f5301f59c8f91c711eae00c94175622a36be6bb2d7e46e30138",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-policy.json": "657d7f4ccd380bbcbdd4161d1b0a5f4561a47696180f017370da2daa92b8c7f6",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-reference.txt.gz": "54e7ab619949ab1a1e8a733006892efc8b84ff62281918cbf65bcfefcebfd09b",
+    "/home/christopherdavid/openagents/psionic/fixtures/deepseek/hot-trace.json.gz": "c97439b6cf2b1e2a73a9d76fc8bfe608142b265a5d85899735675aa7136d8ad3",
+    "psionic/examples/deepseek-hot.coax": "829e7ec19473f95a8f6ec19872d0cecdc2f76111414f9959b6c511ee32b0dece",
+    "psionic/fixtures/deepseek-hot.out": "d9badc27484f0357fbbffd55145358b787c66dfb3921d0b598809e95b4a0aac9",
+    "psionic/fixtures/deepseek/expert-goldens.coax": "ce19521b85ab70baf355d6211a8838a5bb7b646e6023c70236b685690e5ffaff",
+    "psionic/fixtures/deepseek/router-goldens.coax": "a1f4fa2733944a453c540c539b9ce7368deee24aeb371cc1d516f5868962a3b4",
+    "psionic/lib/deepseek/expert-types.coax": "39215d2264d4ad03644916cbf248598529e754e4c4d1c7c1b52b88c24947ca67",
+    "psionic/lib/deepseek/expert.coax": "86988f1543724287d091ee5dbea1ba7ec710c20d11963a3f65bead82d50a44ed",
+    "psionic/lib/deepseek/hot-cache.coax": "5981a30b125781cfe24fdd4a5eef648c8a01578e56e8f119aa78980a597da302",
+    "psionic/lib/deepseek/hot-io.coax": "1f3a0ae984158f1592719eb914ede36832a8cd6a904295377b70b53a190516aa",
+    "psionic/lib/deepseek/hot-swap.coax": "b247a0551c04faad06e95abc7584b1fe87b86add10506284d6d54e1e364c1eb9",
+    "psionic/lib/deepseek/hot-types.coax": "3db3e974041c31b8cfe622ca3c6523081efb723b74563e2f8a773ad97dfa5506",
+    "psionic/lib/deepseek/hot-weights.coax": "056dc692f3c7574073fc6f77a4a7ccff7ad7ccd6c678238be90a1189dd0c3486",
+    "psionic/lib/deepseek/hot.coax": "9d79824b0f911eebb32a544220cddedadea0de5f30ee6525b2764f4b7a49e91a",
+    "psionic/lib/deepseek/router.coax": "15f140310b242b0bca7a3ff841ad02e1ef20d00637fa7c186772d143e16ceb16",
+    "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/platform/deepseek-hot-memory.c": "1452aa65078d6b74ac3c8ae04402aaf99a132b90647faa93ae39f7c5e9778d07",
+    "psionic/platform/deepseek-hot-memory.h": "5f0e29559d5414464e953645040decf46dd61b9d7f5ff91fcb3851319a53ce58",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/check_deepseek_hot.sh": "2db2cdd2312f114e7cf17c9029d2225bfefc5c5bb420d959f4f3a6aea4b8819a",
+    "psionic/tests/deepseek-hot-runtime.coax": "4dc62297de7daa7f5e70a2800a10be141583a91a34609e94768f47b143b61ed9",
+    "psionic/tests/deepseek_hot_inventory.c": "0bc8a30ddd1546325a793100acb5d02de183206e2b1a6c9effc067cabc96afe3",
+    "psionic/tests/deepseek_hot_native.c": "0621493e0a1b5e251739f9ef246b807750727e1c908ddb75e243eda6057f1e1d",
+    "psionic/tests/deepseek_hot_oracle.py": "165d020ab4f1a5d47e7e1cb6b95ed5c5a6554246710da6baed92e2dc66ae0da1",
+    "psionic/tests/deepseek_hot_original.c": "7e66f2cdeefd3fc5ca6245bb49b668d38cffa4a9923b95884b18966081028a12",
+    "psionic/tests/deepseek_hot_original_prepare.py": "350ba055fe2ded5d2add0b823f3a5493bc58f71bfc78585d875d5c6572a8ffb9",
+    "psionic/tests/deepseek_hot_record.py": "89a14ee5909adfdb72f48c12f4cda059765323f76f7c0eef61dd223658b407d3"
+  },
+  "artifacts": {
+    "deepseek-hot.c": {
+      "bytes": 728256,
+      "sha256": "e56da8d09de09773d4a94f6d6928537274bfbf040f02dbfaa861f4398330c29f"
+    },
+    "deepseek-hot.h": {
+      "bytes": 27236,
+      "sha256": "481fb0f8e92c7ef393836a05fd07e1cab0233d6ebbf4446094b169a33a294f53"
+    },
+    "deepseek-hot-release.c": {
+      "bytes": 727368,
+      "sha256": "eb1df0bbde5fab0f0914c7cf2060a7b4d019f1f09247cc0f6a3891174d8c92fa"
+    },
+    "deepseek-hot-release.h": {
+      "bytes": 27236,
+      "sha256": "481fb0f8e92c7ef393836a05fd07e1cab0233d6ebbf4446094b169a33a294f53"
+    },
+    "original": {
+      "bytes": 415456,
+      "sha256": "3843ea46d3f67c5effde7d599fd24166397440a58a181d74f96ddcf70147fde1"
+    },
+    "native-debug-plain": {
+      "bytes": 494272,
+      "sha256": "5efe92c454c379c792143b4e3ff58d27788c67562f80233e3e19602453f78e9f"
+    },
+    "native-debug-sanitized": {
+      "bytes": 1664400,
+      "sha256": "c9735526f7556ea4eb3760d16a1e1eb0ef940b676f83b371940fbb0490c1ea06"
+    },
+    "native-release-plain": {
+      "bytes": 592472,
+      "sha256": "d9c2fb0fdbd4c9d1a23a74ee43413d3873f5e5c4690bed28075aaa8a1b3728dd"
+    },
+    "native-release-sanitized": {
+      "bytes": 1464184,
+      "sha256": "552973741f8d7a3f9c542a3da718266d686a0850ec6c17366add6a34bf4913f6"
+    },
+    "inventory-debug-plain": {
+      "bytes": 322400,
+      "sha256": "056e5e9a1d6fd165d139280137f7c3884ce3da3b3cd870d2da903c16bb10393a"
+    },
+    "inventory-debug-sanitized": {
+      "bytes": 1415320,
+      "sha256": "deb4e0728c08249d545e6a27abc612899ac1418efeb345694f844943ac5572ce"
+    },
+    "inventory-release-plain": {
+      "bytes": 412840,
+      "sha256": "d44985bb0afe93ac30bfe4bdbe63bf27f3c90b15cb2be42fa69193a5dd0d9fa9"
+    },
+    "inventory-release-sanitized": {
+      "bytes": 1211488,
+      "sha256": "7ae2746e830af2dca92a853b4423420724964dda54b26c2be06ec505e49f3657"
+    }
+  },
+  "logs": {
+    "debug-unit": "ok   #test next-layer routes prefetch only misses without changing slots or heat (1 case, 5415 steps)\nok   #test fetch capacity and immutable-file observations precede atomic packet publication (1 case, 704 steps)\nok   #test profile seeding fills empty slots and heat hysteresis avoids useless replacements (1 case, 44086 steps)\nok   #test active and stale publications or incomplete copies preserve bytes and metadata (1 case, 57291 steps)\nok   #test swap metadata cannot move across layers repeat slots or substitute undeclared bindings (1 case, 175494 steps)\nok   #test cold ordering preserves ties includes expert zero and handles exhausted slots (1 case, 22446 steps)\nok   #test configuration budgets and deterministic heat endpoints are explicit (1 case, 1168 steps)\nok   #test recorded profiles seed hottest IDs with deterministic ties and zero slots are allowed (1 case, 2439 steps)\nok   #test active routing leaves residency stable and returns misses in exact input order (1 case, 5496 steps)\nok   #test only finished steps advance heat and the 256th step decays all experts after uses (1 case, 3994 steps)\nok   #test state identity metadata duplicate slots and every independent bound refuse (1 case, 1824 steps)\nok   #test route counts maxima first IDs and exact output capacities are observable (1 case, 4438 steps)\nok   #test finished uses enforce the per-layer route bound as well as total count (1 case, 4537 steps)\nok   #test BF16 and F32 original rows produce the same rectangular projection (1 case, 1553 steps)\nok   #test non-finite original bits and malformed sizes refuse atomically (1 case, 455 steps)\nok   #test large matrix endpoints and all little-endian byte positions are explicit (1 case, 251 steps)\nok   #test every encoded weight is checked, including first and final matrix elements (1 case, 637 steps)\nok   #test compensation retains small terms in either order (1 case, 257 steps)\nok   #test maximum selection keeps the first allowed index on ties (1 case, 376 steps)\nok   #test rectangular matrices and matrix vectors have exact integer oracles (1 case, 3470 steps)\nok   #test addition, row sums and row dots reuse the same admitted storage (1 case, 2826 steps)\nok   #forall signed dot products agree with their derived polynomial (5 cases, 3877 steps)\nok   #test wide reductions retain cancellation and avoid f32 product overflow (1 case, 2103 steps)\nok   #test gather follows requested rows, including repeats (1 case, 2607 steps)\nok   #test masked softmax is stable, shift invariant and never substitutes for an empty row (1 case, 4996 steps)\nok   #test RMSNorm and LayerNorm use population statistics and epsilon inside the root (1 case, 3105 steps)\nok   #test arithmetic failure keeps the destination and exposes only staged scratch (1 case, 1123 steps)\nok   #test request and alias refusal precede data reads and all writes (1 case, 864 steps)\nok   #test each operation has an explicit storage plan (1 case, 3167 steps)\nok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)\nok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)\nok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)\nok   #test a scalar has one element and no axes (1 case, 334 steps)\nok   #test row-major layouts for every supported rank (1 case, 1298 steps)\nok   #forall rank endpoints (7 cases, 1598 steps)\nok   #forall active axes must be positive (20 cases, 3908 steps)\nok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)\nok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)\nok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)\nok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)\nok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)\nok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)\nok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)\nok   #test scalar storage is one real float (1 case, 215 steps)\nok   #test immutable packets preserve all six routed byte spans with unequal matrix roles (1 case, 34674 steps)\nok   #test prefetch ranges and packets are bounded by actual storage and preserve output on late invalid keys (1 case, 1546 steps)\nok   #test all FP4 codes and UE8M0 scales preserve exact wide values and signed zero (1 case, 323844 steps)\nok   #test all FP8 scalar codes and nearest-even midpoints match independent bit vectors (1 case, 1535421 steps)\nok   #test original matrix layouts have exact independent endpoints and safe products (1 case, 619 steps)\nok   #test packed FP4 is low-first and FP8 scales span 32 rows and 32 columns (1 case, 10479 steps)\nok   #test expert plans and every private view retain unequal original matrix roles (1 case, 79481 steps)\nok   #test clamped SwiGLU keeps the gate lower side open and rounds before route weighting (1 case, 2032 steps)\nok   #test all scalar matrix quantizer and activation refusal extents are independent (1 case, 18757 steps)\nok   #test matrix projection and complete expert workspaces reject each short span (1 case, 48604 steps)\nok   #test route policies distinguish count weights IDs and duplicate selections (1 case, 1629 steps)\nok   #test quantizer and activation count policies expose their exact maximum and minimum (1 case, 232 steps)\nok   #test mixture validates every independent public workspace and unselected expert shape (1 case, 128420 steps)\nok   #test expert activation grid 0 matches independent codes scales and wide values (1 case, 70268 steps)\nok   #test expert activation grid 1 matches independent codes scales and wide values (1 case, 29420 steps)\nok   #test expert activation grid 2 matches independent codes scales and wide values (1 case, 30020 steps)\nok   #test expert activation grid 3 matches independent codes scales and wide values (1 case, 29820 steps)\nok   #test complete quantized expert 0 matches independent pre-down weighted FFN (1 case, 1094974 steps)\nok   #test expert fixture 0 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 1 matches independent pre-down weighted FFN (1 case, 1095109 steps)\nok   #test expert fixture 1 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 2 matches independent pre-down weighted FFN (1 case, 1095176 steps)\nok   #test expert fixture 2 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 3 matches independent pre-down weighted FFN (1 case, 1290782 steps)\nok   #test expert fixture 3 copies every packed byte and paired scale exactly (1 case, 186620 steps)\nok   #test complete quantized expert 4 matches independent pre-down weighted FFN (1 case, 1069329 steps)\nok   #test expert fixture 4 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test routed FP4 experts plus one shared FP8 expert match the independent mixture (1 case, 3383728 steps)\nok   #test mixture reports routed and shared clamping counts (1 case, 3341520 steps)\n73 checks, 73 passed, 0 failed\n",
+    "release-unit": "ok   #test next-layer routes prefetch only misses without changing slots or heat (1 case, 5415 steps)\nok   #test fetch capacity and immutable-file observations precede atomic packet publication (1 case, 704 steps)\nok   #test profile seeding fills empty slots and heat hysteresis avoids useless replacements (1 case, 44086 steps)\nok   #test active and stale publications or incomplete copies preserve bytes and metadata (1 case, 57291 steps)\nok   #test swap metadata cannot move across layers repeat slots or substitute undeclared bindings (1 case, 175494 steps)\nok   #test cold ordering preserves ties includes expert zero and handles exhausted slots (1 case, 22446 steps)\nok   #test configuration budgets and deterministic heat endpoints are explicit (1 case, 1168 steps)\nok   #test recorded profiles seed hottest IDs with deterministic ties and zero slots are allowed (1 case, 2439 steps)\nok   #test active routing leaves residency stable and returns misses in exact input order (1 case, 5496 steps)\nok   #test only finished steps advance heat and the 256th step decays all experts after uses (1 case, 3994 steps)\nok   #test state identity metadata duplicate slots and every independent bound refuse (1 case, 1824 steps)\nok   #test route counts maxima first IDs and exact output capacities are observable (1 case, 4438 steps)\nok   #test finished uses enforce the per-layer route bound as well as total count (1 case, 4537 steps)\nok   #test BF16 and F32 original rows produce the same rectangular projection (1 case, 1553 steps)\nok   #test non-finite original bits and malformed sizes refuse atomically (1 case, 455 steps)\nok   #test large matrix endpoints and all little-endian byte positions are explicit (1 case, 251 steps)\nok   #test every encoded weight is checked, including first and final matrix elements (1 case, 637 steps)\nok   #test compensation retains small terms in either order (1 case, 257 steps)\nok   #test maximum selection keeps the first allowed index on ties (1 case, 376 steps)\nok   #test rectangular matrices and matrix vectors have exact integer oracles (1 case, 3470 steps)\nok   #test addition, row sums and row dots reuse the same admitted storage (1 case, 2826 steps)\nok   #forall signed dot products agree with their derived polynomial (5 cases, 3877 steps)\nok   #test wide reductions retain cancellation and avoid f32 product overflow (1 case, 2103 steps)\nok   #test gather follows requested rows, including repeats (1 case, 2607 steps)\nok   #test masked softmax is stable, shift invariant and never substitutes for an empty row (1 case, 4996 steps)\nok   #test RMSNorm and LayerNorm use population statistics and epsilon inside the root (1 case, 3105 steps)\nok   #test arithmetic failure keeps the destination and exposes only staged scratch (1 case, 1123 steps)\nok   #test request and alias refusal precede data reads and all writes (1 case, 864 steps)\nok   #test each operation has an explicit storage plan (1 case, 3167 steps)\nok   #test invalid metadata and work refuse before storage admission (1 case, 7711 steps)\nok   #forall every span has its own exact or capacity contract (256 cases, 84128 steps)\nok   #test auxiliary counts, signed extents and precedence are checked (1 case, 5374 steps)\nok   #test a scalar has one element and no axes (1 case, 334 steps)\nok   #test row-major layouts for every supported rank (1 case, 1298 steps)\nok   #forall rank endpoints (7 cases, 1598 steps)\nok   #forall active axes must be positive (20 cases, 3908 steps)\nok   #test inactive axes are canonical zero, even for scalars (1 case, 4380 steps)\nok   #test count admission precedes multiplication and failure clears all metadata (1 case, 4722 steps)\nok   #forall four-dimensional indices have a hand-derived address (120 cases, 48368 steps)\nok   #test indices reject negative, one-past-end and inactive coordinates (1 case, 17617 steps)\nok   #test finite tensor data is not limited to the first trainer's magnitudes (1 case, 1051 steps)\nok   #forall input is exactly the logical tensor; writable capacity may have tails (64 cases, 18210 steps)\nok   #test copy refuses before any write with deterministic failure precedence (1 case, 1027 steps)\nok   #test scalar storage is one real float (1 case, 215 steps)\nok   #test immutable packets preserve all six routed byte spans with unequal matrix roles (1 case, 34674 steps)\nok   #test prefetch ranges and packets are bounded by actual storage and preserve output on late invalid keys (1 case, 1546 steps)\nok   #test all FP4 codes and UE8M0 scales preserve exact wide values and signed zero (1 case, 323844 steps)\nok   #test all FP8 scalar codes and nearest-even midpoints match independent bit vectors (1 case, 1535421 steps)\nok   #test original matrix layouts have exact independent endpoints and safe products (1 case, 619 steps)\nok   #test packed FP4 is low-first and FP8 scales span 32 rows and 32 columns (1 case, 10479 steps)\nok   #test expert plans and every private view retain unequal original matrix roles (1 case, 79481 steps)\nok   #test clamped SwiGLU keeps the gate lower side open and rounds before route weighting (1 case, 2032 steps)\nok   #test all scalar matrix quantizer and activation refusal extents are independent (1 case, 18757 steps)\nok   #test matrix projection and complete expert workspaces reject each short span (1 case, 48604 steps)\nok   #test route policies distinguish count weights IDs and duplicate selections (1 case, 1629 steps)\nok   #test quantizer and activation count policies expose their exact maximum and minimum (1 case, 232 steps)\nok   #test mixture validates every independent public workspace and unselected expert shape (1 case, 128420 steps)\nok   #test expert activation grid 0 matches independent codes scales and wide values (1 case, 70268 steps)\nok   #test expert activation grid 1 matches independent codes scales and wide values (1 case, 29420 steps)\nok   #test expert activation grid 2 matches independent codes scales and wide values (1 case, 30020 steps)\nok   #test expert activation grid 3 matches independent codes scales and wide values (1 case, 29820 steps)\nok   #test complete quantized expert 0 matches independent pre-down weighted FFN (1 case, 1094974 steps)\nok   #test expert fixture 0 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 1 matches independent pre-down weighted FFN (1 case, 1095109 steps)\nok   #test expert fixture 1 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 2 matches independent pre-down weighted FFN (1 case, 1095176 steps)\nok   #test expert fixture 2 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test complete quantized expert 3 matches independent pre-down weighted FFN (1 case, 1290782 steps)\nok   #test expert fixture 3 copies every packed byte and paired scale exactly (1 case, 186620 steps)\nok   #test complete quantized expert 4 matches independent pre-down weighted FFN (1 case, 1069329 steps)\nok   #test expert fixture 4 copies every packed byte and paired scale exactly (1 case, 126014 steps)\nok   #test routed FP4 experts plus one shared FP8 expert match the independent mixture (1 case, 3383728 steps)\nok   #test mixture reports routed and shared clamping counts (1 case, 3341520 steps)\n73 checks, 73 passed, 0 failed\n",
+    "mutation": "1589 mutants, 1589 killed, 0 survived\n",
+    "oracle": "Hot experts: independent 300-step profile/phase-shift trace, all heat, slot maps, hit lanes and swap plans agree\n",
+    "book": "book structure: 62 programs, 248 source-linked listings, local links pass\n",
+    "original": "Original expert: mode 0, all 5120 output words bit-identical to chapter 63's independent reference\nOriginal expert: mode 1, all 5120 output words bit-identical to chapter 63's independent reference\nOriginal expert: mode 2, all 5120 output words bit-identical to chapter 63's independent reference\n",
+    "native-debug-plain": "Hot experts: 300 independent trace steps, 480 hits and 1320 misses, 1800 bit-identical resident/mapped/pread FFNs; all heat, slots and swap plans agree\nHot experts: next-layer V4.1 gate output drives private miss prefetch while current residency stays leased\nHot experts: zero-slot all-miss and fully resident all-hit caches retain exact dispatch and terminate empty rebalance plans\nHot experts: incomplete/stale copies, real aliases, failed files and all-hit no-I/O paths preserve public bytes and slot metadata\n",
+    "native-debug-sanitized": "Hot experts: 300 independent trace steps, 480 hits and 1320 misses, 1800 bit-identical resident/mapped/pread FFNs; all heat, slots and swap plans agree\nHot experts: next-layer V4.1 gate output drives private miss prefetch while current residency stays leased\nHot experts: zero-slot all-miss and fully resident all-hit caches retain exact dispatch and terminate empty rebalance plans\nHot experts: incomplete/stale copies, real aliases, failed files and all-hit no-I/O paths preserve public bytes and slot metadata\n",
+    "native-release-plain": "Hot experts: 300 independent trace steps, 480 hits and 1320 misses, 1800 bit-identical resident/mapped/pread FFNs; all heat, slots and swap plans agree\nHot experts: next-layer V4.1 gate output drives private miss prefetch while current residency stays leased\nHot experts: zero-slot all-miss and fully resident all-hit caches retain exact dispatch and terminate empty rebalance plans\nHot experts: incomplete/stale copies, real aliases, failed files and all-hit no-I/O paths preserve public bytes and slot metadata\n",
+    "native-release-sanitized": "Hot experts: 300 independent trace steps, 480 hits and 1320 misses, 1800 bit-identical resident/mapped/pread FFNs; all heat, slots and swap plans agree\nHot experts: next-layer V4.1 gate output drives private miss prefetch while current residency stays leased\nHot experts: zero-slot all-miss and fully resident all-hit caches retain exact dispatch and terminate empty rebalance plans\nHot experts: incomplete/stale copies, real aliases, failed files and all-hit no-I/O paths preserve public bytes and slot metadata\n",
+    "inventory-debug-plain": "Hot experts: 43x384/116 topology, 4988 seeded slots, final expert/layer/slot endpoints and active/stale fencing pass with owned one-byte packets\n",
+    "inventory-debug-sanitized": "Hot experts: 43x384/116 topology, 4988 seeded slots, final expert/layer/slot endpoints and active/stale fencing pass with owned one-byte packets\n",
+    "inventory-release-plain": "Hot experts: 43x384/116 topology, 4988 seeded slots, final expert/layer/slot endpoints and active/stale fencing pass with owned one-byte packets\n",
+    "inventory-release-sanitized": "Hot experts: 43x384/116 topology, 4988 seeded slots, final expert/layer/slot endpoints and active/stale fencing pass with owned one-byte packets\n"
+  },
+  "commands": [
+    "python3 -I psionic/tests/deepseek_hot_oracle.py [--header]",
+    "python3 -I psionic/tests/deepseek_hot_record.py",
+    "coax/bin/coax test psionic/lib/deepseek/hot.coax --run-steps 16000000 [--release]",
+    "coax/bin/coax mutate psionic/lib/deepseek/hot.coax --jobs 8 --run-steps 16000000",
+    "coax/bin/coax c psionic/tests/deepseek-hot-runtime.coax --library --header HEADER --run-steps 16000000 [--release]",
+    "cc -std=c11 -O0/-O3 -g -ffp-contract=off -fno-fast-math -Wall -Wextra -Werror -Wno-unused-function -Wno-unused-parameter -Wno-unknown-pragmas -Wno-misleading-indentation [-fsanitize=address,undefined -fno-omit-frame-pointer] generated.c psionic/platform/deepseek-hot-memory.c psionic/tests/deepseek_hot_{native,inventory}.c -lm",
+    "coax/bin/coax run psionic/examples/deepseek-hot.coax --run-steps 16000000 [--release]",
+    "python3 -I psionic/tests/book.py"
+  ],
+  "example_stdout": "profile seed: expert 0 occupies one 3264 byte slot\nleased step: one hit, one prefetched miss; 64 exact output words\nbetween steps: expert 2 replaces 0 at step 21\n",
+  "scope": "Exact CPU cache transaction/reference core and one original expert. GPU residency/arithmetic, event fencing, overlapped misses and measured cache performance remain open. The assembled focused gate was not redundantly rerun; constituent checks passed. Native checks reran after final per-layer validation/indexed-publication implementation changes.",
+  "publication_rebase": "e354237b2715dc55ca8447638943e88740aa6c8c",
+  "qualification_inputs_unchanged_after_rebase": true
+}

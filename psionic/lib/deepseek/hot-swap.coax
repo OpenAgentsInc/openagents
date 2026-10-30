@@ -1,0 +1,91 @@
+#load "hot-cache.coax";
+#authority;
+
+#test "profile seeding fills empty slots and heat hysteresis avoids useless replacements" {
+    c:=DcConfig.{layers=2,experts=4,slots=2,stride=2,budget=8,identity="fixture"};heat:=[8]int.[2048,5120,5120,0,0,0,9216,1024];slots:=[4]int.[-1,-1,-1,-1];state:=DcState.{head=DcHeader.{identity="fixture"},heat=heat[..],slots=slots[..]};
+    next:[5]int;ns:[4]int;moves:[5]DcMove;ms:[4]DcMove;next[4]=77;moves[4].key=88;
+    p:=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert p.status==DsStatus.ok && p.ticket.count==4 && p.ticket.step==0 && p.ticket.revision==0 && p.ticket.identity=="fixture";
+    expected:=[4]int.[1,2,2,3];for i:0..<4 {#assert next[i]==expected[i] && moves[i].slot==i && moves[i].old==-1 && moves[i].key==(i/2)*4+expected[i];}#assert next[4]==77 && moves[4].key==88;
+    bytes:=[8]u8.[1,2,3,4,5,6,7,8];resident:[9]u8;resident[8]=99;ready:=[4]u8.[1,1,1,1];
+    r:=dc_install(c,state,p.ticket,next[0..<4],moves[0..<4],ready[..],bytes[..],resident[..],false);#assert r.status==DsStatus.ok && r.head.revision==1 && r.head.step==0 && r.head.identity=="fixture" && !r.head.busy && r.written==8;
+    for i:0..<8 {#assert resident[i]==bytes[i];}#assert resident[8]==99;for i:0..<4 {#assert slots[i]==expected[i];}
+    #assert dc_install(c,state,p.ticket,next[0..<4],moves[0..<4],ready[..],bytes[..],resident[..],false).status==DsStatus.state;
+    state.head=r.head;p=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert p.status==DsStatus.ok && p.ticket.count==0;
+    heat[0]=7425;p=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert p.status==DsStatus.ok && p.ticket.count==1 && moves[0].key==0 && moves[0].slot==0 && moves[0].old==1 && next[0]==0 && next[1]==2;
+    c.frozen=true;p=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert p.status==DsStatus.ok && p.ticket.count==0;
+}
+#test "active and stale publications or incomplete copies preserve bytes and metadata" {
+    c:=DcConfig.{layers=1,experts=2,slots=1,stride=2,budget=2,identity="fixture"};heat:=[2]int.[0,2048];slots:=[1]int.[-1];state:=DcState.{head=DcHeader.{identity="fixture"},heat=heat[..],slots=slots[..]};next:[1]int;moves:[1]DcMove;ns:[1]int;ms:[1]DcMove;
+    p:=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert p.status==DsStatus.ok && p.ticket.count==1;
+    ready:=[1]u8.[0];pending:=[2]u8.[5,6];resident:=[3]u8.[77,77,88];
+    #assert dc_install(c,state,p.ticket,next[..],moves[..],ready[..],pending[..],resident[..],false).status==DsStatus.state;
+    ready[0]=2;#assert dc_install(c,state,p.ticket,next[..],moves[..],ready[..],pending[..],resident[..],false).status==DsStatus.state;ready[0]=1;
+    for field:0..<3 {t:=p.ticket;if field==0 {t.step=1;}else if field==1 {t.revision=1;}else {t.identity="other";}#assert dc_install(c,state,t,next[..],moves[..],ready[..],pending[..],resident[..],false).status==DsStatus.state;}
+    state.head.busy=true;#assert dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false).status==DsStatus.state && dc_install(c,state,p.ticket,next[..],moves[..],ready[..],pending[..],resident[..],false).status==DsStatus.state;state.head.busy=false;
+    for field:0..<6 {n:=next[..];m:=moves[..];r:=ready[..];b:=pending[..];o:=resident[..];alias:=false;if field==0 {n=next[0..<0];}else if field==1 {m=moves[0..<0];}else if field==2 {r=ready[0..<0];}else if field==3 {b=pending[0..<1];}else if field==4 {o=resident[0..<1];}else {alias=true;}
+        #assert dc_install(c,state,p.ticket,n,m,r,b,o,alias).status==(ifx alias then DsStatus.alias else DsStatus.capacity);}
+    for field:0..<4 {n:=next[..];m:=moves[..];a:=ns[..];b:=ms[..];if field==0 {n=next[0..<0];}else if field==1 {m=moves[0..<0];}else if field==2 {a=ns[0..<0];}else {b=ms[0..<0];}#assert dc_plan(c,state,n,m,a,b,false).status==DsStatus.capacity;}
+    #assert dc_plan(c,state,next[..],moves[..],ns[..],ms[..],true).status==DsStatus.alias;
+    #assert resident[0]==77 && resident[1]==77 && resident[2]==88 && slots[0]==-1;
+    r:=dc_install(c,state,p.ticket,next[..],moves[..],ready[..],pending[..],resident[0..<2],false);#assert r.status==DsStatus.ok && slots[0]==1 && resident[0]==5 && resident[1]==6 && resident[2]==88;
+}
+#test "swap metadata cannot move across layers repeat slots or substitute undeclared bindings" {
+    c:=DcConfig.{layers=2,experts=2,slots=1,stride=1,budget=2,identity="fixture"};heat:=[4]int.[0,2048,0,3072];slots:=[2]int.[-1,-1];state:=DcState.{head=DcHeader.{identity="fixture"},heat=heat[..],slots=slots[..]};next:[2]int;ns:[2]int;moves:[2]DcMove;ms:[2]DcMove;
+    p:=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert p.status==DsStatus.ok && p.ticket.count==2;
+    ready:=[2]u8.[1,1];pending:=[2]u8.[5,6];resident:=[2]u8.[77,88];
+    for field:0..<8 {bad:=moves;if field==0 {bad[1].slot=-1;}else if field==1 {bad[1].slot=2;}else if field==2 {bad[1].key=-1;}else if field==3 {bad[1].key=4;}else if field==4 {bad[1].key=1;}else if field==5 {bad[1].old=0;}else if field==6 {bad[1].key=2;}else {bad[1].slot=0;bad[1].key=1;}
+        #assert dc_install(c,state,p.ticket,next[..],bad[..],ready[..],pending[..],resident[..],false).status==DsStatus.state;}
+    badnext:=next;badnext[1]=-1;#assert dc_install(c,state,p.ticket,badnext[..],moves[..],ready[..],pending[..],resident[..],false).status==DsStatus.state;
+    badnext=next;badnext[1]=2;#assert dc_install(c,state,p.ticket,badnext[..],moves[..],ready[..],pending[..],resident[..],false).status==DsStatus.token;
+    #assert resident[0]==77 && resident[1]==88 && slots[0]==-1 && slots[1]==-1;
+    duplicate:=moves;duplicate[1]=duplicate[0];onlyfirst:=next;onlyfirst[1]=-1;
+    #assert dc_install(c,state,p.ticket,onlyfirst[..],duplicate[..],ready[..],pending[..],resident[..],false).status==DsStatus.state;
+}
+
+#test "cold ordering preserves ties includes expert zero and handles exhausted slots" {
+    #assert dc_move_extent(0,0,1,1) && !dc_move_extent(-1,0,1,1) && !dc_move_extent(1,0,1,1) && !dc_move_extent(0,-1,1,1) && !dc_move_extent(0,1,1,1);
+    c:=DcConfig.{layers=2,experts=3,slots=2,stride=1,budget=4,identity="fixture"};heat:=[6]int.[1024,1024,1024,0,0,10000];slots:=[4]int.[0,1,0,1];state:=DcState.{head=DcHeader.{identity="fixture"},heat=heat[..],slots=slots[..]};next:[4]int;ns:[4]int;moves:[4]DcMove;ms:[4]DcMove;
+    #assert dc_cold_slot(c,state,slots[..],1)==2;
+    #assert dc_rank(c,heat[..],0,-1)==-1 && dc_rank(c,heat[..],0,0)==1024 && dc_rank(c,heat[..],1,2)==10000;
+    p:=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert p.status==DsStatus.ok && p.ticket.count==1 && moves[0].slot==2 && moves[0].key==5;
+    heat[3]=100;heat[4]=10;#assert dc_cold_slot(c,state,slots[..],1)==3;
+    zero:=c;zero.slots=0;#assert dc_cold_slot(zero,state,slots[..],1)==-1;
+    heat[3]=10000;heat[4]=0;heat[5]=0;no_self:=dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false);#assert no_self.status==DsStatus.ok && no_self.ticket.count==0;
+    state.head.revision=1048576;#assert dc_plan(c,state,next[..],moves[..],ns[..],ms[..],false).status==DsStatus.state;
+    ready:[1]u8;packet:[1]u8;resident:[4]u8;ticket:=DcTicket.{identity="fixture",revision=1048576};
+    #assert dc_install(c,state,ticket,slots[..],moves[0..<0],ready[0..<0],packet[0..<0],resident[..],false).status==DsStatus.state;
+    state.head.revision=0;next=slots;next[0]=2;ticket.revision=0;
+    #assert dc_install(c,state,ticket,next[..],moves[0..<0],ready[0..<0],packet[0..<0],resident[..],false).status==DsStatus.state;
+}
+
+dc_rank :: (c:DcConfig,heat:[]int,layer:int,id:int)->int {return ifx id<0 then -1 else heat[layer*c.experts+id];}
+dc_cold_slot :: (c:DcConfig,state:DcState,slots:[]int,layer:int)->int {
+    cold:=-1;for j:0..<c.slots {slot:=layer*c.slots+j;if cold<0 {cold=slot;}else if dc_rank(c,state.heat,layer,slots[slot])<dc_rank(c,state.heat,layer,slots[cold]) {cold=slot;}}return cold;
+}
+dc_move_extent :: (slot:int,key:int,slots:int,keys:int)->bool {return slot>=0 && slot<slots && key>=0 && key<keys;}
+// book:begin plan
+dc_plan :: (c:DcConfig,state:DcState,proposed:[]int,moves:[]DcMove,slots_work:[]int,moves_work:[]DcMove,overlap:bool)->DcPlan #export_c {
+    status:=dc_state(c,state);if status!=DsStatus.ok {return DcPlan.{status=status};}if state.head.busy || state.head.revision==1048576 {return DcPlan.{status=DsStatus.state};}
+    k:=c.layers*c.slots;if proposed.count<k || moves.count<k || slots_work.count<k || moves_work.count<k {return DcPlan.{status=DsStatus.capacity};}if overlap {return DcPlan.{status=DsStatus.alias};}
+    for i:0..<k {slots_work[i]=state.slots[i];}count:=0;
+    for layer:0..<c.layers {excluded:[384]bool;for j:0..<c.slots {id:=slots_work[layer*c.slots+j];if id>=0 {excluded[id]=true;}}for round:0..<c.slots {
+        cold:=dc_cold_slot(c,state,slots_work,layer);
+        hot:=-1;for id:0..<c.experts {if !excluded[id] {if hot<0 || state.heat[layer*c.experts+id]>state.heat[layer*c.experts+hot] {hot=id;}}}
+        if hot<0 {break;}old:=slots_work[cold];if old>=0 {if c.frozen || !dc_replace(state.heat[layer*c.experts+hot],state.heat[layer*c.experts+old]) {break;}}
+        excluded[hot]=true;slots_work[cold]=hot;moves_work[count]=DcMove.{slot=cold,old=old,key=layer*c.experts+hot};count+=1;
+    }}
+    for i:0..<k {proposed[i]=slots_work[i];}for i:0..<count {moves[i]=moves_work[i];}
+    return DcPlan.{ticket=DcTicket.{step=state.head.step,revision=state.head.revision,identity=c.identity,count=count}};
+}
+// book:end plan
+dc_install :: (c:DcConfig,state:DcState,ticket:DcTicket,proposed:[]int,moves:[]DcMove,ready:[]u8,pending:[]u8,resident:[]u8,overlap:bool)->DcResult #export_c {
+    status:=dc_state(c,state);if status!=DsStatus.ok {return DcResult.{status=status};}
+    if state.head.busy || state.head.revision==1048576 || ticket.step!=state.head.step || ticket.revision!=state.head.revision || ticket.identity!=c.identity {return DcResult.{status=DsStatus.state};}
+    k:=c.layers*c.slots;if ticket.count!=moves.count || ready.count!=moves.count || moves.count>k || pending.count!=moves.count*c.stride || resident.count<k*c.stride {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
+    status=dc_state(c,DcState.{head=state.head,heat=state.heat,slots=proposed});if status!=DsStatus.ok {return DcResult.{status=status};}
+    changed:[16512]bool;for i:0..<moves.count {m:=moves[i];if !dc_move_extent(m.slot,m.key,k,c.layers*c.experts) {return DcResult.{status=DsStatus.state};}
+        if ready[i]!=1 || m.key/c.experts!=m.slot/c.slots || m.old!=state.slots[m.slot] || proposed[m.slot]!=m.key%c.experts || changed[m.slot] {return DcResult.{status=DsStatus.state};}changed[m.slot]=true;}
+    for slot:0..<k {if (proposed[slot]!=state.slots[slot])!=changed[slot] {return DcResult.{status=DsStatus.state};}}
+    for i:0..<moves.count {for j:0..<c.stride {resident[moves[i].slot*c.stride+j]=pending[i*c.stride+j];}}
+    for i:0..<k {state.slots[i]=proposed[i];}head:=state.head;head.revision+=1;return DcResult.{written=moves.count*c.stride,head=head};
+}

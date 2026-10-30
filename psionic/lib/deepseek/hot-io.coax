@@ -1,0 +1,39 @@
+#load "hot-swap.coax";
+#load "hot-weights.coax";
+#authority;
+
+#test "next-layer routes prefetch only misses without changing slots or heat" {
+    c:=DcConfig.{layers=2,experts=4,slots=2,stride=1,budget=4,identity="fixture"};heat:[8]int;slots:=[4]int.[0,1,2,3];state:=DcState.{head=DcHeader.{identity="fixture",busy=true},heat=heat[..],slots=slots[..]};ids:=[3]int.[1,3,0];out:[4]int;stage:[3]int;out[3]=77;
+    r:=dc_prefetch(c,state,1,ids[..],out[..],stage[..],false);#assert r.status==DsStatus.ok && r.written==2 && out[0]==5 && out[1]==4 && out[3]==77 && slots[2]==2 && slots[3]==3 && heat[5]==0;
+    first:=dc_prefetch(c,state,0,ids[..],out[0..<3],stage[..],false);#assert first.status==DsStatus.ok && first.written==1 && out[0]==3;
+    #assert dc_prefetch(c,state,1,ids[..],out[0..<2],stage[..],false).status==DsStatus.capacity && dc_prefetch(c,state,1,ids[..],out[..],stage[0..<2],false).status==DsStatus.capacity && dc_prefetch(c,state,1,ids[..],out[..],stage[..],true).status==DsStatus.alias;
+    ids[2]=4;#assert dc_prefetch(c,state,1,ids[..],out[..],stage[..],false).status==DsStatus.token;
+    state.head.busy=false;#assert dc_prefetch(c,state,1,ids[..],out[..],stage[..],false).status==DsStatus.state;
+}
+#test "fetch capacity and immutable-file observations precede atomic packet publication" {
+    #assert dc_fetch_ready(0,1,0,0,0,false).status==DsStatus.ok && dc_fetch_ready(16512,1,16512,16512,16512,false).written==16512;
+    #assert dc_fetch_ready(-1,1,0,0,0,false).status==DsStatus.shape && dc_fetch_ready(16513,1,16513,16513,16513,false).status==DsStatus.shape;
+    #assert dc_fetch_ready(1,0,1,1,1,false).status==DsStatus.shape && dc_fetch_ready(1,1073741825,1,1,1,false).status==DsStatus.shape;
+    #assert dc_fetch_ready(2,3,6,6,2,false).written==6;
+    #assert dc_fetch_ready(2,3,5,6,2,false).status==DsStatus.capacity && dc_fetch_ready(2,3,6,5,2,false).status==DsStatus.capacity && dc_fetch_ready(2,3,6,6,1,false).status==DsStatus.capacity && dc_fetch_ready(2,3,6,6,2,true).status==DsStatus.alias;
+    #assert dc_observed(1,1)==DsStatus.ok && dc_observed(1,0)==DsStatus.weights;
+    input:=[3]u8.[5,6,7];output:=[4]u8.[77,77,77,88];r:=dc_fetch_commit(input[..],output[..],false);#assert r.status==DsStatus.ok && r.written==3 && output[0]==5 && output[1]==6 && output[2]==7 && output[3]==88;
+    #assert dc_fetch_commit(input[..],output[0..<2],false).status==DsStatus.capacity && dc_fetch_commit(input[..],output[..],true).status==DsStatus.alias;
+    #assert dc_fetch_commit(input[..],output[0..<3],false).status==DsStatus.ok;
+}
+
+dc_prefetch :: (c:DcConfig,state:DcState,layer:int,ids:[]int,out:[]int,stage:[]int,overlap:bool)->DcResult #export_c {
+    lanes:[8]DcLane;draft:[8]DcLane;r:=dc_dispatch(c,state,layer,ids,lanes[..],draft[..],false);if r.status!=DsStatus.ok {return r;}
+    if out.count<ids.count || stage.count<ids.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
+    n:=0;for i:0..<ids.count {if lanes[i].slot<0 {stage[n]=lanes[i].key;n+=1;}}
+    for i:0..<n {out[i]=stage[i];}return DcResult.{written=n,head=state.head};
+}
+dc_fetch_ready :: (count:int,stride:int,out:int,work:int,offsets:int,overlap:bool)->DcResult #export_c {
+    if count<0 || count>16512 || !dc_stride(stride) {return DcResult.{status=DsStatus.shape};}n:=count*stride;
+    if out<n || work<n || offsets<count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}return DcResult.{written=n};
+}
+dc_observed :: (expected:int,actual:int)->DsStatus #export_c {return ifx expected==actual then DsStatus.ok else DsStatus.weights;}
+dc_fetch_commit :: (stage:[]u8,out:[]u8,overlap:bool)->DcResult #export_c {
+    if out.count<stage.count {return DcResult.{status=DsStatus.capacity};}if overlap {return DcResult.{status=DsStatus.alias};}
+    for i:0..<stage.count {out[i]=stage[i];}return DcResult.{written=stage.count};
+}

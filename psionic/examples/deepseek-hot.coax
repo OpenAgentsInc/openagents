@@ -1,0 +1,32 @@
+#import "Basic";
+#load "../lib/deepseek/hot.coax";
+// book:begin example
+main :: () {
+    c:=DcConfig.{layers=1,experts=3,slots=1,stride=3264,budget=3264,identity="owned-model"};
+    profile:=[3]int.[10,1,0];heat:[3]int;other:[3]int;hw:[3]int;slots:[1]int;sw:[1]int;
+    init:=dc_seed(c,profile[..],heat[..],slots[..],hw[..],sw[..],false);#assert init.status==DsStatus.ok && slots[0]==-1;
+    state:=DcState.{head=init.head,heat=heat[..],slots=slots[..]};next:[1]int;moves:[1]DcMove;mw:[1]DcMove;
+    p:=dc_plan(c,state,next[..],moves[..],sw[..],mw[..],false);#assert p.status==DsStatus.ok && moves[0].key==0;
+    pending:[3264]u8;resident:[3264]u8;owned:=de_fixture_0(pending[..]);ready:=[1]u8.[1];
+    installed:=dc_install(c,state,p.ticket,next[..],moves[..],ready[..],pending[..],resident[..],false);#assert installed.status==DsStatus.ok;state.head=installed.head;
+    print("profile seed: expert % occupies one % byte slot\n",slots[0],c.stride);
+    begin:=dc_begin(c,state);#assert begin.status==DsStatus.ok;state.head=begin.head;
+    ids:=[2]int.[0,2];lanes:[2]DcLane;draft:[2]DcLane;dispatched:=dc_dispatch(c,state,0,ids[..],lanes[..],draft[..],false);#assert dispatched.status==DsStatus.ok && lanes[0].slot==0 && lanes[1].slot==-1;
+    misses:[2]int;work:[2]int;prefetched:=dc_prefetch(c,state,0,ids[..],misses[..],work[..],false);#assert prefetched.status==DsStatus.ok && prefetched.written==1 && misses[0]==2;
+    #assert dc_plan(c,state,next[..],moves[..],sw[..],mw[..],false).status==DsStatus.state;
+    input:=DEG_INPUT;direct:[64]f32;cached:[64]f32;floats:[224]f32;wide:[64]f64;w:=DeWork.{floats=floats[..],wide=wide[..]};
+    #assert de_expert(owned,input[..],0.137f32,10,direct[..],w,false).status==DsStatus.ok;
+    bound:=dc_bind(64,32,resident[..]);#assert bound.status==DsStatus.ok;
+    #assert de_expert(bound.value,input[..],0.137f32,10,cached[..],w,false).status==DsStatus.ok;
+    for i:0..<64 {#assert f32_bits(direct[i])==f32_bits(cached[i]);}
+    print("leased step: one hit, one prefetched miss; % exact output words\n",64);
+    finish:=dc_finish(c,state,ids[..],other[..],hw[..],false);#assert finish.status==DsStatus.ok;state.head=finish.head;state.heat=other[..];
+    // A phase change heats expert 2 through actual recorded uses.
+    used:=[1]int.[2];for step:0..<20 {b:=dc_begin(c,state);#assert b.status==DsStatus.ok;state.head=b.head;
+        f:=dc_finish(c,state,used[..],heat[..],hw[..],false);#assert f.status==DsStatus.ok;state.head=f.head;for i:0..<3 {other[i]=heat[i];}state.heat=other[..];}
+    p=dc_plan(c,state,next[..],moves[..],sw[..],mw[..],false);#assert p.status==DsStatus.ok && p.ticket.count==1 && moves[0].key==2;
+    replacement:=de_fixture_2(pending[..]);#assert replacement.gate.rows==32;
+    installed=dc_install(c,state,p.ticket,next[..],moves[..],ready[..],pending[..],resident[..],false);#assert installed.status==DsStatus.ok && slots[0]==2;
+    print("between steps: expert % replaces % at step %\n",slots[0],moves[0].old,installed.head.step);
+}
+// book:end example

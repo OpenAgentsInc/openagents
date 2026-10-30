@@ -1,0 +1,3 @@
+profile seed: expert 0 occupies one 3264 byte slot
+leased step: one hit, one prefetched miss; 64 exact output words
+between steps: expert 2 replaces 0 at step 21

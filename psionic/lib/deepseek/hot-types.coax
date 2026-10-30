@@ -1,0 +1,12 @@
+#load "expert-types.coax";
+// deepseek-hot-exact-v1: bounded metadata, immutable coefficient packets.
+DcConfig :: struct {layers:int;experts:int;slots:int;stride:int;budget:int;identity:string;frozen:bool;}
+DcHeader :: struct {step:int;revision:int;busy:bool;identity:string;}
+DcState :: struct {head:DcHeader;heat:[]int;slots:[]int;}
+DcResult :: struct {status:DsStatus;written:int;head:DcHeader;}
+DcMove :: struct {slot:int;old:int;key:int;}
+DcTicket :: struct {step:int;revision:int;identity:string;count:int;}
+DcPlan :: struct {status:DsStatus;ticket:DcTicket;}
+DcLane :: struct {key:int;slot:int;}
+DcPacket :: struct {status:DsStatus;width:int;hidden:int;bytes:int;begin:[7]int;}
+DcBound :: struct {status:DsStatus;value:DeExpert;}

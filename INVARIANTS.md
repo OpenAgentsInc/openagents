@@ -1,5 +1,45 @@
 # Invariants
 
+## Psionic exact hot-expert residency changes only between steps
+
+`psionic/lib/deepseek/hot*.coax` owns `deepseek-hot-exact-cpu-v1`:
+profile counts seed fixed-point heat while slots remain empty until copied.
+A finished step adds 1,024 units per unique selected key; every 256th step
+then floors 9/10 of all heat. Replacement requires `4*hot > 5*cold + 4096`.
+Incoming ties choose lowest expert ID; victim ties choose lowest slot.
+Each slot changes once per plan; evicted IDs wait until the next plan.
+Frozen caches fill holes but retain populated slots. Integer placement heat
+is its own deterministic policy, not the old engine's floating heat profile.
+
+Active-step dispatch leases a stable map. Gate-selected next-layer misses can
+prefetch into private storage without changing residency. Only idle state
+accepts installation, and model/step/revision tickets, old occupants, complete
+copy receipts and all proposed bindings validate before any public byte or
+slot changes. Late failures preserve all public data/metadata; private work
+may change. Finish stages the complete next heat and returns the next header.
+This is a single-owner value continuation, not synchronization between callers.
+
+Packets concatenate all six original routed FP4 code/scale spans losslessly.
+The native adapter observes addresses and performs mapped/direct I/O; Coax owns
+range, placement, arithmetic and publication. Every file read stages before
+packet publication. The CPU expert adapter binds unchanged packets and calls
+chapter 63's existing arithmetic. No route, route weight or combine order is
+altered. Resident coefficient budget excludes private incoming/I/O work and
+other model/OS/device allocations; the caller budgets those independently.
+
+Callers own complete source/model/packet authentication, matching immutable
+file and packet lifetimes, correct dimensions/identity, successful unmodified
+plans and truthful completed-copy receipts, valid typed allocations/extents,
+recorded uses, linear header ownership and exclusive disjoint writes.
+Device arenas, GPU arithmetic, event fencing, overlap, complete model execution
+and measured cache acceleration remain unqualified integration work.
+
+Check: `psionic/tests/check_deepseek_hot.sh` covers independent phase-shift
+traces, all heat/maps/plans, file/host/resident FFNs, original expert evidence,
+43x384/116 metadata topology and native debug/release plain/ASan/UBSan.
+`psionic/check.sh --only deepseek/hot --jobs 8` adds zero-survivor mutation.
+Scope and source identities: [chapter 64 record](docs/verification/psionic-ch64-2026-10-29.md).
+
 ## Psionic Engram lookup binds the normalized map and reads only planned rows
 
 `psionic/lib/deepseek/engram*.coax` owns `deepseek-engram-lookup-v1`:

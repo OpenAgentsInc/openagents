@@ -1,0 +1,49 @@
+{
+  "schema": 1,
+  "profile": "deepseek-hot-exact-cpu-v1",
+  "compiler": "coax0 0.23.0",
+  "compiler_sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+  "host_cc": "gcc (GCC) 15.2.0",
+  "flags": "-std=c11 -O3 -g -ffp-contract=off -fno-fast-math",
+  "executed_binary_sha256": "3843ea46d3f67c5effde7d599fd24166397440a58a181d74f96ddcf70147fde1",
+  "inputs": {
+    "psionic/lib/deepseek/hot-types.coax": "3db3e974041c31b8cfe622ca3c6523081efb723b74563e2f8a773ad97dfa5506",
+    "psionic/lib/deepseek/hot.coax": "9d79824b0f911eebb32a544220cddedadea0de5f30ee6525b2764f4b7a49e91a",
+    "psionic/lib/deepseek/hot-swap.coax": "b247a0551c04faad06e95abc7584b1fe87b86add10506284d6d54e1e364c1eb9",
+    "psionic/lib/deepseek/hot-weights.coax": "056dc692f3c7574073fc6f77a4a7ccff7ad7ccd6c678238be90a1189dd0c3486",
+    "psionic/lib/deepseek/hot-cache.coax": "5981a30b125781cfe24fdd4a5eef648c8a01578e56e8f119aa78980a597da302",
+    "psionic/lib/deepseek/hot-io.coax": "1f3a0ae984158f1592719eb914ede36832a8cd6a904295377b70b53a190516aa",
+    "psionic/lib/deepseek/expert.coax": "86988f1543724287d091ee5dbea1ba7ec710c20d11963a3f65bead82d50a44ed",
+    "psionic/lib/deepseek/expert-types.coax": "39215d2264d4ad03644916cbf248598529e754e4c4d1c7c1b52b88c24947ca67",
+    "psionic/platform/deepseek-hot-memory.c": "1452aa65078d6b74ac3c8ae04402aaf99a132b90647faa93ae39f7c5e9778d07",
+    "psionic/platform/deepseek-hot-memory.h": "5f0e29559d5414464e953645040decf46dd61b9d7f5ff91fcb3851319a53ce58",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/deepseek-hot-runtime.coax": "4dc62297de7daa7f5e70a2800a10be141583a91a34609e94768f47b143b61ed9",
+    "psionic/tests/deepseek_hot_original.c": "7e66f2cdeefd3fc5ca6245bb49b668d38cffa4a9923b95884b18966081028a12",
+    "psionic/tests/deepseek_hot_original_prepare.py": "350ba055fe2ded5d2add0b823f3a5493bc58f71bfc78585d875d5c6572a8ffb9",
+    "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/fixtures/deepseek/expert-goldens.coax": "ce19521b85ab70baf355d6211a8838a5bb7b646e6023c70236b685690e5ffaff",
+    "psionic/lib/deepseek/router.coax": "15f140310b242b0bca7a3ff841ad02e1ef20d00637fa7c186772d143e16ceb16",
+    "psionic/fixtures/deepseek/router-goldens.coax": "a1f4fa2733944a453c540c539b9ce7368deee24aeb371cc1d516f5868962a3b4"
+  },
+  "files": {
+    "source.json": "fe4b953c2619b2631654b9e3b77106add671270cbbcb77f7254519f78955972b",
+    "executed.c.gz": "df648dd66057c2f8925dd3970ca5dacbb6dc4a2f094e33eadc03d2f53d49ce1f",
+    "run.log": "d7cb5351b4cd0dcc841bb5a4522a860e139b11c917f49503bf429a334e9964ca",
+    "executed.h.gz": "f10c625716629c37958d36689276178ad8d3041022ba0063bac8fd70560f661f",
+    "output.f32.gz": "26cbfec81dc2838e9f5ef7e349ddd37e53450e584d71f6b7f36e1c248f0b278f"
+  },
+  "reference": "psionic/fixtures/deepseek/expert-cpu-original/pair/routed-reference-output.f32.gz",
+  "reference_sha256": "26cbfec81dc2838e9f5ef7e349ddd37e53450e584d71f6b7f36e1c248f0b278f",
+  "commands": [
+    "python3 -I psionic/tests/deepseek_hot_original_prepare.py --weights /tmp/psionic-deepseek-v2/v41-model-00003-of-00048.safetensors --out /tmp/deepseek-hot-original",
+    "coax/bin/coax c psionic/tests/deepseek-hot-runtime.coax --release --library --header /tmp/deepseek-hot-build/deepseek-hot-release.h --run-steps 16000000",
+    "cc generated.c psionic/platform/deepseek-hot-memory.c psionic/tests/deepseek_hot_original.c -lm (flags above)",
+    "original packet.bin input.f32 expected.f32 output.f32"
+  ],
+  "scope": "One original 5120x2304 routed expert, host packet, pread miss and mapped-warmed resident packet, all bytes preserved and all 5120 output words bit-identical. CPU wide profile only. Full original shard admission/reference reused from chapter 63; no GPU or full-model claim."
+}
