@@ -593,7 +593,8 @@ claude_catalog :: () -> PkCatalog {
   c := claude_curated();
   for k: 0..<c.n { j := c.n - k; c.id[j] = c.id[j - 1]; c.label[j] = c.label[j - 1]; c.desc[j] = c.desc[j - 1]; c.ladder[j] = c.ladder[j - 1]; }
   c.n += 1;
-  c.id[0] = ""; c.label[0] = "Default (recommended)"; c.desc[0] = ""; c.ladder[0] = LADDER_FULL;
+  // the CLI's default until its initialize answer names the model (a second after launch)
+  c.id[0] = ""; c.label[0] = "Claude"; c.desc[0] = ""; c.ladder[0] = LADDER_FULL;
   return c;
 }
 // static_models, in its order.
@@ -629,6 +630,22 @@ claude_snapshot_base :: (id: string) -> string {
   for i: id.count - 8..<id.count { if id[i] < '0' || id[i] > '9' { return ""; } }
   return cast(string) id[0..<id.count - 9];
 }
+// The default entry's name as its model: another entry's displayName for the
+// same resolvedModel (the "haiku" alias's "Haiku 5.5"), else its description
+// when that isn't a sentence, else the id. Never "Default (recommended)".
+claude_default_name :: (ar: [] ClArena, response: string, models: ClSlice, id: string, entry: string) -> string {
+  for i: 0..<PK_MODELS * 2 {
+    v := cl_element(response, models, i);
+    if !v.ok { break; }
+    other := cl_json(response, v);
+    if cl_str(ar, other, "value") == "default" || cl_str(ar, other, "resolvedModel") != id { continue; }
+    name := cl_str(ar, other, "displayName");
+    if name.count > 0 { return name; }
+  }
+  desc := cl_str(ar, entry, "description");
+  if desc.count > 0 && desc.count < 24 && desc[desc.count - 1] != '.' { return desc; }
+  return id;
+}
 claude_find :: (c: [] PkCatalog, id: string) -> int { for k: 0..<c[0].n { if c[0].id[k] == id { return k; } } return -1; }
 // The catalog from the CLI's initialize answer (with_discovered_models),
 // its strings kept in pool. Whether the answer listed a model.
@@ -656,10 +673,11 @@ claude_discover :: (c: [] PkCatalog, ar: [] ClArena, response: string, pool: [] 
     k := claude_find(c, id);
     if k < 0 && c[0].n < PK_MODELS {
       k = c[0].n;
-      label := cl_str(ar, entry, "displayName");
+      label := ifx cl_str(ar, entry, "value") == "default" then claude_default_name(ar, response, models, cl_str(ar, entry, "resolvedModel"), entry) else cl_str(ar, entry, "displayName");
       c[0].id[k] = claude_keep(pool, at, id);
       c[0].label[k] = claude_keep(pool, at, ifx label.count > 0 then label else id);
-      c[0].desc[k] = claude_keep(pool, at, cl_str(ar, entry, "description"));
+      desc := cl_str(ar, entry, "description");
+      c[0].desc[k] = claude_keep(pool, at, ifx desc == c[0].label[k] then "" else desc);
       if c[0].id[k].count == 0 { continue; }        // the pool is full
       bits := 0;
       levels := cl_at(entry, "supportedEffortLevels");
@@ -1054,7 +1072,7 @@ CLAUDE_TEST_MODELS :: "{\"models\":[{\"value\":\"default\",\"resolvedModel\":\"c
   abuf: [4096] u8; ar := [1] ClArena.[ClArena.{buf = abuf[..]}];
   pool: [2048] u8; at: [1] int; c: [1] PkCatalog;
   #assert claude_discover(c[..], ar[..], CLAUDE_TEST_MODELS, pool[..], at[..]);
-  #assert c[0].n == 12 && c[0].id[0] == "claude-haiku-5-5" && c[0].label[0] == "Default (recommended)" && c[0].desc[0] == "Haiku 5.5";
+  #assert c[0].n == 12 && c[0].id[0] == "claude-haiku-5-5" && c[0].label[0] == "Haiku 5.5";
   #assert c[0].label[1] == "Fable 5.1" && c[0].label[3] == "Opus 5.5" && c[0].id[7] == "claude-haiku-4-5" && c[0].ladder[7] == 0;
   #assert c[0].id[8] == "claude-sonnet-5-5" && c[0].label[8] == "Sonnet 5.5" && c[0].ladder[8] == LADDER_FULL;
   #assert c[0].label[10] == "Opus 4.6" && c[0].ladder[10] == LADDER_CLASSIC && c[0].label[11] == "Sonnet 4.6";

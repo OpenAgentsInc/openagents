@@ -964,7 +964,7 @@ zr_test_screen :: (s: [] ZeronState) {
   c := s[0].composer[..]; t := s[0].transcript[..];
   #assert n > 100 && coaxial_zeron_wants_text(s[..]) && !c[0].docked && !c[0].compact && t[0].nr == 0;
   #assert c[0].x == 292 && c[0].w == 736 && c[0].y == round_layout((880 - c[0].h) / 2 - 12);
-  #assert c[0].model_label == "Default (recommended)" && c[0].effort_label == "High" && c[0].access_label == "Full access";
+  #assert c[0].model_label == "Claude" && c[0].effort_label == "High" && c[0].access_label == "Full access";
   // the model chip opens the compact picker under it (a new chat's menus open below)
   p := s[0].picker[..];
   px := (c[0].chip_x[CH_MODEL] + 3) * 2; py := (c[0].chip_y[CH_MODEL] + 3) * 2;
@@ -1094,7 +1094,7 @@ zr_test_screen :: (s: [] ZeronState) {
   #assert coaxial_zeron_key(s[..], KEY_TAB, 0) && p[0].view == MODE_CLAUDE;
   #assert coaxial_zeron_key(s[..], KEY_ENTER, 0) && coaxial_zeron_key(s[..], KEY_ESCAPE, 0) && !pk_is_open(p);
   n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
-  #assert coaxial_zeron_mode(s[..]) == MODE_CLAUDE && c[0].model_label == "Default (recommended)" && c[0].effort_label == "High" && c[0].brand == 0;
+  #assert coaxial_zeron_mode(s[..]) == MODE_CLAUDE && c[0].model_label == "Claude" && c[0].effort_label == "High" && c[0].brand == 0;
   coaxial_zeron_choose(s[..], CH_MODE, MODE_PSIONIC);
   coaxial_zeron_choose(s[..], CH_EFFORT, 0);
   #assert coaxial_zeron_mode(s[..]) == MODE_PSIONIC && c[0].effort_label == "Low";
