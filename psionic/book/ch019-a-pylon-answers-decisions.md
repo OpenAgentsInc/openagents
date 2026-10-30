@@ -569,11 +569,32 @@ now qualifies this Pylon over `wss://` on macOS, including relay restart,
 re-authentication, queued cancellation and encrypted answers. Native iOS
 compilation is checked; iOS runtime remains unqualified.
 
+## Restarting a Pylon
+
+Pylon process restarts now reserve a durable, provider-bound beacon generation
+before publishing anything. `<identity-state>.generation` contains the public
+provider key and canonical counter; a sibling `.lock` permits one process for
+that state. A fresh counter starts at 2 to supersede the legacy executable's
+generation 1. Each restart atomically persists its next epoch (including file
+and parent-directory fsync) before connecting to the relay. A corrupt, mismatched,
+exhausted or unwritable counter refuses to advertise. It never derives an epoch
+from the wall clock. Keep one authoritative counter with each provider identity;
+do not restore an older counter while reusing the same key. This does not add
+durable job deduplication or remotely attest the advertised model.
+
+`psionic/tests/check_pylon_generation.sh` is the focused checks/mutation/native
+gate. `psionic/tests/pylon/generation_restart.py` runs the changed Pylon against
+a local Coax relay, existing toy engine and one unchanged native fleet: the
+fleet keeps its old provider epoch while the same Pylon key restarts, and both
+encrypted tasks must succeed. Duplicate ownership, corrupt state and failed
+durable commits must refuse before any relay publication.
+
 ## What this does not do yet
 
-- **Real keys.** The key is a test key. Nothing here may be pointed at
-  `relay.openagents.com` until the owner's key file is wired, after the
-  secret-handling audit (#4828).
+- **Real keys.** The signer still refuses production key files pending the
+  secret-handling audit (#4828). The owner-authorized public demo uses fresh
+  throwaway label files and free synthetic tasks; that permission does not
+  enable production signing identities, payments or provider attestation.
 - **One relay.** The Pylon holds one connection. Its relay list names
   more, and a buyer may use any of them, but this host listens on one.
 - **Replay beyond the windows.** Jobs are deduplicated by id in two

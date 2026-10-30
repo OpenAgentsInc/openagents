@@ -1,0 +1,87 @@
+// A durable per-provider epoch is reserved before any beacon can be sent.
+// Filesystem locking and atomic-write receipts are host observations; parsing,
+// provider binding, exhaustion and permission to publish stay here in Coax.
+#load "demo-label.coax";
+#authority;
+PygCode :: enum u8 {invalid;ok;provider;exhausted;}
+PygPlan :: struct {code:PygCode;generation:int;}
+PYG_HEADER :: "psionic.pylon-generation.v1\n";
+PYG_MAX :: 9007199254740991; // exact integer on every JSON/browser surface
+PYG_KEY :: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+PYG_ONE :: "psionic.pylon-generation.v1\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n1\n";
+
+#test "first persistent epoch supersedes legacy process-local generation one" {
+    p:=pyg_plan("",PYG_KEY,true);#assert p.code==PygCode.ok && p.generation==2;
+    #assert pyg_plan("x",PYG_KEY,true).code==PygCode.invalid;
+    #assert pyg_plan("",PYG_KEY,false).code==PygCode.invalid;
+    #assert pyg_plan(PYG_ONE,PYG_KEY,false).generation==2;
+    #assert pyg_plan(PYG_ONE,PYG_KEY,false).code==PygCode.ok;
+    #assert pyg_plan("","bad",true).code==PygCode.provider;
+}
+#test "records are canonical and bound to the actual signing provider" {
+    #assert pyg_plan(PYG_ONE,"abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",false).code==PygCode.provider;
+    #assert pyg_plan(PYG_ONE,PYG_KEY[0..<63],false).code==PygCode.provider;
+    for n:0..<PYG_ONE.count {#assert pyg_plan(PYG_ONE[0..<n],PYG_KEY,false).code!=PygCode.ok;}
+    bad:[128]u8;for i:0..<PYG_ONE.count {bad[i]=PYG_ONE[i];}
+    for at:[4]int.[0,PYG_HEADER.count-1,PYG_HEADER.count+64,PYG_ONE.count-1] {
+        old:=bad[at];bad[at]='x';#assert pyg_plan(cast(string)bad[0..<PYG_ONE.count],PYG_KEY,false).code==PygCode.invalid;bad[at]=old;
+    }
+    prefix:=PYG_ONE[0..<PYG_ONE.count-2];out:[160]u8;
+    for digits:[11]string.["0","01","-1","+2","2.0"," 2","2 ","2\nx",":","9007199254740992","999999999999999999999999999999"] {
+        at:=0;for c:prefix {out[at]=c;at+=1;}for c:digits {out[at]=c;at+=1;}out[at]='\n';at+=1;
+        #assert pyg_plan(cast(string)out[0..<at],PYG_KEY,false).code==PygCode.invalid;
+    }
+}
+#test "serialization round trips decimal boundaries and never rewinds" {
+    out:[128]u8;
+    for value:[8]int.[2,9,10,99,100,1000,PYG_MAX-1,PYG_MAX] {
+        n:=pyg_encode(PYG_KEY,value,out[..]);#assert n>0;
+        p:=pyg_plan(cast(string)out[0..<n],PYG_KEY,false);
+        if value<PYG_MAX {#assert p.code==PygCode.ok && p.generation==value+1;}
+        else {#assert p.code==PygCode.exhausted && p.generation==0;}
+    }
+    n:=pyg_encode(PYG_KEY,2,out[..]);expected:="psionic.pylon-generation.v1\n0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\n2\n";
+    #assert cast(string)out[0..<n]==expected;
+    #assert pyg_encode(PYG_KEY,2,out[0..<n])==n;
+    for i:0..<128 {out[i]=97;}
+    #assert pyg_encode(PYG_KEY,2,out[0..<n-1])==-1;
+    #assert pyg_encode("bad",2,out[..])==-1 && pyg_encode(PYG_KEY,1,out[..])==-1 && pyg_encode(PYG_KEY,PYG_MAX+1,out[..])==-1;
+    for b:out {#assert b==97;}
+}
+#test "no epoch is publishable before a successful durable write" {
+    p:=pyg_plan("",PYG_KEY,true);#assert pyg_ready(p,true)==2 && pyg_ready(p,false)==0;
+    for code:[3]PygCode.[PygCode.invalid,PygCode.provider,PygCode.exhausted] {#assert pyg_ready(PygPlan.{code=code,generation=2},true)==0;}
+    #assert pyg_ready(PygPlan.{code=PygCode.ok,generation=1},true)==0;
+    #assert pyg_ready(PygPlan.{code=PygCode.ok,generation=PYG_MAX+1},true)==0;
+    #assert pyg_ready(PygPlan.{code=PygCode.ok,generation=PYG_MAX},true)==PYG_MAX;
+}
+
+pyg_plan :: (text:string,provider:string,missing:bool)->PygPlan {
+    if !pyd_label_ok(provider) {return PygPlan.{code=PygCode.provider};}
+    if missing {return ifx text=="" then PygPlan.{code=PygCode.ok,generation=2} else PygPlan.{};}
+    h:=PYG_HEADER.count;
+    if text.count<h+67 {return PygPlan.{};}
+    if text[0..<h]!=PYG_HEADER || text[h+64]!='\n' || text[text.count-1]!='\n' {return PygPlan.{};}
+    if text[h..<h+64]!=provider {return PygPlan.{code=PygCode.provider};}
+    digits:=text[h+65..<text.count-1];if digits[0]=='0' {return PygPlan.{};}
+    value:=0;
+    for c:digits {
+        if c<'0' || c>'9' {return PygPlan.{};}
+        d:=cast(int)(c-'0');if value>(PYG_MAX-d)/10 {return PygPlan.{};}
+        value=value*10+d;
+    }
+    if value==PYG_MAX {return PygPlan.{code=PygCode.exhausted};}
+    return PygPlan.{code=PygCode.ok,generation=value+1};
+}
+pyg_encode :: (provider:string,generation:int,out:[]u8)->int {
+    if !pyd_label_ok(provider) || generation<2 || generation>PYG_MAX {return -1;}
+    digits:=1;v:=generation;while v>=10 {digits+=1;v/=10;}
+    count:=PYG_HEADER.count+66+digits;if out.count<count {return -1;}
+    at:=0;for c:PYG_HEADER {out[at]=c;at+=1;}for c:provider {out[at]=c;at+=1;}out[at]='\n';at+=1;
+    v=generation;for i:0..<digits {out[at+digits-1-i]=cast(u8)(48+v%10);v/=10;}
+    at+=digits;out[at]='\n';return count;
+}
+pyg_ready :: (plan:PygPlan,persisted:bool)->int {
+    if plan.code!=PygCode.ok || plan.generation<2 || plan.generation>PYG_MAX || !persisted {return 0;}
+    return plan.generation;
+}

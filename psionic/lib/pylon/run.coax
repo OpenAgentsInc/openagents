@@ -33,6 +33,7 @@
 //     secret-handling audit (#4828) admits real keys.
 #import "Basic";
 #load "demo-label.coax";
+#load "generation.coax";
 #load "../../../coax/lib/nostr/nip19-core.coax";
 #load "host.coax";
 #load "queue.coax";
@@ -67,6 +68,7 @@ pyh_file_read :: () -> int #foreign;
 pyh_file_byte :: (i: int) -> int #foreign;
 pyh_file_write_push :: (byte: int) -> int #foreign;
 pyh_file_write_commit :: () -> int #foreign;
+pyh_file_lock :: () -> int #foreign;
 pyh_label_read :: () -> int #foreign;
 pyh_label_byte :: (i:int) -> int #foreign;
 pyh_label_clear :: () -> int #foreign;
@@ -687,6 +689,23 @@ py_write_file :: (path:string,text:string)->bool {
     for b:text {if pyh_file_write_push(cast(int)b)!=0 {return false;}}
     return pyh_file_write_commit()==0;
 }
+// Reserve the durable epoch while holding the sibling lock for this process's
+// lifetime. No relay publication is possible before the receipt is accepted.
+py_generation :: (p:[]Py)->int {
+    path:[1024]u8;lock:[1024]u8;text:[128]u8;record:[128]u8;
+    n:=json_raw(path[..],0,p[0].cfg[0].state);n=json_raw(path[..],n,".generation");if n<0 {return 0;}
+    counter:=cast(string)path[0..<n];k:=json_raw(lock[..],0,counter);k=json_raw(lock[..],k,".lock");if k<0 {return 0;}
+    r:=pyh_file_path_clear();for b:lock[0..<k] {if pyh_file_path_push(cast(int)b)!=0 {return 0;}}
+    if pyh_file_lock()!=0 {print("pylon: generation state already in use or its lock is unavailable\n");return 0;}
+    used:=py_read_file(counter,text[..]);if used==-1 {print("pylon: generation state cannot be read\n");return 0;}
+    prior:=ifx used>=0 then cast(string)text[0..<used] else "";
+    plan:=pyg_plan(prior,py_me(p),used==-2);
+    if plan.code!=PygCode.ok {print("pylon: generation state refused (code %)\n",cast(int)plan.code);return 0;}
+    size:=pyg_encode(py_me(p),plan.generation,record[..]);if size<0 {return 0;}
+    generation:=pyg_ready(plan,py_write_file(counter,cast(string)record[0..<size]));
+    if generation==0 {print("pylon: generation state was not durably committed\n");}
+    return generation;
+}
 PyCheckRun :: struct {
     set_text:[65536]u8;state_text:[256]u8;
     cases:[PS_CASES]PsCase;answers:[PS_CASES][PY_HTTP]u8;views:[PS_CASES]string;
@@ -776,11 +795,12 @@ py_main :: (p:[]Py)->int {
         if !ps_may_serve(w[0].facts) {print("pylon: not serving: the self-check did not pass (%)\n",PS_STEP_NAMES[cast(int)ps_doctor(w[0].facts)]);return 6;}
         if w[0].gate!=PsGate.same && !py_write_file(c.state,py_identity(p)) {print("pylon: the identity state % can't be written\n",c.state);return 6;}
     }
+    generation:=py_generation(p);if generation==0 {return 6;}
     if nip42_init(p[0].n42[..],c.relay)!=N42_OK {print("pylon: NIP-42 refuses the relay URL\n");return 4;}
     now:=pyh_now_s();
     p[0].first_since=now-PD_PAST;
     p[0].sub=rl_subscribe(p[0].rl[..]);
-    p[0].life=pb_start(PbLife.{},now);
+    p[0].life=pb_start(PbLife.{generation=generation-1},now);
     if p[0].sub<0 || !py_relay_list(p,now) {return 5;}
     // The first connection: AUTH, the beacon, the REQ and the list, all acknowledged.
     if !py_acked(p,p[0].list_slot,30000) {print("pylon: relay list not accepted\n");return 5;}

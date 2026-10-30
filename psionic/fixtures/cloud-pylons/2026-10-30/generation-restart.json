@@ -1,0 +1,55 @@
+{
+  "provider": "63430e4331a5bf41e7d67d530ec215bc0220af237bdd557bac820ea50c1c02c2",
+  "epochs": [
+    2,
+    3
+  ],
+  "same_fleet_process": true,
+  "before": {
+    "answers": {
+      "wet": {
+        "type": "choice",
+        "choice": "no",
+        "confidence": 0.562052749,
+        "probabilities": {
+          "yes": 0.437947251,
+          "no": 0.562052749
+        }
+      }
+    },
+    "latency_ms": 57,
+    "model": "psionic-toy",
+    "service": {
+      "door": "pylon:generation-local",
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+      "provider": "63430e4331a5bf41e7d67d530ec215bc0220af237bdd557bac820ea50c1c02c2",
+      "version": "psionic-pylon-v1"
+    },
+    "usage": null
+  },
+  "after": {
+    "answers": {
+      "wet": {
+        "type": "choice",
+        "choice": "no",
+        "confidence": 0.562052749,
+        "probabilities": {
+          "yes": 0.437947251,
+          "no": 0.562052749
+        }
+      }
+    },
+    "latency_ms": 45,
+    "model": "psionic-toy",
+    "service": {
+      "door": "pylon:generation-local",
+      "identity": "psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573",
+      "provider": "63430e4331a5bf41e7d67d530ec215bc0220af237bdd557bac820ea50c1c02c2",
+      "version": "psionic-pylon-v1"
+    },
+    "usage": null
+  },
+  "duplicate_refused": true,
+  "corrupt_refused": true,
+  "unwritable_refused": true
+}

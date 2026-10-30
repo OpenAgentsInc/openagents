@@ -17,7 +17,10 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <errno.h>
+#include <sys/file.h>
 #include <time.h>
 #include <unistd.h>
 
@@ -75,7 +78,7 @@ int64_t pyh_file_path_push(int64_t byte) {
 int64_t pyh_file_read(void) {
   g_file_len = 0;
   FILE *f = fopen(g_file_path, "rb");
-  if (!f) return access(g_file_path, F_OK) == 0 ? -1 : -2;
+  if (!f) return errno == ENOENT ? -2 : -1;
   size_t n = fread(g_file, 1, sizeof g_file, f);
   int more = fgetc(f) != EOF, bad = ferror(f);
   fclose(f);
@@ -115,14 +118,38 @@ int64_t pyh_file_write_push(int64_t byte) {
   g_file[g_write_len++] = (unsigned char)byte; return 0;
 }
 int64_t pyh_file_write_commit(void) {
-  char tmp[1100]; snprintf(tmp, sizeof tmp, "%s.tmp", g_file_path);
+  char tmp[1100],parent[1024];
+  int length=snprintf(tmp,sizeof tmp,"%s.tmp.XXXXXX",g_file_path);
   size_t n = g_write_len; g_write_len = 0; g_file_len = 0;
-  FILE *f = fopen(tmp, "wb");
-  if (!f) return -1;
+  if(length<0||(size_t)length>=sizeof tmp)return -1;
+  const char *slash=strrchr(g_file_path,'/');
+  if(!slash)strcpy(parent,".");
+  else if(slash==g_file_path)strcpy(parent,"/");
+  else{size_t len=(size_t)(slash-g_file_path);memcpy(parent,g_file_path,len);parent[len]=0;}
+  int directory=open(parent,O_RDONLY|O_DIRECTORY|O_CLOEXEC);
+  if(directory<0)return -1;
+  int fd=mkstemp(tmp);
+  if(fd<0){close(directory);return -1;}
+  FILE *f = fdopen(fd,"wb");
+  if (!f) {close(fd);close(directory);unlink(tmp);return -1;}
   int ok = fwrite(g_file, 1, n, f) == n && fflush(f) == 0 && fsync(fileno(f)) == 0;
   ok = fclose(f) == 0 && ok;
-  if (!ok || rename(tmp, g_file_path) != 0) { unlink(tmp); return -1; }
-  return 0;
+  if (!ok || rename(tmp, g_file_path) != 0) { unlink(tmp);close(directory);return -1; }
+  // Only report durable success after the directory entry is persisted too.
+  ok=fsync(directory)==0;close(directory);return ok?0:-1;
+}
+/* Lifetime lease for public generation state, never a key file. Keeping a
+   separate inode locked survives atomic replacement of the counter file. */
+static int g_state_lock_fd=-1;
+int64_t pyh_file_lock(void) {
+  if(g_state_lock_fd>=0)return -1;
+  int fd=open(g_file_path,O_RDWR|O_CREAT|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC,0600);
+  if(fd<0)return -1;
+  struct stat st;
+  if(fstat(fd,&st)||!S_ISREG(st.st_mode)||st.st_uid!=geteuid()||(st.st_mode&077)||flock(fd,LOCK_EX|LOCK_NB)){
+    close(fd);return -1;
+  }
+  g_state_lock_fd=fd;return 0;
 }
 
 static void on_signal(int sig) { (void)sig; g_stop = 1; }

@@ -1,5 +1,24 @@
 # Invariants
 
+## Pylon restarts reserve a durable provider-bound beacon epoch
+
+`psionic/lib/pylon/generation.coax` admits only canonical, provider-bound
+counter records and exact JSON integers through 2^53-1. Fresh state begins at
+2 for migration from the legacy executable's generation 1; restart advances
+the durable counter before any relay publication. A lifetime lock on a separate
+sibling inode excludes a second process sharing the state while the counter
+itself is atomically replaced. File and parent-directory fsync must both succeed
+before Coax permits the epoch. Corrupt, foreign, exhausted, unreadable or
+uncommitted state fails closed, without connecting to the relay.
+
+The owner supplies one authoritative persistent state directory per provider;
+deleting/restoring an old counter while reusing its key defeats that premise.
+The counter is public metadata, not signing-key custody, remote attestation,
+durable request deduplication or synchronization across cloned identities.
+Host C performs file/lock effects; all parsing, binding, increment, exhaustion
+and commit admission are Coax. Checks: the focused generation gate and the
+local encrypted task/restart runner in `psionic/tests/pylon/`.
+
 ## Psionic layer-major prefill preserves route order and complete chunk publication
 
 `psionic/lib/deepseek/prefill*.coax` owns `deepseek-prefill-cpu-wide-v1`.
