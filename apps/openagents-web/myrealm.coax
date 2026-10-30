@@ -651,7 +651,8 @@ house :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, size: int, colour: int) {
   fx := sin(yaw); fz := cos(yaw);      // its front, where the door is
   sized(s, m, x, 0, z, yaw, 0, w, h, d, r, g, b);
   half := 0.5 * w + 0.3; rise := 0.42 * w; slope := sqrt(half * half + rise * rise); tilt := turn_of(rise, half);
-  sized(s, m, x, h, z, yaw, 0, 0.56 * w, 0.5 * rise, d - 0.04, r * 0.92, g * 0.92, b * 0.92);   // the gable's ends
+  sized(s, m, x, h, z, yaw, 0, 0.56 * w, 0.5 * rise, d - 0.04, r * 0.92, g * 0.92, b * 0.92);   // the gable's ends, in two steps
+  sized(s, m, x, h + 0.5 * rise, z, yaw, 0, 0.26 * w, 0.25 * rise, d - 0.04, r * 0.92, g * 0.92, b * 0.92);
   for side: 0..<2 {
     k: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
     sized(s, m, x + k * 0.5 * half * ax, h + 0.5 * rise - 0.12, z + k * 0.5 * half * az, yaw, -k * tilt, slope + 0.1, 0.16, d + 0.5, 0.42, 0.24, 0.2);
@@ -1816,7 +1817,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   for p: 0..<s[0].piece_n { if walls < 0 && s[0].piece_mesh[p] == crate && s[0].piece_sy[p] > 1 && s[0].piece_tint[p * 3] > 1.2 && s[0].piece_tint[p * 3 + 1] < 0.4 { walls = p; } }
   #assert walls >= 0 && s[0].piece_x[walls] == 2.5 && s[0].piece_z[walls] == -3.5;
   // its front faces where you start: the door is nearer you than the walls' middle
-  door := walls + 5;
+  door := walls + 6;
   dx := s[0].piece_x[door]; dz := s[0].piece_z[door] - 6; wx := s[0].piece_x[walls]; wz := s[0].piece_z[walls] - 6;
   #assert dx * dx + dz * dz < wx * wx + wz * wz;
   #assert !free(s[..], 2.5, -3.5, 0.1);
