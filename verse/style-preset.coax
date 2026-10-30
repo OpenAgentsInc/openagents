@@ -163,11 +163,13 @@ painterly_key :: (i: int) -> StyleKey {
     k.ground_r = 0.36; k.ground_g = 0.28; k.ground_b = 0.20;
     k.haze_start = 45; k.haze_density = 0.009; k.haze_cap = 0.72; k.haze_falloff = 50;
     // the sky as Breath of the Wild paints it (the owner, October 29: dawn and dusk were pale): a teal
-    // zenith, a cream-gold band at the horizon, deep orange round the sun, the haze apricot
-    k.haze_r = 0.90; k.haze_g = 0.60; k.haze_b = 0.38;
+    // zenith, a rose-peach band at the horizon, deep orange round the sun; the haze a blue-violet, so
+    // the warm light falls on near faces and the distance steps back cool (comparison round 6: an
+    // apricot haze washed the town and the map one beige)
+    k.haze_r = 0.62; k.haze_g = 0.50; k.haze_b = 0.86;
     k.hkey_r = 1.00; k.hkey_g = 0.34; k.hkey_b = 0.08;
     k.zenith_r = 0.04; k.zenith_g = 0.20; k.zenith_b = 0.38;
-    k.horizon_r = 0.85; k.horizon_g = 0.55; k.horizon_b = 0.26;
+    k.horizon_r = 0.92; k.horizon_g = 0.66; k.horizon_b = 0.46;
     k.cloud_r = 1.0; k.cloud_g = 0.70; k.cloud_b = 0.48;              // between
     k.exposure = 2.0; k.shaft_weight = 0.32;                          // between
   }
@@ -483,11 +485,13 @@ sp_near :: (a: f32, b: f32) -> bool { return abs(a - b) < 0.0005; }
   #assert o[SU_KEY_DIR + 3] == 0 && sp_near(o[SU_KEY_DIR + 1], sin(60 * DEG)) && o[SU_SUN + 3] == 0;
   #assert verse_style_at(p, 0.75, o[..]);
   #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_KEY + 3], 0.85) && sp_near(o[SU_HAZE], 45) && sp_near(o[SU_HAZE + 1], 0.009) && sp_near(o[SU_HAZE + 3], 50);
-  #assert sp_near(o[SU_TINT], 0.36) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_HORIZON], 0.85) && sp_near(o[SU_RIM + 1], 0.62);
+  #assert sp_near(o[SU_TINT], 0.36) && sp_near(o[SU_TINT + 1], 0.58) && sp_near(o[SU_HORIZON], 0.92) && sp_near(o[SU_RIM + 1], 0.62);
+  // the dusk haze is cool, a blue-violet under the warm light (comparison round 6), never the light's apricot
+  #assert sp_near(o[SU_HAZE_COLOUR + 2], 0.86) && o[SU_HAZE_COLOUR + 2] > o[SU_HAZE_COLOUR] && o[SU_HAZE_COLOUR] > o[SU_HAZE_COLOUR + 1];
   #assert sp_near(o[SU_KEY_DIR + 1], sin(20 * DEG)) && o[SU_KEY_DIR + 3] == 0;
   dusk_x := o[SU_KEY_DIR];
   #assert verse_style_at(p, 0.25, o[..]);
-  #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_HAZE_COLOUR], 0.90) && sp_near(o[SU_HAZE_KEY + 1], 0.34);
+  #assert sp_near(o[SU_KEY + 1], 0.66) && sp_near(o[SU_HAZE_COLOUR], 0.62) && sp_near(o[SU_HAZE_KEY + 1], 0.34);
   #assert abs(o[SU_KEY_DIR] - dusk_x) > 0.5;   // the sun rises on one side and sets on the other
   #assert verse_style_at(p, 0.0, o[..]);
   #assert sp_near(o[SU_KEY], 0.62) && sp_near(o[SU_KEY + 2], 0.95) && sp_near(o[SU_KEY + 3], 0.16);

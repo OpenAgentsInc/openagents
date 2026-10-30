@@ -210,8 +210,8 @@ colour   = mix(colour, haze, f)
 | `density` (desktop) | 0.020 /m | 0.009 /m | 0.010 /m |
 | `cap` | 0.88 | 0.72 | 0.6 |
 | `falloff` | 60 m | 50 m | 40 m |
-| `haze_colour` | (0.56, 0.74, 0.90) | (0.96, 0.68, 0.56) | (0.025, 0.04, 0.09) |
-| key light in haze | (1.00, 0.90, 0.72) | (1.00, 0.62, 0.40) | (0.30, 0.36, 0.55) |
+| `haze_colour` | (0.56, 0.74, 0.90) | (0.62, 0.50, 0.86) | (0.025, 0.04, 0.09) |
+| key light in haze | (1.00, 0.90, 0.72) | (1.00, 0.34, 0.08) | (0.30, 0.36, 0.55) |
 
 The haze is coloured, never grey or white: where it is thin (the middle
 distance) its hue leans teal, and it turns to `haze_colour`'s blue as it
@@ -248,9 +248,9 @@ the sky without a seam.
   pitches), plus a 6° band at the horizon lifted 15% toward `haze_colour`.
   By day the zenith is (0.24, 0.48, 0.86) and the horizon equals the haze.
   At dusk the zenith is a teal (0.04, 0.20, 0.38) and the horizon a
-  cream-gold (0.85, 0.55, 0.26); where they meet the blend keeps the
-  saturation its two ends have there, so the sky runs teal, cream, gold and
-  never greys between them. At night the zenith is (0.012, 0.018, 0.05) and the horizon equals
+  rose-peach (0.92, 0.66, 0.46); where they meet the blend keeps the
+  saturation its two ends have there, so the sky runs teal, lilac, peach and
+  never greys between them; the gold is the halo's, round the sun. At night the zenith is (0.012, 0.018, 0.05) and the horizon equals
   the haze.
 - **Sun or moon**: a disc (0.53°, drawn at 2° for readability) with a two-term
   halo, `exp(-k(1-cosθ))` with k = 900 and 60, the wide term coloured like
@@ -470,11 +470,12 @@ visitor's local time, and a realm with its own moon puts it in with
 dusk or dawn (1.00, 0.66, 0.40) at 0.85.
 
 Dusk and dawn were retuned on October 29 after a comparison with Breath of
-the Wild, whose dusk stays saturated and warm (the sky in section 5; the haze
-an apricot (0.90, 0.60, 0.38)): orange and pink light on the
+the Wild, whose dusk stays saturated and warm (the sky in section 5): orange and pink light on the
 lit faces, deep-teal shadows (not grey-violet), a brighter ambient (sky
 (0.58, 0.52, 0.60) at 0.68) so a shadowed road stays a colour, and the haze
-a warm peach that starts at 45 m, so the near and middle distance stay clear.
+starts at 45 m, so the near and middle distance stay clear. The haze itself is
+cool, a blue-violet (comparison round 6, below): the warm light falls on what
+is near and the distance steps back violet, warm only toward the sun.
 A surface's saturation is also capped from below
 (`verse_style_chroma_gain`): the shadow tint and the light may take it down
 to no less than 0.7 of its albedo's saturation.
@@ -764,6 +765,16 @@ so the town sat in 0.3 to 0.4 of pale mist; the exposure (1.6, tried at 1.3) cha
 haze now starts at 40 m at 0.020 a metre: 0.10 at 45 m, 0.33 at 60 m, 0.70 at 100 m, the 0.88 cap by 150 m.
 The town reads in full colour at noon, as the references' near ground does, and the wood and the ridges
 beyond still step back into the teal mist.
+
+**Comparison round 6** (dusk): the warmth was everywhere. The haze was the light's apricot (0.90, 0.60,
+0.38) and the horizon a cream-gold, so at dusk the far wood, the gate towers and the whole map went one
+beige (the map's forest 0.28 saturation at hue 69, the sky beyond the road 0.15 at hue 30). The
+references' golden hour keeps the warmth on the lit faces and round the sun and lets the distance go
+teal, then blue-violet. Dusk and dawn's haze is now a blue-violet (0.62, 0.50, 0.86): through the
+thin-haze teal the middle distance reads blue-teal, the far ridges violet, and toward the sun the haze
+key's orange still glows; the horizon is a rose-peach (0.92, 0.66, 0.46) under the teal zenith. A grey
+lilac (0.66, 0.62, 0.78) was tried first and failed: through the tone curve it read 0.01 to 0.07
+saturation, grey.
 
 ## Order of the work
 
