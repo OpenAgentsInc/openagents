@@ -191,7 +191,7 @@ Spells :: struct {
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_BAR + 1] Box;   // and the row switcher's
   row: int;                  // the row a phone's bar shows
-  gv: [1] Grove;               // the old Grove's druid spells: Moonbeam (everglade-grove.coax)
+  gv: [1] Grove;               // the old Grove's druid spells: Moonbeam, Produce Flame, Starry Wisp, Shillelagh, Poison Spray, Elementalism, Entangle (everglade-grove.coax)
   td: [1] Tide;                // Water Walk, Control Water, Create or Destroy Water, Water Breathing (everglade-tide.coax)
   fr: [1] Frost;               // Ice Knife, Ice Storm, Sleet Storm and their ice (everglade-frost.coax)
   ab: [1] Abilities;           // Reverse Gravity and the Wind Walls (everglade-abilities.coax)
@@ -1604,6 +1604,7 @@ spells_lamps :: (s: [] Everglade, u: [] f32, cap: int) {
     f := clamp(me.t / me.fall, 0, 1);
     k = sp_lamp(u, k, most, mix(me.from, me.to, 0.55 * f + 0.45 * f * f), 14, v3(1.0, 0.6, 0.25), 1 + 1.5 * f);
   }
+  k = gv_lamps(s, u, k, most);   // the druid's fire and starlight (everglade-grove.coax)
   if k == first { return; }
   u[U_LIGHT_INFO] = f32(k); u[U_LIGHT_INFO + 2] = f32(k - first);
 }

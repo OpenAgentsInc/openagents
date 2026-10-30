@@ -68,6 +68,9 @@ ROT = (0.55, 0.9, 0.5)
 ICE = (0.65, 0.92, 1.0)
 MIST = (0.72, 0.86, 1.0)
 MOON = (0.88, 0.9, 1.0)
+FIRE = (1.0, 0.55, 0.2)
+VENOM = (0.6, 1.0, 0.35)
+GROWTH = (0.45, 0.95, 0.4)
 
 FREE = ("No mana, no cooldown", MANA)
 RANGE = ("140 m range", RULE)   # everglade-spells.coax SP_RANGE
@@ -139,6 +142,24 @@ SLOTS = [
     ("moonbeam", "delapouite/moon-orbit.svg", MOON, "S-", "Moonbeam",
      "A beam of pale light shines down in a 5-foot-radius cylinder: whoever is in it makes a Constitution save each round or takes 2d10 radiant, half on a success. Click again to move it 60 feet.",
      [("Shift+-", KEY), FREE, ("120 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
+    ("produce-flame", "carl-olsen/flame.svg", FIRE, "C1", "Produce Flame",
+     "A flame in your hand lights the way 40 feet round you; click someone or something within 60 feet to hurl it: a spell attack for 2d8 fire that sets debris burning. Press again to put it out.",
+     [("Ctrl+1", KEY), FREE, ("Cantrip", RULE), ("60 ft range", RULE), ("10 minutes", TIME)]),
+    ("starry-wisp", "lorc/star-swirl.svg", SUNLIGHT, "C2", "Starry Wisp",
+     "Flings a mote of starlight at someone or something within 60 feet: a spell attack for 2d8 radiant, and whom it hits sheds dim light for a round.",
+     [("Ctrl+2", KEY), FREE, ("Cantrip", RULE), ("60 ft range", RULE)]),
+    ("shillelagh", "lorc/wizard-staff.svg", GROWTH, "C3", "Shillelagh",
+     "Your staff glows with nature's power: click someone in reach to strike, +7 to hit for 1d10 + 3 force; a loose thing it hits is knocked away. Press again to end it.",
+     [("Ctrl+3", KEY), FREE, ("Cantrip", RULE), ("5 ft reach", RULE), ("1 minute", TIME)]),
+    ("poison-spray", "lorc/poison-gas.svg", VENOM, "C4", "Poison Spray",
+     "Sprays toxic mist at someone within 30 feet: a spell attack for 2d12 poison. The mist hangs where it lands.",
+     [("Ctrl+4", KEY), FREE, ("Cantrip", RULE), ("30 ft range", RULE)]),
+    ("elementalism", "lorc/tornado-discs.svg", WIND, "C5", "Elementalism",
+     "A 5-foot cube within 30 feet answers you: a breeze, a shroud of dust, harmless embers that light or snuff a small fire, or a cool mist. Press again for the next element.",
+     [("Ctrl+5", KEY), FREE, ("Cantrip", RULE), ("30 ft range", RULE)]),
+    ("entangle", "delapouite/vines.svg", GROWTH, "C6", "Entangle",
+     "Grasping plants fill a 20-foot square: its ground is difficult terrain, and each creature there but you makes a Strength save or is restrained until it tears free.",
+     [("Ctrl+6", KEY), FREE, ("90 ft range", RULE), ("Concentration, up to 1 minute", TIME)]),
     ("rebuild", "delapouite/house.svg", OIL, "R", "Rebuild",
      "Stands every broken building in the town back up whole.",
      [("Key R", KEY)]),

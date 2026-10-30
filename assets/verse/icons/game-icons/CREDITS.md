@@ -18,12 +18,15 @@ Icons made by Lorc (<http://lorcblog.blogspot.com>):
 - `lorc/feather.svg` (Feather Fall)
 - `lorc/wind-slap.svg` (Gust of Wind)
 - `lorc/sonic-boom.svg` (Thunderwave)
+- `lorc/star-swirl.svg` (Starry Wisp)
+- `lorc/wizard-staff.svg` (Shillelagh)
+- `lorc/poison-gas.svg` (Poison Spray)
 - `lorc/juggler.svg` (Telekinesis)
 - `lorc/ice-spear.svg` (Ice Knife)
 - `lorc/ice-bolt.svg` (Ice Storm)
 - `lorc/snowflake-2.svg` (Sleet Storm)
 - `lorc/sprint.svg` (Water Walk)
-- `lorc/tornado-discs.svg` (Control Water)
+- `lorc/tornado-discs.svg` (Control Water, in water's blue, and Elementalism, in the wind's cyan)
 - `lorc/shield-reflect.svg` (Water Breathing)
 
 Icons made by Delapouite (<https://delapouite.com>):
@@ -35,4 +38,9 @@ Icons made by Delapouite (<https://delapouite.com>):
 - `delapouite/tentacles-barrier.svg` (Black Tentacles)
 - `delapouite/fog.svg` (Create or Destroy Water)
 - `delapouite/moon-orbit.svg` (Moonbeam)
+- `delapouite/vines.svg` (Entangle)
 - `delapouite/plain-arrow.svg` (a phone bar's next row, drawn upside down)
+
+Icons made by Carl Olsen (<https://twitter.com/unstoppableCarl>):
+
+- `carl-olsen/flame.svg` (Produce Flame)

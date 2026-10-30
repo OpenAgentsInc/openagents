@@ -1,30 +1,178 @@
 // Everglade's druid spells from the old Grove's bar (eg-grove), loaded by everglade-spells.coax after
 // everglade-tide.coax (`0b401561a0^:crates/verse-zone-grove/src/zones/grove/hotbar.rs`, `kit.rs`):
 //
-//  S- MOONBEAM  (SRD 5.2.1, level 2, Concentration up to a minute) Pick it, then click the ground within
-//               120 feet: a silvery beam of pale light shines down in a cylinder 5 feet in radius and 40
-//               feet high. Whoever is in it when it appears, comes into it, or is in it as a round ends
-//               makes a Constitution save against DC 15: 2d10 radiant, half on a success (once a round
-//               each). While it shines, Shift+- picks it again and a click moves it up to 60 feet; Shift+-
-//               with it picked ends it. It is dim light: the town sees it. You in it take it too.
+//  S- MOONBEAM      (SRD 5.2.1, level 2, Concentration up to a minute) Pick it, then click the ground
+//                   within 120 feet: a silvery beam of pale light shines down in a cylinder 5 feet in
+//                   radius and 40 feet high. Whoever is in it when it appears, comes into it, or is in it
+//                   as a round ends makes a Constitution save against DC 15: 2d10 radiant, half on a
+//                   success (once a round each). While it shines, Shift+- picks it again and a click
+//                   moves it up to 60 feet; Shift+- with it picked ends it. It is dim light: the town
+//                   sees it. You in it take it too.
+//
+// The third row, on Ctrl (Ctrl+Shift where the browser keeps Ctrl and a number for its tabs), the old
+// Grove's second row of cantrips and first-level spells. The cantrips are cast at the realm's caster's
+// tier: DC 15 is 8 + proficiency +4 + Wisdom +3, a 9th- or 10th-level druid's, so two dice each and +7
+// to hit.
+//
+//  C1 PRODUCE FLAME (cantrip, 10 minutes) A flickering flame in your hand, Bright Light 20 feet and Dim
+//                   Light 20 more (it is a light on the town). While it burns, pick it and click a
+//                   creature or a thing within 60 feet: you hurl fire there, a ranged spell attack, 2d8
+//                   fire on a hit. Hurled at a piece of debris it sets it burning; it melts the ice it
+//                   lands on. Ctrl+1 with it picked puts the flame out.
+//  C2 STARRY WISP   (cantrip) A mote of light flung at a creature or a thing within 60 feet: a ranged
+//                   spell attack, 2d8 radiant on a hit, and the one it hits sheds Dim Light 10 feet round
+//                   them until the end of your next turn (6 s).
+//  C3 SHILLELAGH    (cantrip, a minute) Your quarterstaff, held in your hand, is imbued with nature's
+//                   power: melee attacks with it use your Wisdom, its die is a d10 (5th level), and it
+//                   deals Force. Pick it and click someone within reach (5 feet): +7 to hit, 1d10 + 3
+//                   force; a loose thing it strikes is knocked away. Ctrl+3 with it picked ends it.
+//  C4 POISON SPRAY  (cantrip) Toxic mist sprayed at a creature within 30 feet: a ranged spell attack,
+//                   2d12 poison on a hit. The mist hangs where it lands a few seconds.
+//  C5 ELEMENTALISM  (cantrip) A 5-foot cube within 30 feet answers you. Pick it once to Beckon Air (a
+//                   breeze that sets the splinters and dust there moving), again for Earth (a thin shroud
+//                   of dust over its ground), again for Fire (harmless embers and coloured smoke; a small
+//                   fire there, a burning piece of debris, goes out, or a piece of debris there catches),
+//                   again for Water (a spray of cool mist that dampens what is there, you too), and once
+//                   more to put it away.
+//  C6 ENTANGLE      (level 1, Concentration up to a minute) Grasping plants sprout from the ground in a
+//                   20-foot square within 90 feet: its ground is Difficult Terrain (your pace halves in
+//                   it), and each creature other than you there as it is cast makes a Strength save
+//                   against DC 15 or is Restrained until it ends; one Restrained tries a Strength
+//                   (Athletics) check against the DC each round to tear free. Ctrl+6 while they grow
+//                   ends it.
+//
+// Every attack or save on a person is a crime the watch answers.
 
 GV_MB_RANGE :: 36.576; GV_MB_R :: 1.524; GV_MB_H :: 12.192; GV_MB_MOVE :: 18.288; GV_MB_LIFE :: 60.0;
 GV_DC :: 15; GV_YOU_CON :: 1;         // your Constitution save: a Ranger's Constitution 12, not proficient
 GV_HEAR :: 30.0;
 GV_MOON_RGB :: Point.{x = 0.88, y = 0.9, z = 1.0};
+GV_ATTACK :: 7; GV_WIS :: 3; GV_CANTRIP :: 2;   // the spell attack, Wisdom, a cantrip's dice
+GV_FT :: 0.3048;
+// Produce Flame, Starry Wisp, Poison Spray: the reach, how fast each flies (m/s), what the town hears.
+GV_BOLT_FLAME :: 0; GV_BOLT_WISP :: 1; GV_BOLT_POISON :: 2;
+GV_BOLT_RANGE :: [3] f32.[18.288, 18.288, 9.144];
+GV_BOLT_SPEED :: [3] f32.[22.0, 26.0, 14.0];
+GV_BOLT_SIDES :: [3] int.[8, 8, 12];
+GV_BOLT_KIND :: [3] int.[DMG_FIRE, DMG_RADIANT, DMG_POISON];
+GV_BOLT_HEAR :: [3] f32.[20.0, 15.0, 10.0];
+GV_BOLTS :: 6;
+GV_PF_LIFE :: 600.0; GV_PF_BRIGHT :: 6.096; GV_PF_DIM :: 12.192;
+GV_HURL :: 0.8;                       // s between hurls (each a Magic action)
+GV_BURN :: 6.0;                       // s a piece of debris the fire catches burns
+GV_WISP_FOR :: 6.0; GV_WISP_DIM :: 3.048;
+GV_SH_LIFE :: 60.0; GV_SH_REACH :: 1.524; GV_SH_DIE :: 10; GV_SH_STRIKE :: 0.18; GV_SH_SWING :: 0.45; GV_HEAR_SH :: 10.0;
+GV_EL_RANGE :: 9.144; GV_EL_CUBE :: 1.524;
+GV_EL_AIR :: 0; GV_EL_EARTH :: 1; GV_EL_FIRE :: 2; GV_EL_WATER :: 3;
+GV_EL_WORD :: [4] string.["AIR", "EARTH", "FIRE", "WATER"];
+GV_DUSTS :: 6; GV_DUST_LIFE :: 60.0;
+GV_EN_RANGE :: 27.432; GV_EN_SIDE :: 6.096; GV_EN_LIFE :: 60.0; GV_EN_ROUND :: 6.0; GV_HEAR_EN :: 30.0;
+GV_VINES :: 28; GV_VINE_SEG :: 4;
+GV_MISTS :: 64;
+GV_FLAME_RGB :: Point.{x = 1.0, y = 0.55, z = 0.2};
+GV_STAR_RGB :: Point.{x = 1.0, y = 0.9, z = 0.55};
+GV_VENOM_RGB :: Point.{x = 0.42, y = 0.72, z = 0.18};
+GV_GROWTH_RGB :: Point.{x = 0.45, y = 0.95, z = 0.4};
+GV_VINE_RGB :: Point.{x = 0.16, y = 0.3, z = 0.08};
 
+GvBolt :: struct { live: bool; kind: int; from: Point; to: Point; t: f32; flight: f32; target: int; body: int; }
+GvMist :: struct { live: bool; at: Point; vel: Point; t: f32; life: f32; size: f32; colour: Point; thick: f32; }
+GvDust :: struct { live: bool; at: Point; t: f32; }
 Grove :: struct {
   time: f32;
   mb_on: bool; mb_at: Point; mb_t: f32;
   mb_next: [WATCH_ACTORS] f32; mb_in: [WATCH_ACTORS] bool;   // each one's next save, and whether they were in it
   you_next: f32; you_in: bool;
+  bolts: [GV_BOLTS] GvBolt;
+  mists: [GV_MISTS] GvMist;
+  dusts: [GV_DUSTS] GvDust;
+  pf_on: bool; pf_t: f32; pf_cool: f32;          // Produce Flame: in your hand, how long, till the next hurl
+  flash_at: Point; flash_t: f32;                 // where the last hurled fire struck, since when
+  starlit: [WATCH_ACTORS] f32;                   // Starry Wisp's light on each one, s left
+  sh_on: bool; sh_t: f32; sh_swing: f32; sh_who: int; sh_body: int; sh_struck: bool;   // Shillelagh: the swing (-1 none) and at whom
+  el_mode: int;                                  // Elementalism: which element a click beckons
+  en_on: bool; en_at: Point; en_t: f32;          // Entangle: the square's middle on the ground
+  en_held: [WATCH_ACTORS] bool; en_x: [WATCH_ACTORS] f32; en_z: [WATCH_ACTORS] f32; en_next: [WATCH_ACTORS] f32;
 }
 gv_of :: (s: [] Everglade) -> [] Grove { return s[0].sp.gv[..]; }
 gv_start :: (s: [] Everglade) {
   v := gv_of(s);
   v[0].time = 0; v[0].mb_on = false; v[0].you_in = false;
-  for i: 0..<WATCH_ACTORS { v[0].mb_next[i] = 0; v[0].mb_in[i] = false; }
+  for i: 0..<WATCH_ACTORS { v[0].mb_next[i] = 0; v[0].mb_in[i] = false; v[0].starlit[i] = 0; v[0].en_held[i] = false; v[0].en_next[i] = 0; }
+  for k: 0..<GV_BOLTS { v[0].bolts[k].live = false; }
+  for k: 0..<GV_MISTS { v[0].mists[k].live = false; }
+  for k: 0..<GV_DUSTS { v[0].dusts[k].live = false; }
+  v[0].pf_on = false; v[0].pf_cool = 0; v[0].flash_t = 100; v[0].sh_on = false; v[0].sh_swing = -1; v[0].el_mode = 0; v[0].en_on = false;
 }
+// Whether ability k (Moonbeam on) shows as on.
+gv_active :: (s: [] Everglade, k: int) -> bool {
+  v := gv_of(s);
+  if k == AB_MOON { return v[0].mb_on; }
+  if k == AB_FLAME { return v[0].pf_on; }
+  if k == AB_SHILLELAGH { return v[0].sh_on; }
+  if k == AB_ENTANGLE { return v[0].en_on; }
+  if k == AB_WISP || k == AB_POISON {
+    kind := ifx k == AB_WISP then GV_BOLT_WISP else GV_BOLT_POISON;
+    for q: 0..<GV_BOLTS { if v[0].bolts[q].live && v[0].bolts[q].kind == kind { return true; } }
+  }
+  return false;
+}
+// A press on ability k's slot: each is picked (again puts it away); one that lasts is begun, and with
+// it picked again ends.
+gv_press :: (s: [] Everglade, k: int) {
+  v := gv_of(s);
+  b := SP_SLOTS + k;
+  picked := s[0].sp.armed == b;
+  if k == AB_MOON && v[0].mb_on && picked { gv_mb_end(s); sp_say(s, "MOONBEAM ENDS", -1, ""); s[0].sp.armed = -1; return; }
+  if k == AB_FLAME {
+    if v[0].pf_on && picked { v[0].pf_on = false; sp_say(s, "PRODUCE FLAME ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if !v[0].pf_on { v[0].pf_on = true; v[0].pf_t = 0; sp_say(s, "PRODUCE FLAME", -1, ""); }
+    s[0].sp.armed = b; return;
+  }
+  if k == AB_SHILLELAGH {
+    if v[0].sh_on && picked { v[0].sh_on = false; sp_say(s, "SHILLELAGH ENDS", -1, ""); s[0].sp.armed = -1; return; }
+    if !v[0].sh_on { v[0].sh_on = true; v[0].sh_t = 0; v[0].sh_swing = -1; sp_say(s, "SHILLELAGH", -1, ""); }
+    s[0].sp.armed = b; return;
+  }
+  if k == AB_ELEMENTS {
+    if !picked { v[0].el_mode = GV_EL_AIR; s[0].sp.armed = b; return; }
+    if v[0].el_mode < GV_EL_WATER { v[0].el_mode += 1; return; }
+    s[0].sp.armed = -1; return;
+  }
+  if k == AB_ENTANGLE && v[0].en_on { gv_en_end(s); sp_say(s, "ENTANGLE ENDS", -1, ""); s[0].sp.armed = -1; return; }
+  s[0].sp.armed = ifx picked then -1 else b;
+}
+// A click or a tap with ability k picked.
+gv_cast :: (s: [] Everglade, k: int) {
+  if k == AB_MOON { gv_mb_cast(s); return; }
+  if k == AB_FLAME { gv_bolt_cast(s, GV_BOLT_FLAME); return; }
+  if k == AB_WISP { gv_bolt_cast(s, GV_BOLT_WISP); return; }
+  if k == AB_POISON { gv_bolt_cast(s, GV_BOLT_POISON); return; }
+  if k == AB_SHILLELAGH { gv_sh_cast(s); return; }
+  if k == AB_ELEMENTS { gv_el_cast(s); return; }
+  if k == AB_ENTANGLE { gv_en_cast(s); return; }
+}
+// You fall Prone in the sleet or are otherwise broken off: the Concentration spells end.
+gv_concentration_lost :: (s: [] Everglade) {
+  v := gv_of(s);
+  if v[0].mb_on { gv_mb_end(s); }
+  if v[0].en_on { gv_en_end(s); }
+}
+// Whether (x, z) is Difficult Terrain for you (Entangle's square).
+gv_rough :: (s: [] Everglade, x: f32, z: f32) -> bool {
+  v := gv_of(s);
+  return v[0].en_on && gv_in_square(v[0].en_at, x, z);
+}
+gv_in_square :: (c: Point, x: f32, z: f32) -> bool { h := f32(GV_EN_SIDE) * 0.5; return abs(x - c.x) <= h && abs(z - c.z) <= h; }
+gv_right :: (s: [] Everglade) -> Point { f := ab_forward(s); return v3(-f.z, 0, f.x); }
+// Your casting hand, out ahead of your chest on your right.
+gv_hand :: (s: [] Everglade) -> Point { return add(ab_you(s), add(v3(0, 1.2, 0), add(times(ab_forward(s), 0.35), times(gv_right(s), 0.25)))); }
+gv_crime :: (s: [] Everglade, at: Point, heard: f32) {
+  if !watch_on(s) { return; }
+  _ := watch_crime(watch_w(s), at, heard, ab_you(s), s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+}
+
+// ---- Moonbeam
 
 // A click with Moonbeam picked: it shines there, or moves there while it shines.
 gv_mb_cast :: (s: [] Everglade) {
@@ -45,10 +193,9 @@ gv_mb_cast :: (s: [] Everglade) {
 gv_mb_end :: (s: [] Everglade) { gv_of(s)[0].mb_on = false; }
 gv_in_beam :: (c: Point, p: Point) -> bool { return flat_gap(c, p) <= f32(GV_MB_R) + f32(BLAST_PAD) && p.y + f32(BODY_TALL) >= c.y - 0.3 && p.y <= c.y + f32(GV_MB_H); }
 
-// Each frame: the beam's saves, on the townsfolk and on you.
-gv_frame :: (s: [] Everglade, dt: f32) {
+// The beam's saves, on the townsfolk and on you.
+gv_mb_frame :: (s: [] Everglade, dt: f32) {
   v := gv_of(s);
-  v[0].time += dt;
   if !v[0].mb_on { return; }
   v[0].mb_t += dt;
   if v[0].mb_t >= f32(GV_MB_LIFE) { gv_mb_end(s); sp_say(s, "MOONBEAM ENDS", -1, ""); return; }
@@ -72,7 +219,7 @@ gv_frame :: (s: [] Everglade, dt: f32) {
     v[0].mb_in[i] = inside;
   }
   if hurt > 0 {
-    _ := watch_crime(w, c, f32(GV_HEAR), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]);
+    gv_crime(s, c, f32(GV_HEAR));
     sp_say(s, "MOONBEAM · 2D10 RADIANT", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT");
   }
   inside := !w[0].dead && gv_in_beam(c, you);
@@ -85,7 +232,485 @@ gv_frame :: (s: [] Everglade, dt: f32) {
   }
   v[0].you_in = inside;
 }
+
+// ---- Produce Flame, Starry Wisp, Poison Spray: hurled at someone or something
+
+gv_bolt_cast :: (s: [] Everglade, kind: int) {
+  v := gv_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT SOMEONE OR SOMETHING", -1, ""); return; }
+  if kind == GV_BOLT_FLAME && v[0].pf_cool > 0 { return; }
+  pick := ab_tk_pick(s);
+  target := ifx pick.kind == 2 then pick.idx else -1;
+  body := ifx pick.kind == 1 then pick.idx else -1;
+  to := ifx target >= 0 then ab_person_at(s, target) else ifx body >= 0 then pd3(demo_body(sp_dm(s), body).pos) else s[0].sp.aim;
+  if length(sub(to, gv_hand(s))) > GV_BOLT_RANGE[kind] {
+    sp_say(s, ifx kind == GV_BOLT_POISON then "TOO FAR · 30 FEET AT MOST" else "TOO FAR · 60 FEET AT MOST", -1, "");
+    return;
+  }
+  gv_bolt_at(s, kind, target, body, to);
+}
+// Hurls `kind` from your hand at `to`: at person `target` or debris `body` (-1 none).
+gv_bolt_at :: (s: [] Everglade, kind: int, target: int, body: int, to: Point) {
+  v := gv_of(s);
+  from := gv_hand(s);
+  k := 0;
+  for q: 0..<GV_BOLTS { if !v[0].bolts[q].live { k = q; break; } if v[0].bolts[q].t > v[0].bolts[k].t { k = q; } }
+  v[0].bolts[k] = GvBolt.{live = true, kind = kind, from = from, to = to, t = 0, flight = hi(length(sub(to, from)) / GV_BOLT_SPEED[kind], 0.05), target = target, body = body};
+  s[0].sp.armed = -1;
+  if kind == GV_BOLT_FLAME { v[0].pf_cool = f32(GV_HURL); }
+  if kind == GV_BOLT_POISON {
+    // the spray leaves your hand as a gout of mist
+    for q: 0..<5 { gv_add_mist(s, add(from, times(sp_spray(s, 0), 0.1)), add(times(unit_or(sub(to, from), v3(0, 0, 1)), 3 + 2 * sp_rand(s)), times(sp_spray(s, 0), 0.4)), 0.25, 0.9, GV_VENOM_RGB, 0.5); }
+  }
+}
+// It arrives: the attack on whom it was hurled at, and what it does where it lands.
+gv_bolt_land :: (s: [] Everglade, b: GvBolt) {
+  v := gv_of(s);
+  d := s[0].sp.dice[..];
+  at := b.to;
+  you := ab_you(s);
+  hit := false; amount := 0; tried := false;
+  if b.target >= 0 && watch_on(s) && ab_person_ok(s, b.target) {
+    tried = true;
+    at = ab_person_at(s, b.target);
+    roll := srd_roll(d, 20);
+    crit := roll == 20;
+    hit = roll != 1 && (crit || roll + GV_ATTACK >= watch_block(b.target).ac);
+    if hit {
+      amount = srd_sum(d, GV_CANTRIP * (ifx crit then 2 else 1), GV_BOLT_SIDES[b.kind]);
+      watch_harm(watch_w(s), b.target, amount, you);
+      if b.kind == GV_BOLT_WISP { v[0].starlit[b.target] = f32(GV_WISP_FOR); }
+    }
+    gv_crime(s, at, GV_BOLT_HEAR[b.kind]);
+  }
+  if hit { sp_say(s, ifx b.kind == GV_BOLT_FLAME then "PRODUCE FLAME · 2D8 FIRE" else ifx b.kind == GV_BOLT_WISP then "STARRY WISP · 2D8 RADIANT · STARLIT" else "POISON SPRAY · 2D12 POISON", amount, "DAMAGE"); }
+  else if tried { sp_say(s, ifx b.kind == GV_BOLT_FLAME then "PRODUCE FLAME · IT MISSES" else ifx b.kind == GV_BOLT_WISP then "STARRY WISP · IT MISSES" else "POISON SPRAY · IT MISSES", -1, ""); }
+  few := phone(s);
+  if b.kind == GV_BOLT_FLAME {
+    // a small burst of fire and its flash, embers thrown out to fall, a scorch where it strikes the ground
+    v[0].flash_at = at; v[0].flash_t = 0;
+    for q: 0..<(ifx few then 4 else 6) { sp_add_flame(s, at, times(sp_spray(s, 0.4), 0.8 + 1.4 * sp_rand(s)), 0.12 + 0.08 * sp_rand(s), 1.8, 0.3 + 0.25 * sp_rand(s), 2.5, ifx q == 0 then 0.6f32 else 0.0f32); }
+    for q: 0..<(ifx few then 6 else 12) { sp_add_spark(s, at, times(sp_spray(s, 0.5), 2 + 4 * sp_rand(s)), 0.6 + 0.6 * sp_rand(s), 0.022, v3(1.4, 0.6, 0.15), 9.81); }
+    floor_y := sp_surface(s, at.x, at.z, at.y + 0.5);
+    if b.target < 0 && at.y - floor_y < 0.6 && !fr_wet(s, at.x, at.z) { sp_add_scorch(s, v3(at.x, floor_y, at.z), 0.35, false); }
+    if b.body >= 0 && b.body < DEMO_BODIES && sp_dm(s)[0].meta[b.body].kind != 0 { s[0].sp.burn[b.body] = hi(s[0].sp.burn[b.body], f32(GV_BURN)); }
+    fr_melt(s, at, 0.8);
+  } else if b.kind == GV_BOLT_WISP {
+    // it breaks in a burst of starlight
+    sp_add_shock(s, at, 1.4, 0.35, GV_STAR_RGB);
+    for q: 0..<(ifx few then 8 else 16) { sp_add_spark(s, at, times(sp_spray(s, 0.2), 1.5 + 3 * sp_rand(s)), 0.5 + 0.5 * sp_rand(s), 0.02, v3(1.3, 1.15, 0.7), 1.5); }
+  } else {
+    // the mist bursts over them and hangs a few seconds
+    for q: 0..<(ifx few then 6 else 10) { gv_add_mist(s, add(at, times(sp_spray(s, 0.2), 0.3)), times(sp_spray(s, 0.3), 0.5 + 0.6 * sp_rand(s)), 0.35 + 0.25 * sp_rand(s), 2.5 + 1.5 * sp_rand(s), GV_VENOM_RGB, 0.55); }
+  }
+}
+gv_add_mist :: (s: [] Everglade, at: Point, vel: Point, size: f32, life: f32, colour: Point, thick: f32) {
+  v := gv_of(s);
+  k := 0;
+  for q: 0..<GV_MISTS { if !v[0].mists[q].live { k = q; break; } if v[0].mists[q].t / v[0].mists[q].life > v[0].mists[k].t / v[0].mists[k].life { k = q; } }
+  v[0].mists[k] = GvMist.{live = true, at = at, vel = vel, t = 0, life = life, size = size, colour = colour, thick = thick};
+}
+gv_bolts_frame :: (s: [] Everglade, dt: f32) {
+  v := gv_of(s);
+  few := phone(s);
+  for q: 0..<GV_BOLTS {
+    if !v[0].bolts[q].live { continue; }
+    v[0].bolts[q].t += dt;
+    b := v[0].bolts[q];
+    u := clamp(b.t / b.flight, 0, 1);
+    at := mix(b.from, b.to, u);
+    // what it leaves behind it in the air
+    if b.kind == GV_BOLT_FLAME { sp_add_flame(s, at, times(sp_spray(s, 0), 0.4), 0.16, 1.6, 0.22, 1.5, 0); }
+    else if b.kind == GV_BOLT_WISP && !few { sp_add_spark(s, at, times(sp_spray(s, 0), 0.6), 0.45, 0.018, v3(1.2, 1.05, 0.6), -0.3); }
+    else if b.kind == GV_BOLT_POISON { gv_add_mist(s, at, times(sp_spray(s, 0), 0.5), 0.18 + 0.2 * u, 0.8, GV_VENOM_RGB, 0.45); }
+    if b.t >= b.flight { v[0].bolts[q].live = false; gv_bolt_land(s, b); }
+  }
+  for q: 0..<GV_MISTS {
+    if !v[0].mists[q].live { continue; }
+    m := v[0].mists[q];
+    m.t += dt;
+    if m.t >= m.life { v[0].mists[q].live = false; continue; }
+    m.vel = times(m.vel, 1 - lo(dt * 2.2, 0.5));
+    m.vel.y += 0.15 * dt;
+    m.at = add(m.at, times(m.vel, dt));
+    v[0].mists[q] = m;
+  }
+  if v[0].pf_cool > 0 { v[0].pf_cool = hi(v[0].pf_cool - dt, 0); }
+  v[0].flash_t += dt;
+  if v[0].pf_on { v[0].pf_t += dt; if v[0].pf_t >= f32(GV_PF_LIFE) { v[0].pf_on = false; sp_say(s, "PRODUCE FLAME ENDS", -1, ""); } }
+  for i: 0..<WATCH_ACTORS { if v[0].starlit[i] > 0 { v[0].starlit[i] = hi(v[0].starlit[i] - dt, 0); } }
+}
+
+// ---- Shillelagh
+
+gv_sh_cast :: (s: [] Everglade) {
+  v := gv_of(s);
+  if v[0].sh_swing >= 0 { return; }
+  pick := ab_tk_pick(s);
+  if pick.kind != 1 && pick.kind != 2 { sp_say(s, "POINT AT SOMEONE IN REACH", -1, ""); return; }
+  at := ifx pick.kind == 2 then ab_person_at(s, pick.idx) else pd3(demo_body(sp_dm(s), pick.idx).pos);
+  if flat_gap(at, ab_you(s)) > f32(GV_SH_REACH) + 0.6 { sp_say(s, "OUT OF REACH · 5 FEET", -1, ""); return; }
+  gv_sh_swing_at(s, ifx pick.kind == 2 then pick.idx else -1, ifx pick.kind == 1 then pick.idx else -1);
+}
+// The staff swings at person `who` or debris `body`; its blow lands GV_SH_STRIKE into the swing.
+gv_sh_swing_at :: (s: [] Everglade, who: int, body: int) {
+  v := gv_of(s);
+  v[0].sh_swing = 0; v[0].sh_who = who; v[0].sh_body = body; v[0].sh_struck = false;
+  s[0].sp.armed = -1;
+}
+gv_sh_frame :: (s: [] Everglade, dt: f32) {
+  v := gv_of(s);
+  if !v[0].sh_on { return; }
+  v[0].sh_t += dt;
+  if v[0].sh_t >= f32(GV_SH_LIFE) { v[0].sh_on = false; sp_say(s, "SHILLELAGH ENDS", -1, ""); return; }
+  if v[0].sh_swing < 0 { return; }
+  v[0].sh_swing += dt;
+  if !v[0].sh_struck && v[0].sh_swing >= f32(GV_SH_STRIKE) {
+    v[0].sh_struck = true;
+    d := s[0].sp.dice[..];
+    you := ab_you(s);
+    if v[0].sh_who >= 0 && watch_on(s) && ab_person_ok(s, v[0].sh_who) {
+      at := ab_person_at(s, v[0].sh_who);
+      roll := srd_roll(d, 20);
+      crit := roll == 20;
+      if roll != 1 && (crit || roll + GV_ATTACK >= watch_block(v[0].sh_who).ac) {
+        amount := srd_sum(d, ifx crit then 2 else 1, GV_SH_DIE) + GV_WIS;
+        watch_harm(watch_w(s), v[0].sh_who, amount, you);
+        sp_say(s, "SHILLELAGH · 1D10 + 3 FORCE", amount, "DAMAGE");
+        for q: 0..<10 { sp_add_spark(s, at, times(sp_spray(s, 0.3), 2 + 3 * sp_rand(s)), 0.4 + 0.3 * sp_rand(s), 0.02, v3(0.6, 1.3, 0.5), 4); }
+        sp_add_shock(s, at, 1.0, 0.25, GV_GROWTH_RGB);
+        s[0].sp.shake = hi(s[0].sp.shake, 0.15);
+      } else { sp_say(s, "SHILLELAGH · IT MISSES", -1, ""); }
+      gv_crime(s, at, f32(GV_HEAR_SH));
+    } else if v[0].sh_body >= 0 && v[0].sh_body < DEMO_BODIES && sp_dm(s)[0].meta[v[0].sh_body].kind != 0 {
+      // a loose thing it strikes is knocked away
+      w := sp_dm(s);
+      body := demo_body(w, v[0].sh_body);
+      f := ab_forward(s);
+      body.vel = d3_add(body.vel, d3(f64(f.x * 5), 2.0, f64(f.z * 5)));
+      body.sleeping = false; body.sleep_time = 0.0;
+      demo_put(w, v[0].sh_body, body);
+      w[0].meta[v[0].sh_body].rest_time = 0; w[0].meta[v[0].sh_body].thrown = w[0].clock + DEMO_THROWN;
+      sp_say(s, "SHILLELAGH", -1, "");
+    }
+  }
+  if v[0].sh_swing >= f32(GV_SH_SWING) { v[0].sh_swing = -1; }
+}
+// The staff's lean from straight up toward ahead (rad): at rest, drawn back, the blow, back to rest.
+gv_sh_lean :: (t: f32) -> f32 {
+  if t < 0 { return 0.25; }
+  if t < 0.08 { return lerp(0.25, -0.7, t / 0.08); }
+  if t < f32(GV_SH_STRIKE) { u := (t - 0.08) / (f32(GV_SH_STRIKE) - 0.08); return lerp(-0.7, 1.75, u * u); }
+  return lerp(1.75, 0.25, clamp((t - f32(GV_SH_STRIKE)) / (f32(GV_SH_SWING) - f32(GV_SH_STRIKE)), 0, 1));
+}
+
+// ---- Elementalism
+
+gv_el_cast :: (s: [] Everglade) {
+  v := gv_of(s);
+  if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  if flat_gap(at, ab_you(s)) > f32(GV_EL_RANGE) { sp_say(s, "TOO FAR · 30 FEET AT MOST", -1, ""); return; }
+  gv_el_at(s, v[0].el_mode, at);
+  s[0].sp.armed = -1;
+}
+gv_in_cube :: (c: Point, p: Point) -> bool {
+  h := f32(GV_EL_CUBE) * 0.5 + 0.1;
+  return abs(p.x - c.x) <= h && abs(p.z - c.z) <= h && p.y >= c.y - 0.3 && p.y <= c.y + f32(GV_EL_CUBE) + 0.1;
+}
+// Element `mode` answers in the 5-foot cube standing on `at`.
+gv_el_at :: (s: [] Everglade, mode: int, at: Point) {
+  v := gv_of(s);
+  c := v3(at.x, sp_surface(s, at.x, at.z, at.y + 0.5), at.z);
+  mid := add(c, v3(0, f32(GV_EL_CUBE) * 0.5, 0));
+  w := sp_dm(s);
+  few := phone(s);
+  you_in := gv_in_cube(c, add(ab_you(s), v3(0, 0.9, 0)));
+  if mode == GV_EL_AIR {
+    // a breeze: the splinters, dust and loose bits there blown on, leaves whirled up
+    blown := 0;
+    for b: 0..<DEMO_BITS {
+      if !w[0].bits[b].live || !gv_in_cube(c, w[0].bits[b].at) { continue; }
+      w[0].bits[b].vel = add(w[0].bits[b].vel, add(times(sp_spray(s, 0), 1.5), v3(0, 1.5, 0))); w[0].bits[b].resting = false;
+      blown += 1;
+    }
+    for q: 0..<(ifx few then 6 else 12) {
+      a := f32(TAU) * sp_rand(s);
+      sp_add_spark(s, add(c, v3(cos(a) * 0.5, 0.1 + 0.4 * sp_rand(s), sin(a) * 0.5)), v3(-sin(a) * 2.2, 1.2 + sp_rand(s), cos(a) * 2.2), 1.0 + 0.6 * sp_rand(s), 0.03, v3(0.3, 0.45, 0.12), 1.2);
+    }
+    for q: 0..<3 { sp_add_puff(s, add(c, v3(0, 0.2, 0)), times(sp_spray(s, 0.2), 1.2), 0.4, 1.2, 0.5); }
+    sp_say(s, "ELEMENTALISM · BECKON AIR", -1, "");
+  } else if mode == GV_EL_EARTH {
+    k := 0;
+    for q: 0..<GV_DUSTS { if !v[0].dusts[q].live { k = q; break; } if v[0].dusts[q].t > v[0].dusts[k].t { k = q; } }
+    v[0].dusts[k] = GvDust.{live = true, at = c, t = 0};
+    for q: 0..<(ifx few then 4 else 7) { sp_add_puff(s, add(c, v3((sp_rand(s) - 0.5) * 1.2, 0.15, (sp_rand(s) - 0.5) * 1.2)), v3(0, 0.3, 0), 0.45, 1.6, 0.55); }
+    sp_say(s, "ELEMENTALISM · BECKON EARTH", -1, "");
+  } else if mode == GV_EL_FIRE {
+    // harmless embers and coloured smoke; a small fire there goes out, or a piece of debris catches
+    hue := ifx sp_rand(s) < 0.5 then v3(0.55, 0.3, 0.75) else v3(0.25, 0.55, 0.6);
+    for q: 0..<(ifx few then 8 else 16) { sp_add_spark(s, add(c, v3((sp_rand(s) - 0.5) * 1.3, 0.1 + 0.6 * sp_rand(s), (sp_rand(s) - 0.5) * 1.3)), v3(0, 0.6 + 0.6 * sp_rand(s), 0), 1.0 + 0.8 * sp_rand(s), 0.02, v3(1.3, 0.55, 0.12), -0.4); }
+    for q: 0..<5 { gv_add_mist(s, add(mid, times(sp_spray(s, 0.2), 0.3)), v3(0, 0.5, 0), 0.4, 2.5 + sp_rand(s), hue, 0.4); }
+    snuffed := 0; catch := -1;
+    box: [1] DemoBox;
+    for b: 0..<DEMO_BODIES {
+      if w[0].meta[b].kind == 0 || !demo_chunk_box(w, b, box[..]) || !gv_in_cube(c, box[0].at) { continue; }
+      if s[0].sp.burn[b] > 0 { s[0].sp.burn[b] = 0; snuffed += 1; } else if catch < 0 { catch = b; }
+    }
+    if snuffed > 0 { sp_say(s, "ELEMENTALISM · BECKON FIRE · IT GOES OUT", -1, ""); }
+    else if catch >= 0 { s[0].sp.burn[catch] = f32(GV_BURN); sp_say(s, "ELEMENTALISM · BECKON FIRE · IT CATCHES", -1, ""); }
+    else { sp_say(s, "ELEMENTALISM · BECKON FIRE", -1, ""); }
+  } else {
+    for q: 0..<(ifx few then 6 else 10) { gv_add_mist(s, add(mid, times(sp_spray(s, 0.1), 0.4)), times(sp_spray(s, 0.2), 0.4), 0.35, 1.8 + sp_rand(s), v3(0.7, 0.8, 0.9), 0.35); }
+    if !fr_wet(s, c.x, c.z) { sp_add_scorch(s, c, f32(GV_EL_CUBE) * 0.5, true); }
+    sp_say(s, ifx you_in then "ELEMENTALISM · BECKON WATER · THE MIST DAMPENS YOU" else "ELEMENTALISM · BECKON WATER", -1, "");
+  }
+}
+
+// ---- Entangle
+
+gv_en_cast :: (s: [] Everglade) {
+  if !s[0].sp.aim_ok || s[0].sp.aim_n.y < 0.6 { sp_say(s, "POINT AT THE GROUND", -1, ""); return; }
+  at := s[0].sp.aim;
+  if flat_gap(at, ab_you(s)) > f32(GV_EN_RANGE) { sp_say(s, "TOO FAR · 90 FEET AT MOST", -1, ""); return; }
+  s[0].sp.armed = -1;
+  gv_en_at(s, at);
+}
+gv_en_at :: (s: [] Everglade, at: Point) {
+  v := gv_of(s);
+  if v[0].en_on { gv_en_end(s); }
+  v[0].en_on = true; v[0].en_t = 0; v[0].en_at = v3(at.x, ground_at(s, at.x, at.z), at.z);
+  for i: 0..<WATCH_ACTORS { v[0].en_held[i] = false; v[0].en_next[i] = f32(GV_EN_ROUND); }
+  for q: 0..<6 { sp_add_puff(s, add(gv_vine_root(s, q * 3), v3(0, 0.15, 0)), v3(0, 0.5, 0), 0.6, 1.4, 0.55); }
+  // each one there as it is cast (not you): a Strength save or Restrained
+  n := 0;
+  if watch_on(s) {
+    for i: 0..<WATCH_ACTORS {
+      if !ab_person_ok(s, i) || ab_air(s, i) > 1.0 { continue; }
+      pl := person_place(s, i);
+      if !gv_in_square(v[0].en_at, pl.x, pl.z) || ab_str_save(s, i) { continue; }
+      v[0].en_held[i] = true; v[0].en_x[i] = pl.x; v[0].en_z[i] = pl.z;
+      n += 1;
+    }
+  }
+  if n > 0 { gv_crime(s, v[0].en_at, f32(GV_HEAR_EN)); sp_say(s, "ENTANGLE", n, "RESTRAINED"); }
+  else { sp_say(s, "ENTANGLE", -1, ""); }
+}
+gv_en_end :: (s: [] Everglade) {
+  v := gv_of(s);
+  v[0].en_on = false;
+  for i: 0..<WATCH_ACTORS { v[0].en_held[i] = false; }
+}
+gv_en_frame :: (s: [] Everglade, dt: f32) {
+  v := gv_of(s);
+  if !v[0].en_on { return; }
+  v[0].en_t += dt;
+  if v[0].en_t >= f32(GV_EN_LIFE) { gv_en_end(s); sp_say(s, "ENTANGLE ENDS", -1, ""); return; }
+  if !watch_on(s) { return; }
+  w := watch_w(s);
+  freed := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !v[0].en_held[i] { continue; }
+    if !ab_person_ok(s, i) { v[0].en_held[i] = false; continue; }
+    // each round a Strength (Athletics) check to tear free
+    if v[0].en_t >= v[0].en_next[i] {
+      v[0].en_next[i] = v[0].en_t + f32(GV_EN_ROUND);
+      if ab_str_save(s, i) { v[0].en_held[i] = false; freed += 1; continue; }
+    }
+    act := w[0].actors[i..<i + 1];
+    act[0].x = v[0].en_x[i]; act[0].z = v[0].en_z[i];
+    if i < EG_SPOTS { s[0].folk[i].x = act[0].x; s[0].folk[i].z = act[0].z; }
+    if act[0].mode == WM_DOWN { act[0].t = lo(act[0].t, 0.25); }
+  }
+  if freed > 0 { sp_say(s, "ENTANGLE · TORN FREE", freed, ""); }
+}
+// Vine j's root: scattered over the square, the same every frame.
+gv_vine_root :: (s: [] Everglade, j: int) -> Point {
+  v := gv_of(s);
+  c := v[0].en_at;
+  h := f32(GV_EN_SIDE) * 0.5;
+  x := c.x + (ab_h(41.0, j, 0) * 2 - 1) * h * 0.92;
+  z := c.z + (ab_h(41.0, j, 1) * 2 - 1) * h * 0.92;
+  return v3(x, ground_at(s, x, z), z);
+}
+
+// ---- each frame, the light and drawing
+
+gv_frame :: (s: [] Everglade, dt: f32) {
+  v := gv_of(s);
+  v[0].time += dt;
+  gv_mb_frame(s, dt);
+  gv_bolts_frame(s, dt);
+  gv_sh_frame(s, dt);
+  gv_en_frame(s, dt);
+  for q: 0..<GV_DUSTS { if v[0].dusts[q].live { v[0].dusts[q].t += dt; if v[0].dusts[q].t >= f32(GV_DUST_LIFE) { v[0].dusts[q].live = false; } } }
+}
+// The flame in your hand and those in flight light the town (everglade-spells.coax spells_lamps).
+gv_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {
+  v := gv_of(s);
+  n := k;
+  flick := 0.85 + 0.15 * sin(v[0].time * 17) * sin(v[0].time * 6.3);
+  if v[0].pf_on { n = sp_lamp(u, n, most, gv_hand(s), f32(GV_PF_DIM), v3(1.0, 0.58, 0.25), 1.4 * flick); }
+  for q: 0..<GV_BOLTS {
+    b := v[0].bolts[q];
+    if !b.live || b.kind != GV_BOLT_FLAME { continue; }
+    n = sp_lamp(u, n, most, mix(b.from, b.to, clamp(b.t / b.flight, 0, 1)), 6, v3(1.0, 0.55, 0.22), 1.2);
+  }
+  if v[0].flash_t < 0.35 { f := 1 - v[0].flash_t / 0.35; n = sp_lamp(u, n, most, add(v[0].flash_at, v3(0, 0.6, 0)), 5, v3(1.0, 0.55, 0.22), 2.5 * f * f); }
+  for i: 0..<WATCH_ACTORS {
+    if v[0].starlit[i] <= 0 || !ab_person_ok(s, i) { continue; }
+    n = sp_lamp(u, n, most, ab_person_at(s, i), f32(GV_WISP_DIM), v3(1.0, 0.9, 0.6), 0.7 * clamp(v[0].starlit[i], 0, 1));
+  }
+  return n;
+}
+// A rod from p to q, r thick.
+gv_rod :: (s: [] Everglade, look: int, p: Point, q: Point, r: f32, c: Point) {
+  ax := sub(q, p);
+  l := length(ax);
+  if l < 0.005 { return; }
+  up := times(ax, 1.0 / l);
+  side := unit_or(cross(up, v3(0, 1, 0.001)), v3(1, 0, 0));
+  fwd := cross(side, up);
+  sp_shape(s, SHAPE_CYLINDER, look, mix(p, q, 0.5), times(side, r * 2), ax, times(fwd, r * 2), c);
+}
+// A vine's length from p to q, r thick at p: a cone reaching 1.6 lengths on, so the next one's base
+// covers its point (as Black Tentacles' are drawn; cylinders are few).
+gv_vine :: (s: [] Everglade, p: Point, q: Point, r: f32, c: Point) {
+  ax := sub(q, p);
+  l := length(ax);
+  if l < 0.005 { return; }
+  up := times(ax, 1.0 / l);
+  side := unit_or(cross(up, v3(0, 1, 0.001)), v3(1, 0, 0));
+  fwd := cross(side, up);
+  along := times(up, l * 1.6);
+  sp_shape(s, SHAPE_CONE, LOOK_MATTE, add(p, times(along, 0.5)), times(side, r * 2), along, times(fwd, r * 2), c);
+}
 gv_draw :: (s: [] Everglade) {
+  v := gv_of(s);
+  few := phone(s);
+  gv_mb_draw(s);
+  // the flame in your hand: small billows licking up off your palm, its glow
+  if v[0].pf_on {
+    h := gv_hand(s);
+    if cast(int) (v[0].time * 30) != cast(int) ((v[0].time - 1.0 / 60) * 30) { sp_add_flame(s, add(h, times(sp_spray(s, 0), 0.04)), v3(0, 0.3, 0), 0.09 + 0.05 * sp_rand(s), 1.5, 0.28 + 0.1 * sp_rand(s), 2.2, 0); }
+    sp_glow(s, h, 0.7, times(GV_FLAME_RGB, 0.45));
+  }
+  // what is in flight: the fire's head, the wisp's mote, the spray's front
+  for q: 0..<GV_BOLTS {
+    b := v[0].bolts[q];
+    if !b.live { continue; }
+    at := mix(b.from, b.to, clamp(b.t / b.flight, 0, 1));
+    if b.kind == GV_BOLT_FLAME { sp_fx(s, FX_FIRE, at, 0.28, v3(1.5, 1.0, 0.45), 1, v3(1, 0, 0), v[0].time * 3.1 + f32(q)); sp_glow(s, at, 1.0, times(GV_FLAME_RGB, 0.5)); }
+    else if b.kind == GV_BOLT_WISP { sp_glow(s, at, 0.55, v3(1.4, 1.25, 0.8)); sp_glow(s, at, 0.18, v3(2.0, 2.0, 1.8)); }
+  }
+  // the mist: soft coloured puffs, thinning as they spread
+  for q: 0..<GV_MISTS {
+    m := v[0].mists[q];
+    if !m.live { continue; }
+    f := m.t / m.life;
+    sp_fx(s, FX_SMOKE, m.at, m.size * (1 + 1.5 * f), m.colour, m.thick * (1 - f) * clamp(m.t / 0.1, 0, 1), v3(0, 0, 0), f32(q) * 0.37);
+  }
+  // starlight on whom a wisp struck
+  for i: 0..<WATCH_ACTORS {
+    if v[0].starlit[i] <= 0 || !ab_person_ok(s, i) { continue; }
+    p := ab_person_at(s, i);
+    on := clamp(v[0].starlit[i], 0, 1);
+    sp_glow(s, p, 1.6 * on, times(GV_STAR_RGB, 0.18));
+    for t: 0..<(ifx few then 3 else 6) {
+      a := f32(TAU) * ab_h(53.0, t, 0) + v[0].time * (0.7 + ab_h(53.0, t, 1));
+      y := 0.9 * sin(v[0].time * 1.3 + f32(t) * 1.7);
+      sp_glow(s, add(p, v3(cos(a) * 0.45, y, sin(a) * 0.45)), 0.08, times(v3(1.4, 1.3, 0.9), on));
+    }
+  }
+  // the staff: a quarterstaff in your hand, green with nature's power, swinging when it strikes
+  if v[0].sh_on {
+    f := ab_forward(s); r := gv_right(s);
+    grip := add(ab_you(s), add(v3(0, 0.92, 0), add(times(f, 0.12), times(r, 0.3))));
+    lean := gv_sh_lean(v[0].sh_swing);
+    dir := add(times(v3(0, 1, 0), cos(lean)), times(f, sin(lean)));
+    foot := sub(grip, times(dir, 0.55)); top := add(grip, times(dir, 1.15));
+    gv_rod(s, LOOK_WOOD, foot, top, 0.022, v3(0.36, 0.24, 0.13));
+    pulse := 0.75 + 0.25 * sin(v[0].time * 4);
+    for g: 0..<4 { sp_glow(s, mix(foot, top, 0.2 + 0.25 * f32(g)), 0.22, times(GV_GROWTH_RGB, 0.22 * pulse)); }
+    side := unit_or(cross(dir, v3(0, 1, 0.001)), v3(1, 0, 0)); fwd := cross(side, dir);
+    for q: 0..<8 {
+      a0 := f32(q) * 1.4 + v[0].time * 0.8; a1 := a0 + 1.4;
+      p0 := add(mix(foot, top, f32(q) / 8), add(times(side, cos(a0) * 0.035), times(fwd, sin(a0) * 0.035)));
+      p1 := add(mix(foot, top, f32(q + 1) / 8), add(times(side, cos(a1) * 0.035), times(fwd, sin(a1) * 0.035)));
+      ab_line(s, p0, p1, times(GV_GROWTH_RGB, 0.55 * pulse));
+    }
+  }
+  // Elementalism's shroud of dust, settling and fading
+  for q: 0..<GV_DUSTS {
+    d := v[0].dusts[q];
+    if !d.live { continue; }
+    left := clamp((f32(GV_DUST_LIFE) - d.t) / 10, 0, 1);
+    r := f32(GV_EL_CUBE) * (0.6 + 0.4 * left);
+    sp_shape(s, SHAPE_CYLINDER, LOOK_MATTE, add(d.at, v3(0, 0.012, 0)), v3(r, 0, 0), v3(0, 0.015, 0), v3(0, 0, r), mix(v3(0.2, 0.18, 0.14), v3(0.5, 0.43, 0.31), left));
+  }
+  gv_en_draw(s, few);
+  // picked: Entangle's square where the pointer points
+  if s[0].sp.armed == SP_SLOTS + AB_ENTANGLE && s[0].sp.aim_ok {
+    pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+    far := flat_gap(s[0].sp.aim, ab_you(s)) > f32(GV_EN_RANGE);
+    ab_square(s, s[0].sp.aim, f32(GV_EN_SIDE) * 0.5, times(ifx far then v3(0.6, 0.25, 0.2) else GV_GROWTH_RGB, 0.7 * pulse));
+  }
+  if s[0].sp.armed == SP_SLOTS + AB_ELEMENTS && s[0].sp.aim_ok {
+    pulse := 0.65 + 0.35 * sin(f32(s[0].time) * 6);
+    ab_square(s, s[0].sp.aim, f32(GV_EL_CUBE) * 0.5, times(v3(0.6, 0.95, 0.9), 0.7 * pulse));
+  }
+}
+// Entangle: the vines rising and curling over the square, the ones round whom they hold, its edge.
+gv_en_draw :: (s: [] Everglade, few: bool) {
+  v := gv_of(s);
+  if !v[0].en_on { return; }
+  t := v[0].en_t;
+  grow := clamp(t / 0.8, 0, 1) * clamp((f32(GV_EN_LIFE) - t) / 1.0, 0, 1);
+  if grow <= 0 { return; }
+  for j: 0..<(ifx few then GV_VINES / 2 else GV_VINES) {
+    root := gv_vine_root(s, j);
+    tall := (0.55 + 0.75 * ab_h(43.0, j, 0)) * grow;
+    ph := f32(TAU) * ab_h(43.0, j, 1);
+    last := root;
+    for q: 1..<GV_VINE_SEG + 1 {
+      u := f32(q) / f32(GV_VINE_SEG);
+      a := ph + u * 2.6 + 0.35 * sin(t * 1.1 + ph);
+      rr := (0.05 + 0.3 * u * u) * grow;
+      p := add(root, v3(cos(a) * rr, tall * u, sin(a) * rr));
+      gv_vine(s, last, p, lerp(0.045, 0.016, u), times(GV_VINE_RGB, 1 + 0.25 * f32(q % 2)));
+      if q == 2 || q == 4 { sp_shape(s, SHAPE_BOX, LOOK_MATTE, p, v3(cos(a + 1.2) * 0.12, 0.012, sin(a + 1.2) * 0.12), v3(0, 0.01, 0), v3(-sin(a + 1.2) * 0.06, 0, cos(a + 1.2) * 0.06), v3(0.2, 0.42, 0.12)); }
+      last = p;
+    }
+  }
+  // round each one held: vines coiling up from the ground to their chest
+  drawn := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !v[0].en_held[i] || drawn >= 6 { continue; }
+    drawn += 1;
+    pl := person_place(s, i);
+    base := v3(v[0].en_x[i], folk_feet(s, pl.x, pl.z), v[0].en_z[i]);
+    for c: 0..<2 {
+      last := add(base, v3(cos(f32(c) * 3.1) * 0.3, 0, sin(f32(c) * 3.1) * 0.3));
+      for q: 1..<9 {
+        u := f32(q) / 8;
+        a := f32(c) * 3.1 + u * 9.5 + 0.2 * sin(t * 0.9 + f32(i));
+        p := add(base, v3(cos(a) * 0.27, 1.25 * u * grow, sin(a) * 0.27));
+        gv_vine(s, last, p, 0.022, GV_VINE_RGB);
+        last = p;
+      }
+    }
+  }
+  // low creepers matting the ground between them
+  for j: 0..<(ifx few then 5 else 10) {
+    a := gv_vine_root(s, 100 + j); b := gv_vine_root(s, 200 + j);
+    if flat_gap(a, b) > 1.4 { b = add(a, times(unit_or(sub(b, a), v3(1, 0, 0)), 1.4)); b.y = ground_at(s, b.x, b.z); }
+    m := mix(a, b, 0.5); m.y = hi(m.y, ground_at(s, m.x, m.z)) + 0.08 * grow;
+    gv_vine(s, add(a, v3(0, 0.03, 0)), m, 0.025, times(GV_VINE_RGB, 0.9));
+    gv_vine(s, m, add(b, v3(0, 0.03, 0)), 0.025, times(GV_VINE_RGB, 0.9));
+  }
+  ab_square(s, v[0].en_at, f32(GV_EN_SIDE) * 0.5, times(v3(0.3, 0.55, 0.18), 0.35 * grow));
+}
+gv_mb_draw :: (s: [] Everglade) {
   v := gv_of(s);
   if !v[0].mb_on { return; }
   c := v[0].mb_at;
@@ -106,6 +731,47 @@ gv_draw :: (s: [] Everglade) {
     at := v3(c.x + cos(a) * rr, c.y + up, c.z + sin(a) * rr);
     ab_line(s, at, add(at, v3(0, 0.25, 0)), times(GV_MOON_RGB, 0.6 * on));
   }
+}
+
+// ---- pointing: the line over the bar, and where it would land
+
+gv_hint :: (s: [] Everglade, k: int, phone_: bool, far: bool) -> string {
+  v := gv_of(s);
+  if k == AB_MOON {
+    if v[0].mb_on {
+      if far && flat_gap(s[0].sp.aim, v[0].mb_at) > f32(GV_MB_MOVE) { return "TOO FAR · IT MOVES 60 FEET AT MOST"; }
+      return ifx phone_ then "TAP WHERE TO MOVE THE MOONBEAM · TAP ITS SLOT TO END IT" else "CLICK WHERE TO MOVE THE MOONBEAM · SHIFT+- ENDS IT";
+    }
+    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(GV_MB_RANGE) { return "TOO FAR · 120 FEET AT MOST"; }
+    return ifx phone_ then "TAP THE GROUND FOR A MOONBEAM · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR A MOONBEAM · ESC CANCELS";
+  }
+  if k == AB_FLAME || k == AB_WISP || k == AB_POISON {
+    kind := ifx k == AB_FLAME then GV_BOLT_FLAME else ifx k == AB_WISP then GV_BOLT_WISP else GV_BOLT_POISON;
+    if far && length(sub(s[0].sp.aim, gv_hand(s))) > GV_BOLT_RANGE[kind] { return ifx kind == GV_BOLT_POISON then "TOO FAR · 30 FEET AT MOST" else "TOO FAR · 60 FEET AT MOST"; }
+    if k == AB_FLAME { return ifx phone_ then "TAP SOMEONE OR SOMETHING TO HURL THE FLAME · TAP ITS SLOT TO PUT IT OUT" else "CLICK SOMEONE OR SOMETHING TO HURL THE FLAME · CTRL+1 PUTS IT OUT"; }
+    if k == AB_WISP { return ifx phone_ then "TAP SOMEONE OR SOMETHING FOR A STARRY WISP · TAP ITS SLOT TO CANCEL" else "CLICK SOMEONE OR SOMETHING FOR A STARRY WISP · ESC CANCELS"; }
+    return ifx phone_ then "TAP SOMEONE WITHIN 30 FEET FOR POISON SPRAY · TAP ITS SLOT TO CANCEL" else "CLICK SOMEONE WITHIN 30 FEET FOR POISON SPRAY · ESC CANCELS";
+  }
+  if k == AB_SHILLELAGH { return ifx phone_ then "TAP SOMEONE IN REACH TO STRIKE · TAP ITS SLOT TO END IT" else "CLICK SOMEONE IN REACH TO STRIKE · CTRL+3 ENDS IT"; }
+  if k == AB_ELEMENTS {
+    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(GV_EL_RANGE) { return "TOO FAR · 30 FEET AT MOST"; }
+    m := v[0].el_mode;
+    if phone_ { return ifx m == GV_EL_AIR then "TAP TO BECKON AIR · TAP ITS SLOT FOR EARTH" else ifx m == GV_EL_EARTH then "TAP TO BECKON EARTH · TAP ITS SLOT FOR FIRE" else ifx m == GV_EL_FIRE then "TAP TO BECKON FIRE · TAP ITS SLOT FOR WATER" else "TAP TO BECKON WATER · TAP ITS SLOT TO CANCEL"; }
+    return ifx m == GV_EL_AIR then "CLICK TO BECKON AIR · CTRL+5 FOR EARTH" else ifx m == GV_EL_EARTH then "CLICK TO BECKON EARTH · CTRL+5 FOR FIRE" else ifx m == GV_EL_FIRE then "CLICK TO BECKON FIRE · CTRL+5 FOR WATER" else "CLICK TO BECKON WATER · CTRL+5 PUTS IT AWAY";
+  }
+  if k == AB_ENTANGLE {
+    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(GV_EN_RANGE) { return "TOO FAR · 90 FEET AT MOST"; }
+    return ifx phone_ then "TAP THE GROUND FOR ENTANGLE · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR ENTANGLE · ESC CANCELS";
+  }
+  return "";
+}
+gv_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int, pulse: f32) -> int {
+  if k == AB_MOON { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(GV_MB_R), GV_MOON_RGB, pulse); }
+  if k == AB_FLAME { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, GV_FLAME_RGB, pulse); }
+  if k == AB_WISP { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, GV_STAR_RGB, pulse); }
+  if k == AB_POISON { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, GV_VENOM_RGB, pulse); }
+  if k == AB_SHILLELAGH { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.45, GV_GROWTH_RGB, pulse); }
+  return n;
 }
 
 // ---- checks
@@ -144,4 +810,130 @@ gv_draw :: (s: [] Everglade) {
   #assert spells_key(g[..], '_', 1);
   up2 := spells_key_up(g[..], '_', 1);
   #assert spells_key(g[..], '_', 1) && !v[0].mb_on;
+}
+
+#test "grove: Ctrl+1 lights Produce Flame in your hand (a light on the town); hurled, it strikes, scorches and sets debris burning; Starry Wisp leaves its mark starlit; Poison Spray's mist hangs" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := gv_of(g[..]);
+  w := watch_w(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  // Ctrl+1 and Ctrl+Shift+1 both reach the third row
+  #assert sp_key_place('1', 2) == 24 && sp_key_place('!', 3) == 24 && sp_key_place('6', 2) == 29;
+  #assert spells_key(g[..], '1', 2) && g[0].sp.armed == SP_SLOTS + AB_FLAME && v[0].pf_on && ab_active(g[..], AB_FLAME);
+  ku := spells_key_up(g[..], '1', 2);
+  lights := cast(int) u[U_LIGHT_INFO];
+  gv_frame(g[..], 1.0 / 30);
+  #assert gv_lamps(g[..], u[..], 0, LIGHTS) == 1 && u[U_LIGHTS + 3] > 12 && lights >= 0;
+  // on the ground: it scorches it
+  at := add(ab_you(g[..]), v3(0, 0, 8)); at.y = ground_at(g[..], at.x, at.z);
+  gv_bolt_at(g[..], GV_BOLT_FLAME, -1, -1, at);
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  scorched := false;
+  for i: 0..<SP_SCORCHES { if g[0].sp.scorches[i].live && flat_gap(g[0].sp.scorches[i].at, at) < 0.1 { scorched = true; } }
+  #assert scorched && v[0].pf_on;
+  // at a person: a crime, and with a few throws a hit
+  crimes := w[0].crimes;
+  hp := w[0].actors[who].hp;
+  for k: 0..<6 {
+    if w[0].actors[who].hp < hp || !ab_person_ok(g[..], who) { break; }
+    gv_bolt_at(g[..], GV_BOLT_FLAME, who, -1, ab_person_at(g[..], who));
+    for q: 0..<40 { ab_frame(g[..], 1.0 / 30); }
+  }
+  #assert w[0].crimes > crimes && w[0].actors[who].hp < hp;
+  // Ctrl+1 with it picked puts it out
+  #assert spells_key(g[..], '1', 2) && g[0].sp.armed == SP_SLOTS + AB_FLAME;
+  ku = spells_key_up(g[..], '1', 2);
+  #assert spells_key(g[..], '1', 2) && !v[0].pf_on && g[0].sp.armed == -1;
+  ku = spells_key_up(g[..], '1', 2);
+  // Starry Wisp: whom it hits is starlit for a round, and sheds its light
+  other := -1;
+  for i: 0..<WATCH_ACTORS { if other < 0 && i != who && ab_person_ok(g[..], i) { other = i; } }
+  #assert other >= 0;
+  for k: 0..<8 {
+    if v[0].starlit[other] > 0 || !ab_person_ok(g[..], other) { break; }
+    gv_bolt_at(g[..], GV_BOLT_WISP, other, -1, ab_person_at(g[..], other));
+    for q: 0..<40 { gv_frame(g[..], 1.0 / 30); }
+  }
+  #assert v[0].starlit[other] > 0 && gv_lamps(g[..], u[..], 0, LIGHTS) >= 1;
+  for q: 0..<8 { gv_frame(g[..], 1.0); }
+  #assert v[0].starlit[other] == 0;
+  // Poison Spray: its mist hangs where it lands, then thins away
+  gv_bolt_at(g[..], GV_BOLT_POISON, -1, -1, at);
+  for q: 0..<30 { gv_frame(g[..], 1.0 / 30); }
+  mist := 0;
+  for q: 0..<GV_MISTS { if v[0].mists[q].live && length(sub(v[0].mists[q].at, at)) < 2.5 { mist += 1; } }
+  #assert mist >= 4;
+  for q: 0..<10 { gv_frame(g[..], 1.0); }
+  mist = 0;
+  for q: 0..<GV_MISTS { if v[0].mists[q].live { mist += 1; } }
+  #assert mist == 0;
+}
+
+#test "grove: Shillelagh's staff strikes in reach for 1d10 + 3 force; Elementalism beckons each element in turn; Entangle restrains who fails, slows you in it, and a lost Concentration ends it" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  v := gv_of(g[..]);
+  w := watch_w(g[..]);
+  who := -1;
+  for i: 0..<WATCH_ACTORS { if who < 0 && ab_person_ok(g[..], i) && !watch_is_guard(i) { who = i; } }
+  #assert who >= 0;
+  // Shillelagh: the staff swings, its blow lands, it ends with Ctrl+3 picked
+  #assert spells_key(g[..], '3', 2) && v[0].sh_on && g[0].sp.armed == SP_SLOTS + AB_SHILLELAGH;
+  ku := spells_key_up(g[..], '3', 2);
+  hp := w[0].actors[who].hp;
+  for k: 0..<8 {
+    if w[0].actors[who].hp < hp || !ab_person_ok(g[..], who) { break; }
+    gv_sh_swing_at(g[..], who, -1);
+    #assert gv_sh_lean(0.04) < 0 && gv_sh_lean(f32(GV_SH_STRIKE)) > 1.5;
+    for q: 0..<20 { gv_frame(g[..], 1.0 / 30); }
+    #assert v[0].sh_swing < 0;
+  }
+  #assert w[0].actors[who].hp < hp && hp - w[0].actors[who].hp <= 23 && w[0].crimes > 0;
+  #assert spells_key(g[..], '3', 2) && g[0].sp.armed == SP_SLOTS + AB_SHILLELAGH;
+  ku = spells_key_up(g[..], '3', 2);
+  #assert spells_key(g[..], '3', 2) && !v[0].sh_on;
+  ku = spells_key_up(g[..], '3', 2);
+  // Elementalism: Air, Earth, Fire, Water, then put away
+  #assert spells_key(g[..], '5', 2) && v[0].el_mode == GV_EL_AIR;
+  ku = spells_key_up(g[..], '5', 2);
+  for m: 1..<4 { #assert spells_key(g[..], '5', 2) && v[0].el_mode == m && g[0].sp.armed == SP_SLOTS + AB_ELEMENTS; ku = spells_key_up(g[..], '5', 2); }
+  #assert spells_key(g[..], '5', 2) && g[0].sp.armed == -1;
+  ku = spells_key_up(g[..], '5', 2);
+  spot := add(ab_you(g[..]), v3(0, 0, 4)); spot.y = ground_at(g[..], spot.x, spot.z);
+  gv_el_at(g[..], GV_EL_EARTH, spot);
+  dusty := false;
+  for q: 0..<GV_DUSTS { if v[0].dusts[q].live { dusty = true; } }
+  #assert dusty;
+  gv_el_at(g[..], GV_EL_WATER, ab_you(g[..]));
+  #assert contains(cast(string) g[0].sp.news[0..<g[0].sp.news_n], "DAMPENS YOU");
+  // Entangle on the one: Restrained till a check tears them free, or it ends; you are slowed in it, not held
+  // (on one the staff left standing)
+  held_one := -1;
+  for i: 0..<WATCH_ACTORS { if held_one < 0 && i != who && ab_person_ok(g[..], i) && !watch_is_guard(i) && ab_air(g[..], i) < 0.5 { held_one = i; } }
+  #assert held_one >= 0;
+  pl := person_place(g[..], held_one);
+  held := false;
+  for k: 0..<12 {
+    gv_en_at(g[..], v3(pl.x, 0, pl.z));
+    if v[0].en_held[held_one] { held = true; break; }
+  }
+  #assert held && v[0].en_on && ab_active(g[..], AB_ENTANGLE);
+  x0 := v[0].en_x[held_one];
+  ab_frame(g[..], 1.0 / 30);
+  #assert near(person_place(g[..], held_one).x, x0, 0.01);
+  #assert everglade_footing(g[..], pl.x, pl.z, 0).pace < 1 && !everglade_footing(g[..], pl.x, pl.z, 0).still;
+  #assert everglade_footing(g[..], pl.x + 20, pl.z, 0).pace == 1;
+  fr_you_prone(g[..], true);
+  #assert !v[0].en_on && !v[0].en_held[held_one];
 }

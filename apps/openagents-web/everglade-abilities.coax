@@ -66,17 +66,18 @@
 // at its base and its top); a Wind Wall its grounded outline and the updraft's streaks rising through
 // it (wind_wall.rs wall_lines), in the old guide lines' cyan.
 
-AB_N :: 17;                // abilities on the bar, after the four aimed spells
+AB_N :: 23;                // abilities on the bar, after the four aimed spells
 AB_REVERSE :: 0; AB_WIND :: 1; AB_LEVITATE :: 2; AB_FEATHER :: 3; AB_GUST :: 4; AB_THUNDER :: 5; AB_STONE :: 6;
 AB_TK :: 7; AB_TENTACLES :: 8;
 AB_KNIFE :: 9; AB_STORM :: 10; AB_SLEET :: 11;   // everglade-frost.coax
 AB_WWALK :: 12; AB_CONTROL :: 13; AB_CREATE :: 14; AB_BREATH :: 15;   // everglade-tide.coax
-AB_MOON :: 16;   // everglade-grove.coax
+AB_MOON :: 16;   // everglade-grove.coax, and the old Grove's druid spells after it
+AB_FLAME :: 17; AB_WISP :: 18; AB_SHILLELAGH :: 19; AB_POISON :: 20; AB_ELEMENTS :: 21; AB_ENTANGLE :: 22;
 // Each one's place on the bar, row * 12 + column (everglade-spells.coax sp_place): 5 to 0, then the
-// second row's Shift+1 on.
-AB_PLACE :: [AB_N] int.[4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22];
+// second row's Shift+1 on, then the third's Ctrl+1 on.
+AB_PLACE :: [AB_N] int.[4, 5, 6, 7, 8, 9, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 24, 25, 26, 27, 28, 29];
 // The ones you point with (picked, then a click or a tap casts them where it points).
-ab_aimed :: (k: int) -> bool { return k == AB_TK || k == AB_TENTACLES || k == AB_KNIFE || k == AB_STORM || k == AB_SLEET || k == AB_CONTROL || k == AB_CREATE || k == AB_MOON; }
+ab_aimed :: (k: int) -> bool { return k == AB_TK || k == AB_TENTACLES || k == AB_KNIFE || k == AB_STORM || k == AB_SLEET || k == AB_CONTROL || k == AB_CREATE || k >= AB_MOON; }
 AB_FOOT :: 0.3048;
 // Reverse Gravity (SRD 5.2.1, level 7): a 50-foot-radius, 100-foot-high cylinder, a minute.
 AB_RG_R :: 15.24; AB_RG_H :: 30.48; AB_RG_LIFE :: 60.0;
@@ -179,7 +180,7 @@ ab_active :: (s: [] Everglade, k: int) -> bool {
   if k == AB_CONTROL { return td_of(s)[0].on; }
   if k == AB_CREATE { return td_of(s)[0].rain_on || td_of(s)[0].vapor_on; }
   if k == AB_BREATH { return td_of(s)[0].breathe; }
-  if k == AB_MOON { return gv_of(s)[0].mb_on; }
+  if k >= AB_MOON { return gv_active(s, k); }
   return false;
 }
 ab_forward :: (s: [] Everglade) -> Point { return v3(sin(s[0].face), 0, cos(s[0].face)); }
@@ -198,7 +199,7 @@ ab_press :: (s: [] Everglade, k: int) {
   if k == AB_TENTACLES && a[0].bt_on { ab_bt_end(s); sp_say(s, "BLACK TENTACLES END", -1, ""); return; }
   if k == AB_SLEET && fr_of(s)[0].sleet_on { fr_sleet_end(s); sp_say(s, "SLEET STORM ENDS", -1, ""); return; }
   if k == AB_CONTROL && td_of(s)[0].on { td_control_next(s); return; }
-  if k == AB_MOON && gv_of(s)[0].mb_on && s[0].sp.armed == b { gv_mb_end(s); sp_say(s, "MOONBEAM ENDS", -1, ""); s[0].sp.armed = -1; return; }
+  if k >= AB_MOON { gv_press(s, k); return; }
   if k == AB_CREATE {
     // picked once: Create; again: Destroy; once more puts it away
     d := td_of(s);
@@ -228,7 +229,7 @@ ab_cast :: (s: [] Everglade, k: int) {
   if k == AB_SLEET { fr_sleet_cast(s); return; }
   if k == AB_CONTROL { td_control_cast(s); return; }
   if k == AB_CREATE { td_create_cast(s); return; }
-  if k == AB_MOON { gv_mb_cast(s); return; }
+  if k >= AB_MOON { gv_cast(s, k); return; }
 }
 // Esc with an ability picked: Telekinesis lets go.
 ab_cancel :: (s: [] Everglade) {
@@ -1032,15 +1033,7 @@ ab_hint :: (s: [] Everglade, k: int, phone_: bool) -> string {
     if td_of(s)[0].destroy { return ifx phone_ then "TAP FOR DESTROY WATER · TAP ITS SLOT TO CANCEL" else "CLICK FOR DESTROY WATER · SHIFT+9 PUTS IT AWAY"; }
     return ifx phone_ then "TAP FOR CREATE WATER · TAP ITS SLOT FOR DESTROY" else "CLICK FOR CREATE WATER · SHIFT+9 FOR DESTROY WATER";
   }
-  if k == AB_MOON {
-    v := gv_of(s);
-    if v[0].mb_on {
-      if far && flat_gap(s[0].sp.aim, v[0].mb_at) > f32(GV_MB_MOVE) { return "TOO FAR · IT MOVES 60 FEET AT MOST"; }
-      return ifx phone_ then "TAP WHERE TO MOVE THE MOONBEAM · TAP ITS SLOT TO END IT" else "CLICK WHERE TO MOVE THE MOONBEAM · SHIFT+- ENDS IT";
-    }
-    if far && flat_gap(s[0].sp.aim, ab_you(s)) > f32(GV_MB_RANGE) { return "TOO FAR · 120 FEET AT MOST"; }
-    return ifx phone_ then "TAP THE GROUND FOR A MOONBEAM · TAP ITS SLOT TO CANCEL" else "CLICK THE GROUND FOR A MOONBEAM · ESC CANCELS";
-  }
+  if k >= AB_MOON { return gv_hint(s, k, phone_, far); }
   return "";
 }
 // Where ability k would land, as strokes: Telekinesis's small ring where it points; Black
@@ -1051,7 +1044,7 @@ ab_aim_ring :: (s: [] Everglade, out: [] f32, u: [] f32, n: int, k: int) -> int 
   if k == AB_KNIFE { return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, f32(FR_KNIFE_R), FR_ICE_RGB, pulse); }
   if k == AB_STORM || k == AB_SLEET { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(FR_STORM_R), FR_ICE_RGB, pulse); }
   if k == AB_CONTROL { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(TD_HALF), TD_RGB, pulse); }
-  if k == AB_MOON { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(GV_MB_R), GV_MOON_RGB, pulse); }
+  if k >= AB_MOON { return gv_aim_ring(s, out, u, n, k, pulse); }
   if k == AB_CREATE { return sp_ring(s, out, u, n, s[0].sp.aim, v3(0, 1, 0), f32(TD_CUBE) * 0.5, TD_RGB, pulse); }
   if k != AB_TK { return n; }
   return sp_ring(s, out, u, n, s[0].sp.aim, s[0].sp.aim_n, 0.6, AB_TK_RGB, pulse);

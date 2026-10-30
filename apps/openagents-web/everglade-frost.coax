@@ -200,7 +200,7 @@ everglade_footing :: (s: [] Everglade, x: f32, z: f32, y: f32) -> FrFooting #exp
   if !(y < 0.35) { return out; }   // off your feet: in the air the ice is nothing to you
   ft := fr_foot(s, x, z);
   if ft.slip { out.grip = f32(FR_GRIP); }
-  if ft.rough || (ft.slush && s[0].water >= WATER_SWIMMING) { out.pace = f32(FR_SLOW); }
+  if ft.rough || gv_rough(s, x, z) || (ft.slush && s[0].water >= WATER_SWIMMING) { out.pace = f32(FR_SLOW); }
   return out;
 }
 
@@ -250,7 +250,7 @@ fr_you_prone :: (s: [] Everglade, concentration: bool) {
   if a[0].tk_kind != AB_TK_NONE { ab_tk_release(s); }
   if a[0].bt_on { ab_bt_end(s); }
   if f[0].sleet_on { fr_sleet_end(s); }
-  if gv_of(s)[0].mb_on { gv_mb_end(s); }
+  gv_concentration_lost(s);
 }
 // How far over you lie, Prone: 0 standing to -pi/2 on your back (everglade.coax figure tips you).
 fr_prone_pitch :: (s: [] Everglade) -> f32 {
