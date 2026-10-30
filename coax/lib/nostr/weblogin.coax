@@ -1,0 +1,108 @@
+// The words account for /login (docs/web-log-in.md): 16 bytes of entropy as
+// 12 BIP-39 words, their NIP-06 key, and a NIP-98 login signed with it.
+// private-face.c calls these; the page holds the buffers. Each call derives
+// the key it needs and zeroes it before returning: no key outlives a call.
+#load "nip06.coax";
+#load "event_sign.coax";
+#load "base64.coax";
+WL_LOGIN_KIND :: 27235;
+
+wl_put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for c: text { if n < buf.count { buf[n] = c; n += 1; } }
+  return n;
+}
+wl_unhex :: (hex: string, out: [] u8) -> bool {
+  if hex.count != out.count * 2 { return false; }
+  for i: 0..<out.count {
+    v := 0;
+    for j: 0..<2 {
+      c := hex[2 * i + j];
+      d := ifx c >= '0' && c <= '9' then cast(int) (c - '0') else ifx c >= 'a' && c <= 'f' then cast(int) (c - 'a') + 10 else -1;
+      if d < 0 { return false; }
+      v = v * 16 + d;
+    }
+    out[i] = cast(u8) v;
+  }
+  return true;
+}
+// 16 bytes into 32 lowercase hex characters.
+weblogin_hex :: (entropy: [] u8, out: [] u8) -> bool #export_c {
+  if entropy.count != 16 || out.count < 32 { return false; }
+  digits := "0123456789abcdef";
+  for i: 0..<16 { out[2 * i] = digits[cast(int) (entropy[i] >> 4)]; out[2 * i + 1] = digits[cast(int) (entropy[i] & 15)]; }
+  return true;
+}
+// The entropy's words, and its key into key (32 bytes); the words' length, or -1.
+wl_key :: (hex: string, words: [] u8, key: [] u8) -> int {
+  e: [16] u8;
+  if !wl_unhex(hex, e[..]) { return -1; }
+  n := bip39_words(e[..], words);
+  for i: 0..<16 { e[i] = 0; }
+  if n <= 0 || !nip06_key(cast(string) words[0..<n], key) { return -1; }
+  return n;
+}
+// The words and npub of the entropy (hex): the words' length * 256 + the npub's, or -1.
+weblogin_derive :: (hex: string, words: [] u8, npub: [] u8) -> int #export_c {
+  key: [32] u8;
+  n := wl_key(hex, words, key[..]);
+  m := ifx n > 0 then nip06_npub(key[..], npub) else -1;
+  for i: 0..<32 { key[i] = 0; }
+  if m <= 0 || m > 255 { return -1; }
+  return n * 256 + m;
+}
+// Typed words: their checksum, and their entropy as hex.
+weblogin_check :: (typed: string, hex: [] u8) -> bool #export_c {
+  e: [16] u8;
+  ok := hex.count >= 32 && bip39_entropy(typed, e[..]) && weblogin_hex(e[..], hex);
+  for i: 0..<16 { e[i] = 0; }
+  return ok;
+}
+// "Nostr <base64 kind-27235 event>" for POST url with body, signed by the entropy's key; its length or -1.
+weblogin_sign :: (hex: string, url: string, created_at: int, body: string, aux: [] u8, out: [] u8) -> int #export_c {
+  if url.count < 10 || url.count > 200 || aux.count != 32 || created_at < 0 { return -1; }
+  for c: url { if c == '"' || c == '\\' || c < 32 { return -1; } }
+  words: [160] u8; key: [32] u8;
+  if wl_key(hex, words[..], key[..]) <= 0 { return -1; }
+  for i: 0..<160 { words[i] = 0; }
+  // the tags: u, method, payload (SHA-256 of the body, hex)
+  bb: [1024] u8; h: [32] u8;
+  if body.count > 1024 { return -1; }
+  for i: 0..<body.count { bb[i] = body[i]; }
+  if sha256_hash_checked(bb[0..<body.count], h[..], false) != SHA_OK { return -1; }
+  tags: [512] u8; hx: [64] u8;
+  digits := "0123456789abcdef";
+  for i: 0..<32 { hx[2 * i] = digits[cast(int) (h[i] >> 4)]; hx[2 * i + 1] = digits[cast(int) (h[i] & 15)]; }
+  t := wl_put(tags[..], 0, "[[\"u\",\""); t = wl_put(tags[..], t, url);
+  t = wl_put(tags[..], t, "\"],[\"method\",\"POST\"],[\"payload\",\""); t = wl_put(tags[..], t, cast(string) hx[..]);
+  t = wl_put(tags[..], t, "\"]]");
+  work: [1] NostrSignWork; scratch: [1024] u8; ev: [1024] u8;
+  r := EVENT_MORE; steps := 0;
+  while r == EVENT_MORE && steps < 64 {
+    r = nostr_event_sign_step(key[..], aux, created_at, WL_LOGIN_KIND, cast(string) tags[0..<t], "", work[..], scratch[..], ev[..], false);
+    steps += 1;
+  }
+  for i: 0..<32 { key[i] = 0; }
+  if r <= 0 { return -1; }
+  n := wl_put(out, 0, "Nostr ");
+  e := base64_encode_checked(cast(string) ev[0..<r], out[n..<out.count], false);
+  if e.error != NC_OK { return -1; }
+  return n + e.written;
+}
+
+#test "typed words: the checksum, and refusals" {
+  hex: [32] u8; words: [160] u8; npub: [80] u8; out: [64] u8; aux: [32] u8;
+  #assert weblogin_check("legal winner thank year wave sausage worth useful legal winner thank yellow", hex[..]) && cast(string) hex[..] == "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f";
+  #assert !weblogin_check("legal winner thank year wave sausage worth useful legal winner thank thank", hex[..]);
+  #assert weblogin_derive("7f7f", words[..], npub[..]) == -1 && weblogin_derive("zz7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f", words[..], npub[..]) == -1;
+  #assert weblogin_sign("7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f", "https://x\"y/z/a/b", 1, "{}", aux[..], out[..]) == -1;
+  #assert weblogin_sign("7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f", "https://openagents.com/api/auth/key", -1, "{}", aux[..], out[..]) == -1;
+  #assert weblogin_sign("7f7f", "https://openagents.com/api/auth/key", 1, "{}", aux[..], out[..]) == -1;
+  e: [15] u8; #assert !weblogin_hex(e[..], hex[..]);
+  #assert wl_put(out[0..<2], 0, "abc") == 2;
+}
+wl_has :: (s: string, part: string) -> bool {
+  k := 0;
+  while k + part.count <= s.count { if s[k..<k + part.count] == part { return true; } k += 1; }
+  return false;
+}

@@ -3,7 +3,6 @@
 #load "../crypto/bip39.coax";
 #load "../crypto/bip32.coax";
 #load "nip19-core.coax";
-#authority;
 NIP06_PATH :: [5] int.[2147483692, 2147484885, 2147483648, 0, 0];   // 44', 1237', 0', 0, 0
 
 // The NIP-06 private key of a phrase (any word count; the caller checks the checksum).
@@ -23,16 +22,3 @@ nip06_npub :: (key: [] u8, out: [] u8) -> int #export_c {
   return ifx r.error == NC_OK then r.written else -1;
 }
 
-#test "NIP-06 vector 1 (12 words): the key and its npub" {
-  key: [32] u8; npub: [80] u8;
-  #assert nip06_key("leader monkey parrot ring guide accident before fence cannon height naive bean", key[..]) && sha512_hexeq(key[..], "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a");
-  n := nip06_npub(key[..], npub[..]);
-  #assert n > 0 && cast(string) npub[0..<n] == "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
-}
-#test "NIP-06 vector 2 (24 words): the key and its npub" {
-  key: [32] u8; npub: [80] u8;
-  #assert nip06_key("what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade", key[..]) && sha512_hexeq(key[..], "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add");
-  n := nip06_npub(key[..], npub[..]);
-  #assert n > 0 && cast(string) npub[0..<n] == "npub16sdj9zv4f8sl85e45vgq9n7nsgt5qphpvmf7vk8r5hhvmdjxx4es8rq74h";
-  #assert !nip06_key("x", key[0..<31]) && nip06_npub(key[0..<31], npub[..]) == -1;
-}

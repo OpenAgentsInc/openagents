@@ -1,0 +1,90 @@
+// The heavy vectors of /login's words account (docs/web-log-in.md): BIP-39
+// seeds (2048 PBKDF2 rounds), BIP-32 vectors 1 and 2, the NIP-06 vectors and
+// the whole chain to a signed NIP-98 login. They run here, not on every build
+// of the page that loads the libraries:
+//   coax/bin/coax test --library coax/tests/nostr/weblogin_vectors.coax --steps 8000000000 --run-steps 250000000
+#load "../../lib/nostr/weblogin.coax";
+
+#test "seeds: the official TREZOR vectors, and no passphrase" {
+  out: [64] u8;
+  #assert bip39_seed_with("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", "TREZOR", out[..]) && sha512_hexeq(out[..], "c55257c360c07c72029aebc1b53c05ed0362ada38ead3e3e9efa3708e53495531f09a6987599d18264c1e1c92f2cf141630c7a3c4ab7c81b2f001698e7463b04");
+  #assert bip39_seed("abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about", out[..]) && sha512_hexeq(out[..], "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4");
+  #assert bip39_seed("legal winner thank year wave sausage worth useful legal winner thank yellow", out[..]) && sha512_hexeq(out[..], "878386efb78845b3355bd15ea4d39ef97d179cb712b77d5c12b6be415fffeffe5f377ba02bf3f8544ab800b955e51fbff09828f682052a20faa6addbbddfb096");
+  #assert !bip39_seed("x", out[0..<63]);
+}
+
+#test "BIP-32 test vector 1: m/0H/1/2H/2/1000000000" {
+  sb: [64] u8; seed := bip32_hex("000102030405060708090a0b0c0d0e0f", sb[..]);
+  key: [32] u8; chain: [32] u8; k: [32] u8; c: [32] u8;
+  #assert bip32_master(seed, key[..], chain[..]) && sha512_hexeq(key[..], "e8f32e723decf4051aefac8e2c93c9c5b214313817cdb01a1494b917c8436b35") && sha512_hexeq(chain[..], "873dff81c02f525623fd1fe5167eac3a55a049de3d314bb42ee227ffed37d508");
+  #assert bip32_child(key[..], chain[..], 2147483648, k[..], c[..]) && sha512_hexeq(k[..], "edb2e14f9ee77d26dd93b4ecede8d16ed408ce149b6cd80b0715a2d911a0afea") && sha512_hexeq(c[..], "47fdacbd0f1097043b78c63c20c34ef4ed9a111d980047ad16282c7ae6236141");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 1, k[..], c[..]) && sha512_hexeq(k[..], "3c6cb8d0f6a264c91ea8b5030fadaa8e538b020f0a387421a12de9319dc93368") && sha512_hexeq(c[..], "2a7857631386ba23dacac34180dd1983734e444fdbf774041578e9b6adb37c19");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 2147483650, k[..], c[..]) && sha512_hexeq(k[..], "cbce0d719ecf7431d88e6a89fa1483e02e35092af60c042b1df2ff59fa424dca") && sha512_hexeq(c[..], "04466b9cc8e161e966409ca52986c584f07e9dc81f735db683c3ff6ec7b1503f");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 2, k[..], c[..]) && sha512_hexeq(k[..], "0f479245fb19a38a1954c5c7c0ebab2f9bdfd96a17563ef28a6a4b1a2a764ef4") && sha512_hexeq(c[..], "cfb71883f01676f587d023cc53a35bc7f88f724b1f8c2892ac1275ac822a3edd");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 1000000000, k[..], c[..]) && sha512_hexeq(k[..], "471b76e389e528d6de6d816857e012c5455051cad6660850e58372a6c3e6e7c8") && sha512_hexeq(c[..], "c783e67b921d2beb8f6b389cc646d7263b4145701dadd2161548a8b078e65e9e");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+}
+
+#test "BIP-32 test vector 2: m/0/2147483647H/1/2147483646H/2" {
+  sb: [64] u8; seed := bip32_hex("fffcf9f6f3f0edeae7e4e1dedbd8d5d2cfccc9c6c3c0bdbab7b4b1aeaba8a5a29f9c999693908d8a8784817e7b7875726f6c696663605d5a5754514e4b484542", sb[..]);
+  key: [32] u8; chain: [32] u8; k: [32] u8; c: [32] u8;
+  #assert bip32_master(seed, key[..], chain[..]) && sha512_hexeq(key[..], "4b03d6fc340455b363f51020ad3ecca4f0850280cf436c70c727923f6db46c3e") && sha512_hexeq(chain[..], "60499f801b896d83179a4374aeb7822aaeaceaa0db1f85ee3e904c4defbd9689");
+  #assert bip32_child(key[..], chain[..], 0, k[..], c[..]) && sha512_hexeq(k[..], "abe74a98f6c7eabee0428f53798f0ab8aa1bd37873999041703c742f15ac7e1e") && sha512_hexeq(c[..], "f0909affaa7ee7abe5dd4e100598d4dc53cd709d5a5c2cac40e7412f232f7c9c");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 4294967295, k[..], c[..]) && sha512_hexeq(k[..], "877c779ad9687164e9c2f4f0f4ff0340814392330693ce95a58fe18fd52e6e93") && sha512_hexeq(c[..], "be17a268474a6bb9c61e1d720cf6215e2a88c5406c4aee7b38547f585c9a37d9");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 1, k[..], c[..]) && sha512_hexeq(k[..], "704addf544a06e5ee4bea37098463c23613da32020d604506da8c0518e1da4b7") && sha512_hexeq(c[..], "f366f48f1ea9f2d1d3fe958c95ca84ea18e4c4ddb9366c336c927eb246fb38cb");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 4294967294, k[..], c[..]) && sha512_hexeq(k[..], "f1c7c871a54a804afe328b4c83a1c33b8e5ff48f5087273f04efa83b247d6a2d") && sha512_hexeq(c[..], "637807030d55d01f9a0cb3a7839515d796bd07706386a6eddf06cc29a65a0e29");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+  #assert bip32_child(key[..], chain[..], 2, k[..], c[..]) && sha512_hexeq(k[..], "bb7d39bdb83ecf58f2fd82b6d918341cbef428661ef01ab97c28a4842125ac23") && sha512_hexeq(c[..], "9452b549be8cea3ecb7a84bec10dcfd94afe4d129ebfd3b3cb58eedf394ed271");
+  for j: 0..<32 { key[j] = k[j]; chain[j] = c[j]; }
+}
+
+#test "BIP-32 refusals: short seeds, bad sizes, out-of-range indexes, a zero key" {
+  seed: [16] u8; key: [32] u8; chain: [32] u8; k: [32] u8; c: [32] u8; pub: [33] u8; zero: [32] u8;
+  #assert !bip32_master(seed[0..<15], key[..], chain[..]) && !bip32_master(seed[..], key[0..<31], chain[..]);
+  #assert bip32_master(seed[..], key[..], chain[..]);
+  #assert !bip32_child(key[..], chain[..], -1, k[..], c[..]) && !bip32_child(key[..], chain[..], 4294967296, k[..], c[..]);
+  #assert !bip32_public(zero[..], pub[..]) && !bip32_public(key[..], pub[0..<32]);
+  #assert bip32_public(key[..], pub[..]) && (pub[0] == 2 || pub[0] == 3);
+  p := [2] int.[BIP32_HARDENED, 1];
+  #assert bip32_path(seed[..], p[..], key[..], chain[..]) && !bip32_path(seed[0..<3], p[..], key[..], chain[..]);
+}
+
+#test "NIP-06 vector 1 (12 words): the key and its npub" {
+  key: [32] u8; npub: [80] u8;
+  #assert nip06_key("leader monkey parrot ring guide accident before fence cannon height naive bean", key[..]) && sha512_hexeq(key[..], "7f7ff03d123792d6ac594bfa67bf6d0c0ab55b6b1fdb6249303fe861f1ccba9a");
+  n := nip06_npub(key[..], npub[..]);
+  #assert n > 0 && cast(string) npub[0..<n] == "npub1zutzeysacnf9rru6zqwmxd54mud0k44tst6l70ja5mhv8jjumytsd2x7nu";
+}
+
+#test "NIP-06 vector 2 (24 words): the key and its npub" {
+  key: [32] u8; npub: [80] u8;
+  #assert nip06_key("what bleak badge arrange retreat wolf trade produce cricket blur garlic valid proud rude strong choose busy staff weather area salt hollow arm fade", key[..]) && sha512_hexeq(key[..], "c15d739894c81a2fcfd3a2df85a0d2c0dbc47a280d092799f144d73d7ae78add");
+  n := nip06_npub(key[..], npub[..]);
+  #assert n > 0 && cast(string) npub[0..<n] == "npub16sdj9zv4f8sl85e45vgq9n7nsgt5qphpvmf7vk8r5hhvmdjxx4es8rq74h";
+  #assert !nip06_key("x", key[0..<31]) && nip06_npub(key[0..<31], npub[..]) == -1;
+}
+
+#test "the whole chain: fixed entropy gives fixed words, npub and a NIP-98 login" {
+  words: [160] u8; npub: [80] u8; lens: [2] int; hex: [32] u8; out: [1024] u8; aux: [32] u8; ev: [1024] u8;
+  e: [16] u8; for i: 0..<16 { e[i] = 0x7f; }
+  #assert weblogin_hex(e[..], hex[..]) && cast(string) hex[..] == "7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f7f";
+  both := weblogin_derive(cast(string) hex[..], words[..], npub[..]);
+  #assert both > 0; lens[0] = both / 256; lens[1] = both % 256;
+  #assert cast(string) words[0..<lens[0]] == "legal winner thank year wave sausage worth useful legal winner thank yellow";
+  #assert cast(string) npub[0..<lens[1]] == "npub1mx07p7jvpdf4g5lgatea9sgk6mjyfrld947k2nvmwmas94q6sjhssl4jwc";
+  n := weblogin_sign(cast(string) hex[..], "https://openagents.com/api/auth/key", 1761840000, "{\"kind\":\"login\"}", aux[..], out[..]);
+  #assert n > 6 && cast(string) out[0..<6] == "Nostr ";
+  d := base64_decode_checked(cast(string) out[6..<n], ev[..], false);
+  #assert d.error == NC_OK;
+  j := cast(string) ev[0..<d.written];
+  #assert wl_has(j, "\"kind\":27235") && wl_has(j, "\"pubkey\":\"d99fe0fa4c0b535453e8eaf3d2c116d6e4448fed2d7d654d9b76fb02d41a84af\"");
+  #assert wl_has(j, "[\"u\",\"https://openagents.com/api/auth/key\"]") && wl_has(j, "[\"method\",\"POST\"]");
+  #assert wl_has(j, "[\"payload\",\"5371489dd1001782407703fc88c301aca38be28649aa7f1f68bdb52cf576014a\"]") && wl_has(j, "\"created_at\":1761840000");
+}
