@@ -415,6 +415,12 @@ const LOOK_FLAME = 13u;                            // a lamp's flame: its colour
 const LOOK_WINDOW = 14u;                           // a window pane: the kit's, its glass glowing warm at night
 const LOOK_GLOW = 15u;                             // a spell's fire or lightning (everglade-spells.coax): its own light, unlit, all of it blooming
 const LOOK_ORB = 16u;                              // a spell's ball of water (everglade-spells.coax): a sphere's rim, highlight and swirl, part see-through
+// A spell's soft parts (everglade-spells.coax), each as much there as the fraction of its instance's
+// kind word says (dye.x; 0 gone, 1 whole): LOOK_FIRE a billow of fire or a flash, white-hot at its heart,
+// churning, its edge feathered; LOOK_SMOKE smoke or dust, lit as the town is, its edge feathered;
+// LOOK_RING a shockwave, a flattened ball drawn only round its rim, so a ring of light races out.
+const LOOK_FIRE = 17u; const LOOK_SMOKE = 18u; const LOOK_RING = 19u;
+fn spell_soft(look: u32) -> bool { return look >= LOOK_FIRE && look <= LOOK_RING; }
 fn canopy_n(n: vec3f, blob: vec3f) -> vec3f {
   return normalize(vec3f(verse_style_canopy_normal(n.x, blob.x, CANOPY_MIX), verse_style_canopy_normal(n.y, blob.y, CANOPY_MIX), verse_style_canopy_normal(n.z, blob.z, CANOPY_MIX)));
 }
@@ -576,6 +582,11 @@ fn place(id: u32, instance: u32) -> S {
     let h = fract(sin(dot(vec3f(m.r0.w, m.r1.w, m.r2.w), vec3f(12.9898, 4.1414, 78.233))) * 43758.547);
     o.dye = vec4f(select(0.0, 0.6 + 0.4 * fract(h * 7.31), h < 0.66), select(0.5, 1.0, glass), fract(h * 13.7), 0.0);
   }
+  if (spell_soft(o.look)) {
+    // dye.x how much of it is there (the kind word's fraction over 0.98), dye.y a seed from where it is
+    let at = vec3f(m.r0.w, m.r1.w, m.r2.w);
+    o.dye = vec4f(min(fract(m.colour.w) / 0.98, 1.0), fract(sin(dot(at, vec3f(12.9898, 4.1414, 78.233))) * 43758.547), 0.0, 0.0);
+  }
   return o;
 }
 
@@ -603,7 +614,7 @@ struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(
   let n = u32(u.ground.x);
   if (instance < n * n || st(21u).x < 1.0) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // the ground casts nothing
   let v = place(id, instance);
-  if (v.look == LOOK_GLOW || v.look == LOOK_ORB) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // fire, lightning and the water orb cast no shadow
+  if (v.look == LOOK_GLOW || v.look == LOOK_ORB || spell_soft(v.look)) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // fire, lightning and the water orb cast no shadow
   let q = shadow_place(v.world, light_space());
   o.pos = vec4f(q.xy, q.z, 1.0);
   o.uv = v.uv; o.slice = v.slice;
@@ -718,6 +729,7 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
     return Lit(vec4f(c, 1.0), vec4f(0.0));
   }
   if (s.look == LOOK_ORB) { return orb(s); }
+  if (spell_soft(s.look)) { return spell_soft_part(s); }
   var n = normalize(s.normal);
   var base = s.tint;
   var shadow = 1.0;
@@ -826,6 +838,39 @@ fn glass(s: S, front: bool) -> Lit {
 // A ball of water (the Water Orb, its drips and splash): a deep body lit by the sun, a swirl moving
 // over it, the sky's colour along its rim, a hard sun highlight; where it faces you it is part
 // see-through, a screen door of 4 by 4 (the scene pass draws no blend), so what's behind shows.
+// A spell's fire, smoke or shockwave (LOOK_FIRE, LOOK_SMOKE, LOOK_RING): an ordered dither drops the
+// pixels it doesn't cover, thinning to its feathered, churning edge, and the bloom blurs what stays.
+fn spell_soft_part(s: S) -> Lit {
+  let n = normalize(s.normal);
+  let v = normalize(u.eye.xyz - s.world);
+  let facing = abs(dot(n, v));
+  let t = u.time;
+  let seed = s.dye.y * 41.0;
+  let churn = 0.55 * noise(s.world.xy * 1.6 + n.xz * 1.9 + vec2f(seed + t * 2.1, -t * 2.9)) + 0.45 * noise(s.world.zy * 3.1 - n.yx * 1.4 + vec2f(-t * 2.4, seed + t * 1.7));
+  var body = smoothstep(0.02, 0.8, facing);
+  if (s.look == LOOK_RING) { body = smoothstep(0.8, 0.2, abs(n.y)); }
+  if (s.look == LOOK_SMOKE) { body = smoothstep(0.0, 0.9, facing); }
+  // sharpened, so most of it is whole or gone and only a thin churning edge is dithered; as its cover
+  // falls it burns away from its edge in
+  var cover = smoothstep(0.3, 0.62, s.dye.x * body * (0.45 + 1.0 * churn));
+  if (s.look == LOOK_SMOKE) { cover = smoothstep(0.15, 0.85, s.dye.x * body * (0.2 + 1.0 * churn)); }   // smoke: thinner, holed where it churns
+  var bayer = array(0.0, 8.0, 2.0, 10.0, 12.0, 4.0, 14.0, 6.0, 3.0, 11.0, 1.0, 9.0, 15.0, 7.0, 13.0, 5.0);
+  let px = vec2u(s.pos.xy) % vec2u(4u);
+  if ((bayer[px.y * 4u + px.x] + 0.5) / 16.0 >= cover) { discard; }
+  let deep = pow(max(s.tint, vec3f(0.0)), vec3f(2.2));
+  if (s.look == LOOK_SMOKE) {
+    // smoke: its colour, a little mottled, in the town's light
+    return paint(deep * (0.8 + 0.4 * churn), n, s.world, 1.0, false, false);
+  }
+  // fire: white-hot where it is thickest and faces you, its colour, then a deeper red at its edge
+  // (only a hot colour runs white: a fire cooled to red keeps its colour, mottled, sooty at its edge)
+  let hot = clamp(s.tint.g * 1.6 - 0.15, 0.0, 1.0);
+  let heat = clamp(facing * facing * (0.25 + 1.0 * churn), 0.0, 1.0) * hot;
+  let edge = mix(vec3f(0.1, 0.05, 0.035), deep * vec3f(0.9, 0.42, 0.3), 0.45 + 0.55 * hot);
+  let body_c = mix(deep, vec3f(1.0, 0.95, 0.82), heat * heat * 0.6) * (0.45 + 1.1 * churn * (1.0 - 0.5 * hot) + 0.5 * hot);
+  let c = mix(edge, body_c, smoothstep(0.1, 0.75, facing)) * (0.9 + 1.8 * heat);
+  return Lit(vec4f(c, 1.0), vec4f(0.0));
+}
 fn orb(s: S) -> Lit {
   let n = normalize(s.normal);
   let v = normalize(u.eye.xyz - s.world);

@@ -2904,6 +2904,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   else if s[0].water == WATER_WADING { shown.y = s[0].swim_feet + feet.y; }
 
   shot := camera_frame(s, shown, vx, vz, t);
+  shot = spells_camera(s, shot, t);   // looks up while meteors fall, shakes when a blast lands
 
   for k: 0..<5 { s[0].counts[k] = 0; }
   s[0].lathe_n = 0;
