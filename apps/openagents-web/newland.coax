@@ -557,8 +557,8 @@ place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -
   white := chrome(dimmed(ink(p, INK_WHITE), shown)); accent := dimmed(ink(p, INK_BRIGHT), shown);
   dim := dimmed(ink(p, INK_DIM), shown);
   hover := !s[0].touch && s[0].pointed && inside(was, s[0].px, s[0].py);
-  cap := (ifx p.phone then 7.0f32 else 8.5f32) * d;
-  big := (ifx p.phone then 10.0f32 else 13.0f32) * d;
+  cap := (ifx p.phone then 8.0f32 else 10.0f32) * d;
+  big := (ifx p.phone then 7.5f32 else 9.5f32) * d;
   buf: [16] u8;
   pct := ifx pl.tasks > 0 then (pl.done * 100 + pl.tasks / 2) / pl.tasks else 0;
   m := number(pct, buf[..]); buf[m] = '%'; m += 1;
