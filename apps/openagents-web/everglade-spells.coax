@@ -74,6 +74,17 @@ SP_PUFFS :: 56;
 SP_SPARKS :: 220;         // sparks, embers and arcs: glowing streaks along their flight
 SP_SHOCKS :: 8;           // shockwave rings racing out along the ground
 SP_BLAST_LIFE :: 1.5;     // s a fireball burns
+// The Water Orb is water, and its blow is worked out as water's (sp_orb_hit): its mass, ρ·⁴⁄₃πr³
+// (0.8 m, as it is drawn full grown: 2.1 t), thrown at 12 m/s, a ½ρv² of 72 kPa on what it meets
+// for the 2r/v it takes to splash. It harms only what that pressure crushes (srd_object_crushed:
+// nothing), and it pushes what its impulse, shared over the splash, moves past what holds it:
+// friction, μ·m·g, and for a building's section (the SRD's Large) its joints, a mortar's shear
+// strength over its footprint. So a barrel goes rolling and a wall stands.
+SP_ORB_R :: 0.8;          // m
+SP_ORB_SPEED :: 12.0;     // m/s
+SP_WATER :: 1000.0;       // kg/m³
+SP_FRICTION :: 0.6;       // timber or stone on ground
+SP_BOND :: 3.0e5;         // Pa: a mortar joint's or a pegged joint's shear strength
 SP_DROPS :: 12;
 SP_GROUPS :: 192;         // a building each, then 16 m cells for the rest
 SP_REGROW :: 60.0;        // s of rest before a broken building grows back
@@ -142,6 +153,7 @@ Spells :: struct {
   look: f32;                 // how far the camera looks up while meteors fall, 0 to 1
   rn: f32;                   // the looks' own random stream (sp_rand), apart from the dice
   broke: int;                // pieces this cast broke
+  pushed: int;               // pieces the orb's water shoved loose
   news: [120] u8; news_n: int; news_t: f32;
   boxes: [SP_SLOTS + 1] Box;
   lift: f32;                 // how much of the bottom the bar takes, for what sits over it
@@ -448,7 +460,7 @@ sp_cast :: (s: [] Everglade) {
 sp_release :: (s: [] Everglade, slot: int) {
   spell := srd_spell(SP_SPELL[slot]);
   s[0].sp.dmg = srd_roll_damage(s[0].sp.dice[..], spell);
-  s[0].sp.broke = 0;
+  s[0].sp.broke = 0; s[0].sp.pushed = 0;
   to := s[0].sp.cast_at;
   you := s[0].sp.cast_from;
   n := s[0].sp.cast_n;
@@ -574,6 +586,41 @@ sp_burst :: (s: [] Everglade, at: Point, n: Point, count: int, speed: f32, life:
 // A blast at `at`: every standing piece it reaches takes the cast's damage,
 // full at its middle and none at its edge; what breaks flies out, and what
 // it held up falls.
+// The Water Orb meets piece i (its nearest point c, share of the splash): harm only what its
+// pressure crushes; push it if its share of the impulse beats what holds it (SP_ORB_R).
+sp_orb_hit :: (s: [] Everglade, i: int, at: Point, c: Point, share: f32) {
+  w := sp_dm(s);
+  p := w[0].pieces[i];
+  o := sp_object(p.mesh);
+  r := f32(SP_ORB_R); v := f32(SP_ORB_SPEED); water := f32(SP_WATER);
+  impulse := water * 4.0 / 3.0 * f32(PI) * r * r * r * v;
+  pressure := 0.5 * water * v * v;
+  tau := 2 * r / v;
+  if srd_object_crushed(o, pressure) {
+    if demo_damage(w, i, srd_object_takes(o, s[0].sp.dmg, share), at, SP_THROW[SP_ORB] * (0.4 + 0.6 * share)) { s[0].sp.broke += 1; }
+    return;
+  }
+  // which way the splash shoves it, and how much of it it presents that way
+  dir := unit_or(v3(p.cx - at.x, 0, p.cz - at.z), unit_or(v3(c.x - s[0].feet.x, 0, c.z - s[0].feet.z), v3(1, 0, 0)));
+  face := 2 * p.hy * (abs(dir.x) * 2 * p.hz + abs(dir.z) * 2 * p.hx);
+  splash := f32(PI) * SP_BLAST[SP_ORB] * SP_BLAST[SP_ORB];
+  got := impulse * share * lo(face / splash, 1);
+  mass := demo_piece_mass(p);
+  hold := f32(SP_FRICTION) * mass * 9.81 * tau;
+  if o.size == SIZE_LARGE { hold += f32(SP_BOND) * 4 * p.hx * p.hz * tau; }
+  if got <= hold { return; }
+  free := 0;
+  for b: 0..<DEMO_BODIES { if w[0].meta[b].kind == DEMO_WHOLE { free += 1; } }
+  if free >= w[0].loose_cap { return; }   // (no body to give it: it stays, rather than break)
+  demo_loosen(w, i);
+  b := w[0].pieces[i].body;
+  if b < 0 || w[0].pieces[i].state != DP_LOOSE { return; }
+  body := demo_body(w, b);
+  dv := (got - hold) / mass;
+  body.vel = d3_add(body.vel, d3(f64(dir.x * dv), f64(0.25 * dv), f64(dir.z * dv)));
+  demo_put(w, b, body);
+  s[0].sp.pushed += 1;
+}
 sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   w := sp_dm(s);
   radius := SP_BLAST[slot];
@@ -585,12 +632,22 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     if d >= radius { continue; }
     share := 1 - d / radius;
     if p.state == DP_LOOSE { continue; }
+    if slot == SP_ORB { sp_orb_hit(s, i, at, c, share); continue; }
     amount := srd_object_takes(sp_object(p.mesh), s[0].sp.dmg, share);
     if demo_damage(w, i, amount, at, SP_THROW[slot] * (0.4 + 0.6 * share)) { s[0].sp.broke += 1; }
   }
   _ := demo_settle(w);
   s[0].sp.walls_dirty = true;
   kind := ifx slot == SP_ORB then 2 else ifx slot == SP_METEOR then 0 else 1;
+  if slot == SP_ORB {
+    // the water puts out what burns where it splashes: a fireball still burning ends, a char steams
+    for q: 0..<SP_BLASTS {
+      if s[0].sp.blasts[q].live && s[0].sp.blasts[q].kind == 0 && flat_gap(s[0].sp.blasts[q].at, at) < radius + s[0].sp.blasts[q].radius { s[0].sp.blasts[q].live = false; }
+    }
+    for q: 0..<SP_SCORCHES {
+      if s[0].sp.scorches[q].live && flat_gap(s[0].sp.scorches[q].at, at) < radius { s[0].sp.scorches[q].wet = true; }
+    }
+  }
   // on the water (W8): the splash its spell raises there, steam for scorch, and a bolt runs through it
   lv := water_at(s, at.x, at.z);
   wet := lv > f32(DEMO_DRY) + 1 && at.y <= lv + 0.4;
@@ -1619,4 +1676,56 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   // a blast shook the camera, and nothing it drew took the town's last slots
   #assert g[0].sp.shake > 0 || g[0].sp.look > 0;
   #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] < SLOTS[SHAPE_SPHERE];
+}
+
+#test "spells: the Water Orb is water: cast at the inn every piece stands whole, and by a barrel the splash sends it rolling" {
+  g: [1] Everglade;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  dm: [1] DemoWorld;
+  sp_ready_city(g[..], dm[..]);
+  w := sp_dm(g[..]);
+  inn := EG_INN * EG_BOX;
+  ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
+  _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  // the numbers: 2.1 t of water at 12 m/s presses 72 kPa, under every material's strength
+  #assert !srd_object_crushed(sp_object(M_PLASTER), 0.5 * f32(SP_WATER) * f32(SP_ORB_SPEED) * f32(SP_ORB_SPEED));
+  // full force on the middle of the inn's front wall
+  g[0].sp.armed = SP_ORB; g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]);
+  g[0].sp.aim_n = v3(0, 0, -1); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  #assert g[0].sp.casting == SP_ORB;
+  g[0].sp.cast_t = srd_spell(SPELL_WATER_ORB).bar - 0.05;
+  for f: 0..<10 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert !g[0].sp.orb_live && g[0].sp.broke == 0;
+  met := 0;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if sp_object(p.mesh).size == SIZE_LARGE { #assert p.state == DP_STANDING && p.hp == p.max_hp; }
+    #assert p.state != DP_BROKEN;
+    if flat_gap(v3(p.cx, p.cy, p.cz), g[0].sp.aim) < 3 && sp_object(p.mesh).size == SIZE_LARGE { met += 1; }
+  }
+  #assert met > 0;   // it met the inn
+  // the barrel standing nearest the inn, splashed a metre off
+  k := -1; best := 1.0e9f32;
+  for i: 0..<w[0].n {
+    p := w[0].pieces[i];
+    if p.mesh != M_BARREL || p.state != DP_STANDING { continue; }
+    d := flat_gap(v3(p.cx, 0, p.cz), v3(ix, 0, iz));
+    if d < best { best = d; k = i; }
+  }
+  #assert k >= 0;
+  b := w[0].pieces[k];
+  side := unit_or(v3(ix - b.cx, 0, iz - b.cz), v3(1, 0, 0));
+  hit := v3(b.cx + side.x * (b.hx + 0.6), ground_at(g[..], b.cx, b.cz), b.cz + side.z * (b.hz + 0.6));
+  g[0].sp.armed = SP_ORB; g[0].sp.aim = hit; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  sp_cast(g[..]);
+  g[0].sp.cast_t = srd_spell(SPELL_WATER_ORB).bar - 0.05;
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert g[0].sp.pushed > 0 && g[0].sp.broke == 0;
+  moved := w[0].pieces[k];
+  #assert moved.state == DP_LOOSE && moved.hp == moved.max_hp;
+  pos := demo_body(w, moved.body).pos;
+  #assert flat_gap(v3(f32(pos.x), 0, f32(pos.z)), v3(b.cx, 0, b.cz)) > 0.3;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if sp_object(p.mesh).size == SIZE_LARGE { #assert p.state == DP_STANDING && p.hp == p.max_hp; } }
 }

@@ -437,6 +437,10 @@ demo_damage :: (w: [] DemoWorld, i: int, amount: int, from: Point, speed: f32) -
   return true;
 }
 
+// A whole piece's mass as its body has it, kg: its box at 300 kg/m³ (timber, plaster
+// and the air in a building's parts together), 20 kg at least.
+demo_piece_mass :: (p: DemoPiece) -> f32 { return hi(p.hx * p.hy * p.hz * 8 * 300, 20); }
+
 // Piece i comes loose: its whole self a body, falling from where it stood.
 demo_loosen :: (w: [] DemoWorld, i: int) {
   p := w[0].pieces[i];
@@ -444,7 +448,7 @@ demo_loosen :: (w: [] DemoWorld, i: int) {
   b := demo_free_body(w, DEMO_WHOLE);
   if b < 0 { demo_break(w, i, add(demo_centre(p), v3(0, 2, 0)), 1.5); return; }
   half := d3(f64(p.hx), f64(p.hy), f64(p.hz));
-  mass := hi(p.hx * p.hy * p.hz * 8 * 300, 20);
+  mass := demo_piece_mass(p);
   q := demo_rest_q(w, i);
   rgb := demo_colour(w, p);
   body := rigid_body(f64(mass), rigid_box_inertia(f64(mass), d3_scale(half, 2.0)), dp3(demo_centre(p)), q);

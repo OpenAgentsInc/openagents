@@ -128,6 +128,12 @@ srd_object :: (material: int, size: int, resilient: bool) -> SrdObject {
   return SrdObject.{material = m, size = z, resilient = resilient, ac = MAT_AC[m], hp = hp};
 }
 
+// Each material's strength, Pa (crushing for stone, wood and metal, tearing for cloth, breaking
+// for glass): a blow whose pressure is under it does the object no harm, whatever its damage
+// roll, as a splash of water on a wall (an orb's ½ρv² is tens of kPa, these are MPa).
+MAT_STRENGTH :: [7] f32.[2.0e6, 3.3e7, 4.0e7, 5.0e7, 2.5e8, 4.0e8, 6.0e8];
+srd_object_crushed :: (o: SrdObject, pressure: f32) -> bool { return pressure >= MAT_STRENGTH[o.material]; }
+
 // The damage an object takes of a type: immune to poison and psychic;
 // resistance halves (rounded down), vulnerability doubles. A glass object is
 // vulnerable to bludgeoning and thunder (ours, after Shatter and the old
@@ -267,6 +273,9 @@ srd_object_takes :: (o: SrdObject, dmg: SrdDamage, share: f32) -> int {
   #assert srd_object_damage(wood, 30, DMG_POISON) == 0 && srd_object_damage(wood, 30, DMG_PSYCHIC) == 0;
   #assert srd_object_damage(wood, 30, DMG_FIRE) == 30;
   #assert srd_object_damage(srd_object(MAT_GLASS, SIZE_SMALL, false), 3, DMG_BLUDGEONING) == 6;
+  // water thrown at 12 m/s presses ½·1000·12² = 72 kPa: no material gives; a cannon's ball would
+  #assert !srd_object_crushed(srd_object(MAT_GLASS, SIZE_SMALL, false), 72000) && !srd_object_crushed(srd_object(MAT_WOOD, SIZE_LARGE, true), 72000);
+  #assert srd_object_crushed(srd_object(MAT_STONE, SIZE_LARGE, true), 6.0e7);
   #assert srd_object_damage(srd_object(MAT_STONE, SIZE_LARGE, true), 31, DMG_FIRE) == 15;
 }
 
