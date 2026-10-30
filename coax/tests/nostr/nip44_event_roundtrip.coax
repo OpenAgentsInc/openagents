@@ -44,13 +44,13 @@ rt_event :: (out:[]u8)->int {
 }
 // What Bob reads from an event: 0 and the plaintext in plain, or a refusal code.
 rt_open :: (event:string,secret:[32]u8,sender_hex:string,plain:[]u8)->int {
-  scratch:[2048]u8;e:=nostr_event_read(event,scratch[..],false);
+  scratch:[70000]u8;e:=nostr_event_read(event,scratch[..],false);
   if e.error!=NE_OK {return 1;}
   if !nostr_fast_verify_vartime(e.id[..],e.public_key[..],e.signature[..]) {return 2;}
   sender:=rt_hex(sender_hex);
   for i:0..<32 {if e.public_key[i]!=sender[i] {return 3;}}
   ck:=rt_conversation(secret,sender_hex);
-  work:[512]u8;
+  work:[2*40960+512]u8;
   d:=nip44_decrypt_checked(NIP44_COMPAT,ck[..],event[e.content_from..<e.content_to],work[..],plain,false);
   if d.error!=NIP44_OK {return 4;}
   return -d.written;
@@ -75,4 +75,34 @@ rt_open :: (event:string,secret:[32]u8,sender_hex:string,plain:[]u8)->int {
   e:=ne_parse(cast(string)out[0..<n]);#assert e.error==NE_OK;
   c:=e.content_from+5;out[c]=ifx out[c]=='A' then 'B' else 'A';
   #assert rt_open(cast(string)out[0..<n],rt_bob(),RT_ALICE_PUB,plain[..])==1;
+}
+
+// The payload limit closes end to end. An event's content is one JSON
+// string of at most 65536 raw bytes (ja_policy), so the largest NIP-44
+// message an event carries is 40960 bytes (a 54704-character payload). One
+// byte more pads to 65628 characters, and event_sign refuses before it
+// writes anything, because its reader would not admit the event.
+RT_FITS :: 40960;
+rt_sized :: (n:int,out:[]u8)->int {
+  alice:=rt_alice();ck:=rt_conversation(alice,RT_BOB_PUB);
+  nonce:[32]u8;for i:0..<32 {nonce[i]=cast(u8)(i+7);}
+  plain:[RT_FITS+1]u8;for i:0..<n {plain[i]=cast(u8)('a'+i%26);}
+  work:[2*49152+512]u8;payload:[65700]u8;
+  if work.count<nip44_encrypt_work_size(NIP44_COMPAT,n) {return -4;}
+  r:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],nonce[..],plain[0..<n],work[..],payload[..],false);
+  if r.error!=NIP44_OK {return -2;}
+  if r.written!=nip44_payload_size(NIP44_COMPAT,n) {return -3;}
+  aux:[32]u8;sw:[1]NostrSignWork;scratch:[70000]u8;
+  k:=EVENT_MORE;
+  while k==EVENT_MORE {k=nostr_event_sign_step(alice[..],aux[..],1793300000,4,"[]",cast(string)payload[0..<r.written],sw[..],scratch[..],out,false);}
+  return k;
+}
+#test "the largest message an event carries round-trips; one byte more refuses before writing" {
+  #assert nip44_payload_size(NIP44_COMPAT,RT_FITS)==54704 && nip44_payload_size(NIP44_COMPAT,RT_FITS+1)==65628;
+  out:[70000]u8;n:=rt_sized(RT_FITS,out[..]);#assert n>0;
+  plain:[RT_FITS+1]u8;r:=rt_open(cast(string)out[0..<n],rt_bob(),RT_ALICE_PUB,plain[..]);
+  #assert r== -RT_FITS && plain[0]=='a' && plain[RT_FITS-1]==cast(u8)('a'+(RT_FITS-1)%26);
+  over:[70000]u8;for i:0..<over.count {over[i]=7;}
+  #assert rt_sized(RT_FITS+1,over[..])==EVENT_REFUSED;
+  zero:=true;for i:0..<over.count {if over[i]!=0 {zero=false;}}#assert zero;
 }

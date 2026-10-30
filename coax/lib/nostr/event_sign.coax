@@ -60,11 +60,11 @@ EVENT_REFUSED :: -1; EVENT_MORE :: 0;
 }
 #test "stage three moves on when the signature is published" {
   key:=ES_KEY;aux:=ES_AUX;tags:=ES_TAGS;content:=ES_CONTENT;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;
-  work[0].stage=2;work[0].id=ES_ID;
-  work[0].sign[0].stage=3;work[0].sign[0].prep[0].public_key=ES_PUB;work[0].sign[0].sig=ES_SIG;
-  work[0].sign[0].prep[0].valid=1;work[0].sign[0].nonce[0].valid=1;work[0].sign[0].math[0].valid=1;
+  // The signer's last stage, prepared for BIP-340 vector 0 (its recorded
+  // self-check product); the event id is that vector's message.
+  v:=SIGN_VECTORS[0];work[0].stage=2;work[0].id=v.message;ss_final(v,work[0].sign[..]);
   #assert nostr_event_sign_step(key[..],aux[..],ES_CREATED,ES_KIND,cast(string)tags[..],cast(string)content[..],work[..],scratch[..],out[..],false)==EVENT_MORE;
-  #assert work[0].stage==3;for i:0..<64 {#assert work[0].sig[i]==ES_SIG[i];}
+  #assert work[0].stage==3;for i:0..<64 {#assert work[0].sig[i]==v.sig[i];}
 }
 #test "stage three refuses when the signature fails" {
   key:=ES_KEY;aux:=ES_AUX;work:[1]NostrSignWork;scratch:[1024]u8;out:[1024]u8;

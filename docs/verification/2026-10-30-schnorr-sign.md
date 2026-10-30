@@ -4,37 +4,54 @@ Board: #51f4 `schnorr-sign`. Psionic chapter 19 prerequisite 1.
 
 ## What it is
 
-BIP-340 signing in four resumable stages over one caller-owned `SignWork`:
-key point, nonce point, scalar equation, then a self-check of the finished
-signature. `schnorr_sign_step(key, aux, message, work, out, overlap)` does one
+BIP-340 signing in six resumable stages over one caller-owned `SignWork`:
+key point, nonce point and scalar equation, then three stages of the
+fixed-work self-check. `schnorr_sign_step(key, aux, message, work, out, overlap)` does one
 stage per call and returns `SIGN_MORE` until `SIGN_DONE` or `SIGN_REFUSED`.
 `nostr_sign_step` is the same over a 32-byte event id. Nothing is written to
 `out` unless the signature verifies, and the workspace is cleared whenever
 signing ends, refused or done.
 
-The self-check (`ss_self_check`) is one function, called only from
-`sw_publish`. For now it uses the variable-time fast verifier. #89db
-(`schnorr-self-verification-boundary`) replaces it with a fixed-work verifier
-that returns a validity mask.
+The self-check is `schnorr_self_verify.coax`'s `ssv_step` (#89db), one of
+its stages per signer call:
+- stage 3 prepares it (`sw_check`);
+- stage 4 multiplies the key point (`sw_check`);
+- stage 5 finishes (`sw_publish`).
+
+The unpublished candidate never reaches the variable-time verifier. Only
+ssv's final mask, with the three validity bits, decides publication. (Until
+2026-10-30 this was one call to `schnorr_fast_verify_vartime` at
+`0cc86015e7`.)
+
+Staging keeps every check under `coax mutate`'s 20M-step cap. One whole
+signature through the fixed-work check is about 30.4M interpreter steps, so
+the checks for stages 5 and 6 start from recorded states, as
+`schnorr_self_verify.coax`'s own checks do. Stage 5 uses G and -e = 2 and
+must produce 2G, at 19.0M steps. Stage 6 uses vector 0's recorded (-e)·P
+(`ss_final`), at 11.7M. Whole signatures run in the native and Wasm harness
+below.
 
 ## Evidence
 
-- **Checks:** 216 of 216 pass (`coax test coax/lib/crypto/schnorr_sign.coax
+- **Checks:** 252 of 252 pass, including the loaded suites. Earlier count, at `0cc86015e7`: 216 of 216 pass (`coax test coax/lib/crypto/schnorr_sign.coax
   --run-steps 250000000`, 34 s). Vectors 0–3 are checked stage by stage
   against independent pure-Python intermediates
   (`coax/tests/nostr/schnorr_sign_vectors.py`). The checks also cover a zero
   key, the group order as a key, an even key, an even nonce point, and refusal
   clearing the workspace.
-- **Mutation:** 3,384 mutants, 3,384 killed, 0 survived, none marked
-  equivalent. The run was 40 shards (`--run-steps 250000000 --shard I/40`),
-  merged with `--merge`.
-- **Native:** the end-to-end harness `coax/tests/nostr/schnorr_sign.py` lands
-  with `event_sign.coax`, because it drives both. It runs checked and release
-  builds, plain and ASan/UBSan, 44 requests each, and all 4 pass:
+- **Mutation:** 3,742 mutants, 3,742 killed, 0 survived, none marked
+  equivalent, with the staged self-check on main at `944651321f`. It ran as
+  80 shards on the Mac (`--run-steps 250000000 --jobs 1`), merged. The
+  earlier single-call version killed 3,384 of 3,384.
+- **Native and Wasm:** `coax/tests/nostr/schnorr_sign.py` drives the signer
+  and the event builder through the generated C. Checked and release, plain
+  and ASan/UBSan, 44 requests each, all pass. The release build also runs as
+  Wasm (wasm32-wasip1 under Node's WASI) and agrees on the same 44 requests.
+  The requests are:
   - all 8 official signing rows byte for byte, including rows 15–18 (0, 1,
     17 and 100-byte messages);
-  - 24 random signatures (messages of 0, 1, 32, 33, 64 and 200 bytes) checked
-    by an independent Python verifier;
+  - 24 random signatures (messages of 0, 1, 32, 33, 64 and 200 bytes)
+    checked by an independent Python verifier;
   - 4 signed events and 8 refusals.
 
 ## Build used
@@ -46,9 +63,7 @@ compute and Metal emission.
 
 ## Not done
 
-- **Wasm agreement:** not run.
 - **iOS:** not run.
-- **The fixed-work self-check:** #89db.
 - **The secret-flow audit of the signer's closure:** #4828.
 - **Independent review.**
 

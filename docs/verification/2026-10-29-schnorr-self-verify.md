@@ -5,9 +5,10 @@ unreleased BIP-340 candidate `R||s` against the public message and x-only key
 without branching on, indexing by or calling a variable-time routine with any
 candidate-derived value. It is built to replace the signer's call to
 `schnorr_fast_verify_vartime` on a secret candidate. Status (2026-10-30): on
-main, with its zero-survivor mutation gate passed (below). The signer hasn't
-been switched to it yet (see Open). Independent review and iOS targets are
-also open.
+main, with its zero-survivor mutation gate passed (below). The signer
+calls it, staged over three calls, from 2026-10-30
+(`2026-10-30-schnorr-sign.md`). Independent review and iOS targets are still
+open.
 
 ## API
 
@@ -153,14 +154,5 @@ clang 21.1.8 (wasm32-wasip1), Node v24.19.0.
 
 - Independent review of the source, the path table and the staged binding.
 - iOS checked/release targets.
-- **Switching the signer** (`coax/lib/crypto/schnorr_sign.coax`) from
-  `schnorr_fast_verify_vartime` to `ssv_step`. It works: the signer's 249
-  checks pass with `ssv_step` run to the end in `ss_self_check`. But one full
-  signature then takes about 30.4M interpreter steps, and `coax mutate` runs
-  each check under a fixed 20M-step cap (`TEST_STEPS` in
-  `coax/src/verify.cpp`). The signer's and event_sign's checks need
-  reworking around recorded intermediate states first, as this file's own
-  checks do (`ssv_test_final`), or the cap needs a `--steps` option for
-  mutate.
 - Object-code and JIT timing, address-trace probes and production-secret
   approval remain separate gates, as for `secp_mult_const.coax`.

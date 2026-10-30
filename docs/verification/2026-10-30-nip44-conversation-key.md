@@ -98,6 +98,25 @@ suites, 30 s), with test keys from BIP-340 vectors 0 and 1:
 It's a plain test file, not `#authority`: every piece it joins has its own
 zero-survivor gate.
 
+## Payload limits and interoperability (2026-10-30)
+
+- **The limit closes end to end** (`nip44_event_roundtrip.coax`, 415 checks
+  including the loaded suites, `--steps 8000000000`):
+  - An event's content is one JSON string of at most 65,536 raw bytes
+    (`ja_policy`). So the largest NIP-44 message an event carries is 40,960
+    bytes, a 54,704-character payload. It encrypts, signs, reads, verifies
+    and decrypts.
+  - At 40,961 bytes the payload pads to 65,628 characters. `event_sign`
+    refuses before writing anything (`out` is left all zero), because its
+    own reader would not admit the event. Every larger message, up to the
+    65,535-byte COMPAT maximum, takes the same path.
+- **Interoperability both ways:** Psionic chapter 19's buyer
+  (`psionic/tests/pylon/buyer.ts`) uses `nostr-effect`'s NIP-44, an
+  independent implementation. It encrypts jobs that the Coax Pylon
+  decrypts, and decrypts the Coax Pylon's encrypted answers.
+  `pylon_e2e.py` passes over ws:// (52/52) and wss:// (53/53) at
+  `fed0a442b2`. All keys are test keys.
+
 ## Not done
 
 - **No `#export_c` wrapper:** the public ECDH build goes through the owned
