@@ -1,7 +1,7 @@
 // The water lab's C face for the browser (coax/web/host.js): scalar Wasm
 // exports over waterlab.coax. The host keeps one Waterlab; this file decides
-// nothing. No assets, no scene: waterlab.wgsl's bg_fs traces the sea from
-// the uniforms waterlab_frame writes (docs/verse/water.md, "The water lab").
+// nothing. No assets, no scene: waterlab.wgsl's bg_fs traces the sky and the
+// beach and surface_vs draws the clipmap sea from the uniforms waterlab_frame writes (docs/verse/water.md, "The water lab").
 #include "waterlab.h"
 #include <stdbool.h>
 #include <stddef.h>
@@ -28,6 +28,12 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   coax_v_f32 u = {(float *)(uintptr_t)uniforms, coaxial_waterlab_uniform_floats()};
   waterlab_golden(at(state), golden);
   int64_t n = waterlab_frame(at(state), out, u, width, height, dpr, dt, still != 0);
+  return n < 0 ? 0u : (uint32_t)n;
+}
+
+// W10: the clipmap sea's vertices this frame (host.js draws surface_vs that many times after bg_fs).
+EXPORT("coaxial_surface_vertices") uint32_t coaxial_surface_vertices(uint32_t state) {
+  int64_t n = waterlab_surface_vertices(at(state));
   return n < 0 ? 0u : (uint32_t)n;
 }
 

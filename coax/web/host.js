@@ -117,6 +117,11 @@
 // mesh scene (no caster_vs) it takes the scene's groups instead, so its blades stand on the scene's
 // ground and read its shadow map:
 //   coaxial_grass_instances(state)  blades to draw, one triangle (3 vertices) each (0: none)
+// A traced page's surface (the water lab's clipmap sea), when the page has no scene, its WGSL has
+// surface_vs and surface_fs and the app exports coaxial_surface_vertices: the page gets a depth buffer,
+// bg_fs writes its depth (@builtin(frag_depth)), and that many vertices (no buffer, bg's group) draw right
+// after it, depth-tested and written:
+//   coaxial_surface_vertices(state)  vertices to draw, three a triangle (0: none)
 // Particles, optionally: particles:URL names a shader module of their own (particle_vs/particle_fs,
 // group 0 the uniforms, group 1 binding 0 the emitters), drawn after the scene, added, depth-tested:
 //   coaxial_particle_cap(), coaxial_particles(state), coaxial_particle_bytes(state)
@@ -657,7 +662,9 @@ async function loadShaders() {
   // With a scene, every pipeline in the pass shares its depth buffer; only the scene tests and writes it.
   const scene = !!engine?.exports.coaxial_draws;
   gpu.scene3d = scene;
-  const flat = scene ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
+  const surfaced = !scene && /fn\s+surface_vs\b/.test(code) && /fn\s+surface_fs\b/.test(code) && !!engine?.exports.coaxial_surface_vertices;
+  const depthed = scene || surfaced;
+  const flat = depthed ? { depthStencil: { format: "depth32float", depthWriteEnabled: false, depthCompare: "always" } } : {};
   const shadows = scene && /fn\s+shadow_vs\b/.test(code);
   const casters = scene && /fn\s+caster_vs\b/.test(code);
   const post = scene && /fn\s+post_fs\b/.test(code);
@@ -666,11 +673,11 @@ async function loadShaders() {
   const bgLayout = casters ? device.createPipelineLayout({ bindGroupLayouts: [gpu.layout, emptyLayout(), shadowLayout()] }) : layout;
   // A traced scene whose bg_fs writes @builtin(frag_depth) puts its depth in the buffer, so what
   // draws after it (grass) hides behind what it traced.
-  const bgDepth = scene && /@builtin\(frag_depth\)/.test(code) ? { depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "always" } } : flat;
+  const bgDepth = depthed && /@builtin\(frag_depth\)/.test(code) ? { depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "always" } } : flat;
   // Grass (docs/verse/art-styles.md 8), when the WGSL has grass_vs and grass_fs: coaxial_grass_instances(state)
   // blades of one triangle each, instanced from their cells' hashes (no buffer), drawn after bg_fs with bg's groups.
   const grassy = scene && /fn\s+grass_vs\b/.test(code) && !!engine?.exports.coaxial_grass_instances;
-  const [bg, fx, sc, sh, bl, po, ca, gr] = await Promise.all([
+  const [bg, fx, sc, sh, bl, po, ca, gr, su] = await Promise.all([
     device.createRenderPipelineAsync({ layout: bgLayout, ...bgDepth, vertex: { module, entryPoint: "bg_vs" }, fragment: { module, entryPoint: "bg_fs", targets: lit } }),
     device.createRenderPipelineAsync({
       layout, ...(post ? {} : flat),
@@ -712,7 +719,13 @@ async function loadShaders() {
       primitive: { topology: "triangle-list", cullMode: "none" },
       depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
     }) : null,
+    surfaced ? device.createRenderPipelineAsync({
+      layout, vertex: { module, entryPoint: "surface_vs" }, fragment: { module, entryPoint: "surface_fs", targets: lit },
+      primitive: { topology: "triangle-list", cullMode: "none" },
+      depthStencil: { format: "depth32float", depthWriteEnabled: true, depthCompare: "less" },
+    }) : null,
   ]);
+  gpu.surface = su;
   gpu.bg = bg; gpu.fx = fx; gpu.scene = sc; gpu.shadow = sh; gpu.bloom = bl; gpu.post = po; gpu.caster = ca; gpu.grass = gr; // swapped whole, at the next frame
   gpu.particles = sc ? await particlePipeline(post) : null;
   gpu.waterCopy = post && /var\s+water_scene\b/.test(code);
@@ -1205,7 +1218,7 @@ function frame(now) {
     const bytes = Math.min(x.coaxial_store_bytes(arena.state, k), buffer.size) & ~3;
     if (bytes) device.queue.writeBuffer(buffer, 0, memory.buffer, x.coaxial_store(arena.state, k), bytes);
   });
-  if (gpu.scene && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup
+  if ((gpu.scene || gpu.surface) && (!gpu.depth || gpu.depth.width !== w || gpu.depth.height !== h || !!gpu.post !== !!gpu.postGroup
       || (gpu.post && !!gpu.waterCopy !== !!gpu.waterCopyGroup))) {
     if (gpu.post) postTargets(w, h);
     else {
@@ -1235,7 +1248,7 @@ function frame(now) {
   const target = (view) => ({ view, loadOp: "clear", storeOp: "store", clearValue: { r: 0, g: 0, b: 0, a: 1 } });
   const screen = () => target(context.getCurrentTexture().createView());
   let pass = encoder.beginRenderPass({ colorAttachments: post ? [target(gpu.light.createView()), target(gpu.aux.createView())] : [screen()],
-    ...(gpu.scene ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}) });
+    ...(gpu.scene || gpu.surface ? { depthStencilAttachment: { view: gpu.depth.createView(), depthClearValue: 1, depthLoadOp: "clear", depthStoreOp: post ? "store" : "discard" } } : {}) });
   pass.setBindGroup(0, gpu.bindGroup);
   if (gpu.caster) { pass.setBindGroup(1, gpu.emptyGroup); pass.setBindGroup(2, gpu.shadowGroup); }
   pass.setPipeline(gpu.bg); pass.draw(3);
@@ -1244,6 +1257,8 @@ function frame(now) {
     if (!gpu.caster) { pass.setBindGroup(1, gpu.sceneGroup); if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup); }
     pass.setPipeline(gpu.grass); pass.draw(3, blades);
   }
+  const surface = gpu.surface ? x.coaxial_surface_vertices(arena.state) : 0;
+  if (surface) { pass.setPipeline(gpu.surface); pass.draw(surface); }
   if (draws) {
     pass.setPipeline(gpu.scene);
     if (gpu.shadow) pass.setBindGroup(2, gpu.shadowGroup);
@@ -1281,7 +1296,7 @@ function frame(now) {
     pass = encoder.beginRenderPass({ colorAttachments: [screen()] });
     pass.setBindGroup(0, gpu.bindGroup); pass.setBindGroup(1, gpu.postGroup); pass.setPipeline(gpu.post); pass.draw(3);
   }
-  if (x.coaxial_media) drawMedia(x, pass, w, h, !!gpu.scene && !post);
+  if (x.coaxial_media) drawMedia(x, pass, w, h, !!(gpu.scene || gpu.surface) && !post);
   if (n) { pass.setPipeline(gpu.fx); pass.setVertexBuffer(0, gpu.vertexBuffer); pass.draw(n); }
   pass.end();
   const texture = context.getCurrentTexture();

@@ -17,12 +17,21 @@
 // The tiles ride in the uniform block as half floats, two to a word
 // (UW_*): cascade 0's height and foam, its slopes; the fine slopes.
 //
+// W10, ocean and scale (verse/water-ocean.coax): the sea is a clipmap mesh,
+// nested grids round the eye drawn by waterlab.wgsl's surface_vs from their
+// index alone (host.js: a traced page's surface), with cascade 0's choppy
+// displacement on its vertices; bg_fs traces only the sky and the beach and
+// writes their depth. The coast's bed depth and surf phase stream in 8 m
+// cells, 2 m texels, into a pool of 48 slots round the eye; outside them the
+// shader computes both itself. ?sea=traced draws the W4 traced sea instead
+// (for comparison); under the water the trace draws everything as before.
+//
 // The URL: ?wind=M/S (8), ?t=SECONDS (a fixed moment), ?yaw=, ?pitch=,
 // ?dist= (the camera's orbit), ?depth= (its target under the water, m),
-// ?tier=phone (the phone's cascades on any screen). Drag or the arrows turn
+// ?tier=phone (the phone's cascades on any screen), ?sea=traced (no mesh). Drag or the arrows turn
 // the camera, the wheel or W/S zooms, Q dives and E rises.
 
-#load "../../verse/water-spectrum.coax";
+#load "../../verse/water-ocean.coax";
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 6;
@@ -40,11 +49,20 @@ U_SUN :: 24;      // toward the sun xyz, strength
 U_SEA :: 28;      // level, cascade 0's patch (m), the fine patch (m), choppiness
 U_WIND :: 32;     // wind direction x, z, wind speed, significant height
 U_BEACH :: 36;    // where the beach meets the still water (z, m), its slope, the peak's deep wavenumber, the peak's omega
-U_PACK :: 40;     // scales the half floats were packed by: height, slope, fine slope, 0
-U_TILES :: 44;    // then the words: cascade 0 (2 a texel), then the fine tile (1 a texel)
+U_PACK :: 40;     // scales the packed numbers: height, slope, fine slope, choppy displacement
+U_CLIP :: 44;     // the clipmap: quads a side, levels, morph band (quads), the skirt's reach (m)
+U_LEVELS :: 48;   // a level each: centre x, z, spacing, hole x + 2 hole z (OCEAN_MAX_LEVELS)
+U_CELLS :: 96;    // the cell window's first cell x, z, its side (cells), the texel spacing (m)
+U_BASES :: 100;   // each slot's surf phase at its first texel (OCEAN_SLOTS)
+U_WORDS :: 148;   // then the words:
+W_TABLE :: 0;     //   the window's slots, a byte a cell (0: none, else slot + 1), four to a word
+W_CELLS :: 64;    //   each slot's texels: (depth, surf phase less its base) as half floats
+W_COARSE :: 1264; //   cascade 0: (height, foam), (sx, sz) a texel
+W_CHOP :: 9456;   //   cascade 0's choppy displacement, (dx, dz) as two signed bytes a texel, two texels a word
+W_FINE :: 11504;  //   the fine slopes (or the phone's baked tile), one word a texel
 TILE_N :: 64;
-TILE_WORDS :: 3 * TILE_N * TILE_N;
-UNIFORM_FLOATS :: U_TILES + TILE_WORDS;
+WORDS :: W_FINE + TILE_N * TILE_N;
+UNIFORM_FLOATS :: U_WORDS + WORDS;
 
 Waterlab :: struct {
   started: bool;
@@ -68,6 +86,13 @@ Waterlab :: struct {
   last_tick: u64;
   have_tick: bool;
   counted: bool;
+  traced: bool;         // ?sea=traced: no clipmap
+  mesh: int;            // the surface's vertices this frame (0: the trace draws the sea)
+  cells: [1] OceanCells;
+  needs: [OCEAN_WINDOW * OCEAN_WINDOW] bool;
+  bake: [OCEAN_SLOTS] int;
+  slot_words: [OCEAN_SLOTS * OCEAN_CELL_WORDS] f32;
+  slot_base: [OCEAN_SLOTS] f32;
 }
 
 hi_f32 :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -100,6 +125,59 @@ half_bits :: (v: f32) -> u32 {
   return sign | r;
 }
 pack2 :: (a: f32, b: f32) -> f32 { return f32_from_bits(half_bits(a) | (half_bits(b) << 16)); }
+// A signed byte for v in [-1, 1].
+snorm8 :: (v: f32) -> u32 { return cast(u32) (cast(int) floor(clamp_f(v, -1, 1) * 127 + 0.5) & 0xff); }
+
+// The beach as waterlab.wgsl draws it (ground, surf_phase), for the streamed cells.
+fract_l :: (v: f32) -> f32 { return v - floor(v); }
+hash_l :: (x: f32, y: f32) -> f32 { return fract_l(sin(x * 127.1 + y * 311.7) * 43758.5453); }
+noise_l :: (x: f32, y: f32) -> f32 {
+  ix := floor(x); iy := floor(y); fx := x - ix; fy := y - iy;
+  sx := fx * fx * (3 - 2 * fx); sy := fy * fy * (3 - 2 * fy);
+  a := hash_l(ix, iy); b := hash_l(ix + 1, iy); c := hash_l(ix, iy + 1); d := hash_l(ix + 1, iy + 1);
+  return (a + (b - a) * sx) * (1 - sy) + (c + (d - c) * sx) * sy;
+}
+BEACH_Z :: 2.0f32;
+BEACH_SLOPE :: 0.035f32;
+lab_ground :: (x: f32, z: f32) -> f32 {
+  wobble := 0.35f32 * sin(x * 0.045f32) + 0.18f32 * sin(x * 0.11f32 + 1.3f32);
+  zz := z - BEACH_Z - wobble / BEACH_SLOPE * 0.05f32;
+  land := hi_f32(zz, 0) * 0.09f32;
+  return hi_f32(zz * BEACH_SLOPE + land + 0.03f32 * noise_l(x * 0.3f32, z * 0.3f32), -40);
+}
+shallow_k_l :: (k0: f64, h: f64) -> f64 { return k0 / sqrt(fmax(tanh_d(k0 * fmax(h, 0.01)), 0.0001)); }
+lab_surf_phase :: (k0: f64, depth: f64) -> f64 {
+  reach := fmin(depth, 3.0 / k0);
+  sum := 0.0;
+  for i: 0..<8 { sum += shallow_k_l(k0, (f64(i) + 0.5) / 8.0 * reach); }
+  return (sum / 8.0 * reach + (depth - reach) * k0) / f64(BEACH_SLOPE);
+}
+// Which cells of this frame's window hold a field: the shore's, where the water
+// is shallow enough to shoal (under 3 / k0) and the sand not yet dry.
+lab_needs_cells :: (s: [] Waterlab, k0: f64) {
+  w := OCEAN_WINDOW;
+  ox := s[0].cells[0].ox; oz := s[0].cells[0].oz;
+  for j: 0..<w { for i: 0..<w {
+    lo := 1000.0f32; hi := -1000.0f32;
+    for c: 0..<4 {
+      g := lab_ground(f32(ox + i + (c & 1)) * f32(OCEAN_CELL), f32(oz + j + (c >> 1)) * f32(OCEAN_CELL));
+      lo = ifx g < lo then g else lo; hi = hi_f32(hi, g);
+    }
+    s[0].needs[j * w + i] = f64(-hi) < 3.0 / k0 && lo < 1.5f32;
+  } }
+}
+lab_bake_cell :: (s: [] Waterlab, slot: int, k0: f64) {
+  x0 := f64(s[0].cells[0].cell_x[slot]) * OCEAN_CELL; z0 := f64(s[0].cells[0].cell_z[slot]) * OCEAN_CELL;
+  step := OCEAN_CELL / f64(OCEAN_TEXELS - 1);
+  base := 0.0f32;
+  for j: 0..<OCEAN_TEXELS { for i: 0..<OCEAN_TEXELS {
+    depth := fmax(-f64(lab_ground(f32(x0 + f64(i) * step), f32(z0 + f64(j) * step))), 0.0);
+    phase := f32(lab_surf_phase(k0, depth));
+    if i == 0 && j == 0 { base = phase; }
+    s[0].slot_words[slot * OCEAN_CELL_WORDS + j * OCEAN_TEXELS + i] = pack2(f32(depth), phase - base);
+  } }
+  s[0].slot_base[slot] = base;
+}
 
 // The sea for the wind: a moderate fetch, swell-free, choppy.
 lab_spectrum :: (wind: f64) -> Spectrum {
@@ -195,11 +273,45 @@ waterlab_frame :: (s: [] Waterlab, out: [] f32, u: [] f32, width: f32, height: f
   }
   hs = hi_f32(hs, 0.001); ss = hi_f32(ss, 0.001);
   u[U_PACK] = hs; u[U_PACK + 1] = ss;
+  co := U_WORDS + W_COARSE;
   for i: 0..<nn {
-    u[U_TILES + 2 * i] = pack2(s[0].tile[0].height[i] / hs, s[0].foam[i]);
-    u[U_TILES + 2 * i + 1] = pack2(s[0].tile[0].sx[i] / ss, s[0].tile[0].sz[i] / ss);
+    u[co + 2 * i] = pack2(s[0].tile[0].height[i] / hs, s[0].foam[i]);
+    u[co + 2 * i + 1] = pack2(s[0].tile[0].sx[i] / ss, s[0].tile[0].sz[i] / ss);
   }
-  fine := U_TILES + 2 * nn;
+  ds := 0.001f32;
+  for i: 0..<nn { ds = hi_f32(ds, hi_f32(abs(s[0].tile[0].dx[i]), abs(s[0].tile[0].dz[i]))); }
+  u[U_PACK + 3] = ds;
+  ch := U_WORDS + W_CHOP;
+  for i: 0..<nn / 2 {
+    a := snorm8(s[0].tile[0].dx[2 * i] / ds) | (snorm8(s[0].tile[0].dz[2 * i] / ds) << 8);
+    b := snorm8(s[0].tile[0].dx[2 * i + 1] / ds) | (snorm8(s[0].tile[0].dz[2 * i + 1] / ds) << 8);
+    u[ch + i] = f32_from_bits(a | (b << 16));
+  }
+  // W10: the clipmap round the eye, and the coast's cells
+  s[0].mesh = 0;
+  if !s[0].traced && s[0].sink <= 0 {
+    clip := ocean_clipmap(ocean_tier(phone), f64(ex), f64(ez), f64(ey));
+    u[U_CLIP] = f32(clip.n); u[U_CLIP + 1] = f32(clip.count); u[U_CLIP + 2] = f32(clip.morph); u[U_CLIP + 3] = f32(clip.far);
+    ocean_level_uniforms(clip, u[U_LEVELS..<U_LEVELS + 4 * OCEAN_MAX_LEVELS]);
+    s[0].mesh = ocean_vertices(clip);
+    u[U_MODE + 2] = 1;
+  }
+  k0 := f64(u[U_BEACH + 2]);
+  wcx := ocean_cell_of(f64(ex)); wcz := ocean_cell_of(f64(ez));
+  s[0].cells[0].ox = wcx - OCEAN_WINDOW / 2; s[0].cells[0].oz = wcz - OCEAN_WINDOW / 2;
+  lab_needs_cells(s, k0);
+  baking := ocean_cells_step(s[0].cells[..], f64(ex), f64(ez), s[0].needs[..], 4, s[0].bake[..]);
+  for b: 0..<baking { lab_bake_cell(s, s[0].bake[b], k0); }
+  u[U_CELLS] = f32(s[0].cells[0].ox); u[U_CELLS + 1] = f32(s[0].cells[0].oz); u[U_CELLS + 2] = f32(OCEAN_WINDOW);
+  u[U_CELLS + 3] = f32(OCEAN_CELL / f64(OCEAN_TEXELS - 1));
+  for k: 0..<OCEAN_WINDOW * OCEAN_WINDOW / 4 {
+    word: u32 = 0;
+    for b: 0..<4 { word = word | (cast(u32) s[0].cells[0].slot_of[4 * k + b] << cast(u32) (8 * b)); }
+    u[U_WORDS + W_TABLE + k] = f32_from_bits(word);
+  }
+  for k: 0..<OCEAN_SLOTS * OCEAN_CELL_WORDS { u[U_WORDS + W_CELLS + k] = s[0].slot_words[k]; }
+  for k: 0..<OCEAN_SLOTS { u[U_BASES + k] = s[0].slot_base[k]; }
+  fine := U_WORDS + W_FINE;
   if phone {
     u[U_PACK + 2] = 0.5;
     for i: 0..<nn { u[fine + i] = pack2(s[0].baked[4 * i] / 0.5, s[0].baked[4 * i + 1] / 0.5); }
@@ -302,9 +414,12 @@ waterlab_message :: (s: [] Waterlab, kind: int, text: string) #export_c {
   s[0].dist = f32(fclamp(query_number(url, "dist", 14), 3, 120));
   s[0].phone_forced = query_word(url, "tier=phone");
   s[0].sink = f32(fclamp(query_number(url, "depth", 0), 0, 12));
+  s[0].traced = query_word(url, "sea=traced");
   s[0].built = false;
 }
 
 coaxial_waterlab_max_vertices :: () -> int #export_c { return MAX_VERTICES; }
+// The clipmap's vertices this frame, drawn by waterlab.wgsl's surface_vs (0 under the water or with ?sea=traced).
+waterlab_surface_vertices :: (s: [] Waterlab) -> int #export_c { return ifx s[0].started then s[0].mesh else 0; }
 coaxial_waterlab_vertex_floats :: () -> int #export_c { return VERTEX_FLOATS; }
 coaxial_waterlab_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }

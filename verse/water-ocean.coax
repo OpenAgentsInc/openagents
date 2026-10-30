@@ -1,0 +1,443 @@
+// Water for Verse, phase W10: ocean and scale (verse/everglade/previous/water.md,
+// "World scale and multiplayer", M1 to M3, and "Streaming across 8 m cells").
+//
+// - The clipmap (Losasso and Hoppe, "Geometry Clipmaps", SIGGRAPH 2004): an
+//   unbounded sea drawn as nested square grids round the eye, each level
+//   twice the spacing of the one inside it. Level 0 is a full grid of n by n
+//   quads; every other level is that grid with a hole of n/2 by n/2 quads
+//   where the level inside it lies. Each level's centre snaps to twice its
+//   spacing, so its vertices never swim as the eye moves, and the level
+//   inside sits in the hole exactly (one quad off centre at most: the hole's
+//   offset, 0 or 1 a side). Near its outer edge a level's odd vertices slide
+//   onto the next level's grid (the morph), so where two levels meet every
+//   vertex of the finer one lies on a vertex of the coarser: no cracks and
+//   no T-junctions. The outermost row of the last level is pulled out to the
+//   horizon (the skirt). The vertex shader rebuilds every vertex from its
+//   index and the per-level numbers here (no buffer): `ocean_vertex` is the
+//   same arithmetic, for the checks.
+// - Streaming across 8 m cells: what a water body has per place (here the
+//   coast's bed depth and its surf phase, at 2 m) lives in a fixed pool of
+//   cell slots; a camera-centred window of cells says which slot holds each
+//   cell. Cells are admitted nearest first, a few a frame, kept while they
+//   stay in the window, and evicted when nearer cells need the slot. A cell
+//   with no slot falls back to the analytic field (the shader's own maths),
+//   so streaming changes the cost, never the picture's correctness.
+// - The split between what is simulated and what is only seen (M3): the
+//   gameplay surface is the spectral band every tier synthesizes the same
+//   way (water-spectrum.coax cascade 0), a pure function of the spectrum and
+//   the world tick, so every client and a late joiner agree on it bit for
+//   bit. The finer cascades, the baked phone tile, the foam field and the
+//   clipmap are each client's own and never reach the physics. The checks
+//   below hold both halves of that.
+//   coax/bin/coax test --library verse/water-ocean.coax --steps 2000000000
+
+#load "water-spectrum.coax";
+
+OCEAN_MAX_LEVELS :: 12;
+
+// One level: its centre (a multiple of twice its spacing), its spacing, and
+// the hole's offset in quads (0 or 1 each way; level 0 has none).
+OceanLevel :: struct { cx: f64; cz: f64; spacing: f64; hole_x: int; hole_z: int; }
+
+Clipmap :: struct {
+  n: int;            // quads a side per level (a multiple of 8)
+  count: int;        // levels
+  morph: int;        // the morph band, quads in from a level's outer edge
+  far: f64;          // the skirt: the last level's outer row is pulled out to this distance (m)
+  levels: [OCEAN_MAX_LEVELS] OceanLevel;
+}
+
+// The tiers: a phone draws 32 quads a level from 0.5 m, a desktop 64 from 0.5 m.
+// Either reaches past `reach` metres before the skirt.
+OceanTier :: struct { n: int; spacing: f64; reach: f64; far: f64; }
+ocean_tier :: (phone: bool) -> OceanTier {
+  if phone { return OceanTier.{n = 32, spacing = 0.5, reach = 3000.0, far = 40000.0}; }
+  return OceanTier.{n = 64, spacing = 0.5, reach = 3000.0, far = 40000.0};
+}
+
+// The clipmap round eye (x, z) at `height` over the water. A high eye drops
+// the finest levels (their quads would be under a pixel): level 0's half
+// extent is kept at least the eye's height.
+ocean_clipmap :: (tier: OceanTier, x: f64, z: f64, height: f64) -> Clipmap {
+  c: Clipmap;
+  c.n = tier.n;
+  c.morph = tier.n / 8;
+  c.far = tier.far;
+  s := tier.spacing;
+  while f64(tier.n / 2) * s < fabs_o(height) && s < 64.0 { s *= 2.0; }
+  count := 1;
+  while count < OCEAN_MAX_LEVELS && f64(tier.n / 2) * s * pow2_o(count - 1) < tier.reach { count += 1; }
+  c.count = count;
+  for l: 0..<count {
+    sl := s * pow2_o(l);
+    c.levels[l] = OceanLevel.{cx = floor(x / (2.0 * sl)) * 2.0 * sl, cz = floor(z / (2.0 * sl)) * 2.0 * sl, spacing = sl};
+  }
+  for l: 1..<count {
+    inner := c.levels[l - 1]; lv := c.levels[l];
+    c.levels[l].hole_x = cast(int) round_d((inner.cx - lv.cx) / lv.spacing);
+    c.levels[l].hole_z = cast(int) round_d((inner.cz - lv.cz) / lv.spacing);
+  }
+  return c;
+}
+fabs_o :: (v: f64) -> f64 { if v < 0.0 { return -v; } return v; }
+pow2_o :: (k: int) -> f64 { r := 1.0; for i: 0..<k { r *= 2.0; } return r; }
+
+ocean_level_quads :: (c: Clipmap, l: int) -> int { return ifx l == 0 then c.n * c.n else c.n * c.n - (c.n / 2) * (c.n / 2); }
+ocean_vertices :: (c: Clipmap) -> int {
+  total := 0;
+  for l: 0..<c.count { total += 6 * ocean_level_quads(c, l); }
+  return total;
+}
+
+// Quad k of level l (0 .. ocean_level_quads): its column and row in the level's n by n grid.
+OceanQuad :: struct { qx: int; qz: int; }
+ocean_quad :: (c: Clipmap, l: int, k: int) -> OceanQuad {
+  n := c.n;
+  if l == 0 { return OceanQuad.{qx = k % n, qz = k / n}; }
+  half := n / 2;
+  hx := n / 4 + c.levels[l].hole_x; hz := n / 4 + c.levels[l].hole_z;
+  top := hz * n;
+  if k < top { return OceanQuad.{qx = k % n, qz = k / n}; }
+  band := k - top;
+  if band < half * half {
+    col := band % half;
+    return OceanQuad.{qx = ifx col < hx then col else col + half, qz = hz + band / half};
+  }
+  rest := band - half * half;
+  return OceanQuad.{qx = rest % n, qz = hz + half + rest / n};
+}
+
+// A vertex: where it rests on the water (before the waves), its level, and how far it has morphed.
+OceanVertex :: struct { x: f64; z: f64; level: int; morph: f64; }
+OCEAN_CORNER_X :: [6] int.[0, 1, 0, 0, 1, 1];
+OCEAN_CORNER_Z :: [6] int.[0, 0, 1, 1, 0, 1];
+
+ocean_vertex :: (c: Clipmap, index: int) -> OceanVertex {
+  q := index / 6; corner := index % 6;
+  l := 0;
+  while l + 1 < c.count && q >= ocean_level_quads(c, l) { q -= ocean_level_quads(c, l); l += 1; }
+  quad := ocean_quad(c, l, q);
+  lv := c.levels[l];
+  half := c.n / 2;
+  // the vertex's index on the whole sea's grid at this level's spacing, and its place in the level
+  base_x := cast(int) round_d(lv.cx / lv.spacing) - half;
+  base_z := cast(int) round_d(lv.cz / lv.spacing) - half;
+  gx := base_x + quad.qx + OCEAN_CORNER_X[corner];
+  gz := base_z + quad.qz + OCEAN_CORNER_Z[corner];
+  rx := quad.qx + OCEAN_CORNER_X[corner] - half; rz := quad.qz + OCEAN_CORNER_Z[corner] - half;
+  edge := ifx abs_i(rx) > abs_i(rz) then abs_i(rx) else abs_i(rz);
+  a := 0.0;
+  if l + 1 < c.count { a = fclamp(f64(edge - (half - c.morph)) / f64(c.morph), 0.0, 1.0); }
+  x := (f64(gx) - a * f64(gx & 1)) * lv.spacing;
+  z := (f64(gz) - a * f64(gz & 1)) * lv.spacing;
+  if l + 1 == c.count && edge == half {
+    // the skirt: the outer row out to the horizon, along the line from the centre
+    stretch := c.far / (f64(half) * lv.spacing);
+    x = lv.cx + (x - lv.cx) * stretch; z = lv.cz + (z - lv.cz) * stretch;
+  }
+  return OceanVertex.{x = x, z = z, level = l, morph = a};
+}
+abs_i :: (v: int) -> int { if v < 0 { return -v; } return v; }
+
+// The level's numbers as the shader reads them (four floats a level): centre x, z, spacing, hole x + 2 hole z.
+ocean_level_uniforms :: (c: Clipmap, out: [] f32) {
+  for l: 0..<OCEAN_MAX_LEVELS {
+    if l < c.count {
+      lv := c.levels[l];
+      out[4 * l] = f32(lv.cx); out[4 * l + 1] = f32(lv.cz); out[4 * l + 2] = f32(lv.spacing);
+      out[4 * l + 3] = f32(lv.hole_x + 2 * lv.hole_z);
+    } else { for k: 0..<4 { out[4 * l + k] = 0; } }
+  }
+}
+
+// ---- Streaming across 8 m cells.
+OCEAN_CELL :: 8.0;          // m
+OCEAN_WINDOW :: 16;         // cells a side round the eye's cell
+OCEAN_SLOTS :: 48;          // cells resident at once
+OCEAN_TEXELS :: 5;          // a cell's texels a side, at its corners and every 2 m
+OCEAN_CELL_WORDS :: 25;     // OCEAN_TEXELS^2, one word each (two half floats)
+
+OceanCells :: struct {
+  ox: int; oz: int;                          // the window's first cell
+  slot_of: [OCEAN_WINDOW * OCEAN_WINDOW] int; // 0: none, else slot + 1
+  used: [OCEAN_SLOTS] bool;
+  cell_x: [OCEAN_SLOTS] int; cell_z: [OCEAN_SLOTS] int;
+  baked: int;                                 // cells baked since the start
+}
+
+ocean_cell_of :: (v: f64) -> int { return cast(int) floor(v / OCEAN_CELL); }
+// How far cell (x, z) is from the eye's cell, in whole cells (Chebyshev).
+ocean_ring :: (x: int, z: int, ex: int, ez: int) -> int {
+  dx := abs_i(x - ex); dz := abs_i(z - ez);
+  return ifx dx > dz then dx else dz;
+}
+
+// One frame of residency. `needs` says, for each cell of this frame's window
+// (row-major from the window's first cell, which is the eye's cell less
+// OCEAN_WINDOW / 2 each way), whether it has a field to hold. Writes into
+// `bake` the slots whose cells the caller must fill now (at most `budget`)
+// and returns how many.
+ocean_cells_step :: (c: [] OceanCells, eye_x: f64, eye_z: f64, needs: [] bool, budget: int, bake: [] int) -> int {
+  ex := ocean_cell_of(eye_x); ez := ocean_cell_of(eye_z);
+  w := OCEAN_WINDOW;
+  c[0].ox = ex - w / 2; c[0].oz = ez - w / 2;
+  // the nearest rings whose needed cells all fit in the pool
+  frontier := -1;
+  have := 0;
+  for r: 0..<w / 2 {
+    k := 0;
+    for j: 0..<w { for i: 0..<w {
+      if needs[j * w + i] && ocean_ring(c[0].ox + i, c[0].oz + j, ex, ez) == r { k += 1; }
+    } }
+    if have + k > OCEAN_SLOTS { break; }
+    have += k; frontier = r;
+  }
+  // evict: out of the window, no longer needed, or two rings past the frontier
+  for s: 0..<OCEAN_SLOTS {
+    if !c[0].used[s] { continue; }
+    i := c[0].cell_x[s] - c[0].ox; j := c[0].cell_z[s] - c[0].oz;
+    inside := i >= 0 && i < w && j >= 0 && j < w;
+    if !inside || !needs[j * w + i] || ocean_ring(c[0].cell_x[s], c[0].cell_z[s], ex, ez) > frontier + 1 { c[0].used[s] = false; }
+  }
+  for k: 0..<w * w { c[0].slot_of[k] = 0; }
+  for s: 0..<OCEAN_SLOTS {
+    if c[0].used[s] { c[0].slot_of[(c[0].cell_z[s] - c[0].oz) * w + (c[0].cell_x[s] - c[0].ox)] = s + 1; }
+  }
+  // admit, nearest rings first, into free slots, `budget` a frame
+  n := 0;
+  free := 0;
+  for r: 0..<frontier + 1 {
+    for j: 0..<w { for i: 0..<w {
+      if n >= budget { return n; }
+      if !needs[j * w + i] || c[0].slot_of[j * w + i] != 0 || ocean_ring(c[0].ox + i, c[0].oz + j, ex, ez) != r { continue; }
+      while free < OCEAN_SLOTS && c[0].used[free] { free += 1; }
+      if free >= OCEAN_SLOTS { return n; }
+      c[0].used[free] = true; c[0].cell_x[free] = c[0].ox + i; c[0].cell_z[free] = c[0].oz + j;
+      c[0].slot_of[j * w + i] = free + 1;
+      bake[n] = free; n += 1;
+      c[0].baked += 1;
+    } }
+  }
+  return n;
+}
+
+ocean_resident :: (c: [] OceanCells) -> int {
+  k := 0;
+  for s: 0..<OCEAN_SLOTS { if c[0].used[s] { k += 1; } }
+  return k;
+}
+// What the resident cells cost on the GPU, bytes (they count toward a zone's resident bytes).
+ocean_cells_bytes :: () -> int { return OCEAN_SLOTS * (OCEAN_CELL_WORDS * 4 + 4) + OCEAN_WINDOW * OCEAN_WINDOW; }
+
+// ---- Checks.
+
+// Whether point (x, z) lies inside the quad's square (open), for the coverage check.
+quad_holds :: (c: Clipmap, l: int, q: OceanQuad, x: f64, z: f64) -> bool {
+  lv := c.levels[l];
+  x0 := lv.cx + f64(q.qx - c.n / 2) * lv.spacing; z0 := lv.cz + f64(q.qz - c.n / 2) * lv.spacing;
+  return x > x0 && x < x0 + lv.spacing && z > z0 && z < z0 + lv.spacing;
+}
+
+// Which of level l's quads holds point (x, z), if any: -1 outside its square or in its hole.
+quad_at :: (c: Clipmap, l: int, x: f64, z: f64) -> int {
+  lv := c.levels[l];
+  qx := cast(int) floor((x - lv.cx) / lv.spacing) + c.n / 2;
+  qz := cast(int) floor((z - lv.cz) / lv.spacing) + c.n / 2;
+  if qx < 0 || qx >= c.n || qz < 0 || qz >= c.n { return -1; }
+  if l > 0 {
+    hx := c.n / 4 + lv.hole_x; hz := c.n / 4 + lv.hole_z;
+    if qx >= hx && qx < hx + c.n / 2 && qz >= hz && qz < hz + c.n / 2 { return -1; }
+  }
+  return qz * c.n + qx;
+}
+
+#test "the levels nest exactly: every point of the sea is under one quad" {
+  t := OceanTier.{n = 8, spacing = 1.0, reach = 20.0, far = 1000.0};
+  eyes := [4] D2.[d2(0.3, 0.2), d2(3.7, -5.1), d2(-9.9, 6.6), d2(15.2, 15.9)];
+  for e: 0..<4 {
+    c := ocean_clipmap(t, eyes[e].x, eyes[e].y, 0.5);
+    #assert c.count == 4;
+    // the hole's offset is 0 or 1 quad a side
+    for l: 1..<c.count { #assert c.levels[l].hole_x >= 0 && c.levels[l].hole_x <= 1 && c.levels[l].hole_z >= 0 && c.levels[l].hole_z <= 1; }
+    // a ring's quads are each of the level's quads outside the hole, once
+    for l: 0..<c.count {
+      seen: [64] int;
+      for k: 0..<64 { seen[k] = 0; }
+      for k: 0..<ocean_level_quads(c, l) { q := ocean_quad(c, l, k); seen[q.qz * 8 + q.qx] += 1; }
+      for k: 0..<64 {
+        lv := c.levels[l];
+        x := lv.cx + (f64(k % 8 - 4) + 0.5) * lv.spacing; z := lv.cz + (f64(k / 8 - 4) + 0.5) * lv.spacing;
+        #assert seen[k] == ifx quad_at(c, l, x, z) == k then 1 else 0;
+      }
+    }
+    // a grid of points off every vertex and edge, across the innermost levels
+    for j: 0..<40 {
+      for i: 0..<40 {
+        x := eyes[e].x - 15.0 + (f64(i) + 0.37) * 0.75; z := eyes[e].y - 15.0 + (f64(j) + 0.61) * 0.75;
+        cover := 0;
+        for l: 0..<c.count { if quad_at(c, l, x, z) >= 0 { cover += 1; } }
+        #assert cover == 1;
+      }
+    }
+  }
+}
+
+#test "vertices rest on their level's grid, so they never swim as the eye moves" {
+  t := OceanTier.{n = 8, spacing = 0.5, reach = 10.0, far = 1000.0};
+  a := ocean_clipmap(t, 1.10, 2.30, 0.5);
+  b := ocean_clipmap(t, 1.15, 2.20, 0.5);
+  #assert ocean_vertices(a) == ocean_vertices(b);
+  same := 0;
+  for v: 0..<ocean_vertices(a) {
+    p := ocean_vertex(a, v); q := ocean_vertex(b, v);
+    // every unmorphed vertex is a whole number of its spacing from the origin
+    if p.morph == 0.0 && p.level + 1 < a.count {
+      s := a.levels[p.level].spacing;
+      #assert p.x / s == floor(p.x / s) && p.z / s == floor(p.z / s);
+    }
+    if p.x == q.x && p.z == q.z { same += 1; }
+  }
+  // a small move inside the snapping cell leaves every vertex where it was
+  #assert same == ocean_vertices(a);
+}
+
+#test "no cracks: a level's morphed outer edge lands on the next level's vertices" {
+  t := OceanTier.{n = 8, spacing = 1.0, reach = 20.0, far = 1000.0};
+  c := ocean_clipmap(t, 5.3, -2.9, 0.5);
+  #assert c.count == 4;
+  total := ocean_vertices(c);
+  xs: [1248] f64; zs: [1248] f64; ls: [1248] int; ms: [1248] f64;
+  #assert total == 1248;
+  for v: 0..<total { p := ocean_vertex(c, v); xs[v] = p.x; zs[v] = p.z; ls[v] = p.level; ms[v] = p.morph; }
+  for v: 0..<total {
+    l := ls[v];
+    if l + 1 >= c.count { continue; }
+    if ms[v] == 1.0 {
+      // its morph is complete: it is on the coarser grid
+      s := c.levels[l + 1].spacing;
+      #assert xs[v] / s == floor(xs[v] / s) && zs[v] / s == floor(zs[v] / s);
+    }
+    // a vertex on the level's outer edge is a vertex of the next level
+    lx := c.levels[l].cx; lz := c.levels[l].cz; reach := 4.0 * c.levels[l].spacing;
+    if fabs_o(xs[v] - lx) != reach && fabs_o(zs[v] - lz) != reach { continue; }
+    #assert ms[v] == 1.0;
+    found := false;
+    for w: 0..<total { if ls[w] == l + 1 && xs[w] == xs[v] && zs[w] == zs[v] { found = true; break; } }
+    #assert found;
+  }
+}
+
+#test "the tiers reach the horizon inside their vertex budgets" {
+  for k: 0..<2 {
+    phone := k == 0;
+    t := ocean_tier(phone);
+    low := ocean_clipmap(t, 0.0, -6.0, 2.0);
+    high := ocean_clipmap(t, 0.0, -6.0, 60.0);
+    lv := low.levels[low.count - 1];
+    #assert f64(t.n / 2) * lv.spacing >= t.reach;
+    // the skirt goes out to the horizon
+    far := ocean_vertex(low, ocean_vertices(low) - 1);
+    #assert fabs_o(far.x - lv.cx) >= t.far * 0.99 || fabs_o(far.z - lv.cz) >= t.far * 0.99;
+    // a high eye drops the finest levels
+    #assert high.levels[0].spacing > low.levels[0].spacing && high.count <= low.count;
+    budget := ifx phone then 60000 else 200000;
+    #assert ocean_vertices(low) <= budget;
+  }
+}
+
+// The lab's needs, for the checks: a straight beach along x at z = 2 m, cells needed within 40 m of it.
+lab_needs :: (c: [] OceanCells, eye_x: f64, eye_z: f64, needs: [] bool) {
+  ex := ocean_cell_of(eye_x); ez := ocean_cell_of(eye_z);
+  w := OCEAN_WINDOW;
+  for j: 0..<w { for i: 0..<w {
+    z := f64(ez - w / 2 + j) * OCEAN_CELL;
+    needs[j * w + i] = z + OCEAN_CELL > -38.0 && z < 10.0;
+  } }
+}
+
+#test "cells stream nearest first, a few a frame, and stay put while the eye wanders" {
+  c: [1] OceanCells;
+  needs: [OCEAN_WINDOW * OCEAN_WINDOW] bool;
+  bake: [OCEAN_SLOTS] int;
+  for f: 0..<40 {
+    lab_needs(c[..], 0.5, -6.0, needs[..]);
+    n := ocean_cells_step(c[..], 0.5, -6.0, needs[..], 4, bake[..]);
+    #assert n <= 4;
+    if f == 0 {
+      // the first cells in are the eye's own and its neighbours
+      for b: 0..<n { #assert ocean_ring(c[0].cell_x[bake[b]], c[0].cell_z[bake[b]], 0, -1) <= 1; }
+    }
+  }
+  settled := c[0].baked;
+  #assert settled == 42 && ocean_resident(c[..]) == settled;
+  // the table and the slots agree, and no slot holds two cells
+  for k: 0..<OCEAN_WINDOW * OCEAN_WINDOW {
+    s := c[0].slot_of[k];
+    if s == 0 { continue; }
+    #assert c[0].used[s - 1] && (c[0].cell_z[s - 1] - c[0].oz) * OCEAN_WINDOW + (c[0].cell_x[s - 1] - c[0].ox) == k;
+  }
+  // wandering back and forth across a cell's edge brings in the far side's few cells once, then nothing new
+  for f: 0..<6 {
+    x := ifx f % 2 == 0 then -0.3 else 0.4;
+    lab_needs(c[..], x, -6.0, needs[..]);
+    #assert ocean_cells_step(c[..], x, -6.0, needs[..], 4, bake[..]) <= 4;
+  }
+  #assert c[0].baked - settled <= OCEAN_SLOTS - settled;
+  settled = c[0].baked;
+  for f: 0..<20 {
+    x := ifx f % 2 == 0 then -0.3 else 0.4;
+    lab_needs(c[..], x, -6.0, needs[..]);
+    #assert ocean_cells_step(c[..], x, -6.0, needs[..], 4, bake[..]) <= 4;
+  }
+  #assert c[0].baked == settled;
+  // a long walk along the beach streams new cells in and the far ones out
+  for f: 0..<60 {
+    x := f64(f) * 2.0;
+    lab_needs(c[..], x, -6.0, needs[..]);
+    #assert ocean_cells_step(c[..], x, -6.0, needs[..], 4, bake[..]) <= 4;
+    #assert ocean_resident(c[..]) <= OCEAN_SLOTS;
+  }
+  #assert c[0].baked > settled;
+  for s: 0..<OCEAN_SLOTS {
+    if c[0].used[s] { #assert ocean_ring(c[0].cell_x[s], c[0].cell_z[s], ocean_cell_of(118.0), ocean_cell_of(-6.0)) <= OCEAN_WINDOW / 2; }
+  }
+  #assert ocean_cells_bytes() < 8192;
+}
+
+// Two clients, a phone and a desktop: each synthesizes its own cascades, yet
+// the gameplay band is the same numbers on both at every tick, for one who
+// joined late as for one who was there from the start.
+#test "every client agrees on the simulated sea, whatever it draws" {
+  sp := wsp_sea(8.0, 60000.0, 17);
+  phone: [1] Synth; desk: [1] Synth;
+  wsp_synth(phone[..], sp, 1, 64);
+  wsp_synth(desk[..], sp, 2, 64);
+  #assert phone[0].ok && desk[0].ok;
+  #assert wsp_mode_count(phone[..], 0) == wsp_mode_count(desk[..], 0);
+  #assert wsp_mode_count(desk[..], 1) > 0;
+  a: [1] Field; b: [1] Field;
+  ticks := [3] u64.[0, 4321, 4321 + 3 * sp.period];
+  for t: 0..<3 {
+    wsp_field(phone[..], ticks[t], a[..]);
+    wsp_field(desk[..], ticks[t], b[..]);
+    for k: 0..<6 * WSP_GAMEPLAY_SIZE * WSP_GAMEPLAY_SIZE { #assert a[0].texels[k] == b[0].texels[k]; }
+    #assert wsp_surface_height(a[..], 3.25, -7.5) == wsp_surface_height(b[..], 3.25, -7.5);
+  }
+  // what a client draws of the gameplay band (its render tile) is that surface
+  tile: [1] Tile;
+  wsp_tile(desk[..], 0, 4321, tile[..]);
+  wsp_field(desk[..], 4321, a[..]);
+  worst := 0.0;
+  for k: 0..<WSP_GAMEPLAY_SIZE * WSP_GAMEPLAY_SIZE {
+    worst = fmax(worst, fabs_o(f64(tile[0].height[k]) - f64(a[0].texels[6 * k + 1])));
+  }
+  #assert worst < 0.001;
+  // the finer cascade is the desktop's alone and differs from nothing the physics reads
+  wsp_tile(desk[..], 1, 4321, tile[..]);
+  #assert desk[0].cascades[1].low >= desk[0].cascades[0].high;
+  // where the eye is changes the clipmap, never the surface
+  c1 := ocean_clipmap(ocean_tier(true), 0.0, 0.0, 2.0);
+  c2 := ocean_clipmap(ocean_tier(false), 50.0, -30.0, 9.0);
+  #assert c1.levels[0].cx != c2.levels[0].cx;
+  #assert wsp_surface_height(a[..], 3.25, -7.5) == wsp_surface_height(b[..], 3.25, -7.5);
+}

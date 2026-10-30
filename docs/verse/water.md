@@ -4,11 +4,12 @@ Water is being ported from the previous Rust engine to Coax in the phases
 of its specification, [verse/everglade/previous/water.md](../../verse/everglade/previous/water.md)
 (copied from `0b401561a0^`; see its phased plan). Done: W1 (the physics),
 W2 (the shader, on the Coax WebGPU renderer), W3 adapted to today's
-Everglade (its river, swimming and floats) and, from W6, the ripple field
-with your wake and splash, most of W5 (below) and W4 (the spectral sea,
-in the water lab, below). The rest has a task each under `verse-water`
-(#c278): W3's rest (townsfolk swimming; the ponds, the weir and the
-rowboats are in), the rest of W6, and W7 to W11.
+Everglade (its river, ponds, weir, rowboats, swimming and floats) and, from W6, the
+ripple field with your wake and splash, most of W5, W4 (the spectral sea,
+in the water lab), W7 (under the water), W9 (weather), W10 (ocean and
+scale) and W11 (measurement), each below. The rest has a task each under
+`verse-water` (#c278): W3's rest (townsfolk swimming; the rowboats are
+in), the rest of W6 and W8 (spells and water).
 
 ## W1: the physics (done)
 
@@ -391,8 +392,10 @@ every scene pixel and the sky under that line, with motes and, on a desktop,
 shafts. Caustics (`water_caustics`) already light the submerged bed.
 Holding C dives (`#river-wade` spawns in the river), and the camera comes
 down to your head, looking level along the river, so the view goes under.
-Everglade has no post pass, so the waver and meniscus are drawn only in the
-lab.
+On a desktop, Everglade's post pass (`post_fs`, `water_waver_at` and
+`water_meniscus`) wavers the view by about 3 pixels where the near plane is
+under the river and draws the meniscus where the surface crosses the lens.
+Both do nothing while the eye is more than 0.2 m from the water.
 
 **The lab.** Q dives the lab's camera and E brings it up (`?depth=` sets it).
 The traced pass draws the split line, the waver, Snell's window, shafts,
@@ -456,3 +459,127 @@ ratio 2 (8.7 ms clear).
 ```sh
 coax/bin/coax test --library verse/water-weather.coax --steps 2000000000
 ```
+
+## W10: ocean and scale (done)
+
+[`verse/water-ocean.coax`](../../verse/water-ocean.coax) holds the CPU half
+of the old W10, with its checks:
+
+- **The clipmap** (Losasso and Hoppe 2004, the plan's M2). The sea is nested
+  square grids round the eye: level 0 a full grid of n by n quads, each next
+  level twice the spacing with a hole of n/2 by n/2 quads where the level
+  inside it lies. A level's centre snaps to twice its spacing, so its vertices
+  never swim, and the level inside sits in the hole exactly (0 or 1 quad off
+  centre a side). In the outer eighth of a level its odd vertices slide onto
+  the next level's grid, so where two levels meet every vertex of the finer
+  one is a vertex of the coarser: no cracks, no T-junctions. The last row of
+  the last level is pulled out to 40 km (the skirt). A phone draws 32 quads a
+  level from 0.5 m (10 levels, 47,616 vertices), a desktop 64 (9 levels,
+  172,032); a high eye drops the finest levels. The checks: every point of
+  the sea is under exactly one quad, vertices stay put as the eye moves
+  within a snap, every morphed edge vertex is a vertex of the next level, and
+  both tiers reach 3 km inside their vertex budgets.
+- **Streaming across 8 m cells** (M1). What a body has per place lives in a
+  pool of 48 cell slots, 5 by 5 texels each (2 m), with a 16 by 16 window of
+  cells round the eye saying which slot holds each cell (`ocean_cells_step`).
+  Cells come in nearest first, at most 4 a frame, stay while they are in the
+  window, and leave when nearer cells need their slot; a cell with no slot
+  falls back to the analytic field, so streaming changes the cost and never
+  what is drawn. The pool is under 6 KiB of GPU memory. The checks: the
+  first cells in are the eye's own and its neighbours, wandering back and
+  forth over a cell's edge bakes nothing new after the first swing, and a
+  walk along the beach streams cells in and out.
+- **The simulated and visual split** (M3), checked as two clients, a phone
+  (one cascade and the baked tile) and a desktop (two cascades): the gameplay
+  band (cascade 0, `wsp_field`) is the same numbers bit for bit on both at
+  every tick, a late joiner's tick folds to the same, the render tile each
+  draws of that band is the gameplay surface within a millimetre, and where
+  the eye is changes the clipmap, never the surface. The finer cascade, the
+  baked tile, the foam field and the clipmap are each client's own; nothing
+  the physics reads depends on them.
+
+**The coastal test scene is the water lab** (`/realms/waterlab`, as the
+plan's capture example). Its sea is now the clipmap: `waterlab.wgsl`'s
+`surface_vs` rebuilds each vertex from its index and the levels' numbers in
+the uniform block, lifts it by the sea's height (shoaled and breaking toward
+the beach) and moves it by cascade 0's choppy displacement, which the CPU
+now packs as two signed bytes a texel (`W_CHOP`); `surface_fs` shades it as
+the trace did. `bg_fs` traces only the sky and the beach and writes their
+depth, so the mesh hides behind the sand. The coast's bed depth and surf
+phase (the integral of the shoaling wavenumber across the beach, 8 taps a
+lookup before) come from the streamed cells. Heights fade out past 2.5
+cascade-0 patches, where the quads grow too coarse to carry them; the
+normals keep the detail. `?sea=traced` draws the old traced sea to compare;
+under the water (`?depth=`, Q) the trace draws everything as before.
+
+The host (`coax/web/host.js`) gained the general piece: a traced page with
+`surface_vs`, `surface_fs` and `coaxial_surface_vertices` gets a depth
+buffer, and that many vertices draw after `bg_fs` with no vertex buffer.
+Its pipeline is made with the page's others, before play.
+
+Differences from the old W10 (`verse/everglade/previous/water.md`, its
+W10 status): its levels were uploaded ring by ring and morphed by the eye's
+distance (Strugar 2009); here the vertex shader builds them from an index
+and morphs by place in the level, which needs no buffer and keeps the seam
+exact. Its streamed field was 128 m pages of 8 m cells in a texture atlas;
+Coax pages have a uniform block, so the cells are its words. Not ported: its
+`physics::water::Event` list (level, ice and dam changes with start ticks:
+W8's ice will need it; W9's rising water is a pure function of the tick),
+its capture example's PNG set (the lab's golden covers it), and its bay
+scene, which is [the coast](coast.md)'s C1 to C6.
+
+```sh
+coax/bin/coax test --library verse/water-ocean.coax --steps 2000000000
+```
+
+
+## W11: measurement (done; real phones are an owner step)
+
+Measured on 2026-10-29 with this change in headless Chrome on an Apple
+M-series Mac (WebGPU on Metal) by `coax/web/frametime.ts`: a timestamp query
+on every render pass, frames unthrottled, the median of each 5 s run, the
+better of two runs.
+"GPU" is the passes' times summed; on a tiled GPU they overlap, so the span
+from the first pass's start to the last's end is given too. The phone tier is
+a 390x844 view at device pixel ratio 3 with touch; the desktop 1440x900 at 2.
+
+| Page and view | Phone GPU p50 (p95), ms | Desktop GPU p50 (p95), ms | Desktop span p50, ms |
+| --- | --- | --- | --- |
+| Lab, the clipmap sea | 0.32 (0.54) | 1.33 (2.39) | 1.33 |
+| Lab, `?sea=traced` (W4's trace) | 0.39 (0.87) | 1.52 (2.35) | 1.52 |
+| Lab, `?wind=18` | 0.29 (0.45) | 1.44 (2.73) | 1.44 |
+| Lab, under the water (`?depth=2`) | 0.48 (0.60) | 1.87 (2.39) | 1.87 |
+| Everglade `#river-wade`, on the surface | 4.14 (5.18) | 12.26 (16.09) | 3.10 |
+| Everglade, diving (C held) | 3.14 (3.68) | 14.96 (16.45) | 3.50 |
+| Everglade, `?weather=storm` | 4.89 (7.44) | 12.43 (15.14) | 3.09 |
+
+With vsync on (`--vsync`, frames at the display's rate), the lab and diving in
+Everglade both held 16.7 ms frames at p95 on the desktop at device pixel
+ratio 2, and `coax/web/perf.ts` held 60 FPS in all eight of its Everglade
+cases at ratios 1 and 2. CPU: the lab's whole frame (FFT synthesis of its
+tiles, foam, packing, clipmap, cells), built natively from the same C at -O2,
+takes 0.42 ms a frame on the desktop tier and 0.23 ms on the phone's; the
+browser's Wasm runs slower than that. Memory: the lab's uniform block is
+62,992 bytes (under WebGPU's 64 KiB binding limit), its cell pool 5,248;
+Everglade's river nodes are an 86,944-byte store.
+
+**Budgets**, set from those numbers (caps for these headless views, not a
+promise for every device):
+
+| Budget | Phone tier | Desktop |
+| --- | --- | --- |
+| The lab's GPU (all of it water) | 1 ms | 3 ms |
+| A page's GPU with its water in view (Everglade) | 5.5 ms | 60 FPS at device pixel ratio 1 and 2 (`perf.ts`) |
+| The lab's CPU frame, native | 0.5 ms | 1 ms |
+| Water uniforms (the lab) | 64 KiB | 64 KiB |
+
+Everglade's phone tier in a storm is the closest to its cap (4.99 ms at
+worst); its rain layers are the first to cut if a phone misses it.
+
+Not measured: a WebGL2 backend (the Coax renderer is WebGPU only, so the
+plan's "both web backends" is one), and real phones. Those are in
+`NEEDS_OWNER.md` ("Check the water on your phone"). Found on the way:
+Everglade writes all four of its stores to the GPU every frame, the river's
+86,944-byte nodes among them, though the nodes change only when baked.
+Writing them only when they change is left to the work on Everglade's
+frame rate.

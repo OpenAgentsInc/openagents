@@ -2085,8 +2085,26 @@ fn tone(c: vec3f) -> vec3f {
   t = vec3f(verse_style_saturation(t.x, y, st(18u).y), verse_style_saturation(t.y, y, st(18u).y), verse_style_saturation(t.z, y, st(18u).y));
   return vec3f(verse_style_lift(t.x, st(18u).z), verse_style_lift(t.y, st(18u).z), verse_style_lift(t.z, st(18u).z));
 }
+// Under the water on a desktop (W7, verse/water-under.coax water_under_tier): the view wavers a
+// few pixels where the pixel's near-plane point is under the river, and a pale meniscus marks where
+// the surface crosses the lens. Nothing changes while the eye is well above the water.
+fn water_waver_at(pos: vec2f) -> vec2i {
+  let over = water_eye_over();
+  // deeper than the near plane every pixel is under; only near the surface is the ray needed
+  if (!weather_desktop() || over > 0.2 || (over > -WATER_NEAR && !water_pixel_under(pixel_ray(pos)))) { return vec2i(pos); }
+  let t = u.water.params.x;
+  let px = 3.0 * u.size.y / 900.0;
+  let o = vec2f(sin(pos.y * 0.02 + t * 1.7), cos(pos.x * 0.017 + t * 1.3)) * px;
+  return clamp(vec2i(pos + o), vec2i(0), vec2i(u.size) - 1);
+}
+fn water_meniscus(c: vec3f, pos: vec2f) -> vec3f {
+  if (!weather_desktop() || abs(water_eye_over()) > 0.2) { return c; }
+  let line = water_eye_over() + WATER_NEAR * pixel_ray(pos).y;
+  if (line >= 0.0) { return c; }
+  return mix(c, vec3f(0.85, 0.95, 0.95), (1.0 - smoothstep(0.0, 0.006, -line)) * 0.7);
+}
 @fragment fn post_fs(@builtin(position) pos: vec4f) -> @location(0) vec4f {
-  var light = textureLoad(post_light, vec2i(pos.xy), 0).rgb;
+  var light = water_meniscus(textureLoad(post_light, water_waver_at(pos.xy), 0).rgb, pos.xy);
   let uv = pos.xy / u.size;
   // the far field softened (spec 15, fine detail; the references' far forest is masses, not leaves): a
   // pixel painted past SOFT_FROM (aux.g, its distance, from paint) takes the mean of four linear taps

@@ -6,24 +6,45 @@
 // Fresnel on a calmer normal, sparkles near the sun's reflection, white
 // paint for whitecaps, surf and the waterline, and the hazy, cyan-green air
 // of the owner's references.
+//
+// W10 (verse/water-ocean.coax): the sea is a clipmap mesh. surface_vs builds
+// each vertex from its index and the levels' numbers (nested grids round the
+// eye, each twice the last's spacing, the odd vertices near a level's edge
+// sliding onto the next level's grid, the last row out to the horizon), lifts
+// it by the sea's height and moves it by cascade 0's choppy displacement;
+// surface_fs shades it as the trace did. bg_fs then draws only the sky and
+// the beach and writes their depth. The coast's bed depth and surf phase
+// come from 8 m cells streamed into the block (shore_at), or are computed
+// where no cell is resident.
 struct U {
   size: vec4f,    // width, height, time, fade
-  mode: vec4f,    // still, phone, scene, dpr
+  mode: vec4f,    // still, phone, the clipmap draws the sea (1), dpr
   eye: vec4f,     // xyz, tan of half the vertical field
   fwd: vec4f, right: vec4f, up: vec4f,
   sun: vec4f,     // toward the sun, strength
   sea: vec4f,     // level, cascade 0's patch, the fine patch, choppiness
   wind: vec4f,    // direction x, z, speed, significant height
   beach: vec4f,   // the still waterline's z, the slope, the peak's deep wavenumber, its omega
-  pack: vec4f,    // the half floats' scales: height, slope, fine slope
-  tiles: array<vec4u, 3072>,  // cascade 0: (height, foam), (sx, sz) a texel; then the fine slopes
+  pack: vec4f,    // the packed numbers' scales: height, slope, fine slope, choppy displacement
+  clip: vec4f,    // the clipmap: quads a side, levels, morph band (quads), the skirt's reach (m)
+  levels: array<vec4f, 12>,  // centre x, z, spacing, hole x + 2 hole z
+  cells: vec4f,   // the cell window's first cell x, z, its side (cells), texel spacing (m)
+  bases: array<vec4f, 12>,   // each slot's surf phase at its first texel
+  words: array<vec4u, 3900>, // the table, the cells, cascade 0, its displacement, the fine slopes
 }
 @group(0) @binding(0) var<uniform> u: U;
 
 const N = 64u;
 const G = 9.81;
 
-fn word(i: u32) -> u32 { return u.tiles[i >> 2u][i & 3u]; }
+const W_TABLE = 0u;
+const W_CELLS = 64u;
+const W_COARSE = 1264u;
+const W_CHOP = 9456u;
+const W_FINE = 11504u;
+const CELL = 8.0;
+const CELL_TEXELS = 5u;
+fn word(i: u32) -> u32 { return u.words[i >> 2u][i & 3u]; }
 // Cascade 0 at a rest point: height (m), foam, slope x, slope z; bilinear, wrapped.
 fn coarse(p: vec2f) -> vec4f {
   let q = p / u.sea.y * f32(N) - 0.5;
@@ -34,8 +55,8 @@ fn coarse(p: vec2f) -> vec4f {
     let o = vec2i(k & 1, k >> 1);
     let c = vec2u((i + o) & vec2i(i32(N) - 1));
     let t = c.y * N + c.x;
-    let a = unpack2x16float(word(2u * t));
-    let b = unpack2x16float(word(2u * t + 1u));
+    let a = unpack2x16float(word(W_COARSE + 2u * t));
+    let b = unpack2x16float(word(W_COARSE + 2u * t + 1u));
     let w = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1);
     acc += w * vec4f(a.x * u.pack.x, a.y, b.x * u.pack.y, b.y * u.pack.y);
   }
@@ -51,9 +72,25 @@ fn fine(p: vec2f) -> vec2f {
     let o = vec2i(k & 1, k >> 1);
     let c = vec2u((i + o) & vec2i(i32(N) - 1));
     let w = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1);
-    acc += w * unpack2x16float(word(2u * N * N + c.y * N + c.x)) * u.pack.z;
+    acc += w * unpack2x16float(word(W_FINE + c.y * N + c.x)) * u.pack.z;
   }
   return acc;
+}
+// Cascade 0's choppy displacement at a rest point (m), bilinear, wrapped.
+fn chop(p: vec2f) -> vec2f {
+  let q = p / u.sea.y * f32(N) - 0.5;
+  let f = fract(q);
+  let i = vec2i(floor(q));
+  var acc = vec2f(0.0);
+  for (var k = 0; k < 4; k++) {
+    let o = vec2i(k & 1, k >> 1);
+    let c = vec2u((i + o) & vec2i(i32(N) - 1));
+    let t = c.y * N + c.x;
+    let w = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1);
+    let half = (word(W_CHOP + (t >> 1u)) >> (16u * (t & 1u))) & 0xffffu;
+    acc += w * unpack4x8snorm(half).xy;
+  }
+  return acc * u.pack.w;
 }
 
 fn hash2(p: vec2f) -> f32 { return fract(sin(dot(p, vec2f(127.1, 311.7))) * 43758.5453); }
@@ -71,7 +108,7 @@ fn ground(p: vec2f) -> f32 {
   let land = max(z, 0.0) * 0.09;
   return max(z * u.beach.y + land + 0.03 * noise(p * 0.3), -40.0);
 }
-fn depth_at(p: vec2f) -> f32 { return max(u.sea.x - ground(p), 0.0); }
+fn depth_here(p: vec2f) -> f32 { return max(u.sea.x - ground(p), 0.0); }
 
 // Shallow water (verse/water-spectrum.coax wsp_surf): the peak wave's
 // wavenumber over depth h (Eckart's form of w^2 = g k tanh(k h)), the
@@ -86,9 +123,9 @@ fn shoal_gain(k0: f32, h: f32) -> f32 {
   return sqrt(cg0 / max(n * c, 1e-3));
 }
 // The surf's phase across the beach: the integral of k(h) along the way in.
-fn surf_phase(p: vec2f) -> f32 {
+fn surf_phase_here(p: vec2f) -> f32 {
   let k0 = u.beach.z;
-  let h = depth_at(p);
+  let h = depth_here(p);
   let reach = min(h, 3.0 / k0);
   var sum = 0.0;
   for (var i = 0; i < 8; i++) {
@@ -97,16 +134,44 @@ fn surf_phase(p: vec2f) -> f32 {
   }
   return (sum / 8.0 * reach + (h - reach) * k0) / u.beach.y;
 }
-struct Surf { lift: f32, white: f32, gain: f32 }
+// The coast's bed depth and surf phase at p: from its streamed 8 m cell when
+// one is resident (bilinear over the cell's 2 m texels), else computed here.
+fn shore_at(p: vec2f) -> vec2f {
+  let c = vec2i(floor(p / CELL)) - vec2i(u.cells.xy);
+  let side = i32(u.cells.z);
+  if (all(c >= vec2i(0)) && all(c < vec2i(side))) {
+    let k = u32(c.y * side + c.x);
+    let slot = (word(W_TABLE + (k >> 2u)) >> (8u * (k & 3u))) & 0xffu;
+    if (slot > 0u) {
+      let s = slot - 1u;
+      let q = (p - floor(p / CELL) * CELL) / u.cells.w;
+      let i = min(vec2u(q), vec2u(CELL_TEXELS - 2u));
+      let f = q - vec2f(i);
+      let at = W_CELLS + s * CELL_TEXELS * CELL_TEXELS + i.y * CELL_TEXELS + i.x;
+      let a = unpack2x16float(word(at));
+      let b = unpack2x16float(word(at + 1u));
+      let d = unpack2x16float(word(at + CELL_TEXELS));
+      let e = unpack2x16float(word(at + CELL_TEXELS + 1u));
+      let v = mix(mix(a, b, f.x), mix(d, e, f.x), f.y);
+      return vec2f(v.x, v.y + u.bases[s >> 2u][s & 3u]);
+    }
+  }
+  return vec2f(depth_here(p), surf_phase_here(p));
+}
+fn depth_at(p: vec2f) -> f32 { return shore_at(p).x; }
+fn surf_phase(p: vec2f) -> f32 { return shore_at(p).y; }
+struct Surf { lift: f32, white: f32, gain: f32, depth: f32 }
 fn surf(p: vec2f, t: f32) -> Surf {
   var o: Surf;
-  let h = depth_at(p);
+  let sh = shore_at(p);
+  let h = sh.x;
+  o.depth = h;
   let k0 = u.beach.z;
   o.gain = select(min(shoal_gain(k0, h), 2.2), 1.0, h > 3.0 / k0);
   let height = u.wind.w * 0.5 * o.gain;
   let breaking = clamp(height / (0.78 * max(h, 0.02)) - 0.6, 0.0, 1.0);
   // the waves come in shore-normal, their crests bending with the beach's wobble
-  let phase = surf_phase(p) + u.beach.w * t + 0.6 * noise(vec2f(p.x * 0.03, 0.0)) * 6.28;
+  let phase = sh.y + u.beach.w * t + 0.6 * noise(vec2f(p.x * 0.03, 0.0)) * 6.28;
   let crest = pow(0.5 + 0.5 * cos(phase), 6.0);
   let line = pow(0.5 + 0.5 * cos(phase - 0.25), 40.0);
   o.lift = crest * height * 0.6 * smoothstep(0.0, 0.4, h) * (1.0 - 0.6 * breaking);
@@ -119,9 +184,9 @@ fn surf(p: vec2f, t: f32) -> Surf {
 
 // The sea's surface at rest point p: its height over the level.
 fn sea_height(p: vec2f, t: f32) -> f32 {
-  let h = depth_at(p);
-  let taper = smoothstep(0.0, 0.6, h);
   let s = surf(p, t);
+  let h = s.depth;
+  let taper = smoothstep(0.0, 0.6, h);
   // a trough never bares the bed: shallow water's waves ride over it
   let wave = max(coarse(p).x * min(s.gain, 1.6) * taper, -0.5 * h);
   return u.sea.x + wave + s.lift;
@@ -159,9 +224,9 @@ fn sand(p: vec2f, n: vec3f, wet: f32) -> vec3f {
 
 // The water in the painted look.
 fn water(p: vec2f, world: vec3f, d: vec3f, dist: f32, t: f32) -> vec3f {
-  let h = depth_at(p);
   let c = coarse(p);
   let s = surf(p, t);
+  let h = s.depth;
   // slopes: cascade 0 shoaled, the fine cascade faded with the pixel's footprint
   let footprint = dist * 2.0 * u.eye.w / u.size.y / max(abs(d.y), 0.08);
   let keep = clamp(u.sea.z / 64.0 / max(footprint, 1e-4) - 0.5, 0.0, 1.0);
@@ -220,7 +285,8 @@ fn trace(o: vec3f, d: vec3f, t0: f32) -> Hit {
     if (t > 900.0) { break; }
   }
   // the water: between the planes the waves can reach, then secant refinement
-  if (d.y < 0.0 || o.y < u.sea.x + amp) {
+  // (only when the clipmap isn't drawing the sea)
+  if (u.mode.z < 0.5 && (d.y < 0.0 || o.y < u.sea.x + amp)) {
     let top = (o.y - (u.sea.x + amp)) / max(-d.y, 1e-4);
     let bottom = (o.y - (u.sea.x - amp)) / max(-d.y, 1e-4);
     var a = max(top, 0.0);
@@ -369,7 +435,12 @@ fn under_view(o: vec3f, d: vec3f, t: f32) -> vec3f {
   let p = array(vec2f(-1.0, -3.0), vec2f(-1.0, 1.0), vec2f(3.0, 1.0));
   return vec4f(p[i], 0.0, 1.0);
 }
-@fragment fn bg_fs(@builtin(position) frag: vec4f) -> @location(0) vec4f {
+// The depth buffer's value for a point `along` the view ray d (1 - near / view z: the
+// surface's projection), so the clipmap hides behind the traced beach.
+const NEAR = 0.1;
+fn depth_of(d: vec3f, along: f32) -> f32 { return clamp(1.0 - NEAR / max(along * dot(d, u.fwd.xyz), NEAR), 0.0, 1.0); }
+struct Out { @location(0) c: vec4f, @builtin(frag_depth) depth: f32 }
+@fragment fn bg_fs(@builtin(position) frag: vec4f) -> Out {
   let ndc = vec2f(frag.x / u.size.x * 2.0 - 1.0, 1.0 - frag.y / u.size.y * 2.0);
   let aspect = u.size.x / u.size.y;
   let d = normalize(u.fwd.xyz + u.right.xyz * ndc.x * u.eye.w * aspect + u.up.xyz * ndc.y * u.eye.w);
@@ -384,7 +455,7 @@ fn under_view(o: vec3f, d: vec3f, t: f32) -> vec3f {
     var c = under_view(o, normalize(d + waver.x * u.right.xyz + waver.y * u.up.xyz), t);
     // the meniscus: a bright edge where the surface crosses the lens
     if (u.mode.y < 0.5) { c = mix(c, vec3f(0.85, 0.95, 0.95), (1.0 - smoothstep(0.0, 0.006, -line)) * 0.7); }
-    return vec4f(c, 1.0);
+    return Out(vec4f(c, 1.0), 0.0);  // nothing draws over the view under the water
   }
   let hit = trace(o, d, t);
   var c: vec3f;
@@ -404,7 +475,72 @@ fn under_view(o: vec3f, d: vec3f, t: f32) -> vec3f {
     }
     c = haze(c, d, hit.t);
   }
-  return vec4f(c, 1.0);
+  return Out(vec4f(c, 1.0), select(depth_of(d, hit.t), 1.0, hit.t > 1e8));
+}
+
+// ---- The clipmap sea (W10): a vertex from its index, as ocean_vertex does it.
+struct S { @builtin(position) pos: vec4f, @location(0) rest: vec2f, @location(1) world: vec3f }
+@vertex fn surface_vs(@builtin(vertex_index) vid: u32) -> S {
+  let n = u32(u.clip.x);
+  let count = u32(u.clip.y);
+  let half = n / 2u;
+  var q = vid / 6u;
+  let corner = vid % 6u;
+  let full = n * n;
+  let ring = full - half * half;
+  var l = 0u;
+  if (q >= full) { q -= full; l = min(1u + q / ring, count - 1u); q = q - (l - 1u) * ring; }
+  let lv = u.levels[l];
+  var qx = q % n; var qz = q / n;
+  if (l > 0u) {
+    let hole = u32(lv.w);
+    let hx = n / 4u + (hole & 1u); let hz = n / 4u + (hole >> 1u);
+    let top = hz * n;
+    if (q >= top) {
+      let band = q - top;
+      if (band < half * half) {
+        let col = band % half;
+        qx = select(col + half, col, col < hx); qz = hz + band / half;
+      } else {
+        let rest = band - half * half;
+        qx = rest % n; qz = hz + half + rest / n;
+      }
+    }
+  }
+  let cx = array(0u, 1u, 0u, 0u, 1u, 1u);
+  let cz = array(0u, 0u, 1u, 1u, 0u, 1u);
+  let ix = i32(qx + cx[corner]); let iz = i32(qz + cz[corner]);
+  let gx = i32(round(lv.x / lv.z)) - i32(half) + ix;
+  let gz = i32(round(lv.y / lv.z)) - i32(half) + iz;
+  let rx = abs(ix - i32(half)); let rz = abs(iz - i32(half));
+  let edge = max(rx, rz);
+  var a = 0.0;
+  if (l + 1u < count) { a = clamp(f32(edge - (i32(half) - i32(u.clip.z))) / u.clip.z, 0.0, 1.0); }
+  var p = vec2f((f32(gx) - a * f32(gx & 1)) * lv.z, (f32(gz) - a * f32(gz & 1)) * lv.z);
+  if (l + 1u == count && edge == i32(half)) { p = lv.xy + (p - lv.xy) * (u.clip.w / (f32(half) * lv.z)); }
+  // the waves: the sea's height, and cascade 0's choppy displacement, both faded out where
+  // the quads grow too coarse to carry them (past a few patches)
+  let t = u.size.z;
+  let reach = length(p - u.eye.xz);
+  let keep = 1.0 - smoothstep(u.sea.y * 2.5, u.sea.y * 8.0, reach);
+  let taper = smoothstep(0.0, 0.6, depth_at(p));
+  let moved = chop(p) * (keep * taper);
+  let w = vec3f(p.x + moved.x, u.sea.x + (sea_height(p, t) - u.sea.x) * keep, p.y + moved.y);
+  var o: S;
+  let rel = w - u.eye.xyz;
+  let vz = dot(rel, u.fwd.xyz);
+  let aspect = u.size.x / u.size.y;
+  o.pos = vec4f(dot(rel, u.right.xyz) / (u.eye.w * aspect), dot(rel, u.up.xyz) / u.eye.w, vz - NEAR, vz);
+  o.rest = p;
+  o.world = w;
+  return o;
+}
+@fragment fn surface_fs(v: S) -> @location(0) vec4f {
+  let rel = v.world - u.eye.xyz;
+  let dist = length(rel);
+  let d = rel / max(dist, 1e-4);
+  let c = water(v.rest, v.world, d, dist, u.size.z);
+  return vec4f(haze(c, d, dist), 1.0);
 }
 
 // The strokes (none yet): host.js draws them over the pass.
