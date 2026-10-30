@@ -164,7 +164,13 @@ PEOPLE_SHOWN_PHONE :: 6;
 PEOPLE_NEAR :: 60.0;      // metres: nearer than this (and in view) they are drawn
 PEOPLE_NEAR_PHONE :: 40.0;
 PEOPLE_AT :: LATHE_AT + LATHE_SLOTS;
-ALL_OBJECTS :: PEOPLE_AT + PEOPLE_PARTS * PEOPLE_SHOWN;
+// Then the spells' debris (everglade-spells.coax sp_shards): a chunk an instance of the mesh it broke
+// from, a run per mesh (SHARD_DRAW), then each chunk's cell, the planes that cut it, in two objects
+// that are never drawn.
+SHARD_AT :: PEOPLE_AT + PEOPLE_PARTS * PEOPLE_SHOWN;
+SHARD_OBJECTS :: DEMO_BODIES;
+CELL_AT :: SHARD_AT + SHARD_OBJECTS;
+ALL_OBJECTS :: CELL_AT + SHARD_OBJECTS * 2;
 // Store 2, the joints' skinning matrices (three rows of four a joint): yours,
 // then each person shown's, after theirs three rows of their colours: skin
 // (and their outfit's colourway), hair, and the dye on their cloth with how
@@ -208,12 +214,14 @@ M_SPROUT :: 60; M_PUMPKIN :: 61; M_STONE :: 62; M_SHRUB :: 63; M_CAT :: 64;
 STOREY :: 3.12;           // a kit wall's height
 WALL_FACE :: 0.09;        // how far a wall's outer face stands from its origin (its local +z)
 // The shapes' five draws, then a draw per kit mesh, then yours, the
-// fountain's stone, then one per part the people wear, then the river's
-// (last: the host draws it after everything else, in two halves).
+// fountain's stone, then one per part the people wear, then the debris's
+// (a draw per kit mesh again), then the river's (last: the host draws it
+// after everything else, in two halves).
 RANGER_DRAW :: 5 + KIT_MESHES;
 LATHE_DRAW :: 5 + KIT_MESHES + 1;
 PEOPLE_DRAW :: LATHE_DRAW + 1;
-WATER_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
+SHARD_DRAW :: PEOPLE_DRAW + PEOPLE_PARTS;
+WATER_DRAW :: SHARD_DRAW + KIT_MESHES;
 DRAWS :: WATER_DRAW + 1;
 // The river's floats, as river.coax everglade_river_floats writes them: x,
 // y, z, yaw, how far it tips and which way, 0, and the kind (0 a duck, 1 a lily pad, 2 a rowboat).
@@ -3069,6 +3077,16 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
     s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + PEOPLE_AT + k * PEOPLE_SHOWN);
     s[0].draws[d + 3] = cast(u32) (ifx s[0].part_count[k] > 0 then s[0].part_used[k] else 0);
     s[0].kit_triangles += s[0].part_count[k] / 3 * s[0].part_used[k];
+  }
+  // the debris: a draw per mesh, its instances the chunks cut from it (everglade-spells.coax sp_shards)
+  for m: 0..<KIT_MESHES {
+    d = (SHARD_DRAW + m) * 4;
+    shards := ifx sp_on(s) then s[0].sp.shard_n[m] else 0;
+    s[0].draws[d] = cast(u32) s[0].kit_first[m];
+    s[0].draws[d + 1] = cast(u32) s[0].kit_count[m];
+    s[0].draws[d + 2] = cast(u32) (EG_CELLS * EG_CELLS + SHARD_AT + (ifx sp_on(s) then s[0].sp.shard_first[m] else 0));
+    s[0].draws[d + 3] = cast(u32) (ifx s[0].kit_count[m] > 0 then shards else 0);
+    s[0].kit_triangles += s[0].kit_count[m] / 3 * shards;
   }
   // the water: the river a patch an instance, then the fountain's, drawn after everything (host.js
   // coaxial_water_draws)

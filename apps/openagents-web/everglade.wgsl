@@ -261,6 +261,8 @@ struct S {
   @location(4) uv: vec2f,
   @location(5) @interpolate(flat) slice: u32,
   @location(6) @interpolate(flat) dye: vec4f,   // a person's cloth dye: rgb, then its rule and share (person_dye)
+  @location(7) local: vec3f,                     // where it is in its mesh's own space (a chunk's cut is there)
+  @location(8) @interpolate(flat) shard: u32,    // a chunk of a broken piece: its object + 1 (LOOK_SHARD), else 0
 }
 
 fn quad(v: u32) -> vec2f {
@@ -529,6 +531,7 @@ fn place(id: u32, instance: u32) -> S {
         canopy = true;
       }
       glass = vertices[b + 10u] == 1u;   // a window's glass (pack_realm.py glass_pane)
+      if ((u32(m.colour.w) / 8u) % 32u == LOOK_SHARD) { o.shard = instance - n * n + 1u; }
     }
     case 6u: {
       if (m.colour.z > 1.5) {
@@ -614,6 +617,8 @@ fn place(id: u32, instance: u32) -> S {
   o.normal = normalize(normal + vec3f(0.0, 0.00001, 0.0));
   o.tint = tint;
   o.look = select(select(select((u32(m.colour.w) / 8u) % 32u, LOOK_CANOPY, canopy), LOOK_FAR_CANOPY, cone), LOOK_CHARACTER, ranger);
+  o.local = v.p;
+  if (o.shard != 0u) { o.look = 5u; }   // a chunk is its kit mesh, cut (shard_inside)
   if (o.look == LOOK_WINDOW) {
     // a window: dye.x how bright its room is at night, from where the window stands (about a third
     // stay dark), dye.y 1 on its glass and 0.5 on its frame, dye.z the room's warmth (dye.w stays 0,
@@ -647,7 +652,8 @@ fn shadow_place(w: vec3f, k: Light) -> vec3f {
   return vec3f(verse_style_shadow_across(dot(w, k.ax) - k.mx, k.reach), verse_style_shadow_across(dot(w, k.ay) - k.my, k.reach),
     verse_style_shadow_depth(dot(w - vec3f(k.mx * k.ax + k.my * k.ay), k.l), k.reach));
 }
-struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) @interpolate(flat) slice: u32, @location(2) @interpolate(flat) cut: u32 }
+struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(1) @interpolate(flat) slice: u32, @location(2) @interpolate(flat) cut: u32,
+               @location(3) local: vec3f, @location(4) @interpolate(flat) shard: u32 }
 @vertex fn shadow_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> Shade {
   var o: Shade;
   let n = u32(u.ground.x);
@@ -656,12 +662,55 @@ struct Shade { @builtin(position) pos: vec4f, @location(0) uv: vec2f, @location(
   if (v.look == LOOK_GLOW || v.look == LOOK_ORB || spell_soft(v.look)) { o.pos = vec4f(0.0, 0.0, -1.0, 1.0); return o; }   // fire, lightning and the water orb cast no shadow
   let q = shadow_place(v.world, light_space());
   o.pos = vec4f(q.xy, q.z, 1.0);
-  o.uv = v.uv; o.slice = v.slice;
+  o.uv = v.uv; o.slice = v.slice; o.local = v.local; o.shard = v.shard;
   o.cut = select(0u, 1u, v.look == 5u || v.look == LOOK_CANOPY || v.look == LOOK_CHARACTER || v.look == LOOK_ROCK || v.look == LOOK_WINDOW);
   return o;
 }
 @fragment fn shadow_fs(v: Shade) {
   if (v.cut == 1u && textureSampleLevel(sheets, sheet, v.uv, v.slice, 0.0).a < 0.35) { discard; }
+  if (v.shard != 0u && shard_inside(v.shard, v.local) < 0.0) { discard; }
+}
+// ---- the debris (verse/demolish.coax's fracture; everglade-spells.coax sp_shards): a chunk is its
+// piece's own mesh, drawn whole where its body is and cut here to its cell, up to 8 planes in the
+// mesh's space (x y z d: inside where x·p <= d) in the two objects its kind word names (over 256).
+// Where the cut opens the mesh you see its far side from within: that is the broken interior, lit as
+// the plane the eye looks in through, darker and rough; near a cut the outside is scuffed darker.
+const LOOK_SHARD = 24u;
+fn shard_plane(cell: u32, k: u32) -> vec4f {
+  let o = objects[cell + k / 4u];
+  let j = k % 4u;
+  if (j == 0u) { return o.r0; }
+  if (j == 1u) { return o.r1; }
+  if (j == 2u) { return o.r2; }
+  return o.colour;
+}
+// How far p (mesh space) is inside chunk `shard`'s cell: below 0 outside it.
+fn shard_inside(shard: u32, p: vec3f) -> f32 {
+  let cell = u32(objects[shard - 1u].colour.w) / 256u;
+  var d = 1e9;
+  for (var k = 0u; k < 8u; k++) { let pl = shard_plane(cell, k); d = min(d, pl.w - dot(pl.xyz, p)); }
+  return d;
+}
+// The world normal of the cut the eye looks into chunk `shard` through, at p (mesh space): of the
+// planes the eye is outside, the one the ray from it crosses last.
+fn shard_cap(shard: u32, p: vec3f) -> vec3f {
+  let m = objects[shard - 1u];
+  let c0 = vec3f(m.r0.x, m.r1.x, m.r2.x); let c1 = vec3f(m.r0.y, m.r1.y, m.r2.y); let c2 = vec3f(m.r0.z, m.r1.z, m.r2.z);
+  let a = cross(c1, c2); let b = cross(c2, c0); let c = cross(c0, c1);
+  let e = u.eye.xyz - vec3f(m.r0.w, m.r1.w, m.r2.w);
+  let eye = vec3f(dot(a, e), dot(b, e), dot(c, e)) / dot(c0, a);
+  let cell = u32(m.colour.w) / 256u;
+  var best = -1.0;
+  var nl = vec3f(0.0);
+  for (var k = 0u; k < 8u; k++) {
+    let pl = shard_plane(cell, k);
+    let se = dot(pl.xyz, eye) - pl.w;
+    if (se <= 0.0) { continue; }
+    let t = se / max(se - (dot(pl.xyz, p) - pl.w), 1e-5);
+    if (t > best) { best = t; nl = pl.xyz; }
+  }
+  if (best < 0.0) { return normalize(e); }
+  return normalize(a * nl.x + b * nl.y + c * nl.z + vec3f(0.0, 1e-6, 0.0));
 }
 @group(2) @binding(0) var shadow_map: texture_depth_2d;
 @group(2) @binding(1) var shadow_cmp: sampler_comparison;
@@ -778,6 +827,13 @@ fn person_dye(t: vec3f, dye: vec4f) -> vec3f {
     if (tex.a < 0.35) { discard; }
     base = person_dye(tex.rgb, s.dye) * s.tint;
     if (!front && s.look != LOOK_CANOPY) { n = -n; }
+    if (s.shard != 0u) {
+      let inside = shard_inside(s.shard, s.local);
+      if (inside < 0.0) { discard; }
+      let rough = noise(s.local.xy * 9.0 + s.local.zx * 6.0);
+      if (!front) { n = shard_cap(s.shard, s.local); base = base * (0.38 + 0.24 * rough); }
+      else { base = base * mix(0.5 + 0.2 * rough, 1.0, smoothstep(0.0, 0.05, inside)); }
+    }
     // a kit piece's top (a bench, a crate) takes the shadow of whoever stands on it
     if (n.y > 0.7) { shadow = shade_shadows_at(s.world.xz, s.world.y, true); }
   }
