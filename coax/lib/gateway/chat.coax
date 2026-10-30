@@ -69,12 +69,20 @@ gw_chat_usage_of :: (usage: string) -> GwUsage {
   if usage.count == 0 { return u; }
   i := cl_int(usage, "prompt_tokens");
   o := cl_int(usage, "completion_tokens");
+  if !o.ok {
+    // Vertex's OpenAI endpoint leaves completion_tokens out: the total less the prompt
+    t := cl_int(usage, "total_tokens");
+    if t.ok && i.ok { o = JsonInt.{ok = true, value = t.value - i.value}; }
+  }
   if !i.ok || !o.ok { return u; }
   u = GwUsage.{ok = true, input_tokens = i.value, output_tokens = o.value};
   c := cl_int(usage, "prompt_tokens_details.cached_tokens");
   if c.ok { u.cached_tokens = c.value; }
   r := cl_int(usage, "completion_tokens_details.reasoning_tokens");
   if r.ok { u.reasoning_tokens = r.value; }
+  // Vertex counts reasoning beside completion_tokens, not inside it: the total says which
+  t := cl_int(usage, "total_tokens");
+  if r.ok && r.value > 0 && t.ok && t.value == u.input_tokens + u.output_tokens + r.value { u.output_tokens += r.value; }
   return u;
 }
 
@@ -217,6 +225,25 @@ gw_chat_whole :: (ar: [] ClArena, body: string, out: [] GwEvent) -> int {
   n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "{\"choices\":[{\"delta\":{},\"finish_reason\":\"content_filter\"}]}", ev[..]);
   n = gw_parse(GW_WIRE_CHAT, ps[..], ar[..], "message", "[DONE]", ev[..]);
   #assert n == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "content_filter";
+}
+
+#test "the recorded Vertex OpenAI-endpoint stream (gemini-3.8-flash) parses, and reasoning beside completion_tokens is added in" {
+  r: [1] GwReplay; fx := GW_FX_VERTEX_OPENAI_GEMINI_3_8_FLASH;
+  gw_replay(GW_WIRE_CHAT, fx[..], r[..]);
+  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive" && r[0].done == 1 && r[0].done_at_end && r[0].refused == 0;
+  #assert r[0].usage.input_tokens == 25 && r[0].usage.output_tokens == 9;
+  u := gw_chat_usage_of("{\"completion_tokens\":9,\"completion_tokens_details\":{\"reasoning_tokens\":129},\"prompt_tokens\":25,\"total_tokens\":163}");
+  #assert u.output_tokens == 138 && u.reasoning_tokens == 129;
+  u = gw_chat_usage_of("{\"prompt_tokens\":25,\"completion_tokens\":139,\"total_tokens\":164,\"completion_tokens_details\":{\"reasoning_tokens\":130}}");
+  #assert u.output_tokens == 139;
+}
+
+#test "Vertex's whole answer, with no completion_tokens, counts output as the total less the prompt" {
+  arena: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = arena[..]};
+  ev: [8] GwEvent;
+  n := gw_parse_whole(GW_WIRE_CHAT, ar[..], "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"Hi\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89\"}},\"role\":\"assistant\"}}],\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens_details\":{\"reasoning_tokens\":45},\"extra_properties\":{\"google\":{\"traffic_type\":\"ON_DEMAND\"}},\"prompt_tokens\":6,\"total_tokens\":51}}", ev[..]);
+  #assert n == 2 && ev[0].text == "Hi" && ev[1].kind == GW_EV_DONE && ev[1].reason == "length";
+  #assert ev[1].usage.input_tokens == 6 && ev[1].usage.output_tokens == 45 && ev[1].usage.reasoning_tokens == 45;
 }
 
 #test "a whole Open Responses object and a whole Gemini answer parse too" {

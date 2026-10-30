@@ -1,0 +1,151 @@
+// Vertex AI Gemini, the first choice (docs/coder/microcoder.md, row 3):
+// Vertex's OpenAI-compatible endpoint (Chat Completions through chat.coax,
+// strict json_schema) at aiplatform.googleapis.com, project
+// openagentsgemini, location global, with a bearer token minted for an hour
+// and cached until a few minutes before it lapses. From the old
+// crates/inference upstream/vertex.rs and google.rs (TokenSource).
+//
+// Where the token comes from, first that answers:
+//   1. VERTEX_ACCESS_TOKEN, a token already minted (an operator's shell);
+//   2. GOOGLE_APPLICATION_CREDENTIALS, a service-account key file: gcloud
+//      exchanges it (`gcloud auth application-default print-access-token`);
+//      the old crate signed the RS256 assertion itself, which waits for RSA
+//      in coax/lib/crypto;
+//   3. the metadata server, on Cloud Run and GCE.
+// The token goes into curl's environment only (Gateway.key_value), never an
+// argument, a log or an error.
+//
+// gw_vertex_native is the same model through Vertex's native
+// streamGenerateContent (GW_WIRE_GEMINI: thought parts, cached-token
+// counts), which the recorded fixture is; its request translator is the
+// Gemini API's (gemini.coax).
+
+#load "gateway.coax";
+
+GW_VERTEX_PROJECT :: "openagentsgemini";
+GW_VERTEX_LOCATION :: "global";
+GW_VERTEX_KEY_ENV :: "GW_VERTEX_TOKEN";
+GW_VERTEX_FLASH :: "google/gemini-3.8-flash";     // the OpenAI endpoint's name; the native one drops "google/"
+GW_VERTEX_TOKEN_TTL_MS :: 3000000;                 // tokens live an hour: mint again after 50 minutes
+GW_VERTEX_METADATA_URL :: "http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token";
+
+GwVertex :: struct {
+  project: string = GW_VERTEX_PROJECT;
+  location: string = GW_VERTEX_LOCATION;
+  host: string;                  // "" for Google's; a test server otherwise
+  token: [4096] u8; nt: int;
+  minted_ms: int;
+  source: string;                // "env", "gcloud", "metadata" once minted
+  url: [512] u8; nu: int;
+}
+
+gw_vertex_host :: (v: [] GwVertex, out: [] u8) -> int {
+  if v[0].host.count > 0 { return json_raw(out, 0, v[0].host); }
+  n := json_raw(out, 0, "https://");
+  if v[0].location != "global" { n = json_raw(out, n, v[0].location); n = json_raw(out, n, "-"); }
+  return json_raw(out, n, "aiplatform.googleapis.com");
+}
+
+// .../v1/projects/P/locations/L/endpoints/openapi/chat/completions
+gw_vertex_chat_url :: (v: [] GwVertex) -> string {
+  out := v[0].url[..];
+  n := gw_vertex_host(v, out);
+  n = json_raw(out, n, "/v1/projects/"); n = json_raw(out, n, v[0].project);
+  n = json_raw(out, n, "/locations/"); n = json_raw(out, n, v[0].location);
+  n = json_raw(out, n, "/endpoints/openapi/chat/completions");
+  if n < 0 { return ""; }
+  v[0].nu = n;
+  return cast(string) out[0..<n];
+}
+
+// .../publishers/google/models/MODEL:streamGenerateContent?alt=sse (MODEL without "google/")
+gw_vertex_native_url :: (v: [] GwVertex, model: string) -> string {
+  m := model;
+  if m.count > 7 && m[0..<7] == "google/" { m = cast(string) m[7..<m.count]; }
+  out := v[0].url[..];
+  n := gw_vertex_host(v, out);
+  n = json_raw(out, n, "/v1/projects/"); n = json_raw(out, n, v[0].project);
+  n = json_raw(out, n, "/locations/"); n = json_raw(out, n, v[0].location);
+  n = json_raw(out, n, "/publishers/google/models/"); n = json_raw(out, n, m);
+  n = json_raw(out, n, ":streamGenerateContent?alt=sse");
+  if n < 0 { return ""; }
+  v[0].nu = n;
+  return cast(string) out[0..<n];
+}
+
+// The gateway for Vertex's OpenAI endpoint, carrying the minted token
+// (gw_vertex_token first).
+gw_vertex :: (v: [] GwVertex) -> Gateway {
+  return Gateway.{name = "vertex", url = gw_vertex_chat_url(v), key_env = GW_VERTEX_KEY_ENV, key_value = cast(string) v[0].token[0..<v[0].nt], wire = GW_WIRE_CHAT};
+}
+
+gw_vertex_native :: (v: [] GwVertex, model: string) -> Gateway {
+  return Gateway.{name = "vertex", url = gw_vertex_native_url(v, model), key_env = GW_VERTEX_KEY_ENV, key_value = cast(string) v[0].token[0..<v[0].nt], wire = GW_WIRE_GEMINI};
+}
+
+gw_vertex_token_ok :: (t: string) -> bool {
+  if t.count < 20 { return false; }
+  for c: t { if c < 33 || c > 126 { return false; } }
+  return true;
+}
+
+gw_vertex_keep :: (v: [] GwVertex, t: string, source: string, now_ms: int) -> bool {
+  if !gw_vertex_token_ok(t) || t.count > v[0].token.count { return false; }
+  for c, i: t { v[0].token[i] = c; }
+  v[0].nt = t.count; v[0].minted_ms = now_ms; v[0].source = source;
+  return true;
+}
+
+// Mints a token when there is none or it is old. What went wrong, or "".
+gw_vertex_token :: (v: [] GwVertex) -> string {
+  if v[0].nt > 0 && cxproc_now_ms() - v[0].minted_ms < GW_VERTEX_TOKEN_TTL_MS { return ""; }
+  v[0].nt = 0;
+  buf: [4096] u8;
+  t := gw_env("VERTEX_ACCESS_TOKEN", buf[..]);
+  if t.count > 0 { return ifx gw_vertex_keep(v, t, "env", cxproc_now_ms()) then "" else "VERTEX_ACCESS_TOKEN is not a token"; }
+  keyfile: [1024] u8;
+  if gw_env("GOOGLE_APPLICATION_CREDENTIALS", keyfile[..]).count > 0 {
+    args: [4] string; args[0] = "gcloud"; args[1] = "auth"; args[2] = "application-default"; args[3] = "print-access-token";
+    t = gw_run_line(args[..], buf[..], 30000);
+    return ifx gw_vertex_keep(v, t, "gcloud", cxproc_now_ms()) then "" else "gcloud could not mint a token from GOOGLE_APPLICATION_CREDENTIALS";
+  }
+  margs: [8] string;
+  margs[0] = "curl"; margs[1] = "-sS"; margs[2] = "--max-time"; margs[3] = "2";
+  margs[4] = "-H"; margs[5] = "Metadata-Flavor: Google"; margs[6] = "--"; margs[7] = GW_VERTEX_METADATA_URL;
+  j := gw_run_line(margs[..], buf[..], 5000);
+  if j.count > 0 && json_valid(j) {
+    ab: [4096] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+    if gw_vertex_keep(v, cl_str(ar[..], j, "access_token"), "metadata", cxproc_now_ms()) { return ""; }
+  }
+  return "no Vertex credential: set VERTEX_ACCESS_TOKEN or GOOGLE_APPLICATION_CREDENTIALS, or run on GCP";
+}
+
+// ---------------------------------------------------------------- checks
+
+#test "Vertex URLs: the OpenAI endpoint and the native stream, global and regional" {
+  v: [1] GwVertex;
+  #assert gw_vertex_chat_url(v[..]) == "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/endpoints/openapi/chat/completions";
+  #assert gw_vertex_native_url(v[..], GW_VERTEX_FLASH) == "https://aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/global/publishers/google/models/gemini-3.8-flash:streamGenerateContent?alt=sse";
+  v[0].location = "us-central1";
+  #assert gw_vertex_chat_url(v[..]) == "https://us-central1-aiplatform.googleapis.com/v1/projects/openagentsgemini/locations/us-central1/endpoints/openapi/chat/completions";
+  v[0].host = "http://127.0.0.1:9";
+  #assert gw_vertex_native_url(v[..], "gemini-2.5-flash-lite") == "http://127.0.0.1:9/v1/projects/openagentsgemini/locations/us-central1/publishers/google/models/gemini-2.5-flash-lite:streamGenerateContent?alt=sse";
+}
+
+#test "the Vertex gateway speaks Chat Completions with a strict schema, the token only in its key value" {
+  v: [1] GwVertex;
+  #assert gw_vertex_keep(v[..], "ya29.c.not-a-real-token-but-long-enough", "env", 0) && !gw_vertex_keep(v[..], "short", "env", 0) && !gw_vertex_keep(v[..], "has a space in it, so not a token", "env", 0);
+  g := gw_vertex(v[..]);
+  #assert g.wire == GW_WIRE_CHAT && g.key_env == GW_VERTEX_KEY_ENV && g.key_value == "ya29.c.not-a-real-token-but-long-enough" && g.scheme == "Bearer";
+  out: [1024] u8; why: [1] string;
+  msgs: [1] GwMessage; msgs[0] = GwMessage.{role = "user", text = "2+2?"};
+  body := gw_translate(g, GwRequest.{model = GW_VERTEX_FLASH, messages = msgs[..], schema = "{\"type\":\"object\",\"properties\":{\"answer\":{\"type\":\"string\"}},\"required\":[\"answer\"]}"}, out[..], why[..]);
+  #assert json_valid(body) && body.count > 0;
+  #assert gw_vertex_native(v[..], GW_VERTEX_FLASH).wire == GW_WIRE_GEMINI;
+}
+
+#test "the recorded Vertex native stream parses (gemini-3.8-flash)" {
+  r: [1] GwReplay; fx := GW_FX_VERTEX_GEMINI_3_8_FLASH;
+  gw_replay(GW_WIRE_GEMINI, fx[..], r[..]);
+  #assert gw_replay_text(r[..]) == "One\nTwo\nThree\nFour\nFive" && r[0].done == 1 && r[0].usage.input_tokens == 15;
+}

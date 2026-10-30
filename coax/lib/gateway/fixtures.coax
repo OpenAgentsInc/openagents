@@ -93,6 +93,17 @@ GW_FX_VERTEX_GEMINI_3_8_FLASH :: [7] string.[
   "",
 ];
 
+GW_FX_VERTEX_OPENAI_GEMINI_3_8_FLASH :: [8] string.[
+  "data: {\"choices\":[{\"delta\":{\"content\":\"One\\n\",\"role\":\"assistant\"},\"index\":0,\"logprobs\":null}],\"created\":1793342380,\"id\":\"rDvkav7CFuqx3dAP8sfauQs\",\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\"}",
+  "",
+  "data: {\"choices\":[{\"delta\":{\"content\":\"Two\\nThree\\nFour\\nFive\",\"role\":\"assistant\"},\"index\":0,\"logprobs\":null}],\"created\":1793342380,\"id\":\"rDvkav7CFuqx3dAP8sfauQs\",\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\"}",
+  "",
+  "data: {\"choices\":[{\"delta\":{\"content\":\"\",\"extra_content\":{\"google\":{\"thought_signature\":\"AY89a1+5r2lLmt4OoN7fl2qvCVXp0ACGA8dtd4/RD+egxv1J7BuVluYKZil20iOOgghO9HNLkw1jx3K3SKE91/JfnYFmKyEg/MkOH2tHLu3kGDP9CEBV\"}},\"role\":\"assistant\"},\"finish_reason\":\"stop\",\"index\":0,\"logprobs\":null}],\"created\":1793342380,\"id\":\"rDvkav7CFuqx3dAP8sfauQs\",\"model\":\"google/gemini-3.8-flash\",\"object\":\"chat.completion.chunk\",\"system_fingerprint\":\"\",\"usage\":{\"completion_tokens\":9,\"extra_properties\":{\"google\":{\"traffic_type\":\"ON_DEMAND\"}},\"prompt_tokens\":25,\"total_tokens\":34}}",
+  "",
+  "data: [DONE]",
+  "",
+];
+
 GW_FX_ZAI_GLM_5_3_FLASH :: [162] string.[
   "event: response.created",
   "data: {\"type\":\"response.created\",\"sequence_number\":0,\"response\":{\"id\":\"gen_01M2YE8SJTQ7H57B8QEXG9951J\",\"object\":\"response\",\"created_at\":1789875482,\"status\":\"in_progress\",\"completed_at\":null,\"incomplete_details\":null,\"error\":null,\"output\":[],\"usage\":{\"input_tokens\":0,\"output_tokens\":0,\"total_tokens\":0,\"input_tokens_details\":{\"cached_tokens\":0},\"output_tokens_details\":{\"reasoning_tokens\":0}},\"model\":\"zai/glm-5.3-flash\",\"instructions\":\"You are terse. Answer with the words asked for and nothing else.\",\"previous_response_id\":null,\"temperature\":1,\"top_p\":1,\"max_output_tokens\":null,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"tools\":[],\"tool_choice\":\"none\",\"parallel_tool_calls\":true,\"max_tool_calls\":null,\"text\":{\"format\":{\"type\":\"text\"}},\"truncation\":\"disabled\",\"reasoning\":null,\"store\":false,\"background\":false,\"service_tier\":\"auto\",\"metadata\":{},\"safety_identifier\":null,\"prompt_cache_key\":null,\"prompt_cache_retention\":null}}",

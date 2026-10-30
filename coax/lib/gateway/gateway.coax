@@ -70,6 +70,7 @@ Gateway :: struct {
   name: string;                  // "vertex", "gemini", "openrouter" ...
   url: string;                   // the full endpoint
   key_env: string;               // the variable curl reads the key from; "" for a keyless door
+  key_value: string;             // a key minted at run time (Vertex's hourly token): set in curl's environment only
   key_header: string = "Authorization";
   scheme: string = "Bearer";     // "" sends the key alone in key_header
   wire: int;
@@ -90,7 +91,36 @@ GwParse :: struct {
 }
 
 gw_client :: (g: Gateway) -> GwClient {
-  return GwClient.{url = g.url, key_env = g.key_env, key_header = g.key_header, scheme = g.scheme};
+  return GwClient.{url = g.url, key_env = g.key_env, key_value = g.key_value, key_header = g.key_header, scheme = g.scheme};
+}
+
+// An environment variable's value, copied into out ("" when unset or too long).
+gw_env :: (name: string, out: [] u8) -> string {
+  for ch: name { k := cxproc_getenv_push(cast(int) ch); }
+  n := cxproc_getenv();
+  if n <= 0 || n > out.count { return ""; }
+  for i: 0..<n { out[i] = cast(u8) cxproc_getenv_byte(i); }
+  return cast(string) out[0..<n];
+}
+
+// Runs args (args[0] found on PATH) and returns the first line it prints,
+// copied into out, or "" when it fails, prints nothing or outlives
+// timeout_ms. Its stderr is dropped: a credential helper's message never
+// reaches a log through here.
+gw_run_line :: (args: [] string, out: [] u8, timeout_ms: int) -> string {
+  h := cxproc_new();
+  if h < 0 { return ""; }
+  ok := true;
+  for a: args { ok = ok && gw_arg(h, a); }
+  if !ok || cxproc_spawn(h) != 0 { x := cxproc_release(h); return ""; }
+  x := cxproc_close_stdin(h);
+  n := cxproc_read_line(h, timeout_ms);
+  k := 0;
+  if n > 0 && n <= out.count { for i: 0..<n { out[i] = cast(u8) cxproc_line_byte(h, i); } k = n; }
+  status := cxproc_wait(h, 2000);
+  y := cxproc_release(h);
+  if status != 0 { return ""; }
+  return cast(string) out[0..<k];
 }
 
 // ---------------------------------------------------------------- translate
