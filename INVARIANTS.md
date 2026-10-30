@@ -1861,8 +1861,9 @@ Every page keeps sending the analytics contract
 oa-api): the landing's session-start and page-view, the galaxy's page-view,
 and the Haunted House's page-view, world-enter, load-engine, area, objective,
 quest, click and world-leave; Ice Cream Man's page-view, world-enter,
-load-engine and world-leave; and Dead Gears' page-view, world-enter,
-load-engine, wave and world-leave. A release never promotes a build whose staging
+load-engine and world-leave; Dead Gears' page-view, world-enter,
+load-engine, wave and world-leave; and Hecate's Cemetery's page-view,
+world-enter, load-engine and world-leave. A release never promotes a build whose staging
 walk stops sending one: `coax/web/goldens.ts` plays the journey in headless
 Chrome, runs in through the house's front door, clicks and leaves, reads
 every batch the pages send (a realm's after its own walk, then leaves it)

@@ -296,6 +296,18 @@ static void overview(out_buf *o, PGconn *db, const char *const *f) {
     "SELECT initcap(label), count(r.sid)::text, CASE WHEN (SELECT count(*) FROM reach) > 0 "
     "  THEN round(100.0 * count(r.sid) / (SELECT count(*) FROM reach))::text || '%' ELSE '-' END "
     "FROM steps LEFT JOIN reach r ON r.far >= steps.i GROUP BY i, label ORDER BY i", 4, f);
+  // Planetary Villa's first visit, step by step (villapet.coax EV_NAMES, villa-face.c): the galaxy
+  // choice is a click on PLANETARY VILLA, then the realm's own events. Same filter as the rest.
+  section(o, db, "HECATE'S CEMETERY", "", "STEP|SESSIONS", KEPT
+    ", steps(i, label, evs) AS (VALUES (1, 'Chose it on the galaxy', ARRAY['click']), (2, 'Opened the realm', ARRAY['world-enter']), "
+    "  (3, 'Flight', ARRAY['villa-flight']), (4, 'Tips seen', ARRAY['villa-tip']), (5, 'Pet made', ARRAY['villa-pet-made']), "
+    "  (6, 'Avatar', ARRAY['villa-avatar']), (7, 'Tombstone', ARRAY['villa-tombstone']), (8, 'Emote', ARRAY['villa-emote']), "
+    "  (9, 'Fetch', ARRAY['villa-fetch']), (10, 'Sit, stay or come', ARRAY['villa-obey']), (11, 'Dug', ARRAY['villa-dig']), "
+    "  (12, 'Picked a flower', ARRAY['villa-flower']), (13, 'Vase', ARRAY['villa-vase']), (14, 'Memorial', ARRAY['villa-memorial']), "
+    "  (15, 'Shared a memorial', ARRAY['villa-share']), (16, 'Chat', ARRAY['villa-chat'])) "
+    "SELECT label, count(DISTINCT e.sid)::text FROM steps LEFT JOIN e ON e.ev = ANY (evs) AND "
+    "  CASE WHEN i = 1 THEN e.page = 'galaxy' AND e.p->>'label' = 'villa' ELSE e.page = 'hecates-cemetery' END "
+    "GROUP BY i, label ORDER BY i", 4, f);
   section(o, db, "WHERE THEY STOPPED", "", "LAST THING DONE|SESSIONS", KEPT
     "SELECT ev, count(*)::text FROM (SELECT DISTINCT ON (sid) sid, ev FROM e "
     "  WHERE ev NOT IN ('alive', 'hidden', 'visible', 'resize', 'world-leave', 'page-leave', 'session-end', 'error') "

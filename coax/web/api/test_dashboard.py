@@ -46,6 +46,8 @@ check("only the token's hash is kept", sql("select count(*) from analytics.admin
 status, body, _ = call("GET", reports, headers={"Cookie": token})
 text = body.decode()
 check("the admin sees the reports", status == 200 and "#SUMMARY||WHAT|COUNT" in text and "#FUNNEL|" in text and "#WHAT THEY SAID AND TYPED|s|" in text, text[:300])
+check("the reports count Hecate's Cemetery's first visit step by step",
+      "#HECATE'S CEMETERY||STEP|SESSIONS" in text and "\nChose it on the galaxy|" in text and "\nPet made|" in text and "\nShared a memorial|" in text, text[:300])
 check("the reports count the captured sessions", "Sessions|4" in text and "It was spooky" in text, text[:600])
 sql("INSERT INTO analytics.playtesters (id, at, email, sid, how, auto, space) VALUES "
     "('pt1', extract(epoch from now()), 'ann@example.com', 's-a', 'email', NULL, 'kiki'), "

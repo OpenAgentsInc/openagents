@@ -1239,6 +1239,15 @@ pet_media :: (p: [] PetUi, q: int, b: Box) {
 // A count and a word into out: its length.
 pet_count :: (out: [] u8, v: int, word: string) -> int { n := pj_put_int(out, 0, v); n = pet_put(out, n, word); return ifx n < 0 then 0 else n; }
 
+// Where the toast's plate starts: under the first visit's tip when one shows (villatips.coax), never over it.
+pet_toast_top :: (s: [] Villa) -> f32 {
+  k := hi(s[0].dpr, 0.5);
+  ty := 16 * k + 52 * k;
+  tip := s[0].tips[0].bottom;
+  if tip > 0 && ty < tip + 8 * k { ty = tip + 8 * k; }
+  return ty;
+}
+
 // The panel, or its button and the tombstone you stand at; and the toast.
 pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   p := s[0].pet[..];
@@ -1291,7 +1300,8 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
     t := pet_s(p[0].toast[..], p[0].toast_n);
     cap := 8 * k;
     tw := text_width(t, cap);
-    tb := Box.{x0 = (w - tw) / 2 - 14 * k, y0 = g + 52 * k, x1 = (w + tw) / 2 + 14 * k, y1 = g + 52 * k + cap + 22 * k};
+    ty := pet_toast_top(s);
+    tb := Box.{x0 = (w - tw) / 2 - 14 * k, y0 = ty, x1 = (w + tw) / 2 + 14 * k, y1 = ty + cap + 22 * k};
     plate(s, u, tb, 0.85 * clamp(p[0].toast_t, 0, 1), 0);
     m = pt(out, m, t, tb.x0 + 14 * k, tb.y0 + 11 * k + cap, cap, k, clamp(p[0].toast_t, 0, 1));
   }

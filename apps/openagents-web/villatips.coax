@@ -15,13 +15,14 @@ Tips :: struct {
   from_x: f32; from_z: f32; placed: bool;   // where you were when it began
   end_t: f32;
   kept: int;                                // the step last kept in the browser
+  bottom: f32;                              // the plate's lower edge last frame (0: not shown), so a toast goes under it
 }
 
 tips_text :: (s: [] Villa, step: int) -> string {
   ph := phone(s);
   p := s[0].pet[..];
   if step == TIP_WALK { return ifx ph then "Welcome to Hecate's Cemetery. Walk with your left thumb" else "Welcome to Hecate's Cemetery. Walk with WASD, and drag to look around"; }
-  if step == TIP_PET { return "Bring your pet: tap BRING YOUR PET and tell us about them"; }
+  if step == TIP_PET { return ifx ph then "Bring your pet: tap BRING YOUR PET and tell us about them" else "Bring your pet: click BRING YOUR PET and tell us about them"; }
   if step == TIP_FETCH { return ifx ph then "Play fetch: tap BALL to take the ball, and again to throw it" else "Play fetch: press F to take the ball, and F again to throw it"; }
   if step == TIP_FIELD { return ifx ph then "Glowing flowers grow in the field, through the east gate. Walk up to one and tap PICK" else "Glowing flowers grow in the field, through the east gate. Walk up to one and press E"; }
   if step == TIP_VASE { return ifx ph then "Tap VASE to arrange your flowers" else "Press V to arrange your flowers in a vase"; }
@@ -120,8 +121,10 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
     m = btn(s, out, m, Box.{x0 = x0 + bw - pad - sw, y0 = by0, x1 = x0 + bw - pad, y1 = by0 + bh}, "SKIP TIPS", B_DO, DO_TIPS_SKIP, false);
     m = btn(s, out, m, Box.{x0 = x0 + bw - pad - sw - 8 * k - nw, y0 = by0, x1 = x0 + bw - pad - sw - 8 * k, y1 = by0 + bh}, "NEXT", B_DO, DO_TIP_NEXT, false);
     plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = by0 + bh + pad}, 0.8, 0);
+    q[0].bottom = by0 + bh + pad;
   } else {
     plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x0 + bw, y1 = y[0] - cap + pad}, 0.8, 0);
+    q[0].bottom = y[0] - cap + pad;
   }
   return m;
 }
@@ -148,4 +151,14 @@ tips_hud :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
   #assert t[0].tips[0].step == TIP_VASE && t[0].tips[0].kept == 4;
   villa_kept(t[..], "tips=x");
   #assert t[0].tips[0].step == TIP_VASE;
+}
+
+#test "a toast goes under the tip's plate, never over its buttons" {
+  s: [1] Villa;
+  s[0].dpr = 1;
+  #assert pet_toast_top(s[..]) == 68;           // no tip: its usual place
+  s[0].tips[0].bottom = 102;
+  #assert pet_toast_top(s[..]) == 110;          // a tip down to 102: under it
+  s[0].tips[0].bottom = 30;
+  #assert pet_toast_top(s[..]) == 68;
 }

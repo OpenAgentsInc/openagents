@@ -51,6 +51,7 @@ static coax_t_Track track_state;
 static bool golden;
 static bool reduced;
 static bool flight_told;
+static bool entered;   // world-enter and load-engine sent (the analytics contract, analytics-contract.json)
 // Your pet's requests (villapet.coax), one at a time; a player key minted first if the browser has none.
 static int32_t pet_ask = -1; static int64_t pet_kind;
 static double pet_asked_at;
@@ -244,7 +245,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   int64_t n = villa_draw(at(state), out, u, w, h, scale, sticks.move_on, sticks.ox, sticks.oy, sticks.pad_x, sticks.pad_y);
   place_frame(state);
   track_frame(tr(), dt, w, h, scale);
-  if (n > 0) track_loaded(tr(), track_cstr("load-hecates-cemetery"));
+  // world-enter and load-engine, as every realm sends them, so a visit counts as loaded and in a world
+  if (n > 0 && !entered) { entered = true; track_world(tr(), track_cstr("hecates-cemetery")); track_loaded(tr(), track_cstr("load-engine")); }
   // The flight, once: that it played to its end or was skipped.
   if (!flight_told && v->time > 0.2 && !villa_busy(at(state))) {
     flight_told = true;
