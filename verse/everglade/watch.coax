@@ -182,6 +182,7 @@ BIND_EVERY :: 24.0;        // s before a caster tries Earthbind again
 BIND_FOR :: 60.0;          // 1 minute
 BIND_FALL :: 3.048;        // m/s: 60 feet a 6-second round
 YOU_STR_SAVE :: 4;
+AA_GAP :: 3.5;             // s between any two of these from the whole company, so a volley can be survived
 LEAD_MOST :: 12.0;         // m/s of your motion they lead at most
 // Their looks: which kit clothes them (folk.coax PART_*), dyed by rank.
 RANK_DYE :: [28] f32.[
@@ -311,6 +312,7 @@ Watch :: struct {
   face: f32;                      // your facing, for a body thrown
   you_last: Point; you_v: Point; you_seen: bool;   // where you were last frame, how you move (for their lead)
   bound_t: f32; bound_by: int;    // Earthbind: how long more, and who keeps it
+  aa_cool: f32;                   // till the company's next Magic Missile or Earthbind (AA_GAP)
   bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
   darts_hit: int;                 // for the checks
 }
@@ -347,7 +349,7 @@ watch_start :: (w: [] Watch, heights: [] f32) {
   w[0].level = 0; w[0].heat = 0; w[0].enemy_fire = false; w[0].waves = 0; w[0].spawned = 0;
   for k: 0..<MISSILES { w[0].missiles[k].live = false; }
   w[0].held_t = 0; w[0].held_saves = 0; w[0].slow_t = 0; w[0].marked = false; w[0].knocked = false; w[0].temp = 0;
-  w[0].you_seen = false; w[0].you_v = v3(0, 0, 0); w[0].bound_t = 0; w[0].bound_by = -1; w[0].bound_said = 0; w[0].darts_hit = 0;
+  w[0].you_seen = false; w[0].you_v = v3(0, 0, 0); w[0].bound_t = 0; w[0].bound_by = -1; w[0].bound_said = 0; w[0].darts_hit = 0; w[0].aa_cool = 0;
   for i: 0..<WATCH_ACTORS { w[0].actors[i].homed = false; w[0].actors[i].rank = RANK_GUARD; watch_revive(w, i); }
   for k: 0..<WATCH_NEW { watch_beat_route(w[0].beats[k..<k + 1], w[0].solids[..], w[0].solid_n, k, heights); }
   w[0].beats_ok = heights.count >= EG_GROUND_POINTS;
@@ -616,9 +618,9 @@ watch_wind :: (kind: int) -> f32 {
 watch_choose :: (w: [] Watch, i: int, gap: f32, up: f32) -> int {
   a := w[0].actors[i..<i + 1];
   r := watch_rank(w, i);
-  if up > f32(AIR_UP) && w[0].level >= AIR_LEVEL && (r == RANK_MAGE || r == RANK_ARCHMAGE) {
-    if w[0].level >= 5 && a[0].bind_cool <= 0 && w[0].bound_t <= 0 && !watch_flying(w, MS_EARTHBIND) { a[0].bind_cool = BIND_EVERY; return MS_EARTHBIND; }
-    if a[0].mm_cool <= 0 { a[0].mm_cool = MM_EVERY; return MS_MAGIC_MISSILE; }
+  if up > f32(AIR_UP) && w[0].level >= AIR_LEVEL && (r == RANK_MAGE || r == RANK_ARCHMAGE) && w[0].aa_cool <= 0 {
+    if w[0].level >= 5 && a[0].bind_cool <= 0 && w[0].bound_t <= 0 { a[0].bind_cool = BIND_EVERY; w[0].aa_cool = AA_GAP; return MS_EARTHBIND; }
+    if a[0].mm_cool <= 0 { a[0].mm_cool = MM_EVERY; w[0].aa_cool = AA_GAP; return MS_MAGIC_MISSILE; }
   }
   if r == RANK_MAGE {
     if a[0].fireball_cool <= 0 && gap > f32(FIREBALL_R) + 1 { a[0].fireball_cool = 14; return MS_FIREBALL; }
@@ -645,11 +647,6 @@ watch_choose :: (w: [] Watch, i: int, gap: f32, up: f32) -> int {
     return MS_FIRE_BOLT;
   }
   return -1;
-}
-// Whether a spell of `kind` is in the air now.
-watch_flying :: (w: [] Watch, kind: int) -> bool {
-  for q: 0..<MISSILES { if w[0].missiles[q].live && w[0].missiles[q].kind == kind && w[0].missiles[q].t < w[0].missiles[q].flight { return true; } }
-  return false;
 }
 // How many darts caster i's Magic Missile has (1st level three, one more a slot level up).
 watch_darts :: (w: [] Watch, i: int) -> int {
@@ -1239,6 +1236,7 @@ watch_tick :: (w: [] Watch, dt: f32, you: Point, day: f32, boxes: [] f32, nb: in
     }
   }
   if w[0].slow_t > 0 { w[0].slow_t = hi(w[0].slow_t - t, 0); }
+  w[0].aa_cool -= t;
   // how you move, for their lead (a warp is no motion)
   if t > 0 {
     if w[0].you_seen && length(sub(you, w[0].you_last)) < 4 {
@@ -2081,6 +2079,9 @@ watch_test_caster :: (w: [] Watch, heights: [] f32, r: int, you: Point) -> int {
   // out of reach: Earthbind first, then Magic Missile (its five darts), before any bolt
   w[0].actors[i].bind_cool = 0; w[0].actors[i].mm_cool = 0;
   #assert watch_choose(w[..], i, 12, up) == MS_EARTHBIND;
+  // the company waits AA_GAP before the next
+  #assert watch_choose(w[..], i, 12, up) != MS_MAGIC_MISSILE;
+  w[0].aa_cool = 0;
   #assert watch_choose(w[..], i, 12, up) == MS_MAGIC_MISSILE && watch_darts(w[..], i) == 5;
   // on the ground the old choices stand
   #assert watch_choose(w[..], i, 12, 0) != MS_MAGIC_MISSILE;
