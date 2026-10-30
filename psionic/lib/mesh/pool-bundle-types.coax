@@ -1,0 +1,3 @@
+// Generated PUBLIC projection only. Unmarked so authored wrapper policy owns
+// authority, rather than unused generated accessors. No private witness import.
+#import_proto "../../../proto/descriptors/mesh-pool-inputs.pb" as Mbp;

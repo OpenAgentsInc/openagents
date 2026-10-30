@@ -1,0 +1,19 @@
+// Loaded by pool-bundle.coax. Native-address observation and immutable generated
+// codec assembly only; all authored admission/shape decisions are in that unit.
+// out/work are disjoint writable caller buffers; returned bytes live in out.
+// Publish only a nonnegative byte count. -1 is failure, never a usable prefix.
+mbp_write :: (policy:string,aggregate:string,events:[]string,out:[]u8,work:[]u8)->int #export_c {
+  overlap:=bytes_overlap(out,work)||bytes_overlap(policy,out)||bytes_overlap(policy,work)||bytes_overlap(aggregate,out)||bytes_overlap(aggregate,work);
+  for event:events {overlap=overlap||bytes_overlap(event,out)||bytes_overlap(event,work);}
+  if !mbp_inputs(policy,aggregate,events,overlap) {return -1;}
+  a:=out[0..<mbp_capacity(out.count).count];b:=work[0..<mbp_capacity(work.count).count];scratch:[32768]u8;
+  w:=Mbp_PublicPoolInputs_set_version(Mbp_PublicPoolInputs_new(),MBP_VERSION,b);
+  w=Mbp_PublicPoolInputs_set_policy_json(w,mbp_pack(policy,scratch[..]),a);
+  w=Mbp_PublicPoolInputs_set_aggregate_event_json(w,mbp_pack(aggregate,scratch[0..<16384]),b);if w.error!=0 {return -1;}
+  held:=true;for event:events {
+    value:=mbp_pack(event,scratch[0..<16384]);
+    if held {w=Mbp_PublicPoolInputs_append_event_json(w,value,a);}else {w=Mbp_PublicPoolInputs_append_event_json(w,value,b);}
+    if w.error!=0 {return -1;}held=!held;
+  }
+  if held {copied:=Mbp__pb_copy(w.wire,a);if copied.error!=0 {return -1;}return copied.wire.count;}return w.wire.count;
+}

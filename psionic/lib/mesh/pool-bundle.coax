@@ -1,0 +1,75 @@
+// PUBLIC, UNTRUSTED carriage. Native returned strings alias input bytes;
+// keep input alive and immutable until every view has been consumed.
+// The caller verifies original signatures/kinds/JSON/policy/totals separately.
+// The schema permits 2 MiB transport. The current generated codec hard-refuses
+// above 1 MiB; this wrapper never truncates or accepts private witness fields.
+#load "pool-bundle-types.coax";
+#load "pool-bundle-write.coax";
+#load "../../tests/mesh21/pool_bundle_vectors.coax";
+#authority;
+MBP_VERSION :: "openagents.psionic.mesh-public-inputs.v1";
+MBP_TRANSPORT_MAX :: 2097152; MBP_MAX :: 1048576;
+MBP_OK :: 0; MBP_LIMIT :: 1; MBP_WIRE :: 2;
+MbpView :: struct {ok:bool;code:int=MBP_WIRE;policy:string;aggregate:string;event_count:int;}
+MbpCapacity :: struct {count:int;clamped:bool;}
+
+#test "protoc public carriage preserves original opaque bytes and event order" {
+  wire:=MBPF_GOOD;events:[2]string;r:=mbp_read(wire[..],events[..]);
+  #assert r.ok && r.code==MBP_OK && r.policy=="policy" && r.aggregate=="aggregate" && r.event_count==2 && events[0]=="event0" && events[1]=="event1";
+  zero:=MBPF_EMPTY;r=mbp_read(zero[..],events[0..<0]);#assert r.ok && r.event_count==0 && r.policy=="p" && r.aggregate=="a";
+}
+#test "failed public decode never overwrites caller event views" {
+  good:=MBPF_GOOD;events:=[2]string.["first","second"];r:=mbp_read(good[..],events[0..<1]);#assert !r.ok && r.code==MBP_LIMIT && r.policy=="" && r.aggregate=="" && r.event_count==0 && events[0]=="first" && events[1]=="second";
+  a:=MBPF_EMPTY_POLICY;b:=MBPF_EMPTY_AGGREGATE;c:=MBPF_EMPTY_EVENT;d:=MBPF_WRONG_VERSION;e:=MBPF_UNKNOWN;f:=MBPF_DUPLICATE;g:=MBPF_NONMINIMAL;
+  bad:=[7][]u8.[a[..],b[..],c[..],d[..],e[..],f[..],g[..]];
+  for wire:bad {r=mbp_read(wire,events[..]);#assert !r.ok && r.code==MBP_WIRE && events[0]=="first" && events[1]=="second";}
+  short:=[1]u8.[10];#assert !mbp_read(short[..],events[..]).ok;
+}
+#test "invalid payload UTF8 and descriptor bounds give no partial read" {
+  wire:=MBPF_GOOD;events:=[2]string.["first","second"];w:=Mbp_PublicPoolInputs_decode_minimal(wire[..]);policy:=Mbp_PublicPoolInputs_get_policy_json(w).value;aggregate:=Mbp_PublicPoolInputs_get_aggregate_event_json(w).value;
+  policy[0]=255;#assert !mbp_read(wire[..],events[..]).ok;policy[0]='p';aggregate[0]=255;#assert !mbp_read(wire[..],events[..]).ok;aggregate[0]='a';
+  event:=Mbp_PublicPoolInputs_iter_event_json(w).value;event[0]=255;#assert !mbp_read(wire[..],events[..]).ok && events[0]=="first" && events[1]=="second";
+  large:[16389]u8;large[0]=26;large[1]=129;large[2]=128;large[3]=1;r:=mbp_read(large[..],events[..]);#assert !r.ok && r.code==MBP_LIMIT && r.event_count==0;
+}
+#test "writer shape is explicit free public data and rejects native overlap observations" {
+  e:=[1]string.["e"];#assert mbp_inputs("p","a",e[..],false) && !mbp_inputs("p","a",e[..],true);
+  #assert !mbp_inputs("","a",e[..],false) && !mbp_inputs("p","",e[..],false);e[0]="";#assert !mbp_inputs("p","a",e[..],false);
+  bad:=[1]u8.[255];#assert !mbp_inputs(cast(string)bad[..],"a",e[0..<0],false) && !mbp_inputs("p",cast(string)bad[..],e[0..<0],false);
+  e[0]=cast(string)bad[..];#assert !mbp_inputs("p","a",e[..],false);e[0]="π";#assert mbp_inputs("p","a",e[..],false);
+}
+#test "exact field and cohort limits precede generated serialization" {
+  bytes:[32769]u8;for i:0..<32769 {bytes[i]='x';}events:[225]string;for i:0..<225 {events[i]="e";}
+  #assert mbp_inputs(cast(string)bytes[0..<32768],cast(string)bytes[0..<16384],events[0..<224],false);
+  #assert !mbp_inputs(cast(string)bytes[..],"a",events[0..<0],false) && !mbp_inputs("p",cast(string)bytes[0..<16385],events[0..<0],false);
+  events[0]=cast(string)bytes[0..<16384];#assert mbp_inputs("p","a",events[0..<1],false);events[0]=cast(string)bytes[0..<16385];#assert !mbp_inputs("p","a",events[0..<1],false);
+  events[0]="e";#assert !mbp_inputs("p","a",events[..],false);
+}
+#test "capacity diagnostics expose the current stricter codec limit" {
+  a:=mbp_capacity(MBP_MAX);b:=mbp_capacity(MBP_MAX+1);c:=mbp_capacity(MBP_TRANSPORT_MAX);
+  #assert a.count==MBP_MAX && !a.clamped && b.count==MBP_MAX && b.clamped && c.count==MBP_MAX && c.clamped;
+  #assert mbp_capacity(0).count==0 && !mbp_capacity(0).clamped;one:[1]u8;#assert mbp_pack("x",one[..]).count==1 && one[0]=='x' && mbp_pack("xx",one[..]).count==0;
+}
+
+mbp_text :: (value:[]u8)->bool {return value.count>0 && Mbp__pb_utf8(value);}
+// Strings cannot be cast to mutable byte views. Generated setters copy this
+// bounded temporary before reuse; this function knows no protobuf wire format.
+mbp_pack :: (value:string,out:[]u8)->[]u8 {if value.count>out.count {return out[0..<0];}for i:0..<value.count {out[i]=value[i];}return out[0..<value.count];}
+// count is a nonnegative caller span size. clamped is inspectable diagnostics,
+// so callers can report why their 2 MiB workspace still has a 1 MiB usable limit.
+mbp_capacity :: (count:int)->MbpCapacity {if count>MBP_MAX {return MbpCapacity.{count=MBP_MAX,clamped=true};}return MbpCapacity.{count=count};}
+mbp_inputs :: (policy:string,aggregate:string,events:[]string,overlap:bool)->bool {
+  if overlap || events.count>224 {return false;}scratch:[32768]u8;
+  if !mbp_text(mbp_pack(policy,scratch[..])) || !mbp_text(mbp_pack(aggregate,scratch[0..<16384])) {return false;}
+  for event:events {if !mbp_text(mbp_pack(event,scratch[0..<16384])) {return false;}}return true;
+}
+mbp_read :: (input:[]u8,events:[]string)->MbpView #export_c {
+  w:=Mbp_PublicPoolInputs_decode_minimal(input);if w.error==Mbp__pb_LIMIT {return MbpView.{code=MBP_LIMIT};}if w.error!=0 {return MbpView.{};}
+  if !Mbp_PublicPoolInputs_unknown(w,0).done || Mbp_PublicPoolInputs_get_version(w).value!=MBP_VERSION {return MbpView.{};}
+  policy:=Mbp_PublicPoolInputs_get_policy_json(w).value;aggregate:=Mbp_PublicPoolInputs_get_aggregate_event_json(w).value;
+  if !mbp_text(policy) || !mbp_text(aggregate) {return MbpView.{};}
+  count:=0;iterator:=Mbp_PublicPoolInputs_iter_event_json(w);
+  while iterator.has_value {if !mbp_text(iterator.value) {return MbpView.{};}count+=1;iterator=Mbp_PublicPoolInputs_next_event_json(iterator);}
+  if count>events.count {return MbpView.{code=MBP_LIMIT};}
+  iterator=Mbp_PublicPoolInputs_iter_event_json(w);for i:0..<count {events[i]=cast(string)iterator.value;iterator=Mbp_PublicPoolInputs_next_event_json(iterator);}
+  return MbpView.{ok=true,code=MBP_OK,policy=cast(string)policy,aggregate=cast(string)aggregate,event_count=count};
+}

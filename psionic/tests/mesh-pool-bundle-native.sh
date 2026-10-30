@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+set -euo pipefail
+root="$(cd "$(dirname "$0")/../.." && pwd)"
+out="${1:-$(mktemp -d "${TMPDIR:-/tmp}/mesh-pool-bundle.XXXXXX")}"
+compiler="${COAX:-$root/coax/bin/coax}"
+native_cc="${COAX_CC:-${CC:-cc}}"
+mkdir -p "$out"
+bun "$root/psionic/tests/mesh21/pool_bundle_interop.ts" prepare "$root" "$out"
+"$compiler" c "$root/psionic/lib/mesh/pool-bundle.coax" --library --release --header "$out/bundle.h" > "$out/bundle.c"
+"$native_cc" -std=c11 -O2 -g -I"$out" "$out/bundle.c" "$root/psionic/tests/mesh21/pool_bundle_native.c" -lm -o "$out/plain"
+"$out/plain" "$out"
+cp "$out/coax.pb" "$out/plain-coax.pb"
+cp "$out/exact.pb" "$out/plain-exact.pb"
+"$native_cc" -std=c11 -O1 -g -fsanitize=address,undefined -fno-sanitize-recover=all -fno-omit-frame-pointer -I"$out" "$out/bundle.c" "$root/psionic/tests/mesh21/pool_bundle_native.c" -lm -o "$out/sanitized"
+"$out/sanitized" "$out"
+cmp "$out/plain-coax.pb" "$out/coax.pb"
+cmp "$out/plain-exact.pb" "$out/exact.pb"
+bun "$root/psionic/tests/mesh21/pool_bundle_interop.ts" check "$root" "$out"

@@ -1,0 +1,7 @@
+ok   #test protoc public carriage preserves original opaque bytes and event order (1 case, 38092 steps)
+ok   #test failed public decode never overwrites caller event views (1 case, 74272 steps)
+ok   #test invalid payload UTF8 and descriptor bounds give no partial read (1 case, 76312 steps)
+ok   #test writer shape is explicit free public data and rejects native overlap observations (1 case, 263629 steps)
+ok   #test exact field and cohort limits precede generated serialization (1 case, 2115609 steps)
+ok   #test capacity diagnostics expose the current stricter codec limit (1 case, 152 steps)
+6 checks, 6 passed, 0 failed

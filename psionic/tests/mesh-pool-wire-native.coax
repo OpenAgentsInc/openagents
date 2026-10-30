@@ -1,0 +1,17 @@
+#load "../lib/mesh/pool-wire.coax";
+#import "Basic";
+mp_fixture_totals :: (p:MtPolicy)->MtResult {
+ b:=[1]MtBeacon.[MtBeacon.{event_id=MT_A,provider=MT_B,pylon="p1",generation=1,observed_at=90,valid_until=120,status=0,family=0,total=3,free=2}];
+ r:=[1]MtReceipt.[MtReceipt.{event_id=MT_C,buyer=MT_A,provider=MT_B,pylon="p1",request=MT_D,request_digest=MT_D,result_digest=MT_E,created_at=62,finished_at=60,accepted=true,units=1}];
+ c:=[1]MtCheck.[MtCheck.{event_id=MT_D,checker=MT_E,receipt_id=MT_C,provider=MT_B,result_digest=MT_A,created_at=70,verdict=1}];return mt_recompute(p,b[..],r[..],c[..]);
+}
+main :: () {
+ providers:=[1]string.[MT_B];buyers:=[1]string.[MT_A];checkers:=[1]string.[MT_E];p:=MtPolicy.{from=0,to=120,providers=providers[..],buyers=buyers[..],checkers=checkers[..]};c:=mp_fixture_config();t:=mp_fixture_totals(p);
+ policy:[32768]u8;body:[4096]u8;tags:[1024]u8;pn:=mp_policy(p,policy[..]);n:=mp_content(c,p,t,body[..]);text:=cast(string)body[0..<n];k:=mp_tags(c,p,t,text,tags[..]);
+ #assert pn>0 && text==MP_BODY_GOLDEN && mp_admit(MP_KIND,c.aggregator,c.generated_at,cast(string)tags[0..<k],text,c,p,t);
+ print("%\n%\n%\n",cast(string)policy[0..<pn],text,cast(string)tags[0..<k]);
+ bytes:[224*64]u8;keys:[224]string;digits:="0123456789abcdef";
+ for i:0..<224 {for j:0..<62 {bytes[64*i+j]='a';}bytes[64*i+62]=digits[i>>4];bytes[64*i+63]=digits[i&15];keys[i]=cast(string)bytes[64*i..<64*i+64];}
+ p.providers=keys[0..<32];p.buyers=keys[32..<96];p.checkers=keys[96..<224];t=mp_fixture_totals(p);pn=mp_policy(p,policy[..]);n=mp_content(c,p,t,body[..]);#assert pn>0 && n>0 && mp_matches(cast(string)body[0..<n],c,p,t);
+ print("%\n%\n",cast(string)policy[0..<pn],cast(string)body[0..<n]);
+}

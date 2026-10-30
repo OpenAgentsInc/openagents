@@ -1,0 +1,3 @@
+PASS public bundle: original borrowed views, native aliases, field/cohort bounds, exact1MiB, near capacity and over-limit hard refusals
+PASS public bundle: original borrowed views, native aliases, field/cohort bounds, exact1MiB, near capacity and over-limit hard refusals
+PASS independent protoc: exact original JSON bytes and exact1MiB codec boundary roundtrip

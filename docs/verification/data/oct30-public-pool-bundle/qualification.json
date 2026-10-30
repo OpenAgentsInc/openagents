@@ -1,0 +1,19 @@
+{
+  "date": "2026-10-30",
+  "compiler": "coax0 0.24.0",
+  "protoc": "libprotoc 36.2",
+  "descriptorSha256": "5e5060513089acb2a5dc670bbbef95066ba12f79ac0d3f2f6d4538037a738ce4",
+  "authoredPolicySha256": "405c579337e5a069f1179a7a9fa061af86a75682771d4642adb38ce0c9f99d56",
+  "runtimeAssemblySha256": "a362094032390b0c458b1dca1a0f2264351ad5585ae4e1afd31ff1b6b982aba9",
+  "emittedLibraryCSha256": "d1caa966cb74b56c5d28161d8180d508c2731851f1d503167a0e1720b12ed811",
+  "sanitizedConsumerSha256": "1fb9f69a9fb88d0545b8bf2e6b5d6ad81a5f51e62e4e267ea5511db9195b0ad3",
+  "checks": {"passed":6,"failed":0},
+  "mutation": {"scope":"authored pure root procedures","total":58,"killed":58,"survived":0,"waivers":0},
+  "native": {"optimized":"passed","asanUbsan":"passed","originalPointersBorrowed":true,"outputsIdentical":true,"independentProtoc":"passed"},
+  "schemaMaxBytes":2097152,
+  "currentGeneratedCodecMaxBytes":1048576,
+  "exactAcceptedBytes":1048576,
+  "schemaValidRefusedBytes":1147208,
+  "importerRuntimeModified":false,
+  "signedPublicIntegrationQualifiedHere":false
+}
