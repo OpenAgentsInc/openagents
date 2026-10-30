@@ -9,7 +9,7 @@
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000   (these checks run with the page's)
 
 FFL_MAGIC :: 76;           // 'L'
-FFL_TAG_LOOK :: 1; FFL_TAG_HOME :: 2; FFL_TAG_GARDEN :: 3; FFL_TAG_VILLAGE :: 4;
+FFL_TAG_LOOK :: 1; FFL_TAG_HOME :: 2; FFL_TAG_GARDEN :: 3; FFL_TAG_VILLAGE :: 4; FFL_TAG_COURSE :: 5;
 FFL_BYTES :: 1024;         // the most the tail takes
 
 // ---- your fairy (ff-maker): each part an index into its choices
@@ -115,11 +115,35 @@ Village :: struct {
   moved: [5] f64;      // when (minutes since 1970; 0 unknown: already built)
 }
 
+// ---- your course (ff-courses): vine hoops hung through the trees, flown
+// against the clock; its id once shared (#course=<id>), your best.
+FFC_HOOPS :: 12;
+FFC_ID :: 16;
+VineHoop :: struct { x: f32; y: f32; z: f32; yaw: f32; }
+HoopCourse :: struct {
+  hoop: [FFC_HOOPS] VineHoop; n: int;
+  id: [FFC_ID] u8; id_n: int;   // the shared id ("" until SHARE)
+  best: int;                    // your best run, ms (0 none)
+}
+ffc_add :: (l: [] Life, h: VineHoop) -> bool {
+  if l[0].course.n >= FFC_HOOPS { return false; }
+  l[0].course.hoop[l[0].course.n] = h; l[0].course.n += 1; l[0].course.best = 0;
+  l[0].changes += 1;
+  return true;
+}
+ffc_undo :: (l: [] Life) -> bool {
+  if l[0].course.n == 0 { return false; }
+  l[0].course.n -= 1; l[0].course.best = 0;
+  l[0].changes += 1;
+  return true;
+}
+
 Life :: struct {
   look: FairyLook;
   home: Home;
   garden: Garden;
   village: Village;
+  course: HoopCourse;
   changes: int;      // grows with every change, so the face keeps it (not saved)
 }
 
@@ -378,6 +402,23 @@ ffl_save :: (l: [] Life, out: [] u8) -> int {
   if n + 2 + 25 > out.count { return n; }
   out[n] = cast(u8) FFL_TAG_VILLAGE; out[n + 1] = 25; n += 2;
   for c: 0..<5 { out[n] = cast(u8) l[0].village.plot[c]; ffl_put32(out, n + 1, cast(int) l[0].village.moved[c]); n += 5; }
+  // the course: its id, its best, then each hoop (x, y, z in cm, yaw)
+  co := l[0].course;
+  csize := 1 + co.id_n + 4 + 1 + co.n * 7;
+  if n + 2 + csize > out.count { return n; }
+  out[n] = cast(u8) FFL_TAG_COURSE; out[n + 1] = cast(u8) csize; n += 2;
+  out[n] = cast(u8) co.id_n; n += 1;
+  for k: 0..<co.id_n { out[n] = co.id[k]; n += 1; }
+  ffl_put32(out, n, co.best); out[n + 4] = cast(u8) co.n; n += 5;
+  for i: 0..<co.n {
+    h := co.hoop[i];
+    x := ffl_i16(h.x); y := ffl_i16(h.y); z := ffl_i16(h.z);
+    out[n] = cast(u8) (x & 255); out[n + 1] = cast(u8) ((x >> 8) & 255);
+    out[n + 2] = cast(u8) (y & 255); out[n + 3] = cast(u8) ((y >> 8) & 255);
+    out[n + 4] = cast(u8) (z & 255); out[n + 5] = cast(u8) ((z >> 8) & 255);
+    out[n + 6] = cast(u8) (cast(int) floor(wrap_angle(h.yaw) / 6.2832 * 256 + 256.5) % 256);
+    n += 7;
+  }
   return n;
 }
 // Metres as centimetres in two bytes (to +-327 m), and back.
@@ -420,6 +461,21 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
         pl := cast(int) b[i + c * 5];
         l[0].village.plot[c] = ifx pl <= FFV_PLOTS then pl else 0;
         l[0].village.moved[c] = f64(ffl_get32(b, i + c * 5 + 1));
+      }
+    }
+    if tag == FFL_TAG_COURSE && size >= 6 {
+      idn := cast(int) b[i];
+      if idn > FFC_ID || 1 + idn + 5 > size { return false; }
+      count := cast(int) b[i + idn + 5];
+      if count > FFC_HOOPS || 1 + idn + 5 + count * 7 > size { return false; }
+      l[0].course.id_n = idn;
+      for k: 0..<idn { l[0].course.id[k] = b[i + 1 + k]; }
+      l[0].course.best = ffl_get32(b, i + 1 + idn);
+      l[0].course.n = count;
+      for k: 0..<count {
+        o := i + idn + 6 + k * 7;
+        l[0].course.hoop[k] = VineHoop.{x = ffl_m(b[o], b[o + 1]), y = ffl_m(b[o + 2], b[o + 3]), z = ffl_m(b[o + 4], b[o + 5]),
+                                    yaw = wrap_angle(f32(b[o + 6]) / 256 * 6.2832)};
       }
     }
     if tag == FFL_TAG_GARDEN && size >= 10 + FFG_BEDS * 14 {
@@ -523,4 +579,29 @@ ffl_open :: (l: [] Life, b: [] u8) -> bool {
   #assert ffl_open(c[..], b[0..<n]) && c[0].village.plot[3] == 1 && c[0].village.moved[0] == 1001;
   // every plot is in the clearing and off the rooms
   for k: 0..<FFV_PLOTS { p := ffv_plot_at(k); #assert ffh_near(p.x, p.z, f32(FFH_CLEAR)) && ffh_room_at(p.x, p.z, 4) < 0; }
+}
+
+#test "a course: hoops added and undone, at most twelve, and kept with its id and best" {
+  l: [1] Life;
+  #assert !ffc_undo(l[..]);
+  for i: 0..<FFC_HOOPS { #assert ffc_add(l[..], VineHoop.{x = -120.5 + f32(i), y = 3.25, z = 88.0, yaw = 1.0}); }
+  #assert !ffc_add(l[..], VineHoop.{x = 0, y = 0, z = 0, yaw = 0}) && l[0].course.n == FFC_HOOPS;
+  #assert ffc_undo(l[..]) && l[0].course.n == FFC_HOOPS - 1;
+  id := "k3x9q2mzt7";
+  for k: 0..<id.count { l[0].course.id[k] = id[k]; }
+  l[0].course.id_n = id.count; l[0].course.best = 15400;
+  b: [FFL_BYTES] u8;
+  n := ffl_save(l[..], b[..]);
+  #assert n < FFL_BYTES;
+  c: [1] Life;
+  #assert ffl_open(c[..], b[0..<n]);
+  #assert c[0].course.n == FFC_HOOPS - 1 && c[0].course.best == 15400 && cast(string) c[0].course.id[0..<c[0].course.id_n] == id;
+  h := c[0].course.hoop[3];
+  #assert abs(h.x - -117.5) < 0.01 && abs(h.y - 3.25) < 0.01 && abs(h.z - 88) < 0.01 && abs(h.yaw - 1.0) < 0.03;
+  // a home full of pieces, the garden and the village still leave the course room
+  for i: 0..<FFH_PIECES { l[0].home.piece[i] = Piece.{kind = 0, x = f32(FFH_X), z = f32(FFH_Z), yaw = 0, size = 0}; }
+  l[0].home.n = FFH_PIECES;
+  m := ffl_save(l[..], b[..]);
+  d: [1] Life;
+  #assert ffl_open(d[..], b[0..<m]) && d[0].course.n == FFC_HOOPS - 1 && m < FFL_BYTES;
 }

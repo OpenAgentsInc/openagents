@@ -163,6 +163,16 @@ you told them and what you did for them).
   fly through, stepping stones, glide drops) with the edit tools, time
   yourself on it, and share a link. Friends play your course and their times
   show on it.
+  Built (ff-courses, `apps/openagents-web/fairycourse.coax`): COURSE, by the
+  title, opens a bar: HOOP (or E, in the air too) hangs a vine hoop ahead of
+  you, up to twelve; UNDO, FLY (the clock starts at the first hoop and stops
+  at the last; the next one glows), SHARE (copies a link,
+  `#course=<id>`) and DONE. Whoever opens the link finds the same hoops, and
+  the ten fastest runs show beside them with names (AGAIN, CLOSE). Kept on
+  the server (`/api/playtest/course/<id>`,
+  `coax/web/api/migrations/0057_fairy_courses.sql`); your own course and
+  best are in the save's tail. Stepping stones and glide drops are not built
+  yet.
 - **Your forest is shareable:** a link to your home and garden, as a visit
   (the playtest's published worlds).
 - **Visitors:** other players can visit your forest.
@@ -248,7 +258,6 @@ its steps (apps/openagents-web/fairyquest.coax).
 
 - Flight and gliding in the controller.
 - The fade: per-area colour restoration that spreads, saved per player.
-- Timed courses with shareable links and friends' times.
 - Panes: the agent bringing up the right pane, the design board from a voice
   prompt, the lore and quest-design panes, and accept-or-decline cards for
   the world's owner.

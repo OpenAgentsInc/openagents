@@ -1,0 +1,677 @@
+// Courses (ff-courses, verse/fairy-forest/README.md "Trails and courses"):
+// COURSE, by the title, opens a bar along the bottom. HOOP (or E) hangs a
+// vine hoop ahead of you, in the air as well; UNDO takes the last off; FLY
+// flies it against the clock (the timer starts at the first hoop and stops at
+// the last); SHARE copies a link (#course=<id>) and keeps the course on the
+// server (/api/playtest/course/<id>, migrations/0057_fairy_courses.sql).
+// Whoever opens the link finds the same hoops in their forest; their runs go
+// on the course's times, the ten fastest shown beside it. Your own course and
+// your best are kept in the save's tail (verse/fairy-forest/life.coax).
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFC_ACTS :: 5;
+FFC_HOOP :: 0; FFC_UNDO :: 1; FFC_FLY :: 2; FFC_SHARE :: 3; FFC_DONE :: 4;
+FFC_ACT_WORDS :: [5] string.["HOOP", "UNDO", "FLY", "SHARE", "DONE"];
+FFC_R :: 1.5;          // a hoop's radius (m)
+FFC_AHEAD :: 3.0;      // HOOP hangs it this far ahead of you
+FFC_THROUGH :: 0.8;    // through a hoop: this near its plane, inside its ring
+FFC_SEE :: 90.0;       // hoops are drawn this near
+FFC_TIMES :: 8;
+FFC_NAME :: 24;
+FFC_SHOWN_NONE :: 0; FFC_SHOWN_MINE :: 1; FFC_SHOWN_LINK :: 2;
+FFC_GET :: 1; FFC_PUT :: 2; FFC_TIME :: 3;   // what the face sends
+FFC_ID_CHARS :: "abcdefghijklmnopqrstuvwxyz0123456789";
+
+Race :: struct {
+  making: bool;
+  chip: Box; chip_press: bool; chip_finger: int;   // COURSE, by the title
+  chips: [FFC_ACTS] Box; panel: Box; press: int; finger: int;
+  again: Box; close: Box; pane: Box; pane_press: int; pane_finger: int;
+  // the course on show: yours or a link's
+  shown: int;
+  hoop: [FFC_HOOPS] VineHoop; n: int;
+  id: [FFC_ID] u8; id_n: int;
+  by: [FFC_NAME] u8; by_n: int;
+  loading: bool;
+  // flying it
+  next: int; began: f64; ms: int; flown_at: f64;
+  // its times: the fastest, one a player
+  t_n: int; t_ms: [FFC_TIMES] int; t_mine: [FFC_TIMES] bool;
+  t_name: [FFC_TIMES * FFC_NAME] u8; t_name_n: [FFC_TIMES] int;
+  best: int;
+  // for the face: what to send, and the host's actions (a copy, then the hash)
+  ask_get: bool; ask_put: bool; ask_time: int;
+  copy: bool; hash: bool; out: [240] u8; out_n: int;
+  url: [200] u8; url_n: int;   // this page's address, without its hash (the page facts' url)
+  note: int; note_at: f64;     // 1 LINK COPIED, 2 NO SUCH COURSE, 3 NOT KEPT: TRY AGAIN, 4 THREE HOOPS FIRST
+  scratch: [32] u8;
+}
+FFC_NOTES :: [5] string.["", "LINK COPIED", "NO SUCH COURSE", "NOT KEPT: TRY AGAIN", "THREE HOOPS FIRST"];
+
+ffc_note :: (s: [] Fairy, k: int) { s[0].race[0].note = k; s[0].race[0].note_at = s[0].time; }
+ffc_mine :: (s: [] Fairy) -> HoopCourse { return s[0].life[0].course; }
+ffc_id :: (r: [] Race) -> string { return cast(string) r[0].id[0..<r[0].id_n]; }
+
+// Yours shown: the hoops are your course's, kept in step.
+ffc_show_mine :: (s: [] Fairy) {
+  r := s[0].race[..]; c := ffc_mine(s);
+  if r[0].shown != FFC_SHOWN_MINE { r[0].t_n = 0; r[0].best = c.best; r[0].next = 0; r[0].ms = 0; }
+  r[0].shown = FFC_SHOWN_MINE;
+  r[0].n = c.n;
+  for i: 0..<c.n { r[0].hoop[i] = c.hoop[i]; }
+  r[0].id_n = c.id_n;
+  for k: 0..<c.id_n { r[0].id[k] = c.id[k]; }
+  r[0].by_n = 0;
+}
+
+ffc_open :: (s: [] Fairy) {
+  r := s[0].race[..];
+  r[0].making = true; r[0].press = 0;
+  ffc_show_mine(s);
+  r[0].next = 0; r[0].began = 0; r[0].ms = 0;
+}
+ffc_close :: (s: [] Fairy) { s[0].race[0].making = false; }
+ffc_leave :: (s: [] Fairy) {
+  r := s[0].race[..];
+  if r[0].shown == FFC_SHOWN_LINK { r[0].hash = true; r[0].out_n = 0; }   // the address forgets the link
+  r[0].shown = FFC_SHOWN_NONE; r[0].making = false; r[0].next = 0; r[0].ms = 0; r[0].t_n = 0;
+}
+ffc_again :: (s: [] Fairy) { r := s[0].race[..]; r[0].next = 0; r[0].began = 0; r[0].ms = 0; }
+
+// A new id from the clock, this visit and where you are: 10 of [a-z0-9].
+ffc_new_id :: (s: [] Fairy, out: [] u8) -> int {
+  h := cast(int) (s[0].now_min * 60000.0) % 2147483647;
+  h = (h + cast(int) (s[0].time * 1000.0) + cast(int) abs(s[0].feet.x * 1000) + cast(int) abs(s[0].feet.z * 7919)) % 2147483647;
+  for i: 0..<s[0].visit_n { h = (h * 31 + cast(int) s[0].visit[i]) % 2147483647; }
+  if h <= 0 { h = 48271; }
+  chars := FFC_ID_CHARS;
+  for i: 0..<10 {
+    h = (h * 48271) % 2147483647;
+    out[i] = chars[h % 36];
+  }
+  return 10;
+}
+
+ffc_hoop_here :: (s: [] Fairy) -> VineHoop {
+  ahead := v3(sin(s[0].face), 0, cos(s[0].face));
+  at := add(s[0].feet, times(ahead, f32(FFC_AHEAD)));
+  g := ground_at(s, at.x, at.z);
+  y := hi(s[0].feet.y + 1.0, g + f32(FFC_R) + 0.15);
+  return VineHoop.{x = at.x, y = y, z = at.z, yaw = s[0].face};
+}
+
+ffc_act :: (s: [] Fairy, act: int) {
+  r := s[0].race[..]; l := s[0].life[..];
+  if act == FFC_HOOP { _ := ffc_add(l, ffc_hoop_here(s)); r[0].t_n = 0; }
+  if act == FFC_UNDO { _ := ffc_undo(l); r[0].t_n = 0; }
+  if (act == FFC_FLY || act == FFC_SHARE) && l[0].course.n < 3 { ffc_note(s, 4); return; }
+  if act == FFC_FLY {
+    ffc_show_mine(s);
+    ffc_again(s);
+    r[0].making = false;
+    if l[0].course.id_n > 0 { r[0].ask_put = true; }   // shared: the server's hoops follow
+  }
+  if act == FFC_SHARE {
+    if l[0].course.id_n == 0 { l[0].course.id_n = ffc_new_id(s, l[0].course.id[..]); l[0].changes += 1; }
+    ffc_show_mine(s);
+    r[0].ask_put = true;
+    // the link, copied now (inside the press, so the browser lets it reach the clipboard), then the address
+    o := ffs_put(r[0].out[..], 0, cast(string) r[0].url[0..<r[0].url_n]);
+    o = ffs_put(r[0].out[..], o, "#course=");
+    o = ffs_put(r[0].out[..], o, ffc_id(r));
+    r[0].out_n = ifx o > 0 then o else 0;
+    r[0].copy = r[0].out_n > 0; r[0].hash = true;
+    ffc_note(s, 1);
+  }
+  if act == FFC_DONE { ffc_close(s); }
+  ffc_show_mine(s);
+}
+
+// Each frame: yours kept in step; through the next hoop, the clock runs.
+ffc_step :: (s: [] Fairy) {
+  r := s[0].race[..];
+  if r[0].shown == FFC_SHOWN_MINE { ffc_show_mine(s); }
+  if r[0].making || r[0].shown == FFC_SHOWN_NONE || r[0].n < 3 || r[0].next >= r[0].n { return; }
+  h := r[0].hoop[r[0].next];
+  body := add(s[0].feet, v3(0, 0.8, 0));
+  d := sub(body, v3(h.x, h.y, h.z));
+  nx := sin(h.yaw); nz := cos(h.yaw);
+  along := d.x * nx + d.z * nz;
+  rx := d.x - along * nx; rz := d.z - along * nz;
+  ring := sqrt(rx * rx + d.y * d.y + rz * rz);
+  if abs(along) > f32(FFC_THROUGH) || ring > f32(FFC_R) { return; }
+  if r[0].next == 0 { r[0].began = s[0].time; }
+  r[0].next += 1;
+  if r[0].next < r[0].n { return; }
+  run := cast(int) ((s[0].time - r[0].began) * 1000.0);
+  r[0].ms = ifx run < 1000 then 1000 else run;
+  r[0].flown_at = s[0].time;
+  if r[0].best == 0 || r[0].ms < r[0].best { r[0].best = r[0].ms; }
+  if r[0].shown == FFC_SHOWN_MINE && (s[0].life[0].course.best == 0 || r[0].ms < s[0].life[0].course.best) {
+    s[0].life[0].course.best = r[0].ms; s[0].life[0].changes += 1;
+  }
+  if r[0].id_n > 0 { r[0].ask_time = r[0].ms; }
+}
+
+// The location's hash: course=<id> opens that course.
+fairy_hash :: (s: [] Fairy, hash: string) #export_c {
+  if !s[0].started { fairy_start(s); }
+  r := s[0].race[..];
+  if hash.count < 15 || hash[0..<7] != "course=" { return; }
+  id := hash[7..<hash.count];
+  if id.count > FFC_ID { return; }
+  for c: id { if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')) { return; } }
+  if r[0].shown != FFC_SHOWN_NONE && ffc_id(r) == id { return; }
+  r[0].shown = FFC_SHOWN_LINK; r[0].making = false;
+  r[0].id_n = ffs_copy(r[0].id[..], id);
+  r[0].n = 0; r[0].t_n = 0; r[0].by_n = 0; r[0].best = 0; r[0].next = 0; r[0].ms = 0;
+  r[0].loading = true; r[0].ask_get = true;
+}
+// The page facts' url, without its hash: what SHARE's link starts with.
+ffc_facts :: (s: [] Fairy, facts: string) {
+  i := 0;
+  while i < facts.count {
+    e := i; while e < facts.count && facts[e] != '\n' { e += 1; }
+    if e - i > 4 && facts[i..<i + 4] == "url=" {
+      u := facts[i + 4..<e];
+      cut := 0;
+      while cut < u.count && u[cut] != '#' { cut += 1; }
+      if cut <= 200 { s[0].race[0].url_n = ffs_copy(s[0].race[0].url[..], u[0..<cut]); }
+    }
+    i = e + 1;
+  }
+}
+
+// ---- what the face sends: one at a time
+
+ffc_next :: (s: [] Fairy) -> int #export_c {
+  r := s[0].race[..];
+  if r[0].id_n == 0 { r[0].ask_get = false; r[0].ask_put = false; r[0].ask_time = 0; return 0; }
+  if r[0].ask_get { r[0].ask_get = false; return FFC_GET; }
+  if r[0].ask_put { r[0].ask_put = false; return FFC_PUT; }
+  if r[0].ask_time > 0 { return FFC_TIME; }
+  return 0;
+}
+// It couldn't go yet (no player key): asked again later.
+ffc_later :: (s: [] Fairy, kind: int) #export_c {
+  if kind == FFC_GET { s[0].race[0].ask_get = true; }
+  if kind == FFC_PUT { s[0].race[0].ask_put = true; }
+}
+ffc_url :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+  o := ffs_put(out, 0, "/api/playtest/course/");
+  o = ffs_put(out, o, ffc_id(s[0].race[..]));
+  if kind == FFC_TIME { o = ffs_put(out, o, "/time"); }
+  return ifx o > 0 then o else 0;
+}
+// A number as text, to the centimetre.
+ffc_put_num :: (out: [] u8, at: int, v: f32) -> int {
+  o := at;
+  c := cast(int) floor(abs(v) * 100 + 0.5);
+  if v < 0 && c > 0 { o = ffs_put(out, o, "-"); }
+  o = room_put_int(out, o, c / 100);
+  o = ffs_put(out, o, ".");
+  o = room_put_int(out, o, (c % 100) / 10);
+  return room_put_int(out, o, c % 10);
+}
+ffc_body :: (s: [] Fairy, kind: int, out: [] u8) -> int #export_c {
+  r := s[0].race[..];
+  o := 0;
+  if kind == FFC_PUT {
+    c := ffc_mine(s);
+    o = ffs_put(out, 0, "{\"realm\":\"fairy-forest\",\"hoops\":[");
+    for i: 0..<c.n {
+      h := c.hoop[i];
+      o = ffs_put(out, o, ifx i == 0 then "[" else ",[");
+      o = ffc_put_num(out, o, h.x); o = ffs_put(out, o, ",");
+      o = ffc_put_num(out, o, h.y); o = ffs_put(out, o, ",");
+      o = ffc_put_num(out, o, h.z); o = ffs_put(out, o, ",");
+      o = ffc_put_num(out, o, wrap_angle(h.yaw)); o = ffs_put(out, o, "]");
+    }
+    o = ffs_put(out, o, "]}");
+  } else if kind == FFC_TIME {
+    o = ffs_put(out, 0, "{\"ms\":");
+    o = room_put_int(out, o, r[0].ask_time);
+    o = ffs_put(out, o, "}");
+    r[0].ask_time = 0;
+  } else { return 0; }
+  return ifx o > 0 then o else 0;
+}
+
+// What came back ("STATUS\n" and the course): its hoops, who made it, the times.
+ffc_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
+  r := s[0].race[..];
+  nl := 0;
+  while nl < answer.count && answer[nl] != 10 { nl += 1; }
+  status := room_int(answer[0..<nl]);
+  r[0].loading = false;
+  if status != 200 || nl >= answer.count {
+    if kind == FFC_GET && status == 404 { ffc_note(s, 2); r[0].shown = FFC_SHOWN_NONE; r[0].hash = true; r[0].out_n = 0; }
+    else if kind != FFC_GET && status != 429 { ffc_note(s, 3); }
+    return;
+  }
+  t := answer[nl + 1..<answer.count];
+  obj := world_space(t, 0);
+  if obj >= t.count || t[obj] != 123 { return; }
+  if r[0].shown == FFC_SHOWN_NONE { return; }
+  where: [1] int;
+  mn := world_field(t, obj, "mine", where[..]);
+  mine := where[0] >= 0 && t[where[0]..<where[0] + mn] == "true";
+  if kind == FFC_GET && r[0].shown == FFC_SHOWN_LINK && !mine {
+    // the link's hoops
+    a := room_array(t, obj, "hoops");
+    n := 0;
+    if a >= 0 {
+      i := world_space(t, a + 1);
+      while i < t.count && t[i] == 91 && n < FFC_HOOPS {
+        e := world_value_end(t, i);
+        if e < 0 { break; }
+        v: [4] f32;
+        j := world_space(t, i + 1);
+        for q: 0..<4 {
+          b := j;
+          while j < e && t[j] != 44 && t[j] != 93 { j += 1; }
+          v[q] = room_num(t[b..<j]);
+          if j < e { j = world_space(t, j + 1); }
+        }
+        if finite(v[0]) && finite(v[1]) && finite(v[2]) && finite(v[3]) { r[0].hoop[n] = VineHoop.{x = v[0], y = v[1], z = v[2], yaw = v[3]}; n += 1; }
+        i = world_space(t, e);
+        if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+      }
+    }
+    r[0].n = n; r[0].next = 0; r[0].ms = 0;
+    r[0].by_n = room_text(t, obj, "by", r[0].by[..], 0, FFC_NAME);
+  }
+  if kind == FFC_GET && mine && r[0].shown == FFC_SHOWN_LINK {
+    // your own link: it is your course
+    ffc_show_mine(s);
+  }
+  // the times
+  m := room_array(t, obj, "times");
+  k := 0;
+  if m >= 0 {
+    i := world_space(t, m + 1);
+    while i < t.count && t[i] == 123 && k < FFC_TIMES {
+      e := world_value_end(t, i);
+      if e < 0 { break; }
+      r[0].t_ms[k] = cast(int) room_field_num(t, i, "ms");
+      r[0].t_name_n[k] = room_text(t, i, "name", r[0].t_name[..], k * FFC_NAME, FFC_NAME);
+      mw: [1] int;
+      tn := world_field(t, i, "mine", mw[..]);
+      r[0].t_mine[k] = mw[0] >= 0 && t[mw[0]..<mw[0] + tn] == "true";
+      k += 1;
+      i = world_space(t, e);
+      if i < t.count && t[i] == 44 { i = world_space(t, i + 1); }
+    }
+  }
+  r[0].t_n = k;
+  best := cast(int) room_field_num(t, obj, "best");
+  if best > 0 && (r[0].best == 0 || best < r[0].best) { r[0].best = best; }
+}
+
+// The host's actions: the link to copy (2), then the address's hash (3). 0 none.
+ffc_action :: (s: [] Fairy) -> int #export_c {
+  r := s[0].race[..];
+  if r[0].copy { return 2; }
+  if r[0].hash { return 3; }
+  return 0;
+}
+ffc_outbox :: (s: [] Fairy, kind: int) -> int #export_c {
+  r := s[0].race[..];
+  if kind == 3 {
+    // the hash: course=<id> while one is shown, else nothing
+    if r[0].shown == FFC_SHOWN_NONE || r[0].id_n == 0 { r[0].out_n = 0; return 0; }
+    o := ffs_put(r[0].out[..], 0, "course=");
+    o = ffs_put(r[0].out[..], o, ffc_id(r));
+    r[0].out_n = ifx o > 0 then o else 0;
+  }
+  return r[0].out_n;
+}
+ffc_action_done :: (s: [] Fairy, kind: int) #export_c {
+  if kind == 2 { s[0].race[0].copy = false; }
+  if kind == 3 { s[0].race[0].hash = false; }
+}
+
+// ---- keys and pointers
+
+ffc_key :: (s: [] Fairy, key: int) -> bool {
+  r := s[0].race[..];
+  if r[0].making && (key == 'e' || key == 'E') { ffc_act(s, FFC_HOOP); return true; }
+  if r[0].making && key == KEY_ESCAPE { ffc_close(s); return true; }
+  if !r[0].making && r[0].shown != FFC_SHOWN_NONE && key == KEY_ESCAPE { ffc_leave(s); return true; }
+  return false;
+}
+
+ffc_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
+  r := s[0].race[..];
+  if phase == 0 {
+    r[0].press = 0; r[0].chip_press = false; r[0].pane_press = 0;
+    if in_box(r[0].chip, x, y) { r[0].chip_press = true; r[0].chip_finger = id; return true; }
+    if r[0].making {
+      for c: 0..<FFC_ACTS { if in_box(r[0].chips[c], x, y) { r[0].press = c + 1; r[0].finger = id; return true; } }
+      if in_box(r[0].panel, x, y) { return true; }
+    }
+    if in_box(r[0].again, x, y) { r[0].pane_press = 1; r[0].pane_finger = id; return true; }
+    if in_box(r[0].close, x, y) { r[0].pane_press = 2; r[0].pane_finger = id; return true; }
+    return in_box(r[0].pane, x, y);
+  }
+  if r[0].chip_press && id == r[0].chip_finger {
+    if phase >= 2 {
+      r[0].chip_press = false;
+      if phase == 2 && in_box(r[0].chip, x, y) { if r[0].making { ffc_close(s); } else { ffc_open(s); } }
+    }
+    return true;
+  }
+  if r[0].pane_press > 0 && id == r[0].pane_finger {
+    if phase >= 2 {
+      p := r[0].pane_press; r[0].pane_press = 0;
+      if phase == 2 && p == 1 && in_box(r[0].again, x, y) { ffc_again(s); }
+      if phase == 2 && p == 2 && in_box(r[0].close, x, y) { ffc_leave(s); }
+    }
+    return true;
+  }
+  if r[0].press == 0 || id != r[0].finger { return false; }
+  if phase == 1 { return true; }
+  c := r[0].press - 1; r[0].press = 0;
+  if phase == 2 && in_box(r[0].chips[c], x, y) { ffc_act(s, c); }
+  return true;
+}
+
+// ---- drawing
+
+// A run's time as M:SS.T into the scratch.
+ffc_clock :: (r: [] Race, ms: int) -> string {
+  t := ms / 100;
+  o := room_put_int(r[0].scratch[..], 0, t / 600);
+  o = ffs_put(r[0].scratch[..], o, ":");
+  sec := (t / 10) % 60;
+  if sec < 10 { o = ffs_put(r[0].scratch[..], o, "0"); }
+  o = room_put_int(r[0].scratch[..], o, sec);
+  o = ffs_put(r[0].scratch[..], o, ".");
+  o = room_put_int(r[0].scratch[..], o, t % 10);
+  return cast(string) r[0].scratch[0..<(ifx o < 0 then 0 else o)];
+}
+
+// The hoops: a ring of vine with leaves; the next one to fly through glows.
+ffc_draw :: (s: [] Fairy, eye: Point) {
+  r := s[0].race[..];
+  if r[0].shown == FFC_SHOWN_NONE { return; }
+  t := effect_time(s);
+  for i: 0..<r[0].n {
+    if s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 60 { return; }
+    h := r[0].hoop[i];
+    c := v3(h.x, h.y, h.z);
+    dx := c.x - eye.x; dz := c.z - eye.z;
+    if dx * dx + dz * dz > f32(FFC_SEE * FFC_SEE) { continue; }
+    flying := !r[0].making;
+    glow := flying && i == r[0].next;
+    done := flying && i < r[0].next;
+    right := v3(cos(h.yaw), 0, -sin(h.yaw));
+    up := v3(0, 1, 0);
+    col := ifx glow then v3(1.0, 0.86, 0.42) else ifx done then v3(0.36, 0.5, 0.3) else v3(0.3, 0.56, 0.24);
+    look := ifx glow then LOOK_GLOW else LOOK_LEAVES;
+    segs := 14;
+    for j: 0..<segs {
+      a0 := f32(j) * f32(TAU) / f32(segs); a1 := f32(j + 1) * f32(TAU) / f32(segs);
+      p0 := add(c, add(times(right, cos(a0) * f32(FFC_R)), times(up, sin(a0) * f32(FFC_R))));
+      p1 := add(c, add(times(right, cos(a1) * f32(FFC_R)), times(up, sin(a1) * f32(FFC_R))));
+      mid := mix(p0, p1, 0.5);
+      limb(s, SHAPE_SPHERE, look, add(mid, times(sub(p0, mid), 1.35)), add(mid, times(sub(p1, mid), 1.35)), ifx glow then 0.17f32 else 0.14f32, col.x, col.y, col.z);
+    }
+    // leaves on the vine, and a bloom at its top
+    for j: 0..<3 {
+      a := 0.6 + f32(j) * 2.2;
+      p := add(c, add(times(right, cos(a) * f32(FFC_R)), times(up, sin(a) * f32(FFC_R))));
+      shape(s, SHAPE_SPHERE, LOOK_LEAVES, p, h.yaw + a, 0.5, 0.3, 0.06, 0.18, 0.36, 0.66, 0.28);
+    }
+    top := add(c, v3(0, f32(FFC_R) + 0.05, 0));
+    bloom := ifx done then v3(0.95, 0.75, 0.85) else v3(1.0, 0.55, 0.7);
+    shape(s, SHAPE_SPHERE, ifx glow then LOOK_GLOW else LOOK_CLOTH, top, 0, 0, 0.26, 0.16, 0.26, bloom.x, bloom.y, bloom.z);
+    if glow {
+      for j: 0..<4 {
+        a := f32(j) * 1.5708 + t * 1.3;
+        shape(s, SHAPE_SPHERE, LOOK_SPARK, add(c, add(times(right, cos(a) * 1.1), times(up, sin(a) * 1.1))), 0, 0, 0.06, 0.06, 0.06, 1.0, 0.95, 0.7);
+      }
+    }
+  }
+}
+
+// COURSE by the title plate (right of it), from x0 at the plate's top.
+ffc_chip :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, x0: f32, y0: f32, y1: f32) -> int {
+  r := s[0].race[..];
+  r[0].chip = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if s[0].talk > 0 || s[0].maker[0].open || s[0].build[0].open { return at; }
+  k := hi(s[0].dpr, 0.5);
+  cap := 7.5 * k;
+  word := "COURSE";
+  b := Box.{x0 = x0, y0 = y0, x1 = x0 + text_width(word, cap) + 26 * k, y1 = y1};
+  r[0].chip = b;
+  plate(s, u, b, 0.78, 0);
+  on := r[0].making || r[0].chip_press;
+  return draw_text(out, at, word, b.x0 + 13 * k, (b.y0 + b.y1 + cap) / 2, cap, GAP, SPACE,
+                   ink(k, 0.95, ifx on then GOLD_R else CREAM_R, ifx on then GOLD_G else CREAM_G, ifx on then GOLD_B else CREAM_B), false, false);
+}
+
+// The course beside the title: who made it, the clock, the fastest times, AGAIN and CLOSE.
+ffc_pane :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, top: f32) -> int {
+  r := s[0].race[..];
+  r[0].again = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; r[0].close = r[0].again; r[0].pane = r[0].again;
+  if r[0].shown == FFC_SHOWN_NONE || r[0].making || s[0].talk > 0 || s[0].maker[0].open { return at; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width;
+  x0 := 16 * k;
+  pw := lo(250 * k, w - 32 * k);
+  cap := 7.5 * k; big := 13 * k; row := 15 * k;
+  most := ifx phone(s) then 3 else FFC_TIMES;
+  rows := ifx r[0].t_n < most then r[0].t_n else most;
+  ph := 22 * k + cap + 14 * k + big + 12 * k + f32(rows) * row + (ifx rows > 0 then 8 * k else 0) + 34 * k;
+  b := Box.{x0 = x0, y0 = top, x1 = x0 + pw, y1 = top + ph};
+  r[0].pane = b;
+  plate(s, u, b, 0.8, 0);
+  n := at;
+  room := pw - 28 * k;
+  title := ifx r[0].shown == FFC_SHOWN_MINE then "YOUR COURSE" else ifx r[0].loading then "A COURSE" else "A COURSE BY";
+  y := b.y0 + 12 * k + cap;
+  n = draw_text(out, n, title, b.x0 + 14 * k, y, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  if r[0].shown == FFC_SHOWN_LINK && r[0].by_n > 0 {
+    tw := text_width(title, cap) + 8 * k;
+    n = ffs_text(s, out, n, cast(string) r[0].by[0..<r[0].by_n], b.x0 + 14 * k + tw, y, cap, room - tw, 0.95, false);
+  }
+  // the clock: running, or the run just flown, or the hoops to go
+  y += 14 * k + big;
+  clock := ifx r[0].next > 0 && r[0].next < r[0].n then cast(int) ((s[0].time - r[0].began) * 1000.0) else r[0].ms;
+  if r[0].n >= 3 && (r[0].next > 0 || r[0].ms > 0) {
+    n = draw_text(out, n, ffc_clock(r, clock), b.x0 + 14 * k, y, big, GAP, SPACE, ink(k, 0.98, CREAM_R, CREAM_G, CREAM_B), false, false);
+  } else if r[0].n >= 3 {
+    n = draw_text(out, n, "FLY THROUGH THE FIRST HOOP", b.x0 + 14 * k, y - (big - cap) / 2, cap, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
+  }
+  if r[0].n >= 3 && r[0].next < r[0].n {
+    // hoop m of n
+    o := room_put_int(r[0].out[..], 0, r[0].next + 1);
+    o = ffs_put(r[0].out[..], o, " / ");
+    o = room_put_int(r[0].out[..], o, r[0].n);
+    if r[0].next > 0 && o > 0 {
+      hw := text_width(cast(string) r[0].out[0..<o], cap);
+      n = draw_text(out, n, cast(string) r[0].out[0..<o], b.x1 - 14 * k - hw, y, cap, GAP, SPACE, ink(k, 0.8, CREAM_R, CREAM_G, CREAM_B), false, false);
+    }
+  } else if r[0].best > 0 {
+    o := ffs_put(r[0].out[..], 0, "BEST ");
+    o = ffs_put(r[0].out[..], o, ffc_clock(r, r[0].best));
+    if o > 0 {
+      hw := text_width(cast(string) r[0].out[0..<o], cap);
+      n = draw_text(out, n, cast(string) r[0].out[0..<o], b.x1 - 14 * k - hw, y, cap, GAP, SPACE, ink(k, 0.9, GOLD_R, GOLD_G, GOLD_B), false, false);
+    }
+  }
+  y += 12 * k;
+  // the fastest
+  for i: 0..<rows {
+    y += row;
+    light := ifx r[0].t_mine[i] then 0.98f32 else 0.8f32;
+    o := room_put_int(r[0].out[..], 0, i + 1);
+    if o > 0 { n = draw_text(out, n, cast(string) r[0].out[0..<o], b.x0 + 14 * k, y, cap, GAP, SPACE, ink(k, 0.6, CREAM_R, CREAM_G, CREAM_B), false, false); }
+    tm := ffc_clock(r, r[0].t_ms[i]);
+    tw := text_width(tm, cap);
+    n = draw_text(out, n, tm, b.x1 - 14 * k - tw, y, cap, GAP, SPACE, ink(k, light, GOLD_R, GOLD_G, GOLD_B), false, false);
+    nm := cast(string) r[0].t_name[i * FFC_NAME..<i * FFC_NAME + r[0].t_name_n[i]];
+    n = ffs_text(s, out, n, nm, b.x0 + 34 * k, y, cap, pw - 62 * k - tw, light, r[0].t_mine[i]);
+  }
+  if rows > 0 { y += 8 * k; }
+  // AGAIN and CLOSE
+  bw := (pw - 36 * k) / 2;
+  by0 := b.y1 - 32 * k; by1 := b.y1 - 10 * k;
+  r[0].again = Box.{x0 = b.x0 + 14 * k, y0 = by0, x1 = b.x0 + 14 * k + bw, y1 = by1};
+  r[0].close = Box.{x0 = b.x1 - 14 * k - bw, y0 = by0, x1 = b.x1 - 14 * k, y1 = by1};
+  for q: 0..<2 {
+    bb := ifx q == 0 then r[0].again else r[0].close;
+    word := ifx q == 0 then "AGAIN" else "CLOSE";
+    pressed := r[0].pane_press == q + 1;
+    n = ffs_outline(out, n, bb, k, ifx pressed then 1.0f32 else 0.55f32, pressed);
+    n = draw_text(out, n, word, (bb.x0 + bb.x1 - text_width(word, cap)) / 2, (bb.y0 + bb.y1 + cap) / 2, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  return n;
+}
+
+// The bar along the bottom while you make it. Returns where its top is drawn from (the panel).
+ffc_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, bottom: f32) -> int {
+  r := s[0].race[..];
+  for c: 0..<FFC_ACTS { r[0].chips[c] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  r[0].panel = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if !r[0].making { return at; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width;
+  row := ifx phone(s) then 40 * k else 34 * k;
+  pw := ifx phone(s) then w - 32 * k else lo(520 * k, w - 32 * k);
+  bx0 := (w - pw) / 2;
+  bh := row + 30 * k;
+  pb := Box.{x0 = bx0, y0 = bottom - bh, x1 = bx0 + pw, y1 = bottom};
+  r[0].panel = pb;
+  plate(s, u, pb, 0.84, 0);
+  cap := 7.5 * k;
+  n := draw_text(out, at, "COURSE", pb.x0 + 12 * k, pb.y0 + 18 * k, 8 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  hoops := s[0].life[0].course.n;
+  o := room_put_int(r[0].out[..], 0, hoops);
+  o = ffs_put(r[0].out[..], o, ifx hoops == 1 then " HOOP" else " HOOPS");
+  if o > 0 {
+    cw := text_width(cast(string) r[0].out[0..<o], cap);
+    n = draw_text(out, n, cast(string) r[0].out[0..<o], pb.x1 - 12 * k - cw, pb.y0 + 18 * k, cap, GAP, SPACE, ink(k, 0.8, CREAM_R, CREAM_G, CREAM_B), false, false);
+  }
+  slot := (pw - 16 * k) / f32(FFC_ACTS);
+  y := pb.y0 + 24 * k;
+  for c: 0..<FFC_ACTS {
+    word := FFC_ACT_WORDS[c];
+    x0 := pb.x0 + 8 * k + slot * f32(c);
+    cb := Box.{x0 = x0, y0 = y, x1 = x0 + slot, y1 = y + row};
+    r[0].chips[c] = cb;
+    wc := lo(cap, cap * slot * 0.86 / hi(text_width(word, cap), 1));
+    ww := text_width(word, wc);
+    idle := (c == FFC_HOOP && hoops >= FFC_HOOPS) || (c == FFC_UNDO && hoops == 0) || ((c == FFC_FLY || c == FFC_SHARE) && hoops < 3);
+    on := r[0].press == c + 1;
+    inkc := ifx on then ink(k, 0.98, GOLD_R, GOLD_G, GOLD_B) else ink(k, ifx idle then 0.35f32 else 0.88f32, CREAM_R, CREAM_G, CREAM_B);
+    n = draw_text(out, n, word, (cb.x0 + cb.x1 - ww) / 2, (cb.y0 + cb.y1 + wc) / 2, wc, GAP, SPACE, inkc, false, false);
+  }
+  return n;
+}
+
+// A note over the bar for a moment (LINK COPIED...).
+ffc_note_hud :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, above: f32) -> int {
+  r := s[0].race[..];
+  if r[0].note <= 0 || r[0].note > 4 || s[0].time - r[0].note_at > 2.5 { return at; }
+  k := hi(s[0].dpr, 0.5); w := s[0].width;
+  word := FFC_NOTES[r[0].note];
+  cap := 8 * k;
+  ww := text_width(word, cap);
+  b := Box.{x0 = (w - ww) / 2 - 14 * k, y0 = above - 12 * k - cap - 20 * k, x1 = (w + ww) / 2 + 14 * k, y1 = above - 12 * k};
+  plate(s, u, b, 0.84, 1);
+  return draw_text(out, at, word, (w - ww) / 2, b.y1 - 10 * k, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+}
+
+#test "a course: hoops hung ahead, flown in order against the clock, its best kept; SHARE copies a link" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  fairy_clock(s[..], 29000000.0 * 60000);
+  ffc_facts(s[..], "tab=x\nurl=https://openagents.com/realms/fairy-forest#course=old\nnow=1");
+  #assert cast(string) s[0].race[0].url[0..<s[0].race[0].url_n] == "https://openagents.com/realms/fairy-forest";
+  ffc_open(s[..]);
+  #assert s[0].race[0].making && s[0].race[0].shown == FFC_SHOWN_MINE;
+  // two hoops are not a course
+  s[0].feet = v3(0, ground_at(s[..], 0, 0), 0); s[0].face = 0;
+  #assert fairy_key(s[..], 'e', 0);
+  ffc_act(s[..], FFC_FLY);
+  #assert s[0].race[0].making && s[0].race[0].note == 4;
+  // a line of hoops north, one each 10 m, the second up in the air
+  for i: 1..<4 {
+    z := f32(i) * 10 - f32(FFC_AHEAD);
+    lift := ifx i == 2 then 6.0f32 else 0.0f32;
+    s[0].feet = v3(0, ground_at(s[..], 0, z) + lift, z);
+    ffc_act(s[..], FFC_HOOP);
+  }
+  ffc_act(s[..], FFC_UNDO);
+  ffc_act(s[..], FFC_HOOP);
+  c := s[0].life[0].course;
+  #assert c.n == 4 && abs(c.hoop[1].z - 10) < 0.01 && c.hoop[2].y > ground_at(s[..], 0, 17) + 6.9;
+  #assert c.hoop[0].y >= ground_at(s[..], 0, 3) + f32(FFC_R);
+  ffc_act(s[..], FFC_FLY);
+  #assert !s[0].race[0].making && s[0].race[0].shown == FFC_SHOWN_MINE && s[0].race[0].next == 0;
+  // out of order: the second hoop first counts for nothing
+  h := c.hoop[1];
+  s[0].feet = v3(h.x, h.y - 0.8, h.z); ffc_step(s[..]);
+  #assert s[0].race[0].next == 0;
+  for i: 0..<4 {
+    h = c.hoop[i];
+    s[0].time += 2.5;
+    s[0].feet = v3(h.x + 0.3, h.y - 0.8, h.z + 0.2);
+    ffc_step(s[..]);
+  }
+  #assert s[0].race[0].next == 4 && s[0].race[0].ms == 7500 && s[0].life[0].course.best == 7500;
+  #assert ffc_clock(s[0].race[..], 7500) == "0:07.5" && ffc_clock(s[0].race[..], 61250) == "1:01.2";
+  // not shared: nothing goes to the server
+  #assert ffc_next(s[..]) == 0;
+  // SHARE: an id, the link to copy, then the address
+  ffc_open(s[..]);
+  ffc_act(s[..], FFC_SHARE);
+  id := cast(string) s[0].life[0].course.id[0..<s[0].life[0].course.id_n];
+  #assert id.count == 10 && ffc_action(s[..]) == 2;
+  link := cast(string) s[0].race[0].out[0..<ffc_outbox(s[..], 2)];
+  #assert link.count == 60 && link[0..<50] == "https://openagents.com/realms/fairy-forest#course=" && link[50..<60] == id;
+  ffc_action_done(s[..], 2);
+  #assert ffc_action(s[..]) == 3 && ffc_outbox(s[..], 3) == 17;
+  #assert cast(string) s[0].race[0].out[0..<7] == "course=" && cast(string) s[0].race[0].out[7..<17] == id;
+  ffc_action_done(s[..], 3);
+  #assert ffc_next(s[..]) == FFC_PUT;
+  u: [96] u8;
+  #assert ffc_url(s[..], FFC_PUT, u[..]) == 31 && cast(string) u[0..<21] == "/api/playtest/course/" && cast(string) u[21..<31] == id;
+  body: [512] u8;
+  bn := ffc_body(s[..], FFC_PUT, body[..]);
+  #assert bn > 40 && cast(string) body[0..<38] == "{\"realm\":\"fairy-forest\",\"hoops\":[[0.00";
+  // it is kept with the save
+  b: [FFL_BYTES] u8;
+  n := ffl_save(s[0].life[..], b[..]);
+  l: [1] Life;
+  #assert ffl_open(l[..], b[0..<n]) && l[0].course.n == 4 && l[0].course.best == 7500 && l[0].course.id_n == 10;
+}
+
+#test "a course by link: its hoops and times come from the server, a run's time goes back" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  fairy_hash(s[..], "course=abcd1234");
+  #assert s[0].race[0].shown == FFC_SHOWN_LINK && ffc_next(s[..]) == FFC_GET;
+  fairy_hash(s[..], "course=NOPE!");   // not an id: nothing changes
+  #assert cast(string) s[0].race[0].id[0..<s[0].race[0].id_n] == "abcd1234";
+  ffc_answer(s[..], FFC_GET, "200\n{\"id\":\"abcd1234\",\"realm\":\"fairy-forest\",\"by\":\"Guest ABCD\",\"mine\":false,\"hoops\":[[1.5, 3, -2, 0.5],[10,4,-6,1],[20,5,-12,1.5]],\"times\":[{\"name\":\"Wren\",\"ms\":11000,\"mine\":false},{\"name\":\"Guest X\",\"ms\":15400,\"mine\":true}],\"best\":15400}");
+  r := s[0].race[..];
+  #assert r[0].n == 3 && r[0].hoop[0].x == 1.5 && r[0].hoop[2].yaw == 1.5 && r[0].t_n == 2 && r[0].t_ms[0] == 11000;
+  #assert r[0].t_mine[1] && !r[0].t_mine[0] && cast(string) r[0].by[0..<r[0].by_n] == "Guest ABCD" && r[0].best == 15400;
+  for i: 0..<3 {
+    h := r[0].hoop[i];
+    s[0].time += 3.0;
+    s[0].feet = v3(h.x, h.y - 0.8, h.z);
+    ffc_step(s[..]);
+  }
+  #assert r[0].ms == 6000 && r[0].best == 6000 && ffc_next(s[..]) == FFC_TIME;
+  body: [64] u8;
+  #assert cast(string) body[0..<ffc_body(s[..], FFC_TIME, body[..])] == "{\"ms\":6000}" && ffc_next(s[..]) == 0;
+  // the pane shows it, and CLOSE leaves it (and clears the address)
+  ffc_leave(s[..]);
+  #assert r[0].shown == FFC_SHOWN_NONE && ffc_action(s[..]) == 3 && ffc_outbox(s[..], 3) == 0;
+  // a link to nothing
+  fairy_hash(s[..], "course=zzzz9999");
+  ffc_answer(s[..], FFC_GET, "404\n{\"error\":\"no such course\"}");
+  #assert r[0].shown == FFC_SHOWN_NONE && r[0].note == 2;
+}
