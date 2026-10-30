@@ -1,7 +1,7 @@
 # OpenAgents video archive: index, history, and themes
 
-This guide covers the committed transcript archive as of 2026-10-02:
-**289 numbered episode files covering every number from 001 through 289**. The unreleased 288 [preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and [draft script](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-draft.md) are no longer in the tree; those links go to their last committed versions.
+This guide covers the committed transcript archive as of 2026-10-30:
+**290 numbered episode files covering every number from 001 through 290**. The unreleased 288 [preparation session](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-prep.md) and [draft script](https://github.com/OpenAgentsInc/openagents/blob/1ebd5e20f7/docs/transcripts/288-draft.md) are no longer in the tree; those links go to their last committed versions.
 The archive follows OpenAgents from document chat and its first coding agent
 to agent markets, operator workrooms, the Coder product suite, and measured
 System One coding-agent experiments.
@@ -52,6 +52,7 @@ the recording or publication date.
 | [287](287.md) | A 02:35:36.90 build-and-measurement session. Results discussed during iteration must retain their configuration, task set, and measurement limits. |
 | [288](288.md) | **Three DevDays Later.** 02:58.57 launch-preview recording, cut from 03:22 of `recording-20260930-132914.mp4`: OpenAI's developer marketplace and its zero revenue share, permissionless protocols on Nostr, and the OpenAgents 1.0.0 announcement. |
 | [289](289.md) | **OpenAgents.** 04:40.13 overview of the composable general agent, plugin and eval creation, Lightning micropayments, open protocols, and the version 1.0 rollout. |
+| [290](290.md) | **Enter the Verse.** A 34:22 live talk at a Pleb Lab-sponsored event: OpenAgents.com as a playtest, the Pylons compute network relaunched for gamers, Bitcoin wallets for people and agents, the Coax and Psionic books, the web-first Verse engine, and three audience-pitched games (Orbit League, Belt 2200, Hold the Stair) specified live. |
 
 The summaries use *plans*, *proposes*, *announces*, *demonstrates*, and
 *reports* deliberately. An announcement can establish historical intent;
