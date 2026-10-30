@@ -28,6 +28,7 @@
 #load "../../verse/terrain.coax";
 #load "place-orbit.coax";
 #load "thegrid-people.coax";
+#load "thegrid-track.coax";   // what players do, for analytics.coax
 
 VERTEX_FLOATS :: 16;   // a HUD stroke's vertex, as Everglade's
 MAX_VERTICES :: 16000;

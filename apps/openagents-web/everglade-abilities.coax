@@ -195,6 +195,7 @@ ab_press :: (s: [] Everglade, k: int) {
   a := ab_of(s);
   b := SP_SLOTS + k;
   if ci_no_casting(s, b) { return; }   // a beast casts no spells (everglade-circle.coax)
+  egt_note(s, b, true);
   if k == AB_TK && a[0].tk_kind != AB_TK_NONE {
     if s[0].sp.armed == b { ab_tk_release(s); sp_say(s, "TELEKINESIS ENDS", -1, ""); s[0].sp.armed = -1; } else { s[0].sp.armed = b; }
     return;

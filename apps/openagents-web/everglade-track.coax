@@ -1,0 +1,92 @@
+// What a player does in Everglade, as analytics.coax events (docs/verse/analytics-events.md):
+// the face keeps one EgSeen and calls everglade_track once a frame after the city's frame,
+// and this compares the city with last frame. Places entered once a visit (visit), walking
+// milestones (walk), WANTED level changes (wanted), a talk begun (talk), a quest's step
+// (quest), edit mode and its changes (edit), voice on (voice), chat sent (its length only),
+// the pack failing (fail); counted in the 30 s tally: spells cast or picked
+// (cast_<spell>, use_<spell>), kills by kind (kill_guard, kill_folk), your deaths (death),
+// pieces set alight (fire) and broken or shoved loose (destroy).
+EgSeen :: struct {
+  started: bool;
+  x: f32; z: f32;
+  level: int; dead: bool; talk: int; editing: bool; undos: int; want_voice: int; failed: bool;
+  stages: [EG_QUESTS] int;
+  dead_n: [WATCH_ACTORS] bool;
+  lit: int; broke: int; pushed: int;
+}
+
+// The game's id for a slot on the bar (HB_NAME, everglade-hotbar.coax).
+egt_slot_id :: (slot: int) -> string { if slot >= 0 && slot < HB_SLOTS { return HB_NAME[slot]; } return "other"; }
+
+// A spell cast (aimed) or picked or used (an ability's key), for the face's tally.
+egt_note :: (s: [] Everglade, slot: int, used: bool) {
+  if s[0].sp.note_n >= 8 { return; }
+  s[0].sp.notes[s[0].sp.note_n] = slot * 2 + (ifx used then 1 else 0); s[0].sp.note_n += 1;
+}
+
+everglade_track :: (s: [] Everglade, w: [] EgSeen, t: [] Track, x: f32, z: f32) #export_c {
+  if !t[0].ready { return; }
+  egt_w := s[0].wt[..];
+  if !w[0].started {
+    w[0].started = true; w[0].x = x; w[0].z = z; w[0].level = egt_w[0].level; w[0].talk = s[0].talk;
+    for q: 0..<EG_QUESTS { w[0].stages[q] = s[0].stages[q]; }
+    for i: 0..<WATCH_ACTORS { w[0].dead_n[i] = egt_w[0].actors[i].mode == WM_DEAD; }
+    w[0].lit = s[0].sp.fi[0].lit; w[0].broke = s[0].sp.broke; w[0].pushed = s[0].sp.pushed; w[0].undos = s[0].ev.undo_n;
+    w[0].want_voice = s[0].ev.want_voice;
+  }
+  // where you are: the nearest named place within 18 m, a building you're inside
+  egt_dx := x - w[0].x; egt_dz := z - w[0].z;
+  track_walk(t, cast(f64) sqrt(egt_dx * egt_dx + egt_dz * egt_dz));
+  w[0].x = x; w[0].z = z;
+  egt_best := -1; egt_d: f32 = 324;
+  for p: 0..<EG_PLACES {
+    egt_px := EG_PLACE[p * 2] - x; egt_pz := EG_PLACE[p * 2 + 1] - z;
+    if egt_px * egt_px + egt_pz * egt_pz < egt_d { egt_d = egt_px * egt_px + egt_pz * egt_pz; egt_best = p; }
+  }
+  if egt_best >= 0 { track_area(t, EG_PLACE_ID[egt_best]); }
+  egt_room := everglade_room_at(s, x, z);
+  if egt_room >= 0 { track_area(t, EG_BUILDING_NAME[egt_room]); }
+  // the watch
+  if egt_w[0].level != w[0].level { track_act_n(t, "wanted", "", egt_w[0].level); w[0].level = egt_w[0].level; }
+  if egt_w[0].dead && !w[0].dead { track_tally(t, "death", ""); }
+  w[0].dead = egt_w[0].dead;
+  for i: 0..<WATCH_ACTORS {
+    egt_dead := egt_w[0].actors[i].mode == WM_DEAD;
+    if egt_dead && !w[0].dead_n[i] { track_tally(t, "kill", ifx watch_is_guard(i) then "guard" else "folk"); }
+    w[0].dead_n[i] = egt_dead;
+  }
+  // talking and quests
+  if s[0].talk != w[0].talk {
+    if s[0].talk >= 0 && s[0].talk < EG_SPOTS { track_act(t, "talk", EG_SPOT_NAME[s[0].talk]); }
+    w[0].talk = s[0].talk;
+  }
+  for q: 0..<EG_QUESTS {
+    if s[0].stages[q] != w[0].stages[q] {
+      egt_q: [8] u8; egt_q[0] = 113; egt_q[1] = cast(u8) (49 + q);   // "q1", "q2", "q3"
+      track_act_n(t, "quest", cast(string) egt_q[0..<2], s[0].stages[q]);
+      w[0].stages[q] = s[0].stages[q];
+    }
+  }
+  // spells, fire and what breaks
+  for k: 0..<s[0].sp.note_n {
+    egt_v := s[0].sp.notes[k];
+    track_tally(t, ifx egt_v % 2 == 1 then "use" else "cast", egt_slot_id(egt_v / 2));
+  }
+  s[0].sp.note_n = 0;
+  egt_lit := s[0].sp.fi[0].lit;
+  if egt_lit > w[0].lit { track_tally_n(t, "fire", "", egt_lit - w[0].lit); }
+  w[0].lit = egt_lit;
+  if s[0].sp.broke > w[0].broke { track_tally_n(t, "destroy", "", s[0].sp.broke - w[0].broke); }
+  w[0].broke = s[0].sp.broke;
+  if s[0].sp.pushed > w[0].pushed { track_tally_n(t, "destroy", "", s[0].sp.pushed - w[0].pushed); }
+  w[0].pushed = s[0].sp.pushed;
+  // edits and voice
+  if s[0].ev.editing && !w[0].editing { track_act(t, "edit", "open"); }
+  w[0].editing = s[0].ev.editing;
+  if s[0].ev.undo_n > w[0].undos { track_act(t, "edit", "change"); }
+  w[0].undos = s[0].ev.undo_n;
+  if s[0].ev.want_voice == 1 && w[0].want_voice != 1 { track_act(t, "voice", "edit"); }
+  w[0].want_voice = s[0].ev.want_voice;
+  if s[0].pack_failed && !w[0].failed { track_fail(t, "pack", 0); }
+  w[0].failed = s[0].pack_failed;
+}

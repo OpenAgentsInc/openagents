@@ -210,6 +210,7 @@ Spells :: struct {
   lift: f32;                 // how much of the bottom the bar takes, for what sits over it
   regrow_t: f32;
   frame_ms: f32;
+  notes: [8] int; note_n: int;   // spells cast or used this frame, for everglade-track.coax
 }
 
 // ---- the ruleset's view of each kit piece
@@ -569,9 +570,10 @@ sp_surface :: (s: [] Everglade, x: f32, z: f32, under: f32) -> f32 {
 sp_cast :: (s: [] Everglade) {
   slot := s[0].sp.armed;
   if slot < 0 || s[0].sp.casting >= 0 { return; }
-  if slot >= SP_SLOTS { ab_cast(s, slot - SP_SLOTS); return; }
+  if slot >= SP_SLOTS { egt_note(s, slot, false); ab_cast(s, slot - SP_SLOTS); return; }
   if !s[0].sp.aim_ok { sp_say(s, "POINT AT THE GROUND OR A BUILDING", -1, ""); return; }
   if s[0].sp.far { sp_say(s, "TOO FAR · 140 M AT MOST", -1, ""); return; }
+  egt_note(s, slot, false);
   s[0].sp.casting = slot; s[0].sp.cast_t = 0; s[0].sp.cast_at = s[0].sp.aim; s[0].sp.cast_n = s[0].sp.aim_n;
   s[0].sp.cast_from = add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 1.6, 0));
   s[0].sp.armed = -1;

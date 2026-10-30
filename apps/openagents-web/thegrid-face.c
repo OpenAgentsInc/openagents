@@ -55,6 +55,7 @@ static uint8_t room_body[256];
 static void room_out(uint32_t state);
 static void people_out(uint32_t state);
 static coax_t_Track track_state;
+static coax_t_GridSeen track_seen;   // what thegrid_track saw last frame (thegrid-track.coax)
 #define SUGGEST_URL "/api/playtest/survey/answer"
 static int32_t post_id = -1;
 static void post_out(uint32_t state);
@@ -125,6 +126,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   people_out(state);
   edit_face_drain(ed(state));
   place_frame(state);
+  thegrid_track(at(state), (coax_v_t_GridSeen){&track_seen, 1}, tr(), feet.x, feet.z);
+
   track_frame(tr(), dt, w, h, scale);
   // world-enter and load-engine once it draws, like every realm (the analytics contract, analytics-contract.json)
   static bool entered;

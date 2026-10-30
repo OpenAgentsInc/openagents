@@ -43,6 +43,7 @@ static float width, height, dpr;
 static uint8_t inbox[16384];
 static uint8_t catalog[16384];
 static coax_t_Track track_state;
+static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everglade-track.coax)
 #define NPC_URL "/api/playtest/npc/ask"
 #define PLAYER_URL "/api/playtest/player"
 static int32_t ask_id = -1, mint_id = -1;
@@ -291,6 +292,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   room_out(state, dt);
   edit_out(state);
   place_frame(state);
+  if (placed) everglade_track(at(state), (coax_v_t_EgSeen){&track_seen, 1}, tr(), player.pos.x, player.pos.z);
+
   track_frame(tr(), dt, w, h, scale);
   // world-enter and load-engine once it draws, like every realm (the analytics contract, analytics-contract.json)
   static bool entered;
@@ -348,6 +351,7 @@ static void room_out(uint32_t state, float dt) {
   (void)dt;
   coax_string said = chat_id < 0 ? everglade_chat_take(at(state)) : (coax_string){"", 0};
   if (said.count > 0) {
+    track_chat(tr(), track_cstr("room"), said.count);   // its length only
     int64_t un = room_url(everglade_room_name(), true, (coax_v_u8){(uint8_t *)chat_url_buf, sizeof chat_url_buf});
     coax_string sid = {(const char *)track_state.sid.e, track_state.sid_n};
     int64_t bn = room_chat_body(said, sid, (coax_v_u8){chat_body, sizeof chat_body});
@@ -382,6 +386,7 @@ static void ask_out(uint32_t state) {
   if (mint_id >= 0) return;
   ask_id = coaxial_http((uint32_t)(uintptr_t)NPC_URL, sizeof NPC_URL - 1, (uint32_t)(uintptr_t)city(state)->ask.e, (uint32_t)n, 1 | 4 | 8);
   everglade_ask_sent(at(state));
+  track_chat(tr(), track_cstr("npc"), n);   // a question to a character: its length only
   if (ask_id < 0) { ask_id = -1; everglade_answer(at(state), (coax_string){"0\n", 2}); }
 }
 static bool has_line(uint32_t length, const char *prefix) {
@@ -480,6 +485,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
   if (chat_id >= 0 && kind == 512 + chat_id) { chat_id = -1; room_at = -10; return; }   // a line said: the room asked now, so it shows
   if (ask_id >= 0 && kind == 512 + ask_id) {
     ask_id = -1;
+    if (length < 1 || inbox[0] != '2') track_fail(tr(), track_cstr("npc"), length > 2 ? (inbox[0] - '0') * 100 + (inbox[1] - '0') * 10 + (inbox[2] - '0') : 0);
     everglade_answer(at(state), (coax_string){(const char *)inbox, length});
     return;
   }
