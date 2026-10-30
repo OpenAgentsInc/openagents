@@ -224,6 +224,28 @@
       ]
     },
     {
+      "package": "nostr.event.v1alpha2",
+      "proto": "nostr/event/v1alpha2/event.proto",
+      "status": "alpha",
+      "sources": [
+        {
+          "path": "nips/official/01.md",
+          "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+          "sha256": "d5c5ce2b5639eee440b5d342dbe81af42008838cb260ec04acaffaffd29dcaf7"
+        },
+        {
+          "path": "nips/official/42.md",
+          "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+          "sha256": "176458314bb0cd3b9c673b43b6bf05e4cb2354f5d56880d8d6627713d6fd4f87"
+        },
+        {
+          "path": "nips/official/50.md",
+          "commit": "400d157c53264b8e58c7b3cdbd21ef546fb7a157",
+          "sha256": "64c393e0146f11564505ba8dd73e4798a34762b0d35a02663dd678a98941240e"
+        }
+      ]
+    },
+    {
       "package": "nostr.nip42.v1alpha1",
       "proto": "nostr/nip42/v1alpha1/auth.proto",
       "status": "alpha",

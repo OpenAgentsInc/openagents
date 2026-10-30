@@ -1,0 +1,10 @@
+syntax = "proto3";
+package openagents.options.v1alpha2;
+import "google/protobuf/descriptor.proto";
+
+// An explicitly present inclusive upper bound for uint32 fields, including
+// each repeated value. An absent option imposes no additional upper bound;
+// an explicitly encoded zero permits only zero. It is not an authorization.
+extend google.protobuf.FieldOptions {
+  uint32 max_uint32 = 51009;
+}

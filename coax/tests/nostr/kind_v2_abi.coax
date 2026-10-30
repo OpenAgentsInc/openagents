@@ -1,0 +1,11 @@
+#import_proto "../../../proto/descriptors/nostr-event-v1alpha2.pb" as V;
+KindInput :: struct {wire:[]u8; op:u32;}
+kind_decode :: (input:KindInput)->u32 #export_c {
+ if input.op==0 {return V_UnsignedEvent_decode(input.wire).error;}
+ if input.op==1 {return V_EventRef_decode(input.wire).error;}
+ if input.op==2 {return V_KindList_decode(input.wire).error;}
+ if input.op==3 {return V_Filter_decode(input.wire).error;}
+ if input.op==4 {return V_Event_decode(input.wire).error;}
+ if input.op==5 {return V_UnsignedEvent_decode_minimal(input.wire).error;}
+ return 999;
+}

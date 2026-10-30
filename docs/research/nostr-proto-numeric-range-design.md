@@ -1,7 +1,9 @@
-# Draft: versioned Nostr kind range enforcement
+# Versioned Nostr kind range enforcement
 
-Scope: #ef04; pending #161a. This is design only, not implementation or an
-accepted protocol decision. Do not modify any frozen running source graph.
+Scope: #ef04. The implemented `v1alpha2` event profile opts into the
+`max_uint32` option and retains the existing v1alpha1 descriptors and behavior.
+The remaining notes record the design and verification requirements; broader
+consumer migration and event authentication remain separate work.
 
 ## Existing evidence and compatibility
 

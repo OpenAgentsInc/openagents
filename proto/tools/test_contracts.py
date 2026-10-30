@@ -20,6 +20,17 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module_paths('broken', {'roots': ['nostr'], 'exclude': ['missing.proto']})
 
+    def test_module_exclusions_preserve_legacy_roots(self):
+        owned = module_paths('owned', CONFIG['modules']['owned'])
+        nostr = module_paths('nostr', CONFIG['modules']['nostr'])
+        self.assertIn('openagents/options/v1alpha1/options.proto', owned)
+        self.assertNotIn('openagents/options/v1alpha2/numeric.proto', owned)
+        self.assertIn('nostr/event/v1alpha1/event.proto', nostr)
+        self.assertNotIn('nostr/event/v1alpha2/event.proto', nostr)
+        with self.assertRaises(ValueError):
+            module_paths('broken', {'roots': ['nostr'], 'exclude': ['not-present.proto']})
+        self.assertIn('nostr/event/v1alpha2/event.proto', CONFIG['profiles']['nostr-event-v1alpha2'])
+
     def test_home_profile_and_explicit_zero(self):
         value = HomeConfiguration(schema_version=1, seed=42727, mote_count=0, satellite_count=0)
         value.start.id = 'home.start'

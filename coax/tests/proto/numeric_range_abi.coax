@@ -1,0 +1,19 @@
+#import_proto "numeric_range.pb" as R;
+// Test-only C transport of the actual descriptor-generated encoder/validator.
+RangeBuffer :: struct { bytes:[]u8; }
+range_write :: (op:u32,value:u32,output:RangeBuffer)->s64 #export_c {
+ msg:=R_Ranges_new();r:R_Ranges;
+ if op==0 {r=R_Ranges_set_zero(msg,value,output.bytes);}
+ else if op==1 {r=R_Ranges_set_kind(msg,value,output.bytes);}
+ else if op==2 {r=R_Ranges_append_values(msg,value,output.bytes);}
+ else if op==3 {r=R_Ranges_set_full(msg,value,output.bytes);}
+ else {return -99;}
+ if r.error!=0 {return -cast(s64)r.error;}
+ return r.wire.count;
+}
+range_read :: (input:RangeBuffer,op:u32)->u32 #export_c {
+ if op==0 {return R_Ranges_decode(input.bytes).error;}
+ if op==1 {return R_Ranges_decode_minimal(input.bytes).error;}
+ if op==2 {return R_Container_decode(input.bytes).error;}
+ return 999;
+}

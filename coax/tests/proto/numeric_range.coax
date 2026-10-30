@@ -1,0 +1,31 @@
+#import_proto "numeric_range.pb" as R;
+#test "explicit zero and optional boundaries" {
+ empty:[1]u8;msg:=R_Ranges_decode(empty[0..<0]);
+ #assert msg.error==0 && !R_Ranges_get_zero(msg).present && !R_Ranges_get_kind(msg).present;
+ zero:=[2]u8.[8,0];decoded:=R_Ranges_decode(zero[..]);got:=R_Ranges_get_zero(decoded);
+ #assert got.error==0 && got.present && got.value==0;
+ bad_zero:=[2]u8.[8,1];#assert R_Ranges_decode(bad_zero[..]).error==R__pb_VALUE;
+ low:=[2]u8.[16,0];#assert R_Ranges_decode(low[..]).error==0;
+ maximum:=[4]u8.[16,255,255,3];#assert R_Ranges_decode(maximum[..]).error==0;
+ above:=[4]u8.[16,128,128,4];#assert R_Ranges_decode(above[..]).error==R__pb_VALUE;
+ full:=[6]u8.[32,255,255,255,255,15];#assert R_Ranges_decode(full[..]).error==0;
+}
+#test "unpacked packed and mixed repeated bounds" {
+ ok:=[7]u8.[24,0,26,3,255,255,3];
+ #assert R_Ranges_decode(ok[..]).error==0; // 0 then packed 65535
+ bad:=[7]u8.[24,0,26,3,128,128,4];
+ #assert R_Ranges_decode(bad[..]).error==R__pb_VALUE;
+ single:=[4]u8.[24,128,128,4];#assert R_Ranges_decode(single[..]).error==R__pb_VALUE;
+ empty:=[2]u8.[26,0];#assert R_Ranges_decode(empty[..]).error==0;
+}
+#test "range failure order preserves wire semantics" {
+ out_of_u32:=[6]u8.[16,128,128,128,128,16];
+ #assert R_Ranges_decode(out_of_u32[..]).error==R__pb_VALUE;
+ duplicate:=[5]u8.[16,1,16,128,4];#assert R_Ranges_decode(duplicate[..]).error==R__pb_DUPLICATE;
+ wrong:=[2]u8.[18,0];#assert R_Ranges_decode(wrong[..]).error==R__pb_WIRE;
+ malformed:=[2]u8.[16,128];#assert R_Ranges_decode(malformed[..]).error==R__pb_WIRE;
+ nonminimal:=[3]u8.[16,129,0];#assert R_Ranges_decode(nonminimal[..]).error==0;
+ #assert R_Ranges_decode_minimal(nonminimal[..]).error==R__pb_WIRE;
+ nested:=[6]u8.[10,4,16,128,128,4];#assert R_Container_decode(nested[..]).error==R__pb_VALUE;
+ unknown:=[3]u8.[72,128,4];m:=R_Ranges_decode(unknown[..]);#assert m.error==0 && !R_Ranges_unknown(m,0).done;
+}

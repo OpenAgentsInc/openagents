@@ -62,6 +62,12 @@ limits to the schema, such as `max_message_bytes` and `required_value`,
 and the generated codecs enforce them. Keep an eye on `required_value`;
 we'll run into it shortly.
 
+Numeric bounds can also be explicit schema policy. For example, the Nostr
+`v1alpha2` event profile uses `max_uint32` to limit kinds to 65535. A bound
+of zero means zero is the only allowed value; an absent bound adds no limit.
+The earlier `v1alpha1` profile retains its original uint32 behavior. These
+checks validate the value, not the event's signature or identity.
+
 ## Building a message
 
 Let's start with the button on its own. We'll build a `HudAction`,

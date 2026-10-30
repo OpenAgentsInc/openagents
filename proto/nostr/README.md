@@ -1,14 +1,21 @@
 # Nostr projections for Coax
 
-This mirror has **17 alpha schemas**: shared NIP-01 event/filter types,
-NIP-42 authentication, and 15 external agent, identity, channel and project projections.
+This mirror has **18 alpha schemas**: shared NIP-01 event/filter types in two
+versions, NIP-42 authentication, and 15 external agent, identity, channel and
+project projections.
 All live under root `proto/nostr/`, with one versioned namespace per source.
 They mirror the current pins in [`nips/`](../../nips/README.md); the original
-Nostr/HTTP/JWS protocols remain unchanged.
+Nostr/HTTP/JWS protocols remain unchanged. The v1alpha2 event profile adds an inclusive
+0..65535 kind constraint; the published v1alpha1 profile continues to accept
+its previous uint32 domain. The legacy `owned` and `nostr` aggregate descriptor
+roots explicitly exclude the new files, so old consumers keep their exact bytes;
+the new profile is compiled separately. Migrate consumers explicitly; parsed
+values remain unverified and convey no authority.
 
 | Profile | Namespaces |
 | --- | --- |
 | `nostr-event` | `nostr.event.v1alpha1`, `nostr.nip42.v1alpha1` |
+| `nostr-event-v1alpha2` | `nostr.event.v1alpha2`, explicitly bounded Nostr kinds |
 | `block-agent` | `nostr.block.{aa,ae,ao,am,ap}.v1alpha1`, plus shared/OA dependencies |
 | `block-identity` | `nostr.block.{oa,fi,fa,ia}.v1alpha1`, plus shared dependencies |
 | `block-channel` | `nostr.block.{cl,ar,cw,dv,wp}.v1alpha1`, plus shared dependencies |

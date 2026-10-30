@@ -1,0 +1,51 @@
+syntax = "proto3";
+package nostr.event.v1alpha2;
+import "openagents/options/v1alpha1/options.proto";
+import "openagents/options/v1alpha2/numeric.proto";
+
+// Alpha projection of official NIP-01, NIP-42 and NIP-50. Original protocol bytes remain authoritative.
+// Parsing these values does not verify signatures, authorize access or execute commands.
+// Bounds are local adapter limits, not new universal Nostr wire limits.
+message Tag { repeated string values = 1 [(openagents.options.v1alpha1.max_count)=64, (openagents.options.v1alpha1.max_bytes)=131072]; }
+message Event {
+  optional bytes id = 1 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.exact_bytes)=32];
+  optional bytes pubkey = 2 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.exact_bytes)=32];
+  optional uint64 created_at = 3 [(openagents.options.v1alpha1.required_value)=true];
+  optional uint32 kind = 4 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha2.max_uint32)=65535]; // 0..65535
+  repeated Tag tags = 5 [(openagents.options.v1alpha1.max_count)=2048]; // Order and duplicates retained.
+  optional string content = 6 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=262144];
+  optional bytes sig = 7 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.exact_bytes)=64];
+}
+message SignedEvent {
+  option (openagents.options.v1alpha1.max_message_bytes)=1048576;
+  optional bytes original_json = 1 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=524288];
+  Event event = 2 [(openagents.options.v1alpha1.required_value)=true];
+}
+message UnsignedEvent { optional bytes pubkey=1 [(openagents.options.v1alpha1.exact_bytes)=32]; optional uint64 created_at=2; optional uint32 kind=3 [(openagents.options.v1alpha2.max_uint32)=65535]; repeated Tag tags=4; optional string content=5; }
+message EventRef { optional bytes id=1 [(openagents.options.v1alpha1.exact_bytes)=32]; optional bytes pubkey=2 [(openagents.options.v1alpha1.exact_bytes)=32]; optional uint32 kind=3 [(openagents.options.v1alpha2.max_uint32)=65535]; optional string identifier=4; }
+// Containers preserve absence versus an explicitly empty filter array.
+message IdList { repeated bytes values=1 [(openagents.options.v1alpha1.exact_bytes)=32, (openagents.options.v1alpha1.max_count)=2048]; }
+message KindList { repeated uint32 values=1 [(openagents.options.v1alpha1.max_count)=2048, (openagents.options.v1alpha2.max_uint32)=65535]; }
+message TagFilter { optional string name=1; repeated string values=2 [(openagents.options.v1alpha1.max_count)=2048]; }
+message Filter {
+  optional bytes original_json=1;
+  IdList ids=2; IdList authors=3; KindList kinds=4;
+  repeated TagFilter tags=5 [(openagents.options.v1alpha1.max_count)=64];
+  optional uint64 since=6; optional uint64 until=7; optional uint32 limit=8;
+  optional string search=9; // NIP-50; unknown extension fields remain in original_json.
+}
+message Request { optional string subscription=1; repeated Filter filters=2; }
+message EventDelivery { optional string subscription=1; SignedEvent event=2; }
+message Acknowledgement { optional bytes event_id=1 [(openagents.options.v1alpha1.exact_bytes)=32]; optional bool accepted=2; optional string message=3; }
+message Closed { optional string subscription=1; optional string message=2; }
+message ClientFrame { optional bytes original_json=1; oneof payload { SignedEvent event=2; Request req=3; string close=4; SignedEvent auth=5; } }
+message RelayFrame { optional bytes original_json=1; oneof payload { EventDelivery event=2; Acknowledgement ok=3; string eose=4; Closed closed=5; string notice=6; string auth=7; } }
+// A JSON object retains its exact UTF-8 bytes, including unfamiliar fields.
+message JsonObject { optional bytes utf8=1 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=131072]; }
+// Exact decimal value, never rounded through a double/Struct; raw JSON retains lexical spelling.
+message JsonNumber { optional string decimal=1 [(openagents.options.v1alpha1.required_value)=true, (openagents.options.v1alpha1.max_bytes)=128]; }
+enum Null { NULL_VALUE=0; }
+message NullableString { oneof value { string text=1; Null null=2; } }
+message NullableUInt64 { oneof value { uint64 number=1; Null null=2; } }
+message NullableInt64 { oneof value { sint64 number=1; Null null=2; } }
+message NullableNumber { oneof value { JsonNumber number=1; Null null=2; } }

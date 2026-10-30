@@ -1,0 +1,10 @@
+syntax = "proto3";
+package coax.test.numeric;
+import "openagents/options/v1alpha2/numeric.proto";
+message Ranges {
+  optional uint32 zero = 1 [(openagents.options.v1alpha2.max_uint32) = 0];
+  optional uint32 kind = 2 [(openagents.options.v1alpha2.max_uint32) = 65535];
+  repeated uint32 values = 3 [(openagents.options.v1alpha2.max_uint32) = 65535];
+  optional uint32 full = 4 [(openagents.options.v1alpha2.max_uint32) = 4294967295];
+}
+message Container { Ranges ranges = 1; }

@@ -1,0 +1,30 @@
+#import_proto "../../../proto/descriptors/nostr-event-v1alpha2.pb" as V;
+// This is a constrained protobuf projection, not event authenticity or policy.
+#test "v1alpha2 optional kind and repeated filter boundaries" {
+ empty:[1]u8;
+ #assert V_UnsignedEvent_decode(empty[0..<0]).error==0;
+ #assert !V_UnsignedEvent_get_kind(V_UnsignedEvent_decode(empty[0..<0])).present;
+ u0:=[2]u8.[24,0];uMax:=[4]u8.[24,255,255,3];uBad:=[4]u8.[24,128,128,4];
+ #assert V_UnsignedEvent_decode(u0[..]).error==0 && V_UnsignedEvent_get_kind(V_UnsignedEvent_decode(u0[..])).present;
+ #assert V_UnsignedEvent_decode(uMax[..]).error==0 && V_UnsignedEvent_decode(uBad[..]).error==V__pb_VALUE;
+ #assert V_EventRef_decode(u0[..]).error==0 && V_EventRef_decode(uMax[..]).error==0;
+ #assert V_EventRef_decode(uBad[..]).error==V__pb_VALUE;
+ packed:=[5]u8.[10,3,255,255,3];#assert V_KindList_decode(packed[..]).error==0;
+ unpacked:=[4]u8.[8,255,255,3];#assert V_KindList_decode(unpacked[..]).error==0;
+ overflow:=[5]u8.[10,3,128,128,4];#assert V_KindList_decode(overflow[..]).error==V__pb_VALUE;
+ mixed:=[9]u8.[8,1,10,3,255,255,3,8,0];#assert V_KindList_decode(mixed[..]).error==0;
+ bad_nested:=[7]u8.[34,5,10,3,128,128,4];#assert V_Filter_decode(bad_nested[..]).error==V__pb_VALUE;
+}
+#test "v1alpha2 required event kind range and wire errors" {
+ event:[160]u8;event[0]=10;event[1]=32;event[34]=18;event[35]=32;event[68]=24;event[69]=1;event[70]=32;
+ // Kind zero, followed by the required content and signature.
+ event[71]=0;event[72]=50;event[73]=1;event[74]=120;event[75]=58;event[76]=64;
+ #assert V_Event_decode(event[0..<141]).error==0;
+ event[71]=255;event[72]=255;event[73]=3;event[74]=50;event[75]=1;event[76]=120;event[77]=58;event[78]=64;
+ #assert V_Event_decode(event[0..<143]).error==0;
+ event[71]=128;event[72]=128;event[73]=4;
+ #assert V_Event_decode(event[0..<143]).error==V__pb_VALUE;
+ // Required kind cannot be supplied by an unknown field.
+ event[70]=50;event[71]=1;event[72]=120;event[73]=58;event[74]=64;
+ #assert V_Event_decode(event[0..<139]).error==V__pb_REQUIRED;
+}

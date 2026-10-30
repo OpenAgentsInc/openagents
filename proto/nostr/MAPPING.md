@@ -1,8 +1,9 @@
 # First Nostr mirror slice
 
 This is a field/consumer map for the exact sources in MANIFEST.json. It is not
-a conformance claim. All schemas use v1alpha1 and import the same event/JSON
-helpers; no new Nostr kinds or wire protocols are allocated.
+a conformance claim. The Block projections use the v1alpha1 event/JSON helpers;
+an opt-in v1alpha2 event profile constrains kinds to 0..65535. Neither profile
+allocates new Nostr kinds or wire protocols.
 
 | Source | Projection | Important preserved meaning |
 | --- | --- | --- |

@@ -1,0 +1,11 @@
+#import_proto "../../../proto/descriptors/nostr-event.pb" as Legacy;
+#import_proto "../../../proto/descriptors/nostr-event-v1alpha2.pb" as Current;
+// Coexisting imports retain their distinct published semantics.
+#test "legacy uint32 domain remains unchanged" {
+ above:=[4]u8.[24,128,128,4]; // unsigned event kind = 65536
+ max:=[6]u8.[24,255,255,255,255,15];
+ #assert Legacy_UnsignedEvent_decode(above[..]).error==0;
+ #assert Legacy_UnsignedEvent_decode(max[..]).error==0;
+ #assert Current_UnsignedEvent_decode(above[..]).error==Current__pb_VALUE;
+ #assert Current_UnsignedEvent_decode(max[..]).error==Current__pb_VALUE;
+}

@@ -1,0 +1,2 @@
+const fs=require('fs');const {WASI}=require('wasi');
+(async()=>{const wasi=new WASI({version:'preview1'});const {instance}=await WebAssembly.instantiate(fs.readFileSync(process.argv[2]),{wasi_snapshot_preview1:wasi.wasiImport});wasi.initialize(instance);const result=instance.exports.run_kinds();if(result!==0)throw Error('kind range case '+result);console.log('versioned kind range Wasm target passed');})().catch(e=>{console.error(e);process.exit(1)});

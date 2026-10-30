@@ -7,7 +7,10 @@
       "includes": [
         "."
       ],
-      "namespace": "openagents."
+      "namespace": "openagents.",
+      "exclude": [
+        "openagents/options/v1alpha2/numeric.proto"
+      ]
     },
     "lnd": {
       "roots": [
@@ -60,7 +63,8 @@
       ],
       "namespace": "nostr.",
       "exclude": [
-        "nostr/block/mp/v1alpha1/project.proto"
+        "nostr/block/mp/v1alpha1/project.proto",
+        "nostr/event/v1alpha2/event.proto"
       ]
     }
   },
@@ -122,6 +126,9 @@
     ],
     "block-project": [
       "nostr/block/mp/v1alpha1/project.proto"
+    ],
+    "nostr-event-v1alpha2": [
+      "nostr/event/v1alpha2/event.proto"
     ]
   },
   "profile_namespaces": {
@@ -195,6 +202,10 @@
     "block-project": [
       "nostr.event.",
       "nostr.block.mp.",
+      "openagents.options."
+    ],
+    "nostr-event-v1alpha2": [
+      "nostr.event.",
       "openagents.options."
     ]
   }

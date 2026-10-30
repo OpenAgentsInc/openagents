@@ -109,8 +109,9 @@ The first importer accepts proto3 data descriptors: every scalar wire type,
 nested messages, open enums, repeated fields, explicit optional presence and
 oneofs. It rejects proto2, editions, groups, maps, extension fields/ranges,
 uninterpreted options and unknown custom options. RPC services are not generated.
-The annotation definitions `google/protobuf/descriptor.proto` and
-`openagents/options/v1alpha1/options.proto` are metadata, not generated product
+The annotation definitions `google/protobuf/descriptor.proto`,
+`openagents/options/v1alpha1/options.proto`, and
+`openagents/options/v1alpha2/numeric.proto` are metadata, not generated product
 message types. Standalone `.options` files are not read by this importer.
 
 Default runtime limits are 1 MiB per message, 64 nested edges and 524,288 total
@@ -122,8 +123,16 @@ levels, 256 bytes per identifier/prefix, 4 KiB package/file names,
 32 package components, 16 KiB metadata text values, 256 oneofs per message,
 8 MiB generated source per import and 16 MiB per compilation. Descriptor
 policies can tighten runtime bounds. `max_message_bytes`, `max_bytes`,
-`max_count`, `exact_bytes` and `required_value` are enforced. Strings require
-valid UTF-8; `nonempty-no-nul` and finite `rad` in [-pi, pi] are implemented.
+`max_count`, `exact_bytes` and `required_value` are enforced. The versioned
+`max_uint32` field option adds an inclusive maximum to `uint32` values,
+including each packed or unpacked repeated item. Its explicit presence matters:
+omitting it imposes no additional limit, while `max_uint32=0` permits only zero.
+Invalid placement, a maximum above uint32, duplicate or unknown options are
+rejected at import. Range failures return `VALUE` after wire-type and uint32
+overflow checks; known duplicate and field-budget failures retain their existing
+stage precedence. Setters validate the rewritten message before publishing the
+result, but scratch may already contain bytes on a final validation failure.
+Strings require valid UTF-8; `nonempty-no-nul` and finite `rad` in [-pi, pi] are implemented.
 Other unit labels and data-class/contract annotations are descriptive, not
 additional domain validators.
 

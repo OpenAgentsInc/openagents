@@ -10,7 +10,7 @@ D_tighter_message_limit :: (n:u64)->bool {return n>0 && n<cast(u64)D_WIRE_MAX_BY
  #assert D_tighter_message_limit(1048575) && !D_tighter_message_limit(1048576) && !D_tighter_message_limit(1048577);
 }
 D_Wire :: struct {number:u32;wt:u8;raw:u64;data:string;next:int;present:bool;}
-D_Opts :: struct {n:[9] u64;text:[9] string;bits:u32;map_entry:bool;}
+D_Opts :: struct {n:[10] u64;text:[10] string;bits:u32;map_entry:bool;}
 D_Type :: struct {full:string;name:string;wire:string;first:int;count:int;groups:int;group_count:int;opts:D_Opts;}
 D_Field :: struct {name:string;type_name:string;number:u32;label:int;kind:int;oneof:int=-1;optional:bool;opts:D_Opts;target:string;}
 D_Value :: struct {name:string;number:s64;}
@@ -226,13 +226,13 @@ D_options :: (s:[] D_State,wire:string,tag:u32,message:bool)->D_Opts {
       if seen[f.number] {D_fail(s,"duplicate descriptor option");return o;}seen[f.number]=true;
       if f.number==7 {if f.wt!=0 {D_fail(s,"invalid numeric policy option");}o.map_entry=f.raw!=0;}continue;
     }
-    if f.number<51000 || f.number>51008 {D_fail(s,"unsupported policy option");return o;}
+    if f.number<51000 || f.number>51009 {D_fail(s,"unsupported policy option");return o;}
     n:=cast(int)f.number-51000;
-    allowed:=(message && (n==0 || n==1 || n==6)) || (!message && (n==2 || n==3 || n==4 || n==5 || n==7 || n==8));
+    allowed:=(message && (n==0 || n==1 || n==6)) || (!message && (n==2 || n==3 || n==4 || n==5 || n==7 || n==8 || n==9));
     if !allowed || D_has_option(o,n) {D_fail(s,"unsupported or duplicate descriptor option");return o;}
     o.bits=o.bits | (cast(u32)1<<n);
     if n==5 || n==6 || n==7 {o.text[n]=D_text(s,D_bytes(s,f));}
-    else {if f.wt!=0 || f.raw>9223372036854775807 || (n==4 && f.raw>1) {D_fail(s,"invalid numeric policy option");return o;}o.n[n]=f.raw;}
+    else {if f.wt!=0 || f.raw>9223372036854775807 || (n==4 && f.raw>1) || (n==9 && f.raw>4294967295) {D_fail(s,"invalid numeric policy option");return o;}o.n[n]=f.raw;}
   }return o;
 }
 D_leaf :: (t:string)->string {at:=0;for c,i:t {if c==46 {at=i+1;}}return t[at..<t.count];}
@@ -307,7 +307,7 @@ D_parse :: (s:[] D_State,raw:string,prefix:string) {
       if !D_storage(s[0].nd,s[0].deps.count) {D_fail(s,"descriptor dependency budget");return;}
       s[0].deps[s[0].nd]=D_text(s,D_bytes(s,f));s[0].nd+=1;
     }}
-    if name=="google/protobuf/descriptor.proto" || name=="openagents/options/v1alpha1/options.proto" {continue;}
+    if name=="google/protobuf/descriptor.proto" || name=="openagents/options/v1alpha1/options.proto" || name=="openagents/options/v1alpha2/numeric.proto" {continue;}
     if D_get(s,t,12)!="proto3" || D_one(s,t,7).present || D_one(s,t,14).present {D_fail(s,"only proto3 data descriptors are supported");return;}
     if !D_package(pkg) {D_fail(s,"invalid/oversized package");return;}
     parent:="";if pkg!="" {parts:=[2] string.[".",pkg];parent=G_cat(s,parts[..]);}
@@ -326,7 +326,7 @@ D_parse :: (s:[] D_State,raw:string,prefix:string) {
         else {for k:0..<s[0].ne {if s[0].enums[k].full==f.type_name {found=true;}}}
         if !found {D_fail(s,"missing descriptor dependency or type mismatch");return;}
       }else {if f.type_name!="" {D_fail(s,"scalar has type_name");return;}}
-      if ((f.opts.n[2]!=0 || f.opts.n[8]!=0) && f.kind!=9 && f.kind!=12) || (f.opts.n[3]!=0 && f.label!=3) || (D_has_option(f.opts,7) && f.kind!=9) {D_fail(s,"invalid policy option for field kind");return;}
+      if ((f.opts.n[2]!=0 || f.opts.n[8]!=0) && f.kind!=9 && f.kind!=12) || (f.opts.n[3]!=0 && f.label!=3) || (D_has_option(f.opts,7) && f.kind!=9) || (D_has_option(f.opts,9) && f.kind!=13) {D_fail(s,"invalid policy option for field kind");return;}
       if f.optional {count:=0;for k:m.first..<m.first+m.count {if s[0].fields[k].oneof==f.oneof {count+=1;}}if count!=1 {D_fail(s,"invalid synthetic oneof");return;}}
       s[0].fields[j]=f;
     }
@@ -387,6 +387,7 @@ G_args :: (s:[] D_State,m:D_Type,f:D_Field,p:string,args:[] string) {
 G_constraints :: (s:[] D_State,f:D_Field,a:[] string) {
   G_line(s,"if f.wt!=$6 { $9WIRE}; }",a);
   if f.kind==7 || f.kind==13 || f.kind==17 {G_line(s,"if f.raw>4294967295 { $9VALUE}; }",a);}
+  if f.kind==13 && D_has_option(f.opts,9) && f.opts.n[9]<4294967295 {a[5]=G_num(s,cast(s64)f.opts.n[9]);G_line(s,"if f.raw>$5 { $9VALUE}; }",a);}
   if f.kind==8 {G_line(s,"if canonical && f.raw>1 { $9VALUE}; }",a);}
   if f.kind==9 {G_line(s,"if !$0utf8(f.payload) { $9UTF8}; }",a);}
   if f.kind==9 || f.kind==12 {
@@ -989,11 +990,11 @@ G_generate :: (s:[] D_State,raw:string,prefix:string,runtime:string)->int #expor
   D_parse(state[..],cast(string)fixture[..],"P");
   #assert state[0].error=="unsupported policy option";
 }
-#test "reject message unsupported policy 51009" {
+#test "reject message unsupported policy 51010" {
   types:[8] D_Type;enums:[8] D_Type;fields:[64] D_Field;values:[16] D_Value;groups:[16] string;files:[8] string;deps:[8] string;
   arena:[4096] u8;output:[1] u8;symbols:[256] string;
   state:=[1] D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
-  fixture:=[39] u8.[10,37,10,10,116,101,115,116,46,112,114,111,116,111,18,4,116,101,115,116,34,9,10,1,77,58,4,136,244,24,1,98,6,112,114,111,116,111,51];
+  fixture:=[39] u8.[10,37,10,10,116,101,115,116,46,112,114,111,116,111,18,4,116,101,115,116,34,9,10,1,77,58,4,144,244,24,1,98,6,112,114,111,116,111,51];
   D_parse(state[..],cast(string)fixture[..],"P");
   #assert state[0].error=="unsupported policy option";
 }
@@ -1693,4 +1694,50 @@ G_generate :: (s:[] D_State,raw:string,prefix:string,runtime:string)->int #expor
   a:=cast,trunc(u8)bits;b:=cast(u8)(bits>>8);bytes:=[2] u8.[a,b];
   expected:=(a<128 && b<128) || (a>=194 && a<=223 && b>=128 && b<=191);
   #assert D_utf8(cast(string)bytes[..])==expected;
+}
+
+#test "present uint32 maximum distinguishes zero and rejects malformed options" {
+ state:[1]D_State;
+ zero:=[6]u8.[66,4,136,244,24,0];o:=D_options(state[..],cast(string)zero[..],8,false);
+ #assert state[0].error=="" && D_has_option(o,9) && o.n[9]==0;
+ max:=[8]u8.[66,6,136,244,24,255,255,3];o=D_options(state[..],cast(string)max[..],8,false);
+ #assert state[0].error=="" && D_has_option(o,9) && o.n[9]==65535;
+ full:=[10]u8.[66,8,136,244,24,255,255,255,255,15];o=D_options(state[..],cast(string)full[..],8,false);
+ #assert state[0].error=="" && D_has_option(o,9) && o.n[9]==4294967295;
+ absent:=[2]u8.[66,0];o=D_options(state[..],cast(string)absent[..],8,false);
+ #assert state[0].error=="" && !D_has_option(o,9);
+ overflow:=[10]u8.[66,8,136,244,24,128,128,128,128,16];o=D_options(state[..],cast(string)overflow[..],8,false);
+ #assert state[0].error!="";state[0].error="";
+ duplicate:=[10]u8.[66,8,136,244,24,0,136,244,24,1];o=D_options(state[..],cast(string)duplicate[..],8,false);
+ #assert state[0].error!="";state[0].error="";
+ wrong:=[7]u8.[66,5,138,244,24,1,0];o=D_options(state[..],cast(string)wrong[..],8,false);
+ #assert state[0].error!="";state[0].error="";
+ future:=[6]u8.[66,4,144,244,24,1];o=D_options(state[..],cast(string)future[..],8,false);
+ #assert state[0].error!="";state[0].error="";
+ message:=[6]u8.[58,4,136,244,24,0];o=D_options(state[..],cast(string)message[..],7,true);
+ #assert state[0].error!="";
+}
+#test "uint32 maximum rejects wrong descriptor types" {
+ fixture:=[53]u8.[10,51,10,10,116,101,115,116,46,112,114,111,116,111,18,4,116,101,115,116,34,23,10,1,77,18,18,10,4,107,105,110,100,24,1,32,1,40,13,66,4,136,244,24,0,98,6,112,114,111,116,111,51];
+ kinds:=[6]u8.[4,5,7,8,9,13];
+ for i:0..<kinds.count {
+  fixture[38]=kinds[i];types:[8]D_Type;enums:[8]D_Type;fields:[64]D_Field;values:[16]D_Value;groups:[16]string;files:[8]string;deps:[8]string;
+  arena:[4096]u8;output:[1]u8;symbols:[256]string;
+  state:=[1]D_State.[D_State.{types=types[..],enums=enums[..],fields=fields[..],values=values[..],groups=groups[..],files=files[..],deps=deps[..],arena=arena[..],output=output[..],symbols=symbols[..]}];
+  D_parse(state[..],cast(string)fixture[..],"P");
+  if kinds[i]==13 {#assert state[0].error=="";}else {#assert state[0].error!="";}
+ }
+}
+#test "generated uint32 maximum checks zero and omits redundant ceiling" {
+ arena:[4096]u8;output:[1024]u8;args:[10]string;args[0]="P__pb_";args[6]="0";args[9]="return P__pb_Check.{error=P__pb_";
+ for choice:0..<4 {
+  state:=[1]D_State.[D_State.{arena=arena[..],output=output[..]}];f:=D_Field.{kind=13};
+  if choice>0 {f.opts.bits=cast(u32)512;}
+  if choice==2 {f.opts.n[9]=65535;}if choice==3 {f.opts.n[9]=4294967295;}
+  G_constraints(state[..],f,args[..]);
+  code:=cast(string)output[0..<state[0].written];
+  if choice==0 || choice==3 {#assert code=="if f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nif f.raw>4294967295 { return P__pb_Check.{error=P__pb_VALUE}; }\n";}
+  if choice==1 {#assert code=="if f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nif f.raw>4294967295 { return P__pb_Check.{error=P__pb_VALUE}; }\nif f.raw>0 { return P__pb_Check.{error=P__pb_VALUE}; }\n";}
+  if choice==2 {#assert code=="if f.wt!=0 { return P__pb_Check.{error=P__pb_WIRE}; }\nif f.raw>4294967295 { return P__pb_Check.{error=P__pb_VALUE}; }\nif f.raw>65535 { return P__pb_Check.{error=P__pb_VALUE}; }\n";}
+ }
 }
