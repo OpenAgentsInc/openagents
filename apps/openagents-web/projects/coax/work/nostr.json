@@ -845,7 +845,10 @@
         "project-verified-borrowed-state",
         "nostr-store-verified-dedup",
         "nostr-store-trusted-recovery",
-        "web-nostr-api-verifier-parity"
+        "web-nostr-api-verifier-parity",
+        "nostr-nip01-messages",
+        "nip01-page",
+        "nostr-nip34-nip22"
       ]
     },
     {
@@ -1293,7 +1296,8 @@
         "nostr-event"
       ],
       "blocks": [
-        "nostr-relay-state-machine"
+        "nostr-relay-state-machine",
+        "nostr-nip01-messages"
       ]
     },
     {
@@ -1318,7 +1322,8 @@
       "blocks": [
         "nostr-keys",
         "ios-coax-nostr-native",
-        "nip49-backup"
+        "nip49-backup",
+        "web-nip19-names"
       ]
     },
     {
@@ -3910,6 +3915,128 @@
         "publish-project-events",
         "unlock-opener-coax",
         "nostr-production-cutover"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "nostr-nip01-messages",
+      "parent": "m5-events",
+      "title": "NIP-01 relay messages, standard tags and kind 0 metadata",
+      "size": "M",
+      "labels": [
+        "nostr"
+      ],
+      "body": "The rest of NIP-01 as bounded Coax: parse relay-to-client EVENT, OK (64-hex id, machine-readable prefix), EOSE, CLOSED and NOTICE frames with spans into the original text; write client-to-relay EVENT, REQ (through filter.coax) and CLOSE. Typed standard tags e, p, a (kind:pubkey:d, trailing colon for replaceable) and the d lookup. Kind 0 metadata: name, about and picture from a JSON object, duplicate keys refused.",
+      "files": [
+        "coax/lib/nostr/message.coax",
+        "coax/lib/nostr/tags.coax",
+        "coax/lib/nostr/metadata.coax"
+      ],
+      "acceptance": [
+        "Captured relay frames and every malformed-frame case parse or refuse as NIP-01 says, with original spans",
+        "coax mutate on each file leaves no survivors"
+      ],
+      "blocked_by": [
+        "nostr-event",
+        "nostr-filter"
+      ],
+      "blocks": [
+        "nip01-page",
+        "nostr-nip34-nip22"
+      ]
+    },
+    {
+      "slug": "nip01-page",
+      "parent": "m5-events",
+      "title": "openagents.com/nip/01: NIP-01 in Coax, shown and explained",
+      "size": "S",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "A Coaxial page at /nip/01 that runs a captured relay event and four changed copies through the shared Coax reader and verifier (parse, preimage, SHA-256, id, BIP-340), shows where each stops and the claimed against computed id, and lists every part of NIP-01 with the Coax that runs it. The verifier is its own Wasm library; the page draws only what it observed. index.md carries the same write-up.",
+      "files": [
+        "apps/openagents-web/nip01.coax",
+        "apps/openagents-web/nip01-verify.coax",
+        "apps/openagents-web/nip/01/index.html",
+        "apps/openagents-web/nip/01/index.md"
+      ],
+      "acceptance": [
+        "nip01-verify-test.coax: the real event verifies and each copy is refused at its stage",
+        "The built Wasm passes coax/web/tests/nip01_wasm.cjs on desktop, phone and 2x; check-visuals passes; a headless render looks right"
+      ],
+      "blocked_by": [
+        "nostr-event",
+        "nostr-nip01-messages"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "nostr-nip34-nip22",
+      "parent": "m5-events",
+      "title": "Typed NIP-34 repository, issue and status events and NIP-22 comments",
+      "size": "M",
+      "labels": [
+        "nostr"
+      ],
+      "body": "Coax readers for the events the project pages are made of: NIP-34 repository announcements (30617), issues (1621) and statuses (1630-1633), NIP-22 comments (1111: E/K/P root and e/k/p parent tags), and OpenAgents' project (30621) and order (30623) events. Each reads a verified event's tags into a typed bounded record with spans into the original, refusing malformed required tags; nothing here grants authority.",
+      "files": [
+        "coax/lib/nostr/nip34.coax",
+        "coax/lib/nostr/nip22.coax"
+      ],
+      "acceptance": [
+        "Every event in the captured coax relay transcript reads to the same fields model.ts takes from it",
+        "Malformed and missing required tags refuse; coax mutate leaves no survivors"
+      ],
+      "blocked_by": [
+        "nostr-event",
+        "nostr-nip01-messages"
+      ],
+      "blocks": [
+        "project-fold-typed"
+      ]
+    },
+    {
+      "slug": "project-fold-typed",
+      "parent": "m8-project-live",
+      "title": "The project fold reads events through the typed NIP-34 and NIP-22 readers",
+      "size": "M",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "Replace project-fold.coax's ad hoc tag matching with nip34.coax and nip22.coax records, so the page, the projects list and the snapshot tools share one reader. Tables stay byte for byte what model.ts and tables.ts produce.",
+      "files": [
+        "apps/openagents-web/project-fold.coax"
+      ],
+      "acceptance": [
+        "The fold of the captured relay transcript equals model.ts and tables.ts byte for byte",
+        "live-catchup.test.ts passes natively and in the browser"
+      ],
+      "blocked_by": [
+        "nostr-nip34-nip22"
+      ],
+      "blocks": []
+    },
+    {
+      "slug": "web-nip19-names",
+      "parent": "m8-project-live",
+      "title": "Project pages name keys and events with NIP-19",
+      "size": "S",
+      "labels": [
+        "nostr",
+        "web"
+      ],
+      "body": "Where the project pages and their Markdown show a pubkey, an event or an addressable coordinate, show its NIP-19 form (npub, nevent, naddr) encoded by nip19-core.coax, with the relay hint where the page knows it.",
+      "files": [
+        "apps/openagents-web/project.coax"
+      ],
+      "acceptance": [
+        "Encodings agree with nostr-tools for every key, event and coordinate in the captured transcript",
+        "Desktop and phone renders fit their panels"
+      ],
+      "blocked_by": [
+        "nostr-bech32"
       ],
       "blocks": []
     }
