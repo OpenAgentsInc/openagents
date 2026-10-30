@@ -52,9 +52,19 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
-**Combined post-push gates for `e0876e40b7`** (the final signer and
-self-verifier code, rebased on `485db78ae0`), all `--run-steps 250000000`, in
-shards of a few minutes:
+**`d017c8f902` (`openagents-d7`)** makes two audit-requested changes:
+- `ssv_prepare` stores the lifted public key before its copy loops, so the
+  audit's loop rule doesn't taint `peer`.
+- `sw_check` and `sw_publish` route the self-check status through
+  `sw_status_declassify`.
+
+Fast checks: ssv 205, signer 258, event_sign 332, both probes, and
+`schnorr_sign.py`. With these, `openagents-20`'s audit of `ssv_step`
+completes its whole dataflow (96 procedures), leaving only the two public
+guards in `secp_field`.
+
+**Combined post-push gates for `d017c8f902`** (restarted from `e0876e40b7`),
+all `--run-steps 250000000`, in shards of a few minutes:
 
 | Unit | Mutants | Shards | Where |
 | --- | --- | --- | --- |
