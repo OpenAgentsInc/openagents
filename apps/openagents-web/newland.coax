@@ -243,24 +243,28 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
 }
 
 Pen :: struct { d: f32; fade: f32; time: f32; still: bool; phone: bool; }
-// The page's two accents, each named once. ACCENT is Arwes's electric blue:
-// its theme's primary main(3), hsl(180, 68.07%, 53.33%) (arwes/arwes
-// apps/docs/src/config/theme.ts), with main(2), hsl(180, 67.41%, 73.53%), as
-// its pale. BITCOIN orange is for Bitcoin payments only, and nothing here pays
-// yet. newland.wgsl and new-land/index.html name the same two.
+// The page is grayscale: four greys, each named once, for every title, text,
+// frame, button, tree, Pylon, beam, the feed and the floor. ACCENT is Arwes's
+// electric blue, its theme's primary main(3), hsl(180, 68.07%, 53.33%)
+// (arwes/arwes apps/docs/src/config/theme.ts), kept for a handful of accents
+// only (INK_BLUE): a busy Pylon's beam spark, the hovered place's name, OPEN
+// PROJECT's hover and the live and online dots. BITCOIN orange is for Bitcoin
+// payments only, and nothing here pays yet. newland.wgsl and
+// new-land/index.html name the same tokens.
+GREY_WHITE :: 0.94; GREY_LIGHT :: 0.78; GREY_MID :: 0.6; GREY_DIM :: 0.42;
 ACCENT_R :: 0.216; ACCENT_G :: 0.851; ACCENT_B :: 0.851;
-ACCENT_PALE_R :: 0.557; ACCENT_PALE_G :: 0.914; ACCENT_PALE_B :: 0.914;
 BITCOIN_R :: 1.0; BITCOIN_G :: 0.55; BITCOIN_B :: 0.12;
-INK_WHITE :: 0; INK_DIM :: 1; INK_ACCENT :: 2; INK_PALE :: 3; INK_FAINT :: 4; INK_COOL :: 5; INK_BITCOIN :: 6;
+INK_WHITE :: 0; INK_DIM :: 1; INK_BRIGHT :: 2; INK_PALE :: 3; INK_FAINT :: 4; INK_COOL :: 5; INK_BITCOIN :: 6; INK_BLUE :: 7;
 ink :: (p: Pen, kind: int) -> Ink {
-  k := Ink.{core = 0.5 * p.d, light = 0.9, glow = 3.2 * p.d, red = 0.93, green = 0.93, blue = 0.95, mode = MODE_STROKE, scale = p.d};
-  if kind == INK_DIM { k.light = 0.5; k.red = 0.82; k.green = 0.84; k.blue = 0.9; }
-  if kind == INK_FAINT { k.light = 0.3; k.red = 0.8; k.green = 0.82; k.blue = 0.88; }
-  if kind == INK_ACCENT { k.light = 1.0; k.red = ACCENT_R; k.green = ACCENT_G; k.blue = ACCENT_B; k.glow = 4.5 * p.d; }
+  k := Ink.{core = 0.5 * p.d, light = 0.9, glow = 3.2 * p.d, red = GREY_WHITE, green = GREY_WHITE, blue = GREY_WHITE, mode = MODE_STROKE, scale = p.d};
+  if kind == INK_DIM { k.light = 0.5; k.red = GREY_MID; k.green = GREY_MID; k.blue = GREY_MID; }
+  if kind == INK_FAINT { k.light = 0.3; k.red = GREY_DIM; k.green = GREY_DIM; k.blue = GREY_DIM; }
+  if kind == INK_BRIGHT { k.light = 1.0; k.glow = 4.5 * p.d; }
+  if kind == INK_BLUE { k.light = 1.0; k.red = ACCENT_R; k.green = ACCENT_G; k.blue = ACCENT_B; k.glow = 4.5 * p.d; }
   if kind == INK_BITCOIN { k.light = 1.0; k.red = BITCOIN_R; k.green = BITCOIN_G; k.blue = BITCOIN_B; k.glow = 4.5 * p.d; }
-  if kind == INK_PALE { k.light = 0.95; k.red = ACCENT_PALE_R; k.green = ACCENT_PALE_G; k.blue = ACCENT_PALE_B; }
-  if kind == INK_COOL { k.light = 0.85; k.red = 0.72; k.green = 0.86; k.blue = 1.0; }
-  k.sans = kind != INK_ACCENT && kind != INK_BITCOIN;
+  if kind == INK_PALE { k.light = 0.95; k.red = GREY_LIGHT; k.green = GREY_LIGHT; k.blue = GREY_LIGHT; }
+  if kind == INK_COOL { k.light = 0.85; k.red = GREY_LIGHT; k.green = GREY_LIGHT; k.blue = GREY_LIGHT; }
+  k.sans = kind != INK_BRIGHT && kind != INK_BLUE && kind != INK_BITCOIN;
   return k;
 }
 dimmed :: (k: Ink, f: f32) -> Ink { r := k; r.light = k.light * f; return r; }
@@ -414,7 +418,7 @@ place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int 
   v := at;
   g := grown(p, k);
   if g <= 0 { return v; }
-  accent := ink(p, INK_ACCENT); white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
+  accent := ink(p, INK_BRIGHT); white := ink(p, INK_WHITE); dim := ink(p, INK_DIM);
   // its edge: the done share of it bright, the rest faint
   share: f32 = ifx pl.tasks > 0 then cast(f32) pl.done / cast(f32) pl.tasks else 0.0f32;
   pieces := 48;
@@ -474,7 +478,7 @@ place :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -> int 
 // Roads between related places: a dashed line from each to its cluster's first.
 roads :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen) -> int {
   v := at;
-  road := ink(p, INK_ACCENT); road.core = 0.45 * p.d; road.glow = 2.4 * p.d;
+  road := ink(p, INK_BRIGHT); road.core = 0.45 * p.d; road.glow = 2.4 * p.d;
   for k: 1..<s[0].plots {
     hub := -1;
     for j: 0..<k { if hub < 0 && s[0].plot[j].cluster == s[0].plot[k].cluster { hub = j; } }
@@ -508,7 +512,7 @@ place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -
   base := spot(c, fv(pl.x, 0, pl.z));
   v := at; d := p.d;
   name := field(LAND_PROJECTS, k, 1);
-  white := chrome(dimmed(ink(p, INK_WHITE), shown)); accent := dimmed(ink(p, INK_ACCENT), shown);
+  white := chrome(dimmed(ink(p, INK_WHITE), shown)); accent := dimmed(ink(p, INK_BRIGHT), shown);
   dim := dimmed(ink(p, INK_DIM), shown);
   hover := !s[0].touch && s[0].pointed && inside(was, s[0].px, s[0].py);
   cap := (ifx p.phone then 7.0f32 else 8.5f32) * d;
@@ -522,7 +526,7 @@ place_label :: (out: [] f32, at: int, s: [] LandState, c: Cam, k: int, p: Pen) -
   // kept on screen, its lead still pointing at the tree
   x0 := clamp(q.x - wide * 0.5, c.clip.x0 + 10 * d, c.clip.x1 - 10 * d - wide); y := q.y;
   mid := x0 + wide * 0.5;
-  v = put(out, v, name, x0, y, cap, ifx hover then chrome(ink(p, INK_PALE)) else white);
+  v = put(out, v, name, x0, y, cap, ifx hover then chrome(dimmed(ink(p, INK_BLUE), shown)) else white);
   v = put(out, v, pcts, x0 + nw + 10 * d, y + (big - cap) * 0.15, big, accent);
   // the bar
   bw := hi(wide, 70 * d); bx := mid - bw * 0.5; by := y + 7 * d;
@@ -695,7 +699,7 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
   seen := ease((p.time - 3.2) / 1.4);
   if p.still { seen = 1; }
   if seen <= 0 { return v; }
-  pale := ink(p, INK_PALE); accent := ink(p, INK_ACCENT); dim := ink(p, INK_DIM);
+  pale := ink(p, INK_PALE); accent := ink(p, INK_BRIGHT); dim := ink(p, INK_DIM);
   sh: Shape; sh.size = 0.95;
   k := verse_figure_skeleton(sh);
   slot: [MAX_PLOTS] int;
@@ -724,7 +728,7 @@ agents :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen, t: f32) -> int
       v = rule(out, v, from.x, from.y, to.x, to.y, beam, 0.32 * seen * vig);
       f := fract(t * 0.9 + cast(f32) a * 0.37);
       hx := from.x + (to.x - from.x) * f; hy := from.y + (to.y - from.y) * f;
-      if lit(out, v, hx - (to.x - from.x) * 0.07, hy - (to.y - from.y) * 0.07, hx, hy, 1.1 * p.d, 0.85 * seen * vig, 4.5 * p.d, ACCENT_R, ACCENT_G, ACCENT_B, MODE_PULSE) { v += 6; }
+      if lit(out, v, hx - (to.x - from.x) * 0.07, hy - (to.y - from.y) * 0.07, hx, hy, 1.1 * p.d, 0.85 * seen * vig, 4.5 * p.d, GREY_WHITE, GREY_WHITE, GREY_WHITE, MODE_PULSE) { v += 6; }
     }
     // the first two at each place are named, with their task
     if top[0].ok && j == 0 && inside(c.clip, top[0].x, top[0].y) && !under_tag(s, top[0].x, top[0].y - 8 * p.d) {
@@ -804,7 +808,7 @@ receipt_every :: (q: Pyl) -> f32 { return clamp(40 / (1 + cast(f32) q.jobs / 25)
 machine :: (out: [] f32, at: int, s: [] LandState, c: Cam, i: int, p: Pen, t: f32, seen: f32) -> int {
   q := s[0].pyl[i];
   v := at;
-  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_ACCENT); cool := ink(p, INK_COOL);
+  white := ink(p, INK_WHITE); dim := ink(p, INK_DIM); accent := ink(p, INK_BRIGHT); cool := ink(p, INK_COOL);
   off := q.status == ST_OFFLINE;
   busy := q.total - q.free;
   body: f32 = (ifx off then 0.28f32 else 0.72f32) * seen;
@@ -899,7 +903,7 @@ machine :: (out: [] f32, at: int, s: [] LandState, c: Cam, i: int, p: Pen, t: f3
     if busy > 0 && q.status == ST_ONLINE {
       f := fract(t * 0.55 + cast(f32) i * 0.37);
       sp := spot(c, fv(x, top + h * f, z));
-      if sp.ok && inside(c.clip, sp.x, sp.y) { v = diamond(out, v, sp.x, sp.y, 2.2 * p.d, cool, 0.9 * seen * sin(f * PI)); }
+      if sp.ok && inside(c.clip, sp.x, sp.y) { v = diamond(out, v, sp.x, sp.y, 2.2 * p.d, ink(p, INK_BLUE), 0.9 * seen * sin(f * PI)); }
     }
   }
   // a receipt: a ring across the floor (the demo's come at its rate)
@@ -939,7 +943,7 @@ pylon_labels :: (out: [] f32, at: int, s: [] LandState, c: Cam, p: Pen) -> int {
   v := at; d := p.d;
   seen := ifx p.still then 1.0f32 else ease((p.time - 2.8) / 1.2);
   if seen <= 0 { return v; }
-  white := chrome(dimmed(ink(p, INK_WHITE), seen)); accent := dimmed(ink(p, INK_ACCENT), seen);
+  white := chrome(dimmed(ink(p, INK_WHITE), seen)); accent := dimmed(ink(p, INK_BRIGHT), seen);
   dim := dimmed(ink(p, INK_DIM), seen); pale := dimmed(ink(p, INK_PALE), seen);
   for k: 0..<s[0].plots {
     n := 0; online := 0; slots := 0; busy := 0; sx := 0.0f32; sz := 0.0f32; back := 1.0e9f32;
@@ -1037,7 +1041,7 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
   // its state and its key
   tone := ifx q.status == ST_ONLINE then INK_COOL else ifx q.status == ST_DRAINING then INK_PALE else INK_DIM;
   word: string = ifx q.status == ST_ONLINE then "Online" else ifx q.status == ST_DRAINING then "Draining" else "Offline";
-  v = diamond(out, v, x + 3 * d, y - 3.4 * d, 2.6 * d, ink(p, tone), 1);
+  v = diamond(out, v, x + 3 * d, y - 3.4 * d, 2.6 * d, ink(p, ifx q.status == ST_ONLINE then INK_BLUE else tone), 1);
   v = put(out, v, word, x + 11 * d, y, 7 * d, ink(p, tone));
   v = put(out, v, cell(LAND_PYLONS, r, 6), x + 11 * d + text_width(word, 7 * d, ink(p, tone)) + 12 * d, y, 7 * d, dim);
   y += 20 * d;
@@ -1104,7 +1108,7 @@ pylon_card :: (out: [] f32, at: int, s: [] LandState, i: int, x: f32, right: f32
 floor_grid :: (out: [] f32, at: int, s: [] LandState, c: Cam, look: Fv, p: Pen) -> int {
   v := at;
   grid := ink(p, INK_DIM); grid.glow = 2.0 * p.d; grid.core = hi(0.42 * p.d, 0.7);
-  warm := ink(p, INK_ACCENT); warm.glow = 2.2 * p.d; warm.core = grid.core;
+  warm := ink(p, INK_BRIGHT); warm.glow = 2.2 * p.d; warm.core = grid.core;
   ox := floor(look.x); oz := floor(look.z);
   // the floor spreads out from the middle as the page fades up
   reach: f32 = ifx p.still then 99.0f32 else 2 + 44 * ease((p.time - 0.4) / 4.2);
@@ -1175,12 +1179,14 @@ wordmark :: (out: [] f32, at: int, l: Layout, p: Pen) -> int {
   return v;
 }
 
-button :: (out: [] f32, at: int, b: Box, text: string, main: bool, hover: bool, p: Pen, light: f32) -> int {
+// blue: the button lights in the accent while hovered (OPEN PROJECT only).
+button :: (out: [] f32, at: int, b: Box, text: string, main: bool, hover: bool, blue: bool, p: Pen, light: f32) -> int {
   if light <= 0 { return at; }
   d := p.d;
-  k := ink(p, ifx main then INK_ACCENT else INK_WHITE); k.sans = false;
+  lit_blue := blue && hover;
+  k := ink(p, ifx lit_blue then INK_BLUE else ifx main then INK_BRIGHT else INK_WHITE); k.sans = false;
   glow: f32 = ifx hover then 1.0f32 else 0.72f32;
-  v := frame(out, at, b, 7 * d, ink(p, INK_ACCENT), light * glow, p);
+  v := frame(out, at, b, 7 * d, ink(p, ifx lit_blue then INK_BLUE else INK_BRIGHT), light * glow, p);
   cap := 7.6 * d;
   tw := measure(text, 0.5, 1.2, false) * cap;
   v = draw_text(out, v, text, (b.x0 + b.x1 - tw) * 0.5, (b.y0 + b.y1 + cap) * 0.5, cap, 0.5, 1.2, dimmed(k, light * (ifx hover then 1.15f32 else 0.95f32)), false, false);
@@ -1192,15 +1198,15 @@ FEED_STEP :: 3.4;   // seconds a row holds
 feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
   if light <= 0 { return at; }
   d := p.d; b := l.feed;
-  v := frame(out, at, b, 10 * d, ink(p, INK_ACCENT), 0.8 * light, p);
-  o := dimmed(ink(p, INK_ACCENT), light);
+  v := frame(out, at, b, 10 * d, ink(p, INK_BRIGHT), 0.8 * light, p);
+  o := dimmed(ink(p, INK_BRIGHT), light);
   cap := 7.6 * d;
   ty := b.y0 + 20 * d;
   v = rule(out, v, b.x0 + 12 * d, ty - cap * 0.5, b.x0 + 18 * d, ty - cap * 0.5, o, light);
   v = put(out, v, "NOW ON THE GRID", b.x0 + 24 * d, ty, cap, o);
   // a live dot
   beat := 0.55 + 0.45 * sin(p.time * 2.4);
-  v = diamond(out, v, b.x1 - 18 * d, ty - cap * 0.5, 2.6 * d, o, beat * light);
+  v = diamond(out, v, b.x1 - 18 * d, ty - cap * 0.5, 2.6 * d, ink(p, INK_BLUE), beat * light);
   v = rule(out, v, b.x0 + 12 * d, ty + 8 * d, b.x1 - 12 * d, ty + 8 * d, ink(p, INK_DIM), 0.12 * light);
   n := rows(LAND_FEED);
   if n == 0 { return v; }
@@ -1226,7 +1232,7 @@ feed :: (out: [] f32, at: int, l: Layout, p: Pen, t: f32, light: f32) -> int {
     x := b.x0 + 16 * d;
     small := 6.4 * d;
     line1 := y - (ifx l.phone then 7.0f32 else 9.0f32) * d;
-    pname := dimmed(ink(p, INK_ACCENT), shade);
+    pname := dimmed(ink(p, INK_BRIGHT), shade);
     v = put(out, v, name, x, line1, small, pname);
     x2 := x + text_width(name, small, pname) + 8 * d;
     mark: string = ifx same(kind, "WORKING") then "working" else ifx same(kind, "DONE") then "done" else "commit";
@@ -1394,7 +1400,7 @@ card_place :: (s: [] LandState) -> int {
 }
 
 section :: (out: [] f32, at: int, name: string, x: f32, y: f32, right: f32, p: Pen) -> int {
-  o := ink(p, INK_ACCENT); cap := 6.6 * p.d;
+  o := ink(p, INK_BRIGHT); cap := 6.6 * p.d;
   v := rule(out, at, x, y - cap * 0.5, x + 5 * p.d, y - cap * 0.5, o, 1);
   v = put(out, v, name, x + 10 * p.d, y, cap, o);
   return rule(out, v, x + 10 * p.d + text_width(name, cap, o) + 8 * p.d, y - cap * 0.5, right, y - cap * 0.5, ink(p, INK_DIM), 0.14);
@@ -1411,7 +1417,7 @@ stat :: (out: [] f32, at: int, n: int, name: string, x: f32, y: f32, tone: int, 
 card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t: f32, h: [] f32) -> int {
   d := p.d; v := at;
   x := x0 + 20 * d; right := x1 - 20 * d; w := right - x;
-  white := chrome(ink(p, INK_WHITE)); accent := ink(p, INK_ACCENT); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
+  white := chrome(ink(p, INK_WHITE)); accent := ink(p, INK_BRIGHT); dim := ink(p, INK_DIM); pale := ink(p, INK_PALE);
   body := ink(p, INK_WHITE); body.light = 0.82;
   y := 34 * d;
   title := 11.0 * d;
@@ -1456,7 +1462,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     col := w / 3;
     v = stat(out, v, open_n, "OPEN", x, y + 6 * d, INK_WHITE, p);
     v = stat(out, v, pl.working, "IN PROGRESS", x + col, y + 6 * d, INK_COOL, p);
-    v = stat(out, v, pl.done, "DONE", x + col * 2, y + 6 * d, INK_ACCENT, p);
+    v = stat(out, v, pl.done, "DONE", x + col * 2, y + 6 * d, INK_BRIGHT, p);
     y += 44 * d;
     // who's on it now
     v = section(out, v, "WORKING NOW", x, y, right, p);
@@ -1486,7 +1492,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     for j: 0..<lo_int(3, pl.commits) {
       row := pl.commit_row[pl.commits - 1 - j];
       hash := cell(LAND_COMMITS, row, 1);
-      hk := dim; hk.red = ACCENT_PALE_R; hk.green = ACCENT_PALE_G; hk.blue = ACCENT_PALE_B;
+      hk := dim; hk.red = GREY_LIGHT; hk.green = GREY_LIGHT; hk.blue = GREY_LIGHT;
       hw := text_width(hash[0..<lo_int(7, hash.count)], 6.8 * d, hk);
       v = put(out, v, hash[0..<lo_int(7, hash.count)], x, y, 6.8 * d, hk);
       v = put_fit(out, v, cell(LAND_COMMITS, row, 3), x + hw + 10 * d, y, 7 * d, body, w - hw - 10 * d);
@@ -1550,7 +1556,7 @@ card_body :: (out: [] f32, at: int, s: [] LandState, x0: f32, x1: f32, p: Pen, t
     y += 4 * d;
     ob := Box.{x0 = x, y0 = y, x1 = right, y1 = y + 40 * d};
     s[0].open_box = ob;
-    v = button(out, v, ob, "OPEN PROJECT", true, hover && inside(prev_open, s[0].px, s[0].py), p, 1);
+    v = button(out, v, ob, "OPEN PROJECT", true, hover && inside(prev_open, s[0].px, s[0].py), true, p, 1);
     y += 40 * d;
   }
   if h.count > 0 { h[0] = y + 20 * d; }
@@ -1573,7 +1579,7 @@ card :: (out: [] f32, at: int, s: [] LandState, l: Layout, p: Pen, t: f32, width
   s[0].open_box.y0 += y0; s[0].open_box.y1 += y0;
   box := Box.{x0 = x0, y0 = y0, x1 = x1, y1 = ifx l.phone then height + 20 * d else y0 + h[0]};
   s[0].card_box = box;
-  lit_edge := ink(p, INK_ACCENT);
+  lit_edge := ink(p, INK_BRIGHT);
   if l.phone {
     // a sheet: its top edge lit, a grip in the middle
     v = rule(out, v, box.x0, box.y0, box.x1, box.y0, lit_edge, 0.75 * rise);
@@ -1752,10 +1758,10 @@ coaxial_land_frame :: (s: [] LandState, out: [] f32, uniforms: [] f32, width: f3
   hover := !s[0].touch && s[0].pointed;
   sheet := l.phone && s[0].card != CARD_NONE;
   v = wordmark(out, v, l, p);
-  v = button(out, v, l.login, "LOG IN", false, hover && inside(l.login, s[0].px, s[0].py), p, hud);
+  v = button(out, v, l.login, "LOG IN", false, hover && inside(l.login, s[0].px, s[0].py), false, p, hud);
   feed_on := ifx still then 1.0f32 else ease((t - 2.8) / 1.0);
   if !sheet {
-    v = button(out, v, l.make, "MAKE YOUR OWN", true, hover && inside(l.make, s[0].px, s[0].py), p, hud);
+    v = button(out, v, l.make, "MAKE YOUR OWN", true, hover && inside(l.make, s[0].px, s[0].py), false, p, hud);
     v = feed(out, v, l, p, t, feed_on);
     glass(uniforms, 0, l.feed, 10 * d, 0.92 * feed_on, 0);
     glass(uniforms, 1, l.make, 7 * d, 0.95 * hud, 1);
