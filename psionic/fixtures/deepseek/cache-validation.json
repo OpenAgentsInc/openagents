@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "profile": "deepseek-cache-bf16-grid-v1",
+  "base_commit": "3d77e81bae15326c3c206756d3de881db5236ad0",
+  "sources": {
+    "psionic/lib/deepseek/cache.coax": "ee37c27e3237439bf87e4e7f3108423f72d4a3e1c9d84ff8522a10ed319973b9",
+    "psionic/lib/deepseek/cache-types.coax": "cb9f004be2d9fc88eba02716ea4009e5ab30e40d4daf197b671c88f114a35acf",
+    "psionic/platform/deepseek-cache-memory.c": "0494e90df889bd012e20c4ab607116b1c2f48446cbe21a0b9ce237672b392d37",
+    "psionic/platform/deepseek-cache-memory.h": "a15281e10e44f14c2adb55b0daf5ecad513c3b4df3c704acec0aa0dba2a17d88",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/deepseek_cache_native.c": "7f1acf750189cfb40b506258dd642b7c52283ba0844ad755b6e21a453ac9c402",
+    "psionic/tests/deepseek_cache_oracle.py": "09efa5fc6d78ace29a8022346fe6404ab4aeae2ebe4895202085d80fafb1ae34",
+    "psionic/tests/check_deepseek_cache.sh": "866e4884359f38775efcba5bb112da1f7df965f8cda018a517ec6bc8d0af4bd0",
+    "psionic/examples/deepseek-cache.coax": "51a5411b1a7c22542ea83efe06104422095b753df8ff9eb05b3e4eb804b25a4d",
+    "psionic/fixtures/deepseek-cache.out": "0a932a858b64b963d6fb4e2a4c131391b692861ce85e9c95a0a7d37255e43c8a",
+    "psionic/fixtures/deepseek/cache-anchored.bin": "26ac9e78c4e6d922aac64d0f1c5a563cb645d68e930b3e32398da3b222214243",
+    "psionic/fixtures/deepseek/cache-bf16.bin": "036cf8840b2e0d08bd21ffc35cf41e3bb4127413e7a8785921b710404677d49b",
+    "psionic/fixtures/deepseek/cache-goldens.coax": "3de77d89e56f729a44bf79154c571e0f05d4653b0172fa47636764c8f2e158ed",
+    "psionic/fixtures/deepseek/cache-goldens.json": "fa0c7ac51f2a792bb1a81e19a31c58f033c87282ca8a74978627a8440b9f0fa6",
+    "psionic/fixtures/deepseek/cache-lanes.bin": "a5ada2fe7d6bf9297b328b57c5df1b352c96dcf8d4351ddf4f77b28753c3b071",
+    "psionic/fixtures/deepseek/cache-reference-config.txt.gz": "76a62328bb4dd8a26d00ab5a545295654b63fc7a66da28d8fff662336ddea156",
+    "psionic/fixtures/deepseek/cache-reference-kernel.txt.gz": "c56efbaae4dbe561fcf84e5f0881bd56cc08074d85afe730236107475e43b63d",
+    "psionic/fixtures/deepseek/cache-reference-model.txt.gz": "e6b489a55ba528288093453af297b9a7c25266654db3969c6d50295abf554569",
+    "psionic/fixtures/deepseek/cache-source.json": "68293785a1ef8c53c739a0fe65df6e3759c60e8469dd31aab50c7df0fc9c140a",
+    "psionic/fixtures/deepseek/cache-build/debug-deepseek-cache.c.gz": "be2642be87e6075136961d1a88f9d0ef471cb733045f1579261c8e3ad1a8d73d",
+    "psionic/fixtures/deepseek/cache-build/debug-deepseek-cache.h.gz": "b09fbb60b66f3fe020aad4eddc4d15f53ef71683c9753cd6b3154c8276a3557e",
+    "psionic/fixtures/deepseek/cache-build/oracle-header.h.gz": "2f8f53e96c487c2c5293dce92e0d5edd41987409a915a406c5de66db3e7b15ef",
+    "psionic/fixtures/deepseek/cache-build/release-deepseek-cache.c.gz": "d6f1bc2b5bf9f26b7f5f2015144837260028ba7f34d74e31fde51dbfd7c85b49",
+    "psionic/fixtures/deepseek/cache-build/release-deepseek-cache.h.gz": "b09fbb60b66f3fe020aad4eddc4d15f53ef71683c9753cd6b3154c8276a3557e"
+  },
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93",
+    "cc": "gcc (GCC) 15.2.0"
+  },
+  "checks": {
+    "coax_per_mode": 8,
+    "mutation": "341 mutants, 341 killed, 0 survived",
+    "bf16_patterns_per_profile": 65536,
+    "group_forms": 3,
+    "encoded_scalar_scale_pairs": 73728,
+    "bf16_midpoint_neighbor_cases": 195834,
+    "source_pins": "python3 -I psionic/tests/deepseek_cache_oracle.py --sources",
+    "oracle": "python3 -I psionic/tests/deepseek_cache_oracle.py; numeric output generation verified before adding the separate source-pin helper",
+    "native": "check_deepseek_cache.sh native loop, all four variants; actual constituent commands executed individually",
+    "flags": "-std=c11 -O0/-O3 -g -ffp-contract=off -fno-fast-math; sanitized adds -fsanitize=address,undefined -fno-omit-frame-pointer",
+    "example": "coax run, debug/release, exact stdout agreement",
+    "book": "46 programs, 190 source-linked listings and local links pass before publication rebase",
+    "shell": "bash -n psionic/tests/check_deepseek_cache.sh psionic/check.sh",
+    "book_after_rebase": "48 programs, 199 source-linked listings and local links pass on parent 118a84a622; all 24 recorded source/artifact hashes unchanged"
+  },
+  "generated": {
+    "debug": {
+      "deepseek-cache.c": {
+        "sha256": "e718d1f4032ced506e258fa3275142f6869d486693a69fa5b918ba351b88eecd",
+        "retained": "psionic/fixtures/deepseek/cache-build/debug-deepseek-cache.c.gz"
+      },
+      "deepseek-cache.h": {
+        "sha256": "2241751018ac0e32ae2f09856b012f87224db76a49e5d91c2d0a9f681982bf27",
+        "retained": "psionic/fixtures/deepseek/cache-build/debug-deepseek-cache.h.gz"
+      }
+    },
+    "release": {
+      "deepseek-cache.c": {
+        "sha256": "cae47fb043612b917a9e09abc7e4f940f6310e480963c06f038862a0d2ee346c",
+        "retained": "psionic/fixtures/deepseek/cache-build/release-deepseek-cache.c.gz"
+      },
+      "deepseek-cache.h": {
+        "sha256": "2241751018ac0e32ae2f09856b012f87224db76a49e5d91c2d0a9f681982bf27",
+        "retained": "psionic/fixtures/deepseek/cache-build/release-deepseek-cache.h.gz"
+      }
+    }
+  },
+  "native_binaries": {
+    "debug-plain": "5e8d2441370407045f51e7710b87fe9ce50f668e2b5d3bf43334a0300c015033",
+    "debug-sanitized": "d740368416cbd7652ca4eee5ec895de019b89e3f6765fd55ab1c676308f5d6ba",
+    "release-plain": "6a3ed5db4016b6f742ece5af4939d829109a6094d6d24c213b5c79461d8cd29e",
+    "release-sanitized": "656f9a94cc432770ccb7c3c780d5d75be93e6032352ef06296467a35bbb76866"
+  },
+  "logs": {
+    "deepseek-cache-test-debug-final.log": "ok   #test original cache layouts distinguish per-16 FP8 scales and per-32 UE8M0 (1 case, 678 steps)\nok   #test BF16 publication has nearest-even ties signed zero subnormals and overflow refusal (1 case, 493 steps)\nok   #test scalar grids retain exact FP4 and FP8 values and nearest-even boundaries (1 case, 132319 steps)\nok   #test zero groups use the three original minimum scales (1 case, 4140 steps)\nok   #test chunk work has a separate exact budget from persistent packed cache (1 case, 1241 steps)\nok   #test pinned Flash cache ownership counts four key owners and keeps index query work separate (1 case, 663 steps)\nok   #test pack and unpack validate every independent span and publish atomically (1 case, 35873 steps)\nok   #test all three mixed original-width rows match independent source-equation bits (1 case, 2978790 steps)\n8 checks, 8 passed, 0 failed\n",
+    "deepseek-cache-test-release-final.log": "ok   #test original cache layouts distinguish per-16 FP8 scales and per-32 UE8M0 (1 case, 678 steps)\nok   #test BF16 publication has nearest-even ties signed zero subnormals and overflow refusal (1 case, 493 steps)\nok   #test scalar grids retain exact FP4 and FP8 values and nearest-even boundaries (1 case, 132319 steps)\nok   #test zero groups use the three original minimum scales (1 case, 4140 steps)\nok   #test chunk work has a separate exact budget from persistent packed cache (1 case, 1241 steps)\nok   #test pinned Flash cache ownership counts four key owners and keeps index query work separate (1 case, 663 steps)\nok   #test pack and unpack validate every independent span and publish atomically (1 case, 35873 steps)\nok   #test all three mixed original-width rows match independent source-equation bits (1 case, 2978790 steps)\n8 checks, 8 passed, 0 failed\n",
+    "deepseek-cache-mutate7.log": "341 mutants, 341 killed, 0 survived\n",
+    "deepseek-cache-oracle-check.log": "Cache oracle: three source grids, all 65,536 BF16 patterns/profile, mixed original-width rows agree\n",
+    "deepseek-cache-native-complete-debug-plain.log": "Cache: every BF16 pattern in uniform and sparse groups matches independent source equations, all three profiles\nCache: every BF16 pattern with a fixed maximum anchor matches independent codes, scales and reconstructed bits\nCache: every encoded scalar/scale pair and every finite neighboring BF16 rounding boundary is exact\nCache: mixed original 512/128-wide rows, low-first bytes, dirty scratch, tails and chunk-independent packing pass\nCache: pinned source ownership and chunk work budgets match an independent per-layer inventory\nCache: native aliases, non-finite inputs, late bad codes/scales and overflow preserve public outputs\n",
+    "deepseek-cache-native-complete-debug-sanitized.log": "Cache: every BF16 pattern in uniform and sparse groups matches independent source equations, all three profiles\nCache: every BF16 pattern with a fixed maximum anchor matches independent codes, scales and reconstructed bits\nCache: every encoded scalar/scale pair and every finite neighboring BF16 rounding boundary is exact\nCache: mixed original 512/128-wide rows, low-first bytes, dirty scratch, tails and chunk-independent packing pass\nCache: pinned source ownership and chunk work budgets match an independent per-layer inventory\nCache: native aliases, non-finite inputs, late bad codes/scales and overflow preserve public outputs\n",
+    "deepseek-cache-native-complete-release-plain.log": "Cache: every BF16 pattern in uniform and sparse groups matches independent source equations, all three profiles\nCache: every BF16 pattern with a fixed maximum anchor matches independent codes, scales and reconstructed bits\nCache: every encoded scalar/scale pair and every finite neighboring BF16 rounding boundary is exact\nCache: mixed original 512/128-wide rows, low-first bytes, dirty scratch, tails and chunk-independent packing pass\nCache: pinned source ownership and chunk work budgets match an independent per-layer inventory\nCache: native aliases, non-finite inputs, late bad codes/scales and overflow preserve public outputs\n",
+    "deepseek-cache-native-complete-release-sanitized.log": "Cache: every BF16 pattern in uniform and sparse groups matches independent source equations, all three profiles\nCache: every BF16 pattern with a fixed maximum anchor matches independent codes, scales and reconstructed bits\nCache: every encoded scalar/scale pair and every finite neighboring BF16 rounding boundary is exact\nCache: mixed original 512/128-wide rows, low-first bytes, dirty scratch, tails and chunk-independent packing pass\nCache: pinned source ownership and chunk work budgets match an independent per-layer inventory\nCache: native aliases, non-finite inputs, late bad codes/scales and overflow preserve public outputs\n"
+  },
+  "scope": "Independent owned source-equation BF16 bit qualification; no upstream execution, original GPU capture, full attention/model inference or measured whole-model memory claim."
+}

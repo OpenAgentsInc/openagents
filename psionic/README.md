@@ -47,6 +47,9 @@ sub-blocks and into final readout.
 [Chapter 63](book/ch063-v41s-expert-weights.md) adds exact FP4/FP8 expert
 formats, activation grids and pre-down route weighting, including an
 independently qualified original 384/6 MoE component.
+[Chapter 66](book/ch066-pack-the-cache-exactly.md) retains the original KV/index
+grids as packed codes/scales, reconstructs their BF16 bits and admits persistent
+cache payload and chunk codec work against separate limits.
 
 [Chapters 45a–45c](book/ch045a-original-weights-stay-on-the-gpu.md) add resident
 original 20b CUDA execution, complete greedy Harmony generation and batched

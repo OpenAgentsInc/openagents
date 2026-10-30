@@ -1,0 +1,10 @@
+// Original V4.1 BF16 cache grids, separate from expert/weight formats.
+DkStatus :: enum u8 {ok;shape;capacity;alias;number;arithmetic;format;budget;}
+DkKind :: enum u8 {window;compressed;index;}
+DkPlan :: struct {status:DkStatus;values:int;group:int;data:int;scales:int;bytes:int;}
+DkResult :: struct {status:DkStatus;written:int;}
+DkScalar :: struct {status:DkStatus;bits:u16;}
+DkCode :: struct {status:DkStatus;code:u8;}
+DkValue :: struct {status:DkStatus;value:f64;}
+DkPacked :: struct {data:[]u8;scales:[]u8;}
+DkBudget :: struct {status:DkStatus;cache:int;step:int;total:int;}

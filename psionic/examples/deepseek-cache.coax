@@ -1,0 +1,19 @@
+#import "Basic";
+#load "../lib/deepseek/cache.coax";
+// book:begin example
+main :: () {
+    input:[1024]u16;for i:0..<1024 {input[i]=dk_bf16(f32(i%17-8)/4).bits;}
+    for kind:0..<3 {
+        width:=ifx kind==2 then 128 else 512;p:=dk_plan(cast(u8)kind,2,width);
+        data:[1024]u8;scales:[64]u8;stage:[1088]u8;output:[1024]u16;work:[1024]u16;
+        packed:=DkPacked.{data=data[0..<p.data],scales=scales[0..<p.scales]};
+        r:=dk_pack(cast(u8)kind,2,width,input[0..<p.values],packed,stage[..],false);#assert r.status==DkStatus.ok;
+        r=dk_unpack(cast(u8)kind,2,width,packed,output[..],work[..],false);#assert r.status==DkStatus.ok && r.written==p.values;
+        print("cache kind %: % values, % code bytes, % scale bytes\n",kind,p.values,p.data,p.scales);
+    }
+    // A prefill chunk can be larger than the persistent 128-row window ring.
+    #assert dk_budget(0,512,128,512,67584,2113536).status==DkStatus.ok;
+    budget:=dk_flash_cache_budget(1024,64,3,3817472,1851392);#assert budget.status==DkStatus.ok;
+    print("Flash codec inventory: % persistent bytes; % chunk work bytes\n",budget.cache,budget.step);
+}
+// book:end example

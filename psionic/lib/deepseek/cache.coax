@@ -1,0 +1,196 @@
+#load "cache-types.coax";
+#authority;
+#load "../../fixtures/deepseek/cache-goldens.coax";
+
+#test "original cache layouts distinguish per-16 FP8 scales and per-32 UE8M0" {
+    a:=dk_plan(0,128,512);#assert a.status==DkStatus.ok && a.values==65536 && a.group==32 && a.data==65536 && a.scales==2048 && a.bytes==67584;
+    a=dk_plan(1,128,512);#assert a.status==DkStatus.ok && a.group==16 && a.data==32768 && a.scales==4096 && a.bytes==36864;
+    a=dk_plan(2,128,64);#assert a.status==DkStatus.ok && a.group==32 && a.data==4096 && a.scales==256 && a.bytes==4352;
+    #assert dk_plan(1,1,8208).status==DkStatus.shape;
+    #assert dk_plan(1,1,16).status==DkStatus.ok && dk_plan(2,1048576,8192).status==DkStatus.ok;
+    #assert dk_plan(3,1,32).status==DkStatus.shape && dk_plan(0,0,32).status==DkStatus.shape && dk_plan(0,1048577,32).status==DkStatus.shape;
+    #assert dk_plan(0,1,0).status==DkStatus.shape && dk_plan(0,1,16).status==DkStatus.shape && dk_plan(1,1,17).status==DkStatus.shape && dk_plan(0,1,8224).status==DkStatus.shape;
+}
+#test "BF16 publication has nearest-even ties signed zero subnormals and overflow refusal" {
+    inputs:=[10]u32.[0,0x80000000,0x3f808000,0x3f818000,0x3f808001,0x00008000,0x00008001,0x7f7fffff,0x7f800000,0x7fc00000];
+    expected:=[7]u16.[0,0x8000,0x3f80,0x3f82,0x3f81,0,1];
+    for i:0..<7 {r:=dk_bf16(f32_from_bits(inputs[i]));#assert r.status==DkStatus.ok && r.bits==expected[i];}
+    #assert dk_bf16(f32_from_bits(inputs[7])).status==DkStatus.arithmetic;
+    #assert dk_bf16_bits(inputs[8]).status==DkStatus.number && dk_bf16_bits(inputs[9]).status==DkStatus.number;
+}
+#test "scalar grids retain exact FP4 and FP8 values and nearest-even boundaries" {
+    #assert dk_value(0,0)==0 && dk_value(0,1)==0.001953125 && dk_value(0,8)==0.015625 && dk_value(0,126)==448;
+    #assert dk_value(1,1)==0.5 && dk_value(1,7)==6;
+    for code:0..<127 {#assert dk_floor(0,dk_value(0,code))==code && dk_round(0,f32(dk_value(0,code)))==cast(u8)code;}
+    for code:0..<8 {#assert dk_floor(1,dk_value(1,code))==code && dk_round(1,f32(dk_value(1,code)))==cast(u8)code;}
+    #assert dk_lane(1,16,1).status==DkStatus.number && dk_lane(0,0,255).status==DkStatus.number;
+    #assert dk_lane(0,126,254).status==DkStatus.arithmetic && dk_lane(0,254,254).status==DkStatus.arithmetic && dk_lane(0,120,247).status==DkStatus.arithmetic;
+    #assert dk_round(1,0.25)==0 && dk_round(1,0.75)==2 && dk_round(1,5)==6 && dk_round(1,-5)==14;
+    #assert dk_round(0,-0.0f32)==128 && dk_round(0,1000)==126;
+    #assert dk_scale_value(0,127).status==DkStatus.ok && dk_scale_value(0,127).value==1;
+    #assert dk_scale_value(1,1).value==0.001953125 && dk_scale_value(1,126).value==448;
+    #assert dk_scale_value(0,255).status==DkStatus.number && dk_scale_value(1,0).status==DkStatus.number && dk_scale_value(1,128).status==DkStatus.number && dk_scale_value(1,127).status==DkStatus.number;
+    #assert dk_scale_value(3,127).status==DkStatus.shape && dk_lane(3,0,127).status==DkStatus.shape;
+}
+#test "zero groups use the three original minimum scales" {
+    x:[32]u16;
+    #assert dk_scale(0,x[..]).code==105 && dk_scale(1,x[0..<16]).code==1 && dk_scale(2,x[..]).code==1;
+    x[31]=0x7f80;#assert dk_scale(0,x[..]).status==DkStatus.number;
+    #assert dk_scale(0,x[0..<31]).status==DkStatus.shape && dk_scale(1,x[..]).status==DkStatus.shape && dk_scale(3,x[..]).status==DkStatus.shape;
+}
+#test "chunk work has a separate exact budget from persistent packed cache" {
+    b:=dk_budget(0,512,128,4,67584,20736);#assert b.status==DkStatus.ok && b.cache==67584 && b.step==16512 && b.total==84096;
+    #assert dk_budget(0,512,128,4,67583,999999).status==DkStatus.budget;
+    #assert dk_budget(0,512,128,4,67584,16511).status==DkStatus.budget;
+    #assert dk_budget(0,512,128,0,999999,999999).status==DkStatus.shape;
+    #assert dk_budget(0,512,128,129,999999,999999).status==DkStatus.ok;
+    #assert dk_budget(3,512,128,1,999999,999999).status==DkStatus.shape;
+    #assert dk_budget(0,32,1,1,33,258).status==DkStatus.ok;
+    b=dk_budget(1,512,128,1,36864,3648);#assert b.status==DkStatus.ok && b.step==3648;
+}
+#test "pinned Flash cache ownership counts four key owners and keeps index query work separate" {
+    b:=dk_flash_cache_budget(1024,64,3,3817472,1851392);#assert b.status==DkStatus.ok && b.cache==3817472 && b.step==1851392 && b.total==5668864;
+    b=dk_flash_cache_budget(1048576,1,0,935936000,28928);#assert b.status==DkStatus.ok && b.cache==935936000;
+    b=dk_flash_cache_budget(3,3,0,2705496,86784);#assert b.status==DkStatus.ok && b.cache==2705496 && b.step==86784;
+    #assert dk_flash_cache_budget(1,1,0,2703716,28928).status==DkStatus.ok;
+    #assert dk_flash_cache_budget(1024,64,3,3817471,1851392).status==DkStatus.budget && dk_flash_cache_budget(1024,64,3,3817472,1851391).status==DkStatus.budget;
+    #assert dk_flash_cache_budget(0,1,0,9999999,9999999).status==DkStatus.shape && dk_flash_cache_budget(1048577,1,0,9999999999,9999999999).status==DkStatus.shape;
+    #assert dk_flash_cache_budget(1,0,0,9999999,9999999).status==DkStatus.shape && dk_flash_cache_budget(1,2,0,9999999,9999999).status==DkStatus.shape;
+    #assert dk_flash_cache_budget(1,1,-1,9999999,9999999).status==DkStatus.shape && dk_flash_cache_budget(1,1,4,9999999,9999999).status==DkStatus.shape;
+}
+#test "pack and unpack validate every independent span and publish atomically" {
+    x:[32]u16;data:[33]u8;scales:[2]u8;stage:[33]u8;out:[33]u16;wide:[32]u16;
+    for i:0..<33 {data[i]=77;out[i]=99;}scales[0]=77;scales[1]=88;
+    for field:0..<5 {input:=x[..];d:=data[..];s:=scales[..];w:=stage[..];alias:=false;
+        if field==0 {input=x[0..<31];}else if field==1 {d=data[0..<31];}else if field==2 {s=scales[0..<0];}else if field==3 {w=stage[0..<32];}else {alias=true;}
+        r:=dk_pack(0,1,32,input,DkPacked.{data=d,scales=s},w,alias);#assert r.status==(ifx field==4 then DkStatus.alias else DkStatus.capacity);
+    }
+    #assert dk_pack(3,1,32,x[..],DkPacked.{data=data[..],scales=scales[..]},stage[..],false).status==DkStatus.shape;
+    x[31]=0x7fc0;#assert dk_pack(0,1,32,x[..],DkPacked.{data=data[..],scales=scales[..]},stage[..],false).status==DkStatus.number;
+    for v:data {#assert v==77;}#assert scales[0]==77 && scales[1]==88;
+    x[31]=0;#assert dk_pack(0,1,32,x[..],DkPacked.{data=data[0..<32],scales=scales[0..<1]},stage[..],false).status==DkStatus.ok && data[32]==77 && scales[1]==88;
+    packed:=DkPacked.{data=data[0..<32],scales=scales[0..<1]};
+    for field:0..<5 {m:=packed;o:=out[..];w:=wide[..];alias:=false;
+        if field==0 {m.data=data[0..<31];}else if field==1 {m.scales=scales[..];}else if field==2 {o=out[0..<31];}else if field==3 {w=wide[0..<31];}else {alias=true;}
+        r:=dk_unpack(0,1,32,m,o,w,alias);#assert r.status==(ifx field==4 then DkStatus.alias else DkStatus.capacity);
+    }
+    #assert dk_unpack(3,1,32,packed,out[..],wide[..],false).status==DkStatus.shape;
+    data[31]=127;#assert dk_unpack(0,1,32,packed,out[..],wide[..],false).status==DkStatus.number;
+    for v:out {#assert v==99;}
+    data[31]=0;#assert dk_unpack(0,1,32,packed,out[0..<32],wide[..],false).status==DkStatus.ok && out[31]==0 && out[32]==99;
+}
+#test "all three mixed original-width rows match independent source-equation bits" {
+    input0:=DKG_0_INPUT;input1:=DKG_1_INPUT;input2:=DKG_2_INPUT;
+    inputs:=[3][]u16.[input0[..],input1[..],input2[..]];
+    bytes0:=DKG_0_DATA;bytes1:=DKG_1_DATA;bytes2:=DKG_2_DATA;
+    bytes:=[3][]u8.[bytes0[..],bytes1[..],bytes2[..]];
+    scale0:=DKG_0_SCALES;scale1:=DKG_1_SCALES;scale2:=DKG_2_SCALES;
+    scales:=[3][]u8.[scale0[..],scale1[..],scale2[..]];
+    output0:=DKG_0_OUTPUT;output1:=DKG_1_OUTPUT;output2:=DKG_2_OUTPUT;
+    outputs:=[3][]u16.[output0[..],output1[..],output2[..]];
+    for kind:0..<3 {p:=dk_plan(cast(u8)kind,3,(ifx kind==2 then 128 else 512));data:[1537]u8;s:[97]u8;stage:[1632]u8;decoded:[1537]u16;work:[1536]u16;
+        data[p.data]=66;s[p.scales]=77;decoded[p.values]=88;
+        r:=dk_pack(cast(u8)kind,3,(ifx kind==2 then 128 else 512),inputs[kind],DkPacked.{data=data[..],scales=s[..]},stage[..],false);#assert r.status==DkStatus.ok && r.written==p.values;
+        for i:0..<p.data {#assert data[i]==bytes[kind][i];}for i:0..<p.scales {#assert s[i]==scales[kind][i];}
+        #assert data[p.data]==66 && s[p.scales]==77;
+        r=dk_unpack(cast(u8)kind,3,(ifx kind==2 then 128 else 512),DkPacked.{data=data[0..<p.data],scales=s[0..<p.scales]},decoded[..],work[..],false);#assert r.status==DkStatus.ok && r.written==p.values;
+        for i:0..<p.values {#assert decoded[i]==outputs[kind][i];}#assert decoded[p.values]==88;
+    }
+}
+
+dk_plan :: (kind:u8,rows:int,width:int)->DkPlan #export_c {
+    if kind>2 || rows<1 || rows>1048576 || width<16 || width/16>512 {return DkPlan.{status=DkStatus.shape};}
+    group:=ifx kind==1 then 16 else 32;if width%group!=0 {return DkPlan.{status=DkStatus.shape};}
+    n:=rows*width;data:=ifx kind==0 then n else n/2;scales:=n/group;
+    return DkPlan.{values=n,group=group,data=data,scales=scales,bytes=data+scales};
+}
+dk_bf16 :: (x:f32)->DkScalar #export_c {return dk_bf16_bits(f32_bits(x));}
+dk_bf16_bits :: (bits:u32)->DkScalar #export_c {
+    if (bits&0x7fffffff)>=0x7f800000 {return DkScalar.{status=DkStatus.number};}
+    rounded:=(u64(bits)+32767+u64((bits>>16)&1))>>16;
+    if (rounded&0x7fff)>=0x7f80 {return DkScalar.{status=DkStatus.arithmetic};}return DkScalar.{bits=cast(u16)rounded};
+}
+dk_value :: (kind:u8,code:int)->f64 {
+    if kind!=0 {values:=[8]f64.[0,0.5,1,1.5,2,3,4,6];return values[code];}
+    exponent:=code/8;fraction:=code%8;if exponent==0 {return f64(fraction)/512;}
+    return (1+f64(fraction)/8)*f64_from_bits((u64(exponent)+1016)<<52);
+}
+dk_floor :: (kind:u8,mag:f64)->int {
+    low:=0;high:=ifx kind==0 then 127 else 8;
+    while low+1<high {mid:=(low+high)/2;if dk_value(kind,mid)<=mag {low=mid;}else {high=mid;}}
+    return low;
+}
+dk_round :: (kind:u8,x:f32)->u8 {
+    mag:=abs(f64(x));low:=dk_floor(kind,mag);high:=low+1;
+    limit:=ifx kind==0 then 127 else 8;
+    if high<limit {a:=mag-dk_value(kind,low);b:=dk_value(kind,high)-mag;if b<a || (b==a && low%2!=0) {low=high;}}
+    sign:=ifx kind==0 then 128 else 8;return cast(u8)low | (ifx (f32_bits(x)>>31)!=0 then cast(u8)sign else 0);
+}
+dk_scale_value :: (kind:u8,scale:u8)->DkValue #export_c {
+    if kind>2 {return DkValue.{status=DkStatus.shape};}
+    if kind==1 {if scale==0 || scale>=127 {return DkValue.{status=DkStatus.number};}return DkValue.{value=dk_value(0,cast(int)scale)};}
+    if scale==255 {return DkValue.{status=DkStatus.number};}return DkValue.{value=f64_from_bits((u64(scale)+896)<<52)};
+}
+dk_scale :: (kind:u8,x:[]u16)->DkCode #export_c {
+    if kind>2 || x.count!=(ifx kind==1 then 16 else 32) {return DkCode.{status=DkStatus.shape};}
+    maximum:=ifx kind==0 then 0.0001f32 else (ifx kind==1 then 0.01171875f32 else 7.052966104933725e-38f32);
+    for bits:x {if (bits&0x7fff)>=0x7f80 {return DkCode.{status=DkStatus.number};}
+        value:=abs(f64(f32_from_bits(u32(bits)<<16)));maximum=f32((f64(maximum)+value+abs(f64(maximum)-value))/2);}
+    if kind==1 {return DkCode.{code=dk_round(0,f32(f64(maximum)/6))};}
+    inverse:=ifx kind==0 then 1.0f32/448.0f32 else 1.0f32/6.0f32;
+    bits:=f32_bits(f32(f64(maximum)*f64(inverse)));exponent:=(bits>>23)&255;if (bits&0x7fffff)!=0 {exponent+=1;}
+    return DkCode.{code=cast(u8)exponent};
+}
+dk_lane :: (kind:u8,code:u8,scale:u8)->DkScalar #export_c {
+    s:=dk_scale_value(kind,scale);if s.status!=DkStatus.ok {return DkScalar.{status=s.status};}
+    sign:=ifx kind==0 then 128 else 8;
+    if (kind==0 && (code&127)==127) || (kind!=0 && code>=16) {return DkScalar.{status=DkStatus.number};}
+    value:=dk_value(kind,cast(int)(code&cast(u8)(sign-1)))*s.value;
+    // Grid values have at most eleven significant bits: none lies between
+    // F32's largest finite value and 2^128. Refuse before the checked cast.
+    if value>=3.402823669209385e38 {return DkScalar.{status=DkStatus.arithmetic};}
+    if (code&cast(u8)sign)!=0 {value=-value;}
+    return dk_bf16(f32(value));
+}
+dk_pack :: (kind:u8,rows:int,width:int,x:[]u16,out:DkPacked,stage:[]u8,overlap:bool)->DkResult #export_c {
+    p:=dk_plan(kind,rows,width);if p.status!=DkStatus.ok {return DkResult.{status=p.status};}
+    if x.count!=p.values || out.data.count<p.data || out.scales.count<p.scales || stage.count<p.bytes {return DkResult.{status=DkStatus.capacity};}
+    if overlap {return DkResult.{status=DkStatus.alias};}
+    for block:0..<p.scales {at:=block*p.group;s:=dk_scale(kind,x[at..<at+p.group]);if s.status!=DkStatus.ok {return DkResult.{status=s.status};}
+        scale:=dk_scale_value(kind,s.code).value;stage[p.data+block]=s.code;
+        for j:0..<p.group {i:=at+j;v:=f32_from_bits(u32(x[i])<<16);code:=dk_round(kind,f32(f64(v)/scale));check:=dk_lane(kind,code,s.code);if check.status!=DkStatus.ok {return DkResult.{status=check.status};}
+            if kind==0 {stage[i]=code;}else if i%2==0 {stage[i/2]=code;}else {stage[i/2]|=code<<4;}
+        }
+    }
+    for i:0..<p.data {out.data[i]=stage[i];}for i:0..<p.scales {out.scales[i]=stage[p.data+i];}return DkResult.{written=p.values};
+}
+dk_unpack :: (kind:u8,rows:int,width:int,x:DkPacked,out:[]u16,stage:[]u16,overlap:bool)->DkResult #export_c {
+    p:=dk_plan(kind,rows,width);if p.status!=DkStatus.ok {return DkResult.{status=p.status};}
+    if x.data.count!=p.data || x.scales.count!=p.scales || out.count<p.values || stage.count<p.values {return DkResult.{status=DkStatus.capacity};}
+    if overlap {return DkResult.{status=DkStatus.alias};}
+    for i:0..<p.values {code:=ifx kind==0 then x.data[i] else cast(u8)((x.data[i/2]>>cast(u8)((i%2)*4))&15);
+        r:=dk_lane(kind,code,x.scales[i/p.group]);if r.status!=DkStatus.ok {return DkResult.{status=r.status};}stage[i]=r.bits;}
+    for i:0..<p.values {out[i]=stage[i];}return DkResult.{written=p.values};
+}
+dk_budget :: (kind:u8,width:int,cache_rows:int,chunk:int,cache_limit:int,step_limit:int)->DkBudget #export_c {
+    cache:=dk_plan(kind,cache_rows,width);part:=dk_plan(kind,chunk,width);
+    if cache.status!=DkStatus.ok || part.status!=DkStatus.ok {return DkBudget.{status=DkStatus.shape};}
+    // All live codec spans: BF16 input/output/decode scratch and packed output/pack scratch.
+    step:=6*part.values+2*part.bytes;
+    if cache.bytes>cache_limit || step>step_limit {return DkBudget.{status=DkStatus.budget};}
+    return DkBudget.{cache=cache.bytes,step=step,total=cache.bytes+step};
+}
+// book:begin flash-budget
+dk_flash_cache_budget :: (context:int,chunk:int,drafts:int,cache_limit:int,step_limit:int)->DkBudget #export_c {
+    if context<1 || context>1048576 || chunk<1 || chunk>context || drafts<0 || drafts>3 {return DkBudget.{status=DkStatus.shape};}
+    // Four producers own both compressed KV and index keys: three ratio-2,
+    // one ratio-1. The other four indexers own queries, not additional keys.
+    source_rows:=3*(context/2)+context;
+    cache:=(40+drafts)*128*528+source_rows*356;
+    // The widest codec row is the 32 x 128 index query, larger than KV rows.
+    // Six BF16 bytes/value + two packed code/scale spans, all explicitly live.
+    step:=chunk*28928;
+    if cache>cache_limit || step>step_limit {return DkBudget.{status=DkStatus.budget};}
+    return DkBudget.{cache=cache,step=step,total=cache+step};
+}
+// book:end flash-budget

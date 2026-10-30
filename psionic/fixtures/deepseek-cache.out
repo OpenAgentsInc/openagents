@@ -1,0 +1,4 @@
+cache kind 0: 1024 values, 1024 code bytes, 32 scale bytes
+cache kind 1: 1024 values, 512 code bytes, 64 scale bytes
+cache kind 2: 256 values, 128 code bytes, 8 scale bytes
+Flash codec inventory: 3817472 persistent bytes; 1851392 chunk work bytes

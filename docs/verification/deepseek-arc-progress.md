@@ -17,7 +17,7 @@ rows stay planned until their full acceptance gates have evidence.
 | 63 | All FP4 E2M1/UE8M0 codes/scales, layout, NaN rejection, clamped SwiGLU and pre-down route weights | Implemented exact original FP4/FP8 formats, grids, FFNs and 384/6 plus shared mixture; original layer-0 MoE qualifies against an independent reference; [record](psionic-ch63-2026-10-29.md). Shared FP8 and low-first packing reconcile the pinned source/header. Whole-model/device/BF16 parity remains in 68. |
 | 64 | Exact cache residency/heat/swap, host/mapped miss lane, between-step copies and next-layer prefetch | Planned. |
 | 65 | Layer-major expert reuse, grouped block-scaled products, time-budget chunks and no silent disablement | Planned. |
-| 66 | Exact FP8/FP4 cache grids, reference bit checks, separately bounded chunk step buffers | Planned. |
+| 66 | Exact FP8/FP4 cache grids, reference bit checks, separately bounded chunk step buffers | Implemented CPU BF16 source-equation codec; every BF16 pattern in three group forms and all code/scale pairs qualify against an independent oracle, with pinned ownership/work budgets; [record](psionic-ch66-2026-10-29.md). Original device capture and attention integration remain in 60/67/68. |
 | 67 | Recorded device decode, device expert IDs/sampling, one-step-ahead host scheduling and lifetime checks | Planned. |
 | 68 | Complete original V4.1 Flash on one machine, frozen reference qualification, TTFT/tokens/s/memory | Planned; current host has 16 GiB GPU memory and about 189 GiB free disk at initial inspection, less than the 510.3 GB original artifact set. |
 | 69 | Original draft heads, fixed then confidence-driven variable verification, exact acceptance, measured committed tokens/time | Planned. |

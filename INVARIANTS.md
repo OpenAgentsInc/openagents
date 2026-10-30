@@ -1,5 +1,36 @@
 # Invariants
 
+## Psionic packed V4.1 caches reconstruct the reference's BF16 grids
+
+`psionic/lib/deepseek/cache*.coax` owns `deepseek-cache-bf16-grid-v1`:
+window KV is FP8 E4M3 with per-32 UE8M0 scales; compressed KV is low-first
+FP4 E2M1 with per-16 positive E4M3 scales; index keys/queries are low-first
+FP4 with per-32 UE8M0 scales. Whole post-RoPE vectors, tails included, round
+at the pinned source's quantization sites. F32 scale/division/product and
+nearest-even BF16 publication boundaries are explicit. Inputs are BF16 bits.
+NaN, invalid scales and overflow refuse rather than changing finite values.
+
+Pack stages both code/scale spans and unpack stages all BF16 words. Public
+outputs and spare tails preserve their previous values on any failure; private
+work may change. Caller duties include valid immutable allocations/extents,
+matching format/model/history identity and exclusive disjoint writes. Native
+C observes addresses only. The codec allocates nothing and does not own the
+attention ring, rotary operation, compressors or sharing state.
+
+Persistent payload and chunk work have separate enforced limits. A chunk may
+exceed the persistent window row count. The pinned Flash inventory counts four
+KV/index-key producers, eight query-producing indexers, forty backbone windows
+and up to three draft windows. Its reusable codec work includes the larger
+32-head index-query row. It excludes other model/device memory and alignment.
+
+Check: `psionic/tests/check_deepseek_cache.sh` covers all BF16 input patterns in
+three group forms, every encoded scalar/scale pair, BF16 midpoint neighbors,
+native debug/release plain/ASan/UBSan, row-chunk parity, atomic failures and an
+independent pinned ownership/work inventory. `psionic/check.sh --only
+deepseek/cache --jobs 8` adds zero-survivor authority mutation. This qualifies
+CPU source-equation bits, not an original GPU capture or complete attention;
+see the [chapter 66 record](docs/verification/psionic-ch66-2026-10-29.md).
+
 ## Psionic V4.1 expert formats retain separate scales and pre-down route weights
 
 `psionic/lib/deepseek/expert*.coax` owns `deepseek-expert-cpu-wide-v1`:

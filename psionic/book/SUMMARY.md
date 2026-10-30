@@ -44,6 +44,7 @@
 - [59. Routers that balance themselves](ch059-routers-that-balance-themselves.md)
 - [61. Many residual streams](ch061-many-residual-streams.md)
 - [63. V4.1's expert weights](ch063-v41s-expert-weights.md)
+- [66. Pack the cache exactly](ch066-pack-the-cache-exactly.md)
 
 - [156. Fit our own calibration, and refuse a stale one](ch156-fit-our-own-calibration.md)
 - [157. Thresholds from written costs](ch157-thresholds-from-written-costs.md)
@@ -64,6 +65,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–59, 61, 63, 70–71, 156–158, 164a, 165–169, 172 and 179 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 41–48, 56–59, 61, 63, 66, 70–71, 156–158, 164a, 165–169, 172 and 179 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–40 and the remaining outlines
 remain proposed.

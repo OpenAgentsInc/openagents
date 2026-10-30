@@ -1,0 +1,128 @@
+{
+  "schema": 1,
+  "profile": "deepseek-cache-bf16-grid-v1",
+  "sources": {
+    "model.py": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/model.py",
+      "sha256": "e5decd76fe70fd56ef2f10124d245c6f64fb6a0003cc9068a1d3182a168b8d2d"
+    },
+    "kernel.py": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/kernel.py",
+      "sha256": "1236c3507019ed176f5dba5e04bcea58867cf654818c6cf138ed4845398c2455"
+    },
+    "config.json": {
+      "url": "https://huggingface.co/deepseek-ai/DeepSeek-V4.1-Flash-1017/resolve/1bae0e1088993b9b82de08f59de5be5a34e42170/inference/config.json",
+      "sha256": "2e84f45cf1dac8c7fcbb200e96667d4b913275690668ed496f24c7747207a809"
+    }
+  },
+  "cast_lowering": {
+    "src/cuda/codegen/codegen_cuda.cc": {
+      "url": "https://github.com/tile-ai/tilelang/blob/da53da96ad08ac5d1228ad85bf2634274f8533e2/src/cuda/codegen/codegen_cuda.cc",
+      "sha256": "d262de286724d1e85b68546ff3e3ee4892542895eb8e569e8aa705531d8b6348"
+    },
+    "src/tl_templates/cuda/common.h": {
+      "url": "https://github.com/tile-ai/tilelang/blob/da53da96ad08ac5d1228ad85bf2634274f8533e2/src/tl_templates/cuda/common.h",
+      "sha256": "60917437f50c74bd228ef7e68266aa3855dd60c0c7072f7af51a5b4260f67e18"
+    },
+    "src/tl_templates/cuda/cuda_fp8.h": {
+      "url": "https://github.com/tile-ai/tilelang/blob/da53da96ad08ac5d1228ad85bf2634274f8533e2/src/tl_templates/cuda/cuda_fp8.h",
+      "sha256": "3cd6c0a57ea3f224c4e998dac53b035bc7c1def1fe550883a5197e06da7748f5"
+    }
+  },
+  "original": {
+    "n_layers": 40,
+    "n_mtp_layers": 3,
+    "head_dim": 512,
+    "window_size": 128,
+    "index_n_heads": 32,
+    "index_head_dim": 128,
+    "kv_source_layers": [
+      2,
+      8,
+      14,
+      20
+    ],
+    "index_source_layers": [
+      2,
+      8,
+      14,
+      20,
+      24,
+      28,
+      32,
+      36
+    ],
+    "compress_ratios": [
+      0,
+      0,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1,
+      0,
+      0,
+      0
+    ]
+  },
+  "grids": [
+    {
+      "kind": 0,
+      "role": "window KV, post RoPE including tail",
+      "format": "E4M3",
+      "group": 32,
+      "scale": "UE8M0; F32 ceil-log2(amax * F32(1/448))",
+      "floor": "F32(1e-4)"
+    },
+    {
+      "kind": 1,
+      "role": "compressed KV, post RoPE including tail",
+      "format": "low-first E2M1",
+      "group": 16,
+      "scale": "saturating nearest-even E4M3(F32(amax/6))",
+      "floor": "6 * 2^-9"
+    },
+    {
+      "kind": 2,
+      "role": "index keys and queries, post RoPE",
+      "format": "low-first E2M1",
+      "group": 32,
+      "scale": "UE8M0; F32 ceil-log2(amax * F32(1/6))",
+      "floor": "6 * 2^-126"
+    }
+  ],
+  "scope": "Source-equation BF16 bit qualification using an independent owned oracle; upstream kernels are read, never executed. No original GPU capture or full attention claim."
+}

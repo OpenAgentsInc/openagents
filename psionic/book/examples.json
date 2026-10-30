@@ -470,6 +470,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/deepseek-cache.coax",
+      "chapter": "psionic/book/ch066-pack-the-cache-exactly.md",
+      "stdout": "psionic/fixtures/deepseek-cache.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }
