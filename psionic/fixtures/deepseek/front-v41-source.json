@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "revision": "1bae0e1088993b9b82de08f59de5be5a34e42170",
+  "source_tokenizer_sha256": "c90dfa01249db1be4245780a052ede752e1361c612ac6d08e2bdada7d599476b",
+  "profile": "deepseek-front-v41-text-v1",
+  "entries": 129280,
+  "merges": 127741,
+  "normalization": "none",
+  "added_spelling_matching": false,
+  "unicode": "16.0.0",
+  "unicode_sources": {
+    "front-v41-unicode-data.txt.gz": {
+      "url": "https://www.unicode.org/Public/16.0.0/ucd/UnicodeData.txt",
+      "raw_sha256": "ff58e5823bd095166564a006e47d111130813dcf8bf234ef79fa51a870edb48f"
+    },
+    "front-v41-unicode-props.txt.gz": {
+      "url": "https://www.unicode.org/Public/16.0.0/ucd/PropList.txt",
+      "raw_sha256": "53d614508e2a0b2305a8aa21cd60d993de9326cdf65993660dfcce4503548583"
+    }
+  },
+  "unicode_flags_sha256": "808097f58f4594bbee2b0f2df8520ff4233f6de97930f6b6a20fd0064df7a230",
+  "ordinary_decode_bytes": 1347582,
+  "ordinary_decode_sha256": "2cf53638178d65f8fa141fd7d08087cae71b91f6e3984c14de0382c9b4ab34f8",
+  "artifacts": {
+    "front-v41.pst": {
+      "bytes": 3978447,
+      "sha256": "8f57ee76c6f236363cb903413bba01b3464c36cbc4cff9291d009996e504e104"
+    },
+    "front-v41-goldens.json.gz": {
+      "bytes": 15042,
+      "sha256": "f47e5781e161ae1cd953d1f2e4870c22e00ed5a4513d3d2f8c9b4573e1af7654"
+    },
+    "front-v41-goldens.coax": {
+      "bytes": 25907,
+      "sha256": "7ab0477dc8c5cffa134655401be6fd07f9b209cd1dc2c9662fe0aa5b57af59bd"
+    }
+  }
+}

@@ -78,8 +78,10 @@ binds the actual executed builds and later original-shaped slices.
 Routine checks use small owned models and recorded arrays; they do not
 repeat full original-model CPU execution. [Chapter 57](../../book/ch057-deepseeks-front-door.md) adds a bounded V4.1-style
 typed recipe and chunk-safe DSML protocol parser, with a separately named
-R1 tokenizer adapter. Original V4.1 tokenizer/model qualification remains
-separate; chapter 58 is the next execution rung.
+R1 tokenizer adapter. The separate V4.1 text adapter now qualifies the original
+vocabulary, three-stage split, Unicode 16 properties and actual-token streams
+on CPU; full recipe options and original V4.1 model execution remain separate.
+Chapter 58 is the next execution rung.
 
 [Chapter 59](../../book/ch059-routers-that-balance-themselves.md) supplies the
 bounded CPU-wide V2/V3/V4.1 router equations, including grouped V3 selection,

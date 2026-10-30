@@ -44,7 +44,9 @@ round trip. The supported CPU and finite-schema profiles state their limits.
 [Chapter 56](book/ch056-execute-a-deepseek-r1-distill.md) executes the original
 DeepSeek R1 Qwen distill as a dense CPU reference. [Chapter 57](book/ch057-deepseeks-front-door.md)
 adds typed recipe boundaries, independent plain-run tokenization and a bounded
-UTF-8/DSML streaming protocol with explicit finish handling.
+UTF-8/DSML streaming protocol with explicit finish handling. Its separate
+V4.1 text adapter uses the original vocabulary/merges, Unicode 16 and no
+normalization, checked through actual token streams entirely on CPU.
 [Chapter 58](book/ch058-execute-deepseek-v2-lite.md) executes the complete original
 V2-Lite BF16 stack in compressed and expanded cache forms, with original
 generation checked against independent full-prefix equations.

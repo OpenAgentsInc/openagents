@@ -60,6 +60,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == responses || $chapter == responses/* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_responses.sh
     fi
+    if [[ $chapter == deepseek/front-v41 || $chapter == deepseek/front-v41-* ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front_v41.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == deepseek/front || $chapter == deepseek/front-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
     fi
@@ -90,6 +93,7 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == deepseek ]]; then
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
+        env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front_v41.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_router.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2_math.sh --mutate --jobs "$jobs"
         env COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2.sh --mutate --jobs "$jobs"
@@ -403,6 +407,7 @@ fi
 if [[ $deepseek == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front.sh --mutate --jobs "$jobs"
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_front_v41.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_router.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2_math.sh --mutate --jobs "$jobs"
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_deepseek_v2.sh --mutate --jobs "$jobs"

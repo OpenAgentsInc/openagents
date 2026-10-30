@@ -410,8 +410,25 @@ V4.1-style text recipe and DSML stream protocol, plus an explicitly separate
 R1 tokenizer adapter. Ordinary message/tool strings never become control IDs.
 Adjacent plain fragments join before BPE; only typed specials split runs.
 R1 has no system/DSML control mapping and refuses those boundaries. Its
-existing chapter 56 history/decoder contract is unchanged. Original V4.1
-tokenizer/model qualification and full recipe options remain separate gates.
+existing chapter 56 history/decoder contract is unchanged.
+
+`front-v41*.coax` adds `deepseek-front-v41-text-v1`: the pinned original
+129,280-entry V4.1 vocabulary and ranked byte-BPE merges, three ordered isolated
+splits, Unicode 16 properties and no normalization. Only eight explicitly typed
+controls map to original IDs; every other added ID refuses. Ordinary marker
+spellings remain byte-BPE text. An ordinary run may span borrowed fragments,
+including incomplete UTF-8 fragments, but the rejoined run must be valid UTF-8.
+Each real control starts a new independently encoded run. Complete tokens/units
+publish only after success. Caller-owned work may change on failure. Exported
+low-level span probes require a validated UTF-8 slice, an in-range scalar start
+and successful unmodified layout; checked text entry points establish these.
+
+Callers must admit immutable derived tokenizer bytes against the committed
+source/packed identities before use; the native gate uses Coax `pw_digest`.
+Typed allocations/extents, disjoint writes and borrowed text lifetimes remain
+caller duties. The original tokenizer and bounded recipe/actual-token stream
+path qualify on CPU. Complete upstream recipe options, namespaces, tool schema
+rendering/call-ID sorting, media and V4.1 model execution remain separate work.
 
 Streaming consumes typed bytes/controls once, retaining only a fixed delimiter
 window and incomplete UTF-8 scalar. It emits reasoning, content, tool names
@@ -423,6 +440,12 @@ preserve public events and return the supplied state; successful prior chunks
 remain committed. Caller-owned staging may change. The caller supplies valid
 types/extents, admitted immutable tokenizer data, live borrowed strings,
 exclusive disjoint writable storage and only initial/returned parser states.
+
+Check: `psionic/tests/check_deepseek_front_v41.sh` covers original V4.1 text,
+whole-vocabulary and Unicode digests, bounded recipe IDs, actual-token stream
+splits and native debug/release plain/ASan/UBSan. Its focused mutation unit is
+`psionic/check.sh --only deepseek/front-v41 --jobs 8`. Evidence:
+[CPU V4.1 tokenizer record](docs/verification/psionic-ch57-v41-2026-10-30.md).
 
 Check: `psionic/tests/check_deepseek_front.sh` covers owned protocol oracles,
 all 32,896 split pairs, all truncations, original BPE vectors, native

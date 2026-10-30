@@ -12,13 +12,14 @@ in Coax. Its recipe follows the text subset of the pinned
 Its parser follows typed reasoning boundaries and V4.1 DSML tool frames from
 the pinned [output parser](https://github.com/deepseek-ai/deepseek-recipe/blob/935817c66f5d6e64838f419692545f06787e485f/deepseek-recipe/src/stream/output_parser.rs).
 These sources are read-only references; their code is neither restored nor a
-runtime dependency. The checks use owned protocol fixtures and chapter 56’s
-admitted original R1 tokenizer.
+runtime dependency. The checks use owned protocol fixtures, chapter 56’s admitted original R1
+tokenizer and the original V4.1 tokenizer through its separate text adapter.
 
 The original R1 tokenizer has no V4.1 DSML token. We provide an explicitly
 named R1 encoding/decoding adapter and refuse unmapped controls; this chapter
-does not qualify the V4.1 tokenizer, checkpoint, complete upstream recipe,
-tool execution, schemas or constrained generation. Chapter 56’s existing
+keeps that adapter separate from V4.1. The V4.1 text adapter below qualifies
+its original tokenizer on CPU; the checkpoint, complete upstream recipe,
+tool execution, schemas and constrained generation remain separate. Chapter 56’s existing
 R1 history recipe remains its own versioned contract.
 
 ## Run the front door
@@ -58,6 +59,10 @@ main :: () {
     #assert df_end(s,false).status==DfStatus.incomplete;
     #assert df_end(s,true).status==DfStatus.ok;
     print("EOS without finish: incomplete; EOS with finish: complete\n");
+    table:=PT_TOY;tokens:[32]int;token_stage:[32]int;symbols:[32]int;
+    encoded:=dvf_text(table[..],"é",tokens[..],token_stage[..],symbols[..],false);
+    #assert encoded.status==PtStatus.ok && encoded.written==3;
+    print("V4.1: decomposed accent stays % owned byte tokens; DSML ID %\n",encoded.written,dvf_control(DfSpecial.dsml));
 }
 ```
 
@@ -187,3 +192,80 @@ exact book output and zero-survivor authority mutation are recorded in the
 
 Next, chapter 58 moves from the recipe to DeepSeek V2-Lite’s latent attention
 and experts. Nothing here changes the numerical qualification of a model.
+
+## The original V4.1 text tokenizer
+
+Load [front-v41.coax](../lib/deepseek/front-v41.coax) for the original V4.1
+adapter plus the bounded recipe and stream parser. Its profile is
+`deepseek-front-v41-text-v1`; R1 retains its separate adapter and history API.
+The original vocabulary has 129,280 entries and 127,741 ranked merges. The
+[packed table](../fixtures/deepseek/front-v41.pst) is admitted against its
+[recorded source and derived identities](../fixtures/deepseek/front-v41-source.json)
+before use. The native gate performs that admission with Coax `pw_digest` and
+rejects a changed byte.
+
+V4.1 does no Unicode normalization. Decomposed accents stay decomposed. It
+first isolates number runs in groups of up to three, then runs in the exact
+Han/Hiragana/Katakana ranges from its source, then applies its word,
+punctuation and whitespace split. Unmatched gaps are retained. Ranked byte BPE
+runs inside each resulting piece. Unicode **16.0.0** properties are explicit
+data: using the current regex library's newer Unicode database changed token
+boundaries for newly assigned letters. The retained regressions include both
+Unicode-16 and Unicode-17 additions.
+
+<!-- source: psionic/lib/deepseek/front-v41-token.coax v41-text -->
+```jai
+dvf_text :: (table:[]u8,text:string,output:[]int,stage:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}if !pt_text_count(text.count) {return PtResult.{status=PtStatus.size};}
+    valid:=pt_utf8_validate(text);if valid!=PtStatus.ok {return PtResult.{status=valid};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
+    at:=0;n:=0;work:=0;
+    while at<text.count {partition:=dvf_partition(table,t,text,at);part:=text[at..<partition];pos:=0;
+        while pos<part.count {end:=dvf_piece(table,t,part,pos);width:=end-pos;if !pt_piece_budget(work,width) {return PtResult.{status=PtStatus.budget};}work+=width*width;
+            r:=pt_bpe(table,t,part[pos..<end],symbols);if r.status!=PtStatus.ok {return r;}if r.written>stage.count-n {return PtResult.{status=PtStatus.capacity};}
+            for i:0..<r.written {stage[n+i]=symbols[i];}n+=r.written;if !pt_token_count(n) {return PtResult.{status=PtStatus.size};}pos=end;
+        }at=partition;
+    }
+    if n>output.count {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n,work=work};
+}
+```
+
+`dvf_encode` accepts the recipe's typed segments. Adjacent plain fragments
+rejoin before UTF-8 validation and BPE, even if a fragment ends inside a scalar.
+Only real controls end a run. Their original IDs are:
+
+| Boundary | ID |
+| --- | --- |
+| BOS / EOS | 0 / 1 |
+| System / User / Assistant | 128799 / 128803 / 128804 |
+| Think / end-think | 128821 / 128822 |
+| DSML | 128825 |
+
+`dvf_units` maps those controls back to the existing parser's typed units and
+ordinary token IDs to their exact byte strings. It refuses every other added
+ID. Literal marker spellings in ordinary text stay ordinary bytes. The adapter
+stages the complete output before publication; capacity, malformed UTF-8,
+unsupported IDs or overlap leave public output untouched. The exported
+low-level span probes require a validated UTF-8 slice, a live scalar start and
+a successful unmodified layout; the checked text entry points establish those
+preconditions. Private work may
+change. The library allocates nothing; callers own admitted immutable table
+and text lifetimes, valid extents and exclusive disjoint write storage.
+
+The default CPU gate needs no tokenizer package, network, weights or GPU:
+
+```shell
+psionic/tests/check_deepseek_front_v41.sh
+psionic/check.sh --only deepseek/front-v41 --jobs 8
+```
+
+The [supplemental verification record](../../docs/verification/psionic-ch57-v41-2026-10-30.md)
+checks all ordinary vocabulary bytes, every Unicode property lookup, independent
+text/recipe token IDs, and reasoning/tool events through actual token split
+pairs. The original tokenizer library separately checks every Unicode scalar
+probe against the pinned-data split equations. Neither gate runs model inference.
+
+This still uses the bounded `df_recipe` contract described above. Full upstream
+tool declarations/schema formatting, namespaces, call-ID sorting, numeric effort
+options, mid-conversation systems, assistant prefixes and media remain outside
+that API. Tokenization parity does not establish model-output parity or authorize
+any tool execution.

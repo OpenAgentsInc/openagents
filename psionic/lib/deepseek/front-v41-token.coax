@@ -1,0 +1,156 @@
+// deepseek-front-v41-text-v1: original three-stage split, no normalization.
+#load "front-types.coax";
+#load "../text/tokenizer.coax";
+#load "../../fixtures/deepseek/front-v41-goldens.coax";
+#authority;
+
+#forall "all ASCII prefix classes match the independent original third regex" c:0..<DVF_PROBES.count {
+    table:=PT_TOY;t:=pt_layout(table[..]);bytes:=DVF_PROBES[c];text:=cast(string)bytes[0..<DVF_PROBE_LENGTHS[c]];#assert dvf_match(table[..],t,text,0)==DVF_MATCH[c];
+    #assert dvf_piece(table[..],t,text,0)==DVF_PIECE[c];
+}
+
+#test "V4.1 isolates number triples and CJK ranges before word splitting" {
+    table:=PT_TOY;t:=pt_layout(table[..]);
+    #assert dvf_partition(table[..],t,"1234567a",0)==3 && dvf_partition(table[..],t,"1234567a",3)==6 && dvf_partition(table[..],t,"1234567a",6)==7;
+    #assert dvf_partition(table[..],t,"a中文カあb",0)==1 && dvf_partition(table[..],t,"a中文カあb",1)==13;
+    #assert dvf_cjk(0x4e00) && dvf_cjk(0x9fa5) && !dvf_cjk(0x9fa6) && dvf_cjk(0x3040) && dvf_cjk(0x309f) && !dvf_cjk(0x303f) && dvf_cjk(0x30a0) && dvf_cjk(0x30ff) && !dvf_cjk(0x3100);
+    #assert dvf_match(table[..],t,"!foo",0)==4 && dvf_match(table[..],t,"_BAR",0)==4 && dvf_match(table[..],t,"a'b",1)==3;
+    #assert dvf_match(table[..],t,"  hello",0)==1 && dvf_match(table[..],t," \t \nx",0)==4 && dvf_match(table[..],t," \t x",0)==2;
+    #assert dvf_match(table[..],t,"!!!\r\n",0)==5 && dvf_match(table[..],t,"123",0)==0;
+    #assert dvf_letter(65) && dvf_letter(90) && dvf_letter(97) && dvf_letter(122) && !dvf_letter(64) && !dvf_letter(91) && !dvf_letter(96) && !dvf_letter(123);
+    #assert dvf_punct(33) && dvf_punct(47) && dvf_punct(58) && dvf_punct(64) && dvf_punct(91) && dvf_punct(96) && dvf_punct(123) && dvf_punct(126) && !dvf_punct(32) && !dvf_punct(48) && !dvf_punct(127);
+    #assert !dvf_punct(65) && !dvf_punct(97);
+    #assert dvf_flags(table[..],t,33)==32 && dvf_flags(table[..],t,65)==1 && dvf_flags(table[..],t,0x301)==2;
+    #assert dvf_symbol(table[..],t,33) && !dvf_symbol(table[..],t,65) && !dvf_symbol(table[..],t,0x301) && !dvf_symbol(table[..],t,32);
+}
+#test "V4.1 text preserves decomposed bytes and never recognizes added spellings" {
+    table:=PT_TOY;out:[128]int;stage:[128]int;symbols:[128]int;
+    r:=dvf_text(table[..],"é",out[..],stage[..],symbols[..],false);
+    #assert r.status==PtStatus.ok && r.written==3 && out[0]==101 && out[1]==204 && out[2]==129;
+    r=dvf_text(table[..],"<think>",out[..],stage[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==7 && out[0]==60 && out[6]==62;
+    #assert dvf_text(table[..],"ab",out[0..<0],stage[..],symbols[..],false).status==PtStatus.capacity;
+    #assert dvf_text(table[..],"a",out[..],stage[0..<0],symbols[..],false).status==PtStatus.capacity;
+    #assert dvf_text(table[..],"ab",out[..],stage[..],symbols[0..<1],false).status==PtStatus.capacity;
+    #assert dvf_text(table[..],"a",out[..],stage[..],symbols[..],true).status==PtStatus.alias;
+    bad:=[1]u8.[255];out[0]=77;#assert dvf_text(table[..],cast(string)bad[..],out[..],stage[..],symbols[..],false).status==PtStatus.utf8 && out[0]==77;
+    #assert dvf_text(table[0..<0],"a",out[..],stage[..],symbols[..],false).status==PtStatus.artifact;
+    text:[65537]u8;#assert dvf_text(table[..],cast(string)text[..],out[..],stage[..],symbols[..],false).status==PtStatus.size;
+}
+#test "V4.1 typed controls bind exact original IDs and only plain fragments join" {
+    #assert dvf_control(DfSpecial.bos)==0 && dvf_control(DfSpecial.eos)==1 && dvf_control(DfSpecial.system)==128799 && dvf_control(DfSpecial.user)==128803 && dvf_control(DfSpecial.assistant)==128804 && dvf_control(DfSpecial.think)==128821 && dvf_control(DfSpecial.end_think)==128822 && dvf_control(DfSpecial.dsml)==128825;
+    table:=PT_TOY;s:=[3]DfSegment.[DfSegment.{text="a"},DfSegment.{text="b"},DfSegment.{special=true,control=DfSpecial.user}];
+    out:[64]int;stage:[64]int;temp:[64]int;raw:[128]u8;symbols:[128]int;
+    r:=dvf_encode(table[..],s[..],out[..],stage[..],temp[..],raw[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==2 && out[0]==256 && out[1]==128803 && r.work==4;
+    s[1].special=true;s[1].text="";s[1].control=DfSpecial.eos;r=dvf_encode(table[..],s[..],out[..],stage[..],temp[..],raw[..],symbols[..],false);#assert r.status==PtStatus.ok && r.written==3 && out[0]==97 && out[1]==1;
+    s[1].text="x";out[0]=77;#assert dvf_encode(table[..],s[..],out[..],stage[..],temp[..],raw[..],symbols[..],false).status==PtStatus.unsupported && out[0]==77;
+    s[1]=DfSegment.{text="ab"};#assert dvf_encode(table[..],s[..],out[..],stage[..],temp[..],raw[0..<2],symbols[..],false).status==PtStatus.capacity;
+    #assert dvf_encode(table[..],s[..],out[..],stage[..],temp[..],raw[..],symbols[..],true).status==PtStatus.alias;
+}
+#test "V4.1 decoder refuses unsupported added IDs and stages complete parser units" {
+    table:=PT_TOY;ids:=[2]int.[128825,128822];out:[64]int;stage:[64]int;r:=dvf_units(table[..],ids[..],out[..],stage[..],false);#assert r.status==PtStatus.ok && r.written==2 && out[0]==263 && out[1]==262;
+    ids[0]=256;ids[1]=1;r=dvf_units(table[..],ids[..],out[..],stage[..],false);#assert r.status==PtStatus.ok && r.written==3 && out[0]==97 && out[1]==98 && out[2]==257;
+    ids[0]=128000;out[0]=77;#assert dvf_units(table[..],ids[..],out[..],stage[..],false).status==PtStatus.unsupported && out[0]==77;
+    ids[0]=-1;#assert dvf_units(table[..],ids[..],out[..],stage[..],false).status==PtStatus.range;
+    ids[0]=97;#assert dvf_units(table[..],ids[..],out[0..<1],stage[..],false).status==PtStatus.capacity && out[0]==77;
+    #assert dvf_units(table[..],ids[..],out[..],stage[0..<1],false).status==PtStatus.capacity;
+    #assert dvf_units(table[..],ids[..],out[..],stage[..],true).status==PtStatus.alias;
+    #assert dvf_ordinary(3) && dvf_ordinary(127999) && !dvf_ordinary(2) && !dvf_ordinary(128000);
+}
+
+#test "V4.1 aggregate budgets exact capacities and every decoded control have independent bounds" {
+    bytes:[65537]u8;segments:[513]DfSegment;
+    #assert dvf_segments(segments[0..<512])==PtStatus.ok && dvf_segments(segments[..])==PtStatus.size;
+    segments[0].text=cast(string)bytes[0..<65536];#assert dvf_segments(segments[0..<1])==PtStatus.ok;
+    segments[0].text=cast(string)bytes[..];#assert dvf_segments(segments[0..<1])==PtStatus.size;
+    segments[0].text=cast(string)bytes[0..<32768];segments[1].text=segments[0].text;#assert dvf_segments(segments[0..<2])==PtStatus.ok;
+    segments[1].text=cast(string)bytes[0..<32769];#assert dvf_segments(segments[0..<2])==PtStatus.size;
+    #assert dvf_units_size(4096) && !dvf_units_size(4097);
+    #assert dvf_work(16777215,1) && !dvf_work(16777216,1) && dvf_work(0,16777216) && !dvf_work(0,16777217);
+    table:=PT_TOY;out:[16]int;stage:[16]int;temp:[16]int;symbols:[16]int;raw:[16]u8;ids:[8]int;for k:0..<8 {ids[k]=dvf_control(cast(DfSpecial)k);}
+    r:=dvf_units(table[..],ids[..],out[0..<8],stage[0..<8],false);#assert r.status==PtStatus.ok && r.written==8;for k:0..<8 {#assert out[k]==256+k;}
+    ids[0]=97;ids[1]=256;r=dvf_units(table[..],ids[0..<2],out[0..<3],stage[0..<3],false);#assert r.status==PtStatus.ok && r.written==3 && out[0]==97 && out[1]==97 && out[2]==98;
+    #assert dvf_units(table[..],ids[0..<2],out[..],stage[0..<2],false).status==PtStatus.capacity;
+    ids[0]=0;#assert dvf_units(table[..],ids[0..<1],out[0..<0],stage[0..<0],false).status==PtStatus.capacity;
+    ids[0]=999;#assert dvf_units(table[..],ids[0..<1],out[..],stage[..],false).status==PtStatus.range;
+    #assert dvf_units(table[0..<0],ids[..],out[..],stage[..],false).status==PtStatus.artifact;
+    r=dvf_text(table[..],"a b",out[0..<3],stage[0..<3],symbols[..],false);#assert r.status==PtStatus.ok && r.written==3 && r.work==5;
+    #assert dvf_text(table[..],"a b",out[..],stage[0..<2],symbols[..],false).status==PtStatus.capacity;
+    segments[0]=DfSegment.{text="a"};segments[1]=DfSegment.{text="b"};
+    r=dvf_encode(table[..],segments[0..<2],out[0..<1],stage[..],temp[..],raw[0..<2],symbols[..],false);#assert r.status==PtStatus.ok && r.written==1 && r.work==4 && out[0]==256;
+    segments[0]=DfSegment.{special=true,control=DfSpecial.bos};r=dvf_encode(table[..],segments[0..<1],out[0..<1],stage[0..<1],temp[..],raw[..],symbols[..],false);#assert r.status==PtStatus.ok && out[0]==0;
+    #assert dvf_encode(table[..],segments[0..<1],out[0..<0],stage[..],temp[..],raw[..],symbols[..],false).status==PtStatus.capacity;
+    #assert dvf_encode(table[..],segments[0..<1],out[..],stage[0..<0],temp[..],raw[..],symbols[..],false).status==PtStatus.capacity;
+    segments[0].text="a";#assert dvf_encode(table[..],segments[0..<1],out[..],stage[..],temp[..],raw[..],symbols[..],false).status==PtStatus.unsupported;
+    segments[0]=DfSegment.{text="a"};#assert dvf_encode(table[0..<0],segments[0..<1],out[..],stage[..],temp[..],raw[..],symbols[..],false).status==PtStatus.artifact;
+    segments[0]=DfSegment.{text="xy"};segments[1]=DfSegment.{text="az"};r=dvf_encode(table[..],segments[0..<2],out[0..<4],stage[0..<4],temp[..],raw[0..<4],symbols[..],false);#assert r.status==PtStatus.ok && r.work==16 && r.written==4 && out[0]==120 && out[1]==121 && out[2]==97 && out[3]==122;
+}
+
+dvf_cjk :: (cp:int)->bool {return (cp>=0x4e00 && cp<=0x9fa5) || (cp>=0x3040 && cp<=0x30ff);}
+dvf_letter :: (cp:int)->bool {return (cp>=65 && cp<=90) || (cp>=97 && cp<=122);}
+dvf_punct :: (cp:int)->bool {return (cp>=33 && cp<=47) || (cp>=58 && cp<=64) || (cp>=91 && cp<=96) || (cp>=123 && cp<=126);}
+dvf_flags :: (table:[]u8,t:PtLayout,cp:int)->int {f:=pt_prop(table,t,cp).flags;if dvf_punct(cp) {f |= 32;}return f;}
+dvf_symbol :: (table:[]u8,t:PtLayout,cp:int)->bool {return (dvf_flags(table,t,cp)&32)!=0;}
+// The first two isolated splits are disjoint: triples of numbers, then runs
+// in the source's exact Han/Hiragana/Katakana ranges, then everything else.
+dvf_partition :: (table:[]u8,t:PtLayout,s:string,at:int)->int #export_c {
+    r:=pt_rune(s,at);number:=pt_has(table,t,r.cp,4);cjk:=dvf_cjk(r.cp);end:=r.next;n:=1;
+    while end<s.count {q:=pt_rune(s,end);if pt_has(table,t,q.cp,4)!=number || dvf_cjk(q.cp)!=cjk || (number && n==3) {break;}end=q.next;n+=1;}return end;
+}
+// Third source regex, anchored at a known UTF-8 scalar. Returns at when none
+// of its alternatives matches; isolated Split retains such unmatched gaps.
+dvf_match :: (table:[]u8,t:PtLayout,s:string,at:int)->int #export_c {
+    r:=pt_rune(s,at);ascii:=r.next;
+    if dvf_punct(r.cp) {while ascii!=s.count {q:=pt_rune(s,ascii);if !dvf_letter(q.cp) {break;}ascii=q.next;}if ascii!=r.next {return ascii;}}
+    // A leading letter/mark already belongs to the word. For other scalars,
+    // only the optional non-newline, non-punctuation/symbol prefix can join it.
+    word:=pt_run(table,t,s,at,3,true);if word!=at {return word;}
+    if r.cp!=13 && r.cp!=10 && !dvf_symbol(table,t,r.cp) {prefixed:=pt_run(table,t,s,r.next,3,true);if prefixed!=r.next {return prefixed;}}
+    start:=ifx r.cp==32 then r.next else at;punct:=start;
+    while punct!=s.count {q:=pt_rune(s,punct);if !dvf_symbol(table,t,q.cp) {break;}punct=q.next;}
+    if punct!=start {while punct!=s.count {q:=pt_rune(s,punct);if q.cp!=13 && q.cp!=10 {break;}punct=q.next;}return punct;}
+    space:=at;last:=at;newline:=at;while space!=s.count {q:=pt_rune(s,space);if !pt_has(table,t,q.cp,8) {break;}last=space;space=q.next;if q.cp==13 || q.cp==10 {newline=space;}}
+    if newline!=at {return newline;}if space==s.count {return space;}if last!=at {return last;}return space;
+}
+dvf_piece :: (table:[]u8,t:PtLayout,s:string,at:int)->int #export_c {
+    end:=dvf_match(table,t,s,at);if end!=at {return end;}gap:=pt_rune(s,at).next;
+    while gap!=s.count {if dvf_match(table,t,s,gap)!=gap {break;}gap=pt_rune(s,gap).next;}return gap;
+}
+// book:begin v41-text
+dvf_text :: (table:[]u8,text:string,output:[]int,stage:[]int,symbols:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}if !pt_text_count(text.count) {return PtResult.{status=PtStatus.size};}
+    valid:=pt_utf8_validate(text);if valid!=PtStatus.ok {return PtResult.{status=valid};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}
+    at:=0;n:=0;work:=0;
+    while at<text.count {partition:=dvf_partition(table,t,text,at);part:=text[at..<partition];pos:=0;
+        while pos<part.count {end:=dvf_piece(table,t,part,pos);width:=end-pos;if !pt_piece_budget(work,width) {return PtResult.{status=PtStatus.budget};}work+=width*width;
+            r:=pt_bpe(table,t,part[pos..<end],symbols);if r.status!=PtStatus.ok {return r;}if r.written>stage.count-n {return PtResult.{status=PtStatus.capacity};}
+            for i:0..<r.written {stage[n+i]=symbols[i];}n+=r.written;if !pt_token_count(n) {return PtResult.{status=PtStatus.size};}pos=end;
+        }at=partition;
+    }
+    if n>output.count {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n,work=work};
+}
+// book:end v41-text
+dvf_control :: (control:DfSpecial)->int {ids:=[8]int.[0,1,128799,128803,128804,128821,128822,128825];return ids[cast(int)(cast(u8)control)];}
+dvf_ordinary :: (id:int)->bool {return id>=3 && id<128000;}
+dvf_units_size :: (n:int)->bool {return n<=4096;}
+dvf_work :: (used:int,more:int)->bool {return more<=16777216-used;}
+dvf_segments :: (segments:[]DfSegment)->PtStatus {
+    if segments.count>512 {return PtStatus.size;}total:=0;for s:segments {if s.special {if s.text.count!=0 {return PtStatus.unsupported;}}else {if s.text.count>65536-total {return PtStatus.size;}total+=s.text.count;}}return PtStatus.ok;
+}
+dvf_encode :: (table:[]u8,segments:[]DfSegment,output:[]int,stage:[]int,temp:[]int,raw:[]u8,symbols:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}valid:=dvf_segments(segments);if valid!=PtStatus.ok {return PtResult.{status=valid};}n:=0;bytes:=0;work:=0;
+    for i:0..<segments.count+1 {control:=i==segments.count;if !control {control=segments[i].special;}
+        if control {if bytes!=0 {r:=dvf_text(table,cast(string)raw[0..<bytes],stage[n..<stage.count],temp,symbols,false);if r.status!=PtStatus.ok {return r;}if !dvf_work(work,r.work) {return PtResult.{status=PtStatus.budget};}work+=r.work;n+=r.written;bytes=0;}
+            if i!=segments.count {if n==stage.count {return PtResult.{status=PtStatus.capacity};}stage[n]=dvf_control(segments[i].control);n+=1;}
+        }else {text:=segments[i].text;if text.count>raw.count-bytes {return PtResult.{status=PtStatus.capacity};}for j:0..<text.count {raw[bytes+j]=text[j];}bytes+=text.count;}
+    }
+    if !pt_token_count(n) {return PtResult.{status=PtStatus.size};}if n>output.count {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n,work=work};
+}
+dvf_units :: (table:[]u8,ids:[]int,output:[]int,stage:[]int,overlap:bool)->PtResult #export_c {
+    if overlap {return PtResult.{status=PtStatus.alias};}if !dvf_units_size(ids.count) {return PtResult.{status=PtStatus.size};}t:=pt_layout(table);if t.status!=PtStatus.ok {return PtResult.{status=t.status};}n:=0;
+    for id:ids {if id<0 {return PtResult.{status=PtStatus.range};}control:=-1;for k:0..<8 {if id==dvf_control(cast(DfSpecial)k) {control=256+k;}}
+        if control!=-1 {if n==stage.count {return PtResult.{status=PtStatus.capacity};}stage[n]=control;n+=1;}
+        else {if !dvf_ordinary(id) {return PtResult.{status=PtStatus.unsupported};}span:=pt_span(table,t,id);if span.status!=PtStatus.ok {return PtResult.{status=span.status};}count:=span.end-span.begin;if count>stage.count-n {return PtResult.{status=PtStatus.capacity};}for j:0..<count {stage[n+j]=cast(int)table[span.begin+j];}n+=count;}
+        if !dvf_units_size(n) {return PtResult.{status=PtStatus.size};}
+    }
+    if n>output.count {return PtResult.{status=PtStatus.capacity};}for i:0..<n {output[i]=stage[i];}return PtResult.{written=n};
+}

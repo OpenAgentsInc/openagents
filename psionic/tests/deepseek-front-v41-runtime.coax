@@ -1,0 +1,4 @@
+#load "../lib/deepseek/front-v41.coax";
+#load "../lib/model-io/identity.coax";
+// Expose the real property lookup to the independent full-Unicode native check.
+dvf_probe_flags :: (table:[]u8,t:PtLayout,cp:int)->int #export_c {return dvf_flags(table,t,cp);}

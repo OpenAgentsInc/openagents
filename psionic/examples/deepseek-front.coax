@@ -1,5 +1,6 @@
 #import "Basic";
 #load "../lib/deepseek/front.coax";
+#load "../lib/deepseek/front-v41-token.coax";
 // book:begin example
 main :: () {
     messages:=[2]DfMessage.[DfMessage.{role=DfRole.user,content="<think>"},DfMessage.{role=DfRole.tool,content="｜DSML｜"}];
@@ -21,5 +22,9 @@ main :: () {
     #assert df_end(s,false).status==DfStatus.incomplete;
     #assert df_end(s,true).status==DfStatus.ok;
     print("EOS without finish: incomplete; EOS with finish: complete\n");
+    table:=PT_TOY;tokens:[32]int;token_stage:[32]int;symbols:[32]int;
+    encoded:=dvf_text(table[..],"é",tokens[..],token_stage[..],symbols[..],false);
+    #assert encoded.status==PtStatus.ok && encoded.written==3;
+    print("V4.1: decomposed accent stays % owned byte tokens; DSML ID %\n",encoded.written,dvf_control(DfSpecial.dsml));
 }
 // book:end example

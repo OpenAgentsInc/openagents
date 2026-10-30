@@ -1,0 +1,249 @@
+{
+  "schema": 1,
+  "profile": "deepseek-front-v41-text-v1",
+  "date": "2026-10-30",
+  "base_commit": "7619437b82a0fa615caf6e302d39464940470a97",
+  "scope": "Original V4.1 CPU text tokenizer, existing bounded recipe and actual-token stream; complete upstream recipe/model execution excluded",
+  "gpu_interaction": false,
+  "model_inference": false,
+  "services_interrupted": false,
+  "compiler": {
+    "version": "coax0 0.23.0",
+    "bytes": 9105288,
+    "sha256": "03498a6cf5a3df42c9ea7ed734efd89de6a36dbd1971eae5856d13c7d476ab93"
+  },
+  "native_cc": {
+    "version": "gcc (GCC) 15.2.0",
+    "path": "/nix/store/hbsz2ngi9ixbhd9na1xagh2yc8qnmj7y-gcc-wrapper-15.2.0/bin/gcc",
+    "bytes": 10845,
+    "sha256": "de18d4626aecd4386163e674e3c40937427ac1deb18653c049edcf03994af9b6"
+  },
+  "native_flags": [
+    "-std=c11",
+    "-O0 or -O3",
+    "-g",
+    "-ffp-contract=off",
+    "-fno-fast-math",
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wno-unused-function",
+    "-Wno-unused-parameter",
+    "-Wno-unknown-pragmas"
+  ],
+  "sanitizers": [
+    "address",
+    "undefined",
+    "detect_leaks=1",
+    "halt_on_error=1"
+  ],
+  "external_reference": {
+    "tokenizers": "0.22.2",
+    "regex": "2026.9.29",
+    "unicode_primary_data": "16.0.0",
+    "all_scalar_probe": "a + scalar + scalar + b",
+    "scalar_probes": 1112064,
+    "text_cases": 288,
+    "recipe_cases": 8,
+    "note": "External parity body and data unchanged by later CLI argument validation and metadata additions; passing result reused",
+    "added_token_spelling_matching": false,
+    "original_fields_retained": [
+      "vocabulary",
+      "merges",
+      "normalizer",
+      "pre-tokenizer"
+    ]
+  },
+  "checks": {
+    "coax_groups_debug": 20,
+    "coax_groups_release": 20,
+    "owned_regex_probes": 780,
+    "mutants": 980,
+    "survivors": 0,
+    "ordinary_vocabulary_entries": 127997,
+    "unicode_code_points": 1114112,
+    "actual_protocol_token_ids": 84,
+    "token_split_pairs": 3655,
+    "independent_events": 104,
+    "native_variants": 4
+  },
+  "inputs": {
+    "coax/lib/crypto/bytes.coax": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "psionic/examples/deepseek-front.coax": "0b59033301ba8e46f5add40e9094cb01018cefa3afd1f124684cd7902ee5634d",
+    "psionic/fixtures/deepseek-front.out": "4b2ca33f6cd381ccfbead0eab607cd2f489ab963cb269fce290527df31590c6d",
+    "psionic/fixtures/deepseek/engram-tokenizer.json.gz": "d0a53c1a5e7f998a5f42b4f428888da70ed47ad33eb2a8afe32294f39f17ef5a",
+    "psionic/fixtures/deepseek/front-goldens.coax": "38885225332991977179119ed0b25cec06e45872061c022048fee162af4fa06d",
+    "psionic/fixtures/deepseek/front-goldens.h": "ebfc9015bb612a5e1a916b3cb07514c933e33c4defa098da03129b966167b9b2",
+    "psionic/fixtures/deepseek/front-v41-goldens.coax": "7ab0477dc8c5cffa134655401be6fd07f9b209cd1dc2c9662fe0aa5b57af59bd",
+    "psionic/fixtures/deepseek/front-v41-goldens.json.gz": "f47e5781e161ae1cd953d1f2e4870c22e00ed5a4513d3d2f8c9b4573e1af7654",
+    "psionic/fixtures/deepseek/front-v41-source.json": "a8ab3cc45088cf2f8f671d61b3a48d8f806ffe84a7806bd1877cca326c18001f",
+    "psionic/fixtures/deepseek/front-v41-unicode-data.txt.gz": "daeb4dbe494e9b5be98d4ec4912680a6f1773eefbd4b44f1ab74a8160e567c7e",
+    "psionic/fixtures/deepseek/front-v41-unicode-props.txt.gz": "49ab7a5346753d804033299f2be003e9ede71502ea2e15d7e4026bb8ad6d2390",
+    "psionic/fixtures/deepseek/front-v41.pst": "8f57ee76c6f236363cb903413bba01b3464c36cbc4cff9291d009996e504e104",
+    "psionic/fixtures/deepseek/original/targets.coax": "5e6b7b02b91d5513555e8deed4b328a4cbf9afd9a9d3750aa3bc20cac76e5776",
+    "psionic/fixtures/deepseek/text-goldens.coax": "5c6bad70125275ecdf0ec7d3426ffec52d5c8155c4e936e5a163ed06ffc78c41",
+    "psionic/fixtures/deepseek/tiny/model.coax": "c4f7e37643fe882f9d41c61f2cfe87b28e5a8dfea0d0a5343e3b95a9f5fd039a",
+    "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+    "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+    "psionic/lib/deepseek/front-encode.coax": "d6974c3152fab37e629f01070b8a4f6b6895fc3feca68093f65b7a77cdb32ba1",
+    "psionic/lib/deepseek/front-recipe.coax": "fe427c0ac1f794396ba82ca17b8d752bccb24b7f25500855ef6ca5aa2afb1fc0",
+    "psionic/lib/deepseek/front-stream.coax": "444c54a81687d211a7eef196f454fad12c78305e09e564bbfa7577446c375560",
+    "psionic/lib/deepseek/front-types.coax": "457cad0fcc98d173f889aa9d169787512afb73f7aae450fe0c1c679cc1778ac8",
+    "psionic/lib/deepseek/front-v41-token.coax": "1c2836d71da04417f75baa77ff221b8ecb1a3b26796d8ccf0c0a3d50962fff68",
+    "psionic/lib/deepseek/front-v41.coax": "dc63febb6bb6d64951adc13fb70d8d7395a27ee88ced9459859e47d78cfb517f",
+    "psionic/lib/deepseek/front.coax": "642a4eab8fd7b8df53dd481a752b5c28d0d602d04de3aa2591e058a49c6331ec",
+    "psionic/lib/deepseek/math.coax": "46c5191d9d0222b9a7283c6acef89c62995cbd27e6aadb04e67493ce14b0005d",
+    "psionic/lib/deepseek/plan.coax": "c73ddf0b11d50d97ca027cc55a6f36ff0cf089b5a3b65812f4e0a3517ddb3466",
+    "psionic/lib/deepseek/text.coax": "8ba0cfada1feccee79d9e044c5c963675bae5043c4bbce6498173cc9ad0c96dd",
+    "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+    "psionic/lib/deepseek/weights.coax": "1ab3beb4d47a39a69f0eca080ccade04efaf197778b11c5c473dda6671bf2f8c",
+    "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+    "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+    "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681",
+    "psionic/platform/deepseek-front-v41-memory.c": "052ea85c9255356b5c9f5048a0e7cc7d2c1bf87021a3efcf2dfea4a8b83e7651",
+    "psionic/platform/deepseek-front-v41-memory.h": "335312ce46dac2706ed972bd7e7edb1773c7bd9b3216f7dcc7705c42d1f0b690",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/check_deepseek_front_v41.sh": "ef2c18a68752182fae93ed33332ea560d110f519feb4916ec668d738d5a994c1",
+    "psionic/tests/deepseek-front-v41-runtime.coax": "9603b5963fc3e8ddf83f7f394a310e831d2266038110e69b4916d102db7d703a",
+    "psionic/tests/deepseek_front_v41_artifacts.py": "904266aab34c4a43e19e81d7a1f933e94dcee600dbc66fab549c9a242e4889ee",
+    "psionic/tests/deepseek_front_v41_native.c": "27f95134aa9227488879be6653de1701001b40eeb1c304ffcf4ce1566148b7f8",
+    "psionic/tests/text_fixtures.py": "e8ce7e93659cdc813674340c69049cf0d2d978296062da2108f972ba4f13719e"
+  },
+  "unchanged_initial_ch57_inputs": {
+    "psionic/lib/deepseek/front.coax": "642a4eab8fd7b8df53dd481a752b5c28d0d602d04de3aa2591e058a49c6331ec",
+    "psionic/lib/deepseek/front-recipe.coax": "fe427c0ac1f794396ba82ca17b8d752bccb24b7f25500855ef6ca5aa2afb1fc0",
+    "psionic/lib/deepseek/front-types.coax": "457cad0fcc98d173f889aa9d169787512afb73f7aae450fe0c1c679cc1778ac8",
+    "psionic/lib/deepseek/front-stream.coax": "444c54a81687d211a7eef196f454fad12c78305e09e564bbfa7577446c375560",
+    "psionic/fixtures/deepseek/front-goldens.coax": "38885225332991977179119ed0b25cec06e45872061c022048fee162af4fa06d",
+    "psionic/lib/deepseek/front-encode.coax": "d6974c3152fab37e629f01070b8a4f6b6895fc3feca68093f65b7a77cdb32ba1",
+    "psionic/lib/deepseek/text.coax": "8ba0cfada1feccee79d9e044c5c963675bae5043c4bbce6498173cc9ad0c96dd",
+    "psionic/lib/deepseek/math.coax": "46c5191d9d0222b9a7283c6acef89c62995cbd27e6aadb04e67493ce14b0005d",
+    "psionic/lib/deepseek/types.coax": "d4e5f85516b38cf129ebe823d003e320180d47f1e3f0124732ada2878e8ef803",
+    "psionic/lib/qwen-matvec.coax": "65696f5d3a116c7554a63a608d0b1578a67bfe482d93d9dc8c9baf9739464cae",
+    "psionic/lib/ops.coax": "4ddd29a4461ded602f304331afa6557ace2bdb2ea856432ef73fe6638e1c5dc1",
+    "psionic/lib/ops-contract.coax": "8120be9d305264a9fc967dbf6d251da54120acc4b8151e28d747a11233b042a8",
+    "psionic/lib/tensor.coax": "e1fa1663128cc34c946c20b8002e0fbdd0f5568381dcf10b5a8249743634b3c6",
+    "psionic/lib/text/tokenizer.coax": "b028b1b42d2f28605413d1340c3cfcda322bf52aed4574679f184d2e285b2027",
+    "psionic/lib/text/unicode.coax": "8d7a50b85f4fc9bf50a7522a005dc39c7d61499cc0116aa644ac47e5eacbf681",
+    "psionic/fixtures/text/ch05/toy.coax": "4eb8fbdb4f28b50e89615d3eebb872143e8e5cdfd8bc01e586869ad9ac7c6547",
+    "psionic/fixtures/text/ch05/goldens.coax": "ba5b630b1847f7f8250294574b2206d36559687c3eaf303dac188417416736b0",
+    "psionic/lib/deepseek/weights.coax": "1ab3beb4d47a39a69f0eca080ccade04efaf197778b11c5c473dda6671bf2f8c",
+    "psionic/lib/deepseek/plan.coax": "c73ddf0b11d50d97ca027cc55a6f36ff0cf089b5a3b65812f4e0a3517ddb3466",
+    "psionic/lib/model-io/identity.coax": "e05ecb80ef8b95c96b69b7a4aa13052ec486204caa60c9616f4c2f5f11a79f6d",
+    "psionic/lib/model-io/format.coax": "0ca975d3515a0d9e86fbcc6af669e7ce9a49c97782dd4b09c64f42be8a21e2ca",
+    "coax/lib/crypto/sha256.coax": "93f8c6b44d8f9b9541d939c86f8e075d17fbf6d7132a84398d0d0f1d5a90d2b9",
+    "coax/lib/crypto/bytes.coax": "f1427b0d05c28c4f64800b1a64b11125c8087ecd4edd573a2e3a706182f543a1",
+    "coax/lib/proto/fingerprint.coax": "94142391e7e8122c4314443a878d65e61a1318cc5de2430f7d1ac826d620728a",
+    "psionic/fixtures/deepseek/tiny/model.coax": "c4f7e37643fe882f9d41c61f2cfe87b28e5a8dfea0d0a5343e3b95a9f5fd039a",
+    "psionic/fixtures/deepseek/original/targets.coax": "5e6b7b02b91d5513555e8deed4b328a4cbf9afd9a9d3750aa3bc20cac76e5776",
+    "psionic/fixtures/deepseek/text-goldens.coax": "5c6bad70125275ecdf0ec7d3426ffec52d5c8155c4e936e5a163ed06ffc78c41",
+    "psionic/platform/deepseek-front-memory.c": "2e30008ea0268a364a2ca706d459a45e14e9a8c4e1b50df928e18a7d55517234",
+    "psionic/platform/deepseek-front-memory.h": "481e671c3c0980cca73624cf1d0a4aa73fca9d2573c615a50c1a1bbe28925c24",
+    "psionic/platform/spans.h": "adaa495e1391e5ac1af49ca70747587fd98d5323053af558955c873e9e99211e",
+    "psionic/tests/deepseek_front_native.c": "bc6f03e8d286515031143412ae359cb09ea65b6882fd6be4e531ca46ce23cacb",
+    "psionic/tests/deepseek_front_fixture.py": "34b22a747fe2fc75c1709d7eec082e4db12b2d519aa42f4c291cf235a541f6f0",
+    "psionic/tests/check_deepseek_front.sh": "8f2bb69ecbed87bfaeb9da1996c13fcdd1286a97f84daa90fae1b910ca8a2501",
+    "psionic/fixtures/deepseek/front-goldens.h": "ebfc9015bb612a5e1a916b3cb07514c933e33c4defa098da03129b966167b9b2",
+    "psionic/fixtures/deepseek/text-goldens.h": "2bf52fffe080ca8f265d68403ca8193a0d957df3f243da8b9c8212ea4983ce72",
+    "psionic/fixtures/deepseek/original/r1.pst": "431e00e6be54a8bb51003c661c8d78ab0bf53c552d604eeb7733603eef75906a"
+  },
+  "executed_snapshots": {
+    "psionic/fixtures/deepseek/front-v41-executed/debug.c.gz": {
+      "bytes": 32645,
+      "sha256": "082b49485efc0d867558b6945d093a5869c17ba545b2af08ea94c42048073c45",
+      "raw_bytes": 227500,
+      "raw_sha256": "cf5c4d6885f23dd3f8d17bfeb9df3911eb0198095a307cb56bf0762834bc94d6"
+    },
+    "psionic/fixtures/deepseek/front-v41-executed/debug.h.gz": {
+      "bytes": 3703,
+      "sha256": "a9a3399165eb715a3b51c5e89bb8890a53ea1d6ebbfad3ca116b0635ed657ccd",
+      "raw_bytes": 20135,
+      "raw_sha256": "c3d08bd969bd3a4737e90e8fb46f8f5369c652883a4534d93adc7fa32292d45e"
+    },
+    "psionic/fixtures/deepseek/front-v41-executed/release.c.gz": {
+      "bytes": 32231,
+      "sha256": "f0714c2337ff911c0736e890e7152d8303cb8a8dc1856c788b142c70ea49b282",
+      "raw_bytes": 226519,
+      "raw_sha256": "377d5716f9ffc306e44e72ac9a7ebefc7f9d7b3200287db970be67891992456c"
+    },
+    "psionic/fixtures/deepseek/front-v41-executed/release.h.gz": {
+      "bytes": 3703,
+      "sha256": "a9a3399165eb715a3b51c5e89bb8890a53ea1d6ebbfad3ca116b0635ed657ccd",
+      "raw_bytes": 20135,
+      "raw_sha256": "c3d08bd969bd3a4737e90e8fb46f8f5369c652883a4534d93adc7fa32292d45e"
+    },
+    "psionic/fixtures/deepseek/front-v41-executed/goldens.h.gz": {
+      "bytes": 20646,
+      "sha256": "e4886f0e48af7137d00bebe6554188b9e3d2cca98de1df74bb174ca7b7ac2334",
+      "raw_bytes": 106544,
+      "raw_sha256": "6747a7ea8d2d6419b1c8a60209aa2dc475507c9e88bb829672eb83123e240757"
+    },
+    "psionic/fixtures/deepseek/front-v41-executed/host.c.gz": {
+      "bytes": 3276,
+      "sha256": "ec8487b13f9b64eb625e5bcb464da62546df665bf63d3ffd1db082658df28dfc",
+      "raw_bytes": 10809,
+      "raw_sha256": "27f95134aa9227488879be6653de1701001b40eeb1c304ffcf4ce1566148b7f8"
+    }
+  },
+  "native_binaries": {
+    "debug-plain": {
+      "bytes": 493752,
+      "sha256": "b9f71b9ccb3ce11fc5e716b5c67e44a2eee77751b77d4f700aae9516e97e8253"
+    },
+    "debug-sanitized": {
+      "bytes": 1693664,
+      "sha256": "454c827ba4d41704030a7af94e4a7757d7b00726e05c226d13a3075fb8350fe6"
+    },
+    "release-plain": {
+      "bytes": 690296,
+      "sha256": "00847e9fdf4afb7bf4adc351dc2f81e51260c6bf56c6f9163cda20e6e47d828e"
+    },
+    "release-sanitized": {
+      "bytes": 1837552,
+      "sha256": "d62a9a909a6587998e65d9407ca4c3722130796edb50ace3bbb9fb8fee7ad240"
+    }
+  },
+  "logs": {
+    "unit-debug": "ok   #forall all ASCII prefix classes match the independent original third regex (780 cases, 6513416 steps)\nok   #test V4.1 isolates number triples and CJK ranges before word splitting (1 case, 81318 steps)\nok   #test V4.1 text preserves decomposed bytes and never recognizes added spellings (1 case, 113025 steps)\nok   #test V4.1 typed controls bind exact original IDs and only plain fragments join (1 case, 13550 steps)\nok   #test V4.1 decoder refuses unsupported added IDs and stages complete parser units (1 case, 8643 steps)\nok   #test V4.1 aggregate budgets exact capacities and every decoded control have independent bounds (1 case, 136584 steps)\nok   #test ranked BPE uses merge order and leftmost equal-rank ties (1 case, 116156 steps)\nok   #test added tokens bypass ordinary BPE, capacity and malformed inputs never publish (1 case, 61128 steps)\nok   #test Qwen splitting distinguishes spaces, newlines, contractions, marks and single digits (1 case, 52591 steps)\nok   #forall independent Unicode-regex and priority-queue oracle vectors (60 cases, 12394843 steps)\nok   #forall independent pretokenizer span oracle (172 cases, 11224649 steps)\nok   #test contractions are prefix matches with Unicode case folding (1 case, 2697 steps)\nok   #test vocabulary, merge records, exact capacities and leftmost ties are bounded (1 case, 58157 steps)\nok   #test a newly created lower-rank pair takes priority over a remaining tie (1 case, 9764 steps)\nok   #test table sections and byte budgets precede any record access (1 case, 4184 steps)\nok   #test UTF8 scalar boundaries, continuation, overlong, surrogate and maximum rules (1 case, 3375 steps)\nok   #test NFC composes, orders stable classes and preserves destination on failure (1 case, 63755 steps)\nok   #test balanced lookup steps, UTF8 lead classes and exact scratch capacities (1 case, 104718 steps)\nok   #test leading marks, class-one ordering and bounded combining runs (1 case, 1443483 steps)\nok   #test first canonical rows, starter resets and composition blocking remain observable (1 case, 4941189 steps)\n20 checks, 20 passed, 0 failed\n",
+    "unit-release": "ok   #forall all ASCII prefix classes match the independent original third regex (780 cases, 6513416 steps)\nok   #test V4.1 isolates number triples and CJK ranges before word splitting (1 case, 81318 steps)\nok   #test V4.1 text preserves decomposed bytes and never recognizes added spellings (1 case, 113025 steps)\nok   #test V4.1 typed controls bind exact original IDs and only plain fragments join (1 case, 13550 steps)\nok   #test V4.1 decoder refuses unsupported added IDs and stages complete parser units (1 case, 8643 steps)\nok   #test V4.1 aggregate budgets exact capacities and every decoded control have independent bounds (1 case, 136584 steps)\nok   #test ranked BPE uses merge order and leftmost equal-rank ties (1 case, 116156 steps)\nok   #test added tokens bypass ordinary BPE, capacity and malformed inputs never publish (1 case, 61128 steps)\nok   #test Qwen splitting distinguishes spaces, newlines, contractions, marks and single digits (1 case, 52591 steps)\nok   #forall independent Unicode-regex and priority-queue oracle vectors (60 cases, 12394843 steps)\nok   #forall independent pretokenizer span oracle (172 cases, 11224649 steps)\nok   #test contractions are prefix matches with Unicode case folding (1 case, 2697 steps)\nok   #test vocabulary, merge records, exact capacities and leftmost ties are bounded (1 case, 58157 steps)\nok   #test a newly created lower-rank pair takes priority over a remaining tie (1 case, 9764 steps)\nok   #test table sections and byte budgets precede any record access (1 case, 4184 steps)\nok   #test UTF8 scalar boundaries, continuation, overlong, surrogate and maximum rules (1 case, 3375 steps)\nok   #test NFC composes, orders stable classes and preserves destination on failure (1 case, 63755 steps)\nok   #test balanced lookup steps, UTF8 lead classes and exact scratch capacities (1 case, 104718 steps)\nok   #test leading marks, class-one ordering and bounded combining runs (1 case, 1443483 steps)\nok   #test first canonical rows, starter resets and composition blocking remain observable (1 case, 4941189 steps)\n20 checks, 20 passed, 0 failed\n",
+    "mutation": "980 mutants, 980 killed, 0 survived\n",
+    "external-reference": "V4.1 external Unicode scalar probes: 1112064 original Rust and pinned Unicode 16 regex splits agree\nV4.1 external Rust tokenizer parity: 288 ordinary text cases\nV4.1 tokenizer: pinned DATA and retained independent vectors verify\n",
+    "book-before-rebase": "book structure: 68 programs, 266 source-linked listings, local links pass\n",
+    "native-debug-plain": "V4.1: every retained original text ID and three-stage split endpoint agrees\nV4.1: all 127997 ordinary vocabulary byte strings match the original-data digest; every added ID is mapped or refused explicitly\nV4.1: Coax property lookup at all 1114112 code points matches the independently pinned Unicode 16 data digest\nV4.1: marker spellings remain ordinary, every UTF-8 segment split agrees, aliases and late failures preserve output\nV4.1: eight bounded chat/thinking recipes match independent original-tokenizer IDs\nV4.1: 84 actual token IDs, 3655 token split pairs and every truncation match all 104 independent events; finish remains explicit\n",
+    "native-debug-sanitized": "V4.1: every retained original text ID and three-stage split endpoint agrees\nV4.1: all 127997 ordinary vocabulary byte strings match the original-data digest; every added ID is mapped or refused explicitly\nV4.1: Coax property lookup at all 1114112 code points matches the independently pinned Unicode 16 data digest\nV4.1: marker spellings remain ordinary, every UTF-8 segment split agrees, aliases and late failures preserve output\nV4.1: eight bounded chat/thinking recipes match independent original-tokenizer IDs\nV4.1: 84 actual token IDs, 3655 token split pairs and every truncation match all 104 independent events; finish remains explicit\n",
+    "native-release-plain": "V4.1: every retained original text ID and three-stage split endpoint agrees\nV4.1: all 127997 ordinary vocabulary byte strings match the original-data digest; every added ID is mapped or refused explicitly\nV4.1: Coax property lookup at all 1114112 code points matches the independently pinned Unicode 16 data digest\nV4.1: marker spellings remain ordinary, every UTF-8 segment split agrees, aliases and late failures preserve output\nV4.1: eight bounded chat/thinking recipes match independent original-tokenizer IDs\nV4.1: 84 actual token IDs, 3655 token split pairs and every truncation match all 104 independent events; finish remains explicit\n",
+    "native-release-sanitized": "V4.1: every retained original text ID and three-stage split endpoint agrees\nV4.1: all 127997 ordinary vocabulary byte strings match the original-data digest; every added ID is mapped or refused explicitly\nV4.1: Coax property lookup at all 1114112 code points matches the independently pinned Unicode 16 data digest\nV4.1: marker spellings remain ordinary, every UTF-8 segment split agrees, aliases and late failures preserve output\nV4.1: eight bounded chat/thinking recipes match independent original-tokenizer IDs\nV4.1: 84 actual token IDs, 3655 token split pairs and every truncation match all 104 independent events; finish remains explicit\n",
+    "book-publication": "book structure: 70 programs, 274 source-linked listings, local links pass\n"
+  },
+  "example_stdout": "recipe: 9 segments; user/tool text stays ordinary\ntool search_1: {\"query\":\"a\\\"\\\\\\u000a\\u0009\\u0000\ud83d\ude00\",\"count\":12}\ntool empty: {}\nEOS without finish: incomplete; EOS with finish: complete\nV4.1: decomposed accent stays 3 owned byte tokens; DSML ID 128825\n",
+  "excluded": [
+    "Full upstream recipe options and media",
+    "V4.1 model execution/distribution qualification",
+    "GPU integration and performance"
+  ],
+  "coax_c_generation": {
+    "entry": "psionic/tests/deepseek-front-v41-runtime.coax",
+    "modes": [
+      "debug",
+      "--release"
+    ],
+    "flags": [
+      "--library",
+      "--header"
+    ],
+    "run_steps": "default, 100000"
+  },
+  "publication_base": "e9d1c0b82d9df5f1de46abd94883d07aea3794c8",
+  "publication_input_audit": {
+    "qualified_inputs": 47,
+    "changed_after_rebase": [],
+    "passing_results_reused": true
+  }
+}
