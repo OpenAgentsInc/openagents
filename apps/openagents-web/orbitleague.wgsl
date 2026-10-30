@@ -49,10 +49,10 @@ fn panels(p: vec2f, under: vec3f) -> vec3f {
 
 fn hash3(p: vec3f) -> f32 { return fract(sin(dot(p, vec3f(127.1, 311.7, 74.7))) * 43758.5453); }
 const BLUE = vec3f(0.18, 0.48, 1.0);
-const ORANGE = vec3f(1.0, 0.45, 0.10);
+const MAGENTA = vec3f(1.0, 0.22, 0.72);
 const SUN = vec3f(0.48, 0.42, 0.77);   // normalised in sun()
 fn sun() -> vec3f { return normalize(SUN); }
-fn team(t: f32) -> vec3f { return select(BLUE, ORANGE, t > 0.5); }
+fn team(t: f32) -> vec3f { return select(BLUE, MAGENTA, t > 0.5); }
 // Flat light: three bands of the sun, and a sky fill.
 fn flat_light(n: vec3f) -> f32 {
   let l = max(0.0, dot(n, sun()));
@@ -207,7 +207,7 @@ fn flame(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
   let dist = length(ro + rd * s - (a + ab * t));
   let flick = select(0.85 + 0.15 * sin(u.time * 60.0), 1.0, u.still > 0.5);
   let r = 0.28 * (1.0 - t * 0.7);
-  return mix(vec3f(1.0, 0.85, 0.5), vec3f(1.0, 0.35, 0.1), t) * exp(-dist * dist / (r * r)) * 1.6 * flick;
+  return mix(vec3f(0.85, 0.95, 1.0), vec3f(0.3, 0.55, 1.0), t) * exp(-dist * dist / (r * r)) * 1.6 * flick;
 }
 
 fn qrot(q: vec4f, v: vec3f) -> vec3f { let t = 2.0 * cross(q.xyz, v); return v + q.w * t + cross(q.xyz, t); }
@@ -246,7 +246,7 @@ fn floor_col(p: vec3f) -> vec3f {
   line = max(line, (1.0 - smoothstep(0.1, 0.16, abs(box.y))) * step(abs(p.x), gw + 5.0) * step(abs(p.z), hz));
   line = max(line, (1.0 - smoothstep(0.1, 0.16, abs(box.x))) * step(hz - 12.0, abs(p.z)) * step(abs(p.z), hz));
   line = max(line, (1.0 - smoothstep(0.1, 0.16, abs(abs(p.z) - hz))) * step(abs(p.x), gw));
-  let side = select(BLUE, ORANGE, p.z > 0.0);
+  let side = select(BLUE, MAGENTA, p.z > 0.0);
   c = mix(c, mix(vec3f(0.85, 0.9, 1.0), side, 0.35), line * 0.85);
   // a strip of light round the edge
   let edge = min(hx - abs(p.x), hz - abs(p.z));
@@ -297,7 +297,7 @@ fn glass(ro: vec3f, rd: vec3f, tmax: f32) -> Glass {
     if (n.x != 0.0) { e = min(hz - abs(p.z), min(p.y, hh - p.y)); }
     if (n.z != 0.0) { e = min(hx - abs(p.x), min(p.y, hh - p.y)); }
     let rim = 1.0 - smoothstep(0.0, 0.25, e);
-    let side = select(BLUE, ORANGE, p.z > 0.0);
+    let side = select(BLUE, MAGENTA, p.z > 0.0);
     out = Glass(t, mix(vec3f(0.35, 0.5, 0.7), side, 0.4), clamp(0.035 + strut * 0.28 + rim * 0.55, 0.0, 1.0));
     if (n.z != 0.0) {
       // the end wall reads as its team's
@@ -319,7 +319,7 @@ fn glass(ro: vec3f, rd: vec3f, tmax: f32) -> Glass {
   if (nn.x != 0.0) { uv = q.zy; } else if (nn.y != 0.0) { uv = q.xz; }
   let g = abs(fract(uv / 0.6 + 0.5) - 0.5) * 0.6;
   let mesh = 1.0 - smoothstep(0.015, 0.04, min(g.x, g.y));
-  let col = select(BLUE, ORANGE, zs > 0.0);
+  let col = select(BLUE, MAGENTA, zs > 0.0);
   return Glass(tn, col * 1.2, clamp(0.12 + mesh * 0.65, 0.0, 1.0));
 }
 
@@ -328,7 +328,7 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   let hz = u.arena.y; let gw = u.arena.w; let gh = u.goal.x;
   var h = miss();
   for (var e = -1.0; e <= 1.0; e += 2.0) {
-    let col = select(BLUE, ORANGE, e > 0.0) * 1.3;
+    let col = select(BLUE, MAGENTA, e > 0.0) * 1.3;
     let z = e * (hz + 0.15);
     h = closer(h, box_hit(ro, rd, vec3f(-gw - 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col));
     h = closer(h, box_hit(ro, rd, vec3f(gw + 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col));

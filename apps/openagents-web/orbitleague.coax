@@ -5,7 +5,7 @@
 // answers every touch, verse/gravity.coax says which way is down, and
 // verse/thrust.coax burns the boost.
 //
-// The first playable: you (blue) against one bot (orange), a five-minute
+// The first playable: you (blue) against one bot (magenta), a five-minute
 // match, a goal at each end of a flat box arena. Every 90 seconds of play the
 // station spins down: gravity fades to nothing for half a minute, then
 // comes back. W/S (or the arrows) drive, A/D steer, Space jumps (twice),
@@ -109,7 +109,7 @@ BOOST_REGEN :: 7.0;      // a second while the wheels touch
 HIT_KICK :: 0.35;        // the share of the closing speed added to the ball on a car's hit
 STEP :: 0.008333333333333333;   // physics at 120 Hz
 MAX_STEPS :: 12;
-BLUE :: 0; ORANGE :: 1;
+BLUE :: 0; MAGENTA :: 1;
 PHASE_KICKOFF :: 0; PHASE_PLAY :: 1; PHASE_GOAL :: 2; PHASE_OVER :: 3;
 BALL :: 0; YOU :: 1; BOT :: 2; BODIES :: 3;
 BOXES :: 12;
@@ -407,8 +407,8 @@ goal_scored :: (s: [] OrbitLeague, team: int) {
     }
   }
   if track_begin(s[0].track[..], "goal") {
-    track_str(s[0].track[..], "team", ifx team == BLUE then "blue" else "orange");
-    track_int(s[0].track[..], "blue", s[0].score[0]); track_int(s[0].track[..], "orange", s[0].score[1]);
+    track_str(s[0].track[..], "team", ifx team == BLUE then "blue" else "magenta");
+    track_int(s[0].track[..], "blue", s[0].score[0]); track_int(s[0].track[..], "magenta", s[0].score[1]);
     track_end(s[0].track[..]);
   }
 }
@@ -439,14 +439,14 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
     if s[0].phase == PHASE_PLAY {
       z := s[0].bodies[BALL].pos.z;
       if z > ARENA_HZ + BALL_R { goal_scored(s, BLUE); }
-      else if z < -ARENA_HZ - BALL_R { goal_scored(s, ORANGE); }
+      else if z < -ARENA_HZ - BALL_R { goal_scored(s, MAGENTA); }
     }
   }
 }
 
 end_tracked :: (s: [] OrbitLeague) {
   if track_begin(s[0].track[..], "end") {
-    track_int(s[0].track[..], "blue", s[0].score[0]); track_int(s[0].track[..], "orange", s[0].score[1]);
+    track_int(s[0].track[..], "blue", s[0].score[0]); track_int(s[0].track[..], "magenta", s[0].score[1]);
     track_int(s[0].track[..], "touches", s[0].touches);
     track_end(s[0].track[..]);
   }
@@ -626,7 +626,7 @@ seen :: (s: [] OrbitLeague, x: f32, y: f32, z: f32) -> Seen {
 GAP :: 0.5; SPACE :: 1.2;
 PARCH_R :: 0.93; PARCH_G :: 0.95; PARCH_B :: 1.0;
 TEAM_B_R :: 0.30; TEAM_B_G :: 0.62; TEAM_B_B :: 1.0;
-TEAM_O_R :: 1.0; TEAM_O_G :: 0.55; TEAM_O_B :: 0.18;
+TEAM_O_R :: 1.0; TEAM_O_G :: 0.28; TEAM_O_B :: 0.78;
 LOOK_PLAIN :: 0.0; LOOK_LIT :: 1.0; LOOK_HOVER :: 2.0;
 white :: (k: f32, light: f32) -> Ink { return ink(0.55 * k, light, 1.2 * k, PARCH_R, PARCH_G, PARCH_B); }
 team_ink :: (team: int, k: f32, light: f32) -> Ink {
@@ -670,7 +670,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   n := put_int(buf[..], 0, s[0].score[0]);
   v = centred(d, out, v, cast(string) buf[0..<n], sb.x0 + 34 * k, sb.y0 + 32 * k, 18 * k, team_ink(BLUE, k, 1));
   n = put_int(buf[..], 0, s[0].score[1]);
-  v = centred(d, out, v, cast(string) buf[0..<n], sb.x1 - 34 * k, sb.y0 + 32 * k, 18 * k, team_ink(ORANGE, k, 1));
+  v = centred(d, out, v, cast(string) buf[0..<n], sb.x1 - 34 * k, sb.y0 + 32 * k, 18 * k, team_ink(MAGENTA, k, 1));
   n = ifx s[0].overtime then put(buf[..], 0, "+OT") else clock_text(buf[..], 0, s[0].clock);
   v = centred(d, out, v, cast(string) buf[0..<n], w * 0.5, sb.y0 + 29 * k, 12 * k, white(k, 0.95));
   // GALAXY, top left
@@ -697,7 +697,7 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   }
   if s[0].phase == PHASE_OVER {
     won := s[0].score[0] > s[0].score[1];
-    v = centred(d, out, v, ifx won then "YOU WIN" else "THE BOT WINS", w * 0.5, h * 0.38, 26 * k, team_ink(ifx won then BLUE else ORANGE, k, 1));
+    v = centred(d, out, v, ifx won then "YOU WIN" else "THE BOT WINS", w * 0.5, h * 0.38, 26 * k, team_ink(ifx won then BLUE else MAGENTA, k, 1));
     ab := Box.{x0 = w * 0.5 - 90 * k, y0 = h * 0.38 + 24 * k, x1 = w * 0.5 + 90 * k, y1 = h * 0.38 + 66 * k};
     v = hud_button(s, out, v, BTN_AGAIN, ab, "PLAY AGAIN", 10 * k);
   }
@@ -706,10 +706,10 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   n = put_int(buf[..], 0, cast(int) fuel);
   thumbs := s[0].touch || phone;
   bx := w - g - 70 * k; by := ifx thumbs then h - 200 * k else h - g - 40 * k;
-  v = centred(d, out, v, cast(string) buf[0..<n], bx + 35 * k, by + 22 * k, 14 * k, ink(0.6 * k, 1, 2 * k, TEAM_O_R, TEAM_O_G, 0.3));
+  v = centred(d, out, v, cast(string) buf[0..<n], bx + 35 * k, by + 22 * k, 14 * k, ink(0.6 * k, 1, 2 * k, 0.92, 0.95, 1.0));
   v = centred(d, out, v, "BOOST", bx + 35 * k, by + 36 * k, 6.5 * k, white(k, 0.7));
   if lit(out, v, bx, by + 42 * k, bx + 70 * k, by + 42 * k, 0.5 * k, 0.3, 1 * k, 1, 1, 1, MODE_STROKE) { v += 6; }
-  if fuel > 0 && lit(out, v, bx, by + 42 * k, bx + 70 * k * fuel / 100, by + 42 * k, 1.4 * k, 1, 3 * k, TEAM_O_R, TEAM_O_G, 0.3, MODE_STROKE) { v += 6; }
+  if fuel > 0 && lit(out, v, bx, by + 42 * k, bx + 70 * k * fuel / 100, by + 42 * k, 1.4 * k, 1, 3 * k, 0.92, 0.95, 1.0, MODE_STROKE) { v += 6; }
   if thumbs {
     // the right thumb's buttons, and the left thumb's stick
     r := 46 * k;
@@ -783,7 +783,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   q := bl.orientation;
   u[BALLQ_AT] = cast(f32) q.x; u[BALLQ_AT + 1] = cast(f32) q.y; u[BALLQ_AT + 2] = cast(f32) q.z; u[BALLQ_AT + 3] = cast(f32) q.w;
   put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now);
-  put_car(u, CAR_AT + CAR_FLOATS, s[0].bodies[BOT], s[0].boosting[1], ORANGE, s[0].cars[1].steer_now);
+  put_car(u, CAR_AT + CAR_FLOATS, s[0].bodies[BOT], s[0].boosting[1], MAGENTA, s[0].cars[1].steer_now);
   u[ARENA_AT] = cast(f32) ARENA_HX; u[ARENA_AT + 1] = cast(f32) ARENA_HZ; u[ARENA_AT + 2] = cast(f32) ARENA_H; u[ARENA_AT + 3] = cast(f32) GOAL_HW;
   u[GOAL_AT] = cast(f32) GOAL_H; u[GOAL_AT + 1] = cast(f32) GOAL_D;
   n := draw_hud(s, out);
