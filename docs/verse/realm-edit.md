@@ -11,8 +11,9 @@ The server decides, for any realm slug (`coax/web/api/migrations/0050_realm_edit
 `verse.edit_role`):
 
 - **owner**: a made realm's maker (its player key or account), or a hand-built realm's owner account.
-- **admin**: a site admin (`admins.conf`, logged in at /login or signing with NIP-98; `realms.c`
-  asks `admin_who` and passes the answer to SQL), or an account in the realm's admins.
+- **admin**: a site admin (`admins.conf`: logged in at /login, signed in at /api/admin/login,
+  whose cookie reaches /api/playtest too, or signing with NIP-98; `realms.c` asks `admin_who` and
+  passes the answer to SQL), or an account in the realm's admins.
 - **visitor**: anyone else.
 
 Each hand-built realm in `apps/openagents-web/realms.json` has an `edit` block: `owner` (an
@@ -75,7 +76,7 @@ not offered (migration 0052 took the engineer's row back off).
 | Hecate's Cemetery | flight (off: a visit starts at the gate), fireflies, trail, tips, others | | |
 | Fairy Forest | sparkles, grass, ridges | fly (her wing beats in the air) | |
 | Dead Gears | alarms, radar, sparks (EDIT pauses the fight) | | |
-| Ice Cream Man | minions, weapons, backrooms (from the next house; EDIT shows while a card is up) | | |
+| Ice Cream Man | minions, weapons (at once: minions off melts the enemy ones), backrooms (from the next house); EDIT shows while a card is up | | |
 | Haunted House | others, sounds, scares, chat | map (the big map), voice (VOICE) | |
 | a made realm | its features (the builder's catalogue) | build, fly, jump, map, talk, voice | the builder's things |
 
@@ -88,4 +89,6 @@ board is typed there (TYPE IT): Everglade's HOLD TO TALK is its voice edits. The
 admin accounts get edit mode as a site admin does, and the server lets them publish its world
 (player.c: a hand-built realm's world routes). A visitor the owner lets build gets BUILD: the
 hotbar's things only, each placed where an admin's would go and sent as a card; ACCEPT on the
-owner's page puts the thing in the city and publishes it as an edit by hand.
+owner's page puts the thing in the city and publishes it as an edit by hand. Its owner and admin
+accounts make voice edits (HOLD TO TALK, `/api/playtest/realm/everglade/edit`, npc.c) as a site
+admin does; theirs are paced and counted under their key's hash.

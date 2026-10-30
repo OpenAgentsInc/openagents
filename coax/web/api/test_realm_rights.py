@@ -73,7 +73,13 @@ def realm_rights_checks():
     # a hand-built realm's admin account publishes its world (Everglade's edits) as a site admin does
     edits = {"everglade": 1, "edits": "eg-edit 1\nt 1 4.50 -10.00 0.79 1.00\n"}
     check("a realm's visitor can't publish its world", pt("POST", "world/everglade", {"doc": edits, "summary": "a visitor"}, key=friend)[0] == 403)
+    vpath = "/api/playtest/realm/everglade/edit"
+    check("a realm's visitor can't make a voice edit there", b_call("POST", vpath, {"sentence": ""}, friend)[0] == 403)
     sql("update verse.realm_rights set admins = admins || '{" + acct(friend) + "}' where slug = 'everglade'")
+    check("Everglade's admin account makes voice edits there (past the gate: an empty sentence is 400), not on another realm's",
+          b_call("POST", vpath, {"sentence": ""}, friend) == (400, {"error": "say what to change"})
+          and b_call("POST", "/api/playtest/realm/the-grid/edit", {"sentence": ""}, friend)[0] == 403,
+          (b_call("POST", vpath, {"sentence": ""}, friend), b_call("POST", "/api/playtest/realm/the-grid/edit", {"sentence": ""}, friend)))
     st, got = pt("POST", "world/everglade", {"doc": edits, "summary": "Placed a barrel"}, key=friend)
     check("Everglade's admin account publishes its edits, and puts the designed city back", st == 200 and "version" in got
           and pt("POST", "world/everglade/reset", {}, key=friend)[0] == 200 and pt("POST", "world/the-grid", {"doc": edits, "summary": "x"}, key=friend)[0] == 403, (st, got))

@@ -236,7 +236,8 @@ bool piece_route(const request *q) {
   return true;
 }
 
-// ---- an admin's spoken edit to a realm (eg-voice-edit): POST /api/playtest/realm/<realm>/edit
+//   {sentence}  a site admin (admin_who: admins.conf, by site login, the admin cookie or NIP-98), or the
+//               realm's owner or one of its admin accounts (X-Verse-Player; verse.edit_may)
 //   {sentence}  an admin only (admin_who: admins.conf, by site login or NIP-98)
 //   -> 200 {edit, item?, count?, model}; 400 no sentence or realm, 401/403, 422 nothing fits, 429, 502, 503
 // Gemini picks one edit from the realm's catalogue (migrations/0045_realm_voice_edit.sql) and SQL holds
@@ -280,6 +281,17 @@ bool voice_edit_route(const request *q) {
   const char *o = getenv("OA_API_ORIGIN");
   if (api_header(q, "Origin", from, sizeof from) && strcmp(from, o && *o ? o : "https://openagents.com")) { api_json(q->fd, 403, "{\"error\":\"cross-site\"}"); return true; }
   int denied = admin_who(q, db, who);
+  // Else the realm's owner or one of its admins (verse.realm_rights, docs/verse/realm-edit.md), by
+  // the X-Verse-Player key; their edits are paced and counted under the key's hash, never the key.
+  char key[160];
+  if (denied && api_header(q, "X-Verse-Player", key, sizeof key) && key[0]) {
+    const char *ev[2] = {name, key};
+    PGresult *m = PQexecParams(db, "SELECT encode(sha256(convert_to($2, 'UTF8')), 'hex') FROM (SELECT 1) x "
+                                   "WHERE (verse.edit_hand($1)).slug IS NOT NULL AND verse.edit_may($1, $2, false)", 2, NULL, ev, NULL, NULL, 0);
+    if (PQresultStatus(m) == PGRES_TUPLES_OK && PQntuples(m) == 1) { snprintf(who, 65, "%s", PQgetvalue(m, 0, 0)); denied = 0; }
+    else if (denied == 401) denied = 403;   // a player who may not edit this realm
+    PQclear(m);
+  }
   if (denied) { api_json(q->fd, denied, denied == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
   char *body = malloc(q->body_len + 3);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
