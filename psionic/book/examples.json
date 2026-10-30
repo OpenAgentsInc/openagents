@@ -812,6 +812,16 @@
       ]
     },
     {
+      "source": "psionic/examples/onnx-read.coax",
+      "chapter": "psionic/book/ch161-read-a-bounded-onnx-graph.md",
+      "stdout": "psionic/fixtures/onnx-read.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/interpreter-weights.coax",
       "chapter": "psionic/book/ch170-an-interpreter-in-weights-or-one-program-in-weights.md",
       "stdout": "psionic/fixtures/interpreter-weights.out",

@@ -1,0 +1,1109 @@
+// Chapter 161: read a bounded ONNX graph. A model file is protobuf; this
+// reader walks it field by field, as chapter 16b's wire scanner does, and admits only opset 17 of
+// the default domain, seven operators with the attribute values it
+// implements, float initializers held in the file, and static shapes. Each
+// anonymous initializer gets a name from the node that uses it ("/conv/Conv"
+// input W becomes conv.weight). Anything outside the set is refused with a
+// reason and, where there is one, the node that caused it. An admitted graph
+// runs on the CPU.
+// Profile onnx-17-v1: IR versions 7 to 10, up to 16 nodes, 32 values, rank
+// 4, 4,096 elements a tensor; binary32 storage and arithmetic in a fixed
+// order, Softmax in binary64.
+#authority;
+
+OxStatus :: enum u8 {ok;wire;ir;opset;field;op;attribute;dtype;data;shape;name;order;unused;shared;role;output;capacity;input;}
+OxOp :: enum u8 {gather;reduce_mean;conv;relu;flatten;gemm;softmax;}
+OxKind :: enum u8 {input;weight;computed;}
+OxShape :: struct {rank:int;dims:[4]int;}
+OxValue :: struct {name:[]u8;kind:OxKind;integer:bool;shape:OxShape;at:int;count:int;uses:int;}
+OxNode :: struct {op:OxOp;inputs:[3]int;arity:int;output:int;axis:int;trans_b:bool;}
+OxTensor :: struct {name:[64]u8;length:int;value:int;}
+OxModel :: struct {
+    status:OxStatus;node:int;ir:int;
+    values:[OX_VALUES_MAX]OxValue;value_count:int;
+    nodes:[OX_NODES_MAX]OxNode;node_count:int;
+    tensors:[OX_NODES_MAX*2]OxTensor;tensor_count:int;
+    input:int;output:int;arena:int;
+}
+OxRun :: struct {status:OxStatus;node:int;}
+
+OX_NODES_MAX :: 16;
+OX_VALUES_MAX :: 32;
+OX_ELEMENTS_MAX :: 4096;
+OX_OPSET :: 17;
+OX_FLOAT :: 1;
+OX_INT64 :: 7;
+// Field numbers from onnx.proto, by message.
+OX_OP_NAMES :: [7]string.["Gather","ReduceMean","Conv","Relu","Flatten","Gemm","Softmax"];
+OX_STEMS :: [7]string.["gather","reducemean","conv","relu","flatten","gemm","softmax"];
+
+// Checks precede the implementation. Fixtures are built by onnx 1.17.0
+// (psionic/tests/onnx_fixtures.py); pinned outputs come from
+// psionic/tests/onnx_oracle.py and agree with onnx's ReferenceEvaluator.
+#load "../fixtures/onnx/fixtures.coax";
+
+// A protobuf writer for hand-made wire cases: a varint, a key, a
+// length-delimited field.
+ox_t_var :: (out:[]u8,at:int,v:u64)->int {
+    x:=v;p:=at;
+    while x>=128 {out[p]=cast(u8)(x&127)|128;x>>=7;p+=1;}
+    out[p]=cast(u8)x;return p+1;
+}
+ox_t_bytes :: (out:[]u8,at:int,number:u64,data:[]u8)->int {
+    p:=ox_t_var(out,at,number*8+2);p=ox_t_var(out,p,cast(u64)data.count);
+    for b,i:data {out[p+i]=b;}
+    return p+data.count;
+}
+// The example's pixels. SplitMix64's last mixing step is left out: it changes
+// only bits below the 1/32 grid the pixels are rounded to.
+ox_t_pixel :: (seed:u64,i:u64)->f32 {
+    z:=add_wrap(seed,mul_wrap(0x9e3779b97f4a7c15,add_wrap(i,1)));
+    z=mul_wrap(z^(z>>30),0xbf58476d1ce4e5b9);z=mul_wrap(z^(z>>27),0x94d049bb133111eb);
+    return f32(floor((2*(f64(z>>11)/9007199254740992.0)-1)*32+0.5)/32);
+}
+ox_t_name :: (m:OxModel,t:int,text:string)->bool {x:=m.tensors[t];return ox_is(x.name[0..<x.length],text);}
+ox_t_shape :: (s:OxShape,rank:int,a:int,b:int,c:int,d:int)->bool {
+    return s.rank==rank && s.dims[0]==a && s.dims[1]==b && s.dims[2]==c && s.dims[3]==d;
+}
+
+// A row of the generated case table: a model's place in OX_CASE_BYTES, the
+// status and node the rules give it, and for an admitted one its input and
+// onnx's reference outputs.
+OxCase :: struct {at:int;size:int;status:OxStatus;node:int;feed_at:int;feed:int;out_at:int;out:int;}
+
+#test "the case table" {
+    blob:=OX_CASE_BYTES;feed:=OX_CASE_FEED;want:=OX_CASE_OUT;cases:=OX_CASES;arena:[8192]f32;
+    admitted:=0;
+    for c:cases {
+        m:=ox_read(blob[c.at..<c.at+c.size],arena[..]);
+        #assert m.status==c.status && m.node==c.node;
+        if c.feed==0 {continue;}
+        ids:[128]s64;pixels:[128]f32;
+        for i:0..<c.feed {ids[i]=cast(s64)feed[c.feed_at+i];pixels[i]=f32(feed[c.feed_at+i]);}
+        x:=m.values[m.input];
+        r:=ifx x.integer then ox_run(m,arena[..],ids[0..<c.feed],pixels[0..<0]) else ox_run(m,arena[..],ids[0..<0],pixels[0..<c.feed]);
+        y:=m.values[m.output];
+        #assert r.status==OxStatus.ok && y.count==c.out;
+        for i:0..<c.out {#assert abs(f64(arena[y.at+i])-want[c.out_at+i])<=0.000001;}
+        admitted+=1;
+    }
+    #assert admitted==13;
+}
+
+#test "the test helpers" {
+    buf:[16]u8;#assert ox_t_var(buf[..],0,300)==2 && buf[0]==172 && buf[1]==2;
+    data:=[2]u8.[7,9];#assert ox_t_bytes(buf[..],0,3,data[..])==4 && buf[0]==26 && buf[1]==2 && buf[2]==7 && buf[3]==9;
+    #assert ox_t_pixel(170,0)==ox_t_pixel(170,0) && ox_t_pixel(170,0)!=ox_t_pixel(171,0);
+    s:=OxShape.{rank=4,dims=[4]int.[1,2,3,4]};
+    #assert ox_t_shape(s,4,1,2,3,4) && !ox_t_shape(s,3,1,2,3,4) && !ox_t_shape(s,4,0,2,3,4) && !ox_t_shape(s,4,1,0,3,4);
+    #assert !ox_t_shape(s,4,1,2,0,4) && !ox_t_shape(s,4,1,2,3,0);
+}
+
+#test "varints" {
+    buf:[12]u8;
+    n:=ox_t_var(buf[..],0,0xffffffffffffffff);#assert n==10;
+    v:=ox_var(buf[0..<n],0);#assert !v.error && v.value==0xffffffffffffffff && v.next==10;
+    #assert ox_var(buf[0..<9],0).error;
+    buf[9]=2;#assert ox_var(buf[0..<10],0).error;
+    for i:0..<11 {buf[i]=128;} #assert ox_var(buf[0..<11],0).error;
+    buf[0]=5;v=ox_var(buf[0..<1],0);#assert v.value==5 && v.next==1 && !v.error;
+    buf[0]=128;buf[1]=1;v=ox_var(buf[0..<2],0);#assert v.value==128 && v.next==2;
+    #assert ox_var(buf[0..<2],2).error;
+}
+
+#test "fields of each wire type" {
+    buf:[32]u8;data:=[3]u8.[1,2,3];
+    p:=ox_t_var(buf[..],0,8);p=ox_t_var(buf[..],p,300);   // field 1, varint 300
+    p=ox_t_bytes(buf[..],p,2,data[..]);                    // field 2, three bytes
+    p=ox_t_var(buf[..],p,3*8+5);for i:0..<4 {buf[p+i]=cast(u8)(i+1);} p+=4;   // field 3, fixed32
+    p=ox_t_var(buf[..],p,4*8+1);for i:0..<8 {buf[p+i]=cast(u8)(i+1);} p+=8;   // field 4, fixed64
+    w:=buf[0..<p];
+    f:=ox_scan(w,0);#assert f.number==1 && f.wt==0 && f.raw==300 && f.next==3 && !f.error && !f.done;
+    f=ox_scan(w,f.next);#assert f.number==2 && f.wt==2 && f.payload.count==3 && f.payload[2]==3 && f.next==8;
+    f=ox_scan(w,f.next);#assert f.number==3 && f.wt==5 && f.raw==0x04030201 && f.next==13;
+    f=ox_scan(w,f.next);#assert f.number==4 && f.wt==1 && f.raw==0x0807060504030201 && f.next==22;
+    f=ox_scan(w,f.next);#assert f.done && !f.error;
+    #assert ox_field(w,3).raw==0x04030201 && ox_field(w,9).done && !ox_field(w,9).error;
+    // Truncations inside each field, a zero key, groups and wire types 6 and 7.
+    #assert ox_scan(buf[0..<2],0).error && ox_scan(buf[0..<7],3).error && ox_scan(buf[0..<12],8).error && ox_scan(buf[0..<21],13).error;
+    bad:=[2]u8.[0,0];#assert ox_scan(bad[..],0).error;
+    for wt:3..<8 {if wt!=5 {bad[0]=cast(u8)(8+wt);#assert ox_scan(bad[..],0).error;}}
+    bad[0]=8;bad[1]=128;#assert ox_scan(bad[..],0).error && ox_field(bad[..],2).error;
+}
+
+#test "repeated integers, packed or not" {
+    buf:[16]u8;
+    p:=ox_t_var(buf[..],0,0);p=ox_t_var(buf[..],p,0xffffffffffffffff);p=ox_t_var(buf[..],p,7);
+    packed:=OxField.{wt=2,payload=buf[0..<p]};
+    r:=ox_ints(packed,OxInts.{ok=true});#assert r.ok && r.count==3 && r.values[0]==0 && r.values[1]==-1 && r.values[2]==7;
+    r=ox_ints(OxField.{wt=0,raw=9},r);#assert r.ok && r.count==4 && r.values[3]==9;
+    #assert !ox_ints(OxField.{wt=0,raw=9},r).ok && !ox_ints(packed,OxInts.{ok=true,count=2}).ok;
+    #assert !ox_ints(OxField.{wt=5},OxInts.{ok=true}).ok;
+    buf[0]=128;#assert !ox_ints(OxField.{wt=2,payload=buf[0..<1]},OxInts.{ok=true}).ok;
+}
+
+#test "small helpers" {
+    #assert ox_small(255)==255 && ox_small(256)==-1;
+    a:=[2]u8.[1,2];b:=[2]u8.[1,3];#assert ox_same(a[..],a[..]) && !ox_same(a[..],b[..]) && !ox_same(a[..],a[0..<1]);
+    x:="ai";#assert ox_is(a[0..<0],"") && !ox_is(a[..],"a") && ox_default(a[0..<0]);c:=[2]u8.[98,105];#assert !ox_is(c[..],"ai");
+    onnx:=[7]u8.[97,105,46,111,110,110,120];#assert ox_default(onnx[..]) && !ox_default(onnx[0..<6]) && ox_is(onnx[0..<2],x);
+    s:=OxShape.{rank=2,dims=[4]int.[64,64,0,0]};#assert ox_elements(s)==4096;
+    s.dims[1]=65;#assert ox_elements(s)==0;s.dims[1]=0;#assert ox_elements(s)==0;
+    s=OxShape.{rank=1,dims=[4]int.[4097,0,0,0]};#assert ox_elements(s)==0;
+    // Each dimension is bounded first, so the product can't wrap.
+    s=OxShape.{rank=2,dims=[4]int.[4294967297,4294967295,0,0]};#assert ox_elements(s)==0;
+    #assert ox_elements(OxShape.{})==1;
+    #assert ox_shape_same(OxShape.{rank=1,dims=[4]int.[2,0,0,0]},OxShape.{rank=1,dims=[4]int.[2,9,0,0]});
+    #assert !ox_shape_same(OxShape.{rank=1,dims=[4]int.[2,0,0,0]},OxShape.{rank=1,dims=[4]int.[3,0,0,0]});
+    #assert !ox_shape_same(OxShape.{rank=1},OxShape.{rank=2});
+}
+
+#test "the static-embedding model" {
+    file:=OX_EMBEDDING;arena:[1024]f32;
+    m:=ox_read(file[..],arena[..]);
+    #assert m.status==OxStatus.ok && m.node==-1 && m.ir==8 && m.node_count==2 && m.value_count==4 && m.arena==592 && m.tensor_count==1;
+    #assert ox_t_name(m,0,"embed.weight") && m.tensors[0].value==0 && ox_is(m.values[0].name,"onnx::Gather_0");
+    #assert arena[0]==0.09375 && arena[511]==0.125 && m.values[0].kind==OxKind.weight && m.values[0].uses==1;
+    x:=m.values[m.input];#assert m.input==1 && x.integer && x.at==512 && x.count==8 && ox_t_shape(x.shape,2,1,8,0,0);
+    g:=m.nodes[0];#assert g.op==OxOp.gather && g.arity==2 && g.inputs[0]==0 && g.inputs[1]==1 && g.inputs[2]==-1 && g.output==2;
+    #assert ox_t_shape(m.values[2].shape,3,1,8,8,0) && m.values[2].at==520;
+    r:=m.nodes[1];#assert r.op==OxOp.reduce_mean && r.axis==1 && r.inputs[1]==-1 && r.inputs[2]==-1 && m.output==3 && ox_t_shape(m.values[3].shape,2,1,8,0,0);
+    ids:=[8]s64.[3,17,17,42,0,63,8,21];none:[1]f32;
+    run:=ox_run(m,arena[..],ids[..],none[0..<0]);#assert run.status==OxStatus.ok && run.node==-1;
+    want:=[8]f64.[-0.03515625,-0.13671875,0.0234375,-0.041015625,-0.025390625,0.166015625,-0.064453125,0.05859375];
+    for i:0..<8 {#assert f64(arena[584+i])==want[i];}
+    ids[5]=-64;#assert ox_run(m,arena[..],ids[..],none[0..<0]).status==OxStatus.ok;
+    ids[5]=-65;run=ox_run(m,arena[..],ids[..],none[0..<0]);#assert run.status==OxStatus.input && run.node==0;
+    ids[5]=64;#assert ox_run(m,arena[..],ids[..],none[0..<0]).status==OxStatus.input;
+    ids[5]=4097;run=ox_run(m,arena[..],ids[..],none[0..<0]);#assert run.status==OxStatus.input && run.node==-1;
+    ids[5]=-4097;#assert ox_run(m,arena[..],ids[..],none[0..<0]).status==OxStatus.input;
+    ids[5]=63;#assert ox_run(m,arena[..],ids[0..<7],none[0..<0]).status==OxStatus.input;
+    #assert ox_run(m,arena[0..<591],ids[..],none[0..<0]).status==OxStatus.capacity && ox_run(m,arena[0..<592],ids[..],none[0..<0]).status==OxStatus.ok;
+    m.status=OxStatus.wire;#assert ox_run(m,arena[..],ids[..],none[0..<0]).status==OxStatus.capacity;
+}
+
+#test "the image classifier" {
+    file:=OX_CLASSIFIER;arena:[257]f32;
+    m:=ox_read(file[..],arena[..]);
+    #assert m.status==OxStatus.ok && m.node_count==5 && m.tensor_count==4 && m.arena==257;
+    #assert ox_t_name(m,0,"conv.weight") && ox_t_name(m,1,"conv.bias") && ox_t_name(m,2,"fc.weight") && ox_t_name(m,3,"fc.bias");
+    #assert m.tensors[0].value==0 && m.tensors[1].value==1 && m.tensors[2].value==2 && m.tensors[3].value==3;
+    #assert arena[0]==-0.421875 && arena[20+96+2]==0.40625;
+    #assert ox_t_shape(m.values[5].shape,4,1,2,4,4) && ox_t_shape(m.values[7].shape,2,1,32,0,0) && m.nodes[3].trans_b;
+    #assert ox_read(file[..],arena[0..<256]).status==OxStatus.capacity;
+    pixels:[36]f32;none:[1]s64;
+    want:=[2][3]f64.[[3]f64.[0.71500563621521,0.0816894993185997,0.20330488681793213],[3]f64.[0.9238338470458984,0.01731526106595993,0.05885091796517372]];
+    for k:0..<2 {
+        for i:0..<36 {pixels[i]=ox_t_pixel(cast(u64)(170+k),cast(u64)i);}
+        #assert ox_run(m,arena[..],none[0..<0],pixels[..]).status==OxStatus.ok;
+        for j:0..<3 {#assert f64(arena[254+j])==want[k][j];}
+    }
+    #assert ox_run(m,arena[..],none[0..<0],pixels[0..<35]).status==OxStatus.input;
+}
+
+#test "every proper prefix of a model is refused" {
+    file:=OX_CLASSIFIER;arena:[1024]f32;
+    for n:0..<file.count {#assert ox_read(file[0..<n],arena[..]).status!=OxStatus.ok;}
+}
+
+#test "each refusal names what the reader found" {
+    arena:[1024]f32;
+    a:=OX_REFUSE_OPSET;#assert ox_read(a[..],arena[..]).status==OxStatus.opset;
+    b:=OX_REFUSE_IR;#assert ox_read(b[..],arena[..]).status==OxStatus.ir;
+    c:=OX_REFUSE_DOMAIN;#assert ox_read(c[..],arena[..]).status==OxStatus.opset;
+    d:=OX_REFUSE_FUNCTION;#assert ox_read(d[..],arena[..]).status==OxStatus.field;
+    e:=OX_REFUSE_SPARSE;#assert ox_read(e[..],arena[..]).status==OxStatus.field;
+    f:=OX_REFUSE_OP;x:=ox_read(f[..],arena[..]);#assert x.status==OxStatus.op && x.node==1;
+    g:=OX_REFUSE_TRANS_A;x=ox_read(g[..],arena[..]);#assert x.status==OxStatus.attribute && x.node==3;
+    h:=OX_REFUSE_ALPHA;x=ox_read(h[..],arena[..]);#assert x.status==OxStatus.attribute && x.node==3;
+    i:=OX_REFUSE_PADS;x=ox_read(i[..],arena[..]);#assert x.status==OxStatus.attribute && x.node==0;
+    j:=OX_REFUSE_UNKNOWN_ATTR;x=ox_read(j[..],arena[..]);#assert x.status==OxStatus.attribute && x.node==1;
+    k:=OX_REFUSE_DOUBLE;#assert ox_read(k[..],arena[..]).status==OxStatus.dtype;
+    l:=OX_REFUSE_EXTERNAL;#assert ox_read(l[..],arena[..]).status==OxStatus.data;
+    n:=OX_REFUSE_SHORT;#assert ox_read(n[..],arena[..]).status==OxStatus.data;
+    o:=OX_REFUSE_SYMBOLIC;#assert ox_read(o[..],arena[..]).status==OxStatus.shape;
+    p:=OX_REFUSE_ORDER;x=ox_read(p[..],arena[..]);#assert x.status==OxStatus.order && x.node==1;
+    q:=OX_REFUSE_UNUSED;x=ox_read(q[..],arena[..]);#assert x.status==OxStatus.unused && x.node==-1;
+    r:=OX_REFUSE_SHARED;x=ox_read(r[..],arena[..]);#assert x.status==OxStatus.shared && x.node==3;
+    s:=OX_REFUSE_ROLE;x=ox_read(s[..],arena[..]);#assert x.status==OxStatus.role && x.node==1;
+    t:=OX_REFUSE_WRONG_OUTPUT;#assert ox_read(t[..],arena[..]).status==OxStatus.output;
+    u:=OX_REFUSE_DUPLICATE;x=ox_read(u[..],arena[..]);#assert x.status==OxStatus.name && x.node==2;
+}
+
+
+ox_t_varint :: (out:[]u8,at:int,number:u64,v:u64)->int {return ox_t_var(out,ox_t_var(out,at,number*8),v);}
+ox_t_fixed :: (out:[]u8,at:int,number:u64,bits:u32)->int {
+    p:=ox_t_var(out,at,number*8+5);
+    for k:0..<4 {out[p+k]=cast,trunc(u8)(bits>>cast(u32)(8*k));}
+    return p+4;
+}
+ox_t_text :: (out:[]u8,at:int,number:u64,s:string)->int {
+    p:=ox_t_var(out,at,number*8+2);p=ox_t_var(out,p,cast(u64)s.count);
+    for k:0..<s.count {out[p+k]=s[k];}
+    return p+s.count;
+}
+// A tensor value_info: a name, an element type and static dimensions.
+ox_t_decl :: (out:[]u8,name:string,elem:u64,dims:[]u64)->int {
+    shape:[64]u8;sp:=0;
+    for d:dims {one:[16]u8;n:=ox_t_varint(one[..],0,1,d);sp=ox_t_bytes(shape[..],sp,1,one[0..<n]);}
+    tensor:[96]u8;tp:=ox_t_varint(tensor[..],0,1,elem);tp=ox_t_bytes(tensor[..],tp,2,shape[0..<sp]);
+    t:[128]u8;n:=ox_t_bytes(t[..],0,1,tensor[0..<tp]);
+    p:=ox_t_text(out,0,1,name);
+    return ox_t_bytes(out,p,2,t[0..<n]);
+}
+
+#test "the writers for hand-made cases" {
+    buf:[64]u8;
+    #assert ox_t_var(buf[..],0,127)==1 && buf[0]==127 && ox_t_var(buf[..],0,128)==2 && buf[0]==128 && buf[1]==1;
+    #assert ox_t_pixel(170,0)==-0.375;
+    #assert ox_t_varint(buf[..],0,2,5)==2 && buf[0]==16 && buf[1]==5;
+    #assert ox_t_fixed(buf[..],0,4,0x3dcccccd)==5 && buf[0]==37 && buf[1]==0xcd && buf[4]==0x3d;
+    #assert ox_t_text(buf[..],0,8,"ab")==4 && buf[0]==66 && buf[1]==2 && buf[3]=='b';
+    dims:=[2]u64.[3,4];n:=ox_t_decl(buf[..],"x",1,dims[..]);
+    d:=ox_declaration(buf[0..<n]);#assert d.status==OxStatus.ok && ox_is(d.name,"x") && d.elem==1 && ox_t_shape(d.shape,2,3,4,0,0);
+}
+
+#test "an initializer, field by field" {
+    buf:[64]u8;arena:[8]f32;
+    // dims [2], FLOAT, float_data as two fixed32 fields, name "t".
+    p:=ox_t_varint(buf[..],0,1,2);p=ox_t_varint(buf[..],p,2,1);
+    p=ox_t_fixed(buf[..],p,4,0x3dcccccd);p=ox_t_fixed(buf[..],p,4,f32_bits(-2.5));p=ox_t_text(buf[..],p,8,"t");
+    m:=OxModel.{node=-1,arena=3};
+    r:=ox_initializer(buf[0..<p],m,arena[0..<5]);
+    #assert r.status==OxStatus.ok && f32_bits(arena[3])==0x3dcccccd && arena[4]==-2.5 && r.arena==5 && r.value_count==1;
+    #assert r.values[0].at==3 && r.values[0].count==2 && r.values[0].kind==OxKind.weight && ox_t_shape(r.values[0].shape,1,2,0,0,0);
+    r=ox_initializer(buf[0..<p],m,arena[0..<4]);#assert r.status==OxStatus.capacity && r.node==-1;
+    r=ox_initializer(buf[0..<p],m,arena[0..<3]);#assert r.status==OxStatus.capacity;
+    // The same, packed: 0.1 and -2.5 in one length-delimited run.
+    pack:[8]u8;w:=f32_bits(0.1);v:=f32_bits(-2.5);
+    for k:0..<4 {pack[k]=cast,trunc(u8)(w>>cast(u32)(8*k));pack[4+k]=cast,trunc(u8)(v>>cast(u32)(8*k));}
+    p=ox_t_varint(buf[..],0,1,2);p=ox_t_varint(buf[..],p,2,1);p=ox_t_bytes(buf[..],p,4,pack[..]);p=ox_t_text(buf[..],p,8,"t");
+    r=ox_initializer(buf[0..<p],m,arena[0..<5]);#assert r.status==OxStatus.ok && arena[3]==0.1 && arena[4]==-2.5;
+    #assert ox_initializer(buf[0..<p],m,arena[0..<4]).status==OxStatus.capacity;
+    q:=ox_t_varint(buf[..],0,1,2);q=ox_t_varint(buf[..],q,2,1);q=ox_t_bytes(buf[..],q,4,pack[0..<6]);q=ox_t_text(buf[..],q,8,"t");
+    #assert ox_initializer(buf[0..<q],m,arena[..]).status==OxStatus.data;
+    // Raw bytes, at the arena's edge and one past it.
+    p=ox_t_varint(buf[..],0,1,2);p=ox_t_varint(buf[..],p,2,1);p=ox_t_bytes(buf[..],p,9,pack[..]);p=ox_t_text(buf[..],p,8,"t");
+    r=ox_initializer(buf[0..<p],m,arena[0..<5]);#assert r.status==OxStatus.ok && arena[3]==0.1 && arena[4]==-2.5 && r.arena==5;
+    #assert ox_initializer(buf[0..<p],m,arena[0..<4]).status==OxStatus.capacity;
+    // One float_data value, then a packed run after it.
+    p=ox_t_varint(buf[..],0,1,2);p=ox_t_varint(buf[..],p,2,1);p=ox_t_fixed(buf[..],p,4,f32_bits(0.1));p=ox_t_bytes(buf[..],p,4,pack[4..<8]);p=ox_t_text(buf[..],p,8,"t");
+    arena[4]=0;r=ox_initializer(buf[0..<p],m,arena[0..<5]);#assert r.status==OxStatus.ok && arena[3]==0.1 && arena[4]==-2.5;
+    #assert ox_initializer(buf[0..<p],m,arena[0..<4]).status==OxStatus.capacity;
+    p=ox_t_varint(buf[..],0,1,2);p=ox_t_varint(buf[..],p,2,1);p=ox_t_bytes(buf[..],p,9,pack[..]);p=ox_t_text(buf[..],p,8,"t");
+    full:=m;full.value_count=OX_VALUES_MAX;#assert ox_initializer(buf[0..<p],full,arena[..]).status==OxStatus.capacity;
+    // A scalar: no dimensions, one value.
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_bytes(buf[..],p,9,pack[0..<4]);p=ox_t_text(buf[..],p,8,"s");
+    r=ox_initializer(buf[0..<p],OxModel.{},arena[..]);#assert r.status==OxStatus.ok && r.values[0].count==1 && r.values[0].shape.rank==0;
+    // Doc strings and an explicit default location are skipped.
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_bytes(buf[..],p,9,pack[0..<4]);p=ox_t_text(buf[..],p,8,"s");p=ox_t_text(buf[..],p,12,"doc");p=ox_t_varint(buf[..],p,14,0);
+    #assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.ok;
+}
+
+ox_t_body :: (buf:[]u8,at:int,pack:[]u8)->int {p:=ox_t_bytes(buf,at,9,pack);return ox_t_text(buf,p,8,"t");}
+#test "an initializer's refusals" {
+    buf:[64]u8;arena:[8]f32;pack:[8]u8;
+    // No element type, then DOUBLE: dtype, before the data are looked at.
+    p:=ox_t_body(buf[..],0,pack[0..<4]);#assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.dtype;
+    p=ox_t_varint(buf[..],0,2,11);p=ox_t_body(buf[..],p,pack[0..<4]);#assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.dtype;
+    p=ox_t_varint(buf[..],0,2,11);p=ox_t_varint(buf[..],p,14,1);#assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.dtype;
+    // External data, by location alone or by entries alone.
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_body(buf[..],p,pack[0..<4]);p=ox_t_varint(buf[..],p,14,1);
+    #assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.data;
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_body(buf[..],p,pack[0..<4]);p=ox_t_text(buf[..],p,13,"x");
+    #assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.data;
+    // Raw bytes with one float_data value, with none, and of the wrong size.
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_body(buf[..],p,pack[0..<4]);p=ox_t_fixed(buf[..],p,4,0);
+    #assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.data;
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_text(buf[..],p,8,"t");#assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.data;
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_body(buf[..],p,pack[0..<8]);#assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.data;
+    // Dimensions: 0, negative, past 4,096, five of them, and a broken packed run.
+    dims:=[4]u64.[0,0xffffffffffffffff,4097,1];
+    for d:dims[0..<3] {p=ox_t_varint(buf[..],0,1,d);p=ox_t_varint(buf[..],p,2,1);p=ox_t_body(buf[..],p,pack[0..<4]);#assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.shape;}
+    five:=[5]u8.[1,1,1,1,1];p=ox_t_bytes(buf[..],0,1,five[..]);p=ox_t_varint(buf[..],p,2,1);p=ox_t_body(buf[..],p,pack[0..<4]);
+    #assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.shape;
+    // Names: empty, or already held.
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_bytes(buf[..],p,9,pack[0..<4]);
+    #assert ox_initializer(buf[0..<p],OxModel.{},arena[..]).status==OxStatus.name;
+    p=ox_t_varint(buf[..],0,2,1);p=ox_t_body(buf[..],p,pack[0..<4]);
+    held:=ox_initializer(buf[0..<p],OxModel.{},arena[..]);#assert held.status==OxStatus.ok && ox_initializer(buf[0..<p],held,arena[..]).status==OxStatus.name;
+    // A field cut short.
+    #assert ox_initializer(buf[0..<p-1],OxModel.{},arena[..]).status==OxStatus.wire;
+}
+
+#test "the largest initializer" {
+    raw:[16400]u8;arena:[4096]f32;
+    p:=ox_t_varint(raw[..],0,1,4096);p=ox_t_varint(raw[..],p,2,1);
+    p=ox_t_var(raw[..],p,9*8+2);p=ox_t_var(raw[..],p,16384);p+=16384;p=ox_t_text(raw[..],p,8,"t");
+    r:=ox_initializer(raw[0..<p],OxModel.{},arena[..]);#assert r.status==OxStatus.ok && r.values[0].count==4096;
+}
+
+#test "declarations" {
+    buf:[256]u8;dims:=[2]u64.[3,4];
+    n:=ox_t_decl(buf[..],"x",7,dims[..]);d:=ox_declaration(buf[0..<n]);#assert d.status==OxStatus.ok && d.elem==7;
+    #assert ox_declaration(buf[0..<n-1]).status==OxStatus.wire;
+    n=ox_t_decl(buf[..],"",1,dims[..]);#assert ox_declaration(buf[0..<n]).status==OxStatus.name;
+    zero:=[1]u64.[0];n=ox_t_decl(buf[..],"x",1,zero[..]);#assert ox_declaration(buf[0..<n]).status==OxStatus.shape;
+    edge:=[2]u64.[4096,4097];
+    n=ox_t_decl(buf[..],"x",1,edge[0..<1]);#assert ox_declaration(buf[0..<n]).status==OxStatus.ok;
+    n=ox_t_decl(buf[..],"x",1,edge[1..<2]);#assert ox_declaration(buf[0..<n]).status==OxStatus.shape;
+    five:=[5]u64.[1,1,1,1,1];n=ox_t_decl(buf[..],"x",1,five[..]);#assert ox_declaration(buf[0..<n]).status==OxStatus.capacity;
+    n=ox_t_decl(buf[..],"x",1,five[0..<4]);#assert ox_declaration(buf[0..<n]).status==OxStatus.ok;
+    // Doc strings and metadata on the value are skipped; any other field is refused.
+    n=ox_t_decl(buf[..],"x",1,dims[..]);m:=ox_t_text(buf[..],n,3,"doc");m=ox_t_text(buf[..],m,4,"meta");
+    #assert ox_declaration(buf[0..<m]).status==OxStatus.ok;
+    m=ox_t_varint(buf[..],n,5,1);#assert ox_declaration(buf[0..<m]).status==OxStatus.field;
+    // No type at all: a shape refusal; a type that isn't a tensor: input.
+    m=ox_t_text(buf[..],0,1,"x");#assert ox_declaration(buf[0..<m]).status==OxStatus.shape;
+    seq:[8]u8;s:=ox_t_varint(seq[..],0,4,1);m=ox_t_text(buf[..],0,1,"x");m=ox_t_bytes(buf[..],m,2,seq[0..<s]);
+    #assert ox_declaration(buf[0..<m]).status==OxStatus.input;
+    s=ox_t_varint(seq[..],0,1,1);m=ox_t_text(buf[..],0,1,"x");m=ox_t_bytes(buf[..],m,2,seq[0..<s]);
+    #assert ox_declaration(buf[0..<m]).status==OxStatus.input;
+    bad:=[2]u8.[8,128];m=ox_t_text(buf[..],0,1,"x");m=ox_t_bytes(buf[..],m,2,bad[..]);
+    #assert ox_declaration(buf[0..<m]).status==OxStatus.wire;
+}
+
+ox_t_typed :: (out:[]u8,tensor:[]u8)->int {
+    t:[160]u8;n:=ox_t_bytes(t[..],0,1,tensor);
+    p:=ox_t_text(out,0,1,"x");return ox_t_bytes(out,p,2,t[0..<n]);
+}
+#test "tensor types and their dimensions" {
+    buf:[256]u8;tensor:[128]u8;
+    // An element type and no shape: a shape refusal.
+    p:=ox_t_varint(tensor[..],0,1,1);n:=ox_t_typed(buf[..],tensor[0..<p]);#assert ox_declaration(buf[0..<n]).status==OxStatus.shape;
+    // The element type as bytes, the shape as a varint, or another field: input.
+    p=ox_t_text(tensor[..],0,1,"x");n=ox_t_typed(buf[..],tensor[0..<p]);#assert ox_declaration(buf[0..<n]).status==OxStatus.input;
+    p=ox_t_varint(tensor[..],0,2,1);n=ox_t_typed(buf[..],tensor[0..<p]);#assert ox_declaration(buf[0..<n]).status==OxStatus.input;
+    p=ox_t_varint(tensor[..],0,3,1);n=ox_t_typed(buf[..],tensor[0..<p]);#assert ox_declaration(buf[0..<n]).status==OxStatus.input;
+    bad:=[2]u8.[8,128];n=ox_t_typed(buf[..],bad[..]);#assert ox_declaration(buf[0..<n]).status==OxStatus.wire;
+    // The shape may come before the element type.
+    dim:[32]u8;shape:[64]u8;
+    d:=ox_t_varint(dim[..],0,1,3);s:=ox_t_bytes(shape[..],0,1,dim[0..<d]);
+    p=ox_t_bytes(tensor[..],0,2,shape[0..<s]);p=ox_t_varint(tensor[..],p,1,1);n=ox_t_typed(buf[..],tensor[0..<p]);
+    x:=ox_declaration(buf[0..<n]);#assert x.status==OxStatus.ok && x.elem==1 && x.shape.rank==1;
+    // A refused shape stops the type there.
+    d=ox_t_varint(dim[..],0,1,0);s=ox_t_bytes(shape[..],0,1,dim[0..<d]);
+    p=ox_t_bytes(tensor[..],0,2,shape[0..<s]);p=ox_t_varint(tensor[..],p,3,1);n=ox_t_typed(buf[..],tensor[0..<p]);
+    #assert ox_declaration(buf[0..<n]).status==OxStatus.shape;
+    // Dimensions: a named one, a named one with a value, a value as bytes, a
+    // dimension field of another number or type, and broken bytes in each place.
+    cases:=[7]int.[0,1,2,3,4,5,6];
+    for c:cases {
+        d=0;s=0;
+        if c==0 {d=ox_t_text(dim[..],0,2,"batch");}
+        if c==1 {d=ox_t_varint(dim[..],0,1,3);d=ox_t_text(dim[..],d,2,"batch");}
+        if c==2 {d=ox_t_text(dim[..],0,1,"3");}
+        if c<3 {s=ox_t_bytes(shape[..],0,1,dim[0..<d]);}
+        if c==3 {s=ox_t_varint(shape[..],0,1,3);}
+        if c==4 {d=ox_t_varint(dim[..],0,1,3);s=ox_t_bytes(shape[..],0,2,dim[0..<d]);}
+        if c==5 {s=ox_t_bytes(shape[..],0,1,bad[..]);}
+        if c==6 {d=ox_t_varint(dim[..],0,1,3);dim[d]=16;dim[d+1]=128;s=ox_t_bytes(shape[..],0,1,dim[0..<d+2]);}
+        p=ox_t_varint(tensor[..],0,1,1);p=ox_t_bytes(tensor[..],p,2,shape[0..<s]);n=ox_t_typed(buf[..],tensor[0..<p]);
+        want:=ifx c>=5 then OxStatus.wire else OxStatus.shape;
+        #assert ox_declaration(buf[0..<n]).status==want;
+    }
+    // One good dimension, then a field whose length is missing.
+    d=ox_t_varint(dim[..],0,1,3);s=ox_t_bytes(shape[..],0,1,dim[0..<d]);s=ox_t_var(shape[..],s,10);
+    p=ox_t_varint(tensor[..],0,1,1);p=ox_t_bytes(tensor[..],p,2,shape[0..<s]);n=ox_t_typed(buf[..],tensor[0..<p]);
+    #assert ox_declaration(buf[0..<n]).status==OxStatus.wire;
+}
+
+ox_t_attr :: (out:[]u8,name:string,kind:u64)->int {p:=ox_t_text(out,0,1,name);return ox_t_varint(out,p,20,kind);}
+ox_t_ints :: (out:[]u8,at:int,values:[]u64)->int {
+    run:[40]u8;n:=0;
+    for v:values {n=ox_t_var(run[..],n,v);}
+    return ox_t_bytes(out,at,8,run[0..<n]);
+}
+ox_t_admits :: (wire:[]u8,op:OxOp)->bool {return ox_attribute(wire,op,OxAttrs.{}).status==OxStatus.ok;}
+#test "attributes: each name, type, operator and value" {
+    buf:[64]u8;
+    // INT attributes: axis, keepdims, group, transA, transB.
+    p:=ox_t_attr(buf[..],"axis",2);
+    #assert ox_t_admits(buf[0..<p],OxOp.gather) && ox_t_admits(buf[0..<p],OxOp.flatten) && ox_t_admits(buf[0..<p],OxOp.softmax);
+    #assert !ox_t_admits(buf[0..<p],OxOp.relu) && !ox_t_admits(buf[0..<p],OxOp.gemm);
+    a:=ox_attribute(buf[0..<p],OxOp.softmax,OxAttrs.{});#assert a.has_axis && a.axis==0;
+    q:=ox_t_varint(buf[..],p,3,0xffffffffffffffff);a=ox_attribute(buf[0..<q],OxOp.softmax,OxAttrs.{});#assert a.status==OxStatus.ok && a.axis==-1;
+    #assert !ox_t_admits(buf[0..<q],OxOp.gather);
+    q=ox_t_attr(buf[..],"axis",7);#assert !ox_t_admits(buf[0..<q],OxOp.flatten);
+    q=ox_t_attr(buf[..],"axis",1);#assert !ox_t_admits(buf[0..<q],OxOp.flatten);
+    p=ox_t_attr(buf[..],"keepdims",2);
+    a=ox_attribute(buf[0..<p],OxOp.reduce_mean,OxAttrs.{});#assert a.status==OxStatus.ok && a.drop;
+    q=ox_t_varint(buf[..],p,3,1);a=ox_attribute(buf[0..<q],OxOp.reduce_mean,OxAttrs.{drop=true});#assert a.status==OxStatus.ok && !a.drop;
+    q=ox_t_varint(buf[..],p,3,2);#assert !ox_t_admits(buf[0..<q],OxOp.reduce_mean);
+    #assert !ox_t_admits(buf[0..<p],OxOp.conv);
+    q=ox_t_attr(buf[..],"keepdims",7);#assert !ox_t_admits(buf[0..<q],OxOp.reduce_mean);
+    p=ox_t_attr(buf[..],"group",2);q=ox_t_varint(buf[..],p,3,1);#assert ox_t_admits(buf[0..<q],OxOp.conv) && !ox_t_admits(buf[0..<q],OxOp.gemm);
+    q=ox_t_attr(buf[..],"group",7);q=ox_t_varint(buf[..],q,3,1);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    p=ox_t_attr(buf[..],"transA",2);#assert ox_t_admits(buf[0..<p],OxOp.gemm) && !ox_t_admits(buf[0..<p],OxOp.conv);
+    q=ox_t_attr(buf[..],"transA",1);#assert !ox_t_admits(buf[0..<q],OxOp.gemm);
+    p=ox_t_attr(buf[..],"transB",2);a=ox_attribute(buf[0..<p],OxOp.gemm,OxAttrs.{trans_b=true});#assert a.status==OxStatus.ok && !a.trans_b;
+    q=ox_t_varint(buf[..],p,3,1);a=ox_attribute(buf[0..<q],OxOp.gemm,OxAttrs.{});#assert a.status==OxStatus.ok && a.trans_b;
+    #assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_attr(buf[..],"transB",7);#assert !ox_t_admits(buf[0..<q],OxOp.gemm);
+    // FLOAT attributes: alpha and beta at exactly 1; a missing type is no FLOAT.
+    p=ox_t_attr(buf[..],"alpha",1);q=ox_t_fixed(buf[..],p,2,f32_bits(1));#assert ox_t_admits(buf[0..<q],OxOp.gemm) && !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_fixed(buf[..],p,2,f32_bits(2));#assert !ox_t_admits(buf[0..<q],OxOp.gemm);
+    p=ox_t_attr(buf[..],"beta",1);q=ox_t_fixed(buf[..],p,2,f32_bits(1));#assert ox_t_admits(buf[0..<q],OxOp.gemm);
+    p=ox_t_text(buf[..],0,1,"alpha");q=ox_t_fixed(buf[..],p,2,f32_bits(1));#assert !ox_t_admits(buf[0..<q],OxOp.gemm);
+    // INTS attributes.
+    one:=[5]u64.[1,1,1,1,1];zero:=[4]u64.[0,0,0,0];
+    p=ox_t_attr(buf[..],"axes",7);q=ox_t_ints(buf[..],p,one[0..<1]);
+    a=ox_attribute(buf[0..<q],OxOp.reduce_mean,OxAttrs.{});#assert a.status==OxStatus.ok && a.axes.count==1 && a.axes.values[0]==1;
+    #assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_attr(buf[..],"axes",2);#assert !ox_t_admits(buf[0..<q],OxOp.reduce_mean);
+    p=ox_t_attr(buf[..],"kernel_shape",7);q=ox_t_ints(buf[..],p,one[0..<2]);a=ox_attribute(buf[0..<q],OxOp.conv,OxAttrs.{});
+    #assert a.status==OxStatus.ok && a.kernel.count==2;
+    #assert !ox_t_admits(buf[0..<q],OxOp.gemm);
+    q=ox_t_ints(buf[..],p,one[0..<5]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_attr(buf[..],"kernel_shape",2);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    two:=[2]u64.[2,1];twice:=[2]u64.[1,2];
+    for name:[2]string.["strides","dilations"] {
+        p=ox_t_attr(buf[..],name,7);
+        q=ox_t_ints(buf[..],p,one[0..<2]);#assert ox_t_admits(buf[0..<q],OxOp.conv) && !ox_t_admits(buf[0..<q],OxOp.gemm);
+        q=ox_t_ints(buf[..],p,two[..]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+        q=ox_t_ints(buf[..],p,twice[..]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+        q=ox_t_ints(buf[..],p,one[0..<1]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+        q=ox_t_ints(buf[..],p,one[..]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+        q=ox_t_attr(buf[..],name,2);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    }
+    p=ox_t_attr(buf[..],"pads",7);q=ox_t_ints(buf[..],p,zero[..]);#assert ox_t_admits(buf[0..<q],OxOp.conv) && !ox_t_admits(buf[0..<q],OxOp.gemm);
+    pads:=[4]u64.[1,0,0,0];q=ox_t_ints(buf[..],p,pads[..]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    pads=[4]u64.[0,0,0,1];q=ox_t_ints(buf[..],p,pads[..]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_ints(buf[..],p,zero[0..<3]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_ints(buf[..],p,one[..]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_attr(buf[..],"pads",2);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    q=ox_t_attr(buf[..],"padding",7);q=ox_t_ints(buf[..],q,zero[..]);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+    #assert ox_one(OxInts.{ok=true,count=2,values=[4]s64.[1,1,0,0]},2) && !ox_one(OxInts.{count=2,values=[4]s64.[1,1,0,0]},2);
+    // A doc string is skipped; any other field, and broken bytes, are refused.
+    p=ox_t_attr(buf[..],"axis",2);q=ox_t_text(buf[..],p,13,"doc");#assert ox_t_admits(buf[0..<q],OxOp.flatten);
+    q=ox_t_fixed(buf[..],p,9,0);#assert ox_attribute(buf[0..<q],OxOp.flatten,OxAttrs.{}).status==OxStatus.attribute;
+    #assert ox_attribute(buf[0..<p-1],OxOp.flatten,OxAttrs.{}).status==OxStatus.wire;
+    q=ox_t_attr(buf[..],"unknown",2);#assert !ox_t_admits(buf[0..<q],OxOp.conv);
+}
+
+ox_t_stem :: (s:string,op:OxOp,index:int,out:[]u8)->int {b:[80]u8;for k:0..<s.count {b[k]=s[k];} return ox_stem(b[0..<s.count],op,index,out);}
+#test "names from module paths, or from the operator and position" {
+    out:[64]u8;
+    #assert ox_is(out[0..<ox_t_stem("/enc/layer/fc/Gemm",OxOp.gemm,3,out[..])],"enc.layer.fc");
+    #assert ox_is(out[0..<ox_t_stem("/a/x",OxOp.gemm,3,out[..])],"a");
+    #assert ox_is(out[0..<ox_t_stem("/a/",OxOp.gemm,3,out[..])],"a");
+    #assert ox_is(out[0..<ox_t_stem("",OxOp.gemm,3,out[..])],"gemm3");
+    #assert ox_is(out[0..<ox_t_stem("/x",OxOp.conv,10,out[..])],"conv10");
+    #assert ox_is(out[0..<ox_t_stem("fc/Gemm",OxOp.relu,12,out[..])],"relu12");
+    #assert ox_is(out[0..<ox_t_stem("x/y/z",OxOp.softmax,0,out[..])],"softmax0");
+    #assert ox_t_stem("//x",OxOp.gemm,0,out[..])==0;
+    long:[70]u8;long[0]='/';for i:1..<69 {long[i]='a';} long[69]='/';
+    #assert ox_stem(long[..],OxOp.gemm,0,out[..])==68;
+    m:=ox_name_weight(OxModel.{},long[..],OxOp.gemm,0,1,0);#assert m.status==OxStatus.name && m.node==0;
+    m=ox_name_weight(OxModel.{},long[0..<3],OxOp.gemm,4,1,0);#assert m.status==OxStatus.ok && ox_t_name(m,0,"gemm4.weight");
+    long[1]='/';m=ox_name_weight(OxModel.{},long[0..<3],OxOp.gemm,4,1,0);#assert m.status==OxStatus.name && m.node==4;long[1]='a';
+    // A stem of 57 letters: ".bias" makes 62 bytes and ".weight" exactly 64.
+    mid:[60]u8;mid[0]='/';for i:1..<58 {mid[i]='a';} mid[58]='/';mid[59]='G';
+    m=ox_name_weight(OxModel.{},mid[..],OxOp.gemm,4,2,0);#assert m.status==OxStatus.ok && m.tensors[0].length==62 && m.tensors[0].name[61]=='s';
+    m=ox_name_weight(m,mid[..],OxOp.gemm,4,1,1);#assert m.status==OxStatus.ok && m.tensor_count==2 && m.tensors[1].length==64 && m.tensors[1].value==1;
+    #assert m.tensors[1].name[57]=='.' && m.tensors[1].name[63]=='t';
+    m=ox_name_weight(m,mid[..],OxOp.gemm,4,2,1);#assert m.status==OxStatus.name && m.node==4;
+    mid[58]='a';mid[59]='/';m=ox_name_weight(OxModel.{},mid[..],OxOp.gemm,5,1,0);#assert m.status==OxStatus.name && m.node==5;
+}
+
+#test "a model's own fields" {
+    buf:[64]u8;arena:[8]f32;
+    // ir_version as bytes, a graph as a varint, an operator set whose bytes
+    // break after its version.
+    p:=ox_t_text(buf[..],0,1,"8");#assert ox_read(buf[0..<p],arena[..]).status==OxStatus.ir;
+    opset:=[3]u8.[16,17,255];
+    p=ox_t_varint(buf[..],0,1,8);p=ox_t_bytes(buf[..],p,8,opset[..]);
+    m:=ox_read(buf[0..<p],arena[..]);#assert m.status==OxStatus.wire && m.node==-1;
+    p=ox_t_varint(buf[..],0,1,8);p=ox_t_bytes(buf[..],p,8,opset[0..<2]);q:=ox_t_varint(buf[..],p,7,1);
+    #assert ox_read(buf[0..<q],arena[..]).status==OxStatus.field;
+    #assert ox_read(buf[0..<p],arena[..]).status==OxStatus.field;
+    q=ox_t_varint(buf[..],p,8,1);#assert ox_read(buf[0..<q],arena[..]).status==OxStatus.field;
+}
+
+#test "a file past a mebibyte is refused before it is read" {
+    big:[1048577]u8;arena:[8]f32;
+    m:=ox_read(big[..],arena[..]);#assert m.status==OxStatus.capacity && m.node==-1;
+    #assert ox_read(big[0..<1048576],arena[..]).status==OxStatus.wire;
+}
+
+#test "a graph's own fields" {
+    buf:[256]u8;arena:[8]f32;
+    // A node given as a varint; 64 outputs are read, 65 are too many.
+    p:=ox_t_varint(buf[..],0,1,1);m:=ox_graph(buf[0..<p],OxModel.{node=-1,input=-1,output=-1},arena[..]);
+    #assert m.status==OxStatus.wire && m.node==-1;
+    p=0;for k:0..<64 {p=ox_t_text(buf[..],p,12,"");}
+    #assert ox_graph(buf[0..<p],OxModel.{node=-1,input=-1,output=-1},arena[..]).status==OxStatus.input;
+    p=ox_t_text(buf[..],p,12,"");m=ox_graph(buf[0..<p],OxModel.{node=-1,input=-1,output=-1},arena[..]);
+    #assert m.status==OxStatus.capacity && m.node==-1;
+}
+
+#test "running at the edges" {
+    arena:[64]f32;none:[1]s64;
+    blob:=OX_CASE_BYTES;cases:=OX_CASES;
+    c:=cases[OX_CASE_SOFTMAX_ROWS];m:=ox_read(blob[c.at..<c.at+c.size],arena[..]);#assert m.status==OxStatus.ok;
+    // Without the largest logit subtracted, exp(800) would overflow.
+    rows:=[6]f32.[0,1,2,800,0,1];y:=m.values[m.output];
+    #assert ox_run(m,arena[..],none[0..<0],rows[..]).status==OxStatus.ok;
+    #assert f64(arena[y.at])==0.09003057330846786 && f64(arena[y.at+1])==0.2447284758090973 && f64(arena[y.at+2])==0.6652409434318542;
+    #assert arena[y.at+3]==1 && arena[y.at+4]==0 && arena[y.at+5]==0;
+    rows=[6]f32.[0,1,2,0,800,1];#assert ox_run(m,arena[..],none[0..<0],rows[..]).status==OxStatus.ok;
+    #assert arena[y.at+3]==0 && arena[y.at+4]==1 && arena[y.at+5]==0;
+    run:=ox_run(m,arena[..],none[0..<0],rows[0..<5]);#assert run.status==OxStatus.input && run.node==-1;
+    // An arena smaller than the model's is refused before any node.
+    run=ox_run(m,arena[0..<m.arena-1],none[0..<0],rows[..]);#assert run.status==OxStatus.capacity && run.node==-1;
+    // Relu gives +0 for -0.
+    c=cases[OX_CASE_SIXTEEN_NODES];m=ox_read(blob[c.at..<c.at+c.size],arena[..]);
+    two:=[2]f32.[-0.0,-1];#assert ox_run(m,arena[..],none[0..<0],two[..]).status==OxStatus.ok;
+    y=m.values[m.output];#assert f32_bits(arena[y.at])==0 && f32_bits(arena[y.at+1])==0;
+    // Ids at the bounds: -4,096 and 4,096 pass the input check and fail the table.
+    file:=OX_EMBEDDING;big:[1024]f32;m=ox_read(file[..],big[..]);
+    ids:=[8]s64.[0,0,0,0,0,0,0,-4096];run=ox_run(m,big[..],ids[..],two[0..<0]);#assert run.status==OxStatus.input && run.node==0;
+    ids[7]=4096;run=ox_run(m,big[..],ids[..],two[0..<0]);#assert run.status==OxStatus.input && run.node==0;
+    run=ox_run(m,big[..],ids[0..<7],two[0..<0]);#assert run.status==OxStatus.input && run.node==-1;
+    // The arena: the input fits at 520 floats, its first node's output does not.
+    x:=ox_read(file[..],big[0..<519]);#assert x.status==OxStatus.capacity && x.node==-1;
+    x=ox_read(file[..],big[0..<520]);#assert x.status==OxStatus.capacity && x.node==0;
+}
+
+// book:begin wire
+// Protobuf's wire: a field is a varint key (number and wire type) followed by
+// a varint (type 0), eight bytes (1), a length and that many bytes (2), or four
+// bytes (5). Groups (3, 4), types 6 and 7, field number 0, a varint past 64
+// bits and anything cut short are refused.
+OX_BYTES_MAX :: 1048576;
+OxVar :: struct {value:u64;next:int;error:bool;}
+OxField :: struct {number:u64;wt:u64;raw:u64;payload:[]u8;next:int;error:bool;done:bool;}
+ox_var :: (wire:[]u8,at:int)->OxVar {
+    pos:=at;value:u64=0;shift:u64=0;
+    while pos<wire.count {
+        b:=wire[pos];pos+=1;
+        if shift==63 && b>1 {return OxVar.{error=true};}
+        value|=cast(u64)(b&127)<<shift;
+        if b<128 {return OxVar.{value=value,next=pos};}
+        shift+=7;
+    }
+    return OxVar.{error=true};
+}
+ox_scan :: (wire:[]u8,at:int)->OxField {
+    if at==wire.count {return OxField.{next=at,done=true};}
+    key:=ox_var(wire,at);
+    if key.error || key.value<8 {return OxField.{error=true};}
+    f:=OxField.{number=key.value>>3,wt=key.value&7,next=key.next};
+    if f.wt==0 {v:=ox_var(wire,key.next);f.raw=v.value;f.next=v.next;f.error=v.error;return f;}
+    if f.wt==2 {
+        n:=ox_var(wire,key.next);
+        if n.error || n.value>cast(u64)(wire.count-n.next) {return OxField.{error=true};}
+        f.payload=wire[n.next..<n.next+cast(int)n.value];f.next=n.next+cast(int)n.value;return f;
+    }
+    width:=ifx f.wt==1 then 8 else 4;
+    if (f.wt!=1 && f.wt!=5) || width>wire.count-key.next {return OxField.{error=true};}
+    for i:0..<width {f.raw|=cast(u64)wire[key.next+i]<<cast(u64)(8*i);}
+    f.next=key.next+width;
+    return f;
+}
+// The first field with this number; done when there is none.
+ox_field :: (wire:[]u8,number:u64)->OxField {
+    f:=ox_scan(wire,0);
+    while !f.error && !f.done && f.number!=number {f=ox_scan(wire,f.next);}
+    return f;
+}
+// book:end wire
+
+// An enumeration value as an int; anything past 255 is no value this reader knows.
+ox_small :: (raw:u64)->int {return ifx raw<256 then cast(int)raw else -1;}
+ox_is :: (b:[]u8,s:string)->bool {
+    if b.count!=s.count {return false;}
+    for i:0..<b.count {if b[i]!=s[i] {return false;}}
+    return true;
+}
+ox_same :: (a:[]u8,b:[]u8)->bool {
+    if a.count!=b.count {return false;}
+    for i:0..<a.count {if a[i]!=b[i] {return false;}}
+    return true;
+}
+ox_find :: (m:OxModel,name:[]u8)->int {
+    for i:0..<m.value_count {if ox_same(m.values[i].name,name) {return i;}}
+    return -1;
+}
+// The element count, or 0 above the profile's limit or for a dimension below
+// 1. Dimensions reach here already at most 4,096, so the product can't overflow.
+ox_elements :: (s:OxShape)->int {
+    n:=1;
+    for i:0..<s.rank {
+        if s.dims[i]<1 || s.dims[i]>OX_ELEMENTS_MAX/n {return 0;}
+        n*=s.dims[i];
+    }
+    return n;
+}
+ox_shape_same :: (a:OxShape,b:OxShape)->bool {
+    if a.rank!=b.rank {return false;}
+    for i:0..<a.rank {if a.dims[i]!=b.dims[i] {return false;}}
+    return true;
+}
+ox_default :: (domain:[]u8)->bool {return domain.count==0 || ox_is(domain,"ai.onnx");}
+
+// book:begin ints
+// A repeated integer field arrives packed (one length-delimited run) or one
+// varint at a time; both are read, up to four values.
+OxInts :: struct {ok:bool;count:int;values:[4]s64;}
+ox_ints :: (f:OxField,into:OxInts)->OxInts {
+    r:=into;
+    if f.wt==0 {
+        if r.count==4 {r.ok=false;return r;}
+        r.values[r.count]=cast,trunc(s64)f.raw;r.count+=1;return r;
+    }
+    if f.wt!=2 {r.ok=false;return r;}
+    at:=0;
+    while at<f.payload.count {
+        v:=ox_var(f.payload,at);
+        if v.error || r.count==4 {r.ok=false;return r;}
+        r.values[r.count]=cast,trunc(s64)v.value;r.count+=1;at=v.next;
+    }
+    return r;
+}
+// book:end ints
+
+ox_refuse :: (m:OxModel,status:OxStatus,node:int)->OxModel {r:=m;r.status=status;r.node=node;return r;}
+// A refusal that belongs to no node.
+ox_fail :: (m:OxModel,status:OxStatus)->OxModel {return ox_refuse(m,status,-1);}
+ox_word :: (b:[]u8,at:int)->f32 {
+    bits:u32=0;
+    for k:0..<4 {bits|=cast(u32)b[at+k]<<cast(u32)(8*k);}
+    return f32_from_bits(bits);
+}
+
+// book:begin initializer
+// An initializer is a float tensor of at most rank 4 whose data is in the file,
+// as raw little-endian bytes or as float_data, exactly as many values as its
+// dimensions hold. Other element types are refused first; then external data
+// and any other data field. Its values go into the arena.
+ox_initializer :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
+    r:=m;dims:=OxInts.{ok=true};dtype:=0;name:[]u8;raw:[]u8;has_raw:=false;floats:=0;elsewhere:=false;
+    at:=r.arena;
+    f:=ox_scan(wire,0);
+    while !f.done {
+        if f.error {return ox_fail(r,OxStatus.wire);}
+        if f.number==1 {dims=ox_ints(f,dims);}
+        else if f.number==2 && f.wt==0 {dtype=ox_small(f.raw);}
+        else if f.number==8 && f.wt==2 {name=f.payload;}
+        else if f.number==9 && f.wt==2 {raw=f.payload;has_raw=true;}
+        else if f.number==4 && f.wt==5 {
+            if at+floats==arena.count {return ox_fail(r,OxStatus.capacity);}
+            arena[at+floats]=f32_from_bits(cast(u32)f.raw);floats+=1;
+        }
+        else if f.number==4 && f.wt==2 {
+            if f.payload.count%4!=0 {return ox_fail(r,OxStatus.data);}
+            if at+floats+f.payload.count/4>arena.count {return ox_fail(r,OxStatus.capacity);}
+            for i:0..<f.payload.count/4 {arena[at+floats+i]=ox_word(f.payload,4*i);}
+            floats+=f.payload.count/4;
+        }
+        else if f.number!=12 && (f.number!=14 || f.raw!=0) {elsewhere=true;}
+        f=ox_scan(wire,f.next);
+    }
+    if !dims.ok {return ox_fail(r,OxStatus.shape);}
+    if dtype!=OX_FLOAT {return ox_fail(r,OxStatus.dtype);}
+    if elsewhere {return ox_fail(r,OxStatus.data);}
+    if name.count==0 || ox_find(r,name)!=-1 {return ox_fail(r,OxStatus.name);}
+    shape:=OxShape.{rank=dims.count};
+    for i:0..<dims.count {shape.dims[i]=cast(int)dims.values[i];}
+    count:=ox_elements(shape);if count==0 {return ox_fail(r,OxStatus.shape);}
+    if has_raw==(floats!=0) || (has_raw && raw.count!=4*count) || (!has_raw && floats!=count) {return ox_fail(r,OxStatus.data);}
+    if at+count>arena.count {return ox_fail(r,OxStatus.capacity);}
+    if has_raw {for i:0..<count {arena[at+i]=ox_word(raw,4*i);}}
+    if r.value_count==OX_VALUES_MAX {return ox_fail(r,OxStatus.capacity);}
+    r.values[r.value_count]=OxValue.{name=name,kind=OxKind.weight,shape=shape,at=at,count=count};
+    r.value_count+=1;r.arena=at+count;
+    return r;
+}
+// book:end initializer
+
+// book:begin declaration
+// A graph input or output declares a tensor type with static dimensions; a
+// named (symbolic) dimension or any other type is refused.
+OxDecl :: struct {status:OxStatus;name:[]u8;elem:int;shape:OxShape;}
+ox_dims :: (wire:[]u8,d:OxDecl)->OxDecl {
+    r:=d;
+    f:=ox_scan(wire,0);
+    while !f.done {
+        if f.error {r.status=OxStatus.wire;return r;}
+        if f.number!=1 || f.wt!=2 {r.status=OxStatus.shape;return r;}
+        if r.shape.rank==4 {r.status=OxStatus.capacity;return r;}
+        value:=ox_field(f.payload,1);named:=ox_field(f.payload,2);
+        if value.error || named.error {r.status=OxStatus.wire;return r;}
+        if value.wt!=0 || !named.done || value.raw<1 || value.raw>OX_ELEMENTS_MAX {r.status=OxStatus.shape;return r;}
+        r.shape.dims[r.shape.rank]=cast(int)value.raw;r.shape.rank+=1;
+        f=ox_scan(wire,f.next);
+    }
+    return r;
+}
+ox_tensor_type :: (wire:[]u8,d:OxDecl)->OxDecl {
+    r:=d;typed:=false;
+    g:=ox_scan(wire,0);
+    while !g.done {
+        if g.error {r.status=OxStatus.wire;return r;}
+        if g.number==1 && g.wt==0 {r.elem=ox_small(g.raw);}
+        else if g.number==2 && g.wt==2 {typed=true;r=ox_dims(g.payload,r);if r.status!=OxStatus.ok {return r;}}
+        else {r.status=OxStatus.input;return r;}
+        g=ox_scan(wire,g.next);
+    }
+    if !typed {r.status=OxStatus.shape;}
+    return r;
+}
+ox_declaration :: (wire:[]u8)->OxDecl {
+    r:=OxDecl.{status=OxStatus.shape};
+    f:=ox_scan(wire,0);
+    while !f.done {
+        if f.error {r.status=OxStatus.wire;return r;}
+        if f.number==1 && f.wt==2 {r.name=f.payload;}
+        else if f.number==2 && f.wt==2 {
+            tensor:=ox_field(f.payload,1);
+            if tensor.error {r.status=OxStatus.wire;return r;}
+            if tensor.done || tensor.wt!=2 {r.status=OxStatus.input;return r;}
+            r.status=OxStatus.ok;r=ox_tensor_type(tensor.payload,r);if r.status!=OxStatus.ok {return r;}
+        }
+        else if f.number!=3 && f.number!=4 {r.status=OxStatus.field;return r;}
+        f=ox_scan(wire,f.next);
+    }
+    if r.status==OxStatus.ok && r.name.count==0 {r.status=OxStatus.name;}
+    return r;
+}
+// book:end declaration
+
+// book:begin attributes
+// The attributes this reader implements; any other name, type or value is
+// refused. Defaults are ONNX's: axis 0 for Gather, 1 for Flatten, -1 for
+// Softmax; keepdims 1; alpha and beta 1; no transposes.
+OxAttrs :: struct {status:OxStatus;axis:s64;has_axis:bool;axes:OxInts;drop:bool;trans_b:bool;kernel:OxInts;}
+OX_INT :: 2;
+OX_INTS :: 7;
+OX_FLOAT_ATTR :: 1;
+ox_one :: (ints:OxInts,count:int)->bool {
+    if !ints.ok || ints.count!=count {return false;}
+    for k:0..<count {if ints.values[k]!=1 {return false;}}
+    return true;
+}
+ox_attribute :: (wire:[]u8,op:OxOp,into:OxAttrs)->OxAttrs {
+    r:=into;name:[]u8;kind:=0;i:s64=0;value:f32=0;ints:=OxInts.{ok=true};
+    f:=ox_scan(wire,0);
+    while !f.done {
+        if f.error {r.status=OxStatus.wire;return r;}
+        if f.number==1 && f.wt==2 {name=f.payload;}
+        else if f.number==20 && f.wt==0 {kind=ox_small(f.raw);}
+        else if f.number==3 && f.wt==0 {i=cast,trunc(s64)f.raw;}
+        else if f.number==2 && f.wt==5 {value=f32_from_bits(cast(u32)f.raw);}
+        else if f.number==8 {ints=ox_ints(f,ints);}
+        else if f.number!=13 {r.status=OxStatus.attribute;return r;}
+        f=ox_scan(wire,f.next);
+    }
+    single:=kind==OX_INT;many:=kind==OX_INTS;
+    ok:=false;
+    if single && ox_is(name,"axis") && (op==OxOp.gather || op==OxOp.flatten || op==OxOp.softmax) {r.axis=i;r.has_axis=true;ok=op!=OxOp.gather || i==0;}
+    else if many && ox_is(name,"axes") && op==OxOp.reduce_mean {r.axes=ints;ok=true;}
+    else if single && ox_is(name,"keepdims") && op==OxOp.reduce_mean {r.drop=i==0;ok=i==0 || i==1;}
+    else if many && ox_is(name,"kernel_shape") && op==OxOp.conv {r.kernel=ints;ok=ints.ok && ints.count==2;}
+    else if many && (ox_is(name,"strides") || ox_is(name,"dilations")) && op==OxOp.conv {ok=ox_one(ints,2);}
+    else if many && ox_is(name,"pads") && op==OxOp.conv {
+        ok=ints.ok && ints.count==4;
+        for k:0..<ints.count {if ints.values[k]!=0 {ok=false;}}
+    }
+    else if single && ox_is(name,"group") && op==OxOp.conv {ok=i==1;}
+    else if kind==OX_FLOAT_ATTR && (ox_is(name,"alpha") || ox_is(name,"beta")) && op==OxOp.gemm {ok=value==1;}
+    else if single && ox_is(name,"transA") && op==OxOp.gemm {ok=i==0;}
+    else if single && ox_is(name,"transB") && op==OxOp.gemm {r.trans_b=i==1;ok=i==0 || i==1;}
+    if !ok {r.status=OxStatus.attribute;}
+    return r;
+}
+// book:end attributes
+
+// book:begin names
+// A weight's name comes from the node that uses it. A PyTorch export names a
+// node by its module path ("/encoder/fc/Gemm"); the path less its first slash
+// and its last part becomes the stem ("encoder.fc"). A node with no module
+// path ("/Flatten", "" or "fc") is named by its operator and position
+// ("gemm3"). The first weight slot is the weight, the second the bias.
+ox_stem :: (node:[]u8,op:OxOp,index:int,out:[]u8)->int {
+    slashes:=0;last:int=---;
+    for c,k:node {if c=='/' {slashes+=1;last=k;}}
+    n:=0;
+    if slashes>1 && node[0]=='/' {
+        for k:1..<last {if n<out.count {out[n]=ifx node[k]=='/' then '.' else node[k];} n+=1;}
+        return n;
+    }
+    stem:=OX_STEMS[cast(int)op];
+    for k:0..<stem.count {out[n]=stem[k];n+=1;}
+    if index>=10 {out[n]='1';n+=1;}
+    out[n]=cast(u8)('0'+index%10);
+    return n+1;
+}
+ox_name_weight :: (m:OxModel,node:[]u8,op:OxOp,index:int,slot:int,value:int)->OxModel {
+    r:=m;t:=OxTensor.{value=value};
+    n:=ox_stem(node,op,index,t.name[..]);
+    suffix:=ifx slot==2 then ".bias" else ".weight";
+    if n==0 || n+suffix.count>t.name.count {return ox_refuse(r,OxStatus.name,index);}
+    for k:0..<suffix.count {t.name[n+k]=suffix[k];}
+    t.length=n+suffix.count;
+    for k:0..<r.tensor_count {x:=r.tensors[k];if ox_same(x.name[0..<x.length],t.name[0..<t.length]) {return ox_refuse(r,OxStatus.name,index);}}
+    r.tensors[r.tensor_count]=t;r.tensor_count+=1;
+    return r;
+}
+// book:end names
+
+// book:begin node
+// Which input slots hold weights, how many inputs an operator takes, and
+// which slot must hold integers.
+ox_weight_slot :: (op:OxOp,slot:int)->bool {
+    if op==OxOp.gather {return slot==0;}
+    return (op==OxOp.conv || op==OxOp.gemm) && slot>=1;
+}
+ox_arity_ok :: (op:OxOp,n:int)->bool {
+    if op==OxOp.gather {return n==2;}
+    if op==OxOp.conv || op==OxOp.gemm {return n==2 || n==3;}
+    return n==1;
+}
+// The output shape of a node whose inputs are known, or a refusal. A Conv
+// input below rank 4 leaves a zero extent that no kernel fits.
+OxInfer :: struct {status:OxStatus;shape:OxShape;axis:int;}
+ox_infer :: (m:OxModel,op:OxOp,inputs:[3]int,arity:int,a:OxAttrs)->OxInfer {
+    x:=m.values[inputs[0]].shape;r:=OxInfer.{shape=x};
+    if op==OxOp.gather {
+        i:=m.values[inputs[1]].shape;
+        if x.rank!=2 || i.rank>2 {r.status=OxStatus.shape;return r;}
+        r.shape=i;r.shape.dims[i.rank]=x.dims[1];r.shape.rank=i.rank+1;
+    } else if op==OxOp.reduce_mean {
+        if a.axes.count!=1 {r.status=OxStatus.attribute;return r;}
+        axis:=cast(int)a.axes.values[0];if axis<0 {axis+=x.rank;}
+        if axis<0 || axis>=x.rank {r.status=OxStatus.attribute;return r;}
+        r.axis=axis;r.shape.dims[axis]=1;
+        if a.drop {
+            for k:axis..<x.rank-1 {r.shape.dims[k]=x.dims[k+1];}
+            r.shape.dims[x.rank-1]=0;r.shape.rank=x.rank-1;
+        }
+    } else if op==OxOp.conv {
+        w:=m.values[inputs[1]].shape;
+        if w.rank!=4 || w.dims[1]!=x.dims[1] || w.dims[2]>x.dims[2] || w.dims[3]>x.dims[3] {r.status=OxStatus.shape;return r;}
+        if a.kernel.count==2 && (a.kernel.values[0]!=w.dims[2] || a.kernel.values[1]!=w.dims[3]) {r.status=OxStatus.attribute;return r;}
+        if arity==3 {b:=m.values[inputs[2]].shape;if b.rank!=1 || b.dims[0]!=w.dims[0] {r.status=OxStatus.shape;return r;}}
+        r.shape.dims[1]=w.dims[0];r.shape.dims[2]=x.dims[2]-w.dims[2]+1;r.shape.dims[3]=x.dims[3]-w.dims[3]+1;
+    } else if op==OxOp.flatten {
+        axis:=ifx a.has_axis then cast(int)a.axis else 1;if axis<0 {axis+=x.rank;}
+        if axis<0 || axis>x.rank {r.status=OxStatus.attribute;return r;}
+        r.shape=OxShape.{rank=2,dims=[4]int.[1,1,0,0]};
+        for k:0..<x.rank {r.shape.dims[ifx k<axis then 0 else 1]*=x.dims[k];}
+    } else if op==OxOp.gemm {
+        w:=m.values[inputs[1]].shape;
+        n:=ifx a.trans_b then w.dims[0] else w.dims[1];k:=ifx a.trans_b then w.dims[1] else w.dims[0];
+        if x.rank!=2 || w.rank!=2 || x.dims[1]!=k {r.status=OxStatus.shape;return r;}
+        if arity==3 {b:=m.values[inputs[2]].shape;if b.rank!=1 || b.dims[0]!=n {r.status=OxStatus.shape;return r;}}
+        r.shape.dims[1]=n;
+    } else if op==OxOp.softmax {
+        axis:=ifx a.has_axis then cast(int)a.axis else -1;
+        if axis!=-1 && axis!=x.rank-1 {r.status=OxStatus.attribute;return r;}
+    }
+    return r;
+}
+// One node, in file order: its operator, attributes and inputs are checked,
+// each weight named, and its output given a shape and a place in the arena.
+OX_ATTRS_MAX :: 8;
+ox_node :: (wire:[]u8,m:OxModel,index:int,arena:int)->OxModel {
+    r:=m;names:[3][]u8;arity:=0;outs:=0;output:[]u8;node_name:[]u8;op_type:[]u8;domain:[]u8;
+    attrs:[OX_ATTRS_MAX][]u8;attr_count:=0;
+    f:=ox_scan(wire,0);
+    while !f.done {
+        if f.error {return ox_refuse(r,OxStatus.wire,index);}
+        if f.number==1 && f.wt==2 {if arity==3 {return ox_refuse(r,OxStatus.op,index);} names[arity]=f.payload;arity+=1;}
+        else if f.number==2 && f.wt==2 {output=f.payload;outs+=1;}
+        else if f.number==3 && f.wt==2 {node_name=f.payload;}
+        else if f.number==4 && f.wt==2 {op_type=f.payload;}
+        else if f.number==7 && f.wt==2 {domain=f.payload;}
+        else if f.number==5 && f.wt==2 {if attr_count==OX_ATTRS_MAX {return ox_refuse(r,OxStatus.attribute,index);} attrs[attr_count]=f.payload;attr_count+=1;}
+        else if f.number!=6 && f.number!=9 {return ox_refuse(r,OxStatus.field,index);}
+        f=ox_scan(wire,f.next);
+    }
+    if !ox_default(domain) {return ox_refuse(r,OxStatus.opset,index);}
+    op:=OX_OP_NAMES.count;
+    for k:0..<OX_OP_NAMES.count {if ox_is(op_type,OX_OP_NAMES[k]) {op=k;}}
+    if op==OX_OP_NAMES.count || outs!=1 || !ox_arity_ok(cast(OxOp)op,arity) {return ox_refuse(r,OxStatus.op,index);}
+    node:=OxNode.{op=cast(OxOp)op,arity=arity};
+    a:=OxAttrs.{};
+    for k:0..<attr_count {a=ox_attribute(attrs[k],node.op,a);if a.status!=OxStatus.ok {return ox_refuse(r,a.status,index);}}
+    for s:0..<3 {
+        if s>=arity {node.inputs[s]=-1;continue;}
+        v:=ox_find(r,names[s]);
+        if v==-1 {return ox_refuse(r,OxStatus.order,index);}
+        weight:=r.values[v].kind==OxKind.weight;
+        if weight!=ox_weight_slot(node.op,s) {return ox_refuse(r,OxStatus.role,index);}
+        if r.values[v].integer!=(node.op==OxOp.gather && s==1) {return ox_refuse(r,OxStatus.dtype,index);}
+        r.values[v].uses+=1;
+        if weight && r.values[v].uses>1 {return ox_refuse(r,OxStatus.shared,index);}
+        node.inputs[s]=v;
+    }
+    shape:=ox_infer(r,node.op,node.inputs,arity,a);
+    if shape.status!=OxStatus.ok {return ox_refuse(r,shape.status,index);}
+    node.axis=shape.axis;node.trans_b=a.trans_b;
+    for s:0..<arity {if ox_weight_slot(node.op,s) {r=ox_name_weight(r,node_name,node.op,index,s,node.inputs[s]);}}
+    if r.status!=OxStatus.ok {return r;}
+    count:=ox_elements(shape.shape);
+    if count==0 || r.value_count==OX_VALUES_MAX || r.arena+count>arena {return ox_refuse(r,OxStatus.capacity,index);}
+    if output.count==0 || ox_find(r,output)!=-1 {return ox_refuse(r,OxStatus.name,index);}
+    node.output=r.value_count;
+    r.values[r.value_count]=OxValue.{name=output,kind=OxKind.computed,shape=shape.shape,at=r.arena,count=count};
+    r.value_count+=1;r.arena+=count;
+    r.nodes[r.node_count]=node;r.node_count+=1;
+    return r;
+}
+// book:end node
+
+// book:begin graph
+// The graph's fields are checked in one pass, then used in four steps:
+// initializers, the input (skipping names an initializer already holds, as
+// older exports list them), nodes in file order, the output. A node may only
+// read a value defined before it, so a graph out of topological order is
+// refused.
+OX_FIELDS_MAX :: 64;
+ox_graph :: (wire:[]u8,m:OxModel,arena:[]f32)->OxModel {
+    r:=m;at:[4][OX_FIELDS_MAX][]u8;count:[4]int;
+    f:=ox_scan(wire,0);
+    while !f.done {
+        if f.error {return ox_fail(r,OxStatus.wire);}
+        n:=f.number;
+        step:=ifx n==5 then 0 else ifx n==11 then 1 else ifx n==1 then 2 else ifx n==12 then 3 else -1;
+        if step==-1 && n!=2 && n!=10 && n!=13 && n!=16 {return ox_fail(r,OxStatus.field);}
+        if step!=-1 {
+            if f.wt!=2 {return ox_fail(r,OxStatus.wire);}
+            if count[step]==OX_FIELDS_MAX {return ox_fail(r,OxStatus.capacity);}
+            at[step][count[step]]=f.payload;count[step]+=1;
+        }
+        f=ox_scan(wire,f.next);
+    }
+    for k:0..<count[0] {r=ox_initializer(at[0][k],r,arena);if r.status!=OxStatus.ok {return r;}}
+    for k:0..<count[1] {
+        d:=ox_declaration(at[1][k]);
+        if d.status!=OxStatus.ok {return ox_fail(r,d.status);}
+        if ox_find(r,d.name)!=-1 {continue;}
+        if r.input!=-1 {return ox_fail(r,OxStatus.input);}
+        if d.elem!=OX_FLOAT && d.elem!=OX_INT64 {return ox_fail(r,OxStatus.dtype);}
+        n:=ox_elements(d.shape);
+        if n==0 || r.value_count==OX_VALUES_MAX || r.arena+n>arena.count {return ox_fail(r,OxStatus.capacity);}
+        r.input=r.value_count;
+        r.values[r.value_count]=OxValue.{name=d.name,kind=OxKind.input,integer=d.elem==OX_INT64,shape=d.shape,at=r.arena,count=n};
+        r.value_count+=1;r.arena+=n;
+    }
+    if r.input==-1 {return ox_fail(r,OxStatus.input);}
+    for k:0..<count[2] {
+        if k==OX_NODES_MAX {return ox_refuse(r,OxStatus.capacity,k);}
+        r=ox_node(at[2][k],r,k,arena.count);if r.status!=OxStatus.ok {return r;}
+    }
+    for k:0..<count[3] {
+        d:=ox_declaration(at[3][k]);
+        if d.status!=OxStatus.ok {return ox_fail(r,d.status);}
+        v:=ox_find(r,d.name);
+        if r.output!=-1 || v==-1 {return ox_fail(r,OxStatus.output);}
+        if r.values[v].kind!=OxKind.computed || d.elem!=OX_FLOAT || !ox_shape_same(d.shape,r.values[v].shape) {return ox_fail(r,OxStatus.output);}
+        r.output=v;
+    }
+    if r.output==-1 {return ox_fail(r,OxStatus.output);}
+    for v:r.values {if v.kind==OxKind.weight && v.uses==0 {return ox_fail(r,OxStatus.unused);}}
+    return r;
+}
+// book:end graph
+
+// book:begin model
+// The model: IR version 7 to 10, exactly one operator set, the default
+// domain at version 17, and one graph. Producer names, versions, doc strings
+// and metadata are skipped; local functions, training information and any
+// other field are refused.
+ox_read :: (wire:[]u8,arena:[]f32)->OxModel #export_c {
+    r:=OxModel.{node=-1,input=-1,output=-1};
+    if wire.count>OX_BYTES_MAX {return ox_fail(r,OxStatus.capacity);}
+    graph:[]u8;graphs:=0;opsets:=0;
+    f:=ox_scan(wire,0);
+    while !f.done {
+        if f.error {return ox_fail(r,OxStatus.wire);}
+        n:=f.number;
+        if n==7 && f.wt==2 {graph=f.payload;graphs+=1;}
+        else if n==8 && f.wt==2 {
+            domain:=ox_field(f.payload,1);version:=ox_field(f.payload,2);
+            if domain.error || version.error {return ox_fail(r,OxStatus.wire);}
+            if !ox_default(domain.payload) || version.raw!=OX_OPSET {return ox_fail(r,OxStatus.opset);}
+            opsets+=1;
+        }
+        else if n!=1 && n!=2 && n!=3 && n!=4 && n!=5 && n!=6 && n!=14 {return ox_fail(r,OxStatus.field);}
+        f=ox_scan(wire,f.next);
+    }
+    ir:=ox_field(wire,1);
+    if ir.wt!=0 || ir.raw<7 || ir.raw>10 {return ox_fail(r,OxStatus.ir);}
+    r.ir=cast(int)ir.raw;
+    if opsets!=1 {return ox_fail(r,OxStatus.opset);}
+    if graphs!=1 {return ox_fail(r,OxStatus.field);}
+    return ox_graph(graph,r,arena);
+}
+// book:end model
+
+// book:begin run
+// The admitted graph on the CPU: binary32 values, sums in a fixed order,
+// Softmax in binary64. An index outside the table is refused at run time.
+ox_run :: (m:OxModel,arena:[]f32,ids:[]s64,pixels:[]f32)->OxRun #export_c {
+    if m.status!=OxStatus.ok || arena.count<m.arena {return OxRun.{status=OxStatus.capacity,node=-1};}
+    x:=m.values[m.input];
+    if x.integer {
+        if ids.count!=x.count {return OxRun.{status=OxStatus.input,node=-1};}
+        for i:0..<x.count {if ids[i]<-OX_ELEMENTS_MAX || ids[i]>OX_ELEMENTS_MAX {return OxRun.{status=OxStatus.input,node=-1};} arena[x.at+i]=f32(ids[i]);}
+    } else {
+        if pixels.count!=x.count {return OxRun.{status=OxStatus.input,node=-1};}
+        for i:0..<x.count {arena[x.at+i]=pixels[i];}
+    }
+    for k:0..<m.node_count {
+        n:=m.nodes[k];a:=m.values[n.inputs[0]];y:=m.values[n.output];
+        if n.op==OxOp.gather {
+            b:=m.values[n.inputs[1]];rows:=a.shape.dims[0];d:=a.shape.dims[1];
+            for i:0..<b.count {
+                id:=cast(int)arena[b.at+i];if id<0 {id+=rows;}
+                if id<0 || id>=rows {return OxRun.{status=OxStatus.input,node=k};}
+                for j:0..<d {arena[y.at+i*d+j]=arena[a.at+id*d+j];}
+            }
+        } else if n.op==OxOp.reduce_mean {
+            // Outer, reduced and inner extents around the axis.
+            outer:=1;inner:=1;span:=a.shape.dims[n.axis];
+            for q:0..<n.axis {outer*=a.shape.dims[q];}
+            for q:n.axis+1..<a.shape.rank {inner*=a.shape.dims[q];}
+            for o:0..<outer {for i:0..<inner {
+                total:f32=0;
+                for s:0..<span {total+=arena[a.at+(o*span+s)*inner+i];}
+                arena[y.at+o*inner+i]=total/f32(span);
+            }}
+        } else if n.op==OxOp.conv {
+            w:=m.values[n.inputs[1]];c:=a.shape.dims[1];h:=a.shape.dims[2];wd:=a.shape.dims[3];
+            kh:=w.shape.dims[2];kw:=w.shape.dims[3];oh:=y.shape.dims[2];ow:=y.shape.dims[3];maps:=y.shape.dims[1];
+            for b:0..<a.shape.dims[0] {for f:0..<maps {for i:0..<oh {for j:0..<ow {
+                total:f32=ifx n.arity==3 then arena[m.values[n.inputs[2]].at+f] else 0;
+                for ch:0..<c {for u:0..<kh {for v:0..<kw {
+                    total+=arena[a.at+((b*c+ch)*h+i+u)*wd+j+v]*arena[w.at+((f*c+ch)*kh+u)*kw+v];
+                }}}
+                arena[y.at+((b*maps+f)*oh+i)*ow+j]=total;
+            }}}}
+        } else if n.op==OxOp.relu {
+            for i:0..<a.count {v:=arena[a.at+i];arena[y.at+i]=ifx v>0 then v else 0;}
+        } else if n.op==OxOp.flatten {
+            for i:0..<a.count {arena[y.at+i]=arena[a.at+i];}
+        } else if n.op==OxOp.gemm {
+            w:=m.values[n.inputs[1]];rows:=a.shape.dims[0];depth:=a.shape.dims[1];cols:=y.shape.dims[1];
+            for i:0..<rows {for j:0..<cols {
+                total:f32=0;
+                for q:0..<depth {total+=arena[a.at+i*depth+q]*arena[w.at+(ifx n.trans_b then j*depth+q else q*cols+j)];}
+                if n.arity==3 {total+=arena[m.values[n.inputs[2]].at+j];}
+                arena[y.at+i*cols+j]=total;
+            }}
+        } else {
+            width:=a.shape.dims[a.shape.rank-1];
+            for o:0..<a.count/width {
+                top:=f64(arena[a.at+o*width]);
+                for j:1..<width {v:=f64(arena[a.at+o*width+j]);if v>top {top=v;}}
+                total:=0.0;
+                for j:0..<width {total+=exp(f64(arena[a.at+o*width+j])-top);}
+                for j:0..<width {arena[y.at+o*width+j]=cast(f32)(exp(f64(arena[a.at+o*width+j])-top)/total);}
+            }
+        }
+    }
+    return OxRun.{node=-1};
+}
+// book:end run

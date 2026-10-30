@@ -1,0 +1,89 @@
+#import "Basic";
+#load "../lib/onnx.coax";
+
+STATUS :: [18]string.["ok","wire","ir","opset","field","op","attribute","dtype","data","shape","name","order","unused","shared","role","output","capacity","input"];
+r6 :: (v:f64)->f64 {return floor(v*1000000+0.5)/1000000;}
+// The example's pixels: SplitMix64 draws scaled to multiples of 1/32 in [-1, 1].
+pixel :: (seed:u64,i:u64)->f32 {
+    z:=add_wrap(seed,mul_wrap(0x9e3779b97f4a7c15,add_wrap(i,1)));
+    z=mul_wrap(z^(z>>30),0xbf58476d1ce4e5b9);z=mul_wrap(z^(z>>27),0x94d049bb133111eb);z=z^(z>>31);
+    u:=f64(z>>11)/9007199254740992.0;
+    return f32(floor((2*u-1)*32+0.5)/32);
+}
+show_shape :: (s:OxShape) {
+    print("[");
+    for i:0..<s.rank {if i>0 {print(", ");} print("%",s.dims[i]);}
+    print("]");
+}
+describe :: (file:string,wire:[]u8,m:OxModel) {
+    print("%: % bytes, IR %, opset %: % nodes, % weight%, % floats of arena\n",file,wire.count,m.ir,OX_OPSET,m.node_count,m.tensor_count,ifx m.tensor_count==1 then "" else "s",m.arena);
+    for t:0..<m.tensor_count {
+        v:=m.values[m.tensors[t].value];
+        tensor:=m.tensors[t];
+        print("  % -> % f32 ",cast(string)v.name,cast(string)tensor.name[0..<tensor.length]);show_shape(v.shape);print("\n");
+    }
+    x:=m.values[m.input];y:=m.values[m.output];
+    print("  % % ",cast(string)x.name,ifx x.integer then "int64" else "f32");show_shape(x.shape);
+    print(" -> % f32 ",cast(string)y.name);show_shape(y.shape);print("\n");
+}
+show_output :: (m:OxModel,arena:[]f32) {
+    y:=m.values[m.output];
+    for i:0..<y.count {print(" %",r6(f64(arena[y.at+i])));}
+}
+
+// book:begin example
+main :: () {
+    arena:[1024]f32;none:[1]s64;nothing:[1]f32;
+    embedding:=OX_EMBEDDING;classifier:=OX_CLASSIFIER;
+    m:=ox_read(embedding[..],arena[..]);#assert m.status==OxStatus.ok;
+    describe("embedding.onnx",embedding[..],m);
+    ids:=[8]s64.[3,17,17,42,0,63,8,21];
+    r:=ox_run(m,arena[..],ids[..],nothing[0..<0]);#assert r.status==OxStatus.ok;
+    print("  ids 3 17 17 42 0 63 8 21 ->");show_output(m,arena[..]);print("\n");
+    ids[5]=-1;r=ox_run(m,arena[..],ids[..],nothing[0..<0]);#assert r.status==OxStatus.ok;
+    print("  id -1 counts from the end, as 63 ->");show_output(m,arena[..]);print("\n");
+    ids[5]=64;r=ox_run(m,arena[..],ids[..],nothing[0..<0]);
+    print("  id 64: % at node %\n",STATUS[cast(int)r.status],r.node);
+
+    m=ox_read(classifier[..],arena[..]);#assert m.status==OxStatus.ok;
+    describe("classifier.onnx",classifier[..],m);
+    for k:0..<2 {
+        pixels:[36]f32;for i:0..<36 {pixels[i]=pixel(cast(u64)(170+k),cast(u64)i);}
+        r=ox_run(m,arena[..],none[0..<0],pixels[..]);#assert r.status==OxStatus.ok;
+        print("  image % ->",k);show_output(m,arena[..]);print("\n");
+    }
+
+    print("refused:\n");
+    w0:=OX_REFUSE_OPSET;
+    w1:=OX_REFUSE_IR;
+    w2:=OX_REFUSE_DOMAIN;
+    w3:=OX_REFUSE_FUNCTION;
+    w4:=OX_REFUSE_SPARSE;
+    w5:=OX_REFUSE_OP;
+    w6:=OX_REFUSE_TRANS_A;
+    w7:=OX_REFUSE_ALPHA;
+    w8:=OX_REFUSE_PADS;
+    w9:=OX_REFUSE_UNKNOWN_ATTR;
+    w10:=OX_REFUSE_DOUBLE;
+    w11:=OX_REFUSE_EXTERNAL;
+    w12:=OX_REFUSE_SHORT;
+    w13:=OX_REFUSE_SYMBOLIC;
+    w14:=OX_REFUSE_ORDER;
+    w15:=OX_REFUSE_UNUSED;
+    w16:=OX_REFUSE_SHARED;
+    w17:=OX_REFUSE_ROLE;
+    w18:=OX_REFUSE_WRONG_OUTPUT;
+    refused:=[19][]u8.[w0[..],w1[..],w2[..],w3[..],w4[..],w5[..],w6[..],w7[..],w8[..],w9[..],w10[..],w11[..],w12[..],w13[..],w14[..],w15[..],w16[..],w17[..],w18[..]];
+    files:=[19]string.["opset","ir","domain","function","sparse","op","trans_a","alpha","pads","unknown_attr","double","external",
+        "short","symbolic","order","unused","shared","role","wrong_output"];
+    for w,i:refused {
+        x:=ox_read(w,arena[..]);
+        print("  refuse_%.onnx: %",files[i],STATUS[cast(int)x.status]);
+        if x.node>=0 {print(" at node %",x.node);}
+        print("\n");
+    }
+    dup:=OX_REFUSE_DUPLICATE;x:=ox_read(dup[..],arena[..]);print("  refuse_duplicate.onnx: % at node %\n",STATUS[cast(int)x.status],x.node);
+    x=ox_read(classifier[0..<600],arena[..]);print("  classifier.onnx cut at 600 bytes: %\n",STATUS[cast(int)x.status]);
+    small:[200]f32;x=ox_read(classifier[..],small[..]);print("  classifier.onnx with 200 floats of arena: %\n",STATUS[cast(int)x.status]);
+}
+// book:end example
