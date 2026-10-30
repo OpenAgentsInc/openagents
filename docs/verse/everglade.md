@@ -832,10 +832,18 @@ one lacked, as tasks under engine-everglade-parity:
 - **Each house its own paint** (verse-eg-house-paint): a plaster and a roof
   multiplier from two five-colour palettes, picked by the house's number
   (`PLASTER_TINTS`, `ROOF_TINTS`, `house_tint`), as the old `layout::paint`.
-- **Butterflies and songbirds** (verse-eg-wildlife): by day, a butterfly over
-  about a quarter of the 8 m cells of open ground round you (none on a
-  street), and two pairs of songbirds circling over the commons and the
-  market (`wildlife`). Drawn last, in the shapes' slots left over.
+- **Butterflies, songbirds and frogs** (verse-eg-wildlife): by day, a butterfly
+  over about two in five of the 5 m cells of open ground within 20 m of you (none
+  on a street), its two thin wings rolling up and down about its body as they
+  beat; and four pairs of songbirds circling 5 to 5.5 m up over the commons and
+  the market, two pairs to a ring on opposite sides so one is always on the
+  side you face. At every hour a frog at each pond, as the previous engine's
+  `Hop` route: four spots a fifth of a radian apart at the water's edge (found
+  by stepping in from the rim to the pond's level, a little round from its
+  trail's side), sitting 5 s at each, then a 0.5 s leap 0.3 m high to the next
+  (`wildlife`, `frogs`). The first shots that showed none (October 30) had
+  butterflies too sparse and far, and songbirds 9 m up, over the top of the
+  walking camera's frame. Drawn last, in the shapes' slots left over.
 - Still to do: wood smoke from chimneys (verse-eg-chimney-smoke), and the
   streets' bunting, window boxes, signposts and ivy
   (verse-eg-street-dressing).
