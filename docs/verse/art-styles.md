@@ -153,6 +153,10 @@ stage (0.8; half for what glows and for her skin and clothes).
   tones by the depth of the bed under them (deep, open, and two light bands
   along the shore) with slow broken ripple lines drifting across the open
   water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`).
+- **Painterly snow** in a made realm is `PAINT_SNOW` (0.62, 0.76, 0.98),
+  not the low-poly ground's near white: white snow measured a saturation of
+  0.08 at noon and 0.10 at dusk, under the style check's 0.22, and read as
+  paper rather than paint (`myrealm.coax`, October 30).
 - **Made realms** (`/realms/new`, style flat) take `FLAT_GARDEN` at their
   own time of day: three hard tones on their shapes (by the realm's own
   colours, drawn toward the palette), the flat sky and disc, two water
@@ -679,6 +683,16 @@ toward 0.6 from 15 to 60 m (`BAND_FAR_*`), so a far crown reads as one mass
 in its light. All 18 views pass now: road, river and commons at noon, dusk
 and night, on desktop and phone. Fine detail is 0.014 to 0.034, with
 saturation 0.28 to 0.58. On a phone this costs about 0.4 ms of GPU a frame.
+
+**The druid bar and the names** (October 30, eg-paint-review). The druid
+bar grew to four rows of slots on a desktop and three on a phone, over the
+HUD mask, so every view measured its icons. The mask now leaves out the bar
+too (a desktop's middle 44% from 68% of the height down; a phone's bottom
+36%). And Everglade's style views are `road+paint`, `river+paint` and
+`commons+paint`: the same views drawn without the names over the world
+(`everglade_hash`: a hash ending `+paint`). The names are text like the
+plates, and the same text is a far bigger share of a 390 px canvas, which is
+what kept four phone views over the line.
 
 The fixture's painterly scene is each engine task's demo, and its golden
 (one per clock key) is how an engine change shows up for review.

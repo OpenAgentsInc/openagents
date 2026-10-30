@@ -823,3 +823,19 @@ out where it would stand in a building, a prop, a placed thing, a street or
 the woods. Each frame draws the nearest 280 (140 on a phone), so a field
 stays cheap. Every placed thing's instance is 16 floats held in the page's
 state, so the pieces' caps (EDIT_CAPS, 1,432 in all) are kept lean.
+
+## Parity with the previous Everglade (October 30)
+
+From `verse/everglade/previous/`, the things the old Everglade had that this
+one lacked, as tasks under engine-everglade-parity:
+
+- **Each house its own paint** (verse-eg-house-paint): a plaster and a roof
+  multiplier from two five-colour palettes, picked by the house's number
+  (`PLASTER_TINTS`, `ROOF_TINTS`, `house_tint`), as the old `layout::paint`.
+- **Butterflies and songbirds** (verse-eg-wildlife): by day, a butterfly over
+  about a quarter of the 8 m cells of open ground round you (none on a
+  street), and two pairs of songbirds circling over the commons and the
+  market (`wildlife`). Drawn last, in the shapes' slots left over.
+- Still to do: wood smoke from chimneys (verse-eg-chimney-smoke), and the
+  streets' bunting, window boxes, signposts and ivy
+  (verse-eg-street-dressing).
