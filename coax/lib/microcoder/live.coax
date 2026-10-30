@@ -1,13 +1,51 @@
-// Live Microcoder smoke (live.sh runs it): "what is 2+2" through a fast
-// plan, Vertex gemini-3.8-flash first, must finish in one step with no
-// commands. Prints the ending, the reply and the attempt log; never a key
-// or the prompt.
+// Live Microcoder smoke (live.sh runs it), through a fast plan with Vertex
+// gemini-3.8-flash first: "what is 2+2" must finish in one step with no
+// commands, and "how many Swift files are in this folder" (a scratch folder
+// with three) must run one command and answer 3. Prints the endings, the
+// replies and the attempt log; never a key or the prompt.
 
 #import "Basic";
-#load "loop.coax";
+#load "tools.coax";
 #load "../gateway/plan.coax";
 #load "../gateway/vertex.coax";
 #load "../gateway/openrouter.coax";
+
+// Runs the loop to its end through the plan, tools in cwd; the model calls made.
+live_task :: (l: [] McLoop, p: [] GwPlan, bench: [] GwBench, cwd: string, tb: [] McToolBuffers) -> int {
+  t0 := cxproc_now_ms();
+  calls := 0;
+  for guard: 0..<20 {
+    req := mc_request(l);
+    req.effort = "low";
+    gw_plan_start(p, bench, req);
+    calls += 1;
+    r := MC_WAIT;
+    ev: [8] GwEvent;
+    while !p[0].over {
+      n := gw_plan_poll(p, bench, ev[..]);
+      for i: 0..<n { r = mc_feed(l, ev[i]); }
+    }
+    lb2: [512] u8;
+    for i: 0..<p[0].nlog { print("attempt: %\n", gw_attempt_line(p[0].log[i], lb2[..])); }
+    if r == MC_TOOLS {
+      a := mc_pending(l);
+      for i: 0..<a.nc { print("command: %\n", a.commands[i]); }
+      r = mc_run_tools(l, cwd, tb);
+    }
+    if r == MC_ENDED { break; }
+  }
+  print("microcoder: % -> ending %, % model call(s), % steps, %ms, reply: %\n", l[0].st[0].task, mc_ending_name(l[0].ending), calls, l[0].steps, cxproc_now_ms() - t0, l[0].reply);
+  return calls;
+}
+
+// Commands recorded in the state's actions (refused ones included).
+live_commands_run :: (l: [] McLoop, lb: [] McLoopBuffers) -> int {
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  acts := cl_raw(j, "actions");
+  n := 0;
+  for i: 0..<cl_count(acts) { a := cl_json(acts, cl_item(acts, i)); n += cl_count(cl_raw(a, "commands")); }
+  return n;
+}
 
 main :: () {
   v: [1] GwVertex;
@@ -21,34 +59,25 @@ main :: () {
   if gw_env("GEMINI_API_KEY", key[..]).count > 0 { x := gw_plan_add(p[..], gw_gemini(GW_GEMINI_FLASH, true, ub[..]), GW_GEMINI_FLASH, none[0..<0]); }
   h := GW_OPENROUTER_HEADERS;
   x := gw_plan_add(p[..], gw_openrouter(false), GW_OPENROUTER_FLASH, h[..]);
+  dirb: [512] u8;
+  dir := gw_env("MC_LIVE_DIR", dirb[..]);
+  tb: [1] McToolBuffers;
   sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
   mc_init(l[..], sb[..], lb[..], "{\"os\":\"macOS\",\"app\":\"OpenAgents\",\"cwd\":\"/tmp\"}", "what is 2+2", "{\"route\":\"other\",\"difficulty\":\"trivial\",\"effort\":\"low\",\"local_work\":0.1}", 0.1);
-  t0 := cxproc_now_ms();
-  calls := 0;
-  for guard: 0..<20 {
-    req := mc_request(l[..]);
-    req.effort = "low";
-    gw_plan_start(p[..], bench[..], req);
-    calls += 1;
-    r := MC_WAIT;
-    ev: [8] GwEvent;
-    while !p[0].over {
-      n := gw_plan_poll(p[..], bench[..], ev[..]);
-      for i: 0..<n { r = mc_feed(l[..], ev[i]); }
-    }
-    lb2: [512] u8;
-    for i: 0..<p[0].nlog { print("attempt: %\n", gw_attempt_line(p[0].log[i], lb2[..])); }
-    if r == MC_ENDED { break; }
-    if r == MC_TOOLS {
-      a := mc_pending(l[..]);
-      for i: 0..<a.nc { mc_command(l[..], a.commands[i], -1, false, "not run: this smoke has no tools"); }
-      for i: 0..<a.nv { mc_view(l[..], a.view[i], false, "not shown: this smoke has no tools"); }
-      r = mc_tools_done(l[..]);
-    }
-  }
-  print("microcoder: ending %, % model call(s), % steps, %ms, reply: %\n", mc_ending_name(l[0].ending), calls, l[0].steps, cxproc_now_ms() - t0, l[0].reply);
-  ok := l[0].ending == MC_END_FINISHED && calls == 1 && l[0].steps == 1;
+  calls := live_task(l[..], p[..], bench[..], "", tb[..]);
   four := false;
   for c: l[0].reply { if c == '4' { four = true; } }
-  print("smoke: %\n", ifx ok && four then "ok" else "FAILED");
+  ok := l[0].ending == MC_END_FINISHED && calls == 1 && l[0].steps == 1 && four && l[0].st[0].open_cmds == 0;
+  facts: [1024] u8;
+  fn := json_raw(facts[..], 0, "{\"os\":\"macOS\",\"app\":\"OpenAgents\",\"cwd\":");
+  fn = json_write_string(facts[..], fn, dir);
+  fn = json_raw(facts[..], fn, "}");
+  mc_init(l[..], sb[..], lb[..], cast(string) facts[0..<fn], "how many Swift files are in this folder", "{\"route\":\"other\",\"difficulty\":\"easy\",\"effort\":\"low\",\"local_work\":0.9}", 0.9);
+  calls = live_task(l[..], p[..], bench[..], dir, tb[..]);
+  three := false;
+  for c: l[0].reply { if c == '3' { three = true; } }
+  ran := live_commands_run(l[..], lb[..]);
+  print("microcoder: % command(s) ran\n", ran);
+  ok = ok && l[0].ending == MC_END_FINISHED && three && ran == 1;
+  print("smoke: %\n", ifx ok then "ok" else "FAILED");
 }

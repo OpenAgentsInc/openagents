@@ -1,0 +1,40 @@
+// The tools against a real folder (tools_smoke.sh makes it): a command's
+// output, a command past its timeout killed and recorded, views inside and
+// outside the working directory, and a loop step's tools recorded in state.
+
+#import "Basic";
+#load "tools.coax";
+
+main :: () {
+  dirb: [512] u8;
+  dir := gw_env("MC_SMOKE_DIR", dirb[..]);
+  b: [1] McToolBuffers;
+  r := mc_run_command(dir, "ls *.swift | wc -l | tr -d ' '", 30, b[0].out[..]);
+  print("count: exit % timed_out % output [%]\n", r.exit, r.timed_out, r.output);
+  ok := r.exit == 0 && !r.timed_out && r.output == "3\n";
+  t0 := cxproc_now_ms();
+  r = mc_run_command(dir, "echo started; sleep 20; echo never", 1, b[0].out[..]);
+  ms := cxproc_now_ms() - t0;
+  print("timeout: exit % timed_out % after %ms output [%]\n", r.exit, r.timed_out, ms, r.output);
+  ok = ok && r.timed_out && r.exit == -1 && ms < 4000 && r.output == "started\n\n[killed after 1 s]";
+  r = mc_run_command(dir, "echo out; echo err 1>&2; exit 3", 30, b[0].out[..]);
+  print("fail: exit % output [%]\n", r.exit, r.output);
+  ok = ok && r.exit == 3 && r.output == "out\nerr\n";
+  v := mc_view_file(dir, "a.swift", b[0].view[..]);
+  print("view: found % [%]\n", v.found, v.content);
+  ok = ok && v.found && v.content == "print(\"a\")";
+  v = mc_view_file(dir, "../outside.txt", b[0].view[..]);
+  ok = ok && !v.found;
+  v = mc_view_file(dir, "missing.swift", b[0].view[..]);
+  ok = ok && !v.found;
+  // a step's tools into the loop's state
+  sb: [1] McStateBuffers; lb: [1] McLoopBuffers; l: [1] McLoop;
+  mc_init(l[..], sb[..], lb[..], "{}", "how many Swift files are in this folder", "{\"local_work\":0.9}", 0.9);
+  x := mc_request(l[..]);
+  s := mc_take(l[..], "{\"rationale\":\"count\",\"commands\":[\"ls *.swift | wc -l | tr -d ' '\"],\"view\":[\"b.swift\"],\"finished\":false,\"reply\":\"\",\"ask\":\"none\"}");
+  ok = ok && s == MC_TOOLS && mc_run_tools(l[..], dir, b[..]) == MC_AGAIN;
+  j := mc_state_json(l[0].st[..], lb[0].prompt[..]);
+  ab: [256] u8; ar: [1] ClArena; ar[0] = ClArena.{buf = ab[..]};
+  ok = ok && cl_str(ar[..], j, "actions.0.commands.0.output") == "3\n" && cl_str(ar[..], j, "files.0.content") == "print(\"b\")";
+  print("smoke: %\n", ifx ok then "ok" else "FAILED");
+}
