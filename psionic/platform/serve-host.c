@@ -30,6 +30,7 @@
 #define _GNU_SOURCE
 #include "serve.h"
 #include "spans.h"
+#include "verified-file.h"
 #include "elephant-inventory.h"
 #if defined(PSIONIC_SERVE_METAL)
 #include "elephant-metal.h"
@@ -203,6 +204,8 @@ static void open_elephant(Server *s, const char *dir, const char *table_path, in
     coax_v_u8 config = map_named(dir, "config.json"), tokenizer = map_named(dir, "tokenizer.json"), readout = map_named(dir, "readout.json");
     coax_v_u8 index = {NULL, 0}, table = map_file(table_path);
     coax_t_PaFile *file = zalloc(1, sizeof *file); file->data = map_named(dir, "model.safetensors");
+    char weights_path[4096]; snprintf(weights_path, sizeof weights_path, "%s/model.safetensors", dir);
+    VfEntry *verified = zalloc(1, sizeof *verified); vf_attach(verified, weights_path, file);
     size_t count = sizeof elephant_specs / sizeof *elephant_specs;
     coax_t_P5Spec *specs = zalloc(count, sizeof *specs);
     for (size_t i = 0; i < count; i++) {
@@ -213,11 +216,17 @@ static void open_elephant(Server *s, const char *dir, const char *table_path, in
     coax_t_PsWorkspace m = {{zalloc(count, sizeof(coax_t_P5Tensor)), (int64_t)count}, {zalloc(count, sizeof(coax_t_P5Tensor)), (int64_t)count},
         {zalloc(32, sizeof(coax_t_QeLayer)), 32}, {zalloc(1057280, 4), 1057280}, {zalloc(1057280, 4), 1057280},
         {zalloc(50000, 4), 50000}, {zalloc(4096, 4), 4096}, {zalloc(4096, 4), 4096}};
-    printf("psionic-serve: authenticating elephant-1 (reads the 18.8 GB checkpoint)\n"); fflush(stdout);
+    if (file->record.count) printf("psionic-serve: authenticating elephant-1 (a verified-file record names this checkpoint; its hash is skipped)\n");
+    else printf("psionic-serve: authenticating elephant-1 (hashes the 18.8 GB checkpoint once; later starts skip it)\n");
+    fflush(stdout);
     int64_t t0 = now_ms();
     coax_t_PsSession session = psionic_session_open(0, capacity, config, tokenizer, readout, index, (coax_v_t_PaFile){file, 1}, (coax_v_t_P5Spec){specs, (int64_t)count}, table, m);
     if (session.status) { fprintf(stderr, "psionic-serve: elephant session refused: status %u cause %lld\n", session.status, (long long)session.cause); exit(1); }
-    printf("psionic-serve: authenticated in %lld ms\n", (long long)(now_ms() - t0)); fflush(stdout);
+    printf("psionic-serve: authenticated in %lld ms\n", (long long)(now_ms() - t0));
+    int kept = vf_keep(verified, 0, capacity, 0);
+    if (kept == 1) printf("psionic-serve: kept a verified-file record at %s\n", verified->path);
+    if (kept < 0) printf("psionic-serve: no verified-file record kept; the next start hashes the checkpoint again\n");
+    fflush(stdout);
     s->engine = sv_elephant(session, capacity);
     if (!s->engine.ok) { fprintf(stderr, "psionic-serve: elephant engine refused\n"); exit(1); }
 #ifdef PSIONIC_SERVE_GPU

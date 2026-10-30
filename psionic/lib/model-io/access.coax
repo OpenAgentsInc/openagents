@@ -2,7 +2,9 @@
 #load "rank5.coax";
 #load "../qwen-matvec.coax";
 #authority;
-PaFile :: struct {data:[]u8;}
+// A mapped file; record and stat, when the host has them, let a session skip
+// hashing a file it verified before (the verified-file records below).
+PaFile :: struct {data:[]u8;record:[]u8;stat:PaStat;}
 PaView :: struct {status:PwStatus;dtype:PwDtype;data:[]u8;elements:int;}
 #test "an admitted tensor has a precise original byte view" {
     file:=CH04_MODEL_SAFETENSORS;inv:[3]P5Tensor;draft:[3]P5Tensor;
@@ -69,4 +71,91 @@ pa_decode :: (view:PaView,out:[]f32,work:[]f32,overlap:bool)->PwResult #export_c
     #assert pa_decode(view,out[0..<0],work[..],false).status==PwStatus.capacity;
     #assert pa_decode(view,out[..],work[0..<0],false).status==PwStatus.capacity;
     data[0]=128;data[1]=127;out[0]=-7;#assert pa_decode(view,out[..],work[..],false).status==PwStatus.number && out[0]==-7;
+}
+
+// A verified-file record: proof, kept by the host, that a file with this
+// identity was hashed in full and matched a pinned SHA-256. A later open of
+// the same file (same device, inode, size, modification and change times)
+// may skip the hash. Any write to the file changes its change time, so a
+// changed file is hashed again; the record never names bytes it did not see.
+PaStat :: struct {device:int;inode:int;size:int;mtime_ns:int;ctime_ns:int;}
+PV_RECORD_MAX :: 512;
+// Writers return the new end, or out.count+1 once something did not fit (or
+// a count was negative); every later writer then refuses too.
+pv_decimal :: (n:int,out:[]u8,at:int)->int {
+    if n<0 {return out.count+1;}
+    digits:[20]u8;count:=0;v:=n;
+    while true {digits[count]=cast(u8)(48+v%10);count+=1;v/=10;if v==0 {break;}}
+    if at+count>out.count {return out.count+1;}
+    for i:0..<count {out[at+i]=digits[count-1-i];}
+    return at+count;
+}
+pv_text :: (text:string,out:[]u8,at:int)->int {
+    if at+text.count>out.count {return out.count+1;}
+    for i:0..<text.count {out[at+i]=text[i];}
+    return at+text.count;
+}
+// book:begin record
+// The record for file `name` with pinned digest `sha`, observed as st:
+// "psionic-verified 1 NAME SHA SIZE DEVICE INODE MTIME CTIME\n". Returns its
+// length, or 0 if it does not fit or a field is not a plain name or count.
+pv_record :: (name:string,sha:string,st:PaStat,out:[]u8)->int #export_c {
+    if name.count<1 || sha.count!=64 {return 0;}
+    for i:0..<name.count {if name[i]<=32 || name[i]>=127 {return 0;}}
+    at:=pv_text("psionic-verified 1 ",out,0);
+    at=pv_text(name,out,at);at=pv_text(" ",out,at);at=pv_text(sha,out,at);
+    fields:=[5]int.[st.size,st.device,st.inode,st.mtime_ns,st.ctime_ns];
+    for f:fields {at=pv_decimal(f,out,pv_text(" ",out,at));}
+    at=pv_text("\n",out,at);
+    if at>out.count {return 0;}
+    return at;
+}
+// A stored record admits the file only if it is exactly the record this file
+// would get now, for this pin.
+pv_admits :: (record:[]u8,name:string,sha:string,st:PaStat)->bool #export_c {
+    expected:[PV_RECORD_MAX]u8;n:=pv_record(name,sha,st,expected[..]);
+    if n==0 || record.count!=n {return false;}
+    for i:0..<n {if record[i]!=expected[i] {return false;}}
+    return true;
+}
+// book:end record
+
+#test "a record names the pin and the file's identity" {
+    sha:="b3f8a93462fb1051a9de031e94a7ff380e254072b3f8a93462fb1051a9de0310";
+    st:=PaStat.{device=66306,inode=1234567,size=18800000000,mtime_ns=1761700000123456789,ctime_ns=0};
+    out:[512]u8;n:=pv_record("model.safetensors",sha,st,out[..]);
+    want:="psionic-verified 1 model.safetensors b3f8a93462fb1051a9de031e94a7ff380e254072b3f8a93462fb1051a9de0310 18800000000 66306 1234567 1761700000123456789 0\n";
+    #assert n==want.count && cast(string)out[0..<n]==want;
+    #assert pv_admits(out[0..<n],"model.safetensors",sha,st);
+    small:[148]u8;#assert pv_record("model.safetensors",sha,st,small[..])==0 && pv_record("model.safetensors",sha,st,out[0..<n])==n;
+    #assert pv_record("model.safetensors",sha,st,out[0..<n-1])==0 && pv_record("model.safetensors",sha,st,out[0..<20])==0;
+    #assert pv_record("",sha,st,out[..])==0 && pv_record("a b",sha,st,out[..])==0 && pv_record("a\nb",sha,st,out[..])==0;
+    del:[1]u8;del[0]=127;#assert pv_record(cast(string)del[..],sha,st,out[..])==0;
+    #assert pv_record("!",sha,st,out[..])>0 && pv_record("~",sha,st,out[..])>0;
+    #assert pv_record("x",sha[0..<63],st,out[..])==0 && pv_record("x",sha,st,out[..])>0;
+    neg:=st;neg.inode=-1;#assert pv_record("x",sha,neg,out[..])==0;
+}
+#test "a record admits only the same pin and the same file" {
+    sha:="0000000000000000000000000000000000000000000000000000000000000001";
+    st:=PaStat.{device=1,inode=2,size=3,mtime_ns=4,ctime_ns=5};
+    out:[512]u8;n:=pv_record("w",sha,st,out[..]);record:=out[0..<n];
+    #assert cast(string)record=="psionic-verified 1 w 0000000000000000000000000000000000000000000000000000000000000001 3 1 2 4 5\n";
+    #assert pv_admits(record,"w",sha,st) && !pv_admits(record,"v",sha,st);
+    #assert !pv_admits(record,"w","0000000000000000000000000000000000000000000000000000000000000002",st);
+    for k:0..<5 {
+        other:=st;
+        if k==0 {other.device=9;}if k==1 {other.inode=9;}if k==2 {other.size=9;}if k==3 {other.mtime_ns=9;}if k==4 {other.ctime_ns=9;}
+        #assert !pv_admits(record,"w",sha,other);
+    }
+    #assert !pv_admits(record[0..<n-1],"w",sha,st) && !pv_admits(out[0..<0],"w",sha,st);
+    longer:[512]u8;for i:0..<n {longer[i]=out[i];}longer[n]=10;#assert !pv_admits(longer[0..<n+1],"w",sha,st);
+    longer[n-2]=54;#assert !pv_admits(longer[0..<n],"w",sha,st);
+    #assert !pv_admits(record,"",sha,st) && !pv_admits(out[0..<0],"",sha,st);
+    first:[512]u8;for i:0..<n {first[i]=out[i];}first[0]=81;#assert !pv_admits(first[0..<n],"w",sha,st);
+}
+#test "decimals" {
+    out:[4]u8;
+    #assert pv_decimal(0,out[..],0)==1 && out[0]==48 && pv_decimal(907,out[..],1)==4 && out[1]==57 && out[2]==48 && out[3]==55;
+    #assert pv_decimal(10,out[..],3)==5 && pv_decimal(-1,out[..],0)==5 && pv_decimal(9,out[..],3)==4 && out[3]==57 && pv_decimal(1,out[..],5)==5;
+    #assert pv_text("ab",out[..],5)==5 && pv_text("ab",out[..],2)==4 && pv_text("ab",out[..],3)==5 && out[2]==97 && pv_text("",out[..],4)==4;
 }

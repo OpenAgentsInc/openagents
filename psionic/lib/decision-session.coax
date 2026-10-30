@@ -59,7 +59,13 @@ ps_bind_core :: (target:PsTarget,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[
     if overlap {return PsSession.{status=PsOpenStatus.alias};}
     if !pw_digest(readout,target.readout_sha) {return PsSession.{status=PsOpenStatus.digest};}
     id:=PwIdentity.{origin=target.origin,revision=target.revision,config_sha=target.config_sha,tokenizer_sha=target.tokenizer_sha,index_sha=target.index_sha};
-    shards:[2]PwShard;for i:0..<target.shards {pin:=target.shard[i];shards[i]=PwShard.{name=pin.name,size=pin.bytes,sha=pin.sha,data=files[i].data};}
+    shards:[2]PwShard;
+    for i:0..<target.shards {
+        pin:=target.shard[i];f:=files[i];
+        // A stored record of this file, as mapped, skips the 18.8 GB hash.
+        known:=f.stat.size==f.data.count && pv_admits(f.record,pin.name,pin.sha,f.stat);
+        shards[i]=PwShard.{name=pin.name,size=pin.bytes,sha=pin.sha,data=f.data,verified=known};
+    }
     bundle:=p5_bundle_checked(id,config,tokenizer,index,shards[0..<target.shards],specs,memory.inventory,memory.draft,false);
     if bundle.status!=PwStatus.ok {return PsSession.{status=PsOpenStatus.bundle,cause=cast(int)bundle.status};}
     inv:=memory.inventory[0..<bundle.written];layers:=memory.layers[0..<n];values:=memory.params[0..<params];
@@ -69,12 +75,55 @@ ps_bind_core :: (target:PsTarget,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[
     if globals.status!=PwStatus.ok {return PsSession.{status=PsOpenStatus.binding,cause=cast(int)globals.status};}
     return PsSession.{target=target.kind,model=QxModel.{shape=s,layers=layers,vocab=target.vocab,embedding=globals.embedding,head=globals.head,final_norm=globals.norm},table=table};
 }
+// The verified-file record for shard i of a pinned target, for the host to
+// keep after an open that hashed the file in full; 0 if there is no such shard.
+ps_shard_record :: (kind:u8,capacity:int,i:int,st:PaStat,out:[]u8)->int #export_c {
+    target:=ps_target(kind,capacity);
+    if target.status!=PsStatus.ok || i<0 || i>=target.shards || st.size!=target.shard[i].bytes {return 0;}
+    return pv_record(target.shard[i].name,target.shard[i].sha,st,out);
+}
 ps_open :: (kind:u8,capacity:int,config:[]u8,tokenizer:[]u8,readout:[]u8,index:[]u8,files:[]PaFile,specs:[]P5Spec,table:[]u8,memory:PsWorkspace,overlap:bool)->PsSession #export_c {
     target:=ps_target(kind,capacity);if target.status!=PsStatus.ok {return PsSession.{status=PsOpenStatus.shape,cause=cast(int)target.status};}
     if files.count!=target.shards || specs.count!=target.tensors {return PsSession.{status=PsOpenStatus.shape};}
     if overlap {return PsSession.{status=PsOpenStatus.alias};}
     if !pt_admit(table) {return PsSession.{status=PsOpenStatus.digest};}
     return ps_bind_core(target,config,tokenizer,readout,index,files,specs,memory,table,overlap);
+}
+#test "a stored record of the mapped file skips its hash, and nothing else does" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;file:=PS_TOY_FILE;specs:=PS_TOY_SPECS;index:[1]u8;
+    ls:=QlShape.{width=2,hidden=1,delta=PdShape.{key_heads=1,value_heads=1,key_dim=1,value_dim=1,epsilon=1},dtype=QmDtype.bf16};
+    fs:=QhShape.{width=2,hidden=1,capacity=1,attention=QfShape.{heads=1,kv_heads=1,head_dim=2,rotary_dim=2,epsilon=1},dtype=QmDtype.bf16};
+    shape:=QeShape.{linear=ls,full=fs,state=QpShape.{linear_layers=3,full_layers=1,capacity=1,delta=ls.delta,attention=fs.attention}};
+    target:=PsTarget.{origin="owned",revision="v1",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA,readout_sha=CH04_CONFIG_JSON_SHA,vocab=4,tensors=56,shards=1,shape=shape};
+    // A pin whose digest the bytes do not have: only a record for that pin opens it.
+    other:="00000000000000000000000000000000000000000000000000000000000000ff";
+    target.shard[0]=PsShardPin.{name="model.safetensors",bytes=file.count,sha=other};
+    st:=PaStat.{device=7,inode=11,size=file.count,mtime_ns=13,ctime_ns=17};
+    text:[512]u8;n:=pv_record("model.safetensors",other,st,text[..]);#assert n>0;
+    files:=[1]PaFile.[PaFile.{data=file[..],record=text[0..<n],stat=st}];
+    inventory:[56]P5Tensor;draft:[56]P5Tensor;layers:[4]QeLayer;params:[65]f32;stage:[65]f32;layer_work:[27]f32;norm:[2]f32;norm_work:[2]f32;
+    memory:=PsWorkspace.{inventory=inventory[..],draft=draft[..],layers=layers[..],params=params[..],stage=stage[..],layer_work=layer_work[..],norm=norm[..],norm_work=norm_work[..]};
+    #assert ps_bind_core(target,config[..],tokenizer[..],config[..],index[0..<0],files[..],specs[..],memory,tokenizer[..],false).status==PsOpenStatus.ok;
+    for k:0..<4 {
+        f:=files;
+        if k==0 {f[0].record=text[0..<0];}if k==1 {f[0].stat.inode=12;}if k==2 {f[0].stat.size=file.count-1;}
+        if k==3 {f[0].data=file[0..<file.count-1];f[0].stat.size=file.count-1;}
+        q:=ps_bind_core(target,config[..],tokenizer[..],config[..],index[0..<0],f[..],specs[..],memory,tokenizer[..],false);
+        #assert q.status==PsOpenStatus.bundle && q.model.vocab==0;
+    }
+    // A record of a file whose stat size differs from its mapping never admits it.
+    big:=st;big.size=file.count+1;m:=pv_record("model.safetensors",other,big,text[..]);
+    wrong:=[1]PaFile.[PaFile.{data=file[..],record=text[0..<m],stat=big}];
+    #assert ps_bind_core(target,config[..],tokenizer[..],config[..],index[0..<0],wrong[..],specs[..],memory,tokenizer[..],false).status==PsOpenStatus.bundle;
+}
+#test "the host gets the record of a pinned shard" {
+    target:=ps_target(0,1);pin:=target.shard[0];out:[512]u8;want:[512]u8;
+    st:=PaStat.{device=1,inode=2,size=pin.bytes,mtime_ns=3,ctime_ns=4};
+    n:=ps_shard_record(0,1,0,st,out[..]);w:=pv_record(pin.name,pin.sha,st,want[..]);
+    #assert n>0 && n==w && cast(string)out[0..<n]==cast(string)want[0..<w] && pv_admits(out[0..<n],pin.name,pin.sha,st);
+    #assert ps_shard_record(0,1,1,st,out[..])==0 && ps_shard_record(0,1,-1,st,out[..])==0 && ps_shard_record(9,1,0,st,out[..])==0;
+    small:=st;small.size=pin.bytes-1;#assert ps_shard_record(0,1,0,small,out[..])==0;
+    m:=ps_target(1,1);two:=PaStat.{size=m.shard[1].bytes};#assert m.shards==2 && ps_shard_record(1,1,1,two,out[..])>0 && ps_shard_record(1,1,2,two,out[..])==0;
 }
 #test "a pinned session refuses unsupported identity, overlap and tokenizer table" {
     bytes:[1]u8;files:[1]PaFile;specs:[1]P5Spec;memory:PsWorkspace;

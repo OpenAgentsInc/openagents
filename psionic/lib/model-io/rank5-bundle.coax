@@ -4,6 +4,18 @@
 #load "../../fixtures/models/rank5/fixture.coax";
 #authority;
 P5Spec :: struct { name:string; shape:P5Shape; dtype:PwDtype; shard:int; }
+#test "a verified shard skips only its own hash" {
+    config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;file:=P5_FILE;
+    id:=PwIdentity.{origin="owned",revision="v2",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA};
+    shards:=[1]PwShard.[PwShard.{name="model.safetensors",data=file[..],size=file.count,sha=CH04_CONFIG_JSON_SHA,verified=true}];
+    specs:=[2]P5Spec.[P5Spec.{name="vision",shape=P5Shape.{rank=5,dims=[5]int.[1,1,1,1,1]}},P5Spec.{name="bias",dtype=PwDtype.f32}];
+    out:[2]P5Tensor;draft:[2]P5Tensor;index:[1]u8;
+    #assert p5_bundle_checked(id,config[..],tokenizer[..],index[0..<0],shards[..],specs[..],out[..],draft[..],false).status==PwStatus.ok;
+    shards[0].verified=false;
+    #assert p5_bundle_checked(id,config[..],tokenizer[..],index[0..<0],shards[..],specs[..],out[..],draft[..],false).status==PwStatus.digest;
+    shards[0].verified=true;bad:=config;bad[0]=0;
+    #assert p5_bundle_checked(id,bad[..],tokenizer[..],index[0..<0],shards[..],specs[..],out[..],draft[..],false).status==PwStatus.digest;
+}
 #test "rank five bundle binds every original byte and every expected axis" {
     config:=CH04_CONFIG_JSON;tokenizer:=CH04_TOKENIZER_JSON;file:=P5_FILE;
     id:=PwIdentity.{origin="owned",revision="v2",config_sha=CH04_CONFIG_JSON_SHA,tokenizer_sha=CH04_TOKENIZER_JSON_SHA};
@@ -92,7 +104,7 @@ p5_bundle_checked :: (id:PwIdentity,config:[]u8,tokenizer:[]u8,index:[]u8,shards
         s:=shards[i];
         if !pw_basename(s.name) || s.size!=s.data.count {return PwResult.{status=PwStatus.manifest};}
         for k:0..<i {if shards[k].name==s.name {return PwResult.{status=PwStatus.duplicate};}}
-        if !pw_digest(s.data,s.sha) {return PwResult.{status=PwStatus.digest};}
+        if !s.verified && !pw_digest(s.data,s.sha) {return PwResult.{status=PwStatus.digest};}
         r:=p5_scan(s.data,draft,count,i);if r.status!=PwStatus.ok {return r;}count+=r.written;payload+=r.bytes;
     }
     if count!=specs.count {return PwResult.{status=PwStatus.manifest};}

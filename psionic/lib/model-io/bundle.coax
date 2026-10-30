@@ -4,7 +4,9 @@
 #authority;
 // book:begin manifest
 PwIdentity :: struct { origin:string; revision:string; config_sha:string; tokenizer_sha:string; index_sha:string; }
-PwShard :: struct { name:string; data:[]u8; size:int; sha:string; }
+// verified: the host holds a verified-file record for these exact bytes
+// (model-io/access.coax), so the full hash may be skipped.
+PwShard :: struct { name:string; data:[]u8; size:int; sha:string; verified:bool; }
 PwSpec :: struct { name:string; shape:PsionicShape; dtype:PwDtype; shard:int; }
 // book:end manifest
 
