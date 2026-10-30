@@ -64,13 +64,15 @@ it.
 - **Make your fairy** before you wake: body shape, skin, hair, face, outfit,
   and wings (shape, colour, pattern, glow). As much choice as the engine's
   figures allow; more pieces are added over time.
-- **Change it any time** at the mirror pool in your home.
+- **Change it any time**: LOOK beside the title (L on a computer), or the
+  mirror pool in your home.
 - Built (ff-maker, `apps/openagents-web/fairymaker.coax`,
   `verse/fairy-forest/life.coax`): the first visit opens YOUR FAIRY, a pane
   of rows (body, skin, hair, style, eyes, outfit, wings, wing colour, glow)
-  with choices to tap while she turns to face you; DONE wakes you. The
-  mirror pool in Mossbank, west of where you wake (E or MIRROR), opens it
-  again. The look is kept in the save's tail, so a reload or another device
+  with choices to tap while she turns to face you; DONE wakes you. LOOK
+  beside the title (L on a computer) opens it again any time, as does the
+  mirror pool in Mossbank, west of where you wake (E or MIRROR); a rim of
+  light and motes rising off it show the pool from across the hollow. The look is kept in the save's tail, so a reload or another device
   with an account keeps it.
 - **Grows with you:** wings and outfit gain detail as you learn skills, so
   how you look says how far you have come. Built so far: a gem on her upper

@@ -1,8 +1,8 @@
 // Making your fairy (ff-maker, verse/fairy-forest/README.md "You: a fairy you
 // make"): a pane of rows, each part of her (body, skin, hair and its style,
 // eyes, outfit, wings, their colour and glow) with its choices to tap, and
-// she turns to face you while you choose. The first visit opens it; the
-// mirror pool in Mossbank brings it back. What you choose is kept in the
+// she turns to face you while you choose. The first visit opens it; LOOK by
+// the title (L on a computer) and the mirror pool in Mossbank bring it back. What you choose is kept in the
 // save's tail (verse/fairy-forest/life.coax).
 //   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
 
@@ -19,6 +19,32 @@ Maker :: struct {
   done: Box; panel: Box;
   press: int; finger: int;  // a chip pressed (chip + 1, FFM_CHIPS + 1 DONE), and by which finger
   zoom_was: f32; yaw_was: f32;
+  chip: Box; chip_press: bool; chip_finger: int;   // LOOK, by the title
+}
+
+// LOOK (and L) open the maker unless a talk, the build pane or a course being made has the screen.
+ffm_can :: (s: [] Fairy) -> bool { return s[0].talk == 0 && !s[0].build[0].open && !s[0].race[0].making; }
+ffm_keyed :: (s: [] Fairy) -> bool { return !phone(s); }
+ffm_chip_w :: (s: [] Fairy) -> f32 {
+  k := hi(s[0].dpr, 0.5); cap := 7.5 * k;
+  return (ifx ffm_keyed(s) then text_width("L", cap) + 10 * k else 0.0f32) + text_width("LOOK", cap) + 26 * k;
+}
+// LOOK by the title: on a computer "L LOOK", the key in gold, like E's verbs.
+ffm_chip :: (s: [] Fairy, out: [] f32, u: [] f32, at: int, x0: f32, y0: f32, y1: f32, least: f32) -> int {
+  m := s[0].maker[..];
+  m[0].chip = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  if m[0].open || !ffm_can(s) { return at; }
+  k := hi(s[0].dpr, 0.5); cap := 7.5 * k;
+  keyw := ifx ffm_keyed(s) then text_width("L", cap) + 10 * k else 0.0f32;
+  b := Box.{x0 = x0, y0 = y0, x1 = x0 + hi(ffm_chip_w(s), least), y1 = y1};
+  m[0].chip = b;
+  plate(s, u, b, 0.78, 0);
+  tx := (b.x0 + b.x1 - keyw - text_width("LOOK", cap)) / 2; ty := (b.y0 + b.y1 + cap) / 2;
+  n := at;
+  if keyw > 0 { n = draw_text(out, n, "L", tx, ty, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false); }
+  on := m[0].chip_press;
+  return draw_text(out, n, "LOOK", tx + keyw, ty, cap, GAP, SPACE,
+                   ink(k, 0.95, ifx on then GOLD_R else CREAM_R, ifx on then GOLD_G else CREAM_G, ifx on then GOLD_B else CREAM_B), false, false);
 }
 
 ffm_open :: (s: [] Fairy, first: bool) {
@@ -59,13 +85,19 @@ ffm_near_pool :: (you: Point) -> bool {
 
 ffm_key :: (s: [] Fairy, key: int) -> bool {
   if !s[0].maker[0].open { return false; }
-  if key == KEY_ESCAPE || key == KEY_ENTER { ffm_close(s); }
+  if key == KEY_ESCAPE || key == KEY_ENTER || key == 'l' || key == 'L' { ffm_close(s); }
   return true;
 }
 
 ffm_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, id: int) -> bool {
   m := s[0].maker[..];
-  if !m[0].open { return false; }
+  if !m[0].open {
+    // LOOK: a press there, and a lift there opens it
+    if phase == 0 { m[0].chip_press = in_box(m[0].chip, x, y); m[0].chip_finger = id; return m[0].chip_press; }
+    if !m[0].chip_press || id != m[0].chip_finger { return false; }
+    if phase >= 2 { m[0].chip_press = false; if phase == 2 && in_box(m[0].chip, x, y) && ffm_can(s) { ffm_open(s, false); } }
+    return true;
+  }
   if phase == 0 {
     m[0].press = 0;
     if in_box(m[0].done, x, y) { m[0].press = FFM_CHIPS + 1; m[0].finger = id; return true; }
@@ -163,7 +195,7 @@ ffm_pool :: (s: [] Fairy) {
   x := f32(FFM_POOL_X); z := f32(FFM_POOL_Z);
   g := ground_at(s, x, z);
   t := effect_time(s);
-  shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(x, g + 0.03, z), 0, 0, f32(FFM_POOL_R), 0.03, f32(FFM_POOL_R), 0.62, 0.86, 0.96);
+  shape(s, SHAPE_CYLINDER, LOOK_GLOW, v3(x, g + 0.03, z), 0, 0, f32(FFM_POOL_R), 0.03, f32(FFM_POOL_R), 0.78, 0.97, 1.0);
   shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.0, z), 0, 0, f32(FFM_POOL_R) + 0.12, 0.05, f32(FFM_POOL_R) + 0.12, 0.42, 0.46, 0.4);
   for i: 0..<10 {
     a := f32(i) * f32(TAU) / 10 + 0.2;
@@ -173,6 +205,15 @@ ffm_pool :: (s: [] Fairy) {
   }
   // a glint drifting over the water
   shape(s, SHAPE_SPHERE, LOOK_SPARK, v3(x + sin(t * 0.7) * 0.5, g + 0.08, z + cos(t * 0.5) * 0.4), 0, 0, 0.06, 0.02, 0.06, 0.9, 0.98, 1.0);
+  // a rim of light round the water, and motes rising off it, so it reads from across the hollow
+  b := 0.85 + 0.15 * sin(t * 2.0);
+  shape(s, SHAPE_CYLINDER, LOOK_SPARK, v3(x, g + 0.025, z), 0, 0, f32(FFM_POOL_R) + 0.08, 0.03, f32(FFM_POOL_R) + 0.08, 0.7 * b, 0.95 * b, 1.0 * b);
+  for i: 0..<5 {
+    up := t * 0.18 + f32(i) * 0.2; up = up - floor(up);
+    a := f32(i) * 2.4 + t * 0.3;
+    r := 0.12 * (1 - up) + 0.05;
+    shape(s, SHAPE_CONE, LOOK_SPARK, v3(x + cos(a) * 0.45, g + 0.2 + up * 2.6, z + sin(a) * 0.45), a, 0, r, r * 2, r, 0.75, 0.97, 1.0);
+  }
 }
 
 #test "the maker: the first visit opens it, a tap on a choice sets it, DONE closes it and she is made" {
@@ -215,4 +256,49 @@ ffm_pool :: (s: [] Fairy) {
   s[0].life[0].look.made = true;
   ffm_loaded(s[..]);
   #assert !s[0].maker[0].open;
+}
+
+ffm_frame :: (g: [] Fairy, out: [] f32, u: [] f32, w: f32, h: f32) {
+  _n := fairy_frame(g, out, u, w, h, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+}
+
+#test "LOOK by the title opens the maker any time, DONE closes it; L does both on a computer" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  ffm_frame(g[..], out[..], u[..], 1440, 900);
+  #assert !g[0].maker[0].open;
+  c := g[0].maker[0].chip; r := g[0].race[0].chip;
+  #assert c.x1 > c.x0 && r.x1 > r.x0 && c.x0 > r.x1 && c.y0 == r.y0 && c.x1 < 1440 - 16;   // beside COURSE
+  cx := (c.x0 + c.x1) / 2; cy := (c.y0 + c.y1) / 2;
+  #assert fairy_pointer(g[..], cx, cy, 0, 0, 1) && fairy_pointer(g[..], cx, cy, 2, 0, 1);
+  #assert g[0].maker[0].open && !g[0].maker[0].by_visit;
+  ffm_frame(g[..], out[..], u[..], 1440, 900);
+  #assert g[0].maker[0].chip.x1 == 0;   // not shown while the pane is
+  d := g[0].maker[0].done;
+  #assert fairy_pointer(g[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 0, 0, 1) && fairy_pointer(g[..], (d.x0 + d.x1) / 2, (d.y0 + d.y1) / 2, 2, 0, 1);
+  #assert !g[0].maker[0].open && g[0].life[0].look.made;
+  // a press that slides off LOOK opens nothing
+  ffm_frame(g[..], out[..], u[..], 1440, 900);
+  #assert fairy_pointer(g[..], cx, cy, 0, 0, 1) && fairy_pointer(g[..], cx, cy + 200, 2, 0, 1) && !g[0].maker[0].open;
+  // L opens it and L closes it
+  #assert fairy_key(g[..], 'l', 0) && g[0].maker[0].open;
+  #assert fairy_key(g[..], 'L', 0) && !g[0].maker[0].open;
+  // not in a talk
+  talk_to(g[..], 0);
+  #assert g[0].talk > 0;
+  ffm_frame(g[..], out[..], u[..], 1440, 900);
+  #assert g[0].maker[0].chip.x1 == 0;
+  end_talk(g[..]);
+  // on a phone it is a tap, inside the screen; with EDIT there for an admin it sits under COURSE
+  ffm_frame(g[..], out[..], u[..], 390, 844);
+  c = g[0].maker[0].chip; r = g[0].race[0].chip;
+  #assert c.x1 > c.x0 && c.x1 <= 390 - 16 && c.x0 > r.x1;
+  #assert fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 0, 1, 7) && fairy_pointer(g[..], (c.x0 + c.x1) / 2, (c.y0 + c.y1) / 2, 2, 1, 7);
+  #assert g[0].maker[0].open;
+  ffm_close(g[..]);
+  g[0].ed[0].ready = true; g[0].ed[0].role = REDIT_ADMIN;
+  ffm_frame(g[..], out[..], u[..], 390, 844);
+  c = g[0].maker[0].chip; r = g[0].race[0].chip;
+  #assert c.x0 == r.x0 && c.y0 > r.y1 && c.x1 < 390 - 16 - 60;
 }

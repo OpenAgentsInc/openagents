@@ -582,6 +582,7 @@ fairy_key :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
   if ffs_key(s, key, mods) { return true; }
   if s[0].talk > 0 { return talk_key(s, key, mods); }
+  if (key == 'l' || key == 'L') && ffm_can(s) { ffm_open(s, false); return true; }   // LOOK: your fairy
   if ffc_key(s, key) { return true; }
   if key == KEY_ENTER { ffs_start_chat(s); return true; }
   if key == 'e' || key == 'E' { s[0].use = true; return true; }
@@ -1966,7 +1967,18 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k}, 0.78, 0);
   n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = draw_text(out, n, line2, gutter + 14 * k, gutter + 22 * k + cap + small, small, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
-  n = ffc_chip(s, out, u, n, gutter + tw + 36 * k, gutter, gutter + cap + small + 34 * k);
+  // COURSE and LOOK beside the title; where EDIT leaves no room for both side by side, one over the other
+  chip_x := gutter + tw + 36 * k; chip_y1 := gutter + cap + small + 34 * k;
+  course_w := text_width("COURSE", 7.5 * k) + 26 * k;
+  right := w - gutter - (ifx s[0].ed[0].ready && redit_may(s[0].ed[..]) then text_width("EDIT", 9 * k) + 40 * k else 0.0f32);
+  if chip_x + course_w + 8 * k + ffm_chip_w(s) <= right {
+    n = ffc_chip(s, out, u, n, chip_x, gutter, chip_y1);
+    n = ffm_chip(s, out, u, n, ifx s[0].race[0].chip.x1 > 0 then s[0].race[0].chip.x1 + 8 * k else chip_x, gutter, chip_y1, 0);
+  } else {
+    mid := (gutter + chip_y1) / 2;
+    n = ffc_chip(s, out, u, n, chip_x, gutter, mid - 3 * k);
+    n = ffm_chip(s, out, u, n, chip_x, ifx s[0].race[0].chip.x1 > 0 then mid + 3 * k else gutter, chip_y1, course_w);
+  }
   n = ffc_pane(s, out, u, n, gutter + cap + small + 42 * k + (ifx phone(s) then 38 * k else 0.0f32));   // on a phone, under the chat's line
   // the mood glyphs over the creatures in view
   for c: 0..<FF_CREATURES {
