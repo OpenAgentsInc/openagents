@@ -92,6 +92,14 @@ except urllib.error.HTTPError as e:
 check("chat: admin sign-in with next=chat goes to /chat", s == 303 and where == "/chat", (s, where))
 CTOK = next((c.split(";")[0].split("=", 1)[1] for c in cookies if "Path=/api/chat" in c), "")
 check("chat: the admin's cookie opens /api/chat too", len(CTOK) == 64 and any("Path=/api/chat" in c and "HttpOnly" in c and "SameSite=Strict" in c for c in cookies), cookies)
+PTOK = next((c.split(";")[0].split("=", 1)[1] for c in cookies if "Path=/api/playtest" in c), "")
+check("admin: the same cookie goes to /api/playtest, so every realm's EDIT knows a site admin without /login",
+      PTOK == CTOK and any("Path=/api/playtest" in c and "HttpOnly" in c and "SameSite=Strict" in c for c in cookies), cookies)
+_rq = urllib.request.Request(API + "/api/playtest/realms/the-grid", headers={"Cookie": "oa_admin=" + PTOK, "X-Forwarded-For": "10.9.0.1"})
+_spec = urllib.request.urlopen(_rq).read().decode()
+_anon = urllib.request.urlopen(urllib.request.Request(API + "/api/playtest/realms/the-grid", headers={"X-Forwarded-For": "10.9.0.1"})).read().decode()
+check("admin: with only the oa_admin cookie, the Grid's spec says role admin (and a visitor's says visitor)",
+      "\nrole admin\n" in "\n" + _spec and "\nrole visitor\n" in "\n" + _anon, (_spec[:80], _anon[:80]))
 
 
 def cpage(method, op, body=None, cookie=None, origin=API, query=""):

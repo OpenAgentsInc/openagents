@@ -164,17 +164,19 @@ static void login(const request *q, PGconn *db) {
   bool ok = PQresultStatus(r) == PGRES_COMMAND_OK;
   PQclear(r);
   if (!ok) { api_json(q->fd, 503, "{\"error\":\"no session\"}"); return; }
-  char headers[900], next[16];
+  char headers[1400], next[16];
   // ?next=chat sends the browser to /chat instead (the link is signed without it, as before).
   api_query(q, "next", next, sizeof next);
   // The same session opens /api/drops (drops.c), so an admin can drop files for a new project,
-  // and /api/chat (chat.c), the admins' chat with a Claude agent.
+  // /api/chat (chat.c), the admins' chat with a Claude agent, and /api/playtest, where every
+  // realm's EDIT (realms.c and player.c ask admin_who) knows a site admin without /login.
   snprintf(headers, sizeof headers, "Location: %s\r\nSet-Cookie: oa_admin=%s; Path=/api/admin; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
            "Set-Cookie: oa_admin=%s; Path=/api/drops; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
            "Set-Cookie: oa_admin=%s; Path=/api/chat; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
+           "Set-Cookie: oa_admin=%s; Path=/api/playtest; Max-Age=%d; HttpOnly; Secure; SameSite=Strict\r\n"
            TEAM_COOKIE,   // this browser's later visits, logged out too, are our own testing (analytics.c)
            !strcmp(next, "chat") ? "/chat" : "/admin/analytics",
-           token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600);
+           token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600, token, SESSION_HOURS * 3600);
   api_log("admin signed in: %.12s", ev.pubkey);
   api_respond(q->fd, 303, "text/plain", headers, "", 0);
 }
@@ -194,7 +196,8 @@ static void logout(const request *q, PGconn *db) {
   }
   api_respond(q->fd, 303, "text/plain", "Location: /\r\nSet-Cookie: oa_admin=; Path=/api/admin; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
               "Set-Cookie: oa_admin=; Path=/api/drops; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
-              "Set-Cookie: oa_admin=; Path=/api/chat; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);
+              "Set-Cookie: oa_admin=; Path=/api/chat; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n"
+              "Set-Cookie: oa_admin=; Path=/api/playtest; Max-Age=0; HttpOnly; Secure; SameSite=Strict\r\n", "", 0);
 }
 
 // ---- the reports
