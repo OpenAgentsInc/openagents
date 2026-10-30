@@ -1,0 +1,3 @@
+model: 64 layers, width 5120, feed-forward 17408, 1026 weights, 527 streamable
+14 GiB: 2829 operations; resident 14486179840 bytes, copied per decision 36768317440 bytes in 207 matrices, slots of 178257920 bytes
+smallest budget 487526656 bytes: 3741 operations, copied per decision 51243909120 bytes; one byte less: memory

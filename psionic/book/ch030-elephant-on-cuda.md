@@ -8,9 +8,9 @@ the same probabilities to six decimal places. Every kernel is Coax from
 what runs where: which weights stay on the device, which stream from host
 memory, and the order of every copy and launch.
 
-The plan's title promises Mammoth too. Only Elephant has run; Mammoth's 54.7 GB
-of weights need the streaming of this chapter at a much larger scale and their
-own qualification.
+The plan's title promises Mammoth too. Mammoth's 51 GB of text weights need
+the streaming of this chapter at a much larger scale and their own
+qualification; [chapter 30b](ch030b-mammoth-on-cuda.md) does both.
 
 ## The decision as one pass
 

@@ -252,6 +252,16 @@
       ]
     },
     {
+      "source": "psionic/examples/mammoth-device-plan.coax",
+      "chapter": "psionic/book/ch030b-mammoth-on-cuda.md",
+      "stdout": "psionic/fixtures/mammoth-device-plan.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/gptoss-device-plan.coax",
       "chapter": "psionic/book/ch045a-original-weights-stay-on-the-gpu.md",
       "stdout": "psionic/fixtures/gptoss-device-plan.out",

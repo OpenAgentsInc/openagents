@@ -21,7 +21,7 @@ for unit in project layer warp; do
     "$coax" cuda "psionic/lib/device/$unit.coax" > "$out/$unit.cu"
     "$coax" cuda "psionic/lib/device/$unit.coax" --release > "$out/$unit-release.cu"
 done
-for example in device-matvec device-plan; do
+for example in device-matvec device-plan mammoth-device-plan; do
     for mode in "" --release; do
         "$coax" run "psionic/examples/$example.coax" $mode > "$out/$example.out"
         cmp "psionic/fixtures/$example.out" "$out/$example.out"

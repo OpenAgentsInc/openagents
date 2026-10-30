@@ -214,8 +214,10 @@ see chapter 10 for the Elephant original-checkpoint qualification.
 Chapter 9 provides CPU slot readout given full-vocabulary logits and explicit
 temperature; it does not load calibration artifacts or serialize responses.
 Chapter 10 authenticates and executes a typed Elephant text decision on the CPU;
-see [execution progress](docs/model-execution-progress.md). Mammoth
-end-to-end qualification and autodiff remain planned. Original gpt-oss 20b
+see [execution progress](docs/model-execution-progress.md). Chapter 11 runs
+Mammoth's on the CPU, and [chapter 30b](book/ch030b-mammoth-on-cuda.md) runs it
+on the RTX 4080 in about 1.6 s, streaming most of its weights over PCIe.
+Autodiff remains planned. Original gpt-oss 20b
 GPU execution and a bounded Responses edge are qualified separately above.
 
 Chapter [56: Execute a DeepSeek R1 distill](book/ch056-execute-a-deepseek-r1-distill.md)

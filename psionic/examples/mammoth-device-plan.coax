@@ -1,0 +1,21 @@
+// Chapter 30b's schedule for Mammoth's 86-token sample: the same plan with
+// the model's shape as data, at the 4080's 14 GiB and at its smallest budget.
+// Nothing runs: the plan is data that the host executes.
+#import "Basic";
+#load "../lib/device/plan.coax";
+// book:begin example
+main :: () {
+    m:=dp_model(1);ops:[3800]DpOp;stream:[527]bool;
+    print("model: % layers, width %, feed-forward %, % weights, % streamable\n",m.layers,m.width,m.hidden,dp_weights(m),dp_streamable(m));
+    plan:=dp_plan_model(1,false,86,49,14*1073741824,stream[..],ops[..]);
+    #assert plan.status==DpStatus.ok;
+    copied:=0;for i:0..<plan.ops {if ops[i].kind==DpOpKind.copy {copied+=ops[i].args[0].count;}}
+    print("14 GiB: % operations; resident % bytes, copied per decision % bytes in % matrices, slots of % bytes\n",plan.ops,plan.resident,copied,plan.streamed_tensors,plan.slot);
+    // Everything streams: only the vectors, the workspace and two slots stay.
+    vectors:=0;for w:0..<dp_weights(m) {if !dp_bf16(m,w) {vectors+=dp_align(dp_bytes(m,w));}}
+    least:=plan.workspace+vectors+2*plan.slot;
+    all:=dp_plan_model(1,false,86,49,least,stream[..],ops[..]);
+    copied=0;for i:0..<all.ops {if ops[i].kind==DpOpKind.copy {copied+=ops[i].args[0].count;}}
+    print("smallest budget % bytes: % operations, copied per decision % bytes; one byte less: %\n",least,all.ops,copied,dp_plan_model(1,false,86,49,least-1,stream[..],ops[..]).status);
+}
+// book:end example

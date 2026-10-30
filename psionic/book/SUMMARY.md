@@ -32,6 +32,7 @@
 - [26c. Add your own operator](ch026c-add-your-own-operator.md)
 - [30. Elephant on CUDA](ch030-elephant-on-cuda.md)
 - [30a. Share the card](ch030a-share-the-card.md)
+- [30b. Mammoth on CUDA](ch030b-mammoth-on-cuda.md)
 - [41. Original MXFP4 weights](ch041-original-mxfp4-weights.md) — first gpt-oss branch chapter
 - [42. A few experts, then a router](ch042-a-few-experts-then-a-router.md)
 - [43. Attention with sinks and a window](ch043-attention-with-sinks-and-a-window.md)
