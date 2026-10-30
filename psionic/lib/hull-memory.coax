@@ -1,0 +1,272 @@
+// Chapter 171: decode in logarithmic time. Chapter 166 reads memory with a
+// hard max over every store in the trace, so each read scans them all. The
+// keys sit on a parabola, so each distinct key is a vertex of their upper
+// convex hull, and the score along the hull rises to one peak and falls.
+// A binary search over the hull's edges finds that peak in about log2 of
+// the number of distinct keys, and returns exactly what the scan returns.
+// Profile hull-v1: chapter 166's keys, scores and range; the index keeps
+// one vertex per distinct key, sorted, with that key's latest write.
+#load "exact-memory.coax";
+#authority;
+
+// The caller's storage: one entry per distinct key, sorted by key.
+HmIndex :: struct {keys:[]int;values:[]int;positions:[]int;count:int;writes:int;}
+HmInsert :: struct {status:EmStatus;index:HmIndex;compares:int;}
+// vertex: the hull vertex the search stopped on, the left one of a tie.
+HmRead :: struct {read:EmRead;compares:int;vertex:int;}
+
+// book:begin insert
+// Records write number x.writes, key k, value v. Finding the key's place is
+// a binary search; a key already present keeps its place and takes the
+// later write, because a later write wins every tie the scan would see.
+hm_insert :: (x:HmIndex,k:int,v:int)->HmInsert {
+    r:=HmInsert.{index=x};
+    if k< -EM_KEY_MAX || k>EM_KEY_MAX {r.status=EmStatus.range;return r;}
+    lo:=0;hi:=x.count;
+    while lo<hi {
+        mid:=(lo+hi)/2;r.compares+=1;
+        if x.keys[mid]<k {lo=mid+1;} else {hi=mid;}
+    }
+    if lo==x.count || x.keys[lo]!=k {
+        if x.count>=x.keys.count || x.count>=x.values.count || x.count>=x.positions.count {r.status=EmStatus.capacity;return r;}
+        i:=x.count;
+        while i>lo {x.keys[i]=x.keys[i-1];x.values[i]=x.values[i-1];x.positions[i]=x.positions[i-1];i-=1;}
+        x.keys[lo]=k;r.index.count+=1;
+    }
+    x.values[lo]=v;x.positions[lo]=x.writes;r.index.writes+=1;
+    return r;
+}
+// book:end insert
+
+// book:begin read
+// The hard max over the hull: em_score(keys[i],q) rises to one peak along
+// the sorted keys and then falls, so comparing each midpoint with its right
+// neighbour finds the peak. Two different keys tie only when q lies midway
+// between them, where neither is q and the read is refused anyway; so the
+// result, value and position, is the scan's.
+hm_read :: (x:HmIndex,q:int)->HmRead {
+    r:HmRead;
+    if q< -EM_KEY_MAX || q>EM_KEY_MAX {r.read.status=EmStatus.range;return r;}
+    if x.count==0 {r.read.status=EmStatus.missing;return r;}
+    lo:=0;hi:=x.count-1;
+    while lo<hi {
+        mid:=(lo+hi)/2;r.compares+=1;
+        if em_score(x.keys[mid+1],q)>em_score(x.keys[mid],q) {lo=mid+1;} else {hi=mid;}
+    }
+    r.vertex=lo;
+    if x.keys[lo]!=q {r.read.status=EmStatus.missing;return r;}
+    r.read.value=x.values[lo];r.read.position=x.positions[lo];
+    return r;
+}
+// book:end read
+
+HmRun :: struct {result:TmResult;stores:int;reads:int;hull:int;scan:int;}
+
+// book:begin run
+// Chapter 166's machine with the hull index in place of the scan: before
+// every step, each of the 64 cells is read through the hull. scan counts
+// the comparisons chapter 166's read makes over the same stores (one fewer
+// than the number of stores, per read); hull counts this chapter's.
+hm_run :: (program:[]TmOp,budget:int,trace:[]int,index:HmIndex)->HmRun {
+    out:HmRun;x:=index;x.count=0;
+    admitted:=tm_admit(program);if admitted!=TmStatus.ok {out.result.status=admitted;return out;}
+    if budget<1 || budget>TM_STEPS_MAX {out.result.status=TmStatus.budget;return out;}
+    s:TmState;ip:=0;row:[4]int;bytes:[16]u8;sha:[112]u8;
+    #assert sha256_init(sha[..])==SHA_OK;
+    while true {
+        if ip==program.count {out.result=TmResult.{status=TmStatus.fell,ip=ip,steps=out.result.steps};return out;}
+        if out.result.steps>=budget {out.result=TmResult.{status=TmStatus.budget,ip=ip,steps=out.result.steps};return out;}
+        view:[64]int;
+        for c:0..<TM_CELLS {
+            h:=hm_read(x,c);view[c]=h.read.value;
+            out.reads+=1;out.hull+=h.compares;
+            if out.stores!=0 {out.scan+=out.stores-1;}
+        }
+        t:=tm_step(program,ip,s,view[..],row[..]);
+        if t.status!=TmStatus.ok {out.result=TmResult.{status=t.status,ip=ip,steps=out.result.steps};return out;}
+        if program[ip].code==TmCode.store {
+            w:=hm_insert(x,row[3],row[2]);
+            if w.status!=EmStatus.ok {out.result=TmResult.{status=TmStatus.capacity,ip=ip,steps=out.result.steps};return out;}
+            x=w.index;out.stores+=1;out.hull+=w.compares;
+        }
+        n:=out.result.steps;
+        if (n+1)*TM_TOKENS>trace.count {out.result=TmResult.{status=TmStatus.capacity,ip=ip,steps=n};return out;}
+        for k:0..<TM_TOKENS {trace[n*TM_TOKENS+k]=row[k];}
+        tm_bytes(row[..],bytes[..]);#assert sha256_update_checked(sha[..],bytes[..],false)==SHA_OK;
+        s=t.state;out.result.steps=n+1;
+        if t.next<0 {break;}
+        ip=t.next;
+    }
+    out.result.ip=ip;out.result.outputs=s.outputs;
+    #assert sha256_final_checked(sha[..],out.result.digest[..],false)==SHA_OK;
+    return out;
+}
+// book:end run
+
+hm_index :: (keys:[]int,values:[]int,positions:[]int,n:int)->HmIndex {
+    return HmIndex.{keys=keys[0..<n],values=values[0..<n],positions=positions[0..<n]};
+}
+hm_put :: (x:HmIndex,k:int,v:int)->HmIndex {
+    w:=hm_insert(x,k,v);#assert w.status==EmStatus.ok;
+    return w.index;
+}
+#test "inserts keep the keys sorted and a repeated key takes the later write" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],8);
+    x=hm_put(x,5,50);x=hm_put(x,-3,30);x=hm_put(x,9,90);x=hm_put(x,0,1);
+    #assert x.count==4 && x.writes==4;
+    #assert x.keys[0]==-3 && x.keys[1]==0 && x.keys[2]==5 && x.keys[3]==9;
+    #assert x.values[0]==30 && x.values[1]==1 && x.values[2]==50 && x.values[3]==90;
+    #assert x.positions[0]==1 && x.positions[1]==3 && x.positions[2]==0 && x.positions[3]==2;
+    x=hm_put(x,5,55);
+    #assert x.count==4 && x.writes==5 && x.keys[2]==5 && x.values[2]==55 && x.positions[2]==4 && x.keys[3]==9;
+    x=hm_put(x,10,7);#assert x.count==5 && x.keys[4]==10 && x.positions[4]==5;
+    x=hm_put(x,-4,8);#assert x.count==6 && x.keys[0]==-4 && x.keys[1]==-3 && x.values[1]==30 && x.positions[1]==1;
+}
+#test "an insert searches in about log2 of the keys" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],64);
+    w:=hm_insert(x,0,0);#assert w.compares==0;x=w.index;
+    w=hm_insert(x,1,0);#assert w.compares==1;x=w.index;
+    for k:2..<63 {x=hm_put(x,k,k);}
+    w=hm_insert(x,63,0);#assert w.status==EmStatus.ok && w.compares==6 && w.index.count==64;
+    w=hm_insert(x,-1,0);#assert w.compares==6 && w.index.keys[0]==-1 && w.index.keys[63]==62;
+}
+#test "keys at their bounds are accepted and one beyond refused" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],4);m:=EM_KEY_MAX;
+    #assert hm_insert(x,m+1,1).status==EmStatus.range && hm_insert(x,-m-1,1).status==EmStatus.range;
+    #assert hm_insert(x,m+1,1).index.count==0;
+    x=hm_put(x,m,1);x=hm_put(x,-m,2);
+    #assert hm_read(x,m).read.value==1 && hm_read(x,-m).read.value==2;
+    #assert hm_read(x,m+1).read.status==EmStatus.range && hm_read(x,-m-1).read.status==EmStatus.range;
+}
+#test "a full index refuses a new key but still takes a repeated one" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],2);x=hm_put(x,1,1);x=hm_put(x,2,2);
+    w:=hm_insert(x,3,3);#assert w.status==EmStatus.capacity && w.index.count==2 && w.index.writes==2;
+    x=hm_put(x,2,9);#assert x.count==2 && x.values[1]==9 && x.writes==3;
+    y:=hm_index(ks[..],vs[..],ps[..],3);y.count=2;y.values=vs[0..<2];#assert hm_insert(y,3,3).status==EmStatus.capacity;
+    y=hm_index(ks[..],vs[..],ps[..],3);y.count=2;y.positions=ps[0..<2];#assert hm_insert(y,3,3).status==EmStatus.capacity;
+    y=hm_index(ks[..],vs[..],ps[..],3);y.count=2;#assert hm_insert(y,3,3).status==EmStatus.ok;
+}
+#test "reads find the key asked for and refuse every other" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],8);
+    #assert hm_read(x,0).read.status==EmStatus.missing;
+    x=hm_put(x,4,40);r:=hm_read(x,4);#assert r.read.status==EmStatus.ok && r.read.value==40 && r.compares==0;
+    #assert hm_read(x,3).read.status==EmStatus.missing && hm_read(x,5).read.status==EmStatus.missing;
+    x=hm_put(x,8,80);x=hm_put(x,6,60);x=hm_put(x,4,41);
+    r=hm_read(x,4);#assert r.read.value==41 && r.read.position==3 && r.compares==2;
+    r=hm_read(x,8);#assert r.read.value==80 && r.read.position==1 && r.compares==1;
+    r=hm_read(x,6);#assert r.read.value==60 && r.read.position==2 && r.compares==2;
+    #assert hm_read(x,5).read.status==EmStatus.missing && hm_read(x,7).read.status==EmStatus.missing;
+    #assert hm_read(x,9).read.status==EmStatus.missing && hm_read(x,-100).read.status==EmStatus.missing;
+    // 5 lies midway between 4 and 6, 7 between 6 and 8: the search stops on the left.
+    #assert hm_read(x,5).vertex==0 && hm_read(x,7).vertex==1 && hm_read(x,9).vertex==2 && hm_read(x,3).vertex==0;
+    #assert hm_read(x,6).vertex==1;
+}
+// Compares every read in [lo, hi] with chapter 166's scan over the same
+// writes: the number of reads, or -1 at the first that differs.
+hm_agrees :: (x:HmIndex,keys:[]int,values:[]int,n:int,lo:int,hi:int)->int {
+    for q:lo..<hi+1 {
+        a:=hm_read(x,q).read;b:=em_read(keys,values,n,q);
+        if a.status!=b.status {return -1;}
+        if b.status==EmStatus.ok && (a.value!=b.value || a.position!=b.position) {return -1;}
+    }
+    return hi-lo+1;
+}
+#test "the agreement check sees each kind of difference" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],8);x=hm_put(x,5,20);
+    keys:=[2]int.[5,9];values:=[2]int.[20,0];
+    #assert hm_agrees(x,keys[..],values[..],1,3,7)==5;
+    values[0]=21;#assert hm_agrees(x,keys[..],values[..],1,4,6)==-1;
+    keys=[2]int.[9,5];values=[2]int.[0,20];#assert hm_agrees(x,keys[..],values[..],2,5,5)==-1;
+    keys=[2]int.[6,5];#assert hm_agrees(x,keys[..],values[..],1,5,5)==-1;
+    #assert hm_agrees(x,keys[..],values[..],1,7,7)==1;
+    keys=[2]int.[6,5];#assert hm_agrees(x,keys[..],values[..],1,3,4)==2 && hm_agrees(x,keys[..],values[..],1,3,5)==-1;
+}
+// Generated writes, with every read checked after each one: the reads
+// compared, the distinct keys, and a checksum of the writes made.
+HmSequence :: struct {reads:int;sum:int;count:int;}
+hm_sequence :: (seed0:int,n:int,span:int)->HmSequence {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],64);keys:[80]int;values:[80]int;seed:=seed0;
+    out:HmSequence;
+    for i:0..<n {
+        seed=(seed*1103515245+12345)%2147483648;
+        k:=(seed/65536)%(2*span+1)-span;v:=seed%1000;
+        x=hm_put(x,k,v);keys[i]=k;values[i]=v;out.sum+=(i+1)*(k*1000+v);
+        // A disagreement adds -1, so the pinned totals below would not hold.
+        out.reads+=hm_agrees(x,keys[..],values[..],i+1,-span-2,span+2);
+    }
+    out.count=x.count;
+    return out;
+}
+#test "after every write, every read equals the scan's" {
+    r:=hm_sequence(12345,80,9);#assert r.reads==80*23 && r.count==19 && r.sum==1251480;
+}
+#test "after every write, every read equals the scan's, again" {
+    r:=hm_sequence(99,80,6);#assert r.reads==80*17 && r.count==13 && r.sum==-966568;
+    r=hm_sequence(4242,40,2);#assert r.reads==40*9 && r.count==5 && r.sum==610348;
+}
+#test "wide keys agree with the scan too" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],64);keys:[40]int;values:[40]int;seed:=7;m:=EM_KEY_MAX;
+    for i:0..<40 {
+        seed=(seed*1103515245+12345)%2147483648;
+        k:=seed%(2*m+1)-m;if i%5==0 {k=keys[i/2];}
+        if i==3 {k=m;} if i==4 {k=-m;}
+        x=hm_put(x,k,i);keys[i]=k;values[i]=i;
+        for j:0..<i+1 {
+            for d:-1..<2 {
+                q:=keys[j]+d;
+                if q>=-m && q<=m {
+                    a:=hm_read(x,q).read;b:=em_read(keys[..],values[..],i+1,q);
+                    #assert a.status==b.status && a.value==b.value && a.position==b.position;
+                }
+            }
+        }
+    }
+}
+#test "the machine with a hull memory gives the interpreter's digest" {
+    p:=rx_like_squares();ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],64);trace:[256]int;
+    h:=hm_run(p[..],64,trace[..],x);
+    t:[256]int;o:[1]int;r:=tm_run(p[..],64,t[..],o[..],false);
+    #assert h.result.status==TmStatus.ok && h.result.steps==53 && h.result.outputs==1 && p[h.result.ip].code==TmCode.ret;
+    for i:0..<32 {#assert h.result.digest[i]==r.digest[i];}
+    for i:0..<212 {#assert trace[i]==t[i];}
+    #assert h.stores==4 && h.reads==53*64 && h.scan==4608 && h.hull==3121;
+    #assert o[0]==17 && h.result.digest[0]==0xd7 && h.result.digest[1]==0xbe;
+}
+rx_like_squares :: ()->[20]TmOp {
+    return [20]TmOp.[TmOp.{code=TmCode.push,arg=4},TmOp.{code=TmCode.set,arg=0},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=0},
+        TmOp.{code=TmCode.mul},TmOp.{code=TmCode.store},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.sub},
+        TmOp.{code=TmCode.set,arg=0},TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.brif,arg=2},
+        TmOp.{code=TmCode.push,arg=4},TmOp.{code=TmCode.load},TmOp.{code=TmCode.push,arg=1},
+        TmOp.{code=TmCode.load},TmOp.{code=TmCode.add},TmOp.{code=TmCode.out},TmOp.{code=TmCode.ret}];
+}
+#test "the hull machine refuses like the interpreter" {
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],64);trace:[256]int;
+    bad:=[2]TmOp.[TmOp.{code=TmCode.set,arg=8},TmOp.{code=TmCode.ret}];
+    #assert hm_run(bad[..],8,trace[..],x).result.status==TmStatus.local;
+    p:=rx_like_squares();
+    #assert hm_run(p[..],0,trace[..],x).result.status==TmStatus.budget;
+    #assert hm_run(p[..],TM_STEPS_MAX+1,trace[..],x).result.status==TmStatus.budget;
+    #assert hm_run(p[..],TM_STEPS_MAX,trace[..],x).result.status==TmStatus.ok;
+    r:=hm_run(p[..],52,trace[..],x).result;#assert r.status==TmStatus.budget && r.steps==52 && r.ip==19;
+    r=hm_run(p[..],53,trace[0..<211],x).result;#assert r.status==TmStatus.capacity && r.steps==52 && r.ip==19;
+    small:=hm_index(ks[..],vs[..],ps[..],3);
+    r=hm_run(p[..],64,trace[..],small).result;#assert r.status==TmStatus.capacity && r.steps==39 && r.ip==6;
+    fall:=[1]TmOp.[TmOp.{code=TmCode.push,arg=1}];
+    r=hm_run(fall[..],8,trace[..],x).result;#assert r.status==TmStatus.fell && r.steps==1 && r.ip==1;
+    under:=[2]TmOp.[TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.add}];
+    r=hm_run(under[..],8,trace[..],x).result;#assert r.status==TmStatus.underflow && r.steps==1 && r.ip==1;
+    used:=x;used.count=5;
+    h:=hm_run(p[..],64,trace[..],used);#assert h.result.status==TmStatus.ok && h.stores==4 && h.hull==3121 && h.result.digest[0]==0xd7;
+    r=hm_run(p[..],1,trace[..],x).result;#assert r.status==TmStatus.budget && r.steps==1;
+    r=hm_run(p[..],53,trace[0..<212],x).result;#assert r.status==TmStatus.ok && r.steps==53;
+    keysonly:=x;keysonly.keys=ks[0..<3];
+    r=hm_run(p[..],64,trace[..],keysonly).result;#assert r.status==TmStatus.capacity && r.steps==39;
+    // local0 += 1 until it is 3: the branch at 7 jumps back to instruction 0.
+    q:=[9]TmOp.[TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.add},TmOp.{code=TmCode.set,arg=0},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.push,arg=3},TmOp.{code=TmCode.sub},TmOp.{code=TmCode.brif,arg=0},TmOp.{code=TmCode.ret}];
+    h=hm_run(q[..],64,trace[..],x);t:[128]int;o:[1]int;w:=tm_run(q[..],64,t[..],o[..],false);
+    #assert h.result.status==TmStatus.ok && h.result.steps==25;
+    for i:0..<32 {#assert h.result.digest[i]==w.digest[i];}
+}

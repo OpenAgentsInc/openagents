@@ -79,6 +79,7 @@
 - [167. Arithmetic and branches from ReLU](ch167-arithmetic-and-branches-from-relu.md)
 - [168. Compile a gate graph into a block](ch168-compile-a-gate-graph-into-a-block.md)
 - [169. A harness that catches the compiler](ch169-a-harness-that-catches-the-compiler.md)
+- [171. Decode in logarithmic time](ch171-decode-in-logarithmic-time.md)
 - [172. From hard-max to softmax](ch172-from-hard-max-to-softmax.md)
 - [173. Exact replay as a verification class](ch173-exact-replay-as-a-verification-class.md)
 
@@ -98,6 +99,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 115, 156–160, 164a, 165–169, 172–173 and 178–183 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 115, 156–160, 164a, 165–169, 171–173 and 178–183 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–32, 34–35, 37–40 and the remaining outlines
 remain proposed.

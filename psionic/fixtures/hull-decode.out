@@ -1,0 +1,5 @@
+squares: 53 steps, output 17, the interpreter's digest: true
+  4 stores, 3392 reads; comparisons: scan 4608, hull 3121
+fill 64 cells 8 times: 4678 steps, output 1, the interpreter's digest: true
+  512 stores, 299392 reads; comparisons: scan 76362048, hull 1753004
+one read after 512 writes to 64 keys: write 511, scan 511 comparisons, hull 6

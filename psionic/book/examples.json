@@ -760,6 +760,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/hull-decode.coax",
+      "chapter": "psionic/book/ch171-decode-in-logarithmic-time.md",
+      "stdout": "psionic/fixtures/hull-decode.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

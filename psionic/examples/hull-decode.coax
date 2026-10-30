@@ -1,0 +1,32 @@
+#import "Basic";
+#load "../lib/hull-memory.coax";
+
+// book:begin example
+main :: () {
+    squares:=rx_like_squares();show("squares",squares[..]);
+    // Fill all 64 cells with r, for r = 8 down to 1, then print cell 0.
+    fill:=[23]TmOp.[TmOp.{code=TmCode.push,arg=8},TmOp.{code=TmCode.set,arg=1},
+        TmOp.{code=TmCode.push,arg=64},TmOp.{code=TmCode.set,arg=0},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.sub},TmOp.{code=TmCode.set,arg=0},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.get,arg=1},TmOp.{code=TmCode.store},
+        TmOp.{code=TmCode.get,arg=0},TmOp.{code=TmCode.brif,arg=4},
+        TmOp.{code=TmCode.get,arg=1},TmOp.{code=TmCode.push,arg=1},TmOp.{code=TmCode.sub},TmOp.{code=TmCode.set,arg=1},
+        TmOp.{code=TmCode.get,arg=1},TmOp.{code=TmCode.brif,arg=2},
+        TmOp.{code=TmCode.push,arg=0},TmOp.{code=TmCode.load},TmOp.{code=TmCode.out},TmOp.{code=TmCode.ret}];
+    show("fill 64 cells 8 times",fill[..]);
+    // One read once 512 writes have gone to 64 keys.
+    ks:[64]int;vs:[64]int;ps:[64]int;x:=hm_index(ks[..],vs[..],ps[..],64);
+    for i:0..<512 {x=hm_put(x,63-i%64,i);}
+    r:=hm_read(x,0);
+    print("one read after 512 writes to 64 keys: write %, scan 511 comparisons, hull %\n",r.read.position,r.compares);
+}
+show :: (name:string,p:[]TmOp) {
+    trace:[20000]int;ks:[64]int;vs:[64]int;ps:[64]int;
+    h:=hm_run(p,TM_STEPS_MAX,trace[..],hm_index(ks[..],vs[..],ps[..],64));
+    t:[20000]int;o:[1]int;r:=tm_run(p,TM_STEPS_MAX,t[..],o[..],false);
+    #assert h.result.status==TmStatus.ok && r.status==TmStatus.ok;
+    same:=true;for i:0..<32 {if h.result.digest[i]!=r.digest[i] {same=false;}}
+    print("%: % steps, output %, the interpreter's digest: %\n",name,h.result.steps,o[0],same);
+    print("  % stores, % reads; comparisons: scan %, hull %\n",h.stores,h.reads,h.scan,h.hull);
+}
+// book:end example
