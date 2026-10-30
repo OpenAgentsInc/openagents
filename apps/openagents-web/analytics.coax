@@ -497,8 +497,8 @@ track_setting :: (t: [] Track, id: string, on: bool) #export_c {
   if track_begin(t, "setting") { track_str(t, "id", id); track_bool(t, "on", on); tw_world(t); track_end(t); }
 }
 // A chat line sent: only how long it was.
-track_chat :: (t: [] Track, via: string, length: int) #export_c {
-  if track_begin(t, "chat-sent") { track_str(t, "via", via); track_int(t, "len", length); tw_world(t); track_end(t); }
+track_chat :: (t: [] Track, via: string, chars: int) #export_c {
+  if track_begin(t, "chat-sent") { track_str(t, "via", via); track_int(t, "len", chars); tw_world(t); track_end(t); }
 }
 // Something that should have worked and didn't (a load, a request).
 track_fail :: (t: [] Track, what: string, status: int) #export_c {
@@ -551,9 +551,9 @@ track_tally_n :: (t: [] Track, ev: string, id: string, n: int) #export_c {
   if kn == 0 || !((key[0] >= 97 && key[0] <= 122) || (key[0] >= 65 && key[0] <= 90)) { return; }
   for i: 0..<t[0].tallies {
     if t[0].tally_kn[i] == kn {
-      same := true;
-      for j: 0..<kn { if t[0].tally_k[i * 24 + j] != key[j] { same = false; break; } }
-      if same { t[0].tally_c[i] += n; return; }
+      alike := true;
+      for j: 0..<kn { if t[0].tally_k[i * 24 + j] != key[j] { alike = false; break; } }
+      if alike { t[0].tally_c[i] += n; return; }
     }
   }
   if t[0].tallies >= TRACK_TALLY { track_tally_send(t); }

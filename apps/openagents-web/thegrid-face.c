@@ -94,7 +94,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   edit_face_drain(ed(state));
   place_frame(state);
   track_frame(tr(), dt, w, h, scale);
-  if (n > 0 && thegrid_draws(at(state)) > 0) track_loaded(tr(), track_cstr("load-the-grid"));
+  // world-enter and load-engine once it draws, like every realm (the analytics contract, analytics-contract.json)
+  static bool entered;
+  if (n > 0 && thegrid_draws(at(state)) > 0 && !entered) { entered = true; track_world(tr(), track_cstr("the-grid")); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }

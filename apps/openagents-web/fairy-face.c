@@ -281,7 +281,9 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   if (!edit_kind) edit_kind = (int32_t)fairy_edit_action(at(state));
   keep_progress(state, false);
   track_frame(tr(), dt, w, h, scale);
-  if (n > 0) track_loaded(tr(), track_cstr("load-fairy-forest"));
+  // world-enter and load-engine once it draws, like every realm (the analytics contract, analytics-contract.json)
+  static bool entered;
+  if (n > 0 && !entered) { entered = true; track_world(tr(), track_cstr("fairy-forest")); track_loaded(tr(), track_cstr("load-engine")); }
   track_drain(&track_state);
   return n < 0 ? 0u : (uint32_t)n;
 }
