@@ -8,11 +8,17 @@
 // A full signature verification costs about 76M interpreter steps, over the
 // 20M a check gets, so the admitted path with real signatures is checked in
 // coax/tests/nostr/nip42_signed_checks.coax (coax test --steps). The checks
-// here stay cheap enough for coax mutate.
+// here stay cheap.
+//
+// Not #authority: this file decides nothing. It reads fields out of the event
+// (event.coax decides the id and signature) and hands them to
+// nip42_admit_fields and nip42_send_fields in nip42.coax, which decide and are
+// mutation-tested there. Marking it #authority made coax mutate re-mutate
+// event.coax and the Schnorr verifier behind it, which cannot finish within the
+// 15-minute limit.
 #load "event.coax";
 #load "nip42.coax";
 #load "fixtures/nip42_events.coax";
-#authority;
 
 // The event's raw tags array, from a record nostr_event_read filled.
 n42e_tags :: (e: NostrEvent) -> string { return e.original[e.tags_from..<e.tags_to]; }
