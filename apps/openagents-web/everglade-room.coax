@@ -6,7 +6,7 @@
 // eased from where they were, as a hooded ranger with their name over them (the nearest
 // ROOM_DRAWN, within ROOM_NEAR). The chat: on a computer Enter opens a line to type, Enter says it,
 // Esc closes it; the last lines show over the bar at the bottom left. On a phone the latest line
-// shows under the place's name, and a tap on it opens the line to type. Destruction and the watch
+// shows under the place's name (and under your HP and WANTED), and a tap on it opens the line to type. Destruction and the watch
 // stay each page's own.
 
 #load "room.coax";
@@ -112,7 +112,11 @@ room_chat_draw :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
   shown = lo_i(shown, r[0].lines);
   x := 16 * k;
   w := ifx small then s[0].width - 32 * k else lo(s[0].width * 0.36, 520 * k);
-  y := ifx small then 86 * k else s[0].height - 150 * k - f32(shown) * lead;
+  // A phone's line sits under the place's name, and below your HP (and WANTED) on the right when they show,
+  // so it never runs under them (everglade-watch.coax watch_hud: HP to 92, WANTED to 129).
+  hp_on := sp_on(s) && !s[0].above && s[0].wv.started;
+  phone_y := ifx !hp_on then 86 * k else ifx watch_w(s)[0].wanted then 151 * k else 114 * k;
+  y := ifx small then phone_y else s[0].height - 150 * k - f32(shown) * lead;
   s[0].chat.box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if shown > 0 {
     b := Box.{x0 = x, y0 = y - cap - 6 * k, x1 = x + w, y1 = y + f32(shown - 1) * lead + 8 * k};
