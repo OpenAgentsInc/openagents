@@ -1,0 +1,346 @@
+// The native relay client end to end, against the local fixture relay
+// (relay_fixture.py, started by relay_e2e.py, which also builds this file
+// with ASan and UBSan). The chain is socket-native.c (TCP) -> ws.coax
+// (RFC 6455) -> relay_e2e_frames.coax (TEST-ONLY frame adapter until
+// message.coax lands) -> relay.coax (the state machine). Mask keys, the
+// handshake nonce and the backoff jitter come from the OS through the entropy
+// contract (entropy-foreign.c over entropy-native.c and entropy.coax).
+//
+// The script: connect and handshake; REQ, three stored events, EOSE; answer
+// the relay's ping; publish A (OK true) and B (OK false); ping the relay;
+// publish C, which the relay answers by dropping the connection; reconnect
+// with backoff (the relay also refuses the first retry's handshake, so the
+// second delay doubles); resubscribe with since = the newest created_at
+// delivered; the boundary event comes again and is dropped as a duplicate,
+// the event that arrived during the outage is delivered; C is resent and
+// accepted; CLOSE the subscription; close the WebSocket with 1000.
+// The port is $RX_PORT. It prints "relay e2e: ok" when every step held.
+#import "Basic";
+#load "relay_e2e_frames.coax";
+#load "../../lib/net/ws.coax";
+#load "../../lib/crypto/entropy.coax";
+
+cxsock_host_push :: (byte: int) -> int #foreign;
+cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
+cxsock_write :: (h: int, byte: int) -> int #foreign;
+cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
+cxsock_byte :: (h: int, i: int) -> int #foreign;
+cxsock_close :: (h: int) -> int #foreign;
+cxsock_now_ms :: () -> int #foreign;
+cxrand_fill :: (n: int) -> int #foreign;
+cxrand_byte :: (i: int) -> int #foreign;
+cxproc_getenv_push :: (byte: int) -> int #foreign;
+cxproc_getenv :: () -> int #foreign;
+cxproc_getenv_byte :: (i: int) -> int #foreign;
+
+RX_HOST :: "127.0.0.1";
+RX_IN :: 65536; RX_MSG :: 65536; RX_OUT :: 4096;
+RX_IO_MS :: 2000;
+RX_CLIENT_PING :: "rx-client-ping";
+RX_RELAY_PING :: "rx-relay-ping";
+// rx_recv results besides ws.coax's WS_EV_* events.
+RX_NONE :: 100; RX_EOF :: 101; RX_FAIL :: 102;
+
+RxConn :: struct {
+  h: int = -1; gen: int;
+  inb: [RX_IN] u8; used: int;
+  rd: [1] WsReader;
+  msg: [RX_MSG] u8;
+  ctl: [125] u8; ctl_n: int;
+}
+RxStats :: struct {
+  port: int;
+  connects: int; drops: int; opened: int;
+  connect_at: [8] int; drop_at: [8] int;
+  delivered: [RXF_SUB_EVENTS] int; duplicates: int; eose: int;
+  reqs: int; last_has_since: bool; last_since: int; closes_sent: int;
+  pub_k: [RL_PUBS] int; sends: [RXF_SUB_EVENTS + RXF_PUB_EVENTS] int;
+  acks: int; unknown: int; bad: int;
+  relay_pings: int; pongs: int; pong_ok: bool; close_seen: bool; close_code: int;
+  failed: int;
+}
+
+rx_fail :: (s: [] RxStats, what: string) { s[0].failed += 1; print("relay e2e: FAIL %\n", what); }
+rx_check :: (s: [] RxStats, ok: bool, what: string) {
+  if ok { print("  ok   %\n", what); } else { rx_fail(s, what); }
+}
+
+rx_env_int :: (name: string) -> int {
+  for c: name { r := cxproc_getenv_push(cast(int) c); }
+  n := cxproc_getenv();
+  if n < 1 || n > 9 { return -1; }
+  v := 0;
+  for i: 0..<n {
+    d := cxproc_getenv_byte(i) - cast(int) '0';
+    if d < 0 || d > 9 { return -1; }
+    v = v * 10 + d;
+  }
+  return v;
+}
+// n bytes from the OS into out, through the entropy contract.
+rx_draw :: (n: int, out: [] u8) -> bool {
+  if out.count < n || cxrand_fill(n) != 0 { return false; }
+  for i: 0..<n {
+    b := cxrand_byte(i);
+    if b < 0 || b > 255 { return false; }
+    out[i] = cast(u8) b;
+  }
+  return true;
+}
+rx_jitter :: () -> int {
+  b: [4] u8;
+  if !rx_draw(4, b[..]) { return 0; }
+  return (cast(int) b[0] << 24) | (cast(int) b[1] << 16) | (cast(int) b[2] << 8) | cast(int) b[3];
+}
+
+rx_write :: (c: [] RxConn, bytes: string) -> bool {
+  for b: bytes { if cxsock_write(c[0].h, cast(int) b) != 0 { return false; } }
+  return cxsock_flush(c[0].h, RX_IO_MS) == 0;
+}
+// One masked frame with a fresh mask key.
+rx_send :: (c: [] RxConn, op: int, payload: string) -> bool {
+  mask: [4] u8; out: [RX_OUT] u8;
+  if c[0].h < 0 || !rx_draw(4, mask[..]) { return false; }
+  n := ws_frame_write(op, true, payload, mask[..], out[..]);
+  return n > 0 && rx_write(c, cast(string) out[0..<n]);
+}
+rx_send_close :: (c: [] RxConn, code: int) -> bool {
+  mask: [4] u8; out: [16] u8;
+  if c[0].h < 0 || !rx_draw(4, mask[..]) { return false; }
+  n := ws_close_write(code, mask[..], out[..]);
+  return n > 0 && rx_write(c, cast(string) out[0..<n]);
+}
+rx_shut :: (c: [] RxConn) {
+  if c[0].h >= 0 { r := cxsock_close(c[0].h); }
+  c[0].h = -1; c[0].used = 0; c[0].rd[0] = WsReader.{};
+}
+// Bytes from the socket appended to inb: the count, or a CXSOCK_ code.
+rx_fill :: (c: [] RxConn, timeout_ms: int) -> int {
+  n := cxsock_read(c[0].h, timeout_ms);
+  if n <= 0 { return n; }
+  if c[0].used + n > RX_IN { return -3; }
+  for i: 0..<n { c[0].inb[c[0].used + i] = cast(u8) cxsock_byte(c[0].h, i); }
+  c[0].used += n;
+  return n;
+}
+rx_drop_front :: (c: [] RxConn, k: int) {
+  for i: k..<c[0].used { c[0].inb[i - k] = c[0].inb[i]; }
+  c[0].used -= k;
+}
+// TCP connect and the opening handshake, with a fresh 16-byte nonce.
+rx_open :: (c: [] RxConn, port: int) -> bool {
+  rx_shut(c);
+  for b: RX_HOST { r := cxsock_host_push(cast(int) b); }
+  h := cxsock_connect(port, RX_IO_MS);
+  if h < 0 { return false; }
+  c[0].h = h;
+  nonce: [16] u8; key: [24] u8; req: [512] u8;
+  if !rx_draw(16, nonce[..]) || !ws_key(nonce[..], key[..]) { rx_shut(c); return false; }
+  n := ws_request(RX_HOST, port, "/", cast(string) key[..], req[..]);
+  if n < 0 || !rx_write(c, cast(string) req[0..<n]) { rx_shut(c); return false; }
+  while true {
+    hello := ws_response(cast(string) c[0].inb[0..<c[0].used], cast(string) key[..]);
+    if hello.status == WS_HELLO_OK { rx_drop_front(c, hello.consumed); return true; }
+    if hello.status != WS_HELLO_MORE || rx_fill(c, RX_IO_MS) <= 0 { rx_shut(c); return false; }
+  }
+  return false;
+}
+// The next WebSocket event: WS_EV_MESSAGE (text in msg), WS_EV_PONG or
+// WS_EV_CLOSE (payload in ctl), RX_NONE when nothing came within
+// timeout_ms, RX_EOF, RX_FAIL, or a refusal WS_EV_*. Pings are answered here.
+rx_recv :: (s: [] RxStats, c: [] RxConn, timeout_ms: int) -> int {
+  while true {
+    f := ws_frame_read(cast(string) c[0].inb[0..<c[0].used], RX_MSG);
+    if f.status == WS_FRAME_OK {
+      ev := ws_take(c[0].rd[..], f, cast(string) c[0].inb[f.header..<f.total], c[0].msg[..]);
+      if f.op >= 8 {
+        c[0].ctl_n = f.length;
+        for i: 0..<f.length { c[0].ctl[i] = c[0].inb[f.header + i]; }
+      }
+      rx_drop_front(c, f.total);
+      if ev == WS_EV_PING {
+        s[0].relay_pings += 1;
+        if !rx_send(c, WS_OP_PONG, cast(string) c[0].ctl[0..<c[0].ctl_n]) { return RX_FAIL; }
+        continue;
+      }
+      if ev != WS_EV_PART { return ev; }
+      continue;
+    }
+    if f.status != WS_FRAME_MORE { return RX_FAIL; }
+    n := rx_fill(c, timeout_ms);
+    if n == -2 { return RX_NONE; }
+    if n == -1 { return RX_EOF; }
+    if n < 0 { return RX_FAIL; }
+  }
+  return RX_FAIL;
+}
+
+rx_sub :: (r: [] Relay, slot: int, buf: [] u8) -> string { return rl_sub_text(slot, r[0].subs[slot].serial, buf); }
+rx_drop :: (s: [] RxStats, r: [] Relay, c: [] RxConn) {
+  rx_shut(c);
+  now := cxsock_now_ms();
+  if rl_dropped(r, c[0].gen, now, rx_jitter()) {
+    if s[0].drops < 8 { s[0].drop_at[s[0].drops] = now; }
+    s[0].drops += 1;
+  }
+}
+// Sends what the machine asks for. False when the socket failed.
+rx_flush_out :: (s: [] RxStats, r: [] Relay, c: [] RxConn) -> bool {
+  while r[0].state == RL_OPEN {
+    o := rl_next(r, cxsock_now_ms());
+    if o.kind == RL_OUT_NONE { return true; }
+    out: [RX_OUT] u8; sb: [24] u8; n := -1;
+    if o.kind == RL_OUT_REQ {
+      n = rxf_req(rx_sub(r, o.slot, sb[..]), o.has_since, o.since, out[..]);
+      s[0].reqs += 1; s[0].last_has_since = o.has_since; s[0].last_since = o.since;
+    } else if o.kind == RL_OUT_CLOSE {
+      n = rxf_close(rx_sub(r, o.slot, sb[..]), out[..]);
+      s[0].closes_sent += 1;
+    } else if o.kind == RL_OUT_EVENT {
+      k := s[0].pub_k[o.slot];
+      n = rxf_publish(k, out[..]);
+      s[0].sends[k] += 1;
+    } else {
+      rx_fail(s, "the machine asked for AUTH, which the fixture never challenges");
+      return false;
+    }
+    if n < 0 { rx_fail(s, "a frame did not fit"); return false; }
+    if !rx_send(c, WS_OP_TEXT, cast(string) out[0..<n]) { return false; }
+  }
+  return true;
+}
+// One message from the relay through the adapter into the machine.
+rx_take :: (s: [] RxStats, r: [] Relay, c: [] RxConn) {
+  sb: [24] u8; scratch: [RX_OUT] u8;
+  text := cast(string) c[0].msg[0..<c[0].rd[0].used];
+  m := rxf_decode(text, rx_sub(r, 0, sb[..]), scratch[..]);
+  if m.kind == 0 {
+    s[0].bad += 1;
+    print("relay e2e: unscripted frame (% bytes): %\n", text.count, text[0..<ifx text.count > 80 then 80 else text.count]);
+    return;
+  }
+  d := rl_input(r, c[0].gen, m);
+  k := rxf_which(m);
+  if d == RL_DELIVER && k >= 0 && k < RXF_SUB_EVENTS { s[0].delivered[k] += 1; }
+  else if d == RL_DUPLICATE { s[0].duplicates += 1; }
+  else if d == RL_EOSE { s[0].eose += 1; }
+  else if d == RL_ACK { s[0].acks += 1; }
+  else { s[0].unknown += 1; print("relay e2e: the machine refused a frame: %\n", d); }
+}
+// One turn of the loop: connect when the machine says so, send, then wait
+// at most wait_ms for one event.
+rx_step :: (s: [] RxStats, r: [] Relay, c: [] RxConn, wait_ms: int) {
+  now := cxsock_now_ms();
+  t := rl_tick(r, now);
+  if r[0].state == RL_IDLE || t == RL_DO_CONNECT {
+    g := rl_start(r, now);
+    if g < 0 { return; }
+    c[0].gen = g;
+    if s[0].connects < 8 { s[0].connect_at[s[0].connects] = now; }
+    s[0].connects += 1;
+    if rx_open(c, s[0].port) && rl_opened(r, g, cxsock_now_ms()) { s[0].opened += 1; }
+    else { rx_drop(s, r, c); return; }
+  } else if t == RL_DO_TIMEOUT { rx_drop(s, r, c); return; }
+  if r[0].state != RL_OPEN { return; }
+  if !rx_flush_out(s, r, c) { rx_drop(s, r, c); return; }
+  ev := rx_recv(s, c, wait_ms);
+  if ev == RX_NONE { return; }
+  if ev == WS_EV_MESSAGE { rx_take(s, r, c); return; }
+  if ev == WS_EV_PONG {
+    s[0].pongs += 1;
+    s[0].pong_ok = cast(string) c[0].ctl[0..<c[0].ctl_n] == RX_CLIENT_PING;
+    return;
+  }
+  if ev == WS_EV_CLOSE {
+    s[0].close_seen = true; s[0].close_code = ws_close_code(cast(string) c[0].ctl[0..<c[0].ctl_n]);
+    return;
+  }
+  if ev != RX_EOF { s[0].bad += 1; print("relay e2e: socket or frame refused: %\n", ev); }
+  rx_drop(s, r, c);
+}
+
+// Conditions rx_until waits for.
+RX_C_EOSE1 :: 1; RX_C_ACCEPT :: 2; RX_C_REFUSE :: 3; RX_C_PONG :: 4; RX_C_DROPPED :: 5;
+RX_C_RESUMED :: 6; RX_C_CLOSE_SENT :: 7; RX_C_CLOSE_ECHO :: 8;
+rx_cond :: (s: [] RxStats, r: [] Relay, c: [] RxConn, what: int, slot: int) -> bool {
+  if what == RX_C_EOSE1 { return s[0].eose >= 1; }
+  if what == RX_C_ACCEPT { return r[0].pubs[slot].state == RP_ACCEPTED; }
+  if what == RX_C_REFUSE { return r[0].pubs[slot].state == RP_REFUSED; }
+  if what == RX_C_PONG { return s[0].pongs >= 1; }
+  if what == RX_C_DROPPED { return s[0].drops >= 1; }
+  if what == RX_C_RESUMED { return s[0].eose >= 2 && r[0].pubs[slot].state == RP_ACCEPTED && s[0].delivered[3] >= 1; }
+  if what == RX_C_CLOSE_SENT { return s[0].closes_sent >= 1; }
+  return s[0].close_seen;
+}
+rx_until :: (s: [] RxStats, r: [] Relay, c: [] RxConn, what: int, slot: int, limit_ms: int, label: string) -> bool {
+  end := cxsock_now_ms() + limit_ms;
+  while !rx_cond(s, r, c, what, slot) {
+    if cxsock_now_ms() > end || s[0].failed > 0 { rx_fail(s, label); return false; }
+    rx_step(s, r, c, 50);
+  }
+  print("  ok   %\n", label);
+  return true;
+}
+rx_publish :: (s: [] RxStats, r: [] Relay, k: int) -> int {
+  id: [32] u8;
+  if !rxf_id(k, id[..]) { return -1; }
+  slot := rl_publish(r, id[..]);
+  if slot >= 0 { s[0].pub_k[slot] = k; }
+  return slot;
+}
+
+main :: () {
+  s: [1] RxStats; r: [1] Relay; c: [1] RxConn;
+  s[0].port = rx_env_int("RX_PORT");
+  if s[0].port < 1 || s[0].port > 65535 { print("relay e2e: FAIL set RX_PORT\n"); return; }
+  probe: [16] u8;
+  rx_check(s[..], rx_draw(16, probe[..]) && !rx_draw(65, probe[..]), "entropy: 16 bytes drawn, a request past the bridge's 64 refused by the policy");
+
+  sub := rl_subscribe(r[..]);
+  if !rx_until(s[..], r[..], c[..], RX_C_EOSE1, 0, 5000, "connect, handshake, REQ, stored events, EOSE") { return; }
+  rx_check(s[..], s[0].delivered[0] == 1 && s[0].delivered[1] == 1 && s[0].delivered[2] == 1 && s[0].delivered[3] == 0, "the three stored events delivered once each, the later one not yet");
+  rx_check(s[..], s[0].reqs == 1 && !s[0].last_has_since && r[0].subs[sub].state == RS_CAUGHT, "the first REQ had no since; EOSE marked the subscription caught up");
+
+  a := rx_publish(s[..], r[..], 4);
+  if !rx_until(s[..], r[..], c[..], RX_C_ACCEPT, a, 5000, "publish A: OK true") { return; }
+  b := rx_publish(s[..], r[..], 5);
+  if !rx_until(s[..], r[..], c[..], RX_C_REFUSE, b, 5000, "publish B: OK false (blocked: fixture policy)") { return; }
+  rx_check(s[..], s[0].relay_pings >= 1, "the relay's ping was answered with a pong (the relay checks its payload)");
+  rx_check(s[..], rx_send(c[..], WS_OP_PING, RX_CLIENT_PING), "ping sent to the relay");
+  if !rx_until(s[..], r[..], c[..], RX_C_PONG, 0, 5000, "the relay's pong") { return; }
+  rx_check(s[..], s[0].pong_ok, "the pong carried the ping's payload");
+
+  pc := rx_publish(s[..], r[..], 6);
+  if !rx_until(s[..], r[..], c[..], RX_C_DROPPED, 0, 5000, "publish C: the relay dropped the connection without an OK") { return; }
+  rx_check(s[..], r[0].pubs[pc].state == RP_SENT || r[0].pubs[pc].state == RP_QUEUED, "C is still unacknowledged after the drop");
+  if !rx_until(s[..], r[..], c[..], RX_C_RESUMED, pc, 10000, "reconnect, resubscribe, EOSE, the outage's event, C resent and accepted") { return; }
+  rx_check(s[..], s[0].connects == 3 && s[0].opened == 2 && s[0].drops == 2, "three connects: the first, a refused handshake, the resumed one");
+  first := s[0].connect_at[1] - s[0].drop_at[0]; second := s[0].connect_at[2] - s[0].drop_at[1];
+  print("  backoff delays: % ms, then % ms\n", first, second);
+  rx_check(s[..], first >= 500 && first <= 800 && second >= 1000 && second <= 1600, "backoff: 500 ms then 1000 ms, each plus jitter below half");
+  rx_check(s[..], s[0].reqs == 2 && s[0].last_has_since && s[0].last_since == rxf_created_of(2), "resubscribed with since = the newest created_at delivered");
+  rx_check(s[..], s[0].duplicates == 1 && s[0].delivered[2] == 1 && s[0].delivered[3] == 1, "the boundary event came again and was dropped; the new one was delivered");
+  rx_check(s[..], s[0].sends[6] == 2 && s[0].sends[4] == 1 && s[0].sends[5] == 1, "only the unacknowledged publish was resent");
+
+  rx_check(s[..], rl_unsubscribe(r[..], sub), "unsubscribe");
+  if !rx_until(s[..], r[..], c[..], RX_C_CLOSE_SENT, 0, 5000, "CLOSE sent") { return; }
+  rx_check(s[..], rx_send_close(c[..], WS_CLOSE_NORMAL), "close frame 1000 sent");
+  rl_shutdown(r[..]);
+  end := cxsock_now_ms() + 5000;
+  while !s[0].close_seen && c[0].h >= 0 && cxsock_now_ms() < end {
+    ev := rx_recv(s[..], c[..], 100);
+    if ev == WS_EV_CLOSE { s[0].close_seen = true; s[0].close_code = ws_close_code(cast(string) c[0].ctl[0..<c[0].ctl_n]); }
+    else if ev == WS_EV_MESSAGE { rx_take(s[..], r[..], c[..]); }
+    else if ev != RX_NONE { rx_shut(c[..]); }
+  }
+  rx_check(s[..], s[0].close_seen && s[0].close_code == WS_CLOSE_NORMAL, "the relay echoed close 1000");
+  eof := false;
+  while c[0].h >= 0 && cxsock_now_ms() < end {
+    ev := rx_recv(s[..], c[..], 100);
+    if ev == RX_EOF { eof = true; rx_shut(c[..]); } else if ev != RX_NONE { rx_shut(c[..]); }
+  }
+  rx_check(s[..], eof, "then the relay closed the TCP connection");
+  rx_check(s[..], s[0].bad == 0 && s[0].unknown == 0 && r[0].forged == 0 && r[0].timeouts == 0 && r[0].state == RL_SHUT, "no unscripted frames, refusals, forgeries or ack timeouts");
+  if s[0].failed == 0 { print("relay e2e: ok\n"); } else { print("relay e2e: % failed\n", s[0].failed); }
+}

@@ -1,0 +1,241 @@
+// TEST ONLY. The relay end-to-end test's frame adapter: the exact NIP-01
+// texts the driver (relay_e2e.coax) sends and the exact texts the fixture
+// relay (relay_fixture.py) answers with, built from seven already-signed
+// "status" events captured in coax/lib/nostr/fixtures/coax_relay.coax.
+//
+// This is not a NIP-01 parser. rxf_decode matches a received text byte for
+// byte against the frames the fixture is scripted to send (EVENT for the four
+// subscription events, EOSE, OK true, OK false) and refuses everything else.
+// The real decoder is message.coax (nostr_message_read), owned by
+// openagents-d7; when it lands on main, rxf_decode is replaced by one call
+// that maps a NostrMessage onto RlIn, and the REQ/CLOSE/EVENT writers by
+// nostr_message_write_req/close/event.
+//
+// Fixture events are taken as verified: their signatures were checked when
+// the capture was made (coax/web/project/capture.ts) and this file checks
+// each one's id and created_at against its text. The driver never sees an
+// event the fixture didn't hold.
+#load "../../lib/nostr/fixtures/coax_relay.coax";
+#load "../../lib/nostr/relay.coax";
+
+RXF_SUB_EVENTS :: 4;   // E1..E4, oldest first; E4 reaches the relay only after the drop
+RXF_PUB_EVENTS :: 3;   // A (accepted), B (refused), C (dropped once, then accepted)
+RXF_KIND :: 1631;
+RXF_REFUSAL :: "blocked: fixture policy";
+RXF_PREFIX :: "[\"EVENT\",\"status\",";
+
+// Fixture line and created_at of event k: 0..3 the subscription's E1..E4,
+// 4..6 the publishes A, B, C. The relay fixture uses the same lines.
+rxf_line_of :: (k: int) -> int { return 241 - k; }
+rxf_created_of :: (k: int) -> int {
+  if k == 0 { return 1793217092; }
+  if k == 1 { return 1793217791; }
+  if k == 2 { return 1793217794; }
+  if k == 3 { return 1793217797; }
+  if k == 4 { return 1793217800; }
+  if k == 5 { return 1793218278; }
+  return 1793218578;
+}
+
+// Fixture line n of COAX_RELAY (without its newline), "" outside
+// 0..<COAX_RELAY_FRAMES. It scans back from the end, where the status lines
+// are, so the checks stay within the compile-time step budget.
+rxf_line :: (n: int) -> string {
+  if n < 0 || n >= COAX_RELAY_FRAMES || COAX_RELAY.count == 0 || COAX_RELAY[COAX_RELAY.count - 1] != '\n' { return ""; }
+  end := COAX_RELAY.count - 1; line := COAX_RELAY_FRAMES - 1;
+  while true {
+    start := end;
+    while start > 0 && COAX_RELAY[start - 1] != '\n' { start -= 1; }
+    if line == n { return COAX_RELAY[start..<end]; }
+    if start == 0 { return ""; }
+    line -= 1; end = start - 1;
+  }
+  return "";
+}
+// Event k's JSON object exactly as the fixture holds it, "" when the line is
+// not a "status" EVENT frame.
+rxf_event :: (k: int) -> string {
+  if k < 0 || k >= RXF_SUB_EVENTS + RXF_PUB_EVENTS { return ""; }
+  l := rxf_line(rxf_line_of(k));
+  if l.count < RXF_PREFIX.count + 2 || l[0..<RXF_PREFIX.count] != RXF_PREFIX || l[l.count - 1] != ']' { return ""; }
+  return l[RXF_PREFIX.count..<l.count - 1];
+}
+// Event k's id as 64 hex characters.
+rxf_id_hex :: (k: int) -> string {
+  e := rxf_event(k);
+  if e.count < 72 || e[0..<7] != "{\"id\":\"" { return ""; }
+  return e[7..<71];
+}
+rxf_nibble :: (c: u8) -> int {
+  if c >= '0' && c <= '9' { return cast(int) (c - '0'); }
+  if c >= 'a' && c <= 'f' { return cast(int) (c - 'a') + 10; }
+  return -1;
+}
+// Event k's 32-byte id into out; false when the fixture text is not lowercase hex.
+rxf_id :: (k: int, out: [] u8) -> bool {
+  h := rxf_id_hex(k);
+  if h.count != 64 || out.count < 32 { return false; }
+  for i: 0..<32 {
+    hi := rxf_nibble(h[2 * i]); lo := rxf_nibble(h[2 * i + 1]);
+    if hi < 0 || lo < 0 { return false; }
+    out[i] = cast(u8) (hi * 16 + lo);
+  }
+  return true;
+}
+
+rxf_put :: (out: [] u8, at: int, s: string) -> int {
+  if at < 0 || at + s.count > out.count { return -1; }
+  for i: 0..<s.count { out[at + i] = s[i]; }
+  return at + s.count;
+}
+rxf_digits :: (out: [] u8, at: int, v: int) -> int {
+  if v < 0 { return -1; }
+  tmp: [20] u8; k := 0; x := v;
+  while true { tmp[k] = cast(u8) ('0' + x % 10); x /= 10; k += 1; if x == 0 { break; } }
+  if at < 0 || at + k > out.count { return -1; }
+  for i: 0..<k { out[at + i] = tmp[k - 1 - i]; }
+  return at + k;
+}
+rxf_find :: (hay: string, needle: string) -> int {
+  if needle.count > hay.count { return -1; }
+  i := 0;
+  while i + needle.count <= hay.count { if hay[i..<i + needle.count] == needle { return i; } i += 1; }
+  return -1;
+}
+// True when event k's text holds "created_at":<rxf_created_of(k)>, and its id.
+rxf_event_ok :: (k: int) -> bool {
+  e := rxf_event(k); buf: [40] u8; id: [32] u8;
+  n := rxf_put(buf[..], 0, "\"created_at\":");
+  n = rxf_digits(buf[..], n, rxf_created_of(k));
+  n = rxf_put(buf[..], n, ",");
+  return e.count > 0 && n > 0 && rxf_find(e, cast(string) buf[0..<n]) > 0 && rxf_id(k, id[..]);
+}
+
+// ---- what the driver sends (lengths, -1 when out is too small) -------------
+rxf_req :: (sub: string, has_since: bool, since: int, out: [] u8) -> int {
+  n := rxf_put(out, 0, "[\"REQ\",\"");
+  n = rxf_put(out, n, sub);
+  n = rxf_put(out, n, "\",{\"kinds\":[");
+  n = rxf_digits(out, n, RXF_KIND);
+  if has_since { n = rxf_put(out, n, "],\"since\":"); n = rxf_digits(out, n, since); n = rxf_put(out, n, "}]"); }
+  else { n = rxf_put(out, n, "]}]"); }
+  return n;
+}
+rxf_close :: (sub: string, out: [] u8) -> int {
+  n := rxf_put(out, 0, "[\"CLOSE\",\"");
+  n = rxf_put(out, n, sub);
+  return rxf_put(out, n, "\"]");
+}
+// Publish k (4..6): ["EVENT",<event>].
+rxf_publish :: (k: int, out: [] u8) -> int {
+  e := rxf_event(k);
+  if e.count == 0 || k < RXF_SUB_EVENTS { return -1; }
+  n := rxf_put(out, 0, "[\"EVENT\",");
+  n = rxf_put(out, n, e);
+  return rxf_put(out, n, "]");
+}
+
+// ---- what the fixture relay sends ------------------------------------------
+rxf_event_frame :: (sub: string, k: int, out: [] u8) -> int {
+  e := rxf_event(k);
+  if e.count == 0 { return -1; }
+  n := rxf_put(out, 0, "[\"EVENT\",\"");
+  n = rxf_put(out, n, sub);
+  n = rxf_put(out, n, "\",");
+  n = rxf_put(out, n, e);
+  return rxf_put(out, n, "]");
+}
+rxf_eose_frame :: (sub: string, out: [] u8) -> int {
+  n := rxf_put(out, 0, "[\"EOSE\",\"");
+  n = rxf_put(out, n, sub);
+  return rxf_put(out, n, "\"]");
+}
+rxf_ok_frame :: (k: int, accepted: bool, out: [] u8) -> int {
+  h := rxf_id_hex(k);
+  if h.count != 64 { return -1; }
+  n := rxf_put(out, 0, "[\"OK\",\"");
+  n = rxf_put(out, n, h);
+  if accepted { return rxf_put(out, n, "\",true,\"\"]"); }
+  n = rxf_put(out, n, "\",false,\"");
+  n = rxf_put(out, n, RXF_REFUSAL);
+  return rxf_put(out, n, "\"]");
+}
+rxf_is :: (text: string, n: int, buf: [] u8) -> bool { return n > 0 && cast(string) buf[0..<n] == text; }
+
+// TEST ONLY: one fixture frame as relay.coax input. kind 0 means the text is
+// none of the scripted frames (the test fails on it). scratch holds each
+// candidate while it is compared and must fit the longest frame.
+rxf_decode :: (text: string, sub: string, scratch: [] u8) -> RlIn {
+  m: RlIn;
+  for k: 0..<RXF_SUB_EVENTS {
+    if rxf_is(text, rxf_event_frame(sub, k, scratch), scratch) {
+      m.kind = RL_IN_EVENT; m.sub = sub; m.created_at = rxf_created_of(k);
+      m.verified = rxf_event_ok(k) && rxf_id(k, m.id[..]);
+      return m;
+    }
+  }
+  if rxf_is(text, rxf_eose_frame(sub, scratch), scratch) { m.kind = RL_IN_EOSE; m.sub = sub; return m; }
+  for k: RXF_SUB_EVENTS..<RXF_SUB_EVENTS + RXF_PUB_EVENTS {
+    for a: 0..<2 {
+      if rxf_is(text, rxf_ok_frame(k, a == 0, scratch), scratch) {
+        m.kind = RL_IN_OK; m.accepted = a == 0; ok := rxf_id(k, m.id[..]);
+        return m;
+      }
+    }
+  }
+  return m;
+}
+// Which fixture event a received EVENT or OK frame was (its index), -1 for none.
+rxf_which :: (m: RlIn) -> int {
+  mid := m.id;
+  if m.kind != RL_IN_EVENT && m.kind != RL_IN_OK { return -1; }
+  for k: 0..<RXF_SUB_EVENTS + RXF_PUB_EVENTS {
+    id: [32] u8;
+    if rxf_id(k, id[..]) && rl_id_eq(id[..], mid[..]) { return k; }
+  }
+  return -1;
+}
+
+#test "the seven fixture events are the status events the relay serves, oldest first" {
+  for k: 0..<RXF_SUB_EVENTS + RXF_PUB_EVENTS {
+    #assert rxf_event(k).count == 687 - RXF_PREFIX.count - 1 && rxf_event_ok(k);
+    if k > 0 { #assert rxf_created_of(k) > rxf_created_of(k - 1); }
+  }
+  #assert rxf_event(-1) == "" && rxf_event(7) == "";
+  #assert rxf_id_hex(0) == "1829d87e0bc9c33e28ed98a2a1c641e62424c04099b2c3e0985d54af8b8a52df";
+  #assert rxf_id_hex(6) == "a6adbc176098a50453f9c889d33b1e431f5f2a2e620f96e149aa14eead04cf6d";
+  #assert rxf_line(COAX_RELAY_FRAMES - 1) == "[\"EOSE\",\"status\",[\"finish\"]]";
+  #assert rxf_line(COAX_RELAY_FRAMES) == "" && rxf_line(-1) == "";
+  #assert rxf_nibble('g') == -1 && rxf_nibble('F') == -1 && rxf_nibble('f') == 15 && rxf_nibble('0') == 0;
+}
+#test "the driver's REQ, CLOSE and EVENT texts" {
+  out: [1024] u8;
+  n := rxf_req("s0.1", false, 0, out[..]);
+  #assert cast(string) out[0..<n] == "[\"REQ\",\"s0.1\",{\"kinds\":[1631]}]";
+  n = rxf_req("s0.1", true, 1793217794, out[..]);
+  #assert cast(string) out[0..<n] == "[\"REQ\",\"s0.1\",{\"kinds\":[1631],\"since\":1793217794}]";
+  n = rxf_close("s0.1", out[..]);
+  #assert cast(string) out[0..<n] == "[\"CLOSE\",\"s0.1\"]";
+  n = rxf_publish(4, out[..]);
+  #assert n == 10 + rxf_event(4).count && cast(string) out[0..<11] == "[\"EVENT\",{\"";
+  #assert rxf_publish(0, out[..]) == -1 && rxf_req("s0.1", false, 0, out[0..<10]) == -1;
+  #assert rxf_digits(out[..], 0, -1) == -1 && rxf_digits(out[..], 0, 0) == 1 && out[0] == '0';
+}
+#test "the adapter takes exactly the scripted frames and nothing near them" {
+  out: [1024] u8; scratch: [1024] u8;
+  n := rxf_event_frame("s0.1", 2, out[..]);
+  m := rxf_decode(cast(string) out[0..<n], "s0.1", scratch[..]);
+  #assert m.kind == RL_IN_EVENT && m.verified && m.created_at == 1793217794 && m.sub == "s0.1" && rxf_which(m) == 2;
+  #assert rxf_decode(cast(string) out[0..<n], "s0.2", scratch[..]).kind == 0;      // another subscription's id
+  #assert rxf_decode(cast(string) out[0..<n - 1], "s0.1", scratch[..]).kind == 0;  // one byte short
+  n = rxf_eose_frame("s0.1", out[..]);
+  #assert rxf_decode(cast(string) out[0..<n], "s0.1", scratch[..]).kind == RL_IN_EOSE;
+  #assert rxf_decode("[\"EOSE\",\"s0.1\",[\"finish\"]]", "s0.1", scratch[..]).kind == 0;
+  n = rxf_ok_frame(5, false, out[..]);
+  m = rxf_decode(cast(string) out[0..<n], "s0.1", scratch[..]);
+  #assert m.kind == RL_IN_OK && !m.accepted && rxf_which(m) == 5;
+  n = rxf_ok_frame(6, true, out[..]);
+  m = rxf_decode(cast(string) out[0..<n], "s0.1", scratch[..]);
+  #assert m.kind == RL_IN_OK && m.accepted && rxf_which(m) == 6;
+  #assert rxf_decode("[\"NOTICE\",\"hi\"]", "s0.1", scratch[..]).kind == 0 && rxf_which(RlIn.{}) == -1;
+}
