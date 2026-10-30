@@ -52,17 +52,27 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
-**(a) post-push gates for `37df0fbb7c`, started by `openagents-d7`.** These
+**Source audit at `934852b008` (`openagents-20`, classification v4):** the key
+and aux are secret. The stage, challenge, message, public key, r and SHA
+length fields are public.
+- `sw_key`: 56 procedures, only its two declared declassifications.
+- `sw_nonce`: 69 procedures, only R declassified.
+- `sw_scalar`: 42 procedures, accepted.
+
+Next: `sw_check`, `sw_publish` and the whole `schnorr_sign_step` entry.
+
+
+**(a) post-push gates for `934852b008`** (restarted from `37df0fbb7c`, where no shard had finished), **by `openagents-d7`.** These
 are short shards, each under 15 minutes:
 
 | Unit | Mutants | Shards | Where |
 | --- | --- | --- | --- |
-| `schnorr_sign` | 3,704 | 80 | coderos-4080 |
+| `schnorr_sign` | 3,708 | 80 | coderos-4080 |
 | `schnorr_nonce_point` | 2,833 | 60 | coderos-4080 |
 | `sha256_workspace` | 1,076 | 24 | coderos-4080 |
 | `event_sign` | about 5,500 | 150 | the Mac |
 
-The signer probe at `37df0fbb7c` still passes: only the 3 declared decisions
+The signer probe at `37df0fbb7c` and at `934852b008` still passes: only the 3 declared decisions
 remain, and the control is flagged.
 
 
