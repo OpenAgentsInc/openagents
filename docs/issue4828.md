@@ -52,6 +52,25 @@ secrets. That's measured by the memcheck probes below.
 
 ## In flight
 
+**Combined post-push gates on `d017c8f902`: done.**
+
+| Unit | Result |
+| --- | --- |
+| `schnorr_nonce_point` | 2,848/2,848, 0 survivors |
+| `sha256_workspace` | 1,091/1,091, 0 survivors |
+| `schnorr_sign` | 3,736/3,740 |
+| `schnorr_self_verify` | 3,129/3,133 |
+| `event_sign` | 5,546/5,550 |
+
+The signer, self-verifier and event builder runs show the same 4
+survivors, all on one line of the self-verifier's check-only helper
+`ssv_test_clear` (`schnorr_self_verify.coax:53`). Its cleanliness check
+never set the new SHA-256 workspace fields `h[0]`, `total`, `used` and
+`phase`. **This push adds those four cases (205/205).** No production code
+changed. The re-gate of the three units is owed after this push, in short
+shards.
+
+
 **Milestone at `5925b755cd` (`openagents-20`): the whole `nostr_sign_step`
 entry passes the large source audit.**
 - **Scope:** the signer's complete closure, 135 procedures, 6.4M analysis

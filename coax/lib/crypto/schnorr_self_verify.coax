@@ -62,7 +62,7 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
 }
 #test "the cleanliness helper notices every stored field" {
   work:[1]SsvWork;#assert ssv_test_clear(work[..]);fresh:SsvWork;
-  for i:0..<31 {
+  for i:0..<35 {
     work[0]=fresh;
     if i==0 {work[0].tag[31]=1;} if i==1 {work[0].sha[0].h[7]=1;} if i==2 {work[0].digest[0]=1;}
     if i==3 {work[0].r[0].value.limb[7]=1;} if i==4 {work[0].r[0].below=1;} if i==5 {work[0].s[0].value.limbs[7]=1;}
@@ -73,7 +73,8 @@ ssv_test_clear :: (work:[]SsvWork)->bool {
     if i==18 {work[0].affine[0].even=1;} if i==19 {work[0].sum.z.limb[7]=1;} if i==20 {work[0].sha[0].block[0]=1;} if i==21 {work[0].tag[0]=1;}
     if i==22 {work[0].key[0]=1;} if i==23 {work[0].candidate[0]=1;} if i==24 {work[0].candidate[63]=1;} if i==25 {work[0].peer.x.limb[0]=1;}
     if i==26 {work[0].peer.y.limb[9]=1;} if i==27 {work[0].peer.z.limb[0]=1;} if i==28 {work[0].stage=1;} if i==29 {work[0].bound=1;}
-    if i==30 {work[0].key[31]=1;}
+    if i==30 {work[0].key[31]=1;} if i==31 {work[0].sha[0].h[0]=1;} if i==32 {work[0].sha[0].total=1;}
+    if i==33 {work[0].sha[0].used=1;} if i==34 {work[0].sha[0].phase=1;}
     #assert !ssv_test_clear(work[..]);
   }
 }
