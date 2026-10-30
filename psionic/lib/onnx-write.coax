@@ -1,0 +1,379 @@
+// Chapter 161a: write a bounded ONNX graph. A chain of Gemm, Relu and Softmax
+// nodes over one float input is written as an ONNX model, field by field and
+// in field-number order, the bytes onnx's own helpers produce for the same
+// graph. Every file is read back by chapter 161's reader before it is
+// returned; a graph the reader would refuse, or whose weights it would name
+// differently, is refused here. Chapter 70's affine models leave this way with
+// their feature scaling folded into the weights; its hidden layer uses tanh,
+// which is outside the subset, and is refused.
+// Profile onnx-17-write-v1: IR version 8, opset 17, producer "psionic", raw
+// little-endian binary32 initializers, static shapes, chapter 161's bounds.
+#load "onnx.coax";
+#load "tabular.coax";
+#load "../fixtures/onnx/write.coax";
+#authority;
+
+OwStatus :: enum u8 {ok;op;shape;number;name;capacity;reread;}
+OwNode :: struct {op:OxOp;stem:string;weight:int;bias:int;trans_b:bool;axis:s64;}
+OwWeight :: struct {shape:OxShape;at:int;}
+OwGraph :: struct {
+    input:string;rows:int;features:int;output:string;
+    nodes:[OX_NODES_MAX]OwNode;node_count:int;
+    weights:[OX_VALUES_MAX]OwWeight;weight_count:int;
+}
+OwResult :: struct {status:OwStatus;node:int;size:int;read:OxStatus;}
+OwFold :: struct {status:OwStatus;graph:OwGraph;count:int;}
+
+OW_IR :: 8;
+OW_F32_MAX :: 340282346638528859811704183484516925440.0;
+OW_ARENA :: OX_VALUES_MAX*OX_ELEMENTS_MAX;
+
+// Hand-written expectations follow onnx 1.17.0's helpers; the chapter's
+// fixture is checked against onnx itself by psionic/tests/onnx_write_check.py.
+ow_t_hex :: (bytes:[]u8,hex:string)->bool {
+    if hex.count!=2*bytes.count {return false;}
+    digits:="0123456789abcdef";
+    for b,i:bytes {if hex[2*i]!=digits[cast(int)(b>>4)] || hex[2*i+1]!=digits[cast(int)(b&15)] {return false;}}
+    return true;
+}
+ow_t_is :: (a:string,b:string)->bool {
+    if a.count!=b.count {return false;}
+    for c,i:a {if b[i]!=c {return false;}}
+    return true;
+}
+ow_t_shape :: (rank:int,a:int,b:int)->OxShape {s:=OxShape.{rank=rank};s.dims[0]=a;s.dims[1]=b;return s;}
+ow_t_vector :: (n:int)->OxShape {s:=OxShape.{rank=1};s.dims[0]=n;return s;}
+ow_t_gemm :: (stem:string,weight:int,bias:int)->OwNode {return OwNode.{op=OxOp.gemm,stem=stem,weight=weight,bias=bias};}
+// x [1, 2] -> Gemm (W [2, 3], b [3]) -> Relu -> Gemm (V [3, 2]) -> Softmax.
+ow_t_mlp :: ()->OwGraph {
+    g:=OwGraph.{input="x",rows=1,features=2,output="p",node_count=4,weight_count=3};
+    g.nodes[0]=ow_t_gemm("fc1",0,1);g.nodes[1]=OwNode.{op=OxOp.relu};
+    g.nodes[2]=ow_t_gemm("fc2",2,-1);g.nodes[3]=OwNode.{op=OxOp.softmax,axis=1};
+    g.weights[0]=OwWeight.{shape=ow_t_shape(2,2,3)};
+    g.weights[1]=OwWeight.{shape=ow_t_vector(3),at=6};
+    g.weights[2]=OwWeight.{shape=ow_t_shape(2,3,2),at=9};
+    return g;
+}
+OW_T_MLP_VALUES :: [15]f32.[1,-1,0.5,2,0.25,-3,0,0.5,1,1,-1,0.5,2,0,-0.25];
+
+// x [1, 2] through 16 Relus: the names t1 to t15 between them.
+ow_t_chain :: ()->OwGraph {
+    g:=OwGraph.{input="x",rows=1,features=2,output="y",node_count=16};
+    for k:0..<16 {g.nodes[k]=OwNode.{op=OxOp.relu};}
+    return g;
+}
+#test "the test helpers" {
+    a:=[2]u8.[0x1f,0xa0];
+    #assert ow_t_hex(a[..],"1fa0") && !ow_t_hex(a[..],"1fa") && !ow_t_hex(a[..],"0fa0") && !ow_t_hex(a[..],"1ea0") && !ow_t_hex(a[..],"1fa1");
+    #assert ow_t_is("ab","ab") && !ow_t_is("ab","a") && !ow_t_is("ab","ac");
+    #assert ox_t_shape(ow_t_shape(2,3,4),2,3,4,0,0) && ox_t_shape(ow_t_vector(5),1,5,0,0,0);
+}
+
+#test "varints and fields" {
+    out:[32]u8;
+    #assert ow_var(out[..],0,0)==1 && out[0]==0 && ow_var(out[..],0,127)==1 && out[0]==127;
+    #assert ow_var(out[..],0,128)==2 && out[0]==128 && out[1]==1;
+    #assert ow_var(out[..],0,0xffffffffffffffff)==10 && out[9]==1 && out[8]==255;
+    #assert ow_int(out[..],0,20,2)==3 && ow_t_hex(out[0..<3],"a00102");
+    #assert ow_text(out[..],1,8,"ab")==5 && ow_t_hex(out[1..<5],"42026162");
+    #assert ow_parts(out[..],0,3,"/","fc","/Gemm")==10 && ow_t_hex(out[0..<10],"1a082f66632f47656d6d");
+}
+
+#test "a nested message is closed with its exact length" {
+    out:[400]u8;
+    b:=ow_open(out[..],0,7);#assert b==6;
+    e:=ow_int(out[..],b,1,5);#assert ow_close(out[..],b,e)==4 && ow_t_hex(out[0..<4],"3a020805");
+    // An empty body; then one of 300 bytes, whose length takes two bytes.
+    b=ow_open(out[..],0,1);#assert ow_close(out[..],b,b)==2 && ow_t_hex(out[0..<2],"0a00");
+    b=ow_open(out[..],0,1);for i:0..<300 {out[b+i]=cast,trunc(u8)i;}
+    #assert ow_close(out[..],b,b+300)==303 && out[1]==0xac && out[2]==2 && out[3]==0 && out[4]==1 && out[302]==43;
+    // The body is moved by exactly its own length.
+    small:[8]u8;b=ow_open(small[..],0,1);small[b]=9;#assert ow_close(small[..],b,b+1)==3 && small[1]==1 && small[2]==9;
+    // 127 bytes still take one.
+    b=ow_open(out[..],0,1);for i:0..<127 {out[b+i]=7;}#assert ow_close(out[..],b,b+127)==129 && out[1]==127 && out[128]==7;
+}
+
+#test "a tensor's type and an initializer" {
+    out:[128]u8;
+    s:=OxShape.{rank=2,dims=[4]int.[1,4,0,0]};
+    n:=ow_value(out[..],0,11,"x",s);
+    #assert ow_t_hex(out[0..<n],"5a130a0178120e0a0c080112080a0208010a020804");
+    w:=[2]f32.[1,-2];
+    n=ow_tensor(out[..],0,"fc",".bias",OxShape.{rank=1,dims=[4]int.[2,0,0,0]},w[..]);
+    #assert ow_t_hex(out[0..<n],"2a1708021001420766632e626961734a080000803f000000c0");
+}
+
+#test "a two-layer network, byte for byte" {
+    g:=ow_t_mlp();values:=OW_T_MLP_VALUES;out:[1024]u8;
+    r:=ow_write(g,values[..],out[..]);
+    #assert r.status==OwStatus.ok && r.node==-1 && r.read==OxStatus.ok && r.size==OW_T_MLP_FILE.count;
+    want:=OW_T_MLP_FILE;#assert ox_same(out[0..<r.size],want[..]);
+    // Read back by chapter 161: names, shapes and every weight bit.
+    arena:[64]f32;m:=ox_read(out[0..<r.size],arena[..]);
+    #assert m.status==OxStatus.ok && m.tensor_count==3 && ox_t_name(m,0,"fc1.weight") && ox_t_name(m,1,"fc1.bias") && ox_t_name(m,2,"fc2.weight");
+    for t:0..<3 {
+        v:=m.values[m.tensors[t].value];w:=g.weights[t];
+        #assert ox_shape_same(v.shape,w.shape);
+        for i:0..<v.count {#assert f32_bits(arena[v.at+i])==f32_bits(values[w.at+i]);}
+    }
+    // The output buffer: exactly the file, or one byte short.
+    #assert ow_write(g,values[..],out[0..<r.size]).status==OwStatus.ok;
+    r=ow_write(g,values[..],out[0..<r.size-1]);#assert r.status==OwStatus.capacity && r.node==-1;
+}
+
+#test "what the writer refuses itself" {
+    values:=OW_T_MLP_VALUES;out:[1024]u8;
+    for op:[4]OxOp.[OxOp.gather,OxOp.reduce_mean,OxOp.conv,OxOp.flatten] {
+        g:=ow_t_mlp();g.nodes[1].op=op;r:=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.op && r.node==1;
+    }
+    // A Gemm without a weight, or naming one past the list.
+    g:=ow_t_mlp();g.nodes[2].weight=-1;r:=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.shape && r.node==2;
+    g=ow_t_mlp();g.nodes[2].weight=3;#assert ow_write(g,values[..],out[..]).status==OwStatus.shape;
+    g=ow_t_mlp();g.nodes[0].bias=3;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.shape && r.node==0;
+    g=ow_t_mlp();g.nodes[0].bias=-2;#assert ow_write(g,values[..],out[..]).status==OwStatus.shape;
+    // Values past the array, or an empty shape.
+    #assert ow_write(ow_t_mlp(),values[0..<14],out[..]).status==OwStatus.shape;
+    g=ow_t_mlp();g.weights[2].at=-1;#assert ow_write(g,values[..],out[..]).status==OwStatus.shape;
+    g=ow_t_mlp();g.weights[1].shape.dims[0]=0;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.shape && r.node==0;
+    // A stem 161 would name differently, or not at all.
+    g=ow_t_mlp();g.nodes[2].stem="a/b";r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.name && r.node==2;
+    g=ow_t_mlp();g.nodes[0].stem="";r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.name && r.node==0;
+    g=ow_t_mlp();g.nodes[0].stem="ab/";#assert ow_write(g,values[..],out[..]).status==OwStatus.name;
+    // Too many nodes or weights to describe; exactly as many is fine.
+    g=ow_t_mlp();g.node_count=OX_NODES_MAX+1;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.capacity && r.node==-1;
+    g=ow_t_mlp();g.weight_count=OX_VALUES_MAX+1;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.capacity && r.node==-1;
+    g=ow_t_mlp();g.weight_count=OX_VALUES_MAX;#assert ow_write(g,values[..],out[..]).status==OwStatus.ok;
+    g=ow_t_mlp();g.node_count=0;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.shape && r.node==-1;
+}
+
+#test "what chapter 161 refuses, the writer refuses" {
+    values:=OW_T_MLP_VALUES;out:[1024]u8;arena:[64]f32;
+    // Shapes that don't chain: 161 refuses at the node.
+    g:=ow_t_mlp();g.features=3;r:=ow_write(g,values[..],out[..]);
+    #assert r.status==OwStatus.reread && r.read==OxStatus.shape && r.node==0;
+    // A weight named by two nodes is written under each node's name; here
+    // fc1's [2, 3] can't follow fc1's three outputs.
+    g=ow_t_mlp();g.nodes[2].weight=0;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.reread && r.read==OxStatus.shape && r.node==2;
+    // A stem too long for 161's 64-byte names.
+    g=ow_t_mlp();g.nodes[2].stem="abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefg";r=ow_write(g,values[..],out[..]);
+    #assert r.status==OwStatus.reread && r.read==OxStatus.name && r.node==2;
+    // An input or output name that collides.
+    g=ow_t_mlp();g.output="x";r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.reread && r.read==OxStatus.name;
+    g=ow_t_mlp();g.input="";#assert ow_write(g,values[..],out[..]).read==OxStatus.name;
+    // transB and Softmax's axis are written as given.
+    g=ow_t_mlp();g.nodes[0].trans_b=true;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.reread && r.read==OxStatus.shape;
+    g.weights[0].shape=ow_t_shape(2,3,2);r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.ok;
+    m:=ox_read(out[0..<r.size],arena[..]);#assert m.status==OxStatus.ok && m.nodes[0].trans_b;
+    // Axis -1 is a ten-byte varint, nine bytes more than axis 1.
+    g=ow_t_mlp();g.nodes[3].axis=-1;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.ok && r.size==OW_T_MLP_FILE.count+9;
+    g.nodes[3].axis=2;#assert ow_write(g,values[..],out[..]).read==OxStatus.attribute;
+    // Sixteen nodes, as onnx writes them.
+    values1:[1]f32;r=ow_write(ow_t_chain(),values1[0..<0],out[..]);chain:=OW_T_CHAIN_FILE;
+    #assert r.status==OwStatus.ok && ox_same(out[0..<r.size],chain[..]);
+    // A transposed Gemm as the last node gives the output its first dimension.
+    g=ow_t_mlp();g.node_count=1;g.nodes[0].trans_b=true;g.weights[0].shape=ow_t_shape(2,3,2);r=ow_write(g,values[..],out[..]);
+    #assert r.status==OwStatus.ok;m=ox_read(out[0..<r.size],arena[..]);#assert ox_t_shape(m.values[m.output].shape,2,1,3,0,0);
+    // A single node, its output the graph's.
+    g=ow_t_mlp();g.node_count=1;r=ow_write(g,values[..],out[..]);#assert r.status==OwStatus.ok;
+    m=ox_read(out[0..<r.size],arena[..]);#assert m.status==OxStatus.ok && ox_is(m.values[m.output].name,"p") && ox_t_shape(m.values[m.output].shape,2,1,3,0,0);
+}
+
+ow_t_fold_params :: ()->[5]f64 {return [5]f64.[2,-1,0.5,4,0.25];}
+#test "folding chapter 70's scaling into the weights" {
+    p:=ow_t_fold_params();mean:=[4]f64.[1,2,-3,0.5];sd:=[4]f64.[2,0.5,1,4];v:[16]f32;for i:0..<16 {v[i]=9;}
+    f:=ow_from_tabular(TbModel.{features=4,logistic=true},p[..],mean[..],sd[..],v[..],"deadline");
+    #assert f.status==OwStatus.ok && f.count==10 && f.graph.node_count==2 && f.graph.weight_count==2;
+    // Column 0 stays 0, so a two-class Softmax over [0, z] gives sigmoid(z).
+    #assert v[0]==0 && v[1]==1 && v[2]==0 && v[3]==-2 && v[4]==0 && v[5]==0.5 && v[6]==0 && v[7]==1;
+    // b - sum w mean / sd = 0.25 - (1 - 4 - 1.5 + 0.5).
+    #assert v[8]==0 && v[9]==4.25;
+    g:=f.graph;
+    #assert ow_t_is(g.input,"features") && ow_t_is(g.output,"probs") && g.rows==1 && g.features==4;
+    #assert g.nodes[0].op==OxOp.gemm && ow_t_is(g.nodes[0].stem,"deadline") && g.nodes[0].weight==0 && g.nodes[0].bias==1 && !g.nodes[0].trans_b;
+    #assert g.nodes[1].op==OxOp.softmax && g.nodes[1].axis==1;
+    #assert ox_t_shape(g.weights[0].shape,2,4,2,0,0) && g.weights[0].at==0 && ox_t_shape(g.weights[1].shape,1,2,0,0,0) && g.weights[1].at==8;
+    // The line: one column, no Softmax.
+    f=ow_from_tabular(TbModel.{features=4},p[..],mean[..],sd[..],v[..],"latency");
+    #assert f.status==OwStatus.ok && f.count==5 && f.graph.node_count==1 && ow_t_is(f.graph.output,"seconds");
+    #assert v[0]==1 && v[1]==-2 && v[2]==0.5 && v[3]==1 && v[4]==4.25;
+    #assert ox_t_shape(f.graph.weights[0].shape,2,4,1,0,0) && f.graph.weights[1].at==4;
+    // Eight features, chapter 70's most.
+    eight:=[9]f64.[1,2,3,4,5,6,7,8,9];ones:=[8]f64.[1,1,1,1,1,1,1,1];nought:=[8]f64.[0,0,0,0,0,0,0,0];
+    f=ow_from_tabular(TbModel.{features=8},eight[..],nought[..],ones[..],v[..],"wide");#assert f.status==OwStatus.ok && f.count==9 && v[8]==9;
+    // Space for exactly the weights, and one value less.
+    #assert ow_from_tabular(TbModel.{features=4},p[..],mean[..],sd[..],v[0..<5],"latency").status==OwStatus.ok;
+    #assert ow_from_tabular(TbModel.{features=4},p[..],mean[..],sd[..],v[0..<4],"latency").status==OwStatus.capacity;
+    #assert ow_from_tabular(TbModel.{features=4,logistic=true},p[..],mean[..],sd[..],v[0..<9],"d").status==OwStatus.capacity;
+    // A hidden layer computes tanh, which the subset doesn't have.
+    f=ow_from_tabular(TbModel.{features=4,hidden=8,logistic=true},p[..],mean[..],sd[..],v[..],"mlp");#assert f.status==OwStatus.op && f.count==0;
+    // A model chapter 70 wouldn't admit, and a weight past binary32's range.
+    #assert ow_from_tabular(TbModel.{features=9},p[..],mean[..],sd[..],v[..],"x").status==OwStatus.shape;
+    #assert ow_from_tabular(TbModel.{features=4},p[0..<4],mean[..],sd[..],v[..],"x").status==OwStatus.shape;
+    #assert ow_from_tabular(TbModel.{features=4},p[..],mean[0..<3],sd[..],v[..],"x").status==OwStatus.shape;
+    #assert ow_from_tabular(TbModel.{features=4},p[..],mean[..],sd[0..<3],v[..],"x").status==OwStatus.shape;
+    tiny:=sd;tiny[0]=1e-39;#assert ow_from_tabular(TbModel.{features=4},p[..],mean[..],tiny[..],v[..],"x").status==OwStatus.number;
+    tiny=sd;tiny[1]=-1e-39;#assert ow_from_tabular(TbModel.{features=4},p[..],mean[..],tiny[..],v[..],"x").status==OwStatus.number;
+    off:=mean;off[2]=1e39;#assert ow_from_tabular(TbModel.{features=4},p[..],off[..],sd[..],v[..],"x").status==OwStatus.number;
+    off[2]=-1e39;#assert ow_from_tabular(TbModel.{features=4,logistic=true},p[..],off[..],sd[..],v[..],"x").status==OwStatus.number;
+    // Binary32's largest finite value is kept; the next binary64 past it is refused.
+    zero:=[4]f64.[0,0,0,0];one:=[4]f64.[1,1,1,1];edge:=[5]f64.[-OW_F32_MAX,0,0,0,OW_F32_MAX];
+    f=ow_from_tabular(TbModel.{features=4},edge[..],zero[..],one[..],v[..],"x");#assert f.status==OwStatus.ok && f32_bits(v[0])==0xff7fffff && f32_bits(v[4])==0x7f7fffff;
+    edge[0]=-OW_F32_MAX*1.0000000000000002;#assert ow_from_tabular(TbModel.{features=4},edge[..],zero[..],one[..],v[..],"x").status==OwStatus.number;
+    edge[0]=0;edge[4]=OW_F32_MAX*1.0000000000000002;#assert ow_from_tabular(TbModel.{features=4},edge[..],zero[..],one[..],v[..],"x").status==OwStatus.number;
+}
+
+// book:begin wire
+// Protobuf on the way out: a key is the field number times 8 plus the wire
+// type; a nested message is written after a five-byte gap, then moved back
+// once its length is known, so every length is the shortest varint, as
+// onnx's own serializer writes it.
+ow_var :: (out:[]u8,at:int,v:u64)->int {
+    p:=at;x:=v;
+    while x>=128 {out[p]=cast,trunc(u8)(x|128);x>>=7;p+=1;}
+    out[p]=cast(u8)x;return p+1;
+}
+ow_int :: (out:[]u8,at:int,number:u64,v:u64)->int {return ow_var(out,ow_var(out,at,number*8),v);}
+ow_text :: (out:[]u8,at:int,number:u64,text:string)->int {
+    p:=ow_var(out,ow_var(out,at,number*8+2),cast(u64)text.count);
+    for c,i:text {out[p+i]=c;}
+    return p+text.count;
+}
+ow_parts :: (out:[]u8,at:int,number:u64,a:string,b:string,c:string)->int {
+    p:=ow_var(out,ow_var(out,at,number*8+2),cast(u64)(a.count+b.count+c.count));
+    for x:a {out[p]=x;p+=1;}
+    for x:b {out[p]=x;p+=1;}
+    for x:c {out[p]=x;p+=1;}
+    return p;
+}
+ow_open :: (out:[]u8,at:int,number:u64)->int {return ow_var(out,at,number*8+2)+5;}
+ow_close :: (out:[]u8,body:int,end:int)->int {
+    p:=ow_var(out,body-5,cast(u64)(end-body));
+    for i:0..<end-body {out[p+i]=out[body+i];}
+    return p+end-body;
+}
+// book:end wire
+
+// book:begin pieces
+// A graph input or output: a float tensor with static dimensions. An
+// initializer: dimensions, FLOAT, the name, then the values as raw bytes.
+ow_value :: (out:[]u8,at:int,number:u64,name:string,shape:OxShape)->int {
+    v:=ow_open(out,at,number);p:=ow_text(out,v,1,name);
+    t:=ow_open(out,p,2);tensor:=ow_open(out,t,1);p=ow_int(out,tensor,1,OX_FLOAT);
+    s:=ow_open(out,p,2);p=s;
+    for i:0..<shape.rank {d:=ow_open(out,p,1);p=ow_close(out,d,ow_int(out,d,1,cast(u64)shape.dims[i]));}
+    p=ow_close(out,s,p);p=ow_close(out,tensor,p);p=ow_close(out,t,p);
+    return ow_close(out,v,p);
+}
+ow_tensor :: (out:[]u8,at:int,stem:string,suffix:string,shape:OxShape,values:[]f32)->int {
+    t:=ow_open(out,at,5);p:=t;
+    for i:0..<shape.rank {p=ow_int(out,p,1,cast(u64)shape.dims[i]);}
+    p=ow_int(out,p,2,OX_FLOAT);p=ow_parts(out,p,8,stem,suffix,"");
+    p=ow_var(out,ow_var(out,p,9*8+2),cast(u64)(4*values.count));
+    for v:values {bits:=f32_bits(v);for k:0..<4 {out[p]=cast,trunc(u8)(bits>>cast(u32)(8*k));p+=1;}}
+    return ow_close(out,t,p);
+}
+// book:end pieces
+
+// book:begin write
+// A node reads the previous node's output (the graph input first); the last
+// writes the graph output and the others "t1", "t2", ... A Gemm is named
+// "/stem/Gemm" and its weights "stem.weight" and "stem.bias": with no slash in
+// the stem, those are the names chapter 161 gives them back. The file is
+// staged, read back, and copied out only if 161 admits it.
+ow_check :: (g:OwGraph,values:[]f32)->OwResult {
+    if g.node_count>OX_NODES_MAX || g.weight_count>OX_VALUES_MAX {return OwResult.{status=OwStatus.capacity,node=-1};}
+    if g.node_count==0 {return OwResult.{status=OwStatus.shape,node=-1};}
+    for k:0..<g.node_count {n:=g.nodes[k];
+        if n.op!=OxOp.gemm && n.op!=OxOp.relu && n.op!=OxOp.softmax {return OwResult.{status=OwStatus.op,node=k};}
+        if n.op!=OxOp.gemm {continue;}
+        if n.stem.count==0 {return OwResult.{status=OwStatus.name,node=k};}
+        for c:n.stem {if c=='/' {return OwResult.{status=OwStatus.name,node=k};}}
+        if n.weight<0 || n.weight>=g.weight_count || n.bias<-1 || n.bias>=g.weight_count {return OwResult.{status=OwStatus.shape,node=k};}
+        for slot:[2]int.[n.weight,n.bias] {
+            if slot==-1 {continue;}
+            w:=g.weights[slot];count:=ox_elements(w.shape);
+            if count==0 || w.at<0 || w.at+count>values.count {return OwResult.{status=OwStatus.shape,node=k};}
+        }
+    }
+    return OwResult.{};
+}
+ow_name :: (out:[]u8,at:int,number:u64,g:OwGraph,k:int)->int {
+    if k==-1 {return ow_text(out,at,number,g.input);}
+    if k==g.node_count-1 {return ow_text(out,at,number,g.output);}
+    digit:=[1]u8.[cast(u8)(49+k)];
+    if k<9 {return ow_parts(out,at,number,"t",cast(string)digit[..],"");}
+    digit[0]=cast(u8)(39+k);return ow_parts(out,at,number,"t1",cast(string)digit[..],"");
+}
+ow_write :: (g:OwGraph,values:[]f32,out:[]u8)->OwResult {
+    r:=ow_check(g,values);if r.status!=OwStatus.ok {return r;}
+    file:[OX_BYTES_MAX]u8;
+    p:=ow_int(file[..],0,1,OW_IR);p=ow_text(file[..],p,2,"psionic");
+    graph:=ow_open(file[..],p,7);p=graph;
+    input:=OxShape.{rank=2};input.dims[0]=g.rows;input.dims[1]=g.features;shape:=input;
+    for k:0..<g.node_count {n:=g.nodes[k];
+        node:=ow_open(file[..],p,1);p=ow_name(file[..],node,1,g,k-1);
+        if n.op==OxOp.gemm {
+            p=ow_parts(file[..],p,1,n.stem,".weight","");
+            if n.bias!=-1 {p=ow_parts(file[..],p,1,n.stem,".bias","");}
+            w:=g.weights[n.weight].shape;shape.dims[1]=ifx n.trans_b then w.dims[0] else w.dims[1];
+        }
+        p=ow_name(file[..],p,2,g,k);
+        if n.op==OxOp.gemm {p=ow_parts(file[..],p,3,"/",n.stem,"/Gemm");}
+        else {p=ow_text(file[..],p,3,ifx n.op==OxOp.relu then "/Relu" else "/Softmax");}
+        p=ow_text(file[..],p,4,OX_OP_NAMES[cast(int)n.op]);
+        if n.trans_b || n.op==OxOp.softmax {
+            a:=ow_open(file[..],p,5);
+            q:=ow_text(file[..],a,1,ifx n.op==OxOp.softmax then "axis" else "transB");
+            q=ow_int(file[..],q,3,ifx n.op==OxOp.softmax then cast,trunc(u64)n.axis else 1);
+            p=ow_close(file[..],a,ow_int(file[..],q,20,OX_INT));
+        }
+        p=ow_close(file[..],node,p);
+    }
+    p=ow_text(file[..],p,2,"psionic");
+    for k:0..<g.node_count {n:=g.nodes[k];
+        if n.op!=OxOp.gemm {continue;}
+        w:=g.weights[n.weight];p=ow_tensor(file[..],p,n.stem,".weight",w.shape,values[w.at..<w.at+ox_elements(w.shape)]);
+        if n.bias!=-1 {b:=g.weights[n.bias];p=ow_tensor(file[..],p,n.stem,".bias",b.shape,values[b.at..<b.at+ox_elements(b.shape)]);}
+    }
+    p=ow_value(file[..],p,11,g.input,input);
+    p=ow_value(file[..],p,12,g.output,shape);
+    p=ow_close(file[..],graph,p);
+    opset:=ow_open(file[..],p,8);p=ow_close(file[..],opset,ow_int(file[..],ow_text(file[..],opset,1,""),2,OX_OPSET));
+    arena:[OW_ARENA]f32;m:=ox_read(file[0..<p],arena[..]);
+    if m.status!=OxStatus.ok {return OwResult.{status=OwStatus.reread,node=m.node,read=m.status};}
+    if out.count<p {return OwResult.{status=OwStatus.capacity,node=-1};}
+    for i:0..<p {out[i]=file[i];}
+    return OwResult.{node=-1,size=p};
+}
+// book:end write
+
+// book:begin fold
+// Chapter 70's affine models read scaled features, (x - mean) / sd. Folding
+// the scaling into the weights lets the exported graph read raw features:
+// w / sd for each weight, and b - sum(w mean / sd) for the bias, in binary64
+// with chapter 3's accumulator, then rounded once to binary32. The logistic
+// model becomes two columns, 0 and z, so a two-class Softmax gives sigmoid(z)
+// as its second output.
+ow_from_tabular :: (m:TbModel,params:[]f64,mean:[]f64,sd:[]f64,values:[]f32,stem:string)->OwFold {
+    if m.hidden!=0 {return OwFold.{status=OwStatus.op};}
+    d:=m.features;
+    if !tb_model_ok(m) || params.count<d+1 || mean.count<d || sd.count<d {return OwFold.{status=OwStatus.shape};}
+    cols:=ifx m.logistic then 2 else 1;
+    if values.count<cols*(d+1) {return OwFold.{status=OwStatus.capacity};}
+    folded:[TB_FEATURES_MAX+1]f64;
+    a:PsionicAccumulator;a=psionic_ops_accumulate(a,params[d]);
+    for j:0..<d {folded[j]=params[j]/sd[j];a=psionic_ops_accumulate(a,-(params[j]*mean[j]/sd[j]));}
+    folded[d]=psionic_ops_total(a);
+    for v:folded[0..<d+1] {if !(abs(v)<=OW_F32_MAX) {return OwFold.{status=OwStatus.number};}}
+    for j:0..<d+1 {
+        if m.logistic {values[j*2]=0;values[j*2+1]=cast(f32)folded[j];}
+        else {values[j]=cast(f32)folded[j];}
+    }
+    g:=OwGraph.{input="features",rows=1,features=d,output=ifx m.logistic then "probs" else "seconds",node_count=cols,weight_count=2};
+    g.nodes[0]=OwNode.{op=OxOp.gemm,stem=stem,weight=0,bias=1};
+    g.nodes[1]=OwNode.{op=OxOp.softmax,axis=1};
+    g.weights[0]=OwWeight.{shape=OxShape.{rank=2,dims=[4]int.[d,cols,0,0]}};
+    g.weights[1]=OwWeight.{shape=OxShape.{rank=1,dims=[4]int.[cols,0,0,0]},at=cols*d};
+    return OwFold.{graph=g,count=cols*(d+1)};
+}
+// book:end fold

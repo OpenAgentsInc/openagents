@@ -73,6 +73,7 @@
 - [159. A Pylon checks itself before serving](ch159-a-pylon-checks-itself-before-serving.md)
 - [160. How far apart may two honest answers be?](ch160-how-far-apart-may-two-honest-answers-be.md)
 - [161. Read a bounded ONNX graph](ch161-read-a-bounded-onnx-graph.md)
+- [161a. Write a bounded ONNX graph](ch161a-write-a-bounded-onnx-graph.md)
 - [164a. Learn which model to call](ch164a-learn-which-model-to-call.md)
 
 - [165. A machine whose state is a trace](ch165-a-machine-whose-state-is-a-trace.md)
@@ -106,6 +107,6 @@ Elephant/Mammoth through gpt-oss, Mistral and DeepSeek, nanochat
 pretraining/post-training, NVIDIA retrieval, vision, motion, speech, scientific
 ML, world generation, robot policies, production hosting and inference across a
 mesh.
-Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 77, 115, 156–161, 164a, 165–173, 176, 178–183 and 186–187 are
+Chapters 1–13, 16, 26, 30 (Elephant on CUDA), 33, 36, 41–48, 56–61, 63, 66, 70–71, 73, 77, 115, 156–161, 161a, 164a, 165–173, 176, 178–183 and 186–187 are
 runnable. Chapters 14, 15, 17–25, 27–29, 31–32, 34–35, 37–40 and the remaining outlines
 remain proposed.

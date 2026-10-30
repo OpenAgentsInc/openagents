@@ -1,0 +1,95 @@
+#import "Basic";
+#load "../lib/onnx-write.coax";
+
+r4 :: (v:f64)->f64 {return floor(v*10000+0.5)/10000;}
+// Differences are shown rounded up to a multiple of 1e-9.
+up9 :: (v:f64)->f64 {return -floor(-v*1000000000)/1000000000;}
+STATUS :: [7]string.["ok","op","shape","number","name","capacity","reread"];
+
+show_hex :: (name:string,file:[]u8) {
+    print("%.onnx, in hex:\n",name);
+    digits:="0123456789abcdef";
+    for b,i:file {
+        if i%32==0 {print("  ");}
+        line:=[2]u8.[digits[cast(int)(b>>4)],digits[cast(int)(b&15)]];print("%",cast(string)line[..]);
+        if i%32==31 || i==file.count-1 {print("\n");} else if i%4==3 {print(" ");}
+    }
+}
+// Export, then read back with chapter 161: every name and weight bit.
+export_file :: (f:OwFold,values:[]f32,out:[]u8,arena:[]f32)->OxModel {
+    #assert f.status==OwStatus.ok;
+    r:=ow_write(f.graph,values,out);#assert r.status==OwStatus.ok;
+    m:=ox_read(out[0..<r.size],arena);#assert m.status==OxStatus.ok && m.tensor_count==2;
+    for t:0..<2 {
+        v:=m.values[m.tensors[t].value];w:=f.graph.weights[t];
+        for i:0..<v.count {#assert f32_bits(arena[v.at+i])==f32_bits(values[w.at+i]);}
+    }
+    tensor:=m.tensors[0];bias:=m.tensors[1];
+    print("  % bytes, % node%; %, % read back by chapter 161 bit for bit\n",r.size,m.node_count,ifx m.node_count==1 then "" else "s",
+        cast(string)tensor.name[0..<tensor.length],cast(string)bias.name[0..<bias.length]);
+    return m;
+}
+// One row of raw features through the read-back graph.
+run_row :: (m:OxModel,arena:[]f32,x:[]f64)->[]f32 {
+    none:[1]s64;row:[4]f32;for j:0..<4 {row[j]=cast(f32)x[j];}
+    #assert ox_run(m,arena,none[0..<0],row[..]).status==OxStatus.ok;
+    y:=m.values[m.output];return arena[y.at..<y.at+y.count];
+}
+
+// book:begin example
+main :: () {
+    x:[9600]f64;y:[2400]f64;lat:[2400]f64;g:[2400]int;
+    #assert tb_simulate(70,300,x[..],y[..],lat[..],g[..],false).status==TbStatus.ok;
+    tr:[2400]int;te:[2400]int;
+    train:=tr[0..<tb_rows(g[..],0,tr[..],false)];test:=te[0..<tb_rows(g[..],2,te[..],false)];
+    mean:[4]f64;sd:[4]f64;xs:[9600]f64;
+    #assert tb_fit_scale(x[..],4,train,mean[..],sd[..],false)==TbStatus.ok;
+    #assert tb_apply_scale(x[..],4,mean[..],sd[..],xs[..],false)==TbStatus.ok;
+    print("chapter 70's deadline requests: % training rows, % test rows, 4 raw features\n",train.count,test.count);
+
+    // Train both affine models on scaled features, as chapter 70 does.
+    c:=TbConfig.{epochs=40,batch=16,rate=0.5,init_seed=1,shuffle_seed=2};
+    logistic:=TbModel.{features=4,logistic=true};line:=TbModel.{features=4};
+    pg:[5]f64;pl:[5]f64;order:[2400]int;
+    #assert tb_train(logistic,c,xs[..],y[..],train,pg[..],order[..],false).status==TbStatus.ok;
+    cl:=c;cl.rate=0.05;#assert tb_train(line,cl,xs[..],lat[..],train,pl[..],order[..],false).status==TbStatus.ok;
+    zg:[2400]f64;zl:[2400]f64;
+    #assert tb_predict(logistic,pg[..],xs[..],zg[..],false)==TbStatus.ok && tb_predict(line,pl[..],xs[..],zl[..],false)==TbStatus.ok;
+    print("trained in binary64: logistic test log loss %, line test squared error % s^2\n",
+        r4(tb_log_loss(zg[..],y[..],test).value),r4(tb_mse(zl[..],lat[..],test).value));
+
+    // Export each with its scaling folded in, then run the files on raw features.
+    vg:[10]f32;vl:[5]f32;fg:[1024]u8;fl:[1024]u8;ag:[64]f32;al:[64]f32;
+    print("deadline.onnx: Gemm, then Softmax over [0, z]\n");
+    mg:=export_file(ow_from_tabular(logistic,pg[..],mean[..],sd[..],vg[..],"deadline"),vg[..],fg[..],ag[..]);
+    worst:=0.0;agree:=0;
+    for i:test {
+        p:=run_row(mg,ag[..],x[i*4..<i*4+4])[1];want:=tb_sigmoid(zg[i]);
+        if abs(f64(p)-want)>worst {worst=abs(f64(p)-want);}
+        if (p>=0.5)==(want>=0.5) {agree+=1;}
+    }
+    print("  % test rows: P(on time) within % of the binary64 model; decisions at 0.5 agree on % of %\n",test.count,up9(worst),agree,test.count);
+    print("latency.onnx: Gemm alone\n");
+    ml:=export_file(ow_from_tabular(line,pl[..],mean[..],sd[..],vl[..],"latency"),vl[..],fl[..],al[..]);
+    worst=0;
+    for i:test {s:=run_row(ml,al[..],x[i*4..<i*4+4])[0];if abs(f64(s)-zl[i])>worst {worst=abs(f64(s)-zl[i]);}}
+    print("  % test rows: seconds within % of the binary64 model\n",test.count,up9(worst));
+
+    // The hidden layer's tanh has no operator in the subset.
+    pm:[161]f64;vm:[64]f32;
+    mlp:=TbModel.{features=4,hidden=8,logistic=true};
+    #assert tb_train(mlp,c,xs[..],y[..],train,pm[..],order[..],false).status==TbStatus.ok;
+    print("chapter 70's MLP: %, tanh is outside the subset\n",STATUS[cast(int)ow_from_tabular(mlp,pm[..],mean[..],sd[..],vm[..],"mlp").status]);
+
+    print("sample test rows:\n");
+    for k:0..<4 {
+        i:=test[120*k];row:=x[i*4..<i*4+4];
+        print("  row %: features % % % % ->",i,row[0],row[1],row[2],row[3]);
+        o:=run_row(mg,ag[..],row);print(" deadline % %\n",f64(o[0]),f64(o[1]));
+        print("  row %: features % % % % ->",i,row[0],row[1],row[2],row[3]);
+        print(" latency %\n",f64(run_row(ml,al[..],row)[0]));
+    }
+    rg:=ow_write(ow_from_tabular(logistic,pg[..],mean[..],sd[..],vg[..],"deadline").graph,vg[..],fg[..]);show_hex("deadline",fg[0..<rg.size]);
+    rl:=ow_write(ow_from_tabular(line,pl[..],mean[..],sd[..],vl[..],"latency").graph,vl[..],fl[..]);show_hex("latency",fl[0..<rl.size]);
+}
+// book:end example
