@@ -515,7 +515,7 @@ numbers), along the bottom over the hint, five slots at most:
 
 | Key | Slot | Spell | Cast | Area | Damage |
 | --- | --- | --- | --- | --- | --- |
-| 1 | METEOR | Meteor Swarm: six meteors with fire trails on a 6 m ring, each a 4 m blast | 2.5 s | 6 m | 20d6 fire + 20d6 bludgeoning, rolled once a cast |
+| 1 | METEOR | Meteor Swarm: six meteors with fire trails on a 3.5 m ring, each a 4 m blast | 2.5 s | 3.5 m | 20d6 fire + 20d6 bludgeoning, rolled once a cast |
 | 2 | BOLT | Thunderbolt: a branching bolt from 60 m, a flash and the sky's light | 1.2 s | 3.4 m | 20d10 lightning |
 | 3 | MEGA | Mega Thunderbolt | 0.5 s | 5.8 m | 100d10 lightning |
 | 4 | ORB | Water Orb: gathers over you, thrown on an arc, bursts | 0.6 s | 3 m | 6d10 bludgeoning |
@@ -567,7 +567,10 @@ walls under it are gone (other pieces once half their supports are). A
 break opens the way in: each of your walls with a broken ground piece in it
 is cut around the gap (a building's solid footprint first into its four
 0.4 m sides), so you walk in through the hole and out through another;
-stood back up, the town's own walls come back. Fire and smoke
+stood back up, the town's own walls come back. A blast's fireball swells to
+under a third of its radius across (a cart, not the house) and to as little
+as 0.4 of that within 18 m of the camera, so a meteor at your feet doesn't
+fill the view. Fire and smoke
 draw as the shapes' boxes and spheres (700 and 168 slots);
 fire and lightning are LOOK_GLOW in everglade.wgsl: unlit, three times
 their colour, blooming, no shadow.

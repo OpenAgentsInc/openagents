@@ -167,7 +167,8 @@ SPELLS :: 7;
 
 // Meteor Swarm (level 9): four 40-foot spheres of fire within a mile, 20d6
 // fire and 20d6 bludgeoning, a Dexterity save for half. The old engine's
-// yard and Everglade tuned it for buildings: six meteors on a 6 m ring, 4 m
+// yard and Everglade tuned it for buildings: six meteors on a 6 m ring (3.5 m in
+// Everglade, so they land on the house you aim at), 4 m
 // blasts, 2.5 s cast, 36 m range (any surface in sight with destruction on).
 // The Thunderbolt and the Mega Thunderbolt are the Grove's own (not SRD):
 // 12d10 lightning to creatures, 20d10 to structures; the Mega five times

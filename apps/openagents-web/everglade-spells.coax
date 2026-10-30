@@ -7,7 +7,7 @@
 // page facts' ruleset= line; verse/rules/srd5.coax). Without it there is no
 // bar and nothing breaks. With it, along the bottom:
 //
-//   1 METEOR   Meteor Swarm: six meteors on a 6 m ring, each a 4 m blast of
+//   1 METEOR   Meteor Swarm: six meteors on a 3.5 m ring, each a 4 m blast of
 //              20d6 fire and 20d6 bludgeoning (rolled once a cast); 2.5 s cast.
 //   2 BOLT     The Thunderbolt: one branching bolt from the clouds, 20d10
 //              lightning over 3.4 m; 1.2 s cast.
@@ -40,7 +40,7 @@ SP_SPELL :: [4] int.[SPELL_METEOR_SWARM, SPELL_THUNDERBOLT, SPELL_MEGA_THUNDERBO
 SP_WORD :: [5] string.["METEOR", "BOLT", "MEGA", "ORB", "REBUILD"];
 SP_KEY :: [5] string.["1", "2", "3", "4", "R"];
 // each spell's ring on the ground (m), its blast (m), how fast its blast throws debris (m/s)
-SP_RING :: [4] f32.[6.0, 2.2, 3.6, 1.6];
+SP_RING :: [4] f32.[3.5, 2.2, 3.6, 1.6];
 SP_BLAST :: [4] f32.[4.0, 3.4, 5.8, 3.0];
 SP_THROW :: [4] f32.[17.0, 14.0, 22.0, 10.0];
 SP_RANGE :: 140.0;        // m from you: the old destruction bar reached anything in sight; the city is 127 m across
@@ -444,7 +444,7 @@ sp_release :: (s: [] Everglade, slot: int) {
 }
 sp_orb_rest :: (s: [] Everglade) -> Point {
   f := v3(sin(s[0].face), 0, cos(s[0].face));
-  return add(add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 2.6, 0)), times(f, 1.2));
+  return add(add(s[0].feet, v3(0, ground_at(s, s[0].feet.x, s[0].feet.z) + 2.1, 0)), times(f, 1.4));
 }
 
 // A blast at `at`: every standing piece it reaches takes the cast's damage,
@@ -829,13 +829,15 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     if bl.t > 0.9 { s[0].sp.blasts[i].live = false; continue; }
     grow := clamp(bl.t / 0.3, 0, 1);
     fade := 1 - clamp((bl.t - 0.3) / 0.6, 0, 1);
-    r := bl.radius * (0.25 + 0.5 * grow) * (0.4 + 0.6 * fade);
+    // a fireball the size of a cart, not of the house; smaller still near you, where it would fill the view
+    close_k := clamp(length(sub(bl.at, s[0].sp.shot.eye)) / 18, 0.4, 1);
+    r := bl.radius * (0.14 + 0.28 * grow) * (0.4 + 0.6 * fade) * close_k;
     if bl.kind == 2 {
       sp_ball(s, LOOK_WATER, add(bl.at, v3(0, r * 0.3, 0)), r * 2 * fade, v3(0.42, 0.62, 0.72));
     } else {
       hot := ifx bl.kind == 0 then mix(v3(1.0, 0.85, 0.5), v3(0.85, 0.2, 0.05), 1 - fade) else mix(v3(0.95, 0.97, 1.0), v3(0.45, 0.6, 1.0), 1 - fade);
       sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 2, hot);
-      if bl.t < 0.12 { sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 2.6, times(hot, 0.6)); }
+      if bl.t < 0.12 { sp_ball(s, LOOK_GLOW, add(bl.at, v3(0, r * 0.4, 0)), r * 1.8, times(hot, 0.6)); }
     }
   }
   // the scorch marks, fading as they shrink
@@ -877,7 +879,7 @@ sp_draw :: (s: [] Everglade, dt: f32) {
     } else {
       f := clamp(s[0].sp.orb_t / 0.7, 0, 1);
       p := mix(s[0].sp.orb_from, s[0].sp.orb_to, f);
-      p.y += sin(f * f32(PI)) * hi(3, flat_gap(s[0].sp.orb_from, s[0].sp.orb_to) * 0.15);
+      p.y += sin(f * f32(PI)) * hi(1.2, flat_gap(s[0].sp.orb_from, s[0].sp.orb_to) * 0.07);   // a low arc, in the camera's view
       sp_ball(s, LOOK_WATER, p, 2.0, v3(0.4, 0.62, 0.74));
     }
   }
@@ -1083,8 +1085,8 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   ix := (EG_BUILDING[inn] + EG_BUILDING[inn + 2]) / 2; iz := (EG_BUILDING[inn + 1] + EG_BUILDING[inn + 3]) / 2;
   #assert everglade_key(g[..], '1', 0) && g[0].sp.armed == SP_METEOR;
   _ := everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-  // aim straight at the inn's middle, as a click there would
-  g[0].sp.aim = v3(ix, ground_at(g[..], ix, iz) + 3, iz); g[0].sp.aim_ok = true; g[0].sp.far = false;
+  // aim at the middle of the inn's front (south) wall from the street, as a click there would
+  g[0].sp.aim = v3(ix, ground_at(g[..], ix, EG_BUILDING[inn + 1]) + 2, EG_BUILDING[inn + 1]); g[0].sp.aim_ok = true; g[0].sp.far = false;
   kept: [WALLS * 6] f32;
   for k: 0..<WALLS * 6 { kept[k] = g[0].walls[k]; }
   sp_cast(g[..]);
@@ -1103,10 +1105,10 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   }
   #assert debris > 30;
   #assert g[0].counts[SHAPE_BOX] < SLOTS[SHAPE_BOX] && g[0].counts[SHAPE_SPHERE] <= SLOTS[SHAPE_SPHERE];
-  // the inn's roof is down
-  roof_down := false;
-  for i: 0..<w[0].n { p := w[0].pieces[i]; if p.mesh == M_ROOF && p.group == EG_INN && p.state != DP_STANDING { roof_down = true; } }
-  #assert roof_down;
+  // what stood on the inn's broken front came down with it
+  upper_down := false;
+  for i: 0..<w[0].n { p := w[0].pieces[i]; if !p.anchored && p.group == EG_INN && p.state != DP_STANDING { upper_down = true; } }
+  #assert upper_down;
   // its broken walls no longer stand in your way: you walk in
   // (a broken ground piece's middle that stood in a wall, clear of every wall now, is a way in)
   ways := 0;
