@@ -850,7 +850,7 @@ AG_memo_scope :: (memory:[]AgMemory,level:int,closure:u64,height:int) {
 // the top bit of the memo closure masks, which only causes extra misses.
 #test "the procedure cap and its closure bits are exact" {
  #assert AG_region_limit()==16384;
- #assert AG_visit_limit()==4194304;
+ #assert AG_visit_limit()==16777216;
  #assert AG_procedure_limit()==256 && AG_bit(0)==1 && AG_bit(1)==2 && AG_bit(62)==cast(u64)1<<62 && AG_bit(63)==cast(u64)1<<63 && AG_bit(64)==cast(u64)1<<63 && AG_bit(255)==cast(u64)1<<63;
 }
 AG_procedure_limit :: ()->int {return 256;}
@@ -1039,7 +1039,7 @@ AG_check_public_views :: (nodes:[]ScNode,values:[]u64,roots:[]int,types:[]ScType
 // Analysis steps one audit may take.
 // Memory regions one audit may allocate.
 AG_region_limit :: ()->int {return 16384;}
-AG_visit_limit :: ()->int {return 4194304;}
+AG_visit_limit :: ()->int {return 16777216;}
 AG_tick :: (state:[]ScAudit,where:int)->bool {
  if state[0].error!=0 {return false;}if state[0].visits>=AG_visit_limit() {SC_fail(state,SC_LIMIT,where);return false;}state[0].visits+=1;return true;
 }

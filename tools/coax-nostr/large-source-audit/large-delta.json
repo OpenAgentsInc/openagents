@@ -198,7 +198,7 @@
   ],
   [
    " #assert AG_region_limit()==4096;\n #assert AG_visit_limit()==262144;\n #assert AG_procedure_limit()==64;\n",
-   " #assert AG_region_limit()==16384;\n #assert AG_visit_limit()==4194304;\n #assert AG_procedure_limit()==256 && AG_bit(0)==1 && AG_bit(1)==2 && AG_bit(62)==cast(u64)1<<62 && AG_bit(63)==cast(u64)1<<63 && AG_bit(64)==cast(u64)1<<63 && AG_bit(255)==cast(u64)1<<63;\n"
+   " #assert AG_region_limit()==16384;\n #assert AG_visit_limit()==16777216;\n #assert AG_procedure_limit()==256 && AG_bit(0)==1 && AG_bit(1)==2 && AG_bit(62)==cast(u64)1<<62 && AG_bit(63)==cast(u64)1<<63 && AG_bit(64)==cast(u64)1<<63 && AG_bit(255)==cast(u64)1<<63;\n"
   ],
   [
    "AG_procedure_limit :: ()->int {return 64;}\n",
@@ -230,7 +230,7 @@
   ],
   [
    "AG_region_limit :: ()->int {return 4096;}\nAG_visit_limit :: ()->int {return 262144;}\n",
-   "AG_region_limit :: ()->int {return 16384;}\nAG_visit_limit :: ()->int {return 4194304;}\n"
+   "AG_region_limit :: ()->int {return 16384;}\nAG_visit_limit :: ()->int {return 16777216;}\n"
   ]
  ],
  "bridge-aggregate.cpp": [
