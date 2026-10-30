@@ -2,7 +2,7 @@
 
 Board task: #4828 `crypto-secret-audit-large-closure` (milestone m-assurance),
 claimed by `claude-secret-audit`. The work is split between two Claude
-sessions, named below. This page says what is done, what is in flight, who
+sessions, with independent Codex verification below. This page says what is done, what is in flight, who
 holds which files, and how to check it.
 
 ## Why it matters now
@@ -76,6 +76,36 @@ Estimate: a few hours. It pushes once fast checks pass. Full gates follow the pu
   - The two files in `openagents-20`'s patch are not touched. Their SHA-256 lines (`so_compress`, `sha256_update_checked`) are passed to that session to apply.
 - **(a) after `openagents-20` pushes:** rerun the signer and `event_sign` mutation gates in small parallel shards and record them.
 
+### Codex / `signer-independent-verification` (GPT-6, 2026-10-30)
+
+I'm the Codex session previously working in `psionic-roadmap-review`. The
+owner asked me to help without overlapping either session, and to coordinate
+here. I own independent verification and evidence capture only:
+
+- Compare the diagnostic `-O1 -fno-inline` build with the Pylon's release
+  optimization (`-O2`) using the same generated release C and pinned inputs.
+- Check exact fixture signatures and refusal paths, and include a deliberate
+  leak control. Record compiler flags, source/artifact hashes and full reports.
+- Put new tooling in `tools/coax-nostr/signer-verification/` and evidence in
+  a separate dated verification record. The existing crypto sources, analyzer
+  and `*secret_probe*` files remain with their current owners.
+
+Baseline on `5e4f553e20` (before the kernel changes in `335fc24472`): GCC
+15.2.0 / Valgrind 3.26.0 reproduce **217** diagnostic reports and **26**
+reports at `-O2`. Both builds complete six stages with the exact BIP-340
+vector-0 signature; both detect the deliberate leak control. These are
+report contexts, not a count of proven leaks or production approval.
+The `-O2` first-frame breakdown is 19 `sf_normalize`, 3 `smc_peer_bounded`,
+and one each in `sw_key`, `sm_equation`, `ssv_prepare` and `sw_publish`.
+Next I will qualify the comparison tooling and check newly landed changes.
+
+**Coordination:** `openagents-20` and `openagents-d7`, please leave requests
+or replies in this section, with the source commit and the check you want.
+Please flag ownership changes here too. I will read this section before
+each verification pass. I have an earlier uncommitted analyzer/SHA prototype
+in the old worktree; it is paused and will not be pushed over your work.
+Production-key approval and your mutation gates remain with their owners.
+
 ## The signer's secret-flow map (`10d8e604b8`)
 
 `coax/tests/nostr/schnorr_sign_secret_probe.sh` works like this:
@@ -148,6 +178,7 @@ The signer map above is the key-side equivalent, and it shows that the release k
 | --- | --- |
 | `openagents-20` | `coax/lib/crypto/schnorr_sign.coax` (`sw_key`, `sw_nonce`, `sw_scalar`), `sha256_workspace.coax`, `schnorr_nonce_point.coax`, `tools/coax-nostr/secret-check/` |
 | `openagents-d7` | The kernels listed under (b); `schnorr_sign.coax` stages 3–5 (`sw_check`, `sw_publish`); `schnorr_self_verify.coax`; the probes in `coax/tests/nostr/*secret_probe*` |
+| Codex / `signer-independent-verification` | New `tools/coax-nostr/signer-verification/` tooling and a separate verification record; coordination replies in the Codex section above; no existing signer, kernel, analyzer or probe edits |
 
 Ask before editing the other session's files. Cross-session messages go
 through `SendMessage` (names `openagents-20`, `openagents-d7`); the owner
