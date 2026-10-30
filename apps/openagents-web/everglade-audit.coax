@@ -1,0 +1,322 @@
+// Every spell on the bar against the town's guards (eg-audit), loaded by everglade-spells.coax: each
+// one that harms is cast on a guard and its damage or condition asserted; each area that lingers
+// burns, tears or holds a guard who walks into it after it was cast. The ones that harm no one
+// (Levitate, Feather Fall, Wall of Stone, Water Walk, Control Water, Create Water, Water Breathing,
+// Elementalism, Healing Word, Mass Cure Wounds, Shapechange, Speak with Animals, Wild Resurgence,
+// Fog Cloud, Rebuild) have their own files' tests.
+
+// The city, a frame on, and the first guard on their beat, whole and calm (-1 none).
+au_ready :: (g: [] Everglade, dm: [] DemoWorld, out: [] f32, u: [] f32) -> int {
+  sp_ready_city(g, dm);
+  _ := everglade_frame(g, out, u, 1280, 800, 1, 1.0 / 60.0, false, 0, 0, -30, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  w := watch_w(g);
+  for i: EG_SPOTS..<WATCH_ACTORS {
+    if !watch_is_guard(i) || !ab_person_ok(g, i) || ab_air(g, i) > 0.5 { continue; }
+    au_whole(g, i);
+    return i;
+  }
+  return -1;
+}
+// Guard i whole again, many hit points (to live through it), calm.
+au_whole :: (g: [] Everglade, i: int) {
+  w := watch_w(g);
+  w[0].actors[i].hp = 500; w[0].actors[i].temp = 0; w[0].actors[i].mode = WM_CALM;
+}
+au_hp :: (g: [] Everglade, i: int) -> int { return watch_w(g)[0].actors[i].hp; }
+// Guard i stands at (x, z): on their beat, and as the watch has them.
+au_put :: (g: [] Everglade, i: int, x: f32, z: f32) {
+  if i >= EG_SPOTS && i < EG_SPOTS + WATCH_NEW { g[0].wv.at[i - EG_SPOTS].x = x; g[0].wv.at[i - EG_SPOTS].z = z; }
+  a := g[0].wt[0].actors[i..<i + 1]; a[0].x = x; a[0].z = z; a[0].home_x = x; a[0].home_z = z;
+}
+// You stand `back` m south of guard i, facing them; the pointer on their feet.
+au_face :: (g: [] Everglade, i: int, back: f32) {
+  p := wd_feet(g, i);
+  g[0].feet = v3(p.x, 0, p.z - back); g[0].face = 0;
+  g[0].sp.aim = v3(p.x, ground_at(g, p.x, p.z), p.z); g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true; g[0].sp.far = false;
+}
+
+#test "audit: Meteor Swarm, the Thunderbolt and the Mega Thunderbolt blast the guard they strike; the Water Orb's splash too" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  au_face(g[..], i, 30);
+  for slot: 0..<SP_SLOTS {
+    au_whole(g[..], i);
+    g[0].sp.dmg = srd_roll_damage(g[0].sp.dice[..], srd_spell(SP_SPELL[slot]));
+    sp_blast(g[..], wd_feet(g[..], i), slot);
+    #assert au_hp(g[..], i) < 500;
+  }
+}
+
+#test "audit: Wind Wall's rising, Gust of Wind's push and Thunderwave's boom reach the guard in front of you" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  // Thunderwave: the guard 2 m ahead, 2d8 (half on a save)
+  au_face(g[..], i, 2);
+  ab_press(g[..], AB_THUNDER);
+  #assert au_hp(g[..], i) < 500;
+  // Wind Wall rises 4 m ahead: 4d8 bludgeoning, half on a save
+  au_whole(g[..], i);
+  au_face(g[..], i, f32(AB_WW_AHEAD));
+  ab_press(g[..], AB_WIND);
+  #assert au_hp(g[..], i) < 500 || !ab_active(g[..], AB_WIND);
+  // Gust of Wind: a failed save pushes them 15 feet along it
+  au_whole(g[..], i);
+  au_face(g[..], i, 4);
+  pushed := false;
+  for k: 0..<20 {
+    ab_press(g[..], AB_GUST);
+    if watch_w(g[..])[0].actors[i].body.on { pushed = true; break; }
+    ab_press(g[..], AB_GUST);
+  }
+  #assert pushed;
+}
+
+#test "audit: Black Tentacles crush and restrain the guard in their square, and the one who walks in" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  a := ab_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 10);
+  // cast 12 m off, then they walk in: each round's save until they fail
+  g[0].sp.aim = v3(p.x + 12, ground_at(g[..], p.x + 12, p.z), p.z);
+  ab_bt_cast(g[..]);
+  #assert a[0].bt_on && au_hp(g[..], i) == 500;
+  au_put(g[..], i, p.x + 12, p.z);
+  for k: 0..<40 { if a[0].bt_held[i] { break; } a[0].bt_next[i] = 0; _ := ab_bt_saves(g[..]); }
+  #assert a[0].bt_held[i] && au_hp(g[..], i) < 500;
+}
+
+#test "audit: Ice Storm's hail hurts the guard under it; Sleet Storm knocks down the one who walks in" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  f := fr_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 20);
+  f[0].storm_at = v3(p.x, ground_at(g[..], p.x, p.z), p.z);
+  fr_storm_hit(g[..]);
+  #assert au_hp(g[..], i) < 500;
+  // Sleet 15 m off; they walk in and, in a round or so, fall
+  au_whole(g[..], i);
+  g[0].sp.aim = v3(p.x + 15, ground_at(g[..], p.x + 15, p.z), p.z);
+  au_face(g[..], i, 20);
+  g[0].sp.aim = v3(p.x + 15, ground_at(g[..], p.x + 15, p.z), p.z);
+  fr_sleet_cast(g[..]);
+  #assert f[0].sleet_on;
+  au_put(g[..], i, p.x + 15, p.z);
+  down := false;
+  for k: 0..<40 { fr_frame(g[..], 0.5); if watch_w(g[..])[0].actors[i].mode == WM_DOWN { down = true; break; } au_whole(g[..], i); }
+  #assert down;
+}
+
+#test "audit: Moonbeam sears the guard who walks into it; Produce Flame, Starry Wisp and Poison Spray strike a guard" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 6);
+  g[0].sp.aim = v3(p.x + 10, ground_at(g[..], p.x + 10, p.z), p.z);
+  gv_mb_cast(g[..]);
+  #assert v[0].mb_on && au_hp(g[..], i) == 500;
+  au_put(g[..], i, p.x + 10, p.z);
+  gv_mb_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+  gv_mb_end(g[..]);
+  au_put(g[..], i, p.x, p.z);
+  for kind: 0..<3 {
+    hit := false;
+    for k: 0..<30 {
+      au_whole(g[..], i);
+      v[0].pf_cool = 0;
+      gv_bolt_at(g[..], kind, i, -1, ab_person_at(g[..], i));
+      for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+      if au_hp(g[..], i) < 500 { hit = true; break; }
+    }
+    #assert hit;
+  }
+}
+
+#test "audit: Shillelagh's staff and Ray of Frost strike a guard; Hold Person paralyzes one; Entangle restrains one" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := gv_of(g[..]);
+  au_face(g[..], i, 1.2);
+  hit := false;
+  for k: 0..<30 {
+    au_whole(g[..], i);
+    v[0].sh_on = true; v[0].sh_swing = -1;
+    gv_sh_swing_at(g[..], i, -1);
+    for q: 0..<60 { gv_frame(g[..], 1.0 / 60); }
+    if au_hp(g[..], i) < 500 { hit = true; break; }
+  }
+  #assert hit;
+  au_face(g[..], i, 6);
+  hit = false;
+  for k: 0..<40 { au_whole(g[..], i); po_rf_at(g[..], i); if au_hp(g[..], i) < 500 { hit = true; break; } }
+  #assert hit;
+  po := po_of(g[..]);
+  for k: 0..<30 { if po[0].held[i] { break; } au_whole(g[..], i); po_hp_on(g[..], i); }
+  #assert po[0].held[i];
+  po[0].held[i] = false; po[0].hp_on = false;
+  au_whole(g[..], i);
+  for k: 0..<30 { if v[0].en_held[i] { break; } gv_en_at(g[..], wd_feet(g[..], i)); }
+  #assert v[0].en_held[i];
+}
+
+#test "audit: Faerie Fire outlines a guard; Spike Growth tears the one who walks in it; Call Lightning's bolt strikes one" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  v := wd_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 8);
+  for k: 0..<30 { if v[0].lit[i] { break; } wd_ff_at(g[..], p); }
+  #assert v[0].lit[i];
+  // Spike Growth beside them; they walk 3 m in it
+  wd_sg_at(g[..], v3(p.x + 14, ground_at(g[..], p.x + 14, p.z), p.z));
+  au_put(g[..], i, p.x + 12, p.z);
+  wd_sg_frame(g[..], 1.0 / 30);
+  for k: 0..<6 { au_put(g[..], i, p.x + 12 + f32(k + 1) * 0.6, p.z); wd_sg_frame(g[..], 1.0 / 30); }
+  #assert au_hp(g[..], i) < 500;
+  au_whole(g[..], i);
+  au_put(g[..], i, p.x, p.z);
+  wd_cl_strike(g[..], p);
+  #assert au_hp(g[..], i) < 500;
+}
+
+#test "audit: Wall of Fire and Wall of Thorns burn and tear the guard who walks into them after they rise" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 10);
+  at := v3(p.x, ground_at(g[..], p.x, p.z + 5), p.z + 5);
+  wd_wf_at(g[..], at, v3(0, 0, 1));
+  #assert au_hp(g[..], i) == 500;
+  au_put(g[..], i, at.x, at.z);
+  wd_wf_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+  // a second later it waits out their round
+  hp := au_hp(g[..], i);
+  for k: 0..<30 { wd_wf_frame(g[..], 1.0 / 30); }
+  #assert au_hp(g[..], i) == hp;
+  wd_of(g[..])[0].wf_on = false;
+  au_whole(g[..], i);
+  au_put(g[..], i, p.x, p.z);
+  ci_wt_at(g[..], at, v3(0, 0, 1));
+  #assert au_hp(g[..], i) == 500;
+  au_put(g[..], i, at.x, at.z);
+  ci_wt_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+}
+
+#test "audit: Fire Storm burns the guard in its cubes and the one who runs into them while they roar; each shows its number" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  w := watch_w(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 25);
+  watch_pops_frame(g[..], 1.0 / 60);
+  ci_fs_at(g[..], p, v3(0, 0, 1));
+  #assert au_hp(g[..], i) < 500;
+  watch_pops_frame(g[..], 1.0 / 60);
+  shown := 0;
+  for q: 0..<WATCH_POPS { if g[0].wv.pops[q].live { shown = g[0].wv.pops[q].amount; } }
+  #assert shown == 500 - au_hp(g[..], i);
+  // a second guard 30 m off runs in a second later: the flames still roar, and burn them
+  j := -1;
+  for k: EG_SPOTS..<WATCH_ACTORS { if k != i && watch_is_guard(k) && ab_person_ok(g[..], k) { j = k; break; } }
+  #assert j >= 0;
+  au_whole(g[..], j);
+  au_put(g[..], j, p.x + 30, p.z);
+  ci_frame(g[..], 0.5);
+  #assert au_hp(g[..], j) == 500;
+  au_put(g[..], j, p.x + f32(CI_FS_CUBE), p.z);
+  ci_frame(g[..], 0.5);
+  #assert au_hp(g[..], j) < 500 && w[0].actors[j].mode == WM_DOWN;
+  // once the flames are out, no more
+  au_whole(g[..], j);
+  for k: 0..<10 { ci_frame(g[..], 0.5); }
+  au_put(g[..], j, p.x, p.z);
+  ci_frame(g[..], 0.1);
+  #assert au_hp(g[..], j) == 500;
+}
+
+#test "audit: Conjure Animals' pack, Sunbeam, Sunburst, Storm of Vengeance and Cone of Cold hurt a guard; Polymorph makes one a frog" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  c := ci_of(g[..]);
+  p := wd_feet(g[..], i);
+  au_face(g[..], i, 8);
+  ci_ca_at(g[..], p);
+  for k: 0..<40 { ci_frame(g[..], 0.5); if au_hp(g[..], i) < 500 { break; } }
+  #assert au_hp(g[..], i) < 500;
+  c[0].ca_on = false;
+  au_whole(g[..], i);
+  hit := false;
+  for k: 0..<20 { au_whole(g[..], i); c[0].sb_cool = 0; ci_sb_line(g[..], add(ab_you(g[..]), v3(0, 1.2, 0)), add(p, v3(0, 1, 0))); if au_hp(g[..], i) < 500 { hit = true; break; } }
+  #assert hit;
+  au_whole(g[..], i);
+  st_su_at(g[..], p);
+  #assert au_hp(g[..], i) < 500;
+  au_whole(g[..], i);
+  au_face(g[..], i, 40);
+  st_sv_at(g[..], p);
+  for k: 0..<30 { if au_hp(g[..], i) < 500 { break; } st_frame(g[..], 1); }
+  #assert au_hp(g[..], i) < 500;
+  st_sv_end(g[..]);
+  au_whole(g[..], i);
+  au_face(g[..], i, 6);
+  po_cc_at(g[..], ab_you(g[..]), v3(0, 0, 1));
+  #assert au_hp(g[..], i) < 500;
+}
+
+#test "audit: an Ice Knife bursts on a guard, Polymorph makes one a frog, Reverse Gravity lifts one or makes them hold on" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  au_face(g[..], i, 8);
+  hit := false;
+  for k: 0..<20 {
+    au_whole(g[..], i);
+    au_face(g[..], i, 8);
+    g[0].sp.armed = SP_SLOTS + AB_KNIFE;
+    sp_cast(g[..]);
+    for q: 0..<30 { fr_frame(g[..], 1.0 / 30); }
+    if au_hp(g[..], i) < 500 { hit = true; break; }
+  }
+  #assert hit;
+  c := ci_of(g[..]);
+  for k: 0..<30 { if c[0].pm_on && c[0].pm_who == i { break; } au_whole(g[..], i); ci_pm_on(g[..], i); }
+  #assert c[0].pm_on && c[0].pm_who == i && watch_w(g[..])[0].actors[i].temp > 0;
+  c[0].pm_on = false; au_whole(g[..], i);
+  a := ab_of(g[..]);
+  au_face(g[..], i, 4);
+  ab_press(g[..], AB_REVERSE);
+  for k: 0..<30 { ab_frame(g[..], 1.0 / 30); }
+  #assert a[0].rg_on && (ab_air(g[..], i) > 0.3 || a[0].held[i]);
+}
+
+#test "audit: the grass afire burns the guard who walks into it" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  i := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert i >= 0;
+  p := wd_feet(g[..], i);
+  found := false; at := p;
+  for k: 0..<400 {
+    x := p.x + f32(k % 20 - 10) * 2; z := p.z + f32(k / 20 - 10) * 2;
+    if wd_grass(g[..], x, z) { at = v3(x, ground_at(g[..], x, z), z); found = true; break; }
+  }
+  #assert found && wd_ignite(g[..], at, 0);
+  au_face(g[..], i, 30);
+  au_put(g[..], i, at.x, at.z);
+  wd_fires_frame(g[..], 1.0 / 30);
+  #assert au_hp(g[..], i) < 500;
+}

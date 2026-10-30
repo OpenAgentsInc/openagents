@@ -18,6 +18,7 @@ HM_DICE :: 2; HM_SIDES :: 6; HM_BONUS :: 3;
 HM_THROW :: 5.0;           // m/s the blow throws what it breaks
 HM_HEAR :: 30.0;           // m the watch hears a blow from
 HM_DOME :: -2;             // the target when it is the observatory's dome, fallen within reach (everglade-fire.coax)
+HM_PANEL :: 100000;        // a target past this is a Wall of Stone's panel (HM_PANEL + its q2, everglade-rubble.coax)
 
 Hammer :: struct {
   t: f32;                  // into the swing (s), -1 resting
@@ -46,6 +47,9 @@ hm_target :: (s: [] Everglade) -> int {
   }
   dome := fi_dome_reach(s, you, y + 1.2, fx, fz);
   if dome >= 0 && dome < most { return HM_DOME; }
+  // or a Wall of Stone's panel nearer
+  q2 := rb_panel_reach(s, most);
+  if q2 >= 0 { return HM_PANEL + q2; }
   return best;
 }
 
@@ -97,6 +101,34 @@ hm_strike :: (s: [] Everglade, i: int) -> HmBlow {
   return b;
 }
 
+// The blow on a Wall of Stone's panel q2: against its AC 15, the maul's damage doubled (Wrecking).
+hm_strike_panel :: (s: [] Everglade, q2: int) -> HmBlow {
+  d := s[0].sp.dice[..];
+  b: HmBlow;
+  b.roll = srd_roll(d, 20);
+  b.crit = b.roll == 20;
+  b.hit = b.roll != 1 && (b.crit || b.roll + HM_TO_HIT >= AB_ST_AC);
+  st := ab_panel(ab_of(s)[0].stones[q2 / 2], q2 % 2);
+  you := s[0].feet;
+  at := rb_panel_near(st, v3(you.x, walk_at(s, you.x, you.z) + you.y + 1.2, you.z));
+  if b.hit {
+    b.amount = (srd_sum(d, ifx b.crit then HM_DICE * 2 else HM_DICE, HM_SIDES) + HM_BONUS) * 2;
+    b.broke = rb_panel_hurt(s, q2, b.amount, at);
+    sp_add_puff(s, at, v3(0, 0.4, 0), 0.5, 1.6, 0.66);
+  }
+  buf := s[0].sp.news[..];
+  n := sp_put(buf, 0, "HAMMER · ");
+  n = put_digits(buf, n, b.roll + HM_TO_HIT);
+  if !b.hit { n = sp_put(buf, n, " MISSES"); }
+  else {
+    n = sp_put(buf, n, ifx b.crit then " CRITICAL · " else " HITS · ");
+    n = put_digits(buf, n, b.amount); n = sp_put(buf, n, " BLUDGEONING");
+    if b.broke { n = sp_put(buf, n, " · BROKE"); }
+  }
+  s[0].sp.news_n = n; s[0].sp.news_t = 3;
+  return b;
+}
+
 // Each frame (before the town's pieces are drawn): what is in reach, and the swing.
 hm_frame :: (s: [] Everglade, dt: f32) {
   if s[0].hm.t < 0 { s[0].hm.target = hm_target(s); return; }
@@ -104,7 +136,8 @@ hm_frame :: (s: [] Everglade, dt: f32) {
   s[0].hm.t += dt;
   if before < f32(HM_WIND) && s[0].hm.t >= f32(HM_WIND) {
     i := hm_target(s);
-    if i >= 0 { _ := hm_strike(s, i); } else if i == HM_DOME { fi_dome_hammer(s); }
+    if i >= HM_PANEL { pb := hm_strike_panel(s, i - HM_PANEL); }
+    else if i >= 0 { _ := hm_strike(s, i); } else if i == HM_DOME { fi_dome_hammer(s); }
   }
   if s[0].hm.t >= f32(HM_SWING) { s[0].hm.t = -1; s[0].hm.target = hm_target(s); }
 }

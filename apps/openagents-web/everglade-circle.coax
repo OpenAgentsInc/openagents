@@ -86,6 +86,7 @@ Circle :: struct {
   wt_on: bool; wt_t: f32; wt_a: Point; wt_b: Point; wt_n: Point;   // Wall of Thorns: its ends, its face
   wt_next: [WATCH_ACTORS] f32; you_wt_next: f32;
   fs_t: f32; fs_c: [CI_FS_N] Point;                   // Fire Storm: since, its cubes' middles on the ground
+  fs_next: [WATCH_ACTORS] f32; you_fs_next: f32;      // and when its flames may burn each one again (a round on)
 }
 ci_of :: (s: [] Everglade) -> [] Circle { return s[0].sp.ci[..]; }
 ci_start :: (s: [] Everglade) {
@@ -93,7 +94,8 @@ ci_start :: (s: [] Everglade) {
   v[0].time = 0; v[0].ca_on = false; v[0].pm_on = false; v[0].pm_who = -1; v[0].form = CI_FORM_NONE; v[0].form_by = -1; v[0].form_cool = 0;
   v[0].shift_t = 100; v[0].mc_t = 100; v[0].mc_n = 0; v[0].sb_on = false; v[0].sb_cool = 0; v[0].sb_shot = 100;
   v[0].wt_on = false; v[0].fs_t = 100; v[0].you_ca_near = false; v[0].you_ca_next = 0; v[0].you_wt_next = 0;
-  for i: 0..<WATCH_ACTORS { v[0].ca_near[i] = false; v[0].ca_next[i] = 0; v[0].blind[i] = 0; v[0].wt_next[i] = 0; }
+  for i: 0..<WATCH_ACTORS { v[0].ca_near[i] = false; v[0].ca_next[i] = 0; v[0].blind[i] = 0; v[0].wt_next[i] = 0; v[0].fs_next[i] = 0; }
+  v[0].you_fs_next = 0;
   st_start(s);
 }
 ci_active :: (s: [] Everglade, k: int) -> bool {
@@ -522,8 +524,9 @@ ci_wt_at :: (s: [] Everglade, at: Point, ahead: Point) {
   v[0].wt_on = true; v[0].wt_t = 0; v[0].wt_n = n;
   v[0].wt_a = sub(at, times(side, h)); v[0].wt_b = add(at, times(side, h));
   v[0].wt_a.y = ground_at(s, v[0].wt_a.x, v[0].wt_a.z); v[0].wt_b.y = ground_at(s, v[0].wt_b.x, v[0].wt_b.z);
-  for i: 0..<WATCH_ACTORS { v[0].wt_next[i] = v[0].time + f32(CI_ROUND); }
-  v[0].you_wt_next = v[0].time + f32(CI_ROUND);
+  // who it catches rising waits out the round; whoever walks in later is torn as they come (ci_wt_frame)
+  for i: 0..<WATCH_ACTORS { v[0].wt_next[i] = 0; }
+  v[0].you_wt_next = 0;
   hurt := 0; total := 0;
   if watch_on(s) {
     w := watch_w(s);
@@ -531,12 +534,14 @@ ci_wt_at :: (s: [] Everglade, at: Point, ahead: Point) {
     you := ab_you(s);
     for i: 0..<WATCH_ACTORS {
       if !ab_person_ok(s, i) || ci_wt_where(s, wd_feet(s, i)) != 1 { continue; }
+      v[0].wt_next[i] = v[0].time + f32(CI_ROUND);
       took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 7, 8), kind = DMG_PIERCING, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
       watch_harm(w, i, took, you);
       hurt += 1; total += took;
     }
     if hurt > 0 { ci_crime(s, at, f32(CI_HEAR_WT)); }
     if !w[0].dead && ci_wt_where(s, you) == 1 {
+      v[0].you_wt_next = v[0].time + f32(CI_ROUND);
       amount := srd_sum(d, 7, 8);
       wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "WALL OF THORNS · YOU ARE IN IT");
     }
@@ -620,30 +625,13 @@ ci_fs_at :: (s: [] Everglade, at: Point, ahead: Point) {
     c.y = ground_at(s, c.x, c.z);
     v[0].fs_c[q] = c;
   }
-  hurt := 0; total := 0;
-  if watch_on(s) {
-    w := watch_w(s);
-    d := s[0].sp.dice[..];
-    you := ab_you(s);
-    for i: 0..<WATCH_ACTORS {
-      if !ab_person_ok(s, i) { continue; }
-      p := wd_feet(s, i);
-      inside := false;
-      for q: 0..<CI_FS_N { if ci_in_cube(v[0].fs_c[q], p) { inside = true; } }
-      if !inside { continue; }
-      took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 7, 10), kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
-      watch_harm(w, i, took, you);
-      hurt += 1; total += took;
-    }
-    ci_crime(s, at, f32(CI_HEAR_FS));
-    inside := false;
-    for q: 0..<CI_FS_N { if ci_in_cube(v[0].fs_c[q], you) { inside = true; } }
-    if !w[0].dead && inside {
-      amount := srd_sum(d, 7, 10);
-      wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "FIRE STORM · YOU ARE IN IT");
-    }
-  }
-  if hurt > 0 { sp_say(s, "FIRE STORM · 7D10 FIRE", total, ifx hurt == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
+  for i: 0..<WATCH_ACTORS { v[0].fs_next[i] = 0; }
+  v[0].you_fs_next = 0;
+  hurt := ci_fs_burn(s);
+  if watch_on(s) { ci_crime(s, at, f32(CI_HEAR_FS)); }
+  // a Wall of Stone's panels in its cubes take its fire (everglade-rubble.coax), each once
+  panels := rb_panel_cubes(s, v[0].fs_c[..], f32(CI_FS_CUBE), srd_sum(s[0].sp.dice[..], 7, 10));
+  if hurt.x > 0 { sp_say(s, "FIRE STORM · 7D10 FIRE", hurt.y, ifx hurt.x == 1 then "· 1 CAUGHT" else "· CAUGHT IN IT"); }
   else { sp_say(s, "FIRE STORM", -1, ""); }
   // what burns in it catches: the grass, the debris; a scorch where each cube stood
   for q: 0..<CI_FS_N {
@@ -653,6 +641,46 @@ ci_fs_at :: (s: [] Everglade, at: Point, ahead: Point) {
   }
   fr_melt(s, at, f32(CI_FS_CUBE) * 2.5);
   s[0].sp.shake = hi(s[0].sp.shake, 0.4f32);
+}
+// Its flames burn who is in a cube (you too): as it is cast, and whoever walks in while they roar,
+// 7d10 fire (a Dexterity save for half) once a round each. How many it burnt (x) and for how much (y).
+CiHurt :: struct { x: int; y: int; }
+ci_fs_burn :: (s: [] Everglade) -> CiHurt {
+  v := ci_of(s);
+  out := CiHurt.{x = 0, y = 0};
+  if !watch_on(s) || v[0].fs_t >= f32(CI_FS_SHOW) { return out; }
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  for i: 0..<WATCH_ACTORS {
+    if !ab_person_ok(s, i) || v[0].time < v[0].fs_next[i] { continue; }
+    p := wd_feet(s, i);
+    inside := false;
+    for q: 0..<CI_FS_N { if ci_in_cube(v[0].fs_c[q], p) { inside = true; } }
+    if !inside { continue; }
+    v[0].fs_next[i] = v[0].time + f32(CI_ROUND);
+    took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 7, 10), kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+    watch_harm(w, i, took, you);
+    out.x += 1; out.y += took;
+  }
+  inside := false;
+  for q: 0..<CI_FS_N { if ci_in_cube(v[0].fs_c[q], you) { inside = true; } }
+  if !w[0].dead && inside && v[0].time >= v[0].you_fs_next {
+    v[0].you_fs_next = v[0].time + f32(CI_ROUND);
+    amount := srd_sum(d, 7, 10);
+    wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "FIRE STORM · YOU ARE IN IT");
+  }
+  return out;
+}
+// Each frame while it roars: whoever comes into its flames burns.
+ci_fs_frame :: (s: [] Everglade) {
+  v := ci_of(s);
+  if v[0].fs_t >= f32(CI_FS_SHOW) { return; }
+  hurt := ci_fs_burn(s);
+  if hurt.x > 0 {
+    ci_crime(s, v[0].fs_c[4], f32(CI_HEAR_FS));
+    sp_say(s, "FIRE STORM · 7D10 FIRE", hurt.y, ifx hurt.x == 1 then "· 1 WALKED IN" else "· WALKED IN");
+  }
 }
 ci_fs_on :: (s: [] Everglade) -> f32 { v := ci_of(s); return clamp(v[0].fs_t / 0.25, 0, 1) * clamp((f32(CI_FS_SHOW) - v[0].fs_t) / 0.9, 0, 1); }
 
@@ -667,6 +695,7 @@ ci_frame :: (s: [] Everglade, dt: f32) {
   ci_pm_frame(s, dt);
   ci_sb_frame(s, dt);
   ci_wt_frame(s, dt);
+  ci_fs_frame(s);
   st_frame(s, dt);
 }
 ci_lamps :: (s: [] Everglade, u: [] f32, k: int, most: int) -> int {

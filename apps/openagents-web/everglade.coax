@@ -355,7 +355,7 @@ Everglade :: struct {
   lathe_n: int;
   draws: [DRAWS * 4] u32;
   walls: [WALLS * 6] f32; wall_n: int;   // and after wall_n the bridge's two rails
-  bodies: [(BODIES + AB_STONES * AB_ST_BODIES + FOREST_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), then the trunks and rocks round you
+  bodies: [(BODIES + AB_STONES * 2 * AB_ST_BODIES + FOREST_BODIES) * 7] f32;   // and the Walls of Stone standing (everglade-abilities.coax), then the trunks and rocks round you
   boxes: [BOXES * 6] f32; box_n: int;
   trees: [TREES * TREE_FLOATS] f32; tree_n: int;
   smalls: [SMALLS * TREE_FLOATS] f32; small_n: int;

@@ -1,0 +1,292 @@
+// Falling rubble and the Wall of Stone's panels as objects (eg-rubble), loaded by everglade-spells.coax.
+//
+//   - Whatever the town's debris throws or drops (a chunk of a broken wall, a toppled tower's stone, a
+//     loose barrel rolling) strikes whoever it meets moving 4 m/s or more: bludgeoning by the blow's
+//     energy, ½mv², 1d6 for a few hundred joules up to 4d10 for a falling block of masonry, a
+//     Dexterity save for half; once a second each. You too.
+//   - A Wall of Stone's panels are objects (SRD 5.2.1: AC 15, 30 hit points an inch of thickness, so
+//     180 a 6-inch panel): the aimed spells' blasts, Fire Storm, Ice Storm's hail and Call Lightning's
+//     bolt reach them, the hammer strikes them (its attack against AC 15), and a heavy stone flying
+//     into one cracks it. At 0 a panel crumbles into blocks of granite that fall (and strike whoever
+//     is under them, by the rule above); the gap it leaves is open: your body, the watch's fences and
+//     the sight lines lose it.
+//   - Each blow on a panel shows its number over where it struck (everglade-watch.coax watch_pop).
+
+RB_SPEED :: 4.0;          // m/s a stone must move to strike
+RB_MIN_J :: 250.0;        // J under which a blow is nothing
+RB_EVERY :: 1.0;          // s between one person's blows from the rubble
+RB_BLOCKS :: 48;
+RB_BLOCK_HALF :: 0.26;    // m: a granite block's half
+RB_BLOCK_KG :: 365.0;     // 0.52³ m³ of granite, 2,600 kg/m³
+RB_BLOCK_LIFE :: 30.0;    // s a block lies before it is gone
+RB_PER_PANEL :: 12;       // blocks a panel falls into, three across and four high
+
+RbBlock :: struct { live: bool; at: Point; vel: Point; yaw: f32; spin: f32; t: f32; rest: bool; tone: f32; }
+Rubble :: struct {
+  time: f32;
+  next: [WATCH_ACTORS] f32; you_next: f32;
+  blocks: [RB_BLOCKS] RbBlock;
+}
+rb_of :: (s: [] Everglade) -> [] Rubble { return s[0].sp.rb[..]; }
+rb_start :: (s: [] Everglade) {
+  v := rb_of(s);
+  v[0].time = 0; v[0].you_next = 0;
+  for i: 0..<WATCH_ACTORS { v[0].next[i] = 0; }
+  for q: 0..<RB_BLOCKS { v[0].blocks[q].live = false; }
+}
+
+// The dice of a blow of `joules` (none under RB_MIN_J).
+RbDice :: struct { n: int; sides: int; }
+rb_dice :: (joules: f32) -> RbDice {
+  if joules < f32(RB_MIN_J) { return RbDice.{n = 0, sides = 0}; }
+  if joules < 1500 { return RbDice.{n = 1, sides = 6}; }
+  if joules < 5000 { return RbDice.{n = 2, sides = 6}; }
+  if joules < 15000 { return RbDice.{n = 2, sides = 10}; }
+  return RbDice.{n = 4, sides = 10};
+}
+// Whether a stone `half` m round at `at` meets the body standing at `feet`.
+rb_meets :: (at: Point, half: f32, feet: Point) -> bool {
+  r := half + 0.35;
+  dx := at.x - feet.x; dz := at.z - feet.z;
+  return dx * dx + dz * dz <= r * r && at.y - half <= feet.y + 1.85 && at.y + half >= feet.y;
+}
+// Where each one who can be struck stands this frame (`ok`: they can), read once for all the stones.
+rb_people :: (s: [] Everglade, feet: [] Point, ok: [] bool) {
+  for i: 0..<WATCH_ACTORS {
+    ok[i] = ab_person_ok(s, i);
+    if ok[i] { feet[i] = wd_feet(s, i); }
+  }
+}
+// A stone of `kg` at `at`, `half` m round, moving `vel`: who it meets (of `feet`, where `ok`) takes its
+// blow. How many.
+rb_strike :: (s: [] Everglade, at: Point, half: f32, vel: Point, kg: f32, feet: [] Point, ok: [] bool) -> int {
+  speed := length(vel);
+  if speed < f32(RB_SPEED) || !watch_on(s) { return 0; }
+  dd := rb_dice(0.5 * kg * speed * speed);
+  if dd.n == 0 { return 0; }
+  v := rb_of(s);
+  w := watch_w(s);
+  d := s[0].sp.dice[..];
+  you := ab_you(s);
+  hit := 0;
+  for i: 0..<WATCH_ACTORS {
+    if !ok[i] || v[0].time < v[0].next[i] || !rb_meets(at, half, feet[i]) { continue; }
+    v[0].next[i] = v[0].time + f32(RB_EVERY);
+    took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, dd.n, dd.sides), kind = DMG_BLUDGEONING, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
+    watch_harm(w, i, took, you);
+    hit += 1;
+  }
+  if !w[0].dead && v[0].time >= v[0].you_next && rb_meets(at, half, you) {
+    v[0].you_next = v[0].time + f32(RB_EVERY);
+    amount := srd_sum(d, dd.n, dd.sides);
+    wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "FALLING RUBBLE · BLUDGEONING");
+    hit += 1;
+  }
+  return hit;
+}
+
+// Each frame: the town's moving debris strikes who it meets; the fallen blocks fall, bounce and lie.
+rb_frame :: (s: [] Everglade, dt: f32) {
+  v := rb_of(s);
+  v[0].time += dt;
+  w := sp_dm(s);
+  feet: [WATCH_ACTORS] Point; ok: [WATCH_ACTORS] bool; read := false;
+  if w.count > 0 && watch_on(s) {
+    for b: 0..<DEMO_BODIES {
+      k := b * DB_FLOATS;
+      if w[0].state[k + 23] > 0.5 || w[0].meta[b].kind == 0 { continue; }   // asleep, or no body
+      vy := f32(w[0].state[k + 8]);
+      vel := v3(f32(w[0].state[k + 7]), vy, f32(w[0].state[k + 9]));
+      if vel.x * vel.x + vy * vy + vel.z * vel.z < f32(RB_SPEED) * f32(RB_SPEED) { continue; }
+      half := hi(hi(f32(w[0].meta[b].hx), f32(w[0].meta[b].hy)), f32(w[0].meta[b].hz));
+      if !read { rb_people(s, feet[..], ok[..]); read = true; }
+      struck := rb_strike(s, v3(f32(w[0].state[k + 4]), f32(w[0].state[k + 5]), f32(w[0].state[k + 6])), half, vel, f32(w[0].state[k]), feet[..], ok[..]);
+    }
+  }
+  h := f32(RB_BLOCK_HALF);
+  for q: 0..<RB_BLOCKS {
+    if !v[0].blocks[q].live { continue; }
+    b := v[0].blocks[q];
+    b.t += dt;
+    if b.t >= f32(RB_BLOCK_LIFE) { v[0].blocks[q].live = false; continue; }
+    if !b.rest {
+      b.vel.y -= f32(AB_G) * dt;
+      b.at = add(b.at, times(b.vel, dt));
+      b.yaw += b.spin * dt;
+      g := ground_at(s, b.at.x, b.at.z);
+      if b.at.y - h < g {
+        b.at.y = g + h;
+        if b.vel.y < -2 { sp_add_puff(s, add(b.at, v3(0, -0.1, 0)), v3(0, 0.4, 0), 0.5, 1.2, 0.62); }
+        b.vel = v3(b.vel.x * 0.45, -b.vel.y * 0.2, b.vel.z * 0.45);
+        b.spin *= 0.4;
+        if length(b.vel) < 0.6 { b.rest = true; b.vel = v3(0, 0, 0); }
+      }
+      if !b.rest && watch_on(s) {
+        if !read { rb_people(s, feet[..], ok[..]); read = true; }
+        landed := rb_strike(s, b.at, h, b.vel, f32(RB_BLOCK_KG), feet[..], ok[..]);
+      }
+    }
+    v[0].blocks[q] = b;
+  }
+}
+rb_draw :: (s: [] Everglade) {
+  v := rb_of(s);
+  h := f32(RB_BLOCK_HALF);
+  for q: 0..<RB_BLOCKS {
+    if !v[0].blocks[q].live { continue; }
+    b := v[0].blocks[q];
+    sink := clamp((b.t - (f32(RB_BLOCK_LIFE) - 2)) / 2, 0, 1) * h * 2;   // the last two seconds it sinks away
+    x := v3(cos(b.yaw) * 2 * h, 0, sin(b.yaw) * 2 * h);
+    z := v3(-sin(b.yaw) * 2 * h, 0, cos(b.yaw) * 2 * h);
+    sp_shape(s, SHAPE_BOX, LOOK_STONE, add(b.at, v3(0, -sink, 0)), x, v3(0, 2 * h, 0), z, v3(b.tone, b.tone * 0.96, b.tone * 0.9));
+  }
+}
+
+// ---- the Wall of Stone's panels
+
+// Panel q2 (pair q2 / 2, its half q2 % 2): where along it is nearest `at`, within its height.
+rb_panel_near :: (st: AbWall, at: Point) -> Point {
+  ex := st.bx - st.ax; ez := st.bz - st.az;
+  u := clamp(((at.x - st.ax) * ex + (at.z - st.az) * ez) / hi(ex * ex + ez * ez, 0.0001), 0, 1);
+  return v3(st.ax + ex * u, clamp(at.y, st.base, st.base + f32(AB_ST_PANEL)), st.az + ez * u);
+}
+// Panel q2 takes `amount`: its number shows at `at`; at 0 it crumbles. Whether it did.
+rb_panel_hurt :: (s: [] Everglade, q2: int, amount: int, at: Point) -> bool {
+  a := ab_of(s);
+  k := q2 / 2; p := q2 % 2;
+  st := a[0].stones[k];
+  left := ifx p == 0 then st.hp0 else st.hp1;
+  if !st.live || left <= 0 || amount <= 0 { return false; }
+  watch_pop(s, at, lo_int(amount, left), amount >= 45);
+  left = hi_int(left - amount, 0);
+  if p == 0 { a[0].stones[k].hp0 = left; } else { a[0].stones[k].hp1 = left; }
+  if left > 0 { return false; }
+  rb_crumble(s, ab_panel(st, p), at);
+  if a[0].stones[k].hp0 <= 0 && a[0].stones[k].hp1 <= 0 { a[0].stones[k].live = false; }
+  sp_say(s, "WALL OF STONE · A PANEL CRUMBLES", -1, "");
+  return true;
+}
+// The panel falls into blocks: three across, four high, each pushed a little off its face, away from
+// the blow at `from`, to fall where it stood.
+rb_crumble :: (s: [] Everglade, st: AbWall, from: Point) {
+  v := rb_of(s);
+  o := ab_stone_off(st, from.x, from.z);
+  away := ifx o.off >= 0 then -1.0f32 else 1.0f32;
+  h := f32(RB_BLOCK_HALF);
+  for c: 0..<RB_PER_PANEL {
+    col := c % 3; row := c / 3;
+    u := (f32(col) + 0.5) / 3;
+    at := v3(lerp(st.ax, st.bx, u), st.base + h + f32(row) * f32(AB_ST_PANEL) / 4, lerp(st.az, st.bz, u));
+    push := away * (0.6 + 1.6 * sp_rand(s));
+    vel := v3(o.nx * push + (sp_rand(s) - 0.5) * 0.8, 0.5 * sp_rand(s), o.nz * push + (sp_rand(s) - 0.5) * 0.8);
+    k := 0; oldest := -1.0f32;
+    for q: 0..<RB_BLOCKS {
+      if !v[0].blocks[q].live { k = q; break; }
+      if v[0].blocks[q].t > oldest { oldest = v[0].blocks[q].t; k = q; }
+    }
+    v[0].blocks[k] = RbBlock.{live = true, at = at, vel = vel, yaw = f32(TAU) * sp_rand(s), spin = (sp_rand(s) - 0.5) * 4, t = 0, rest = false, tone = 0.42 + 0.1 * sp_rand(s)};
+    if c % 3 == 1 { sp_add_puff(s, at, v3(0, 0.3, 0), 0.9, 1.8, 0.66); }
+  }
+  s[0].sp.shake = hi(s[0].sp.shake, 0.2f32);
+}
+// Every panel within `radius` of `at` takes `amount` (`fall`: less toward the edge), as an object takes
+// a spell's damage (no save). How many it reached.
+rb_panel_area :: (s: [] Everglade, at: Point, radius: f32, amount: int, fall: bool) -> int {
+  a := ab_of(s);
+  n := 0;
+  for q2: 0..<AB_STONES * 2 {
+    if !a[0].stones[q2 / 2].live { continue; }
+    st := ab_panel(a[0].stones[q2 / 2], q2 % 2);
+    if !st.live { continue; }
+    c := rb_panel_near(st, at);
+    d := length(sub(c, at));
+    if d >= radius { continue; }
+    share := ifx fall then 1 - d / radius else 1.0f32;
+    crumbled := rb_panel_hurt(s, q2, cast(int) (f32(amount) * share + 0.5), add(c, v3(0, 0.5, 0)));
+    n += 1;
+  }
+  return n;
+}
+// Every panel through one of the cubes `side` m on a side standing on `cubes` takes `amount`, once.
+rb_panel_cubes :: (s: [] Everglade, cubes: [] Point, side: f32, amount: int) -> int {
+  a := ab_of(s);
+  n := 0;
+  for q2: 0..<AB_STONES * 2 {
+    if !a[0].stones[q2 / 2].live { continue; }
+    st := ab_panel(a[0].stones[q2 / 2], q2 % 2);
+    if !st.live { continue; }
+    for q: 0..<cubes.count {
+      c := add(cubes[q], v3(0, side * 0.5, 0));
+      p := rb_panel_near(st, c);
+      if abs(p.x - c.x) > side * 0.5 + 0.1 || abs(p.z - c.z) > side * 0.5 + 0.1 { continue; }
+      crumbled := rb_panel_hurt(s, q2, amount, add(p, v3(0, 0.8, 0)));
+      n += 1;
+      break;
+    }
+  }
+  return n;
+}
+// A body of `kg` driven into panel q2 at `speed` m/s at `at` (ab_after_step): a heavy blow cracks it.
+rb_panel_struck :: (s: [] Everglade, q2: int, kg: f32, speed: f32, at: Point) {
+  if speed < f32(RB_SPEED) { return; }
+  dd := rb_dice(0.5 * kg * speed * speed);
+  if dd.n == 0 { return; }
+  crumbled := rb_panel_hurt(s, q2, srd_sum(s[0].sp.dice[..], dd.n, dd.sides), at);
+}
+// The panel in reach in front of you for the hammer (as hm_target's pieces): q2, -1 none.
+rb_panel_reach :: (s: [] Everglade, most: f32) -> int {
+  if !sp_on(s) { return -1; }
+  a := ab_of(s);
+  you := s[0].feet;
+  fx := sin(s[0].face); fz := cos(s[0].face);
+  best := -1; near_ := most;
+  for q2: 0..<AB_STONES * 2 {
+    if !a[0].stones[q2 / 2].live { continue; }
+    st := ab_panel(a[0].stones[q2 / 2], q2 % 2);
+    if !st.live { continue; }
+    c := rb_panel_near(st, v3(you.x, st.base + 1, you.z));
+    dx := c.x - you.x; dz := c.z - you.z;
+    d := sqrt(dx * dx + dz * dz);
+    if d >= near_ || (d > 0.05 && (dx * fx + dz * fz) / d < 0.5) { continue; }
+    best = q2; near_ = d;
+  }
+  return best;
+}
+
+#test "rubble: a falling chunk strikes the guard under it, a slow one doesn't; the blocks of a crumbled panel strike you" {
+  g: [1] Everglade; out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32; dm: [1] DemoWorld;
+  who := au_ready(g[..], dm[..], out[..], u[..]);
+  #assert who >= 0;
+  w := sp_dm(g[..]);
+  ww := watch_w(g[..]);
+  p := wd_feet(g[..], who);
+  g[0].feet = v3(p.x, 0, p.z - 20);
+  b := demo_free_body(w, DEMO_CHUNK);
+  #assert b >= 0;
+  w[0].meta[b].kind = DEMO_CHUNK; w[0].meta[b].hx = 0.3; w[0].meta[b].hy = 0.3; w[0].meta[b].hz = 0.3;
+  k := b * DB_FLOATS;
+  for q: 0..<DB_FLOATS { w[0].state[k + q] = 0; }
+  w[0].state[k] = 300; w[0].state[k + 4] = f64(p.x); w[0].state[k + 5] = f64(p.y + 1.6); w[0].state[k + 6] = f64(p.z);
+  w[0].state[k + 8] = 1;   // rising slowly: nothing
+  hp := ww[0].actors[who].hp;
+  rb_frame(g[..], 1.0 / 60);
+  #assert ww[0].actors[who].hp == hp;
+  w[0].state[k + 8] = -9;  // falling: 12 kJ, 2d10
+  rb_frame(g[..], 1.0 / 60);
+  #assert ww[0].actors[who].hp < hp;
+  // a panel crumbles over you
+  g[0].feet = v3(0, 0, -30); g[0].face = 0;
+  #assert spells_key(g[..], '!', 1);
+  ab_frame(g[..], 0.5);
+  a := ab_of(g[..]);
+  st := ab_panel(a[0].stones[0], 0);
+  mid := mix(v3(st.ax, st.base, st.az), v3(st.bx, st.base, st.bz), 0.5);
+  #assert rb_panel_hurt(g[..], 0, 999, mid) && !ab_panel(a[0].stones[0], 0).live && ab_panel(a[0].stones[0], 1).live;
+  #assert everglade_bodies_on(g[..], false) == BODIES + AB_ST_BODIES;
+  rv := rb_of(g[..]);
+  for q: 0..<RB_BLOCKS { rv[0].blocks[q].vel.x = 0; rv[0].blocks[q].vel.z = 0; }
+  g[0].feet = v3(mid.x, 0, mid.z);
+  you := ww[0].hp;
+  for q: 0..<60 { rb_frame(g[..], 1.0 / 60); }
+  #assert ww[0].hp < you;
+}

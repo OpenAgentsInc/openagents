@@ -317,7 +317,7 @@ Watch :: struct {
   bound_said: int;                // for the page: 1 bound, 2 resisted (it says so once and clears it)
   darts_hit: int;                 // for the checks
 }
-WATCH_FENCES :: 8;
+WATCH_FENCES :: 12;   // four Walls of Stone of two panels each, the Wall of Fire and the Wall of Thorns
 WATCH_FENCE_CLEAR :: 0.45;   // m past a fence's end a way round it keeps
 
 watch_is_guard :: (i: int) -> bool { return i >= EG_SPOTS || (i >= 0 && i < EG_SPOTS && FOLK_PATROL[i] >= 0); }

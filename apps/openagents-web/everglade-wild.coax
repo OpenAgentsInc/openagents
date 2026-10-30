@@ -319,6 +319,7 @@ wd_cl_strike :: (s: [] Everglade, to: Point) {
   you := ab_you(s);
   r := f32(WD_CL_HIT) + f32(BLAST_PAD);
   hurt := 0; total := 0;
+  panels := rb_panel_area(s, add(to, v3(0, 1, 0)), r + 0.5, srd_sum(d, 3, 10), false);   // a Wall of Stone's panel it strikes (everglade-rubble.coax)
   if watch_on(s) {
     w := watch_w(s);
     for i: 0..<WATCH_ACTORS {
@@ -372,8 +373,9 @@ wd_wf_at :: (s: [] Everglade, at: Point, ahead: Point) {
   v[0].wf_on = true; v[0].wf_t = 0; v[0].wf_n = n;
   v[0].wf_a = sub(at, times(side, h)); v[0].wf_b = add(at, times(side, h));
   v[0].wf_a.y = ground_at(s, v[0].wf_a.x, v[0].wf_a.z); v[0].wf_b.y = ground_at(s, v[0].wf_b.x, v[0].wf_b.z);
-  for i: 0..<WATCH_ACTORS { v[0].wf_next[i] = v[0].time + f32(WD_ROUND); }
-  v[0].you_wf_next = v[0].time + f32(WD_ROUND);
+  // who it catches rising waits out the round; whoever walks in later burns as they come (wd_wf_frame)
+  for i: 0..<WATCH_ACTORS { v[0].wf_next[i] = 0; }
+  v[0].you_wf_next = 0;
   hurt := 0; total := 0;
   if watch_on(s) {
     w := watch_w(s);
@@ -381,12 +383,14 @@ wd_wf_at :: (s: [] Everglade, at: Point, ahead: Point) {
     you := ab_you(s);
     for i: 0..<WATCH_ACTORS {
       if !ab_person_ok(s, i) || wd_wf_where(s, wd_feet(s, i)) != 1 { continue; }
+      v[0].wf_next[i] = v[0].time + f32(WD_ROUND);
       took := srd_creature_takes(d, watch_block(i), SrdDamage.{amount = srd_sum(d, 5, 8), kind = DMG_FIRE, amount2 = 0, kind2 = DMG_NONE}, SAVE_DEX, ON_SAVE_HALF, GV_DC);
       watch_harm(w, i, took, you);
       hurt += 1; total += took;
     }
     if hurt > 0 { gv_crime(s, at, f32(WD_HEAR_WF)); }
     if !w[0].dead && wd_wf_where(s, you) == 1 {
+      v[0].you_wf_next = v[0].time + f32(WD_ROUND);
       amount := srd_sum(d, 5, 8);
       wd_hurt_you(s, ifx srd_save(w[0].dice[..], SP_DEX, GV_DC).success then amount / 2 else amount, "WALL OF FIRE · YOU ARE IN IT");
     }
@@ -427,7 +431,10 @@ wd_wf_frame :: (s: [] Everglade, dt: f32) {
   hurt := 0; total := 0;
   for i: 0..<WATCH_ACTORS {
     if !ab_person_ok(s, i) || v[0].time < v[0].wf_next[i] { continue; }
-    if wd_wf_where(s, wd_feet(s, i)) == 0 { continue; }
+    by := wd_wf_where(s, wd_feet(s, i));
+    if by == 0 { continue; }
+    // in the wall it burns as they come; by its burning side, as their round there ends
+    if by == 2 && v[0].wf_next[i] == 0 { v[0].wf_next[i] = v[0].time + f32(WD_ROUND); continue; }
     // a round ends for them where it burns
     v[0].wf_next[i] = v[0].time + f32(WD_ROUND);
     took := srd_sum(d, 5, 8);
@@ -437,7 +444,8 @@ wd_wf_frame :: (s: [] Everglade, dt: f32) {
   if hurt > 0 { gv_crime(s, mix(v[0].wf_a, v[0].wf_b, 0.5), f32(WD_HEAR_WF)); sp_say(s, "WALL OF FIRE · 5D8 FIRE", total, "DAMAGE"); }
   // you: walking into it burns at once, standing by its burning side as a round ends
   spot := ifx w[0].dead then 0 else wd_wf_where(s, you);
-  if spot != 0 && v[0].time >= v[0].you_wf_next {
+  if spot == 2 && v[0].you_wf_next == 0 { v[0].you_wf_next = v[0].time + f32(WD_ROUND); }
+  else if spot != 0 && v[0].time >= v[0].you_wf_next {
     v[0].you_wf_next = v[0].time + f32(WD_ROUND);
     wd_hurt_you(s, srd_sum(d, 5, 8), ifx spot == 1 then "WALL OF FIRE · YOU ARE IN IT" else "WALL OF FIRE · ITS HEAT");
   }

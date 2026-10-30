@@ -467,6 +467,7 @@ fr_storm_hit :: (s: [] Everglade) {
     if demo_damage(wd, i, srd_object_takes(sp_object(p.mesh), hail, 1), v3(p.cx, p.y1 + 1, p.cz), 3) { broke += 1; }
   }
   if broke > 0 { _ := demo_settle(wd); s[0].sp.walls_dirty = true; }
+  panels := rb_panel_area(s, add(c, v3(0, 1, 0)), f32(FR_STORM_R), dmg.amount + dmg.amount2, false);   // a Wall of Stone's panels in it (everglade-rubble.coax)
   demo_rouse(wd, v3(c.x - f32(FR_STORM_R), c.y - 1, c.z - f32(FR_STORM_R)), v3(c.x + f32(FR_STORM_R), c.y + f32(FR_STORM_H), c.z + f32(FR_STORM_R)), 0);
   if (caught > 0 || broke > 0) && watch_on(s) { _ := watch_crime(watch_w(s), c, f32(FR_HEAR_STORM), you, s[0].boxes[..], s[0].box_n, s[0].heights[..]); }
   total := dmg.amount + dmg.amount2;

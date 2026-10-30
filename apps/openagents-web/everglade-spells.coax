@@ -58,6 +58,8 @@
 #load "everglade-marks.coax";
 #load "everglade-storm.coax";
 #load "everglade-polar.coax";
+#load "everglade-rubble.coax";
+#load "everglade-audit.coax";
 
 SP_SLOTS :: 4;
 SP_MEDIA_BYTES :: 5600;
@@ -207,6 +209,7 @@ Spells :: struct {
   td: [1] Tide;                // Water Walk, Control Water, Create or Destroy Water, Water Breathing (everglade-tide.coax)
   fr: [1] Frost;               // Ice Knife, Ice Storm, Sleet Storm and their ice (everglade-frost.coax)
   ab: [1] Abilities;           // Reverse Gravity and the Wind Walls (everglade-abilities.coax)
+  rb: [1] Rubble;              // falling rubble's blows and the Wall of Stone's crumbled blocks (everglade-rubble.coax)
   lift: f32;                 // how much of the bottom the bar takes, for what sits over it
   regrow_t: f32;
   frame_ms: f32;
@@ -767,6 +770,7 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
     amount := srd_object_takes(sp_object(p.mesh), s[0].sp.dmg, share);
     if demo_damage(w, i, amount, at, SP_THROW[slot] * (0.4 + 0.6 * share)) { s[0].sp.broke += 1; }
   }
+  if slot != SP_ORB { panels := rb_panel_area(s, at, radius, s[0].sp.dmg.amount + s[0].sp.dmg.amount2, true); }   // a Wall of Stone's panels (everglade-rubble.coax)
   _ := demo_settle(w);
   demo_blast_end(w);
   s[0].sp.walls_dirty = true;
