@@ -179,6 +179,7 @@ Spells :: struct {
   flash: f32; flash_rgb: Point;
   shock: WaterShock;         // what the last bolt did to you through the water (water-spells.coax)
   white: f32;                // the strike's white-out over the view, a few frames
+  shake: f32;                // the camera's shake, 0 to 1 (spells_camera): it jolts, never turns
   dome_y: f32; dome_vy: f32; dome_on: bool;   // the observatory's dome: its middle's height and fall (sp_dome)
   rn: f32;                   // the looks' own random stream (sp_rand), apart from the dice
   broke: int;                // pieces this cast broke
@@ -737,8 +738,8 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
   if !wet { sp_add_scorch(s, under, ifx kind == 0 then 1.4f32 else radius * 0.45, kind == 2); }
   if kind != 2 {
     // the old engine's meteor_explosion and thunderbolt_strike: sparks thrown out and falling, a
-    // shockwave racing along the ground, dust shoved out with it and a pall of smoke (the camera is
-    // the player's: no spell lifts, pulls or shakes it)
+    // shockwave racing along the ground, dust shoved out with it, a pall of smoke, and the camera shaken
+    // (a jolt only: no spell lifts, pulls or turns it)
     low := at.y - floor_y < 2.5;
     up := v3(0, 1, 0);
     face := up;
@@ -767,6 +768,10 @@ sp_blast :: (s: [] Everglade, at: Point, slot: int) {
                    v3((sp_rand(s) - 0.5) * 1.2, 1.4 + 1.2 * sp_rand(s), (sp_rand(s) - 0.5) * 1.2),
                    1.4 + sp_rand(s), 4.0, 0.3, 0.3, 0.6, 0.3);
     }
+    eye := s[0].sp.shot.eye;
+    reach := clamp(1 - length(sub(at, eye)) / 65, 0, 1);
+    jolt := ifx mega then 1.0f32 else ifx lightning then 0.7f32 else 0.55f32 * reach;
+    s[0].sp.shake = lo(s[0].sp.shake + (ifx lightning then hi(jolt * reach, 0.3) else jolt), 1);
   }
   if kind == 2 {
     for q: 0..<SP_DROPS {
@@ -2192,7 +2197,22 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   #assert abs(g[0].sp.dome_y - at.y) < 0.01;
 }
 
-#test "spells: casting leaves the camera where the player has it: no lift, no pull, no shake, a meteor swarm's or any spell's" {
+// The camera, before the frame is drawn: a blast shakes it (the old engine's shake: a jolt that settles
+// over a second). Eye and aim move together, so the view never turns or pans.
+spells_camera :: (s: [] Everglade, shot: Shot, dt: f32) -> Shot {
+  if !sp_on(s) { return shot; }
+  s[0].sp.shake = hi(s[0].sp.shake - dt, 0);
+  out := shot;
+  if s[0].sp.shake > 0.001 {
+    a := s[0].sp.shake * s[0].sp.shake * 0.28;
+    t := f32(s[0].time);
+    jolt := times(v3(sin(t * 47) + 0.5 * sin(t * 83), sin(t * 53 + 1), sin(t * 61 + 2) + 0.5 * sin(t * 97)), a);
+    out.eye = add(out.eye, jolt); out.at = add(out.at, jolt);
+  }
+  return out;
+}
+
+#test "spells: casting leaves the camera where the player has it: no lift, no pull, no pan; a blast only shakes it, and it settles back" {
   g: [1] Everglade;
   out: [MAX_VERTICES * VERTEX_FLOATS] f32;
   u: [UNIFORM_FLOATS] f32;
@@ -2204,18 +2224,25 @@ sp_ready_city :: (g: [] Everglade, dm: [] DemoWorld) {
   _ := 0;
   for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
   still := g[0].sp.shot;
+  shook := false;
   for slot: 0..<4 {
     ground := v3(ix - 4, ground_at(g[..], ix - 4, iz - 14), iz - 14);
     g[0].sp.armed = slot; g[0].sp.aim = ground; g[0].sp.aim_n = v3(0, 1, 0); g[0].sp.aim_ok = true; g[0].sp.far = false;
     sp_cast(g[..]);
     #assert g[0].sp.casting == slot;
     g[0].sp.cast_t = srd_spell(SP_SPELL[slot]).bar - 0.05;
-    // the cast, the fall and the blasts: the drawn camera never moves
+    // the cast, the fall and the blasts: the camera looks the same way throughout and stays within a shake of where it was
     for f: 0..<8 {
       _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0);
-      #assert length(sub(g[0].sp.shot.eye, still.eye)) < 0.001 && length(sub(g[0].sp.shot.at, still.at)) < 0.001;
+      #assert length(sub(sub(g[0].sp.shot.at, g[0].sp.shot.eye), sub(still.at, still.eye))) < 0.001;
+      #assert length(sub(g[0].sp.shot.eye, still.eye)) < 0.5;
+      shook = shook || g[0].sp.shake > 0;
     }
   }
+  #assert shook;
+  // settled, it is back exactly where the player has it
+  for f: 0..<12 { _ = everglade_frame(g[..], out[..], u[..], 1280, 800, 1, 0.1, false, ix - 4, 0, iz - 30, 0, 0, 0, 0, false, 0, 0, 0, 0); }
+  #assert length(sub(g[0].sp.shot.eye, still.eye)) < 0.001 && length(sub(g[0].sp.shot.at, still.at)) < 0.001;
 }
 
 #test "spells: the Water Orb is water: cast at the inn every piece stands whole, and by a barrel the splash sends it rolling" {
