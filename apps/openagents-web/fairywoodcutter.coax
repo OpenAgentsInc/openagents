@@ -1,0 +1,110 @@
+// Rowan the woodcutter (ff-woodcutter, verse/fairy-forest/README.md "What
+// you learn": CRAFT, "being given an axe by a woodcutter"). An old woodcutter
+// of the small folk stands by his chopping stump east of your home. Talk to
+// him like the creatures (E: TALK TO ROWAN; verse/fairy-forest/talk.coax,
+// talker FF_WOODCUTTER) and the first time he gives you his old axe, which
+// teaches CRAFT. Before, it rests on his shoulder; after, he splits a log.
+//   coax/bin/coax test apps/openagents-web/fairy.coax --steps 400000000
+
+FFW_X :: -34.0; FFW_Z :: -49.2;   // where he stands, by the stump (FFK_AXE_X, FFK_AXE_Z)
+FFW_NEAR :: 2.6;                  // metres: near enough to talk to him
+
+ffw_near :: (you: Point) -> bool { return ffk_at(you, f32(FFW_X), f32(FFW_Z), f32(FFW_NEAR)); }
+// The lore key edit mode keeps a talker's story under.
+ffw_key :: (c: int) -> string { return ifx c == FF_WOODCUTTER then "rowan" else FF_CREATURE_KEYS[c]; }
+// Talking to Rowan the first time: his axe, and CRAFT.
+ffw_talked :: (s: [] Fairy) {
+  l := s[0].life[..];
+  if l[0].skills.axe { return; }
+  l[0].skills.axe = true; l[0].changes += 1;
+  ffk_note(s, FFK_CRAFT);
+}
+
+ffw_draw :: (s: [] Fairy, u: [] f32, you: Point, eye: Point) {
+  x := f32(FFW_X); z := f32(FFW_Z);
+  if !ffk_at(eye, x, z, 55) || s[0].counts[SHAPE_SPHERE] > SLOTS[SHAPE_SPHERE] - 40 { return; }   // the forest first
+  t := effect_time(s);
+  g := ground_at(s, x, z);
+  dx := you.x - x; dz := you.z - z;
+  close := dx * dx + dz * dz < 64;
+  face := ifx close then yaw_of(dx, dz) else yaw_of(f32(FFK_AXE_X) - x, f32(FFK_AXE_Z) - z);
+  ahead := v3(sin(face), 0, cos(face)); right := v3(cos(face), 0, -sin(face));
+  given := s[0].life[0].skills.axe;
+  breath := 0.015 * sin(t * 1.4);
+  feet := v3(x, g, z);
+  // boots and legs
+  for side: 0..<2 {
+    sg := ifx side == 0 then 1.0f32 else -1.0f32;
+    hip := add(feet, add(times(right, 0.11 * sg), v3(0, 0.5, 0)));
+    foot := add(feet, add(times(right, 0.12 * sg), v3(0, 0.08, 0)));
+    limb(s, SHAPE_CYLINDER, LOOK_CLOTH, foot, hip, 0.13, 0.42, 0.32, 0.22);
+    shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(foot, add(times(ahead, 0.05), v3(0, -0.02, 0))), face, 0, 0.17, 0.12, 0.26, 0.3, 0.2, 0.14);
+  }
+  // a round green tunic, a belt
+  body := add(feet, v3(0, 0.78 + breath, 0));
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, body, face, 0, 0.56, 0.66, 0.5, 0.32, 0.52, 0.3);
+  shape(s, SHAPE_CYLINDER, LOOK_CLOTH, add(body, v3(0, -0.12, 0)), face, 0, 0.55, 0.07, 0.49, 0.42, 0.28, 0.16);
+  // the head: a round face, a white beard, a red pointed hood
+  head := add(body, v3(0, 0.46, 0));
+  shape(s, SHAPE_SPHERE, LOOK_SKIN, head, face, 0, 0.3, 0.3, 0.3, 0.94, 0.76, 0.62);
+  shape(s, SHAPE_SPHERE, LOOK_CLOTH, add(head, add(times(ahead, 0.09), v3(0, -0.12, 0))), face, 0.4, 0.28, 0.34, 0.2, 0.95, 0.95, 0.92);
+  shape(s, SHAPE_SPHERE, LOOK_SKIN, add(head, add(times(ahead, 0.15), v3(0, 0.0, 0))), 0, 0, 0.07, 0.07, 0.07, 0.95, 0.66, 0.56);   // his nose
+  for e: 0..<2 {
+    sg := ifx e == 0 then 1.0f32 else -1.0f32;
+    shape(s, SHAPE_SPHERE, LOOK_MATTE, add(head, add(times(ahead, 0.13), add(times(right, 0.065 * sg), v3(0, 0.05, 0)))), 0, 0, 0.035, 0.035, 0.035, 0.1, 0.08, 0.08);
+  }
+  shape(s, SHAPE_CONE, LOOK_CLOTH, add(head, add(times(ahead, -0.04), v3(0, 0.2, 0))), face, -0.25, 0.36, 0.42, 0.36, 0.8, 0.2, 0.18);
+  // arms; before he gives it, the axe on his shoulder; after, he splits a log on the stump
+  sh_r := add(body, add(times(right, 0.26), v3(0, 0.16, 0)));
+  sh_l := add(body, add(times(right, -0.26), v3(0, 0.16, 0)));
+  if !given {
+    hand := add(sh_r, add(times(ahead, 0.12), v3(0, 0.12, 0)));
+    limb(s, SHAPE_CYLINDER, LOOK_CLOTH, sh_r, hand, 0.11, 0.32, 0.52, 0.3);
+    grip := add(hand, v3(0, 0.02, 0));
+    tip := add(grip, add(times(ahead, -0.55), v3(0, 0.25, 0)));
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, add(grip, times(ahead, 0.15)), tip, 0.045, 0.58, 0.4, 0.24);
+    shape(s, SHAPE_BOX, LOOK_STONE, add(tip, times(right, 0.0)), face + 1.5708, 0.3, 0.06, 0.18, 0.24, 0.72, 0.74, 0.78);
+    limb(s, SHAPE_CYLINDER, LOOK_CLOTH, sh_l, add(body, add(times(right, -0.3), v3(0, -0.2, 0))), 0.11, 0.32, 0.52, 0.3);
+  } else {
+    swing := ifx close then 0.0f32 else 0.5 + 0.5 * sin(t * 2.2);
+    hands := add(body, add(times(ahead, 0.3), v3(0, 0.1 + 0.35 * swing, 0)));
+    limb(s, SHAPE_CYLINDER, LOOK_CLOTH, sh_r, hands, 0.11, 0.32, 0.52, 0.3);
+    limb(s, SHAPE_CYLINDER, LOOK_CLOTH, sh_l, hands, 0.11, 0.32, 0.52, 0.3);
+    // a maul of his own, and a stack of split logs
+    head2 := add(hands, add(times(ahead, 0.35 + 0.1 * swing), v3(0, 0.2 * swing - 0.1, 0)));
+    limb(s, SHAPE_CYLINDER, LOOK_BARK, hands, head2, 0.045, 0.58, 0.4, 0.24);
+    shape(s, SHAPE_BOX, LOOK_STONE, head2, face, 0, 0.12, 0.12, 0.2, 0.5, 0.5, 0.52);
+    for k: 0..<5 {
+      lx := x + right.x * (-0.75) + f32(k % 3) * 0.22 * ahead.x;
+      lz := z + right.z * (-0.75) + f32(k % 3) * 0.22 * ahead.z;
+      ly := g + 0.1 + f32(k / 3) * 0.19;
+      shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(lx, ly, lz), face, 1.5708, 0.18, 0.5, 0.18, 0.62, 0.46, 0.3);
+    }
+  }
+  shadow(s, u, x, z, 0.55, 0.5);
+}
+
+#test "Rowan the woodcutter: talking to him the first time gives the axe and CRAFT; he talks like the creatures, and stands clear of them" {
+  s: [1] Fairy;
+  fairy_start(s[..]);
+  rowan := v3(f32(FFW_X) + 1, 0, f32(FFW_Z));
+  #assert ffw_near(rowan) && ffk_verb(s[..], rowan) == FFK_V_AXE && FFK_VERB_WORDS[FFK_V_AXE] == "TALK TO ROWAN";
+  #assert ffk_use(s[..], rowan) && s[0].talk == FF_WOODCUTTER + 1;
+  #assert s[0].life[0].skills.axe && ffk_knows(s[0].life[..], FFK_CRAFT);
+  #assert line_of(s[..], 0) == FF_ROWAN_GIVES;
+  // a question goes to the character chat as Rowan
+  s[0].typed[0] = 'h'; s[0].typed[1] = 'i'; s[0].typed_n = 2;
+  send_typed(s[..]);
+  #assert s[0].ask_n > 0 && ff_has(cast(string) s[0].ask[0..<s[0].ask_n], "\"name\":\"Rowan\"");
+  fairy_answer(s[..], "500\n");
+  #assert line_of(s[..], s[0].line_n - 1) == FF_ROWAN_SAYS;
+  end_talk(s[..]);
+  // clear of the creatures' talk, the patches, the bird, the finds, the logs and the village's plots
+  for c: 0..<FF_CREATURES { #assert !ffk_at(v3(FF_CREATURE[c * 4], 0, FF_CREATURE[c * 4 + 1]), f32(FFW_X), f32(FFW_Z), f32(FF_TALK_NEAR) + f32(FFW_NEAR) + 2); }
+  for i: 0..<FF_PATCHES { #assert !ffk_at(v3(FF_PATCH[i * 4], 0, FF_PATCH[i * 4 + 1]), f32(FFW_X), f32(FFW_Z), f32(FF_BLOOM_NEAR) + f32(FFW_NEAR)); }
+  #assert !ffk_at(v3(f32(FFK_BIRD_X), 0, f32(FFK_BIRD_Z)), f32(FFW_X), f32(FFW_Z), f32(FFK_NEAR) + f32(FFW_NEAR));
+  for j: 0..<FFK_FINDS { #assert !ffk_at(v3(FFK_FIND[j * 3], 0, FFK_FIND[j * 3 + 1]), f32(FFW_X), f32(FFW_Z), f32(FFK_NEAR) + f32(FFW_NEAR)); }
+  for j: 0..<FFK_LOGS { #assert !ffk_at(v3(FFK_LOG[j * 3], 0, FFK_LOG[j * 3 + 1]), f32(FFW_X), f32(FFW_Z), 2.4 + f32(FFW_NEAR)); }
+  for p: 0..<FFV_PLOTS { pp := ffv_plot_at(p); #assert !ffk_at(pp, f32(FFW_X), f32(FFW_Z), 4); }
+  #assert ffh_room_at(f32(FFW_X), f32(FFW_Z), 4) < 0;
+}

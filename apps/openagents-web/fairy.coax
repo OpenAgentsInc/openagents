@@ -49,6 +49,7 @@
 #load "../../verse/fairy-forest/night.coax";
 #load "fairynight.coax";   // day and night, Lanternwood by night
 #load "fairypond.coax";    // the pond filled, the waterfall
+#load "fairywoodcutter.coax";   // Rowan, who gives you his axe
 
 VERTEX_FLOATS :: 16;
 MAX_VERTICES :: 24000;
@@ -737,11 +738,12 @@ typed_text :: (s: [] Fairy) -> string { return cast(string) s[0].typed[0..<s[0].
 
 // Talking to creature c: it starts with what is on its mind, its trouble or its thanks.
 talk_to :: (s: [] Fairy, c: int) {
-  if c < 0 || c >= FF_CREATURES { return; }
+  if c < 0 || c >= FF_TALKERS { return; }
   s[0].talk = c + 1; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
   s[0].held = 0; s[0].use = false; s[0].taps = 0; s[0].talk_finger_on = false;
   s[0].social[0].typing = false; s[0].social[0].inbox_open = false; s[0].social[0].writing = false;
-  add_line(s, true, ff_says(s[0].forest[..], c));
+  add_line(s, true, ff_talker_says(s[0].forest[..], c, s[0].life[0].skills.axe));
+  if c == FF_WOODCUTTER { ffw_talked(s); }
 }
 end_talk :: (s: [] Fairy) { s[0].talk = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0; s[0].talk_finger_on = false; }
 
@@ -750,7 +752,7 @@ send_typed :: (s: [] Fairy) {
   if s[0].talk <= 0 || s[0].waiting || s[0].typed_n == 0 { return; }
   lines: [TALK_LINES] FfLine;
   for k: 0..<s[0].line_n { lines[k] = FfLine.{npc = s[0].line_npc[k], text = line_of(s, k)}; }
-  n := ff_ask_body(s[0].ask[..], s[0].forest[..], s[0].talk - 1, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n], redit_lore(s[0].ed[..], FF_CREATURE_KEYS[s[0].talk - 1]));
+  n := ff_ask_body(s[0].ask[..], s[0].forest[..], s[0].talk - 1, lines[0..<s[0].line_n], typed_text(s), cast(string) s[0].visit[0..<s[0].visit_n], redit_lore(s[0].ed[..], ffw_key(s[0].talk - 1)));
   if n == 0 { return; }
   s[0].ask_n = n;
   add_line(s, false, typed_text(s));
@@ -810,7 +812,7 @@ fairy_answer :: (s: [] Fairy, reply: string) #export_c {
   n := ifx ok then ff_answer_text(reply[4..<reply.count], text[..]) else 0;
   if n > 0 { add_line(s, true, cast(string) text[0..<n]); return; }
   // no answer: what is on its mind, as a creature would say it again
-  add_line(s, true, ff_says(s[0].forest[..], s[0].talk - 1));
+  add_line(s, true, ff_talker_says(s[0].forest[..], s[0].talk - 1, s[0].life[0].skills.axe));
 }
 // Text typed into the host's field or pasted (message 1): added to what you type while you talk.
 fairy_typed :: (s: [] Fairy, text: string) #export_c {
@@ -2001,6 +2003,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   who := "";
   if s[0].near_creature >= 0 { said = ff_says(f, s[0].near_creature); who = FF_CREATURE_NAMES[s[0].near_creature]; }
   else if s[0].remark_creature >= 0 { said = ff_remark(f, s[0].remark_creature, s[0].remark_turn); who = FF_CREATURE_NAMES[s[0].remark_creature]; }
+  else if ffw_near(you) { said = ff_talker_says(f, FF_WOODCUTTER, s[0].life[0].skills.axe); who = "ROWAN"; }
   if f[0].news >= 0 && f[0].news < FF_ROOTS && s[0].time - f[0].news_at < f64(NEWS_TIME) { said = "A ROOT OF THE HEART TREE WAKES"; who = ""; }
   if f[0].news == FF_NEWS_HEART && s[0].time - f[0].news_at < f64(HEART_NEWS_TIME) { said = "THE FOREST IS AWAKE, AND IT IS YOURS TO WANDER"; who = "THE HEART TREE BLOOMS"; }
   kw: [1] string; ks: [1] string;
@@ -2117,7 +2120,7 @@ conversation :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
   plate(s, u, Box.{x0 = x0, y0 = y0, x1 = x1, y1 = h - gutter}, 0.9, 0);
   n := at;
   y := y0 + 18 * k + cap;
-  n = draw_text(out, n, FF_CREATURE_NAMES[c], x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = draw_text(out, n, FF_TALKER_NAMES[c], x0 + 16 * k, y, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   // BYE, top right of the pane
   bw := text_width("BYE", 8 * k) + 28 * k;
   bb := Box.{x0 = x1 - 10 * k - bw, y0 = y0 + 8 * k, x1 = x1 - 10 * k, y1 = y0 + 8 * k + 34 * k};
@@ -2242,6 +2245,7 @@ fairy_frame :: (s: [] Fairy, out: [] f32, u: [] f32, width: f32, height: f32, dp
   ffk_draw(s, shot.eye);
   ffn_draw(s, shot.eye);
   ffp_draw(s, shot.eye);
+  ffw_draw(s, u, shown, shot.eye);
   ffs_others(s, u, shown);   // last: if the shapes run out, they go first
   ph := phone(s);
   for kind: 0..<5 {

@@ -5,8 +5,9 @@
 //   MEND    the hurt bird in Mossbank (E: MEND), which flies off well
 //   GATHER  your first find (E: GATHER): berries, acorns and seed pods, each
 //           spot growing again the next day; a seed is a seed for your garden
-//   CRAFT   the woodcutter's axe left in a stump east of your home (E: TAKE
-//           THE AXE); then E: CUT clears a fallen log of deadwood
+//   CRAFT   Rowan the woodcutter's axe, given the first time you talk to him
+//           by his stump east of your home (fairywoodcutter.coax); then E:
+//           CUT clears a fallen log of deadwood
 //   LIGHT   the lantern flower in Lanternwood, which opens only at night
 //           (E: LIGHT; by day E rests you till night, fairynight.coax); then
 //           you carry a light at your side
@@ -19,7 +20,7 @@
 FFK_V_MEND :: 1; FFK_V_AXE :: 2; FFK_V_CUT :: 3; FFK_V_LANTERN :: 4; FFK_V_DAM :: 5; FFK_V_GATHER :: 6;
 FFK_V_REST :: 7; FFK_V_MORNING :: 8;   // at the lantern flower: rest till night, or in the night till morning
 FFK_V_FILL :: 9;                       // by the low pond, with WATER (fairypond.coax)
-FFK_VERB_WORDS :: [10] string.["", "MEND", "TAKE THE AXE", "CUT", "LIGHT", "CLEAR", "GATHER", "REST TILL NIGHT", "REST TILL MORNING", "FILL THE POND"];
+FFK_VERB_WORDS :: [10] string.["", "MEND", "TALK TO ROWAN", "CUT", "LIGHT", "CLEAR", "GATHER", "REST TILL NIGHT", "REST TILL MORNING", "FILL THE POND"];
 FFK_LEARNED :: [7] string.["YOU LEARNED BLOOM", "YOU LEARNED SPEAK", "YOU LEARNED MEND", "YOU LEARNED GATHER",
                            "YOU LEARNED CRAFT", "YOU LEARNED LIGHT", "YOU LEARNED WATER"];
 FFK_FOUND :: [3] string.["A BERRY", "AN ACORN", "A SEED"];
@@ -49,7 +50,7 @@ ffk_note :: (s: [] Fairy, k: int) {
 ffk_verb :: (s: [] Fairy, you: Point) -> int {
   k := s[0].life[0].skills;
   if !k.bird && ffk_at(you, f32(FFK_BIRD_X), f32(FFK_BIRD_Z), f32(FFK_NEAR)) { return FFK_V_MEND; }
-  if !k.axe && ffk_at(you, f32(FFK_AXE_X), f32(FFK_AXE_Z), f32(FFK_NEAR)) { return FFK_V_AXE; }
+  if ffw_near(you) { return FFK_V_AXE; }   // Rowan the woodcutter (fairywoodcutter.coax)
   if ffk_at(you, f32(FFK_LANTERN_X), f32(FFK_LANTERN_Z), f32(FFK_NEAR)) && !ffn_resting(s[0].clock[..]) {
     if !k.lantern && ffn_dark(s) { return FFK_V_LANTERN; }
     return ifx ffn_dark(s) then FFK_V_MORNING else FFK_V_REST;
@@ -64,7 +65,7 @@ ffk_use :: (s: [] Fairy, you: Point) -> bool {
   v := ffk_verb(s, you);
   l := s[0].life[..];
   if v == FFK_V_MEND { l[0].skills.bird = true; s[0].bird_flew = s[0].time; ffk_note(s, FFK_MEND); }
-  if v == FFK_V_AXE { l[0].skills.axe = true; ffk_note(s, FFK_CRAFT); }
+  if v == FFK_V_AXE { talk_to(s, FF_WOODCUTTER); return true; }
   if v == FFK_V_LANTERN { l[0].skills.lantern = true; ffk_note(s, FFK_LIGHT); }
   if v == FFK_V_REST || v == FFK_V_MORNING { ffn_rest(s[0].clock[..], s[0].time); return true; }
   if v == FFK_V_DAM { l[0].skills.dam = true; ffk_note(s, FFK_WATER); }
@@ -123,17 +124,12 @@ ffk_draw :: (s: [] Fairy, eye: Point) {
     }
     limb(s, SHAPE_SPHERE, LOOK_CLOTH, add(at, times(ahead, -0.08 * sc)), add(at, add(times(ahead, -0.28 * sc), v3(0, 0.05 * sc, 0))), 0.07 * sc, 0.26, 0.44, 0.78);   // its tail
   }
-  // the stump east of your home, and the axe in it until taken
+  // Rowan's chopping stump, east of your home
   ax := f32(FFK_AXE_X); az := f32(FFK_AXE_Z);
   if ffk_at(eye, ax, az, see) {
     g := ground_at(s, ax, az);
     shape(s, SHAPE_CYLINDER, LOOK_BARK, v3(ax, g + 0.3, az), 0.3, 0, 0.75, 0.6, 0.75, 0.46, 0.34, 0.22);
     shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(ax, g + 0.61, az), 0.3, 0, 0.66, 0.03, 0.66, 0.78, 0.64, 0.44);   // its rings
-    if !k.axe {
-      top := v3(ax + 0.08, g + 0.62, az);
-      limb(s, SHAPE_CYLINDER, LOOK_BARK, add(top, v3(0, 0.05, 0)), add(top, v3(0.28, 0.62, 0.1)), 0.05, 0.58, 0.4, 0.24);
-      shape(s, SHAPE_BOX, LOOK_STONE, add(top, v3(0.02, 0.08, 0)), 1.24, 0, 0.26, 0.16, 0.04, 0.7, 0.72, 0.76);
-    }
   }
   // deadwood: grey fallen logs until cut
   for i: 0..<FFK_LOGS {
@@ -231,8 +227,9 @@ ffk_carried :: (s: [] Fairy, feet: Point, face: f32) {
   // deadwood waits for the axe
   deadwood := v3(FFK_LOG[0], 0, FFK_LOG[1]);
   #assert ffk_verb(s[..], deadwood) != FFK_V_CUT;
-  axe := v3(f32(FFK_AXE_X), 0, f32(FFK_AXE_Z));
+  axe := v3(f32(FFW_X), 0, f32(FFW_Z));
   #assert ffk_verb(s[..], axe) == FFK_V_AXE && ffk_use(s[..], axe) && ffk_knows(l, FFK_CRAFT);
+  end_talk(s[..]);
   #assert ffk_verb(s[..], deadwood) == FFK_V_CUT && ffk_use(s[..], deadwood) && l[0].skills.cut[0] && ffk_verb(s[..], deadwood) != FFK_V_CUT;
   lantern := v3(f32(FFK_LANTERN_X), 0, f32(FFK_LANTERN_Z));
   fairy_facts(s[..], "clock=fixed:0.0"); ffn_frame(s[..], 0.016);   // the flower opens only at night

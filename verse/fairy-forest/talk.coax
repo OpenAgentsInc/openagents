@@ -14,6 +14,22 @@ FF_TALK_CONTROLS :: "W A S D or the arrows walk, Shift runs, drag the mouse to l
 FF_VALLEY :: "Fairy Forest is a valley round the heart tree, which has fallen asleep, and since then the forest has faded to grey. Five glades lie round it: Mossbank, soft hills and mushrooms, where the fairy woke; the Reeds, the marsh by the pond under the stream; Lanternwood, tall trees whose fruit glows; Thornfall to the north, brambles round a fallen giant tree; and the Old Ring to the south, nine standing stones that hold the forest's lore. The one talking to you is a small fairy, newly woken, who can bloom faded flowers back to colour.";
 FF_REMARK_NEAR :: 12.0;    // metres: near enough to hear a creature's passing remark
 
+// Rowan the woodcutter (ff-woodcutter, apps/openagents-web/fairywoodcutter.coax)
+// talks the same way, after the five creatures: talker 5. He has no glade and
+// no trouble; the first time you talk to him he gives you his old axe (CRAFT).
+FF_TALKERS :: 6;
+FF_WOODCUTTER :: 5;
+FF_TALKER_NAMES :: [6] string.["BRAMBLE", "PIP", "CLOVER", "BURDOCK", "HOLLOW", "ROWAN"];
+FF_ROWAN_PERSONA :: "an old woodcutter of the small folk, kind and slow-spoken, with a white beard and a red hood, who lives by Mossbank";
+FF_ROWAN_KNOWS :: "You cut only deadwood, never a living tree. You have given the fairy your old axe, so she can learn to Craft: with it she clears fallen deadwood from the paths, and wood and finds make tools. You are glad of the company.";
+FF_ROWAN_GIVES :: "TAKE MY OLD AXE, LITTLE ONE. DEADWOOD CHOKES THE PATHS.";
+FF_ROWAN_SAYS :: "HOW IS THAT AXE? DEADWOOD MAKES GOOD TOOLS.";
+// What talker c says first: a creature's trouble or thanks, or Rowan's word.
+ff_talker_says :: (f: [] Forest, c: int, axe: bool) -> string {
+  if c == FF_WOODCUTTER { return ifx axe then FF_ROWAN_SAYS else FF_ROWAN_GIVES; }
+  return ff_says(f, c);
+}
+
 // Who each creature is, for the chat (at most 120 letters: the server's cap).
 FF_PERSONA :: [5] string.[
   "a shy, fussy hedgehog of Mossbank who lives in a burrow by the mushrooms",
@@ -57,8 +73,8 @@ ff_remark :: (f: [] Forest, c: int, turn: int) -> string {
 }
 // A creature's name as it goes by: "BRAMBLE" is Bramble.
 ff_name :: (c: int, out: [] u8) -> int {
-  if c < 0 || c >= FF_CREATURES { return 0; }
-  name := FF_CREATURE_NAMES[c];
+  if c < 0 || c >= FF_TALKERS { return 0; }
+  name := FF_TALKER_NAMES[c];
   n := 0;
   for i: 0..<name.count {
     if n >= out.count { break; }
@@ -135,15 +151,19 @@ FfLine :: struct { npc: bool; text: string; }
 // keeper wrote in edit mode's lore pane, "" none). The bytes written, or 0
 // when it didn't fit.
 ff_ask_body :: (out: [] u8, f: [] Forest, c: int, lines: [] FfLine, question: string, visit: string, lore: string) -> int {
-  if c < 0 || c >= FF_CREATURES { return 0; }
+  if c < 0 || c >= FF_TALKERS { return 0; }
   name: [16] u8;
   nn := ff_name(c, name[..]);
+  rowan := c == FF_WOODCUTTER;
   n := ff_raw(out, 0, "{\"npc\":{");
   n = ff_field(out, n, "name", cast(string) name[0..<nn], false);
-  n = ff_field(out, n, "role", FF_PERSONA[c], true);
-  n = ff_field(out, n, "greet", ff_says(f, c), true);
+  n = ff_field(out, n, "role", ifx rowan then FF_ROWAN_PERSONA else FF_PERSONA[c], true);
+  n = ff_field(out, n, "greet", ff_talker_says(f, c, true), true);
   n = ff_raw(out, n, ",\"knowledge\":\"");
-  n = ff_knows(out, n, f, c);
+  if rowan {
+    n = ff_json(out, n, FF_VALLEY); n = ff_json(out, n, " "); n = ff_json(out, n, FF_ROWAN_KNOWS);
+    n = ff_json(out, n, " Speak as an old woodcutter: one or two short sentences, simple words, never more than about thirty words.");
+  } else { n = ff_knows(out, n, f, c); }
   if lore.count > 0 { n = ff_json(out, n, " Your story, as the forest's keeper wrote it: "); n = ff_json(out, n, lore); }
   n = ff_raw(out, n, "\"}");
   n = ff_field(out, n, "world", FF_WORLD, true);
@@ -233,7 +253,8 @@ ff_has :: (text: string, part: string) -> bool {
   body = cast(string) out[0..<n];
   #assert ff_has(body, "so far: 3 of 3.") && ff_has(body, "Thank them warmly") && ff_has(body, "\"history\":[]");
   small: [64] u8;
-  #assert ff_ask_body(small[..], f[..], 0, lines[..], "x", "1", "") == 0 && ff_ask_body(out[..], f[..], FF_CREATURES, lines[..], "x", "1", "") == 0;
+  #assert ff_ask_body(small[..], f[..], 0, lines[..], "x", "1", "") == 0 && ff_ask_body(out[..], f[..], FF_TALKERS, lines[..], "x", "1", "") == 0;
+  #assert ff_ask_body(out[..], f[..], FF_WOODCUTTER, lines[..], "x", "1", "") > 0 && FF_ROWAN_PERSONA.count <= 120;
   t: [64] u8;
   m := ff_answer_text("{\"text\":\"Oh, \\\"thank\\\" you!\\nTruly.\",\"model\":\"g\"}", t[..]);
   #assert cast(string) t[0..<m] == "Oh, \"thank\" you! Truly.";

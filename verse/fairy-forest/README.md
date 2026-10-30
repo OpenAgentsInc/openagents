@@ -100,8 +100,11 @@ first bloom; SPEAK the first time a creature answers you; MEND the hurt
 bluebird in Mossbank's south-west (E: MEND, and it flies off well); GATHER
 your first find (berries, acorns and seed pods in each glade, each spot
 growing again the next day; a seed is a seed for your garden, and once you
-gather the finds sparkle); CRAFT the woodcutter's axe in a stump east of your
-home (E: TAKE THE AXE), and then E: CUT clears a fallen log of deadwood;
+gather the finds sparkle); CRAFT from Rowan the woodcutter, by his chopping
+stump east of your home, who talks like the creatures (E: TALK TO ROWAN) and
+the first time gives you his old axe (ff-woodcutter,
+`apps/openagents-web/fairywoodcutter.coax`), and then E: CUT clears a fallen
+log of deadwood;
 LIGHT the lantern flower at Lanternwood's north edge, which opens only at
 night (E: LIGHT; by day E: REST TILL NIGHT), and then you carry a little
 light, a warm pool round you in the dark; WATER the sticks dammed across the stream above the
@@ -110,8 +113,8 @@ learned puts a gem on her upper wings. Kept in the save's tail. The pond (ff-pon
 its water drawn back into the middle of its bed with sand round it; the
 waterfall on its east bank is a trickle down dry rocks until the dam is
 cleared, and then it runs. With WATER, E by the low pond (FILL THE POND)
-fills it over a few seconds, kept in the save. Not yet: a woodcutter as the
-moment, making tools, mending broken things.
+fills it over a few seconds, kept in the save. Not yet: making tools,
+mending broken things.
 
 ## The core: helping people
 
