@@ -115,6 +115,16 @@ python3 -I coax/tests/nostr/relay_flood.py --listen 100.74.238.61 --events 100 -
 | --- | --- | --- | --- |
 | Release | 27.5 MiB | **28.5 MiB** | 28.5 MiB |
 | ASan+UBSan | 36.0 MiB | 79.9 MiB | 78.9 MiB |
+| Release, rebased onto main (server TLS linked, store recovery) | 29.6 MiB | **31.1 MiB** | 31.1 MiB |
+
+The tables above are from the files before the rebase. After the rebase
+onto main (server-side TLS in `relay-host.c`, #966b recovery and
+`rr_req_filters`), the release flood was run once more on the merged files:
+31/31, `relay flood: ok`. 2100 events took 116.9 s (55.7 ms each, at a lower
+host load): 2048 stored and 52 refused "relay storage is full", the first at
+#2048. VmRSS was 30288 KiB idle and 31864 KiB from the first 200 events to
+the end. The extra ~2 MiB is the linked TLS library. The ASan flood was not
+repeated on the merged files.
 
 Release VmRSS by phase, in KiB (min..max):
 
@@ -185,12 +195,12 @@ The driver's own first-run failures were harness bugs, and each is fixed:
 
 | Check | Result |
 | --- | --- |
-| `coax test coax/lib/nostr/relay_route.coax --library` | 11/11 (10 before, plus the deadline check) |
-| `coax mutate coax/lib/nostr/relay_route.coax --library --jobs 4` | **265 mutants, 265 killed, 0 survived**, no `// mutant: equivalent` lines; one run, on the final file (sha256 `f7e60be6e0673609…`) |
-| `python3 coax/tests/nostr/relay_session.py` (ASan+UBSan) | 72/72, `relay_session: ok`, with the change, before rebasing onto the wss:// relay |
-| `python3 coax/tests/nostr/relay_differential.py` (ASan+UBSan) | 13/13, `relay_differential: ok`, before rebasing |
+| `coax test coax/lib/nostr/relay_route.coax --library` | 12/12 after the rebase (10 before, plus the deadline check and the parallel `rr_req_filters` check) |
+| `coax mutate coax/lib/nostr/relay_route.coax --library --jobs 4` | Before the rebase: 265 of 265 killed. The rebase merged the Rust-differential agent's `rr_req_filters` into the same file, so it was run again on the merged file (sha256 `b182429b88738c09…`): **270 mutants, 270 killed, 0 survived**, no `// mutant: equivalent` lines |
+| `python3 coax/tests/nostr/relay_session.py` (ASan+UBSan) | 72/72, `relay_session: ok`, both before the rebase and on the merged files (with server TLS and store recovery) |
+| `python3 coax/tests/nostr/relay_differential.py` (ASan+UBSan) | 13/13, `relay_differential: ok`, before the rebase |
 | Pylon e2e on the tailnet | 52/52 before and after the change (above) |
-| Flood, release and ASan+UBSan | 31/31 each (above) |
+| Flood, release and ASan+UBSan | 31/31 each (above); release again on the merged files, 31/31 |
 
 ## Not done
 
