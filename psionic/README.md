@@ -51,6 +51,10 @@ independently qualified original 384/6 MoE component.
 grids as packed codes/scales, reconstructs their BF16 bits and admits persistent
 cache payload and chunk codec work against separate limits.
 
+[Chapter 26a](book/ch026a-a-tensor-program-becomes-an-execution-plan.md) adds a
+typed tensor IR, root-lifetime planning, reusable workspace and one feed-forward
+block executed by CPU reference procedures or shared CPU/CUDA/Metal kernels.
+
 [Chapters 45a–45c](book/ch045a-original-weights-stay-on-the-gpu.md) add resident
 original 20b CUDA execution, complete greedy Harmony generation and batched
 prefill on the RTX 4080. [Run a prompt](book/ch045b-a-complete-cuda-decoder.md)

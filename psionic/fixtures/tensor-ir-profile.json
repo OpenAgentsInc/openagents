@@ -1,0 +1,15 @@
+{
+  "profile": "tensor-ir-f32-v1",
+  "schema": 1,
+  "ops": ["input", "matmul", "add", "multiply", "relu", "sum", "layernorm", "view", "reshape", "gather"],
+  "devices": ["cpu", "cuda", "metal"],
+  "dtypes": ["f32"],
+  "bounds": {"nodes": 32, "rank": 4, "elements": 1048576, "aggregate_scalar_work": 1048576, "gather_indices": 16, "budget_bytes": 1073741824},
+  "reference": "chapter 3a compensated f64 CPU operators, plus compensated f64 layernorm equations; narrow once per node",
+  "planned": "sequential f32 products, sums and population statistics, f32 epsilon addition, sqrt then f32 division; no FMA or reassociation",
+  "scaled_error_bound": 0.0001,
+  "metal": "release GPU emission; safe math; f32 subnormal inputs may flush, as recorded in chapter 3b",
+  "writes": "new SSA roots; readonly aliases; whole-result staged publication",
+  "cache": "exact graph descriptors and target/compiler/backend/module digests, scoped to one owned process-local program",
+  "not_implemented": ["automatic Coax AST capture", "dynamic shapes", "f16 or bf16 IR execution", "inplace updates", "automatic device copies", "autodiff", "fusion", "model-specific code specialization", "direct PtdTensor handle binding", "persistent on-disk cache"]
+}

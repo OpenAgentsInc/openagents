@@ -439,6 +439,46 @@ Coax checks, zero-survivor mutation, independent scalar bit fixtures and
 native debug/release plus sanitizer checks. See the
 [chapter 34 record](docs/verification/psionic-ch34-2026-10-29.md).
 
+## Psionic tensor IR plans preserve SSA roots and publish whole results
+
+`psionic/lib/tensor-ir*.coax` owns `tensor-ir-f32-v1`: an explicitly authored,
+32-node straight-line graph, rank-0–4 f32 values and declared placement. Unknown
+operations, non-f32 dtypes, foreign placement, future operands, invalid views,
+noncontiguous reshapes, gather indices, scalar work and buffer budgets refuse
+before tensor execution. Every materialized node owns a fresh logical root;
+views alias read-only root-relative storage. Last-use analysis follows aliases
+and pins the chosen output until publication. A slot can be reused only after
+its root's last use is strictly before the current command, never over an
+operand of that command. The full lowered command stream and persistent
+workspace are owned by an opaque native object; there is no hidden CPU fallback.
+
+The CPU reference uses chapter 3a's compensated f64 operator procedures and
+wide LayerNorm equations. Planned CPU/CUDA/Metal use the same sequential f32
+Coax arithmetic and distinct per-command numerical flags. Reused workspace
+never erases earlier failures. A final logical gather stages the output;
+publication first checks every flag, preserving caller output on all refusals.
+Native address observations reject overlap with inputs or owned metadata and
+host buffers. Host access is exclusive and synchronous. Transfer failure paths
+attempt to drain submitted work; numerical failures permit reuse, driver
+failures poison further replays, and an idle poisoned object can be closed.
+Coax owns those lifecycle decisions; C performs allocation and driver effects.
+
+Cache matching compares active graph descriptors exactly, including shapes,
+strides, bindings, dtype and placement, and target/compiler/backend/module
+identities. The trusted caller supplies the qualified compiler digest; Coax
+hashes actual module bytes and observed backend descriptions. Objects copy
+their graph and never execute a different caller descriptor on a stale plan.
+This is process-local identity, not execution attestation or a persistent cache.
+
+Check: `psionic/check.sh --only tensor-ir` and explicit CUDA/Metal runners;
+authored debug/release, independent Decimal(100) graph oracles, observed
+allocation counts/bytes and native debug/release ASan/UBSan. GPU memory is not
+instrumented by host sanitizers. Metal uses the qualified release emission;
+the failed checked candidate and the owner's omission of full mutation runs
+are recorded in [chapter 26a verification](docs/verification/psionic-ch26a-2026-10-29.md).
+Automatic graph extraction, dynamic shapes, narrow dtype IR execution, direct
+`PtdTensor` binding, fusion and differentiation remain separate work.
+
 ## Psionic device kernels and plans own the device arithmetic and schedule
 
 `psionic/lib/device/project.coax`, `layer.coax` and `warp.coax` are `coax cuda` kernels:

@@ -1,0 +1,40 @@
+// One admitted command from the IR, compiled unchanged to C/CUDA/Metal.
+#authority;
+#test "a command uses explicit input reads workspace writes and persistent flags" {
+    m:[64]int;m[0]=2;m[3]=1;m[4]=2;m[8]=0;m[9]=0;m[10]=1;m[11]=2;m[15]=1;m[19]=0;m[20]=2;m[21]=1;m[22]=2;m[26]=1;
+    input:=[4]f32.[1,2,3,4];work:[2]f32;out:[2]f32;flags:[2]u8;
+    for i:0..<2 {tik_run(i,m[..],1,input[..],work[..],out[..],flags[..]);#assert flags[i]==0;}
+    #assert work[0]==4 && work[1]==6;
+    m[0]=10;m[8]=1;m[9]=0;for i:0..<2 {tik_run(i,m[..],1,input[..],work[..],out[..],flags[..]);}#assert out[0]==4 && out[1]==6;
+}
+#test "broadcast coordinates and reversed strides name the logical operand" {
+    m:[64]int;m[3]=2;m[4]=2;m[5]=3;m[8]=0;m[9]=2;m[10]=1;m[11]=3;m[15]=-1;
+    input:=[3]f32.[1,2,3];work:[1]f32;#assert tik_broadcast(m[..],8,5,input[..],work[..])==1 && tik_coord(m[..],5,0)==1;
+}
+#test "ReLU agrees with the CPU reference on the sign of zero" {
+    m:[64]int;m[0]=4;m[3]=1;m[4]=1;m[10]=1;m[11]=1;m[15]=1;
+    input:=[1]f32.[f32_from_bits(0x80000000)];work:[1]f32;out:[1]f32;flags:[1]u8;
+    tik_run(0,m[..],1,input[..],work[..],out[..],flags[..]);#assert flags[0]==0 && f32_bits(work[0])==0;
+}
+tik_finite :: (x:f32)->bool {return (f32_bits(x)&0x7fffffff)<0x7f800000;}
+tik_coord :: (m:[]int,item:int,axis:int)->int {n:=item;for pass:0..<4 {a:=m[3]-1-pass;if a>axis {n/=m[4+a];}}return n%m[4+axis];}
+tik_read :: (m:[]int,at:int,c0:int,c1:int,c2:int,c3:int,input:[]f32,work:[]f32)->f32 {address:=m[at+1]+c0*m[at+7]+c1*m[at+8]+c2*m[at+9]+c3*m[at+10];if m[at]==0 {return input[address];}return work[address];}
+tik_broadcast :: (m:[]int,at:int,item:int,input:[]f32,work:[]f32)->f32 {address:=m[at+1];for i:0..<4 {if i<m[at+2] && m[at+3+i]!=1 {address+=tik_coord(m,item,i+m[3]-m[at+2])*m[at+7+i];}}if m[at]==0 {return input[address];}return work[address];}
+// book:begin kernel
+tik_run :: (item:int,m:[]int,epsilon:f32,input:[]f32,work:[]f32,out:[]f32,flags:[]u8) #export_c {
+    op:=m[0];c:[4]int;for axis:0..<4 {if axis<m[3] {c[axis]=tik_coord(m,item,axis);}}value:f32=0;bad:=false;
+    if op==2 || op==3 {a:=tik_broadcast(m,8,item,input,work);b:=tik_broadcast(m,19,item,input,work);value=a+b;if op==3 {value=a*b;}}
+    else if op==4 || op==10 {value=tik_read(m,8,c[0],c[1],c[2],c[3],input,work);if op==4 {if !tik_finite(value) {bad=true;}if !(value>0) {value=0;}}}
+    else if op==1 {for k:0..<m[30] {product:=tik_read(m,8,c[0],k,0,0,input,work)*tik_read(m,19,k,c[1],0,0,input,work);value+=product;if !tik_finite(product) || !tik_finite(value) {bad=true;}}}
+    else if op==5 {point:[4]int;cursor:=0;for i:0..<m[10] {if i!=m[31] {point[i]=c[cursor];cursor+=1;}}for j:0..<m[30] {point[m[31]]=j;value+=tik_read(m,8,point[0],point[1],point[2],point[3],input,work);if !tik_finite(value) {bad=true;}}}
+    else if op==9 {point:=c;point[m[31]]=m[32+c[m[31]]];value=tik_read(m,8,point[0],point[1],point[2],point[3],input,work);}
+    else if op==6 {
+        point:=c;axis:=m[10]-1;mean:f32=0;for j:0..<m[30] {point[axis]=j;mean+=tik_read(m,8,point[0],point[1],point[2],point[3],input,work);if !tik_finite(mean) {bad=true;}}
+        mean/=f32(m[30]);squares:f32=0;for j:0..<m[30] {point[axis]=j;delta:=tik_read(m,8,point[0],point[1],point[2],point[3],input,work)-mean;squares+=delta*delta;if !tik_finite(squares) {bad=true;}}
+        variance:=squares/f32(m[30])+epsilon;if !tik_finite(variance) {bad=true;}
+        if !bad {denominator:=f32(sqrt(f64(variance)));value=(tik_read(m,8,c[0],c[1],c[2],c[3],input,work)-mean)/denominator;}
+    }
+    flag:=0;if bad || !tik_finite(value) {flag=2;value=0;}flags[m[2]+item]=cast(u8)flag;
+    if op==10 {out[item]=value;}else {work[m[1]+item]=value;}
+}
+// book:end kernel

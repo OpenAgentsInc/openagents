@@ -500,6 +500,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/tensor-program.coax",
+      "chapter": "psionic/book/ch026a-a-tensor-program-becomes-an-execution-plan.md",
+      "stdout": "psionic/fixtures/tensor-program.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

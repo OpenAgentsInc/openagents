@@ -1,0 +1,18 @@
+#load "../lib/tensor-ir-host.coax";
+#import "Basic";
+// book:begin example
+main :: () {
+    program:=ti_fixture();plan:=ti_compile(program,TiTarget.{},true);
+    #assert plan.status==TiStatus.ok;
+    input:=[32]f32.[1,2,3,-1,0,2,1,0,0,1,0,1,0,-1,0,0,1,1,1,-1,0,0,1,0,0,1,1,1,-1,1,0.5,-0.5];
+    work:[32]f32;stage:[4]f32;out:[4]f32;flags:[36]u8;
+    reference:=ti_cpu_checked(program,false,input[..],work[..],stage[..],out[..],flags[..],false);#assert reference.status==TiStatus.ok;
+    print("CPU reference: %, %, %, %\n",out[0],out[1],out[2],out[3]);
+    planned:=ti_cpu_checked(program,true,input[..],work[..],stage[..],out[..],flags[..],false);#assert planned.status==TiStatus.ok;
+    print("Planned execution: %, %, %, %\n",out[0],out[1],out[2],out[3]);
+    print("Workspace: % floats reused, % with fresh buffers; % commands\n",plan.workspace,plan.naive,plan.launches);
+    print("Exact graph and target cache match: %\n",ti_cache_matches(plan,program,plan.target));
+    changed:=plan.target;changed.compiler[0]=1;
+    print("Compiler changed, cache match: %\n",ti_cache_matches(plan,program,changed));
+}
+// book:end example

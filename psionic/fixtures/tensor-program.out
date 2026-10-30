@@ -1,0 +1,5 @@
+CPU reference: 3.5, 5.5, 1.5, 2.5
+Planned execution: 3.5, 5.5, 1.5, 2.5
+Workspace: 16 floats reused, 32 with fresh buffers; 6 commands
+Exact graph and target cache match: true
+Compiler changed, cache match: false

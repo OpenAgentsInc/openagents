@@ -22,6 +22,7 @@
 - [70. Learning with arrays](ch070-learning-with-arrays.md) — first learning chapter
 - [71. Gradients as a program](ch071-gradients-as-a-program.md)
 - [26. A Coax compute subset](ch026-a-coax-compute-subset.md) — first device chapter
+- [26a. A tensor program becomes an execution plan](ch026a-a-tensor-program-becomes-an-execution-plan.md)
 - [30. Elephant on CUDA](ch030-elephant-on-cuda.md)
 - [41. Original MXFP4 weights](ch041-original-mxfp4-weights.md) — first gpt-oss branch chapter
 - [42. A few experts, then a router](ch042-a-few-experts-then-a-router.md)
