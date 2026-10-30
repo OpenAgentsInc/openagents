@@ -1,0 +1,9 @@
+{
+  "tooling_oracle_only": true,
+  "source_commit": "853417f290e7cae1df18c081b89b0818432e60af",
+  "source_archive_sha256": "0dc8cbf5bf90597417a4f802b43c57c40d8f3a40c888ccfc5ffaf70c7e96d2a5",
+  "cargo_lock_sha256": "07c744216938cf17c4fcc45434de261b48e05ec8ed349b5b1e5de6b095cae249",
+  "rust_toolchain": "1.97.1",
+  "target": "x86_64-unknown-linux-musl",
+  "builder": "rust:1.97.1-alpine@sha256:3c38f3f82c2f3d73da3b38e18d279393a04cb43ddded0e35088a8c3324d40900"
+}

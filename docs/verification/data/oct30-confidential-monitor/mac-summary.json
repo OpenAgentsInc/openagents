@@ -1,0 +1,29 @@
+{
+  "ok": true,
+  "checked_at": 1793393128,
+  "provider": "eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0",
+  "endpoint": "30203:eadd886db9e84b3fa069e84282fec1943388d84baf1e3ad534254b524ed0dfc0:ca928b0e77366c2ac81d77cd4d8f65925f4c48c4451041b70d99898d7792ed72",
+  "pylon": "pylon:att-tdx",
+  "model": "clef-flash",
+  "identity": "clef-flash@sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+  "model_digest": "sha256:fd3e90605e8103307dca37cb5a8cdb036267e2fe3cb2d908d80a8ceb9ec0638c",
+  "level": "tee-cloud",
+  "hwmodel": "GCP_INTEL_TDX",
+  "image": "sha256:896b90ac19e38c879782cbf39274c8d440925bfeb62a14f925faf204102f71d0",
+  "release": "28ac5b5295bd20af4b7649188dc70c6f05cfde3d85b4995148996cbdaf7a74ee",
+  "backend": "cpu",
+  "execution_mode": "native",
+  "support": [
+    "LATEST",
+    "STABLE",
+    "USABLE"
+  ],
+  "gpu": null,
+  "receipt": "sha256:9e62a67fd54e7b5c5e43d4edb5f527104231ee0dce045177ab87a375c539f5bd",
+  "request": "a7ccca7abc6144be82718e6f281e60b4221bdcd5ad64185ae80a4c7fd84f5c87",
+  "request_ciphertext_digest": "ad278d651009b3723e87e014589b5c4e61ef9dc2ee5215b5e734bbd2d80494b6",
+  "round_ms": 8898,
+  "inference_ms": 8506,
+  "score": 0.9681498647087364,
+  "proof": "docs/verification/data/oct30-confidential-monitor/mac-round.json"
+}
