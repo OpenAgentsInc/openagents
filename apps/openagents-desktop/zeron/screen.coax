@@ -231,6 +231,28 @@ zr_codex :: (s: [] ZeronState) -> bool { return s[0].mode == MODE_CODEX || (s[0]
 // The Lab's message is running on Psionic (its Stop and approvals go there).
 zr_lab_psionic :: (s: [] ZeronState) -> bool { return s[0].mode == MODE_LAB && s[0].lab[0].via == 1 && !s[0].lab[0].fallback;
 }
+// Cmd+N (File > New Chat): Zeron's empty new chat. A running turn stops;
+// each engine forgets the conversation (Claude's session, Codex's thread,
+// Psionic's replay) so the next message starts a new one; the draft stays.
+zr_new_chat :: (s: [] ZeronState) {
+  if s[0].session[0].live { zr_stop(s); }
+  e := s[0].engine[..];
+  if e[0].running { e_close(e); }
+  e[0].sid_n = 0; e[0].pend = -1;
+  ps_close(s[0].psionic[..]); s[0].psionic[0].ni = 0; s[0].psionic[0].nh = 0; s[0].psionic[0].hold = false;
+  if s[0].codex.count > 0 { s[0].codex[0].tid_n = 0; }
+  ss := s[0].session[..];
+  s_init(ss, ss[0].pool);
+  ss[0].live = false; ss[0].stopping = false; ss[0].noticed = false; ss[0].secs = 0; ss[0].turns = 0; ss[0].cost = 0; ss[0].turn_ms = 0;
+  ss[0].changed = true;
+  t := s[0].transcript[..];
+  t_reset(t); t[0].working = false;
+  s[0].demo = false;
+  s[0].composer[0].docked = false; s[0].composer[0].compact = false;
+  s[0].want_scroll = -1;
+  zr_labels(s);
+}
+coaxial_zeron_new_chat :: (s: [] ZeronState) #export_c { if s.count > 0 { zr_new_chat(s); } }
 // The demo conversation, as the transcript-fixture capture opens it.
 zr_demo :: (s: [] ZeronState) {
   if s[0].demo { return; }
@@ -1159,4 +1181,26 @@ zr_test_screen :: (s: [] ZeronState) {
   t[0].action = A_LOGIN;
   n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
   #assert coaxial_zeron_take_action(s[..]) == HOST_CODEX_LOGIN;
+}
+
+#test "Cmd+N (New Chat) stops the turn and opens Zeron's empty new chat; the next message starts a new conversation" {
+  s: [1] ZeronState;
+  zr_test_screen(s[..]);
+  out: [200000] f32;
+  n := coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  c := s[0].composer[..]; t := s[0].transcript[..];
+  coaxial_zeron_text(s[..], "hi");
+  #assert coaxial_zeron_key(s[..], -2, 0);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert t[0].nr == 1 && c[0].docked && coaxial_zeron_live(s[..]) && !zr_empty(s[..]);
+  s[0].engine[0].sid_n = 4;
+  coaxial_zeron_new_chat(s[..]);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert zr_empty(s[..]) && !coaxial_zeron_live(s[..]) && t[0].nr == 0 && !t[0].working;
+  #assert !c[0].docked && !c[0].compact && !c[0].running && s[0].engine[0].sid_n == 0 && coaxial_zeron_wants_text(s[..]);
+  // from the demo chat too
+  coaxial_zeron_demo(s[..]);
+  coaxial_zeron_new_chat(s[..]);
+  n = coaxial_zeron_frame(s[..], out[..], 2640, 1760, 2, 0.016);
+  #assert zr_empty(s[..]) && t[0].nr == 0 && !c[0].docked;
 }

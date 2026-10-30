@@ -99,6 +99,7 @@ void zr_attach_file(void *state, const uint8_t *path, int32_t path_len, const ui
 int32_t zr_choose_named(void *state, int32_t which, const uint8_t *name, int32_t length) { return coaxial_zeron_choose_named(at(state), which, str(name, length)) ? 1 : 0; }
 void zr_open_menu(void *state, int32_t which) { coaxial_zeron_open_menu(at(state), which); }
 void zr_demo(void *state) { coaxial_zeron_demo(at(state)); }
+void zr_new_chat(void *state) { coaxial_zeron_new_chat(at(state)); }
 void zr_choose(void *state, int32_t which, int32_t index) { coaxial_zeron_choose(at(state), which, index); }
 int32_t zr_live(void *state) { return coaxial_zeron_live(at(state)) ? 1 : 0; }
 int32_t zr_take_action(void *state) { return (int32_t)coaxial_zeron_take_action(at(state)); }

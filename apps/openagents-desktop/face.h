@@ -86,6 +86,8 @@ void zr_scroll_to(void *state, float px);
 // button for the host (1 log in, 2 install), once; quit ends Claude Code.
 void zr_attach(void *state, const uint8_t *cwd, int32_t length);
 void zr_demo(void *state);
+// Cmd+N: a new, empty chat (a running turn stops; the engines start a new conversation).
+void zr_new_chat(void *state);
 void zr_choose(void *state, int32_t which, int32_t index);
 int32_t zr_live(void *state);
 int32_t zr_take_action(void *state);

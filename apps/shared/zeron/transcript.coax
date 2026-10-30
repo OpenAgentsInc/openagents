@@ -36,6 +36,7 @@ MD_LINE_HEIGHT :: 22.0;
 BUBBLE_RADIUS :: 16.0;
 BUBBLE_PAD_X :: 16.0; BUBBLE_PAD_Y :: 10.0;
 LIST_ITEM_GAP :: 4.0; LIST_MARKER_W :: 18.0; LIST_MARKER_GAP :: 8.0; LIST_DISC :: 5.0;
+QUOTE_RAIL :: 2.0; QUOTE_PAD_L :: 12.0; QUOTE_PAD_R :: 10.0; QUOTE_PAD_Y :: 6.0; QUOTE_GAP :: 8.0;
 INLINE_CODE_RADIUS :: 4.5; INLINE_CODE_PAD_X :: 2.0; INLINE_CODE_INSET_Y :: 2.0;
 CODE_RADIUS :: 10.0; CODE_HEADER_HEIGHT :: 28.0; CODE_PADDING_X :: 12.0; CODE_PADDING_Y :: 10.0;
 CODE_LINE_HEIGHT :: 18.0; CODE_ACTION_SIZE :: 22.0;
@@ -422,18 +423,42 @@ t_syntax_line :: (t: [] Transcript, a: [] Atlas, line: string, runs: [] MdRun, x
 }
 
 // A Markdown block: a paragraph, a list (accent discs or numbers in an 18px
-// column, 8px before the text, 4px between items) or a code block.
+// column, 8px before the text, 4px between items; a nested item sits one
+// marker column further in, under its parent's text, as render.rs nests an
+// item's child list), a quote (render.rs BlockQuote: a 2px accent rail at 0.6
+// over the accent at 0.05, padding 12/10 and 6, its paragraphs 8 apart in the
+// muted tone) or a code block.
 lay_md :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: f32) -> f32 {
   doc := t[0].md[..];
   kind := doc[0].blocks[b].kind;
   if kind == MB_CODE { return lay_code(t, a, th, b, x, y, w); }
   if kind == MB_PARA { return t_rich(t, a, th, md_block_text(doc, b), md_block_runs(doc, b), x, y, w, MD_LINE_HEIGHT, th.text); }
-  h: f32 = 0;
   i0 := doc[0].blocks[b].item0;
+  if kind == MB_QUOTE {
+    // measure first, so the wash and rail go under the text
+    iw: f32 = w - cast(f32) QUOTE_PAD_L - cast(f32) QUOTE_PAD_R;
+    th_: f32 = 2 * QUOTE_PAD_Y;
+    lines: [64] MdLine;
+    for k: 0..<doc[0].blocks[b].items {
+      if k > 0 { th_ += QUOTE_GAP; }
+      th_ += cast(f32) md_wrap(a, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), iw, false, lines[..]) * MD_LINE_HEIGHT;
+    }
+    t_quad(t, x, y, w, th_, 0, opacity(th.accent, 0.05));
+    t_quad(t, x, y, QUOTE_RAIL, th_, 0, opacity(th.accent, 0.6));
+    h: f32 = QUOTE_PAD_Y;
+    for k: 0..<doc[0].blocks[b].items {
+      if k > 0 { h += QUOTE_GAP; }
+      h += t_rich(t, a, th, md_item_text(doc, i0 + k), md_item_runs(doc, i0 + k), x + cast(f32) QUOTE_PAD_L, y + h, iw, MD_LINE_HEIGHT, th.muted);
+    }
+    return th_;
+  }
+  h: f32 = 0;
+  col: f32 = LIST_MARKER_W + LIST_MARKER_GAP;
   for k: 0..<doc[0].blocks[b].items {
     if k > 0 { h += LIST_ITEM_GAP; }
     ix := i0 + k;
-    if doc[0].blocks[b].ordered {
+    ix_x := x + cast(f32) doc[0].items[ix].depth * col;
+    if doc[0].items[ix].ordered {
       nb: [12] u8; nn := 0; v := doc[0].items[ix].number;
       digits: [12] u8; nd := 0;
       if v == 0 { digits[0] = '0'; nd = 1; }
@@ -441,11 +466,11 @@ lay_md :: (t: [] Transcript, a: [] Atlas, th: Theme, b: int, x: f32, y: f32, w: 
       for q: 0..<nd { nb[nn] = digits[nd - 1 - q]; nn += 1; }
       nb[nn] = '.'; nn += 1;
       num := t_pool(t, cast(string) nb[0..<nn]);
-      q := t_text_seg(t, a, -1, x, y + h, MD_LINE_HEIGHT, FONT_INPUT, th.accent, num);
+      q := t_text_seg(t, a, -1, ix_x, y + h, MD_LINE_HEIGHT, FONT_INPUT, th.accent, num);
     } else {
-      t_quad(t, x + 1, y + h + (MD_LINE_HEIGHT - LIST_DISC) / 2, LIST_DISC, LIST_DISC, LIST_DISC / 2, th.accent);
+      t_quad(t, ix_x + 1, y + h + (MD_LINE_HEIGHT - LIST_DISC) / 2, LIST_DISC, LIST_DISC, LIST_DISC / 2, th.accent);
     }
-    h += t_rich(t, a, th, md_item_text(doc, ix), md_item_runs(doc, ix), x + LIST_MARKER_W + LIST_MARKER_GAP, y + h, w - LIST_MARKER_W - LIST_MARKER_GAP, MD_LINE_HEIGHT, th.text);
+    h += t_rich(t, a, th, md_item_text(doc, ix), md_item_runs(doc, ix), ix_x + col, y + h, x + w - ix_x - col, MD_LINE_HEIGHT, th.text);
   }
   return h;
 }

@@ -242,7 +242,7 @@ final class App: NSObject, NSApplicationDelegate {
   func applicationWillTerminate(_ n: Notification) { if let v = window?.contentView as? ZeronView { zr_quit(v.state) } }
 
   // Zeron's menu bar (crates/ui/src/app_menus.rs) for what this app has: the
-  // app menu, Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,
+  // app menu, File (New Chat, Cmd+N), Edit (the composer's Undo, Redo, Cut, Copy, Paste, Select All,
   // by their native selectors through the responder chain; AppKit adds
   // Dictation and Emoji & Symbols to a menu titled Edit), and Window.
   static func menus() -> NSMenu {
@@ -267,6 +267,7 @@ final class App: NSObject, NSApplicationDelegate {
       item("Show All", #selector(NSApplication.unhideAllApplications(_:))), .separator(),
       item("Quit OpenAgents", #selector(NSApplication.terminate(_:)), "q"),
     ])
+    menu("File", [item("New Chat", #selector(ZeronView.newChat(_:)), "n")])
     menu("Edit", [
       item("Undo", #selector(ZeronView.undo(_:)), "z"),
       item("Redo", #selector(ZeronView.redo(_:)), "z", [.command, .shift]), .separator(),

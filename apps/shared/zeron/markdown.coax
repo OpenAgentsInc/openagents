@@ -16,7 +16,8 @@
 // Inline styles of a run.
 MD_PLAIN :: 0; MD_BOLD :: 1; MD_CODE :: 2;
 // Block kinds.
-MB_PARA :: 0; MB_LIST :: 1; MB_CODE :: 2;
+MB_PARA :: 0; MB_LIST :: 1; MB_CODE :: 2; MB_QUOTE :: 3;
+MD_DEPTHS :: 4;               // list nesting drawn: deeper items sit at the last level
 
 MD_TEXT :: 65536;
 MD_BLOCKS :: 256;
@@ -25,10 +26,12 @@ MD_ITEMS :: 256;
 
 // A styled stretch of a block's (or an item's) display text, in bytes.
 MdRun :: struct { from: int; to: int; style: int; }
-// One list item: its display text (doc.text[at..<at+n]) and runs.
-MdItem :: struct { at: int; n: int; run0: int; runs: int; number: int; }
-// A block: a paragraph (text and runs), a list (items, numbered or not) or
-// fenced code (its raw lines as text, the fence's language).
+// One list item (or one paragraph of a quote): its display text
+// (doc.text[at..<at+n]) and runs, its nesting depth and whether it's numbered.
+MdItem :: struct { at: int; n: int; run0: int; runs: int; number: int; depth: int; ordered: bool; }
+// A block: a paragraph (text and runs), a list (items, numbered or not, each
+// at its depth), a quote (its paragraphs as items) or fenced code (its raw
+// lines as text, the fence's language).
 MdBlock :: struct {
   kind: int;
   at: int; n: int; run0: int; runs: int;
@@ -133,6 +136,31 @@ md_rule :: (line: string) -> bool {
   for k: 0..<line.count { if line[k] == line[0] { n += 1; } else if line[k] != ' ' { return false; } }
   return n >= 3;
 }
+// Leading spaces (a tab counts 4).
+md_indent :: (line: string) -> int {
+  n := 0; k := 0;
+  while k < line.count && (line[k] == ' ' || line[k] == '\t') { n += ifx line[k] == '\t' then 4 else 1; k += 1; }
+  return n;
+}
+md_trim_left :: (line: string) -> string {
+  k := 0; while k < line.count && (line[k] == ' ' || line[k] == '\t') { k += 1; }
+  return cast(string) line[k..<line.count];
+}
+// A list marker after any indentation: its length from the trimmed start, 0 if none.
+md_marker :: (line: string) -> int {
+  t := md_trim_left(line);
+  if md_rule(t) { return 0; }
+  b := md_bullet(t); if b > 0 { return b; }
+  return md_ordinal(t);
+}
+// A quote line ("> text" or ">text", indented up to 3): what follows the marker, or -1.
+md_quote_at :: (line: string) -> int {
+  k := 0; while k < line.count && k < 3 && line[k] == ' ' { k += 1; }
+  if k >= line.count || line[k] != '>' { return -1; }
+  k += 1; if k < line.count && line[k] == ' ' { k += 1; }
+  return k;
+}
+md_fence :: (line: string) -> bool { t := md_trim_left(line); return t.count >= 3 && t[0] == '`' && t[1] == '`' && t[2] == '`'; }
 md_blank :: (line: string) -> bool {
   for k: 0..<line.count { if line[k] != ' ' && line[k] != '\t' && line[k] != '\r' { return false; } }
   return true;
@@ -179,21 +207,80 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
       doc[0].blocks[b].n = doc[0].n - doc[0].blocks[b].at;
       continue;
     }
-    if md_bullet(line) > 0 || md_ordinal(line) > 0 {
-      ordered := md_ordinal(line) > 0;
+    if md_marker(line) > 0 {
+      // a list: items at any indent (deeper indents nest, as CommonMark reads
+      // them), an indented line without a marker continuing the item above,
+      // and a blank line only when an indented item follows it
       b := md_new_block(doc, MB_LIST, part);
       if b < 0 { return doc[0].nb - before; }
-      doc[0].blocks[b].ordered = ordered;
+      doc[0].blocks[b].ordered = md_ordinal(md_trim_left(line)) > 0;
+      levels: [MD_DEPTHS] int; nl := 0;
       while i < src.count {
         e2 := md_line_end(src, i);
         l2 := cast(string) src[i..<e2];
-        skip := ifx ordered then md_ordinal(l2) else md_bullet(l2);
-        if skip == 0 || doc[0].ni >= MD_ITEMS { break; }
+        if md_blank(l2) {
+          j := e2 + 1;
+          while j < src.count && md_blank(cast(string) src[j..<md_line_end(src, j)]) { j = md_line_end(src, j) + 1; }
+          if j >= src.count { i = j; break; }
+          nx := cast(string) src[j..<md_line_end(src, j)];
+          if md_marker(nx) > 0 && md_indent(nx) > 0 && nl > 0 { i = j; continue; }
+          break;
+        }
+        ind := md_indent(l2); t2 := md_trim_left(l2); skip := md_marker(l2);
+        if skip == 0 {
+          // a continuation of the last item, joined with a space; anything else ends the list
+          if ind == 0 || doc[0].ni == doc[0].blocks[b].item0 || md_fence(l2) || md_quote_at(l2) >= 0 { break; }
+          k := doc[0].ni - 1;
+          md_put(doc, ' '); md_run(doc, doc[0].n - 1 - doc[0].items[k].at, doc[0].n - doc[0].items[k].at, MD_PLAIN);
+          r := md_inline(doc, t2, doc[0].items[k].at);
+          doc[0].items[k].n = doc[0].n - doc[0].items[k].at; doc[0].items[k].runs = doc[0].nr - doc[0].items[k].run0;
+          i = e2 + 1; continue;
+        }
+        if ind == 0 && nl > 0 && (md_ordinal(t2) > 0) != doc[0].blocks[b].ordered { break; }
+        if doc[0].ni >= MD_ITEMS { break; }
+        while nl > 0 && levels[nl - 1] > ind { nl -= 1; }
+        if nl == 0 || levels[nl - 1] < ind { if nl < MD_DEPTHS { levels[nl] = ind; nl += 1; } }
         k := doc[0].ni; doc[0].ni += 1;
         at := doc[0].n;
-        r := md_inline(doc, cast(string) l2[skip..<l2.count], at);
-        doc[0].items[k] = MdItem.{at = at, n = doc[0].n - at, run0 = r, runs = doc[0].nr - r, number = ifx ordered then md_number(l2) else 0};
+        ord := md_ordinal(t2) > 0;
+        r := md_inline(doc, cast(string) t2[skip..<t2.count], at);
+        doc[0].items[k] = MdItem.{at = at, n = doc[0].n - at, run0 = r, runs = doc[0].nr - r, number = ifx ord then md_number(t2) else 0, depth = nl - 1, ordered = ord};
         i = e2 + 1;
+      }
+      doc[0].blocks[b].items = doc[0].ni - doc[0].blocks[b].item0;
+      continue;
+    }
+    if md_quote_at(line) >= 0 {
+      // a quote: its lines with the marker taken off; a blank quoted line, a
+      // list marker or a heading starts a new paragraph (an item) inside it
+      b := md_new_block(doc, MB_QUOTE, part);
+      if b < 0 { return doc[0].nb - before; }
+      open := -1;
+      while i < src.count {
+        e2 := md_line_end(src, i);
+        l2 := cast(string) src[i..<e2];
+        q := md_quote_at(l2);
+        if q < 0 { break; }
+        body := cast(string) l2[q..<l2.count];
+        i = e2 + 1;
+        if md_blank(body) { open = -1; continue; }
+        hk := md_heading(body); mk := md_marker(body);
+        if hk > 0 || mk > 0 || open < 0 {
+          if doc[0].ni >= MD_ITEMS { continue; }
+          open = doc[0].ni; doc[0].ni += 1;
+          at := doc[0].n; r0 := doc[0].nr;
+          text := body;
+          if hk > 0 { text = cast(string) body[hk..<body.count]; }
+          if mk > 0 { tb := md_trim_left(body); md_put(doc, 0xE2); md_put(doc, 0x80); md_put(doc, 0xA2); md_put(doc, ' '); md_run(doc, 0, 4, MD_PLAIN); text = cast(string) tb[mk..<tb.count]; }
+          r := md_inline(doc, text, at);
+          if hk > 0 { for z: r0..<doc[0].nr { doc[0].runs[z].style = MD_BOLD; } }
+          doc[0].items[open] = MdItem.{at = at, n = doc[0].n - at, run0 = r0, runs = doc[0].nr - r0};
+          if hk > 0 || mk > 0 { open = -1; }
+          continue;
+        }
+        md_put(doc, ' '); md_run(doc, doc[0].n - 1 - doc[0].items[open].at, doc[0].n - doc[0].items[open].at, MD_PLAIN);
+        r := md_inline(doc, body, doc[0].items[open].at);
+        doc[0].items[open].n = doc[0].n - doc[0].items[open].at; doc[0].items[open].runs = doc[0].nr - doc[0].items[open].run0;
       }
       doc[0].blocks[b].items = doc[0].ni - doc[0].blocks[b].item0;
       continue;
@@ -223,7 +310,7 @@ md_parse :: (doc: [] MdDoc, src: string, part: int) -> int {
     while i < src.count {
       e2 := md_line_end(src, i);
       l2 := cast(string) src[i..<e2];
-      if md_blank(l2) || md_bullet(l2) > 0 || md_ordinal(l2) > 0 || md_heading(l2) > 0 || (l2.count >= 3 && l2[0] == '`' && l2[1] == '`' && l2[2] == '`') { break; }
+      if md_blank(l2) || md_marker(l2) > 0 || md_heading(l2) > 0 || md_fence(l2) || md_quote_at(l2) >= 0 { break; }
       to = e2; i = e2 + 1;
     }
     r0 := doc[0].nr;
@@ -449,4 +536,32 @@ md_test_atlas :: (a: [] Atlas) {
   #assert n == 3 && doc[0].blocks[0].kind == MB_PARA && md_block_text(doc[..], 0) == "Files here";
   #assert doc[0].runs[doc[0].blocks[0].run0].style == MD_BOLD && md_block_text(doc[..], 1) == "some text";
   #assert doc[0].blocks[2].kind == MB_LIST && md_heading("#nope") == 0 && md_rule("- - -") && !md_rule("--x");
+}
+
+#test "indented bullets nest under their item instead of joining a paragraph" {
+  doc: [1] MdDoc;
+  n := md_parse(doc[..], "- **Skills:** packaged instructions:\n  - code review\n  - charts and dashboards\n    - deeper\n- **Integrations**\n\nAfter.", 0);
+  #assert n == 2 && doc[0].blocks[0].kind == MB_LIST && doc[0].blocks[0].items == 5;
+  #assert md_item_text(doc[..], 1) == "code review" && doc[0].items[1].depth == 1;
+  #assert md_item_text(doc[..], 2) == "charts and dashboards" && doc[0].items[2].depth == 1;
+  #assert md_item_text(doc[..], 3) == "deeper" && doc[0].items[3].depth == 2;
+  #assert md_item_text(doc[..], 4) == "Integrations" && doc[0].items[4].depth == 0;
+  #assert md_block_text(doc[..], 1) == "After.";
+}
+
+#test "a paragraph line followed by an indented list starts the list; a continuation line joins its item" {
+  doc: [1] MdDoc;
+  n := md_parse(doc[..], "Skills:\n  - one\n    still one\n  1. numbered", 0);
+  #assert n == 2 && doc[0].blocks[0].kind == MB_PARA && doc[0].blocks[1].kind == MB_LIST;
+  #assert md_item_text(doc[..], 0) == "one still one" && doc[0].items[0].depth == 0;
+  #assert doc[0].items[1].ordered && doc[0].items[1].number == 1;
+}
+
+#test "a quote keeps its lines apart from the paragraph after it; headings and bullets in it are their own lines" {
+  doc: [1] MdDoc;
+  n := md_parse(doc[..], "> # Scratch\n>\n> a quoted\n> paragraph\n> - point\n\nAfter.", 0);
+  #assert n == 2 && doc[0].blocks[0].kind == MB_QUOTE && doc[0].blocks[0].items == 3;
+  #assert md_item_text(doc[..], 0) == "Scratch" && md_item_text(doc[..], 1) == "a quoted paragraph";
+  #assert md_item_text(doc[..], 2) == "• point";
+  #assert md_block_text(doc[..], 1) == "After.";
 }

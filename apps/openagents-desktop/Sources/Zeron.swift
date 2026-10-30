@@ -482,6 +482,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     case "wheel" where nums.count == 1: _ = zr_wheel(state, nums[0])
     case "move" where nums.count == 2: _ = zr_pointer(state, nums[0], nums[1], 1, 1, 0)
     case "fixture": zr_fixture(state, arg == "closed" ? 0 : 1)
+    case "newchat": zr_new_chat(state)
     case "send": typed(arg); _ = zr_key(state, -2, 0)
     case "stop": _ = zr_key(state, -1, 0)
     case "model", "effort": if !named(verb == "model" ? 1 : 2, arg) { print("no \(verb) named \(arg)") }
@@ -626,6 +627,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
 
   // ---- the Edit menu (and Cmd+C/X/V/A/Z, its key equivalents)
 
+  @objc func newChat(_ sender: Any?) { zr_new_chat(state); needsDisplay = true }
   @objc func undo(_ sender: Any?) { zr_undo(state) }
   @objc func redo(_ sender: Any?) { zr_redo(state) }
   @objc override func selectAll(_ sender: Any?) { zr_select_all(state) }
