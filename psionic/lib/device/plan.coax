@@ -577,6 +577,167 @@ dp_norm_last :: (b:DpBuilder,p:DpLayout,tokens:int,input:int)->DpBuilder {
     d:=b.m.width;
     return dp_norm_rows(b,p,1,input+4*(tokens-1)*d,dp_w(dp_final(b.m),d),p.final);
 }
+// book:begin batch
+// Many questions at once (chapter 25): the suffixes of up to DP_BATCH
+// questions that share one kept prefix run as one pass over the weights.
+// Their tokens sit one question after another in the workspace. Every
+// token-wise launch (norms, projections, gates, feed-forward) takes all of
+// them at once; the launches that carry state along a sequence (the
+// convolution, the delta rule, attention) and the readout run once per
+// question on that question's rows, starting from the same kept prefix.
+// Each question's arithmetic is then its own suffix pass's, provided every
+// projection takes the same path: all questions have at least DP_MMA_TOKENS
+// tokens (tensor cores), or all of them together have fewer (work items).
+// Other batches, and Metal's tiles, are refused; the host runs those
+// questions one suffix at a time.
+DP_BATCH :: 8;
+dp_batch_tokens :: (lengths:[]int)->int #export_c {n:=0;for t:lengths {n+=t;}return n;}
+dp_batch_longest :: (lengths:[]int)->int {n:=0;for t:lengths {n=dp_wider(n,t);}return n;}
+dp_batch_admits :: (metal:bool,start:int,lengths:[]int)->bool #export_c {
+    if metal || start<1 || lengths.count<1 || lengths.count>DP_BATCH {return false;}
+    total:=0;short:=false;
+    for t:lengths {
+        if t<1 || start+t>DP_MAX_TOKENS {return false;}
+        if t<DP_MMA_TOKENS {short=true;}
+        total+=t;
+    }
+    if total>DP_MAX_TOKENS {return false;}
+    return !short || total<DP_MMA_TOKENS;
+}
+// book:end batch
+// The workspace of a batch: one decision's layout for all its tokens, whose
+// attention regions hold the longest question's keys, then the final norm
+// rows and logits of questions 1.. (question 0 uses the layout's own).
+DpBatch :: struct {p:DpLayout;finals:int;logits:int;total:int;}
+dp_batch_layout :: (m:DpModel,start:int,lengths:[]int)->DpBatch {
+    r:DpBatch;r.p=dp_layout_of(m,dp_batch_tokens(lengths),start+dp_batch_longest(lengths));
+    more:=lengths.count-1;
+    r.finals=r.p.total;r.logits=r.finals+more*dp_align(4*m.width);r.total=r.logits+more*dp_align(4*m.vocab);
+    return r;
+}
+dp_batch_final :: (r:DpBatch,m:DpModel,i:int)->int {if i==0 {return r.p.final;}return r.finals+(i-1)*dp_align(4*m.width);}
+dp_batch_logit :: (r:DpBatch,m:DpModel,i:int)->int {if i==0 {return r.p.logits;}return r.logits+(i-1)*dp_align(4*m.vocab);}
+// Where the host reads question i's logits, and the workspace a batch needs.
+dp_batch_logits :: (kind:int,start:int,lengths:[]int,i:int)->int #export_c {return dp_batch_logit(dp_batch_layout(dp_model(kind),start,lengths),dp_model(kind),i);}
+dp_batch_workspace :: (kind:int,start:int,lengths:[]int)->int #export_c {return dp_batch_layout(dp_model(kind),start,lengths).total;}
+// The first token of question i in the batch.
+dp_batch_first :: (lengths:[]int,i:int)->int {n:=0;for j:0..<i {n+=lengths[j];}return n;}
+dp_plan_batch :: (start:int,lengths:[]int,opened:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan #export_c {
+    m:=dp_model(opened.kind);
+    if opened.status!=DpStatus.ok || stream.count!=dp_streamable(m) {return DpPlan.{status=DpStatus.capacity};}
+    if !dp_batch_admits(opened.metal,start,lengths) {return DpPlan.{status=DpStatus.shape};}
+    if dp_batch_layout(m,start,lengths).total>opened.workspace {return DpPlan.{status=DpStatus.capacity};}
+    n:=0;for i:0..<stream.count {if stream[i] {n+=1;}}
+    if n!=opened.streamed_tensors {return DpPlan.{status=DpStatus.capacity};}
+    return dp_schedule_batch(start,lengths,opened,stream,ops);
+}
+dp_schedule_batch :: (start:int,lengths:[]int,placed:DpPlan,stream:[]bool,ops:[]DpOp)->DpPlan {
+    m:=dp_model(placed.kind);
+    r:=dp_batch_layout(m,start,lengths);p:=r.p;plan:=placed;tokens:=dp_batch_tokens(lengths);
+    order:[DP_MAX_STREAMABLE]int;
+    b:=DpBuilder.{ops=ops,ok=true,stream=stream,order=order[..],metal=placed.metal,fork=DpFork.{on=true,start=start},m=m};
+    for layer:0..<m.layers {
+        for k:0..<5 {x:=dp_mixer_base(m)+5*layer+k;if stream[x] {order[b.count]=x;b.count+=1;}}
+        for k:0..<3 {x:=3*layer+k;if stream[x] {order[b.count]=x;b.count+=1;}}
+    }
+    for c:0..<dp_head_chunks(m) {x:=dp_head_base(m)+c;if stream[x] {order[b.count]=x;b.count+=1;}}
+    for i:0..<2 {if i<b.count {b=dp_push(b,dp_copy(m,order[i],i));}}
+    input:=p.x0;output:=p.x1;
+    for layer:0..<m.layers {
+        if dp_full(layer) {b=dp_attention_batch(b,p,layer,lengths,input,output);}
+        else {b=dp_linear_batch(b,p,layer,lengths,input,output);}
+        swap:=input;input=output;output=swap;
+    }
+    d:=m.width;
+    for i:0..<lengths.count {
+        last:=dp_batch_first(lengths,i)+lengths[i]-1;
+        b=dp_norm_rows(b,p,1,input+4*last*d,dp_w(dp_final(m),d),dp_batch_final(r,m,i));
+    }
+    if dp_streamed_of(m,dp_head(m),stream) {
+        for c:0..<dp_head_chunks(m) {
+            slot:=b.at%2;b=dp_take(b);
+            b=dp_readout_batch(b,r,lengths.count,DpArg.{kind=4,buffer=1+slot},c*m.hidden,dp_chunk_rows(m,c),true);
+        }
+    } else {b=dp_readout_batch(b,r,lengths.count,dp_matrix(dp_head(m)),0,m.vocab,false);}
+    if !b.ok {return DpPlan.{status=DpStatus.capacity};}
+    plan.rope=p.rope;plan.logits=p.logits;plan.ops=b.n;return plan;
+}
+// The head's rows first..first+rows for each question in turn; a streamed
+// chunk's slot is released after the last question's products.
+dp_readout_batch :: (b:DpBuilder,r:DpBatch,questions:int,weight:DpArg,first:int,rows:int,streamed:bool)->DpBuilder {
+    m:=b.m;d:=m.width;p:=r.p;x:=b;
+    for i:0..<questions {
+        a:[12]DpArg;w:=weight;w.count=rows*d/4;
+        a[0]=dp_int(rows);a[1]=dp_int(d);a[2]=w;a[3]=dp_ws(dp_batch_final(r,m,i),d);a[4]=dp_ws(p.lanes,16*rows);
+        x=dp_push(x,dp_launch(DpKernel.matvec,16*rows,a,5));
+        if streamed && i==questions-1 {x=dp_give(x);}
+        e:[12]DpArg;e[0]=dp_int(rows);e[1]=dp_int(16);e[2]=dp_ws(p.lanes,16*rows);e[3]=dp_ws(dp_batch_logit(r,m,i)+4*first,rows);
+        x=dp_push(x,dp_launch(DpKernel.reduce,rows,e,4));
+    }
+    return x;
+}
+dp_linear_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,output:int)->DpBuilder {
+    m:=b.m;t:=dp_batch_tokens(lengths);d:=m.width;w:=layer*DP_PER_LAYER;c:=dp_channels(m);v:=dp_values(m);h:=m.value_heads;kh:=m.key_heads;
+    mode:=dp_fork_mode(b.fork);
+    r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
+    r=dp_project_weight(r,p,w+6,c,d,t,p.norm,p.qkv);
+    r=dp_project_weight(r,p,w+7,v,d,t,p.norm,p.z);
+    r=dp_project_weight(r,p,w+8,h,d,t,p.norm,p.a);
+    r=dp_project_weight(r,p,w+9,h,d,t,p.norm,p.b);
+    for i:0..<lengths.count {
+        o:=dp_batch_first(lengths,i);n:=lengths[i];
+        cv:[12]DpArg;cv[0]=dp_int(c);cv[1]=dp_int(n);cv[2]=dp_ws(p.qkv+4*o*c,n*c);cv[3]=dp_w(w+2,4*c);cv[4]=dp_ws(p.conv+4*o*c,n*c);
+        cv[5]=dp_fork_arg(m,dp_fork_history_of(m,layer),3*c);cv[6]=dp_int(mode);
+        r=dp_push(r,dp_launch(DpKernel.conv_state,c,cv,7));
+    }
+    g:[12]DpArg;g[0]=dp_int(h);g[1]=dp_ws(p.a,t*h);g[2]=dp_ws(p.b,t*h);g[3]=dp_w(w+3,h);g[4]=dp_w(w+4,h);g[5]=dp_ws(p.beta,t*h);g[6]=dp_ws(p.decay,t*h);
+    r=dp_push(r,dp_launch(DpKernel.gates,t*h,g,7));
+    q:[12]DpArg;q[0]=dp_int(kh);q[1]=dp_int(128);q[2]=dp_int(c);q[3]=dp_ws(p.conv,t*c);q[4]=dp_ws(p.qn,t*128*kh);q[5]=dp_ws(p.kn,t*128*kh);
+    r=dp_push(r,dp_launch(DpKernel.qk,t*kh,q,6));
+    for i:0..<lengths.count {
+        o:=dp_batch_first(lengths,i);n:=lengths[i];
+        s:[12]DpArg;s[0]=dp_int(n);s[1]=dp_int(h);s[2]=dp_int(kh);s[3]=dp_int(c);s[4]=dp_ws(p.conv+4*o*c,n*c);s[5]=dp_ws(p.qn+4*o*128*kh,n*128*kh);s[6]=dp_ws(p.kn+4*o*128*kh,n*128*kh);
+        s[7]=dp_ws(p.beta+4*o*h,n*h);s[8]=dp_ws(p.decay+4*o*h,n*h);s[9]=dp_ws(p.draft+4*o*v,n*v);
+        s[10]=dp_fork_arg(m,dp_fork_state_of(m,layer),h*128*128);s[11]=dp_int(mode);
+        r=dp_push(r,dp_launch(DpKernel.scan_state,v,s,12));
+    }
+    n:[12]DpArg;n[0]=dp_f32(0.000001);n[1]=dp_ws(p.draft,t*v);n[2]=dp_w(w+5,128);n[3]=dp_ws(p.z,t*v);n[4]=dp_ws(p.mix,t*v);
+    r=dp_push(r,dp_launch(DpKernel.gate_norm,t*h,n,5));
+    r=dp_project_weight(r,p,w+10,d,v,t,p.mix,p.out);
+    return dp_finish(r,p,layer,t,input,output);
+}
+// Each question's keys and values are the prefix's followed by its own, in
+// the fork buffer's rows from `start`; the next question overwrites them.
+// So each question projects its own values (the slot of a streamed value
+// matrix is held from the first question's to the last's) and attends
+// before the next one starts.
+dp_attention_batch :: (b:DpBuilder,p:DpLayout,layer:int,lengths:[]int,input:int,output:int)->DpBuilder {
+    m:=b.m;t:=dp_batch_tokens(lengths);d:=m.width;w:=layer*DP_PER_LAYER;nh:=m.heads;kv:=dp_kv(m);qr:=dp_queries(m);at:=dp_attended(m);
+    start:=b.fork.start;kb:=dp_fork_keys_of(m,layer);vb:=kb+dp_fork_cache_bytes(m);
+    r:=dp_norm_rows(b,p,t,input,dp_w(w,d),p.norm);
+    r=dp_project_weight(r,p,w+4,qr,d,t,p.norm,p.qkv);
+    r=dp_project_weight(r,p,w+5,kv,d,t,p.norm,p.k);
+    streamed:=dp_streamed_of(m,w+6,r.stream);value:=dp_matrix(w+6);
+    for i:0..<lengths.count {
+        o:=dp_batch_first(lengths,i);n:=lengths[i];keys:=start+n;
+        kall:=dp_fork_arg(m,kb,keys*kv);vall:=dp_fork_arg(m,vb,keys*kv);knew:=dp_fork_arg(m,kb+4*start*kv,n*kv);vnew:=dp_fork_arg(m,vb+4*start*kv,n*kv);
+        if streamed && i==0 {value=DpArg.{kind=4,buffer=1+r.at%2};r=dp_take(r);}
+        r=dp_project_to(r,p,value,kv,d,n,p.norm+4*o*d,vnew);
+        if streamed && i==lengths.count-1 {r=dp_give(r);}
+        a:[12]DpArg;a[0]=dp_int(nh);a[1]=dp_int(m.kv_heads);a[2]=dp_ws(p.qkv+4*o*qr,n*qr);a[3]=dp_ws(p.k+4*o*kv,n*kv);a[4]=dp_w(w+2,256);a[5]=dp_w(w+3,256);
+        a[6]=dp_ws(p.rope+4*o*64,n*64);a[7]=dp_ws(p.aq+4*o*at,n*at);a[8]=knew;a[9]=dp_f32(0.000001);
+        r=dp_push(r,dp_launch(DpKernel.prepare,n*(nh+m.kv_heads),a,10));
+        s:[12]DpArg;s[0]=dp_int(keys);s[1]=dp_int(0);s[2]=dp_int(nh);s[3]=dp_int(m.kv_heads);s[4]=dp_ws(p.aq+4*o*at,n*at);s[5]=kall;s[6]=dp_ws(p.scores,n*nh*keys);
+        r=dp_push(r,dp_launch(DpKernel.scores,n*nh*keys,s,7));
+        probs:=dp_ws(p.probs,n*nh*keys);
+        sm:[12]DpArg;sm[0]=dp_int(keys);sm[1]=dp_int(0);sm[2]=dp_int(nh);sm[3]=dp_ws(p.scores,n*nh*keys);sm[4]=dp_ws(p.stats,n*nh*3);sm[5]=probs;
+        r=dp_push(r,dp_launch(DpKernel.softmax,n*nh,sm,6));
+        x:[12]DpArg;x[0]=dp_int(keys);x[1]=dp_int(nh);x[2]=dp_int(m.kv_heads);x[3]=probs;x[4]=vall;x[5]=dp_ws(p.qkv+4*o*qr,n*qr);x[6]=dp_ws(p.mix+4*o*at,n*at);
+        r=dp_push(r,dp_launch(DpKernel.attend,n*at,x,7));
+    }
+    r=dp_project_weight(r,p,w+7,d,at,t,p.mix,p.out);
+    return dp_finish(r,p,layer,t,input,output);
+}
 // Workspace byte offsets the host fills or reads.
 dp_input_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).x0;}
 dp_rope_offset :: (tokens:int)->int #export_c {return dp_layout(tokens).rope;}
@@ -1187,4 +1348,170 @@ dp_resolve :: (ops:[]DpOp,n:int,out:[]DpOp)->int {
     }
     #assert at==64 && values==32 && dp_plan_suffix(49,37,opened,stream[0..<277],ops[..]).status==DpStatus.capacity;
     #assert dp_plan_suffix(28,100,opened,stream[..],ops[..]).status==DpStatus.ok && dp_plan_suffix(128,128,opened,stream[..],ops[..]).status==DpStatus.capacity;
+}
+// book:begin perquestion
+// The launches that carry a question's state (convolution, delta rule,
+// attention), with the workspace offsets left out: a batch's question i
+// must make exactly the launches its own suffix pass makes, in order, on the
+// same fork-buffer rows. Occurrence j of a stateful kernel in a batch of q
+// questions is question j%q's (they run question after question).
+dp_stateful :: (op:DpOp)->bool {
+    k:=op.kernel;
+    return op.kind==DpOpKind.launch && (k==cast(u8)DpKernel.conv_state || k==cast(u8)DpKernel.scan_state || k==cast(u8)DpKernel.prepare || k==cast(u8)DpKernel.scores || k==cast(u8)DpKernel.softmax || k==cast(u8)DpKernel.attend);
+}
+dp_state_digest :: (ops:[]DpOp,n:int,questions:int,which:int)->u64 {
+    h:u64=14695981039346656037;seen:[DP_KERNELS]int;
+    for i:0..<n {
+        op:=ops[i];
+        if dp_stateful(op) {
+            j:=seen[op.kernel];seen[op.kernel]=j+1;
+            if j%questions==which {
+                fields:=[4]int.[cast(int)op.kernel,op.items,op.lanes,op.count];
+                for f:fields {h=mul_wrap(h^cast,trunc(u64)f,1099511628211);}
+                for k:0..<op.count {
+                    a:=op.args[k];offset:=a.offset;if a.buffer==0 {offset=-1;}
+                    more:=[5]int.[cast(int)a.kind,a.value,a.buffer,offset,a.count];
+                    for f:more {h=mul_wrap(h^cast,trunc(u64)f,1099511628211);}
+                }
+            }
+        }
+    }
+    return h;
+}
+// book:end perquestion
+#test "a batch admits suffixes whose projections take one path" {
+    one:=[1]int.[37];five:=[5]int.[37,38,36,37,39];
+    #assert dp_batch_admits(false,49,one[..]) && dp_batch_admits(false,49,five[..]) && !dp_batch_admits(true,49,five[..]);
+    #assert !dp_batch_admits(false,0,one[..]) && dp_batch_admits(false,1,one[..]);
+    edge:=[2]int.[16,16];#assert dp_batch_admits(false,49,edge[..]);
+    mixed:=[2]int.[15,16];#assert !dp_batch_admits(false,49,mixed[..]);
+    small:=[2]int.[7,8];#assert dp_batch_admits(false,49,small[..]);
+    even:=[2]int.[8,8];#assert !dp_batch_admits(false,49,even[..]);
+    zero:=[2]int.[0,20];#assert !dp_batch_admits(false,49,zero[..]);
+    #assert !dp_batch_admits(false,49,one[0..<0]);
+    eight:=[9]int.[20,20,20,20,20,20,20,20,20];#assert dp_batch_admits(false,49,eight[0..<8]) && !dp_batch_admits(false,49,eight[..]);
+    last:=[1]int.[16];#assert dp_batch_admits(false,496,last[..]);
+    over:=[1]int.[17];#assert !dp_batch_admits(false,496,over[..]);
+    full:=[2]int.[256,256];#assert dp_batch_admits(false,1,full[..]);
+    more:=[2]int.[256,257];#assert !dp_batch_admits(false,1,more[..]) && !dp_batch_admits(false,256,more[1..<2]) && dp_batch_admits(false,255,more[1..<2]) && dp_batch_admits(false,1,more[0..<1]);
+    #assert dp_batch_tokens(five[..])==187 && dp_batch_longest(five[..])==39 && dp_batch_first(five[..],0)==0 && dp_batch_first(five[..],3)==111;
+}
+#test "a batch's workspace: one layout for every token, then each later question's norm row and logits" {
+    five:=[5]int.[37,38,36,37,39];one:=[1]int.[37];m:=dp_model(0);
+    r:=dp_batch_layout(m,49,five[..]);p:=dp_layout_of(m,187,49+39);
+    #assert r.p.total==p.total && r.p.scores==p.scores && r.finals==p.total && r.logits==p.total+4*dp_align(4*4096) && r.total==r.logits+4*dp_align(4*248320);
+    #assert dp_batch_final(r,m,0)==p.final && dp_batch_final(r,m,1)==r.finals && dp_batch_final(r,m,4)==r.finals+3*16384;
+    #assert dp_batch_logits(0,49,five[..],0)==p.logits && dp_batch_logits(0,49,five[..],1)==r.logits && dp_batch_logits(0,49,five[..],3)==r.logits+2*993280;
+    #assert dp_batch_workspace(0,49,five[..])==r.total && dp_batch_workspace(0,49,one[..])==dp_layout_keys(37,86).total;
+    q:=dp_batch_layout(dp_model(1),49,five[..]);#assert q.total==q.logits+4*dp_align(4*248320) && q.logits==q.finals+4*dp_align(4*5120) && dp_batch_workspace(1,49,five[..])==q.total;
+}
+#test "a batch of one question is its suffix pass, launch for launch" {
+    buf:[2500]DpOp;ops:=buf[..];stream:[DP_STREAMABLE]bool;all:=0;matrices:=0;
+    for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));if dp_weight_bf16(i) {matrices+=dp_weight_bytes(i);}}
+    one:=[1]int.[37];short:=[1]int.[8];
+    budgets:=[2]int.[dp_workspace_bytes(256)+all,dp_workspace_bytes(256)+all-matrices+2*dp_align(2*4096*12288)];
+    for budget:budgets {
+        opened:=dp_plan(256,0,budget,stream[..],ops);#assert opened.status==DpStatus.ok;
+        suffix:=dp_plan_suffix(49,37,opened,stream[..],ops);want:=dp_digest(ops,suffix.ops);
+        batch:=dp_plan_batch(49,one[..],opened,stream[..],ops);
+        #assert batch.status==DpStatus.ok && batch.ops==suffix.ops && dp_digest(ops,batch.ops)==want && batch.logits==suffix.logits && batch.rope==suffix.rope;
+        s8:=dp_plan_suffix(49,8,opened,stream[..],ops);w8:=dp_digest(ops,s8.ops);
+        b8:=dp_plan_batch(49,short[..],opened,stream[..],ops);#assert b8.ops==s8.ops && dp_digest(ops,b8.ops)==w8;
+    }
+}
+#test "five questions in one pass: each makes its own suffix pass's stateful launches" {
+    buf:[2500]DpOp;ops:=buf[..];other:[2500]DpOp;stream:[DP_STREAMABLE]bool;all:=0;matrices:=0;
+    for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));if dp_weight_bf16(i) {matrices+=dp_weight_bytes(i);}}
+    five:=[5]int.[37,38,36,37,39];
+    opened:=dp_plan(256,0,dp_workspace_bytes(256)+all,stream[..],ops);
+    batch:=dp_plan_batch(49,five[..],opened,stream[..],ops);
+    #assert batch.status==DpStatus.ok && batch.logits==dp_batch_logits(0,49,five[..],0) && batch.rope==dp_layout_keys(187,88).rope;
+    counts:[DP_KERNELS]int;for i:0..<batch.ops {counts[ops[i].kernel]+=1;}
+    #assert counts[cast(int)DpKernel.conv_state]==24*5 && counts[cast(int)DpKernel.scan_state]==24*5 && counts[cast(int)DpKernel.prepare]==8*5 && counts[cast(int)DpKernel.attend]==8*5;
+    #assert counts[cast(int)DpKernel.matvec]==5 && counts[cast(int)DpKernel.gates]==24 && counts[cast(int)DpKernel.swiglu]==32 && counts[cast(int)DpKernel.mma_project]==24*5+8*3+32*3+8*5;
+    // Token-wise launches take all 187 tokens; the readout reads each question's last row.
+    for i:0..<batch.ops {
+        op:=ops[i];
+        if op.kernel==cast(u8)DpKernel.gates {#assert op.items==187*32;}
+        if op.kernel==cast(u8)DpKernel.conv_state {#assert op.args[2].count==op.args[1].value*8192;}
+    }
+    lastnorm:=0;for i:0..<batch.ops {if ops[i].kernel==cast(u8)DpKernel.scale && ops[i].items==4096 {lastnorm+=1;}}
+    #assert lastnorm==5;
+    // Question i's stateful launches are those of its own suffix pass.
+    digests:[5]u64;for i:0..<5 {digests[i]=dp_state_digest(ops,batch.ops,5,i);}
+    for i:0..<5 {
+        suffix:=dp_plan_suffix(49,five[i],opened,stream[..],other[..]);
+        #assert suffix.status==DpStatus.ok && dp_state_digest(other[..],suffix.ops,1,0)==digests[i];
+    }
+    #assert digests[0]!=digests[1] && digests[0]==digests[3];
+    // Each question reads its own rows: the scan of question 3 starts at token 111.
+    m:=dp_model(0);p:=dp_layout_keys(187,88);seen:=0;
+    for i:0..<batch.ops {
+        op:=ops[i];
+        if op.kernel==cast(u8)DpKernel.scan_state {
+            if seen==3 {#assert op.args[4].offset==p.conv+4*111*8192 && op.args[5].offset==p.qn+4*111*2048 && op.args[6].offset==p.kn+4*111*2048 && op.args[7].offset==p.beta+4*111*32 && op.args[8].offset==p.decay+4*111*32 && op.args[9].offset==p.draft+4*111*4096;}
+            seen+=1;
+        }
+        if op.kernel==cast(u8)DpKernel.conv_state && seen==3 {#assert op.args[2].offset==p.qkv+4*111*8192 && op.args[4].offset==p.conv+4*111*8192;}
+        if op.kernel==cast(u8)DpKernel.attend && op.args[0].value==49+37 && op.args[6].offset!=p.mix {#assert op.args[6].offset==p.mix+4*111*4096 && op.args[5].offset==p.qkv+4*111*8192;}
+        if op.kernel==cast(u8)DpKernel.prepare && op.items==39*20 {#assert op.args[6].offset==p.rope+4*148*64 && op.args[7].offset==p.aq+4*148*4096 && op.args[3].offset==p.k+4*148*1024 && op.args[2].offset==p.qkv+4*148*8192;}
+    }
+    // The readout: question i's final row into its norm region, its logits into its own.
+    r:=dp_batch_layout(m,49,five[..]);q:=0;rows:=0;
+    for i:0..<batch.ops {
+        op:=ops[i];
+        if op.kernel==cast(u8)DpKernel.reduce && op.items==248320 {#assert op.args[3].offset==dp_batch_logit(r,m,q) && ops[i-1].args[3].offset==dp_batch_final(r,m,q);q+=1;}
+        if op.kernel==cast(u8)DpKernel.squares && op.items==16 {#assert op.args[1].offset==p.x0+4*(dp_batch_first(five[..],rows)+five[rows]-1)*4096 && ops[i+1].args[5].offset==dp_batch_final(r,m,rows);rows+=1;}
+    }
+    #assert q==5 && rows==5;
+    // Refusals.
+    #assert dp_plan_batch(0,five[..],opened,stream[..],ops).status==DpStatus.shape;
+    mixed:=[2]int.[37,8];#assert dp_plan_batch(49,mixed[..],opened,stream[..],ops).status==DpStatus.shape;
+    metal:=opened;metal.metal=true;#assert dp_plan_batch(49,five[..],metal,stream[..],ops).status==DpStatus.shape;
+    bad:=opened;bad.status=DpStatus.memory;#assert dp_plan_batch(49,five[..],bad,stream[..],ops).status==DpStatus.capacity;
+    #assert dp_plan_batch(49,five[..],opened,stream[0..<10],ops).status==DpStatus.capacity;
+    fewer:=opened;fewer.streamed_tensors=1;#assert dp_plan_batch(49,five[..],fewer,stream[..],ops).status==DpStatus.capacity;
+    #assert dp_plan_batch(49,five[..],opened,stream[..],ops[0..<100]).status==DpStatus.capacity;
+    tight:=opened;tight.workspace=dp_batch_workspace(0,49,five[..]);#assert dp_plan_batch(49,five[..],tight,stream[..],ops).status==DpStatus.ok;
+    tight.workspace-=1;#assert dp_plan_batch(49,five[..],tight,stream[..],ops).status==DpStatus.capacity;
+}
+#test "a streamed batch computes what the resident batch computes, and holds a value slot across its questions" {
+    buf:[3000]DpOp;ops:=buf[..];resident:[2000]DpOp;resolved:[2000]DpOp;stream:[DP_STREAMABLE]bool;all:=0;matrices:=0;
+    for i:0..<DP_WEIGHTS {all+=dp_align(dp_weight_bytes(i));if dp_weight_bf16(i) {matrices+=dp_weight_bytes(i);}}
+    five:=[5]int.[37,38,36,37,39];slot:=dp_align(2*4096*12288);w:=dp_workspace_bytes(256);
+    opened:=dp_plan(256,0,w+all,stream[..],ops);
+    base:=dp_plan_batch(49,five[..],opened,stream[..],resident[..]);
+    readout:=0;while resident[readout].kernel!=cast(u8)DpKernel.matvec {readout+=1;}
+    least:=dp_plan(256,0,w+all-matrices+2*slot,stream[..],ops);#assert least.streamed_tensors==269;
+    batch:=dp_plan_batch(49,five[..],least,stream[..],ops);
+    n:=dp_resolve(ops,batch.ops,resolved[..]);
+    #assert batch.status==DpStatus.ok && n==base.ops+2*5*20 && dp_digest(resolved[..],readout)==dp_digest(resident[..],readout);
+    // Every copy is used: 248 matrices and 21 head chunks, one wait and release each.
+    waits:=0;copies:=0;releases:=0;held:=0;most:=0;
+    for i:0..<batch.ops {
+        op:=ops[i];
+        if op.kind==DpOpKind.wait {waits+=1;held+=1;}
+        if op.kind==DpOpKind.release {releases+=1;held-=1;}
+        if op.kind==DpOpKind.copy {copies+=1;}
+        if op.kernel==cast(u8)DpKernel.attend && op.kind==DpOpKind.launch {most=dp_wider(most,held);}
+    }
+    #assert waits==269 && copies==269 && releases==269 && most==1;
+    // Each head chunk is read by all five questions before its slot is released.
+    for i:0..<batch.ops {if ops[i].kind==DpOpKind.release && ops[i-1].kernel==cast(u8)DpKernel.matvec {#assert ops[i-1].args[3].offset==dp_batch_final(dp_batch_layout(dp_model(0),49,five[..]),dp_model(0),4);}}
+}
+#test "five Mammoth questions in one pass" {
+    m:=dp_model(1);buf:[3600]DpOp;ops:=buf[..];other:[2600]DpOp;stream:[527]bool;all:=0;
+    for i:0..<dp_weights(m) {all+=dp_align(dp_bytes(m,i));}
+    five:=[5]int.[37,38,36,37,39];one:=[1]int.[37];
+    opened:=dp_plan_model(1,false,256,0,dp_model_workspace_bytes(1,256)+all-100*dp_align(2*5120*17408),stream[..],ops);
+    suffix:=dp_plan_suffix(49,37,opened,stream[..],ops);want:=dp_digest(ops,suffix.ops);
+    single:=dp_plan_batch(49,one[..],opened,stream[..],ops);#assert single.ops==suffix.ops && dp_digest(ops,single.ops)==want;
+    batch:=dp_plan_batch(49,five[..],opened,stream[..],ops);
+    #assert batch.status==DpStatus.ok && batch.kind==1 && batch.logits==dp_batch_logits(1,49,five[..],0);
+    for i:0..<5 {
+        s:=dp_plan_suffix(49,five[i],opened,stream[..],other[..]);
+        #assert dp_state_digest(other[..],s.ops,1,0)==dp_state_digest(ops,batch.ops,5,i);
+    }
+    copies:=0;for i:0..<batch.ops {if ops[i].kind==DpOpKind.copy {copies+=1;}}
+    #assert copies==102;
 }

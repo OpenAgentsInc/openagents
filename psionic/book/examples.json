@@ -252,6 +252,16 @@
       ]
     },
     {
+      "source": "psionic/examples/many-questions.coax",
+      "chapter": "psionic/book/ch025-many-questions-at-once.md",
+      "stdout": "psionic/fixtures/many-questions.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/mammoth-device-plan.coax",
       "chapter": "psionic/book/ch030b-mammoth-on-cuda.md",
       "stdout": "psionic/fixtures/mammoth-device-plan.out",

@@ -219,6 +219,9 @@ Chapter 10 authenticates and executes a typed Elephant text decision on the CPU;
 see [execution progress](docs/model-execution-progress.md). Chapter 11 runs
 Mammoth's on the CPU, and [chapter 30b](book/ch030b-mammoth-on-cuda.md) runs it
 on the RTX 4080 in about 1.6 s, streaming most of its weights over PCIe.
+[Chapter 25](book/ch025-many-questions-at-once.md) runs a request's question
+suffixes as one pass over the weights, bit-identical to forking them one at a
+time: Mammoth's five-question Lab request on the 4080 drops from 9.3 s to 3.3 s.
 Autodiff remains planned. Original gpt-oss 20b
 GPU execution and a bounded Responses edge are qualified separately above.
 

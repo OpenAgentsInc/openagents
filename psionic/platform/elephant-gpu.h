@@ -14,6 +14,7 @@
 #define EG_WEIGHTS 1026 /* the most dp_weights of any model (Mammoth's) */
 #define EG_STREAMABLE 527 /* the most dp_streamable of any model (DP_MAX_STREAMABLE) */
 #define EG_VOCAB 248320 /* both models' vocabulary */
+#define EG_BATCH 8 /* DP_BATCH: the most questions in one batched pass */
 
 enum { EG_OK = 0, EG_SKIP = 1, EG_FAILED = 2, EG_STOPPED = 3, EG_REFUSED = 4 };
 
@@ -41,6 +42,7 @@ typedef struct {
     int64_t tokens, prefix;
     int64_t fork_tokens[EG_MAX_TOKENS], fork_length; /* the prefix the fork buffer holds; 0: none */
     int64_t forked, prefix_passes;                     /* the last decision forked; prefix passes run */
+    int64_t batched;                                   /* questions in the last batched pass; 0: one at a time */
     double compile_seconds, upload_seconds;
     int64_t resident_bytes, pinned_bytes, free_before;
 } EgEngine;
@@ -75,6 +77,13 @@ int eg_decide(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix,
    same prefix tokens runs only its suffix from the kept state. Without a
    prefix (0) it is eg_decide. e->forked says which way it ran. */
 int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix, int (*stop)(void *), void *context);
+/* Many questions at once (chapter 25): questions[i] has counts[i] tokens,
+   and all share their first `prefix` tokens. The prefix pass runs unless the
+   fork buffer holds it; then every question's suffix runs in one batched
+   pass (dp_plan_batch) and question i's logits land at logits + i*EG_VOCAB.
+   A batch the plan does not admit (or questions with different prefixes)
+   runs one eg_decide_fork at a time; e->batched says which way it ran. */
+int eg_decide_batch(EgEngine *e, const int64_t *const *tokens, const int64_t *counts, int64_t questions, int64_t prefix, float *logits, int (*stop)(void *), void *context);
 /* Whether operation i begins a layer (or the final norm). */
 int eg_layer_start(const EgEngine *e, int64_t i);
 

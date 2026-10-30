@@ -1,0 +1,6 @@
+admitted: lab true, on Metal false, 37 and 8 tokens false, 7 and 8 true, 8 and 8 false
+batch tokens: 188; first rows: 0 37 75 113 151
+model 0: batch workspace 187457536 bytes; logits at 166533120 183484416 184477696 185470976 186464256
+model 0: five suffix passes 5820 operations, 12079595520 bytes copied; one batched pass 1596 operations, 2415919104 bytes copied
+model 1: batch workspace 252292864 bytes; logits at 231352064 248319744 249313024 250306304 251299584
+model 1: five suffix passes 14535 operations, 190157619200 bytes copied; one batched pass 3867 operations, 38031523840 bytes copied

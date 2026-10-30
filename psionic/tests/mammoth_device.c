@@ -4,13 +4,14 @@
    residency, streaming and every launch; psionic/platform/elephant-gpu.c
    performs the effects. This harness times a cold open, warm decisions, a
    forked decision and a Lab-style request of five questions about one
-   message, with and without prefix reuse.
+   message: whole, forked, and batched in one suffix pass (chapter 25).
    Usage: mammoth-device ORIGINAL_DIRECTORY TOKENIZER_PST PROJECT.cu LAYER.cu WARP.cu [REPEAT]
    Prints SKIP and exits 0 without a device or NVRTC. */
 #define _GNU_SOURCE
 #include "elephant-gpu.h"
 #include "mammoth-inventory.h"
 #include "mammoth-request.h"
+#include "lab_request.h"
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
@@ -72,6 +73,21 @@ static coax_t_QrResult read_answer(EgEngine *e, double *probabilities) {
     double work[2];
     int64_t slots[2] = {qr_pinned_slot(0), qr_pinned_slot(1)};
     return qr_read(COAX_QrKind_choice, 1, (coax_v_f32){e->logits, EG_VOCAB}, (coax_v_s64){slots, 2}, (coax_v_f64){probabilities, 2}, (coax_v_f64){work, 2}, 0);
+}
+
+static int lab_prepare(const char *question, int64_t *tokens, int64_t *written, int64_t *prefix) {
+    coax_t_PrResult r = prepare("Water is wet.", question, tokens);
+    *written = r.written;
+    *prefix = r.prefix;
+    return r.status != 0;
+}
+static int lab_read(const float *logits, double *p_yes, int *best) {
+    double probabilities[2], work[2];
+    int64_t slots[2] = {qr_pinned_slot(0), qr_pinned_slot(1)};
+    coax_t_QrResult a = qr_read(COAX_QrKind_choice, 1, (coax_v_f32){(float *)logits, EG_VOCAB}, (coax_v_s64){slots, 2}, (coax_v_f64){probabilities, 2}, (coax_v_f64){work, 2}, 0);
+    *p_yes = probabilities[0];
+    *best = (int)a.best;
+    return a.status != 0;
 }
 
 /* Open the device and compile the kernels: 0, 1 on SKIP, 2 on failure. */
@@ -159,7 +175,7 @@ int main(int argc, char **argv) {
         if ((er = compile(e, &src))) return er == 1 ? 0 : 1;
     }
     double tp = now();
-    er = eg_place_kind(e, 1, session.model, capacity, budget);
+    er = eg_place_kind(e, 1, session.model, 2 * capacity, budget); /* room for a batch of five suffixes */
     if (er) { fprintf(stderr, "placement status %d (budget %lld): %s\n", er, (long long)e->budget, eg_log()); return 1; }
     double placed = now() - tp;
     coax_t_DpPlan pl = e->placed;
@@ -196,38 +212,8 @@ int main(int argc, char **argv) {
         if (forked.status || forked.best != answer.best || fabs(fp[0] - probabilities[0]) > 0.0005) { fprintf(stderr, "forked answer differs\n"); return 1; }
     }
 
-    /* A Lab-style request: five questions about one message, which share the
-       message's prefix block. First each as a whole decision, then forked. */
-    static const char *questions[5] = {"Is the water wet?", "Is the message about water?", "Is the message a question?", "Is the message about fire?", "Is the message true?"};
-    static int64_t qt[5][512];
-    coax_t_PrResult qp[5];
-    for (int i = 0; i < 5; i++) {
-        qp[i] = prepare("Water is wet.", questions[i], qt[i]);
-        if (qp[i].status || qp[i].written > capacity) { fprintf(stderr, "question %d refused\n", i); return 1; }
-    }
-    double lab_p[2][5];
-    int lab_best[2][5];
-    for (int mode = 0; mode < 2; mode++) {
-        for (int round = 0; round < 2; round++) {
-            e->fork_length = 0; /* each request starts without a kept prefix */
-            double tl = now();
-            for (int i = 0; i < 5; i++) {
-                int r = mode ? eg_decide_fork(e, qt[i], qp[i].written, qp[i].prefix, NULL, NULL) : eg_decide(e, qt[i], qp[i].written, qp[i].prefix, NULL, NULL);
-                if (r) { fprintf(stderr, "lab question %d failed: %s\n", i, eg_log()); return 1; }
-                double q2[2];
-                coax_t_QrResult a = read_answer(e, q2);
-                if (a.status) return 1;
-                lab_p[mode][i] = q2[0];
-                lab_best[mode][i] = (int)a.best;
-            }
-            printf("lab request (%s), round %d: five questions in %.1f ms\n", mode ? "forked, one prefix pass" : "whole decisions", round + 1, (now() - tl) * 1e3);
-        }
-    }
-    for (int i = 0; i < 5; i++) {
-        printf("  q%d %-28s tokens %lld prefix %lld: %s p_yes %.9g (forked %.9g)\n", i + 1, questions[i], (long long)qp[i].written, (long long)qp[i].prefix,
-               lab_best[0][i] == 0 ? "yes" : "no", lab_p[0][i], lab_p[1][i]);
-        if (lab_best[0][i] != lab_best[1][i] || fabs(lab_p[0][i] - lab_p[1][i]) > 0.0005) { fprintf(stderr, "forked lab answer differs\n"); return 1; }
-    }
+    /* A Lab-style request (chapter 25): whole, forked, batched. */
+    if (lab_request(e, lab_prepare, lab_read, 2)) return 1;
 
     size_t free_after, total_bytes;
     pc_memory(&free_after, &total_bytes);

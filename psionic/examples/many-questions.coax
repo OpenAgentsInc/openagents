@@ -1,0 +1,28 @@
+// Chapter 25: the Lab request (five questions about "Water is wet.", one
+// 49-token prefix) as one batched suffix pass. Nothing runs: the plan is data.
+#import "Basic";
+#load "../lib/device/plan.coax";
+main :: () {
+    lab:=[5]int.[37,38,38,38,37];
+    mixed:=[2]int.[37,8];small:=[2]int.[7,8];even:=[2]int.[8,8];
+    print("admitted: lab %, on Metal %, 37 and 8 tokens %, 7 and 8 %, 8 and 8 %\n",
+        dp_batch_admits(false,49,lab[..]),dp_batch_admits(true,49,lab[..]),dp_batch_admits(false,49,mixed[..]),dp_batch_admits(false,49,small[..]),dp_batch_admits(false,49,even[..]));
+    print("batch tokens: %; first rows: % % % % %\n",dp_batch_tokens(lab[..]),dp_batch_first(lab[..],0),dp_batch_first(lab[..],1),dp_batch_first(lab[..],2),dp_batch_first(lab[..],3),dp_batch_first(lab[..],4));
+    ops:[4200]DpOp;stream:[DP_MAX_STREAMABLE]bool;
+    for kind:0..<2 {
+        m:=dp_model(kind);all:=0;for w:0..<dp_weights(m) {all+=dp_align(dp_bytes(m,w));}
+        print("model %: batch workspace % bytes; logits at % % % % %\n",kind,dp_batch_workspace(kind,49,lab[..]),
+            dp_batch_logits(kind,49,lab[..],0),dp_batch_logits(kind,49,lab[..],1),dp_batch_logits(kind,49,lab[..],2),dp_batch_logits(kind,49,lab[..],3),dp_batch_logits(kind,49,lab[..],4));
+        // Placed for 256 tokens with 13 GiB: the rest streams.
+        opened:=dp_plan_model(kind,false,256,0,13*1073741824,stream[0..<dp_streamable(m)],ops[..]);
+        one:=0;sequential:=0;
+        for i:0..<5 {
+            s:=dp_plan_suffix(49,lab[i],opened,stream[0..<dp_streamable(m)],ops[..]);
+            sequential+=s.ops;bytes:=0;for j:0..<s.ops {if ops[j].kind==DpOpKind.copy {bytes+=ops[j].args[0].count;}}
+            one+=bytes;
+        }
+        b:=dp_plan_batch(49,lab[..],opened,stream[0..<dp_streamable(m)],ops[..]);#assert b.status==DpStatus.ok;
+        batched:=0;for j:0..<b.ops {if ops[j].kind==DpOpKind.copy {batched+=ops[j].args[0].count;}}
+        print("model %: five suffix passes % operations, % bytes copied; one batched pass % operations, % bytes copied\n",kind,sequential,one,b.ops,batched);
+    }
+}

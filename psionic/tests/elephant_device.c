@@ -10,6 +10,7 @@
 #include "verified-file.h"
 #include "elephant-inventory.h"
 #include "elephant-request.h"
+#include "lab_request.h"
 #include <fcntl.h>
 #include <math.h>
 #include <stdio.h>
@@ -29,6 +30,26 @@
 coax_t_PsSession psionic_session_open(uint8_t, int64_t, coax_v_u8, coax_v_u8, coax_v_u8, coax_v_u8, coax_v_t_PaFile, coax_v_t_P5Spec, coax_v_u8, coax_t_PsWorkspace);
 coax_t_PrResult psionic_prepare(coax_v_u8, coax_t_PtEntry, coax_t_PtQuestion, coax_v_t_PtOption, coax_v_s64, coax_t_PrWorkspace);
 
+/* The Lab request's preparation and readout (lab_request.h). */
+static coax_v_u8 lab_table;
+static coax_t_PrWorkspace lab_prep;
+static coax_t_PtOption lab_opts[2];
+static int lab_prepare(const char *question, int64_t *tokens, int64_t *written, int64_t *prefix) {
+    coax_t_PtEntry entry = {COAX_PtEntryKind_text, {"Water is wet.", 13}};
+    coax_t_PtQuestion q = {COAX_PtQuestionKind_choice, {COAX_PtEntryKind_text, {question, (int64_t)strlen(question)}}};
+    coax_t_PrResult r = psionic_prepare(lab_table, entry, q, (coax_v_t_PtOption){lab_opts, 2}, (coax_v_s64){tokens, EG_MAX_TOKENS}, lab_prep);
+    *written = r.written;
+    *prefix = r.prefix;
+    return r.status != 0;
+}
+static int lab_read(const float *logits, double *p_yes, int *best) {
+    double probabilities[2], work[2];
+    int64_t slots[2] = {qr_pinned_slot(0), qr_pinned_slot(1)};
+    coax_t_QrResult a = qr_read(COAX_QrKind_choice, 1, (coax_v_f32){(float *)logits, EG_VOCAB}, (coax_v_s64){slots, 2}, (coax_v_f64){probabilities, 2}, (coax_v_f64){work, 2}, 0);
+    *p_yes = probabilities[0];
+    *best = (int)a.best;
+    return a.status != 0;
+}
 static double now(void) { struct timespec t; clock_gettime(CLOCK_MONOTONIC, &t); return (double)t.tv_sec + 1e-9 * (double)t.tv_nsec; }
 static coax_string str(const char *s) { return (coax_string){s, (int64_t)strlen(s)}; }
 static coax_v_u8 map_file(const char *path) {
@@ -172,7 +193,7 @@ int main(int argc, char **argv) {
        PSIONIC_DEVICE_BUDGET_MIB lowers the budget to measure smaller headroom. */
     const char *budget_env = getenv("PSIONIC_DEVICE_BUDGET_MIB");
     int64_t budget = budget_env && atoll(budget_env) > 0 ? atoll(budget_env) * 1048576LL : 0;
-    er = eg_place(e, session.model, T, budget);
+    er = eg_place(e, session.model, 256, budget); /* room for a batch of five suffixes (chapter 25) */
     if (er) { fprintf(stderr, "placement status %d (budget %lld): %s\n", er, (long long)e->budget, eg_log()); return 1; }
     if (eg_prepare(e, tokens, T, P)) { fprintf(stderr, "plan refused the decision\n"); return 1; }
     coax_t_DpPlan plan = e->plan;
@@ -306,6 +327,12 @@ int main(int argc, char **argv) {
                "%lld of %d logits differ from the whole decision (largest %.3g); p_yes %.9g %s\n",
                (long long)P, (long long)(T - P), fork_ms[0], fork_ms[1], (long long)e->prefix_passes, (long long)differ, 2 * DP_VOCAB, worst, fp[0], same ? "ok" : "FAIL");
         if (!same || e->prefix_passes != 1) return 1;
+        /* Chapter 25: the Lab request whole, forked and batched. */
+        lab_table = table;
+        lab_prep = prep;
+        lab_opts[0] = opts[0];
+        lab_opts[1] = opts[1];
+        if (lab_request(e, lab_prepare, lab_read, 3)) return 1;
         if (eg_prepare(e, tokens, T, P)) return 1; /* the whole decision's plan again, for what follows */
         memcpy(logits, whole, sizeof whole);
     }

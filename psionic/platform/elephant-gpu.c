@@ -123,6 +123,13 @@ static int stage(EgEngine *e, const int64_t *tokens, int64_t count, int64_t star
     return r.status ? EG_REFUSED : EG_OK;
 }
 
+/* The same at row `at` of the pinned inputs (a batch's question). */
+static int stage_at(EgEngine *e, int64_t at, const int64_t *tokens, int64_t count, int64_t start) {
+    if (!dp_embed((coax_v_s64){(int64_t *)tokens, count}, e->width, e->model.embedding, (coax_v_f32){e->x + at * e->width, count * e->width})) return EG_REFUSED;
+    coax_t_QwResult r = qw_rope(start, count, (coax_v_f32){e->rope + at * 64, count * 64}, (coax_v_f32){e->rope_work, count * 64}, 0);
+    return r.status ? EG_REFUSED : EG_OK;
+}
+
 int eg_prepare(EgEngine *e, const int64_t *tokens, int64_t count, int64_t prefix) {
     if (count < 1 || count > e->max_tokens) return EG_REFUSED;
     e->plan = dp_replan(count, prefix, e->placed, (coax_v_bool){e->stream, e->streamable}, (coax_v_t_DpOp){e->ops, e->op_cap});
@@ -218,5 +225,56 @@ int eg_decide_fork(EgEngine *e, const int64_t *tokens, int64_t count, int64_t pr
     e->tokens = count;
     e->prefix = prefix;
     e->forked = 1;
+    return EG_OK;
+}
+
+/* The prefix pass of a fork, unless the fork buffer already holds these
+   prefix tokens. */
+static int keep_prefix(EgEngine *e, const int64_t *tokens, int64_t prefix, int (*stop)(void *), void *context) {
+    if (e->fork_length == prefix && !memcmp(e->fork_tokens, tokens, (size_t)prefix * sizeof *tokens)) return EG_OK;
+    int r;
+    e->fork_length = 0;
+    e->plan = dp_plan_prefix(prefix, e->placed, (coax_v_bool){e->stream, e->streamable}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    if (e->plan.status) return EG_REFUSED;
+    if ((r = stage(e, tokens, prefix, 0)) || (r = run(e, prefix, stop, context))) return r;
+    CHECK(pc_sync());
+    memcpy(e->fork_tokens, tokens, (size_t)prefix * sizeof *tokens);
+    e->fork_length = prefix;
+    e->prefix_passes++;
+    return EG_OK;
+}
+
+int eg_decide_batch(EgEngine *e, const int64_t *const *tokens, const int64_t *counts, int64_t questions, int64_t prefix, float *logits, int (*stop)(void *), void *context) {
+    int64_t lengths[EG_BATCH], total = 0;
+    int same = questions >= 1 && questions <= EG_BATCH && prefix >= 1;
+    for (int64_t i = 0; same && i < questions; i++) {
+        if (counts[i] <= prefix || counts[i] > e->max_tokens || memcmp(tokens[i], tokens[0], (size_t)prefix * sizeof **tokens)) same = 0;
+        else { lengths[i] = counts[i] - prefix; total += lengths[i]; }
+    }
+    coax_v_s64 shape = {lengths, questions};
+    if (!same || total > e->max_tokens || !dp_batch_admits(e->placed.metal, prefix, shape)) {
+        /* One suffix (or whole decision) at a time. */
+        e->batched = 0;
+        for (int64_t i = 0; i < questions; i++) {
+            int r = eg_decide_fork(e, tokens[i], counts[i], prefix, stop, context);
+            if (r) return r;
+            memcpy(logits + i * EG_VOCAB, e->logits, EG_VOCAB * 4);
+        }
+        return EG_OK;
+    }
+    int r = keep_prefix(e, tokens[0], prefix, stop, context);
+    if (r) return r;
+    e->plan = dp_plan_batch(prefix, shape, e->placed, (coax_v_bool){e->stream, e->streamable}, (coax_v_t_DpOp){e->ops, e->op_cap});
+    if (e->plan.status) { eg_note("the batch plan refused: status %u", e->plan.status); return EG_REFUSED; }
+    for (int64_t i = 0, at = 0; i < questions; at += lengths[i], i++)
+        if ((r = stage_at(e, at, tokens[i] + prefix, lengths[i], prefix))) return r;
+    if ((r = run(e, total, stop, context))) return r;
+    for (int64_t i = 0; i < questions; i++)
+        CHECK(pc_download(logits + i * EG_VOCAB, e->workspace + (PcBuffer)dp_batch_logits(e->kind, prefix, shape, i), EG_VOCAB * 4, e->compute));
+    CHECK(pc_sync());
+    e->tokens = total;
+    e->prefix = prefix;
+    e->forked = 1;
+    e->batched = questions;
     return EG_OK;
 }
