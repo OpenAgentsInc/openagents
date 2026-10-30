@@ -205,6 +205,9 @@ EXPORT("coaxial_max_vertices") uint32_t coaxial_max_vertices(void) { return (uin
 EXPORT("coaxial_vertex_floats") uint32_t coaxial_vertex_floats(void) { return (uint32_t)coaxial_fairy_vertex_floats(); }
 EXPORT("coaxial_uniform_floats") uint32_t coaxial_uniform_floats(void) { return (uint32_t)coaxial_fairy_uniform_floats(); }
 
+// How high you fly, for a headless touch check (globalThis.coaxial.probe()): your feet in millimetres.
+EXPORT("coaxial_probe") int32_t coaxial_probe(uint32_t state) { (void)state; return (int32_t)(player.pos.y * 1000.0f); }
+
 EXPORT("coaxial_frame")
 uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, float w, float h, float scale, float dt, uint32_t still) {
   start(state);

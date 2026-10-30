@@ -135,6 +135,8 @@ Fairy :: struct {
   key_x: f32; key_y: f32; run: bool; jump: bool;
   use: bool;
   button: Box; button_finger: int; button_on: bool;
+  // FLAP, bottom right on a phone: a press is one wing beat, held she climbs (as Space)
+  flap_box: Box; flap_finger: int; flap_on: bool;
   // you, as the face last placed you: your feet on the ground, how high in the air, your wings
   feet: Point; face: f32; act: int; stride: f32; air: f32; flap: f32; flying: bool; water: int;
   forest: [1] Forest;
@@ -253,7 +255,7 @@ fairy_start :: (s: [] Fairy) {
   s[0].feet = v3(f32(FF_SPAWN_X), ground_at(s, f32(FF_SPAWN_X), f32(FF_SPAWN_Z)), f32(FF_SPAWN_Z));
   s[0].face = f32(FF_SPAWN_FACE);
   s[0].orbit = verse_orbit_start(s[0].feet, f32(FF_SPAWN_FACE));
-  s[0].button_finger = -1;
+  s[0].button_finger = -1; s[0].flap_finger = -1;
   s[0].near_creature = -1;
   s[0].forest[0].news = -1;
   ffpk_plant(s);
@@ -616,7 +618,7 @@ fairy_key_up :: (s: [] Fairy, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-fairy_blur :: (s: [] Fairy) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].button_on = false; }
+fairy_blur :: (s: [] Fairy) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].button_finger = -1; s[0].button_on = false; s[0].flap_on = false; s[0].flap_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -624,6 +626,11 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 // it; any other finger is the face's (the sticks).
 fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { fairy_start(s); }
+  // FLAP's finger is FLAP's until it lifts, wherever it goes and whatever opens meanwhile
+  if s[0].flap_on && id == s[0].flap_finger {
+    if phase >= 2 { s[0].flap_on = false; s[0].flap_finger = -1; }
+    return true;
+  }
   if ffm_pointer(s, x, y, phase, id) { return true; }
   if ffb_pointer(s, x, y, phase, id) { return true; }
   if !s[0].maker[0].open && ffmap_pointer(s, x, y, phase, id) { return true; }
@@ -639,6 +646,8 @@ fairy_pointer :: (s: [] Fairy, x: f32, y: f32, phase: int, kind: int, id: int) -
   if kind != 0 {
     s[0].touch = true;
     if talking { return false; }
+    // FLAP: down beats once and holds (climbing) until that finger lifts, wherever it goes
+    if phase == 0 && in_box(s[0].flap_box, x, y) { s[0].flap_finger = id; s[0].flap_on = true; s[0].taps += 1; return true; }
     if phase == 0 && in_box(s[0].button, x, y) { s[0].button_finger = id; s[0].button_on = true; return true; }
     // a finger on a creature talks to it when it lifts there
     if phase == 0 && creature_at(s, x, y) >= 0 { s[0].tap_creature = creature_at(s, x, y) + 1; s[0].tap_finger = id; return true; }
@@ -704,7 +713,7 @@ fairy_controls :: (s: [] Fairy, dt: f32, dyaw: f32, dpitch: f32) #export_c {
   s[0].key_x = axis(h, HOLD_RIGHT, HOLD_LEFT);
   s[0].key_y = axis(h, HOLD_FORWARD, HOLD_BACK);
   s[0].run = h & HOLD_RUN != 0;
-  s[0].jump = h & HOLD_JUMP != 0;
+  s[0].jump = h & HOLD_JUMP != 0 || s[0].flap_on;
   o := verse_orbit_look(s[0].orbit, s[0].look_yaw + dyaw, s[0].look_pitch + dpitch);
   o = verse_orbit_keys(o, axis(h, HOLD_TURN_LEFT, HOLD_TURN_RIGHT), axis(h, HOLD_TILT_UP, HOLD_TILT_DOWN), dt);
   s[0].orbit = o;
@@ -758,7 +767,7 @@ typed_text :: (s: [] Fairy) -> string { return cast(string) s[0].typed[0..<s[0].
 talk_to :: (s: [] Fairy, c: int) {
   if c < 0 || c >= FF_TALKERS { return; }
   s[0].talk = c + 1; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
-  s[0].held = 0; s[0].use = false; s[0].taps = 0; s[0].talk_finger_on = false;
+  s[0].held = 0; s[0].use = false; s[0].taps = 0; s[0].talk_finger_on = false; s[0].flap_on = false;
   s[0].social[0].typing = false; s[0].social[0].inbox_open = false; s[0].social[0].writing = false;
   add_line(s, true, ff_talker_says(s[0].forest[..], c, s[0].life[0].skills.axe));
   if c == FF_WOODCUTTER { ffw_talked(s); }
@@ -1842,7 +1851,7 @@ plate :: (s: [] Fairy, u: [] f32, b: Box, alpha: f32, look: f32) {
 phone :: (s: [] Fairy) -> bool { return s[0].touch || s[0].width / hi(s[0].dpr, 0.5) < 700; }
 
 hint :: (s: [] Fairy) -> string {
-  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP RIGHT SIDE TO FLAP UP, HOLD TO CLIMB"; }
+  if phone(s) { return "LEFT THUMB WALKS · RIGHT THUMB LOOKS · TAP FLAP TO RISE, HOLD TO CLIMB"; }
   return "WASD MOVE · DRAG TURNS · SPACE FLAPS UP, HOLD TO CLIMB · SHIFT WALKS, IN THE AIR DIVES";
 }
 
@@ -1979,6 +1988,7 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   }
   s[0].pane_top = 0;
   s[0].button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
+  s[0].flap_box = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
   if s[0].maker[0].open { return ffm_hud(s, out, u, n); }
   if over { return ffmap_foot(s, out, u, ffmap_hud(s, out, u, n, you)); }
   if s[0].talk > 0 { n = conversation(s, out, u, n); return ffs_hud(s, out, u, n, s[0].pane_top); }
@@ -1993,6 +2003,15 @@ hud :: (s: [] Fairy, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32, pa
   n = draw_text(out, n, line, (w - lw) / 2, y1 - 10 * k, hs, GAP, SPACE, ink(k, 0.85, CREAM_R, CREAM_G, CREAM_B), false, false);
   above := y1 - hs - 20 * k;
   foot_x0 := (w - lw) / 2 - 12 * k;   // the left edge of what is centred along the bottom
+  // FLAP, bottom right over the hint, under the right thumb (BLOOM and what is said stack above it)
+  if phone(s) {
+    fc := 9 * k;
+    fb := Box.{x0 = w - 16 * k - 104 * k, y0 = above - 12 * k - 64 * k, x1 = w - 16 * k, y1 = above - 12 * k};
+    s[0].flap_box = fb;
+    plate(s, u, fb, 0.9, ifx s[0].flap_on then 3.0f32 else 1.0f32);
+    n = draw_text(out, n, "FLAP", (fb.x0 + fb.x1 - text_width("FLAP", fc)) / 2, (fb.y0 + fb.y1 + fc) / 2, fc, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+    above = fb.y0;
+  }
   // what a creature near you says, or the news
   said := "";
   who := "";
@@ -2348,6 +2367,34 @@ fairy_store_cap :: (k: int) -> int #export_c {
   #assert fairy_pointer(g[..], (b.x0 + b.x1) / 2, (b.y0 + b.y1) / 2, 2, 1, 4);
   nv = fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
   #assert g[0].forest[0].bloomed[0];
+}
+
+#test "a phone's FLAP, bottom right clear of BLOOM: a press beats once, held she climbs, lifted she glides" {
+  g: [1] Fairy;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32;
+  u: [UNIFORM_FLOATS] f32;
+  g[0].touch = true;
+  nv := fairy_frame(g[..], out[..], u[..], 1170, 2532, 3, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  f := g[0].flap_box; b := g[0].button;
+  #assert f.x1 > f.x0 && f.x1 <= 1170 && f.x0 > 1170 / 2 && f.y1 < 2532;
+  #assert b.x1 > b.x0 && b.y1 <= f.y0;   // BLOOM stacks above it
+  #assert fairy_pointer(g[..], (f.x0 + f.x1) / 2, (f.y0 + f.y1) / 2, 0, 1, 7);
+  #assert fairy_taps(g[..]) == 1;
+  fairy_controls(g[..], 1.0 / 60.0, 0, 0);
+  #assert fairy_jump(g[..]);
+  // slid off it, still held; lifted anywhere, let go
+  #assert fairy_pointer(g[..], 100, 100, 1, 1, 7);
+  fairy_controls(g[..], 1.0 / 60.0, 0, 0);
+  #assert fairy_jump(g[..]);
+  #assert fairy_pointer(g[..], 100, 100, 2, 1, 7);
+  fairy_controls(g[..], 1.0 / 60.0, 0, 0);
+  #assert !fairy_jump(g[..]) && fairy_taps(g[..]) == 0;
+  // elsewhere on the right is the sticks' (look, tap)
+  #assert !fairy_pointer(g[..], 900, 1200, 0, 1, 8);
+  // a computer has Space, no FLAP
+  g[0].touch = false;
+  nv = fairy_frame(g[..], out[..], u[..], 1280, 800, 1, 1.0 / 60.0, false, f32(FF_SPAWN_X), 0, f32(FF_SPAWN_Z), 0, 0, 0, 0, 0, 0, false, 0, 0, 0, 0);
+  #assert g[0].flap_box.x1 == 0;
 }
 
 #test "E by a creature talks to it: you type, Enter asks, the answer shows, Esc ends; a click on it talks too" {
