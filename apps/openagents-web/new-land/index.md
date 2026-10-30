@@ -30,7 +30,7 @@ machines, free slots and current advertised capacity. Inspect a machine for
 its full npub, model identities and beacon details.
 
 Join a Pylon with the command below. **COPY COMMAND** on the board copies the
-same command; **GUIDE** opens the [Pylon guide](/pylon/index.md).
+same command; **GUIDE** opens the [Pylon guide](/docs/connect-a-pylon).
 
 ```sh
 curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh

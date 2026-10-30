@@ -7,7 +7,7 @@ const root=resolve(import.meta.dir,'../../..'),markdown=readFileSync(resolve(roo
 const command='curl -fsSL https://openagents.com/pylon/join.sh -o /tmp/join-pylon.sh && bash /tmp/join-pylon.sh'
 async function guide(width:number,height:number,dpr:number){
  const memory=new WebAssembly.Memory({initial:128,maximum:1024})
- const {instance}=await WebAssembly.instantiate(readFileSync(resolve(root,'apps/openagents-web/build/connect-pylon.wasm')),{env:{memory},wasi_snapshot_preview1:{fd_fdstat_get:()=>52,fd_seek:()=>52,fd_write:()=>{throw Error("unexpected Wasm diagnostic")}}})
+ const {instance}=await WebAssembly.instantiate(readFileSync(resolve(root,'apps/openagents-web/build/connect-pylon.wasm')),{env:{memory,coaxial_http:()=>0},wasi_snapshot_preview1:{fd_fdstat_get:()=>52,fd_seek:()=>52,fd_write:()=>{throw Error("unexpected Wasm diagnostic")}}})
  const x=instance.exports as any;x._initialize();const state=Number(x.__heap_base.value)+1024
  const vertices=(state+x.coaxial_state_size()+31)&~15,uniforms=vertices+x.coaxial_max_vertices()*12*4+16
  const frame=()=>{const n=x.coaxial_frame(state,vertices,uniforms,width,height,dpr,0,1);expect(n).toBeGreaterThan(100);expect(n).toBeLessThanOrEqual(x.coaxial_max_vertices());const floats=new Float32Array(memory.buffer,vertices,n*12);expect(floats.every(Number.isFinite)).toBe(true);return {n,floats}}
@@ -34,3 +34,13 @@ for(const v of [{w:390,h:844,d:1},{w:780,h:1688,d:2},{w:1440,h:900,d:1},{w:844,h
   g.click(2);expect(x.coaxial_action(state)).toBe(1);expect(g.copied()).toBe('/')
  })
 }
+
+test('guide uses the shared Coax page-view and automation analytics through the normal host effects',async()=>{
+ const memory=new WebAssembly.Memory({initial:128,maximum:1024}),requests:any[]=[]
+ const text=(p:number,n:number)=>new TextDecoder().decode(new Uint8Array(memory.buffer,p,n))
+ const {instance}=await WebAssembly.instantiate(readFileSync(resolve(root,'apps/openagents-web/build/connect-pylon.wasm')),{env:{memory,coaxial_http:(u:number,un:number,b:number,bn:number,flags:number)=>{requests.push({url:text(u,un),body:JSON.parse(text(b,bn)),flags});return 0}},wasi_snapshot_preview1:{fd_fdstat_get:()=>52,fd_seek:()=>52,fd_write:()=>{throw Error('unexpected Wasm diagnostic')}}})
+ const x=instance.exports as any;x._initialize();const state=Number(x.__heap_base.value)+1024,vertices=(state+x.coaxial_state_size()+31)&~15,uniforms=vertices+x.coaxial_max_vertices()*12*4+16
+ const facts=new TextEncoder().encode('tab=0123456789abcdef\nfresh=1\nvisitor=fedcba9876543210\nnow=1793376000000\nnav=10\nurl=https://openagents.com/docs/connect-a-pylon\nlang=en\nwebdriver=1\nvw=390\nvh=844\ndpr=1')
+ new Uint8Array(memory.buffer,x.coaxial_inbox(state),facts.length).set(facts);x.coaxial_message(state,600,facts.length);x.coaxial_frame(state,vertices,uniforms,390,844,1,3,1)
+ expect(requests.some(r=>r.url==='/api/analytics/events'&&r.body.auto==='webdriver'&&r.body.events.some((e:any)=>e.page==='connect-pylon'&&e.ev==='page-view'))).toBe(true)
+})

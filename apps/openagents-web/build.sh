@@ -5,8 +5,12 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd)"
 mkdir -p "$here/build"
 python3 "$here/../../coax/web/nip-pages.py" --check
+# The quickstart is authored once; stale generated document/shader bytes refuse a release.
+bun "$here/../../coax/web/connect-pylon-page.ts" --check
 # Guard the shared-library/output race before launching parallel world builds.
 python3 "$here/../../coax/web/tests/wasm_isolation.py"
+"$here/../../coax/web/wasm.sh" "$here/connect-pylon.coax" "$here/connect-pylon-face.c" "$here/build/connect-pylon.wasm" &
+connect_pylon=$!
 # The realm host's table (realms.json): the galaxy's worlds into realms.coax
 # and each realm's page (docs/verse/realm-host.md).
 bun "$here/../../coax/web/realms.ts"
@@ -156,6 +160,7 @@ wait "$chat"
 wait "$nip01"
 wait "$nip_guide"
 wait "$pylon"
+wait "$connect_pylon"
 wait "$splash"
 wait "$realm"
 wait "$voice"

@@ -77,3 +77,10 @@ test("the public homepage and its phone view track the root HTML", () => {
   expect(affected(["apps/openagents-web/index.html"], p)).toEqual(["home", "home-phone"])
   expect(new RegExp(pageObjects("/")).test("index.html")).toBe(true)
 })
+
+test("canonical Pylon quickstart has desktop and phone goldens tracking its one source",()=>{
+  expect(p.pages['connect-pylon'].path).toBe('/docs/connect-a-pylon')
+  expect(p.pages['connect-pylon-phone'].size).toEqual([390,844])
+  for(const path of ['docs/connect-a-pylon.md','coax/web/connect-pylon-page.ts','apps/openagents-web/connect-pylon-content.coax'])
+    expect(affected([path],p)).toEqual(['connect-pylon','connect-pylon-phone'])
+})

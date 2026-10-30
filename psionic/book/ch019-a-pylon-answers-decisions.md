@@ -1,5 +1,7 @@
 # 19. A Pylon answers decisions
 
+The current user and agent quickstart is [Connect a Pylon](https://openagents.com/docs/connect-a-pylon). It covers joining, the authenticated hosted API and provider-admission boundaries; this chapter describes the native Pylon implementation.
+
 [Chapter 16](ch016-serve-systemone.md) answers a typed decision over HTTP on
 one machine. This chapter puts the same engine behind a Nostr key. A
 Pylon holds one relay connection, says who it is and what it serves in a

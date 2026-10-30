@@ -74,7 +74,8 @@ cp_next :: (text:string,end:int)->int {
 cp_lines :: (text:string,width:f32,cap:f32,k:Ink)->int {
   n:=0;from:=0;while from<text.count {end:=cp_line(text,from,width,cap,k);next:=cp_next(text,end);if next<=from {next=from+1;}from=next;n+=1;}return hi_int(1,n);
 }
-cp_cap :: (kind:int,phone:bool)->f32 {return ifx kind==1 then (ifx phone then 14.0f32 else 15.0f32) else ifx kind==3 then (ifx phone then 9.4f32 else 10.0f32) else 11.2f32;}
+cp_cap :: (kind:int,phone:bool)->f32 {return ifx kind==1 then (ifx phone then 14.0f32 else 15.0f32) else ifx kind==3 then (ifx phone then 8.6f32 else 9.0f32) else 9.2f32;}
+cp_step :: (kind:int,cap:f32)->f32 {return cap*(ifx kind==1 then 1.85f32 else 2.35f32);}
 cp_kind_ink :: (p:Pen,kind:int)->Ink {k:=ink(p,ifx kind==1 then INK_BRIGHT else ifx kind==4 then INK_BLUE else INK_WHITE);if kind!=1 {k.sans=true;k.scale=0;k.glow=1.1*p.d;k.core=0.45*p.d;}return k;}
 cp_layout :: (s:[]Cp) {
   w:=hi(240,s[0].w);h:=hi(260,s[0].h);phone:=w<760;margin:=ifx phone then 16.0f32 else 32.0f32;
@@ -85,7 +86,7 @@ cp_layout :: (s:[]Cp) {
   s[0].body=Box.{x0=left,y0=164,x1=right,y1=h-20};
   width:=right-left-40;p:=Pen.{d=1,fade=1,time=5,still=true,phone=phone};y:f32=24;
   for i:0..<CP_BLOCKS {kind:=CP_KINDS[i];cap:=cp_cap(kind,phone);k:=cp_kind_ink(p,kind);room:=width-(ifx kind==3 then 20.0f32 else 0.0f32);
-    lines:=cp_lines(CP_TEXT[i],room,cap,k);step:=cap*1.85;
+    lines:=cp_lines(CP_TEXT[i],room,cap,k);step:=cp_step(kind,cap);
     if kind==1 {y+=12;}s[0].tops[i]=y;
     s[0].heights[i]=cast(f32)lines*step+(ifx kind==3 then 20.0f32 else 0.0f32);
     y+=s[0].heights[i]+(ifx kind==1 then 4.0f32 else 18.0f32);
@@ -149,7 +150,7 @@ cp_frame :: (s:[]Cp,world:[]LandState,out:[]f32,u:[]f32,width:f32,height:f32,dpr
   first:=v;left:=(b.x0+20)*d;room:=(b.x1-b.x0-40)*d;top:=b.y0*d;bottom:=b.y1*d;
   for i:0..<CP_BLOCKS {
     s[0].links[i]=Box.{};y:=b.y0+s[0].tops[i]-s[0].scroll;bh:=s[0].heights[i];if y+bh<b.y0 || y>b.y1 {continue;}
-    kind:=CP_KINDS[i];cap:=cp_cap(kind,p.phone)*d;k:=cp_kind_ink(p,kind);step:=cap*1.85;x:=left;line_room:=room;line_y:=(y+cp_cap(kind,p.phone))*d;
+    kind:=CP_KINDS[i];cap:=cp_cap(kind,p.phone)*d;k:=cp_kind_ink(p,kind);step:=cp_step(kind,cap);x:=left;line_room:=room;line_y:=(y+cp_cap(kind,p.phone))*d;
     if kind==3 {cb:=Box.{x0=left,y0=y*d,x1=left+room,y1=(y+bh)*d};v=frame(out,v,cb,6*d,ink(p,INK_DIM),0.25,p);x+=10*d;line_room-=20*d;line_y+=10*d;}
     if kind==4 {s[0].links[i]=Box.{x0=b.x0+20,y0=hi(b.y0,y),x1=b.x1-20,y1=lo(b.y1,y+bh)};if s[0].focus==i+3 || cp_hit(s,s[0].px,s[0].py)==i+3 {k=dimmed(k,1.3);}}
     from:=0;text:=CP_TEXT[i];while from<text.count {end:=cp_line(text,from,line_room,cap,k);if line_y+step>top && line_y-cap<bottom {v=put(out,v,text[from..<end],x,line_y,cap,k);}next:=cp_next(text,end);if next<=from {next=from+1;}from=next;line_y+=step;}
@@ -159,7 +160,7 @@ cp_frame :: (s:[]Cp,world:[]LandState,out:[]f32,u:[]f32,width:f32,height:f32,dpr
   if s[0].limit>0 {rail:=b.y1-b.y0-24;thumb:=hi(28,rail*rail/(rail+s[0].limit));sy:=b.y0+12+(rail-thumb)*s[0].scroll/s[0].limit;v=rule(out,v,(b.x1-6)*d,sy*d,(b.x1-6)*d,(sy+thumb)*d,ink(p,INK_DIM),0.8);}
   white:=chrome(ink(p,INK_WHITE));dim:=ink(p,INK_DIM);
   v=put(out,v,"OPENAGENTS / QUICKSTART",b.x0*d,39*d,6.8*d,dim);
-  v=put(out,v,"CONNECT A PYLON",b.x0*d,80*d,(ifx p.phone then 14.0f32 else 18.0f32)*d,white);
+  v=put(out,v,CP_TITLE,b.x0*d,80*d,(ifx p.phone then 14.0f32 else 18.0f32)*d,white);
   v=button(out,v,cp_box(s[0].home,d),"HOME",false,cp_hit(s,s[0].px,s[0].py)==2 || s[0].focus==2,false,p,1);
   v=button(out,v,cp_box(s[0].markdown,d),ifx s[0].copied==1 then "COPIED" else "COPY MARKDOWN",false,cp_hit(s,s[0].px,s[0].py)==0 || s[0].focus==0,false,p,1);
   v=button(out,v,cp_box(s[0].command,d),ifx s[0].copied==2 then "COPIED" else "COPY COMMAND",true,cp_hit(s,s[0].px,s[0].py)==1 || s[0].focus==1,false,p,1);

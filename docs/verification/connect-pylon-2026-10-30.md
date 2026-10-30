@@ -55,3 +55,20 @@ or turn signed provider advertisements into hardware/model attestation.
 Root owns deployment, shared build/smoke/golden registration and the final
 executable authenticated-agent walkthrough. There is no new book chapter:
 this operator quickstart complements the existing Pylon/mesh chapters.
+
+## Website integration
+
+The build now refuses stale generated guide artifacts, compiles its Wasm and
+waits for it. HTTP smoke checks the human route, named host/Wasm/shader,
+exact canonical Markdown bytes, llms discovery and sitemap inclusion.
+Desktop and phone have registered goldens; the author inspected both.
+The normal golden walk started/drew both with no errors (6.1% and 12.3% lit).
+The typography uses the shared atlas at a normal reading size over a quiet
+Grid. Current API instructions include the native `mesh-client.sh` wrapper,
+prerequisites, exact hosted aliases, session/NIP-98 boundaries, replay IDs,
+provider admission and refusal meanings; the endpoint author reviewed them.
+Shared Coax page-view analytics passed a real Wasm host-effect check.
+Actual packaging passed the publication-boundary regression: exact Markdown,
+content-named module/shader and only the explicitly allowlisted public proof
+JSON; a sibling `private.json` fixture stayed unpublished.
+Publication remains coordinated with the real fleet/API readiness.

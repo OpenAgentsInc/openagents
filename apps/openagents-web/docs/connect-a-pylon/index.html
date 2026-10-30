@@ -19,7 +19,7 @@ html,body{margin:0;min-height:100%;background:#000;color:#eee;font-family:ui-san
 <main>
 <h1>Connect a Pylon</h1>
 <p><a href="/docs/connect-a-pylon/index.md">Read or copy the Markdown</a> · <a href="/">Live network</a></p>
-<p>A Pylon connects a model running on your computer to the OpenAgents network. Start with the free toy model, see your computer appear on the Grid, and send it a real decision request.</p>
+<p>A Pylon shares a model from your computer. Start with the toy network, then try the authenticated hosted API.</p>
 <h2>1. Prepare</h2>
 <p>Use macOS or Linux with an Internet connection that permits HTTPS and secure WebSockets. No inbound port or public IP is required.</p>
 <p>Install Git, Python 3 and a C/C++ compiler. On a Mac, install Apple's Command Line Tools:</p>
@@ -36,21 +36,43 @@ bash /tmp/join-pylon.sh</code></p>
 <p>Choose Pylons on the homepage and find the name printed in your terminal. The board shows the advertised model identity, public key, status and free slots. New signed announcements appear without a reload.</p>
 <p>Give the computer a recognizable label and stable name:</p>
 <p><code>bash /tmp/join-pylon.sh --label &quot;My laptop&quot; --slug my-laptop</code></p>
-<p>The join command starts psionic-toy. It does not download or pretend to serve a larger model. Other advertised model identities may come from separate, configured model servers.</p>
+<p>The join command starts psionic-toy. It does not download or pretend to serve a larger model. Other advertised model identities may come from separate, configured model servers. Appearing on the Grid does not automatically enroll a provider into the hosted API: Elephant and Mammoth routes pin operator-approved provider keys and exact checkpoint identities.</p>
 <h2>Stop or restart</h2>
 <p>Press Ctrl-C in the join terminal. From another terminal:</p>
 <p><code>bash /tmp/join-pylon.sh --stop</code></p>
 <p>Run the same join command to start again. Private state and logs live under ~/.openagents/pylon/state; set OPENAGENTS_PYLON_HOME to use a different directory. Do not publish that private state or its label file. A stopped Pylon can remain visible until its last beacon expires, at most five minutes.</p>
 <h2>Send a decision</h2>
 <p>The pooled production endpoint is POST https://openagents.com/api/v1/systemone. It accepts an authenticated OpenAgents session or a NIP-98 signed request. Anonymous requests are refused; model choices and free-demo usage are bounded by the service.</p>
-<p>A decision request uses this JSON shape:</p>
+<p>Save this decision request as /tmp/decision.json:</p>
 <p><code>{&quot;model&quot;:&quot;elephant-1&quot;,&quot;state&quot;:&quot;Water is wet.&quot;,&quot;questions&quot;:{&quot;wet&quot;:{&quot;type&quot;:&quot;choice&quot;,&quot;instructions&quot;:&quot;Is the water wet?&quot;,&quot;criteria&quot;:{&quot;yes&quot;:null,&quot;no&quot;:null}}}}</code></p>
 <p>Use elephant-1 or mammoth-1 for the hosted demo. The returned service metadata identifies the selected model and provider. Unknown model names are refused; clients cannot choose a backend URL. Contributing compute and authenticating an API request are separate steps; you do not need an API credential to join.</p>
 <p><a href="https://openagents.com/login">Sign in to OpenAgents</a></p>
+<h2>Call from a terminal</h2>
+<p>Use an up-to-date OpenAgents checkout. If you joined with the default script, it is already at ~/.openagents/pylon. For an API-only checkout:</p>
+<p><code>git clone --depth 1 --filter=blob:none --sparse https://github.com/OpenAgentsInc/openagents.git openagents-pylon
+git -C openagents-pylon sparse-checkout set coax
+cd openagents-pylon</code></p>
+<p>On macOS the client needs Command Line Tools and Homebrew's secp256k1 and openssl@3 packages:</p>
+<p><code>brew install secp256k1 openssl@3</code></p>
+<p>On Linux, install a C compiler, pkg-config, and the libsecp256k1 and OpenSSL development packages. No Python or JavaScript runtime is needed by this client. An operator can set OA_MESH_SIGNER to an explicit prebuilt binary of the repository's existing sign.c helper.</p>
+<p>From the checkout, run:</p>
+<p><code>coax/web/api/mesh-client.sh --new-demo-key /tmp/decision.json</code></p>
+<p>The helper builds the existing native NIP-98 signer if needed, creates a private disposable identity, signs the exact body and sends it over HTTPS. Its temporary key is removed when it exits. A new demo identity needs no prior account registration. It does not use your phone key or your Pylon's key.</p>
+<p>A successful JSON response contains answers.wet.choice, service.provider and service.identity. Those identify the selected provider and checkpoint; they do not attest confidential execution or model correctness. A refusal is not a completed decision. 401 means authentication or replay, 429 a demo quota, 502 an upstream failure or mismatched result, 503 an unavailable model/provider, and 504 a deadline. Requests have a 30-second service deadline and there are identity and global demo limits; no sats are charged. API authentication grants demo access, without granting project membership or inference credit. Requests are readable by their selected model provider.</p>
+<p>For staging, use coax/web/api/mesh-client.sh --staging --new-demo-key /tmp/decision.json. An existing local Nostr identity can instead use --key FILE; supply a file path, never a secret in a command argument.</p>
+<p><a href="https://github.com/OpenAgentsInc/openagents/blob/main/docs/protocol/systemone-public-mesh.md">Read the authenticated endpoint contract</a></p>
+<h2>Browser and custom clients</h2>
+<p>A signed-in browser on OpenAgents can POST the same JSON to /api/v1/systemone with its existing HttpOnly session cookie and same-origin request. Log in normally; you do not need to copy that cookie into a terminal.</p>
+<p>A custom agent can use NIP-98 directly: sign a kind-27235 event with an empty content string and a current Unix timestamp. Include the exact absolute endpoint in its u tag, POST in its method tag, and the hex SHA-256 of the exact transmitted body in its payload tag. Send the complete signed event's JSON, Base64-encoded, as Authorization: Nostr &lt;base64-event-json&gt;. Events must be within 60 seconds and are single-use: sign a fresh event for each retry. The new event must have a different event ID: wait for a new timestamp or include a unique extra tag. Changing only the signature does not change the ID. A changed body, URL or method needs a newly signed event.</p>
+<p><a href="https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/98.md">Read NIP-98</a></p>
 <h2>For agents</h2>
 <p>Read this exact guide as Markdown:</p>
 <p><code>curl -fsSL https://openagents.com/docs/connect-a-pylon/index.md</code></p>
-<p>1. Check the prerequisites and run the join script with a unique --label and --slug. 2. Preserve its working directory and private state. Keep its foreground process alive while serving; use Ctrl-C or --stop when finished. 3. Confirm the online log line and locate the public Pylon on the homepage. Never infer successful contribution from a build exit alone. 4. Authenticate separately before calling the pooled API. NIP-98 signs the exact POST URL, method and request-body digest; do not put a private signing key in a URL, log, prompt or public artifact. 5. Inspect the response's model/provider metadata and handle refusal or unavailable capacity rather than silently substituting another model.</p>
+<p>1. Check the prerequisites and run the join script with a unique --label and --slug.</p>
+<p>2. Preserve its working directory and private state. Keep its foreground process alive while serving; use Ctrl-C or --stop when finished.</p>
+<p>3. Confirm the online log line and locate the public Pylon on the homepage. Never infer successful contribution from a build exit alone.</p>
+<p>4. Authenticate separately before calling the pooled API. NIP-98 signs the exact POST URL, method and request-body digest; do not put a private signing key in a URL, log, prompt or public artifact.</p>
+<p>5. Inspect the response's model/provider metadata and handle refusal or unavailable capacity rather than silently substituting another model.</p>
 <h2>Troubleshooting</h2>
 <p>If the first build is still running, leave the terminal open and read its current build step. Later runs can reuse a matching checked compiler and native build.</p>
 <p>If it cannot connect, check outbound HTTPS and wss://relay.openagents.com, system time and certificate trust. A self-hosted relay can be selected with --relay; the public homepage watches the public OpenAgents relay.</p>
@@ -59,6 +81,7 @@ bash /tmp/join-pylon.sh</code></p>
 <h2>What is verified</h2>
 <p>The browser's shared Coax reader checks original Nostr event IDs and signatures, beacon content digests, provider binding and freshness. Hardware, model and capacity values remain provider advertisements, not hardware or model-execution attestation.</p>
 <p>Answers and statuses count signed provider events observed since this tab opened. Their contents stay encrypted. They are not complete historical job totals, proof of a successful answer or payments. Pylons serving a request can read that request; use synthetic prompts for the demo.</p>
+<p><a href="https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch019-a-pylon-answers-decisions.md">Run and qualify a native Pylon</a></p>
 <p><a href="https://github.com/OpenAgentsInc/openagents/tree/main/psionic">Read the source and protocol</a></p>
 </main>
 <script type="module" src="/coaxial/host.js" data-app="connect-pylon"></script>

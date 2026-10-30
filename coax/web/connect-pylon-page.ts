@@ -20,6 +20,7 @@ for(const line of body.split('\n')){
  const link=line.match(/^\[([^\]]+)\]\((https:\/\/[^)]+)\)$/)
  if(link){flush();blocks.push({kind:4,text:link[1],href:link[2]});continue}
  if(!line.trim()){flush();continue}
+ if(/^\d+\.\s/.test(line)){flush();blocks.push({kind:2,text:line.replace(/`([^`]+)`/g,'$1'),href:''});continue}
  paragraph.push(line.replace(/`([^`]+)`/g,'$1'))
 }
 flush();if(fence)throw Error('unterminated Markdown fence')

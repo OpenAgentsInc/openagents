@@ -6,7 +6,7 @@ url: "https://openagents.com/docs/connect-a-pylon"
 
 # Connect a Pylon
 
-A Pylon connects a model running on your computer to the OpenAgents network. Start with the free toy model, see your computer appear on the Grid, and send it a real decision request.
+A Pylon shares a model from your computer. Start with the toy network, then try the authenticated hosted API.
 
 ## 1. Prepare
 
@@ -45,7 +45,7 @@ Give the computer a recognizable label and stable name:
 bash /tmp/join-pylon.sh --label "My laptop" --slug my-laptop
 ```
 
-The join command starts `psionic-toy`. It does not download or pretend to serve a larger model. Other advertised model identities may come from separate, configured model servers.
+The join command starts `psionic-toy`. It does not download or pretend to serve a larger model. Other advertised model identities may come from separate, configured model servers. Appearing on the Grid does not automatically enroll a provider into the hosted API: Elephant and Mammoth routes pin operator-approved provider keys and exact checkpoint identities.
 
 ## Stop or restart
 
@@ -61,7 +61,7 @@ Run the same join command to start again. Private state and logs live under `~/.
 
 The pooled production endpoint is `POST https://openagents.com/api/v1/systemone`. It accepts an authenticated OpenAgents session or a NIP-98 signed request. Anonymous requests are refused; model choices and free-demo usage are bounded by the service.
 
-A decision request uses this JSON shape:
+Save this decision request as `/tmp/decision.json`:
 
 ```json
 {"model":"elephant-1","state":"Water is wet.","questions":{"wet":{"type":"choice","instructions":"Is the water wet?","criteria":{"yes":null,"no":null}}}}
@@ -70,6 +70,46 @@ A decision request uses this JSON shape:
 Use `elephant-1` or `mammoth-1` for the hosted demo. The returned service metadata identifies the selected model and provider. Unknown model names are refused; clients cannot choose a backend URL. Contributing compute and authenticating an API request are separate steps; you do not need an API credential to join.
 
 [Sign in to OpenAgents](https://openagents.com/login)
+
+## Call from a terminal
+
+Use an up-to-date OpenAgents checkout. If you joined with the default script, it is already at `~/.openagents/pylon`. For an API-only checkout:
+
+```sh
+git clone --depth 1 --filter=blob:none --sparse https://github.com/OpenAgentsInc/openagents.git openagents-pylon
+git -C openagents-pylon sparse-checkout set coax
+cd openagents-pylon
+```
+
+On macOS the client needs Command Line Tools and Homebrew's `secp256k1` and `openssl@3` packages:
+
+```sh
+brew install secp256k1 openssl@3
+```
+
+On Linux, install a C compiler, `pkg-config`, and the libsecp256k1 and OpenSSL development packages. No Python or JavaScript runtime is needed by this client. An operator can set `OA_MESH_SIGNER` to an explicit prebuilt binary of the repository's existing `sign.c` helper.
+
+From the checkout, run:
+
+```sh
+coax/web/api/mesh-client.sh --new-demo-key /tmp/decision.json
+```
+
+The helper builds the existing native NIP-98 signer if needed, creates a private disposable identity, signs the exact body and sends it over HTTPS. Its temporary key is removed when it exits. A new demo identity needs no prior account registration. It does not use your phone key or your Pylon's key.
+
+A successful JSON response contains `answers.wet.choice`, `service.provider` and `service.identity`. Those identify the selected provider and checkpoint; they do not attest confidential execution or model correctness. A refusal is not a completed decision. `401` means authentication or replay, `429` a demo quota, `502` an upstream failure or mismatched result, `503` an unavailable model/provider, and `504` a deadline. Requests have a 30-second service deadline and there are identity and global demo limits; no sats are charged. API authentication grants demo access, without granting project membership or inference credit. Requests are readable by their selected model provider.
+
+For staging, use `coax/web/api/mesh-client.sh --staging --new-demo-key /tmp/decision.json`. An existing local Nostr identity can instead use `--key FILE`; supply a file path, never a secret in a command argument.
+
+[Read the authenticated endpoint contract](https://github.com/OpenAgentsInc/openagents/blob/main/docs/protocol/systemone-public-mesh.md)
+
+## Browser and custom clients
+
+A signed-in browser on OpenAgents can POST the same JSON to `/api/v1/systemone` with its existing HttpOnly session cookie and same-origin request. Log in normally; you do not need to copy that cookie into a terminal.
+
+A custom agent can use NIP-98 directly: sign a kind-27235 event with an empty content string and a current Unix timestamp. Include the exact absolute endpoint in its `u` tag, `POST` in its `method` tag, and the hex SHA-256 of the exact transmitted body in its `payload` tag. Send the complete signed event's JSON, Base64-encoded, as `Authorization: Nostr <base64-event-json>`. Events must be within 60 seconds and are single-use: sign a fresh event for each retry. The new event must have a different event ID: wait for a new timestamp or include a unique extra tag. Changing only the signature does not change the ID. A changed body, URL or method needs a newly signed event.
+
+[Read NIP-98](https://github.com/OpenAgentsInc/openagents/blob/main/nips/official/98.md)
 
 ## For agents
 
@@ -100,5 +140,7 @@ If a checkout has local edits, preserve them: deliberately use `--no-update`, us
 The browser's shared Coax reader checks original Nostr event IDs and signatures, beacon content digests, provider binding and freshness. Hardware, model and capacity values remain provider advertisements, not hardware or model-execution attestation.
 
 Answers and statuses count signed provider events observed since this tab opened. Their contents stay encrypted. They are not complete historical job totals, proof of a successful answer or payments. Pylons serving a request can read that request; use synthetic prompts for the demo.
+
+[Run and qualify a native Pylon](https://github.com/OpenAgentsInc/openagents/blob/main/psionic/book/ch019-a-pylon-answers-decisions.md)
 
 [Read the source and protocol](https://github.com/OpenAgentsInc/openagents/tree/main/psionic)

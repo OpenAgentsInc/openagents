@@ -47,6 +47,8 @@ export function goldenPages(file = join(ROOT, APP, "realms.json")): Pages {
   // Pages of their own the galaxy doesn't open (not in realms.json), walked by their address.
   const byAddress: Record<string, Page> = { garden: { path: "/realms/garden", lit: 0.5, settle: 3000, blocks: 6, module: "garden" },
     "realms-new": { path: "/realms/new", lit: 0.004, settle: 2500, blocks: 4, module: "builder" } }
+  byAddress["connect-pylon"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon"}
+  byAddress["connect-pylon-phone"] = {path:"/docs/connect-a-pylon",lit:0.004,settle:1500,blocks:4,module:"connect-pylon",size:[390,844]}
   byAddress["pylon"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon"}
   byAddress["pylon-phone"] = {path:"/pylon",lit:0.004,settle:1500,blocks:4,module:"pylon",size:[390,844]}
   byAddress["home"] = {path:"/",lit:0.004,settle:3000,blocks:4,module:"newland"}
@@ -114,6 +116,7 @@ export function pageInputs(name: string, p: Pages = goldenPages()): string[] {
   if (!page) return []
   const m = page.module, out = new Set<string>()
   for (const f of sources([`${APP}/${m}.coax`, `${APP}/${m}-face.c`, ...linked(m)])) out.add(f)
+  if (m === "connect-pylon") { out.add("docs/connect-a-pylon.md"); out.add("coax/web/connect-pylon-page.ts") }
   out.add(`${APP}/${m}.wgsl`)
   out.add(`coax/web/goldens/${name}.png`)   // a wrong golden fails the page as surely as a changed page
   out.add(`coax/web/goldens/linux/${name}.png`)

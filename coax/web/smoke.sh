@@ -24,7 +24,7 @@ host="${base#https://}"
 site="$(cd "$(dirname "$0")/../../apps/openagents-web/projects" && pwd)"
 projects=""
 for d in "$site"/*/; do d="${d%/}"; [[ -f "$d/project.json" && -f "$d/index.html" ]] && projects+="${d##*/} "; done
-exec python3 -I - "$base" "$host" "$via" "$coder" "$projects" <<'PY'
+exec python3 -I - "$base" "$host" "$via" "$coder" "$projects" "$site/../../../docs/connect-a-pylon.md" <<'PY'
 import re, ssl, sys, socket, threading, http.client, uuid
 from concurrent.futures import ThreadPoolExecutor
 base, host, via, coder = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4] == "true"
@@ -156,6 +156,18 @@ agent = [("/llms.txt", "text/plain", b"# OpenAgents"), ("/llms-full.txt", "text/
          ("/pylon/index.md", "text/markdown", b"# Pylon"), ("/pylon/join.sh", "text/plain", b"#!/")]
 for (path, kind, start), (s, h, body) in zip(agent, fetch([p for p, _, _ in agent])):
     check(s == 200 and h.get("content-type", "").startswith(kind) and start in body[:4000], f"{path} ({s}, {h.get('content-type')})")
+# The canonical Pylon guide: GPU human page and exact agent-readable source.
+guide = "/docs/connect-a-pylon"
+(gs, gh, gb), (ms, mh, mb) = fetch([guide, guide + "/index.md"])
+check(gs == 200 and gh.get("content-type", "").startswith("text/html") and b'data-app="connect-pylon"' in gb, f"{guide} is the Coax quickstart ({gs})")
+check(b'type="text/markdown"' in gb and b'/docs/connect-a-pylon/index.md' in gb and b"<main>" in gb, "the Pylon guide exposes its Markdown twin and accessible text")
+check(ms == 200 and mh.get("content-type", "").startswith("text/markdown") and mb == open(sys.argv[6], "rb").read(), "the Pylon Markdown is byte-identical to its canonical source")
+guide_files = sorted(set(re.findall(rb'(?:src|data-wasm|data-wgsl)="(/[^"]+)"', gb)))
+check(len(guide_files) >= 3, "the Pylon guide names its host, Wasm and shared Grid shader")
+for path, (fs, fh, fb) in zip(guide_files, fetch([f.decode() for f in guide_files])):
+    check(fs == 200 and (not path.endswith(b".wasm") or fb[:4] == b"\0asm"), f"Pylon guide file {path.decode()} ({fs})")
+(ls, _, lb), (fs, _, fb), (ss, _, sb) = fetch(["/llms.txt", "/llms-full.txt", "/sitemap.xml"])
+check(ls == 200 and b"/docs/connect-a-pylon/index.md" in lb and fs == 200 and mb in fb and ss == 200 and b"https://openagents.com/docs/connect-a-pylon" in sb, "agents discover the complete Pylon guide from llms and the sitemap")
 # Signing in with the phone (docs/phone-sign-in.md): the page, the app's universal links, the API.
 (s1, h1, b1), (s2, h2, b2), (s3, h3, b3) = fetch(["/login", "/.well-known/apple-app-site-association", "/api/auth/me"])
 check(s1 == 200 and b'data-app="private"' in b1 and b'data-page="2"' in b1, f"/login is the login page ({s1})")
