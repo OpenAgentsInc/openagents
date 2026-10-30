@@ -1,0 +1,17 @@
+coax-mutation-shard v1
+shard 85/128
+file dee145c2b3a7fab1 mutants 1070 shards 128 scheduling full borrowed 0 strings 1 unstable 0
+outcome 84 -1 27 0
+outcome 212 7 8 0
+outcome 340 0 1 0
+outcome 468 8 9 0
+outcome 596 0 1 0
+outcome 724 11 12 0
+outcome 852 1 2 0
+outcome 980 14 15 0
+end 8
+coax/lib/nostr/nip98-tags.coax:77:7: mutant survived: '<' became '<='
+    if n<0 || json_next(j[..])!=JSON_ARRAY_END {return r;}
+        ^
+shard 85/128: 8 of 1070 mutants, 7 killed, 1 survived
+mutation-scheduling full checks=75 skipped=0 borrowed=0 strings=1 unstable=0

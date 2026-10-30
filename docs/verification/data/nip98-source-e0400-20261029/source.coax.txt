@@ -1,0 +1,84 @@
+// Read-only public request observation. This cannot authenticate, authorize,
+// check replay or issue a session. Public event verification is variable-time.
+// Caller must hold every borrowed input live and immutable, supply physically
+// valid extents, and truthfully report overlap between `work` and any input.
+#load "event.coax";
+#load "nip98-observe.coax";
+#load "../../tests/nostr/nip98_source_fixtures.coax";
+#authority;
+
+#test "the exact public signed event and actual body determine the observation" {
+ work:[4096]u8;body:=[5]u8.['h','e','l','l','o'];empty:[1]u8;
+ a:=n98_source_observe(N98_SOURCE_BASIC,empty[0..<0],"https://example.test/api","POST",1761750000,work[..],false);
+ #assert a.verified && a.matches;
+ b:=n98_source_observe(N98_SOURCE_PAYLOAD,body[..],"https://example.test/api","POST",1761750000,work[..],false);
+ #assert b.verified && b.matches;
+ body[0]='H';c:=n98_source_observe(N98_SOURCE_PAYLOAD,body[..],"https://example.test/api","POST",1761750000,work[..],false);
+ #assert c.verified && !c.matches;
+ d:=n98_source_observe(N98_SOURCE_BASIC,empty[0..<0],"https://example.test/other","POST",1761750000,work[..],false);
+ #assert d.verified && !d.matches;
+ e:=n98_source_observe(N98_SOURCE_BASIC,empty[0..<0],"https://example.test/api","GET",1761750000,work[..],false);
+ #assert e.verified && !e.matches;
+}
+#test "ambiguous and malformed signed tags do not match" {
+ work:[4096]u8;empty:[1]u8;
+ a:=n98_source_observe(N98_SOURCE_DUPLICATE,empty[0..<0],"https://example.test/api","POST",1761750000,work[..],false);
+ b:=n98_source_observe(N98_SOURCE_EMPTY,empty[0..<0],"https://example.test/api","POST",1761750000,work[..],false);
+ c:=n98_source_observe(N98_SOURCE_EXTRA,empty[0..<0],"https://example.test/api","POST",1761750000,work[..],false);
+ #assert a.verified && !a.matches && b.verified && !b.matches && c.verified && !c.matches;
+}
+#test "invalid events and untrusted overlapping work never succeed" {
+ work:[4096]u8;empty:[1]u8;
+ a:=n98_source_observe("{}",empty[0..<0],"u","POST",0,work[..],false);
+ b:=n98_source_observe(N98_SOURCE_BASIC,empty[0..<0],"https://example.test/api","POST",1761750000,work[..],true);
+ c:=n98_source_observe(N98_SOURCE_BASIC,empty[0..<0],"https://example.test/api","POST",1761750000,work[0..<0],false);
+ #assert !a.verified && !a.matches && !b.verified && !b.matches && !c.verified && !c.matches;
+}
+
+N98SourceObservation :: struct {verified:bool;matches:bool;}
+N98SourceTags :: struct {valid:bool;uc:int;mc:int;pc:int;un:int;mn:int;pn:int;}
+
+// Only reads the tag array borrowed from the verified original. Selected
+// values are copied into bounded private buffers, never into the source.
+n98_source_tags :: (tags:string,u:[]u8,m:[]u8,p:[]u8)->N98SourceTags {
+ r:N98SourceTags;j:[1]Json;json_start(j[..],tags);
+ if json_next(j[..])!=JSON_ARRAY {return r;}
+ while true {
+  token:=json_next(j[..]);if token==JSON_ARRAY_END {break;}
+  if token!=JSON_ARRAY {return r;}
+  token=json_next(j[..]);if token==JSON_ARRAY_END {continue;}
+  if token!=JSON_STRING {return r;}
+  name:=json_text(j[..]);field:=ifx json_is(name,"u") then 1 else ifx json_is(name,"method") then 2 else ifx json_is(name,"payload") then 3 else 0;
+  if field==0 {
+   while true {token=json_next(j[..]);if token==JSON_ARRAY_END {break;}if token!=JSON_STRING {return r;}}
+   continue;
+  }
+  token=json_next(j[..]);if token!=JSON_STRING {return r;}
+  raw:=json_text(j[..]);n:=-1;
+  if field==1 {r.uc+=1;n=json_unescape(raw,u);r.un=n;}
+  else if field==2 {r.mc+=1;n=json_unescape(raw,m);r.mn=n;}
+  else {r.pc+=1;n=json_unescape(raw,p);r.pn=n;}
+  if n<0 || json_next(j[..])!=JSON_ARRAY_END {return r;}
+ }
+ if json_next(j[..])!=JSON_END {return r;}
+ r.valid=true;return r;
+}
+
+// `work` is unpublished scratch and may change on failure. The caller must
+// keep event/body/URL/method immutable through return, and `work` physically
+// disjoint from each of them. No returned bit grants an access decision.
+n98_source_observe :: (original:string,body:[]u8,url:string,method:string,now:int,work:[]u8,overlap:bool)->N98SourceObservation #export_c {
+ result:N98SourceObservation;
+ event:=nostr_event_verify_vartime(original,work,overlap);
+ if event.error!=NE_OK || !event.verified {return result;}
+ result.verified=true;
+ u:[1024]u8;m:[16]u8;p:[64]u8;
+ tags:=n98_source_tags(event.original[event.tags_from..<event.tags_to],u[..],m[..],p[..]);
+ if !tags.valid {return result;}
+ digest:[32]u8;hex:[64]u8;
+ if sha256_hash_checked(body,digest[..],false)!=SHA_OK {return result;}
+ encoded:=hex_encode_checked(cast(string)digest[..],hex[..],false);
+ if encoded.error!=NC_OK {return result;}
+ result.matches=n98_observe(event.kind,event.created_at,now,cast(string)u[0..<tags.un],cast(string)m[0..<tags.mn],cast(string)p[0..<tags.pn],url,method,cast(string)hex[..],tags.uc,tags.mc,tags.pc,false);
+ return result;
+}

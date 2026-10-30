@@ -1,0 +1,109 @@
+// Public NIP-98 tag extraction only. This does not verify events, create
+// authority, or establish that the supplied tag array belongs to an event.
+// The caller must keep all borrowed views live and immutable, provide valid
+// extents, and truthfully mark overlap among input and writable buffers.
+// Input is capped at 262144 bytes, 2000 tags and 16 values per tag.
+// Repeated selected names are counted and the last value retained; a later
+// observer must reject ambiguous counts before interpreting the values.
+// `valid` covers array/token structure and selected-field decoding only;
+// unknown strings are not fully decoded. Whole-event Unicode admission is
+// a separate prerequisite before using a verified event's original span.
+#load "json.coax";
+#authority;
+
+#test "selected tags preserve original ordering and unescaped values" {
+ u:[32]u8;m:[8]u8;p:[64]u8;
+ r:=n98_source_tags("[[\"x\",\"ignored\"],[\"u\",\"url\"],[\"method\",\"POST\"],[\"payload\",\"abc\"]]",u[..],m[..],p[..],false);
+ #assert r.valid && r.uc==1 && r.mc==1 && r.pc==1;
+ #assert r.un==3 && cast(string)u[0..<r.un]=="url";
+ #assert r.mn==4 && cast(string)m[0..<r.mn]=="POST";
+ #assert r.pn==3 && cast(string)p[0..<r.pn]=="abc";
+}
+#test "decoded names match and unknown and empty tags are ignored" {
+ u:[32]u8;m:[8]u8;p:[64]u8;
+ r:=n98_source_tags("[[],[\"other\",\"ignored\",\"extra\"],[\"\\u0075\",\"\\u0061\"],[\"m\\u0065thod\",\"x\"]]",u[..],m[..],p[..],false);
+ #assert r.valid && r.uc==1 && r.mc==1 && r.pc==0;
+ #assert r.un==1 && u[0]=='a' && r.mn==1 && m[0]=='x' && r.pn==0;
+}
+#test "duplicates are counted and the last field is retained" {
+ u:[32]u8;m:[8]u8;p:[64]u8;
+ r:=n98_source_tags("[[\"u\",\"first\"],[\"u\",\"last\"],[\"method\",\"x\"],[\"method\",\"y\"],[\"payload\",\"a\"],[\"payload\",\"b\"]]",u[..],m[..],p[..],false);
+ #assert r.valid && r.uc==2 && r.mc==2 && r.pc==2;
+ #assert cast(string)u[0..<r.un]=="last" && cast(string)m[0..<r.mn]=="y" && cast(string)p[0..<r.pn]=="b";
+}
+#test "selected empty strings remain present rather than becoming absent" {
+ u:[1]u8;m:[1]u8;p:[1]u8;
+ r:=n98_source_tags("[[\"u\",\"\"],[\"method\",\"\"],[\"payload\",\"\"]]",u[..],m[..],p[..],false);
+ #assert r.valid && r.uc==1 && r.mc==1 && r.pc==1 && r.un==0 && r.mn==0 && r.pn==0;
+}
+#test "malformed selected tags and dishonest or short buffers refuse" {
+ u:[32]u8;m:[8]u8;p:[64]u8;
+ #assert !n98_source_tags("[[\"u\"]]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[\"method\",\"x\",\"extra\"]]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[\"payload\",3]]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[\"u\",\"abc\"]]",u[0..<2],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[\"method\",\"abc\"]]",u[..],m[0..<2],p[..],false).valid;
+ #assert !n98_source_tags("[[\"payload\",\"abc\"]]",u[..],m[..],p[0..<2],false).valid;
+ #assert !n98_source_tags("[]",u[..],m[..],p[..],true).valid;
+}
+#test "only a complete array of string arrays is accepted" {
+ u:[32]u8;m:[8]u8;p:[64]u8;
+ #assert n98_source_tags("[]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("{}",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[1]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[1]]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[\"x\",1]]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[] true",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[\"u\",\"\\ud800\"]]",u[..],m[..],p[..],false).valid;
+}
+
+N98SourceTags :: struct {valid:bool;uc:int;mc:int;pc:int;un:int;mn:int;pn:int;}
+n98_tag_input_size :: (n:int)->bool {return n>=0 && n<=262144;}
+
+// The array may be a slice from a separately verified original event, but
+// this entry accepts arbitrary JSON; it cannot assert or confer verification.
+// Buffers are private scratch and may change on a refused parse.
+n98_source_tags :: (tags:string,u:[]u8,m:[]u8,p:[]u8,overlap:bool)->N98SourceTags #export_c {
+ r:N98SourceTags;if overlap || !n98_tag_input_size(tags.count) {return r;}
+ count:=0;j:[1]Json;json_start(j[..],tags);
+ if json_next(j[..])!=JSON_ARRAY {return r;}
+ while true {
+  token:=json_next(j[..]);if token==JSON_ARRAY_END {break;}
+  if token!=JSON_ARRAY || count>=2000 {return r;}
+  count+=1;token=json_next(j[..]);if token==JSON_ARRAY_END {continue;}
+  if token!=JSON_STRING {return r;}
+  name:=json_text(j[..]);field:=ifx json_is(name,"u") then 1 else ifx json_is(name,"method") then 2 else ifx json_is(name,"payload") then 3 else 0;
+  if field==0 {
+   values:=1;while true {token=json_next(j[..]);if token==JSON_ARRAY_END {break;}if token!=JSON_STRING || values>=16 {return r;}values+=1;}
+   continue;
+  }
+  token=json_next(j[..]);if token!=JSON_STRING {return r;}
+  raw:=json_text(j[..]);n:int;
+  if field==1 {r.uc+=1;n=json_unescape(raw,u);r.un=n;}
+  else if field==2 {r.mc+=1;n=json_unescape(raw,m);r.mn=n;}
+  else if field==3 {r.pc+=1;n=json_unescape(raw,p);r.pn=n;}
+  else {return r;}
+  if n<0 || json_next(j[..])!=JSON_ARRAY_END {return r;}
+ }
+ if json_next(j[..])!=JSON_END {return r;}
+ r.valid=true;return r;
+}
+
+#test "input bytes and tag counts are bounded inclusively" {
+ #assert !n98_tag_input_size(-1) && n98_tag_input_size(0) && n98_tag_input_size(262144) && !n98_tag_input_size(262145);
+ u:[1]u8;m:[1]u8;p:[1]u8;
+ long:[262145]u8;for i:0..<long.count {long[i]=' ';}long[0]='[';long[1]=']';
+ #assert n98_source_tags(cast(string)long[0..<262144],u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags(cast(string)long[..],u[..],m[..],p[..],false).valid;
+ many:[6004]u8;many[0]='[';
+ for i:0..<2001 {many[1+i*3]='[';many[2+i*3]=']';many[3+i*3]=',';}
+ many[6000]=']';
+ #assert n98_source_tags(cast(string)many[0..<6001],u[..],m[..],p[..],false).valid;
+ many[6000]=',';many[6003]=']';
+ #assert !n98_source_tags(cast(string)many[..],u[..],m[..],p[..],false).valid;
+}
+#test "unknown tags have at most sixteen values" {
+ u:[1]u8;m:[1]u8;p:[1]u8;
+ #assert n98_source_tags("[[\"x\",\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\",\"11\",\"12\",\"13\",\"14\",\"15\"]]",u[..],m[..],p[..],false).valid;
+ #assert !n98_source_tags("[[\"x\",\"1\",\"2\",\"3\",\"4\",\"5\",\"6\",\"7\",\"8\",\"9\",\"10\",\"11\",\"12\",\"13\",\"14\",\"15\",\"16\"]]",u[..],m[..],p[..],false).valid;
+}
