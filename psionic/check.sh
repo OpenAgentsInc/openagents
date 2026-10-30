@@ -173,7 +173,7 @@ python3 -I psionic/tests/mammoth_reference_fixture.py
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-output psionic/fixtures/models/mammoth/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift noise verdict suite settings search distance env tensor tensor-view tensor-ops-backward ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine bench bench-wire)
+coax_units=(trace-machine exact-memory soft-memory relu-arith gate-graph compiler-harness harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift noise verdict suite settings search distance env tensor tensor-view tensor-ops-backward ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine bench bench-wire pylon/template pylon/relays pylon/beacon pylon/decision pylon/queue)
 native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift noise verdict suite settings search tensor tensor-view tensor-ops ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
@@ -436,6 +436,18 @@ if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" serve-"* ]]; then
         echo "PROTO_PYTHON unset: protobuf native answers not decoded"
     fi
     phase "chapter 16 server"
+fi
+# Chapter 19: the Pylon's checks outside its mutation-gated units (template,
+# relays, beacon, decision, queue above): host.coax ties them to SHA-256 and
+# host-serve.coax to chapter 16's server. The end to end over a local relay
+# (psionic/tests/pylon/pylon_e2e.py [--wss]) needs bun and @noble; run it by
+# hand.
+if [[ ${#only[@]} -eq 0 || " ${selected_coax[*]-} " == *" pylon/"* ]]; then
+    "$coax" test psionic/lib/pylon/host.coax
+    "$coax" test psionic/lib/pylon/host.coax --release
+    "$coax" test psionic/lib/pylon/host-serve.coax
+    "$coax" test psionic/lib/pylon/host-serve.coax --release
+    phase "chapter 19 Pylon"
 fi
 python3 -I psionic/tests/book.py --coax "$coax" --jobs "$jobs"
 phase book

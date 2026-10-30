@@ -31,6 +31,11 @@ PqAnswer :: struct {result:bool;code:int;}
 // deadline, not the host's limit, set the budget.
 PqBudget :: struct {ms:int;deadline:bool;}
 PqLife :: enum u8 {run;drain;off;}
+// What the host does on an open relay connection before it may move
+// anything else: wait, answer the NIP-42 challenge, announce (republish the
+// beacon for this connection), let the queued frames flow, or drop it.
+PqWire :: enum u8 {wait;auth;announce;flow;drop;}
+PqSince :: struct {since:int;resumed:bool;}
 
 #test "an event is answered only when it is verified, a request, and decrypted" {
     #assert pq_route(false,25910,true,0,1,true,false,4)==PqRoute.ignore;
@@ -120,6 +125,34 @@ PqLife :: enum u8 {run;drain;off;}
 #test "shutdown drains while jobs are held, then goes offline" {
     #assert pq_life(false,3)==PqLife.run && pq_life(false,0)==PqLife.run;
     #assert pq_life(true,1)==PqLife.drain && pq_life(true,4)==PqLife.drain && pq_life(true,0)==PqLife.off;
+}
+
+#test "a new connection authenticates, then announces, then flows" {
+    #assert pq_wire(false,false,false,0,5000)==PqWire.wait && pq_wire(true,false,false,0,5000)==PqWire.auth;
+    #assert pq_wire(true,false,false,4999,5000)==PqWire.auth && pq_wire(false,false,false,4999,5000)==PqWire.wait;
+    #assert pq_wire(false,true,false,0,5000)==PqWire.announce && pq_wire(false,true,true,0,5000)==PqWire.flow;
+    #assert pq_wire(true,true,true,0,5000)==PqWire.flow && pq_wire(true,true,false,0,5000)==PqWire.announce;
+}
+#test "no write goes out before AUTH is accepted; an unanswered connection is dropped at its limit" {
+    #assert pq_wire(false,false,true,0,5000)==PqWire.wait && pq_wire(true,false,true,0,5000)==PqWire.auth;
+    #assert pq_wire(false,false,false,5000,5000)==PqWire.drop && pq_wire(true,false,false,5000,5000)==PqWire.drop;
+    #assert pq_wire(false,false,true,5001,5000)==PqWire.drop;
+    // once authenticated the connection's age no longer matters
+    #assert pq_wire(false,true,true,99999,5000)==PqWire.flow && pq_wire(false,true,false,5000,5000)==PqWire.announce;
+}
+#test "a resubscription starts at the newest job delivered, never before the first window" {
+    a:=pq_since(false,0,1000);#assert a.since==1000 && !a.resumed;
+    a=pq_since(false,5000,1000);#assert a.since==1000 && !a.resumed;
+    a=pq_since(true,5000,1000);#assert a.since==5000 && a.resumed;
+    a=pq_since(true,1001,1000);#assert a.since==1001 && a.resumed;
+    a=pq_since(true,1000,1000);#assert a.since==1000 && a.resumed;
+    a=pq_since(true,999,1000);#assert a.since==1000 && !a.resumed;
+    a=pq_since(true,0,1000);#assert a.since==1000 && !a.resumed;
+}
+
+#test "a job seen again gets its kept answer again, never a second answer" {
+    #assert pq_again(true,false) && !pq_again(false,false);
+    #assert !pq_again(true,true) && !pq_again(false,true);
 }
 
 // book:begin route
@@ -216,3 +249,33 @@ pq_life :: (stopping:bool,held:int)->PqLife #export_c {
 // (draining, offline) goes out at once, so a buyer stops routing to a pylon
 // that is leaving rather than learning it up to 10 s later.
 pq_beacon_now :: (due:bool,changed:bool,stopping:bool)->bool #export_c {return due || (changed && stopping);}
+// book:begin wire
+// The step on an open connection. challenged: the relay's NIP-42 challenge
+// for this connection is unanswered; authed: our AUTH for it was accepted;
+// announced: this connection's beacon is queued; waited_ms: how long the
+// connection has been open. Nothing is written (no REQ, no EVENT) before
+// AUTH is accepted, because the relay refuses unauthenticated writes and a
+// refused answer would be lost; a relay that never challenges or refuses the
+// AUTH is dropped at limit_ms and the reconnect backs off.
+pq_wire :: (challenged:bool,authed:bool,announced:bool,waited_ms:int,limit_ms:int)->PqWire #export_c {
+    if authed {return ifx announced then PqWire.flow else PqWire.announce;}
+    if waited_ms>=limit_ms {return PqWire.drop;}
+    if challenged {return PqWire.auth;}
+    return PqWire.wait;
+}
+// book:end wire
+// The since of a (re)subscription: the newest created_at delivered
+// (relay.coax's has_newest/newest, inclusive, so the boundary comes again
+// and pq_seen drops it), but never before the first subscription's window.
+// resumed: the newest delivered set it.
+pq_since :: (has_newest:bool,newest:int,first:int)->PqSince #export_c {
+    if has_newest && newest>=first {return PqSince.{since=newest,resumed=true};}
+    return PqSince.{since=first};
+}
+// A job id seen again (relay.coax's window or pq_seen said so): whether to
+// publish its kept answer again, the same signed event with the same id.
+// Jobs are ephemeral, so an answer sent while the buyer was not subscribed
+// is gone, and a buyer that resends its job is asking for it again. kept:
+// that job's answer is still kept; held: the job is still queued or
+// running, so its answer is on its way. Nothing is ever decided twice.
+pq_again :: (kept:bool,held:bool)->bool #export_c {return kept && !held;}

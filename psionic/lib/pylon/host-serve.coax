@@ -1,0 +1,15 @@
+// Chapter 19: the check that ties a decision job to chapter 16's server.
+// Checks only; nothing loads this file. host.coax keeps the server out of the
+// Pylon program's source graph.
+#load "host.coax";
+#load "../serve-request.coax";
+
+#test "the server takes the body a decision job becomes" {
+    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(cast(string)body[0..<jb.body],pools);
+    #assert jb.code==PdCode.none && r.code==SvCode.none && r.model=="elephant-1" && r.questions==1 && pools.questions[0].id=="refund";
+    #assert pools.questions[0].kind==PtQuestionKind.noul && r.state.value=="{\"ticket\":\"I was billed twice\"}";
+    empty:=pd_admit(pd_env("{\"v\":\"openagents.systemone.v1\",\"type\":\"systemone\",\"request\":\"r\",\"attempt\":1,\"model\":\"m\",\"state\":\"s\",\"questions\":{}}"),PD_WORKER,1791400000,body[..]);
+    #assert empty.code==PdCode.none && pd_code(sv_code_name(sv_decode(cast(string)body[0..<empty.body],pools).code))==PdCode.invalid_request;
+    for c:0..<14 {code:=cast(SvCode)c;#assert pd_code_name(pd_code(sv_code_name(code)))==sv_code_name(code) || pd_code(sv_code_name(code))==PdCode.internal;}
+}

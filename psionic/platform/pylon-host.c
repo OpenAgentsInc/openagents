@@ -4,8 +4,9 @@
    reads the wall clock, and reports a stop request: SIGTERM, SIGINT, or a
    stop file the Coax side named. The relay connection, the WebSocket, NIP-42,
    NIP-44, admission, the queue, the engine's HTTP request and every answer
-   are Coax. Sockets are coax/platform/socket-native.c, entropy
-   entropy-foreign.c, the signing double's process process-native.c. */
+   are Coax. Sockets are coax/platform/socket-native.c, TLS for wss://
+   tls-native.c (OpenSSL), entropy entropy-foreign.c, the signing double's
+   process process-native.c. */
 #define _POSIX_C_SOURCE 200809L
 #include <pthread.h>
 #include <signal.h>
@@ -30,6 +31,14 @@ int64_t pyh_arg_byte(int64_t i, int64_t k) {
   return (unsigned char)g_argv[i][k];
 }
 int64_t pyh_now_s(void) { return (int64_t)time(NULL); }
+/* Sleeps ms (at most 10 s), for the reconnect backoff. */
+int64_t pyh_sleep_ms(int64_t ms) {
+  if (ms <= 0) return 0;
+  if (ms > 10000) ms = 10000;
+  struct timespec t = { (time_t)(ms / 1000), (long)(ms % 1000) * 1000000L };
+  while (nanosleep(&t, &t) != 0) {}
+  return 0;
+}
 /* Names the stop file, one byte at a time (at most 1023). */
 int64_t pyh_stop_path_push(int64_t byte) {
   if (byte <= 0 || byte > 255 || g_stop_used + 1 >= sizeof g_stop_path) return -1;

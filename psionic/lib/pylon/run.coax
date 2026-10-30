@@ -6,25 +6,37 @@
 // are decision.coax, beacon.coax, relays.coax and queue.coax (#authority),
 // ws.coax and nip42.coax (#authority), and nip44.coax (#authority).
 //
-// The host (psionic/platform/pylon-host.c) gives arguments, the wall clock
-// and a stop request; sockets are socket-native.c, entropy entropy-foreign.c,
-// and the signer's process process-native.c.
+// The relay connection is coax/lib/net/relay_conn.coax (ws:// or wss://),
+// driven by coax/lib/nostr/relay.coax's machine (generations, backoff,
+// resubscription with since, publishes resent until their OK). On every new
+// connection the Pylon answers that connection's NIP-42 challenge, then
+// republishes its beacon, then lets the REQ and the queued answers out
+// (pq_wire); a job answered once is not answered again (relay.coax's and
+// pq_seen's id windows), and an answer made while the relay was away goes
+// out on the next connection.
+//
+// The host (psionic/platform/pylon-host.c) gives arguments, the wall clock,
+// a sleep and a stop request; sockets are socket-native.c, TLS tls-native.c,
+// entropy entropy-foreign.c, and the signer's process process-native.c.
 //
 // TEST-ONLY until openagents-d7's units land on main (see the record,
 // docs/verification/psionic-ch19-2026-10-29.md, for the exact swaps):
-//   - py_sign_step stands in for nostr_event_sign_step (event_sign.coax) and
-//     py_shared_x for NIP-44's conversation key from two keys. Both ask
-//     psionic/tests/pylon/sign_double.ts (@noble/curves) over a pipe.
+//   - py_sign_step stands in for nostr_event_sign_step (event_sign.coax): it
+//     asks psionic/tests/pylon/sign_double.ts (@noble/curves) over a pipe.
+//     NIP-44's conversation key is Coax: nip44-key.coax, from the key and
+//     the caller's x-only key.
 //   - py_frame reads relay-to-client frames until message.coax lands.
 //   - The key is sha256 of --test-key-label. --key-file is refused while the
 //     signer is the double.
 #import "Basic";
 #load "host.coax";
 #load "queue.coax";
-#load "../../../coax/lib/net/ws.coax";
+#load "../../../coax/lib/net/relay_conn.coax";
+#load "../../../coax/lib/nostr/relay.coax";
 #load "../../../coax/lib/crypto/entropy.coax";
 #load "../../../coax/lib/nostr/event.coax";
 #load "../../../coax/lib/nostr/nip44.coax";
+#load "../../../coax/lib/nostr/nip44-key.coax";
 #load "../../../coax/lib/nostr/nip42.coax";
 
 // queue.coax names these PdCode and PdType values as integers.
@@ -32,16 +44,7 @@
 #assert PQ_CANCELLED==cast(int)PdCode.cancelled && PQ_MISMATCH==cast(int)PdCode.identity_mismatch && PQ_INTERNAL==cast(int)PdCode.internal;
 #assert PQ_CODES==cast(int)PdCode.internal+1 && PQ_CALL==cast(int)PdType.call && PQ_CANCEL==cast(int)PdType.cancel && PQ_REQUEST==PD_REQUEST;
 
-cxsock_host_push :: (byte: int) -> int #foreign;
-cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
-cxsock_write :: (h: int, byte: int) -> int #foreign;
-cxsock_flush :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_read :: (h: int, timeout_ms: int) -> int #foreign;
-cxsock_byte :: (h: int, i: int) -> int #foreign;
-cxsock_close :: (h: int) -> int #foreign;
-cxsock_now_ms :: () -> int #foreign;
-cxrand_fill :: (n: int) -> int #foreign;
-cxrand_byte :: (i: int) -> int #foreign;
+// relay_conn.coax declares the cxsock_*, cxtls_* and cxrand_* effects.
 cxproc_new :: () -> int #foreign;
 cxproc_push :: (h: int, field: int, byte: int) -> int #foreign;
 cxproc_end :: (h: int, field: int) -> int #foreign;
@@ -57,19 +60,17 @@ pyh_arg_byte :: (i: int, k: int) -> int #foreign;
 pyh_now_s :: () -> int #foreign;
 pyh_stop_path_push :: (byte: int) -> int #foreign;
 pyh_stop :: () -> int #foreign;
+pyh_sleep_ms :: (ms: int) -> int #foreign;
 
 PY_IN :: 262144; PY_MSG :: 262144; PY_OUT :: 131072;
 PY_IO_MS :: 5000;
 PY_SIGN_MS :: 10000;
-PY_SUB :: "pylon-jobs";
 PY_VERSION :: "psionic-pylon-v1";
 PY_BODY :: 16384;       // the largest server request this host forwards
 PY_HTTP :: 131072;
 PY_ARGS :: 8192;
 PY_LISTS :: 8;
 PY_DEFAULT_LIST :: "wss://relay.openagents.com";   // owner decision, 2026-10-30
-// rx results besides ws.coax's WS_EV_* events.
-PY_NONE :: 100; PY_EOF :: 101; PY_FAIL :: 102;
 // Frame verbs (py_frame), until message.coax.
 PF_UNKNOWN :: 0; PF_EVENT :: 1; PF_OK :: 2; PF_EOSE :: 3; PF_CLOSED :: 4; PF_NOTICE :: 5; PF_AUTH :: 6;
 
@@ -125,19 +126,6 @@ py_sign_step :: (key:[]u8,aux:[]u8,created_at:int,kind:int,tags:string,content:s
     return m;
 }
 // book:end sign
-// TEST-ONLY: the raw shared x of key and peer (x-only hex), for NIP-44's
-// conversation key. Replaced by NIP-44's conversation key from two keys.
-py_shared_x :: (key:[]u8,peer:string,work:[]PySignWork,out:[]u8)->bool {
-    if key.count!=32 || out.count!=32 || !pt_hex64(peer) {return false;}
-    hk:[64]u8;line:[256]u8;
-    n:=json_raw(line[..],0,"{\"op\":\"x\",\"key\":\"");n=json_raw(line[..],n,py_hex(key,hk[..]));
-    n=json_raw(line[..],n,"\",\"peer\":\"");n=json_raw(line[..],n,peer);n=json_raw(line[..],n,"\"}");
-    for i:0..<64 {hk[i]=0;}
-    answer:[256]u8;m:=py_double(work,cast(string)line[0..<n],answer[..]);
-    for i:0..<n {line[i]=0;}
-    if m!=72 || cast(string)answer[0..<6]!="{\"x\":\"" {return false;}
-    return py_unhex(cast(string)answer[6..<70],out);
-}
 py_public :: (key:[]u8,work:[]PySignWork,out:[]u8)->bool {
     hk:[64]u8;line:[256]u8;
     n:=json_raw(line[..],0,"{\"op\":\"pub\",\"key\":\"");n=json_raw(line[..],n,py_hex(key,hk[..]));n=json_raw(line[..],n,"\"}");
@@ -153,7 +141,7 @@ py_public :: (key:[]u8,work:[]PySignWork,out:[]u8)->bool {
 
 PyConfig :: struct {
     args:[8192]u8;used:int;
-    relay:string;relay_host:string;relay_port:int;
+    relay:string;
     lists:[8]string;list_count:int;
     engine_host:string;engine_port:int;
     model:string;slug:string;label:string;family:string;memory_gb:int;
@@ -166,7 +154,7 @@ py_arg :: (c:[]PyConfig,i:int)->string {
     c[0].used+=n;return cast(string)c[0].args[at..<at+n];
 }
 py_int :: (s:string)->int {v:=json_int(s);if !v.ok {return -1;}return v.value;}
-// ws://HOST:PORT[/] or http://HOST:PORT[/...]: host and port, or port -1.
+// http://HOST:PORT[/...]: host and port, or port -1.
 PyUrl :: struct {host:string;port:int;}
 py_url :: (url:string,scheme:string)->PyUrl {
     bad:=PyUrl.{port=-1};
@@ -178,7 +166,7 @@ py_url :: (url:string,scheme:string)->PyUrl {
     return PyUrl.{host=rest[0..<colon],port=port};
 }
 py_usage :: () {
-    print("usage: pylon --relay ws://HOST:PORT --engine http://HOST:PORT --model NAME --slug SLUG\n");
+    print("usage: pylon --relay ws[s]://HOST[:PORT] --engine http://HOST:PORT --model NAME --slug SLUG\n");
     print("             (--test-key-label LABEL | --key-file PATH) --signer-bun BUN --signer-script sign_double.ts --node-path DIR\n");
     print("             [--list URL]... [--label TEXT] [--family gpu|cpu|unified-memory] [--memory-gb N]\n");
     print("             [--decide-ms N] [--refresh S] [--ttl S] [--stop-file PATH]\n");
@@ -209,8 +197,7 @@ py_config :: (c:[]PyConfig)->bool {
         else if name=="--ttl" {c[0].ttl=py_int(v);}
         else {print("pylon: unknown option %\n",name);return false;}
     }
-    u:=py_url(c[0].relay,"ws://");c[0].relay_host=u.host;c[0].relay_port=u.port;
-    if u.port<0 {print("pylon: --relay must be ws://HOST:PORT (wss:// is not wired into this host yet)\n");return false;}
+    if !relay_uri(c[0].relay).ok {print("pylon: --relay must be ws://HOST[:PORT] or wss://HOST[:PORT], with a host name, not an IP address\n");return false;}
     if c[0].engine_port<0 || c[0].engine_host.count==0 {print("pylon: --engine must be http://HOST:PORT\n");return false;}
     if c[0].key_file.count!=0 {
         print("pylon: --key-file refused: this build signs through the TEST-ONLY double, which never takes a real key\n");return false;
@@ -227,85 +214,17 @@ py_config :: (c:[]PyConfig)->bool {
     return true;
 }
 
-// ---- the relay connection (ws.coax over socket-native.c) -------------------
+// ---- effects shared with the engine's HTTP -----------------------------------
 
-PyConn :: struct {
-    h:int=-1;gen:int;
-    inb:[262144]u8;used:int;
-    rd:[1]WsReader;
-    msg:[262144]u8;
-    ctl:[125]u8;ctl_n:int;
-}
-py_draw :: (n:int,out:[]u8)->bool {
-    if out.count<n || cxrand_fill(n)!=0 {return false;}
-    for i:0..<n {b:=cxrand_byte(i);if b<0 || b>255 {return false;}out[i]=cast(u8)b;}
-    return true;
-}
+py_draw :: (n:int,out:[]u8)->bool {return rc_draw(n,out);}
 py_write :: (h:int,bytes:string)->bool {
     for b:bytes {if cxsock_write(h,cast(int)b)!=0 {return false;}}
     return cxsock_flush(h,PY_IO_MS)==0;
-}
-py_send :: (c:[]PyConn,op:int,payload:string)->bool {
-    mask:[4]u8;out:[PY_OUT]u8;
-    if c[0].h<0 || !py_draw(4,mask[..]) {return false;}
-    n:=ws_frame_write(op,true,payload,mask[..],out[..]);
-    return n>0 && py_write(c[0].h,cast(string)out[0..<n]);
-}
-py_shut :: (c:[]PyConn) {
-    if c[0].h>=0 {r:=cxsock_close(c[0].h);}
-    c[0].h=-1;c[0].used=0;c[0].rd[0]=WsReader.{};
-}
-py_fill :: (c:[]PyConn,timeout_ms:int)->int {
-    n:=cxsock_read(c[0].h,timeout_ms);
-    if n<=0 {return n;}
-    if c[0].used+n>PY_IN {return -3;}
-    for i:0..<n {c[0].inb[c[0].used+i]=cast(u8)cxsock_byte(c[0].h,i);}
-    c[0].used+=n;return n;
-}
-py_drop_front :: (c:[]PyConn,k:int) {
-    for i:k..<c[0].used {c[0].inb[i-k]=c[0].inb[i];}
-    c[0].used-=k;
 }
 py_connect :: (host:string,port:int)->int {
     for b:host {r:=cxsock_host_push(cast(int)b);}
     return cxsock_connect(port,PY_IO_MS);
 }
-py_open :: (c:[]PyConn,host:string,port:int)->bool {
-    py_shut(c);
-    h:=py_connect(host,port);if h<0 {return false;}
-    c[0].h=h;c[0].gen+=1;
-    nonce:[16]u8;key:[24]u8;req:[512]u8;
-    if !py_draw(16,nonce[..]) || !ws_key(nonce[..],key[..]) {py_shut(c);return false;}
-    n:=ws_request(host,port,"/",cast(string)key[..],req[..]);
-    if n<0 || !py_write(c[0].h,cast(string)req[0..<n]) {py_shut(c);return false;}
-    while true {
-        hello:=ws_response(cast(string)c[0].inb[0..<c[0].used],cast(string)key[..]);
-        if hello.status==WS_HELLO_OK {py_drop_front(c,hello.consumed);return true;}
-        if hello.status!=WS_HELLO_MORE || py_fill(c,PY_IO_MS)<=0 {py_shut(c);return false;}
-    }
-    return false;
-}
-// The next WebSocket event; pings are answered here.
-py_recv :: (c:[]PyConn,timeout_ms:int)->int {
-    while true {
-        f:=ws_frame_read(cast(string)c[0].inb[0..<c[0].used],PY_MSG);
-        if f.status==WS_FRAME_OK {
-            ev:=ws_take(c[0].rd[..],f,cast(string)c[0].inb[f.header..<f.total],c[0].msg[..]);
-            if f.op>=8 {c[0].ctl_n=f.length;for i:0..<f.length {c[0].ctl[i]=c[0].inb[f.header+i];}}
-            py_drop_front(c,f.total);
-            if ev==WS_EV_PING {if !py_send(c,WS_OP_PONG,cast(string)c[0].ctl[0..<c[0].ctl_n]) {return PY_FAIL;}continue;}
-            if ev!=WS_EV_PART {return ev;}
-            continue;
-        }
-        if f.status!=WS_FRAME_MORE {return PY_FAIL;}
-        n:=py_fill(c,timeout_ms);
-        if n==-2 {return PY_NONE;}
-        if n==-1 {return PY_EOF;}
-        if n<0 {return PY_FAIL;}
-    }
-    return PY_FAIL;
-}
-py_text :: (c:[]PyConn)->string {return cast(string)c[0].msg[0..<c[0].rd[0].used];}
 
 // ---- relay frames (TEST-ONLY adapter until message.coax) -------------------
 
@@ -338,17 +257,29 @@ py_frame :: (text:string)->PyFrame {
 // ---- the Pylon ----------------------------------------------------------------
 
 PySlot :: struct {held:PdJob;id:[64]u8;caller:[64]u8;request:[128]u8;body:[16384]u8;n:int;}
+// A signed ["EVENT",...] frame kept for relay.coax's publish slot of the same
+// index, so it can go again on the next connection until its OK comes.
+PyOutbox :: struct {text:[131072]u8;n:int;}
+// The last answers sent (26910 or 27010), by job id, for pq_again.
+PY_KEPT :: 8;
+PyKept :: struct {jid:[32]u8;used:bool;frame:[131072]u8;n:int;}
 Py :: struct {
     cfg:[1]PyConfig;
     key:[32]u8;me:[64]u8;
     signer:[1]PySignWork;
-    conn:[1]PyConn;
+    // One RelayConn (about 450 KB) and the machine for the whole run; Py is
+    // main's, on the host's 512 MiB thread, never a per-call frame.
+    conn:[1]RelayConn;rl:[1]Relay;outbox:[8]PyOutbox;
+    gen:int;opened_ms:int;announced:int;sub:int=-1;first_since:int;
+    beacon_slot:int=-1;list_slot:int=-1;
+    kept:[8]PyKept;kept_at:int;
+    ecdh:[1]EcdhScratch;
     n42:[1]Nip42;
     q:[1]PqQueue;slots:[4]PySlot;
     life:PbLife;observed:int;identity:[160]u8;identity_n:int;
-    pending:[64]u8;pending_ok:int=-1;
     sent:int;accepted:int;refused:int;forged:int;duplicates:int;ignored:int;
     answered:int;refusals:int;cancelled:int;beacons:int;
+    connects:int;drops:int;auths:int;caught_up:int;
 }
 py_me :: (p:[]Py)->string {return cast(string)p[0].me[..];}
 py_identity :: (p:[]Py)->string {return cast(string)p[0].identity[0..<p[0].identity_n];}
@@ -372,29 +303,40 @@ py_fields :: (template:string,content:[]u8)->PyTpl {
     }
     r.ok=seen==15 && r.created_at>=0 && r.kind>=0;return r;
 }
-// Signs and sends one event; its id is remembered for the OK. False when
-// signing or the socket failed.
-py_publish :: (p:[]Py,template:string,what:string)->bool {
+// Signs one event and hands it to relay.coax's publish queue: it goes out
+// when the connection is open and authenticated, again on every reconnect
+// until the relay answers OK. The publish slot, or -1 when signing failed or
+// every slot is pending.
+py_publish :: (p:[]Py,template:string,what:string)->int {
     content:[65536]u8;t:=py_fields(template,content[..]);
-    if !t.ok {print("pylon: % template unreadable\n",what);return false;}
-    aux:[32]u8;if !py_draw(32,aux[..]) {return false;}
+    if !t.ok {print("pylon: % template unreadable\n",what);return -1;}
+    aux:[32]u8;if !py_draw(32,aux[..]) {return -1;}
     scratch:[PY_OUT]u8;signed:[PY_OUT]u8;n:=0;
     while n==0 {n=py_sign_step(p[0].key[..],aux[..],t.created_at,t.kind,t.tags,t.content,p[0].signer[..],scratch[..],signed[..],false);}
-    if n<0 {print("pylon: % refused by the signer\n",what);return false;}
-    frame:[PY_OUT]u8;m:=json_raw(frame[..],0,"[\"EVENT\",");m=json_raw(frame[..],m,cast(string)signed[0..<n]);m=json_raw(frame[..],m,"]");
-    if m<0 {return false;}
+    if n<0 {print("pylon: % refused by the signer\n",what);return -1;}
     // The signed event's id is its first field: {"id":"<64 hex>",...
-    if n<72 || cast(string)signed[0..<7]!="{\"id\":\"" {return false;}
-    for i:0..<64 {p[0].pending[i]=signed[7+i];}p[0].pending_ok=-1;
+    id:[32]u8;
+    if n<72 || cast(string)signed[0..<7]!="{\"id\":\"" || !py_unhex(cast(string)signed[7..<71],id[..]) {return -1;}
+    slot:=rl_publish(p[0].rl[..],id[..]);
+    if slot<0 {print("pylon: no publish slot free for the %\n",what);return -1;}
+    o:=p[0].outbox[slot].text[..];
+    m:=json_raw(o,0,"[\"EVENT\",");m=json_raw(o,m,cast(string)signed[0..<n]);m=json_raw(o,m,"]");
+    if m<0 || m>RC_MSG_MAX {x:=rl_cancel_publish(p[0].rl[..],slot);return -1;}
+    p[0].outbox[slot].n=m;
     p[0].sent+=1;
-    return py_send(p[0].conn[..],WS_OP_TEXT,cast(string)frame[0..<m]);
+    return slot;
 }
 // NIP-44 to the caller: the payload written into out.
+// The conversation key with caller (x-only hex): nip44-key.coax's ECDH and
+// HKDF-extract, into ck. NIP44_OK or its refusal.
+py_ck :: (p:[]Py,caller:string,ck:[]u8)->u32 {
+    peer:[32]u8;if !py_unhex(caller,peer[..]) {return NIP44_KEY;}
+    return nip44_conversation_key_from_keys_checked(p[0].key[..],peer[..],p[0].ecdh[..],ck,false);
+}
 py_seal :: (p:[]Py,caller:string,plaintext:string,out:[]u8)->string {
-    x:[32]u8;ck:[32]u8;nonce:[32]u8;
-    if !py_shared_x(p[0].key[..],caller,p[0].signer[..],x[..]) {return "";}
-    e:=nip44_conversation_key_checked(x[..],ck[..],false);for i:0..<32 {x[i]=0;}
-    if e!=NIP44_OK || !py_draw(32,nonce[..]) {return "";}
+    ck:[32]u8;nonce:[32]u8;
+    e:=py_ck(p,caller,ck[..]);
+    if e!=NIP44_OK || !py_draw(32,nonce[..]) {for i:0..<32 {ck[i]=0;}return "";}
     work:[PY_OUT]u8;plain:[PY_OUT]u8;if plaintext.count>PY_OUT {return "";}for i:0..<plaintext.count {plain[i]=plaintext[i];}
     r:=nip44_encrypt_checked(NIP44_COMPAT,ck[..],nonce[..],plain[0..<plaintext.count],work[0..<nip44_encrypt_work_size(NIP44_COMPAT,plaintext.count)],out[0..<nip44_payload_size(NIP44_COMPAT,plaintext.count)],false);
     for i:0..<32 {ck[i]=0;}
@@ -402,9 +344,8 @@ py_seal :: (p:[]Py,caller:string,plaintext:string,out:[]u8)->string {
     return cast(string)out[0..<r.written];
 }
 py_open_payload :: (p:[]Py,caller:string,payload:string,out:[]u8)->Nip44Result {
-    x:[32]u8;ck:[32]u8;
-    if !py_shared_x(p[0].key[..],caller,p[0].signer[..],x[..]) {return Nip44Result.{error=NIP44_KEY};}
-    e:=nip44_conversation_key_checked(x[..],ck[..],false);for i:0..<32 {x[i]=0;}
+    ck:[32]u8;
+    e:=py_ck(p,caller,ck[..]);
     if e!=NIP44_OK {return Nip44Result.{error=e};}
     size:=nip44_decrypt_work_size(NIP44_COMPAT,payload.count);
     if size<0 || size>PY_OUT {return Nip44Result.{error=NIP44_CAPACITY};}
@@ -418,7 +359,29 @@ py_reply :: (p:[]Py,jb:PdJob,kind:int,plaintext:string,what:string)->bool {
     if sealed.count==0 {print("pylon: could not encrypt the % for %\n",what,py_short(jb.id));return false;}
     template:[PY_OUT]u8;n:=pd_template(template[..],py_me(p),pyh_now_s(),kind,jb,sealed);
     if n<0 {return false;}
-    return py_publish(p,cast(string)template[0..<n],what);
+    slot:=py_publish(p,cast(string)template[0..<n],what);
+    if slot<0 {return false;}
+    k:=p[0].kept_at;p[0].kept_at=(k+1)%PY_KEPT;
+    p[0].kept[k].used=py_unhex(jb.id,p[0].kept[k].jid[..]);
+    for i:0..<p[0].outbox[slot].n {p[0].kept[k].frame[i]=p[0].outbox[slot].text[i];}p[0].kept[k].n=p[0].outbox[slot].n;
+    return true;
+}
+// A job id seen again: its kept answer goes again when pq_again says so.
+py_again :: (p:[]Py,jid:[]u8) {
+    held:=false;
+    for i:0..<PQ_SLOTS {
+        if p[0].q[0].slots[i].state==PqState.free {continue;}
+        id:[32]u8;if py_unhex(cast(string)p[0].slots[i].id[..],id[..]) && rl_id_eq(id[..],jid) {held=true;}
+    }
+    k:=-1;
+    for i:0..<PY_KEPT {if p[0].kept[i].used && rl_id_eq(p[0].kept[i].jid[..],jid) {k=i;}}
+    if !pq_again(k>=0,held) {return;}
+    // The kept frame is ["EVENT",{"id":"<64 hex>",...
+    f:=cast(string)p[0].kept[k].frame[0..<p[0].kept[k].n];id:[32]u8;
+    if f.count<80 || f[0..<16]!="[\"EVENT\",{\"id\":\"" || !py_unhex(f[16..<80],id[..]) {return;}
+    slot:=rl_publish(p[0].rl[..],id[..]);if slot<0 {return;}
+    for i:0..<f.count {p[0].outbox[slot].text[i]=f[i];}p[0].outbox[slot].n=f.count;
+    hj:[64]u8;print("pylon: job % seen again; its answer % goes again\n",py_short(py_hex(jid,hj[..])),py_short(f[16..<80]));
 }
 py_status :: (p:[]Py,jb:PdJob,code:PdCode)->bool {
     body:[1024]u8;retry:=ifx code==PdCode.busy then PQ_RETRY_MS else -1;
@@ -507,8 +470,12 @@ py_beacon :: (p:[]Py,now:int)->bool {
     p[0].observed=observed;
     snap:=pb_snap(p[0].life,pq_free(p[0].q[..]),1);p[0].life=pb_sent(p[0].life,snap,now);
     p[0].beacons+=1;
-    print("pylon: beacon % generation % free % of %\n",pb_status_name(b.status),b.generation,free,PQ_SLOTS);
-    return py_publish(p,cast(string)out[0..<n],"beacon");
+    // A newer beacon replaces one still waiting to go out (after a drop).
+    bs:=p[0].beacon_slot;
+    if bs>=0 && (p[0].rl[0].pubs[bs].state==RP_QUEUED || p[0].rl[0].pubs[bs].state==RP_SENT) {x:=rl_cancel_publish(p[0].rl[..],bs);}
+    print("pylon: beacon % generation % free % of % (connection %)\n",pb_status_name(b.status),b.generation,free,PQ_SLOTS,p[0].gen);
+    p[0].beacon_slot=py_publish(p,cast(string)out[0..<n],"beacon");
+    return p[0].beacon_slot>=0;
 }
 py_relay_list :: (p:[]Py,now:int)->bool {
     c:=p[0].cfg[0];relays:[8]PrRelay;
@@ -516,7 +483,8 @@ py_relay_list :: (p:[]Py,now:int)->bool {
     out:[4096]u8;n:=pr_write(out[..],py_me(p),now,relays[0..<c.list_count]);
     if n<0 {print("pylon: the relay list writer refused\n");return false;}
     print("pylon: relay list of %\n",c.list_count);
-    return py_publish(p,cast(string)out[0..<n],"relay list");
+    p[0].list_slot=py_publish(p,cast(string)out[0..<n],"relay list");
+    return p[0].list_slot>=0;
 }
 
 // ---- jobs ----------------------------------------------------------------------
@@ -529,12 +497,10 @@ py_keep :: (p:[]Py,slot:int,jb:PdJob,body:string) {
     j.request=cast(string)p[0].slots[slot].request[0..<jb.request.count];j.target="";p[0].slots[slot].held=j;
 }
 // book:begin event
-py_event :: (p:[]Py,text:string) {
-    scratch:[262144]u8;
-    ev:=nostr_event_verify_vartime(text,scratch[..],false);
-    verified:=ev.error==NE_OK && ev.verified;
-    if !verified {p[0].forged+=1;print("pylon: event refused by verification (error %)\n",ev.error);return;}
-    if !pq_seen(p[0].q[..],ev.id[..]) {p[0].duplicates+=1;return;}
+// ev is verified (py_take) and relay.coax delivered it once.
+py_event :: (p:[]Py,event:NostrEvent) {
+    ev:=event;
+    if !pq_seen(p[0].q[..],ev.id[..]) {p[0].duplicates+=1;py_again(p,ev.id[..]);return;}
     idh:[64]u8;pkh:[64]u8;id:=py_hex(ev.id[..],idh[..]);caller:=py_hex(ev.public_key[..],pkh[..]);
     raw:=ev.original[ev.content_from..<ev.content_to];payload:[PY_OUT]u8;k:=json_unescape(raw,payload[..]);
     plain:[PY_OUT]u8;opened:=Nip44Result.{error=NIP44_PAYLOAD};
@@ -591,69 +557,151 @@ py_run :: (p:[]Py,slot:int) {
     } else {ok:=py_status(p,jb,cast(PdCode)a.code);}
     done:=pq_done(p[0].q[..],slot);
 }
-// One relay message.
+// One relay message, through relay.coax's machine.
 py_take :: (p:[]Py) {
-    text:=py_text(p[0].conn[..]);f:=py_frame(text);
-    if f.verb==PF_EVENT {if json_is(f.sub,PY_SUB) {py_event(p,f.event);}return;}
-    if f.verb==PF_OK {
-        if f.ok {p[0].accepted+=1;}else {p[0].refused+=1;print("pylon: relay refused %: %\n",py_short(f.id),f.message);}
-        if f.id==cast(string)p[0].pending[..] {p[0].pending_ok=ifx f.ok then 1 else 0;}
+    c:=p[0].conn[..];r:=p[0].rl[..];
+    text:=cast(string)c[0].text[0..<c[0].text_n];f:=py_frame(text);
+    if f.verb==PF_EVENT {
+        scratch:[262144]u8;
+        ev:=nostr_event_verify_vartime(f.event,scratch[..],false);
+        m:=RlIn.{kind=RL_IN_EVENT,sub=f.sub,created_at=ev.created_at,verified=ev.error==NE_OK && ev.verified};
+        m.id=ev.id;
+        d:=rl_input(r,p[0].gen,m);
+        if d==RL_FORGED {p[0].forged+=1;print("pylon: event refused by verification (error %)\n",ev.error);return;}
+        if d==RL_DUPLICATE {p[0].duplicates+=1;py_again(p,ev.id[..]);return;}
+        if d!=RL_DELIVER {p[0].ignored+=1;print("pylon: event for % not taken (%)\n",f.sub,d);return;}
+        py_event(p,ev);
         return;
     }
-    if f.verb==PF_EOSE {print("pylon: caught up on %\n",f.sub);return;}
-    if f.verb==PF_CLOSED {print("pylon: relay closed %: %\n",f.sub,f.message);return;}
-    if f.verb==PF_NOTICE {print("pylon: notice %\n",f.message);return;}
-    if f.verb==PF_AUTH {return;}
+    if f.verb==PF_OK {
+        m:=RlIn.{kind=RL_IN_OK,accepted=f.ok};
+        if f.id.count!=64 || !py_unhex(f.id,m.id[..]) {print("pylon: unreadable OK\n");return;}
+        d:=rl_input(r,p[0].gen,m);
+        if d==RL_AUTH {
+            if f.ok {p[0].auths+=1;print("pylon: authenticated to % as % (connection %)\n",p[0].cfg[0].relay,py_me(p),p[0].gen);}
+            else {print("pylon: the relay refused NIP-42 AUTH: %\n",f.message);}
+            return;
+        }
+        if d==RL_ACK {
+            if f.ok {p[0].accepted+=1;}else {p[0].refused+=1;print("pylon: relay refused %: %\n",py_short(f.id),f.message);}
+        }
+        return;
+    }
+    if f.verb==PF_EOSE {
+        if rl_input(r,p[0].gen,RlIn.{kind=RL_IN_EOSE,sub=f.sub})==RL_EOSE {p[0].caught_up+=1;print("pylon: caught up on % (connection %)\n",f.sub,p[0].gen);}
+        return;
+    }
+    if f.verb==PF_CLOSED {
+        need:=f.message.count>=14 && f.message[0..<14]=="auth-required:";
+        d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_CLOSED,sub=f.sub,auth_required=need});
+        print("pylon: relay closed %: %\n",f.sub,f.message);return;
+    }
+    if f.verb==PF_NOTICE {d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_NOTICE});print("pylon: notice %\n",f.message);return;}
+    if f.verb==PF_AUTH {
+        if nip42_challenge(p[0].n42[..],p[0].gen,text)==N42_OK {d:=rl_input(r,p[0].gen,RlIn.{kind=RL_IN_AUTH});}
+        return;
+    }
     print("pylon: unreadable frame (% bytes)\n",text.count);
 }
-// Reads frames: the first within wait_ms, then whatever is already there.
-// False when the connection failed.
-py_pump :: (p:[]Py,wait_ms:int)->bool {
-    wait:=wait_ms;
-    while true {
-        ev:=py_recv(p[0].conn[..],wait);wait=0;
-        if ev==PY_NONE {return true;}
-        if ev==WS_EV_MESSAGE {py_take(p);continue;}
-        if ev==WS_EV_PONG {continue;}
-        print("pylon: the relay connection ended (%)\n",ev);return false;
+py_jitter :: ()->int {
+    b:[4]u8;if !py_draw(4,b[..]) {return 0;}
+    return (cast(int)b[0]<<24)|(cast(int)b[1]<<16)|(cast(int)b[2]<<8)|cast(int)b[3];
+}
+// The connection ended (or is being given up): relay.coax backs off.
+py_drop :: (p:[]Py,why:string) {
+    relay_conn_drop(p[0].conn[..]);now:=cxsock_now_ms();
+    if rl_dropped(p[0].rl[..],p[0].gen,now,py_jitter()) {
+        p[0].drops+=1;
+        print("pylon: connection % ended (%); reconnecting in % ms\n",p[0].gen,why,p[0].rl[0].deadline-now);
     }
-    return false;
 }
-// Waits for the OK of the last publish.
-py_acked :: (p:[]Py,limit_ms:int)->bool {
-    end:=cxsock_now_ms()+limit_ms;
-    while p[0].pending_ok==-1 && cxsock_now_ms()<end {if !py_pump(p,100) {return false;}}
-    return p[0].pending_ok==1;
-}
-// NIP-42: the relay's challenge, a signed 22242, its OK.
+// NIP-42 for this connection's challenge: a signed 22242 and the machine's hook.
 py_auth :: (p:[]Py)->bool {
-    c:=p[0].cfg[0];
-    if nip42_init(p[0].n42[..],c.relay)!=N42_OK {print("pylon: NIP-42 refuses the relay URL\n");return false;}
-    end:=cxsock_now_ms()+PY_IO_MS;
-    while cxsock_now_ms()<end {
-        ev:=py_recv(p[0].conn[..],200);
-        if ev==PY_NONE {continue;}
-        if ev!=WS_EV_MESSAGE {return false;}
-        if nip42_challenge(p[0].n42[..],p[0].conn[0].gen,py_text(p[0].conn[..]))==N42_OK {break;}
-        py_take(p);
-    }
-    tags:[1024]u8;t:=nip42_template(p[0].n42[..],p[0].conn[0].gen,pyh_now_s(),tags[..]);
+    tags:[1024]u8;t:=nip42_template(p[0].n42[..],p[0].gen,pyh_now_s(),tags[..]);
     if t.error!=N42_OK {print("pylon: no NIP-42 challenge (%)\n",t.error);return false;}
     aux:[32]u8;if !py_draw(32,aux[..]) {return false;}
     scratch:[PY_OUT]u8;signed:[PY_OUT]u8;n:=0;
     while n==0 {n=py_sign_step(p[0].key[..],aux[..],t.created_at,t.kind,t.tags,t.content,p[0].signer[..],scratch[..],signed[..],false);}
-    if n<72 {return false;}
+    id:[32]u8;
+    if n<72 || cast(string)signed[0..<7]!="{\"id\":\"" || !py_unhex(cast(string)signed[7..<71],id[..]) {return false;}
     frame:[PY_OUT]u8;m:=json_raw(frame[..],0,"[\"AUTH\",");m=json_raw(frame[..],m,cast(string)signed[0..<n]);m=json_raw(frame[..],m,"]");
-    for i:0..<64 {p[0].pending[i]=signed[7+i];}p[0].pending_ok=-1;p[0].sent+=1;
-    if m<0 || !py_send(p[0].conn[..],WS_OP_TEXT,cast(string)frame[0..<m]) {return false;}
-    if !py_acked(p,PY_IO_MS) {print("pylon: the relay refused NIP-42 AUTH\n");return false;}
-    print("pylon: authenticated to % as %\n",c.relay,py_me(p));
+    p[0].sent+=1;
+    return m>0 && relay_conn_send(p[0].conn[..],cast(string)frame[0..<m]) && rl_auth_sent(p[0].rl[..],id[..]);
+}
+// What the machine asks to send: the job REQ (since from pq_since), CLOSE,
+// and the kept EVENT frames. False when the socket failed.
+py_flush :: (p:[]Py)->bool {
+    r:=p[0].rl[..];
+    while r[0].state==RL_OPEN {
+        o:=rl_next(r,cxsock_now_ms());
+        if o.kind==RL_OUT_NONE || o.kind==RL_OUT_AUTH {return true;}
+        sb:[24]u8;id:=rl_sub_text(o.slot,r[0].subs[o.slot].serial,sb[..]);
+        ok:=false;
+        if o.kind==RL_OUT_REQ {
+            since:=pq_since(o.has_since,o.since,p[0].first_since);
+            req:[512]u8;n:=json_raw(req[..],0,"[\"REQ\",");n=json_write_string(req[..],n,id);n=json_raw(req[..],n,",{\"kinds\":[25910],\"#p\":[\"");
+            n=json_raw(req[..],n,py_me(p));n=json_raw(req[..],n,"\"],\"since\":");n=json_write_int(req[..],n,since.since);n=json_raw(req[..],n,"}]");
+            print("pylon: REQ % since % (connection %)%\n",id,since.since,p[0].gen,ifx since.resumed then ", resumed from the newest job delivered" else "");
+            ok=n>0 && relay_conn_send(p[0].conn[..],cast(string)req[0..<n]);
+        } else if o.kind==RL_OUT_CLOSE {
+            close:[64]u8;n:=json_raw(close[..],0,"[\"CLOSE\",");n=json_write_string(close[..],n,id);n=json_raw(close[..],n,"]");
+            ok=n>0 && relay_conn_send(p[0].conn[..],cast(string)close[0..<n]);
+        } else if o.kind==RL_OUT_EVENT {
+            ok=relay_conn_send(p[0].conn[..],cast(string)p[0].outbox[o.slot].text[0..<p[0].outbox[o.slot].n]);
+        }
+        if !ok {return false;}
+    }
     return true;
 }
-py_subscribe :: (p:[]Py,now:int)->bool {
-    req:[512]u8;n:=json_raw(req[..],0,"[\"REQ\",\"");n=json_raw(req[..],n,PY_SUB);n=json_raw(req[..],n,"\",{\"kinds\":[25910],\"#p\":[\"");
-    n=json_raw(req[..],n,py_me(p));n=json_raw(req[..],n,"\"],\"since\":");n=json_write_int(req[..],n,now-PD_PAST);n=json_raw(req[..],n,"}]");
-    return n>0 && py_send(p[0].conn[..],WS_OP_TEXT,cast(string)req[0..<n]);
+// One turn of the connection: connect when the machine says so, then
+// pq_wire's step (AUTH, the beacon, the queued frames), then at most wait_ms
+// for one relay message. relay_conn_poll's result (RC_NONE when it did not poll).
+py_step :: (p:[]Py,wait_ms:int)->int {
+    r:=p[0].rl[..];c:=p[0].conn[..];relay:=p[0].cfg[0].relay;now:=cxsock_now_ms();
+    t:=rl_tick(r,now);
+    if r[0].state==RL_IDLE || t==RL_DO_CONNECT {
+        g:=rl_start(r,now);if g<0 {return RC_NONE;}
+        p[0].gen=g;p[0].connects+=1;
+        if !relay_conn_open(c,relay) || !rl_opened(r,g,cxsock_now_ms()) {py_drop(p,"no WebSocket");return RC_NONE;}
+        p[0].opened_ms=cxsock_now_ms();
+        print("pylon: connection % open to %\n",g,relay);
+    } else if t==RL_DO_TIMEOUT {py_drop(p,"connect timed out");return RC_NONE;}
+    if r[0].state==RL_BACKOFF {
+        left:=r[0].deadline-cxsock_now_ms();
+        if wait_ms>0 && left>0 {x:=pyh_sleep_ms(ifx left<wait_ms then left else wait_ms);}
+        return RC_NONE;
+    }
+    if r[0].state!=RL_OPEN {return RC_NONE;}
+    w:=pq_wire(r[0].auth==RA_CHALLENGED,r[0].auth==RA_OK,p[0].announced==p[0].gen,cxsock_now_ms()-p[0].opened_ms,PY_IO_MS);
+    if w==PqWire.drop {py_drop(p,"no NIP-42 AUTH accepted in time");return RC_NONE;}
+    if w==PqWire.auth && !py_auth(p) {py_drop(p,"AUTH not sent");return RC_NONE;}
+    if w==PqWire.announce {
+        p[0].announced=p[0].gen;
+        if !py_beacon(p,pyh_now_s()) {print("pylon: the beacon for connection % was not queued\n",p[0].gen);}
+    }
+    if (w==PqWire.announce || w==PqWire.flow) && !py_flush(p) {py_drop(p,"send failed");return RC_NONE;}
+    ev:=relay_conn_poll(c,wait_ms);
+    if ev==RC_TEXT {py_take(p);return ev;}
+    if ev==RC_NONE {return ev;}
+    py_drop(p,ifx ev==RC_CLOSED then "closed by the relay" else "failed");
+    return ev;
+}
+// Reads frames: the first within wait_ms, then whatever is already there.
+py_pump :: (p:[]Py,wait_ms:int) {
+    ev:=py_step(p,wait_ms);
+    while ev==RC_TEXT {ev=py_step(p,0);}
+}
+// Waits at most limit_ms for the OK of publish slot (reconnecting meanwhile).
+py_acked :: (p:[]Py,slot:int,limit_ms:int)->bool {
+    if slot<0 {return false;}
+    end:=cxsock_now_ms()+limit_ms;
+    while cxsock_now_ms()<end {
+        st:=p[0].rl[0].pubs[slot].state;
+        if st==RP_ACCEPTED {return true;}
+        if st==RP_REFUSED {return false;}
+        py_pump(p,100);
+    }
+    return false;
 }
 py_signer :: (p:[]Py)->bool {
     c:=p[0].cfg[0];h:=cxproc_new();if h<0 {return false;}
@@ -673,19 +721,23 @@ py_main :: (p:[]Py)->int {
     if !py_signer(p) || !py_public(p[0].key[..],p[0].signer[..],p[0].me[..]) {print("pylon: the TEST-ONLY signer did not start\n");return 2;}
     print("pylon: TEST-ONLY key and signing double; pubkey %\n",py_me(p));
     if !py_probe(p) {return 3;}
-    if !py_open(p[0].conn[..],c.relay_host,c.relay_port) {print("pylon: no WebSocket to %\n",c.relay);return 4;}
-    if !py_auth(p) {return 4;}
+    if nip42_init(p[0].n42[..],c.relay)!=N42_OK {print("pylon: NIP-42 refuses the relay URL\n");return 4;}
     now:=pyh_now_s();
-    if !py_relay_list(p,now) || !py_acked(p,PY_IO_MS) {print("pylon: relay list not accepted\n");return 5;}
+    p[0].first_since=now-PD_PAST;
+    p[0].sub=rl_subscribe(p[0].rl[..]);
     p[0].life=pb_start(PbLife.{},now);
-    if !py_beacon(p,now) || !py_acked(p,PY_IO_MS) {print("pylon: beacon not accepted\n");return 5;}
-    if !py_subscribe(p,now) {return 4;}
+    if p[0].sub<0 || !py_relay_list(p,now) {return 5;}
+    // The first connection: AUTH, the beacon, the REQ and the list, all acknowledged.
+    if !py_acked(p,p[0].list_slot,30000) {print("pylon: relay list not accepted\n");return 5;}
+    if !py_acked(p,p[0].beacon_slot,30000) {print("pylon: beacon not accepted\n");return 5;}
     print("pylon: online, waiting for jobs\n");
 // book:begin loop
     while true {
         // Frames first, so a job that arrived while the engine ran is held
-        // before the stop request is weighed.
-        if !py_pump(p,200) {return 6;}
+        // before the stop request is weighed. A dropped connection comes
+        // back here: py_step reconnects, re-authenticates, republishes the
+        // beacon and resubscribes, and queued answers go out after AUTH.
+        py_pump(p,200);
         now=pyh_now_s();
         l:=pq_life(pyh_stop()==1,pq_held(p[0].q[..]));
         if l==PqLife.off {break;}
@@ -698,16 +750,15 @@ py_main :: (p:[]Py)->int {
     }
 // book:end loop
     p[0].life=pb_stop(p[0].life);
-    if !py_beacon(p,pyh_now_s()) || !py_acked(p,PY_IO_MS) {print("pylon: offline beacon not accepted\n");}
-    close:[64]u8;n:=json_raw(close[..],0,"[\"CLOSE\",\"");n=json_raw(close[..],n,PY_SUB);n=json_raw(close[..],n,"\"]");
-    ok:=py_send(p[0].conn[..],WS_OP_TEXT,cast(string)close[0..<n]);
-    mask:[4]u8;cf:[16]u8;
-    if py_draw(4,mask[..]) {k:=ws_close_write(WS_CLOSE_NORMAL,mask[..],cf[..]);if k>0 {ok=py_write(p[0].conn[0].h,cast(string)cf[0..<k]);}}
-    py_shut(p[0].conn[..]);
+    if !py_beacon(p,pyh_now_s()) || !py_acked(p,p[0].beacon_slot,PY_IO_MS) {print("pylon: offline beacon not accepted\n");}
+    if rl_unsubscribe(p[0].rl[..],p[0].sub) {sent:=py_flush(p);}
+    rl_shutdown(p[0].rl[..]);
+    ok:=relay_conn_close(p[0].conn[..],WS_CLOSE_NORMAL);
     for i:0..<32 {p[0].key[i]=0;}
     r:=cxproc_release(p[0].signer[0].proc);
-    print("pylon: offline. sent %, accepted %, refused %, answered %, refusals %, cancelled %, forged %, duplicates %, ignored %, beacons %\n",
-        p[0].sent,p[0].accepted,p[0].refused,p[0].answered,p[0].refusals,p[0].cancelled,p[0].forged,p[0].duplicates,p[0].ignored,p[0].beacons);
+    print("pylon: offline. sent %, accepted %, refused %, answered %, refusals %, cancelled %, forged %, duplicates %, ignored %, beacons %, connections %, drops %, auths %, catch-ups %\n",
+        p[0].sent,p[0].accepted,p[0].refused,p[0].answered,p[0].refusals,p[0].cancelled,p[0].forged,p[0].duplicates,p[0].ignored,p[0].beacons,
+        p[0].connects,p[0].drops,p[0].auths,p[0].caught_up);
     return 0;
 }
 main :: () {

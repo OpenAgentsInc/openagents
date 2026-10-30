@@ -1,11 +1,13 @@
 // Chapter 19: the host's one-call entries. Nothing here decides: it hashes
 // with coax/lib/crypto/sha256.coax and calls the checked units (beacon,
 // relays and decision are #authority, mutation-gated on their own). Its
-// checks tie those units to the real SHA-256 and to chapter 16's server.
+// checks tie those units to the real SHA-256; host-serve.coax ties them to
+// chapter 16's server, which the Pylon program itself does not load (it
+// speaks to the server over HTTP, and the server's text tables would push
+// run.coax past the compiler's 64-unit source graph).
 #load "decision.coax";
 #load "relays.coax";
 #load "../../../coax/lib/crypto/sha256.coax";
-#load "../serve-request.coax";
 
 #test "SHA-256 of content is the x tag" {
     hex:[64]u8;#assert ph_digest("",hex[..]) && cast(string)hex[..]=="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855" && !ph_digest("",hex[0..<63]);
@@ -24,16 +26,6 @@
     #assert ph_read_beacon(30200,PB_KEY,cast(string)tags[0..<t],other).code==PbCode.digest;
     #assert ph_beacon(b,PbAuth.{},scratch[0..<100],out[..])==-1;
 }
-#test "the server takes the body a decision job becomes" {
-    body:[4096]u8;jb:=pd_admit(pd_env(PD_CALL),PD_WORKER,1791400000,body[..]);
-    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);r:=sv_decode(cast(string)body[0..<jb.body],pools);
-    #assert jb.code==PdCode.none && r.code==SvCode.none && r.model=="elephant-1" && r.questions==1 && pools.questions[0].id=="refund";
-    #assert pools.questions[0].kind==PtQuestionKind.noul && r.state.value=="{\"ticket\":\"I was billed twice\"}";
-    empty:=pd_admit(pd_env("{\"v\":\"openagents.systemone.v1\",\"type\":\"systemone\",\"request\":\"r\",\"attempt\":1,\"model\":\"m\",\"state\":\"s\",\"questions\":{}}"),PD_WORKER,1791400000,body[..]);
-    #assert empty.code==PdCode.none && pd_code(sv_code_name(sv_decode(cast(string)body[0..<empty.body],pools).code))==PdCode.invalid_request;
-    for c:0..<14 {code:=cast(SvCode)c;#assert pd_code_name(pd_code(sv_code_name(code)))==sv_code_name(code) || pd_code(sv_code_name(code))==PdCode.internal;}
-}
-
 // The lowercase SHA-256 of content into hex (64 bytes).
 ph_digest :: (content:string,hex:[]u8)->bool #export_c {
     if hex.count!=64 {return false;}

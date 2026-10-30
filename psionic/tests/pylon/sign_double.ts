@@ -1,17 +1,16 @@
-// TEST-ONLY signing and ECDH double for the chapter 19 Pylon
+// TEST-ONLY signing double for the chapter 19 Pylon
 // (psionic/lib/pylon/run.coax), until openagents-d7's
-// coax/lib/nostr/event_sign.coax (nostr_event_sign_step) and NIP-44's
-// conversation key from two keys land on main. Tooling only: never shipped,
+// coax/lib/nostr/event_sign.coax (nostr_event_sign_step) lands on main.
+// NIP-44's conversation key is Coax now (coax/lib/nostr/nip44-key.coax). Tooling only: never shipped,
 // never given a real key (run.coax refuses --key-file while this double is
-// the signer). The oracle is @noble/curves (BIP-340 Schnorr and secp256k1
-// ECDH), independent of Coax. One JSON request per stdin line, one JSON
+// the signer). The oracle is @noble/curves (BIP-340 Schnorr), independent
+// of Coax. One JSON request per stdin line, one JSON
 // answer per stdout line:
 //   {"op":"pub","key":K}                      -> {"pub":X}
 //   {"op":"sign","key":K,"aux":A,"created_at":T,"kind":N,"tags":[...],"content":S}
 //                                             -> the signed event
-//   {"op":"x","key":K,"peer":X}               -> {"x":<raw shared x, hex>}
 // A refusal is {"error":"..."}. NODE_PATH names a node_modules with @noble.
-import { schnorr, secp256k1 } from "@noble/curves/secp256k1";
+import { schnorr } from "@noble/curves/secp256k1";
 import { sha256 } from "@noble/hashes/sha256";
 import { bytesToHex, hexToBytes } from "@noble/hashes/utils";
 
@@ -21,10 +20,6 @@ const answer = (t: any): unknown => {
   const secret = hexToBytes(t.key);
   const pubkey = bytesToHex(schnorr.getPublicKey(secret));
   if (t.op === "pub") return { pub: pubkey };
-  if (t.op === "x") {
-    if (!hex64(t.peer)) return { error: "peer" };
-    return { x: bytesToHex(secp256k1.getSharedSecret(secret, hexToBytes("02" + t.peer)).subarray(1, 33)) };
-  }
   if (t.op === "sign") {
     if (!hex64(t.aux)) return { error: "aux" };
     const ser = JSON.stringify([0, pubkey, t.created_at, t.kind, t.tags, t.content]);
