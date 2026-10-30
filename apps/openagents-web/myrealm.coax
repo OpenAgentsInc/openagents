@@ -24,7 +24,8 @@
 //   first  at eye height, your figure unseen; the same keys, and a drag looks round and up and down
 //   top    high above at a fixed angle, north up: W, A, S and D (or a thumb, or a drag) walk that way
 //   side   2D: side-on with an orthographic camera; A and D walk left and right, W or Space jumps
-//          (always, as a 2D realm needs), and you walk through things rather than round them
+//          (always, as a 2D realm needs); what stands in your lane stops you: trees and the characters
+//          are walls, and you jump onto rocks, crates and barrels (their tops, 1.1 m at most)
 // JUMP, FLY, MAP and BUILD are there only when the owner gives them.
 // myrealm.wgsl draws the sky, the ground, the water, the meshes and the strokes; myrealm-face.c binds it.
 //   coax/bin/coax test apps/openagents-web/myrealm.coax
@@ -164,6 +165,7 @@ MyRealm :: struct {
   static_n: int;           // the pieces laid out; the actors (you, the characters' moves, the flock) follow each frame
   flock_x: f32; flock_z: f32; flock_set: bool;
   solid_n: int; solid_x: [SOLIDS] f32; solid_z: [SOLIDS] f32; solid_r: [SOLIDS] f32;
+  solid_h: [SOLIDS] f32;   // how high its top is (2D: what you can jump onto); WALL for what you can't
   lantern_x: [LANTERNS] f32; lantern_z: [LANTERNS] f32;
   person_x: [PEOPLE] f32; person_z: [PEOPLE] f32;
   water_x: f32; water_z: f32; water_r: f32;
@@ -466,10 +468,13 @@ spot :: (s: [] MyRealm, r: [] Seed, near: f32, far: f32, size: f32) -> Spot {
   }
   return Spot.{x = 99, z = 99};
 }
-solid :: (s: [] MyRealm, x: f32, z: f32, r: f32) {
+solid :: (s: [] MyRealm, x: f32, z: f32, r: f32) { solid_up(s, x, z, r, WALL); }
+solid_up :: (s: [] MyRealm, x: f32, z: f32, r: f32, h: f32) {
   if s[0].solid_n >= SOLIDS || r <= 0 { return; }
-  n := s[0].solid_n; s[0].solid_x[n] = x; s[0].solid_z[n] = z; s[0].solid_r[n] = r; s[0].solid_n = n + 1;
+  n := s[0].solid_n; s[0].solid_x[n] = x; s[0].solid_z[n] = z; s[0].solid_r[n] = r; s[0].solid_h[n] = h; s[0].solid_n = n + 1;
 }
+WALL :: 99.0;
+STAND_TOP :: 1.1;   // 2D: anything you may stand on is at most this high (a jump reaches 1.29 m)
 longest :: (s: [] MyRealm, m: int) -> f32 {
   o := m * 6;
   l := leaves_of(s, m);
@@ -509,7 +514,9 @@ thing_at :: (s: [] MyRealm, t: int, x: f32, z: f32, yaw: f32, grow: f32, kind: i
   if t == 2 && kind == 2 { r = 0.75; g = 0.62; b = 0.5; }    // dead: bare and grey-brown
   piece(s, m, x, z, yaw, k, r, g, b);
   if t == 2 && kind != 2 { piece(s, leaves_of(s, m), x, z, yaw, k, r, g, b); }
-  if THING_SOLID[t] { solid(s, x, z, hi(foot_of(s, m, k) * (ifx t == 2 then 0.35f32 else 0.8f32), 0.25)); }
+  // a tree is a wall; anything lower is a top you can jump onto in 2D
+  o := m * 6; top := lo((s[0].mesh_box[o + 4] - s[0].mesh_box[o + 1]) * k, STAND_TOP);
+  if THING_SOLID[t] { solid_up(s, x, z, hi(foot_of(s, m, k) * (ifx t == 2 then 0.35f32 else 0.8f32), 0.25), ifx t == 2 then WALL else top); }
 }
 
 lay_out :: (s: [] MyRealm) {
@@ -718,9 +725,9 @@ realm_step :: (s: [] MyRealm, dt: f32) {
       if in_water(s) && s[0].y < 0.1 { speed *= 0.5; }
       p := walk_to(s, s[0].x, s[0].z, dx * speed * WALK * step, dz * speed * WALK * step);
       if s[0].camera == CAM_SIDE {
-        // 2D: along the lane, to the realm's edge
+        // 2D: along the lane, to the realm's edge, stopped by what stands in it above your feet
         e: f32 = GROUND_R - BODY_R; lim := sqrt(hi(e * e - s[0].z * s[0].z, 0));
-        p = Spot.{x = clamp(s[0].x + dx * speed * WALK * step, -lim, lim), z = s[0].z};
+        p = Spot.{x = lane_walk(s, s[0].x, clamp(s[0].x + dx * speed * WALK * step, -lim, lim)), z = s[0].z};
       }
       mx := p.x - s[0].x; mz := p.z - s[0].z;
       s[0].walked += sqrt(mx * mx + mz * mz);
@@ -738,12 +745,43 @@ realm_step :: (s: [] MyRealm, dt: f32) {
     s[0].walked += sqrt(mx * mx + mz * mz);
     s[0].x = p.x; s[0].z = p.z;
   }
-  // up: a jump falls back; flying eases up to its height and back down
+  // up: a jump falls back (2D: onto what it lands on); flying eases up to its height and back down
+  under := floor_under(s);
   if s[0].flying { s[0].y += (FLY_HEIGHT - s[0].y) * clamp(step * 2.5, 0, 1); s[0].vy = 0; }
-  else if s[0].y > 0 || s[0].vy > 0 {
+  else if s[0].y > under || s[0].vy > 0 {
     s[0].vy -= GRAVITY * step; s[0].y += s[0].vy * step;
-    if s[0].y <= 0 { s[0].y = 0; s[0].vy = 0; if s[0].camera != CAM_SIDE { p := walk_to(s, s[0].x, s[0].z, 0, 0); s[0].x = p.x; s[0].z = p.z; } }
+    if s[0].y <= under { s[0].y = under; s[0].vy = 0; if s[0].camera != CAM_SIDE { p := walk_to(s, s[0].x, s[0].z, 0, 0); s[0].x = p.x; s[0].z = p.z; } }
   }
+}
+
+// 2D: how far along the lane a thing reaches each side of its middle (0: it isn't in the lane).
+lane_half :: (s: [] MyRealm, i: int, grow: f32) -> f32 {
+  dz := s[0].solid_z[i] - s[0].z; r := s[0].solid_r[i] + grow;
+  return ifx abs(dz) < r then sqrt(r * r - dz * dz) else 0.0f32;
+}
+// 2D: a step from x to nx stops at the side of anything in the lane whose top is above your feet.
+lane_walk :: (s: [] MyRealm, x: f32, nx: f32) -> f32 {
+  out := nx;
+  for i: 0..<s[0].solid_n {
+    w := lane_half(s, i, BODY_R);
+    if w <= 0 || s[0].solid_h[i] <= s[0].y + 0.05 { continue; }
+    left := s[0].solid_x[i] - w; right := s[0].solid_x[i] + w;
+    if out > x && x <= left + 0.001 && out > left { out = left; }
+    if out < x && x >= right - 0.001 && out < right { out = right; }
+  }
+  return out;
+}
+// What you stand on: the ground, or (2D) the top of what's under you that you're above.
+floor_under :: (s: [] MyRealm) -> f32 {
+  if s[0].camera != CAM_SIDE { return 0; }
+  top := 0.0f32;
+  for i: 0..<s[0].solid_n {
+    w := lane_half(s, i, BODY_R * 0.5);
+    if w <= 0 || abs(s[0].x - s[0].solid_x[i]) >= w { continue; }
+    h := s[0].solid_h[i];
+    if h <= s[0].y + 0.05 && h > top { top = h; }
+  }
+  return top;
 }
 
 // ---- the view
@@ -830,7 +868,7 @@ hold_of :: (key: int) -> int {
   return 0;
 }
 jump :: (s: [] MyRealm) { if s[0].tools[TOOL_JUMP] || s[0].camera == CAM_SIDE { leap(s); } }
-leap :: (s: [] MyRealm) { if !s[0].flying && s[0].y <= 0.001 { s[0].vy = JUMP_SPEED; s[0].y = 0.001; } }
+leap :: (s: [] MyRealm) { f := floor_under(s); if !s[0].flying && s[0].y <= f + 0.001 && s[0].vy <= 0 { s[0].vy = JUMP_SPEED; s[0].y = f + 0.001; } }
 fly :: (s: [] MyRealm) { if s[0].tools[TOOL_FLY] { s[0].flying = !s[0].flying; if !s[0].flying { s[0].vy = 0; } } }
 toggle_pane :: (s: [] MyRealm, pane: int) {
   s[0].pane = ifx s[0].pane == pane then PANE_NONE else pane;
@@ -1524,4 +1562,35 @@ SIDE :: "realm flat\nname Flat\nstyle painterly\nground desert\ntime dusk\ncamer
   k6 := realm_key(s[..], t[..], 'd', true);
   for i: 0..<400 { realm_step(s[..], 0.05); }
   #assert s[0].z == z0 && sqrt(s[0].x * s[0].x + s[0].z * s[0].z) <= GROUND_R;
+}
+
+#test "2D: a rock stops you, and you jump onto it; a tree you can't" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "flat", SIDE);
+  // a rock in the lane 2 m to your right, 0.8 m high; a tree 5 m to your left
+  s[0].solid_n = 0;
+  solid_up(s[..], s[0].x + 2, s[0].z, 0.5, 0.8);
+  solid_up(s[..], s[0].x - 5, s[0].z, 0.4, WALL);
+  x0 := s[0].x;
+  k := realm_key(s[..], t[..], 'd', true);
+  for i: 0..<40 { realm_step(s[..], 0.05); }
+  #assert s[0].x <= x0 + 2 - 0.5 - BODY_R + 0.01 && s[0].x > x0 + 0.5 && s[0].y == 0;
+  // hold right and jump: up and onto it
+  j := realm_key(s[..], t[..], ' ', true);
+  for i: 0..<10 { realm_step(s[..], 0.05); }
+  #assert s[0].y > 0.5;
+  for i: 0..<30 { realm_step(s[..], 0.05); }
+  k2 := realm_key(s[..], t[..], 'd', false);
+  for i: 0..<10 { realm_step(s[..], 0.05); }
+  #assert abs(s[0].y - 0.8) < 0.01 || s[0].x > x0 + 2.5;
+  // walk on off its far side: down to the ground
+  k3 := realm_key(s[..], t[..], 'd', true);
+  for i: 0..<20 { realm_step(s[..], 0.05); }
+  k4 := realm_key(s[..], t[..], 'd', false);
+  for i: 0..<20 { realm_step(s[..], 0.05); }
+  #assert s[0].x > x0 + 2.5 && s[0].y == 0;
+  // the tree: walk left a long way, jumping, and it still holds you
+  k5 := realm_key(s[..], t[..], 'a', true);
+  for i: 0..<200 { realm_step(s[..], 0.05); if i % 10 == 0 { leap(s[..]); } }
+  #assert s[0].x >= x0 - 5 + 0.4 + BODY_R - 0.01;
 }
