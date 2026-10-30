@@ -238,3 +238,27 @@ and E. Then F. G about an hour before the talk.
   (public log, observed interval, source/compiler/binary hashes); buyer evidence
   is recorded separately with F. These exact inputs passed; unrelated main
   commits do not call for rerunning A.
+
+- **F — stage buyer, 2026-10-30 14:58 UTC, `8c2f3defe5`.**
+  `psionic/tests/pylon/demo-buyer.ts` now lists verified fresh v1 beacons,
+  sends one NIP-44 toy job per selected/all available toy Pylon, subscribes
+  before publishing, and prints verified answering identity plus latency.
+  Fresh random buyer keys remain in memory; no production identity or money.
+  AUTH/job refusal, stale targets and bounded missing-answer timeouts are
+  explicit. Model mismatch is never silently substituted. Setup and the
+  supported demo profile: `psionic/tests/pylon/DEMO.md`.
+  `bun run --cwd psionic/tests/pylon test:demo`: **11/11**, including a full
+  loopback AUTH/discovery/encrypted two-provider exchange, wrong/invalid
+  events, relay refusal, signed provider error, and timeout (1.89 seconds).
+  **Public interoperability:** before 14:56:14 UTC, the independently
+  signed buyer authenticated to `wss://relay.openagents.com`, read
+  `oct30-mac-8d6f69`, received the relay's 25910 acceptance and decrypted a
+  verified 26910 answer from npub
+  `npub1k246jd3yex8sg5z7klavsd483mf40y6hl4txgeh08st3huq4z3cqturlvk`.
+  Identity `psionic-toy@sha256:b6680707750842c489bad8a5524bb1b1393ff04f6917b72cf49c2cf87d633573`;
+  choice `no`, probabilities yes `0.437947251` / no `0.562052749`, **233 ms**.
+  Exact command/result, runtime versions and original buyer source hash are
+  in `docs/verification/data/oct30-demo-buyer/public-a.json` (source snapshot
+  alongside it). This proves the buyer/Pylon public exchange; A's Pylon
+  build/10002/two-minute evidence and G's two-machine rehearsal are recorded
+  separately by the demo owner.
