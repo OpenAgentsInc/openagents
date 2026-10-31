@@ -318,7 +318,7 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
   // the live status: under the title on a phone (under EDIT too when it is there), the bottom corner on a computer (as the homepage's)
   capture: [192] u8; cn := land_status(s, capture[..]);
   sy := ifx e[0].shown[RB_EDIT] && eb.y0 > m then hi(tb.y1, eb.y1) + 16 * d else tb.y1 + 16 * d;
-  if l.phone && !open { v = put_fit(out, v, cast(string) capture[0..<cn], m, sy, 7 * d, dimmed(ink(p, INK_PALE), hud), width - 2 * m); }
+  if l.phone { if !open { v = put_fit(out, v, cast(string) capture[0..<cn], m, sy, 7 * d, dimmed(ink(p, INK_PALE), hud), width - 2 * m); } }
   else { v = put_fit(out, v, cast(string) capture[0..<cn], 16 * d, height - 14 * d, 7 * d, dimmed(ink(p, INK_PALE), hud), 320 * d); }
   // the hint along the bottom, unless a card is up
   if s[0].card == CARD_NONE {
