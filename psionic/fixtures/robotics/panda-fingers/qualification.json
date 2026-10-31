@@ -1,0 +1,211 @@
+{
+  "schema": "psionic.panda-fingers.qualification.v1",
+  "passed": true,
+  "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-fingers-types.coax": "adf8e898905c11010f94e46feb19b0d26a484a64b44530bb3185f5410a48c98a",
+    "psionic/lib/robotics/panda-fingers-profile.coax": "b1dfb412b0709fe6e4580e33f3be5815e4671bfdd3ff2bf3d3395e0bcf94eb07",
+    "psionic/lib/robotics/panda-fingers-chain.coax": "26337ac54cd19965a70391109ccb3aac448e3d3f41eed7ac99382192040fcc52",
+    "psionic/lib/robotics/panda-fingers-check-fixtures.coax": "0fc13509e41a78b4e8a07009a5382108d74feb30169bb62c5073c6a49d8bbb7f",
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/tests/robotics/panda_fingers_reference.py": "361864e11912530a685713b5a36d33cab0bee088b74ed8ee5ca43b5619224fac",
+    "psionic/tests/robotics/panda_fk_reference.py": "55fdd78689b696d4eb1b0cda1e7ac9c06302c3882441c347e03b7f4c53c6a0ca",
+    "psionic/tests/robotics/panda_fingers_native.c": "00fd21e72a940f100b4e4b9d9e9ecfda21c972ccab4080c4141ab2725cab10f6",
+    "psionic/tests/robotics/panda_fingers_bad_angle.coax": "5816dc385f969591b7fa268c6e8ee66e999621be77bf794e09833c5785b6bfbc",
+    "psionic/tests/robotics/panda_fingers_bad_slide.coax": "4ff76938599fcb315e82ecb50168b8c079ab26a1cca59b24ae122da851045068",
+    "psionic/fixtures/robotics/panda-fingers/source-profile.json": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fingers/sdk-cases.f64": "42fc5bbfd56cb0b89f8c57400f3b8c40a2aba47655f6349fb982caf328c0f8d8",
+    "psionic/fixtures/robotics/panda-fingers/sdk-model.json": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031",
+    "psionic/fixtures/robotics/panda-fingers/sdk-poses.f64": "7f45da47b285fffded685abef0f4e9f9924982dc47dd4fbabda4266663089508",
+    "psionic/fixtures/robotics/panda-fingers/sdk-profile.json": "5699650e695759ca51940f49cbdec78061ef683777da10af651b95c1e2841a5d",
+    "psionic/fixtures/robotics/panda-fingers/sdk-reference.json": "51fd49e3eeb68df0cc8c4246dfe167c5fa1e281ac112cad0e155445e5c536346"
+  },
+  "atol": 2e-12,
+  "rtol": 0,
+  "corpus": {
+    "cases": 153,
+    "seed": 344776388918,
+    "new_sdk_cases": 5,
+    "independent_random_cases": 128,
+    "analytic_zero_cases": 1,
+    "arm_boundary_cases": 14,
+    "slide_boundary_cases": 4,
+    "signed_zero_cases": 1,
+    "input_sha256": "92e67b882fe52b4cb462503c14e8ae5f5183634cb841c291cb3e2dfaca344151"
+  },
+  "host_numeric_profile": "Darwin-arm64 scalar libm F64 sin/cos, -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off. No default-fused-libm, R15 or cross-target deterministic-math claim.",
+  "scope": "Separate272F64 arm+four-finger FK output; radian/metre inputs and world Point3 positions, raw attitude boundary. No command/soft-limit/control/dynamics/importer/fullR12 transform claim.",
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic.panda-fingers.native.v1",
+        "passed": true,
+        "cases": 153,
+        "assertions": 1753,
+        "output_words_per_case": 272
+      },
+      "native_c_sha256": "36a3fe1558fbca1f34e9926048f32ea63fc9c26d8bf342c3723e079d68fefdaa",
+      "native_h_sha256": "ce8f7e459564775768ab18fe89aca3dbb95362a77bea564a4ff89cf96f2cdc5b",
+      "binary_sha256": "44a5af114de8fe69537ee600bda00fef41c153befdff216cff7f42e60d9579bc",
+      "output_sha256": "28c7682754a0f4d5eda2ec8147954637ab4e945376f3afc7ff6e06e736dd21d6"
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic.panda-fingers.native.v1",
+        "passed": true,
+        "cases": 153,
+        "assertions": 1753,
+        "output_words_per_case": 272
+      },
+      "native_c_sha256": "d6ccce41f9617b0eabd7707cec21b33bb3f0fc9a39a18724fff1f8aadfb93e21",
+      "native_h_sha256": "ce8f7e459564775768ab18fe89aca3dbb95362a77bea564a4ff89cf96f2cdc5b",
+      "binary_sha256": "73765a1d79a59aa416901b12873f0a82a0dcab2ff989f7ae33e16ee9f93cfce5",
+      "output_sha256": "28c7682754a0f4d5eda2ec8147954637ab4e945376f3afc7ff6e06e736dd21d6"
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic.panda-fingers.native.v1",
+        "passed": true,
+        "cases": 153,
+        "assertions": 1753,
+        "output_words_per_case": 272
+      },
+      "native_c_sha256": "36a3fe1558fbca1f34e9926048f32ea63fc9c26d8bf342c3723e079d68fefdaa",
+      "native_h_sha256": "ce8f7e459564775768ab18fe89aca3dbb95362a77bea564a4ff89cf96f2cdc5b",
+      "binary_sha256": "bb2651b985158202a0c03111b11af2208134813820927a90140f597ce74d0ef4",
+      "output_sha256": "28c7682754a0f4d5eda2ec8147954637ab4e945376f3afc7ff6e06e736dd21d6"
+    }
+  ],
+  "negative_source_fixtures": [
+    {
+      "name": "angle",
+      "source_sha256": "5816dc385f969591b7fa268c6e8ee66e999621be77bf794e09833c5785b6bfbc",
+      "diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "1e4436c44034293a8719784d2e92430eca69bcae4d82e3f31cdf6e0b4fd88c24"
+    },
+    {
+      "name": "slide",
+      "source_sha256": "4ff76938599fcb315e82ecb50168b8c079ab26a1cca59b24ae122da851045068",
+      "diagnostic": "E0317",
+      "refused": true,
+      "stderr_sha256": "294d1b2b13fcffa42ab8a1589e0e4323112692faea0ab95b4198cd7e121d68ee"
+    }
+  ],
+  "sdk_pose_receipt_sha256": "51fd49e3eeb68df0cc8c4246dfe167c5fa1e281ac112cad0e155445e5c536346",
+  "sdk_future_dynamics_reference_qualified_here": false,
+  "native_modes_byte_identical": true,
+  "independent_homogeneous_matrices": {
+    "values": 31212,
+    "max_abs_error": 3.219646771412954e-15,
+    "atol": 2e-12,
+    "rtol": 0,
+    "max_budget_fraction": 0.001609823385706477,
+    "passed": true
+  },
+  "analytic_parent_relative_slide_and_tip_positions": {
+    "values": 1836,
+    "max_abs_error": 7.438494264988549e-15,
+    "atol": 2e-12,
+    "rtol": 0,
+    "max_budget_fraction": 0.0037192471324942744,
+    "passed": true
+  },
+  "analytic_slide_independent_body_attitudes": {
+    "values": 5508,
+    "max_abs_error": 2.6645352591003757e-15,
+    "atol": 2e-12,
+    "rtol": 0,
+    "max_budget_fraction": 0.0013322676295501878,
+    "passed": true
+  },
+  "new_sdk_all16body_and_grip_poses": {
+    "values": 1340,
+    "max_abs_error": 1.7763568394002505e-15,
+    "atol": 2e-12,
+    "rtol": 0,
+    "max_budget_fraction": 0.0008881784197001252,
+    "passed": true
+  },
+  "compiled_source_local_poses": {
+    "values": 112,
+    "max_abs_error": 0.0,
+    "atol": 2e-12,
+    "rtol": 0,
+    "max_budget_fraction": 0.0,
+    "passed": true
+  },
+  "duration_seconds": 1.7095874579972588,
+  "private_executed_record_sha256": "08af660204920ae671eaf180629763000e7052cf7366679c8a7b9b53f56678bb",
+  "new_authority_mutation": {
+    "scope": "Only two NEW entry-source roots; dependency checks retained. No old FK mutation/native/SDK gate repeated.",
+    "total": 106,
+    "killed": 106,
+    "survived": 0,
+    "roots": [
+      {
+        "path": "psionic/lib/robotics/panda-fingers-profile.coax",
+        "mutants": 45,
+        "killed": 45,
+        "survived": 0,
+        "log_sha256": "f775eb8bcd72d9dee0ad5a8b86a19e6b8c3be183520a02684872f3f17bc87daf"
+      },
+      {
+        "path": "psionic/lib/robotics/panda-fingers-chain.coax",
+        "mutants": 61,
+        "killed": 61,
+        "survived": 0,
+        "log_sha256": "28b826cce673a75a9a46eadec2d44a0f6c0ac41e6c0e1840b20a76d1c7aabe0a"
+      }
+    ],
+    "lowered_inherited_spatial_operator_token_mutation_claimed": false
+  },
+  "tooling_guard_tests": {
+    "source": "psionic/tests/robotics/panda_fingers_bindings_test.py",
+    "source_sha256": "9bf6e3aff804a59c5906841009874dc6569229439115f3bf1f812ed57012145b",
+    "test_methods": 3,
+    "subcases": 12,
+    "passed": true,
+    "scope": "Finite expected and actual words, exact comparison extent, fixed tolerance and zero error; no model/native or old FK execution."
+  },
+  "wrapper": {
+    "path": "psionic/tests/robotics/check-panda-fingers.sh",
+    "sha256": "4f92261e22965da7b1d6db56262d2af7b4dab759d23e072eea82d7833b2602c4"
+  },
+  "future_sdk_dynamics": {
+    "metadata": "psionic/fixtures/robotics/panda-fingers/sdk-dynamics.json",
+    "metadata_sha256": "bf63ab336cd828bbb2a4b17316e742b0f080e9402a198a542dc924c32408c287",
+    "owned_mass_or_bias_qualified": false,
+    "extra_forward_calls": 0
+  },
+  "tooling_guard_followup": {
+    "scope": "Only new stdout/stderr success admission and nominal SDK pose-order guards; no native/numerical/SDK rerun. Original executed source identities above are preserved.",
+    "executed_reference_source_sha256": "361864e11912530a685713b5a36d33cab0bee088b74ed8ee5ca43b5619224fac",
+    "current_reference_source_sha256": "1fc68b7ab30b32b4ed3631d62f88ba39e65809011e0ea8d56880b90c8397bfd1",
+    "numeric_function_asts_identical": [
+      "matrix_reference",
+      "independent_metrics",
+      "errors",
+      "compiled_metrics",
+      "f64",
+      "rows"
+    ],
+    "successful_cached_command_stderr_files": 9,
+    "successful_cached_command_stderr_bytes": 0,
+    "current_cached_sdk_receipt_guards_passed": true,
+    "new_nominal_order_test_methods": 1,
+    "new_nominal_order_subcases": 4,
+    "current_guard_test_source_sha256": "2121dfc0c0d815c7533c0ffbf71354968ea971b1254a17fec5f28d4f75ec4007",
+    "previous_guard_test_source_sha256": "9bf6e3aff804a59c5906841009874dc6569229439115f3bf1f812ed57012145b",
+    "passed": true
+  }
+}

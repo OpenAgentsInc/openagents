@@ -1,0 +1,179 @@
+{
+  "schema": "psionic.panda-fingers.source-profile.v1",
+  "profile": "panda-fixed16-sevenhinge-twoslide-f64-v1",
+  "frozen_before_comparison": true,
+  "source": {
+    "dataset_revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+    "original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+    "original_xml_bytes": 60702,
+    "rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+    "LIBERO": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+    "robosuite": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+    "acquisition_receipt": "psionic/fixtures/robotics/libero-panda/acquisition.json"
+  },
+  "arm_profile": {
+    "path": "psionic/fixtures/robotics/panda-fk/source-profile.json",
+    "sha256": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "published_output_unchanged": true
+  },
+  "table_transport": "little-endian4x(parentI64,jointI64,offset3F64,rawquaternion4F64,axis3F64,referenceF64)",
+  "table_sha256": "d46a2623db97ced84779f32b18cdbe7b44425686dac380c562c94001420e6c47",
+  "table_bytes": 416,
+  "nodes": [
+    {
+      "index": 12,
+      "name": "gripper0_leftfinger",
+      "parent": 10,
+      "parent_name": "gripper0_right_gripper",
+      "joint": 0,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.0524
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        0.0,
+        0.0,
+        0.707107
+      ],
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "reference_metres": 0.0,
+      "joint_name": "gripper0_finger_joint1"
+    },
+    {
+      "index": 13,
+      "name": "gripper0_finger_joint1_tip",
+      "parent": 12,
+      "parent_name": "gripper0_leftfinger",
+      "joint": -1,
+      "offset_metres": [
+        0.0,
+        0.0085,
+        0.056
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_metres": 0.0,
+      "joint_name": null
+    },
+    {
+      "index": 14,
+      "name": "gripper0_rightfinger",
+      "parent": 10,
+      "parent_name": "gripper0_right_gripper",
+      "joint": 1,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.0524
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        0.0,
+        0.0,
+        0.707107
+      ],
+      "axis": [
+        0.0,
+        1.0,
+        0.0
+      ],
+      "reference_metres": 0.0,
+      "joint_name": "gripper0_finger_joint2"
+    },
+    {
+      "index": 15,
+      "name": "gripper0_finger_joint2_tip",
+      "parent": 14,
+      "parent_name": "gripper0_rightfinger",
+      "joint": -1,
+      "offset_metres": [
+        0.0,
+        -0.0085,
+        0.056
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "axis": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_metres": 0.0,
+      "joint_name": null
+    }
+  ],
+  "admission": {
+    "arm_count": 7,
+    "arm_unit": "radian",
+    "arm_inclusive_abs_limit": 100.0,
+    "slide_count": 2,
+    "slide_unit": "metre",
+    "slide_inclusive_abs_limit": 1.0,
+    "output_count": 1,
+    "order": "shape, arm coordinates in index order finite/range, then slide coordinates in index order finite/range; private full output publishes once",
+    "source_slide_ranges_metres": [
+      [
+        0.0,
+        0.04
+      ],
+      [
+        -0.04,
+        0.0
+      ]
+    ],
+    "source_ranges_are_admission_limits": false
+  },
+  "scope": "Fixed16body FK only; no command or soft-limit validity, no dynamics/importer/general typed attitude transform/backend parity.",
+  "atol": 2e-12,
+  "rtol": 0,
+  "new_sdk_frozen_arm_radians": [
+    0.0,
+    0.19634954084936207,
+    0.0,
+    -2.617993877991494,
+    0.0,
+    2.941592653589793,
+    0.7853981633974483
+  ],
+  "new_sdk_frozen_slide_pairs_metres": [
+    [
+      0.0,
+      0.0
+    ],
+    [
+      0.04,
+      0.0
+    ],
+    [
+      0.0,
+      -0.04
+    ],
+    [
+      0.04,
+      -0.04
+    ],
+    [
+      0.013,
+      -0.027
+    ]
+  ]
+}

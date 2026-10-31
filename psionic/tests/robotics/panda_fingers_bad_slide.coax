@@ -1,0 +1,2 @@
+#load "../../lib/robotics/panda-fingers-chain.coax";
+main :: () {q:[7]pfku.Quantity(pfku.Radian,f64);s:[2]pfku.Quantity(pfku.Radian,f64);out:[1]PffOutput;status:=pff_forward(q[..],s[..],out[..]);print(int(status));}

@@ -1,0 +1,22 @@
+// Raw BODY transforms from pinned original demo0 XML
+// 13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5.
+// Rightfinger's separate GEOM rotation is deliberately not a BODY transform.
+#load "panda-fingers-types.coax";
+#authority;
+#test "Panda finger profile preserves every source branch word and parent" {
+ nodes:=pff_profile();parents:=[4]int.[10,12,10,14];joints:=[4]int.[0,-1,1,-1];
+ offsets:=[12]f64.[0,0,0.0524,0,0.0085,0.056,0,0,0.0524,0,-0.0085,0.056];
+ quats:=[16]f64.[0.707107,0,0,0.707107,1,0,0,0,0.707107,0,0,0.707107,1,0,0,0];
+ for i:0..<4 {#assert nodes[i].parent==parents[i] && nodes[i].joint==joints[i];#assert f64_bits(nodes[i].reference)==0;
+  for j:0..<3 {#assert f64_bits(nodes[i].offset[j])==f64_bits(offsets[i*3+j]);#assert nodes[i].axis[j]==(ifx j==1 && joints[i]>=0 then 1.0 else 0.0);}
+  for j:0..<4 {#assert f64_bits(nodes[i].fixed[j])==f64_bits(quats[i*4+j]);}
+ }
+}
+
+pff_profile :: ()->[4]PffNode #export_c {
+ nodes:[4]PffNode;nodes[0].parent=10;nodes[1].parent=12;nodes[2].parent=10;nodes[3].parent=14;
+ nodes[1].joint= -1;nodes[2].joint=1;nodes[3].joint= -1;
+ nodes[0].offset=[3]f64.[0,0,0.0524];nodes[1].offset=[3]f64.[0,0.0085,0.056];nodes[2].offset=[3]f64.[0,0,0.0524];nodes[3].offset=[3]f64.[0,-0.0085,0.056];
+ nodes[0].fixed=[4]f64.[0.707107,0,0,0.707107];nodes[1].fixed[0]=1;nodes[2].fixed=[4]f64.[0.707107,0,0,0.707107];nodes[3].fixed[0]=1;
+ nodes[0].axis[1]=1;nodes[2].axis[1]=1;return nodes;
+}

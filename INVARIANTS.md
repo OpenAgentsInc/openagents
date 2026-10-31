@@ -171,6 +171,22 @@ nonfinite values before maxima. The proof does not differentiate rounding,
 refusal, saturation or soft joint-limit dynamics, and supplies no sensor stamp
 or generic typed transform chain.
 
+## Panda finger coordinates preserve the arm contract and rigid branch order
+
+The separate `PffOutput` embeds the unchanged twelve-body `PfkOutput` and four
+finger BODY poses. Seven radians and two metre-valued slide coordinates are
+admitted by shape, arm index and slide index before atomic publication. The
+inclusive +/-1m slide box is numerical admission, not source soft-limit or
+normalized-command validity. Each fixed +90-degree BODY rotation precedes its
+local +Y slide; the right finger GEOM rotation is not that BODY transform.
+
+Full-F64 reference coordinates and fresh poses describe one generation. No
+sensor stamp is inferred. The five new SDK forward queries qualify FK only;
+their separately retained mass/bias and compiled inertial facts are future
+inputs. Moving finger inertias affect even the arm mass subblock. These are
+simplified source simulation parameters, not manufacturer measurements or an
+owned articulated/contact/dynamics qualification.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T

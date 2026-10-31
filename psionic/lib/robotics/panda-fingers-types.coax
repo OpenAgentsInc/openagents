@@ -1,0 +1,4 @@
+// Separate fixed finger branches; published PfkOutput and its API stay intact.
+#load "panda-fk-chain.coax";
+PffNode :: struct {parent:int;joint:int;offset:[3]f64;fixed:[4]f64;axis:[3]f64;reference:f64;}
+PffOutput :: struct {arm:PfkOutput;fingers:[4]PfkPose;}

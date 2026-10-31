@@ -1,0 +1,6 @@
+finger coordinates: metres, not gripper commands
+slides (um): 13000 -27000
+tip-to-tip distance (um): 57000
+left slide to 40000 um: tip distance 84000 um; arm unchanged
+outside +/-1m: range refusal; all 17 poses unchanged
+zero-angle arm is kinematic, not an actuator home

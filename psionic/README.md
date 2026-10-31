@@ -325,8 +325,8 @@ computes twelve body poses and the grip site from seven typed radian coordinates
 The [example](examples/panda-kinematics.coax) keeps hand and grip attitudes
 separate and shows atomic refusal. Run `psionic/check.sh --only robotics/panda-fk`
 for the three new roots and self-contained numerical/native reference gate.
-This is a source-bound model component; dynamics, fingers and robot import remain
-work toward the owned backend.
+This is a source-bound model component; dynamics and robot import remain work
+toward the owned backend. A separate finger query is described below.
 
 The [owned grip-site Jacobian](fixtures/robotics/panda-jacobian/README.md)
 computes linear and angular response to the seven joint coordinates. Retained
@@ -334,3 +334,11 @@ SDK columns and independent matrix-based finite differences qualify it. The
 [joint-rate example](examples/panda-jacobian.coax) uses units to turn radians
 per second into grip-site metres per second. Run
 `psionic/check.sh --only robotics/panda-jacobian` for its focused gate.
+
+The [owned moving-finger query](fixtures/robotics/panda-fingers/README.md) adds
+four BODY poses from two metre-valued slides while preserving the published
+arm output. Five new SDK forward queries and independent matrix/analytic
+geometry qualify it. The [example](examples/panda-fingers.coax) shows branch
+motion and atomic refusal; `psionic/check.sh --only robotics/panda-fingers`
+runs its two focused roots and self-contained native gate. Saved inertial/mass
+reference facts support the next dynamics slice; dynamics itself remains pending.

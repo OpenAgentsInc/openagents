@@ -1,0 +1,174 @@
+{
+  "schema": "psionic.panda-fingers.sdk-profile.v1",
+  "frozen_before_capture": true,
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "source_demo": 0,
+  "sdk_version": "3.3.1",
+  "arm_radians": [
+    0,
+    0.19634954084936207,
+    0,
+    -2.617993877991494,
+    0,
+    2.941592653589793,
+    0.7853981633974483
+  ],
+  "finger_cases_metres": [
+    [
+      0,
+      0
+    ],
+    [
+      0.04,
+      0
+    ],
+    [
+      0,
+      -0.04
+    ],
+    [
+      0.04,
+      -0.04
+    ],
+    [
+      0.013,
+      -0.027
+    ]
+  ],
+  "cases_radians_then_metres": [
+    [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483,
+      0,
+      0
+    ],
+    [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483,
+      0.04,
+      0
+    ],
+    [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483,
+      0,
+      -0.04
+    ],
+    [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483,
+      0.04,
+      -0.04
+    ],
+    [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483,
+      0.013,
+      -0.027
+    ]
+  ],
+  "case_shape": [
+    5,
+    9
+  ],
+  "body_names": [
+    "robot0_base",
+    "robot0_link0",
+    "robot0_link1",
+    "robot0_link2",
+    "robot0_link3",
+    "robot0_link4",
+    "robot0_link5",
+    "robot0_link6",
+    "robot0_link7",
+    "robot0_right_hand",
+    "gripper0_right_gripper",
+    "gripper0_eef",
+    "gripper0_leftfinger",
+    "gripper0_finger_joint1_tip",
+    "gripper0_rightfinger",
+    "gripper0_finger_joint2_tip"
+  ],
+  "joint_names": [
+    "robot0_joint1",
+    "robot0_joint2",
+    "robot0_joint3",
+    "robot0_joint4",
+    "robot0_joint5",
+    "robot0_joint6",
+    "robot0_joint7",
+    "gripper0_finger_joint1",
+    "gripper0_finger_joint2"
+  ],
+  "joint_units": [
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "metre",
+    "metre"
+  ],
+  "site_name": "gripper0_grip_site",
+  "pose_shape": [
+    5,
+    268
+  ],
+  "pose_body_order": [
+    "world_position_xyz3",
+    "raw_world_quaternion_wxyz4",
+    "world_rotation_rowmajor9"
+  ],
+  "pose_site_tail": [
+    "world_position_xyz3",
+    "world_rotation_rowmajor9"
+  ],
+  "absolute_tolerance": 2e-12,
+  "relative_tolerance": 0,
+  "quaternion_policy": "Preserve SDK raw WXYZ signs; no output normalization or canonicalization.",
+  "reset": "For every case mj_resetData, set only9named qpos values, mj_forward exactlyonce. qvel0/time0. No mj_step,renderer,controller,NN.",
+  "future_dynamics_capture": {
+    "schema": "psionic.panda-fingers.sdk-dynamics-reference.v1",
+    "shape": [
+      5,
+      90
+    ],
+    "case_layout": [
+      "rowmajor9x9 namedDOF massblock81",
+      "namedDOF qfrc_bias9"
+    ],
+    "qvel": "All model qvel coordinates zero",
+    "operations": "mj_fullM expansion from qM after SAME5mj_forward calls; no extra forwards/steps",
+    "qualified_owned_dynamics": false,
+    "purpose": "Raw independent SDK facts for later model-only dynamics; no ownedmass/gravity/bias implementation qualified here."
+  },
+  "scope": "One pinned16body/9joint configuration profile; kinematic queries, not motorcommands or dynamics qualification. No old SDK gate repeat."
+}

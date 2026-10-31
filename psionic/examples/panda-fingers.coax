@@ -1,0 +1,31 @@
+#import "Basic";
+#load "../lib/robotics/panda-fingers-chain.coax";
+#test "Panda fingers example display keeps independent metre geometry" {
+ #assert pff_example_um(0.013)==13000 && pff_example_um(-0.027)== -27000;
+ #assert pff_example_um(0.013-(-0.027)+0.017)==57000;
+ #assert pff_example_um(0.04-(-0.027)+0.017)==84000;
+}
+pff_example_um :: (metres:f64)->int {return cast(int)floor(metres*1000000+0.5);}
+pff_example_distance :: (a:PfkPose,b:PfkPose)->f64 {d:=a.position-b.position;return sqrt(d.x*d.x+d.y*d.y+d.z*d.z);}
+main :: () {
+ print("finger coordinates: metres, not gripper commands\n");
+// book:begin coordinates
+ q:[7]pfku.Quantity(pfku.Radian,f64); // Coordinate example, not an actuator home.
+ slides:[2]pfku.Quantity(pfku.Metre,f64);slides[0].value=0.013;slides[1].value= -0.027;
+ poses:[1]PffOutput;#assert pff_forward(q[..],slides[..],poses[..])==PfkStatus.ok;
+ print("slides (um): % %\n",pff_example_um(slides[0].value),pff_example_um(slides[1].value));
+ print("tip-to-tip distance (um): %\n",pff_example_um(pff_example_distance(poses[0].fingers[1],poses[0].fingers[3])));
+// book:end coordinates
+// book:begin branches
+ original_arm:=poses[0].arm;slides[0].value=0.04;
+ #assert pff_forward(q[..],slides[..],poses[..])==PfkStatus.ok;
+ pfk_same_output(original_arm,poses[0].arm);
+ print("left slide to 40000 um: tip distance % um; arm unchanged\n",pff_example_um(pff_example_distance(poses[0].fingers[1],poses[0].fingers[3])));
+// book:end branches
+// book:begin refusal
+ before:=poses[0];slides[1].value=1.0000000000000002;
+ #assert pff_forward(q[..],slides[..],poses[..])==PfkStatus.range;pff_same(poses[0],before);
+ print("outside +/-1m: range refusal; all 17 poses unchanged\n");
+// book:end refusal
+ print("zero-angle arm is kinematic, not an actuator home\n");
+}

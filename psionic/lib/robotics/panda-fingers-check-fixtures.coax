@@ -1,0 +1,4 @@
+// Test poison and exact comparisons only; no product admission.
+#load "panda-fingers-types.coax";
+pff_poison :: ()->PffOutput {p:PffOutput;p.arm=pfk_poison();for i:0..<4 {p.fingers[i]=p.arm.links[i+1];}return p;}
+pff_same :: (a:PffOutput,b:PffOutput) {pfk_same_output(a.arm,b.arm);for i:0..<4 {x:PfkOutput;y:PfkOutput;x.grip=a.fingers[i];y.grip=b.fingers[i];pfk_same_output(x,y);}}

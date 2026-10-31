@@ -48,8 +48,13 @@ is a precursor to complete controller, schedule and producer snapshots.
 now supplies typed-radian-to-world-pose queries, with the hand BODY and grip
 SITE conventions independently checked. It is manually source-bound, with raw
 attitude boundaries. Finish the matching R17 articulated model/scene path:
-import/admitted inertias, fingers, forward dynamics, contacts and rendered
-observations. The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)
+import/admitted inertias, forward dynamics, contacts and rendered observations.
+The [four-body finger extension](../../fixtures/robotics/panda-fingers/README.md)
+now adds both metre-valued slides with an unchanged arm API. The same five
+new SDK forwards retain compiled inertias and a separately versioned nine-joint
+mass/bias reference; owned mass/gravity arithmetic remains the next component
+qualification. Moving finger inertias cannot be omitted from the arm mass block.
+ The [owned grip-site Jacobian](../../fixtures/robotics/panda-jacobian/README.md)
 now reuses the fixed FK profile, with separate metre/radian and angular-ratio
 blocks. Its numerical derivative qualification does not admit control commands. Compare small components with the SDK before
 running expensive whole episodes. A field layout alone is not embodiment parity.

@@ -1,0 +1,65 @@
+{
+  "schema": "psionic.panda-fingers.sdk-dynamics-reference.v1",
+  "captured": true,
+  "qualified_owned_dynamics": false,
+  "case_count": 5,
+  "shape": [
+    5,
+    90
+  ],
+  "mass_shape_per_case": [
+    9,
+    9
+  ],
+  "bias_words_per_case": 9,
+  "case_layout": "81rowmajor namedDOF mass entries,then9qfrc_bias entries",
+  "joint_names": [
+    "robot0_joint1",
+    "robot0_joint2",
+    "robot0_joint3",
+    "robot0_joint4",
+    "robot0_joint5",
+    "robot0_joint6",
+    "robot0_joint7",
+    "gripper0_finger_joint1",
+    "gripper0_finger_joint2"
+  ],
+  "input_units": [
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "metre",
+    "metre"
+  ],
+  "case_sha256": "42fc5bbfd56cb0b89f8c57400f3b8c40a2aba47655f6349fb982caf328c0f8d8",
+  "dynamics_sha256": "3a3894fa81c21710f26aace31457bb482ef54f5937de4e4597869b03b8ec51ed",
+  "bytes": 3600,
+  "qvel": "All model qvel zero by reset, asserted after forward. This is not an equilibrium claim.",
+  "gravity": [
+    0,
+    0,
+    -9.81
+  ],
+  "forward_calls_shared_with_pose_capture": 5,
+  "additional_forward_calls": 0,
+  "integration_steps": 0,
+  "mass_expand_calls": 5,
+  "model_metadata_sha256": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031",
+  "sdk_library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "scope": "Raw SDK facts only for future model-only mass/bias work. No ownedmass/gravity/bias implementation or allmixed-coordinate unit model qualified.",
+  "fixtures": {
+    "sdk-dynamics.f64": {
+      "sha256": "3a3894fa81c21710f26aace31457bb482ef54f5937de4e4597869b03b8ec51ed",
+      "bytes": 3600
+    }
+  },
+  "pose_profile_sha256": "5699650e695759ca51940f49cbdec78061ef683777da10af651b95c1e2841a5d",
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "collector_sha256": "e309079cd67b5d2d2e7ab72d3e8d014c0af2f4484f402aef6795752f704c05ef",
+  "private_capture_record_sha256": "df6038410e289fc7590ec1bc04ee84fae99a78884764b4c5efe0b2032dc48959"
+}

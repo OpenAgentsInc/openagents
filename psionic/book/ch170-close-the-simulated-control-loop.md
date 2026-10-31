@@ -681,9 +681,9 @@ a claim of default-build bit parity, R15 or cross-target determinism.
 
 This component supplies a pure pose query, with no simulation clock or sensor
 freshness stamp. A cached SDK pose and a newly forwarded pose must still be
-compared with the joint coordinates of their actual generation. Finger branches, robot import, articulated dynamics, full R12 transforms and
-compiler bounded control remain subsequent slices. The following section adds
-the owned geometric Jacobian.
+compared with the joint coordinates of their actual generation. Robot import, articulated dynamics, full R12 transforms and compiler bounded
+control remain subsequent slices. The following sections add the owned geometric
+Jacobian and a separate moving-finger extension.
 
 ## Differentiate the grip-site geometry
 
@@ -780,6 +780,94 @@ axis-angle observation coordinates.
 The example's two own checks and debug/release transcripts pass on the actual
 merged 0.45 compiler. Their stdout matches `psionic/fixtures/panda-jacobian.out`
 exactly. The unchanged Jacobian mutation/native/FD/SDK corpora were not rerun.
+
+## Extend the tree through the moving fingers
+
+The arm query now has a separate four-body extension. `PffOutput` contains the
+unchanged `PfkOutput` and four finger poses, ordered left finger, left tip,
+right finger and right tip. The two slide inputs are metre-valued quantities;
+the seven arm coordinates remain radians. A source-level attempt to swap
+those units fails before native code is generated.
+
+Both finger BODY attachments use the original decimal quaternion
+`(.707107,0,0,.707107)`, normalized by the owned FK math. That fixed quarter
+turn comes before each local +Y slide, so positive slide displacement moves
+along parent -X. The right finger has a separately rotated GEOM; copying that
+rotation as its BODY pose would give the wrong tree.
+
+<!-- source: psionic/examples/panda-fingers.coax coordinates -->
+```jai
+ q:[7]pfku.Quantity(pfku.Radian,f64); // Coordinate example, not an actuator home.
+ slides:[2]pfku.Quantity(pfku.Metre,f64);slides[0].value=0.013;slides[1].value= -0.027;
+ poses:[1]PffOutput;#assert pff_forward(q[..],slides[..],poses[..])==PfkStatus.ok;
+ print("slides (um): % %\n",pff_example_um(slides[0].value),pff_example_um(slides[1].value));
+ print("tip-to-tip distance (um): %\n",pff_example_um(pff_example_distance(poses[0].fingers[1],poses[0].fingers[3])));
+```
+
+The tip offsets add .0085 metres on each side. For the source coordinate
+ranges, the tip-to-tip distance is `q_left - q_right + .017` metres. The first
+query therefore gives .057 metres. This coordinate relation was used to write
+the golden transcript before execution; the program only rounds its display.
+
+Changing the left slide leaves the arm and grip site unchanged. The second
+query gives `.04 - (-.027) + .017 = .084` metres:
+
+<!-- source: psionic/examples/panda-fingers.coax branches -->
+```jai
+ original_arm:=poses[0].arm;slides[0].value=0.04;
+ #assert pff_forward(q[..],slides[..],poses[..])==PfkStatus.ok;
+ pfk_same_output(original_arm,poses[0].arm);
+ print("left slide to 40000 um: tip distance % um; arm unchanged\n",pff_example_um(pff_example_distance(poses[0].fingers[1],poses[0].fingers[3])));
+```
+
+The numerical profile admits exactly seven finite arm coordinates within
++/-100 radians, exactly two finite slide coordinates within +/-1 metre, and
+one output record. It checks shape first, arm admission second and slides in
+index order last. These conservative numerical bounds do not enforce source
+soft limits or translate a normalized gripper command. All-zero arm coordinates
+are an explanatory posture; joint4 lies outside its source soft range.
+
+A rejected slide preserves all 272 F64 words across the seventeen public poses:
+
+<!-- source: psionic/examples/panda-fingers.coax refusal -->
+```jai
+ before:=poses[0];slides[1].value=1.0000000000000002;
+ #assert pff_forward(q[..],slides[..],poses[..])==PfkStatus.range;pff_same(poses[0],before);
+ print("outside +/-1m: range refusal; all 17 poses unchanged\n");
+```
+
+```shell
+coax/bin/coax run psionic/examples/panda-fingers.coax
+coax/bin/coax run psionic/examples/panda-fingers.coax --release
+psionic/check.sh --only robotics/panda-fingers
+```
+
+The [source profile](../fixtures/robotics/panda-fingers/source-profile.json)
+and [qualification](../fixtures/robotics/panda-fingers/qualification.json) bind
+the fixed tree and numerical evidence. Both new authority roots have zero
+survivors: 45 profile mutants and 61 branch/admission mutants. The native
+corpus has 153 configurations, including four inclusive slide boundaries,
+with 1,753 ABI/admission/I/O assertions per debug, release and ASan/UBSan mode.
+All complete outputs agree byte for byte under the previously declared
+Darwin-arm64 scalar-libm profile. This does not establish default fused-libm
+or cross-target bit identity, or complete lowered spatial-token mutation.
+
+Independent homogeneous matrices check 31,212 values; literal parent-relative
+motion and attitude relations check 1,836 and 5,508 more. Five genuinely new
+MuJoCo 3.3.1 reset/forward queries check 1,340 all-body/grip values; maximum
+SDK error is 1.78e-15 against the frozen 2e-12 absolute budget. All 112 compiled
+local-pose words match their source-derived normalized values exactly. The
+collector performs no integration, rendering, controller or learned inference.
+The default gate uses the committed data and needs no SDK installation.
+
+Compiled mass, COM, inertia-frame and armature facts were saved in that same
+capture, along with a separately versioned nine-joint mass/bias reference.
+Those are inputs for a future owned CRBA/RNEA slice, not an owned dynamics
+qualification. The moving fingers and tips contribute .22 kg in this particular
+simulation model, so even the arm mass block depends on their slide positions.
+These source-file parameters are not manufacturer measurements. The pure FK
+query also supplies no sensor generation or clock stamp; reference poses and
+coordinates must describe the same fresh state.
 
 ## Run the genuine experiment
 

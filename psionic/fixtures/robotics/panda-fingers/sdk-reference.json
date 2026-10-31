@@ -1,0 +1,173 @@
+{
+  "schema": "psionic.panda-fingers.sdk-reference.v1",
+  "passed": true,
+  "sdk_version": "3.3.1",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "frozen_source_profile_sha256": "91b31a7c60b5465bcde1824f2199b834c966b906536d13107f5dcc0e824d1f6e",
+  "frozen_sdk_profile_sha256": "5699650e695759ca51940f49cbdec78061ef683777da10af651b95c1e2841a5d",
+  "collector_sha256": "e309079cd67b5d2d2e7ab72d3e8d014c0af2f4484f402aef6795752f704c05ef",
+  "driver_sha256": "64031016ea2808c8e0481d916f4ecc6e83eeb5f05296c4b4e5008edb40d91c64",
+  "sdk_header_sha256": "723d3a0cd8c09560ea4db625de561d1a1c2f48b6f87b82eed9f6b89ad4f69f4a",
+  "sdk_library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "sdk_public_header_inventory": {
+    "include/mujoco/mjdata.h": "9179d65ccf24f3841515f2092ab14c1f3982bdc358c6abe2c390d8b845f819c2",
+    "include/mujoco/mjexport.h": "2d0ec44615ce9e0dd3d80ce9ca2a8bcad1906840d2ab6b5a9af785f7be989f8b",
+    "include/mujoco/mjmacro.h": "067e74ccb1a17c3ca555d46cbae5cd86778220e5238706e40ea9bc7139cb7012",
+    "include/mujoco/mjmodel.h": "a314eca14b6abf5d74039b111741f61c3ec7555e09db1e0ae05b5a07ccc81ce8",
+    "include/mujoco/mjplugin.h": "f317d8f663b998630e814f80a5c0751ded173849c845ae2af211b24ddb1d934b",
+    "include/mujoco/mjrender.h": "497b9bd11971be5e79d68110b87d775787cf37a33aec51c11df47fea936999d8",
+    "include/mujoco/mjsan.h": "42389c4d645fe6f4c5d1195d72556f1238c126f979d05e56d86772949dc6b818",
+    "include/mujoco/mjspec.h": "e93670339ab514a76fe9ead833def33adf9093b06d82b7e4f6c94b24b98f2694",
+    "include/mujoco/mjthread.h": "f6bf0b51ed63049f0e6a04b19e97b76d36b261d27344a23c11b532640e94f0d7",
+    "include/mujoco/mjtnum.h": "23e59bf6fe00d62509f5e4f75ffe2d53877cb5e913731675092fa46c21abb738",
+    "include/mujoco/mjui.h": "74d8d97ce4777646f41589d870c754ed6e05cd6ac2350f2be1435c8405ed8ada",
+    "include/mujoco/mjvisualize.h": "05f84fbf86a061365600c0f03f43f0c39b6d3a6e27b3e21640515c5f460307ec",
+    "include/mujoco/mjxmacro.h": "d7858844b5800dcfcb9083a3b8c66d0b06bea911edb15b858ec398866ef33efc",
+    "include/mujoco/mujoco.h": "723d3a0cd8c09560ea4db625de561d1a1c2f48b6f87b82eed9f6b89ad4f69f4a"
+  },
+  "case_shape": [
+    5,
+    9
+  ],
+  "pose_shape": [
+    5,
+    268
+  ],
+  "absolute_tolerance_frozen_before_capture": 2e-12,
+  "relative_tolerance": 0,
+  "body_names": [
+    "robot0_base",
+    "robot0_link0",
+    "robot0_link1",
+    "robot0_link2",
+    "robot0_link3",
+    "robot0_link4",
+    "robot0_link5",
+    "robot0_link6",
+    "robot0_link7",
+    "robot0_right_hand",
+    "gripper0_right_gripper",
+    "gripper0_eef",
+    "gripper0_leftfinger",
+    "gripper0_finger_joint1_tip",
+    "gripper0_rightfinger",
+    "gripper0_finger_joint2_tip"
+  ],
+  "joint_names": [
+    "robot0_joint1",
+    "robot0_joint2",
+    "robot0_joint3",
+    "robot0_joint4",
+    "robot0_joint5",
+    "robot0_joint6",
+    "robot0_joint7",
+    "gripper0_finger_joint1",
+    "gripper0_finger_joint2"
+  ],
+  "joint_units": [
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "radian",
+    "metre",
+    "metre"
+  ],
+  "site_name": "gripper0_grip_site",
+  "quaternion_policy": "Preserve SDK raw WXYZ signs; no output normalization or canonicalization.",
+  "commands": [
+    {
+      "name": "compile",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-misleading-indentation",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/include",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_fingers_sdk_collect.c",
+        "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/libmujoco.3.3.1.dylib",
+        "-Wl,-rpath,/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-fingers-sdk-first/collect"
+      ],
+      "environment_overrides": {},
+      "exit": 0,
+      "duration_seconds": 0.1997418329701759,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "collect",
+      "arguments": [
+        "/private/tmp/panda-fingers-sdk-first/collect",
+        "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml",
+        "/private/tmp/panda-fingers-sdk-first/cases.f64",
+        "/private/tmp/panda-fingers-sdk-first/poses.f64",
+        "/private/tmp/panda-fingers-sdk-first/model.json",
+        "/private/tmp/panda-fingers-sdk-first/dynamics.f64"
+      ],
+      "environment_overrides": {
+        "DYLD_LIBRARY_PATH": "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco"
+      },
+      "exit": 0,
+      "duration_seconds": 2.4710066249826923,
+      "stdout_sha256": "04abe65012a4c44d7411164ceea360b6793403855398099ccf484f46aa965a2b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    }
+  ],
+  "new_collector_is_sanitized": true,
+  "SDK_runtime_uninstrumented": true,
+  "scope": "One pinned16body/9joint configuration profile; kinematic queries, not motorcommands or dynamics qualification. No old SDK gate repeat.",
+  "forward_calls": 5,
+  "integration_steps": 0,
+  "mass_expand_calls": 5,
+  "pose_numeric_words": 1340,
+  "case_sha256": "42fc5bbfd56cb0b89f8c57400f3b8c40a2aba47655f6349fb982caf328c0f8d8",
+  "pose_sha256": "7f45da47b285fffded685abef0f4e9f9924982dc47dd4fbabda4266663089508",
+  "compiled_model_metadata_sha256": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031",
+  "collector_binary_sha256": "4b15cc2451908d5cf73327555cd4f71f086070b663f9dc37b7a0d293933e25bb",
+  "no_rendering_controller_NN_or_old_gates": true,
+  "duration_seconds": 2.6720386249944568,
+  "fixtures": {
+    "sdk-profile.json": {
+      "sha256": "5699650e695759ca51940f49cbdec78061ef683777da10af651b95c1e2841a5d",
+      "bytes": 3643
+    },
+    "sdk-model.json": {
+      "sha256": "428d23e39c0fafed1011f47a0a1d76d4d29c0a2c03607fa78abe88a04888e031",
+      "bytes": 9576
+    },
+    "sdk-cases.f64": {
+      "sha256": "42fc5bbfd56cb0b89f8c57400f3b8c40a2aba47655f6349fb982caf328c0f8d8",
+      "bytes": 360
+    },
+    "sdk-poses.f64": {
+      "sha256": "7f45da47b285fffded685abef0f4e9f9924982dc47dd4fbabda4266663089508",
+      "bytes": 10720
+    }
+  },
+  "private_capture_record": {
+    "path": "/tmp/panda-fingers-sdk-first/record.json",
+    "sha256": "df6038410e289fc7590ec1bc04ee84fae99a78884764b4c5efe0b2032dc48959"
+  },
+  "data_and_source_only": true,
+  "pose_reference_not_owned_dynamics_qualification": true,
+  "quaternion_sign_canonicalization": false,
+  "dataset_provenance": "Originaldemo0 XML from pinned yifengzhu-hf/LIBERO-datasets@f13aa24a3da8c43c7225569f28c562979fa0e35a; existinglibero-panda acquisition record binds HDF5/assets/licensing.",
+  "acquisition_record_sha256": "f0035183510d6c9ebd74bcda8f04433c1e93fe2b96ac082cc57d0002aee25d09"
+}

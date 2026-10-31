@@ -4,7 +4,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/../../.."
 coax="${COAX:-$PWD/coax/bin/coax}";jobs=4;mutate=0;list=0;requested=();chosen=();explicit=()
-units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian)
+units=(sim evaluate learn singlearm groot-artifact groot-linear groot-flow groot-vision groot-embodiment groot-dit groot-request groot-image groot-text groot-metal-plan groot-metal-kernels groot-vision-device groot-vision-metal-plan groot-text-metal-plan groot-device-kernels groot-text-kernels groot-action-metal-plan groot-action-metal-kernels groot-action-wide-kernels groot-action-transcript groot-action-dynamic-plan panda-matrix panda-control panda-env panda-loop panda-trace panda-policy panda-clock-adapter panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian panda-fingers-profile panda-fingers-chain)
 optins=(groot-device-gpu groot-text-kernels-gpu groot-linear-original groot-metal-original groot-vision-metal-original groot-text-metal-original groot-action-metal-original groot-policy-metal-original panda-control-original panda-env-sdk panda-loop-metal)
 while [[ $# -gt 0 ]];do
   case "$1" in
@@ -14,6 +14,7 @@ while [[ $# -gt 0 ]];do
     *) unit=${1%.coax};unit=${unit#psionic/lib/};unit=${unit#robotics/};known=0
        if [[ $unit == panda-clock ]];then unit=panda-clock-adapter;fi
        if [[ $unit == panda-jacobian ]];then requested+=(panda-jacobian-math panda-jacobian);shift;continue;fi
+       if [[ $unit == panda-fingers ]];then requested+=(panda-fingers-profile panda-fingers-chain);shift;continue;fi
        if [[ $unit == panda-fk ]];then requested+=(panda-fk-profile panda-fk-math panda-fk-chain panda-jacobian-math panda-jacobian);shift;continue;fi
        if [[ $unit == robotics || $unit == all ]];then known=1;unit=robotics;fi
        for candidate in "${units[@]}" "${optins[@]}";do if [[ $unit == "$candidate" ]];then known=1;break;fi;done
@@ -47,6 +48,7 @@ for unit in "${chosen[@]}";do
     panda-env|panda-loop|panda-trace) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" "psionic/tests/robotics/check-$unit.sh" "$work/$unit";native_groups=$((native_groups+1));;
     panda-clock-adapter) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-clock.sh "$work/panda-clock";COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-clock-host.sh "$work/panda-clock-host";native_groups=$((native_groups+2));;
     panda-fk-chain) python3 psionic/tests/robotics/panda_fk_bindings_test.py;COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-fk.sh "$PWD/psionic/fixtures/robotics/panda-fk/retained-controller" "$work/panda-fk";native_groups=$((native_groups+1));;
+    panda-fingers-chain) python3 psionic/tests/robotics/panda_fingers_bindings_test.py;COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-fingers.sh "$work/panda-fingers";native_groups=$((native_groups+1));;
     panda-jacobian) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/panda_jacobian_check.sh "$work/panda-jacobian";native_groups=$((native_groups+1));;
     panda-policy) COAX="$coax" CC="${COAX_CC:-${CC:-cc}}" psionic/tests/robotics/check-panda-policy-native.sh "$work/panda-policy";native_groups=$((native_groups+1));;
     groot-action-metal-kernels|groot-action-wide-kernels) action=1;;

@@ -1,0 +1,30 @@
+{
+  "schema": "psionic.panda-fingers.example-qualification.v1",
+  "passed": true,
+  "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+  "source": "psionic/examples/panda-fingers.coax",
+  "source_sha256": "39d7b4076bb2718edb1a588b2942a2b6b342be8336de88892382ff385692663f",
+  "golden": "psionic/fixtures/panda-fingers.out",
+  "golden_sha256": "2aba8c6653e5a05ce9c2c14d617d5d7b39568ae4612f7a425f41cd0168796f52",
+  "golden_written_before_execution": true,
+  "independent_gold": "Rigid rotations preserve source tip distance: qleft-qright+.017m gives .057/.084m for (.013,-.027)/(.04,-.027). Only display rounds to micrometres. Zero arm coordinates are kinematic, not actuator-valid home.",
+  "new_check_methods": 1,
+  "new_check_cases": 1,
+  "check_log_sha256": "3aad2286530bf6dda997fee9fe0d52a2767930fbe45783668c50977d1da5e1ed",
+  "profiles": [
+    {
+      "mode": "debug",
+      "stdout_sha256": "2aba8c6653e5a05ce9c2c14d617d5d7b39568ae4612f7a425f41cd0168796f52",
+      "stderr_bytes": 0,
+      "golden_match": true
+    },
+    {
+      "mode": "release",
+      "stdout_sha256": "2aba8c6653e5a05ce9c2c14d617d5d7b39568ae4612f7a425f41cd0168796f52",
+      "stderr_bytes": 0,
+      "golden_match": true
+    }
+  ],
+  "numeric_scope": "Rounded example output and atomic refusal in normal debug/release runs; strict unrounded cross-mode proof belongs to the separately qualified native scalar-libm profile.",
+  "product_qualification_sha256": "b3bf911fdbac47f297ca207264eb8c28812fb58b9968734fac60e050a2782c00"
+}
