@@ -803,7 +803,7 @@ ship_at :: (s: [] Belt, x: f32, y: f32, reach: f32, faction: int) -> int {
   best := -1; bd := reach * reach;
   for k: 0..<s[0].ship_n {
     if faction >= 0 && s[0].ships[k].faction != faction { continue; }
-    q := screen_of(s, ship_state(s, k, s[0].t).r);
+    q := ship_screen(s, k);
     dx := pix(q.x) - x; dy := pix(q.y) - y;
     d := dx * dx + dy * dy;
     if d < bd { bd = d; best = k; }
@@ -857,7 +857,7 @@ box_select :: (s: [] Belt, x0: f32, y0: f32, x1: f32, y1: f32) {
   if !s[0].shift { for j: 0..<SHIPS { s[0].selected[j] = false; } }
   for k: 0..<s[0].ship_n {
     if s[0].ships[k].faction != FREE_BELT { continue; }
-    q := screen_of(s, ship_state(s, k, s[0].t).r);
+    q := ship_screen(s, k);
     x := pix(q.x); y := pix(q.y);
     if x >= ax && x <= bx && y >= ay && y <= by { s[0].selected[k] = true; }
   }
@@ -1220,10 +1220,74 @@ draw_station :: (s: [] Belt, out: [] f32, d: [] Draw, at: D3) {
 }
 
 // A ship: a chevron along its heading, or its hull in metres when close.
+// Where a ship is drawn: where it is, except that one sitting at a world or the station
+// when the view is far stands just outside that world's disc (its berth's side), not on it.
+ship_screen :: (s: [] Belt, k: int) -> D2 {
+  sh := s[0].ships[k];
+  c := screen_of(s, ship_state(s, k, s[0].t).r);
+  if sh.mode == FLYING { return c; }
+  u := f64(hi(s[0].dpr, 0.5));
+  home := screen_of(s, place_state(s, sh.at, s[0].t).r);
+  least := ifx is_world(sh.at) then fmax(spacecam_pixels(s[0].cam, BODY_RADIUS[sh.at]), f64(DISC_MIN[sh.at]) * u) + 13.0 * u else 11.0 * u;
+  least += f64(sh.slot) * 9.0 * u;
+  dx := c.x - home.x; dy := c.y - home.y;
+  dd := sqrt(dx * dx + dy * dy);
+  if dd >= least { return c; }
+  a := f64(sh.slot) * 1.1 + f64(k) * 0.37 + 0.6;
+  return d2(home.x + cos(a) * least, home.y - sin(a) * least);
+}
+
+// A line in a hull's own frame: along a, across n, as fractions of its length h.
+hull_line :: (out: [] f32, d: [] Draw, x: f32, y: f32, h: f32, ch: f32, sn: f32, a0: f32, n0: f32, a1: f32, n1: f32, core: f32, light: f32, r: f32, g: f32, b: f32) {
+  stroke(out, d, x + (ch * a0 - sn * n0) * h, y + (sn * a0 + ch * n0) * h, x + (ch * a1 - sn * n1) * h, y + (sn * a1 + ch * n1) * h, core, light, r, g, b);
+}
+// A hull, h pixels long along (ch, sh): a drive bell, tanks in pairs, radiators across the
+// spine, a crew ring and the command module at the bow, in its faction's colour.
+draw_hull :: (out: [] f32, d: [] Draw, x: f32, y: f32, h: f32, ch: f32, sn: f32, big: bool, col: Point3) {
+  u := d[0].k;
+  nx := -sn; ny := ch;
+  cw := 0.8 * u; thin := 0.6 * u;
+  // the spine
+  hull_line(out, d, x, y, h, ch, sn, -0.4, 0.0, 0.3, 0.0, 1.0 * u, 0.9, col.x, col.y, col.z);
+  // the drive bell
+  hull_line(out, d, x, y, h, ch, sn, -0.4, 0.035, -0.5, 0.09, cw, 0.9, col.x, col.y, col.z);
+  hull_line(out, d, x, y, h, ch, sn, -0.4, -0.035, -0.5, -0.09, cw, 0.9, col.x, col.y, col.z);
+  hull_line(out, d, x, y, h, ch, sn, -0.5, 0.09, -0.5, -0.09, thin, 0.7, col.x, col.y, col.z);
+  // tanks: two pairs (one on the small hull)
+  pairs := ifx big then 2 else 1;
+  for p: 0..<pairs {
+    a := -0.27 + f32(p) * 0.15;
+    for side: 0..<2 {
+      sg := ifx side == 0 then 1.0f32 else -1.0f32;
+      cx := x + (ch * a - sn * 0.075 * sg) * h; cy := y + (sn * a + ch * 0.075 * sg) * h;
+      ring(out, d, cx, cy, 0.06 * h, 16, thin, 0.75, INK_R, INK_G, INK_B);
+    }
+  }
+  // radiators: thin panels across the spine
+  for side: 0..<2 {
+    sg := ifx side == 0 then 1.0f32 else -1.0f32;
+    hull_line(out, d, x, y, h, ch, sn, 0.02, 0.04 * sg, 0.02, 0.3 * sg, thin, 0.55, ICE_R, ICE_G, ICE_B);
+    hull_line(out, d, x, y, h, ch, sn, 0.08, 0.04 * sg, 0.08, 0.3 * sg, thin, 0.55, ICE_R, ICE_G, ICE_B);
+    hull_line(out, d, x, y, h, ch, sn, 0.02, 0.3 * sg, 0.08, 0.3 * sg, thin, 0.55, ICE_R, ICE_G, ICE_B);
+    for r: 1..<4 { hull_line(out, d, x, y, h, ch, sn, 0.02, (0.04 + 0.065 * f32(r)) * sg, 0.08, (0.04 + 0.065 * f32(r)) * sg, 0.4 * u, 0.3, ICE_R, ICE_G, ICE_B); }
+  }
+  // the crew ring, edge on
+  hull_line(out, d, x, y, h, ch, sn, 0.2, -0.17, 0.2, 0.17, cw, 0.85, INK_R, INK_G, INK_B);
+  hull_line(out, d, x, y, h, ch, sn, 0.245, -0.17, 0.245, 0.17, cw, 0.85, INK_R, INK_G, INK_B);
+  hull_line(out, d, x, y, h, ch, sn, 0.2, 0.17, 0.245, 0.17, thin, 0.85, INK_R, INK_G, INK_B);
+  hull_line(out, d, x, y, h, ch, sn, 0.2, -0.17, 0.245, -0.17, thin, 0.85, INK_R, INK_G, INK_B);
+  // the command module and its nose
+  hull_line(out, d, x, y, h, ch, sn, 0.3, 0.06, 0.43, 0.06, cw, 0.9, col.x, col.y, col.z);
+  hull_line(out, d, x, y, h, ch, sn, 0.3, -0.06, 0.43, -0.06, cw, 0.9, col.x, col.y, col.z);
+  hull_line(out, d, x, y, h, ch, sn, 0.3, 0.06, 0.3, -0.06, thin, 0.8, col.x, col.y, col.z);
+  hull_line(out, d, x, y, h, ch, sn, 0.43, 0.06, 0.5, 0.0, cw, 0.9, col.x, col.y, col.z);
+  hull_line(out, d, x, y, h, ch, sn, 0.43, -0.06, 0.5, 0.0, cw, 0.9, col.x, col.y, col.z);
+}
+
 draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   sh := s[0].ships[k];
   st := ship_state(s, k, s[0].t);
-  c := screen_of(s, st.r);
+  c := ship_screen(s, k);
   x := pix(c.x); y := pix(c.y); u := d[0].k;
   col := faction_rgb(sh.faction);
   heading := 0.0f32;
@@ -1237,23 +1301,15 @@ draw_ship :: (s: [] Belt, out: [] f32, d: [] Draw, k: int, sel: bool) {
   ch := cos(heading); shd := sin(heading);
   hull := pix(spacecam_pixels(s[0].cam, ifx sh.dry > 400.0 then 180.0 else 120.0));
   if hull > 22 * u {
-    // the hull: a spine, a drive cone, tanks and a crew ring, in metres
+    // the hull, in metres
     hl := hull / 2;
-    bx := x - ch * hl; by := y - shd * hl; fx := x + ch * hl; fy := y + shd * hl;
-    nx := -shd; ny := ch;
-    wd := hull * 0.09;
-    stroke(out, d, bx, by, fx, fy, 1.1 * u, 0.95, col.x, col.y, col.z);
-    for side: 0..<2 {
-      sg := ifx side == 0 then 1.0f32 else -1.0f32;
-      stroke(out, d, x - ch * hl * 0.3 + nx * wd * sg, y - shd * hl * 0.3 + ny * wd * sg, x + ch * hl * 0.4 + nx * wd * sg, y + shd * hl * 0.4 + ny * wd * sg, 0.8 * u, 0.8, INK_R, INK_G, INK_B);
-      stroke(out, d, bx, by, bx - ch * hull * 0.12 + nx * wd * 1.6 * sg, by - shd * hull * 0.12 + ny * wd * 1.6 * sg, 0.9 * u, 0.85, col.x, col.y, col.z);
-    }
-    ring(out, d, x + ch * hl * 0.62, y + shd * hl * 0.62, wd * 1.3, 20, 0.8 * u, 0.85, INK_R, INK_G, INK_B);
+    draw_hull(out, d, x, y, hull, ch, shd, sh.dry > 400.0, col);
+    bx := x - ch * hl; by := y - shd * hl;
     if burn != 0 {
-      // the drive's plume out of the cone, flickering
+      // the drive's plume out of the bell, flickering
       f := plume_flicker(s, k);
-      stroke(out, d, bx - ch * hull * 0.14, by - shd * hull * 0.14, bx - ch * hull * (0.5 + 0.15 * f), by - shd * hull * (0.5 + 0.15 * f), 2.6 * u, 1.0, PLUME_R, PLUME_G, PLUME_B);
-      stroke(out, d, bx - ch * hull * 0.14, by - shd * hull * 0.14, bx - ch * hull * (1.0 + 0.3 * f), by - shd * hull * (1.0 + 0.3 * f), 1.0 * u, 0.6, PLUME_R, PLUME_G, PLUME_B);
+      stroke_g(out, d, bx, by, bx - ch * hull * (0.45 + 0.15 * f), by - shd * hull * (0.45 + 0.15 * f), 0.05 * hull, 1.0, 0.12 * hull, PLUME_R, PLUME_G, PLUME_B);
+      stroke_g(out, d, bx, by, bx - ch * hull * (1.2 + 0.3 * f), by - shd * hull * (1.2 + 0.3 * f), 0.015 * hull, 0.7, 0.06 * hull, PLUME_R, PLUME_G, PLUME_B);
     }
     if sel { ring(out, d, x, y, hl * 1.25, 48, 0.9 * u, 0.9, col.x, col.y, col.z); }
     block(d, x, y, hl);
