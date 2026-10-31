@@ -88,7 +88,10 @@ Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coa
 | side | 2D: side-on, orthographic (12 m tall, tilted 8° so the ground shows), a lane through the realm | A/D walk, W or Space jumps (always); trees and characters stop you, and you jump onto rocks, crates and barrels |
 
 Palettes (0079, the spec's `palette` line): natural, pastel (pale and soft), vivid (bolder) and
-muted (greyed); `myrealm.coax` tints every piece, the sky, the horizon and the ground with it.
+muted (greyed); `myrealm.coax` tints every piece, the sky, the horizon and the ground with it, and
+a pastel realm's textures are lifted pale in `myrealm.wgsl` (`paletted`) so wood and hide read soft.
+An ask about colours, ground, time, style or camera is the setup (`asked` feature `setup`, 0081),
+never a line still wanted.
 A realm's revision in edit mode sets it too, and an ask's DELETE puts the one before back.
 
 Grounds: meadow, forest, desert, snow, stone, beach. Times: day, dawn, dusk, night. Styles:

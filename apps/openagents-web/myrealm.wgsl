@@ -9,7 +9,7 @@
 // functions are verse/style.coax's, generated below by build.sh). Forked from droprealm.wgsl;
 // every place, size and colour comes from myrealm.coax.
 struct U {
-  size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, pad0: f32,
+  size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, palette: f32,   // palette: myrealm.coax PALETTES (1 pastel)
   r0: vec4f, r1: vec4f, r2: vec4f, r3: vec4f,  // the view: clip = rows · world
   lamp: vec4f,                                 // the lamp: where (metres), strength
   eye: vec4f,                                  // the eye (metres), then the floor's radius
@@ -98,6 +98,8 @@ fn noise(p: vec2f) -> f32 {
 // ---- the style block: SU_* rows (verse/style-preset.coax); st(31).y the style: 1 painterly, 3 flat
 fn st(i: u32) -> vec4f { return u.st[i]; }
 fn styled() -> bool { return u.st[31].y > 0.5; }
+// A pastel realm's textures, lifted pale before their (pastel) tint: wood and hide read soft, not dark.
+fn paletted(t: vec3f) -> vec3f { return select(t, t * 0.35 + vec3f(0.62), u.palette > 0.5 && u.palette < 1.5); }
 fn flat_style() -> bool { return u.st[31].y > 2.5; }
 fn key_l() -> vec3f { return normalize(st(1u).xyz + vec3f(0.0, 0.00001, 0.0)); }
 // The painted or flat sky along d (fixture.wgsl's painterly sky; fairy.wgsl's flat one), stars after dark.
@@ -323,7 +325,7 @@ struct S {
     // painted: the texture's grain softened toward a nearer mip; flat: large fills of colour, the
     // texture's own mean (a far mip) more than its grain
     let soft = textureSampleLevel(sheets, sheet, s.uv, s.slice, select(2.5, 5.0, flat_style())).rgb;
-    let a = mix(tex.rgb, soft, select(0.55, 0.8, flat_style())) * s.tint;
+    let a = paletted(mix(tex.rgb, soft, select(0.55, 0.8, flat_style()))) * s.tint;
     var c = select(painted(a, n, d), flat_lit(a, n), flat_style()) + styled_lights(a, s.world, n);
     c = styled_far(c, s.world, dist, d);
     return vec4f(panels(s.pos.xy, encoded(c) * u.fade), 1.0);
@@ -333,7 +335,7 @@ struct S {
   lit += lanterns_near(s.world, n) * 1.4;
   let far = max(length(s.world - u.eye.xyz) - u.rx.w, 0.0);
   let haze = clamp(1.0 - exp(-far * 0.018), 0.0, 1.0);
-  let c = mix(tex.rgb * s.tint * lit, u.horizon.rgb, haze * 0.85) * u.fade;
+  let c = mix(paletted(tex.rgb) * s.tint * lit, u.horizon.rgb, haze * 0.85) * u.fade;
   return vec4f(panels(s.pos.xy, c), 1.0);
 }
 // ---- the strokes: one quad per stroke or light (myrealm.coax lit, tinted_dot)

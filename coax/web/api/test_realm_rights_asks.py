@@ -110,7 +110,7 @@ def realm_asks_checks():
     time.sleep(2.1)
     herder = b_player()
     h = {"Content-Type": "application/json", "X-Verse-Player": herder}
-    builder_mode["text"] = json.dumps({"asked": [{"thing": "bison everywhere", "feature": "herd"}, {"thing": "tepees", "feature": "dwellings"},
+    builder_mode["text"] = json.dumps({"asked": [{"thing": "only pastel colors", "feature": "setup"}, {"thing": "bison everywhere", "feature": "herd"}, {"thing": "tepees", "feature": "dwellings"},
                                                  {"thing": "a rainbow river", "feature": "none"}],
         "name": "Pastel Plains", "camera": "third", "style": "flat", "ground": "meadow", "time": "day", "palette": "pastel", "features": [
         {"feature": "herd", "on": True, "variant": "bison", "count": 8}, {"feature": "dwellings", "on": True, "variant": "tepee", "count": 5},
@@ -124,6 +124,9 @@ def realm_asks_checks():
     check("her prompt's board: pastel, a herd of bison, tepees, its people, and what no feature makes kept as wanted",
           st == 200 and "palette pastel\n" in text and "f herd 1 A herd of 8 bison\n" in text and "f dwellings 1 5 tepees\n" in text
           and "f village 1 A village of 5 people\n" in text and "want a rainbow river\n" in text, text)
+    check("her colours are the setup's palette, not a line still wanted (0081)",
+          "setup" in req["generationConfig"]["responseSchema"]["properties"]["asked"]["items"]["properties"]["feature"]["enum"]
+          and "want only pastel" not in text, text)
     plan_id = int(text.split()[1])
     time.sleep(2.1)
     builder_mode["text"] = json.dumps({"asked": [{"thing": "bison", "feature": "herd"}], "name": "Pastel Plains", "camera": "third", "style": "flat",
