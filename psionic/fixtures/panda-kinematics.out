@@ -1,0 +1,7 @@
+zero-angle coordinates: kinematics only
+hand BODY xyz (um): -662000 0 1838500
+grip SITE xyz (um): -662000 0 1741500
+hand-to-grip world Z separation (um): 97000
+BODY/SITE X-axis cosine (ppm): 0; attitudes differ
+101 rad: range refusal; all 13 poses unchanged
+joint4=0 is outside its source range; no actuator home is implied

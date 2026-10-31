@@ -1,0 +1,56 @@
+// Fixed source-bound native F64 FK only. No physics, fingers, importer,
+// Jacobian, sensor authentication, typed rotation chain or #bounded claim.
+#load "panda-fk-profile.coax";
+#load "panda-fk-math.coax";
+#load "panda-fk-check-fixtures.coax";
+#authority;
+#test "Panda FK zero-angle chain retains base hand and grip offsets independently" {
+ q:[7]pfku.Quantity(pfku.Radian,f64);out:[1]PfkOutput;#assert pfk_forward(q[..],out[..])==PfkStatus.ok;
+ #assert out[0].links[0].position.x== -0.75 && out[0].links[0].position.y==0 && out[0].links[0].position.z==0.912;
+ #assert abs(out[0].links[9].position.x+0.662)<2e-12 && abs(out[0].links[9].position.y)<2e-12 && abs(out[0].links[9].position.z-1.8385)<2e-12;
+ #assert abs(out[0].grip.position.x+0.662)<2e-12 && abs(out[0].grip.position.y)<2e-12 && abs(out[0].grip.position.z-1.7415)<2e-12;
+ #assert abs(out[0].grip.position.z-out[0].links[9].position.z+0.097)<2e-12;
+ for i:0..<9 {#assert out[0].grip.rotation[i]==out[0].links[11].rotation[i];}#assert abs(out[0].grip.rotation[0]-out[0].links[9].rotation[0])>0.1;
+ q[0].value=1.5707963267948966;#assert pfk_forward(q[..],out[..])==PfkStatus.ok;
+ #assert abs(out[0].grip.position.x+0.75)<2e-12 && abs(out[0].grip.position.y-0.088)<2e-12 && abs(out[0].grip.position.z-1.7415)<2e-12;
+}
+#test "Panda FK shape failures never publish any output lane" {
+ q:[7]pfku.Quantity(pfku.Radian,f64);out:=[2]PfkOutput.[pfk_poison(),pfk_poison()];old:=out[0];
+ #assert pfk_forward(q[0..<6],out[0..<1])==PfkStatus.shape;pfk_same_output(out[0],old);
+ #assert pfk_forward(q[..],out[0..<0])==PfkStatus.shape;pfk_same_output(out[0],old);
+ #assert pfk_forward(q[..],out[..])==PfkStatus.shape;pfk_same_output(out[0],old);pfk_same_output(out[1],old);
+ raw:[7]f64;#assert pfk_forward_raw(raw[0..<6],out[0..<1])==PfkStatus.shape;pfk_same_output(out[0],old);
+}
+#forall "Panda FK every coordinate admits inclusive bounds and refuses bad numbers atomically" axis:0..<7,negative:bool {
+ q:[7]pfku.Quantity(pfku.Radian,f64);out:=[1]PfkOutput.[pfk_poison()];old:=out[0];
+ for bits:[3]u64.[0x7ff0000000000000,0xfff0000000000000,0x7ff8000000000001] {words:[7]u64;words[axis]=bits;#assert pfk_admit(words)==PfkStatus.number;}
+ q[axis].value=ifx negative then -100.00000000000001 else 100.00000000000001;#assert pfk_forward(q[..],out[..])==PfkStatus.range;pfk_same_output(out[0],old);
+ q[axis].value=ifx negative then -100.0 else 100.0;#assert pfk_forward(q[..],out[..])==PfkStatus.ok;
+}
+#test "Panda FK explicit raw-radian adapter agrees exactly with typed quantities" {
+ raw:=[7]f64.[0.2,-0.3,0.4,-0.5,0.6,-0.7,0.8];q:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {q[i].value=raw[i];}a:[1]PfkOutput;b:[1]PfkOutput;
+ #assert pfk_forward(q[..],a[..])==PfkStatus.ok && pfk_forward_raw(raw[..],b[..])==PfkStatus.ok;pfk_same_output(a[0],b[0]);
+ old:=b[0];raw[6]=101;#assert pfk_forward_raw(raw[..],b[..])==PfkStatus.range;pfk_same_output(b[0],old);
+}
+
+pfk_forward :: (angles:[]pfku.Quantity(pfku.Radian,f64),output:[]PfkOutput)->PfkStatus #export_c {
+ if angles.count!=7 || output.count!=1 {return PfkStatus.shape;}
+ words:[7]u64;for i:0..<7 {words[i]=f64_bits(angles[i].value);}admission:=pfk_admit(words);if admission!=PfkStatus.ok {return admission;}
+ nodes:=pfk_profile();rigids:[12]PfkRigid;fresh:PfkOutput;
+ for i:0..<12 {
+  parent:PfkRigid;parent.quaternion[0]=1;if nodes[i].parent>=0 {parent=rigids[nodes[i].parent];}
+  child:PfkRigid;child.position=pfk_shift(parent.position,parent.quaternion,nodes[i].offset);
+  // Immutable profile quaternions are nonzero/finite and bounded, established
+  // by source-table checks. This is not a caller-supplied model admission API.
+  local:=pfk_normalize(nodes[i].fixed).value;child.quaternion=pfk_multiply(parent.quaternion,local);
+  if nodes[i].joint>=0 {child.quaternion=pfk_multiply(child.quaternion,pfk_hinge(angles[nodes[i].joint]));}
+  rigids[i]=child;fresh.links[i]=pfk_pose(child);
+ }
+ // Grip site is identity-local in the source gripper0_eef body.
+ fresh.grip=fresh.links[11];output[0]=fresh;return PfkStatus.ok;
+}
+pfk_forward_raw :: (radians:[]f64,output:[]PfkOutput)->PfkStatus #export_c {
+ if radians.count!=7 {return PfkStatus.shape;}angles:[7]pfku.Quantity(pfku.Radian,f64);for i:0..<7 {angles[i].value=radians[i];}return pfk_forward(angles[..],output);
+}
+
+pfk_admit :: (words:[7]u64)->PfkStatus {for bits:words {if !pfk_finite(bits) {return PfkStatus.number;}if abs(f64_from_bits(bits))>100 {return PfkStatus.range;}}return PfkStatus.ok;}

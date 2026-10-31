@@ -139,6 +139,23 @@ physical reference, independent data/SGD oracle and native mode comparisons
 are recorded in `psionic/fixtures/physics/oscillator/qualification.json`.
 
 
+## Owned Panda kinematics preserves the exact model and attitude boundary
+
+The first FK query constructs its immutable twelve-body/seven-hinge profile
+from pinned source coefficients. It accepts seven finite radian coordinates
+within its declared numerical box, with no soft-limit clamping, and publishes
+all poses only after admission. World positions use F64 Point3; Hamilton-wxyz
+quaternions and row-major world-from-body matrices remain raw conventions.
+The hand BODY and grip SITE attitudes are distinct.
+
+Reference poses are freshly forwarded and paired with their joint coordinates;
+cached geometry/current-qpos pairs are not interchangeable FK targets. Scalar
+libm host flags qualify cross-mode bytes on the named Darwin target; the prior
+default fused-libm byte mismatch is preserved. This is a geometric query, with
+no simulation clock, hardware, model import, fingers or articulated dynamics
+claim. Source mutation counts cover emitted sites, excluding lowered spatial
+operator-token swaps.
+
 ## Panda evaluation keeps SDK physics, Coax decisions and clock evidence separate
 
 The chapter 170 profile uses the original LIBERO/Panda scene, selected GR00T

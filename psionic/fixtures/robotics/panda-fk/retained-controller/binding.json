@@ -1,0 +1,85 @@
+{
+  "schema": "psionic-panda-fk-retained-controller-data-binding-v1",
+  "passed": true,
+  "scope": "Data-only bundling of seven existing qualified fresh SDK PcSample numerical reference facts. No new numerical, SDK, model, controller or episode execution. Original executed source/profile/compiler labels remain unchanged.",
+  "original_reference_record": "psionic/tests/robotics/panda-control-qualification.json",
+  "original_reference_record_sha256": "2c580ed263cc424ff2711c58f25615f3c47dd710a7831b9a1c31ea40bff01847",
+  "source_profile": "psionic/fixtures/robotics/panda-fk/source-profile.json",
+  "source_profile_sha256": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "dataset_revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+  "capture_scope": "Original demo0 fresh reset+forward; original pre-action states at recorded rows. Same old reference bytes, not new simulator samples or HDF5 post-action observation matches.",
+  "layout": "PcSample144\u00d7little-endianF64:position3,rotation9,q7,qd7,mass49,jp21,jr21,velocity6,bias7,lower7,upper7.",
+  "row_order": [
+    0,
+    1,
+    2,
+    3,
+    64,
+    128,
+    232
+  ],
+  "files": [
+    {
+      "row": 0,
+      "filename": "row0.pc-sample.f64",
+      "bytes": 1152,
+      "original_public_sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+      "bundled_sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+      "byte_identical": true
+    },
+    {
+      "row": 1,
+      "filename": "row1.pc-sample.f64",
+      "bytes": 1152,
+      "original_public_sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+      "bundled_sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+      "byte_identical": true
+    },
+    {
+      "row": 2,
+      "filename": "row2.pc-sample.f64",
+      "bytes": 1152,
+      "original_public_sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+      "bundled_sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+      "byte_identical": true
+    },
+    {
+      "row": 3,
+      "filename": "row3.pc-sample.f64",
+      "bytes": 1152,
+      "original_public_sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+      "bundled_sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+      "byte_identical": true
+    },
+    {
+      "row": 64,
+      "filename": "row64.pc-sample.f64",
+      "bytes": 1152,
+      "original_public_sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+      "bundled_sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+      "byte_identical": true
+    },
+    {
+      "row": 128,
+      "filename": "row128.pc-sample.f64",
+      "bytes": 1152,
+      "original_public_sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+      "bundled_sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+      "byte_identical": true
+    },
+    {
+      "row": 232,
+      "filename": "row232.pc-sample.f64",
+      "bytes": 1152,
+      "original_public_sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+      "bundled_sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+      "byte_identical": true
+    }
+  ],
+  "total_bytes": 8064,
+  "concatenated_rows_sha256": "47724baaae7b5e84df1d6506e7802a42551081ed6794aa04d617be508d543527",
+  "filenames_preserved": true,
+  "independent_of_private_cache_at_runtime": true,
+  "numerical_proofs_reused_without_rerun": true
+}

@@ -1,0 +1,10 @@
+// Fixed Panda FK precursor: world positions are typed; attitude arrays remain
+// explicit untyped Hamilton-wxyz / row-major world-from-body boundaries.
+#load "../../../coax/lib/quantity.coax" as pfku;
+PfkWorld :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}
+PfkStatus :: enum u8 {ok;shape;number;range;rotation;}
+PfkNode :: struct {parent:int;joint:int;offset:[3]f64;fixed:[4]f64;}
+PfkQuaternion :: struct {status:PfkStatus;value:[4]f64;}
+PfkRigid :: struct {position:Point3(PfkWorld,pfku.Metre,f64);quaternion:[4]f64;}
+PfkPose :: struct {position:Point3(PfkWorld,pfku.Metre,f64);quaternion:[4]f64;rotation:[9]f64;}
+PfkOutput :: struct {links:[12]PfkPose;grip:PfkPose;}

@@ -1,0 +1,3 @@
+#load "../../lib/robotics/panda-fk-chain.coax";
+PfkOtherWorld :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}
+main :: () {other:Point3(PfkOtherWorld,pfku.Metre,f64);out:PfkOutput;out.grip.position=other;}

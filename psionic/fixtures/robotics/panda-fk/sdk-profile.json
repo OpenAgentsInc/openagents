@@ -1,0 +1,120 @@
+{
+  "schema": "psionic.panda-fk.sdk-profile.v1",
+  "frozen_before_capture": true,
+  "sdk_version": "3.3.1",
+  "reset": "mj_resetData before each case; set only the seven named arm hinge qpos entries; all other qpos remains compiled qpos0. Then exactly one mj_forward; zero mj_step calls.",
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "source_demo": 0,
+  "joint_names": [
+    "robot0_joint1",
+    "robot0_joint2",
+    "robot0_joint3",
+    "robot0_joint4",
+    "robot0_joint5",
+    "robot0_joint6",
+    "robot0_joint7"
+  ],
+  "joint_position_units": "radians",
+  "cases_radians": [
+    [
+      0,
+      0.19634954084936207,
+      0,
+      -2.617993877991494,
+      0,
+      2.941592653589793,
+      0.7853981633974483
+    ],
+    [
+      0,
+      0,
+      0,
+      -1.5708,
+      0,
+      1.8675,
+      0
+    ],
+    [
+      0.2,
+      0.2963495408493621,
+      -0.3,
+      -2.417993877991494,
+      0.25,
+      2.741592653589793,
+      0.4853981633974483
+    ],
+    [
+      -0.4,
+      -0.2,
+      0.5,
+      -1.9,
+      -0.6,
+      1.4,
+      -0.8
+    ],
+    [
+      -2.8973,
+      -1.7628,
+      -2.8973,
+      -3.0718,
+      -2.8973,
+      -0.0175,
+      -2.8973
+    ],
+    [
+      2.8973,
+      1.7628,
+      2.8973,
+      -0.0698,
+      2.8973,
+      3.7525,
+      2.8973
+    ],
+    [
+      1.5,
+      -1.2,
+      0.7,
+      -0.4,
+      -2.1,
+      0.35,
+      2.5
+    ]
+  ],
+  "body_names": [
+    "robot0_base",
+    "robot0_link0",
+    "robot0_link1",
+    "robot0_link2",
+    "robot0_link3",
+    "robot0_link4",
+    "robot0_link5",
+    "robot0_link6",
+    "robot0_link7",
+    "robot0_right_hand",
+    "gripper0_right_gripper",
+    "gripper0_eef"
+  ],
+  "site_name": "gripper0_grip_site",
+  "case_shape": [
+    7,
+    7
+  ],
+  "pose_shape": [
+    7,
+    204
+  ],
+  "pose_body_order": [
+    "world_position_xyz[3]",
+    "world_quaternion_wxyz[4]",
+    "world_rotation_row_major[9]"
+  ],
+  "pose_site_tail": [
+    "world_position_xyz[3]",
+    "world_rotation_row_major[9]"
+  ],
+  "absolute_tolerance": 2e-12,
+  "relative_tolerance": 0,
+  "quaternion_policy": "Copy SDK raw WXYZ signs without normalization/canonicalization. No bit-equality claim.",
+  "scope": "One pinned compiled-model forward-kinematics reference only. No steps/rendering/controller/NN/episode/new source-model or other-scene equivalence claim."
+}

@@ -1,0 +1,56 @@
+#import "Basic";
+#load "../lib/robotics/panda-fk-chain.coax";
+
+#test "Panda FK example display uses independently known micrometre geometry" {
+    #assert panda_example_um(-0.662)== -662000;
+    #assert panda_example_um(0)==0 && panda_example_um(1.8385)==1838500;
+    #assert panda_example_um(1.7415)==1741500 && panda_example_um(0.097)==97000;
+}
+#test "Panda FK example atomic comparison checks every pose word and signed zero" {
+    a:PfkPose;#assert panda_example_same_pose(a,a);
+    for field:0..<16 {
+        b:=a;
+        if field==0 {b.position.x=1;}if field==1 {b.position.y=1;}if field==2 {b.position.z=1;}
+        if field>=3 && field<7 {b.quaternion[field-3]=1;}
+        if field>=7 {b.rotation[field-7]=1;}
+        #assert !panda_example_same_pose(a,b);
+    }
+    b:=a;b.position.x= -0.0;#assert !panda_example_same_pose(a,b);
+}
+
+// Display rounding only; the FK library retains unrounded F64 coordinates.
+panda_example_um :: (metres:f64)->int {return cast(int)floor(metres*1000000+0.5);}
+panda_example_same_pose :: (a:PfkPose,b:PfkPose)->bool {
+    if f64_bits(a.position.x)!=f64_bits(b.position.x) || f64_bits(a.position.y)!=f64_bits(b.position.y) || f64_bits(a.position.z)!=f64_bits(b.position.z) {return false;}
+    for i:0..<4 {if f64_bits(a.quaternion[i])!=f64_bits(b.quaternion[i]) {return false;}}
+    for i:0..<9 {if f64_bits(a.rotation[i])!=f64_bits(b.rotation[i]) {return false;}}
+    return true;
+}
+main :: () {
+    print("zero-angle coordinates: kinematics only\n");
+// book:begin coordinates
+    q:[7]pfku.Quantity(pfku.Radian,f64); // Explicit radian zero coordinates.
+    poses:[1]PfkOutput;
+    #assert pfk_forward(q[..],poses[..])==PfkStatus.ok;
+    hand:=poses[0].links[9];grip:=poses[0].grip;
+    print("hand BODY xyz (um): % % %\n",panda_example_um(hand.position.x),panda_example_um(hand.position.y),panda_example_um(hand.position.z));
+    print("grip SITE xyz (um): % % %\n",panda_example_um(grip.position.x),panda_example_um(grip.position.y),panda_example_um(grip.position.z));
+    separation:=hand.position-grip.position;
+    #assert abs(separation.z-0.097)<2e-12;
+    print("hand-to-grip world Z separation (um): %\n",panda_example_um(separation.z));
+// book:end coordinates
+// book:begin attitudes
+    // Column zero is each local +X axis expressed in world coordinates.
+    cosine:=hand.rotation[0]*grip.rotation[0]+hand.rotation[3]*grip.rotation[3]+hand.rotation[6]*grip.rotation[6];
+    #assert abs(cosine)<2e-12;
+    print("BODY/SITE X-axis cosine (ppm): %; attitudes differ\n",cast(int)floor(cosine*1000000+0.5));
+// book:end attitudes
+// book:begin refusal
+    before:=poses[0];q[0].value=101;
+    #assert pfk_forward(q[..],poses[..])==PfkStatus.range;
+    for i:0..<12 {#assert panda_example_same_pose(poses[0].links[i],before.links[i]);}
+    #assert panda_example_same_pose(poses[0].grip,before.grip);
+    print("101 rad: range refusal; all 13 poses unchanged\n");
+// book:end refusal
+    print("joint4=0 is outside its source range; no actuator home is implied\n");
+}

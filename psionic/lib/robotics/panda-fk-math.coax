@@ -1,0 +1,54 @@
+// Own F64 quaternion and rigid-chain arithmetic. Raw attitude does not imply
+// compiler-proven per-link transform semantics or a general frame-chain API.
+#load "panda-fk-types.coax";
+#authority;
+#forall "Panda FK finite admission uses exponent bits and preserves signed zero" sign:0..<2 {
+ bit:=(cast(u64)sign)<<63;for value:[5]u64.[0,1,0x0010000000000000,0x3ff0000000000000,0x7fefffffffffffff] {#assert pfk_finite(bit|value);}
+ for value:[3]u64.[0x7ff0000000000000,0x7ff0000000000001,0x7ff8000000000000] {#assert !pfk_finite(bit|value);}
+}
+#forall "Panda FK quaternion normalization has exact basis signs and atomic refusals" axis:0..<4,negative:bool {
+ q:[4]f64;q[axis]=ifx negative then -2.0 else 2.0;r:=pfk_normalize(q);#assert r.status==PfkStatus.ok;
+ for i:0..<4 {#assert r.value[i]==(ifx i==axis then (ifx negative then -1.0 else 1.0) else 0.0);}
+ q[axis]=0;r=pfk_normalize(q);#assert r.status==PfkStatus.rotation;for i:0..<4 {#assert r.value[i]==0;}
+ q[axis]=2.0000000000000004;r=pfk_normalize(q);#assert r.status==PfkStatus.range;
+ bits:[4]u64;bits[axis]=0x7ff0000000000000;r=pfk_normalize_bits(bits);#assert r.status==PfkStatus.number;
+}
+#test "Panda FK quaternion norm and each Hamilton basis product have independent results" {
+ r:=pfk_normalize([4]f64.[1,2,2,0]);#assert r.status==PfkStatus.ok && abs(r.value[0]-1.0/3)<1e-15 && abs(r.value[1]-2.0/3)<1e-15 && abs(r.value[2]-2.0/3)<1e-15 && r.value[3]==0;
+ index:=[16]int.[0,1,2,3,1,0,3,2,2,3,0,1,3,2,1,0];sign:=[16]int.[1,1,1,1,1,-1,1,-1,1,-1,-1,1,1,1,-1,-1];
+ for a:0..<4 {for b:0..<4 {x:[4]f64;y:[4]f64;x[a]=1;y[b]=1;z:=pfk_multiply(x,y);for i:0..<4 {#assert z[i]==(ifx i==index[a*4+b] then f64(sign[a*4+b]) else 0.0);}}}
+}
+#forall "Panda FK quaternion matrices use row-major world-from-local basis columns" axis:0..<3 {
+ q:[4]f64;q[axis+1]=1;r:=pfk_matrix(q);for i:0..<3 {for j:0..<3 {want:f64=0;if i==j {want=ifx i==axis then 1.0 else -1.0;}#assert r[i*3+j]==want;}}
+}
+#test "Panda FK positive Z rotation translates an anchored world point in source order" {
+ q:=[4]f64.[sqrt(0.5),0,0,sqrt(0.5)];p:Point3(PfkWorld,pfku.Metre,f64);p.x=1;p.y=2;p.z=3;
+ result:=pfk_shift(p,q,[3]f64.[4,5,6]);#assert abs(result.x+4)<1e-14 && abs(result.y-6)<1e-14 && abs(result.z-9)<1e-14;
+ r:=pfk_matrix(q);#assert abs(r[1]+1)<1e-15 && abs(r[3]-1)<1e-15 && abs(r[0])<1e-15 && abs(r[4])<1e-15 && r[8]==1;
+ angle:pfku.Quantity(pfku.Radian,f64);z:=pfk_hinge(angle);#assert z[0]==1 && z[1]==0 && z[2]==0 && z[3]==0;
+ angle.value=3.141592653589793;z=pfk_hinge(angle);#assert abs(z[0])<1e-15 && z[1]==0 && z[2]==0 && z[3]==1;
+ angle.value= -3.141592653589793;z=pfk_hinge(angle);#assert abs(z[0])<1e-15 && z[3]== -1;
+ pose:=pfk_pose(PfkRigid.{position=p,quaternion=q});#assert pose.position.x==1 && pose.position.y==2 && pose.position.z==3;for i:0..<4 {#assert pose.quaternion[i]==q[i];}for i:0..<9 {#assert pose.rotation[i]==r[i];}
+}
+#test "Panda FK dense quaternion has independent rational matrix and translation" {
+ q:=pfk_normalize([4]f64.[0.25,0.5,0.75,1]);#assert q.status==PfkStatus.ok;r:=pfk_matrix(q.value);numerators:=[9]f64.[-10,2,11,10,-5,10,5,14,2];for i:0..<9 {#assert abs(r[i]-numerators[i]/15)<1e-15;}
+ p:Point3(PfkWorld,pfku.Metre,f64);p.x=1;p.y=2;p.z=3;v:=pfk_shift(p,q.value,[3]f64.[4,-5,6]);#assert abs(v.x-31.0/15)<1e-14 && abs(v.y-31.0/3)<1e-14 && abs(v.z-7.0/15)<1e-14;
+}
+
+pfk_finite :: (bits:u64)->bool {return (bits&0x7ff0000000000000)!=0x7ff0000000000000;}
+pfk_normalize_bits :: (bits:[4]u64)->PfkQuaternion #export_c {
+ q:[4]f64;for i:0..<4 {if !pfk_finite(bits[i]) {return PfkQuaternion.{status=PfkStatus.number};}q[i]=f64_from_bits(bits[i]);if abs(q[i])>2 {return PfkQuaternion.{status=PfkStatus.range};}}
+ norm:f64=0;for x:q {norm+=x*x;}if norm==0 {return PfkQuaternion.{status=PfkStatus.rotation};}length:=sqrt(norm);out:PfkQuaternion;for i:0..<4 {out.value[i]=q[i]/length;}return out;
+}
+pfk_normalize :: (input:[4]f64)->PfkQuaternion {bits:[4]u64;for i:0..<4 {bits[i]=f64_bits(input[i]);}return pfk_normalize_bits(bits);}
+pfk_multiply :: (a:[4]f64,b:[4]f64)->[4]f64 {
+ return [4]f64.[a[0]*b[0]-a[1]*b[1]-a[2]*b[2]-a[3]*b[3],a[0]*b[1]+a[1]*b[0]+a[2]*b[3]-a[3]*b[2],a[0]*b[2]-a[1]*b[3]+a[2]*b[0]+a[3]*b[1],a[0]*b[3]+a[1]*b[2]-a[2]*b[1]+a[3]*b[0]];
+}
+pfk_matrix :: (q:[4]f64)->[9]f64 {
+ return [9]f64.[1-2*(q[2]*q[2]+q[3]*q[3]),2*(q[1]*q[2]-q[0]*q[3]),2*(q[1]*q[3]+q[0]*q[2]),2*(q[1]*q[2]+q[0]*q[3]),1-2*(q[1]*q[1]+q[3]*q[3]),2*(q[2]*q[3]-q[0]*q[1]),2*(q[1]*q[3]-q[0]*q[2]),2*(q[2]*q[3]+q[0]*q[1]),1-2*(q[1]*q[1]+q[2]*q[2])];
+}
+pfk_shift :: (origin:Point3(PfkWorld,pfku.Metre,f64),q:[4]f64,offset:[3]f64)->Point3(PfkWorld,pfku.Metre,f64) {
+ r:=pfk_matrix(q);world:Vector3(PfkWorld,pfku.Metre,f64);world.x=r[0]*offset[0]+r[1]*offset[1]+r[2]*offset[2];world.y=r[3]*offset[0]+r[4]*offset[1]+r[5]*offset[2];world.z=r[6]*offset[0]+r[7]*offset[1]+r[8]*offset[2];return origin+world;
+}
+pfk_hinge :: (angle:pfku.Quantity(pfku.Radian,f64))->[4]f64 {return [4]f64.[cos(angle.value*0.5),0,0,sin(angle.value*0.5)];}
+pfk_pose :: (rigid:PfkRigid)->PfkPose {return PfkPose.{position=rigid.position,quaternion=rigid.quaternion,rotation=pfk_matrix(rigid.quaternion)};}

@@ -1,0 +1,224 @@
+{
+  "schema": "psionic-panda-fk-qualification-v1",
+  "passed": false,
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "compiler_sha256": "f4c27d83090e6723d73bd3bb252a1e4dc7d29211d92a588e103eef1b8011beaa",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/tests/robotics/panda_fk_reference.py": "c4bb0ff927c51078f1ade4aa4245e4014e0a03bb998c07635d3d8d0f94906031",
+    "psionic/tests/robotics/panda_fk_native.c": "3ed4f83561cb91ea1498e413cd5f29a37d320af4dfc99d09abbfa017f210b33f",
+    "psionic/tests/robotics/panda_fk_bad_angle.coax": "09722d139832f26c9ffc96093127641993d6092340f26792aed1f310e1741fa3",
+    "psionic/tests/robotics/panda_fk_bad_world.coax": "fff85eb52d91b0457a46fb8da1eaf8ba22fac2edcfd05afcfe42c7e02ffda703",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "psionic/fixtures/robotics/panda-fk/sdk-cases.f64": "482fb40c4c7bac35ff733a1cdb9de071f534959d552a69d89d94dd551787186b",
+    "psionic/fixtures/robotics/panda-fk/sdk-poses.f64": "d1550bd8bafdc00f3f31b0a4d726cff7c0bb5370fc7e2a16e875439462a87305",
+    "psionic/fixtures/robotics/panda-fk/sdk-reference.json": "178b5bcd6ee2cc11bcc2c6322228109097cd6ceecae611ed3613c40708369ba1"
+  },
+  "corpus": {
+    "seed": 344776716594,
+    "cases": 158,
+    "new_sdk_cases": 7,
+    "retained_fresh_cases": 7,
+    "independent_bounded_random_cases": 128,
+    "analytic_zero_case": 1,
+    "inclusive_coordinate_boundary_cases": 14,
+    "signed_zero_case": 1,
+    "case_sha256": "0d0b5af82810d5b8e549cd18bee80a078c9af1dc0870f43e68d3e7050e7e2032"
+  },
+  "retained_endpoints": [
+    {
+      "row": 0,
+      "bytes": 1152,
+      "sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 1,
+      "bytes": 1152,
+      "sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 2,
+      "bytes": 1152,
+      "sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 3,
+      "bytes": 1152,
+      "sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 64,
+      "bytes": 1152,
+      "sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 128,
+      "bytes": 1152,
+      "sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 232,
+      "bytes": 1152,
+      "sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic-panda-fk-native-v1",
+        "passed": true,
+        "cases": 158,
+        "assertions": 1307,
+        "output_words_per_case": 208
+      },
+      "native_c_sha256": "77475073f7e4c95f2a0ae034ee64e21ed66d8b48bf1e329ac6fbbb790139a172",
+      "native_h_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+      "binary_sha256": "76ab2f25ba07d47893f0f9fcb5f23ec6d1ec82625dc968bb19863acc1b399964",
+      "output_sha256": "200f79417ca51df2e9a7a0602d60dafe557cf37ef34eb76cf5399bf4950fbf34",
+      "independent_homogeneous_matrices": {
+        "values": 24648,
+        "max_abs_error": 2.6645352591003757e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0013322676295501878,
+        "passed": true
+      },
+      "new_sdk_all_link_position_quaternion_matrix": {
+        "values": 1428,
+        "max_abs_error": 4.3298697960381105e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0021649348980190553,
+        "passed": true
+      },
+      "retained_fresh_grip_site_position_matrix": {
+        "values": 84,
+        "max_abs_error": 1.920447308123574e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.000960223654061787,
+        "passed": true
+      },
+      "compiled_source_model_constants": {
+        "values": 84,
+        "max_abs_error": 0.0,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0,
+        "passed": true
+      }
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic-panda-fk-native-v1",
+        "passed": true,
+        "cases": 158,
+        "assertions": 1307,
+        "output_words_per_case": 208
+      },
+      "native_c_sha256": "36a57846409201e501213c5d7d296b93d188993813cebb0e9f69dc44de0322f0",
+      "native_h_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+      "binary_sha256": "2a9028e87444d01fcf2e2e73c99202f664456c29023ea2159f114ebcc51310da",
+      "output_sha256": "112ecdb3f177658411977733b70535aaa6a46538f7a04899405ae676862e5c87",
+      "independent_homogeneous_matrices": {
+        "values": 24648,
+        "max_abs_error": 2.6645352591003757e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0013322676295501878,
+        "passed": true
+      },
+      "new_sdk_all_link_position_quaternion_matrix": {
+        "values": 1428,
+        "max_abs_error": 4.3298697960381105e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0021649348980190553,
+        "passed": true
+      },
+      "retained_fresh_grip_site_position_matrix": {
+        "values": 84,
+        "max_abs_error": 1.920447308123574e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.000960223654061787,
+        "passed": true
+      },
+      "compiled_source_model_constants": {
+        "values": 84,
+        "max_abs_error": 0.0,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0,
+        "passed": true
+      }
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic-panda-fk-native-v1",
+        "passed": true,
+        "cases": 158,
+        "assertions": 1307,
+        "output_words_per_case": 208
+      },
+      "native_c_sha256": "77475073f7e4c95f2a0ae034ee64e21ed66d8b48bf1e329ac6fbbb790139a172",
+      "native_h_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+      "binary_sha256": "f7db1b0f4111b593f8cfae31ccf75478af88b342c0ff004c82a0bab86a71f6ab",
+      "output_sha256": "112ecdb3f177658411977733b70535aaa6a46538f7a04899405ae676862e5c87",
+      "independent_homogeneous_matrices": {
+        "values": 24648,
+        "max_abs_error": 2.6645352591003757e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0013322676295501878,
+        "passed": true
+      },
+      "new_sdk_all_link_position_quaternion_matrix": {
+        "values": 1428,
+        "max_abs_error": 4.3298697960381105e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0021649348980190553,
+        "passed": true
+      },
+      "retained_fresh_grip_site_position_matrix": {
+        "values": 84,
+        "max_abs_error": 1.920447308123574e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.000960223654061787,
+        "passed": true
+      },
+      "compiled_source_model_constants": {
+        "values": 84,
+        "max_abs_error": 0.0,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0,
+        "passed": true
+      }
+    }
+  ],
+  "negative_source_fixtures": [
+    {
+      "name": "angle",
+      "source_sha256": "09722d139832f26c9ffc96093127641993d6092340f26792aed1f310e1741fa3",
+      "refused": true,
+      "diagnostic": "E0317"
+    },
+    {
+      "name": "world",
+      "source_sha256": "fff85eb52d91b0457a46fb8da1eaf8ba22fac2edcfd05afcfe42c7e02ffda703",
+      "refused": true,
+      "diagnostic": "E0327"
+    }
+  ],
+  "atol": 2e-12,
+  "rtol": 0,
+  "scope": "Fixed12-body/seven-hinge Coax FK only; M3 world positions and radian quantity source boundary, explicit raw attitude; no fingers/Jacobian/importer/dynamics/general typed transforms/bounded-control/backend parity.",
+  "negative_source_reused": true,
+  "duration_seconds": 2.7336117919767275
+}

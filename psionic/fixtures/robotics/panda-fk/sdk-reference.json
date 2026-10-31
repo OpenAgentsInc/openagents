@@ -1,0 +1,179 @@
+{
+  "schema": "psionic.panda-fk.sdk-reference.v1",
+  "passed": true,
+  "scope": "One pinned compiled-model forward-kinematics reference only. No steps/rendering/controller/NN/episode/new source-model or other-scene equivalence claim. Only one compiled scene/model is qualified; inherited defaults are captured in compiled constants, not inferred from subtree XML equality. Other scene/model equivalence is separate.",
+  "source_original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+  "source_rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+  "source_profile_sha256": "96fac0f2d9cfd1477e930a9444ddf14e214c7da065fea4e52d80203a6312d50b",
+  "collector_sha256": "313f2bc5347407a64c7b7f7d24402837e1b3aeaa754cdec8789bc452a097e9d9",
+  "driver_sha256": "ce533d7074540e58d87e9c639e76d754d2d6845f9a56b584b4d03672fedd8233",
+  "sdk_header_sha256": "723d3a0cd8c09560ea4db625de561d1a1c2f48b6f87b82eed9f6b89ad4f69f4a",
+  "sdk_library_sha256": "f8c9735ed948d6830d1d3d31d50216ec14ca6a6e95c7346a4dc8300e1b8ffed4",
+  "sdk_version": "3.3.1",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "commands": [
+    {
+      "name": "compile",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-misleading-indentation",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/include",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/psionic/tests/robotics/panda_fk_sdk_collect.c",
+        "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/libmujoco.3.3.1.dylib",
+        "-Wl,-rpath,/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-fk-sdk-first/collect"
+      ],
+      "exit": 0,
+      "duration_seconds": 0.5098013749811798,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "collect",
+      "arguments": [
+        "/private/tmp/panda-fk-sdk-first/collect",
+        "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml",
+        "/private/tmp/panda-fk-sdk-first/cases.f64",
+        "/private/tmp/panda-fk-sdk-first/poses.f64",
+        "/private/tmp/panda-fk-sdk-first/model.json"
+      ],
+      "exit": -6,
+      "duration_seconds": 0.3266550000407733,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "78c5263c00a8cdfc1fab2a46a2c1c87a104e2e084a5fd3919913ed414bad414e",
+      "stderr_bytes": 1900
+    }
+  ],
+  "case_shape": [
+    7,
+    7
+  ],
+  "pose_shape": [
+    7,
+    204
+  ],
+  "absolute_tolerance_frozen_before_capture": 2e-12,
+  "relative_tolerance": 0,
+  "sdk_runtime_not_instrumented": true,
+  "new_collector_is_sanitized": true,
+  "no_steps_rendering_controller_NN_or_old_gates": true,
+  "body_names": [
+    "robot0_base",
+    "robot0_link0",
+    "robot0_link1",
+    "robot0_link2",
+    "robot0_link3",
+    "robot0_link4",
+    "robot0_link5",
+    "robot0_link6",
+    "robot0_link7",
+    "robot0_right_hand",
+    "gripper0_right_gripper",
+    "gripper0_eef"
+  ],
+  "site_name": "gripper0_grip_site",
+  "joint_names": [
+    "robot0_joint1",
+    "robot0_joint2",
+    "robot0_joint3",
+    "robot0_joint4",
+    "robot0_joint5",
+    "robot0_joint6",
+    "robot0_joint7"
+  ],
+  "reset": "mj_resetData before each case; set only the seven named arm hinge qpos entries; all other qpos remains compiled qpos0. Then exactly one mj_forward; zero mj_step calls.",
+  "quaternion_policy": "Copy SDK raw WXYZ signs without normalization/canonicalization. No bit-equality claim.",
+  "failure": "AssertionError(('collect', '', \"dyld[74131]: Library not loaded: @rpath/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib\\n  Referenced from: <A62E1173-7880-3088-9F8E-9C06981C6E9D> /private/tmp/panda-fk-sdk-first/collect\\n  Reason: tried: '/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/System/Volumes/Preboot/Cryptexes/OS/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/private/tmp/panda-fk-sdk-first/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/System/Volumes/Preboot/Cryptexes/OS/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/System/Volumes/Preboot/Cryptexes/OS/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/private/tmp/panda-fk-sdk-first/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file), '/System/Volumes/Preboot/Cryptexes/OS/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/lib/clang/21/lib/darwin/mujoco.framework/Versions/A/libmujoco.3.3.1.dylib' (no such file)\\n\"))",
+  "duration_seconds": 0.8381723330239765,
+  "prior_failed_record": {
+    "path": "/tmp/panda-fk-sdk-first/record.json",
+    "sha256": "fe7f5fac0151bb50c413edc4e5991968da357abad4a1daf350b6ec29b5bfb227",
+    "reason": "dyld framework install-name resolution before main; zero SDK forward calls occurred. Original compile passed and is reused."
+  },
+  "reused_collector_binary_sha256": "3288424cf90824a0b83cb8ca1fb74951a124a61d85d72ab72d4b184dae69655f",
+  "original_driver_sha256": "ce533d7074540e58d87e9c639e76d754d2d6845f9a56b584b4d03672fedd8233",
+  "current_driver_sha256": "fc39c5ddb2351f4ac4987016b3a0e5b76ef5c85c47195896cff8f17e35ff78b2",
+  "followup_command": {
+    "arguments": [
+      "/tmp/panda-fk-sdk-first/collect",
+      "/Users/christopherdavid/.cache/psionic/libero114/f13aa24a3da8c43c7225569f28c562979fa0e35a/evaluation/demo_000/scene.xml",
+      "/tmp/panda-fk-sdk-first/cases.f64",
+      "/tmp/panda-fk-sdk-loaded/poses.f64",
+      "/tmp/panda-fk-sdk-loaded/model.json"
+    ],
+    "environment_overrides": {
+      "DYLD_LIBRARY_PATH": "/Users/christopherdavid/.cache/psionic/groot-reference-env/lib/python3.12/site-packages/mujoco"
+    },
+    "exit": 0,
+    "duration_seconds": 5.434378292004112,
+    "stderr_bytes": 0
+  },
+  "case_sha256": "482fb40c4c7bac35ff733a1cdb9de071f534959d552a69d89d94dd551787186b",
+  "pose_sha256": "d1550bd8bafdc00f3f31b0a4d726cff7c0bb5370fc7e2a16e875439462a87305",
+  "compiled_model_metadata_sha256": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+  "forward_calls": 7,
+  "integration_steps": 0,
+  "numeric_words": 1428,
+  "all_metadata_finite_and_names_ordered": true,
+  "fixtures": {
+    "sdk-profile.json": {
+      "sha256": "96fac0f2d9cfd1477e930a9444ddf14e214c7da065fea4e52d80203a6312d50b",
+      "bytes": 2476
+    },
+    "sdk-model.json": {
+      "sha256": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+      "bytes": 4733
+    },
+    "sdk-cases.f64": {
+      "sha256": "482fb40c4c7bac35ff733a1cdb9de071f534959d552a69d89d94dd551787186b",
+      "bytes": 392
+    },
+    "sdk-poses.f64": {
+      "sha256": "d1550bd8bafdc00f3f31b0a4d726cff7c0bb5370fc7e2a16e875439462a87305",
+      "bytes": 11424
+    }
+  },
+  "source_acquisition_record_sha256": "f0035183510d6c9ebd74bcda8f04433c1e93fe2b96ac082cc57d0002aee25d09",
+  "source_dataset": {
+    "repository": "yifengzhu-hf/LIBERO-datasets",
+    "revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+    "path": "libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5",
+    "url": "https://huggingface.co/datasets/yifengzhu-hf/LIBERO-datasets/resolve/f13aa24a3da8c43c7225569f28c562979fa0e35a/libero_10/STUDY_SCENE1_pick_up_the_book_and_place_it_in_the_back_compartment_of_the_caddy_demo.hdf5",
+    "bytes": 940528916,
+    "sha256": "2e0127d0cf73afceacc2c0854e505d5743b6d3d5aaf5572c842f84c6a1c8173b",
+    "whole_file_verified": true,
+    "card_declared_license": "apache-2.0",
+    "demonstrations": 50
+  },
+  "public_collector_sha256": "313f2bc5347407a64c7b7f7d24402837e1b3aeaa754cdec8789bc452a097e9d9",
+  "public_driver_sha256": "fc39c5ddb2351f4ac4987016b3a0e5b76ef5c85c47195896cff8f17e35ff78b2",
+  "private_passing_record_sha256": "e42dc0f36bd46e4a8b37cf8d1892225f8284db6262d6ae4add6dd3598b1cd8ca",
+  "private_passing_record_path": "/tmp/panda-fk-sdk-loaded/record.json",
+  "reset_non_arm_state": "Compiled model qpos0, zero qvel and other mj_resetData defaults, not HDF5 demo init state.",
+  "output_order": "For each of12 named bodies: xyz3,wxyz4,rowmajorR9. Then grip-site xyz3,rowmajorR9; site world quaternion is not captured.",
+  "source_inputs_and_compiled_constants": "Whole original and rewritten scene hashes are bound. Compiled body parents/local transforms, normalized hinge axes/anchors/addresses/qpos0/reference and local site transform are copied from mjModel once.",
+  "quaternion_output_policy": "Raw SDK body WXYZ signs copied; no output normalization or sign canonicalization.",
+  "byte_or_sign_canonicalization_parity_claim": false,
+  "SDK_output_count": 1428,
+  "reference_coverage": "7 newly explicit configurations \u00d7(12 bodies\u00d716 +site\u00d712). No old endpoint gate repeated.",
+  "tooling_followup": {
+    "only_change": "Per-collector DYLD_LIBRARY_PATH override and its command-record field; SDK reference formula/data/profile unchanged.",
+    "mechanical_reversal_reproduces_initial_driver_sha256": true,
+    "initial_failed_loader_record_preserved": true,
+    "successful_compile_reused": true,
+    "successful_SDK_forward_run_not_repeated": true
+  }
+}

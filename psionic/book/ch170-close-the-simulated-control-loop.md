@@ -582,6 +582,109 @@ measured release code and its relocation limits. Mutation traversal retains
 authored input expressions, while lowered spatial operator-token swaps remain
 unqualified. Full R12 remains open.
 
+## Compute the Panda chain in Coax
+
+A small owned forward-kinematics component now computes the twelve-body Panda
+chain through the hand and grip site from seven joint coordinates. Its fixed
+transforms and seven local-Z hinges are manually bound to the authenticated
+demo0 source model. This advances our own backend without replacing the
+simulator's dynamics, contact solver, mass matrix or bias forces.
+
+The [runnable example](../examples/panda-kinematics.coax) declares radian-valued
+coordinates and receives world positions as `Point3(PfkWorld,Metre,f64)`.
+Quaternion and rotation arrays remain explicit untyped attitude boundaries;
+these are not compiler-proven frame-chain transforms.
+
+<!-- source: psionic/examples/panda-kinematics.coax coordinates -->
+```jai
+    q:[7]pfku.Quantity(pfku.Radian,f64); // Explicit radian zero coordinates.
+    poses:[1]PfkOutput;
+    #assert pfk_forward(q[..],poses[..])==PfkStatus.ok;
+    hand:=poses[0].links[9];grip:=poses[0].grip;
+    print("hand BODY xyz (um): % % %\n",panda_example_um(hand.position.x),panda_example_um(hand.position.y),panda_example_um(hand.position.z));
+    print("grip SITE xyz (um): % % %\n",panda_example_um(grip.position.x),panda_example_um(grip.position.y),panda_example_um(grip.position.z));
+    separation:=hand.position-grip.position;
+    #assert abs(separation.z-0.097)<2e-12;
+    print("hand-to-grip world Z separation (um): %\n",panda_example_um(separation.z));
+```
+
+The zero-angle query makes the geometry easy to audit. The hand height is
+`0.912 + 0.333 + 0.316 + 0.384 - 0.1065 = 1.8385` metres. The grip site extends
+another `0.097` metres down, to `1.7415`; both have world X `-0.75 + 0.088 =
+-0.662`. The example rounds only its display to integer micrometres. Its
+[golden transcript](../fixtures/panda-kinematics.out) was written from these
+relations before execution. Joint4 at zero lies outside its source range
+`[-3.0718,-0.0698]`; this is a kinematic coordinate example, not an actuator-valid
+home or a change to the controller's declared home.
+
+The hand BODY orientation and grip SITE orientation also differ. The fixed
+gripper attachment rotates their X axes by a quarter turn. A row-major matrix's
+first column expresses that local X axis in world coordinates:
+
+<!-- source: psionic/examples/panda-kinematics.coax attitudes -->
+```jai
+    // Column zero is each local +X axis expressed in world coordinates.
+    cosine:=hand.rotation[0]*grip.rotation[0]+hand.rotation[3]*grip.rotation[3]+hand.rotation[6]*grip.rotation[6];
+    #assert abs(cosine)<2e-12;
+    print("BODY/SITE X-axis cosine (ppm): %; attitudes differ\n",cast(int)floor(cosine*1000000+0.5));
+```
+
+The FK API admits exactly seven finite radian values with absolute magnitude
+at most 100 and one output record. These conservative numerical bounds are
+separate from simulator joint-limit dynamics. Failure publishes no pose:
+
+<!-- source: psionic/examples/panda-kinematics.coax refusal -->
+```jai
+    before:=poses[0];q[0].value=101;
+    #assert pfk_forward(q[..],poses[..])==PfkStatus.range;
+    for i:0..<12 {#assert panda_example_same_pose(poses[0].links[i],before.links[i]);}
+    #assert panda_example_same_pose(poses[0].grip,before.grip);
+    print("101 rad: range refusal; all 13 poses unchanged\n");
+```
+
+The helper compares all 208 public F64 words, including signed zero, across the
+twelve link poses and grip pose. Source-level checks also refuse metre-valued
+joint inputs and positions from another nominal world. Native C erases the
+radian wrapper and stores each position as three F64 values; a native caller
+still declares the physical meaning and supplies valid backing storage.
+
+```shell
+coax/bin/coax run psionic/examples/panda-kinematics.coax
+coax/bin/coax run psionic/examples/panda-kinematics.coax --release
+```
+
+The [source profile](../fixtures/robotics/panda-fk/source-profile.json) and
+[qualification receipt](../fixtures/robotics/panda-fk/qualification.json) keep
+source constants, reference scope and native compilation distinct. Eleven
+Coax check groups pass, and all 281 candidate-emitted mutation sites in the
+three new FK roots are killed. That count does not include swapping a lowered
+spatial operator token; that compiler capability remains pending. Authored
+operand traversal is a separate compiler check. Independent analytic and
+numerical checks exercise the spatial operations themselves.
+
+The native corpus has 158 configurations and 1,307 ABI/admission assertions per
+mode. An independent stdlib homogeneous-matrix formulation checks 24,648 values;
+a genuinely new seven-configuration forward-only MuJoCo 3.3.1 recording checks
+1,428 body/site values; seven retained fresh controller samples check 84 grip
+endpoint values. The frozen absolute budget is 2e-12. The largest SDK error is
+4.33e-15. No old SDK episode, learned model or controller gate is rerun.
+
+The qualified Darwin-arm64 host profile uses separate scalar libm `sin` and
+`cos` calls, with `-fno-builtin-sin -fno-builtin-cos -fno-fast-math
+-ffp-contract=off`. Its complete outputs agree byte for byte across debug,
+release and ASan/UBSan. The default optimized build fused those intrinsics
+into `___sincos_stret`: every numerical comparison passed, but 792 words differed
+from debug by at most 1.56e-15. The
+[failed strict-byte record](../fixtures/robotics/panda-fk/default-fused-diagnostics.json)
+remains unchanged. The example's rounded, independently known geometry is not
+a claim of default-build bit parity, R15 or cross-target determinism.
+
+This component supplies a pure pose query, with no simulation clock or sensor
+freshness stamp. A cached SDK pose and a newly forwarded pose must still be
+compared with the joint coordinates of their actual generation. Finger branches,
+Jacobians, robot import, articulated dynamics, full R12 transforms and compiler
+bounded control remain subsequent slices.
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

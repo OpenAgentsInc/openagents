@@ -44,9 +44,12 @@ supervision. Use the physical solver for publication, 107 for local sensitivity
 checks, and 111 for parameter calibration. Admission/refusal and saturation are
 explicit events, not silently differentiated. The existing one-axis checkpoint
 is a precursor to complete controller, schedule and producer snapshots.
-5. Build the matching articulated model and scene path under R17: admitted
-links/joints/inertias/frames, kinematics, forward dynamics, contacts, gripper and
-rendered observation conventions. Compare small components with the SDK before
+5. The [fixed twelve-body Panda FK query](../../fixtures/robotics/panda-fk/README.md)
+now supplies typed-radian-to-world-pose queries, with the hand BODY and grip
+SITE conventions independently checked. It is manually source-bound, with raw
+attitude boundaries. Finish the matching R17 articulated model/scene path:
+import/admitted inertias, fingers, Jacobians, forward dynamics, contacts and
+rendered observations. Compare small components with the SDK before
 running expensive whole episodes. A field layout alone is not embodiment parity.
 6. Complete R18/R19 sensor age, command expiry/limits and a frozen fault corpus,
 then full R16 restore/replay with complete state inventory. Preserve held-out

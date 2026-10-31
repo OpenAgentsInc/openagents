@@ -1,0 +1,93 @@
+{
+  "schema": "psionic-panda-fk-example-qualification-v1",
+  "passed": true,
+  "compiler_sha256": "0d70ede6d122ec88ee9f0f4cd86d9181ffe5172f5300b57dfc3b27d465e41b76",
+  "compiler_profile": "Original debug/release golden and two example checks executed with frozen mark2 candidate. Final merged0.45 emits byte-identical C/header in each mode; passing example executions reused.",
+  "source": "psionic/examples/panda-kinematics.coax",
+  "source_sha256": "f50f71f89ebf33f40556372293f08022c8fb74c6bdbc9c57516e274447e9ea43",
+  "golden": "psionic/fixtures/panda-kinematics.out",
+  "golden_sha256": "85c47d6166adf62b76369f93047c9c31f498b067e248697dd85d2bc2e5b604f7",
+  "independent_golden_geometry": {
+    "hand_metres": [
+      -0.662,
+      0,
+      1.8385
+    ],
+    "grip_metres": [
+      -0.662,
+      0,
+      1.7415
+    ],
+    "separation_metres": 0.097,
+    "hand_height_relation": ".912+.333+.316+.384-.1065",
+    "x_relation": "-.75+.088",
+    "axis_relation": "hand and grip X axes orthogonal due fixed quarter-turn gripper attachment",
+    "golden_written_before_execution": true,
+    "zero_joint4_outside_source_soft_range": true,
+    "no_actuator_or_home_claim": true
+  },
+  "own_checks": {
+    "groups": 2,
+    "passed": 2,
+    "only_filter": "Panda FK example",
+    "old_dependency_groups_executed": false,
+    "log_sha256": "e464b0a49defbfc168337746590d9233cf34e91fd2554042d91d78f91c20d5a6",
+    "check_first_log_sha256": "9f50def76d8f9067c8559c6f4bd9eb8d246de6d892e98e08dfb72456c7577a09"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "golden_match": true,
+      "stderr_bytes": 0,
+      "stdout_sha256": "85c47d6166adf62b76369f93047c9c31f498b067e248697dd85d2bc2e5b604f7"
+    },
+    {
+      "mode": "release",
+      "golden_match": true,
+      "stderr_bytes": 0,
+      "stdout_sha256": "85c47d6166adf62b76369f93047c9c31f498b067e248697dd85d2bc2e5b604f7"
+    }
+  ],
+  "listing_regions": {
+    "coordinates": "198a1f0335f30f7e9bad107c7532ccd7a2dd9f50433d2e60040989debd5d5e77",
+    "attitudes": "74d8f4a4ebbc70e07c7f46a114b3fcc75725f942befd9b65392677a25961d414",
+    "refusal": "1f3c3abd71dc4ffb38c9bf73a743fd29da92ef08fb774bf7e0668b1f8b763781"
+  },
+  "scope": "Only NEW example debug/release and two own checks. No FK mutation/native numerical/SDK/episode rerun; rounded golden output does not imply default fused-libm bit parity.",
+  "final_dependency_binding": {
+    "schema": "psionic-panda-fk-final-compiler-binding-v1",
+    "passed": true,
+    "record_sha256": "005ad9903ed1ed9f786a442416c6fd9336a4993963b4ebe9e4cd2c973ed040d1",
+    "final_compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "same_relative_source_input_and_original_working_directory": true,
+    "comparisons": [
+      {
+        "name": "example-debug",
+        "old_C_sha256": "80148ad45c8c57736e74093685b881466ce6315df7b3c01275af55fda8233acc",
+        "final_C_sha256": "80148ad45c8c57736e74093685b881466ce6315df7b3c01275af55fda8233acc",
+        "old_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "final_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "C_byte_identical": true,
+        "H_byte_identical": true
+      },
+      {
+        "name": "example-release",
+        "old_C_sha256": "93ad6147c4b4b13c0d74012f8dd74d8e6c4b352d06b5ba7d1c220d73416c3f1a",
+        "final_C_sha256": "93ad6147c4b4b13c0d74012f8dd74d8e6c4b352d06b5ba7d1c220d73416c3f1a",
+        "old_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "final_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "C_byte_identical": true,
+        "H_byte_identical": true
+      }
+    ],
+    "sanitizer_reuse": {
+      "source_profile": "debug",
+      "initial_sanitized_C_equals_debug": true,
+      "new_native_execution": false
+    },
+    "new_native_or_example_execution": false,
+    "independent_numeric_SDK_VM_mutation_gates_reused": true,
+    "scope": "Emission-only final dependency binding. No VM/mutation/native numerical/SDK/example execution rerun. Existing compiler body20 identity/reconstruction proofs are parent-owned."
+  },
+  "qualified_current_compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef"
+}

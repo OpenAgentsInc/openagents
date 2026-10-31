@@ -1,0 +1,363 @@
+{
+  "schema": "psionic-panda-fk-source-profile-v1",
+  "profile": "panda-fixed12-sevenhinge-f64-v1",
+  "source": {
+    "dataset_revision": "f13aa24a3da8c43c7225569f28c562979fa0e35a",
+    "original_xml_sha256": "13e900d1086ecee8e16df2876104e6b6c95e06c46a14b5860ccebb16ee1af7e5",
+    "original_xml_bytes": 60702,
+    "rewritten_xml_sha256": "95a4049c1454ffd77b2185f0a21966832c5be55af67f64c2b110cc32e617d02f",
+    "LIBERO": "8f1084e3132a39270c3a13ebe37270a43ece2a01",
+    "robosuite": "fbee5844ff5632f5b5698e204ec5357ca50be0df",
+    "acquisition_receipt": "psionic/fixtures/robotics/libero-panda/acquisition.json"
+  },
+  "table_transport": "little-endian12\u00d7(parentI64,jointI64,offset3F64,raw_quaternion4F64)",
+  "table_sha256": "013cf7ec2a63795fb8c4cb63ce23358246fd8e4629ed3031f7374cca5e0a1451",
+  "table_bytes": 864,
+  "nodes": [
+    {
+      "index": 0,
+      "name": "robot0_base",
+      "parent": -1,
+      "parent_name": "world",
+      "joint": -1,
+      "offset_metres": [
+        -0.75,
+        0.0,
+        0.912
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "joint_name": null,
+      "joint_axis": null,
+      "joint_anchor_metres": null,
+      "reference_radians": null
+    },
+    {
+      "index": 1,
+      "name": "robot0_link0",
+      "parent": 0,
+      "parent_name": "robot0_base",
+      "joint": -1,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "joint_name": null,
+      "joint_axis": null,
+      "joint_anchor_metres": null,
+      "reference_radians": null
+    },
+    {
+      "index": 2,
+      "name": "robot0_link1",
+      "parent": 1,
+      "parent_name": "robot0_link0",
+      "joint": 0,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.333
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "joint_name": "robot0_joint1",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "joint_anchor_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_radians": 0
+    },
+    {
+      "index": 3,
+      "name": "robot0_link2",
+      "parent": 2,
+      "parent_name": "robot0_link1",
+      "joint": 1,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        -0.707107,
+        0.0,
+        0.0
+      ],
+      "joint_name": "robot0_joint2",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "joint_anchor_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_radians": 0
+    },
+    {
+      "index": 4,
+      "name": "robot0_link3",
+      "parent": 3,
+      "parent_name": "robot0_link2",
+      "joint": 2,
+      "offset_metres": [
+        0.0,
+        -0.316,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        0.707107,
+        0.0,
+        0.0
+      ],
+      "joint_name": "robot0_joint3",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "joint_anchor_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_radians": 0
+    },
+    {
+      "index": 5,
+      "name": "robot0_link4",
+      "parent": 4,
+      "parent_name": "robot0_link3",
+      "joint": 3,
+      "offset_metres": [
+        0.0825,
+        0.0,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        0.707107,
+        0.0,
+        0.0
+      ],
+      "joint_name": "robot0_joint4",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "joint_anchor_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_radians": 0
+    },
+    {
+      "index": 6,
+      "name": "robot0_link5",
+      "parent": 5,
+      "parent_name": "robot0_link4",
+      "joint": 4,
+      "offset_metres": [
+        -0.0825,
+        0.384,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        -0.707107,
+        0.0,
+        0.0
+      ],
+      "joint_name": "robot0_joint5",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "joint_anchor_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_radians": 0
+    },
+    {
+      "index": 7,
+      "name": "robot0_link6",
+      "parent": 6,
+      "parent_name": "robot0_link5",
+      "joint": 5,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        0.707107,
+        0.0,
+        0.0
+      ],
+      "joint_name": "robot0_joint6",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "joint_anchor_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_radians": 0
+    },
+    {
+      "index": 8,
+      "name": "robot0_link7",
+      "parent": 7,
+      "parent_name": "robot0_link6",
+      "joint": 6,
+      "offset_metres": [
+        0.088,
+        0.0,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        0.707107,
+        0.0,
+        0.0
+      ],
+      "joint_name": "robot0_joint7",
+      "joint_axis": [
+        0.0,
+        0.0,
+        1.0
+      ],
+      "joint_anchor_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "reference_radians": 0
+    },
+    {
+      "index": 9,
+      "name": "robot0_right_hand",
+      "parent": 8,
+      "parent_name": "robot0_link7",
+      "joint": -1,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.1065
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.923785,
+        0.0,
+        0.0,
+        -0.382911
+      ],
+      "joint_name": null,
+      "joint_axis": null,
+      "joint_anchor_metres": null,
+      "reference_radians": null
+    },
+    {
+      "index": 10,
+      "name": "gripper0_right_gripper",
+      "parent": 9,
+      "parent_name": "robot0_right_hand",
+      "joint": -1,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        0.707107,
+        0.0,
+        0.0,
+        -0.707107
+      ],
+      "joint_name": null,
+      "joint_axis": null,
+      "joint_anchor_metres": null,
+      "reference_radians": null
+    },
+    {
+      "index": 11,
+      "name": "gripper0_eef",
+      "parent": 10,
+      "parent_name": "gripper0_right_gripper",
+      "joint": -1,
+      "offset_metres": [
+        0.0,
+        0.0,
+        0.097
+      ],
+      "fixed_quaternion_wxyz_raw": [
+        1.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "joint_name": null,
+      "joint_axis": null,
+      "joint_anchor_metres": null,
+      "reference_radians": null
+    }
+  ],
+  "admission": {
+    "angle_count": 7,
+    "output_count": 1,
+    "finite_angles_required": true,
+    "absolute_coordinate_limit_radians": 100,
+    "limit_inclusive": true,
+    "source_soft_joint_limits_not_clamped": true
+  },
+  "frame": {
+    "name": "PfkWorld",
+    "handedness": "right",
+    "convention": "cartesian",
+    "continuity": "continuous",
+    "min_precision": "f64",
+    "position_unit": "metres",
+    "input_angle_unit": "radians",
+    "rotation": "Raw row-major world-from-body matrix acting on column vectors; explicit untyped attitude boundary.",
+    "quaternion": "Raw Hamilton wxyz, parent*child, source sign preserved; fixed source quaternions normalized once per evaluation."
+  },
+  "scope": "Manual source-bound fixed chain and FK only; no importer, fingers, Jacobian, articulated dynamics, general typed transforms, bounded compiler proof or backend parity.",
+  "numeric_budget_frozen_before_comparison": {
+    "atol": 2e-12,
+    "rtol": 0,
+    "sdk_quaternion_sign_preserved": true
+  }
+}

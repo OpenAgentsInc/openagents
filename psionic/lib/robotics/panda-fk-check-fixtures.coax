@@ -1,0 +1,4 @@
+// Assertions and poison values only; no product admission decisions.
+#load "panda-fk-types.coax";
+pfk_poison :: ()->PfkOutput {p:PfkOutput;for i:0..<12 {p.links[i].position.x=f64(701+i);p.links[i].position.y=f64(-801-i);p.links[i].position.z=f64(901+i);for j:0..<4 {p.links[i].quaternion[j]=f64(1001+i*4+j);}for j:0..<9 {p.links[i].rotation[j]=f64(2001+i*9+j);}}p.grip=p.links[7];return p;}
+pfk_same_output :: (a:PfkOutput,b:PfkOutput) {for i:0..<13 {x:=a.grip;y:=b.grip;if i<12 {x=a.links[i];y=b.links[i];}#assert f64_bits(x.position.x)==f64_bits(y.position.x) && f64_bits(x.position.y)==f64_bits(y.position.y) && f64_bits(x.position.z)==f64_bits(y.position.z);for j:0..<4 {#assert f64_bits(x.quaternion[j])==f64_bits(y.quaternion[j]);}for j:0..<9 {#assert f64_bits(x.rotation[j])==f64_bits(y.rotation[j]);}}}

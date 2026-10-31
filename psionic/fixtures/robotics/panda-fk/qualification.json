@@ -1,0 +1,449 @@
+{
+  "schema": "psionic-panda-fk-qualification-v1",
+  "passed": true,
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "compiler_sha256": "f4c27d83090e6723d73bd3bb252a1e4dc7d29211d92a588e103eef1b8011beaa",
+  "source_sha256": {
+    "psionic/lib/robotics/panda-fk-types.coax": "df15524a43ad288bbab29dc5f2cd479c92c764d18ec53e74328114419841c01b",
+    "psionic/lib/robotics/panda-fk-profile.coax": "96dc448edd053dca71621617e60776a34fd147359bb2f5c7aac5c8bea9345ac2",
+    "psionic/lib/robotics/panda-fk-math.coax": "a6553652710153680b70406256fe8d4b22f8edaa0b1b4e50a2884864e732b23e",
+    "psionic/lib/robotics/panda-fk-chain.coax": "d60e6d4ec00bd85f2163fabc031a5e9e3ab42b98a4c44bb10f49e0da8ff70aba",
+    "psionic/lib/robotics/panda-fk-check-fixtures.coax": "fafb528739d4707671673d1d9c4699ee17a174d83ae88540feffa19f7c6572f7",
+    "psionic/tests/robotics/panda_fk_reference.py": "55fdd78689b696d4eb1b0cda1e7ac9c06302c3882441c347e03b7f4c53c6a0ca",
+    "psionic/tests/robotics/panda_fk_native.c": "3ed4f83561cb91ea1498e413cd5f29a37d320af4dfc99d09abbfa017f210b33f",
+    "psionic/tests/robotics/panda_fk_bad_angle.coax": "09722d139832f26c9ffc96093127641993d6092340f26792aed1f310e1741fa3",
+    "psionic/tests/robotics/panda_fk_bad_world.coax": "fff85eb52d91b0457a46fb8da1eaf8ba22fac2edcfd05afcfe42c7e02ffda703",
+    "psionic/fixtures/robotics/panda-fk/source-profile.json": "0852bb3ee8d55f64bf7f1d72b902ee3496dd2ed02b5be5236a5f3d5a9a264aa3",
+    "psionic/fixtures/robotics/panda-fk/sdk-model.json": "4e8f3aca4884775f5d6a9a5d7c186de70ee3798fa46ed72032d657ac60e6a027",
+    "psionic/fixtures/robotics/panda-fk/sdk-cases.f64": "482fb40c4c7bac35ff733a1cdb9de071f534959d552a69d89d94dd551787186b",
+    "psionic/fixtures/robotics/panda-fk/sdk-poses.f64": "d1550bd8bafdc00f3f31b0a4d726cff7c0bb5370fc7e2a16e875439462a87305",
+    "psionic/fixtures/robotics/panda-fk/sdk-reference.json": "d7a4036276c9732e9038c52e4dc419d5b22f9c30d363836cbb2bc6f905981117",
+    "psionic/tests/robotics/check-panda-fk.sh": "a67d5aae1255c876491e2a3929459164abd3c17c6cdc46761948ea8bf6ca0a05",
+    "psionic/tests/robotics/panda_fk_sdk_collect.c": "313f2bc5347407a64c7b7f7d24402837e1b3aeaa754cdec8789bc452a097e9d9",
+    "psionic/tests/robotics/panda_fk_sdk_reference.py": "fc39c5ddb2351f4ac4987016b3a0e5b76ef5c85c47195896cff8f17e35ff78b2",
+    "psionic/fixtures/robotics/panda-fk/sdk-profile.json": "96fac0f2d9cfd1477e930a9444ddf14e214c7da065fea4e52d80203a6312d50b",
+    "coax/lib/quantity.coax": "325e9e7152de442b2da210cc0075ca4bb231d5a4c862898a6ee88ab161eeb583",
+    "psionic/tests/robotics/panda_fk_bindings_test.py": "188fda4660ec38d7bd2073e8cbfc6ce37ed8c2d4a797ad5e82f525e4b11a02c4"
+  },
+  "corpus": {
+    "seed": 344776716594,
+    "cases": 158,
+    "new_sdk_cases": 7,
+    "retained_fresh_cases": 7,
+    "independent_bounded_random_cases": 128,
+    "analytic_zero_case": 1,
+    "inclusive_coordinate_boundary_cases": 14,
+    "signed_zero_case": 1,
+    "case_sha256": "0d0b5af82810d5b8e549cd18bee80a078c9af1dc0870f43e68d3e7050e7e2032"
+  },
+  "retained_endpoints": [
+    {
+      "row": 0,
+      "bytes": 1152,
+      "sha256": "7eccb434fbb5bcbb68c01714a8893ac44c1f5c73517cefb283e8e8c1eeb0b35a",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 1,
+      "bytes": 1152,
+      "sha256": "5ca3f6c1caf5a5a954d4c0c0f038e4600dccf6544b91c19dfd0c8f9d10e88143",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 2,
+      "bytes": 1152,
+      "sha256": "12f8f4fadfe3fce40a8500ba19e7f5c01335577ecedf94d4299183cfad1b598f",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 3,
+      "bytes": 1152,
+      "sha256": "5923c49251641672c36222ed7250e251d635b6dd1b2af76b28e4899c7367c727",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 64,
+      "bytes": 1152,
+      "sha256": "909ced0266505c616ddcd2a5bccff0d33447032a2127ca11e5bc7c170c80f1cd",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 128,
+      "bytes": 1152,
+      "sha256": "86b42c5fef542b29ceec68e6aacad3866a119f89ca35d3ab9f00ff4003a3784d",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    },
+    {
+      "row": 232,
+      "bytes": 1152,
+      "sha256": "474fb55801aab22bed1e0f7b4e02dcbd8546994699cde081ff6bdc94ca7de418",
+      "semantics": "Fresh reset+forward sample, not row-number-matched HDF5 post-action observation."
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic-panda-fk-native-v1",
+        "passed": true,
+        "cases": 158,
+        "assertions": 1307,
+        "output_words_per_case": 208
+      },
+      "native_c_sha256": "77475073f7e4c95f2a0ae034ee64e21ed66d8b48bf1e329ac6fbbb790139a172",
+      "native_h_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+      "binary_sha256": "76ab2f25ba07d47893f0f9fcb5f23ec6d1ec82625dc968bb19863acc1b399964",
+      "output_sha256": "200f79417ca51df2e9a7a0602d60dafe557cf37ef34eb76cf5399bf4950fbf34",
+      "independent_homogeneous_matrices": {
+        "values": 24648,
+        "max_abs_error": 2.6645352591003757e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0013322676295501878,
+        "passed": true
+      },
+      "new_sdk_all_link_position_quaternion_matrix": {
+        "values": 1428,
+        "max_abs_error": 4.3298697960381105e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0021649348980190553,
+        "passed": true
+      },
+      "retained_fresh_grip_site_position_matrix": {
+        "values": 84,
+        "max_abs_error": 1.920447308123574e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.000960223654061787,
+        "passed": true
+      },
+      "compiled_source_model_constants": {
+        "values": 84,
+        "max_abs_error": 0.0,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0,
+        "passed": true
+      },
+      "reused_from_prior_record": true,
+      "scalar_libm_imports_observed": [
+        "sin",
+        "cos"
+      ]
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic-panda-fk-native-v1",
+        "passed": true,
+        "cases": 158,
+        "assertions": 1307,
+        "output_words_per_case": 208
+      },
+      "native_c_sha256": "36a57846409201e501213c5d7d296b93d188993813cebb0e9f69dc44de0322f0",
+      "native_h_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+      "binary_sha256": "e7e0ef961c55cb2b55d1bb0b07b26d6a1a72020244dc2a1c8f1609bc50f26007",
+      "output_sha256": "200f79417ca51df2e9a7a0602d60dafe557cf37ef34eb76cf5399bf4950fbf34",
+      "independent_homogeneous_matrices": {
+        "values": 24648,
+        "max_abs_error": 2.6645352591003757e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0013322676295501878,
+        "passed": true
+      },
+      "new_sdk_all_link_position_quaternion_matrix": {
+        "values": 1428,
+        "max_abs_error": 4.3298697960381105e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0021649348980190553,
+        "passed": true
+      },
+      "retained_fresh_grip_site_position_matrix": {
+        "values": 84,
+        "max_abs_error": 1.920447308123574e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.000960223654061787,
+        "passed": true
+      },
+      "compiled_source_model_constants": {
+        "values": 84,
+        "max_abs_error": 0.0,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0,
+        "passed": true
+      },
+      "complete_bytes_equal_to_previously_qualified_debug": true,
+      "oracle_metrics_reused_by_complete_output_identity": true,
+      "scalar_libm_imports_observed": [
+        "sin",
+        "cos"
+      ],
+      "host_flags": [
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos"
+      ]
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic-panda-fk-native-v1",
+        "passed": true,
+        "cases": 158,
+        "assertions": 1307,
+        "output_words_per_case": 208
+      },
+      "native_c_sha256": "77475073f7e4c95f2a0ae034ee64e21ed66d8b48bf1e329ac6fbbb790139a172",
+      "native_h_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+      "binary_sha256": "8246fb97efd01496dafb7f42d7761e8e102a5f4ff3939fd69f09cb4f79fe3e96",
+      "output_sha256": "200f79417ca51df2e9a7a0602d60dafe557cf37ef34eb76cf5399bf4950fbf34",
+      "independent_homogeneous_matrices": {
+        "values": 24648,
+        "max_abs_error": 2.6645352591003757e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0013322676295501878,
+        "passed": true
+      },
+      "new_sdk_all_link_position_quaternion_matrix": {
+        "values": 1428,
+        "max_abs_error": 4.3298697960381105e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0021649348980190553,
+        "passed": true
+      },
+      "retained_fresh_grip_site_position_matrix": {
+        "values": 84,
+        "max_abs_error": 1.920447308123574e-15,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.000960223654061787,
+        "passed": true
+      },
+      "compiled_source_model_constants": {
+        "values": 84,
+        "max_abs_error": 0.0,
+        "atol": 2e-12,
+        "max_budget_fraction": 0.0,
+        "passed": true
+      },
+      "complete_bytes_equal_to_previously_qualified_debug": true,
+      "oracle_metrics_reused_by_complete_output_identity": true,
+      "scalar_libm_imports_observed": [
+        "sin",
+        "cos"
+      ],
+      "host_flags": [
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos"
+      ]
+    }
+  ],
+  "negative_source_fixtures": [
+    {
+      "name": "angle",
+      "source_sha256": "09722d139832f26c9ffc96093127641993d6092340f26792aed1f310e1741fa3",
+      "refused": true,
+      "diagnostic": "E0317"
+    },
+    {
+      "name": "world",
+      "source_sha256": "fff85eb52d91b0457a46fb8da1eaf8ba22fac2edcfd05afcfe42c7e02ffda703",
+      "refused": true,
+      "diagnostic": "E0327"
+    }
+  ],
+  "atol": 2e-12,
+  "rtol": 0,
+  "scope": "Fixed12-body/seven-hinge Coax FK only; M3 world positions and radian quantity source boundary, explicit raw attitude; no fingers/Jacobian/importer/dynamics/general typed transforms/bounded-control/backend parity.",
+  "negative_source_reused": true,
+  "duration_seconds": 2.7336117919767275,
+  "prior_default_fused_profile": {
+    "record_sha256": "8ee3a607ac6dd7836daedeac67070b27b930337a93d2bfa08b35cf2304a16e6c",
+    "passed": false,
+    "numeric_oracles_each_mode_passed": true,
+    "strict_cross_mode_byte_identity": false,
+    "different_words_vs_debug": 792,
+    "max_abs_difference": 1.5543122344752192e-15,
+    "diagnosis": "nm: O0 imports separate sin/cos; O1/O2 imports ___sincos_stret. Preserved original failed record; no tolerance/source-math change."
+  },
+  "host_numeric_profile": "Darwin-arm64 scalar libm sin/cos; -fno-fast-math -ffp-contract=off -fno-builtin-sin -fno-builtin-cos. No R15/cross-target determinism claim.",
+  "reference_reuse": {
+    "unchanged_numeric_reference_function_ASTs": true,
+    "original_runner_sha256": "c4bb0ff927c51078f1ade4aa4245e4014e0a03bb998c07635d3d8d0f94906031",
+    "method": "Existing passing debug output/oracle results reused. Only newly compiled scalar-libm release/sanitized modes execute; their complete208-word-per-case output must equal the qualified debug bytes. No SDK or independent numerical reference rerun."
+  },
+  "native_modes_byte_identical": true,
+  "coax_checks": {
+    "groups": 11,
+    "individual_cases": 34,
+    "passed": 11,
+    "failed": 0,
+    "log_sha256": "18949b7cb667d3ac354d6cc5c7fc60bcef9efd8a424ec544df59cf095d83e283"
+  },
+  "authority": {
+    "mode": "root-only; all dependency checks retained",
+    "files": [
+      {
+        "path": "psionic/lib/robotics/panda-fk-profile.coax",
+        "mutants": 46,
+        "killed": 46,
+        "survived": 0,
+        "log_sha256": "53a203ccd8a313b40642bffcf4b617b4acd66fadc16c8ba62edcf048398d4d64"
+      },
+      {
+        "path": "psionic/lib/robotics/panda-fk-math.coax",
+        "mutants": 195,
+        "killed": 195,
+        "survived": 0,
+        "log_sha256": "220f3830bb477287c31475f2000478fe82eaf73db0644bb21432f22e6f9e0f99"
+      },
+      {
+        "path": "psionic/lib/robotics/panda-fk-chain.coax",
+        "mutants": 40,
+        "killed": 40,
+        "survived": 0,
+        "log_sha256": "07a37c773e28b10190d0ba60d5f03a79691464b5b23b77e018fb174d076ca628"
+      }
+    ],
+    "mutants": 281,
+    "killed": 281,
+    "survived": 0,
+    "waivers": 0,
+    "coverage_scope": "Candidate-emitted mutation sites in the three new FK roots. The lowered spatial + operator-token swap is outside this set and remains a pending compiler capability."
+  },
+  "check_first": {
+    "observed_missing_product_procedures": true,
+    "diagnostic_log_sha256": "16b5beee001533cde4b377d77f5894f03c7ee42a3b4fcd6e0d5ed2147f3616c3"
+  },
+  "source_unit_boundaries": {
+    "angle_quantity": "Quantity(Radian,f64); wrong Metre view refused E0317",
+    "world_positions": "Point3(PfkWorld,Metre,f64); different nominal world refused E0327",
+    "native_erasure": "C angle views are F64 and positions are three F64 fields; callers declare physical meaning, no sensor authentication."
+  },
+  "compiled_source_model_constants_scope": "Independent normalization of the byte-exact raw source table against compiled SDK constants; Coax normalization is separately covered by algebra and full FK outputs.",
+  "default_fused_diagnostics": {
+    "path": "psionic/fixtures/robotics/panda-fk/default-fused-diagnostics.json",
+    "sha256": "8ee3a607ac6dd7836daedeac67070b27b930337a93d2bfa08b35cf2304a16e6c",
+    "original_record_preserved_byte_identical": true,
+    "strict_cross_mode_byte_check_passed": false,
+    "each_numeric_oracle_passed": true
+  },
+  "not_claimed": [
+    "Default fused-libm cross-mode byte parity",
+    "R15 or cross-target deterministic math",
+    "Finger branches, Jacobian, importer, articulated dynamics or complete physics backend parity",
+    "Typed attitude/transform chains or complete R12",
+    "Compiler #bounded/R14 or real-time control",
+    "Sensor timestamp freshness/authentication or a new robot/NN episode"
+  ],
+  "c_compiler": "Apple clang version 21.0.0 (clang-2100.1.1.101)",
+  "qualification_current_compiler": "Final merged Coax0.45 normal reconstruction. Debug/release emitted C and headers are byte-identical to qualified artifacts; sanitized source equals debug. Original numerical, mutation and SDK proof/compiler identities are retained and reused; no passing gate rerun.",
+  "metadata_binding_checks": {
+    "passed": true,
+    "methods": 3,
+    "individual_cases": 16,
+    "actual_reference_files_hashes_and_shapes_checked": true,
+    "altered_status_sdk_version_scene_hashes_counts_shapes_budget_names_and_payloads_refused": true,
+    "unexpected_file_inventory_refused": true,
+    "numeric_reference_function_ASTs_unchanged": true,
+    "new_guard_only_no_numeric_native_or_SDK_rerun": true,
+    "log_sha256": "7d59a8fbca92ef540f42b6883247c3844892d23f501b6cf2621d0e535813fb81",
+    "check_first_log_sha256": "906aabf2cdb1efc81784c43ff873d65bc657eb3c26ed117d2373d904074e4446"
+  },
+  "compiler_context_assessment": {
+    "scope": "Read-only inspection of source spatial calls moving from generated mark1 to prechecked mark2; helpers remain generated. No old mutation/numerical run repeated.",
+    "only_spatial_expression": "pfk_shift return origin+world",
+    "source_operands": "Two aggregate identifiers, with no source binary/integer/boolean subexpressions.",
+    "expected_mutation_site_counts": {
+      "profile": 46,
+      "math": 195,
+      "chain": 40,
+      "total": 281
+    },
+    "new_FK_subset_expected": 0,
+    "final_candidate_observed": false,
+    "operator_token_swap_coverage": "Pending; not claimed by281/281 result.",
+    "next_qualification": "Final emission-only dependency binding complete. No changed native artifacts; existing scalar-libm runtime and frozen references reused. Source-site expectations remain read-only, and spatial operator-token swap coverage remains pending.",
+    "final_emission_C_H_identical": true,
+    "final_candidate_mutation_site_enumeration_performed": false
+  },
+  "final_dependency_binding": {
+    "schema": "psionic-panda-fk-final-compiler-binding-v1",
+    "passed": true,
+    "record_sha256": "005ad9903ed1ed9f786a442416c6fd9336a4993963b4ebe9e4cd2c973ed040d1",
+    "final_compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "same_relative_source_input_and_original_working_directory": true,
+    "comparisons": [
+      {
+        "name": "fk-debug",
+        "original_C_sha256": "77475073f7e4c95f2a0ae034ee64e21ed66d8b48bf1e329ac6fbbb790139a172",
+        "final_C_sha256": "77475073f7e4c95f2a0ae034ee64e21ed66d8b48bf1e329ac6fbbb790139a172",
+        "original_H_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+        "final_H_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+        "C_byte_identical": true,
+        "H_byte_identical": true
+      },
+      {
+        "name": "example-debug",
+        "old_C_sha256": "80148ad45c8c57736e74093685b881466ce6315df7b3c01275af55fda8233acc",
+        "final_C_sha256": "80148ad45c8c57736e74093685b881466ce6315df7b3c01275af55fda8233acc",
+        "old_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "final_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "C_byte_identical": true,
+        "H_byte_identical": true
+      },
+      {
+        "name": "fk-release",
+        "original_C_sha256": "36a57846409201e501213c5d7d296b93d188993813cebb0e9f69dc44de0322f0",
+        "final_C_sha256": "36a57846409201e501213c5d7d296b93d188993813cebb0e9f69dc44de0322f0",
+        "original_H_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+        "final_H_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+        "C_byte_identical": true,
+        "H_byte_identical": true
+      },
+      {
+        "name": "example-release",
+        "old_C_sha256": "93ad6147c4b4b13c0d74012f8dd74d8e6c4b352d06b5ba7d1c220d73416c3f1a",
+        "final_C_sha256": "93ad6147c4b4b13c0d74012f8dd74d8e6c4b352d06b5ba7d1c220d73416c3f1a",
+        "old_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "final_H_sha256": "d31c18a81c50ad5da5fbe37e971e4dc4af8bd61a8760344d03160e6f8833ead5",
+        "C_byte_identical": true,
+        "H_byte_identical": true
+      }
+    ],
+    "sanitizer_reuse": {
+      "source_profile": "debug",
+      "initial_sanitized_C_equals_debug": true,
+      "new_native_execution": false
+    },
+    "new_native_or_example_execution": false,
+    "independent_numeric_SDK_VM_mutation_gates_reused": true,
+    "scope": "Emission-only final dependency binding. No VM/mutation/native numerical/SDK/example execution rerun. Existing compiler body20 identity/reconstruction proofs are parent-owned."
+  },
+  "qualified_current_compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+  "bundled_retained_controller_data": {
+    "schema": "psionic-panda-fk-retained-controller-data-binding-v1",
+    "binding": "psionic/fixtures/robotics/panda-fk/retained-controller/binding.json",
+    "binding_sha256": "f9e2fd01e9a0db87a7c14f2725b0e3a313581d9faf02db213cc2ef0fbf17e987",
+    "rows": [
+      0,
+      1,
+      2,
+      3,
+      64,
+      128,
+      232
+    ],
+    "files": 7,
+    "bytes": 8064,
+    "byte_identical_to_original_executed_references": true,
+    "no_new_numerical_or_SDK_execution": true,
+    "original_execution_source_profile_compiler_fields_preserved": true,
+    "self_contained_native_input_directory": "psionic/fixtures/robotics/panda-fk/retained-controller"
+  }
+}

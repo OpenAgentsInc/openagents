@@ -319,3 +319,11 @@ nominal frame/unit identity and minimum precision on native C. A small Verse
 floating-origin camera boundary now subtracts typed F64 world points, while
 preserving its raw public API. This is a foundation for robot geometry; full
 frame transforms and Panda pose migration remain pending.
+
+The [owned Panda kinematics query](fixtures/robotics/panda-fk/README.md)
+computes twelve body poses and the grip site from seven typed radian coordinates.
+The [example](examples/panda-kinematics.coax) keeps hand and grip attitudes
+separate and shows atomic refusal. Run `psionic/check.sh --only robotics/panda-fk`
+for the three new roots and self-contained numerical/native reference gate.
+This is a source-bound model component; dynamics, fingers and robot import remain
+work toward the owned backend.
