@@ -9,14 +9,17 @@ as well as to WebAssembly.
 ## The pieces
 
 - **Email.** The API service sends email through Resend from
-  `no-reply@openagents.com`.
+  `no-reply@openagents.com` (`email.c`; admins can send with
+  `POST /api/admin/email`). Staging sends only to the owner's address.
   - The key is in Secret Manager as `openagents-resend-api-key`.
   - Bodies are HTML with a plain-text part, and attachments are allowed.
   - Each message has an idempotency key, and failed sends are retried.
   - The send log never holds addresses beyond what delivery needs, and never
     holds bodies or the key.
-- **Schedules.** Cloud Scheduler calls the API's job endpoint with an OIDC
-  token, in the `America/Chicago` time zone.
+- **Schedules.** Cloud Scheduler calls the API's job endpoint
+  (`POST /api/jobs/<job>`, `jobs.c`) with an OIDC token for `oa-api-jobs`, in
+  the `America/Chicago` time zone. `schedules.conf` lists the jobs and
+  `schedules.sh` puts them in Cloud Scheduler.
   - Daylight saving is handled by the scheduler.
   - Jobs are idempotent per day and can be re-run by hand.
 - **Coax in the API.** The same Coax modules that lay out a page are compiled

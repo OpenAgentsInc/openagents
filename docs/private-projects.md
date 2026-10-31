@@ -36,6 +36,15 @@ the public site bucket.
 - `checklists`: `[{id, title, items: [{id, text, status, evidence}]}]`
 - `links`: `[{label, url}]`; a link whose label names analytics or a dashboard
   is shown in the ANALYTICS panel
+- Sprints, all optional (`0087_project_sprints.sql`):
+  - `sprints`: `[{id, goal, start, end, status: planned|active|closed, agreed_by: [names], review, retro}]`;
+    one goal each, agreed by members, one active at a time
+  - `backlog`: `[{id, text, status: todo|doing|done, evidence, stretch, carried_from, proposed_by}]`,
+    in priority order; a done item names its evidence; `stretch` marks a stretch
+    goal and `carried_from` the date an unfinished item came from
+  - `wip_limit`: at most this many backlog items are `doing` (1 to 20)
+  - `priority_changes`: `[{at, what, why, proposed_by, agreed_by: [names]}]`, the
+    log the next digest reads; a change with no `agreed_by` is a proposal
 
 Every push stores a new version and keeps the old one in `projects.history`.
 A push names the version it was based on and is refused (409) when someone
@@ -46,7 +55,8 @@ pushed in between.
 | | member | agent | the project's agent (runner) | anyone else |
 | --- | --- | --- | --- | --- |
 | read the state | yes | yes | yes | 404 |
-| push the document | yes | only milestone/item status and notes, and new *proposed* goals | anything but the title, the members and agreed goals, only inside a running turn | 404 |
+| push the document | yes | only milestone/item/backlog status and notes, new *proposed* goals, backlog items it proposes (`proposed_by`) and proposed priority changes | anything but the title, the members, agreed goals and sprint goals, only inside a running turn | 404 |
+| change a sprint, the backlog's order, the WIP limit or an agreed priority change | yes | 403 | sprint goals 403; the rest inside a turn | 404 |
 | change or remove agreed goals, members, title | yes | 403 | 403 | 404 |
 | post notes and plans, messages and replies | yes | yes | inside a turn | 404 |
 | set a milestone's or item's status | yes | yes | inside a turn | 404 |

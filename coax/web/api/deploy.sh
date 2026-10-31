@@ -63,7 +63,7 @@ runners="$(grep -v '^#' "$here/runners.conf" 2>/dev/null | grep -E '^[0-9a-f]{64
 team="$(grep -v '^#' "$here/team.conf" 2>/dev/null | awk 'NF == 2 && ($1 == "player" || $1 == "email_sha256") { print $1 ":" $2 }' | paste -sd, - || true)"
 
 deploy() {  # service secret host agent-projects-secret runner-service drops-folder
-  local secrets="OA_API_DATABASE=$2:latest" env="^@^OA_ADMIN_PUBKEYS=$admins@OA_AGENT_RUNNER_PUBKEYS=$runners@OA_TEAM=$team@OA_API_ORIGIN=https://$3@OA_DROPS_BUCKET=openagentsgemini-project-drops@OA_DROPS_PREFIX=$6" wake
+  local secrets="OA_API_DATABASE=$2:latest" env="^~^OA_ADMIN_PUBKEYS=$admins~OA_AGENT_RUNNER_PUBKEYS=$runners~OA_TEAM=$team~OA_API_ORIGIN=https://$3~OA_DROPS_BUCKET=openagentsgemini-project-drops~OA_DROPS_PREFIX=$6" wake
   if gcloud secrets describe "$4" --project "$project" >/dev/null 2>&1; then secrets+=",OA_AGENT_PROJECTS=$4:latest"; fi
   # Publishing a project from a drop (drops.c, rc-publish): the key that seals project keys, the relay,
   # the site's bucket; staging's projects go on the relay as private, so no list shows them.
@@ -71,21 +71,26 @@ deploy() {  # service secret host agent-projects-secret runner-service drops-fol
   [[ "$6" == staging ]] && site="$project-openagents-web-staging" vis=private
   if gcloud secrets describe "$kek" --project "$project" >/dev/null 2>&1; then
     secrets+=",OA_PROJECT_KEK=$kek:latest"
-    env+="@OA_PUBLISH_RELAY=wss://relay.openagents.com@OA_SITE_BUCKET=$site@OA_PUBLISH_VISIBILITY=$vis"
+    env+="~OA_PUBLISH_RELAY=wss://relay.openagents.com~OA_SITE_BUCKET=$site~OA_PUBLISH_VISIBILITY=$vis"
   fi
   # Inference credit (inference.c): our Spark wallet, oa-spark (coax/web/api/spark/deploy.sh), when deployed.
   # Authenticated free SystemOne mesh routes are deployment-owned pinned JSON.
   # Secret Manager avoids separator/escaping drift and survives future deploys.
   local mesh="oa-mesh-routes-$6"
   if gcloud secrets describe "$mesh" --project "$project" >/dev/null 2>&1; then secrets+=",OA_MESH_ROUTES=$mesh:latest"; fi
+  # Scheduled jobs (jobs.c, schedules.sh): Cloud Scheduler's caller.
+  env+="~OA_JOBS_CALLER=oa-api-jobs@$project.iam.gserviceaccount.com"
+  # Email through Resend (email.c): the key, and on staging the only address mail may go to (the owner's).
+  if gcloud secrets describe openagents-resend-api-key --project "$project" >/dev/null 2>&1; then secrets+=",OA_RESEND_API_KEY=openagents-resend-api-key:latest"; fi
+  [[ "$6" == staging ]] && env+="~OA_EMAIL_ALLOW=chris@openagents.com"
   local spark
   spark="$(gcloud run services describe oa-spark --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
-  [[ -n "$spark" ]] && env+="@OA_SPARK_URL=$spark"
+  [[ -n "$spark" ]] && env+="~OA_SPARK_URL=$spark"
   wake="$(gcloud run services describe "$5" --project "$project" --region "$region" --format 'value(status.url)' 2>/dev/null || true)"
-  [[ -n "$wake" ]] && env+="@OA_AGENT_WAKE_URL=$wake/wake"
+  [[ -n "$wake" ]] && env+="~OA_AGENT_WAKE_URL=$wake/wake"
   local release
   release="$(python3 -c 'import uuid; print(uuid.uuid4())')"
-  env+="@OA_BUILD_SHA=$commit@OA_RELEASE_ID=$release"
+  env+="~OA_BUILD_SHA=$commit~OA_RELEASE_ID=$release"
   mkdir -p "$work/$1"
   api_verified_rollout "$1" "$3" "$image" "$commit" "$release" "$work/$1" \
     --allow-unauthenticated --ingress internal-and-cloud-load-balancing \

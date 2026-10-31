@@ -236,6 +236,93 @@ n98_esc :: (s:[]u8,ser:[]u8,o:int,cap:int)->int {
   }
   ser[w]='"';return w+1;
 }
+// The string reader, the UTF-8 writer, the number reader and the escaper, case by case.
+n98tb :: (hex:string,i:int)->u8 {return cast,trunc(u8)(n98_hexv(hex[2*i])*16+n98_hexv(hex[2*i+1]));}
+n98ts :: (lit:string,cap:int,want:string)->bool {
+  j:[96]u8;for i:0..<lit.count {j[i]=lit[i];}
+  o:[64]u8;r:=n98_str(j[0..<lit.count],N98Cursor.{p=0,end=lit.count},o[..],cap);
+  if r.c.p!=lit.count || r.n!=want.count/2 || o[r.n]!=0 {return false;}
+  for i:0..<r.n {if o[i]!=n98tb(want,i) {return false;}}
+  return true;
+}
+n98ts_refused :: (lit:string,cap:int)->bool {
+  j:[96]u8;for i:0..<lit.count {j[i]=lit[i];}
+  o:[64]u8;return n98_str(j[0..<lit.count],N98Cursor.{p=0,end=lit.count},o[..],cap).c.p<0;
+}
+#test "strings decode as C's str() does" {
+  #assert n98ts("\"abc\"",64,"616263") && n98ts("  \"a\"",64,"61") && n98ts("\"\"",64,"");
+  #assert n98ts("\"a\\\"b\\\\c\\/d\"",64,"6122625c632f64");
+  #assert n98ts("\"\\b\\f\\n\\r\\t\"",64,"080c0a0d09");
+  #assert n98ts("\"\\u0041\\u007f\"",64,"417f") && n98ts("\"\\u0000\"",64,"00");
+  #assert n98ts("\"\\u0080\\u07ff\"",64,"c280dfbf");
+  #assert n98ts("\"\\u0800\\uFFFF\"",64,"e0a080efbfbf");
+  #assert n98ts("\"\\u20AC\\u20ac\"",64,"e282ace282ac");
+  #assert n98ts("\"\\uD83D\\uDE00\"",64,"f09f9880") && n98ts("\"\\udbff\\udfff\"",64,"f48fbfbf");
+  #assert n98ts("\"\\ud800\\udc00\"",64,"f0908080");
+  #assert n98ts("\"\\ud7ff\\ue000\"",64,"ed9fbfee8080");
+}
+#test "strings C refuses are refused" {
+  #assert n98ts_refused("abc",64) && n98ts_refused("\"abc",64) && n98ts_refused("\"a\\",64) && n98ts_refused("",64);
+  #assert n98ts_refused("\"\\x\"",64) && n98ts_refused("\"\\u12\"",64) && n98ts_refused("\"\\u12g4\"",64) && n98ts_refused("\"\\u/000\"",64);
+  #assert n98ts_refused("\"\\u:000\"",64) && n98ts_refused("\"\\u@000\"",64) && n98ts_refused("\"\\uG000\"",64) && n98ts_refused("\"\\u`000\"",64);
+  #assert n98ts_refused("\"\\ud83d\"",64) && n98ts_refused("\"\\ud83d\\u0041\"",64) && n98ts_refused("\"\\ud83dx\\ude00\"",64);
+  #assert n98ts_refused("\"\\ud83d\\ue000\"",64) && n98ts_refused("\"\\ud83d\\udbff\"",64) && n98ts_refused("\"\\ude00\"",64) && n98ts_refused("\"\\udfff\"",64);
+  #assert n98ts_refused("\"\\ud83d\\x\"",64) && n98ts_refused("\"\\ud83d\\ude0\"",64);
+  c:[3]u8;c[0]='"';c[1]=0x1f;c[2]='"';#assert n98ts_refused(cast(string)c[..],64);
+  c[1]=0x20;#assert n98ts(cast(string)c[..],64,"20");
+}
+#test "a decoded string fits its buffer with C's NUL" {
+  #assert n98ts("\"abc\"",4,"616263") && n98ts_refused("\"abc\"",3);
+  #assert n98ts("\"\\n\"",2,"0a") && n98ts_refused("\"\\n\"",1);
+  #assert n98ts("\"\\u00e9\"",3,"c3a9") && n98ts_refused("\"\\u00e9\"",2);
+  #assert n98ts("\"\\u20ac\"",4,"e282ac") && n98ts_refused("\"\\u20ac\"",3);
+  #assert n98ts("\"\\ud83d\\ude00\"",5,"f09f9880") && n98ts_refused("\"\\ud83d\\ude00\"",4);
+}
+#test "the UTF-8 writer's lengths and bytes" {
+  o:[8]u8;
+  #assert n98_put(o[..],0,8,0x7f)==1 && o[0]==0x7f;
+  #assert n98_put(o[..],1,8,0x80)==3 && o[1]==0xc2 && o[2]==0x80;
+  #assert n98_put(o[..],0,8,0x7ff)==2 && o[0]==0xdf && o[1]==0xbf;
+  #assert n98_put(o[..],0,8,0x800)==3 && o[0]==0xe0 && o[1]==0xa0 && o[2]==0x80;
+  #assert n98_put(o[..],0,8,0xffff)==3 && o[0]==0xef && o[1]==0xbf && o[2]==0xbf;
+  #assert n98_put(o[..],0,8,0x10000)==4 && o[0]==0xf0 && o[1]==0x90 && o[2]==0x80 && o[3]==0x80;
+  #assert n98_put(o[..],0,8,0x10ffff)==4 && o[0]==0xf4 && o[1]==0x8f && o[2]==0xbf && o[3]==0xbf;
+  #assert n98_put(o[..],3,4,0x41)==-1 && n98_put(o[..],2,4,0x41)==3 && n98_put(o[..],2,4,0x80)==-1 && n98_put(o[..],1,4,0x80)==3;
+}
+#test "hex digits as C reads them" {
+  #assert n98_hexv('0')==0 && n98_hexv('9')==9 && n98_hexv('a')==10 && n98_hexv('f')==15 && n98_hexv('A')==10 && n98_hexv('F')==15;
+  #assert n98_hexv('/')==-1 && n98_hexv(':')==-1 && n98_hexv('`')==-1 && n98_hexv('g')==-1 && n98_hexv('@')==-1 && n98_hexv('G')==-1;
+  j:=[4]u8.['B','e','E','f'];#assert n98_hex4(j[..],0)==0xbeef;
+}
+n98ti :: (lit:string)->N98Int {j:[40]u8;for i:0..<lit.count {j[i]=lit[i];}return n98_int(j[0..<lit.count],N98Cursor.{p=0,end=lit.count});}
+#test "numbers read as C's strtoll does" {
+  #assert n98ti("12,").ok && n98ti("12,").v==12 && n98ti("12,").c.p==2 && n98ti(" \t\n\r12").v==12;
+  #assert n98ti("-5").v==-5 && n98ti("+7").v==7 && n98ti("0").ok && n98ti("007").v==7;
+  v:[3]u8;v[0]=11;v[1]=12;v[2]='9';#assert n98ti(cast(string)v[..]).v==9;
+  v[0]=14;#assert !n98ti(cast(string)v[..]).ok;
+  v[0]=8;#assert !n98ti(cast(string)v[..]).ok;
+  #assert !n98ti("").ok && !n98ti("-").ok && !n98ti("x1").ok && !n98ti("1.5").ok && !n98ti("1e3").ok && !n98ti("1E3").ok;
+  #assert n98ti("9223372036854775807").v==9223372036854775807 && n98ti("9223372036854775808").v==9223372036854775807;
+  #assert n98ti("99999999999999999999").v==9223372036854775807 && n98ti("-99999999999999999999").v==-9223372036854775807-1;
+  #assert n98ti("-9223372036854775807").v==-9223372036854775807 && n98ti("922337203685477580").v==922337203685477580;
+  #assert n98ti("9223372036854775806").v==9223372036854775806;
+}
+n98te :: (hex:string,cap:int,want:string)->bool {
+  raw:[16]u8;for i:0..<hex.count/2 {raw[i]=n98tb(hex,i);}
+  ser:[32]u8;w:=n98_esc(raw[0..<hex.count/2],ser[..],1,cap);
+  if want=="REFUSED" {return w==-1;}
+  if w!=1+want.count {return false;}
+  for i:0..<want.count {if ser[1+i]!=want[i] {return false;}}
+  return true;
+}
+#test "the escaper writes C's canonical JSON" {
+  #assert n98te("612262",32,"\"a\\\"b\"") && n98te("5c2f",32,"\"\\\\/\"");
+  #assert n98te("0a0d09080c",32,"\"\\n\\r\\t\\b\\f\"");
+  #assert n98te("610062",32,"\"a\"");
+  ser:[8]u8;raw:=[4]u8.[0xc3,0xa9,0x01,0x7f];#assert n98_esc(raw[..],ser[..],0,8)==6 && ser[0]=='"' && ser[1]==0xc3 && ser[2]==0xa9 && ser[3]==1 && ser[4]==0x7f && ser[5]=='"';
+  #assert n98te("61",5,"\"a\"") && n98te("61",4,"REFUSED") && n98te("0a",6,"\"\\n\"") && n98te("0a",5,"REFUSED");
+  #assert n98te("",3,"\"\"") && n98te("",2,"REFUSED");
+}
 n98_dec :: (out:[]u8,at:int,v:int)->int {
   // Decimal of v (any int64), as %lld.
   digits:[20]u8;n:=0;w:=at;

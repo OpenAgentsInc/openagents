@@ -26,6 +26,8 @@
 //   a realm's maker                /api/playtest/makers/<realm>, its claim, the admin's codes (makers.c)
 //   listed upgrades                /api/playtest/upgrades/..., /api/admin/upgrades (makers.c)
 //   drops for a new project        /api/drops/*, private to who dropped them (drops.c)
+//   scheduled jobs                POST /api/jobs/<job>, Cloud Scheduler or an admin (jobs.c)
+//   email, admins only            POST /api/admin/email, through Resend (email.c)
 //   /chat, admins only             /api/chat/*, and the runner's /api/chat/runner/* (chat.c)
 #include "api.h"
 
@@ -273,6 +275,8 @@ static void handle(client *cl, char *head_end, size_t body_len) {
   if (!strcmp(q.path, "/api/playtest/old-link") && !strcmp(q.method, "GET")) { old_link(&q); return; }
   if (analytics_route(&q)) return;
   if (upgrades_route(&q)) return;   // listed upgrades (makers.c), before the admin routes too
+  if (jobs_route(&q)) return;
+  if (email_route(&q)) return;   // before the admin routes: /api/admin/email is its
   if (makers_route(&q)) return;   // before the admin routes: /api/admin/makers/... is its
   if (npc_route(&q)) return;
   if (inference_route(&q)) return;

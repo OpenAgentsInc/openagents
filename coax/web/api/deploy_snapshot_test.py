@@ -28,7 +28,7 @@ elif args[:2]==['secrets','describe']:sys.exit(1)
 elif args[:2]==['run','deploy']:
  name=args[2];assert args[args.index('--image')+1]==image
  if mode=='fail' and name=='oa-api-staging':print('intentional staging refusal',file=sys.stderr);sys.exit(42)
- raw=args[args.index('--set-env-vars')+1];commit=re.search(r'@OA_BUILD_SHA=([0-9a-f]{40})(?:@|$)',raw).group(1);release=re.search(r'@OA_RELEASE_ID=([0-9a-f-]{36})(?:@|$)',raw).group(1)
+ raw=args[args.index('--set-env-vars')+1];commit=re.search(r'~OA_BUILD_SHA=([0-9a-f]{40})(?:~|$)',raw).group(1);release=re.search(r'~OA_RELEASE_ID=([0-9a-f-]{36})(?:~|$)',raw).group(1)
  (root/(name+'.json')).write_text(json.dumps({'build':commit,'release':release,'service':name,'revision':name+'-00002-new'}));print('revision ready')
 else:print('unexpected gcloud',file=sys.stderr);sys.exit(90)
 '''
