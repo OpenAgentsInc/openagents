@@ -1389,7 +1389,7 @@ pet_draw :: (s: [] Villa, out: [] f32, u: [] f32, n: int) -> int {
     }
   } else {
     b := pet_panel_box(s);
-    plate(s, u, b, 0.9, 0);
+    plate(s, u, b, 0.97, 0);   // near opaque: the pastel scene is bright, and its wall and sky showed through as a lighter band
     pet_button(p, b, 0, 0);   // the panel itself: presses on it stay on it
     pad := 16 * k;
     x0 := b.x0 + pad; x1 := b.x1 - pad;
