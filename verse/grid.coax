@@ -1,3 +1,4 @@
+#load "../coax/lib/quantity.coax" as quantities;
 // The Grid: the bare Verse world, as aethyr-cpp's src/grid.cpp draws it. A
 // ground of lines every 4 m out to 264 m, brighter on the street lines every
 // 24 m, fading into the black field from 6 m to 110 m, with a ring at your
@@ -55,7 +56,7 @@ Vec3 :: struct { x: f32; y: f32; z: f32; }
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
-smooth :: (a: f32, b: f32, x: f32) -> f32 { t := clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); }
+smooth :: (a: quantities.Quantity(quantities.Metre,f32), b: quantities.Quantity(quantities.Metre,f32), x: quantities.Quantity(quantities.Metre,f32)) -> f32 { t := clamp((x - a).value / (b - a).value, 0, 1); return t * t * (3 - 2 * t); }
 v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
 sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
 dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }
@@ -134,7 +135,7 @@ piece :: (c: Camera, a: Vec3, b: Vec3) -> Piece {
 // ---- The ground ----
 
 // How much of a line's light the fog leaves at this distance from the eye.
-fog :: (d: f32) -> f32 { return 1 - smooth(FOG_START, FOG_END, d); }
+fog :: (d: f32) -> f32 { return 1 - smooth(quantities.Quantity.{value=FOG_START}, quantities.Quantity.{value=FOG_END}, quantities.Quantity.{value=d}); }
 
 // Line i sits at i * SPACING; the street lines are the ones midway between
 // 24 m lots, at 12 m plus a multiple of 24.

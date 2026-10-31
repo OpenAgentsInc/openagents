@@ -1,0 +1,45 @@
+{
+  "schema": "coax-parser-quantity-mutation-scope-v1",
+  "source": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/compiler/parser.coax",
+  "source_sha256": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+  "entry": "/tmp/r12-parser-quantity-capsule/entry.coax",
+  "dependency": "/tmp/r12-parser-quantity-capsule/parser-dependency.coax",
+  "root_sha256": "c8ffa1e76d4397be06c733600c2cb8361bf4de8df52920377d0e8cf973fa8a1f",
+  "dependency_sha256": "2eeda6e02364462c8564ced6914c7c25f5d87e5cdf5603263da33822092661c2",
+  "procedures": {
+    "PS_struct": "40029d0b09113a7e7d9b4e2ff92998830178235234636d2a5fa3058c28bb476e",
+    "PS_quantity": "5f816b77554c40bcc382ec9ffc5bd8a8b4a13fce1c21ab46d098334c3ab056fc"
+  },
+  "scope": "Only exact PS_struct and PS_quantity procedure bodies in root; complete original parser source and every check retained in dependency. No equivalent waivers.",
+  "date": "2026-10-31",
+  "compiler": "/tmp/coax-effects-040-build/coax",
+  "compiler_sha256": "fe2a8269257f87010f9a65df929f7856ed299db7df4395e8b65acee26f1763e2",
+  "command": [
+    "/tmp/coax-effects-040-build/coax",
+    "mutate",
+    "/tmp/r12-parser-quantity-capsule/entry.coax",
+    "--root-only",
+    "--jobs",
+    "8"
+  ],
+  "checks_retained": 194,
+  "new_checks": 6,
+  "new_cases": 35,
+  "root_mutants": 71,
+  "killed": 71,
+  "survived": 0,
+  "no_equivalent_waivers": true,
+  "mutation_log": "/tmp/r12-parser-quantity-capsule/mutation-first.log",
+  "mutation_log_sha256": "c17aa6b449052dab1d0cdc54453df4667f56db315b728f5e9780dac9a8a30da1",
+  "passed": true,
+  "product_body_changed": false,
+  "capsule_construction": "Remove exactly the PS_struct and PS_quantity definitions from the complete parser source, retaining every other byte and every original/new check in the dependency. Root loads that dependency, declares authority and contains the exact original bodies. Only root-source mutation sites are enumerated.",
+  "coverage": [
+    "All six nonzero signed metadata fields across six field-order rotations.",
+    "Signed literal boundary 1048576 accepted and 1048577 refused.",
+    "Unknown/duplicate/missing names; every field can be recognized as repeated.",
+    "Wrong identifier/value token kinds and missing delimiters; first diagnostic and original source location retained.",
+    "Generic builtin quantities and ordinary fields route through PS_struct; directives and unknown annotations refuse."
+  ],
+  "qualification_limit": "Changed parser procedures only; no full unchanged parser mutation, native parser oracle or compiler bootstrap qualification was repeated."
+}

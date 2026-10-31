@@ -1,0 +1,230 @@
+{
+  "schema": "coax-quantity-assembly-v1",
+  "date": "2026-10-31",
+  "passed": true,
+  "target": "Mach-O arm64",
+  "host_c_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "coax_compiler_sha256": "f6be0537ef9a6071a2b71ddcdc23f73756ba89094f0e9ac672b4206b9e7bb2f1",
+  "typed_generated_c_sha256": "f45375017775fbc01a01a930640ace8cf0deb03abc0e297e286a624c3da8dec7",
+  "raw_generated_c_sha256": "630d0b7abfa6a45f38ba341c07c8b142ec73b2f4cafdc52a5a402a5fa652f095",
+  "native_receipt": "coax-quantity-native-2026-10-31.json",
+  "method": "Compile the already-qualified typed/raw generated C to assembly with matching native-profile flags; assemble those exact .s files into separate objects; use llvm-objdump --disassemble-symbols=_QN_pure32,_QN_pure64. Strip object addresses/symbol headers only when comparing instruction words. Machine-code bytes are compared exactly; no opcode/register/immediate normalization. Assembly debug source directives/comments/local-label spellings are outside the extracted instruction sequence.",
+  "native_cases_reexecuted": false,
+  "modes": {
+    "debug": {
+      "c_flags": [
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-ffp-contract=off",
+        "-fno-fast-math"
+      ],
+      "commands": [
+        [
+          "cc",
+          "-std=c11",
+          "-O0",
+          "-g",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-S",
+          "/tmp/coax-quantity-native/quantity.c",
+          "-o",
+          "/tmp/coax-quantity-native/quantity-debug.s"
+        ],
+        [
+          "cc",
+          "-c",
+          "/tmp/coax-quantity-native/quantity-debug.s",
+          "-o",
+          "/tmp/coax-quantity-native/quantity-debug.o"
+        ],
+        [
+          "xcrun",
+          "llvm-objdump",
+          "--disassemble-symbols=_QN_pure32,_QN_pure64",
+          "/tmp/coax-quantity-native/quantity-debug.o"
+        ],
+        [
+          "cc",
+          "-std=c11",
+          "-O0",
+          "-g",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-S",
+          "/tmp/coax-quantity-native/raw.c",
+          "-o",
+          "/tmp/coax-quantity-native/raw-debug.s"
+        ],
+        [
+          "cc",
+          "-c",
+          "/tmp/coax-quantity-native/raw-debug.s",
+          "-o",
+          "/tmp/coax-quantity-native/raw-debug.o"
+        ],
+        [
+          "xcrun",
+          "llvm-objdump",
+          "--disassemble-symbols=_QN_pure32,_QN_pure64",
+          "/tmp/coax-quantity-native/raw-debug.o"
+        ]
+      ],
+      "whole_assembly_equal": false,
+      "whole_object_equal": false,
+      "typed_object_file_bytes": 15008,
+      "raw_object_file_bytes": 2400,
+      "functions": {
+        "_QN_pure32": {
+          "instruction_count": 13,
+          "instruction_body_bytes": 52,
+          "exact_instruction_words_equal": true,
+          "exact_instruction_text_equal_without_addresses": true,
+          "machine_code_sha256": "ae1f72bcd2b875e2c9b581e8bc65d5d171dff22e2374659b5dcaf7e36486a10f",
+          "instructions": [
+            "sub sp, sp, #0x10",
+            "str s0, [sp, #0xc]",
+            "str s1, [sp, #0x8]",
+            "str s2, [sp, #0x4]",
+            "ldr s0, [sp, #0xc]",
+            "ldr s1, [sp, #0x8]",
+            "fadd s0, s0, s1",
+            "ldr s1, [sp, #0x4]",
+            "fmul s0, s0, s1",
+            "ldr s1, [sp, #0x8]",
+            "fsub s0, s0, s1",
+            "add sp, sp, #0x10",
+            "ret"
+          ]
+        },
+        "_QN_pure64": {
+          "instruction_count": 13,
+          "instruction_body_bytes": 52,
+          "exact_instruction_words_equal": true,
+          "exact_instruction_text_equal_without_addresses": true,
+          "machine_code_sha256": "802321d9e141691b31ccd320a0c128357c8dc3e740458de8b8aa822d0eb2b613",
+          "instructions": [
+            "sub sp, sp, #0x20",
+            "str d0, [sp, #0x18]",
+            "str d1, [sp, #0x10]",
+            "str d2, [sp, #0x8]",
+            "ldr d0, [sp, #0x18]",
+            "ldr d1, [sp, #0x10]",
+            "fadd d0, d0, d1",
+            "ldr d1, [sp, #0x8]",
+            "fmul d0, d0, d1",
+            "ldr d1, [sp, #0x10]",
+            "fsub d0, d0, d1",
+            "add sp, sp, #0x20",
+            "ret"
+          ]
+        }
+      },
+      "quantity_object_sha256": "71081a583dee987fba12c70de6c8f7b391d8bbd89c6fda72981549b59e538a5c",
+      "quantity_assembly_sha256": "ba576c783f06c22c731a1c78e17102d4b21b155357eb862b3152885fa4d2c071",
+      "raw_object_sha256": "7b340f68bdb48afbc19b696164dce4f8a0e6ae1e9b21ad6414a62f23aa4112b3",
+      "raw_assembly_sha256": "6f9daa43e5865ec70e2170752b568aaa82b87255e5ed4ddee58e9e6446cf4d61"
+    },
+    "release": {
+      "c_flags": [
+        "-std=c11",
+        "-O2",
+        "-ffp-contract=off",
+        "-fno-fast-math"
+      ],
+      "commands": [
+        [
+          "cc",
+          "-std=c11",
+          "-O2",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-S",
+          "/tmp/coax-quantity-native/quantity.c",
+          "-o",
+          "/tmp/coax-quantity-native/quantity-release.s"
+        ],
+        [
+          "cc",
+          "-c",
+          "/tmp/coax-quantity-native/quantity-release.s",
+          "-o",
+          "/tmp/coax-quantity-native/quantity-release.o"
+        ],
+        [
+          "xcrun",
+          "llvm-objdump",
+          "--disassemble-symbols=_QN_pure32,_QN_pure64",
+          "/tmp/coax-quantity-native/quantity-release.o"
+        ],
+        [
+          "cc",
+          "-std=c11",
+          "-O2",
+          "-ffp-contract=off",
+          "-fno-fast-math",
+          "-S",
+          "/tmp/coax-quantity-native/raw.c",
+          "-o",
+          "/tmp/coax-quantity-native/raw-release.s"
+        ],
+        [
+          "cc",
+          "-c",
+          "/tmp/coax-quantity-native/raw-release.s",
+          "-o",
+          "/tmp/coax-quantity-native/raw-release.o"
+        ],
+        [
+          "xcrun",
+          "llvm-objdump",
+          "--disassemble-symbols=_QN_pure32,_QN_pure64",
+          "/tmp/coax-quantity-native/raw-release.o"
+        ]
+      ],
+      "whole_assembly_equal": false,
+      "whole_object_equal": false,
+      "typed_object_file_bytes": 4264,
+      "raw_object_file_bytes": 608,
+      "functions": {
+        "_QN_pure32": {
+          "instruction_count": 4,
+          "instruction_body_bytes": 16,
+          "exact_instruction_words_equal": true,
+          "exact_instruction_text_equal_without_addresses": true,
+          "machine_code_sha256": "bd1e7571f374f270ab1e3da06290746e47f4999db2b00aca341eb5af4a9169f7",
+          "instructions": [
+            "fadd s0, s0, s1",
+            "fmul s0, s0, s2",
+            "fsub s0, s0, s1",
+            "ret"
+          ]
+        },
+        "_QN_pure64": {
+          "instruction_count": 4,
+          "instruction_body_bytes": 16,
+          "exact_instruction_words_equal": true,
+          "exact_instruction_text_equal_without_addresses": true,
+          "machine_code_sha256": "7af8dc170d606b63e2563a358a71b76a8faca08bdaf83c632cdd76ae9bb3181b",
+          "instructions": [
+            "fadd d0, d0, d1",
+            "fmul d0, d0, d2",
+            "fsub d0, d0, d1",
+            "ret"
+          ]
+        }
+      },
+      "quantity_object_sha256": "537d9bafb388f59b2a57669e9454b755692f5bf022c55d6cefe32e3a252ab880",
+      "quantity_assembly_sha256": "0b4e3273d40696a6506f1d8e0295127d2ed1cd898a9f8bf9d1e1a55126ae0340",
+      "raw_object_sha256": "c2a6fb2a01c23f654ea90d5920fe7da2ee3fd73d12833efe69287ac9e5242c76",
+      "raw_assembly_sha256": "8a595dd3cd74e7d96125e4388e7fac45718d22ca60d1fdad10776260ce226617"
+    }
+  },
+  "limits": [
+    "Only the two homologous no-conversion scalar expressions (a+b)*factor-b are compared, separately for f32/f64.",
+    "Their instruction bodies have no calls or PC-relative external dependencies; object placement differs and is excluded from the per-function comparison.",
+    "Whole generated C, assembly files, object sizes/layouts, debug metadata and symbol addresses differ. This is not whole-module byte identity or a full R12 code-cost proof.",
+    "No conversion operators, additional quantity expressions, other targets or runtime timing are qualified by this assembly comparison."
+  ]
+}

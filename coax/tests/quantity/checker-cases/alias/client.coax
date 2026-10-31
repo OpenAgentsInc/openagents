@@ -1,0 +1,1 @@
+#module "test.quantity.client"; #load "units.coax" as u; f :: (a:u.Quantity(u.HalfMetre,f32))->u.Quantity(u.Metre,f32) #export_c {return convert_unit(u.Metre,a);}

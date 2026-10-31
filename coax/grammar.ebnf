@@ -27,7 +27,9 @@ procedure = identifier, "::", "(", [ parameters ], ")",
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
-struct = identifier, "::", "struct", [ struct-parameters ], field-block ;
+struct = identifier, "::", "struct", [ struct-parameters ], [ quantity-annotation ], field-block ;
+quantity-annotation = "@builtin_quantity" | "@unit", "(", unit-argument, { ",", unit-argument }, ")" ;
+unit-argument = identifier, "=", [ "-" ], integer ;
 struct-parameters = "(", type-parameter, { ",", type-parameter }, ")" ;
 (* Each parameter is listed once as $NAME. Use as a field's array length
    determines a length parameter; other uses determine a type parameter. *)

@@ -123,6 +123,7 @@ static void attach_check_input(File *file,const std::vector<coax_t_PS_Node> &nod
   for(int64_t id=0;id<=used;id++){
     const auto &v=nodes[(size_t)id];auto &n=input->nodes[(size_t)id];n.kind=v.kind;n.loc=checked_loc(v.loc);n.name=v.name;n.name2=v.name2;n.loc2=checked_loc(v.loc2);
     n.a=v.a;n.b=v.b;n.c=v.c;n.d=v.d;n.head=v.head;n.tail=v.tail;n.next=v.next;n.op=v.op;n.flag=v.flag;n.flag2=v.flag2;n.value=v.value;memcpy(&n.floating,&v.floating,8);n.field_index=-1;n.skip_authority=!file->src->units.empty() && !source_authority(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset});
+    n.quantity=v.quantity;n.unit={v.unit.e[0],v.unit.e[1],v.unit.e[2],v.unit.e[3],v.unit.e[4],v.unit.e[5]};
     n.scope=module_scope(input.get(),source_unit_at(file->src,Loc{(int32_t)v.loc.line,(int32_t)v.loc.column,(int32_t)v.loc.offset}));
     if(v.kind==17 && v.width)n.type=v.width==32?6:7;if(v.kind==69)n.field_index=0;
   }
@@ -135,7 +136,7 @@ bool check(Arena *arena,File *file){
   std::vector<coax_t_CK_Error> errors((size_t)caps.errors);std::vector<uint8_t> bytes((size_t)caps.bytes);coax_t_CK_State state{};
   coax_t_CK_Context context{{input->nodes.data(),(int64_t)input->nodes.size()},{records.data(),(int64_t)records.size()},{locals.data(),(int64_t)locals.size()},{errors.data(),(int64_t)errors.size()},{bytes.data(),(int64_t)bytes.size()},{&state,1},
     {input->module_names.data(),(int64_t)input->module_names.size()},{input->aliases.data(),(int64_t)input->aliases.size()},{input->exports.data(),(int64_t)input->exports.size()}};
-  const bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority});
+  const bool ok=CK_run(context,input->used,{file->library,file->metal,file->authority,file->quantity_device});
   if(ok)CK_lower_effects(context);
   for(int64_t i=0;i<state.error_count;i++){const auto &d=errors[(size_t)i];error_at(file->src,checked_loc(d.loc),checked_text(d.code).c_str(),checked_text(d.message),checked_text(d.fix));}
   if(!ok){if(!state.error_count)error_at(file->src,{1,1,0},"E0381","type checker storage budget rejected");return false;}
@@ -146,6 +147,7 @@ bool check(Arena *arena,File *file){
   g_composite_list.clear();
   for(int64_t i=16;i<state.type_count;i++){
     const auto &r=records[(size_t)i];auto *t=types[(size_t)i];t->kind=(TypeKind)r.kind;t->name=checked_text(r.name);t->size=(int32_t)r.size;t->align=(int32_t)r.alignment;t->bits=(int32_t)r.bits;t->is_signed=r.is_signed;t->length=r.length;t->id=(int32_t)r.id;t->scope=(int32_t)r.scope;t->elem=types[(size_t)r.elem];
+    t->physical=r.carrier?types[(size_t)r.carrier]:nullptr;
     if(r.kind==COAX_CK_Kind_struct_)t->struct_decl=checked_ref<StructDecl>(objects,r.decl);
     if(r.kind==COAX_CK_Kind_enum_)t->enum_decl=checked_ref<EnumDecl>(objects,r.decl);
   }

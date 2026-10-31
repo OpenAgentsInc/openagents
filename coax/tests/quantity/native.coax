@@ -1,0 +1,48 @@
+// Owned programs for transparent quantity native ABI qualification.
+QN_Metre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+QN_HalfMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=2) {}
+QN_Second :: struct @unit(mass=0,length=0,time=1,angle=0,numerator=1,denominator=1) {}
+QN_Small :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1048576) {}
+QN_Big :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1048576,denominator=1) {}
+Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
+QN_add32 :: (a:Quantity(QN_Metre,f32),b:Quantity(QN_Metre,f32))->Quantity(QN_Metre,f32) #export_c {return a+b;}
+QN_sub32 :: (a:Quantity(QN_Metre,f32),b:Quantity(QN_Metre,f32))->Quantity(QN_Metre,f32) #export_c {return a-b;}
+QN_mul32 :: (a:Quantity(QN_Metre,f32),factor:f32)->Quantity(QN_Metre,f32) #export_c {return a*factor;}
+QN_left32 :: (factor:f32,a:Quantity(QN_Metre,f32))->Quantity(QN_Metre,f32) #export_c {return factor*a;}
+QN_div32 :: (a:Quantity(QN_Metre,f32),factor:f32)->Quantity(QN_Metre,f32) #export_c {return a/factor;}
+QN_half_to_m32 :: (a:Quantity(QN_HalfMetre,f32))->Quantity(QN_Metre,f32) #export_c {return convert_unit(QN_Metre,a);}
+QN_m_to_half32 :: (a:Quantity(QN_Metre,f32))->Quantity(QN_HalfMetre,f32) #export_c {return convert_unit(QN_HalfMetre,a);}
+QN_small_to_big32 :: (a:Quantity(QN_Small,f32))->Quantity(QN_Big,f32) #export_c {return convert_unit(QN_Big,a);}
+QN_big_to_small32 :: (a:Quantity(QN_Big,f32))->Quantity(QN_Small,f32) #export_c {return convert_unit(QN_Small,a);}
+QN_project32 :: (a:Quantity(QN_Metre,f32))->f32 #export_c {return a.value;}
+QN_make32 :: (a:f32)->Quantity(QN_Metre,f32) #export_c {return Quantity.{value=a};}
+QN_pure32 :: (a:Quantity(QN_Metre,f32),b:Quantity(QN_Metre,f32),factor:f32)->Quantity(QN_Metre,f32) #export_c {return (a+b)*factor-b;}
+QN_compare32 :: (a:Quantity(QN_Metre,f32),b:Quantity(QN_Metre,f32))->u32 #export_c {out:u32=0;if a==b {out|=1;}if a!=b {out|=2;}if a<b {out|=4;}if a<=b {out|=8;}if a>b {out|=16;}if a>=b {out|=32;}return out;}
+QN_add64 :: (a:Quantity(QN_Metre,f64),b:Quantity(QN_Metre,f64))->Quantity(QN_Metre,f64) #export_c {return a+b;}
+QN_sub64 :: (a:Quantity(QN_Metre,f64),b:Quantity(QN_Metre,f64))->Quantity(QN_Metre,f64) #export_c {return a-b;}
+QN_mul64 :: (a:Quantity(QN_Metre,f64),factor:f64)->Quantity(QN_Metre,f64) #export_c {return a*factor;}
+QN_left64 :: (factor:f64,a:Quantity(QN_Metre,f64))->Quantity(QN_Metre,f64) #export_c {return factor*a;}
+QN_div64 :: (a:Quantity(QN_Metre,f64),factor:f64)->Quantity(QN_Metre,f64) #export_c {return a/factor;}
+QN_half_to_m64 :: (a:Quantity(QN_HalfMetre,f64))->Quantity(QN_Metre,f64) #export_c {return convert_unit(QN_Metre,a);}
+QN_m_to_half64 :: (a:Quantity(QN_Metre,f64))->Quantity(QN_HalfMetre,f64) #export_c {return convert_unit(QN_HalfMetre,a);}
+QN_small_to_big64 :: (a:Quantity(QN_Small,f64))->Quantity(QN_Big,f64) #export_c {return convert_unit(QN_Big,a);}
+QN_big_to_small64 :: (a:Quantity(QN_Big,f64))->Quantity(QN_Small,f64) #export_c {return convert_unit(QN_Small,a);}
+QN_project64 :: (a:Quantity(QN_Metre,f64))->f64 #export_c {return a.value;}
+QN_make64 :: (a:f64)->Quantity(QN_Metre,f64) #export_c {return Quantity.{value=a};}
+QN_pure64 :: (a:Quantity(QN_Metre,f64),b:Quantity(QN_Metre,f64),factor:f64)->Quantity(QN_Metre,f64) #export_c {return (a+b)*factor-b;}
+QN_compare64 :: (a:Quantity(QN_Metre,f64),b:Quantity(QN_Metre,f64))->u32 #export_c {out:u32=0;if a==b {out|=1;}if a!=b {out|=2;}if a<b {out|=4;}if a<=b {out|=8;}if a>b {out|=16;}if a>=b {out|=32;}return out;}
+QN_Nested :: struct {prefix:u8;distance:Quantity(QN_Metre,f32);elapsed:Quantity(QN_Second,f64);tail:u16;}
+QN_Arrays :: struct {distances:[3]Quantity(QN_Metre,f32);durations:[2]Quantity(QN_Second,f64);}
+QN_nested :: (v:QN_Nested)->QN_Nested #export_c {return v;}
+QN_arrays :: (v:QN_Arrays)->QN_Arrays #export_c {return v;}
+QN_array_sum :: (v:[3]Quantity(QN_Metre,f32))->Quantity(QN_Metre,f32) #export_c {return v[0]+v[1]+v[2];}
+QN_view_sum :: (v:[]Quantity(QN_Metre,f32))->Quantity(QN_Metre,f32) #export_c {sum:Quantity(QN_Metre,f32);for x:v {sum=sum+x;}return sum;}
+QN_raw_array_sum :: (v:[3]f32)->f32 #export_c {return v[0]+v[1]+v[2];}
+QN_raw_view_sum :: (v:[]f32)->f32 #export_c {sum:f32;for x:v {sum+=x;}return sum;}
+QN_tick :: (id:int)->Quantity(QN_Metre,f32) #foreign;
+QN_scalar_tick :: (id:int)->f32 #foreign;
+QN_ordered :: ()->f32 #export_c {r:=QN_tick(1)+QN_tick(2)*QN_scalar_tick(3);return convert_unit(QN_HalfMetre,r).value;}
+QN_ordered_left :: ()->f32 #export_c {r:=QN_scalar_tick(1)*QN_tick(2)+QN_tick(3);return r.value;}
+QN_convert_once :: ()->f32 #export_c {return convert_unit(QN_HalfMetre,QN_tick(4)).value;}
+QN_echo :: (v:Quantity(QN_Metre,f32))->Quantity(QN_Metre,f32) #foreign;
+QN_foreign32 :: (v:Quantity(QN_Metre,f32))->Quantity(QN_Metre,f32) #export_c {return QN_echo(v);}

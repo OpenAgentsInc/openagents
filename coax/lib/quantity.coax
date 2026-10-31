@@ -1,0 +1,9 @@
+#module "coax.quantity";
+#export Kilogram, Metre, HalfMetre, Second, Radian, Quantity;
+
+Kilogram :: struct @unit(mass=1,length=0,time=0,angle=0,numerator=1,denominator=1) {}
+Metre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+HalfMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=2) {}
+Second :: struct @unit(mass=0,length=0,time=1,angle=0,numerator=1,denominator=1) {}
+Radian :: struct @unit(mass=0,length=0,time=0,angle=1,numerator=1,denominator=1) {}
+Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}

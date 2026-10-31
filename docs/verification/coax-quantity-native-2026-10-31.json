@@ -1,0 +1,295 @@
+{
+  "schema": "coax-quantity-native-v1",
+  "compiler": "/private/tmp/coax-quantity-native/coax-frozen",
+  "compiler_sha256": "f6be0537ef9a6071a2b71ddcdc23f73756ba89094f0e9ac672b4206b9e7bb2f1",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "cases_f32": 832,
+  "cases_f64": 832,
+  "comparisons_per_mode": 24139,
+  "input_sha256": "0794bbf7a4025ad90f8d4d745849cc9f81435b13ccf73d17daaf4fa80c49a686",
+  "oracle": "Independently written raw-C volatile scalar operations, six IEEE comparisons and ldexpf/ldexp binary scaling.",
+  "profile": "Host IEEE arithmetic in round-to-nearest, no fast math or contraction. Compare all non-NaN bits, including signed zero, subnormals and infinities; compare NaNs by classification and canonicalize transcript NaNs. No finite-result, NaN-payload, exception-flag or cross-platform guarantee.",
+  "scope": "Transparent scalar/nested/array/view ABI, built-in quantity arithmetic and binary scale conversion, plus exactly-once source-order foreign calls. Not full R12 units/frames or bootstrap qualification.",
+  "modes": [
+    {
+      "mode": "debug",
+      "passed": true,
+      "output_sha256": "01f85354c27d20cfdbce02de68f1fb8c396558eb391f0e6ffd0b146fc9709926",
+      "stdout": "quantity native: 832 f32 cases, 832 f64 cases, 24139 comparisons, transparent scalar/nested/array/view ABI and ordered single evaluation"
+    },
+    {
+      "mode": "release",
+      "passed": true,
+      "output_sha256": "01f85354c27d20cfdbce02de68f1fb8c396558eb391f0e6ffd0b146fc9709926",
+      "stdout": "quantity native: 832 f32 cases, 832 f64 cases, 24139 comparisons, transparent scalar/nested/array/view ABI and ordered single evaluation"
+    },
+    {
+      "mode": "sanitized",
+      "passed": true,
+      "output_sha256": "01f85354c27d20cfdbce02de68f1fb8c396558eb391f0e6ffd0b146fc9709926",
+      "stdout": "quantity native: 832 f32 cases, 832 f64 cases, 24139 comparisons, transparent scalar/nested/array/view ABI and ordered single evaluation"
+    }
+  ],
+  "commands": [
+    {
+      "name": "version",
+      "arguments": [
+        "/private/tmp/coax-quantity-native/coax-frozen",
+        "version"
+      ],
+      "elapsed_seconds": 0.47017200000118464,
+      "exit": 0
+    },
+    {
+      "name": "cc-version",
+      "arguments": [
+        "cc",
+        "--version"
+      ],
+      "elapsed_seconds": 0.06449766596779227,
+      "exit": 0
+    },
+    {
+      "name": "quantity-c",
+      "arguments": [
+        "/private/tmp/coax-quantity-native/coax-frozen",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/native.coax",
+        "--library",
+        "--header",
+        "/tmp/coax-quantity-native/quantity-native.h"
+      ],
+      "elapsed_seconds": 0.027122166997287422,
+      "exit": 0
+    },
+    {
+      "name": "raw-c",
+      "arguments": [
+        "/private/tmp/coax-quantity-native/coax-frozen",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/native-raw.coax",
+        "--library"
+      ],
+      "elapsed_seconds": 0.018983749963808805,
+      "exit": 0
+    },
+    {
+      "name": "compile-debug",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-unused-variable",
+        "-Wno-misleading-indentation",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I/tmp/coax-quantity-native",
+        "/tmp/coax-quantity-native/quantity.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity-native.c",
+        "-lm",
+        "-o",
+        "/tmp/coax-quantity-native/debug"
+      ],
+      "elapsed_seconds": 0.19208662497112527,
+      "exit": 1
+    },
+    {
+      "name": "compile-debug",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-unused-variable",
+        "-Wno-unused-parameter",
+        "-Wno-misleading-indentation",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I/tmp/coax-quantity-native",
+        "/tmp/coax-quantity-native/quantity.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity-native.c",
+        "-lm",
+        "-o",
+        "/tmp/coax-quantity-native/debug"
+      ],
+      "elapsed_seconds": 0.2794150419649668,
+      "exit": 0
+    },
+    {
+      "name": "run-debug",
+      "arguments": [
+        "/tmp/coax-quantity-native/debug",
+        "/tmp/coax-quantity-native/cases.bin",
+        "/tmp/coax-quantity-native/debug.bin"
+      ],
+      "elapsed_seconds": 0.2899408749653958,
+      "exit": 0
+    },
+    {
+      "name": "compile-release",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-unused-variable",
+        "-Wno-unused-parameter",
+        "-Wno-misleading-indentation",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I/tmp/coax-quantity-native",
+        "/tmp/coax-quantity-native/quantity.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity-native.c",
+        "-lm",
+        "-o",
+        "/tmp/coax-quantity-native/release"
+      ],
+      "elapsed_seconds": 0.3963063749833964,
+      "exit": 0
+    },
+    {
+      "name": "run-release",
+      "arguments": [
+        "/tmp/coax-quantity-native/release",
+        "/tmp/coax-quantity-native/cases.bin",
+        "/tmp/coax-quantity-native/release.bin"
+      ],
+      "elapsed_seconds": 0.4429869999876246,
+      "exit": 0
+    },
+    {
+      "name": "compile-sanitized",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-omit-frame-pointer",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-Wno-unused-function",
+        "-Wno-unused-variable",
+        "-Wno-unused-parameter",
+        "-Wno-misleading-indentation",
+        "-ffp-contract=off",
+        "-fno-fast-math",
+        "-I/tmp/coax-quantity-native",
+        "/tmp/coax-quantity-native/quantity.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity-native.c",
+        "-lm",
+        "-o",
+        "/tmp/coax-quantity-native/sanitized"
+      ],
+      "elapsed_seconds": 0.474260792019777,
+      "exit": 0
+    },
+    {
+      "name": "run-sanitized",
+      "arguments": [
+        "/tmp/coax-quantity-native/sanitized",
+        "/tmp/coax-quantity-native/cases.bin",
+        "/tmp/coax-quantity-native/sanitized.bin"
+      ],
+      "elapsed_seconds": 0.6633856669650413,
+      "exit": 0
+    }
+  ],
+  "compiler_version": "coax0 0.40.0",
+  "c_compiler_version": "Apple clang version 21.0.0 (clang-2100.1.1.101)\nTarget: arm64-apple-darwin25.4.0\nThread model: posix\nInstalledDir: /Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/bin\n",
+  "code_comparison": {
+    "full_generated_c_equal": false,
+    "limit": "Whole C files include different source paths, semantic declarations and metadata; no full byte-equality claim. Homologous no-conversion exported functions are compared separately.",
+    "functions": {
+      "QN_pure32": {
+        "exact_without_source_line_directives": true,
+        "whitespace_normalized_equal": true,
+        "quantity_sha256": "182ed83966f21759087624b1c530344eefc11f3acf9e09e58373f02eea854da7",
+        "raw_sha256": "182ed83966f21759087624b1c530344eefc11f3acf9e09e58373f02eea854da7"
+      },
+      "QN_pure64": {
+        "exact_without_source_line_directives": true,
+        "whitespace_normalized_equal": true,
+        "quantity_sha256": "1a6048e0a390c01215d0ecb576b1258789c78c129edf293dc6959f5ffb37fa35",
+        "raw_sha256": "1a6048e0a390c01215d0ecb576b1258789c78c129edf293dc6959f5ffb37fa35"
+      }
+    }
+  },
+  "source_sha256": {
+    "coax/tests/quantity/native.coax": "e8de56478560869548034039c05a45a9dce37b96adca656869db02c5eff0d375",
+    "coax/tests/quantity/native-raw.coax": "145b486a294475cd915f9e9e473c73b6765c746f845778293cd31a79ad5a198d",
+    "coax/tests/quantity-native.c": "5c9d524c184b34b716c65f1e528493bf258f8c12e036b36edbd09313a4c143c3",
+    "coax/tests/quantity_native.py": "22ac02ee52f9fd822bb401909f6d973bc274d724d1f50d9c3ff8ed472bc1ef9b",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+  },
+  "generated_c_sha256": "f45375017775fbc01a01a930640ace8cf0deb03abc0e297e286a624c3da8dec7",
+  "generated_header_sha256": "65c0af8c2bacd8130b50c8043c124296c8278ac24c5be4ba72dc199a3eb86e65",
+  "abi": {
+    "scalar_function_pointer_checks": true,
+    "nested_size_alignment_offsets": true,
+    "quantity_array_matches_raw_array_parameter": true,
+    "quantity_view_matches_raw_view_parameter": true,
+    "ordered_tick_trace": [
+      1,
+      2,
+      3
+    ],
+    "ordered_tick_result": 28.0,
+    "ordered_raw_left_tick_trace": [
+      1,
+      2,
+      3
+    ],
+    "ordered_raw_left_result": 10.0,
+    "conversion_single_tick_trace": [
+      4
+    ],
+    "conversion_single_tick_result": 10.0,
+    "measured_layout": {
+      "nested": {
+        "size": 24,
+        "alignment": 8,
+        "prefix": 0,
+        "distance": 4,
+        "elapsed": 8,
+        "tail": 16
+      },
+      "arrays": {
+        "size": 32,
+        "alignment": 8,
+        "distances": 0,
+        "durations": 16
+      },
+      "array_f32x3": {
+        "size": 12,
+        "alignment": 4
+      },
+      "view_f32": {
+        "size": 16,
+        "alignment": 8,
+        "data": 0,
+        "count": 8
+      }
+    }
+  },
+  "harness_diagnostics": [
+    "Initial compiler rejected quantity foreign signatures, E0376; parent corrected checked foreign eligibility before this passing emitted C.",
+    "Strict extra -Werror initially flagged existing empty-tag print-helper unused parameters; -Wno-unused-parameter was added only to the harness warning profile. Passed C emission was retained, not repeated."
+  ],
+  "passed": true,
+  "provenance_limit": "The parent compiler integration supplies final build/source fingerprint separately. Reuse this native proof for a later compiler only after exact generated C and header comparison."
+}

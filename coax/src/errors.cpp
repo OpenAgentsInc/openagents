@@ -151,6 +151,17 @@ const ErrorInfo ERRORS[] = {
     {"E0387", "C cannot spell a module collision", "Two modules may each declare a name, and their private C spellings are qualified. An #export_c or #foreign symbol, or a type in a C library header, is one global C name, so a collision there is refused, never merged. Rename one."},
     {"E0388", "alias is not reexported", "alias.Name cannot name another module's alias. Load the module you mean here with its own alias."},
 
+    {"E0820", "invalid unit annotation", "@unit takes all six literal metadata fields and annotates an empty nongeneric tag. Exponents are -8..8 and positive rational factors are 1..1048576. An annotation is checked metadata, not runtime storage."},
+    {"E0821", "invalid quantity family or carrier", "@builtin_quantity requires two parameters and a single value field of the second numeric parameter, with no default. Concrete units must carry @unit metadata; the initial carrier profile is f32 or f64."},
+    {"E0822", "quantity units differ", "Addition, subtraction and comparison require the same nominal unit. Write an explicit supported convert_unit(TargetUnit, value); equal dimensions do not imply an implicit conversion."},
+    {"E0823", "quantity representations differ", "Quantity arithmetic and scalar scaling use one f32 or f64 carrier. Convert the raw representation explicitly before constructing a different quantity carrier."},
+    {"E0824", "quantity operator is outside the initial profile", "The initial profile admits matching quantity addition/subtraction/comparison and dimensionless scalar scaling. Quantity products, quotients, compound updates and affine/frame operators remain pending."},
+    {"E0825", "invalid explicit quantity conversion", "convert_unit takes a concrete declared target unit and one quantity with matching mass/length/time/angle dimensions. Initial conversions require concrete unit metadata."},
+    {"E0826", "unit ratio needs a later rounding profile", "The initial conversion profile admits only an exact power-of-two scale ratio. Normal representable results are exact; subnormal rounding and overflow follow carrier IEEE arithmetic. Other unit ratios are refused."},
+    {"E0827", "quantity reflection is not in schema1", "Transparent quantities erase to scalar C carriers. Existing schema1 type_info/field_info records do not describe that semantic-to-physical relation; use size_of and type_name until versioned metadata is qualified."},
+
+    {"E0828", "quantity device profile is unqualified", "This initial quantity slice qualifies transparent scalar carriers on the C backend only. Metal, CUDA, SPIR-V and WGSL quantity output is explicitly refused until its own representation/ABI evidence exists."},
+
     // ---- E04xx: compile-time evaluation ----
     {"E0400", "compile-time resource budget exceeded", "Compile-time evaluation defaults to 100000 shared steps; --run-steps selects a positive limit up to 250000000. Aggregate storage has an independent fixed cap (1572864 value slots, 131072 arrays and structs; coax test and mutate allow 33554432 and 2097152), and the error names which limit, what was needed and the limit. Each #test and #forall has its own budget, 20000000 steps by default (coax test --steps N)."},
     {"E0401", "compile-time code cannot capture a runtime value", "#run code and constants see only constants and their own locals."},

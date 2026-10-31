@@ -179,6 +179,7 @@ struct TypeInfo {
   int64_t length = 0;        // array
   StructDecl *struct_decl = nullptr;
   EnumDecl *enum_decl = nullptr;
+  const TypeInfo *physical = nullptr; // compiler-selected transparent quantity carrier
   int32_t id = 0;            // generated C names for arrays and views
 };
 using Type = const TypeInfo *;
@@ -467,6 +468,7 @@ struct File {
   bool authority = false;  // at least one authored unit requires checked execution
   bool library = false;  // set by the driver: no C main, main optional
   bool metal = false;    // checked against the Metal scalar profile
+  bool quantity_device = false; // observed device-output profile; Coax owns quantity admission
   bool cuda = false;     // checked against the CUDA compute subset
 };
 
@@ -493,6 +495,7 @@ struct EmitOptions {
   bool library = false;  // no C main; #export_c procedures are the interface
   bool metal = false;    // Metal Shading Language instead of C
   bool cuda = false;     // CUDA C for NVRTC: the compute subset (lib/compiler/compute.coax)
+  bool quantity_device = false; // device output is outside initial quantity qualification
   bool metal_compute = false;  // Metal Shading Language compute kernels: the same subset, f64 as float-float
 };
 std::string emit_c(const File *file, const EmitOptions &opts);

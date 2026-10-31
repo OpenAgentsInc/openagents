@@ -1,3 +1,4 @@
+#load "quantity.coax";
 // The checker owns numerical admissibility and literal folding. Encoded IEEE
 // values let checks cover infinities/NaNs without creating evaluator resources.
 #authority;
@@ -173,14 +174,14 @@ CK_Tag :: enum u32 {invalid=0;type_named=1;type_array=2;type_view=3;type_dynamic
 }
 CK_Node :: struct {kind:CK_Tag;loc:CK_Loc;name:string;name2:string;loc2:CK_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:u64;
   type:int;field_index:int= -1;proc:int;constant:int;negative:bool;folded:bool;builtin_print:bool;byte_intrinsic:u32;intrinsic:u32;mark:int;reached:bool;metal_done:bool;metal_active:bool;skip_authority:bool;scope:int;collides:bool;clash:int;effects:u8;own_effects:u8;effects_known:bool;generic:bool;
-  origin:int;pristine:int;chain:int;key:string;}
-CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;}
+  origin:int;pristine:int;chain:int;key:string;quantity:u8;unit:Q_Unit;}
+CK_Type :: struct {kind:CK_Kind;name:string;size:int;alignment:int=1;bits:int;is_signed:bool;elem:int;length:int;decl:int;id:int;scope:int;need:int;carrier:int;unit:int;}
 CK_Local :: struct {name:string;type:int;loc:CK_Loc;immutable:string;local_backing:bool;}
 CK_Error :: struct {loc:CK_Loc;code:string;message:string;fix:string;}
 // Where a type is being resolved, for $T: which procedure owns the type
 // parameters in scope (generic) and whether this position may bind one (site).
 CK_Site :: enum u8 {none;param;result;body;field;}
-CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;clashes:int;generic:int;site:CK_Site;instances:int;instance_tail:int;instance_count:int;}
+CK_State :: struct {used:int;type_count:int;composite_count:int;local_count:int;byte_count:int;error_count:int;current:int;constant_depth:int;loop_depth:int;defer_depth:int;unevaluated:int;basic:bool;depth:int;fatal:bool;metal_depth:int;clashes:int;generic:int;site:CK_Site;instances:int;instance_tail:int;instance_count:int;quantity_device:bool;}
 // Logical module scopes: a node's scope indexes modules (0 is the unowned
 // program); an alias names a target scope from within one scope.
 CK_Alias :: struct {scope:int;name:string;target:int;}
@@ -188,7 +189,7 @@ CK_Alias :: struct {scope:int;name:string;target:int;}
 // its other declarations are private to it.
 CK_Export :: struct {scope:int;name:string;loc:CK_Loc;}
 CK_Context :: struct {nodes:[] CK_Node;types:[] CK_Type;locals:[] CK_Local;errors:[] CK_Error;bytes:[] u8;state:[] CK_State;modules:[] string;aliases:[] CK_Alias;exports:[] CK_Export;}
-CK_Options :: struct {library:bool;metal:bool;authority:bool;}
+CK_Options :: struct {library:bool;metal:bool;authority:bool;quantity_device:bool;}
 CK_Caps :: struct {nodes:int;types:int;locals:int;errors:int;bytes:int;}
 CK_caps :: (nodes:int,source:int)->CK_Caps #export_c {
   if nodes<2 || nodes>2147483646 || source<0 || source>2147483646 {return CK_Caps.{};}
@@ -673,7 +674,7 @@ CK_bind_check :: (c:CK_Context,use:int,kinds:[] CK_Tag,what:string)->bool {
  #assert CK_qualifier(c,2)==ifx variant==0 then 2 else -1;
 }
 CK_local :: (c:CK_Context,name:string)->int {i:=c.state[0].local_count;while i>0 {i-=1;at:=i;if c.locals[at].name==name {return at;}}return -1;}
-CK_builtin_name :: (c:CK_Context,name:string)->bool {return name=="type_name" || name=="field_info" || name=="enum_info" || (c.state[0].basic && name=="print") || name=="len" || name=="byte_at" || CK_intrinsic(name)!=0 || CK_byte_intrinsic(name)!=0;}
+CK_builtin_name :: (c:CK_Context,name:string)->bool {return name=="convert_unit" || name=="type_name" || name=="field_info" || name=="enum_info" || (c.state[0].basic && name=="print") || name=="len" || name=="byte_at" || CK_intrinsic(name)!=0 || CK_byte_intrinsic(name)!=0;}
 CK_intern :: (c:CK_Context,kind:CK_Kind,elem:int,length:int)->int {
   for i:16..<c.state[0].type_count {t:=c.types[i];if t.kind==kind && t.elem==elem && t.length==length {return i;}}
   name:="";size:=16;alignment:=8;
@@ -873,6 +874,7 @@ CK_layout :: (c:CK_Context,id:int) {
   ty:=c.nodes[id].type;rounded:=(offset+alignment-1)/alignment*alignment;if rounded>2147483647 {CK_resource(c,c.nodes[id].loc);return;}c.types[ty].size=rounded;c.types[ty].alignment=alignment;
   if c.types[ty].size==0 {c.types[ty].size=1;}c.nodes[id].mark=2;
   // a template whose fields failed makes no instances, so they are reported once
+  CK_quantity_layout(c,id);
   if c.nodes[id].generic {c.nodes[id].flag2=c.state[0].error_count!=errors;}
 }
 CK_untyped_int :: (c:CK_Context,id:int)->CM_Int {e:=c.nodes[id];return CM_signed_bits(e.value,e.negative);}
@@ -1005,6 +1007,76 @@ CK_cast :: (c:CK_Context,id:int)->int {
     parts:=[5] string.["cannot ",mode,c.types[from].name," to ",c.types[to].name];CK_error(c,e.loc,"E0362",CK_text(c,parts[..]),fix);return CK_NONE;
   }return to;
 }
+CK_quantity_layout :: (c:CK_Context,id:int) {
+  n:=c.nodes[id];if n.quantity==0 {return;}
+  if n.quantity==1 {if n.d!=0 || n.head!=0 || !Q_unit_valid(n.unit) {CK_error(c,n.loc,"E0820","@unit requires an empty nongeneric tag and valid literal metadata","");}return;}
+  origin:=n.origin;if origin==0 {origin=id;}params:=c.nodes[origin].d;field:=n.head;
+  if CK_list_count(c,params)!=2 || CK_list_count(c,field)!=1 || c.nodes[field].name!="value" || c.nodes[field].b!=0 {CK_error(c,n.loc,"E0821","@builtin_quantity requires two parameters and one field value of the representation parameter","");return;}
+  first:=params;second:=c.nodes[first].next;
+  if n.origin==0 {
+    representation:=CK_param_record(c,id,CK_join2(c,"$",c.nodes[second].name));
+    if c.nodes[field].type!=representation || c.types[representation].need!=4 {CK_error(c,n.loc,"E0821","quantity value must use its second, numeric parameter","");}return;
+  }
+  u:=c.types[CK_param_record(c,id,CK_join2(c,"$",c.nodes[first].name))].elem;
+  representation:=c.nodes[field].type;
+  if c.types[u].kind!=CK_Kind.param && (c.types[u].kind!=CK_Kind.struct_ || c.nodes[c.types[u].decl].quantity!=1) {CK_error(c,n.loc,"E0821","quantity unit must be a declared @unit tag","");return;}
+  if representation!=6 && representation!=7 && c.types[representation].kind!=CK_Kind.param {CK_error(c,n.loc,"E0821","quantity representation must be f32 or f64","");return;}
+  if c.state[0].quantity_device {CK_error(c,n.loc,"E0828","transparent quantities are qualified only for the C backend in this milestone","");return;}
+  c.types[n.type].carrier=representation;c.types[n.type].unit=u;
+}
+CK_quantity_raw :: (c:CK_Context,operand:int)->int {
+  ty:=c.nodes[operand].type;if c.types[ty].carrier==0 {return operand;}
+  raw:=CK_new(c,CK_Tag.expr_field,c.nodes[operand].loc);c.nodes[raw].a=operand;c.nodes[raw].name="value";c.nodes[raw].field_index=0;c.nodes[raw].type=c.types[ty].carrier;return raw;
+}
+CK_quantity_wrap :: (c:CK_Context,id:int,raw:int,quantity:int)->int {
+  field:=CK_new(c,CK_Tag.field_init,c.nodes[id].loc);if field==0 {return 0;}c.nodes[field].name="value";c.nodes[field].field_index=0;c.nodes[field].a=raw;
+  old:=c.nodes[id];c.nodes[id]=CK_Node.{kind=CK_Tag.expr_struct,loc=old.loc,next=old.next,head=field,tail=field,type=quantity,mark=1};return quantity;
+}
+CK_quantity_binary :: (c:CK_Context,id:int,a:int,b:int)->int {
+  e:=c.nodes[id];left:=c.types[a].carrier!=0;right:=c.types[b].carrier!=0;ar:=a;br:=b;if left {ar=c.types[a].carrier;}if right {br=c.types[b].carrier;}
+  op:Q_Op;
+  if e.op>=34 && e.op<=37 {ops:=[4]Q_Op.[Q_Op.add,Q_Op.sub,Q_Op.mul,Q_Op.div];op=ops[cast(int)e.op-34];}
+  else if e.op>=44 && e.op<=49 {ops:=[6]Q_Op.[Q_Op.eq,Q_Op.ne,Q_Op.lt,Q_Op.le,Q_Op.gt,Q_Op.ge];op=ops[cast(int)e.op-44];}
+  else {CK_error(c,e.loc,"E0824","operator is not supported for quantities","");return 0;}
+  decision:=Q_binary(op,left,right,c.types[a].unit==c.types[b].unit,ar==br);
+  if decision.status!=Q_Status.ok {
+    code:="E0824";fix:="quantity products, quotients and affine operators are pending";
+    if decision.status==Q_Status.unit {code="E0822";fix=CK_join3(c,"write convert_unit(",c.types[c.types[a].unit].name,", value) explicitly");}
+    if decision.status==Q_Status.representation {code="E0823";fix="convert the raw representation explicitly before constructing the quantity";}
+    CK_error(c,e.loc,code,CK_join3(c,CK_join2(c,"incompatible quantity operands: ",c.types[a].name)," and ",c.types[b].name),fix);return 0;
+  }
+  lhs:=CK_quantity_raw(c,e.a);rhs:=CK_quantity_raw(c,e.b);if rhs==0 {return 0;}raw:=id;result:=2;
+  if decision.result_quantity {raw=CK_new(c,CK_Tag.expr_binary,e.loc);result=ar;}
+  c.nodes[raw].op=e.op;c.nodes[raw].a=lhs;c.nodes[raw].b=rhs;c.nodes[raw].type=result;
+  if !decision.result_quantity {return 2;}
+  quantity:=a;if !left {quantity=b;}return CK_quantity_wrap(c,id,raw,quantity);
+}
+CK_quantity_target :: (c:CK_Context,source:int,target:int,loc:CK_Loc)->int {
+  origin:=c.nodes[c.types[source].decl].origin;inst:=CK_struct_node(c,origin);p:=c.nodes[origin].d;
+  ignored:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=CK_join2(c,"$",c.nodes[p].name),decl=inst,elem=target});p=c.nodes[p].next;
+  ignored2:=CK_new_type(c,CK_Type.{kind=CK_Kind.param,name=CK_join2(c,"$",c.nodes[p].name),decl=inst,elem=c.types[source].carrier});
+  result:=CK_struct_intern(c,inst,loc,CK_Access.value);return ifx c.state[0].fatal then 0 else result;
+}
+CK_quantity_convert :: (c:CK_Context,id:int)->int {
+  e:=c.nodes[id];if CK_list_count(c,e.head)!=2 {CK_error(c,e.loc,"E0825","convert_unit requires a target unit type and one quantity","");return 0;}
+  target:=e.head;value:=c.nodes[target].next;name:=c.nodes[target].name;alias:=c.nodes[target].name2;
+  if c.nodes[target].kind==CK_Tag.expr_field && c.nodes[c.nodes[target].a].kind==CK_Tag.expr_ident {alias=c.nodes[c.nodes[target].a].name;}
+  else if c.nodes[target].kind!=CK_Tag.expr_ident {CK_error(c,e.loc,"E0825","convert_unit target must name an @unit type","");return 0;}
+  ref:=CK_new(c,CK_Tag.type_named,c.nodes[target].loc);c.nodes[ref].name=name;c.nodes[ref].name2=alias;c.nodes[ref].scope=e.scope;
+  unit:=CK_resolve(c,ref,CK_Access.value);source:=CK_expr(c,value,CK_Hint.{});
+  if unit==0 || source==0 {return 0;}
+  if c.types[unit].kind!=CK_Kind.struct_ || c.nodes[c.types[unit].decl].quantity!=1 || c.types[source].carrier==0 {CK_error(c,e.loc,"E0825","convert_unit needs a declared unit type and a quantity","");return 0;}
+  sourceunit:=c.types[source].unit;
+  if c.types[sourceunit].kind==CK_Kind.param {CK_error(c,e.loc,"E0825","this initial conversion profile requires concrete unit types","");return 0;}
+  decision:=Q_conversion(c.nodes[c.types[sourceunit].decl].unit,c.nodes[c.types[unit].decl].unit);
+  if decision.status!=Q_Status.ok {code:="E0825";message:="conversion dimensions do not match";if decision.status==Q_Status.scale {code="E0826";message="this profile converts only power-of-two unit scale ratios";}CK_error(c,e.loc,code,CK_join3(c,CK_join3(c,message,": ",c.types[source].name)," to ",c.types[unit].name),"");return 0;}
+  result:=CK_quantity_target(c,source,unit,e.loc);
+  raw:=CK_quantity_raw(c,value);
+  if decision.exponent!=0 {coefficient:=CK_new(c,CK_Tag.expr_float,e.loc);c.nodes[coefficient].type=c.types[source].carrier;c.nodes[coefficient].floating=cast(u64)(1023+decision.exponent)<<52;
+    product:=CK_new(c,CK_Tag.expr_binary,e.loc);c.nodes[product].op=36;c.nodes[product].a=raw;c.nodes[product].b=coefficient;c.nodes[product].type=c.types[source].carrier;raw=product;}
+  return CK_quantity_wrap(c,id,raw,result);
+}
+
 CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int {
   e:=c.nodes[id];comparison:=e.op>=44;shift:=e.op==42 || e.op==43;hint:=want;
   if comparison {hint=CK_Hint.{};}rhint:=hint;if shift {rhint=CK_Hint.{};}
@@ -1013,8 +1085,9 @@ CK_binary :: (c:CK_Context,id:int,want:CK_Hint)->int {
   if shift {
     if CK_untyped(c,a) {to:=11;if CK_integer(c,hint.type) {to=hint.type;}CK_coerce(c,e.a,to);}
     if CK_untyped(c,b) {to:=11;if CK_integer(c,c.nodes[e.a].type) {to=c.nodes[e.a].type;}CK_coerce(c,e.b,to);}
-  }else {if CK_untyped(c,a) {CK_coerce(c,e.a,b);}if CK_untyped(c,b) {CK_coerce(c,e.b,a);}}
+  }else {if CK_untyped(c,a) {to:=b;if c.types[b].carrier!=0 {to=c.types[b].carrier;}CK_coerce(c,e.a,to);}if CK_untyped(c,b) {to:=a;if c.types[a].carrier!=0 {to=c.types[a].carrier;}CK_coerce(c,e.b,to);}}
   a=c.nodes[e.a].type;b=c.nodes[e.b].type;if a==CK_NONE || b==CK_NONE {return CK_NONE;}
+  if c.types[a].carrier!=0 || c.types[b].carrier!=0 {return CK_quantity_binary(c,id,a,b);}
   pair:=CK_join3(c,c.types[a].name," and ",c.types[b].name);
   if e.op>=34 && e.op<=38 {
     if a!=b || !CK_numeric(c,a) || (e.op==38 && !CK_integer(c,a)) {
@@ -1385,7 +1458,7 @@ CK_meta_member :: (c:CK_Context,t:int,index:int,fields:bool,loc:CK_Loc)->int {
  return CK_meta_record(c,c.nodes[CK_find(c,CK_Tag.struct_,"CoaxEnumInfo")].type,values[..],loc);
 }
 CK_meta_query :: (c:CK_Context,id:int,t:int)->int {
- e:=c.nodes[id];
+ e:=c.nodes[id];if c.types[t].carrier!=0 {CK_error(c,e.loc,"E0827","schema1 reflection does not describe transparent quantity carriers","use size_of and type_name; versioned physical metadata is pending");return 0;}
  if e.name=="type_info" {result:=CK_meta_type(c,t,e.loc);return CK_meta_publish(c,id,result);}
  fields:=e.name=="field_info";kind:=CK_Kind.enum_;if fields {kind=CK_Kind.struct_;}
  if c.types[t].kind!=kind {CK_error(c,e.loc,"E0382","field_info requires a struct; enum_info requires an enum","");return CK_NONE;}
@@ -1417,6 +1490,7 @@ CK_call :: (c:CK_Context,id:int,want:CK_Hint)->int {
   kinds:=[1] CK_Tag.[CK_Tag.proc];
   if !CK_bind_check(c,id,kinds[..],"procedure") {a:=e.head;while a!=CK_NONE {ignored:=CK_value(c,a,CK_Hint.{});a=c.nodes[a].next;}return CK_NONE;}
   if e.name2.count!=0 {return CK_call_bound(c,id,CK_lookup(c,CK_Tag.proc,id));}
+  if e.name=="convert_unit" {return CK_quantity_convert(c,id);}
   if CK_numeric(c,builtin) && e.d==CK_NONE {
     if count!=1 {CK_error(c,e.loc,"E0362",CK_join3(c,e.name,"(x) converts one value, given ",CK_count(c,count)),"");a:=e.head;while a!=CK_NONE {ignored:=CK_value(c,a,CK_Hint.{});a=c.nodes[a].next;}return CK_NONE;}
     return CK_call_cast(c,id,e.name,e.head);
@@ -1650,6 +1724,7 @@ CK_constraint_name :: (need:int)->string {if need==2 {return "equatable";}if nee
 CK_meets :: (c:CK_Context,t:int,need:int)->bool {
   r:=c.types[t];if r.kind==CK_Kind.param {return r.need>=need;}
   if need<=1 {return true;}
+  if r.carrier!=0 {return need<=3;}
   if need==2 {return !CK_aggregate(c,t) && r.kind!=CK_Kind.view;}
   return CK_numeric(c,t);
 }
@@ -1694,7 +1769,7 @@ CK_no_args :: (c:CK_Context,id:int) {
   e:=c.nodes[id];if e.head!=CK_NONE {CK_error(c,e.loc,"E0803",CK_join3(c,"'",e.name,"' is not a generic struct, so it takes no arguments"),CK_join3(c,"write ",e.name," alone"));}
 }
 CK_struct_node :: (c:CK_Context,d:int)->int {
-  inst:=CK_new(c,CK_Tag.struct_,c.nodes[d].loc);c.nodes[inst].name=c.nodes[d].name;c.nodes[inst].scope=c.nodes[d].scope;c.nodes[inst].origin=d;return inst;
+  inst:=CK_new(c,CK_Tag.struct_,c.nodes[d].loc);c.nodes[inst].name=c.nodes[d].name;c.nodes[inst].scope=c.nodes[d].scope;c.nodes[inst].origin=d;c.nodes[inst].quantity=c.nodes[d].quantity;return inst;
 }
 // A length argument is a literal or a $N; a type argument is any other type.
 CK_struct_arg :: (c:CK_Context,inst:int,a:int,r:CK_Type) {
@@ -2103,11 +2178,11 @@ CK_defaults :: (c:CK_Context,id:int) {
     if t!=CK_NONE && t!=f.type {parts:=[5] string.["field '",f.name,"' is ",c.types[f.type].name,CK_join2(c,", its default is ",c.types[t].name)];CK_error(c,c.nodes[f.b].loc,"E0367",CK_text(c,parts[..]),"");}
   }field=f.next;}
 }
-CK_foreign_scalar :: (c:CK_Context,t:int)->bool {return t==CK_NONE || CK_numeric(c,t) || t==2;}
+CK_foreign_scalar :: (c:CK_Context,t:int)->bool {return t==CK_NONE || CK_numeric(c,t) || t==2 || c.types[t].carrier==6 || c.types[t].carrier==7;}
 // A #foreign parameter is a scalar or a borrowed view of integers, floats or
 // bool (spec 7.1): the host reads and writes its elements during the call only.
 CK_foreign_param :: (c:CK_Context,t:int)->bool {
-  if c.types[t].kind==CK_Kind.view {e:=c.types[t].elem;return CK_numeric(c,e) || e==2;}
+  if c.types[t].kind==CK_Kind.view {e:=c.types[t].elem;return CK_foreign_scalar(c,e);}
   return CK_foreign_scalar(c,t);
 }
 CK_foreign :: (c:CK_Context,id:int) {
@@ -2230,7 +2305,7 @@ CK_effects :: (c:CK_Context,id:int)->u8 {
 // Every node of a checked graph, once, after CK_run succeeds.
 CK_lower_effects :: (c:CK_Context) #export_c {for node:1..<c.state[0].used+1 {ignored:=CK_effects(c,node);}}
 CK_run :: (c:CK_Context,used:int,options:CK_Options)->bool #export_c {
-  if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16};
+  if c.state.count!=1 {return false;}c.state[0]=CK_State.{used=used,type_count=16,quantity_device=options.quantity_device};
   if used<1 || used>=c.nodes.count || c.types.count<16 || c.errors.count<1 || c.locals.count<1 {CK_resource(c,CK_Loc.{});return false;}
   for i:0..<16 {c.types[i]=CK_builtin(i);}
   CK_templates(c);
@@ -79835,4 +79910,928 @@ b:[48]u8;n:=CM_g(4907240613329099648,b[..]);#assert cast(string)b[0..<n]=="1.2e+
   #assert types[27].kind==CK_Kind.param && types[27].name=="$T" && types[27].elem==25 && types[27].decl==154 && types[27].size==0 && types[27].alignment==1 && types[27].bits==0 && types[27].length==0;
   #assert types[28].kind==CK_Kind.param && types[28].name=="$T" && types[28].elem==2 && types[28].decl==155 && types[28].size==0 && types[28].alignment==1 && types[28].bits==0 && types[28].length==0;
   #assert types[29].kind==CK_Kind.param && types[29].name=="$U" && types[29].elem==11 && types[29].decl==156 && types[29].size==0 && types[29].alignment==1 && types[29].bits==0 && types[29].length==0;
+}
+
+#test "quantity checker lowers typed scalars without changing carrier or source order" {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:=[1]CK_State.[CK_State.{used=20,type_count=22}];
+  c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};for i:0..<16 {types[i]=CK_builtin(i);}
+  nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Metre",quantity=1,type=16,next=3,unit=Q_Unit.{length=1,numerator=1,denominator=1}};
+  types[16]=CK_Type.{kind=CK_Kind.struct_,name="Metre",decl=2,size=1,alignment=1};
+  nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="Quantity",quantity=2,generic=true,type=17,d=4,head=6,mark=2};
+  nodes[4]=CK_Node.{kind=CK_Tag.type_param,name="U",next=5};nodes[5]=CK_Node.{kind=CK_Tag.type_param,name="R"};nodes[6]=CK_Node.{kind=CK_Tag.field,name="value",a=7,type=18};nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="R"};
+  types[17]=CK_Type.{kind=CK_Kind.struct_,name="Quantity",decl=3};types[18]=CK_Type.{kind=CK_Kind.param,name="$R",decl=3,need=4};
+  nodes[8]=CK_Node.{kind=CK_Tag.struct_,name="Quantity",quantity=2,origin=3,head=9,type=19};nodes[9]=CK_Node.{kind=CK_Tag.field,name="value",type=7};
+  types[19]=CK_Type.{kind=CK_Kind.struct_,name="Quantity(Metre,f64)",decl=8};types[20]=CK_Type.{kind=CK_Kind.param,name="$U",decl=8,elem=16};types[21]=CK_Type.{kind=CK_Kind.param,name="$R",decl=8,elem=7};
+  CK_quantity_layout(c,3);CK_quantity_layout(c,8);#assert state[0].error_count==0 && types[19].carrier==7 && types[19].unit==16;
+  nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,mark=1,type=19};nodes[11]=nodes[10];nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,op=34,a=10,b=11};
+  #assert CK_quantity_binary(c,12,19,19)==19 && nodes[12].kind==CK_Tag.expr_struct;
+  raw:=nodes[nodes[12].head].a;#assert nodes[raw].op==34 && nodes[nodes[raw].a].a==10 && nodes[nodes[raw].b].a==11;
+  nodes[13]=CK_Node.{kind=CK_Tag.expr_ident,name="Metre",next=14};nodes[14]=CK_Node.{kind=CK_Tag.expr_struct,mark=1,type=19};nodes[15]=CK_Node.{kind=CK_Tag.expr_call,name="convert_unit",head=13};
+  converted:=CK_quantity_convert(c,15);#assert converted!=0 && types[converted].carrier==7 && types[converted].unit==16 && state[0].error_count==0;
+}
+
+// Focused R12 checked-source fixtures; source cases live in tests/quantity/checker-cases.
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/00.coax
+#test "quantity all operators and foreign carriers" {
+ initial:=[112]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=99},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="tick",a=12,next=15,flag2=true},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=13,offset=429},name="Quantity",head=13,tail=14},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=22,offset=438},name="Metre",next=14},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=28,offset=444},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=7,column=1,offset=459},name="echo",a=20,head=16,tail=16,next=23,flag2=true},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=7,column=10,offset=468},name="v",a=17},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=12,offset=470},name="Quantity",head=18,tail=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=21,offset=479},name="Metre",next=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=27,offset=485},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=34,offset=492},name="Quantity",head=21,tail=22},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=43,offset=501},name="Metre",next=22},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=49,offset=507},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=8,column=1,offset=522},name="view",head=24,tail=24,next=29,flag2=true},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=8,column=10,offset=531},name="v",a=25},
+ CK_Node.{kind=cast(CK_Tag)3,loc=CK_Loc.{line=8,column=12,offset=533},b=26},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=8,column=14,offset=535},name="Quantity",head=27,tail=28},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=8,column=23,offset=544},name="Metre",next=28},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=8,column=29,offset=550},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=9,column=1,offset=566},name="f",a=38,b=41,head=30,tail=34,next=86},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=9,column=7,offset=572},name="a",a=31,next=34},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=9,offset=574},name="Quantity",head=32,tail=33},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=18,offset=583},name="Metre",next=33},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=24,offset=589},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=9,column=29,offset=594},name="b",a=35},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=31,offset=596},name="Quantity",head=36,tail=37},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=40,offset=605},name="Metre",next=37},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=46,offset=611},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=53,offset=618},name="Quantity",head=39,tail=40},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=62,offset=627},name="Metre",next=40},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=68,offset=633},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=9,column=73,offset=638},head=42,tail=84},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=74,offset=639},name="c",a=51,next=52},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=77,offset=642}},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=78,offset=643}},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=79,offset=644},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=81,offset=646},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=80,offset=645},a=45,b=46,op=34},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=84,offset=649},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=83,offset=648},a=47,b=48,op=35},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=87,offset=652},value=2},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=86,offset=651},a=49,b=50,op=36},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=89,offset=654},name="d",a=55,next=56},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=92,offset=657},value=2},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=94,offset=659},name="a"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=93,offset=658},a=53,b=54,op=36},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=96,offset=661},name="e",a=59,next=60},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=99,offset=664},name="a"},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=101,offset=666},value=2},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=100,offset=665},a=57,b=58,op=37},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=103,offset=668},name="u",a=63,next=64},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=106,offset=671},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=109,offset=674},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=107,offset=672},a=61,b=62,op=44},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=111,offset=676},name="v",a=67,next=68},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=114,offset=679},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=117,offset=682},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=115,offset=680},a=65,b=66,op=45},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=119,offset=684},name="w",a=71,next=72},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=122,offset=687},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=124,offset=689},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=123,offset=688},a=69,b=70,op=46},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=126,offset=691},name="x",a=75,next=76},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=129,offset=694},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=132,offset=697},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=130,offset=695},a=73,b=74,op=47},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=134,offset=699},name="y",a=79,next=80},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=137,offset=702},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=139,offset=704},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=138,offset=703},a=77,b=78,op=48},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=141,offset=706},name="z",a=83,next=84},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=144,offset=709},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=147,offset=712},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=145,offset=710},a=81,b=82,op=49},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=9,column=149,offset=714},a=85},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=156,offset=721},name="c"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=10,column=1,offset=725},name="g",a=91,b=94,head=87,tail=87,next=99},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=10,column=7,offset=731},name="a",a=88},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=9,offset=733},name="Quantity",head=89,tail=90},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=18,offset=742},name="HalfMetre",next=90},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=28,offset=752},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=35,offset=759},name="Quantity",head=92,tail=93},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=44,offset=768},name="Metre",next=93},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=50,offset=774},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=10,column=55,offset=779},head=95,tail=95},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=10,column=56,offset=780},a=96},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=10,column=63,offset=787},name="convert_unit",head=97,tail=98},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=10,column=76,offset=800},name="Metre",next=98},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=10,column=82,offset=806},name="a"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=11,column=1,offset=811},name="h",a=104,b=107,head=100,tail=100},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=11,column=7,offset=817},name="a",a=101},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=9,offset=819},name="Quantity",head=102,tail=103},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=18,offset=828},name="Metre",next=103},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=24,offset=834},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=31,offset=841},name="Quantity",head=105,tail=106},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=40,offset=850},name="HalfMetre",next=106},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=50,offset=860},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=11,column=55,offset=865},head=108,tail=108},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=11,column=56,offset=866},a=109},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=11,column=63,offset=873},name="convert_unit",head=110,tail=111},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=11,column=76,offset=886},name="HalfMetre",next=111},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=11,column=86,offset=896},name="a"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert ok && state[0].error_count==0;
+ for i:16..<state[0].type_count {if types[i].carrier!=0 && !nodes[types[i].decl].generic {#assert (types[i].carrier==6 || types[i].carrier==7) && nodes[types[types[i].unit].decl].quantity==1 && types[i].size==types[types[i].carrier].size && types[i].alignment==types[types[i].carrier].alignment;}}
+ for i:1..<state[0].used+1 {if nodes[i].kind==CK_Tag.expr_binary {#assert types[nodes[i].type].carrier==0;}}
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/01.coax
+#test "quantity unit mismatch" {
+ initial:=[25]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=20,head=12,tail=16},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13,next=16},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=9,offset=425},name="Quantity",head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=18,offset=434},name="Metre",next=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=24,offset=440},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=29,offset=445},name="b",a=17},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=31,offset=447},name="Quantity",head=18,tail=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=40,offset=456},name="Second",next=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=47,offset=463},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=53,offset=469},head=21,tail=21},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=54,offset=470},name="c",a=24},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=57,offset=473},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=59,offset=475},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=6,column=58,offset=474},a=22,b=23,op=34}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0822";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/02.coax
+#test "quantity representation mismatch" {
+ initial:=[25]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=20,head=12,tail=16},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13,next=16},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=9,offset=425},name="Quantity",head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=18,offset=434},name="Metre",next=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=24,offset=440},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=29,offset=445},name="b",a=17},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=31,offset=447},name="Quantity",head=18,tail=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=40,offset=456},name="Metre",next=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=46,offset=462},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=52,offset=468},head=21,tail=21},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=53,offset=469},name="c",a=24},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=56,offset=472},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=58,offset=474},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=6,column=57,offset=473},a=22,b=23,op=35}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0823";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/03.coax
+#test "quantity product remains pending" {
+ initial:=[21]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=16,head=12,tail=12},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=9,offset=425},name="Quantity",head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=18,offset=434},name="Metre",next=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=24,offset=440},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=30,offset=446},head=17,tail=17},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=31,offset=447},name="c",a=20},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=34,offset=450},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=36,offset=452},name="a"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=6,column=35,offset=451},a=18,b=19,op=36}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0824";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/04.coax
+#test "quantity plain tag refused" {
+ initial:=[18]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=12},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=1,offset=417},name="Plain",next=12},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=20,offset=436},name="f",b=17,head=13,tail=13},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=26,offset=442},name="a",a=14},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=28,offset=444},name="Quantity",head=15,tail=16},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=37,offset=453},name="Plain",next=16},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=43,offset=459},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=49,offset=465}}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0821";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/05.coax
+#test "quantity integer carrier refused" {
+ initial:=[17]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=16,head=12,tail=12},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=9,offset=425},name="Quantity",head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=18,offset=434},name="Metre",next=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=24,offset=440},name="int"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=30,offset=446}}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0821";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/06.coax
+#test "quantity conversion dimensions refused" {
+ initial:=[21]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=16,head=12,tail=12},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=9,offset=425},name="Quantity",head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=18,offset=434},name="Second",next=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=25,offset=441},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=31,offset=447},head=17,tail=17},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=32,offset=448},name="c",a=18},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=35,offset=451},name="convert_unit",head=19,tail=20},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=48,offset=464},name="Metre",next=20},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=54,offset=470},name="a"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0825";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/07.coax
+#test "quantity nonbinary ratio refused" {
+ initial:=[21]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=16,head=12,tail=12},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=9,offset=425},name="Quantity",head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=18,offset=434},name="Centimetre",next=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=29,offset=445},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=35,offset=451},head=17,tail=17},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=36,offset=452},name="c",a=18},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=39,offset=455},name="convert_unit",head=19,tail=20},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=52,offset=468},name="Metre",next=20},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=58,offset=474},name="a"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0826";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/08.coax
+#test "quantity malformed family refused" {
+ initial:=[16]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=1,offset=417},name="Broken",d=12,head=14,tail=14,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=18,offset=434},name="U",name2="copyable",next=13},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=30,offset=446},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=61,offset=477},name="value",a=15,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=67,offset=483},name="U"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0821";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/09.coax
+#test "quantity invalid metadata refused" {
+ initial:=[12]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=1,offset=417},name="Broken",quantity=1,unit=Q_Unit.{mass=9,length=0,time=0,angle=0,numerator=1,denominator=1}}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0820";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/10.coax
+#test "quantity unit fields refused" {
+ initial:=[14]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=1,offset=417},name="Broken",head=12,tail=12,quantity=1,unit=Q_Unit.{mass=0,length=0,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=83,offset=499},name="x",a=13,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=85,offset=501},name="f32"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0820";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/11.coax
+#test "quantity conversion arity refused" {
+ initial:=[16]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=12},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=9,offset=425},head=13,tail=13},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=10,offset=426},name="c",a=14},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=13,offset=429},name="convert_unit",head=15,tail=15},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=26,offset=442},name="Metre"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0825";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/12.coax
+#test "quantity conversion type operand refused" {
+ initial:=[21]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=16,head=12,tail=12},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=9,offset=425},name="Quantity",head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=18,offset=434},name="Metre",next=15},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=24,offset=440},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=30,offset=446},head=17,tail=17},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=31,offset=447},name="c",a=18},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=34,offset=450},name="convert_unit",head=19,tail=20},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=6,column=47,offset=463},next=20,value=1},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=49,offset=465},name="a"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0825";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/13.coax
+#test "quantity conversion value operand refused" {
+ initial:=[17]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=11},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",b=12},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=9,offset=425},head=13,tail=13},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=6,column=10,offset=426},name="c",a=14},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=13,offset=429},name="convert_unit",head=15,tail=16},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=26,offset=442},name="Metre",next=16},
+ CK_Node.{kind=cast(CK_Tag)17,loc=CK_Loc.{line=6,column=32,offset=448},floating=4607182418800017408}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0825";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/14.coax
+#test "quantity schema1 reflection refused" {
+ initial:=[68]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=55},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)65,loc=CK_Loc.{line=6,column=1,offset=417},name="X",a=12,next=17},
+ CK_Node.{kind=cast(CK_Tag)24,loc=CK_Loc.{line=6,column=6,offset=422},a=13},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=11,offset=427},name="type_info",d=14},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=21,offset=437},name="Quantity",head=15,tail=16},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=30,offset=446},name="Metre",next=16},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=36,offset=452},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=11,offset=427},name="CoaxTypeInfo",head=18,tail=38,next=40},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="schema_version",a=19,next=20,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="u32"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="name",a=21,next=22,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="string"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="kind",a=23,next=24,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="string"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="size",a=25,next=26,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="alignment",a=27,next=28,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="bits",a=29,next=30,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="is_signed",a=31,next=32,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="bool"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="field_count",a=33,next=34,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="member_count",a=35,next=36,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="element_count",a=37,next=38,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="element_name",a=39,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="string"},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=11,offset=427},name="CoaxFieldInfo",head=41,tail=53,next=55},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="schema_version",a=42,next=43,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="u32"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="index",a=44,next=45,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="name",a=46,next=47,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="string"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="type_name",a=48,next=49,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="string"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="offset",a=50,next=51,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="size",a=52,next=53,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="alignment",a=54,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=11,offset=427},name="CoaxEnumInfo",head=56,tail=66},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="schema_version",a=57,next=58,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="u32"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="index",a=59,next=60,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="name",a=61,next=62,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="string"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="value_bits",a=63,next=64,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="u64"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="bits",a=65,next=66,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="int"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=6,column=11,offset=427},name="is_signed",a=67,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=11,offset=427},name="bool"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0827";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/15.coax
+#test "quantity not numeric but ordered" {
+ initial:=[44]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=27},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="f",a=16,b=17,head=12,tail=14,next=27},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=7,offset=423},name="a",a=13,next=14},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=9,offset=425},name="T",name2="ordered"},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=20,offset=436},name="b",a=15},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=22,offset=438},name="T"},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=27,offset=443},name="T"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=30,offset=446},head=18,tail=25},
+ CK_Node.{kind=cast(CK_Tag)45,loc=CK_Loc.{line=6,column=31,offset=447},a=21,c=22,next=25},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=34,offset=450},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=36,offset=452},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=6,column=35,offset=451},a=19,b=20,op=46},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=38,offset=454},head=23,tail=23},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=6,column=39,offset=455},a=24},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=46,offset=462},name="b"},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=6,column=49,offset=465},a=26},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=56,offset=472},name="a"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=60,offset=476},name="g",a=36,b=39,head=28,tail=32},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=66,offset=482},name="a",a=29,next=32},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=68,offset=484},name="Quantity",head=30,tail=31},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=77,offset=493},name="Metre",next=31},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=83,offset=499},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=88,offset=504},name="b",a=33},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=90,offset=506},name="Quantity",head=34,tail=35},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=99,offset=515},name="Metre",next=35},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=105,offset=521},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=112,offset=528},name="Quantity",head=37,tail=38},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=121,offset=537},name="Metre",next=38},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=127,offset=543},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=132,offset=548},head=40,tail=40},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=6,column=133,offset=549},a=41},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=140,offset=556},name="f",head=42,tail=43},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=142,offset=558},name="a",next=43},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=144,offset=560},name="b"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert ok && state[0].error_count==0;
+ for i:16..<state[0].type_count {if types[i].carrier!=0 && !nodes[types[i].decl].generic {#assert (types[i].carrier==6 || types[i].carrier==7) && nodes[types[types[i].unit].decl].quantity==1 && types[i].size==types[types[i].carrier].size && types[i].alignment==types[types[i].carrier].alignment;}}
+ for i:1..<state[0].used+1 {if nodes[i].kind==CK_Tag.expr_binary {#assert types[nodes[i].type].carrier==0;}}
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/00.coax
+#test "quantity device profile is refused" {
+ initial:=[112]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=99},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="tick",a=12,next=15,flag2=true},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=13,offset=429},name="Quantity",head=13,tail=14},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=22,offset=438},name="Metre",next=14},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=28,offset=444},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=7,column=1,offset=459},name="echo",a=20,head=16,tail=16,next=23,flag2=true},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=7,column=10,offset=468},name="v",a=17},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=12,offset=470},name="Quantity",head=18,tail=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=21,offset=479},name="Metre",next=19},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=27,offset=485},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=34,offset=492},name="Quantity",head=21,tail=22},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=43,offset=501},name="Metre",next=22},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=7,column=49,offset=507},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=8,column=1,offset=522},name="view",head=24,tail=24,next=29,flag2=true},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=8,column=10,offset=531},name="v",a=25},
+ CK_Node.{kind=cast(CK_Tag)3,loc=CK_Loc.{line=8,column=12,offset=533},b=26},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=8,column=14,offset=535},name="Quantity",head=27,tail=28},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=8,column=23,offset=544},name="Metre",next=28},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=8,column=29,offset=550},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=9,column=1,offset=566},name="f",a=38,b=41,head=30,tail=34,next=86},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=9,column=7,offset=572},name="a",a=31,next=34},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=9,offset=574},name="Quantity",head=32,tail=33},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=18,offset=583},name="Metre",next=33},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=24,offset=589},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=9,column=29,offset=594},name="b",a=35},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=31,offset=596},name="Quantity",head=36,tail=37},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=40,offset=605},name="Metre",next=37},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=46,offset=611},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=53,offset=618},name="Quantity",head=39,tail=40},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=62,offset=627},name="Metre",next=40},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=9,column=68,offset=633},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=9,column=73,offset=638},head=42,tail=84},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=74,offset=639},name="c",a=51,next=52},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=77,offset=642}},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=78,offset=643}},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=79,offset=644},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=81,offset=646},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=80,offset=645},a=45,b=46,op=34},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=84,offset=649},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=83,offset=648},a=47,b=48,op=35},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=87,offset=652},value=2},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=86,offset=651},a=49,b=50,op=36},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=89,offset=654},name="d",a=55,next=56},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=92,offset=657},value=2},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=94,offset=659},name="a"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=93,offset=658},a=53,b=54,op=36},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=96,offset=661},name="e",a=59,next=60},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=99,offset=664},name="a"},
+ CK_Node.{kind=cast(CK_Tag)16,loc=CK_Loc.{line=9,column=101,offset=666},value=2},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=100,offset=665},a=57,b=58,op=37},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=103,offset=668},name="u",a=63,next=64},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=106,offset=671},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=109,offset=674},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=107,offset=672},a=61,b=62,op=44},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=111,offset=676},name="v",a=67,next=68},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=114,offset=679},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=117,offset=682},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=115,offset=680},a=65,b=66,op=45},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=119,offset=684},name="w",a=71,next=72},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=122,offset=687},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=124,offset=689},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=123,offset=688},a=69,b=70,op=46},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=126,offset=691},name="x",a=75,next=76},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=129,offset=694},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=132,offset=697},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=130,offset=695},a=73,b=74,op=47},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=134,offset=699},name="y",a=79,next=80},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=137,offset=702},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=139,offset=704},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=138,offset=703},a=77,b=78,op=48},
+ CK_Node.{kind=cast(CK_Tag)42,loc=CK_Loc.{line=9,column=141,offset=706},name="z",a=83,next=84},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=144,offset=709},name="a"},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=147,offset=712},name="b"},
+ CK_Node.{kind=cast(CK_Tag)23,loc=CK_Loc.{line=9,column=145,offset=710},a=81,b=82,op=49},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=9,column=149,offset=714},a=85},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=9,column=156,offset=721},name="c"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=10,column=1,offset=725},name="g",a=91,b=94,head=87,tail=87,next=99},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=10,column=7,offset=731},name="a",a=88},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=9,offset=733},name="Quantity",head=89,tail=90},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=18,offset=742},name="HalfMetre",next=90},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=28,offset=752},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=35,offset=759},name="Quantity",head=92,tail=93},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=44,offset=768},name="Metre",next=93},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=10,column=50,offset=774},name="f32"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=10,column=55,offset=779},head=95,tail=95},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=10,column=56,offset=780},a=96},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=10,column=63,offset=787},name="convert_unit",head=97,tail=98},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=10,column=76,offset=800},name="Metre",next=98},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=10,column=82,offset=806},name="a"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=11,column=1,offset=811},name="h",a=104,b=107,head=100,tail=100},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=11,column=7,offset=817},name="a",a=101},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=9,offset=819},name="Quantity",head=102,tail=103},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=18,offset=828},name="Metre",next=103},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=24,offset=834},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=31,offset=841},name="Quantity",head=105,tail=106},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=40,offset=850},name="HalfMetre",next=106},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=11,column=50,offset=860},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=11,column=55,offset=865},head=108,tail=108},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=11,column=56,offset=866},a=109},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=11,column=63,offset=873},name="convert_unit",head=110,tail=111},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=11,column=76,offset=886},name="HalfMetre",next=111},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=11,column=86,offset=896},name="a"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true,quantity_device=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0828";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/alias/client.coax
+#test "quantity conversion retains module alias ownership" {
+ initial:=[25]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0},scope=1},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},scope=1,head=2,tail=20},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=1,column=58,offset=57},name="f",scope=1,a=7,b=10,head=3,tail=3,next=16,flag=true},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=1,column=64,offset=63},name="a",scope=1,a=4},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=1,column=66,offset=65},name="Quantity",name2="u",scope=1,head=5,tail=6},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=1,column=77,offset=76},name="HalfMetre",name2="u",scope=1,next=6},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=1,column=89,offset=88},name="f32",scope=1},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=1,column=96,offset=95},name="Quantity",name2="u",scope=1,head=8,tail=9},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=1,column=107,offset=106},name="Metre",name2="u",scope=1,next=9},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=1,column=115,offset=114},name="f32",scope=1},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=1,column=130,offset=129},scope=1,head=11,tail=11},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=1,column=131,offset=130},scope=1,a=12},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=1,column=138,offset=137},name="convert_unit",scope=1,head=14,tail=15},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=1,column=151,offset=150},name="u",scope=1},
+ CK_Node.{kind=cast(CK_Tag)25,loc=CK_Loc.{line=1,column=152,offset=151},name="Metre",scope=1,a=13,next=15},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=1,column=159,offset=158},name="a",scope=1},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=194},name="Metre",scope=2,next=17,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=277},name="HalfMetre",scope=2,next=18,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=364},name="Second",scope=2,next=19,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=6,column=1,offset=448},name="Centimetre",scope=2,next=20,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=7,column=1,offset=538},name="Quantity",scope=2,d=21,head=23,tail=23,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=7,column=20,offset=557},name="U",name2="copyable",scope=2,next=22},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=7,column=32,offset=569},name="R",name2="numeric",scope=2},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=7,column=63,offset=600},name="value",scope=2,a=24,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=7,column=69,offset=606},name="R",scope=2}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ modules:=[3]string.["","test.quantity.client","test.quantity.units"];
+ aliases:=[1]CK_Alias.[CK_Alias.{scope=1,name="u",target=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],aliases=aliases[..]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert ok && state[0].error_count==0;
+ for i:16..<state[0].type_count {if types[i].carrier!=0 && !nodes[types[i].decl].generic {#assert (types[i].carrier==6 || types[i].carrier==7) && nodes[types[types[i].unit].decl].quantity==1 && types[i].size==types[types[i].carrier].size && types[i].alignment==types[types[i].carrier].alignment;}}
+ for i:1..<state[0].used+1 {if nodes[i].kind==CK_Tag.expr_binary {#assert types[nodes[i].type].carrier==0;}}
+}
+CK_quantity_fixture :: (c:CK_Context) {
+  for i:0..<c.nodes.count {c.nodes[i]=CK_Node.{};}for i:0..<c.types.count {c.types[i]=CK_Type.{};}
+  c.state[0]=CK_State.{used=20,type_count=23};for i:0..<16 {c.types[i]=CK_builtin(i);}
+  c.nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};c.nodes[2]=CK_Node.{kind=CK_Tag.struct_,name="Metre",quantity=1,type=16,next=16,unit=Q_Unit.{length=1,numerator=1,denominator=1}};
+  c.types[16]=CK_Type.{kind=CK_Kind.struct_,name="Metre",decl=2,size=1,alignment=1};
+  c.nodes[16]=CK_Node.{kind=CK_Tag.struct_,name="Target",quantity=1,type=22,next=3,unit=Q_Unit.{length=1,numerator=1,denominator=1}};
+  c.types[22]=CK_Type.{kind=CK_Kind.struct_,name="Target",decl=16,size=1,alignment=1};
+  c.nodes[3]=CK_Node.{kind=CK_Tag.struct_,name="Quantity",quantity=2,generic=true,type=17,d=4,head=6,mark=2};
+  c.nodes[4]=CK_Node.{kind=CK_Tag.type_param,name="U",next=5};c.nodes[5]=CK_Node.{kind=CK_Tag.type_param,name="R"};c.nodes[6]=CK_Node.{kind=CK_Tag.field,name="value",a=7,type=18};c.nodes[7]=CK_Node.{kind=CK_Tag.type_param,name="R"};
+  c.types[17]=CK_Type.{kind=CK_Kind.struct_,name="Quantity",decl=3};c.types[18]=CK_Type.{kind=CK_Kind.param,name="$R",decl=3,need=4};
+  c.nodes[8]=CK_Node.{kind=CK_Tag.struct_,name="Quantity",quantity=2,origin=3,head=9,type=19};c.nodes[9]=CK_Node.{kind=CK_Tag.field,name="value",type=7};
+  c.types[19]=CK_Type.{kind=CK_Kind.struct_,name="Quantity(Metre,f64)",decl=8,carrier=7,unit=16};c.types[20]=CK_Type.{kind=CK_Kind.param,name="$U",decl=8,elem=16};c.types[21]=CK_Type.{kind=CK_Kind.param,name="$R",decl=8,elem=7};
+  c.nodes[10]=CK_Node.{kind=CK_Tag.expr_struct,mark=1,type=19};c.nodes[11]=CK_Node.{kind=CK_Tag.expr_float,type=7};
+  c.nodes[12]=CK_Node.{kind=CK_Tag.expr_binary,loc=CK_Loc.{line=73,column=9,offset=123},next=18,a=10,b=11};
+  c.nodes[13]=CK_Node.{kind=CK_Tag.expr_ident,name="Target",next=14};c.nodes[14]=CK_Node.{kind=CK_Tag.expr_struct,mark=1,type=19};c.nodes[15]=CK_Node.{kind=CK_Tag.expr_call,name="convert_unit",head=13,next=18,loc=CK_Loc.{line=83,column=7,offset=223}};
+}
+#forall "quantity lowering preserves every resolved operand field and result kind" family:0..<3,operation:0..<17 {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);
+  op:=34+operation;left:=19;right:=19;if family==1 {right=7;}if family==2 {left=7;}
+  nodes[10].type=left;nodes[11].type=right;nodes[10].kind=ifx left==7 then CK_Tag.expr_float else CK_Tag.expr_struct;nodes[11].kind=ifx right==7 then CK_Tag.expr_float else CK_Tag.expr_struct;nodes[12].op=cast(u32)op;
+  valid:=ifx family==0 then op==34 || op==35 || (op>=44 && op<=49) else op==36 || (family==1 && op==37);
+  result:=CK_quantity_binary(c,12,left,right);
+  if !valid {#assert result==0 && state[0].error_count==1 && errors[0].code=="E0824";}
+  else {
+    comparison:=op>=44;raw:=12;
+    if comparison {#assert result==2 && nodes[12].kind==CK_Tag.expr_binary;}
+    else {#assert result==19 && nodes[12].kind==CK_Tag.expr_struct && nodes[12].mark==1;field:=nodes[12].head;#assert nodes[field].name=="value" && nodes[field].field_index==0;raw=nodes[field].a;}
+    #assert nodes[12].next==18 && nodes[12].loc.line==73 && nodes[12].loc.column==9 && nodes[12].loc.offset==123;
+    #assert nodes[raw].kind==CK_Tag.expr_binary && nodes[raw].op==cast(u32)op && nodes[raw].type==(ifx comparison then 2 else 7);
+    for side:0..<2 {operand:=ifx side==0 then nodes[raw].a else nodes[raw].b;original:=10+side;ty:=ifx side==0 then left else right;
+      if ty==7 {#assert operand==original;}else {#assert nodes[operand].kind==CK_Tag.expr_field && nodes[operand].a==original && nodes[operand].name=="value" && nodes[operand].field_index==0 && nodes[operand].type==7;}
+    }
+  }
+}
+#forall "quantity conversion emits frozen IEEE binary coefficients and identity has no multiply" test:0..<5,precision:0..<2 {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);
+  representation:=ifx precision==0 then 6 else 7;types[19].carrier=representation;nodes[9].type=representation;types[21].elem=representation;
+  sn:=[5]int.[1,1,3,2,1048576];sd:=[5]int.[1048576,2,6,1,1];tn:=[5]int.[1048576,1,1,1,1];td:=[5]int.[1,1,2,1,1048576];bits:=[5]u64.[0x3d70000000000000,0x3fe0000000000000,0,0x4000000000000000,0x4270000000000000];
+  nodes[2].unit.numerator=sn[test];nodes[2].unit.denominator=sd[test];nodes[16].unit.numerator=tn[test];nodes[16].unit.denominator=td[test];
+  result:=CK_quantity_convert(c,15);#assert result!=0 && types[result].carrier==representation && types[result].unit==22 && state[0].error_count==0;
+  #assert nodes[15].kind==CK_Tag.expr_struct && nodes[15].mark==1 && nodes[15].next==18 && nodes[15].loc.line==83;
+  field:=nodes[15].head;#assert nodes[field].name=="value" && nodes[field].field_index==0;raw:=nodes[field].a;projection:=raw;
+  if test==2 {#assert nodes[raw].kind==CK_Tag.expr_field;}
+  else {#assert nodes[raw].kind==CK_Tag.expr_binary && nodes[raw].op==36 && nodes[raw].type==representation;projection=nodes[raw].a;coefficient:=nodes[raw].b;#assert nodes[coefficient].kind==CK_Tag.expr_float && nodes[coefficient].type==representation && nodes[coefficient].floating==bits[test];}
+  #assert nodes[projection].kind==CK_Tag.expr_field && nodes[projection].name=="value" && nodes[projection].field_index==0 && nodes[projection].a==14 && nodes[projection].type==representation;
+}
+#forall "quantity allocator refusal returns the checker invalid-type sentinel" mode:0..<5,capacity:21..<38 {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);small:=c;
+  if mode==0 {small.nodes=nodes[0..<capacity];}if mode==1 {small.types=types[0..<capacity+2];}
+  if mode==2 {state[0].instance_count=256;}if mode==3 {state[0].instance_count=255;}if mode==4 {small.bytes=bytes[0..<capacity];}
+  result:=CK_quantity_convert(small,15);
+  if state[0].fatal || state[0].error_count>0 {#assert result==0 && (errors[0].code=="E0381" || errors[0].code=="E0339");}
+  else {#assert result!=0 && types[result].carrier==7 && types[result].unit==22;}
+}
+#forall "quantity family shape diagnostics distinguish every malformed role" mode:0..<4 {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);
+  if mode==0 {nodes[4].next=0;}if mode==1 {nodes[6].next=17;nodes[17]=CK_Node.{kind=CK_Tag.field,name="other",type=18};}if mode==2 {nodes[6].name="other";}if mode==3 {nodes[6].b=18;}
+  CK_quantity_layout(c,3);#assert state[0].error_count==1 && errors[0].code=="E0821" && errors[0].message=="@builtin_quantity requires two parameters and one field value of the representation parameter";
+}
+#forall "quantity conversion refusals preserve precise invalid-type and diagnostic contracts" mode:0..<11 {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);
+  if mode==0 {nodes[13].next=0;}if mode==1 {nodes[13].kind=CK_Tag.expr_float;}if mode==2 {nodes[13].name="Missing";}if mode==3 {nodes[14]=CK_Node.{kind=CK_Tag.expr_ident,name="Missing"};}
+  if mode==4 {nodes[13].name="Quantity";}if mode==5 {nodes[13].name="f64";}if mode==6 {nodes[16].quantity=0;}if mode==7 {nodes[14]=CK_Node.{kind=CK_Tag.expr_float,type=7};}
+  if mode==8 {types[16].kind=CK_Kind.param;types[16].name="$U";}if mode==9 {nodes[16].unit.length=0;nodes[16].unit.time=1;}if mode==10 {nodes[16].unit.denominator=100;}
+  result:=CK_quantity_convert(c,15);#assert result==0 && state[0].error_count==1;
+  if mode==0 {#assert errors[0].message=="convert_unit requires a target unit type and one quantity";}
+  if mode==1 {#assert errors[0].message=="convert_unit target must name an @unit type";}
+  if mode==5 || mode==6 || mode==7 {#assert errors[0].code=="E0825" && errors[0].message=="convert_unit needs a declared unit type and a quantity";}
+  if mode==8 {#assert errors[0].message=="this initial conversion profile requires concrete unit types";}
+  if mode==9 {#assert errors[0].code=="E0825" && errors[0].message=="conversion dimensions do not match: Quantity(Metre,f64) to Target";}
+  if mode==10 {#assert errors[0].code=="E0826" && errors[0].message=="this profile converts only power-of-two unit scale ratios: Quantity(Metre,f64) to Target";}
+}
+#test "quantity mismatch diagnostics name the explicit missing conversion and carrier fix" {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);
+  state[0].type_count=24;types[23]=types[19];types[23].unit=22;nodes[11].type=23;types[23].name="Quantity(Target,f64)";nodes[12].op=34;#assert CK_quantity_binary(c,12,19,23)==0 && state[0].error_count==1 && errors[0].code=="E0822" && errors[0].fix=="write convert_unit(Metre, value) explicitly";
+  state[0].error_count=0;types[23].unit=16;types[23].carrier=6;#assert CK_quantity_binary(c,12,19,23)==0 && errors[0].code=="E0823" && errors[0].fix=="convert the raw representation explicitly before constructing the quantity";
+}
+#test "quantity schema reflection refuses with an invalid-type result" {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);nodes[12].name="type_info";
+  #assert CK_meta_query(c,12,19)==0 && state[0].error_count==1 && errors[0].code=="E0827";
+}
+
+// Owned source fixture: /Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/quantity/checker-cases/17.coax
+#test "quantity cannot bind a numeric closed-arithmetic parameter" {
+ initial:=[30]CK_Node.[
+ CK_Node.{kind=cast(CK_Tag)0,loc=CK_Loc.{line=0,column=0,offset=0}},
+ CK_Node.{kind=cast(CK_Tag)74,loc=CK_Loc.{line=0,column=0,offset=0},head=2,tail=18},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=1,column=1,offset=0},name="Metre",next=3,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=2,column=1,offset=83},name="HalfMetre",next=4,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=2}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=3,column=1,offset=170},name="Second",next=5,quantity=1,unit=Q_Unit.{mass=0,length=0,time=1,angle=0,numerator=1,denominator=1}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=4,column=1,offset=254},name="Centimetre",next=6,quantity=1,unit=Q_Unit.{mass=0,length=1,time=0,angle=0,numerator=1,denominator=100}},
+ CK_Node.{kind=cast(CK_Tag)66,loc=CK_Loc.{line=5,column=1,offset=344},name="Quantity",d=7,head=9,tail=9,next=11,quantity=2},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=20,offset=363},name="U",name2="copyable",next=8},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=32,offset=375},name="R",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)69,loc=CK_Loc.{line=5,column=63,offset=406},name="value",a=10,field_index=0},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=5,column=69,offset=412},name="R"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=1,offset=417},name="closed",a=14,b=15,head=12,tail=12,next=18},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=12,offset=428},name="x",a=13},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=14,offset=430},name="T",name2="numeric"},
+ CK_Node.{kind=cast(CK_Tag)5,loc=CK_Loc.{line=6,column=27,offset=443},name="T"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=30,offset=446},head=16,tail=16},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=6,column=31,offset=447},a=17},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=38,offset=454},name="x"},
+ CK_Node.{kind=cast(CK_Tag)64,loc=CK_Loc.{line=6,column=42,offset=458},name="f",a=23,b=26,head=19,tail=19},
+ CK_Node.{kind=cast(CK_Tag)68,loc=CK_Loc.{line=6,column=48,offset=464},name="a",a=20},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=50,offset=466},name="Quantity",head=21,tail=22},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=59,offset=475},name="Metre",next=22},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=65,offset=481},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=72,offset=488},name="Quantity",head=24,tail=25},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=81,offset=497},name="Metre",next=25},
+ CK_Node.{kind=cast(CK_Tag)1,loc=CK_Loc.{line=6,column=87,offset=503},name="f64"},
+ CK_Node.{kind=cast(CK_Tag)40,loc=CK_Loc.{line=6,column=92,offset=508},head=27,tail=27},
+ CK_Node.{kind=cast(CK_Tag)44,loc=CK_Loc.{line=6,column=93,offset=509},a=28},
+ CK_Node.{kind=cast(CK_Tag)21,loc=CK_Loc.{line=6,column=100,offset=516},name="closed",head=29,tail=29},
+ CK_Node.{kind=cast(CK_Tag)20,loc=CK_Loc.{line=6,column=107,offset=523},name="a"}
+];nodes:[2048]CK_Node;types:[2048]CK_Type;locals:[128]CK_Local;errors:[64]CK_Error;bytes:[65536]u8;state:=[1]CK_State.[CK_State.{}];for i:0..<initial.count {nodes[i]=initial[i];}
+ modules:=[1]string.[""];
+ aliases:[1]CK_Alias;
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],modules=modules[..],aliases=aliases[0..<0]};ok:=CK_run(c,initial.count-1,CK_Options.{library=true});
+ #assert !ok && state[0].error_count>0 && errors[0].code=="E0806";
+}
+
+#forall "quantity target interning propagates text-arena failure as invalid type" capacity:1..<48 {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);small:=c;small.bytes=bytes[0..<capacity];
+  result:=CK_quantity_target(small,19,22,CK_Loc.{});if state[0].fatal {#assert result==0 && errors[0].code=="E0381";}else {#assert result!=0 && types[result].carrier==7 && types[result].unit==22;}
+}
+
+#forall "quantity node builders propagate bounded-workspace refusal independently" capacity:21..<40,operation:0..<5 {
+  nodes:[256]CK_Node;types:[96]CK_Type;locals:[4]CK_Local;errors:[8]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};CK_quantity_fixture(c);small:=c;small.nodes=nodes[0..<capacity];result:=0;
+  if operation==0 {result=CK_quantity_raw(small,10);}if operation==1 {result=CK_quantity_wrap(small,12,11,19);}if operation==2 {nodes[12].op=34;nodes[12].b=10;result=CK_quantity_binary(small,12,19,19);}if operation==3 {result=CK_quantity_target(small,19,22,CK_Loc.{});}if operation==4 {nodes[12].op=44;nodes[12].b=10;result=CK_quantity_binary(small,12,19,19);}
+  if state[0].fatal {#assert result==0 && errors[0].code=="E0381";}else {#assert result!=0;}
+}
+#forall "quantity conversion resolves qualified target in its owning module before a local shadow" variant:0..<4 {
+ nodes:[256]CK_Node;types:[96]CK_Type;locals:[16]CK_Local;errors:[16]CK_Error;bytes:[8192]u8;state:[1]CK_State;
+ aliases:=[1]CK_Alias.[CK_Alias.{scope=1,name="u",target=2}];
+ c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..],aliases=aliases[..]};CK_quantity_fixture(c);
+ // Two same-spelled, valid unit tags make loss of qualification observable.
+ nodes[16].scope=2;nodes[16].next=17;nodes[17]=CK_Node.{kind=CK_Tag.struct_,name="Target",scope=1,quantity=1,type=23,next=3,unit=Q_Unit.{length=1,numerator=1,denominator=2}};
+ types[23]=CK_Type.{kind=CK_Kind.struct_,name="Target",decl=17,size=1,alignment=1};state[0].type_count=24;state[0].clashes=17;
+ nodes[15].scope=1;nodes[13]=CK_Node.{kind=CK_Tag.expr_field,name="Target",scope=1,a=18,next=14};nodes[18]=CK_Node.{kind=CK_Tag.expr_ident,name="u",scope=1};
+ if variant==1 {nodes[18].kind=CK_Tag.expr_float;}
+ if variant==2 {nodes[13].kind=CK_Tag.expr_ident;}
+ if variant==3 {nodes[13].kind=CK_Tag.expr_ident;nodes[13].name2="u";}
+ result:=CK_quantity_convert(c,15);
+ if variant==1 {#assert result==CK_NONE && state[0].error_count==1 && errors[0].code=="E0825" && errors[0].message=="convert_unit target must name an @unit type";}
+ else {#assert result!=CK_NONE && !state[0].fatal && state[0].error_count==0;want:=22;if variant==2 {want=23;}#assert types[result].unit==want && types[result].carrier==7;}
 }

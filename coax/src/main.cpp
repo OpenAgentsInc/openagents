@@ -779,6 +779,7 @@ static bool front_end(const char *path, Source *src, Arena *arena, File *file, c
     for (const ProcDecl *p : file->procs) exports = exports || p->export_c;
     file->library = library == 1 || (library == 2 && exports);
     file->metal = opts.metal;
+    file->quantity_device=opts.quantity_device;
     file->execution_profile=std::to_string(opts.profile_identity);
     {TimedPhase phase{"check"};ok=check(arena,file);}
     if(ok) {TimedPhase phase{"evaluate"};g_timings.run_steps=opts.run_steps;ok=evaluate(file,opts.run_steps,&g_timings.evaluated_steps,&g_timings.traversal_work);g_timings.peak_slots=file->ct_memory->peak_slots;g_timings.peak_containers=file->ct_memory->peak_containers;g_timings.peak_string_bytes=file->ct_memory->string_peak_bytes;}
@@ -1142,6 +1143,7 @@ static int main_impl(int argc, char **argv) {
     }
     return 0;
   }
+  opts.quantity_device=cmd=="metal" || cmd=="cuda" || cmd=="metal-compute" || cmd=="spirv" || cmd=="wgsl";
   if (cmd == "metal") opts.library = opts.metal = true;
   if (cmd == "cuda") opts.library = opts.cuda = true;
   if (cmd == "metal-compute") opts.library = opts.metal_compute = true;

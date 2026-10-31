@@ -1,0 +1,11 @@
+Metre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+HalfMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=2) {}
+Second :: struct @unit(mass=0,length=0,time=1,angle=0,numerator=1,denominator=1) {}
+Centimetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=100) {}
+Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
+tick :: ()->Quantity(Metre,f64) #foreign;
+echo :: (v:Quantity(Metre,f32))->Quantity(Metre,f32) #foreign;
+view :: (v:[]Quantity(Metre,f32)) #foreign;
+f :: (a:Quantity(Metre,f64),b:Quantity(Metre,f64))->Quantity(Metre,f64) {c:=((a+b)-b)*2;d:=2*a;e:=a/2;u:=a==b;v:=a!=b;w:=a<b;x:=a<=b;y:=a>b;z:=a>=b;return c;}
+g :: (a:Quantity(HalfMetre,f32))->Quantity(Metre,f32) {return convert_unit(Metre,a);}
+h :: (a:Quantity(Metre,f64))->Quantity(HalfMetre,f64) {return convert_unit(HalfMetre,a);}

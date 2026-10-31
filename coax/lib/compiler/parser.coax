@@ -52,7 +52,7 @@ PS_Tag :: enum u32 {
 }
 PS_Loc :: struct {line:int;column:int;offset:int;}
 PS_Token :: struct {kind:u32;text:string;loc:PS_Loc;value:u64;floating:f64;width:int;raw_count:int;}
-PS_Node :: struct {kind:PS_Tag;loc:PS_Loc;name:string;name2:string;loc2:PS_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:f64;width:int;end:int;}
+PS_Node :: struct {kind:PS_Tag;loc:PS_Loc;name:string;name2:string;loc2:PS_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:f64;width:int;end:int;quantity:u8;unit:[6]int;}
 PS_State :: struct {pos:int;used:int;depth:int;code:string;loc:PS_Loc;fix:string;length:int;development:bool;}
 PS_Result :: struct {ok:bool;root:int;}
 PS_Caps :: struct {nodes:int;message:int;imports:int;}
@@ -462,7 +462,25 @@ PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)-
   id:=PS_new(n,s,out,PS_Tag.decl_struct_,name.loc);n[id].name=name.text;PS_skip(t,s);
   if PS_at(t,s,6) {d:=PS_peek(t,s,0);parts:=[3] string.["#",d.text," on structs is not supported by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
   if PS_at(t,s,8) {PS_struct_params(t,n,s,out,id);}
+  if PS_at(t,s,7) {PS_quantity(t,n,s,out,id);}
   PS_field_block(t,n,s,out,id);return PS_valid(s,id);
+}
+PS_quantity :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+  a:=PS_take(t,s);if a.text=="builtin_quantity" {n[id].quantity=2;return;}
+  if a.text!="unit" {PS_fail(s,out,a.loc,"E0820","unsupported physical annotation","use @unit or @builtin_quantity");return;}
+  n[id].quantity=1;PS_expect(t,s,out,8,"after @unit");seen:u64=0;u:[6]int;
+  while s[0].code=="" {
+    name:=PS_ident(t,s,out,"a unit metadata name");names:=[6]string.["mass","length","time","angle","numerator","denominator"];at:= -1;
+    for i:0..<6 {if name.text==names[i] {at=i;}}
+    if at<0 {PS_fail(s,out,name.loc,"E0820","unknown unit metadata name","mass, length, time, angle, numerator and denominator are required");return;}
+    bit:=(cast(u64)1)<<at;if (seen&bit)!=0 {PS_fail(s,out,name.loc,"E0820","unit metadata is repeated","");return;}seen|=bit;
+    PS_expect(t,s,out,23,"after the unit metadata name");negative:=false;if PS_at(t,s,35) {negative=true;PS_skip(t,s);}
+    value:=PS_take(t,s);if value.kind!=3 || value.value>1048576 {PS_fail(s,out,value.loc,"E0820","unit metadata requires a bounded integer literal","");return;}
+    number:=cast(int)value.value;if negative {number= -number;}
+    u[at]=number;
+    if !PS_at(t,s,14) {break;}PS_skip(t,s);
+  }
+  PS_expect(t,s,out,9,"after the unit metadata");if seen!=63 {PS_fail(s,out,a.loc,"E0820","invalid or incomplete unit metadata","exponents −8..8; positive scale 1..1048576; all six names required");return;}n[id].unit=u;
 }
 // Pair :: struct($T, $N): a generic struct's parameters, chained from d. The
 // checker binds them per instance (r4a-value-parameters).
@@ -4723,4 +4741,86 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   r:=PS_parse_build("",tokens[..],nodes[..],state[..],out[..],mode==1);#assert r.ok;
   #assert nodes[state[0].used+1].name=="spare";
  }
+}
+
+#test "quantity annotations preserve all six signed literal metadata fields" {
+  tokens:[27]PS_Token;tokens[0]=PS_Token.{kind=7,text="unit"};tokens[1].kind=8;
+  names:=[6]string.["mass","length","time","angle","numerator","denominator"];values:=[6]u64.[0,1,0,0,1,2];
+  for i:0..<6 {at:=2+4*i;tokens[at]=PS_Token.{kind=1,text=names[i]};tokens[at+1].kind=23;tokens[at+2]=PS_Token.{kind=3,value=values[i]};if i<5 {tokens[at+3].kind=14;}}
+  tokens[25].kind=9;n:[4]PS_Node;state:=[1]PS_State.[PS_State.{}];message:[128]u8;PS_quantity(tokens[..],n[..],state[..],message[..],1);
+  #assert state[0].code=="" && n[1].quantity==1;for i:0..<6 {#assert n[1].unit[i]==cast(int)values[i];}
+  tokens[0].text="builtin_quantity";state[0]=PS_State.{};PS_quantity(tokens[..],n[..],state[..],message[..],2);#assert state[0].code=="" && n[2].quantity==2;
+}
+
+#forall "physical annotation parsing retains every signed field in arbitrary starting order" negative:bool,shift:0..<6 {
+  tokens:[40]PS_Token;names:=[6]string.["mass","length","time","angle","numerator","denominator"];
+  tokens[0]=PS_Token.{kind=7,text="unit"};tokens[1].kind=8;cursor:=2;
+  for i:0..<6 {field:=(i+shift)%6;tokens[cursor]=PS_Token.{kind=1,text=names[field]};cursor+=1;tokens[cursor].kind=23;cursor+=1;
+    if negative {tokens[cursor].kind=35;cursor+=1;}tokens[cursor]=PS_Token.{kind=3,value=cast(u64)(field+1)};cursor+=1;
+    if i!=5 {tokens[cursor].kind=14;cursor+=1;}
+  }
+  tokens[cursor].kind=9;cursor+=1;nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;
+  PS_quantity(tokens[0..<cursor+1],nodes[..],state[..],message[..],1);
+  #assert state[0].code=="" && state[0].pos==cursor && nodes[1].quantity==1;
+  for field:0..<6 {want:=field+1;if negative {want= -want;}#assert nodes[1].unit[field]==want;}
+}
+#forall "physical annotation literal bounds include positive and negative boundary values" negative:bool {
+  tokens:[33]PS_Token;names:=[6]string.["mass","length","time","angle","numerator","denominator"];
+  tokens[0]=PS_Token.{kind=7,text="unit"};tokens[1].kind=8;cursor:=2;
+  for i:0..<6 {tokens[cursor]=PS_Token.{kind=1,text=names[i]};cursor+=1;tokens[cursor].kind=23;cursor+=1;
+    if negative {tokens[cursor].kind=35;cursor+=1;}tokens[cursor]=PS_Token.{kind=3,value=1048576};cursor+=1;
+    if i!=5 {tokens[cursor].kind=14;cursor+=1;}
+  }
+  tokens[cursor].kind=9;cursor+=1;nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;
+  PS_quantity(tokens[0..<cursor+1],nodes[..],state[..],message[..],1);
+  #assert state[0].code=="";for field:0..<6 {#assert nodes[1].unit[field]==(ifx negative then -1048576 else 1048576);}
+}
+#forall "physical annotation errors retain the first diagnostic and source token" mode:0..<13 {
+  tokens:[27]PS_Token;names:=[6]string.["mass","length","time","angle","numerator","denominator"];
+  tokens[0]=PS_Token.{kind=7,text="unit"};tokens[1].kind=8;
+  for i:0..<6 {tokens[2+4*i]=PS_Token.{kind=1,text=names[i]};tokens[3+4*i].kind=23;tokens[4+4*i]=PS_Token.{kind=3,value=cast(u64)(i+1)};if i!=5 {tokens[5+4*i].kind=14;}}
+  tokens[25].kind=9;for i:0..<27 {tokens[i].loc=PS_Loc.{line=11,column=i+1,offset=100+i};}
+  end:=27;at:=0;want:="E0820";text:="unsupported physical annotation";
+  if mode==0 {tokens[0].text="unknown";}
+  if mode==1 {tokens[2].text="distance";at=2;text="unknown unit metadata name";}
+  if mode==2 {tokens[6].text="mass";at=6;text="unit metadata is repeated";}
+  if mode==3 {tokens[21].kind=9;tokens[22].kind=0;end=23;text="invalid or incomplete unit metadata";}
+  if mode==4 {tokens[2].kind=3;at=2;want="E0208";text="expected a unit metadata name, found integer";}
+  if mode==5 {tokens[4].kind=4;at=4;text="unit metadata requires a bounded integer literal";}
+  if mode==6 {tokens[4].kind=5;at=4;text="unit metadata requires a bounded integer literal";}
+  if mode==7 {tokens[4].kind=1;tokens[4].text="bad";at=4;text="unit metadata requires a bounded integer literal";}
+  if mode==8 {tokens[4].value=1048577;at=4;text="unit metadata requires a bounded integer literal";}
+  if mode==9 {tokens[1].kind=23;at=1;want="E0201";text="expected '(' after @unit, found '='";}
+  if mode==10 {tokens[3].kind=14;at=3;want="E0201";text="expected '=' after the unit metadata name, found ','";}
+  if mode==11 {tokens[25].kind=10;at=25;want="E0201";text="expected ')' after the unit metadata, found '{'";}
+  if mode==12 {tokens[4].kind=35;at=5;text="unit metadata requires a bounded integer literal";}
+  nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_quantity(tokens[0..<end],nodes[..],state[..],message[..],1);
+  #assert state[0].code==want && state[0].loc.line==11 && state[0].loc.column==at+1 && state[0].loc.offset==100+at;
+  #assert cast(string)message[0..<state[0].length]==text;
+}
+#forall "every unit metadata name can be recognized as repeated" repeated:0..<6 {
+  tokens:[31]PS_Token;names:=[6]string.["mass","length","time","angle","numerator","denominator"];
+  tokens[0]=PS_Token.{kind=7,text="unit"};tokens[1].kind=8;
+  for i:0..<7 {field:=(i+repeated)%6;tokens[2+4*i]=PS_Token.{kind=1,text=names[field]};tokens[3+4*i].kind=23;tokens[4+4*i]=PS_Token.{kind=3,value=1};if i!=6 {tokens[5+4*i].kind=14;}}
+  tokens[29].kind=9;nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_quantity(tokens[..],nodes[..],state[..],message[..],1);
+  #assert state[0].code=="E0820" && cast(string)message[0..<state[0].length]=="unit metadata is repeated";
+}
+#test "struct parsing routes generic builtin quantities and preserves ordinary fields" {
+  tokens:[12]PS_Token;tokens[0]=PS_Token.{kind=2,text="struct"};tokens[1].kind=8;tokens[2]=PS_Token.{kind=53,text="T"};tokens[3].kind=9;
+  tokens[4]=PS_Token.{kind=7,text="builtin_quantity"};tokens[5].kind=10;tokens[6]=PS_Token.{kind=1,text="value"};tokens[7].kind=16;tokens[8]=PS_Token.{kind=53,text="T"};tokens[9].kind=15;tokens[10].kind=11;
+  nodes:[16]PS_Node;state:[1]PS_State;message:[256]u8;name:=PS_Token.{kind=1,text="Quantity",loc=PS_Loc.{line=3,column=2,offset=9}};
+  id:=PS_struct(tokens[..],nodes[..],state[..],message[..],name);
+  #assert state[0].code=="" && id==1 && state[0].pos==11 && nodes[id].kind==PS_Tag.decl_struct_ && nodes[id].name=="Quantity" && nodes[id].loc.line==3 && nodes[id].quantity==2;
+  #assert nodes[nodes[id].d].name=="T" && nodes[nodes[id].d].kind==PS_Tag.type_param;
+  field:=nodes[id].head;#assert field!=0 && nodes[field].name=="value" && nodes[nodes[field].a].kind==PS_Tag.type_param && nodes[nodes[field].a].name=="T";
+  plain:[8]PS_Token;plain[0]=PS_Token.{kind=2,text="struct"};plain[1].kind=10;plain[2]=PS_Token.{kind=1,text="x"};plain[3].kind=16;plain[4]=PS_Token.{kind=1,text="f32"};plain[5].kind=15;plain[6].kind=11;
+  state[0]=PS_State.{};id=PS_struct(plain[..],nodes[..],state[..],message[..],PS_Token.{text="Plain"});
+  #assert state[0].code=="" && id==1 && state[0].pos==7 && nodes[id].quantity==0 && nodes[id].name=="Plain" && nodes[nodes[id].head].name=="x";
+}
+#test "struct parsing refuses directives and unknown physical annotations with original errors" {
+  tokens:[5]PS_Token;tokens[0]=PS_Token.{kind=2,text="struct"};tokens[1]=PS_Token.{kind=6,text="packed",loc=PS_Loc.{line=7,column=11,offset=31}};tokens[2].kind=10;tokens[3].kind=11;
+  nodes:[8]PS_Node;state:[1]PS_State;message:[256]u8;id:=PS_struct(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="S"});
+  #assert id==0 && state[0].code=="E0210" && state[0].loc.line==7 && state[0].loc.column==11 && cast(string)message[0..<state[0].length]=="#packed on structs is not supported by coax0 yet";
+  tokens[1].kind=7;tokens[1].text="nonsense";state[0]=PS_State.{};id=PS_struct(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="S"});
+  #assert id==0 && state[0].code=="E0820" && state[0].loc.line==7 && state[0].loc.column==11 && cast(string)message[0..<state[0].length]=="unsupported physical annotation";
 }

@@ -383,6 +383,7 @@ namespace {
 
 // A unique, kind-prefixed spelling of a type for generated names.
 std::string tag(Type t) {
+  if (t->physical) return tag(t->physical);
   switch (t->kind) {
     case TypeKind::integer: return t == T_INT ? "s64" : t->name;
     case TypeKind::floating: return t->name;
@@ -404,6 +405,7 @@ std::string tag(Type t) {
 }
 
 std::string c_type(Type t) {
+  if (t->physical) return c_type(t->physical);
   switch (t->kind) {
     case TypeKind::void_: return "void";
     case TypeKind::integer: return std::string(t->is_signed ? "int" : "uint") + std::to_string(t->bits) + "_t";
@@ -420,6 +422,7 @@ std::string int_tag(Type t) {
 }
 
 bool needs_init(Type t) {
+  if (t->physical) return false;
   if (t->kind == TypeKind::array) return needs_init(t->elem);
   if (t->kind != TypeKind::struct_) return false;
   for (const Field &f : t->struct_decl->fields)
@@ -677,6 +680,7 @@ struct Emitter {
   }
 
   std::string zero_value(Type t) {
+    if (t->physical) return zero_value(t->physical);
     if (device() && (t->kind == TypeKind::array || t->kind == TypeKind::view)) return c_type(t) + "{}";
     if (opts.metal_compute && t == &T_F64) return "coax_ff_make(0.0f, 0.0f)";
     if (needs_init(t)) return "coax_init_" + tag(t) + "()";
@@ -710,6 +714,7 @@ struct Emitter {
   // A compile-time value as a static initializer.
   std::string init_list(const Value &v) {
     Type t = v.type;
+    if(t->physical) return init_list((*v.agg)[0]);
     switch (t->kind) {
       case TypeKind::integer: case TypeKind::enum_: return int_text(t, v.bits);
       case TypeKind::bool_: return v.bits ? "1" : "0";
@@ -907,6 +912,7 @@ struct Emitter {
         return "coax_neg_" + int_tag(e->type) + "(" + ex(e->lhs) + ", " + line + ")";
       case ExprKind::binary: return binary(e);
       case ExprKind::field:
+        if(e->lhs->type->physical) return ex(e->lhs);
         if (e->field_index == -2) {
           Type lt = e->lhs->type;
           if (lt->kind == TypeKind::array) {
@@ -960,6 +966,7 @@ struct Emitter {
         });
       }
       case ExprKind::struct_lit: {
+        if(e->type->physical) return e->fields.count ? ex(e->fields[0].value) : zero_value(e->type->physical);
         const StructDecl *d = e->type->struct_decl;
         std::vector<Operand> ops;
         for (const FieldInit &fi : e->fields) ops.push_back({fi.value, false});
@@ -1051,6 +1058,7 @@ struct Emitter {
   // ---- print: split the checked format at compile time ----
 
   std::string show_call(Type t, const std::string &v, bool top) {
+    if(t->physical) return show_call(t->physical,v,top);
     switch (t->kind) {
       case TypeKind::integer: return t->is_signed ? "coax_print_int(" + v + ")" : "coax_print_uint(" + v + ")";
       case TypeKind::floating: return "coax_print_float(" + v + (t == &T_F32 ? ", 1)" : ", 0)");
@@ -1456,12 +1464,13 @@ struct TypeWriter {
   bool header = false;
 
   bool seen(Type t) {
-    for (Type d : done) if (d == t) return true;
+    for (Type d : done) if (d == t || ((t->kind==TypeKind::array || t->kind==TypeKind::view) && d->kind==t->kind && tag(d)==tag(t))) return true;
     return false;
   }
 
   void need(Type t) {
     if (seen(t)) return;
+    if(t->physical) { done.push_back(t); need(t->physical); return; }
     switch (t->kind) {
       case TypeKind::struct_: {
         done.push_back(t);
@@ -1514,13 +1523,14 @@ struct TypeWriter {
   }
 
   void forward_structs(const File *file) {
-    for (const StructDecl *d : file->structs)
+    for (const StructDecl *d : file->structs) if(!d->type->physical)
       out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
   }
 
   // The C compiler checks that Coax's layout is the C layout.
   void layout_asserts(const File *file) {
     for (const StructDecl *d : file->structs) {
+      if(d->type->physical) continue;
       std::string c = c_type(d->type);
       out += "COAX_LAYOUT(sizeof(" + c + ") == " + std::to_string(d->type->size) + " && _Alignof(" + c + ") == " +
              std::to_string(d->type->align) + ", \"layout of " + to_std(d->name) + "\");\n";
@@ -1533,7 +1543,8 @@ struct TypeWriter {
 
 void collect_types(const File *file, std::vector<Type> *types) {
   auto add = [&](Type t) {
-    for (Type x : *types) if (x == t) return;
+    if(t->physical) return;
+    for (Type x : *types) if (x == t || ((t->kind==TypeKind::array || t->kind==TypeKind::view) && x->kind==t->kind && tag(x)==tag(t))) return;
     types->push_back(t);
   };
   for (const StructDecl *d : file->structs) add(d->type);
@@ -1591,8 +1602,9 @@ std::string show_functions(const File *file, Emitter &em) {
 
 std::string view_helpers() {
   std::string s;
+  std::set<std::string> emitted;
   for (Type t : all_composite_types()) {
-    if (t->kind != TypeKind::view) continue;
+    if (t->kind != TypeKind::view || !emitted.insert(tag(t)).second) continue;
     std::string c = c_type(t), e = c_type(t->elem), tg = tag(t);
     if (t->elem == &T_U8)
       s += "static coax_string coax_string_of_bytes(" + c + " v) { coax_string s = {(const char *)v.data, v.count}; return s; }\n";
@@ -2487,7 +2499,7 @@ std::string emit_header(const File *file) {
       used = used || uses(p->ret);
       for (const Param &prm : p->params) used = used || uses(prm.type);
     }
-    if (used) types.out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
+    if (used && !d->type->physical) types.out += "typedef struct coax_" + tag(d->type) + " coax_" + tag(d->type) + ";\n";
   }
   for (const ProcDecl *p : file->procs) {
     // A #foreign prototype below names its view parameters' types too.
@@ -2497,7 +2509,7 @@ std::string emit_header(const File *file) {
   }
   std::string asserts;
   for (const StructDecl *d : file->structs) {
-    if (!types.seen(d->type)) continue;
+    if (d->type->physical || !types.seen(d->type)) continue;
     std::string c = c_type(d->type);
     asserts += "COAX_LAYOUT(sizeof(" + c + ") == " + std::to_string(d->type->size) + " && COAX_ALIGNOF(" + c +
                ") == " + std::to_string(d->type->align) + ", \"layout of " + to_std(d->name) + "\");\n";

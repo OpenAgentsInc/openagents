@@ -79,6 +79,8 @@ gate "$work/stage0" test lib/compiler/compute.coax
 gate "$work/stage0" mutate lib/compiler/compute.coax
 gate "$work/stage0" test lib/compiler/effects.coax
 gate "$work/stage0" mutate lib/compiler/effects.coax --root-only
+gate "$work/stage0" test lib/compiler/quantity.coax
+gate "$work/stage0" mutate lib/compiler/quantity.coax --root-only
 gate "$work/stage0" test lib/compiler/native-checks.coax
 gate "$work/stage0" mutate lib/compiler/native-checks.coax
 gate "$work/stage0" test lib/compiler/native-execution.coax

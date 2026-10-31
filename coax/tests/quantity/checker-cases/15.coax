@@ -1,0 +1,6 @@
+Metre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+HalfMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=2) {}
+Second :: struct @unit(mass=0,length=0,time=1,angle=0,numerator=1,denominator=1) {}
+Centimetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=100) {}
+Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
+f :: (a:$T:ordered,b:$T)->$T {if a<b {return b;}return a;} g :: (a:Quantity(Metre,f64),b:Quantity(Metre,f64))->Quantity(Metre,f64) {return f(a,b);}

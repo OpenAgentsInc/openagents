@@ -417,6 +417,46 @@ Multiple returns, named/default arguments, overloads, variadics, callbacks and
 explicit pointer mutation are planned. Passing a large value by an optimized
 physical convention must not silently make it a mutable reference.
 
+### 7.1.1 Initial physical quantities (authored-source milestone, unreleased)
+
+The initial R12 slice adds checked metadata on declarations. A nongeneric,
+empty unit tag states integer exponents for mass, length, time and angle and
+an exact positive rational scale. All six literal arguments are required:
+
+```jai
+Metre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+HalfMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=2) {}
+Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity { value:$R; }
+```
+
+Exponents are −8 through 8; scale numerator and denominator are 1 through
+1,048,576. A quantity family must have exactly these two parameter roles and
+one field named `value`, of the second parameter's type, without a default.
+Concrete quantities accept only declared unit tags and `f32`/`f64` carriers.
+Their target C representation is the carrier scalar; semantic identity keeps
+the nominal unit and family. `size_of` and the layout report retain the checked value's size/alignment.
+Schema1 `type_info`/`field_info` on transparent quantities are refused until
+versioned semantic/physical metadata is qualified. A same-size ordinary record
+does not acquire quantity semantics, and a quantity is not `numeric`.
+
+Matching-unit, matching-carrier quantities support `+`, `-` and comparisons.
+Scaling supports quantity times carrier, carrier times quantity, and quantity
+divided by carrier. Quantity products/quotients and affine point/vector/frame
+operators remain pending. No implicit unit or carrier conversion is admitted.
+Operators evaluate operands once, from left to right when observable, as the
+ordinary scalar operators do. `.value` is explicit access to the raw carrier.
+
+`convert_unit(TargetUnit, quantity)` is an explicit type-directed intrinsic.
+This first profile accepts equal dimensions and a scale ratio that is exactly
+a power of two. It multiplies the carrier by that binary coefficient under
+the existing IEEE target profile: normal representable results are exact;
+subnormal rounding and overflow follow the carrier's IEEE arithmetic. It does
+not promise every result is finite or exactly representable. Other ratios,
+including degree/radian rounding, are refused in this milestone. Clock and
+timestamp semantics remain R13. Metal, CUDA, SPIR-V and WGSL output using quantities is explicitly refused in
+this milestone; their representation/ABI gates are separate.
+This does not complete R12's consumer gate.
+
 ### 7.2 Generics
 
 **Type parameters (0.34.0).** `$T` in a procedure's parameter types makes it

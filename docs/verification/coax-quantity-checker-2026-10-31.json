@@ -1,0 +1,139 @@
+{
+  "schema": "coax-quantity-checker-integration-v1",
+  "date": "2026-10-31",
+  "scope": "R12 M1 nominal scalar quantities. Exact changed checker procedures only; full points/vectors/frames, derived quantity arithmetic, R12 completion, R13 clocks and R14 boundedness are not claimed.",
+  "source": "coax/lib/compiler/checker.coax",
+  "source_sha256": "0cc4e0288ddfd9b1f34e9e4e465824a0b5e2a1e6453d97acb31a7266dd63652e",
+  "mutation": {
+    "checks_retained": 647,
+    "sites": 1090,
+    "killed": 1090,
+    "survivors": 0,
+    "equivalent_waivers": 0,
+    "root_only": true,
+    "jobs": 8,
+    "exact_procedures": [
+      {
+        "name": "CK_quantity_layout",
+        "first_line": 1010,
+        "sha256": "50fec01621e2f33ba850e9bdb66d7ef6a6027fb58ad72517df6fb3031060fed1"
+      },
+      {
+        "name": "CK_quantity_raw",
+        "first_line": 1027,
+        "sha256": "ae3260d37155a466d8e1bcd408189947f6da4860a2ca4fdea0c132960ac9c9c8"
+      },
+      {
+        "name": "CK_quantity_wrap",
+        "first_line": 1031,
+        "sha256": "3c2010ee37e61402e80e23c00de41550f72efd8df16a7eeb460e4d59dfb1d1f9"
+      },
+      {
+        "name": "CK_quantity_binary",
+        "first_line": 1035,
+        "sha256": "8b335896a5ee7c6146a13621bc2747e503a19377186316f546f5edd4b53d0709"
+      },
+      {
+        "name": "CK_quantity_target",
+        "first_line": 1054,
+        "sha256": "8ee290ed619a57939b0ad4c8c4059ff6b4eb4bb744c54a712eab83416ec5321f"
+      },
+      {
+        "name": "CK_quantity_convert",
+        "first_line": 1060,
+        "sha256": "8182811556b6e81f07dc2e6a7ba2005bbf7a47e4a08b15099f99a5d8a6cde6f8"
+      },
+      {
+        "name": "CK_binary",
+        "first_line": 1080,
+        "sha256": "ecf58cec6e378d8beb8671c5932de404317536dec0ee16374cd44e866202cf45"
+      },
+      {
+        "name": "CK_layout",
+        "first_line": 858,
+        "sha256": "275a6441295a7eaee5490537baa0934705160c4d182b660d3fee4dc6d2375f74"
+      },
+      {
+        "name": "CK_call",
+        "first_line": 1488,
+        "sha256": "29e22b83ab9a37b8aabea1c4780a4970fec1736ad82093ad3188382c40e9747b"
+      },
+      {
+        "name": "CK_foreign_scalar",
+        "first_line": 2172,
+        "sha256": "660c5958b23da52a729fa656a29a0dd0804730d7642e29f11e81bed926570e62"
+      },
+      {
+        "name": "CK_foreign_param",
+        "first_line": 2175,
+        "sha256": "3067b1c7ac77764dcf662cb2f7a7193712fe36de1795b4d803c4a0d4e3e639a4"
+      },
+      {
+        "name": "CK_meets",
+        "first_line": 1715,
+        "sha256": "08d66e346a1fca5ed87e8efe724cea7ce4bc7a0ebfdebab99841b6ec91a9a681"
+      },
+      {
+        "name": "CK_meta_query",
+        "first_line": 1460,
+        "sha256": "ab9ba06496cc812c7357d32297ea92ee329b98e674da2cf891278ca67027c929"
+      },
+      {
+        "name": "CK_struct_node",
+        "first_line": 1762,
+        "sha256": "06ece15cd09e5ea0df57b6992e8c325d1e738ce4612fc6fc029089bfd0d0f0fb"
+      },
+      {
+        "name": "CK_builtin_name",
+        "first_line": 677,
+        "sha256": "711860022f9682250c9187ee2fe1a7fdb221956e4709637b37127b4201287e66"
+      },
+      {
+        "name": "CK_run",
+        "first_line": 2298,
+        "sha256": "d80387e8234e8491a13b81261e1d23f6247471d2898dcad9f6e3979ca978929f"
+      }
+    ],
+    "root_sha256": "c2720be6490a665aa31b4aac25fd177856001075259e6c5c4357932cfb1e1840",
+    "dependency_sha256": "56694135c8de86e2cd37ab1d6ef8be663ad7d35bbed2aa4edd96b65c67e702a4",
+    "log_sha256": "84233e35a0e07afb453ce2824a384293091409ed85cbfe0715b5f0a2242e18bc",
+    "test_compiler_sha256": "019e2afe27e3527fd6997807f21af69f2d74e0e28885f0758e3c330c7ce23ccc",
+    "test_compiler_source_snapshot": "3c588727e91a124ea38dfcd3768cb5645c7ae6bd",
+    "test_compiler_profile": "O1, -g, -ffp-contract=off; immutable existing 0.40 source. Product arithmetic is not changed by the host optimization."
+  },
+  "coverage_added": [
+    "Each metadata/family admission arm and numeric-versus-ordered generic constraints.",
+    "Resolved raw projections/wrappers, locations, next links, field indices, result types and prechecked marker.",
+    "All admitted and adjacent rejected binary opcodes and both scalar operand orders.",
+    "Power-of-two coefficient bits at -40,-1,0,1,40 for F32/F64, including nominal identity conversion.",
+    "Node/type/instance/text arena resource failures return CK_NONE with precise diagnostics.",
+    "Module-qualified conversion target wins over same-spelled local unit; malformed qualifiers are refused.",
+    "Schema1 reflection and device-target admission refusal."
+  ],
+  "diagnostics": [
+    "The first stronger run killed1087/1090; three remaining alias mutants exposed a test masking effect, since unqualified lookup could find the only exported tag. A local shadow makes nominal target identity observable.",
+    "Text-arena exhaustion initially returned a positive target type after fatal allocation; CK_quantity_target now normalizes fatal construction to CK_NONE."
+  ],
+  "cli": {
+    "tests": 9,
+    "passed": true,
+    "compiler_sha256": "52f0e27a3532b9294912e94aa2a9d56432d56d77c0d329ff3bfbdaf4813a53fb",
+    "log_sha256": "d92cd69423c744d3fa8255404cf5561384bd48393f19d66dbe4a7a16bf208f12"
+  },
+  "native_reuse": {
+    "record": "docs/verification/coax-quantity-native-2026-10-31.json",
+    "assembly_record": "docs/verification/coax-quantity-assembly-2026-10-31.json",
+    "fresh_compiler_generated_c_sha256": "f45375017775fbc01a01a930640ace8cf0deb03abc0e297e286a624c3da8dec7",
+    "fresh_compiler_generated_header_sha256": "65c0af8c2bacd8130b50c8043c124296c8278ac24c5be4ba72dc199a3eb86e65",
+    "exact_previous_c_and_header": true,
+    "native_modes_rerun": false
+  },
+  "checked_in_seeds": {
+    "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+    "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+    "coax/bootstrap/checker.c": "1f3e902f91fcab21097b7c03dd52f2771654ef2432f824a9788d07f7e55f4a19",
+    "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355"
+  },
+  "normal_bootstrap": "Seed reconstruction and C/header fixed-point receipt is separate; no release-cache qualification is implied.",
+  "passed": true
+}
