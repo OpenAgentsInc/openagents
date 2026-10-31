@@ -83,6 +83,7 @@
 - [106. Differentiate any tensor program](ch106-differentiate-any-tensor-program.md)
 - [112. Bytes and a small language model](ch112-bytes-and-a-small-language-model.md)
 
+- [122. A checkpoint holds the whole experiment](ch122-a-checkpoint-holds-the-whole-experiment.md)
 - [123. Learn a tokenizer](ch123-learn-a-tokenizer.md)
 - [124. AdamW and explicit precision](ch124-adamw-and-explicit-precision.md)
 

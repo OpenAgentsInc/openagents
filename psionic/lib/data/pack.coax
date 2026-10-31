@@ -1,0 +1,154 @@
+// Deterministic document packing (psionic-pack-v1). Documents are fixed
+// token spans with an ID and a split; only training documents are packed.
+// Each epoch shuffles the training documents with splitmix64-top53-v1 draws
+// at counters epoch*64+i, so the order is a function of (seed, epoch) and a
+// resumed run needs only the cursor. Every document begins with PK_BOS; a
+// trainer never predicts a BOS, so no target crosses a document boundary.
+#load "../counter-rng.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#load "../../fixtures/resume/reference.coax";
+#authority;
+PkStatus :: enum u8 {ok;shape;order;token;split;cursor;alias;hash;}
+PkSplit :: enum u8 {train;validation;test;}
+PkDoc :: struct {id:int;split:PkSplit;first:int;count:int;}
+PkCursor :: struct {seed:u64;epoch:int;order:int;offset:int;}
+PkNext :: struct {status:PkStatus;cursor:PkCursor;boundaries:int;}
+PK_VOCAB :: 16;
+PK_BOS :: 15;
+PK_DOCS :: 64;
+PK_DOC_TOKENS :: 1024;
+PK_TOKENS :: 4096;
+PK_ROW :: 256;
+PK_EPOCHS :: 1048576;
+
+// IDs strictly ascending, spans contiguous from 0 and covering every token,
+// content tokens below PK_BOS, and at least one training document.
+pk_dataset :: (docs:[]PkDoc,tokens:[]u8)->PkStatus {
+    if docs.count<1 || docs.count>PK_DOCS || tokens.count<1 || tokens.count>PK_TOKENS {return PkStatus.shape;}
+    at:=0;train:=false;
+    for i:0..<docs.count {d:=docs[i];
+        if i>0 && d.id<=docs[i-1].id {return PkStatus.order;}
+        if d.id<0 || d.first!=at || d.count<1 || d.count>PK_DOC_TOKENS {return PkStatus.shape;}
+        at+=d.count;if d.split==PkSplit.train {train=true;}
+    }
+    if at!=tokens.count {return PkStatus.shape;}
+    for t:tokens {if t>=PK_BOS {return PkStatus.token;}}
+    if !train {return PkStatus.split;}
+    return PkStatus.ok;
+}
+pk_trains :: (docs:[]PkDoc)->int {n:=0;for d:docs {if d.split==PkSplit.train {n+=1;}}return n;}
+// The epoch's order of training documents, as indexes into docs.
+pk_order :: (docs:[]PkDoc,seed:u64,epoch:int,out:[]int) {
+    n:=0;for i:0..<docs.count {if docs[i].split==PkSplit.train {out[n]=i;n+=1;}}
+    for k:1..<n {
+        i:=n-k;u:=f64(cr_bits(seed,cast(u64)(epoch*PK_DOCS+i))>>11)/9007199254740992.0;j:=cast(int)(u*f64(i+1));
+        t:=out[i];out[i]=out[j];out[j]=t;
+    }
+}
+pk_cursor :: (docs:[]PkDoc,c:PkCursor)->bool {
+    n:=pk_trains(docs);if c.epoch<0 || c.epoch>=PK_EPOCHS || c.order<0 || c.order>=n || c.offset<0 {return false;}
+    order:[64]int;pk_order(docs,c.seed,c.epoch,order[..]);return c.offset<=docs[order[c.order]].count;
+}
+// book:begin next
+// Fills row with the next tokens of the packed stream and returns the cursor
+// after them. Nothing is written unless the dataset and cursor are admitted.
+pk_next :: (docs:[]PkDoc,tokens:[]u8,cursor:PkCursor,row:[]u8,overlap:bool)->PkNext #export_c {
+    if overlap {return PkNext.{status=PkStatus.alias,cursor=cursor};}
+    status:=pk_dataset(docs,tokens);if status!=PkStatus.ok {return PkNext.{status=status,cursor=cursor};}
+    if row.count<2 || row.count>PK_ROW {return PkNext.{status=PkStatus.shape,cursor=cursor};}
+    if !pk_cursor(docs,cursor) {return PkNext.{status=PkStatus.cursor,cursor=cursor};}
+    order:[64]int;n:=pk_trains(docs);pk_order(docs,cursor.seed,cursor.epoch,order[..]);stage:[256]u8;c:=cursor;bos:=0;
+    for k:0..<row.count {
+        d:=docs[order[c.order]];
+        if c.offset==0 {stage[k]=PK_BOS;bos+=1;} else {stage[k]=tokens[d.first+c.offset-1];}
+        c.offset+=1;
+        if c.offset>d.count {c.offset=0;c.order+=1;if c.order==n {c.order=0;c.epoch+=1;if c.epoch==PK_EPOCHS {return PkNext.{status=PkStatus.cursor,cursor=cursor};}pk_order(docs,c.seed,c.epoch,order[..]);}}
+    }
+    for k:0..<row.count {row[k]=stage[k];}
+    return PkNext.{cursor=c,boundaries=bos};
+}
+// book:end next
+// The dataset's identity: SHA-256 (tag psionic.dataset.v1) over each
+// document's ID (u32 LE), split byte, count (u32 LE) and tokens, in order.
+pk_identity :: (docs:[]PkDoc,tokens:[]u8,out:[]u8)->PkStatus {
+    status:=pk_dataset(docs,tokens);if status!=PkStatus.ok {return status;}if out.count!=32 {return PkStatus.shape;}
+    if docs[docs.count-1].id>4294967295 {return PkStatus.shape;}
+    buf:[4672]u8;at:=0;
+    for d:docs {
+        at=pk_u32(buf[..],at,d.id);buf[at]=cast(u8)d.split;at=pk_u32(buf[..],at+1,d.count);
+        for i:0..<d.count {buf[at+i]=tokens[d.first+i];}at+=d.count;
+    }
+    digest:[32]u8;if sha256_tagged_checked("psionic.dataset.v1",buf[0..<at],digest[..],false)!=SHA_OK {return PkStatus.hash;}
+    for i:0..<32 {out[i]=digest[i];}return PkStatus.ok;
+}
+pk_u32 :: (b:[]u8,at:int,x:int)->int {b[at]=cast(u8)(x&255);b[at+1]=cast(u8)((x>>8)&255);b[at+2]=cast(u8)((x>>16)&255);b[at+3]=cast(u8)((x>>24)&255);return at+4;}
+
+pk_fixture :: (docs:[]PkDoc,tokens:[]u8) {
+    // Three training documents (IDs 2, 5, 9), one validation, one test.
+    lens:=[5]int.[3,2,4,2,3];ids:=[5]int.[2,5,9,11,12];at:=0;
+    for i:0..<5 {docs[i]=PkDoc.{id=ids[i],split=PkSplit.train,first=at,count=lens[i]};for j:0..<lens[i] {tokens[at+j]=cast(u8)(i*3+j);}at+=lens[i];}
+    docs[3].split=PkSplit.validation;docs[4].split=PkSplit.test;
+}
+#test "dataset admission: order, spans, tokens and a training split" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);
+    #assert pk_dataset(docs[..],tokens[..])==PkStatus.ok && pk_trains(docs[..])==3;
+    #assert pk_dataset(docs[0..<0],tokens[..])==PkStatus.shape && pk_dataset(docs[..],tokens[0..<0])==PkStatus.shape && pk_dataset(docs[..],tokens[0..<13])==PkStatus.shape;
+    many:[65]PkDoc;many[0]=docs[0];#assert pk_dataset(many[..],tokens[..])==PkStatus.shape;
+    big:[4097]u8;#assert pk_dataset(docs[..],big[..])==PkStatus.shape;
+    docs[1].id=2;#assert pk_dataset(docs[..],tokens[..])==PkStatus.order;docs[1].id=1;#assert pk_dataset(docs[..],tokens[..])==PkStatus.order;docs[1].id=5;
+    docs[0].id=-1;#assert pk_dataset(docs[..],tokens[..])==PkStatus.shape;docs[0].id=2;
+    docs[1].first=4;#assert pk_dataset(docs[..],tokens[..])==PkStatus.shape;docs[1].first=3;
+    docs[4].count=0;#assert pk_dataset(docs[..],tokens[..])==PkStatus.shape;docs[4].count=4;#assert pk_dataset(docs[..],tokens[..])==PkStatus.shape;docs[4].count=3;
+    tokens[13]=15;#assert pk_dataset(docs[..],tokens[..])==PkStatus.token;tokens[13]=14;#assert pk_dataset(docs[..],tokens[..])==PkStatus.ok;
+    for i:0..<3 {docs[i].split=PkSplit.test;}#assert pk_dataset(docs[..],tokens[..])==PkStatus.split;
+    one:=[1]PkDoc.[PkDoc.{id=0,count=1024}];t:[1024]u8;#assert pk_dataset(one[..],t[..])==PkStatus.ok;one[0].count=1025;t2:[1025]u8;#assert pk_dataset(one[..],t2[..])==PkStatus.shape;
+    t1:[1]u8;#assert pk_dataset(one[0..<1],t1[..])==PkStatus.shape;one[0].count=1;#assert pk_dataset(one[0..<1],t1[..])==PkStatus.ok;
+    four:[5]PkDoc;ft4:[4097]u8;for i:0..<4 {four[i]=PkDoc.{id=i,first=i*1024,count=1024};}#assert pk_dataset(four[0..<4],ft4[0..<4096])==PkStatus.ok;four[4]=PkDoc.{id=4,first=4096,count=1};#assert pk_dataset(four[..],ft4[..])==PkStatus.shape;
+    full:[64]PkDoc;ft:[64]u8;for i:0..<64 {full[i]=PkDoc.{id=i,first=i,count=1};}#assert pk_dataset(full[..],ft[..])==PkStatus.ok;
+}
+#test "epoch orders are seeded permutations of the training documents only" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);o:[64]int;w0:=PK_ORDER_7_0;w3:=PK_ORDER_7_3;w8:=PK_ORDER_8_0;
+    pk_order(docs[..],7,0,o[..]);#assert o[0]==w0[0] && o[1]==w0[1] && o[2]==w0[2];
+    pk_order(docs[..],7,3,o[..]);#assert o[0]==w3[0] && o[1]==w3[1] && o[2]==w3[2];
+    pk_order(docs[..],8,0,o[..]);#assert o[0]==w8[0] && o[1]==w8[1] && o[2]==w8[2];
+    // Validation and test documents never enter an order.
+    docs[0].split=PkSplit.validation;pk_order(docs[..],7,0,o[..]);#assert pk_trains(docs[..])==2 && o[0]+o[1]==3;
+}
+#test "the packed stream matches the independent stream across epochs and rows" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);want:=PK_STREAM_7;
+    // Rows of 8, 5, 3 and 32: the stream does not depend on how it is cut, and
+    // the last row crosses into epoch 3, whose order differs from epoch 2's.
+    c:=PkCursor.{seed=7};row:[48]u8;at:=0;bos:=0;
+    for n:[4]int.[8,5,3,32] {r:=pk_next(docs[..],tokens[..],c,row[at..<at+n],false);#assert r.status==PkStatus.ok;c=r.cursor;at+=n;bos+=r.boundaries;}
+    for i:0..<48 {#assert row[i]==want[i];}
+    #assert bos==12 && c.epoch==4 && c.order==0 && c.offset==0 && c.seed==7;
+}
+#test "rows and cursors are admitted before any write" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);row:[257]u8;row[0]=9;c:=PkCursor.{seed=7,epoch=2,order=1,offset=3};
+    // Epoch 2's first document is ID 5 (two tokens), not the first listed.
+    #assert pk_cursor(docs[..],PkCursor.{seed=7,epoch=2,offset=2}) && !pk_cursor(docs[..],PkCursor.{seed=7,epoch=2,offset=3});
+    #assert pk_cursor(docs[..],c) && !pk_cursor(docs[..],PkCursor.{seed=7,epoch=2,order=1,offset=4}) && pk_cursor(docs[..],PkCursor.{seed=7,epoch=2,order=0,offset=2});
+    #assert !pk_cursor(docs[..],PkCursor.{order=3}) && !pk_cursor(docs[..],PkCursor.{order=-1}) && !pk_cursor(docs[..],PkCursor.{offset=-1}) && !pk_cursor(docs[..],PkCursor.{epoch=-1}) && !pk_cursor(docs[..],PkCursor.{epoch=1048576}) && pk_cursor(docs[..],PkCursor.{epoch=1048575});
+    r:=pk_next(docs[..],tokens[..],c,row[0..<2],true);#assert r.status==PkStatus.alias && r.cursor.offset==3 && row[0]==9;
+    r=pk_next(docs[..],tokens[..],c,row[0..<1],false);#assert r.status==PkStatus.shape && row[0]==9;
+    r=pk_next(docs[..],tokens[..],c,row[..],false);#assert r.status==PkStatus.shape && row[0]==9;
+    #assert pk_next(docs[..],tokens[..],c,row[0..<256],false).status==PkStatus.ok;row[0]=9;row[1]=0;
+    r=pk_next(docs[..],tokens[..],PkCursor.{offset=99},row[0..<2],false);#assert r.status==PkStatus.cursor && row[0]==9 && row[1]==0;
+    tokens[0]=15;r=pk_next(docs[..],tokens[..],c,row[0..<2],false);#assert r.status==PkStatus.token && row[0]==9 && row[1]==0;tokens[0]=0;
+    // The last epoch ends the stream instead of wrapping.
+    // (Every document has 2 to 4 tokens: a row of 5 from the last one's start always runs out.)
+    r=pk_next(docs[..],tokens[..],PkCursor.{seed=7,epoch=1048575,order=2},row[0..<5],false);#assert r.status==PkStatus.cursor && row[0]==9 && row[1]==0;
+    r=pk_next(docs[..],tokens[..],PkCursor.{seed=7,epoch=1048575,order=2},row[0..<2],false);#assert r.status==PkStatus.ok && r.cursor.epoch==1048575 && r.cursor.offset==2;
+}
+#test "the dataset identity matches the independent digest and sees every field" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);id:[32]u8;want:=PK_IDENTITY;
+    #assert pk_identity(docs[..],tokens[..],id[..])==PkStatus.ok;for i:0..<32 {#assert id[i]==want[i];}
+    short:[31]u8;#assert pk_identity(docs[..],tokens[..],short[..])==PkStatus.shape;
+    tokens[13]=15;#assert pk_identity(docs[..],tokens[..],id[..])==PkStatus.token;tokens[13]=14;
+    a:=id;docs[4].id=13;#assert pk_identity(docs[..],tokens[..],id[..])==PkStatus.ok;#assert id[0]!=a[0] || id[1]!=a[1];docs[4].id=12;
+    docs[3].split=PkSplit.test;#assert pk_identity(docs[..],tokens[..],id[..])==PkStatus.ok;#assert id[0]!=a[0] || id[1]!=a[1];docs[3].split=PkSplit.validation;
+    docs[3].count=3;docs[4].first=12;docs[4].count=2;#assert pk_identity(docs[..],tokens[..],id[..])==PkStatus.ok;#assert id[0]!=a[0] || id[1]!=a[1];
+    big:=[1]PkDoc.[PkDoc.{id=4294967296,count=300}];t:[300]u8;for i:0..<300 {t[i]=cast(u8)(i%15);}#assert pk_identity(big[..],t[..],id[..])==PkStatus.shape;
+    big[0].id=4294967295;#assert pk_identity(big[..],t[..],id[..])==PkStatus.ok;
+    big[0].id=305419896;wide:=PK_IDENTITY_WIDE;#assert pk_identity(big[..],t[..],id[..])==PkStatus.ok;for i:0..<32 {#assert id[i]==wide[i];}
+}

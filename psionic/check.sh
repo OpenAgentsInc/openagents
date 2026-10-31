@@ -79,6 +79,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == adamw || $chapter == optim/adamw ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_adamw.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == resume || $chapter == data/pack || $chapter == checkpoint/record || $chapter == checkpoint/resume ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_resume.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == bpe-train || $chapter == bpe-train-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_bpe_train.sh --mutate --jobs "$jobs"
     fi
@@ -314,13 +317,14 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; nanochat_chat=0; bpe_train=0; byte_lm=0; adamw=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; nanochat_chat=0; bpe_train=0; byte_lm=0; adamw=0; resume=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
 robotics=0;robotics_requested=()
 picks_robotics() { local n=${1%.coax};n=${n#psionic/lib/};[[ $n == robotics || $n == robotics/sim || $n == robotics/evaluate || $n == robotics/learn || $n == robotics/singlearm ]]; }
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_operator_registry() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == operator-registry || $n == operator-registry-* ]]; }
 picks_gguf() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gguf || $n == gguf-* ]]; }
 picks_tokenizer_families() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tokenizer-families || $n == tokenizer-families-* ]]; }
+picks_resume() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == resume || $n == data || $n == data/pack || $n == checkpoint || $n == checkpoint/* ]]; }
 picks_adamw() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == adamw || $n == optim/adamw || $n == optim ]]; }
 picks_byte_lm() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == byte-lm || $n == byte-lm-* ]]; }
 picks_model_pins() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == model-pins ]]; }
@@ -341,6 +345,7 @@ if [[ ${#only[@]} -eq 0 ]]; then
     nanochat_chat=1
     byte_lm=1
     adamw=1
+    resume=1
     tokenizer_families=1
     gguf=1
     operator_registry=1
@@ -356,6 +361,7 @@ else
         if picks_tokenizer_families "$n"; then hit=1; tokenizer_families=1; fi
         if picks_byte_lm "$n"; then hit=1; byte_lm=1; fi
         if picks_adamw "$n"; then hit=1; adamw=1; fi
+        if picks_resume "$n"; then hit=1; resume=1; fi
         if picks_bpe_train "$n"; then hit=1; bpe_train=1; fi
         if picks_model_pins "$n"; then hit=1; model_pins=1; fi
         if picks_nanochat_chat "$n"; then hit=1; nanochat_chat=1; fi
@@ -493,6 +499,10 @@ fi
 if [[ $byte_lm == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_byte_lm.sh --mutate --jobs "$jobs"
     phase "chapter 112: byte-lm"
+fi
+if [[ $resume == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_resume.sh --mutate --jobs "$jobs"
+    phase "chapter 122: resume"
 fi
 if [[ $adamw == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_adamw.sh --mutate --jobs "$jobs"

@@ -1,0 +1,23 @@
+#import "Basic";
+#load "../lib/checkpoint/resume.coax";
+// book:begin example
+main :: () {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    // Twelve steps without stopping.
+    w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=7}};straight:[12]f64;
+    for k:0..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,run,w[..],m[..],v[..]);#assert s.status==RsStatus.ok;run=s.run;straight[k]=s.loss;}
+    // Five steps, a checkpoint and its pointer, then a fresh start from those bytes.
+    a:[256]f64;am:[256]f64;av:[256]f64;r:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<5 {s:=rs_step(docs[..],tokens[..],groups[..],P,r,a[..],am[..],av[..]);r=s.run;}
+    bytes:[6404]u8;#assert ck_write(rs_meta(ids,r),a[..],am[..],av[..],bytes[..],false)==CkStatus.ok;
+    pointer:[80]u8;#assert ck_pointer_write(r.revision,ck_digest("psionic.checkpoint.v1",bytes[0..<6372]),pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;q:=rs_resume(pointer[..],bytes[..],ids,docs[..],b[..],bm[..],bv[..]);#assert q.status==CkStatus.ok;
+    print("record: PSCK version %, % bytes, % values each for parameters and both moments\n",bytes[4],bytes.count,ck_get32(bytes[..],CK_HEAD-4));
+    print("revision %, optimizer step %, cursor epoch % order % offset %, seed %\n",q.meta.revision,q.meta.state.step,q.meta.cursor.epoch,q.meta.cursor.order,q.meta.cursor.offset,q.meta.cursor.seed);
+    print("dataset % % % %..., pointer names revision %\n",q.meta.ids.dataset[0],q.meta.ids.dataset[1],q.meta.ids.dataset[2],q.meta.ids.dataset[3],ck_pointer_read(pointer[..]).revision);
+    resumed:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};same:=0;
+    for k:5..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,resumed,b[..],bm[..],bv[..]);resumed=s.run;if s.loss==straight[k] {same+=1;}}
+    for i:0..<256 {#assert b[i]==w[i] && bm[i]==m[i] && bv[i]==v[i];}
+    print("loss % -> %; after resuming at 5, % of 7 losses and all 768 values are identical\n",straight[0],straight[11],same);
+}
+// book:end example

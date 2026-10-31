@@ -1,0 +1,179 @@
+// A tiny complete training run that can stop and resume (psionic-resume-v1):
+// a 16x16 bigram logit table over packed rows (chapter 76b's profile), AdamW
+// with one group, and checkpoints written after any step. Identities name the
+// model, tokenizer, dataset and optimizer configuration; a checkpoint resumes
+// only into the run they describe.
+#load "record.coax";
+#authority;
+RsStatus :: enum u8 {ok;data;optimizer;number;}
+RsRun :: struct {cursor:PkCursor;state:AwState;revision:int;}
+RsStep :: struct {status:RsStatus;run:RsRun;loss:f64;}
+RS_ROW :: 8;
+
+rs_model :: ()->[32]u8 {return rs_text("psionic.model.v1","bigram vocab=16 logits=binary64 init=zero");}
+rs_tokenizer :: ()->[32]u8 {return rs_text("psionic.tokenizer.v1","identity 0..14, BOS 15");}
+rs_text :: (tag:string,s:string)->[32]u8 {b:[64]u8;for i:0..<s.count {b[i]=cast(u8)byte_at(s,i);}return ck_digest(tag,b[0..<s.count]);}
+// The optimizer identity covers every group setting and the policy.
+rs_optimizer :: (groups:[]AwGroup,policy:AwPolicy)->[32]u8 {
+    b:[1032]u8;at:=0;
+    for g:groups {at=ck_put64(b[..],at,cast(u64)g.first);at=ck_put64(b[..],at,cast(u64)g.count);for x:[5]f64.[g.lr,g.beta1,g.beta2,g.eps,g.decay] {at=ck_put64(b[..],at,f64_bits(x));}}
+    b[at]=cast(u8)policy.compute;b[at+1]=cast(u8)policy.overflow;return ck_digest("psionic.optimizer.v1",b[0..<at+2]);
+}
+rs_ids :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy)->CkIds #export_c {
+    d:[32]u8;s:=pk_identity(docs,tokens,d[..]);#assert s==PkStatus.ok;
+    return CkIds.{model=rs_model(),tokenizer=rs_tokenizer(),dataset=d,optimizer=rs_optimizer(groups,policy)};
+}
+// book:begin step
+// One step: the next packed row, mean cross-entropy over the transitions
+// whose target is not a BOS, its exact gradient, one AdamW update.
+rs_step :: (docs:[]PkDoc,tokens:[]u8,groups:[]AwGroup,policy:AwPolicy,run:RsRun,w:[]f64,m:[]f64,v:[]f64)->RsStep #export_c {
+    row:[8]u8;next:=pk_next(docs,tokens,run.cursor,row[..],false);if next.status!=PkStatus.ok {return RsStep.{status=RsStatus.data,run=run};}
+    g:[256]f64;loss:=0.0;pairs:=0;
+    for i:1..<RS_ROW {if row[i]!=PK_BOS {pairs+=1;}}
+    for i:1..<RS_ROW {a:=cast(int)row[i-1];b:=cast(int)row[i];if b==PK_BOS {continue;}
+        top:=w[a*16];for j:1..<16 {x:=w[a*16+j];top=(top+x+abs(top-x))/2;}z:=0.0;for j:0..<16 {z+=exp(w[a*16+j]-top);}
+        loss+=log(z)+top-w[a*16+b];
+        for j:0..<16 {hit:=0.0;if j==b {hit=1;}g[a*16+j]+=(exp(w[a*16+j]-top)/z-hit)/f64(pairs);}
+    }
+    none:[1]f32;r:=aw_step(groups,policy,run.state,w,g[..],m,v,none[0..<0],false);
+    if r.status!=AwStatus.ok {return RsStep.{status=RsStatus.optimizer,run=run};}
+    return RsStep.{run=RsRun.{cursor=next.cursor,state=r.state,revision=run.revision+1},loss=loss/f64(pairs)};
+}
+// book:end step
+rs_group :: ()->[1]AwGroup {return [1]AwGroup.[AwGroup.{first=0,count=256,lr=0.1,beta1=0.9,beta2=0.99,eps=1e-8,decay=0}];}
+rs_meta :: (ids:CkIds,run:RsRun)->CkMeta {return CkMeta.{ids=ids,revision=run.revision,cursor=run.cursor,state=run.state};}
+// Restores a run from a checkpoint whose pointer is current, into w, m, v.
+// The record's metadata comes back with status ok only when every check passed.
+rs_resume :: (pointer:[]u8,bytes:[]u8,ids:CkIds,docs:[]PkDoc,w:[]f64,m:[]f64,v:[]f64)->CkRead #export_c {
+    p:=ck_pointer_read(pointer);if p.status!=CkStatus.ok {return CkRead.{status=p.status};}
+    sw:[256]f64;sm:[256]f64;sv:[256]f64;r:=ck_read(bytes,ids,sw[..],sm[..],sv[..],false);
+    s:=ck_current(p,r);if s!=CkStatus.ok {return CkRead.{status=s};}
+    if !pk_cursor(docs,r.meta.cursor) {return CkRead.{status=CkStatus.corrupt};}
+    for i:0..<256 {w[i]=sw[i];m[i]=sm[i];v[i]=sv[i];}return r;
+}
+
+rs_close :: (a:f64,b:f64)->bool {return abs(a-b)<=1e-13*(1+abs(b));}
+#test "the uninterrupted run matches the independent loss stream and weights" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();want:=RS_LOSSES;final:=RS_WEIGHTS;
+    w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<12 {s:=rs_step(docs[..],tokens[..],groups[..],AwPolicy.{},run,w[..],m[..],v[..]);#assert s.status==RsStatus.ok && rs_close(s.loss,want[k]);run=s.run;}
+    for i:0..<256 {#assert rs_close(w[i],final[i]);}
+    #assert run.revision==12 && run.state.step==12 && run.cursor.epoch==8 && run.cursor.seed==7 && want[11]<want[0];
+    #assert rs_close(1,1+1e-13) && rs_close(1e-13,0) && !rs_close(0,2e-13);
+    m0:=RS_MODEL;t0:=RS_TOKENIZER;o0:=RS_OPTIMIZER;#assert ck_equal(rs_model(),m0) && ck_equal(rs_tokenizer(),t0) && ck_equal(rs_optimizer(groups[..],AwPolicy.{}),o0);
+    o1:=RS_OPTIMIZER_SKIP;#assert ck_equal(rs_optimizer(groups[..],AwPolicy.{overflow=AwOverflow.skip}),o1);
+}
+// Each run stops after `cut` steps, writes the checkpoint and its pointer,
+// resumes in fresh buffers from those bytes alone and finishes the 12 steps.
+#test "a run interrupted after its first step resumes to the identical state" {
+    cut:=1;
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    want:=RS_LOSSES;final:=RS_WEIGHTS;
+    a:[256]f64;am:[256]f64;av:[256]f64;r:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<cut {s:=rs_step(docs[..],tokens[..],groups[..],P,r,a[..],am[..],av[..]);#assert rs_close(s.loss,want[k]);r=s.run;}
+    bytes:[6404]u8;#assert ck_write(rs_meta(ids,r),a[..],am[..],av[..],bytes[..],false)==CkStatus.ok;
+    pointer:[80]u8;#assert ck_pointer_write(r.revision,ck_digest("psionic.checkpoint.v1",bytes[0..<6372]),pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;q:=rs_resume(pointer[..],bytes[..],ids,docs[..],b[..],bm[..],bv[..]);#assert q.status==CkStatus.ok;
+    for i:0..<256 {#assert b[i]==a[i] && bm[i]==am[i] && bv[i]==av[i];}
+    r2:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};#assert r2.revision==cut && r2.state.step==cut;
+    for k:cut..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,r2,b[..],bm[..],bv[..]);#assert rs_close(s.loss,want[k]);r2=s.run;}
+    for i:0..<256 {#assert rs_close(b[i],final[i]);}
+    // And bit for bit: the uninterrupted run in this build ends in the same place.
+    c:[256]f64;cm:[256]f64;cv:[256]f64;u:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,u,c[..],cm[..],cv[..]);u=s.run;}
+    for i:0..<256 {#assert b[i]==c[i] && bm[i]==cm[i] && bv[i]==cv[i];}
+    #assert r2.revision==u.revision && r2.state.step==u.state.step && r2.cursor.epoch==u.cursor.epoch && r2.cursor.order==u.cursor.order && r2.cursor.offset==u.cursor.offset;
+}
+#test "a run interrupted mid-epoch resumes to the identical state" {
+    cut:=5;
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    want:=RS_LOSSES;final:=RS_WEIGHTS;
+    a:[256]f64;am:[256]f64;av:[256]f64;r:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<cut {s:=rs_step(docs[..],tokens[..],groups[..],P,r,a[..],am[..],av[..]);#assert rs_close(s.loss,want[k]);r=s.run;}
+    bytes:[6404]u8;#assert ck_write(rs_meta(ids,r),a[..],am[..],av[..],bytes[..],false)==CkStatus.ok;
+    pointer:[80]u8;#assert ck_pointer_write(r.revision,ck_digest("psionic.checkpoint.v1",bytes[0..<6372]),pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;q:=rs_resume(pointer[..],bytes[..],ids,docs[..],b[..],bm[..],bv[..]);#assert q.status==CkStatus.ok;
+    for i:0..<256 {#assert b[i]==a[i] && bm[i]==am[i] && bv[i]==av[i];}
+    r2:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};#assert r2.revision==cut && r2.state.step==cut;
+    for k:cut..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,r2,b[..],bm[..],bv[..]);#assert rs_close(s.loss,want[k]);r2=s.run;}
+    for i:0..<256 {#assert rs_close(b[i],final[i]);}
+    // And bit for bit: the uninterrupted run in this build ends in the same place.
+    c:[256]f64;cm:[256]f64;cv:[256]f64;u:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,u,c[..],cm[..],cv[..]);u=s.run;}
+    for i:0..<256 {#assert b[i]==c[i] && bm[i]==cm[i] && bv[i]==cv[i];}
+    #assert r2.revision==u.revision && r2.state.step==u.state.step && r2.cursor.epoch==u.cursor.epoch && r2.cursor.order==u.cursor.order && r2.cursor.offset==u.cursor.offset;
+}
+#test "a run interrupted one step before the end resumes to the identical state" {
+    cut:=11;
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    want:=RS_LOSSES;final:=RS_WEIGHTS;
+    a:[256]f64;am:[256]f64;av:[256]f64;r:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<cut {s:=rs_step(docs[..],tokens[..],groups[..],P,r,a[..],am[..],av[..]);#assert rs_close(s.loss,want[k]);r=s.run;}
+    bytes:[6404]u8;#assert ck_write(rs_meta(ids,r),a[..],am[..],av[..],bytes[..],false)==CkStatus.ok;
+    pointer:[80]u8;#assert ck_pointer_write(r.revision,ck_digest("psionic.checkpoint.v1",bytes[0..<6372]),pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;q:=rs_resume(pointer[..],bytes[..],ids,docs[..],b[..],bm[..],bv[..]);#assert q.status==CkStatus.ok;
+    for i:0..<256 {#assert b[i]==a[i] && bm[i]==am[i] && bv[i]==av[i];}
+    r2:=RsRun.{cursor=q.meta.cursor,state=q.meta.state,revision=q.meta.revision};#assert r2.revision==cut && r2.state.step==cut;
+    for k:cut..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,r2,b[..],bm[..],bv[..]);#assert rs_close(s.loss,want[k]);r2=s.run;}
+    for i:0..<256 {#assert rs_close(b[i],final[i]);}
+    // And bit for bit: the uninterrupted run in this build ends in the same place.
+    c:[256]f64;cm:[256]f64;cv:[256]f64;u:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<12 {s:=rs_step(docs[..],tokens[..],groups[..],P,u,c[..],cm[..],cv[..]);u=s.run;}
+    for i:0..<256 {#assert b[i]==c[i] && bm[i]==cm[i] && bv[i]==cv[i];}
+    #assert r2.revision==u.revision && r2.state.step==u.state.step && r2.cursor.epoch==u.cursor.epoch && r2.cursor.order==u.cursor.order && r2.cursor.offset==u.cursor.offset;
+}
+#test "identities, stale pointers and damaged records refuse a resume" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=7}};
+    for k:0..<3 {s:=rs_step(docs[..],tokens[..],groups[..],P,run,w[..],m[..],v[..]);run=s.run;}
+    three:[6404]u8;#assert ck_write(rs_meta(ids,run),w[..],m[..],v[..],three[..],false)==CkStatus.ok;
+    pointer:[80]u8;d:=ck_read(three[..],ids,w[..],m[..],v[..],false).digest;#assert ck_pointer_write(3,d,pointer[..])==CkStatus.ok;
+    s:=rs_step(docs[..],tokens[..],groups[..],P,run,w[..],m[..],v[..]);run=s.run;
+    four:[6404]u8;#assert ck_write(rs_meta(ids,run),w[..],m[..],v[..],four[..],false)==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;b[0]=-7;
+    // The pointer still names step 3: step 4's record under it is stale.
+    #assert rs_resume(pointer[..],four[..],ids,docs[..],b[..],bm[..],bv[..]).status==CkStatus.stale && b[0]==-7;
+}
+#test "a resume refuses another model, tokenizer, dataset or optimizer" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=7},revision=3,state=AwState.{step=3}};w[5]=0.25;
+    three:[6404]u8;#assert ck_write(rs_meta(ids,run),w[..],m[..],v[..],three[..],false)==CkStatus.ok;
+    pointer:[80]u8;d:=ck_read(three[..],ids,w[..],m[..],v[..],false).digest;#assert ck_pointer_write(3,d,pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;b[0]=-7;
+    bad:=ids;bad.model=rs_tokenizer();#assert rs_resume(pointer[..],three[..],bad,docs[..],b[..],bm[..],bv[..]).status==CkStatus.model;
+    bad=ids;bad.tokenizer=rs_model();#assert rs_resume(pointer[..],three[..],bad,docs[..],b[..],bm[..],bv[..]).status==CkStatus.tokenizer;
+    tokens[13]=13;bad=rs_ids(docs[..],tokens[..],groups[..],P);tokens[13]=14;#assert rs_resume(pointer[..],three[..],bad,docs[..],b[..],bm[..],bv[..]).status==CkStatus.dataset;
+    g2:=groups;g2[0].lr=0.2;bad=rs_ids(docs[..],tokens[..],g2[..],P);#assert rs_resume(pointer[..],three[..],bad,docs[..],b[..],bm[..],bv[..]).status==CkStatus.optimizer;
+    for x:[5]int.[0,1,2,3,4] {g3:=groups;if x==0 {g3[0].beta1=0.8;}if x==1 {g3[0].beta2=0.9;}if x==2 {g3[0].eps=1e-7;}if x==3 {g3[0].decay=0.1;}if x==4 {g3[0].first=1;g3[0].count=255;}
+        #assert !ck_equal(rs_optimizer(g3[..],P),ids.optimizer);}
+    #assert !ck_equal(rs_optimizer(groups[..],AwPolicy.{overflow=AwOverflow.skip}),ids.optimizer) && !ck_equal(rs_optimizer(groups[..],AwPolicy.{compute=AwCompute.binary32}),ids.optimizer);
+}
+#test "a resume refuses damaged records and pointers and a cursor outside the data" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();P:=AwPolicy.{};ids:=rs_ids(docs[..],tokens[..],groups[..],P);
+    w:[256]f64;m:[256]f64;v:[256]f64;run:=RsRun.{cursor=PkCursor.{seed=7},revision=3,state=AwState.{step=3}};w[5]=0.25;
+    three:[6404]u8;#assert ck_write(rs_meta(ids,run),w[..],m[..],v[..],three[..],false)==CkStatus.ok;
+    pointer:[80]u8;d:=ck_read(three[..],ids,w[..],m[..],v[..],false).digest;#assert ck_pointer_write(3,d,pointer[..])==CkStatus.ok;
+    b:[256]f64;bm:[256]f64;bv:[256]f64;b[0]=-7;
+    #assert rs_resume(pointer[..],three[0..<6403],ids,docs[..],b[..],bm[..],bv[..]).status==CkStatus.truncated;
+    three[3000]^=1;#assert rs_resume(pointer[..],three[..],ids,docs[..],b[..],bm[..],bv[..]).status==CkStatus.corrupt;three[3000]^=1;
+    pointer[20]^=1;#assert rs_resume(pointer[..],three[..],ids,docs[..],b[..],bm[..],bv[..]).status==CkStatus.corrupt;pointer[20]^=1;
+    #assert b[0]==-7 && rs_resume(pointer[..],three[..],ids,docs[..],b[..],bm[..],bv[..]).status==CkStatus.ok && b[0]==0 && b[5]==0.25;
+    // A record whose cursor does not fit this dataset is refused.
+    meta:=rs_meta(ids,run);meta.cursor.offset=9;odd:[6404]u8;#assert ck_write(meta,w[..],m[..],v[..],odd[..],false)==CkStatus.ok;
+    #assert ck_pointer_write(meta.revision,ck_read(odd[..],ids,w[..],m[..],v[..],false).digest,pointer[..])==CkStatus.ok;
+    b[0]=-7;#assert rs_resume(pointer[..],odd[..],ids,docs[..],b[..],bm[..],bv[..]).status==CkStatus.corrupt && b[0]==-7;
+}
+#test "the softmax shift keeps large logits finite" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();m:[256]f64;v:[256]f64;
+    // The first row's contexts: BOS (largest logit second), 3 (first), 0 (a tie, first and second).
+    w:[256]f64;w[48]=800;w[1]=800;w[0]=800;w[241]=800;s:=rs_step(docs[..],tokens[..],groups[..],AwPolicy.{},RsRun.{cursor=PkCursor.{seed=7}},w[..],m[..],v[..]);
+    // BOS->3, 3->4 and BOS->0 cost 800 nats each, 0->1 log 2, 1->2 log 16.
+    #assert s.status==RsStatus.ok && rs_close(s.loss,(2400+log(2.0)+log(16.0))/5);
+}
+#test "a step refuses bad data or an optimizer refusal without moving" {
+    docs:[5]PkDoc;tokens:[14]u8;pk_fixture(docs[..],tokens[..]);groups:=rs_group();w:[256]f64;m:[256]f64;v:[256]f64;
+    run:=RsRun.{cursor=PkCursor.{seed=7,offset=99},revision=4};s:=rs_step(docs[..],tokens[..],groups[..],AwPolicy.{},run,w[..],m[..],v[..]);
+    #assert s.status==RsStatus.data && s.run.revision==4 && s.run.cursor.offset==99;
+    run.cursor.offset=0;groups[0].count=255;s=rs_step(docs[..],tokens[..],groups[..],AwPolicy.{},run,w[..],m[..],v[..]);#assert s.status==RsStatus.optimizer && s.run.revision==4 && s.run.cursor.offset==0 && w[0]==0;
+    groups[0].count=256;s=rs_step(docs[..],tokens[..],groups[..],AwPolicy.{},run,w[..],m[..],v[..]);#assert s.status==RsStatus.ok && s.run.revision==5 && s.run.cursor.order==2 && s.run.cursor.offset==1;
+}

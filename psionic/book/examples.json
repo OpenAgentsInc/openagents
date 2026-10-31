@@ -752,6 +752,16 @@
       ]
     },
     {
+      "source": "psionic/examples/resume.coax",
+      "chapter": "psionic/book/ch122-a-checkpoint-holds-the-whole-experiment.md",
+      "stdout": "psionic/fixtures/resume.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "psionic/examples/adamw.coax",
       "chapter": "psionic/book/ch124-adamw-and-explicit-precision.md",
       "stdout": "psionic/fixtures/adamw.out",

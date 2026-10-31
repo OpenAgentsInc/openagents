@@ -1,0 +1,4 @@
+record: PSCK version 1, 6404 bytes, 256 values each for parameters and both moments
+revision 5, optimizer step 5, cursor epoch 3 order 1 offset 1, seed 7
+dataset 249 184 29 14..., pointer names revision 5
+loss 2.772588722239781 -> 1.4089266754480803; after resuming at 5, 7 of 7 losses and all 768 values are identical
