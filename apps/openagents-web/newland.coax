@@ -672,11 +672,16 @@ walker :: (s: [] LandState, i: int, t: f32) -> Walker {
 // bones with a ring for a head. Returns the vertex count; top gets where its
 // head is on screen.
 figure :: (out: [] f32, at: int, c: Cam, k: Skeleton, pose: Pose, x: f32, z: f32, yaw: f32, tint: Ink, light: f32, p: Pen, top: [] Spot) -> int {
+  return figure_up(out, at, c, k, pose, x, 0, z, yaw, tint, light, p, top);
+}
+
+// The same figure with its feet y above the floor (a jump); its shadow stays on the floor.
+figure_up :: (out: [] f32, at: int, c: Cam, k: Skeleton, pose: Pose, x: f32, y: f32, z: f32, yaw: f32, tint: Ink, light: f32, p: Pen, top: [] Spot) -> int {
   joints: [MAX_JOINTS] Fv;
   if !verse_figure_joints_at(k, pose, Place.{x = 0, y = 0, z = 0, yaw = yaw}, joints[..]) { return at; }
   v := at;
   bone := tint; bone.core = 0.8 * p.d; bone.glow = 2.6 * p.d;
-  w := fv(x, 0, z);
+  w := fv(x, y, z);
   for i: 0..<k.parts {
     q := k.part[i];
     if q.a == q.b || q.b == P_CROWN { continue; }
