@@ -173,6 +173,17 @@ refused cross-family assignment. Its emitted native fixture C/header match
 the earlier qualified artifacts exactly; updated-main Grid `smooth` and
 `fog` C functions also match their raw versions exactly.
 
+The later [0.43 merged-main check](../docs/verification/coax-quantity-main-0.43-2026-10-31.json)
+reconstructs the new generic-literal compiler together with quantities in
+73.3 seconds. The same C/header fixed points pass. A new check binds a scalar
+literal to a quantity's numeric representation while refusing raw quantity
+bounds. All 16 changed quantity-checker bodies retain their frozen hashes;
+no unchanged mutation scope reruns. The quantity native fixture and Psionic
+owned-plant bridge reproduce their prior qualified C and headers exactly,
+so their earlier numerical/native proofs carry. The current Grid compiles,
+and the private Basic consumer prints the recorded result. No SDK/model
+trial reruns.
+
 These private, focused results do not by themselves qualify or publish a
 normal release cache. The full normal bootstrap, release/provenance checks
 and cache/installed-compiler status must be recorded separately.

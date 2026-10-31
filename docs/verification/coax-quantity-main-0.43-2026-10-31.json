@@ -1,0 +1,643 @@
+{
+  "schema": "coax.quantity.merged-main.0.43.qualification.v1",
+  "root": "/private/tmp/coax-quantity-main-1ea7f75fc6",
+  "working_directory": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+  "output_directory": "/private/tmp/coax-quantity-bootstrap-043",
+  "source_commit": "1ea7f75fc694680f7f61ef5377a804cfaacbb667",
+  "source_commit_limit": "HEAD is a label, not a clean-tree assertion; source hashes and normal fingerprints bind actual inputs.",
+  "normal_bootstrap_recipe_sha256": "9ce3849b12817899f0d50126fa60162834553fc9c763620293a25fcb9bd2a6ca",
+  "normal_seed_compile_order": [
+    "budget",
+    "check-domains",
+    "profiles",
+    "mutation-schedule",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "normal_seed_link_order": [
+    "check-domains",
+    "mutation-schedule",
+    "budget",
+    "profiles",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "seed_sha256": {
+    "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+    "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+    "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+    "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+    "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+    "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+    "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+    "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+    "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+    "coax/bootstrap/parser.c": "7d9e3d332ce565d3a309ea5441248056de50d00e8b9be27211aac1787feb9538",
+    "coax/bootstrap/parser.h": "e5952ac67f8753c19541222a36e680e70d2fc9a8460229d13704a705fd2e81cb",
+    "coax/bootstrap/checker.c": "8bd3be23c2ea98943215b3497c0162e2df858ea9975b64e7872db7850bcef5df",
+    "coax/bootstrap/checker.h": "45b36a57e6d7e904423578670dd22f6221077a8a73d351f54911bba33e740355",
+    "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+    "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8"
+  },
+  "authored_source_sha256": {
+    "coax/lib/compiler/compiler.coax": "abcff46546d11e470e171e9953e4ed2fc09c150153d859e7d49d28fe3882c0d1",
+    "coax/lib/compiler/parser.coax": "b13b1e7cba7ba90f5a7030745052a72bfb9caa4b097bbbc9e862634ff73b1003",
+    "coax/lib/compiler/checker.coax": "a7c0cff6e54b7bf0346d0bea168ff9e20447df097f0e9dddca4f8b96ce38c289",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+  },
+  "embedded_protocol_sources_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+  "preparation": {
+    "generated_file": "/private/tmp/coax-quantity-bootstrap-043/proto_runtime.inc",
+    "source": "Four exact lib/proto source literals, with the normal raw-string delimiters."
+  },
+  "command_count": 24,
+  "shared_wall_budget_seconds": 840,
+  "normal_rebuild_command": "coax/build.sh",
+  "normal_rebuild_executed": false,
+  "scope": "Focused checked-in-seed reconstruction and C/header fixed point, not the complete normal release/cache/provenance qualification.",
+  "source_writes": false,
+  "cache_or_installed_release_published": false,
+  "commands": [
+    {
+      "name": "fingerprint-before",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-quantity-main-1ea7f75fc6"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/fingerprint-before.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/fingerprint-before.stderr",
+      "remaining_wall_budget_seconds": 839.9807108329842,
+      "exit": 0,
+      "elapsed_seconds": 2.3380836250144057
+    },
+    {
+      "name": "seed-budget",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/budget.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-budget.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-budget.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-budget.stderr",
+      "remaining_wall_budget_seconds": 837.6412274579634,
+      "exit": 0,
+      "elapsed_seconds": 0.12074166699312627
+    },
+    {
+      "name": "seed-check-domains",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/check-domains.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-check-domains.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-check-domains.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-check-domains.stderr",
+      "remaining_wall_budget_seconds": 837.5193755829823,
+      "exit": 0,
+      "elapsed_seconds": 0.1398034170269966
+    },
+    {
+      "name": "seed-profiles",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/profiles.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-profiles.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-profiles.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-profiles.stderr",
+      "remaining_wall_budget_seconds": 837.3787152919685,
+      "exit": 0,
+      "elapsed_seconds": 0.11476045800372958
+    },
+    {
+      "name": "seed-mutation-schedule",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/mutation-schedule.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-mutation-schedule.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-mutation-schedule.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-mutation-schedule.stderr",
+      "remaining_wall_budget_seconds": 837.2627427919651,
+      "exit": 0,
+      "elapsed_seconds": 0.09189799998421222
+    },
+    {
+      "name": "seed-lexer",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/lexer.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-lexer.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-lexer.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-lexer.stderr",
+      "remaining_wall_budget_seconds": 837.1700073329848,
+      "exit": 0,
+      "elapsed_seconds": 0.34294583299197257
+    },
+    {
+      "name": "seed-parser",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/parser.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-parser.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-parser.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-parser.stderr",
+      "remaining_wall_budget_seconds": 836.8261014169548,
+      "exit": 0,
+      "elapsed_seconds": 0.8188499580137432
+    },
+    {
+      "name": "seed-checker",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/checker.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-checker.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-checker.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-checker.stderr",
+      "remaining_wall_budget_seconds": 836.0060582499718,
+      "exit": 0,
+      "elapsed_seconds": 2.7239985410124063
+    },
+    {
+      "name": "seed-sources",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/sources.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/seed-sources.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/seed-sources.stderr",
+      "remaining_wall_budget_seconds": 833.2808319999604,
+      "exit": 0,
+      "elapsed_seconds": 0.18945658300071955
+    },
+    {
+      "name": "stage0-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-DCOAX_BOOTSTRAP_IMPORTER",
+        "-I",
+        "bootstrap",
+        "-I",
+        "/private/tmp/coax-quantity-bootstrap-043",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/stage0",
+        "src/main.cpp",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-check-domains.o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-mutation-schedule.o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-budget.o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-profiles.o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-lexer.o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-parser.o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-checker.o",
+        "/private/tmp/coax-quantity-bootstrap-043/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/stage0-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/stage0-cxx.stderr",
+      "remaining_wall_budget_seconds": 833.0901042919722,
+      "exit": 0,
+      "elapsed_seconds": 13.213135375001002
+    },
+    {
+      "name": "stage0-graph",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-043/stage0",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-043/proto_importer.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/proto_importer.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/stage0-graph.stderr",
+      "remaining_wall_budget_seconds": 819.8760743750026,
+      "exit": 0,
+      "elapsed_seconds": 19.3343754580128
+    },
+    {
+      "name": "graph-object",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/private/tmp/coax-quantity-bootstrap-043/proto_importer.c",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/graph-object.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/graph-object.stderr",
+      "remaining_wall_budget_seconds": 800.5410527079948,
+      "exit": 0,
+      "elapsed_seconds": 5.235257167019881
+    },
+    {
+      "name": "final-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-I",
+        "/private/tmp/coax-quantity-bootstrap-043",
+        "-o",
+        "/private/tmp/coax-quantity-bootstrap-043/coax",
+        "src/main.cpp",
+        "/private/tmp/coax-quantity-bootstrap-043/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/final-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/final-cxx.stderr",
+      "remaining_wall_budget_seconds": 795.3050398329506,
+      "exit": 0,
+      "elapsed_seconds": 11.621346750005614
+    },
+    {
+      "name": "final-version",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-043/coax",
+        "version"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/final-version.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/final-version.stderr",
+      "remaining_wall_budget_seconds": 783.6828521669959,
+      "exit": 0,
+      "elapsed_seconds": 0.18816412502201274
+    },
+    {
+      "name": "final-graph",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-043/coax",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-043/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/rebuilt.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/final-graph.stderr",
+      "remaining_wall_budget_seconds": 783.4940437499899,
+      "exit": 0,
+      "elapsed_seconds": 11.849015165993478
+    },
+    {
+      "name": "graph-c-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-quantity-bootstrap-043/proto_importer.c",
+        "/private/tmp/coax-quantity-bootstrap-043/rebuilt.c"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/graph-c-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/graph-c-fixedpoint.stderr",
+      "remaining_wall_budget_seconds": 771.6443217499764,
+      "exit": 0,
+      "elapsed_seconds": 0.00670070800697431
+    },
+    {
+      "name": "graph-header-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-quantity-bootstrap-043/proto_importer.h",
+        "/private/tmp/coax-quantity-bootstrap-043/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/graph-header-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/graph-header-fixedpoint.stderr",
+      "remaining_wall_budget_seconds": 771.6368960829568,
+      "exit": 0,
+      "elapsed_seconds": 0.0037661250098608434
+    },
+    {
+      "name": "final-seed-parser",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-043/coax",
+        "c",
+        "lib/compiler/parser.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-043/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/parser-final.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/final-seed-parser.stderr",
+      "remaining_wall_budget_seconds": 771.6323945829645,
+      "exit": 0,
+      "elapsed_seconds": 0.2634082500007935
+    },
+    {
+      "name": "parser-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.c",
+        "/private/tmp/coax-quantity-bootstrap-043/parser-final.c"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/parser-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/parser-seed-c-match.stderr",
+      "remaining_wall_budget_seconds": 771.3682340419618,
+      "exit": 0,
+      "elapsed_seconds": 0.00482104200636968
+    },
+    {
+      "name": "parser-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.h",
+        "/private/tmp/coax-quantity-bootstrap-043/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/parser-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/parser-seed-header-match.stderr",
+      "remaining_wall_budget_seconds": 771.3626707919757,
+      "exit": 0,
+      "elapsed_seconds": 0.0036640000180341303
+    },
+    {
+      "name": "final-seed-checker",
+      "arguments": [
+        "/private/tmp/coax-quantity-bootstrap-043/coax",
+        "c",
+        "lib/compiler/checker.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-quantity-bootstrap-043/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/checker-final.c",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/final-seed-checker.stderr",
+      "remaining_wall_budget_seconds": 771.3583038749639,
+      "exit": 0,
+      "elapsed_seconds": 3.6727739999769256
+    },
+    {
+      "name": "checker-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.c",
+        "/private/tmp/coax-quantity-bootstrap-043/checker-final.c"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/checker-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/checker-seed-c-match.stderr",
+      "remaining_wall_budget_seconds": 767.684996832977,
+      "exit": 0,
+      "elapsed_seconds": 0.00495450000744313
+    },
+    {
+      "name": "checker-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.h",
+        "/private/tmp/coax-quantity-bootstrap-043/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/checker-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/checker-seed-header-match.stderr",
+      "remaining_wall_budget_seconds": 767.6794741670019,
+      "exit": 0,
+      "elapsed_seconds": 0.002829583012498915
+    },
+    {
+      "name": "fingerprint-after",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-quantity-main-1ea7f75fc6"
+      ],
+      "cwd": "/private/tmp/coax-quantity-main-1ea7f75fc6/coax",
+      "stdout_path": "/private/tmp/coax-quantity-bootstrap-043/fingerprint-after.stdout",
+      "stderr_path": "/private/tmp/coax-quantity-bootstrap-043/fingerprint-after.stderr",
+      "remaining_wall_budget_seconds": 767.6762802079902,
+      "exit": 0,
+      "elapsed_seconds": 1.009787791990675
+    }
+  ],
+  "passed": true,
+  "input_fingerprint_before": "4583f531b3558cbefc298fc25e4321e8d40270b4b931ab63f7b4e715c9440c9c",
+  "input_fingerprint_after": "4583f531b3558cbefc298fc25e4321e8d40270b4b931ab63f7b4e715c9440c9c",
+  "compiler_version": "coax0 0.43.0",
+  "artifacts": {
+    "stage0": "21e28256f4750ab6c558174855d131d8b550e14a7370fa02b97727e92bcc25bd",
+    "proto_importer.c": "93900a0fb9c585a38220c316daddc2628b515c5d956f58ef1d4724b55e4cd1fb",
+    "proto_importer.h": "11d7eba886bf77b3a6940b16306297f439a2f19cd396cd2bcac33d2b99443edd",
+    "proto_importer.o": "5529174efbeb634e6772a70c88e038b49312ce83f90ee6e9dd96f0a47f2f8c39",
+    "coax": "bf718de35f9d99aa5b4315cb13700add99fece16515aee77566d8775791e2c31",
+    "rebuilt.c": "93900a0fb9c585a38220c316daddc2628b515c5d956f58ef1d4724b55e4cd1fb",
+    "rebuilt.h": "11d7eba886bf77b3a6940b16306297f439a2f19cd396cd2bcac33d2b99443edd"
+  },
+  "compiler_binary_path": "/private/tmp/coax-quantity-bootstrap-043/coax",
+  "fixed_points": {
+    "compiler_graph_c": true,
+    "compiler_graph_header": true,
+    "checked_in_parser_seed_c_and_header": true,
+    "checked_in_checker_seed_c_and_header": true
+  },
+  "duration_seconds": 73.34101950004697,
+  "integration": {
+    "new_test": "Quantities.test_bound_generic_literals_preserve_quantity_boundary",
+    "test_source_sha256": "d2a14588c3f5718e47fd675ff0933f4860207a31821d10bf5b678392e56fa956",
+    "test_log_sha256": "1f595a73b2ed09c1daaeb8becdd5972805c2e54d319d1d1379fd724d863b04e4",
+    "passed": true,
+    "positive": "scale(2, Quantity(Metre,f32)) binds the raw literal to f32; ordered clamp with typed quantity bounds; compile-time result11",
+    "negative": [
+      "clamp(q,0,1)",
+      "clamp(0,q,1)"
+    ],
+    "basic_consumer_output": "private quantity: 12.0 half-metres\n",
+    "basic_consumer_stderr_bytes": 0,
+    "current_main_grid_compiled": true,
+    "grid_C_sha256": "23abdfe1223e5708cc8313bc719c91c7dcbd1d836a5b85d1540c35521cac8025",
+    "quantity_native_C_sha256": "f45375017775fbc01a01a930640ace8cf0deb03abc0e297e286a624c3da8dec7",
+    "quantity_native_header_sha256": "65c0af8c2bacd8130b50c8043c124296c8278ac24c5be4ba72dc199a3eb86e65",
+    "quantity_native_prior_receipt": "docs/verification/coax-quantity-native-2026-10-31.json",
+    "quantity_native_C_and_header_byte_identical": true,
+    "source_path_note": "C/header identity uses the recorded absolute source filename, because generated C embeds it in diagnostics. A first invocation used a relative path and differed only in its filename comment/source-path string; source arithmetic and header declarations were identical.",
+    "psionic_bridge_C_sha256": "4670a6b3b1f43a0dbfdae1dec122c83cc9a90036c0b07d7981219fe059fb19b5",
+    "psionic_bridge_header_sha256": "105b55fada94c8d06725f0359a65407b3053e78848383c1884fef4127930cf1f",
+    "psionic_bridge_prior_receipt": "psionic/fixtures/physics/oscillator-functions/qualification.json",
+    "psionic_bridge_C_and_header_byte_identical": true,
+    "prior_quantity_abi_numeric_assembly_results_reused": true,
+    "prior_psionic_formal_physical_native_results_reused": true,
+    "native_modes_or_model_episodes_rerun": false
+  },
+  "mutation_reuse": {
+    "quantity_policy": 96,
+    "parser_own_procedures": 71,
+    "checker_own_procedures": 1090,
+    "zero_survivors": true,
+    "equivalent_waivers": 0,
+    "frozen_checker_procedure_bodies": [
+      {
+        "name": "CK_quantity_layout",
+        "old_sha256": "50fec01621e2f33ba850e9bdb66d7ef6a6027fb58ad72517df6fb3031060fed1",
+        "merged_sha256": "50fec01621e2f33ba850e9bdb66d7ef6a6027fb58ad72517df6fb3031060fed1",
+        "equal": true
+      },
+      {
+        "name": "CK_quantity_raw",
+        "old_sha256": "ae3260d37155a466d8e1bcd408189947f6da4860a2ca4fdea0c132960ac9c9c8",
+        "merged_sha256": "ae3260d37155a466d8e1bcd408189947f6da4860a2ca4fdea0c132960ac9c9c8",
+        "equal": true
+      },
+      {
+        "name": "CK_quantity_wrap",
+        "old_sha256": "3c2010ee37e61402e80e23c00de41550f72efd8df16a7eeb460e4d59dfb1d1f9",
+        "merged_sha256": "3c2010ee37e61402e80e23c00de41550f72efd8df16a7eeb460e4d59dfb1d1f9",
+        "equal": true
+      },
+      {
+        "name": "CK_quantity_binary",
+        "old_sha256": "8b335896a5ee7c6146a13621bc2747e503a19377186316f546f5edd4b53d0709",
+        "merged_sha256": "8b335896a5ee7c6146a13621bc2747e503a19377186316f546f5edd4b53d0709",
+        "equal": true
+      },
+      {
+        "name": "CK_quantity_target",
+        "old_sha256": "8ee290ed619a57939b0ad4c8c4059ff6b4eb4bb744c54a712eab83416ec5321f",
+        "merged_sha256": "8ee290ed619a57939b0ad4c8c4059ff6b4eb4bb744c54a712eab83416ec5321f",
+        "equal": true
+      },
+      {
+        "name": "CK_quantity_convert",
+        "old_sha256": "8182811556b6e81f07dc2e6a7ba2005bbf7a47e4a08b15099f99a5d8a6cde6f8",
+        "merged_sha256": "8182811556b6e81f07dc2e6a7ba2005bbf7a47e4a08b15099f99a5d8a6cde6f8",
+        "equal": true
+      },
+      {
+        "name": "CK_binary",
+        "old_sha256": "ecf58cec6e378d8beb8671c5932de404317536dec0ee16374cd44e866202cf45",
+        "merged_sha256": "ecf58cec6e378d8beb8671c5932de404317536dec0ee16374cd44e866202cf45",
+        "equal": true
+      },
+      {
+        "name": "CK_layout",
+        "old_sha256": "275a6441295a7eaee5490537baa0934705160c4d182b660d3fee4dc6d2375f74",
+        "merged_sha256": "275a6441295a7eaee5490537baa0934705160c4d182b660d3fee4dc6d2375f74",
+        "equal": true
+      },
+      {
+        "name": "CK_call",
+        "old_sha256": "29e22b83ab9a37b8aabea1c4780a4970fec1736ad82093ad3188382c40e9747b",
+        "merged_sha256": "29e22b83ab9a37b8aabea1c4780a4970fec1736ad82093ad3188382c40e9747b",
+        "equal": true
+      },
+      {
+        "name": "CK_foreign_scalar",
+        "old_sha256": "660c5958b23da52a729fa656a29a0dd0804730d7642e29f11e81bed926570e62",
+        "merged_sha256": "660c5958b23da52a729fa656a29a0dd0804730d7642e29f11e81bed926570e62",
+        "equal": true
+      },
+      {
+        "name": "CK_foreign_param",
+        "old_sha256": "3067b1c7ac77764dcf662cb2f7a7193712fe36de1795b4d803c4a0d4e3e639a4",
+        "merged_sha256": "3067b1c7ac77764dcf662cb2f7a7193712fe36de1795b4d803c4a0d4e3e639a4",
+        "equal": true
+      },
+      {
+        "name": "CK_meets",
+        "old_sha256": "08d66e346a1fca5ed87e8efe724cea7ce4bc7a0ebfdebab99841b6ec91a9a681",
+        "merged_sha256": "08d66e346a1fca5ed87e8efe724cea7ce4bc7a0ebfdebab99841b6ec91a9a681",
+        "equal": true
+      },
+      {
+        "name": "CK_meta_query",
+        "old_sha256": "ab9ba06496cc812c7357d32297ea92ee329b98e674da2cf891278ca67027c929",
+        "merged_sha256": "ab9ba06496cc812c7357d32297ea92ee329b98e674da2cf891278ca67027c929",
+        "equal": true
+      },
+      {
+        "name": "CK_struct_node",
+        "old_sha256": "06ece15cd09e5ea0df57b6992e8c325d1e738ce4612fc6fc029089bfd0d0f0fb",
+        "merged_sha256": "06ece15cd09e5ea0df57b6992e8c325d1e738ce4612fc6fc029089bfd0d0f0fb",
+        "equal": true
+      },
+      {
+        "name": "CK_builtin_name",
+        "old_sha256": "711860022f9682250c9187ee2fe1a7fdb221956e4709637b37127b4201287e66",
+        "merged_sha256": "711860022f9682250c9187ee2fe1a7fdb221956e4709637b37127b4201287e66",
+        "equal": true
+      },
+      {
+        "name": "CK_run",
+        "old_sha256": "d80387e8234e8491a13b81261e1d23f6247471d2898dcad9f6e3979ca978929f",
+        "merged_sha256": "d80387e8234e8491a13b81261e1d23f6247471d2898dcad9f6e3979ca978929f",
+        "equal": true
+      }
+    ],
+    "main_changed_checker_procedures": "CK_instance and CK_earlier are outside the frozen own procedure set; their new interaction with quantities is covered by the integration check."
+  }
+}
