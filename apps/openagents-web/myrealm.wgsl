@@ -19,7 +19,8 @@ struct U {
   horizon: vec4f,                              // the horizon, then the stars' share
   ground: vec4f,                               // the ground's colour, then the lamp's share
   sun: vec4f,                                  // toward the sun, then its strength
-  water: vec4f,                                // the water: x, z, radius, on
+  water: vec4f,                                // the water: x, z, radius (a river's half width), then 0 none, 1 a pond,
+                                               // 2 a river across the land, 3 a frozen pond, 4 a pool of lava
   panel: array<vec4f, 48>,  // per plate (myrealm.coax PLATES): x0, y0, x1, y1 (device pixels), then scale, alpha, look, 0
   pool: array<vec4f, 16>,   // the lanterns' lights (myrealm.coax POOL_AT): x, y, z (metres), on
   pool_tint: vec4f,         // their colour, then their strength (the time of day's share)
@@ -99,7 +100,30 @@ fn noise(p: vec2f) -> f32 {
 fn st(i: u32) -> vec4f { return u.st[i]; }
 fn styled() -> bool { return u.st[31].y > 0.5; }
 // A pastel realm's textures, lifted pale before their (pastel) tint: wood and hide read soft, not dark.
-fn paletted(t: vec3f) -> vec3f { return select(t, t * 0.35 + vec3f(0.62), u.palette > 0.5 && u.palette < 1.5); }
+fn paletted(t: vec3f) -> vec3f { return select(t, t * 0.35 + vec3f(0.62), pal() > 0.5 && pal() < 1.5); }
+// u.palette carries the land too (myrealm.coax LAND_*): the palette plus 10 times 1 for a floating
+// island (the ground ends at its edge, open sky beyond) or 2 for an island in the sea.
+fn land() -> f32 { return floor(u.palette / 10.0 + 0.001); }
+fn pal() -> f32 { return u.palette - 10.0 * land(); }
+// How far inside the water's edge q is (negative: outside): a pond is a circle, a river a band
+// across the land that bends (myrealm.coax water_gap, the same curve).
+fn water_in(q: vec2f) -> f32 {
+  if (u.water.w > 1.5 && u.water.w < 2.5) { return u.water.z - abs(q.y - u.water.y - 2.5 * sin(q.x * 0.15)); }
+  return u.water.z - length(q - u.water.xy);
+}
+// Ice: pale, a little blue, with dark cracks. Lava: bright and moving, with a dark crust; it glows.
+fn ice_at(q: vec2f) -> vec3f {
+  let crack = smoothstep(0.47, 0.5, noise(q * 1.3)) * (1.0 - smoothstep(0.5, 0.53, noise(q * 1.3)));
+  return mix(vec3f(0.8, 0.88, 0.94), vec3f(0.55, 0.66, 0.75), crack * 0.8 + 0.15 * noise(q * 0.4));
+}
+fn lava_at(q: vec2f) -> vec3f {
+  let flow = noise(q * 0.9 + vec2f(u.time * 0.15, u.time * 0.07));
+  let crust = smoothstep(0.55, 0.7, noise(q * 1.7 - vec2f(u.time * 0.05, 0.0)));
+  return mix(mix(vec3f(1.0, 0.3, 0.04), vec3f(1.0, 0.78, 0.25), flow), vec3f(0.12, 0.05, 0.04), crust * 0.85);
+}
+fn sea_at(q: vec2f, mirror: vec3f) -> vec3f {
+  return mirror * 0.45 + vec3f(0.03, 0.16, 0.26) * (0.85 + 0.3 * noise(q * 0.5 + vec2f(u.time * 0.1, 0.0)));
+}
 fn flat_style() -> bool { return u.st[31].y > 2.5; }
 fn key_l() -> vec3f { return normalize(st(1u).xyz + vec3f(0.0, 0.00001, 0.0)); }
 // The painted or flat sky along d (fixture.wgsl's painterly sky; fairy.wgsl's flat one), stars after dark.
@@ -200,22 +224,29 @@ fn styled_ground(hit: vec3f, ray: vec3f, t: f32, p: vec2f) -> vec3f {
     a *= 0.8 + 0.18 * big + 0.12 * brush;
   }
   var c = select(painted(a, up, d), flat_lit(a, up), flat_style());
-  let wd = length(hit.xz - u.water.xy);
-  if (u.water.w > 0.5 && wd < u.water.z) {
-    let depth = (u.water.z - wd) * 0.5;
+  let wi = water_in(hit.xz);
+  if (u.water.w > 0.5 && wi > 0.0) {
+    let depth = wi * 0.5;
     let sh = st(27u); let md = st(28u); let dp = st(29u);
     let soft = max(dp.w, 0.01);
     var w = mix(mix(sh.xyz, md.xyz, smoothstep(sh.w - soft, sh.w + soft, depth)), dp.xyz, smoothstep(md.w - soft, md.w + soft, depth));
     if (flat_style()) {
       w = flat_lit(select(md.xyz, sh.xyz, depth < sh.w), up);
-      w = mix(w, st(17u).xyz, 1.0 - step(st(30u).w, u.water.z - wd));   // the flat shore line
+      w = mix(w, st(17u).xyz, 1.0 - step(st(30u).w, wi));   // the flat shore line
     } else {
       let rip = noise(hit.xz * 2.4 + vec2f(u.time * 0.3, u.time * 0.2)) - 0.5;
       w = painted(w, up, d);
       let f = 0.02 + 0.98 * pow(1.0 - max(-d.y, 0.0), 5.0);
       w = mix(w, sky_styled(vec3f(d.x + rip * 0.04, -d.y, d.z + rip * 0.04), p), clamp(f + 0.15, 0.0, 1.0));
     }
+    if (u.water.w > 2.5 && u.water.w < 3.5) { w = select(painted(pow(ice_at(hit.xz), vec3f(2.2)), up, d), flat_lit(pow(ice_at(hit.xz), vec3f(2.2)), up), flat_style()); }
+    if (u.water.w > 3.5) { w = pow(lava_at(hit.xz), vec3f(2.2)) * 1.6; }
     c = w;
+  }
+  // an island: the sea from the beach out, in the water's own bands
+  if (land() > 1.5 && length(hit.xz) > u.eye.w - 3.0) {
+    let sea = select(painted(st(28u).xyz, up, d), flat_lit(st(28u).xyz, up), flat_style());
+    c = mix(c, sea, smoothstep(u.eye.w - 3.0, u.eye.w - 2.0, length(hit.xz)));
   }
   c += styled_lights(a, hit, up);
   return styled_far(c, hit, t, d);
@@ -252,7 +283,8 @@ fn daylight(n: vec3f) -> vec3f {
     let edge_s = select(0.0, 1.0 - smoothstep(u.eye.w - 3.0, u.eye.w + 6.0, r), down);
     let far = st(13u).xyz;
     var cs = sky_s;
-    if (down) { cs = mix(far, styled_ground(hit, ray, t * length(ray), p), edge_s); }
+    if (down) { cs = mix(far, styled_ground(hit, ray, t * length(ray), p), select(edge_s, 1.0, land() > 1.5)); }
+    if (land() > 0.5 && land() < 1.5 && down && r > u.eye.w) { cs = sky_s; }
     return vec4f(panels(p, encoded(cs) * u.fade), 1.0);
   }
   let sky = sky_of(ray, p);
@@ -262,22 +294,36 @@ fn daylight(n: vec3f) -> vec3f {
   let vary = select(0.82 + 0.22 * big + 0.08 * fine, 0.78 + 0.2 * big + 0.16 * brush, u.sky.w > 0.5);
   var ground = u.ground.rgb * vary * daylight(vec3f(0.0, 1.0, 0.0));
   // water: the sky in it, rippled, a pale rim where it meets the ground
-  let wd = length(hit.xz - u.water.xy);
-  if (u.water.w > 0.5 && wd < u.water.z) {
+  let wi = water_in(hit.xz);
+  if (u.water.w > 0.5 && wi > 0.0) {
     let rip = noise(hit.xz * 2.4 + vec2f(u.time * 0.3, u.time * 0.2)) - 0.5;
     let mirror = sky_of(vec3f(ray.x + rip * 0.05, -ray.y, ray.z + rip * 0.05), p);
-    let deep = smoothstep(0.0, u.water.z * 0.6, u.water.z - wd);
+    let deep = smoothstep(0.0, u.water.z * 0.6, wi);
     let water = mix(mirror * 0.75 + vec3f(0.02, 0.05, 0.08), vec3f(0.03, 0.09, 0.14) * daylight(vec3f(0.0, 1.0, 0.0)) + mirror * 0.4, deep * 0.6);
-    let rim = 1.0 - smoothstep(0.0, 0.25, u.water.z - wd);
+    let rim = 1.0 - smoothstep(0.0, 0.25, wi);
     ground = mix(water, u.ground.rgb * 1.2 * daylight(vec3f(0.0, 1.0, 0.0)), rim * 0.5);
+    if (u.water.w > 2.5 && u.water.w < 3.5) { ground = ice_at(hit.xz) * daylight(vec3f(0.0, 1.0, 0.0)) + mirror * 0.12; }
+    if (u.water.w > 3.5) { ground = lava_at(hit.xz); }
   }
   ground += vec3f(1.0, 0.62, 0.28) * lamp_near(hit, vec3f(0.0, 1.0, 0.0)) * 0.55 * u.ground.w;
   ground += lanterns_near(hit, vec3f(0.0, 1.0, 0.0)) * 0.9;
+  // an island: the sea from the beach out to the horizon
+  if (land() > 1.5) {
+    let rip = noise(hit.xz * 1.2 + vec2f(u.time * 0.2, u.time * 0.1)) - 0.5;
+    let sea = sea_at(hit.xz, sky_of(vec3f(ray.x + rip * 0.05, -ray.y, ray.z + rip * 0.05), p));
+    ground = mix(ground, sea, smoothstep(u.eye.w - 3.0, u.eye.w - 2.2, r));
+  }
+  // a floating island: a band of earth at its edge, and past it nothing but sky
+  if (land() > 0.5 && land() < 1.5) {
+    ground = mix(ground, vec3f(0.32, 0.22, 0.15) * daylight(vec3f(0.0, 1.0, 0.0)), smoothstep(u.eye.w - 0.9, u.eye.w - 0.4, r));
+  }
   // the realm's edge fades into the horizon's haze
   let haze = clamp(1.0 - exp(-max(t - u.rx.w, 0.0) * 0.018), 0.0, 1.0);
   ground = mix(ground, u.horizon.rgb, haze * 0.85);
-  let edge = select(0.0, 1.0 - smoothstep(u.eye.w - 3.0, u.eye.w + 6.0, r), down);
-  let c = mix(sky, mix(u.horizon.rgb, ground, edge), select(0.0, 1.0, down)) * u.fade;
+  var edge = select(0.0, 1.0 - smoothstep(u.eye.w - 3.0, u.eye.w + 6.0, r), down);
+  if (land() > 1.5 && down) { edge = 1.0; }
+  var c = mix(sky, mix(u.horizon.rgb, ground, edge), select(0.0, 1.0, down)) * u.fade;
+  if (land() > 0.5 && land() < 1.5 && down && r > u.eye.w) { c = sky * u.fade; }
   return vec4f(panels(p, c), 1.0);
 }
 // ---- the pack's meshes: its vertices (pack_realm.py and drops.c: the Haunted House's 48
@@ -296,6 +342,7 @@ struct S {
   @location(2) uv: vec2f,
   @location(3) tint: vec3f,
   @location(4) @interpolate(flat) slice: u32,
+  @location(5) @interpolate(flat) glow: f32,   // its own light (myrealm-things.coax glowing), or below 0 its paint (paint)
 }
 @vertex fn scene_vs(@builtin(vertex_index) id: u32, @builtin(instance_index) instance: u32) -> S {
   let b = id * 12u;
@@ -311,10 +358,13 @@ struct S {
   o.uv = vec2f(word(b + 6u), word(b + 7u));
   o.tint = unpack4x8unorm(vertices[b + 8u]).rgb * m.material.rgb;
   o.slice = vertices[b + 8u] >> 24u;
+  o.glow = m.material.w;
   return o;
 }
+// A painted piece: its texture's grain kept as light and dark, its own colour all the tint's.
+fn surfaced(t: vec3f, w: f32) -> vec3f { return mix(t, vec3f(0.42 + 0.8 * dot(t, vec3f(0.3, 0.59, 0.11))), clamp(-w, 0.0, 1.0)); }
 @fragment fn scene_fs(s: S) -> @location(0) vec4f {
-  let tex = textureSample(sheets, sheet, s.uv, s.slice);
+  let tex = vec4f(surfaced(textureSample(sheets, sheet, s.uv, s.slice).rgb, s.glow), textureSample(sheets, sheet, s.uv, s.slice).a);
   // painterly leaves are blobs: their cutout from a nearer mip, so pinholes of sky close up
   let cut = select(tex.a, textureSampleLevel(sheets, sheet, s.uv, s.slice, 2.0).a, u.st[31].y > 0.5 && u.st[31].y < 1.5);
   if (cut < 0.35) { discard; }
@@ -324,15 +374,15 @@ struct S {
     let dist = length(s.world - u.eye.xyz);
     // painted: the texture's grain softened toward a nearer mip; flat: large fills of colour, the
     // texture's own mean (a far mip) more than its grain
-    let soft = textureSampleLevel(sheets, sheet, s.uv, s.slice, select(2.5, 5.0, flat_style())).rgb;
+    let soft = surfaced(textureSampleLevel(sheets, sheet, s.uv, s.slice, select(2.5, 5.0, flat_style())).rgb, s.glow);
     let a = paletted(mix(tex.rgb, soft, select(0.55, 0.8, flat_style()))) * s.tint;
-    var c = select(painted(a, n, d), flat_lit(a, n), flat_style()) + styled_lights(a, s.world, n);
+    var c = select(painted(a, n, d), flat_lit(a, n), flat_style()) + styled_lights(a, s.world, n) + a * max(s.glow, 0.0);
     c = styled_far(c, s.world, dist, d);
     return vec4f(panels(s.pos.xy, encoded(c) * u.fade), 1.0);
   }
   var lit = daylight(n);
   lit += vec3f(1.0, 0.62, 0.28) * lamp_near(s.world, n) * 1.6 * u.ground.w;
-  lit += lanterns_near(s.world, n) * 1.4;
+  lit += lanterns_near(s.world, n) * 1.4 + vec3f(max(s.glow, 0.0));
   let far = max(length(s.world - u.eye.xyz) - u.rx.w, 0.0);
   let haze = clamp(1.0 - exp(-far * 0.018), 0.0, 1.0);
   let c = mix(paletted(tex.rgb) * s.tint * lit, u.horizon.rgb, haze * 0.85) * u.fade;

@@ -1,0 +1,649 @@
+// myrealm.coax's more things (0085_builder_more_things.sql): the shape of the land, buildings of a
+// kind, more animals and more that flies, palm and blossom trees, more plants and more things
+// standing about. Everything is the fixture pack's crate, barrel, rock, fern, tree and chest,
+// stretched, turned and tinted, as the houses and the herd are; a few pieces glow.
+
+LANDS :: [6] string.["hills", "mountains", "cliffs", "floating", "island", "volcano"];
+LAND_HILLS :: 1; LAND_MOUNTAINS :: 2; LAND_CLIFFS :: 3; LAND_FLOATING :: 4; LAND_ISLAND :: 5; LAND_VOLCANO :: 6;
+LAND_WORDS :: [7] string.["", " Hills roll round it.", " Mountains stand round it.", " Cliffs wall it in.",
+                          " It is an island floating in the sky.", " It is an island in the sea.", " A volcano smokes on the skyline."];
+BUILDINGS :: 4;
+BUILDING_KINDS :: [11] string.["cabin", "barn", "windmill", "lighthouse", "castle", "tower", "market", "shop", "saloon", "temple", "ruins"];
+BUILDING_WORDS :: [11] string.["a log cabin", "a red barn", "a windmill", "a lighthouse", "a castle", "a stone tower", "a market",
+                               "a shop", "a saloon", "a temple", "ruins"];
+BUILDING_R :: [11] f32.[2.8, 3.4, 1.8, 1.6, 6.0, 1.7, 4.6, 2.6, 3.4, 4.6, 3.4];   // its footprint, for a free spot
+HERDS :: [13] string.["bison", "deer", "horse", "sheep", "goat", "cow", "pig", "wolf", "fox", "dog", "camel", "chicken", "dinosaur"];
+FLIERS :: [9] string.["crow", "bat", "owl", "parrot", "gull", "dragon", "fairy", "firefly", "butterfly"];
+FLY_CROW :: 0; FLY_BAT :: 1; FLY_OWL :: 2; FLY_PARROT :: 3; FLY_GULL :: 4; FLY_DRAGON :: 5; FLY_FAIRY :: 6; FLY_FIREFLY :: 7; FLY_BUTTERFLY :: 8;
+FLIER_SAY :: [9] string.[" Birds circle overhead.", " Bats circle overhead.", " Owls circle overhead.", " Parrots circle overhead.",
+                         " Seagulls circle overhead.", " A dragon circles overhead.", " Fairies flit about, glowing.", " Fireflies glow in the air.",
+                         " Butterflies flit about."];
+PLANT_KINDS :: [5] string.["fern", "flower", "mushroom", "cactus", "crystal"];
+FIRES :: 4; MILLS :: 4; WEEDS :: 3;
+STONE_RGB :: [3] f32.[0.66, 0.64, 0.6];
+WOOD_RGB :: [3] f32.[0.58, 0.4, 0.25];
+
+// A place in a thing's own frame (u across its front, v out of its front, as house's) in the world.
+fr_x :: (x: f32, yaw: f32, u: f32, v: f32) -> f32 { return x + u * cos(yaw) + v * sin(yaw); }
+fr_z :: (z: f32, yaw: f32, u: f32, v: f32) -> f32 { return z - u * sin(yaw) + v * cos(yaw); }
+// A box in a thing's frame: w across, h up, d out of its front.
+part_at :: (s: [] MyRealm, m: int, x: f32, z: f32, yaw: f32, u: f32, v: f32, y: f32, w: f32, h: f32, d: f32, r: f32, g: f32, b: f32) {
+  sized(s, m, fr_x(x, yaw, u, v), y, fr_z(z, yaw, u, v), yaw, 0, w, h, d, r, g, b);
+}
+// What is drawn next glows by this much (lava, a lamp, a flame, crystals): its own light.
+glowing :: (s: [] MyRealm, g: f32) { s[0].glow_pen = g; }
+// What is drawn next is painted its tint (0 to 1): the texture's grain kept as light and dark only,
+// so stone is grey, a barn red and a sheep white, not the pack's brown wood tinted.
+coat :: (s: [] MyRealm, a: f32) { s[0].glow_pen = -a; }
+// A cone of rings narrowing as they rise (a roof, a tower's cap, a volcano).
+cone :: (s: [] MyRealm, m: int, x: f32, y: f32, z: f32, w0: f32, w1: f32, h: f32, steps: int, r: f32, g: f32, b: f32) {
+  for k: 0..<steps {
+    f := cast(f32) k / cast(f32) steps;
+    w := w0 + (w1 - w0) * f;
+    sized(s, m, x, y + f * h, z, cast(f32) k * 0.4, 0, w, h / cast(f32) steps + 0.02, w, r, g, b);
+  }
+}
+
+// ---- the land
+
+land_out :: (s: [] MyRealm, r: [] Seed) {
+  coat(s, 1);
+  rock := mesh_named(s, "Rock_Medium_1"); crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel");
+  tree := mesh_named(s, "CommonTree_3");
+  l := s[0].land;
+  gr := GROUND_RGB[s[0].ground * 3]; gg := GROUND_RGB[s[0].ground * 3 + 1]; gb := GROUND_RGB[s[0].ground * 3 + 2];
+  if l == LAND_HILLS {
+    for i: 0..<9 {
+      a := cast(f32) i / 9.0 * 6.2831853 + rand(r) * 0.4; d := GROUND_R + 7 + 5 * rand(r);
+      w := 18 + 8 * rand(r); h := 3.5 + 3 * rand(r);
+      sized(s, rock, d * sin(a), -0.8, -d * cos(a), a, 0, w, h, 0.7 * w, gr * 1.5, gg * 1.5, gb * 1.4);
+    }
+  }
+  if l == LAND_MOUNTAINS {
+    for i: 0..<7 {
+      a := cast(f32) i / 7.0 * 6.2831853 + rand(r) * 0.5; d := GROUND_R + 18 + 8 * rand(r);
+      w := 24 + 10 * rand(r); h := 14 + 8 * rand(r);
+      x := d * sin(a); z := -d * cos(a);
+      sized(s, rock, x, -1, z, a, 0, w, h, 0.8 * w, 0.62, 0.64, 0.72);
+      sized(s, rock, x, h * 0.62, z, a + 0.3, 0, 0.42 * w, 0.42 * h, 0.36 * w, 1.5, 1.5, 1.55);   // the snow on its peak
+    }
+  }
+  if l == LAND_CLIFFS {
+    for i: 0..<16 {
+      a := cast(f32) i / 16.0 * 6.2831853; d: f32 = GROUND_R + 1.5;
+      sized(s, rock, d * sin(a), -0.5, -d * cos(a), -a, 0, 11, 6 + 3 * rand(r), 4, STONE_RGB[0], STONE_RGB[1] * 0.97, STONE_RGB[2] * 0.92);
+    }
+  }
+  if l == LAND_FLOATING {
+    // small islands floating out in the sky, a tree on some (past the edge is sky: myrealm.wgsl)
+    for i: 0..<5 {
+      a := cast(f32) i / 5.0 * 6.2831853 + 0.6 + rand(r) * 0.5; d := GROUND_R + 12 + 10 * rand(r);
+      x := d * sin(a); z := -d * cos(a); y := 3 + 7 * rand(r); w := 4 + 3 * rand(r);
+      sized(s, crate, x, y - 0.4, z, a, 0, w, 0.5, 0.8 * w, gr * 1.2, gg * 1.2, gb * 1.2);
+      sized(s, rock, x, y - 0.3, z, a, 3.1415926, w * 0.95, w * 0.9, 0.75 * w, 0.62, 0.48, 0.36);
+      if i % 2 == 0 && tree >= 0 {
+        k := 3.0 / hi(longest(s, tree), 0.01);
+        shaped(s, tree, x, y, z, a, 0, k, 1, 1, 1, 1, 1, 1);
+        shaped(s, leaves_of(s, tree), x, y, z, a, 0, k, 1, 1, 1, 1, 1, 1);
+      }
+    }
+  }
+  if l == LAND_VOLCANO {
+    x: f32 = 16; z: f32 = -60;
+    sized(s, rock, x, -1, z, 0.3, 0, 44, 8, 36, 0.36, 0.31, 0.29);
+    sized(s, rock, x, 5.5, z, 1.1, 0, 22, 7, 20, 0.33, 0.28, 0.26);
+    glowing(s, 1.6);
+    sized(s, barrel, x, 11.8, z, 0, 0, 8, 0.8, 7, 1.5, 0.45, 0.1);   // the glow in its crater
+    coat(s, 1);
+    for k: 0..<3 {
+      f := cast(f32) k;
+      sized(s, rock, x + 1.5 * f, 14 + 3.5 * f, z - f, f, 3.1415926 * f, 5 + 2.5 * f, 3 + f, 5 + 2 * f, 0.42, 0.4, 0.4);   // its smoke
+    }
+  }
+}
+
+// ---- buildings
+
+// One building of a kind, its front towards yaw (house's frame).
+building_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32) {
+  coat(s, 1);
+  crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel");
+  if crate < 0 { return; }
+  round := ifx barrel >= 0 then barrel else crate;
+  if kind == 0 {
+    // a log cabin: a brown house, and logs piled by it
+    glowing(s, 0); house(s, x, z, yaw, 1, 5); coat(s, 1);
+    for k: 0..<3 {
+      f := cast(f32) k;
+      sized(s, round, fr_x(x, yaw, 3.0, -0.5 + 0.45 * f - (ifx k == 2 then 0.22f32 else 0.0f32)), 0.22 + (ifx k == 2 then 0.38f32 else 0.0f32), fr_z(z, yaw, 3.0, -0.5 + 0.45 * f), yaw + 1.5707963, 1.5707963, 0.42, 1.8, 0.42, 0.6, 0.42, 0.26);
+    }
+    return;
+  }
+  if kind == 1 {
+    // a red barn: a big red house, its wide door framed in white, hay bales by it
+    house(s, x, z, yaw, 2, 1);
+    part_at(s, crate, x, z, yaw, 0, 2.32, 0, 2.0, 2.3, 0.06, 0.36, 0.14, 0.1);
+    part_at(s, crate, x, z, yaw, -1.05, 2.36, 0, 0.14, 2.4, 0.06, 1.4, 1.38, 1.3);
+    part_at(s, crate, x, z, yaw, 1.05, 2.36, 0, 0.14, 2.4, 0.06, 1.4, 1.38, 1.3);
+    part_at(s, crate, x, z, yaw, 0, 2.36, 2.3, 2.24, 0.14, 0.06, 1.4, 1.38, 1.3);
+    for k: 0..<2 { part_at(s, crate, x, z, yaw, 3.6, 0.6 + 1.3 * cast(f32) k, 0, 1.0, 0.8, 1.2, 1.35, 1.1, 0.45); }
+    solid(s, fr_x(x, yaw, 3.6, 1.2), fr_z(z, yaw, 3.6, 1.2), 0.9);
+    return;
+  }
+  if kind == 2 {
+    // a windmill: a white tower in three steps, a dark cap; its sails turn (actors)
+    for k: 0..<3 { f := cast(f32) k; sized(s, round, x, 2.25 * f, z, yaw, 0, 2.7 - 0.4 * f, 2.35, 2.7 - 0.4 * f, 1.25, 1.2, 1.1); }
+    cone(s, round, x, 6.7, z, 2.3, 0.6, 1.6, 3, 0.5, 0.3, 0.24);
+    part_at(s, crate, x, z, yaw, 0, 1.33, 0, 0.8, 1.7, 0.08, 0.32, 0.2, 0.13);
+    if s[0].mill_n < MILLS { n := s[0].mill_n; s[0].mill_x[n] = x; s[0].mill_z[n] = z; s[0].mill_yaw[n] = yaw; s[0].mill_n = n + 1; }
+    solid(s, x, z, 1.4);
+    return;
+  }
+  if kind == 3 {
+    // a lighthouse: white and red bands narrowing as they rise, a gallery, the lamp lit, a red cap
+    for k: 0..<6 {
+      f := cast(f32) k; red := k % 2 == 1;
+      sized(s, round, x, 1.6 * f, z, yaw + 0.4 * f, 0, 2.4 - 0.18 * f, 1.62, 2.4 - 0.18 * f, ifx red then 1.3f32 else 1.3f32, ifx red then 0.28f32 else 1.28f32, ifx red then 0.24f32 else 1.22f32);
+    }
+    sized(s, round, x, 9.6, z, yaw, 0, 2.0, 0.16, 2.0, 0.25, 0.25, 0.27);
+    glowing(s, 2.0);
+    sized(s, crate, x, 9.76, z, yaw, 0, 1.0, 1.0, 1.0, 1.5, 1.3, 0.6);
+    coat(s, 1);
+    cone(s, round, x, 10.76, z, 1.3, 0.3, 0.9, 3, 1.2, 0.26, 0.22);
+    part_at(s, crate, x, z, yaw, 0, 1.2, 0, 0.8, 1.7, 0.08, 0.3, 0.2, 0.14);
+    s[0].beacon = true; s[0].beacon_x = x; s[0].beacon_z = z;
+    solid(s, x, z, 1.3);
+    return;
+  }
+  rock := mesh_named(s, "Rock_Medium_1");
+  stone := ifx rock >= 0 then rock else crate;
+  if kind == 4 {
+    // a castle: four stone walls, a gate in the front, a round tower at each corner with a roof, a keep
+    sr := STONE_RGB[0]; sg := STONE_RGB[1]; sb := STONE_RGB[2];
+    half: f32 = 4.6;
+    part_at(s, stone, x, z, yaw, 0, -half, 0, 2 * half, 3.4, 0.7, sr, sg, sb);
+    part_at(s, stone, x, z, yaw, -half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
+    part_at(s, stone, x, z, yaw, half, 0, 0, 0.7, 3.4, 2 * half, sr * 0.95, sg * 0.95, sb * 0.95);
+    part_at(s, stone, x, z, yaw, -2.5, half, 0, 3.6, 3.4, 0.7, sr, sg, sb);
+    part_at(s, stone, x, z, yaw, 2.5, half, 0, 3.6, 3.4, 0.7, sr, sg, sb);
+    part_at(s, stone, x, z, yaw, 0, half, 2.5, 1.5, 0.9, 0.7, sr, sg, sb);
+    part_at(s, crate, x, z, yaw, 0, half + 0.3, 0, 1.4, 2.5, 0.12, 0.3, 0.2, 0.13);   // the gate
+    for c: 0..<4 {
+      u: f32 = ifx c % 2 == 0 then half else -half; v: f32 = ifx c < 2 then half else -half;
+      tx := fr_x(x, yaw, u, v); tz := fr_z(z, yaw, u, v);
+      sized(s, stone, tx, 0, tz, yaw, 0, 2.2, 5.2, 2.2, sr * 1.04, sg * 1.04, sb * 1.04);
+      sized(s, stone, tx, 5.2, tz, yaw, 0, 2.6, 0.55, 2.6, sr * 0.9, sg * 0.9, sb * 0.9);
+      cone(s, round, tx, 5.75, tz, 2.4, 0.3, 2.2, 3, 0.36, 0.3, 0.6);
+    }
+    sized(s, stone, x, 0, z, yaw, 0, 3.6, 6.5, 3.6, sr * 0.92, sg * 0.92, sb * 0.92);   // the keep
+    sized(s, crate, x, 6.5, z, yaw, 0.25, 0.08, 1.8, 0.08, 0.3, 0.22, 0.16);
+    sized(s, crate, fr_x(x, yaw, 0.38, 0), 7.7, fr_z(z, yaw, 0.38, 0), yaw, 0, 0.7, 0.45, 0.04, 1.3, 0.25, 0.22);   // its flag
+    solid(s, x, z, half + 0.9);
+    return;
+  }
+  if kind == 5 {
+    // a stone tower: banded stone, a crenellated top, a slit of a window, a door
+    for k: 0..<3 { sized(s, stone, x, 2.5 * cast(f32) k, z, yaw + 0.5 * cast(f32) k, 0, 2.5, 2.52, 2.5, STONE_RGB[0] * (1 - 0.04 * cast(f32) k), STONE_RGB[1], STONE_RGB[2]); }
+    sized(s, stone, x, 7.5, z, yaw, 0, 3.0, 0.6, 3.0, STONE_RGB[0] * 0.92, STONE_RGB[1] * 0.92, STONE_RGB[2] * 0.92);
+    for k: 0..<4 {
+      a := yaw + cast(f32) k * 1.5707963;
+      sized(s, stone, x + 1.2 * sin(a), 8.1, z + 1.2 * cos(a), a, 0, 0.6, 0.5, 0.5, STONE_RGB[0], STONE_RGB[1], STONE_RGB[2]);
+    }
+    part_at(s, crate, x, z, yaw, 0, 1.25, 4.4, 0.25, 0.8, 0.06, 0.14, 0.12, 0.12);
+    part_at(s, crate, x, z, yaw, 0, 1.22, 0, 0.8, 1.7, 0.08, 0.3, 0.2, 0.14);
+    solid(s, x, z, 1.4);
+    return;
+  }
+  if kind == 6 {
+    // a market: three stalls side by side, each a counter of goods under a striped awning on posts
+    for k: 0..<3 {
+      u := (cast(f32) k - 1) * 3.2;
+      ar := ifx k == 0 then 1.3f32 else ifx k == 1 then 0.4f32 else 0.45f32;
+      ag := ifx k == 0 then 0.3f32 else ifx k == 1 then 0.6f32 else 1.0f32;
+      ab := ifx k == 0 then 0.25f32 else ifx k == 1 then 1.25f32 else 0.45f32;
+      part_at(s, crate, x, z, yaw, u, 0.4, 0, 2.5, 0.95, 1.0, WOOD_RGB[0], WOOD_RGB[1], WOOD_RGB[2]);
+      for p: 0..<2 { part_at(s, crate, x, z, yaw, u + (ifx p == 0 then -1.25f32 else 1.25f32), 1.0, 0, 0.12, 2.3, 0.12, POLE_RGB[0], POLE_RGB[1], POLE_RGB[2]); }
+      part_at(s, crate, x, z, yaw, u - 0.7, 0.4, 2.3, 1.4, 0.1, 1.9, ar, ag, ab);
+      part_at(s, crate, x, z, yaw, u + 0.7, 0.4, 2.3, 1.4, 0.1, 1.9, 1.35, 1.3, 1.2);
+      for g: 0..<3 {
+        gu := u + (cast(f32) g - 1) * 0.7;
+        part_at(s, crate, x, z, yaw, gu, 0.5, 0.95, 0.5, 0.3, 0.5, ifx g == 0 then 1.3f32 else ifx g == 1 then 1.35f32 else 0.6f32, ifx g == 0 then 0.25f32 else ifx g == 1 then 0.95f32 else 1.1f32, ifx g == 2 then 0.35f32 else 0.2f32);
+      }
+      solid(s, fr_x(x, yaw, u, 0.4), fr_z(z, yaw, u, 0.4), 1.25);
+    }
+    return;
+  }
+  if kind == 7 {
+    // a shop: a blue house, a striped awning over its door and a sign above it
+    house(s, x, z, yaw, 1, 2);
+    part_at(s, crate, x, z, yaw, -0.6, 2.15, 2.0, 1.2, 0.08, 0.7, 1.3, 0.3, 0.25);
+    part_at(s, crate, x, z, yaw, 0.6, 2.15, 2.0, 1.2, 0.08, 0.7, 1.35, 1.3, 1.2);
+    part_at(s, crate, x, z, yaw, 0, 1.94, 2.16, 1.8, 0.5, 0.08, 0.36, 0.24, 0.16);
+    return;
+  }
+  if kind == 8 {
+    // a saloon: a wooden hall behind a tall false front, a sign across it, a porch on posts, swing doors
+    glowing(s, 0);   // the pack's wood as it is
+    part_at(s, crate, x, z, yaw, 0, -0.3, 0, 5.0, 3.2, 3.8, WOOD_RGB[0], WOOD_RGB[1], WOOD_RGB[2]);
+    part_at(s, crate, x, z, yaw, 0, 1.6, 0, 5.4, 4.8, 0.2, 0.78, 0.56, 0.34);
+    part_at(s, crate, x, z, yaw, 0, 1.6, 4.8, 5.6, 0.25, 0.3, 0.36, 0.24, 0.16);
+    part_at(s, crate, x, z, yaw, 0, 1.73, 3.5, 3.6, 0.75, 0.06, 1.25, 1.12, 0.85);
+    part_at(s, crate, x, z, yaw, 0, 2.5, 0, 5.4, 0.2, 1.7, 0.5, 0.34, 0.22);
+    part_at(s, crate, x, z, yaw, 0, 2.5, 2.55, 5.4, 0.12, 1.7, 0.42, 0.28, 0.18);
+    for p: 0..<2 { part_at(s, crate, x, z, yaw, ifx p == 0 then -2.55f32 else 2.55f32, 3.25, 0, 0.14, 2.55, 0.14, POLE_RGB[0], POLE_RGB[1], POLE_RGB[2]); }
+    for p: 0..<2 { part_at(s, crate, x, z, yaw, ifx p == 0 then -0.26f32 else 0.26f32, 1.74, 0.55, 0.44, 0.9, 0.05, 0.4, 0.26, 0.16); }
+    part_at(s, crate, x, z, yaw, 0, 1.72, 0, 1.0, 2.0, 0.04, 0.16, 0.12, 0.1);
+    for p: 0..<2 { part_at(s, crate, x, z, yaw, ifx p == 0 then -1.7f32 else 1.7f32, 1.74, 1.0, 0.8, 0.6, 0.06, 1.6, 1.3, 0.6); }
+    solid(s, fr_x(x, yaw, 0, 0.4), fr_z(z, yaw, 0, 0.4), 3.0);
+    return;
+  }
+  if kind == 9 {
+    // a temple: four stone steps, a shrine on top with a dark door, vines down its sides
+    for k: 0..<4 {
+      f := cast(f32) k;
+      sized(s, stone, x, 1.2 * f, z, yaw, 0, 8.4 - 1.7 * f, 1.22, 8.4 - 1.7 * f, 0.62 - 0.02 * f, 0.64 - 0.02 * f, 0.52);
+    }
+    sized(s, stone, x, 4.8, z, yaw, 0, 2.4, 1.9, 2.4, 0.66, 0.66, 0.56);
+    sized(s, crate, x, 6.7, z, yaw, 0, 3.0, 0.32, 3.0, 0.5, 0.5, 0.42);
+    part_at(s, crate, x, z, yaw, 0, 1.22, 4.8, 0.9, 1.4, 0.06, 0.12, 0.1, 0.08);
+    for k: 0..<2 { part_at(s, crate, x, z, yaw, ifx k == 0 then -4.22f32 else 4.22f32, 1.0, 0.4, 0.08, 1.3, 0.5, 0.25, 0.5, 0.2); }
+    solid(s, x, z, 4.4);
+    return;
+  }
+  // ruins: broken columns in two rows, a lintel still on two, one fallen, blocks about
+  pale := RUIN_RGB; heights := RUIN_H;
+  for k: 0..<6 {
+    u := (cast(f32) (k % 3) - 1) * 2.4; v: f32 = ifx k < 3 then 1.6f32 else -1.6f32;
+    cx := fr_x(x, yaw, u, v); cz := fr_z(z, yaw, u, v);
+    sized(s, stone, cx, 0, cz, yaw, 0, 0.8, heights[k], 0.8, pale[0], pale[1], pale[2]);
+    solid(s, cx, cz, 0.45);
+  }
+  part_at(s, stone, x, z, yaw, -1.2, 1.6, 3.2, 3.4, 0.5, 0.8, pale[0] * 0.95, pale[1] * 0.95, pale[2] * 0.95);
+  sized(s, stone, fr_x(x, yaw, 1.0, -3.4), 0.4, fr_z(z, yaw, 1.0, -3.4), yaw, 1.5707963, 0.8, 2.8, 0.8, pale[0] * 0.9, pale[1] * 0.9, pale[2] * 0.9);
+  part_at(s, stone, x, z, yaw, 3.6, 0.2, 0, 0.8, 0.5, 0.7, pale[0], pale[1], pale[2]);
+  part_at(s, stone, x, z, yaw, -3.4, -0.6, 0, 0.6, 0.4, 0.9, pale[0], pale[1], pale[2]);
+}
+
+RUIN_RGB :: [3] f32.[0.82, 0.79, 0.72];
+RUIN_H :: [6] f32.[3.2, 3.2, 1.4, 2.4, 0.9, 2.0];
+
+// The windmills' sails turning, a lighthouse's lamp after dark (draw_world), each frame.
+mill_sails :: (s: [] MyRealm) {
+  coat(s, 1);
+  crate := mesh_named(s, "Prop_Crate");
+  a := ifx s[0].still then 0.4f32 else s[0].time * 0.7;
+  for i: 0..<s[0].mill_n {
+    yaw := s[0].mill_yaw[i];
+    hx := fr_x(s[0].mill_x[i], yaw, 0, 1.2); hz := fr_z(s[0].mill_z[i], yaw, 0, 1.2);
+    sized(s, crate, hx, 5.75, hz, yaw, 0, 0.4, 0.4, 0.5, 0.36, 0.26, 0.18);
+    for k: 0..<4 {
+      sized(s, crate, fr_x(hx, yaw, 0, 0.3), 5.95, fr_z(hz, yaw, 0, 0.3), yaw, a + cast(f32) k * 1.5707963, 0.62, 3.3, 0.05, 1.05, 0.95, 0.8);
+    }
+  }
+}
+
+// ---- animals
+
+// An animal of the herd beyond bison, deer and horses (animal's frame: forward is (sin yaw, -cos yaw)).
+BEAST_LONG :: [10] f32.[1.0, 0.85, 1.7, 0.95, 1.1, 0.7, 0.8, 1.5, 0.34, 3.0];
+BEAST_WIDE :: [10] f32.[0.78, 0.4, 0.75, 0.62, 0.34, 0.26, 0.32, 0.6, 0.26, 1.0];
+BEAST_DEEP :: [10] f32.[0.66, 0.45, 0.8, 0.55, 0.42, 0.3, 0.38, 0.7, 0.3, 1.2];
+BEAST_LEG :: [10] f32.[0.36, 0.55, 0.7, 0.24, 0.55, 0.28, 0.42, 1.25, 0.2, 1.5];
+BEAST_RGB :: [30] f32.[0.96, 0.94, 0.88,  0.82, 0.78, 0.7,  0.96, 0.95, 0.92,  0.98, 0.66, 0.64,  0.48, 0.48, 0.52,
+                       0.92, 0.46, 0.16,  0.6, 0.42, 0.26,  0.8, 0.64, 0.42,  1.0, 0.98, 0.94,  0.38, 0.54, 0.28];
+HEAD_W :: [10] f32.[0.34, 0.26, 0.45, 0.42, 0.26, 0.2, 0.24, 0.28, 0.16, 0.7];
+HEAD_H :: [10] f32.[0.32, 0.28, 0.42, 0.38, 0.26, 0.2, 0.24, 0.3, 0.18, 0.7];
+HEAD_L :: [10] f32.[0.38, 0.36, 0.55, 0.3, 0.42, 0.28, 0.34, 0.55, 0.18, 1.3];
+HEAD_UP :: [10] f32.[0.12, 0.3, 0.05, -0.05, 0.12, 0.08, 0.2, 1.2, 0.16, 0.7];
+beast :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32) {
+  coat(s, 1);
+  crate := mesh_named(s, "Prop_Crate");
+  q := kind - 3;
+  if crate < 0 || q < 0 || q >= 10 { return; }
+  fx := sin(yaw); fz := -cos(yaw); ax := cos(yaw); az := sin(yaw);
+  turn := -yaw;
+  long := BEAST_LONG[q]; wide := BEAST_WIDE[q]; deep := BEAST_DEEP[q]; leg := BEAST_LEG[q];
+  r := BEAST_RGB[q * 3]; g := BEAST_RGB[q * 3 + 1]; b := BEAST_RGB[q * 3 + 2];
+  sized(s, crate, x, leg, z, turn, 0, wide, deep, long, r, g, b);   // the body
+  two := kind == 11 || kind == 12;   // a chicken and a dinosaur stand on two legs
+  for k: 0..<4 {
+    if two && k >= 2 { continue; }
+    sx: f32 = ifx k % 2 == 0 then 1.0f32 else -1.0f32; sz: f32 = ifx two then -0.15f32 else ifx k < 2 then 1.0f32 else -1.0f32;
+    lx := x + sx * 0.32 * wide * ax + sz * 0.36 * long * fx; lz := z + sx * 0.32 * wide * az + sz * 0.36 * long * fz;
+    lw := ifx kind == 12 then 0.4f32 else ifx kind == 11 then 0.05f32 else 0.09 + 0.08 * wide;
+    lr := ifx kind == 11 then 1.2f32 else r * 0.7; lg := ifx kind == 11 then 0.8f32 else g * 0.7; lb := ifx kind == 11 then 0.2f32 else b * 0.7;
+    if kind == 3 || kind == 5 { lr = 0.25; lg = 0.22; lb = 0.2; }
+    sized(s, crate, lx, 0, lz, turn, 0, lw, leg + 0.05, lw, lr, lg, lb);
+  }
+  // the head at the front (lowered to graze), on a neck where it is high
+  hw := HEAD_W[q]; hh := HEAD_H[q]; hl := HEAD_L[q];
+  hv := 0.5 * long + 0.3 * hl;
+  hy := leg + deep - 0.2 * hh + HEAD_UP[q] - (0.35 + 0.25 * HEAD_UP[q]) * graze;
+  hr := ifx kind == 3 then 0.22f32 else r * 0.92; hg := ifx kind == 3 then 0.2f32 else g * 0.92; hb := ifx kind == 3 then 0.18f32 else b * 0.92;
+  if HEAD_UP[q] > 0.4 { sized(s, crate, x + (0.5 * long) * fx, leg + 0.5 * deep, z + (0.5 * long) * fz, turn, 0, 0.6 * hw, hy - leg - 0.5 * deep + 0.1, 0.5 * hl, r * 0.96, g * 0.96, b * 0.96); }
+  sized(s, crate, x + hv * fx, hy, z + hv * fz, turn, 0, hw, hh, hl, hr, hg, hb);
+  ex := x + (hv - 0.1 * hl) * fx; ez := z + (hv - 0.1 * hl) * fz;
+  back := -0.5 * long;
+  if kind == 4 {   // a goat's horns swept back, its beard
+    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.08 * ax, hy + hh, ez + sx * 0.08 * az, turn, -sx * 0.35, 0.05, 0.24, 0.05, 0.5, 0.45, 0.36); }
+    sized(s, crate, x + (hv + 0.3 * hl) * fx, hy - 0.14, z + (hv + 0.3 * hl) * fz, turn, 0, 0.06, 0.16, 0.06, 0.4, 0.36, 0.3);
+  }
+  if kind == 5 {   // a cow's black patches, short pale horns, its pink nose
+    for k: 0..<2 {
+      sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; off: f32 = ifx k == 0 then 0.25f32 else -0.3f32;
+      sized(s, crate, x + sx * 0.02 * ax + off * fx, leg + 0.25 * deep, z + sx * 0.02 * az + off * fz, turn, 0, wide + 0.02, 0.45 * deep, 0.45 * long, 0.12, 0.11, 0.11);
+    }
+    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.22 * ax, hy + hh, ez + sx * 0.22 * az, turn, -sx * 0.9, 0.05, 0.18, 0.05, 0.92, 0.88, 0.76); }
+    sized(s, crate, x + (hv + 0.48 * hl) * fx, hy + 0.04, z + (hv + 0.48 * hl) * fz, turn, 0, 0.36, 0.2, 0.1, 0.95, 0.62, 0.6);
+  }
+  if kind == 6 {   // a pig's snout and ears
+    sized(s, crate, x + (hv + 0.55 * hl) * fx, hy + 0.08, z + (hv + 0.55 * hl) * fz, turn, 0, 0.2, 0.16, 0.08, 0.85, 0.5, 0.5);
+    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.14 * ax, hy + hh, ez + sx * 0.14 * az, turn, -sx * 0.5, 0.1, 0.1, 0.05, r * 0.9, g * 0.8, b * 0.8); }
+  }
+  if kind == 7 || kind == 8 || kind == 9 {   // a wolf's, fox's or dog's ears and tail
+    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, ex + sx * 0.36 * hw * ax, hy + hh, ez + sx * 0.36 * hw * az, turn, 0, 0.06, ifx kind == 9 then 0.08f32 else 0.14f32, 0.05, r * 0.8, g * 0.8, b * 0.8); }
+    tl := ifx kind == 8 then 0.55f32 else 0.45f32;
+    ty := ifx kind == 9 then leg + deep * 0.9 else leg + deep * 0.45;
+    sized(s, crate, x + (back - 0.5 * tl) * fx, ty, z + (back - 0.5 * tl) * fz, turn, 0, ifx kind == 8 then 0.18f32 else 0.1f32, ifx kind == 8 then 0.18f32 else 0.1f32, tl, r * 0.9, g * 0.9, b * 0.9);
+    if kind == 8 { sized(s, crate, x + (back - tl) * fx, ty, z + (back - tl) * fz, turn, 0, 0.14, 0.14, 0.14, 1.0, 0.98, 0.95); }   // its white tip
+  }
+  if kind == 10 {   // a camel's humps
+    for k: 0..<2 { off: f32 = ifx k == 0 then 0.3f32 else -0.3f32; sized(s, crate, x + off * fx, leg + deep - 0.05, z + off * fz, turn, 0, 0.42, 0.4, 0.42, r * 0.95, g * 0.92, b * 0.9); }
+  }
+  if kind == 11 {   // a chicken's red comb, its beak and its tail feathers
+    sized(s, crate, ex, hy + hh, ez, turn, 0, 0.04, 0.08, 0.12, 1.3, 0.2, 0.15);
+    sized(s, crate, x + (hv + 0.6 * hl) * fx, hy + 0.06, z + (hv + 0.6 * hl) * fz, turn, 0, 0.05, 0.04, 0.08, 1.3, 0.85, 0.2);
+    sized(s, crate, x + back * fx, leg + deep * 0.6, z + back * fz, turn, 0, 0.14, 0.24, 0.1, r * 0.95, g * 0.95, b * 0.92);
+  }
+  if kind == 12 {   // a dinosaur's long tail, tapering, and its small arms
+    sized(s, crate, x + (back - 0.7) * fx, leg + 0.35 * deep, z + (back - 0.7) * fz, turn, 0, 0.6, 0.6, 1.6, r * 0.95, g * 0.95, b * 0.95);
+    sized(s, crate, x + (back - 2.0) * fx, leg + 0.45 * deep, z + (back - 2.0) * fz, turn, 0, 0.3, 0.3, 1.2, r * 0.9, g * 0.9, b * 0.9);
+    for k: 0..<2 { sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; sized(s, crate, x + sx * 0.4 * ax + 0.4 * long * fx, leg + 0.2 * deep, z + sx * 0.4 * az + 0.4 * long * fz, turn, 0, 0.12, 0.45, 0.12, r * 0.8, g * 0.8, b * 0.8); }
+  }
+}
+
+// ---- what flies beyond crows, bats and owls
+
+FLIER_RGB :: [12] f32.[0.9, 0.2, 0.15,  0.2, 0.75, 0.3,  0.2, 0.45, 0.95,  1.0, 0.8, 0.2];
+WING_RGB :: [12] f32.[1.0, 0.82, 0.22,  0.4, 0.62, 1.0,  1.0, 1.0, 0.98,  0.95, 0.5, 0.8];
+// Draws flier i at b; false when it is one actors draws itself (crows, bats, owls).
+flier_at :: (s: [] MyRealm, i: int, b: Bird) -> bool {
+  f := s[0].flier;
+  if f <= FLY_OWL || f == FLY_FIREFLY { return f == FLY_FIREFLY; }   // fireflies are only their light (draw_world)
+  crate := mesh_named(s, "Prop_Crate");
+  coat(s, 1);
+  span := ifx f == FLY_PARROT then 0.7f32 else ifx f == FLY_GULL then 1.0f32 else ifx f == FLY_DRAGON then 4.6f32 else ifx f == FLY_FAIRY then 0.24f32 else 0.34f32;
+  beat := ifx f == FLY_PARROT then 9.0f32 else ifx f == FLY_GULL then 4.5f32 else ifx f == FLY_DRAGON then 2.2f32 else ifx f == FLY_FAIRY then 22.0f32 else 11.0f32;
+  flap := ifx s[0].still then 0.35f32 else 0.55 * sin(s[0].time * beat + cast(f32) i);
+  if f == FLY_BUTTERFLY { flap = flap * 1.8; }
+  o := (i % 4) * 3;
+  r := FLIER_RGB[o]; g := FLIER_RGB[o + 1]; bl := FLIER_RGB[o + 2];
+  if f == FLY_GULL { r = 1.3; g = 1.3; bl = 1.3; }
+  if f == FLY_DRAGON { r = 0.62; g = 0.16; bl = 0.12; }
+  if f == FLY_FAIRY { r = 1.2; g = 1.3; bl = 1.5; }
+  if f == FLY_BUTTERFLY { r = WING_RGB[o]; g = WING_RGB[o + 1]; bl = WING_RGB[o + 2]; }
+  if f == FLY_FAIRY { glowing(s, 1.4); }
+  for side: 0..<2 {
+    w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+    cx := 0.5 * span * cos(flap); cy := 0.5 * span * sin(flap);
+    wx := b.x + w * cx * cos(b.yaw); wz := b.z + w * cx * sin(b.yaw);
+    wd := ifx f == FLY_DRAGON then 1.8f32 else ifx f == FLY_BUTTERFLY then 0.26f32 else ifx f == FLY_FAIRY then 0.14f32 else 0.24f32;
+    wr := ifx f == FLY_GULL && side == 0 then 1.25f32 else r * (ifx f == FLY_DRAGON then 0.7f32 else 1.0f32);
+    sized(s, crate, wx, b.y + cy - 0.015, wz, -b.yaw, w * flap, span, ifx f == FLY_DRAGON then 0.08f32 else 0.03f32, wd, wr, g * (ifx f == FLY_DRAGON then 0.7f32 else 1.0f32), bl * (ifx f == FLY_DRAGON then 0.7f32 else 1.0f32));
+  }
+  fx := -sin(b.yaw); fz := cos(b.yaw);
+  if f == FLY_DRAGON {
+    // a long body, a neck and head ahead, a tail behind, a pale belly
+    sized(s, crate, b.x, b.y - 0.45, b.z, -b.yaw, 0, 0.9, 0.8, 2.6, r, g, bl);
+    sized(s, crate, b.x + 1.7 * fx, b.y - 0.1, b.z + 1.7 * fz, -b.yaw, 0, 0.45, 0.45, 1.2, r, g, bl);
+    sized(s, crate, b.x + 2.5 * fx, b.y - 0.05, b.z + 2.5 * fz, -b.yaw, 0, 0.6, 0.5, 0.8, r * 0.9, g * 0.9, bl * 0.9);
+    sized(s, crate, b.x - 2.4 * fx, b.y - 0.35, b.z - 2.4 * fz, -b.yaw, 0, 0.35, 0.3, 2.4, r, g, bl);
+    sized(s, crate, b.x, b.y - 0.5, b.z, -b.yaw, 0, 0.7, 0.1, 2.2, 1.2, 0.95, 0.5);
+  } else if f == FLY_FAIRY {
+    sized(s, crate, b.x, b.y - 0.08, b.z, -b.yaw, 0, 0.07, 0.16, 0.07, 1.4, 1.4, 1.2);
+  } else {
+    sized(s, crate, b.x, b.y - 0.04, b.z, -b.yaw, 0, ifx f == FLY_GULL then 0.16f32 else 0.06f32, 0.08, ifx f == FLY_PARROT then 0.48f32 else ifx f == FLY_GULL then 0.4f32 else 0.2f32, r * 0.85, g * 0.85, bl * 0.85);
+  }
+  glowing(s, 0);
+  return true;
+}
+
+// ---- trees, plants and things standing about
+
+// A palm: a leaning trunk, two layers of long fronds at its top, coconuts.
+palm :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, grow: f32) {
+  coat(s, 1);
+  crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel");
+  round := ifx barrel >= 0 then barrel else crate;
+  h := 5.2 * grow; lean: f32 = 0.16;
+  sized(s, round, x, 0, z, yaw, lean, 0.34, h, 0.34, 0.66, 0.5, 0.34);
+  tx := x - cos(yaw) * sin(lean) * h; ty := cos(lean) * h; tz := z + sin(yaw) * sin(lean) * h;
+  for k: 0..<3 { sized(s, crate, tx, ty, tz, yaw + cast(f32) k * 1.0471976, 0, 4.6 * grow, 0.07, 0.55, 0.32, 0.62, 0.22); }
+  for k: 0..<3 { sized(s, crate, tx, ty - 0.22, tz, yaw + 0.52 + cast(f32) k * 1.0471976, 0, 3.8 * grow, 0.07, 0.5, 0.26, 0.52, 0.18); }
+  sized(s, crate, tx + 0.15, ty - 0.35, tz, yaw, 0, 0.24, 0.24, 0.24, 0.42, 0.28, 0.16);
+  solid(s, x, z, 0.3);
+}
+FLOWER_RGB :: [12] f32.[1.35, 0.3, 0.3,  1.4, 1.2, 0.3,  1.4, 1.4, 1.35,  0.85, 0.5, 1.35];
+// A low plant of a kind (PLANT_KINDS, beyond ferns): flowers, mushrooms, a cactus or crystals.
+plant_at :: (s: [] MyRealm, kind: int, x: f32, z: f32, yaw: f32, grow: f32, i: int) {
+  coat(s, 1);
+  crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel");
+  round := ifx barrel >= 0 then barrel else crate;
+  if kind == 1 {
+    for k: 0..<2 {
+      o := ((i + k) % 4) * 3; dx := 0.25 * cast(f32) k * cos(yaw); dz := 0.25 * cast(f32) k * sin(yaw);
+      ht := (0.42 + 0.12 * cast(f32) k) * grow;
+      sized(s, crate, x + dx, 0, z + dz, yaw, 0, 0.04, ht, 0.04, 0.3, 0.6, 0.22);
+      sized(s, crate, x + dx, ht, z + dz, yaw + 0.7, 0, 0.2, 0.1, 0.2, FLOWER_RGB[o], FLOWER_RGB[o + 1], FLOWER_RGB[o + 2]);
+    }
+    return;
+  }
+  if kind == 2 {
+    night := s[0].tod >= 2;
+    for k: 0..<2 {
+      g := grow * (1 - 0.35 * cast(f32) k); dx := 0.3 * cast(f32) k * cos(yaw); dz := 0.3 * cast(f32) k * sin(yaw);
+      sized(s, round, x + dx, 0, z + dz, yaw, 0, 0.14 * g, 0.32 * g, 0.14 * g, 1.1, 1.05, 0.92);
+      glowing(s, ifx night then 1.3f32 else -1.0f32);
+      sized(s, round, x + dx, 0.3 * g, z + dz, yaw, 0, 0.55 * g, 0.16 * g, 0.55 * g, ifx night then 0.35f32 else 1.25f32, ifx night then 1.0f32 else 0.25f32, ifx night then 0.95f32 else 0.2f32);
+      coat(s, 1);
+    }
+    return;
+  }
+  if kind == 3 {
+    h := 1.7 * grow; cr: f32 = 0.32; cg: f32 = 0.56; cb: f32 = 0.3;
+    sized(s, round, x, 0, z, yaw, 0, 0.42, h, 0.42, cr, cg, cb);
+    for k: 0..<2 {
+      sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32; ay := h * (0.4 + 0.15 * cast(f32) k);
+      sized(s, crate, x + sx * 0.3 * cos(yaw), ay, z - sx * 0.3 * sin(yaw), yaw, 0, 0.4, 0.14, 0.14, cr, cg, cb);
+      sized(s, crate, x + sx * 0.5 * cos(yaw), ay, z - sx * 0.5 * sin(yaw), yaw, 0, 0.14, 0.55, 0.14, cr * 0.95, cg * 0.95, cb * 0.95);
+    }
+    solid(s, x, z, 0.3);
+    return;
+  }
+  // crystals: three tall shards leaning apart, glowing
+  violet := i % 2 == 0;
+  glowing(s, 0.9);
+  for k: 0..<3 {
+    a := yaw + cast(f32) k * 2.094; lean := (cast(f32) k - 1) * 0.3;
+    sized(s, crate, x + 0.12 * cos(a), 0, z + 0.12 * sin(a), a, lean, 0.22 * grow, (1.1 - 0.25 * cast(f32) k) * grow, 0.22 * grow,
+          ifx violet then 0.75f32 else 0.4f32, ifx violet then 0.45f32 else 1.0f32, ifx violet then 1.4f32 else 1.3f32);
+  }
+  coat(s, 1);
+}
+
+// Where a boat floats: on the water when there is some, on the sea round an island, else at c.
+boat_spot :: (s: [] MyRealm, c: Spot, k: int) -> Spot {
+  o := cast(f32) k * 1.6;
+  if s[0].water_r > 0 && s[0].water_kind == 2 { x := 7 + o; return Spot.{x = x, z = s[0].water_z + 2.5 * sin(x * 0.15)}; }
+  if s[0].water_r > 0 && s[0].water_kind == 1 { return Spot.{x = s[0].water_x + (0.35 * s[0].water_r) * (ifx k == 0 then 1.0f32 else -1.0f32), z = s[0].water_z + 0.3 * o}; }
+  if s[0].land == LAND_ISLAND { a: f32 = 2.6 + 0.12 * o; d: f32 = GROUND_R - 1.2; return Spot.{x = d * sin(a), z = -d * cos(a)}; }
+  return Spot.{x = c.x + o, z = c.z};
+}
+// A rowing boat: its hull, the dark inside, a bench, a mast and sail when it is out on the sea.
+boat :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, sail: bool) {
+  crate := mesh_named(s, "Prop_Crate");
+  sized(s, crate, x, -0.12, z, yaw, 0, 0.95, 0.42, 2.5, 0.54, 0.34, 0.2);
+  sized(s, crate, x, 0.2, z, yaw, 0, 0.75, 0.12, 2.1, 0.3, 0.2, 0.12);
+  sized(s, crate, x, 0.26, z, yaw, 0, 0.95, 0.06, 0.26, 0.62, 0.44, 0.28);
+  if sail {
+    sized(s, crate, x, 0.3, z, yaw, 0, 0.08, 2.4, 0.08, 0.36, 0.26, 0.18);
+    sized(s, crate, x, 0.7, z + 0.05, yaw, 0, 0.05, 1.7, 1.1, 1.35, 1.32, 1.25);
+  }
+}
+// A thing standing about, beyond crates, barrels, a wagon, a fence and a camp (PROPS 5 on).
+prop_at :: (s: [] MyRealm, r: [] Seed, kind: int, c: Spot) {
+  coat(s, 1);
+  crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel"); rock := mesh_named(s, "Rock_Medium_1");
+  round := ifx barrel >= 0 then barrel else crate;
+  a := rand(r) * 3;
+  if kind == 5 {
+    // a campfire: a ring of stones, logs crossed, the flames (their light is a stroke: draw_world)
+    for k: 0..<7 { t := cast(f32) k / 7.0 * 6.2831853; sized(s, rock, c.x + 0.62 * sin(t), -0.05, c.z + 0.62 * cos(t), t, 0, 0.36, 0.26, 0.3, 0.58, 0.56, 0.54); }
+    for k: 0..<3 { sized(s, crate, c.x, 0.04 + 0.05 * cast(f32) k, c.z, a + cast(f32) k * 1.05, 0, 1.0, 0.13, 0.13, 0.42, 0.28, 0.16); }
+    glowing(s, 2.2);
+    sized(s, crate, c.x, 0.1, c.z, a, 0, 0.42, 0.55, 0.42, 1.4, 0.55, 0.12);
+    sized(s, crate, c.x, 0.15, c.z, a + 0.8, 0, 0.24, 0.8, 0.24, 1.5, 1.15, 0.35);
+    coat(s, 1);
+    if s[0].fire_n < FIRES { n := s[0].fire_n; s[0].fire_x[n] = c.x; s[0].fire_z[n] = c.z; s[0].fire_n = n + 1; }
+    solid(s, c.x, c.z, 0.8);
+    return;
+  }
+  if kind == 6 {
+    for k: 0..<2 { p := boat_spot(s, c, k); boat(s, p.x, p.z, a + 0.5 * cast(f32) k, s[0].land == LAND_ISLAND || s[0].water == 3); }
+    return;
+  }
+  if kind == 7 {
+    // a bridge: across the river where it runs past you, through a pond, or a small one on its own
+    x := c.x; z := c.z; yaw := a; span_l: f32 = 5;
+    if s[0].water_r > 0 && s[0].water_kind == 2 { x = 0; z = s[0].water_z; yaw = 0.0; span_l = 2 * s[0].water_r + 3; }
+    else if s[0].water_r > 0 { x = s[0].water_x; z = s[0].water_z; yaw = 1.5707963; span_l = 2 * s[0].water_r + 2; }
+    sized(s, crate, x, 0.28, z, yaw, 0, 1.8, 0.14, span_l, 0.56, 0.4, 0.26);
+    for side: 0..<2 {
+      u: f32 = ifx side == 0 then 0.85f32 else -0.85f32;
+      sized(s, crate, x + u * cos(yaw), 0.95, z - u * sin(yaw), yaw, 0, 0.08, 0.08, span_l, 0.42, 0.28, 0.18);
+      for e: 0..<2 {
+        v := (ifx e == 0 then 0.5f32 else -0.5f32) * (span_l - 0.2);
+        sized(s, crate, x + u * cos(yaw) + v * sin(yaw), 0, z - u * sin(yaw) + v * cos(yaw), yaw, 0, 0.12, 1.05, 0.12, 0.4, 0.27, 0.17);
+      }
+    }
+    return;
+  }
+  if kind == 8 {
+    sized(s, crate, c.x, 0, c.z, a, 0, 0.12, 1.9, 0.12, POLE_RGB[0], POLE_RGB[1], POLE_RGB[2]);
+    for k: 0..<2 {
+      t := a + (ifx k == 0 then 0.3f32 else 2.4f32);
+      sized(s, crate, c.x + 0.42 * cos(t), 1.5 - 0.36 * cast(f32) k, c.z - 0.42 * sin(t), t, 0, 1.0, 0.22, 0.05, 0.7, 0.5, 0.3);
+    }
+    solid(s, c.x, c.z, 0.2);
+    return;
+  }
+  if kind == 9 {
+    // a well: a stone ring, dark water in it, two posts and a little roof, a bucket
+    sized(s, round, c.x, 0, c.z, a, 0, 1.4, 0.8, 1.4, STONE_RGB[0], STONE_RGB[1], STONE_RGB[2]);
+    sized(s, round, c.x, 0.8, c.z, a, 0, 1.0, 0.02, 1.0, 0.08, 0.14, 0.2);
+    for k: 0..<2 { u: f32 = ifx k == 0 then 0.62f32 else -0.62f32; sized(s, crate, c.x + u * cos(a), 0.6, c.z - u * sin(a), a, 0, 0.1, 1.4, 0.1, POLE_RGB[0], POLE_RGB[1], POLE_RGB[2]); }
+    for k: 0..<2 { u: f32 = ifx k == 0 then 0.4f32 else -0.4f32; sized(s, crate, c.x + u * cos(a), 1.85, c.z - u * sin(a), a, ifx k == 0 then -0.5f32 else 0.5f32, 0.95, 0.07, 1.1, 0.45, 0.24, 0.2); }
+    sized(s, round, c.x, 1.15, c.z, a, 0, 0.26, 0.26, 0.26, 0.5, 0.36, 0.22);
+    solid(s, c.x, c.z, 0.8);
+    return;
+  }
+  if kind == 10 {
+    // treasure: a chest, gold heaped round it, glinting
+    thing_at(s, 7, c.x, c.z, a, 1, 0);
+    glowing(s, 0.5);
+    sized(s, round, c.x + 0.7 * cos(a), 0, c.z - 0.7 * sin(a), a, 0, 0.8, 0.14, 0.8, 1.5, 1.15, 0.35);
+    for k: 0..<4 {
+      t := a + cast(f32) k * 1.3;
+      sized(s, crate, c.x + 0.75 * sin(t), 0, c.z + 0.75 * cos(t), t, 0, 0.26, 0.16 + 0.04 * cast(f32) k, 0.18, 1.5, 1.15, 0.35);
+    }
+    coat(s, 1);
+    return;
+  }
+  if kind == 11 {
+    // gravestones in two rows, leaning a little, and a cross
+    for k: 0..<5 {
+      u := (cast(f32) (k % 3) - 1) * 1.3; v: f32 = ifx k < 3 then 0.0f32 else -1.6f32;
+      gx := c.x + u * cos(a) + v * sin(a); gz := c.z - u * sin(a) + v * cos(a);
+      sized(s, rock, gx, 0, gz, a, (rand(r) - 0.5) * 0.25, 0.6, 0.85, 0.2, 0.6, 0.6, 0.62);
+    }
+    gx := c.x + 1.3 * cos(a) - 1.6 * sin(a); gz := c.z - 1.3 * sin(a) - 1.6 * cos(a);
+    sized(s, crate, gx, 0, gz, a, 0, 0.12, 1.15, 0.12, 0.62, 0.62, 0.64);
+    sized(s, crate, gx, 0.72, gz, a, 0, 0.6, 0.12, 0.12, 0.62, 0.62, 0.64);
+    return;
+  }
+  if kind == 12 {
+    for k: 0..<WEEDS { if s[0].weed_n < WEEDS { n := s[0].weed_n; s[0].weed_x[n] = c.x + 1.5 * cast(f32) k; s[0].weed_z[n] = c.z + 2.0 * cast(f32) k - 2; s[0].weed_n = n + 1; } }
+    return;
+  }
+  // a statue: a figure in stone on a plinth, one arm raised
+  sr := STONE_RGB[0] * 1.1; sg := STONE_RGB[1] * 1.1; sb := STONE_RGB[2] * 1.1;
+  sized(s, rock, c.x, 0, c.z, a, 0, 1.3, 1.0, 1.3, sr * 0.9, sg * 0.9, sb * 0.9);
+  sized(s, rock, c.x, 1.0, c.z, a, 0, 0.62, 1.5, 0.52, sr, sg, sb);
+  sized(s, crate, c.x, 2.35, c.z, a, 0, 0.9, 0.26, 0.4, sr, sg, sb);
+  sized(s, round, c.x, 2.6, c.z, a, 0, 0.42, 0.44, 0.42, sr, sg, sb);
+  sized(s, crate, c.x + 0.42 * cos(a), 2.45, c.z - 0.42 * sin(a), a, -0.25, 0.14, 0.85, 0.14, sr, sg, sb);
+  solid(s, c.x, c.z, 0.85);
+}
+// The tumbleweeds rolling back and forth across their patch.
+weeds :: (s: [] MyRealm) {
+  coat(s, 1);
+  fern := mesh_named(s, "Fern_1");
+  for i: 0..<s[0].weed_n {
+    t := ifx s[0].still then 0.0f32 else s[0].time * 0.5 + cast(f32) i * 1.7;
+    dx := 6.0 * sin(t);
+    cx := s[0].weed_x[i] + dx; cz := s[0].weed_z[i];
+    roll := -dx / 0.36;
+    for k: 0..<2 {
+      yaw: f32 = ifx k == 0 then 0.0f32 else 1.5707963;
+      rl := roll + 1.5707963 * cast(f32) k;
+      // its middle stays at (cx, 0.36, cz): its base is half its height back along its turned up axis
+      ux := -cos(yaw) * sin(rl); uy := cos(rl); uz := sin(yaw) * sin(rl);
+      sized(s, fern, cx - 0.36 * ux, 0.36 - 0.36 * uy, cz - 0.36 * uz, yaw, rl, 0.75, 0.72, 0.75, 1.5, 1.2, 0.75);
+    }
+  }
+}
+
+// The lights that are strokes: a lighthouse's lamp after dark, campfires, fairies and fireflies.
+draw_glows :: (s: [] MyRealm, out: [] f32, at: int) -> int {
+  k := s[0].dpr; n := at;
+  night := ifx s[0].tod == 3 then 1.0f32 else ifx s[0].tod == 2 then 0.75f32 else ifx s[0].tod == 1 then 0.6f32 else 0.4f32;
+  if s[0].beacon && s[0].tod >= 1 {
+    top := seen(s, s[0].beacon_x, 10.25, s[0].beacon_z);
+    sweep := ifx s[0].still then 1.0f32 else 0.6 + 0.4 * sin(s[0].time * 1.6);
+    px := clamp(40.0 * k / hi(top.far, 0.5), 2 * k, 18 * k);
+    if top.ok && tinted_dot(out, n, top.x, top.y, px * 0.4, 1.4 * sweep, px * (2 + 4 * night), 1.0, 0.9, 0.55) { n += 6; }
+  }
+  for i: 0..<s[0].fire_n {
+    f := seen(s, s[0].fire_x[i], 0.5, s[0].fire_z[i]);
+    if !f.ok { continue; }
+    flick := ifx s[0].still then 1.0f32 else 0.8 + 0.2 * sin(s[0].time * 9 + cast(f32) i * 2.1);
+    px := clamp(36.0 * k / hi(f.far, 0.5), 1.5 * k, 16 * k);
+    if tinted_dot(out, n, f.x, f.y, px * 0.35, 1.3 * flick, px * (1.5 + 3 * night), 1.0, 0.6, 0.2) { n += 6; }
+  }
+  if s[0].flier == FLY_FAIRY || s[0].flier == FLY_FIREFLY {
+    for i: 0..<s[0].birds {
+      b := bird_at(s, i);
+      c := seen(s, b.x, b.y, b.z);
+      if !c.ok { continue; }
+      pulse := ifx s[0].still then 1.0f32 else 0.6 + 0.4 * sin(s[0].time * 3 + cast(f32) i * 1.3);
+      px := clamp(16.0 * k / hi(c.far, 0.5), 1.2 * k, 8 * k);
+      fairy := s[0].flier == FLY_FAIRY;
+      if tinted_dot(out, n, c.x, c.y, px * 0.3, 1.2 * pulse, px * (1.2 + 2.5 * night), ifx fairy then 0.75f32 else 0.85f32, ifx fairy then 0.9f32 else 1.0f32, ifx fairy then 1.0f32 else 0.35f32) { n += 6; }
+    }
+  }
+  return n;
+}
+
+// A free spot for a building of footprint br: ahead of where you start (the first tries) and never
+// where the camera behind you would be inside it; none: x = 99.
+building_spot :: (s: [] MyRealm, r: [] Seed, br: f32) -> Spot {
+  for tries: 0..<60 {
+    a := (rand(r) - 0.5) * (ifx tries < 30 then 2.4f32 else 6.2831853);
+    d := 8 + 0.5 * br + (GROUND_R - 1.5 * br - 9) * sqrt(rand(r));
+    x := d * sin(a); z := -d * cos(a);
+    sx := x; sz := z - 6;
+    if sqrt(sx * sx + sz * sz) < br + 7 || !free(s, x, z, br) { continue; }
+    return Spot.{x = x, z = z};
+  }
+  return Spot.{x = 99, z = 99};
+}

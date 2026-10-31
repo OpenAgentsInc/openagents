@@ -36,7 +36,8 @@
 #load "ui.coax";
 #load "analytics.coax";
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
-#load "../../verse/style-preset.coax";   // a painterly or flat realm's look (docs/verse/art-styles.md)
+#load "../../verse/style-preset.coax";
+#load "myrealm-things.coax";   // the land, buildings and more animals, fliers, plants and props (0085)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -111,7 +112,7 @@ HTTP_ANSWER_KIND :: 512;
 OUTBOX :: 640; URL :: 160; BODY :: 4096; SLUG :: 64; TITLE :: 64; WORD :: 16; NOTE :: 100;
 HOLD_UP :: 1; HOLD_DOWN :: 2; HOLD_LEFT :: 4; HOLD_RIGHT :: 8;
 MESHES :: 24; NAME :: 32;
-PIECES :: 460;           // meshes drawn: features and placed things (a tree is two), then the actors each frame
+PIECES :: 900;           // meshes drawn: features and placed things (a tree is two), then the actors each frame
 SOLIDS :: 260;           // circles you can't walk into
 HOUSES :: 5;
 INSTANCE_FLOATS :: 16;
@@ -161,14 +162,23 @@ MyRealm :: struct {
   name: [TITLE] u8; name_n: int; style: [WORD] u8; style_n: int; ground: int; tod: int; owner: bool;
   tools: [TOOLS] bool; waiting: int;
   water: int;              // 0 none, 1 small, 2 medium, 3 large
+  water_kind: int;         // 1 a pond, 2 a river across the land, 3 a frozen pond, 4 a pool of lava
+  land: int;               // LAND_* (myrealm-things.coax), 0 flat
+  flier: int; plant_kind: int;   // FLIERS, PLANT_KINDS
+  building_n: int; building: [BUILDINGS] int;
+  mill_n: int; mill_x: [MILLS] f32; mill_z: [MILLS] f32; mill_yaw: [MILLS] f32;
+  beacon: bool; beacon_x: f32; beacon_z: f32;
+  fire_n: int; fire_x: [FIRES] f32; fire_z: [FIRES] f32; weed_n: int; weed_x: [WEEDS] f32; weed_z: [WEEDS] f32;
+  glow_pen: f32;           // what is drawn next glows by this much (glowing)
   trees: int; tree_kind: int; rocks: int; plants: int;
   lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
   birds: int; bats: bool; owls: bool;
   great: bool; great_kind: int;   // one giant tree standing alone (0083): 0 round, 1 pine, 2 dead
-  props: [5] int; prop_n: int;   // 0 crates, 1 barrels, 2 wagon, 3 fence, 4 camp
+  props: [PROP_MOST] int; prop_n: int;   // PROPS
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
   // a herd, dwellings and a village (0079): how many, which kind; the palette tints everything
-  herd: int; herd_kind: int; dwellings: int; dwelling_kind: int; villagers: int; palette: int;
+  herd: int; herd_kind: int; herd_split: int; herd_kind2: int;   // two herds (0085): the second's from herd_split
+  dwellings: int; dwelling_kind: int; villagers: int; palette: int;
   herd_x: [HERD] f32; herd_z: [HERD] f32; villager_x: [VILLAGERS] f32; villager_z: [VILLAGERS] f32;
   people: int; person: [PEOPLE * PERSON] u8; person_n: [PEOPLE] int; role: [PEOPLE * ROLE] u8; role_n: [PEOPLE] int;
   placed_n: int; placed_thing: [200] int; placed_x: [200] f32; placed_z: [200] f32; placed_yaw: [200] f32;
@@ -179,7 +189,7 @@ MyRealm :: struct {
   // laid out
   laid: bool;
   piece_n: int; piece_mesh: [PIECES] int; piece_x: [PIECES] f32; piece_z: [PIECES] f32; piece_yaw: [PIECES] f32;
-  piece_k: [PIECES] f32; piece_tint: [PIECES * 3] f32;
+  piece_k: [PIECES] f32; piece_tint: [PIECES * 3] f32; piece_glow: [PIECES] f32;
   // a piece's height off the ground, its roll (about its own forward axis) and its stretch along each axis
   piece_y: [PIECES] f32; piece_roll: [PIECES] f32; piece_sx: [PIECES] f32; piece_sy: [PIECES] f32; piece_sz: [PIECES] f32;
   static_n: int;           // the pieces laid out; the actors (you, the characters' moves, the flock) follow each frame
@@ -235,7 +245,8 @@ THING_NAMES :: [THINGS] string.["crate", "barrel", "tree", "rock", "plant", "lan
 THING_WORDS :: [THINGS] string.["CRATE", "BARREL", "TREE", "ROCK", "FERN", "LANTERN", "FENCE", "CHEST"];
 GROUNDS :: [6] string.["meadow", "forest", "desert", "snow", "stone", "beach"];
 TIMES :: [4] string.["day", "dawn", "dusk", "night"];
-PROPS :: [5] string.["crates", "barrels", "wagon", "fence", "camp"];
+PROPS :: [14] string.["crates", "barrels", "wagon", "fence", "camp", "campfire", "boat", "bridge", "signpost", "well", "treasure", "graves", "tumbleweeds", "statue"];
+PROP_MOST :: 8;
 PALETTES :: [4] string.["natural", "pastel", "vivid", "muted"];
 COLOURS :: [7] string.["gold", "orange", "red", "green", "blue", "violet", "white"];
 COLOUR_RGB :: [21] f32.[1.0, 0.78, 0.35,  1.0, 0.55, 0.2,  1.0, 0.3, 0.25,  0.45, 1.0, 0.5,  0.4, 0.65, 1.0,  0.75, 0.45, 1.0,  1.0, 0.97, 0.9];
@@ -304,7 +315,8 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   for i: 0..<TOOLS { s[0].tools[i] = false; }
   s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0; s[0].great = false;
   s[0].prop_n = 0; s[0].houses = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
-  s[0].herd = 0; s[0].dwellings = 0; s[0].villagers = 0; s[0].palette = 0;
+  s[0].herd = 0; s[0].herd_split = HERD; s[0].dwellings = 0; s[0].villagers = 0; s[0].palette = 0;
+  s[0].water_kind = 1; s[0].land = 0; s[0].flier = 0; s[0].plant_kind = 0; s[0].building_n = 0;
   was := s[0].camera;
   s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0; s[0].camera = CAM_THIRD;
   got := false;
@@ -345,26 +357,39 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
     }
     if head == "feature" {
       f := word_of(line, 1); a := word_of(line, 2);
-      if f == "water" { s[0].water = ifx a == "small" then 1 else ifx a == "large" then 3 else 2; }
-      if f == "trees" { s[0].trees = clamp_int(count_of(line, 9), 0, 20); s[0].tree_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else ifx a == "mixed" then 3 else 0; }
+      if f == "water" {
+        s[0].water = ifx a == "small" then 1 else ifx a == "large" then 3 else 2;
+        v := word_of(line, 3); s[0].water_kind = ifx v == "river" then 2 else ifx v == "frozen" then 3 else ifx v == "lava" then 4 else 1;
+      }
+      if f == "land" { for k: 0..<6 { if LANDS[k] == a { s[0].land = k + 1; } } }
+      if f == "building" && s[0].building_n < BUILDINGS { for k: 0..<11 { if BUILDING_KINDS[k] == a { s[0].building[s[0].building_n] = k; s[0].building_n += 1; } } }
+      if f == "trees" { s[0].trees = clamp_int(count_of(line, 9), 0, 20); s[0].tree_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else ifx a == "mixed" then 3 else ifx a == "palm" then 4 else ifx a == "blossom" then 5 else 0; }
       if f == "rocks" { s[0].rocks = clamp_int(count_of(line, 6), 0, 16); }
-      if f == "plants" { s[0].plants = clamp_int(count_of(line, 10), 0, 24); }
+      if f == "plants" { s[0].plants = clamp_int(count_of(line, 10), 0, 24); for k: 0..<5 { if PLANT_KINDS[k] == a { s[0].plant_kind = k; } } }
       if f == "lanterns" {
         s[0].lanterns = clamp_int(count_of(line, 8), 0, LANTERNS);
         c := 0; for k: 0..<7 { if COLOURS[k] == a { c = k; } }
         s[0].lantern_r = COLOUR_RGB[c * 3]; s[0].lantern_g = COLOUR_RGB[c * 3 + 1]; s[0].lantern_b = COLOUR_RGB[c * 3 + 2];
       }
-      if f == "flock" { s[0].birds = clamp_int(count_of(line, 7), 0, BIRDS); s[0].bats = a == "bat"; s[0].owls = a == "owl"; }
+      if f == "flock" {
+        s[0].birds = clamp_int(count_of(line, 7), 0, BIRDS); s[0].flier = 0;
+        for k: 0..<9 { if FLIERS[k] == a { s[0].flier = k; } }
+        s[0].bats = s[0].flier == FLY_BAT; s[0].owls = s[0].flier == FLY_OWL;
+      }
       if f == "bigtree" { s[0].great = true; s[0].great_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else 0; }
       if f == "house" {
         s[0].houses = clamp_int(count_of(line, 1), 1, HOUSES);
         s[0].house_size = ifx a == "large" then 2 else ifx a == "medium" then 1 else 0;
         c := word_of(line, 3); s[0].house_colour = 0; for k: 0..<7 { if HOUSE_COLOURS[k] == c { s[0].house_colour = k; } }
       }
-      if f == "herd" { s[0].herd = clamp_int(count_of(line, 6), 0, HERD); s[0].herd_kind = ifx a == "deer" then 1 else ifx a == "horse" then 2 else 0; }
+      if f == "herd" {
+        kind := 0; for k: 0..<13 { if HERDS[k] == a { kind = k; } }
+        if s[0].herd == 0 { s[0].herd = clamp_int(count_of(line, 6), 0, HERD); s[0].herd_kind = kind; }
+        else if s[0].herd_split == HERD { s[0].herd_split = s[0].herd; s[0].herd = clamp_int(s[0].herd + count_of(line, 6), 0, HERD); s[0].herd_kind2 = kind; }
+      }
       if f == "dwellings" { s[0].dwellings = clamp_int(count_of(line, 4), 0, DWELLINGS); s[0].dwelling_kind = ifx a == "tent" then 1 else ifx a == "hut" then 2 else 0; }
       if f == "village" { s[0].villagers = clamp_int(count_of(line, 5), 0, VILLAGERS); }
-      if f == "props" && s[0].prop_n < 5 { for k: 0..<5 { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
+      if f == "props" && s[0].prop_n < PROP_MOST { for k: 0..<14 { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
     }
   }
   // 2D faces right when it starts; a realm read again keeps your way
@@ -528,7 +553,9 @@ free :: (s: [] MyRealm, x: f32, z: f32, r: f32) -> bool {
   if d + r > GROUND_R - 1.5 { return false; }
   sx := x; sz := z - 6;
   if sqrt(sx * sx + sz * sz) < r + 2.2 { return false; }
-  if s[0].water_r > 0 { wx := x - s[0].water_x; wz := z - s[0].water_z; if sqrt(wx * wx + wz * wz) < s[0].water_r + r + 0.3 { return false; } }
+  // nor round the camera behind you, for anything tall enough to stand in its way
+  cz := z - 6 - CAM_BACK; if r >= 0.8 && sqrt(x * x + cz * cz) < r + 1.6 { return false; }
+  if water_in(s, x, z) > -(r + 0.3) { return false; }
   for i: 0..<s[0].solid_n { ox := x - s[0].solid_x[i]; oz := z - s[0].solid_z[i]; if sqrt(ox * ox + oz * oz) < s[0].solid_r[i] + r + 0.2 { return false; } }
   return true;
 }
@@ -566,7 +593,7 @@ shaped :: (s: [] MyRealm, m: int, x: f32, y: f32, z: f32, yaw: f32, roll: f32, k
   n := s[0].piece_n;
   s[0].piece_mesh[n] = m; s[0].piece_x[n] = x; s[0].piece_z[n] = z; s[0].piece_yaw[n] = yaw; s[0].piece_k[n] = k;
   s[0].piece_y[n] = y; s[0].piece_roll[n] = roll; s[0].piece_sx[n] = sx; s[0].piece_sy[n] = sy; s[0].piece_sz[n] = sz;
-  s[0].piece_tint[n * 3] = r; s[0].piece_tint[n * 3 + 1] = g; s[0].piece_tint[n * 3 + 2] = b;
+  s[0].piece_tint[n * 3] = r; s[0].piece_tint[n * 3 + 1] = g; s[0].piece_tint[n * 3 + 2] = b; s[0].piece_glow[n] = s[0].glow_pen;
   s[0].piece_n = n + 1;
 }
 // A mesh stretched to w by h by d metres (its box), standing at (x, y, z).
@@ -586,6 +613,7 @@ thing_at :: (s: [] MyRealm, t: int, x: f32, z: f32, yaw: f32, grow: f32, kind: i
   if t == 2 && kind == 1 { r = 0.55; g = 0.8; b = 0.6; }     // pine: darker, bluer
   if t == 2 && kind == 2 { r = 0.75; g = 0.62; b = 0.5; }    // dead: bare and grey-brown
   piece(s, m, x, z, yaw, k, r, g, b);
+  if t == 2 && kind == 5 { r = 1.45; g = 0.72; b = 0.92; }   // blossom: pink
   if t == 2 && kind != 2 { piece(s, leaves_of(s, m), x, z, yaw, k, r, g, b); }
   // a tree is a wall; anything lower is a top you can jump onto in 2D
   o := m * 6; top := lo((s[0].mesh_box[o + 4] - s[0].mesh_box[o + 1]) * k, STAND_TOP);
@@ -595,14 +623,20 @@ thing_at :: (s: [] MyRealm, t: int, x: f32, z: f32, yaw: f32, grow: f32, kind: i
 lay_out :: (s: [] MyRealm) {
   if !s[0].spec_ready || !s[0].pack_ready { return; }
   r: [1] Seed; r[0].v = seed_of(slug_text(s));
-  s[0].piece_n = 0; s[0].static_n = 0; s[0].solid_n = 0; s[0].water_r = 0;
+  s[0].piece_n = 0; s[0].static_n = 0; s[0].solid_n = 0; s[0].water_r = 0; s[0].glow_pen = 0;
+  s[0].mill_n = 0; s[0].beacon = false; s[0].fire_n = 0; s[0].weed_n = 0;
   if !s[0].flock_set { f := flock_target(s); s[0].flock_x = f.x; s[0].flock_z = f.z; s[0].flock_set = true; }
-  if s[0].water > 0 {
+  if s[0].water > 0 && s[0].water_kind == 2 {
+    // a river: a band across the land ahead of you, bending
+    s[0].water_r = ifx s[0].water == 1 then 1.3f32 else ifx s[0].water == 3 then 2.6f32 else 1.9f32;
+    s[0].water_x = 0; s[0].water_z = -11 - 3 * rand(r[..]);
+  } else if s[0].water > 0 {
     s[0].water_r = ifx s[0].water == 1 then 2.5f32 else ifx s[0].water == 3 then 6.5f32 else 4.0f32;
     a := rand(r[..]) * 1.2 - 0.6;
     d := s[0].water_r + 4.5;
     s[0].water_x = d * sin(a); s[0].water_z = -d * cos(a);
   }
+  land_out(s, r[..]); glowing(s, 0);
   // a giant tree, alone, off to one side ahead of you, so it stands over the realm from where you start
   if s[0].great {
     c := ifx free(s, -6, -11, 3.5) then Spot.{x = -6, z = -11} else spot(s, r[..], 9, GROUND_R - 6, 3.5);
@@ -626,6 +660,15 @@ lay_out :: (s: [] MyRealm) {
     c := ifx h == 0 && free(s, 2.5, -3.5, 0.62 * w) then Spot.{x = 2.5, z = -3.5} else spot(s, r[..], 6, 16, 0.62 * w);
     if c.x > 90 { continue; }
     house(s, c.x, c.z, turn_of(-c.x, 6 - c.z), s[0].house_size, s[0].house_colour);
+  }
+  // the buildings, each its own kind, round you facing where you start
+  for i: 0..<s[0].building_n {
+    kind := s[0].building[i];
+    br := BUILDING_R[kind];
+    c := building_spot(s, r[..], br);
+    if c.x > 90 { c = spot(s, r[..], 4, GROUND_R - 2, 0.6 * br); }
+    if c.x > 90 { continue; }
+    building_at(s, kind, c.x, c.z, turn_of(-c.x, 6 - c.z)); glowing(s, 0);
   }
   // the dwellings in a loose camp round the first, their doors to its middle; the village about them
   camp := Spot.{x = 99, z = 99};
@@ -667,16 +710,23 @@ lay_out :: (s: [] MyRealm) {
     if kind == 2 { m := mesh_named(s, "Prop_Wagon"); if m >= 0 { k := 3.6 / hi(longest(s, m), 0.01); a := rand(r[..]) * 3; piece(s, m, c.x, c.z, a, k, 1, 1, 1); solid(s, c.x, c.z, 1.6); } }
     if kind == 3 { a := rand(r[..]) * 3; for j: 0..<5 { o := (cast(f32) j - 2) * 2.0; thing_at(s, 6, c.x + o * cos(a), c.z - o * sin(a), a, 1, 0); } }
     if kind == 4 { thing_at(s, 7, c.x, c.z, rand(r[..]) * 3, 1, 0); m := mesh_named(s, "Anvil"); if m >= 0 { k := 0.9 / hi(longest(s, m), 0.01); piece(s, m, c.x + 1.6, c.z + 0.4, 0.5, k, 1, 1, 1); solid(s, c.x + 1.6, c.z + 0.4, 0.5); } }
+    if kind >= 5 { prop_at(s, r[..], kind, c); glowing(s, 0); }
   }
   for i: 0..<s[0].trees {
     c := spot(s, r[..], 8, GROUND_R - 2, 1.0);
     if c.x > 90 { continue; }
     kind := s[0].tree_kind;
     if kind == 3 { kind = cast(int) (rand(r[..]) * 2.99); }
+    if kind == 4 { palm(s, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.4 * rand(r[..])); glowing(s, 0); continue; }
     thing_at(s, 2, c.x, c.z, rand(r[..]) * 6.28, 0.8 + 0.45 * rand(r[..]), kind);
   }
   for i: 0..<s[0].rocks { c := spot(s, r[..], 4, GROUND_R - 2, 0.8); if c.x < 90 { thing_at(s, 3, c.x, c.z, rand(r[..]) * 6.28, 0.6 + 0.9 * rand(r[..]), 0); } }
-  for i: 0..<s[0].plants { c := spot(s, r[..], 3, GROUND_R - 2, 0.4); if c.x < 90 { thing_at(s, 4, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), 0); } }
+  for i: 0..<s[0].plants {
+    c := spot(s, r[..], 3, GROUND_R - 2, 0.4);
+    if c.x > 90 { continue; }
+    if s[0].plant_kind == 0 { thing_at(s, 4, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), 0); }
+    else { plant_at(s, s[0].plant_kind, c.x, c.z, rand(r[..]) * 6.28, 0.7 + 0.6 * rand(r[..]), i); glowing(s, 0); }
+  }
   for i: 0..<s[0].placed_n { thing_at(s, s[0].placed_thing[i], s[0].placed_x[i], s[0].placed_z[i], s[0].placed_yaw[i], 1, 0); }
   // the characters, each a figure facing where you start
   for p: 0..<s[0].people {
@@ -796,6 +846,7 @@ dwelling :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int) {
 // shaggy body, the hump, a low heavy head with horns), deer (light, long legs, antlers) or a horse
 // (long neck and head, a mane). graze 0 to 1 lowers its head to the grass.
 animal :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32) {
+  if kind >= 3 { beast(s, x, z, yaw, kind, graze); glowing(s, 0); return; }   // the rest: myrealm-things.coax
   crate := mesh_named(s, "Prop_Crate");
   if crate < 0 { return; }
   fx := sin(yaw); fz := -cos(yaw); ax := cos(yaw); az := sin(yaw);
@@ -857,7 +908,8 @@ toned :: (palette: int, r: f32, g: f32, b: f32) -> Tone {
 // What moves, after what was laid out: you (unless the camera is your eyes) and the flock, circling
 // ahead of you low enough to see against the sky, dark wings beating.
 actors :: (s: [] MyRealm) {
-  s[0].piece_n = s[0].static_n;
+  s[0].piece_n = s[0].static_n; s[0].glow_pen = 0;
+  mill_sails(s); weeds(s); glowing(s, 0);
   if s[0].camera != CAM_FIRST { pawn(s, s[0].x, s[0].y, s[0].z, s[0].yaw, 1, YOU_RGB[0], YOU_RGB[1], YOU_RGB[2], true); }
   crate := mesh_named(s, "Prop_Crate");
   // the herd roams its patches, now and then stopping to graze; the village goes about its day
@@ -868,7 +920,7 @@ actors :: (s: [] MyRealm) {
     x := s[0].herd_x[i] + rr * cos(dir * t); z := s[0].herd_z[i] + rr * sin(dir * t);
     yaw := turn_of(-dir * rr * sin(dir * t), -(dir * rr * cos(dir * t)));
     graze := ifx s[0].still then 0.0f32 else hi(0, sin(s[0].time * 0.4 + cast(f32) i * 2.1) - 0.3);
-    animal(s, x, z, yaw, s[0].herd_kind, graze);
+    animal(s, x, z, yaw, ifx i < s[0].herd_split then s[0].herd_kind else s[0].herd_kind2, graze);
   }
   for i: 0..<s[0].villagers {
     t := s[0].time * (0.09 + 0.015 * cast(f32) (i % 3)) + cast(f32) i * 2.3;
@@ -880,6 +932,7 @@ actors :: (s: [] MyRealm) {
   }
   for i: 0..<s[0].birds {
     b := bird_at(s, i);
+    if flier_at(s, i, b) { continue; }
     span: f32 = ifx s[0].bats then 0.5f32 else ifx s[0].owls then 0.9f32 else 0.62f32;
     beat: f32 = ifx s[0].bats then 14.0f32 else ifx s[0].owls then 4.5f32 else 8.0f32;
     flap := ifx s[0].still then 0.35f32 else 0.55 * sin(s[0].time * beat + cast(f32) i);
@@ -910,7 +963,11 @@ bird_at :: (s: [] MyRealm, i: int) -> Bird {
   a := s[0].time * (0.35 + 0.04 * cast(f32) (i % 3)) + cast(f32) i / cast(f32) hi_int(s[0].birds, 1) * 6.2831853;
   rr := 3.5 + 1.2 * sin(cast(f32) i * 2.3);
   x := s[0].flock_x + rr * cos(a); z := s[0].flock_z + rr * sin(a);
-  y := 3.6 + 0.6 * sin(cast(f32) i * 1.3 + s[0].time * 0.7) + ifx s[0].flying then s[0].y else 0.0f32;
+  low := s[0].flier >= FLY_FAIRY;   // fairies, fireflies and butterflies flit near the ground; a dragon flies high and wide
+  big := s[0].flier == FLY_DRAGON;
+  if low { a += 0.5 * sin(s[0].time * 1.3 + cast(f32) i * 2.0); rr *= 0.8; }
+  if big { rr *= 2.6; }
+  y := (ifx big then 9.0f32 else ifx low then 1.4f32 else 3.6f32) + 0.6 * sin(cast(f32) i * 1.3 + s[0].time * 0.7) + ifx s[0].flying then s[0].y else 0.0f32;
   // its heading: along the circle (the wings span across it)
   return Bird.{x = x, y = y, z = z, yaw = a};
 }
@@ -940,7 +997,7 @@ build_draws :: (s: [] MyRealm) {
       s[0].objects[t + 4] = m4; s[0].objects[t + 5] = m5; s[0].objects[t + 6] = m6; s[0].objects[t + 7] = y - (m4 * cx + m5 * floor_y + m6 * cz);
       s[0].objects[t + 8] = m8; s[0].objects[t + 9] = m9; s[0].objects[t + 10] = m10; s[0].objects[t + 11] = z - (m8 * cx + m9 * floor_y + m10 * cz);
       tn := toned(s[0].palette, s[0].piece_tint[p * 3], s[0].piece_tint[p * 3 + 1], s[0].piece_tint[p * 3 + 2]);
-      s[0].objects[t + 12] = tn.r; s[0].objects[t + 13] = tn.g; s[0].objects[t + 14] = tn.b; s[0].objects[t + 15] = 0;
+      s[0].objects[t + 12] = tn.r; s[0].objects[t + 13] = tn.g; s[0].objects[t + 14] = tn.b; s[0].objects[t + 15] = s[0].piece_glow[p];
       s[0].object_n += 1;
     }
     if s[0].object_n > base {
@@ -977,10 +1034,15 @@ kept_in :: (p: Spot) -> Spot {
   if r > e { return Spot.{x = p.x * e / r, z = p.z * e / r}; }
   return p;
 }
-in_water :: (s: [] MyRealm) -> bool {
-  if s[0].water_r <= 0 { return false; }
-  wx := s[0].x - s[0].water_x; wz := s[0].z - s[0].water_z;
-  return sqrt(wx * wx + wz * wz) < s[0].water_r;
+// You wade through water and lava; ice holds you.
+in_water :: (s: [] MyRealm) -> bool { return s[0].water_kind != 3 && water_in(s, s[0].x, s[0].z) > 0; }
+// How far inside the water's edge (x, z) is (negative: outside; -99 with none): a pond is a circle, a
+// river a band across the land that bends (myrealm.wgsl's water_in, the same curve).
+water_in :: (s: [] MyRealm, x: f32, z: f32) -> f32 {
+  if s[0].water_r <= 0 { return -99.0; }
+  if s[0].water_kind == 2 { return s[0].water_r - abs(z - s[0].water_z - 2.5 * sin(x * 0.15)); }
+  wx := x - s[0].water_x; wz := z - s[0].water_z;
+  return s[0].water_r - sqrt(wx * wx + wz * wz);
 }
 
 realm_step :: (s: [] MyRealm, dt: f32) {
@@ -1296,8 +1358,8 @@ json_field :: (out: [] u8, at: int, name: string, text: string, comma: bool) -> 
   n := put(out, at, ifx comma then ",\"" else "\""); n = put(out, n, name); n = put(out, n, "\":\"");
   n = json_in(out, n, text); return put(out, n, "\"");
 }
-TREE_WORDS :: [4] string.["round trees", "pines", "dead trees", "trees of every kind"];
-PROP_WORDS :: [5] string.["crates", "barrels", "a wagon", "a fence", "a camp"];
+TREE_WORDS :: [6] string.["round trees", "pines", "dead trees", "trees of every kind", "palm trees", "blossom trees"];
+PROP_WORDS :: [14] string.["crates", "barrels", "a wagon", "a fence", "a camp", "a campfire", "boats", "a bridge", "a signpost", "a well", "treasure", "gravestones", "tumbleweeds", "a statue"];
 CAMERA_CONTROLS :: [4] string.[
   "W and S or the arrows walk, A and D turn, a mouse drag turns; on a phone a thumb walks and turns.",
   "W and S walk, A and D turn, a drag looks round; on a phone the left thumb walks and the right looks.",
@@ -1308,12 +1370,14 @@ knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
   n := json_in(out, at, "You live in "); n = json_in(out, n, name_text(s));
   n = json_in(out, n, ", a realm on the Verse that someone built from one prompt. It is ");
   n = json_in(out, n, TIMES[s[0].tod]); n = json_in(out, n, " here, on "); n = json_in(out, n, GROUNDS[s[0].ground]); n = json_in(out, n, " ground.");
-  if s[0].water > 0 { n = json_in(out, n, " There is water."); }
+  n = json_in(out, n, LAND_WORDS[s[0].land]);
+  if s[0].water > 0 { n = json_in(out, n, ifx s[0].water_kind == 2 then " A river runs across it." else ifx s[0].water_kind == 3 then " There is a frozen pond." else ifx s[0].water_kind == 4 then " There is a pool of lava." else " There is water."); }
+  for i: 0..<s[0].building_n { n = json_in(out, n, " There is "); n = json_in(out, n, BUILDING_WORDS[s[0].building[i]]); n = json_in(out, n, "."); }
   if s[0].great { n = json_in(out, n, " A giant tree stands over it all."); }
   if s[0].trees > 0 { n = json_in(out, n, " There are "); n = json_in(out, n, TREE_WORDS[s[0].tree_kind]); n = json_in(out, n, "."); }
   if s[0].rocks > 0 { n = json_in(out, n, " There are rocks."); }
   if s[0].lanterns > 0 { n = json_in(out, n, " Lanterns stand about."); }
-  if s[0].birds > 0 { n = json_in(out, n, ifx s[0].bats then " Bats circle overhead." else ifx s[0].owls then " Owls circle overhead." else " Birds circle overhead."); }
+  if s[0].birds > 0 { n = json_in(out, n, FLIER_SAY[s[0].flier]); }
   if s[0].houses > 0 { n = json_in(out, n, ifx s[0].houses == 1 then " There is a " else " There are "); n = json_in(out, n, HOUSE_COLOURS[s[0].house_colour]); n = json_in(out, n, ifx s[0].houses == 1 then " house." else " houses."); }
   for i: 0..<s[0].prop_n { n = json_in(out, n, " There is "); n = json_in(out, n, PROP_WORDS[s[0].props[i]]); n = json_in(out, n, "."); }
   for q: 0..<s[0].people {
@@ -1784,7 +1848,9 @@ draw_map :: (s: [] MyRealm, out: [] f32, at: int) -> int {
   b := Box.{x0 = g, y0 = g + 62 * k, x1 = g + size, y1 = g + 62 * k + size};
   if !plate(s, b, 0.9, LOOK_PLAIN) { return n; }
   cx := (b.x0 + b.x1) * 0.5; cy := (b.y0 + b.y1) * 0.5; sc := size * 0.46 / GROUND_R;
-  if s[0].water_r > 0 && tinted_dot(out, n, cx + s[0].water_x * sc, cy + s[0].water_z * sc, s[0].water_r * sc, 0.6, 2 * k, 0.3, 0.55, 0.9) { n += 6; }
+  if s[0].water_r > 0 && s[0].water_kind == 2 {
+    for i: 0..<13 { wx := cast(f32) (i - 6) * 3.8; if tinted_dot(out, n, cx + wx * sc, cy + (s[0].water_z + 2.5 * sin(wx * 0.15)) * sc, hi(s[0].water_r * sc, 1.5 * k), 0.6, 2 * k, 0.3, 0.55, 0.9) { n += 6; } }
+  } else if s[0].water_r > 0 && tinted_dot(out, n, cx + s[0].water_x * sc, cy + s[0].water_z * sc, s[0].water_r * sc, 0.6, 2 * k, 0.3, 0.55, 0.9) { n += 6; }
   for i: 0..<s[0].solid_n {
     if tinted_dot(out, n, cx + s[0].solid_x[i] * sc, cy + s[0].solid_z[i] * sc, hi(s[0].solid_r[i] * sc, 1.2 * k), 0.5, 1 * k, GOLD_R, GOLD_G, GOLD_B) { n += 6; }
   }
@@ -1861,7 +1927,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   uniforms[3] = ifx still then 1.0f32 else ease(s[0].time / 0.6);
   uniforms[4] = ifx still then 1.0f32 else 0.0f32;
   uniforms[6] = s[0].dpr;
-  uniforms[7] = cast(f32) s[0].palette;
+  uniforms[7] = cast(f32) s[0].palette + 10 * (ifx s[0].land == LAND_FLOATING then 1.0f32 else ifx s[0].land == LAND_ISLAND then 2.0f32 else 0.0f32);   // myrealm.wgsl land()
   view_rows(s);
   for i: 0..<16 { uniforms[VIEW_AT + i] = s[0].view[i]; }
   tod := s[0].tod; gr := s[0].ground;
@@ -1895,7 +1961,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
   uniforms[GROUND_AT + 3] = LAMP_SHARE[tod];
   uniforms[SUN_AT + 3] = SUN[tod * 4 + 3];
   uniforms[WATER_AT] = s[0].water_x; uniforms[WATER_AT + 1] = s[0].water_z; uniforms[WATER_AT + 2] = s[0].water_r;
-  uniforms[WATER_AT + 3] = ifx s[0].water_r > 0 && s[0].spec_ready then 1.0f32 else 0.0f32;
+  uniforms[WATER_AT + 3] = ifx s[0].water_r > 0 && s[0].spec_ready then cast(f32) s[0].water_kind else 0.0f32;
   // the lanterns' pools of light, from dusk
   if s[0].laid {
     for i: 0..<s[0].lanterns {
@@ -1907,7 +1973,7 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     uniforms[o + 3] = ifx s[0].lanterns > 0 then POOL_SHARE[tod] * (ifx still then 1.0f32 else 0.93 + 0.07 * sin(s[0].time * 5)) else 0.0f32;
   }
   n := 0;
-  if s[0].spec_ready { n = draw_world(s, out, n); n = draw_names(s, out, n); }
+  if s[0].spec_ready { n = draw_world(s, out, n); n = draw_glows(s, out, n); n = draw_names(s, out, n); }
   n = draw_hud(s, out, n);
   uniforms[5] = cast(f32) s[0].plate_n;
   for i: 0..<s[0].plate_n {
@@ -1936,6 +2002,11 @@ palette_drawn :: (s: [] MyRealm, t: [] Track) -> f32 {
   out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
   n := realm_frame(s, t, out[..], u[..], 1280, 800, 2, 0.016, false);
   return u[7];
+}
+water_drawn :: (s: [] MyRealm, t: [] Track) -> f32 {
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := realm_frame(s, t, out[..], u[..], 1280, 800, 2, 0.016, false);
+  return u[WATER_AT + 3];
 }
 opened :: (s: [] MyRealm, t: [] Track, slug: string, spec: string) {
   opened_with(s, t, slug, spec, "tab=t1\nvisitor=v1\nnow=1000\nnav=10\nurl=https://openagents.com/realms/x\nplayer=p-1\n");
@@ -2098,6 +2169,37 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   opened(q[..], u[..], "crows", "realm crows\nname Crows\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature flock crow 5\n");
   // an owl has a head and a face as well as a crow's body and wings: two more pieces a bird
   #assert !q[0].owls && !q[0].great && (s[0].piece_n - s[0].static_n) - (q[0].piece_n - q[0].static_n) == 5 * 2;
+}
+
+#test "0085's things are drawn: a floating island, a castle, a windmill, a lighthouse, a river and a bridge on it, sheep, a dragon, palms, mushrooms" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "sky-isle", "realm sky-isle\nname Sky Isle\nstyle lowpoly\nground meadow\ntime night\nowner 0\nfeature land floating\nfeature building castle\nfeature building windmill\nfeature building lighthouse\nfeature water medium river\nfeature trees palm 6\nfeature plants mushroom 8\nfeature herd sheep 6\nfeature flock dragon 1\nfeature props campfire\nfeature props bridge\nfeature props boat\nfeature props tumbleweeds\n");
+  #assert s[0].laid && s[0].land == LAND_FLOATING && s[0].building_n == 3 && s[0].building[0] == 4 && s[0].building[1] == 2 && s[0].building[2] == 3;
+  #assert s[0].water_kind == 2 && s[0].tree_kind == 4 && s[0].plant_kind == 2 && s[0].herd_kind == 3 && s[0].flier == FLY_DRAGON && s[0].birds == 1 && s[0].prop_n == 4;
+  // a windmill's sails turn, the lighthouse's lamp is lit, the campfire burns, the tumbleweeds roll
+  #assert s[0].mill_n == 1 && s[0].beacon && s[0].fire_n == 1 && s[0].weed_n == WEEDS;
+  #assert s[0].piece_n <= PIECES && s[0].static_n < PIECES - 200;
+  // the river crosses ahead of you, nothing laid out stands in it but the bridge and the boats on it
+  #assert water_in(s[..], 0, s[0].water_z) > 1 && water_in(s[..], 0, 6) < 0 && !in_water(s[..]);
+  for i: 0..<s[0].solid_n { #assert water_in(s[..], s[0].solid_x[i], s[0].solid_z[i]) < 0; }
+  // what glows: the lamp, the flames, the mushrooms after dark
+  glows := 0; for p: 0..<s[0].static_n { if s[0].piece_glow[p] > 0 { glows += 1; } }
+  #assert glows >= 2 + 2 + 8;
+  // the land is the shader's: a floating island in the palette's tens
+  #assert palette_drawn(s[..], t[..]) == 10 && water_drawn(s[..], t[..]) == 2;
+  // a dragon is far bigger than a crow: more pieces, wider wings
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "lava-farm", "realm lava-farm\nname Lava Farm\nstyle lowpoly\nground stone\ntime day\nowner 0\nfeature land island\nfeature building barn\nfeature water small lava\nfeature herd chicken 5\nfeature flock gull 6\nfeature plants flower 6\nfeature trees blossom 4\n");
+  #assert q[0].land == LAND_ISLAND && q[0].water_kind == 4 && q[0].herd_kind == 11 && q[0].flier == FLY_GULL && q[0].tree_kind == 5;
+  #assert palette_drawn(q[..], u[..]) == 20 && water_drawn(q[..], u[..]) == 4;
+  // a spec it doesn't know draws what it can: a building it doesn't know is not laid out
+  w: [1] MyRealm; v: [1] Track;
+  opened(w[..], v[..], "plain", "realm plain\nname Plain\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature building spaceship\nfeature water medium\n");
+  #assert w[0].building_n == 0 && w[0].water_kind == 1 && w[0].land == 0 && w[0].laid;
+  // two herds share the herd's ten: horses, then chickens
+  h: [1] MyRealm; hv: [1] Track;
+  opened(h[..], hv[..], "farm", "realm farm\nname Farm\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature herd horse 6\nfeature herd chicken 8\n");
+  #assert h[0].herd == HERD && h[0].herd_split == 6 && h[0].herd_kind == 2 && h[0].herd_kind2 == 11;
 }
 
 EDIT_SPEC :: "200\nrealm moonlit-marsh\nname Moonlit Marsh\nowner 1\ntool build 0\ntool fly 1\ntool map 0\nwaiting 1\nrole owner\nrow water 1 Large pond\nrow props:wagon 0 A wagon\n";
