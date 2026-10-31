@@ -1,0 +1,270 @@
+// Chapter 54: Psionic's own passage encoder, profile bs-attnpool-d64-v1.
+// A passage is its word ids (corpus.coax). Each id owns a learned row of 64
+// numbers; one learned query attends over every row of the passage at once,
+// with no causal mask, and the attention-weighted sum, scaled to length one,
+// is the embedding. Training sees only the books: a short span of a passage
+// should find the rest of that passage, and a heading path should find its
+// text, among the other passages in its batch (an in-batch softmax with
+// temperature tau). Gradients are written by hand and checked against finite
+// differences; chapter 124's AdamW cell updates the rows a batch touched.
+#load "corpus.coax";
+#load "../optim/adamw.coax";
+#load "../counter-rng.coax";
+
+BE_WIDTH :: 64;
+BE_TOKENS :: 256;
+BE_QUERY :: 16;
+BE_BATCH :: 128;
+BeTrace :: struct { n: int; r: f64; a: [BE_TOKENS] f64; v: [BE_WIDTH] f64; u: [BE_WIDTH] f64; }
+BeBatch :: struct { loss: f64; correct: int; }
+BeConfig :: struct { steps: int; batch: int; tau: f64; lr: f64; seed: u64; }
+BeTrained :: struct { ok: bool; steps: int; first: f64; last: f64; }
+
+// book:begin forward
+// One sequence: scores s_i = q . e_i / sqrt(64) over every position, a =
+// softmax(s), v = sum a_i e_i, u = v / |v|. At most BE_TOKENS ids are read;
+// an empty sequence or a zero sum leaves u zero, which scores 0 against all.
+be_forward :: (table: [] f64, query: [] f64, ids: [] int, t: [] BeTrace) {
+  n := ifx ids.count < BE_TOKENS then ids.count else BE_TOKENS;
+  t[0].n = n; t[0].r = 0;
+  for d: 0..<BE_WIDTH { t[0].v[d] = 0; t[0].u[d] = 0; }
+  if n == 0 { return; }
+  scale := 1.0 / sqrt(f64(BE_WIDTH));
+  top := -1.0e300;
+  for i: 0..<n {
+    row := ids[i] * BE_WIDTH; s := 0.0;
+    for d: 0..<BE_WIDTH { s += query[d] * table[row + d]; }
+    t[0].a[i] = s * scale;
+    if t[0].a[i] > top { top = t[0].a[i]; }
+  }
+  sum := 0.0;
+  for i: 0..<n { t[0].a[i] = exp(t[0].a[i] - top); sum += t[0].a[i]; }
+  for i: 0..<n {
+    t[0].a[i] /= sum; row := ids[i] * BE_WIDTH;
+    for d: 0..<BE_WIDTH { t[0].v[d] += t[0].a[i] * table[row + d]; }
+  }
+  r := 0.0;
+  for d: 0..<BE_WIDTH { r += t[0].v[d] * t[0].v[d]; }
+  r = sqrt(r); t[0].r = r;
+  if r == 0 { return; }
+  for d: 0..<BE_WIDTH { t[0].u[d] = t[0].v[d] / r; }
+}
+// book:end forward
+
+// book:begin backward
+// Adds dL/dtable and dL/dquery for one sequence, given dL/du.
+be_backward :: (table: [] f64, query: [] f64, ids: [] int, t: BeTrace, du: [] f64, g_table: [] f64, g_query: [] f64) {
+  if t.n == 0 || t.r == 0 { return; }
+  // Through u = v / r: dv = (du - u (u . du)) / r.
+  dot := 0.0;
+  for d: 0..<BE_WIDTH { dot += t.u[d] * du[d]; }
+  dv: [BE_WIDTH] f64;
+  for d: 0..<BE_WIDTH { dv[d] = (du[d] - t.u[d] * dot) / t.r; }
+  // Through v = sum a_i e_i and a = softmax(s).
+  g: [BE_TOKENS] f64; mean := 0.0;
+  for i: 0..<t.n {
+    row := ids[i] * BE_WIDTH; s := 0.0;
+    for d: 0..<BE_WIDTH { s += dv[d] * table[row + d]; }
+    g[i] = s; mean += t.a[i] * s;
+  }
+  scale := 1.0 / sqrt(f64(BE_WIDTH));
+  for i: 0..<t.n {
+    row := ids[i] * BE_WIDTH;
+    ds := t.a[i] * (g[i] - mean) * scale;
+    for d: 0..<BE_WIDTH {
+      g_query[d] += ds * table[row + d];
+      g_table[row + d] += t.a[i] * dv[d] + ds * query[d];
+    }
+  }
+}
+// book:end backward
+
+// book:begin batch
+// One batch of B (query, passage) pairs: sims S[b][j] = u_b . w_j / tau, loss
+// mean_b(-log softmax_j(S[b])[b]); gradients are added into g_table, g_query.
+// ids holds every sequence; query b is ids[qf[b]..<qt[b]], passage j is
+// ids[pf[j]..<pt[j]]. traces holds 2B traces.
+be_batch :: (table: [] f64, query: [] f64, ids: [] int, qf: [] int, qt: [] int, pf: [] int, pt: [] int, tau: f64, traces: [] BeTrace, g_table: [] f64, g_query: [] f64) -> BeBatch {
+  b := qf.count; out: BeBatch;
+  for k: 0..<b {
+    be_forward(table, query, ids[qf[k]..<qt[k]], traces[k..<k + 1]);
+    be_forward(table, query, ids[pf[k]..<pt[k]], traces[b + k..<b + k + 1]);
+  }
+  p: [BE_BATCH * BE_BATCH] f64;
+  for i: 0..<b {
+    top := -1.0e300;
+    for j: 0..<b {
+      s := 0.0;
+      for d: 0..<BE_WIDTH { s += traces[i].u[d] * traces[b + j].u[d]; }
+      p[i * b + j] = s / tau;
+      if p[i * b + j] > top { top = p[i * b + j]; }
+    }
+    sum := 0.0; best := 0;
+    for j: 0..<b { if p[i * b + j] > p[i * b + best] { best = j; } }
+    if best == i { out.correct += 1; }
+    for j: 0..<b { p[i * b + j] = exp(p[i * b + j] - top); sum += p[i * b + j]; }
+    out.loss += -log(p[i * b + i] / sum) / f64(b);
+    for j: 0..<b { p[i * b + j] = (p[i * b + j] / sum - ifx i == j then 1.0 else 0.0) / (f64(b) * tau); }
+  }
+  du: [BE_WIDTH] f64;
+  for i: 0..<b {
+    for d: 0..<BE_WIDTH { du[d] = 0; }
+    for j: 0..<b { for d: 0..<BE_WIDTH { du[d] += p[i * b + j] * traces[b + j].u[d]; } }
+    be_backward(table, query, ids[qf[i]..<qt[i]], traces[i], du[..], g_table, g_query);
+  }
+  for j: 0..<b {
+    for d: 0..<BE_WIDTH { du[d] = 0; }
+    for i: 0..<b { for d: 0..<BE_WIDTH { du[d] += p[i * b + j] * traces[i].u[d]; } }
+    be_backward(table, query, ids[pf[j]..<pt[j]], traces[b + j], du[..], g_table, g_query);
+  }
+  return out;
+}
+// book:end batch
+
+#test "an empty sequence and equal rows give a zero or a normalized mean" {
+  table: [3 * BE_WIDTH] f64; query: [BE_WIDTH] f64;
+  for d: 0..<BE_WIDTH { table[d] = 1; table[BE_WIDTH + d] = 1; table[2 * BE_WIDTH + d] = ifx d == 0 then 2.0 else 0.0; }
+  t: [1] BeTrace; none: [1] int;
+  be_forward(table[..], query[..], none[0..<0], t[..]);
+  #assert t[0].n == 0 && t[0].u[0] == 0;
+  ids := [2] int.[0, 1];
+  be_forward(table[..], query[..], ids[..], t[..]);
+  #assert t[0].n == 2 && t[0].a[0] == 0.5 && abs(t[0].u[5] - 1.0 / 8) < 1e-15 && abs(t[0].r - 8) < 1e-12;
+  one := [1] int.[2];
+  be_forward(table[..], query[..], one[..], t[..]);
+  #assert t[0].u[0] == 1 && t[0].u[1] == 0 && t[0].r == 2;
+  for d: 0..<BE_WIDTH { query[d] = ifx d == 0 then 8.0 else 0.0; }
+  mix := [2] int.[0, 2];
+  be_forward(table[..], query[..], mix[..], t[..]);
+  #assert abs(t[0].a[1] - 1 / (1 + exp(-1.0))) < 1e-15;
+  long: [BE_TOKENS + 5] int;
+  be_forward(table[..], query[..], long[..], t[..]);
+  #assert t[0].n == BE_TOKENS;
+}
+
+#test "hand-written gradients match finite differences" {
+  v := 5; table: [5 * BE_WIDTH] f64; query: [BE_WIDTH] f64;
+  seed := CrSeed.{seed = 11};
+  for i: 0..<table.count { d := cr_draw(seed); table[i] = d.value - 0.5; seed = d.next; }
+  for i: 0..<BE_WIDTH { d := cr_draw(seed); query[i] = 2 * (d.value - 0.5); seed = d.next; }
+  ids := [9] int.[0, 1, 2, 3, 4, 1, 2, 0, 3];
+  qf := [2] int.[0, 2]; qt := [2] int.[2, 5]; pf := [2] int.[5, 7]; pt := [2] int.[7, 9];
+  traces: [4] BeTrace; gt: [5 * BE_WIDTH] f64; gq: [BE_WIDTH] f64;
+  r := be_batch(table[..], query[..], ids[..], qf[..], qt[..], pf[..], pt[..], 0.5, traces[..], gt[..], gq[..]);
+  #assert r.loss > 0;
+  h := 1.0e-6; worst := 0.0;
+  checks := [6] int.[0, 7, 70, 133, 200, 319];
+  for c: checks {
+    keep := table[c]; zt: [5 * BE_WIDTH] f64; zq: [BE_WIDTH] f64;
+    table[c] = keep + h; up := be_batch(table[..], query[..], ids[..], qf[..], qt[..], pf[..], pt[..], 0.5, traces[..], zt[..], zq[..]).loss;
+    table[c] = keep - h; down := be_batch(table[..], query[..], ids[..], qf[..], qt[..], pf[..], pt[..], 0.5, traces[..], zt[..], zq[..]).loss;
+    table[c] = keep;
+    e := abs((up - down) / (2 * h) - gt[c]); if e > worst { worst = e; }
+  }
+  for c: 0..<4 {
+    keep := query[c * 9]; zt: [5 * BE_WIDTH] f64; zq: [BE_WIDTH] f64;
+    query[c * 9] = keep + h; up := be_batch(table[..], query[..], ids[..], qf[..], qt[..], pf[..], pt[..], 0.5, traces[..], zt[..], zq[..]).loss;
+    query[c * 9] = keep - h; down := be_batch(table[..], query[..], ids[..], qf[..], qt[..], pf[..], pt[..], 0.5, traces[..], zt[..], zq[..]).loss;
+    query[c * 9] = keep;
+    e := abs((up - down) / (2 * h) - gq[c * 9]); if e > worst { worst = e; }
+  }
+  #assert worst < 1e-7;
+}
+
+be_draw :: (s: [] CrSeed) -> f64 { d := cr_draw(s[0]); s[0] = d.next; return d.value; }
+
+// book:begin train
+// Trains table (vocab x 64) and query in place. Passage k's heading words are
+// ids[hf[k]..<ht[k]] and its text words ids[bf[k]..<bt[k]]. Every step draws
+// `batch` distinct passages; for each, half the time the query is its heading
+// path and the target its text, otherwise the query is a span of 4 to 15
+// words and the target the heading and text with that span removed.
+be_train :: (c: BeConfig, ids: [] int, hf: [] int, ht: [] int, bf: [] int, bt: [] int, table: [] f64, query: [] f64,
+             m: [] f64, v: [] f64, g: [] f64, mq: [] f64, vq: [] f64, gq: [] f64, mark: [] int) -> BeTrained {
+  r := BeTrained.{first = -1, last = -1};
+  passages := hf.count;
+  if c.batch < 2 || c.batch > BE_BATCH || passages < c.batch || c.steps < 1 || c.tau <= 0 { return r; }
+  group := AwGroup.{lr = c.lr, beta1 = 0.9, beta2 = 0.999, eps = 1e-8, decay = 0};
+  rng := [1] CrSeed.[CrSeed.{seed = c.seed}];
+  for i: 0..<table.count { table[i] = 0.2 * (be_draw(rng[..]) - 0.5); m[i] = 0; v[i] = 0; g[i] = 0; }
+  for d: 0..<BE_WIDTH { query[d] = 0; mq[d] = 0; vq[d] = 0; gq[d] = 0; }
+  for i: 0..<mark.count { mark[i] = -1; }
+  work: [BE_BATCH * (BE_QUERY + BE_TOKENS + BE_QUERY)] int;
+  qf: [BE_BATCH] int; qt: [BE_BATCH] int; pf: [BE_BATCH] int; pt: [BE_BATCH] int; chosen: [BE_BATCH] int;
+  traces: [2 * BE_BATCH] BeTrace;
+  early := 0.0; late := 0.0; window := ifx c.steps < 200 then (c.steps + 3) / 4 else 50;
+  for step: 0..<c.steps {
+    used := 0;
+    for k: 0..<c.batch {
+      p := 0;
+      while true {
+        p = cast(int) (be_draw(rng[..]) * f64(passages));
+        fresh := true;
+        for j: 0..<k { if chosen[j] == p { fresh = false; } }
+        if fresh { break; }
+      }
+      chosen[k] = p;
+      body := bt[p] - bf[p]; heads := ht[p] - hf[p];
+      span := body >= 8 && (heads == 0 || be_draw(rng[..]) < 0.5);
+      if span {
+        spread := 4 + cast(int) (be_draw(rng[..]) * 12); if spread > body / 2 { spread = body / 2; }
+        at := bf[p] + cast(int) (be_draw(rng[..]) * f64(body - spread + 1));
+        qf[k] = used; for i: at..<at + spread { work[used] = ids[i]; used += 1; } qt[k] = used;
+        pf[k] = used;
+        for i: hf[p]..<ht[p] { if used - pf[k] < BE_TOKENS { work[used] = ids[i]; used += 1; } }
+        for i: bf[p]..<bt[p] { if (i < at || i >= at + spread) && used - pf[k] < BE_TOKENS { work[used] = ids[i]; used += 1; } }
+        pt[k] = used;
+      } else {
+        from := ifx heads > BE_QUERY then ht[p] - BE_QUERY else hf[p];
+        qf[k] = used; for i: from..<ht[p] { work[used] = ids[i]; used += 1; } qt[k] = used;
+        pf[k] = used; for i: bf[p]..<bt[p] { if used - pf[k] < BE_TOKENS { work[used] = ids[i]; used += 1; } } pt[k] = used;
+      }
+    }
+    out := be_batch(table, query, work[0..<used], qf[0..<c.batch], qt[0..<c.batch], pf[0..<c.batch], pt[0..<c.batch], c.tau, traces[..], g, gq);
+    if step < window { early += out.loss / f64(window); }
+    if step >= c.steps - window { late += out.loss / f64(window); }
+    t := step + 1;
+    for i: 0..<used {
+      id := work[i];
+      if mark[id] == step { continue; }
+      mark[id] = step;
+      for d: 0..<BE_WIDTH {
+        k := id * BE_WIDTH + d;
+        cell := aw_cell(group, t, table[k], g[k], m[k], v[k]);
+        table[k] = cell.p; m[k] = cell.m; v[k] = cell.v; g[k] = 0;
+      }
+    }
+    for d: 0..<BE_WIDTH { cell := aw_cell(group, t, query[d], gq[d], mq[d], vq[d]); query[d] = cell.p; mq[d] = cell.m; vq[d] = cell.v; gq[d] = 0; }
+  }
+  return BeTrained.{ok = true, steps = c.steps, first = early, last = late};
+}
+// book:end train
+
+#test "training on a tiny corpus lowers the loss and is reproducible" {
+  // Eight passages over twelve words: passage k uses words 3k..3k+2 often.
+  ids: [8 * 12] int; hf: [8] int; ht: [8] int; bf: [8] int; bt: [8] int; n := 0;
+  for k: 0..<4 {
+    hf[k] = n; ids[n] = 3 * k; n += 1; ht[k] = n;
+    bf[k] = n; for j: 0..<9 { ids[n] = 3 * k + j % 3; n += 1; } bt[k] = n;
+  }
+  for k: 4..<8 { hf[k] = n; ht[k] = n; bf[k] = n; for j: 0..<9 { ids[n] = (k + j) % 12; n += 1; } bt[k] = n; }
+  table: [12 * BE_WIDTH] f64; query: [BE_WIDTH] f64; m: [12 * BE_WIDTH] f64; v: [12 * BE_WIDTH] f64; g: [12 * BE_WIDTH] f64;
+  mq: [BE_WIDTH] f64; vq: [BE_WIDTH] f64; gq: [BE_WIDTH] f64; mark: [12] int;
+  c := BeConfig.{steps = 16, batch = 4, tau = 0.1, lr = 0.05, seed = 3};
+  r := be_train(c, ids[0..<n], hf[..], ht[..], bf[..], bt[..], table[..], query[..], m[..], v[..], g[..], mq[..], vq[..], gq[..], mark[..]);
+  #assert r.ok && r.steps == 16 && r.last < r.first;
+  keep := table[17];
+  s := be_train(c, ids[0..<n], hf[..], ht[..], bf[..], bt[..], table[..], query[..], m[..], v[..], g[..], mq[..], vq[..], gq[..], mark[..]);
+  #assert s.first == r.first && s.last == r.last && table[17] == keep;
+  bad := c; bad.batch = 9;
+  #assert !be_train(bad, ids[0..<n], hf[..], ht[..], bf[..], bt[..], table[..], query[..], m[..], v[..], g[..], mq[..], vq[..], gq[..], mark[..]).ok;
+  bad = c; bad.tau = 0;
+  #assert !be_train(bad, ids[0..<n], hf[..], ht[..], bf[..], bt[..], table[..], query[..], m[..], v[..], g[..], mq[..], vq[..], gq[..], mark[..]).ok;
+}
+
+// The embedding the index stores: be_forward's u, rounded to binary32.
+be_embed :: (table: [] f64, query: [] f64, ids: [] int, out: [] f32) {
+  t: [1] BeTrace;
+  be_forward(table, query, ids, t[..]);
+  for d: 0..<BE_WIDTH { out[d] = cast(f32) t[0].u[d]; }
+}

@@ -1,0 +1,660 @@
+// Search the Coax, Psionic and Aethyr books (Psionic chapter 54).
+//   coax/web/tool.sh psionic/tools/book-search.coax "how do I keep a model resident"
+//   ... "query" --k 10 --book psionic --mode bm25|dense|fused --json
+//   ... --eval psionic/fixtures/book-search/heldout.tsv [--json]
+//   ... --no-build      refuse a stale index instead of rebuilding it
+//   ... --rebuild       rebuild the index;  --train  retrain the weights too
+// Runs from the repository root. The weights and the index live in
+// coax/web/build/book-search/ (not tracked). The first run trains the weights
+// (about a minute on one CPU core); later runs rebuild only a stale index.
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../lib/book-search/encoder.coax";
+
+FILES_MAX :: 1024;
+TEXT_MAX :: 16777216;
+HEADS_MAX :: 2097152;
+NAMES_MAX :: 131072;
+PASSAGES_MAX :: 16384;
+IDS_MAX :: 4194304;
+VOCAB_MAX :: 16384;
+COUNT_MAX :: 262144;
+OUT_MAX :: 33554432;
+LIST_MAX :: 100;
+
+BsFile :: struct { path_from: int; path_to: int; text_from: int; text_to: int; book: int; status: BsStatus; hash: [32] u8; rev: [12] u8; edited: bool; }
+Bs :: struct {
+  text: [] u8; text_n: int; heads: [] u8; heads_n: int; names: [] u8; names_n: int;
+  files: [] BsFile; file_n: int; passages: [] BsPassage; passage_n: int; revision: [40] u8;
+  ids: [] int; ids_n: int; hf: [] int; ht: [] int; bf: [] int; bt: [] int;
+  terms: [] int; counts: [] int; tf: [] int; tt: [] int; df: [] int; average: f64;
+  vocab: [] BsVocab; table: [] f64; query: [] f64; embeddings: [] f32; digest: [32] u8; trained_at: [40] u8;
+}
+Bw :: struct { buf: [] u8; n: int; full: bool; }
+Br :: struct { buf: [] u8; at: int; n: int; bad: bool; }
+Labels :: struct { relevant: int; }
+
+BOOK_DIRS :: [3] string.["coax/book", "psionic/book", "aethyr/book"];
+PROFILE :: "bs-attnpool-d64-v1";
+CONFIG :: BeConfig.{steps = 1500, batch = 64, tau = 0.05, lr = 0.01, seed = 54};
+
+// ---- bytes in and out ------------------------------------------------------
+bw_byte :: (w: [] Bw, c: u8) { if w[0].n == w[0].buf.count { w[0].full = true; return; } w[0].buf[w[0].n] = c; w[0].n += 1; }
+bw_u32 :: (w: [] Bw, x: int) { for i: 0..<4 { bw_byte(w, cast,trunc(u8) ((x >> (8 * i)) & 255)); } }
+bw_bytes :: (w: [] Bw, s: [] u8) { for c: s { bw_byte(w, c); } }
+bw_str :: (w: [] Bw, s: string) { bw_u32(w, s.count); for c: s { bw_byte(w, c); } }
+bw_f32 :: (w: [] Bw, x: f32) { b := f32_bits(x); for i: 0..<4 { bw_byte(w, cast,trunc(u8) ((b >> cast(u32) (8 * i)) & 255)); } }
+br_byte :: (r: [] Br) -> u8 { if r[0].at >= r[0].n { r[0].bad = true; return 0; } c := r[0].buf[r[0].at]; r[0].at += 1; return c; }
+br_u32 :: (r: [] Br) -> int { x := 0; for i: 0..<4 { x |= cast(int) br_byte(r) << (8 * i); } return x; }
+br_f32 :: (r: [] Br) -> f32 { b: u32 = 0; for i: 0..<4 { b |= cast(u32) br_byte(r) << cast(u32) (8 * i); } return f32_from_bits(b); }
+br_into :: (r: [] Br, out: [] u8) { for i: 0..<out.count { out[i] = br_byte(r); } }
+br_str :: (r: [] Br) -> string {
+  n := br_u32(r);
+  if n < 0 || r[0].at + n > r[0].n { r[0].bad = true; return ""; }
+  s := cast(string) r[0].buf[r[0].at..<r[0].at + n]; r[0].at += n; return s;
+}
+put :: (out: [] u8, at: int, s: string) -> int { for i: 0..<s.count { out[at + i] = s[i]; } return at + s.count; }
+
+// ---- numbers as text ---------------------------------------------------------
+fixed :: (x: f64, digits: int, out: [] u8) -> string {
+  scale := 1; for i: 0..<digits { scale *= 10; }
+  neg := x < 0; y := ifx neg then -x else x;
+  v := cast(int) (y * f64(scale) + 0.5);
+  n := 0; if neg && v > 0 { out[n] = '-'; n += 1; }
+  whole := v / scale; frac := v % scale;
+  digs: [24] u8; k := 0;
+  if whole == 0 { digs[0] = '0'; k = 1; }
+  while whole > 0 { digs[k] = cast,trunc(u8) ('0' + whole % 10); whole /= 10; k += 1; }
+  while k > 0 { k -= 1; out[n] = digs[k]; n += 1; }
+  if digits > 0 {
+    out[n] = '.'; n += 1;
+    d := scale / 10;
+    while d > 0 { out[n] = cast,trunc(u8) ('0' + (frac / d) % 10); n += 1; d /= 10; }
+  }
+  return cast(string) out[0..<n];
+}
+
+// ---- the books -------------------------------------------------------------
+revision :: (b: Bs, n: int, out: [] u8) -> string { r := b.revision; for i: 0..<n { out[i] = r[i]; } return cast(string) out[0..<n]; }
+file_path :: (b: Bs, f: int) -> string { return cast(string) b.names[b.files[f].path_from..<b.files[f].path_to]; }
+file_name :: (b: Bs, f: int) -> string { return fs_base(file_path(b, f)); }
+file_rev :: (b: Bs, f: int) -> string {
+  n := 0; while n < 12 && b.files[f].rev[n] != 0 { n += 1; }
+  return cast(string) b.files[f].rev[0..<n];
+}
+
+// Lists and reads every chapter file of the three books, sorted by path.
+read_books :: (s: [] Bs, root: string) -> bool {
+  s[0].file_n = 0; s[0].text_n = 0; s[0].names_n = 0;
+  dir: [4096] u8; full: [4096] u8;
+  // Aethyr, Coax, Psionic: the paths come out sorted, which find_file and
+  // the freshness check rely on.
+  order := [3] int.[2, 0, 1];
+  for book: order {
+    l: [1] FsList;
+    k := fs_list(fs_join(root, BOOK_DIRS[book], dir[..]), l[..]);
+    if k < 0 { tool_errln("book-search: cannot list a book directory"); return false; }
+    for i: 0..<k {
+      name := fs_entry(l[..], i);
+      if name.count < 4 || name[name.count - 3..<name.count] != ".md" { continue; }
+      if s[0].file_n == FILES_MAX { tool_errln("book-search: too many chapter files"); return false; }
+      f := s[0].file_n; s[0].file_n += 1;
+      at := s[0].names_n;
+      at = put(s[0].names, at, BOOK_DIRS[book]); s[0].names[at] = '/'; at = put(s[0].names, at + 1, name);
+      s[0].files[f] = BsFile.{path_from = s[0].names_n, path_to = at, book = book};
+      s[0].names_n = at;
+      path := fs_join(root, file_path(s[0], f), full[..]);
+      n := fs_read(path, s[0].text[s[0].text_n..<s[0].text.count]);
+      if n < 0 { tool_errln("book-search: cannot read a chapter file"); return false; }
+      s[0].files[f].text_from = s[0].text_n; s[0].files[f].text_to = s[0].text_n + n; s[0].text_n += n;
+      text := cast(string) s[0].text[s[0].files[f].text_from..<s[0].files[f].text_to];
+      s[0].files[f].status = bs_status(name, text);
+      s[0].files[f].hash = bs_file_hash(s[0].text, s[0].files[f].text_from, s[0].files[f].text_to);
+    }
+  }
+  return true;
+}
+
+find_file :: (b: Bs, path: string) -> int {
+  lo := 0; hi := b.file_n;
+  while lo < hi { mid := (lo + hi) / 2; if bs_less(file_path(b, mid), path) { lo = mid + 1; } else { hi = mid; } }
+  if lo < b.file_n && file_path(b, lo) == path { return lo; }
+  return -1;
+}
+
+// HEAD, and each file's last commit; files with uncommitted edits say so.
+revisions :: (s: [] Bs, root: string) -> bool {
+  out: [4194304] u8; err: [4096] u8;
+  argv := [5] string.["git", "-C", root, "rev-parse", "HEAD"];
+  r := proc_run(argv[..], 30000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.out_n < 40 { tool_errln("book-search: git rev-parse HEAD failed"); return false; }
+  for i: 0..<40 { s[0].revision[i] = out[i]; }
+  logv := [10] string.["git", "-C", root, "log", "--format=%H", "--name-only", "--", "coax/book", "psionic/book", "aethyr/book"];
+  r = proc_run(logv[..], 60000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.cut { tool_errln("book-search: git log failed"); return false; }
+  commit := 0; at := 0;
+  while at < r.out_n {
+    end := at; while end < r.out_n && out[end] != '\n' { end += 1; }
+    line := cast(string) out[at..<end];
+    if line.count == 40 && !bs_has_slash(line) { commit = at; }
+    else if line.count > 0 {
+      f := find_file(s[0], line);
+      if f >= 0 && s[0].files[f].rev[0] == 0 { for i: 0..<12 { s[0].files[f].rev[i] = out[commit + i]; } }
+    }
+    at = end + 1;
+  }
+  st := [9] string.["git", "-C", root, "status", "--porcelain", "--", "coax/book", "psionic/book", "aethyr/book"];
+  r = proc_run(st[..], 30000, out[..], err[..]);
+  if r.started != 0 || r.status != 0 { tool_errln("book-search: git status failed"); return false; }
+  at = 0;
+  while at < r.out_n {
+    end := at; while end < r.out_n && out[end] != '\n' { end += 1; }
+    if end - at > 3 { f := find_file(s[0], cast(string) out[at + 3..<end]); if f >= 0 { s[0].files[f].edited = true; } }
+    at = end + 1;
+  }
+  return true;
+}
+bs_has_slash :: (s: string) -> bool { for c: s { if c == '/' || c == '.' { return true; } } return false; }
+
+chunk_books :: (s: [] Bs) -> bool {
+  s[0].passage_n = 0; s[0].heads_n = 0;
+  for f: 0..<s[0].file_n {
+    r := bs_chunk(s[0].text, s[0].files[f].text_from, s[0].files[f].text_to, f, s[0].passages, s[0].passage_n, s[0].heads, s[0].heads_n);
+    if r.full { tool_errln("book-search: too many passages"); return false; }
+    s[0].passage_n = r.passages; s[0].heads_n = r.heads;
+  }
+  return true;
+}
+
+// ---- words -------------------------------------------------------------------
+// Appends the vocabulary ids of text's words to s.ids (unknown words dropped).
+add_words :: (s: [] Bs, table: [] u8, t: PtLayout, text: string) -> bool {
+  word: [64] u8; at := 0;
+  while at < text.count {
+    w := bs_word(table, t, text, at, word[..]);
+    if w.size > 0 {
+      id := bs_find(s[0].vocab[0], cast(string) word[0..<w.size]);
+      if id >= 0 { if s[0].ids_n == s[0].ids.count { return false; } s[0].ids[s[0].ids_n] = id; s[0].ids_n += 1; }
+    }
+    at = w.next;
+  }
+  return true;
+}
+// Every passage's heading words and text words, then BM25's term lists.
+tokenize :: (s: [] Bs, seen: [] int, slot: [] int) -> bool {
+  table := PT_TOY; t := pt_layout(table[..]);
+  s[0].ids_n = 0;
+  for p: 0..<s[0].passage_n {
+    q := s[0].passages[p];
+    s[0].hf[p] = s[0].ids_n;
+    if !add_words(s, table[..], t, cast(string) s[0].heads[q.head_from..<q.head_to]) { return false; }
+    s[0].ht[p] = s[0].ids_n; s[0].bf[p] = s[0].ids_n;
+    if !add_words(s, table[..], t, cast(string) s[0].text[q.from..<q.to]) { return false; }
+    s[0].bt[p] = s[0].ids_n;
+  }
+  v := s[0].vocab[0].n;
+  for i: 0..<v { seen[i] = -1; s[0].df[i] = 0; }
+  n := 0; total := 0;
+  for p: 0..<s[0].passage_n {
+    s[0].tf[p] = n;
+    for i: s[0].hf[p]..<s[0].bt[p] {
+      id := s[0].ids[i];
+      if seen[id] == p { s[0].counts[slot[id]] += 1; continue; }
+      seen[id] = p; slot[id] = n; s[0].terms[n] = id; s[0].counts[n] = 1; n += 1;
+    }
+    // Sort this passage's distinct terms, keeping counts with them.
+    for i: s[0].tf[p] + 1..<n {
+      a := s[0].terms[i]; c := s[0].counts[i]; j := i;
+      while j > s[0].tf[p] && s[0].terms[j - 1] > a { s[0].terms[j] = s[0].terms[j - 1]; s[0].counts[j] = s[0].counts[j - 1]; j -= 1; }
+      s[0].terms[j] = a; s[0].counts[j] = c;
+    }
+    s[0].tt[p] = n;
+    for i: s[0].tf[p]..<n { s[0].df[s[0].terms[i]] += 1; }
+    total += s[0].bt[p] - s[0].hf[p];
+  }
+  s[0].average = ifx s[0].passage_n > 0 then f64(total) / f64(s[0].passage_n) else 1;
+  return true;
+}
+
+// ---- weights -----------------------------------------------------------------
+train :: (s: [] Bs, root: string, path: string) -> bool {
+  tool_errln("book-search: training the weights (bs-attnpool-d64-v1) on the books at this revision...");
+  slots: [2 * COUNT_MAX] int; pool: [4194304] u8; from: [COUNT_MAX] int; size: [COUNT_MAX] int; count: [COUNT_MAX] int;
+  counted := [1] BsVocab.[BsVocab.{slots = slots[..], pool = pool[..], from = from[..], size = size[..], count = count[..]}];
+  bs_vocab_clear(counted[..]);
+  table := PT_TOY; t := pt_layout(table[..]); word: [64] u8;
+  for p: 0..<s[0].passage_n {
+    q := s[0].passages[p];
+    texts := [2] string.[cast(string) s[0].heads[q.head_from..<q.head_to], cast(string) s[0].text[q.from..<q.to]];
+    for text: texts {
+      at := 0;
+      while at < text.count { w := bs_word(table[..], t, text, at, word[..]); if w.size > 0 { e := bs_count(counted[..], cast(string) word[0..<w.size]); } at = w.next; }
+    }
+  }
+  if counted[0].full { tool_errln("book-search: the word counter is full"); return false; }
+  order: [COUNT_MAX] int; scratch: [COUNT_MAX] int;
+  kept := bs_vocab_select(counted[0], 2, s[0].vocab, order[..], scratch[..]);
+  seen: [VOCAB_MAX] int; slot: [VOCAB_MAX] int;
+  if !tokenize(s, seen[..], slot[..]) { tool_errln("book-search: too many words"); return false; }
+  n := kept * BE_WIDTH;
+  m: [VOCAB_MAX * BE_WIDTH] f64; v: [VOCAB_MAX * BE_WIDTH] f64; g: [VOCAB_MAX * BE_WIDTH] f64;
+  mq: [BE_WIDTH] f64; vq: [BE_WIDTH] f64; gq: [BE_WIDTH] f64; mark: [VOCAB_MAX] int;
+  t0 := proc_now_ms();
+  P := s[0].passage_n;
+  r := be_train(CONFIG, s[0].ids[0..<s[0].ids_n], s[0].hf[0..<P], s[0].ht[0..<P], s[0].bf[0..<P], s[0].bt[0..<P], s[0].table[0..<n], s[0].query,
+                m[0..<n], v[0..<n], g[0..<n], mq[..], vq[..], gq[..], mark[0..<kept]);
+  if !r.ok { tool_errln("book-search: training refused its configuration"); return false; }
+  o: [64] u8; o2: [64] u8;
+  ib: [32] u8;
+  print_err3("book-search: trained ", itoa(CONFIG.steps, ib[..]), " steps");
+  print_err3("  loss over the first steps ", fixed(r.first, 3, o[..]), "");
+  print_err3("  loss over the last steps  ", fixed(r.last, 3, o2[..]), "");
+  print_err3("  seconds ", fixed(f64(proc_now_ms() - t0) / 1000, 1, o[..]), "");
+  for i: 0..<40 { s[0].trained_at[i] = s[0].revision[i]; }
+  return save_weights(s, path);
+}
+print_err3 :: (a: string, b: string, c: string) { tool_err(a); tool_err(b); tool_errln(c); }
+itoa :: (x: int, out: [] u8) -> string { return fixed(f64(x), 0, out); }
+
+WEIGHTS_MAGIC :: "PSIONIC-BOOK-SEARCH-WEIGHTS-1\n";
+save_weights :: (s: [] Bs, path: string) -> bool {
+  buf: [OUT_MAX] u8; w := [1] Bw.[Bw.{buf = buf[..]}];
+  for c: WEIGHTS_MAGIC { bw_byte(w[..], c); }
+  bw_str(w[..], PROFILE); bw_bytes(w[..], s[0].trained_at[..]);
+  v := s[0].vocab[0]; bw_u32(w[..], v.n); bw_u32(w[..], BE_WIDTH);
+  for e: 0..<v.n { bw_str(w[..], bs_vocab_word(v, e)); bw_u32(w[..], v.count[e]); }
+  for i: 0..<v.n * BE_WIDTH { bw_f32(w[..], cast(f32) s[0].table[i]); }
+  for d: 0..<BE_WIDTH { bw_f32(w[..], cast(f32) s[0].query[d]); }
+  if w[0].full || !fs_write(path, cast(string) buf[0..<w[0].n]) { tool_errln("book-search: cannot write the weights"); return false; }
+  return load_weights(s, path);
+}
+// Reads the weights back; the table is used exactly as stored (binary32).
+load_weights :: (s: [] Bs, path: string) -> bool {
+  buf: [OUT_MAX] u8;
+  n := fs_read(path, buf[..]);
+  if n < 0 { return false; }
+  r := [1] Br.[Br.{buf = buf[..], n = n}];
+  magic: [30] u8; br_into(r[..], magic[..]);
+  if cast(string) magic[..] != WEIGHTS_MAGIC || br_str(r[..]) != PROFILE { tool_errln("book-search: the weights file has another format"); return false; }
+  br_into(r[..], s[0].trained_at[..]);
+  count := br_u32(r[..]); width := br_u32(r[..]);
+  if count < 1 || count > VOCAB_MAX || width != BE_WIDTH { return false; }
+  bs_vocab_clear(s[0].vocab);
+  for e: 0..<count { word := br_str(r[..]); c := br_u32(r[..]); id := bs_count(s[0].vocab, word); if id != e { return false; } s[0].vocab[0].count[id] = c; }
+  for i: 0..<count * BE_WIDTH { s[0].table[i] = f64(br_f32(r[..])); }
+  for d: 0..<BE_WIDTH { s[0].query[d] = f64(br_f32(r[..])); }
+  if r[0].bad || r[0].at != n { return false; }
+  s[0].digest = bs_file_hash(buf[..], 0, n);
+  return true;
+}
+
+// ---- the index ------------------------------------------------------------------
+INDEX_MAGIC :: "PSIONIC-BOOK-SEARCH-INDEX-1\n";
+build_index :: (s: [] Bs, path: string) -> bool {
+  seen: [VOCAB_MAX] int; slot: [VOCAB_MAX] int;
+  if !tokenize(s, seen[..], slot[..]) { tool_errln("book-search: too many words"); return false; }
+  P := s[0].passage_n;
+  for p: 0..<P { be_embed(s[0].table, s[0].query, s[0].ids[s[0].hf[p]..<s[0].bt[p]], s[0].embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH]); }
+  buf: [OUT_MAX] u8; w := [1] Bw.[Bw.{buf = buf[..]}];
+  for c: INDEX_MAGIC { bw_byte(w[..], c); }
+  bw_bytes(w[..], s[0].revision[..]); bw_bytes(w[..], s[0].digest[..]);
+  bw_u32(w[..], s[0].file_n);
+  for f: 0..<s[0].file_n {
+    x := s[0].files[f];
+    bw_str(w[..], file_path(s[0], f)); bw_bytes(w[..], x.hash[..]); bw_bytes(w[..], x.rev[..]);
+    bw_u32(w[..], ifx x.edited then 1 else 0); bw_u32(w[..], cast(int) x.status); bw_u32(w[..], x.book);
+    bw_u32(w[..], x.text_from); bw_u32(w[..], x.text_to);
+  }
+  bw_u32(w[..], s[0].text_n); bw_bytes(w[..], s[0].text[0..<s[0].text_n]);
+  bw_u32(w[..], s[0].heads_n); bw_bytes(w[..], s[0].heads[0..<s[0].heads_n]);
+  bw_u32(w[..], P);
+  for p: 0..<P {
+    x := s[0].passages[p];
+    bw_u32(w[..], x.file); bw_u32(w[..], x.from); bw_u32(w[..], x.to); bw_u32(w[..], x.head_from); bw_u32(w[..], x.head_to); bw_u32(w[..], x.part); bw_bytes(w[..], x.hash[..]);
+  }
+  for i: 0..<P * BE_WIDTH { bw_f32(w[..], s[0].embeddings[i]); }
+  if w[0].full || !fs_write(path, cast(string) buf[0..<w[0].n]) { tool_errln("book-search: cannot write the index"); return false; }
+  return true;
+}
+// Loads an index into s, replacing the books read from disk.
+load_index :: (s: [] Bs, path: string, weights: [32] u8) -> int {
+  buf: [OUT_MAX] u8;
+  n := fs_read(path, buf[..]);
+  if n < 0 { return -1; }
+  r := [1] Br.[Br.{buf = buf[..], n = n}];
+  magic: [28] u8; br_into(r[..], magic[..]);
+  if cast(string) magic[..] != INDEX_MAGIC { return -1; }
+  br_into(r[..], s[0].revision[..]);
+  digest: [32] u8; br_into(r[..], digest[..]);
+  for i: 0..<32 { if digest[i] != weights[i] { return -2; } }
+  s[0].file_n = br_u32(r[..]); s[0].names_n = 0;
+  if s[0].file_n < 0 || s[0].file_n > FILES_MAX { return -1; }
+  for f: 0..<s[0].file_n {
+    p := br_str(r[..]); at := put(s[0].names, s[0].names_n, p);
+    x := BsFile.{path_from = s[0].names_n, path_to = at}; s[0].names_n = at;
+    br_into(r[..], x.hash[..]); br_into(r[..], x.rev[..]);
+    x.edited = br_u32(r[..]) == 1; x.status = cast(BsStatus) br_u32(r[..]); x.book = br_u32(r[..]);
+    x.text_from = br_u32(r[..]); x.text_to = br_u32(r[..]);
+    s[0].files[f] = x;
+  }
+  s[0].text_n = br_u32(r[..]);
+  if s[0].text_n < 0 || s[0].text_n > s[0].text.count { return -1; }
+  br_into(r[..], s[0].text[0..<s[0].text_n]);
+  // Status is read again from the stored text, so the current rules decide it.
+  for f: 0..<s[0].file_n {
+    x := s[0].files[f];
+    if x.text_from < 0 || x.text_to < x.text_from || x.text_to > s[0].text_n { return -1; }
+    s[0].files[f].status = bs_status(file_name(s[0], f), cast(string) s[0].text[x.text_from..<x.text_to]);
+  }
+  s[0].heads_n = br_u32(r[..]);
+  if s[0].heads_n < 0 || s[0].heads_n > s[0].heads.count { return -1; }
+  br_into(r[..], s[0].heads[0..<s[0].heads_n]);
+  s[0].passage_n = br_u32(r[..]);
+  if s[0].passage_n < 0 || s[0].passage_n > PASSAGES_MAX { return -1; }
+  for p: 0..<s[0].passage_n {
+    x: BsPassage;
+    x.file = br_u32(r[..]); x.from = br_u32(r[..]); x.to = br_u32(r[..]); x.head_from = br_u32(r[..]); x.head_to = br_u32(r[..]); x.part = br_u32(r[..]);
+    br_into(r[..], x.hash[..]);
+    s[0].passages[p] = x;
+  }
+  for i: 0..<s[0].passage_n * BE_WIDTH { s[0].embeddings[i] = br_f32(r[..]); }
+  if r[0].bad || r[0].at != n { return -1; }
+  seen: [VOCAB_MAX] int; slot: [VOCAB_MAX] int;
+  if !tokenize(s, seen[..], slot[..]) { return -1; }
+  return 0;
+}
+
+// Compares the index's files with the books on disk and says what changed.
+freshness :: (held: Bs, now: Bs, quiet: bool) -> BsFresh {
+  hp: [FILES_MAX] string; hh: [FILES_MAX] string; np: [FILES_MAX] string; nh: [FILES_MAX] string;
+  hx: [FILES_MAX * 64] u8; nx: [FILES_MAX * 64] u8;
+  for f: 0..<held.file_n { hp[f] = file_path(held, f); hh[f] = bs_hex(held.files[f].hash, 32, hx[f * 64..<f * 64 + 64]); }
+  for f: 0..<now.file_n { np[f] = file_path(now, f); nh[f] = bs_hex(now.files[f].hash, 32, nx[f * 64..<f * 64 + 64]); }
+  r := bs_freshness(hp[0..<held.file_n], hh[0..<held.file_n], np[0..<now.file_n], nh[0..<now.file_n]);
+  if !r.fresh && !quiet {
+    ib: [32] u8;
+    tool_err("book-search: stale index: it holds the books at revision "); rb: [40] u8; tool_err(revision(held, 12, rb[..]));
+    tool_err(", and the books at "); tool_err(revision(now, 12, rb[..])); tool_errln(" differ:");
+    print_err3("  changed files: ", itoa(r.changed, ib[..]), "");
+    print_err3("  added files:   ", itoa(r.added, ib[..]), "");
+    print_err3("  removed files: ", itoa(r.removed, ib[..]), "");
+    if r.first >= 0 {
+      print_err3("  first: ", hp[r.first], "");
+      print_err3("    held content sha256 ", cast(string) hh[r.first][0..<16], "");
+    }
+  }
+  return r;
+}
+
+// ---- search ------------------------------------------------------------------------
+Search :: struct { lexical: [LIST_MAX] BsHit; ln: int; dense: [LIST_MAX] BsHit; dn: int; fused: [LIST_MAX] BsHit; fn: int; words: int; known: int; }
+search :: (b: Bs, text: string, book: int, scores: [] f64, out: [] Search) {
+  table := PT_TOY; t := pt_layout(table[..]); word: [64] u8;
+  ids: [4096] int; n := 0; words := 0; at := 0;
+  while at < text.count && n < ids.count {
+    w := bs_word(table[..], t, text, at, word[..]);
+    if w.size > 0 { words += 1; id := bs_find(b.vocab[0], cast(string) word[0..<w.size]); if id >= 0 { ids[n] = id; n += 1; } }
+    at = w.next;
+  }
+  out[0].words = words; out[0].known = n;
+  e: [BE_WIDTH] f32;
+  be_embed(b.table, b.query, ids[0..<n], e[..]);
+  distinct: [4096] int; for i: 0..<n { distinct[i] = ids[i]; }
+  k := bs_distinct(distinct[0..<n]);
+  P := b.passage_n;
+  for p: 0..<P {
+    scores[p] = bs_passage_bm25(distinct[0..<k], b.terms[b.tf[p]..<b.tt[p]], b.counts[b.tf[p]..<b.tt[p]], b.df, P, b.bt[p] - b.hf[p], b.average);
+    if book >= 0 && b.files[b.passages[p].file].book != book { scores[p] = 0; }
+  }
+  out[0].ln = bs_top(scores[0..<P], 0, out[0].lexical[..]);
+  for p: 0..<P {
+    scores[p] = bs_dot(e[..], b.embeddings[p * BE_WIDTH..<(p + 1) * BE_WIDTH]);
+    if (book >= 0 && b.files[b.passages[p].file].book != book) || n == 0 { scores[p] = -2; }
+  }
+  out[0].dn = bs_top(scores[0..<P], -2, out[0].dense[..]);
+  bs_fuse(out[0].lexical[0..<out[0].ln], out[0].dense[0..<out[0].dn], scores[0..<P]);
+  out[0].fn = bs_top(scores[0..<P], 0, out[0].fused[..]);
+}
+mode_hits :: (r: [] Search, mode: int) -> [] BsHit {
+  if mode == 0 { return r[0].lexical[0..<r[0].ln]; }
+  if mode == 1 { return r[0].dense[0..<r[0].dn]; }
+  return r[0].fused[0..<r[0].fn];
+}
+MODES :: [3] string.["bm25", "dense", "fused"];
+
+// One line of text: whitespace runs become one space, cut at `most` bytes on a character start.
+snippet :: (s: string, most: int, out: [] u8) -> string {
+  n := 0; space := false;
+  for c: s {
+    if c == '\n' || c == ' ' || c == '\t' || c == '\r' { space = n > 0; continue; }
+    if n >= most && (c & 192) != 128 { out[n] = '.'; out[n + 1] = '.'; out[n + 2] = '.'; return cast(string) out[0..<n + 3]; }
+    if space { out[n] = ' '; n += 1; space = false; }
+    out[n] = c; n += 1;
+  }
+  return cast(string) out[0..<n];
+}
+
+json_result :: (b: Bs, j: [] Jo, rank: int, hit: BsHit) {
+  q := b.passages[hit.passage]; f := b.files[q.file]; hx: [64] u8; num: [64] u8;
+  jo_obj(j);
+  jo_key(j, "rank"); jo_int(j, rank);
+  jo_key(j, "book"); jo_str(j, bs_book_name(f.book));
+  jo_key(j, "chapter"); jo_str(j, file_path(b, q.file));
+  jo_key(j, "heading"); jo_str(j, cast(string) b.heads[q.head_from..<q.head_to]);
+  jo_key(j, "part"); jo_int(j, q.part);
+  jo_key(j, "passage"); jo_str(j, bs_hex(q.hash, 32, hx[..]));
+  jo_key(j, "revision"); jo_str(j, file_rev(b, q.file));
+  jo_key(j, "edited"); jo_bool(j, f.edited);
+  st := bs_section_status(f.status, cast(string) b.heads[q.head_from..<q.head_to]);
+  jo_key(j, "status"); jo_str(j, bs_status_name(st));
+  jo_key(j, "shipped"); jo_bool(j, bs_shipped(st));
+  jo_key(j, "score"); jo_raw(j, fixed(hit.score, 6, num[..]));
+  jo_key(j, "text"); jo_str(j, cast(string) b.text[q.from..<q.to]);
+  jo_end(j);
+}
+print_result :: (b: Bs, rank: int, hit: BsHit) {
+  q := b.passages[hit.passage]; f := b.files[q.file]; hx: [64] u8; num: [64] u8; sn: [800] u8;
+  print("%. % · % · %\n", rank, bs_book_name(f.book), file_path(b, q.file), cast(string) b.heads[q.head_from..<q.head_to]);
+  st := bs_section_status(f.status, cast(string) b.heads[q.head_from..<q.head_to]);
+  if !bs_shipped(st) { print("   [% — this text describes work that is not built; do not treat it as shipped]\n", bs_status_label(st)); }
+  else { print("   [%]\n", bs_status_label(st)); }
+  print("   revision %", file_rev(b, q.file));
+  if f.edited { print(" + uncommitted edits"); }
+  print(", passage % part %, score %\n", bs_hex(q.hash, 8, hx[..]), q.part, fixed(hit.score, 4, num[..]));
+  print("   %\n\n", snippet(cast(string) b.text[q.from..<q.to], 600, sn[..]));
+}
+
+// ---- evaluation ------------------------------------------------------------------
+// A query file holds lines "query<TAB>path#heading[;path#heading...]". A
+// passage is relevant when it comes from that path and the heading is one of
+// the components of its heading path. Lines that are empty or start with #
+// are skipped.
+mark_relevant :: (b: Bs, labels: string, relevant: [] bool) -> int {
+  for p: 0..<b.passage_n { relevant[p] = false; }
+  total := 0; at := 0;
+  while at <= labels.count {
+    end := at; while end < labels.count && labels[end] != ';' { end += 1; }
+    label := labels[at..<end]; hash := 0; while hash < label.count && label[hash] != '#' { hash += 1; }
+    if hash < label.count {
+      path := label[0..<hash]; heading := label[hash + 1..<label.count];
+      f := find_file(b, path);
+      if f < 0 { tool_err("book-search: unknown labelled file: "); tool_errln(path); return -1; }
+      matched := 0;
+      for p: 0..<b.passage_n {
+        q := b.passages[p];
+        if q.file == f && has_component(cast(string) b.heads[q.head_from..<q.head_to], heading) { if !relevant[p] { relevant[p] = true; total += 1; } matched += 1; }
+      }
+      if matched == 0 { tool_err("book-search: no passage has the labelled heading: "); tool_errln(label); return -1; }
+    }
+    at = end + 1;
+  }
+  return total;
+}
+has_component :: (path: string, heading: string) -> bool {
+  at := 0;
+  while at <= path.count {
+    end := at; while end + 2 < path.count && !(path[end] == ' ' && path[end + 1] == '>' && path[end + 2] == ' ') { end += 1; }
+    if end + 2 >= path.count { end = path.count; }
+    if path[at..<end] == heading { return true; }
+    at = end + 3;
+  }
+  return false;
+}
+evaluate :: (b: Bs, file: string, json: bool, verbose: bool) -> int {
+  text: [1048576] u8;
+  n := fs_read(file, text[..]);
+  if n < 0 { tool_errln("book-search: cannot read the query file"); return 2; }
+  scores: [PASSAGES_MAX] f64; relevant: [PASSAGES_MAX] bool;
+  r: [1] Search;
+  recall1: [3] f64; recall5: [3] f64; recall10: [3] f64; mrr: [3] f64; queries := 0;
+  at := 0;
+  while at < n {
+    end := at; while end < n && text[end] != '\n' { end += 1; }
+    line := cast(string) text[at..<end]; at = end + 1;
+    if line.count == 0 || line[0] == '#' { continue; }
+    tab := 0; while tab < line.count && line[tab] != '\t' { tab += 1; }
+    if tab == line.count { tool_errln("book-search: a query line has no tab"); return 2; }
+    if mark_relevant(b, line[tab + 1..<line.count], relevant[..]) <= 0 { return 2; }
+    search(b, line[0..<tab], -1, scores[..], r[..]);
+    queries += 1;
+    for m: 0..<3 {
+      hits := mode_hits(r[..], m);
+      top := ifx hits.count < 10 then hits.count else 10;
+      first := bs_first_relevant(hits[0..<top], relevant[0..<b.passage_n]);
+      if bs_hit(hits, relevant[0..<b.passage_n], 1) { recall1[m] += 1; }
+      if bs_hit(hits, relevant[0..<b.passage_n], 5) { recall5[m] += 1; }
+      if bs_hit(hits, relevant[0..<b.passage_n], 10) { recall10[m] += 1; }
+      mrr[m] += bs_reciprocal(first, 10);
+      if verbose { print("%\t%\t%\n", MODES[m], first, line[0..<tab]); }
+    }
+  }
+  if queries == 0 { tool_errln("book-search: the query file has no queries"); return 2; }
+  o1: [32] u8; o2: [32] u8; o3: [32] u8; o4: [32] u8;
+  if json {
+    buf: [8192] u8; j := [1] Jo.[Jo.{buf = buf[..]}]; hx: [64] u8;
+    jo_obj(j[..]); jo_key(j[..], "queries"); jo_int(j[..], queries); jo_key(j[..], "passages"); jo_int(j[..], b.passage_n); jo_key(j[..], "vocabulary"); jo_int(j[..], b.vocab[0].n);
+    jo_key(j[..], "revision"); rb: [40] u8; jo_str(j[..], revision(b, 40, rb[..])); jo_key(j[..], "weights"); jo_str(j[..], bs_hex(b.digest, 32, hx[..]));
+    jo_key(j[..], "modes"); jo_obj(j[..]);
+    for m: 0..<3 {
+      jo_key(j[..], MODES[m]); jo_obj(j[..]);
+      jo_key(j[..], "recall_at_1"); jo_raw(j[..], fixed(recall1[m] / f64(queries), 4, o1[..]));
+      jo_key(j[..], "recall_at_5"); jo_raw(j[..], fixed(recall5[m] / f64(queries), 4, o2[..]));
+      jo_key(j[..], "recall_at_10"); jo_raw(j[..], fixed(recall10[m] / f64(queries), 4, o3[..]));
+      jo_key(j[..], "mrr_at_10"); jo_raw(j[..], fixed(mrr[m] / f64(queries), 4, o4[..]));
+      jo_end(j[..]);
+    }
+    jo_end(j[..]); jo_end(j[..]);
+    print("%\n", jo_text(j[..]));
+    return 0;
+  }
+  rb: [40] u8;
+  print("% queries over % passages and % words, books at %, weights %\n", queries, b.passage_n, b.vocab[0].n, revision(b, 12, rb[..]), bs_hex(b.digest, 8, o1[..]));
+  print("| Retriever | Recall@1 | Recall@5 | Recall@10 | MRR@10 |\n| --- | ---: | ---: | ---: | ---: |\n");
+  names := [3] string.["BM25", "Exhaustive vector search", "Psionic retriever (fused)"];
+  for m: 0..<3 {
+    print("| % | % | % | % | % |\n", names[m], fixed(recall1[m] / f64(queries), 3, o1[..]), fixed(recall5[m] / f64(queries), 3, o2[..]), fixed(recall10[m] / f64(queries), 3, o3[..]), fixed(mrr[m] / f64(queries), 3, o4[..]));
+  }
+  return 0;
+}
+
+// ---- main ------------------------------------------------------------------------
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("book-search: arguments too long"); return 2; }
+  query := ""; i := 0;
+  while i < args_count(a[..]) {
+    x := args_at(a[..], i);
+    if x == "--k" || x == "--book" || x == "--mode" || x == "--eval" { i += 2; continue; }
+    if x.count > 1 && x[0] == '-' && x[1] == '-' { i += 1; continue; }
+    query = x; i += 1;
+  }
+  eval := args_value(a[..], "--eval", "");
+  json := args_has(a[..], "--json");
+  if query.count == 0 && eval.count == 0 && !args_has(a[..], "--rebuild") && !args_has(a[..], "--train") {
+    tool_errln("usage: coax/web/tool.sh psionic/tools/book-search.coax \"QUERY\" [--k N] [--book coax|psionic|aethyr] [--mode fused|bm25|dense] [--json] [--no-build]");
+    tool_errln("       coax/web/tool.sh psionic/tools/book-search.coax --eval FILE [--json] [--verbose] | --rebuild | --train");
+    return 2;
+  }
+  kn := args_number(args_value(a[..], "--k", "5"));
+  k := ifx kn.ok && kn.value >= 1 && kn.value <= LIST_MAX then cast(int) kn.value else 5;
+  bookname := args_value(a[..], "--book", "");
+  book := -1;
+  if bookname == "coax" { book = 0; } else if bookname == "psionic" { book = 1; } else if bookname == "aethyr" { book = 2; }
+  else if bookname.count > 0 { tool_errln("book-search: --book is coax, psionic or aethyr"); return 2; }
+  modename := args_value(a[..], "--mode", "fused");
+  mode := 2;
+  if modename == "bm25" { mode = 0; } else if modename == "dense" { mode = 1; } else if modename != "fused" { tool_errln("book-search: --mode is fused, bm25 or dense"); return 2; }
+
+  rootbuf: [4096] u8; err: [4096] u8;
+  top := [4] string.["git", "rev-parse", "--show-toplevel", ""];
+  pr := proc_run(top[0..<3], 30000, rootbuf[..], err[..]);
+  if pr.started != 0 || pr.status != 0 { tool_errln("book-search: run inside the openagents repository"); return 2; }
+  root := cast(string) rootbuf[0..<pr.out_n];
+  dirbuf: [4096] u8; wbuf: [4096] u8; ibuf: [4096] u8;
+  dir := fs_join(root, "coax/web/build/book-search", dirbuf[..]);
+  if !fs_mkdir(dir) { tool_errln("book-search: cannot make coax/web/build/book-search"); return 2; }
+  wpath := fs_join(dir, "weights.bin", wbuf[..]); ipath := fs_join(dir, "index.bin", ibuf[..]);
+
+  // The books as they are now.
+  text: [TEXT_MAX] u8; heads: [HEADS_MAX] u8; names: [NAMES_MAX] u8; files: [FILES_MAX] BsFile; passages: [PASSAGES_MAX] BsPassage;
+  ids: [IDS_MAX] int; hf: [PASSAGES_MAX] int; ht: [PASSAGES_MAX] int; bf: [PASSAGES_MAX] int; bt: [PASSAGES_MAX] int;
+  terms: [IDS_MAX] int; counts: [IDS_MAX] int; tf: [PASSAGES_MAX] int; tt: [PASSAGES_MAX] int; df: [VOCAB_MAX] int;
+  slots: [4 * VOCAB_MAX] int; vpool: [1048576] u8; vfrom: [VOCAB_MAX] int; vsize: [VOCAB_MAX] int; vcount: [VOCAB_MAX] int;
+  vocab := [1] BsVocab.[BsVocab.{slots = slots[..], pool = vpool[..], from = vfrom[..], size = vsize[..], count = vcount[..]}];
+  table: [VOCAB_MAX * BE_WIDTH] f64; qv: [BE_WIDTH] f64; embeddings: [PASSAGES_MAX * BE_WIDTH] f32;
+  now := [1] Bs.[Bs.{text = text[..], heads = heads[..], names = names[..], files = files[..], passages = passages[..], ids = ids[..], hf = hf[..], ht = ht[..], bf = bf[..], bt = bt[..],
+                     terms = terms[..], counts = counts[..], tf = tf[..], tt = tt[..], df = df[..], vocab = vocab[..], table = table[..], query = qv[..], embeddings = embeddings[..]}];
+  if !read_books(now[..], root) || !revisions(now[..], root) || !chunk_books(now[..]) { return 2; }
+
+  // The weights: trained once, kept until --train.
+  if args_has(a[..], "--train") || !load_weights(now[..], wpath) {
+    if !train(now[..], root, wpath) { return 2; }
+  }
+  // The index: the stored passages, their text and embeddings.
+  text2: [TEXT_MAX] u8; heads2: [HEADS_MAX] u8; names2: [NAMES_MAX] u8; files2: [FILES_MAX] BsFile; passages2: [PASSAGES_MAX] BsPassage;
+  held := [1] Bs.[now[0]];
+  held[0].text = text2[..]; held[0].heads = heads2[..]; held[0].names = names2[..]; held[0].files = files2[..]; held[0].passages = passages2[..];
+  loaded := ifx args_has(a[..], "--rebuild") || args_has(a[..], "--train") then -1 else load_index(held[..], ipath, now[0].digest);
+  fresh := loaded == 0 && freshness(held[0], now[0], false).fresh;
+  if loaded == -2 { tool_errln("book-search: the index was built with other weights"); }
+  if !fresh {
+    if args_has(a[..], "--no-build") {
+      if loaded == -1 { tool_errln("book-search: no index; run without --no-build to build one"); }
+      tool_errln("book-search: refusing to answer from a stale index (--no-build); run without --no-build to rebuild it");
+      return 3;
+    }
+    if !build_index(now[..], ipath) { return 2; }
+    loaded = load_index(held[..], ipath, now[0].digest);
+    if loaded != 0 { tool_errln("book-search: the rebuilt index does not read back"); return 2; }
+    ib: [32] u8;
+    tool_err("book-search: built the index at revision "); tool_err(cast(string) held[0].revision[0..<12]); print_err3(", passages: ", itoa(held[0].passage_n, ib[..]), "");
+  }
+  for f: 0..<held[0].file_n { held[0].files[f].rev = now[0].files[f].rev; held[0].files[f].edited = now[0].files[f].edited; }
+  if eval.count > 0 { return evaluate(held[0], eval, json, args_has(a[..], "--verbose")); }
+  if query.count == 0 { return 0; }
+
+  scores: [PASSAGES_MAX] f64; r: [1] Search;
+  search(held[0], query, book, scores[..], r[..]);
+  hits := mode_hits(r[..], mode);
+  shown := ifx hits.count < k then hits.count else k;
+  if json {
+    buf: [4194304] u8; j := [1] Jo.[Jo.{buf = buf[..]}]; hx: [64] u8;
+    jo_obj(j[..]);
+    jo_key(j[..], "query"); jo_str(j[..], query);
+    jo_key(j[..], "mode"); jo_str(j[..], MODES[mode]);
+    jo_key(j[..], "index_revision"); jo_str(j[..], cast(string) held[0].revision[..]);
+    jo_key(j[..], "weights"); jo_str(j[..], bs_hex(held[0].digest, 32, hx[..]));
+    jo_key(j[..], "words"); jo_int(j[..], r[0].words); jo_key(j[..], "known_words"); jo_int(j[..], r[0].known);
+    jo_key(j[..], "results"); jo_arr(j[..]);
+    for x: 0..<shown { json_result(held[0], j[..], x + 1, hits[x]); }
+    jo_end(j[..]); jo_end(j[..]);
+    print("%\n", jo_text(j[..]));
+    return 0;
+  }
+  print("% results for \"%\" (%; % of % words known; books at %)\n\n", shown, query, MODES[mode], r[0].known, r[0].words, cast(string) held[0].revision[0..<12]);
+  for x: 0..<shown { print_result(held[0], x + 1, hits[x]); }
+  return 0;
+}

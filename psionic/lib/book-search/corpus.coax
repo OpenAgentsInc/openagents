@@ -1,0 +1,343 @@
+// Chapter 54: the books become passages and words. A chapter splits at its
+// headings, outside code fences, and a long section splits again at blank
+// lines. Each passage keeps its book, file, heading path, part number and the
+// SHA-256 of its heading path and text. Words come from chapter 123's pinned
+// splitting rule, with leading punctuation removed and ASCII lowercased; the
+// vocabulary is every word seen at least twice, most frequent first.
+#load "rank.coax";
+#load "../bpe-train.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+
+BsPassage :: struct { file: int; from: int; to: int; head_from: int; head_to: int; part: int; hash: [32] u8; }
+BsChunks :: struct { passages: int; heads: int; full: bool; }
+BsWord :: struct { next: int; size: int; }
+BsVocab :: struct { slots: [] int; pool: [] u8; used: int; from: [] int; size: [] int; count: [] int; n: int; full: bool; }
+
+BS_BOOKS :: 3;
+BS_PART_MIN :: 600;
+BS_PART_MAX :: 2000;
+BS_WORD_MAX :: 40;
+BS_HEADS_MAX :: 6;
+
+// book:begin identity
+// The three books, in index order; a path outside them belongs to none.
+bs_book :: (path: string) -> int {
+  if bs_prefix(path, "coax/book/") { return 0; }
+  if bs_prefix(path, "psionic/book/") { return 1; }
+  if bs_prefix(path, "aethyr/book/") { return 2; }
+  return -1;
+}
+bs_book_name :: (book: int) -> string {
+  if book == 0 { return "Coax"; }
+  if book == 1 { return "Psionic"; }
+  if book == 2 { return "Aethyr"; }
+  return "";
+}
+// book:end identity
+bs_prefix :: (s: string, p: string) -> bool { return s.count >= p.count && s[0..<p.count] == p; }
+
+#test "book identity comes from the path" {
+  #assert bs_book("coax/book/ch01-getting-started.md") == 0 && bs_book("psionic/book/PLAN.md") == 1 && bs_book("aethyr/book/ch001-a.md") == 2;
+  #assert bs_book("coax/books/x.md") == -1 && bs_book("psionic/") == -1 && bs_book("") == -1;
+  #assert bs_book_name(0) == "Coax" && bs_book_name(1) == "Psionic" && bs_book_name(2) == "Aethyr" && bs_book_name(3) == "" && bs_book_name(-1) == "";
+}
+
+// A heading line outside a fence: its level 1 to 6, or 0.
+bs_heading :: (line: string) -> int {
+  level := 0;
+  while level < line.count && line[level] == '#' { level += 1; }
+  if level == 0 || level > BS_HEADS_MAX || level >= line.count || line[level] != ' ' { return 0; }
+  return level;
+}
+bs_fence :: (line: string) -> bool { return bs_prefix(line, "```"); }
+bs_blank :: (line: string) -> bool {
+  for c: line { if c != ' ' && c != '\t' && c != '\r' { return false; } }
+  return true;
+}
+bs_has_word :: (s: string) -> bool {
+  for c: s { if (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') { return true; } }
+  return false;
+}
+
+#test "headings, fences and blank lines" {
+  #assert bs_heading("# T") == 1 && bs_heading("### Sub head") == 3 && bs_heading("###### x") == 6 && bs_heading("####### x") == 0;
+  #assert bs_heading("#") == 0 && bs_heading("#x") == 0 && bs_heading("") == 0 && bs_heading("x #") == 0 && bs_heading("## ") == 2;
+  #assert bs_fence("```jai") && bs_fence("```") && !bs_fence("``") && !bs_fence(" ```");
+  #assert bs_blank("") && bs_blank(" \t\r") && !bs_blank(" x");
+  #assert bs_has_word("--a") && bs_has_word("9") && bs_has_word("Z") && !bs_has_word("— “”") && !bs_has_word("");
+}
+
+// The hash of a passage's identity: its heading path, a newline, its text.
+bs_passage_hash :: (heads: [] u8, head_from: int, head_to: int, pool: [] u8, from: int, to: int) -> [32] u8 {
+  state: [112] u8; out: [32] u8; nl := [1] u8.['\n'];
+  r := sha256_init(state[..]);
+  r = sha256_update_checked(state[..], heads[head_from..<head_to], false);
+  r = sha256_update_checked(state[..], nl[..], false);
+  r = sha256_update_checked(state[..], pool[from..<to], false);
+  r = sha256_final_checked(state[..], out[..], false);
+  return out;
+}
+// SHA-256 of pool[from..<to], fed in pieces of at most 1 MiB (one update's limit).
+bs_file_hash :: (pool: [] u8, from: int, to: int) -> [32] u8 { return bs_hash_pieces(pool, from, to, CB_MAX_BYTES); }
+bs_hash_pieces :: (pool: [] u8, from: int, to: int, piece: int) -> [32] u8 {
+  state: [112] u8; out: [32] u8;
+  r := sha256_init(state[..]); at := from;
+  while at < to {
+    end := ifx to - at > piece then at + piece else to;
+    r = sha256_update_checked(state[..], pool[at..<end], false); at = end;
+  }
+  r = sha256_final_checked(state[..], out[..], false);
+  return out;
+}
+BS_HEX :: "0123456789abcdef";
+// The first bytes of a hash as lower-case hex.
+bs_hex :: (h: [32] u8, bytes: int, out: [] u8) -> string {
+  for i: 0..<bytes { out[2 * i] = BS_HEX[cast(int) (h[i] >> 4)]; out[2 * i + 1] = BS_HEX[cast(int) (h[i] & 15)]; }
+  return cast(string) out[0..<2 * bytes];
+}
+
+#test "hashes are SHA-256 of the heading path, a newline and the text" {
+  pool := [3] u8.['a', 'b', 'c']; heads := [1] u8.['H'];
+  h := bs_file_hash(pool[..], 0, 3); out: [64] u8;
+  #assert bs_hex(h, 32, out[..]) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+  joined := [5] u8.['H', '\n', 'a', 'b', 'c'];
+  want := bs_file_hash(joined[..], 0, 5);
+  got := bs_passage_hash(heads[..], 0, 1, pool[..], 0, 3);
+  #assert bs_hex(got, 32, out[..]) == bs_hex(want, 32, out[0..<64]) && bs_hex(got, 2, out[..]).count == 4;
+  o2: [64] u8;
+  #assert bs_hex(bs_hash_pieces(joined[..], 0, 5, 2), 32, out[..]) == bs_hex(want, 32, o2[..]) && bs_hex(bs_hash_pieces(joined[..], 1, 5, 1), 32, out[..]) == bs_hex(bs_file_hash(joined[..], 1, 5), 32, o2[..]);
+}
+
+// book:begin chunk
+// Splits the chapter at pool[from..<to] into passages after out[0..<n], and
+// writes each heading path ("Title > Section > Subsection") into heads after
+// used. A section longer than BS_PART_MIN bytes splits at its next blank line
+// outside a fence; one longer than BS_PART_MAX splits at its next line.
+bs_chunk :: (pool: [] u8, from: int, to: int, file: int, out: [] BsPassage, n: int, heads: [] u8, used: int) -> BsChunks {
+  r := BsChunks.{passages = n, heads = used};
+  stack_from: [BS_HEADS_MAX] int; stack_to: [BS_HEADS_MAX] int; depth := 0;
+  fence := false; part := 0; start := from; at := from;
+  while at < to {
+    end := at;
+    while end < to && pool[end] != '\n' { end += 1; }
+    line := cast(string) pool[at..<end];
+    level := ifx fence then 0 else bs_heading(line);
+    split := false;
+    if level > 0 { split = true; }
+    else if !fence && bs_blank(line) && at - start >= BS_PART_MIN { split = true; }
+    else if at - start >= BS_PART_MAX { split = true; }
+    if split {
+      r = bs_emit(pool, start, at, file, part, stack_from[0..<depth], stack_to[0..<depth], out, r, heads);
+      if r.full { return r; }
+      part += 1; start = at;
+    }
+    if level > 0 {
+      // The heading becomes the path for what follows; its line is not text.
+      d := ifx level > depth + 1 then depth + 1 else level;
+      stack_from[d - 1] = at + level + 1; stack_to[d - 1] = end; depth = d;
+      part = 0; start = ifx end < to then end + 1 else to;
+    }
+    if !fence && bs_fence(line) { fence = true; } else if fence && bs_fence(line) { fence = false; }
+    at = end + 1;
+  }
+  return bs_emit(pool, start, to, file, part, stack_from[0..<depth], stack_to[0..<depth], out, r, heads);
+}
+// book:end chunk
+// One passage, unless its text holds no word.
+bs_emit :: (pool: [] u8, from: int, to: int, file: int, part: int, sf: [] int, st: [] int, out: [] BsPassage, r: BsChunks, heads: [] u8) -> BsChunks {
+  a := from; b := to;
+  while a < b && (pool[a] == '\n' || pool[a] == ' ') { a += 1; }
+  while b > a && (pool[b - 1] == '\n' || pool[b - 1] == ' ') { b -= 1; }
+  if !bs_has_word(cast(string) pool[a..<b]) { return r; }
+  need := 0;
+  for i: 0..<sf.count { need += st[i] - sf[i] + ifx i > 0 then 3 else 0; }
+  if r.passages == out.count || r.heads + need > heads.count { s := r; s.full = true; return s; }
+  h := r.heads;
+  for i: 0..<sf.count {
+    if i > 0 { heads[h] = ' '; heads[h + 1] = '>'; heads[h + 2] = ' '; h += 3; }
+    for k: sf[i]..<st[i] { heads[h] = pool[k]; h += 1; }
+  }
+  p := BsPassage.{file = file, from = a, to = b, head_from = r.heads, head_to = h, part = part};
+  p.hash = bs_passage_hash(heads, r.heads, h, pool, a, b);
+  out[r.passages] = p;
+  return BsChunks.{passages = r.passages + 1, heads = h};
+}
+
+#test "a chapter splits at headings outside fences and keeps the heading path" {
+  text := "# 1. T\n\nIntro text.\n\n## A\n\nAlpha body.\n```\n# not a heading\n```\n### A1\n\nDeep.\n## B\n\n— —\n## C\nSee.";
+  pool: [256] u8; for i: 0..<text.count { pool[i] = text[i]; }
+  out: [8] BsPassage; heads: [256] u8;
+  r := bs_chunk(pool[..], 0, text.count, 3, out[..], 0, heads[..], 0);
+  #assert !r.full && r.passages == 4;
+  #assert cast(string) heads[out[0].head_from..<out[0].head_to] == "1. T" && cast(string) pool[out[0].from..<out[0].to] == "Intro text.";
+  #assert cast(string) heads[out[1].head_from..<out[1].head_to] == "1. T > A" && cast(string) pool[out[1].from..<out[1].to] == "Alpha body.\n```\n# not a heading\n```";
+  #assert cast(string) heads[out[2].head_from..<out[2].head_to] == "1. T > A > A1" && cast(string) pool[out[2].from..<out[2].to] == "Deep.";
+  #assert cast(string) heads[out[3].head_from..<out[3].head_to] == "1. T > C" && cast(string) pool[out[3].from..<out[3].to] == "See.";
+  #assert out[0].file == 3 && out[3].part == 0 && out[1].part == 0;
+  x1: [64] u8; x2: [64] u8;
+  #assert bs_hex(out[0].hash, 32, x1[..]) == bs_hex(bs_passage_hash(heads[..], out[0].head_from, out[0].head_to, pool[..], out[0].from, out[0].to), 32, x2[..]);
+  #assert bs_hex(out[0].hash, 32, x1[..]) != bs_hex(out[3].hash, 32, x2[..]);
+  small: [2] BsPassage;
+  f := bs_chunk(pool[..], 0, text.count, 3, small[..], 0, heads[..], 0);
+  #assert f.full && f.passages == 2;
+  tiny: [6] u8;
+  g := bs_chunk(pool[..], 0, text.count, 3, out[..], 0, tiny[..], 0);
+  #assert g.full && g.passages == 1;
+}
+#test "a long section splits at a blank line past the minimum, or at any line past the maximum" {
+  pool: [6000] u8; n := 0;
+  head := "# T\n"; for c: head { pool[n] = c; n += 1; }
+  for k: 0..<70 { line := "word word.\n"; for c: line { pool[n] = c; n += 1; } }
+  pool[n] = '\n'; n += 1;
+  for k: 0..<3 { line := "tail.\n"; for c: line { pool[n] = c; n += 1; } }
+  out: [8] BsPassage; heads: [256] u8;
+  r := bs_chunk(pool[..], 0, n, 0, out[..], 0, heads[..], 0);
+  #assert r.passages == 2 && out[0].part == 0 && out[1].part == 1 && cast(string) pool[out[1].from..<out[1].to] == "tail.\ntail.\ntail.";
+  m := 0; for c: head { pool[m] = c; m += 1; }
+  pool[m] = '`'; pool[m + 1] = '`'; pool[m + 2] = '`'; pool[m + 3] = '\n'; m += 4;
+  for k: 0..<250 { line := "code line\n"; for c: line { pool[m] = c; m += 1; } if k == 100 { pool[m] = '\n'; m += 1; } }
+  s := bs_chunk(pool[..], 0, m, 0, out[..], 0, heads[..], 0);
+  #assert s.passages == 2 && out[0].to - out[0].from >= BS_PART_MAX - 1 && out[0].to - out[0].from <= BS_PART_MAX + 11;
+}
+#test "a heading that skips levels nests one deeper" {
+  text := "# T\n#### Deep\nx\n## S\ny";
+  pool: [64] u8; for i: 0..<text.count { pool[i] = text[i]; }
+  out: [4] BsPassage; heads: [64] u8;
+  r := bs_chunk(pool[..], 0, text.count, 0, out[..], 0, heads[..], 0);
+  #assert r.passages == 2 && cast(string) heads[out[0].head_from..<out[0].head_to] == "T > Deep" && cast(string) heads[out[1].head_from..<out[1].head_to] == "T > S";
+}
+
+// book:begin words
+// The next piece of text at `at` under chapter 123's splitting rule, as a word:
+// leading ASCII punctuation and spaces removed, ASCII letters lowercased, at
+// most BS_WORD_MAX bytes. size is 0 when the piece holds no ASCII letter or
+// digit; such pieces are not words.
+bs_word :: (table: [] u8, t: PtLayout, text: string, at: int, out: [] u8) -> BsWord {
+  end := bt_piece(table, t, text, at);
+  a := at;
+  while a < end && text[a] < 128 && !bs_has_word(text[a..<a + 1]) { a += 1; }
+  if a == end || !bs_has_word(text[a..<end]) || end - a > BS_WORD_MAX { return BsWord.{next = end}; }
+  for i: a..<end { c := text[i]; out[i - a] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; }
+  return BsWord.{next = end, size = end - a};
+}
+// book:end words
+
+#test "words drop punctuation pieces, lowercase ASCII and keep other bytes" {
+  table := PT_TOY; t := pt_layout(table[..]); out: [64] u8;
+  s := "Hello, tensor_views — naïve “X” pa_forward(x) it's";
+  words: [16] string; n := 0; at := 0; buf: [16][64] u8;
+  while at < s.count {
+    w := bs_word(table[..], t, s, at, out[..]);
+    if w.size > 0 { for i: 0..<w.size { buf[n][i] = out[i]; } words[n] = cast(string) buf[n][0..<w.size]; n += 1; }
+    at = w.next;
+  }
+  #assert n == 10 && words[0] == "hello" && words[1] == "tensor" && words[2] == "views" && words[3] == "naïve" && words[4] == "x";
+  #assert words[5] == "pa" && words[6] == "forward" && words[7] == "x" && words[8] == "it" && words[9] == "s";
+  long := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa b";
+  w := bs_word(table[..], t, long, 0, out[..]);
+  #assert w.size == 0 && w.next == 41;
+  w = bs_word(table[..], t, "Abcdefghijklmnopqrstuvwxyzabcdefghijklmn", 0, out[..]);
+  #assert w.size == 40 && out[0] == 'a';
+}
+
+// book:begin vocab
+// FNV-1a over the word's bytes picks a slot; collisions probe the next slot.
+bs_slot :: (v: BsVocab, word: string) -> int {
+  h: u64 = 14695981039346656037;
+  for c: word { h = mul_wrap(h ^ cast(u64) c, 1099511628211); }
+  mask := v.slots.count - 1;
+  s := cast(int) (h & cast(u64) mask);
+  while v.slots[s] >= 0 && cast(string) v.pool[v.from[v.slots[s]]..<v.from[v.slots[s]] + v.size[v.slots[s]]] != word { s = (s + 1) & mask; }
+  return s;
+}
+// The word's id, or -1 when it is not in the vocabulary.
+bs_find :: (v: BsVocab, word: string) -> int { return v.slots[bs_slot(v, word)]; }
+// Counts one more occurrence, adding the word when it is new; -1 when full.
+bs_count :: (v: [] BsVocab, word: string) -> int {
+  s := bs_slot(v[0], word);
+  e := v[0].slots[s];
+  if e >= 0 { v[0].count[e] += 1; return e; }
+  if v[0].n == v[0].from.count || v[0].n * 2 >= v[0].slots.count || v[0].used + word.count > v[0].pool.count { v[0].full = true; return -1; }
+  e = v[0].n; v[0].n += 1;
+  v[0].from[e] = v[0].used; v[0].size[e] = word.count; v[0].count[e] = 1;
+  for c: word { v[0].pool[v[0].used] = c; v[0].used += 1; }
+  v[0].slots[s] = e;
+  return e;
+}
+// book:end vocab
+bs_vocab_word :: (v: BsVocab, e: int) -> string { return cast(string) v.pool[v.from[e]..<v.from[e] + v.size[e]]; }
+bs_vocab_clear :: (v: [] BsVocab) {
+  for i: 0..<v[0].slots.count { v[0].slots[i] = -1; }
+  v[0].n = 0; v[0].used = 0; v[0].full = false;
+}
+// Entry a comes before entry b: more frequent, then smaller bytes.
+bs_vocab_before :: (v: BsVocab, a: int, b: int) -> bool {
+  if v.count[a] != v.count[b] { return v.count[a] > v.count[b]; }
+  return bs_less(bs_vocab_word(v, a), bs_vocab_word(v, b));
+}
+// Sorts order[] (entry numbers) with a merge sort into scratch.
+bs_vocab_sort :: (v: BsVocab, order: [] int, scratch: [] int) {
+  width := 1; n := order.count;
+  while width < n {
+    lo := 0;
+    while lo < n {
+      mid := ifx lo + width < n then lo + width else n;
+      hi := ifx lo + 2 * width < n then lo + 2 * width else n;
+      i := lo; j := mid; k := lo;
+      while k < hi {
+        if j == hi || (i < mid && !bs_vocab_before(v, order[j], order[i])) { scratch[k] = order[i]; i += 1; }
+        else { scratch[k] = order[j]; j += 1; }
+        k += 1;
+      }
+      lo = hi;
+    }
+    for x: 0..<n { order[x] = scratch[x]; }
+    width *= 2;
+  }
+}
+// Keeps the counted words seen at least `least` times, at most into.from.count
+// of them, most frequent first; their id is their rank.
+bs_vocab_select :: (counted: BsVocab, least: int, into: [] BsVocab, order: [] int, scratch: [] int) -> int {
+  for e: 0..<counted.n { order[e] = e; }
+  bs_vocab_sort(counted, order[0..<counted.n], scratch);
+  bs_vocab_clear(into);
+  for k: 0..<counted.n {
+    e := order[k];
+    if counted.count[e] < least || into[0].n == into[0].from.count { break; }
+    id := bs_count(into, bs_vocab_word(counted, e));
+    if id < 0 { break; }
+    into[0].count[id] = counted.count[e];
+  }
+  return into[0].n;
+}
+
+#test "the vocabulary counts words, finds them again and keeps frequent ones first" {
+  slots: [16] int; pool: [64] u8; from: [8] int; size: [8] int; count: [8] int;
+  v := [1] BsVocab.[BsVocab.{slots = slots[..], pool = pool[..], from = from[..], size = size[..], count = count[..]}];
+  bs_vocab_clear(v[..]);
+  words := [9] string.["b", "a", "cc", "a", "b", "a", "dd", "cc", "e"];
+  for w: words { #assert bs_count(v[..], w) >= 0; }
+  #assert v[0].n == 5 && bs_find(v[0], "a") == 1 && v[0].count[1] == 3 && bs_find(v[0], "zz") == -1 && bs_find(v[0], "") == -1;
+  s2: [16] int; p2: [64] u8; f2: [3] int; z2: [3] int; c2: [3] int;
+  w2 := [1] BsVocab.[BsVocab.{slots = s2[..], pool = p2[..], from = f2[..], size = z2[..], count = c2[..]}];
+  order: [8] int; scratch: [8] int;
+  #assert bs_vocab_select(v[0], 2, w2[..], order[..], scratch[..]) == 3;
+  #assert bs_find(w2[0], "a") == 0 && bs_find(w2[0], "b") == 1 && bs_find(w2[0], "cc") == 2 && bs_find(w2[0], "dd") == -1 && w2[0].count[0] == 3 && w2[0].count[2] == 2;
+  #assert bs_vocab_select(v[0], 3, w2[..], order[..], scratch[..]) == 1 && bs_find(w2[0], "b") == -1;
+  #assert bs_vocab_select(v[0], 1, w2[..], order[..], scratch[..]) == 3 && bs_find(w2[0], "dd") == -1;
+  #assert bs_count(v[..], "f") >= 0 && bs_count(v[..], "g") >= 0 && bs_count(v[..], "h") >= 0 && bs_count(v[..], "i") == -1 && v[0].full;
+  tight: [4] u8; s3: [16] int; f3: [4] int; z3: [4] int; c3: [4] int;
+  w3 := [1] BsVocab.[BsVocab.{slots = s3[..], pool = tight[..], from = f3[..], size = z3[..], count = c3[..]}];
+  bs_vocab_clear(w3[..]);
+  #assert bs_count(w3[..], "abc") == 0 && bs_count(w3[..], "de") == -1 && w3[0].full && bs_count(w3[..], "abc") == 0 && w3[0].count[0] == 2;
+}
+#test "merge sort orders by count then bytes" {
+  slots: [32] int; pool: [64] u8; from: [8] int; size: [8] int; count: [8] int;
+  v := [1] BsVocab.[BsVocab.{slots = slots[..], pool = pool[..], from = from[..], size = size[..], count = count[..]}];
+  bs_vocab_clear(v[..]);
+  words := [7] string.["q", "p", "z", "y", "x", "y", "q"];
+  for w: words { e := bs_count(v[..], w); }
+  order := [5] int.[0, 1, 2, 3, 4]; scratch: [5] int;
+  bs_vocab_sort(v[0], order[..], scratch[..]);
+  #assert bs_vocab_word(v[0], order[0]) == "q" && bs_vocab_word(v[0], order[1]) == "y" && bs_vocab_word(v[0], order[2]) == "p" && bs_vocab_word(v[0], order[3]) == "x" && bs_vocab_word(v[0], order[4]) == "z";
+}

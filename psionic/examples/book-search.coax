@@ -1,0 +1,53 @@
+// Chapter 54: search a two-chapter book with BM25, and label a draft.
+#import "Basic";
+#load "../lib/book-search/corpus.coax";
+
+// book:begin example
+main :: () {
+  chapters := [2] string.[
+    "# 1. Learning a number\n\nTrain one weight by gradient descent.\n\n## Measure the error\n\nThe loss is the mean squared error of the predictions.\n",
+    "# 54. Search the book\n\n> **Status: unimplemented — design draft.** Nothing here runs yet.\n\n## Rank passages\n\nRank passages by BM25, then by squared error of embeddings.\n"];
+  names := [2] string.["ch001-learning-a-number.md", "ch054-search-the-book.md"];
+  pool: [1024] u8; heads: [256] u8; passages: [8] BsPassage;
+  status: [2] BsStatus; n := 0; used := 0; at := 0;
+  for c: 0..<2 {
+    from := at; for ch: chapters[c] { pool[at] = ch; at += 1; }
+    status[c] = bs_status(names[c], chapters[c]);
+    r := bs_chunk(pool[..], from, at, c, passages[..], n, heads[..], used);
+    n = r.passages; used = r.heads;
+  }
+  // Words and their vocabulary ids.
+  slots: [256] int; vpool: [1024] u8; vfrom: [64] int; vsize: [64] int; vcount: [64] int;
+  v := [1] BsVocab.[BsVocab.{slots = slots[..], pool = vpool[..], from = vfrom[..], size = vsize[..], count = vcount[..]}];
+  bs_vocab_clear(v[..]);
+  table := PT_TOY; t := pt_layout(table[..]); word: [64] u8;
+  terms: [8][64] int; counts: [8][64] int; distinct: [8] int; length: [8] int; df: [64] int; total := 0;
+  for p: 0..<n {
+    q := passages[p]; ids: [64] int; k := 0;
+    texts := [2] string.[cast(string) heads[q.head_from..<q.head_to], cast(string) pool[q.from..<q.to]];
+    for text: texts {
+      i := 0;
+      while i < text.count { w := bs_word(table[..], t, text, i, word[..]); if w.size > 0 { ids[k] = bs_count(v[..], cast(string) word[0..<w.size]); k += 1; } i = w.next; }
+    }
+    length[p] = k; total += k;
+    for i: 0..<k { terms[p][i] = ids[i]; }
+    distinct[p] = bs_distinct(terms[p][0..<k]);
+    for i: 0..<distinct[p] { c := 0; for j: 0..<k { if ids[j] == terms[p][i] { c += 1; } } counts[p][i] = c; df[terms[p][i]] += 1; }
+  }
+  query := [2] string.["squared", "error"]; qids: [2] int;
+  for i: 0..<2 { qids[i] = bs_find(v[0], query[i]); }
+  qn := bs_distinct(qids[..]);
+  scores: [8] f64;
+  for p: 0..<n { scores[p] = bs_passage_bm25(qids[0..<qn], terms[p][0..<distinct[p]], counts[p][0..<distinct[p]], df[..], n, length[p], f64(total) / f64(n)); }
+  hits: [3] BsHit;
+  shown := bs_top(scores[0..<n], 0, hits[..]);
+  print("query \"squared error\": % passages, % with a match\n", n, shown);
+  hex: [64] u8;
+  for i: 0..<shown {
+    q := passages[hits[i].passage];
+    s := bs_section_status(status[q.file], cast(string) heads[q.head_from..<q.head_to]);
+    print("%. % > % [%]\n", i + 1, names[q.file], cast(string) heads[q.head_from..<q.head_to], bs_status_label(s));
+    print("   passage %, part %, shipped: %\n", bs_hex(q.hash, 8, hex[..]), q.part, bs_shipped(s));
+  }
+}
+// book:end example

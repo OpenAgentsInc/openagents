@@ -1,0 +1,5 @@
+query "squared error": 4 passages, 2 with a match
+1. ch001-learning-a-number.md > 1. Learning a number > Measure the error [implemented]
+   passage 26b81cb2515a99e3, part 0, shipped: true
+2. ch054-search-the-book.md > 54. Search the book > Rank passages [design draft, not implemented]
+   passage 564ccc79383e12df, part 0, shipped: false

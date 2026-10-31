@@ -1,0 +1,12 @@
+# Development queries for chapter 54: used to choose the encoder's settings.
+# Never report these as the evaluation. Format: query<TAB>path#heading[;path#heading]
+why does training stop near two rather than exactly two	psionic/book/ch001-learning-a-number.md#Why stop near two instead of exactly at two?
+does Coax let a new variable hide one with the same name	coax/book/ch03-common-concepts.md#No shadowing
+a jump should reach the same height at any display rate	aethyr/book/ch001-a-frame-has-a-fixed-step.md#1. A frame has a fixed step
+bfloat16 conversion is just moving bits	psionic/book/ch007-reading-original-weights.md#BF16 is a bit placement operation
+clean up a resource when a procedure returns early	coax/book/ch07-errors.md#Cleaning up with `defer`
+rotate query and key vectors to encode position	psionic/book/ch010-attention-without-training.md#Positions are rotations
+keyboard touch and gamepad map to the same intent	aethyr/book/ch004-input-becomes-typed-actions.md#One intent from any device
+the backward pass visits operations in reverse order	psionic/book/ch104-gradients-as-a-program.md#Backward walks the list in reverse
+call a Coax procedure from Swift	coax/book/ch20-interop.md#Calling it from Swift
+sky light and shadows in the renderer	aethyr/book/ch013-light-and-shadow.md#13. Light and shadow

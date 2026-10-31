@@ -1,0 +1,6 @@
+index against the books it was built from: fresh true
+index against the books now: fresh false, changed 1, added 0, removed 0
+stale index: psionic/book/ch054-search-the-book.md changed since the index was built
+  held sha256 dd5d1bed4e762740, now 7b255e77ba98c18f
+  held status: design draft, not implemented; now: implemented
+refusing to answer from the stale index; rebuild it

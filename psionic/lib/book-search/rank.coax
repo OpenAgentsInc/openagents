@@ -1,0 +1,372 @@
+// Chapter 54: the decisions a search result carries. This file decides how a
+// chapter's status is read and labelled, how BM25 scores a passage, how two
+// rankings fuse, how ties break, whether an index is fresh, and how recall
+// and reciprocal rank are counted. Everything that reads the books, learns
+// weights or writes files lives beside it and calls these rules.
+#authority;
+
+BsStatus :: enum u8 { implemented; draft; planned; }
+BsHit :: struct { passage: int; score: f64; }
+BsFresh :: struct { fresh: bool; changed: int; added: int; removed: int; first: int; }
+
+BS_DRAFT :: "> **Status: unimplemented — design draft.**";
+BS_PLANNED :: "> Note: This feature is planned and not available";
+BS_K1 :: 1.2;
+BS_B :: 0.75;
+BS_FUSE :: 60;
+
+#test "a draft marker on the third line, and only there, makes a design draft" {
+  #assert bs_status("ch054-x.md", "# 54. X\n\n> **Status: unimplemented — design draft.** Nothing.\n") == BsStatus.draft;
+  #assert bs_status("ch054-x.md", "# 54. X\n\nBody.\n> **Status: unimplemented — design draft.**\n") == BsStatus.implemented;
+  #assert bs_status("ch054-x.md", "# 54. X\n> **Status: unimplemented — design draft.**\n") == BsStatus.implemented;
+  #assert bs_status("ch054-x.md", "# 54. X\n\n> **Status: unimplemented") == BsStatus.implemented;
+  #assert bs_status("ch054-x.md", "") == BsStatus.implemented && bs_status("ch054-x.md", "\n\n") == BsStatus.implemented;
+  #assert bs_status("PLAN.md", "# Plan\n\nText.\n") == BsStatus.planned;
+  #assert bs_status("PLAN.md", "# Plan\n\n> **Status: unimplemented — design draft.**\n") == BsStatus.planned;
+  #assert bs_status("XPLAN.md", "# X\n") == BsStatus.implemented;
+  #assert bs_status("ch29-u.md", "# 29. U\n\n> Note: This feature is planned and not available in `coax0`.\n") == BsStatus.planned;
+  #assert bs_status("ch29-u.md", "# 29. U\n\n> Note: the examples run on coax0.\n") == BsStatus.implemented;
+}
+#test "a planned or later section inside an implemented chapter is planned" {
+  #assert bs_section_status(BsStatus.implemented, "6. Memory > Memory that outlives a procedure (planned)") == BsStatus.planned;
+  #assert bs_section_status(BsStatus.implemented, "8. Generics > User-defined constraints (later)") == BsStatus.planned;
+  #assert bs_section_status(BsStatus.implemented, "8. Generics > Built-in constraints") == BsStatus.implemented;
+  #assert bs_section_status(BsStatus.draft, "54. X > Y") == BsStatus.draft && bs_section_status(BsStatus.planned, "Plan") == BsStatus.planned;
+  #assert bs_section_status(BsStatus.draft, "54. X > Y (planned)") == BsStatus.draft;
+  #assert bs_contains("abc", "abc") && bs_contains("xabc", "abc") && bs_contains("abcx", "abc") && !bs_contains("ab", "abc") && !bs_contains("abd", "abc") && bs_contains("a", "");
+}
+#test "every status has a label and only implemented chapters count as shipped" {
+  #assert bs_status_label(BsStatus.implemented) == "implemented";
+  #assert bs_status_label(BsStatus.draft) == "design draft, not implemented";
+  #assert bs_status_label(BsStatus.planned) == "planned, not built";
+  #assert bs_status_name(BsStatus.implemented) == "implemented" && bs_status_name(BsStatus.draft) == "design draft" && bs_status_name(BsStatus.planned) == "planned";
+  #assert bs_shipped(BsStatus.implemented) && !bs_shipped(BsStatus.draft) && !bs_shipped(BsStatus.planned);
+}
+#test "line starts find the nth line exactly" {
+  #assert bs_line_starts("a\nbc\nd", 1, "bc") && bs_line_starts("a\nbc\nd", 0, "a") && bs_line_starts("a\nbc\nd", 2, "d");
+  #assert !bs_line_starts("a\nbc\nd", 3, "") && !bs_line_starts("a\nbc", 1, "bcd") && !bs_line_starts("a\nbc", 1, "c");
+  #assert bs_line_starts("a\n\n", 2, "") && !bs_line_starts("a\n", 2, "");
+}
+
+// book:begin status
+// A chapter's status comes from its own file: the plan is planned work; a
+// third line that is Psionic's or Aethyr's draft marker makes a design draft,
+// and one that is the Coax book's planned-feature note makes it planned;
+// every other chapter is implemented. Inside an implemented chapter, a
+// section whose heading says "(planned)" or "(later)" is planned.
+bs_status :: (name: string, text: string) -> BsStatus {
+  if name == "PLAN.md" { return BsStatus.planned; }
+  if bs_line_starts(text, 2, BS_DRAFT) { return BsStatus.draft; }
+  if bs_line_starts(text, 2, BS_PLANNED) { return BsStatus.planned; }
+  return BsStatus.implemented;
+}
+bs_section_status :: (chapter: BsStatus, heading: string) -> BsStatus {
+  if chapter != BsStatus.implemented { return chapter; }
+  if bs_contains(heading, "(planned)") || bs_contains(heading, "(later)") { return BsStatus.planned; }
+  return chapter;
+}
+bs_status_label :: (s: BsStatus) -> string {
+  if s == BsStatus.draft { return "design draft, not implemented"; }
+  if s == BsStatus.planned { return "planned, not built"; }
+  return "implemented";
+}
+bs_shipped :: (s: BsStatus) -> bool { return s == BsStatus.implemented; }
+// book:end status
+bs_contains :: (s: string, part: string) -> bool {
+  for i: 0..<s.count - part.count + 1 { if s[i..<i + part.count] == part { return true; } }
+  return false;
+}
+bs_status_name :: (s: BsStatus) -> string {
+  if s == BsStatus.draft { return "design draft"; }
+  if s == BsStatus.planned { return "planned"; }
+  return "implemented";
+}
+bs_line_starts :: (text: string, line: int, prefix: string) -> bool {
+  at := 0; seen := 0;
+  while seen < line {
+    if at >= text.count { return false; }
+    if text[at] == '\n' { seen += 1; }
+    at += 1;
+  }
+  if at + prefix.count > text.count { return false; }
+  return text[at..<at + prefix.count] == prefix;
+}
+
+#test "BM25 term weight follows the published formula and refuses empty statistics" {
+  idf := log(1 + (10.0 - 2 + 0.5) / (2 + 0.5));
+  #assert abs(bs_idf(10, 2) - idf) < 1e-15;
+  want := idf * 3 * 2.2 / (3 + 1.2 * (0.25 + 0.75 * 20.0 / 10.0));
+  #assert abs(bs_bm25(3, 2, 10, 20, 10) - want) < 1e-15;
+  #assert bs_bm25(1, 0, 10, 20, 10) == 0 && bs_bm25(1, 1, 0, 20, 10) == 0 && bs_bm25(1, -1, 10, 20, 10) == 0 && bs_bm25(1, 1, -1, 20, 10) == 0;
+  #assert bs_bm25(1, 1, 10, 0, 10) > 0 && bs_bm25(1, 2, 2, 5, 5) > 0 && bs_bm25(1, 1, 1, 5, 5) > 0;
+  #assert bs_bm25(2, 1, 10, 10, 10) > bs_bm25(1, 1, 10, 10, 10) && bs_bm25(1, 1, 10, 5, 10) > bs_bm25(1, 1, 10, 10, 10) && bs_bm25(1, 1, 10, 10, 10) > bs_bm25(1, 2, 10, 10, 10);
+}
+#test "a passage scores the query terms it holds, each once" {
+  df := [6] int.[0, 3, 1, 2, 5, 1];
+  ids := [3] int.[1, 3, 5]; counts := [3] int.[2, 1, 4];
+  q := [3] int.[0, 3, 5];
+  want := bs_bm25(1, 2, 8, 7, 6.5) + bs_bm25(4, 1, 8, 7, 6.5);
+  #assert abs(bs_passage_bm25(q[..], ids[..], counts[..], df[..], 8, 7, 6.5) - want) < 1e-15;
+  q2 := [2] int.[1, 2];
+  #assert abs(bs_passage_bm25(q2[..], ids[..], counts[..], df[..], 8, 7, 6.5) - bs_bm25(2, 3, 8, 7, 6.5)) < 1e-15;
+  q3 := [1] int.[4];
+  #assert bs_passage_bm25(q3[..], ids[..], counts[..], df[..], 8, 7, 6.5) == 0;
+  q4 := [1] int.[9];
+  #assert bs_passage_bm25(q4[..], ids[..], counts[..], df[..], 8, 7, 6.5) == 0;
+  #assert bs_passage_bm25(q[0..<0], ids[..], counts[..], df[..], 8, 7, 6.5) == 0;
+  q5 := [2] int.[5, 6];
+  #assert abs(bs_passage_bm25(q5[..], ids[..], counts[..], df[..], 8, 7, 6.5) - bs_bm25(4, 1, 8, 7, 6.5)) < 1e-15;
+}
+#test "query terms are sorted and made distinct" {
+  t := [6] int.[5, -1, 2, 5, 2, 0];
+  n := bs_distinct(t[..]);
+  #assert n == 3 && t[0] == 0 && t[1] == 2 && t[2] == 5;
+  u := [1] int.[-3]; #assert bs_distinct(u[..]) == 0;
+  w := [3] int.[7, 7, 7]; #assert bs_distinct(w[..]) == 1 && w[0] == 7;
+  x := [5] int.[3, 1, 3, 2, 1]; #assert bs_distinct(x[..]) == 3 && x[0] == 1 && x[1] == 2 && x[2] == 3;
+  y := [4] int.[0, 0, 4, 0]; #assert bs_distinct(y[..]) == 2 && y[0] == 0 && y[1] == 4;
+  z := [2] int.[9, 1]; #assert bs_distinct(z[..]) == 2 && z[0] == 1 && z[1] == 9;
+}
+
+// book:begin bm25
+// Okapi BM25 with k1 = 1.2 and b = 0.75. The IDF is Lucene's, which stays
+// positive for a term in more than half the passages. Callers pass tf >= 1
+// and an average length above zero; a term no passage holds scores zero.
+bs_idf :: (n: int, df: int) -> f64 { return log(1 + (f64(n) - f64(df) + 0.5) / (f64(df) + 0.5)); }
+bs_bm25 :: (tf: int, df: int, n: int, length: int, average: f64) -> f64 {
+  if df <= 0 || n <= 0 { return 0; }
+  t := f64(tf);
+  return bs_idf(n, df) * t * (BS_K1 + 1) / (t + BS_K1 * (1 - BS_B + BS_B * f64(length) / average));
+}
+// query: sorted distinct term ids. ids, counts: the passage's sorted distinct
+// terms and how often each occurs. A merge walks both lists once.
+bs_passage_bm25 :: (query: [] int, ids: [] int, counts: [] int, df: [] int, n: int, length: int, average: f64) -> f64 {
+  score := 0.0; i := 0; j := 0;
+  while i < query.count && j < ids.count {
+    if query[i] < ids[j] { i += 1; }
+    else if query[i] > ids[j] { j += 1; }
+    else { score += bs_bm25(counts[j], df[ids[j]], n, length, average); i += 1; }
+  }
+  return score;
+}
+// book:end bm25
+// Sorts the term ids in place, drops negatives (unknown words) and repeats,
+// and returns how many remain at the front.
+// Each value is inserted into the sorted front unless it is already there;
+// the front never passes the value being read.
+bs_distinct :: (t: [] int) -> int {
+  n := 0;
+  for i: 0..<t.count {
+    v := t[i];
+    if v < 0 { continue; }
+    j := n;
+    while j > 0 && t[j - 1] > v { j -= 1; }
+    if j > 0 && t[j - 1] == v { continue; }
+    k := n;
+    while k > j { t[k] = t[k - 1]; k -= 1; }
+    t[j] = v; n += 1;
+  }
+  return n;
+}
+
+#test "a higher score ranks first and equal scores rank the earlier passage first" {
+  #assert bs_before(BsHit.{passage = 4, score = 2}, BsHit.{passage = 1, score = 1});
+  #assert !bs_before(BsHit.{passage = 1, score = 1}, BsHit.{passage = 4, score = 2});
+  #assert bs_before(BsHit.{passage = 1, score = 2}, BsHit.{passage = 4, score = 2});
+  #assert !bs_before(BsHit.{passage = 4, score = 2}, BsHit.{passage = 1, score = 2});
+  #assert !bs_before(BsHit.{passage = 3, score = 2}, BsHit.{passage = 3, score = 2});
+}
+#test "the top k keeps the best passages above the floor in order" {
+  s := [6] f64.[0.5, 0, 2, 0.5, -1, 3];
+  out: [4] BsHit;
+  n := bs_top(s[..], 0, out[..]);
+  #assert n == 4 && out[0].passage == 5 && out[1].passage == 2 && out[2].passage == 0 && out[3].passage == 3 && out[0].score == 3;
+  n = bs_top(s[..], 0.5, out[..]);
+  #assert n == 2 && out[0].passage == 5 && out[1].passage == 2;
+  wide: [8] BsHit;
+  n = bs_top(s[..], -2, wide[..]);
+  #assert n == 6 && wide[3].passage == 3 && wide[4].passage == 1 && wide[5].passage == 4 && wide[5].score == -1;
+  n = bs_top(s[..], -2, out[..]);
+  #assert n == 4 && out[0].passage == 5 && out[1].passage == 2 && out[2].passage == 0 && out[3].passage == 3;
+  n = bs_top(s[..], -2, out[0..<1]);
+  #assert n == 1 && out[0].passage == 5;
+  n = bs_top(s[..], 10, out[..]);
+  #assert n == 0;
+  n = bs_top(s[0..<0], -2, out[..]);
+  #assert n == 0;
+  t := [5] f64.[1, 1, 1, 1, 1];
+  n = bs_top(t[..], 0, out[0..<3]);
+  #assert n == 3 && out[0].passage == 0 && out[1].passage == 1 && out[2].passage == 2;
+  r := [4] f64.[1, 2, 3, 4];
+  n = bs_top(r[..], 0, out[0..<2]);
+  #assert n == 2 && out[0].passage == 3 && out[1].passage == 2;
+  #assert bs_top(r[..], 0, out[0..<0]) == 0;
+}
+
+// book:begin rank
+// a ranks before b: a higher score, or an equal score and an earlier passage.
+bs_before :: (a: BsHit, b: BsHit) -> bool {
+  if a.score > b.score { return true; }
+  if a.score < b.score { return false; }
+  return a.passage < b.passage;
+}
+// The best out.count passages whose score is above least, best first.
+bs_top :: (scores: [] f64, least: f64, out: [] BsHit) -> int {
+  n := 0;
+  for p: 0..<scores.count {
+    if scores[p] <= least { continue; }
+    hit := BsHit.{passage = p, score = scores[p]};
+    if n == out.count && (n == 0 || !bs_before(hit, out[n - 1])) { continue; }
+    if n < out.count { n += 1; }
+    j := n - 1;
+    while j > 0 && bs_before(hit, out[j - 1]) { out[j] = out[j - 1]; j -= 1; }
+    out[j] = hit;
+  }
+  return n;
+}
+// book:end rank
+
+#test "fusion adds reciprocal ranks and an absent list adds nothing" {
+  #assert bs_rrf(1, 0) == 1.0 / 61 && bs_rrf(0, 2) == 1.0 / 62 && bs_rrf(1, 2) == 1.0 / 61 + 1.0 / 62 && bs_rrf(0, 0) == 0;
+  #assert bs_rrf(-1, 3) == 1.0 / 63;
+  lex := [3] BsHit.[BsHit.{passage = 7, score = 9}, BsHit.{passage = 2, score = 8}, BsHit.{passage = 5, score = 1}];
+  den := [3] BsHit.[BsHit.{passage = 2, score = 0.9}, BsHit.{passage = 4, score = 0.8}, BsHit.{passage = 7, score = 0.1}];
+  scores := [8] f64.[5, 5, 5, 5, 5, 5, 5, 5];
+  bs_fuse(lex[..], den[..], scores[..]);
+  #assert scores[2] == bs_rrf(2, 1) && scores[7] == bs_rrf(1, 3) && scores[4] == bs_rrf(0, 2) && scores[5] == bs_rrf(3, 0) && scores[0] == 0 && scores[1] == 0;
+  out: [8] BsHit;
+  n := bs_top(scores[..], 0, out[..]);
+  #assert n == 4 && out[0].passage == 2 && out[1].passage == 7 && out[2].passage == 4 && out[3].passage == 5;
+}
+
+// book:begin fuse
+// Reciprocal-rank fusion: rank r (1 is best, 0 is absent) adds 1/(60 + r).
+bs_rrf :: (lexical: int, dense: int) -> f64 {
+  s := 0.0;
+  if lexical > 0 { s += 1.0 / f64(BS_FUSE + lexical); }
+  if dense > 0 { s += 1.0 / f64(BS_FUSE + dense); }
+  return s;
+}
+// scores: one per passage, zeroed here, then each passage's fused score.
+bs_fuse :: (lexical: [] BsHit, dense: [] BsHit, scores: [] f64) {
+  for i: 0..<scores.count { scores[i] = 0; }
+  for i: 0..<lexical.count { scores[lexical[i].passage] += bs_rrf(i + 1, 0); }
+  for i: 0..<dense.count { scores[dense[i].passage] += bs_rrf(0, i + 1); }
+}
+// book:end fuse
+
+#test "cosine of unit vectors is their dot product in a fixed order" {
+  a := [3] f32.[0.6, 0.8, 0]; b := [3] f32.[0.8, 0.6, 0];
+  #assert abs(bs_dot(a[..], b[..]) - (f64(0.6f32) * f64(0.8f32) * 2)) < 1e-12 && bs_dot(a[0..<0], b[..]) == 0;
+  c := [3] f32.[0, 0, -1]; #assert bs_dot(a[..], c[..]) == 0 && bs_dot(c[..], c[..]) == 1;
+}
+// b holds at least a.count values.
+bs_dot :: (a: [] f32, b: [] f32) -> f64 {
+  s := 0.0;
+  for i: 0..<a.count { s += f64(a[i]) * f64(b[i]); }
+  return s;
+}
+
+#test "the first relevant rank, recall at k and reciprocal rank" {
+  hits := [4] BsHit.[BsHit.{passage = 3}, BsHit.{passage = 1}, BsHit.{passage = 0}, BsHit.{passage = 2}];
+  rel := [5] bool.[true, false, true, false, true];
+  #assert bs_first_relevant(hits[..], rel[..]) == 3;
+  #assert bs_found(hits[..], rel[..], 1) == 0 && bs_found(hits[..], rel[..], 3) == 1 && bs_found(hits[..], rel[..], 4) == 2 && bs_found(hits[..], rel[..], 9) == 2;
+  #assert bs_hit(hits[..], rel[..], 4) && bs_hit(hits[..], rel[..], 3) && !bs_hit(hits[..], rel[..], 2) && !bs_hit(hits[..], rel[..], 1);
+  #assert bs_reciprocal(3, 10) == 1.0 / 3 && bs_reciprocal(1, 10) == 1 && bs_reciprocal(-1, 10) == 0 && bs_reciprocal(0, 10) == 0 && bs_reciprocal(11, 10) == 0 && bs_reciprocal(10, 10) == 0.1;
+  none := [5] bool.[false, false, false, false, false];
+  #assert bs_first_relevant(hits[..], none[..]) == 0 && !bs_hit(hits[..], none[..], 4);
+  top := [2] BsHit.[BsHit.{passage = 4}, BsHit.{passage = 0}];
+  #assert bs_first_relevant(top[..], rel[..]) == 1 && bs_hit(top[..], rel[..], 1) && bs_found(top[..], rel[..], 2) == 2;
+  #assert bs_found(hits[..], rel[..], 0) == 0;
+}
+
+// book:begin metrics
+// The 1-based rank of the first relevant hit, or 0 when none is listed.
+bs_first_relevant :: (hits: [] BsHit, relevant: [] bool) -> int {
+  for i: 0..<hits.count { if relevant[hits[i].passage] { return i + 1; } }
+  return 0;
+}
+// How many relevant passages the first k hits hold.
+bs_found :: (hits: [] BsHit, relevant: [] bool, k: int) -> int {
+  n := 0;
+  for i: 0..<hits.count { if i < k && relevant[hits[i].passage] { n += 1; } }
+  return n;
+}
+// Recall at k, per query: does the first k hold a relevant passage? A label
+// names a section or a chapter, which may span several passages; finding any
+// of them answers the query.
+bs_hit :: (hits: [] BsHit, relevant: [] bool, k: int) -> bool { return bs_found(hits, relevant, k) > 0; }
+// Reciprocal rank with a cutoff: 1/rank when 1 <= rank <= cutoff, else 0.
+bs_reciprocal :: (rank: int, cutoff: int) -> f64 {
+  if rank < 1 || rank > cutoff { return 0; }
+  return 1.0 / f64(rank);
+}
+// book:end metrics
+
+#test "an index is fresh only when every file it holds is unchanged and nothing was added" {
+  a := [3] string.["a.md", "b.md", "c.md"];
+  ha := [3] string.["1", "2", "3"];
+  f := bs_freshness(a[..], ha[..], a[..], ha[..]);
+  #assert f.fresh && f.changed == 0 && f.added == 0 && f.removed == 0 && f.first == -1;
+  hb := [3] string.["1", "9", "3"];
+  f = bs_freshness(a[..], ha[..], a[..], hb[..]);
+  #assert !f.fresh && f.changed == 1 && f.added == 0 && f.removed == 0 && f.first == 1;
+  b := [2] string.["a.md", "c.md"]; hc := [2] string.["1", "3"];
+  f = bs_freshness(a[..], ha[..], b[..], hc[..]);
+  #assert !f.fresh && f.removed == 1 && f.added == 0 && f.changed == 0 && f.first == 1;
+  f = bs_freshness(b[..], hc[..], a[..], ha[..]);
+  #assert !f.fresh && f.added == 1 && f.removed == 0 && f.changed == 0 && f.first == -1;
+  d := [3] string.["a.md", "b.md", "d.md"]; hd := [3] string.["7", "2", "4"];
+  f = bs_freshness(a[..], ha[..], d[..], hd[..]);
+  #assert !f.fresh && f.changed == 1 && f.removed == 1 && f.added == 1 && f.first == 0;
+  he := [3] string.["8", "2", "9"];
+  f = bs_freshness(a[..], ha[..], a[..], he[..]);
+  #assert !f.fresh && f.changed == 2 && f.first == 0;
+  hf := [3] string.["1", "8", "9"];
+  f = bs_freshness(a[..], ha[..], a[..], hf[..]);
+  #assert f.changed == 2 && f.first == 1;
+  f = bs_freshness(a[0..<0], ha[0..<0], a[0..<0], ha[0..<0]);
+  #assert f.fresh;
+  f = bs_freshness(a[0..<1], ha[0..<1], a[0..<0], ha[0..<0]);
+  #assert !f.fresh && f.removed == 1 && f.first == 0;
+  f = bs_freshness(a[0..<0], ha[0..<0], a[0..<1], ha[0..<1]);
+  #assert !f.fresh && f.added == 1;
+}
+
+// book:begin fresh
+// held: the index's files (sorted paths) and their content hashes; now: the
+// files as they are. Fresh means identical lists: a changed, added or removed
+// chapter makes the index stale, and first names the first held file that
+// changed or went away.
+bs_freshness :: (held: [] string, held_hash: [] string, now: [] string, now_hash: [] string) -> BsFresh {
+  r := BsFresh.{first = -1};
+  i := 0; j := 0;
+  while i < held.count || j < now.count {
+    if j == now.count || (i < held.count && bs_less(held[i], now[j])) {
+      r.removed += 1; if r.first < 0 { r.first = i; } i += 1;
+    } else if i == held.count || bs_less(now[j], held[i]) {
+      r.added += 1; j += 1;
+    } else {
+      if held_hash[i] != now_hash[j] { r.changed += 1; if r.first < 0 { r.first = i; } }
+      i += 1; j += 1;
+    }
+  }
+  r.fresh = r.changed == 0 && r.added == 0 && r.removed == 0;
+  return r;
+}
+// book:end fresh
+
+#test "paths compare byte by byte, a prefix first" {
+  #assert bs_less("a", "b") && !bs_less("b", "a") && bs_less("a", "ab") && !bs_less("ab", "a") && !bs_less("a", "a") && bs_less("", "a") && !bs_less("", "");
+  #assert bs_less("a/b.md", "a/c.md") && bs_less("A", "a") && bs_less("ab", "ac") && !bs_less("ac", "ab");
+}
+bs_less :: (a: string, b: string) -> bool {
+  i := 0;
+  while i < a.count && i < b.count {
+    if a[i] < b[i] { return true; }
+    if a[i] > b[i] { return false; }
+    i += 1;
+  }
+  return a.count < b.count;
+}

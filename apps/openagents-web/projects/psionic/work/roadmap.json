@@ -1237,6 +1237,33 @@
         "The serve checks still pass."
       ],
       "blocked_by": []
+    },
+    {
+      "slug": "psionic-book-search",
+      "title": "Search the Coax, Psionic and Aethyr books with Psionic's own encoder (chapter 54)",
+      "parent": "psionic-integration",
+      "size": "M",
+      "labels": [
+        "retrieval",
+        "book",
+        "evaluation"
+      ],
+      "body": "Chapter 54 as a working product: chunk the three books into passages with stable identities (book, chapter file, heading path, content hash), their git revision and chapter status; rank them with BM25, with exhaustive vector search over Psionic's own learned embeddings (its own tokenizer split, attention pooling, contrastive training on the books, chapter 124's AdamW), and with a fused Psionic retriever; expose it as a Coax tool with JSON output; measure recall@k and MRR on a held-out query set; mark draft and planned chapters in every result; refuse or rebuild a stale index.",
+      "files": [
+        "psionic/lib/book-search/rank.coax",
+        "psionic/lib/book-search/corpus.coax",
+        "psionic/lib/book-search/encoder.coax",
+        "psionic/tools/book-search.coax",
+        "psionic/book/ch054-search-the-coax-book.md",
+        "psionic/tests/check_book_search.sh"
+      ],
+      "acceptance": [
+        "coax/web/tool.sh psionic/tools/book-search.coax \"QUERY\" returns ranked passages with book, chapter, heading path, revision and status; draft and planned text is marked as not shipped.",
+        "--eval psionic/fixtures/book-search/heldout.tsv reports Recall@1/5/10 and MRR@10 for BM25, exhaustive vector search and the fused retriever.",
+        "psionic/tests/check_book_search.sh --mutate passes with 0 surviving mutants in rank.coax.",
+        "Chapter 54 is a runnable chapter: source-linked listings, registered examples, the evaluation table and a stale-index case; its draft marker is gone."
+      ],
+      "blocked_by": []
     }
   ]
 }

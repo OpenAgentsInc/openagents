@@ -1,0 +1,29 @@
+// Chapter 54's broken case: an index built at one revision answers about
+// chapters that have changed since. The freshness check finds it first.
+#import "Basic";
+#load "../lib/book-search/corpus.coax";
+
+// book:begin stale
+main :: () {
+  paths := [2] string.["psionic/book/ch001-learning-a-number.md", "psionic/book/ch054-search-the-book.md"];
+  built := [2] string.["# 1. Learning a number\n\nTrain one weight.\n", "# 54. Search the book\n\n> **Status: unimplemented — design draft.** Nothing here runs yet.\n"];
+  now := [2] string.["# 1. Learning a number\n\nTrain one weight.\n", "# 54. Search the book\n\nRank passages with BM25 and an encoder.\n"];
+  held: [2] string; current: [2] string; hx: [2][64] u8; cx: [2][64] u8; pool: [256] u8;
+  for f: 0..<2 {
+    for i: 0..<built[f].count { pool[i] = built[f][i]; }
+    held[f] = bs_hex(bs_file_hash(pool[..], 0, built[f].count), 32, hx[f][..]);
+    for i: 0..<now[f].count { pool[i] = now[f][i]; }
+    current[f] = bs_hex(bs_file_hash(pool[..], 0, now[f].count), 32, cx[f][..]);
+  }
+  same := bs_freshness(paths[..], held[..], paths[..], held[..]);
+  print("index against the books it was built from: fresh %\n", same.fresh);
+  r := bs_freshness(paths[..], held[..], paths[..], current[..]);
+  print("index against the books now: fresh %, changed %, added %, removed %\n", r.fresh, r.changed, r.added, r.removed);
+  if !r.fresh {
+    print("stale index: % changed since the index was built\n", paths[r.first]);
+    print("  held sha256 %, now %\n", held[r.first][0..<16], current[r.first][0..<16]);
+    print("  held status: %; now: %\n", bs_status_label(bs_status("ch054-search-the-book.md", built[1])), bs_status_label(bs_status("ch054-search-the-book.md", now[1])));
+    print("refusing to answer from the stale index; rebuild it\n");
+  }
+}
+// book:end stale

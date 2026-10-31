@@ -1,0 +1,39 @@
+# Held-out queries for chapter 54, written after the encoder's settings were fixed on dev.tsv.
+# Report these. Never tune on them. Format: query<TAB>path#heading[;path#heading]
+# A label names a section (any passage under it is relevant) or a chapter title (any passage in the chapter).
+never leave half-written output after a failed request	psionic/book/ch002-shapes-and-storage.md#Refuse first, stage next, publish last;psionic/book/ch001-learning-a-number.md#Publish a result only after the work succeeds
+multiplying dimensions could overflow the element count	psionic/book/ch002-shapes-and-storage.md#Count before multiplying
+negative strides and transposing without copying	psionic/book/ch003-a-tensor-is-a-view-of-memory.md#Slice, transpose and broadcast
+NFC normalization before byte pair encoding	psionic/book/ch009-text-becomes-a-model-request.md#Unicode normalization changes the bytes before BPE
+is the model's confidence well calibrated on held out data	psionic/book/ch016-are-the-probabilities-any-good.md#16. Are the probabilities any good?
+measuring latency with a monotonic clock around the real work	psionic/book/ch018-time-a-decision.md#Read clocks around real work
+split the data by session so the test set does not leak	psionic/book/ch103-learning-with-arrays.md#Split by session
+how ties are broken when choosing which pair of bytes to merge	psionic/book/ch123-learn-a-tokenizer.md#123. Learn a tokenizer
+AdamW bias correction and the step counter	psionic/book/ch124-adamw-and-explicit-precision.md#One update
+an evaluation suite identified by three hashes	psionic/book/ch239-a-suite-is-three-digests.md#239. A suite is three digests
+learn which of three models to send a task to from logs	psionic/book/ch225-learn-which-model-to-call.md#225. Learn which model to call
+continuous batching with a fair scheduler across priority classes	psionic/book/ch175-continuous-batching-and-a-fair-scheduler.md#175. Continuous batching and a fair scheduler
+a switch over an enum must handle every case	coax/book/ch05-structs-enums-unions.md#Matching on an enum
+default values for struct fields	coax/book/ch05-structs-enums-unions.md#Defaults and initialization
+a slice into an array does not keep the array alive	coax/book/ch06-memory.md#A view doesn't keep its array alive
+what happens when an index is out of range	coax/book/ch06-memory.md#Bounds checks
+return an error code instead of crashing	coax/book/ch07-errors.md#Returning errors as values
+write a procedure once for many types	coax/book/ch08-generics.md#Writing it once with a type parameter
+compute a lookup table while compiling	coax/book/ch09-compile-time.md#Running a procedure while compiling with `#run`;coax/book/ch09-compile-time.md#Building a whole table;coax/book/ch09-compile-time.md#In the real world: a CRC-32 table
+are my tests strong enough to catch a changed operator	coax/book/ch11-writing-checks.md#Checking the checks with `coax mutate`
+floating point results identical on every run and machine	coax/book/ch16-determinism.md#Determinism
+generate a C header for exported procedures	coax/book/ch20-interop.md#Generating a header
+physical units such as meters and seconds in types	coax/book/ch29-units-and-frames.md#29. Units and coordinate frames
+GPU shaders written in Coax	coax/book/ch17-gpu.md#GPU programs
+the values a new game state begins with	aethyr/book/ch003-state-starts-from-its-defaults.md#3. State starts from its defaults
+converting between world space and screen space	aethyr/book/ch002-spaces-and-units.md#2. Spaces and units
+record the inputs and play a session back identically	aethyr/book/ch005-replay-a-session-exactly.md#5. Replay a session exactly
+spawning and despawning entities	aethyr/book/ch006-entities-are-born-and-die.md#6. Entities are born and die
+raycast queries against the world	aethyr/book/ch007-ask-the-world-where-things-are.md#7. Ask the world where things are
+the character stands on the terrain and does not fall through	aethyr/book/ch008-ground-and-collision.md#8. Ground and collision
+third person camera that orbits behind the player	aethyr/book/ch010-the-camera-follows.md#10. The camera follows
+skinned figures and blending animation clips	aethyr/book/ch014-figures-and-animation.md#14. Figures and animation
+hotbar and on-screen display	aethyr/book/ch015-ui-and-the-hud.md#15. UI and the HUD
+refuse to load a scene that exceeds the memory budget	aethyr/book/ch016-budgets-that-refuse.md#16. Budgets that refuse
+cloth and rope simulated with constraints	aethyr/book/ch025-cloth-and-rope-from-constraints.md#25. Cloth and rope from constraints
+planet positions and astronomical time scales	aethyr/book/ch039-ephemerides-time-scales-and-frames.md#39. Ephemerides, time scales and frames
