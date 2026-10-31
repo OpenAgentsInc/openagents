@@ -369,9 +369,8 @@ refusal, atomic command admission and motor clipping. A fault scenario is an
 owned experiment input; it is not a claim that arbitrary sensor failures or
 hardware disturbances are handled.
 
-The next policy-quality comparison is a source-framework closed-loop baseline
-under exactly this reset, noise and controller profile, especially for demos
-20, 30 and 40. It has now run on demos 20, 30 and 40: all three reference episodes also
+A source-framework closed-loop comparison now covers demos 20, 30 and 40
+under the same reset, noise and controller profile. All three reference episodes
 reach the 720-tick limit, with exact controls-only replay. The
 [reference receipt](../fixtures/robotics/libero-panda/framework-baseline-qualification.json)
 records all 270 actual MPS forwards. It uses the pinned official Transformers
@@ -379,13 +378,57 @@ backbone and independently authored source-equation head under the F32 profile,
 with the same Coax preparation, decoding and controller; it is development
 tooling, not a Python product fallback or NVIDIA BF16 benchmark. The first
 genuine reference frame matches all 5,280 frozen normalized words exactly.
-These timeouts therefore occur without Coax numerical drift being necessary
-for the outcome. Independently evolving trajectories do not establish numerical
-identity or locate a failure cause. The four failed visual
-hidden diagnostics also remain a concrete numerical improvement target. The owned physical solver, differentiable sensitivities and batched
-function transforms remain separate [roadmap work](PLAN.md). A real deployment
+The reference also times out under this controller/reset profile. Matching
+outcomes do not establish numerical identity or locate a failure cause. The four failed visual
+hidden diagnostics also remain a concrete numerical improvement target. The owned physical solver, direct parameter recovery and function transforms
+now have [their own](ch109-learn-a-physical-system.md)
+[qualified](ch111-recover-the-physics-from-the-motion.md)
+[chapters](ch107-transform-functions-not-just-tensors.md). A matching own robot
+backend and its compiler/control guarantees remain [roadmap work](PLAN.md). A real deployment
 also needs a measured asynchronous deadline profile, hardware-specific state
 and safety contracts, and qualified recovery beyond this simulator experiment.
+
+## Checkpoint the owned smooth plant
+
+The [owned-oscillator replay component](../docs/physics/oscillator-replay.md)
+now saves a completed RK4 boundary, its parameters, dt, global tick and only
+forces already accepted. Acceptance has a bounded FIFO and commits atomically:
+
+<!-- source: psionic/lib/physics/oscillator-replay.coax accept -->
+```jai
+or_accept :: (s:OrSnapshot,forces:[]f64)->OrResult #export_c {
+  status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrResult.{status=status,snapshot=s};}
+  if forces.count<0 || forces.count>128-s.pending {return OrResult.{status=OrStatus.capacity,snapshot=s};}
+  if forces.count>OR_TICK_MAX-s.tick-s.pending {return OrResult.{status=OrStatus.range,snapshot=s};}
+  for force:forces {if !os_finite(force) {return OrResult.{status=OrStatus.number,snapshot=s};}if abs(force)>2 {return OrResult.{status=OrStatus.force,snapshot=s};}}
+  next:=s;for i:0..<forces.count {next.forces[s.pending+i]=forces[i];}next.pending+=forces.count;return OrResult.{snapshot=next};
+}
+```
+
+A 1,312-byte versioned record includes solver/numeric/target/build/run identities,
+canonical unused lanes and a tagged checksum. Restore requires the expected
+context and publishes one complete admitted snapshot. Later input acceptance
+remains external: the demonstration restores mid-run, resupplies the recorded
+later accepts, and reproduces the uninterrupted physical state exactly.
+
+The [qualification](../fixtures/physics/oscillator-replay-qualification.json)
+records 24 checkpoints across 980 transitions, including a 720-tick episode and
+near-limit global ticks. All three native modes pass 20,733 assertions each;
+1,312 byte corruptions and 61 semantic faults refuse atomically. State/control
+traces match between modes; their distinct executable hashes intentionally
+produce distinct snapshots, and all six cross-build restores refuse. First
+divergence reports tick, field and source operation, with applied force compared
+before state so signed-zero input changes stay observable.
+
+```shell
+psionic/check.sh --only physics/replay
+psionic/check.sh --only physics/replay-native
+```
+
+The first command is the portable Coax unit gate; the second explicitly runs
+the qualified Darwin-arm64 native profile. This component owns one smooth
+plant only. It does not snapshot the robot, policy, external producer or Verse,
+and supplies no typed-clock, compiler-bounded or cross-architecture guarantee.
 
 ## Run the genuine experiment
 

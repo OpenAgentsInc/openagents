@@ -1,0 +1,140 @@
+#load "oscillator-replay-types.coax";
+#authority;
+
+#test "snapshot admission includes identities physical scalars queue clock and canonical inactive lanes" {
+  #assert or_profile()=="oscillator-replay-f64-v1";
+  ids:=or_fixture_ids();s:=or_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.5},0.05,ids).snapshot;
+  #assert or_snapshot_status(s)==OrStatus.ok && s.tick==0 && s.pending==0;
+  zero_id:[32]u8;for mode:0..<15 {bad:=s;if mode==0 {bad.ids.program=zero_id;}if mode==1 {bad.ids.numeric=zero_id;}if mode==2 {bad.ids.target=zero_id;}if mode==3 {bad.ids.build=zero_id;}if mode==4 {bad.ids.run=zero_id;}if mode==5 {bad.tick=-1;}if mode==6 {bad.tick=2147483648;}if mode==7 {bad.pending=-1;}if mode==8 {bad.pending=129;}if mode==9 {bad.params.mass=2;}if mode==10 {bad.params.spring=0.499;}if mode==11 {bad.params.damping=1.001;}if mode==12 {bad.state.position=2.001;}if mode==13 {bad.dt=0.051;}if mode==14 {bad.forces[127]=1;}#assert or_snapshot_status(bad)!=OrStatus.ok;}
+  tail:=s;tail.forces[0]=1;#assert or_snapshot_status(tail)==OrStatus.canonical;
+  #assert or_tick_room(0).ok && or_tick_room(0).remaining==OR_TICK_MAX && or_tick_room(OR_TICK_MAX).ok && or_tick_room(OR_TICK_MAX).remaining==0 && !or_tick_room(-1).ok && !or_tick_room(2147483648).ok;
+  s.params.spring=0.5;s.params.damping=0.1;s.dt=0.0009765625;s.state=OsState.{position=-2,velocity=4};s.tick=OR_TICK_MAX;#assert or_snapshot_status(s)==OrStatus.ok;
+  s.params.spring=4;s.params.damping=1;s.dt=0.05;s.state=OsState.{position=2,velocity=-4};s.tick=OR_TICK_MAX-128;s.pending=128;s.forces[0]=-2;s.forces[127]=2;#assert or_snapshot_status(s)==OrStatus.ok;
+  s.tick+=1;#assert or_snapshot_status(s)==OrStatus.range;s.tick-=1;s.forces[0]=-2.001;#assert or_snapshot_status(s)==OrStatus.force;s.forces[0]=0;s.forces[127]=2.001;#assert or_snapshot_status(s)==OrStatus.force;
+  #assert or_begin(OsParams.{spring=1,damping=0.5},OsState.{},0.0009,ids).status==OrStatus.time;
+}
+#test "acceptance appends exact input words atomically with queue and global clock headroom" {
+  s:=or_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.5},0.05,or_fixture_ids()).snapshot;
+  first:=[2]f64.[0.5,-0.25];second:=[2]f64.[1,-1];a:=or_accept(s,first[..]);b:=or_accept(a.snapshot,second[..]);#assert a.status==OrStatus.ok && b.status==OrStatus.ok && b.snapshot.pending==4 && b.snapshot.forces[0]==0.5 && b.snapshot.forces[1]== -0.25 && b.snapshot.forces[2]==1 && b.snapshot.forces[3]== -1 && b.snapshot.forces[4]==0;
+  bad:=[2]f64.[0,2.001];refused:=or_accept(b.snapshot,bad[..]);#assert refused.status==OrStatus.force && refused.snapshot.pending==4 && refused.snapshot.forces[0]==0.5 && refused.snapshot.forces[3]== -1;
+  bad[0]=-2.001;bad[1]=0;#assert or_accept(s,bad[..]).status==OrStatus.force;
+  wide:[129]f64;#assert or_accept(s,wide[..]).status==OrStatus.capacity && or_accept(b.snapshot,wide[0..<125]).status==OrStatus.capacity;
+  s.tick=OR_TICK_MAX-128;a=or_accept(s,wide[0..<128]);#assert a.status==OrStatus.ok && a.snapshot.pending==128;
+  s.tick+=1;#assert or_accept(s,wide[0..<128]).status==OrStatus.range;s.tick=OR_TICK_MAX;#assert or_accept(s,wide[0..<0]).status==OrStatus.ok && or_accept(s,wide[0..<1]).status==OrStatus.range;
+  s.tick=OR_TICK_MAX-2;edge:=[2]f64.[-2,2];s=or_accept(s,edge[0..<1]).snapshot;#assert or_accept(s,edge[..]).status==OrStatus.range && or_accept(s,edge[1..<2]).status==OrStatus.ok;
+  s.dt=0;#assert or_accept(s,wide[0..<0]).status==OrStatus.time;
+}
+#test "advance consumes the first accepted force and preserves the original on refusal" {
+  start:=or_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.5,velocity=-0.25},0.05,or_fixture_ids()).snapshot;forces:=[3]f64.[0.5,-0.5,0.25];s:=or_accept(start,forces[..]).snapshot;expected:=os_step(s.params,s.state,0.5,s.dt);next:=or_advance(s);
+  #assert next.status==OrStatus.ok && next.snapshot.tick==1 && next.snapshot.pending==2 && next.snapshot.forces[0]== -0.5 && next.snapshot.forces[1]==0.25 && f64_bits(next.snapshot.forces[2])==0;
+  #assert next.frame.tick==1 && next.frame.force==f64_bits(0.5) && next.frame.position==f64_bits(expected.state.position) && next.frame.velocity==f64_bits(expected.state.velocity);
+  #assert or_advance(start).status==OrStatus.empty;
+  s.state=OsState.{position=2,velocity=4};bad:=or_advance(s);#assert bad.status==OrStatus.state && bad.snapshot.tick==0 && bad.snapshot.pending==3 && bad.snapshot.state.position==2;
+  s=start;s.tick=OR_TICK_MAX-1;one:=or_accept(s,forces[0..<1]).snapshot;last:=or_advance(one);#assert last.status==OrStatus.ok && last.snapshot.tick==OR_TICK_MAX && last.snapshot.pending==0;
+  s.dt=0;#assert or_advance(s).status==OrStatus.time;
+}
+#test "bounded replay stages all completed transitions before publication" {
+  s:=or_begin(OsParams.{spring=2,damping=0.5},OsState.{position=0.5},0.05,or_fixture_ids()).snapshot;forces:=[3]f64.[0.5,-0.5,0.25];s=or_accept(s,forces[..]).snapshot;frames:[4]OrFrame;for i:0..<4 {frames[i]=OrFrame.{tick=777,force=99,position=88,velocity=77};}
+  run:=or_replay(s,frames[..],false);#assert run.status==OrStatus.ok && run.written==3 && run.final.tick==3 && run.final.pending==0 && frames[3].tick==777;
+  cursor:=s;for i:0..<3 {step:=or_advance(cursor);#assert frames[i].tick==step.frame.tick && frames[i].force==step.frame.force && frames[i].position==step.frame.position && frames[i].velocity==step.frame.velocity;cursor=step.snapshot;}
+  #assert or_replay(s,frames[0..<3],false).status==OrStatus.ok;
+  #assert or_replay(s,frames[0..<2],false).status==OrStatus.capacity && or_replay(s,frames[..],true).status==OrStatus.overlap;
+  s.state=OsState.{position=2,velocity=4};for i:0..<4 {frames[i].tick=777;}bad:=or_replay(s,frames[..],false);#assert bad.status==OrStatus.state && bad.written==0 && bad.final.tick==0;for f:frames {#assert f.tick==777;}
+  s=run.final;empty:=or_replay(s,frames[0..<0],false);#assert empty.status==OrStatus.ok && empty.written==0 && empty.final.tick==3;
+  s.dt=0;#assert or_replay(s,frames[..],false).status==OrStatus.time;
+}
+#test "first difference names applied input before coincident state and rejects different profiles" {
+  ids:=or_fixture_ids();frames:=[2]OrFrame.[OrFrame.{tick=40,force=f64_bits(0.5),position=f64_bits(0.25),velocity=f64_bits(-0.5)},OrFrame.{tick=41,force=f64_bits(-0.5),position=f64_bits(0.2),velocity=f64_bits(-0.4)}];same:=or_first(ids,ids,frames[..],frames[..]);#assert same.status==OrStatus.ok && same.equal;
+  for mode:0..<4 {b:=frames;if mode==0 {b[0].force=f64_bits(-0.5);}if mode==1 {b[0].position=f64_bits(0.3);}if mode==2 {b[0].velocity=f64_bits(0.5);}if mode==3 {b[1].position=f64_bits(0.3);}diff:=or_first(ids,ids,frames[..],b[..]);#assert diff.status==OrStatus.ok && !diff.equal && diff.tick==(ifx mode==3 then 41 else 40);if mode==0 {#assert diff.field==OrField.force && diff.source==OrSource.accepted_force && diff.left==f64_bits(0.5) && diff.right==f64_bits(-0.5);}if mode==1 || mode==3 {#assert diff.field==OrField.position && diff.source==OrSource.next_position;}if mode==2 {#assert diff.field==OrField.velocity && diff.source==OrSource.next_velocity;}}
+  short:=or_first(ids,ids,frames[..],frames[0..<1]);long:=or_first(ids,ids,frames[0..<1],frames[..]);#assert short.field==OrField.length && long.field==OrField.length && short.tick==41 && long.tick==41 && short.source==OrSource.trace_length && !short.equal && !long.equal;
+  b:=frames;b[0].tick=39;b[1].tick=40;clock:=or_first(ids,ids,frames[..],b[..]);#assert clock.field==OrField.tick && clock.source==OrSource.completed_clock && clock.tick==40;
+  other:=ids;other.build[0]^=1;#assert or_first(ids,other,frames[..],frames[..]).status==OrStatus.build;
+  #assert or_source_name(OrSource.next_position)=="psionic/lib/physics/oscillator.coax:os_step:next.position" && or_source_name(OrSource.next_velocity)=="psionic/lib/physics/oscillator.coax:os_step:next.velocity";
+}
+#test "trace admission and all identity slots have explicit refusal boundaries" {
+  ids:=or_fixture_ids();for mode:0..<5 {other:=ids;if mode==0 {other.program[31]^=1;}if mode==1 {other.numeric[31]^=1;}if mode==2 {other.target[31]^=1;}if mode==3 {other.build[31]^=1;}if mode==4 {other.run[31]^=1;}statuses:=[5]OrStatus.[OrStatus.program,OrStatus.numeric,OrStatus.target,OrStatus.build,OrStatus.run];#assert or_id_status(ids,other)==statuses[mode];}
+  zero:[32]u8;#assert !or_id_bound(zero);zero[0]=1;#assert or_id_bound(zero);zero[0]=0;zero[31]=1;#assert or_id_bound(zero);
+  good:=[1]OrFrame.[OrFrame.{tick=OR_TICK_MAX,force=f64_bits(-2.0),position=f64_bits(-2.0),velocity=f64_bits(4.0)}];#assert or_trace_status(good[..])==OrStatus.ok;
+  for mode:0..<5 {bad:=good;if mode==0 {bad[0].tick=0;}if mode==1 {bad[0].tick=2147483648;}if mode==2 {bad[0].force=f64_bits(2.001);}if mode==3 {bad[0].position=f64_bits(-2.001);}if mode==4 {bad[0].velocity=f64_bits(4.001);}#assert or_trace_status(bad[..])!=OrStatus.ok && or_first(ids,ids,good[..],bad[..]).status!=OrStatus.ok;}
+  gap:=[2]OrFrame.[OrFrame.{tick=1},OrFrame.{tick=3}];#assert or_trace_status(gap[..])==OrStatus.canonical;wide:[129]OrFrame;#assert or_trace_status(wide[..])==OrStatus.shape;
+  empty_ids:OrIds;#assert or_id_status(empty_ids,ids)==OrStatus.identity && or_id_status(ids,empty_ids)==OrStatus.identity;
+  full:[128]OrFrame;for i:0..<128 {full[i].tick=i+1;}#assert or_trace_status(full[..])==OrStatus.ok && or_trace_status(full[0..<0])==OrStatus.ok && or_first(ids,ids,full[0..<0],full[0..<0]).equal;
+  invalid:=good;invalid[0].tick=0;#assert or_first(ids,ids,invalid[..],good[..]).status==OrStatus.range;
+  #assert or_field_name(OrField.force)=="applied_force" && or_source_name(OrSource.accepted_force)=="oscillator-replay:accepted_force_order";
+}
+
+#test "diagnostic names and fixture identities are complete stable metadata" {
+  fields:=[11]string.["none","completed_tick","applied_force","position","velocity","trace_length","program_identity","numeric_identity","target_identity","build_identity","run_identity"];
+  sources:=[8]string.["none","oscillator-replay:profile_identity","oscillator-replay:completed_tick","oscillator-replay:accepted_force_order","psionic/lib/physics/oscillator.coax:os_step:next.position","psionic/lib/physics/oscillator.coax:os_step:next.velocity","oscillator-replay:trace_length","oscillator-replay:trace_validation"];
+  for i:0..<11 {#assert or_field_name(cast(OrField)i)==fields[i];}for i:0..<8 {#assert or_source_name(cast(OrSource)i)==sources[i];}
+  statuses:=[6]OrStatus.[OrStatus.ok,OrStatus.program,OrStatus.numeric,OrStatus.target,OrStatus.build,OrStatus.run];wanted:=[6]OrField.[OrField.none,OrField.program,OrField.numeric,OrField.target,OrField.build,OrField.run];for i:0..<6 {#assert or_identity_field(statuses[i])==wanted[i];}
+  ids:=or_fixture_ids();for i:0..<32 {#assert ids.program[i]==cast(u8)(i+1) && ids.numeric[i]==cast(u8)(i+33) && ids.target[i]==cast(u8)(i+65) && ids.build[i]==cast(u8)(i+97) && ids.run[i]==cast(u8)(i+129);}
+}
+
+or_profile :: ()->string #export_c {return "oscillator-replay-f64-v1";}
+or_id_bound :: (id:[32]u8)->bool {seen:u8=0;for byte:id {seen|=byte;}return seen!=0;}
+or_id_equal :: (a:[32]u8,b:[32]u8)->bool {for byte,i:a {if byte!=b[i] {return false;}}return true;}
+or_ids_bound :: (ids:OrIds)->bool {return or_id_bound(ids.program) && or_id_bound(ids.numeric) && or_id_bound(ids.target) && or_id_bound(ids.build) && or_id_bound(ids.run);}
+or_id_status :: (a:OrIds,b:OrIds)->OrStatus #export_c {
+  if !or_ids_bound(a) || !or_ids_bound(b) {return OrStatus.identity;}
+  if !or_id_equal(a.program,b.program) {return OrStatus.program;}if !or_id_equal(a.numeric,b.numeric) {return OrStatus.numeric;}if !or_id_equal(a.target,b.target) {return OrStatus.target;}if !or_id_equal(a.build,b.build) {return OrStatus.build;}if !or_id_equal(a.run,b.run) {return OrStatus.run;}return OrStatus.ok;
+}
+or_tick_room :: (tick:int)->OrRoom {if tick<0 || tick>OR_TICK_MAX {return OrRoom.{};}return OrRoom.{ok=true,remaining=OR_TICK_MAX-tick};}
+or_snapshot_status :: (s:OrSnapshot)->OrStatus #export_c {
+  if !or_ids_bound(s.ids) {return OrStatus.identity;}
+  room:=or_tick_room(s.tick);if !room.ok || s.pending<0 || s.pending>128 {return OrStatus.range;}if s.pending>room.remaining {return OrStatus.range;}
+  numbers:=[6]f64.[s.params.mass,s.params.spring,s.params.damping,s.state.position,s.state.velocity,s.dt];for x:numbers {if !os_finite(x) {return OrStatus.number;}}
+  if s.params.mass!=1 || s.params.spring<0.5 || s.params.spring>4 || s.params.damping<0.1 || s.params.damping>1 {return OrStatus.parameters;}
+  if !os_state_ok(s.state) {return OrStatus.state;}if s.dt<0.0009765625 || s.dt>0.05 {return OrStatus.time;}
+  for i:0..<128 {v:=s.forces[i];if i<s.pending {if !os_finite(v) {return OrStatus.number;}if abs(v)>2 {return OrStatus.force;}}else {if f64_bits(v)!=0 {return OrStatus.canonical;}}}
+  return OrStatus.ok;
+}
+or_begin :: (params:OsParams,state:OsState,dt:f64,ids:OrIds)->OrResult #export_c {s:=OrSnapshot.{ids=ids,params=params,state=state,dt=dt};return OrResult.{status=or_snapshot_status(s),snapshot=s};}
+// book:begin accept
+or_accept :: (s:OrSnapshot,forces:[]f64)->OrResult #export_c {
+  status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrResult.{status=status,snapshot=s};}
+  if forces.count<0 || forces.count>128-s.pending {return OrResult.{status=OrStatus.capacity,snapshot=s};}
+  if forces.count>OR_TICK_MAX-s.tick-s.pending {return OrResult.{status=OrStatus.range,snapshot=s};}
+  for force:forces {if !os_finite(force) {return OrResult.{status=OrStatus.number,snapshot=s};}if abs(force)>2 {return OrResult.{status=OrStatus.force,snapshot=s};}}
+  next:=s;for i:0..<forces.count {next.forces[s.pending+i]=forces[i];}next.pending+=forces.count;return OrResult.{snapshot=next};
+}
+// book:end accept
+// book:begin advance
+or_advance :: (s:OrSnapshot)->OrStep #export_c {
+  status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrStep.{status=status,snapshot=s};}if s.pending==0 {return OrStep.{status=OrStatus.empty,snapshot=s};}
+  step:=os_step(s.params,s.state,s.forces[0],s.dt);if step.status!=OsStatus.ok {return OrStep.{status=OrStatus.state,snapshot=s};}
+  next:=s;next.state=step.state;next.tick+=1;next.pending-=1;for i:0..<next.pending {next.forces[i]=s.forces[i+1];}next.forces[next.pending]=0;
+  return OrStep.{snapshot=next,frame=OrFrame.{tick=next.tick,force=f64_bits(s.forces[0]),position=f64_bits(next.state.position),velocity=f64_bits(next.state.velocity)}};
+}
+// book:end advance
+or_replay :: (s:OrSnapshot,out:[]OrFrame,overlap:bool)->OrReplay #export_c {
+  status:=or_snapshot_status(s);if status!=OrStatus.ok {return OrReplay.{status=status,final=s};}if out.count<s.pending {return OrReplay.{status=OrStatus.capacity,final=s};}if overlap {return OrReplay.{status=OrStatus.overlap,final=s};}
+  stage:[128]OrFrame;cursor:=s;for i:0..<s.pending {next:=or_advance(cursor);if next.status!=OrStatus.ok {return OrReplay.{status=next.status,final=s};}stage[i]=next.frame;cursor=next.snapshot;}
+  for i:0..<s.pending {out[i]=stage[i];}return OrReplay.{written=s.pending,final=cursor};
+}
+or_trace_status :: (frames:[]OrFrame)->OrStatus #export_c {
+  if frames.count<0 || frames.count>128 {return OrStatus.shape;}
+  for f,i:frames {if f.tick<1 || f.tick>OR_TICK_MAX {return OrStatus.range;}if i>0 && f.tick!=frames[i-1].tick+1 {return OrStatus.canonical;}
+    words:=[3]u64.[f.force,f.position,f.velocity];for word:words {if !os_bits_finite(word) {return OrStatus.number;}}
+    if abs(f64_from_bits(f.force))>2 {return OrStatus.force;}if !os_state_ok(OsState.{position=f64_from_bits(f.position),velocity=f64_from_bits(f.velocity)}) {return OrStatus.state;}
+  }
+  return OrStatus.ok;
+}
+// book:begin difference
+or_first :: (a_ids:OrIds,b_ids:OrIds,a:[]OrFrame,b:[]OrFrame)->OrDifference #export_c {
+  status:=or_id_status(a_ids,b_ids);if status!=OrStatus.ok {return OrDifference.{status=status,field=or_identity_field(status),source=OrSource.profile_identity};}
+  status=or_trace_status(a);if status!=OrStatus.ok {return OrDifference.{status=status,source=OrSource.trace_validation};}status=or_trace_status(b);if status!=OrStatus.ok {return OrDifference.{status=status,source=OrSource.trace_validation};}
+  for i:0..<a.count {
+    if i>=b.count {return OrDifference.{tick=a[i].tick,index=i,field=OrField.length,source=OrSource.trace_length,left=cast(u64)a.count,right=cast(u64)b.count};}
+    if a[i].tick!=b[i].tick {return OrDifference.{tick=a[i].tick,index=i,field=OrField.tick,source=OrSource.completed_clock,left=cast(u64)a[i].tick,right=cast(u64)b[i].tick};}
+    if a[i].force!=b[i].force {return OrDifference.{tick=a[i].tick,index=i,field=OrField.force,source=OrSource.accepted_force,left=a[i].force,right=b[i].force};}
+    if a[i].position!=b[i].position {return OrDifference.{tick=a[i].tick,index=i,field=OrField.position,source=OrSource.next_position,left=a[i].position,right=b[i].position};}
+    if a[i].velocity!=b[i].velocity {return OrDifference.{tick=a[i].tick,index=i,field=OrField.velocity,source=OrSource.next_velocity,left=a[i].velocity,right=b[i].velocity};}
+  }
+  if a.count!=b.count {return OrDifference.{tick=b[a.count].tick,index=a.count,field=OrField.length,source=OrSource.trace_length,left=cast(u64)a.count,right=cast(u64)b.count};}return OrDifference.{equal=true};
+}
+// book:end difference
+or_identity_field :: (status:OrStatus)->OrField {if status==OrStatus.program {return OrField.program;}if status==OrStatus.numeric {return OrField.numeric;}if status==OrStatus.target {return OrField.target;}if status==OrStatus.build {return OrField.build;}if status==OrStatus.run {return OrField.run;}return OrField.none;}
+or_field_name :: (field:OrField)->string #export_c {if field==OrField.tick {return "completed_tick";}if field==OrField.force {return "applied_force";}if field==OrField.position {return "position";}if field==OrField.velocity {return "velocity";}if field==OrField.length {return "trace_length";}if field==OrField.program {return "program_identity";}if field==OrField.numeric {return "numeric_identity";}if field==OrField.target {return "target_identity";}if field==OrField.build {return "build_identity";}if field==OrField.run {return "run_identity";}return "none";}
+or_source_name :: (source:OrSource)->string #export_c {if source==OrSource.profile_identity {return "oscillator-replay:profile_identity";}if source==OrSource.completed_clock {return "oscillator-replay:completed_tick";}if source==OrSource.accepted_force {return "oscillator-replay:accepted_force_order";}if source==OrSource.next_position {return "psionic/lib/physics/oscillator.coax:os_step:next.position";}if source==OrSource.next_velocity {return "psionic/lib/physics/oscillator.coax:os_step:next.velocity";}if source==OrSource.trace_length {return "oscillator-replay:trace_length";}if source==OrSource.trace_validation {return "oscillator-replay:trace_validation";}return "none";}
+or_fixture_ids :: ()->OrIds {ids:OrIds;for i:0..<32 {ids.program[i]=cast(u8)(i+1);ids.numeric[i]=cast(u8)(i+33);ids.target[i]=cast(u8)(i+65);ids.build[i]=cast(u8)(i+97);ids.run[i]=cast(u8)(i+129);}return ids;}

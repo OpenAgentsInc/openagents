@@ -1,0 +1,15 @@
+{
+  "schema":"psionic-oscillator-replay-profile-v1",
+  "profile":"oscillator-replay-f64-v1",
+  "precursor_to":"Coax ROADMAP R16; not completion of R13, R15 or R16",
+  "solver":"oscillator-rk4-f64-v1 at completed RK4 step boundaries",
+  "limits":{"pending_forces":128,"replay_call_transitions":128,"completed_tick":2147483647,"dt_inclusive":[0.0009765625,0.05]},
+  "clock":"Plain integer completed-step count and one fixed F64 dt; not a typed clock or wall deadline",
+  "acceptance":"Atomic ordered append; each pending input applies in FIFO order. Only accepted pending inputs are saved; later unaccepted events must be supplied again from an external event log.",
+  "encoding":{"magic":"OSRP","version":1,"bytes":1312,"endianness":"little","body_bytes":1280,"digest":"SHA256(SHA256(tag)||SHA256(tag)||body)","tag":"psionic.oscillator.snapshot.v1","inventory_mask":31,"worker_count":1,"solver_history_kind":0},
+  "offsets":{"magic":0,"version_u16":4,"inventory_mask_u16":6,"size_u32":8,"reserved_zero_u32":12,"program_id":16,"numeric_id":48,"target_id":80,"build_id":112,"run_id":144,"completed_tick_u64":176,"dt_f64":184,"mass_f64":192,"spring_f64":200,"damping_f64":208,"position_f64":216,"velocity_f64":224,"pending_u64":232,"accepted_end_tick_u64":240,"worker_count_u32":248,"solver_history_kind_u32":252,"ordered_force_f64_array128":256,"digest32":1280},
+  "inventory":{"included":["admitted mass/spring/damping","current position/velocity","completed tick and dt","ordered accepted pending force words and count","five nonzero exact identity digests","serial worker and completed-step integration inventory"],"absent_by_plant_design":["random-stream state: solver has no RNG","integration/warmstart history: closed-step RK4 is Markov in q/v","entity IDs/generations: one implicit oscillator, no R5 entity system","structural commands and callbacks: none","job schedule: one serial worker","learned-model or optimizer state: none"],"external_not_restored":["future inputs not yet accepted","actual executable/target/FP environment identity verification","file durability and publication","file/network/GPU/device handles and host addresses"]},
+  "identity_scope":"Caller supplies authenticated expected context. Equality and tagged hashes detect mismatch/change; they do not authenticate a forged snapshot or attest the executing machine. Native qualification binds build ID to the actual executable SHA256 and records the observed FP environment.",
+  "comparison":"Same-context traces only; compare completed tick, then applied force bits, position bits, velocity bits; first mismatch names tick/field/source output operation. This identifies a differing recorded output, not necessarily its earliest internal cause.",
+  "native_scope":"Within each exact executable on one qualified target/architecture and fixed observed FP environment. Native mode traces must match bitwise; snapshots intentionally differ in build ID/digest, and cross-build restore must refuse. No cross-architecture claim."
+}

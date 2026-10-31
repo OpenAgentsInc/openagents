@@ -1,0 +1,17 @@
+#load "oscillator.coax";
+OrStatus :: enum u8 {ok;shape;capacity;range;number;parameters;state;force;time;identity;program;numeric;target;build;run;overlap;canonical;digest;empty;}
+OrIds :: struct {program:[32]u8;numeric:[32]u8;target:[32]u8;build:[32]u8;run:[32]u8;}
+OrSnapshot :: struct {ids:OrIds;params:OsParams;state:OsState;tick:int;dt:f64;pending:int;forces:[128]f64;}
+OrRoom :: struct {ok:bool;remaining:int;}
+OrResult :: struct {status:OrStatus;snapshot:OrSnapshot;}
+// A completed transition: force is the applied input, state is the result.
+OrFrame :: struct {tick:int;force:u64;position:u64;velocity:u64;}
+OrStep :: struct {status:OrStatus;snapshot:OrSnapshot;frame:OrFrame;}
+OrReplay :: struct {status:OrStatus;written:int;final:OrSnapshot;}
+OrField :: enum u8 {none;tick;force;position;velocity;length;program;numeric;target;build;run;}
+OrSource :: enum u8 {none;profile_identity;completed_clock;accepted_force;next_position;next_velocity;trace_length;trace_validation;}
+OrDifference :: struct {status:OrStatus;equal:bool;tick:int;index:int;field:OrField;source:OrSource;left:u64;right:u64;}
+OR_QUEUE_MAX :: 128;
+OR_TICK_MAX :: 2147483647;
+OR_BODY :: 1280;
+OR_BYTES :: 1312;

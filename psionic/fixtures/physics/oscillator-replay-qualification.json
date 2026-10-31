@@ -1,0 +1,1504 @@
+{
+  "schema": "psionic-oscillator-replay-qualification-v1",
+  "date": "2026-10-31",
+  "profile": "oscillator-replay-f64-v1",
+  "status": "Qualified precursor; R16 remains incomplete",
+  "source_sha256": {
+    "psionic/lib/physics/oscillator-replay-types.coax": "7782686eff3b68afa9c029b1aefb01b6f80cca8e3224cf968c56d1fcc0b58524",
+    "psionic/lib/physics/oscillator-replay.coax": "63bbf497cc8291ab2d0581c0dc65e202810ca500e507d162d06b5c705a866bda",
+    "psionic/lib/physics/oscillator-replay-codec.coax": "3c654a2da9973bc8f6d3c2f7571dbfa43a99912917a02b95a791da5ec2ed8ab9",
+    "psionic/tests/physics/oscillator-replay-native.c": "3d30c939623d73a3f701d6ab27baf2fd47557c41794e93728f997ec3b2a98319",
+    "psionic/tests/physics/oscillator-replay-reference.py": "57e8d166a29f34306cf0002365640f42e320d55a7bc75d17d832dbabb4c6fa7d",
+    "psionic/tests/physics/oscillator-replay-modes.py": "84ad8ec9840feb4d9f28877ddef6242935004a5a9592665d7aa2718e481e7da9",
+    "psionic/tests/physics/oscillator-replay-check.sh": "a7754938c9c77e5a44bbe7086c9966fe40b3e08f430a8f48187e492ed57538a8",
+    "psionic/fixtures/physics/oscillator-replay-profile.json": "933ba789e08e844b027150a0bda2a98775afef15f282a7a33cbf365a9976fd37",
+    "psionic/docs/physics/oscillator-replay.md": "fc497ee737269976c04bfba70b0812b914aee7cbc35083e6c888d559a889caa0"
+  },
+  "authored_checks": {
+    "oscillator-replay": 7,
+    "oscillator-replay-codec": 6
+  },
+  "root_mutants": {
+    "oscillator-replay": 227,
+    "oscillator-replay-codec": 236
+  },
+  "mutants_survived": 0,
+  "native_modes": [
+    "debug",
+    "release",
+    "ASan+UBSan"
+  ],
+  "native_assertions_total_per_mode": 20733,
+  "receipt_counter_excludes_final_close": true,
+  "canonical_snapshots": 24,
+  "original_transitions": 980,
+  "restored_continuation_transitions_derived_from_frozen_scenarios": 3635,
+  "single_byte_corruptions": 1312,
+  "semantic_fault_records": 61,
+  "first_difference_cases": [
+    {
+      "name": "changed-state",
+      "tick": 44,
+      "field": "position",
+      "source": "psionic/lib/physics/oscillator.coax:os_step:next.position",
+      "left": "bfd2d897d3a2b9a8",
+      "right": "0000000000000000"
+    },
+    {
+      "name": "changed-clock",
+      "tick": 44,
+      "field": "completed_tick",
+      "source": "oscillator-replay:completed_tick",
+      "left": "000000000000002c",
+      "right": "0000000000000001"
+    },
+    {
+      "name": "changed-dt",
+      "tick": 44,
+      "field": "position",
+      "source": "psionic/lib/physics/oscillator.coax:os_step:next.position",
+      "left": "bfd2d897d3a2b9a8",
+      "right": "bfd2fae624c2f03a"
+    },
+    {
+      "name": "omitted-pending-inputs",
+      "tick": 44,
+      "field": "trace_length",
+      "source": "oscillator-replay:trace_length",
+      "left": "0000000000000015",
+      "right": "0000000000000000"
+    },
+    {
+      "name": "unaccepted-later-event-not-resupplied",
+      "tick": 65,
+      "field": "trace_length",
+      "source": "oscillator-replay:trace_length",
+      "left": "0000000000000055",
+      "right": "0000000000000015"
+    },
+    {
+      "name": "altered-later-acceptance",
+      "tick": 65,
+      "field": "applied_force",
+      "source": "oscillator-replay:accepted_force_order",
+      "left": "0000000000000000",
+      "right": "3fd0000000000000"
+    },
+    {
+      "name": "coincident-state-distinct-applied-zero",
+      "tick": 1,
+      "field": "applied_force",
+      "source": "oscillator-replay:accepted_force_order",
+      "left": "0000000000000000",
+      "right": "8000000000000000"
+    }
+  ],
+  "mode_comparison": {
+    "schema": "psionic-oscillator-replay-modes-v1",
+    "modes": [
+      "debug",
+      "release",
+      "sanitized"
+    ],
+    "build_sha256": {
+      "debug": "6e00ab502c07936cf53082b51144e73b967c915940cbca47b121b0dfc3e699b2",
+      "release": "693c1001ed9698a7d3fc10988695f252017fa25f301de7dc5ca73b0f8e5e7852",
+      "sanitized": "1c81f1145c97bf5c4c057661056c8a16151c95fc64405cc3697b77af8308be2c"
+    },
+    "all980_input_state_tick_records_bit_identical": true,
+    "all24_snapshot_bodies_equal_except_build_id": true,
+    "snapshot_digest_differences_expected": true,
+    "cross_build_refusals": [
+      {
+        "destination": "debug",
+        "origin": "release",
+        "status": "build mismatch, destination unchanged"
+      },
+      {
+        "destination": "debug",
+        "origin": "sanitized",
+        "status": "build mismatch, destination unchanged"
+      },
+      {
+        "destination": "release",
+        "origin": "debug",
+        "status": "build mismatch, destination unchanged"
+      },
+      {
+        "destination": "release",
+        "origin": "sanitized",
+        "status": "build mismatch, destination unchanged"
+      },
+      {
+        "destination": "sanitized",
+        "origin": "debug",
+        "status": "build mismatch, destination unchanged"
+      },
+      {
+        "destination": "sanitized",
+        "origin": "release",
+        "status": "build mismatch, destination unchanged"
+      }
+    ],
+    "mode_reference_sha256": {
+      "debug": "e85fe770a17f9ad7f19f04d7f0bb4e5255cc5d754827426f5b2284ebbf054bb9",
+      "release": "3afea2f1656c0bd3713adb20dae6518cf4f95657f0ee274511bcd3348d0178c5",
+      "sanitized": "05c7e542f0ea507591ec1faa2b8c8930476892b691fa3feba7d731d0c36ab41c"
+    }
+  },
+  "mode_references": {
+    "debug": {
+      "record_sha256": "e85fe770a17f9ad7f19f04d7f0bb4e5255cc5d754827426f5b2284ebbf054bb9",
+      "context": {
+        "schema": "psionic-oscillator-replay-native-context-v1",
+        "binary_sha256": "6e00ab502c07936cf53082b51144e73b967c915940cbca47b121b0dfc3e699b2",
+        "generated_c_sha256": "35d4f67adf88529a4d7762e1d3d5e69e1fcdd5345357fb9f3981ec9132ea8d56",
+        "oracle_sha256": "57e8d166a29f34306cf0002365640f42e320d55a7bc75d17d832dbabb4c6fa7d",
+        "environment": {
+          "nearest": true,
+          "rounding_value": 0,
+          "control_observed": true,
+          "control_register": "0000000000000000",
+          "little_endian": true,
+          "pointer_bits": 64,
+          "machine": "aarch64",
+          "system": "apple-darwin"
+        },
+        "program": {
+          "name": "oscillator-rk4-f64-v1",
+          "source_sha256": {
+            "psionic/lib/physics/oscillator-types.coax": "814878e4263e24b8f05ac9a0c8258f511bbb308b36128e46022846bbc7550fc8",
+            "psionic/lib/physics/oscillator.coax": "9d61fab2666d8ec7dc5517c6d4b66ef24e194e579170b57b6e3a6c0acecb90f0"
+          }
+        },
+        "numeric": {
+          "name": "host-observed-f64-rk4-serial-v1",
+          "nearest": true,
+          "control_register": "0000000000000000",
+          "contraction": "off",
+          "fast_math": false,
+          "workers": 1,
+          "solver_transcendentals": false,
+          "external_precondition": "FP control environment remains unchanged; not restored by snapshot"
+        },
+        "target": {
+          "machine": "aarch64",
+          "system": "apple-darwin",
+          "pointer_bits": 64,
+          "little_endian": true
+        },
+        "identities": [
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "6e00ab502c07936cf53082b51144e73b967c915940cbca47b121b0dfc3e699b2",
+            "run": "aba9258c39547a2048c4f93f9096001139f0e973fda6086ab3b2b2401eb7aaef"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "6e00ab502c07936cf53082b51144e73b967c915940cbca47b121b0dfc3e699b2",
+            "run": "d395ebf928fbfaee1ba6e564fc9303cb63e0c3047a6d84a89898c00c5ecd1f7b"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "6e00ab502c07936cf53082b51144e73b967c915940cbca47b121b0dfc3e699b2",
+            "run": "198b56e1be15eaa768d9369b5b6d52762179b3dfbf93482120ebb14bc0cb0915"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "6e00ab502c07936cf53082b51144e73b967c915940cbca47b121b0dfc3e699b2",
+            "run": "fad18033bea8cef5d7a6c8ad197b69766c1e90ad2cdd6523370821c5d964c0c8"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "6e00ab502c07936cf53082b51144e73b967c915940cbca47b121b0dfc3e699b2",
+            "run": "7c47b9ff8338092a20e9ce69f35ff43aeceb7743c619856056522c6bab6ad8ee"
+          }
+        ],
+        "scenarios": [
+          {
+            "index": 0,
+            "length": 128,
+            "start_tick": 0,
+            "captures": [
+              0,
+              1,
+              16,
+              43,
+              48,
+              80,
+              127,
+              128
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": -0.25,
+            "dt": 0.05,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "0:32,16:32,48:32,80:32"
+          },
+          {
+            "index": 1,
+            "length": 720,
+            "start_tick": 0,
+            "captures": [
+              0,
+              127,
+              128,
+              359,
+              360,
+              719,
+              720
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": -0.25,
+            "dt": 0.05,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "each32"
+          },
+          {
+            "index": 2,
+            "length": 128,
+            "start_tick": 2147483519,
+            "captures": [
+              0,
+              1,
+              64,
+              127,
+              128
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.75,
+            "velocity": -0.25,
+            "dt": 0.03125,
+            "force_recipe": "constant-half",
+            "acceptance": "all-at-zero"
+          },
+          {
+            "index": 3,
+            "length": 4,
+            "start_tick": 0,
+            "captures": [
+              0,
+              1,
+              4
+            ],
+            "mass": 1.0,
+            "spring": 1.0,
+            "damping": 0.5,
+            "position": 0.0,
+            "velocity": 0.0,
+            "dt": 0.05,
+            "force_recipe": "signed-zero-four",
+            "acceptance": "all-at-zero"
+          },
+          {
+            "index": 4,
+            "length": 0,
+            "start_tick": 0,
+            "captures": [
+              0
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": 0.0,
+            "dt": 0.0009765625,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "all-at-zero"
+          }
+        ],
+        "faults": [
+          {
+            "name": "omitted-inventory-0",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-1",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-2",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-3",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-4",
+            "status": 16
+          },
+          {
+            "name": "version",
+            "status": 16
+          },
+          {
+            "name": "reserved",
+            "status": 16
+          },
+          {
+            "name": "worker",
+            "status": 16
+          },
+          {
+            "name": "history",
+            "status": 16
+          },
+          {
+            "name": "length",
+            "status": 16
+          },
+          {
+            "name": "digest",
+            "status": 17
+          },
+          {
+            "name": "tick-upper",
+            "status": 3
+          },
+          {
+            "name": "tick-u64",
+            "status": 3
+          },
+          {
+            "name": "pending-upper",
+            "status": 3
+          },
+          {
+            "name": "end-mismatch",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-scalar-184-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-184-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-184-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-active-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-7ff0000000000000",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-active-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-fff0000000000000",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-active-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-7ff8000000000123",
+            "status": 16
+          },
+          {
+            "name": "inactive-negative-zero",
+            "status": 16
+          },
+          {
+            "name": "mass",
+            "status": 5
+          },
+          {
+            "name": "spring-low",
+            "status": 5
+          },
+          {
+            "name": "spring-high",
+            "status": 5
+          },
+          {
+            "name": "damping-low",
+            "status": 5
+          },
+          {
+            "name": "damping-high",
+            "status": 5
+          },
+          {
+            "name": "q",
+            "status": 6
+          },
+          {
+            "name": "v",
+            "status": 6
+          },
+          {
+            "name": "dt-zero",
+            "status": 8
+          },
+          {
+            "name": "dt-high",
+            "status": 8
+          },
+          {
+            "name": "force-high",
+            "status": 7
+          },
+          {
+            "name": "inactive-force",
+            "status": 16
+          },
+          {
+            "name": "omitted-identity-0",
+            "status": 9
+          },
+          {
+            "name": "different-identity-0",
+            "status": 10
+          },
+          {
+            "name": "omitted-identity-1",
+            "status": 9
+          },
+          {
+            "name": "different-identity-1",
+            "status": 11
+          },
+          {
+            "name": "omitted-identity-2",
+            "status": 9
+          },
+          {
+            "name": "different-identity-2",
+            "status": 12
+          },
+          {
+            "name": "omitted-identity-3",
+            "status": 9
+          },
+          {
+            "name": "different-identity-3",
+            "status": 13
+          },
+          {
+            "name": "omitted-identity-4",
+            "status": 9
+          },
+          {
+            "name": "different-identity-4",
+            "status": 14
+          }
+        ],
+        "snapshot_count": 24,
+        "frame_count": 980
+      },
+      "payload_sha256": {
+        "snapshots": "d075f36e862f5a33f156da77e08506b8cf5465c64c8d1fe81ff98ee60a95bad0",
+        "trace": "3bb30788c267809bce5e7e316d034e3b0e65139ee2721971f64046561eca8eaf",
+        "ids": "c4384ecb600d84d1cf6117a30ff4991e698eaedaa3321a50523bf2353f98ce35",
+        "faults": "77616ba767a2ee1e36d8b91ea9426055c1bf75b4f167961cac1bf153318c6743",
+        "differences.json": "f959e64ff0ecafe0761a7b97e62b7a898e101422454a7a82329b91e3608b7f01"
+      },
+      "native": {
+        "assertions_before_final_close": 20732,
+        "snapshots": 24,
+        "restores": 24,
+        "original_transitions": 980,
+        "single_byte_corruptions": 1312,
+        "independent_fault_records": 61,
+        "difference_records": 7,
+        "fp_control_unchanged": true
+      }
+    },
+    "release": {
+      "record_sha256": "3afea2f1656c0bd3713adb20dae6518cf4f95657f0ee274511bcd3348d0178c5",
+      "context": {
+        "schema": "psionic-oscillator-replay-native-context-v1",
+        "binary_sha256": "693c1001ed9698a7d3fc10988695f252017fa25f301de7dc5ca73b0f8e5e7852",
+        "generated_c_sha256": "1935cad492481a645532eb110d3a76ce1d07c7403314ce5079a42f468e061264",
+        "oracle_sha256": "57e8d166a29f34306cf0002365640f42e320d55a7bc75d17d832dbabb4c6fa7d",
+        "environment": {
+          "nearest": true,
+          "rounding_value": 0,
+          "control_observed": true,
+          "control_register": "0000000000000000",
+          "little_endian": true,
+          "pointer_bits": 64,
+          "machine": "aarch64",
+          "system": "apple-darwin"
+        },
+        "program": {
+          "name": "oscillator-rk4-f64-v1",
+          "source_sha256": {
+            "psionic/lib/physics/oscillator-types.coax": "814878e4263e24b8f05ac9a0c8258f511bbb308b36128e46022846bbc7550fc8",
+            "psionic/lib/physics/oscillator.coax": "9d61fab2666d8ec7dc5517c6d4b66ef24e194e579170b57b6e3a6c0acecb90f0"
+          }
+        },
+        "numeric": {
+          "name": "host-observed-f64-rk4-serial-v1",
+          "nearest": true,
+          "control_register": "0000000000000000",
+          "contraction": "off",
+          "fast_math": false,
+          "workers": 1,
+          "solver_transcendentals": false,
+          "external_precondition": "FP control environment remains unchanged; not restored by snapshot"
+        },
+        "target": {
+          "machine": "aarch64",
+          "system": "apple-darwin",
+          "pointer_bits": 64,
+          "little_endian": true
+        },
+        "identities": [
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "693c1001ed9698a7d3fc10988695f252017fa25f301de7dc5ca73b0f8e5e7852",
+            "run": "aba9258c39547a2048c4f93f9096001139f0e973fda6086ab3b2b2401eb7aaef"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "693c1001ed9698a7d3fc10988695f252017fa25f301de7dc5ca73b0f8e5e7852",
+            "run": "d395ebf928fbfaee1ba6e564fc9303cb63e0c3047a6d84a89898c00c5ecd1f7b"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "693c1001ed9698a7d3fc10988695f252017fa25f301de7dc5ca73b0f8e5e7852",
+            "run": "198b56e1be15eaa768d9369b5b6d52762179b3dfbf93482120ebb14bc0cb0915"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "693c1001ed9698a7d3fc10988695f252017fa25f301de7dc5ca73b0f8e5e7852",
+            "run": "fad18033bea8cef5d7a6c8ad197b69766c1e90ad2cdd6523370821c5d964c0c8"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "693c1001ed9698a7d3fc10988695f252017fa25f301de7dc5ca73b0f8e5e7852",
+            "run": "7c47b9ff8338092a20e9ce69f35ff43aeceb7743c619856056522c6bab6ad8ee"
+          }
+        ],
+        "scenarios": [
+          {
+            "index": 0,
+            "length": 128,
+            "start_tick": 0,
+            "captures": [
+              0,
+              1,
+              16,
+              43,
+              48,
+              80,
+              127,
+              128
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": -0.25,
+            "dt": 0.05,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "0:32,16:32,48:32,80:32"
+          },
+          {
+            "index": 1,
+            "length": 720,
+            "start_tick": 0,
+            "captures": [
+              0,
+              127,
+              128,
+              359,
+              360,
+              719,
+              720
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": -0.25,
+            "dt": 0.05,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "each32"
+          },
+          {
+            "index": 2,
+            "length": 128,
+            "start_tick": 2147483519,
+            "captures": [
+              0,
+              1,
+              64,
+              127,
+              128
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.75,
+            "velocity": -0.25,
+            "dt": 0.03125,
+            "force_recipe": "constant-half",
+            "acceptance": "all-at-zero"
+          },
+          {
+            "index": 3,
+            "length": 4,
+            "start_tick": 0,
+            "captures": [
+              0,
+              1,
+              4
+            ],
+            "mass": 1.0,
+            "spring": 1.0,
+            "damping": 0.5,
+            "position": 0.0,
+            "velocity": 0.0,
+            "dt": 0.05,
+            "force_recipe": "signed-zero-four",
+            "acceptance": "all-at-zero"
+          },
+          {
+            "index": 4,
+            "length": 0,
+            "start_tick": 0,
+            "captures": [
+              0
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": 0.0,
+            "dt": 0.0009765625,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "all-at-zero"
+          }
+        ],
+        "faults": [
+          {
+            "name": "omitted-inventory-0",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-1",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-2",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-3",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-4",
+            "status": 16
+          },
+          {
+            "name": "version",
+            "status": 16
+          },
+          {
+            "name": "reserved",
+            "status": 16
+          },
+          {
+            "name": "worker",
+            "status": 16
+          },
+          {
+            "name": "history",
+            "status": 16
+          },
+          {
+            "name": "length",
+            "status": 16
+          },
+          {
+            "name": "digest",
+            "status": 17
+          },
+          {
+            "name": "tick-upper",
+            "status": 3
+          },
+          {
+            "name": "tick-u64",
+            "status": 3
+          },
+          {
+            "name": "pending-upper",
+            "status": 3
+          },
+          {
+            "name": "end-mismatch",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-scalar-184-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-184-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-184-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-active-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-7ff0000000000000",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-active-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-fff0000000000000",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-active-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-7ff8000000000123",
+            "status": 16
+          },
+          {
+            "name": "inactive-negative-zero",
+            "status": 16
+          },
+          {
+            "name": "mass",
+            "status": 5
+          },
+          {
+            "name": "spring-low",
+            "status": 5
+          },
+          {
+            "name": "spring-high",
+            "status": 5
+          },
+          {
+            "name": "damping-low",
+            "status": 5
+          },
+          {
+            "name": "damping-high",
+            "status": 5
+          },
+          {
+            "name": "q",
+            "status": 6
+          },
+          {
+            "name": "v",
+            "status": 6
+          },
+          {
+            "name": "dt-zero",
+            "status": 8
+          },
+          {
+            "name": "dt-high",
+            "status": 8
+          },
+          {
+            "name": "force-high",
+            "status": 7
+          },
+          {
+            "name": "inactive-force",
+            "status": 16
+          },
+          {
+            "name": "omitted-identity-0",
+            "status": 9
+          },
+          {
+            "name": "different-identity-0",
+            "status": 10
+          },
+          {
+            "name": "omitted-identity-1",
+            "status": 9
+          },
+          {
+            "name": "different-identity-1",
+            "status": 11
+          },
+          {
+            "name": "omitted-identity-2",
+            "status": 9
+          },
+          {
+            "name": "different-identity-2",
+            "status": 12
+          },
+          {
+            "name": "omitted-identity-3",
+            "status": 9
+          },
+          {
+            "name": "different-identity-3",
+            "status": 13
+          },
+          {
+            "name": "omitted-identity-4",
+            "status": 9
+          },
+          {
+            "name": "different-identity-4",
+            "status": 14
+          }
+        ],
+        "snapshot_count": 24,
+        "frame_count": 980
+      },
+      "payload_sha256": {
+        "snapshots": "a7ee26b39b290753f353391f9218b93759a27e700545c79b4fb56df246c2e71e",
+        "trace": "3bb30788c267809bce5e7e316d034e3b0e65139ee2721971f64046561eca8eaf",
+        "ids": "104a599fa30a608bfef5abcd97dc6df77c8ca939ae09349cf87ee5ab957af7ba",
+        "faults": "66cb02b74c99c1fc4cf102bb075b1c1a73e7c4a8d5cfc92d32f1b3846956b920",
+        "differences.json": "f959e64ff0ecafe0761a7b97e62b7a898e101422454a7a82329b91e3608b7f01"
+      },
+      "native": {
+        "assertions_before_final_close": 20732,
+        "snapshots": 24,
+        "restores": 24,
+        "original_transitions": 980,
+        "single_byte_corruptions": 1312,
+        "independent_fault_records": 61,
+        "difference_records": 7,
+        "fp_control_unchanged": true
+      }
+    },
+    "sanitized": {
+      "record_sha256": "05c7e542f0ea507591ec1faa2b8c8930476892b691fa3feba7d731d0c36ab41c",
+      "context": {
+        "schema": "psionic-oscillator-replay-native-context-v1",
+        "binary_sha256": "1c81f1145c97bf5c4c057661056c8a16151c95fc64405cc3697b77af8308be2c",
+        "generated_c_sha256": "35d4f67adf88529a4d7762e1d3d5e69e1fcdd5345357fb9f3981ec9132ea8d56",
+        "oracle_sha256": "57e8d166a29f34306cf0002365640f42e320d55a7bc75d17d832dbabb4c6fa7d",
+        "environment": {
+          "nearest": true,
+          "rounding_value": 0,
+          "control_observed": true,
+          "control_register": "0000000000000000",
+          "little_endian": true,
+          "pointer_bits": 64,
+          "machine": "aarch64",
+          "system": "apple-darwin"
+        },
+        "program": {
+          "name": "oscillator-rk4-f64-v1",
+          "source_sha256": {
+            "psionic/lib/physics/oscillator-types.coax": "814878e4263e24b8f05ac9a0c8258f511bbb308b36128e46022846bbc7550fc8",
+            "psionic/lib/physics/oscillator.coax": "9d61fab2666d8ec7dc5517c6d4b66ef24e194e579170b57b6e3a6c0acecb90f0"
+          }
+        },
+        "numeric": {
+          "name": "host-observed-f64-rk4-serial-v1",
+          "nearest": true,
+          "control_register": "0000000000000000",
+          "contraction": "off",
+          "fast_math": false,
+          "workers": 1,
+          "solver_transcendentals": false,
+          "external_precondition": "FP control environment remains unchanged; not restored by snapshot"
+        },
+        "target": {
+          "machine": "aarch64",
+          "system": "apple-darwin",
+          "pointer_bits": 64,
+          "little_endian": true
+        },
+        "identities": [
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "1c81f1145c97bf5c4c057661056c8a16151c95fc64405cc3697b77af8308be2c",
+            "run": "aba9258c39547a2048c4f93f9096001139f0e973fda6086ab3b2b2401eb7aaef"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "1c81f1145c97bf5c4c057661056c8a16151c95fc64405cc3697b77af8308be2c",
+            "run": "d395ebf928fbfaee1ba6e564fc9303cb63e0c3047a6d84a89898c00c5ecd1f7b"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "1c81f1145c97bf5c4c057661056c8a16151c95fc64405cc3697b77af8308be2c",
+            "run": "198b56e1be15eaa768d9369b5b6d52762179b3dfbf93482120ebb14bc0cb0915"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "1c81f1145c97bf5c4c057661056c8a16151c95fc64405cc3697b77af8308be2c",
+            "run": "fad18033bea8cef5d7a6c8ad197b69766c1e90ad2cdd6523370821c5d964c0c8"
+          },
+          {
+            "program": "f4d354188e6b621fb1eed0c4a26703f7d6606718f60832cf160785a4c37d08a7",
+            "numeric": "6fd6ae02ec5ae790db766e5554aab90f0318e914028bcda0b5789bcc863163b8",
+            "target": "0e4f75269b8c7eac81226aa0b0f457006b9329deabcf518481619249562a9d23",
+            "build": "1c81f1145c97bf5c4c057661056c8a16151c95fc64405cc3697b77af8308be2c",
+            "run": "7c47b9ff8338092a20e9ce69f35ff43aeceb7743c619856056522c6bab6ad8ee"
+          }
+        ],
+        "scenarios": [
+          {
+            "index": 0,
+            "length": 128,
+            "start_tick": 0,
+            "captures": [
+              0,
+              1,
+              16,
+              43,
+              48,
+              80,
+              127,
+              128
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": -0.25,
+            "dt": 0.05,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "0:32,16:32,48:32,80:32"
+          },
+          {
+            "index": 1,
+            "length": 720,
+            "start_tick": 0,
+            "captures": [
+              0,
+              127,
+              128,
+              359,
+              360,
+              719,
+              720
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": -0.25,
+            "dt": 0.05,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "each32"
+          },
+          {
+            "index": 2,
+            "length": 128,
+            "start_tick": 2147483519,
+            "captures": [
+              0,
+              1,
+              64,
+              127,
+              128
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.75,
+            "velocity": -0.25,
+            "dt": 0.03125,
+            "force_recipe": "constant-half",
+            "acceptance": "all-at-zero"
+          },
+          {
+            "index": 3,
+            "length": 4,
+            "start_tick": 0,
+            "captures": [
+              0,
+              1,
+              4
+            ],
+            "mass": 1.0,
+            "spring": 1.0,
+            "damping": 0.5,
+            "position": 0.0,
+            "velocity": 0.0,
+            "dt": 0.05,
+            "force_recipe": "signed-zero-four",
+            "acceptance": "all-at-zero"
+          },
+          {
+            "index": 4,
+            "length": 0,
+            "start_tick": 0,
+            "captures": [
+              0
+            ],
+            "mass": 1.0,
+            "spring": 2.0,
+            "damping": 0.5,
+            "position": 0.5,
+            "velocity": 0.0,
+            "dt": 0.0009765625,
+            "force_recipe": "dyadic-triad",
+            "acceptance": "all-at-zero"
+          }
+        ],
+        "faults": [
+          {
+            "name": "omitted-inventory-0",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-1",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-2",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-3",
+            "status": 16
+          },
+          {
+            "name": "omitted-inventory-4",
+            "status": 16
+          },
+          {
+            "name": "version",
+            "status": 16
+          },
+          {
+            "name": "reserved",
+            "status": 16
+          },
+          {
+            "name": "worker",
+            "status": 16
+          },
+          {
+            "name": "history",
+            "status": 16
+          },
+          {
+            "name": "length",
+            "status": 16
+          },
+          {
+            "name": "digest",
+            "status": 17
+          },
+          {
+            "name": "tick-upper",
+            "status": 3
+          },
+          {
+            "name": "tick-u64",
+            "status": 3
+          },
+          {
+            "name": "pending-upper",
+            "status": 3
+          },
+          {
+            "name": "end-mismatch",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-scalar-184-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-184-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-184-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-192-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-200-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-208-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-216-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-scalar-224-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "nonfinite-active-7ff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-7ff0000000000000",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-active-fff0000000000000",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-fff0000000000000",
+            "status": 16
+          },
+          {
+            "name": "nonfinite-active-7ff8000000000123",
+            "status": 4
+          },
+          {
+            "name": "noncanonical-inactive-7ff8000000000123",
+            "status": 16
+          },
+          {
+            "name": "inactive-negative-zero",
+            "status": 16
+          },
+          {
+            "name": "mass",
+            "status": 5
+          },
+          {
+            "name": "spring-low",
+            "status": 5
+          },
+          {
+            "name": "spring-high",
+            "status": 5
+          },
+          {
+            "name": "damping-low",
+            "status": 5
+          },
+          {
+            "name": "damping-high",
+            "status": 5
+          },
+          {
+            "name": "q",
+            "status": 6
+          },
+          {
+            "name": "v",
+            "status": 6
+          },
+          {
+            "name": "dt-zero",
+            "status": 8
+          },
+          {
+            "name": "dt-high",
+            "status": 8
+          },
+          {
+            "name": "force-high",
+            "status": 7
+          },
+          {
+            "name": "inactive-force",
+            "status": 16
+          },
+          {
+            "name": "omitted-identity-0",
+            "status": 9
+          },
+          {
+            "name": "different-identity-0",
+            "status": 10
+          },
+          {
+            "name": "omitted-identity-1",
+            "status": 9
+          },
+          {
+            "name": "different-identity-1",
+            "status": 11
+          },
+          {
+            "name": "omitted-identity-2",
+            "status": 9
+          },
+          {
+            "name": "different-identity-2",
+            "status": 12
+          },
+          {
+            "name": "omitted-identity-3",
+            "status": 9
+          },
+          {
+            "name": "different-identity-3",
+            "status": 13
+          },
+          {
+            "name": "omitted-identity-4",
+            "status": 9
+          },
+          {
+            "name": "different-identity-4",
+            "status": 14
+          }
+        ],
+        "snapshot_count": 24,
+        "frame_count": 980
+      },
+      "payload_sha256": {
+        "snapshots": "0ff345c31fb1dcce910292920088b089fc6e4ffcf5de85368be7e9546f38175c",
+        "trace": "3bb30788c267809bce5e7e316d034e3b0e65139ee2721971f64046561eca8eaf",
+        "ids": "250f524c7f7ee0f63307f584b69319c3e97d27c63d00b4f83d050a630b1b1108",
+        "faults": "930526fac059939b229e8f4202a0d98c20b7e873a281be78a31a6f2ffbab8773",
+        "differences.json": "f959e64ff0ecafe0761a7b97e62b7a898e101422454a7a82329b91e3608b7f01"
+      },
+      "native": {
+        "assertions_before_final_close": 20732,
+        "snapshots": 24,
+        "restores": 24,
+        "original_transitions": 980,
+        "single_byte_corruptions": 1312,
+        "independent_fault_records": 61,
+        "difference_records": 7,
+        "fp_control_unchanged": true
+      }
+    }
+  },
+  "scope": [
+    "Actual executable SHA supplied by independent tooling, compared as trusted caller context",
+    "One qualified target and fixed observed FP environment, serial worker1",
+    "Atomic logical memory publication, not crash-durable storage or positive process-restart lifecycle",
+    "Accepted pending inputs included; later unaccepted inputs and their event log external",
+    "Same-build mid-run restore; native mode trace equality is separate from refused cross-build restore",
+    "No typed clocks, compiler boundedness, general strict-math/jobs, cross-architecture, R5 entities, robot/Verse or fullR16 claim"
+  ],
+  "reused_teacher_sources": {
+    "psionic/lib/physics/oscillator-types.coax": "814878e4263e24b8f05ac9a0c8258f511bbb308b36128e46022846bbc7550fc8",
+    "psionic/lib/physics/oscillator.coax": "9d61fab2666d8ec7dc5517c6d4b66ef24e194e579170b57b6e3a6c0acecb90f0"
+  },
+  "qualified_host_probe": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "release": "25.4.0",
+    "wrapper_rejects_other_system_architectures": true
+  }
+}

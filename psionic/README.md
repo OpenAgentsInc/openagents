@@ -287,3 +287,9 @@ stiffness and damping through the exact owned F64 RK4 solver. Frozen noise/
 sampling cases and new-motion forecasts accompany a zero-loss equilibrium
 counterexample where damping cannot be identified. Run
 `psionic/check.sh --only physics/inverse` for its focused gate.
+
+The [oscillator replay precursor](docs/physics/oscillator-replay.md) restores
+a completed physical step plus accepted future forces under explicit same-build
+identities. Portable Coax checks are in the physics gate; the qualified native
+profile is an explicit `--only physics/replay-native` selection. Robot/policy/
+Verse snapshots and cross-target deterministic jobs remain separate work.

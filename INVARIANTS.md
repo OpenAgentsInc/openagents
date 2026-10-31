@@ -18,6 +18,23 @@ analytic sensitivities, optimizer/forecast calculations, exact transcript
 coverage and all 5,040 serialized state words are qualified separately in
 `psionic/fixtures/physics/inverse/qualification.json`.
 
+## Solver checkpoints preserve accepted input order and exact identity scope
+
+The oscillator replay precursor snapshots a completed original RK4 step, its
+physical parameters/state, integer tick/dt and already-accepted pending forces.
+It preserves active signed zero and requires canonical zero in inactive lanes.
+Future unaccepted events and external producer state are absent and must be
+resupplied. The versioned little-endian format validates all fields and a tagged
+checksum before atomic restore; it binds caller-expected nonzero solver,
+numeric, target, exact executable and run identities. A checksum is integrity,
+not remote authentication or proof that a caller supplied honest identities.
+
+Same-build restore/replay is exact under the named serial Darwin-arm64 profile.
+Different builds refuse instead of implying portable snapshots. First divergence
+compares applied force before state and names tick/field/source operation.
+This precursor does not snapshot robot/policy/Verse state, establish typed
+clocks or compiler `#bounded`, or qualify cross-architecture deterministic math.
+
 ## Owned oscillator dynamics and learned surrogates keep their roles distinct
 
 `psionic/lib/physics/oscillator*.coax` owns a fixed-mass F64 damped forced
