@@ -321,6 +321,14 @@ tool_main :: () -> int #export_c {
   bin_buf: [4096] u8;
   coax := fs_join(root, "coax/bin/coax", bin_buf[..]);
   if !fs_exists(coax) { tool_err("suites: no compiler at "); tool_err(coax); tool_errln(" (coax/build.sh)"); return 2; }
+  // A compiler built from an older tree fails suites that use newer language
+  // (a stale coax/bin/coax once failed every suite loading cdp.coax), so the
+  // run refuses unless the provenance record matches this tree's inputs.
+  if !list_only {
+    av0 := [6] string.["coax/provenance.sh", "verify", root, "coax/bin/coax", "coax/bin/provenance-check", "coax/bin/provenance.record"];
+    pv := su_run(av0[..], root, big[..]);
+    if pv.started != 0 || pv.status != 0 { tool_err("suites: "); tool_err(coax); tool_errln(" was not built from this tree; run coax/build.sh"); return 2; }
+  }
 
   av2 := [3] string.["git", "ls-files", "*.coax"];
   listed := su_run(av2[..], root, big[..]);

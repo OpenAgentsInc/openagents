@@ -7,6 +7,7 @@
 // output is not used: a block comment never closed (E0101), a string or
 // character literal not closed on its line (E0106), a lone CR or a NUL byte. Statement layout, indentation and line breaking inside lines are
 // not changed yet. No host calls; the caller supplies the output buffer.
+// Checks: coax test coax/lib/text/format.coax --library (no main of its own).
 #authority;
 
 FMT_OK :: 0;
