@@ -56,7 +56,7 @@ Vec3 :: struct { x: f32; y: f32; z: f32; }
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
 clamp :: (a: f32, low: f32, high: f32) -> f32 { return lo(high, hi(low, a)); }
-smooth :: (a: quantities.Quantity(quantities.Metre,f32), b: quantities.Quantity(quantities.Metre,f32), x: quantities.Quantity(quantities.Metre,f32)) -> f32 { t := clamp((x - a).value / (b - a).value, 0, 1); return t * t * (3 - 2 * t); }
+smooth :: (a: quantities.Quantity(quantities.Metre,f32), b: quantities.Quantity(quantities.Metre,f32), x: quantities.Quantity(quantities.Metre,f32)) -> f32 { t := clamp(((x - a) / (b - a)).value, 0, 1); return t * t * (3 - 2 * t); }
 v3 :: (x: f32, y: f32, z: f32) -> Vec3 { return Vec3.{x = x, y = y, z = z}; }
 sub :: (a: Vec3, b: Vec3) -> Vec3 { return v3(a.x - b.x, a.y - b.y, a.z - b.z); }
 dot :: (a: Vec3, b: Vec3) -> f32 { return a.x * b.x + a.y * b.y + a.z * b.z; }

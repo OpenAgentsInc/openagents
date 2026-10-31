@@ -1,4 +1,4 @@
-# Quantities: the first R12 compiler milestone
+# Quantities: scalar R12 compiler milestones
 
 This milestone adds nominal scalar quantities to the authored checker and C
 backend. The operators are compiler-owned; an ordinary struct with a field
@@ -57,9 +57,9 @@ example :: () -> f64 {
 | `a==b`, `a!=b`, `a<b`, `a<=b`, `a>b`, `a>=b` | Quantities with the same nominal unit and representation | `bool` |
 | `q*s`, `s*q`, `q/s` | One quantity and one raw scalar of its representation | Quantity |
 
-The `+` and `-` above are binary operators. Quantity products and quotients,
-raw-scalar divided by quantity, quantity-plus-scalar, dimensional result
-algebra and affine point operators are outside this milestone. Different
+The `+` and `-` above are binary operators. M1 leaves products and quotients
+to the derived-unit milestone below. Raw-scalar divided by quantity,
+quantity-plus-scalar and affine point operators remain outside this profile. Different
 units produce E0822 and request `convert_unit`; different representations
 produce E0823 and require an explicit raw representation conversion followed
 by quantity construction. Unsupported operator families produce E0824.
@@ -69,6 +69,57 @@ A generic maximum constrained `ordered` can therefore accept them. A generic
 routine requiring arbitrary closed numeric multiplication cannot. As with
 raw IEEE floats, `ordered` means the comparison operators exist; it does not
 make NaNs totally ordered.
+
+## Derived scalar units
+
+The next authored-source milestone adds `UnitProduct(A,B)`,
+`UnitQuotient(A,B)` and `UnitOne` as reserved compiler type forms. They accept
+concrete unit tags. Quantity times/divided by quantity requires one carrier
+and returns the left quantity family; scalar scaling keeps the M1 rules.
+
+```jai
+#load "coax/lib/quantity.coax" as u;
+
+speed :: (distance:u.Quantity(u.Metre,$R:numeric), elapsed:u.Quantity(u.Second,$R))
+    -> u.Quantity(UnitQuotient(u.Metre,u.Second),$R) {
+    return distance/elapsed;
+}
+```
+
+The compiler normalizes a formal product of nominal declared-unit atoms.
+Products commute and equal factors cancel in TYPES; runtime effects and
+floating operations stay in source order. One atom to power one is its
+original tag; zero remaining atoms gives `UnitOne`, still a quantity rather
+than a raw scalar. Eight distinct atoms and powers within ±2147483647 form
+the initial compiler profile. Atom IDs are private compiler identities.
+
+Equal dimensions or scales never merge distinct user tags. A named speed tag
+stays distinct from `UnitQuotient(Metre,Second)` and needs explicit
+`convert_unit` in either direction. `HalfMetre/Metre` remains a formal ratio
+with scale one-half, even though physically dimensionless; converting it to
+`UnitOne` explicitly applies that scale. User-declared dimensionless units
+remain distinct too.
+
+Each intermediate unit uses exact checked product/quotient metadata. The
+existing dimension bounds and reduced rational scale bounds apply after
+cancellation; a later operation does not rescue a refused intermediate.
+No base-unit scaling is inserted into arithmetic values. Quantity division
+retains ordinary carrier IEEE behavior for zero values. Representation
+parameters can be generic; symbolic generic UNIT operands remain pending.
+`UnitOne` takes no arguments; product/quotient take two unit types. They cannot
+be runtime calls, shadowed declarations, or unknown qualified module names.
+Device and schema1 quantity reflection refusals continue.
+
+Grid now computes its fog interpolation quotient before projecting `.value`.
+The two affected C functions match their M1 versions exactly; the changed
+fog path passes130 focused cases. This remains a scalar precursor to the full
+Verse transform and simulated-Panda joint/pose consumer gate.
+
+The derived-source mutation/bootstrap receipt is pending final closure. The
+new independent native proof already covers17,417 observations per mode in
+debug, release and ASan/UBSan, sixteen raw/quantity C-body comparisons and six
+ordered foreign-call traces. Final compiler C/header identity will bind the
+reused native proof; no full old numerical corpus is rerun.
 
 ## Explicit scale conversion
 
@@ -98,9 +149,9 @@ responsibility.
 
 `.value` explicitly projects the raw representation. Constructing
 `Quantity.{value=raw}` asserts the source-level unit of that number; it does
-not inspect a sensor, SDK or file to establish that claim. This boundary is
-also how the current Verse precursor forms a dimensionless ratio while
-quantity/quantity division remains unavailable.
+not inspect a sensor, SDK or file to establish that claim. The current Verse precursor
+uses typed quantity division, then projects its dimensionless `UnitOne`
+result at this boundary.
 
 C exports and foreign scalar calls use raw `float` or `double`. Quantity
 arrays and views use the corresponding raw carrier array/view ABI. C callers

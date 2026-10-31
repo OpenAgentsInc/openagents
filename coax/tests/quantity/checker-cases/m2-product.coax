@@ -1,0 +1,10 @@
+#load "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/quantity.coax" as u;
+Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+OtherMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+Count :: struct @unit(mass=0,length=0,time=0,angle=0,numerator=1,denominator=1) {}
+product :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitProduct(u.Second,u.Metre),f32) #export_c {return a*b;}
+speed :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitQuotient(u.Metre,u.Second),f32) #export_c {return a/b;}
+back :: (a:u.Quantity(UnitQuotient(u.Metre,u.Second),f32),b:u.Quantity(u.Second,f32))->u.Quantity(u.Metre,f32) #export_c {return a*b;}
+ratio :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Metre,f32))->u.Quantity(UnitOne,f32) #export_c {return a/b;}
+calc :: ()->f32 {a:u.Quantity(u.Metre,f32)=u.Quantity.{value=6};b:u.Quantity(u.Second,f32)=u.Quantity.{value=2};return product(a,b).value+speed(a,b).value+back(speed(a,b),b).value+ratio(a,a).value;}
+V :: #run calc();#assert V==22;

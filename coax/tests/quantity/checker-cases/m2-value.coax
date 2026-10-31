@@ -1,0 +1,5 @@
+#load "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/quantity.coax" as u;
+Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+OtherMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+Count :: struct @unit(mass=0,length=0,time=0,angle=0,numerator=1,denominator=1) {}
+f :: () {x:=UnitProduct(u.Metre,u.Second);}

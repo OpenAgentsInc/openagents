@@ -1,0 +1,3 @@
+#load "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/quantity.coax" as u;
+Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+f :: (a:u.Quantity(Speed,f64)) {b:=convert_unit(bogus.UnitProduct(u.Metre,u.Second),a);}

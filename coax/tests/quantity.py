@@ -23,7 +23,7 @@ V :: #run calc(); #assert V==29;''');self.assertEqual(r.returncode,0,r.stderr)
   for body,code in [
    ('f :: () {a:Quantity(Metre,f64);b:Quantity(Second,f64);c:=a+b;}','E0822'),
    ('f :: () {a:Quantity(Metre,f32);b:Quantity(Metre,f64);c:=a+b;}','E0823'),
-   ('f :: () {a:Quantity(Metre,f64);c:=a*a;}','E0824'),
+   ('f :: () {a:Quantity(Metre,f64);c:=2.0f64/a;}','E0824'),
    ('f :: () {a:Quantity(Metre,int);}','E0821'),
    ('f :: () {a:Quantity(Second,f64);b:=convert_unit(Metre,a);}','E0825'),
    ('f :: () {a:Quantity(Centimetre,f64);b:=convert_unit(Metre,a);}','E0826'),

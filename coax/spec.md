@@ -445,8 +445,9 @@ arithmetic quantity result retains its quantity operand’s family (the left
 family when both operands are quantities). Assignment/type identity still
 distinguish families, and `convert_unit` preserves the input family.
 Scaling supports quantity times carrier, carrier times quantity, and quantity
-divided by carrier. Quantity products/quotients and affine point/vector/frame
-operators remain pending. No implicit unit or carrier conversion is admitted.
+divided by carrier. Derived quantity products/quotients are described below;
+affine point/vector/frame operators remain pending. No implicit unit or carrier
+conversion is admitted.
 Operators evaluate operands once, from left to right when observable, as the
 ordinary scalar operators do. `.value` is explicit access to the raw carrier.
 
@@ -460,6 +461,35 @@ including degree/radian rounding, are refused in this milestone. Clock and
 timestamp semantics remain R13. Metal, CUDA, SPIR-V and WGSL output using quantities is explicitly refused in
 this milestone; their representation/ABI gates are separate.
 This does not complete R12's consumer gate.
+
+### 7.1.2 Derived scalar units (authored-source milestone, unreleased)
+
+`UnitProduct(A,B)`, `UnitQuotient(A,B)` and `UnitOne` are compiler-owned type
+forms over concrete unit tags. Quantity multiplication/division requires one
+carrier and retains the left quantity family. Its result unit is the formal
+product/quotient of its operands; scalar scaling keeps the preceding rules.
+
+Generated units are canonical sorted products of nominal declared-unit atoms.
+They combine equal atom powers and cancel zeros; one atom to power one is the
+original unit, and an empty form is `UnitOne`. Equal dimensions/scales never
+merge distinct user tags. A declared speed tag stays distinct from
+`UnitQuotient(Metre,Second)` until explicit conversion. A dimensionless result
+remains a quantity. Formal forms admit at most eight distinct atoms and powers
+from -2147483647 through 2147483647; compiler-local atom IDs are not wire IDs.
+
+Every intermediate unit must meet the existing four dimension bounds and the
+reduced rational scale bound. Exact product/quotient metadata is reduced before
+checking scale limits. Form power/capacity refusals are additional compile-time
+limits. Unit operands must be concrete; representation parameters may remain
+generic. Constructors cannot be runtime calls or shadowed declarations.
+
+`convert_unit` also accepts these explicitly written target type forms. Its
+existing power-of-two ratio profile and family preservation remain. Numerical
+values are never implicitly rescaled to base units. Type canonicalization does
+not reorder effects, reassociate floating arithmetic, change IEEE behavior, or
+remove the explicit `.value` boundary. Native layout is still the F32/F64
+carrier; device and schema1 quantity reflection refusals remain. Points,
+vectors, frames, clocks and the full R12 consumer gate remain pending.
 
 ### 7.2 Generics
 

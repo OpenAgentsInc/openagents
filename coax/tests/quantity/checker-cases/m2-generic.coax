@@ -1,0 +1,8 @@
+#load "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/quantity.coax" as u;
+Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+OtherMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+Count :: struct @unit(mass=0,length=0,time=0,angle=0,numerator=1,denominator=1) {}
+speed :: (a:u.Quantity(u.Metre,$R:numeric),b:u.Quantity(u.Second,$R))->u.Quantity(UnitQuotient(u.Metre,u.Second),$R) {return a/b;}
+scale :: (s:$R:numeric,x:u.Quantity(UnitQuotient(u.Metre,u.Second),$R))->u.Quantity(UnitQuotient(u.Metre,u.Second),$R) {return s*x;}
+calc :: ()->f32 {a:u.Quantity(u.Metre,f32)=u.Quantity.{value=6};b:u.Quantity(u.Second,f32)=u.Quantity.{value=2};return scale(2,speed(a,b)).value;}
+V :: #run calc();#assert V==6;

@@ -1,0 +1,5 @@
+Metre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+CoaxUnitone :: struct @unit(mass=0,length=0,time=0,angle=0,numerator=1,denominator=1) {}
+Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}
+accept_one :: (x:Quantity(UnitOne,f32))->f32 {return x.value;}
+wrong :: (x:Quantity(CoaxUnitone,f32))->f32 #export_c {return accept_one(x);}

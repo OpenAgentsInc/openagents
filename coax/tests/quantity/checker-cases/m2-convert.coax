@@ -1,0 +1,9 @@
+#load "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/lib/quantity.coax" as u;
+Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+OtherMetre :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}
+Count :: struct @unit(mass=0,length=0,time=0,angle=0,numerator=1,denominator=1) {}
+to_named :: (a:u.Quantity(UnitQuotient(u.Metre,u.Second),f64))->u.Quantity(Speed,f64) #export_c {return convert_unit(Speed,a);}
+to_derived :: (a:u.Quantity(Speed,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}
+to_one :: (a:u.Quantity(u.HalfMetre,f64),b:u.Quantity(u.Metre,f64))->u.Quantity(UnitOne,f64) #export_c {return convert_unit(UnitOne,a/b);}
+calc :: ()->f64 {x:u.Quantity(Speed,f64)=u.Quantity.{value=3};h:u.Quantity(u.HalfMetre,f64)=u.Quantity.{value=6};m:u.Quantity(u.Metre,f64)=u.Quantity.{value=3};return to_named(to_derived(x)).value+to_one(h,m).value;}
+V :: #run calc();#assert V==4;
