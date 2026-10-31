@@ -1,0 +1,337 @@
+// A glTF binary's mesh as a traced shader reads it (Orbit League's roadster, gpu/orbitleague.coax
+// orbitleague_mesh_hit): its triangles, each coloured from its material's base-colour texture at
+// its corners, thinned by vertex clustering, placed in the car's frame and sorted into a bounding
+// volume hierarchy, written as little-endian f32 words. Offline tooling; never run by a page.
+//   coax/web/tool.sh verse/tools/mesh-bvh.coax GLB MESH OUT [--cells N] [--length M] [--floor Y] [--report]
+// MESH is the glTF mesh's name (its first primitive is read). The frame: x and z centred on the
+// mesh's bounds, z its length scaled to M metres (default 4.2), its lowest point at height Y
+// (default -0.98, Orbit League's ground under a car's centre); the glTF's +z is the nose. --cells
+// is the clustering grid's cells along the length (default 90, as Orbit League ships). The words:
+//   0 the triangles' count, 1 the nodes', 2 the nodes' first word (16), 3 the triangles' first word,
+//   4..7 a bounding sphere (centre, radius), 8..15 0
+//   a node, 8 words: min x y z, A, max x y z, B; a leaf has A = -(its first triangle + 1) and B its
+//   count, an inner node A its first child (the second is A + 1) and B the axis it splits (0 x, 1 y,
+//   2 z), so a ray visits the child on its own side first. Splits are binned by surface area.
+//   a triangle, 12 words: a corner, its two edges from it, and its colour (linear RGB), or for
+//   paint (a light, unsaturated texel: the shader paints it the car's colour) -1 and the texel's
+//   luminance
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/json/json.coax";
+#load "../../coax/lib/image/png.coax";
+
+MB_FILE :: 80000000;
+MB_VERTS :: 1000000;
+MB_TRIS :: 2000000;
+MB_TABLE :: 4194304;   // the clustering's hash table (a power of two)
+MB_LEAF :: 4;
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 3 { tool_errln("usage: mesh-bvh GLB MESH OUT [--cells N] [--length M] [--floor Y] [--report]"); return 2; }
+  cells := args_whole(args_value(a[..], "--cells", "90"));
+  length := mb_number(args_value(a[..], "--length", "4.2"));
+  floor_y := mb_number(args_value(a[..], "--floor", "-0.98"));
+  if cells < 8 || cells > 1000 || length <= 0.0 { tool_errln("mesh-bvh: --cells 8 to 1000 and --length over 0"); return 2; }
+  return mb_run(args_at(a[..], 0), args_at(a[..], 1), args_at(a[..], 2), cells, length, floor_y, args_has(a[..], "--report"));
+}
+
+mb_run :: (glb_path: string, mesh: string, out_path: string, cells: int, length: f64, floor_y: f64, report: bool) -> int {
+  glb: [MB_FILE] u8;
+  n := fs_read(glb_path, glb[..]);
+  if n < 28 || mb_u32(glb[..], 0) != 0x46546c67 || mb_u32(glb[..], 16) != 0x4e4f534a { tool_errln("mesh-bvh: not a glTF binary"); return 1; }
+  jn := mb_u32(glb[..], 12);
+  bin := 20 + jn + 8;
+  if bin > n || mb_u32(glb[..], 20 + jn + 4) != 0x004e4942 { tool_errln("mesh-bvh: no binary chunk"); return 1; }
+  nodes: [131072] JvNode; d: [1] Jv;
+  if !jv_parse(d[..], cast(string) glb[20..<20 + jn], nodes[..]) { tool_errln("mesh-bvh: its JSON does not parse"); return 1; }
+  j := d[0];
+  // the mesh by name, its first primitive
+  meshes := jv_get(j, 0, "meshes");
+  prim := -1;
+  for i: 0..<jv_len(j, meshes) {
+    m := jv_at(j, meshes, i);
+    nb: [256] u8; nl := jv_str(j, jv_get(j, m, "name"), nb[..]);
+    if nl >= 0 && cast(string) nb[0..<nl] == mesh { prim = jv_at(j, jv_get(j, m, "primitives"), 0); }
+  }
+  if prim < 0 { tool_err("mesh-bvh: no mesh "); tool_errln(mesh); return 1; }
+  attrs := jv_get(j, prim, "attributes");
+  pos := mb_view(j, glb[..], bin, jv_int(j, jv_get(j, attrs, "POSITION"), -1));
+  uv := mb_view(j, glb[..], bin, jv_int(j, jv_get(j, attrs, "TEXCOORD_0"), -1));
+  idx := mb_view(j, glb[..], bin, jv_int(j, jv_get(j, prim, "indices"), -1));
+  if pos.at < 0 || idx.at < 0 || pos.count > MB_VERTS || idx.count / 3 > MB_TRIS { tool_errln("mesh-bvh: its positions or indices are missing or too many"); return 1; }
+  // the base colour texture (a PNG in the binary chunk)
+  tex_w := 0; tex_h := 0;
+  px: [16777216] u8;
+  {
+    mat := jv_at(j, jv_get(j, 0, "materials"), jv_int(j, jv_get(j, prim, "material"), -1));
+    t := jv_int(j, jv_path(j, mat, "pbrMetallicRoughness.baseColorTexture.index"), -1);
+    src := jv_int(j, jv_get(j, jv_at(j, jv_get(j, 0, "textures"), t), "source"), -1);
+    bv := jv_int(j, jv_get(j, jv_at(j, jv_get(j, 0, "images"), src), "bufferView"), -1);
+    view := jv_at(j, jv_get(j, 0, "bufferViews"), bv);
+    off := bin + jv_int(j, jv_get(j, view, "byteOffset"), 0);
+    img := glb[off..<off + jv_int(j, jv_get(j, view, "byteLength"), 0)];
+    info := png_info(img);
+    work: [40000000] u8;
+    if uv.at >= 0 && info.status == PNG_OK && info.w * info.h * 4 <= px.count && info.work <= work.count && png_decode(img, work[..], px[..]) == PNG_OK {
+      tex_w = info.w; tex_h = info.h;
+    } else { tool_errln("mesh-bvh: no base colour texture it can read; the mesh is all paint"); }
+  }
+  // the corners: place, and colour (linear) from the texel under each
+  vn := pos.count;
+  vp: [MB_VERTS * 3] f64; vc: [MB_VERTS * 3] f64;
+  lo: [3] f64; hi: [3] f64;
+  for k: 0..<3 { lo[k] = 1e30; hi[k] = -1e30; }
+  for i: 0..<vn {
+    for k: 0..<3 {
+      v := cast(f64) f32_from_bits(cast(u32) mb_u32(glb[..], pos.at + i * pos.stride + 4 * k));
+      vp[i * 3 + k] = v;
+      if v < lo[k] { lo[k] = v; }
+      if v > hi[k] { hi[k] = v; }
+    }
+    c := [3] f64.[1.0, 1.0, 1.0];
+    if tex_w > 0 {
+      su := cast(f64) f32_from_bits(cast(u32) mb_u32(glb[..], uv.at + i * uv.stride));
+      sv := cast(f64) f32_from_bits(cast(u32) mb_u32(glb[..], uv.at + i * uv.stride + 4));
+      x := mb_wrap(su, tex_w); y := mb_wrap(sv, tex_h);
+      for k: 0..<3 { c[k] = mb_linear(cast(f64) px[(y * tex_w + x) * 4 + k] / 255.0); }
+    }
+    for k: 0..<3 { vc[i * 3 + k] = c[k]; }
+  }
+  // the frame: the length along z scaled to `length`, x and z centred, the lowest point at floor_y
+  s := length / (hi[2] - lo[2]);
+  cx := (lo[0] + hi[0]) * 0.5; cz := (lo[2] + hi[2]) * 0.5;
+  for i: 0..<vn {
+    vp[i * 3] = (vp[i * 3] - cx) * s;
+    vp[i * 3 + 1] = (vp[i * 3 + 1] - lo[1]) * s + floor_y;
+    vp[i * 3 + 2] = (vp[i * 3 + 2] - cz) * s;
+  }
+  // vertex clustering: each corner to its cell's one vertex (the mean place and colour of its corners)
+  cell := length / cast(f64) cells;
+  keys: [MB_TABLE] int; slot_of: [MB_TABLE] int;
+  for i: 0..<MB_TABLE { keys[i] = -1; }
+  cp: [MB_VERTS * 3] f64; cc: [MB_VERTS * 3] f64; cn: [MB_VERTS] int;
+  of: [MB_VERTS] int;
+  nc := 0;
+  for i: 0..<vn {
+    key := 0;
+    for k: 0..<3 { key = key * 2048 + clampi(cast(int) floor((vp[i * 3 + k] + 8.0) / cell), 0, 2047); }
+    h := mb_hash(key) & (MB_TABLE - 1);
+    while keys[h] != -1 && keys[h] != key { h = (h + 1) & (MB_TABLE - 1); }
+    if keys[h] == -1 { keys[h] = key; slot_of[h] = nc; for k: 0..<3 { cp[nc * 3 + k] = 0.0; cc[nc * 3 + k] = 0.0; } cn[nc] = 0; nc += 1; }
+    c := slot_of[h];
+    for k: 0..<3 { cp[c * 3 + k] += vp[i * 3 + k]; cc[c * 3 + k] += vc[i * 3 + k]; }
+    cn[c] += 1;
+    of[i] = c;
+  }
+  for c: 0..<nc { for k: 0..<3 { cp[c * 3 + k] /= cast(f64) cn[c]; cc[c * 3 + k] /= cast(f64) cn[c]; } }
+  // the triangles between three different cells
+  tris: [MB_TRIS * 3] int;
+  tn := 0;
+  for t: 0..<idx.count / 3 {
+    a := of[mb_index(glb[..], idx, t * 3)]; b := of[mb_index(glb[..], idx, t * 3 + 1)]; c := of[mb_index(glb[..], idx, t * 3 + 2)];
+    if a == b || b == c || a == c { continue; }
+    tris[tn * 3] = a; tris[tn * 3 + 1] = b; tris[tn * 3 + 2] = c; tn += 1;
+  }
+  if tn == 0 { tool_errln("mesh-bvh: nothing is left"); return 1; }
+  // the hierarchy over the triangles' centres
+  order: [MB_TRIS] int; cen: [MB_TRIS * 3] f64;
+  for t: 0..<tn {
+    order[t] = t;
+    for k: 0..<3 { cen[t * 3 + k] = (cp[tris[t * 3] * 3 + k] + cp[tris[t * 3 + 1] * 3 + k] + cp[tris[t * 3 + 2] * 3 + k]) / 3.0; }
+  }
+  nodes_lo: [MB_TRIS * 3] f64; nodes_hi: [MB_TRIS * 3] f64; na: [MB_TRIS] int; nb2: [MB_TRIS] int;
+  work_node: [128] int; work_from: [128] int; work_to: [128] int;
+  nn := 1; sp := 1;
+  work_node[0] = 0; work_from[0] = 0; work_to[0] = tn;
+  deepest := 0;
+  while sp > 0 {
+    sp -= 1;
+    me := work_node[sp]; from := work_from[sp]; to := work_to[sp];
+    // its bounds, and its centres'
+    blo: [3] f64; bhi: [3] f64; clo: [3] f64; chi: [3] f64;
+    for k: 0..<3 { blo[k] = 1e30; bhi[k] = -1e30; clo[k] = 1e30; chi[k] = -1e30; }
+    for q: from..<to {
+      t := order[q];
+      for k: 0..<3 {
+        for e: 0..<3 { v := cp[tris[t * 3 + e] * 3 + k]; if v < blo[k] { blo[k] = v; } if v > bhi[k] { bhi[k] = v; } }
+        v := cen[t * 3 + k]; if v < clo[k] { clo[k] = v; } if v > chi[k] { chi[k] = v; }
+      }
+    }
+    for k: 0..<3 { nodes_lo[me * 3 + k] = blo[k]; nodes_hi[me * 3 + k] = bhi[k]; }
+    if to - from <= MB_LEAF || sp + 2 >= work_node.count {
+      na[me] = -(from + 1); nb2[me] = to - from;
+      continue;
+    }
+    // the split: of 16 bins on each axis, the boundary with the least area times count on its two sides
+    axis := -1; cut := 0.0; best := 1e300;
+    for k: 0..<3 {
+      ext := chi[k] - clo[k];
+      if ext <= 0.0 { continue; }
+      bn: [16] int; bl: [48] f64; bh: [48] f64;
+      for q: 0..<16 { bn[q] = 0; for m: 0..<3 { bl[q * 3 + m] = 1e30; bh[q * 3 + m] = -1e30; } }
+      for q: from..<to {
+        t := order[q];
+        q16 := clampi(cast(int) floor((cen[t * 3 + k] - clo[k]) / ext * 16.0), 0, 15);
+        bn[q16] += 1;
+        for e: 0..<3 { for m: 0..<3 { v := cp[tris[t * 3 + e] * 3 + m]; if v < bl[q16 * 3 + m] { bl[q16 * 3 + m] = v; } if v > bh[q16 * 3 + m] { bh[q16 * 3 + m] = v; } } }
+      }
+      for split: 1..<16 {
+        nl := 0; nr := 0; al: [3] f64; ah: [3] f64; rl: [3] f64; rh: [3] f64;
+        for m: 0..<3 { al[m] = 1e30; ah[m] = -1e30; rl[m] = 1e30; rh[m] = -1e30; }
+        for q: 0..<16 {
+          if bn[q] == 0 { continue; }
+          if q < split { nl += bn[q]; for m: 0..<3 { if bl[q * 3 + m] < al[m] { al[m] = bl[q * 3 + m]; } if bh[q * 3 + m] > ah[m] { ah[m] = bh[q * 3 + m]; } } }
+          else { nr += bn[q]; for m: 0..<3 { if bl[q * 3 + m] < rl[m] { rl[m] = bl[q * 3 + m]; } if bh[q * 3 + m] > rh[m] { rh[m] = bh[q * 3 + m]; } } }
+        }
+        if nl == 0 || nr == 0 { continue; }
+        cost := mb_area(al, ah) * cast(f64) nl + mb_area(rl, rh) * cast(f64) nr;
+        if cost < best { best = cost; axis = k; cut = clo[k] + ext * cast(f64) split / 16.0; }
+      }
+    }
+    i := from; e := to;
+    if axis >= 0 {
+      while i < e {
+        if cen[order[i] * 3 + axis] < cut { i += 1; } else { e -= 1; x := order[i]; order[i] = order[e]; order[e] = x; }
+      }
+    }
+    if axis < 0 || i == from || i == to { i = (from + to) / 2; if axis < 0 { axis = 0; } }
+    l := nn; r := nn + 1; nn += 2;
+    na[me] = l; nb2[me] = axis;
+    work_node[sp] = l; work_from[sp] = from; work_to[sp] = i; sp += 1;
+    work_node[sp] = r; work_from[sp] = i; work_to[sp] = to; sp += 1;
+    if sp > deepest { deepest = sp; }
+  }
+  // the words
+  tri_at := 16 + nn * 8;
+  words := tri_at + tn * 12;
+  out: [80000000] u8;
+  if words * 4 > out.count { tool_errln("mesh-bvh: too large"); return 1; }
+  rad := 0.0;
+  for c: 0..<nc { v := sqrt(cp[c * 3] * cp[c * 3] + (cp[c * 3 + 1] + 0.3) * (cp[c * 3 + 1] + 0.3) + cp[c * 3 + 2] * cp[c * 3 + 2]); if v > rad { rad = v; } }
+  head := [16] f64.[cast(f64) tn, cast(f64) nn, 16.0, cast(f64) tri_at, 0.0, -0.3, 0.0, rad, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  for k: 0..<16 { mb_put(out[..], k, head[k]); }
+  for m: 0..<nn {
+    w := 16 + m * 8;
+    for k: 0..<3 { mb_put(out[..], w + k, nodes_lo[m * 3 + k]); mb_put(out[..], w + 4 + k, nodes_hi[m * 3 + k]); }
+    mb_put(out[..], w + 3, cast(f64) na[m]); mb_put(out[..], w + 7, cast(f64) nb2[m]);
+  }
+  paint := 0;
+  for q: 0..<tn {
+    t := order[q]; w := tri_at + q * 12;
+    a := tris[t * 3]; b := tris[t * 3 + 1]; c := tris[t * 3 + 2];
+    for k: 0..<3 {
+      mb_put(out[..], w + k, cp[a * 3 + k]);
+      mb_put(out[..], w + 3 + k, cp[b * 3 + k] - cp[a * 3 + k]);
+      mb_put(out[..], w + 6 + k, cp[c * 3 + k] - cp[a * 3 + k]);
+    }
+    col: [3] f64;
+    for k: 0..<3 { col[k] = (cc[a * 3 + k] + cc[b * 3 + k] + cc[c * 3 + k]) / 3.0; }
+    lum := 0.2126 * col[0] + 0.7152 * col[1] + 0.0722 * col[2];
+    if mb_paint(col[0], col[1], col[2]) {
+      mb_put(out[..], w + 9, -1.0); mb_put(out[..], w + 10, lum); mb_put(out[..], w + 11, 0.0); paint += 1;
+    } else { for k: 0..<3 { mb_put(out[..], w + 9 + k, col[k]); } }
+  }
+  if !fs_write(out_path, cast(string) out[0..<words * 4]) { tool_err("mesh-bvh: cannot write "); tool_errln(out_path); return 1; }
+  if report {
+    print("mesh-bvh: % corners into % cells; % triangles of % (% paint), % nodes (depth % at most), % bytes; texture %x%\n",
+      vn, nc, tn, idx.count / 3, paint, nn, deepest, words * 4, tex_w, tex_h);
+    print("mesh-bvh: in the frame x % to %, y % to %, z % to %\n", (lo[0] - cx) * s, (hi[0] - cx) * s, floor_y, (hi[1] - lo[1]) * s + floor_y, (lo[2] - cz) * s, (hi[2] - cz) * s);
+  }
+  return 0;
+}
+
+// Half a box's surface area.
+mb_area :: (lo: [3] f64, hi: [3] f64) -> f64 {
+  x := hi[0] - lo[0]; y := hi[1] - lo[1]; z := hi[2] - lo[2];
+  return x * y + y * z + z * x;
+}
+#test "a box's area" { #assert mb_area([3] f64.[0.0, 0.0, 0.0], [3] f64.[1.0, 2.0, 3.0]) == 11.0; }
+// Paint: a light texel that is not coloured (the body's white).
+mb_paint :: (r: f64, g: f64, b: f64) -> bool {
+  hi := r; lo := r;
+  if g > hi { hi = g; } if b > hi { hi = b; }
+  if g < lo { lo = g; } if b < lo { lo = b; }
+  return hi > 0.3 && hi - lo < 0.25 * hi;
+}
+#test "paint is light and grey" {
+  #assert mb_paint(0.8, 0.8, 0.78) && !mb_paint(0.05, 0.05, 0.06) && !mb_paint(0.8, 0.1, 0.1) && !mb_paint(0.2, 0.2, 0.2);
+}
+
+// An sRGB channel (0 to 1) as linear light.
+mb_linear :: (c: f64) -> f64 {
+  return ifx c <= 0.04045 then c / 12.92 else pow((c + 0.055) / 1.055, 2.4);
+}
+// A texture coordinate's texel along a side of n, the texture repeating.
+mb_wrap :: (t: f64, n: int) -> int {
+  f := t - floor(t);
+  return clampi(cast(int) floor(f * cast(f64) n), 0, n - 1);
+}
+#test "texels and light" {
+  #assert mb_wrap(0.0, 4) == 0 && mb_wrap(0.99, 4) == 3 && mb_wrap(1.25, 4) == 1 && mb_wrap(-0.25, 4) == 3;
+  #assert mb_linear(0.0) == 0.0 && abs(mb_linear(1.0) - 1.0) < 1e-12 && abs(mb_linear(0.5) - 0.21404) < 1e-4;
+}
+clampi :: (v: int, lo: int, hi: int) -> int { return ifx v < lo then lo else ifx v > hi then hi else v; }
+mb_hash :: (k: int) -> int {
+  h := cast(u64) k;
+  h = mul_wrap(h ^ (h >> 33), 0xff51afd7ed558ccd);
+  h = h ^ (h >> 33);
+  return cast(int) (h & 0x7fffffff);
+}
+
+// An accessor's bytes: where its first element starts, the stride, the count, the component type.
+MbView :: struct { at: int; stride: int; count: int; kind: int; }
+mb_view :: (j: Jv, glb: [] u8, bin: int, acc: int) -> MbView {
+  if acc < 0 { return MbView.{at = -1}; }
+  a := jv_at(j, jv_get(j, 0, "accessors"), acc);
+  view := jv_at(j, jv_get(j, 0, "bufferViews"), jv_int(j, jv_get(j, a, "bufferView"), -1));
+  if a < 0 || view < 0 { return MbView.{at = -1}; }
+  kind := jv_int(j, jv_get(j, a, "componentType"), 0);
+  ty: [16] u8; tl := jv_str(j, jv_get(j, a, "type"), ty[..]);
+  comps := ifx tl == 4 then cast(int) ty[3] - 48 else 1;   // VEC2, VEC3, VEC4 or SCALAR
+  size := ifx kind == 5123 then 2 else 4;
+  stride := jv_int(j, jv_get(j, view, "byteStride"), comps * size);
+  at := bin + jv_int(j, jv_get(j, view, "byteOffset"), 0) + jv_int(j, jv_get(j, a, "byteOffset"), 0);
+  count := jv_int(j, jv_get(j, a, "count"), 0);
+  if at + stride * count > glb.count { return MbView.{at = -1}; }
+  return MbView.{at = at, stride = stride, count = count, kind = kind};
+}
+mb_index :: (glb: [] u8, v: MbView, i: int) -> int {
+  if v.kind == 5123 { return cast(int) glb[v.at + i * 2] | (cast(int) glb[v.at + i * 2 + 1] << 8); }
+  return mb_u32(glb, v.at + i * 4);
+}
+mb_u32 :: (b: [] u8, at: int) -> int {
+  return cast(int) b[at] | (cast(int) b[at + 1] << 8) | (cast(int) b[at + 2] << 16) | (cast(int) b[at + 3] << 24);
+}
+// Word w of out, as an f32.
+mb_put :: (out: [] u8, w: int, v: f64) {
+  bits := f32_bits(cast(f32) v);
+  for k: 0..<4 { out[w * 4 + k] = cast,trunc(u8) (bits >> cast(u32) (8 * k)); }
+}
+#test "words" {
+  b := [8] u8.[0x67, 0x6c, 0x54, 0x46, 0, 0, 128, 63];
+  #assert mb_u32(b[..], 0) == 0x46546c67 && f32_from_bits(cast(u32) mb_u32(b[..], 4)) == 1.0;
+  o: [8] u8; mb_put(o[..], 1, -1.0);
+  #assert o[4] == 0 && o[5] == 0 && o[6] == 128 && o[7] == 191;
+}
+// A decimal like "4.2" or "-0.98" (no exponent), 0 when it is not one.
+mb_number :: (s: string) -> f64 {
+  neg := s.count > 0 && s[0] == '-';
+  i := ifx neg then 1 else 0;
+  v := 0.0; scale := 0.0;
+  while i < s.count {
+    c := s[i];
+    if c == '.' && scale == 0.0 { scale = 1.0; i += 1; continue; }
+    if c < '0' || c > '9' { return 0.0; }
+    v = v * 10.0 + cast(f64) (cast(int) c - 48);
+    if scale > 0.0 { scale *= 10.0; }
+    i += 1;
+  }
+  if scale > 0.0 { v /= scale; }
+  return ifx neg then -v else v;
+}
+#test "decimals" {
+  #assert mb_number("4.2") == 4.2 && mb_number("-0.98") == -0.98 && mb_number("200") == 200.0 && mb_number("x") == 0.0;
+}

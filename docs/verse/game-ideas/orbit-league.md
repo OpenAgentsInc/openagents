@@ -27,6 +27,12 @@ driver in a white suit with the visor down is our own character too. If a
 carmaker ever wanted to license its car in, that is a separate deal; the
 game must not depend on it.
 
+2026-10-31, owner's call: the cars' bodies are now the CC BY "Tesla Roadster 2.0"
+model by Michael (Sketchfab), traced from a mesh (`verse/tools/mesh-bvh.coax`,
+credited in `apps/openagents-web/realms/orbit-league/licences.md`), painted in the
+game's team colours; the game's own hull roadster draws until the mesh arrives.
+The game still names no carmaker in its own words.
+
 ## How it plays
 
 - **Teams:** 1v1, 2v2 or 3v3. Five-minute matches; a tied match goes to

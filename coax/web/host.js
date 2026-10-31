@@ -109,6 +109,9 @@
 //                 (storage), indices (index) and texture layers (layers), and adds its sounds by name.
 //                 While it streams the app hears message 605, "LOADED TOTAL" bytes. One pack a page.
 //   message 608     a claimed realm's maker's display name (oa-api /api/playtest/makers/<realm>), to draw "Made by <name>" and TIP
+//   mesh:URL      a traced page's mesh (Orbit League's roadster, verse/tools/mesh-bvh.coax): its bytes as
+//                 a read-only storage buffer at group 0 binding 1, for a WGSL that declares
+//                 `var<storage, read> mesh` there; until it arrives the shader reads 16 zero bytes
 //   font:URL, icons:URL, licence:URL  GPUI's atlas (gpui.js, a WGSL with gpui_atlas): Geist's four
 //                 faces in weight order, Zeron's icons ({name: svg}), and the fonts' licence, served beside them
 // and each one that arrives (or fails, bytes 0) is told: coaxial_asset_ready(state, i, bytes), i its
@@ -694,6 +697,7 @@ function makeBuffers() {
   gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [{ binding: 0, resource: { buffer: gpu.uniformBuffer } }] });
   if (gpu.sans) useSans();
   if (gpu.gpuiOn) useGpui();
+  if (gpu.meshOn) useMesh();
 }
 
 // The sans atlas: a page whose shader declares sans_atlas (binding 1) and
@@ -720,6 +724,24 @@ function sansAtlas(device) {
     device.queue.copyExternalImageToTexture({ source: canvas }, { texture, mipLevel: level, premultipliedAlpha: true }, [w, h]);
   }
   return texture;
+}
+// The mesh (mesh:URL): group 0 is the uniforms and the mesh's storage buffer, 16 zero bytes (a
+// mesh of no triangles) until the asset has arrived.
+function useMesh() {
+  const { device } = gpu;
+  gpu.meshOn = true;
+  gpu.layout = device.createBindGroupLayout({ entries: [
+    { binding: 0, visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT, buffer: {} },
+    { binding: 1, visibility: GPUShaderStage.FRAGMENT, buffer: { type: "read-only-storage" } }] });
+  bindMesh();
+}
+function bindMesh() {
+  if (!gpu.meshOn) return;
+  const { device } = gpu, a = assets.find((x) => x.kind === "mesh" && x.done && !x.failed && x.buffer);
+  gpu.meshEmpty ||= device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE });
+  gpu.bindGroup = device.createBindGroup({ layout: gpu.layout, entries: [
+    { binding: 0, resource: { buffer: gpu.uniformBuffer } },
+    { binding: 1, resource: { buffer: a ? a.buffer : gpu.meshEmpty } }] });
 }
 function useSans() {
   const { device } = gpu;
@@ -778,6 +800,7 @@ async function loadShaders() {
   const code = await (await fetch(wgslUrl, { cache: dev ? "no-store" : "default" })).text();
   if (/var\s+sans_atlas\b/.test(code)) useSans();
   if (/var\s+gpui_atlas\b/.test(code)) useGpui();
+  if (/var<storage,\s*read>\s+mesh\b/.test(code)) useMesh();
   const module = device.createShaderModule({ code });
   const info = await module.getCompilationInfo();
   const errors = info.messages.filter((m) => m.type === "error");
@@ -1032,6 +1055,7 @@ async function loadAsset(a) {
   } catch (e) { a.failed = true; say(`${app}: ${e.message}`, true); }
   a.done = true;
   deliver(a);
+  if (a.kind === "mesh") bindMesh();
   bindScene();
   loading.assetDone(a.failed && `ASSET FAILED TO LOAD: ${(a.url || "").split("/").pop()}`);
 }

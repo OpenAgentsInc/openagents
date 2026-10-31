@@ -15,6 +15,7 @@ A Verse realm at https://openagents.com/realms/orbit-league: electric roadsters 
 
 - The physics is the Verse engine's space primitives (`docs/verse/space.md`): `verse/vehicle.coax` (wheels, suspension, grip, jumps), `verse/contact.coax` (the ball against the cars, the walls and the goal frames), `verse/gravity.coax` (the station's spin as a gravity field) and `verse/thrust.coax` (the boost), on `verse/rigid.coax`.
 - `apps/openagents-web/orbitleague.coax` is the game: the match, the bot, the camera and the HUD. `orbitleague-face.c` binds it for the browser and `orbitleague.wgsl` traces the arena, the cars, the ball and the space round the station.
+- The cars' bodies are "Tesla Roadster 2.0" by Michael on Sketchfab (CC BY 4.0), thinned and traced from `assets/roadster.bin` (`verse/tools/mesh-bvh.coax`); the wheels, paint and decals are the game's. See [licences.md](licences.md).
 - The design is `docs/verse/game-ideas/orbit-league.md`. The page is written from `realms.json` by `coax/web/realms.ts`; the contract every realm follows is `docs/verse/realm-host.md` in the OpenAgents repository.
 
 ## Make your own realm

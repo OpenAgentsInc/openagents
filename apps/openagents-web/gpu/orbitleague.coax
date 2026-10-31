@@ -390,8 +390,78 @@ orbitleague_wheel_hit :: (o:V3,d:V3,c:V3,r:f32,w:f32,spin:f32)->OrbitleagueHit {
   }
   return best;
 }
-// A roadster of our own.
-orbitleague_car_hit :: (ro:V3,rd:V3,c:OrbitleagueCar,HULL:[45]V4)->OrbitleagueHit {
+// The roadster's mesh (verse/tools/mesh-bvh.coax writes it; host.js binds it, mesh:URL): its
+// triangles in a bounding volume hierarchy, in the car's frame. The nearest triangle the ray
+// (o, d, in that frame) meets: t, the face's normal towards the ray, and its colour, or for
+// paint col.x -1 and col.y the texel's light.
+OrbitleagueMeshHit :: struct {t:f32; n:V3; col:V3; }
+orbitleague_mesh_cast :: (o:V3,d:V3,mesh:[]f32)->OrbitleagueMeshHit {
+  r:OrbitleagueMeshHit=OrbitleagueMeshHit.{t=1e9f32,n=v3(0.0f32,1.0f32,0.0f32),col=v3(0.0f32,0.0f32,0.0f32)};
+  dd:V3=v3(ifx abs(d.x)<1e-8f32 then 1e-8f32 else d.x,ifx abs(d.y)<1e-8f32 then 1e-8f32 else d.y,ifx abs(d.z)<1e-8f32 then 1e-8f32 else d.z);
+  inv:V3=wg_div_ff3(1.0f32,dd);
+  tris:s32=wg_i32_f(mesh[3]);
+  best:s32=-1;
+  stack:[32]s32;
+  stack[0]=0;
+  sp:s32=1;
+  while sp>0 {
+    sp-=1;
+    b:s32=16+(stack[cast(int)sp]*8);
+    t0:V3=wg_mul_f3f3(wg_sub_f3f3(v3(mesh[cast(int)b],mesh[cast(int)(b+1)],mesh[cast(int)(b+2)]),o),inv);
+    t1:V3=wg_mul_f3f3(wg_sub_f3f3(v3(mesh[cast(int)(b+4)],mesh[cast(int)(b+5)],mesh[cast(int)(b+6)]),o),inv);
+    tn:V3=wg_min_f3f3(t0,t1);
+    tf:V3=wg_max_f3f3(t0,t1);
+    near:f32=fmax(fmax(tn.x,tn.y),tn.z);
+    far:f32=fmin(fmin(tf.x,tf.y),tf.z);
+    if ((far<fmax(near,0.0f32))||(near>r.t)) {
+      continue;
+    }
+    a:s32=wg_i32_f(mesh[cast(int)(b+3)]);
+    c:s32=wg_i32_f(mesh[cast(int)(b+7)]);
+    if (a>=0) {
+      // the child on the ray's side of the split first (the second child is a + 1, c the axis)
+      back:bool=ifx c==0 then d.x<0.0f32 else ifx c==1 then d.y<0.0f32 else d.z<0.0f32;
+      if (sp<31) {
+        stack[cast(int)sp]=ifx back then a else a+1;
+        stack[cast(int)(sp+1)]=ifx back then a+1 else a;
+        sp+=2;
+      }
+      continue;
+    }
+    k:s32=-a-1;
+    while k<((-a-1)+c) {
+      w:s32=tris+(k*12);
+      v0:V3=v3(mesh[cast(int)w],mesh[cast(int)(w+1)],mesh[cast(int)(w+2)]);
+      e1:V3=v3(mesh[cast(int)(w+3)],mesh[cast(int)(w+4)],mesh[cast(int)(w+5)]);
+      e2:V3=v3(mesh[cast(int)(w+6)],mesh[cast(int)(w+7)],mesh[cast(int)(w+8)]);
+      pv:V3=wg_cross3(d,e2);
+      det:f32=wg_dot3(e1,pv);
+      if (abs(det)>1e-12f32) {
+        id:f32=1.0f32/det;
+        sv:V3=wg_sub_f3f3(o,v0);
+        uu:f32=wg_dot3(sv,pv)*id;
+        qv:V3=wg_cross3(sv,e1);
+        vv:f32=wg_dot3(d,qv)*id;
+        t:f32=wg_dot3(e2,qv)*id;
+        if ((((uu>=0.0f32)&&(vv>=0.0f32))&&((uu+vv)<=1.0f32))&&((t>1e-4f32)&&(t<r.t))) {
+          r.t=t;
+          best=w;
+        }
+      }
+      k+=1;
+    }
+  }
+  if (best>=0) {
+    e1:V3=v3(mesh[cast(int)(best+3)],mesh[cast(int)(best+4)],mesh[cast(int)(best+5)]);
+    e2:V3=v3(mesh[cast(int)(best+6)],mesh[cast(int)(best+7)],mesh[cast(int)(best+8)]);
+    n:V3=wg_normalize3(wg_cross3(e1,e2));
+    r.n=ifx wg_dot3(n,d)>0.0f32 then wg_neg_f3(n) else n;
+    r.col=v3(mesh[cast(int)(best+9)],mesh[cast(int)(best+10)],mesh[cast(int)(best+11)]);
+  }
+  return r;
+}
+// A roadster of our own, or the mesh's when the page has one.
+orbitleague_car_hit :: (ro:V3,rd:V3,c:OrbitleagueCar,HULL:[45]V4,mesh:[]f32,seen:bool)->OrbitleagueHit {
   q:V3=wg_sub_f3f3(ro,v3(c.p.x,c.p.y,c.p.z));
   o:V3=v3(wg_dot3(q,v3(c.x.x,c.x.y,c.x.z)),wg_dot3(q,v3(c.y.x,c.y.y,c.y.z)),wg_dot3(q,v3(c.z.x,c.z.y,c.z.z)));
   d:V3=v3(wg_dot3(rd,v3(c.x.x,c.x.y,c.x.z)),wg_dot3(rd,v3(c.y.x,c.y.y,c.y.z)),wg_dot3(rd,v3(c.z.x,c.z.y,c.z.z)));
@@ -407,101 +477,137 @@ orbitleague_car_hit :: (ro:V3,rd:V3,c:OrbitleagueCar,HULL:[45]V4)->OrbitleagueHi
   paint:V3=orbitleague_paint_colour(pk%8,side);
   decal:s32=pk/8;
   h:OrbitleagueHit=orbitleague_miss();
-  // the body: a wedge with a dark sill, a cockpit, a stripe, headlights and a tail bar
-  b:OrbitleagueHullHit=orbitleague_hull_cast(o,d,0,18,HULL);
-  if (b.t<h.t) {
-    p:V3=wg_add_f3f3(o,wg_mul_f3f(d,b.t));
-    n:V3=b.n;
-    col:V3=paint;
-    mat:s32=1;
-    // the decal, in the team's colour: twin stripes, side checks, or the nose
-    if (((decal==1)&&(n.y>0.5f32))&&(abs(abs(p.x)-0.26f32)<0.07f32)) {
-      col=accent;
-    }
-    if (((decal==2)&&(abs(n.x)>0.5f32))&&(((wg_i32_f(floor(p.z*3.0f32)+floor((p.y*3.0f32)+10.0f32)))&1)==0)) {
-      col=accent;
-    }
-    if ((decal==3)&&(p.z>0.35f32)) {
-      col=accent;
-    }
-    if ((p.y<(-0.2f32))&&(n.y<0.5f32)) {
-      col=v3(0.05f32,0.055f32,0.07f32);
-      mat=0;
-    }
-    if ((((n.y>0.9f32)&&(abs(p.x)<0.6f32))&&(p.z>(-1.0f32)))&&(p.z<0.55f32)) {
-      col=v3(0.035f32,0.04f32,0.055f32);
-      mat=0;
-    }
-    if (((n.y>0.5f32)&&(abs(p.x)<0.13f32))&&(p.z>0.6f32)) {
-      col=v3(0.92f32,0.94f32,1.0f32);
-    }
-    if (((((n.z>0.3f32)&&(p.z>1.7f32))&&(p.y>(-0.17f32)))&&(p.y<(-0.05f32)))&&(abs(p.x)>0.2f32)) {
-      col=wg_mul_f3f(v3(0.85f32,0.93f32,1.0f32),1.8f32);
-      mat=3;
-    }
-    if (((n.z<(-0.8f32))&&(abs(p.y)<0.035f32))&&(abs(p.x)<0.8f32)) {
-      col=wg_mul_f3f(wg_mix_f3f3f(accent,v3(1.0f32,1.0f32,1.0f32),0.45f32),1.8f32);
-      mat=3;
-    }
-    h=OrbitleagueHit.{t=b.t,n=n,col=col,ink=b.edge,mat=mat};
-  }
-  // the fender pods over the wheels
-  {
-    i:s32=0;
-    while i<4 {
-      sx:f32=ifx (i&1)==1 then 1.0f32 else -1.0f32;
-      wz:f32=ifx i>=2 then -1.4f32 else 1.4f32;
-      f:OrbitleagueHullHit=orbitleague_hull_cast(v3((o.x*sx)-0.86f32,o.y,o.z-wz),v3(d.x*sx,d.y,d.z),18,11,HULL);
-      if (f.t<h.t) {
-        h=OrbitleagueHit.{t=f.t,n=v3(f.n.x*sx,f.n.y,f.n.z),col=paint,ink=f.edge,mat=1};
+  // the mesh for what the eye sees; its reflections are the hull roadster (a mesh per reflected ray is too slow)
+  meshed:bool=seen&&(mesh[0]>0.5f32);
+  if meshed {
+    // the body: the mesh, its paint the car's (with the decal), its dark parts glass, a red part a light
+    m:OrbitleagueMeshHit=orbitleague_mesh_cast(o,d,mesh);
+    if (m.t<1e8f32) {
+      p:V3=wg_add_f3f3(o,wg_mul_f3f(d,m.t));
+      n:V3=m.n;
+      col:V3=m.col;
+      mat:s32=0;
+      if (m.col.x<0.0f32) {
+        col=wg_mul_f3f(paint,0.75f32+(0.25f32*clampf(m.col.y,0.0f32,1.0f32)));
+        mat=1;
+        if (((decal==1)&&(n.y>0.5f32))&&(abs(abs(p.x)-0.26f32)<0.07f32)) {
+          col=accent;
+        }
+        if (((decal==2)&&(abs(n.x)>0.5f32))&&(((wg_i32_f(floor(p.z*3.0f32)+floor((p.y*3.0f32)+10.0f32)))&1)==0)) {
+          col=accent;
+        }
+        if ((decal==3)&&(p.z>0.35f32)) {
+          col=accent;
+        }
+      } else if ((m.col.x>0.2f32)&&(m.col.x>(3.0f32*m.col.y))) {
+        col=wg_mul_f3f(m.col,2.5f32);
+        mat=3;
+      } else if ((fmax(fmax(m.col.x,m.col.y),m.col.z)<0.05f32)&&(n.y>0.25f32)) {
+        // dark and facing up: the glass roof and the windows; dark below is trim
+        mat=2;
       }
-      i+=1;
+      h=OrbitleagueHit.{t=m.t,n=n,col=col,ink=0.0f32,mat=mat};
     }
-  }
-  // the windscreen
-  w:OrbitleagueHullHit=orbitleague_hull_cast(o,d,29,8,HULL);
-  if (w.t<h.t) {
-    h=OrbitleagueHit.{t=w.t,n=w.n,col=v3(0.02f32,0.035f32,0.07f32),ink=w.edge,mat=2};
-  }
-  // the humps behind the seats
-  {
-    s:f32=-1.0f32;
-    while s<=1.0f32 {
-      k:OrbitleagueHullHit=orbitleague_hull_cast(v3((o.x*s)-0.32f32,o.y,o.z),v3(d.x*s,d.y,d.z),37,8,HULL);
-      if (k.t<h.t) {
-        h=OrbitleagueHit.{t=k.t,n=v3(k.n.x*s,k.n.y,k.n.z),col=paint,ink=k.edge,mat=1};
+  } else {
+    // the body: a wedge with a dark sill, a cockpit, a stripe, headlights and a tail bar
+    b:OrbitleagueHullHit=orbitleague_hull_cast(o,d,0,18,HULL);
+    if (b.t<h.t) {
+      p:V3=wg_add_f3f3(o,wg_mul_f3f(d,b.t));
+      n:V3=b.n;
+      col:V3=paint;
+      mat:s32=1;
+      // the decal, in the team's colour: twin stripes, side checks, or the nose
+      if (((decal==1)&&(n.y>0.5f32))&&(abs(abs(p.x)-0.26f32)<0.07f32)) {
+        col=accent;
       }
-      s=s+2.0f32;
+      if (((decal==2)&&(abs(n.x)>0.5f32))&&(((wg_i32_f(floor(p.z*3.0f32)+floor((p.y*3.0f32)+10.0f32)))&1)==0)) {
+        col=accent;
+      }
+      if ((decal==3)&&(p.z>0.35f32)) {
+        col=accent;
+      }
+      if ((p.y<(-0.2f32))&&(n.y<0.5f32)) {
+        col=v3(0.05f32,0.055f32,0.07f32);
+        mat=0;
+      }
+      if ((((n.y>0.9f32)&&(abs(p.x)<0.6f32))&&(p.z>(-1.0f32)))&&(p.z<0.55f32)) {
+        col=v3(0.035f32,0.04f32,0.055f32);
+        mat=0;
+      }
+      if (((n.y>0.5f32)&&(abs(p.x)<0.13f32))&&(p.z>0.6f32)) {
+        col=v3(0.92f32,0.94f32,1.0f32);
+      }
+      if (((((n.z>0.3f32)&&(p.z>1.7f32))&&(p.y>(-0.17f32)))&&(p.y<(-0.05f32)))&&(abs(p.x)>0.2f32)) {
+        col=wg_mul_f3f(v3(0.85f32,0.93f32,1.0f32),1.8f32);
+        mat=3;
+      }
+      if (((n.z<(-0.8f32))&&(abs(p.y)<0.035f32))&&(abs(p.x)<0.8f32)) {
+        col=wg_mul_f3f(wg_mix_f3f3f(accent,v3(1.0f32,1.0f32,1.0f32),0.45f32),1.8f32);
+        mat=3;
+      }
+      h=OrbitleagueHit.{t=b.t,n=n,col=col,ink=b.edge,mat=mat};
     }
-  }
-  // the driver's helmet: white, a dark visor, a stripe in the team's colour
-  hc:V3=v3(0.32f32,0.4f32,-0.22f32);
-  ht:f32=orbitleague_sphere_t(d,wg_sub_f3f3(hc,o),0.2f32);
-  if ((ht>0.0f32)&&(ht<h.t)) {
-    n:V3=wg_normalize3(wg_sub_f3f3(wg_add_f3f3(o,wg_mul_f3f(d,ht)),hc));
-    col:V3=v3(0.92f32,0.93f32,0.95f32);
-    mat:s32=0;
-    if (((n.z>0.3f32)&&(n.y<0.5f32))&&(n.y>(-0.35f32))) {
-      col=v3(0.03f32,0.06f32,0.12f32);
-      mat=2;
-    } else if ((abs(n.x)<0.12f32)&&(n.y>0.0f32)) {
-      col=accent;
-      mat=1;
+    // the fender pods over the wheels
+    {
+      i:s32=0;
+      while i<4 {
+        sx:f32=ifx (i&1)==1 then 1.0f32 else -1.0f32;
+        wz:f32=ifx i>=2 then -1.4f32 else 1.4f32;
+        f:OrbitleagueHullHit=orbitleague_hull_cast(v3((o.x*sx)-0.86f32,o.y,o.z-wz),v3(d.x*sx,d.y,d.z),18,11,HULL);
+        if (f.t<h.t) {
+          h=OrbitleagueHit.{t=f.t,n=v3(f.n.x*sx,f.n.y,f.n.z),col=paint,ink=f.edge,mat=1};
+        }
+        i+=1;
+      }
     }
-    h=OrbitleagueHit.{t=ht,n=n,col=col,ink=0.0f32,mat=mat};
+    // the windscreen
+    w:OrbitleagueHullHit=orbitleague_hull_cast(o,d,29,8,HULL);
+    if (w.t<h.t) {
+      h=OrbitleagueHit.{t=w.t,n=w.n,col=v3(0.02f32,0.035f32,0.07f32),ink=w.edge,mat=2};
+    }
+    // the humps behind the seats
+    {
+      s:f32=-1.0f32;
+      while s<=1.0f32 {
+        k:OrbitleagueHullHit=orbitleague_hull_cast(v3((o.x*s)-0.32f32,o.y,o.z),v3(d.x*s,d.y,d.z),37,8,HULL);
+        if (k.t<h.t) {
+          h=OrbitleagueHit.{t=k.t,n=v3(k.n.x*s,k.n.y,k.n.z),col=paint,ink=k.edge,mat=1};
+        }
+        s=s+2.0f32;
+      }
+    }
+    // the driver's helmet: white, a dark visor, a stripe in the team's colour
+    hc:V3=v3(0.32f32,0.4f32,-0.22f32);
+    ht:f32=orbitleague_sphere_t(d,wg_sub_f3f3(hc,o),0.2f32);
+    if ((ht>0.0f32)&&(ht<h.t)) {
+      n:V3=wg_normalize3(wg_sub_f3f3(wg_add_f3f3(o,wg_mul_f3f(d,ht)),hc));
+      col:V3=v3(0.92f32,0.93f32,0.95f32);
+      mat:s32=0;
+      if (((n.z>0.3f32)&&(n.y<0.5f32))&&(n.y>(-0.35f32))) {
+        col=v3(0.03f32,0.06f32,0.12f32);
+        mat=2;
+      } else if ((abs(n.x)<0.12f32)&&(n.y>0.0f32)) {
+        col=accent;
+        mat=1;
+      }
+      h=OrbitleagueHit.{t=ht,n=n,col=col,ink=0.0f32,mat=mat};
+    }
+    // the rear wing on two struts
+    h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(0.0f32,0.43f32,-1.86f32),v3(0.9f32,0.03f32,0.17f32),v3(0.07f32,0.075f32,0.09f32),1));
+    h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(0.0f32,0.405f32,-1.86f32),v3(0.92f32,0.01f32,0.175f32),accent,1));
+    h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(-0.5f32,0.26f32,-1.86f32),v3(0.03f32,0.15f32,0.07f32),v3(0.07f32,0.075f32,0.09f32),0));
+    h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(0.5f32,0.26f32,-1.86f32),v3(0.03f32,0.15f32,0.07f32),v3(0.07f32,0.075f32,0.09f32),0));
   }
-  // the rear wing on two struts
-  h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(0.0f32,0.43f32,-1.86f32),v3(0.9f32,0.03f32,0.17f32),v3(0.07f32,0.075f32,0.09f32),1));
-  h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(0.0f32,0.405f32,-1.86f32),v3(0.92f32,0.01f32,0.175f32),accent,1));
-  h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(-0.5f32,0.26f32,-1.86f32),v3(0.03f32,0.15f32,0.07f32),v3(0.07f32,0.075f32,0.09f32),0));
-  h=orbitleague_closer(h,orbitleague_box_hit(o,d,v3(0.5f32,0.26f32,-1.86f32),v3(0.03f32,0.15f32,0.07f32),v3(0.07f32,0.075f32,0.09f32),0));
   steer:f32=c.z.w;
   {
     i:s32=0;
     while i<4 {
-      x:f32=ifx (i&1)==1 then 0.86f32 else -0.86f32;
-      z:f32=ifx i>=2 then -1.4f32 else 1.4f32;
-      wo:V3=wg_sub_f3f3(o,v3(x,-0.58f32,z));
+      // the mesh's wheels sit in its arches, smaller (verse/tools/mesh-bvh.coax's frame); the same ground
+      wx:f32=ifx meshed then 0.777f32 else 0.86f32;
+      x:f32=ifx (i&1)==1 then wx else -wx;
+      wz:f32=ifx meshed then 1.371f32 else 1.4f32;
+      z:f32=ifx i>=2 then -wz else wz;
+      wo:V3=wg_sub_f3f3(o,v3(x,ifx meshed then -0.683f32 else -0.58f32,z));
       wd:V3=d;
       if (i<2) {
         // a front wheel turns with the steering
@@ -510,7 +616,7 @@ orbitleague_car_hit :: (ro:V3,rd:V3,c:OrbitleagueCar,HULL:[45]V4)->OrbitleagueHi
         wo=v3((cs*wo.x)-(sn*wo.z),wo.y,(sn*wo.x)+(cs*wo.z));
         wd=v3((cs*wd.x)-(sn*wd.z),wd.y,(sn*wd.x)+(cs*wd.z));
       }
-      wh:OrbitleagueHit=orbitleague_wheel_hit(wo,wd,v3(0.0f32,0.0f32,0.0f32),0.4f32,0.15f32,c.y.w);
+      wh:OrbitleagueHit=orbitleague_wheel_hit(wo,wd,v3(0.0f32,0.0f32,0.0f32),ifx meshed then 0.297f32 else 0.4f32,ifx meshed then 0.127f32 else 0.15f32,c.y.w);
       if ((wh.t<h.t)&&(i<2)) {
         cs:f32=cos(steer);
         sn:f32=sin(steer);
@@ -987,12 +1093,12 @@ orbitleague_underglow :: (p:V3,u:[]f32)->V3 {
   return o;
 }
 // What moves (the ball and the cars), and what moves or stands in the arena (and the goal frames).
-orbitleague_movers :: (ro:V3,rd:V3,u:[]f32,HULL:[45]V4)->OrbitleagueHit {
+orbitleague_movers :: (ro:V3,rd:V3,u:[]f32,HULL:[45]V4,mesh:[]f32,seen:bool)->OrbitleagueHit {
   h:OrbitleagueHit=orbitleague_ball_hit(ro,rd,u);
   {
     i:s32=0;
     while i<orbitleague_ncars(u) {
-      h=orbitleague_closer(h,orbitleague_car_hit(ro,rd,orbitleague_car(i,u),HULL));
+      h=orbitleague_closer(h,orbitleague_car_hit(ro,rd,orbitleague_car(i,u),HULL,mesh,seen));
       i+=1;
     }
   }
@@ -1047,7 +1153,7 @@ orbitleague_rib_lights :: (ro:V3,rd:V3,tmax:f32,u:[]f32)->V3 {
 // colour over what is behind, how much, and the light they add (their edge
 // lights, and the ball and cars reflected in them).
 OrbitleagueGlass :: struct {t:f32; col:V3; a:f32; add:V3; }
-orbitleague_glass :: (ro:V3,rd:V3,tmax:f32,u:[]f32,HULL:[45]V4)->OrbitleagueGlass {
+orbitleague_glass :: (ro:V3,rd:V3,tmax:f32,u:[]f32,HULL:[45]V4,mesh:[]f32)->OrbitleagueGlass {
   hx:f32=u[80];
   hz:f32=u[81];
   hh:f32=u[82];
@@ -1140,7 +1246,7 @@ orbitleague_glass :: (ro:V3,rd:V3,tmax:f32,u:[]f32,HULL:[45]V4)->OrbitleagueGlas
     add:V3=wg_mul_f3f(wg_mul_f3f(wg_mix_f3f3f(side,v3(1.0f32,1.0f32,1.0f32),0.25f32),exp(((-e)*e)/0.03f32)),0.9f32);
     // the ball and the cars, reflected
     rr:V3=wg_reflect3(rd,n);
-    rh:OrbitleagueHit=orbitleague_movers(wg_sub_f3f3(p,wg_mul_f3f(n,0.02f32)),rr,u,HULL);
+    rh:OrbitleagueHit=orbitleague_movers(wg_sub_f3f3(p,wg_mul_f3f(n,0.02f32)),rr,u,HULL,mesh,false);
     if (rh.t<80.0f32) {
       add=wg_add_f3f3(add,wg_mul_f3f(wg_mul_f3f(orbitleague_shade_hit(rh,rr,u),(0.16f32+(0.4f32*fres))),exp((-rh.t)*0.02f32)));
     }
@@ -1187,9 +1293,9 @@ orbitleague_glass :: (ro:V3,rd:V3,tmax:f32,u:[]f32,HULL:[45]V4)->OrbitleagueGlas
     uv=v2(q.x,q.z);
   }
   g:V2=wg_mul_f2f(wg_abs_f2(wg_sub_f2f(wg_fract_f2(wg_add_f2f(wg_div_f2f(uv,0.6f32),0.5f32)),0.5f32)),0.6f32);
-  mesh:f32=1.0f32-smoothstep(0.015f32,0.04f32,fmin(g.x,g.y));
+  weave:f32=1.0f32-smoothstep(0.015f32,0.04f32,fmin(g.x,g.y));
   col:V3=ifx zs>0.0f32 then ORBITLEAGUE_MAGENTA() else ORBITLEAGUE_BLUE();
-  return OrbitleagueGlass.{t=tn,col=wg_mul_f3f(col,1.2f32),a=clampf(0.12f32+(mesh*0.65f32),0.0f32,1.0f32),add=v3(0.0f32,0.0f32,0.0f32)};
+  return OrbitleagueGlass.{t=tn,col=wg_mul_f3f(col,1.2f32),a=clampf(0.12f32+(weave*0.65f32),0.0f32,1.0f32),add=v3(0.0f32,0.0f32,0.0f32)};
 }
 // The goal frames: posts and a crossbar at each mouth, lit in the team's colour.
 orbitleague_frames :: (ro:V3,rd:V3,u:[]f32)->OrbitleagueHit {
@@ -1223,7 +1329,7 @@ orbitleague_bg_vs :: (i:u32,_iid2:u32)->V4 {
   p:[3]V2=[3]V2.[v2(-1.0f32,-3.0f32),v2(-1.0f32,1.0f32),v2(3.0f32,1.0f32)];
   return v4(p[cast(int)i].x,p[cast(int)i].y,0.0f32,1.0f32);
 }
-orbitleague_bg_fs :: (pos:V4,u:[]f32)->V4 {
+orbitleague_bg_fs :: (pos:V4,u:[]f32,mesh:[]f32)->V4 {
   HULL:[45]V4=[45]V4.[v4(0.0000f32,-1.0000f32,0.0000f32,0.3200f32),v4(0.0000f32,1.0000f32,0.0000f32,0.1200f32),v4(1.0000f32,0.0000f32,0.0000f32,0.9500f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.9500f32),v4(0.5812f32,0.8137f32,0.0000f32,0.5115f32),v4(-0.5812f32,0.8137f32,0.0000f32,0.5115f32),v4(0.6402f32,-0.7682f32,0.0000f32,0.7234f32),v4(-0.6402f32,-0.7682f32,0.0000f32,0.7234f32),v4(0.0000f32,0.0000f32,1.0000f32,2.1500f32),v4(0.0000f32,0.9821f32,0.1886f32,0.2875f32),v4(0.0000f32,-0.6097f32,0.7926f32,1.7407f32),v4(0.4500f32,0.0000f32,0.8930f32,2.1243f32),v4(-0.4500f32,0.0000f32,0.8930f32,2.1243f32),v4(0.0000f32,0.0000f32,-1.0000f32,2.0800f32),v4(0.0000f32,0.9439f32,-0.3304f32,0.7244f32),v4(0.3998f32,0.0000f32,-0.9166f32,2.1672f32),v4(-0.3998f32,0.0000f32,-0.9166f32,2.1672f32),v4(0.0000f32,-0.5547f32,-0.8321f32,1.8000f32),v4(1.0000f32,0.0000f32,0.0000f32,0.1900f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.3000f32),v4(0.0000f32,-1.0000f32,0.0000f32,0.3000f32),v4(0.0000f32,1.0000f32,0.0000f32,0.0500f32),v4(0.6727f32,0.7399f32,0.0000f32,0.0242f32),v4(0.0000f32,0.6727f32,0.7399f32,0.2408f32),v4(0.0000f32,0.6727f32,-0.7399f32,0.2408f32),v4(0.0000f32,0.0000f32,1.0000f32,0.6600f32),v4(0.0000f32,0.0000f32,-1.0000f32,0.6600f32),v4(0.0000f32,-0.6402f32,0.7682f32,0.5762f32),v4(0.0000f32,-0.6402f32,-0.7682f32,0.5762f32),v4(0.0000f32,0.7276f32,0.6860f32,0.4852f32),v4(0.0000f32,-0.7276f32,-0.6860f32,-0.4452f32),v4(0.0000f32,1.0000f32,0.0000f32,0.4600f32),v4(0.0000f32,-1.0000f32,0.0000f32,-0.0800f32),v4(0.9929f32,0.1191f32,0.0000f32,0.6672f32),v4(-0.9929f32,0.1191f32,0.0000f32,0.6672f32),v4(0.7071f32,0.7071f32,0.0000f32,0.6788f32),v4(-0.7071f32,0.7071f32,0.0000f32,0.6788f32),v4(1.0000f32,0.0000f32,0.0000f32,0.2500f32),v4(-1.0000f32,0.0000f32,0.0000f32,0.2500f32),v4(0.0000f32,-1.0000f32,0.0000f32,0.0000f32),v4(0.0000f32,0.9789f32,-0.2043f32,0.4741f32),v4(0.0000f32,0.3304f32,0.9439f32,-0.3728f32),v4(0.0000f32,0.0000f32,-1.0000f32,1.7500f32),v4(0.6727f32,0.7399f32,0.0000f32,0.3458f32),v4(-0.6727f32,0.7399f32,0.0000f32,0.3458f32)];
   px:V2=v2(pos.x,pos.y);
   ndc:V2=v2(((px.x/u[0])*2.0f32)-1.0f32,1.0f32-((px.y/u[1])*2.0f32));
@@ -1263,7 +1369,7 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32)->V4 {
       h=OrbitleagueHit.{t=t,n=v3(0.0f32,1.0f32,0.0f32),col=orbitleague_floor_col(p,u),ink=0.0f32,mat=5};
     }
   }
-  h=orbitleague_closer(h,orbitleague_movers(ro,rd,u,HULL));
+  h=orbitleague_closer(h,orbitleague_movers(ro,rd,u,HULL,mesh,true));
   h=orbitleague_closer(h,orbitleague_frames(ro,rd,u));
   if (((h.t>1e8f32)&&(!drum))&&(!sphere)) {
     h=orbitleague_ribs(ro,rd,u);
@@ -1287,7 +1393,7 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32)->V4 {
       // the floor is polished: the ball, the cars, the frames and the boost in it
       rr:V3=wg_reflect3(rd,h.n);
       q:V3=wg_add_f3f3(p,wg_mul_f3f(h.n,0.002f32));
-      rh:OrbitleagueHit=orbitleague_closer(orbitleague_movers(q,rr,u,HULL),orbitleague_frames(q,rr,u));
+      rh:OrbitleagueHit=orbitleague_closer(orbitleague_movers(q,rr,u,HULL,mesh,false),orbitleague_frames(q,rr,u));
       k:f32=0.2f32+(0.3f32*pow(1.0f32-abs(wg_dot3(rd,h.n)),4.0f32));
       if (rh.t<70.0f32) {
         c=wg_mix_f3f3f(c,orbitleague_shade_hit(rh,rr,u),k*exp((-rh.t)*0.45f32));
@@ -1310,7 +1416,7 @@ orbitleague_bg_fs :: (pos:V4,u:[]f32)->V4 {
     c=orbitleague_space(rd,u);
   }
   // glass and nets in front of it
-  gl:OrbitleagueGlass=orbitleague_glass(ro,rd,h.t,u,HULL);
+  gl:OrbitleagueGlass=orbitleague_glass(ro,rd,h.t,u,HULL,mesh);
   if (gl.a>0.0f32) {
     c=wg_mix_f3f3f(c,gl.col,gl.a);
   }
