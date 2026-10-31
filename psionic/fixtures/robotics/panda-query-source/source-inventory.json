@@ -1,5 +1,5 @@
 {
-  "README_sha256": "8edf1467602e5f054b00411cd1b6c7067ae2d0f41d9773dc209fa239acf9c566",
+  "README_sha256": "51f9b9c90ed631cf3731ffcd59a3e2df5a3db08e215b40f8be04670835fe41ec",
   "book_draft": {
     "path": "/tmp/panda-query-source-book-section.md",
     "sha256": "5b4d5dde714a6a9f93072964c814148671f2733a3969b4e0aad94e981e307374"
@@ -24,5 +24,6 @@
     "psionic/tests/robotics/panda_query_source_prefix_reference.py": "ec1e4af1965d66305c4dad93ff094836b22a049647ca514969d5bf14c8317902"
   },
   "prefix_full_aggregate_dependency_inventory": "prefix-qualification.json:source_sha256",
-  "schema": "psionic.panda-query-source.source-inventory.v1"
+  "schema": "psionic.panda-query-source.source-inventory.v1",
+  "publication_documentation_followup": "Corrected the native platform label to Darwin arm64, matching the existing executed driver. No executed source/receipt/input changed and no gate repeated."
 }

@@ -78,7 +78,7 @@ its prior query path until explicitly integrated with this selector.
 
 ## Reproduction boundaries
 
-The portable selector harness uses only committed reference data and a
+The SDK-independent Darwin-arm64 selector harness uses committed reference data and a
 chosen compiler, and performs no SDK calls:
 
 ```shell

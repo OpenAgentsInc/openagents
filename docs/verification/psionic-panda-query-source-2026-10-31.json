@@ -1,0 +1,99 @@
+{
+  "schema": "psionic.panda-query-source.publication-binding.v1",
+  "passed": true,
+  "compiler_sha256": "a429ad59a39f1b77adee37dd09895d8f7fd36b3149bc3fdf6eed4131a2d4f818",
+  "compiler_input_fingerprint": "580cc4b7c058db8b828df2d13b43eb4feb38af53f4d692430943d51cca81e036",
+  "source_and_reference_exact": {
+    "prefix": {
+      "coax/lib/crypto/bytes.coax": true,
+      "coax/lib/crypto/sha256.coax": true,
+      "coax/lib/proto/fingerprint.coax": true,
+      "coax/lib/quantity.coax": true,
+      "psionic/fixtures/robotics/panda-query-source/prefix-experiment.json": true,
+      "psionic/lib/physics/step-clock-domain.coax": true,
+      "psionic/lib/physics/step-clock-schedule.coax": true,
+      "psionic/lib/physics/step-clock-types.coax": true,
+      "psionic/lib/robotics/panda-clock-adapter.coax": true,
+      "psionic/lib/robotics/panda-clock-types.coax": true,
+      "psionic/lib/robotics/panda-control-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-control-types.coax": true,
+      "psionic/lib/robotics/panda-control.coax": true,
+      "psionic/lib/robotics/panda-env-types.coax": true,
+      "psionic/lib/robotics/panda-env.coax": true,
+      "psionic/lib/robotics/panda-fingers-chain.coax": true,
+      "psionic/lib/robotics/panda-fingers-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-fingers-profile.coax": true,
+      "psionic/lib/robotics/panda-fingers-types.coax": true,
+      "psionic/lib/robotics/panda-fk-chain.coax": true,
+      "psionic/lib/robotics/panda-fk-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-fk-math.coax": true,
+      "psionic/lib/robotics/panda-fk-profile.coax": true,
+      "psionic/lib/robotics/panda-fk-types.coax": true,
+      "psionic/lib/robotics/panda-inertia-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-inertia-math.coax": true,
+      "psionic/lib/robotics/panda-inertia-profile.coax": true,
+      "psionic/lib/robotics/panda-inertia-types.coax": true,
+      "psionic/lib/robotics/panda-inertia.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-force.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-math.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-motion.coax": true,
+      "psionic/lib/robotics/panda-inverse-dynamics-types.coax": true,
+      "psionic/lib/robotics/panda-jacobian-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-jacobian-math.coax": true,
+      "psionic/lib/robotics/panda-jacobian-types.coax": true,
+      "psionic/lib/robotics/panda-loop-types.coax": true,
+      "psionic/lib/robotics/panda-loop.coax": true,
+      "psionic/lib/robotics/panda-matrix-types.coax": true,
+      "psionic/lib/robotics/panda-matrix.coax": true,
+      "psionic/lib/robotics/panda-owned-sample-check-fixtures.coax": true,
+      "psionic/lib/robotics/panda-owned-sample.coax": true,
+      "psionic/lib/robotics/panda-query-source-fixtures.coax": true,
+      "psionic/lib/robotics/panda-query-source-types.coax": true,
+      "psionic/lib/robotics/panda-query-source.coax": true,
+      "psionic/lib/robotics/panda-trace.coax": true,
+      "psionic/platform/panda-env.c": true,
+      "psionic/platform/panda-env.h": true,
+      "psionic/tests/robotics/panda-clock-session.coax": true,
+      "psionic/tests/robotics/panda-query-session.coax": true,
+      "psionic/tests/robotics/panda-session.coax": true,
+      "psionic/tests/robotics/panda_query_source_prefix.c": true,
+      "psionic/tests/robotics/panda_query_source_prefix_reference.py": true
+    },
+    "native": {
+      "psionic/lib/robotics/panda-query-source-fixtures.coax": true,
+      "psionic/lib/robotics/panda-query-source-types.coax": true,
+      "psionic/lib/robotics/panda-query-source.coax": true,
+      "psionic/tests/robotics/panda_query_source_native.c": true,
+      "psionic/tests/robotics/panda_query_source_native_reference.py": true
+    },
+    "example": {
+      "psionic/examples/panda-query-source.coax": true
+    }
+  },
+  "qualification_sha256": "905fb29cac2d61bffd0ac967c17ba4ceff0ae787766dc211d478ea08a24a4d18",
+  "source_inventory_sha256": "5a8dc0a7422782b9a46955f2f7ea9e5c98d70a1ea6b664ed5e89789e26e4de88",
+  "reviews": [
+    "Root: C effect, selector, order and ABI; exact origins/readiness/pinned-address scope added before SDK execution.",
+    "Flow: action-only extraction, controllers, finite/extent/decoder guards and complete53 dependency inventory."
+  ],
+  "source_proof": {
+    "actual_emitted_mutants": 97,
+    "survivors": 0
+  },
+  "new_SDK_prefix": {
+    "steps": 500,
+    "neural_forwards": 0,
+    "render_calls": 0,
+    "primary_and_shadow_successful_calls": 1000,
+    "trace": "Recorded actions; controls freshly recomputed, old actuator replay untouched."
+  },
+  "static_book": {
+    "passed": true,
+    "programs": 116,
+    "source_linked_listings": 449,
+    "qualified_tree": "66c659761a188b7ba0bfe746406a9b8f89addd8c",
+    "commit": "44cef1631e"
+  },
+  "documentation_followup": "Corrected selector harness platform label only; actual runtime scope already Darwin arm64. Executed records unchanged.",
+  "scope": "Additive named-state effect, admitted owned-query selector and short SDK-integrated controlled prefix. SDK geometry/contact/integration retained; full neural runner still its prior SDK path. No passing source/native/SDK/example result repeated, no new learned episode or own simulator/hardware/clock/bounded-control claim."
+}
