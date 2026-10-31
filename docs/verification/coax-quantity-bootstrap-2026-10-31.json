@@ -549,5 +549,67 @@
     "previous_fog_property_cases": 130,
     "previous_fog_property_repeated": false,
     "previous_fog_log_sha256": "bf96f17045824f19edeb7313f2ae8ce868b4c54fbcfdd7581878e1682d68e4aa"
+  },
+  "private_basic_consumer": {
+    "source": "coax/tests/quantity/private-bootstrap.coax",
+    "source_sha256": "dff2e8d796645d49825dc93d9eda967303cd739163f18cda4c093d3b62765101",
+    "compiler_sha256": "19f0528a2248c8c4d399031911e2b607894338b9b3b13a868ec230254639afc0",
+    "command": [
+      "/tmp/coax-quantity-bootstrap-final/coax",
+      "run",
+      "coax/tests/quantity/private-bootstrap.coax"
+    ],
+    "exit": 0,
+    "stdout": "private quantity: 12.0 half-metres\n",
+    "stderr": "",
+    "adjacent_lib_directory_present": false,
+    "scope": "New runtime Basic-print/quantity flow only; the compiler emits Basic support in self-contained C and resolves #load from the source file. No library/cache installation or old native corpus rerun."
+  },
+  "reproducible_private_tool": {
+    "source": "coax/tests/quantity_bootstrap.py",
+    "sha256": "3522f77e50e5812917be43f2c59da1a89df111c6d3b7bc12ef2244cb56ff5dd6",
+    "source_writes": false,
+    "release_cache_or_bin_installation": false,
+    "shared_wall_budget_seconds": 840,
+    "executed_bootstrap_again": false,
+    "plan_comparison": {
+      "passed": true,
+      "prior_receipt": "/private/tmp/coax-quantity-bootstrap-final/normal-bootstrap-qualification.json",
+      "command_count": 24,
+      "normalized_command_sha256": "ff42a5f8e86247dd04d1b60d550a5f6ffa501a12b567d3cb0d131372fbb1627b",
+      "compared": [
+        "all normalized command arguments/order/cwd/stdout/stderr",
+        "normal_seed_compile_order",
+        "normal_seed_link_order",
+        "seed_sha256",
+        "authored_source_sha256",
+        "normal_bootstrap_recipe_sha256"
+      ],
+      "full_normal_fingerprint_recomputed": false,
+      "scope": "Selected recorded source/seed/recipe identities and command plan only. This read-only comparison does not recompute the full compiler-input/toolchain/SDK fingerprint or requalify a binary.",
+      "prior_input_fingerprint": "bc42e221b7ed98b174a20b5a3a35a4dda94914b528a35981467b1b9a08d88381",
+      "source_commit_labels": {
+        "current": "d4db651f8bf44b5ea56bfc67c3acc27d6752bbb4",
+        "prior": "d4db651f8bf44b5ea56bfc67c3acc27d6752bbb4"
+      }
+    },
+    "plan_json_sha256": "d79f2620023648c7f4089a36574f3549b3178ae6037999ecf317b19c0e79176d",
+    "protocol_preparation_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+    "protocol_preparation_matches_executed_file": true,
+    "independent_read_only_compiler_input_fingerprint": "bc42e221b7ed98b174a20b5a3a35a4dda94914b528a35981467b1b9a08d88381",
+    "scope": "Plan verification compares all24 normalized argv/order/cwd/stdout/stderr paths and recorded seed/source/recipe identities. A separate read-only fingerprint anchors the entire immutable input tree/toolchain/SDK to the executed receipt. No bootstrap rerun or release/cache qualification.",
+    "tooling_checks_passed": [
+      "Syntax and CLI help.",
+      "Exact selected source/seed/recipe and24command/redirection plan comparison.",
+      "Plan mode with subprocess creation forbidden.",
+      "Refused existing output and source-tree output.",
+      "Refused changed argv, stdout redirection and stderr redirection."
+    ],
+    "usable_invocations": [
+      "python3 coax/tests/quantity_bootstrap.py NEW_OUTPUT_DIR",
+      "NEW_OUTPUT_DIR/coax run coax/tests/quantity/private-bootstrap.coax",
+      "NEW_OUTPUT_DIR/coax c verse/grid.coax --library",
+      "COAX_TEST_COMPILER=NEW_OUTPUT_DIR/coax python3 coax/tests/quantity.py"
+    ]
   }
 }

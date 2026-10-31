@@ -1,0 +1,11 @@
+// Run with the private compiler produced by tests/quantity_bootstrap.py.
+// Basic is emitted into the C; this source load is relative to this file.
+#import "Basic";
+#load "../../lib/quantity.coax" as units;
+
+main :: () {
+    distance: units.Quantity(units.Metre,f64) = units.Quantity.{value=3};
+    doubled := distance*2.0f64;
+    half_metres := convert_unit(units.HalfMetre,doubled);
+    print("private quantity: % half-metres\n",half_metres.value);
+}

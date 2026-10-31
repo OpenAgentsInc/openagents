@@ -177,19 +177,40 @@ These private, focused results do not by themselves qualify or publish a
 normal release cache. The full normal bootstrap, release/provenance checks
 and cache/installed-compiler status must be recorded separately.
 
-Use a compiler built from the milestone sources for focused checks; the test
-drivers default to `coax/bin/coax` and accept `COAX_TEST_COMPILER` for a private
-compiler. An older installed binary requires rebuilding before it accepts the
-new syntax. The concrete normal rebuild is `coax/build.sh`; this milestone
-proved its checked-in-seed reconstruction and fixed point, while the complete
-standalone release gates and release-cache publication remain pending.
+For a private compiler without the broad release gates, use the checked-in
+[focused reconstruction tool](tests/quantity_bootstrap.py). It follows the
+same 24-command seed/compiler/fixed-point plan as the recorded reconstruction,
+uses a new output directory, and has one 840-second budget for the whole run.
+It preserves failed partial output and never installs into `coax/bin` or a
+release cache. `--plan` only reads files and prints the plan; `--verify-receipt`
+compares its command/redirection plan and recorded source/seed identities.
+That comparison does not independently recompute the full source/toolchain
+fingerprint or qualify a release.
+
+Run from the repository root, choosing an output directory that does not
+already exist:
 
 ```shell
-python3 coax/tests/quantity.py
-python3 coax/tests/quantity_native.py
-coax/bin/coax test coax/lib/compiler/quantity.coax
-coax/bin/coax mutate coax/lib/compiler/quantity.coax --root-only
+python3 coax/tests/quantity_bootstrap.py /tmp/coax-quantity-private --plan > /tmp/coax-quantity-plan.json
+python3 coax/tests/quantity_bootstrap.py /tmp/coax-quantity-private > /tmp/coax-quantity-build.json
+/tmp/coax-quantity-private/coax run coax/tests/quantity/private-bootstrap.coax
+/tmp/coax-quantity-private/coax c verse/grid.coax --library > /tmp/coax-quantity-grid.c
+COAX_TEST_COMPILER=/tmp/coax-quantity-private/coax python3 coax/tests/quantity.py
 ```
+
+The compiler is `/tmp/coax-quantity-private/coax`; its build logs, generated
+C/headers and `receipt.json` stay beside it. It needs no adjacent `lib`
+directory for Basic printing: Basic support is emitted into self-contained C,
+and `#load` resolves relative to the source file. The new private-consumer
+example was run with the qualified output and prints
+`private quantity: 12.0 half-metres`. The Grid invocation likewise loads its
+unit source from the repository. The focused test drivers accept
+`COAX_TEST_COMPILER`, leaving the installed compiler untouched.
+
+An older installed binary requires rebuilding before it accepts the new
+syntax. The complete normal release build remains `coax/build.sh`; its broad
+standalone gates, release/provenance qualification and cache publication are
+separate from this private reconstruction and were not rerun here.
 
 ## Family identity at the operator boundary
 
