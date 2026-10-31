@@ -1,5 +1,10 @@
 # OpenAgents
 
+OpenAgents.com is a playtest, not a slide deck: a 3D web world where you
+walk among the projects we're building, play realms that people dream up,
+and pay or get paid in Bitcoin
+([Episode 290: Enter the Verse](docs/transcripts/290.md)).
+
 We are rebuilding OpenAgents from a small, checked core. The repository was
 reset on 2026-10-27. What is here now is the base everything else will be
 built on:
@@ -30,9 +35,11 @@ built on:
   you walk (`player.coax`) as an animated character among patrolling robots
   (`cast.coax`). A thin C and Swift layer owns storage and
   the GPU. The same name covers the world and experience the engine runs:
-  the Verse, made of realms such as the Haunted House
+  the Verse, made of realms
   ([Verse protocol](docs/verse/openagents-verse-protocol.md),
-  [engine notes](docs/verse/engine.md)).
+  [engine notes](docs/verse/engine.md)). It is web-first, so a realm is a
+  link you can drop anywhere, and it is moving onto native GPUs too
+  ([native GPU plan](docs/verse/native-gpu.md)).
 - **The OpenAgents Protocol**
   ([spec](docs/protocol/openagents-protocol-spec.md), schemas in
   [`proto/`](proto/README.md)) defines the interchange for web, mobile,
@@ -47,9 +54,30 @@ built on:
   runs on **Coaxial**, the Coax web framework ([design](coax/web.md),
   tools in [`coax/web/`](coax/web/)). Coax compiles to WebAssembly, a small
   generic host draws with WebGPU, and every visible thing on a page is Coax.
-  - [`/realms/haunted-house`](https://openagents.com/realms/haunted-house):
-    the Verse engine's Haunted House realm in the browser, the same Coax as
-    on iOS.
+  - The homepage shows our projects as a live network, with the XP
+    leaderboard and the Pylons online; WALK AROUND opens the Grid, a
+    multiplayer world.
+  - Realms ([`/realms`](https://openagents.com/realms)) include:
+    - [Everglade](https://openagents.com/realms/everglade), a D&D-rules
+      town (SRD 5.2.1 spells) whose buildings break and burn and whose
+      guards chase you down ([notes](docs/verse/everglade.md));
+    - Fairy Forest, built from a friend's game idea;
+    - Dead Gears, Ice Cream Man, the Haunted House and Hecate's Cemetery;
+    - Orbit League, Belt 2200 and Hold the Stair, pitched by the audience
+      of Episode 290 ([design documents](docs/verse/game-ideas/README.md)).
+  - [`/realms/new`](https://openagents.com/realms/new) makes a realm from
+    what you say or type ([realm builder](docs/verse/realm-builder.md)), and
+    you edit it by voice ([realm edit](docs/verse/realm-edit.md)). FORK
+    makes your own copy of any realm with your own rules
+    ([fork](docs/verse/realm-fork.md)), and REPLY names a building after a
+    post so you can smash it and share the clip ([replies](docs/verse/replies.md)).
+  - Makers get paid: a maker claims their realm with a Nostr key and a
+    Lightning address, players tip them, and makers list upgrades, such as
+    a better fairy, that players buy in one tap
+    ([makers](docs/verse/makers.md)).
+  - To build a realm with Claude Code, clone the repo one level deep
+    (`git clone --depth 1`), point your agent at
+    [`verse/SKILL.md`](verse/SKILL.md), and open a pull request.
   - [`/projects`](https://openagents.com/projects) lists projects.
     [`/projects/coax`](https://openagents.com/projects/coax) shows the Coax
     roadmap and Nostr work as signed Nostr events: the queue, who is on what,
@@ -68,12 +96,28 @@ built on:
   Start opens the Grid, the bare Verse world, to walk around in. It
   ships to the owner's TestFlight group as `com.openagents.app`.
 
+- **Pylons** sell spare compute on gaming computers for Bitcoin. A Pylon
+  runs GPT-OSS for small tool use and the Elephant and Mammoth decision
+  models on **Psionic**, our machine-learning framework
+  ([book](psionic/book/README.md), being ported from Rust into Coax). Everglade's
+  guards are the first game NPCs to ask Pylons for decisions
+  ([guard decisions](docs/verse/pylon-guard-decisions.md)).
+
 ## What's next
 
-- **A Lightning wallet in the iOS app**, on Breez's Spark SDK, with the
-  payment rules in a checked Coax file
+- **A Bitcoin wallet for every person and agent**, on Breez's Spark SDK,
+  with the payment rules in a checked Coax file
   ([`docs/lightning/`](docs/lightning/README.md)). Money is Bitcoin only:
   Lightning, on-chain, Spark and Taproot Assets.
+- **Fast multiplayer**: a WebSocket room service with an authoritative
+  tick, prediction and rollback for Orbit League, and deterministic
+  lockstep for Belt 2200.
+- **Agents that moonlight**: point your agent at our docs, set your price
+  and hours, and it works overnight for Bitcoin.
+- **An open metaverse protocol on Nostr**
+  ([NIP-MV](nips/openagents/NIP-MV.md)), so anyone can build realms without asking
+  our permission, and a store that pays makers residuals when people use
+  or remix their work.
 - **Verification** grows with the code
   ([plan](docs/verification/2026-10-27-formal-verification-brainstorm.md)):
   - fuzzing with emitted coverage;
