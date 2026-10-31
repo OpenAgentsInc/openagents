@@ -41,6 +41,35 @@ typedef struct {
 
 static Proc procs[CXPROC_MAX];
 
+/* Each child runs in its own process group (so a kill takes its helpers too),
+   which also means it doesn't get a signal meant for this process's group.
+   When this process is stopped by SIGINT, SIGTERM or SIGHUP it takes its
+   children's groups with it: a Chrome a Coax tool started must not outlive
+   the tool (2026-10-30: headless Chromes ran for hours after their tools were
+   killed). Installed only where the program left the default action. */
+static void take_children(int sig) {
+  for (int i = 0; i < CXPROC_MAX; i++)
+    if (procs[i].used && procs[i].started && !procs[i].reaped && procs[i].pid > 0) kill(-procs[i].pid, SIGKILL);
+  signal(sig, SIG_DFL);
+  raise(sig);
+}
+static void guard_children(void) {
+  static int guarded;
+  if (guarded) return;
+  guarded = 1;
+  const int sigs[] = {SIGINT, SIGTERM, SIGHUP};
+  for (int i = 0; i < 3; i++) {
+    struct sigaction old;
+    if (sigaction(sigs[i], NULL, &old) == 0 && !(old.sa_flags & SA_SIGINFO) && old.sa_handler == SIG_DFL) {
+      struct sigaction now;
+      memset(&now, 0, sizeof now);
+      now.sa_handler = take_children;
+      sigemptyset(&now.sa_mask);
+      sigaction(sigs[i], &now, NULL);
+    }
+  }
+}
+
 static int put(Bytes *b, char c) {
   if (b->count == b->cap) {
     size_t cap = b->cap ? b->cap * 2 : 64;
@@ -195,6 +224,7 @@ int64_t cxproc_spawn(int64_t h) {
   }
   free(argv);
   setpgid(pid, pid); /* also from the parent, so the group exists before any kill */
+  guard_children();
   close(in[0]); close(out[1]); close(err[1]); close(report[1]);
   int e = 0;
   ssize_t got;
