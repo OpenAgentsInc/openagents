@@ -19,3 +19,15 @@ vertex interfaces and retains SPIR-V refusal. The native-GPU note reports
 the named fixture consumer and keeps realm/waterlab follow-up explicit.
 These graphics changes do not establish Psionic browser compute. Only their
 six affected claim/evidence bindings were reviewed and refreshed.
+
+## Chapter 111 publication follow-up
+
+Concurrent commit e60ab60b87 changes the native-GPU consumer note: realm and
+waterlab now follow the translator with zero changed golden blocks after local
+procedure-name collisions were removed. The exact reviewed diff changes no
+Psionic compute claim. Only the two native-GPU evidence bindings were refreshed.
+The post-rebase book gate detected stale bindings before chapter 111 commit
+4b90dcf4e1 was pushed, but a shell sequence failed to stop on its nonzero exit.
+This follow-up corrects that metadata; future dependent publication commands
+use errexit. Chapter 111’s numerical source identities and passed native,
+independent and mutation evidence were unaffected and were not rerun.
