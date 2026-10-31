@@ -285,7 +285,10 @@ wk_hud :: (out: [] f32, at: int, s: [] LandState, u: [] f32, f: LandFrame, width
   cap := (ifx l.phone then 10.0f32 else 12.0f32) * d; small := 7.0 * d;
   title := "THE GRID";
   k := wk_nearest(s);
-  near := ifx k >= 0 then field(land_projects(s[..]), k, 1) else "";
+  // the project you are nearest, said as one: "Near Coder", not a bare name that reads as the Grid's subtitle
+  nb: [80] u8; nn := 0;
+  if k >= 0 { nn = app(nb[..], 0, "Near "); nn = app(nb[..], nn, field(land_projects(s[..]), k, 1)); }
+  near := cast(string) nb[0..<nn];
   word := ink(p, INK_WHITE); word.sans = false; word.core = 0.62 * d; word.glow = 7 * d;
   tw := hi(measure(title, TITLE_GAP, TITLE_SPACE, false) * cap, text_width(near, small, ink(p, INK_PALE)));
   tb := Box.{x0 = m, y0 = m, x1 = m + tw + 28 * d, y1 = m + cap + small + 30 * d};
