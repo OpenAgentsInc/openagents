@@ -165,6 +165,27 @@ rule :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light
   return at;
 }
 
+// A rule with the parts inside any of the first n boxes left out (a label's plate kept clear).
+rule_clear :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, k: Ink, light: f32, clear: [] Box, n: int) -> int {
+  if n <= 0 { return rule(out, at, ax, ay, bx, by, k, light); }
+  c := clear[n - 1];
+  // where the segment is inside c, as t0..t1 along it (Liang-Barsky)
+  t0 := 0.0f32; t1 := 1.0f32;
+  dx := bx - ax; dy := by - ay;
+  ps := [4] f32.[-dx, dx, -dy, dy];
+  qs := [4] f32.[ax - c.x0, c.x1 - ax, ay - c.y0, c.y1 - ay];
+  for i: 0..<4 {
+    if ps[i] == 0 { if qs[i] < 0 { t0 = 2; } continue; }
+    r := qs[i] / ps[i];
+    if ps[i] < 0 { t0 = hi(t0, r); } else { t1 = lo(t1, r); }
+  }
+  if t0 >= t1 { return rule_clear(out, at, ax, ay, bx, by, k, light, clear, n - 1); }
+  v := at;
+  if t0 > 0.001 { v = rule_clear(out, v, ax, ay, ax + dx * t0, ay + dy * t0, k, light, clear, n - 1); }
+  if t1 < 0.999 { v = rule_clear(out, v, ax + dx * t1, ay + dy * t1, bx, by, k, light, clear, n - 1); }
+  return v;
+}
+
 // A panel's frame: faint outline, 45° cuts on the plain corners, bright brackets top left and bottom right.
 frame :: (out: [] f32, at: int, b: Box, cut: f32, p: Pen) -> int {
   k := ink(p, INK_WHITE);
@@ -412,7 +433,7 @@ tower_box :: (k: Iso, x: f32, y: f32, h: f32) -> Box {
   return Box.{x0 = sx(k, x - HALF, y + HALF), y0 = sy(k, x - HALF, y - HALF, h), x1 = sx(k, x + HALF, y - HALF), y1 = sy(k, x + HALF, y + HALF, 0)};
 }
 
-draw_tower :: (out: [] f32, at: int, k: Iso, x: f32, y: f32, h: f32, p: Pen, lit_up: bool) -> int {
+draw_tower :: (out: [] f32, at: int, k: Iso, x: f32, y: f32, h: f32, p: Pen, lit_up: bool, clear: [] Box, cn: int) -> int {
   v := at;
   e := ink(p, ifx lit_up then INK_ACCENT else INK_WHITE);
   light := ifx lit_up then p.fade else 0.62 * p.fade;
@@ -421,23 +442,23 @@ draw_tower :: (out: [] f32, at: int, k: Iso, x: f32, y: f32, h: f32, p: Pen, lit
   // the top, all four edges
   for i: 0..<4 {
     j := (i + 1) % 4;
-    v = rule(out, v, sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], h), sx(k, xs[j], ys[j]), sy(k, xs[j], ys[j], h), e, light);
+    v = rule_clear(out, v, sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], h), sx(k, xs[j], ys[j]), sy(k, xs[j], ys[j], h), e, light, clear, cn);
   }
   // the three edges up that face us (not the back corner) and the base's two front edges
-  for i: 1..<4 { v = rule(out, v, sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], 0), sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], h), e, light * 0.8); }
-  v = rule(out, v, sx(k, xs[1], ys[1]), sy(k, xs[1], ys[1], 0), sx(k, xs[2], ys[2]), sy(k, xs[2], ys[2], 0), e, light * 0.8);
-  v = rule(out, v, sx(k, xs[2], ys[2]), sy(k, xs[2], ys[2], 0), sx(k, xs[3], ys[3]), sy(k, xs[3], ys[3], 0), e, light * 0.8);
+  for i: 1..<4 { v = rule_clear(out, v, sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], 0), sx(k, xs[i], ys[i]), sy(k, xs[i], ys[i], h), e, light * 0.8, clear, cn); }
+  v = rule_clear(out, v, sx(k, xs[1], ys[1]), sy(k, xs[1], ys[1], 0), sx(k, xs[2], ys[2]), sy(k, xs[2], ys[2], 0), e, light * 0.8, clear, cn);
+  v = rule_clear(out, v, sx(k, xs[2], ys[2]), sy(k, xs[2], ys[2], 0), sx(k, xs[3], ys[3]), sy(k, xs[3], ys[3], 0), e, light * 0.8, clear, cn);
   if lit_up {
     // the lit tower's top hatched, and its floor cell drawn
     for t: 1..<4 {
       f := cast(f32) t * 0.25;
-      v = rule(out, v, sx(k, x - HALF + 2 * HALF * f, y - HALF), sy(k, x - HALF + 2 * HALF * f, y - HALF, h),
-               sx(k, x - HALF + 2 * HALF * f, y + HALF), sy(k, x - HALF + 2 * HALF * f, y + HALF, h), e, 0.45 * p.fade);
+      v = rule_clear(out, v, sx(k, x - HALF + 2 * HALF * f, y - HALF), sy(k, x - HALF + 2 * HALF * f, y - HALF, h),
+               sx(k, x - HALF + 2 * HALF * f, y + HALF), sy(k, x - HALF + 2 * HALF * f, y + HALF, h), e, 0.45 * p.fade, clear, cn);
     }
     cx := [4] f32.[x - 0.5, x + 0.5, x + 0.5, x - 0.5]; cy := [4] f32.[y - 0.5, y - 0.5, y + 0.5, y + 0.5];
     for i: 0..<4 {
       j := (i + 1) % 4;
-      v = rule(out, v, sx(k, cx[i], cy[i]), sy(k, cx[i], cy[i], 0), sx(k, cx[j], cy[j]), sy(k, cx[j], cy[j], 0), e, 0.5 * p.fade);
+      v = rule_clear(out, v, sx(k, cx[i], cy[i]), sy(k, cx[i], cy[i], 0), sx(k, cx[j], cy[j]), sy(k, cx[j], cy[j], 0), e, 0.5 * p.fade, clear, cn);
     }
   }
   return v;
@@ -448,17 +469,39 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
   v := titled(out, at, b, "THE GRID", SORT_NAMES[s[0].sort], p);
   if n == 0 { return frame(out, v, b, 10 * d, p); }
   k := iso_of(b, n, p);
+  ranks: [MAX_REALMS] int;
+  for q: 0..<n { ranks[order[q]] = q; }
+  // each tower's label (its rank, and on a wide page its name) over it; no line is drawn
+  // through a label: the floor's and every tower's are cut around its plate
+  name_cap := (ifx l.wide then 6.5f32 else 6.0f32) * d;
+  named := l.wide && k.c > 70 * d;
+  clear: [MAX_REALMS * 2] Box; cn := 0;
+  pad := 3 * d;
+  for i: 0..<n {
+    r := order[i];
+    x := s[0].gx[r]; y := s[0].gy[r]; h := s[0].gh[r];
+    cx := sx(k, x, y); ty := sy(k, x - HALF, y - HALF, h) - 6 * d;
+    buf: [8] u8; m := put_int(buf[..], 0, i + 1);
+    rank_y := ifx named then ty - name_cap - 7 * d else ty;
+    rw := ink_width(cast(string) buf[0..<m], 6 * d, GAP, SPACE, ink(p, INK_DIM));
+    clear[cn] = Box.{x0 = cx - rw * 0.5 - pad, y0 = rank_y - 6 * d - pad, x1 = cx + rw * 0.5 + pad, y1 = rank_y + pad}; cn += 1;
+    if named {
+      title := field(REALMS_ROWS, r, C_TITLE);
+      nw := ink_width(title, name_cap, GAP, SPACE, ink(p, INK_DIM));
+      clear[cn] = Box.{x0 = cx - nw * 0.5 - pad, y0 = ty - name_cap * 1.15 - pad, x1 = cx + nw * 0.5 + pad, y1 = ty + name_cap * 0.35 + pad}; cn += 1;
+    }
+  }
   // the floor: the cells, and fainter lines a cell beyond them
   fl := ink(p, INK_DIM);
   c := cast(f32) k.cols;
   for i: 0..<k.cols + 1 {
     t := cast(f32) i;
-    v = rule(out, v, sx(k, t, 0), sy(k, t, 0, 0), sx(k, t, c), sy(k, t, c, 0), fl, 0.32 * p.fade);
-    v = rule(out, v, sx(k, 0, t), sy(k, 0, t, 0), sx(k, c, t), sy(k, c, t, 0), fl, 0.32 * p.fade);
-    v = rule(out, v, sx(k, t, c), sy(k, t, c, 0), sx(k, t, c + 0.5), sy(k, t, c + 0.5, 0), fl, 0.12 * p.fade);
-    v = rule(out, v, sx(k, c, t), sy(k, c, t, 0), sx(k, c + 0.5, t), sy(k, c + 0.5, t, 0), fl, 0.12 * p.fade);
-    v = rule(out, v, sx(k, t, 0), sy(k, t, 0, 0), sx(k, t, -0.5), sy(k, t, -0.5, 0), fl, 0.12 * p.fade);
-    v = rule(out, v, sx(k, 0, t), sy(k, 0, t, 0), sx(k, -0.5, t), sy(k, -0.5, t, 0), fl, 0.12 * p.fade);
+    v = rule_clear(out, v, sx(k, t, 0), sy(k, t, 0, 0), sx(k, t, c), sy(k, t, c, 0), fl, 0.32 * p.fade, clear[..], cn);
+    v = rule_clear(out, v, sx(k, 0, t), sy(k, 0, t, 0), sx(k, c, t), sy(k, c, t, 0), fl, 0.32 * p.fade, clear[..], cn);
+    v = rule_clear(out, v, sx(k, t, c), sy(k, t, c, 0), sx(k, t, c + 0.5), sy(k, t, c + 0.5, 0), fl, 0.12 * p.fade, clear[..], cn);
+    v = rule_clear(out, v, sx(k, c, t), sy(k, c, t, 0), sx(k, c + 0.5, t), sy(k, c + 0.5, t, 0), fl, 0.12 * p.fade, clear[..], cn);
+    v = rule_clear(out, v, sx(k, t, 0), sy(k, t, 0, 0), sx(k, t, -0.5), sy(k, t, -0.5, 0), fl, 0.12 * p.fade, clear[..], cn);
+    v = rule_clear(out, v, sx(k, 0, t), sy(k, 0, t, 0), sx(k, -0.5, t), sy(k, -0.5, t, 0), fl, 0.12 * p.fade, clear[..], cn);
   }
   // the towers back to front (x + y grows toward us), each where its rank puts it
   drawn: [MAX_REALMS] int;
@@ -468,25 +511,20 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
     while j > 0 && s[0].gx[drawn[j - 1]] + s[0].gy[drawn[j - 1]] > s[0].gx[r] + s[0].gy[r] { drawn[j] = drawn[j - 1]; j -= 1; }
     drawn[j] = r;
   }
-  name_cap := (ifx l.wide then 6.5f32 else 6.0f32) * d;
-  ranks: [MAX_REALMS] int;
-  for q: 0..<n { ranks[order[q]] = q; }
   for i: 0..<n {
     r := drawn[i];
     on := s[0].hot == ranks[r] || s[0].sel == ranks[r];
-    v = draw_tower(out, v, k, s[0].gx[r], s[0].gy[r], s[0].gh[r], p, on);
+    v = draw_tower(out, v, k, s[0].gx[r], s[0].gy[r], s[0].gh[r], p, on, clear[..], cn);
   }
-  // the labels over every tower, so no tower's lines cross them
   for i: 0..<n {
     r := drawn[i];
     rank := ranks[r];
     on := s[0].hot == rank || s[0].sel == rank;
     x := s[0].gx[r]; y := s[0].gy[r]; h := s[0].gh[r];
-    // its rank over it, and on a wide page its name
     buf: [8] u8; m := put_int(buf[..], 0, rank + 1);
     ty := sy(k, x - HALF, y - HALF, h) - 6 * d;
     lab := ink(p, ifx on then INK_ACCENT else INK_DIM);
-    if l.wide && k.c > 70 * d {
+    if named {
       v = put_center(out, v, field(REALMS_ROWS, r, C_TITLE), sx(k, x, y), ty, name_cap, ifx on then ink(p, INK_PALE) else ink(p, INK_DIM));
       v = put_center(out, v, cast(string) buf[0..<m], sx(k, x, y), ty - name_cap - 7 * d, 6 * d, lab);
     } else {
@@ -494,7 +532,7 @@ draw_scene :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, p: Pen, order
     }
   }
   // the lit realm's name along the panel's foot, where a phone has no room over the towers
-  if !(l.wide && k.c > 70 * d) {
+  if !named {
     lit_rank := ifx s[0].hot >= 0 && s[0].hot < n then s[0].hot else s[0].sel;
     if lit_rank >= 0 && lit_rank < n {
       v = put_center(out, v, field(REALMS_ROWS, order[lit_rank], C_TITLE), (b.x0 + b.x1) * 0.5, b.y1 - 12 * d, 8 * d, ink(p, INK_PALE));
