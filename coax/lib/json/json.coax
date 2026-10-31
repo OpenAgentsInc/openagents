@@ -457,6 +457,10 @@ jo_int :: (o: [] Jo, v: int) {
 // and control bytes; everything else (UTF-8 included) as it is.
 jo_quoted :: (o: [] Jo, s: string) {
   jo_byte(o, '"');
+  jo_escape_bytes(o, s);
+  jo_byte(o, '"');
+}
+jo_escape_bytes :: (o: [] Jo, s: string) {
   hex := "0123456789abcdef";
   for c: s {
     if c == '"' { jo_put(o, "\\\""); }
@@ -468,6 +472,63 @@ jo_quoted :: (o: [] Jo, s: string) {
     else if c == 12 { jo_put(o, "\\f"); }
     else if c < 32 { jo_put(o, "\\u00"); jo_byte(o, hex[c >> 4]); jo_byte(o, hex[c & 15]); }
     else { jo_byte(o, c); }
+  }
+}
+
+#test "a node written back compactly, strings escaped as JSON.stringify does" {
+  nodes: [32] JvNode; d: [1] Jv; store: [256] u8; o: [1] Jo;
+  #assert jv_parse(d[..], " { \"a\" : [ 1 , \"x\\u0041\\/\" , { } ] , \"b\\\"\" : null, \"c\": -2.5e3 } ", nodes[..]);
+  jo_start(o[..], store[..]); jv_write(d[0], 0, o[..]);
+  #assert !o[0].bad && jo_text(o[..]) == "{\"a\":[1,\"xA/\",{}],\"b\\\"\":null,\"c\":-2.5e3}";
+  jo_start(o[..], store[..]); jo_arr(o[..]); jv_write(d[0], jv_get(d[0], 0, "a"), o[..]); jv_write(d[0], jv_get(d[0], 0, "c"), o[..]); jo_end(o[..]);
+  #assert jo_text(o[..]) == "[[1,\"xA/\",{}],-2.5e3]";
+  jo_start(o[..], store[..]); jv_write(d[0], -1, o[..]);
+  #assert o[0].bad;
+  #assert jv_parse(d[..], "\"\\u0001\\n\\ud83d\\ude00\"", nodes[..]);
+  jo_start(o[..], store[..]); jv_write(d[0], 0, o[..]);
+  #assert jo_text(o[..]) == "\"\\u0001\\n😀\"";
+}
+// Node at written into o as compact JSON: no whitespace, strings and keys
+// unescaped and escaped again (jo_str's rules), numbers as written. An
+// index that is not a node marks o bad.
+jv_write :: (d: Jv, at: int, o: [] Jo) {
+  k := jv_kind(d, at);
+  if k == 0 { o[0].bad = true; return; }
+  if k == JV_STRING { jo_value(o); jo_requote(o, jv_raw(d, at)); return; }
+  if k != JV_ARRAY && k != JV_OBJECT { jo_raw(o, jv_raw(d, at)); return; }
+  jo_open(o, ifx k == JV_OBJECT then cast(u8) '{' else cast(u8) '[');
+  c := d.nodes[at].first;
+  while c >= 0 {
+    if k == JV_OBJECT { jo_value(o); jo_requote(o, jv_key(d, c)); jo_byte(o, ':'); o[0].keyed = true; }
+    jv_write(d, c, o);
+    c = d.nodes[c].next;
+  }
+  jo_end(o);
+}
+// Raw string bytes (escaped as they came) written as a quoted string with jo_quoted's escapes.
+jo_requote :: (o: [] Jo, raw: string) {
+  jo_byte(o, '"');
+  i := 0;
+  while i < raw.count {
+    j := i;
+    while j < raw.count && raw[j] != '\\' { j += 1; }
+    jo_escape_bytes(o, raw[i..<j]);
+    if j >= raw.count { break; }
+    // one escape (two for a surrogate pair), decoded
+    e := j + 2;
+    if raw[j + 1] == 'u' {
+      e = j + 6;
+      if e + 1 < raw.count && raw[e] == '\\' && raw[e + 1] == 'u' {
+        hi := jv_u4(raw, j + 2); lo := jv_u4(raw, e + 2);
+        if hi >= 0xd800 && hi <= 0xdbff && lo >= 0xdc00 && lo <= 0xdfff { e += 6; }
+      }
+    }
+    if e > raw.count { o[0].bad = true; return; }
+    tmp: [8] u8;
+    n := jv_unescape(raw[j..<e], tmp[..]);
+    if n < 0 { o[0].bad = true; return; }
+    jo_escape_bytes(o, cast(string) tmp[0..<n]);
+    i = e;
   }
   jo_byte(o, '"');
 }
