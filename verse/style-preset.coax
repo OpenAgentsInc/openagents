@@ -714,18 +714,21 @@ sp_flat_lum :: (p: StylePreset, slot: int) -> f32 {
   q := verse_style_preset(STYLE_PAINTERLY, STYLE_DESKTOP);
   #assert q.palette == -1 && q.rim_world == 0.30 && q.dab_strength == 0.35 && q.band_e0 == 0.20 && q.outline_max == 0.35 && q.hem_width == 0;
 }
-#test "flat: each realm its own palette; the cemetery's is night all day, the garden's turns" {
+#test "flat: each realm its own palette; the cemetery's is moonlit all day, the garden's turns" {
   c := verse_style_flat(FLAT_CEMETERY, STYLE_DESKTOP); g := verse_style_flat(FLAT_GARDEN, STYLE_DESKTOP);
   a: [STYLE_FLOATS] f32; b: [STYLE_FLOATS] f32;
-  // the cemetery: a dusty blue sky (blue the most, never saturated), near-black, ivory, a gold accent
+  // the cemetery, moonlit pastel (121b37dbd3): a periwinkle sky (blue the most, never saturated), deep indigo, cream, cream trim
   #assert verse_style_at(c, 0.0, a[..]) && verse_style_at(c, 0.5, b[..]);
   for i: 0..<STYLE_FLOATS - 4 { #assert a[i] == b[i] || (i >= SU_KEY_DIR && i < SU_KEY_DIR + 4) || (i >= SU_SUN && i < SU_SUN + 4); }
   sky_r := verse_style_flat_srgb(0, FLAT_SKY, 0); sky_g := verse_style_flat_srgb(0, FLAT_SKY, 1); sky_b := verse_style_flat_srgb(0, FLAT_SKY, 2);
   #assert sky_b > sky_g && sky_g > sky_r && sky_b - sky_r < 0.3 && sky_r > 0.25;
   #assert sp_near(a[SU_ZENITH], pow(sky_r, 2.2)) && sp_near(a[SU_ZENITH + 2], pow(sky_b, 2.2));
-  #assert sp_flat_lum(c, FLAT_DARK) < 0.015 && sp_flat_lum(c, FLAT_LIGHT) > 0.7 && sp_flat_lum(c, FLAT_FOLIAGE) < 0.03;
-  #assert verse_style_flat_srgb(0, FLAT_LIGHT, 0) >= verse_style_flat_srgb(0, FLAT_LIGHT, 2);           // ivory, not blue-white
-  #assert verse_style_flat_srgb(0, FLAT_ACCENT, 0) > verse_style_flat_srgb(0, FLAT_ACCENT, 1) && verse_style_flat_srgb(0, FLAT_ACCENT, 1) > verse_style_flat_srgb(0, FLAT_ACCENT, 2);   // gold
+  // pastel: the darkest tone is deep indigo, not black; the woods sit between it and the cream
+  #assert sp_flat_lum(c, FLAT_DARK) > 0.02 && sp_flat_lum(c, FLAT_DARK) < 0.06 && sp_flat_lum(c, FLAT_LIGHT) > 0.7;
+  #assert sp_flat_lum(c, FLAT_FOLIAGE) > sp_flat_lum(c, FLAT_DARK) && sp_flat_lum(c, FLAT_FOLIAGE) < 0.25;
+  #assert verse_style_flat_srgb(0, FLAT_DARK, 2) > verse_style_flat_srgb(0, FLAT_DARK, 0);              // indigo
+  #assert verse_style_flat_srgb(0, FLAT_LIGHT, 0) >= verse_style_flat_srgb(0, FLAT_LIGHT, 2);           // cream, not blue-white
+  #assert verse_style_flat_srgb(0, FLAT_ACCENT, 0) > verse_style_flat_srgb(0, FLAT_ACCENT, 1) && verse_style_flat_srgb(0, FLAT_ACCENT, 1) > verse_style_flat_srgb(0, FLAT_ACCENT, 2);   // warm cream trim
   // the garden: olive and lime greens, cattail orange, pale mint, lavender, a soft sky
   for slot: 0..<3 {
     f := ifx slot == 0 then FLAT_FOLIAGE else ifx slot == 1 then FLAT_FOLIAGE2 else FLAT_GROUND;

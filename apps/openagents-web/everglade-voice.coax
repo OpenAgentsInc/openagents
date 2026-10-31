@@ -1008,7 +1008,7 @@ everglade_voice_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom
   bw := text_width(word, 9 * k) + 32 * k;
   b := Box.{x0 = mb.x0 - ew - 8 * k - bw, y0 = mb.y0, x1 = mb.x0 - ew - 8 * k, y1 = mb.y1};
   // no room by FORK (a phone): TALK goes under MAP, below your HP and the chat line (REPLY then sits left of it)
-  fb := s[0].fk[0].boxes[FB_OPEN];
+  fb := ifx fk_has(s) then s[0].fk[0].boxes[FB_OPEN] else Box.{};
   if fb.x1 > fb.x0 && b.x0 < fb.x1 + 8 * k { b = Box.{x0 = mb.x1 - bw, y0 = mb.y1 + 80 * k, x1 = mb.x1, y1 = mb.y1 + 80 * k + (mb.y1 - mb.y0)}; }
   s[0].ev.button = b;
   plate(s, u, b, 0.85, ifx s[0].ev.held then 2.0f32 else 1.0f32);

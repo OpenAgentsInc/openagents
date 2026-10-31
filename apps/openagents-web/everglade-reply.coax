@@ -546,7 +546,7 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
     tb := s[0].ev.button;
     low := tb.x1 > tb.x0 && tb.y0 > mb.y1;   // TALK moved under MAP (everglade-voice.coax)
     if tb.x1 > tb.x0 && !low && tb.x0 < edge { edge = tb.x0; }
-    fb := s[0].fk[0].boxes[FB_OPEN];
+    fb := ifx fk_has(s) then s[0].fk[0].boxes[FB_OPEN] else Box.{};   // no FORK attached (a test, or before the face does)
     room := hi(0.5 * w, fb.x1 + 8 * k);
     // a phone has no room in that row: REPLY goes under MAP (left of TALK there), below your HP and the chat line
     if low || edge - 8 * k - bw < room {
