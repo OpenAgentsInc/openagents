@@ -23,7 +23,7 @@
 // Every layer, class, level, wave, start, round and stair must be there.
 //   coax/bin/coax test apps/openagents-web/stair.coax
 
-TABLE_LAYERS :: 8; TABLE_CLASSES :: 7; TABLE_WAVES :: 40; TABLE_GROUPS :: 3; TABLE_CORNERS :: 16;
+TABLE_LAYERS :: 8; LATE_FROM :: 21; TABLE_CLASSES :: 7; TABLE_WAVES :: 40; TABLE_GROUPS :: 3; TABLE_CORNERS :: 16;
 TABLE_ERROR :: 160;
 STAIR_SEED :: 20261030;   // the dice's seed when a table names none
 TABLE_LAYER_NAMES :: [8] string.["mote", "wisp", "glimmer", "ember", "frostling", "ironskin", "shadow", "hulk"];
@@ -41,6 +41,7 @@ Content :: struct {
   gap: [TABLE_WAVES * TABLE_GROUPS] f32; delay: [TABLE_WAVES * TABLE_GROUPS] f32;
   start_gold: int; start_lives: int; round_base: int; round_every: int;
   seed: u64;   // the dice's seed for this map: the same seed rolls the same game
+  late: f32;   // a map's own weight on the late waves' counts (from LATE_FROM on; 1 as written)
   way_n: int; way_c: [TABLE_CORNERS] int; way_r: [TABLE_CORNERS] int;
   way2_n: int; way2_c: [TABLE_CORNERS] int; way2_r: [TABLE_CORNERS] int;   // a second stair (0: none)
   // what was given, to refuse a table missing a part
@@ -122,9 +123,9 @@ STAIR_TABLES :: [67] string.[
 MAPS :: 3;
 STAIR_MAP_NAME :: [MAPS] string.["THE WINDING STAIR", "THE SPIRAL", "THE FORK"];
 STAIR_MAPS :: [MAPS] string.[
-  "stair 0 7 3 7 3 2 7 2 7 6 10 6 10 1 13 1",
-  "stair 0 1 11 1 11 7 3 7 3 4 8 4",
-  "stair 0 4 2 4 2 0 5 0 5 2 8 2 8 0 11 0 11 4 13 4; stair2 0 4 2 4 2 8 5 8 5 6 8 6 8 8 11 8 11 4 13 4"];
+  "stair 0 7 3 7 3 2 7 2 7 6 10 6 10 1 13 1; late 1.3",
+  "stair 0 1 11 1 11 7 3 7 3 4 8 4; late 1.25",
+  "stair 0 4 2 4 2 0 5 0 5 2 8 2 8 0 11 0 11 4 13 4; late 1.1; stair2 0 4 2 4 2 8 5 8 5 6 8 6 8 8 11 8 11 4 13 4"];
 
 TableWord :: struct { at: int; end: int; }
 table_blank :: (c: u8) -> bool { return c == ' ' || c == '\t' || c == '\r'; }
@@ -273,6 +274,13 @@ table_statement :: (c: [] Content, k: [] TableCursor, line: int) -> bool {
     c[0].had_wave[w] = true;
     return true;
   }
+  // late F: this map's late waves (LATE_FROM on) bring F times as many of each group
+  if head == "late" {
+    v := table_num(c, k, line, 1, "late", false, 0.25, 4); if !v.ok { return false; }
+    if n != 2 { return table_refuse(c, line, "late F", ""); }
+    c[0].late = v.v;
+    return true;
+  }
   if head == "seed" {
     if n != 2 { return table_refuse(c, line, "seed N", ""); }
     sd := table_number(table_word(k, 1));
@@ -367,6 +375,17 @@ stair_tables_read :: (c: [] Content, text: string) -> bool {
   if !c[0].had_round { return table_refuse(c, line, "no round", ""); }
   if c[0].way_n < 2 { return table_refuse(c, line, "no stair", ""); }
   if c[0].seed == 0 { c[0].seed = STAIR_SEED; }
+  if c[0].late > 0 {
+    for w: LATE_FROM - 1..<c[0].waves {
+      for g: 0..<TABLE_GROUPS {
+        gi := w * TABLE_GROUPS + g;
+        if c[0].kind[gi] >= 0 && c[0].kind[gi] != TABLE_LAYERS - 1 {
+          v := f32(c[0].count[gi]) * c[0].late + 0.5;
+          c[0].count[gi] = ifx v < 1 then 1 else ifx v > 200 then 200 else cast(int) v;
+        }
+      }
+    }
+  }
   c[0].ok = true; c[0].line = 0;
   return true;
 }
