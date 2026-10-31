@@ -119,6 +119,36 @@ IDs and values after every flush", "despawning while walking: every live
 entity is visited once, and none after its flush", "IDs survive save, load
 and replay"; mutation 0 survivors).
 
+## External events enter a step only from the session's record
+
+Every external event a session on `aethyr/replay.coax` accepts (a frame's
+controls, a model's answer, a network update) is one `ReplayEvent` with its
+apply tick, source, request number, epoch and payload. Only the gate,
+`replay_offer`, accepts one: it refuses a duplicate (a model request already
+answered, or a stream's last accepted number again), a stale event (another
+epoch, a model request no longer open, or a stream's earlier number), an
+unknown source or an answer to a request never asked, and every live event
+during a replay; it stamps an accepted event with the next step,
+never the sender's tick. A step applies only what `replay_take` hands it, in
+live play and in replay alike, so a replay consumes the recorded decisions
+and makes no remote call (`replay_ask` says when to send). A record starts
+with the constructed state's digest; `replay_play` refuses a replay from any
+other state. Checks: `aethyr/replay.coax` ("delayed, duplicate and stale
+events: a live session and its replay agree at every step", "a planted fault
+is found at the step it starts"; mutation 0 survivors).
+
+## A simulation step uses strict math
+
+A step's state must have the same bits natively and in the browser, so a
+step calls `math_sin`, `math_cos` and `math_pow` from `aethyr/math.coax`,
+never Coax's `sin`, `cos`, `tan`, `exp`, `log` or `pow`: those call the host's
+C library, and macOS's libm and wasi-libc round some inputs differently (a
+recorded walk parted after 105 steps). Drawing may use either. Random draws
+in a step come from `aethyr/rand.coax` (seed, stream, counter). Checks:
+`aethyr/math.coax` (within 2 ulps of the C library, f64 kernels against
+Python's `math`; mutation 0 survivors) and `coax/web/replay-hosts.test.ts`
+(the recorded walk's session digests are equal natively and in wasm).
+
 ## Every walking realm asks one ground question
 
 The walking controller's floor comes from `aethyr/query.coax`:
