@@ -541,6 +541,47 @@ new RGB comparison, actual wall watchdog, full snapshots, compiler R13/R14 and
 generic R18 supervision remain separate qualification work. The direct SDK
 prefix command and exact audited inputs are documented in the sidecar notes.
 
+## Give positions and displacements different types
+
+The initial [Coax spatial profile](../../coax/SPATIAL.md) now provides
+`Point3(Frame,Unit,R)` and `Vector3(Frame,Unit,R)` on native C. A position minus
+a position yields a displacement; a position plus a displacement yields a
+position. Mixing nominal frames, units or carriers is refused. A frame that
+requires F64 cannot construct an F32 point or vector.
+
+The first small world consumer is the floating-origin camera. Its public
+`SpaceCam` and `D3` layouts stay the same. At the existing world-metres boundary,
+it explicitly constructs two F64 world points and subtracts them before
+returning raw coordinates. Nothing narrows the astronomical positions first.
+
+<!-- source: verse/spacecam.coax spacecam-relative -->
+```jai
+spacecam_relative :: (c: SpaceCam, p: D3) -> D3 {
+  world: Point3(SpaceCamWorld, spacecam_units.Metre, f64);
+  world.x = p.x; world.y = p.y; world.z = p.z;
+  origin: Point3(SpaceCamWorld, spacecam_units.Metre, f64);
+  origin.x = c.center.x; origin.y = c.center.y; origin.z = c.center.z;
+  displacement := world - origin;
+  return d3(displacement.x, displacement.y, displacement.z);
+}
+```
+
+The changed camera checks keep the five-AU hull visible and retain displacement
+in all three coordinates. A separate native oracle checks 1,536 coordinates
+per debug, release and sanitizer mode against direct F64 subtraction, with
+exact non-NaN bits and NaN classification. It also checks the unchanged public
+layouts and the actual world's F32 refusal. The
+[consumer receipt](../../coax/tests/spatial/spacecam-qualification.json) keeps
+this evidence separate from the compiler's aggregate/operator qualification.
+
+This is an explicit assertion at a raw boundary. It does not prove incoming
+coordinate provenance or migrate Panda's poses, add frame transforms or bind a
+point to a clock/epoch. Components remain explicit raw escapes. Generated
+operator helpers can remain as debug calls; the spatial profile records
+measured release code and its relocation limits. Mutation traversal retains
+authored input expressions, while lowered spatial operator-token swaps remain
+unqualified. Full R12 remains open.
+
 ## Run the genuine experiment
 
 The [acquisition and profile notes](../fixtures/robotics/libero-panda/README.md)

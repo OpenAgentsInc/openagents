@@ -313,3 +313,9 @@ runtime in the genuine adapter. Paired source/native checks and two short
 recorded-command SDK prefixes are exact; old whole-model episode receipts keep
 their original provenance. `psionic/check.sh --only robotics/panda-clock` runs
 the portable changed-code gate, with explicit SDK prefixes documented separately.
+
+The [initial Coax point/vector profile](../coax/SPATIAL.md) checks affine roles,
+nominal frame/unit identity and minimum precision on native C. A small Verse
+floating-origin camera boundary now subtracts typed F64 world points, while
+preserving its raw public API. This is a foundation for robot geometry; full
+frame transforms and Panda pose migration remain pending.

@@ -46,6 +46,24 @@ Checks: `aethyr/loop.coax` (step count follows the time fed at 30, 60, 120 and
 144 FPS; mutation 0 survivors) and `verse/player.coax` ("a run and jump has the
 same states at 30, 60, 120 and 144 FPS", "a jump drawn at 60 FPS has no stutter").
 
+## Spatial values keep affine role and nominal identity
+
+The initial native-C `Point3`/`Vector3` types contain three raw coordinates,
+with no scalar-carrier erasure or stored frame/unit tags. Affine operators
+require matching nominal frame, resolved unit and carrier; minimum frame
+precision is checked. Point units have physical length dimension. Only vectors
+scale by a matching raw float; a dimensionless Quantity is not a raw float.
+Whole operands are captured once in source order, including aliasing reads.
+
+Raw component access/reconstruction remains an explicit boundary. Frame
+metadata establishes no realization, correction epoch, sensor truth or
+transform. Schema1 spatial reflection and device output are refused in this
+profile. Shared compiler-instance capacity and measured debug helper calls are
+explicit limits; this does not complete R12 or prove bounded robot control.
+The first Spacecam consumer preserves the public D3/SpaceCam layouts and
+subtracts F64 points before narrowing. Its boundary assertion is not an
+end-to-end migration of every world coordinate.
+
 ## Simulation steps and supplied wall clocks keep their domains
 
 The step-clock precursor uses integer simulation steps and distinct nominal
