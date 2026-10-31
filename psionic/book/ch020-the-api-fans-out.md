@@ -106,6 +106,29 @@ missing ephemeral answer is a timeout, not proof that nobody ran it. The
 adapter does not resend an ambiguous job or create a completion receipt.
 Chapter 21 owns checks and receipts.
 
+## A warm route does not wait for another discovery window
+
+The fleet retains beacons across calls, but a cached online row alone cannot
+make a route warm. The current relay connection must be authenticated and
+subscribed, and its beacon subscription must have reached EOSE. Before choosing
+and again after signing, the adapter drains currently ready text so a queued
+newer withdrawal wins over an older online beacon. Reconnection clears this
+catch-up fact. Cold discovery keeps its configured window and request deadline.
+
+A drain admits at most 64 text frames and 512 KiB of text; it refuses before
+extra JSON/cryptographic work. A partial frame is not an empty queue. The fleet
+also selects the transport's additive 64-step poll budget: controls, reads and
+empty fragments cannot hide an endless loop inside one poll. Exhaustion drops
+the connection and refuses rather than reporting an empty queue. Existing
+connect/flush I/O ceilings remain; this is bounded work, not a hard wall-clock
+scheduler. Provider freshness, exact
+identity, generation, free-slot and draining checks still apply on a warm call.
+
+The [focused guard-integration record](../../docs/verification/pylon-guard-decisions-2026-10-30.md)
+compares retained old and new binaries with an independent signed synthetic
+peer. It measures removed discovery delay, not original-weight model throughput
+or public-network tail latency.
+
 ## Deadlines and the local door
 
 `--timeout-ms` bounds the dispatch budget after HTTP admission;

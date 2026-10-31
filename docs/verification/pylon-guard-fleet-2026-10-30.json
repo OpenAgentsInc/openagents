@@ -1,0 +1,226 @@
+{
+  "base_head": "ecba6b57d8351e0080ec24b19e6f2260a754205a",
+  "source_hashes_collected_after_qualification": {
+    "psionic/lib/fleet/discovery.coax": "76cca7f3fc1ce08f5c43fa5341923a80580793f9eb72a255701f0bc7a9dd8c98",
+    "psionic/lib/fleet/runtime.coax": "5806e86c97011aee723eaeec3520d31c82e5ab8632b8e65fea7a6526cb96e877",
+    "psionic/tests/fleet/fleet_e2e.ts": "9a14390a186aef914512b03ed2dd2513823ba17dc160450cd507ace3da346b30",
+    "coax/lib/net/relay_conn.coax": "c9053e42740d94654fd4117be2629cf1bf8d22bc991fb063e485edfef78d9424",
+    "coax/lib/net/relay_poll_budget.coax": "2000cb978900d250670bee069980d3079357a9e9f91c51172c5185614d5678db",
+    "coax/bin/coax": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+    "/tmp/fleet-warm-bounded-20261030/fleet.c": "b8b6d2aea987d32be99ac13edaa04c028ee4fbb9bafb59bc15543b57c46343e8",
+    "/tmp/fleet-warm-bounded-20261030/psionic-fleet": "6d755e7244f4f4afd693438dbd8425126a83e7c0d86fc06dd9b0da45dece643b"
+  },
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "build_command": "psionic/platform/fleet-build.sh /tmp/fleet-warm-bounded-20261030 sanitized",
+  "pure_check_command": "coax/bin/coax test psionic/lib/fleet/discovery.coax --library",
+  "pure_checks": 4,
+  "mutation_command": "coax/bin/coax mutate psionic/lib/fleet/discovery.coax --root-only --jobs 4",
+  "mutation": {
+    "mutants": 26,
+    "killed": 26,
+    "survived": 0
+  },
+  "new_native_command": "FLEET=/tmp/fleet-warm-bounded-20261030/psionic-fleet FLEET_SCOPE=peers FLEET_MATCH='discovery ' OUT_DIR=/tmp/fleet-warm-bounded-cases-20261030 bun psionic/tests/fleet/fleet_e2e.ts",
+  "new_native_results": [
+    {
+      "name": "discovery warm calls skip the configured five-second window",
+      "ok": true,
+      "ms": 705,
+      "first_ms": 77,
+      "second_ms": 42,
+      "configured_discover_ms": 5000,
+      "jobs": 2,
+      "connections": 1,
+      "beacon_requests": 1
+    },
+    {
+      "name": "discovery cold call waits for its authenticated history boundary",
+      "ok": true,
+      "ms": 561,
+      "http": 200,
+      "elapsed_ms": 381,
+      "jobs": 1,
+      "eose_count": 1
+    },
+    {
+      "name": "discovery caught-up absence waits for an online provider within its window",
+      "ok": true,
+      "ms": 582,
+      "http": 200,
+      "elapsed_ms": 351,
+      "jobs": 1,
+      "eose_count": 1
+    },
+    {
+      "name": "discovery withdrawal never dispatches cached capacity",
+      "ok": true,
+      "ms": 1178,
+      "http": 503,
+      "elapsed_ms": 1006,
+      "jobs": 0,
+      "connections": 1
+    },
+    {
+      "name": "discovery unknown-eose never dispatches cached capacity",
+      "ok": true,
+      "ms": 1218,
+      "http": 503,
+      "elapsed_ms": 1003,
+      "jobs": 0,
+      "connections": 1
+    },
+    {
+      "name": "discovery flood never dispatches cached capacity",
+      "ok": true,
+      "ms": 239,
+      "http": 503,
+      "elapsed_ms": 34,
+      "jobs": 0,
+      "connections": 1
+    },
+    {
+      "name": "discovery byte-flood never dispatches cached capacity",
+      "ok": true,
+      "ms": 254,
+      "http": 503,
+      "elapsed_ms": 33,
+      "jobs": 0,
+      "connections": 1
+    },
+    {
+      "name": "discovery sustained PONG traffic cannot monopolize routing",
+      "ok": true,
+      "ms": 261,
+      "http": 503,
+      "elapsed_ms": 26,
+      "jobs": 0,
+      "controls_sent": 278528
+    },
+    {
+      "name": "discovery expiry rechecks a warm provider before the next call",
+      "ok": true,
+      "ms": 3894,
+      "first_http": 200,
+      "second_http": 503,
+      "jobs": 1
+    },
+    {
+      "name": "discovery reconnect cannot reuse the previous connection history boundary",
+      "ok": true,
+      "ms": 3370,
+      "first_http": 200,
+      "second_http": 503,
+      "jobs": 1,
+      "connections": 2,
+      "beacon_requests": 2
+    }
+  ],
+  "affected_native_results": [
+    {
+      "name": "independent relay: superseded",
+      "ok": true,
+      "ms": 972,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 502
+    },
+    {
+      "name": "independent relay: stale",
+      "ok": true,
+      "ms": 973,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 501
+    },
+    {
+      "name": "independent relay: draining",
+      "ok": true,
+      "ms": 805,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 527
+    },
+    {
+      "name": "independent relay: full",
+      "ok": true,
+      "ms": 825,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 526
+    },
+    {
+      "name": "independent relay: closed",
+      "ok": true,
+      "ms": 276,
+      "http": 503,
+      "jobs": 0,
+      "elapsed": 1
+    },
+    {
+      "name": "independent relay: early-answer",
+      "ok": true,
+      "ms": 429,
+      "http": 200,
+      "jobs": 1,
+      "elapsed": 152
+    },
+    {
+      "name": "independent relay: early-reject",
+      "ok": true,
+      "ms": 807,
+      "http": 503,
+      "jobs": 1,
+      "elapsed": 526
+    },
+    {
+      "name": "independent relay: retry",
+      "ok": true,
+      "ms": 492,
+      "http": 200,
+      "jobs": 2,
+      "elapsed": 186
+    },
+    {
+      "name": "independent relay: late-answer",
+      "ok": true,
+      "ms": 1141,
+      "http": 200,
+      "jobs": 2,
+      "elapsed": 870
+    },
+    {
+      "name": "empty fleet uses same-identity local fallback",
+      "ok": true,
+      "ms": 778,
+      "http": 200,
+      "local_requests": 1
+    },
+    {
+      "name": "different-identity local fallback is refused",
+      "ok": true,
+      "ms": 800,
+      "http": 503,
+      "local_requests": 1
+    },
+    {
+      "name": "slow fallback cannot extend the total request deadline",
+      "ok": true,
+      "ms": 1305,
+      "http": 524,
+      "elapsed": 1020
+    }
+  ],
+  "sanitizer_errors": [],
+  "red_evidence": [
+    "/tmp/fleet-warm-red-20261030/results.json",
+    "/tmp/fleet-warm-absence-red-20261030/results.json",
+    "/tmp/fleet-warm-control-red-20261030/results.json"
+  ],
+  "scope": [
+    "local independent signed encrypted protocol peers; no public services touched",
+    "warm adapter and discovery correctness, not model inference throughput",
+    "64 text messages and 512KiB payload per preflight; 64 scan/read iterations per fleet poll",
+    "existing socket/TLS connect/flush effects retain their own bounds; this is not complete wall-clock preemption",
+    "no frozen model/crypto mutation or original-weight inference rerun"
+  ]
+}

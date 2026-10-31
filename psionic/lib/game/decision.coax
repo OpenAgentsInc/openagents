@@ -1,0 +1,148 @@
+// A game's single outstanding decision. This gate owns no I/O and never
+// interprets a probability as permission. Context versions are caller-owned
+// immutable local identities; answer parsing and action meaning live outside it.
+#authority;
+
+GD_TIME_MAX :: 9007199254740991;
+GD_TIMEOUT_MAX :: 30000;
+GD_SEQUENCE_MAX :: 2147483647;
+GD_WAITING :: 1;
+GD_READY :: 2;
+GdCode :: enum u8 {ok;state;busy;bounds;stale;expired;waiting;illegal;}
+
+// Public local ticket: normal frame advancement changes none of these identities.
+// book:begin ticket
+GdContext :: struct {epoch:int;actor:int;generation:int;revision:int;policy:int;options:int;}
+GdTicket :: struct {sequence:int;context:GdContext;expires_ms:int;}
+GdState :: struct {sequence:int;phase:int;ticket:GdTicket;action:int;}
+GdBegin :: struct {code:GdCode;ticket:GdTicket;}
+GdChoice :: struct {code:GdCode;action:int=-1;}
+// book:end ticket
+
+#test "a reply is staged and consumed exactly once at the simulation boundary" {
+    s:[1]GdState;c:=GdContext.{epoch=1,actor=0,generation=1,revision=2,policy=1,options=1};
+    b:=gd_begin(s[..],c,100,8000);#assert b.code==GdCode.ok && b.ticket.sequence==1 && b.ticket.expires_ms==8100;
+    #assert gd_take(s[..],1,c,101,7).code==GdCode.waiting;
+    #assert gd_offer(s[..],1,102,2)==GdCode.ok && s[0].phase==GD_READY;
+    #assert gd_offer(s[..],1,103,1)==GdCode.stale && s[0].action==2;
+    v:=gd_take(s[..],1,c,104,7);#assert v.code==GdCode.ok && v.action==2 && s[0].phase==0;
+    #assert gd_take(s[..],1,c,105,7).code==GdCode.stale;
+}
+#test "every semantic identity fences a staged proposal without erasing its owner" {
+    c:=GdContext.{epoch=1,actor=2,generation=3,revision=4,policy=5,options=6};
+    for k:0..<6 {
+        s:[1]GdState;b:=gd_begin(s[..],c,0,100);#assert b.code==GdCode.ok;
+        #assert gd_offer(s[..],1,1,0)==GdCode.ok;
+        changed:=c;
+        if k==0 {changed.epoch+=1;}if k==1 {changed.actor+=1;}if k==2 {changed.generation+=1;}
+        if k==3 {changed.revision+=1;}if k==4 {changed.policy+=1;}if k==5 {changed.options+=1;}
+        #assert gd_take(s[..],1,changed,2,1).code==GdCode.stale && s[0].phase==GD_READY;
+        #assert gd_cancel(s[..],1) && s[0].phase==0;
+    }
+}
+#test "deadlines are monotonic bounded milliseconds and the exact expiry is expired" {
+    c:=GdContext.{epoch=1,policy=1,options=1};s:[1]GdState;
+    #assert gd_begin(s[..],c,0,1).code==GdCode.ok;
+    #assert !gd_expire(s[..],0) && gd_offer(s[..],1,1,0)==GdCode.expired;
+    #assert gd_expire(s[..],1) && !gd_expire(s[..],1);
+    #assert gd_begin(s[..],c,10,10).code==GdCode.ok;
+    #assert gd_offer(s[..],2,19,0)==GdCode.ok && gd_take(s[..],2,c,20,1).code==GdCode.expired;
+    #assert !gd_expire(s[..],-1) && !gd_expire(s[..],GD_TIME_MAX+1) && gd_expire(s[..],20);
+    #assert gd_begin(s[..],c,GD_TIME_MAX-30000,30000).code==GdCode.ok;
+    #assert gd_offer(s[..],3,GD_TIME_MAX-1,0)==GdCode.ok;
+    #assert gd_take(s[..],3,c,GD_TIME_MAX,1).code==GdCode.expired;
+}
+#test "invalid begin and busy refusal preserve state and never wrap a sequence" {
+    c:=GdContext.{epoch=1,policy=1,options=1};
+    for k:0..<11 {
+        s:[1]GdState;bad:=c;now:=0;timeout:=1;
+        if k==0 {bad.epoch=0;}if k==1 {bad.actor=-1;}if k==2 {bad.generation=-1;}
+        if k==3 {bad.revision=-1;}if k==4 {bad.policy=0;}if k==5 {bad.options=0;}
+        if k==6 {now=-1;}if k==7 {now=GD_TIME_MAX;}if k==8 {timeout=0;}
+        if k==9 {timeout=30001;}if k==10 {s[0].sequence=-1;}
+        #assert gd_begin(s[..],bad,now,timeout).code==GdCode.bounds && s[0].phase==0;
+    }
+    s:[1]GdState;s[0].sequence=GD_SEQUENCE_MAX-1;
+    #assert gd_begin(s[..],c,0,1).ticket.sequence==GD_SEQUENCE_MAX;
+    #assert gd_begin(s[..],c,0,1).code==GdCode.busy;
+    #assert gd_offer(s[..],GD_SEQUENCE_MAX,0,0)==GdCode.ok && gd_begin(s[..],c,0,1).code==GdCode.busy;
+    #assert gd_cancel(s[..],GD_SEQUENCE_MAX) && gd_begin(s[..],c,0,1).code==GdCode.bounds;
+}
+#test "current ownership, offered action, legal mask and integer edges are independent" {
+    c:=GdContext.{epoch=1,policy=1,options=1};s:[1]GdState;
+    #assert gd_begin(s[..],c,0,100).code==GdCode.ok;
+    #assert gd_offer(s[..],0,1,0)==GdCode.stale && !gd_cancel(s[..],0);
+    #assert gd_offer(s[..],1,-1,0)==GdCode.bounds && gd_offer(s[..],1,GD_TIME_MAX+1,0)==GdCode.bounds;
+    #assert gd_offer(s[..],1,1,-1)==GdCode.bounds && gd_offer(s[..],1,1,31)==GdCode.bounds;
+    #assert gd_offer(s[..],1,1,30)==GdCode.ok;
+    #assert gd_take(s[..],0,c,2,2147483647).code==GdCode.stale;
+    #assert gd_take(s[..],1,c,-1,2147483647).code==GdCode.bounds;
+    #assert gd_take(s[..],1,c,GD_TIME_MAX+1,2147483647).code==GdCode.bounds;
+    #assert gd_take(s[..],1,c,2,-1).code==GdCode.bounds && gd_take(s[..],1,c,2,2147483648).code==GdCode.bounds;
+    #assert gd_take(s[..],1,c,2,0).code==GdCode.illegal && gd_take(s[..],1,c,2,1).code==GdCode.illegal;
+    #assert gd_take(s[..],1,c,2,1073741824).action==30;
+    #assert gd_offer(s[..],1,3,0)==GdCode.stale && !gd_cancel(s[..],1);
+    #assert gd_begin(s[..],c,4,10).ticket.sequence==2;
+    #assert gd_cancel(s[..],2) && gd_begin(s[..],c,5,10).ticket.sequence==3;
+    #assert gd_offer(s[..],2,6,0)==GdCode.stale;
+}
+#test "state capacity is exactly one on every public entry" {
+    s:[2]GdState;c:=GdContext.{epoch=1,policy=1,options=1};
+    for n:[2]int.[0,2] {
+        #assert gd_begin(s[0..<n],c,0,1).code==GdCode.state;
+        #assert gd_offer(s[0..<n],1,0,0)==GdCode.state && gd_take(s[0..<n],1,c,0,1).code==GdCode.state;
+        #assert !gd_cancel(s[0..<n],1) && !gd_expire(s[0..<n],0);
+    }
+}
+#test "zero and maximum clock and legal-mask boundaries stay exact" {
+    c:=GdContext.{epoch=1,policy=1,options=1};s:[1]GdState;
+    #assert gd_begin(s[..],c,0,1).code==GdCode.ok && gd_offer(s[..],1,0,30)==GdCode.ok;
+    #assert gd_take(s[..],1,c,0,2147483647).action==30;
+    #assert gd_begin(s[..],c,0,1).code==GdCode.ok;
+    #assert gd_offer(s[..],2,GD_TIME_MAX,0)==GdCode.expired;
+    #assert gd_expire(s[..],GD_TIME_MAX);
+}
+
+gd_context_ok :: (c:GdContext)->bool {
+    return c.epoch>0 && c.actor>=0 && c.generation>=0 && c.revision>=0 && c.policy>0 && c.options>0;
+}
+gd_same_context :: (a:GdContext,b:GdContext)->bool {
+    return a.epoch==b.epoch && a.actor==b.actor && a.generation==b.generation && a.revision==b.revision && a.policy==b.policy && a.options==b.options;
+}
+gd_begin :: (s:[]GdState,context:GdContext,now_ms:int,timeout_ms:int)->GdBegin #export_c {
+    if s.count!=1 {return GdBegin.{code=GdCode.state};}
+    if s[0].phase!=0 {return GdBegin.{code=GdCode.busy};}
+    if !gd_context_ok(context) || s[0].sequence<0 || s[0].sequence>=GD_SEQUENCE_MAX || now_ms<0 || timeout_ms<1 || timeout_ms>GD_TIMEOUT_MAX || now_ms>GD_TIME_MAX-timeout_ms {return GdBegin.{code=GdCode.bounds};}
+    ticket:=GdTicket.{sequence=s[0].sequence+1,context=context,expires_ms=now_ms+timeout_ms};
+    s[0].sequence=ticket.sequence;s[0].ticket=ticket;s[0].phase=GD_WAITING;
+    return GdBegin.{code=GdCode.ok,ticket=ticket};
+}
+// Offer stages a fully decoded enum; a failed offer never revokes newer work.
+gd_offer :: (s:[]GdState,sequence:int,now_ms:int,action:int)->GdCode #export_c {
+    if s.count!=1 {return GdCode.state;}
+    if s[0].phase!=GD_WAITING || sequence!=s[0].ticket.sequence {return GdCode.stale;}
+    if now_ms<0 || now_ms>GD_TIME_MAX || action<0 || action>30 {return GdCode.bounds;}
+    if now_ms>=s[0].ticket.expires_ms {return GdCode.expired;}
+    s[0].action=action;s[0].phase=GD_READY;return GdCode.ok;
+}
+// The only application entry: recheck current semantics and consume once.
+// The returned action is -1 on refusal; callers retain their local behavior.
+// book:begin take
+gd_take :: (s:[]GdState,sequence:int,current:GdContext,now_ms:int,legal_mask:int)->GdChoice #export_c {
+    if s.count!=1 {return GdChoice.{code=GdCode.state};}
+    if s[0].phase==0 || sequence!=s[0].ticket.sequence || !gd_same_context(current,s[0].ticket.context) {return GdChoice.{code=GdCode.stale};}
+    if now_ms<0 || now_ms>GD_TIME_MAX || legal_mask<0 || legal_mask>2147483647 {return GdChoice.{code=GdCode.bounds};}
+    if now_ms>=s[0].ticket.expires_ms {return GdChoice.{code=GdCode.expired};}
+    if s[0].phase!=GD_READY {return GdChoice.{code=GdCode.waiting};}
+    if (legal_mask&(1<<s[0].action))==0 {return GdChoice.{code=GdCode.illegal};}
+    action:=s[0].action;s[0].phase=0;return GdChoice.{code=GdCode.ok,action=action};
+}
+// book:end take
+gd_cancel :: (s:[]GdState,sequence:int)->bool #export_c {
+    if s.count!=1 || s[0].phase==0 || sequence!=s[0].ticket.sequence {return false;}
+    s[0].phase=0;return true;
+}
+gd_expire :: (s:[]GdState,now_ms:int)->bool #export_c {
+    if s.count!=1 || s[0].phase==0 || now_ms>GD_TIME_MAX || now_ms<s[0].ticket.expires_ms {return false;}
+    s[0].phase=0;return true;
+}

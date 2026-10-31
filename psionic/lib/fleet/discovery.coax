@@ -1,0 +1,49 @@
+// Bounded current-connection discovery. Observations come from the Coax
+// transport/auth/message readers; this unit never grants event authority.
+#authority;
+
+MD_FRAMES :: 64;
+MD_BYTES :: 524288;
+MD_POLL_STEPS :: 64;
+
+#test "only the current authenticated subscribed beacon EOSE ends discovery" {
+    for bits:0..<8 {
+        #assert md_eose((bits&1)!=0,(bits&2)!=0,(bits&4)!=0,"fleet-beacons")== (bits==7);
+    }
+    #assert !md_eose(true,true,true,"fleet-answers") && !md_eose(true,true,true,"") && !md_eose(true,true,true,"old-fleet-beacons");
+}
+#test "a warm route needs all connection history and complete-input observations" {
+    for bits:0..<32 {#assert md_ready((bits&1)!=0,(bits&2)!=0,(bits&4)!=0,(bits&8)!=0,(bits&16)!=0)==(bits==31);}
+}
+#test "draining includes exact frame and byte bounds, but not expired or negative budgets" {
+    #assert MD_FRAMES==64 && MD_BYTES==524288 && MD_POLL_STEPS==64;
+    #assert md_budget(0,0,0,1) && md_budget(64,524288,9,10);
+    #assert !md_budget(-1,0,0,1) && !md_budget(65,0,0,1);
+    #assert !md_budget(0,-1,0,1) && !md_budget(0,524289,0,1);
+    #assert !md_budget(0,0,-1,1) && !md_budget(0,0,1,1) && !md_budget(0,0,2,1);
+}
+
+#test "caught-up absence waits for its window, while revalidation only drains" {
+    // ready=1, eligible=2, seeking=4, elapsed=8: the independent truth rows.
+    for bits:0..<16 {
+        expected:=bits==1 || bits==3 || bits==7 || bits==9 || bits==11 || bits==13 || bits==15;
+        #assert md_done((bits&1)!=0,(bits&2)!=0,(bits&4)!=0,(bits&8)!=0)==expected;
+    }
+}
+
+md_eose :: (current:bool,authenticated:bool,subscribed:bool,subscription:string)->bool #export_c {
+    return current && authenticated && subscribed && subscription=="fleet-beacons";
+}
+md_ready :: (connected:bool,authenticated:bool,subscribed:bool,ended:bool,empty:bool)->bool #export_c {
+    return connected && authenticated && subscribed && ended && empty;
+}
+// Route search retains its configured window when history is caught up but
+// has no eligible route. The post-signing check only drains/revalidates.
+md_done :: (ready:bool,eligible:bool,seeking:bool,elapsed:bool)->bool #export_c {
+    return ready && (eligible || !seeking || elapsed);
+}
+// The exact caps permit one final empty-input observation. A 65th text
+// frame or an extra payload byte is refused before its JSON/crypto work.
+md_budget :: (frames:int,bytes:int,now:int,end:int)->bool #export_c {
+    return frames>=0 && frames<=MD_FRAMES && bytes>=0 && bytes<=MD_BYTES && now>=0 && now<end;
+}

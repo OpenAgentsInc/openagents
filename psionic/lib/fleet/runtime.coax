@@ -3,6 +3,7 @@
 // socket effects, argv, clocks and lifecycle only. Test/demo keys only.
 #import "Basic";
 #load "policy.coax";
+#load "discovery.coax";
 #load "service.coax";
 #load "../mesh/hooks.coax";
 #load "../../../coax/lib/nostr/event_sign.coax";
@@ -33,7 +34,7 @@ FmConfig :: struct {args:[8192]u8;used:int;relay:string="wss://relay.openagents.
 FmRow :: struct {known:bool;provider:[64]u8;slug:[64]u8;slug_n:int;}
 Fm :: struct {
     quiet:bool;cfg:[1]FmConfig;key:[32]u8;me:[64]u8;signer:[1]NostrSignWork;ecdh:[1]EcdhScratch;
-    conn:[1]RelayConn;r:[1]Relay;n42:[1]Nip42;gen:int;opened:int;next_connect:int;subscribed:bool;
+    conn:[1]RelayConn;r:[1]Relay;n42:[1]Nip42;gen:int;opened:int;next_connect:int;subscribed:bool;discovery_eose:bool;
     peers:[32]MfPeer;rows:[32]FmRow;count:int;
     waiting:bool;active:int=-1;active_generation:int;request:[64]u8;request_n:int;attempt:int;deadline:int;started:int;
     jid:[64]u8;ack:int;answer:int;response:[FM_BUFFER]u8;response_n:int;
@@ -98,7 +99,7 @@ fm_open_payload :: (f:[]Fm,peer:string,payload:string,out:[]u8)->int {
     key:[32]u8;if !fm_ck(f,peer,key[..]) {return -1;}size:=nip44_decrypt_work_size(NIP44_COMPAT,payload.count);if size<0 || size>FM_BUFFER {return -1;}
     work:[FM_BUFFER]u8;r:=nip44_decrypt_checked(NIP44_COMPAT,key[..],payload,work[0..<size],out,false);for i:0..<32 {key[i]=0;}return ifx r.error==NIP44_OK then r.written else -1;
 }
-fm_drop :: (f:[]Fm) {relay_conn_drop(f[0].conn[..]);f[0].subscribed=false;f[0].next_connect=cxsock_now_ms()+2000;if f[0].waiting {f[0].answer=-1;}}
+fm_drop :: (f:[]Fm) {relay_conn_drop(f[0].conn[..]);f[0].subscribed=false;f[0].discovery_eose=false;f[0].next_connect=cxsock_now_ms()+2000;if f[0].waiting {f[0].answer=-1;}}
 fm_auth :: (f:[]Fm)->bool {
     tags:[2048]u8;t:=nip42_template(f[0].n42[..],f[0].gen,fh_now_s(),tags[..]);if t.error!=N42_OK {return false;}
     scratch:[FM_BUFFER]u8;out:[FM_BUFFER]u8;n:=fm_sign(f,t.kind,t.tags,t.content,scratch[..],out[..]);if n<0 {return false;}
@@ -162,7 +163,12 @@ fm_frame :: (f:[]Fm,text:string) {
         if f[0].receipt_event_n>0 && fm_hex(m.id[..],id[..])==cast(string)f[0].receipt_id[..] {f[0].receipt_ack=ifx m.accepted then 1 else -1;}
         return;
     }
-    if m.type==NM_EOSE && nm_text(m,m.sub)==f[0].observe_sub {f[0].observed_eose=true;return;}
+    if m.type==NM_EOSE {
+        sub:=nm_text(m,m.sub);
+        if md_eose(f[0].conn[0].h>=0,f[0].r[0].auth==RA_OK,f[0].subscribed,sub) {f[0].discovery_eose=true;}
+        if sub==f[0].observe_sub {f[0].observed_eose=true;}
+        return;
+    }
     if m.type==NM_CLOSED {fm_drop(f);return;}
     if m.type!=NM_EVENT {return;}
     observing:=f[0].observe_sub.count>0 && nm_text(m,m.sub)==f[0].observe_sub;
@@ -174,19 +180,46 @@ fm_frame :: (f:[]Fm,text:string) {
     if e.kind==PB_KIND {fm_offer(f,e,provider,tags,cast(string)content[0..<n]);}
     else if e.kind==PD_RESULT || e.kind==PD_STATUS {fm_answer_event(f,e,provider,tags,cast(string)content[0..<n]);}
 }
-fm_pump :: (f:[]Fm,wait:int) {
-    if f[0].conn[0].h<0 {return;}
-    result:=relay_conn_poll(f[0].conn[..],wait);
-    if result==RC_TEXT {fm_frame(f,cast(string)f[0].conn[0].text[0..<f[0].conn[0].text_n]);}
-    else if result!=RC_NONE {fm_drop(f);return;}
-    if f[0].r[0].auth!=RA_OK && cxsock_now_ms()-f[0].opened>=5000 {fm_drop(f);return;}
-    if f[0].r[0].auth==RA_OK && !f[0].subscribed {if fm_subscribe(f) {f[0].subscribed=true;}else {fm_drop(f);}}
+// One shared poll. Text budgets are checked before JSON/signature work;
+// ordinary consumers retain the existing one-message pump.
+fm_poll :: (f:[]Fm,wait:int,text_allowed:bool,byte_limit:int)->int {
+    if f[0].conn[0].h<0 {return RC_CLOSED;}
+    result:=relay_conn_poll_budget(f[0].conn[..],wait,MD_POLL_STEPS);
+    if result==RC_TEXT {
+        if !text_allowed || f[0].conn[0].text_n>byte_limit {fm_drop(f);return RC_FAIL;}
+        fm_frame(f,cast(string)f[0].conn[0].text[0..<f[0].conn[0].text_n]);
+    }else if result!=RC_NONE {fm_drop(f);return result;}
+    if f[0].r[0].auth!=RA_OK && cxsock_now_ms()-f[0].opened>=5000 {fm_drop(f);return RC_FAIL;}
+    if f[0].r[0].auth==RA_OK && !f[0].subscribed {if fm_subscribe(f) {f[0].subscribed=true;}else {fm_drop(f);return RC_FAIL;}}
+    return result;
+}
+fm_pump :: (f:[]Fm,wait:int) {ignored:=fm_poll(f,wait,true,RC_MSG_MAX);}
+// A route is warm only after this connection's authenticated history ended
+// and all presently buffered/ready text was drained, including withdrawals
+// queued immediately after EOSE. A partial frame is never an empty input.
+fm_discover :: (f:[]Fm,discovery_end:int,end:int,seeking:bool)->bool {
+    frames:=0;bytes:=0;
+    while md_budget(frames,bytes,cxsock_now_ms(),end) && fh_stop()==0 {
+        result:=fm_poll(f,0,frames<MD_FRAMES,MD_BYTES-bytes);
+        if result==RC_TEXT {frames+=1;bytes+=f[0].conn[0].text_n;continue;}
+        if result!=RC_NONE {return false;}
+        empty:=f[0].conn[0].used==0 && !f[0].conn[0].rd[0].open;
+        now:=cxsock_now_ms();ready:=md_ready(f[0].conn[0].h>=0,f[0].r[0].auth==RA_OK,f[0].subscribed,f[0].discovery_eose,empty);
+        eligible:=mf_choose(f[0].peers[0..<f[0].count],fh_now_s(),f[0].cfg[0].identity)>=0;
+        if md_done(ready,eligible,seeking,now>=discovery_end) {return true;}
+        if now>=discovery_end {return false;}
+        wait:=discovery_end-now;if wait>20 {wait=20;}if wait>end-now {wait=end-now;}
+        result=fm_poll(f,wait,frames<MD_FRAMES,MD_BYTES-bytes);
+        if result==RC_TEXT {frames+=1;bytes+=f[0].conn[0].text_n;}
+        else if result!=RC_NONE {return false;}
+    }
+    fm_drop(f);return false;
 }
 fm_connect :: (f:[]Fm) {
     if f[0].conn[0].h>=0 || cxsock_now_ms()<f[0].next_connect {return;}
     f[0].r[0]=Relay.{};f[0].gen=rl_start(f[0].r[..],cxsock_now_ms());
     ok:=relay_conn_open(f[0].conn[..],f[0].cfg[0].relay);if !ok {fm_drop(f);return;}
-    opened:=rl_opened(f[0].r[..],f[0].gen,cxsock_now_ms());f[0].opened=cxsock_now_ms();f[0].subscribed=false;
+    opened:=rl_opened(f[0].r[..],f[0].gen,cxsock_now_ms());f[0].opened=cxsock_now_ms();f[0].subscribed=false;f[0].discovery_eose=false;
     ready:=nip42_init(f[0].n42[..],f[0].cfg[0].relay)==N42_OK;
 }
 // Local fallback speaks HTTP only to an explicitly configured loopback model.
@@ -207,11 +240,12 @@ fm_local :: (f:[]Fm,body:string,budget:int,out:[]u8)->MfResult {
 }
 fm_dispatch :: (f:[]Fm,body:string,out:[]u8)->int {
     f[0].remote_completed=false;c:=f[0].cfg[0];begin:=cxsock_now_ms();end:=begin+c.timeout;discover_end:=begin+c.discover;
-    while cxsock_now_ms()<discover_end && cxsock_now_ms()<end && fh_stop()==0 {fm_pump(f,20);}
+    if discover_end>end {discover_end=end;}
     for i:0..<f[0].count {f[0].peers[i].tried=false;}
     nonce:[16]u8;request:[32]u8;if !rc_draw(16,nonce[..]) {return sv_refusal(out,SvCode.internal);}id:=fm_hex(nonce[..],request[..]);for i:0..<id.count {f[0].request[i]=id[i];}f[0].request_n=id.count;
     attempt:=0;
-    while f[0].subscribed && cxsock_now_ms()<end && fh_stop()==0 {
+    while cxsock_now_ms()<end && fh_stop()==0 {
+        if !fm_discover(f,discover_end,end,true) {break;}
         index:=mf_choose(f[0].peers[0..<f[0].count],fh_now_s(),c.identity);if index<0 {break;}
         reserve:=ifx c.fallback_port>0 then 1000 else 0;left:=end-cxsock_now_ms()-reserve;if left<=0 {break;}
         budget:=ifx left<c.attempt then left else c.attempt;until:=cxsock_now_ms()+budget;attempt+=1;f[0].peers[index].tried=true;
@@ -225,6 +259,11 @@ fm_dispatch :: (f:[]Fm,body:string,out:[]u8)->int {
             for i:0..<s {f[0].job_event[i]=signed[i];}f[0].job_event_n=s;
             for i:0..<n {f[0].job_plain[i]=plain[i];}f[0].job_plain_n=n;
         }
+        // Sealing/signing can take time. Re-observe pending withdrawals and
+        // re-admit the selected generation immediately before publication.
+        if !fm_discover(f,discover_end,end,false) {break;}
+        selected:=f[0].peers[index];selected.tried=false;one:=[1]MfPeer.[selected];
+        if !md_budget(0,0,cxsock_now_ms(),until) || selected.generation!=f[0].active_generation || mf_choose(one[..],fh_now_s(),c.identity)!=0 {continue;}
         f[0].waiting=true;
         if !relay_conn_send(f[0].conn[..],cast(string)frame[0..<k]) {fm_drop(f);}else {while (f[0].answer==0 || f[0].ack==0) && f[0].answer>=0 && f[0].ack>=0 && cxsock_now_ms()<until && fh_stop()==0 {fm_pump(f,20);}}
         f[0].waiting=false;

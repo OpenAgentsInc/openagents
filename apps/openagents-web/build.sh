@@ -56,7 +56,7 @@ realm=$!
 garden=$!
 # /realms/everglade: the forest city's blockout (verse/everglade/plan.coax), with the player, thumbs and its river (verse/everglade/river.coax).
 "$here/../../coax/web/wasm.sh" "$here/everglade.coax" "$here/everglade-face.c" "$here/build/everglade.wasm" \
-  "$m/player.coax" "$m/grid.coax" "$m/everglade/river.coax" &
+  "$m/player.coax" "$m/grid.coax" "$m/everglade/river.coax" "$m/everglade/guard-decision.coax" &
 everglade=$!
 # /realms/fairy-forest: the park (verse/fairy-forest/forest.coax), with the player, thumbs and its stream (verse/fairy-forest/stream.coax).
 "$here/../../coax/web/wasm.sh" "$here/fairy.coax" "$here/fairy-face.c" "$here/build/fairy.wasm" \

@@ -1,0 +1,42 @@
+// Opt-in shadow consumer: proposals are counted, never rendered or applied.
+#load "../../verse/everglade/guard-types.coax";
+EgGuardAi :: struct {input:GaInput;url:[2048]u8;url_n:int;generation:int=1;hidden:bool;focused:bool;}
+
+everglade_guard_invalidate :: (s:[]Everglade) #export_c {s[0].guard_ai.input.epoch+=1;}
+everglade_guard_message :: (s:[]Everglade,kind:int,text:string) #export_c {
+  if kind==MSG_FACTS {
+    if !s[0].guard_ai.input.configured {url:=fact(text,"url");if url.count<=2048 {for i:0..<url.count {s[0].guard_ai.url[i]=url[i];}s[0].guard_ai.url_n=url.count;}s[0].guard_ai.input.configured=true;}
+    if fact(text,"clip")=="1" {s[0].guard_ai.input.blocked=true;everglade_guard_invalidate(s);}
+    s[0].guard_ai.hidden=fact(text,"hidden")=="1";
+    s[0].guard_ai.focused=fact(text,"focused")=="1";
+    s[0].guard_ai.input.suspended=s[0].guard_ai.hidden || !s[0].guard_ai.focused;
+  }
+  if kind==601 || kind==603 {s[0].guard_ai.hidden=true;s[0].guard_ai.input.suspended=true;everglade_guard_invalidate(s);}
+  if kind==602 {s[0].guard_ai.hidden=false;s[0].guard_ai.input.suspended=!s[0].guard_ai.focused;}
+}
+
+everglade_guard_tick :: (s:[]Everglade,you:Point,c:FolkClock) {
+  w:=watch_w(s);a:=w[0].actors[0];
+  weather:=0;if s[0].sky.state==WEATHER_OVERCAST || s[0].sky.state==WEATHER_FOG {weather=1;}
+  if s[0].sky.state==WEATHER_RAIN {weather=2;}if s[0].sky.state==WEATHER_STORM {weather=3;}
+  o:=GaObservation.{calm=a.ready && a.mode==WM_CALM && !a.body.on && a.shout<0,
+    alive=a.hp>0 && a.hp==a.max,near=flat_gap(v3(a.x,0,a.z),you)<8,
+    visible=!eg_gone(s[0].ev.edits,0) && !s[0].folk[0].indoors,
+    safe=!w[0].dead && w[0].hp>0 && !w[0].wanted && s[0].talk<0 && !s[0].board && !s[0].ev.editing && s[0].sp.casting<0 && s[0].sp.armed<0,
+    playable=s[0].wv.started && w[0].on && !c.still && !s[0].above && !s[0].warp && !s[0].paint_only && !s[0].guard_ai.input.blocked,
+    day=clamp_i(cast(int)(c.day*4),0,3),weather=weather};
+  s[0].guard_ai.input.observation=o;
+  s[0].guard_ai.input.generation=s[0].guard_ai.generation;
+  s[0].guard_ai.input.revision=s[0].ev.ed[0].version;
+  s[0].guard_ai.input.boundary=true;
+}
+
+everglade_guard_take :: (s:[]Everglade)->GaInput #export_c {
+  input:=s[0].guard_ai.input;input.url=cast(string)s[0].guard_ai.url[0..<s[0].guard_ai.url_n];
+  s[0].guard_ai.input.boundary=false;return input;
+}
+
+everglade_guard_focus :: (s:[]Everglade,focused:bool) #export_c {
+  if !focused {everglade_guard_invalidate(s);}
+  s[0].guard_ai.focused=focused;s[0].guard_ai.input.suspended=s[0].guard_ai.hidden || !focused;
+}

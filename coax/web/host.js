@@ -63,6 +63,11 @@
 //                             (status 0: no answer); 8 sends the browser's playtest player key
 //                             (X-Verse-Player); 16 the body's first line is its Authorization header (NIP-98);
 //                             -1 when 8 are waiting or the URL isn't this site's
+//   coaxial_http_bounded(url, url_len, body, body_len, flags, timeout_ms:i64) -> id
+//                             answer wanted, no beacon; streamed bytes fit the module inbox, including
+//                             STATUS\n. Deadline/overflow/network failure: one "0\n" reply. Same eight slots.
+//   coaxial_http_cancel(id) -> 1 cancelled, 0 absent; silent, no later callback after cancel or engine replacement
+//   coaxial_now_ms() -> i64   monotonic performance.now() milliseconds (not a frame delta or wall date)
 // and optional opaque byte storage: env.coaxial_storage_put/get/delete/cancel, replies at 768 + slot.
 // The bounded ABI, raw inbox header and cancellation semantics are in STORAGE.md. No key, event,
 // account or cache policy lives in this host; nothing is persisted without an explicit app request.
@@ -70,7 +75,7 @@
 //   600 the page facts, key=value lines, once an engine loads: tab (a random id for this tab,
 //       sessionStorage), fresh (1 when the tab id was just made), visitor (a random id for this
 //       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
-//       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, webdriver, fcp, dcl, player and account (the
+//       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, clip, webdriver, fcp, dcl, player and account (the
 //       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none), ruleset (data-ruleset: realms.json "ruleset", "" none),
 //       style (the realm's art style, data-style: lowpoly, painterly, photoreal or flat; "" not a realm), zone.<id>
 //       (a zone's style, data-zones "id:style ...") and clock (data-clock: cycle, real or fixed:T; the URL's
@@ -153,6 +158,7 @@ import { startUploads } from "./uploads.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { startGpui } from "./gpui.js";
 import { startLoading, readBytes } from "./loader.js";
+import { makeHttpRequests } from "./http-requests.js";
 
 const script = document.currentScript || document.querySelector("script[data-app]");
 const app = (script && script.dataset.app) || "app";
@@ -212,6 +218,7 @@ function invalidateScene() {
 }
 function beginEngine() {
   const generation = ++wanted;
+  httpRequests.reset();
   invalidateScene();
   return generation;
 }
@@ -250,7 +257,8 @@ async function loadEngine(bytes, generation) {
   if (pages > have) memory.grow(pages - have); // instantiate refuses an imported memory smaller than declared
   const random = prepareRandomImport(memory, module, randomScratch);
   const imports = Object.create(null);
-  imports.env = Object.assign(Object.create(null), { memory, coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)), ...socketImports, ...httpImports, ...random.imports, ...storageImports });
+  imports.env = Object.assign(Object.create(null), { memory, coaxial_now_seconds: () => BigInt(Math.floor(Date.now() / 1000)),
+    coaxial_now_ms: () => BigInt(Math.floor(performance.now())), ...socketImports, ...httpImports, ...random.imports, ...storageImports });
   for (const imp of WebAssembly.Module.imports(module)) {
     if (imp.kind !== "function") continue;
     (imports[imp.module] ||= Object.create(null))[imp.name] ||= wasiStub(imp.module, imp.name);
@@ -260,6 +268,7 @@ async function loadEngine(bytes, generation) {
   const kept = await keptRead;   // before the first frame, so a kept world opens with it
   if (generation !== wanted) return false;
   byteStorage.reset(); // pending effects belong to the old engine, even if its state layout survives
+  httpRequests.reset();
   const x = instance.exports;
   random.bind(x);
   x._initialize?.();
@@ -403,36 +412,24 @@ const socketImports = {
 };
 
 // ---- HTTP: bytes to this site and back, nothing else
-const HTTPS = 8, HTTP_KIND = 512;
-const waiting = new Array(HTTPS).fill(false);
+const HTTP_KIND = 512;
 function answer(id, text) {
   const x = engine?.exports;
   if (!x?.coaxial_message) return;
   const bytes = new TextEncoder().encode(text);
   send(HTTP_KIND + id, bytes.length > x.coaxial_inbox_cap() ? text.slice(0, text.indexOf("\n") + 1) : text);
 }
+const httpRequests = makeHttpRequests({emit: answer, capacity: () => engine?.exports.coaxial_inbox_cap() ?? 0,
+  player, origin: location.origin, sendBeacon: navigator.sendBeacon ? (url, body) => navigator.sendBeacon(url, body) : undefined});
+function httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags, timeoutMs) {
+  return httpRequests.request(utf8(urlPtr, urlLen), bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen) : null, flags, timeoutMs);
+}
 const httpImports = {
-  coaxial_http(urlPtr, urlLen, bodyPtr, bodyLen, flags) {
-    const url = utf8(urlPtr, urlLen);
-    if (!url.startsWith("/") || url.startsWith("//")) return -1;   // this site only
-    let body = bodyLen ? new Uint8Array(memory.buffer, bodyPtr, bodyLen).slice() : null;
-    const post = (flags & 1) !== 0, wanted = (flags & 4) !== 0;
-    // 16: the body's first line is the request's Authorization (a NIP-98 login), the rest its body
-    let auth = "";
-    if ((flags & 16) && body) { const nl = body.indexOf(10); if (nl < 0) return -1; auth = new TextDecoder().decode(body.subarray(0, nl)); body = body.slice(nl + 1); }
-    if ((flags & 2) && navigator.sendBeacon && navigator.sendBeacon(url, new Blob([body || ""], { type: "application/json" }))) return 0;
-    let id = 0;
-    if (wanted) { id = waiting.indexOf(false); if (id < 0) return -1; waiting[id] = true; }
-    const headers = post ? { "Content-Type": "application/json" } : {};
-    const who = flags & 8 ? player() : null;
-    if (who) headers["X-Verse-Player"] = who.key;
-    if (auth) headers.Authorization = auth;
-    fetch(url, { method: post ? "POST" : "GET", body: post ? body : undefined, credentials: "same-origin", cache: "no-store",
-      keepalive: !wanted && bodyLen < 60000, headers })
-      .then(async (r) => { const t = await r.text(); if (wanted) { waiting[id] = false; answer(id, `${r.status}\n${t}`); } })
-      .catch(() => { if (wanted) { waiting[id] = false; answer(id, "0\n"); } });
-    return id;
-  },
+  coaxial_http: (urlPtr, urlLen, bodyPtr, bodyLen, flags) => httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags),
+  // A deadline failure is one ordinary "0\n" response. Cancellation is silent;
+  // it invalidates ownership before aborting, so an old promise cannot answer a reused slot.
+  coaxial_http_bounded: (urlPtr, urlLen, bodyPtr, bodyLen, flags, timeoutMs) => httpRequest(urlPtr, urlLen, bodyPtr, bodyLen, flags, Number(timeoutMs)),
+  coaxial_http_cancel: id => httpRequests.cancel(id),
 };
 
 // ---- IndexedDB: bounded opaque bytes; namespaces and versions are chosen by Coax
@@ -622,12 +619,14 @@ function pageFacts() {
     ref: document.referrer, ua: navigator.userAgent, lang: navigator.language, tz, sw: screen.width, sh: screen.height,
     vw: innerWidth, vh: innerHeight, dpr: devicePixelRatio || 1, coarse: matchMedia("(pointer: coarse)").matches ? 1 : 0,
     touch: navigator.maxTouchPoints || 0, gpu: navigator.gpu ? 1 : 0, hidden: document.hidden ? 1 : 0,
+    focused: document.hasFocus() ? 1 : 0,
+    clip: globalThis.coaxialClip === true ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
     player: player()?.id || "", account: player()?.account || "", realm: realmId, slot, voice: script?.dataset.voice || "", ruleset: script?.dataset.ruleset || "", ...styleFacts() })
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));
-addEventListener("pagehide", () => send(LEAVE_KIND));
+addEventListener("pagehide", () => { send(LEAVE_KIND); httpRequests.reset(); });
 addEventListener("error", (e) => send(ERROR_KIND, `${String(e.message || "").slice(0, 200)}\n${String(e.filename || "").split("/").pop()}\n${e.lineno || 0}`));
 addEventListener("unhandledrejection", (e) => send(ERROR_KIND, `${String(e.reason?.message || e.reason || "").slice(0, 200)}\npromise\n0`));
 
@@ -1537,7 +1536,8 @@ function send(kind, text = "") {
   x.coaxial_message(arena.state, kind, bytes.length);
   after(false);
 }
-globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0 };
+globalThis.coaxial = { send, ready: false, sceneReady: false, facts: () => pageFacts(), probe: () => engine?.exports.coaxial_probe?.(arena.state) ?? 0,
+  guardProbe: (field = 0) => engine?.exports.coaxial_guard_probe?.(arena.state, field) ?? 0 };
 // The OpenAgents app turns the camera with the phone (its gyro), radians since the last call.
 globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(arena.state, dyaw, dpitch); };
 // A page that takes dropped files (data-drops: /projects, NEW PROJECT): drop.js uploads them, the app draws it.
@@ -1654,6 +1654,7 @@ addEventListener("keyup", (e) => {
   if (key && call("coaxial_key_up", key, modsOf(e))) e.preventDefault();
 });
 addEventListener("blur", () => call("coaxial_blur"));
+addEventListener("focus", () => call("coaxial_focus"));
 addEventListener("visibilitychange", () => { if (document.hidden) call("coaxial_blur"); });
 canvas.addEventListener("wheel", (e) => {
   if (!engine?.exports.coaxial_wheel) return;

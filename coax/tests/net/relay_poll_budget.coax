@@ -1,0 +1,3 @@
+#load "../../lib/net/relay_conn.coax";
+budget_poll :: (c:[]RelayConn,timeout:int,steps:int)->int #export_c {return relay_conn_poll_budget(c,timeout,steps);}
+legacy_poll :: (c:[]RelayConn,timeout:int)->int #export_c {return relay_conn_poll(c,timeout);}

@@ -920,6 +920,16 @@
         "debug",
         "release"
       ]
+    },
+    {
+      "source": "psionic/examples/game-decision.coax",
+      "chapter": "psionic/book/ch021b-a-decision-arrives-while-play-continues.md",
+      "stdout": "psionic/fixtures/game-decision.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
     }
   ]
 }

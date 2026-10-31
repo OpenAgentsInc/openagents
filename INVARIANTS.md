@@ -2118,3 +2118,34 @@ already delivered prefix. The original blocking flush remains unchanged.
 The caller in Coax controls the checker program, trust, payload bounds
 and deadline. Native Mac/Linux sanitizer evidence is in
 `docs/verification/2026-10-30-process-flush-timeout.md`.
+
+## A game consumes a remote decision only under its current local ticket
+
+`psionic/lib/game/decision.coax` owns a single bounded waiting/ready ticket.
+Only its simulation-boundary take can return an action, once, before a monotonic
+deadline and under the same epoch, actor/generation, semantic revision, policy,
+option set and query sequence. Legal-action bits come from the game. A refused
+old callback never revokes a newer owner. Timeout/cancel preserve the sequence;
+exhaustion refuses rather than wraps. This is local application authority, not
+proof that remote work stopped or that a model's probabilities are calibrated.
+
+The generic browser HTTP slots fence async completion across cancellation,
+reuse and engine replacement. Bounded requests have an abort timer and stream
+byte cap; explicit cancellation releases silently. Host JS does effects only.
+The first Everglade consumer keeps admission and its authored option contract
+in a separately linked Coax policy library. It is off by default; opt-in shadow
+mode records enums and changes no patrol, combat, dialogue or replicated state.
+Golden/clip/background and revoked local contexts cannot initiate/apply a guard
+proposal. Guests, quota failures and missing Pylons preserve ordinary play.
+See `docs/verse/pylon-guard-decisions.md` for limits and remaining rollout gates.
+
+## A warm fleet route belongs to a caught-up current connection
+
+A cached beacon is eligible only after the current authenticated/subscribed
+connection reaches its beacon EOSE and ready input is drained. Reconnect clears
+that fact. Pending newer withdrawals and selected identity/generation/free-slot
+and expiry gates are observed again after signing, before publication. When no eligible route exists, discovery keeps its bounded window. A warm
+eligible route skips the full window. Fleet text/byte and additive transport-step limits refuse/drop on
+exhaustion, never report false empty input. Existing connect/flush ceilings
+remain separate from bounded processing work. Focused signed-peer and sanitizer
+evidence is in `docs/verification/pylon-guard-decisions-2026-10-30.md`.

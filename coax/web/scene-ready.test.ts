@@ -64,7 +64,7 @@ beforeAll(async () => {
       globalThis.reloadTestShader=()=>loadShaders();
       globalThis.holdParticleBuild=()=>{const original=particlePipeline; particlePipeline=post=>new Promise((resolve,reject)=>{globalThis.releaseParticleBuild=()=>original(post).then(resolve,reject)})};
     `, { headers: { 'Content-Type': 'text/javascript' } })
-    if (['/entropy.js','/entropy-import.js','/drop.js','/uploads.js','/voice.js','/loader.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
+    if (['/entropy.js','/entropy-import.js','/drop.js','/uploads.js','/voice.js','/gpui.js','/loader.js','/http-requests.js'].includes(path)) return new Response(readFileSync(join(root, 'coax/web', path.slice(1))), { headers: { 'Content-Type': 'text/javascript' } })
     if (/^\/scene-[0-3]\.wasm$/.test(path)) return new Response(readFileSync(join(temp, path.slice(1))), { headers: { 'Content-Type': 'application/wasm' } })
     if (path === '/scene.wgsl') return holdShaders ? new Promise<Response>(resolve => { shaderWaiters.push(resolve) }) : new Response(shader)
     if (path === '/indices') { gotIndex = true; return new Promise<Response>(resolve => { pendingIndex = resolve }) }

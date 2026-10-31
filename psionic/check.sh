@@ -38,6 +38,12 @@ fi
 # A chapter-only request avoids unrelated oracle/package setup.
 if [[ ${#only[@]} -eq 1 ]]; then
     chapter=${only[0]%.coax}; chapter=${chapter#psionic/lib/}
+    if [[ $chapter == game || $chapter == game/decision || $chapter == game-decision ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_game_decision.sh --mutate --jobs "$jobs"
+    fi
+    if [[ $chapter == game/* ]]; then
+        echo "unknown game decision unit: $chapter" >&2; exit 2
+    fi
     if [[ $chapter == live-decision || $chapter == service-part3 ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_live_decision.sh
     fi
@@ -196,7 +202,7 @@ python3 -I psionic/tests/mammoth_reference_fixture.py
 python3 -I psionic/tests/mammoth_reference_fixture.py --check-output psionic/fixtures/models/mammoth/psionic-reference.txt
 python3 -I psionic/tests/session_fixture.py
 "$text_python" -I psionic/tests/prepare_oracle.py --header > "$out/prepare-golden.h"
-coax_units=(trace-machine replay exact-memory hull-memory soft-memory relu-arith gate-graph compiler-harness interpreter-weights weight-module training-rows loop onnx onnx-write shadow students core-interface kernel-search device/norm-search autodiff harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift noise verdict suite settings search distance env tensor tensor-view tensor-ops-backward ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine bench bench-wire pylon/template pylon/relays pylon/beacon pylon/decision pylon/queue pylon/selfcheck fleet/policy fleet/protocol fleet/service mesh/selection mesh/opening mesh/witness mesh/binding mesh/receipt mesh/compare mesh/totals mesh/pool-wire mesh/pool-bundle mesh/pool-policy mesh/pool-input-policy)
+coax_units=(trace-machine replay exact-memory hull-memory soft-memory relu-arith gate-graph compiler-harness interpreter-weights weight-module training-rows loop onnx onnx-write shadow students core-interface kernel-search device/norm-search autodiff harmony/admission harmony/messages gptoss-math gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift noise verdict suite settings search distance env tensor tensor-view tensor-ops-backward ops-contract ops model-io/weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout model-io/access model-io/layer-map model-io/model-map model-io/rank5-bundle decision-calibration decision-json decision-quality serve-request serve-engine bench bench-wire pylon/template pylon/relays pylon/beacon pylon/decision pylon/queue pylon/selfcheck fleet/policy fleet/protocol fleet/service fleet/discovery game/decision mesh/selection mesh/opening mesh/witness mesh/binding mesh/receipt mesh/compare mesh/totals mesh/pool-wire mesh/pool-bundle mesh/pool-policy mesh/pool-input-policy)
 native_units=(exact-memory soft-memory gate-graph compiler-harness harmony gptoss-attention moe mxfp4 learn tabular tape route threshold calibrate drift noise verdict suite settings search tensor tensor-view tensor-ops ops weights text attention delta qwen-attention qwen-matvec qwen-block qwen-linear-layer qwen-full-layer qwen-decision qwen-prefix qwen-model qwen-tokens qwen-rope qwen-request decision-models decision-prepare decision-session decision-answer decision-plan readout rank5 rank5-bundle access layer-map model-map decision-calibration decision-json decision-quality)
 native_source() {
     case "$1" in
@@ -364,7 +370,7 @@ phase "Coax debug/release checks"
 for unit in "${selected_coax[@]+"${selected_coax[@]}"}"; do
     # Fleet's imported JSON/crypto/server units retain their existing gates.
     # All baseline checks run; mutate only the new file's physical source.
-    if [[ $unit == fleet/* || $unit == mesh/* ]]; then
+    if [[ $unit == fleet/* || $unit == mesh/* || $unit == game/* ]]; then
         "$coax" mutate "psionic/lib/$unit.coax" --root-only --jobs "$jobs"
     else
         "$coax" mutate "psionic/lib/$unit.coax" --jobs "$jobs"
@@ -379,6 +385,11 @@ for unit in "${selected_coax[@]+"${selected_coax[@]}"}"; do
 done
 if [[ ${#selected_mesh[@]} -gt 0 ]]; then
     env COAX="$coax" COAX_CC="$cc" psionic/tests/check_mesh.sh --native-only "${selected_mesh[@]}"
+fi
+
+# The game's dependency-free ticket gate owns its native boundary harness.
+if [[ " ${selected_coax[*]-} " == *" game/decision "* ]]; then
+    env COAX="$coax" COAX_CC="$cc" psionic/tests/check_game_decision.sh --native-only
 fi
 
 # Native debug/release harnesses, plain and ASan/UBSan, in parallel.

@@ -1,0 +1,19 @@
+// Caller-selected work budget for the optional bounded relay poll. A step
+// permits at most one server frame scan and one transport read. No I/O here.
+#authority;
+RCP_STEPS_MAX :: 65536;
+
+#test "bounded polling admits only positive bounded work and never wraps the counter" {
+    #assert RCP_STEPS_MAX==65536;
+    #assert rcp_step(0,1) && !rcp_step(1,1) && !rcp_step(2,1);
+    #assert rcp_step(65535,65536) && !rcp_step(65536,65536);
+    #assert !rcp_step(-1,1) && !rcp_step(-9223372036854775807-1,1);
+    #assert !rcp_step(9223372036854775807,65536);
+    #assert !rcp_step(0,0) && !rcp_step(0,-1) && !rcp_step(0,65537);
+    #assert !rcp_step(0,9223372036854775807);
+}
+
+rcp_step :: (used:int,max_steps:int)->bool #export_c {
+    return used>=0 && max_steps>=1 && max_steps<=RCP_STEPS_MAX && used<max_steps;
+}
+

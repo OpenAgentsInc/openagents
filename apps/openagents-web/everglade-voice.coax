@@ -210,6 +210,7 @@ everglade_edit_reset :: (s: [] Everglade) -> bool #export_c { r := s[0].ev.reset
 
 // The published list (GET /api/playtest/world/everglade's answer), laid over the plan for everyone.
 everglade_world :: (s: [] Everglade, answer: string) #export_c {
+    everglade_guard_invalidate(s);
   got: [1] EgEdits;
   if eg_edits_answer(answer, got[..]) < 0 { return; }
   s[0].ev.edits = got[0];
@@ -940,6 +941,7 @@ edit_undo :: (s: [] Everglade, spoken: bool) {
 
 // After an edit: the walls again, the list to publish, and a walk of the city.
 edit_changed :: (s: [] Everglade, summary: string) {
+    everglade_guard_invalidate(s);
   edit_walls(s);
   s[0].ev.post_n = eg_edits_body(s[0].ev.edits, summary, s[0].ev.post[..]);
 }

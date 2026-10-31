@@ -1,0 +1,335 @@
+// Everglade's cosmetic guard consumer: fixed authored choices only.
+// Unknown extra result fields are inert. Required fields are unique and exact.
+#load "../../coax/lib/nostr/json.coax";
+#load "guard-types.coax";
+#load "guard-fixtures.coax";
+#load "../../psionic/lib/game/decision.coax";
+#authority;
+GA_IDENTITY :: "elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba";
+GA_MODEL :: "elephant-1";
+GA_OPTIONS :: [3]string.["quiet","greeting","weather"];
+GA_BODY_MAX :: 8192;
+GA_UNIT :: 1000000000;
+GA_TOL :: 1000;
+GaField :: struct {ok:bool;token:int;raw:string;text:string;}
+GaNumber :: struct {ok:bool;units:int;}
+GaAnswer :: struct {ok:bool;action:int=-1;}
+GA_RESPONSE :: "{\"model\":\"elephant-1\",\"answers\":{\"ambient\":{\"type\":\"choice\",\"choice\":\"greeting\",\"confidence\":0.8,\"probabilities\":{\"quiet\":0.1,\"greeting\":0.8,\"weather\":0.1}}},\"service\":{\"version\":\"psionic-pylon-v1\",\"door\":\"pylon:test\",\"identity\":\"elephant-1@sha256:682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba\",\"provider\":\"59e443def0b5d7181fad586b2f88a15689d09c91fd3f44d46b98d7a890cf9ee7\"}}";
+#test "guard mode is explicit and duplicate or unknown values turn it off" {
+  #assert ga_mode("https://openagents.com/realms/everglade")==0;
+  #assert ga_mode("https://openagents.com/realms/everglade?guard-ai=shadow#gate")==1;
+  #assert ga_mode("/realms/everglade?x=1&guard-ai=ambient&z=2")==0;
+  #assert ga_mode("/?guard-ai=ambient&guard-ai=shadow")==0;
+  #assert ga_mode("/?guard-ai=unknown")==0 && ga_mode("/#?guard-ai=ambient")==0;
+}
+#test "all guard eligibility conditions are required and observations are finite categories" {
+  for bits:0..<64 {
+    o:=GaObservation.{calm=(bits&1)!=0,alive=(bits&2)!=0,near=(bits&4)!=0,visible=(bits&8)!=0,safe=(bits&16)!=0,playable=(bits&32)!=0,day=1,weather=0};
+    #assert ga_eligible(o)==(bits==63);
+  }
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=0,weather=0};
+  #assert ga_eligible(o);o.day=4;#assert !ga_eligible(o);o.day=1;o.weather=4;#assert !ga_eligible(o);
+}
+#test "ordinary decimal probabilities have independent bounds and no coercion" {
+  #assert ga_probability("0").ok && ga_probability("1.000000000").units==GA_UNIT;
+  #assert ga_probability("0.000000001").units==1;
+  for text:[12]string.["","-0.1","1.000000001","2","01",".1","1.","1e0","0.0000000001","NaN","\"0.5\"","0x1"] {#assert !ga_probability(text).ok;}
+}
+#test "a guard answer binds its model, one question, every option and the declared choice" {
+  a:=ga_decode(GA_RESPONSE);#assert a.ok && a.action==1;
+  old:=[13]string.["elephant-1\",","elephant-1@sha256:","\"ambient\":","\"choice\",\"choice\"","\"greeting\",\"confidence\"","\"confidence\":0.8","\"greeting\":0.8","\"quiet\":0.1","\"weather\":0.1","\"door\":\"pylon:test\"","59e443","\"answers\":{","\"service\":{"];
+  fresh:=[13]string.["mammoth-1\",","mammoth-1@sha256:","\"other\":","\"noul\",\"choice\"","\"quiet\",\"confidence\"","\"confidence\":1.000000001","\"greeting\":1.000000001","\"quiet\":-0.1","\"weather\":0.2","\"door\":\"psionic\"","Z9e443","\"answers\":[],\"ignored\":{","\"service\":[],\"ignored\":{"];
+  b:[8192]u8;for i:0..<old.count {#assert !ga_decode(ga_swap(b[..],GA_RESPONSE,old[i],fresh[i])).ok;}
+  #assert !ga_decode("{}").ok && !ga_decode("{} x").ok;
+  #assert !ga_get("{\"x\":1,\"\\u0078\":2}","x").ok;
+}
+#test "duplicate options and questions cannot become accepted observations" {
+  b:[8192]u8;#assert !ga_decode(ga_swap(b[..],GA_RESPONSE,"\"quiet\":0.1","\"quiet\":0.1,\"quiet\":0.1")).ok;
+  #assert !ga_decode(ga_swap(b[..],GA_RESPONSE,"\"ambient\":{","\"other\":{},\"ambient\":{")).ok;
+  #assert !ga_decode(ga_swap(b[..],GA_RESPONSE,"\"greeting\":0.8","\"greeting\":\"0.8\"")).ok;
+}
+
+ga_mode :: (url:string)->int {
+  if url.count>2048 {return 0;}start:=0;stop:=url.count;
+  for i:0..<url.count {if url[i]=='#' {stop=i;break;}if url[i]=='?' && start==0 {start=i+1;}}
+  if start==0 {return 0;}at:=start;mode:=0;seen:=false;
+  while true {end:=at;while end<stop && url[end]!='&' {end+=1;}part:=url[at..<end];
+    if part.count>=9 && part[0..<9]=="guard-ai=" {if seen {return 0;}seen=true;if part=="guard-ai=shadow" {mode=1;}}
+    if end==stop {break;}at=end+1;
+  }return mode;
+}
+ga_eligible :: (o:GaObservation)->bool {return o.calm && o.alive && o.near && o.visible && o.safe && o.playable && o.day>=0 && o.day<4 && o.weather>=0 && o.weather<4;}
+ga_probability :: (text:string)->GaNumber {
+  if text.count<1 || (text[0]!='0' && text[0]!='1') {return GaNumber.{};}
+  units:=cast(int)(text[0]-'0')*GA_UNIT;if text.count==1 {return GaNumber.{ok=true,units=units};}
+  if text.count<3 || text.count>11 || text[1]!='.' {return GaNumber.{};}scale:=100000000;
+  for i:2..<text.count {if text[i]<'0' || text[i]>'9' {return GaNumber.{};}units+=cast(int)(text[i]-'0')*scale;scale/=10;}
+  return GaNumber.{ok=units<=GA_UNIT,units=units};
+}
+ga_get :: (text:string,key:string)->GaField {
+  f:GaField;if !json_valid(text) {return f;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return f;}
+  while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}name:=json_text(j[..]);t=json_next(j[..]);value:=json_text(j[..]);raw:=value;if t==JSON_OBJECT || t==JSON_ARRAY {start:=j[0].from;_:=json_skip(j[..]);raw=text[start..<j[0].at];}
+    if json_is(name,key) {if f.ok {return GaField.{};}f=GaField.{ok=true,token=t,raw=raw,text=value};}}
+  return f;
+}
+ga_is :: (f:GaField,text:string)->bool {return f.ok && f.token==JSON_STRING && json_is(f.text,text);}
+ga_count :: (text:string)->int {
+  if !json_valid(text) {return -1;}j:[1]Json;json_start(j[..],text);if json_next(j[..])!=JSON_OBJECT {return -1;}n:=0;
+  while true {t:=json_next(j[..]);if t==JSON_OBJECT_END {break;}t=json_next(j[..]);if t==JSON_ARRAY || t==JSON_OBJECT {_:=json_skip(j[..]);}n+=1;}
+  return n;
+}
+ga_hex :: (s:string)->bool {if s.count!=64 {return false;}for c:s {if !((c>='0' && c<='9') || (c>='a' && c<='f')) {return false;}}return true;}
+ga_decode :: (text:string)->GaAnswer {
+  bad:GaAnswer;if text.count>GA_BODY_MAX || !json_valid(text) {return bad;}
+  if !ga_is(ga_get(text,"model"),GA_MODEL) {return bad;}
+  service:=ga_get(text,"service");if !ga_is(ga_get(service.raw,"version"),"psionic-pylon-v1") || !ga_is(ga_get(service.raw,"identity"),GA_IDENTITY) {return bad;}
+  provider:=ga_get(service.raw,"provider");door:=ga_get(service.raw,"door");
+  if provider.token!=JSON_STRING || !ga_hex(provider.text) || door.token!=JSON_STRING || door.text.count<7 || door.text.count>86 || door.text[0..<6]!="pylon:" {return bad;}
+  answers:=ga_get(text,"answers");if answers.token!=JSON_OBJECT || ga_count(answers.raw)!=1 {return bad;}
+  answer:=ga_get(answers.raw,"ambient");if answer.token!=JSON_OBJECT || !ga_is(ga_get(answer.raw,"type"),"choice") {return bad;}
+  choice:=ga_get(answer.raw,"choice");confidence:=ga_get(answer.raw,"confidence");c:=ga_probability(confidence.text);
+  if confidence.token!=JSON_NUMBER || !c.ok {return bad;}
+  probs:=ga_get(answer.raw,"probabilities");if ga_count(probs.raw)!=3 {return bad;}
+  units:[3]int;sum:=0;
+  for i:0..<3 {f:=ga_get(probs.raw,GA_OPTIONS[i]);v:=ga_probability(f.text);if f.token!=JSON_NUMBER || !v.ok {return bad;}units[i]=v.units;sum+=v.units;}
+  if sum<GA_UNIT-GA_TOL || sum>GA_UNIT+GA_TOL {return bad;}
+  // Lexical ties: greeting, quiet, weather. Confidence is checked independently.
+  best:=1;if units[0]>units[best] {best=0;}if units[2]>units[best] {best=2;}
+  if !ga_is(choice,GA_OPTIONS[best]) || c.units<units[best]-GA_TOL || c.units>units[best]+GA_TOL {return bad;}
+  return GaAnswer.{ok=true,action=best};
+}
+
+main :: () {}
+
+// One realm-wide flight, six attempts per visit, sixty seconds between starts.
+// Counters contain enums only; no question text, identity, or model prose.
+GA_CADENCE :: 60000;
+GA_TIMEOUT :: 8000;
+GaSession :: struct {
+  ticket:[1]GdState; mode:int; configured:bool; disabled:bool; suspended:bool;
+  epoch:int=1; page_epoch:int; initialized:bool; attempts:int; due_ms:int; send:bool; body:[1024]u8; body_n:int;
+  accepted:int; refused:int; last_action:int=-1; context:GdContext;
+}
+#test "a shadow visit is bounded, cancelled locally and never accepts a stale reply" {
+  s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=1,weather=0};
+  ga_frame(s[..],o,1,1,0);#assert s[0].send && s[0].attempts==1 && s[0].ticket[0].phase==GD_WAITING;
+  ga_sent(s[..],1,true);#assert !s[0].send;
+  ga_reply(s[..],1,1,"200\n",GA_RESPONSE);#assert s[0].ticket[0].phase==GD_READY && s[0].accepted==0;
+  ga_frame(s[..],o,1,1,2);#assert s[0].accepted==1 && s[0].last_action==1 && s[0].ticket[0].phase==0;
+  ga_frame(s[..],o,1,1,59999);#assert s[0].attempts==1;
+  ga_frame(s[..],o,1,1,60000);#assert s[0].attempts==2;
+  ga_frame(s[..],o,1,2,60001);#assert s[0].ticket[0].phase==0;
+  ga_reply(s[..],2,60002,"200\n",GA_RESPONSE);#assert s[0].accepted==1 && s[0].ticket[0].phase==0;
+  for i:2..<6 {ga_frame(s[..],o,1,2,i*60000);#assert s[0].attempts==i+1;ga_invalidate(s[..]);}
+  ga_frame(s[..],o,1,2,360000);#assert s[0].attempts==6 && !s[0].send;
+}
+#test "deadline, no transport, unavailable session, suspension and off modes fall back" {
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=1,weather=0};
+  for k:0..<8 {
+    s:[1]GaSession;s[0].mode=1;
+    if k==0 {s[0].mode=0;}if k==1 {s[0].mode=2;}if k==2 {s[0].suspended=true;}if k==3 {s[0].disabled=true;}
+    ga_frame(s[..],o,1,1,0);
+    if k<4 {#assert s[0].attempts==0;continue;}
+    if k==4 {ga_sent(s[..],1,false);}if k==5 {ga_reply(s[..],1,8000,"200\n",GA_RESPONSE);}
+    if k==6 {ga_reply(s[..],1,1,"401\n","");#assert s[0].disabled;}
+    if k==7 {ga_reply(s[..],1,1,"429\n","");#assert s[0].disabled;}
+    ga_frame(s[..],o,1,1,8001);#assert s[0].accepted==0 && s[0].ticket[0].phase==0;
+  }
+}
+#test "response arrival stages only, a new alarm revokes before the simulation applies" {
+  s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=1,weather=0};
+  ga_frame(s[..],o,1,1,0);ga_reply(s[..],1,1,"200\n",GA_RESPONSE);o.calm=false;ga_frame(s[..],o,1,1,2);
+  #assert s[0].accepted==0 && s[0].ticket[0].phase==0;
+  #assert json_valid(cast(string)s[0].body[0..<s[0].body_n]);
+}
+ga_invalidate :: (s:[]GaSession) {
+  if s[0].ticket[0].phase!=0 {_:=gd_cancel(s[0].ticket[..],s[0].ticket[0].sequence);s[0].refused+=1;}
+  s[0].send=false;if s[0].epoch<GD_SEQUENCE_MAX {s[0].epoch+=1;}else {s[0].disabled=true;}
+}
+// book:begin request
+ga_request :: (out:[]u8,o:GaObservation)->int {
+  days:=[4]string.["night","morning","afternoon","evening"];weather:=[4]string.["clear","cloudy","rain","storm"];
+  n:=json_raw(out,0,"{\"model\":\"elephant-1\",\"state\":\"A calm healthy town guard and a nearby peaceful living player. Time: ");
+  n=json_raw(out,n,days[o.day]);n=json_raw(out,n,". Weather: ");n=json_raw(out,n,weather[o.weather]);
+  return json_raw(out,n,".\",\"questions\":{\"ambient\":{\"type\":\"choice\",\"instructions\":\"Choose one harmless ambient action. Never affect movement, crime, combat or rewards.\",\"criteria\":{\"quiet\":\"Remain quiet\",\"greeting\":\"Offer an authored greeting\",\"weather\":\"Make an authored weather remark\"}}}}");
+}// book:end request
+// book:begin frame
+ga_frame :: (s:[]GaSession,o:GaObservation,generation:int,revision:int,now_ms:int) {
+  c:=GdContext.{epoch=s[0].epoch,actor=0,generation=generation,revision=revision*16+o.day*4+o.weather,policy=1,options=1};
+  if s[0].ticket[0].phase!=0 && (s[0].mode!=1 || s[0].disabled || !ga_eligible(o) || s[0].suspended || !gd_same_context(c,s[0].context) || now_ms>=s[0].ticket[0].ticket.expires_ms) {ga_invalidate(s);c.epoch=s[0].epoch;}
+  s[0].context=c;
+  if s[0].ticket[0].phase==GD_READY {
+    a:=gd_take(s[0].ticket[..],s[0].ticket[0].sequence,c,now_ms,7);
+    if a.code==GdCode.ok {s[0].accepted+=1;s[0].last_action=a.action;}else {ga_invalidate(s);}
+  }
+  if s[0].mode!=1 || s[0].disabled || s[0].suspended || !ga_eligible(o) || s[0].ticket[0].phase!=0 || s[0].attempts>=6 || now_ms<s[0].due_ms {return;}
+  b:=gd_begin(s[0].ticket[..],c,now_ms,GA_TIMEOUT);if b.code!=GdCode.ok {return;}
+  s[0].attempts+=1;s[0].due_ms=now_ms+GA_CADENCE;s[0].body_n=ga_request(s[0].body[..],o);
+  // All sixteen admitted category pairs fit this fixed buffer (checked below).
+  s[0].send=true;
+}// book:end frame
+ga_sent :: (s:[]GaSession,sequence:int,started:bool) #export_c {
+  if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {return;}s[0].send=false;if !started {ga_invalidate(s);}
+}
+ga_reply :: (s:[]GaSession,sequence:int,now_ms:int,status:string,body:string) {
+  if s[0].ticket[0].phase!=GD_WAITING || sequence!=s[0].ticket[0].sequence {return;}
+  if status=="401\n" || status=="429\n" {s[0].disabled=true;}
+  if status!="200\n" {ga_invalidate(s);return;}
+  a:=ga_decode(body);if !a.ok || gd_offer(s[0].ticket[..],sequence,now_ms,a.action)!=GdCode.ok {ga_invalidate(s);}
+}
+
+// The face forwards data and ticks. Only a page simulation boundary may apply/start.
+ga_page :: (s:[]GaSession,input:GaInput,now_ms:int) #export_c {
+  if !s[0].initialized {s[0].initialized=true;s[0].epoch=1;s[0].last_action=-1;}
+  if input.configured && !s[0].configured {s[0].configured=true;s[0].mode=ga_mode(input.url);}
+  if input.epoch!=s[0].page_epoch {ga_invalidate(s);s[0].page_epoch=input.epoch;}
+  s[0].suspended=input.suspended || input.blocked || !input.configured;
+  if s[0].suspended && s[0].ticket[0].phase!=0 {ga_invalidate(s);}
+  if input.boundary {ga_frame(s,input.observation,input.generation,input.revision,now_ms);}
+}
+ga_effect :: (s:[]GaSession,now_ms:int)->GaEffect #export_c {
+  if !s[0].send {return GaEffect.{};}
+  remaining:=s[0].ticket[0].ticket.expires_ms-now_ms;if remaining<=0 {ga_invalidate(s);return GaEffect.{};}
+  return GaEffect.{url="/api/v1/systemone",body=cast(string)s[0].body[0..<s[0].body_n],flags=5,timeout_ms=remaining};
+}
+ga_pending :: (s:[]GaSession,sequence:int)->bool #export_c {return s[0].ticket[0].phase==GD_WAITING && s[0].ticket[0].sequence==sequence;}
+ga_sequence :: (s:[]GaSession)->int #export_c {return s[0].ticket[0].sequence;}
+ga_receive :: (s:[]GaSession,sequence:int,now_ms:int,text:string) #export_c {
+  status:="";body:="";if text.count>=4 {status=text[0..<4];body=text[4..<text.count];}ga_reply(s,sequence,now_ms,status,body);
+}
+ga_probe :: (s:[]GaSession,field:int)->int #export_c {
+  a:=s[0];if field==0 {return a.mode;}if field==1 {return a.attempts;}if field==2 {return a.ticket[0].phase;}
+  if field==3 {return a.accepted;}if field==4 {return a.refused;}if field==5 {return a.last_action;}if field==6 {return ifx a.disabled then 1 else 0;}return -1;
+}
+
+#test "mode query boundaries and finite observation category edges are explicit" {
+  #assert ga_mode("?guard-ai=shadow")==1 && ga_mode("?x=1&guard-ai=shadow&z=2")==1;
+  #assert ga_mode("?guard-ai=&guard-ai=shadow")==0 && ga_mode("?a&guard-ai=shadow")==1;
+  #assert ga_mode("?guard-ai=shadow?x=1")==0 && ga_mode("??guard-ai=shadow")==0;
+  #assert ga_mode("?")==0 && ga_mode("")==0 && ga_mode("?guard-ai=shadow&")==1;
+  url:[2049]u8;for i:0..<url.count {url[i]='a';}url[0]='?';for i:0..<15 {url[i+1]="guard-ai=shadow"[i];}url[16]='&';
+  #assert ga_mode(cast(string)url[0..<2048])==1 && ga_mode(cast(string)url[..])==0;
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  for d:[4]int.[-1,0,3,4] {for w:[4]int.[-1,0,3,4] {o.day=d;o.weather=w;#assert ga_eligible(o)==(d>=0 && d<=3 && w>=0 && w<=3);}}
+}
+#test "decimal units and provider bytes have exact classifications" {
+  b:[64]u8;for i:0..<64 {b[i]='a';}
+  for byte:0..<256 {b[0]=cast(u8)byte;#assert ga_hex(cast(string)b[..])==((byte>='0' && byte<='9') || (byte>='a' && byte<='f'));}
+  #assert !ga_hex(cast(string)b[0..<63]) && !ga_hex("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa");
+  #assert ga_probability("0.0").units==0 && ga_probability("0.0").ok;
+  #assert ga_probability("0.123456789").units==123456789;
+  #assert ga_probability("1.0").ok && ga_probability("1.0").units==1000000000;
+  digit:[3]u8;digit[0]='0';digit[1]='.';for byte:0..<256 {digit[2]=cast(u8)byte;p:=ga_probability(cast(string)digit[..]);#assert p.ok==(byte>='0' && byte<='9');if p.ok {#assert p.units==(byte-'0')*100000000;}}
+}
+#test "confidence and normalization tolerate only one part per million on either side" {
+  b:[8192]u8;
+  for value:[2]string.["0.799999","0.800001"] {#assert ga_decode(ga_swap(b[..],GA_RESPONSE,"\"confidence\":0.8",ifx value=="0.799999" then "\"confidence\":0.799999" else "\"confidence\":0.800001")).ok;}
+  for value:[2]string.["\"confidence\":0.799998999","\"confidence\":0.800001001"] {#assert !ga_decode(ga_swap(b[..],GA_RESPONSE,"\"confidence\":0.8",value)).ok;}
+  for value:[2]string.["\"quiet\":0.099999","\"quiet\":0.100001"] {#assert ga_decode(ga_swap(b[..],GA_RESPONSE,"\"quiet\":0.1",value)).ok;}
+  for value:[2]string.["\"quiet\":0.099998999","\"quiet\":0.100001001"] {#assert !ga_decode(ga_swap(b[..],GA_RESPONSE,"\"quiet\":0.1",value)).ok;}
+}
+#test "all chosen options and lexical ties are checked independently" {
+  b:[8192]u8;c:[8192]u8;d:[8192]u8;
+  for action:[2]int.[0,2] {
+    r:=ga_swap(b[..],GA_RESPONSE,"\"greeting\":0.8","\"greeting\":0.1");
+    r=ga_swap(c[..],r,ifx action==0 then "\"quiet\":0.1" else "\"weather\":0.1",ifx action==0 then "\"quiet\":0.8" else "\"weather\":0.8");
+    r=ga_swap(d[..],r,"\"choice\":\"greeting\"",ifx action==0 then "\"choice\":\"quiet\"" else "\"choice\":\"weather\"");
+    #assert ga_decode(r).ok && ga_decode(r).action==action;
+  }
+  probs:=[3]string.["{\"quiet\":0.5,\"greeting\":0.5,\"weather\":0}","{\"quiet\":0.5,\"greeting\":0,\"weather\":0.5}","{\"quiet\":0,\"greeting\":0.5,\"weather\":0.5}"];
+  for i:0..<3 {
+    r:=ga_swap(b[..],GA_RESPONSE,"{\"quiet\":0.1,\"greeting\":0.8,\"weather\":0.1}",probs[i]);r=ga_swap(c[..],r,"\"confidence\":0.8","\"confidence\":0.5");
+    if i==1 {r=ga_swap(d[..],r,"\"choice\":\"greeting\"","\"choice\":\"quiet\"");}
+    #assert ga_decode(r).ok && ga_decode(r).action==(ifx i==1 then 0 else 1);
+  }
+}
+#test "body and service-door capacity are inclusive and every structural field is typed" {
+  b:[8193]u8;for i:0..<b.count {b[i]=' ';}for i:0..<GA_RESPONSE.count {b[i]=GA_RESPONSE[i];}
+  #assert ga_decode(cast(string)b[0..<8192]).ok && !ga_decode(cast(string)b[..]).ok;
+  c:[8192]u8;door:[87]u8;for i:0..<87 {door[i]='x';}for i:0..<6 {door[i]="pylon:"[i];}
+  for n:[4]int.[6,7,86,87] {r:=ga_swap(c[..],GA_RESPONSE,"pylon:test",cast(string)door[0..<n]);#assert ga_decode(r).ok==(n==7 || n==86);}
+  for raw:[4]string.["null","[]","0","false"] {
+    r:=ga_swap(c[..],GA_RESPONSE,"\"confidence\":0.8",ifx raw=="null" then "\"confidence\":null" else ifx raw=="[]" then "\"confidence\":[]" else ifx raw=="0" then "\"confidence\":0" else "\"confidence\":false");#assert !ga_decode(r).ok;
+  }
+  #assert !ga_is(GaField.{ok=false,token=JSON_STRING,text="x"},"x");
+  #assert !ga_is(GaField.{ok=true,token=JSON_NUMBER,text="x"},"x");
+  #assert ga_count("[]")==-1 && ga_count("bad")==-1 && ga_count("{}")==0;
+  #assert !ga_get("[]","x").ok && !ga_get("bad","x").ok;
+}
+#test "effects descriptors and page lifecycle are owned by the Coax library" {
+  s:[1]GaSession;input:=GaInput.{configured=true,url="?guard-ai=shadow",epoch=1,generation=2,revision=3,boundary=false,observation=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true,day=2,weather=1}};
+  ga_page(s[..],input,0);#assert ga_probe(s[..],0)==1 && ga_probe(s[..],1)==0 && ga_probe(s[..],5)==-1;
+  input.boundary=true;ga_page(s[..],input,1);e:=ga_effect(s[..],2);
+  #assert e.url=="/api/v1/systemone" && e.flags==5 && e.timeout_ms==7999 && json_valid(e.body);
+  #assert ga_pending(s[..],1) && !ga_pending(s[..],2) && ga_sequence(s[..])==1;
+  #assert s[0].ticket[0].ticket.context.actor==0 && s[0].ticket[0].ticket.context.policy==1 && s[0].ticket[0].ticket.context.options==1;
+  #assert s[0].ticket[0].ticket.context.generation==2 && s[0].ticket[0].ticket.context.revision==57;
+  ga_sent(s[..],2,false);#assert ga_pending(s[..],1) && s[0].send;
+  ga_sent(s[..],1,true);#assert ga_effect(s[..],3).body.count==0;
+  ga_receive(s[..],2,4,"200\n");#assert ga_pending(s[..],1);
+  ga_reply(s[..],1,4,"200\n",GA_RESPONSE);#assert ga_probe(s[..],2)==2 && ga_probe(s[..],3)==0;
+  input.boundary=false;input.epoch=2;ga_page(s[..],input,5);#assert ga_probe(s[..],2)==0 && ga_probe(s[..],3)==0 && ga_probe(s[..],4)==1;
+  #assert ga_probe(s[..],6)==0 && ga_probe(s[..],99)==-1;
+  input.boundary=true;ga_page(s[..],input,60001);#assert ga_probe(s[..],1)==2;
+  #assert ga_effect(s[..],68001).body.count==0 && ga_probe(s[..],4)==2;
+}
+#test "all pre-frame lifecycle refusals leave local behavior intact" {
+  o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  for k:0..<7 {
+    s:[1]GaSession;s[0].mode=1;ga_frame(s[..],o,1,0,0);#assert ga_pending(s[..],1);
+    if k==0 {s[0].mode=0;}if k==1 {s[0].disabled=true;}if k==2 {s[0].suspended=true;}
+    if k==3 {ga_reply(s[..],1,1,"200\n","{}");}if k==4 {ga_reply(s[..],1,1,"503\n","");}
+    if k==5 {ga_receive(s[..],1,1,"0\n");}if k==6 {ga_frame(s[..],o,2,0,1);}
+    ga_frame(s[..],o,1,0,2);#assert !ga_pending(s[..],1) && s[0].accepted==0;
+  }
+  s:[1]GaSession;s[0].epoch=GD_SEQUENCE_MAX;ga_invalidate(s[..]);#assert s[0].disabled && s[0].epoch==GD_SEQUENCE_MAX;
+  #assert ga_request(s[0].body[0..<0],o)==-1;
+}
+
+#test "nested projection skips inert array values and exact request observations survive encoding" {
+  f:=ga_get("{\"extra\":[{},[]],\"wanted\":5}","wanted");#assert f.ok && f.token==JSON_NUMBER && f.text=="5";
+  #assert ga_count("{\"extra\":[{},[]],\"wanted\":5}")==2;
+  o:=GaObservation.{day=1,weather=0};b:[1024]u8;n:=ga_request(b[..],o);state:=ga_get(cast(string)b[0..<n],"state");
+  #assert ga_is(state,"A calm healthy town guard and a nearby peaceful living player. Time: morning. Weather: clear.");
+  for day:0..<4 {for weather:0..<4 {o.day=day;o.weather=weather;n=ga_request(b[..],o);#assert n>0 && n<1024 && json_valid(cast(string)b[0..<n]);}}
+}
+#test "the confidence bound is stricter than agreement with a probability near one" {
+  a:[8192]u8;b:[8192]u8;
+  r:=ga_swap(a[..],GA_RESPONSE,"{\"quiet\":0.1,\"greeting\":0.8,\"weather\":0.1}","{\"quiet\":0,\"greeting\":1,\"weather\":0}");
+  r=ga_swap(b[..],r,"\"confidence\":0.8","\"confidence\":1.000000001");#assert !ga_decode(r).ok;
+  #assert !ga_decode(ga_swap(a[..],GA_RESPONSE,"\"confidence\":0.8","\"confidence\":\"0.8\"")).ok;
+  #assert !ga_decode(ga_swap(a[..],GA_RESPONSE,"psionic-pylon-v1","psionic-pylon-v2")).ok;
+}
+#test "exact expiry and epoch changes preserve single-flight ownership on the next due tick" {
+  s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  ga_frame(s[..],o,1,0,0);ga_frame(s[..],o,1,0,8000);#assert s[0].ticket[0].phase==0 && s[0].epoch==2;
+  ga_frame(s[..],o,1,0,60000);#assert s[0].ticket[0].ticket.context.epoch==2;
+  ga_frame(s[..],o,1,0,120000);#assert s[0].ticket[0].ticket.context.epoch==3 && s[0].epoch==3;
+  ga_frame(s[..],o,1,0,120001);#assert ga_pending(s[..],3);
+  #assert gd_offer(s[0].ticket[..],3,120002,4)==GdCode.ok;ga_frame(s[..],o,1,0,120003);#assert s[0].ticket[0].phase==0 && s[0].accepted==0;
+  ga_frame(s[..],o,1,0,180000);ga_sent(s[..],4,false);#assert !ga_pending(s[..],4) && !s[0].send;
+  ga_invalidate(s[..]);#assert s[0].epoch==6;
+}
+#test "cold ABI state initializes once, and consent is not re-read from later facts" {
+  s:[1]GaSession;s[0].epoch=0;s[0].last_action=0;input:=GaInput.{epoch=1};
+  ga_page(s[..],input,0);#assert s[0].initialized && s[0].epoch==2 && s[0].last_action==-1 && s[0].suspended;
+  input.url="?guard-ai=shadow";ga_page(s[..],input,1);#assert !s[0].configured && s[0].mode==0;
+  input.configured=true;ga_page(s[..],input,2);#assert s[0].configured && s[0].mode==1 && !s[0].suspended;
+  s[0].last_action=2;input.url="?guard-ai=unknown";ga_page(s[..],input,3);#assert s[0].mode==1 && s[0].last_action==2 && s[0].epoch==2 && s[0].page_epoch==1;
+}
+#test "background, clip and unavailable page facts each revoke waiting and staged work before a frame" {
+  for phase:1..<3 {for flag:0..<3 {
+    s:[1]GaSession;input:=GaInput.{epoch=1,configured=true,url="?guard-ai=shadow",boundary=true,observation=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true}};
+    ga_page(s[..],input,0);if phase==2 {ga_reply(s[..],1,1,"200\n",GA_RESPONSE);}
+    input.boundary=false;if flag==0 {input.suspended=true;}if flag==1 {input.blocked=true;}if flag==2 {input.configured=false;}
+    ga_page(s[..],input,2);#assert s[0].suspended && s[0].ticket[0].phase==0 && s[0].refused==1;
+    epoch:=s[0].epoch;ga_page(s[..],input,3);#assert s[0].epoch==epoch && s[0].refused==1;
+  }}
+}
+#test "the wire boundary handles complete four-byte statuses and positive JSON bodies" {
+  s:[1]GaSession;s[0].mode=1;o:=GaObservation.{calm=true,alive=true,near=true,visible=true,safe=true,playable=true};
+  ga_frame(s[..],o,1,0,0);#assert ga_effect(s[..],7999).timeout_ms==1;
+  b:[8192]u8;n:=json_raw(b[..],0,"200\n");n=json_raw(b[..],n,GA_RESPONSE);ga_receive(s[..],1,1,cast(string)b[0..<n]);
+  #assert s[0].ticket[0].phase==GD_READY;ga_frame(s[..],o,1,0,2);#assert s[0].accepted==1;
+  ga_frame(s[..],o,1,0,60000);ga_receive(s[..],2,60001,"401\n");#assert ga_probe(s[..],6)==1 && !ga_pending(s[..],2);
+}

@@ -94,6 +94,60 @@ function relayPeer(mode:Mode){
     }catch(e){errors.push(String(e));ws.close()}}}})
   return {url:`ws://localhost:${server.port}`,jobs,bodies,errors,authentications,peers,get discovered(){return discovered},get answerSubscriptions(){return answerSubscriptions},stop(){for(const t of timers)clearTimeout(t);server.stop(true)}}
 }
+// Discovery-specific peer: complete signed traffic with independently controlled
+// history boundaries, withdrawal and connection replacement. No product code.
+function discoveryPeer(mode:"warm"|"cold"|"arrival"|"withdrawal"|"expiry"|"unknown-eose"|"reconnect"|"flood"|"byte-flood"|"control-flood"){
+  const provider=key(12),jobs:any[]=[],errors:string[]=[],timers:ReturnType<typeof setTimeout>[]=[]
+  const sockets=new Set<any>();let connections=0,beaconRequests=0,answerSubscriptions=0,authentications=0,eoses=0,expires=0,controlsSent=0
+  const sendBeacon=(ws:any,status:"online"|"draining",generation:number)=>{
+    const at=now(),until=at+(mode==="expiry"?2:300);expires=until
+    const e=beacon(provider,status==="draining"?"draining":"answer",generation),body=JSON.parse(e.content)
+    body.observed_at=at;body.valid_until=until;body.status=status
+    const content=JSON.stringify(body)
+    ws.send(JSON.stringify(["EVENT","fleet-beacons",sign(provider,30200,[["d",provider.slug],["t","oa:pylon-beacon:v1"],["x",bytesToHex(sha256(enc.encode(content)))],["expiration",String(until)]],content,at)]))
+  }
+  const end=(ws:any)=>{eoses++;ws.send(JSON.stringify(["EOSE","fleet-beacons"]))}
+  const server=Bun.serve<{connection:number;challenge:string;authenticated:boolean;sub:string}>({hostname:"127.0.0.1",port:0,
+    fetch(req,s){if(s.upgrade(req,{data:{connection:++connections,challenge:"discovery-"+connections,authenticated:false,sub:""}}))return;return new Response("websocket only",{status:400})},
+    websocket:{open(ws){sockets.add(ws);ws.send(JSON.stringify(["AUTH",ws.data.challenge]))},close(ws){sockets.delete(ws)},message(ws,raw){try{
+      const f=JSON.parse(String(raw))
+      if(f[0]==="AUTH"){
+        const e=f[1] as Event;assert(verified(e)&&e.kind===22242&&tag(e,"challenge")===ws.data.challenge&&tag(e,"relay")===`ws://localhost:${server.port}`,"discovery AUTH")
+        ws.data.authenticated=true;authentications++;ws.send(JSON.stringify(["OK",e.id,true,""]))
+      }else if(f[0]==="REQ"){
+        if(f[1]==="fleet-answers"){answerSubscriptions++;ws.data.sub=f[1];ws.send(JSON.stringify(["EOSE",f[1]]));return}
+        if(f[1]!=="fleet-beacons")return;beaconRequests++
+        if(mode==="reconnect"&&ws.data.connection>1){ws.send(JSON.stringify(["EOSE","unrelated"]));return}
+        const history=()=>ws.cork(()=>{
+          if(mode!=="arrival")sendBeacon(ws,"online",1)
+          if(mode==="unknown-eose"){ws.send(JSON.stringify(["EOSE","fleet-answers"]));ws.send(JSON.stringify(["EOSE","unrelated"]));return}
+          end(ws)
+          if(mode==="arrival")timers.push(setTimeout(()=>sendBeacon(ws,"online",1),300))
+          if(mode==="withdrawal")sendBeacon(ws,"draining",2)
+          if(mode==="flood")for(let i=0;i<256;i++)ws.send(JSON.stringify(["EOSE","unrelated-"+i]))
+          if(mode==="byte-flood")for(let i=0;i<16;i++)ws.send(JSON.stringify(["NOTICE","x".repeat(110000)]))
+          if(mode==="control-flood"){
+            const controls=()=>{if(!sockets.has(ws)||ws.bufferedAmount>1048576)return;for(let i=0;i<8192;i++){ws.pong("x");controlsSent++}}
+            controls();const repeat=setInterval(()=>ws.cork(controls),1);timers.push(repeat);timers.push(setTimeout(()=>clearInterval(repeat),4000))
+          }
+        })
+        if(mode==="cold")timers.push(setTimeout(history,300));else history()
+      }else if(f[0]==="EVENT"){
+        const e=f[1] as Event;assert(ws.data.authenticated&&verified(e)&&e.kind===25910,"discovery native job")
+        assert(tag(e,"p")===provider.pubkey,"discovery provider")
+        const job=JSON.parse(nip44.decrypt(e.content,nip44.getConversationKey(provider.secret,e.pubkey)))
+        jobs.push({connection:ws.data.connection,request:job.request,eose_count:eoses})
+        ws.send(JSON.stringify(["OK",e.id,true,""]))
+        const plain=JSON.stringify({v:"openagents.systemone.v1",requires:[],type:"result",request:job.request,attempt:job.attempt,outcome:"answered",response:response(provider.pubkey,provider.slug)})
+        const answer=sign(provider,26910,[["p",e.pubkey],["e",e.id]],nip44.encrypt(plain,nip44.getConversationKey(provider.secret,e.pubkey)))
+        ws.send(JSON.stringify(["EVENT",ws.data.sub,answer]))
+      }
+    }catch(e){errors.push(String(e));ws.close()}}}})
+  return {url:`ws://localhost:${server.port}`,jobs,errors,get connections(){return connections},get beaconRequests(){return beaconRequests},get answerSubscriptions(){return answerSubscriptions},get authentications(){return authentications},get expires(){return expires},get controlsSent(){return controlsSent},
+    disconnect(){for(const ws of sockets)ws.close()},
+    endReconnect(){for(const ws of sockets)if(ws.data.connection>1){sendBeacon(ws,"draining",2);end(ws)}},
+    stop(){for(const t of timers)clearTimeout(t);server.stop(true)}}
+}
 async function freePort(){return await new Promise<number>((resolve,reject)=>{const s=createServer();s.on("error",reject);s.listen(0,"127.0.0.1",()=>{const p=(s.address() as any).port;s.close(()=>resolve(p))})})}
 const processes:Bun.Subprocess[]=[],results:any[]=[];let serial=0
 function start(name:string,cmd:string[]){const label=`${++serial}-${name}`,p=Bun.spawn(cmd,{cwd:root,stdout:Bun.file(join(out,label+".log")),stderr:Bun.file(join(out,label+".err")),env:{...process.env,ASAN_OPTIONS:"detect_leaks=0:abort_on_error=1",UBSAN_OPTIONS:"halt_on_error=1:print_stacktrace=1"}});processes.push(p);return p}
@@ -107,7 +161,7 @@ async function check(name:string,f:()=>Promise<any>){if(process.env.FLEET_ONLY&&
 const fleet=resolve(process.env.FLEET||join(out,"fleet/psionic-fleet")),relay=resolve(process.env.RELAY_BIN||join(out,"relay")),pylon=resolve(process.env.PYLON||join(out,"pylon/pylon")),serve=resolve(process.env.SERVE||join(out,"serve/psionic-serve"))
 async function build(script:string,args:string[],env:any={}){const p=Bun.spawn([join(root,script),...args],{cwd:root,stdout:"inherit",stderr:"inherit",env:{...process.env,...env}});let timer:ReturnType<typeof setTimeout>;try{const code=await Promise.race([p.exited,new Promise<number>((_resolve,reject)=>{timer=setTimeout(()=>{p.kill();reject(Error(`build exceeded 14 minutes: ${script}`))},840000)})]);if(code)throw Error(`${script} failed ${code}`)}finally{clearTimeout(timer!)}}
 async function ready(peer:ReturnType<typeof relayPeer>){assert(await until(()=>peer.authentications.length>0&&peer.discovered>0&&peer.answerSubscriptions>0,5000),"native buyer initial relay readiness")}
-async function fleetProcess(relayURL:string,fallback="",timeout=2200,attempt=600){const port=await freePort(),args=[fleet,"--relay",relayURL,"--port",String(port),"--identity",identity,"--timeout-ms",String(timeout),"--attempt-ms",String(attempt),"--discover-ms","500"];if(fallback)args.push("--fallback",fallback);const p=start("fleet",args);await listening(port,p);return {port,p}}
+async function fleetProcess(relayURL:string,fallback="",timeout=2200,attempt=600,discover=500){const port=await freePort(),args=[fleet,"--relay",relayURL,"--port",String(port),"--identity",identity,"--timeout-ms",String(timeout),"--attempt-ms",String(attempt),"--discover-ms",String(discover)];if(fallback)args.push("--fallback",fallback);const p=start("fleet",args);await listening(port,p);return {port,p}}
 function localPeer(badIdentity=false,delay=0){let requests=0;const s=Bun.serve({hostname:"127.0.0.1",port:0,async fetch(req){requests++;const b=await req.json();assert(JSON.stringify(b)===JSON.stringify(call),"fallback altered the admitted call");if(delay)await Bun.sleep(delay);return Response.json(response("","","no",badIdentity?identity.replace(/.$/,"0"):identity))}});return {url:`http://127.0.0.1:${s.port}`,get requests(){return requests},stop(){s.stop(true)}}}
 async function rawLocalPeer(mode:string){
   const body=JSON.stringify(response()),length=enc.encode(body).length;let requests=0
@@ -152,6 +206,55 @@ try{
   await stop(engine);await stop(rr)
   }
   if(process.env.FLEET_SCOPE!=="native"){
+  await check("discovery warm calls skip the configured five-second window",async()=>{
+    const peer=discoveryPeer("warm"),f=await fleetProcess(peer.url,"",7000,1500,5000)
+    try{assert(await until(()=>peer.answerSubscriptions>0&&peer.beaconRequests>0,5000),"warm subscriptions");const a=await ask(f.port),b=await ask(f.port)
+      assert(a.status===200&&b.status===200&&peer.jobs.length===2,"two warm remote decisions")
+      assert(peer.beaconRequests===1&&peer.connections===1&&peer.jobs.every(j=>j.eose_count===1),"warm route retained current discovery")
+      assert(a.ms<3500&&b.ms<3500,"repeated configured discovery wait: "+JSON.stringify([a.ms,b.ms]));assert(peer.errors.length===0,peer.errors.join(";"))
+      return {first_ms:a.ms,second_ms:b.ms,configured_discover_ms:5000,jobs:peer.jobs.length,connections:peer.connections,beacon_requests:peer.beaconRequests}
+    }finally{await stop(f.p);peer.stop()}
+  })
+  await check("discovery cold call waits for its authenticated history boundary",async()=>{
+    const peer=discoveryPeer("cold"),f=await fleetProcess(peer.url,"",7000,1500,5000)
+    try{const r=await ask(f.port);assert(r.status===200&&peer.jobs.length===1&&peer.jobs[0].eose_count===1,"cold history did not end before job")
+      assert(r.ms<3500,"cold call waited the whole configured window");assert(peer.errors.length===0,peer.errors.join(";"));return {http:r.status,elapsed_ms:r.ms,jobs:peer.jobs.length,eose_count:peer.jobs[0].eose_count}
+    }finally{await stop(f.p);peer.stop()}
+  })
+  await check("discovery caught-up absence waits for an online provider within its window",async()=>{
+    const peer=discoveryPeer("arrival"),f=await fleetProcess(peer.url,"",2200,600,1000)
+    try{assert(await until(()=>peer.answerSubscriptions>0&&peer.beaconRequests>0,5000),"empty subscriptions");assert(peer.expires===0,"provider must arrive after the HTTP call starts");const r=await ask(f.port)
+      assert(r.status===200&&peer.jobs.length===1&&peer.jobs[0].eose_count===1,"empty EOSE must not end the bounded provider search "+JSON.stringify(r));assert(peer.errors.length===0,peer.errors.join(";"));return {http:r.status,elapsed_ms:r.ms,jobs:peer.jobs.length,eose_count:peer.jobs[0].eose_count}
+    }finally{await stop(f.p);peer.stop()}
+  })
+  for(const mode of ["withdrawal","unknown-eose","flood","byte-flood"] as const)await check("discovery "+mode+" never dispatches cached capacity",async()=>{
+    const peer=discoveryPeer(mode),f=await fleetProcess(peer.url,"",1800,600,1000)
+    try{const r=await ask(f.port);assert([503,524].includes(r.status)&&peer.jobs.length===0,"unsafe discovery dispatched a job: "+JSON.stringify(r))
+      assert(r.ms<3000,"unbounded discovery");assert(peer.errors.length===0,peer.errors.join(";"));return {http:r.status,elapsed_ms:r.ms,jobs:peer.jobs.length,connections:peer.connections}
+    }finally{await stop(f.p);peer.stop()}
+  })
+  await check("discovery sustained PONG traffic cannot monopolize routing",async()=>{
+    const peer=discoveryPeer("control-flood"),f=await fleetProcess(peer.url,"",1800,600,1000)
+    try{assert(await until(()=>peer.answerSubscriptions>0&&peer.beaconRequests>0,5000),"control-flood subscriptions");const r=await ask(f.port)
+      assert(peer.controlsSent>=8192,"sustained native control traffic");assert([503,524].includes(r.status)&&peer.jobs.length===0,"control flood authorized cached capacity");assert(r.ms<3000,"control drain escaped its scan budget "+r.ms);assert(peer.errors.length===0,peer.errors.join(";"));return {http:r.status,elapsed_ms:r.ms,jobs:peer.jobs.length,controls_sent:peer.controlsSent}
+    }finally{await stop(f.p);peer.stop()}
+  })
+  await check("discovery expiry rechecks a warm provider before the next call",async()=>{
+    const peer=discoveryPeer("expiry"),f=await fleetProcess(peer.url,"",4000,1500,1000)
+    try{const a=await ask(f.port);assert(a.status===200&&peer.jobs.length===1,"initial fresh provider")
+      assert(await until(()=>now()>peer.expires,4000),"provider did not expire");const b=await ask(f.port)
+      assert([503,524].includes(b.status)&&peer.jobs.length===1,"expired warm provider received work");assert(peer.errors.length===0,peer.errors.join(";"));return {first_http:a.status,second_http:b.status,jobs:peer.jobs.length}
+    }finally{await stop(f.p);peer.stop()}
+  })
+  await check("discovery reconnect cannot reuse the previous connection history boundary",async()=>{
+    const peer=discoveryPeer("reconnect"),f=await fleetProcess(peer.url,"",4000,1500,1000)
+    try{const a=await ask(f.port);assert(a.status===200&&peer.jobs.length===1,"initial connected provider");peer.disconnect()
+      assert(await until(()=>peer.connections>=2&&peer.beaconRequests>=2&&peer.answerSubscriptions>=2,6000),"native reconnect and subscriptions")
+      let finished=false;const pending=ask(f.port).then(r=>{finished=true;return r});await Bun.sleep(400)
+      assert(!finished&&peer.jobs.length===1,"old EOSE authorized the reconnected cache");peer.endReconnect();const b=await pending
+      assert([503,524].includes(b.status)&&peer.jobs.length===1,"withdrawn reconnected provider received work");assert(peer.errors.length===0,peer.errors.join(";"));return {first_http:a.status,second_http:b.status,jobs:peer.jobs.length,connections:peer.connections,beacon_requests:peer.beaconRequests}
+    }finally{await stop(f.p);peer.stop()}
+  })
   for(const mode of ["answer","early-answer","early-reject","late-answer","stale","draining","mismatch","full","superseded","blocked","closed","silence","retry","bad-signature","bad-provider","bad-job","bad-recipient","bad-request","bad-attempt","bad-model","bad-identity","bad-door","bad-question","bad-probability","numeric-bad-confidence-upper","numeric-bad-confidence-negative","numeric-bad-score-upper","numeric-bad-score-negative","numeric-bad-score-multilevel-upper","numeric-valid-confidence-tolerance","numeric-valid-confidence-upper","numeric-valid-score-tolerance","numeric-valid-score-upper","numeric-valid-score-multilevel"] as Mode[]){
     await check("independent relay: "+mode,async()=>{const peer=relayPeer(mode),f=await fleetProcess(peer.url);try{await ready(peer);const r=await ask(f.port,mode.includes("score")?(mode.includes("multilevel")?multilevelCall:scoreCall):call);assert(peer.errors.length===0,peer.errors.join("; "));assert(peer.authentications.length>0,"native buyer did not authenticate");
       if(mode.startsWith("numeric-"))assert(peer.jobs.length===1&&peer.bodies.length===1,"numeric case did not dispatch and receive its exact peer reply");

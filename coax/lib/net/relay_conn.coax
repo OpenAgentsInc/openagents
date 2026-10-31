@@ -27,6 +27,7 @@
 //   }
 #load "relay_uri.coax";
 #load "relay_conn_rules.coax";
+#load "relay_poll_budget.coax";
 
 cxsock_host_push :: (byte: int) -> int #foreign;
 cxsock_connect :: (port: int, timeout_ms: int) -> int #foreign;
@@ -191,10 +192,33 @@ relay_conn_ping :: (c: [] RelayConn, payload: string) -> bool {
 // code. After RC_CLOSED and RC_FAIL the connection is closed. Pings are
 // answered with pongs on the way.
 relay_conn_poll :: (c: [] RelayConn, timeout_ms: int) -> int {
+  return rc_poll(c,timeout_ms,0,false);
+}
+// Opt-in work bound: at most max_steps scan/read iterations. Exhaustion
+// closes the connection and returns RC_FAIL, never a false empty-input result.
+// Existing per-effect I/O wait/flush bounds still apply; this is a work budget,
+// not an absolute wall-clock deadline for the underlying platform effects.
+relay_conn_poll_budget :: (c: [] RelayConn, timeout_ms: int, max_steps:int) -> int {
+  return rc_poll(c,timeout_ms,max_steps,true);
+}
+rc_poll :: (c: [] RelayConn, timeout_ms: int, max_steps:int, bounded:bool) -> int {
   if c[0].h < 0 { return RC_CLOSED; }
   deadline := cxsock_now_ms() + (ifx timeout_ms > 0 then timeout_ms else 0);
+  steps:=0;
   while true {
-    s := rc_scan(c[0].rd[..], cast(string) c[0].inb[0..<c[0].used], c[0].text[..]);
+    if bounded {
+      if !rcp_step(steps,max_steps) {rc_shut(c);return RC_FAIL;}
+      steps+=1;
+    }
+    input:=cast(string)c[0].inb[0..<c[0].used];
+    if bounded {
+      // rc_scan otherwise loops across every available non-final fragment.
+      // Give it at most one complete frame, so zero-byte fragments also spend
+      // a step. Its existing protocol/UTF-8 decisions remain authoritative.
+      frame:=ws_frame_read(input,c[0].text.count);
+      if frame.status==WS_FRAME_OK {input=input[0..<frame.total];}
+    }
+    s := rc_scan(c[0].rd[..],input,c[0].text[..]);
     if s.kind == RC_S_TEXT {
       rc_drop_front(c, s.consumed); c[0].text_n = c[0].rd[0].used;
       return RC_TEXT;
@@ -226,6 +250,9 @@ relay_conn_poll :: (c: [] RelayConn, timeout_ms: int) -> int {
       return RC_FAIL;
     }
     rc_drop_front(c, s.consumed);
+    // A consumed fragment may have another frame already buffered. Scan that
+    // on the next bounded step before asking the socket for more bytes.
+    if bounded && s.consumed>0 {continue;}
     k := rc_read(rc_fill(c, rc_wait(timeout_ms, deadline, cxsock_now_ms())));
     if k == RC_CLOSED { c[0].eof = true; rc_shut(c); return RC_CLOSED; }
     if k == RC_FAIL { rc_shut(c); return RC_FAIL; }

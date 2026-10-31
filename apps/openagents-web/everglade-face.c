@@ -24,6 +24,15 @@
 // server's copies, moved to open ground if it no longer is. It decides nothing. Every pointer is an offset into the host's
 // WebAssembly.Memory; the page's state is the host's (coaxial_state_size).
 #include "everglade.h"
+// Independently emitted libraries own C type names; these aliases preserve the
+// shared data-only schema without declaring the page's structs a second time.
+#define coax_t_GaInput guard_t_GaInput
+#define coax_t_GaObservation guard_t_GaObservation
+#define coax_a1024_u8 guard_a1024_u8
+#include "Guard-decision.h"
+#undef coax_t_GaInput
+#undef coax_t_GaObservation
+#undef coax_a1024_u8
 #include "Player.h"
 #include "Grid.h"
 #include "River.h"
@@ -56,6 +65,14 @@ static void edit_out(uint32_t state);
 static void bar_frame(uint32_t state);
 static bool facts_seen, has_player, mint_tried;
 static void ask_out(uint32_t state);
+static void guard_out(uint32_t state);
+static int32_t guard_id = -1;
+static int64_t guard_sequence;
+static coax_t_GaSession guard_state;
+static coax_v_t_GaSession gs(void) { return (coax_v_t_GaSession){&guard_state,1}; }
+__attribute__((import_module("env"), import_name("coaxial_now_ms"))) extern int64_t guard_now_ms(void);
+__attribute__((import_module("env"), import_name("coaxial_http_bounded"))) extern int32_t guard_http(uint32_t,uint32_t,uint32_t,uint32_t,uint32_t,int64_t);
+__attribute__((import_module("env"), import_name("coaxial_http_cancel"))) extern int32_t guard_cancel(int32_t);
 static void room_out(uint32_t state, float dt);
 static coax_v_t_Track tr(void) { return (coax_v_t_Track){&track_state, 1}; }
 static coax_t_River river;
@@ -295,6 +312,7 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
       else everglade_river_splash(rv(), hits[k * 4], hits[k * 4 + 1], (int64_t)hits[k * 4 + 2], hits[k * 4 + 3], now);
     }
   }
+  guard_out(state);
   ask_out(state);
   room_out(state, dt);
   edit_out(state);
@@ -458,7 +476,8 @@ EXPORT("coaxial_key_up") uint32_t coaxial_key_up(uint32_t state, int32_t key, in
   track_key_up(tr(), key);
   return everglade_key_up(at(state), key, mods) ? 1u : 0u;
 }
-EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { everglade_blur(at(state)); sticks = verse_sticks_reset(); track_blur(tr()); }
+EXPORT("coaxial_focus") void coaxial_focus(uint32_t state) { everglade_guard_focus(at(state), true); guard_out(state); }
+EXPORT("coaxial_blur") void coaxial_blur(uint32_t state) { everglade_blur(at(state)); guard_out(state); sticks = verse_sticks_reset(); track_blur(tr()); }
 EXPORT("coaxial_pointer") uint32_t coaxial_pointer(uint32_t state, float x, float y, int32_t phase, int32_t kind, int32_t id) {
   start(state);
   track_pointer(tr(), x, y, phase, kind, (coax_string){"", 0});
@@ -477,6 +496,12 @@ EXPORT("coaxial_inbox_cap") uint32_t coaxial_inbox_cap(void) { return sizeof inb
 EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uint32_t length) {
   if (length > sizeof inbox) return;
   start(state);
+  if (kind == 601 || kind == 603) { everglade_guard_message(at(state), kind, (coax_string){(const char *)inbox,length}); guard_out(state); }
+  if (guard_id >= 0 && kind == 512 + guard_id) {
+    guard_id = -1;
+    ga_receive(gs(), guard_sequence, guard_now_ms(), (coax_string){(const char *)inbox, length});
+    return;
+  }
   if (place_message(state, kind, inbox, length)) return;
   if (kind == BAR_ACTION) { if (!golden) everglade_bar_kept(at(state), (coax_string){(const char *)inbox, length}); return; }
   if (bar_ask_id >= 0 && kind == 512 + bar_ask_id) { bar_ask_id = -1; everglade_bar_server(at(state), (coax_string){(const char *)inbox, length}); return; }
@@ -495,7 +520,7 @@ EXPORT("coaxial_message") void coaxial_message(uint32_t state, int32_t kind, uin
     // back; the world is still asked for, so the page settles as it always does, and read as nobody's edits
     static const char empty[] = "200\n{\"doc\": null, \"version\": 0}";
     if (golden) everglade_world(at(state), (coax_string){empty, sizeof empty - 1});
-    else everglade_world(at(state), (coax_string){(const char *)inbox, length});
+    else { everglade_world(at(state), (coax_string){(const char *)inbox, length}); }
     // a piece published since may stand where you were put back
     if (place_back && !place_keeper.moved) place_put(state, place_here(state));
     return;
@@ -561,3 +586,23 @@ EXPORT("coaxial_particle_bytes") uint32_t coaxial_particle_bytes(uint32_t state)
 EXPORT("coaxial_particle_instances") uint32_t coaxial_particle_instances(uint32_t state) { return city(state)->started ? (uint32_t)city(state)->sp.sprite_n : 0u; }
 EXPORT("coaxial_grass_instances") uint32_t coaxial_grass_instances(uint32_t state) { return city(state)->started ? (uint32_t)everglade_grass_instances(at(state)) : 0u; }
 EXPORT("coaxial_field") uint32_t coaxial_field(uint32_t state) { return (uint32_t)(uintptr_t)city(state)->field.e; }
+
+// Coax owns the URL/body, consent, cadence, deadline, decoding and lifecycle.
+// This binding only moves bounded byte views and aborts the revoked fetch.
+static void guard_out(uint32_t state) {
+  int64_t monotonic_ms = guard_now_ms();
+  coax_t_GaInput page_input = everglade_guard_take(at(state));
+  guard_t_GaInput policy_input;
+  _Static_assert(sizeof policy_input == sizeof page_input, "shared guard input ABI");
+  memcpy(&policy_input, &page_input, sizeof policy_input);
+  ga_page(gs(), policy_input, monotonic_ms);
+  if (guard_id >= 0 && !ga_pending(gs(), guard_sequence)) { guard_cancel(guard_id); guard_id = -1; }
+  coax_t_GaEffect effect = ga_effect(gs(), monotonic_ms);
+  if (!effect.body.count) return;
+  guard_sequence = ga_sequence(gs());
+  guard_id = guard_http((uint32_t)(uintptr_t)effect.url.data, (uint32_t)effect.url.count,
+                       (uint32_t)(uintptr_t)effect.body.data, (uint32_t)effect.body.count,
+                       (uint32_t)effect.flags, effect.timeout_ms);
+  ga_sent(gs(), guard_sequence, guard_id >= 0);
+}
+EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) { (void)state; return (int32_t)ga_probe(gs(), field); }

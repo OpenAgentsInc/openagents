@@ -1,0 +1,25 @@
+{
+  "base_head": "ecba6b57d8351e0080ec24b19e6f2260a754205a",
+  "scope": "Local native and actual-Wasm synthetic-edge qualification; no public-model quality or production rollout. Book markers added after policy qualification are comments only.",
+  "sha256": {
+    "coax/bin/coax": "f0f088f04c992655a1c119ba229240288ccf67f755c78b065017c1441e825eca",
+    "coax/lib/net/relay_conn.coax": "c9053e42740d94654fd4117be2629cf1bf8d22bc991fb063e485edfef78d9424",
+    "coax/lib/net/relay_poll_budget.coax": "2000cb978900d250670bee069980d3079357a9e9f91c51172c5185614d5678db",
+    "coax/web/host.js": "8b6f0dd993effd10c490f842844df7dadaac40fb13bf078905dfdfde984da357",
+    "coax/web/http-requests.js": "3901e82335d4379138077f3dc9733d8d5c3fc55e39515c8f2e8d46baeae32cf6",
+    "coax/web/everglade-guard.test.ts": "7c7752279c5838f27e211cdb7edb533cffa23da2d0d73bab1faefae781953b00",
+    "psionic/lib/game/decision.coax": "2101663955db2988176dddbc07ba9bce326f2f88f61795541bca46a18cf42958",
+    "psionic/lib/fleet/discovery.coax": "76cca7f3fc1ce08f5c43fa5341923a80580793f9eb72a255701f0bc7a9dd8c98",
+    "psionic/lib/fleet/runtime.coax": "5806e86c97011aee723eaeec3520d31c82e5ab8632b8e65fea7a6526cb96e877",
+    "verse/everglade/guard-decision.coax": "3c5e4c124effbf0290cf241eb6ea178cab2467599fc8d8d64fdc3ed5c89e9e0f",
+    "verse/everglade/guard-types.coax": "ef84144720aaae30c230b1bcc787807087a2a2ca8a23d2651d79b16ca134e218",
+    "apps/openagents-web/everglade.coax": "f0b83c405a376e4c6dfab6ed1de9c3304e3186a0f537cdfbf13db1144a384a48",
+    "apps/openagents-web/everglade-guard-ai.coax": "17ea2d50a95975d47e103b9071e661381bf8b1d30ef4e42d05edab661a7b7ec2",
+    "apps/openagents-web/everglade-face.c": "279f897498e546b78877f62628adde3cbd5fee354f1eed47ab775c331c04e050",
+    "apps/openagents-web/everglade-watch.coax": "4e8e1411b75c2c5033faf0562f233d850f5d26d9e14dbcc6230b5e5f1f6f97b4",
+    "apps/openagents-web/everglade-voice.coax": "876b597886b7436a7a18ae7537f53420473182ff1b7931c84fa533ebb479b406",
+    "/tmp/everglade-guard-qa/everglade.wasm": "35368881be30152023fd2e24a9901093ec1a006dc1dbedf7013a626069a6b42e",
+    "/tmp/everglade-guard-qa/host.js": "acf60ade20196363c937b860bca0bba465211074873d15ec07e0ff6d26b100a8",
+    "/tmp/everglade-guard-qa/shadow.png": "4709077e0672cc23bb03ae06c63d38d3a33985b5137e54fc9d7d8f02ab33d646"
+  }
+}

@@ -57,13 +57,14 @@ must use a real monotonic effect, not game time, which pauses and changes speed.
 | M0. Warm routes without stale authority | A current-connection catch-up barrier and bounded pending-frame drain, then immediate selection of an eligible fresh peer. Cold start, reconnect and absence retain bounded discovery. | Focused signed native peers prove no repeated full discovery delay, no job after a newer withdrawal, expiry and reconnect behavior, and bounded malformed traffic. No whole-model CPU runs. |
 | M1. A decision arrives while play continues (21b) | A reusable Coax ticket/lifecycle gate and generic HTTP cancellation/deadline/late-response fencing. Fixed capacity, one pending guard request, exactly-once consumption and explicit refusal reasons. | Authored Coax checks; focused authority mutation; native debug/release and sanitizer checks; controlled asynchronous browser/effect tests. |
 | M2. An Everglade guard asks (21c) | A small Coax observation/request/response adapter, exact model/question/options validation, and an opt-in shadow integration at the existing guard-frame boundary. | Synthetic responses and actual emitted Wasm exercise request, callback, invalidation and fallback; default/golden modes make no model calls. |
-| M3. Ambient application | Explicit opt-in ambient mode displays one authored line after the same admission gate; normal patrol and combat retain priority. No default activation from a confidence number alone. | Calm acceptance, alarm/death/edit/leave invalidation, late/duplicate/old callbacks, malformed answers and service refusals. Browser behavior and frame-time checks on the changed path. |
-| M4. Real end-to-end and quality | Signed-in shadow requests through the existing public edge; compare recorded choices to local rules on a held-out guard-context suite. Use chapters 156–158 and 164 for calibrated abstention, outcomes and promotion. | Exact checkpoint/build/policy identities, end-to-end latency distribution, fallback/coverage and judged appropriateness. A reference probability match is not game-quality evidence. |
+| M3. Real end-to-end and quality | Signed-in shadow requests through the existing public edge; compare recorded choices to local rules on a held-out guard-context suite. Use chapters 156–158 and 164 for calibrated abstention, outcomes and promotion. | Exact checkpoint/build/policy identities, end-to-end latency distribution, fallback/coverage and judged appropriateness. A reference probability match is not game-quality evidence. |
+| M4. Ambient application | Explicit opt-in ambient mode displays one authored line after the same admission gate; normal patrol and combat retain priority. No default activation from a confidence number alone. | Calm acceptance, alarm/death/edit/leave invalidation, late/duplicate/old callbacks, malformed answers and service refusals. Browser behavior and frame-time checks on the changed path. |
 | M5. Operational reliability | A narrow consumer-focused slice of 117/120/124: service cancellation, bounded scheduling, capacity budgets and separately hosted qualified same-checkpoint providers with explicit route admission. | Kill/disconnect/overload drills, no stale application, independent-provider recovery and no frame stalls. Provider errors retain useful typed causes. |
 | M6. Other consumers | Other Everglade ambient characters, then discrete decisions in other games. Voice uses its existing epoch gate; continuous vehicle control stays local. | Each consumer has its own legal action set, observation scope, validity conditions, fallback and quality gate. |
 
 M0 and M1 can proceed in parallel after this plan is pushed. M2 consumes M1's
-fixed API. M3 is deliberately cosmetic and opt-in. M4 gates broader activation;
+fixed API. M3 qualifies real shadow usefulness before M4 applies a cosmetic
+line. M4 stays opt-in; broader activation needs the same quality evidence;
 M5 gates remote availability claims. Finishing unrelated model/training chapters
 is not a prerequisite for these slices.
 
@@ -91,13 +92,15 @@ separate M5 evidence. A failed or absent answer leaves the original behavior.
 ## Initial budgets and privacy
 
 Remote guard behavior is off by default. Explicit development/query modes select
-shadow or ambient behavior. Golden/clip/replay checks suppress remote calls.
+shadow behavior; ambient remains disabled until the later promotion gate.
+Golden/clip/replay checks suppress remote calls.
 Start with at most one pending call, a 60-second minimum dispatch interval and
 six attempts per realm visit. This local cap supplements the existing public
 quota; it does not replace account admission. Authentication/quota failures
 back off rather than retrying every frame. The initial consumer deadline is
 eight seconds, measured monotonically; it is a bound, not a latency promise.
-These are proposed initial values to qualify and revise from measurements.
+These initial local bounds are implemented and checked; real latency/quality
+measurements still decide later revisions.
 
 Send only bounded, game-authored observations: calm/nearby state, time/weather
 category and the fixed options. No player speech, chat, account identity, precise
@@ -135,3 +138,20 @@ file ownership agreed before editing. Agents share API contracts and evidence;
 they do not stash/reset others' files, run broad gates or deploy experimental
 behavior by default. A later record names actual completed milestones and leaves
 unqualified operational/quality work explicit.
+
+## First implementation status (2026-10-30)
+
+M0 and M1 are implemented. M2 has a runnable local shadow integration and
+actual-Wasm/headless synthetic-edge qualification. The book now has
+[21b](../../psionic/book/ch021b-a-decision-arrives-while-play-continues.md) and
+[21c](../../psionic/book/ch021c-a-guard-asks-a-pylon.md). See the
+[verification record](../verification/pylon-guard-decisions-2026-10-30.md) for
+726 selected mutants killed, native/sanitizer/browser scope and measured warm
+routing improvement. Independent review corrected both an empty-history
+routing regression and same-frame observation ordering before qualification.
+
+Next is M3: real signed-in shadow calls, bounded latency/outcome instrumentation
+and held-out guard contexts. M4 ambient lines remain disabled. Production
+availability, remote cancellation and independent-provider failover remain M5;
+Belt still follows later. No live-model or production rollout claim follows
+from the local synthetic checks.

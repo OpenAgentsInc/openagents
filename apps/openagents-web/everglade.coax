@@ -71,6 +71,7 @@
 #load "everglade-place.coax";
 #load "everglade-spells.coax";
 #load "everglade-watch.coax";
+#load "everglade-guard-ai.coax";
 #load "everglade-items.coax";
 #load "everglade-dress.coax";
 #load "everglade-hammer.coax";
@@ -314,6 +315,7 @@ Box :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
 
 Everglade :: struct {
   started: bool;
+  guard_ai: EgGuardAi;
   ground_gen: int;   // bumped each time the ground (store 0) is built: the host uploads it then
   // the time of day (realms.json clock: cycle, or ?clock=T pinned): the clock now, how it runs, when it was read
   clock: f32; day: StyleClock; day_from: f64;
@@ -901,6 +903,7 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
 }
 everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
+  everglade_guard_message(s, kind, text);
   if everglade_voice_message(s, kind, text) { return; }
   if kind == MSG_TEXT { talk_typed(s, text); return; }
   if kind == MSG_FACTS {
@@ -1060,6 +1063,7 @@ everglade_warp :: (s: [] Everglade) -> bool #export_c { w := s[0].warp; s[0].war
 // the street nearest it, facing it.
 everglade_hash :: (s: [] Everglade, hash: string) #export_c {
   if !s[0].started { everglade_start(s); }
+  everglade_guard_invalidate(s);
   // "road+paint": the view, drawn without the world's names (art-styles.md 15: the style check measures
   // the painting; the names are text like the HUD's plates, and a phone's narrow canvas makes them a big share)
   if hash.count > 6 && hash[hash.count - 6..<hash.count] == "+paint" { s[0].paint_only = true; everglade_hash(s, hash[0..<hash.count - 6]); return; }
@@ -1201,7 +1205,7 @@ everglade_key :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   if (key == 'e' || key == 'E') && hm_prompt_on(s) && !s[0].above { _ := hm_swing(s); return true; }
   if key == '+' || key == '=' { s[0].orbit = verse_orbit_zoom(s[0].orbit, -0.8); return true; }
   if key == '-' || key == '_' { s[0].orbit = verse_orbit_zoom(s[0].orbit, 0.8); return true; }
-  if key == 'm' || key == 'M' { s[0].above = !s[0].above; return true; }
+  if key == 'm' || key == 'M' { everglade_guard_invalidate(s); s[0].above = !s[0].above; return true; }
   if key == KEY_ESCAPE && s[0].above { s[0].above = false; return true; }
   if key == KEY_ENTER && !s[0].above && !s[0].ev.editing { chat_open(s); return true; }   // the room's chat (everglade-room.coax)
   b := hold_bit(key);
@@ -1219,7 +1223,7 @@ everglade_key_up :: (s: [] Everglade, key: int, mods: int) -> bool #export_c {
   return true;
 }
 
-everglade_blur :: (s: [] Everglade) #export_c { s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; s[0].board_finger = -1; }
+everglade_blur :: (s: [] Everglade) #export_c { everglade_guard_focus(s, false); s[0].held = 0; s[0].drag_on = false; s[0].map_finger = -1; s[0].talk_finger = -1; s[0].board_finger = -1; }
 
 in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && x <= b.x1 && y >= b.y0 && y <= b.y1; }
 
@@ -1236,12 +1240,12 @@ everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id
     s[0].touch = true;
     if phase == 0 && in_box(s[0].map_button, x, y) { s[0].map_finger = id; return true; }
     if id != s[0].map_finger { return false; }
-    if phase == 2 && in_box(s[0].map_button, x, y) { s[0].above = !s[0].above; }
+    if phase == 2 && in_box(s[0].map_button, x, y) { everglade_guard_invalidate(s); s[0].above = !s[0].above; }
     if phase >= 2 { s[0].map_finger = -1; }
     return true;
   }
   k := hi(s[0].dpr, 0.5);
-  if phase == 0 && in_box(s[0].map_button, x, y) { s[0].above = !s[0].above; return true; }
+  if phase == 0 && in_box(s[0].map_button, x, y) { everglade_guard_invalidate(s); s[0].above = !s[0].above; return true; }
   if phase == 0 { s[0].drag_on = true; s[0].drag_id = id; s[0].drag_x = x; s[0].drag_y = y; return true; }
   if !s[0].drag_on || id != s[0].drag_id { return false; }
   if phase == 1 {
@@ -1449,6 +1453,7 @@ typed_text :: (s: [] Everglade) -> string { return cast(string) s[0].typed[0..<s
 
 talk_to :: (s: [] Everglade, i: int) {
   if i < 0 || i >= EG_SPOTS { return; }
+  everglade_guard_invalidate(s);
   s[0].talk = i; s[0].line_n = 0; s[0].typed_n = 0; s[0].waiting = false; s[0].ask_n = 0;
   s[0].held = 0; s[0].talk_quest = -1;
   folk_nod(s[0].folk[i..<i + 1]);
@@ -3779,6 +3784,8 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   n := hud(s, out, u, move_on && !s[0].above && s[0].talk < 0 && !s[0].board, ox, oy, pad_x, pad_y, shown);
   n = watch_overlay(s, out, u, n);
   u[5] = f32(s[0].plate_n);
+  // Observe after every gameplay mutation: hammer, spells, edits and weather.
+  everglade_guard_tick(s, shown, folk_clock(s, still));
   return n;
 }
 

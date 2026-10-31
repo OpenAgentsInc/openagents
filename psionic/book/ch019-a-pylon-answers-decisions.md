@@ -250,6 +250,8 @@ Each job goes through the same steps:
 ```jai
 // ev is verified (py_take) and relay.coax delivered it once.
 py_event :: (p:[]Py,event:NostrEvent) {
+    if p[0].cfg[0].probe {p90_observe(p,event);return;}
+    if p[0].cfg[0].text {p90_event(p,event);return;}
     ev:=event;
     if !pq_seen(p[0].q[..],ev.id[..]) {p[0].duplicates+=1;py_again(p,ev.id[..]);return;}
     idh:[64]u8;pkh:[64]u8;id:=py_hex(ev.id[..],idh[..]);caller:=py_hex(ev.public_key[..],pkh[..]);

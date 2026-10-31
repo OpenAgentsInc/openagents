@@ -403,7 +403,7 @@ the measured results.
 The same server now accepts `--mammoth` and `--mammoth-gpu`. The launcher
 selects CUDA for the latter and supplies the pinned Qwen tokenizer table:
 
-```sh
+```shell
 psionic/platform/serve.sh --mammoth-gpu ~/models/mammoth-1-61cec44c \
   --capacity 512 --device-mib 90000
 ```
@@ -428,7 +428,7 @@ probability error remains `0.0005`; normalization must be within `1e-8`.
 The error predicate is checked exactly on either boundary as well as just
 outside it. The new authority root kills all **38** of its mutants.
 
-```sh
+```shell
 coax/bin/coax mutate psionic/lib/serve-original.coax --root-only
 bun test psionic/tests/mammoth-serving.test.ts
 ```

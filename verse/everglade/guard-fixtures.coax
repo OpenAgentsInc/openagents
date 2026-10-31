@@ -1,0 +1,5 @@
+// Test fixture byte rewriting only; it is never a guard effect or policy.
+ga_swap :: (out:[]u8,text:string,from:string,to:string)->string {
+  n:=0;i:=0;while i<text.count {if from.count>0 && i+from.count<=text.count && text[i..<i+from.count]==from {n=json_raw(out,n,to);i+=from.count;}else {n=json_raw(out,n,text[i..<i+1]);i+=1;}}return ifx n<0 then "" else cast(string)out[0..<n];
+}
+

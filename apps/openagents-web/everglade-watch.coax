@@ -92,6 +92,7 @@ watch_busy :: (s: [] Everglade, i: int) -> bool { return s[0].wv.started && watc
 watch_down :: (s: [] Everglade) -> bool { return s[0].wv.started && s[0].wt[0].dead; }
 
 watch_page_start :: (s: [] Everglade) {
+  everglade_guard_invalidate(s); s[0].guard_ai.generation += 1;
   watch_start(watch_w(s), s[0].heights[..]);
   for k: 0..<WATCH_NEW { s[0].wv.at[k].placed = false; }
   s[0].wv.started = true;
@@ -124,6 +125,7 @@ watch_frame :: (s: [] Everglade, you: Point, dt: f32, c: FolkClock) {
   w[0].bound_said = 0;
   if w[0].knocked { s[0].wv.knock = add(s[0].wv.knock, w[0].knock); s[0].wv.knocked = true; w[0].knocked = false; w[0].knock = v3(0, 0, 0); }
   if w[0].respawn {
+    everglade_guard_invalidate(s);
     w[0].respawn = false;
     s[0].spawn = v3(f32(EG_SPAWN_X), 0, f32(EG_SPAWN_Z)); s[0].spawn_face = 0;
     s[0].warp = true; s[0].above = false; s[0].lift = 0;
@@ -456,6 +458,7 @@ watch_spears_draw :: (s: [] Everglade) {
 
 // The town stands again (the spell bar's Rebuild): the fallen too.
 watch_rebuilt :: (s: [] Everglade) -> int {
+  everglade_guard_invalidate(s); s[0].guard_ai.generation += 1;
   if !s[0].wv.started { return 0; }
   return watch_restore(watch_w(s));
 }

@@ -1,0 +1,30 @@
+#import "Basic";
+#load "../lib/game/decision.coax";
+
+// This is an owned lifecycle trace, not a network/model quality measurement.
+// Actions: 0 quiet, 1 authored greeting, 2 authored weather observation.
+// book:begin example
+main :: () {
+    s:[1]GdState;
+    context:=GdContext.{epoch=1,actor=0,generation=1,revision=1,policy=1,options=1};
+    first:=gd_begin(s[..],context,100,8000);
+    waiting:=gd_take(s[..],first.ticket.sequence,context,101,7);
+    print("waiting for a reply: %\n",waiting.code==GdCode.waiting);
+    offered:=gd_offer(s[..],first.ticket.sequence,102,1);
+    accepted:=gd_take(s[..],first.ticket.sequence,context,103,7);
+    print("accepted action: %\n",accepted.action);
+    print("duplicate applies: %\n",gd_take(s[..],first.ticket.sequence,context,104,7).code==GdCode.ok);
+
+    second:=gd_begin(s[..],context,200,8000);
+    offered=gd_offer(s[..],second.ticket.sequence,201,2);
+    alarm:=context;alarm.revision+=1;
+    print("changed context applies: %\n",gd_take(s[..],second.ticket.sequence,alarm,202,7).code==GdCode.ok);
+    revoked:=gd_cancel(s[..],second.ticket.sequence);
+    print("old callback stages: %\n",gd_offer(s[..],first.ticket.sequence,203,1)==GdCode.ok);
+
+    third:=gd_begin(s[..],alarm,300,50);
+    print("at expiry stages: %\n",gd_offer(s[..],third.ticket.sequence,350,1)==GdCode.ok);
+    print("expiry clears pending: %\n",gd_expire(s[..],350));
+    print("local fallback needed: %\n",gd_take(s[..],third.ticket.sequence,alarm,351,7).action<0);
+}
+// book:end example
