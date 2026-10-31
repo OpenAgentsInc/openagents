@@ -145,8 +145,8 @@ bounded() {
 # anything changes (the baseline); a check already failing there is reported, never blocking:
 # the release goes out and the failure stays someone's to fix (owner, 2026-10-31: never again
 # "nothing can be released"). smoke.sh is compared failure by failure.
-fails_of() { sed -n 's/^  FAIL  //p' | sed 's/ ([^)]*)$//' | sort -u; }
-new_fails() { comm -23 <(printf '%s\n' "$1" | sed '/^$/d' | sort -u) <(printf '%s\n' "$2" | sed '/^$/d' | sort -u); }
+# fails_of, new_fails, and retries of failed checks (broken_by_release):
+source "$here/smoke-compare.sh"
 already() { echo "  $1 already fails on what is live, so it doesn't stop this release: $2" >&2; }
 # Headless Chromes on a temporary profile whose parent is gone (adopted by
 # launchd/init): left by a check that was killed outright. Never a person's
@@ -295,7 +295,7 @@ live_smoke_fails() { fails_of < "$base_dir/smoke"; }
 if $stage; then
   t=$(now); "$tree/coax/web/deploy.sh" "$tree/apps/openagents-web" openagents-web-staging > /dev/null; lap staging "$t"
   t=$(now); staging_smoke=$("$tree/coax/web/smoke.sh" https://staging.openagents.com 2>&1) || true; echo "$staging_smoke"; baseline
-  broke=$(new_fails "$(fails_of <<< "$staging_smoke")" "$(live_smoke_fails)")
+  broke=$(broken_by_release "$staging_smoke" "$(live_smoke_fails)" "$tree/coax/web/smoke.sh" https://staging.openagents.com)
   [[ -z "$broke" ]] || { echo "release $commit: staging smoke fails where production passes; production is untouched:" >&2; echo "$broke" >&2; exit 1; }
   [[ -z "$(fails_of <<< "$staging_smoke")" ]] || already "smoke" "$(fails_of <<< "$staging_smoke" | tr '\n' ';')"
   lap smoke "$t"
@@ -403,7 +403,7 @@ baseline
 [[ -n "$via" ]] || bounded 1200 bun "$tree/coax/web/goldens.ts" https://openagents.com "$check" || walked=false
 if ! $walked && [[ "$check" == --starts ]] && ! live_ok starts; then already "goldens.ts --starts" "it failed before this release went out too"; walked=true; fi
 prod_smoke=$("$tree/coax/web/smoke.sh" https://openagents.com $via 2>&1) || true; echo "$prod_smoke"
-broke=$(new_fails "$(fails_of <<< "$prod_smoke")" "$(live_smoke_fails)")
+broke=$(broken_by_release "$prod_smoke" "$(live_smoke_fails)" "$tree/coax/web/smoke.sh" https://openagents.com $via)
 if ! $walked || [[ -n "$broke" ]]; then
   echo "release $commit: production smoke failed where it passed before this release; rolling back to the pages from before" >&2
   [[ -z "$broke" ]] || echo "$broke" >&2
