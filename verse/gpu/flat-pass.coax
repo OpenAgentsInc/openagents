@@ -168,10 +168,12 @@ fp_declares :: (path: string, text: string) -> bool {
   return false;
 }
 
+// A file copied whole, whatever its size (an asset: Orbit League's mesh is 6 MB).
 fp_copy :: (from: string, to: string) -> bool {
-  buf: [4194304] u8;
-  n := fs_read(from, buf[..]);
-  if n < 0 || !fs_write(to, cast(string) buf[0..<n]) { tool_err("flat-pass: cannot copy "); tool_errln(from); return false; }
+  o: [256] u8; e: [4096] u8;
+  argv := [3] string.["cp", from, to];
+  r := proc_run(argv[..], 60000, o[..], e[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { tool_err(cast(string) e[0..<r.err_n]); tool_err("flat-pass: cannot copy "); tool_errln(from); return false; }
   return true;
 }
 

@@ -16,12 +16,15 @@
 //   bg      bg_fs over the frame, depth always, not written
 //   scene   the draw list's records through scene_vs and scene_fs (group 1: the realm's storage
 //           assets, then its stores, by the WGSL's names), depth tested less and written
+//   water   with water_vs: the list's last $all - $scene records (coaxial_water_draws) after the scene,
+//           each in its two halves, transmit (the light times it) then emit (added), depth tested,
+//           not written, alpha kept; with water_scene declared, the light and depth copied first
 //   sparks  with a particles asset (host.js particlePipeline): $sparks quads of 6 vertices from its
 //           own module, added, depth tested, not written, aux kept
 //   post    with post_fs: bg, the scene and the sparks into light and aux, then the bloom (five
 //           steps through a quarter and an eighth of the size) and post_fs to the screen
 //   hud     the frame's own vertices through fx_vs and fx_fs, the larger of each channel kept
-// Shadows, grass and water (Everglade's, verse/gpu/everglade-pass.coax) are not drawn here.
+// Shadows and grass (Everglade's, verse/gpu/everglade-pass.coax) are not drawn here.
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -98,16 +101,19 @@ sc_run :: (host: string, realm: string, work: string, allow: string, keep: strin
   code := cast(string) page[0..<ifx pn > 0 then pn else 0];
   post := sc_has(code, "fn post_fs(");
   if !sc_has(code, "fn scene_vs(") { tool_err("scene-pass: "); tool_err(realm); tool_errln(" has no scene_vs"); return 2; }
-  if sc_has(code, "fn shadow_vs(") || sc_has(code, "fn grass_vs(") || sc_has(code, "fn water_vs(") || sc_has(code, "fn caster_vs(") {
-    tool_err("scene-pass: "); tool_err(realm); tool_errln(" has shadows, grass or water (not drawn here yet)"); return 2;
+  if sc_has(code, "fn shadow_vs(") || sc_has(code, "fn grass_vs(") || sc_has(code, "fn caster_vs(") {
+    tool_err("scene-pass: "); tool_err(realm); tool_errln(" has shadows or grass (not drawn here yet)"); return 2;
   }
+  water := sc_has(code, "fn water_vs(");
+  if water && (!sc_lower(dir, gpu, realm, "water_vs", "water_transmit_fs") || !sc_lower(dir, gpu, realm, "water_vs", "water_emit_fs")) { return 1; }
   if !sc_lower(dir, gpu, realm, "bg_vs", "bg_fs") || !sc_lower(dir, gpu, realm, "scene_vs", "scene_fs") || !sc_lower(dir, gpu, realm, "fx_vs", "fx_fs") { return 1; }
   if post && (!sc_lower(dir, gpu, realm, "bg_vs", "bloom_fs") || !sc_lower(dir, gpu, realm, "bg_vs", "post_fs")) { return 1; }
   // the frame's counts
   dt: [256] u8;
   dn := fs_read(fs_join(dir, "draws.txt", b[9][..]), dt[..]);
   words := cast(string) dt[0..<ifx dn > 0 then dn else 0];
-  all := args_whole(sc_word(words, 0)); sparks := args_whole(sc_word(words, 3));
+  all := args_whole(sc_word(words, 0)); wet := args_whole(sc_word(words, 1)); sparks := args_whole(sc_word(words, 3));
+  if !water { wet = 0; }
   hud := args_whole(sc_word(words, 4)); floats := args_whole(sc_word(words, 5));
   if floats < 1 || floats > 32 { tool_errln("scene-pass: the frame does not say its vertices' floats"); return 1; }
   if all <= 0 { tool_errln("scene-pass: the frame has no draws"); return 1; }
@@ -120,7 +126,7 @@ sc_run :: (host: string, realm: string, work: string, allow: string, keep: strin
   // group 1's storage: the WGSL's names in their bindings' order, the stores in theirs
   names: [8] string; nn := sc_scene_storage(code, names[..]);
   sp: [8192] u8; sa: [1] Sp; sa[0] = Sp.{buf = sp[..]}; s := sa[..];
-  sc_spec(s, all, sparks, hud, floats, names[0..<nn], post, fx, sc_has(code, "var post_depth"));
+  sc_spec(s, all, wet, sparks, hud, floats, names[0..<nn], post, fx, sc_has(code, "var post_depth"), water && sc_has(code, "var water_scene"));
   text := cast(string) sp[0..<s[0].n];
   if upto.count > 0 {
     ua: [256] u8; ub: [256] u8; text = sc_upto(text, cat(cat("pass ", upto, ua[..]), "_fs.spv ", ub[..]));
@@ -143,16 +149,28 @@ sc_run :: (host: string, realm: string, work: string, allow: string, keep: strin
 
 // host.js's frame for a scene with these counts (see the header). NAMES are group 1's storage
 // buffers in their bindings' order, the frame's stores s0, s1 ... in theirs.
-sc_spec :: (s: [] Sp, all: int, sparks: int, hud: int, floats: int, names: [] string, post: bool, fx: bool, post_depth: bool) {
+sc_spec :: (s: [] Sp, all: int, wet: int, sparks: int, hud: int, floats: int, names: [] string, post: bool, fx: bool, post_depth: bool, copy: bool) {
   put(s, "wgsl page.wgsl\nsize "); put(s, SC_SIZE);
-  put(s, "\nlet all "); put_int(s, all); put(s, "\nlet sparks "); put_int(s, sparks); put(s, "\nlet hud "); put_int(s, hud);
+  put(s, "\nlet all "); put_int(s, all); put(s, "\nlet scene "); put_int(s, all - wet); put(s, "\nlet sparks "); put_int(s, sparks); put(s, "\nlet hud "); put_int(s, hud);
   put(s, "\nbuffer u u.bin\n");
   for k: 0..<names.count { put(s, "buffer "); put(s, names[k]); put(s, " s"); put_int(s, k); put(s, ".bin\n"); }
   put(s, "index index.bin\ndraws draws.bin $all\ndepth scene_depth frame frame\n");
   into := "1";
   if post { put(s, "target light\ntarget aux\n"); into = "light,aux"; }
   put(s, "pass bg_fs.spv bg_vs bg_fs "); put(s, into); put(s, " scene_depth 0 0 3 always nowrite\n");
-  put(s, "pass scene_fs.spv scene_vs scene_fs "); put(s, into); put(s, " scene_depth 0 0 draws keep\n");
+  put(s, "pass scene_fs.spv scene_vs scene_fs "); put(s, into); put(s, " scene_depth 0 0 draws:0:$scene keep\n");
+  if wet > 0 {
+    if copy { put(s, "target water_scene\ndepth water_scene_depth frame\ncopy light water_scene\ncopy scene_depth water_scene_depth\n"); }
+    put(s, "each draws:$scene:$all\n");
+    half := [2] string.["water_transmit_fs blend=mul", "water_emit_fs blend=add"];
+    for h: half {
+      put(s, "pass "); put(s, sc_word(h, 0)); put(s, ".spv water_vs "); put(s, sc_word(h, 0)); put(s, " "); put(s, into);
+      put(s, " scene_depth 0 0 draws:each keep nowrite "); put(s, sc_word(h, 1)); put(s, " alpha=keep");
+      if post { put(s, " mask=1"); }
+      put(s, "\n");
+    }
+    put(s, "end\n");
+  }
   if fx {
     put(s, "wgsl particles.wgsl\nbuffer emitters puffs.bin\n");
     put(s, "pass particle_fs.spv particle_vs particle_fs "); put(s, into); put(s, " scene_depth 0 0 6:$sparks keep nowrite blend=add alpha=add");
@@ -180,16 +198,23 @@ sc_spec :: (s: [] Sp, all: int, sparks: int, hud: int, floats: int, names: [] st
 #test "a scene's spec" {
   o: [8192] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
   one := [1] string.["objects"];
-  sc_spec(s, 2, 0, 30, 16, one[..], false, false, false);
-  #assert !s[0].bad && cast(string) o[0..<s[0].n] == "wgsl page.wgsl\nsize 320 180\nlet all 2\nlet sparks 0\nlet hud 30\nbuffer u u.bin\nbuffer objects s0.bin\nindex index.bin\ndraws draws.bin $all\ndepth scene_depth frame frame\npass bg_fs.spv bg_vs bg_fs 1 scene_depth 0 0 3 always nowrite\npass scene_fs.spv scene_vs scene_fs 1 scene_depth 0 0 draws keep\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 scene_depth 0 0 $hud keep always nowrite blend=max alpha=max vertices=hud:16\n";
+  sc_spec(s, 2, 0, 0, 30, 16, one[..], false, false, false, false);
+  #assert !s[0].bad && cast(string) o[0..<s[0].n] == "wgsl page.wgsl\nsize 320 180\nlet all 2\nlet scene 2\nlet sparks 0\nlet hud 30\nbuffer u u.bin\nbuffer objects s0.bin\nindex index.bin\ndraws draws.bin $all\ndepth scene_depth frame frame\npass bg_fs.spv bg_vs bg_fs 1 scene_depth 0 0 3 always nowrite\npass scene_fs.spv scene_vs scene_fs 1 scene_depth 0 0 draws:0:$scene keep\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 scene_depth 0 0 $hud keep always nowrite blend=max alpha=max vertices=hud:16\n";
   p: [8192] u8; sp: [1] Sp; sp[0] = Sp.{buf = p[..]};
   two := [2] string.["heights", "objects"];
-  sc_spec(sp[..], 6, 384, 30, 16, two[..], true, true, false);
+  sc_spec(sp[..], 6, 0, 384, 30, 16, two[..], true, true, false, false);
   t := cast(string) p[0..<sp[0].n];
-  #assert !sp[0].bad && sc_line(t, 7) == "buffer objects s1.bin" && sc_line(t, 11) == "target light";
-  #assert sc_line(t, 13) == "pass bg_fs.spv bg_vs bg_fs light,aux scene_depth 0 0 3 always nowrite";
-  #assert sc_line(t, 17) == "pass particle_fs.spv particle_vs particle_fs light,aux scene_depth 0 0 6:$sparks keep nowrite blend=add alpha=add mask=1";
-  #assert sc_line(t, 18) == "wgsl page.wgsl" && sc_line(t, sc_lines(t) - 1) == "pass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16";
+  #assert !sp[0].bad && sc_line(t, 8) == "buffer objects s1.bin" && sc_line(t, 12) == "target light";
+  #assert sc_line(t, 14) == "pass bg_fs.spv bg_vs bg_fs light,aux scene_depth 0 0 3 always nowrite";
+  #assert sc_line(t, 18) == "pass particle_fs.spv particle_vs particle_fs light,aux scene_depth 0 0 6:$sparks keep nowrite blend=add alpha=add mask=1";
+  #assert sc_line(t, 19) == "wgsl page.wgsl" && sc_line(t, sc_lines(t) - 1) == "pass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16";
+  w: [8192] u8; sw: [1] Sp; sw[0] = Sp.{buf = w[..]};
+  three := [3] string.["heights", "objects", "water_nodes"];
+  sc_spec(sw[..], 6, 1, 0, 30, 16, three[..], true, false, false, false);
+  x := cast(string) w[0..<sw[0].n];
+  #assert !sw[0].bad && sc_line(x, 1) == "size 320 180" && sc_line(x, 3) == "let scene 5" && sc_line(x, 17) == "each draws:$scene:$all";
+  #assert sc_line(x, 18) == "pass water_transmit_fs.spv water_vs water_transmit_fs light,aux scene_depth 0 0 draws:each keep nowrite blend=mul alpha=keep mask=1";
+  #assert sc_line(x, 19) == "pass water_emit_fs.spv water_vs water_emit_fs light,aux scene_depth 0 0 draws:each keep nowrite blend=add alpha=keep mask=1" && sc_line(x, 20) == "end";
   #assert sc_line(t, sc_lines(t) - 3) == "pass post_fs.spv bg_vs post_fs 1 - 0 0 3 bind=post_light:light bind=post_quarter:q0 bind=post_eighth:e0 bind=post_aux:aux";
 }
 
@@ -307,10 +332,12 @@ sc_lower :: (dir: string, gpu: string, realm: string, vs: string, fs_: string) -
   return fs_write(cat(spv, ".bindings", b[1][..]), cast(string) err[0..<r.err_n]);
 }
 
+// A file copied whole, whatever its size.
 sc_copy :: (from: string, to: string) -> bool {
-  buf: [8388608] u8;
-  n := fs_read(from, buf[..]);
-  if n < 0 || !fs_write(to, cast(string) buf[0..<n]) { tool_err("scene-pass: cannot copy "); tool_errln(from); return false; }
+  o: [256] u8; e: [4096] u8;
+  argv := [3] string.["cp", from, to];
+  r := proc_run(argv[..], 60000, o[..], e[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { tool_err(cast(string) e[0..<r.err_n]); tool_err("scene-pass: cannot copy "); tool_errln(from); return false; }
   return true;
 }
 

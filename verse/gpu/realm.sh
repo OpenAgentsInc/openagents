@@ -5,7 +5,8 @@
 # in a directory of its own. REALM is one or more, the first where play starts: everglade (the
 # default; everglade-pass live --emit), verse (the galaxy, page 1), newland (the Grid, page 1), stair (Hold the Stair), belt
 # (Belt 2200), waterlab or orbitleague (no pack; flat-pass --emit), deadgears (Dead Gears),
-# icecream (Ice Cream Man) or villa (Hecate's Cemetery) (a scene with index assets; scene-pass --emit).
+# icecream (Ice Cream Man), villa (Hecate's Cemetery) or fairy (the Fairy Forest) (a scene with index
+# assets; scene-pass --emit).
 #   verse/gpu/realm.sh HOST check                    offscreen, each realm: 90 golden frames, the last
 #                                                    against vk-passes drawing the spec's own frame, and
 #                                                    the frame times at 320x180, 2560x1440 and 3840x2160;
@@ -42,7 +43,7 @@ seconds=60
 for ((i = 1; i <= $#; i++)); do [[ "${!i}" == --seconds ]] && { j=$((i + 1)); seconds="${!j}"; }; done
 
 # The realms travel reaches: a slug (what a navigation names: rh_realm_of) and its module.
-travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade dead-gears:deadgears ice-cream-man:icecream hecates-cemetery:villa"
+travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade dead-gears:deadgears ice-cream-man:icecream hecates-cemetery:villa fairy-forest:fairy"
 read -r -a realms <<< "${REALM:-everglade}"
 given_of() {
   case "$1" in
@@ -55,7 +56,7 @@ for realm in "${realms[@]}"; do
   case "$realm" in
     everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/$realm/spec") ;;
     verse|newland|stair|belt|waterlab|orbitleague) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
-    deadgears|icecream|villa) emit=(verse/gpu/scene-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
+    deadgears|icecream|villa|fairy) emit=(verse/gpu/scene-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
     *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
   esac
   "$root/verse/native/build.sh" "$realm" "$work/$realm/c" > /dev/null

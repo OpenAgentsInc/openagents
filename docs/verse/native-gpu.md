@@ -529,6 +529,19 @@ Every phase and native feature is a task in the Verse project
     musl-math.sh takes musl's sincos too, and realm.sh links vk-realm
     with it: the villa's game is now the wasm's to the bit. realm.sh check
     fails when a frame differs (it printed and went on).
+  - The Fairy Forest draws natively: scene-pass draws a WGSL's water
+    (water_vs: the list's last coaxial_water_draws records, transmit then
+    emit, after the scene; the light and depth copied first where it
+    declares water_scene), 0 values past the tolerance. Belt 2200 and the
+    fairy's game check again at compiler 0.45. Assets are copied whole
+    with cp (Orbit League's denser roadster is 6.3 MB).
+  - The regression, 2026-10-31 on the 4080: realm.sh check over verse,
+    everglade, newland, stair, belt, waterlab, orbitleague, deadgears,
+    icecream, villa and fairy, every 90th frame vk-passes' to the bit,
+    validation clean, and the galaxy opening Dead Gears (REALM_PICK=4).
+    GPU medians at 3840x2160: galaxy 0.90 ms, Everglade 7.0, the Grid
+    0.97, the Stair 1.2, Belt 0.85, water lab 2.5, Orbit League 10.0,
+    Dead Gears 1.5, Ice Cream 0.90, villa 1.9, fairy 1.6.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.
