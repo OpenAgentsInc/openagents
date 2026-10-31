@@ -17,6 +17,10 @@
 //   GET  /api/playtest/realms/<slug>/card              -> text/plain "want" (take its picture) or "no"
 //   POST /api/playtest/realms/<slug>/card  (image/jpeg) -> 200 {image}; 400 not a 1200x630 JPEG, 413, 403, 404
 //   GET  /api/playtest/realms/made                     -> text/plain, the newest made realms as /og's rows
+// FORK (migrations/0075_realm_forks.sql, docs/verse/realm-fork.md): any built-in realm with rule sets, or a fork.
+//   GET  /api/playtest/realms/<slug>/fork              -> text/plain: base, title, fork, from, maker, name, owner, published, rule ID 0|1 LABEL
+//   POST /api/playtest/realms/<slug>/fork {rules, name?}   -> 200 {slug, path, name, base, from, rules, page}; 400, 401, 404, 429
+//   POST /api/playtest/realms/<fork>/publish {published?, description?}   -> 200 {published, description}; 403, 404
 // Any realm: a made one or a hand-built one from realms.json (migrations/0050_realm_edit.sql decides
 // who is its owner, an admin or a visitor; a site admin, admin_who, is an admin of every realm).
 //   POST /api/playtest/realms/<slug>/place {thing, x, z, yaw}   -> 200 {placed} | {proposed}; 403
@@ -348,6 +352,49 @@ static void make(const request *q, PGconn *db, const char *key) {
   free(answer); free(slug);
 }
 
+// ---- FORK (migrations/0075_realm_forks.sql, docs/verse/realm-fork.md): GET what the pane shows;
+// POST makes a made realm whose base is this one's, with the rules chosen, and writes its page as
+// MAKE IT does (?as=lines answers "slug S", "path P", "page 0|1").
+static void fork_realm(const request *q, PGconn *db, const char *slug, const char *key, const char *admin, bool post) {
+  if (!post) {
+    const char *v[3] = {slug, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT verse.fork_info($1, $2, $3::boolean)", 3, NULL, v, NULL, NULL, 0);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1 && !PQgetisnull(r, 0, 0)) api_respond(q->fd, 200, "text/plain; charset=utf-8", NULL, PQgetvalue(r, 0, 0), strlen(PQgetvalue(r, 0, 0)));
+    else if (PQresultStatus(r) == PGRES_TUPLES_OK) api_json(q->fd, 404, "{\"error\":\"this realm can't be forked\"}");
+    else { api_log("realms: fork info: %s", PQerrorMessage(db)); api_json(q->fd, 500, "{\"error\":\"not read\"}"); }
+    PQclear(r);
+    return;
+  }
+  char *body = body_of(q);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  const char *v[4] = {slug, body, key, env_or("OA_BUILDER_PER_DAY", "12")};
+  PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text, x->>'slug' FROM verse.fork_make($1, $2::jsonb, $3, $4::int) x",
+                             4, NULL, v, NULL, NULL, 0);
+  free(body);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+    bool theirs = state && !strncmp(state, "22", 2);
+    if (!theirs) api_log("realms: fork: %s", PQerrorMessage(db));
+    PQclear(r);
+    api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not forked\"}");
+    return;
+  }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  bool lines = as_lines(q);
+  if (status != 200 || PQgetisnull(r, 0, 2)) {
+    if (lines) answer_lines(q->fd, status, PQgetvalue(r, 0, 1), NULL); else api_json(q->fd, status, PQgetvalue(r, 0, 1));
+    PQclear(r);
+    return;
+  }
+  char *answer = strdup(PQgetvalue(r, 0, 1)), *made = strdup(PQgetvalue(r, 0, 2));
+  PQclear(r);
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid == 0) { make_answer(q->fd, answer, made, lines); _exit(0); }
+  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  free(answer); free(made);
+}
+
 // ---- talking revises a realm's board (migrations/0050_realm_edit.sql): asked here, the model's
 // answer kept by a child, as a plan is. ?as=lines answers the board's rows as lines.
 static void revise_answer(int fd, const char *asked, const char *request, bool lines) {
@@ -360,7 +407,7 @@ static void revise_answer(int fd, const char *asked, const char *request, bool l
   snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
   PGconn *db = api_db_new();
   const char *v[5] = {asked, http, got ? got : "", model, taken};
-  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.edit_revise_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+  PGresult *r = db ? PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.fork_revise_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
                                   5, NULL, v, NULL, NULL, 0) : NULL;
   if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
     if (lines) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
@@ -479,6 +526,7 @@ bool realms_route(const request *q) {
     return true;
   }
   if (!strcmp(what, "card")) { card(q, db, slug, key, admin, post); return true; }
+  if (!strcmp(what, "fork")) { fork_realm(q, db, slug, key, admin, post); return true; }
   if (!post) { api_json(q->fd, 405, "{\"error\":\"POST it\"}"); return true; }
   if (!strcmp(what, "describe")) {
     char *body = body_of(q);
@@ -495,6 +543,26 @@ bool realms_route(const request *q) {
       const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
       bool theirs = state && !strncmp(state, "22", 2);
       if (!theirs) api_log("realms: describe: %s", PQerrorMessage(db));
+      api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
+    }
+    PQclear(r);
+    return true;
+  }
+  if (!strcmp(what, "publish")) {   // a fork listed, its page written again (0075)
+    char *body = body_of(q);
+    if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
+    const char *v[4] = {slug, body, key, admin};
+    PGresult *r = PQexecParams(db, "SELECT (x->>'status')::int, (x - 'status')::text FROM verse.fork_publish($1, $2::jsonb, $3, $4::boolean) x", 4, NULL, v, NULL, NULL, 0);
+    free(body);
+    if (PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) {
+      int status = atoi(PQgetvalue(r, 0, 0));
+      if (status == 200) rewrite_page(slug);
+      api_json(q->fd, status, PQgetvalue(r, 0, 1));
+    }
+    else {
+      const char *state = PQresultErrorField(r, PG_DIAG_SQLSTATE);
+      bool theirs = state && !strncmp(state, "22", 2);
+      if (!theirs) api_log("realms: publish: %s", PQerrorMessage(db));
       api_json(q->fd, theirs ? 400 : 500, theirs ? "{\"error\":\"not json\"}" : "{\"error\":\"not kept\"}");
     }
     PQclear(r);

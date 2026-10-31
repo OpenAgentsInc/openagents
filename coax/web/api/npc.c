@@ -296,9 +296,9 @@ bool voice_edit_route(const request *q) {
   if (strncmp(q->path, prefix, sizeof prefix - 1)) return false;
   const char *realm = q->path + sizeof prefix - 1, *slash = strchr(realm, '/');
   if (!slash || strcmp(slash, "/edit")) return false;
-  char name[33]; size_t n = (size_t)(slash - realm);
+  char name[49]; size_t n = (size_t)(slash - realm);   // a hand-built realm's slug, or a fork's (digits too)
   if (!n || n >= sizeof name) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
-  for (size_t i = 0; i < n; i++) if (!((realm[i] >= 'a' && realm[i] <= 'z') || realm[i] == '-')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
+  for (size_t i = 0; i < n; i++) if (!((realm[i] >= 'a' && realm[i] <= 'z') || (realm[i] >= '0' && realm[i] <= '9') || realm[i] == '-')) { api_json(q->fd, 404, "{\"error\":\"unknown\"}"); return true; }
   memcpy(name, realm, n); name[n] = 0;
   if (strcmp(q->method, "POST")) { api_json(q->fd, 405, "{\"error\":\"POST a sentence\"}"); return true; }
   PGconn *db = api_db();
@@ -313,12 +313,20 @@ bool voice_edit_route(const request *q) {
   if (denied && api_header(q, "X-Verse-Player", key, sizeof key) && key[0]) {
     const char *ev[2] = {name, key};
     PGresult *m = PQexecParams(db, "SELECT encode(sha256(convert_to($2, 'UTF8')), 'hex') FROM (SELECT 1) x "
-                                   "WHERE (verse.edit_hand($1)).slug IS NOT NULL AND verse.edit_may($1, $2, false)", 2, NULL, ev, NULL, NULL, 0);
+                                   "WHERE ((verse.edit_hand($1)).slug IS NOT NULL OR (verse.fork_of($1)).slug IS NOT NULL) AND verse.edit_may($1, $2, false)", 2, NULL, ev, NULL, NULL, 0);
     if (PQresultStatus(m) == PGRES_TUPLES_OK && PQntuples(m) == 1) { snprintf(who, 65, "%s", PQgetvalue(m, 0, 0)); denied = 0; }
     else if (denied == 401) denied = 403;   // a player who may not edit this realm
     PQclear(m);
   }
   if (denied) { api_json(q->fd, denied, denied == 403 ? "{\"error\":\"admins only\"}" : "{\"error\":\"log in as an admin\"}"); return true; }
+  // a fork (migrations/0075_realm_forks.sql) is edited by voice as its base is: the base's catalogue
+  {
+    const char *fv[1] = {name};
+    PGresult *f = PQexecParams(db, "SELECT (verse.fork_of($1)).base", 1, NULL, fv, NULL, NULL, 0);
+    if (PQresultStatus(f) == PGRES_TUPLES_OK && PQntuples(f) == 1 && !PQgetisnull(f, 0, 0) && strlen(PQgetvalue(f, 0, 0)) < sizeof name)
+      snprintf(name, sizeof name, "%s", PQgetvalue(f, 0, 0));
+    PQclear(f);
+  }
   char *body = malloc(q->body_len + 3);
   if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
   if (q->body_len) { memcpy(body, q->body, q->body_len); body[q->body_len] = 0; } else strcpy(body, "{}");

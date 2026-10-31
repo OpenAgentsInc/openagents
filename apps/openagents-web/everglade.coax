@@ -78,6 +78,7 @@
 #load "everglade-lod.coax";
 #load "everglade-sky.coax";
 #load "everglade-room.coax";
+#load "everglade-fork.coax";   // FORK, and a fork's rules (docs/verse/realm-fork.md)
 #load "everglade-track.coax";   // what players do, for analytics.coax
 #load "../../verse/style-preset.coax";
 
@@ -431,6 +432,7 @@ Everglade :: struct {
   hm: Hammer;                              // the sledgehammer (everglade-hammer.coax)
   sp: Spells;                              // the spell bar and what breaks (everglade-spells.coax), with the ruleset srd5
   wt: [1] Watch; wv: WatchView;            // the town watch and what the town does about a crime (everglade-watch.coax)
+  fk: [] EgFork;                           // FORK, and a fork's rules: the face holds it (everglade-fork.coax everglade_attach_fork)
 }
 
 // ---- small things
@@ -904,12 +906,14 @@ everglade_catalog :: (s: [] Everglade, text: string) #export_c {
 everglade_pack_failed :: (s: [] Everglade) #export_c { if !s[0].pack_ready { s[0].pack_failed = true; } }
 everglade_message :: (s: [] Everglade, kind: int, text: string) #export_c {
   everglade_guard_message(s, kind, text);
+  if fork_message(s, kind, text) { return; }
   if everglade_voice_message(s, kind, text) { return; }
   if kind == MSG_TEXT { talk_typed(s, text); return; }
   if kind == MSG_FACTS {
     if !s[0].started { everglade_start(s); }
     take_visit(s, text); take_player(s, text);
     spells_facts(s, text);
+    fork_facts(s, text);
     weather_facts(s, text);
     s[0].day = verse_style_clock(fact(text, "clock"), fact(text, "now"), fact(text, "day"));
     s[0].day_from = s[0].time; s[0].clock = s[0].day.at;
@@ -1236,6 +1240,7 @@ in_box :: (b: Box, x: f32, y: f32) -> bool { return b.x1 > b.x0 && x >= b.x0 && 
 everglade_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { everglade_start(s); }
   if s[0].board { return board_pointer(s, x, y, phase, id); }
+  if fork_pointer(s, x, y, phase, id) { return true; }
   if talk_pointer(s, x, y, phase, id) { return true; }
   if chat_pointer(s, x, y, phase, id) { return true; }
   if everglade_voice_pointer(s, x, y, phase, id) { return true; }
@@ -3537,11 +3542,12 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   if !s[0].paint_only && s[0].talk < 0 { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)
   gutter := 16 * k;
   cap := 11 * k;
-  title := "EVERGLADE";
+  title := fork_title(s);
   small := 7 * k;
   sub_line := where(you);
   tw := hi(text_width(title, cap), text_width(sub_line, small));
-  plate(s, u, Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k}, 0.82, 0);
+  title_box := Box.{x0 = gutter, y0 = gutter, x1 = gutter + tw + 28 * k, y1 = gutter + cap + small + 34 * k};
+  plate(s, u, title_box, 0.82, 0);
   n = draw_text(out, n, title, gutter + 14 * k, gutter + 12 * k + cap, cap, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = draw_text(out, n, sub_line, gutter + 14 * k, gutter + 22 * k + cap + small, small, GAP, SPACE, ink(k, 0.8, PARCH_R, PARCH_G, PARCH_B), false, false);
   // MAP, top right: a click or a tap lifts the camera over the city.
@@ -3551,6 +3557,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   s[0].map_button = mb;
   plate(s, u, mb, 0.85, ifx s[0].above then 2.0f32 else 1.0f32);
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  n = fork_hud(s, out, u, n, title_box);   // FORK and its pane (everglade-fork.coax)
   n = watch_hud(s, out, u, n, mb.y1 + 10 * k);   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};
@@ -3736,6 +3743,7 @@ everglade_frame :: (s: [] Everglade, out: [] f32, u: [] f32, width: f32, height:
   // (a still page, a golden or reduced motion, shows a turning day at noon, so its shot is the same every time)
   if !still && redit_row_on(s[0].ev.ed[..], "daycycle") { s[0].clock = verse_style_clock_at(s[0].day, cast(f32) (s[0].time - s[0].day_from)); }
   else if s[0].day.mode != STYLE_CLOCK_FIXED { s[0].clock = 0.5; }
+  fork_frame(s, ifx still then 0.0f32 else dt);   // a fork's rules: night holds the clock (everglade-fork.coax)
   // no toon outlines here (the owner, October 29): no rim line along any silhouette, people, props, buildings or trees
   _ := verse_style_at(verse_style_no_outlines(verse_style_preset(STYLE_PAINTERLY, ifx phone(s) then STYLE_PHONE else STYLE_DESKTOP)), s[0].clock, u[STYLE_AT..<STYLE_AT + STYLE_FLOATS]);
   sun := unit_or(v3(u[STYLE_AT + SU_KEY_DIR], u[STYLE_AT + SU_KEY_DIR + 1], u[STYLE_AT + SU_KEY_DIR + 2]), v3(0, 1, 0));

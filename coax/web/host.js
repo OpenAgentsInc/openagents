@@ -78,6 +78,7 @@
 //       browser, localStorage), now (Date.now()), nav (ms since the navigation), url, ref, ua, lang,
 //       tz, sw, sh, vw, vh, dpr, coarse, touch, gpu, hidden, clip, webdriver, fcp, dcl, player and account (the
 //       playtest player's public id and account, "" none; never its key), voice (the page's data-voice route, "" none), ruleset (data-ruleset: realms.json "ruleset", "" none),
+//       fork (data-fork: a fork's slug on its page, docs/verse/realm-fork.md; "" none), rules (data-rules: its rule ids, a comma between),
 //       style (the realm's art style, data-style: lowpoly, painterly, photoreal or flat; "" not a realm), zone.<id>
 //       (a zone's style, data-zones "id:style ...") and clock (data-clock: cycle, real or fixed:T; the URL's
 //       ?clock=T, T from 0 to 1, pins it to fixed:T for shots; ?clock=cycle or real sets it), day (the visitor's
@@ -637,7 +638,8 @@ function pageFacts() {
     focused: document.hasFocus() ? 1 : 0,
     clip: globalThis.coaxialClip === true ? 1 : 0,
     webdriver: navigator.webdriver ? 1 : 0, fcp: fcp ? Math.round(fcp.startTime) : 0, dcl: nav ? Math.round(nav.domContentLoadedEventEnd) : 0,
-    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot, voice: script?.dataset.voice || "", ruleset: script?.dataset.ruleset || "", ...styleFacts() })
+    player: player()?.id || "", account: player()?.account || "", realm: realmId, slot, voice: script?.dataset.voice || "", ruleset: script?.dataset.ruleset || "",
+    fork: script?.dataset.fork || "", rules: script?.dataset.rules || "", ...styleFacts() })
     .map(([k, v]) => `${k}=${clean(v)}`).join("\n");
 }
 addEventListener("visibilitychange", () => send(document.hidden ? HIDDEN_KIND : SHOWN_KIND));

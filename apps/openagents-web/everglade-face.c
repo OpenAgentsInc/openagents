@@ -48,9 +48,13 @@ static coax_t_EgSeen track_seen;   // what everglade_track saw last frame (everg
 #define NPC_URL "/api/playtest/npc/ask"
 #define PLAYER_URL "/api/playtest/player"
 static int32_t ask_id = -1, mint_id = -1;
-#define WORLD_URL "/api/playtest/world/everglade"
-#define EDIT_URL "/api/playtest/realm/everglade/edit"
-#define RESET_URL "/api/playtest/world/everglade/reset"
+/* Everglade's world, or a fork's own (made-<slug>: everglade-fork.coax everglade_world_path) */
+static uint8_t world_url_buf[3][128];
+static uint32_t world_path(uint32_t state, int what);
+static coax_t_EgFork fork_state;   /* FORK's state (everglade-fork.coax everglade_attach_fork) */
+#define WORLD_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[0], world_path(st, 0)
+#define RESET_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[1], world_path(st, 1)
+#define EDIT_URL_OF(st) (uint32_t)(uintptr_t)world_url_buf[2], world_path(st, 2)
 static int32_t world_id = -1, edit_id = -1, post_id = -1;
 static bool world_asked;
 static void edit_out(uint32_t state);
@@ -117,8 +121,12 @@ static coax_v_t_Everglade at(uint32_t state) {
     demo_attached = true;
     everglade_attach_demolish(v, (coax_v_t_DemoWorld){&demo_world, 1});
     everglade_attach_media(v, (coax_v_u8){media_big, sizeof media_big});
+    everglade_attach_fork(v, (coax_v_t_EgFork){&fork_state, 1});
   }
   return v;
+}
+static uint32_t world_path(uint32_t state, int what) {
+  return (uint32_t)everglade_world_path(at(state), (coax_v_u8){world_url_buf[what], sizeof world_url_buf[what]}, what);
 }
 static void start(uint32_t state) {
   if (!track_state.page_n) track_init(tr(), track_cstr("everglade"));
@@ -214,6 +222,8 @@ uint32_t coaxial_frame(uint32_t state, uint32_t vertices, uint32_t uniforms, flo
   bool deck = everglade_on_bridge(at(state), player.pos.x, player.pos.z) && swim.medium < 2;
   int64_t walls = everglade_walls_on(at(state), deck);
   int64_t bodies = with_hulls(g, everglade_bodies_near(at(state), deck, player.pos.x, player.pos.z));
+  /* low gravity on a fork (everglade-fork.coax): part of the fall given back while you're up */
+  if (!player.on_ground) player.vel.y += everglade_gravity_lift(at(state)) * dt;
   coax_t_Vec3 was = player.pos;
   if (river.aboard >= 0) {
     // in a rowboat: W and S row, A and D turn (a thumb's stick too); you sit where it takes you
@@ -354,25 +364,30 @@ static void bar_frame(uint32_t state) {
 static void edit_out(uint32_t state) {
   coax_t_Everglade *g = city(state);
   edit_face_drain((coax_v_t_RealmEdit){g->ev.ed.e, 1});   /* the shared edit layer's one request */
+  if (everglade_fork_ready(at(state))) {   /* FORK's one request (everglade-fork.coax) */
+    int32_t id = coaxial_http((uint32_t)(uintptr_t)fork_state.req_url.e, (uint32_t)fork_state.req_url_n,
+                              (uint32_t)(uintptr_t)fork_state.req_body.e, (uint32_t)fork_state.req_body_n, (int32_t)fork_state.req_flags);
+    everglade_fork_requested(at(state), id);
+  }
   if (facts_seen && !world_asked) {
     world_asked = true;
-    world_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, 0, 0, 4);
+    world_id = coaxial_http(WORLD_URL_OF(state), 0, 0, 4);
   }
   /* heard sentences go one at a time, in the order said: the next is taken only when none is out */
   int64_t n = edit_id < 0 ? everglade_edit_ask(at(state)) : 0;
   if (n > 0) {
-    edit_id = coaxial_http((uint32_t)(uintptr_t)EDIT_URL, sizeof EDIT_URL - 1, (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
+    edit_id = coaxial_http(EDIT_URL_OF(state), (uint32_t)(uintptr_t)g->ev.ask.e, (uint32_t)n, 1 | 4 | 8);
     everglade_edit_ask_sent(at(state));
     if (edit_id < 0) { edit_id = -1; everglade_edit_answer(at(state), (coax_string){"0\n", 2}); }
   }
   // ORIGINAL: the designed city back, before any list published after it.
   if (post_id < 0 && everglade_edit_reset(at(state))) {
-    post_id = coaxial_http((uint32_t)(uintptr_t)RESET_URL, sizeof RESET_URL - 1, (uint32_t)(uintptr_t)"{}", 2, 1 | 4 | 8);
+    post_id = coaxial_http(RESET_URL_OF(state), (uint32_t)(uintptr_t)"{}", 2, 1 | 4 | 8);
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }
   n = everglade_edit_post(at(state));
   if (n > 0 && post_id < 0) {
-    post_id = coaxial_http((uint32_t)(uintptr_t)WORLD_URL, sizeof WORLD_URL - 1, (uint32_t)(uintptr_t)g->ev.post.e, (uint32_t)n, 1 | 4 | 8);   /* the player key: a realm admin account publishes too */
+    post_id = coaxial_http(WORLD_URL_OF(state), (uint32_t)(uintptr_t)g->ev.post.e, (uint32_t)n, 1 | 4 | 8);   /* the player key: a realm admin account publishes too */
     everglade_edit_post_sent(at(state));
     if (post_id < 0) { post_id = -1; everglade_edit_saved(at(state), 0); }
   }

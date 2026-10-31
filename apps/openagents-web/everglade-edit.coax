@@ -42,7 +42,7 @@ eg_builder :: (s: [] Everglade) -> bool { return s[0].ev.admin || eg_visitor_bui
 
 edit_layer :: (s: [] Everglade) {
   e := s[0].ev.ed[..];
-  redit_start(e, "everglade");
+  redit_start(e, fk_slug(s));   // a fork edits itself (everglade-fork.coax)
   redit_step(e, f32(s[0].time), s[0].width, s[0].height, s[0].dpr);
   e[0].voice = false;   // Everglade's own HOLD TO TALK edits it by voice; the board is typed
   if redit_may(e) { s[0].ev.admin = true; }   // the realm's owner and admins (the server checks every write)

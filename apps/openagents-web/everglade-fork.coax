@@ -1,0 +1,462 @@
+// FORK on Everglade (ev-fork-realm; docs/verse/realm-fork.md), loaded by everglade.coax: anyone
+// takes their own copy with their own rules; Everglade itself never changes.
+//
+//   - FORK, by the title: a pane drawn here (no DOM) with a checkbox for each rule set the server
+//     says Everglade implements (GET /api/playtest/realms/everglade/fork: "rule ID 0|1 LABEL"),
+//     FORK IT (POST .../fork?as=lines {rules}: the new realm's path, where the page goes) and CLOSE;
+//   - on a fork's page (the facts' fork=<slug> and rules=a,b), the same module plays the fork: the
+//     shared edit layer edits the fork (its owner switches its rules there), the city's edits go to
+//     its own world (made-<slug>), and the pane says what it was forked from and who made that,
+//     ORIGINAL goes there, and its owner PUBLISHes it (POST .../<slug>/publish);
+//   - the rules (fork_rule): the facts' at first, then the fork's board as the server has it:
+//       night      the clock held at midnight
+//       waves      the town watch sent in from the gates every FK_WAVE_EVERY seconds, stronger each time
+//       nodestroy  what stands can't be broken: every piece's hit points held over what any blow takes
+//       lowgrav    a third of the gravity (the face lifts you by everglade_gravity_lift while you're up)
+// Only typed choices: rule ids from the server, checked against the four this code implements.
+
+FK_RULES :: 4;
+FK_NIGHT :: 0; FK_WAVES :: 1; FK_NODESTROY :: 2; FK_LOWGRAV :: 3;
+FK_RULE_ID :: [FK_RULES] string.["night", "waves", "nodestroy", "lowgrav"];
+FK_SLUG :: 48; FK_NAME :: 40; FK_URL :: 160; FK_BODY :: 200; FK_NOTE :: 60;
+FK_MIDNIGHT :: 0.0;          // the clock night holds it at (0 midnight, 0.5 noon)
+FK_WAVE_FIRST :: 20.0;       // seconds before the first wave
+FK_WAVE_EVERY :: 45.0;       // and between waves
+FK_GRAVITY :: 24.0;          // verse/player.coax GRAVITY
+FK_LOW :: 0.3333;            // low gravity's share of it
+FK_ACT_NAVIGATE :: 1;        // host.js: go to the outbox's path
+FK_ASK_NONE :: 0; FK_ASK_INFO :: 1; FK_ASK_FORK :: 2; FK_ASK_PUBLISH :: 3;
+// the pane's buttons: FORK, the rule rows, FORK IT, PUBLISH, ORIGINAL, CLOSE
+FB_OPEN :: 0; FB_RULE :: 1; FB_MAKE :: 5; FB_PUBLISH :: 6; FB_ORIGINAL :: 7; FB_CLOSE :: 8; FB_PANE :: 9; FB_N :: 10;
+
+EgFork :: struct {
+  slug: [FK_SLUG] u8; slug_n: int;           // this page's fork ("" on Everglade itself)
+  facts: bool;
+  rule_fact: [FK_RULES] bool;                // the page's rules, until the board says
+  // what the server says (GET .../fork)
+  known: bool; has: [FK_RULES] bool; on: [FK_RULES] bool; label: [FK_RULES * FK_NAME] u8; label_n: [FK_RULES] int;
+  name: [FK_NAME] u8; name_n: int; maker: [FK_NAME] u8; maker_n: int;
+  from: [FK_SLUG] u8; from_n: int; from_name: [FK_NAME] u8; from_name_n: int;
+  owner: bool; published: bool;
+  // the pane
+  open: bool; pick: [FK_RULES] bool; boxes: [FB_N] Box; finger: int;
+  note: [FK_NOTE] u8; note_n: int; going: bool;
+  // the one request
+  req_url: [FK_URL] u8; req_url_n: int; req_body: [FK_BODY] u8; req_body_n: int; req_flags: int;
+  req_ready: bool; req_id: int; req_what: int; info_due: bool;
+  wave_t: f32;
+}
+
+fk_put :: (buf: [] u8, at: int, text: string) -> int {
+  n := at;
+  for i: 0..<text.count { if n >= buf.count { break; } buf[n] = text[i]; n += 1; }
+  return n;
+}
+// Words to draw: printable, capitals, at most the buffer.
+fk_word :: (buf: [] u8, text: string) -> int {
+  n := 0;
+  for i: 0..<text.count {
+    if n >= buf.count { break; }
+    c := text[i];
+    if c < 32 || c > 126 || c == '|' || c == '<' || c == '>' { continue; }
+    if c >= 'a' && c <= 'z' { c = c - 32; }
+    buf[n] = c; n += 1;
+  }
+  return n;
+}
+fk_slug_ok :: (t: string) -> bool {
+  if t.count == 0 || t.count > FK_SLUG { return false; }
+  for i: 0..<t.count { c := t[i]; if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { return false; } }
+  return true;
+}
+fk_rule_of :: (id: string) -> int { for r: 0..<FK_RULES { if FK_RULE_ID[r] == id { return r; } } return -1; }
+
+// The fork's state lives in the face (everglade_attach_fork), so two cities in a check cost nothing more.
+fk_has :: (s: [] Everglade) -> bool { return s[0].fk.count > 0; }
+everglade_attach_fork :: (s: [] Everglade, f: [] EgFork) #export_c { if f.count > 0 { s[0].fk = f; s[0].fk[0].req_id = -1; s[0].fk[0].finger = -1; } }
+fk_is_fork :: (s: [] Everglade) -> bool { return fk_has(s) && s[0].fk[0].slug_n > 0; }
+// The title plate's name: a fork's own once the server says it.
+fork_title :: (s: [] Everglade) -> string { return ifx fk_is_fork(s) && s[0].fk[0].name_n > 0 then cast(string) s[0].fk[0].name[0..<s[0].fk[0].name_n] else "EVERGLADE"; }
+fk_slug :: (s: [] Everglade) -> string { return ifx fk_is_fork(s) then cast(string) s[0].fk[0].slug[0..<s[0].fk[0].slug_n] else "everglade"; }
+
+// The page facts: fork=<slug> and rules=a,b (host.js, from the fork's page).
+fork_facts :: (s: [] Everglade, text: string) {
+  if !fk_has(s) { return; }
+  f := s[0].fk[0];
+  f.facts = true; f.req_id = -1; f.finger = -1;
+  slug := fact(text, "fork");
+  f.slug_n = ifx fk_slug_ok(slug) then fk_put(f.slug[..], 0, slug) else 0;
+  rules := fact(text, "rules");
+  for r: 0..<FK_RULES { f.rule_fact[r] = false; }
+  i := 0;
+  while i <= rules.count {
+    e := i; while e < rules.count && rules[e] != ',' { e += 1; }
+    r := fk_rule_of(rules[i..<e]);
+    if r >= 0 && f.slug_n > 0 { f.rule_fact[r] = true; }
+    i = e + 1;
+  }
+  for r: 0..<FK_RULES { f.pick[r] = f.rule_fact[r]; }
+  f.info_due = true;
+  s[0].fk[0] = f;
+}
+
+// Is rule r on here: never on Everglade itself; on a fork the board's row once the layer has the
+// fork's spec, the page's rules before.
+fork_rule :: (s: [] Everglade, r: int) -> bool {
+  if !fk_is_fork(s) || r < 0 || r >= FK_RULES { return false; }
+  e := s[0].ev.ed[..];
+  if e[0].ready && cast(string) e[0].slug[0..<e[0].slug_n] == fk_slug(s) {
+    i := redit_row(e, FK_RULE_ID[r]);
+    return i >= 0 && e[0].row_on[i];
+  }
+  return s[0].fk[0].rule_fact[r];
+}
+
+// The face's world paths: Everglade's, or the fork's own world.
+//   what 0 the world, 1 its reset, 2 the voice edit
+everglade_world_path :: (s: [] Everglade, out: [] u8, what: int) -> int #export_c {
+  n := 0;
+  if what == 2 { n = fk_put(out, 0, "/api/playtest/realm/"); n = fk_put(out, n, fk_slug(s)); return fk_put(out, n, "/edit"); }
+  n = fk_put(out, 0, "/api/playtest/world/");
+  if fk_is_fork(s) { n = fk_put(out, n, "made-"); }
+  n = fk_put(out, n, fk_slug(s));
+  if what == 1 { n = fk_put(out, n, "/reset"); }
+  return n;
+}
+// Low gravity: what the face adds back to your upward speed, m/s² while you're in the air.
+everglade_gravity_lift :: (s: [] Everglade) -> f32 #export_c { return ifx fork_rule(s, FK_LOWGRAV) then f32(FK_GRAVITY * (1 - FK_LOW)) else 0.0f32; }
+
+// ---- the one request (the face sends it: everglade-face.c fork_out)
+fk_ask :: (s: [] Everglade, what: int, tail: string, body: string, post: bool) {
+  if !fk_has(s) { return; }
+  n := fk_put(s[0].fk[0].req_url[..], 0, "/api/playtest/realms/");
+  n = fk_put(s[0].fk[0].req_url[..], n, fk_slug(s));
+  s[0].fk[0].req_url_n = fk_put(s[0].fk[0].req_url[..], n, tail);
+  s[0].fk[0].req_body_n = fk_put(s[0].fk[0].req_body[..], 0, body);
+  s[0].fk[0].req_flags = (ifx post then HTTP_POST else 0) | HTTP_ANSWER | TRACK_KEY;
+  s[0].fk[0].req_what = what; s[0].fk[0].req_ready = true;
+}
+everglade_fork_ready :: (s: [] Everglade) -> bool #export_c { return fk_has(s) && s[0].fk[0].req_ready; }
+everglade_fork_requested :: (s: [] Everglade, id: int) #export_c {
+  if !fk_has(s) { return; }
+  s[0].fk[0].req_ready = false; s[0].fk[0].req_id = id;
+  if id < 0 { s[0].fk[0].req_what = FK_ASK_NONE; s[0].fk[0].going = false; fk_say(s, "NOT SENT: TRY AGAIN"); }
+}
+fk_say :: (s: [] Everglade, text: string) { if !fk_has(s) { return; } s[0].fk[0].note_n = fk_word(s[0].fk[0].note[..], text); }
+
+// Each frame: ask what the pane shows once, and play the rules.
+fork_frame :: (s: [] Everglade, dt: f32) {
+  if !fk_has(s) { return; }
+  if s[0].fk[0].facts && s[0].fk[0].info_due && !s[0].fk[0].req_ready && s[0].fk[0].req_what == FK_ASK_NONE {
+    s[0].fk[0].info_due = false;
+    fk_ask(s, FK_ASK_INFO, "/fork", "", false);
+  }
+  if !fk_is_fork(s) { return; }
+  // night: the clock held at midnight
+  if fork_rule(s, FK_NIGHT) { s[0].clock = f32(FK_MIDNIGHT); }
+  // no destruction: no blow takes what stands below its hit points; whatever came down stands back up
+  if sp_on(s) {
+    w := sp_dm(s);
+    hold := fork_rule(s, FK_NODESTROY);
+    for i: 0..<w[0].n {
+      p := w[0].pieces[i];
+      if hold && p.state == DP_STANDING && p.hp < p.max_hp + 1000000 { w[0].pieces[i].hp = p.max_hp + 1000000; }
+      if !hold && p.hp > p.max_hp { w[0].pieces[i].hp = p.max_hp; }
+    }
+    if hold && sp_broken(s) { _ := sp_restore(s, -1); }
+  }
+  // hostile waves: the watch comes in from the gate nearest you, a level higher each time
+  ww := watch_w(s);
+  if fork_rule(s, FK_WAVES) && ww[0].on && !ww[0].dead {
+    s[0].fk[0].wave_t += dt;
+    first := ww[0].waves == 0 && !ww[0].wanted;
+    if s[0].fk[0].wave_t >= ifx first then f32(FK_WAVE_FIRST) else f32(FK_WAVE_EVERY) {
+      s[0].fk[0].wave_t = 0;
+      fk_wave(ww);
+    }
+  } else { s[0].fk[0].wave_t = 0; }
+}
+// A wave: you are wanted at the next level, whose wave the watch sends on its next step.
+fk_wave :: (w: [] Watch) {
+  next := ifx w[0].level + 1 < 2 then 2 else ifx w[0].level + 1 > WANTED_LEVELS then WANTED_LEVELS else w[0].level + 1;
+  w[0].wanted = true; w[0].unseen = 0;
+  if w[0].heat < HEAT_AT[next] { w[0].heat = HEAT_AT[next]; }
+  if w[0].level >= WANTED_LEVELS { w[0].level = WANTED_LEVELS - 1; }   // at the top, the top wave again
+}
+
+// ---- answers
+fk_status :: (text: string) -> int {
+  n := 0; i := 0;
+  while i < text.count && text[i] >= '0' && text[i] <= '9' { n = n * 10 + cast(int) (text[i] - '0'); i += 1; }
+  return n;
+}
+fk_body :: (text: string) -> string { i := 0; while i < text.count && text[i] != '\n' { i += 1; } return ifx i < text.count then text[i + 1..<text.count] else ""; }
+// What the pane shows: base, title, fork, from SLUG|NAME, maker, name, owner, published, rule ID 0|1 LABEL.
+fk_info :: (s: [] Everglade, body: string) {
+  f := s[0].fk[0];
+  for r: 0..<FK_RULES { f.has[r] = false; f.on[r] = false; }
+  f.owner = false; f.published = false; f.from_n = 0; f.from_name_n = 0;
+  i := 0;
+  while i < body.count {
+    e := i; while e < body.count && body[e] != '\n' { e += 1; }
+    line := body[i..<e];
+    i = e + 1;
+    sp := 0; while sp < line.count && line[sp] != ' ' { sp += 1; }
+    if sp >= line.count { continue; }
+    key := line[0..<sp]; rest := line[sp + 1..<line.count];
+    if key == "name" { f.name_n = fk_word(f.name[..], rest); }
+    else if key == "maker" { f.maker_n = fk_word(f.maker[..], rest); }
+    else if key == "owner" { f.owner = rest == "1"; }
+    else if key == "published" { f.published = rest == "1"; }
+    else if key == "from" {
+      bar := 0; while bar < rest.count && rest[bar] != '|' { bar += 1; }
+      f.from_n = ifx fk_slug_ok(rest[0..<bar]) then fk_put(f.from[..], 0, rest[0..<bar]) else 0;
+      f.from_name_n = ifx bar < rest.count then fk_word(f.from_name[..], rest[bar + 1..<rest.count]) else 0;
+    } else if key == "rule" {
+      a := 0; while a < rest.count && rest[a] != ' ' { a += 1; }
+      r := fk_rule_of(rest[0..<a]);
+      if r < 0 || a + 2 > rest.count { continue; }
+      f.has[r] = true; f.on[r] = rest[a + 1] == '1';
+      f.label_n[r] = ifx a + 3 <= rest.count then fk_word(f.label[r * FK_NAME..<(r + 1) * FK_NAME], rest[a + 3..<rest.count]) else 0;
+    }
+  }
+  f.known = true;
+  for r: 0..<FK_RULES { f.pick[r] = f.on[r]; }
+  s[0].fk[0] = f;
+}
+fork_message :: (s: [] Everglade, kind: int, text: string) -> bool {
+  if !fk_has(s) { return false; }
+  if s[0].fk[0].req_id < 0 || kind != HTTP_KIND + s[0].fk[0].req_id { return false; }
+  what := s[0].fk[0].req_what;
+  s[0].fk[0].req_id = -1; s[0].fk[0].req_what = FK_ASK_NONE;
+  st := fk_status(text); body := fk_body(text);
+  if what == FK_ASK_INFO { if st == 200 { fk_info(s, body); } return true; }
+  if what == FK_ASK_PUBLISH {
+    if st == 200 { fk_say(s, ifx s[0].fk[0].published then "TAKEN OFF THE LIST" else "PUBLISHED: ITS PAGE IS LISTED"); s[0].fk[0].info_due = true; }
+    else { fk_say(s, ifx st == 403 then "ONLY ITS OWNER PUBLISHES IT" else "NOT PUBLISHED: TRY AGAIN"); }
+    return true;
+  }
+  // FORK IT: "slug S", "path /realms/S"
+  s[0].fk[0].going = false;
+  if st != 200 {
+    fk_say(s, ifx st == 401 then "NO PLAYER YET: TRY AGAIN IN A MOMENT" else ifx st == 429 then "THAT'S TODAY'S REALMS" else "NOT FORKED: TRY AGAIN");
+    return true;
+  }
+  path := "";
+  i := 0;
+  while i < body.count {
+    e := i; while e < body.count && body[e] != '\n' { e += 1; }
+    if e - i > 5 && body[i..<i + 5] == "path " { path = body[i + 5..<e]; }
+    i = e + 1;
+  }
+  if path.count < 9 || path[0..<8] != "/realms/" || !fk_slug_ok(path[8..<path.count]) { fk_say(s, "NOT FORKED: TRY AGAIN"); return true; }
+  fk_go(s, path);
+  return true;
+}
+fk_go :: (s: [] Everglade, path: string) {
+  if !fk_has(s) { return; }
+  if s[0].action != 0 || path.count > OUTBOX { return; }
+  s[0].out_n = 0;
+  for i: 0..<path.count { s[0].outbox[i] = path[i]; }
+  s[0].out_n = path.count; s[0].action = FK_ACT_NAVIGATE;
+  s[0].fk[0].going = true; fk_say(s, "OPENING YOUR FORK");
+}
+
+// ---- the pane's taps
+fk_hit :: (s: [] Everglade, b: int, x: f32, y: f32) -> bool { return in_box(s[0].fk[0].boxes[b], x, y); }
+fork_pointer :: (s: [] Everglade, x: f32, y: f32, phase: int, id: int) -> bool {
+  if !fk_has(s) { return false; }
+  if s[0].fk[0].finger >= 0 && id == s[0].fk[0].finger { if phase >= 2 { s[0].fk[0].finger = -1; } return true; }
+  if phase != 0 { return false; }
+  if fk_hit(s, FB_OPEN, x, y) { s[0].fk[0].finger = id; s[0].fk[0].open = !s[0].fk[0].open; s[0].fk[0].note_n = 0; return true; }
+  if !s[0].fk[0].open { return false; }
+  hit := -1;
+  for b: FB_RULE..<FB_PANE { if fk_hit(s, b, x, y) { hit = b; } }
+  if hit < 0 && !fk_hit(s, FB_PANE, x, y) { return false; }
+  s[0].fk[0].finger = id;
+  if hit >= FB_RULE && hit < FB_RULE + FK_RULES { r := hit - FB_RULE; if s[0].fk[0].has[r] { s[0].fk[0].pick[r] = !s[0].fk[0].pick[r]; } }
+  else if hit == FB_CLOSE { s[0].fk[0].open = false; }
+  else if hit == FB_MAKE { fork_it(s); }
+  else if hit == FB_PUBLISH && s[0].fk[0].owner && !s[0].fk[0].req_ready && s[0].fk[0].req_what == FK_ASK_NONE {
+    fk_ask(s, FK_ASK_PUBLISH, "/publish", ifx s[0].fk[0].published then "{\"published\":false}" else "{\"published\":true}", true);
+    fk_say(s, ifx s[0].fk[0].published then "TAKING IT OFF THE LIST" else "PUBLISHING");
+  }
+  else if hit == FB_ORIGINAL && s[0].fk[0].from_n > 0 {
+    buf: [FK_URL] u8;
+    n := fk_put(buf[..], 0, "/realms/");
+    n = fk_put(buf[..], n, cast(string) s[0].fk[0].from[0..<s[0].fk[0].from_n]);
+    fk_go(s, cast(string) buf[0..<n]);
+  }
+  return true;
+}
+// FORK IT: the rules picked, as the server's ids.
+fork_it :: (s: [] Everglade) {
+  if !fk_has(s) { return; }
+  if s[0].fk[0].going || s[0].fk[0].req_ready || s[0].fk[0].req_what != FK_ASK_NONE { return; }
+  body: [FK_BODY] u8;
+  n := fk_put(body[..], 0, "{\"rules\":[");
+  first := true;
+  for r: 0..<FK_RULES {
+    if !s[0].fk[0].pick[r] || !s[0].fk[0].has[r] { continue; }
+    if !first { n = fk_put(body[..], n, ","); }
+    n = fk_put(body[..], n, "\""); n = fk_put(body[..], n, FK_RULE_ID[r]); n = fk_put(body[..], n, "\"");
+    first = false;
+  }
+  n = fk_put(body[..], n, "]}");
+  fk_ask(s, FK_ASK_FORK, "/fork?as=lines", cast(string) body[0..<n], true);
+  s[0].fk[0].going = true;
+  fk_say(s, "FORKING");
+}
+
+// ---- drawing: FORK by the title plate (title_box), and the pane under it while open
+fork_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, title_box: Box) -> int {
+  if !fk_has(s) { return at; }
+  for b: 0..<FB_N { s[0].fk[0].boxes[b] = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0}; }
+  if !s[0].fk[0].known || s[0].above || s[0].talk >= 0 || s[0].board || s[0].ev.editing { return at; }
+  k := hi(s[0].dpr, 0.5);
+  n := at;
+  word := ifx fk_is_fork(s) then "FORK OF EVERGLADE" else "FORK";
+  bw := text_width(word, 9 * k) + 32 * k; bh := 38 * k;
+  fb := Box.{x0 = title_box.x1 + 8 * k, y0 = title_box.y0, x1 = title_box.x1 + 8 * k + bw, y1 = title_box.y0 + bh};
+  s[0].fk[0].boxes[FB_OPEN] = fb;
+  plate(s, u, fb, 0.85, ifx s[0].fk[0].open then 2.0f32 else 1.0f32);
+  n = draw_text(out, n, word, fb.x0 + 16 * k, fb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  if !s[0].fk[0].open { return n; }
+  // the pane: what it is, the rules to pick, and its buttons
+  pw := lo(s[0].width - 32 * k, 400 * k);
+  x0 := lo(title_box.x0, s[0].width - 16 * k - pw);
+  y := hi(title_box.y1, fb.y1) + 10 * k;
+  lines := ifx fk_is_fork(s) then 2 else 1;
+  ph := 20 * k + f32(lines) * 18 * k + 14 * k + f32(FK_RULES) * 40 * k + 12 * k + 44 * k + ifx s[0].fk[0].note_n > 0 then 22 * k else 0.0f32;
+  pane := Box.{x0 = x0, y0 = y, x1 = x0 + pw, y1 = y + ph};
+  s[0].fk[0].boxes[FB_PANE] = pane;
+  plate(s, u, pane, 0.9, 0);
+  tx := x0 + 14 * k;
+  ty := y + 24 * k;
+  name := ifx fk_is_fork(s) && s[0].fk[0].name_n > 0 then cast(string) s[0].fk[0].name[0..<s[0].fk[0].name_n] else "FORK EVERGLADE";
+  n = draw_text(out, n, name, tx, ty, fk_fit(name, 10 * k, pw - 28 * k), GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  ty += 18 * k;
+  if fk_is_fork(s) {
+    // what it was forked from and who made that
+    buf: [120] u8;
+    m := fk_put(buf[..], 0, "FORKED FROM ");
+    m = fk_put(buf[..], m, ifx s[0].fk[0].from_name_n > 0 then cast(string) s[0].fk[0].from_name[0..<s[0].fk[0].from_name_n] else "EVERGLADE");
+    m = fk_put(buf[..], m, " · MADE BY ");
+    m = fk_put(buf[..], m, ifx s[0].fk[0].maker_n > 0 then cast(string) s[0].fk[0].maker[0..<s[0].fk[0].maker_n] else "OPENAGENTS");
+    credit := cast(string) buf[0..<m];
+    n = draw_text(out, n, credit, tx, ty, fk_fit(credit, 7 * k, pw - 28 * k), GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+    ty += 18 * k;
+  }
+  ask := ifx fk_is_fork(s) then "FORK IT AGAIN WITH THESE RULES" else "YOUR OWN COPY · EVERGLADE STAYS AS IT IS";
+  n = draw_text(out, n, ask, tx, ty, fk_fit(ask, 7 * k, pw - 28 * k), GAP, SPACE, ink(k, 0.7, PARCH_R, PARCH_G, PARCH_B), false, false);
+  ry := ty + 12 * k;
+  for r: 0..<FK_RULES {
+    rb := Box.{x0 = tx, y0 = ry, x1 = pane.x1 - 14 * k, y1 = ry + 34 * k};
+    ry += 40 * k;
+    if !s[0].fk[0].has[r] { continue; }
+    s[0].fk[0].boxes[FB_RULE + r] = rb;
+    plate(s, u, rb, 0.8, ifx s[0].fk[0].pick[r] then 2.0f32 else 1.0f32);
+    label := cast(string) s[0].fk[0].label[r * FK_NAME..<r * FK_NAME + s[0].fk[0].label_n[r]];
+    n = draw_text(out, n, ifx s[0].fk[0].pick[r] then "ON" else "OFF", rb.x0 + 12 * k, rb.y1 - 12 * k, 8 * k, GAP, SPACE,
+                  ink(k, ifx s[0].fk[0].pick[r] then 0.95f32 else 0.55f32, GOLD_R, GOLD_G, GOLD_B), false, false);
+    n = draw_text(out, n, label, rb.x0 + 52 * k, rb.y1 - 12 * k, fk_fit(label, 8 * k, rb.x1 - rb.x0 - 64 * k), GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  // the buttons along its foot
+  by := ry + 6 * k;
+  names: [4] string;
+  ids: [4] int;
+  c := 0;
+  names[c] = ifx s[0].fk[0].going then "FORKING" else "FORK IT"; ids[c] = FB_MAKE; c += 1;
+  if fk_is_fork(s) && s[0].fk[0].owner { names[c] = ifx s[0].fk[0].published then "UNPUBLISH" else "PUBLISH"; ids[c] = FB_PUBLISH; c += 1; }
+  if fk_is_fork(s) && s[0].fk[0].from_n > 0 { names[c] = "ORIGINAL"; ids[c] = FB_ORIGINAL; c += 1; }
+  names[c] = "CLOSE"; ids[c] = FB_CLOSE; c += 1;
+  gap := 8 * k;
+  bwid := (pw - 28 * k - f32(c - 1) * gap) / f32(c);
+  for q: 0..<c {
+    bx := tx + f32(q) * (bwid + gap);
+    b := Box.{x0 = bx, y0 = by, x1 = bx + bwid, y1 = by + 36 * k};
+    s[0].fk[0].boxes[ids[q]] = b;
+    plate(s, u, b, 0.88, ifx q == 0 then 2.0f32 else 1.0f32);
+    ts := fk_fit(names[q], 8 * k, bwid - 12 * k);
+    n = draw_text(out, n, names[q], floor((b.x0 + b.x1 - text_width(names[q], ts)) / 2), b.y1 - 13 * k, ts, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  if s[0].fk[0].note_n > 0 {
+    note := cast(string) s[0].fk[0].note[0..<s[0].fk[0].note_n];
+    n = draw_text(out, n, note, tx, by + 56 * k, fk_fit(note, 7 * k, pw - 28 * k), GAP, SPACE, ink(k, 0.85, PARCH_R, PARCH_G, PARCH_B), false, false);
+  }
+  return n;
+}
+// A text size at most `cap` that fits `room`.
+fk_fit :: (text: string, cap: f32, room: f32) -> f32 {
+  w := text_width(text, cap);
+  return ifx w > room && w > 0 then cap * room / w else cap;
+}
+
+#test "a fork's facts: its slug and its rules, only the four this code plays; Everglade itself has none" {
+  g: [1] Everglade; gk: [1] EgFork; everglade_attach_fork(g[..], gk[..]);
+  everglade_message(g[..], MSG_FACTS, "realm=everglade\nclock=cycle\nnow=1000");
+  #assert !fk_is_fork(g[..]) && !fork_rule(g[..], FK_NIGHT) && everglade_gravity_lift(g[..]) == 0;
+  buf: [80] u8;
+  #assert cast(string) buf[0..<everglade_world_path(g[..], buf[..], 0)] == "/api/playtest/world/everglade";
+  f: [1] Everglade; fk: [1] EgFork; everglade_attach_fork(f[..], fk[..]);
+  everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=doomglade\nrules=night,dragons,lowgrav\nclock=cycle\nnow=1000");
+  #assert fk_is_fork(f[..]) && fork_rule(f[..], FK_NIGHT) && fork_rule(f[..], FK_LOWGRAV) && !fork_rule(f[..], FK_WAVES);
+  #assert abs(everglade_gravity_lift(f[..]) - 16.0) < 0.01;
+  #assert cast(string) buf[0..<everglade_world_path(f[..], buf[..], 0)] == "/api/playtest/world/made-doomglade";
+  #assert cast(string) buf[0..<everglade_world_path(f[..], buf[..], 1)] == "/api/playtest/world/made-doomglade/reset";
+  #assert cast(string) buf[0..<everglade_world_path(f[..], buf[..], 2)] == "/api/playtest/realm/doomglade/edit";
+  // a slug that isn't one is no fork
+  b: [1] Everglade; bk: [1] EgFork; everglade_attach_fork(b[..], bk[..]);
+  everglade_message(b[..], MSG_FACTS, "realm=everglade\nfork=../x\nrules=night\nnow=1000");
+  #assert !fk_is_fork(b[..]) && !fork_rule(b[..], FK_NIGHT);
+}
+
+#test "the board decides once the layer has the fork's spec: a rule switched off there is off" {
+  f: [1] Everglade; fk: [1] EgFork; everglade_attach_fork(f[..], fk[..]);
+  everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=doomglade\nrules=night\nnow=1000");
+  e := f[0].ev.ed[..];
+  redit_start(e, "doomglade");
+  e[0].ready = true;
+  e[0].row_n = 2;
+  e[0].row_key_n[0] = redit_copy(e[0].row_key[0..<REDIT_KEY], "night"); e[0].row_on[0] = false;
+  e[0].row_key_n[1] = redit_copy(e[0].row_key[REDIT_KEY..<2 * REDIT_KEY], "waves"); e[0].row_on[1] = true;
+  #assert !fork_rule(f[..], FK_NIGHT) && fork_rule(f[..], FK_WAVES) && !fork_rule(f[..], FK_LOWGRAV);
+}
+
+#test "the pane: the server's rules, FORK IT sends only the picked ones, the answer's path is where the page goes" {
+  g: [1] Everglade; gk: [1] EgFork; everglade_attach_fork(g[..], gk[..]);
+  everglade_message(g[..], MSG_FACTS, "realm=everglade\nnow=1000");
+  fork_frame(g[..], 0.016);
+  #assert g[0].fk[0].req_ready && cast(string) g[0].fk[0].req_url[0..<g[0].fk[0].req_url_n] == "/api/playtest/realms/everglade/fork";
+  everglade_fork_requested(g[..], 3);
+  #assert fork_message(g[..], HTTP_KIND + 3, "200\nbase everglade\ntitle Everglade\nfork 0\nmaker OpenAgents\nname Everglade\nowner 0\npublished 0\nrule night 0 Always night\nrule waves 0 Hostile waves\nrule nodestroy 0 No destruction\nrule lowgrav 0 Low gravity\nrule dragons 1 Dragons\n");
+  #assert g[0].fk[0].known && g[0].fk[0].has[FK_NIGHT] && g[0].fk[0].has[FK_LOWGRAV] && cast(string) g[0].fk[0].label[0..<g[0].fk[0].label_n[0]] == "ALWAYS NIGHT";
+  g[0].fk[0].pick[FK_NIGHT] = true; g[0].fk[0].pick[FK_WAVES] = true;
+  fork_it(g[..]);
+  #assert g[0].fk[0].req_ready && cast(string) g[0].fk[0].req_url[0..<g[0].fk[0].req_url_n] == "/api/playtest/realms/everglade/fork?as=lines"
+          && cast(string) g[0].fk[0].req_body[0..<g[0].fk[0].req_body_n] == "{\"rules\":[\"night\",\"waves\"]}"
+          && g[0].fk[0].req_flags == HTTP_POST | HTTP_ANSWER | TRACK_KEY;
+  everglade_fork_requested(g[..], 4);
+  #assert fork_message(g[..], HTTP_KIND + 4, "200\nslug doomglade\npath /realms/doomglade\npage 1\n");
+  #assert everglade_action(g[..]) == FK_ACT_NAVIGATE && cast(string) g[0].outbox[0..<g[0].out_n] == "/realms/doomglade";
+  // a path that isn't a realm's is never followed
+  g[0].fk[0].going = false;
+  fork_it(g[..]);
+  everglade_fork_requested(g[..], 5);
+  #assert fork_message(g[..], HTTP_KIND + 5, "200\nslug x\npath https://evil.example/\n") && everglade_action(g[..]) == 0;
+}
+
+#test "a fork's pane says what it was forked from and who made it; hostile waves send the watch in" {
+  f: [1] Everglade; fk: [1] EgFork; everglade_attach_fork(f[..], fk[..]);
+  everglade_message(f[..], MSG_FACTS, "realm=everglade\nfork=doomglade\nrules=waves\nnow=1000");
+  fork_frame(f[..], 0.016);
+  everglade_fork_requested(f[..], 2);
+  #assert fork_message(f[..], HTTP_KIND + 2, "200\nbase everglade\ntitle Everglade\nfork 1\nfrom everglade|Everglade\nmaker Open<Agents>\nname Doom|glade\nowner 1\npublished 0\nrule waves 1 Hostile waves\n");
+  #assert cast(string) f[0].fk[0].from[0..<f[0].fk[0].from_n] == "everglade" && cast(string) f[0].fk[0].from_name[0..<f[0].fk[0].from_name_n] == "EVERGLADE"
+          && cast(string) f[0].fk[0].maker[0..<f[0].fk[0].maker_n] == "OPENAGENTS" && cast(string) f[0].fk[0].name[0..<f[0].fk[0].name_n] == "DOOMGLADE"
+          && f[0].fk[0].owner && f[0].fk[0].pick[FK_WAVES];
+  w := watch_w(f[..]);
+  w[0].on = true;
+  fork_frame(f[..], f32(FK_WAVE_FIRST) + 0.1);
+  #assert w[0].wanted && w[0].heat >= HEAT_AT[2];
+}
