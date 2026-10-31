@@ -332,7 +332,46 @@
     }
   },
   "rollout": {
-    "outcome": "pending"
+    "outcome": "deployed_and_public_parity_passed",
+    "pushed_commit": "2d3d741173",
+    "release_stamp": "20261031T051953Z",
+    "release_log": "release 2d3d741173: live on openagents.com in 142.4 s",
+    "public_relay_parity": {
+      "at": "2026-10-31T05:21:03Z",
+      "relay": "wss://relay.openagents.com",
+      "verified_issues": 264,
+      "captured_events": 2420,
+      "native_state": 3,
+      "incomplete": 0,
+      "displayed_roots": 264,
+      "stored_bytes": 2479842,
+      "table_bytes": {
+        "items": 33381,
+        "plans": 45750,
+        "details": 482049,
+        "log": 8534,
+        "info": 5531
+      },
+      "table_limits": {
+        "items": 131072,
+        "plans": 65536,
+        "details": 1048576,
+        "log": 16384,
+        "info": 16384
+      },
+      "all_five_tables_match": true,
+      "command": "COAX_LIVE_REAL=1 bun test live-catchup.test.ts -t \"published public queue\""
+    },
+    "production_probe": {
+      "at": "2026-10-31T05:26:17Z",
+      "headless": true,
+      "muted": true,
+      "page": "https://openagents.com/projects/coax",
+      "coaxial_state_size": 21026208,
+      "expected_state_size": "20927904 + 2 x (65536 - 16384) = 21026208",
+      "browser_errors": 0,
+      "observed": "live queue drawn with in-progress plans (17 at work, 21 ready, 78 waiting) from the relay"
+    }
   },
   "limits": [
     "Plan output still refuses above 65,536 bytes; no plan history is discarded.",

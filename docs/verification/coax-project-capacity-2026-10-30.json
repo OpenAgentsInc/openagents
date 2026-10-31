@@ -133,7 +133,7 @@
       "apps/openagents-web/build.sh": false
     },
     "native_test_source_sha256": "fe66493295d186a8fb6c3be5409f7ebdbd88ade0edd2c794aaeca0fe5524d8b4",
-    "fold_diff": "FOLD_ISSUES256\u2192320 only; no new Fold bool/helpers/tests copied from scratch"
+    "fold_diff": "FOLD_ISSUES256→320 only; no new Fold bool/helpers/tests copied from scratch"
   },
   "production_wasm": {
     "argv": [
@@ -361,7 +361,7 @@
     "scope": "build.sh is a shared registered input, so the walk renders registered realm/NIP pages. Project routes use the dedicated263-row native/WebGPU qualification. Five prior app-family parity input sets are unchanged. Homepage verifier intentionally changes with the shared Fold capacity and has separate real-Wasm320/321 qualification; its draw source is unchanged. Keep all8 baseline failures failed."
   },
   "rollout": {
-    "outcome": "reader_deployed_issues_published_public_projection_blocked",
+    "outcome": "reader_deployed_issues_published_public_projection_passed",
     "passed_ref": "ab70234e13eb9fccd04b51b51ff1a5d75888edb7",
     "passed_stamp": "20261031T041441Z",
     "project_layout_record": "/tmp/coax-capacity-production-layout.json",
@@ -381,7 +381,20 @@
     },
     "blocking_issue": "r1a-plan-projection-capacity",
     "blocking_record": "docs/verification/coax-plan-projection-capacity-2026-10-30.json",
-    "task_status": "open pending the separate prerequisite; no actual public parity pass is claimed yet."
+    "task_status": "complete: the published 264-root public queue is retained whole by the deployed 320-root reader with all five tables matching.",
+    "unblocked_by": {
+      "issue": "r1a-plan-projection-capacity",
+      "commit": "2d3d741173",
+      "release_stamp": "20261031T051953Z"
+    },
+    "public_parity_after_unblock": {
+      "at": "2026-10-31T05:21:03Z",
+      "verified_issues": 264,
+      "captured_events": 2420,
+      "native_state": 3,
+      "incomplete": 0,
+      "all_five_tables_match": true
+    }
   },
   "prior_parity_input_scope": {
     "verse": {
