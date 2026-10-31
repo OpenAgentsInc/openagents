@@ -1,0 +1,35 @@
+// Independent raw three-field Coax shapes, for honest generated C/instruction comparison.
+SPN_Raw32 :: struct {x:f32;y:f32;z:f32;}
+SPN_Raw64 :: struct {x:f64;y:f64;z:f64;}
+SPN_point32 :: (x:f32,y:f32,z:f32)->SPN_Raw32 #export_c {r:SPN_Raw32;r.x=x;r.y=y;r.z=z;return r;}
+SPN_vector32 :: (x:f32,y:f32,z:f32)->SPN_Raw32 #export_c {r:SPN_Raw32;r.x=x;r.y=y;r.z=z;return r;}
+SPN_second32 :: (x:f32,y:f32,z:f32)->SPN_Raw32 #export_c {r:SPN_Raw32;r.x=x;r.y=y;r.z=z;return r;}
+SPN_pp32 :: (a:SPN_Raw32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z};}
+SPN_pvadd32 :: (a:SPN_Raw32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_vpadd32 :: (a:SPN_Raw32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_pvsub32 :: (a:SPN_Raw32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z};}
+SPN_vvadd32 :: (a:SPN_Raw32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_vvsub32 :: (a:SPN_Raw32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z};}
+SPN_vmul32 :: (a:SPN_Raw32,b:f32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x*b,y=a.y*b,z=a.z*b};}
+SPN_smul32 :: (a:f32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a*b.x,y=a*b.y,z=a*b.z};}
+SPN_vdiv32 :: (a:SPN_Raw32,b:f32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x/b,y=a.y/b,z=a.z/b};}
+SPN_vneg32 :: (a:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=-a.x,y=-a.y,z=-a.z};}
+SPN_secondadd32 :: (a:SPN_Raw32,b:SPN_Raw32)->SPN_Raw32 #export_c {return SPN_Raw32.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_point64 :: (x:f64,y:f64,z:f64)->SPN_Raw64 #export_c {r:SPN_Raw64;r.x=x;r.y=y;r.z=z;return r;}
+SPN_vector64 :: (x:f64,y:f64,z:f64)->SPN_Raw64 #export_c {r:SPN_Raw64;r.x=x;r.y=y;r.z=z;return r;}
+SPN_second64 :: (x:f64,y:f64,z:f64)->SPN_Raw64 #export_c {r:SPN_Raw64;r.x=x;r.y=y;r.z=z;return r;}
+SPN_pp64 :: (a:SPN_Raw64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z};}
+SPN_pvadd64 :: (a:SPN_Raw64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_vpadd64 :: (a:SPN_Raw64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_pvsub64 :: (a:SPN_Raw64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z};}
+SPN_vvadd64 :: (a:SPN_Raw64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_vvsub64 :: (a:SPN_Raw64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x-b.x,y=a.y-b.y,z=a.z-b.z};}
+SPN_vmul64 :: (a:SPN_Raw64,b:f64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x*b,y=a.y*b,z=a.z*b};}
+SPN_smul64 :: (a:f64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a*b.x,y=a*b.y,z=a*b.z};}
+SPN_vdiv64 :: (a:SPN_Raw64,b:f64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x/b,y=a.y/b,z=a.z/b};}
+SPN_vneg64 :: (a:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=-a.x,y=-a.y,z=-a.z};}
+SPN_secondadd64 :: (a:SPN_Raw64,b:SPN_Raw64)->SPN_Raw64 #export_c {return SPN_Raw64.{x=a.x+b.x,y=a.y+b.y,z=a.z+b.z};}
+SPN_mutate32 :: (points:[]SPN_Raw32)->SPN_Raw32 {points[0].x=101;points[0].y=202;points[0].z=303;return SPN_vector32(2,3,4);}
+SPN_alias32 :: (points:[]SPN_Raw32)->SPN_Raw32 #export_c {left:=points[0];right:=SPN_mutate32(points);return SPN_Raw32.{x=left.x+right.x,y=left.y+right.y,z=left.z+right.z};}
+SPN_mutate64 :: (points:[]SPN_Raw64)->SPN_Raw64 {points[0].x=101;points[0].y=202;points[0].z=303;return SPN_vector64(2,3,4);}
+SPN_alias64 :: (points:[]SPN_Raw64)->SPN_Raw64 #export_c {left:=points[0];right:=SPN_mutate64(points);return SPN_Raw64.{x=left.x+right.x,y=left.y+right.y,z=left.z+right.z};}

@@ -1,0 +1,223 @@
+{
+  "schema": "coax.spatial-native.qualification.v1",
+  "status": "native-qualified; refreshed final emitter C/header-bound; compiler authority/publication closure separate",
+  "native_passed": true,
+  "final_compiler_binding_passed": true,
+  "compiler_initial": {
+    "path": "/private/tmp/coax-spatial-native-first-compiler/coax",
+    "sha256": "f4c27d83090e6723d73bd3bb252a1e4dc7d29211d92a588e103eef1b8011beaa",
+    "version": "coax0 0.44.0",
+    "context": "Early private M3 candidate; compiler resource/mutation/publication closure is separate."
+  },
+  "source_sha256": {
+    "coax/tests/spatial/native.coax": "e1d97e009ba22b89dddbaba31b1acf6fe74b2e1c2fdc4ad02cc30600012588e3",
+    "coax/tests/spatial/native-raw.coax": "82753d93aa17dacb65935c57bb2557f27893135664e59159fedc0bfcf9d11a82",
+    "coax/tests/spatial-native.c": "b3508ab4824d22c27b286dad25310c18b98bb82b0ea6be19e5676130600d70e1",
+    "coax/tests/spatial_native.py": "855e2a9d35f315091ceb48950cef1bfc86f992d9bde51733fbea6a88e53feaf2"
+  },
+  "seed": 91479803637809,
+  "rows_per_carrier": 1088,
+  "input_sha256": "214c580d28712b77042a3f68f86446659839faafdc3a53523bb45a3774b15883",
+  "numeric_f32_per_mode": 42486,
+  "numeric_f64_per_mode": 42492,
+  "numeric_total_per_mode": 84978,
+  "modes": [
+    {
+      "mode": "debug",
+      "coax_profile": "debug",
+      "passed": true,
+      "numeric_observations": 84978,
+      "output_bytes": 510008,
+      "output_sha256": "934d69a7703e04103e4fc892c7c171c00f7370824f3303a2ef66ae3632ec7754",
+      "native_object_sha256": "f033e4bdef32803d5a9412dfce4d7305a3cf6288962ed952b2310b1efa93ca0c",
+      "stderr_bytes": 0,
+      "stdout": "spatial native: 1088 f32 rows, 1088 f64 rows, 42486 f32 + 42492 f64 observations, 20 ordered aggregates, 8 interrupted-order cases, FPCR=0"
+    },
+    {
+      "mode": "release",
+      "coax_profile": "release",
+      "passed": true,
+      "numeric_observations": 84978,
+      "output_bytes": 510008,
+      "output_sha256": "934d69a7703e04103e4fc892c7c171c00f7370824f3303a2ef66ae3632ec7754",
+      "native_object_sha256": "6c360e72809392883ca3b33fca9ea899e3b9c2b0205904c1e5fe812eee129782",
+      "stderr_bytes": 0,
+      "stdout": "spatial native: 1088 f32 rows, 1088 f64 rows, 42486 f32 + 42492 f64 observations, 20 ordered aggregates, 8 interrupted-order cases, FPCR=0"
+    },
+    {
+      "mode": "sanitized",
+      "coax_profile": "debug",
+      "passed": true,
+      "numeric_observations": 84978,
+      "output_bytes": 510008,
+      "output_sha256": "934d69a7703e04103e4fc892c7c171c00f7370824f3303a2ef66ae3632ec7754",
+      "native_object_sha256": "8854a777eec6c250d02bd158ccada6bc22374621e9d89f329cfb0df19cc79679",
+      "stderr_bytes": 0,
+      "stdout": "spatial native: 1088 f32 rows, 1088 f64 rows, 42486 f32 + 42492 f64 observations, 20 ordered aggregates, 8 interrupted-order cases, FPCR=0"
+    }
+  ],
+  "all_mode_transcripts_bit_identical": true,
+  "abi": {
+    "three_raw_fields": true,
+    "point_f32_size_alignment_offsets": [
+      12,
+      4,
+      0,
+      4,
+      8
+    ],
+    "point_f64_size_alignment_offsets": [
+      24,
+      8,
+      0,
+      8,
+      16
+    ],
+    "vectors_and_second_unit_vectors_match_raw_fields": true,
+    "function_pointer_aggregate_params_and_return": true,
+    "named_nested_and_fixed_array_size_alignment_offsets_roundtrip": true,
+    "typed_view_layout_and_operations": true,
+    "whole_aggregate_order_cases_per_carrier": 10,
+    "interrupted_foreign_scalar_order_cases_per_carrier": 4,
+    "left_view_alias_snapshot_per_carrier": true,
+    "no_foreign_aggregate_admission": true
+  },
+  "profile": "Round-to-nearest host IEEE binary32/binary64, no fast math/contraction; require AArch64 FZ and x86 SSE FTZ/DAZ off. Exact non-NaN bits including signed zero/subnormals/infinities; NaNs by classification with canonical transcript. NaN payloads/exception flags and cross-target determinism are outside scope.",
+  "oracle": "Independent volatile raw C coordinate add/subtract/multiply/divide/negate, aggregate-copy/ABI guards and explicit effect trace literals; raw Coax is used only for code-generation comparison, never as the numeric oracle.",
+  "scope": "NEW Point3/Vector3 concrete same-frame/unit/rep affine arithmetic; raw three-field physical aggregate, function-pointer, nested/fixed-array/view ABI; one-time left-to-right whole operands and left snapshot before right-side view mutation. Foreign scalar interruption is a host effect-order probe, not recognized typed Coax trap evidence. No foreign aggregate widening, transforms, angular interpretation, epochs, device ABI, models/SDKs, full R12 or old corpora.",
+  "generated_profiles": {
+    "debug": {
+      "C_sha256": "b60ca3d3800369fa1b9032021efb2ec7c83897984fe2e4a551847fd64d6fb00c",
+      "header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+      "raw_C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+      "private_typedef_mapping": {
+        "P32": "coax_q3t_CoaxPoint3__f16u21r6",
+        "V32": "coax_q3t_CoaxVector3__f16u21r6",
+        "S32": "coax_q3t_CoaxVector3__f16u23r6",
+        "A32": "coax_t_SPN_Arrays32",
+        "PV32": "coax_v_q3t_CoaxPoint3__f16u21r6",
+        "VV32": "coax_v_q3t_CoaxVector3__f16u21r6",
+        "P64": "coax_q3t_CoaxPoint3__f16u21r7",
+        "V64": "coax_q3t_CoaxVector3__f16u21r7",
+        "S64": "coax_q3t_CoaxVector3__f16u23r7",
+        "A64": "coax_t_SPN_Arrays64",
+        "PV64": "coax_v_q3t_CoaxPoint3__f16u21r7",
+        "VV64": "coax_v_q3t_CoaxVector3__f16u21r7",
+        "Record": "coax_t_SPN_Record"
+      }
+    },
+    "release": {
+      "C_sha256": "e2256b37326c900a25ce42d1c9d649a185c6e8d134c623be35757dc0a77f5cb9",
+      "header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+      "raw_C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+      "private_typedef_mapping": {
+        "P32": "coax_q3t_CoaxPoint3__f16u21r6",
+        "V32": "coax_q3t_CoaxVector3__f16u21r6",
+        "S32": "coax_q3t_CoaxVector3__f16u23r6",
+        "A32": "coax_t_SPN_Arrays32",
+        "PV32": "coax_v_q3t_CoaxPoint3__f16u21r6",
+        "VV32": "coax_v_q3t_CoaxVector3__f16u21r6",
+        "P64": "coax_q3t_CoaxPoint3__f16u21r7",
+        "V64": "coax_q3t_CoaxVector3__f16u21r7",
+        "S64": "coax_q3t_CoaxVector3__f16u23r7",
+        "A64": "coax_t_SPN_Arrays64",
+        "PV64": "coax_v_q3t_CoaxPoint3__f16u21r7",
+        "VV64": "coax_v_q3t_CoaxVector3__f16u21r7",
+        "Record": "coax_t_SPN_Record"
+      }
+    }
+  },
+  "code_generation": {
+    "debug": {
+      "functions": 30,
+      "symbol_byte_extents_equal": 6,
+      "exact_relocation_free_instruction_extents": 6,
+      "typed_raw_C_bodies_equal_after_line_directive_removal_only": 0,
+      "relocation_bearing_cases": [
+        "SPN_pp32",
+        "SPN_pvadd32",
+        "SPN_vpadd32",
+        "SPN_pvsub32",
+        "SPN_vvadd32",
+        "SPN_vvsub32",
+        "SPN_vmul32",
+        "SPN_smul32",
+        "SPN_vdiv32",
+        "SPN_vneg32",
+        "SPN_secondadd32",
+        "SPN_alias32",
+        "SPN_pp64",
+        "SPN_pvadd64",
+        "SPN_vpadd64",
+        "SPN_pvsub64",
+        "SPN_vvadd64",
+        "SPN_vvsub64",
+        "SPN_vmul64",
+        "SPN_smul64",
+        "SPN_vdiv64",
+        "SPN_vneg64",
+        "SPN_secondadd64",
+        "SPN_alias64"
+      ],
+      "scope": "Exact symbol-to-next-text-symbol bytes, including any trailing alignment; relocation-bearing byte equality alone is not an instruction-equivalence claim."
+    },
+    "release": {
+      "functions": 30,
+      "symbol_byte_extents_equal": 30,
+      "exact_relocation_free_instruction_extents": 28,
+      "typed_raw_C_bodies_equal_after_line_directive_removal_only": 0,
+      "relocation_bearing_cases": [
+        "SPN_alias32",
+        "SPN_alias64"
+      ],
+      "scope": "Exact symbol-to-next-text-symbol bytes, including any trailing alignment; relocation-bearing byte equality alone is not an instruction-equivalence claim."
+    }
+  },
+  "private_initial_failure": {
+    "path": "/tmp/spatial-native-first/receipt.json",
+    "sha256": "41f658f31ead950ca6b49b04db51424488994b60444edc1574848bf7a005ab0a",
+    "passed": false,
+    "preserved": true,
+    "failure": "Native link output collided with existing debug-profile directory. No native numeric modes ran."
+  },
+  "private_native_receipt": {
+    "path": "/tmp/spatial-native-first-followup/receipt.json",
+    "sha256": "6b871b2c67d351196317c38c8e58420af9c058050e8d8687ad9b53b02c4af743"
+  },
+  "tooling_path_followup": {
+    "old_driver_sha256": "d2002280e5679969eac53cc7d685d1eeb4fe29bdca0b5402e0cb8aa33d08aecc",
+    "new_driver_sha256": "855e2a9d35f315091ceb48950cef1bfc86f992d9bde51733fbea6a88e53feaf2",
+    "change": "Only executable paths change from work/mode to work/(mode+\"-native\"); numeric/source/ABI/oracle and compiled C/H/input are unchanged.",
+    "reused_passed_phases": [
+      "compiler-version",
+      "cc-version",
+      "coax-checks",
+      "typed-debug",
+      "raw-debug",
+      "typed-release",
+      "raw-release",
+      "compile-debug-object"
+    ],
+    "failed_link_is_superseded_not_relabelled": true,
+    "mechanical_reversal_reproduces_initial_driver_sha256": true,
+    "initial_failed_receipt_preserved": true,
+    "qualification_is_composed_from_initial_passing_phases_and_followup_not_a_relabelled_full_run": true
+  },
+  "independent_read_only_review": {
+    "reviewer": "robotics_flow",
+    "numeric_count_checked": true,
+    "IEEE_oracle_independence_and_layout_checked": true,
+    "alias_and_interruption_scope_checked": true,
+    "no_additional_execution": true
+  },
+  "final_compiler_binding": {
+    "compiler_sha256": "2fecd6afcfbc4983e7a548345704b197732595725bc0a2e12d6f9afb5cec7fe6",
+    "receipt_path": "/tmp/spatial-native-final-emissions/receipt.json",
+    "receipt_sha256": "22c553e2c8088ec58d12394aea6a18d9d8aa381bea5db9e8354ec4e61f3aa15f",
+    "four_emitted_C_programs_exact": true,
+    "two_exported_headers_exact": true,
+    "stderr_empty": true,
+    "prior_native_and_object_results_reused_not_repeated": true,
+    "scope": "Four new emitter programs only. Exact C/header identity permits reuse of previous debug/release/sanitized numerical, ABI/order and object results; no native/test/SDK rerun. Compiler authority/publication closure is separate."
+  }
+}

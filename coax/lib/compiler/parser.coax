@@ -52,7 +52,7 @@ PS_Tag :: enum u32 {
 }
 PS_Loc :: struct {line:int;column:int;offset:int;}
 PS_Token :: struct {kind:u32;text:string;loc:PS_Loc;value:u64;floating:f64;width:int;raw_count:int;}
-PS_Node :: struct {kind:PS_Tag;loc:PS_Loc;name:string;name2:string;loc2:PS_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:f64;width:int;end:int;quantity:u8;unit:[6]int;}
+PS_Node :: struct {kind:PS_Tag;loc:PS_Loc;name:string;name2:string;loc2:PS_Loc;a:int;b:int;c:int;d:int;head:int;tail:int;next:int;op:u32;flag:bool;flag2:bool;value:u64;floating:f64;width:int;end:int;quantity:u8;unit:[6]int;frame_decl:bool;frame:[4]int;}
 PS_State :: struct {pos:int;used:int;depth:int;code:string;loc:PS_Loc;fix:string;length:int;development:bool;}
 PS_Result :: struct {ok:bool;root:int;}
 PS_Caps :: struct {nodes:int;message:int;imports:int;}
@@ -462,8 +462,37 @@ PS_struct :: (t:[] PS_Token,n:[] PS_Node,s:[] PS_State,out:[] u8,name:PS_Token)-
   id:=PS_new(n,s,out,PS_Tag.decl_struct_,name.loc);n[id].name=name.text;PS_skip(t,s);
   if PS_at(t,s,6) {d:=PS_peek(t,s,0);parts:=[3] string.["#",d.text," on structs is not supported by coax0 yet"];PS_error(s,out,d.loc,"E0210","",parts[..]);return 0;}
   if PS_at(t,s,8) {PS_struct_params(t,n,s,out,id);}
-  if PS_at(t,s,7) {PS_quantity(t,n,s,out,id);}
+  if PS_at(t,s,7) {PS_physical(t,n,s,out,id);}
   PS_field_block(t,n,s,out,id);return PS_valid(s,id);
+}
+// Physical metadata is literal parser data, never a source lookup. Semantic
+// frame shape/admission belongs to the checker; this transport has no SP load.
+PS_physical :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+ if PS_peek(t,s,0).text=="frame" {PS_frame(t,n,s,out,id);}else {PS_quantity(t,n,s,out,id);}
+ if s[0].code=="" && PS_at(t,s,7) {a:=PS_peek(t,s,0);PS_fail(s,out,a.loc,"E0832","a struct has at most one physical annotation","");}
+}
+PS_frame_word :: (field:int,word:string)->int {
+ if field==0 {if word=="right" {return 1;}if word=="left" {return -1;}}
+ if field==1 {if word=="cartesian" {return 1;}if word=="body" {return 2;}if word=="optical" {return 3;}}
+ if field==2 {if word=="continuous" {return 1;}if word=="jumping" {return 2;}}
+ if field==3 {if word=="f32" {return 32;}if word=="f64" {return 64;}}
+ return 0;
+}
+PS_frame :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
+ a:=PS_take(t,s);PS_expect(t,s,out,8,"after @frame");seen:u64=0;frame:[4]int;
+ while s[0].code=="" {
+  name:=PS_ident(t,s,out,"a frame metadata name");names:=[4]string.["handedness","convention","continuity","min_precision"];at:= -1;
+  for i:0..<4 {if name.text==names[i] {at=i;}}
+  if at<0 {PS_fail(s,out,name.loc,"E0832","unknown frame metadata name","handedness, convention, continuity and min_precision are required");return;}
+  bit:=(cast(u64)1)<<at;if (seen&bit)!=0 {PS_fail(s,out,name.loc,"E0832","frame metadata is repeated","");return;}seen|=bit;
+  PS_expect(t,s,out,23,"after the frame metadata name");value:=PS_take(t,s);
+  if value.kind!=1 {PS_fail(s,out,value.loc,"E0832","frame metadata requires a literal word","");return;}
+  word:=PS_frame_word(at,value.text);if word==0 {PS_fail(s,out,value.loc,"E0832","unsupported frame metadata value","");return;}frame[at]=word;
+  if !PS_at(t,s,14) {break;}PS_skip(t,s);
+ }
+ PS_expect(t,s,out,9,"after the frame metadata");if s[0].code!="" {return;}
+ if seen!=15 {PS_fail(s,out,a.loc,"E0832","incomplete frame metadata","all four literal metadata names are required");return;}
+ n[id].frame_decl=true;n[id].frame=frame;
 }
 PS_quantity :: (t:[]PS_Token,n:[]PS_Node,s:[]PS_State,out:[]u8,id:int) {
   a:=PS_take(t,s);if a.text=="builtin_quantity" {n[id].quantity=2;return;}
@@ -4823,4 +4852,84 @@ PS_imports :: (t:[] PS_Token,out:[] PS_Import,metal:bool)->PS_Imports #export_c 
   #assert id==0 && state[0].code=="E0210" && state[0].loc.line==7 && state[0].loc.column==11 && cast(string)message[0..<state[0].length]=="#packed on structs is not supported by coax0 yet";
   tokens[1].kind=7;tokens[1].text="nonsense";state[0]=PS_State.{};id=PS_struct(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="S"});
   #assert id==0 && state[0].code=="E0820" && state[0].loc.line==7 && state[0].loc.column==11 && cast(string)message[0..<state[0].length]=="unsupported physical annotation";
+}
+
+// Test-only token fixture: all four literal metadata words, with no lexer or
+// checker dependency. The independently compiled lexer/native transport checks
+// in tests/parser.py exercise the actual source spelling as a separate oracle.
+PS_frame_test_tokens :: ()->[19]PS_Token {
+ tokens:[19]PS_Token;tokens[0]=PS_Token.{kind=7,text="frame"};tokens[1].kind=8;
+ names:=[4]string.["handedness","convention","continuity","min_precision"];
+ words:=[4]string.["right","cartesian","continuous","f32"];
+ for i:0..<4 {at:=2+4*i;tokens[at]=PS_Token.{kind=1,text=names[i]};tokens[at+1].kind=23;tokens[at+2]=PS_Token.{kind=1,text=words[i]};if i!=3 {tokens[at+3].kind=14;}}
+ tokens[17].kind=9;for i:0..<19 {tokens[i].loc=PS_Loc.{line=17,column=i+1,offset=200+i};}return tokens;
+}
+#forall "frame literal vocabulary has exact raw transport values" field:0..<4 {
+ words:=[9]string.["right","left","cartesian","body","optical","continuous","jumping","f32","f64"];
+ values:=[9]int.[1,-1,1,2,3,1,2,32,64];owners:=[9]int.[0,0,1,1,1,2,2,3,3];
+ for i:0..<9 {want:=0;if owners[i]==field {want=values[i];}#assert PS_frame_word(field,words[i])==want;}
+ #assert PS_frame_word(field,"")==0 && PS_frame_word(field,"RIGHT")==0;
+ #assert PS_frame_word(-1,"right")==0 && PS_frame_word(4,"f32")==0;
+}
+#forall "frame annotations retain every literal and arbitrary field order" hand:0..<2,convention:0..<3,continuity:0..<2,precision:0..<2,shift:0..<4 {
+ tokens:=PS_frame_test_tokens();names:=[4]string.["handedness","convention","continuity","min_precision"];
+ hands:=[2]string.["right","left"];conventions:=[3]string.["cartesian","body","optical"];continuities:=[2]string.["continuous","jumping"];precisions:=[2]string.["f32","f64"];
+ words:=[4]string.[hands[hand],conventions[convention],continuities[continuity],precisions[precision]];
+ for i:0..<4 {field:=(i+shift)%4;tokens[2+4*i].text=names[field];tokens[4+4*i].text=words[field];}
+ nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_frame(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="" && state[0].pos==18 && nodes[1].frame_decl && nodes[1].quantity==0;
+ #assert nodes[1].frame[0]==(ifx hand==0 then 1 else -1) && nodes[1].frame[1]==convention+1 && nodes[1].frame[2]==continuity+1 && nodes[1].frame[3]==32+32*precision;
+ for i:0..<6 {#assert nodes[1].unit[i]==0;}
+}
+#forall "frame metadata rejects each missing field without publishing metadata" missing:0..<4 {
+ source:=PS_frame_test_tokens();tokens:[15]PS_Token;tokens[0]=source[0];tokens[1]=source[1];cursor:=2;
+ for i:0..<4 {if i!=missing {tokens[cursor]=source[2+4*i];tokens[cursor+1]=source[3+4*i];tokens[cursor+2]=source[4+4*i];cursor+=3;if cursor!=13 {tokens[cursor].kind=14;cursor+=1;}}}
+ tokens[13]=source[17];nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_frame(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="E0832" && state[0].loc.offset==200 && !nodes[1].frame_decl;
+ #assert cast(string)message[0..<state[0].length]=="incomplete frame metadata";
+}
+#forall "frame metadata rejects every duplicate name at its original token" duplicate:0..<4 {
+ original:=PS_frame_test_tokens();tokens:[23]PS_Token;for i:0..<17 {tokens[i]=original[i];}tokens[17].kind=14;
+ for i:0..<3 {tokens[18+i]=original[2+4*duplicate+i];}tokens[18].loc=PS_Loc.{line=19,column=4,offset=401};tokens[21].kind=9;
+ nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_frame(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="E0832" && state[0].loc.line==19 && state[0].loc.column==4 && state[0].loc.offset==401 && !nodes[1].frame_decl;
+ #assert cast(string)message[0..<state[0].length]=="frame metadata is repeated";
+}
+#forall "frame metadata admits words rather than lookups or generic expressions" field:0..<4,mode:0..<8 {
+ tokens:=PS_frame_test_tokens();at:=4+4*field;
+ if mode==0 {tokens[at].kind=3;tokens[at].value=1;}
+ if mode==1 {tokens[at].kind=5;tokens[at].text="right";}
+ if mode==2 {tokens[at].kind=53;tokens[at].text="R";}
+ if mode==3 {tokens[at].kind=4;tokens[at].floating=1;}
+ if mode==4 {tokens[at].kind=2;tokens[at].text="true";}
+ if mode==5 {tokens[at].text="Unknown";}
+ if mode==6 {tokens[at].text="";}
+ if mode==7 {tokens[at].kind=35;}
+ nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_frame(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="E0832" && state[0].loc.offset==200+at && !nodes[1].frame_decl;
+}
+#forall "frame metadata preserves first syntax diagnostics and refuses unknown names" mode:0..<6 {
+ tokens:=PS_frame_test_tokens();at:=2;want:="E0832";
+ if mode==0 {tokens[2].text="origin";}
+ if mode==1 {tokens[1].kind=23;at=1;want="E0201";}
+ if mode==2 {tokens[3].kind=14;at=3;want="E0201";}
+ if mode==3 {tokens[17].kind=10;at=17;want="E0201";}
+ if mode==4 {tokens[2].kind=3;want="E0208";}
+ if mode==5 {tokens[5].kind=9;at=0;}
+ nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_frame(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code==want && state[0].loc.line==17 && state[0].loc.column==at+1 && state[0].loc.offset==200+at && !nodes[1].frame_decl;
+}
+#forall "physical annotation dispatch rejects a second frame unit or builtin role" mode:0..<5 {
+ original:=PS_frame_test_tokens();tokens:[32]PS_Token;for i:0..<18 {tokens[i]=original[i];}
+ at:=18;if mode>=3 {tokens[0].text="builtin_quantity";at=1;}
+ tokens[at]=PS_Token.{kind=7,text="frame",loc=PS_Loc.{line=21,column=7,offset=511}};
+ if mode==1 {tokens[at].text="unit";}if mode==2 {tokens[at].text="builtin_quantity";}if mode==4 {tokens[at].text="unit";}
+ nodes:[3]PS_Node;state:[1]PS_State;message:[256]u8;PS_physical(tokens[..],nodes[..],state[..],message[..],1);
+ #assert state[0].code=="E0832" && state[0].loc.offset==511 && cast(string)message[0..<state[0].length]=="a struct has at most one physical annotation";
+}
+#test "struct frame dispatch preserves literal metadata and ordinary empty syntax" {
+ original:=PS_frame_test_tokens();tokens:[22]PS_Token;tokens[0]=PS_Token.{kind=2,text="struct"};for i:0..<18 {tokens[i+1]=original[i];}tokens[19].kind=10;tokens[20].kind=11;
+ nodes:[8]PS_Node;state:[1]PS_State;message:[256]u8;id:=PS_struct(tokens[..],nodes[..],state[..],message[..],PS_Token.{text="World"});
+ #assert id==1 && state[0].code=="" && state[0].pos==21 && nodes[id].frame_decl && nodes[id].frame[0]==1 && nodes[id].frame[1]==1 && nodes[id].frame[2]==1 && nodes[id].frame[3]==32;
+ #assert nodes[id].d==0 && nodes[id].head==0 && nodes[id].name=="World";
 }

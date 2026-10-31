@@ -1,0 +1,122 @@
+{
+  "schema": "coax-frame-parser-qualification-v1",
+  "passed": true,
+  "base_commit": "55fef27860",
+  "profile": "M3 literal frame metadata syntax and raw parser transport",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "compiler": {
+    "version": "coax0 0.44.0",
+    "sha256": "bd397cf4ba62539886e2e768436c7f8909da9a6dadcf2df4142b84b90f6be419",
+    "installed": false
+  },
+  "source_sha256": {
+    "coax/lib/compiler/parser.coax": "b3ad8dc998257b29d005da4dae6eddfc126f53cde4699954a287167afbde0c11",
+    "coax/grammar.ebnf": "b188f78340d1a88813b25ea3f244803e4028cf38f3a0500377fb45d94c7d5b9f",
+    "coax/bootstrap/parser.c": "9b09a06bee9a125758744454c629841a6ef77fb050b43352cfbd68dad029fd61",
+    "coax/bootstrap/parser.h": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+    "coax/tests/parser.py": "31a4fa04e7bbd01082f2dd0b8aa16ca4bb182e0f0d2a5fbdbc36c750a28afc14",
+    "coax/tests/frame_parser_scope.py": "193fce44c937a652e2afa092f8745b8011458984d011f0492113dcff4c85cf17",
+    "coax/tests/spatial/frame-parser-cases.json": "ec7c0a420317731c3d19600dbbf0457b53f8184b8eac5c89a98141ba6b9b5a4b",
+    "coax/tests/spatial/frame_parser_native.c": "f0a0764dc94a464b485a5b8de833bea48d4dab90868c5329255cc1f64bf54219",
+    "coax/tests/spatial/frame_parser_native.py": "65328914a4f2432c6ebeaa51fef44f7c15ce1e5fff224859231f482e06debdd0"
+  },
+  "check_first": {
+    "observed_missing_procedure_and_fields": true,
+    "initial_diagnostic_log_sha256": "da94b5502a833f9082c17faacb05aa47ac927eca5112964b2382622b0f4f6099"
+  },
+  "coax_checks": {
+    "groups": 202,
+    "individual_cases": 871,
+    "passed": 202,
+    "failed": 0,
+    "log_sha256": "16c9e0fae80922e4aa2e1b58dfbda034b063ea385d8206d6df4f67c8a4cdaa33"
+  },
+  "changed_procedure_mutation": {
+    "mode": "root-only",
+    "mutants": 102,
+    "killed": 102,
+    "survived": 0,
+    "procedures": [
+      {
+        "name": "PS_struct",
+        "first_line": 461,
+        "sha256": "1392ed4fd75c549d7ee6a4d32709c71a9f0baa825215c6081547623817a2a27c"
+      },
+      {
+        "name": "PS_physical",
+        "first_line": 470,
+        "sha256": "e8eefaaa103f4df57531971d301be1680e0b6f68ec160e16874fb246e3df3c13"
+      },
+      {
+        "name": "PS_frame",
+        "first_line": 481,
+        "sha256": "18a677728100f2959f357e6533aeab03827d528502d1cb7fe1002cbef8806097"
+      },
+      {
+        "name": "PS_frame_word",
+        "first_line": 474,
+        "sha256": "f892b22414741c8e301a8daa1609f881b642dc3b3a2d3f61ebe99c300be5825e"
+      }
+    ],
+    "root_sha256": "bd1c65524a8ae6e18b9652c6a7fafbfa592995904b3d303d8a14d1b6c09b374e",
+    "dependency_sha256": "cacae296c2dd1630900cb830c6a76df546cd80687e97a8b838de4655d094cb25",
+    "all_original_checks_retained": true,
+    "waivers": 0,
+    "scope_recipe": "Exact selected procedure bodies are root source; every other body and every check remain unchanged in dependency source. No load rewriting or filtering.",
+    "log_sha256": "209d8fbfa641537943e0c6edc14e3e2b24bb122f17cda18cfbcc90adbb06ac5b"
+  },
+  "native_source_cases": {
+    "cases": 99,
+    "accepted_syntax": 53,
+    "refused_syntax": 46,
+    "actual_compiled_lexer_and_parser": true,
+    "ctypes_layout_compared_to_native_C": true,
+    "passed": true,
+    "log_sha256": "6f07818b76563a9794003837dce7dec7f488a4e0df304af94c37b3b7c45ae12c"
+  },
+  "native_direct_token_modes": {
+    "debug": {
+      "schema": "coax-frame-parser-native-v1",
+      "cases": 146,
+      "assertions": 2024,
+      "passed": true,
+      "binary_sha256": "720b3f4a3b76bb62e6a6a1fb99ea5f59afef82f03b29337b503993f2e86e4494"
+    },
+    "release": {
+      "schema": "coax-frame-parser-native-v1",
+      "cases": 146,
+      "assertions": 2024,
+      "passed": true,
+      "binary_sha256": "d89a8f28394f9511cbc5d052c53aabc61a6560f9be0d935cdae6e9d603982614"
+    },
+    "asan-ubsan": {
+      "schema": "coax-frame-parser-native-v1",
+      "cases": 146,
+      "assertions": 2024,
+      "passed": true,
+      "binary_sha256": "04acf8538b95ba7266d00cc86c8a9971b259ee164a7931b8213914b2685906f8"
+    }
+  },
+  "generated_seed": {
+    "normal_recipe": "coax c lib/compiler/parser.coax --library --header parser.h (working directory coax/)",
+    "c_sha256": "9b09a06bee9a125758744454c629841a6ef77fb050b43352cfbd68dad029fd61",
+    "header_sha256": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+    "matches_qualified_native_generated_sources": true,
+    "full_bootstrap_fixed_points": "Parent integration responsibility, not claimed by this parser receipt."
+  },
+  "compatibility": {
+    "PS_quantity_body_byte_identical": true,
+    "PS_quantity_body_sha256": "5f816b77554c40bcc382ec9ffc5bd8a8b4a13fce1c21ab46d098334c3ab056fc",
+    "existing_plain_unit_builtin_source_fixtures_pass": true,
+    "shape_checker_owned": true,
+    "optical_right_policy_checker_owned": true,
+    "repeated_physical_annotation": "E0832",
+    "missing_punctuation": "Existing first syntax diagnostic is preserved."
+  },
+  "limits": [
+    "Syntax acceptance is not semantic frame admission; generic/nonempty and left-optical examples are deliberately transported for checker refusal.",
+    "No runtime coordinate arithmetic, point/vector type semantics, unit identity, helper instantiation, Metal admission or whole-bootstrap qualification is established here.",
+    "The parser false result may retain internal diagnostic nodes/root; ok=false prevents tree admission.",
+    "No full old-parser mutation or unrelated native/model corpus was rerun."
+  ]
+}

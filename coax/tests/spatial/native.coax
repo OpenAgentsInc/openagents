@@ -1,0 +1,107 @@
+// New M3 aggregate fixtures. No foreign aggregate parameters or results.
+#load "../../lib/quantity.coax" as u;
+SPN_World :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f32) {}
+#test "M3 F32 affine results raw fields and physical aggregate layout" {
+  p:=SPN_point32(6,-2,0.5);q:=SPN_point32(1,3,-0.5);v:=SPN_vector32(1,3,-0.5);a:=SPN_vector32(6,-2,0.5);
+  delta:Vector3(SPN_World,u.Metre,f32)=SPN_pp32(p,q);#assert delta.x==5 && delta.y==-5 && delta.z==1;
+  plus:Point3(SPN_World,u.Metre,f32)=SPN_pvadd32(p,v);#assert plus.x==7 && plus.y==1 && plus.z==0;
+  reverse:Point3(SPN_World,u.Metre,f32)=SPN_vpadd32(v,p);#assert reverse.x==7 && reverse.y==1 && reverse.z==0;
+  minus:Point3(SPN_World,u.Metre,f32)=SPN_pvsub32(p,v);#assert minus.x==5 && minus.y==-5 && minus.z==1;
+  sum:=SPN_vvadd32(a,v);#assert sum.x==7 && sum.y==1 && sum.z==0;
+  difference:=SPN_vvsub32(a,v);#assert difference.x==5 && difference.y==-5 && difference.z==1;
+  product:=SPN_vmul32(v,2);#assert product.x==2 && product.y==6 && product.z==-1;
+  left:=SPN_smul32(2,v);#assert left.x==2 && left.y==6 && left.z==-1;
+  quotient:=SPN_vdiv32(v,2);#assert quotient.x==0.5 && quotient.y==1.5 && quotient.z==-0.25;
+  negative:=SPN_vneg32(v);#assert negative.x==-1 && negative.y==-3 && negative.z==0.5;
+  seconds:=SPN_secondadd32(SPN_second32(1,2,3),SPN_second32(4,5,6));#assert seconds.x==5 && seconds.y==7 && seconds.z==9;
+  #assert size_of(Point3(SPN_World,u.Metre,f32))==12 && size_of(Vector3(SPN_World,u.Metre,f32))==12;
+}
+#test "M3 F64 affine results raw fields and physical aggregate layout" {
+  p:=SPN_point64(6,-2,0.5);q:=SPN_point64(1,3,-0.5);v:=SPN_vector64(1,3,-0.5);a:=SPN_vector64(6,-2,0.5);
+  delta:Vector3(SPN_World,u.Metre,f64)=SPN_pp64(p,q);#assert delta.x==5 && delta.y==-5 && delta.z==1;
+  plus:Point3(SPN_World,u.Metre,f64)=SPN_pvadd64(p,v);#assert plus.x==7 && plus.y==1 && plus.z==0;
+  reverse:Point3(SPN_World,u.Metre,f64)=SPN_vpadd64(v,p);#assert reverse.x==7 && reverse.y==1 && reverse.z==0;
+  minus:Point3(SPN_World,u.Metre,f64)=SPN_pvsub64(p,v);#assert minus.x==5 && minus.y==-5 && minus.z==1;
+  sum:=SPN_vvadd64(a,v);#assert sum.x==7 && sum.y==1 && sum.z==0;
+  difference:=SPN_vvsub64(a,v);#assert difference.x==5 && difference.y==-5 && difference.z==1;
+  product:=SPN_vmul64(v,2);#assert product.x==2 && product.y==6 && product.z==-1;
+  left:=SPN_smul64(2,v);#assert left.x==2 && left.y==6 && left.z==-1;
+  quotient:=SPN_vdiv64(v,2);#assert quotient.x==0.5 && quotient.y==1.5 && quotient.z==-0.25;
+  negative:=SPN_vneg64(v);#assert negative.x==-1 && negative.y==-3 && negative.z==0.5;
+  seconds:=SPN_secondadd64(SPN_second64(1,2,3),SPN_second64(4,5,6));#assert seconds.x==5 && seconds.y==7 && seconds.z==9;
+  #assert size_of(Point3(SPN_World,u.Metre,f64))==24 && size_of(Vector3(SPN_World,u.Metre,f64))==24;
+}
+SPN_point32 :: (x:f32,y:f32,z:f32)->Point3(SPN_World,u.Metre,f32) #export_c {r:Point3(SPN_World,u.Metre,f32);r.x=x;r.y=y;r.z=z;return r;}
+SPN_vector32 :: (x:f32,y:f32,z:f32)->Vector3(SPN_World,u.Metre,f32) #export_c {r:Vector3(SPN_World,u.Metre,f32);r.x=x;r.y=y;r.z=z;return r;}
+SPN_second32 :: (x:f32,y:f32,z:f32)->Vector3(SPN_World,u.Second,f32) #export_c {r:Vector3(SPN_World,u.Second,f32);r.x=x;r.y=y;r.z=z;return r;}
+SPN_pp32 :: (a:Point3(SPN_World,u.Metre,f32),b:Point3(SPN_World,u.Metre,f32))->Vector3(SPN_World,u.Metre,f32) #export_c {return a-b;}
+SPN_pvadd32 :: (a:Point3(SPN_World,u.Metre,f32),b:Vector3(SPN_World,u.Metre,f32))->Point3(SPN_World,u.Metre,f32) #export_c {return a+b;}
+SPN_vpadd32 :: (a:Vector3(SPN_World,u.Metre,f32),b:Point3(SPN_World,u.Metre,f32))->Point3(SPN_World,u.Metre,f32) #export_c {return a+b;}
+SPN_pvsub32 :: (a:Point3(SPN_World,u.Metre,f32),b:Vector3(SPN_World,u.Metre,f32))->Point3(SPN_World,u.Metre,f32) #export_c {return a-b;}
+SPN_vvadd32 :: (a:Vector3(SPN_World,u.Metre,f32),b:Vector3(SPN_World,u.Metre,f32))->Vector3(SPN_World,u.Metre,f32) #export_c {return a+b;}
+SPN_vvsub32 :: (a:Vector3(SPN_World,u.Metre,f32),b:Vector3(SPN_World,u.Metre,f32))->Vector3(SPN_World,u.Metre,f32) #export_c {return a-b;}
+SPN_vmul32 :: (a:Vector3(SPN_World,u.Metre,f32),b:f32)->Vector3(SPN_World,u.Metre,f32) #export_c {return a*b;}
+SPN_smul32 :: (a:f32,b:Vector3(SPN_World,u.Metre,f32))->Vector3(SPN_World,u.Metre,f32) #export_c {return a*b;}
+SPN_vdiv32 :: (a:Vector3(SPN_World,u.Metre,f32),b:f32)->Vector3(SPN_World,u.Metre,f32) #export_c {return a/b;}
+SPN_vneg32 :: (a:Vector3(SPN_World,u.Metre,f32))->Vector3(SPN_World,u.Metre,f32) #export_c {return -a;}
+SPN_secondadd32 :: (a:Vector3(SPN_World,u.Second,f32),b:Vector3(SPN_World,u.Second,f32))->Vector3(SPN_World,u.Second,f32) #export_c {return a+b;}
+SPN_Arrays32 :: struct {p:[2]Point3(SPN_World,u.Metre,f32);v:[2]Vector3(SPN_World,u.Metre,f32);}
+SPN_arrays32 :: (a:SPN_Arrays32)->SPN_Arrays32 #export_c {return a;}
+SPN_view32 :: (p:[]Point3(SPN_World,u.Metre,f32),v:[]Vector3(SPN_World,u.Metre,f32))->Vector3(SPN_World,u.Metre,f32) #export_c {return (p[0]-p[1])+(v[0]+v[1]);}
+SPN_tick32 :: (id:int)->f32 #foreign;
+SPN_ticks_point32 :: (base:int)->Point3(SPN_World,u.Metre,f32) {r:Point3(SPN_World,u.Metre,f32);r.x=SPN_tick32(base+1);r.y=SPN_tick32(base+2);r.z=SPN_tick32(base+3);return r;}
+SPN_ticks_vector32 :: (base:int)->Vector3(SPN_World,u.Metre,f32) {r:Vector3(SPN_World,u.Metre,f32);r.x=SPN_tick32(base+1);r.y=SPN_tick32(base+2);r.z=SPN_tick32(base+3);return r;}
+SPN_ordered_pp32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_point32(10)-SPN_ticks_point32(20);}
+SPN_ordered_pvadd32 :: ()->Point3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_point32(30)+SPN_ticks_vector32(40);}
+SPN_ordered_vpadd32 :: ()->Point3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_vector32(50)+SPN_ticks_point32(60);}
+SPN_ordered_pvsub32 :: ()->Point3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_point32(70)-SPN_ticks_vector32(80);}
+SPN_ordered_vvadd32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_vector32(90)+SPN_ticks_vector32(100);}
+SPN_ordered_vvsub32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_vector32(110)-SPN_ticks_vector32(120);}
+SPN_ordered_vmul32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_vector32(130)*SPN_tick32(141);}
+SPN_ordered_smul32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_tick32(151)*SPN_ticks_vector32(160);}
+SPN_ordered_vdiv32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_vector32(170)/SPN_tick32(181);}
+SPN_ordered_vneg32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return -SPN_ticks_vector32(190);}
+SPN_trap_left32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_point32(9000)-SPN_ticks_point32(9100);}
+SPN_trap_right32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_point32(9200)-SPN_ticks_point32(9300);}
+SPN_trap_scalar_left32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_tick32(9401)*SPN_ticks_vector32(9500);}
+SPN_trap_vector_left32 :: ()->Vector3(SPN_World,u.Metre,f32) #export_c {return SPN_ticks_vector32(9600)*SPN_tick32(9701);}
+SPN_point64 :: (x:f64,y:f64,z:f64)->Point3(SPN_World,u.Metre,f64) #export_c {r:Point3(SPN_World,u.Metre,f64);r.x=x;r.y=y;r.z=z;return r;}
+SPN_vector64 :: (x:f64,y:f64,z:f64)->Vector3(SPN_World,u.Metre,f64) #export_c {r:Vector3(SPN_World,u.Metre,f64);r.x=x;r.y=y;r.z=z;return r;}
+SPN_second64 :: (x:f64,y:f64,z:f64)->Vector3(SPN_World,u.Second,f64) #export_c {r:Vector3(SPN_World,u.Second,f64);r.x=x;r.y=y;r.z=z;return r;}
+SPN_pp64 :: (a:Point3(SPN_World,u.Metre,f64),b:Point3(SPN_World,u.Metre,f64))->Vector3(SPN_World,u.Metre,f64) #export_c {return a-b;}
+SPN_pvadd64 :: (a:Point3(SPN_World,u.Metre,f64),b:Vector3(SPN_World,u.Metre,f64))->Point3(SPN_World,u.Metre,f64) #export_c {return a+b;}
+SPN_vpadd64 :: (a:Vector3(SPN_World,u.Metre,f64),b:Point3(SPN_World,u.Metre,f64))->Point3(SPN_World,u.Metre,f64) #export_c {return a+b;}
+SPN_pvsub64 :: (a:Point3(SPN_World,u.Metre,f64),b:Vector3(SPN_World,u.Metre,f64))->Point3(SPN_World,u.Metre,f64) #export_c {return a-b;}
+SPN_vvadd64 :: (a:Vector3(SPN_World,u.Metre,f64),b:Vector3(SPN_World,u.Metre,f64))->Vector3(SPN_World,u.Metre,f64) #export_c {return a+b;}
+SPN_vvsub64 :: (a:Vector3(SPN_World,u.Metre,f64),b:Vector3(SPN_World,u.Metre,f64))->Vector3(SPN_World,u.Metre,f64) #export_c {return a-b;}
+SPN_vmul64 :: (a:Vector3(SPN_World,u.Metre,f64),b:f64)->Vector3(SPN_World,u.Metre,f64) #export_c {return a*b;}
+SPN_smul64 :: (a:f64,b:Vector3(SPN_World,u.Metre,f64))->Vector3(SPN_World,u.Metre,f64) #export_c {return a*b;}
+SPN_vdiv64 :: (a:Vector3(SPN_World,u.Metre,f64),b:f64)->Vector3(SPN_World,u.Metre,f64) #export_c {return a/b;}
+SPN_vneg64 :: (a:Vector3(SPN_World,u.Metre,f64))->Vector3(SPN_World,u.Metre,f64) #export_c {return -a;}
+SPN_secondadd64 :: (a:Vector3(SPN_World,u.Second,f64),b:Vector3(SPN_World,u.Second,f64))->Vector3(SPN_World,u.Second,f64) #export_c {return a+b;}
+SPN_Arrays64 :: struct {p:[2]Point3(SPN_World,u.Metre,f64);v:[2]Vector3(SPN_World,u.Metre,f64);}
+SPN_arrays64 :: (a:SPN_Arrays64)->SPN_Arrays64 #export_c {return a;}
+SPN_view64 :: (p:[]Point3(SPN_World,u.Metre,f64),v:[]Vector3(SPN_World,u.Metre,f64))->Vector3(SPN_World,u.Metre,f64) #export_c {return (p[0]-p[1])+(v[0]+v[1]);}
+SPN_tick64 :: (id:int)->f64 #foreign;
+SPN_ticks_point64 :: (base:int)->Point3(SPN_World,u.Metre,f64) {r:Point3(SPN_World,u.Metre,f64);r.x=SPN_tick64(base+1);r.y=SPN_tick64(base+2);r.z=SPN_tick64(base+3);return r;}
+SPN_ticks_vector64 :: (base:int)->Vector3(SPN_World,u.Metre,f64) {r:Vector3(SPN_World,u.Metre,f64);r.x=SPN_tick64(base+1);r.y=SPN_tick64(base+2);r.z=SPN_tick64(base+3);return r;}
+SPN_ordered_pp64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_point64(10)-SPN_ticks_point64(20);}
+SPN_ordered_pvadd64 :: ()->Point3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_point64(30)+SPN_ticks_vector64(40);}
+SPN_ordered_vpadd64 :: ()->Point3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_vector64(50)+SPN_ticks_point64(60);}
+SPN_ordered_pvsub64 :: ()->Point3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_point64(70)-SPN_ticks_vector64(80);}
+SPN_ordered_vvadd64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_vector64(90)+SPN_ticks_vector64(100);}
+SPN_ordered_vvsub64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_vector64(110)-SPN_ticks_vector64(120);}
+SPN_ordered_vmul64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_vector64(130)*SPN_tick64(141);}
+SPN_ordered_smul64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_tick64(151)*SPN_ticks_vector64(160);}
+SPN_ordered_vdiv64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_vector64(170)/SPN_tick64(181);}
+SPN_ordered_vneg64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return -SPN_ticks_vector64(190);}
+SPN_trap_left64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_point64(9000)-SPN_ticks_point64(9100);}
+SPN_trap_right64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_point64(9200)-SPN_ticks_point64(9300);}
+SPN_trap_scalar_left64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_tick64(9401)*SPN_ticks_vector64(9500);}
+SPN_trap_vector_left64 :: ()->Vector3(SPN_World,u.Metre,f64) #export_c {return SPN_ticks_vector64(9600)*SPN_tick64(9701);}
+SPN_Record :: struct {lead:u8;point:Point3(SPN_World,u.Metre,f32);vector:Vector3(SPN_World,u.Metre,f64);points:[2]Point3(SPN_World,u.Metre,f64);tail:u16;}
+SPN_record :: (r:SPN_Record)->SPN_Record #export_c {return r;}
+SPN_mutate32 :: (points:[]Point3(SPN_World,u.Metre,f32))->Vector3(SPN_World,u.Metre,f32) {points[0].x=101;points[0].y=202;points[0].z=303;return SPN_vector32(2,3,4);}
+SPN_alias32 :: (points:[]Point3(SPN_World,u.Metre,f32))->Point3(SPN_World,u.Metre,f32) #export_c {return points[0]+SPN_mutate32(points);}
+SPN_mutate64 :: (points:[]Point3(SPN_World,u.Metre,f64))->Vector3(SPN_World,u.Metre,f64) {points[0].x=101;points[0].y=202;points[0].z=303;return SPN_vector64(2,3,4);}
+SPN_alias64 :: (points:[]Point3(SPN_World,u.Metre,f64))->Point3(SPN_World,u.Metre,f64) #export_c {return points[0]+SPN_mutate64(points);}

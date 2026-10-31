@@ -1,0 +1,905 @@
+{
+  "schema": "coax-frame-parser-cases-v1",
+  "scope": "Syntax and raw transport only; semantic frame and optical-right admission remain checker-owned.",
+  "cases": [
+    {
+      "name": "vocabulary-0000",
+      "source": "Frame :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        1,
+        1,
+        1,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0001",
+      "source": "Frame :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        1,
+        1,
+        1,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0010",
+      "source": "Frame :: struct @frame(handedness=right,convention=cartesian,continuity=jumping,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        1,
+        1,
+        2,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0011",
+      "source": "Frame :: struct @frame(handedness=right,convention=cartesian,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        1,
+        1,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0100",
+      "source": "Frame :: struct @frame(handedness=right,convention=body,continuity=continuous,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        1,
+        2,
+        1,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0101",
+      "source": "Frame :: struct @frame(handedness=right,convention=body,continuity=continuous,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        1,
+        2,
+        1,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0110",
+      "source": "Frame :: struct @frame(handedness=right,convention=body,continuity=jumping,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        1,
+        2,
+        2,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0111",
+      "source": "Frame :: struct @frame(handedness=right,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0200",
+      "source": "Frame :: struct @frame(handedness=right,convention=optical,continuity=continuous,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        1,
+        3,
+        1,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0201",
+      "source": "Frame :: struct @frame(handedness=right,convention=optical,continuity=continuous,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        1,
+        3,
+        1,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0210",
+      "source": "Frame :: struct @frame(handedness=right,convention=optical,continuity=jumping,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        1,
+        3,
+        2,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-0211",
+      "source": "Frame :: struct @frame(handedness=right,convention=optical,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        1,
+        3,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1000",
+      "source": "Frame :: struct @frame(handedness=left,convention=cartesian,continuity=continuous,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        1,
+        1,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1001",
+      "source": "Frame :: struct @frame(handedness=left,convention=cartesian,continuity=continuous,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        1,
+        1,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1010",
+      "source": "Frame :: struct @frame(handedness=left,convention=cartesian,continuity=jumping,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        1,
+        2,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1011",
+      "source": "Frame :: struct @frame(handedness=left,convention=cartesian,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        1,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1100",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=continuous,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        1,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1101",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=continuous,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        1,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1110",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1111",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1200",
+      "source": "Frame :: struct @frame(handedness=left,convention=optical,continuity=continuous,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        3,
+        1,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1201",
+      "source": "Frame :: struct @frame(handedness=left,convention=optical,continuity=continuous,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        3,
+        1,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1210",
+      "source": "Frame :: struct @frame(handedness=left,convention=optical,continuity=jumping,min_precision=f32) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        3,
+        2,
+        32
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "vocabulary-1211",
+      "source": "Frame :: struct @frame(handedness=left,convention=optical,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        3,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-0123",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-0132",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,min_precision=f64,continuity=jumping) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-0213",
+      "source": "Frame :: struct @frame(handedness=left,continuity=jumping,convention=body,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-0231",
+      "source": "Frame :: struct @frame(handedness=left,continuity=jumping,min_precision=f64,convention=body) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-0312",
+      "source": "Frame :: struct @frame(handedness=left,min_precision=f64,convention=body,continuity=jumping) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-0321",
+      "source": "Frame :: struct @frame(handedness=left,min_precision=f64,continuity=jumping,convention=body) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-1023",
+      "source": "Frame :: struct @frame(convention=body,handedness=left,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-1032",
+      "source": "Frame :: struct @frame(convention=body,handedness=left,min_precision=f64,continuity=jumping) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-1203",
+      "source": "Frame :: struct @frame(convention=body,continuity=jumping,handedness=left,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-1230",
+      "source": "Frame :: struct @frame(convention=body,continuity=jumping,min_precision=f64,handedness=left) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-1302",
+      "source": "Frame :: struct @frame(convention=body,min_precision=f64,handedness=left,continuity=jumping) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-1320",
+      "source": "Frame :: struct @frame(convention=body,min_precision=f64,continuity=jumping,handedness=left) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-2013",
+      "source": "Frame :: struct @frame(continuity=jumping,handedness=left,convention=body,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-2031",
+      "source": "Frame :: struct @frame(continuity=jumping,handedness=left,min_precision=f64,convention=body) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-2103",
+      "source": "Frame :: struct @frame(continuity=jumping,convention=body,handedness=left,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-2130",
+      "source": "Frame :: struct @frame(continuity=jumping,convention=body,min_precision=f64,handedness=left) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-2301",
+      "source": "Frame :: struct @frame(continuity=jumping,min_precision=f64,handedness=left,convention=body) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-2310",
+      "source": "Frame :: struct @frame(continuity=jumping,min_precision=f64,convention=body,handedness=left) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-3012",
+      "source": "Frame :: struct @frame(min_precision=f64,handedness=left,convention=body,continuity=jumping) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-3021",
+      "source": "Frame :: struct @frame(min_precision=f64,handedness=left,continuity=jumping,convention=body) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-3102",
+      "source": "Frame :: struct @frame(min_precision=f64,convention=body,handedness=left,continuity=jumping) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-3120",
+      "source": "Frame :: struct @frame(min_precision=f64,convention=body,continuity=jumping,handedness=left) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-3201",
+      "source": "Frame :: struct @frame(min_precision=f64,continuity=jumping,handedness=left,convention=body) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "order-3210",
+      "source": "Frame :: struct @frame(min_precision=f64,continuity=jumping,convention=body,handedness=left) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0
+    },
+    {
+      "name": "missing-handedness",
+      "source": "Frame :: struct @frame(convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "duplicate-handedness",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64,handedness=left) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-handedness-unknown",
+      "source": "Frame :: struct @frame(handedness=unknown,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-handedness-1",
+      "source": "Frame :: struct @frame(handedness=1,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-handedness-\"right\"",
+      "source": "Frame :: struct @frame(handedness=\"right\",convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-handedness-$T",
+      "source": "Frame :: struct @frame(handedness=$T,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-handedness-true",
+      "source": "Frame :: struct @frame(handedness=true,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-handedness-Other.right",
+      "source": "Frame :: struct @frame(handedness=Other.right,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "missing-convention",
+      "source": "Frame :: struct @frame(handedness=left,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "duplicate-convention",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64,convention=body) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-convention-unknown",
+      "source": "Frame :: struct @frame(handedness=left,convention=unknown,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-convention-1",
+      "source": "Frame :: struct @frame(handedness=left,convention=1,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-convention-\"right\"",
+      "source": "Frame :: struct @frame(handedness=left,convention=\"right\",continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-convention-$T",
+      "source": "Frame :: struct @frame(handedness=left,convention=$T,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-convention-true",
+      "source": "Frame :: struct @frame(handedness=left,convention=true,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-convention-Other.right",
+      "source": "Frame :: struct @frame(handedness=left,convention=Other.right,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "missing-continuity",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "duplicate-continuity",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64,continuity=jumping) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-continuity-unknown",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=unknown,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-continuity-1",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=1,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-continuity-\"right\"",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=\"right\",min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-continuity-$T",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=$T,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-continuity-true",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=true,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-continuity-Other.right",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=Other.right,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "missing-min_precision",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "duplicate-min_precision",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-min_precision-unknown",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=unknown) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-min_precision-1",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=1) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-min_precision-\"right\"",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=\"right\") {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-min_precision-$T",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=$T) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-min_precision-true",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=true) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "nonliteral-min_precision-Other.right",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=Other.right) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "unknown-name",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64,origin=zero) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "empty-metadata",
+      "source": "Frame :: struct @frame() {}",
+      "ok": false,
+      "code": "E0208"
+    },
+    {
+      "name": "trailing-comma",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64,) {}",
+      "ok": false,
+      "code": "E0208"
+    },
+    {
+      "name": "literal-member-expression",
+      "source": "Frame :: struct @frame(handedness=right.member,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0201"
+    },
+    {
+      "name": "literal-call-expression",
+      "source": "Frame :: struct @frame(handedness=right(),convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0201"
+    },
+    {
+      "name": "missing-open",
+      "source": "Frame :: struct @frame handedness=right {}",
+      "ok": false,
+      "code": "E0201"
+    },
+    {
+      "name": "missing-equals",
+      "source": "Frame :: struct @frame(handedness right,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0201"
+    },
+    {
+      "name": "missing-close",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64 {}",
+      "ok": false,
+      "code": "E0201"
+    },
+    {
+      "name": "dual-role-frame-frame",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "dual-role-frame-unit",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "dual-role-unit-frame",
+      "source": "Frame :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "dual-role-builtin-frame",
+      "source": "Frame :: struct @builtin_quantity @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "dual-role-frame-builtin",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) @builtin_quantity {}",
+      "ok": false,
+      "code": "E0832"
+    },
+    {
+      "name": "legacy-unknown-annotation",
+      "source": "Frame :: struct @unknown {}",
+      "ok": false,
+      "code": "E0820"
+    },
+    {
+      "name": "plain-struct",
+      "source": "Plain :: struct {value:f32;}",
+      "ok": true,
+      "frame": null,
+      "quantity": 0
+    },
+    {
+      "name": "old-unit",
+      "source": "Length :: struct @unit(mass=0,length=1,time=0,angle=0,numerator=1,denominator=1) {}",
+      "ok": true,
+      "frame": null,
+      "quantity": 1
+    },
+    {
+      "name": "old-builtin",
+      "source": "Quantity :: struct($U:copyable,$R:numeric) @builtin_quantity {value:$R;}",
+      "ok": true,
+      "frame": null,
+      "quantity": 2
+    },
+    {
+      "name": "shape-is-checker-owned-generic",
+      "source": "Frame :: struct($T) @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) {}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0,
+      "syntax_only": true
+    },
+    {
+      "name": "shape-is-checker-owned-nonempty",
+      "source": "Frame :: struct @frame(handedness=left,convention=body,continuity=jumping,min_precision=f64) {value:f32;}",
+      "ok": true,
+      "frame": [
+        -1,
+        2,
+        2,
+        64
+      ],
+      "quantity": 0,
+      "syntax_only": true
+    }
+  ]
+}

@@ -1246,7 +1246,7 @@ draw_tac :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
     sh := s[0].ships[un.ship];
     x := f32(mx + (un.x - cx) * sc); y := f32(my - (un.y - cy) * sc);
     col := faction_rgb(sh.faction);
-    if !un.live { col = Point3.{x = 0.45, y = 0.46, z = 0.5}; }
+    if !un.live { col = BeltRgb.{x = 0.45, y = 0.46, z = 0.5}; }
     hp := 30 * k;
     ch := f32(cos(un.head)); sn := f32(-sin(un.head));
     // its drift over the next minute
@@ -2025,12 +2025,12 @@ centred :: (out: [] f32, d: [] Draw, text: string, x: f32, base: f32, cap: f32, 
   words(out, d, text, x - text_width(text, cap) / 2, base, cap, light, red, green, blue);
 }
 
-faction_rgb :: (f: int) -> Point3 {
-  if f == MARS_UNION { return Point3.{x = MARS_R, y = MARS_G, z = MARS_B}; }
-  if f == TERRAN { return Point3.{x = TERRA_R, y = TERRA_G, z = TERRA_B}; }
-  return Point3.{x = BELT_R, y = BELT_G, z = BELT_B};
+faction_rgb :: (f: int) -> BeltRgb {
+  if f == MARS_UNION { return BeltRgb.{x = MARS_R, y = MARS_G, z = MARS_B}; }
+  if f == TERRAN { return BeltRgb.{x = TERRA_R, y = TERRA_G, z = TERRA_B}; }
+  return BeltRgb.{x = BELT_R, y = BELT_G, z = BELT_B};
 }
-Point3 :: struct { x: f32; y: f32; z: f32; }
+BeltRgb :: struct { x: f32; y: f32; z: f32; }
 
 // An orbit's ellipse: whole when it fits the screen many times over; near
 // the view's centre, finely, when it is huge, so the line stays on its orbit.
@@ -2172,7 +2172,7 @@ hull_line :: (out: [] f32, d: [] Draw, x: f32, y: f32, h: f32, ch: f32, sn: f32,
 }
 // A hull, h pixels long along (ch, sh): a drive bell, tanks in pairs, radiators across the
 // spine, a crew ring and the command module at the bow, in its faction's colour.
-draw_hull :: (out: [] f32, d: [] Draw, x: f32, y: f32, h: f32, ch: f32, sn: f32, big: bool, col: Point3) {
+draw_hull :: (out: [] f32, d: [] Draw, x: f32, y: f32, h: f32, ch: f32, sn: f32, big: bool, col: BeltRgb) {
   u := d[0].k;
   nx := -sn; ny := ch;
   cw := 0.8 * u; thin := 0.6 * u;

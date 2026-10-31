@@ -136,4 +136,20 @@ unit_forms_rc=$?
 spatial_policy_rc=$?
 "$COAX" test lib/compiler/borrow-summary.coax && "$COAX" mutate lib/compiler/borrow-summary.coax --root-only && COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/borrow_summary_native.py
 borrow_summary_rc=$?
-[[ $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]
+# M3 frontend/aggregate seams. Preserve private evidence on failure; these are
+# new gates, distinct from the frozen spatial-policy oracle above.
+spatial_output=$(mktemp -d "${TMPDIR:-/tmp}/coax-spatial.XXXXXX")
+if [[ -n "$spatial_output" ]] && \
+   COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial.py && \
+   COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial_interop.py && \
+   COAX_TEST_COMPILER="$PWD/$COAX" COAX_SPATIAL_RECORD_DIR="$spatial_output/aggregate" python3 tests/spatial_native.py && \
+   python3 tests/spatial/frame_parser_native.py --compiler "$PWD/$COAX" --output "$spatial_output/frame-parser" && \
+   COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial_spacecam.py "$spatial_output/spacecam" && \
+   "$COAX" test --library ../verse/spacecam.coax --only 'camera-relative displacement' && \
+   "$COAX" test --library ../verse/spacecam.coax --only 'a hull at 5 AU'; then
+  spatial_rc=0
+else
+  echo "Spatial gate failed; evidence: $spatial_output" >&2
+  spatial_rc=1
+fi
+[[ $spatial_rc -eq 0 && $borrow_summary_rc -eq 0 && $spatial_policy_rc -eq 0 && $unit_forms_rc -eq 0 && $unit_algebra_rc -eq 0 && $fixtures_rc -eq 0 && $python_rc -eq 0 && $native_rc -eq 0 && $native_check_baseline_rc -eq 0 && $lexer_rc -eq 0 && $parser_rc -eq 0 && $budget_rc -eq 0 && $strings_rc -eq 0 && $traversal_rc -eq 0 && $provenance_rc -eq 0 && $release_rc -eq 0 && $mutation_schedule_rc -eq 0 && $build_profiles_rc -eq 0 && $semantic_profiles_rc -eq 0 && $checker_rc -eq 0 && $sources_rc -eq 0 && $reflection_rc -eq 0 && $library_tools_rc -eq 0 && $sequence_rc -eq 0 && $bounded_rc -eq 0 && $debugging_rc -eq 0 && $nostr_rc -eq 0 && $constant_time_rc -eq 0 && $wrapping_rc -eq 0 && $mul_wide_rc -eq 0 && $cuda_rc -eq 0 && $proto_cap_rc -eq 0 && $proto_rc -eq 0 && $proto_policy_rc -eq 0 && $proto_message_rc -eq 0 && $verify_rc -eq 0 && $wire_checks_rc -eq 0 && $generated_checks_rc -eq 0 && $wire_core_rc -eq 0 && $importer_checks_rc -eq 0 && $fingerprint_checks_rc -eq 0 ]]

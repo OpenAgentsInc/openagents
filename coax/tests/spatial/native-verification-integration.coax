@@ -1,0 +1,19 @@
+#load "../../lib/quantity.coax" as u;
+NativeSpatialWorld :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}
+NativeSpatialLocal :: struct @frame(handedness=right,convention=body,continuity=continuous,min_precision=f32) {}
+native_spatial_identity :: (x:$T:copyable)->$T {return x;}
+#test "native verification preserves F64 affine kinds and generated helper instances" {
+ p:Point3(NativeSpatialWorld,u.Metre,f64);p.x=6;p.y=4;p.z=2;
+ q:Point3(NativeSpatialWorld,u.Metre,f64);q.x=2;q.y=1;
+ v:=p-q;shifted:=native_spatial_identity(v+p);scaled:=native_spatial_identity(2*v);back:=shifted-scaled;
+ #assert v.x==4 && v.y==3 && v.z==2;
+ #assert shifted.x==10 && shifted.y==7 && shifted.z==4;
+ #assert back.x==2 && back.y==1 && back.z==0;
+}
+#test "native verification preserves F32 vector arithmetic without scalar erasure" {
+ v:Vector3(NativeSpatialLocal,u.Metre,f32);v.x=8;v.y=4;v.z=2;
+ half:=native_spatial_identity(v/2);opposite:= -half;sum:=half+opposite;
+ #assert half.x==4 && half.y==2 && half.z==1;
+ #assert opposite.x== -4 && opposite.y== -2 && opposite.z== -1;
+ #assert sum.x==0 && sum.y==0 && sum.z==0;
+}

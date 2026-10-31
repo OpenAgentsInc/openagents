@@ -10,6 +10,11 @@
 //   coax/bin/coax test --library verse/spacecam.coax
 
 #load "rigid.coax";
+#load "../coax/lib/quantity.coax" as spacecam_units;
+
+// This is the existing world-in-metres convention, not the screen/view basis.
+// A floating-origin world point must retain F64 until its origin is removed.
+SpaceCamWorld :: struct @frame(handedness=right,convention=cartesian,continuity=continuous,min_precision=f64) {}
 
 SPACECAM_MIN_SCALE :: 0.0000000000001;   // pixels per metre: the outer system on a phone
 SPACECAM_MAX_SCALE :: 20.0;              // a metre is 20 pixels
@@ -28,7 +33,16 @@ spacecam_clamp_scale :: (s: f64) -> f64 { return fclamp(s, SPACECAM_MIN_SCALE, S
 
 // A world point relative to the floating origin, in f64 metres. This is
 // the only place a far position meets the camera.
-spacecam_relative :: (c: SpaceCam, p: D3) -> D3 { return d3_sub(p, c.center); }
+// book:begin spacecam-relative
+spacecam_relative :: (c: SpaceCam, p: D3) -> D3 {
+  world: Point3(SpaceCamWorld, spacecam_units.Metre, f64);
+  world.x = p.x; world.y = p.y; world.z = p.z;
+  origin: Point3(SpaceCamWorld, spacecam_units.Metre, f64);
+  origin.x = c.center.x; origin.y = c.center.y; origin.z = c.center.z;
+  displacement := world - origin;
+  return d3(displacement.x, displacement.y, displacement.z);
+}
+// book:end spacecam-relative
 
 // Where a world point lands on a w by h screen, pixels (y down).
 spacecam_screen :: (c: SpaceCam, p: D3, w: f64, h: f64) -> D2 {
@@ -99,6 +113,17 @@ spacecam_follow :: (c: SpaceCam, at: D3) -> SpaceCam {
 }
 
 // ---- checks
+
+#test "camera-relative displacement preserves all three F64 components before narrowing" {
+  c: SpaceCam;
+  c.center = d3(5.2 * 149597870700.0 + 0.37, -1.3 * 149597870700.0 + 0.11, 1000000000.125);
+  p := d3(c.center.x + 60.0, c.center.y - 45.0, c.center.z + 0.03125);
+  relative := spacecam_relative(c, p);
+  #assert relative.x == 60.0 && relative.y == -45.0 && relative.z == 0.03125;
+  #assert f32(relative.x) == 60.0f32 && f32(relative.y) == -45.0f32 && f32(relative.z) == 0.03125f32;
+  same := spacecam_relative(c, c.center);
+  #assert same.x == 0 && same.y == 0 && same.z == 0;
+}
 
 #test "a hull at 5 AU draws to the pixel: the floating origin keeps f64 until the camera subtracts" {
   c: SpaceCam;

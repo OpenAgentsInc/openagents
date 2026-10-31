@@ -1,0 +1,310 @@
+{
+  "schema": "coax-spatial-spacecam-v1",
+  "compiler": "/private/tmp/coax-spatial-first/coax",
+  "compiler_sha256": "f4c27d83090e6723d73bd3bb252a1e4dc7d29211d92a588e103eef1b8011beaa",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "source_sha256": {
+    "coax/tests/spatial/spacecam-native.coax": "8cf9e959f13332ea1e0a00494f23c90c817fc0ea734536df657aea10bca88168",
+    "coax/tests/spatial-spacecam-native.c": "c40bc483d9c6887552a4ca461122af7f34550d936a4fdd105967a440c88878da",
+    "coax/tests/spatial_spacecam.py": "734eabbe3ab833dc2e8583859249b853e6d5b0f34c6d1d2f12fd27b31f32ae25",
+    "verse/spacecam.coax": "0162f2fd8d4d6c1658a347ff98656ca374a9b5a1d3fbe29fe8bc92aa6f58dc35"
+  },
+  "cases_per_mode": 512,
+  "coordinate_observations_per_mode": 1536,
+  "non_nan_comparison": "exact F64 bits",
+  "nan_comparison": "classification; canonicalized only in transcript",
+  "commands": [
+    {
+      "name": "actual-world-f32-refusal",
+      "arguments": [
+        "/private/tmp/coax-spatial-first/coax",
+        "c",
+        "/private/tmp/spacecam-spatial-native-final/f32-refused.coax",
+        "--library"
+      ],
+      "exit_status": 1,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "d41f271f4cfb30dfb5a04445c423afc97af99f8c5f76935fabe2176e22a8cc20"
+    },
+    {
+      "name": "debug-emit",
+      "arguments": [
+        "/private/tmp/coax-spatial-first/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+        "--library",
+        "--header",
+        "/private/tmp/spacecam-spatial-native-final/debug/spacecam-native.h"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "abdb29955f0dfcbce877f919c78a1132b110f90c02b7492562c559653a5e579b",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "debug-build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O0",
+        "-I",
+        "/private/tmp/spacecam-spatial-native-final/debug",
+        "/private/tmp/spacecam-spatial-native-final/debug/generated.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial-spacecam-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spacecam-spatial-native-final/debug/probe"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "debug-native",
+      "arguments": [
+        "/private/tmp/spacecam-spatial-native-final/debug/probe"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "de73d09ba87a7ac5507b031bfc562f754919fa98b9f4fce3944e466ba4b302a9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "release-emit",
+      "arguments": [
+        "/private/tmp/coax-spatial-first/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/spacecam-spatial-native-final/release/spacecam-native.h"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "release-build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O2",
+        "-I",
+        "/private/tmp/spacecam-spatial-native-final/release",
+        "/private/tmp/spacecam-spatial-native-final/release/generated.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial-spacecam-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spacecam-spatial-native-final/release/probe"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "release-native",
+      "arguments": [
+        "/private/tmp/spacecam-spatial-native-final/release/probe"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "de73d09ba87a7ac5507b031bfc562f754919fa98b9f4fce3944e466ba4b302a9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "asan-ubsan-emit",
+      "arguments": [
+        "/private/tmp/coax-spatial-first/coax",
+        "c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+        "--library",
+        "--release",
+        "--header",
+        "/private/tmp/spacecam-spatial-native-final/asan-ubsan/spacecam-native.h"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "asan-ubsan-build",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-I",
+        "/private/tmp/spacecam-spatial-native-final/asan-ubsan",
+        "/private/tmp/spacecam-spatial-native-final/asan-ubsan/generated.c",
+        "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial-spacecam-native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/spacecam-spatial-native-final/asan-ubsan/probe"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "asan-ubsan-native",
+      "arguments": [
+        "/private/tmp/spacecam-spatial-native-final/asan-ubsan/probe"
+      ],
+      "exit_status": 0,
+      "stdout_sha256": "de73d09ba87a7ac5507b031bfc562f754919fa98b9f4fce3944e466ba4b302a9",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "modes": [
+    {
+      "name": "debug",
+      "C_sha256": "abdb29955f0dfcbce877f919c78a1132b110f90c02b7492562c559653a5e579b",
+      "header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+      "transcript_sha256": "de73d09ba87a7ac5507b031bfc562f754919fa98b9f4fce3944e466ba4b302a9",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "release",
+      "C_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+      "header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+      "transcript_sha256": "de73d09ba87a7ac5507b031bfc562f754919fa98b9f4fce3944e466ba4b302a9",
+      "stderr_bytes": 0
+    },
+    {
+      "name": "asan-ubsan",
+      "C_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+      "header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+      "transcript_sha256": "de73d09ba87a7ac5507b031bfc562f754919fa98b9f4fce3944e466ba4b302a9",
+      "stderr_bytes": 0
+    }
+  ],
+  "passed": true,
+  "status": "initial-native-qualified-final-compiler-binding-pending",
+  "source_checks": [
+    {
+      "name": "three F64 components before narrowing",
+      "command": [
+        "/tmp/coax-spatial-first/coax",
+        "test",
+        "--library",
+        "verse/spacecam.coax",
+        "--only",
+        "camera-relative displacement"
+      ],
+      "exit_status": 0,
+      "stdout": "ok   #test camera-relative displacement preserves all three F64 components before narrowing (1 case, 240 steps, 0 ms)\n1 of 7 checks (--only 'camera-relative displacement'), 1 passed, 0 failed\n",
+      "stdout_sha256": "f3a5c2df839ee2f208f537d611bfeb8dc8c8f3819020189205df646c9b2631ed"
+    },
+    {
+      "name": "existing 5AU hull",
+      "command": [
+        "/tmp/coax-spatial-first/coax",
+        "test",
+        "--library",
+        "verse/spacecam.coax",
+        "--only",
+        "a hull at 5 AU"
+      ],
+      "exit_status": 0,
+      "stdout": "ok   #test a hull at 5 AU draws to the pixel: the floating origin keeps f64 until the camera subtracts (1 case, 474 steps, 0 ms)\n1 of 7 checks (--only 'a hull at 5 AU'), 1 passed, 0 failed\n",
+      "stdout_sha256": "955216d500445c88a646a69c36a1f9614641210ff8e69a8d28916522042aa269"
+    }
+  ],
+  "development_failure": {
+    "receipt": {
+      "schema": "coax-spatial-spacecam-v1",
+      "compiler": "/private/tmp/coax-spatial-first/coax",
+      "compiler_sha256": "f4c27d83090e6723d73bd3bb252a1e4dc7d29211d92a588e103eef1b8011beaa",
+      "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+      "source_sha256": {
+        "coax/tests/spatial/spacecam-native.coax": "ab69ad5ad2284d4967700ae8b23d8eaf772fc0293293098492894d49f583396c",
+        "coax/tests/spatial-spacecam-native.c": "ebf661b55d6f2a61216bb0511ba553b47626963ec167465e8e19fec8427303c6",
+        "coax/tests/spatial_spacecam.py": "b0dfdd3cdd9a87c1a3b85e67ba00d382cc93f77082471be52ebbc832d276625e",
+        "verse/spacecam.coax": "0162f2fd8d4d6c1658a347ff98656ca374a9b5a1d3fbe29fe8bc92aa6f58dc35"
+      },
+      "cases_per_mode": 512,
+      "coordinate_observations_per_mode": 1536,
+      "non_nan_comparison": "exact F64 bits",
+      "nan_comparison": "classification; canonicalized only in transcript",
+      "commands": [
+        {
+          "name": "actual-world-f32-refusal",
+          "arguments": [
+            "/private/tmp/coax-spatial-first/coax",
+            "c",
+            "/private/tmp/spacecam-spatial-native-first/f32-refused.coax",
+            "--library"
+          ],
+          "exit_status": 1,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "221baef1c5807d1f8c145269a7b5d26fc26cbfc298659fd5ab5994bfdc3f7dee"
+        },
+        {
+          "name": "debug-emit",
+          "arguments": [
+            "/private/tmp/coax-spatial-first/coax",
+            "c",
+            "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+            "--library",
+            "--header",
+            "/private/tmp/spacecam-spatial-native-first/debug/spacecam-native.h"
+          ],
+          "exit_status": 0,
+          "stdout_sha256": "20b1e973f35f3b79d11c3ca0655866707b4e825ef5eb733033ac2f95a4a8cec8",
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "name": "debug-build",
+          "arguments": [
+            "cc",
+            "-std=c11",
+            "-fno-fast-math",
+            "-ffp-contract=off",
+            "-O0",
+            "-I",
+            "/private/tmp/spacecam-spatial-native-first/debug",
+            "/private/tmp/spacecam-spatial-native-first/debug/generated.c",
+            "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial-spacecam-native.c",
+            "-lm",
+            "-o",
+            "/private/tmp/spacecam-spatial-native-first/debug/probe"
+          ],
+          "exit_status": 1,
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stderr_sha256": "2e9bbd5dbcef7972260c5fc70a7754fdabe5317d7a66f81a91d9c466b565fae1"
+        }
+      ],
+      "modes": [],
+      "passed": false
+    },
+    "reason": "Initial test wrapper exported only D3, so its generated header correctly omitted private SpaceCam. Expose the unchanged SpaceCam input in the wrapper before asserting its layout. Also rename the negative fixture procedure to avoid an existing loaded test local f; final negative has exactly one E0833."
+  },
+  "limits": [
+    "The public SpaceCam/D3 API remains untyped; only the relative subtraction uses explicit Point3 world assertions and an explicit raw-coordinate return.",
+    "No origin stamp, frame transform, spacecraft/Panda migration, coordinate provenance or clock guarantee.",
+    "512 cases per mode; non-NaN outputs compared as exact F64 bits, NaNs by class only. This does not prove all inputs or other architectures.",
+    "Only two affected source checks and a new native oracle ran; no unchanged full camera, compiler or model gate."
+  ],
+  "belt_compatibility": {
+    "source": "apps/openagents-web/belt.coax",
+    "source_sha256": "f05b819f34c97774550374f33d376977324e40b8a4876cf66f39374d525548d1",
+    "change": "Seven references to the private RGB record Point3 were renamed BeltRgb, keeping x/y/z and behavior. A repo-wide product declaration search found no other Point3/Vector3 declarations.",
+    "initial_compile_failure": "apps/openagents-web/belt.coax:2033:1: error[E0372]: struct 'Point3' conflicts with another declaration or a built-in name\n  Point3 :: struct { x: f32; y: f32; z: f32; }\n  ^\napps/openagents-web/belt.coax:2028:28: error[E0833]: Point3 and Vector3 take Frame, Unit and f32 or f64\n  faction_rgb :: (f: int) -> Point3 {\n                             ^\napps/openagents-web/belt.coax:2175:98: error[E0833]: Point3 and Vector3 take Frame, Unit and f32 or f64\n  draw_hull :: (out: [] f32, d: [] Draw, x: f32, y: f32, h: f32, ch: f32, sn: f32, big: bool, col: Point3) {\n                                                                                                   ^\n3 errors\n",
+    "qualified_compiler_sha256": "f4c27d83090e6723d73bd3bb252a1e4dc7d29211d92a588e103eef1b8011beaa",
+    "C_sha256": "6d2290fc9671c3b51eed17d848c5e5f2dbae3f92d35b7927181c394ca15db834",
+    "header_sha256": "140d8725cc991ec8ac0bb9c4f27af094e88b27d775d2f106c286a5e907764c45",
+    "native_C_syntax_exit": 0,
+    "wasm32_object_exit": 0,
+    "wasm32_object_sha256": "3de4c00007a900cb8de8fe373a71732a83ec7e7309a7beeeefe34eb2826d3f7d",
+    "wasm32_object_bytes": 374189,
+    "stderr_bytes": 0,
+    "scope": "C/header emission, host C syntax and real wasm32-wasip1 object compilation only. No game/browser/full runtime test or wasm numerical qualification."
+  }
+}

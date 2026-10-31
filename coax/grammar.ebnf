@@ -27,9 +27,19 @@ procedure = identifier, "::", "(", [ parameters ], ")",
 parameters = parameter, { ",", parameter }, [ "," ] ;
 parameter = identifier, ":", type ;
 constant = identifier, "::", expression, ";" ;
-struct = identifier, "::", "struct", [ struct-parameters ], [ quantity-annotation ], field-block ;
+struct = identifier, "::", "struct", [ struct-parameters ], [ physical-annotation ], field-block ;
+physical-annotation = quantity-annotation | frame-annotation ;
 quantity-annotation = "@builtin_quantity" | "@unit", "(", unit-argument, { ",", unit-argument }, ")" ;
 unit-argument = identifier, "=", [ "-" ], integer ;
+frame-annotation = "@frame", "(", frame-argument, { ",", frame-argument }, ")" ;
+frame-argument = "handedness", "=", ( "right" | "left" )
+               | "convention", "=", ( "cartesian" | "body" | "optical" )
+               | "continuity", "=", ( "continuous" | "jumping" )
+               | "min_precision", "=", ( "f32" | "f64" ) ;
+(* All four frame names are required exactly once in any order. Values are
+   literal words, not lookups/expressions. One physical annotation per struct.
+   Checker admission requires an empty non-generic frame struct and applies
+   the spatial policy, including the right-handed optical convention. *)
 struct-parameters = "(", type-parameter, { ",", type-parameter }, ")" ;
 (* Each parameter is listed once as $NAME. Use as a field's array length
    determines a length parameter; other uses determine a type parameter. *)

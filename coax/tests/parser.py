@@ -16,8 +16,9 @@ ROOT=Path(__file__).resolve().parents[1]
 class Loc(C.Structure):_fields_=[(n,C.c_int64) for n in ('line','column','offset')]
 class Token(C.Structure):_fields_=[('kind',C.c_uint32),('text',LX.Text),('loc',Loc),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('raw_count',C.c_int64)]
 class Unit(C.Structure):_fields_=[('e',C.c_int64*6)]
+class Frame(C.Structure):_fields_=[('e',C.c_int64*4)]
 class Node(C.Structure):
-    _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('end',C.c_int64),('quantity',C.c_uint8),('unit',Unit)]
+    _fields_=[('kind',C.c_uint32),('loc',Loc),('name',LX.Text),('name2',LX.Text),('loc2',Loc)]+[(n,C.c_int64) for n in ('a','b','c','d','head','tail','next')]+[('op',C.c_uint32),('flag',C.c_bool),('flag2',C.c_bool),('value',C.c_uint64),('floating',C.c_double),('width',C.c_int64),('end',C.c_int64),('quantity',C.c_uint8),('unit',Unit),('frame_decl',C.c_bool),('frame',Frame)]
 class State(C.Structure):_fields_=[(n,C.c_int64) for n in ('pos','used','depth')]+[('code',LX.Text),('loc',Loc),('fix',LX.Text),('length',C.c_int64),('development',C.c_bool)]
 class Result(C.Structure):_fields_=[('ok',C.c_bool),('root',C.c_int64)]
 def view(T):
@@ -49,15 +50,17 @@ def assert_native_layouts(header,records):
     return actual
 
 def transport_records():
-    return [('coax_string',LX.Text),('coax_t_PS_Loc',Loc),('coax_t_PS_Token',Token),('coax_a6_s64',Unit),('coax_t_PS_Node',Node),('coax_t_PS_State',State),('coax_t_PS_Result',Result),('coax_v_t_PS_Node',view(Node))]
+    return [('coax_string',LX.Text),('coax_t_PS_Loc',Loc),('coax_t_PS_Token',Token),('coax_a6_s64',Unit),('coax_a4_s64',Frame),('coax_t_PS_Node',Node),('coax_t_PS_State',State),('coax_t_PS_Result',Result),('coax_v_t_PS_Node',view(Node))]
 
 class Parser(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        compiler=Path(os.environ.get('COAX_TEST_COMPILER',ROOT/'bin/coax'))
+        cls.previous_lexer_compiler=LX.COAX;LX.COAX=compiler
         LX.Lexer.setUpClass()
         cls.tmp=tempfile.TemporaryDirectory(prefix='coax-native-parser-');cls.d=Path(cls.tmp.name)
         cls.source=cls.d/'parser.c';cls.header=cls.d/'parser.h'
-        cls.source.write_bytes(LX.checked([ROOT/'bin/coax','c',ROOT/'lib/compiler/parser.coax','--library','--header',cls.header]))
+        cls.source.write_bytes(LX.checked([compiler,'c',ROOT/'lib/compiler/parser.coax','--library','--header',cls.header]))
         assert_native_layouts(cls.header,transport_records())
         LX.checked([os.environ.get('CC','cc'),'-std=c11','-O1','-g','-shared','-fPIC',cls.source,'-lm','-o',cls.d/'parser.dylib'])
         cls.lib=C.CDLL(str(cls.d/'parser.dylib'))
@@ -65,7 +68,7 @@ class Parser(unittest.TestCase):
         cls.lib.PS_parse.restype=Result
     @classmethod
     def tearDownClass(cls):
-        cls.tmp.cleanup();LX.Lexer.tearDownClass()
+        cls.tmp.cleanup();LX.Lexer.tearDownClass();LX.COAX=cls.previous_lexer_compiler
     def parse(self,source,capacity=None):
         data=source.encode();buf=C.create_string_buffer(data);state=LX.Lexer.lib.LX_begin(len(data))
         decoded=(C.c_uint8*(len(data)+1))();message=(C.c_uint8*64)();tokens=[];keep=[buf]
@@ -100,6 +103,25 @@ class Parser(unittest.TestCase):
         self.assertEqual(declarations[b'Speed'].quantity,1)
         self.assertEqual(list(declarations[b'Speed'].unit.e),[0,1,-1,0,3,2])
         self.assertEqual(declarations[b'Quantity'].quantity,2)
+    def test_frame_source_metadata_and_negative_fixtures(self):
+        fixture=json.loads((ROOT/'tests/spatial/frame-parser-cases.json').read_text())
+        self.assertEqual(fixture['schema'],'coax-frame-parser-cases-v1')
+        for case in fixture['cases']:
+            with self.subTest(case=case['name']):
+                result,nodes,state,message,keep=self.parse(case['source'])
+                self.assertEqual(result.ok,case['ok'],message)
+                if not result.ok:
+                    # Refusal is ok=false; internal diagnostic nodes/root are not an admitted tree.
+                    self.assertEqual(LX.raw(state.code).decode(),case['code'],message)
+                    self.assertGreater(state.loc.column,0)
+                    continue
+                declarations=[n for n in nodes[:state.used+1] if n.kind==66]
+                self.assertEqual(len(declarations),1)
+                node=declarations[0]
+                self.assertEqual(node.quantity,case['quantity'])
+                self.assertEqual(node.frame_decl,case['frame'] is not None)
+                self.assertEqual(list(node.frame.e),case['frame'] or [0,0,0,0])
+
     def test_random_parenthesized_expression_trees(self):
         rng=random.Random(197)
         ops=[('+',34),('-',35),('*',36),('/',37),('%',38),('&',39),('|',40),('^',41),('<<',42),('>>',43)]
