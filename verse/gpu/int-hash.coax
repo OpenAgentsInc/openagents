@@ -10,6 +10,10 @@
 // the port's own difference. The live files are not changed.
 //   coax/web/tool.sh verse/gpu/int-hash.coax OUT_DIR    (from the repo root)
 // writes OUT_DIR/gpu.coax, gpu-fx.coax, style.coax, everglade.wgsl and everglade-fx.wgsl.
+//   coax/web/tool.sh verse/gpu/int-hash.coax OUT_DIR --page NAME
+// does the same for a page's module, apps/openagents-web/gpu/NAME.coax (its every sin hash of
+// that line, its loads made whole paths): OUT_DIR/NAME.coax and OUT_DIR/NAME.wgsl
+// (verse/gpu/flat-pass.coax).
 #import "Basic";
 #load "../../coax/lib/sys/tool.coax";
 #load "../../coax/lib/sys/fs.coax";
@@ -27,8 +31,15 @@ IH_STYLE_INT :: " qx:=cast,trunc(u32)(cast(s32)(floor(x*64.0f32)));qy:=cast,trun
 
 tool_main :: () -> int #export_c {
   a: [1] Args;
-  if !args_load(a[..]) || args_count(a[..]) != 1 { tool_errln("usage: int-hash OUT_DIR"); return 2; }
+  if !args_load(a[..]) || (args_count(a[..]) != 1 && args_count(a[..]) != 3) { tool_errln("usage: int-hash OUT_DIR [--page NAME]"); return 2; }
   out := args_at(a[..], 0);
+  page := args_value(a[..], "--page", "");
+  if page.count > 0 {
+    if !fs_mkdir(out) && fs_kind(out) <= 0 { tool_errln("int-hash: cannot make OUT_DIR"); return 1; }
+    if !ih_page(out, page) { return 1; }
+    print("int-hash: % (%.coax, %.wgsl)\n", out, page, page);
+    return 0;
+  }
   src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; p: [1024] u8;
   if !fs_mkdir(out) && fs_kind(out) <= 0 { tool_errln("int-hash: cannot make OUT_DIR"); return 1; }
   // the style's hash (verse/style.coax)
@@ -67,6 +78,65 @@ ih_module :: (out: string, name: string, wgsl: string, times: int) -> bool {
   pr := proc_run(mod[..], 600000, o[..], e[..]);
   if pr.started != 0 || pr.status != 0 || pr.timed_out { tool_err(cast(string) e[0..<pr.err_n]); tool_err("int-hash: the module failed for "); tool_errln(name); return false; }
   return true;
+}
+
+// apps/openagents-web/gpu/NAME.coax with every sin hash (IH_COAX_SIN) the integer hash and every
+// relative #load a whole path, as OUT/NAME.coax, and the module coax wgsl writes from it with
+// NAME.module's options as OUT/NAME.wgsl.
+ih_page :: (out: string, name: string) -> bool {
+  src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; p: [1024] u8; sp: [1024] u8; nb: [256] u8;
+  from := fs_join("apps/openagents-web/gpu", ih_cat3(name, ".coax", "", nb[..]), sp[..]);
+  n := fs_read(from, src[..]);
+  if n < 0 { tool_err("int-hash: no "); tool_errln(from); return false; }
+  times := ih_count(cast(string) src[0..<n], IH_COAX_SIN);
+  if times == 0 { tool_err("int-hash: no sin hash in "); tool_errln(from); return false; }
+  body: [1024] u8;
+  r := ih_cat3(" x:=p.x;y:=p.y;\n", IH_STYLE_INT, "", body[..]);
+  text := ih_replace(cast(string) src[0..<n], IH_COAX_SIN, r, dst[..], times);
+  cb: [1024] u8; db: [1024] u8;
+  dir := ih_cat3(fs_cwd(cb[..]), "/apps/openagents-web/gpu/", "", db[..]);
+  text = ih_whole_loads(text, dir, tmp[..]);
+  if text.count == 0 { tool_err("int-hash: cannot rewrite "); tool_errln(from); return false; }
+  gpu := fs_join(out, ih_cat3(name, ".coax", "", nb[..]), p[..]);
+  if !fs_write(gpu, text) { tool_err("int-hash: cannot write "); tool_errln(gpu); return false; }
+  wb: [1024] u8; wn: [256] u8; mb: [1024] u8; mn: [256] u8; o: [65536] u8; e: [65536] u8;
+  opts := fs_join("apps/openagents-web/gpu", ih_cat3(name, ".module", "", mn[..]), mb[..]);
+  mod := [5] string.["coax/web/tool.sh", "coax/web/wgsl-module.coax", gpu, fs_join(out, ih_cat3(name, ".wgsl", "", wn[..]), wb[..]), opts];
+  pr := proc_run(mod[..], 600000, o[..], e[..]);
+  if pr.started != 0 || pr.status != 0 || pr.timed_out { tool_err(cast(string) e[0..<pr.err_n]); tool_err("int-hash: the module failed for "); tool_errln(name); return false; }
+  return true;
+}
+// How many times old is in text (apart).
+ih_count :: (text: string, old: string) -> int {
+  n := 0; i := 0;
+  while old.count > 0 && i + old.count <= text.count {
+    if text[i..<i + old.count] == old { n += 1; i += old.count; } else { i += 1; }
+  }
+  return n;
+}
+// text with each line's `#load "REL"` (REL not starting with /) as `#load "DIR REL"`, in out; "" if it does not fit.
+ih_whole_loads :: (text: string, dir: string, out: [] u8) -> string {
+  key := "#load \"";
+  n := 0; i := 0;
+  while i < text.count {
+    at_line := i == 0 || text[i - 1] == '\n';
+    if at_line && i + key.count < text.count && text[i..<i + key.count] == key && text[i + key.count] != '/' {
+      if n + key.count + dir.count > out.count { return ""; }
+      for k: 0..<key.count { out[n + k] = key[k]; }
+      for k: 0..<dir.count { out[n + key.count + k] = dir[k]; }
+      n += key.count + dir.count; i += key.count;
+      continue;
+    }
+    if n >= out.count { return ""; }
+    out[n] = text[i]; n += 1; i += 1;
+  }
+  return cast(string) out[0..<n];
+}
+#test "a page's loads and hashes" {
+  o: [128] u8;
+  #assert ih_whole_loads("#load \"a.coax\";\nx #load \"b\";\n#load \"/c\";", "/r/", o[..]) == "#load \"/r/a.coax\";\nx #load \"b\";\n#load \"/c\";";
+  #assert ih_whole_loads("#load \"a\";", "/r/", o[0..<10]) == "" && ih_whole_loads("", "/r/", o[..]) == "";
+  #assert ih_count("aXbXXc", "X") == 3 && ih_count("abc", "X") == 0 && ih_count("abc", "") == 0 && ih_count("XX", "XX") == 1;
 }
 
 // text with each of exactly `times` occurrences of `old` replaced by `new` in out, else "".

@@ -45,12 +45,14 @@ void rh_open(RealmHost *h, int golden) {
   h->state = rh_off(h->arena);
   h->vertices = h->state + state;
   h->uniforms = h->vertices + (uint32_t)(h->max_vertices * h->floats * 4);
+  coaxial_state_init(h->state);   // its struct defaults, as host.js has them applied
   if (golden) coaxial_golden(1);
 }
 
 static uint32_t le32(const uint8_t *p) { return p[0] | p[1] << 8 | p[2] << 16 | (uint32_t)p[3] << 24; }
 
 int rh_pack(RealmHost *h, const char *path) {
+  if (!strcmp(path, "-")) return 0;   // a realm with no pack (its page names none)
   FILE *f = fopen(path, "rb");
   if (!f) { fprintf(stderr, "realm-host: cannot read %s\n", path); return 1; }
   fseek(f, 0, SEEK_END);
@@ -87,6 +89,11 @@ const RhEntry *rh_entry(const RealmHost *h, int kind) {
 }
 
 void rh_deliver(RealmHost *h, int extra, const uint32_t *extra_sizes) {
+  if (!h->pack) {
+    // no pack: the page's assets are the only ones, from 0 (host.js lists them so)
+    for (int i = 0; i < extra; i++) coaxial_asset_ready(h->state, i, extra_sizes[i]);
+    return;
+  }
   char loaded[64];
   int n = snprintf(loaded, sizeof loaded, "%zu %zu", h->pack_size, h->pack_size);
   rh_send(h, RH_PACK_KIND, loaded, (size_t)n);
@@ -355,6 +362,31 @@ int32_t guard_cancel(int32_t id) { return cancel(id); }
 int32_t coaxial_http(uint32_t url, uint32_t url_len, uint32_t body, uint32_t body_len, int32_t flags) {
   return (int32_t)request(url, url_len, body, body_len, flags, -1);
 }
+// WebSockets (host.js coaxial_socket_*): refused natively, as host.js refuses a URL it cannot
+// open, so a realm that plays with others (Hold the Stair's co-op) plays alone.
+int32_t coaxial_socket_open(uint32_t url, uint32_t len) { (void)url; (void)len; return -1; }
+void coaxial_socket_send(int32_t id, uint32_t ptr, uint32_t len) { (void)id; (void)ptr; (void)len; }
+void coaxial_socket_close(int32_t id) { (void)id; }
+// The exports host.js calls only when a realm's face has them (x.coaxial_draws?.(...) and
+// the like): a face without them gets these, which say it has none.
+#define NONE __attribute__((weak))
+NONE void coaxial_state_init(uint32_t s) { (void)s; }
+NONE uint32_t coaxial_asset(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; return 0; }
+NONE void coaxial_asset_ready(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; }
+NONE void coaxial_hash(uint32_t s, uint32_t n) { (void)s; (void)n; }
+NONE uint32_t coaxial_draws(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_draw_count(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_water_draws(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_grass_instances(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_stores(void) { return 0; }
+NONE uint32_t coaxial_store_cap(int32_t k) { (void)k; return 0; }
+NONE uint32_t coaxial_store(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
+NONE uint32_t coaxial_store_bytes(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
+NONE uint32_t coaxial_store_version(uint32_t s, int32_t k) { (void)s; (void)k; return 0; }
+NONE uint32_t coaxial_particle_cap(void) { return 0; }
+NONE uint32_t coaxial_particles(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_particle_bytes(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_particle_instances(uint32_t s) { (void)s; return 0; }
 // The phone's thumbs (verse/grid.coax) draw through these; a desktop has none.
 void host_line(int64_t h, double ax, double ay, double bx, double by, double la, double lb, double w) {
   (void)h; (void)ax; (void)ay; (void)bx; (void)by; (void)la; (void)lb; (void)w;

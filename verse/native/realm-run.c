@@ -1,7 +1,7 @@
 // realm-run: a realm natively with no GPU, printing what each frame hands
 // the GPU, so a native build can be held to the browser's wasm
 // (verse/native/wasm-run.ts prints the same lines from the wasm).
-//   realm-run --pack FILE [--facts FILE] [--frames N] [--size WxH] [--scale K]
+//   realm-run [--pack FILE] [--facts FILE] [--frames N] [--size WxH] [--scale K]
 //             [--keys F:KEY:DOWN,...] [--extra BYTES,...] [--golden] [--every K] [--against DIR]
 // Each frame steps 1/60 s. --keys holds or lets go of a key (host.js KEYS:
 // -6 up, -7 down, -4 left, -5 right, or a code point) at frame F. --extra
@@ -56,10 +56,9 @@ int main(int argc, char **argv) {
     else if (!strcmp(a, "--against")) against = v, i++;
     else { fprintf(stderr, "realm-run: what is %s?\n", a); return 2; }
   }
-  if (!pack) { fprintf(stderr, "usage: realm-run --pack FILE [--facts FILE] [--frames N] [--size WxH] [--keys F:KEY:DOWN,...]\n"); return 2; }
   RealmHost h;
   rh_open(&h, golden);
-  if (rh_pack(&h, pack)) return 1;
+  if (rh_pack(&h, pack ? pack : "-")) return 1;
   if (facts) {
     size_t n;
     char *text = slurp(facts, &n);

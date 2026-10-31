@@ -6,6 +6,9 @@
 # pointer the face hands back fits its 32 bits (realm-host.c). The realms:
 #   everglade   apps/openagents-web/everglade.coax and everglade-face.c, as
 #               apps/openagents-web/build.sh links them for the browser
+#   stair       Hold the Stair: apps/openagents-web/stair.coax and stair-face.c (no pack)
+# The face is built through coax/web/defaults.py's wrapper (REALM.face.c), as coax/web/wasm.sh
+# builds it: its globals and a fresh state get their struct defaults (coaxial_state_init).
 set -euo pipefail
 here="$(cd "$(dirname "$0")" && pwd -P)"
 root="$(cd "$here/../.." && pwd -P)"
@@ -15,6 +18,7 @@ web="$root/apps/openagents-web"
 case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
     libraries=("$root/verse/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
+  stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
   *) echo "build.sh: no realm $realm" >&2; exit 2 ;;
 esac
 mkdir -p "$out"
@@ -22,14 +26,17 @@ coax="${COAX:-$root/coax/bin/coax}"
 if [[ -x "$coax" ]]; then
   relative() { echo "${1#"$root"/}"; }
   (cd "$root" && "$coax" c "$(relative "$app")" --library --header "$out/$realm.h") > "$out/$realm.c" &
-  for library in "${libraries[@]}"; do
+  for library in ${libraries[@]+"${libraries[@]}"}; do
     base="$(basename "$library" .coax)"; base="$(printf '%s' "${base:0:1}" | tr a-z A-Z)${base:1}"
     (cd "$root" && "$coax" c "$(relative "$library")" --library --header "$out/$base.h") > "$out/$base.c" &
   done
   wait
   cp "$face" "$web"/*-face.h "$out/"
   cp "$here"/face.h "$here"/realm-host.h "$here"/realm-host.c "$here"/realm-run.c "$out/"
-  echo "$(basename "$face") $(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')" > "$out/sources"
+  units="$(cd "$out" && ls ./*.c | grep -v -e face -e realm-host -e realm-run | xargs -n1 basename | tr '\n' ' ')"
+  # shellcheck disable=SC2086
+  (cd "$out" && python3 "$root/coax/web/defaults.py" "$(basename "$face")" "$realm.face.c" $units)
+  echo "$realm.face.c $units" > "$out/sources"
 fi
 [[ "$(uname)" == Linux ]] || exit 0
 read -r -a sources < "$out/sources"

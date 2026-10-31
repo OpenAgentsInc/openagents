@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Everglade drawn natively on HOST's GPU by verse/gpu/vk-realm.c (docs/verse/native-gpu.md,
+# A realm drawn natively on HOST's GPU by verse/gpu/vk-realm.c (docs/verse/native-gpu.md,
 # gpu-realm-host): the realm's Coax as C (verse/native/build.sh), the live spec with its
-# modules and the layers decoded in Coax (everglade-pass live --emit), built there with gcc.
+# modules (and Everglade's layers decoded in Coax), built there with gcc. REALM picks it:
+# everglade (the default; everglade-pass live --emit) or stair (Hold the Stair, no pack;
+# flat-pass --emit).
 #   verse/gpu/realm.sh HOST check                    offscreen: 90 golden frames, the last against
 #                                                    vk-passes drawing the spec's own frame, and the
 #                                                    frame times at 320x180 and at 2560x1440
@@ -29,14 +31,21 @@ trap 'rm -rf "$work"' EXIT
 seconds=60
 for ((i = 1; i <= $#; i++)); do [[ "${!i}" == --seconds ]] && { j=$((i + 1)); seconds="${!j}"; }; done
 
-"$root/verse/native/build.sh" everglade "$work/realm" > /dev/null
-(cd "$root" && coax/web/tool.sh verse/gpu/everglade-pass.coax "$host" live --emit "$work/spec") >&2
+realm="${REALM:-everglade}"
+case "$realm" in
+  everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/spec")
+    given="everglade.pack --facts everglade.facts --extra 9000" ;;
+  stair) emit=(verse/gpu/flat-pass.coax "$host" stair --emit "$work/spec"); given="-" ;;
+  *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
+esac
+"$root/verse/native/build.sh" "$realm" "$work/realm" > /dev/null
+(cd "$root" && coax/web/tool.sh "${emit[@]}") >&2
 mkdir -p "$work/ship/spec"
 (cd "$work/spec" && cp spec.txt *.spv *.spv.bindings *.bin "$work/ship/spec/")
 cp "$work/realm"/*.c "$work/realm"/*.h "$work/realm/sources" "$work/ship/"
 cp "$here"/vk-realm.c "$here"/vk-passes.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
    "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$here"/vk-escape.c "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$work/ship/"
-cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$work/ship/"
+[[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$work/ship/"
 # the network helper: its Coax as C here, built there against OpenSSL (coax/platform/tls-env.sh's)
 mkdir -p "$work/ship/net-src"
 coax="${COAX:-$root/coax/bin/coax}"
@@ -74,19 +83,19 @@ if [ $mode = check ]; then
   # the frame the spec was written from (wasm-run's 90th, golden, clock 0), drawn by vk-passes and by vk-realm
   export VK_ADD_LAYER_PATH VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation
   (cd spec && ../vk-passes spec.txt \$here/passes.f32)
-  VERSE_NATIVE_CLOCK_MS=0 ./vk-realm spec everglade.pack --facts everglade.facts --extra 9000 --golden --size 320x180 --headless 90 --out \$here/realm.f32
+  VERSE_NATIVE_CLOCK_MS=0 ./vk-realm spec $given --golden --size 320x180 --headless 90 --out \$here/realm.f32
   cmp passes.f32 realm.f32 && echo 'realm.sh: the realm'\"'\"'s 90th frame is vk-passes'\"'\"' to the bit' || echo 'realm.sh: the frames differ'
   # the frame times, without the validation layers
   unset VK_INSTANCE_LAYERS
-  ./vk-realm spec everglade.pack --facts everglade.facts --extra 9000 --size 320x180 --headless 600
-  ./vk-realm spec everglade.pack --facts everglade.facts --extra 9000 --size 2560x1440 --headless 600
-  ./vk-realm spec everglade.pack --facts everglade.facts --extra 9000 --size 3840x2160 --headless 600
+  ./vk-realm spec $given --size 320x180 --headless 600
+  ./vk-realm spec $given --size 2560x1440 --headless 600
+  ./vk-realm spec $given --size 3840x2160 --headless 600
   exit 0
 fi
 if [ $mode = net ]; then
   VERSE_AUTOMATION=$automation ./net \$here/answer openagents.com 443 4 '/api/playtest/planets?after=1000000000' - - 65536 10000
   echo \"realm.sh: the helper's answer: \$(head -c 120 answer | tr '\\n' ' ')\"
-  VERSE_AUTOMATION=$automation VERSE_NATIVE_NET_LOG=1 ./vk-realm spec everglade.pack --facts everglade.facts --extra 9000 --size 320x180 --headless 3000 --net \$here/kept
+  VERSE_AUTOMATION=$automation VERSE_NATIVE_NET_LOG=1 ./vk-realm spec $given --name $realm --size 320x180 --headless 3000 --net \$here/kept
   echo \"realm.sh: kept: \$(ls kept 2>/dev/null | tr '\\n' ' ')\"
   exit 0
 fi
@@ -100,7 +109,7 @@ sudo -n chvt \$to
 for e in \$(echo \"${REALM_ESCAPES:-}\" | tr , ' '); do sudo -n ./vk-escape \${e%%:*} \${e#*:} & done
 sleep 1
 sudo -n env VK_DRIVER_FILES=\$VK_DRIVER_FILES LD_LIBRARY_PATH=\$LD_LIBRARY_PATH ${automation:+VERSE_AUTOMATION=$automation} \
-  ./vk-realm spec everglade.pack --facts everglade.facts --extra 9000 --shot \$d/shot.ppm --net \$HOME/.local/state/verse $args || status=\$?
+  ./vk-realm spec $given --name $realm --shot \$d/shot.ppm --net \$HOME/.local/state/verse $args || status=\$?
 sudo -n chown -R \$(id -u):\$(id -g) \$HOME/.local/state/verse 2>/dev/null || true
 back
 dog=\$(cat dog.pid 2>/dev/null || true)

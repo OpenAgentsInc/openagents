@@ -1,0 +1,182 @@
+// A flat realm's passes against the browser (docs/verse/native-gpu.md, realms-native): a realm
+// with no scene (no pack, no scene_fs), drawn as host.js draws one: bg_fs over the screen, then
+// the frame's own vertices (the strokes) through fx_vs and fx_fs, the larger of each colour
+// kept (blend max). Its frame comes from the browser's wasm (verse/native/wasm-run.ts: golden,
+// clock 0, the 90th frame at 320x180), its entries from apps/openagents-web/gpu/REALM.coax as
+// `coax spirv` lowers them, and the browser draws REALM.wgsl, the module `coax wgsl` writes
+// from the same Coax (apps/openagents-web/build.sh). verse/gpu/pass-check.coax draws the spec
+// in headless Chrome and on HOST's GPU and compares, both from the Coax with its sin hashes one
+// integer hash (verse/gpu/int-hash.coax --page: sin of a large argument is each GPU's own); with
+// --live, from the live Coax, reported only.
+//   coax/web/tool.sh verse/gpu/flat-pass.coax HOST REALM [--allow N] [--keep DIR] [--live] [--emit DIR]
+// --emit DIR writes the spec, its modules and the frame to DIR instead, for a host that draws
+// every frame (verse/gpu/vk-realm.c, verse/gpu/realm.sh), from the live Coax; vk-realm fills u
+// and hud each frame.
+// The realms: stair (Hold the Stair).
+#import "Basic";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+#load "../../coax/lib/sys/args.coax";
+#load "../../coax/lib/sys/proc.coax";
+#load "../../coax/lib/sequence.coax" as sequence;
+
+FP_REALMS :: [1] string.["stair"];
+FP_SIZE :: "320 180";
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) || args_count(a[..]) < 2 { tool_errln("usage: flat-pass HOST REALM [--allow N] [--keep DIR] [--emit DIR]"); return 2; }
+  realm := args_at(a[..], 1);
+  if !fp_known(realm) { tool_err("flat-pass: no flat realm "); tool_errln(realm); return 2; }
+  tb: [1024] u8;
+  work := fs_temp("flat-pass-", tb[..]);
+  if work.count == 0 { tool_errln("flat-pass: no temporary directory"); return 1; }
+  emit := args_value(a[..], "--emit", "");
+  status := fp_run(args_at(a[..], 0), realm, work, args_value(a[..], "--allow", "40"), args_value(a[..], "--keep", ""), emit, emit.count == 0 && !args_has(a[..], "--live"));
+  r := fs_remove(work);
+  return status;
+}
+
+fp_known :: (realm: string) -> bool {
+  for r: FP_REALMS { if r == realm { return true; } }
+  return false;
+}
+#test "the flat realms" { #assert fp_known("stair") && !fp_known("everglade") && !fp_known(""); }
+
+fp_run :: (host: string, realm: string, work: string, allow: string, keep: string, emit: string, int_hash: bool) -> int {
+  b: [8] [1024] u8; o: [65536] u8;
+  dir := fs_join(work, "spec", b[0][..]);
+  if !fs_mkdir(dir) { tool_errln("flat-pass: cannot make a directory"); return 1; }
+  // the browser's wasm, and its frame
+  wasm := fs_join(work, cat(realm, ".wasm", b[7][..]), b[1][..]);
+  app := cat(cat("apps/openagents-web/", realm, b[2][..]), ".coax", b[3][..]);
+  face := cat(cat("apps/openagents-web/", realm, b[4][..]), "-face.c", b[5][..]);
+  build := [4] string.["coax/web/wasm.sh", app, face, wasm];
+  if fp_step("the wasm", build[..], o[..]) < 0 { return 1; }
+  frame := [14] string.["env", "VERSE_NATIVE_CLOCK_MS=0", "bun", "verse/native/wasm-run.ts", wasm, "--size", "320x180", "--frames", "90", "--every", "90", "--golden", "--dump", dir];
+  if fp_step("the frame", frame[..], o[..]) < 0 { return 1; }
+  // the module the browser draws, and the entries lowered
+  gb: [1024] u8; wb: [1024] u8;
+  gpu := cat(cat("apps/openagents-web/gpu/", realm, b[2][..]), ".coax", gb[..]);
+  wgsl := cat(cat("apps/openagents-web/", realm, b[3][..]), ".wgsl", wb[..]);
+  if int_hash {
+    ih := fs_join(work, "int", b[5][..]);
+    cmd := [5] string.["coax/web/tool.sh", "verse/gpu/int-hash.coax", ih, "--page", realm];
+    if fp_step("the integer hash", cmd[..], o[..]) < 0 { return 1; }
+    gpu = fs_join(ih, cat(realm, ".coax", b[6][..]), gb[..]);
+    wgsl = fs_join(ih, cat(realm, ".wgsl", b[7][..]), wb[..]);
+    print("flat-pass: %, one integer hash on both sides\n", realm);
+  }
+  if !fp_copy(wgsl, fs_join(dir, "page.wgsl", b[4][..])) { return 1; }
+  if !fp_lower(dir, gpu, realm, "bg_vs", "bg_fs") || !fp_lower(dir, gpu, realm, "fx_vs", "fx_fs") { return 1; }
+  // the spec
+  dt: [256] u8;
+  dn := fs_read(fs_join(dir, "draws.txt", b[4][..]), dt[..]);
+  words := cast(string) dt[0..<ifx dn > 0 then dn else 0];
+  hud := args_whole(fp_word(words, 4)); floats := args_whole(fp_word(words, 5));
+  if floats < 1 || floats > 32 { tool_errln("flat-pass: the frame does not say its vertices' floats"); return 1; }
+  sp: [4096] u8; sa: [1] Sp; sa[0] = Sp.{buf = sp[..]}; s := sa[..];
+  fp_spec(s, hud, floats);
+  if s[0].bad || !fs_write(fs_join(dir, "spec.txt", b[4][..]), cast(string) sp[0..<s[0].n]) { tool_errln("flat-pass: cannot write the spec"); return 1; }
+  if emit.count > 0 {
+    if !fs_mkdir(emit) && fs_kind(emit) <= 0 { tool_errln("flat-pass: cannot make the --emit directory"); return 1; }
+    ed: [1024] u8;
+    cp := [4] string.["cp", "-R", cat(dir, "/.", ed[..]), emit];
+    if fp_step("the spec directory", cp[..], o[..]) < 0 { return 1; }
+    print("flat-pass: %'s spec, modules and frame in %\n", realm, emit);
+    return 0;
+  }
+  pc := [9] string.["coax/web/tool.sh", "verse/gpu/pass-check.coax", host, dir, "spec.txt", "--allow", allow, "--keep", keep];
+  n := fp_step("the comparison", pc[0..<ifx keep.count > 0 then 9 else 7], o[..]);
+  if n >= 0 { print("%\n", cast(string) o[0..<n]); }
+  return ifx n >= 0 then 0 else 1;
+}
+
+// host.js's passes for a realm with no scene: bg_fs (three vertices, no depth) into the
+// screen, then the frame's $hud vertices (FLOATS floats each, a vec4f attribute per four)
+// through fx_vs and fx_fs, blended max, alpha too.
+fp_spec :: (s: [] Sp, hud: int, floats: int) {
+  put(s, "wgsl page.wgsl\nsize "); put(s, FP_SIZE); put(s, "\nlet hud "); put_int(s, hud);
+  put(s, "\nbuffer u u.bin\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\n");
+  put(s, "pass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:"); put_int(s, floats); put(s, "\n");
+}
+#test "a flat realm's spec" {
+  o: [1024] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
+  fp_spec(s, 7506, 16);
+  #assert !s[0].bad && cast(string) o[0..<s[0].n] == "wgsl page.wgsl\nsize 320 180\nlet hud 7506\nbuffer u u.bin\npass bg_fs.spv bg_vs bg_fs 1 - 0 0 3\nbuffer hud hud.bin\npass fx_fs.spv fx_vs fx_fs 1 - 0 0 $hud keep blend=max alpha=max vertices=hud:16\n";
+  t: [8] u8; sb: [1] Sp; sb[0] = Sp.{buf = t[..]}; fp_spec(sb[..], 1, 16);
+  #assert sb[0].bad;
+}
+
+// REALM_VS and REALM_FS of gpu lowered to DIR/FS.spv, the bindings coax spirv reports beside it.
+fp_lower :: (dir: string, gpu: string, realm: string, vs: string, fs_: string) -> bool {
+  b: [4] [1024] u8; o: [65536] u8; v: [256] u8; f: [256] u8; nb: [256] u8; p: [256] u8;
+  spv := fs_join(dir, cat(fs_, ".spv", nb[..]), b[0][..]);
+  pre := cat(realm, "_", p[..]);
+  argv := [9] string.["coax/bin/coax", "spirv", gpu, "--vertex", cat(pre, vs, v[..]), "--fragment", cat(pre, fs_, f[..]), "-o", spv];
+  err: [65536] u8;
+  r := proc_run(argv[..], 900000, o[..], err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out { tool_err(cast(string) err[0..<r.err_n]); tool_errln("flat-pass: the lowering failed"); return false; }
+  return fs_write(cat(spv, ".bindings", b[1][..]), cast(string) err[0..<r.err_n]);
+}
+
+fp_copy :: (from: string, to: string) -> bool {
+  buf: [4194304] u8;
+  n := fs_read(from, buf[..]);
+  if n < 0 || !fs_write(to, cast(string) buf[0..<n]) { tool_err("flat-pass: cannot copy "); tool_errln(from); return false; }
+  return true;
+}
+
+// Runs argv: the length of its stdout in out, or -1 (printed with its stderr) when it fails.
+fp_step :: (what: string, argv: [] string, out: [] u8) -> int {
+  err: [65536] u8;
+  r := proc_run(argv, 900000, out, err[..]);
+  if r.started != 0 || r.status != 0 || r.timed_out {
+    if r.out_n > 0 { print("%\n", cast(string) out[0..<r.out_n]); }
+    tool_err(cast(string) err[0..<r.err_n]);
+    tool_err("flat-pass: "); tool_err(what); tool_errln(" failed");
+    return -1;
+  }
+  return r.out_n;
+}
+
+// ---- text (pure)
+Sp :: struct { buf: [] u8; n: int; bad: bool; }
+put :: (s: [] Sp, t: string) {
+  if s[0].n + t.count > s[0].buf.count { s[0].bad = true; return; }
+  for i: 0..<t.count { s[0].buf[s[0].n + i] = t[i]; }
+  s[0].n += t.count;
+}
+put_int :: (s: [] Sp, v: int) {
+  d: [24] u8; n := 0; x := ifx v < 0 then -v else v;
+  if x == 0 { d[0] = '0'; n = 1; }
+  while x > 0 { d[n] = cast,trunc(u8) (48 + x % 10); x /= 10; n += 1; }
+  if v < 0 { put(s, "-"); }
+  sequence.reverse(d[0..<n]);
+  put(s, cast(string) d[0..<n]);
+}
+cat :: (x: string, y: string, out: [] u8) -> string {
+  if x.count + y.count > out.count { return ""; }
+  for i: 0..<x.count { out[i] = x[i]; }
+  for i: 0..<y.count { out[x.count + i] = y[i]; }
+  return cast(string) out[0..<x.count + y.count];
+}
+fp_word :: (line: string, k: int) -> string {
+  i := 0; n := 0;
+  while i < line.count {
+    while i < line.count && (line[i] == ' ' || line[i] == '\n' || line[i] == '\t') { i += 1; }
+    if i >= line.count { break; }
+    j := i;
+    while j < line.count && line[j] != ' ' && line[j] != '\n' && line[j] != '\t' { j += 1; }
+    if n == k { return line[i..<j]; }
+    n += 1; i = j;
+  }
+  return "";
+}
+#test "text" {
+  o: [32] u8; sa: [1] Sp; sa[0] = Sp.{buf = o[..]}; s := sa[..];
+  put(s, "a "); put_int(s, 2048); put(s, " "); put_int(s, 0); put(s, " "); put_int(s, -7);
+  #assert cast(string) o[0..<s[0].n] == "a 2048 0 -7" && !s[0].bad;
+  #assert cat("a", "b", o[..]) == "ab" && cat("abc", "d", o[0..<2]) == "";
+  #assert fp_word("0 0 0 0 7506 16\n", 4) == "7506" && fp_word("0 0 0 0 7506 16\n", 5) == "16" && fp_word("", 0) == "";
+}

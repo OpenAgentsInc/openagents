@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 uint32_t coaxial_layout(void);
+void coaxial_state_init(uint32_t state);
 uint32_t coaxial_state_size(void);
 uint32_t coaxial_max_vertices(void);
 uint32_t coaxial_vertex_floats(void);

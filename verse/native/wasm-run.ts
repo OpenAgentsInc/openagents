@@ -28,6 +28,7 @@ const env: Record<string, unknown> = {
   coaxial_http_bounded: () => -1,
   coaxial_http_cancel: () => 0,
   host_line: () => {}, host_dot: () => {}, host_slot: () => {},
+  coaxial_socket_open: () => -1, coaxial_socket_send: () => {}, coaxial_socket_close: () => {},
 };
 const module = await WebAssembly.compile(readFileSync(wasmPath));
 const imports: Record<string, Record<string, unknown>> = { env };
@@ -69,8 +70,8 @@ const send = (kind: number, text: Uint8Array) => {
   after();
 };
 
-// The pack, as realm-host.c rh_pack reads it.
-const pack = readFileSync(opt.pack);
+// The pack, as realm-host.c rh_pack reads it (none without --pack, as a page that names none).
+const pack = opt.pack ? readFileSync(opt.pack) : new Uint8Array(32);
 const v = new DataView(pack.buffer, pack.byteOffset, pack.length);
 const count = v.getUint32(4, true), table = v.getUint32(16, true);
 const entries = Array.from({ length: count }, (_, k) => {
@@ -82,12 +83,15 @@ const layers = entries.filter((e) => e.kind === 4).length;
 // --fact K=V adds one fact to the file's (a realm's data-ruleset, say)
 if (opt.facts) send(600, new TextEncoder().encode(readFileSync(opt.facts, "utf8").replace(/\n+$/, "") + (opt.fact ? `\n${opt.fact}` : "")));
 send(606, new Uint8Array());
-send(605, new TextEncoder().encode(`${pack.length} ${pack.length}`));
-const catalog = of(1)!;
-const at = x.coaxial_asset(state, 0, catalog.bytes.length);
-if (at) bytesAt(at, catalog.bytes.length).set(catalog.bytes);
-[catalog.bytes.length, of(2)?.bytes.length ?? 0, of(3)?.bytes.length ?? 0, layers].forEach((n, i) => x.coaxial_asset_ready(state, i, n));
-(opt.extra ? opt.extra.split(",").map(Number) : []).forEach((n, i) => x.coaxial_asset_ready(state, 4 + i, n));
+const first = opt.pack ? 4 : 0;
+if (opt.pack) {
+  send(605, new TextEncoder().encode(`${pack.length} ${pack.length}`));
+  const catalog = of(1)!;
+  const at = x.coaxial_asset(state, 0, catalog.bytes.length);
+  if (at) bytesAt(at, catalog.bytes.length).set(catalog.bytes);
+  [catalog.bytes.length, of(2)?.bytes.length ?? 0, of(3)?.bytes.length ?? 0, layers].forEach((n, i) => x.coaxial_asset_ready(state, i, n));
+}
+(opt.extra ? opt.extra.split(",").map(Number) : []).forEach((n, i) => x.coaxial_asset_ready?.(state, first + i, n));
 console.log(`realm-run: ${count} entries in the pack (${layers} layers), ${floats} floats a vertex, ${uniformFloats} uniforms`);
 // --hash PLACE: the page's location hash, as host.js sendHash delivers it once the engine is up
 if (opt.hash && x.coaxial_hash) {
@@ -114,25 +118,25 @@ for (let f = 1; f <= frames; f++) {
   hud = n;
   sayAfter();
   if (f % every && f !== frames) continue;
-  const draws = x.coaxial_draw_count(state) >>> 0;
-  let line = `frame ${f}: ${n} vertices ${draws} draws (${x.coaxial_water_draws(state) >>> 0} water) ${x.coaxial_grass_instances(state) >>> 0} blades ${x.coaxial_particle_instances(state) >>> 0} sparks`;
+  const draws = x.coaxial_draw_count?.(state) >>> 0;
+  let line = `frame ${f}: ${n} vertices ${draws} draws (${x.coaxial_water_draws?.(state) >>> 0} water) ${x.coaxial_grass_instances?.(state) >>> 0} blades ${x.coaxial_particle_instances?.(state) >>> 0} sparks`;
   line += ` v ${fnv(bytesAt(vertices, n * floats * 4))} u ${fnv(bytesAt(uniforms, uniformFloats * 4))}`;
   line += ` d ${fnv(draws ? bytesAt(x.coaxial_draws(state), draws * 16) : new Uint8Array())}`;
-  for (let k = 0; k < x.coaxial_stores(); k++) {
+  for (let k = 0; k < (x.coaxial_stores?.() ?? 0); k++) {
     const bytes = (x.coaxial_store_bytes(state, k) >>> 0) & ~3;
     line += ` s${k} ${bytes} ${fnv(bytesAt(x.coaxial_store(state, k), bytes))}`;
   }
-  line += ` p ${fnv(bytesAt(x.coaxial_particles(state), (x.coaxial_particle_bytes(state) >>> 0) & ~3))}`;
+  line += ` p ${fnv(x.coaxial_particles ? bytesAt(x.coaxial_particles(state), (x.coaxial_particle_bytes(state) >>> 0) & ~3) : new Uint8Array())}`;
   console.log(line);
 }
 if (opt.dump) {
   const { writeFileSync } = await import("node:fs");
   writeFileSync(`${opt.dump}/u.bin`, bytesAt(uniforms, uniformFloats * 4));
-  for (let k = 0; k < Math.min(4, x.coaxial_stores()); k++)
+  for (let k = 0; k < Math.min(4, x.coaxial_stores?.() ?? 0); k++)
     writeFileSync(`${opt.dump}/s${k}.bin`, bytesAt(x.coaxial_store(state, k), (x.coaxial_store_bytes(state, k) >>> 0) & ~3));
   // what a pass check draws the scene from (verse/gpu/everglade-pass.coax): the draw list, how many of its
   // last draws are water, the grass's blades, the particles' quads, the frame's vertices and their floats, the pack's storage (vertices) and index buffers, and its layer images in order
-  const draws = x.coaxial_draw_count(state) >>> 0;
+  const draws = x.coaxial_draw_count?.(state) >>> 0;
   writeFileSync(`${opt.dump}/draws.bin`, draws ? bytesAt(x.coaxial_draws(state), draws * 16) : new Uint8Array(16));
   writeFileSync(`${opt.dump}/draws.txt`, `${draws} ${x.coaxial_water_draws ? Math.min(x.coaxial_water_draws(state) >>> 0, draws) : 0} ${x.coaxial_grass_instances?.(state) >>> 0} ${x.coaxial_particle_instances?.(state) >>> 0} ${hud} ${floats}\n`);
   // the frame's own vertices (the HUD, host.js's fx pipeline after post), at least 16 bytes

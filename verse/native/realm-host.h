@@ -37,7 +37,7 @@ void *rh_ptr(uint32_t offset);
 uint32_t rh_off(const void *p);
 // Starts the realm: its arena, zeroed state, golden mode if asked.
 void rh_open(RealmHost *h, int golden);
-// Reads a pack; 0 on success, else prints why.
+// Reads a pack ("-": none, as a page that names no pack); 0 on success, else prints why.
 int rh_pack(RealmHost *h, const char *path);
 // The first entry of a kind, or NULL.
 const RhEntry *rh_entry(const RealmHost *h, int kind);

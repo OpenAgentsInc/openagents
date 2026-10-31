@@ -425,8 +425,17 @@ Every phase and native feature is a task in the Verse project
     `coax spirv` (each fragment with its vertex), the fixture's and the
     water lab's depth-writing backgrounds included (spirv-val, a test aid,
     accepts both). What is left for every realm native is the host: each
-    realm's game linked natively as Everglade's is (verse/native/build.sh
-    knows only everglade), and a navigation to another realm followed.
+    realm's game linked natively as Everglade's is, and a navigation to
+    another realm followed.
+  - Hold the Stair runs natively (`REALM=stair verse/gpu/realm.sh HOST
+    check|screen`): no pack, the face built through coax/web/defaults.py's
+    wrapper as wasm.sh builds it (Everglade's now too), the host's optional
+    exports and sockets as host.js has them. verse/native/check.sh HOST stair
+    matches the wasm frame for frame while it plays; verse/gpu/flat-pass.coax
+    (bg, then the strokes blended max, as host.js draws a realm with no scene)
+    matches the browser on the 4080 (0 of 230400 values past tolerance, the
+    sin hashes one integer hash: int-hash --page), and vk-realm's 90th frame
+    is vk-passes' to the bit; 1.2 ms of GPU a frame at 3840x2160.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.
