@@ -21,14 +21,18 @@ struct U {
   cars: array<Car, 2>,
   arena: vec4f,                 // half width, half length, roof, the goal mouth's half width
   goal: vec4f,                  // crossbar, net depth, the drum's radius (0: the box; minus the sphere's radius: the sphere), the sphere's goal caps' radius
-  misc: vec4f,                  // the ball's speed (m/s)
+  misc: vec4f,                  // the ball's speed (m/s), the cars in play (2 or 4)
   panel: array<vec4f, 32>,
   trail: array<vec4f, 27>,      // the ball's trail, then each car's boost: a bound (centre, radius) and 8 points (place, strength)
   blast: vec4f,                 // the goal's blast: centre, age (< 0 none)
   blast2: vec4f,                // its team
   pads: array<vec4f, 16>,       // the boost pads: x, z, big (1), how ready (1 ready)
+  cars2: array<Car, 2>,         // a 2v2's other two cars
 }
 @group(0) @binding(0) var<uniform> u: U;
+// The cars in play, and car i of them (0 you, 1 the bot, then a 2v2's two).
+fn ncars() -> i32 { return select(2, 4, u.misc.y > 3.0); }
+fn car(i: i32) -> Car { if (i < 2) { return u.cars[i]; } return u.cars2[i - 2]; }
 
 // ---- the plates (droprealm.wgsl's)
 fn plate(p: vec2f, under: vec3f, r: vec4f, s: vec4f) -> vec3f {
@@ -627,8 +631,8 @@ fn shadow(p: vec3f) -> f32 {
   let bd = length(p.xz - u.ball.xz);
   let bh = max(u.ball.y - p.y, 0.0);
   k *= 1.0 - 0.55 * (1.0 - smoothstep(u.ball.w * 0.6, u.ball.w * (1.1 + bh * 0.05), bd)) * step(p.y, u.ball.y);
-  for (var i = 0; i < 2; i++) {
-    let c = u.cars[i];
+  for (var i = 0; i < ncars(); i++) {
+    let c = car(i);
     let q = p - c.p.xyz;
     let lx = abs(dot(q.xz, c.x.xz)); let lz = abs(dot(q.xz, c.z.xz));
     let h = max(c.p.y - p.y, 0.0);
@@ -644,8 +648,8 @@ fn drum_shadow(p: vec3f) -> f32 {
   let bq = u.ball.xyz - p; let bh = dot(bq, n);
   let bd = length(bq - n * bh);
   k *= 1.0 - 0.55 * (1.0 - smoothstep(u.ball.w * 0.6, u.ball.w * (1.1 + max(bh, 0.0) * 0.05), bd)) * step(0.0, bh);
-  for (var i = 0; i < 2; i++) {
-    let c = u.cars[i];
+  for (var i = 0; i < ncars(); i++) {
+    let c = car(i);
     let q = c.p.xyz - p; let h = dot(q, n);
     let f = q - n * h;
     let lx = abs(dot(f, c.x.xyz)); let lz = abs(dot(f, c.z.xyz));
@@ -693,8 +697,8 @@ fn pad_orbs(ro: vec3f, rd: vec3f, tmax: f32) -> vec3f {
 // Each car's glow on the floor under it, in its team's colour.
 fn underglow(p: vec3f) -> vec3f {
   var o = vec3f(0.0);
-  for (var i = 0; i < 2; i++) {
-    let c = u.cars[i];
+  for (var i = 0; i < ncars(); i++) {
+    let c = car(i);
     let q = p - c.p.xyz;
     let lx = dot(q, c.x.xyz); let lz = dot(q, c.z.xyz);
     o += team(c.x.w) * exp(-(lx * lx / 1.1 + lz * lz / 5.0)) * clamp(1.8 - over_floor(c.p.xyz), 0.0, 1.0) * 0.4;
@@ -704,7 +708,9 @@ fn underglow(p: vec3f) -> vec3f {
 
 // What moves (the ball and the cars), and what moves or stands in the arena (and the goal frames).
 fn movers(ro: vec3f, rd: vec3f) -> Hit {
-  return closer(closer(ball_hit(ro, rd), car_hit(ro, rd, u.cars[0])), car_hit(ro, rd, u.cars[1]));
+  var h = ball_hit(ro, rd);
+  for (var i = 0; i < ncars(); i++) { h = closer(h, car_hit(ro, rd, car(i))); }
+  return h;
 }
 
 // The station's ribs: four arches over the glass, outside it, each with a light at its crown.
@@ -876,7 +882,9 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
       let rh = closer(movers(q, rr), frames(q, rr));
       let k = 0.2 + 0.3 * pow(1.0 - abs(dot(rd, h.n)), 4.0);
       if (rh.t < 70.0) { c = mix(c, shade_hit(rh, rr), k * exp(-rh.t * 0.45)); }
-      c += (flame(q, rr, u.cars[0], rh.t) + flame(q, rr, u.cars[1], rh.t)) * k;
+      var fl = vec3f(0.0);
+      for (var i = 0; i < ncars(); i++) { fl += flame(q, rr, car(i), rh.t); }
+      c += fl * k;
     } else {
       c = shade_hit(h, rd);
     }
@@ -890,12 +898,12 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   if (gl.a > 0.0) { c = mix(c, gl.col, gl.a); }
   c += gl.add;
   // the boost flames, the cars' lights, the ribs' beacons
-  c += flame(ro, rd, u.cars[0], h.t) + flame(ro, rd, u.cars[1], h.t);
+  for (var i = 0; i < ncars(); i++) { c += flame(ro, rd, car(i), h.t); }
   c += trail(ro, rd, 0, h.t, u.ball.w * 0.75, vec3f(0.6, 0.85, 1.0));
   c += trail(ro, rd, 1, h.t, 0.32, vec3f(0.45, 0.7, 1.0)) + trail(ro, rd, 2, h.t, 0.32, vec3f(0.45, 0.7, 1.0));
   c += blast(ro, rd, h.t);
   c += pad_orbs(ro, rd, h.t);
-  c += lights(ro, rd, u.cars[0], h.t) + lights(ro, rd, u.cars[1], h.t);
+  for (var i = 0; i < ncars(); i++) { c += lights(ro, rd, car(i), h.t); }
   if (!drum && !sphere && (rd.y > 0.0 || h.t > 1e8)) { c += rib_lights(ro, rd, h.t); }
   // zero-g: a cold tint; a goal: its team's flash
   c = mix(c, c * vec3f(0.85, 0.95, 1.15), u.zerog * 0.5);

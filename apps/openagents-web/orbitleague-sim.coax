@@ -75,13 +75,33 @@ pro :: () -> bool {
   }
   return ended == 3 && bot > you;
 }
+// 2v2 (ol-bot-modes): the novices with a beginner bot beside them against
+// two, in the box: each match plays to the clock, and the first minute stays close.
+two_v_two :: () -> bool {
+  lags := [3] f64.[0.0, 0.4, 0.8];
+  ok := true; glass: [3] f64;
+  for lag: lags {
+    for behind: 0..<2 {
+      s: [1] OrbitLeague;
+      game_reset(s[..]); set_mode(s[..], CARS);
+      novice(s[..], 60.0, lag, behind == 1, glass[..]);
+      first := s[0].score[1] - s[0].score[0];
+      novice(s[..], MATCH_TIME, lag, behind == 1, glass[..]);
+      over := s[0].phase == PHASE_OVER || s[0].overtime;
+      print("2v2 novice (behind %, every % s): your team % the bots %, first minute ahead by %, over %\n", behind, lag, s[0].score[0], s[0].score[1], first, over);
+      if !over || first > 2 { ok = false; }
+    }
+  }
+  return ok;
+}
 main :: () {
   glass: [3] f64;
+  two_ok := two_v_two();
   pro_ok := pro();
   box := arena(ARENA_BOX, glass[..]);
   drum := arena(ARENA_DRUM, glass[..]);
   sphere := arena(ARENA_SPHERE, glass[..]);
   print("the longest a car stood on the box's glass: % s\n", glass[2]);
-  ok := box && drum && sphere && pro_ok && glass[2] < 2.5;
+  ok := box && drum && sphere && pro_ok && two_ok && glass[2] < 2.5;
   print("%\n", ifx ok then "holds" else "FAILS");
 }

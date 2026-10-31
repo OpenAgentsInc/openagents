@@ -50,7 +50,8 @@ TRAIL_N :: 8;
 TRAIL_AT :: PANEL_AT + PLATES * 8;
 BLAST_AT :: TRAIL_AT + 3 * (TRAIL_N + 1) * 4;
 PADS_AT :: BLAST_AT + 8;     // each boost pad: x, z, big (1) or small (0), how ready (1 ready)
-UNIFORM_FLOATS :: PADS_AT + PADS * 4;
+CARS2_AT :: PADS_AT + PADS * 4;   // a 2v2's other two cars, as CAR_AT's
+UNIFORM_FLOATS :: CARS2_AT + 2 * CAR_FLOATS;
 
 lo :: (a: f32, b: f32) -> f32 { if a < b { return a; } return b; }
 hi :: (a: f32, b: f32) -> f32 { if a > b { return a; } return b; }
@@ -151,7 +152,10 @@ STEP :: 0.008333333333333333;   // physics at 120 Hz
 MAX_STEPS :: 12;
 BLUE :: 0; MAGENTA :: 1;
 PHASE_KICKOFF :: 0; PHASE_PLAY :: 1; PHASE_GOAL :: 2; PHASE_OVER :: 3;
-BALL :: 0; YOU :: 1; BOT :: 2; BODIES :: 3;
+BALL :: 0; YOU :: 1; BOT :: 2; MATE :: 3; RIVAL :: 4; BODIES :: 5;
+// the cars: 0 you and 2 your mate are blue, 1 and 3 magenta (a car's team is
+// c % 2); a 1v1 plays the first two, a 2v2 all four (ol-bot-modes)
+CARS :: 4;
 BOXES :: 12;
 TRAIL_DT :: 0.04;        // seconds between a trail's points
 SPARKS :: 128;
@@ -189,7 +193,7 @@ OUTBOX :: 256;
 HOST_FACTS :: 600;
 MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.js, docs/verse/makers.md)
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
-BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BTN_ARENA :: 5; BUTTONS :: 6;
+BTN_BACK :: 0; BTN_JUMP :: 1; BTN_BOOST :: 2; BTN_CAM :: 3; BTN_AGAIN :: 4; BTN_ARENA :: 5; BTN_MODE :: 6; BUTTONS :: 7;
 
 SBox :: struct { c: D3; h: D3; }
 // A spark: a short-lived streak of light (a hit's, a goal's).
@@ -200,10 +204,12 @@ OrbitLeague :: struct {
   card: bool;   // ?card=1: the world without the HUD, for a link's card (coax/web/og-render.ts)
   time: f32; width: f32; height: f32; dpr: f32;
   bodies: [BODIES] RigidBody;
-  cars: [2] VehicleState;
-  tanks: [2] Tank;
-  boosting: [2] bool;
-  stuck_for: [2] f64;
+  cars: [CARS] VehicleState;
+  tanks: [CARS] Tank;
+  boosting: [CARS] bool;
+  stuck_for: [CARS] f64;
+  cars_n: int = 2;            // 2: 1v1; 4: 2v2 (?mode=2v2, and a phone's default)
+  mode_set: bool;             // ?mode= chose it
   boxes: [BOXES] SBox;
   field: GravityField;
   spec: VehicleSpec;
@@ -224,9 +230,9 @@ OrbitLeague :: struct {
   // the camera, eased
   cam_eye: [3] f32; cam_at: [3] f32; cam_ready: bool;
   view: [16] f32; eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32;
-  bot_jump_t: f64;
-  bot_touch_t: f64 = -100.0;   // when the bot last hit the ball (played seconds)
-  bot_aim: f64;               // its aim's miss on this approach, metres across the goal
+  bot_jump_t: [CARS] f64;
+  bot_touch_t: [CARS] f64;    // when each bot last hit the ball (played seconds)
+  bot_aim: [CARS] f64;        // its aim's miss on this approach, metres across the goal
   bot_smart: bool;            // ?bot=pro: the bot reads the ball's path, meets it and defends (ol-bot); the default is the beginner's bot
   bot_miss_k: f64 = 1.0;      // its aim's miss, scaled (the pro misses less)
   bot_path: [BOT_PATH] D3; bot_path_at: f64 = -100.0; bot_path_goal: int = -1;   // ol-bot: where the ball goes, if no car touches it
@@ -258,7 +264,7 @@ OrbitLeague :: struct {
   blast: D3; blast_t: f64; blast_team: int;
   sy: f32;
   pad_wait: [PADS] f64;
-  wheel_spin: [2] f64;        // each car's wheels' turn, radians
+  wheel_spin: [CARS] f64;        // each car's wheels' turn, radians
   pads_taken: int;
   track: [1] Track;
   stage: int;                 // a staged moment (?stage=NAME) running: STAGE_*
@@ -407,7 +413,7 @@ pad_wait_of :: (i: int) -> f64 { return ifx pad_at(i).y > 0.5 then PAD_BIG_WAIT 
 // A car on the floor over a ready pad takes it, unless its tank is full.
 take_pads :: (s: [] OrbitLeague, dt: f64) {
   for i: 0..<PADS { s[0].pad_wait[i] = fmax(0.0, s[0].pad_wait[i] - dt); }
-  for c: 0..<2 {
+  for c: 0..<s[0].cars_n {
     b := s[0].bodies[c + 1];
     // its height off the floor (in the drum: in from the rim)
     off := clearance(s, b.pos);
@@ -438,15 +444,26 @@ kickoff :: (s: [] OrbitLeague) {
     bx := ifx s[0].no_bot then SPHERE_R * 1.3 else 0.0;
     s[0].bodies[BOT].pos = floor_point(s, bx, SPHERE_SPAWN, 1.0); s[0].bodies[BOT].orientation = dq_mul(floor_turn(s, bx, SPHERE_SPAWN), dq_y(PI_D));
   }
-  for c: 0..<2 {
+  // a 2v2's other two: diagonal behind each, or parked far below in a 1v1
+  for c: 2..<CARS {
+    side := ifx c % 2 == 0 then -1.0 else 1.0;
+    sz := (ifx s[0].sphere then SPHERE_SPAWN else SPAWN_Z) + 6.0;
+    x := ifx s[0].sphere then 8.0 else 14.0;
+    x *= ifx c == MATE - 1 then 1.0 else -1.0;
+    b := vehicle_body(s[0].spec, CAR_MASS, floor_point(s, x, side * sz, 1.0), DQ.{});
+    b.orientation = floor_turn(s, x, side * sz);
+    if side > 0.0 { b.orientation = dq_mul(b.orientation, dq_y(PI_D)); }
+    if c >= s[0].cars_n { b = vehicle_body(s[0].spec, CAR_MASS, d3(0.0, -1000.0 - cast(f64) c * 10.0, 0.0), DQ.{}); }
+    s[0].bodies[c + 1] = b;
+  }
+  for c: 0..<CARS {
     s[0].cars[c] = VehicleState.{};
     s[0].tanks[c] = tank(fmax(s[0].tanks[c].fuel, BOOST_START), 100.0, false);
     s[0].stuck_for[c] = 0.0;
   }
   clear_trails(s);
   s[0].phase = PHASE_KICKOFF; s[0].phase_t = 0.0;
-  s[0].bot_touch_t = -100.0;
-  bot_hit(s); s[0].bot_touch_t = -100.0;   // a fresh miss for its first approach
+  for c: 1..<s[0].cars_n { bot_hit(s, c); s[0].bot_touch_t[c] = -100.0; }   // a fresh miss for each first approach
   s[0].cam_ready = false;
   s[0].stage = STAGE_NONE;
 }
@@ -454,7 +471,7 @@ kickoff :: (s: [] OrbitLeague) {
 new_match :: (s: [] OrbitLeague) {
   s[0].score[0] = 0; s[0].score[1] = 0;
   s[0].clock = MATCH_TIME; s[0].played = 0.0; s[0].overtime = false; s[0].touches = 0;
-  for c: 0..<2 { s[0].tanks[c] = tank(BOOST_START, 100.0, false); }
+  for c: 0..<CARS { s[0].tanks[c] = tank(BOOST_START, 100.0, false); }
   for i: 0..<PADS { s[0].pad_wait[i] = 0.0; }
   kickoff(s);
 }
@@ -496,7 +513,7 @@ spin_clock :: (played: f64, every: f64) -> f64 {
 set_spin :: (s: [] OrbitLeague) {
   was := spin_clock(s[0].played - STEP, s[0].spin_every);
   now := spin_clock(s[0].played, s[0].spin_every);
-  if was < 0.0 && now >= 0.0 && s[0].played > STEP { for c: 0..<2 { s[0].tanks[c].fuel = 100.0; } }
+  if was < 0.0 && now >= 0.0 && s[0].played > STEP { for c: 0..<CARS { s[0].tanks[c].fuel = 100.0; } }
   s[0].spin_now = spin_share(s[0].played, s[0].spin_every);
   s[0].field.scale = s[0].spin_now * s[0].spin_g;
 }
@@ -583,17 +600,19 @@ bot_intercept :: (s: [] OrbitLeague, me: RigidBody) -> D3 {
   }
   return s[0].bot_path[BOT_PATH - 1];
 }
-bot_drive :: (s: [] OrbitLeague) -> Drive {
-  me := s[0].bodies[BOT]; bl := s[0].bodies[BALL];
-  goal := goal_point(s, -1.0);     // it attacks your goal, at -z
+bot_drive :: (s: [] OrbitLeague, c: int) -> Drive {
+  me := s[0].bodies[c + 1]; bl := s[0].bodies[BALL];
+  team := c % 2;
+  side := ifx team == MAGENTA then 1.0 else -1.0;   // its own goal's end: magenta's is +z
+  goal := goal_point(s, -side);     // it attacks the other end
   out: Drive;
   if s[0].phase != PHASE_PLAY && s[0].phase != PHASE_GOAL { return out; }
   if s[0].no_bot { return out; }
   if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_REACT { return out; }
   // just after a hit it coasts: you get a chance at the ball
-  if s[0].played - s[0].bot_touch_t < bot_recover(s) { out.input.throttle = 0.2; return out; }
+  if s[0].played - s[0].bot_touch_t[c] < bot_recover(s) { out.input.throttle = 0.2; return out; }
   // it aims at a point across your goal mouth that misses by bot_aim
-  goal.x = fclamp(s[0].bot_aim * s[0].bot_miss_k, -GOAL_HW - 6.0, GOAL_HW + 6.0);
+  goal.x = fclamp(s[0].bot_aim[c] * s[0].bot_miss_k, -GOAL_HW - 6.0, GOAL_HW + 6.0);
   // the sphere's goal is a cap SPHERE_GOAL_R round: the miss in the same proportion
   if s[0].sphere { goal.x *= SPHERE_GOAL_R / GOAL_HW; }
   // the beginner's bot: a short lead on the ball's velocity
@@ -613,12 +632,16 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   }
   // the pro defends: the ball is headed into its own goal (+z) and it can't
   // get there first, so it drops back between the ball and the goal
-  own := goal_point(s, 1.0);
-  if s[0].bot_smart && s[0].bot_path_goal == BLUE && d3_dist(me.pos, own) > d3_dist(bl.pos, own) {
+  own := goal_point(s, side);
+  if s[0].bot_smart && s[0].bot_path_goal == 1 - team && d3_dist(me.pos, own) > d3_dist(bl.pos, own) {
     target = d3_add(own, d3_scale(d3_sub(bl.pos, own), BOT_DEFEND));
   }
+  // in a 2v2 the one of a pair further from the ball hangs back, between it and their goal
+  mate := c ^ 2;
+  back := s[0].cars_n == CARS && d3_dist(s[0].bodies[mate + 1].pos, bl.pos) < d3_dist(me.pos, bl.pos);
+  if back { target = d3_add(own, d3_scale(d3_sub(bl.pos, own), BOT_DEFEND)); }
   // on the wrong side of the ball (between it and our goal): go round, back toward its own goal
-  if me.pos.z < bl.pos.z - 1.0 { target = d3(bl.pos.x + (ifx me.pos.x > bl.pos.x then 6.0 else -6.0), ifx s[0].sphere then bl.pos.y else 0.0, bl.pos.z + 9.0); }
+  if (me.pos.z - bl.pos.z) * side < -1.0 && !back { target = d3(bl.pos.x + (ifx me.pos.x > bl.pos.x then 6.0 else -6.0), ifx s[0].sphere then bl.pos.y else 0.0, bl.pos.z + 9.0 * side); }
   target.x = fclamp(target.x, -arena_hx(s) + 2.0, arena_hx(s) - 2.0);
   hz := ifx s[0].sphere then SPHERE_R - 2.0 else ARENA_HZ;
   target.z = fclamp(target.z, -hz + 2.0, hz - 2.0);
@@ -627,25 +650,25 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   out.input.steer = fclamp(a * 2.2, -1.0, 1.0);
   out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else ifx s[0].drum then BOT_DRUM_THROTTLE else BOT_THROTTLE;
   out.input.handbrake = abs(a) > 1.4 && d3_len(me.vel) > 8.0;
-  out.boost = abs(a) < 0.25 && dist > BOT_BOOST_FAR && s[0].tanks[1].fuel > 30.0;
+  out.boost = abs(a) < 0.25 && dist > BOT_BOOST_FAR && s[0].tanks[c].fuel > 30.0;
   // the kickoff is a fair race: the bot drives in without boost, so you get there first if you go
   if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_KICKOFF_CALM { out.boost = false; out.input.throttle = fmin(out.input.throttle, 0.85); }
   near_ball := d3_dist(me.pos, bl.pos);
   // in zero-g the boost is how it gets anywhere
   // (in bursts, half of each second: a full tank at the spin-down doesn't make it a rocket)
-  if s[0].cars[1].wheels == 0 && s[0].spin_now < 0.2 { out.boost = abs(a) < 0.4 && s[0].played - floor(s[0].played) < 0.5; out.input.throttle = 0.0; }
-  out.input.jump = near_ball < 6.0 && bl.pos.y > 3.0 && bl.pos.y < 7.0 && s[0].played - s[0].bot_jump_t > 1.5;
-  if out.input.jump { s[0].bot_jump_t = s[0].played; }
+  if s[0].cars[c].wheels == 0 && s[0].spin_now < 0.2 { out.boost = abs(a) < 0.4 && s[0].played - floor(s[0].played) < 0.5; out.input.throttle = 0.0; }
+  out.input.jump = near_ball < 6.0 && bl.pos.y > 3.0 && bl.pos.y < 7.0 && s[0].played - s[0].bot_jump_t[c] > 1.5;
+  if out.input.jump { s[0].bot_jump_t[c] = s[0].played; }
   return out;
 }
 
 // The bot hit the ball: it coasts a moment, and its next approach misses by
 // a new amount, less as the match goes on.
-bot_hit :: (s: [] OrbitLeague) {
-  s[0].bot_touch_t = s[0].played;
+bot_hit :: (s: [] OrbitLeague, c: int) {
+  s[0].bot_touch_t[c] = s[0].played;
   late := fclamp(s[0].played / MATCH_TIME, 0.0, 1.0);
   miss := BOT_MISS + (BOT_MISS_LATE - BOT_MISS) * late;
-  s[0].bot_aim = (rnd(s) * 2.0 - 1.0) * miss;
+  s[0].bot_aim[c] = (rnd(s) * 2.0 - 1.0) * miss;
 }
 
 you_drive :: (s: [] OrbitLeague) -> Drive {
@@ -730,13 +753,13 @@ ball_arena :: (s: [] OrbitLeague) {
   }
 }
 
-physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
+physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
   dt := STEP;
   set_spin(s);
   cp := car_planes();
   bp := ball_planes();
   dm := arena_drum();
-  for c: 0..<2 {
+  for c: 0..<s[0].cars_n {
     i := c + 1;
     dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[i].pos) else drum_planes(dm, s[0].bodies[i].pos);
     st := vehicle_step(s[0].bodies[i], s[0].spec, s[0].cars[c], drives[c].input, ifx curved(s) then dp[..] else cp[..], gravity_at(s[0].field, s[0].bodies[i].pos), dt);
@@ -761,12 +784,12 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   w := rigid_world(dt, s[0].bodies[..]);
   w = rigid_step(w, D3_ZERO);
   // the cars against the arena, the ball, each other
-  for c: 0..<2 {
+  for c: 0..<s[0].cars_n {
     dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[c + 1].pos) else drum_planes(dm, s[0].bodies[c + 1].pos);
     s[0].bodies[c + 1] = vehicle_collide(s[0].bodies[c + 1], s[0].spec, ifx curved(s) then dp[..] else cp[..], 0.1, CAR_WALL_MU);
   }
   ball_arena(s);
-  for c: 0..<2 {
+  for c: 0..<s[0].cars_n {
     car := s[0].bodies[c + 1];
     ct := contact_sphere_box(s[0].bodies[BALL].pos, BALL_R, car.pos, car.orientation, s[0].spec.half);
     if ct.hit {
@@ -776,7 +799,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
       pair.b = contact_resolve(s[0].bodies[BALL], car, ct, 0.55, 0.3).b;
       if closing > 1.0 {
         if c == 0 { s[0].touches += 1; track_tally(s[0].track[..], "touch", ""); }
-        if c == 1 && s[0].played - s[0].bot_touch_t > bot_recover(s) { bot_hit(s); }
+        if c > 0 && s[0].played - s[0].bot_touch_t[c] > bot_recover(s) { bot_hit(s, c); }
       }
       if closing > 6.0 {
         k := fmin(closing / 25.0, 1.0);
@@ -788,14 +811,17 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   }
   sp := d3_len(s[0].bodies[BALL].vel);
   if sp > BALL_MAX { s[0].bodies[BALL].vel = d3_scale(s[0].bodies[BALL].vel, BALL_MAX / sp); }
-  cc := contact_sphere_sphere(s[0].bodies[YOU].pos, 1.6, s[0].bodies[BOT].pos, 1.6);
-  if cc.hit {
-    pair := contact_resolve(s[0].bodies[YOU], s[0].bodies[BOT], cc, 0.3, 0.2);
-    s[0].bodies[YOU] = pair.a; s[0].bodies[BOT] = pair.b;
+  for a: 0..<s[0].cars_n {
+    for b: a + 1..<s[0].cars_n {
+      cc := contact_sphere_sphere(s[0].bodies[a + 1].pos, 1.6, s[0].bodies[b + 1].pos, 1.6);
+      if !cc.hit { continue; }
+      pair := contact_resolve(s[0].bodies[a + 1], s[0].bodies[b + 1], cc, 0.3, 0.2);
+      s[0].bodies[a + 1] = pair.a; s[0].bodies[b + 1] = pair.b;
+    }
   }
   // a car on its wheels pressed into the glass turns where you steer: the
   // tyres alone can't swing it while its nose is pinned
-  for c: 0..<2 {
+  for c: 0..<s[0].cars_n {
     i := c + 1; b := s[0].bodies[i];
     if s[0].cars[c].wheels < 3 || drives[c].input.steer == 0.0 || drives[c].input.throttle == 0.0 { continue; }
     if abs(vehicle_forward_speed(b)) > PINNED_SPEED || !at_glass(s, b.pos) { continue; }
@@ -806,7 +832,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
     s[0].bodies[i] = b;
   }
   // a car on its roof or side, or leaning on the glass, slow, for STUCK_TIME: set back on its wheels
-  for c: 0..<2 {
+  for c: 0..<s[0].cars_n {
     i := c + 1;
     // the count holds while it tumbles fast, and starts over once it is back on its wheels
     up := up_at(s, s[0].bodies[i].pos);
@@ -829,7 +855,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
   // online only your own car (the room owns the ball, and parks a missing
   // player's car under the floor)
   for i: 0..<BODIES {
-    if s[0].online && i != YOU { continue; }
+    if (s[0].online && i != YOU) || i > s[0].cars_n { continue; }
     p := s[0].bodies[i].pos;
     if out_of_arena(s, p) { kickoff(s); return; }
   }
@@ -887,10 +913,10 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
       }
     }
     stage_hold(s);
-    drives: [2] Drive;
+    drives: [CARS] Drive;
     drives[0] = you_drive(s);
-    drives[1] = bot_drive(s);
-    if s[0].phase == PHASE_OVER { drives[0] = Drive.{}; drives[1] = Drive.{}; }
+    for c: 1..<s[0].cars_n { drives[c] = bot_drive(s, c); }
+    if s[0].phase == PHASE_OVER { for c: 0..<CARS { drives[c] = Drive.{}; } }
     // the sphere's curve slopes down to its equator everywhere off it: through
     // the countdown the cars and the ball wait where they were set
     held: [BODIES] RigidBody;
@@ -962,7 +988,7 @@ effects_step :: (s: [] OrbitLeague, dt: f64) {
   if s[0].blast_t >= 0.0 { s[0].blast_t += dt; if s[0].blast_t > BLAST_LIFE { s[0].blast_t = -1.0; } }
   s[0].shake *= exp(-dt * 6.0);
   // the wheels roll with the car (kept within a turn)
-  for c: 0..<2 {
+  for c: 0..<s[0].cars_n {
     w := s[0].wheel_spin[c] + vehicle_forward_speed(s[0].bodies[c + 1]) / s[0].spec.wheel_r * dt;
     s[0].wheel_spin[c] = w - floor(w / TAU_D) * TAU_D;
   }
@@ -1039,11 +1065,18 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=60") { s[0].spin_every = 60.0; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=off") { s[0].spin_every = 0.0; }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "spin=half") { s[0].spin_g = HALF_SPIN; }
+  // ?mode=1v1 or ?mode=2v2; without it a phone plays 2v2 (ol-bot-modes)
+  if kind == HOST_FACTS && !s[0].online {
+    url := fact_of(text, "url");
+    if has_text(url, "mode=2v2") { s[0].mode_set = true; set_mode(s, CARS); }
+    else if has_text(url, "mode=1v1") { s[0].mode_set = true; set_mode(s, 2); }
+    else if s[0].touch && !s[0].mode_set && s[0].cars_n != CARS && !has_text(url, "room=") { set_mode(s, CARS); }
+  }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=pro") { s[0].bot_smart = true; s[0].bot_miss_k = 0.3; }
   if kind == HOST_FACTS { s[0].lag = cast(f64) url_number(fact_of(text, "url"), "lag=") / 1000.0; }
   if kind == HOST_FACTS && !s[0].online && has_text(fact_of(text, "url"), "room=") { room_join(s, fact_of(text, "url")); }
   if room_socket(s, kind, text) { return; }
-  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; kickoff(s); }
+  if kind == HOST_FACTS && has_text(fact_of(text, "url"), "bot=0") { s[0].no_bot = true; s[0].cars_n = 2; kickoff(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "stage=highlight") { stage_highlight(s); }
   if kind == HOST_FACTS && has_text(fact_of(text, "url"), "card=1") { s[0].card = true; }
   if kind == MAKER_KIND { take_maker(s, text); }
@@ -1053,6 +1086,11 @@ game_message :: (s: [] OrbitLeague, kind: int, text: string) #export_c {
 
 // The box or the drum: a new match in it.
 set_arena :: (s: [] OrbitLeague, drum: bool) { set_arena_kind(s, ifx drum then ARENA_DRUM else ARENA_BOX); }
+// 1v1 (2 cars) or 2v2 (CARS): a new match with bots in every seat but yours.
+set_mode :: (s: [] OrbitLeague, n: int) {
+  s[0].cars_n = ifx n == CARS then CARS else 2;
+  new_match(s);
+}
 set_arena_kind :: (s: [] OrbitLeague, kind: int) {
   s[0].drum = kind == ARENA_DRUM; s[0].sphere = kind == ARENA_SPHERE;
   s[0].field = arena_field(s);
@@ -1250,7 +1288,7 @@ room_join :: (s: [] OrbitLeague, url: string) {
   start := ifx secure then 8 else 7;
   for q: start..<k { if o < 120 { s[0].origin[o] = url[q]; o += 1; } }
   s[0].origin_n = o;
-  s[0].online = true; s[0].no_bot = true; s[0].sock_state = ROOM_JOINING;
+  s[0].online = true; s[0].no_bot = true; s[0].cars_n = 2; s[0].sock_state = ROOM_JOINING;
   buf: [256] u8; m := 0;
   for q: 0..<o { buf[m] = s[0].origin[q]; m += 1; }
   for b: "/api/room/orbit-league/" { buf[m] = b; m += 1; }
@@ -1486,6 +1524,7 @@ game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: i
       s[0].button_id[b] = id;
       if b == BTN_CAM { toggle_cam(s); }
       if b == BTN_AGAIN { play_again(s); }
+      if b == BTN_MODE { set_mode(s, ifx s[0].cars_n == CARS then 2 else CARS); track_tally(s[0].track[..], ifx s[0].cars_n == CARS then "2v2" else "1v1", ""); }
       if b == BTN_ARENA { set_arena_kind(s, (arena_kind(s) + 1) % 3); track_tally(s[0].track[..], ifx s[0].sphere then "sphere" else ifx s[0].drum then "drum" else "box", ""); }
       if b == BTN_BOOST { track_tally(s[0].track[..], "boost", ""); }
       return true;
@@ -1813,18 +1852,24 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
   }
   if s[0].phase == PHASE_GOAL {
     v = centred(d, out, v, "GOAL", w * 0.5, h * 0.3, 52 * k, team_ink(s[0].last_goal, k * 2, 1));
-    v = centred(d, out, v, ifx s[0].last_goal == BLUE then "YOU SCORED" else "THE BOT SCORED", w * 0.5, h * 0.3 + 34 * k, 11 * k, white(k * 1.4, 1));
+    two := s[0].cars_n == CARS;
+    v = centred(d, out, v, ifx s[0].last_goal == BLUE then (ifx two then "YOUR TEAM SCORED" else "YOU SCORED") else (ifx two then "THE BOTS SCORED" else "THE BOT SCORED"), w * 0.5, h * 0.3 + 34 * k, 11 * k, white(k * 1.4, 1));
   }
   if s[0].online && s[0].sock_state != ROOM_IN {
     v = centred(d, out, v, ifx s[0].sock_state == ROOM_LOST then "LOST THE ROOM: PLAYING ON YOUR OWN" else "JOINING THE ROOM", w * 0.5, h * 0.3 + 70 * k, 9 * k, white(k, 0.8));
   }
   if s[0].phase == PHASE_OVER {
     won := s[0].score[0] > s[0].score[1];
-    v = centred(d, out, v, ifx won then "YOU WIN" else "THE BOT WINS", w * 0.5, h * 0.38, 26 * k, team_ink(ifx won then BLUE else MAGENTA, k, 1));
+    two := s[0].cars_n == CARS;
+    v = centred(d, out, v, ifx won then (ifx two then "YOUR TEAM WINS" else "YOU WIN") else (ifx two then "THE BOTS WIN" else "THE BOT WINS"), w * 0.5, h * 0.38, 26 * k, team_ink(ifx won then BLUE else MAGENTA, k, 1));
     ab := Box.{x0 = w * 0.5 - 90 * k, y0 = h * 0.38 + 24 * k, x1 = w * 0.5 + 90 * k, y1 = h * 0.38 + 66 * k};
     v = hud_button(s, out, v, BTN_AGAIN, ab, "PLAY AGAIN", 10 * k);
     db := Box.{x0 = ab.x0, y0 = ab.y1 + 12 * k, x1 = ab.x1, y1 = ab.y1 + 46 * k};
     v = hud_button(s, out, v, BTN_ARENA, db, ifx s[0].sphere then "PLAY IN THE BOX" else ifx s[0].drum then "PLAY IN THE SPHERE" else "PLAY IN THE DRUM", 8 * k);
+    if !s[0].online {
+      mb := Box.{x0 = db.x0, y0 = db.y1 + 10 * k, x1 = db.x1, y1 = db.y1 + 44 * k};
+      v = hud_button(s, out, v, BTN_MODE, mb, ifx s[0].cars_n == CARS then "PLAY 1V1" else "PLAY 2V2", 8 * k);
+    }
   }
   // boost, bottom right (above the buttons on a phone)
   fuel := cast(f32) s[0].tanks[0].fuel;
@@ -1949,6 +1994,8 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   u[BALLQ_AT] = cast(f32) q.x; u[BALLQ_AT + 1] = cast(f32) q.y; u[BALLQ_AT + 2] = cast(f32) q.z; u[BALLQ_AT + 3] = cast(f32) q.w;
   put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now, s[0].wheel_spin[0]);
   put_car(u, CAR_AT + CAR_FLOATS, room_other(s), s[0].boosting[1], MAGENTA, s[0].cars[1].steer_now, s[0].wheel_spin[1]);
+  for c: 2..<CARS { put_car(u, CARS2_AT + (c - 2) * CAR_FLOATS, s[0].bodies[c + 1], s[0].boosting[c], c % 2, s[0].cars[c].steer_now, s[0].wheel_spin[c]); }
+  u[MISC_AT + 1] = cast(f32) s[0].cars_n;
   u[ARENA_AT] = cast(f32) ARENA_HX; u[ARENA_AT + 1] = cast(f32) ARENA_HZ; u[ARENA_AT + 2] = cast(f32) ARENA_H; u[ARENA_AT + 3] = cast(f32) GOAL_HW;
   u[GOAL_AT] = cast(f32) GOAL_H; u[GOAL_AT + 1] = cast(f32) GOAL_D; u[GOAL_AT + 2] = ifx s[0].sphere then cast(f32) -SPHERE_R else ifx s[0].drum then cast(f32) DRUM_R else 0;
   u[GOAL_AT + 3] = cast(f32) SPHERE_GOAL_R;
@@ -2338,15 +2385,15 @@ wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
   s: [1] OrbitLeague;
   game_reset(s[..]);
   run_for(s[..], KICKOFF + 0.5);
-  bot_hit(s[..]);
-  d := bot_drive(s[..]);
+  bot_hit(s[..], 1);
+  d := bot_drive(s[..], 1);
   #assert d.input.throttle < 0.5 && !d.boost;
   early := 0.0; late := 0.0;
-  for i: 0..<40 { s[0].played = 1.0; bot_hit(s[..]); early = fmax(early, abs(s[0].bot_aim)); }
-  for i: 0..<40 { s[0].played = MATCH_TIME; bot_hit(s[..]); late = fmax(late, abs(s[0].bot_aim)); }
+  for i: 0..<40 { s[0].played = 1.0; bot_hit(s[..], 1); early = fmax(early, abs(s[0].bot_aim[1])); }
+  for i: 0..<40 { s[0].played = MATCH_TIME; bot_hit(s[..], 1); late = fmax(late, abs(s[0].bot_aim[1])); }
   #assert early > late && early <= BOT_MISS && late <= BOT_MISS_LATE + 0.001;
   s[0].played = MATCH_TIME + BOT_RECOVER + 0.1;
-  #assert bot_drive(s[..]).input.throttle > 0.5;
+  #assert bot_drive(s[..], 1).input.throttle > 0.5;
 }
 
 // Drives at the glass on the right from mid-field at `yaw` off square,
@@ -2547,13 +2594,13 @@ drum_game :: (s: [] OrbitLeague) {
   game_reset(s[..]); set_arena(s[..], true);
   s[0].phase = PHASE_PLAY; s[0].phase_t = BOT_KICKOFF_CALM + 1.0; s[0].played = 30.0;
   s[0].bodies[BALL].pos = d3(0.0, BALL_R, 20.0);
-  d := bot_drive(s[..]);
+  d := bot_drive(s[..], 1);
   #assert d.input.throttle == BOT_DRUM_THROTTLE || d.input.throttle == -0.6;
-  bot_hit(s[..]);
+  bot_hit(s[..], 1);
   s[0].played += BOT_RECOVER + 0.1;
-  #assert bot_drive(s[..]).input.throttle == 0.2;
+  #assert bot_drive(s[..], 1).input.throttle == 0.2;
   s[0].played += BOT_DRUM_RECOVER;
-  #assert bot_drive(s[..]).input.throttle != 0.2;
+  #assert bot_drive(s[..], 1).input.throttle != 0.2;
   b: [1] OrbitLeague;
   game_reset(b[..]);
   #assert bot_recover(b[..]) == BOT_RECOVER && bot_recover(s[..]) == BOT_DRUM_RECOVER && BOT_DRUM_THROTTLE < BOT_THROTTLE;
@@ -2616,7 +2663,7 @@ sphere_game :: (s: [] OrbitLeague) {
   game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?arena=sphere\n");
   #assert s[0].sphere && !s[0].drum && arena_kind(s[..]) == ARENA_SPHERE;
   sp := arena_sphere();
-  for i: 1..<BODIES {
+  for i: 1..<1 + s[0].cars_n {
     b := s[0].bodies[i];
     #assert near_d(sphere_clearance(sp, b.pos), 1.0, 0.001) && d3_dot(rigid_axis(b, D3_Y), sphere_up(sp, b.pos)) > 0.999;
   }
@@ -2749,4 +2796,42 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   t := 0.0;
   while t < 6.0 && s[0].score[MAGENTA] == 0 { run_for(s[..], 0.25); t += 0.25; }
   #assert s[0].score[MAGENTA] >= 1;
+}
+
+// ---- 1v1 and 2v2 (ol-bot-modes)
+
+#test "?mode=2v2 puts you and a blue bot against two magenta bots, a phone plays 2v2 unless told, and the room stays 1v1 (ol-bot-modes)" {
+  s: [1] OrbitLeague;
+  game_message(s[..], HOST_FACTS, "url=https://openagents.com/realms/orbit-league?mode=2v2\n");
+  #assert s[0].cars_n == CARS;
+  for c: 0..<CARS {
+    b := s[0].bodies[c + 1];
+    // each on its own team's half, on its wheels, facing the other end
+    side := ifx c % 2 == 0 then -1.0 else 1.0;
+    #assert b.pos.z * side > 10.0 && near_d(b.pos.y, 1.0, 0.01) && rigid_axis(b, D3_Z).z * side < -0.99;
+  }
+  p: [1] OrbitLeague;
+  game_message(p[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/realms/orbit-league\n");
+  #assert p[0].cars_n == CARS;
+  q: [1] OrbitLeague;
+  game_message(q[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/realms/orbit-league?mode=1v1\n");
+  #assert q[0].cars_n == 2 && q[0].bodies[MATE].pos.y < -100.0;
+  r: [1] OrbitLeague;
+  game_message(r[..], HOST_FACTS, "coarse=1\nurl=https://openagents.com/realms/orbit-league?room=a\n");
+  #assert r[0].cars_n == 2;
+}
+#test "in a 2v2 all three bots drive after the kickoff, the one of a pair further from the ball hangs back, and PLAY 1V1 / PLAY 2V2 switch (ol-bot-modes)" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]); set_mode(s[..], CARS);
+  run_for(s[..], KICKOFF + 1.5);
+  for c: 1..<CARS { #assert d3_len(s[0].bodies[c + 1].vel) > 3.0; }
+  // the magenta pair: the one further from the ball goes back toward +z
+  s[0].bodies[BALL].pos = d3(0.0, BALL_R, 0.0); s[0].bodies[BALL].vel = D3_ZERO;
+  s[0].bodies[BOT].pos = d3(0.0, 1.0, 6.0); s[0].bodies[RIVAL].pos = d3(0.0, 1.0, -10.0);
+  s[0].bodies[RIVAL].orientation = dq_y(PI_D);
+  d := bot_drive(s[..], 3);
+  // facing -z with its target behind it (+z): it turns or backs off, never drives on at the ball
+  #assert abs(d.input.steer) > 0.5 || d.input.throttle < 0.0;
+  set_mode(s[..], 2);
+  #assert s[0].cars_n == 2 && s[0].bodies[RIVAL].pos.y < -100.0 && s[0].phase == PHASE_KICKOFF;
 }
