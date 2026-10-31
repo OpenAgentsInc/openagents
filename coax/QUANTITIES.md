@@ -179,3 +179,12 @@ python3 coax/tests/quantity_native.py
 coax/bin/coax test coax/lib/compiler/quantity.coax
 coax/bin/coax mutate coax/lib/compiler/quantity.coax --root-only
 ```
+
+## Family identity at the operator boundary
+
+Two annotated quantity families can interoperate when their nominal unit and
+carrier agree. Arithmetic keeps the left quantity family; scalar-left
+multiplication keeps its right quantity operand’s family. Comparisons return
+bool. Assignment/type identity still distinguish the families, and explicit
+unit conversion preserves the input family. This is the written M1 rule,
+not a claim that nominal declarations or unit tags have been merged.

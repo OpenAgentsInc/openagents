@@ -440,6 +440,10 @@ versioned semantic/physical metadata is qualified. A same-size ordinary record
 does not acquire quantity semantics, and a quantity is not `numeric`.
 
 Matching-unit, matching-carrier quantities support `+`, `-` and comparisons.
+Separate annotated quantity families may interoperate under those rules; an
+arithmetic quantity result retains its quantity operand’s family (the left
+family when both operands are quantities). Assignment/type identity still
+distinguish families, and `convert_unit` preserves the input family.
 Scaling supports quantity times carrier, carrier times quantity, and quantity
 divided by carrier. Quantity products/quotients and affine point/vector/frame
 operators remain pending. No implicit unit or carrier conversion is admitted.
