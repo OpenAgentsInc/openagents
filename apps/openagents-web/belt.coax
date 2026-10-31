@@ -111,7 +111,7 @@ Plan :: struct { ok: bool; tr: Transfer; fuel: f64; burn2: f64; enough: bool; }
 
 Btn :: struct { x0: f32; y0: f32; x1: f32; y1: f32; id: int; arg: int; }
 BUTTONS :: 24;
-B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10;
+B_SPEED :: 1; B_CARD :: 2; B_MINE :: 3; B_HOME :: 4; B_FOLLOW :: 5; B_GO :: 6; B_CANCEL :: 7; B_GALAXY :: 8; B_NEW :: 9; B_SYSTEM :: 10; B_ROCK :: 11;
 
 Finger :: struct { id: int = -1; x: f32; y: f32; sx: f32; sy: f32; }
 
@@ -131,6 +131,10 @@ Belt :: struct {
   selected: [SHIPS] bool;
   dest: int = -1;        // the destination being planned, -1 none
   eco: Plan; fast: Plan; replan: f32;
+  // The ice rocks in reach of the selected ship, for the row of their names: the economy plan's
+  // days, whether it has the propellant, and whether that's worked out yet (one rock a frame)
+  reach_days: [ICE_ROCKS] f64; reach_ok: [ICE_ROCKS] bool; reach_have: [ICE_ROCKS] bool;
+  reach_ship: int; reach_next: int;
   follow: int = -1;
   follow_place: int = -1;  // the place the view rides with, -1 none
   // Without a ship or place followed, the view still moves with the system: the whole-system view
@@ -373,6 +377,7 @@ belt_reset :: (s: [] Belt) {
   s[0].speed = 2;
   s[0].ice = 1200.0;
   s[0].dest = -1; s[0].follow = -1; s[0].follow_place = -1; s[0].press = -1; s[0].hover = -1;
+  s[0].reach_ship = -1;
   for i: 0..<2 { s[0].fingers[i].id = -1; }
   r: [1] Rand;
   // The Belt's field: the first rocks from the stream the ice rocks follow (so they stay where
@@ -470,7 +475,8 @@ plan_with :: (s: [] Belt, k: int, dest: int, fast: bool, share: f64) -> Plan {
   tmax := fmax(tmin + 30.0 * DAY, 1.25 * hoh);
   // A place on nearly the ship's own orbit (a rock beside Ceres): the cheapest trip there is a
   // phasing loop most of the way round the Sun, years for a hop. Such a hop is planned within NEAR_TOF.
-  if abs(target.a - a1) < 0.25 * a1 { tmax = fmin(tmax, fmax(tmin + 30.0 * DAY, NEAR_TOF)); }
+  // Within NEAR_TOF, and from 15 days: GO FAST to a rock a few degrees along is weeks.
+  if abs(target.a - a1) < 0.25 * a1 { tmin = 15.0 * DAY; tmax = fmin(tmax, fmax(tmin + 30.0 * DAY, NEAR_TOF)); }
   m0 := ship_mass(sh);
   budget := ifx sh.fuel > 0.0 then orbit_delta_v(sh.isp, m0, m0 - share * sh.fuel) else 0.0;
   if sh.faction != FREE_BELT { budget = 25000.0; }
@@ -746,6 +752,22 @@ mine_order :: (s: [] Belt) {
   set_dest(s, j);
 }
 
+// One ice rock's economy plan for the selected ship a frame, for the row of rock names.
+reach_step :: (s: [] Belt) {
+  sk := first_selected(s);
+  if sk != s[0].reach_ship {
+    s[0].reach_ship = sk;
+    for i: 0..<ICE_ROCKS { s[0].reach_have[i] = false; }
+  }
+  if sk < 0 || s[0].dest >= 0 { return; }
+  i := s[0].reach_next % ICE_ROCKS;
+  s[0].reach_next = (i + 1) % ICE_ROCKS;
+  p := plan_for(s, sk, P_ICE + i, false);
+  s[0].reach_days[i] = ifx p.ok then p.tr.tof / DAY else 0.0;
+  s[0].reach_ok[i] = p.ok && p.enough;
+  s[0].reach_have[i] = true;
+}
+
 follow_ship :: (s: [] Belt, k: int) {
   if k < 0 { return; }
   s[0].follow = k; s[0].follow_place = -1; s[0].system = false; s[0].ride = -1;
@@ -862,6 +884,7 @@ press_button :: (s: [] Belt, i: int) {
   if b.id == B_FOLLOW { follow_ship(s, first_selected(s)); }
   if b.id == B_GO { go(s, b.arg == 1); }
   if b.id == B_CANCEL { s[0].dest = -1; }
+  if b.id == B_ROCK { set_dest(s, P_ICE + b.arg); }
   if b.id == B_SYSTEM { look_at_system(s); }
   if b.id == B_NEW {
     // twice to start over: the first press asks
@@ -1624,6 +1647,16 @@ add_button :: (s: [] Belt, x0: f32, y0: f32, x1: f32, y1: f32, id: int, arg: int
   return i;
 }
 // A button: its outline with the HUD's clipped corners, its word centred.
+// A button's cut-corner outline.
+ring_box :: (out: [] f32, d: [] Draw, x0: f32, y0: f32, x1: f32, y1: f32, k: f32, light: f32, red: f32, green: f32, blue: f32) {
+  c := 5 * k;
+  stroke(out, d, x0, y0, x1 - c, y0, 0.7 * k, light, red, green, blue);
+  stroke(out, d, x1 - c, y0, x1, y0 + c, 0.7 * k, light, red, green, blue);
+  stroke(out, d, x1, y0 + c, x1, y1, 0.7 * k, light, red, green, blue);
+  stroke(out, d, x1, y1, x0 + c, y1, 0.7 * k, light, red, green, blue);
+  stroke(out, d, x0 + c, y1, x0, y1 - c, 0.7 * k, light, red, green, blue);
+  stroke(out, d, x0, y1 - c, x0, y0, 0.7 * k, light, red, green, blue);
+}
 button :: (s: [] Belt, out: [] f32, d: [] Draw, x0: f32, y0: f32, x1: f32, y1: f32, id: int, arg: int, word: string, cap: f32, on: bool) {
   i := add_button(s, x0, y0, x1, y1, id, arg);
   k := d[0].k;
@@ -1787,7 +1820,33 @@ hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
       x0 := px0 + 8 * k + f32(i) * (bw2 + 8 * k);
       button(s, out, d, x0, py0 + 7 * k, x0 + bw2, py0 + ph - 7 * k, ids[i], 0, labels2[i], 7 * k, false);
     }
-    centred(out, d, "OR TAP A DESTINATION", w / 2, py0 - 10 * k, 6.5 * k, 0.55, INK_R, INK_G, INK_B);
+    // the ice rocks by name, each with its economy trip's days: a tap plans the trip
+    cols := ifx phone then 4 else ICE_ROCKS;
+    rows := (ICE_ROCKS + cols - 1) / cols;
+    rh := 30 * k;
+    rp := 6 * k;
+    qh := f32(rows) * rh + f32(rows + 1) * rp;
+    qy0 := py0 - 6 * k - qh;
+    panel(s, u, px0, qy0, px0 + pw, qy0 + qh, 0.85, false);
+    rw := (pw - f32(cols + 1) * rp) / f32(cols);
+    for j: 0..<ICE_ROCKS {
+      x0 := px0 + rp + f32(j % cols) * (rw + rp);
+      y0 := qy0 + rp + f32(j / cols) * (rh + rp);
+      i := add_button(s, x0, y0, x0 + rw, y0 + rh, B_ROCK, j);
+      have := s[0].reach_have[j];
+      ok := have && s[0].reach_ok[j];
+      lit_: f32 = ifx have && !ok then 0.3f32 else ifx s[0].hover == i || s[0].press == i then 1.0f32 else 0.65f32;
+      ring_box(out, d, x0, y0, x0 + rw, y0 + rh, k, lit_, ICE_R, ICE_G, ICE_B);
+      nc := lo(6 * k, (rw - 8 * k) / hi(text_width(ICE_NAMES[j], 1), 1));
+      centred(out, d, ICE_NAMES[j], x0 + rw / 2, y0 + 13 * k, nc, lit_ + 0.15, ICE_R, ICE_G, ICE_B);
+      if have {
+        n = 0;
+        if !s[0].reach_ok[j] { n = put(buf[..], 0, ifx s[0].reach_days[j] > 0.0 then "LOW FUEL" else "NO ROUTE"); }
+        else { n = put_int(buf[..], 0, safe_int(s[0].reach_days[j])); n = put(buf[..], n, " DAYS"); }
+        centred(out, d, cast(string) buf[0..<n], x0 + rw / 2, y0 + 24 * k, lo(5 * k, (rw - 6 * k) / hi(text_width(cast(string) buf[0..<n], 1), 1)), lit_ * 0.9, INK_R, INK_G, INK_B);
+      }
+    }
+    centred(out, d, "OR TAP A DESTINATION", w / 2, qy0 - 10 * k, 6.5 * k, 0.55, INK_R, INK_G, INK_B);
     return;
   }
   // A plan: economy and fast, each a button that launches it.
@@ -1880,6 +1939,7 @@ belt_step :: (s: [] Belt, dt: f32) {
   if s[0].toast_t > 0 { s[0].toast_t -= f32(real); }
   if s[0].new_armed > 0 { s[0].new_armed -= f32(real); }
   autosave(s, f32(real));
+  reach_step(s);
   // A plan being shown follows the clock.
   if s[0].dest >= 0 && SPEEDS[s[0].speed] > 0.0 {
     s[0].replan -= f32(real);
@@ -2129,6 +2189,18 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   }
 }
 
+#test "GO FAST to the nearest ice rock is weeks, within RASP's propellant" {
+  s: [1] Belt;
+  belt_start(s[..]);
+  select_only(s[..], 0);
+  j := nearest_ice(s[..], 0);
+  #assert j >= 0;
+  p := plan_for(s[..], 0, j, true);
+  e := plan_for(s[..], 0, j, false);
+  #assert p.ok && p.enough && p.tr.tof < 60.0 * DAY && p.fuel < s[0].ships[0].fuel;
+  #assert e.ok && e.tr.dv <= p.tr.dv;
+}
+
 #test "the field: five thousand rocks where their orbits put them, each a quad, all within the vertex budget" {
   s: [1] Belt;
   belt_start(s[..]);
@@ -2170,6 +2242,34 @@ stage_hud :: (s: [] Belt, out: [] f32, u: [] f32, d: [] Draw) {
   belt_start(b[..]);
   b[0].framed = true;
   #assert load_game(b[..], cast(string) buf[0..<n]) && !b[0].framed;
+}
+
+#test "with a ship selected, each of the eight ice rocks is a named button that plans the trip, on a phone and a desktop" {
+  sizes := [2] D2.[D2.{x = 1170, y = 2532}, D2.{x = 1280, y = 800}];
+  dprs := [2] f32.[3, 1];
+  for z: 0..<2 {
+    s: [1] Belt;
+    belt_start(s[..]);
+    out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+    w := f32(sizes[z].x); h := f32(sizes[z].y);
+    n := belt_frame(s[..], out[..], u[..], w, h, dprs[z], 0.016, false);
+    select_only(s[..], 0);
+    for f: 0..<10 { n = belt_frame(s[..], out[..], u[..], w, h, dprs[z], 0.016, false); }
+    for j: 0..<ICE_ROCKS {
+      #assert s[0].reach_have[j] && s[0].reach_ok[j] && s[0].reach_days[j] > 0.0;
+      b := -1;
+      for i: 0..<s[0].btn_n { if s[0].btn[i].id == B_ROCK && s[0].btn[i].arg == j { b = i; } }
+      #assert b >= 0;
+      r := s[0].btn[b];
+      #assert r.x0 >= 0 && r.x1 <= w && r.y0 >= 0 && r.y1 <= h && r.x1 - r.x0 >= 40 * dprs[z] && r.y1 - r.y0 >= 28 * dprs[z];
+      x := (r.x0 + r.x1) / 2; y := (r.y0 + r.y1) / 2;
+      #assert belt_pointer(s[..], x, y, 0, 1, 7);
+      ok := belt_pointer(s[..], x, y, 2, 1, 7);
+      #assert s[0].dest == P_ICE + j && s[0].eco.ok;
+      s[0].dest = -1;
+      n = belt_frame(s[..], out[..], u[..], w, h, dprs[z], 0.016, false);
+    }
+  }
 }
 
 #test "a miner sent for ice mines at the rock, flies home and delivers it, and the rivals fly" {
