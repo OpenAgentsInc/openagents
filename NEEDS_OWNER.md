@@ -13,13 +13,12 @@ Confirmed causes include Haunt/Sandbox goldens predating the existing GALAXY
 button, live staging planet data, and Fairy Forest's unfrozen wing phase.
 No goldens were changed or failures reported as passing.
 
-Owner decision requested in this chat: allow the demonstrated baseline-only
-failures to remain explicit follow-up work while the header fix is pushed and
-the ordered compiler work continues, or require the global golden gate to be
-repaired first. The queue forbids approving someone else's visual changes and
-marking a task done with unmet acceptance; the compiler push and completion
-notice remain pending this decision. The issue definitions themselves are
-already on main in `314e74565c8910322101dd35cd0d966fa27cb1ca`.
+Resolved 2026-10-30: the owner explicitly chose "Record baseline failures
+and continue" in this chat. The header fix may be pushed and the ordered
+compiler work may continue with these demonstrated baseline-only failures
+recorded separately. No golden snapshot was approved or changed, and the
+failed global walk is not reported as passing. This resolves the header-fix
+sign-off only; it does not waive new regressions or the later golden repairs.
 
 ## R0 adoption gate
 

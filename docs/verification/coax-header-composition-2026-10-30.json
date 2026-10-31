@@ -518,6 +518,12 @@
       "Fairy wing phase advances with real frame time during golden capture."
     ],
     "goldens_modified": false,
-    "owner_decision": "pending; no waiver or task completion asserted"
+    "owner_decision": {
+      "status": "approved_baseline_exception",
+      "date": "2026-10-30",
+      "source": "Explicit user reply in this chat",
+      "reply": "Record baseline failures and continue (Recommended)",
+      "scope": "Push this header fix and continue the ordered work while retaining the nine demonstrated baseline-only golden failures separately; no golden snapshots were approved or changed."
+    }
   }
 }
