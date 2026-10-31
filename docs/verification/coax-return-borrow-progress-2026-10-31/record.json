@@ -1,0 +1,140 @@
+{
+  "schema": "openagents.coax.return-borrow-progress.v1",
+  "recorded_utc": "2026-10-31T22:58:10.793724+00:00",
+  "outcome": "incomplete-not-qualified",
+  "published_scope": "Verification evidence and reviewable candidate patch only. No compiler implementation, version/capability change, binary/provenance install or release is published by this record.",
+  "preserved_candidate": {
+    "candidate_commit": "c927cb200d94605f7644076216de7820f68d14e7",
+    "patch_base": "e238c7b76d6f2a9218a4f4fc36bcb074e3d89249",
+    "candidate_ref": "refs/codex/coax-return-borrows-candidate",
+    "compiler_fingerprint": "c38ed46b5fc1721dabab67eda2115ec9a756cafaed5e898b08721cf3854b4702"
+  },
+  "current_candidate_checker_sha256": "7550d1cf9d085762f113bdacb59f9ce534b12a7b9726bc254eeadaddd06af84c",
+  "observations": {
+    "helper_feedback": {
+      "scope": "Exact reconstructed helper-only root mutation, all dependency baseline checks retained. Not original full checker scope.",
+      "sites": 1125,
+      "killed": 1125,
+      "survivors": 0,
+      "new_equivalence_waivers": 0
+    },
+    "mandatory_C_emission": "Passed at unchanged real131072-container compile profile after scalar workspace-policy extraction; older large-oracle E0400 refusal retained.",
+    "normal_first_epoch": {
+      "passed_statements": 70,
+      "required": 154,
+      "failed": "Parser fixture dead-store mutant,1451 sites/1450 killed/1 survived."
+    },
+    "normal_fresh_epoch": {
+      "passed_statements": 74,
+      "required": 154,
+      "full_inventory": 8058,
+      "shard": "1/4",
+      "evaluated": 2015,
+      "killed": 2011,
+      "survivors": 4,
+      "failure": "Initial borrow-metadata reset loop: start1->2; binding0->1; call-list0->1; status0->1.",
+      "elapsed_seconds": 383.836,
+      "timed_out": false
+    },
+    "final_binary_exists": false,
+    "matching_final_native_gates_run": false,
+    "final_source39_run": false,
+    "release_visuals_run": false
+  },
+  "stop_reason": "Owner two-hour start-to-push rule. Remaining3shards/merge, fixed points, native/source/release/visual qualification do not fit. Unqualified implementation remains preserved locally and in the patch; A1 and its parent stay open.",
+  "remaining_in_order": [
+    "Review file-node1 reset redundancy, add meaningful global-constant/call-list/owned-status controls, and rerun all original full-scope checker shards without waivers.",
+    "Complete fresh normal compiler fixed points/provenance and matching9native/layout,39source and release regression gates; review only the authored changelog visuals, then push and release the qualified implementation.",
+    "Complete retained request-buffer transfers/lifetimes (B), then audit workstreams4through8, preserving upstream work and each umbrella acceptance."
+  ],
+  "scope_corrections": [
+    "The spatial fixture check restored during final ordering arrived on later origin/main0467; it had not been dropped by the earlier e238 merge.",
+    "The first all-node-zero reset proposal was overstrong. File-node1 borrow fields have no kind-specific consumer; do not create an artificial contract merely to kill that mutant.",
+    "Historical development/native producer/layout records retain their exact recorded source and compiler scopes.",
+    "This record does not close A1 or claim all eight audit workstreams complete."
+  ],
+  "follow_up_proposal": "# Proposed next iteration: semantic CK_run reset controls\n\nThis is an unexecuted proposal. The A1 candidate remains unpublished and its\nfull-source mutation has four survivors. The temporary1125-site CB result does\nnot qualify the initial metadata-reset surface.\n\nThe frozen API is kind-specific: `borrow_binding` is meaningful on checked\nidentifier expressions; `borrow_calls` is a procedure's actual checked-call\nlist; `borrow_status` is meaningful on concrete procedures (0 means no borrow\nresult/not analyzed,1 complete,2 manual). It did **not** promise that every\ninapplicable borrow field on every node is canonical zero.\n\nConsequently the loop-start mutant1\u21922 affects only file node1. Current consumers\nnever interpret file node1 as a declaration, identifier or procedure. Under the\ncurrently documented contract, resetting its borrow fields is redundant. The\nfirst draft `public-reset-control.coax` overstates the contract by asserting all\ninapplicable node fields are zero; it must not be used as justification for\nkilling that mutant. A defensible next implementation can start clearing at2,\npreserving all applicable metadata behavior, with explicit review. This is a\nsource simplification, not an equivalent-mutant waiver.\n\nThe other reset sites have real public semantic oracles:\n\n- A global string constant returned through its checked identifier must retain\n  `constant=<actual declaration>` and `borrow_binding=0`; a phantom local\n  binding1 instead gives an erroneous E0381 when the return summary is queried.\n- A procedure containing no calls must have an empty checked-call list. File\n  node1 is not a legal phantom call. Assert that field on the procedure rather\n  than asserting unused fields on the file node.\n- A concrete integer/void-return procedure has `borrow_status=0`. A default1\n  would incorrectly report a complete borrowed-return summary. A view-return\n  identity alone is insufficient because its legitimate status is already1.\n\n`public-reset-semantic-control.coax` supplies one literal raw CK_run graph with\nboth global-constant string return and owned integer return, starting from\npoisoned caller-supplied metadata. It asserts only applicable public outputs.\nIt is not yet executed, source-integrated, mutation-qualified or native-proven.\nThe identity-buffer draft can be retained as historical preparation, but its\nfile/non-procedure zero assertions should be removed before use.\n",
+  "unexecuted_semantic_control": "#test \"return borrow reused input rebuilds constant bindings actual call lists and procedure statuses\" {\n nodes:[64]CK_Node;types:[64]CK_Type;locals:[64]CK_Local;errors:[16]CK_Error;bytes:[4096]u8;state:[1]CK_State;c:=CK_Context.{nodes=nodes[..],types=types[..],locals=locals[..],errors=errors[..],bytes=bytes[..],state=state[..]};\n nodes[1]=CK_Node.{kind=CK_Tag.file,head=2};nodes[2]=CK_Node.{kind=CK_Tag.constant,name=\"Text\",a=3,next=4};nodes[3]=CK_Node.{kind=CK_Tag.expr_string,name=\"literal\"};nodes[4]=CK_Node.{kind=CK_Tag.proc,name=\"text\",a=5,b=6,next=9};nodes[5]=CK_Node.{kind=CK_Tag.type_named,name=\"string\"};nodes[6]=CK_Node.{kind=CK_Tag.stmt_block,head=7};nodes[7]=CK_Node.{kind=CK_Tag.stmt_return,a=8};nodes[8]=CK_Node.{kind=CK_Tag.expr_ident,name=\"Text\"};nodes[9]=CK_Node.{kind=CK_Tag.proc,name=\"owned\",a=10,b=11};nodes[10]=CK_Node.{kind=CK_Tag.type_named,name=\"int\"};nodes[11]=CK_Node.{kind=CK_Tag.stmt_block,head=12};nodes[12]=CK_Node.{kind=CK_Tag.stmt_return,a=13};nodes[13]=CK_Node.{kind=CK_Tag.expr_int,value=1};\n for i:1..<14 {nodes[i].borrow_binding=31;nodes[i].borrow_owner=31;nodes[i].borrow_writes=31;nodes[i].borrow_returns=31;nodes[i].borrow_calls=31;nodes[i].borrow_next=31;nodes[i].borrow_status=2;}\n #assert CK_run(c,13,CK_Options.{library=true}) && !state[0].fatal && state[0].error_count==0;\n #assert nodes[8].kind==CK_Tag.expr_ident && nodes[8].constant==2 && nodes[8].borrow_binding==0;\n #assert nodes[4].borrow_calls==0 && nodes[4].borrow_returns==7 && nodes[4].borrow_status==1 && nodes[7].borrow_owner==4;\n #assert nodes[9].borrow_calls==0 && nodes[9].borrow_returns==12 && nodes[9].borrow_status==0 && nodes[12].borrow_owner==9;\n}\n",
+  "upstream_core_review": {
+    "schema": "coax.return-borrow.upstream-merge-coverage.v1",
+    "scope": "Read-only source/seed coverage review. No commands, tests, CC, native bodies or producer observations were rerun. Preserve already-qualified current Coax source/C/H bytes on rebase.",
+    "base": "e238c7b76d6f2a9218a4f4fc36bcb074e3d89249",
+    "incoming": "2645e29fb4e74a4eec42f0ee289d2865dd03c151",
+    "changed_core_paths": [
+      "coax/bootstrap/checker.c",
+      "coax/bootstrap/parser.c",
+      "coax/lib/compiler/checker.coax",
+      "coax/lib/compiler/parser.coax"
+    ],
+    "checker": {
+      "current_sha256": "7550d1cf9d085762f113bdacb59f9ce534b12a7b9726bc254eeadaddd06af84c",
+      "incoming_added_check_name": "#test \"spatial fixture is an admitted frame tag and leaves interning the next node\"",
+      "incoming_added_check_sha256": "d7de70018ffed6d0a84ff6552ff7aea04bb5357ffcc2b95ad5cf178fa3500f4a",
+      "exact_occurrences_in_current": 1,
+      "incoming_source_other_than_new_check_equal_to_base": true,
+      "seed_only_delta": "Every differing token is a decimal composed-source coordinate +7 in the82374..82918 range; all other tokens/operators/identifiers unchanged. Headers identical.",
+      "changed_coordinate_tokens": 73
+    },
+    "parser": {
+      "current_sha256": "f025993d2f7c307da660c405c700f4b772ee70aa00bca8d39882587370e6f0bc",
+      "incoming_only_source_changes": "One explanatory comment; unconditional comma writes at5,9,13,17 followed by closing17=9.",
+      "current_only_source_changes": "Same earlier conditional comma writes at5,9,13; closing17=9 now placed before loop. Line count unchanged.",
+      "same_baseline_tokens_proof": "For i=0,1,2 both assign comma14 at indices5,9,13. For i=3 current leaves the preinitialized closing9 at17; incoming writes14 then overwrites it9. All four names/words, separators, and all19 location assignments are unchanged. No other token fields differ. This is a reviewed source construction proof, not a fresh native observation.",
+      "incoming_seed_other_than_private_fixture_equal_to_base": true,
+      "headers_identical": true,
+      "private_helper_c_symbol_occurrences": {
+        "base": 2,
+        "incoming": 2
+      },
+      "current_emission_guard": "/tmp/coax-return-borrows-A1/parser-fixture-fix/qualification.json"
+    },
+    "correction": "The earlier membership guard observed a newly fetched origin/main test from0467 ahead of the rebase. The exact check was proactively integrated before final qualification; it was not present in e238 and was not dropped from that merge.",
+    "outcome": "covered-by-current-qualified-source-alternative"
+  },
+  "artifacts": [
+    {
+      "path": "development.json.gz",
+      "scope": "Historical development/RED/helper/mandatory-emission records; never final current qualification.",
+      "encoding": "gzip",
+      "sha256": "52357434ae12a7f64b46040faaea3189c5723b98fa1a969d3a2461c5e2dc0310",
+      "bytes": 847427,
+      "uncompressed_sha256": "87ae2c4a3df2598ca647b4e03af8c63e58494fc58480c9f264a6bf9d523231d0",
+      "uncompressed_bytes": 6084131
+    },
+    {
+      "path": "normal-first-epoch.json.gz",
+      "scope": "Failed first normal epoch:70 passes then parser fixture survivor.",
+      "encoding": "gzip",
+      "sha256": "0e466f7dd8da2cb5a98bf200f212b6e45f2b0811ece3b3afb0f62fdbada35c5a",
+      "bytes": 4196449,
+      "uncompressed_sha256": "b897851220a935079a1c188477790f26c95302f300b483bfe5a2615349b9f456",
+      "uncompressed_bytes": 5686433
+    },
+    {
+      "path": "normal-v3-epoch.json.gz",
+      "scope": "Failed fresh normal epoch:74 passes then4 full checker shard survivors.",
+      "encoding": "gzip",
+      "sha256": "2c6ca77bc678395fa242e77fb3a1ef7282a39fd10fc6b16ebb07fbcf89285393",
+      "bytes": 4453292,
+      "uncompressed_sha256": "414c71a71c87287c776b38d17ca995ba03af0165040ce32bb2349345242afc43",
+      "uncompressed_bytes": 6029819
+    },
+    {
+      "path": "candidate.patch.gz",
+      "scope": "Unpublished candidate patch against the recorded base; must rebase and qualify before application/publication.",
+      "encoding": "gzip",
+      "sha256": "c247b15867eed654174ed917c5c8b76c43a5a79fa8d0135718fe588dbafc824d",
+      "bytes": 233351,
+      "uncompressed_sha256": "da0597487e39f597e5761c65f9781008f68b7d557a10259ba0972c73e3589573",
+      "uncompressed_bytes": 1442781
+    },
+    {
+      "path": "checker-shard-1.rec.gz",
+      "scope": "Actual full-scope shard1 record,4 survivors; no merge/full pass.",
+      "encoding": "gzip",
+      "sha256": "d7bbbfc57ac6431cdb68b6b66b2184961ddd2efbb84245cfa1c1bb216f1cad56",
+      "bytes": 8127,
+      "uncompressed_sha256": "9df19110916eb92f4a13e339bf6a9cfcc0cd34eeeb076ae5ad01054aefa1aa04"
+    }
+  ]
+}
