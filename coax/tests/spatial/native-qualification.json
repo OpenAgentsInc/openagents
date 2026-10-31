@@ -1,6 +1,6 @@
 {
   "schema": "coax.spatial-native.qualification.v1",
-  "status": "native-qualified; refreshed final emitter C/header-bound; compiler authority/publication closure separate",
+  "status": "qualified-with-merged-0.45-emission-binding",
   "native_passed": true,
   "final_compiler_binding_passed": true,
   "compiler_initial": {
@@ -219,5 +219,12 @@
     "stderr_empty": true,
     "prior_native_and_object_results_reused_not_repeated": true,
     "scope": "Four new emitter programs only. Exact C/header identity permits reuse of previous debug/release/sanitized numerical, ABI/order and object results; no native/test/SDK rerun. Compiler authority/publication closure is separate."
+  },
+  "publication_binding": {
+    "compiler": "/tmp/coax-spatial-reconstruction-045/coax",
+    "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "record": "docs/verification/coax-spatial-merged-2026-10-31.json",
+    "C_and_header_equality": "Exact previously executed artifacts; no numerical or SDK rerun",
+    "binding_receipt_sha256": "cf19d9209833f0a54c5e382b7748be564ba3f14a872f4dd4eac9ed15f9461b93"
   }
 }

@@ -206,7 +206,7 @@
     {
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
-      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal derived f32/f64 scalar units on native C; frame forms, compiler clock syntax, other targets and plain-f64 robot migrations remain separate.",
+      "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate.",
       "text_sha256": "aac4d607fca2760f8197096b2aeb93117f40190b0b8357705866b5a84a097317",
       "features": [
         {
@@ -302,6 +302,34 @@
         {
           "path": "docs/verification/coax-quantity-derived-merged-2026-10-31.json",
           "sha256": "ee36c71c192701cd9d7cab3cf0d425e6e092ecd88c1a37205186718c97de27d5"
+        },
+        {
+          "path": "coax/SPATIAL.md",
+          "sha256": "ea538dea23321c66245d1c266891ce6f88d4aa470b95fd7204bb411cd7a630a7"
+        },
+        {
+          "path": "coax/tests/spatial.py",
+          "sha256": "3d5f290f3e2a94ebd8f01288d01d897466a0e23c3f38e7dfcb5dc7d38fb7ee25"
+        },
+        {
+          "path": "coax/tests/spatial_045.py",
+          "sha256": "f0e7c9b844ba60731c4c6b61c384ab190a3fc65432a0608c6bd4fcb3e253dfbd"
+        },
+        {
+          "path": "coax/tests/spatial/native-qualification.json",
+          "sha256": "741613b10ca9e44edb0dff6c493984058f61099968b798bdc925213997144178"
+        },
+        {
+          "path": "coax/tests/spatial/spacecam-qualification.json",
+          "sha256": "7a78d3f6496ef8768c44c240cc6895961358f0465decc719125a0336c7f5061e"
+        },
+        {
+          "path": "coax/tests/spatial/interop-qualification.json",
+          "sha256": "47b7e77acb04a8fbae45df1eb7d575485e7d91840527a946527de1265badaafa"
+        },
+        {
+          "path": "docs/verification/coax-spatial-merged-2026-10-31.json",
+          "sha256": "27307c59c62a30993df7be943c0f32424b2b6e7827dbb91b01abc31412030937"
         }
       ]
     },

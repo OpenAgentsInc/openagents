@@ -1,0 +1,929 @@
+{
+  "schema": "coax-spatial-merged-publication-v1",
+  "date": "2026-10-31",
+  "outcome": "passed",
+  "scope": "Initial concrete native-C Point3/Vector3 and frame declarations, not complete R12 or a release/cache qualification. Frozen0.44 proof remains historically labelled; current0.45 merge is reconstructed separately.",
+  "frozen_checker_proof": {
+    "path": "docs/verification/coax-spatial-2026-10-31.json",
+    "sha256": "57684331e05402f85501655ede3eb6d17e65fcc0cd6f33e61a393ca7eb52d910",
+    "procedures": 20,
+    "retained_check_groups": 731,
+    "mutants": 1403,
+    "killed": 1403,
+    "survived": 0
+  },
+  "normal_focused_reconstruction": {
+    "schema": "coax.quantity.bootstrap.execution.v1",
+    "root": "/private/tmp/coax-spatial-source-045",
+    "working_directory": "/private/tmp/coax-spatial-source-045/coax",
+    "output_directory": "/private/tmp/coax-spatial-reconstruction-045",
+    "source_commit": "caa819b7e0806df714de23f2215f3f0c8d53dca8",
+    "source_commit_limit": "HEAD is a label, not a clean-tree assertion; source hashes and normal fingerprints bind actual inputs.",
+    "normal_bootstrap_recipe_sha256": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+    "normal_seed_compile_order": [
+      "budget",
+      "check-domains",
+      "profiles",
+      "mutation-schedule",
+      "lexer",
+      "parser",
+      "checker",
+      "sources"
+    ],
+    "normal_seed_link_order": [
+      "check-domains",
+      "mutation-schedule",
+      "budget",
+      "profiles",
+      "lexer",
+      "parser",
+      "checker",
+      "sources"
+    ],
+    "seed_sha256": {
+      "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+      "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+      "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+      "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+      "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+      "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+      "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+      "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+      "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+      "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+      "coax/bootstrap/parser.c": "9b09a06bee9a125758744454c629841a6ef77fb050b43352cfbd68dad029fd61",
+      "coax/bootstrap/parser.h": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+      "coax/bootstrap/checker.c": "aebfaafb984a78018e266467a8f79a631217bcb7310ecb1b8fbbfd1eb2c9494d",
+      "coax/bootstrap/checker.h": "5ca9d5651621e70d97f4d5388fae16d221df05dc9b96bcc279ed98fca8827293",
+      "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+      "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8"
+    },
+    "authored_source_sha256": {
+      "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+      "coax/lib/compiler/parser.coax": "b3ad8dc998257b29d005da4dae6eddfc126f53cde4699954a287167afbde0c11",
+      "coax/lib/compiler/checker.coax": "3c78223543ddaa0f46def9edaa1cf3e7f8b771b6fbaa897ab0abaec8e94d68af",
+      "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+    },
+    "embedded_protocol_sources_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+    "preparation": {
+      "generated_file": "/private/tmp/coax-spatial-reconstruction-045/proto_runtime.inc",
+      "source": "Four exact lib/proto source literals, with the normal raw-string delimiters."
+    },
+    "command_count": 24,
+    "shared_wall_budget_seconds": 840,
+    "normal_rebuild_command": "coax/build.sh",
+    "normal_rebuild_executed": false,
+    "scope": "Focused checked-in-seed reconstruction and C/header fixed point, not the complete normal release/cache/provenance qualification.",
+    "source_writes": false,
+    "cache_or_installed_release_published": false,
+    "commands": [
+      {
+        "name": "fingerprint-before",
+        "arguments": [
+          "./provenance.sh",
+          "fingerprint",
+          "/private/tmp/coax-spatial-source-045"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/fingerprint-before.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/fingerprint-before.stderr",
+        "remaining_wall_budget_seconds": 839.9820457909955,
+        "exit": 0,
+        "elapsed_seconds": 1.8396371249691583
+      },
+      {
+        "name": "seed-budget",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/budget.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-budget.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-budget.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-budget.stderr",
+        "remaining_wall_budget_seconds": 838.1416749999626,
+        "exit": 0,
+        "elapsed_seconds": 0.06916904199169949
+      },
+      {
+        "name": "seed-check-domains",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/check-domains.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-check-domains.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-check-domains.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-check-domains.stderr",
+        "remaining_wall_budget_seconds": 838.0717014999827,
+        "exit": 0,
+        "elapsed_seconds": 0.09327816701261327
+      },
+      {
+        "name": "seed-profiles",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/profiles.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-profiles.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-profiles.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-profiles.stderr",
+        "remaining_wall_budget_seconds": 837.9775482499972,
+        "exit": 0,
+        "elapsed_seconds": 0.08333941700402647
+      },
+      {
+        "name": "seed-mutation-schedule",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/mutation-schedule.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-mutation-schedule.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-mutation-schedule.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-mutation-schedule.stderr",
+        "remaining_wall_budget_seconds": 837.893363665964,
+        "exit": 0,
+        "elapsed_seconds": 0.07797891699010506
+      },
+      {
+        "name": "seed-lexer",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/lexer.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-lexer.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-lexer.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-lexer.stderr",
+        "remaining_wall_budget_seconds": 837.8145840410143,
+        "exit": 0,
+        "elapsed_seconds": 0.2590006660320796
+      },
+      {
+        "name": "seed-parser",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/parser.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-parser.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-parser.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-parser.stderr",
+        "remaining_wall_budget_seconds": 837.5547488749726,
+        "exit": 0,
+        "elapsed_seconds": 0.7339061670354567
+      },
+      {
+        "name": "seed-checker",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/checker.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-checker.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-checker.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-checker.stderr",
+        "remaining_wall_budget_seconds": 836.8200353750144,
+        "exit": 0,
+        "elapsed_seconds": 2.569858041999396
+      },
+      {
+        "name": "seed-sources",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "bootstrap/sources.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-sources.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/seed-sources.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/seed-sources.stderr",
+        "remaining_wall_budget_seconds": 834.2490357909701,
+        "exit": 0,
+        "elapsed_seconds": 0.16584933298872784
+      },
+      {
+        "name": "stage0-cxx",
+        "arguments": [
+          "c++",
+          "-std=c++20",
+          "-O1",
+          "-g",
+          "-Wall",
+          "-Wextra",
+          "-Wno-missing-field-initializers",
+          "-DCOAX_BOOTSTRAP_IMPORTER",
+          "-I",
+          "bootstrap",
+          "-I",
+          "/private/tmp/coax-spatial-reconstruction-045",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/stage0",
+          "src/main.cpp",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-check-domains.o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-mutation-schedule.o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-budget.o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-profiles.o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-lexer.o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-parser.o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-checker.o",
+          "/private/tmp/coax-spatial-reconstruction-045/seed-sources.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/stage0-cxx.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/stage0-cxx.stderr",
+        "remaining_wall_budget_seconds": 834.0823317079921,
+        "exit": 0,
+        "elapsed_seconds": 11.585986541991588
+      },
+      {
+        "name": "stage0-graph",
+        "arguments": [
+          "/private/tmp/coax-spatial-reconstruction-045/stage0",
+          "c",
+          "lib/compiler/compiler.coax",
+          "--library",
+          "--header",
+          "/private/tmp/coax-spatial-reconstruction-045/proto_importer.h"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/proto_importer.c",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/stage0-graph.stderr",
+        "remaining_wall_budget_seconds": 822.4955392499687,
+        "exit": 0,
+        "elapsed_seconds": 21.166348750004545
+      },
+      {
+        "name": "graph-object",
+        "arguments": [
+          "cc",
+          "-std=c11",
+          "-O1",
+          "-g",
+          "-c",
+          "/private/tmp/coax-spatial-reconstruction-045/proto_importer.c",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/proto_importer.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/graph-object.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/graph-object.stderr",
+        "remaining_wall_budget_seconds": 801.3283458749647,
+        "exit": 0,
+        "elapsed_seconds": 8.33106954098912
+      },
+      {
+        "name": "final-cxx",
+        "arguments": [
+          "c++",
+          "-std=c++20",
+          "-O1",
+          "-g",
+          "-Wall",
+          "-Wextra",
+          "-Wno-missing-field-initializers",
+          "-I",
+          "/private/tmp/coax-spatial-reconstruction-045",
+          "-o",
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "src/main.cpp",
+          "/private/tmp/coax-spatial-reconstruction-045/proto_importer.o"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/final-cxx.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/final-cxx.stderr",
+        "remaining_wall_budget_seconds": 792.9962961249985,
+        "exit": 0,
+        "elapsed_seconds": 15.64248483296251
+      },
+      {
+        "name": "final-version",
+        "arguments": [
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "version"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/final-version.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/final-version.stderr",
+        "remaining_wall_budget_seconds": 777.3527536249603,
+        "exit": 0,
+        "elapsed_seconds": 0.2326235420187004
+      },
+      {
+        "name": "final-graph",
+        "arguments": [
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "lib/compiler/compiler.coax",
+          "--library",
+          "--header",
+          "/private/tmp/coax-spatial-reconstruction-045/rebuilt.h"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/rebuilt.c",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/final-graph.stderr",
+        "remaining_wall_budget_seconds": 777.11904404097,
+        "exit": 0,
+        "elapsed_seconds": 20.58418912498746
+      },
+      {
+        "name": "graph-c-fixedpoint",
+        "arguments": [
+          "cmp",
+          "/private/tmp/coax-spatial-reconstruction-045/proto_importer.c",
+          "/private/tmp/coax-spatial-reconstruction-045/rebuilt.c"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/graph-c-fixedpoint.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/graph-c-fixedpoint.stderr",
+        "remaining_wall_budget_seconds": 756.5337235410116,
+        "exit": 0,
+        "elapsed_seconds": 0.014350457990076393
+      },
+      {
+        "name": "graph-header-fixedpoint",
+        "arguments": [
+          "cmp",
+          "/private/tmp/coax-spatial-reconstruction-045/proto_importer.h",
+          "/private/tmp/coax-spatial-reconstruction-045/rebuilt.h"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/graph-header-fixedpoint.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/graph-header-fixedpoint.stderr",
+        "remaining_wall_budget_seconds": 756.5183916249662,
+        "exit": 0,
+        "elapsed_seconds": 0.013924499973654747
+      },
+      {
+        "name": "final-seed-parser",
+        "arguments": [
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "lib/compiler/parser.coax",
+          "--library",
+          "--header",
+          "/private/tmp/coax-spatial-reconstruction-045/parser-final.h"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/parser-final.c",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/final-seed-parser.stderr",
+        "remaining_wall_budget_seconds": 756.50352345797,
+        "exit": 0,
+        "elapsed_seconds": 0.4878814169787802
+      },
+      {
+        "name": "parser-seed-c-match",
+        "arguments": [
+          "cmp",
+          "bootstrap/parser.c",
+          "/private/tmp/coax-spatial-reconstruction-045/parser-final.c"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/parser-seed-c-match.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/parser-seed-c-match.stderr",
+        "remaining_wall_budget_seconds": 756.0145790409879,
+        "exit": 0,
+        "elapsed_seconds": 0.01091187505517155
+      },
+      {
+        "name": "parser-seed-header-match",
+        "arguments": [
+          "cmp",
+          "bootstrap/parser.h",
+          "/private/tmp/coax-spatial-reconstruction-045/parser-final.h"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/parser-seed-header-match.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/parser-seed-header-match.stderr",
+        "remaining_wall_budget_seconds": 756.002757625014,
+        "exit": 0,
+        "elapsed_seconds": 0.007377999951131642
+      },
+      {
+        "name": "final-seed-checker",
+        "arguments": [
+          "/private/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "lib/compiler/checker.coax",
+          "--library",
+          "--header",
+          "/private/tmp/coax-spatial-reconstruction-045/checker-final.h"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/checker-final.c",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/final-seed-checker.stderr",
+        "remaining_wall_budget_seconds": 755.9947096249671,
+        "exit": 0,
+        "elapsed_seconds": 7.346113666018937
+      },
+      {
+        "name": "checker-seed-c-match",
+        "arguments": [
+          "cmp",
+          "bootstrap/checker.c",
+          "/private/tmp/coax-spatial-reconstruction-045/checker-final.c"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/checker-seed-c-match.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/checker-seed-c-match.stderr",
+        "remaining_wall_budget_seconds": 748.6469140409608,
+        "exit": 0,
+        "elapsed_seconds": 0.01353541697608307
+      },
+      {
+        "name": "checker-seed-header-match",
+        "arguments": [
+          "cmp",
+          "bootstrap/checker.h",
+          "/private/tmp/coax-spatial-reconstruction-045/checker-final.h"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/checker-seed-header-match.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/checker-seed-header-match.stderr",
+        "remaining_wall_budget_seconds": 748.6326805829885,
+        "exit": 0,
+        "elapsed_seconds": 0.01166512502823025
+      },
+      {
+        "name": "fingerprint-after",
+        "arguments": [
+          "./provenance.sh",
+          "fingerprint",
+          "/private/tmp/coax-spatial-source-045"
+        ],
+        "cwd": "/private/tmp/coax-spatial-source-045/coax",
+        "stdout_path": "/private/tmp/coax-spatial-reconstruction-045/fingerprint-after.stdout",
+        "stderr_path": "/private/tmp/coax-spatial-reconstruction-045/fingerprint-after.stderr",
+        "remaining_wall_budget_seconds": 748.6202434579609,
+        "exit": 0,
+        "elapsed_seconds": 1.7126182920183055
+      }
+    ],
+    "passed": true,
+    "input_fingerprint_before": "5985e8e5902c8a1f9bc53790090dd6d96300df8808a21daa209a31a58e279093",
+    "input_fingerprint_after": "5985e8e5902c8a1f9bc53790090dd6d96300df8808a21daa209a31a58e279093",
+    "compiler_version": "coax0 0.45.0",
+    "artifacts": {
+      "stage0": "f22d89fc533312f409676cddb9d9ffa2ca14dc63672ecedb6867ce562ff48ecc",
+      "proto_importer.c": "c31191300e2779e632062f09460c3c08f86cbe03a0684ee0f183adc97483384c",
+      "proto_importer.h": "808b3f70b2a80bac645a8f4b6694b47dbea0a24b9fef91c966f5c22150dc7dbc",
+      "proto_importer.o": "efcfb63711ed2dabdd93275958b5447a1881e0d49629fa9df9befc9fd5171a01",
+      "coax": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+      "rebuilt.c": "c31191300e2779e632062f09460c3c08f86cbe03a0684ee0f183adc97483384c",
+      "rebuilt.h": "808b3f70b2a80bac645a8f4b6694b47dbea0a24b9fef91c966f5c22150dc7dbc"
+    },
+    "compiler_binary_path": "/private/tmp/coax-spatial-reconstruction-045/coax",
+    "fixed_points": {
+      "compiler_graph_c": true,
+      "compiler_graph_header": true,
+      "checked_in_parser_seed_c_and_header": true,
+      "checked_in_checker_seed_c_and_header": true
+    },
+    "duration_seconds": 93.10281166702043
+  },
+  "publication_compiler": {
+    "path": "/tmp/coax-spatial-reconstruction-045/coax",
+    "sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "input_fingerprint": "5985e8e5902c8a1f9bc53790090dd6d96300df8808a21daa209a31a58e279093"
+  },
+  "unchanged_procedure_body_binding": {
+    "schema": "coax.spatial-045.frozen-body-binding.v1",
+    "passed": true,
+    "scope": "All 20 frozen M3 changed procedure bodies; new upstream CK_struct_arg is outside this scope. Reuse 1,403 zero-mutant proof, not a merged source-bootstrap claim.",
+    "frozen_scope_sha256": "f21db3e8f47aa973d80a8bd763e61273e003919974f8264be63478e78ebebd7d",
+    "merged_authored_checker_sha256": "3c78223543ddaa0f46def9edaa1cf3e7f8b771b6fbaa897ab0abaec8e94d68af",
+    "publication_head": "caa819b7e0806df714de23f2215f3f0c8d53dca8",
+    "procedures": [
+      {
+        "name": "CK_spatial_constructor",
+        "frozen_sha256": "553cd4310475da67f8d0dadea3c91373d39f6ba94367f44b5c4449fb652cb449",
+        "merged_sha256": "553cd4310475da67f8d0dadea3c91373d39f6ba94367f44b5c4449fb652cb449",
+        "exact": true,
+        "merged_first_line": 1018
+      },
+      {
+        "name": "CK_frame_layout",
+        "frozen_sha256": "4d20aa0f9a023004973269d2b8fc4fea1d281fcfd2bb1307552402649cccbeba",
+        "merged_sha256": "4d20aa0f9a023004973269d2b8fc4fea1d281fcfd2bb1307552402649cccbeba",
+        "exact": true,
+        "merged_first_line": 1021
+      },
+      {
+        "name": "CK_spatial_intern",
+        "frozen_sha256": "4a6a2f7c632214bc8c4915563b86c98e042d8d08256fd9ce419fc20c8e27b9c2",
+        "merged_sha256": "4a6a2f7c632214bc8c4915563b86c98e042d8d08256fd9ce419fc20c8e27b9c2",
+        "exact": true,
+        "merged_first_line": 1025
+      },
+      {
+        "name": "CK_spatial_type",
+        "frozen_sha256": "678a768cee3ce980b4a3b3abc1ee021e5471cb84b633fb0c6e88b98c8c5dd80c",
+        "merged_sha256": "678a768cee3ce980b4a3b3abc1ee021e5471cb84b633fb0c6e88b98c8c5dd80c",
+        "exact": true,
+        "merged_first_line": 1043
+      },
+      {
+        "name": "CK_spatial_descriptor",
+        "frozen_sha256": "def6fad3e938242fe0b58997cb268dc85ab5bf7701793a40ce79588f71790c4b",
+        "merged_sha256": "def6fad3e938242fe0b58997cb268dc85ab5bf7701793a40ce79588f71790c4b",
+        "exact": true,
+        "merged_first_line": 1048
+      },
+      {
+        "name": "CK_spatial_projection",
+        "frozen_sha256": "bac60d3a19c8cddf690cc4dcb6e39217310678ef46a417d8cc17d10afef9c264",
+        "merged_sha256": "bac60d3a19c8cddf690cc4dcb6e39217310678ef46a417d8cc17d10afef9c264",
+        "exact": true,
+        "merged_first_line": 1051
+      },
+      {
+        "name": "CK_spatial_helper",
+        "frozen_sha256": "fec84cb282b6afb56f80488f1a37b608e46a82192547a2bedcd2628ca8fb7241",
+        "merged_sha256": "fec84cb282b6afb56f80488f1a37b608e46a82192547a2bedcd2628ca8fb7241",
+        "exact": true,
+        "merged_first_line": 1054
+      },
+      {
+        "name": "CK_spatial_call",
+        "frozen_sha256": "7bb70ca869bf2fa3cb1b4554e967af1a7df9bcf558552a95aeadf04bcba1c530",
+        "merged_sha256": "7bb70ca869bf2fa3cb1b4554e967af1a7df9bcf558552a95aeadf04bcba1c530",
+        "exact": true,
+        "merged_first_line": 1068
+      },
+      {
+        "name": "CK_spatial_operation",
+        "frozen_sha256": "8d68095f7c79d6e8a10a0eac48cede55efbdd7d2dd462995528c74d3f783ed71",
+        "merged_sha256": "8d68095f7c79d6e8a10a0eac48cede55efbdd7d2dd462995528c74d3f783ed71",
+        "exact": true,
+        "merged_first_line": 1074
+      },
+      {
+        "name": "CK_spatial_binary",
+        "frozen_sha256": "9914989c7c5410edf04f7b9002f5cea8642d963b7afcf21427dc46211f70d8d4",
+        "merged_sha256": "9914989c7c5410edf04f7b9002f5cea8642d963b7afcf21427dc46211f70d8d4",
+        "exact": true,
+        "merged_first_line": 1077
+      },
+      {
+        "name": "CK_spatial_unary",
+        "frozen_sha256": "c013e34c8468f2e137f50abfc6fcef062fc33e5c2557502fa30de98bc03db4d1",
+        "merged_sha256": "c013e34c8468f2e137f50abfc6fcef062fc33e5c2557502fa30de98bc03db4d1",
+        "exact": true,
+        "merged_first_line": 1086
+      },
+      {
+        "name": "CK_builtin_name",
+        "frozen_sha256": "33b3671a6f386ca46de966f9dc7a21bf966b4744e3fd7f6d0d4e78b3ad54d235",
+        "merged_sha256": "33b3671a6f386ca46de966f9dc7a21bf966b4744e3fd7f6d0d4e78b3ad54d235",
+        "exact": true,
+        "merged_first_line": 680
+      },
+      {
+        "name": "CK_resolve",
+        "frozen_sha256": "725c95a9ba59f8fcd19f756555caa10f92d4bdfa67c664d1a79153e6c274e833",
+        "merged_sha256": "725c95a9ba59f8fcd19f756555caa10f92d4bdfa67c664d1a79153e6c274e833",
+        "exact": true,
+        "merged_first_line": 743
+      },
+      {
+        "name": "CK_layout",
+        "frozen_sha256": "b298710e2338cc25906f860dc4a00b6fc50de12c39f66fcb2b1e3fb9bcf62bf1",
+        "merged_sha256": "b298710e2338cc25906f860dc4a00b6fc50de12c39f66fcb2b1e3fb9bcf62bf1",
+        "exact": true,
+        "merged_first_line": 863
+      },
+      {
+        "name": "CK_binary",
+        "frozen_sha256": "5d225be75d97def7197adebdabd09591b3260928c655743c5d5c0644763b8132",
+        "merged_sha256": "5d225be75d97def7197adebdabd09591b3260928c655743c5d5c0644763b8132",
+        "exact": true,
+        "merged_first_line": 1226
+      },
+      {
+        "name": "CK_prechecked",
+        "frozen_sha256": "19b264da07bd40be010a42f57008fcee8194b4c55a3c4a69b3cb357e77bc0472",
+        "merged_sha256": "19b264da07bd40be010a42f57008fcee8194b4c55a3c4a69b3cb357e77bc0472",
+        "exact": true,
+        "merged_first_line": 1263
+      },
+      {
+        "name": "CK_expr_inner",
+        "frozen_sha256": "0d89584ad14ef7cbccddc04c10239aa9ca3531f0effc995de25e5d304d80e307",
+        "merged_sha256": "0d89584ad14ef7cbccddc04c10239aa9ca3531f0effc995de25e5d304d80e307",
+        "exact": true,
+        "merged_first_line": 1266
+      },
+      {
+        "name": "CK_meta_query",
+        "frozen_sha256": "cfc20de31081f8cf20151e97702f40a2153e817aee5a30cc06280cb9c60560da",
+        "merged_sha256": "cfc20de31081f8cf20151e97702f40a2153e817aee5a30cc06280cb9c60560da",
+        "exact": true,
+        "merged_first_line": 1611
+      },
+      {
+        "name": "CK_call",
+        "frozen_sha256": "b99523f03222526d673bdefc646d3ab2c71c843bbe98511ce41556d7882ec697",
+        "merged_sha256": "b99523f03222526d673bdefc646d3ab2c71c843bbe98511ce41556d7882ec697",
+        "exact": true,
+        "merged_first_line": 1639
+      },
+      {
+        "name": "CK_instantiate",
+        "frozen_sha256": "e1e5fc43ce3a0da077c9de41d3feaedb11b08eb9a24273bdea29b80dc5f729bc",
+        "merged_sha256": "e1e5fc43ce3a0da077c9de41d3feaedb11b08eb9a24273bdea29b80dc5f729bc",
+        "exact": true,
+        "merged_first_line": 2052
+      }
+    ]
+  },
+  "new_0_45_bounded_storage_integration": {
+    "schema": "coax.spatial-045.named-capacity-integration.v1",
+    "passed": true,
+    "compiler": "/tmp/coax-spatial-reconstruction-045/coax",
+    "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "compiler_source_fingerprint": "5985e8e5902c8a1f9bc53790090dd6d96300df8808a21daa209a31a58e279093",
+    "fixture": "coax/tests/spatial_045.py",
+    "fixture_sha256": "f0e7c9b844ba60731c4c6b61c384ab190a3fc65432a0608c6bd4fcb3e253dfbd",
+    "first_run": {
+      "log": "/tmp/spatial-045-integration/test.log",
+      "log_sha256": "7d40400526c12498dd75484039a2f7a99f790898ff38e45e752546169415dd40",
+      "seconds": 0.038,
+      "positive_method_passed": true,
+      "representations": [
+        "f32",
+        "f64"
+      ],
+      "negative_test_failure": "The source correctly refused different nominal frames with E0348. The initial fixture expected E0317; only its diagnostic expectation was corrected."
+    },
+    "followup": {
+      "log": "/tmp/spatial-045-integration/followup.log",
+      "log_sha256": "4d6d4a209bd46fb6dce19b56bb366bc9a5d9b27546cb138493d7fb07460207a8",
+      "scope": "Only failed negative method. Passing F32/F64 method not rerun.",
+      "passed": true
+    },
+    "coverage": [
+      "Imported coax.bounded Bounded(T,CAP) with named integer constant CAP",
+      "Concrete Point3 and Vector3 in both f32/f64",
+      "push/get/set, full refusal, immutable retrieved copy, mutable live-view aliasing",
+      "copyable generic identity, affine operations and expected ordinary aggregate layout",
+      "inferred generic push preserves nominal World/Other frame separation (E0348)"
+    ],
+    "body_binding": "/tmp/spatial-045-body-binding.json",
+    "body_binding_sha256": "9d0a30e99298882192fa4758abfbe1ea27b3bfbc9e197c93ebc1aa1c5a808d04",
+    "scope_limit": "Frontend/compile-time evaluation seam only; not an additional native numerical corpus or full R12 gate. Existing E0348 generic cast suggestion does not establish spatial frame conversion support."
+  },
+  "exact_emission_binding": {
+    "schema": "coax-spatial-publication-emission-binding-v1",
+    "compiler": "/tmp/coax-spatial-reconstruction-045/coax",
+    "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "passed": true,
+    "commands": [
+      {
+        "name": "typed-debug",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-m3-publication-emissions/typed-debug/spatial-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "b60ca3d3800369fa1b9032021efb2ec7c83897984fe2e4a551847fd64d6fb00c",
+        "prior_C_sha256": "b60ca3d3800369fa1b9032021efb2ec7c83897984fe2e4a551847fd64d6fb00c",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "prior_header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "raw-debug",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native-raw.coax",
+          "--library"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "prior_C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "passed": true
+      },
+      {
+        "name": "typed-release",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/spatial-m3-publication-emissions/typed-release/spatial-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "e2256b37326c900a25ce42d1c9d649a185c6e8d134c623be35757dc0a77f5cb9",
+        "prior_C_sha256": "e2256b37326c900a25ce42d1c9d649a185c6e8d134c623be35757dc0a77f5cb9",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "prior_header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "raw-release",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native-raw.coax",
+          "--library",
+          "--release"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "prior_C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "passed": true
+      },
+      {
+        "name": "spacecam-debug",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-m3-publication-emissions/spacecam-debug/spacecam-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "abdb29955f0dfcbce877f919c78a1132b110f90c02b7492562c559653a5e579b",
+        "prior_C_sha256": "abdb29955f0dfcbce877f919c78a1132b110f90c02b7492562c559653a5e579b",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "prior_header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "spacecam-release",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/spatial-m3-publication-emissions/spacecam-release/spacecam-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+        "prior_C_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "prior_header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "belt",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "c",
+          "apps/openagents-web/belt.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-m3-publication-emissions/belt/belt.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "6d2290fc9671c3b51eed17d848c5e5f2dbae3f92d35b7927181c394ca15db834",
+        "prior_C_sha256": "6d2290fc9671c3b51eed17d848c5e5f2dbae3f92d35b7927181c394ca15db834",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "140d8725cc991ec8ac0bb9c4f27af094e88b27d775d2f106c286a5e907764c45",
+        "prior_header_sha256": "140d8725cc991ec8ac0bb9c4f27af094e88b27d775d2f106c286a5e907764c45",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "verification",
+        "arguments": [
+          "/tmp/coax-spatial-reconstruction-045/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native-verification-integration.coax",
+          "--arithmetic",
+          "checked",
+          "--profile-report",
+          "/dev/stderr"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "55f18cd4345c2bd300ca50f5dd66bbce0db2d9c33ce0b360a77cde86374e66b6",
+        "prior_C_sha256": "55f18cd4345c2bd300ca50f5dd66bbce0db2d9c33ce0b360a77cde86374e66b6",
+        "C_exact": true,
+        "stderr_bytes": 934,
+        "passed": true
+      }
+    ],
+    "duration_seconds": 0.4169150000088848,
+    "scope": "Eight exact C programs and five headers only. Preserve exact prior source filenames/cwds. No numerical, SDK, game, full mutation or old native semantic execution repeated. Verification profile JSON may differ by compiler inventory; checked C must remain byte-exact."
+  },
+  "parser_proof": {
+    "path": "coax/tests/spatial/frame-parser-qualification.json",
+    "sha256": "f842ac3431e386df3f4cef9ced04dd303e17d4a14e7e3bd34d3a890106eed9b0",
+    "mutants_killed": 102,
+    "mutants_survived": 0,
+    "source_fixtures": 99
+  },
+  "native_proof": {
+    "path": "coax/tests/spatial/native-qualification.json",
+    "sha256": "741613b10ca9e44edb0dff6c493984058f61099968b798bdc925213997144178",
+    "observations_per_mode": 84978,
+    "profiles": [
+      "debug",
+      "release",
+      "fail-fast ASan/UBSan"
+    ],
+    "numeric_execution_repeated": false
+  },
+  "camera_proof": {
+    "path": "coax/tests/spatial/spacecam-qualification.json",
+    "sha256": "7a78d3f6496ef8768c44c240cc6895961358f0465decc719125a0336c7f5061e",
+    "coordinates_per_mode": 1536,
+    "native_layouts": "D3=24B, offsets0/8/16;SpaceCam=80B",
+    "Belt_private_RGB_migration": "Point3\u2192BeltRgb; C/realWasm object compilation carried by exact C/H equality"
+  },
+  "interop_and_native_verification": {
+    "path": "coax/tests/spatial/interop-qualification.json",
+    "sha256": "47b7e77acb04a8fbae45df1eb7d575485e7d91840527a946527de1265badaafa",
+    "source_methods": 4,
+    "native_check_groups": 2,
+    "native_profiles": [
+      "O0",
+      "O2"
+    ],
+    "old_native_suites_repeated": false
+  },
+  "source_mutation_scope": "Mark2 prechecked authored calls preserve operand traversal. The new two-index probe kills2/2 emitted mutants; core accidentally repeated that tiny run while collecting output, recorded once in its frozen proof. Lowered spatial operator-token swaps remain unqualified. No equivalent waivers.",
+  "renumbering": "Main moved physics/spacecraft drafts to Aethyr; robotics168/169/170. Only own loop row170 was edited; dated records keep filenames.",
+  "limits": [
+    "Shared256 compiler instance capacity",
+    "Concrete constructor arguments and native C only; no frame transforms, clock/epoch/sensor provenance or full Panda migration",
+    "Debug helper overhead remains; all30 measured release symbol byte extents match raw,28/30 relocation-free; equality with relocations is not instruction-equivalence",
+    "No old full mutation, model, SDK episode or native semantic corpus rerun"
+  ]
+}

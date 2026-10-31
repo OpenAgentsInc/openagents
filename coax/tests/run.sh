@@ -142,6 +142,7 @@ spatial_output=$(mktemp -d "${TMPDIR:-/tmp}/coax-spatial.XXXXXX")
 if [[ -n "$spatial_output" ]] && \
    COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial.py && \
    COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial_interop.py && \
+   COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial_045.py && \
    COAX_TEST_COMPILER="$PWD/$COAX" COAX_SPATIAL_RECORD_DIR="$spatial_output/aggregate" python3 tests/spatial_native.py && \
    python3 tests/spatial/frame_parser_native.py --compiler "$PWD/$COAX" --output "$spatial_output/frame-parser" && \
    COAX_TEST_COMPILER="$PWD/$COAX" python3 tests/spatial_spacecam.py "$spatial_output/spacecam" && \

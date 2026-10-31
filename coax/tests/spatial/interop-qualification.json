@@ -1,6 +1,6 @@
 {
   "schema": "coax-spatial-interop-v1",
-  "status": "provenance-context-qualified-final-compiler-binding-pending",
+  "status": "qualified-with-merged-0.45-emission-binding",
   "compiler": "/private/tmp/coax-spatial-provenance/coax",
   "compiler_sha256": "0d70ede6d122ec88ee9f0f4cd86d9181ffe5172f5300b57dfc3b27d465e41b76",
   "sources_sha256": {
@@ -1483,5 +1483,12 @@
   },
   "native_receipt_sha256": "aa20431e2a8c18c7f878eb5a88b9cca120774fb7ee455ff024030c219cf6984a",
   "development_note": "First draft probes hit existing same-name library-header E0387 and copyable-generic operator restrictions. Revised probes use ordinary-program module scopes and generic identity around concrete affine expressions. No product code was changed for these probe assumptions. The old mark1 companion pass is development evidence; this recorded mark2 profile actually qualifies authored input visibility.",
-  "scope": "Concrete derived-unit canonicalization and nominal mismatch, alias/module frame identity, copyable generic identity and new spatial native-verification fixtures only. No old native semantic suite, model, SDK or full release gate."
+  "scope": "Concrete derived-unit canonicalization and nominal mismatch, alias/module frame identity, copyable generic identity and new spatial native-verification fixtures only. No old native semantic suite, model, SDK or full release gate.",
+  "publication_binding": {
+    "compiler": "/tmp/coax-spatial-reconstruction-045/coax",
+    "compiler_sha256": "32f64634661e8107c8aa8338beb5dd0f0e234aab1576f8a8f0cac50bac1db7ef",
+    "record": "docs/verification/coax-spatial-merged-2026-10-31.json",
+    "C_and_header_equality": "Exact previously executed artifacts; no numerical or SDK rerun",
+    "binding_receipt_sha256": "cf19d9209833f0a54c5e382b7748be564ba3f14a872f4dd4eac9ed15f9461b93"
+  }
 }
