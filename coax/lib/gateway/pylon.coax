@@ -1,0 +1,327 @@
+// The Pylon gateway (gw-pylon, part a: offline). A GwRequest is bought as
+// one free, targeted NIP-90 5050 text job from one pinned text Pylon (the
+// GPT-OSS-20B host of psionic/lib/pylon/text.coax), the way the text buyer
+// (psionic/lib/pylon/text-probe.coax) buys its probe, and the Pylon's reply
+// becomes GwEvents: its 6050 final text as one text delta and done, its
+// error feedback as refused, its silence past the deadline as refused.
+//
+// This file decides the work and the money, so it is #authority: the job's
+// size (at most 128 output tokens, 64 when the request leaves it open; the
+// prompt at most 1024 bytes, the host's own ceilings) and that nothing is
+// ever paid (bid 0; a reply that asks for any amount refuses the call). The
+// relay, signing and publishing are the buyer's runtime (part b, the live
+// acceptance, gw-pylon-live): it signs gw_pylon_job's tags as a kind 5050
+// event, tells the call its id (gw_pylon_sent), and feeds every event it
+// reads to gw_pylon_reply and the clock to gw_pylon_tick.
+//
+// Checks: coax test coax/lib/gateway/pylon.coax --library (no main of its own).
+
+#load "gateway.coax";
+#load "../../../psionic/lib/pylon/text-probe-policy.coax";
+#load "../../../psionic/lib/pylon/text.coax";
+#authority;
+
+GW_PYLON_MODEL :: "gpt-oss-20b";
+GW_PYLON_TOKENS :: 64;            // when the request leaves max_tokens to the provider
+GW_PYLON_TOKENS_MAX :: 128;       // the host's ceiling (p90_admit)
+GW_PYLON_PROMPT_MAX :: 1024;      // the host's input ceiling
+GW_PYLON_TEXT_MAX :: 8192;        // the longest final text a reply may carry
+GW_PYLON_TTL_S :: 60;             // the job's expiration, after its creation
+
+GW_PYLON_WAIT :: 0;
+GW_PYLON_DONE :: 1;
+GW_PYLON_FAILED :: 2;
+
+// Who sells and who buys: the Pylon's key and pinned model identity, the
+// buyer's own key (all hex), and how long a call waits for its answer.
+GwPylon :: struct {
+  provider: string;
+  identity: string;
+  buyer: string;
+  timeout_ms: int;
+}
+
+// One job: its tags (written to the caller's buffer), its prompt and size.
+GwPylonJob :: struct {
+  ok: bool;
+  reason: string;                 // why not, when not ok
+  tokens: int;                    // max_tokens asked of the Pylon
+  prompt: int;                    // bytes of prompt written
+  tags: int;                      // bytes of tags written
+}
+
+// One call in flight.
+GwPylonCall :: struct {
+  state: int;
+  event: [64] u8; event_n: int;       // the signed 5050 event's id, hex
+  deadline_ms: int;
+  text: [8192] u8; text_n: int;   // the final text, once answered
+}
+
+// A configuration the buyer may use: distinct 64-hex keys, the pinned
+// GPT-OSS-20B identity and a one to sixty second wait.
+gw_pylon_ok :: (c: GwPylon) -> bool {
+  return pt_hex64(c.provider) && pt_hex64(c.buyer) && c.provider != c.buyer && c.identity == P90_PROBE_IDENT && c.timeout_ms >= 1000 && c.timeout_ms <= 60000;
+}
+
+// The output tokens asked for: the request's own, capped at the host's 128,
+// or 64 when it leaves them open; -1 for a negative request.
+gw_pylon_tokens :: (max_tokens: int) -> int {
+  if max_tokens < 0 { return -1; }
+  if max_tokens == 0 { return GW_PYLON_TOKENS; }
+  if max_tokens < GW_PYLON_TOKENS_MAX + 1 { return max_tokens; }
+  return GW_PYLON_TOKENS_MAX;
+}
+
+// The text input. One user message alone is its own text; anything more is
+// a plain transcript ("System: ...", "User: ...", "Assistant: ...", blank
+// lines between), ending with the user. The schema hint joins the system
+// prompt (the Pylon holds no strict schema). Bytes written, or -1.
+gw_pylon_prompt :: (req: GwRequest, out: [] u8) -> int {
+  m := req.messages;
+  if m.count < 1 || m[m.count - 1].role != "user" { return -1; }
+  hint := ifx req.schema.count > 0 then req.schema_hint else "";
+  head := req.system.count > 0 || hint.count > 0;
+  if !head && m.count == 1 { n := json_raw(out, 0, m[0].text); return gw_pylon_bounded(n); }
+  n := 0;
+  if head {
+    n = json_raw(out, n, "System: ");
+    n = json_raw(out, n, req.system);
+    if req.system.count > 0 && hint.count > 0 { n = json_raw(out, n, "\n\n"); }
+    n = json_raw(out, n, hint);
+  }
+  for x, i: m {
+    if x.role != "user" && x.role != "assistant" { return -1; }
+    if head || i > 0 { n = json_raw(out, n, "\n\n"); }
+    n = json_raw(out, n, ifx x.role == "user" then "User: " else "Assistant: ");
+    n = json_raw(out, n, x.text);
+  }
+  return gw_pylon_bounded(n);
+}
+gw_pylon_bounded :: (n: int) -> int { if n < 1 || n > GW_PYLON_PROMPT_MAX { return -1; } return n; }
+
+// The job's tags, as the host admits them: targeted at the provider, the
+// prompt as inline text, the pinned model, greedy, plain text out, bid 0,
+// expiring 60 s after now. Bytes written, or -1.
+gw_pylon_tags :: (c: GwPylon, prompt: string, tokens: int, now: int, out: [] u8) -> int {
+  if !pt_hex64(c.provider) || prompt.count < 1 || prompt.count > GW_PYLON_PROMPT_MAX || tokens < 1 || tokens > GW_PYLON_TOKENS_MAX || now < 0 || now > 9007199254740931 { return -1; }
+  number: [24] u8;
+  n := json_raw(out, 0, "[[\"p\",");
+  n = json_write_string(out, n, c.provider);
+  n = json_raw(out, n, "],[\"i\",");
+  n = json_write_string(out, n, prompt);
+  n = json_raw(out, n, ",\"text\"],[\"param\",\"model\",\"gpt-oss-20b\"],[\"param\",\"max_tokens\",");
+  k := json_write_int(number[..], 0, tokens);
+  n = json_write_string(out, n, cast(string) number[0..<k]);
+  n = json_raw(out, n, "],[\"param\",\"temperature\",\"0\"],[\"output\",\"text/plain\"],[\"bid\",\"0\"],[\"expiration\",");
+  k = json_write_int(number[..], 0, now + GW_PYLON_TTL_S);
+  n = json_write_string(out, n, cast(string) number[0..<k]);
+  return json_raw(out, n, "]]");
+}
+
+// The whole job for a request: prompt into prompt, tags into tags.
+gw_pylon_job :: (c: GwPylon, req: GwRequest, now: int, prompt: [] u8, tags: [] u8) -> GwPylonJob {
+  if !gw_pylon_ok(c) { return GwPylonJob.{reason = "the Pylon gateway's configuration is not usable"}; }
+  if req.model != GW_PYLON_MODEL { return GwPylonJob.{reason = "the text Pylon serves gpt-oss-20b only"}; }
+  tokens := gw_pylon_tokens(req.max_tokens);
+  if tokens < 1 { return GwPylonJob.{reason = "max_tokens is negative"}; }
+  p := gw_pylon_prompt(req, prompt);
+  if p < 1 { return GwPylonJob.{reason = "the prompt is empty, not a user's turn or over 1024 bytes"}; }
+  t := gw_pylon_tags(c, cast(string) prompt[0..<p], tokens, now, tags);
+  if t == -1 { return GwPylonJob.{reason = "the job's tags do not fit"}; }
+  return GwPylonJob.{ok = true, tokens = tokens, prompt = p, tags = t};
+}
+
+// The runtime signed and published the job as id at now_ms: wait for it.
+gw_pylon_sent :: (call: [] GwPylonCall, c: GwPylon, id: string, now_ms: int) -> bool {
+  if !pt_hex64(id) || now_ms < 0 { return false; }
+  call[0] = GwPylonCall.{};
+  for b, i: id { call[0].event[i] = b; }
+  call[0].event_n = 64;
+  call[0].deadline_ms = now_ms + c.timeout_ms;
+  return true;
+}
+
+// One event read from the relay (kind, its signer, its creation time, its
+// tags as JSON and its content, unescaped), at now (Unix seconds). Writes
+// the events it means into events (room for two) and returns how many: none
+// for anything not this call's, a text delta and done for the final text,
+// refused for error feedback or for any reply that asks to be paid.
+gw_pylon_reply :: (call: [] GwPylonCall, c: GwPylon, kind: int, signer: string, created: int, now: int, tags: string, content: string, w: P90Work, events: [] GwEvent) -> int {
+  if call[0].state != GW_PYLON_WAIT || call[0].event_n != 64 || events.count < 2 { return 0; }
+  if signer != c.provider || (kind != 6050 && kind != 7000) || !p90_fresh(created, now) { return 0; }
+  parsed := rs_json(tags, w.nodes, w.arena);
+  if !parsed.ok { return 0; }
+  ns := w.nodes[0..<parsed.count];
+  if !p90_structure(ns) { return 0; }
+  e := p90_tag(ns, "e"); p := p90_tag(ns, "p"); m := p90_tag(ns, "model"); amount := p90_tag(ns, "amount");
+  if e.count != 1 || e.size != 2 || e.values[1] != cast(string) call[0].event[0..<64] || p.count != 1 || p.size != 2 || p.values[1] != c.buyer || m.count != 1 || m.size != 2 || m.values[1] != c.identity { return 0; }
+  // Never paid: any amount but exactly "0" ends the call.
+  if amount.count > 1 || (amount.count == 1 && (amount.size != 2 || amount.values[1] != "0")) {
+    call[0].state = GW_PYLON_FAILED;
+    events[0] = GwEvent.{kind = GW_EV_REFUSED, reason = "the Pylon asked to be paid; this gateway buys free work only"};
+    return 1;
+  }
+  if kind == 7000 {
+    if !p90_feedback_error(tags) { return 0; }
+    call[0].state = GW_PYLON_FAILED;
+    events[0] = GwEvent.{kind = GW_EV_REFUSED, reason = "the Pylon refused the job"};
+    return 1;
+  }
+  if content.count < 1 || content.count > GW_PYLON_TEXT_MAX { return 0; }
+  for b, i: content { call[0].text[i] = b; }
+  call[0].text_n = content.count;
+  call[0].state = GW_PYLON_DONE;
+  events[0] = GwEvent.{kind = GW_EV_TEXT, text = cast(string) call[0].text[0..<content.count]};
+  events[1] = GwEvent.{kind = GW_EV_DONE, text = "pylon", reason = "stop", usage = GwUsage.{cost_msats = 0}};
+  return 2;
+}
+
+// The clock: a call still waiting at its deadline is refused.
+gw_pylon_tick :: (call: [] GwPylonCall, now_ms: int, events: [] GwEvent) -> int {
+  if call[0].state != GW_PYLON_WAIT || call[0].event_n != 64 || events.count < 1 || now_ms < call[0].deadline_ms { return 0; }
+  call[0].state = GW_PYLON_FAILED;
+  events[0] = GwEvent.{kind = GW_EV_REFUSED, reason = "no answer from the Pylon before the deadline"};
+  return 1;
+}
+
+// ---------------------------------------------------------------- checks
+
+GW_PYLON_TEST :: GwPylon.{provider = P90_KEY, identity = P90_PROBE_IDENT, buyer = P90_CALLER, timeout_ms = 20000};
+GW_PYLON_REPLY :: "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"],[\"amount\",\"0\"],[\"request\",\"{}\"]]";
+GW_PYLON_FEEDBACK :: "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"],[\"amount\",\"0\"],[\"status\",\"error\",\"busy\"]]";
+
+#test "the gateway buys only from a pinned GPT-OSS-20B Pylon with distinct keys and a bounded wait" {
+  c := GW_PYLON_TEST;
+  #assert gw_pylon_ok(c);
+  bad := c; bad.provider = "x"; #assert !gw_pylon_ok(bad);
+  bad = c; bad.buyer = "x"; #assert !gw_pylon_ok(bad);
+  bad = c; bad.buyer = c.provider; #assert !gw_pylon_ok(bad);
+  bad = c; bad.identity = "gpt-oss-20b@sha256:0000000000000000000000000000000000000000000000000000000000000000"; #assert !gw_pylon_ok(bad);
+  bad = c; bad.timeout_ms = 1000; #assert gw_pylon_ok(bad); bad.timeout_ms = 999; #assert !gw_pylon_ok(bad);
+  bad.timeout_ms = 60000; #assert gw_pylon_ok(bad); bad.timeout_ms = 60001; #assert !gw_pylon_ok(bad);
+}
+
+#test "work: at most 128 output tokens, 64 when the request leaves it open" {
+  #assert gw_pylon_tokens(-1) == -1 && gw_pylon_tokens(0) == 64 && gw_pylon_tokens(1) == 1 && gw_pylon_tokens(128) == 128 && gw_pylon_tokens(129) == 128;
+}
+
+#test "a lone user message is its own prompt; anything more is a transcript ending with the user" {
+  out: [2048] u8;
+  one: [1] GwMessage; one[0] = GwMessage.{role = "user", text = "Say PONG."};
+  r := GwRequest.{model = "gpt-oss-20b", messages = one[..]};
+  n := gw_pylon_prompt(r, out[..]); #assert n == 9 && cast(string) out[0..<n] == "Say PONG.";
+  r.schema_hint = "Reply in JSON."; n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "Say PONG.";
+  r.schema = "{}"; n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "System: Reply in JSON.\n\nUser: Say PONG.";
+  r.schema = "x"; r.schema_hint = "h"; n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "System: h\n\nUser: Say PONG.";
+  r.system = "s"; n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "System: s\n\nh\n\nUser: Say PONG.";
+  r.schema = ""; n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "System: s\n\nUser: Say PONG.";
+  r.schema = "{}"; r.schema_hint = "Reply in JSON.";
+  r.system = "Be brief."; n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "System: Be brief.\n\nReply in JSON.\n\nUser: Say PONG.";
+  r.schema = ""; n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "System: Be brief.\n\nUser: Say PONG.";
+  three: [3] GwMessage; three[0] = GwMessage.{role = "user", text = "a"}; three[1] = GwMessage.{role = "assistant", text = "b"}; three[2] = GwMessage.{role = "user", text = "c"};
+  r = GwRequest.{model = "gpt-oss-20b", messages = three[..]};
+  n = gw_pylon_prompt(r, out[..]); #assert cast(string) out[0..<n] == "User: a\n\nAssistant: b\n\nUser: c";
+  #assert gw_pylon_prompt(r, out[0..<10]) == -1;
+  #assert gw_pylon_prompt(GwRequest.{messages = three[0..<2]}, out[..]) == -1 && gw_pylon_prompt(GwRequest.{}, out[..]) == -1;
+  three[1].role = "tool"; #assert gw_pylon_prompt(r, out[..]) == -1;
+  long: [1025] u8; for i: 0..<1025 { long[i] = 'x'; }
+  one[0].text = cast(string) long[0..<1024]; #assert gw_pylon_prompt(GwRequest.{messages = one[..]}, out[..]) == 1024;
+  one[0].text = cast(string) long[..]; #assert gw_pylon_prompt(GwRequest.{messages = one[..]}, out[..]) == -1;
+  one[0].text = ""; #assert gw_pylon_prompt(GwRequest.{messages = one[..]}, out[..]) == -1;
+}
+
+#test "money and work in the tags: bid 0, the asked tokens, greedy, expiring in a minute" {
+  c := GW_PYLON_TEST; out: [8192] u8;
+  n := gw_pylon_tags(c, "Quote \"PONG\"", 100, 1000, out[..]);
+  #assert cast(string) out[0..<n] == "[[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"i\",\"Quote \\\"PONG\\\"\",\"text\"],[\"param\",\"model\",\"gpt-oss-20b\"],[\"param\",\"max_tokens\",\"100\"],[\"param\",\"temperature\",\"0\"],[\"output\",\"text/plain\"],[\"bid\",\"0\"],[\"expiration\",\"1060\"]]";
+  #assert gw_pylon_tags(c, "x", 1, 0, out[..]) > 0 && gw_pylon_tags(c, "x", 128, 9007199254740931, out[..]) > 0;
+  #assert gw_pylon_tags(c, "x", 0, 1000, out[..]) == -1 && gw_pylon_tags(c, "x", 129, 1000, out[..]) == -1;
+  #assert gw_pylon_tags(c, "x", 1, -1, out[..]) == -1 && gw_pylon_tags(c, "x", 1, 9007199254740932, out[..]) == -1 && gw_pylon_tags(c, "", 1, 1000, out[..]) == -1;
+  long: [1025] u8; for i: 0..<1025 { long[i] = 'x'; }
+  #assert gw_pylon_tags(c, cast(string) long[0..<1024], 1, 1000, out[..]) > 0 && gw_pylon_tags(c, cast(string) long[..], 1, 1000, out[..]) == -1;
+  bad := c; bad.provider = "x"; #assert gw_pylon_tags(bad, "x", 1, 1000, out[..]) == -1;
+  #assert gw_pylon_tags(c, "x", 1, 1000, out[0..<40]) == -1;
+}
+
+#test "the text Pylon's own admission takes the job exactly as asked" {
+  c := GW_PYLON_TEST; prompt: [2048] u8; tags: [8192] u8;
+  two: [2] GwMessage; two[0] = GwMessage.{role = "assistant", text = "hi"}; two[1] = GwMessage.{role = "user", text = "Say \"PONG\"."};
+  j := gw_pylon_job(c, GwRequest.{model = "gpt-oss-20b", system = "Be brief.", messages = two[..], max_tokens = 4096}, 1000, prompt[..], tags[..]);
+  #assert j.ok && j.tokens == 128 && j.prompt == 51 && j.reason == "";
+  ns: [256] RsNode; arena: [8192] u8; stage: [8192] u8; body: [8192] u8; w := P90Work.{nodes = ns[..], arena = arena[..], stage = stage[..]};
+  e := P90Envelope.{kind = 5050, id = P90_ID, caller = c.buyer, created = 1000, tags = cast(string) tags[0..<j.tags]};
+  a := p90_admit(e, c.provider, 1000, w, body[..], false);
+  #assert a.code == P90Code.ok && a.limit == 128 && a.deadline == 1060;
+  #assert cast(string) body[0..<a.written] == "{\"model\":\"gpt-oss-20b\",\"input\":\"System: Be brief.\\n\\nAssistant: hi\\n\\nUser: Say \\\"PONG\\\".\",\"max_output_tokens\":128,\"temperature\":0,\"reasoning\":{\"effort\":\"low\"}}";
+  one: [1] GwMessage; one[0] = GwMessage.{role = "user", text = "x"};
+  j = gw_pylon_job(c, GwRequest.{model = "gpt-oss-20b", messages = one[..]}, 1000, prompt[..], tags[..]); #assert j.ok && j.tokens == 64 && j.prompt == 1;
+  j = gw_pylon_job(c, GwRequest.{model = "gpt-oss-20b", messages = one[..], max_tokens = 1}, 1000, prompt[..], tags[..]); #assert j.ok && j.tokens == 1;
+  bad := c; bad.timeout_ms = 0; #assert !gw_pylon_job(bad, GwRequest.{model = "gpt-oss-20b", messages = one[..]}, 1000, prompt[..], tags[..]).ok;
+  #assert gw_pylon_job(c, GwRequest.{model = "gpt-oss-120b", messages = one[..]}, 1000, prompt[..], tags[..]).reason == "the text Pylon serves gpt-oss-20b only";
+  #assert gw_pylon_job(c, GwRequest.{model = "gpt-oss-20b", messages = one[..], max_tokens = -1}, 1000, prompt[..], tags[..]).reason == "max_tokens is negative";
+  #assert !gw_pylon_job(c, GwRequest.{model = "gpt-oss-20b", messages = two[0..<1]}, 1000, prompt[..], tags[..]).ok;
+  #assert gw_pylon_job(c, GwRequest.{model = "gpt-oss-20b", messages = one[..]}, 1000, prompt[..], tags[0..<40]).reason == "the job's tags do not fit";
+}
+
+#test "the final text from the pinned Pylon for this job streams back once, at no cost" {
+  c := GW_PYLON_TEST; call: [1] GwPylonCall; ev: [2] GwEvent;
+  ns: [256] RsNode; arena: [8192] u8; stage: [8192] u8; w := P90Work.{nodes = ns[..], arena = arena[..], stage = stage[..]};
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, "PONG", w, ev[..]) == 0;
+  #assert !gw_pylon_sent(call[..], c, "x", 5000) && !gw_pylon_sent(call[..], c, P90_ID, -1);
+  #assert gw_pylon_sent(call[..], c, P90_ID, 5000) && call[0].deadline_ms == 25000 && call[0].state == GW_PYLON_WAIT;
+  #assert gw_pylon_reply(call[..], c, 6050, c.buyer, 1000, 1000, GW_PYLON_REPLY, "PONG", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 5050, c.provider, 1000, 1000, GW_PYLON_REPLY, "PONG", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 879, 1000, GW_PYLON_REPLY, "PONG", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "not json", "PONG", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[1]", "PONG", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, "", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, "PONG", w, ev[0..<1]) == 0;
+  long: [8193] u8; for i: 0..<8193 { long[i] = 'x'; }
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, cast(string) long[..], w, ev[..]) == 0 && call[0].state == GW_PYLON_WAIT;
+  n := gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, cast(string) long[0..<8192], w, ev[..]);
+  #assert n == 2 && ev[0].kind == GW_EV_TEXT && ev[0].text.count == 8192 && call[0].text_n == 8192 && call[0].state == GW_PYLON_DONE;
+  #assert gw_pylon_sent(call[..], c, P90_ID, 5000);
+  n = gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, "PONG", w, ev[..]);
+  #assert n == 2 && ev[0].kind == GW_EV_TEXT && ev[0].text == "PONG" && ev[1].kind == GW_EV_DONE && ev[1].reason == "stop" && ev[1].text == "pylon" && ev[1].usage.cost_msats == 0 && !ev[1].usage.ok;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, "again", w, ev[..]) == 0 && ev[0].text == "PONG";
+  #assert gw_pylon_tick(call[..], 99999, ev[..]) == 0;
+}
+
+#test "only this job's buyer and pinned model are answered; any price ends the call unpaid" {
+  c := GW_PYLON_TEST; call: [1] GwPylonCall; ev: [2] GwEvent;
+  ns: [256] RsNode; arena: [8192] u8; stage: [8192] u8; w := P90Work.{nodes = ns[..], arena = arena[..], stage = stage[..]};
+  #assert gw_pylon_sent(call[..], c, P90_ID, 0);
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe0000\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\",\"r\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\",\"r\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "x", w, ev[..]) == 0;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\",\"r\"]]", "x", w, ev[..]) == 0;
+  #assert call[0].state == GW_PYLON_WAIT;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"],[\"amount\",\"1000\"]]", "x", w, ev[..]) == 1 && ev[0].kind == GW_EV_REFUSED && call[0].state == GW_PYLON_FAILED;
+  #assert gw_pylon_sent(call[..], c, P90_ID, 0);
+  #assert gw_pylon_reply(call[..], c, 7000, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"],[\"amount\",\"0\",\"lnbc1\"]]", "x", w, ev[..]) == 1 && call[0].state == GW_PYLON_FAILED;
+  #assert gw_pylon_sent(call[..], c, P90_ID, 0);
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"],[\"amount\",\"0\"],[\"amount\",\"0\"]]", "x", w, ev[..]) == 1 && call[0].state == GW_PYLON_FAILED;
+  #assert gw_pylon_sent(call[..], c, P90_ID, 0);
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"]]", "!", w, ev[..]) == 2 && ev[0].text == "!";
+}
+
+#test "error feedback refuses the call; progress feedback and the clock wait until the deadline" {
+  c := GW_PYLON_TEST; call: [1] GwPylonCall; ev: [2] GwEvent;
+  ns: [256] RsNode; arena: [8192] u8; stage: [8192] u8; w := P90Work.{nodes = ns[..], arena = arena[..], stage = stage[..]};
+  #assert gw_pylon_tick(call[..], 0, ev[..]) == 0;
+  #assert gw_pylon_sent(call[..], c, P90_ID, 1000);
+  progress := "[[\"e\",\"b0fefc732064caade01b2cb9c7a954848860a91d2d40b6673960c96128fe004f\"],[\"p\",\"5cbdf0646e5db4eaa398f365f2ea7a0e3d419b7e0330e39ce92bddedcac4f9bc\"],[\"model\",\"gpt-oss-20b@sha256:3340a61d1a0391e8c5b5d3463d18d4c48129a84bbc04a554c762c99020aa06ed\"],[\"amount\",\"0\"],[\"status\",\"processing\"]]";
+  #assert gw_pylon_reply(call[..], c, 7000, c.provider, 1000, 1000, progress, "", w, ev[..]) == 0 && call[0].state == GW_PYLON_WAIT;
+  #assert gw_pylon_tick(call[..], 20999, ev[..]) == 0 && gw_pylon_tick(call[..], 21000, ev[0..<0]) == 0 && call[0].state == GW_PYLON_WAIT;
+  #assert gw_pylon_tick(call[..], 21000, ev[0..<1]) == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].status == 0 && call[0].state == GW_PYLON_FAILED;
+  #assert gw_pylon_tick(call[..], 21001, ev[..]) == 0;
+  #assert gw_pylon_sent(call[..], c, P90_ID, 1000);
+  #assert gw_pylon_reply(call[..], c, 7000, c.provider, 1000, 1000, GW_PYLON_FEEDBACK, "request unavailable", w, ev[..]) == 1 && ev[0].kind == GW_EV_REFUSED && ev[0].reason == "the Pylon refused the job" && call[0].state == GW_PYLON_FAILED;
+  #assert gw_pylon_reply(call[..], c, 6050, c.provider, 1000, 1000, GW_PYLON_REPLY, "PONG", w, ev[..]) == 0;
+}

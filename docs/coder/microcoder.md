@@ -208,7 +208,7 @@ Each row is a task in the Coder project. Order: what Microcoder needs first.
 | 10 | Rates card and meter | `inference/{rates,meter/*}.rs` | `rates.coax` | Attempt log, no prompts |
 | 11 | Text-action fallback parser | `microcoder-loop/text_action.rs` | `coax/lib/microcoder/text_action.coax` | For providers without strict schemas |
 | 12 | psionic local | `upstream/psionic.rs` | `psionic.coax` | Chat Completions on localhost |
-| 13 | Pylon | `upstream/pylon.rs` | `pylon.coax` | After Pylon's own Coax client |
+| 13 | Pylon | `upstream/pylon.rs` | `pylon.coax` | Offline adapter over the text Pylon buyer (free 5050 jobs to a pinned GPT-OSS-20B host); live acceptance is gw-pylon-live |
 | 14 | Our route `/api/v1/inference` | `crates/gateway` (BYOK, public, rates) | `coax/web/api` | Keys in Secret Manager; meter by account |
 
 **Not carried over:** the door proxy (`pro.rs`), the `coder` upstream, x402
