@@ -6,7 +6,8 @@
 # default; everglade-pass live --emit), verse (the galaxy, page 1), newland (the Grid, page 1), stair (Hold the Stair), belt
 # (Belt 2200), waterlab or orbitleague (no pack; flat-pass --emit), deadgears (Dead Gears),
 # icecream (Ice Cream Man), villa (Hecate's Cemetery) or fairy (the Fairy Forest) (a scene with index
-# assets; scene-pass --emit).
+# assets; scene-pass --emit), haunted-house or sandbox (the realm module, their separate assets made
+# one pack by verse/tools/pack-files.coax), fixture, drop or built (the fixture's pack) (scene-pass --emit).
 #   verse/gpu/realm.sh HOST check                    offscreen, each realm: 90 golden frames, the last
 #                                                    against vk-passes drawing the spec's own frame, and
 #                                                    the frame times at 320x180, 2560x1440 and 3840x2160;
@@ -43,12 +44,23 @@ seconds=60
 for ((i = 1; i <= $#; i++)); do [[ "${!i}" == --seconds ]] && { j=$((i + 1)); seconds="${!j}"; }; done
 
 # The realms travel reaches: a slug (what a navigation names: rh_realm_of) and its module.
-travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade dead-gears:deadgears ice-cream-man:icecream hecates-cemetery:villa fairy-forest:fairy"
+travel="galaxy:verse the-grid:newland hold-the-stair:stair belt-2200:belt waterlab:waterlab orbit-league:orbitleague everglade:everglade dead-gears:deadgears ice-cream-man:icecream hecates-cemetery:villa fairy-forest:fairy haunted-house:haunted-house sandbox:sandbox fixture:fixture drop:drop built:built"
+# the module a realm runs, where its name is its slug
+module_of_realm() {
+  case "$1" in
+    haunted-house|sandbox) echo realm ;;
+    drop) echo droprealm ;;
+    built) echo myrealm ;;
+    *) echo "$1" ;;
+  esac
+}
 read -r -a realms <<< "${REALM:-everglade}"
 given_of() {
   case "$1" in
     everglade) echo "everglade.pack --facts everglade.facts --extra 9000" ;;
     verse|newland) echo "- --page 1" ;;
+    haunted-house|sandbox) echo "$1.pack" ;;
+    fixture|drop|built) echo "fixture.pack" ;;
     *) echo "-" ;;
   esac
 }
@@ -56,18 +68,24 @@ for realm in "${realms[@]}"; do
   case "$realm" in
     everglade) emit=(verse/gpu/everglade-pass.coax "$host" live --emit "$work/$realm/spec") ;;
     verse|newland|stair|belt|waterlab|orbitleague) emit=(verse/gpu/flat-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
-    deadgears|icecream|villa|fairy) emit=(verse/gpu/scene-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
+    deadgears|icecream|villa|fairy|haunted-house|sandbox|fixture|drop|built) emit=(verse/gpu/scene-pass.coax "$host" "$realm" --emit "$work/$realm/spec") ;;
     *) echo "realm.sh: no realm $realm" >&2; exit 2 ;;
   esac
-  "$root/verse/native/build.sh" "$realm" "$work/$realm/c" > /dev/null
+  "$root/verse/native/build.sh" "$(module_of_realm "$realm")" "$work/$realm/c" > /dev/null
   (cd "$root" && coax/web/tool.sh "${emit[@]}") >&2
   ship="$work/ship/$realm"
   mkdir -p "$ship/spec"
   (cd "$work/$realm/spec" && cp spec.txt *.spv *.spv.bindings *.bin "$ship/spec/")
   cp "$work/$realm/c"/*.c "$work/$realm/c"/*.h "$work/$realm/c/sources" "$ship/"
   cp "$here"/vk-realm.c "$here"/vk-spec.c "$here"/vk-spec.h "$here"/vks.c "$here"/vks.h "$here"/vkc.c "$here"/vkc.h \
-     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/"
+     "$here"/vkp.c "$here"/vkp.h "$here"/vkd.c "$here"/vkd.h "$ship/"
+  # the kms headers apart: a module has a realm.h of its own (the realm module's), and keys.h finds its sibling first
+  mkdir -p "$ship/kms" && cp "$root"/verse/kms/evdev.h "$root"/verse/kms/mice.h "$root"/verse/kms/keys.h "$root"/verse/kms/realm.h "$ship/kms/"
   [[ "$realm" == everglade ]] && cp "$root/apps/openagents-web/realms/everglade/assets/everglade.pack" "$root/verse/native/everglade.facts" "$ship/"
+  case "$realm" in
+    haunted-house|sandbox) (cd "$root" && coax/web/tool.sh verse/tools/pack-files.coax "$realm" "$ship/$realm.pack") > /dev/null ;;
+    fixture|drop|built) cp "$root/apps/openagents-web/realms/fixture/assets/fixture.pack" "$ship/" ;;
+  esac
   echo "$(given_of "$realm")" > "$ship/given"
 done
 cp "$root/verse/native/musl-math.sh" "$work/ship/"
@@ -103,7 +121,7 @@ nix-shell -p gcc pkg-config libdrm vulkan-headers vulkan-loader vulkan-validatio
      read -r -a sources < sources
      for s in \"\${sources[@]}\" realm-host.c; do gcc \$flags -c \$s -o \${s%.c}.o & done
      wait
-     gcc \$flags \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
+     gcc \$flags -Ikms \$(pkg-config --cflags libdrm) vk-realm.c vk-spec.c vks.c vkc.c vkp.c vkd.c *.o \$math \$(pkg-config --libs libdrm) -lvulkan -lm -o vk-realm
      cp ../net .) &
   done
   wait

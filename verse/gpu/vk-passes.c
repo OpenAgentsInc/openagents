@@ -19,7 +19,8 @@
 //   each draws:A:B ... end           the directives between once for each of the list's records A to B (draws:each: that one)
 //   pass SPV VS FS TARGETS DEPTH BIAS SLOPE CALLS
 //          [keep] [nowrite] [always] [blend=MODE] [alpha=MODE] [mask=I] [bind=NAME:RES]... [vertices=NAME:FLOATS]
-//                                    VS and FS the WGSL's entries (for the browser); SPV a module from coax spirv, SPV.bindings its bindings ("binding I KIND NAME"
+//                                    VS and FS the WGSL's entries (for the browser; FS "-": no fragment stage, a
+//                                    depth-only pass, SPV's own fragment entry unused); SPV a module from coax spirv, SPV.bindings its bindings ("binding I KIND NAME"
 //                                    a line, as coax spirv prints them); TARGETS a number of rgba16float colour targets
 //                                    of its own (cleared to 0), or target NAMEs joined by commas; DEPTH a depth NAME,
 //                                    "own" (one at the size) or "-"; depth tests less and writes; BIAS and SLOPE as

@@ -429,6 +429,8 @@ NONE uint32_t coaxial_draw_count(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_water_draws(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_grass_instances(uint32_t s) { (void)s; return 0; }
 NONE uint32_t coaxial_surface_vertices(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_caster_vertices(uint32_t s) { (void)s; return 0; }   // a traced scene's casters (the fixture's)
+NONE uint32_t coaxial_caster_instances(uint32_t s) { (void)s; return 0; }
 NONE void coaxial_wheel(uint32_t s, float dy) { (void)s; (void)dy; }   // a realm that does not zoom (Orbit League)
 NONE void coaxial_page(uint32_t s, int32_t p) { (void)s; (void)p; }   // an app of one page
 NONE void coaxial_golden(uint32_t on) { (void)on; }   // an app with no golden mode (the homepage)

@@ -75,6 +75,7 @@ typedef struct {
   uint32_t masked;   // targets (bit i) this pass leaves as they are: write mask 0
   int depth_always;  // the depth test passes always (else less)
   int keep;          // keep what the targets hold, else clear them
+  int vertex_only;   // no fragment stage (a depth-only pass: host.js's caster pipeline)
   float clear[4];    // color targets' clear value; depth clears to 1
 } VksPass;
 

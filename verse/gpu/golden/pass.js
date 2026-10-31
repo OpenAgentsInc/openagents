@@ -202,8 +202,8 @@ window.runSpec = async function (specFile) {
         const pipeline = await d.createRenderPipelineAsync({
           layout: "auto",
           vertex: { module, entryPoint: vs, buffers: vertexBuffers },
-          fragment: { module, entryPoint: fs, targets: colour.map((_, i) => masked.includes(i) ? { format: "rgba16float", writeMask: 0 }
-            : { format: "rgba16float", ...(blend ? { blend } : {}) }) },
+          ...(fs === "-" ? {} : { fragment: { module, entryPoint: fs, targets: colour.map((_, i) => masked.includes(i) ? { format: "rgba16float", writeMask: 0 }
+            : { format: "rgba16float", ...(blend ? { blend } : {}) }) } }),
           primitive: { topology: "triangle-list", cullMode: "none" },
           ...(depth ? { depthStencil: { format: "depth32float", depthWriteEnabled: write, depthCompare: always ? "always" : "less", depthBias: bias, depthBiasSlopeScale: slope } } : {}),
         });

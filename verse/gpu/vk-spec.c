@@ -287,7 +287,8 @@ VkSpec *vk_spec_open(Vkc *v, const char *path, const VkSpecFiles *files) {
       }
       fclose(bf);
       VksPass *pass = &op->pass;
-      *pass = (VksPass){.words = words, .count = bytes / 4, .bindings = op->binds, .nb = nb, .depth_bias = (float)atof(tok[6]), .depth_slope = (float)atof(tok[7])};
+      *pass = (VksPass){.words = words, .count = bytes / 4, .bindings = op->binds, .nb = nb, .depth_bias = (float)atof(tok[6]), .depth_slope = (float)atof(tok[7]),
+                        .vertex_only = !strcmp(tok[3], "-")};
       if (tok[4][0] >= '0' && tok[4][0] <= '9') {
         // targets of the spec's own, made once at the size and cleared by each pass
         int k = atoi(tok[4]);

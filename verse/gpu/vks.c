@@ -265,7 +265,7 @@ void vks_pipe_open(Vkc *v, VksPipe *p, const VksPass *pass) {
       .colorWriteMask = off ? 0 : 0xF};
   }
   VkPipelineColorBlendStateCreateInfo cb = {.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO, .attachmentCount = pass->ntargets, .pAttachments = blends};
-  VkGraphicsPipelineCreateInfo gpi = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, .stageCount = 2, .pStages = stages,
+  VkGraphicsPipelineCreateInfo gpi = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, .stageCount = pass->vertex_only ? 1u : 2u, .pStages = stages,
     .pVertexInputState = &vin, .pInputAssemblyState = &ia, .pViewportState = &vps, .pRasterizationState = &rs, .pMultisampleState = &ms,
     .pDepthStencilState = &ds, .pColorBlendState = &cb, .layout = p->layout, .renderPass = p->rp, .subpass = 0};
   CHECK(vkCreateGraphicsPipelines(dev, VK_NULL_HANDLE, 1, &gpi, NULL, &p->pipeline));

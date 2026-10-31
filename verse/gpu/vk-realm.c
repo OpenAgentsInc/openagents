@@ -18,6 +18,10 @@
 // helper, verse/native/net.coax), and its player key, place and bar (as NAME, default
 // everglade) are files in DIR. Without it the realm is offline, as the checks run it.
 #define _GNU_SOURCE
+// the kms face's key calls under names of vk-realm's own: the realm module (haunted-house, sandbox,
+// drop, built) has a Coax realm_key of its own
+#define realm_key vk_realm_key
+#define realm_key_up vk_realm_key_up
 #include "evdev.h"
 #include "face.h"
 #include "mice.h"
@@ -142,6 +146,8 @@ static void update(VkSpec *s) {
   if (hud) memcpy(hud->map, rh_ptr(H.vertices), (size_t)hud_vertices * H.floats * 4);
   vk_spec_let(s, "hud", hud ? hud_vertices : 0);
   vk_spec_let(s, "surface", coaxial_surface_vertices(H.state));   // the water lab's sea
+  vk_spec_let(s, "cv", coaxial_caster_vertices(H.state));          // the fixture's casters, when painterly
+  vk_spec_let(s, "ci", coaxial_caster_instances(H.state));
   for (int k = 0; k < 4; k++) {
     Store *st = &stores[k];
     if (!st->buf) continue;

@@ -7,7 +7,8 @@
 # stores must be the same words or within libm's rounding (realm-run.c).
 #   verse/native/check.sh HOST [REALM]    HOST is a Linux machine with nix (coderos-4080);
 #                                          REALM everglade (the default), stair, belt, waterlab, orbitleague, newland, verse (the galaxy)
-#                                          or a scene realm's module (deadgears, icecream, fairy, villa, realm)
+#                                          or a scene realm's module (deadgears, icecream, fairy, villa), haunted-house,
+#                                          sandbox (the realm module, its assets packed), fixture, drop or built (the fixture pack)
 # Everglade needs its pack at apps/openagents-web/realms/everglade/assets/everglade.pack
 # (built by verse/tools/pack_realm.py); both need the wasm toolchain (coax/web/toolchain.sh).
 set -euo pipefail
@@ -19,6 +20,7 @@ work="$(mktemp -d "${TMPDIR:-/tmp}/verse-native.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 m="$root/verse"
 web="$root/apps/openagents-web"
+module="$realm"   # the module a realm runs (the haunted house and the sandbox: realm)
 case "$realm" in
   everglade)
     pack="$web/realms/everglade/assets/everglade.pack"
@@ -42,6 +44,20 @@ case "$realm" in
     pack=""; libraries=(); given=(); there=""
     # a click, space, the arrows and W held a while
     steps=(--frames 600 --every 60 --keys 20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
+  haunted-house|sandbox)
+    # the realm module with the slug's separate assets as one pack (verse/tools/pack-files.coax)
+    module=realm; pack="$work/$realm.pack"
+    (cd "$root" && coax/web/tool.sh verse/tools/pack-files.coax "$realm" "$pack") > /dev/null
+    libraries=(); while IFS= read -r l; do libraries+=("$l"); done < <("$here/build.sh" --libraries realm)
+    given=(--pack "$pack"); there="--pack $realm.pack"
+    steps=(--frames 600 --every 60 --keys 10:-2:1,11:-2:0,20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
+  fixture|drop|built)
+    # the fixture's pack, as realms.json gives it to the fixture, /realms/drop and /realms/built
+    module=$(case "$realm" in fixture) echo fixture ;; drop) echo droprealm ;; built) echo myrealm ;; esac)
+    pack="$web/realms/fixture/assets/fixture.pack"; libraries=()
+    while IFS= read -r l; do libraries+=("$l"); done < <("$here/build.sh" --libraries "$module")
+    given=(--pack "$pack"); there="--pack fixture.pack"
+    steps=(--frames 600 --every 60 --keys 10:-2:1,11:-2:0,20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
   *)
     # a scene realm (deadgears, icecream, fairy, villa, realm ...): its module with the site's libraries
     [[ -f "$web/$realm.coax" ]] || { echo "check.sh: no realm $realm" >&2; exit 2; }
@@ -51,15 +67,15 @@ case "$realm" in
     steps=(--frames 600 --every 60 --keys 10:-2:1,11:-2:0,20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
 esac
 if [[ "$realm" == newland ]]; then "$root/coax/web/project/build-home.sh" "$work/$realm.wasm"   # the homepage's module, as the site builds it
-else "$root/coax/web/wasm.sh" "$web/$realm.coax" "$web/$realm-face.c" "$work/$realm.wasm" ${libraries[@]+"${libraries[@]}"}; fi
-"$here/build.sh" "$realm" "$work/c"
+else "$root/coax/web/wasm.sh" "$web/$module.coax" "$web/$module-face.c" "$work/$realm.wasm" ${libraries[@]+"${libraries[@]}"}; fi
+"$here/build.sh" "$module" "$work/c"
 cp "$here/everglade.facts" "$here/build.sh" "$here/musl-math.sh" ${pack:+"$pack"} "$work/c/"
 mkdir -p "$work/c/wasm"
 VERSE_NATIVE_CLOCK_MS=0 bun "$here/wasm-run.ts" "$work/$realm.wasm" ${given[@]+"${given[@]}"} "${steps[@]}" --dump "$work/c/wasm" > "$work/wasm.txt"
 COPYFILE_DISABLE=1 tar --no-xattrs -C "$work/c" -cf - . | ssh -o BatchMode=yes "$host" "set -e
 d=\$(mktemp -d); trap 'rm -rf \$d' EXIT; cd \$d; tar -xf - 2>/dev/null
 mkdir -p verse/native; cp build.sh musl-math.sh verse/native/
-nix-shell -p gcc --run 'COAX=/nonexistent verse/native/build.sh $realm \$PWD' > /dev/null
+nix-shell -p gcc --run 'COAX=/nonexistent verse/native/build.sh $module \$PWD' > /dev/null
 ./realm-run --test-travel
 VERSE_NATIVE_CLOCK_MS=0 ./realm-run $there ${steps[*]} --against wasm" > "$work/native.txt" || status=$?
 grep -v "^frame" "$work/native.txt"
