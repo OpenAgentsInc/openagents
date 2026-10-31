@@ -1495,8 +1495,8 @@ ellipsoid :: (s: [] Fairy, look: int, centre: Point, a1: Point, a2: Point, w: f3
 // trimmed in gold over a short layered skirt of teal and violet, long violet
 // gloves, knee-high violet boots on platform soles, and waist-long orchid
 // hair in big swooping locks. Large almond eyes with lashes, a small nose and
-// mouth. Three pairs of jewel-like wings, cyan going rose at the edges, wider
-// than her shoulders. Standing, her weight is on one hip; flying, her arms
+// mouth. Three pairs of feathered wings (fairy.wgsl draws the feathers), pale at
+// the root and their colour toward the tips, wider than her shoulders. Standing, her weight is on one hip; flying, her arms
 // open out and her legs trail together, one knee bent.
 // wl: a look bought from a maker (fairyupgrade.coax), drawn instead of the one made in the maker when it is on.
 fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, act: int, air: f32, flap: f32, wl: [] Worn) {
@@ -1673,7 +1673,7 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
     p := add(clip, add(times(ahead, cos(an) * 0.03), v3(0, sin(an) * 0.03, 0)));
     shape(s, SHAPE_SPHERE, LOOK_SPARK, p, face, 0, 0.022, 0.03, 0.03, 1.0, 0.82, 0.4);
   }
-  // wings: three pairs, each a jewel-like oval of light whose root sits at the spine
+  // wings: three pairs, each a feathered oval whose root sits at the spine
   beat := sin(flap);
   kind := ffl_part_worn(l, wl, FFL_WINGS);
   wing_t := FFL_WING_RGB; glow_t := FFL_GLOW_GAIN;
@@ -1688,7 +1688,7 @@ fairy_figure :: (s: [] Fairy, u: [] f32, feet: Point, face: f32, stride: f32, ac
       // a smaller inner panel laid over it, a jewel colour of its own
       if pair < 2 {
         inner := add(w.root, add(times(w.along, w.reach * 0.42), times(w.flat, -0.012)));
-        jewel := ifx pair == 0 then v3(0.75, 0.5, 1.0) else v3(1.0, 0.75, 0.45);
+        jewel := ifx pair == 0 then v3(0.75, 0.5, 1.0) else v3(1.0, 0.78, 0.88);
         if hue != 0 { jewel = mix(ffl_rgb(wing_t[..], hue * 3 + 1 - pair), v3(1, 1, 1), 0.3); }
         if tinted { jewel = mix(ffl_tint(wl, FFT_WING + 1 - pair), v3(1, 1, 1), 0.3); }
         jewel = times(jewel, gain);

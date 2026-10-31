@@ -143,16 +143,21 @@ stage (0.8; half for what glows and for her skin and clothes).
   a flat ivory glow, you a near-black shadow, the moon a flat ivory disc in
   its real phase. The moon's light is held at least 0.45 up, so a low moon
   never drops the garden into its dark tone.
-- **Fairy Forest** (`FLAT_GARDEN`), a cosy pastel garden: a soft mint-blue
-  sky over a cream horizon band, lime and olive ground in broad fills, warm
-  tan trails, olive and lime crowns, tan wood, cattail orange, pale mint,
-  lavender and lavender-grey rock, cream trim along the hem of her clothes,
-  dark eyes. Dawn and dusk warm the palette and night takes it to a blue
-  dusk (`verse_style_flat_time`); the faded world is a pale grey-green of
-  the same lightness. It draws no grass. Its lakes are flat water in three
+- **Fairy Forest** (`FLAT_FAIRY`, since October 31), muted pastels drawn
+  faceted (see [Facets](#facets)): a plain soft dusty-blue sky over a pale
+  lilac-grey horizon band, soft sage ground in broad fills, sand trails, sage
+  and soft-leaf crowns, muted taupe wood, butter yellow where the garden had
+  orange (orange is Bitcoin's), pale mint, rose-lavender, a dusty rose for the
+  flowers, lavender-grey stone, a soft lavender-blue shade and shadow, and a
+  crisp white edge. Dawn and dusk warm the palette and night takes it to a
+  blue dusk (`verse_style_flat_time`); the faded world is a pale lilac-grey
+  of the same lightness. It draws no grass. Its lakes are flat water in three
   tones by the depth of the bed under them (deep, open, and two light bands
   along the shore) with slow broken ripple lines drifting across the open
-  water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`).
+  water (`apps/openagents-web/fairy.wgsl`, `LOOK_LAKE`). Her wings are
+  feathers: each wing's outline cut into feather tips, pale at the root and
+  its colour toward the tips, white seams and a white rim. A test pins the
+  palette muted (no slot far from grey), light, and never orange.
 - **Painterly snow** in a made realm is `PAINT_SNOW`: sky blue (0.5, 0.66, 1.0)
   by day and night, a deeper periwinkle (0.5, 0.52, 1.0) at dawn and dusk (the low warm key turns it
   violet), not the low-poly ground's near white: white snow measured a saturation of
@@ -165,12 +170,28 @@ stage (0.8; half for what glows and for her skin and clothes).
   clouds' lit tops a rose (1.0, 0.60, 0.52), and cover 0.2 instead of 0.35, since their teal
   undersides grey a rose sky. Now 0.27 on a desktop and 0.24 on a phone at dusk. Everglade, the
   fixture and every other made realm keep the preset's sky.
-- **Made realms** (`/realms/new`, style flat) take `FLAT_GARDEN` at their
+- **Made realms** (`/realms/new`, style flat) take `FLAT_GARDEN` (the garden
+  Fairy Forest used before October 31: lime and olive, cattail orange, mint) at their
   own time of day: three hard tones on their shapes (by the realm's own
   colours, drawn toward the palette), the flat sky and disc, two water
   bands with a flat shore line, the one fade, and lantern pools in two flat
   rings (`apps/openagents-web/myrealm.wgsl`). A made realm may be painterly
   instead, with `STYLE_PAINTERLY`; see [realm-builder.md](realm-builder.md).
+
+### Facets
+
+Flat-shaded low poly with clean faceted silhouettes, after the owner's
+reference boards (Fairy Forest, October 31; the art itself is never copied
+in). Shared in `verse/style.coax` for any flat realm that asks for it
+(`facet_fns` in `apps/openagents-web/build.sh`):
+
+| | Facets |
+| --- | --- |
+| Faces | Each face one tone, from the face's own normal (the screen derivatives of its position), between the palette's shade and lit: `verse_style_facet_tone`, half Lambert eased from 0.18 over 0.7 |
+| Round shapes | Coarse: a sphere eight faces round and five down, a cylinder or cone eight sides (the rest of their vertex grid collapsed, so the draw counts stay). Crowns, stones and plain shapes have each corner nudged in or out by up to 16 percent of the radius (`verse_style_facet_jitter`; the seam and the poles share a value, so no crack opens); characters keep even faces |
+| Edges | A crisp light line, one pixel, along a shape's outline where it stands in front of something clearly further (4 percent and 0.25 m) or the sky (`verse_style_facet_edge`, in the post pass from the distance the scene writes to its second target). The ground and the water ask for none; it fades out from 60 to 140 m and to 0.4 by night |
+| Ground | Its own faces show (each cell's two triangles their own tone) |
+| Cost | Fewer triangles than before; four more texture loads a pixel in the post pass. Fairy Forest on a phone (390x844 at 3x, headless): 1.06 ms GPU p50 against 1.33 before |
 
 ## Painterly
 

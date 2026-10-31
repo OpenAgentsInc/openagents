@@ -38,8 +38,10 @@ flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 ve
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/villa.wgsl)
 # A made realm (myrealm.wgsl) is painterly or flat when its maker picked that (low poly keeps its own look).
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
-# Fairy Forest draws in the flat style only: no painterly or grass functions.
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/fairy.wgsl)
+# The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
+facet_fns="verse_style_facet_tone verse_style_facet_jitter verse_style_facet_edge"
+# Fairy Forest draws in the flat style only, faceted: no painterly or grass functions.
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns $facet_fns --into apps/openagents-web/fairy.wgsl)
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/orbitleague.wgsl)
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns --into apps/openagents-web/waterlab.wgsl)
 m="$here/../../verse"

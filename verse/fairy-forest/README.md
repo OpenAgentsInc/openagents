@@ -17,7 +17,8 @@ making your own character, and making things to share with friends. This
 page puts as much of that as fits sensibly into one realm.
 
 Style: **flat** since October 30 ([art-styles.md](../../docs/verse/art-styles.md),
-"Flat", the `FLAT_GARDEN` palette).
+"Flat"), faceted low poly in the `FLAT_FAIRY` palette since October 31 (muted
+pastels, a plain sky, crisp white edges, feathered wings; "Flat: facets").
 
 ## The story in one line
 

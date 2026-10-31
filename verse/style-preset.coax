@@ -225,7 +225,7 @@ flat_key :: (palette: int, i: int) -> StyleKey {
   return k;
 }
 
-/** Flat (docs/verse/art-styles.md, Flat) in `palette` (FLAT_CEMETERY, FLAT_GARDEN) for `tier`:
+/** Flat (docs/verse/art-styles.md, Flat) in `palette` (FLAT_CEMETERY, FLAT_GARDEN, FLAT_FAIRY) for `tier`:
  *  three hard tones, no specular, no rim and no outline, a flat sky and a flat translucent
  *  shadow, no post pass but a little bloom on what glows. The realm's palette is its own. */
 verse_style_flat :: (palette: int, tier: int) -> StylePreset {
@@ -747,7 +747,7 @@ sp_flat_lum :: (p: StylePreset, slot: int) -> f32 {
   #assert verse_style_at(g, 0.75, b[..]) && b[SU_KEY] / b[SU_KEY + 2] > a[SU_KEY] / a[SU_KEY + 2];
   // every slot of both is a colour (0 to 1), and only FLAT_SLOTS of them
   for pal: 0..<FLAT_PALETTES { for slot: 0..<FLAT_SLOTS { for ch: 0..<3 { v := verse_style_flat_srgb(f32(pal), f32(slot), f32(ch)); #assert v >= 0 && v <= 1; } } }
-  #assert !verse_style_flat(2, STYLE_DESKTOP).ok && !verse_style_flat(-1, STYLE_DESKTOP).ok;
+  #assert !verse_style_flat(FLAT_PALETTES, STYLE_DESKTOP).ok && !verse_style_flat(-1, STYLE_DESKTOP).ok;
   #assert verse_style_preset(STYLE_FLAT, STYLE_DESKTOP).ok && verse_style_preset(STYLE_FLAT, STYLE_DESKTOP).palette == FLAT_GARDEN;
 }
 #test "flat: the hem, the dither, flat shadows and the phone's fewer tufts" {

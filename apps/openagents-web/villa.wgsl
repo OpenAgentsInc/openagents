@@ -1100,6 +1100,86 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
     }
     return coax_p_st_pick(l_fl_ch, 0.379999995, 0.430000007, 0.469999999);
   }
+  if ((l_fl_realm > 1.5))
+  {
+    if ((l_fl_slot < 0.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.694000006, 0.827000022);
+    }
+    if ((l_fl_slot < 1.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.866999984, 0.851000011, 0.893999994);
+    }
+    if ((l_fl_slot < 2.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.658999979, 0.736999989, 0.537);
+    }
+    if ((l_fl_slot < 3.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.592000008, 0.677999973, 0.493999988);
+    }
+    if ((l_fl_slot < 4.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.889999986, 0.824000001, 0.736999989);
+    }
+    if ((l_fl_slot < 5.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 1.0, 0.984000027, 0.953000009);
+    }
+    if ((l_fl_slot < 6.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.800000012, 0.796000004, 0.906000018);
+    }
+    if ((l_fl_slot < 7.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.783999979, 0.776000023, 0.910000026);
+    }
+    if ((l_fl_slot < 8.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.991999984, 0.984000027, 0.964999974);
+    }
+    if ((l_fl_slot < 9.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.165000007, 0.246999994);
+    }
+    if ((l_fl_slot < 10.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.961000025, 0.949000001, 0.910000026);
+    }
+    if ((l_fl_slot < 11.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.545000017, 0.662999988, 0.513999999);
+    }
+    if ((l_fl_slot < 12.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.698000014, 0.791999996, 0.579999983);
+    }
+    if ((l_fl_slot < 13.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.564999998, 0.768999994, 0.791999996);
+    }
+    if ((l_fl_slot < 14.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.626999974, 0.532999992, 0.49000001);
+    }
+    if ((l_fl_slot < 15.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.957000017, 0.870999992, 0.596000016);
+    }
+    if ((l_fl_slot < 16.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.783999979, 0.913999975, 0.859000027);
+    }
+    if ((l_fl_slot < 17.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.702000022, 0.694000006, 0.783999979);
+    }
+    if ((l_fl_slot < 18.5))
+    {
+      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.757000029, 0.882000029);
+    }
+    return coax_p_st_pick(l_fl_ch, 0.885999978, 0.70599997, 0.768999994);
+  }
   if ((l_fl_slot < 0.5))
   {
     return coax_p_st_pick(l_fl_ch, 0.662999988, 0.827000022, 0.815999985);
