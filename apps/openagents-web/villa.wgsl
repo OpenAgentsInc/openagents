@@ -319,7 +319,7 @@ fn albedo(look: u32, tint: vec3f) -> vec3f {
   if (look == 4u) { return pal(P_WATER); }
   if (look == 9u) { return pal(P_FOLIAGE2); }                                                    // turned soil
   if (look == 10u) { return pal(P_DARK); }
-  if (look == 11u || look == 12u) { return pow(clamp(tint, vec3f(0.0), vec3f(1.0)), vec3f(2.2)); }   // a shape's own pastel (sRGB)
+  if (look == 11u || look == 12u || look == 13u) { return pow(clamp(tint, vec3f(0.0), vec3f(1.0)), vec3f(2.2)); }   // a shape's own pastel (sRGB)
   return pal(P_WOOD);                                                                            // trunks, benches
 }
 
@@ -400,7 +400,16 @@ fn albedo(look: u32, tint: vec3f) -> vec3f {
   c = mix(c, pal(P_HORIZON), fade);
   // the outline only where the shape reads at its distance: tiny far things (a tuft, a petal) get none
   let reads = max(s.size.x, 0.0) / max(d, 0.1) > 0.035 || s.look == 99u;
-  return Lit(vec4f(c, 0.0), vec4f(n, select(-d, d, edge > 0.5 && reads)));
+  // your dog (look 13): its own coat, markings and collar, faceted like the rest, with a soft
+  // moonlit rim round its outline and a little of it in the bloom, so it is still a spirit's dog
+  var share = 0.0;
+  if (s.look == 13u) {
+    edge = 0.0;   // its bones meet inside one soft coat: no line between them
+    let rim = pow(1.0 - abs(dot(smooth_n, to_eye)), 2.5);
+    c = mix(c, vec3f(0.92, 0.94, 1.0), rim * 0.55);
+    share = 0.08 + 0.3 * rim;
+  }
+  return Lit(vec4f(c, share), vec4f(n, select(-d, d, edge > 0.5 && reads)));
 }
 
 // ---- the post pass (host.js postLayouts): the bright share, blurred at a quarter and an

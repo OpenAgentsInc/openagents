@@ -87,7 +87,7 @@ OBJECT_FLOATS :: 16;   // rows r0, r1, r2 (an affine map from the unit shape), c
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_IRON :: 3; LOOK_WATER :: 4; LOOK_GLOW :: 5;
 LOOK_SHADOW :: 6; LOOK_BLOOM :: 7; LOOK_PLANET :: 8; LOOK_SOIL :: 9; LOOK_EYE :: 10;
 // A shape's own pastel (its colour read as sRGB, lit in facets); CUT is the same with its corners nudged.
-LOOK_PAINT :: 11; LOOK_CUT :: 12;
+LOOK_PAINT :: 11; LOOK_CUT :: 12; LOOK_PET :: 13;   // your dog: its true colours, a soft rim of light
 DRAWS :: 6;
 
 WALLS :: 160;          // the player's walls (player.coax: min x, y, z, max x, y, z each)
@@ -1015,7 +1015,7 @@ planet :: (s: [] Villa) {
   ball(s, LOOK_BLOOM, spot, 0.55, 0.75, 0.82, 1.0);
 }
 
-// The figures the face posed: you a spirit (soft, see-through, its edges drifting), your dog glowing white. A
+// The figures the face posed: you a spirit (soft, see-through, its edges drifting), your dog in its own colours with a soft rim of light. A
 // bone is a cylinder between its ends with a ball at each.
 REGION_EYE :: 7; REGION_NOSE :: 8;
 figures :: (s: [] Villa, u: [] f32) {
@@ -1034,13 +1034,12 @@ figures :: (s: [] Villa, u: [] f32) {
       b := v3(s[0].bones[o + 4], s[0].bones[o + 5], s[0].bones[o + 6]);
       rb := s[0].bones[o + 7];
       if !finite3(a) || !finite3(b) { continue; }
-      look := ifx glowing then LOOK_GLOW else LOOK_SHADOW;
+      look := ifx glowing then LOOK_PET else LOOK_SHADOW;
       red := 0.01f32; green := 0.012f32; blue := 0.02f32;
-      if glowing {   // white light with your pet's coat in it, and its markings where its pattern puts them
-        // its light and dark read strongly, its hue softly: a spirit's colours, never a bright one
+      if glowing {   // your pet's own coat, and its markings where its pattern puts them (a black coat
+        // lifted a touch so its faces still read at night; the rim of light does the rest)
         c := dog_colour(s[0].pet[..], region, i, n);
-        l := 0.3 * c.x + 0.55 * c.y + 0.15 * c.z;
-        red = 0.3 + 0.7 * (l + (c.x - l) * 0.45); green = 0.3 + 0.7 * (l + (c.y - l) * 0.45); blue = 0.32 + 0.68 * (l + (c.z - l) * 0.45);
+        red = hi(c.x, 0.07); green = hi(c.y, 0.07); blue = hi(c.z, 0.09);
       }
       if glowing && (region == REGION_EYE || region == REGION_NOSE) { look = LOOK_EYE; red = 0.05; green = 0.07; blue = 0.12; }
       puff := ifx glowing then 1.0f32 else 1.45f32;   // you: a soft, puffed wisp of a figure
@@ -1091,7 +1090,7 @@ dog_collar :: (s: [] Villa, f: int, n: int) {
   d := unit_or(sub(b, a), v3(0, 1, 0));
   at := add(a, times(sub(b, a), 0.5));
   w := hi(r * 0.25, 0.008);
-  limb(s, SHAPE_CYLINDER, LOOK_GLOW, sub(at, times(d, w)), add(at, times(d, w)), r, COLLAR_RGB[c * 3], COLLAR_RGB[c * 3 + 1], COLLAR_RGB[c * 3 + 2]);
+  limb(s, SHAPE_CYLINDER, LOOK_PET, sub(at, times(d, w)), add(at, times(d, w)), r, COLLAR_RGB[c * 3], COLLAR_RGB[c * 3 + 1], COLLAR_RGB[c * 3 + 2]);
   if p[0].tag {
     // under the collar on the throat's side: away from the back of the neck
     down := unit_or(sub(v3(0, -1, 0), times(d, dot(v3(0, -1, 0), d))), v3(0, -1, 0));
