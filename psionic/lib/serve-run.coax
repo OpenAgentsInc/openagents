@@ -17,12 +17,9 @@ sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f
     admitted:=sv_admit(engine,request,pools);if admitted!=SvCode.none {return admitted;}
     if !engine.sealed || p.count<SV_ANSWER_POOL {return SvCode.internal;}
     for i:0..<request.questions {
-        q:=pools.questions[i];options:=pools.options[q.first..<q.first+q.count];
-        question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
-        prepared:=ps_prepare(engine.session.table,request.state,question,options,work.tokens,work.prep,false);
-        fits:=sv_fits(engine,prepared,work.work.count);if fits!=SvCode.none {return fits;}
-        out:=p[i*SV_OPTIONS_MAX..<(i+1)*SV_OPTIONS_MAX];
-        answer:=ps_answer(engine.session,prepared,work.tokens[0..<prepared.written],options,engine.temperature,work.state,out,work.prob,work.work,false);
+        staged:=sv_stage(engine,request,pools,work,i);if staged.code!=SvCode.none {return staged.code;}
+        prepared:=staged.prepared;
+        answer:=ps_answer(engine.session,prepared,sv_tokens(work,prepared),sv_options(pools,i),engine.temperature,work.state,sv_out(p,i),work.prob,work.work,false);
         code:=sv_answer_code(answer.status);if code!=SvCode.none {return code;}
     }
     return SvCode.none;
@@ -34,11 +31,14 @@ sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f
 SvStaged :: struct {code:SvCode;prepared:PrResult;}
 sv_stage :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,i:int)->SvStaged #export_c {
     if i<0 || i>=request.questions {return SvStaged.{code=SvCode.internal};}
-    q:=pools.questions[i];options:=pools.options[q.first..<q.first+q.count];
-    question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
-    prepared:=ps_prepare(engine.session.table,request.state,question,options,work.tokens,work.prep,false);
+    q:=pools.questions[i];question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
+    prepared:=ps_prepare(engine.session.table,request.state,question,sv_options(pools,i),work.tokens,work.prep,false);
     return SvStaged.{code=sv_fits(engine,prepared,work.work.count),prepared=prepared};
 }
+// Question i's options, its prepared tokens and its 255 answer slots.
+sv_options :: (pools:SvPools,i:int)->[]PtOption {q:=pools.questions[i];return pools.options[q.first..<q.first+q.count];}
+sv_tokens :: (work:SvWork,prepared:PrResult)->[]int {return work.tokens[0..<prepared.written];}
+sv_out :: (p:[]f64,i:int)->[]f64 {return p[i*SV_OPTIONS_MAX..<(i+1)*SV_OPTIONS_MAX];}
 // The readout of chapter 14 (ps_answer) over the last token's logits.
 sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrResult,logits:[]f32,p:[]f64,prob:[]f64)->SvCode #export_c {
     if !engine.sealed || p.count<SV_ANSWER_POOL || i<0 || i>=request.questions {return SvCode.internal;}
@@ -46,7 +46,7 @@ sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrRes
     if prepared.status!=PrStatus.ok || prepared.kind!=q.kind || !pt_question_count(tag,q.count) || !qr_valid(tag,prepared.slots,engine.temperature) {return SvCode.internal;}
     if prepared.kind!=PtQuestionKind.noul && prepared.slots!=q.count {return SvCode.internal;}
     slots:[255]int;for k:0..<prepared.slots {slots[k]=qr_pinned_slot(k);}
-    r:=qr_read(cast(QrKind)tag,engine.temperature,logits,slots[0..<prepared.slots],p[i*SV_OPTIONS_MAX..<(i+1)*SV_OPTIONS_MAX],prob,false);
+    r:=qr_read(cast(QrKind)tag,engine.temperature,logits,slots[0..<prepared.slots],sv_out(p,i),prob,false);
     if r.status!=QrStatus.ok {return SvCode.internal;}
     return SvCode.none;
 }
@@ -69,6 +69,62 @@ sv_read :: (engine:SvEngine,request:SvRequest,pools:SvPools,i:int,prepared:PrRes
     #assert sv_read(e,r,pools,0,staged.prepared,logits[..],p[..],prob[0..<1])==SvCode.internal;
     logits[7]=0.0/0.0;#assert sv_read(e,r,pools,0,staged.prepared,logits[..],p[..],prob[..])==SvCode.internal;
     #assert sv_stage(e,r,pools,work,1).code==SvCode.internal && sv_stage(e,r,pools,work,-1).code==SvCode.internal;
+}
+
+#test "each question reads its own options, its prepared tokens and its own 255 answer slots" {
+    storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+    pools.questions[0]=SvQuestion.{first=0,count=2};pools.questions[1]=SvQuestion.{first=2,count=3};
+    for k:0..<5 {pools.options[k]=PtOption.{name="o"};}pools.options[2].name="a";pools.options[4].name="c";
+    o:=sv_options(pools,1);#assert o.count==3 && o[0].name=="a" && o[2].name=="c" && sv_options(pools,0).count==2;
+    tokens:[8]int;for k:0..<8 {tokens[k]=k+10;}w:SvWork;w.tokens=tokens[..];
+    t:=sv_tokens(w,PrResult.{written=3});#assert t.count==3 && t[0]==10 && t[2]==12;
+    p:[600]f64;for k:0..<600 {p[k]=f64(k);}
+    a:=sv_out(p[..],0);b:=sv_out(p[..],1);#assert a.count==255 && a[0]==0 && a[254]==254 && b.count==255 && b[0]==255 && b[254]==509;
+}
+SV_TEST_ONE :: "{\"model\":\"psionic-toy\",\"state\":\"go\",\"questions\":{\"a\":{\"type\":\"choice\",\"instructions\":\"x\",\"criteria\":{\"yes\":null,\"no\":null}}}}";
+#test "the answer loop starts at question zero and returns the first refusal it meets" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);p:[16320]f64;
+    r:=sv_decode(SV_TEST_ONE,pools);#assert r.code==SvCode.none && r.questions==1;
+    prompt:[1024]u8;render:[1024]u8;normal:[2048]u8;candidate:[512]int;full:[512]int;stage:[512]int;scalars:[2048]int;symbols:[1024]int;tokens:[512]int;
+    prep:=PrWorkspace.{prompt=prompt[..],render_work=render[..],candidate=candidate[..],full=full[..],token_stage=stage[..],normal=normal[..],scalars=scalars[..],symbols=symbols[..]};
+    // Too few token slots: preparation itself refuses, before any model work.
+    short:=SvWork.{prep=prep,tokens=tokens[0..<16]};s:=sv_stage(e,r,pools,short,0);
+    #assert s.code==SvCode.limit_exceeded && s.prepared.status==PrStatus.capacity && sv_answers(e,r,pools,short,p[..])==SvCode.limit_exceeded;
+}
+#test "staging prepares question zero completely and refuses what the engine cannot hold" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);
+    r:=sv_decode(SV_TEST_ONE,pools);
+    prompt:[1024]u8;render:[1024]u8;normal:[2048]u8;candidate:[512]int;full:[512]int;stage:[512]int;scalars:[2048]int;symbols:[1024]int;tokens:[512]int;
+    prep:=PrWorkspace.{prompt=prompt[..],render_work=render[..],candidate=candidate[..],full=full[..],token_stage=stage[..],normal=normal[..],scalars=scalars[..],symbols=symbols[..]};
+    // Prepared completely, but 279 tokens exceed this engine's 64.
+    c:=SvWork.{prep=prep,tokens=tokens[..]};s:=sv_stage(e,r,pools,c,0);
+    #assert s.code==SvCode.limit_exceeded && s.prepared.status==PrStatus.ok && s.prepared.written==279 && s.prepared.prefix==182;
+    d:=ls_stage_device(e,r,pools,c,0);#assert d.code==SvCode.limit_exceeded && d.prepared.status==PrStatus.ok;
+    // A question past the request is internal even when the pool holds one there.
+    pools.questions[1]=pools.questions[0];#assert sv_stage(e,r,pools,c,1).code==SvCode.internal && ls_stage_device(e,r,pools,c,1).code==SvCode.internal;
+}
+#test "the answer loop accepts exactly the published answer pool" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);p:[16320]f64;
+    r:=sv_decode(SV_TEST_ONE,pools);
+    prompt:[1024]u8;render:[1024]u8;normal:[2048]u8;candidate:[512]int;full:[512]int;stage:[512]int;scalars:[2048]int;symbols:[1024]int;tokens:[512]int;
+    prep:=PrWorkspace.{prompt=prompt[..],render_work=render[..],candidate=candidate[..],full=full[..],token_stage=stage[..],normal=normal[..],scalars=scalars[..],symbols=symbols[..]};
+    c:=SvWork.{prep=prep,tokens=tokens[..]};#assert sv_answers(e,r,pools,c,p[0..<16320])==SvCode.limit_exceeded;
+}
+#test "a fitting question reaches the model with the engine's own buffers" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],280);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);p:[16320]f64;
+    r:=sv_decode(SV_TEST_ONE,pools);
+    prompt:[1024]u8;render:[1024]u8;normal:[2048]u8;candidate:[512]int;full:[512]int;stage:[512]int;scalars:[2048]int;symbols:[1024]int;tokens:[512]int;
+    prep:=PrWorkspace.{prompt=prompt[..],render_work=render[..],candidate=candidate[..],full=full[..],token_stage=stage[..],normal=normal[..],scalars=scalars[..],symbols=symbols[..]};
+    // The work fits, but a one-float state is refused by the model's own capacity check.
+    state:[1]f32;work:[416214]f32;prob:[4]f64;d:=SvWork.{prep=prep,tokens=tokens[..],state=state[..],work=work[..],prob=prob[..]};
+    #assert sv_stage(e,r,pools,d,0).code==SvCode.none && sv_answers(e,r,pools,d,p[..])==SvCode.limit_exceeded;
+}
+#test "a device read of a question the request does not have is internal" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],64);storage:[1]SvTestPools;pools:=sv_test_pools(storage[..]);p:[16320]f64;prob:[4]f64;
+    r:=sv_decode(SV_TEST_ONE,pools);pools.questions[1]=pools.questions[0];
+    prepared:=PrResult.{status=PrStatus.ok,kind=PtQuestionKind.choice,slots=2,written=8,prefix=4};logits:[1024]f32;
+    #assert sv_read(e,r,pools,0,prepared,logits[..],p[..],prob[..])==SvCode.none && sv_read(e,r,pools,1,prepared,logits[..],p[..],prob[..])==SvCode.internal;
+    r.questions=2;#assert sv_read(e,r,pools,1,prepared,logits[..],p[..],prob[..])==SvCode.none && p[255]==0.5 && p[256]==0.5 && p[0]==0.5;
 }
 
 // Part III operations are composed here to stay within Coax's 64-unit source budget.
@@ -115,8 +171,8 @@ ls_percentiles :: (samples:[]int,work:[]int)->LsPercentiles #export_c {
     return LsPercentiles.{ok=true,count=n,p50=work[(50*n+99)/100-1],p95=work[(95*n+99)/100-1],p99=work[(99*n+99)/100-1],min=work[0],max=work[n-1]};
 }
 ls_sample_valid :: (s:LsSample)->bool #export_c {
-    if !s.ok || s.total<0 || s.total>LS_US_DAY || s.prepare<0 || s.prefix<0 || s.suffix<0 || s.readout<0 || s.model<0 || s.auth<0 || s.place<0 || s.compile<0 || s.peak_bytes<0 {return false;}
-    if s.prepare>s.total || s.prefix>s.total || s.suffix>s.total || s.readout>s.total || s.model>s.total {return false;}
+    // Nonnegative phases summing to at most the total bound the total and each phase.
+    if !s.ok || s.total>LS_US_DAY || s.prepare<0 || s.prefix<0 || s.suffix<0 || s.readout<0 || s.model<0 || s.auth<0 || s.place<0 || s.compile<0 || s.peak_bytes<0 {return false;}
     if s.prepare+s.prefix+s.suffix+s.readout+s.model+s.auth+s.place+s.compile>s.total {return false;}
     return s.tokens>=0 && s.tokens<=1048576 && s.prefix_tokens>=0 && s.prefix_tokens<=s.tokens && s.reused>=0 && s.reused<=s.prefix_tokens && s.kind>=0 && s.kind<=3 && s.questions>=0 && s.questions<=64 && s.hits>=0 && s.hits<=s.questions;
 }
@@ -165,7 +221,7 @@ ls_promote :: (ready:bool,expected:string,actual:string,golden:bool)->bool #expo
 ls_restart :: (failures:int,limit:int,base_ms:int,exit_code:int,stopping:bool)->LsRestart #export_c {
     if failures<0 || failures>32 || limit<0 || limit>32 || base_ms<1 || base_ms>10000 {return LsRestart.{};}
     if stopping || exit_code==0 || failures>=limit {return LsRestart.{ok=true,failures=failures};}
-    delay:=base_ms;for i:0..<failures {if delay<5000 {delay*=2;}else {delay=10000;}}
+    delay:=base_ms;for i:0..<failures {if delay<5001 {delay*=2;}else {delay=10000;}}
     return LsRestart.{ok=true,retry=true,failures=failures+1,delay_ms=delay};
 }
 
@@ -204,7 +260,7 @@ LsPrefixResult :: struct {code:SvCode;cache:LsPrefix;hit:bool;}
 }
 ls_memory :: (e:SvEngine,budget:int)->LsMemory #export_c {return ls_memory_for(e,budget,false);}
 ls_memory_for :: (e:SvEngine,budget:int,device:bool)->LsMemory #export_c {
-    p:=sv_plan(e);if !e.ok || !p.ok {return LsMemory.{code=SvCode.internal};}
+    p:=sv_plan(e);if !p.ok {return LsMemory.{code=SvCode.internal};}
     fields:=[15]int.[p.state,p.work,p.tokens,p.prompt,p.render,p.candidate,p.full,p.stage,p.normal,p.scalars,p.symbols,p.answers,p.prob,e.capacity,budget];
     for n:fields {if n<0 || n>68719476736 {return LsMemory.{code=SvCode.limit_exceeded};}}
     state:=p.state;work:=p.work;if device {state=0;work=0;}
@@ -229,14 +285,15 @@ ls_cpu_prefix :: (e:SvEngine,p:PrResult,tokens:[]int,c:LsPrefix,cached_tokens:[]
     if !hit {
         linear:=e.session.model.shape.state.linear_layers*qp_linear_count(e.session.model.shape.state);for i:0..<linear {cached_state[i]=0;}
         if p.prefix>0 {
-            slots:=[1]int.[qr_pinned_slot(0)];out:[1]f64;prob:[1]f64;
+            // The prefix's readout is discarded, so its one slot is any valid ID.
+            slots:[1]int;out:[1]f64;prob:[1]f64;
             first:=qx_block(e.session.model,tokens[0..<p.prefix],rope[0..<p.prefix*64],0,cached_state,QrKind.choice,e.temperature,slots[..],out[..],prob[..],engine,false);
             if first.status!=QxStatus.ok {return LsPrefixResult.{code=sv_answer_code(first.status)};}
         }
         for i:0..<p.prefix {cached_tokens[i]=tokens[i];}
     }
     id:=ls_model_id(e.digest);claim:=QpClaim.{model=id,prefix=p.prefix,shape=e.session.model.shape.state};
-    fork:=qp_fork(e.session.model.shape.state,id,claim,cached_state,w.state,w.work[0..<plan.rope],false);
+    fork:=qp_fork(e.session.model.shape.state,id,claim,cached_state,w.state,engine,false);
     if fork.status!=QpStatus.ok {return LsPrefixResult.{code=SvCode.internal};}return LsPrefixResult.{cache=next,hit=hit};
 }
 ls_cpu_suffix :: (e:SvEngine,p:PrResult,tokens:[]int,w:SvWork,out:[]f64)->SvCode #export_c {
@@ -247,14 +304,13 @@ ls_cpu_suffix :: (e:SvEngine,p:PrResult,tokens:[]int,w:SvWork,out:[]f64)->SvCode
     return sv_answer_code(r.status);
 }
 ls_probe :: (text:string)->int #export_c {
-    if text.count>8192 || sv_find(text,0,"\r\n\r\n")<0 {return 0;}
-    a:="GET /healthz HTTP/1.1\r\n";b:="GET /readyz HTTP/1.1\r\n";
-    if text.count>=a.count && text[0..<a.count]==a {return 1;}if text.count>=b.count && text[0..<b.count]==b {return 2;}return 0;
+    if text.count>8192 || sv_index(text,"\r\n\r\n")==-1 {return 0;}
+    if sv_index(text,"GET /healthz HTTP/1.1\r\n")==0 {return 1;}if sv_index(text,"GET /readyz HTTP/1.1\r\n")==0 {return 2;}return 0;
 }
 ls_health :: (life:LsLife,identity:string,build:string,probe:int,out:[]u8)->int #export_c {
     ready:=ls_ready(life);status:=503;if probe==1 || ready {status=200;}
-    at:=json_raw(out,0,"{\"schema\":\"psionic-health-v1\",\"ready\":");at=json_raw(out,at,ifx ready then "true" else "false");at=json_raw(out,at,",\"checkpoint\":");at=json_write_string(out,at,identity);at=json_raw(out,at,",\"build\":");at=json_write_string(out,at,build);at=json_raw(out,at,"}");if at<0 {return -1;}
-    head:=sv_response_head(out[at..<out.count],status,at,false);if head<0 {return -1;}sv_reverse(out,0,at);sv_reverse(out,at,at+head);sv_reverse(out,0,at+head);return at+head;
+    at:=json_raw(out,0,"{\"schema\":\"psionic-health-v1\",\"ready\":");at=json_raw(out,at,ifx ready then "true" else "false");at=json_raw(out,at,",\"checkpoint\":");at=json_write_string(out,at,identity);at=json_raw(out,at,",\"build\":");at=json_write_string(out,at,build);at=json_raw(out,at,"}");if at==-1 {return -1;}
+    head:=sv_response_head(out[at..<out.count],status,at,false);if head==-1 {return -1;}sv_reverse(out,0,at);sv_reverse(out,at,at+head);sv_reverse(out,0,at+head);return at+head;
 }
 ls_seed :: (model:string)->string #export_c {
     if model=="psionic-toy" {return "{\"model\":\"psionic-toy\",\"state\":\"Water is wet.\",\"questions\":{\"wet\":{\"type\":\"choice\",\"instructions\":\"Is the water wet?\",\"criteria\":{\"yes\":null,\"no\":null}}}}";}
@@ -277,11 +333,13 @@ ls_seed :: (model:string)->string #export_c {
     #assert !ls_seed_valid("mammoth-1",0.9,0.1) && !ls_seed_valid("mammoth-1",0.945111911,0.054888089);
 }
 ls_seed_valid :: (model:string,yes:f64,no:f64)->bool #export_c {
-    if !sv_probability(yes) || !sv_probability(no) || abs(yes+no-1)>0.00000001 {return false;}
-    if model=="psionic-toy" {return abs(yes-0.437947251)<0.00000001;}
-    if model=="elephant-1" {return abs(yes-0.757196285)<0.0005;}
+    if model=="psionic-toy" {return ls_seed_near(yes,no,0.437947241,0.437947261);}
+    if model=="elephant-1" {return ls_seed_near(yes,no,0.756696285,0.757696285);}
     return sv_mammoth_seed_valid(model,yes,no);
 }
+// yes strictly inside (low, high), which makes it a probability; no a
+// probability; the two sum to one within 1e-8.
+ls_seed_near :: (yes:f64,no:f64,low:f64,high:f64)->bool {s:=yes+no;return sv_probability(no) && s>=0.99999999 && s<=1.00000001 && yes>low && yes<high;}
 
 #test "bounded host probes measure real Coax work without changing model arithmetic" {
     x:=[4]f32.[1,2,3,4];y:[4]f32;#assert ls_probe_copy(x[..],y[..]) && y[3]==4;
@@ -289,12 +347,13 @@ ls_seed_valid :: (model:string,yes:f64,no:f64)->bool #export_c {
     #assert ls_warm_budget()==30000;
 }
 ls_warm_budget :: ()->int #export_c {return 30000;}
+ls_probe_count :: (n:int)->bool {return n>=1 && n<=16777216;}
 ls_probe_copy :: (src:[]f32,dst:[]f32)->bool #export_c {
-    if src.count<1 || src.count>16777216 || dst.count<src.count {return false;}
+    if !ls_probe_count(src.count) || dst.count<src.count {return false;}
     for i:0..<src.count {dst[i]=src[i];}return true;
 }
 ls_probe_dot :: (x:[]f32,y:[]f32)->f64 #export_c {
-    if x.count<1 || x.count>16777216 || y.count!=x.count {return -1;}
+    if !ls_probe_count(x.count) || y.count!=x.count {return -1;}
     sum:f64=0;for i:0..<x.count {sum+=f64(x[i])*f64(y[i]);}return sum;
 }
 
@@ -320,8 +379,8 @@ ls_device_fits :: (e:SvEngine,p:PrResult)->SvCode #export_c {
 }
 ls_stage_device :: (e:SvEngine,r:SvRequest,pools:SvPools,w:SvWork,i:int)->SvStaged #export_c {
     if i<0 || i>=r.questions {return SvStaged.{code=SvCode.internal};}
-    q:=pools.questions[i];options:=pools.options[q.first..<q.first+q.count];question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
-    p:=ps_prepare(e.session.table,r.state,question,options,w.tokens,w.prep,false);return SvStaged.{code=ls_device_fits(e,p),prepared=p};
+    q:=pools.questions[i];question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
+    p:=ps_prepare(e.session.table,r.state,question,sv_options(pools,i),w.tokens,w.prep,false);return SvStaged.{code=ls_device_fits(e,p),prepared=p};
 }
 
 LsBusyPolicy :: struct {capacity:int;accepts:int;drain_bytes:int;linger_ms:int;write_ms:int;}
@@ -330,9 +389,175 @@ LsBusyPolicy :: struct {capacity:int;accepts:int;drain_bytes:int;linger_ms:int;w
     #assert ls_busy_left(100,100)==200 && ls_busy_left(100,299)==1 && ls_busy_left(100,300)==0 && ls_busy_left(100,99)==0;
 }
 ls_busy_policy :: ()->LsBusyPolicy #export_c {return LsBusyPolicy.{capacity=16,accepts=4,drain_bytes=262144,linger_ms=200,write_ms=1};}
-ls_busy_left :: (started:int,now:int)->int #export_c {if started<0 || now<started || now-started>=200 {return 0;}return 200-(now-started);}
+ls_busy_left :: (started:int,now:int)->int #export_c {left:=200-(now-started);if started<0 || now<started || left<1 {return 0;}return left;}
 
 #test "a device prefix fork is useful only when a request has another question" {
     #assert !ls_device_fork(1,true) && ls_device_fork(2,true) && !ls_device_fork(2,false) && !ls_device_fork(65,true);
 }
 ls_device_fork :: (questions:int,enabled:bool)->bool #export_c {return enabled && questions>1 && questions<=64;}
+
+// Boundaries of every bounded gate above, each refused or admitted on its own.
+#test "clocks and rates admit their exact bounds and refuse one past them" {
+    #assert ls_elapsed(0,0)==0 && ls_elapsed(5,5)==0 && ls_elapsed(0,LS_US_DAY)==LS_US_DAY && ls_elapsed(0,LS_US_DAY+1)==-1 && ls_elapsed(LS_US_DAY,LS_US_DAY)==0;
+    #assert ls_rate(-1,1000000)==-1 && ls_rate(1048576,1000000)==1048576 && ls_rate(1048577,1000000)==-1 && ls_rate(5,1)==5000000;
+    #assert ls_rate(LS_US_DAY,LS_US_DAY)==-1 && ls_rate(1,LS_US_DAY)>0 && ls_rate(1,LS_US_DAY+1)==-1 && ls_rate(1048576,0)==-1;
+}
+#test "percentiles take exactly one to 4096 samples within a day" {
+    one:=[1]int.[7];w:[4097]int;r:=ls_percentiles(one[..],w[..]);#assert r.ok && r.count==1 && r.p50==7 && r.p99==7 && r.min==7 && r.max==7;
+    many:[4097]int;for i:0..<4097 {many[i]=i;}
+    r=ls_percentiles(many[0..<4096],w[..]);#assert r.ok && r.count==4096 && r.p50==2047 && r.p95==3891 && r.p99==4055 && r.min==0 && r.max==4095;
+    #assert !ls_percentiles(many[..],w[..]).ok;
+    edge:=[2]int.[0,LS_US_DAY];r=ls_percentiles(edge[..],w[..]);#assert r.ok && r.min==0 && r.max==LS_US_DAY;
+    edge[1]=LS_US_DAY+1;#assert !ls_percentiles(edge[..],w[..]).ok;
+    // Equal samples never move: the insertion sort stays linear on ties.
+    same:[4096]int;for i:0..<4096 {same[i]=5;}r=ls_percentiles(same[..],w[..]);#assert r.ok && r.p50==5 && r.min==5;
+}
+#test "a sample is valid only when every field is in range on its own" {
+    base:=LsSample.{ok=true,total=8,prepare=1,prefix=1,suffix=1,readout=1,model=1,auth=1,place=1,compile=1,peak_bytes=0,tokens=8,prefix_tokens=4,reused=4,kind=3,questions=64,hits=64};
+    #assert ls_sample_valid(base);
+    // Each phase alone counts toward the total: one more than the total is refused.
+    s:=base;s.total=7;#assert !ls_sample_valid(s);
+    s=base;s.total=LS_US_DAY;#assert ls_sample_valid(s);s.total=LS_US_DAY+1;#assert !ls_sample_valid(s);
+    s=base;s.total=-1;#assert !ls_sample_valid(s);
+    s=base;s.prepare=-1;#assert !ls_sample_valid(s);s=base;s.prefix=-1;#assert !ls_sample_valid(s);s=base;s.suffix=-1;#assert !ls_sample_valid(s);
+    s=base;s.readout=-1;#assert !ls_sample_valid(s);s=base;s.model=-1;#assert !ls_sample_valid(s);s=base;s.auth=-1;#assert !ls_sample_valid(s);
+    s=base;s.place=-1;#assert !ls_sample_valid(s);s=base;s.compile=-1;#assert !ls_sample_valid(s);s=base;s.peak_bytes=-1;#assert !ls_sample_valid(s);
+    z:=LsSample.{ok=true,total=5};#assert ls_sample_valid(z);
+    s=z;s.prepare=5;#assert ls_sample_valid(s);s.prepare=6;s.total=6;s.prefix=6;s.total=5;#assert !ls_sample_valid(s);
+    s=z;s.prepare=6;#assert !ls_sample_valid(s);s=z;s.prefix=6;#assert !ls_sample_valid(s);s=z;s.suffix=6;#assert !ls_sample_valid(s);
+    s=z;s.readout=6;#assert !ls_sample_valid(s);s=z;s.model=6;#assert !ls_sample_valid(s);
+    s=z;s.prefix=5;#assert ls_sample_valid(s);s=z;s.suffix=5;#assert ls_sample_valid(s);s=z;s.readout=5;#assert ls_sample_valid(s);s=z;s.model=5;#assert ls_sample_valid(s);
+    s=base;s.tokens=0;s.prefix_tokens=0;s.reused=0;#assert ls_sample_valid(s);s.tokens=-1;#assert !ls_sample_valid(s);
+    s=base;s.tokens=1048576;#assert ls_sample_valid(s);s.tokens=1048577;#assert !ls_sample_valid(s);
+    s=base;s.prefix_tokens=8;#assert ls_sample_valid(s);s.prefix_tokens=9;#assert !ls_sample_valid(s);s=base;s.prefix_tokens=-1;s.reused=0;#assert !ls_sample_valid(s);
+    s=base;s.reused=5;#assert !ls_sample_valid(s);s=base;s.reused=-1;#assert !ls_sample_valid(s);
+    s=base;s.kind=4;#assert !ls_sample_valid(s);s=base;s.kind=0;#assert ls_sample_valid(s);s.kind=-1;#assert !ls_sample_valid(s);
+    s=base;s.questions=65;s.hits=0;#assert !ls_sample_valid(s);s=base;s.questions=0;s.hits=0;#assert ls_sample_valid(s);s.questions=-1;#assert !ls_sample_valid(s);
+    s=base;s.hits=65;#assert !ls_sample_valid(s);s=base;s.hits=-1;#assert !ls_sample_valid(s);
+}
+#test "usage admits exact bounds and counts each outcome once" {
+    u:=LsUsage.{};
+    #assert ls_usage(u,200,1048576,0,false).ok && !ls_usage(u,200,1048577,0,false).ok && !ls_usage(u,200,-1,0,false).ok;
+    #assert ls_usage(u,200,0,LS_US_DAY,false).ok && !ls_usage(u,200,0,LS_US_DAY+1,false).ok && !ls_usage(u,200,0,-1,false).ok;
+    #assert ls_usage(u,100,0,0,false).ok && !ls_usage(u,99,0,0,false).ok && ls_usage(u,599,0,0,false).ok && !ls_usage(u,600,0,0,false).ok && ls_usage(u,600,0,0,true).ok;
+    r:=ls_usage(u,404,3,9,false);#assert r.ok && r.usage.refused==1 && r.usage.answered==0 && r.usage.cancelled==0 && r.usage.tokens==3 && r.usage.microseconds==9 && r.usage.requests==1;
+    #assert ls_usage(LsUsage.{requests=999999999},200,0,0,false).ok && !ls_usage(LsUsage.{requests=1000000000},200,0,0,false).ok && !ls_usage(LsUsage.{requests=-1},200,0,0,false).ok;
+    #assert ls_usage(LsUsage.{tokens=1000000000000},200,0,0,false).ok && !ls_usage(LsUsage.{tokens=1000000000001},200,0,0,false).ok && !ls_usage(LsUsage.{tokens=-1},200,0,0,false).ok;
+    #assert ls_usage(LsUsage.{microseconds=1000000000000000},200,0,0,false).ok && !ls_usage(LsUsage.{microseconds=1000000000000001},200,0,0,false).ok && !ls_usage(LsUsage.{microseconds=-1},200,0,0,false).ok;
+}
+#test "a privacy record is exactly the fixed fields and per-question phase counts" {
+    b:[4096]u8;s:=LsSample.{ok=true,total=900,prepare=1,prefix=2,suffix=3,readout=4,model=5,tokens=40,prefix_tokens=20,questions=2,hits=1,peak_bytes=6,auth=7,place=8,device=true,kind=2,compile=9,reused=10,cached_pages=3,total_pages=4,execution_bytes=11,cpu_execution_bytes=12};
+    s.phases[0]=LsPhase.{prepare=13,prefix=14,suffix=15,model=16,readout=17,tokens=18,prefix_tokens=19,hit=1};s.phases[1]=LsPhase.{prepare=21,prefix=22,suffix=23,model=24,readout=25,tokens=26,prefix_tokens=27,hit=0};
+    n:=ls_record("b1","d2",201,s,b[..]);
+    #assert n==771 && cast(string)b[0..<n]=="{\"schema\":\"psionic-decision-metrics-v1\",\"build\":\"b1\",\"checkpoint\":\"d2\",\"phase_profile\":\"device-joint-v1\",\"file_cache_at_open\":\"mixed\",\"status\":201,\"total_us\":900,\"prepare_us\":1,\"prefix_us\":2,\"suffix_us\":3,\"readout_us\":4,\"joint_model_us\":5,\"tokens\":40,\"prefix_tokens\":20,\"questions\":2,\"prefix_hits\":1,\"peak_host_bytes\":6,\"authenticate_us\":7,\"place_us\":8,\"kind\":2,\"compile_us\":9,\"reused_tokens\":10,\"cached_pages\":3,\"total_pages\":4,\"execution_payload_bytes\":11,\"cpu_execution_payload_bytes\":12,\"question_phases_us\":[{\"prepare\":13,\"prefix\":14,\"suffix_with_readout\":15,\"joint_model\":16,\"readout\":17,\"tokens\":18,\"prefix_tokens\":19,\"prefix_hit\":1},{\"prepare\":21,\"prefix\":22,\"suffix_with_readout\":23,\"joint_model\":24,\"readout\":25,\"tokens\":26,\"prefix_tokens\":27,\"prefix_hit\":0}]}\n";
+    long:[129]u8;for i:0..<129 {long[i]='x';}
+    #assert ls_record(cast(string)long[0..<128],cast(string)long[0..<128],0,s,b[..])>0 && ls_record(cast(string)long[..],"d",200,s,b[..])==-1 && ls_record("b",cast(string)long[..],200,s,b[..])==-1;
+    #assert ls_record("b","d",599,s,b[..])>0 && ls_record("b","d",600,s,b[..])==-1 && ls_record("b","d",-1,s,b[..])==-1;
+    bad:=s;bad.ok=false;#assert ls_record("b","d",200,bad,b[..])==-1;
+}
+#test "lifecycle readiness warmup promotion and restart bounds" {
+    #assert !ls_ready(LsLife.{sealed=true,warm=3}) && !ls_ready(LsLife.{authenticated=true,warm=3}) && ls_ready(LsLife.{authenticated=true,sealed=true,warm=3});
+    #assert ls_warmed(LsLife.{authenticated=true,sealed=true,warm=3},true).warm==3 && ls_warmed(LsLife.{authenticated=true,sealed=true,warm=2},true).warm==3;
+    #assert ls_promote(true,"a","a",true);
+    r:=ls_restart(32,32,100,1,false);#assert r.ok && !r.retry && r.failures==32;#assert !ls_restart(33,32,100,1,false).ok;
+    r=ls_restart(0,0,100,1,false);#assert r.ok && !r.retry;#assert ls_restart(0,32,100,1,false).retry && !ls_restart(0,-1,100,1,false).ok;
+    #assert ls_restart(0,3,1,1,false).delay_ms==1 && !ls_restart(0,3,0,1,false).ok && ls_restart(0,3,10000,1,false).delay_ms==10000 && !ls_restart(0,3,10001,1,false).ok;
+    #assert ls_restart(1,3,5001,1,false).delay_ms==10000 && ls_restart(1,3,5000,1,false).delay_ms==10000 && ls_restart(1,3,4000,1,false).delay_ms==8000;
+    #assert ls_restart(2,3,3000,1,false).delay_ms==10000 && ls_restart(0,3,100,1,true).ok;
+}
+#test "residency counts every buffer exactly and its own budget ceiling" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],128);
+    // (2*16414+233072)*4 + (2*16384+3*16384+262144+1024)*8 + 65536+65536+262144 + (16320+510)*8
+    m:=ls_memory(e,68719476736);#assert m.code==SvCode.none && m.bytes==4352160 && m.state==16414 && m.work==233072;
+    m=ls_memory(e,0);#assert m.code==SvCode.limit_exceeded && m.bytes==4352160;
+    m=ls_memory(e,-1);#assert m.code==SvCode.limit_exceeded && m.bytes==0;
+    m=ls_memory(e,68719476737);#assert m.code==SvCode.limit_exceeded && m.bytes==0;
+    #assert ls_model_id("0a00000000000000000000000000000000000000000000000000000000000000")[0]==10;
+}
+#test "health answers are exact and never written past the buffer" {
+    out:[1024]u8;n:=ls_health(LsLife.{authenticated=true,sealed=true,warm=3},"m1","b2",2,out[..]);
+    #assert n==164 && cast(string)out[0..<n]=="HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 74\r\nConnection: close\r\n\r\n{\"schema\":\"psionic-health-v1\",\"ready\":true,\"checkpoint\":\"m1\",\"build\":\"b2\"}";
+    n=ls_health(LsLife.{},"m1","b2",1,out[..]);#assert n>0 && (cast(string)out[0..<12])=="HTTP/1.1 200" && sv_index(cast(string)out[0..<n],"\"ready\":false")>0;
+    #assert ls_health(LsLife.{},"m1","b2",1,out[0..<20])==-1 && ls_health(LsLife.{},"m1","b2",1,out[0..<100])==-1;
+}
+#test "probes need the whole header within 8192 bytes and the exact request line" {
+    h:="GET /healthz HTTP/1.1\r\n";#assert ls_probe("GET /healthz HTTP/1.1\r\nHost: x\r\n\r\n")==1 && ls_probe("GET /healthz HTTP/1.1\r\nHost: x\r\n")==0;
+    #assert ls_probe("x GET /healthz HTTP/1.1\r\n\r\n")==0 && ls_probe("x GET /readyz HTTP/1.1\r\n\r\n")==0 && ls_probe(h)==0;
+    big:[8193]u8;for i:0..<8193 {big[i]='x';}for i:0..<h.count {big[i]=h[i];}big[8188]='\r';big[8189]='\n';big[8190]='\r';big[8191]='\n';
+    #assert ls_probe(cast(string)big[0..<8192])==1 && ls_probe(cast(string)big[..])==0;
+}
+#test "seed answers are checked against strict bands and an inclusive sum" {
+    #assert ls_seed_valid("psionic-toy",0.43794725,0.56205275) && !ls_seed_valid("psionic-toy",0.437947241,0.562052759) && !ls_seed_valid("psionic-toy",0.437947261,0.562052739);
+    #assert !ls_seed_valid("elephant-1",0.756696285,0.243303715) && !ls_seed_valid("elephant-1",0.757696285,0.242303715) && ls_seed_valid("elephant-1",0.7572,0.2428);
+    no:=0.99999999-0.43794725;#assert 0.43794725+no==0.99999999 && ls_seed_valid("psionic-toy",0.43794725,no);
+    low:=0.999999989-0.43794725;#assert !ls_seed_valid("psionic-toy",0.43794725,low);
+    hi:=1.00000001-0.43794725;#assert 0.43794725+hi==1.00000001 && ls_seed_valid("psionic-toy",0.43794725,hi);
+    over:=1.000000011-0.43794725;#assert !ls_seed_valid("psionic-toy",0.43794725,over);
+    #assert !ls_seed_valid("psionic-toy",0.43794725,0.0/0.0) && !ls_seed_valid("psionic-toy",0.43794725,0.6);
+}
+#test "probe copies, cache labels, device fits and device forks admit their exact bounds" {
+    #assert ls_probe_count(1) && !ls_probe_count(0) && ls_probe_count(16777216) && !ls_probe_count(16777217);
+    x:=[2]f32.[3,4];y:[2]f32;#assert ls_probe_copy(x[0..<1],y[..]) && y[0]==3 && !ls_probe_copy(x[0..<0],y[..]) && ls_probe_dot(x[0..<1],x[0..<1])==9 && ls_probe_dot(x[0..<0],x[0..<0])==-1 && ls_probe_dot(x[..],x[0..<1])==-1;
+    #assert ls_cache_label(0,1)=="cold" && ls_cache_label(1,1)=="warm";
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],600);p:=PrResult.{written=1,slots=1};
+    #assert ls_device_fits(e,p)==SvCode.none;p.written=0;#assert ls_device_fits(e,p)==SvCode.limit_exceeded;
+    p.written=512;#assert ls_device_fits(e,p)==SvCode.none;p.written=513;#assert ls_device_fits(e,p)==SvCode.limit_exceeded;
+    p.written=2;p.prefix=-1;#assert ls_device_fits(e,p)==SvCode.limit_exceeded;p.prefix=1;#assert ls_device_fits(e,p)==SvCode.none;
+    p.slots=0;#assert ls_device_fits(e,p)==SvCode.unsupported_input;p.slots=e.options;#assert ls_device_fits(e,p)==SvCode.none;p.slots=e.options+1;#assert ls_device_fits(e,p)==SvCode.unsupported_input;
+    small:=e;small.capacity=4;p.slots=1;p.written=4;#assert ls_device_fits(small,p)==SvCode.none;p.written=5;#assert ls_device_fits(small,p)==SvCode.limit_exceeded;
+    #assert ls_device_fork(64,true) && ls_busy_left(0,0)==200 && ls_busy_left(0,199)==1 && ls_busy_left(0,200)==0 && ls_busy_left(-1,0)==0;
+}
+
+// A four-token toy engine makes the CPU prefix/suffix split cheap enough to
+// compare against one direct chapter-14 decision of the same tokens.
+#test "a CPU prefix miss then suffix answers exactly like a direct decision" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],4);p:=PrResult.{status=PrStatus.ok,kind=PtQuestionKind.choice,slots=2,written=2,prefix=1};tokens:=[2]int.[5,9];
+    cached:=[4]int.[-1,-1,-1,-1];cstate:[542]f32;for i:0..<542 {cstate[i]=7;}st:[542]f32;wk:[73112]f32;prob:[4]f64;out:[2]f64;
+    w:=SvWork.{state=st[..],work=wk[..],prob=prob[..]};
+    r:=ls_cpu_prefix(e,p,tokens[..],LsPrefix.{},cached[0..<1],cstate[..],w,true);
+    #assert r.code==SvCode.none && !r.hit && r.cache.valid && r.cache.identity==e.digest && r.cache.count==1 && cached[0]==5 && cached[1]==-1;
+    #assert ls_cpu_suffix(e,p,tokens[..],w,out[..])==SvCode.none;
+    s2:[542]f32;w2:[73112]f32;o2:[2]f64;pr2:[4]f64;slots:=[2]int.[qr_pinned_slot(0),qr_pinned_slot(1)];
+    d:=qs_decide(e.session.model,tokens[..],1,s2[..],QrKind.choice,e.temperature,slots[..],o2[..],pr2[..],w2[..],false);
+    #assert d.status==QxStatus.ok && out[0]==o2[0] && out[1]==o2[1] && out[0]!=out[1];
+}
+#test "a CPU prefix hit reuses the cached state and answers the same" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],4);p:=PrResult.{status=PrStatus.ok,kind=PtQuestionKind.choice,slots=2,written=2,prefix=1};tokens:=[2]int.[5,9];
+    cached:[4]int;cstate:[542]f32;st:[542]f32;wk:[73112]f32;prob:[4]f64;out:[2]f64;w:=SvWork.{state=st[..],work=wk[..],prob=prob[..]};
+    r:=ls_cpu_prefix(e,p,tokens[..],LsPrefix.{},cached[..],cstate[..],w,true);#assert r.code==SvCode.none && !r.hit;
+    #assert ls_cpu_suffix(e,p,tokens[..],w,out[..])==SvCode.none;first:=out;
+    for i:0..<542 {st[i]=3;}
+    h:=ls_cpu_prefix(e,p,tokens[..],r.cache,cached[..],cstate[..],w,true);#assert h.code==SvCode.none && h.hit && h.cache.valid && h.cache.count==1;
+    #assert ls_cpu_suffix(e,p,tokens[..],w,out[..])==SvCode.none && out[0]==first[0] && out[1]==first[1];
+}
+#test "an empty CPU prefix starts the whole request at position zero" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],4);p:=PrResult.{status=PrStatus.ok,kind=PtQuestionKind.choice,slots=2,written=2,prefix=0};tokens:=[2]int.[5,9];
+    cached:[4]int;cstate:[542]f32;st:[542]f32;wk:[73112]f32;prob:[4]f64;out:[2]f64;w:=SvWork.{state=st[..],work=wk[..],prob=prob[..]};
+    r:=ls_cpu_prefix(e,p,tokens[..],LsPrefix.{},cached[0..<0],cstate[..],w,true);#assert r.code==SvCode.none && !r.hit && r.cache.count==0;
+    #assert ls_cpu_suffix(e,p,tokens[..],w,out[..])==SvCode.none;
+    s2:[542]f32;w2:[73112]f32;o2:[2]f64;pr2:[4]f64;slots:=[2]int.[qr_pinned_slot(0),qr_pinned_slot(1)];
+    d:=qs_decide(e.session.model,tokens[..],0,s2[..],QrKind.choice,e.temperature,slots[..],o2[..],pr2[..],w2[..],false);
+    #assert d.status==QxStatus.ok && out[0]==o2[0] && out[1]==o2[1];
+}
+#test "CPU prefix and suffix refuse each mismatched buffer on its own" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],4);p:=PrResult.{status=PrStatus.ok,kind=PtQuestionKind.choice,slots=2,written=2,prefix=1};tokens:=[3]int.[5,9,1];
+    cached:[4]int;cstate:[543]f32;st:[543]f32;wk:[73112]f32;prob:[4]f64;out:[2]f64;w:=SvWork.{state=st[0..<542],work=wk[..],prob=prob[..]};
+    open:=e;open.sealed=false;
+    #assert ls_cpu_prefix(open,p,tokens[0..<2],LsPrefix.{},cached[..],cstate[0..<542],w,true).code==SvCode.internal;
+    #assert ls_cpu_prefix(e,p,tokens[..],LsPrefix.{},cached[..],cstate[0..<542],w,true).code==SvCode.internal;
+    #assert ls_cpu_prefix(e,p,tokens[0..<2],LsPrefix.{},cached[0..<0],cstate[0..<542],w,true).code==SvCode.internal;
+    #assert ls_cpu_prefix(e,p,tokens[0..<2],LsPrefix.{},cached[..],cstate[..],w,true).code==SvCode.internal;
+    bad:=w;bad.state=st[..];#assert ls_cpu_prefix(e,p,tokens[0..<2],LsPrefix.{},cached[..],cstate[..],bad,true).code==SvCode.internal;
+    #assert ls_cpu_suffix(open,p,tokens[0..<2],w,out[..])==SvCode.internal && ls_cpu_suffix(e,p,tokens[..],w,out[..])==SvCode.internal;
+    #assert ls_cpu_suffix(e,p,tokens[0..<2],bad,out[..])==SvCode.internal && ls_cpu_suffix(e,p,tokens[0..<2],w,out[0..<1])==SvCode.internal;
+    short:=w;short.prob=prob[0..<3];#assert ls_cpu_suffix(e,p,tokens[0..<2],short,out[..])==SvCode.internal;
+}
+
+#test "the CPU prefix writes position-zero rotary coefficients and the suffix sizes probabilities per slot" {
+    toy:[1]SvToy;e:=sv_test_toy(toy[..],4);p:=PrResult.{status=PrStatus.ok,kind=PtQuestionKind.choice,slots=1,written=2,prefix=1};tokens:=[2]int.[5,9];
+    cached:[4]int;cstate:[542]f32;st:[542]f32;wk:[73112]f32;prob:[4]f64;out:[1]f64;w:=SvWork.{state=st[..],work=wk[..],prob=prob[..]};
+    #assert ls_cpu_prefix(e,p,tokens[..],LsPrefix.{},cached[..],cstate[..],w,true).code==SvCode.none;
+    plan:=qs_layout(e.session.model,2,1);rope:[128]f32;temp:[73112]f32;#assert qw_rope(0,2,rope[..],temp[0..<plan.engine-plan.rope_work],false).status==QwStatus.ok;
+    for i:0..<128 {#assert wk[plan.rope+i]==rope[i];}
+    short:=w;short.prob=prob[0..<2];#assert ls_cpu_suffix(e,p,tokens[..],short,out[..])==SvCode.none && out[0]==1;
+}

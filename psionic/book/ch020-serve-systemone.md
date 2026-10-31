@@ -185,7 +185,9 @@ answers nothing. Each answer is produced at temperature 1, with no
 calibration, as in chapter 14.
 
 The reference sequencing API runs each question through chapter 14's
-preparation and answer. [Chapter 23](ch023-make-the-numbers-move.md) now uses
+preparation and answer. `sv_stage` prepares and fits one question, and
+`sv_options`, `sv_tokens` and `sv_out` name its options, its prepared tokens
+and its 255 answer slots. [Chapter 23](ch023-make-the-numbers-move.md) now uses
 checked per-request prefix snapshots in the CPU host and removes redundant
 CPU arenas on device hosts:
 
@@ -195,12 +197,9 @@ sv_answers :: (engine:SvEngine,request:SvRequest,pools:SvPools,work:SvWork,p:[]f
     admitted:=sv_admit(engine,request,pools);if admitted!=SvCode.none {return admitted;}
     if !engine.sealed || p.count<SV_ANSWER_POOL {return SvCode.internal;}
     for i:0..<request.questions {
-        q:=pools.questions[i];options:=pools.options[q.first..<q.first+q.count];
-        question:=PtQuestion.{kind=q.kind,instructions=q.instructions};
-        prepared:=ps_prepare(engine.session.table,request.state,question,options,work.tokens,work.prep,false);
-        fits:=sv_fits(engine,prepared,work.work.count);if fits!=SvCode.none {return fits;}
-        out:=p[i*SV_OPTIONS_MAX..<(i+1)*SV_OPTIONS_MAX];
-        answer:=ps_answer(engine.session,prepared,work.tokens[0..<prepared.written],options,engine.temperature,work.state,out,work.prob,work.work,false);
+        staged:=sv_stage(engine,request,pools,work,i);if staged.code!=SvCode.none {return staged.code;}
+        prepared:=staged.prepared;
+        answer:=ps_answer(engine.session,prepared,sv_tokens(work,prepared),sv_options(pools,i),engine.temperature,work.state,sv_out(p,i),work.prob,work.work,false);
         code:=sv_answer_code(answer.status);if code!=SvCode.none {return code;}
     }
     return SvCode.none;
@@ -379,7 +378,11 @@ the refusal table, admission, answer rendering, the toy session and the slot
 machine, in debug and release; `coax mutate` leaves no survivors in
 `serve-request.coax` and `serve-engine.coax`. A complete toy decision is too
 large for the compile-time evaluator, so the loop in `serve-run.coax` is
-checked natively. [The native checks](../tests/serve.c) start real servers
+checked natively for its answers, and in Coax for everything up to the model:
+each refusal in order, the answer pool, each question's ranges, and the CPU
+prefix/suffix split, which on a four-token toy engine answers exactly like one
+direct decision. `coax mutate --root-only` leaves no survivors in
+`serve-run.coax`. [The native checks](../tests/serve.c) start real servers
 and send complete, partial, slow, abandoned, malformed and oversized requests
 over loopback, in debug and release, plain and under ASan and UBSan. They
 compare the served probabilities with direct calls to the chapter-14 C
