@@ -1,0 +1,21 @@
+{
+  "schema": "psionic.panda-inverse-dynamics.example-reference.v1",
+  "prewritten_before_example": true,
+  "source": "sdk-force.f64",
+  "source_sha256": "56ce0b6d29a39b88ec5e36a8a94e1478f7daf5b2f9de47904a2407019b7021e1",
+  "case_index": 13,
+  "forces_micro": [
+    10977944,
+    -19859397,
+    954492,
+    16592005,
+    -1163659,
+    2503706,
+    -889958,
+    982434,
+    597844
+  ],
+  "rounding": "floor(x*1000000+0.5)",
+  "nearest_half_margin_micro": 0.12404050678014755,
+  "golden_sha256": "86dd5c71679f17f834bfba28b6fe0f33d61ad077bb3db92908789f0cb5f39dcb"
+}

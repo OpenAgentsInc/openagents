@@ -1,0 +1,11 @@
+fixed Panda9 inverse force: dense moving state
+hinge 1 (uJ/rad): 10977944
+hinge 2 (uJ/rad): -19859397
+hinge 3 (uJ/rad): 954492
+hinge 4 (uJ/rad): 16592005
+hinge 5 (uJ/rad): -1163659
+hinge 6 (uJ/rad): 2503706
+hinge 7 (uJ/rad): -889958
+slide 1 (uN): 982434
+slide 2 (uN): 597844
+query only; no motor command
