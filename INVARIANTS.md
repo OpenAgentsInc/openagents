@@ -38,6 +38,8 @@ A realm's simulation advances only in whole fixed steps from `aethyr/loop.coax`'
 `FrameClock`, which keeps time in integer nanoseconds. A frame's time is refused
 when it is not a time, clamped to `max_frame_ns`, and at most `max_steps` run;
 the backlog past that is dropped and counted, never carried into later frames.
+A step, clamp or cap that is zero or negative, as in a clock read from zeroed
+memory, takes its declared default, so a clock never freezes.
 Drawing mixes the last two steps by `loop_alpha` and never steps physics. So
 the same per-step inputs give the same states, bit for bit, at any frame rate.
 Checks: `aethyr/loop.coax` (step count follows the time fed at 30, 60, 120 and
