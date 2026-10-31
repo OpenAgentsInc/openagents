@@ -22,6 +22,14 @@ boost, ECI, text normalization, numeric/alphanumeric segmentation, logos or
 structured append is implied. Text callers explicitly supply UTF-8 bytes.
 This encoder never authenticates a URL or signs/approves a request.
 
+`qr_encode_alnum(input, out)` is the same grid in **alphanumeric** mode (0–9, A–Z,
+space and `$%*+-./:`), M, versions 1–15, at most **600** characters; any other byte
+refuses with status5 before writing. It exists for uppercase BOLT11 invoices
+(`LIGHTNING:LNBC…`): a Spark invoice is about 480 characters, past byte mode's 412,
+and fits version14. Its capacities follow the standard M table (a `#forall` in
+`profile.coax`); a 487-character invoice, `HELLO WORLD`, `A` and every symbol
+decoded exactly through macOS Vision (`VNDetectBarcodesRequest`) on 2026-10-31.
+
 Statuses: input too long1, insufficient output2, unsupported mask3, physical
 input/output overlap4. Refusals preserve output and return zero metadata.
 Success leaves bytes beyond count unchanged. The memory adapter observes real

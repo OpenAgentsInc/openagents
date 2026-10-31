@@ -1,4 +1,4 @@
-// QR Model2 byte mode / M, versions1..15. Reference math and mask convention:
+// QR Model2 byte or alphanumeric mode / M, versions1..15. Reference math and mask convention:
 // Project Nayuki (MIT); see LICENSE-NAYUKI. No text normalization or signing.
 #load "profile.coax";
 QrWork :: struct {cells:[5929]u8;function:[5929]u8;data:[655]u8;code:[655]u8;}
@@ -33,6 +33,16 @@ qr_payload :: (s:[]QrWork,input:[]u8,version:int) {
  data:=s[0].data[..];limit:=qr_data_words(version);
  at:=qr_write_bits(data,0,4,4);at=qr_write_bits(data,at,ifx version<10 then 8 else 16,input.count);
  for b:input {at=qr_write_bits(data,at,8,cast(int)b);}
+ at=qr_write_bits(data,at,qr_min(4,limit*8-at),0);
+ at=qr_write_bits(data,at,(8-at%8)%8,0);
+ pad:=236;while at<limit*8 {at=qr_write_bits(data,at,8,pad);pad^=253;}
+}
+qr_payload_alnum :: (s:[]QrWork,input:[]u8,version:int) {
+ data:=s[0].data[..];limit:=qr_data_words(version);
+ at:=qr_write_bits(data,0,4,2);at=qr_write_bits(data,at,ifx version<10 then 9 else 11,input.count);
+ i:=0;
+ while i+1<input.count {at=qr_write_bits(data,at,11,qr_alnum_value(cast(int)input[i])*45+qr_alnum_value(cast(int)input[i+1]));i+=2;}
+ if i<input.count {at=qr_write_bits(data,at,6,qr_alnum_value(cast(int)input[i]));}
  at=qr_write_bits(data,at,qr_min(4,limit*8-at),0);
  at=qr_write_bits(data,at,(8-at%8)%8,0);
  pad:=236;while at<limit*8 {at=qr_write_bits(data,at,8,pad);pad^=253;}
@@ -151,10 +161,14 @@ qr_penalty :: (modules:[]u8,size:int)->int #export_c {
  }}
  total:=size*size;score+=((qr_abs(dark*20-total*10)+total-1)/total-1)*10;return score;
 }
-qr_encode_checked :: (input:[]u8,out:[]u8,mask:int,overlap:bool)->QrResult {
- admission:=qr_admit(input.count,out.count,mask,overlap);if admission.status!=0 {return QrResult.{status=admission.status};}
+qr_encode_checked :: (input:[]u8,out:[]u8,mask:int,overlap:bool)->QrResult {return qr_encode_mode(input,out,mask,overlap,false);}
+// Alphanumeric: status5 when a byte is outside 0-9 A-Z space $%*+-./: (nothing written).
+qr_encode_mode :: (input:[]u8,out:[]u8,mask:int,overlap:bool,alnum:bool)->QrResult {
+ admission:=ifx alnum then qr_admit_alnum(input.count,out.count,mask,overlap) else qr_admit(input.count,out.count,mask,overlap);
+ if admission.status!=0 {return QrResult.{status=admission.status};}
+ if alnum {for b:input {if qr_alnum_value(cast(int)b)<0 {return QrResult.{status=5};}}}
  work:[1]QrWork;version:=admission.version;size:=admission.size;
- qr_payload(work[..],input,version);qr_ecc(work[..],version);qr_functions(work[..],version,size);qr_place(work[..],size,version);
+ if alnum {qr_payload_alnum(work[..],input,version);} else {qr_payload(work[..],input,version);}qr_ecc(work[..],version);qr_functions(work[..],version,size);qr_place(work[..],size,version);
  selected:=mask;best:=2147483647;
  if mask== -1 {
   for candidate:0..<8 {

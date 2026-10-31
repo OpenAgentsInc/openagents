@@ -397,7 +397,8 @@ static void upgrade_frame(uint32_t state) {
   if (golden || !facts_seen) return;
   coax_t_Upgrade *g = &fairy(state)->upgrade.e[0];
   if (g->qr_want) {
-    coax_t_QrResult r = qr_encode((coax_v_u8){g->code.e, g->code_n}, (coax_v_u8){g->qr.e, (int64_t)sizeof g->qr.e});
+    /* alphanumeric: a Spark invoice (~480 characters) is past byte mode's 412 */
+    coax_t_QrResult r = qr_encode_alnum((coax_v_u8){g->qr_text.e, g->qr_text_n}, (coax_v_u8){g->qr.e, (int64_t)sizeof g->qr.e});
     ffu_qr_done(at(state), r.status, r.size);
   }
   if (upgrade_ask >= 0 && now - upgrade_asked_at < ROOM_WAIT) return;

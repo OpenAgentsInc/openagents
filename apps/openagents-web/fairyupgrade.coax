@@ -48,6 +48,7 @@ Upgrade :: struct {
   hash: [64] u8;
   code: [FFU_CODE] u8; code_n: int;
   qr: [FFU_QR] u8; qr_size: int; qr_want: bool;
+  qr_text: [FFU_CODE] u8; qr_text_n: int;   // the code in capitals: a QR's alphanumeric mode holds a whole invoice
   polled: f64;
   wallet: bool;                   // the host's action 1: open the wallet link
   note: [64] u8; note_n: int; note_at: f64;
@@ -210,6 +211,8 @@ ffu_answer :: (s: [] Fairy, kind: int, answer: string) #export_c {
         for k: 0..<64 { g[0].hash[k] = hash[k]; }
         o := ffs_put(g[0].code[..], 0, "lightning:");
         g[0].code_n = ffs_put(g[0].code[..], o, inv);
+        for k: 0..<g[0].code_n { c := g[0].code[k]; g[0].qr_text[k] = ifx c >= 97 && c <= 122 then c - 32 else c; }
+        g[0].qr_text_n = g[0].code_n;
         g[0].qr_want = true; g[0].qr_size = 0;
         g[0].buy_state = BUY_SHOWN; g[0].polled = s[0].time;
         g[0].buy_sats = cast(int) room_field_num(t, obj, "sats");
@@ -575,6 +578,7 @@ ffu_pane :: (s: [] Fairy, out: [] f32, u: [] f32, at: int) -> int {
   hash := "ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12";
   ffu_answer(s[..], FFU_BUY, "200\n{\"invoice\":\"lnbc5u1pexampleinvoice0001\",\"payment_hash\":\"ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12ab12\",\"sats\":500,\"expires\":1}");
   #assert g[0].buy_state == BUY_SHOWN && g[0].qr_want && cast(string) g[0].code[0..<g[0].code_n] == "lightning:lnbc5u1pexampleinvoice0001";
+  #assert cast(string) g[0].qr_text[0..<g[0].qr_text_n] == "LIGHTNING:LNBC5U1PEXAMPLEINVOICE0001";
   ffu_act(s[..], UB_WALLET, 0);
   #assert ffu_action(s[..]) == 1;
   ffu_action_done(s[..]);

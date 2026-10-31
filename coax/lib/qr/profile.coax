@@ -1,4 +1,6 @@
-// The initial QR consumer: byte mode, error correction M, versions1..15.
+// The initial QR consumer: byte mode, error correction M, versions1..15; and alphanumeric
+// mode (0-9 A-Z space $%*+-./:) at the same M and versions, for long uppercase codes such as
+// a BOLT11 invoice ("LIGHTNING:LNBC...", 600 characters at most).
 // This is resource admission, never authentication of the encoded contents.
 #authority;
 QR_ECC :: [16]int.[0,10,16,26,18,24,16,18,22,22,26,30,22,22,24,24];
@@ -13,6 +15,23 @@ QrResult :: struct {status:int;version:int;size:int;count:int;mask:int;penalty:i
   #assert (p.status==0)==(expected!=0);
   if expected!=0 {#assert p.version==expected && p.size==17+4*expected && p.count==p.size*p.size;}
   else {#assert p.status==1 && p.version==0 && p.size==0 && p.count==0;}
+}
+#forall "all alphanumeric capacity transitions select the smallest version" length:-1..<602 {
+  capacities:=[15]int.[20,38,61,90,122,154,178,221,262,311,366,419,483,528,600];
+  expected:=0;for v:0..<15 {if expected==0 && length>=0 && length<=capacities[v] {expected=v+1;}}
+  p:=qr_admit_alnum(length,5929,-1,false);
+  #assert (p.status==0)==(expected!=0);
+  if expected!=0 {#assert p.version==expected && p.size==17+4*expected && p.count==p.size*p.size;}
+  else {#assert p.status==1 && p.version==0 && p.size==0 && p.count==0;}
+}
+#test "alphanumeric admission refuses as byte admission does" {
+ #assert qr_admit_alnum(0,-1,-1,false).status==2;
+ #assert qr_admit_alnum(0,441,-1,true).status==4;
+ #assert qr_admit_alnum(601,5929,-1,false).status==1;
+ #assert qr_admit_alnum(0,5929,8,false).status==3;
+ #assert qr_admit_alnum(600,5929,-1,false).count==5929;
+ #assert qr_alnum_value(48)==0 && qr_alnum_value(90)==35 && qr_alnum_value(32)==36 && qr_alnum_value(58)==44;
+ #assert qr_alnum_value(97)== -1 && qr_alnum_value(35)== -1 && qr_alnum_value(255)== -1;
 }
 #forall "output capacity has an exact readable boundary" version:1..<16 {
   length:=qr_capacity(version);size:=17+version*4;
@@ -55,6 +74,26 @@ qr_admit :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export
  if mask< -1 || mask>7 {return QrAdmission.{status=3};}
  if overlap {return QrAdmission.{status=4};}
  version:=1;while length>qr_capacity(version) {version+=1;}
+ size:=17+4*version;if capacity<size*size {return QrAdmission.{status=2};}
+ return QrAdmission.{version=version,size=size,count=size*size};
+}
+// Alphanumeric: 11 bits a pair, 6 for an odd last one, after the 4-bit mode and a 9/11-bit count.
+qr_alnum_capacity :: (version:int)->int {
+ bits:=qr_data_words(version)*8-4-(ifx version<10 then 9 else 11);
+ return bits/11*2+(ifx bits%11>=6 then 1 else 0);
+}
+qr_alnum_value :: (byte:int)->int {
+ if byte>=48 && byte<=57 {return byte-48;}
+ if byte>=65 && byte<=90 {return byte-55;}
+ if byte==32 {return 36;}if byte==36 {return 37;}if byte==37 {return 38;}if byte==42 {return 39;}
+ if byte==43 {return 40;}if byte==45 {return 41;}if byte==46 {return 42;}if byte==47 {return 43;}if byte==58 {return 44;}
+ return -1;
+}
+qr_admit_alnum :: (length:int,capacity:int,mask:int,overlap:bool)->QrAdmission #export_c {
+ if length<0 || length>600 {return QrAdmission.{status=1};}
+ if mask< -1 || mask>7 {return QrAdmission.{status=3};}
+ if overlap {return QrAdmission.{status=4};}
+ version:=1;while length>qr_alnum_capacity(version) {version+=1;}
  size:=17+4*version;if capacity<size*size {return QrAdmission.{status=2};}
  return QrAdmission.{version=version,size=size,count=size*size};
 }
