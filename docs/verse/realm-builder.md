@@ -42,7 +42,11 @@ and takes them into it.
    Nothing asked for is dropped (0079): the planner names every thing asked for in `asked`, each
    with the feature that makes it or none, and each with none stays on the board as a `want THING`
    line, under ASKED FOR, NOT IN IT YET, marked NOT APPLIED YET (at most 24, carried through every
-   revision). MAKE IT puts each on the realm's feature list as a waiting ask
+   revision). Every thing asked for is named, not only the main ones, and each says whether its feature
+   draws it as asked (`same`, 0083): one a feature only stands in for (crows for owls, a pond for a sea)
+   is a `want` line too, beside the stand-in. `coax/web/api/eval-builder.sh` scores twenty prompts with a
+   judge model (the share of things asked for that the board shows or lists; 100% is the rule).
+   MAKE IT puts each on the realm's feature list as a waiting ask
    (`docs/verse/realm-edit.md`, "What you asked for"), where an agent can build it.
    OR DROP A DESIGN DOCUMENT (`coax/web/docs.js`, action 31) sends a .md, .txt, .pdf or .docx to
    `POST /api/playtest/realms/plan/doc?as=lines {name, data, setup}` (migrations/0080): the server
@@ -66,10 +70,11 @@ and takes them into it.
 |---|---|---|
 | water | small, medium, large | a pond drawn by `myrealm.wgsl` |
 | trees | round, pine, dead, mixed; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted) |
+| bigtree | round, pine, dead | one giant tree standing alone, four times a tree's size (0083) |
 | rocks | 2 to 16 | the fixture pack's rock |
 | plants | 4 to 24 | the fixture pack's fern |
 | lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
-| flock | crow, bat; 3 to 12 | dark wings circling low ahead of whoever walks |
+| flock | crow, bat, owl; 3 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083) |
 | props | crates, barrels, wagon, fence, camp (up to 5) | the fixture pack's props |
 | character | a name and a role (up to 4) | a figure (the pack's barrel and crate) with its name and role |
 | house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065) |

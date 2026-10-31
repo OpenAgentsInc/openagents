@@ -163,7 +163,8 @@ MyRealm :: struct {
   water: int;              // 0 none, 1 small, 2 medium, 3 large
   trees: int; tree_kind: int; rocks: int; plants: int;
   lanterns: int; lantern_r: f32; lantern_g: f32; lantern_b: f32;
-  birds: int; bats: bool;
+  birds: int; bats: bool; owls: bool;
+  great: bool; great_kind: int;   // one giant tree standing alone (0083): 0 round, 1 pine, 2 dead
   props: [5] int; prop_n: int;   // 0 crates, 1 barrels, 2 wagon, 3 fence, 4 camp
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
   // a herd, dwellings and a village (0079): how many, which kind; the palette tints everything
@@ -301,7 +302,7 @@ slug_ok :: (text: string) -> bool {
 // The spec (verse.builder_spec), a line each.
 read_spec :: (s: [] MyRealm, text: string) -> bool {
   for i: 0..<TOOLS { s[0].tools[i] = false; }
-  s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0;
+  s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0; s[0].great = false;
   s[0].prop_n = 0; s[0].houses = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
   s[0].herd = 0; s[0].dwellings = 0; s[0].villagers = 0; s[0].palette = 0;
   was := s[0].camera;
@@ -353,7 +354,8 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
         c := 0; for k: 0..<7 { if COLOURS[k] == a { c = k; } }
         s[0].lantern_r = COLOUR_RGB[c * 3]; s[0].lantern_g = COLOUR_RGB[c * 3 + 1]; s[0].lantern_b = COLOUR_RGB[c * 3 + 2];
       }
-      if f == "flock" { s[0].birds = clamp_int(count_of(line, 7), 0, BIRDS); s[0].bats = a == "bat"; }
+      if f == "flock" { s[0].birds = clamp_int(count_of(line, 7), 0, BIRDS); s[0].bats = a == "bat"; s[0].owls = a == "owl"; }
+      if f == "bigtree" { s[0].great = true; s[0].great_kind = ifx a == "pine" then 1 else ifx a == "dead" then 2 else 0; }
       if f == "house" {
         s[0].houses = clamp_int(count_of(line, 1), 1, HOUSES);
         s[0].house_size = ifx a == "large" then 2 else ifx a == "medium" then 1 else 0;
@@ -517,6 +519,7 @@ rand :: (r: [] Seed) -> f32 { r[0].v = (r[0].v * 48271) % 2147483647; return cas
 
 THING_MESH :: [THINGS] string.["Prop_Crate", "Barrel", "CommonTree_3", "Rock_Medium_1", "Fern_1", "", "Prop_WoodenFence_Single", "Chest_Wood"];
 THING_SIZE :: [THINGS] f32.[0.9, 1.0, 5.0, 1.3, 0.8, 0, 2.0, 0.9];   // metres its longest side is shown
+GREAT_GROW :: 4.2;   // a giant tree: this many times a tree's size (21 m)
 THING_SOLID :: [THINGS] bool.[true, true, true, true, false, true, true, true];
 
 // Is (x, z) free: off the water, off what's there, away from where you start, inside the ground?
@@ -599,6 +602,11 @@ lay_out :: (s: [] MyRealm) {
     a := rand(r[..]) * 1.2 - 0.6;
     d := s[0].water_r + 4.5;
     s[0].water_x = d * sin(a); s[0].water_z = -d * cos(a);
+  }
+  // a giant tree, alone, off to one side ahead of you, so it stands over the realm from where you start
+  if s[0].great {
+    c := ifx free(s, -6, -11, 3.5) then Spot.{x = -6, z = -11} else spot(s, r[..], 9, GROUND_R - 6, 3.5);
+    if c.x < 90 { thing_at(s, 2, c.x, c.z, 0.7, GREAT_GROW, s[0].great_kind); }
   }
   // the characters first, in a loose ring in front of you; then the lanterns round where you start
   for p: 0..<s[0].people {
@@ -872,20 +880,31 @@ actors :: (s: [] MyRealm) {
   }
   for i: 0..<s[0].birds {
     b := bird_at(s, i);
-    span: f32 = ifx s[0].bats then 0.5f32 else 0.62f32;
-    flap := ifx s[0].still then 0.35f32 else 0.55 * sin(s[0].time * (ifx s[0].bats then 14.0f32 else 8.0f32) + cast(f32) i);
-    cr: f32 = ifx s[0].bats then 0.16f32 else 0.1f32; cb: f32 = ifx s[0].bats then 0.2f32 else 0.11f32;
+    span: f32 = ifx s[0].bats then 0.5f32 else ifx s[0].owls then 0.9f32 else 0.62f32;
+    beat: f32 = ifx s[0].bats then 14.0f32 else ifx s[0].owls then 4.5f32 else 8.0f32;
+    flap := ifx s[0].still then 0.35f32 else 0.55 * sin(s[0].time * beat + cast(f32) i);
+    cr: f32 = ifx s[0].bats then 0.16f32 else 0.1f32; cg: f32 = 0.1; cb: f32 = ifx s[0].bats then 0.2f32 else 0.11f32;
+    if s[0].owls { cr = OWL_RGB[0]; cg = OWL_RGB[1]; cb = OWL_RGB[2]; }
     for side: 0..<2 {
       w: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
       cx := 0.5 * span * cos(flap); cy := 0.5 * span * sin(flap);
       wx := b.x + w * cx * cos(b.yaw); wz := b.z + w * cx * sin(b.yaw);
-      sized(s, crate, wx, b.y + cy - 0.015, wz, -b.yaw, w * flap, span, 0.03, 0.2, cr, 0.1, cb);
+      sized(s, crate, wx, b.y + cy - 0.015, wz, -b.yaw, w * flap, span, 0.03, ifx s[0].owls then 0.3f32 else 0.2f32, cr, cg, cb);
     }
-    sized(s, crate, b.x, b.y - 0.04, b.z, -b.yaw, 0, 0.12, 0.08, 0.32, cr * 0.8, 0.08, cb * 0.8);
+    if s[0].owls {
+      // a stout body, and a round head ahead of it with a pale face
+      fx := -sin(b.yaw); fz := cos(b.yaw);
+      sized(s, crate, b.x, b.y - 0.09, b.z, -b.yaw, 0, 0.22, 0.16, 0.3, cr * 0.85, cg * 0.85, cb * 0.85);
+      sized(s, crate, b.x + 0.19 * fx, b.y - 0.08, b.z + 0.19 * fz, -b.yaw, 0, 0.18, 0.17, 0.15, cr, cg, cb);
+      sized(s, crate, b.x + 0.27 * fx, b.y - 0.07, b.z + 0.27 * fz, -b.yaw, 0, 0.15, 0.12, 0.02, OWL_RGB[3], OWL_RGB[4], OWL_RGB[5]);
+    } else {
+      sized(s, crate, b.x, b.y - 0.04, b.z, -b.yaw, 0, 0.12, 0.08, 0.32, cr * 0.8, 0.08, cb * 0.8);
+    }
   }
   build_draws(s);
 }
 Bird :: struct { x: f32; y: f32; z: f32; yaw: f32; }
+OWL_RGB :: [6] f32.[0.52, 0.38, 0.24, 0.9, 0.84, 0.68];   // an owl's tawny wings, then its pale face
 // The flock circles a spot ahead of you that follows you round (realm_step eases it there).
 bird_at :: (s: [] MyRealm, i: int) -> Bird {
   a := s[0].time * (0.35 + 0.04 * cast(f32) (i % 3)) + cast(f32) i / cast(f32) hi_int(s[0].birds, 1) * 6.2831853;
@@ -1290,10 +1309,11 @@ knows_of :: (s: [] MyRealm, out: [] u8, at: int, p: int) -> int {
   n = json_in(out, n, ", a realm on the Verse that someone built from one prompt. It is ");
   n = json_in(out, n, TIMES[s[0].tod]); n = json_in(out, n, " here, on "); n = json_in(out, n, GROUNDS[s[0].ground]); n = json_in(out, n, " ground.");
   if s[0].water > 0 { n = json_in(out, n, " There is water."); }
+  if s[0].great { n = json_in(out, n, " A giant tree stands over it all."); }
   if s[0].trees > 0 { n = json_in(out, n, " There are "); n = json_in(out, n, TREE_WORDS[s[0].tree_kind]); n = json_in(out, n, "."); }
   if s[0].rocks > 0 { n = json_in(out, n, " There are rocks."); }
   if s[0].lanterns > 0 { n = json_in(out, n, " Lanterns stand about."); }
-  if s[0].birds > 0 { n = json_in(out, n, ifx s[0].bats then " Bats circle overhead." else " Birds circle overhead."); }
+  if s[0].birds > 0 { n = json_in(out, n, ifx s[0].bats then " Bats circle overhead." else ifx s[0].owls then " Owls circle overhead." else " Birds circle overhead."); }
   if s[0].houses > 0 { n = json_in(out, n, ifx s[0].houses == 1 then " There is a " else " There are "); n = json_in(out, n, HOUSE_COLOURS[s[0].house_colour]); n = json_in(out, n, ifx s[0].houses == 1 then " house." else " houses."); }
   for i: 0..<s[0].prop_n { n = json_in(out, n, " There is "); n = json_in(out, n, PROP_WORDS[s[0].props[i]]); n = json_in(out, n, "."); }
   for q: 0..<s[0].people {
@@ -2058,6 +2078,26 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   trees := 0; leaves := 0;
   for p: 0..<s[0].piece_n { if s[0].piece_mesh[p] == tree { trees += 1; } if s[0].piece_mesh[p] == tree + 1 { leaves += 1; } }
   #assert trees == 5 && leaves == 5;
+}
+
+#test "a giant tree stands alone over the rest; owls are tawny, broad and slow" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "owl-isle", "realm owl-isle\nname Owl Isle\nstyle lowpoly\nground meadow\ntime dusk\nowner 0\nfeature bigtree round\nfeature trees round 4\nfeature flock owl 5\n");
+  #assert s[0].laid && s[0].great && s[0].great_kind == 0 && s[0].owls && !s[0].bats && s[0].birds == 5;
+  tree := mesh_named(s[..], "CommonTree_3");
+  trees := 0; biggest: f32 = 0; next: f32 = 0;
+  for p: 0..<s[0].static_n {
+    if s[0].piece_mesh[p] != tree { continue; }
+    trees += 1;
+    k := s[0].piece_k[p];
+    if k > biggest { next = biggest; biggest = k; } else if k > next { next = k; }
+  }
+  // five trunks: the giant one and four, the giant one more than three times the next
+  #assert trees == 5 && biggest > 3 * next;
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "crows", "realm crows\nname Crows\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature flock crow 5\n");
+  // an owl has a head and a face as well as a crow's body and wings: two more pieces a bird
+  #assert !q[0].owls && !q[0].great && (s[0].piece_n - s[0].static_n) - (q[0].piece_n - q[0].static_n) == 5 * 2;
 }
 
 EDIT_SPEC :: "200\nrealm moonlit-marsh\nname Moonlit Marsh\nowner 1\ntool build 0\ntool fly 1\ntool map 0\nwaiting 1\nrole owner\nrow water 1 Large pond\nrow props:wagon 0 A wagon\n";
