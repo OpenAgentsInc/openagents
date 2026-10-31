@@ -165,7 +165,7 @@ EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k)
     if(url.pathname==='/host.js')return new Response(readFileSync(join(root,'coax/web/host.js'),'utf8')+`
       globalThis.projectCapacityProbe=()=>{if(!engine||!arena)return null;const x=engine.exports,s=arena.state;const read=k=>new TextDecoder().decode(new Uint8Array(memory.buffer,x.probe_text(s,k),x.probe_len(s,k)));return{state:x.probe_state(s),count:x.probe_count(s),workers:x.probe_workers(s),tables:[0,1,2,3,4].map(read),frames,timeOrigin:performance.timeOrigin}};
     `,{headers:{'content-type':'text/javascript'}})
-    if(['/entropy.js','/entropy-import.js','/drop.js','/uploads.js','/card.js','/voice.js','/gpui.js','/loader.js','/http-requests.js'].includes(url.pathname))return new Response(readFileSync(join(root,'coax/web',url.pathname.slice(1))),{headers:{'content-type':'text/javascript'}})
+    if(['/entropy.js','/entropy-import.js','/drop.js','/uploads.js','/docs.js','/card.js','/voice.js','/gpui.js','/loader.js','/http-requests.js'].includes(url.pathname))return new Response(readFileSync(join(root,'coax/web',url.pathname.slice(1))),{headers:{'content-type':'text/javascript'}})
     if(url.pathname==='/project.wasm')return new Response(readFileSync(wasm),{headers:{'content-type':'application/wasm'}})
     if(url.pathname==='/project.wgsl')return new Response(readFileSync(join(app,'project.wgsl')),{headers:{'content-type':'text/plain'}})
     if(url.pathname.startsWith('/api/'))return new Response('ok')

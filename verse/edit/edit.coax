@@ -34,7 +34,7 @@ REDIT_SHUT :: 0; REDIT_BOARD :: 1; REDIT_SETTINGS :: 2; REDIT_CARDS_PANE :: 3; R
 REQ_E_NONE :: 0; REQ_E_SPEC :: 1; REQ_E_SWITCH :: 2; REQ_E_SETTINGS :: 3; REQ_E_CARDS :: 4; REQ_E_DECIDE :: 5; REQ_E_REVISE :: 6; REQ_E_PLACE :: 7;
 REQ_E_PANES :: 8; REQ_E_LORE :: 9; REQ_E_QUEST :: 10; REQ_E_ASKS :: 11; REQ_E_ADD :: 12; REQ_E_DELETE :: 13;
 // buttons: EDIT, the three tabs, TALK, TYPE IT, ACCEPT, DECLINE, SAVE, LORE <-> QUEST, and MORE (the feature list's next page)
-RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_MORE :: 10; RB_N :: 11;
+RB_EDIT :: 0; RB_TAB :: 1; RB_TALK :: 4; RB_TYPE :: 5; RB_ACCEPT :: 6; RB_DECLINE :: 7; RB_SAVE :: 8; RB_SWAP :: 9; RB_MORE :: 10; RB_DOC :: 11; RB_N :: 12;
 // What its owner asked for (migrations/0078_realm_asks.sql): the asks, each applied, waiting (NOT APPLIED) or removing.
 REDIT_ASKS :: 24; REDIT_WORDS :: 120; REDIT_ITEMS :: 40;   // the list: the board's rows, then the asks (REDIT_ROWS + REDIT_ASKS)
 ASK_WAITING :: 0; ASK_APPLIED :: 1; ASK_REMOVING :: 2;
@@ -44,6 +44,8 @@ RF_LORE :: 0; RF_ASK :: 1; RF_STEP :: 2; RF_REWARD :: 5; RF_N :: 6;
 REDIT_LORES :: 12; REDIT_QUESTS :: 12; REDIT_DRAFT :: 400; REDIT_PART :: 160;
 REDIT_MSG_TEXT :: 1; REDIT_MSG_VOICE :: 50; REDIT_FACTS :: 600;
 REDIT_ACT_VOICE :: 7; REDIT_ACT_VOICE_TO :: 8;
+// a design document (coax/web/docs.js): the picker opens for this URL; its answer comes back as 54, "STATUS\nbody" (1: on its way)
+REDIT_ACT_DOC :: 31; REDIT_MSG_DOC :: 54;
 REDIT_FACING :: "Realm editor";   // whom the voice host leaves our turns to: this layer answers
 REDIT_KEY_ESCAPE :: -1; REDIT_KEY_ENTER :: -2; REDIT_KEY_BACKSPACE :: -3;
 REDIT_TOOL_NAMES :: [REDIT_TOOLS] string.["build", "fly", "jump", "map", "talk", "voice"];
@@ -72,6 +74,7 @@ RealmEdit :: struct {
   // talking and typing
   voice: bool; held: bool; heard_due: bool; typing: bool; typed: [REDIT_TYPED] u8; typed_n: int;
   caption: [REDIT_TYPED] u8; caption_n: int; faced: bool; want_voice: int;
+  want_doc: bool; doc_busy: bool;   // DROP A DOCUMENT: the picker to open, a document on its way
   // the one request in flight, and what to send next
   req_url: [REDIT_URL] u8; req_url_n: int; req_body: [REDIT_BODY] u8; req_body_n: int; req_flags: int;
   req_ready: bool; req_id: int; req_what: int; req_at: f32;
@@ -621,6 +624,28 @@ redit_message :: (e: [] RealmEdit, kind: int, text: string) -> bool #export_c {
     for i: 0..<text.count { if e[0].typed_n < REDIT_TYPED && text[i] >= 32 { e[0].typed[e[0].typed_n] = text[i]; e[0].typed_n += 1; } }
     return true;
   }
+  if kind == REDIT_MSG_DOC {
+    p_st := redit_status(text); p_rest := redit_body(text);
+    if p_st == 1 { e[0].doc_busy = true; redit_note(e, "Reading your document."); return true; }
+    e[0].doc_busy = false;
+    if p_st == 200 {
+      redit_read_rows(e, p_rest);
+      p_l := p_rest[0..<redit_line_end(p_rest, 0)];
+      m: [80] u8;
+      p_m := redit_put(m[..], 0, "From your document: "); p_m = redit_put(m[..], p_m, redit_word(p_l, 2)); p_m = redit_put(m[..], p_m, " applied, ");
+      p_m = redit_put(m[..], p_m, redit_word(p_l, 4)); p_m = redit_put(m[..], p_m, " not applied yet.");
+      redit_note(e, cast(string) m[0..<p_m]);
+      e[0].spec_due = true; e[0].asks_due = true; e[0].list_first = 0;
+    }
+    else if p_st == 403 { redit_note(e, "Only its owner and admins change it."); }
+    else if p_st == 413 { redit_note(e, "That file is too big. Save it as .txt or .md and drop that."); }
+    else if p_rest.count > 0 && p_rest.count < 60 {
+      w: [64] u8; p_wn := redit_put(w[..], 0, p_rest); if w[0] >= 'a' && w[0] <= 'z' { w[0] -= 32; } p_wn = redit_put(w[..], p_wn, ".");
+      redit_note(e, cast(string) w[0..<p_wn]);
+    }
+    else { redit_note(e, "That document didn't reach us. Try again."); }
+    return true;
+  }
   if kind == REDIT_MSG_VOICE && (e[0].held || e[0].heard_due) {
     p_cut := 0; while p_cut < text.count && text[p_cut] != '|' { p_cut += 1; }
     said := ifx p_cut + 1 <= text.count then text[p_cut + 1..<text.count] else "";
@@ -641,6 +666,11 @@ redit_say :: (e: [] RealmEdit, p_words: string) {
 
 RAct :: struct { kind: int; n: int; }
 redit_take_action :: (e: [] RealmEdit, p_outbox: [] u8) -> RAct {
+  if e[0].want_doc {
+    e[0].want_doc = false;
+    m := redit_put(p_outbox, 0, "/api/playtest/realms/"); m = redit_put(p_outbox, m, cast(string) e[0].slug[0..<e[0].slug_n]); m = redit_put(p_outbox, m, "/asks/doc");
+    return RAct.{kind = REDIT_ACT_DOC, n = m};
+  }
   if e[0].want_voice == 0 { return RAct.{kind = 0, n = 0}; }
   if !e[0].faced { e[0].faced = true; return RAct.{kind = REDIT_ACT_VOICE_TO, n = redit_put(p_outbox, 0, REDIT_FACING)}; }
   w := e[0].want_voice; e[0].want_voice = 0;
@@ -737,6 +767,7 @@ redit_press :: (e: [] RealmEdit, b: int) {
   if b == RB_ACCEPT { redit_decide(e, true); return; }
   if b == RB_DECLINE { redit_decide(e, false); return; }
   if b == RB_SAVE { redit_save(e); return; }
+  if b == RB_DOC { if !e[0].doc_busy { e[0].want_doc = true; redit_note(e, "Pick your document: .md, .txt, .pdf or .docx."); } return; }
   if b == RB_MORE { e[0].list_first = e[0].list_first + redit_hi_int(1, e[0].list_page); if e[0].list_first >= e[0].row_n + e[0].ask_n { e[0].list_first = 0; } e[0].armed = -1; return; }
   if b == RB_SWAP { e[0].pane = ifx e[0].pane == REDIT_LORE_PANE then REDIT_QUEST_PANE else REDIT_LORE_PANE; e[0].typing = false; e[0].field = 0; }
 }
@@ -913,7 +944,7 @@ redit_board :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room: f32
   if e[0].armed >= 0 && e[0].time - e[0].armed_at > REDIT_ARMED_S { e[0].armed = -1; }
   p_items := e[0].row_n + e[0].ask_n;
   if p_items == 0 { n = redit_text(e, out, n, "NOTHING ASKED FOR YET", x, p_yy + 10 * k, 8 * k, redit_parch(k, 0.8), room); p_yy += 26 * k; }
-  p_fit := redit_hi_int(1, cast(int) ((bottom - 90 * k - y) / (30 * k)));
+  p_fit := redit_hi_int(1, cast(int) ((bottom - 124 * k - y) / (30 * k)));
   p_more := p_items > p_fit;
   if p_more { p_fit = redit_hi_int(1, p_fit - 1); }
   e[0].list_page = p_fit;
@@ -954,6 +985,14 @@ redit_board :: (e: [] RealmEdit, out: [] f32, at: int, x: f32, y: f32, room: f32
   } else {
     n = redit_button(e, out, n, RB_TYPE, RBox.{x0 = x, y0 = p_yy, x1 = x + room, y1 = p_yy + 32 * k}, ifx e[0].typing then "CANCEL" else "ADD A FEATURE OR A CHANGE", e[0].typing);
   }
+  // or a design document: each thing it asks for a line (an outline, not a plate: a realm has few)
+  p_yy += 38 * k;
+  p_db := RBox.{x0 = x, y0 = p_yy, x1 = x + room, y1 = p_yy + 26 * k};
+  e[0].boxes[RB_DOC] = p_db; e[0].shown[RB_DOC] = true;
+  n = redit_frame(out, n, p_db, e[0].press == RB_DOC || e[0].doc_busy, k);
+  p_dl := ifx e[0].doc_busy then "READING YOUR DOCUMENT" else "ADD FROM A DOCUMENT";
+  p_dw := redit_width(p_dl, 6.5 * k);
+  n = redit_text(e, out, n, p_dl, (p_db.x0 + p_db.x1 - p_dw) / 2, (p_db.y0 + p_db.y1 + 6.5 * k) / 2, 6.5 * k, redit_gold(k, 0.95), room);
   return n;
 }
 

@@ -158,6 +158,7 @@
 import { prepareRandomImport, unsupportedImport } from "./entropy-import.js";
 import { startDrops } from "./drop.js";
 import { startUploads } from "./uploads.js";
+import { startDocs } from "./docs.js";
 import { startCard, startMoment } from "./card.js";
 import { startVoice, ACT_VOICE, ACT_VOICE_TO, ACT_VOICE_SAY } from "./voice.js";
 import { startGpui } from "./gpui.js";
@@ -1562,6 +1563,8 @@ globalThis.coaxial.tilt = (dyaw, dpitch) => { engine?.exports.coaxial_tilt?.(are
 if (script?.dataset.drops) startDrops({ send });
 // A page that sends files to this site (data-uploads: what its picker takes): uploads.js, on the app's action 30.
 if (script?.dataset.uploads) startUploads({ send, accept: script.dataset.uploads });
+// A design document for a realm's feature list or the builder (docs.js), on the app's action 31.
+startDocs({ send });
 // A page's own share card (card.js, docs/web/og-tags.md): the next frame drawn, copied in its own task.
 function snapshot() {
   return new Promise((resolve) => {

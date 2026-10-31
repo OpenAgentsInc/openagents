@@ -125,6 +125,7 @@ with the ask, each changed row as it was before and after (and a made realm's gr
 | `POST /asks/<id>/delete` | DELETE an ask: `{deleted, reverted}`, or `{state: removing}` for one built in code |
 | `POST /rows/<key>/delete` | DELETE a board's row: `{deleted}` (a made realm), or `{ask, state: waiting}` (a hand-built one) |
 | `POST /asks/<id>/done {commit}` | a site admin (an agent signing NIP-98): built in code, or its code taken out |
+| `POST /asks/doc {name, data}` | a design document: a line for each thing it asks for (below) |
 
 How DELETE cleans up:
 
@@ -141,5 +142,15 @@ How DELETE cleans up:
   instead puts the row back on.
 - **An ask built in code** (marked done with its commit): DELETE makes it REMOVING; its code comes
   out the way it went in (reverting that commit, with tests), and done with that commit removes it.
+
+ADD FROM A DOCUMENT (`coax/web/docs.js`: action 31 opens the picker for this realm's
+`/asks/doc`; message 54 brings the answer) sends a design document, .md, .txt, .pdf or .docx, at
+most 360 KB: `POST /asks/doc {name, data}` (migrations/0080_realm_docs.sql). The server takes its
+text out (a .docx's `word/document.xml`, inflated with zlib; a PDF goes to the model as itself),
+and the model answers the board as an ADD does, naming every feature or change the document asks
+for, each with the feature (or row) that makes it. Each becomes its own line on the list: APPLIED
+with just what it changed (so its DELETE takes back only that), or NOT APPLIED, waiting for code.
+What the answer changed that no line names is one more line ("The rest of NAME"); a document that
+named nothing still waits as one line. The answer: `doc N A applied W waiting`, then the rows.
 
 `verse/SKILL.md` ("Asks waiting on code") is how an agent works the waiting ones.

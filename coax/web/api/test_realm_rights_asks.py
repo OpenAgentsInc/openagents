@@ -5,6 +5,9 @@
 # sql, nip98, b_call, b_player, FakeBuilderModel, builder_mode and builder_seen come from before).
 
 
+import base64, io, zipfile
+
+
 def realm_asks_checks():
     fake = http.server.ThreadingHTTPServer(("127.0.0.1", int(os.environ["BUILDER_PORT"])), FakeBuilderModel)
     threading.Thread(target=fake.serve_forever, daemon=True).start()
@@ -102,6 +105,109 @@ def realm_asks_checks():
     st, got = b_call("POST", mbase + "/rows/rocks/delete", key=maker)
     spec = b_call("GET", mbase, key=maker)[1]
     check("a made realm's row DELETE removes the feature from it, on or off", st == 200 and "rocks" not in spec and "feature water small" in spec, (got, spec))
+
+    # nothing asked for is dropped (0079): "only pastel colours, bison everywhere and tepees"
+    time.sleep(2.1)
+    herder = b_player()
+    h = {"Content-Type": "application/json", "X-Verse-Player": herder}
+    builder_mode["text"] = json.dumps({"asked": [{"thing": "bison everywhere", "feature": "herd"}, {"thing": "tepees", "feature": "dwellings"},
+                                                 {"thing": "a rainbow river", "feature": "none"}],
+        "name": "Pastel Plains", "camera": "third", "style": "flat", "ground": "meadow", "time": "day", "palette": "pastel", "features": [
+        {"feature": "herd", "on": True, "variant": "bison", "count": 8}, {"feature": "dwellings", "on": True, "variant": "tepee", "count": 5},
+        {"feature": "village", "on": True, "count": 5}]})
+    st, raw, _ = call("POST", "/api/playtest/realms/plan?as=lines", json.dumps({"prompt": "I want a world that is only pastel colors. and There's bison everywhere and tepees."}).encode(), h)
+    text = raw.decode()
+    req = builder_seen[-1]
+    check("the planner is asked for a palette, and the catalogue has a herd, dwellings and a village",
+          "palette" in req["generationConfig"]["responseSchema"]["required"] and "pastel" in json.dumps(req["generationConfig"]["responseSchema"])
+          and "herd" in json.dumps(req["generationConfig"]["responseSchema"]) and "tepee" in req["systemInstruction"]["parts"][0]["text"], req["generationConfig"]["responseSchema"].get("required"))
+    check("her prompt's board: pastel, a herd of bison, tepees, its people, and what no feature makes kept as wanted",
+          st == 200 and "palette pastel\n" in text and "f herd 1 A herd of 8 bison\n" in text and "f dwellings 1 5 tepees\n" in text
+          and "f village 1 A village of 5 people\n" in text and "want a rainbow river\n" in text, text)
+    plan_id = int(text.split()[1])
+    time.sleep(2.1)
+    builder_mode["text"] = json.dumps({"asked": [{"thing": "bison", "feature": "herd"}], "name": "Pastel Plains", "camera": "third", "style": "flat",
+        "ground": "meadow", "time": "day", "palette": "pastel", "features": [{"feature": "herd", "on": True, "variant": "bison", "count": 8},
+        {"feature": "dwellings", "on": True, "variant": "tepee", "count": 5}, {"feature": "village", "on": True, "count": 5}]})
+    st, raw, _ = call("POST", "/api/playtest/realms/plan?as=lines", json.dumps({"prompt": "bison", "plan": plan_id, "on": [True, True, True]}).encode(), h)
+    text = raw.decode()
+    check("a revision keeps what was wanted before", st == 200 and "want a rainbow river\n" in text, text)
+    plan_id = int(text.split()[1])
+    st, raw, _ = call("POST", "/api/playtest/realms?as=lines", json.dumps({"plan": plan_id, "on": [True, True, True]}).encode(), h)
+    slug = [l[5:] for l in raw.decode().split("\n") if l.startswith("slug ")][0]
+    spec = b_call("GET", "/api/playtest/realms/" + slug, key=herder)[1]
+    got = b_call("GET", "/api/playtest/realms/" + slug + "/asks", key=herder)[1]
+    check("MAKE IT makes it: pastel, the herd, the tepees, the village", "palette pastel\n" in spec and "feature herd bison 8\n" in spec
+          and "feature dwellings tepee 5\n" in spec and "feature village 5\n" in spec, spec)
+    check("and what it can't draw yet waits on its feature list, NOT APPLIED", got.endswith(" waiting ask a rainbow river\n"), got)
+    # edit mode on it: a change of palette is undone by DELETE; what no feature makes waits as its own ask
+    time.sleep(2.1)
+    builder_mode["text"] = json.dumps({"asked": [{"thing": "brighter", "feature": "none"}, {"thing": "a waterfall", "feature": "none"}], "name": "x", "camera": "third", "style": "flat",
+        "ground": "meadow", "time": "day", "palette": "vivid", "features": [{"feature": "herd", "on": True, "variant": "bison", "count": 8},
+        {"feature": "dwellings", "on": True, "variant": "tepee", "count": 5}, {"feature": "village", "on": True, "count": 5}]})
+    st, raw, _ = call("POST", "/api/playtest/realms/" + slug + "/asks", json.dumps({"words": "brighter, and a waterfall"}).encode(), h)
+    text = raw.decode()
+    vivid = text.split()[1]
+    spec = b_call("GET", "/api/playtest/realms/" + slug, key=herder)[1]
+    got = b_call("GET", "/api/playtest/realms/" + slug + "/asks", key=herder)[1]
+    check("an ADD that changes the palette is APPLIED, and what it named that no feature makes waits on the list",
+          text.split("\n")[0].endswith(" applied") and "palette vivid\n" in spec and " waiting ask a waterfall\n" in got
+          and '"palette": "pastel"' in str(builder_seen[-1]["contents"][0]["parts"][0]["text"]), (text, got))
+    b_call("POST", "/api/playtest/realms/" + slug + "/asks/" + vivid + "/delete", key=herder)
+    check("DELETE puts the pastel back", "palette pastel\n" in b_call("GET", "/api/playtest/realms/" + slug, key=herder)[1])
+
+    # a design document (0080): every item a line, applied where it can be drawn, the rest waiting
+    def drop(path, name, data, key):
+        time.sleep(2.1)
+        st, raw, _ = call("POST", path, json.dumps({"name": name, "data": base64.b64encode(data).decode()}).encode(), {"Content-Type": "application/json", "X-Verse-Player": key})
+        return st, raw.decode()
+    builder_mode["text"] = json.dumps({"asked": [{"thing": "deer grazing", "feature": "herd"}, {"thing": "a night sky", "feature": "setup"},
+                                                 {"thing": "a castle on the hill", "feature": "none"}],
+        "name": "x", "camera": "third", "style": "flat", "ground": "meadow", "time": "night", "palette": "pastel", "features": [
+        {"feature": "herd", "on": True, "variant": "deer", "count": 6}, {"feature": "dwellings", "on": True, "variant": "tepee", "count": 5},
+        {"feature": "village", "on": True, "count": 5}]})
+    st, text = drop("/api/playtest/realms/" + slug + "/asks/doc", "Plains GDD.md", b"# Plains\n- deer grazing\n- night sky\n- a castle on the hill\n", herder)
+    seen = builder_seen[-1]["contents"][0]["parts"][0]["text"]
+    got = b_call("GET", "/api/playtest/realms/" + slug + "/asks", key=herder)[1]
+    check("a dropped .md: the model reads its words, and each thing it asks for is a line, APPLIED or NOT APPLIED",
+          st == 200 and text.startswith("doc ") and " waiting ask a castle on the hill\n" in got and " applied ask deer grazing\n" in got
+          and " applied ask a night sky\n" in got and "a castle on the hill" in seen and "Plains GDD.md" in seen, (st, text, got))
+    spec = b_call("GET", "/api/playtest/realms/" + slug, key=herder)[1]
+    deer = [l.split()[1] for l in got.split("\n") if l.endswith(" deer grazing")][0]
+    night = [l.split()[1] for l in got.split("\n") if l.endswith(" a night sky")][0]
+    check("and the realm has what it could draw", "feature herd deer 6\n" in spec and "time night\n" in spec, spec)
+    b_call("POST", "/api/playtest/realms/" + slug + "/asks/" + night + "/delete", key=herder)
+    spec = b_call("GET", "/api/playtest/realms/" + slug, key=herder)[1]
+    check("DELETE on one line takes back only what it changed", "time day\n" in spec and "feature herd deer 6\n" in spec, spec)
+    b_call("POST", "/api/playtest/realms/" + slug + "/asks/" + deer + "/delete", key=herder)
+    spec = b_call("GET", "/api/playtest/realms/" + slug, key=herder)[1]
+    check("and the herd's line puts the bison back", "feature herd bison 8\n" in spec, spec)
+    # a .docx: its paragraphs are read out of word/document.xml
+    import io, zipfile
+    z = io.BytesIO()
+    with zipfile.ZipFile(z, "w", zipfile.ZIP_DEFLATED) as f:
+        f.writestr("[Content_Types].xml", "<Types/>")
+        f.writestr("word/document.xml", '<?xml version="1.0"?><w:document><w:body><w:p><w:r><w:t>Snowy hills &amp; foxes</w:t></w:r></w:p>'
+                   '<w:p><w:r><w:t>A lighthouse</w:t></w:r></w:p></w:body></w:document>')
+    builder_mode["text"] = json.dumps({"asked": [{"thing": "a lighthouse", "feature": "none"}], "name": "x", "camera": "third", "style": "flat",
+        "ground": "meadow", "time": "day", "palette": "pastel", "features": [{"feature": "herd", "on": True, "variant": "bison", "count": 8},
+        {"feature": "dwellings", "on": True, "variant": "tepee", "count": 5}, {"feature": "village", "on": True, "count": 5}]})
+    st, text = drop("/api/playtest/realms/" + slug + "/asks/doc", "gdd.docx", z.getvalue(), herder)
+    seen = builder_seen[-1]["contents"][0]["parts"][0]["text"]
+    check("a dropped .docx: its paragraphs are what the model reads", st == 200 and "Snowy hills & foxes\nA lighthouse" in seen, (st, text, seen[-200:]))
+    st, text = drop("/api/playtest/realms/" + slug + "/asks/doc", "gdd.pdf", b"%PDF-1.4 a pdf", herder)
+    parts = builder_seen[-1]["contents"][0]["parts"]
+    check("a dropped .pdf goes to the model as itself", st == 200 and parts[1]["inlineData"]["mimeType"] == "application/pdf"
+          and base64.b64decode(parts[1]["inlineData"]["data"]) == b"%PDF-1.4 a pdf", (st, text))
+    check("anything else is refused, and a visitor can't drop one",
+          drop("/api/playtest/realms/" + slug + "/asks/doc", "gdd.exe", b"MZ", herder)[0] == 415
+          and drop("/api/playtest/realms/" + slug + "/asks/doc", "gdd.md", b"x", visitor)[0] == 403)
+    # the builder plans a board from one, what it can't draw kept as wanted
+    builder_mode["text"] = json.dumps({"asked": [{"thing": "horses", "feature": "herd"}, {"thing": "a dragon", "feature": "none"}], "name": "Doc Realm",
+        "camera": "third", "style": "lowpoly", "ground": "meadow", "time": "day", "palette": "natural", "features": [{"feature": "herd", "on": True, "variant": "horse", "count": 4}]})
+    st, text = drop("/api/playtest/realms/plan/doc?as=lines", "idea.txt", b"Horses, and a dragon.", herder)
+    check("the builder plans the board from a dropped document", st == 200 and "f herd 1 A herd of 4 horses\n" in text and "want a dragon\n" in text
+          and "Horses, and a dragon." in builder_seen[-1]["contents"][0]["parts"][0]["text"], (st, text))
     fake.shutdown()
     fake.server_close()
 

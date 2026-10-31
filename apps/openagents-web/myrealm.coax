@@ -116,6 +116,7 @@ SOLIDS :: 260;           // circles you can't walk into
 HOUSES :: 5;
 INSTANCE_FLOATS :: 16;
 LANTERNS :: 16; BIRDS :: 12; PEOPLE :: 4; PERSON :: 24; ROLE :: 40;
+HERD :: 10; DWELLINGS :: 8; VILLAGERS :: 8;   // 0079_builder_herds.sql's most of each
 CARDS :: 8;
 TOOLS :: 6;
 TOOL_BUILD :: 0; TOOL_FLY :: 1; TOOL_JUMP :: 2; TOOL_MAP :: 3; TOOL_TALK :: 4; TOOL_VOICE :: 5;
@@ -165,6 +166,9 @@ MyRealm :: struct {
   birds: int; bats: bool;
   props: [5] int; prop_n: int;   // 0 crates, 1 barrels, 2 wagon, 3 fence, 4 camp
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
+  // a herd, dwellings and a village (0079): how many, which kind; the palette tints everything
+  herd: int; herd_kind: int; dwellings: int; dwelling_kind: int; villagers: int; palette: int;
+  herd_x: [HERD] f32; herd_z: [HERD] f32; villager_x: [VILLAGERS] f32; villager_z: [VILLAGERS] f32;
   people: int; person: [PEOPLE * PERSON] u8; person_n: [PEOPLE] int; role: [PEOPLE * ROLE] u8; role_n: [PEOPLE] int;
   placed_n: int; placed_thing: [200] int; placed_x: [200] f32; placed_z: [200] f32; placed_yaw: [200] f32;
   // the pack
@@ -231,6 +235,7 @@ THING_WORDS :: [THINGS] string.["CRATE", "BARREL", "TREE", "ROCK", "FERN", "LANT
 GROUNDS :: [6] string.["meadow", "forest", "desert", "snow", "stone", "beach"];
 TIMES :: [4] string.["day", "dawn", "dusk", "night"];
 PROPS :: [5] string.["crates", "barrels", "wagon", "fence", "camp"];
+PALETTES :: [4] string.["natural", "pastel", "vivid", "muted"];
 COLOURS :: [7] string.["gold", "orange", "red", "green", "blue", "violet", "white"];
 COLOUR_RGB :: [21] f32.[1.0, 0.78, 0.35,  1.0, 0.55, 0.2,  1.0, 0.3, 0.25,  0.45, 1.0, 0.5,  0.4, 0.65, 1.0,  0.75, 0.45, 1.0,  1.0, 0.97, 0.9];
 // a house's walls, a tint on the pack's crate
@@ -298,6 +303,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
   for i: 0..<TOOLS { s[0].tools[i] = false; }
   s[0].water = 0; s[0].trees = 0; s[0].rocks = 0; s[0].plants = 0; s[0].lanterns = 0; s[0].birds = 0;
   s[0].prop_n = 0; s[0].houses = 0; s[0].people = 0; s[0].placed_n = 0; s[0].waiting = 0; s[0].owner = false;
+  s[0].herd = 0; s[0].dwellings = 0; s[0].villagers = 0; s[0].palette = 0;
   was := s[0].camera;
   s[0].ground = 0; s[0].tod = 0; s[0].name_n = 0; s[0].camera = CAM_THIRD;
   got := false;
@@ -312,6 +318,7 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
     if head == "time" { t := word_of(line, 1); for k: 0..<4 { if TIMES[k] == t { s[0].tod = k; } } continue; }
     if head == "owner" { s[0].owner = word_of(line, 1) == "1"; continue; }
     if head == "camera" { c := word_of(line, 1); for k: 0..<4 { if CAMERA_NAMES[k] == c { s[0].camera = k; } } continue; }
+    if head == "palette" { pw := word_of(line, 1); for k: 0..<4 { if PALETTES[k] == pw { s[0].palette = k; } } continue; }
     if head == "waiting" { s[0].waiting = hi_int(number_word(word_of(line, 1)), 0); continue; }
     if head == "tool" { k := tool_of(word_of(line, 1)); if k >= 0 { s[0].tools[k] = word_of(line, 2) == "1"; } continue; }
     if head == "character" && s[0].people < PEOPLE && line.count > 10 {
@@ -352,6 +359,9 @@ read_spec :: (s: [] MyRealm, text: string) -> bool {
         s[0].house_size = ifx a == "large" then 2 else ifx a == "medium" then 1 else 0;
         c := word_of(line, 3); s[0].house_colour = 0; for k: 0..<7 { if HOUSE_COLOURS[k] == c { s[0].house_colour = k; } }
       }
+      if f == "herd" { s[0].herd = clamp_int(count_of(line, 6), 0, HERD); s[0].herd_kind = ifx a == "deer" then 1 else ifx a == "horse" then 2 else 0; }
+      if f == "dwellings" { s[0].dwellings = clamp_int(count_of(line, 4), 0, DWELLINGS); s[0].dwelling_kind = ifx a == "tent" then 1 else ifx a == "hut" then 2 else 0; }
+      if f == "village" { s[0].villagers = clamp_int(count_of(line, 5), 0, VILLAGERS); }
       if f == "props" && s[0].prop_n < 5 { for k: 0..<5 { if PROPS[k] == a { s[0].props[s[0].prop_n] = k; s[0].prop_n += 1; } } }
     }
   }
@@ -609,6 +619,37 @@ lay_out :: (s: [] MyRealm) {
     if c.x > 90 { continue; }
     house(s, c.x, c.z, turn_of(-c.x, 6 - c.z), s[0].house_size, s[0].house_colour);
   }
+  // the dwellings in a loose camp round the first, their doors to its middle; the village about them
+  camp := Spot.{x = 99, z = 99};
+  if s[0].dwellings > 0 {
+    camp = spot(s, r[..], 7, 14, 4.5);
+    if camp.x > 90 { camp = spot(s, r[..], 5, GROUND_R - 4, 2.0); }
+  }
+  if camp.x < 90 {
+    ring := ifx s[0].dwellings <= 1 then 0.0f32 else 3.2 + 0.45 * cast(f32) s[0].dwellings;
+    for i: 0..<s[0].dwellings {
+      a := cast(f32) i / cast(f32) hi_int(s[0].dwellings, 1) * 6.2831853 + rand(r[..]) * 0.4;
+      x := camp.x + ring * sin(a); z := camp.z - ring * cos(a);
+      if !free(s, x, z, 1.3) { c := spot(s, r[..], 5, GROUND_R - 2, 1.4); if c.x > 90 { continue; } x = c.x; z = c.z; }
+      dwelling(s, x, z, turn_of(camp.x - x, z - camp.z), s[0].dwelling_kind);
+    }
+  }
+  if s[0].villagers > 0 {
+    home := camp;
+    if home.x > 90 && s[0].houses > 0 { home = Spot.{x = 2.5, z = -3.5}; }
+    if home.x > 90 { home = spot(s, r[..], 6, 14, 1.0); }
+    if home.x > 90 { home = Spot.{x = 0, z = -4}; }
+    for i: 0..<s[0].villagers {
+      a := rand(r[..]) * 6.2831853; d := 1.5 + 3.5 * rand(r[..]);
+      s[0].villager_x[i] = home.x + d * sin(a); s[0].villager_z[i] = home.z - d * cos(a);
+    }
+  }
+  // the herd spread over the land, each with its own patch to graze
+  for i: 0..<s[0].herd {
+    c := spot(s, r[..], 6, GROUND_R - 3, 1.6);
+    if c.x > 90 { c = Spot.{x = 12 * sin(cast(f32) i * 2.4), z = -12 * cos(cast(f32) i * 2.4)}; }
+    s[0].herd_x[i] = c.x; s[0].herd_z[i] = c.z;
+  }
   for p: 0..<s[0].prop_n {
     kind := s[0].props[p];
     c := spot(s, r[..], 5, 13, 2.2);
@@ -695,12 +736,140 @@ pawn :: (s: [] MyRealm, x: f32, y: f32, z: f32, yaw: f32, big: f32, r: f32, g: f
   sized(s, crate, x - 0.2 * k * sin(yaw), y + 0.55 * k, z + 0.2 * k * cos(yaw), turn, 0, 0.32 * k, 0.4 * k, 0.12 * k, r * 0.6, g * 0.6, b * 0.6);
 }
 
+// A dwelling (0079), its door towards yaw: a tepee (a tall cone of hide on poles, in stacked rings
+// with its poles crossing above), a tent (a ridge of canvas), or a round hut (mud walls, a thatched
+// cone). All of the pack's crate and barrel, stretched. A wall you can't walk into.
+HIDE_RGB :: [3] f32.[0.92, 0.82, 0.64]; POLE_RGB :: [3] f32.[0.38, 0.27, 0.18];
+dwelling :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int) {
+  crate := mesh_named(s, "Prop_Crate"); barrel := mesh_named(s, "Barrel");
+  if crate < 0 { return; }
+  fx := sin(yaw); fz := -cos(yaw);   // its front
+  if kind == 0 {
+    // the cone: rings narrowing as they rise, each turned a little, so it reads round
+    for k: 0..<6 {
+      f := cast(f32) k / 6.0;
+      w := 2.6 * (1 - f) + 0.2;
+      shade := 1.0 - 0.05 * cast(f32) (k % 2);
+      sized(s, ifx barrel >= 0 then barrel else crate, x, f * 3.1, z, yaw + cast(f32) k * 0.4, 0, w, 0.56, w, HIDE_RGB[0] * shade, HIDE_RGB[1] * shade, HIDE_RGB[2] * shade);
+    }
+    // a band painted round it, and the poles crossing out of the top
+    sized(s, ifx barrel >= 0 then barrel else crate, x, 0.75, z, yaw, 0, 2.25, 0.16, 2.25, 0.55, 0.32, 0.26);
+    for k: 0..<3 {
+      a := cast(f32) k * 2.094 + yaw;
+      sized(s, crate, x + 0.12 * cos(a), 3.2, z + 0.12 * sin(a), a, 0.35, 0.06, 0.95, 0.06, POLE_RGB[0], POLE_RGB[1], POLE_RGB[2]);
+    }
+    sized(s, crate, x + 1.05 * fx, 0, z + 1.05 * fz, -yaw, 0, 0.6, 1.0, 0.1, 0.3, 0.2, 0.14);   // the door
+    solid(s, x, z, 1.3);
+    return;
+  }
+  if kind == 1 {
+    // a ridge tent: two sloped sheets, its ends, and the dark opening
+    half: f32 = 1.0; rise: f32 = 1.4; slope := sqrt(half * half + rise * rise); tilt := turn_of(rise, half);
+    ax := cos(yaw); az := sin(yaw);
+    for side: 0..<2 {
+      k: f32 = ifx side == 0 then 1.0f32 else -1.0f32;
+      sized(s, crate, x + k * 0.5 * half * ax, 0.5 * rise - 0.35, z + k * 0.5 * half * az, -yaw, -k * tilt, slope, 0.08, 2.6, 0.82, 0.78, 0.62);
+    }
+    sized(s, crate, x + 1.28 * fx, 0, z + 1.28 * fz, -yaw, 0, 0.55, 1.0, 0.06, 0.22, 0.18, 0.14);
+    solid(s, x, z, 1.4);
+    return;
+  }
+  // a round hut: mud walls, a thatched cone in three steps, a door
+  sized(s, ifx barrel >= 0 then barrel else crate, x, 0, z, yaw, 0, 2.8, 1.8, 2.8, 0.78, 0.6, 0.42);
+  for k: 0..<3 {
+    w := 3.3 - 1.0 * cast(f32) k;
+    sized(s, ifx barrel >= 0 then barrel else crate, x, 1.75 + 0.42 * cast(f32) k, z, yaw + cast(f32) k * 0.5, 0, w, 0.46, w, 0.86, 0.72, 0.38);
+  }
+  sized(s, crate, x + 1.38 * fx, 0, z + 1.38 * fz, -yaw, 0, 0.7, 1.35, 0.08, 0.3, 0.2, 0.13);
+  solid(s, x, z, 1.5);
+}
+
+// An animal of the herd facing yaw (forward is (sin yaw, -cos yaw), as a figure's): bison (a dark
+// shaggy body, the hump, a low heavy head with horns), deer (light, long legs, antlers) or a horse
+// (long neck and head, a mane). graze 0 to 1 lowers its head to the grass.
+animal :: (s: [] MyRealm, x: f32, z: f32, yaw: f32, kind: int, graze: f32) {
+  crate := mesh_named(s, "Prop_Crate");
+  if crate < 0 { return; }
+  fx := sin(yaw); fz := -cos(yaw); ax := cos(yaw); az := sin(yaw);
+  turn := -yaw;
+  long := ifx kind == 0 then 1.9f32 else ifx kind == 1 then 1.15f32 else 1.6f32;
+  wide := ifx kind == 0 then 0.95f32 else ifx kind == 1 then 0.42f32 else 0.55f32;
+  deep := ifx kind == 0 then 0.95f32 else ifx kind == 1 then 0.5f32 else 0.62f32;
+  leg := ifx kind == 0 then 0.55f32 else ifx kind == 1 then 0.8f32 else 0.9f32;
+  r := ifx kind == 0 then 0.33f32 else ifx kind == 1 then 0.74f32 else 0.52f32;
+  g := ifx kind == 0 then 0.22f32 else ifx kind == 1 then 0.52f32 else 0.34f32;
+  b := ifx kind == 0 then 0.14f32 else ifx kind == 1 then 0.32f32 else 0.2f32;
+  sized(s, crate, x, leg, z, turn, 0, wide, deep, long, r, g, b);   // the body
+  for k: 0..<4 {
+    sx: f32 = ifx k % 2 == 0 then 1.0f32 else -1.0f32; sz: f32 = ifx k < 2 then 1.0f32 else -1.0f32;
+    lx := x + sx * 0.32 * wide * ax + sz * 0.36 * long * fx; lz := z + sx * 0.32 * wide * az + sz * 0.36 * long * fz;
+    sized(s, crate, lx, 0, lz, turn, 0, 0.11 + 0.08 * wide, leg + 0.05, 0.11 + 0.08 * wide, r * 0.7, g * 0.7, b * 0.7);
+  }
+  if kind == 0 {
+    // the hump and the shaggy front, the head low between them, short pale horns
+    sized(s, crate, x + 0.38 * fx, leg + deep - 0.1, z + 0.38 * fz, turn, 0, 0.85, 0.5, 0.85, r * 0.85, g * 0.82, b * 0.8);
+    sized(s, crate, x + 0.6 * fx, leg - 0.15, z + 0.6 * fz, turn, 0, 1.05, deep + 0.25, 0.7, r * 0.8, g * 0.75, b * 0.7);
+    hy := leg + 0.15 - 0.4 * graze;
+    sized(s, crate, x + 1.12 * fx, hy, z + 1.12 * fz, turn, 0, 0.6, 0.62, 0.55, r * 0.6, g * 0.55, b * 0.5);
+    for k: 0..<2 {
+      sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32;
+      sized(s, crate, x + 1.1 * fx + sx * 0.36 * ax, hy + 0.5, z + 1.1 * fz + sx * 0.36 * az, turn, -sx * 0.6, 0.08, 0.22, 0.08, 0.88, 0.84, 0.74);
+    }
+    return;
+  }
+  // the neck rises from the front, the head on it (lowered to graze)
+  nh := ifx kind == 1 then 0.5f32 else 0.75f32;
+  ny := leg + deep * 0.6;
+  sized(s, crate, x + 0.5 * long * fx, ny, z + 0.5 * long * fz, turn, 0, 0.22 + 0.1 * wide, nh * (1 - 0.5 * graze), 0.28, r * 0.95, g * 0.95, b * 0.95);
+  hy := ny + nh * (1 - 0.5 * graze) - 0.6 * graze;
+  hl := ifx kind == 1 then 0.36f32 else 0.6f32;
+  sized(s, crate, x + (0.5 * long + 0.18) * fx, hy, z + (0.5 * long + 0.18) * fz, turn, 0, 0.24, 0.26, hl, r * 0.9, g * 0.88, b * 0.86);
+  if kind == 1 {
+    for k: 0..<2 {
+      sx: f32 = ifx k == 0 then 1.0f32 else -1.0f32;
+      sized(s, crate, x + 0.5 * long * fx + sx * 0.12 * ax, hy + 0.24, z + 0.5 * long * fz + sx * 0.12 * az, turn, -sx * 0.45, 0.04, 0.42, 0.04, 0.82, 0.74, 0.6);
+    }
+  } else {
+    sized(s, crate, x + 0.45 * long * fx, ny + 0.1, z + 0.45 * long * fz, turn, 0, 0.1, nh * (1 - 0.5 * graze) + 0.1, 0.3, 0.16, 0.11, 0.08);   // the mane
+  }
+}
+// The village's clothes: plain, everyday colours.
+VILLAGE_RGB :: [18] f32.[0.62, 0.44, 0.3,  0.4, 0.5, 0.62,  0.7, 0.62, 0.42,  0.48, 0.58, 0.4,  0.66, 0.36, 0.32,  0.5, 0.42, 0.56];
+
+// The palette over a colour: pastel lifts it pale and soft, vivid makes it bolder, muted greys it.
+Tone :: struct { r: f32; g: f32; b: f32; }
+toned :: (palette: int, r: f32, g: f32, b: f32) -> Tone {
+  if palette == 0 { return Tone.{r = r, g = g, b = b}; }
+  l := 0.3 * r + 0.55 * g + 0.15 * b;
+  if palette == 1 { return Tone.{r = 0.45 * (l + 0.55 * (r - l)) + 0.62, g = 0.45 * (l + 0.55 * (g - l)) + 0.56, b = 0.45 * (l + 0.55 * (b - l)) + 0.66}; }
+  if palette == 2 { return Tone.{r = hi(0, l + 1.45 * (r - l)), g = hi(0, l + 1.45 * (g - l)), b = hi(0, l + 1.45 * (b - l))}; }
+  return Tone.{r = 0.9 * (l + 0.4 * (r - l)), g = 0.9 * (l + 0.4 * (g - l)), b = 0.9 * (l + 0.4 * (b - l))};
+}
+
 // What moves, after what was laid out: you (unless the camera is your eyes) and the flock, circling
 // ahead of you low enough to see against the sky, dark wings beating.
 actors :: (s: [] MyRealm) {
   s[0].piece_n = s[0].static_n;
   if s[0].camera != CAM_FIRST { pawn(s, s[0].x, s[0].y, s[0].z, s[0].yaw, 1, YOU_RGB[0], YOU_RGB[1], YOU_RGB[2], true); }
   crate := mesh_named(s, "Prop_Crate");
+  // the herd roams its patches, now and then stopping to graze; the village goes about its day
+  for i: 0..<s[0].herd {
+    t := s[0].time * (0.05 + 0.012 * cast(f32) (i % 4)) + cast(f32) i * 1.7;
+    rr := 2.2 + 0.8 * sin(cast(f32) i * 1.9);
+    dir: f32 = ifx i % 2 == 0 then 1.0f32 else -1.0f32;
+    x := s[0].herd_x[i] + rr * cos(dir * t); z := s[0].herd_z[i] + rr * sin(dir * t);
+    yaw := turn_of(-dir * rr * sin(dir * t), -(dir * rr * cos(dir * t)));
+    graze := ifx s[0].still then 0.0f32 else hi(0, sin(s[0].time * 0.4 + cast(f32) i * 2.1) - 0.3);
+    animal(s, x, z, yaw, s[0].herd_kind, graze);
+  }
+  for i: 0..<s[0].villagers {
+    t := s[0].time * (0.09 + 0.015 * cast(f32) (i % 3)) + cast(f32) i * 2.3;
+    rr := 1.6 + 0.6 * cast(f32) (i % 3);
+    x := s[0].villager_x[i] + rr * cos(t); z := s[0].villager_z[i] + 0.7 * rr * sin(t);
+    yaw := turn_of(-rr * sin(t), -(0.7 * rr * cos(t)));
+    o := (i % 6) * 3;
+    pawn(s, x, 0, z, yaw, 0.92 + 0.06 * cast(f32) (i % 3), VILLAGE_RGB[o], VILLAGE_RGB[o + 1], VILLAGE_RGB[o + 2], false);
+  }
   for i: 0..<s[0].birds {
     b := bird_at(s, i);
     span: f32 = ifx s[0].bats then 0.5f32 else 0.62f32;
@@ -751,7 +920,8 @@ build_draws :: (s: [] MyRealm) {
       s[0].objects[t] = m0; s[0].objects[t + 1] = m1; s[0].objects[t + 2] = m2; s[0].objects[t + 3] = x - (m0 * cx + m1 * floor_y + m2 * cz);
       s[0].objects[t + 4] = m4; s[0].objects[t + 5] = m5; s[0].objects[t + 6] = m6; s[0].objects[t + 7] = y - (m4 * cx + m5 * floor_y + m6 * cz);
       s[0].objects[t + 8] = m8; s[0].objects[t + 9] = m9; s[0].objects[t + 10] = m10; s[0].objects[t + 11] = z - (m8 * cx + m9 * floor_y + m10 * cz);
-      s[0].objects[t + 12] = s[0].piece_tint[p * 3]; s[0].objects[t + 13] = s[0].piece_tint[p * 3 + 1]; s[0].objects[t + 14] = s[0].piece_tint[p * 3 + 2]; s[0].objects[t + 15] = 0;
+      tn := toned(s[0].palette, s[0].piece_tint[p * 3], s[0].piece_tint[p * 3 + 1], s[0].piece_tint[p * 3 + 2]);
+      s[0].objects[t + 12] = tn.r; s[0].objects[t + 13] = tn.g; s[0].objects[t + 14] = tn.b; s[0].objects[t + 15] = 0;
       s[0].object_n += 1;
     }
     if s[0].object_n > base {
@@ -1684,6 +1854,11 @@ realm_frame :: (s: [] MyRealm, t: [] Track, out: [] f32, uniforms: [] f32, width
     uniforms[GROUND_AT + i] = ifx snow_paint then PAINT_SNOW[tod * 3 + i] else GROUND_RGB[gr * 3 + i];
     uniforms[SUN_AT + i] = SUN[tod * 4 + i];
   }
+  for at: 0..<3 {
+    o := ifx at == 0 then SKY_AT else ifx at == 1 then HORIZON_AT else GROUND_AT;
+    tn := toned(s[0].palette, uniforms[o], uniforms[o + 1], uniforms[o + 2]);
+    uniforms[o] = tn.r; uniforms[o + 1] = tn.g; uniforms[o + 2] = tn.b;
+  }
   uniforms[EYE_AT + 3] = GROUND_R;
   uniforms[RAY_AT + 3] = ifx s[0].ortho then 1.0f32 else 0.0f32;   // 2D: every pixel's ray is the same, from its own place
   uniforms[RAY_AT + 7] = HAZE_FROM[s[0].camera];
@@ -1846,6 +2021,26 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   dx := s[0].piece_x[door]; dz := s[0].piece_z[door] - 6; wx := s[0].piece_x[walls]; wz := s[0].piece_z[walls] - 6;
   #assert dx * dx + dz * dz < wx * wx + wz * wz;
   #assert !free(s[..], 2.5, -3.5, 0.1);
+}
+
+#test "only pastel colours, bison everywhere and tepees: a pastel realm with a roaming herd of bison, a camp of tepees and its people" {
+  s: [1] MyRealm; t: [1] Track;
+  opened(s[..], t[..], "pastel-bison-tepees", "realm pastel-bison-tepees\nname Pastel Plains\nstyle flat\nground meadow\ntime day\nowner 1\nfeature dwellings tepee 5\nfeature village 5\nfeature herd bison 8\npalette pastel\n");
+  #assert s[0].laid && s[0].herd == 8 && s[0].herd_kind == 0 && s[0].dwellings == 5 && s[0].dwelling_kind == 0 && s[0].villagers == 5 && s[0].palette == 1;
+  // the tepees stand in the realm, each a wall you can't walk into, away from where you start
+  #assert s[0].solid_n >= 5 && s[0].piece_n <= PIECES;
+  for i: 0..<s[0].solid_n { dx := s[0].solid_x[i]; dz := s[0].solid_z[i] - 6; #assert dx * dx + dz * dz > 4; }
+  // the herd moves: where its first animal is changes as time passes
+  a0 := s[0].piece_x[s[0].static_n + 6];
+  s[0].time += 10; actors(s[..]);
+  #assert s[0].piece_x[s[0].static_n + 6] != a0;
+  // the palette tints what is drawn: pale and soft, every channel lifted
+  #assert s[0].object_n > 0;
+  for o: 0..<s[0].object_n { #assert s[0].objects[o * INSTANCE_FLOATS + 12] >= 0.6 && s[0].objects[o * INSTANCE_FLOATS + 14] >= 0.6; }
+  // deer and horses, tents and huts read too
+  q: [1] MyRealm; u: [1] Track;
+  opened(q[..], u[..], "plains", "realm plains\nname Plains\nstyle lowpoly\nground meadow\ntime day\nowner 0\nfeature dwellings hut 3\nfeature herd horse 4\npalette vivid\n");
+  #assert q[0].laid && q[0].herd_kind == 2 && q[0].dwelling_kind == 2 && q[0].palette == 2 && q[0].villagers == 0;
 }
 
 #test "a round tree has its leaves; mixed trees mix" {

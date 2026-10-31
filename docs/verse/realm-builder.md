@@ -37,7 +37,20 @@ and takes them into it.
    the catalogue bound it.
 3. **Toggles.** A tap checks a row on or off. Talking again sends the words, the plan and the
    switches: the model revises that board.
-4. **Make.** MAKE IT sends `{plan, on: [...]}` to `POST /api/playtest/realms?as=lines`. The server
+   Every revision says so: "Saved. The board shows it now.", or "Saved. The board already had all
+   of that." when the board came back the same.
+   Nothing asked for is dropped (0079): the planner names every thing asked for in `asked`, each
+   with the feature that makes it or none, and each with none stays on the board as a `want THING`
+   line, under ASKED FOR, NOT IN IT YET, marked NOT APPLIED YET (at most 24, carried through every
+   revision). MAKE IT puts each on the realm's feature list as a waiting ask
+   (`docs/verse/realm-edit.md`, "What you asked for"), where an agent can build it.
+   OR DROP A DESIGN DOCUMENT (`coax/web/docs.js`, action 31) sends a .md, .txt, .pdf or .docx to
+   `POST /api/playtest/realms/plan/doc?as=lines {name, data, setup}` (migrations/0080): the server
+   takes its text out (a .docx's `word/document.xml`, inflated; a PDF the model reads itself) and
+   the planner plans the board it describes, the same way.
+4. **Make.** MAKE IT makes exactly what the board shows: words still typed are sent first, and
+   while words said or typed are on their way to the planner it waits for that board, then makes
+   it ("Making it once your last words are on the board."). MAKE IT sends `{plan, on: [...]}` to `POST /api/playtest/realms?as=lines`. The server
    takes the plan's stored board (the page never sends features, only switches by index), keeps the
    checked rows, makes the world `made-<slug>` owned by the player key (or the account), and writes
    `realms/<slug>`, `realms/<slug>/index.html`, `index.md` and `realms/made-slugs.txt` into the
@@ -59,6 +72,10 @@ and takes them into it.
 | flock | crow, bat; 3 to 12 | dark wings circling low ahead of whoever walks |
 | props | crates, barrels, wagon, fence, camp (up to 5) | the fixture pack's props |
 | character | a name and a role (up to 4) | a figure (the pack's barrel and crate) with its name and role |
+| house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065) |
+| herd | bison, deer, horse; 3 to 10 | animals roaming their own patches of the land and stopping to graze (0079) |
+| dwellings | tepee, tent, hut; 1 to 8 | a camp, doors to its middle: tepees of hide on crossed poles, ridge tents, round thatched huts |
+| village | 3 to 8 people | its people walking about the dwellings or the house: plain figures in everyday colours, never a caricature |
 | tool | build, fly, jump, map, talk, voice | what visitors may do (below) |
 
 Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coax`):
@@ -69,6 +86,10 @@ Cameras (`verse.builder_cameras()`, 0049; the spec's `camera` line, `myrealm.coa
 | first | at eye height (1.6 m), your figure unseen | W/S walk, A/D turn, a drag looks round, up and down; on a phone the left thumb walks and the right looks |
 | top | 17 m up and 10 m south of you, a fixed angle, north up | W/A/S/D, a thumb or a drag walk that way |
 | side | 2D: side-on, orthographic (12 m tall, tilted 8° so the ground shows), a lane through the realm | A/D walk, W or Space jumps (always); trees and characters stop you, and you jump onto rocks, crates and barrels |
+
+Palettes (0079, the spec's `palette` line): natural, pastel (pale and soft), vivid (bolder) and
+muted (greyed); `myrealm.coax` tints every piece, the sky, the horizon and the ground with it.
+A realm's revision in edit mode sets it too, and an ask's DELETE puts the one before back.
 
 Grounds: meadow, forest, desert, snow, stone, beach. Times: day, dawn, dusk, night. Styles:
 lowpoly, painterly and flat (photoreal is not built yet, so it is not offered). A painterly or flat

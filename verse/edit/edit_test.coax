@@ -305,3 +305,25 @@ ANCHOR :: RBox.{x0 = 1300, y0 = 16, x1 = 1380, y1 = 54};
   #assert url_is(v[..], "/api/playtest/realms/fairy-forest/panes") && answer(v[..], 1, "200\nquest bramble|Find acorns||Fill the basket||A lucky acorn\n");
   #assert redit_quest(v[..], "bramble") == 0 && redit_quest_part(v[..], 0, 0) == "Find acorns" && redit_quest_part(v[..], 0, 1) == "";
 }
+#test "ADD FROM A DOCUMENT: the picker opens for the realm's document URL, and its answer says what it applied" {
+  e: [1] RealmEdit;
+  out: [40000 * VERTEX_FLOATS] f32;
+  redit_start(e[..], "the-grid");
+  redit_step(e[..], 1, 390 * 3, 700 * 3, 3);
+  _s := answer(e[..], 0, HAND);
+  e[0].cards_due = false;
+  redit_toggle(e[..]);
+  redit_step(e[..], 2, 390 * 3, 700 * 3, 3);
+  _l := answer(e[..], 1, "200\n");
+  anchor := RBox.{x0 = 390 * 3 - 100 * 3, y0 = 16 * 3, x1 = 390 * 3 - 16 * 3, y1 = 54 * 3};
+  _ := redit_hud(e[..], out[..], 0, anchor);
+  #assert e[0].shown[RB_DOC] && e[0].boxes[RB_DOC].x1 <= 390 * 3 && e[0].boxes[RB_DOC].y1 <= 700 * 3;
+  #assert tap(e[..], e[0].boxes[RB_DOC]) && e[0].want_doc;
+  box: [200] u8;
+  a := redit_take_action(e[..], box[..]);
+  #assert a.kind == REDIT_ACT_DOC && cast(string) box[0..<a.n] == "/api/playtest/realms/the-grid/asks/doc" && !e[0].want_doc;
+  #assert redit_message(e[..], REDIT_MSG_DOC, "1\nGDD.md") && e[0].doc_busy;
+  #assert redit_message(e[..], REDIT_MSG_DOC, "200\ndoc 3 2 applied 1 waiting\nrow robots 1 Robots walking their rounds\n");
+  #assert !e[0].doc_busy && e[0].asks_due && cast(string) e[0].note[0..<e[0].note_n] == "From your document: 2 applied, 1 not applied yet.";
+  #assert redit_message(e[..], REDIT_MSG_DOC, "415\ndrop a .md, .txt, .pdf or .docx") && cast(string) e[0].note[0..<e[0].note_n] == "Drop a .md, .txt, .pdf or .docx.";
+}

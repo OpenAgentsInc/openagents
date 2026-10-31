@@ -36,6 +36,12 @@
 //   POST /api/playtest/realms/<slug>/asks/<id>/delete  -> 200 {deleted, reverted} | {ask, state: removing}; 403, 404
 //   POST /api/playtest/realms/<slug>/rows/<key>/delete -> 200 {deleted} | {ask, state: waiting}; 403, 404
 //   POST /api/playtest/realms/<slug>/asks/<id>/done {commit}   a site admin: built in code, or its code out; 400, 403, 404, 409
+// A design document dropped on the list or the builder (migrations/0080_realm_docs.sql): {name, data}, the
+// file's bytes in base64 (.md, .txt, .pdf or .docx, at most what a request holds). Its text is taken out
+// here (a .docx's word/document.xml, inflated) or, for a PDF, read by the model itself; every feature
+// or change it asks for becomes a line on the list (or the board), applied where it can be drawn.
+//   POST /api/playtest/realms/<slug>/asks/doc {name, data}   -> text/plain: "doc N applied M waiting", the rows; 400, 403, 413, 415
+//   POST /api/playtest/realms/plan/doc {name, data, setup}   -> the builder's board, as /plan answers it
 //
 // Who asks: the X-Verse-Player key (a logged-in player's key carries its account). A write from
 // another site's page (Origin) is refused. As a question is, the model call and the page's writes
@@ -47,10 +53,12 @@
 //   OA_BUILDER_PER_DAY    realms a player makes a day (12)
 #include "api.h"
 #include <signal.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <zlib.h>
 
 #define PREFIX "/api/playtest/realms"
 
@@ -470,6 +478,178 @@ static void revise(const request *q, PGconn *db, const char *slug, const char *k
   free(request); free(asked);
 }
 
+// ---- a design document: its text
+static uint32_t le16(const unsigned char *p) { return (uint32_t)p[0] | (uint32_t)p[1] << 8; }
+static uint32_t le32(const unsigned char *p) { return le16(p) | le16(p + 2) << 16; }
+
+// A .docx's word/document.xml, inflated: malloc'd, NUL-ended, or NULL.
+static char *docx_xml(const unsigned char *z, size_t n, size_t *out_n) {
+  if (n < 22) return NULL;
+  size_t e = n - 22;
+  while (e > 0 && le32(z + e) != 0x06054b50) { if (n - e > 22 + 65535) return NULL; e--; }
+  if (le32(z + e) != 0x06054b50) return NULL;
+  size_t entries = le16(z + e + 10), at = le32(z + e + 16);
+  static const char want[] = "word/document.xml";
+  for (size_t i = 0; i < entries && at + 46 <= n; i++) {
+    if (le32(z + at) != 0x02014b50) return NULL;
+    uint32_t method = le16(z + at + 10), packed = le32(z + at + 20), size = le32(z + at + 24);
+    uint32_t nl = le16(z + at + 28), xl = le16(z + at + 30), cl = le16(z + at + 32), local = le32(z + at + 42);
+    if (at + 46 + nl > n) return NULL;
+    if (nl == sizeof want - 1 && !memcmp(z + at + 46, want, nl)) {
+      if (local + 30 > n || le32(z + local) != 0x04034b50 || size > 8u << 20) return NULL;
+      size_t data = local + 30 + le16(z + local + 26) + le16(z + local + 28);
+      if (data > n || packed > n - data) return NULL;
+      char *xml = malloc((size_t)size + 1);
+      if (!xml) return NULL;
+      if (method == 0 && packed == size) memcpy(xml, z + data, size);
+      else if (method == 8) {
+        z_stream st = {0};
+        if (inflateInit2(&st, -15) != Z_OK) { free(xml); return NULL; }
+        st.next_in = (Bytef *)(z + data); st.avail_in = packed;
+        st.next_out = (Bytef *)xml; st.avail_out = size;
+        int rc = inflate(&st, Z_FINISH);
+        size_t got = size - st.avail_out;
+        inflateEnd(&st);
+        if (rc != Z_STREAM_END || got != size) { free(xml); return NULL; }
+      }
+      else { free(xml); return NULL; }
+      xml[size] = 0; *out_n = size;
+      return xml;
+    }
+    at += 46 + nl + xl + cl;
+  }
+  return NULL;
+}
+// Its words: a paragraph a line, a tab or break a space or a line; tags out, the five entities read.
+static size_t docx_text(const char *x, size_t n, char *out, size_t cap) {
+  size_t m = 0;
+  for (size_t i = 0; i < n && m + 1 < cap; ) {
+    if (x[i] == '<') {
+      const char *end = memchr(x + i, '>', n - i);
+      if (!end) break;
+      size_t len = (size_t)(end - (x + i)) + 1;
+      if ((len >= 6 && !strncmp(x + i, "</w:p>", 6)) || (len >= 7 && !strncmp(x + i, "<w:br", 5))) { if (m && out[m - 1] != '\n') out[m++] = '\n'; }
+      else if (len >= 7 && !strncmp(x + i, "<w:tab", 6)) out[m++] = ' ';
+      i += len;
+      continue;
+    }
+    if (x[i] == '&') {
+      static const char *names[5] = {"&amp;", "&lt;", "&gt;", "&quot;", "&apos;"};
+      static const char chars[5] = {'&', '<', '>', '"', '\''};
+      int hit = -1;
+      for (int k = 0; k < 5; k++) if (!strncmp(x + i, names[k], strlen(names[k]))) hit = k;
+      if (hit >= 0) { out[m++] = chars[hit]; i += strlen(names[hit]); continue; }
+    }
+    out[m++] = x[i++];
+  }
+  out[m] = 0;
+  return m;
+}
+
+// {name, data}: the document as the SQL asks it, {name, text} or {name, pdf: base64}, malloc'd; or
+// NULL with *status and *why set.
+#define DOC_TEXT (60 * 1024)
+static char *doc_read(PGconn *db, const char *body, int *status, const char **why) {
+  const char *v[1] = {body};
+  PGresult *r = PQexecParams(db, "SELECT coalesce(x->>'name', ''), decode(coalesce(x->>'data', ''), 'base64'), coalesce(x->>'data', ''), "
+                                 "coalesce(x->'setup', 'null')::text FROM (SELECT $1::jsonb x) y", 1, NULL, v, NULL, NULL, 1);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) { PQclear(r); *status = 400; *why = "that isn't a file"; return NULL; }
+  char name[200];
+  int nn = PQgetlength(r, 0, 0);
+  snprintf(name, sizeof name, "%.*s", nn < 199 ? nn : 199, PQgetvalue(r, 0, 0));
+  const unsigned char *bytes = (const unsigned char *)PQgetvalue(r, 0, 1);
+  size_t n = (size_t)PQgetlength(r, 0, 1);
+  for (char *c = name; *c; c++) if (*c >= 'A' && *c <= 'Z') *c = (char)(*c - 'A' + 'a');   // its kind by its ending, any case
+  size_t ln = strlen(name);
+  bool md = (ln > 3 && !strcmp(name + ln - 3, ".md")) || (ln > 9 && !strcmp(name + ln - 9, ".markdown")) || (ln > 4 && !strcmp(name + ln - 4, ".txt"));
+  bool docx = ln > 5 && !strcmp(name + ln - 5, ".docx"), pdf = ln > 4 && !strcmp(name + ln - 4, ".pdf");
+  if (!md && !docx && !pdf) { PQclear(r); *status = 415; *why = "drop a .md, .txt, .pdf or .docx"; return NULL; }
+  if (!n) { PQclear(r); *status = 400; *why = "that file is empty"; return NULL; }
+  char *text = NULL;
+  size_t tn = 0;
+  if (md) {
+    text = malloc(DOC_TEXT + 1);
+    if (text) { tn = n < DOC_TEXT ? n : DOC_TEXT; while (tn < n && tn > 0 && (bytes[tn] & 0xC0) == 0x80) tn--; memcpy(text, bytes, tn); text[tn] = 0; for (size_t i = 0; i < tn; i++) if (!text[i]) text[i] = ' '; }
+  } else if (docx) {
+    size_t xn = 0;
+    char *xml = docx_xml(bytes, n, &xn);
+    if (!xml) { PQclear(r); *status = 400; *why = "that .docx couldn't be opened"; return NULL; }
+    text = malloc(DOC_TEXT + 1);
+    if (text) tn = docx_text(xml, xn, text, DOC_TEXT + 1);
+    free(xml);
+  }
+  // the SQL's {name, text|pdf, setup}: a text's bad UTF-8 is its error (22), said as not text
+  const char *w[5] = {PQgetvalue(r, 0, 0), text ? text : "", PQgetvalue(r, 0, 2), PQgetvalue(r, 0, 3), pdf ? "true" : "false"};
+  PGresult *j = PQexecParams(db, "SELECT jsonb_strip_nulls(jsonb_build_object('name', $1::text, 'text', CASE WHEN NOT $5::boolean THEN $2::text END, "
+                                 "'pdf', CASE WHEN $5::boolean THEN $3::text END, 'setup', $4::jsonb))::text", 5, NULL, w, NULL, NULL, 0);
+  free(text);
+  PQclear(r);
+  if (PQresultStatus(j) != PGRES_TUPLES_OK || PQntuples(j) != 1) { PQclear(j); *status = 400; *why = "that file isn't text we can read"; return NULL; }
+  char *out = strdup(PQgetvalue(j, 0, 0));
+  PQclear(j);
+  (void)tn;
+  if (!out) { *status = 503; *why = "memory"; }
+  return out;
+}
+
+// The model reads the document: a longer try than a sentence's.
+static void doc_answer(int fd, const char *asked, const char *request, bool made_board) {
+  const char *model = env_or("OA_BUILDER_MODEL", "gemini-2.5-flash");
+  char *got = NULL;
+  double t0 = api_now_ms();
+  long limit = atol(env_or("OA_BUILDER_DOC_TIMEOUT_MS", "30000"));
+  long status = npc_ask_model_twice("OA_BUILDER_URL", model, request, limit > 0 ? limit : 30000, &got);
+  char http[16], taken[16];
+  snprintf(http, sizeof http, "%ld", status);
+  snprintf(taken, sizeof taken, "%d", (int)(api_now_ms() - t0));
+  PGconn *db = api_db_new();
+  const char *v[5] = {asked, http, got ? got : "", model, taken};
+  PGresult *r = db ? PQexecParams(db, made_board ? "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.builder_answer($1::jsonb, $2::int, $3, $4, $5::int, NULL) x"
+                                                 : "SELECT (x->>'status')::int, (x - 'status' - 'lines')::text, x->>'lines' FROM verse.ask_doc_answer($1::jsonb, $2::int, $3, $4, $5::int) x",
+                                  5, NULL, v, NULL, NULL, 0) : NULL;
+  if (r && PQresultStatus(r) == PGRES_TUPLES_OK && PQntuples(r) == 1) answer_lines(fd, atoi(PQgetvalue(r, 0, 0)), PQgetvalue(r, 0, 1), PQgetisnull(r, 0, 2) ? NULL : PQgetvalue(r, 0, 2));
+  else { api_log("realms: doc: %s", db ? PQerrorMessage(db) : "no database"); api_json(fd, 503, "{\"error\":\"not kept\"}"); }
+  if (status != 200) api_log("realms: model answered %ld", status);
+  if (r) PQclear(r);
+  if (db) PQfinish(db);
+  free(got);
+}
+
+// slug NULL: the builder's plan from the document; else an edit-mode list's.
+static void doc(const request *q, PGconn *db, const char *slug, const char *key, const char *admin) {
+  char *body = body_of(q);
+  if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return; }
+  int st = 0; const char *why = "";
+  char *d = doc_read(db, body, &st, &why);
+  free(body);
+  if (!d) { char out[160]; snprintf(out, sizeof out, "{\"error\": \"%s\"}", why); answer_lines(q->fd, st, out, NULL); return; }
+  const char *v[5] = {slug ? slug : "", d, env_or("OA_BUILDER_DAILY_CAP", "3000"), key, admin};
+  PGresult *r = PQexecParams(db, slug ? "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, (x - 'request' - 'status' - 'error')::text FROM verse.ask_doc_ask($1, $2::jsonb, $3::int, $4, $5::boolean) x"
+                                      : "SELECT (x->>'status')::int, x->>'error', (x->'request')::text, jsonb_build_object('id', x->'id', 'setup', x->'setup')::text FROM verse.builder_doc_ask($2::jsonb, $3::int, $4) x WHERE $1::text IS NOT NULL AND $5::boolean IS NOT NULL",
+                             5, NULL, v, NULL, NULL, 0);
+  free(d);
+  if (PQresultStatus(r) != PGRES_TUPLES_OK || PQntuples(r) != 1) {
+    api_log("realms: doc ask: %s", PQerrorMessage(db));
+    PQclear(r);
+    answer_lines(q->fd, 500, "{\"error\":\"not asked\"}", NULL);
+    return;
+  }
+  int status = atoi(PQgetvalue(r, 0, 0));
+  if (status != 200 || PQgetisnull(r, 0, 2)) {
+    char out[200]; snprintf(out, sizeof out, "{\"error\": \"%s\"}", PQgetisnull(r, 0, 1) ? "not asked" : PQgetvalue(r, 0, 1));
+    PQclear(r);
+    answer_lines(q->fd, status == 200 ? 503 : status, out, NULL);
+    return;
+  }
+  char *request = strdup(PQgetvalue(r, 0, 2)), *asked = strdup(PQgetvalue(r, 0, 3));
+  PQclear(r);
+  signal(SIGCHLD, SIG_IGN);
+  pid_t pid = fork();
+  if (pid == 0) { doc_answer(q->fd, asked, request, !slug); _exit(0); }
+  if (pid < 0) api_json(q->fd, 503, "{\"error\":\"busy\"}");
+  free(request); free(asked);
+}
+
 static bool slug_ok(const char *s, size_t n) {
   if (!n || n > 48) return false;
   for (size_t i = 0; i < n; i++) if (!((s[i] >= 'a' && s[i] <= 'z') || (s[i] >= '0' && s[i] <= '9') || s[i] == '-')) return false;
@@ -492,6 +672,11 @@ bool realms_route(const request *q) {
   if (!*rest) {
     if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a board\"}"); return true; }
     make(q, db, key);
+    return true;
+  }
+  if (!strcmp(rest, "plan/doc")) {
+    if (!post) { api_json(q->fd, 405, "{\"error\":\"POST a document\"}"); return true; }
+    doc(q, db, NULL, key, "false");
     return true;
   }
   if (!strcmp(rest, "plan") || !strcmp(rest, "pick")) {
@@ -596,6 +781,7 @@ bool realms_route(const request *q) {
   }
   if (!strcmp(what, "revise")) { revise(q, db, slug, key, admin, false); return true; }
   if (!strcmp(what, "asks")) { revise(q, db, slug, key, admin, true); return true; }
+  if (!strcmp(what, "asks/doc")) { doc(q, db, slug, key, admin); return true; }
   if (!strcmp(what, "lore") || !strcmp(what, "quest")) {
     char *body = body_of(q);
     if (!body) { api_json(q->fd, 503, "{\"error\":\"memory\"}"); return true; }
