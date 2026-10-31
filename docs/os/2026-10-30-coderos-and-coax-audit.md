@@ -250,6 +250,29 @@ builds on Linux. The full `coax/build.sh`, which runs the compiler's own
 mutation gates, had not finished when this was written, so the final
 compiler and the examples have not been run on Linux yet.
 
+## Status (2026-10-31)
+
+- **Step 3, the engine as the session: done.** All 16 realms run natively
+  on the 4080 over Vulkan, with shaders written in Coax, and travel works
+  between them (docs/verse/native-gpu.md; release 2a94f5fab2). The owner's
+  play-through is in NEEDS_OWNER.md, and the Chromium kiosk stays until it
+  passes.
+- **Step 1: not started.** It waits on decision 1 below. `coderos-hosts`
+  still imports `openagents?dir=os` at 2ca255550e.
+- **Step 2 row 1, CPU limits: written, not installed.**
+  `os/cpu-limits.coax` (the tool) and `os/cpu-limits-policy.coax`
+  (`#authority`, 0 mutants survive) replace the shell in
+  `coderos-cpu-limits`. A `--dry-run` on coderos-4080 finds the same zone
+  (intel-rapl:0, both constraints) and the same values (125 W, 88 percent)
+  as the unit's last run, and prints the same lines. A fake sysfs check
+  shows it leaves subzones and intel-rapl-mmio alone, as the shell does.
+  Installing it means pointing the unit's ExecStart at a 20-line
+  derivation that runs `coax build`, which is a NixOS change that needs
+  the owner's yes.
+- **Step 2 rows 2 to 6: not started.** Row 2 waits on a Coax `coder` to
+  update. Rows 4 to 6 wait on C header import and pointer FFI in the
+  compiler.
+
 ## Decisions for the owner
 
 1. **Approve step 1:** copy the CoderOS modules into the private

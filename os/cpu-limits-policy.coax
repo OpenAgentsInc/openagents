@@ -1,0 +1,43 @@
+// CoderOS's CPU limits, the policy (docs/os/2026-10-30-coderos-and-coax-audit.md, step 2 row 1):
+// what os/cpu-limits.coax writes into sysfs, in place of coderos-cpu-limits.nix's shell (#484).
+// It spends power, so it is #authority: the ceiling, the boost cap and which RAPL zones they
+// go to are decided here and nowhere else.
+#authority;
+
+// The package power ceiling, in microwatts: 125 W on every RAPL package zone's two constraints
+// (long and short term), as the shell wrote it.
+CL_CEILING_UW :: 125000000;
+// intel_pstate's max_perf_pct: boost held to 88 percent of the top frequency.
+CL_MAX_PERF_PCT :: 88;
+// The constraints of a package zone the ceiling goes to.
+CL_CONSTRAINTS :: 2;
+
+// Whether a name under /sys/class/powercap is a package zone: intel-rapl:N, one colon, digits
+// after it. A subzone (intel-rapl:0:1, the cores or the uncore) is not, nor intel-rapl-mmio:N.
+cl_package :: (name: string) -> bool {
+  p := "intel-rapl:";
+  if name.count <= p.count || name[0..<p.count] != p { return false; }
+  for i: p.count..<name.count { if name[i] < '0' || name[i] > '9' { return false; } }
+  return true;
+}
+#test "package zones, not subzones" {
+  #assert cl_package("intel-rapl:0") && cl_package("intel-rapl:12") && cl_package("intel-rapl:9");
+  #assert !cl_package("intel-rapl:0:1") && !cl_package("intel-rapl:") && !cl_package("intel-rapl");
+  #assert !cl_package("intel-rapl-mmio:0") && !cl_package("intel-rapl:a") && !cl_package("intel-rapl:0a");
+  #assert !cl_package("") && !cl_package("xintel-rapl:0");
+}
+
+// A constraint index the ceiling goes to: 0 and 1.
+cl_constraint :: (c: int) -> bool { return c >= 0 && c < CL_CONSTRAINTS; }
+#test "the long and short term constraints, no other" {
+  #assert cl_constraint(0) && cl_constraint(1);
+  #assert !cl_constraint(2) && !cl_constraint(-1);
+}
+
+// The text written to a constraint's power_limit_uw and to max_perf_pct.
+cl_ceiling_text :: () -> string { return "125000000"; }
+cl_perf_text :: () -> string { return "88"; }
+#test "the written text is the constants" {
+  #assert cl_ceiling_text() == "125000000" && cl_perf_text() == "88";
+  #assert CL_CEILING_UW == 125000000 && CL_MAX_PERF_PCT == 88 && CL_CONSTRAINTS == 2;
+}
