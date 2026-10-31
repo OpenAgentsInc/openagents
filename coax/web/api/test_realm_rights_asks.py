@@ -125,7 +125,7 @@ def realm_asks_checks():
           st == 200 and "palette pastel\n" in text and "f herd 1 A herd of 8 bison\n" in text and "f dwellings 1 5 tepees\n" in text
           and "f village 1 A village of 5 people\n" in text and "want a rainbow river\n" in text, text)
     items = req["generationConfig"]["responseSchema"]["properties"]["asked"]["items"]
-    check("each asked thing is said as said and then without its mood words; a whole place is its own kind (0085)",
+    check("each asked thing is said as said and then without its mood words; a whole place is its own kind (0088)",
           items["required"][:2] == ["said", "thing"] and "place" in items["properties"]["feature"]["enum"]
           and "building" in items["properties"]["feature"]["enum"] and "friendly owls" in req["systemInstruction"]["parts"][0]["text"], items)
     check("her colours are the setup's palette, not a line still wanted (0081)",

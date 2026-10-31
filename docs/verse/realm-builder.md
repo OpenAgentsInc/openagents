@@ -44,7 +44,7 @@ and takes them into it.
    line, under ASKED FOR, NOT IN IT YET, marked NOT APPLIED YET (at most 24, carried through every
    revision). Every thing asked for is named, not only the main ones, and each says whether its feature
    draws it as asked (`same`, 0083): one a feature only stands in for (crows for owls, a pond for a sea)
-   is a `want` line too, beside the stand-in. Each thing is said twice (0085): `said`, their words, and
+   is a `want` line too, beside the stand-in. Each thing is said twice (0088): `said`, their words, and
    `thing`, the same without words about mood (friendly, cosy, spooky), so "friendly owls" drawn as owls
    never also stands as a wanted line. A whole place (a farm, a village, a cove) is feature `place`, wanted only when
    the features on the board don't make it; two kinds of animal are two herds. `coax/web/api/eval-builder.sh` scores forty prompts with a judge
@@ -72,16 +72,16 @@ and takes them into it.
 
 | Feature | Values | Built from |
 |---|---|---|
-| land | hills, mountains, cliffs, floating, island, volcano | hills, snow-capped mountains or cliffs round the edge; a floating island (sky past its edge, small islands floating beyond); the sea all round; a volcano glowing and smoking on the skyline (0085) |
-| building | cabin, barn, windmill, lighthouse, castle, tower, market, shop, saloon, temple, ruins (up to 4, one of each) | a log cabin, a red barn, a windmill whose sails turn, a banded lighthouse with its lamp lit, a stone castle (walls, a gate, four roofed towers, a keep), a stone tower, three market stalls, a shop with an awning, a saloon behind a false front, a stepped temple, broken columns (0085) |
-| water | small, medium, large; pond, river, frozen, lava | a pond, a bending river across the land, ice or glowing lava, drawn by `myrealm.wgsl` (0085) |
-| trees | round, pine, dead, mixed, palm, blossom; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted; blossom: pink); palms built of a leaning trunk and fronds (0085) |
+| land | hills, mountains, cliffs, floating, island, volcano | hills, snow-capped mountains or cliffs round the edge; a floating island (sky past its edge, small islands floating beyond); the sea all round; a volcano glowing and smoking on the skyline (0088) |
+| building | cabin, barn, windmill, lighthouse, castle, tower, market, shop, saloon, temple, ruins (up to 4, one of each) | a log cabin, a red barn, a windmill whose sails turn, a banded lighthouse with its lamp lit, a stone castle (walls, a gate, four roofed towers, a keep), a stone tower, three market stalls, a shop with an awning, a saloon behind a false front, a stepped temple, broken columns (0088) |
+| water | small, medium, large; pond, river, frozen, lava | a pond, a bending river across the land, ice or glowing lava, drawn by `myrealm.wgsl` (0088) |
+| trees | round, pine, dead, mixed, palm, blossom; 3 to 20 | the fixture pack's tree (dead: no leaves, tinted; blossom: pink); palms built of a leaning trunk and fronds (0088) |
 | bigtree | round, pine, dead | one giant tree standing alone, four times a tree's size (0083) |
 | rocks | 2 to 16 | the fixture pack's rock |
-| plants | fern, flower, mushroom, cactus, crystal; 4 to 24 | ferns; flowers on stems; mushrooms that glow after dark; cacti with arms; glowing crystals (0085) |
+| plants | fern, flower, mushroom, cactus, crystal; 4 to 24 | ferns; flowers on stems; mushrooms that glow after dark; cacti with arms; glowing crystals (0088) |
 | lanterns | gold, orange, red, green, blue, violet, white; 4 to 16 | lights in cages on dark posts, a pool of light each after dark |
-| flock | crow, bat, owl, parrot, gull, dragon, fairy, firefly, butterfly; 1 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083); a dragon high and wide; fairies, fireflies and butterflies flit low, fairies and fireflies glowing (0085) |
-| props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue (up to 8) | the fixture pack's props; a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0085) |
+| flock | crow, bat, owl, parrot, gull, dragon, fairy, firefly, butterfly; 1 to 12 | wings circling low ahead of whoever walks (owls: tawny, broad, slow, a round pale-faced head; 0083); a dragon high and wide; fairies, fireflies and butterflies flit low, fairies and fireflies glowing (0088) |
+| props | crates, barrels, wagon, fence, camp, campfire, boat, bridge, signpost, well, treasure, graves, tumbleweeds, statue (up to 8) | the fixture pack's props; a campfire with its light, boats on the water (sails at sea), a bridge across the river, a well, a chest and gold, gravestones, rolling tumbleweeds, a stone statue (0088) |
 | character | a name and a role (up to 4) | a figure (the pack's barrel and crate) with its name and role |
 | house | white, red, blue, green, yellow, brown, grey; small to large; 1 to 5 | walls, a gabled roof, a door and lit windows (0065) |
 | herd | bison, deer, horse, sheep, goat, cow, pig, wolf, fox, dog, camel, chicken, dinosaur; 1 to 10; up to two herds (10 animals in all) | animals roaming their own patches of the land and stopping to graze (0079) |

@@ -37,7 +37,7 @@
 #load "analytics.coax";
 #load "../../verse/edit/edit.coax";   // the board, settings and cards every realm shares
 #load "../../verse/style-preset.coax";
-#load "myrealm-things.coax";   // the land, buildings and more animals, fliers, plants and props (0085)   // a painterly or flat realm's look (docs/verse/art-styles.md)
+#load "myrealm-things.coax";   // the land, buildings and more animals, fliers, plants and props (0088)   // a painterly or flat realm's look (docs/verse/art-styles.md)
 
 VERTEX_FLOATS :: 16;   // x, y, along, across, length, core, light, glow, red, green, blue, mode, 0, 0, 0, 0
 MAX_VERTICES :: 30000;
@@ -177,7 +177,7 @@ MyRealm :: struct {
   props: [PROP_MOST] int; prop_n: int;   // PROPS
   houses: int; house_size: int; house_colour: int;   // a house (0065_builder_subject.sql): how many, 0 small to 2 large, HOUSE_COLOURS
   // a herd, dwellings and a village (0079): how many, which kind; the palette tints everything
-  herd: int; herd_kind: int; herd_split: int; herd_kind2: int;   // two herds (0085): the second's from herd_split
+  herd: int; herd_kind: int; herd_split: int; herd_kind2: int;   // two herds (0088): the second's from herd_split
   dwellings: int; dwelling_kind: int; villagers: int; palette: int;
   herd_x: [HERD] f32; herd_z: [HERD] f32; villager_x: [VILLAGERS] f32; villager_z: [VILLAGERS] f32;
   people: int; person: [PEOPLE * PERSON] u8; person_n: [PEOPLE] int; role: [PEOPLE * ROLE] u8; role_n: [PEOPLE] int;
@@ -2171,7 +2171,7 @@ body_is :: (s: [] MyRealm, text: string) -> bool { return cast(string) s[0].req_
   #assert !q[0].owls && !q[0].great && (s[0].piece_n - s[0].static_n) - (q[0].piece_n - q[0].static_n) == 5 * 2;
 }
 
-#test "0085's things are drawn: a floating island, a castle, a windmill, a lighthouse, a river and a bridge on it, sheep, a dragon, palms, mushrooms" {
+#test "0088's things are drawn: a floating island, a castle, a windmill, a lighthouse, a river and a bridge on it, sheep, a dragon, palms, mushrooms" {
   s: [1] MyRealm; t: [1] Track;
   opened(s[..], t[..], "sky-isle", "realm sky-isle\nname Sky Isle\nstyle lowpoly\nground meadow\ntime night\nowner 0\nfeature land floating\nfeature building castle\nfeature building windmill\nfeature building lighthouse\nfeature water medium river\nfeature trees palm 6\nfeature plants mushroom 8\nfeature herd sheep 6\nfeature flock dragon 1\nfeature props campfire\nfeature props bridge\nfeature props boat\nfeature props tumbleweeds\n");
   #assert s[0].laid && s[0].land == LAND_FLOATING && s[0].building_n == 3 && s[0].building[0] == 4 && s[0].building[1] == 2 && s[0].building[2] == 3;
