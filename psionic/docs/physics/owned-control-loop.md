@@ -71,3 +71,32 @@ sources are `tests/robotics/panda-session.coax` and
 actual request/episode counts observable outcomes rather than fixed totals.
 A typed scheduler must preserve this order and the declared clock domains,
 not infer wall-clock throughput from nominal simulation rates.
+
+
+## A request boundary is demand-driven
+
+Eight accepted action rows give the normal 200-physics-step interval, but
+that interval is not a periodic timer. `PlState` asks for another chunk when
+its rows are exhausted. A refused or deferred reply executes a hold row;
+the next request can therefore start at physical step 25, followed by 225,
+instead of the normal 0, 200, 400 sequence. Keep that demand separate from
+the fixed 500Hz physics/servo and 20Hz goal-update schedule. A fake wall
+clock advancing during paused inference does not advance the simulation
+origin or by itself make that reply stale.
+
+The observation boundary also preserves ordering. The existing provider
+samples its cached site/body state and current finger qpos, renders the two
+cameras and calls the policy **before** the next explicit
+`panda_env_forward`/sample. The 25-step control loop then forwards/samples,
+updates the goal at substep zero, computes torque and gripper control,
+integrates and checks time/state. The gripper's internal target advances
+every 500Hz servo call; holding its 20Hz command does not mean holding its
+internal target. Forwarding earlier would change the qualified policy input.
+
+A typed replacement must distinguish the last explicit forward generation
+from the current qpos generation. That logical generation is not, without
+an integrator-specific audit, a claim about the physical timestamp of every
+MuJoCo internal cache. Preserve the source order first; qualify a different
+sampling convention under a new profile. A complete checkpoint must retain
+or deterministically reconstruct these observation caches, the request/chunk
+state and held controller/gripper state, beyond the scalar checkpoint's q/v.
