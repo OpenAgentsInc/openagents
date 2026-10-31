@@ -1,0 +1,91 @@
+// The oracle for aethyr/entity.coax's checks: a store's backing for tests, and a reference
+// model that keeps (EntityId, value) pairs in a plain list ordered by ID, with no slots,
+// generations or free list. Only the checks call it.
+
+ORACLE_SLOTS :: 64;
+OracleBacking :: struct {
+  gen: [ORACLE_SLOTS] int; live: [ORACLE_SLOTS] bool; born: [ORACLE_SLOTS] bool; doomed: [ORACLE_SLOTS] bool;
+  ids: [ORACLE_SLOTS] int; free: [ORACLE_SLOTS] int; spawns: [ORACLE_SLOTS] int; n: [ENTITY_COUNTERS] int;
+  value: [ORACLE_SLOTS] int;   // one component column, as a realm keeps one beside its store
+}
+oracle_store :: (b: [] OracleBacking) -> EntityStore {
+  return EntityStore.{gen = b[0].gen[..], live = b[0].live[..], born = b[0].born[..], doomed = b[0].doomed[..],
+    ids = b[0].ids[..], free = b[0].free[..], spawns = b[0].spawns[..], n = b[0].n[..]};
+}
+
+// The model: live IDs in increasing order with their values, and the IDs born or doomed this step.
+OracleModel :: struct {
+  id: [256] int; value: [256] int; n: int;
+  born_id: [64] int; born_value: [64] int; born_n: int;
+  doomed: [64] int; doomed_n: int;
+  next_id: int;
+}
+oracle_model_spawn :: (m: [] OracleModel, value: int) -> int {
+  m[0].next_id += 1;
+  m[0].born_id[m[0].born_n] = m[0].next_id; m[0].born_value[m[0].born_n] = value; m[0].born_n += 1;
+  return m[0].next_id;
+}
+oracle_model_despawn :: (m: [] OracleModel, id: int) {
+  for k: 0..<m[0].doomed_n { if m[0].doomed[k] == id { return; } }
+  m[0].doomed[m[0].doomed_n] = id; m[0].doomed_n += 1;
+}
+// The step's end in the model: drop the doomed IDs, then append the born ones (their IDs are
+// larger than every live one, so the list stays ordered).
+oracle_model_flush :: (m: [] OracleModel) {
+  kept := 0;
+  for k: 0..<m[0].n {
+    gone := false;
+    for d: 0..<m[0].doomed_n { if m[0].doomed[d] == m[0].id[k] { gone = true; } }
+    if !gone { m[0].id[kept] = m[0].id[k]; m[0].value[kept] = m[0].value[k]; kept += 1; }
+  }
+  for k: 0..<m[0].born_n { m[0].id[kept] = m[0].born_id[k]; m[0].value[kept] = m[0].born_value[k]; kept += 1; }
+  m[0].n = kept; m[0].born_n = 0; m[0].doomed_n = 0;
+}
+// Whether the store and its value column hold exactly the model's entities and values.
+oracle_agrees :: (w: EntityStore, value: [] int, m: [] OracleModel) -> bool {
+  if entity_count(w) != m[0].n { return false; }
+  for k: 0..<m[0].n {
+    h := entity_find(w, m[0].id[k]);
+    if !entity_alive(w, h) || value[entity_slot(h)] != m[0].value[k] { return false; }
+  }
+  // and nothing else: every live slot's ID is in the model
+  seen := 0;
+  for i: 0..<entity_high(w) {
+    h := entity_at(w, i);
+    if h == ENTITY_NONE { continue; }
+    seen += 1;
+    found := false;
+    for k: 0..<m[0].n { if m[0].id[k] == entity_id(w, h) { found = true; } }
+    if !found { return false; }
+  }
+  return seen == m[0].n;
+}
+
+// A seeded session: each step spawns and despawns by the random numbers, writes each spawn's
+// value into the column, and flushes. Steps from..<to of the session with this seed.
+oracle_rng :: (r: int) -> int { return (r * 1103515245 + 12345) % 2147483648; }
+oracle_session :: (w: EntityStore, value: [] int, m: [] OracleModel, seed: int, from: int, to: int) {
+  for s: from..<to {
+    r := oracle_rng(seed * 7919 + s * 104729 + 1);
+    spawns := (r / 65536) % 4;
+    for k: 0..<spawns {
+      r = oracle_rng(r);
+      made := entity_spawn(w);
+      if made.handle == ENTITY_NONE { continue; }
+      value[entity_slot(made.handle)] = r % 1000;
+      if m.count > 0 { #assert oracle_model_spawn(m, r % 1000) == made.id; }
+    }
+    // walk the live entities in slot order and despawn some
+    for i: 0..<entity_high(w) {
+      h := entity_at(w, i);
+      if h == ENTITY_NONE { continue; }
+      r = oracle_rng(r);
+      if (r / 4096) % 5 == 0 {
+        if m.count > 0 { oracle_model_despawn(m, entity_id(w, h)); }
+        entity_despawn(w, h);
+      }
+    }
+    entity_flush(w);
+    if m.count > 0 { oracle_model_flush(m); }
+  }
+}

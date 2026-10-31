@@ -116,3 +116,20 @@ independent review. Heightfields, rays against floors and the
 realms' own `ground_at` copies move with ec-migrate; the camera's
 `camera_room` moves with ec-camera.
 
+## Entities (`aethyr/entity.coax`)
+
+An entity has a handle, a 20-bit slot and a 12-bit generation, for use
+inside a step, and an `EntityId` from the store's counter, for saves, the
+network and edits. A despawn raises the slot's generation, so a stale handle
+never reaches the slot's next owner, and a slot whose generation would wrap
+is retired and counted. `entity_spawn` and `entity_despawn` are commands:
+`entity_flush` applies the despawns in slot order, then the spawns in the
+order they were asked for, so every system in a step sees the same
+entities. The realm owns the storage (an `EntityStore` is views), and
+`entity_digest` and `entity_copy` give replay and saves one number and one
+copy. Checks: after every flush of 24 seeded sessions, the store matches a
+plain list of IDs and values (`aethyr/tests/entity-oracle.coax`);
+despawning while walking visits each live entity once; a session saved
+mid-way and loaded, and the same session replayed from nothing, end with the
+same digest and IDs. Mutation: 197 of 197 killed. Dead Gears'
+`verse/deadgears/ecs.coax` moves onto it with ec-migrate.

@@ -82,6 +82,16 @@
       ]
     },
     {
+      "source": "aethyr/examples/born-and-gone.coax",
+      "chapter": "aethyr/book/ch006-entities-are-born-and-die.md",
+      "stdout": "aethyr/fixtures/born-and-gone.out",
+      "exit_status": 0,
+      "modes": [
+        "debug",
+        "release"
+      ]
+    },
+    {
       "source": "aethyr/examples/four-questions.coax",
       "chapter": "aethyr/book/ch007-ask-the-world-where-things-are.md",
       "stdout": "aethyr/fixtures/four-questions.out",

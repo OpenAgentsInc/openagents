@@ -1,0 +1,9 @@
+spawned id 2 in slot 1
+spawned id 3 in slot 2
+before the flush: alive false, count 0
+after the flush: alive true, count 3
+walk: slot 0, id 1, alive true, despawning true
+walk: slot 1, id 2, alive true, despawning false
+walk: slot 2, id 3, alive true, despawning false
+new cone: id 4 in slot 0, generation 1
+old handle alive false, id 1 found false, id 4 found true

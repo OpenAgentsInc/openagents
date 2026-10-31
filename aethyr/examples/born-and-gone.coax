@@ -1,0 +1,29 @@
+// book:begin example
+#load "../entity.coax";
+#import "Basic";
+
+// Three cones are thrown in one step and take part from the next. A system despawns the first
+// while it walks them; it stays alive until the flush. A new cone then takes the freed slot
+// with a new generation, so the old handle no longer reaches it, and it gets a new EntityId.
+main :: () {
+  // The realm owns the storage: eight slots.
+  gen: [8] int; live: [8] bool; born: [8] bool; doomed: [8] bool;
+  ids: [8] int; free: [8] int; spawns: [8] int; n: [ENTITY_COUNTERS] int;
+  w := EntityStore.{gen = gen[..], live = live[..], born = born[..], doomed = doomed[..], ids = ids[..], free = free[..], spawns = spawns[..], n = n[..]};
+  first := entity_spawn(w);
+  for k: 0..<2 { made := entity_spawn(w); print("spawned id % in slot %\n", made.id, entity_slot(made.handle)); }
+  print("before the flush: alive %, count %\n", entity_alive(w, first.handle), entity_count(w));
+  entity_flush(w);
+  print("after the flush: alive %, count %\n", entity_alive(w, first.handle), entity_count(w));
+  for i: 0..<entity_high(w) {
+    h := entity_at(w, i);
+    if i == 0 { entity_despawn(w, h); }
+    print("walk: slot %, id %, alive %, despawning %\n", i, entity_id(w, h), entity_alive(w, h), entity_doomed(w, h));
+  }
+  entity_flush(w);
+  next := entity_spawn(w);
+  entity_flush(w);
+  print("new cone: id % in slot %, generation %\n", next.id, entity_slot(next.handle), entity_generation(next.handle));
+  print("old handle alive %, id 1 found %, id 4 found %\n", entity_alive(w, first.handle), entity_find(w, 1) != ENTITY_NONE, entity_find(w, 4) == next.handle);
+}
+// book:end example
