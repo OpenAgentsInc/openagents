@@ -13,6 +13,13 @@ if [[ coax/release.coax -nt "$compiler" || coax/release-model.coax -nt "$compile
 fi
 COAX_RELEASE_COMPILER="$PWD/$compiler" scripts/coax-release.sh --check --binary "$PWD/$compiler"
 out=apps/openagents-ios/Generated
+# Everything is generated into a scratch directory first, and a file in
+# Generated/ is replaced only when its bytes changed: an unchanged file keeps
+# its timestamp, so Xcode does not recompile C or Swift that did not change
+# (r0-loop-attribution measured a no-op rebuild recompiling everything).
+final=$out
+out=$(mktemp -d "${TMPDIR:-/tmp}/oa-generate.XXXXXX")
+trap 'rm -rf "$out"' EXIT
 for name in home player grid cast camera wallet haunt hud benchmarks; do
   # Home, Player, Grid, Cast, Camera, Wallet: one C library and header each. Wallet
   # is #authority, so its checks run in this compile and a failure stops it.
@@ -39,3 +46,8 @@ mv "$out/PhoneSignin.c.tmp" "$out/PhoneSignin.c"
 "$compiler" metal verse/haunt-light.coax >> "$out/HomeShaders.txt.tmp"
 cat apps/openagents-ios/OpenAgents/Platform/Stages.metal >> "$out/HomeShaders.txt.tmp"
 mv "$out/HomeShaders.txt.tmp" "$out/HomeShaders.txt"
+for f in "$out"/*; do
+  name=${f##*/}
+  case $name in *.tmp) continue ;; esac
+  cmp -s "$f" "$final/$name" || mv "$f" "$final/$name"
+done
