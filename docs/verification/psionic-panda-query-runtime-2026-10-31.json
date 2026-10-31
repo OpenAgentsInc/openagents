@@ -65,13 +65,18 @@
   },
   "book_check": {
     "passed": true,
-    "programs": 117,
-    "source_linked_listings": 450,
+    "programs": 119,
+    "source_linked_listings": 466,
     "command": [
       "python3",
       "-I",
       "psionic/tests/book.py"
     ],
-    "scope": "New runtime section/local links and opt-in registration; no execution of the build command. Final rebase/format context will be recorded before push."
+    "scope": "One fresh current-input static book check after rebasing incoming search/maker chapters and formatting the new own row; local links/claims/listings pass. Metadata-only publication update does not change those inputs."
+  },
+  "final_rebase": {
+    "incoming_main_tip": "5ecd025029",
+    "current_compiler_input_fingerprint": "f54a8b98b0fa2e18bd18389e26c1fb67419cbad41c7d46e671374959c6c678e4",
+    "old_VM_native_hash_model_SDK_gates_repeated": false
   }
 }
