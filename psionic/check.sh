@@ -68,6 +68,9 @@ if [[ ${#only[@]} -eq 1 ]]; then
     if [[ $chapter == bpe-train || $chapter == bpe-train-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_bpe_train.sh --mutate --jobs "$jobs"
     fi
+    if [[ $chapter == model-pins ]]; then
+        exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_model_pins.sh --mutate --jobs "$jobs"
+    fi
     if [[ $chapter == interchange || $chapter == interchange-* ]]; then
         exec env COAX="$coax" COAX_CC="$cc" psionic/tests/check_interchange.sh
     fi
@@ -294,12 +297,13 @@ picks_native() {
     done
     return 1
 }
-selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; bpe_train=0; byte_lm=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
+selected_coax=(); selected_native=(); gptoss=0; deepseek=0; qualify=0; tensor_device=0; tensor_ir=0; live_decision=0; interchange=0; model_pins=0; bpe_train=0; byte_lm=0; tokenizer_families=0; gguf=0; operator_registry=0; tensor_template=0
 picks_tensor_template() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-template || $n == tensor-template-* ]]; }
 picks_operator_registry() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == operator-registry || $n == operator-registry-* ]]; }
 picks_gguf() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == gguf || $n == gguf-* ]]; }
 picks_tokenizer_families() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tokenizer-families || $n == tokenizer-families-* ]]; }
 picks_byte_lm() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == byte-lm || $n == byte-lm-* ]]; }
+picks_model_pins() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == model-pins ]]; }
 picks_bpe_train() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == bpe-train || $n == bpe-train-* ]]; }
 picks_interchange() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == interchange || $n == interchange-* ]]; }
 picks_tensor_ir() { local n=${1%.coax}; n=${n#psionic/lib/}; [[ $n == tensor-ir || $n == tensor-ir-* ]]; }
@@ -311,6 +315,7 @@ if [[ ${#only[@]} -eq 0 ]]; then
     live_decision=1
     interchange=1
     bpe_train=1
+    model_pins=1
     byte_lm=1
     tokenizer_families=1
     gguf=1
@@ -326,6 +331,7 @@ else
         if picks_tokenizer_families "$n"; then hit=1; tokenizer_families=1; fi
         if picks_byte_lm "$n"; then hit=1; byte_lm=1; fi
         if picks_bpe_train "$n"; then hit=1; bpe_train=1; fi
+        if picks_model_pins "$n"; then hit=1; model_pins=1; fi
         if picks_interchange "$n"; then hit=1; interchange=1; fi
         if picks_operator_registry "$n"; then hit=1; operator_registry=1; fi
         if picks_tensor_template "$n"; then hit=1; tensor_template=1; fi
@@ -460,6 +466,10 @@ fi
 if [[ $byte_lm == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_byte_lm.sh --mutate --jobs "$jobs"
     phase "chapter 73: byte-lm"
+fi
+if [[ $model_pins == 1 ]]; then
+    COAX="$coax" COAX_CC="$cc" psionic/tests/check_model_pins.sh --mutate --jobs "$jobs"
+    phase "pinned model contracts"
 fi
 if [[ $bpe_train == 1 ]]; then
     COAX="$coax" COAX_CC="$cc" psionic/tests/check_bpe_train.sh --mutate --jobs "$jobs"

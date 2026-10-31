@@ -1,0 +1,318 @@
+// Frozen contracts for the first targets: Base Labs Elephant and Mammoth at
+// their pinned revisions, and nanochat at 92d63d4e. Each pin binds the exact
+// source files (bytes and SHA-256), the operations an implementation needs,
+// its model-specific bounds and the refusal identities admission reports.
+// Upstream code is pinned so it can be read; nothing here executes it.
+// psionic/fixtures/models/pins/*.json are this file's manifests, byte for byte.
+#load "decision-models.coax";
+#load "model-io/identity.coax";
+#load "../../coax/lib/nostr/json.coax";
+#authority;
+
+MpStatus :: enum u8 {ok;target;path;bytes;digest;scope;length;options;score;}
+// One pinned source file. role is what it is to the engine: weights, index,
+// config, tokenizer, readout and renderer are data an admission reads;
+// reference is code to read, never to run; card and license are notices.
+MpFile :: struct {target:int;path:string;bytes:int;sha:string;role:string;}
+MpNum :: struct {target:int;name:string;value:int;}
+MpOp :: struct {target:int;name:string;unit:string;}
+MpTarget :: struct {name:string;origin:string;source:string;revision:string;architecture:string;storage:string;scope:string;license_metadata:string;license_text:string;inventory:string;inventory_sha:string;}
+
+MP_TARGETS :: 4;
+MP_INFO :: [4]MpTarget.[
+    MpTarget.{name="elephant-1",origin="baselabs/elephant-1",source="https://huggingface.co/baselabs/elephant-1",revision="b3f8a93462fb1051a9de031e94a7ff380e254072",architecture="qwen3_5",storage="BF16",scope="text",license_metadata="mit",license_text="",inventory="psionic/fixtures/models/elephant/manifest.json",inventory_sha="4744758962cc73b7e6954c4385cda209ea29c3d9247f524fa14855ca245eedc3"},
+    MpTarget.{name="mammoth-1",origin="baselabs/mammoth-1",source="https://huggingface.co/baselabs/mammoth-1",revision="61cec44c281c693992e3d6ebeb44dd3402dfa186",architecture="qwen3_5",storage="BF16",scope="text",license_metadata="mit",license_text="",inventory="psionic/fixtures/models/mammoth/manifest.json",inventory_sha="4570fecb199493c255d7cad9474941ec43609969b1697a5682be7d9ed4cb9019"},
+    MpTarget.{name="nanochat",origin="karpathy/nanochat",source="https://github.com/karpathy/nanochat",revision="92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",architecture="nanochat-gpt",storage="BF16",scope="text",license_metadata="",license_text="LICENSE",inventory="",inventory_sha=""},
+    MpTarget.{name="psionic-pin-toy",origin="openagents/psionic",source="psionic/fixtures/models/pins/toy",revision="synthetic",architecture="toy",storage="F32",scope="text",license_metadata="CC0-1.0",license_text="",inventory="",inventory_sha=""}];
+
+MP_FILE_COUNT :: 42;
+MP_FILES :: [42]MpFile.[
+    MpFile.{target=0,path="README.md",bytes=5475,sha="0c1f7c170191d0906218c3b34ad7a11ae4bc49a04d210eb12e5bb7a5461648f7",role="card"},
+    MpFile.{target=0,path="chat_template.jinja",bytes=7756,sha="a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715",role="renderer"},
+    MpFile.{target=0,path="config.json",bytes=3146,sha="f26324589d15932e2742dbb13dbc7c561865ce4f80990af3b7dff05efe4dadab",role="config"},
+    MpFile.{target=0,path="constraints.txt",bytes=1416,sha="7afb5334b5d57ef09e3d8ac2fc670f07182c50ffb51035d5b6eb7898f863edfb",role="reference"},
+    MpFile.{target=0,path="engine.py",bytes=2799,sha="72373353379c53b7cabfb5d05b6fef3c898d48c87cc386e03fc3de9c07e67ca7",role="reference"},
+    MpFile.{target=0,path="generation_config.json",bytes=116,sha="290866a6d7d4a4442fe83ba2434a31517446f40a01de500ff97b4354e7e5d082",role="config"},
+    MpFile.{target=0,path="model.safetensors",bytes=18819722392,sha="682f02348dfe4617dd21bba2915c12e805de8cf16327a61e895a831ea681d0ba",role="weights"},
+    MpFile.{target=0,path="processor_config.json",bytes=1220,sha="bfbc24af59a3e73a9cd0653b8d4ae758dfaec4e3e6c15dfb1c6c8ee8d5683c85",role="reference"},
+    MpFile.{target=0,path="readout.json",bytes=63,sha="96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba",role="readout"},
+    MpFile.{target=0,path="serve.patch",bytes=41045,sha="f234c125f1d38d82104b9e1f24e75bde51e4401928acfba2fbf5c59ef2fb46b8",role="renderer"},
+    MpFile.{target=0,path="setup.sh",bytes=1285,sha="6bf9514c6b80f585a94f9a40c03f87c27cce9e2de8d2ba4cf4b41434babca62a",role="reference"},
+    MpFile.{target=0,path="tokenizer.json",bytes=19989339,sha="a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",role="tokenizer"},
+    MpFile.{target=0,path="tokenizer_config.json",bytes=1505,sha="2984c03425a28d242744e234a5003786fd289b3713db79fe0958c65eb59d85b2",role="tokenizer"},
+    MpFile.{target=1,path="README.md",bytes=5468,sha="dac5b380cf360cbc76cd9b0f6a187d933e1b9c3307c1ebd443019e38135f161c",role="card"},
+    MpFile.{target=1,path="chat_template.jinja",bytes=7756,sha="a4aee8afcf2e0711942cf848899be66016f8d14a889ff9ede07bca099c28f715",role="renderer"},
+    MpFile.{target=1,path="config.json",bytes=3962,sha="bab5a8ceb73fd6a8f191afaf23afbf689d931da5b3c7c9d5153cf1e4b5024502",role="config"},
+    MpFile.{target=1,path="constraints.txt",bytes=1416,sha="7afb5334b5d57ef09e3d8ac2fc670f07182c50ffb51035d5b6eb7898f863edfb",role="reference"},
+    MpFile.{target=1,path="engine.py",bytes=2799,sha="72373353379c53b7cabfb5d05b6fef3c898d48c87cc386e03fc3de9c07e67ca7",role="reference"},
+    MpFile.{target=1,path="generation_config.json",bytes=214,sha="eb67f249756eede535dd6f8c941570e91a2a73f0c8d05d00c6012216ecfca869",role="config"},
+    MpFile.{target=1,path="model-00001-of-00002.safetensors",bytes=49825162976,sha="29701f9a7b131bedb3fe1d565dad69b912d9128c6fc27e3d8fb0aedc47ae0e06",role="weights"},
+    MpFile.{target=1,path="model-00002-of-00002.safetensors",bytes=4888445168,sha="4da0ff5476813bbd9898454f0d7f7ba3c82914c42e32e2b87577c6d69daae671",role="weights"},
+    MpFile.{target=1,path="model.safetensors.index.json",bytes=111110,sha="0424520f63f04816eee4d229a4487dc9744866ceb46513e591dd987e401b1663",role="index"},
+    MpFile.{target=1,path="processor_config.json",bytes=1220,sha="bfbc24af59a3e73a9cd0653b8d4ae758dfaec4e3e6c15dfb1c6c8ee8d5683c85",role="reference"},
+    MpFile.{target=1,path="readout.json",bytes=63,sha="96ea8a5c6ecfc30c20cdd369762db5997c5f4fb9821ce0a0318941343eb5e8ba",role="readout"},
+    MpFile.{target=1,path="serve.patch",bytes=41045,sha="f234c125f1d38d82104b9e1f24e75bde51e4401928acfba2fbf5c59ef2fb46b8",role="renderer"},
+    MpFile.{target=1,path="setup.sh",bytes=1285,sha="6bf9514c6b80f585a94f9a40c03f87c27cce9e2de8d2ba4cf4b41434babca62a",role="reference"},
+    MpFile.{target=1,path="tokenizer.json",bytes=19989339,sha="a5cd9732badce41de57e6efce8302930ded1c1188c5f81feb2bd6c24c4a1941f",role="tokenizer"},
+    MpFile.{target=1,path="tokenizer_config.json",bytes=1505,sha="2984c03425a28d242744e234a5003786fd289b3713db79fe0958c65eb59d85b2",role="tokenizer"},
+    MpFile.{target=2,path="LICENSE",bytes=1072,sha="42bb09f339a8af8b90d3b4969b6f6e4ba4aff3b5c614103b031fccdf71c8f772",role="license"},
+    MpFile.{target=2,path="nanochat/checkpoint_manager.py",bytes=8722,sha="aa63399ddaf2a0412dc099287bf0dc879f9cb0cce00f861db50eeec58746f3ba",role="reference"},
+    MpFile.{target=2,path="nanochat/dataloader.py",bytes=7450,sha="5cc72d7207931f112d685ba8e04c112e1a4ab7756dbbb29b95bdb4908a21864d",role="reference"},
+    MpFile.{target=2,path="nanochat/engine.py",bytes=15533,sha="76636fc24228e72afdafe4747ff8e52a6cc60a5ec61c97205061f3bfed0a86fd",role="reference"},
+    MpFile.{target=2,path="nanochat/gpt.py",bytes=28918,sha="8cdedc2e418b9d4dc45884e07f59904fcdec066bb3d76664b2adf2d415f704e3",role="reference"},
+    MpFile.{target=2,path="nanochat/loss_eval.py",bytes=3124,sha="00faad1e0ae8912022f79ee4bf583c4f9b4c058e4523c5674144648c49229fd6",role="reference"},
+    MpFile.{target=2,path="nanochat/optim.py",bytes=23314,sha="7c9b714c6f76e3a9d50fc530044b2767d0cd89391237e609548f1cd730afed8f",role="reference"},
+    MpFile.{target=2,path="nanochat/tokenizer.py",bytes=12911,sha="e6f12cb88fead3e6d0d45a7dd2af4192280712d92bfde83e2399cc4b3a0860fb",role="tokenizer"},
+    MpFile.{target=2,path="runs/speedrun.sh",bytes=3758,sha="ea0beb34b020eae55d4e858067c14de94795b64485396789278a43e5fe420145",role="reference"},
+    MpFile.{target=2,path="scripts/base_train.py",bytes=32313,sha="87395b8078491d5088e7e8100866162b494638097215759b46d8ceb5d2f0fdcc",role="reference"},
+    MpFile.{target=2,path="scripts/chat_rl.py",bytes=16879,sha="9aeaaedd9ec879163dec0af80036ff5643a1af0d3e90f5d3a1d36c2c37bc0594",role="reference"},
+    MpFile.{target=2,path="scripts/chat_sft.py",bytes=24733,sha="325ed7768eb3ab4ce8be5f147b43dac98745c4b1c697a918c0350139328329cc",role="reference"},
+    MpFile.{target=2,path="scripts/tok_train.py",bytes=3730,sha="93237def990ddd96c9698bcc980881900e982dc8fc30dff913b132302b967aea",role="reference"},
+    MpFile.{target=3,path="readout.json",bytes=47,sha="4651b3cdea11284f4588749c7c59ce266443d62e617ea56211127620c1cd20b2",role="readout"}];
+
+// Model-specific bounds. tokens is the published trained-length ceiling, not
+// the base config's positional capacity; a smaller execution envelope names
+// itself and refuses over-limit work rather than truncating.
+MP_NUM_COUNT :: 49;
+MP_NUMS :: [49]MpNum.[
+    MpNum.{target=0,name="layers",value=32},MpNum.{target=0,name="linear_layers",value=24},MpNum.{target=0,name="full_layers",value=8},MpNum.{target=0,name="width",value=4096},
+    MpNum.{target=0,name="ffn",value=12288},MpNum.{target=0,name="heads",value=16},MpNum.{target=0,name="kv_heads",value=4},MpNum.{target=0,name="head_dim",value=256},
+    MpNum.{target=0,name="rotary_dim",value=64},MpNum.{target=0,name="delta_key_heads",value=16},MpNum.{target=0,name="delta_value_heads",value=32},MpNum.{target=0,name="delta_dim",value=128},
+    MpNum.{target=0,name="conv_width",value=4},MpNum.{target=0,name="vocab",value=248320},MpNum.{target=0,name="slots",value=256},MpNum.{target=0,name="max_tokens",value=16384},
+    MpNum.{target=0,name="tensors",value=760},MpNum.{target=0,name="vision_tensors",value=333},
+    MpNum.{target=1,name="layers",value=64},MpNum.{target=1,name="linear_layers",value=48},MpNum.{target=1,name="full_layers",value=16},MpNum.{target=1,name="width",value=5120},
+    MpNum.{target=1,name="ffn",value=17408},MpNum.{target=1,name="heads",value=24},MpNum.{target=1,name="kv_heads",value=4},MpNum.{target=1,name="head_dim",value=256},
+    MpNum.{target=1,name="rotary_dim",value=64},MpNum.{target=1,name="delta_key_heads",value=16},MpNum.{target=1,name="delta_value_heads",value=48},MpNum.{target=1,name="delta_dim",value=128},
+    MpNum.{target=1,name="conv_width",value=4},MpNum.{target=1,name="vocab",value=248320},MpNum.{target=1,name="slots",value=256},MpNum.{target=1,name="max_tokens",value=16384},
+    MpNum.{target=1,name="tensors",value=1184},MpNum.{target=1,name="vision_tensors",value=333},
+    MpNum.{target=2,name="sequence_len",value=2048},MpNum.{target=2,name="vocab",value=32768},MpNum.{target=2,name="pad_vocab_to",value=64},MpNum.{target=2,name="layers",value=12},
+    MpNum.{target=2,name="heads",value=6},MpNum.{target=2,name="kv_heads",value=6},MpNum.{target=2,name="width",value=768},MpNum.{target=2,name="rope_base",value=100000},
+    MpNum.{target=2,name="logit_softcap",value=15},MpNum.{target=2,name="special_tokens",value=9},
+    MpNum.{target=3,name="layers",value=1},MpNum.{target=3,name="width",value=4},MpNum.{target=3,name="vocab",value=8}];
+
+// Operations an implementation needs, and the Psionic unit that owns each.
+MP_OP_COUNT :: 33;
+MP_OPS :: [33]MpOp.[
+    MpOp.{target=0,name="bf16-decode",unit="model-io/weights"},MpOp.{target=0,name="embedding-gather",unit="ops"},
+    MpOp.{target=0,name="rmsnorm-one-plus-weight",unit="qwen-block"},MpOp.{target=0,name="bf16-matvec",unit="qwen-matvec"},
+    MpOp.{target=0,name="causal-conv1d-silu",unit="delta"},MpOp.{target=0,name="gated-deltanet",unit="delta"},
+    MpOp.{target=0,name="gated-rmsnorm-silu",unit="delta"},MpOp.{target=0,name="partial-rotary",unit="qwen-rope"},
+    MpOp.{target=0,name="gqa-gated-attention",unit="qwen-attention"},MpOp.{target=0,name="block-bidirectional-mask",unit="qwen-decision"},
+    MpOp.{target=0,name="swiglu-ffn",unit="qwen-block"},MpOp.{target=0,name="hybrid-prefix-fork",unit="qwen-prefix"},
+    MpOp.{target=0,name="slot-lm-readout",unit="readout"},
+    MpOp.{target=1,name="bf16-decode",unit="model-io/weights"},MpOp.{target=1,name="embedding-gather",unit="ops"},
+    MpOp.{target=1,name="rmsnorm-one-plus-weight",unit="qwen-block"},MpOp.{target=1,name="bf16-matvec",unit="qwen-matvec"},
+    MpOp.{target=1,name="causal-conv1d-silu",unit="delta"},MpOp.{target=1,name="gated-deltanet",unit="delta"},
+    MpOp.{target=1,name="gated-rmsnorm-silu",unit="delta"},MpOp.{target=1,name="partial-rotary",unit="qwen-rope"},
+    MpOp.{target=1,name="gqa-gated-attention",unit="qwen-attention"},MpOp.{target=1,name="block-bidirectional-mask",unit="qwen-decision"},
+    MpOp.{target=1,name="swiglu-ffn",unit="qwen-block"},MpOp.{target=1,name="hybrid-prefix-fork",unit="qwen-prefix"},
+    MpOp.{target=1,name="slot-lm-readout",unit="readout"},
+    MpOp.{target=2,name="byte-bpe-nanochat2",unit="bpe-train"},MpOp.{target=2,name="rotary",unit="planned:nanochat-forward"},
+    MpOp.{target=2,name="qk-rmsnorm-causal-window-attention",unit="planned:nanochat-forward"},MpOp.{target=2,name="relu-squared-mlp",unit="planned:nanochat-forward"},
+    MpOp.{target=2,name="value-embeddings-smear-backout",unit="planned:nanochat-forward"},MpOp.{target=2,name="softcap-untied-head",unit="planned:nanochat-forward"},
+    MpOp.{target=3,name="slot-lm-readout",unit="readout"}];
+
+MP_STATUS_NAMES :: [9]string.["ok","psionic.pin.target","psionic.pin.path","psionic.pin.bytes","psionic.pin.digest","psionic.pin.scope","psionic.pin.length","psionic.pin.options","psionic.pin.score"];
+// The committed manifests' digests: any change to a pin changes its bytes.
+MP_MANIFEST_SHA :: [4]string.["7b402750100c28af8a394f645d552130f14d3bba3d4b9737a1bfa593d0a51dbb",
+    "bca3bd550067608e56c8a7287be29d809568ccaecb7200555700ab2c1212c559",
+    "60c4659ca2b3df199f01966e463e814c12fd3bc0638754dcaa0218684af6a5c1",
+    "39b5e874356a5e904a492a630d15e286040f261162f07de0417944705e4291c8"];
+MP_TOY_READOUT :: "{\"readout\":\"slot_lm\",\"head_dim\":4,\"n_slots\":2}\n";
+
+#test "the target names are exact and nothing else is a target" {
+    #assert mp_target("elephant-1")==0 && mp_target("mammoth-1")==1 && mp_target("nanochat")==2 && mp_target("psionic-pin-toy")==3;
+    for name:[6]string.["","elephant","Elephant-1","mammoth-1 ","../nanochat","baselabs/elephant-1"] {#assert mp_target(name)==-1;}
+    #assert mp_count(0)==13 && mp_count(1)==15 && mp_count(2)==13 && mp_count(3)==1;
+    #assert mp_count(-1)==0 && mp_count(4)==0;
+    total:=0;for t:0..<MP_TARGETS {total+=mp_count(t);}#assert total==MP_FILE_COUNT;
+    a:=mp_file(0,0);#assert a.ok && a.file.path=="README.md" && a.file.bytes==5475;
+    a=mp_file(0,1);#assert a.ok && a.file.path=="chat_template.jinja";
+    a=mp_file(0,12);#assert a.ok && a.file.path=="tokenizer_config.json" && a.file.target==0;
+    a=mp_file(1,0);#assert a.ok && a.file.path=="README.md" && a.file.bytes==5468;
+    a=mp_file(3,0);#assert a.ok && a.file.path=="readout.json" && a.file.bytes==47;
+    #assert mp_find(0,"README.md").sha=="0c1f7c170191d0906218c3b34ad7a11ae4bc49a04d210eb12e5bb7a5461648f7";
+}
+#test "decision pins agree with the execution registry" {
+    for kind:0..<2 {
+        p:=ps_target(cast(u8)kind,16384);#assert p.status==PsStatus.ok;
+        #assert MP_INFO[kind].origin==p.origin && MP_INFO[kind].revision==p.revision;
+        #assert mp_find(kind,"config.json").sha==p.config_sha && mp_find(kind,"tokenizer.json").sha==p.tokenizer_sha && mp_find(kind,"readout.json").sha==p.readout_sha;
+        for s:0..<p.shards {f:=mp_find(kind,p.shard[s].name);#assert f.role=="weights" && f.bytes==p.shard[s].bytes && f.sha==p.shard[s].sha;}
+        weights:=0;for i:0..<mp_count(kind) {if mp_file(kind,i).file.role=="weights" {weights+=1;}}#assert weights==p.shards;
+        #assert mp_num(kind,"vision_tensors")==333 && mp_num(kind,"vision_tensors")<p.tensors;
+        #assert mp_num(kind,"tensors")==p.tensors && mp_num(kind,"vocab")==p.vocab && mp_num(kind,"width")==p.shape.linear.width && mp_num(kind,"ffn")==p.shape.linear.hidden;
+        #assert mp_num(kind,"linear_layers")==p.shape.state.linear_layers && mp_num(kind,"full_layers")==p.shape.state.full_layers;
+        #assert mp_num(kind,"layers")==p.shape.state.linear_layers+p.shape.state.full_layers;
+        #assert mp_num(kind,"heads")==p.shape.full.attention.heads && mp_num(kind,"kv_heads")==p.shape.full.attention.kv_heads;
+        #assert mp_num(kind,"head_dim")==p.shape.full.attention.head_dim && mp_num(kind,"rotary_dim")==p.shape.full.attention.rotary_dim;
+        #assert mp_num(kind,"delta_value_heads")==p.shape.linear.delta.value_heads && mp_num(kind,"delta_key_heads")==p.shape.linear.delta.key_heads;
+        #assert mp_num(kind,"delta_dim")==p.shape.linear.delta.key_dim && mp_num(kind,"delta_dim")==p.shape.linear.delta.value_dim;
+    }
+    #assert mp_find(1,"model.safetensors.index.json").sha==ps_target(1,1).index_sha && mp_find(0,"model.safetensors.index.json").path=="";
+}
+#test "every pin is a lowercase SHA-256 with a positive size, unique per target" {
+    for i:0..<MP_FILE_COUNT {
+        f:=MP_FILES[i];#assert pw_hex_digest(f.sha) && f.bytes>0 && f.target>=0 && f.target<MP_TARGETS && f.path!="";
+        for j:0..<i {#assert MP_FILES[j].target!=f.target || MP_FILES[j].path!=f.path;}
+        #assert f.role=="weights" || f.role=="index" || f.role=="config" || f.role=="tokenizer" || f.role=="readout" || f.role=="renderer" || f.role=="reference" || f.role=="card" || f.role=="license";
+    }
+    for i:0..<MP_NUM_COUNT {#assert MP_NUMS[i].value>0;for j:0..<i {#assert MP_NUMS[j].target!=MP_NUMS[i].target || MP_NUMS[j].name!=MP_NUMS[i].name;}}
+    for i:0..<MP_OP_COUNT {for j:0..<i {#assert MP_OPS[j].target!=MP_OPS[i].target || MP_OPS[j].name!=MP_OPS[i].name;}}
+    #assert mp_num(0,"absent")==0 && mp_num(4,"layers")==0 && mp_find(4,"config.json").path=="" && !mp_file(0,13).ok && !mp_file(0,-1).ok && !mp_file(4,0).ok;
+}
+#test "license metadata is not license text" {
+    // The Base Labs trees carry `license: mit` in card metadata and no LICENSE
+    // file; nanochat carries the actual text. A redistribution basis needs text.
+    for kind:0..<2 {#assert MP_INFO[kind].license_metadata=="mit" && MP_INFO[kind].license_text=="" && mp_find(kind,"LICENSE").path=="" && !mp_text_licensed(kind);}
+    #assert mp_text_licensed(2) && mp_find(2,"LICENSE").role=="license" && MP_INFO[2].license_metadata=="";
+    #assert !mp_text_licensed(3) && !mp_text_licensed(-1) && !mp_text_licensed(4);
+}
+#test "metadata admission names the first mismatch" {
+    f:=mp_find(0,"config.json");
+    #assert mp_check(0,"config.json",f.bytes,f.sha)==MpStatus.ok;
+    #assert mp_check(5,"config.json",f.bytes,f.sha)==MpStatus.target && mp_check(-1,"config.json",f.bytes,f.sha)==MpStatus.target;
+    #assert mp_check(0,"config.jsn",f.bytes,f.sha)==MpStatus.path && mp_check(0,"",f.bytes,f.sha)==MpStatus.path;
+    #assert mp_check(0,"config.json",f.bytes+1,f.sha)==MpStatus.bytes && mp_check(0,"config.json",f.bytes-1,f.sha)==MpStatus.bytes;
+    #assert mp_check(0,"config.json",f.bytes,mp_find(1,"config.json").sha)==MpStatus.digest && mp_check(0,"config.json",f.bytes,"")==MpStatus.digest;
+    // Mammoth's config is another file: the same name does not cross targets.
+    #assert mp_check(1,"config.json",f.bytes,f.sha)==MpStatus.bytes;
+    w:=mp_find(1,"model-00002-of-00002.safetensors");#assert mp_check(1,w.path,w.bytes,w.sha)==MpStatus.ok && mp_check(0,w.path,w.bytes,w.sha)==MpStatus.path;
+    for i:0..<9 {#assert mp_status_name(cast(MpStatus)i)==MP_STATUS_NAMES[i];}
+    #assert mp_status_name(MpStatus.digest)=="psionic.pin.digest" && mp_status_name(MpStatus.ok)=="ok";
+}
+#test "byte admission hashes the synthetic fixture offline" {
+    toy:=MP_TOY_READOUT;data:[64]u8;for i:0..<toy.count {data[i]=toy[i];}
+    #assert toy.count==47 && mp_admit(3,"readout.json",data[0..<toy.count])==MpStatus.ok;
+    #assert mp_admit(3,"readout.json",data[0..<toy.count-1])==MpStatus.bytes && mp_admit(3,"other.json",data[0..<toy.count])==MpStatus.path;
+    #assert mp_admit(9,"readout.json",data[0..<toy.count])==MpStatus.target;
+    for pos:[3]int.[0,23,46] {data[pos]^=1;#assert mp_admit(3,"readout.json",data[0..<toy.count])==MpStatus.digest;data[pos]^=1;}
+    #assert mp_admit(3,"readout.json",data[0..<toy.count])==MpStatus.ok;
+}
+#test "decision requests are text-only, bounded and never truncated" {
+    for kind:0..<2 {
+        #assert mp_request(kind,1,1,0,0)==MpStatus.ok && mp_request(kind,16384,255,0,0)==MpStatus.ok && mp_request(kind,10,0,1,0)==MpStatus.ok && mp_request(kind,10,0,10,0)==MpStatus.ok;
+        #assert mp_request(kind,0,1,0,0)==MpStatus.length && mp_request(kind,16385,1,0,0)==MpStatus.length;
+        #assert mp_request(kind,10,256,0,0)==MpStatus.options && mp_request(kind,10,0,0,0)==MpStatus.options && mp_request(kind,10,-1,0,0)==MpStatus.options;
+        #assert mp_request(kind,10,0,11,0)==MpStatus.score && mp_request(kind,10,0,-1,0)==MpStatus.score && mp_request(kind,10,2,3,0)==MpStatus.score;
+        #assert mp_request(kind,10,2,0,1)==MpStatus.scope && mp_request(kind,10,2,0,-1)==MpStatus.scope;
+    }
+    #assert mp_request(2,10,2,0,0)==MpStatus.scope && mp_request(3,10,2,0,0)==MpStatus.scope && mp_request(4,10,2,0,0)==MpStatus.target && mp_request(-1,10,2,0,0)==MpStatus.target;
+}
+#test "manifests are complete JSON, match the committed bytes and never truncate" {
+    out:[24576]u8;
+    for t:0..<MP_TARGETS {
+        n:=mp_manifest(t,out[..]);#assert n>0 && json_valid(cast(string)out[0..<n]) && out[n-1]=='\n';
+        #assert pw_digest(out[0..<n],MP_MANIFEST_SHA[t]);
+        #assert mp_manifest(t,out[0..<n])==n && mp_manifest(t,out[0..<n-1])==-1 && mp_manifest(t,out[0..<0])==-1;
+    }
+    #assert mp_manifest(-1,out[..])==-1 && mp_manifest(4,out[..])==-1;
+}
+
+mp_target :: (name:string)->int {
+    for t:0..<MP_TARGETS {if MP_INFO[t].name==name {return t;}}
+    return -1;
+}
+mp_known :: (t:int)->bool {return t>=0 && t<MP_TARGETS;}
+mp_count :: (t:int)->int {
+    n:=0;for i:0..<MP_FILE_COUNT {if MP_FILES[i].target==t {n+=1;}}
+    return n;
+}
+MpPinned :: struct {ok:bool;file:MpFile;}
+// The target's i-th file in table order.
+mp_file :: (t:int,i:int)->MpPinned {
+    k:=0;
+    for j:0..<MP_FILE_COUNT {
+        if MP_FILES[j].target==t {if k==i {return MpPinned.{ok=true,file=MP_FILES[j]};}k+=1;}
+    }
+    return MpPinned.{};
+}
+mp_find :: (t:int,path:string)->MpFile {
+    for i:0..<MP_FILE_COUNT {if MP_FILES[i].target==t && MP_FILES[i].path==path {return MP_FILES[i];}}
+    return MpFile.{};
+}
+mp_num :: (t:int,name:string)->int {
+    for i:0..<MP_NUM_COUNT {if MP_NUMS[i].target==t && MP_NUMS[i].name==name {return MP_NUMS[i].value;}}
+    return 0;
+}
+mp_text_licensed :: (t:int)->bool {
+    if !mp_known(t) || MP_INFO[t].license_text=="" {return false;}
+    return mp_find(t,MP_INFO[t].license_text).role=="license";
+}
+mp_status_name :: (s:MpStatus)->string {return MP_STATUS_NAMES[cast(int)s];}
+// A file someone holds, described by its size and digest, against the pin.
+mp_check :: (t:int,path:string,bytes:int,sha:string)->MpStatus {
+    if !mp_known(t) {return MpStatus.target;}
+    f:=mp_find(t,path);
+    if f.path=="" {return MpStatus.path;}
+    if bytes!=f.bytes {return MpStatus.bytes;}
+    if sha!=f.sha {return MpStatus.digest;}
+    return MpStatus.ok;
+}
+// The bytes themselves, hashed here: no host-supplied digest is trusted.
+mp_admit :: (t:int,path:string,data:[]u8)->MpStatus {
+    if !mp_known(t) {return MpStatus.target;}
+    f:=mp_find(t,path);
+    if f.path=="" {return MpStatus.path;}
+    if data.count!=f.bytes {return MpStatus.bytes;}
+    if !pw_digest(data,f.sha) {return MpStatus.digest;}
+    return MpStatus.ok;
+}
+// A decision request's shape against the published bounds: 1..16384 tokens,
+// a choice of 1..255 options or a score of 1..10 levels (one, not both), and
+// no images in the text-only profile. Over-limit work is refused, never cut.
+mp_request :: (t:int,tokens:int,options:int,levels:int,images:int)->MpStatus {
+    if !mp_known(t) {return MpStatus.target;}
+    if t>1 || images!=0 {return MpStatus.scope;}
+    if tokens<1 || tokens>mp_num(t,"max_tokens") {return MpStatus.length;}
+    if levels!=0 {
+        if levels<1 || levels>10 || options!=0 {return MpStatus.score;}
+        return MpStatus.ok;
+    }
+    if options<1 || options>255 {return MpStatus.options;}
+    return MpStatus.ok;
+}
+mp_role_use :: (role:string)->string {
+    if role=="reference" {return "read-only; never executed";}
+    if role=="card" || role=="license" {return "notice";}
+    return "data";
+}
+mp_field :: (out:[]u8,at:int,name:string,value:string)->int {
+    n:=json_raw(out,at,",\n  ");n=json_write_string(out,n,name);n=json_raw(out,n,": ");
+    if value=="" {return json_raw(out,n,"null");}
+    return json_write_string(out,n,value);
+}
+// One manifest per target, newline-terminated, or -1 when out is too small.
+mp_manifest :: (t:int,out:[]u8)->int #export_c {
+    if !mp_known(t) {return -1;}
+    m:=MP_INFO[t];
+    n:=json_raw(out,0,"{\n  \"schema\": \"psionic.model-pin.v1\"");
+    n=mp_field(out,n,"target",m.name);n=mp_field(out,n,"origin",m.origin);n=mp_field(out,n,"source",m.source);
+    n=mp_field(out,n,"revision",m.revision);n=mp_field(out,n,"architecture",m.architecture);
+    n=mp_field(out,n,"storage",m.storage);n=mp_field(out,n,"scope",m.scope);
+    n=mp_field(out,n,"license_metadata",m.license_metadata);n=mp_field(out,n,"license_text",m.license_text);
+    n=mp_field(out,n,"inventory",m.inventory);n=mp_field(out,n,"inventory_sha256",m.inventory_sha);
+    n=json_raw(out,n,",\n  \"bounds\": {");first:=true;
+    for i:0..<MP_NUM_COUNT {
+        if MP_NUMS[i].target!=t {continue;}
+        if !first {n=json_raw(out,n,",");}first=false;
+        n=json_raw(out,n,"\n    ");n=json_write_string(out,n,MP_NUMS[i].name);n=json_raw(out,n,": ");n=json_write_int(out,n,MP_NUMS[i].value);
+    }
+    n=json_raw(out,n,"\n  },\n  \"files\": [");first=true;
+    for i:0..<MP_FILE_COUNT {
+        f:=MP_FILES[i];if f.target!=t {continue;}
+        if !first {n=json_raw(out,n,",");}first=false;
+        n=json_raw(out,n,"\n    {\"path\": ");n=json_write_string(out,n,f.path);n=json_raw(out,n,", \"role\": ");n=json_write_string(out,n,f.role);
+        n=json_raw(out,n,", \"use\": ");n=json_write_string(out,n,mp_role_use(f.role));
+        n=json_raw(out,n,", \"bytes\": ");n=json_write_int(out,n,f.bytes);n=json_raw(out,n,", \"sha256\": ");n=json_write_string(out,n,f.sha);n=json_raw(out,n,"}");
+    }
+    n=json_raw(out,n,"\n  ],\n  \"operations\": [");first=true;
+    for i:0..<MP_OP_COUNT {
+        o:=MP_OPS[i];if o.target!=t {continue;}
+        if !first {n=json_raw(out,n,",");}first=false;
+        n=json_raw(out,n,"\n    {\"name\": ");n=json_write_string(out,n,o.name);n=json_raw(out,n,", \"unit\": ");n=json_write_string(out,n,o.unit);n=json_raw(out,n,"}");
+    }
+    n=json_raw(out,n,"\n  ],\n  \"refusals\": [");
+    for i:1..<9 {if i>1 {n=json_raw(out,n,", ");}n=json_write_string(out,n,MP_STATUS_NAMES[i]);}
+    return json_raw(out,n,"]\n}\n");
+}

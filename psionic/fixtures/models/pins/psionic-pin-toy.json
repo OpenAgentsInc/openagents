@@ -1,0 +1,26 @@
+{
+  "schema": "psionic.model-pin.v1",
+  "target": "psionic-pin-toy",
+  "origin": "openagents/psionic",
+  "source": "psionic/fixtures/models/pins/toy",
+  "revision": "synthetic",
+  "architecture": "toy",
+  "storage": "F32",
+  "scope": "text",
+  "license_metadata": "CC0-1.0",
+  "license_text": null,
+  "inventory": null,
+  "inventory_sha256": null,
+  "bounds": {
+    "layers": 1,
+    "width": 4,
+    "vocab": 8
+  },
+  "files": [
+    {"path": "readout.json", "role": "readout", "use": "data", "bytes": 47, "sha256": "4651b3cdea11284f4588749c7c59ce266443d62e617ea56211127620c1cd20b2"}
+  ],
+  "operations": [
+    {"name": "slot-lm-readout", "unit": "readout"}
+  ],
+  "refusals": ["psionic.pin.target", "psionic.pin.path", "psionic.pin.bytes", "psionic.pin.digest", "psionic.pin.scope", "psionic.pin.length", "psionic.pin.options", "psionic.pin.score"]
+}

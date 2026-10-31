@@ -51,6 +51,78 @@ no standalone LICENSE file. Retain the exact weight/card/code notices and
 provenance when admitting artifacts; record the basis for any redistribution
 before publishing converted weights. This planning work redistributes none.
 
+## Pinned contracts
+
+[`lib/model-pins.coax`](../../lib/model-pins.coax) freezes three targets, and
+[`fixtures/models/pins/`](../../fixtures/models/pins/) holds its manifests,
+`psionic.model-pin.v1`, one JSON file per target, byte for byte what the
+library writes. Each binds the revision, every pinned file's size and SHA-256
+and role, the model-specific bounds, the operations an implementation needs
+(with the Psionic unit that owns each) and the refusal identities. Run
+`psionic/check.sh --only model-pins`: debug/release checks, zero-survivor
+mutation, a byte comparison of the committed manifests
+(`coax/web/tool.sh psionic/tools/model-pins.coax check psionic/fixtures/models/pins`)
+and an independent [oracle](../../tests/model_pins_oracle.py) that re-derives
+layer kinds, BF16 storage, shard pins, vision tensor counts and the nanochat
+source hashes from the separate tensor inventories and the bpe-train record.
+It is offline: no weights, no network, no upstream code.
+
+| Target | Revision | Files pinned |
+| --- | --- | --- |
+| `elephant-1` | `b3f8a93462fb1051a9de031e94a7ff380e254072` | 13: card, config, generation config, tokenizer and its config, chat template, `serve.patch`, `readout.json`, `engine.py`, `setup.sh`, `constraints.txt`, processor config, `model.safetensors` |
+| `mammoth-1` | `61cec44c281c693992e3d6ebeb44dd3402dfa186` | 15: the same set with its own card, configs, shard index and two weight shards |
+| `nanochat` | `92d63d4e8bb4df75c3b71618f31ddde2378b2bcd` | 13: `LICENSE`, the model, tokenizer, checkpoint, optimizer, loader, engine and evaluation sources, the training/SFT/RL/tokenizer scripts and `runs/speedrun.sh` |
+| `psionic-pin-toy` | synthetic | one 47-byte readout file that admission hashes offline |
+
+Metadata was rechecked on October 31: both Base Labs revisions are still
+their repositories' heads (last modified October 22), and `92d63d4e` is still
+nanochat's `master`. Only small text files were fetched, to hash them;
+`.gitattributes` and the banner images are not pinned. Shared files
+(tokenizer, readout, renderer, engine wrapper) are identical across the two
+Base Labs revisions; the configs differ.
+
+**Storage.** Every original tensor is BF16 (760 in Elephant, 1,184 in
+Mammoth). The CPU reference decodes BF16 to f32 values with compensated f64
+reductions (`cpu-f32-wide-v1`); a device or quantized profile is a separate
+identity with its own evidence.
+
+**Text first.** The weights include 333 vision tensors each. The text
+profile admits them as inventory only: it loads no vision encoder or
+projector and refuses any request with images (`psionic.pin.scope`).
+
+**Bounds.** Requests carry 1–16,384 tokens (the published trained length,
+not the base config's 262,144 positions), and either a choice of 1–255
+options or a score of 1–10 levels. Readout has 256 slots over a 248,320-token
+vocabulary. Over-limit work is refused, never truncated. nanochat's pinned
+defaults are recorded (sequence 2,048, vocabulary 32,768 padded to a multiple
+of 64, 12 layers, width 768, rotary base 100,000, logit softcap 15, nine
+special tokens); its forward/training units are still planned.
+
+**Refusals.** Admission reports the first mismatch: `psionic.pin.target`
+(unknown target), `psionic.pin.path` (a file the pin does not name),
+`psionic.pin.bytes`, `psionic.pin.digest`, `psionic.pin.scope` (images, or a
+decision request to a non-decision target), `psionic.pin.length`,
+`psionic.pin.options` and `psionic.pin.score`. `mp_admit` hashes the bytes
+itself; `mp_check` compares a described size and digest.
+
+**Licenses.** Metadata is not license text. Both Base Labs cards say
+`license: mit` and the pinned trees contain no LICENSE file, so the manifests
+record `license_metadata: "mit"` and `license_text: null`; redistributing
+converted weights needs an actual license text or a recorded basis first.
+nanochat's MIT `LICENSE` is pinned as a file (`license_text: "LICENSE"`).
+Files with role `reference` (`engine.py`, `setup.sh`, `constraints.txt`, the
+processor config and nanochat's Python) are read, never run on this Mac;
+`serve.patch` and the chat template are read as renderer data.
+
+**Reference capture.** Independent cases come from a reviewed, isolated
+environment, never this Mac: fetch the pinned files, verify every size and
+digest against the manifest before loading, run the pinned upstream runtime
+in eager CPU f32, and record tokens, chosen intermediate layer tensors,
+recurrent state, logits, probabilities and the final answer with the build
+and library versions. Chapters [10](../../book/ch010-execute-elephant.md) and
+[11](../../book/ch011-execute-mammoth.md) retain such captures in
+`fixtures/models/elephant/` and `fixtures/models/mammoth/`.
+
 ## What the first implementation must do
 
 A decision request contains shared state and typed questions. It produces

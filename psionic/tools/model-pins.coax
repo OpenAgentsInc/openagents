@@ -1,0 +1,35 @@
+// Writes or checks the committed model-pin manifests from psionic/lib/model-pins.coax.
+//   coax/web/tool.sh psionic/tools/model-pins.coax write psionic/fixtures/models/pins
+//   coax/web/tool.sh psionic/tools/model-pins.coax check psionic/fixtures/models/pins
+// check exits 1 unless every manifest on disk is exactly the library's bytes,
+// and 1 unless the synthetic toy file admits through mp_admit. No network.
+#import "Basic";
+#load "../lib/model-pins.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+tool_main :: ()->int #export_c {
+    args:[2]Args;
+    if !args_load(args[..]) || args[0].n!=2 {tool_errln("usage: model-pins write|check DIR");return 2;}
+    mode:=args_at(args[..],0);dir:=args_at(args[..],1);
+    if mode!="write" && mode!="check" {tool_errln("usage: model-pins write|check DIR");return 2;}
+    out:[24576]u8;disk:[24577]u8;path:[512]u8;name:[96]u8;bad:=0;
+    for t:0..<MP_TARGETS {
+        n:=mp_manifest(t,out[..]);if n<0 {tool_errln("model-pins: manifest does not fit");return 1;}
+        k:=json_raw(name[..],0,MP_INFO[t].name);k=json_raw(name[..],k,".json");
+        file:=fs_join(dir,cast(string)name[0..<k],path[..]);
+        if mode=="write" {
+            if !fs_write(file,cast(string)out[0..<n]) {tool_err("model-pins: cannot write ");tool_errln(file);return 1;}
+            print("wrote %\n",file);continue;
+        }
+        got:=fs_read(file,disk[..]);
+        if got!=n || cast(string)disk[0..<got]!=cast(string)out[0..<n] {tool_err("model-pins: differs from the library: ");tool_errln(file);bad+=1;continue;}
+        print("ok %\n",file);
+    }
+    if mode=="check" {
+        toy:=fs_join(dir,"toy/readout.json",path[..]);got:=fs_read(toy,disk[..]);
+        status:=ifx got<0 then MpStatus.path else mp_admit(3,"readout.json",disk[0..<got]);
+        if status!=MpStatus.ok {tool_err("model-pins: toy fixture refused: ");tool_errln(mp_status_name(status));bad+=1;}
+        else {print("ok % admits\n",toy);}
+    }
+    return ifx bad==0 then 0 else 1;
+}

@@ -1,0 +1,50 @@
+{
+  "schema": "psionic.model-pin.v1",
+  "target": "nanochat",
+  "origin": "karpathy/nanochat",
+  "source": "https://github.com/karpathy/nanochat",
+  "revision": "92d63d4e8bb4df75c3b71618f31ddde2378b2bcd",
+  "architecture": "nanochat-gpt",
+  "storage": "BF16",
+  "scope": "text",
+  "license_metadata": null,
+  "license_text": "LICENSE",
+  "inventory": null,
+  "inventory_sha256": null,
+  "bounds": {
+    "sequence_len": 2048,
+    "vocab": 32768,
+    "pad_vocab_to": 64,
+    "layers": 12,
+    "heads": 6,
+    "kv_heads": 6,
+    "width": 768,
+    "rope_base": 100000,
+    "logit_softcap": 15,
+    "special_tokens": 9
+  },
+  "files": [
+    {"path": "LICENSE", "role": "license", "use": "notice", "bytes": 1072, "sha256": "42bb09f339a8af8b90d3b4969b6f6e4ba4aff3b5c614103b031fccdf71c8f772"},
+    {"path": "nanochat/checkpoint_manager.py", "role": "reference", "use": "read-only; never executed", "bytes": 8722, "sha256": "aa63399ddaf2a0412dc099287bf0dc879f9cb0cce00f861db50eeec58746f3ba"},
+    {"path": "nanochat/dataloader.py", "role": "reference", "use": "read-only; never executed", "bytes": 7450, "sha256": "5cc72d7207931f112d685ba8e04c112e1a4ab7756dbbb29b95bdb4908a21864d"},
+    {"path": "nanochat/engine.py", "role": "reference", "use": "read-only; never executed", "bytes": 15533, "sha256": "76636fc24228e72afdafe4747ff8e52a6cc60a5ec61c97205061f3bfed0a86fd"},
+    {"path": "nanochat/gpt.py", "role": "reference", "use": "read-only; never executed", "bytes": 28918, "sha256": "8cdedc2e418b9d4dc45884e07f59904fcdec066bb3d76664b2adf2d415f704e3"},
+    {"path": "nanochat/loss_eval.py", "role": "reference", "use": "read-only; never executed", "bytes": 3124, "sha256": "00faad1e0ae8912022f79ee4bf583c4f9b4c058e4523c5674144648c49229fd6"},
+    {"path": "nanochat/optim.py", "role": "reference", "use": "read-only; never executed", "bytes": 23314, "sha256": "7c9b714c6f76e3a9d50fc530044b2767d0cd89391237e609548f1cd730afed8f"},
+    {"path": "nanochat/tokenizer.py", "role": "tokenizer", "use": "data", "bytes": 12911, "sha256": "e6f12cb88fead3e6d0d45a7dd2af4192280712d92bfde83e2399cc4b3a0860fb"},
+    {"path": "runs/speedrun.sh", "role": "reference", "use": "read-only; never executed", "bytes": 3758, "sha256": "ea0beb34b020eae55d4e858067c14de94795b64485396789278a43e5fe420145"},
+    {"path": "scripts/base_train.py", "role": "reference", "use": "read-only; never executed", "bytes": 32313, "sha256": "87395b8078491d5088e7e8100866162b494638097215759b46d8ceb5d2f0fdcc"},
+    {"path": "scripts/chat_rl.py", "role": "reference", "use": "read-only; never executed", "bytes": 16879, "sha256": "9aeaaedd9ec879163dec0af80036ff5643a1af0d3e90f5d3a1d36c2c37bc0594"},
+    {"path": "scripts/chat_sft.py", "role": "reference", "use": "read-only; never executed", "bytes": 24733, "sha256": "325ed7768eb3ab4ce8be5f147b43dac98745c4b1c697a918c0350139328329cc"},
+    {"path": "scripts/tok_train.py", "role": "reference", "use": "read-only; never executed", "bytes": 3730, "sha256": "93237def990ddd96c9698bcc980881900e982dc8fc30dff913b132302b967aea"}
+  ],
+  "operations": [
+    {"name": "byte-bpe-nanochat2", "unit": "bpe-train"},
+    {"name": "rotary", "unit": "planned:nanochat-forward"},
+    {"name": "qk-rmsnorm-causal-window-attention", "unit": "planned:nanochat-forward"},
+    {"name": "relu-squared-mlp", "unit": "planned:nanochat-forward"},
+    {"name": "value-embeddings-smear-backout", "unit": "planned:nanochat-forward"},
+    {"name": "softcap-untied-head", "unit": "planned:nanochat-forward"}
+  ],
+  "refusals": ["psionic.pin.target", "psionic.pin.path", "psionic.pin.bytes", "psionic.pin.digest", "psionic.pin.scope", "psionic.pin.length", "psionic.pin.options", "psionic.pin.score"]
+}
