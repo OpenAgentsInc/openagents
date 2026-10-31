@@ -447,9 +447,17 @@ Built (2026-10-31): Claude Code sessions on the desk get `agents_list`,
 it (`dsk_room_call`), at once or, for `ask_agent`, when the other session's
 turn ends. check.sh's `room-ask` has a stand-in Claude Code ask a stand-in
 Codex app-server (`zeron/fixtures/room/`, replaying 0.163.0's answers) to
-review a diff; the review comes back as Claude's tool result. Not yet: the
-same tools for Codex as the asker (its stdio MCP server, `OpenAgents
---mcp-room`).
+review a diff; the review comes back as Claude's tool result. Codex gets the
+same four tools: each Codex thread starts with the config override
+`mcp_servers.openagents_room` (command: the app's own binary, args
+`--mcp-room SOCKET AGENT`, `tool_timeout_sec` a day, since an ask waits for
+another agent's whole turn). That process answers MCP on stdio with
+`room_mcp` (desk.coax) and sends each tools/call as one JSON line to the
+app's Unix socket (`$TMPDIR/oa-room-PID.sock`, mode 600,
+`Sources/RoomSocket.swift`), which hands it to the desk (`dsk_room_line`)
+and writes back the one-line answer. check.sh's `room-codex-asks` has a
+stand-in Codex run that server from its thread config and ask Claude
+Code; Claude's answer comes back as Codex's tool result.
 
 ### The UI, first version
 

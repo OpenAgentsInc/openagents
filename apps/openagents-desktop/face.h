@@ -113,6 +113,11 @@ int32_t dsk_tabs(void *desk);
 int32_t dsk_tab(void *desk, int32_t t);
 int32_t dsk_collapsed(void *desk);
 int32_t zr_answer(void *state, int32_t allow);
+void dsk_set_room(void *desk, const uint8_t *exe, int32_t exe_n, const uint8_t *sock, int32_t sock_n);
+int32_t dsk_room_line(void *desk, int32_t conn, const uint8_t *line, int32_t n);
+int32_t dsk_room_out(void *desk, int32_t *conn, uint8_t *out, int32_t cap);
+int32_t room_mcp(const uint8_t *line, int32_t n, int32_t agent, uint8_t *out, int32_t cap, int32_t *len);
+int32_t room_mcp_result(const uint8_t *reply, int32_t n, uint8_t *out, int32_t cap);
 int32_t zr_status_text(void *state, uint8_t *out, int32_t cap);
 int32_t zr_last_text(void *state, uint8_t *out, int32_t cap);
 // The composer's menus and attachments (zeron/picker.coax, attachments.coax):

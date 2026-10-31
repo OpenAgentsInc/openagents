@@ -215,6 +215,22 @@ func zeronAtlas(_ device: MTLDevice, state: UnsafeMutableRawPointer, dpr: CGFloa
 final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemValidation {
   // The desk (zeron/desk.coax): every session's chat; the input and the frame go through it.
   let desk = dsk_new()!
+  // the room's socket, which each Codex session's MCP server (this binary, --mcp-room) connects to
+  lazy var room: RoomServer = {
+    let r = RoomServer(path: (NSTemporaryDirectory() as NSString).appendingPathComponent("oa-room-\(getpid()).sock"))
+    let exe = Array((Bundle.main.executablePath ?? CommandLine.arguments[0]).utf8), sock = Array(r.path.utf8)
+    dsk_set_room(desk, exe, Int32(exe.count), sock, Int32(sock.count))
+    return r
+  }()
+  func pumpRoom() {
+    room.poll { conn, line in _ = dsk_room_line(desk, conn, line, Int32(line.count)) }
+    var out = [UInt8](repeating: 0, count: 16384), conn: Int32 = -1
+    while true {
+      let n = dsk_room_out(desk, &conn, &out, Int32(out.count))
+      if n <= 0 { break }
+      room.send(conn, out[0..<Int(n)])
+    }
+  }
   let first = zr_new()!
   // The shown session's chat: the text input, the menus and the host's actions are its.
   var state: UnsafeMutableRawPointer { dsk_active(desk) ?? first }
@@ -283,6 +299,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
     inflight.wait()
     slot = (slot + 1) % 2
     let buf = vertices[slot]
+    pumpRoom()
     let n = dsk_frame(desk, buf.contents().assumingMemoryBound(to: Float.self), Float(size.width), Float(size.height), Float(dpr), dt)
     // the graphemes and cells this frame wanted, for the next
     atlases[shown]!.serve(shown)

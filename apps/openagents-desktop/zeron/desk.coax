@@ -43,7 +43,14 @@ DskChat :: struct {
   was_live: bool;           // its turn was running last frame
   stops: int;               // its STOPs already passed to the room
   turn_from: int;           // its session's parts when the room's ask started there
+  // a room tool it called, until answered: from its Claude Code (conn -1) or its Codex's MCP server (the host's connection)
+  call_on: bool; call: int; call_conn: int; call_ask: int;
+  call_args: [8192] u8; call_n: int;
+  call_rpc: [64] u8; call_rpc_n: int;  // the MCP request's id, raw JSON, echoed in the answer
 }
+// An answer to a Codex MCP server, for the host to write to its connection.
+DskOut :: struct { conn: int; line: [RM_ANSWER + 512] u8; n: int; }
+DSK_OUTS :: 8;
 DskHit :: struct { kind: int; i: int; x: f32; y: f32; w: f32; h: f32; }
 
 Desk :: struct {
@@ -66,6 +73,9 @@ Desk :: struct {
   cursor: int;              // 0 arrow, 1 I-beam, 2 pointing hand, 3 resize left-right
   text: [256] u8;           // a label fitted to its width
   room: [1] Room;           // the agents' room (room.coax): agent i is chats[i]
+  room_exe: [1024] u8; room_exe_n: int;     // the app's binary, which Codex runs as the room's MCP server
+  room_sock: [1024] u8; room_sock_n: int;   // the host's socket it talks to
+  outs: [DSK_OUTS] DskOut; nout: int;
 }
 
 dsk_init :: (k: [] Desk) {
@@ -274,6 +284,7 @@ dsk_room :: (k: [] Desk) {
   for i: 0..<k[0].n {
     s := k[0].chats[i].s; ss := s[0].session[..];
     s[0].engine[0].room = true;
+    dsk_codex_room(k, i);
     if !s[0].ready { continue; }    // its first frame sets it up
     if s[0].stops != k[0].chats[i].stops { k[0].chats[i].stops = s[0].stops; rm_stop(r, i); }
     dsk_room_call(k, i);
@@ -301,20 +312,25 @@ dsk_room :: (k: [] Desk) {
 // A room tool an agent called (claude.coax e_room_tools): answered now, or for ask_agent when the other agent has answered.
 dsk_room_call :: (k: [] Desk, i: int) {
   s := k[0].chats[i].s; e := s[0].engine[..];
-  if !e[0].calling { return; }
+  c := i;
+  if !k[0].chats[c].call_on && e[0].calling {
+    k[0].chats[c].call_on = true; k[0].chats[c].call = e[0].call; k[0].chats[c].call_conn = -1; k[0].chats[c].call_ask = -1;
+    k[0].chats[c].call_n = e_set(k[0].chats[c].call_args[..], 0, e_call_args(e));
+  }
+  if !k[0].chats[c].call_on { return; }
   r := k[0].room[..];
-  if e[0].call_ask >= 0 {
+  if k[0].chats[c].call_ask >= 0 {
     ans: [RM_ANSWER] u8; an: [1] int;
-    st := rm_result(r, e[0].call_ask, ans[..], an[..]);
-    if st == RM_DONE { e_room_reply(e, cast(string) ans[0..<an[0]], false); }
-    else if st == RM_FAILED { e_room_reply(e, cast(string) ans[0..<an[0]], true); }
-    else if st == RM_FREE { e_room_reply(e, "The ask was lost.", true); }
+    st := rm_result(r, k[0].chats[c].call_ask, ans[..], an[..]);
+    if st == RM_DONE { dsk_reply(k, i, cast(string) ans[0..<an[0]], false); }
+    else if st == RM_FAILED { dsk_reply(k, i, cast(string) ans[0..<an[0]], true); }
+    else if st == RM_FREE { dsk_reply(k, i, "The ask was lost.", true); }
     return;
   }
-  ar := e[0].q[0].ar[..];
-  args := e_call_args(e);
+  abuf: [16384] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  args := cast(string) k[0].chats[c].call_args[0..<k[0].chats[c].call_n];
   out: [RM_ANSWER] u8; n := 0; nb: [64] u8;
-  if e[0].call == ROOM_AGENTS {
+  if k[0].chats[c].call == ROOM_AGENTS {
     for j: 0..<k[0].n {
       if j == i { continue; }
       names := MODE_NAMES;
@@ -325,10 +341,10 @@ dsk_room_call :: (k: [] Desk, i: int) {
       n = e_copy(out[..], n, ifx k[0].chats[j].s[0].session[0].live then "busy" else "idle");
     }
     if n == 0 { n = e_copy(out[..], 0, "No other agents are in this window."); }
-    e_room_reply(e, cast(string) out[0..<n], false);
+    dsk_reply(k, i, cast(string) out[0..<n], false);
     return;
   }
-  if e[0].call == ROOM_READ {
+  if k[0].chats[c].call == ROOM_READ {
     since := cl_int(args, "since");
     from := rm_since(r, ifx since.ok then since.value else 0);
     for m: from..<r[0].count {
@@ -341,25 +357,80 @@ dsk_room_call :: (k: [] Desk, i: int) {
       n = e_copy(out[..], n, rm_text(r, m));
     }
     if n == 0 { n = e_copy(out[..], 0, "No messages yet."); }
-    e_room_reply(e, cast(string) out[0..<n], false);
+    dsk_reply(k, i, cast(string) out[0..<n], false);
     return;
   }
-  name := cl_str(ar, args, "name");
-  message := cl_str(ar, args, "message");
+  name := cl_str(ar[..], args, "name");
+  message := cl_str(ar[..], args, "message");
   to := dsk_agent(k, name);
-  if to < 0 { e_room_reply(e, rm_error(RM_ERR_AGENT), true); return; }
-  if message.count == 0 { e_room_reply(e, "The message is empty.", true); return; }
-  if e[0].call == ROOM_TELL {
+  if to < 0 { dsk_reply(k, i, rm_error(RM_ERR_AGENT), true); return; }
+  if message.count == 0 { dsk_reply(k, i, "The message is empty.", true); return; }
+  if k[0].chats[c].call == ROOM_TELL {
     got := dsk_tell(k, i, to, message);
-    if got < 0 { e_room_reply(e, rm_error(got), true); return; }
+    if got < 0 { dsk_reply(k, i, rm_error(got), true); return; }
     n = e_copy(out[..], 0, "Left the note for "); n = e_copy(out[..], n, dsk_agent_name(k, to, nb[..])); n = e_copy(out[..], n, ".");
-    e_room_reply(e, cast(string) out[0..<n], false);
+    dsk_reply(k, i, cast(string) out[0..<n], false);
     return;
   }
   id := dsk_ask(k, i, to, message);
-  if id < 0 { e_room_reply(e, rm_error(id), true); return; }
-  e[0].call_ask = id;
+  if id < 0 { dsk_reply(k, i, rm_error(id), true); return; }
+  k[0].chats[c].call_ask = id;
 }
+// The answer to the room tool agent i called: to its Claude Code, or queued for the host to its Codex's MCP server.
+dsk_reply :: (k: [] Desk, i: int, text: string, is_error: bool) {
+  if !k[0].chats[i].call_on { return; }
+  k[0].chats[i].call_on = false; k[0].chats[i].call_ask = -1;
+  if k[0].chats[i].call_conn < 0 { e_room_reply(k[0].chats[i].s[0].engine[..], text, is_error); return; }
+  if k[0].nout >= DSK_OUTS { return; }
+  o := k[0].nout; k[0].nout += 1;
+  k[0].outs[o].conn = k[0].chats[i].call_conn;
+  w: [1] ClOut; w[0].buf = k[0].outs[o].line[..];
+  cl_put(w[..], "{\"rpc\":"); cl_put(w[..], cast(string) k[0].chats[i].call_rpc[0..<k[0].chats[i].call_rpc_n]);
+  cl_put(w[..], ",\"text\":"); cl_put_string(w[..], text);
+  cl_put(w[..], ifx is_error then ",\"error\":true}" else ",\"error\":false}");
+  k[0].outs[o].n = w[0].len;
+}
+// A line from a Codex MCP server on the host's connection: {"agent":A,"rpc":ID,"tool":NAME,"arguments":{...}}.
+dsk_room_line :: (k: [] Desk, conn: int, line: string) -> bool {
+  abuf: [4096] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  rpc := cl_raw(line, "rpc");
+  a := cl_int(line, "agent");
+  if !a.ok || a.value < 0 || a.value >= k[0].n { dsk_out_error(k, conn, rpc, "This session is no longer open in the app."); return false; }
+  i := cast(int) a.value;
+  if k[0].chats[i].call_on { dsk_out_error(k, conn, rpc, "Another room call from this session is still waiting."); return false; }
+  names := [4] string.["agents_list", "ask_agent", "tell_agent", "room_read"];
+  tool := cl_str(ar[..], line, "tool");
+  t := -1;
+  for j: 0..<4 { if names[j] == tool { t = j; } }
+  if t < 0 { dsk_out_error(k, conn, rpc, "The room has no such tool."); return false; }
+  k[0].chats[i].call_on = true; k[0].chats[i].call = t; k[0].chats[i].call_conn = conn; k[0].chats[i].call_ask = -1;
+  k[0].chats[i].call_n = e_set(k[0].chats[i].call_args[..], 0, cl_raw(line, "arguments"));
+  k[0].chats[i].call_rpc_n = e_set(k[0].chats[i].call_rpc[..], 0, rpc);
+  return true;
+}
+dsk_out_error :: (k: [] Desk, conn: int, rpc: string, why: string) {
+  if k[0].nout >= DSK_OUTS { return; }
+  o := k[0].nout; k[0].nout += 1;
+  k[0].outs[o].conn = conn;
+  w: [1] ClOut; w[0].buf = k[0].outs[o].line[..];
+  cl_put(w[..], "{\"rpc\":"); cl_put(w[..], ifx rpc.count > 0 then rpc else "null");
+  cl_put(w[..], ",\"text\":"); cl_put_string(w[..], why); cl_put(w[..], ",\"error\":true}");
+  k[0].outs[o].n = w[0].len;
+}
+// The Codex config that runs the room's MCP server for agent i ("" until the host gave the binary and socket).
+dsk_codex_room :: (k: [] Desk, i: int) {
+  x := k[0].chats[i].s[0].codex;
+  if x.count < 1 { return; }
+  if k[0].room_exe_n == 0 || k[0].room_sock_n == 0 { x[0].room_n = 0; return; }
+  w: [1] ClOut; w[0].buf = x[0].room[..];
+  num: [24] u8; nn := zr_put_int(num[..], 0, i);
+  cl_put(w[..], "{\"mcp_servers.openagents_room\":{\"command\":"); cl_put_string(w[..], cast(string) k[0].room_exe[0..<k[0].room_exe_n]);
+  cl_put(w[..], ",\"args\":[\"--mcp-room\","); cl_put_string(w[..], cast(string) k[0].room_sock[0..<k[0].room_sock_n]);
+  cl_put(w[..], ","); cl_put_string(w[..], cast(string) num[0..<nn]);
+  cl_put(w[..], "],\"tool_timeout_sec\":86400}}");
+  x[0].room_n = ifx w[0].failed then 0 else w[0].len;
+}
+
 // Notes for an agent move into its chat's preface (sent before its next message).
 dsk_take_notes :: (k: [] Desk, i: int) {
   s := k[0].chats[i].s;
@@ -677,6 +748,51 @@ coaxial_desk_cwd :: (k: [] Desk, out: [] u8) -> int #export_c {
   for b: c { if n < out.count { out[n] = b; n += 1; } }
   return n;
 }
+// The room's MCP server for Codex: the app's binary and the host's socket.
+coaxial_desk_set_room :: (k: [] Desk, exe: string, sock: string) #export_c {
+  if k.count < 1 { return; }
+  k[0].room_exe_n = e_set(k[0].room_exe[..], 0, exe); k[0].room_sock_n = e_set(k[0].room_sock[..], 0, sock);
+}
+coaxial_desk_room_line :: (k: [] Desk, conn: int, line: string) -> bool #export_c { return k.count > 0 && dsk_room_line(k, conn, line); }
+// The next answer for a connection: its length (0 for none) and the connection in conn[0].
+coaxial_desk_room_out :: (k: [] Desk, conn: [] int, out: [] u8) -> int #export_c {
+  if k.count < 1 || k[0].nout == 0 { return 0; }
+  n := e_copy(out, 0, cast(string) k[0].outs[0].line[0..<k[0].outs[0].n]);
+  conn[0] = k[0].outs[0].conn;
+  for j: 1..<k[0].nout { k[0].outs[j - 1] = k[0].outs[j]; }
+  k[0].nout -= 1;
+  return n;
+}
+// The app run as Codex's MCP server for the room (OpenAgents --mcp-room SOCKET AGENT): a JSON-RPC line from
+// Codex in; 1 with the answer in out, 2 with the line for the app's socket in out, 0 for nothing (a notification).
+coaxial_room_mcp :: (line: string, agent: int, out: [] u8, n: [] int) -> int #export_c {
+  o: [1] ClOptions;
+  e_room_tools(o[..]);
+  server := o[0].servers[0];
+  abuf: [16384] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  c := cl_mcp_call_of(ar[..], server, line);
+  w: [1] ClOut; w[0].buf = out;
+  if !c.reply { n[0] = 0; return 0; }
+  if c.method == "tools/call" && c.tool >= 0 {
+    num: [24] u8; nn := zr_put_int(num[..], 0, agent);
+    cl_put(w[..], "{\"agent\":"); cl_put(w[..], cast(string) num[0..<nn]);
+    cl_put(w[..], ",\"rpc\":"); cl_put(w[..], c.id);
+    cl_put(w[..], ",\"tool\":"); cl_put_string(w[..], server.tools[c.tool].name);
+    cl_put(w[..], ",\"arguments\":"); cl_put(w[..], ifx c.arguments.count > 0 then c.arguments else "{}"); cl_put(w[..], "}");
+    n[0] = w[0].len; return 2;
+  }
+  done := cl_put_mcp_answer(w[..], ar[..], server, line, c);
+  n[0] = w[0].len; return 1;
+}
+// The app's answer ({"rpc":ID,"text":T,"error":B}) as the JSON-RPC result Codex reads.
+coaxial_room_mcp_result :: (reply: string, out: [] u8) -> int #export_c {
+  abuf: [16384] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  w: [1] ClOut; w[0].buf = out;
+  cl_put(w[..], "{\"jsonrpc\":\"2.0\",\"id\":"); cl_put(w[..], cl_raw(reply, "rpc")); cl_put(w[..], ",\"result\":");
+  cl_put_tool_text(w[..], cl_str(ar[..], reply, "text"), cl_bool(reply, "error").value);
+  cl_put(w[..], "}");
+  return w[0].len;
+}
 coaxial_desk_quit :: (k: [] Desk) #export_c {
   if k.count < 1 { return; }
   for i: 0..<k[0].n { coaxial_zeron_quit(k[0].chats[i].s); }
@@ -854,16 +970,51 @@ dsk_test_chat :: (s: [] ZeronState) { zr_test_screen(s); }
   // ask_agent waits
   e[0].calling = true; e[0].call = ROOM_ASK; e[0].call_n = e_set(e[0].call_args[..], 0, "{\"name\":\"Claude 2\",\"message\":\"Review the diff\"}");
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
-  #assert e[0].calling && e[0].call_ask >= 0;
+  #assert e[0].calling && k[0].chats[0].call_ask >= 0;
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
   bs := b[0].session[..];
   #assert bs[0].live && s_text_of(bs, bs[0].n - 1) == "Ask from Claude 1 (your answer goes back to it): Review the diff";
   s_delta(bs, P_TEXT, "LGTM."); s_turn_end(bs, false, "");
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
-  #assert !e[0].calling && e[0].call_ask < 0;
+  #assert !e[0].calling && !k[0].chats[0].call_on;
   // an unknown name is an error at once
   e[0].calling = true; e[0].call = ROOM_TELL; e[0].call_n = e_set(e[0].call_args[..], 0, "{\"name\":\"Nobody\",\"message\":\"hi\"}");
   n = dsk_frame(k[..], out[..], 2640, 1760, 2, 0.016);
   #assert !e[0].calling;
 }
+
+#test "Codex's room tools: its MCP server's call goes to the app as a line, the answer comes back as the JSON-RPC result" {
+  out: [20000] u8; n: [1] int;
+  #assert coaxial_room_mcp("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\",\"params\":{\"protocolVersion\":\"2025-06-18\"}}", 1, out[..], n[..]) == 1;
+  #assert coaxial_room_mcp("{\"jsonrpc\":\"2.0\",\"method\":\"notifications/initialized\"}", 1, out[..], n[..]) == 0;
+  #assert coaxial_room_mcp("{\"jsonrpc\":\"2.0\",\"id\":2,\"method\":\"tools/list\"}", 1, out[..], n[..]) == 1;
+  listed := cast(string) out[0..<n[0]];
+  #assert cl_str_is(listed, "result.tools.1.name", "ask_agent");
+  #assert coaxial_room_mcp("{\"jsonrpc\":\"2.0\",\"id\":3,\"method\":\"tools/call\",\"params\":{\"name\":\"ask_agent\",\"arguments\":{\"name\":\"Claude 1\",\"message\":\"Is the build green?\"}}}", 1, out[..], n[..]) == 2;
+  line: [20000] u8; ln := e_copy(line[..], 0, cast(string) out[0..<n[0]]);
+  // the app: agent 1 (Codex) asks agent 0
+  k: [1] Desk;
+  a: [1] ZeronState; b: [1] ZeronState;
+  dsk_test_chat(a[..]); dsk_test_chat(b[..]);
+  fo: [200000] f32;
+  i := dsk_add(k[..], a[..], "/w/one"); i = dsk_add(k[..], b[..], "/w/two");
+  coaxial_desk_set_room(k[..], "/Applications/OpenAgents.app/Contents/MacOS/OpenAgents", "/tmp/oa-room.sock");
+  f := dsk_frame(k[..], fo[..], 2640, 1760, 2, 0.016);
+  #assert b[0].codex.count == 0 || b[0].codex[0].room_n > 0;
+  #assert coaxial_desk_room_line(k[..], 7, cast(string) line[0..<ln]);
+  f = dsk_frame(k[..], fo[..], 2640, 1760, 2, 0.016);
+  f = dsk_frame(k[..], fo[..], 2640, 1760, 2, 0.016);
+  as := a[0].session[..];
+  #assert as[0].live && s_text_of(as, as[0].n - 1) == "Ask from Claude 2 (your answer goes back to it): Is the build green?";
+  s_delta(as, P_TEXT, "Yes, green."); s_turn_end(as, false, "");
+  f = dsk_frame(k[..], fo[..], 2640, 1760, 2, 0.016);
+  f = dsk_frame(k[..], fo[..], 2640, 1760, 2, 0.016);
+  conn: [1] int;
+  rn := coaxial_desk_room_out(k[..], conn[..], out[..]);
+  #assert rn > 0 && conn[0] == 7;
+  res: [20000] u8;
+  m := coaxial_room_mcp_result(cast(string) out[0..<rn], res[..]);
+  #assert cast(string) res[0..<m] == "{\"jsonrpc\":\"2.0\",\"id\":3,\"result\":{\"content\":[{\"type\":\"text\",\"text\":\"Yes, green.\"}]}}";
+}
+cl_str_is :: (text: string, path: string, want: string) -> bool { abuf: [4096] u8; ar: [1] ClArena; ar[0].buf = abuf[..]; return cl_str(ar[..], text, path) == want; }

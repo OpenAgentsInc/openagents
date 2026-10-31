@@ -339,6 +339,35 @@ if let i = CommandLine.arguments.firstIndex(of: "--route"), i + 1 < CommandLine.
   exit(code)
 }
 
+// --mcp-room SOCKET AGENT: Codex's MCP server for the room (docs/desktop/coax-desktop.md). Codex
+// writes JSON-RPC on stdin; room_mcp (desk.coax) answers it, or turns a tools/call into a line for the
+// app's socket, whose one-line answer room_mcp_result turns into the result Codex reads.
+if let i = CommandLine.arguments.firstIndex(of: "--mcp-room"), i + 2 < CommandLine.arguments.count {
+  let path = CommandLine.arguments[i + 1], agent = Int32(CommandLine.arguments[i + 2]) ?? -1
+  let fd = RoomSocket.connect(path)
+  var out = [UInt8](repeating: 0, count: 1 << 20)
+  var pending = Data()
+  func write(_ fd: Int32, _ bytes: ArraySlice<UInt8>) { var b = Array(bytes); b.append(10); b.withUnsafeBytes { _ = Darwin.write(fd, $0.baseAddress, $0.count) } }
+  while let line = readLine(strippingNewline: true) {
+    let bytes = Array(line.utf8)
+    var n: Int32 = 0
+    let kind = room_mcp(bytes, Int32(bytes.count), agent, &out, Int32(out.count), &n)
+    if kind == 1 { write(1, out[0..<Int(n)]) }
+    if kind == 2 {
+      var reply: [UInt8]
+      if fd < 0 { reply = Array(#"{"rpc":null,"text":"The OpenAgents app is not running.","error":true}"#.utf8) }
+      else {
+        write(fd, out[0..<Int(n)])
+        reply = RoomSocket.readLine(fd, &pending) ?? Array(#"{"rpc":null,"text":"The OpenAgents app closed.","error":true}"#.utf8)
+      }
+      // the answer's id: the app echoes it (or null when it could not read the call)
+      let m = room_mcp_result(reply, Int32(reply.count), &out, Int32(out.count))
+      write(1, out[0..<Int(m)])
+    }
+  }
+  exit(0)
+}
+
 let app = NSApplication.shared
 let delegate = App()
 app.delegate = delegate

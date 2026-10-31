@@ -18,6 +18,14 @@ for line in sys.stdin:
     t = m.get("type")
     if t == "control_request":
         out({"type": "control_response", "response": {"subtype": "success", "request_id": m["request_id"], "response": {"models": []}}})
+    elif t == "user" and "Ask from" in json.dumps(m.get("message", {})):
+        # asked by another agent: a plain answer
+        text = "The build is green."
+        out({"type": "stream_event", "event": {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": text}},
+             "parent_tool_use_id": None, "uuid": S, "session_id": S})
+        say([{"type": "text", "text": text}], "m3")
+        out({"type": "result", "subtype": "success", "is_error": False, "duration_ms": 900, "duration_api_ms": 900, "num_turns": 1,
+             "total_cost_usd": 0.004, "usage": USAGE, "modelUsage": {}, "permission_denials": [], "result": text, "uuid": S, "session_id": S})
     elif t == "user":
         say([{"type": "tool_use", "id": "toolu_room", "name": "mcp__room__ask_agent", "input": ARGS}], "m1")
         out({"type": "control_request", "request_id": "mcp-1", "request": {"subtype": "mcp_message", "server_name": "room",

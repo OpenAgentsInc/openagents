@@ -67,6 +67,7 @@ CxSettings :: struct {
   ask_person: bool;           // approvalsReviewer "user": approvals reach the person, never an AI reviewer
   plan: bool;                 // the collaboration mode is plan
   name_mode: bool;            // name the collaboration mode on each turn (once plan was ever on)
+  config: string;             // config overrides, a JSON object of dotted keys ("" for none)
 }
 
 CxClient :: struct {
@@ -158,6 +159,7 @@ cx_put_thread_settings :: (o: [] ClOut, st: CxSettings) {
   if st.sandbox.count > 0 { cx_put_member(o, "sandbox", st.sandbox); }
   if st.ask_person { cx_put_member(o, "approvalsReviewer", "user"); }
   if st.model.count > 0 { cx_put_member(o, "model", st.model); }
+  if st.config.count > 0 { cl_put(o, ",\"config\":"); cl_put(o, st.config); }
 }
 // thread/start; its answer's thread id is kept (cx_thread_id).
 cx_thread_start :: (c: [] CxClient, st: CxSettings) -> int {

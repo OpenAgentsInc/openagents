@@ -163,3 +163,16 @@ int32_t dsk_collapsed(void *desk) { return coaxial_desk_collapsed(desk_at(desk))
 int32_t zr_answer(void *state, int32_t allow) { return coaxial_zeron_answer(at(state), allow != 0) ? 1 : 0; }
 int32_t zr_status_text(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_status_text(at(state), (coax_v_u8){out, cap}); }
 int32_t zr_last_text(void *state, uint8_t *out, int32_t cap) { return (int32_t)coaxial_zeron_last_text(at(state), (coax_v_u8){out, cap}); }
+void dsk_set_room(void *desk, const uint8_t *exe, int32_t exe_n, const uint8_t *sock, int32_t sock_n) { coaxial_desk_set_room(desk_at(desk), str(exe, exe_n), str(sock, sock_n)); }
+int32_t dsk_room_line(void *desk, int32_t conn, const uint8_t *line, int32_t n) { return coaxial_desk_room_line(desk_at(desk), conn, str(line, n)) ? 1 : 0; }
+int32_t dsk_room_out(void *desk, int32_t *conn, uint8_t *out, int32_t cap) {
+  int64_t c = -1;
+  int32_t n = (int32_t)coaxial_desk_room_out(desk_at(desk), (coax_v_s64){&c, 1}, (coax_v_u8){out, cap});
+  *conn = (int32_t)c; return n;
+}
+int32_t room_mcp(const uint8_t *line, int32_t n, int32_t agent, uint8_t *out, int32_t cap, int32_t *len) {
+  int64_t l = 0;
+  int32_t kind = (int32_t)coaxial_room_mcp(str(line, n), agent, (coax_v_u8){out, cap}, (coax_v_s64){&l, 1});
+  *len = (int32_t)l; return kind;
+}
+int32_t room_mcp_result(const uint8_t *reply, int32_t n, uint8_t *out, int32_t cap) { return (int32_t)coaxial_room_mcp_result(str(reply, n), (coax_v_u8){out, cap}); }

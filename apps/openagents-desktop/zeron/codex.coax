@@ -223,6 +223,7 @@ CxEngine :: struct {
   lim: [1] CxLimits;
   ask_kind: int;                     // the approval asked (CX_ASK_*), its part is the session's asking
   err: [] u8;
+  room: [4096] u8; room_n: int;      // the room's MCP server as config overrides (desk.coax), "" off the desk
 }
 // The engine's own buffers, carved from the host's (cxe_mem): the catalog's
 // strings, codex's path and the child's PATH, the folder, this turn's
@@ -271,6 +272,7 @@ cxe_settings :: (x: [] CxEngine) -> CxSettings {
   if x[0].access == ACC_FULL { st.approval_policy = "never"; st.sandbox = "danger-full-access"; }
   else if x[0].access == ACC_EDITS { st.approval_policy = "untrusted"; st.sandbox = "workspace-write"; st.ask_person = true; }
   else { st.approval_policy = "untrusted"; st.sandbox = "read-only"; st.ask_person = true; }
+  if x[0].room_n > 0 { st.config = cx_str(x[0].room[..], x[0].room_n); }
   return st;
 }
 
