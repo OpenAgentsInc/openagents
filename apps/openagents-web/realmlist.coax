@@ -583,7 +583,7 @@ draw_row :: (out: [] f32, at: int, s: [] RealmsState, l: Layout, b: Box, r: int,
     // the sort's number at the right, the line under the name, the other numbers under that
     which := ifx s[0].sort == SORT_PLAYED then 1 else (ifx s[0].sort == SORT_RECENT then 2 else 0);
     tag: [40] u8; tn := put_text(tag[..], 0, vals[which]);
-    if which == 0 && counted { tn += put_text(tag[..], tn, " VISITORS"); }
+    if which == 0 && counted { tn += put_text(tag[..], tn, ifx stat(s, r, N_VISITORS) == 1 then " VISITOR" else " VISITORS"); }
     big := cast(string) tag[0..<tn];
     v = put_right(out, v, big, right, b.y0 + 20 * d, 7 * d, white);
     v = put_fit(out, v, field(REALMS_ROWS, r, C_TITLE), x, b.y0 + 20 * d, 10 * d, nk, right - x - ink_width(big, 7 * d, GAP, SPACE, white) - 12 * d);
