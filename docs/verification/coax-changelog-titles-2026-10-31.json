@@ -1,0 +1,139 @@
+{
+  "date": "2026-10-31",
+  "scope": "Require an authored 2\u20134 word summary in every Coax release heading and publish the same titles in the web reader.",
+  "initial_base": "06b6eb364b4fbf7d20f03067aab92be30318a979",
+  "heading_change": {
+    "entries": 48,
+    "current_version": "0.43.0",
+    "current_summary": "Generic Literal Inference",
+    "word_counts": [
+      2,
+      3,
+      4
+    ],
+    "all_other_bytes_preserved": true,
+    "mapping": {
+      "0.43.0": "Generic Literal Inference",
+      "0.42.0": "Native Finite Properties",
+      "0.41.0": "Native Check Execution",
+      "0.40.0": "Generic Type Constraints",
+      "0.39.0": "Native Check Emission",
+      "0.38.0": "Foreign Borrowed Views",
+      "0.37.0": "Generic Structs",
+      "0.36.0": "Array Length Parameters",
+      "0.35.0": "Generic Procedure Instantiation",
+      "0.34.0": "Generic Type Parameters",
+      "0.33.0": "Verification Evidence Records",
+      "0.32.0": "Lowering Inspection Records",
+      "0.31.0": "Ordered Trap Evaluation",
+      "0.30.0": "Module Export Visibility",
+      "0.29.0": "Declaration Spans and Layout",
+      "0.28.0": "Qualified Module Lookup",
+      "0.27.0": "Module Revision Records",
+      "0.26.0": "Logical Module Identity",
+      "0.25.0": "Independent Compiler Profiles",
+      "0.24.0": "CUDA Warp Kernels",
+      "0.23.0": "CUDA Compute Emission",
+      "0.22.0": "Compiler Build Provenance",
+      "0.21.0": "Aggregate Traversal Bounds",
+      "0.20.0": "Owned Interpreter Strings",
+      "0.19.0": "Conservative Mutation Scheduling",
+      "0.18.2": "Aggregate Slot Increase",
+      "0.18.1": "Iterative Aggregate Cleanup",
+      "0.18.0": "Compile Time Resource Bounds",
+      "0.17.0": "Build Profile Selection",
+      "0.16.0": "Wide Integer Products",
+      "0.15.0": "Unsigned Modular Arithmetic",
+      "0.14.0": "Canonical Release Catalogue",
+      "0.13.0": "Native Source Debugging",
+      "0.12.0": "CPU Layout Reflection",
+      "0.11.0": "Checked Source Composition",
+      "0.10.0": "Coax Semantic Checker",
+      "0.9.0": "Coax Syntax Parser",
+      "0.8.0": "Coax Lexer Implementation",
+      "0.7.1": "Coax Provenance Assembly",
+      "0.7.0": "Coax Descriptor Importer",
+      "0.6.1": "Checked Wire Runtime",
+      "0.6.0": "Native Descriptor Importer",
+      "0.5.1": "Verification Gate Hardening",
+      "0.5.0": "Check First Development",
+      "0.4.0": "Bounded Protobuf Codecs",
+      "0.3.0": "Aggregates and Native ABI",
+      "0.2.0": "Bounded Compile Time Evaluation",
+      "0.1.0": "Initial Compiler"
+    }
+  },
+  "source_sha256": {
+    "coax/CHANGELOG.md": "3836b52aa3636ea022854c9edb51fc256d8757a46a4438768f1f54e5bc105f54",
+    "coax/changelog-model.coax": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c",
+    "coax/changelog-bridge.c": "954a971ca3f3da8154942d58b057beeed3bfa1c7dbc3b499484eef8783e90bb1",
+    "coax/web/changelog-page.coax": "38c357713845ccfa6aeed93e68d9e60943fc244f885dbce5307aef63a29f8d96"
+  },
+  "qualification": {
+    "model_checks": 22,
+    "baseline_compiler_version": "0.43.0",
+    "baseline_compiler_sha256": "e47358af9da555fa871cd8ff35c11e8335da9f5c365fca833e11b133232f42d3",
+    "model_red_logs": [
+      "/tmp/coax-changelog-title-red.log",
+      "/tmp/coax-changelog-title-edge-red.log",
+      "/tmp/coax-changelog-title-valid-tab-red.log"
+    ],
+    "model_green_log": "/tmp/coax-changelog-title-model-freeze-3.log",
+    "initial_mutation_failure": {
+      "mutants": 403,
+      "killed": 402,
+      "survivors": 1,
+      "site": "Noncanonical H2 guard OR became AND; a valid-title TAB heading isolates the refusal. Added a check; no mutant was marked equivalent.",
+      "log": "/tmp/coax-changelog-titles-bootstrap-final.log"
+    },
+    "web_oracle_cases": 3,
+    "web_oracle_log": "/tmp/coax-changelog-titles-page-oracle.log",
+    "reader_profiles": [
+      "native O0",
+      "native O2",
+      "ASan/UBSan",
+      "Wasm"
+    ],
+    "frames_per_profile": 16,
+    "viewports": 5,
+    "peak_vertices": 11832,
+    "copy_bytes": 34917,
+    "reader_log": "/tmp/coax-changelog-titles-reader.log",
+    "reader_wasm_sha256": "9d08a95766144307afeda242b938b51dd6b1ca801cff7e56e58735fafbcb4cb5",
+    "cache_provenance_regression": "/tmp/coax-changelog-titles-provenance.log",
+    "goldens": {
+      "log": "/tmp/coax-changelog-titles-goldens.log",
+      "visually_reviewed": [
+        "desktop",
+        "phone"
+      ]
+    },
+    "model_mutation": {
+      "result": "zero survivors",
+      "scope": "root-only",
+      "evidence": "The normal bootstrap advanced past its exit-checked changelog mutation gate to shader, parser and checker gates. The final change added only a valid-title TAB check to kill the previously observed survivor.",
+      "model_sha256": "6591b31d63f086f9a7ad1494dea067cfabef1010c76ae524a3ccb92b68ce3c4c",
+      "bootstrap_log": "/tmp/coax-changelog-titles-bootstrap-qualified.log"
+    },
+    "release_adapter": {
+      "superset_tests": 18,
+      "result": "passed",
+      "elapsed_seconds": 763.57,
+      "log": "/tmp/coax-changelog-title-release-final.log",
+      "novel_valid_title_tab_atomic_refusals": "Both --check and --write passed independently: /tmp/coax-changelog-valid-tab-native-atomic.log",
+      "future_runtime": "Reduced the redundant cross product to 16 generator calls. Reused the passing superset instead of repeating unchanged cases; syntax compilation passed."
+    },
+    "preserved_after_rebase": "Removing exactly the 48 new title segments reproduces the parent changelog byte-for-byte; generated Markdown remains byte-identical."
+  },
+  "bootstrap": {
+    "result": "bounded stop; no new compiler/cache published",
+    "elapsed_seconds": 870.216,
+    "exit_code": 124,
+    "log": "/tmp/coax-changelog-titles-bootstrap-qualified.log",
+    "completed_changed_unit_gate": "Title policy checks and zero-survivor mutation passed before the broader checker gate.",
+    "remaining": "The broader quantity-compiler checker/protocol/fixed-point and installation sequence did not finish under this command limit. It is outside this page/policy change.",
+    "publication_choice": "Use the already provenance-qualified baseline Coax0.43 compiler and fully checked reader Wasm, with pinned existing production host/shader, for a focused page publication. No embedded compiler metadata changed in this task; no replacement compiler or full-site release marker is claimed."
+  },
+  "publication": "Pending committed source and staging.",
+  "rebased_parent": "7be932de07227e97d5c5256108f1ea8de61306fa"
+}

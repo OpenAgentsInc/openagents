@@ -17,7 +17,7 @@ CgBlock :: struct {kind:int;text:string;link:string;}
 CgLink :: struct {label:string;url:string;}
 CgParse :: struct {n:int;used:int;latest:string;}
 CgBuffer :: struct {bytes:[]u8;n:int;bad:bool;}
-CG_FIXTURE :: "# Coax changelog\n\nRead [`STATUS.md`](STATUS.md) and **plain** `code`.\n\n## 0.37.0 — 2026-10-31\n\nCommit: [`0123456789abcdef0123456789abcdef01234567`](https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567)\n\n- A concrete bounded release improves <storage> & output.\n";
+CG_FIXTURE :: "# Coax changelog\n\nRead [`STATUS.md`](STATUS.md) and **plain** `code`.\n\n## 0.37.0 — Generic Structs — 2026-10-31\n\nCommit: [`0123456789abcdef0123456789abcdef01234567`](https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567)\n\n- A concrete bounded release improves <storage> & output.\n";
 
 #test "canonical paragraphs headings links and text survive as reader blocks" {
   blocks:[20]CgBlock;arena:[4096]u8;p:[1]CgParse;
@@ -25,7 +25,7 @@ CG_FIXTURE :: "# Coax changelog\n\nRead [`STATUS.md`](STATUS.md) and **plain** `
   #assert p[0].latest=="0.37.0" && p[0].n==6;
   #assert blocks[0].kind==2 && blocks[0].text=="Read STATUS.md and plain code.";
   #assert blocks[1].kind==3 && blocks[1].text=="STATUS.md" && blocks[1].link=="https://github.com/OpenAgentsInc/openagents/blob/main/coax/STATUS.md";
-  #assert blocks[2].kind==1 && blocks[2].text=="0.37.0 — 2026-10-31";
+  #assert blocks[2].kind==1 && blocks[2].text=="0.37.0 — Generic Structs — 2026-10-31";
   #assert blocks[3].text=="Commit: 0123456789abcdef0123456789abcdef01234567";
   #assert blocks[4].kind==3 && blocks[4].link=="https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567";
   #assert blocks[5].text=="- A concrete bounded release improves <storage> & output.";

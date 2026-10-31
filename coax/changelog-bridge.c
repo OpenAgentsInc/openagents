@@ -25,6 +25,7 @@ int main(int argc, char **argv) {
   coax_t_ChangelogPlan plan = CL_plan(text, version, commit, strcmp(argv[4], "--write") == 0);
   if (!plan.ok) {
     fprintf(stderr, "release/changelog: require a newest %s entry with a valid date, commit and authored notes in coax/CHANGELOG.md\n"
+                    "Every heading must be ## VERSION — 2-4 word summary — YYYY-MM-DD.\n"
                     "Prepare with Commit: pending and --write; after committing the version bump, rerun --write to record its hash.\n", argv[2]);
     free(bytes);
     return 1;

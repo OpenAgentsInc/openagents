@@ -2125,7 +2125,10 @@ and generation remain Python-free.
 
 Every compiler-version bump requires a matching newest entry in
 `coax/CHANGELOG.md`, including an authored summary, valid date and commit line.
-The Coax changelog model validates ordering and the current entry before release
+Every release heading follows `## VERSION — 2–4 word summary — YYYY-MM-DD`;
+the plain-text ASCII title is mandatory for current and historical entries. Missing,
+out-of-range or placeholder titles refuse in both check and write modes.
+The Coax changelog model validates headings, ordering and the current entry before release
 generation writes anything. Preparation may use `Commit: pending`;
 `coax/build.sh` (including compiler-cache reuse), app generation and publication
 checks require a finalized hash. In a Git checkout that hash must match the

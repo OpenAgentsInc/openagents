@@ -139,7 +139,8 @@ elif 'worktree' in a and 'add' in a: shutil.copytree(os.environ['TARGET_TREE'],a
   for name in BUILD_ARTIFACTS:(saved/name).write_text('// cached generated artifact fixture\n')
   path=self.tree/'coax/CHANGELOG.md';original=path.read_text()
   first=original.index('## ');line_end=original.index('\n',first)
-  path.write_text(original[:first]+'## 99.99.99 — 2026-10-31'+original[line_end:])
+  heading=original[first:line_end];version_end=heading.index(' — ')
+  path.write_text(original[:first]+'## 99.99.99'+heading[version_end:]+original[line_end:])
   # Authored historical prose is not a compiler-rebuild input; it still has
   # to pass the normal build's release gate before cache installation.
   self.assertEqual(self.run_script('fingerprint',self.tree,success=True).stdout.strip(),identity)

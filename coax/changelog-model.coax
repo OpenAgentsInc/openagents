@@ -7,8 +7,81 @@ ChangelogPlan :: struct {ok:bool;replace:bool;from:int;to:int;}
 CL_MAX_BYTES :: 262144;
 CL_HASH :: "0123456789abcdef0123456789abcdef01234567";
 CL_OTHER_HASH :: "abcdef0123456789abcdef0123456789abcdef01";
-CL_VALID :: "# Changelog\n\n## 0.37.0 — 2026-10-31\n\nCommit: [`0123456789abcdef0123456789abcdef01234567`](https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567)\n\n- Generic structs receive concrete checked layouts.\n\n## 0.36.0 — 2026-10-30\n\n- Earlier release notes remain untouched.\n";
-CL_PENDING :: "# Changelog\n\n## 0.38.0 — 2026-11-01\n\nCommit: pending\n\n- Checked generic constraints qualify concrete bindings.\n";
+CL_VALID :: "# Changelog\n\n## 0.37.0 — Generic Structs — 2026-10-31\n\nCommit: [`0123456789abcdef0123456789abcdef01234567`](https://github.com/OpenAgentsInc/openagents/commit/0123456789abcdef0123456789abcdef01234567)\n\n- Generic structs receive concrete checked layouts.\n\n## 0.36.0 — Array Length Parameters — 2026-10-30\n\n- Earlier release notes remain untouched.\n";
+CL_PENDING :: "# Changelog\n\n## 0.38.0 — Generic Constraints — 2026-11-01\n\nCommit: pending\n\n- Checked generic constraints qualify concrete bindings.\n";
+
+#test "every release heading requires a short authored title" {
+  missing:="## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n";
+  #assert !CL_plan(missing,"0.37.0","",true).ok;
+  #assert CL_title("Generic Structs") && CL_title("Native Finite Properties") && CL_title("Checked Native Verification Tools");
+  #assert CL_title("mixedCase Native Types") && CL_title("Python-free Descriptor Imports") && CL_title("Caller's Borrowed Buffers");
+  #assert !CL_title("") && !CL_title(" ") && !CL_title("Native") && !CL_title("One Two Three Four Five");
+  #assert !CL_title(" Generic Structs") && !CL_title("Generic Structs ") && !CL_title("Generic  Structs");
+  #assert !CL_title("TODO Release Notes") && !CL_title("Native tBd") && !CL_title("Placeholder Release") && !CL_title("Pending Feature");
+  #assert !CL_title("**Generic** Structs") && !CL_title("`Generic` Structs") && !CL_title("[Generic] Structs") && !CL_title("<Generic> Structs");
+  #assert !CL_title("Generic\tStructs") && !CL_title("Generic\nStructs") && !CL_title("--- Structs") && !CL_title("Generic — Structs");
+}
+#test "invalid historical titles refuse both release modes" {
+  history:="## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.36.0 — TODO Release — 2026-10-30\n";
+  #assert !CL_plan(history,"0.37.0","",true).ok && !CL_plan(history,"0.37.0","",false).ok;
+  #assert !CL_plan("## 0.37.0 — Generic — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — One Two Three Four Five — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+}
+#test "title words and delimiters admit plain boundaries without markup" {
+  #assert CL_title_word("A") && CL_title_word("z") && CL_title_word("0") && CL_title_word("9") && CL_title_word("Native") && !CL_title_word("Modèles");
+  #assert CL_title_word("Python-free") && CL_title_word("Caller's") && CL_title_word("tbc");
+  #assert CL_title_word("xodo") && CL_title("A B");
+  #assert !CL_title_word("") && !CL_title_word("TODO") && !CL_title_word("TBD") && !CL_title_word("placeholder") && !CL_title_word("pending");
+  #assert !CL_title_word("-Native") && !CL_title_word("Native-") && !CL_title_word("'Native") && !CL_title_word("Native'") && !CL_title_word("—");
+  #assert CL_first_space("0.37.0 — Generic Structs")==6 && CL_first_space("x")== -1 && CL_first_space(" x")==0 && CL_first_space("ab! cd")==3;
+  bytes:[1]u8;
+  for value:0..<256 {
+    bytes[0]=cast(u8)value;expected:=false;
+    for allowed:"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789" {if value==int(allowed) {expected=true;}}
+    #assert CL_title_char(bytes[0])==expected;
+  }
+}
+#test "reader titles reject unsupported bytes and malformed historical headings" {
+  #assert !CL_title("Modèles Natifs") && !CL_title("  Native") && !CL_title("Native　Checks");
+  bad:=[6]string.[" ## 0.35.0 — 2026-10-30\n","##\t0.35.0 — 2026-10-30\n","\t## 0.35.0 — 2026-10-30\n","   ## 0.35.0 — 2026-10-30\n","##\n","##\t0.35.0 — Earlier Fixes — 2026-10-30\n"];
+  for heading:bad {
+    bytes:[1024]u8;for c,i:CL_VALID {bytes[i]=c;}
+    for c,i:heading {bytes[CL_VALID.count+i]=c;}
+    text:=cast(string) bytes[0..<CL_VALID.count+heading.count];
+    #assert !CL_plan(text,"0.37.0","",false).ok && !CL_plan(text,"0.37.0","",true).ok;
+  }
+}
+CL_title :: (text:string)->bool {
+  start:=0;gaps:=0;
+  for c,i:text {
+    if c==' ' {
+      if !CL_title_word(text[start..<i]) {return false;}
+      gaps+=1;start=i+1;
+    }
+  }
+  return CL_title_word(text[start..<text.count]) && gaps>=1 && gaps<=3;
+}
+CL_first_space :: (text:string)->int {
+  for c,i:text {if c==' ' {return i;}}
+  return -1;
+}
+CL_title_char :: (c:u8)->bool {
+  // The shipped reader's title font is ASCII; spelling case remains authored.
+  return (c>='a' && c<='z') || (c>='A' && c<='Z') || (c>='0' && c<='9');
+}
+CL_title_word :: (text:string)->bool {
+  if text.count==0 {return false;}
+  if !CL_title_char(text[0]) || !CL_title_char(text[text.count-1]) {return false;}
+  for c:text {if !CL_title_char(c) && c!='-' && c!='\'' {return false;}}
+  placeholders:=[4]string.["todo","tbd","placeholder","pending"];
+  for word:placeholders {
+    if text.count==word.count {
+      same:=true;for i:0..<word.count {if CL_lower(text[i])!=word[i] {same=false;}}
+      if same {return false;}
+    }
+  }
+  return true;
+}
 
 #test "current authored entry agrees with version and optional observed hash" {
   p:=CL_plan(CL_VALID,"0.37.0",CL_HASH,false);
@@ -31,7 +104,7 @@ CL_PENDING :: "# Changelog\n\n## 0.38.0 — 2026-11-01\n\nCommit: pending\n\n- C
   p=CL_plan(CL_PENDING,"0.38.0",CL_HASH,true);
   #assert p.ok && p.replace;
   #assert CL_PENDING[p.from..<p.to]=="Commit: pending\n";
-  #assert CL_PENDING[0..<p.from]=="# Changelog\n\n## 0.38.0 — 2026-11-01\n\n";
+  #assert CL_PENDING[0..<p.from]=="# Changelog\n\n## 0.38.0 — Generic Constraints — 2026-11-01\n\n";
   #assert CL_PENDING[p.to..<CL_PENDING.count]=="\n- Checked generic constraints qualify concrete bindings.\n";
   p=CL_plan(CL_VALID,"0.37.0",CL_OTHER_HASH,true);
   #assert p.ok && p.replace && CL_at(CL_VALID,p.from,"Commit: [`");
@@ -41,24 +114,24 @@ CL_PENDING :: "# Changelog\n\n## 0.38.0 — 2026-11-01\n\nCommit: pending\n\n- C
 #test "release headings are complete ordered unique and first matches current" {
   #assert !CL_plan("# Changelog\n","0.37.0","",false).ok;
   #assert !CL_plan("## 0.37.0 - 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31 extra\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.37.0 — 2026-10-30\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.38.0 — 2026-10-30\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## bad — 2026-10-30\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.36.0 — 2026-02-30\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.35.0 — 2026-10-30\n## 0.36.0 — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31 extra\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.37.0 — Generic Structs — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.38.0 — Generic Constraints — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## bad — Invalid Version — 2026-10-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.36.0 — Array Length Parameters — 2026-02-30\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n## 0.35.0 — Callable Generic Procedures — 2026-10-30\n## 0.36.0 — Array Length Parameters — 2026-10-30\n","0.37.0","",true).ok;
   #assert !CL_plan("## — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
 }
 #test "current entry needs one canonical commit and substantive authored bullet" {
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\n- Concrete checked layouts.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: nope\n- Concrete checked layouts.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- TODO describe release.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- TBD release notes.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- placeholder notes here.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- pending release notes.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- ...\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: nope\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- TODO describe release.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- TBD release notes.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- placeholder notes here.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- pending release notes.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- ...\n","0.37.0","",true).ok;
 }
 #test "date grammar checks real calendar dates including century leap years" {
   #assert CL_date("2026-10-31") && CL_date("2000-02-29") && CL_date("2024-02-29");
@@ -80,9 +153,9 @@ CL_PENDING :: "# Changelog\n\n## 0.38.0 — 2026-11-01\n\nCommit: pending\n\n- C
 }
 #test "input bounds and control bytes refuse safely" {
   #assert !CL_plan("","0.37.0","",false).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\r\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
-  #assert !CL_plan("# Preamble\r\n## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
-  #assert !CL_plan("## 0.37.0 — 2026-10-31\nCommit: pending\n- Concrete\0checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\r\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("# Preamble\r\n## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete checked layouts.\n","0.37.0","",true).ok;
+  #assert !CL_plan("## 0.37.0 — Generic Structs — 2026-10-31\nCommit: pending\n- Concrete\0checked layouts.\n","0.37.0","",true).ok;
   huge:[CL_MAX_BYTES+1]u8;
   for i:0..<huge.count {huge[i]=' ';}
   for c,i:CL_PENDING {huge[i]=c;}
@@ -90,10 +163,11 @@ CL_PENDING :: "# Changelog\n\n## 0.38.0 — 2026-11-01\n\nCommit: pending\n\n- C
   #assert !CL_plan(cast(string) huge[..],"0.38.0","",true).ok;
 }
 #test "compact entries and no-newline commit replacement preserve byte boundaries" {
-  text:="## 0.0.0 — 0001-01-01\n- Concrete checked layouts.\nCommit: pending";
+  text:="## 0.0.0 — Initial Compiler — 0001-01-01\n- Concrete checked layouts.\nCommit: pending";
   p:=CL_plan(text,"0.0.0",CL_HASH,true);
   #assert p.ok && p.replace && text[p.from..<p.to]=="Commit: pending" && p.to==text.count;
-  #assert !CL_plan("Commit: pending\n- Concrete checked layouts.\n## 0.37.0 — 2026-10-31\n","0.37.0","",true).ok;
+  #assert CL_plan("## 0.0.0 — A B — 0001-01-01\nCommit: pending\n- Concrete checked layouts.\n","0.0.0","",true).ok;
+  #assert !CL_plan("Commit: pending\n- Concrete checked layouts.\n## 0.37.0 — Generic Structs — 2026-10-31\n","0.37.0","",true).ok;
   #assert CL_at("abc",0,"abc") && !CL_at("abc",0,"xbc") && !CL_at("abc",2,"cd");
 }
 #test "decimal and ASCII normalization have exact public boundaries" {
@@ -156,12 +230,17 @@ CL_plan :: (text:string,version:string,commit:string,write:bool)->ChangelogPlan 
   for c,i:text {
     if c!='\n' && i+1<text.count {continue;}
     end:=ifx c=='\n' then i else i+1;line:=text[at..<end];
-    if CL_at(line,0,"## ") {
+    leading:=0;
+    while leading<line.count && (line[leading]==' ' || line[leading]=='\t') {leading+=1;}
+    if CL_at(line,leading,"##") && !CL_at(line,leading,"###") {
+      if leading!=0 || !CL_at(line,0,"## ") {return p;}
       split:=line.count-separator.count-10;
-      if split<8 || !CL_at(line,split,separator) {return p;}
-      found:=line[3..<split];date:=line[split+separator.count..<line.count];
+      if split<16 || !CL_at(line,split,separator) {return p;}
+      body:=line[3..<split];version_end:=CL_first_space(body);
+      if !CL_at(body,version_end,separator) {return p;}
+      found:=body[0..<version_end];title:=body[version_end+separator.count..<body.count];date:=line[split+separator.count..<line.count];
       code:=RM_version_code(found);
-      if code<0 || (headings>0 && code>=previous) || !CL_date(date) {return p;}
+      if code<0 || (headings>0 && code>=previous) || !CL_date(date) || !CL_title(title) {return p;}
       previous=code;
       if headings==0 && found!=version {return p;}
       headings+=1;

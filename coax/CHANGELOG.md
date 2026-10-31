@@ -13,7 +13,7 @@ These are compiler versions, separate from inventory, wire and protocol schema
 versions. [`STATUS.md`](STATUS.md) describes current support;
 [`RELEASE.md`](RELEASE.md) describes the release workflow.
 
-## 0.43.0 — 2026-10-31
+## 0.43.0 — Generic Literal Inference — 2026-10-31
 
 Commit: [`baca83b6844126d77059469177b16271b4a40ed7`](https://github.com/OpenAgentsInc/openagents/commit/baca83b6844126d77059469177b16271b4a40ed7)
 
@@ -27,7 +27,7 @@ Commit: [`baca83b6844126d77059469177b16271b4a40ed7`](https://github.com/OpenAgen
   binding argument may now come later.
 - Programs that compiled before emit identical C.
 
-## 0.42.0 — 2026-10-31
+## 0.42.0 — Native Finite Properties — 2026-10-31
 
 Commit: [`b9ed63a38faa74fee5557b506b2d2c042f77e4ef`](https://github.com/OpenAgentsInc/openagents/commit/b9ed63a38faa74fee5557b506b2d2c042f77e4ef)
 
@@ -41,7 +41,7 @@ Commit: [`b9ed63a38faa74fee5557b506b2d2c042f77e4ef`](https://github.com/OpenAgen
   Full original evaluator baselines remain mandatory; time/output exhaustion
   and malformed or incomplete observations cannot qualify native execution.
 
-## 0.41.0 — 2026-10-31
+## 0.41.0 — Native Check Execution — 2026-10-31
 
 Commit: [`b91aed93e2b4267ccdc117d6cab3f272f2a896db`](https://github.com/OpenAgentsInc/openagents/commit/b91aed93e2b4267ccdc117d6cab3f272f2a896db)
 
@@ -58,7 +58,7 @@ Commit: [`b91aed93e2b4267ccdc117d6cab3f272f2a896db`](https://github.com/OpenAgen
   semantic and consumer qualification remain subsequent work.
 
 
-## 0.40.0 — 2026-10-31
+## 0.40.0 — Generic Type Constraints — 2026-10-31
 
 Commit: [`49e92d76ede39c1810c000f3878134243eebdcd8`](https://github.com/OpenAgentsInc/openagents/commit/49e92d76ede39c1810c000f3878134243eebdcd8)
 
@@ -78,7 +78,7 @@ Commit: [`49e92d76ede39c1810c000f3878134243eebdcd8`](https://github.com/OpenAgen
 - The parser and checker gates kill every mutant (parser 1260/1260, checker
   5042/5042 with the constraint mutants).
 
-## 0.39.0 — 2026-10-31
+## 0.39.0 — Native Check Emission — 2026-10-31
 
 Commit: [`26a9355c10e1471454f8c18b3da5cf788f70daef`](https://github.com/OpenAgentsInc/openagents/commit/26a9355c10e1471454f8c18b3da5cf788f70daef)
 
@@ -94,7 +94,7 @@ Commit: [`26a9355c10e1471454f8c18b3da5cf788f70daef`](https://github.com/OpenAgen
   finite-domain properties and broader semantic/consumer qualification remain
   separate work.
 
-## 0.38.0 — 2026-10-31
+## 0.38.0 — Foreign Borrowed Views — 2026-10-31
 
 Commit: [`0b82a1587a56a4eed8ead255dd32300efe49fc30`](https://github.com/OpenAgentsInc/openagents/commit/0b82a1587a56a4eed8ead255dd32300efe49fc30)
 
@@ -112,7 +112,7 @@ Commit: [`0b82a1587a56a4eed8ead255dd32300efe49fc30`](https://github.com/OpenAgen
   twice in one C expression, which C leaves undefined and clang rejects with
   `-Wunsequenced`. `tests/pass/compound_view` covers it.
 
-## 0.37.0 — 2026-10-31
+## 0.37.0 — Generic Structs — 2026-10-31
 
 Commit: [`6132cbaf0a0dddccbb1d3d9ae32a9659c5bf6644`](https://github.com/OpenAgentsInc/openagents/commit/6132cbaf0a0dddccbb1d3d9ae32a9659c5bf6644)
 
@@ -133,7 +133,7 @@ Commit: [`6132cbaf0a0dddccbb1d3d9ae32a9659c5bf6644`](https://github.com/OpenAgen
   also landed under this version, with immutable oracle/start identities and
   recorded repair, elapsed-time and edit measurements.
 
-## 0.36.0 — 2026-10-31
+## 0.36.0 — Array Length Parameters — 2026-10-31
 
 Commit: [`03d153e89a947797c50330c13f48c1984fa53711`](https://github.com/OpenAgentsInc/openagents/commit/03d153e89a947797c50330c13f48c1984fa53711)
 
@@ -143,7 +143,7 @@ Commit: [`03d153e89a947797c50330c13f48c1984fa53711`](https://github.com/OpenAgen
   as both type and length parameters refuse. Corrected generated error-reference
   headings for E06xx/E07xx.
 
-## 0.35.0 — 2026-10-31
+## 0.35.0 — Generic Procedure Instantiation — 2026-10-31
 
 Commit: [`b75820e208a781453c41af45bf85ed95023e548a`](https://github.com/OpenAgentsInc/openagents/commit/b75820e208a781453c41af45bf85ed95023e548a)
 
@@ -158,7 +158,7 @@ Commit: [`b75820e208a781453c41af45bf85ed95023e548a`](https://github.com/OpenAgen
   added `coax wgsl FILE --functions`, a Coax WGSL emitter using the checked tree.
   Web builds adopted it and removed the Python WGSL translator.
 
-## 0.34.0 — 2026-10-31
+## 0.34.0 — Generic Type Parameters — 2026-10-31
 
 Commit: [`1cc85cf74f0f85aad369aee59cd151950e0f2c84`](https://github.com/OpenAgentsInc/openagents/commit/1cc85cf74f0f85aad369aee59cd151950e0f2c84)
 
@@ -168,7 +168,7 @@ Commit: [`1cc85cf74f0f85aad369aee59cd151950e0f2c84`](https://github.com/OpenAgen
 - Generic calls still refused with E0397 and templates were omitted from C
   emission. Callable instantiation arrived in 0.35.0.
 
-## 0.33.0 — 2026-10-31
+## 0.33.0 — Verification Evidence Records — 2026-10-31
 
 Commit: [`6da88715c00baaf7848942c1d074e953de6df01c`](https://github.com/OpenAgentsInc/openagents/commit/6da88715c00baaf7848942c1d074e953de6df01c)
 
@@ -182,7 +182,7 @@ Commit: [`6da88715c00baaf7848942c1d074e953de6df01c`](https://github.com/OpenAgen
   [Coax DEFLATE/zlib/PNG decoding](https://github.com/OpenAgentsInc/openagents/commit/8f1456e4d96af7d858acacc3ee92006f8dc3fd9a)
   and [baseline JPEG decoding](https://github.com/OpenAgentsInc/openagents/commit/b5ce59b0bada23c1cea0ca704854745823541730).
 
-## 0.32.0 — 2026-10-31
+## 0.32.0 — Lowering Inspection Records — 2026-10-31
 
 Commit: [`e132ce1f3465d74e97ec3304e280e9713fd67e6a`](https://github.com/OpenAgentsInc/openagents/commit/e132ce1f3465d74e97ec3304e280e9713fd67e6a)
 
@@ -194,7 +194,7 @@ Commit: [`e132ce1f3465d74e97ec3304e280e9713fd67e6a`](https://github.com/OpenAgen
   [`950b375e38`](https://github.com/OpenAgentsInc/openagents/commit/950b375e38e9886ddf6f5cc3f329c997f578d0e2)
   fixed SPIR-V local arrays borrowed through views to use Private storage.
 
-## 0.31.0 — 2026-10-31
+## 0.31.0 — Ordered Trap Evaluation — 2026-10-31
 
 Commit: [`6d7af890ec90eed4b977b856e6de9a191670be9a`](https://github.com/OpenAgentsInc/openagents/commit/6d7af890ec90eed4b977b856e6de9a191670be9a)
 
@@ -204,7 +204,7 @@ Commit: [`6d7af890ec90eed4b977b856e6de9a191670be9a`](https://github.com/OpenAgen
   exactly-once compound places and reverse cleanup for the supported subset.
   Lowering inspection followed in 0.32.0.
 
-## 0.30.0 — 2026-10-31
+## 0.30.0 — Module Export Visibility — 2026-10-31
 
 Commit: [`cbfe5dbc50530d91d4a1dd0520411815aad1bc40`](https://github.com/OpenAgentsInc/openagents/commit/cbfe5dbc50530d91d4a1dd0520411815aad1bc40)
 
@@ -214,7 +214,7 @@ Commit: [`cbfe5dbc50530d91d4a1dd0520411815aad1bc40`](https://github.com/OpenAgen
 - Export lists name owned declarations only; reexports refuse. Verse HUD became
   the first sealed production module.
 
-## 0.29.0 — 2026-10-31
+## 0.29.0 — Declaration Spans and Layout — 2026-10-31
 
 Commit: [`105acc70f0abbb17d220fe36ada8c2d8ea1c5309`](https://github.com/OpenAgentsInc/openagents/commit/105acc70f0abbb17d220fe36ada8c2d8ea1c5309)
 
@@ -224,7 +224,7 @@ Commit: [`105acc70f0abbb17d220fe36ada8c2d8ea1c5309`](https://github.com/OpenAgen
   size/alignment observations. `coax deps` and `coax layout` reject other target
   names rather than implying unsupported layouts.
 
-## 0.28.0 — 2026-10-31
+## 0.28.0 — Qualified Module Lookup — 2026-10-31
 
 Commit: [`e6437772c29b9554a47687fd3f78aaabf42b391d`](https://github.com/OpenAgentsInc/openagents/commit/e6437772c29b9554a47687fd3f78aaabf42b391d)
 
@@ -237,7 +237,7 @@ Commit: [`e6437772c29b9554a47687fd3f78aaabf42b391d`](https://github.com/OpenAgen
   added checked-tree SPIR-V vertex/fragment lowering for the bounded graphics
   subset, including vectors, records, arrays, views, textures and samplers.
 
-## 0.27.0 — 2026-10-31
+## 0.27.0 — Module Revision Records — 2026-10-31
 
 Commit: [`427ce9d4bed6bb2a609db728f9d283becccd4ebc`](https://github.com/OpenAgentsInc/openagents/commit/427ce9d4bed6bb2a609db728f9d283becccd4ebc)
 
@@ -246,7 +246,7 @@ Commit: [`427ce9d4bed6bb2a609db728f9d283becccd4ebc`](https://github.com/OpenAgen
   These revisions do not constitute a complete cache key.
 - Shared Everglade guard types became a production module consumer.
 
-## 0.26.0 — 2026-10-31
+## 0.26.0 — Logical Module Identity — 2026-10-31
 
 Commit: [`9150d202ad932fc4a94254114b6d032468ba1e41`](https://github.com/OpenAgentsInc/openagents/commit/9150d202ad932fc4a94254114b6d032468ba1e41)
 
@@ -255,7 +255,7 @@ Commit: [`9150d202ad932fc4a94254114b6d032468ba1e41`](https://github.com/OpenAgen
 - `coax deps --declarations` reports owners, identities and checked references.
   This release established identity; lookup remained flat until 0.28.0.
 
-## 0.25.0 — 2026-10-30
+## 0.25.0 — Independent Compiler Profiles — 2026-10-30
 
 Commit: [`48fa03aa887cf6c30b9e4d8a28e0e50f0289d1c9`](https://github.com/OpenAgentsInc/openagents/commit/48fa03aa887cf6c30b9e4d8a28e0e50f0289d1c9)
 
@@ -272,7 +272,7 @@ Commit: [`48fa03aa887cf6c30b9e4d8a28e0e50f0289d1c9`](https://github.com/OpenAgen
   added reusable release builds, builder locking and compiler-input snapshots;
   `COAX_BUILD_FRESH=1` retains a fresh-bootstrap path.
 
-## 0.24.0 — 2026-10-29
+## 0.24.0 — CUDA Warp Kernels — 2026-10-29
 
 Commit: [`3dbc6292fc7dd34237d84b142b00920ba4629a4d`](https://github.com/OpenAgentsInc/openagents/commit/3dbc6292fc7dd34237d84b142b00920ba4629a4d)
 
@@ -297,7 +297,7 @@ Commit: [`3dbc6292fc7dd34237d84b142b00920ba4629a4d`](https://github.com/OpenAgen
   [headless Chrome DevTools client](https://github.com/OpenAgentsInc/openagents/commit/62778126aa080ca980f0015c1a608b6fd5293645).
   The [source-unit ceiling rose from 64 to 128](https://github.com/OpenAgentsInc/openagents/commit/cfe213bcfa0892aa7a7bf90c947b47af2116a4a1).
 
-## 0.23.0 — 2026-10-29
+## 0.23.0 — CUDA Compute Emission — 2026-10-29
 
 Commit: [`666bae043c9bd800d15ed0e7e60912fb8866fa7f`](https://github.com/OpenAgentsInc/openagents/commit/666bae043c9bd800d15ed0e7e60912fb8866fa7f)
 
@@ -312,7 +312,7 @@ Commit: [`666bae043c9bd800d15ed0e7e60912fb8866fa7f`](https://github.com/OpenAgen
   added parallel mutation workers, `--jobs`, `--shard I/N` and `--merge`, preserving
   the serial report for the same scope.
 
-## 0.22.0 — 2026-10-29
+## 0.22.0 — Compiler Build Provenance — 2026-10-29
 
 Commit: [`041464193d180e49cd0e71bf9a14ff1b77d2c38a`](https://github.com/OpenAgentsInc/openagents/commit/041464193d180e49cd0e71bf9a14ff1b77d2c38a)
 
@@ -322,7 +322,7 @@ Commit: [`041464193d180e49cd0e71bf9a14ff1b77d2c38a`](https://github.com/OpenAgen
 - Unrelated repository changes can reuse the verified compiler. The record is
   a consistency check, not a signature or compiler-correctness proof.
 
-## 0.21.0 — 2026-10-29
+## 0.21.0 — Aggregate Traversal Bounds — 2026-10-29
 
 Commit: [`73c6b07d1bf8c926d51a89dd3447dc7ff63e648a`](https://github.com/OpenAgentsInc/openagents/commit/73c6b07d1bf8c926d51a89dd3447dc7ff63e648a)
 
@@ -333,7 +333,7 @@ Commit: [`73c6b07d1bf8c926d51a89dd3447dc7ff63e648a`](https://github.com/OpenAgen
   expression-step budgets remain separate; this does not bound total process
   memory or wall time.
 
-## 0.20.0 — 2026-10-28
+## 0.20.0 — Owned Interpreter Strings — 2026-10-28
 
 Commit: [`59df8f79a361a1dde9c7d7f8448b3594895d2e81`](https://github.com/OpenAgentsInc/openagents/commit/59df8f79a361a1dde9c7d7f8448b3594895d2e81)
 
@@ -343,7 +343,7 @@ Commit: [`59df8f79a361a1dde9c7d7f8448b3594895d2e81`](https://github.com/OpenAgen
   E0400; timing reports expose owned-string peaks. Allocation failures recover
   cleanly during freezing and default evaluation.
 
-## 0.19.0 — 2026-10-28
+## 0.19.0 — Conservative Mutation Scheduling — 2026-10-28
 
 Commit: [`17c2656677d168bb4a0d037608dc425b7e531aad`](https://github.com/OpenAgentsInc/openagents/commit/17c2656677d168bb4a0d037608dc425b7e531aad)
 
@@ -354,7 +354,7 @@ Commit: [`17c2656677d168bb4a0d037608dc425b7e531aad`](https://github.com/OpenAgen
   reference runner and scheduling evidence. Bounded evaluation failures restore
   constant state before later checks.
 
-## 0.18.2 — 2026-10-28
+## 0.18.2 — Aggregate Slot Increase — 2026-10-28
 
 Commit: [`0c7ce1d9c26aa0105e4a16b460e35cb00ad87ef0`](https://github.com/OpenAgentsInc/openagents/commit/0c7ce1d9c26aa0105e4a16b460e35cb00ad87ef0)
 
@@ -362,7 +362,7 @@ Commit: [`0c7ce1d9c26aa0105e4a16b460e35cb00ad87ef0`](https://github.com/OpenAgen
   admit existing Nostr JSON boundary checks. Kept the work and container limits
   unchanged and retained boundary/refusal checks for the revised ceiling.
 
-## 0.18.1 — 2026-10-28
+## 0.18.1 — Iterative Aggregate Cleanup — 2026-10-28
 
 Commit: [`d5fc7e58328986e6e16a5b62609fc181d5c439b7`](https://github.com/OpenAgentsInc/openagents/commit/d5fc7e58328986e6e16a5b62609fc181d5c439b7)
 
@@ -371,7 +371,7 @@ Commit: [`d5fc7e58328986e6e16a5b62609fc181d5c439b7`](https://github.com/OpenAgen
 - Clarified that timing counters cover frontend evaluation before authority
   checks, and documented the traversal work still outside the initial meter.
 
-## 0.18.0 — 2026-10-28
+## 0.18.0 — Compile Time Resource Bounds — 2026-10-28
 
 Commit: [`bb65b83271523eaec0b015a2b5241a3d211e675a`](https://github.com/OpenAgentsInc/openagents/commit/bb65b83271523eaec0b015a2b5241a3d211e675a)
 
@@ -381,7 +381,7 @@ Commit: [`bb65b83271523eaec0b015a2b5241a3d211e675a`](https://github.com/OpenAgen
   cycle cleanup, dependency inventory fields and peak-storage timing counters.
   These frontend limits are separate from `coax test --steps`.
 
-## 0.17.0 — 2026-10-28
+## 0.17.0 — Build Profile Selection — 2026-10-28
 
 Commit: [`ed17d7cd26b591a4aa8cc2abcb50c2528ae72e37`](https://github.com/OpenAgentsInc/openagents/commit/ed17d7cd26b591a4aa8cc2abcb50c2528ae72e37)
 
@@ -392,7 +392,7 @@ Commit: [`ed17d7cd26b591a4aa8cc2abcb50c2528ae72e37`](https://github.com/OpenAgen
   conditions, conditional imports and top-level conditional declarations remained
   unsupported.
 
-## 0.16.0 — 2026-10-28
+## 0.16.0 — Wide Integer Products — 2026-10-28
 
 Commit: [`6acc1f76936b09775d83d172ef48ca968d2de72b`](https://github.com/OpenAgentsInc/openagents/commit/6acc1f76936b09775d83d172ef48ca968d2de72b)
 
@@ -401,7 +401,7 @@ Commit: [`6acc1f76936b09775d83d172ef48ca968d2de72b`](https://github.com/OpenAgen
 - Matching checked frontend rules and compile-time evaluation, native 128-bit
   lowering and portable wasm32 lowering, with independent arithmetic evidence.
 
-## 0.15.0 — 2026-10-28
+## 0.15.0 — Unsigned Modular Arithmetic — 2026-10-28
 
 Commit: [`2c570ddb9718a3fcd51a75d1405d0e66c27e267d`](https://github.com/OpenAgentsInc/openagents/commit/2c570ddb9718a3fcd51a75d1405d0e66c27e267d)
 
@@ -410,7 +410,7 @@ Commit: [`2c570ddb9718a3fcd51a75d1405d0e66c27e267d`](https://github.com/OpenAgen
 - Matching compile-time, checked native C and wasm32 semantics preserve argument
   order and refuse mismatched operand widths.
 
-## 0.14.0 — 2026-10-28
+## 0.14.0 — Canonical Release Catalogue — 2026-10-28
 
 Commit: [`3ea7287819c37b8a0c903f249f23f99a7ce831db`](https://github.com/OpenAgentsInc/openagents/commit/3ea7287819c37b8a0c903f249f23f99a7ce831db)
 
@@ -420,7 +420,7 @@ Commit: [`3ea7287819c37b8a0c903f249f23f99a7ce831db`](https://github.com/OpenAgen
   snapshot or binary drift. Release, inventory-schema and historical feature
   versions remain separate.
 
-## 0.13.0 — 2026-10-28
+## 0.13.0 — Native Source Debugging — 2026-10-28
 
 Commit: [`4830ad9c30ef749d12c75cb57e35ea7ecff2ff2f`](https://github.com/OpenAgentsInc/openagents/commit/4830ad9c30ef749d12c75cb57e35ea7ecff2ff2f)
 
@@ -439,7 +439,7 @@ Commit: [`4830ad9c30ef749d12c75cb57e35ea7ecff2ff2f`](https://github.com/OpenAgen
   The latter landed before the 0.14.0 bump, although the later catalogue records
   its introduction as 0.14.0.
 
-## 0.12.0 — 2026-10-28
+## 0.12.0 — CPU Layout Reflection — 2026-10-28
 
 Commit: [`86ec81de01f0ebf540b070f078643d7e68c45d68`](https://github.com/OpenAgentsInc/openagents/commit/86ec81de01f0ebf540b070f078643d7e68c45d68)
 
@@ -448,7 +448,7 @@ Commit: [`86ec81de01f0ebf540b070f078643d7e68c45d68`](https://github.com/OpenAgen
 - Haunted House vertex admission consumed reflected layout. Support was scoped
   to the bootstrap LP64 CPU layout.
 
-## 0.11.0 — 2026-10-28
+## 0.11.0 — Checked Source Composition — 2026-10-28
 
 Commit: [`3837e89ed5948bc72fea70efdb713f00cdc051a4`](https://github.com/OpenAgentsInc/openagents/commit/3837e89ed5948bc72fea70efdb713f00cdc051a4)
 
@@ -457,7 +457,7 @@ Commit: [`3837e89ed5948bc72fea70efdb713f00cdc051a4`](https://github.com/OpenAgen
 - Original-file diagnostics/traps, per-file authority and private-library
   verification. `coax deps` inventories source and descriptor inputs.
 
-## 0.10.0 — 2026-10-28
+## 0.10.0 — Coax Semantic Checker — 2026-10-28
 
 Commit: [`1e0ce7636caf5a97876fca98fc02472cd6bf328c`](https://github.com/OpenAgentsInc/openagents/commit/1e0ce7636caf5a97876fca98fc02472cd6bf328c)
 
@@ -467,7 +467,7 @@ Commit: [`1e0ce7636caf5a97876fca98fc02472cd6bf328c`](https://github.com/OpenAgen
 - Added the explicit generated checker seed, bounded indexed graph and exact
   bootstrap regeneration. C++ remained the evaluator, emitter and storage bridge.
 
-## 0.9.0 — 2026-10-28
+## 0.9.0 — Coax Syntax Parser — 2026-10-28
 
 Commit: [`d7c3a1e9d3011dcd26f35c1930cf3dcb3dc3e4bd`](https://github.com/OpenAgentsInc/openagents/commit/d7c3a1e9d3011dcd26f35c1930cf3dcb3dc3e4bd)
 
@@ -476,7 +476,7 @@ Commit: [`d7c3a1e9d3011dcd26f35c1930cf3dcb3dc3e4bd`](https://github.com/OpenAgen
 - Explicit parser bootstrap seed and fixed-point regeneration; the native
   bridge transports tokens and reconstructs syntax-tree storage.
 
-## 0.8.0 — 2026-10-27
+## 0.8.0 — Coax Lexer Implementation — 2026-10-27
 
 Commit: [`b374c75fae5d131df3e30a9324e762f27d3c04c4`](https://github.com/OpenAgentsInc/openagents/commit/b374c75fae5d131df3e30a9324e762f27d3c04c4)
 
@@ -485,7 +485,7 @@ Commit: [`b374c75fae5d131df3e30a9324e762f27d3c04c4`](https://github.com/OpenAgen
 - Explicit generated lexer seed, authority/mutation checks and exact bootstrap
   regeneration replaced native lexical/numeric-conversion decisions.
 
-## 0.7.1 — 2026-10-27
+## 0.7.1 — Coax Provenance Assembly — 2026-10-27
 
 Commit: [`1e0e1390632653183dd4fbe6860c3bbcf2ee7bc6`](https://github.com/OpenAgentsInc/openagents/commit/1e0e1390632653183dd4fbe6860c3bbcf2ee7bc6)
 
@@ -496,7 +496,7 @@ Commit: [`1e0e1390632653183dd4fbe6860c3bbcf2ee7bc6`](https://github.com/OpenAgen
   [`03a379cad6`](https://github.com/OpenAgentsInc/openagents/commit/03a379cad69dddc34732b647b9619e1f3a5b2d15)
   guarded scalar-view typedefs so generated headers from two libraries coexist.
 
-## 0.7.0 — 2026-10-27
+## 0.7.0 — Coax Descriptor Importer — 2026-10-27
 
 Commit: [`76b0837c7ca9c45ec30e1155ad3e724000dffea7`](https://github.com/OpenAgentsInc/openagents/commit/76b0837c7ca9c45ec30e1155ad3e724000dffea7)
 
@@ -505,7 +505,7 @@ Commit: [`76b0837c7ca9c45ec30e1155ad3e724000dffea7`](https://github.com/OpenAgen
 - Generated C11 importer bootstrap and exact regeneration replaced the native
   importer implementation, with no old-importer fallback.
 
-## 0.6.1 — 2026-10-27
+## 0.6.1 — Checked Wire Runtime — 2026-10-27
 
 Commit: [`e190dc4ac18ba7e917b2589d7981632ea2ea6f36`](https://github.com/OpenAgentsInc/openagents/commit/e190dc4ac18ba7e917b2589d7981632ea2ea6f36)
 
@@ -515,7 +515,7 @@ Commit: [`e190dc4ac18ba7e917b2589d7981632ea2ea6f36`](https://github.com/OpenAgen
 - Separated compatibility evidence from independent interoperability evidence;
   fixed evaluator field access after a failed struct expression.
 
-## 0.6.0 — 2026-10-27
+## 0.6.0 — Native Descriptor Importer — 2026-10-27
 
 Commit: [`9f5a2a87fcb1bc02026a089a1dd007f465f09dac`](https://github.com/OpenAgentsInc/openagents/commit/9f5a2a87fcb1bc02026a089a1dd007f465f09dac)
 
@@ -525,7 +525,7 @@ Commit: [`9f5a2a87fcb1bc02026a089a1dd007f465f09dac`](https://github.com/OpenAgen
   source bytes.
 - Atomic compiler publication and an explicit Mac bootstrap target.
 
-## 0.5.1 — 2026-10-27
+## 0.5.1 — Verification Gate Hardening — 2026-10-27
 
 Commit: [`c103b0852d5846ccfdb2e3270e9e6c7b3ba9836b`](https://github.com/OpenAgentsInc/openagents/commit/c103b0852d5846ccfdb2e3270e9e6c7b3ba9836b)
 
@@ -535,7 +535,7 @@ Commit: [`c103b0852d5846ccfdb2e3270e9e6c7b3ba9836b`](https://github.com/OpenAgen
 - Tightened equivalent-marker parsing and expanded exhaustive wire-boundary
   checks and descriptor audit coverage.
 
-## 0.5.0 — 2026-10-27
+## 0.5.0 — Check First Development — 2026-10-27
 
 Commit: [`902a131bb38017f3f96ff234984cc048807c8865`](https://github.com/OpenAgentsInc/openagents/commit/902a131bb38017f3f96ff234984cc048807c8865)
 
@@ -543,7 +543,7 @@ Commit: [`902a131bb38017f3f96ff234984cc048807c8865`](https://github.com/OpenAgen
   `coax mutate`, with bounded check budgets and counterexamples.
 - Always-on statement `#assert` and build-time authority checks.
 
-## 0.4.0 — 2026-10-27
+## 0.4.0 — Bounded Protobuf Codecs — 2026-10-27
 
 Commit: [`f9e377bad6eaf13697cdbe8e5b7bdfb5d8cdb863`](https://github.com/OpenAgentsInc/openagents/commit/f9e377bad6eaf13697cdbe8e5b7bdfb5d8cdb863)
 
@@ -554,7 +554,7 @@ Commit: [`f9e377bad6eaf13697cdbe8e5b7bdfb5d8cdb863`](https://github.com/OpenAgen
   This was the first descriptor-import release, preceding the later Coax-native
   frontend work recorded by the current catalogue.
 
-## 0.3.0 — 2026-10-27
+## 0.3.0 — Aggregates and Native ABI — 2026-10-27
 
 Commit: [`6d49ae58fc6590aaff6d3a770c6f554d741c6cd0`](https://github.com/OpenAgentsInc/openagents/commit/6d49ae58fc6590aaff6d3a770c6f554d741c6cd0)
 
@@ -569,7 +569,7 @@ Commit: [`6d49ae58fc6590aaff6d3a770c6f554d741c6cd0`](https://github.com/OpenAgen
   numeric conversions, math/byte intrinsics, `c --library --header` and the
   restricted `coax metal` emitter.
 
-## 0.2.0 — 2026-10-27
+## 0.2.0 — Bounded Compile Time Evaluation — 2026-10-27
 
 Commit: [`85e7706684949f54a75f9094e8a5d6a99637ec02`](https://github.com/OpenAgentsInc/openagents/commit/85e7706684949f54a75f9094e8a5d6a99637ec02)
 
@@ -578,7 +578,7 @@ Commit: [`85e7706684949f54a75f9094e8a5d6a99637ec02`](https://github.com/OpenAgen
 - Formal bootstrap grammar and compile-time diagnostics/tests, imported from
   aethyr-cpp revision `040329b`, retaining the missing-semicolon location fix.
 
-## 0.1.0 — 2026-10-27
+## 0.1.0 — Initial Compiler — 2026-10-27
 
 Commit: [`6329f3e0b3cf6fb49c0ae0686241097235f6607b`](https://github.com/OpenAgentsInc/openagents/commit/6329f3e0b3cf6fb49c0ae0686241097235f6607b)
 

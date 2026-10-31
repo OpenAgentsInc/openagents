@@ -94,6 +94,9 @@ class ChangelogOracle(unittest.TestCase):
         for name in ("CC_KIND", "CC_TEXT", "CC_LINK"):
             self.assertEqual(len(data[name]), data["CC_BLOCKS"])
         headings = re.findall(r"^## (.+)$", source, re.M)
+        titled = re.findall(r"^## ([0-9.]+) — ([^\n]+) — ([0-9]{4}-[0-9]{2}-[0-9]{2})$", source, re.M)
+        self.assertEqual(len(titled), len(headings))
+        self.assertTrue(all(2 <= len(title.split()) <= 4 for _, title, _ in titled))
         self.assertEqual([text for kind, text in zip(data["CC_KIND"], data["CC_TEXT"]) if kind == 1], list(map(display, headings)))
         expected_links = [(display(flattened(label)), urljoin(SOURCE_URL, href)) for label, href in re.findall(r"\[([^\]\n]+)\]\(([^)\n]+)\)", source)]
         actual_links = [(text, href) for kind, text, href in zip(data["CC_KIND"], data["CC_TEXT"], data["CC_LINK"]) if kind == 3]
@@ -114,10 +117,10 @@ class ChangelogOracle(unittest.TestCase):
         self.assertIn('type="text/markdown" href="/coax/changelog/index.md"', html)
         self.assertFalse(set(parsed.tags) & {"button", "input", "form", "div", "pre"})
 
-    def fixture(self, note='- Encode [source](STATUS.md) <script> & "quote" safely.', version=None):
+    def fixture(self, note='- Encode [source](STATUS.md) <script> & "quote" safely.', version=None, title="Bounded Release Checks"):
         version = version or self.version
         digest = "1" * 40
-        return f"# Coax changelog\n\n## {version} — 2026-10-31\n\nCommit: [`{digest}`](https://github.com/OpenAgentsInc/openagents/commit/{digest})\n\n{note}\n"
+        return f"# Coax changelog\n\n## {version} — {title} — 2026-10-31\n\nCommit: [`{digest}`](https://github.com/OpenAgentsInc/openagents/commit/{digest})\n\n{note}\n"
 
     def run_tool(self, root, mode):
         return subprocess.run([str(self.tool), mode], cwd=root, capture_output=True, text=True, timeout=30)
@@ -171,6 +174,14 @@ class ChangelogOracle(unittest.TestCase):
             "insecure-url": self.fixture("- Refuse [insecure](http://example.org) before publication."),
             "empty-https-authority": self.fixture("- Refuse [empty](https://) before publication."),
             "wrong-version": self.fixture(version=other),
+            "missing-title": self.fixture().replace(" — Bounded Release Checks", "", 1),
+            "short-title": self.fixture(title="Checks"),
+            "long-title": self.fixture(title="Five Words In This Title"),
+            "placeholder-title": self.fixture(title="TODO Release"),
+            "marked-up-title": self.fixture(title="**Bounded Release Checks**"),
+            "nonword-title": self.fixture(title="\u00a0 A"),
+            "historical-missing-title": self.fixture() + "\n## 0.0.0 — 2026-10-30\n\n- Earlier release.\n",
+            "historical-tab-heading": self.fixture() + "\n##\t0.0.0 — 2026-10-30\n\n- Earlier release.\n",
             "pending-commit": re.sub(r"Commit: .*", "Commit: pending", self.fixture(), count=1),
             "too-much-source": self.fixture() + "x" * 262145,
             "too-many-blocks": self.fixture("- A bounded concrete release.\n" * 4200),

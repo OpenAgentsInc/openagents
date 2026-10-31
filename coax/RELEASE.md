@@ -29,9 +29,21 @@ correctness or authority to execute a decoded request.
 ## Updating a release
 
 Every version bump, including a patch bump, requires a new first release entry
-in [`CHANGELOG.md`](CHANGELOG.md). Record the version, an America/Chicago date
-(`YYYY-MM-DD`), and substantive bullets describing the delivered changes and
-their scope. Follow the existing headings and use `Commit: pending` while
+in [`CHANGELOG.md`](CHANGELOG.md). Every release heading, including historical
+entries, requires a plain-text summary of **2–4 words** between its version and
+America/Chicago date (`YYYY-MM-DD`), for example:
+
+```markdown
+## 0.43.0 — Generic Literal Inference — 2026-10-31
+```
+
+Describe the main delivered capability in the heading and keep the detailed
+changes and their scope in substantive bullets below it. Use ASCII letters and
+digits, with internal hyphens or apostrophes if needed, and single spaces
+between words so the canvas reader can display every summary. Blank,
+placeholder or marked-up titles refuse. Both
+`--check` and `--write` validate every heading before changing any output.
+Follow the existing headings and use `Commit: pending` while
 preparing the bump. Missing, stale, duplicate, out-of-order, malformed or
 placeholder-only entries fail release generation before any snapshots change.
 The tool preserves authored notes and historical entries; it does not invent

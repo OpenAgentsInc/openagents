@@ -36,12 +36,12 @@ class Release(unittest.TestCase):
  def author_bump(self,version,commit='pending'):
   src=self.root/'coax/release.coax';src.write_text(re.sub(r'IMPLEMENTATION_VERSION :: "[^\"]+"',f'IMPLEMENTATION_VERSION :: "{version}"',src.read_text(),count=1))
   path=self.root/CHANGELOG;text=path.read_text();at=text.index('## ')
-  path.write_text(text[:at]+f'## {version} — 2026-10-31\n\nCommit: {commit}\n\n- Fix the bounded release regression fixture.\n\n'+text[at:])
+  path.write_text(text[:at]+f'## {version} — Release Fixture Repairs — 2026-10-31\n\nCommit: {commit}\n\n- Fix the bounded release regression fixture.\n\n'+text[at:])
  def git(self,*args):
   r=subprocess.run(['git','-C',str(self.root),*args],capture_output=True,text=True,env={**os.environ,'GIT_CONFIG_NOSYSTEM':'1','GIT_CONFIG_GLOBAL':os.devnull},timeout=10)
   self.assertEqual(r.returncode,0,r.stderr);return r.stdout.strip()
  def test_changelog_is_required_and_validated_before_any_write(self):
-  path=self.root/CHANGELOG;original=path.read_text();heading=re.search(r'^## ([0-9.]+) — ([0-9-]+)$',original,re.M)
+  path=self.root/CHANGELOG;original=path.read_text();heading=re.search(r'^## ([0-9.]+) — ([^\n]+) — ([0-9-]+)$',original,re.M)
   self.assertIsNotNone(heading)
   first_end=original.find('\n## ',heading.end());first_end=len(original) if first_end<0 else first_end
   first=original[heading.start():first_end]
@@ -50,7 +50,7 @@ class Release(unittest.TestCase):
    'missing':None,
    'stale-current-version':original.replace(heading.group(),heading.group().replace(heading.group(1),'99.99.99'),1),
    'duplicate':original+'\n'+first,
-   'bad-date':original.replace(heading.group(2),'2026-02-30',1),
+   'bad-date':original.replace(heading.group(3),'2026-02-30',1),
    'empty-summary':original[:heading.start()]+original[heading.start():first_end].split('\n- ',1)[0]+'\n'+original[first_end:],
    'todo-summary':original[:heading.start()]+first.split('\n- ',1)[0]+'\n- TODO\n'+original[first_end:],
    'bad-commit':original.replace(commit,'Commit: this-is-not-a-commit',1),
@@ -63,6 +63,28 @@ class Release(unittest.TestCase):
      before=self.snapshot();r=self.tool(mode)
      self.assertEqual((r.returncode==0,self.snapshot()==before),(False,True),r.stdout+r.stderr)
   path.write_text(original)
+ def test_short_release_titles_are_required_in_current_and_historical_headings(self):
+  path=self.root/CHANGELOG;version=json.loads((self.root/'coax/release-status.json').read_text())['implementation_version']
+  commit=re.search(r'^Commit: .+$',path.read_text(),re.M).group()
+  current=f'## {version} — Release Fixture Repairs — 2026-10-31'
+  historical='## 0.0.0 — Initial Compiler — 2026-10-27'
+  authored=f'# Changelog\n\n{current}\n\n{commit}\n\n- Repair the bounded compiler release fixture.\n\n{historical}\n\n- Preserve the historical release text.\n'
+  path.write_text(authored);good=self.tool();self.assertEqual(good.returncode,0,good.stdout+good.stderr)
+  cases=[
+   ('missing-title',current,f'## {version} — 2026-10-31'),
+   ('blank-title',current,f'## {version} —  — 2026-10-31'),
+   ('one-word',current,f'## {version} — Native — 2026-10-31'),
+   ('five-words',current,f'## {version} — One Two Three Four Five — 2026-10-31'),
+   ('placeholder',current,f'## {version} — TODO Release — 2026-10-31'),
+   ('historical-one-word',historical,'## 0.0.0 — Native — 2026-10-27'),
+   ('historical-tab',historical,historical.replace('## ','##\t',1)),
+  ]
+  for name,before_heading,bad_heading in cases:
+   for mode in ['--check','--write']:
+    with self.subTest(case=name,mode=mode):
+     path.write_text(authored.replace(before_heading,bad_heading,1));before=self.snapshot();r=self.tool(mode)
+     self.assertEqual((r.returncode==0,self.snapshot()==before),(False,True),r.stdout+r.stderr)
+  path.write_text(authored);self.assertEqual(self.tool('--write').returncode,0);self.assertEqual(path.read_text(),authored)
  def test_version_bump_without_new_changelog_entry_refuses(self):
   src=self.root/'coax/release.coax';src.write_text(re.sub(r'IMPLEMENTATION_VERSION :: "[^\"]+"',f'IMPLEMENTATION_VERSION :: "{self.next_version()}"',src.read_text(),count=1))
   for mode in ['--check','--write']:
