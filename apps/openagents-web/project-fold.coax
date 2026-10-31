@@ -16,7 +16,7 @@ STORE_EVENTS :: 8192;
 STORE_BYTES :: 4194304;
 STORE_TAGS :: 65536;
 STORE_ELEMS :: 131072;
-FOLD_ISSUES :: 256;
+FOLD_ISSUES :: 320;
 FOLD_LOG :: 16384;
 PLAN_STEPS :: 24;      // steps a task's plan shows, as snapshot.ts
 ACTIVITY :: 40;        // rows of activity, as snapshot.ts

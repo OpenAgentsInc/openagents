@@ -113,7 +113,7 @@ pd_open :: (g: [] Page, r: int) #export_c { open_task(g[0].s[..], g[0].w[..], r)
 pd_scroll_end :: (g: [] Page) #export_c { g[0].s[0].scroll = g[0].s[0].scroll_max; }
 pd_page :: (g: [] Page, page: int) #export_c { g[0].s[0].page = page; }
 pd_fits :: (g: [] Page, out: [] f32, n: int, w: f32, h: f32, with_detail: bool) -> int #export_c {
-  l := layout(w, h, 2);
+  l := project_layout(w, h, 2, g[0].w[..]);
   if n < 300 || n >= MAX_VERTICES || n % 6 != 0 { return 10; }
   if !on_canvas(out, n, w, h, 2) { return 11; }
   if !with_detail { return ifx n > 3000 then 0 else 12; }
@@ -168,8 +168,9 @@ test('the page draws nostr-tools\' names, and every panel and a task\'s detail f
   writeFileSync(join(temp, 'page.coax'), pageDriver)
   writeFileSync(join(temp, 'page.c'), run([coax(), 'c', join(temp, 'page.coax'), '--library', '--header', join(temp, 'page.h')]))
   writeFileSync(join(temp, 'Project-names.c'), run([coax(), 'c', join(app, 'project-names.coax'), '--library', '--header', join(temp, 'Project-names.h')]))
+  writeFileSync(join(temp, 'Project-capacity.c'), run([coax(), 'c', join(app, 'project-capacity.coax'), '--library']))
   writeFileSync(join(temp, 'probe.c'), pageProbe)
-  run([process.env.CC ?? 'cc', '-std=c11', '-O1', '-w', '-shared', '-fPIC', join(temp, 'page.c'), join(temp, 'Project-names.c'), join(temp, 'probe.c'),
+  run([process.env.CC ?? 'cc', '-std=c11', '-O1', '-w', '-shared', '-fPIC', join(temp, 'page.c'), join(temp, 'Project-names.c'), join(temp, 'Project-capacity.c'), join(temp, 'probe.c'),
     '-I' + temp, '-I' + app, '-lm', '-o', join(temp, 'page.so')])
   const I = FFIType.i32, F = FFIType.f32
   page = dlopen(join(temp, 'page.so'), { page_new: { args: [I] }, page_free: {}, page_fits: { args: [F, F, I], returns: I },

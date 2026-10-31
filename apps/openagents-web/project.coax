@@ -22,6 +22,8 @@
 #load "project-live.coax";
 #load "analytics.coax";
 #load "project-intro.coax";
+// Separately compiled checked admission policy; no authority checks attach to the UI graph.
+project_row_count_fits :: (count:int,maximum:int)->bool #foreign;
 
 // page 0 is a real page (/projects/SLUG), 1 the demo (/projects/coax/demo).
 // The rest is the page's input: the pointer, the task open in the detail
@@ -367,7 +369,7 @@ AGENTS :: "MICROCODER-3|CX-102|web\nSOLVER-7|CX-105|src\nCODER-1|CX-103|web\n";
 // ones by rank; the latest finished tasks are kept apart.
 // A task ranked above an open blocker is shown with a warning: it moved
 // ahead of what it waits on, and stays waiting until that's done.
-MAX_ITEMS :: 256;   // bounded combined roadmap + Nostr queue; seed check prevents truncation
+MAX_ITEMS :: 320;   // bounded combined roadmap + Nostr queue; seed check prevents truncation
 #assert MAX_ITEMS == FOLD_ISSUES; // a live fold cannot silently exceed the page's row capacity
 RECENT :: 3;
 KIND_INITIATIVE :: 0; KIND_MILESTONE :: 1; KIND_TASK :: 2;
@@ -587,6 +589,8 @@ by_rank :: (w: [] Work, text: string, order: [] int, n: int) {
 }
 
 read_work :: (w: [] Work, text: string) {
+  // Private parser: every public replacement preflights the complete row set.
+  #assert rows(text) <= MAX_ITEMS;
   w[0].read = true;
   w[0].text = text;
   n := 0; i := 0;
@@ -2441,25 +2445,33 @@ coaxial_project_frame :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Liv
 // any frame); a page that didn't is Coax's, as is the demo. A project this
 // build baked starts from its baked tables and commits; any other from
 // nothing until its relay answers.
+// Admit the baked row set before any displayed tables, names or tree change.
+choose_baked :: (t: [] Tree, w: [] Work, lv: [] Live, b: Baked, k: int, seed: bool) -> bool {
+  if !project_row_count_fits(rows(b.items), MAX_ITEMS) {
+    live_incomplete(lv, 5); w[0].live = LIVE_OFFLINE; return false;
+  }
+  w[0].baked = k;
+  w[0].links = b.links;
+  read_work(w, b.items);
+  w[0].plans = b.plans; w[0].plan_info = b.plan_info; w[0].details = b.details; w[0].log = b.log; w[0].steps = b.steps; w[0].naddr = b.naddr;
+  index_details(w);
+  if seed && !seed_known(lv, w) { live_incomplete(lv, 5); }
+  w[0].slug = b.slug; w[0].name = b.name; w[0].description = b.description; w[0].license = b.license;
+  w[0].path = b.path; w[0].repo = b.repo; w[0].owner = b.owner;
+  set_names(w, b.pubkey, b.relay);
+  grow(t, b.history);
+  return true;
+}
 choose :: (s: [] ProjectState, t: [] Tree, w: [] Work, lv: [] Live) {
   s[0].chosen = true;
   k := 0;
   if s[0].page == 0 && lv[0].key_n > 0 { k = baked_index(live_slug(lv)); }
   else if s[0].page == 0 && !live_project_of(lv, baked(0)) { k = -1; }
   if s[0].page == 0 && k >= 0 && !equal(live_key(lv), baked(k).pubkey) { k = -1; }
-  w[0].baked = k;
   if k >= 0 {
-    b := baked(k);
-    w[0].links = b.links;
-    read_work(w, b.items);
-    w[0].plans = b.plans; w[0].plan_info = b.plan_info; w[0].details = b.details; w[0].log = b.log; w[0].steps = b.steps; w[0].naddr = b.naddr;
-    index_details(w);
-    if s[0].page == 0 && !seed_known(lv, w) { live_incomplete(lv, 5); }
-    w[0].slug = b.slug; w[0].name = b.name; w[0].description = b.description; w[0].license = b.license;
-    w[0].path = b.path; w[0].repo = b.repo; w[0].owner = b.owner;
-    set_names(w, b.pubkey, b.relay);
-    grow(t, b.history);
+    if !choose_baked(t, w, lv, baked(k), k, s[0].page == 0) { return; }
   } else {
+    w[0].baked = -1;
     w[0].links = ""; read_work(w, "");
     w[0].slug = live_slug(lv); w[0].name = live_slug(lv);
     set_names(w, live_key(lv), DEFAULT_RELAY);
@@ -2499,6 +2511,11 @@ Head :: struct { text: string; at: int; }
 
 // Events arrived: fold them again and draw the result.
 live_apply :: (lv: [] Live, w: [] Work) {
+  count := lv[0].candidate[0].items_n;
+  if !lv[0].candidate[0].complete || count < 0 || count > lv[0].candidate[0].items.count ||
+      !project_row_count_fits(rows(cast(string) lv[0].candidate[0].items[0..<count]), MAX_ITEMS) {
+    live_incomplete(lv, 5); w[0].live = LIVE_OFFLINE; return;
+  }
   lv[0].dirty = false; lv[0].folds += 1;
   st := lv[0].store[..]; tb := lv[0].tables[..];
   // The catch-up path validated all candidate outputs before setting dirty.
@@ -3200,4 +3217,11 @@ page_says :: (lv: [] Live, text: string) {
   s4: [1] ProjectState; t4: [1] Tree; w4: [1] Work; l4: [1] Live;
   n = coaxial_project_frame(s4[..], t4[..], w4[..], l4[..], out[..], uniforms[..], 640, 900, 1, 0.016, true);
   #assert w4[0].baked == 0 && same(live_slug(l4[..]), "coax");
+}
+
+#test "all 320 physical rows fit the private Work parser" {
+  w:[1]Work;bytes:[320]u8;
+  for i:0..<bytes.count {bytes[i]='\n';}
+  read_work(w[..],cast(string)bytes[..]);
+  #assert w[0].n==320 && w[0].tasks==320 && w[0].queued==320;
 }

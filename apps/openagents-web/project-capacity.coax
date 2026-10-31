@@ -1,0 +1,100 @@
+// Admission only: count logical rows before a caller changes Work or tables.
+// The caller owns storage. This helper neither allocates nor changes input.
+#authority;
+
+#test "empty input has zero rows and a negative maximum always refuses" {
+  #assert project_rows_fit("",0);
+  #assert project_rows_fit("",320);
+  #assert !project_rows_fit("",-1);
+  #assert !project_rows_fit("row",-1);
+  #assert !project_rows_fit("\n",-1);
+}
+
+#test "LF rows include blank lines and a partial final line" {
+  #assert !project_rows_fit("row",0);
+  #assert project_rows_fit("row",1);
+  #assert project_rows_fit("row\n",1);
+  #assert !project_rows_fit("row\n",0);
+  #assert project_rows_fit("\n",1);
+  #assert !project_rows_fit("\n",0);
+  #assert project_rows_fit("\n\n",2);
+  #assert !project_rows_fit("\n\n",1);
+  #assert project_rows_fit("row\nnext",2);
+  #assert !project_rows_fit("row\nnext",1);
+  #assert project_rows_fit("row\n\n",2);
+  #assert !project_rows_fit("row\n\n",1);
+  // Only LF separates rows; CR remains a byte in its row.
+  #assert project_rows_fit("\r",1);
+  #assert project_rows_fit("row\r\nnext",2);
+  #assert !project_rows_fit("row\r\nnext",1);
+}
+
+#test "320 rows fit and row 321 refuses independently of trailing LF" {
+  lines:[321]u8;
+  for i:0..<lines.count {lines[i]='\n';}
+  #assert project_rows_fit(cast(string)lines[0..<320],320);
+  #assert !project_rows_fit(cast(string)lines[0..<320],319);
+  #assert !project_rows_fit(cast(string)lines[..],320);
+  #assert project_rows_fit(cast(string)lines[..],321);
+  // A final non-LF byte is the last row rather than an extra delimiter.
+  lines[319]='x';
+  #assert project_rows_fit(cast(string)lines[0..<320],320);
+  #assert !project_rows_fit(cast(string)lines[0..<320],319);
+  #assert project_rows_fit(cast(string)lines[..],320);
+}
+
+#forall "tiny LF/CR/text domain uses an independent row-count table"
+  first:0..<3, second:0..<3, last:0..<3, length:0..<4, maximum:-1..<4 {
+  chars:=[3]u8.['x','\n','\r'];
+  text:=[3]u8.[chars[first],chars[second],chars[last]];
+  // The final byte never adds a second row of its own. These closed tables
+  // are independent of the policy's scanning loop and include blank rows.
+  two:=[3]int.[1,2,1];
+  three:=[9]int.[1,2,1,2,3,2,1,2,1];
+  expected:=0;
+  if length==1 {expected=1;}
+  if length==2 {expected=two[first];}
+  if length==3 {expected=three[first*3+second];}
+  #assert project_rows_fit(cast(string)text[0..<length],maximum)==(maximum>=0 && expected<=maximum);
+}
+
+#test "scalar row admission rejects negative inputs and preserves exact boundaries" {
+  #assert !project_row_count_fits(-1,-1);
+  #assert !project_row_count_fits(-1,0);
+  #assert !project_row_count_fits(0,-1);
+  #assert project_row_count_fits(0,0);
+  #assert !project_row_count_fits(1,0);
+  #assert project_row_count_fits(320,320);
+  #assert !project_row_count_fits(321,320);
+  #assert project_row_count_fits(320,321);
+  #assert project_row_count_fits(9223372036854775807,9223372036854775807);
+  #assert !project_row_count_fits(9223372036854775807,320);
+}
+
+#forall "scalar row admission has an independent finite truth table" count:0..<5, maximum:0..<5 {
+  truth:=[25]bool.[false,false,false,false,false,
+    false,true,true,true,true,
+    false,false,true,true,true,
+    false,false,false,true,true,
+    false,false,false,false,true];
+  #assert project_row_count_fits(count-1,maximum-1)==truth[count*5+maximum];
+}
+
+// A nonempty table has one row, plus every LF before its final byte.
+// Refuse as soon as a row exceeds the finite caller-selected maximum.
+project_rows_fit :: (text:string,maximum:int)->bool #export_c {
+  if text.count==0 {return project_row_count_fits(0,maximum);}
+  rows:=1;
+  if !project_row_count_fits(rows,maximum) {return false;}
+  for i:0..<text.count-1 {
+    if text[i]=='\n' {
+      rows+=1;
+      if !project_row_count_fits(rows,maximum) {return false;}
+    }
+  }
+  return true;
+}
+
+project_row_count_fits :: (count:int,maximum:int)->bool #export_c {
+  return count>=0 && count<=maximum;
+}

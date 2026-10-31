@@ -182,19 +182,20 @@ test("open-task order preserves active legacy ranks and all issues at the page c
     writeFileSync(orderFile, "init\nsha256\n")
     await expect(run("respread", "--order", orderFile)).rejects.toThrow("order files may contain only tasks")
 
-    // The page admits 256 total issues; hierarchy issues must not consume
+    // The page admits 320 total issues; hierarchy issues must not consume
     // the relay's 256-tag order-event budget. Finished issues remain in the
     // project and its history while only active tasks consume order tags.
     const atCapacity = work("SHA-256, one-shot")
     for (let i = 0; i < 36; i++) atCapacity.items.push(item(`extra-m${i}`, "milestone", `Extra milestone ${i}`, { parent: "init" }))
     for (let i = 0; i < 216; i++) atCapacity.items.push(item(`extra-task${i}`, "task", `Extra task ${i}`, { parent: "m-one", size: "S" }))
-    expect(atCapacity.items.length).toBe(256)
+    for (let i = 0; i < 64; i++) atCapacity.items.push(item(`finished-task${i}`, "task", `Finished task ${i}`, { parent: "m-one", size: "S", status: "resolved" }))
+    expect(atCapacity.items.length).toBe(320)
     writeFileSync(join(dir, "work", "a.json"), JSON.stringify(atCapacity))
     await run("publish")
     const complete = await read(), completeState = fold(pk, config, complete), completeOrder = latestOrder(complete)
     const taskIds = new Set(completeState.issues.filter((i) => i.kind === "task" && i.status !== "resolved" && i.status !== "closed").map((i) => i.id))
     const entries = completeOrder.tags.filter((t) => t[0] === "item")
-    expect(completeState.issues.length).toBe(256)
+    expect(completeState.issues.length).toBe(320)
     expect(entries.length).toBe(217)
     expect(completeOrder.tags.length).toBeLessThanOrEqual(256)
     expect(new Set(entries.map((t) => t[1]))).toEqual(taskIds)

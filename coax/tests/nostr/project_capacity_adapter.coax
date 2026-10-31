@@ -1,0 +1,46 @@
+// Native-only capacity assertions over the real application. The C harness
+// owns these large buffers; the authority kernel is linked as a separate unit.
+#load "../../../apps/openagents-web/project.coax";
+project_capacity_choose_refused :: (t:[]Tree,w:[]Work,lv:[]Live,items:string)->bool #export_c {
+  w[0].baked=4;w[0].read=true;w[0].n=1;w[0].text="old-items";
+  w[0].plans="old-plans";w[0].plan_info="old-info";w[0].details="old-details";w[0].log="old-log";
+  w[0].links="old-links";w[0].name="Old project";w[0].slug="old";w[0].key="old-key";
+  w[0].relay="old-relay";w[0].owner="old-owner";w[0].repo="old-repo";w[0].description="old-description";
+  t[0].n=3;lv[0].state=LIVE_LIVE;lv[0].folds=22;lv[0].tables[0].complete=true;
+  b:=Baked.{items=items,links="new-links",plans="new-plans",plan_info="new-info",details="new-details",log="new-log",name="New project",slug="new",pubkey="new-key",relay="new-relay",owner="new-owner",repo="new-repo",description="new-description"};
+  #assert !choose_baked(t,w,lv,b,9,false);
+  #assert w[0].baked==4 && w[0].read && w[0].n==1 && t[0].n==3;
+  #assert same(w[0].text,"old-items") && same(w[0].plans,"old-plans") && same(w[0].plan_info,"old-info") && same(w[0].details,"old-details") && same(w[0].log,"old-log");
+  #assert same(w[0].links,"old-links") && same(w[0].name,"Old project") && same(w[0].slug,"old") && same(w[0].key,"old-key") && same(w[0].relay,"old-relay");
+  #assert same(w[0].owner,"old-owner") && same(w[0].repo,"old-repo") && same(w[0].description,"old-description");
+  #assert lv[0].state==LIVE_OFFLINE && lv[0].incomplete==5 && lv[0].folds==22 && lv[0].tables[0].complete;
+  return true;
+}
+
+project_capacity_live_refused :: (lv:[]Live,w:[]Work,oversized:bool)->bool #export_c {
+  w[0].read=true;w[0].n=7;w[0].text="old-items";w[0].plans="old-plans";
+  w[0].plan_info="old-info";w[0].details="old-details";w[0].log="old-log";
+  w[0].name="Old project";w[0].slug="old";w[0].queue[0]=29;
+  lv[0].state=LIVE_LIVE;lv[0].folds=22;lv[0].dirty=true;
+  lv[0].tables[0].complete=true;
+  lv[0].tables[0].items[0]='i';lv[0].tables[0].items_n=1;
+  lv[0].tables[0].plans[0]='p';lv[0].tables[0].plans_n=1;
+  lv[0].tables[0].info[0]='f';lv[0].tables[0].info_n=1;
+  lv[0].tables[0].details[0]='d';lv[0].tables[0].details_n=1;
+  lv[0].tables[0].log[0]='l';lv[0].tables[0].log_n=1;
+  lv[0].candidate[0].complete=oversized;
+  lv[0].candidate[0].items_n=ifx oversized then 321 else 1;
+  for i:0..<lv[0].candidate[0].items_n {lv[0].candidate[0].items[i]='\n';}
+  lv[0].fold[0].project= -1;lv[0].fold[0].repo= -1;
+  live_apply(lv,w);
+  #assert lv[0].state==LIVE_OFFLINE && lv[0].incomplete==5 && !lv[0].dirty && lv[0].folds==22;
+  #assert lv[0].tables[0].complete && lv[0].tables[0].items_n==1 && lv[0].tables[0].items[0]=='i';
+  #assert lv[0].tables[0].plans_n==1 && lv[0].tables[0].plans[0]=='p';
+  #assert lv[0].tables[0].info_n==1 && lv[0].tables[0].info[0]=='f';
+  #assert lv[0].tables[0].details_n==1 && lv[0].tables[0].details[0]=='d';
+  #assert lv[0].tables[0].log_n==1 && lv[0].tables[0].log[0]=='l';
+  #assert w[0].read && w[0].n==7 && same(w[0].text,"old-items") && w[0].queue[0]==29;
+  #assert same(w[0].plans,"old-plans") && same(w[0].plan_info,"old-info") && same(w[0].details,"old-details") && same(w[0].log,"old-log");
+  #assert same(w[0].name,"Old project") && same(w[0].slug,"old");
+  return true;
+}

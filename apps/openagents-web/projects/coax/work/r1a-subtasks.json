@@ -1,0 +1,131 @@
+{
+  "v": "openagents.project-work.v1",
+  "items": [
+    {
+      "slug": "r1a-project-inventory-capacity",
+      "kind": "task",
+      "parent": "r1",
+      "title": "Admit 320 project items without losing existing work",
+      "size": "S",
+      "labels": [
+        "r1",
+        "usage-audit",
+        "tooling"
+      ],
+      "blocked_by": [
+        "r0-semantic-profiles",
+        "r1a-header-composition"
+      ],
+      "body": "## Problem\n\nThe combined Coax project inventory reaches the current 256-item page/fold bound. The seven planned R1a tasks must not displace, truncate, reorder or erase existing work.\n\n## Scope\n\nRaise the audited per-project inventory path to a finite 320-item bound, covering the Coax page, native/Coax fold and snapshot/live catch-up representations that carry those items. Preserve every existing identity, hierarchy, dependency and active-task rank. Keep the relay order-event tag limit separate; refuse an unsupported oversized order explicitly rather than dropping entries. This prerequisite must pass before publishing the seven planned definitions.\n\n## Files\n\n- `apps/openagents-web/project.coax`, `project-fold.coax` and a small separately compiled `#authority` capacity kernel\n- The production project build and native/browser fixture link lists\n- `coax/web/project/publish.test.ts`, `nostr-plan.test.ts`, `live-catchup.test.ts` and the directly affected bounded fixtures\n\n## Acceptance\n\n- Check-first boundary fixtures retain exactly 320 distinct inventory items across hierarchy/task/closed-item cases; a 321st item fails explicitly without corrupting the prior admitted state.\n- The actual combined project seed plus the seven proposed definitions is admitted without losing existing slugs, parents, dependency edges, states or active ranks. The umbrella may add its explicitly linked child prerequisites.\n- Existing order-event tag constraints remain enforced independently of inventory size. Preserve all existing ranks and append new tasks deterministically; an unsupported order must fail without publishing a truncated order.\n- Focused page/fold/live/publisher tests and the affected actual project Wasm build pass. A headless project-page probe observes the complete admitted inventory. Record the required golden-check result for the finished change without changing unrelated goldens.\n\n## Remaining scope\n\nThis is one bounded inventory prerequisite, not a new planner, evidence system, order protocol or unbounded collection. Do not raise unrelated network/crypto budgets or delete old work to make room.\n\nThis is an acceptance-complete child of split design v1. Finish and push within one two-hour sitting; commands stay below fifteen minutes. If this exact slice cannot fit, split it before implementation. Keep r1a-identities open until all of its original acceptance passes; R3 foreign-buffer/FFI work remains blocked by that parent. No package fetch, privileged build system or general incremental compiler is implied.\n\n## Verification boundary\n\nKeep the large legacy Store/fold graph and its existing checks/budgets intact. Its private bounded fold/parser preconditions are not a new public API. Compile the small authority admission kernel separately and require it at the production/native link; the UI transports an observed physical row count through its scalar Coax ABI before replacing tables. Native Coax adapters exercise production-sized state, because the existing four-MiB Store exceeds interpreter aggregate storage. Keep that interpreter limitation explicit rather than raising limits or claiming a whole-app authority/mutation result.\n\nThese definitions are drafted before implementation; publication waits for the deployed reader capacity so no old client is forced into an incomplete view."
+    },
+    {
+      "slug": "r1a-logical-declarations",
+      "kind": "task",
+      "parent": "r1a-identities",
+      "title": "Assign explicit logical owners and checked declaration IDs",
+      "size": "M",
+      "labels": [
+        "r1",
+        "usage-audit",
+        "compiler",
+        "identities"
+      ],
+      "blocked_by": [
+        "r1a-project-inventory-capacity",
+        "r0-semantic-profiles",
+        "r1a-header-composition"
+      ],
+      "body": "## Problem\n\nSource paths currently establish read-once identity and all declarations share one flat namespace. A physical path, line number, flattened ordinal or C spelling cannot serve as a stable logical declaration identity.\n\n## Scope\n\nSpecify and implement an opt-in authored logical module anchor and bounded Coax authority policy for owner/membership admission. Carry schema-1 nominal declaration tuples (module ID, declaration kind, name) on the existing checked graph and its resolved references. Same-owner #load members share that owner. Preserve ordinary legacy flat lookup and all existing C spellings; unannotated legacy identities are explicitly unavailable. This first slice introduces identity, not semantic namespaces or visibility.\n\n## Files\n\n- `coax/spec.md`, the affected grammar/source-unit declarations and `coax/lib/compiler/` authority policy\n- Checked graph transport in `coax/src/coax.h` and its existing parser/checker bridges\n- `coax/tests/modules.py` ModuleIdentity fixtures and affected source/checker/bootstrap gates\n\n## Acceptance\n\n- Check-first Coax policy checks and zero-survivor mutation cover ID spelling, duplicate owners, bounded membership and canonical tuple encoding.\n- Relocation, unrelated load/declaration reordering and moving a declaration between members of one logical owner preserve nominal IDs. Kind/name/module changes intentionally change IDs.\n- Different canonical roots claiming one logical module ID and an unclaimed member reached under two owners fail explicitly; a canonical diamond remains one admitted owner.\n- Independent same-spelling/equal-layout declarations have distinct logical identities. Original physical authority and diagnostics remain attached to their authored units.\n- Affected checked-graph/source/seed gates pass and a fixed legacy corpus retains its prior generated C behavior. No namespace/private-access capability is advertised.\n\n## Remaining scope\n\nNo qualified imports, public/private boundaries, reexports, target manifests, precise revision cache or persistent engine/protocol identity is claimed. Those have separate gates.\n\nThis is an acceptance-complete child of split design v1. Finish and push within one two-hour sitting; commands stay below fifteen minutes. If this exact slice cannot fit, split it before implementation. Keep r1a-identities open until all of its original acceptance passes; R3 foreign-buffer/FFI work remains blocked by that parent. No package fetch, privileged build system or general incremental compiler is implied."
+    },
+    {
+      "slug": "r1a-module-revisions",
+      "kind": "task",
+      "parent": "r1a-identities",
+      "title": "Report module revisions for the shared Everglade guard types",
+      "size": "S",
+      "labels": [
+        "r1",
+        "usage-audit",
+        "identities",
+        "verse"
+      ],
+      "blocked_by": [
+        "r1a-logical-declarations"
+      ],
+      "body": "## Problem\n\nCompatible generated headers establish structural ABI compatibility, but the independently compiled Everglade page and guard policy still lack a shared nominal declaration/revision report.\n\n## Scope\n\nKeep nominal IDs separate from conservative content revisions. Extend deps with an opt-in versioned module/declaration/dependency report, retaining physical source hashes and selected profile context separately. Give only verse/everglade/guard-types.coax an explicit logical owner and qualify its two existing consumers. Begin with module-scoped declaration revisions so any admitted module-content change invalidates all its member declarations; do not invent exact body ranges or a cache key. Lookup remains the existing flat #load behavior.\n\n## Files\n\n- `verse/everglade/guard-types.coax`, its guard policy/page consumers and the compiler deps report\n- Checked fingerprint/identity policy and `coax/tests/modules.py` ModuleRevisions fixtures\n- One focused retained identity/revision verification record\n\n## Acceptance\n\n- Both actual consumers report the same GaObservation, GaInput and GaEffect nominal IDs/revisions after checkout relocation and unrelated graph traversal changes.\n- Source/body/layout/dependency-content changes alter the appropriate conservative revision while unchanged declared module/kind/name keeps its nominal ID. Absolute checkout paths and flattening ordinals never determine equality.\n- The report names legacy/generated identities and ranges that remain unavailable instead of fabricating stable values; original physical paths/authority are preserved separately.\n- Actual page/policy checks and their native/Wasm build paths pass with the authored behavior and C ABI unchanged; retain both consumer inventories and artifact evidence.\n- The versioned report contract is documented and consumed as graph facts; no semantic namespace claim is introduced by this slice.\n\n## Remaining scope\n\nThis produces compiler facts for existing R7 query/evidence work, not a competing evidence format, dependency planner, toolchain manifest or reusable-cache claim.\n\nThis is an acceptance-complete child of split design v1. Finish and push within one two-hour sitting; commands stay below fifteen minutes. If this exact slice cannot fit, split it before implementation. Keep r1a-identities open until all of its original acceptance passes; R3 foreign-buffer/FFI work remains blocked by that parent. No package fetch, privileged build system or general incremental compiler is implied."
+    },
+    {
+      "slug": "r1a-qualified-lookup",
+      "kind": "task",
+      "parent": "r1a-identities",
+      "title": "Resolve qualified module names through the checked graph",
+      "size": "M",
+      "labels": [
+        "r1",
+        "usage-audit",
+        "compiler",
+        "modules"
+      ],
+      "blocked_by": [
+        "r1a-logical-declarations",
+        "r1a-module-revisions"
+      ],
+      "body": "## Problem\n\nStable owner IDs alone do not let two imported modules use the same local declaration spelling or bind qualified type and procedure references.\n\n## Scope\n\nImplement explicit filesystem path imports with aliases, per-module declaration scopes and qualified type/procedure/constant lookup in the existing checked graph. Bind aliases to originating declaration IDs, preserving source/authority ownership. Keep existing unannotated #load graphs compatible. Limit this slice to current concrete declaration forms and explicitly reject reexports, module parameters, package search and unsupported C export-name collisions.\n\n## Files\n\n- Existing Coax parser/checker graph and source import policy; affected evaluator/C/scalar-GPU binding consumers\n- `coax/tests/modules.py` QualifiedLookup fixtures, affected seed gates and original-diagnostic fixtures\n\n## Acceptance\n\n- Two modules with colliding local names resolve the intended qualified types/calls/constants, while unknown and ambiguous names fail at the original source use.\n- Import alias changes do not change originating nominal IDs; independent same-layout named types remain nominally distinct.\n- Evaluator, emitted native C and one existing scalar GPU fixture use the same checked declaration bindings and preserve their established results.\n- Unsupported C export spelling collisions and unsupported reexports/module configuration fail explicitly rather than being merged by structural header guards.\n- Legacy source/authority/differential fixtures and affected deterministic graph/seed gates pass without a second native semantic resolver or textual prefix rewrite.\n\n## Remaining scope\n\nPublic/private admission is the next child. Do not advertise a private module boundary yet; this slice establishes correct qualified binding only.\n\nThis is an acceptance-complete child of split design v1. Finish and push within one two-hour sitting; commands stay below fifteen minutes. If this exact slice cannot fit, split it before implementation. Keep r1a-identities open until all of its original acceptance passes; R3 foreign-buffer/FFI work remains blocked by that parent. No package fetch, privileged build system or general incremental compiler is implied."
+    },
+    {
+      "slug": "r1a-public-hud-module",
+      "kind": "task",
+      "parent": "r1a-identities",
+      "title": "Enforce explicit module exports in a small HUD graph",
+      "size": "M",
+      "labels": [
+        "r1",
+        "usage-audit",
+        "modules",
+        "verse"
+      ],
+      "blocked_by": [
+        "r1a-qualified-lookup"
+      ],
+      "body": "## Problem\n\nQualified names are insufficient when every imported declaration remains accessible. A reusable engine graph needs an explicit public API and enforceable private helpers.\n\n## Scope\n\nGive named modules private declarations by default and an explicit export list. Keep #export_c a separate native ABI decision. Migrate the existing three-file HUD graph and one caller to the defined module boundary, preserving the native interface and source-owned authority. Reexports remain unsupported and diagnosed.\n\n## Files\n\n- `verse/hud.coax`, `verse/hud/types.coax`, `verse/hud/frame.coax` and one selected existing caller\n- Module export/visibility policy and `coax/tests/modules.py` Visibility fixtures\n- Book chapter 22 and the actual HUD identity/dependency report\n\n## Acceptance\n\n- Private types, constants and procedures are refused from imported modules, including attempted transitive/qualified access; explicitly exported declarations remain usable.\n- Module-internal #load members share the declared owner without spreading or discarding physical #authority or executed-check coverage.\n- Actual HUD checks and a native C11/C++ host pass with the existing two packet types, exported functions, layouts and authored behavior retained.\n- Publish the small migrated graph report showing exposed names, identities/revisions, physical units and generated sizes.\n- Unannotated legacy graphs retain compatibility and unsupported reexports fail explicitly. A namespace parser or hand-renamed source alone cannot pass this gate.\n\n## Remaining scope\n\nThis completes one real namespace/visibility consumer, not target qualification, shared lowering or the whole R1a parent.\n\nThis is an acceptance-complete child of split design v1. Finish and push within one two-hour sitting; commands stay below fifteen minutes. If this exact slice cannot fit, split it before implementation. Keep r1a-identities open until all of its original acceptance passes; R3 foreign-buffer/FFI work remains blocked by that parent. No package fetch, privileged build system or general incremental compiler is implied."
+    },
+    {
+      "slug": "r1a-target-spans",
+      "kind": "task",
+      "parent": "r1a-identities",
+      "title": "Describe the supported target and exact original declaration spans",
+      "size": "M",
+      "labels": [
+        "r1",
+        "usage-audit",
+        "targets",
+        "source-spans"
+      ],
+      "blocked_by": [
+        "r1a-logical-declarations",
+        "r1a-module-revisions"
+      ],
+      "body": "## Problem\n\nLogical IDs do not describe pointer/count layout or provide exact original declaration ranges. Treating LP64 reflection values or flattened locations as universal hides unsupported targets and stale edits.\n\n## Scope\n\nAdd typed graph records for the currently supported named native LP64 description and physical declaration start/end spans. Record scalar/pointer/count widths, alignments and calling convention explicitly. Other layout-query targets report unsupported instead of borrowing LP64 values; ordinary existing backend support is not silently expanded. Preserve generated-origin distinctions and keep these records separate from nominal identity.\n\n## Files\n\n- Target/source-span records in the existing Coax graph and parser/checker/native transport\n- `coax/tests/modules.py` TargetSpans fixtures and an independent native C layout oracle\n- Spec/book limits and affected reflection/source-diagnostic fixtures\n\n## Acceptance\n\n- Independent native compiler observations agree with each claimed LP64 target fact; unsupported layout targets cannot report successful qualification.\n- Exact start/end ranges select the original authored bytes across loaded units and selected #if forms; generated declarations retain an explicit original import/directive origin.\n- Relocation/reordering preserves nominal IDs while current physical ranges and content revisions remain truthful; invalid or unsupported ranges are explicitly unavailable.\n- Existing schema-1 CPU reflection is not reinterpreted as Wasm/GPU metadata, and affected parser/checker/source/seed gates pass.\n- Document the typed record contract that existing R8 target manifests and R7 query/evidence tools consume.\n\n## Remaining scope\n\nDo not duplicate r8-backend-profile-manifest artifact/toolchain manifests or R7 fix/evidence/planning machinery. Broader target layout implementations retain their own qualification gates.\n\nThis is an acceptance-complete child of split design v1. Finish and push within one two-hour sitting; commands stay below fifteen minutes. If this exact slice cannot fit, split it before implementation. Keep r1a-identities open until all of its original acceptance passes; R3 foreign-buffer/FFI work remains blocked by that parent. No package fetch, privileged build system or general incremental compiler is implied."
+    },
+    {
+      "slug": "r1a-ordered-lowering",
+      "kind": "task",
+      "parent": "r1a-identities",
+      "title": "Share an inspectable ordered lowering for a bounded HUD slice",
+      "size": "M",
+      "labels": [
+        "r1",
+        "usage-audit",
+        "lowering",
+        "conformance"
+      ],
+      "blocked_by": [
+        "r1a-logical-declarations",
+        "r1a-qualified-lookup",
+        "r1a-public-hud-module",
+        "r1a-target-spans"
+      ],
+      "body": "## Problem\n\nDeclaration IDs and namespaces do not establish that evaluator and emitters agree on operation, place, cleanup and trap order. A useful inspection contract must correspond to execution.\n\n## Scope\n\nDefine an inspectable shared lowering for an explicit eligible subset, starting with the real HUD slot routine and small ordered-place/control-flow/defer fixtures. Keep the existing checked graph authoritative; evaluator and native C emission consume the same lowering decisions and declaration IDs. Name unsupported procedures and retain their existing path. Avoid a general SSA optimizer, scheduler or competing frontend.\n\n## Files\n\n- Bounded Coax lowering policy and the existing checked graph/evaluator/C integration\n- Existing differential machinery, focused lowering fixtures and one actual HUD procedure\n- An inspection contract and focused retained qualification record\n\n## Acceptance\n\n- Eligible evaluator and checked native O0/O2 executions agree with independent expectations for returned values, specified traps, caller writes and reverse cleanup.\n- Fixtures pin two trapping operands without explicit calls, destination-before-value assignment and exactly-once compound-assignment destinations.\n- A deliberately seeded lowering/emitter defect is detected and minimized by the existing differential path; unsupported/unexecuted procedures are labelled rather than counted as passed.\n- The inspected HUD lowering references the same checked declarations and original provenance consumed by execution; its authored behavior is unchanged.\n- Affected authority/seed/differential gates pass within bounded commands. Explicitly audit the original parent lowering requirements and leave the parent open for any remaining required forms.\n\n## Remaining scope\n\nThis is a bounded shared lowering contract. It does not replace R8 cross-backend conformance or imply complete native-check lowering, GPU execution qualification or optimization support.\n\nThis is an acceptance-complete child of split design v1. Finish and push within one two-hour sitting; commands stay below fifteen minutes. If this exact slice cannot fit, split it before implementation. Keep r1a-identities open until all of its original acceptance passes; R3 foreign-buffer/FFI work remains blocked by that parent. No package fetch, privileged build system or general incremental compiler is implied."
+    }
+  ]
+}

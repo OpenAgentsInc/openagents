@@ -1,0 +1,330 @@
+{
+  "schema_version": 1,
+  "date": "2026-10-30",
+  "timezone": "America/Chicago",
+  "issue": "r1a-project-inventory-capacity",
+  "publication": "Drafted in work/r1a-subtasks.json before implementation; publish after updated deployed reader. The existing umbrella claim/note tracks this prerequisite.",
+  "baseline_commit": "9797ddc78e1d70c413d6b83c4cafe3b20f7a0c95",
+  "scope": "Finite320-row project inventory, preserving hierarchy/resolved history and independent relay order limits. Public baked/live replacement gates refuse oversized row sets before mutating the complete view.",
+  "source_sha256": {
+    "apps/openagents-web/project.coax": "2b13105180856ff242384a0e0dcdbbe6e5e55b290fbfaecacbed44491bebf987",
+    "apps/openagents-web/project-fold.coax": "1feba52ce71190f5bf090c69053a1e1aa36a497a1191b2999879c59610304ca5",
+    "apps/openagents-web/project-capacity.coax": "5d195d81b31f045607d77a566ed786713a33fa9846ae6dcdbe0d16f9f6e8f9d8",
+    "apps/openagents-web/build.sh": "fb307087e5edddccc36bbb2b196c68a5936a399f13e114f3d12f7bd2ed5cb560",
+    "coax/tests/nostr/project_capacity_adapter.coax": "f9fbbcd7f925452492b243ef7c5e57ad0981e832ab92e45235d5745cf1556684",
+    "coax/web/project/live-catchup.test.ts": "0c17733a232ac4b7a33c2860837dc50cd44ddaa9f1869f5af3f600b1ecfe0947",
+    "coax/web/project/nip19.test.ts": "fe66493295d186a8fb6c3be5409f7ebdbd88ade0edd2c794aaeca0fe5524d8b4",
+    "coax/web/project/publish.test.ts": "c47eaa0c70e02b278a616178d34e50f33960f442b0eb59bf79602df7139aaa31",
+    "apps/openagents-web/projects/coax/work/coax.json": "6167e794d7313e86b05a03d6fbc738832b57f149d30651358adbee183e36009b",
+    "apps/openagents-web/projects/coax/work/r1a-subtasks.json": "3f66900dae0bb10cd97fc4dbb3f4dc30888a33f1a88eaef2683a949ea526547f"
+  },
+  "compiler": {
+    "sha256": "2e8c790beb17a2bb851a1ff80f4572e86dda0e044d5b38e8f5cee179afcfff9d",
+    "provenance": [
+      "coax-provenance-v1",
+      "774953b1f321855932b5587b5e189873eeeb9fa2e5893284fbab9385a5b08f31",
+      "2e8c790beb17a2bb851a1ff80f4572e86dda0e044d5b38e8f5cee179afcfff9d",
+      "bb9f0000c6cfd0519183fa149a02a3379dbd2ca66c8859b3985abddbe9337f56"
+    ],
+    "inputs_changed_from_profile_qualification": false
+  },
+  "baseline_red": {
+    "path": "/tmp/coax-capacity-prep/baseline-256-red.log",
+    "sha256": "9cd25d9b261a0ac51da224a6b8e6b7c714ffafb25d7425b8a378de257546d3c9",
+    "tail": "bun test v1.4.0 (34cbb9a40)\n\ncoax/web/project/live-catchup.test.ts:\n224 | }\n225 | \n226 | function expectCapacityView(ui:NativeUI,fixture:ReturnType<typeof capacityInventory>) {\n227 |   const count=fixture.roots.length,want=expected(fixture.rows)\n228 |   expect(want.by.size).toBe(count)\n229 |   expect({state:ui.info(0),incomplete:ui.info(3),roots:ui.info(1)}).toEqual({state:3,incomplete:0,roots:count})\n                                                                          ^\nerror: expect(received).toEqual(expected)\n\n  {\n-   \"incomplete\": 0,\n-   \"roots\": 262,\n-   \"state\": 3,\n+   \"incomplete\": 5,\n+   \"roots\": 0,\n+   \"state\": 4,\n  }\n\n- Expected  - 3\n+ Received  + 3\n\n      at expectCapacityView (/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/live-catchup.test.ts:229:69)\n      at <anonymous> (/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/project/live-catchup.test.ts:252:7)\n(fail) inventory capacity keeps 262 and 263 signed roots with hierarchy and resolved history [321.44ms]\n\n 0 pass\n 8 filtered out\n 1 fail\n 2 expect() calls\nRan 1 test across 1 file. [3.87s]\n"
+  },
+  "source_capacity_red": {
+    "path": "/tmp/coax-capacity-source-red.log",
+    "counterexample": "263 combined source items exceed MAX_ITEMS256;16 other cases passed."
+  },
+  "policy": {
+    "file": "apps/openagents-web/project-capacity.coax",
+    "check_first": {
+      "path": "/tmp/coax-capacity-prep/helper-stub-red.log",
+      "sha256": "fb05abc76a4ed3fb5991cab41b6f7bd825bae8abddd34e874b77c6a02a1852db",
+      "tail": "ine\napps/openagents-web/project-capacity.coax:15:3: error[E0406]: assertion failed\n    #assert project_rows_fit(\"row\",1);\n    ^\n  note: in #test LF rows include blank lines and a partial final line\nFAIL #test 320 rows fit and row 321 refuses independently of trailing LF\napps/openagents-web/project-capacity.coax:35:3: error[E0406]: assertion failed\n    #assert project_rows_fit(cast(string)lines[0..<320],320);\n    ^\n  note: in #test 320 rows fit and row 321 refuses independently of trailing LF\nFAIL #forall tiny LF/CR/text domain uses an independent row-count table\napps/openagents-web/project-capacity.coax:58:3: error[E0406]: assertion failed\n    #assert project_rows_fit(cast(string)text[0..<length],maximum)==(maximum>=0 && expected<=maximum);\n    ^\n  note: in #forall tiny LF/CR/text domain uses an independent row-count table\n  counterexample: first = 0, second = 0, last = 0, length = 0, maximum = 0\nFAIL #test scalar row admission rejects negative inputs and preserves exact boundaries\napps/openagents-web/project-capacity.coax:65:3: error[E0406]: assertion failed\n    #assert project_row_count_fits(0,0);\n    ^\n  note: in #test scalar row admission rejects negative inputs and preserves exact boundaries\nFAIL #forall scalar row admission has an independent finite truth table\napps/openagents-web/project-capacity.coax:80:3: error[E0406]: assertion failed\n    #assert project_row_count_fits(count-1,maximum-1)==truth[count*5+maximum];\n    ^\n  note: in #forall scalar row admission has an independent finite truth table\n  counterexample: count = 1, maximum = 1\n6 checks, 0 passed, 6 failed\n"
+    },
+    "checks": {
+      "path": "/tmp/coax-capacity-prep/helper-green.log",
+      "sha256": "0385908cc9d285047bdb8c3053d0cfba5d8c8d09f40e8d24a6d3839c78683b6d",
+      "tail": "ok   #test empty input has zero rows and a negative maximum always refuses (1 case, 134 steps)\nok   #test LF rows include blank lines and a partial final line (1 case, 924 steps)\nok   #test 320 rows fit and row 321 refuses independently of trailing LF (1 case, 58405 steps)\nok   #forall tiny LF/CR/text domain uses an independent row-count table (540 cases, 53515 steps)\nok   #test scalar row admission rejects negative inputs and preserves exact boundaries (1 case, 131 steps)\nok   #forall scalar row admission has an independent finite truth table (25 cases, 1314 steps)\n6 checks, 6 passed, 0 failed\n"
+    },
+    "mutation": {
+      "path": "/tmp/coax-capacity-prep/helper-mutation.log",
+      "sha256": "f1d62e86e8eaff417d7da78e37d3d9639326e380921bd0df4b24c7af51a549a4",
+      "tail": "23 mutants, 23 killed, 0 survived\n"
+    },
+    "checks_passed": 6,
+    "mutants_killed": 23,
+    "mutants_survived": 0,
+    "compiled_separately": true,
+    "abi": "Scalar project_row_count_fits(int64,int64)->bool is the production foreign call; no host decision fallback. project_rows_fit provides a string ABI for independent boundary qualification."
+  },
+  "native_boundary": {
+    "log": {
+      "path": "/tmp/coax-capacity-prep/native-capacity-green.log",
+      "sha256": "758abceb205c5e142ce9d88fe689206b420903b43cd846fd1828f28729a3c5c9",
+      "tail": "bun test v1.4.0 (34cbb9a40)\n\ncoax/web/project/live-catchup.test.ts:\n(pass) page and fold capacity both cover every combined seed item [1.82ms]\n(pass) inventory capacity native scalar and string policies agree with independent row counts [0.29ms]\n(pass) inventory capacity refuses oversized baked and live candidates before any state replacement [0.44ms]\n(pass) inventory capacity keeps 262 and 263 signed roots with hierarchy and resolved history [1674.19ms]\n(pass) inventory capacity accepts exactly 320 roots and refuses 321 without replacing any complete table [2304.01ms]\n\n 5 pass\n 6 filtered out\n 0 fail\n 1028 expect() calls\nRan 5 tests across 1 file. [13.87s]\n"
+    },
+    "tests": 5,
+    "assertions": 1028,
+    "scope": "262/263/320 roots admitted with all5 tables identical to independently verified TypeScript;321 refused OFFLINE/incomplete5 retaining complete320-row state. Actual native Coax adapters also verify baked/live table/metadata/tree/counter atomicity."
+  },
+  "headless_browser": {
+    "outcome": "passed",
+    "tests": 1,
+    "assertions": 10,
+    "report": {
+      "count": 263,
+      "workers": 2,
+      "state": 3,
+      "frames": 28,
+      "queries": 26,
+      "tableParity": true,
+      "reloaded": false
+    },
+    "log": {
+      "path": "/tmp/coax-capacity-prep/browser-263-green.log",
+      "sha256": "1d2510c572890f14da8fb0cd9c727fd6e8afacb38553bd7c9538486f08a57650",
+      "tail": "bun test v1.4.0 (34cbb9a40)\n\ncoax/web/project/live-catchup.test.ts:\n(pass) actual WebGPU browser draws the complete 263-root inventory and a live worker update without reload [3740.74ms]\n\n 1 pass\n 10 filtered out\n 0 fail\n 10 expect() calls\nRan 1 test across 1 file. [6.15s]\n"
+    },
+    "screenshot": "/tmp/coax-live-catchup-browser.png",
+    "screenshot_sha256": "c1ced8c8f9ac668026f0b5e0410ae952ee8aa39a7b2a5089890515ebe7786d72",
+    "headless": true,
+    "muted": true,
+    "test_harness_correction": "Use the current module host and unchanged dependency modules; test-only closure probe, no product host edit. Initial startup failure retained in browser-263-startup-failure.log."
+  },
+  "publisher": {
+    "command": "bun test coax/web/project/publish.test.ts -t 'open-task order preserves active legacy ranks'",
+    "outcome": "passed",
+    "assertions": 23,
+    "log": "/tmp/coax-capacity-publisher-green.log",
+    "scope": "320 total roots including64 additional resolved tasks;217 active order entries preserved within the unchanged256-tag wire cap; no old roots/ranks dropped."
+  },
+  "source_inventory": {
+    "outcome": "passed",
+    "command": "bun test coax/web/project/nostr-plan.test.ts -t 'published task identities survive'",
+    "count": 263,
+    "log": "/tmp/coax-capacity-source-green.log",
+    "old_identities_preserved": true,
+    "r1_split": "Six child tasks parented to the still-open umbrella; capacity prerequisite parented to R1. Keep original parent prerequisites; adding child blockers as well would cycle the publisher parent/blocker DAG."
+  },
+  "integration": {
+    "version": 1,
+    "scope": [
+      "apps/openagents-web/build.sh",
+      "apps/openagents-web/project-fold.coax",
+      "coax/web/project/nip19.test.ts"
+    ],
+    "void_fold_api_preserved": true,
+    "production_wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-project-wasm-rtfobje0/result.json",
+    "production_module_interface": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-project-wasm-rtfobje0/module-interface.json",
+    "native_nip19_original_failure": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-nip19-9vl9bbgd/result.json",
+    "native_nip19_corrected": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-nip19-fixed-cczc6815/result.json",
+    "oracle_baseline": {
+      "commit": "9797ddc78e",
+      "path": "apps/openagents-web/project.coax",
+      "contract": "detail_fits uses project_layout with Work, so real Coax book intro contributes to scene bounds"
+    },
+    "source_drift_since_wasm_build": {
+      "apps/openagents-web/project.coax": false,
+      "apps/openagents-web/project-fold.coax": false,
+      "apps/openagents-web/project-capacity.coax": false,
+      "apps/openagents-web/build.sh": false
+    },
+    "native_test_source_sha256": "fe66493295d186a8fb6c3be5409f7ebdbd88ade0edd2c794aaeca0fe5524d8b4",
+    "fold_diff": "FOLD_ISSUES256\u2192320 only; no new Fold bool/helpers/tests copied from scratch"
+  },
+  "production_wasm": {
+    "argv": [
+      "bash",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/coax/web/wasm.sh",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project.coax",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-face.c",
+      "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-project-wasm-rtfobje0/project.wasm",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-names.coax",
+      "/Users/christopherdavid/.codex/worktrees/coax-current-audit/openagents/apps/openagents-web/project-capacity.coax"
+    ],
+    "exit": 0,
+    "seconds": 8.019,
+    "log": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-project-wasm-rtfobje0/build.log",
+    "wasm": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-project-wasm-rtfobje0/project.wasm",
+    "sources": {
+      "apps/openagents-web/project.coax": "2b13105180856ff242384a0e0dcdbbe6e5e55b290fbfaecacbed44491bebf987",
+      "apps/openagents-web/project-fold.coax": "1feba52ce71190f5bf090c69053a1e1aa36a497a1191b2999879c59610304ca5",
+      "apps/openagents-web/project-capacity.coax": "5d195d81b31f045607d77a566ed786713a33fa9846ae6dcdbe0d16f9f6e8f9d8",
+      "apps/openagents-web/build.sh": "fb307087e5edddccc36bbb2b196c68a5936a399f13e114f3d12f7bd2ed5cb560"
+    },
+    "bytes": 1772502,
+    "sha256": "c060332477aa7df6cc24b29debdd4f3a24ffded89c79db4537c46aa7a825f3a5"
+  },
+  "production_imports": {
+    "imports": [
+      {
+        "module": "env",
+        "name": "memory",
+        "kind": "memory",
+        "type": {
+          "maximum": 1024,
+          "minimum": 39,
+          "shared": false,
+          "address": "i32"
+        }
+      },
+      {
+        "module": "env",
+        "name": "coaxial_http",
+        "kind": "function",
+        "type": {
+          "parameters": [
+            "i32",
+            "i32",
+            "i32",
+            "i32",
+            "i32"
+          ],
+          "results": [
+            "i32"
+          ]
+        }
+      },
+      {
+        "module": "env",
+        "name": "coaxial_socket_open",
+        "kind": "function",
+        "type": {
+          "parameters": [
+            "i32",
+            "i32"
+          ],
+          "results": [
+            "i32"
+          ]
+        }
+      },
+      {
+        "module": "env",
+        "name": "coaxial_socket_send",
+        "kind": "function",
+        "type": {
+          "parameters": [
+            "i32",
+            "i32",
+            "i32"
+          ],
+          "results": []
+        }
+      },
+      {
+        "module": "env",
+        "name": "coaxial_socket_close",
+        "kind": "function",
+        "type": {
+          "parameters": [
+            "i32"
+          ],
+          "results": []
+        }
+      },
+      {
+        "module": "wasi_snapshot_preview1",
+        "name": "fd_fdstat_get",
+        "kind": "function",
+        "type": {
+          "parameters": [
+            "i32",
+            "i32"
+          ],
+          "results": [
+            "i32"
+          ]
+        }
+      },
+      {
+        "module": "wasi_snapshot_preview1",
+        "name": "fd_seek",
+        "kind": "function",
+        "type": {
+          "parameters": [
+            "i32",
+            "i64",
+            "i32",
+            "i32"
+          ],
+          "results": [
+            "i32"
+          ]
+        }
+      },
+      {
+        "module": "wasi_snapshot_preview1",
+        "name": "fd_write",
+        "kind": "function",
+        "type": {
+          "parameters": [
+            "i32",
+            "i32",
+            "i32",
+            "i32"
+          ],
+          "results": [
+            "i32"
+          ]
+        }
+      }
+    ],
+    "exports": [
+      "_initialize",
+      "coaxial_inbox",
+      "coaxial_inbox_cap",
+      "coaxial_message",
+      "coaxial_layout",
+      "coaxial_state_size",
+      "coaxial_max_vertices",
+      "coaxial_vertex_floats",
+      "coaxial_uniform_floats",
+      "coaxial_page",
+      "coaxial_frame",
+      "coaxial_pointer",
+      "coaxial_key",
+      "coaxial_key_up",
+      "coaxial_blur",
+      "coaxial_wheel",
+      "coaxial_cursor",
+      "coaxial_hash",
+      "coaxial_action",
+      "coaxial_outbox",
+      "coaxial_outbox_len",
+      "coaxial_action_done",
+      "__heap_base"
+    ]
+  },
+  "native_page": {
+    "argv": [
+      "bun",
+      "test",
+      "coax/web/project/nip19.test.ts",
+      "--test-name-pattern",
+      "the page draws"
+    ],
+    "exit": 0,
+    "seconds": 9.359,
+    "log": "/var/folders/v2/0ls5nf1j509db69fk73k7ms40000gn/T/coax-capacity-nip19-fixed-cczc6815/test.log",
+    "source_sha256": "fe66493295d186a8fb6c3be5409f7ebdbd88ade0edd2c794aaeca0fe5524d8b4",
+    "prior_failure": "stale layout oracle omitted real-page Coax book intro"
+  },
+  "limits": [
+    "No whole-app authority/mutation claim: legacy Store/fold fixtures exceed interpreter aggregate storage; existing checks and budgets were preserved. The new small policy is authority checked and mutation qualified independently.",
+    "The private fold API remains void and retains its existing bounded caller preconditions; all public live/landing paths refuse excess scoped roots before invoking it.",
+    "No new namespace/identity compiler capability is claimed. R1a and R3 remain open/blocked until original acceptance is fulfilled.",
+    "Event/byte/table/query budgets and relay tag limits were not enlarged.",
+    "The stale native page layout oracle114 was corrected to the current public project_layout contract; independent canvas/vertex/name checks were retained."
+  ],
+  "golden_gate": {
+    "outcome": "pending"
+  },
+  "rollout": {
+    "outcome": "pending",
+    "rule": "Ship updated reader before publishing roots257..263; then capture public verified parity and refresh Markdown twins."
+  }
+}

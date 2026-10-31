@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, writeFileSync, mkdirSync, rmSync, readdirSyn
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { getPublicKey, finalizeEvent, type Event } from 'nostr-effect/pure'
-import { fold, projectTags, repoTags, TASK_PLAN, filters, followups, KIND_ISSUE, type ProjectConfig } from './model'
+import { fold, projectTags, repoTags, TASK_PLAN, filters, followups, KIND_ISSUE, SEED_SCHEMA, WORK_SCHEMA, seedItems, type ProjectConfig } from './model'
 import { tables } from './tables'
 import { launch as launchChrome } from '../chrome'
 import { Relay } from './relay'
@@ -61,6 +61,7 @@ class NativeUI {
   close(){lib.symbols.probe_free(this.state)}
 }
 const nativeC=`#include "project.h"
+#include "project-capacity.h"
 #include <stdlib.h>
 #include <string.h>
 typedef struct {coax_t_ProjectState page;coax_t_Tree tree;coax_t_Work work;coax_t_Live live;float *vertices;float *uniforms;} Probe;
@@ -78,12 +79,28 @@ static coax_string table(Probe*p,int k){switch(k){case 0:return p->work.text;cas
 const char *probe_text(Probe*p,int k){return table(p,k).data;}int probe_len(Probe*p,int k){return table(p,k).count;}
 int probe_op(Probe*p,int k){return p->live.pipe.e[0].op.e[k];}int probe_cmd_len(Probe*p,int k){return p->live.pipe.e[0].len.e[k];}const char*probe_cmd(Probe*p,int k){return(const char*)p->live.pipe.e[0].buf.e+p->live.pipe.e[0].from.e[k];}
 void probe_drained(Probe*p){p->live.pipe.e[0].n=0;p->live.pipe.e[0].used=0;}
+int probe_rows_fit(const char*text,int64_t length,int64_t maximum){return project_rows_fit((coax_string){text,length},maximum);}
+int probe_count_fits(int64_t count,int64_t maximum){return project_row_count_fits(count,maximum);}
+int probe_choose_refused(Probe*p){char items[321];memset(items,10,sizeof items);return project_capacity_choose_refused((coax_v_t_Tree){&p->tree,1},(coax_v_t_Work){&p->work,1},lv(p),(coax_string){items,sizeof items});}
+int probe_live_refused(Probe*p,int oversized){return project_capacity_live_refused(lv(p),(coax_v_t_Work){&p->work,1},oversized!=0);}
 `
 function run(command:string[],cwd=root){const r=Bun.spawnSync(command,{cwd,stdout:'pipe',stderr:'pipe'});if(r.exitCode!==0)throw Error(new TextDecoder().decode(r.stderr));return r.stdout}
 beforeAll(()=>{
-  const source=run([join(root,'coax/bin/coax'),'c',join(app,'project.coax'),'--library','--header',join(temp,'project.h')]);writeFileSync(join(temp,'project.c'),source);writeFileSync(join(temp,'probe.c'),nativeC)
-  run(['cc','-std=c11','-O1','-shared','-fPIC',join(temp,'project.c'),join(temp,'probe.c'),'-I'+temp,'-lm','-o',join(temp,'probe.dylib')])
+  // Compile the authority unit apart: loading it into the app would make
+  // unrelated captured-transcript checks part of ordinary app compilation.
+  const kernel=run([join(root,'coax/bin/coax'),'c',join(app,'project-capacity.coax'),'--library','--header',join(temp,'project-capacity.h')])
+  writeFileSync(join(temp,'project-capacity.c'),kernel)
+  run(['cc','-std=c11','-O1','-fPIC','-c',join(temp,'project-capacity.c'),'-o',join(temp,'project-capacity.o')])
+  const adapter=join(root,'coax/tests/nostr/project_capacity_adapter.coax')
+  const source=run([join(root,'coax/bin/coax'),'c',adapter,'--library','--header',join(temp,'project.h')]);writeFileSync(join(temp,'project.c'),source);writeFileSync(join(temp,'probe.c'),nativeC)
+  run(['cc','-std=c11','-O1','-shared','-fPIC',join(temp,'project.c'),join(temp,'probe.c'),join(temp,'project-capacity.o'),'-I'+temp,'-lm','-o',join(temp,'probe.dylib')])
   const signature:any={probe_new:{returns:FFIType.ptr},probe_free:{args:[FFIType.ptr]},probe_project:{args:[FFIType.ptr,FFIType.ptr,FFIType.i32]},probe_frame:{args:[FFIType.ptr]},probe_open:{args:[FFIType.ptr,FFIType.i32]},probe_advance:{args:[FFIType.ptr,FFIType.i32]},probe_budget:{args:[FFIType.ptr]},probe_message:{args:[FFIType.ptr,FFIType.i32,FFIType.ptr,FFIType.i32]},probe_info:{args:[FFIType.ptr,FFIType.i32],returns:FFIType.i32},probe_text:{args:[FFIType.ptr,FFIType.i32],returns:FFIType.ptr},probe_len:{args:[FFIType.ptr,FFIType.i32],returns:FFIType.i32},probe_op:{args:[FFIType.ptr,FFIType.i32],returns:FFIType.i32},probe_cmd:{args:[FFIType.ptr,FFIType.i32],returns:FFIType.ptr},probe_cmd_len:{args:[FFIType.ptr,FFIType.i32],returns:FFIType.i32},probe_drained:{args:[FFIType.ptr]}}
+  Object.assign(signature,{
+    probe_rows_fit:{args:[FFIType.ptr,FFIType.i64,FFIType.i64],returns:FFIType.i32},
+    probe_count_fits:{args:[FFIType.i64,FFIType.i64],returns:FFIType.i32},
+    probe_choose_refused:{args:[FFIType.ptr],returns:FFIType.i32},
+    probe_live_refused:{args:[FFIType.ptr,FFIType.i32],returns:FFIType.i32},
+  })
   lib=dlopen(join(temp,'probe.dylib'),signature)
 },60000)
 afterAll(()=>{lib?.close();rmSync(temp,{recursive:true,force:true})})
@@ -117,11 +134,17 @@ test('changing caps and out-of-order page delivery preserve full parity; unprova
 test('page and fold capacity both cover every combined seed item',()=>{
  const count=(path:string,name:string)=>Number(readFileSync(path,'utf8').match(new RegExp(name+' :: (\\d+);'))![1])
  const display=count(join(app,'project.coax'),'MAX_ITEMS'),foldCap=count(join(app,'project-fold.coax'),'FOLD_ISSUES')
- const seeds=join(app,'projects/coax/work');const countSeeds=readdirSync(seeds).filter(f=>f.endsWith('.json')).map(f=>JSON.parse(readFileSync(join(seeds,f),'utf8'))).reduce((n,s)=>n+1+s.milestones.length+s.tasks.length,0)
+ const seeds=join(app,'projects/coax/work')
+ const countItems=(doc:any)=>{
+   if(doc.v===SEED_SCHEMA)return seedItems(doc).length
+   if(doc.v===WORK_SCHEMA && Array.isArray(doc.items))return doc.items.length
+   throw Error('unsupported project work schema in capacity census')
+ }
+ const countSeeds=readdirSync(seeds).filter(f=>f.endsWith('.json')).map(f=>JSON.parse(readFileSync(join(seeds,f),'utf8'))).reduce((n,s)=>n+countItems(s),0)
  expect(foldCap).toBe(display);expect(display).toBeGreaterThanOrEqual(countSeeds);expect(foldCap).toBeGreaterThanOrEqual(155)
 })
 
-test('actual WebGPU browser draws the same155-task state and a live worker update without reload',async()=>{
+test('actual WebGPU browser draws the complete 263-root inventory and a live worker update without reload',async()=>{
   const wasm=join(temp,'project.wasm'),face=join(temp,'browser-face.c')
   writeFileSync(face,`#include "${join(app,'project-face.c')}"\n
 EXPORT("probe_count") uint32_t probe_count(uint32_t p){return state_at(p)->work.n;}
@@ -131,18 +154,23 @@ static coax_string probe_table(uint32_t p,int k){State*s=state_at(p);switch(k){c
 EXPORT("probe_text") uint32_t probe_text(uint32_t p,int k){return(uint32_t)(uintptr_t)probe_table(p,k).data;}
 EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k).count;}
 `)
-  run(['bash',join(root,'coax/web/wasm.sh'),join(app,'project.coax'),face,wasm,join(app,'project-names.coax')])
+  run(['bash',join(root,'coax/web/wasm.sh'),join(app,'project.coax'),face,wasm,join(app,'project-names.coax'),join(app,'project-capacity.coax')])
   const sockets=new Set<any>(), queries:any[]=[]
-  let fixtureRows=[...events]
+  const fixture=capacityInventory(263),fixtureRows=fixture.rows
   const server=Bun.serve({port:0,fetch(request,server){
     const url=new URL(request.url)
     if(url.pathname==='/relay'){if(server.upgrade(request,{data:{subs:new Map()}}))return;return new Response('upgrade required',{status:400})}
-    if(url.pathname==='/host.js')return new Response(readFileSync(join(root,'coax/web/host.js')),{headers:{'content-type':'text/javascript'}})
+    // Observe module-local state only in this test response. The actual host
+    // and its effect modules run unchanged; production exposes no test hook.
+    if(url.pathname==='/host.js')return new Response(readFileSync(join(root,'coax/web/host.js'),'utf8')+`
+      globalThis.projectCapacityProbe=()=>{if(!engine||!arena)return null;const x=engine.exports,s=arena.state;const read=k=>new TextDecoder().decode(new Uint8Array(memory.buffer,x.probe_text(s,k),x.probe_len(s,k)));return{state:x.probe_state(s),count:x.probe_count(s),workers:x.probe_workers(s),tables:[0,1,2,3,4].map(read),frames,timeOrigin:performance.timeOrigin}};
+    `,{headers:{'content-type':'text/javascript'}})
+    if(['/entropy.js','/entropy-import.js','/drop.js','/uploads.js','/card.js','/voice.js','/gpui.js','/loader.js','/http-requests.js'].includes(url.pathname))return new Response(readFileSync(join(root,'coax/web',url.pathname.slice(1))),{headers:{'content-type':'text/javascript'}})
     if(url.pathname==='/project.wasm')return new Response(readFileSync(wasm),{headers:{'content-type':'application/wasm'}})
     if(url.pathname==='/project.wgsl')return new Response(readFileSync(join(app,'project.wgsl')),{headers:{'content-type':'text/plain'}})
     if(url.pathname.startsWith('/api/'))return new Response('ok')
     if(url.pathname!=='/')return new Response('missing',{status:404})
-    return new Response(`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:black}canvas{width:100vw;height:100vh;display:block}</style></head><body><canvas id="coaxial"></canvas><script>(()=>{const Raw=WebSocket;globalThis.WebSocket=class extends Raw{constructor(url,...args){super(String(url).startsWith('wss://relay.openagents.com')?'ws://127.0.0.1:${server.port}/relay':url,...args)}}})()</script><script src="/host.js" data-app="project" data-wasm="/project.wasm" data-wgsl="/project.wgsl" data-text="${pk} coax"></script></body></html>`,{headers:{'content-type':'text/html'}})
+    return new Response(`<!doctype html><html><head><meta charset="utf-8"><style>html,body{margin:0;background:black}canvas{width:100vw;height:100vh;display:block}</style></head><body><canvas id="coaxial"></canvas><script>(()=>{const Raw=WebSocket;globalThis.WebSocket=class extends Raw{constructor(url,...args){super(String(url).startsWith('wss://relay.openagents.com')?'ws://127.0.0.1:${server.port}/relay':url,...args)}}})()</script><script type="module" src="/host.js" data-app="project" data-wasm="/project.wasm" data-wgsl="/project.wgsl" data-text="${pk} coax"></script></body></html>`,{headers:{'content-type':'text/html'}})
   },websocket:{open(ws){sockets.add(ws)},message(ws,message){const request=JSON.parse(String(message));if(request[0]==='CLOSE'){(ws.data as any).subs.delete(request[1]);return}(ws.data as any).subs.set(request[1],request);queries.push(request);for(const line of answer(request,fixtureRows,{cap:37}))ws.send(line)},close(ws){sockets.delete(ws)}}})
   const profile=join(temp,'chrome');mkdirSync(profile)
   const chrome=launchChrome(profile,['--window-size=1440,900'])
@@ -153,23 +181,27 @@ EXPORT("probe_len") uint32_t probe_len(uint32_t p,int k){return probe_table(p,k)
     expect(port).not.toBe('')
     const target:any=(await(await fetch(`http://127.0.0.1:${port}/json/list`)).json() as any[]).find(t=>t.type==='page')
     ws=new WebSocket(target.webSocketDebuggerUrl);await new Promise(resolve=>ws!.addEventListener('open',resolve,{once:true}))
-    let serial=0;const pending=new Map<number,(value:any)=>void>()
-    ws.addEventListener('message',e=>{const m=JSON.parse(String(e.data));if(pending.has(m.id)){pending.get(m.id)!(m);pending.delete(m.id)}})
+    let serial=0;const pending=new Map<number,(value:any)=>void>(),browserErrors:string[]=[]
+    ws.addEventListener('message',e=>{const m=JSON.parse(String(e.data));if(m.method==='Runtime.exceptionThrown')browserErrors.push(m.params.exceptionDetails.exception?.description??m.params.exceptionDetails.text);if(pending.has(m.id)){pending.get(m.id)!(m);pending.delete(m.id)}})
     const send=(method:string,params:any={})=>new Promise<any>((resolve,reject)=>{const id=++serial;const timer=setTimeout(()=>{pending.delete(id);reject(Error('CDP timeout '+method))},10000);pending.set(id,v=>{clearTimeout(timer);resolve(v)});ws!.send(JSON.stringify({id,method,params}))})
+    await send('Runtime.enable');await send('Page.enable')
     await send('Page.navigate',{url:`http://127.0.0.1:${server.port}/?probe`})
-    const expression=`(()=>{if(typeof engine==='undefined'||!engine||!arena)return null;const x=engine.exports,s=arena.state;const read=k=>new TextDecoder().decode(new Uint8Array(memory.buffer,x.probe_text(s,k),x.probe_len(s,k)));return{state:x.probe_state(s),count:x.probe_count(s),workers:x.probe_workers(s),tables:[0,1,2,3,4].map(read),frames}})()`
+    const expression='globalThis.projectCapacityProbe?.()??null'
     let current:any
-    async function waitFor(workers:number){for(let i=0;i<200;i++){const response=await send('Runtime.evaluate',{expression,returnByValue:true});current=response.result?.result?.value;if(current?.state===3&&current?.workers===workers)return current;await Bun.sleep(50)}throw Error('browser did not catch up: '+JSON.stringify(current))}
+    async function waitFor(workers:number){for(let i=0;i<200;i++){const response=await send('Runtime.evaluate',{expression,returnByValue:true});current=response.result?.result?.value;if(current?.state===3&&current?.workers===workers)return current;await Bun.sleep(50)}throw Error('browser did not catch up: '+JSON.stringify({current,browserErrors}))}
     await waitFor(1)
-    const want=expected(events);expect(current.count).toBe(155);expect(current.frames).toBeGreaterThan(0);expect(current.tables).toEqual([want.rows,want.plans,want.details,want.log,want.planInfo])
-    const update=comment(40000,4,[['claim','browser-worker'],['by','browser-worker']],'Taking it from the live browser')
+    const loadedAt=current.timeOrigin,initialFrames=current.frames
+    const want=expected(fixtureRows);expect(current.count).toBe(263);expect(current.frames).toBeGreaterThan(0);expect(current.tables).toEqual([want.rows,want.plans,want.details,want.log,want.planInfo])
+    const update=sign(1111,40000,[['E',fixture.roots[4].id],['K','1621'],['P',pk],['claim','browser-worker'],['by','browser-worker']],'Taking it from the live browser')
     fixtureRows.push(update)
     for(const socket of sockets)for(const request of socket.data.subs.values()){const lines=answer(request,[update],{cap:37});if(lines.length>1)socket.send(lines[0])}
     await waitFor(2)
-    const updated=expected(fixtureRows);expect(current.tables).toEqual([updated.rows,updated.plans,updated.details,updated.log,updated.planInfo]);expect(current.count).toBe(155)
+    const updated=expected(fixtureRows);expect(current.tables).toEqual([updated.rows,updated.plans,updated.details,updated.log,updated.planInfo]);expect(current.count).toBe(263)
+    expect(current.timeOrigin).toBe(loadedAt);expect(current.frames).toBeGreaterThan(initialFrames)
+    expect(browserErrors).toEqual([])
     expect(queries.filter(q=>String(q[1]).startsWith('catchup-')).length).toBeGreaterThan(10)
     const screenshot=await send('Page.captureScreenshot',{format:'png'});writeFileSync('/tmp/coax-live-catchup-browser.png',Buffer.from(screenshot.result.data,'base64'))
-    writeFileSync('/tmp/coax-live-catchup-browser.json',JSON.stringify({count:current.count,workers:current.workers,state:current.state,frames:current.frames,queries:queries.length,tableParity:true},null,2)+'\n')
+    writeFileSync('/tmp/coax-live-catchup-browser.json',JSON.stringify({count:current.count,workers:current.workers,state:current.state,frames:current.frames,queries:queries.length,tableParity:true,reloaded:current.timeOrigin!==loadedAt},null,2)+'\n')
   }finally{ws?.close();chrome.kill();await chrome.exited;server.stop(true)}
 },60000)
 
@@ -185,3 +217,107 @@ if(process.env.COAX_LIVE_REAL==='1')test('published public queue matches verifie
  writeFileSync('/tmp/coax-live-catchup-public.json',JSON.stringify({relay:actual.relay,rows:ui.info(1),workers:ui.info(2),state:ui.info(0),pages:ui.info(4),capturedEvents:rows.length,verifiedIssues:authoritative.issues.length,tableParity:true},null,2)+'\n')
  }finally{ui.close()}
 },60000)
+
+
+// The issue inventory and its signed open-task order have independent caps.
+// First 262/263 roots model the current full inventory plus the R1 children
+// and capacity prerequisite. The first N roots keep their IDs as N grows.
+function capacityInventory(count:number) {
+  if(count<112)throw Error('capacity fixture needs two hierarchy roots and 110 open tasks')
+  const roots:Event[]=[], rows:Event[]=[sign(30617,1,repoTags(config)),sign(30621,2,projectTags(pk,config))]
+  const note='Source ownership, declaration identity and original diagnostics remain independently inspectable. '
+  for(let i=0;i<count;i++) {
+    const tags=[['a',coord],['slug',`inventory-${i}`],['subject',`Inventory ${String(i).padStart(3,'0')}: preserve project history and source ownership`],['size','S']]
+    if(i===0)tags.push(['t','initiative'])
+    else if(i===1)tags.push(['t','milestone'],['parent',roots[0].id])
+    else {
+      tags.push(['parent',roots[1].id])
+      if(i>2 && i<112)tags.push(['blocked-by',roots[i-1].id])
+    }
+    const body=`Root ${i}.\n\n${note.repeat(8)}\n\n## Acceptance\n- Preserve this root, status and parent.\n- Match all five native and TypeScript tables.`
+    const issue=sign(1621,1000+i,tags,body);roots.push(issue);rows.push(issue)
+    // Exactly 110 open tasks remain independently rankable. Finished tasks
+    // still occupy inventory rows and retain their complete signed history.
+    if(i>=112)rows.push(sign(i%2===0?1631:1632,10000+i,[['e',issue.id,'','root']]))
+  }
+  const onFirst=(at:number,tags:string[][],body:string)=>sign(1111,at,[['E',roots[2].id],['K','1621'],['P',pk],...tags],body)
+  rows.push(onFirst(20000,[['claim','capacity-worker'],['by','capacity-worker']],'Taking the inventory task'))
+  rows.push(onFirst(20001,[['plan',TASK_PLAN],['by','capacity-worker']],'- [x] read\n- [>] implement\n- [ ] verify'))
+  rows.push(onFirst(20002,[['by','capacity-worker']],'The completed history remains present.'))
+  const open=roots.slice(2,112)
+  const order=sign(30623,30000,[['d','coax'],['a',coord],['alt','Order 110 open tasks'],...open.map((e,i)=>['item',e.id,String(i).padStart(3,'0')+'V'])])
+  rows.push(order)
+  return {roots,rows,order}
+}
+
+function expectCapacityView(ui:NativeUI,fixture:ReturnType<typeof capacityInventory>) {
+  const count=fixture.roots.length,want=expected(fixture.rows)
+  expect(want.by.size).toBe(count)
+  expect({state:ui.info(0),incomplete:ui.info(3),roots:ui.info(1)}).toEqual({state:3,incomplete:0,roots:count})
+  assertTables(ui,fixture.rows)
+  const displayed=ui.text(0).trimEnd().split('\n').map(row=>row.split('|'))
+  expect(displayed.length).toBe(count)
+  expect(displayed.filter(row=>row[1]==='initiative').length).toBe(1)
+  expect(displayed.filter(row=>row[1]==='milestone').length).toBe(1)
+  expect(displayed.filter(row=>row[1]==='task' && row[2]==='open').length).toBe(110)
+  expect(displayed.filter(row=>row[2]==='resolved' || row[2]==='closed').length).toBe(count-112)
+  const detailRows=ui.text(2)
+  for(const issue of fixture.roots)expect(detailRows).toContain(issue.id)
+  // Keep the existing table budgets: changing inventory capacity must not
+  // conceal a larger byte/resource allowance. Native parity above is real.
+  const budgets=[131072,16384,1048576,16384,16384]
+  for(let k=0;k<budgets.length;k++)expect(Buffer.byteLength(ui.text(k))).toBeLessThanOrEqual(budgets[k])
+  expect(fixture.order.tags.filter(tag=>tag[0]==='item').length).toBe(110)
+  expect(fixture.order.tags.length).toBe(113)
+}
+
+test('inventory capacity native scalar and string policies agree with independent row counts',()=>{
+  for(const count of [-1,0,1,319,320,321])for(const maximum of [-1,0,1,319,320,321]) {
+    expect(Boolean(lib.symbols.probe_count_fits(BigInt(count),BigInt(maximum)))).toBe(count>=0 && count<=maximum)
+  }
+  const texts=['','row','row\n','\n','\n\n','row\nnext','row\n\n','\r','row\r\nnext','\n'.repeat(320),'\n'.repeat(321)]
+  for(const text of texts) {
+    const count=text===''?0:(text.endsWith('\n')?text.slice(0,-1):text).split('\n').length
+    const bytes=cString(text)
+    for(const maximum of [-1,0,1,2,319,320,321]) {
+      expect(Boolean(lib.symbols.probe_rows_fit(ptr(bytes),BigInt(bytes.length-1),BigInt(maximum)))).toBe(count<=maximum)
+    }
+  }
+})
+
+test('inventory capacity refuses oversized baked and live candidates before any state replacement',()=>{
+  const ui=new NativeUI()
+  try {
+    expect(lib.symbols.probe_choose_refused(ui.state)).toBe(1)
+    expect(lib.symbols.probe_live_refused(ui.state,0)).toBe(1)
+    expect(lib.symbols.probe_live_refused(ui.state,1)).toBe(1)
+  } finally {ui.close()}
+})
+
+test('inventory capacity keeps 262 and 263 signed roots with hierarchy and resolved history',()=>{
+  for(const count of [262,263]) {
+    const fixture=capacityInventory(count),ui=new NativeUI()
+    try {
+      ui.connect();ui.pump(fixture.rows,{cap:37,caps:[37,13,5],reverse:true})
+      expectCapacityView(ui,fixture)
+    } finally {ui.close()}
+  }
+})
+
+test('inventory capacity accepts exactly 320 roots and refuses 321 without replacing any complete table',()=>{
+  const accepted=capacityInventory(320),overflow=capacityInventory(321),ui=new NativeUI()
+  expect(overflow.roots.slice(0,320).map(e=>e.id)).toEqual(accepted.roots.map(e=>e.id))
+  // All 321 events are valid to the independent unbounded verified TS fold.
+  expect(expected(overflow.rows).by.size).toBe(321)
+  try {
+    ui.connect();ui.pump(accepted.rows,{cap:37})
+    expectCapacityView(ui,accepted)
+    const previous=Array.from({length:5},(_,k)=>ui.text(k))
+    ui.reconnect();ui.pump(overflow.rows,{cap:37})
+    expect(ui.info(0)).toBe(4)
+    expect(ui.info(3)).toBe(5)
+    expect(ui.info(1)).toBe(320)
+    expect(Array.from({length:5},(_,k)=>ui.text(k))).toEqual(previous)
+    expect(ui.text(2)).not.toContain(overflow.roots[320].id)
+  } finally {ui.close()}
+})

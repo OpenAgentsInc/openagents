@@ -134,7 +134,7 @@ bun "$tools/list.ts" ${fresh[@]+"${fresh[@]}"}
 list=$!
 for pid in "${snaps[@]}"; do wait "$pid"; done
 bun "$tools/baked.ts"
-"$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax"
+"$here/../../coax/web/wasm.sh" "$here/project.coax" "$here/project-face.c" "$here/build/project.wasm" "$here/project-names.coax" "$here/project-capacity.coax"
 wait "$list"
 # /nip/01: NIP-01 in Coax, its verifier its own library; the splash's passes.
 python3 "$here/../../coax/web/nip-shader.py" "$here/splash.wgsl" "$here/nip01.wgsl"
