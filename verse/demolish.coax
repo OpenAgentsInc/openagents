@@ -554,11 +554,11 @@ demo_set_top :: (w: [] DemoWorld, i: int, kind: int) {
 demo_stand_build :: (w: [] DemoWorld) {
   n := 0;
   for i: 0..<w[0].n {
-    p := w[0].pieces[i];
-    kind := ifx p.pitched then DEMO_TOP_GABLE else p.top;
+    p := w[0].pieces[i..<i + 1];   // a view: copying each piece every build costs the test walk
+    kind := ifx p[0].pitched then DEMO_TOP_GABLE else p[0].top;
     if kind == DEMO_TOP_NONE || n + 2 > DEMO_STAND { continue; }
     r := w[0].rest[i * 12..<i * 12 + 12];
-    mb := clamp_mesh(p.mesh) * 6;
+    mb := clamp_mesh(p[0].mesh) * 6;
     lx := w[0].mesh_box[mb]; ly := w[0].mesh_box[mb + 1]; lz := w[0].mesh_box[mb + 2];
     ux := w[0].mesh_box[mb + 3]; uy := w[0].mesh_box[mb + 4]; uz := w[0].mesh_box[mb + 5];
     if kind == DEMO_TOP_GABLE {
@@ -587,7 +587,7 @@ demo_stand_build :: (w: [] DemoWorld) {
       if l < 0.000001 { l = 1; }
       axes[a * 3] = col.x / l; axes[a * 3 + 1] = col.y / l; axes[a * 3 + 2] = col.z / l;
     }
-    if stand_put_box_top(w[0].stand[..], n, p.cx, p.cy, p.cz, axes[..], p.hx, p.hy, p.hz) { w[0].stand_of[n] = i; n += 1; }
+    if stand_put_box_top(w[0].stand[..], n, p[0].cx, p[0].cy, p[0].cz, axes[..], p[0].hx, p[0].hy, p[0].hz) { w[0].stand_of[n] = i; n += 1; }
   }
   w[0].stand_n = n;
   full := stand_grid_build(w[0].stand_grid[..], w[0].stand[..], n, f32(DEMO_STAND_WEST), f32(DEMO_STAND_WEST));
