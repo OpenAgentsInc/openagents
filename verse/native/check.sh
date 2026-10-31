@@ -6,7 +6,7 @@
 # draw list, counts and particles must be the same bytes; the uniforms and
 # stores must be the same words or within libm's rounding (realm-run.c).
 #   verse/native/check.sh HOST [REALM]    HOST is a Linux machine with nix (coderos-4080);
-#                                          REALM everglade (the default) or stair
+#                                          REALM everglade (the default), stair, belt or waterlab
 # Everglade needs its pack at apps/openagents-web/realms/everglade/assets/everglade.pack
 # (built by verse/tools/pack_realm.py); both need the wasm toolchain (coax/web/toolchain.sh).
 set -euo pipefail
@@ -29,6 +29,10 @@ case "$realm" in
     pack=""; libraries=(); given=(); there=""
     # not golden: golden mode holds the Stair still (its golden is one frame)
     steps=(--frames 900 --every 60 --keys 10:32:1,11:32:0,20:49:1,21:49:0,30:102:1,31:102:0) ;;
+  belt|waterlab)
+    pack=""; libraries=(); given=(); there=""
+    # a click, space, the arrows and W held a while
+    steps=(--frames 600 --every 60 --keys 20:32:1,21:32:0,60:-4:1,120:-4:0,140:87:1,260:87:0) ;;
   *) echo "check.sh: no realm $realm" >&2; exit 2 ;;
 esac
 "$root/coax/web/wasm.sh" "$web/$realm.coax" "$web/$realm-face.c" "$work/$realm.wasm" ${libraries[@]+"${libraries[@]}"}

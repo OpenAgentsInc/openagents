@@ -55,9 +55,9 @@ x.coaxial_state_init?.(state); // struct defaults, as the browser host applies t
 if (opt.golden) x.coaxial_golden?.(1);
 
 const bytesAt = (p: number, n: number) => new Uint8Array(memory.buffer, p, n);
-const after = () => { if (x.coaxial_action(state)) x.coaxial_action_done(state); };
+const after = () => { if (x.coaxial_action?.(state)) x.coaxial_action_done(state); };
 const sayAfter = () => {
-  const a = x.coaxial_action(state);
+  const a = x.coaxial_action?.(state);
   if (!a) return;
   const len = x.coaxial_outbox_len(state);
   console.log(`realm-host: action ${a}: ${new TextDecoder().decode(bytesAt(x.coaxial_outbox(state), Math.min(len, 200)).slice())}`);

@@ -19,6 +19,8 @@ case "$realm" in
   everglade) app="$web/everglade.coax"; face="$web/everglade-face.c"
     libraries=("$root/verse/player.coax" "$root/verse/grid.coax" "$root/verse/everglade/river.coax" "$root/verse/everglade/guard-guide-policy.coax") ;;
   stair) app="$web/stair.coax"; face="$web/stair-face.c"; libraries=() ;;
+  # a flat realm (belt, waterlab): its module and face, its libraries #loaded
+  belt|waterlab) app="$web/$realm.coax"; face="$web/$realm-face.c"; libraries=() ;;
   *) echo "build.sh: no realm $realm" >&2; exit 2 ;;
 esac
 mkdir -p "$out"

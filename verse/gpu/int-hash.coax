@@ -27,6 +27,8 @@ IH_FILE :: 8388608;
 IH_COAX_SIN :: "  return fract(sin(wg_dot2(p,v2(127.1f32,311.7f32)))*43758.5453f32);\n";
 IH_STYLE :: " v:=sin(x*127.1f32+y*311.7f32)*43758.5453f32;\n return v-floor(v);\n";
 // The integer hash of the cell of (x, y) at 1/64, in Coax.
+// verse/stars.coax's hash (the starfield, belt's sky), and the integer hash in its place
+IH_STARS :: "stars_hash :: (x:f32,y:f32)->f32 { return stars_fract(sin(x*127.1f32+y*311.7f32)*43758.5453f32); }\n";
 IH_STYLE_INT :: " qx:=cast,trunc(u32)(cast(s32)(floor(x*64.0f32)));qy:=cast,trunc(u32)(cast(s32)(floor(y*64.0f32)));\n h:=mul_wrap(qx,1597334677) ^ mul_wrap(qy,3812015801);h=mul_wrap(h,747796405);h=mul_wrap(h ^ (h>>16),2246822519);h=h ^ (h>>13);\n return cast(f32)(h>>8)/16777216.0f32;\n";
 
 tool_main :: () -> int #export_c {
@@ -84,18 +86,32 @@ ih_module :: (out: string, name: string, wgsl: string, times: int) -> bool {
 // relative #load a whole path, as OUT/NAME.coax, and the module coax wgsl writes from it with
 // NAME.module's options as OUT/NAME.wgsl.
 ih_page :: (out: string, name: string) -> bool {
-  src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; p: [1024] u8; sp: [1024] u8; nb: [256] u8;
+  src: [IH_FILE] u8; dst: [IH_FILE] u8; tmp: [IH_FILE] u8; tmp2: [IH_FILE] u8; p: [1024] u8; sp: [1024] u8; nb: [256] u8; body2: [1024] u8;
   from := fs_join("apps/openagents-web/gpu", ih_cat3(name, ".coax", "", nb[..]), sp[..]);
   n := fs_read(from, src[..]);
   if n < 0 { tool_err("int-hash: no "); tool_errln(from); return false; }
   times := ih_count(cast(string) src[0..<n], IH_COAX_SIN);
-  if times == 0 { tool_err("int-hash: no sin hash in "); tool_errln(from); return false; }
+  stars := ih_count(cast(string) src[0..<n], "#load \"../../../verse/stars.coax\"") == 1;
+  if times == 0 && !stars { tool_err("int-hash: no sin hash in "); tool_errln(from); return false; }
   body: [1024] u8;
   r := ih_cat3(" x:=p.x;y:=p.y;\n", IH_STYLE_INT, "", body[..]);
   text := ih_replace(cast(string) src[0..<n], IH_COAX_SIN, r, dst[..], times);
   cb: [1024] u8; db: [1024] u8;
   dir := ih_cat3(fs_cwd(cb[..]), "/apps/openagents-web/gpu/", "", db[..]);
-  text = ih_whole_loads(text, dir, tmp[..]);
+  if stars {
+    // the starfield's hash too: an integer-hash copy of verse/stars.coax beside the page, loaded instead
+    ss: [IH_FILE] u8; sd: [IH_FILE] u8; sb: [1024] u8; lb: [2048] u8; lb2: [2048] u8; xb: [IH_FILE] u8;
+    sn := fs_read("verse/stars.coax", ss[..]);
+    if sn < 0 || ih_count(cast(string) ss[0..<sn], IH_STARS) != 1 { tool_errln("int-hash: verse/stars.coax's hash is not the one it knows"); return false; }
+    sr := ih_cat3("stars_hash :: (x:f32,y:f32)->f32 {\n", IH_STYLE_INT, "}\n", body2[..]);
+    st := ih_replace(cast(string) ss[0..<sn], IH_STARS, sr, sd[..], 1);
+    sp2 := fs_join(out, "stars.coax", sb[..]);
+    if !fs_write(sp2, st) { tool_err("int-hash: cannot write "); tool_errln(sp2); return false; }
+    text = ih_replace(text, "#load \"../../../verse/stars.coax\"", ih_cat3("#load \"", sp2, "\"", lb[..]), xb[..], 1);
+    for k: 0..<text.count { tmp[k] = text[k]; }
+    text = cast(string) tmp[0..<text.count];
+  }
+  text = ih_whole_loads(text, dir, tmp2[..]);
   if text.count == 0 { tool_err("int-hash: cannot rewrite "); tool_errln(from); return false; }
   gpu := fs_join(out, ih_cat3(name, ".coax", "", nb[..]), p[..]);
   if !fs_write(gpu, text) { tool_err("int-hash: cannot write "); tool_errln(gpu); return false; }

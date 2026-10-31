@@ -436,6 +436,14 @@ Every phase and native feature is a task in the Verse project
     matches the browser on the 4080 (0 of 230400 values past tolerance, the
     sin hashes one integer hash: int-hash --page), and vk-realm's 90th frame
     is vk-passes' to the bit; 1.2 ms of GPU a frame at 3840x2160.
+  - Belt 2200 runs natively the same way (`REALM=belt`): check.sh HOST belt
+    matches the wasm frame for frame (its lockstep actions included), and
+    flat-pass matches the browser (0 of 230400 past tolerance) once int-hash
+    --page also swaps verse/stars.coax's starfield hash (an integer-hash copy
+    loaded instead); vk-realm's 90th frame is vk-passes' to the bit, 0.84 ms
+    of GPU a frame at 3840x2160. The water lab's game matches the wasm too
+    (check.sh HOST waterlab; the host's actions optional, as it asks for
+    none); its surface pass and depth-writing background are next.
   - og, project, projects, realmlist, admin, private, memorial, chat,
     splash and the rest translate but have no golden to hold them; they move
     once a golden or a pass check covers them.

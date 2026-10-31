@@ -371,6 +371,11 @@ void coaxial_socket_close(int32_t id) { (void)id; }
 // the like): a face without them gets these, which say it has none.
 #define NONE __attribute__((weak))
 NONE void coaxial_state_init(uint32_t s) { (void)s; }
+// a realm that never asks the host for anything (waterlab)
+NONE int32_t coaxial_action(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_outbox(uint32_t s) { (void)s; return 0; }
+NONE uint32_t coaxial_outbox_len(uint32_t s) { (void)s; return 0; }
+NONE void coaxial_action_done(uint32_t s) { (void)s; }
 NONE uint32_t coaxial_asset(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; return 0; }
 NONE void coaxial_asset_ready(uint32_t s, int32_t i, uint32_t b) { (void)s; (void)i; (void)b; }
 NONE void coaxial_hash(uint32_t s, uint32_t n) { (void)s; (void)n; }
