@@ -49,6 +49,7 @@ void drops_inspect(const char *object, long long *size, char **head_hex);
 void drops_delete_object(const char *object);
 bool villa_route(const request *q);       // villa.c
 bool realms_route(const request *q);      // realms.c: build your own realm
+bool makers_route(const request *q);      // makers.c: a realm's maker and their claim
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app

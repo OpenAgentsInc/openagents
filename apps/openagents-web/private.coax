@@ -37,6 +37,12 @@
 // /api/auth/key, unless a session already exists (the phone's stays, and the
 // page offers SWITCH TO MY WORDS ACCOUNT). The key lives only while a call signs.
 
+// /realms/<slug>/claim#code=... is page 4 (ev-claim-realm, docs/verse/makers.md): a maker's
+// one-time claim link. The page logs in the way /login does (the words account kept in this
+// browser, or a session the phone app made), then takes a display name and a Lightning address
+// and posts them with the code to oa-api (/api/playtest/makers/<slug>/claim). The code leaves
+// the hash at once and lives only in this memory until it is posted.
+
 #load "projects.coax";
 
 PV_MAX_VERTICES :: 240000;
@@ -73,6 +79,10 @@ H_IPHONE :: 30;                                 // GET THE IPHONE APP (/login, /
 PV_IPHONE_APP :: "https://testflight.apple.com/join/dvQdns5B";   // the TestFlight group OpenAgents Beta Testers
 H_WSHOW :: 20; H_WCOPY :: 21; H_SWFIELD :: 22; H_SWAP :: 23; H_SWYES :: 24; H_SWNO :: 25; H_WORDS_IN :: 26; H_OUTYES :: 27; H_OUTNO :: 28; H_NEWACCT :: 29;   // /login's words account
 POST_WORDS :: 14;          // /api/auth/key: the words' key logs in (a NIP-98 signed event)
+POST_CLAIM :: 15;          // page 4: /api/playtest/makers/<slug>/claim {code, name, lightning}
+H_CNAME :: 31; H_CNEXT :: 32; H_CLN :: 33; H_CLAIM :: 34; H_COPEN :: 35; H_CACCOUNT :: 36;   // page 4's claim
+PV_CNAME :: 160; PV_CLN :: 128;   // a maker's name (40 letters) and Lightning address, typed
+CLAIM_FORM :: 0; CLAIM_SENDING :: 1; CLAIM_DONE :: 2;
 // The words account (docs/web-log-in.md, owner 2026-10-30): 16 bytes of entropy made on
 // this device and kept in this browser (action 4), as 12 BIP-39 words; their NIP-06 key
 // logs in. The face (private-face.c) does the work the page asks for in acct_want:
@@ -92,7 +102,7 @@ K_BACK :: -3; K_ESC :: -1;
 PrivateState :: struct {
   time: f32; ready: bool;
   width: f32; height: f32; d: f32;
-  page: int;                     // 0 the member's shell, 1 locked, 2 /signin, 3 /download
+  page: int;                     // 0 the member's shell, 1 locked, 2 /signin, 3 /download, 4 a realm's claim
   slug: [64] u8; slug_n: int;
   status: int;                   // -1 nothing asked, 0 waiting for the first answer, else its HTTP status
   live: bool; since: f32;        // the last good answer's time
@@ -146,6 +156,10 @@ PrivateState :: struct {
   out_ask: bool;                 // LOG OUT's confirm is shown
   kept_seen: bool;               // the first frame has passed (a kept text comes before it)
   swap: [PV_WORDS] u8; swap_n: int; swap_ok: bool; swap_hex: [32] u8;
+  // page 4: a realm's claim (the code from the hash, what the maker typed, the answer)
+  claim_code: [32] u8; claim_code_n: int; claim_state: int;
+  cname: [PV_CNAME] u8; cname_n: int; cln: [PV_CLN] u8; cln_n: int;
+  claim_note: [PV_NOTE] u8; claim_note_n: int;
   inbox: [] u8;                  // PrivateHost's
 }
 
@@ -404,6 +418,20 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
   if kind == POST_WORDS {
     if code == 200 { s[0].me_status = -1; s[0].acct_note_n = 0; pv_keep_player(s, bytes, i); }
     else { pv_acct_say(s, ifx code == 429 then "SLOW DOWN: TRY AGAIN IN A MINUTE" else "COULDN'T LOG IN"); }
+    return;
+  }
+  if kind == POST_CLAIM {
+    if code == 200 {
+      s[0].claim_state = CLAIM_DONE; pv_wipe(s[0].claim_code[..]); s[0].claim_code_n = 0; s[0].claim_note_n = 0;
+      nm := pv_value(bytes, i, "name"); ln := pv_value(bytes, i, "lightning");
+      if nm.count > 0 && nm.count <= PV_CNAME { s[0].cname_n = pv_put(s[0].cname[..], 0, nm); }
+      if ln.count > 0 && ln.count <= PV_CLN { s[0].cln_n = pv_put(s[0].cln[..], 0, ln); }
+    } else {
+      s[0].claim_state = CLAIM_FORM;
+      if code == 401 { s[0].me_status = -1; }   // the session went: log in again, then CLAIM again
+      word := ifx code == 0 || code >= 500 then "NOT SENT: TRY AGAIN" else pv_error(bytes, i);
+      s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, word);
+    }
     return;
   }
   if kind == POST_SITE_OUT { s[0].me_status = -1; s[0].code_state = CODE_NONE; s[0].data_n = 0; s[0].line_n = 0; return; }
@@ -883,6 +911,123 @@ pv_download :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   pv_hit(s, b, H_IPHONE);
   return chip(out, v, label, bx, by, bc, ifx s[0].hot == H_IPHONE then pv_chrome(p, INK_WHITE) else pv_chrome(p, INK_ORANGE), p);
 }
+// ---------------------------------------------------------------- a realm's claim (page 4)
+
+// The realm's name from its slug: "orbit-league" -> "ORBIT LEAGUE".
+pv_realm_name :: (buf: [] u8, slug: string) -> int {
+  n := 0;
+  for c: slug { if n < buf.count { buf[n] = ifx c == '-' then ' ' else ifx c >= 'a' && c <= 'z' then c - 32 else c; n += 1; } }
+  return n;
+}
+// CLAIM: the code, the name and the address, posted once; refused here when a field is empty.
+pv_claim_send :: (s: [] PrivateState) {
+  if s[0].post_kind != 0 || s[0].claim_code_n != 32 || s[0].me_status != 200 { return; }
+  name := cast(string) s[0].cname[0..<s[0].cname_n];
+  a := trim_lead(name);
+  if a >= name.count { s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, "Type your name first"); s[0].focus = 4; s[0].typing = true; return; }
+  if s[0].cln_n < 5 { s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, "Type your Lightning address (name@wallet.com)"); s[0].focus = 5; s[0].typing = true; return; }
+  n := pv_put(s[0].post[..], 0, "/api/playtest/makers/");
+  n = pv_put(s[0].post[..], n, pv_slug(s));
+  s[0].post_n = pv_put(s[0].post[..], n, "/claim");
+  b := pv_put(s[0].body[..], 0, "{\"code\":\"");
+  b = pv_put(s[0].body[..], b, cast(string) s[0].claim_code[0..<32]);
+  b = pv_put(s[0].body[..], b, "\",\"name\":\"");
+  b = pv_json(s[0].body[..], b, name[a..<name.count]);
+  b = pv_put(s[0].body[..], b, "\",\"lightning\":\"");
+  b = pv_json(s[0].body[..], b, cast(string) s[0].cln[0..<s[0].cln_n]);
+  s[0].body_n = pv_put(s[0].body[..], b, "\"}");
+  s[0].post_kind = POST_CLAIM; s[0].post_id = -1;
+  s[0].claim_state = CLAIM_SENDING; s[0].claim_note_n = 0; s[0].typing = false;
+}
+pv_claim :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
+  d := p.d; w := s[0].width;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE);
+  v := pv_crumbs(s, out, 0, "CLAIM", p);
+  m := ifx w / d < 700 then 16.0f32 else 40.0f32;
+  colw := lo(w - 2 * m * d, 520 * d);
+  x0 := (w - colw) * 0.5; x1 := x0 + colw;
+  f := PvFlow.{y = 110 * d - s[0].scroll, v = v};
+  realm: [80] u8;
+  rn := pv_realm_name(realm[..], pv_slug(s));
+  title: [96] u8;
+  tn := pv_put(title[..], 0, ifx s[0].claim_state == CLAIM_DONE then "" else "CLAIM ");
+  tn = pv_put(title[..], tn, cast(string) realm[0..<rn]);
+  f.v = put_fit(out, f.v, cast(string) title[0..<tn], x0, f.y, ifx w / d < 520 then 11 * d else 14 * d, white, colw);
+  f.y += 30 * d;
+  if s[0].claim_state == CLAIM_DONE {
+    f.v = put(out, f.v, "IT'S YOURS", x0, f.y, 7 * d, orange);
+    f.y += 26 * d;
+    by: [200] u8;
+    bn := pv_put(by[..], 0, "Made by ");
+    bn = pv_put(by[..], bn, cast(string) s[0].cname[0..<s[0].cname_n]);
+    f.v = put_fit(out, f.v, cast(string) by[0..<bn], x0, f.y, 9 * d, pv_ink(p, INK_WHITE), colw);
+    f.y += 24 * d;
+    tip: [160] u8;
+    tq := pv_put(tip[..], 0, "Tips go to ");
+    tq = pv_put(tip[..], tq, cast(string) s[0].cln[0..<s[0].cln_n]);
+    f.v = put_fit(out, f.v, cast(string) tip[0..<tq], x0, f.y, BODY * d, pv_ink(p, INK_DIM), colw);
+    f.y += 30 * d;
+    open: [96] u8;
+    on := pv_put(open[..], 0, "OPEN ");
+    on = pv_put(open[..], on, cast(string) realm[0..<rn]);
+    f.v = pv_chip(s, out, f.v, cast(string) open[0..<on], x0, f.y, H_COPEN, true, p, true, 0);
+    f.y += 34 * d;
+    f.y -= 12 * d;
+    f = pv_text(s, out, f, "YOUR ACCOUNT IS ON THIS PHONE. MY ACCOUNT SHOWS ITS 12 WORDS: KEEP THEM TO USE IT ELSEWHERE.", x0, colw, 6, dim, 3, true, 0);
+    f.y += 20 * d;
+    f.v = pv_chip(s, out, f.v, "MY ACCOUNT", x0, f.y, H_CACCOUNT, false, p, true, 0);
+    s[0].content = f.y + 40 * d + s[0].scroll;
+    return f.v;
+  }
+  if s[0].claim_code_n != 32 {
+    f.y -= 12 * d;
+    f = pv_text(s, out, f, "THIS LINK HAS NO CLAIM CODE. OPEN THE WHOLE LINK YOU WERE SENT.", x0, colw, 6.5, dim, 3, true, 0);
+    s[0].content = f.y + 40 * d + s[0].scroll;
+    return f.v;
+  }
+  if s[0].me_status != 200 {
+    word := ifx s[0].acct == ACCT_FAILED || s[0].acct == ACCT_GONE then "LOG IN FIRST" else "LOGGING IN";
+    f.v = put(out, f.v, word, x0, f.y, 7 * d, dim);
+    f.y += 26 * d;
+    if s[0].acct == ACCT_FAILED || s[0].acct == ACCT_GONE {
+      f.y -= 12 * d;
+      f = pv_text(s, out, f, "LOG IN ON THIS PHONE, THEN OPEN THIS LINK AGAIN.", x0, colw, 6.5, dim, 2, true, 0);
+      f.y += 20 * d;
+      f.v = pv_chip(s, out, f.v, "LOG IN", x0, f.y, H_CACCOUNT, true, p, true, 0);
+      f.y += 30 * d;
+    }
+    if s[0].acct_note_n > 0 && s[0].time - s[0].acct_note_at < 6 {
+      f.v = put(out, f.v, cast(string) s[0].acct_note[0..<s[0].acct_note_n], x0, f.y, 6 * d, white);
+    }
+    s[0].content = f.y + 40 * d + s[0].scroll;
+    return f.v;
+  }
+  short: [40] u8;
+  sn := pv_short_npub(short[..], pv_me_npub(s));
+  me: [64] u8;
+  q := pv_put(me[..], 0, "LOGGED IN AS ");
+  q = pv_put(me[..], q, cast(string) short[0..<sn]);
+  f.v = put_fit(out, f.v, cast(string) me[0..<q], x0, f.y, 6.5 * d, dim, colw);
+  f.y += 30 * d;
+  f.v = put(out, f.v, "YOUR NAME, AS PLAYERS SEE IT", x0, f.y, 6.5 * d, white);
+  f.y += 2 * d;
+  f = pv_field(s, out, f, x0, x1, p, true, 0, 4, "Your name", "NEXT", H_CNAME, H_CNEXT);
+  f.y += 22 * d;
+  f.v = put(out, f.v, "YOUR LIGHTNING ADDRESS, FOR TIPS", x0, f.y, 6.5 * d, white);
+  f.y += 2 * d;
+  f = pv_field(s, out, f, x0, x1, p, true, 0, 5, "you@wallet.com", ifx s[0].claim_state == CLAIM_SENDING then "CLAIMING" else "CLAIM", H_CLN, H_CLAIM);
+  f.y += 20 * d;
+  if s[0].claim_note_n > 0 {
+    f.y -= 12 * d;
+    f = pv_text(s, out, f, cast(string) s[0].claim_note[0..<s[0].claim_note_n], x0, colw, BODY, pv_ink(p, INK_WHITE), 3, true, 0);
+    f.y += 12 * d;
+  }
+  f.y -= 12 * d;
+  f = pv_text(s, out, f, "PLAYERS' TIPS FOR THIS REALM GO TO THIS ADDRESS, IN BITCOIN.", x0, colw, 6, dim, 2, true, 0);
+  s[0].content = f.y + 40 * d + s[0].scroll;
+  return f.v;
+}
+
 // LINK A PHONE, over a member's page.
 pv_link_panel :: (s: [] PrivateState, out: [] f32, v0: int, top: f32, p: Pen) -> int {
   d := p.d; w := s[0].width;
@@ -1167,6 +1312,8 @@ pv_typed :: (s: [] PrivateState, which: int) -> string {
   if which == 1 { return cast(string) s[0].atext[0..<s[0].atext_n]; }
   if which == 2 { return cast(string) s[0].kkey[0..<s[0].kkey_n]; }
   if which == 3 { return cast(string) s[0].swap[0..<s[0].swap_n]; }
+  if which == 4 { return cast(string) s[0].cname[0..<s[0].cname_n]; }
+  if which == 5 { return cast(string) s[0].cln[0..<s[0].cln_n]; }
   return cast(string) s[0].text[0..<s[0].text_n];
 }
 // A field: what's typed, drawn here; the host's keyboard field sits over the focused one.
@@ -1496,6 +1643,12 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
     if phone_ok { pv_poll_due(s); }
     pv_acct_due(s);
   }
+  if s[0].page == 4 {
+    // a claim logs in as /login does: the kept words account, or a new one; never the QR
+    if !s[0].kept_seen { s[0].kept_seen = true; if s[0].acct == ACCT_NONE && s[0].acct_want == 0 { s[0].acct_want = WANT_NEW; } }
+    if s[0].me_status == -1 || (s[0].me_status == 599 && s[0].time - s[0].me_at > 10) { pv_ask_me(s); }
+    pv_acct_due(s);
+  }
   if s[0].page == 0 && s[0].linking { pv_poll_due(s); }
   if s[0].page == 0 && s[0].post_kind != POST_REDEEM && s[0].status != 404 && s[0].status != 401 && s[0].status != 403 &&
      (s[0].status == -1 || s[0].time - s[0].asked_at >= PV_REFRESH) { pv_ask(s); }
@@ -1513,6 +1666,10 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
     return pv_signin(s, out, p);
   }
   if s[0].page == 3 { s[0].typing = false; return pv_download(s, out, p); }
+  if s[0].page == 4 {
+    s[0].scroll = clamp(s[0].scroll, 0, hi(s[0].content - height + 40 * d, 0));
+    return pv_claim(s, out, p);
+  }
   if !pv_shows_project(s) {
     s[0].typing = false;
     if s[0].page == 0 && (s[0].status <= 0) {
@@ -1573,6 +1730,8 @@ pv_hit_at :: (s: [] PrivateState, x: f32, y: f32) -> int {
   return -1;
 }
 pv_send :: (s: [] PrivateState) {
+  if s[0].focus == 4 { s[0].focus = 5; s[0].typing = true; return; }
+  if s[0].focus == 5 { pv_claim_send(s); return; }
   if s[0].focus == 3 { pv_swap_check(s); return; }
   if s[0].focus == 2 { pv_save_key(s); return; }
   if s[0].focus == 1 { pv_ask_agent(s); return; }
@@ -1606,7 +1765,13 @@ pv_turn_post :: (s: [] PrivateState, op: string, kind: int, k: int) {
 trim_lead :: (text: string) -> int { i := 0; while i < text.count && text[i] == ' ' { i += 1; } return i; }
 pv_act :: (s: [] PrivateState, target: int) {
   s[0].all = 0;
-  if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK && target != H_KFIELD && target != H_KSAVE && target != H_SWFIELD && target != H_SWAP { s[0].typing = false; }
+  if target != H_FIELD && target != H_SEND && target != H_AFIELD && target != H_ASK && target != H_KFIELD && target != H_KSAVE && target != H_SWFIELD && target != H_SWAP &&
+     target != H_CNAME && target != H_CNEXT && target != H_CLN { s[0].typing = false; }
+  if target == H_CNAME { s[0].typing = true; s[0].focus = 4; }
+  else if target == H_CLN || target == H_CNEXT { s[0].typing = true; s[0].focus = 5; }
+  else if target == H_CLAIM { s[0].focus = 5; pv_claim_send(s); }
+  else if target == H_COPEN { n := pv_put(s[0].outbox[..], 0, "/realms/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_slug(s)); s[0].action = PV_NAVIGATE; }
+  else if target == H_CACCOUNT { pv_go(s, "/login"); }
   if target == H_WSHOW { s[0].acct_show = !s[0].acct_show; }
   else if target == H_WCOPY && s[0].acct_words_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].acct_words[0..<s[0].acct_words_n]); s[0].action = TK_ACT_COPY; pv_acct_say(s, "COPIED"); }
   else if target == H_SWFIELD { s[0].typing = true; s[0].focus = 3; }
@@ -1688,7 +1853,14 @@ pv_type :: (s: [] PrivateState, text: string) {
   if pv_all(s) { pv_set_n(s, 0); }
   for c: text {
     t := ifx c == '\n' || c == '\r' || c == '\t' then ' ' else c;
-    if s[0].focus == 3 {
+    if s[0].focus == 4 {
+      if s[0].cname_n + 1 > PV_CNAME { return; }
+      s[0].cname[s[0].cname_n] = t; s[0].cname_n += 1;
+    } else if s[0].focus == 5 {
+      if c <= ' ' { continue; }   // an address has no spaces
+      if s[0].cln_n >= PV_CLN { return; }
+      s[0].cln[s[0].cln_n] = ifx c >= 'A' && c <= 'Z' then c + 32 else c; s[0].cln_n += 1;
+    } else if s[0].focus == 3 {
       if s[0].swap_n >= PV_WORDS { return; }
       s[0].swap[s[0].swap_n] = ifx t >= 'A' && t <= 'Z' then t + 32 else t; s[0].swap_n += 1;
     } else if s[0].focus == 2 {
@@ -1708,7 +1880,9 @@ pv_type :: (s: [] PrivateState, text: string) {
 pv_all :: (s: [] PrivateState) -> bool { return s[0].typing && s[0].all == s[0].focus + 1 && pv_typed(s, s[0].focus).count > 0; }
 // The focused field cut to its first n bytes (a key's cut bytes wiped); the selection goes.
 pv_set_n :: (s: [] PrivateState, n: int) {
-  if s[0].focus == 3 { for i: n..<s[0].swap_n { s[0].swap[i] = 0; } s[0].swap_n = n; }
+  if s[0].focus == 4 { s[0].cname_n = n; }
+  else if s[0].focus == 5 { s[0].cln_n = n; }
+  else if s[0].focus == 3 { for i: n..<s[0].swap_n { s[0].swap[i] = 0; } s[0].swap_n = n; }
   else if s[0].focus == 2 { for i: n..<s[0].kkey_n { s[0].kkey[i] = 0; } s[0].kkey_n = n; }
   else if s[0].focus == 1 { s[0].atext_n = n; } else { s[0].text_n = n; }
   s[0].all = 0;
@@ -1767,9 +1941,10 @@ coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_
   }
   if kind == PV_SHOWN && s[0].status == 200 { s[0].asked_at = -1000; }   // shown again: read the state now
   if kind == PV_FACTS { pv_facts(s, text); return; }
-  // this browser's account (only /login reads it): 16 bytes as hex
-  if kind == PV_KEPT && s[0].page == 2 && text == PV_OUT_MARK { s[0].acct = ACCT_GONE; return; }
-  if kind == PV_KEPT && s[0].page == 2 && pv_hex_ok(text) && s[0].acct_want == 0 {
+  // this browser's account (/login and a claim read it): 16 bytes as hex
+  words_page := s[0].page == 2 || s[0].page == 4;
+  if kind == PV_KEPT && words_page && text == PV_OUT_MARK { s[0].acct = ACCT_GONE; return; }
+  if kind == PV_KEPT && words_page && pv_hex_ok(text) && s[0].acct_want == 0 {
     for i: 0..<32 { s[0].acct_hex[i] = text[i]; }
     s[0].acct_hex_n = 32; s[0].acct_want = WANT_DERIVE;
   }
@@ -1778,6 +1953,15 @@ coaxial_private_message :: (s: [] PrivateState, kind: int, length: int) #export_
 coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
   if s.count < 1 || length < 7 || length > 200 || length > s[0].inbox.count { return; }
   text := cast(string) s[0].inbox[0..<length];
+  if s[0].page == 4 {
+    // a claim link's "code=<32 hex>": kept in this memory only, and the hash cleared
+    if length != 37 || text[0..<5] != "code=" { return; }
+    c := text[5..<37];
+    for ch: c { if !((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f')) { return; } }
+    s[0].claim_code_n = pv_put(s[0].claim_code[..], 0, c);
+    s[0].out_n = 0; s[0].action = PV_SET_HASH;
+    return;
+  }
   if text[0..<7] != "invite=" { return; }
   t := text[7..<text.count];
   if t.count != 64 { return; }
@@ -1785,8 +1969,8 @@ coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
   s[0].token_n = pv_put(s[0].token[..], 0, t);
   s[0].out_n = 0; s[0].action = PV_SET_HASH;
 }
-coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 || page == 3 then page else 1; } }
-coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && (pv_shows_project(s) || s[0].page == 2); }
+coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 || page == 3 || page == 4 then page else 1; } }
+coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && (pv_shows_project(s) || s[0].page == 2 || s[0].page == 4); }
 coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
 coaxial_private_action :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
 coaxial_private_action_done :: (s: [] PrivateState) #export_c { if s.count > 0 { s[0].action = 0; s[0].out_n = 0; } }
@@ -2262,6 +2446,72 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   // NEW ACCOUNT makes fresh words and logs in
   pv_act(s[..], H_NEWACCT);
   #assert s[0].acct_want == WANT_NEW && s[0].acct_force;
+}
+#test "a realm's claim link logs in with the words account, then posts the code, the name and the address once" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 4);
+  #assert s[0].page == 4;
+  t := "orbit-league";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  // a code that isn't 32 hex digits is not a code
+  bad := "code=nothex";
+  for i: 0..<bad.count { s[0].inbox[i] = bad[i]; }
+  coaxial_private_hash(s[..], bad.count);
+  #assert s[0].claim_code_n == 0 && s[0].action == 0;
+  h := "code=0123456789abcdef0123456789abcdef";
+  for i: 0..<h.count { s[0].inbox[i] = h[i]; }
+  coaxial_private_hash(s[..], h.count);
+  #assert s[0].claim_code_n == 32 && s[0].action == PV_SET_HASH && s[0].out_n == 0;   // the hash is cleared at once
+  coaxial_private_action_done(s[..]);
+  n := pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].acct_want == WANT_NEW && n > 0 && s[0].ask_n > 0;   // no account here yet: one is made; who is logged in is asked
+  pv_fake_derived(s[..], "npub1maker");
+  coaxial_private_acct_done(s[..], true);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "401\n{}");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].action == PV_KEEP;   // the new account is kept in this browser, as /login keeps it
+  coaxial_private_action_done(s[..]);
+  #assert s[0].post_n == 0;         // no QR on a claim
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].acct_want == WANT_SIGN;
+  s[0].acct_auth_n = pv_put(s[0].acct_auth[..], 0, "Nostr ZXZlbnQ=");
+  coaxial_private_acct_done(s[..], true);
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/auth/key";
+  coaxial_private_posted(s[..], 2);
+  pv_answer(s[..], 2, "200\n{\"state\": \"signed-in\"}");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  coaxial_private_asked(s[..], 3);
+  pv_answer(s[..], 3, "200\nK|npub1maker\n");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert pv_has_hit(s[..], H_CNAME) && pv_has_hit(s[..], H_CLN) && pv_has_hit(s[..], H_CLAIM);
+  // CLAIM with nothing typed asks for the name and posts nothing
+  pv_act(s[..], H_CLAIM);
+  #assert s[0].post_n == 0 && s[0].focus == 4 && s[0].typing && s[0].claim_note_n > 0;
+  pv_type(s[..], "Topher \"T\"");
+  key := coaxial_private_key(s[..], K_ENTER, 0);
+  #assert key && s[0].focus == 5 && s[0].typing;   // Enter goes to the address
+  pv_type(s[..], "Topher @Example.com");
+  #assert cast(string) s[0].cln[0..<s[0].cln_n] == "topher@example.com";   // no spaces, lowercase
+  pv_act(s[..], H_CLAIM);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/playtest/makers/orbit-league/claim" && s[0].post_kind == POST_CLAIM;
+  #assert cast(string) s[0].body[0..<s[0].body_n] == "{\"code\":\"0123456789abcdef0123456789abcdef\",\"name\":\"Topher \\\"T\\\"\",\"lightning\":\"topher@example.com\"}";
+  #assert coaxial_private_post_flags(s[..]) == 5;
+  coaxial_private_posted(s[..], 4);
+  // a refusal shows the server's words and keeps the form
+  pv_answer(s[..], 4, "409\n{\"error\": \"this claim link was used already\"}");
+  #assert s[0].claim_state == CLAIM_FORM && cast(string) s[0].claim_note[0..<s[0].claim_note_n] == "this claim link was used already";
+  pv_act(s[..], H_CLAIM);
+  coaxial_private_posted(s[..], 5);
+  pv_answer(s[..], 5, "200\n{\"realm\": \"orbit-league\", \"name\": \"Topher\", \"lightning\": \"topher@example.com\"}");
+  #assert s[0].claim_state == CLAIM_DONE && s[0].claim_code_n == 0 && s[0].claim_code[0] == 0;   // the code is gone from memory
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert pv_has_hit(s[..], H_COPEN) && !pv_has_hit(s[..], H_CLAIM);
+  pv_act(s[..], H_COPEN);
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/orbit-league";
 }
 #test "/login: a browser that logged out stays logged out; LOG IN WITH MY WORDS logs straight in" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];

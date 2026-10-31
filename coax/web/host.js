@@ -209,6 +209,19 @@ const firstAssets = assets.filter((a) => !a.pack && !LATER.includes(a.kind)), fi
 const loading = startLoading({ realm: realmId, assets: firstAssets.length + firstPacks.size,
   textured: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "layers"),
   scene: firstPacks.size > 0 || firstAssets.some((a) => a.kind === "index"), golden });
+// A claimed realm names its maker (ev-claim-realm, docs/verse/makers.md): "Made by <name>" along the
+// bottom, from oa-api; nothing when unclaimed, offline or in a golden shot. textContent: the name is the maker's own text.
+if (realmId && !golden && /^[a-z0-9-]{1,64}$/.test(realmId)) {
+  fetch(`/api/playtest/makers/${realmId}`, { credentials: "same-origin" }).then((r) => (r.ok ? r.json() : null)).then((m) => {
+    if (!m || typeof m.name !== "string" || !m.name) return;
+    const tag = document.createElement("div");
+    tag.id = "coaxial-maker";
+    tag.textContent = `Made by ${m.name.slice(0, 40)}`;
+    tag.style.cssText = "position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 4px);transform:translateX(-50%);z-index:1;" +
+      "pointer-events:none;font:500 10px/1.4 ui-monospace,'SF Mono',Menlo,monospace;letter-spacing:.08em;color:rgba(237,237,237,.6);white-space:nowrap";
+    document.body.appendChild(tag);
+  }).catch(() => {});
+}
 let last = 0;
 // This is a completed indexed scene frame in the current engine generation,
 // after all outstanding shader loads have settled. Pixel/error checks still
