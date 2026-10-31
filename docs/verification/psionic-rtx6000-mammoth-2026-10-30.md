@@ -139,7 +139,7 @@ Lab answers, identical whole and forked in every run:
 | Is the message about fire? | no (p_yes 0.0120051559) | no (0.0120048166) |
 | Is the message true? | yes 0.909866658 | yes 0.909868535 |
 
-## Chapter 170's load generator
+## Chapter 203's load generator
 
 Not run. The server path does not serve Mammoth: `serve-engine.coax`'s
 `sv_elephant` refuses a Mammoth session and `serve-host.c` places with
@@ -185,5 +185,5 @@ named `psionic-rtx6000*`.
 - Per-kernel qualification was run for Elephant on this card, not for Mammoth
   (the Mammoth harness has no qualify mode); Mammoth's launches differ from
   Elephant's only in counts.
-- Chapter 170's load generator was not run: the server does not place Mammoth.
+- Chapter 203's load generator was not run: the server does not place Mammoth.
 - Prompts longer than 128 tokens were not compared against the CPU reference.

@@ -39,7 +39,7 @@ decision at about 0.2 s for 1,000 tokens (`docs/inference/clef-native.md` at
 | Content-addressed weight upload between peers (`SET_TENSOR_HASH`), without its trust model | `ggml/src/ggml-rpc/` | 176, 185 |
 
 llama-server also answers `/v1/systemone` for its own decision-model types.
-That is an interoperation target for chapter 171, not an oracle for the Base
+That is an interoperation target for chapter 204, not an oracle for the Base
 Labs slot readout.
 
 ## Fixtures it provides

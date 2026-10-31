@@ -1,7 +1,7 @@
 # DeepSeek arc completion ledger
 
 This ledger tracks every DeepSeek chapter, including the cross-stage
-chapter 195. A runnable component does not prove whole-model
+chapter 228. A runnable component does not prove whole-model
 execution, numerical qualification, device performance or recovery. Planned
 rows stay planned until their full acceptance gates have evidence.
 

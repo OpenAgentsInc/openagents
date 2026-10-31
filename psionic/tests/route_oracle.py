@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 223's independent reference, written from the chapter's specification.
+"""Chapter 256's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/route.coax. Sums use math.fsum (exactly
 rounded) where the library uses chapter 4's compensated accumulator. Training
@@ -115,7 +115,7 @@ def estimate(target, actions, reward, props, model, prices):
 
 
 def judge(router, tasks_seed, log_seed, truth, explore=0.2, large=True):
-    """Everything chapter 223 measures about one log of the old policy."""
+    """Everything chapter 256 measures about one log of the old policy."""
     x, success, prob = simulate(tasks_seed, 1000, truth)
     prices = [price(v) for v in x]
     target = choose(scores(router, x), prices)

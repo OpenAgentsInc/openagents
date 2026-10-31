@@ -355,7 +355,7 @@ from outside with independent code: `@noble/curves` for signatures and
 python3 -I psionic/tests/pylon/pylon_e2e.py build/pylon-e2e
 ```
 
-Since [chapter 216](ch216-a-pylon-checks-itself-before-serving.md), the
+Since [chapter 249](ch249-a-pylon-checks-itself-before-serving.md), the
 Pylon checks its engine against a shipped reference set before it
 publishes anything. It takes `--references` and `--identity-state`. The
 harness passes `psionic/fixtures/pylon/MODEL.selfcheck` and a fresh state

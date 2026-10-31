@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 229's independent reference, written from the chapter's rules.
+"""Chapter 262's independent reference, written from the chapter's rules.
 
 It shares no code with psionic/lib/interpreter-weights.coax. It implements
 the five-instruction register machine directly, regenerates the example's

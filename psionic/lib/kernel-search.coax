@@ -1,4 +1,4 @@
-// Chapter 247: the evaluator a kernel search answers to. It owns the
+// Chapter 280: the evaluator a kernel search answers to. It owns the
 // declared workload, the held-out cases, the reference, the numerical
 // contract every candidate must keep, and the rules that turn timings into a
 // verdict. The host only moves bytes and records times.

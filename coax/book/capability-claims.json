@@ -138,11 +138,11 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "4cf445913cc109d53e8068e54bfce4f45fb4f5e2a3b55ac9e29e89a34bf672e2"
+          "sha256": "fdcf6aa9a41f48a31dd2b150c56ff4cb5697ebd3f83158e03017913cfe986ea8"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "2f5d0ff4a3d0b792332dc5deafae95416b23e77a945955b34d148db4e455d540"
+          "sha256": "02ce4faa93094c32f8bc58b4175fe57ae94be7fbf3887cf62754fb0d090280cd"
         },
         {
           "path": "docs/verification/psionic-ch10-2026-10-29.md",
@@ -183,11 +183,11 @@
       "evidence": [
         {
           "path": "psionic/book/SUMMARY.md",
-          "sha256": "4cf445913cc109d53e8068e54bfce4f45fb4f5e2a3b55ac9e29e89a34bf672e2"
+          "sha256": "fdcf6aa9a41f48a31dd2b150c56ff4cb5697ebd3f83158e03017913cfe986ea8"
         },
         {
           "path": "psionic/book/examples.json",
-          "sha256": "2f5d0ff4a3d0b792332dc5deafae95416b23e77a945955b34d148db4e455d540"
+          "sha256": "02ce4faa93094c32f8bc58b4175fe57ae94be7fbf3887cf62754fb0d090280cd"
         },
         {
           "path": "docs/verification/psionic-gptoss-device-2026-10-29.md",
@@ -207,7 +207,7 @@
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
       "scope": "Current shared compiler capabilities and bounded Psionic framework consumers, with outstanding language/target/training scopes explicit.",
-      "text_sha256": "05b0d1a04e2055f2445a23c55d1cdf4038e87d4ca5ceb343c0e5c58210f91ef3",
+      "text_sha256": "b276c40599f353d5158ddcf7a5a26a291d1a33b3b7badb3863707c6345756a45",
       "features": [
         {
           "id": "generics.type-parameters",

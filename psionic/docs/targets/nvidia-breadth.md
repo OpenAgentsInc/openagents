@@ -12,7 +12,7 @@ The [proposed contents](../../book/PLAN.md) gives each study a place.
 The [roadmap](../roadmap.md) distinguishes teaching order from delivery priority.
 No new project issues are published by this update.
 
-Update, 2026-10-31: [chapter 167](../../book/ch167-imitation-before-robotics-scale.md)
+Update, 2026-10-31: [chapter 189](../../book/ch189-imitation-before-robotics-scale.md)
 now delivers the owned imitation-learning exercise and a small original
 SingleArm data slice. It does not implement a pretrained NVIDIA policy; the
 GR00T/Cosmos model studies below retain their separate prerequisites and gates.

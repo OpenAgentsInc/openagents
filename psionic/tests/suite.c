@@ -1,4 +1,4 @@
-/* Chapter 237 against suite_oracle.py, which read chapter 16's held-out file
+/* Chapter 270 against suite_oracle.py, which read chapter 16's held-out file
    and hashed the same encoding with Python's hashlib. The suite is built here
    from the oracle's copy of that file, not from the example's. Every digest,
    status, count and score must be equal. */

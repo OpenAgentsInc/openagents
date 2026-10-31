@@ -1,7 +1,7 @@
 # Source-matched Panda OSC_POSE controller
 
 `panda-control.coax` implements the pinned robosuite OSC_POSE controller for
-chapter 169's LIBERO evaluation backend. The reference source is
+chapter 191's LIBERO evaluation backend. The reference source is
 [robosuite fbee5844](https://github.com/ARISE-Initiative/robosuite/tree/fbee5844ff5632f5b5698e204ec5357ca50be0df),
 particularly `controllers/osc.py`, `utils/control_utils.py`,
 `utils/transform_utils.py`, and `models/grippers/panda_gripper.py`.

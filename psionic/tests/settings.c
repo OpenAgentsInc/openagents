@@ -1,6 +1,6 @@
-/* Chapter 241 against settings_oracle.py, which wrote the simulator, the rule,
+/* Chapter 274 against settings_oracle.py, which wrote the simulator, the rule,
    the candidates and the search again, and took its floors and gate from
-   chapters 238 and 239's independent oracles. Tolerances were frozen before
+   chapters 271 and 272's independent oracles. Tolerances were frozen before
    comparison: rows, settings, counts, costs, outcomes, verdicts and
    replicate counts exactly; floors and gains within 1e-12 relative. */
 #include "settings-spans.h"

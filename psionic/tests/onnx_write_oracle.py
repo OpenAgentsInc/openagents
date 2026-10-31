@@ -1,5 +1,5 @@
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapter 219, standard library only.
+"""Independent oracle for chapter 252, standard library only.
 
 Trains chapter 103's affine models with chapter 103's own oracle, folds their
 scaling into binary32 weights, encodes each ONNX file with its own protobuf
@@ -84,7 +84,7 @@ def fold(p, mean, sd, logistic):
 
 
 def run(weight, bias, cols, x):
-    """chapter 218's CPU run: binary32 sums in a fixed order, Softmax in binary64."""
+    """chapter 251's CPU run: binary32 sums in a fixed order, Softmax in binary64."""
     row = [f32(v) for v in x]
     z = []
     for j in range(cols):

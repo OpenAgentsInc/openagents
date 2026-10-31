@@ -1,6 +1,6 @@
 # GR00T LIBERO: metadata and original-file range contract
 
-This is the exact chapter 168 **candidate**:
+This is the exact chapter 190 **candidate**:
 [`nvidia/GR00T-N1.7-LIBERO`](https://huggingface.co/nvidia/GR00T-N1.7-LIBERO/tree/2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21/libero_10),
 revision `2ea293aa20ba7cf5bbf3ba17a5fbcb1a01cbfe21`, subfolder `libero_10`.
 The source/reference/license analysis is in
@@ -61,8 +61,8 @@ records direct installed-Transformers position/delta parity without allocating
 learned weights or running a model forward pass.
 
 The header/acquisition progress notes above retain their historical chapter
-labels. Current [chapter168](../../../book/ch168-execute-a-groot-policy.md)
-qualifies the prepared original learned network; [chapter169](../../../book/ch169-close-the-simulated-control-loop.md)
+labels. Current [chapter168](../../../book/ch190-execute-a-groot-policy.md)
+qualifies the prepared original learned network; [chapter169](../../../book/ch191-close-the-simulated-control-loop.md)
 now drives the genuine Panda SDK loop. Its distinct
 [simulation receipts](../libero-panda/README.md) separate measured task outcomes,
 exact controls-only replay and retained failed hidden-state diagnostics.

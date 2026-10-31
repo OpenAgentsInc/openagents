@@ -60,4 +60,4 @@ results are reused rather than repeated.
 
 Vision, language, denoising/action flow, a complete original model request,
 closed-loop task success and physical-robot control remain outside this
-component. Chapter 168 remains unfinished until the full VLA path is qualified.
+component. Chapter 190 remains unfinished until the full VLA path is qualified.

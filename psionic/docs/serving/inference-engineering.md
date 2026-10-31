@@ -3,7 +3,7 @@
 Read-only study, 2026-10-29, of Philip Kiely, *Inference Engineering*
 (Baseten Books, 2026, ISBN 979-8-9943597-2-3; the PDF was last modified
 January 29, 2026). The book is distributed free, but its copyright page reserves all rights. These notes
-paraphrase its ideas and cite sections rather than copying text. Part XIX of
+paraphrase its ideas and cite sections rather than copying text. Part XXI of
 the [book plan](../../book/PLAN.md) and several earlier chapters
 take their production scope from it.
 
@@ -36,22 +36,22 @@ process and device effects only.
 ## Where Psionic goes further or differs
 
 - **Batch invariance as a gate.** The book treats nondeterminism between
-  runs as normal noise. Psionic's fixed reduction order lets chapter 173
+  runs as normal noise. Psionic's fixed reduction order lets chapter 206
   require each request's output to be identical whether it runs alone or in
   a batch. Chapter 41's tiled attention is the deliberate exception and gets
   its own named profile.
 - **Policies tested before machines.** Routing, queueing and autoscaling
-  (chapter 175) are pure Coax decisions. They are checked against a
+  (chapter 208) are pure Coax decisions. They are checked against a
   deterministic simulation of recorded and synthetic traffic before any
   replica runs them.
-- **Correctness in rollouts.** Canary checks (chapter 177) include golden
+- **Correctness in rollouts.** Canary checks (chapter 210) include golden
   requests whose outputs must match retained execution evidence, not only
   latency and error rates.
 - **State is more than KV.** The decision models carry recurrent and
-  convolution state. Paging, prefix caching and disaggregation (chapters 174
-  and 180) move complete identity-bound snapshots, not KV blocks alone.
+  convolution state. Paging, prefix caching and disaggregation (chapters 207
+  and 213) move complete identity-bound snapshots, not KV blocks alone.
 - **Money.** Usage records and a pricing policy live in an `#authority` file
-  (chapter 178). Settlement uses the Bitcoin wallet outside Psionic, as the
+  (chapter 211). Settlement uses the Bitcoin wallet outside Psionic, as the
   voice meter already does.
 
 ## What Psionic does not adopt
@@ -66,7 +66,7 @@ process and device effects only.
 - **Thresholds as Psionic claims.** The book's guidance on when each
   technique pays off, such as disaggregation at very high token volume,
   orients the work. Psionic adopts a technique only after its own
-  benchmark (chapter 170) shows the bottleneck.
+  benchmark (chapter 203) shows the bottleneck.
 
 Hosted serving needs a qualified Linux target, and asynchronous I/O with
 deadlines and cancellation. Coax provides neither yet (see the plan's Coax

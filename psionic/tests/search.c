@@ -1,6 +1,6 @@
-/* Chapter 242 against search_oracle.py, which wrote the manifests, the
+/* Chapter 275 against search_oracle.py, which wrote the manifests, the
    operators, the world, the tiers, successive halving and the lone-best rule
-   again, and took its floor and gate from chapters 238 and 239's independent
+   again, and took its floor and gate from chapters 271 and 272's independent
    oracles. Tolerances were frozen before comparison: policies, digests,
    tasks, rounds, spends, winners, counts and verdicts exactly; means, the
    floor and the gain within 1e-12 relative. */

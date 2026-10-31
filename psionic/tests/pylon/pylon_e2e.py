@@ -285,7 +285,7 @@ def run(out, serve):
             if f.exists():
                 f.unlink()
         pylon_log = out / 'pylon.log'
-        # Chapter 216: the shipped reference set for the engine's model, and
+        # Chapter 249: the shipped reference set for the engine's model, and
         # a fresh identity state, so this run is a first start.
         references = HERE.parent.parent / 'fixtures' / 'pylon' / ('%s.selfcheck' % MODEL)
         state = out / 'identity-state'
@@ -298,7 +298,7 @@ def run(out, serve):
                                  stdout=open(pylon_log, 'w'), stderr=open(out / 'pylon.err', 'w'), env=env)
         procs.append(pylon)
         check(wait_line(pylon_log, 'pylon: online, waiting for jobs', 120, pylon), 'the Pylon authenticated, published its list and beacon, and subscribed')
-        check('doctor: self-check passed' in pylon_log.read_text(), 'the Pylon passed its self-check before its beacon (chapter 216)')
+        check('doctor: self-check passed' in pylon_log.read_text(), 'the Pylon passed its self-check before its beacon (chapter 249)')
         check(state.exists() and state.read_text().startswith(MODEL + '@sha256:'), 'the Pylon recorded the identity it serves')
         benv = {**os.environ, 'NODE_PATH': NOBLE, 'RELAY': relay_url, 'CONNECT': 'ws://%s:%d' % (HOST, rport), 'SLUG': SLUG,
                 'MODEL': MODEL, 'STOP_FILE': str(stop_file), 'CANCEL': '0' if ENGINE else '1'}

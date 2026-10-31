@@ -1,5 +1,5 @@
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapter 234 (a frozen exact core with a learned interface).
+"""Independent oracle for chapter 267 (a frozen exact core with a learned interface).
 
 Standard library only, sharing no code with psionic/lib/core-interface.coax:
 its own machine and program families, its own core (plain integer arithmetic
@@ -198,7 +198,7 @@ def controller(name, families, out):
             examples += machine(program(fam, n))
     names = " " + families[0] + "".join((" and " if i == len(families) - 1 else ", ") + f
                                         for i, f in enumerate(families) if i)
-    out.append(f"controller {name}: trained on{names} at n = 1..4: {4 * len(families)} traces admitted by chapter 245, "
+    out.append(f"controller {name}: trained on{names} at n = 1..4: {4 * len(families)} traces admitted by chapter 278, "
                f"{len(examples)} rows")
     logits, loss = train(examples, 200, 1.0)
     out.append(f"  loss {r4(loss)}")
@@ -237,9 +237,9 @@ def controller(name, families, out):
 
 
 def example():
-    out = ["core: chapter 227's block for inputs second, top, ip and arg, with outputs second + top,",
+    out = ["core: chapter 260's block for inputs second, top, ip and arg, with outputs second + top,",
            "  second - top, second * top, and ip + 1 when top is 0, else arg; exact within 2^26",
-           "  chapter 235's admission: exact (pin, 4 cases, source recompiled to the pin)",
+           "  chapter 268's admission: exact (pin, 4 cases, source recompiled to the pin)",
            "interface: each token is copied from one of 12 sources:",
            "  " + ", ".join(SOURCES),
            "controller: per instruction and token, a softmax over the sources that sees only the instruction,",

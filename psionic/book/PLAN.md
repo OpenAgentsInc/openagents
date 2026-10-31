@@ -28,14 +28,14 @@ adds the bounded top-k router and tiny affine experts.
 attention, split-half YaRN, biased projection and clamped activation. Chapters
 64, 73, 75 and 77 now provide CPU reference execution, sampling, speculative verification
 and a finite-schema tool round trip. Chapters
-[224](ch224-a-machine-whose-state-is-a-trace.md) and
-[225](ch225-attention-as-exact-memory.md) open Part XXIII with a reference
+[257](ch257-a-machine-whose-state-is-a-trace.md) and
+[258](ch258-attention-as-exact-memory.md) open Part XXV with a reference
 trace machine and attention as exact memory,
-[226](ch226-arithmetic-and-branches-from-relu.md) and
-[227](ch227-compile-a-gate-graph-into-a-block.md) compile exact arithmetic into
-feed-forward weights, [228](ch228-a-harness-that-catches-the-compiler.md) catches
+[259](ch259-arithmetic-and-branches-from-relu.md) and
+[260](ch260-compile-a-gate-graph-into-a-block.md) compile exact arithmetic into
+feed-forward weights, [261](ch261-a-harness-that-catches-the-compiler.md) catches
 planted compiler bugs, and
-[231](ch231-from-hard-max-to-softmax.md) measures when a floating-point softmax
+[264](ch264-from-hard-max-to-softmax.md) measures when a floating-point softmax
 keeps that memory exact.
 
 <!-- capability-claim: psionic.gpu.current -->
@@ -53,27 +53,29 @@ DeepSeek R1-Distill-Qwen-1.5B CPU reference and a complete greedy greeting.
 [Chapters 103](ch103-learning-with-arrays.md) and
 [104](ch104-gradients-as-a-program.md) are runnable on the CPU: learning on
 simulated deadline data, first with hand-written gradients, then with a tape.
-[Chapter 213](ch213-fit-our-own-calibration.md) fits and gates its own
+[Chapter 246](ch246-fit-our-own-calibration.md) fits and gates its own
 calibration maps, and refuses them for another model version.
-[Chapter 214](ch214-thresholds-from-written-costs.md) derives a cascade's
+[Chapter 247](ch247-thresholds-from-written-costs.md) derives a cascade's
 thresholds from written costs on synthetic probabilities.
-[Chapter 215](ch215-record-readings-join-outcomes-watch-drift.md) logs every
+[Chapter 248](ch248-record-readings-join-outcomes-watch-drift.md) logs every
 decision, joins its outcome, and watches calibration drift.
-[Chapter 237](ch237-a-suite-is-three-digests.md) pins a suite as three
+[Chapter 270](ch270-a-suite-is-three-digests.md) pins a suite as three
 digests and keeps results in a receipt chain.
-[Chapter 238](ch238-how-far-a-metric-moves-by-itself.md) measures noise floors
+[Chapter 271](ch271-how-far-a-metric-moves-by-itself.md) measures noise floors
 from seed blocks and task-clustered bootstraps, and refuses partitions with no
 headroom.
-[Chapter 239](ch239-gates-that-can-say-unverifiable.md) turns them into
-passed, failed or unverifiable verdicts for chapters 16, 213 and 214.
-[Chapter 241](ch241-fit-settings-on-recorded-answers.md) fits a stall
+[Chapter 272](ch272-gates-that-can-say-unverifiable.md) turns them into
+passed, failed or unverifiable verdicts for chapters 16, 246 and 247.
+[Chapter 274](ch274-fit-settings-on-recorded-answers.md) fits a stall
 detector's settings on recorded answers with no model calls.
-[Chapter 242](ch242-search-a-policy-cheapest-first.md) searches 32 policies
+[Chapter 275](ch275-search-a-policy-cheapest-first.md) searches 32 policies
 by successive halving and finds the full measurement's winner for a quarter
 of its spend.
-[Chapter 223](ch223-learn-which-model-to-call.md) uses chapter 103's trainer
+[Chapter 256](ch256-learn-which-model-to-call.md) uses chapter 103's trainer
 to choose among three simulated models and to judge a new router from an old
 one's logs.
+Chapters 165–185, 188 and 192 are design drafts: written chapters whose
+first line says *Status: unimplemented — design draft*, with no runnable code.
 The remaining chapters below are outlines, not implemented capabilities. A
 chapter ships with shared Coax library code, authored checks, independent
 native tests, source-linked examples and an exact supported scope. Coax
@@ -117,7 +119,7 @@ on the shared numerics in I and supplies the forward primitives reused later.
 | Chapter | What we build and check |
 | --- | --- |
 | [7. Reading original weights](ch007-reading-original-weights.md) — runnable | Bounded original-weights-v1 Safetensors/shard-index parsing, exact identities, BF16/F32 window decoding and typed manifests; complete inventory and malformed-artifact refusals. |
-| [8. Models travel between frameworks](ch008-models-travel-between-frameworks.md) — runnable | Bounded named F32/BF16 Safetensors writing/inspection, a versioned C ABI and zero-copy leased CPU f32 DLPack; a NumPy model continues training in Coax and reloads independently for inference. ONNX graph exchange is 218 and 219; arbitrary optimizer conversion remains separate. |
+| [8. Models travel between frameworks](ch008-models-travel-between-frameworks.md) — runnable | Bounded named F32/BF16 Safetensors writing/inspection, a versioned C ABI and zero-copy leased CPU f32 DLPack; a NumPy model continues training in Coax and reloads independently for inference. ONNX graph exchange is 251 and 252; arbitrary optimizer conversion remains separate. |
 | [9. Text becomes a model request](ch009-text-becomes-a-model-request.md) — runnable | qwen35-text-v1: frozen Base Labs rendering, Unicode-17 NFC, original Qwen byte-BPE tables, special tokens and exact shared-prefix layouts; explicit resource and structured-entry bounds. |
 | [10. Attention without training](ch010-attention-without-training.md) — runnable | A bounded dense causal block, interleaved rotary tables, grouped-query attention and caches; full-sequence versus incremental results. |
 | [11. A hybrid sequence model](ch011-a-hybrid-sequence-model.md) — runnable: bounded causal CPU profile | Qwen-style dense blocks, causal convolution and Gated DeltaNet state transitions alongside causal full attention; upstream and real-weight qualification remain separate. |
@@ -141,7 +143,7 @@ builds the first production deployment on purpose small: one model resident
 in one process, one decision at a time, behind the same `/v1/systemone`
 contract the decision jobs use ([NIP-DEC](../../nips/openagents/NIP-DEC.md)).
 It establishes how to measure a decision and how to make the numbers move;
-Part XIX later grows the same service into batching, caching, autoscaling and
+Part XXI later grows the same service into batching, caching, autoscaling and
 rollout.
 
 | Chapter | What we build and check |
@@ -165,7 +167,7 @@ that opted in; it advertises what it serves and takes jobs over Nostr, as
 specified in [NIP-PYLON](../../nips/openagents/NIP-PYLON.md) and the decision
 jobs of [NIP-DEC](../../nips/openagents/NIP-DEC.md). This part routes whole
 decisions to whole machines. Splitting one model across machines waits for
-Part XX.
+Part XXII.
 
 | Chapter | What we build and check |
 | --- | --- |
@@ -182,10 +184,10 @@ Part XX.
 The [Everglade guard delivery plan](../../docs/verse/pylon-guard-decisions.md)
 sequences warm routing, the shared client, game integration and reliability
 qualification. It brings narrow client/failure-handling and evaluation work
-forward from 172/175/179 and 213–215/222 without requiring those whole chapters.
+forward from 205/175/179 and 246–248/222 without requiring those whole chapters.
 
 Nothing here makes a peer's answer private: a Pylon that serves a request
-reads it. Part XX adds trust levels, attested machines and model splits.
+reads it. Part XXII adds trust levels, attested machines and model splits.
 
 ### Before chapter 24: the Nostr prerequisites
 
@@ -353,13 +355,13 @@ whose architectures add one feature at a time on the way to Mistral Large 4
 a shared expert, latent and sparse attention, FP8 weights and a built-in draft
 head. This part qualifies each feature on the smallest model that has it. Large 4's
 1,060.6 GB of original files fit no single machine, so it is executed in
-Part XX, across a mesh.
+Part XXII, across a mesh.
 
 | Chapter | What we build and check |
 | --- | --- |
 | 81. Execute Ministral 4 | Ministral-3-3B (Apache-2.0, BF16 originals): the Tekken tokenizer through chapter 9's byte-BPE engine with its own pinned tables, Mistral's chat and reasoning format, and a dense grouped-query decoder with its long-context rotary scaling; token, intermediate and logit references. |
 | 82. Original FP8 weights | E4M3 values with one scale per 128×128 block, including Large 4's power-of-two (UE8M0) scales: exact decode of every code at every admitted scale against an independent table, partial-block and scale refusals, and FP8 originals kept distinct from chapter 50's derived profiles. The reference's dynamic FP8 activations are a separate approximate profile. |
-| 83. A coding agent | Devstral-Small-2-24B (Apache-2.0, FP8): Mistral's function-calling format with arguments constrained by chapter 53, and long-context requests through chapters 41 and 174; first measured against a fixed coding-task set. |
+| 83. A coding agent | Devstral-Small-2-24B (Apache-2.0, FP8): Mistral's function-calling format with arguments constrained by chapter 53, and long-context requests through chapters 41 and 207; first measured against a fixed coding-task set. |
 | 84. Attention through a latent | Multi-head latent attention: queries and keys split into rotary and non-rotary parts, keys and values reconstructed from a low-rank latent, and the absorbed projections that let decode attend in latent space. The compressed cache's size is accounted exactly, and the absorbed form is compared with the expanded one. |
 | 85. Execute Mistral Small 7 | Mistral-Small-4-119B (Apache-2.0, FP8, 241.9 GB of originals): latent attention plus 128 routed experts with four selected and one shared expert, extending chapter 61's router. Measured residency on one large-memory machine, or the expert paging of chapter 73. |
 | 86. Sparse attention and shared layers | Large 4's attention features on tiny fixtures and selected real layers: a lightning indexer that picks the top 2,048 keys per query (FP8 indexer), indexer and KV sharing across layers from the pinned source map, no rotary positions on every fourth layer, tanh soft-capping of logits at 30, and YaRN scaling (factor 2048 over 512 positions) to 1,048,576. |
@@ -407,10 +409,10 @@ The reference implementation's exact arithmetic depended on its hardware and
 parallel layout, so qualification compares distributions, not bits; chapter
 17 sets the rules. The serving facts DeepSeek has published (prefill and
 decode on different groups, expert parallelism only inside a fast domain, a
-shared prefix cache of 128-token pages) inform chapters 174, 175, 180 and 181.
+shared prefix cache of 128-token pages) inform chapters 207, 208, 213 and 214.
 DeepSeek's own engine, kernels and libraries are references read as source,
 not dependencies. V3/R1-scale checkpoints and V4.1 split into stages run in
-Part XX.
+Part XXII.
 
 ## X. Learn with the operations we already own
 
@@ -468,15 +470,15 @@ before longer runs rather than postponing provenance until this part.
 | 129. Train a whole model on one GPU | GPU forward and backward, gradient accumulation and optimizer updates on device, BF16 and FP32 policies, and the backward kernels inference never needed: matrix products, normalization, attention and convolution gradients. An MLP, a CNN and a tiny transformer train on the RTX 4080 with all trainable state on the device between steps, and a 10–50M-parameter decoder runs a complete training job with no PyTorch, no unintended CPU fallback and independently verified gradients. Framework track. |
 | 130. Profile a training step | Operator-level CPU and GPU timing, kernel launches, GPU idle time, transfers, allocation lifetimes, peak activations, backward cost and compile cost; one bottleneck found, fixed and its improvement measured. Framework track. |
 | 131. Train the same model eager and compiled | Whole-step compilation with bounded dynamic batches, fusion, activation liveness and the optimizer step; the same model, data order and RNG policy compared on gradients, updates, final metrics, memory, compile cost and steady-state speed. Framework track. |
-| 132. Train across devices | One real homogeneous topology: gradient collectives (shared with 174), sharding/resume, numerical comparisons and measured scaling. |
+| 132. Train across devices | One real homogeneous topology: gradient collectives (shared with 207), sharding/resume, numerical comparisons and measured scaling. |
 | 133. A tensor spread over devices | A device mesh, replicated, sharded and partially reduced layouts, collectives, placement propagation and redistribution; one operation runs under several layouts and matches a single-device reference. Framework track. |
 | 134. Data-parallel training | Gradient buckets, all-reduce, accumulation boundaries, communication overlapped with computation, and handling a failed rank; one and two devices compared on gradient semantics, throughput and restart. Framework track. |
 | 135. Fully sharded training | Sharded parameters, gradients and optimizer state, prefetching all-gather and reduce-scatter, and checkpoints restored into a different shard layout; a model whose training state exceeds one GPU's memory trains and resumes. Framework track. |
 | 136. Supervised conversations and tools | Assistant/tool loss masks and validation; bounded Nemotron-Agentic-v1/OpenCodeReasoning subsets with provenance and base-skill regression. |
 | 137. Continued pretraining and task adaptation | A separately specified domain workload, data mixture, retention checks and promotion criteria. This is a Psionic extension, not a stage claimed from the pinned nanochat speedrun. |
 | 138. Preferences and reward models | HelpSteer3 pairwise data, ranking/reward losses and an optional separately specified DPO experiment; held-out comparisons and reward-model limitations. |
-| 139. Learn from rollouts | The pinned nanochat on-policy, mean-centered-reward recipe; bounded rollouts, independent gradient/reward checks and held-out task results. Rollouts come from chapter 240's environments. |
-| 140. Post-train a decision model | Qualified hybrid backward and LoRA adapters (W + (α/r)·BA with W frozen, so only A and B carry gradients and optimizer state while backward still passes through the frozen layers), selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. Promotion passes both of chapter 239's decision and probability gates. A zero adapter reproduces the base model exactly, only the intended parameters change, the adapter records the base-model identity it is compatible with and loads and unloads through the serving path, and task gains and retained abilities are evaluated separately. A quantized-base variant names its full recipe before it is called QLoRA. |
+| 139. Learn from rollouts | The pinned nanochat on-policy, mean-centered-reward recipe; bounded rollouts, independent gradient/reward checks and held-out task results. Rollouts come from chapter 273's environments. |
+| 140. Post-train a decision model | Qualified hybrid backward and LoRA adapters (W + (α/r)·BA with W frozen, so only A and B carry gradients and optimizer state while backward still passes through the frozen layers), selected trainable regions, cross-entropy/Brier/abstention, resume and held-out promotion. Promotion passes both of chapter 272's decision and probability gates. A zero adapter reproduces the base model exactly, only the intended parameters change, the adapter records the base-model identity it is compatible with and loads and unloads through the serving path, and task gains and retained abilities are evaluated separately. A quantized-base variant names its full recipe before it is called QLoRA. |
 | 141. Distill Mammoth into Elephant | Mammoth's slot distributions as soft targets on a recorded request corpus; KL/cross-entropy over slots, held-out agreement and chapter 16's quality metrics, with Elephant's cost measured against Mammoth's. |
 
 The [nanochat study](../docs/targets/nanochat.md) is the compatibility
@@ -569,15 +571,61 @@ for motion or physics. Qwen Gated DeltaNet support does not establish Mamba-2
 support. The router is chapter 61 in Part VII. Active parameter count is not total checkpoint residency. Bolt's
 different Gemma-4 architecture is an optional study in appendix B.
 
-## XVIII. World models and embodied policies
+## XVIII. A physics engine
+
+A GPU physics engine for robotics and embodied learning, at rough parity with
+[Genesis World 1.4.5](../../docs/research/genesis/genesis.md): rigid and
+articulated bodies with contact, five material solvers and their coupling,
+batched environments, selective gradients, sensors, observation rendering,
+assets, replay and published measurement. The [parity plan](../docs/genesis-parity.md)
+maps each Genesis capability to a chapter and a Coax phase and states where we
+deliberately differ. Every chapter here is a design draft, marked at its top;
+none runs yet.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 165. Sequences of observations | Temporal/multimodal representations, a tiny conditioned generation task and codec/scheduler contracts. |
-| 166. One complete Cosmos3-Edge path | Qualify one bounded conditioned generation path across its autoregressive/diffusion towers and exact codecs; numerical and physical evaluations stay distinct. |
-| [167. Imitation before robotics scale](ch167-imitation-before-robotics-scale.md) — runnable: owned CPU imitation and original-data excerpt | Two-axis gantry behavior cloning with fixed state/action scales, whole-episode splits and separate action-error/rollout measures; pinned Panda metadata and 170 exact F32 values from an original PhysicalAI SingleArm episode. This qualifies data handling, not Panda command semantics or GR00T inference. |
-| [168. Execute a GR00T policy](ch168-execute-a-groot-policy.md) — runnable: original learned VLA on Metal | Pinned [GR00T-N1.7-LIBERO/libero_10](../docs/targets/groot.md), category 2: complete vision/language/conditioning/four-step flow path for a prepared 140-token observation. Same-input components and original decoded action endpoints pass; the separately recorded global hidden diagnostic does not. Broader request lengths and the unit-/frame-checked robot-model adapter (R12, R17), clocks/rates (R13) and simulator outcomes remain integration work for 169. |
-| [169. Close the simulated control loop](ch169-close-the-simulated-control-loop.md) — runnable SDK evaluation stage | **Delivered first, per owner ordering:** original GR00T on Metal drives genuine source LIBERO/Panda scenes through Coax preparation, chunk supervision and an own Coax OSC controller, using MuJoCo 3.3.1 for evaluation. Frozen scene/state outcomes, explicit fault experiments and exact recorded-control physics replay are reported in the chapter. This SDK profile retains plain integer/F64 clocks and fixed arrays; its robot unit/frame migration, typed clocks and `#bounded` enforcement remain pending. **Owned foundations delivered:** chapters 107, 109 and 111 are runnable; the [owned-plant sensitivity bridge](../docs/physics/oscillator-functions.md), [checkpoint precursor](../docs/physics/oscillator-replay.md) and [runtime clock/scheduler precursor](../docs/physics/step-clock.md) are qualified. The [remaining sequence](../docs/physics/owned-control-loop.md) keeps their scope distinct from complete robot/Verse integration. **Remaining own-backend stage:** The policy drives the deterministic solver of chapter 109, run as a simulated arm or gantry. Observations are stamped samples with a clock, frame and maximum age, and action chunks are held between policy updates under a declared sample-and-hold schedule (R13, R18). The control step that turns an action into a command is a `#bounded` Coax function: fixed stack and scratch, no allocation or blocking in its call graph (R14). A simulated supervisor refuses stale, out-of-limit or expired commands (R18). Every episode records and replays exactly under a named profile, and reset, held-out task success and failure recovery are measured over recorded fault scenarios such as sensor dropout, delayed observations and saturation (R16, R19). Chapter 111's differentiable solver and chapter 107's `vjp`, `jvp` and `vmap` check action sensitivities and batch episodes. No real hardware. |
+| [165. A scene owns the state](ch165-a-scene-owns-the-state.md) — design draft | Entities as shape, material and appearance; describe, build, step; solver arrays addressed by handle; a fixed recorded schedule; a published compatibility matrix that refuses unsupported combinations before allocation. |
+| [166. Rigid bodies and time steps](ch166-rigid-bodies-and-time-steps.md) — design draft | Newton–Euler bodies with quaternion attitude; explicit, semi-implicit and implicit-gyroscopic profiles with measured energy and momentum drift; `verse/rigid.coax` as the independent reference. |
+| [167. Joints in generalized coordinates](ch167-joints-in-generalized-coordinates.md) — design draft | Spatial algebra, forward kinematics, RNEA, CRBA and ABA kept as two forward-dynamics routes that must agree; revolute, prismatic, ball, free, fixed and screw joints; Panda values checked against frozen MuJoCo 3.3.1 recordings. |
+| [168. Find the pairs that might touch](ch168-find-the-pairs-that-might-touch.md) — design draft | AABBs, sweep and prune, a Morton-code BVH and all-pairs, all returning the same canonically sorted pair set; filters; the method chosen by recorded measurement. |
+| [169. Find where they touch](ch169-find-where-they-touch.md) — design draft | Support functions, GJK/EPA, MPR, closed forms and SAT, SDF queries, four-point manifolds with stable feature IDs, and time of impact; symmetric under argument swap. |
+| [170. Contact as an optimization](ch170-contact-as-an-optimization.md) — design draft | Contacts, limits and friction as one soft-constrained convex problem (MuJoCo's formulation); Newton with Cholesky and CG; warm start, islands; an independent KKT checker; sequential impulses kept as a second reference. |
+| [171. Particles and their neighbors](ch171-particles-and-their-neighbors.md) — design draft | Spatial hashing, counting sort and stable scatter, fixed-radius neighbors with reported overflow, and shape sampling; the shared substrate for 172–174. |
+| [172. Liquids from particles](ch172-liquids-from-particles.md) — design draft | WCSPH then DFSPH liquids with boundary particles; hydrostatic, dam-break and floating checks; gradients refused. |
+| [173. Cloth and rope from constraints](ch173-cloth-and-rope-from-constraints.md) — design draft | PBD and XPBD constraints for cloth, rope and soft particles; deterministic graph coloring; catenary and compliance checks; gradients refused until tested. |
+| [174. Sand, snow and clay on a grid](ch174-sand-snow-and-clay-on-a-grid.md) — design draft | MLS-MPM with APIC; neo-Hookean, snow, Drucker–Prager sand, clay and muscle; a deterministic block-sorted scatter beside the atomic profile; reverse-mode gradients via 180. |
+| [175. Elastic solids on a mesh](ch175-elastic-solids-on-a-mesh.md) — design draft | Tetrahedral FEM with stable neo-Hookean; explicit (differentiable) and implicit Newton–CG profiles; cantilever and inversion checks. |
+| [176. Smoke on a grid](ch176-smoke-on-a-grid.md) — design draft | Stable Fluids on a MAC grid: semi-Lagrangian advection, pressure projection by CG or multigrid, scalars and vorticity confinement; Taylor–Green decay check. |
+| [177. Materials meet](ch177-materials-meet.md) — design draft | Explicit coupling between solver pairs (rigid–SPH, rigid–MPM, rigid–PBD, rigid–FEM, MPM–SPH) with a zero-sum momentum ledger; unsupported pairs refused. |
+| [178. Contact that holds](ch178-contact-that-holds.md) — design draft | SAP rigid–FEM coupling and later IPC barriers in f64; a held grasp and intersection-free checks; refused on Metal and with gradients. |
+| [179. Many worlds in one step](ch179-many-worlds-in-one-step.md) — design draft | A batch dimension over every solver, per-environment parameters and randomization with provenance, isolated resets, counter-based seeds; batch invariance checked bit for bit; aggregate and per-environment rates reported together. |
+| [180. Differentiate a simulation](ch180-differentiate-a-simulation.md) — design draft | Reverse mode over steps with exact checkpointed recomputation; adjoints of implicit steps reusing the forward factorization; per-solver gradient modes enforced at build and compile time. |
+| [181. Sensors read the simulation](ch181-sensors-read-the-simulation.md) — design draft | Joint, IMU, force/torque, contact, tactile, lidar and depth sensors as read-only stages with rates, delays, noise and R18 stamps. |
+| [182. Pictures for policies](ch182-pictures-for-policies.md) — design draft | A batched observation rasterizer (RGB, depth, segmentation, normals) into device tensors read without copies; Verse stays the presentation renderer; image randomization. |
+| [183. Bring in robots and meshes](ch183-bring-in-robots-and-meshes.md) — design draft | URDF, MJCF and mesh import with inertia and watertightness validation, convex decomposition and tetrahedralization, content-addressed assets and per-field provenance. |
+| [184. Record and replay a world](ch184-record-and-replay-a-world.md) — design draft | Recordings with scene, profile, compiler and seed identities; recomputation replay checked against recorded digests, bisection to the first divergent step and stage. |
+| [185. Measure the engine honestly](ch185-measure-the-engine-honestly.md) — design draft | The compatibility matrix as data, the acceptance suite per backend and profile, fixed benchmark scenes, and claims that always include per-environment rates and compile and startup times. |
+
+Rigid work comes first: 165–170, then batching 179, assets 183, replay 184 and
+control 188, which together can replace MuJoCo behind chapter 191. The
+particle and mesh solvers 172–176 each need 171 (174 also needs 171's sort)
+and can follow in any order; coupling 177–178 needs them; gradients 180 need
+166–175; 181–182 need the scene and 183; 185 runs throughout. The engine reuses
+`verse/` (rigid bodies, contacts) as independent references, not as code to
+copy, and its Coax prerequisites are R12–R20 plus the simulation-compute
+phases R21–R24.
+
+## XIX. World models and embodied policies
+
+| Chapter | What we build and check |
+| --- | --- |
+| 186. Sequences of observations | Temporal/multimodal representations, a tiny conditioned generation task and codec/scheduler contracts. |
+| 187. One complete Cosmos3-Edge path | Qualify one bounded conditioned generation path across its autoregressive/diffusion towers and exact codecs; numerical and physical evaluations stay distinct. |
+| [188. Command a robot](ch188-command-a-robot.md) — design draft | Joint PD with gravity compensation, damped-least-squares IK with limits, RRT-Connect with shortcutting and timing, all as bounded control steps. |
+| [189. Imitation before robotics scale](ch189-imitation-before-robotics-scale.md) — runnable: owned CPU imitation and original-data excerpt | Two-axis gantry behavior cloning with fixed state/action scales, whole-episode splits and separate action-error/rollout measures; pinned Panda metadata and 170 exact F32 values from an original PhysicalAI SingleArm episode. This qualifies data handling, not Panda command semantics or GR00T inference. |
+| [190. Execute a GR00T policy](ch190-execute-a-groot-policy.md) — runnable: original learned VLA on Metal | Pinned [GR00T-N1.7-LIBERO/libero_10](../docs/targets/groot.md), category 2: complete vision/language/conditioning/four-step flow path for a prepared 140-token observation. Same-input components and original decoded action endpoints pass; the separately recorded global hidden diagnostic does not. Broader request lengths and the unit-/frame-checked robot-model adapter (R12, R17), clocks/rates (R13) and simulator outcomes remain integration work for 191. |
+| [191. Close the simulated control loop](ch191-close-the-simulated-control-loop.md) — runnable SDK evaluation stage | **Delivered first, per owner ordering:** original GR00T on Metal drives genuine source LIBERO/Panda scenes through Coax preparation, chunk supervision and an own Coax OSC controller, using MuJoCo 3.3.1 for evaluation. Frozen scene/state outcomes, explicit fault experiments and exact recorded-control physics replay are reported in the chapter. This SDK profile retains plain integer/F64 clocks and fixed arrays; its robot unit/frame migration, typed clocks and `#bounded` enforcement remain pending. **Owned foundations delivered:** chapters 107, 109 and 111 are runnable; the [owned-plant sensitivity bridge](../docs/physics/oscillator-functions.md), [checkpoint precursor](../docs/physics/oscillator-replay.md) and [runtime clock/scheduler precursor](../docs/physics/step-clock.md) are qualified. The [remaining sequence](../docs/physics/owned-control-loop.md) keeps their scope distinct from complete robot/Verse integration. **Remaining own-backend stage:** The policy drives the deterministic solver of chapter 109, run as a simulated arm or gantry. Observations are stamped samples with a clock, frame and maximum age, and action chunks are held between policy updates under a declared sample-and-hold schedule (R13, R18). The control step that turns an action into a command is a `#bounded` Coax function: fixed stack and scratch, no allocation or blocking in its call graph (R14). A simulated supervisor refuses stale, out-of-limit or expired commands (R18). Every episode records and replays exactly under a named profile, and reset, held-out task success and failure recovery are measured over recorded fault scenarios such as sensor dropout, delayed observations and saturation (R16, R19). Chapter 111's differentiable solver and chapter 107's `vjp`, `jvp` and `vmap` check action sensitivities and batch episodes. No real hardware. |
+| [192. Learn a gait in many worlds](ch192-learn-a-gait-in-many-worlds.md) — design draft | PPO with GAE over batched quadrupeds on randomized terrain, a terrain curriculum and teacher–student distillation; reproducible runs. |
 
 Cosmos needs mature vision, temporal representations and generative methods.
 The robotics path needs vision/language, shared training, action conventions
@@ -588,7 +636,7 @@ The robot-policy chapters run on the physical-world foundations of the
 [Coax roadmap](../../coax/ROADMAP.md) and on this book's physics and
 transform chapters, all as prerequisites rather than parallel inventions:
 
-| Foundation | Where it comes from | What chapters 167–169 use it for |
+| Foundation | Where it comes from | What chapters 189–191 use it for |
 | --- | --- | --- |
 | Units and coordinate frames | Coax R12 | Joint angles, positions, poses and velocities carry a frame and a unit; mixing them is refused at compile time |
 | Typed clocks and multirate ticks | Coax R13 | Simulation time for episodes, declared policy and control rates, sample-and-hold of action chunks and maximum observation age |
@@ -597,230 +645,21 @@ transform chapters, all as prerequisites rather than parallel inventions:
 | Robot-model import | Coax R17 | The embodiment's frames, joint limits and inertias come from a checked URDF subset |
 | Stamped sensors and actuator supervision | Coax R18 | Observations are stamped; a simulated supervisor validates every command's freshness, limits, epoch and expiry |
 | Fault scenarios | Coax R19 | Dropout, delays, saturation and invalid values are recorded scenarios that reproduce the same run |
-| Deterministic solver | Chapter 109 | The simulated system the policy controls |
+| Deterministic solver | Chapter 109, then Part XVIII | The simulated system the policy controls: chapter 109's oscillator now, the engine's rigid bodies, contacts and batches (165–170, 179) later |
 | Differentiable solver and parameter recovery | Chapter 111 | Sensitivities of outcomes to actions and physical parameters, checked against finite differences |
 | Transform functions | Chapter 107 | `grad`, `vjp`, `jvp` and `vmap` for action sensitivities and batched episodes |
 
-Chapter 167 already states its units and integration step in its profile; it
-moves onto these types as they ship. Chapters 168 and 169 are planned against
+Chapter 188 commands a robot with PD, IK and planning over the engine, and
+192 learns a gait in Part XVIII's batched worlds.
+Chapter 189 already states its units and integration step in its profile; it
+moves onto these types as they ship. Chapters 190 and 191 are planned against
 them and do not start with hand-rolled clocks, frames or unchecked control
 loops. Real robot hardware is a separately authorized later integration, with
 its own safety review, device qualification and real-time profile; nothing in
-this part drives an actuator. Part XXV builds its spacecraft on the same
+this part drives an actuator. Part XX builds its spacecraft on the same
 foundations rather than a parallel set.
 
-## XIX. Host inference in production
-
-This part turns a qualified model into a service that other people and
-agents depend on. It follows the production practice described in
-[Inference Engineering](../docs/serving/inference-engineering.md), but
-builds the infrastructure in Coax: admission, scheduling, routing, scaling,
-rollout and metering decide in Coax, with `#authority` files and
-zero-survivor mutation where they decide work, money or policy. The host
-does network, process and device effects only, as the
-[Coaxial dev server](../../coax/web.md) already does for the website. It
-grows Part III's first deployment: chapter 170 generalizes the timing of
-18, chapter 171 the server of 20, and chapters 173–179 add what one resident
-model serving one decision at a time leaves out.
-
-| Chapter | What we build and check |
-| --- | --- |
-| [170. Benchmark a service, not a kernel](ch170-benchmark-a-service-not-a-kernel.md) — runnable: bench-us-v1, loopback load generator | Time to first token, inter-token latency, per-user and total tokens per second, and end-to-end versus inference-only time at P50, P90, P95 and P99. A load generator with a named RNG reproduces input/output length distributions, request contents, sampling parameters and jittered arrival patterns; recorded traffic can be replayed as a shadow. A fixed baseline is required, and only one variable changes per run. |
-| 171. Serve a model with an honest capability | Shared System One protocol integration, versioned manifests, bounded requests, cancellation and evidence for each model/backend/profile; request and response schemas start in `proto/`. |
-| 172. Clients, streams and background jobs | Streamed tokens and audio over a bidirectional connection, session reuse, cancellation that reaches the scheduler, and asynchronous jobs that are acknowledged at once and complete later under their own deadline; an OpenAI-compatible Responses edge is translated into the System One contract, not the other way round. |
-| 173. Continuous batching and a fair scheduler | Token-level batching that admits and retires requests every step under a state-memory budget, chunked prefill interleaved with decode, preemption and priority classes. Every request's output must be identical to running it alone (batch invariance), which the fixed reduction order makes testable. |
-| 174. Paged state and a tiered prefix cache | Fixed-size pages for KV cache and for hybrid recurrent snapshots; a prefix cache across requests that spills from device to host memory to local disk, with measured hit rate, eviction and time to first token on hits versus misses. Prefixes are found through a content-hashed chain of 128-token pages; pages never depend on a compute machine staying alive, restore overlaps layer by layer with compute, and retention is set per traffic type. Any approximate reconstruction, such as bounded sliding-window replay, is its own profile and never enters an exact cache identity. |
-| 175. Route, queue and scale replicas | A cache-aware and adapter-aware router, a bounded priority queue, and a replica autoscaler (minimum and maximum replicas, window, scale-down delay, concurrency target, scale to zero). The policies are pure Coax, checked against a deterministic discrete-event simulation of recorded and synthetic traffic before any machine runs them. Prefill cost is modelled from uncached tokens and the prefix they attend to, with length buckets and engines that pull work; decode balances both request count and total cache length per replica. |
-| 176. Start fast | Cold start split into machine, process, weights and kernel startup and measured separately; content-addressed weight delivery from chapter 7's identities, mapped loading, and generated-kernel caches keyed by device, compiler and source identity. |
-| 177. Ship without downtime | Canary rollout with gradual traffic ramps and automatic revert, driven by both latency objectives and golden requests whose outputs must match retained evidence; draining in-flight requests before a replica stops. |
-| 178. Observe, meter and price | Volume, input/output lengths, status counts, latency percentiles, replicas, utilization and queue depth; audit logs that record changes and no user content by default; per-request usage records bound to execution evidence and a pricing policy in an `#authority` file. Settlement stays in the Bitcoin wallet, outside Psionic. |
-| 179. Survive failures | Health checks, cordoning a failing device or machine, idempotent retries, active-active and active-passive failover between machines or regions, data-residency routing, isolation of tool execution and protection of weights. |
-| 180. Disaggregate prefill and decode | Conditional disaggregation: separate prefill and decode workers exchange a complete state snapshot (chapter 12's identity-bound claim, extended for transfer) as a versioned message; a prefill queue, a local-prefill threshold and an xPyD ratio that adjusts to traffic. Only after chapters 170 and 173 measure that prefill interference is the bottleneck. DeepSeek's published layout (small prefill groups, large decode groups, a separate vision encoder role, scaling prefill on unserved tokens and decode on requests in flight) is the reference design. |
-| 181. Split a model across devices | Tensor parallelism for latency and expert parallelism for gpt-oss, DeepSeek and other MoE throughput: collectives, sharded weights and state, and results compared with the single-device reference. Expert parallelism stays inside one fast interconnect domain, with data-parallel attention, redundant experts rebalanced from a load window and balance reported as busiest over mean, measured by time rather than token count. |
-| 182. A pipeline of models | A compound voice workload (voice activity, transcription, decision model, speech) with each stage scaled separately in one cluster, an end-to-end latency budget per stage and a measured cost for each network hop. |
-| 183. A decision model steers voice | Elephant as the voice engine's `decisions:<model>` decider: proposals pass the existing never-awaited gate (clamping, confidence floor, epoch and deadline fences, recorded drop reasons); a slow or absent model can only fail to steer, never stall a frame. |
-
-Serving can begin after the first qualified decision model and an actual
-consumer contract. Chapter 183 is the first consumer: it needs 16's published
-semantics and 163's measured latency, and the gate stays the authority over
-what a decision may change. The more traffic a deployment has, the more of
-this part it can justify: disaggregation, multi-device inference and global
-caches each wait for a measurement that shows the need, not for a chapter
-number. Hosted machines need a qualified Linux target and an owner-approved
-budget; buying GPUs, choosing providers and compliance certification are
-owner decisions recorded in `NEEDS_OWNER.md`, not chapters.
-
-## XX. Inference across a mesh
-
-A mesh pools memory and compute across machines that are loosely connected,
-over ordinary networks rather than device interconnects. Part IV's Pylons
-route whole decisions to whole machines; this part splits a model that no
-single machine holds. Chapter 181 is the tightly coupled case in one machine
-or rack. The design follows the
-[Mesh-LLM lessons](../docs/serving/mesh.md) recorded before the reset, with
-the trust rules from the earlier private-inference work. Coax decides
-placement, admission, routing, verification and price; the host provides
-transport, files and devices.
-
-| Chapter | What we build and check |
-| --- | --- |
-| 184. Split a model into stages | A stage boundary contract derived from the model: a typed list of everything that crosses it (hidden state, residual streams, shared-KV and recurrent sidebands), bound to the artifact, stage range and protocol version. Two stages must match the whole model on identical tokens: logits, greedy output, cached continuation. Dense Ministral 3 first, with raw activations. |
-| 185. Stage packages | Each stage fetches and loads only its own tensors and required shared assets, verified chunk by chunk against chapter 7's identities. Fetched bytes, materialized bytes, peak memory and time to readiness are measured separately. |
-| 186. Peers, transport and discovery | Encrypted peer connections with the direct or relayed path recorded and measured; private meshes joined by invitation, public ones discovered through Part IV's NIP-PYLON beacons, whose model groups advertise a head and its stages; an owner control plane separate from the inference plane. |
-| 187. Place the model | Run whole on one machine if it fits, else route the whole request to a peer, else split. Splitting uses per-layer memory and measured stage and link costs, and states its objective: the sum of stage times for one request's latency, or the slowest stage for throughput. The placement planner is pure Coax, checked in simulation. |
-| 188. Stage lifecycle and fencing | Load downstream stages first and publish the entry route only when every stage is ready. A topology generation fences out stale commands, and partial failures withdraw the route and release memory. Each live sequence declares whether it drains, fails or restores. |
-| 189. Experts across machines and from disk | Expert parallelism over a mesh with routed tokens and gathered outputs, and expert streaming from local disk for MoE models larger than memory; measured against chapter 85's single-machine results. |
-| 190. Route by saved work | Mesh-wide cache-aware routing that compares queue delay plus restore and suffix-prefill cost against cold prefill. Cache advertisements are bounded, short-lived, salted hints that never contain raw tokens; claimed hits that turn out to be missing fall back, and the realized saving is recorded. |
-| 191. Compress activations exactly | Codec negotiation with a mandatory raw fallback and round-trip equality of each frame, with the full encode, decode and copy cost measured. Lossy activation formats are a separate profile with their own quality evaluation. |
-| 192. Who can read the prompt | Trust levels computed from evidence: a peer serving the request reads it; a hardened process on a machine its owner controls is harder to snoop on, not private; only an attested hardware enclave running a logged release is private. Requests are routed by sensitivity and fail closed rather than falling back. |
-| 193. Check a peer's work | Sampled re-execution of a peer's work on a trusted node. Results match exactly only when both sides run the same backend profile, and are otherwise compared within that profile's tolerance. Signed usage receipts per stage, a pricing policy in an `#authority` file, and settlement in Bitcoin through the wallet, outside Psionic. |
-| 194. Work with Mesh-LLM | A Psionic server attached to an existing Mesh-LLM mesh through its plugin endpoint interface, serving the OpenAI-compatible and `/systemone` decision contracts so the mesh can route to it. Payments interoperate with its token-metered Lightning exchange (deposit first, then settle from reported usage) through our own wallet. Its code is read as untrusted source; joining a public mesh is an owner decision. |
-| 195. DeepSeek V4.1 Flash across stages | Contiguous layer stages on several devices or machines. The boundary carries the four residual streams, the previous mix, source KV and indexer state, chosen candidate blocks and Engram history, in BF16 rather than F32. Generation fencing and stage recovery apply, and every split must match chapter 100's one-machine result on identical tokens, with per-hop latency recorded. |
-| 196. Mistral Large 4 across a mesh | Mistral-Large-3-675B (Apache-2.0, 681.5 GB of originals): latent attention and 135-expert routing placed across machines, with parity against the whole-model reference on selected layers and tokens, per-hop latency and per-stage memory. |
-| 197. Le Chonk across a mesh | Mistral Large 4 with all of Part VI: 1,060.6 GB of FP8 originals placed across machines, sparse attention and shared layers crossing stage boundaries, the built-in draft head, and recorded parity, latency and cost. Serving it to others is subject to its licence. |
-
-A mesh multiplies failure modes: placement plans, advertisements and
-handshakes are not evidence of correct execution. Each split earns its own
-parity evidence on the machines that ran it. Joining a public mesh, paying
-peers or offering Large 4 as a service each need owner approval.
-
-## XXI. A harness for Psionic models
-
-A harness turns a served model into an agent: it assembles each request, runs
-the tools the model asks for, keeps the session's history and decides when a
-turn is done. DeepSeek publishes its models, its serving system and
-[its harness](../docs/harness.md), and the three are designed together; this
-part builds the Psionic versions in Coax, on Part III's API and Part XIX's
-server. The default is the simplest loop that works. Every addition (a guard,
-a condenser, a plugin) earns its place with a measured gain on tasks it was not
-built from, and is removed otherwise.
-
-| Chapter | What we build and check |
-| --- | --- |
-| 198. The simplest loop | One agent loop over Psionic's API: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed. Turns and steps have exact boundaries, every turn has a deadline, and cancellation stops the model and the tools together. |
-| 199. Model-visible means logged | An append-only session log of durable events (turns, steps, user and assistant messages, tool calls and results); the model's history is derived from the log, so every request can be rebuilt byte for byte and replayed. The log format is versioned and old sessions still open. |
-| 200. Keep the prefix stable | Prompt assembly in a fixed order (system sections, tool schemas, then history) so each turn only appends to the model-visible bytes; request metadata stays outside the model's input. Measured against chapter 174's prefix cache: hit rate, prefill saved and time to first token across a long session. |
-| 201. Tools as typed capabilities | A tool registry whose schemas come from `proto/`, a guarded pipeline (before, run, after) with structured errors, arguments constrained by chapter 53 so a malformed call is never generated, and filesystem and process tools that share one execution world. |
-| 202. A sandbox and approvals | Spawned processes confined to declared roots and resources, an approval policy for anything outside them, per-tool timeouts and a guard against repeating the same failing call. No tool inherits the host's authority by default. |
-| 203. A document tries to become the system prompt | A replayable prompt-injection lab for chapter 57's documentation assistant and the harness: plant hostile instructions in retrieved passages and tool results, including forged role markers, requests to reveal a synthetic sentinel and attempts to expand a tool grant. Local simulated tools, disposable files and a captured outbound sink make every effect inspectable. Deterministic checks send unauthorized calls directly through the capability gate and require zero unauthorized effects; real model runs report attempted calls, admitted effects, answer leakage and legitimate-task completion separately. Compare paired benign and hostile runs, freezing grants, budgets, model/build identities, seeds, acceptance bounds and held-out attack variants before comparison. Retrieved and tool bytes cannot grant authority, and refusing every task cannot pass the utility gate. |
-| 204. Condense the history | Older history replaced by one marked summary when the context fills, bracketed in the log so a crash leaves a visible record; tool results pruned by rule. Each condensation breaks the stable prefix, so it is scheduled to minimize recomputed prefill, and that cost is measured. |
-| 205. Programs as tool calls | A model-written program run once against host-provided functions in a bounded, sandboxed runtime, returning one structured result instead of many round trips; output, time and memory limits refuse rather than truncate. |
-| 206. Forks, subagents and jobs | A session forked at a turn boundary from its own log, reusing the parent's cached prefix state on the server; subagents with their own scope and budget; background jobs that outlive a turn; a goal that a session works toward across turns. |
-| 207. Plugins with owned lifecycles | Composition from ordered profiles; capabilities with a definition, a provider and consumers; every registration owned by the plugin that made it and revoked when it unloads; visible states (installed, enabled, admitted, active, failed, draining). Third-party plugins run in bounded Wasm, distributed as signed Nostr events. |
-| 208. Speak the protocols | An MCP client for external tools and resources, ACP for editors, native function tools over the Open Responses API, and System One decisions available to the loop as a tool. |
-| 209. Measure the harness | Benchmarks for the harness itself (opening a session, folding a long conversation, reconnecting a stream, continuing an agent) and end-to-end task suites with tokens, cost, cache hits and wall-clock per task, each change measured one at a time against the simplest loop. Results report through chapters 237–239. |
-| 210. Generate candidates, then check them | Three strategies on independently testable Coax tasks under one total budget: one candidate; several independent candidates and a selection; and generate, run, read the failures and repair. Executable checks come first, and a learned verifier only once labels are trustworthy. Reported separately: whether any candidate was correct, whether selection chose one, and whether a verifier accepted a wrong one, with compilation recorded apart from correctness, visible tests for repair and held-out checks for scoring, against tokens, wall-clock time and execution cost. |
-| 211. Consent before sharing | No session content leaves the machine unless the person opts in, per session and revocably; attribution metadata is explicit and inspectable. DeepSeek's harness sends session-log suffixes to its API by default; Psionic's never does. |
-| 212. Remember a fact, then revise it | A source-linked memory store for sessions: every remembered fact names where it came from and its project scope, can be corrected or deleted, and is checked by retrieval tests across sessions that a corrected fact never returns in its old form. |
-
-The harness is product logic, so it is Coax, with the host doing processes,
-files and network. Coder's own agent loop can consume these chapters; nothing
-here replaces its simple loop with more machinery.
-Chapter 203 starts after 57 and 198–202; its fixtures and capability gates
-stay local, and its behavioral measurements use a pinned Psionic-served model.
-Any policy change is checked in Coax before the attacks are run. A clean run
-establishes the measured scope, not immunity to every future instruction.
-
-## XXII. Decisions in production
-
-A decision model is only as useful as the thresholds, evidence and checks
-around it. These chapters come from the pre-reset work on Jev, System One and
-small decision models ([notes](../docs/decisions.md)). Each extends an early
-chapter and can start as soon as that chapter exists: 213 after 16, 214 after 16
-with synthetic probabilities (live traffic after 20 and 22), 215 after 20 and 22, 216 and 217 after 24 and 25, and 218 to 222 after Part III.
-
-| Chapter | What we build and check |
-| --- | --- |
-| [213. Fit our own calibration, and refuse a stale one](ch213-fit-our-own-calibration.md) — runnable: cpu-f64-calibrate-v1, synthetic probabilities | Per-question temperatures and binned or isotonic maps fitted on a calibration split and scored on held-out data (reliability curve, expected calibration error, Brier, log loss, confident errors; no bin reported below 20 rows); a map is served only if it passes its frozen gate, and refused for any other model identity or question set. |
-| [214. Thresholds from written costs](ch214-thresholds-from-written-costs.md) — runnable: cpu-f64-threshold-v1, synthetic probabilities | A versioned threshold record derived from the cost of a wrong action and the cost of falling through, with three bands (act, abstain to a person or a stronger model, refuse), checked by held-out cost per decision with confidence intervals, never tuned on raw numbers by hand. The first project is an Elephant and Mammoth cascade with three actions (use Elephant's answer, escalate to Mammoth, abstain or ask for more), driven by an explicit table of consequences: each kind of mistake, added latency and inference cost, worked by hand first on synthetic probabilities. It is compared with always Elephant, always Mammoth and a fixed escalation rule, reporting error against coverage, escalation rate, latency and cost; the operating point is chosen on validation data before the confirmation set is opened. Two consumers, a voice interruption and a background classification, rationally choose differently from the same probabilities. |
-| [215. Record readings, join outcomes, watch drift](ch215-record-readings-join-outcomes-watch-drift.md) — runnable: cpu-f64-drift-v1, simulated drift | For every decision, the raw and calibrated probabilities, the threshold and the model identity, with no content; each joined to its later outcome or a small judged sample, maps refitted on a schedule, and an alert when calibration error rises past a stated bound. Each record also names the eligible actions, the chosen action, its selection probability and the policy version, its measured cost, and whether the outcome is still pending, so later policies can be evaluated from the log. |
-| [216. A Pylon checks itself before serving](ch216-a-pylon-checks-itself-before-serving.md) — runnable: selfcheck-v1, Elephant on the RTX 4080 | A read-only doctor and a self-check against shipped reference decisions that the Pylon must pass before it advertises a slot; an update that would change the served model identity is refused unless declared. |
-| [217. How far apart may two honest answers be?](ch217-how-far-apart-may-two-honest-answers-be.md) — runnable: cpu-f64-distance-v1, simulated backends | A distance between two machines' answer distributions (centred log probabilities), measured for honest pairs across backends and for cheap substitutes (a quantized copy, another runtime, a sibling model), with round and strike limits set between them; fresh seeded items with no answer key, the checked subset chosen after answers arrive. |
-| [218. Read a bounded ONNX graph](ch218-read-a-bounded-onnx-graph.md) — runnable: onnx-17-v1, bounded CPU | A Coax reader for a fixed opset and a small set of operators, mapping anonymous initializers to named tensors by walking the graph and refusing anything outside the set; first consumers are a static-embedding model and a tiny image classifier. |
-| [219. Write a bounded ONNX graph](ch219-write-a-bounded-onnx-graph.md) — runnable: onnx-17-write-v1, bounded CPU | Export of 8's portable inference subset as ONNX, re-read by 161 and by an independent checker, so a model trained in Psionic leaves as an inert artifact. Framework track. |
-| 220. A decision in milliseconds | A small encoder with fixed decision heads (a ModernBERT-family model with local and global attention, GeGLU and quantized embedding rows, per-head temperatures) answering a typed question in milliseconds, with identical argmaxes and a stated distance from its reference, and the p50 and p99 latency at 512 tokens on CPU and GPU. |
-| 221. Distill Elephant into a small router | An encoder student trained on Elephant's answer distributions over owned synthetic requests, with temperatures fitted on a development split; promoted only above stated agreement with Elephant, calibration error and cheap-answer precision. |
-| [222. Shadow a new model, then promote it](ch222-shadow-a-new-model-then-promote-it.md) — runnable: shadow-sim-v1, simulated traffic | A candidate model answering beside the current one on live traffic, both logged; promoted only within stated disagreement limits and with no regression in joined outcomes. Chapter 177 rolls out new builds of one model; this rolls out a different model. Candidates are immutable, activation is atomic by approved digest, and a deliberately worse candidate must leave the active one unchanged. |
-| [223. Learn which model to call](ch223-learn-which-model-to-call.md) — runnable: cpu-f64-route-v1, simulator only | First with full information: every candidate model runs on the same bounded tasks, results are scored independently, and a small logistic model or MLP learns to choose. Then with partial feedback, where only the chosen model's outcome is seen: a simulated router over three models with different strengths, costs and latency, whose true rewards the simulator knows but the learner does not. Naive, inverse-propensity and doubly robust estimates of a new policy's value are compared with the true value, including an action the old policy never tried, whose value the logs cannot recover. A small model trained in Psionic then improves how OpenAgents uses other models. |
-
-A probability is never permission: the consumer of each answer owns its
-threshold, abstention and interpretation, and these chapters make those
-choices explicit, versioned and measured.
-
-## XXIII. Programs compiled into weights
-
-A transformer can execute a program exactly when its weights are compiled
-rather than trained: attention becomes an exact memory, ReLU gates become
-arithmetic and branches, and the model's own output is the program's trace,
-so the answer carries its proof and anyone can check it by replay. This part
-rebuilds that idea, which the pre-reset work reproduced from Percepta's
-published construction ([notes](../docs/exact-computation.md)). It needs only
-chapters 1–4 and 10 for 224 to 232; 233 to 235 also need chapter 115's training
-and chapter 205's programs as tool calls. A CPU runs these programs orders of
-magnitude faster, and every chapter says so beside its own numbers: the point
-is computation inside a model that can be verified, not a faster computer.
-
-| Chapter | What we build and check |
-| --- | --- |
-| [224. A machine whose state is a trace](ch224-a-machine-whose-state-is-a-trace.md) — runnable | A small integer stack machine (constants, locals, add, subtract, multiply, load, store, conditional branch, output, return), a CPU reference interpreter, and a trace format of a few tokens per instruction whose digest identifies the run; anything outside the machine's window is a typed refusal. |
-| [225. Attention as exact memory](ch225-attention-as-exact-memory.md) — runnable | Keys placed on a parabola and a hard-max read that returns exactly the matching entry, latest write winning, with cumulative sums from uniform keys; a near miss is a typed refusal, checked against a map oracle on generated read and write streams. |
-| [226. Arithmetic and branches from ReLU](ch226-arithmetic-and-branches-from-relu.md) — runnable | Products, step-function conditionals and residual wiring that are exact inside a checked integer range (64-bit integers, then binary64 within 2^53) and refused outside it. |
-| [227. Compile a gate graph into a block](ch227-compile-a-gate-graph-into-a-block.md) — runnable | A small gate-graph language and its evaluator, a scheduler that packs gates into layers and reuses residual slots, and weights emitted for an exact block profile: chapter 10's residual stream and gated feed-forward layer without normalization, with ReLU gating, in binary64 (RMSNorm and SiLU cannot be exact, and chapter 231 rules out narrower formats). The block's forward pass must reproduce the evaluator bit for bit. |
-| [228. A harness that catches the compiler](ch228-a-harness-that-catches-the-compiler.md) — runnable | A seeded differential run over generated graphs across the evaluator, a plan interpreter and the compiled weights, which catches planted compiler bugs in the families the pre-reset harness found (same-step writes resolved in schedule order: early reuse and same-layer scheduling; accumulation across layers: a missing or wrong-signed clear) and places each in the schedule or the emitter. |
-| [229. An interpreter in weights, or one program in weights](ch229-an-interpreter-in-weights-or-one-program-in-weights.md) — runnable: iw-v1, a five-instruction register machine | A universal interpreter compiled once, against a single program baked into weights (the first Futamura projection, growing with the program's length); sizes and steps per second for both, always beside the native interpreter's. |
-| [230. Decode in logarithmic time](ch230-decode-in-logarithmic-time.md) — runnable | A convex-hull lookup that replaces the linear scan over the trace, checked equal to it with comparison counts; wall-clock figures come only from running the weights, never from an interpreter standing in for them. |
-| [231. From hard-max to softmax](ch231-from-hard-max-to-softmax.md) — runnable | The analytic bound on how far softmax can stray from hard-max, then real softmax execution under chapter 41's attention profile, measuring the trace length and number format at which exactness breaks. |
-| [232. Exact replay as a verification class](ch232-exact-replay-as-a-verification-class.md) — runnable | Full replay and window spot checks that name the first divergent step, tamper fixtures for each digest, and a verdict (exact replay, failed, unverifiable) used by the mesh's re-execution checks (26, 193) and the GPU kernels' acceptance (43–44). |
-| [233. Can gradient descent learn exact execution?](ch233-can-gradient-descent-learn-exact-execution.md) — runnable: students-v1 | Students trained on verified traces and scored by their first divergent token and by held-out program families at two, four and eight times the training length, never by loss alone; the pre-reset attempts all failed (0 of 2 exact at best), and the chapter reports whatever this one finds. Its training rows are admitted by chapter 245. |
-| [234. A frozen exact core with a learned interface](ch234-a-frozen-exact-core-with-a-learned-interface.md) — runnable: core-v1 | A compiled module behind fixed interface tokens, with a trained controller that prepares its inputs and reads its outputs, judged by replay acceptance on held-out programs: learning does the routing, the compiled core keeps the exactness. |
-| [235. Composable weight modules](ch235-composable-weight-modules.md) — runnable | Two digest-pinned compiled modules linked into one, with composition that must replay exactly, conformance cases, and a label for how a user can check a module: exact replay, deterministic tests, statistical evidence or none. |
-| 236. Pay for verified work | A run that pays its contributors for traces a validator has replayed: the worker's capability declared only after a digest-checked self-test, worker and validator on different devices and both paid, receipts before settlement, per-payout and daily caps under owner approval, settled in Bitcoin through the wallet outside Psionic; counts include only real, verified payments. |
-
-Every claim in this part names the path that produced it, reports partial
-exactness as partial, uses benchmarks that are what their names say, and ships
-the check that would falsify it. Verified traces are also training data whose
-labels are provably correct; chapter 233 tests how far that helps.
-
-## XXIV. Measure, then improve
-
-Systems that improve themselves need a measurement they cannot fool. This part
-rebuilds the pre-reset Gym as library code, then the loops that use it:
-fitting settings on recorded answers, searching policies, reflective prompt
-evolution, model judges, and outcomes turned into training rows
-([notes](../docs/self-improvement.md)). The prior is sobering: ten pre-reset
-prompt-optimization attempts produced no measured win, while fitting settings
-on recorded answers and choosing a configuration per task did. Every loop
-here keeps its held-out data unread until its choice is written down, never
-lets a component grade its own work, and keeps an addition only with a
-measured gain over the simplest baseline. 237 to 239 can start right after 16.
-
-The result the book builds toward joins most of its parts: a small Psionic
-model that chooses a cheaper inference path (221, 223), evaluated on
-independently checked outcomes (215, 240), served through the API (20) and
-promoted only when it improves a quality-and-cost objective written down in
-advance (222, 239).
-
-| Chapter | What we build and check |
-| --- | --- |
-| [237. A suite is three digests](ch237-a-suite-is-three-digests.md) — runnable: sha256-suite-v1, chapter 16's held-out suite | Items with their partitions, the question set and the gate each carry a digest; results go to an append-only store with a receipt chain, and a locked partition can be read once. Rewording a question changes only the question digest; a run over different items is refused as a comparison. |
-| [238. How far a metric moves by itself](ch238-how-far-a-metric-moves-by-itself.md) — runnable: cpu-f64-noise-v1, synthetic suite and chapter 16's Elephant run | The noise floor from seed blocks and a task-clustered paired bootstrap, and a headroom check that refuses a partition already at its ceiling; reproduced on an Elephant suite before any optimization claims a gain. |
-| [239. Gates that can say unverifiable](ch239-gates-that-can-say-unverifiable.md) — runnable: cpu-f64-verdict-v1, chapters 16, 213, 214 and 238 reporting | Comparison gates as `#authority` Coax: a decision gate requiring a gain beyond the noise floor, a probability gate that ranks log loss and confident errors above calibration error and accuracy, and an evaluation gate where cost and time can block a result but never earn one; verdicts are passed, failed or unverifiable. Chapters 16, 213 and 214 report through them. |
-| [240. Environments with checkers](ch240-environments-with-checkers.md) — runnable: cpu-int-env-v1, a simulated agent | A task, a checker, a budget and a replay as one record; the checker must fail on empty work and pass on the reference solution before the environment is admitted; rollouts use Psionic-served models. |
-| [241. Fit settings on recorded answers](ch241-fit-settings-on-recorded-answers.md) — runnable: cpu-f64-settings-v1, a simulated stall detector | Thresholds, cut points and weights fitted from answers already recorded, with zero model calls: midpoint candidates, acceptance only when strictly better on the fit set and on grouped cross-validation; the first optimization to try, before any text changes. |
-| [242. Search a policy, cheapest first](ch242-search-a-policy-cheapest-first.md) — runnable: cpu-f64-search-v1, a simulated world | Policies as digested manifests, operators named for what they do, successive halving across tiers from replay to full measurement, a per-task Pareto frontier, and the held-out read only after the winner is written down. |
-| 243. Reflective prompt evolution | GEPA in Coax: candidates whose fields are fixed by the seed, per-instance Pareto sampling, a reflector served by Psionic that is never the grader, refusal of a malformed reflection, a check that the answer space did not drift, and a canary proving the candidate reached the model. Measured honestly against chapter 241's settings fitting. |
-| 244. Judges are components | Elephant or Mammoth inside a search as a pinned judge or router: agreement with real outcomes measured, a grader whose identity differs from the student's and the reflector's, cost per judgment recorded, and a teacher's opinion never stored as a label. |
-| [245. Outcomes become training rows](ch245-outcomes-become-training-rows.md) — runnable: rows-v1, the example's feed and chapter 232's traces | Decision outcomes and verified traces admitted with their replay verdicts; labels from diffs and checks, never from an agent's own summary; an exposure ledger across artifacts so held-out groups are never trained on; splits by time. These rows feed chapters 139 to 141, 221 and 233. |
-| [246. Is the loop improving?](ch246-is-the-loop-improving.md) — runnable: cpu-f64-loop-v1, a simulated world | Cost per accepted result per cycle on a fixed set, an ablation for every component, a complexity ledger, and shared budgets for proposer, student and grader; a loop that does not improve is reported as such. |
-| [247. An agent optimizes a Psionic kernel](ch247-an-agent-optimizes-a-psionic-kernel.md) — runnable: DEVICE-F32-CHUNKED-v1 norm on an L4 | First a conventional bounded autotuner over tile and workgroup sizes, vector widths and a few fusion choices; then a harness agent proposing new implementations inside chapter 37's compute subset for a normalization kernel or a small gated feed-forward block. The agent receives the reference operation and its input contract, compilation, correctness results, profiler measurements and a fixed budget; the evaluator and its independent tests are outside its writable scope, with held-out shapes, awkward dimensions, extreme values and memory checks. A winner must keep the declared numerical behavior and improve measured performance on the declared workload, with its source, compiler identity, device, memory and timings kept. The whole search cost, failures included, is reported, and a run that finds nothing is still a result. |
-| 248. Can someone use Psionic instead of PyTorch? | An externally consumable package: public APIs, operator documentation, examples, diagnostics and reproducible benchmarks, and a command that audits a proposed model (its operators, dtypes, gradients and backends) before allocating large GPU memory. Three published PyTorch tutorials (a classifier, a convolutional model and a transformer training example) are rebuilt with public APIs only, recording model-specific lines, unsupported operations, runtime modifications, effort, cold-start compile time, throughput, memory and final quality. The gate is zero engine modifications for an ordinary new model; each one needed names a missing public abstraction, which is then added. |
-
-The loops improve the system around the weights first (settings, prompts,
-routers, harness configuration); weight updates follow only when both the
-decision and probability gates pass, since the pre-reset fine-tuning raised
-accuracy while making confidence worse.
-
-## XXV. Spacecraft and the solar system
+## XX. Spacecraft and the solar system
 
 One ordinary model of spacecraft and the solar system, built so the same state
 serves a game, a training environment and an engineering study. The planning
@@ -843,34 +682,247 @@ spheres of influence and patched conics, Lambert and Hohmann transfers, RK4
 finite burns, and a floating-origin camera, used by Orbit League and Belt 2200.
 Those stay the game layer. This part adds what an engine needs on top: pinned
 oracles, stated error budgets, separated truth and observation, batched
-rollouts, learned surrogates and admitted environments. Each chapter moves its
+rollouts, learned surrogates and admitted environments. Rigid bodies, contact,
+batching and replay come from Part XVIII (166–170, 179, 184) rather than a
+separate space engine. Each chapter moves its
 state onto Coax's checked forms (roadmap R12–R20) as they ship.
 
 | Chapter | What we build and check |
 | --- | --- |
-| 249. Ephemerides, time scales and frames | Read a pinned ephemeris (Horizons vector tables first, then one SPICE SPK segment type) with its time scale, frame, centre, units, dataset version and coverage recorded; a query outside coverage is refused. TAI, TT, TDB and UTC through a pinned leap-second table. Full state transforms (position and velocity, with the ω × r term) between barycentric inertial, heliocentric and body-fixed rotating frames from pinned rotation models; geometric, light-time-corrected and aberration-corrected states kept distinct. Checks: states and corrections against independently retrieved Horizons/SPICE values, transform round trips, a refused out-of-coverage time, and `verse/orbit.coax`'s mean-element ephemeris measured against the pinned table so its error is a number. |
-| 250. Propagate with a stated error | Analytic two-body coasts, patched conics with sphere-of-influence handoff, and restricted n-body (249's bodies as sources, vessels as test particles), on fixed-step RK4, symplectic leapfrog and higher-order compositions, and adaptive Dormand–Prince 5(4) (Coax R15). Error budgets per observable (arrival position, closest approach, energy and angular-momentum drift) with tolerance, step count and cost reported. A relativistic envelope (v/c and potential thresholds) beyond which the Newtonian profile refuses, and an ideal constant-proper-acceleration segment as its own mode. Checks: two-body against Kepler; many-period closure with bounded symplectic energy error versus measured adaptive drift; n-body against the ephemeris over a span; patched-conic versus n-body difference reported; step-halving convergence at the stated order; an out-of-envelope case refused. |
-| 251. Burns consume mass | Finite-thrust, variable-mass flight: thrust from mass flow and exhaust speed; separate accounts for energy source, reaction mass, coolant and consumables; jet power P = F v_e / 2 tying thrust, exhaust speed and available power; torque from thrust that misses the centre of mass; attitude with inertia recomputed as mass moves; constant-thrust and constant-acceleration control histories. Checks: Δv against v_e ln(m₀/m_f) across burns; no propellant counted twice; momentum conserved only for ship plus exhaust; a displaced centre of mass producing the expected torque; a configuration whose thrust and exhaust speed exceed its declared power refused. |
-| 252. Reach a moving target | Rendezvous as a boundary-value problem: Lambert guesses from `verse/orbit.coax`, the ideal constant-acceleration benchmark (t = 2√(D/a), Δv = 2√(aD)), then finite-thrust direct shooting and collocation meeting arrival position and velocity, with path constraints on crew acceleration, propellant reserve and exclusion zones; shooting sensitivities from 107's `jvp`/`vjp`. Gravity assists as flybys whose energy change follows the encounter geometry. Checks: the benchmark's 1 AU values reproduced; a solved transfer arriving within position and velocity tolerances when re-propagated by 250; aiming at the target's present position shown to miss; a flyby's heliocentric energy change matching its planet-frame turn; an infeasible request refused with the binding constraint named. |
-| 253. Heat has to go somewhere | A lumped thermal network (drive, power, electronics, occupied spaces, heat sinks, radiators): C dT/dt = P + ΣQ − εσA(T⁴ − T_bg⁴) − P_expelled, with finite sinks, expendable coolant, conductances and failures. Heat from high-power propulsion is a declared, explicitly hypothetical model (absorbed fraction, radiator temperature and area, duty cycle) or a typed rule module (Coax R20), never an unstated assumption. Checks: radiator equilibrium against the closed form (49.03 GW at 1,000 K and ε = 0.9 needs about 0.961 km² of emitting area); energy balance per node; a damaged radiator or exhausted coolant producing the expected temperature rise and throttle-down; a configuration's required radiator area reported rather than hidden. |
-| 254. Inside a turning, accelerating ship | Interior frames: proper acceleration as the floor, rotating frames with Coriolis, centrifugal and Euler terms (or inertial integration with derived observations, never both), spin habitats (ω²r), foot-attachment constraints and loose objects through a turn; a compartment model of pressure, volume and leaks through an opening. Crew acceleration tolerance as a bounded, parameterized model (magnitude, body axis, duration, posture, restraint and accumulated exposure mapped to impairment states) whose parameters carry provenance; it is a simulation model, not medical guidance. Checks: a dropped object's curved path in a drum matching the inertial solution; 0.3 g at 500 m needing about 0.7325 rpm; a braking ship keeping its floor after the flip; rotating-frame and inertial integration agreeing, with double-counting detected; a leak emptying connected volumes on the expected time scale and leaving sealed ones alone. |
-| 255. Sensors that see the past | Truth, emitted signal, received measurement and estimated track as separate data. The light-time solution, round-trip radar and command latency, detection from sensitivity, geometry, background and emission, and a track filter whose uncertainty grows with age and target maneuverability. Agents and policies receive only received measurements (Coax R18 stamps). Checks: about 499.0 s one-way at 1 AU; iterated light-time and aberration corrections against 249's references; a round trip with moving geometry; covariance growth after an unexpected maneuver; a planted policy that reads the authoritative state refused by the observation interface. |
-| 256. Time warp that stops for every event | Time acceleration as scheduling: event functions for burn boundaries, propellant exhaustion, thermal limits, proximity, possible impacts (swept time-of-impact with curvature refinement), signal arrivals and domain transitions; a long step splits at the earliest root (Coax R13, R15). Replay at omniscient and observation levels: what a controller knew when it acted (Coax R16). Checks: a 1,200 km/s projectile cannot pass a target at any warp; identical event order and final state at warp 1 and 10⁶; a mid-run snapshot restoring the same run; a per-participant warp inside a shared encounter refused. |
-| 257. Hits through layers | Hypervelocity impacts as calibrated response models over a component graph, not a hydrocode: penetration through layers (sacrificial bumper, rear wall, structure, components) by relative velocity, projectile mass and shape, incidence and material, from tables fitted to published ballistic-limit equations; a hit removes or degrades graph edges (coolant line, power bus, pressure boundary), so failures propagate into 251, 253 and 254. Fragments with real collision risk become tracked bodies; small debris stays cosmetic. Checks: tables against their source equations at sampled points; a query outside the table refused; a severed coolant line raising drive temperature and cutting thrust; recoil and venting changing a docking solution. |
-| 258. One world at three fidelities | Fidelity profiles (engineering baseline, game, teaching presentation) over the same state; typed rule modules that declare which objects and laws they change; provenance (explicit, inferred or invented, with unit and source) on every tunable (Coax R20). Batched rollouts of 250–256 through 107's `vmap` on CPU and GPU; learned surrogates for propagation and thermal steps (109's method) with error reported against the solver and refusal outside their training envelope; the scenario admitted as a training environment through 240's checker and replayed with 232. Checks: presentation changes leaving trajectories bit for bit identical; a rule module changing only what it declares; engineering profile refusing invented parameters; a regression suite (two-body orbit, constant-acceleration segment, variable-mass rocket, off-centre thruster, rotating-frame release, docking frame change, one- and two-way signals, fast projectile, radiator equilibrium, compartment leak) passing at engineering fidelity. |
+| 193. Ephemerides, time scales and frames | Read a pinned ephemeris (Horizons vector tables first, then one SPICE SPK segment type) with its time scale, frame, centre, units, dataset version and coverage recorded; a query outside coverage is refused. TAI, TT, TDB and UTC through a pinned leap-second table. Full state transforms (position and velocity, with the ω × r term) between barycentric inertial, heliocentric and body-fixed rotating frames from pinned rotation models; geometric, light-time-corrected and aberration-corrected states kept distinct. Checks: states and corrections against independently retrieved Horizons/SPICE values, transform round trips, a refused out-of-coverage time, and `verse/orbit.coax`'s mean-element ephemeris measured against the pinned table so its error is a number. |
+| 194. Propagate with a stated error | Analytic two-body coasts, patched conics with sphere-of-influence handoff, and restricted n-body (193's bodies as sources, vessels as test particles), on fixed-step RK4, symplectic leapfrog and higher-order compositions, and adaptive Dormand–Prince 5(4) (Coax R15). Error budgets per observable (arrival position, closest approach, energy and angular-momentum drift) with tolerance, step count and cost reported. A relativistic envelope (v/c and potential thresholds) beyond which the Newtonian profile refuses, and an ideal constant-proper-acceleration segment as its own mode. Checks: two-body against Kepler; many-period closure with bounded symplectic energy error versus measured adaptive drift; n-body against the ephemeris over a span; patched-conic versus n-body difference reported; step-halving convergence at the stated order; an out-of-envelope case refused. |
+| 195. Burns consume mass | Finite-thrust, variable-mass flight: thrust from mass flow and exhaust speed; separate accounts for energy source, reaction mass, coolant and consumables; jet power P = F v_e / 2 tying thrust, exhaust speed and available power; torque from thrust that misses the centre of mass; attitude with inertia recomputed as mass moves; constant-thrust and constant-acceleration control histories. Checks: Δv against v_e ln(m₀/m_f) across burns; no propellant counted twice; momentum conserved only for ship plus exhaust; a displaced centre of mass producing the expected torque; a configuration whose thrust and exhaust speed exceed its declared power refused. |
+| 196. Reach a moving target | Rendezvous as a boundary-value problem: Lambert guesses from `verse/orbit.coax`, the ideal constant-acceleration benchmark (t = 2√(D/a), Δv = 2√(aD)), then finite-thrust direct shooting and collocation meeting arrival position and velocity, with path constraints on crew acceleration, propellant reserve and exclusion zones; shooting sensitivities from 107's `jvp`/`vjp`. Gravity assists as flybys whose energy change follows the encounter geometry. Checks: the benchmark's 1 AU values reproduced; a solved transfer arriving within position and velocity tolerances when re-propagated by 194; aiming at the target's present position shown to miss; a flyby's heliocentric energy change matching its planet-frame turn; an infeasible request refused with the binding constraint named. |
+| 197. Heat has to go somewhere | A lumped thermal network (drive, power, electronics, occupied spaces, heat sinks, radiators): C dT/dt = P + ΣQ − εσA(T⁴ − T_bg⁴) − P_expelled, with finite sinks, expendable coolant, conductances and failures. Heat from high-power propulsion is a declared, explicitly hypothetical model (absorbed fraction, radiator temperature and area, duty cycle) or a typed rule module (Coax R20), never an unstated assumption. Checks: radiator equilibrium against the closed form (49.03 GW at 1,000 K and ε = 0.9 needs about 0.961 km² of emitting area); energy balance per node; a damaged radiator or exhausted coolant producing the expected temperature rise and throttle-down; a configuration's required radiator area reported rather than hidden. |
+| 198. Inside a turning, accelerating ship | Interior frames: proper acceleration as the floor, rotating frames with Coriolis, centrifugal and Euler terms (or inertial integration with derived observations, never both), spin habitats (ω²r), foot-attachment constraints and loose objects through a turn; a compartment model of pressure, volume and leaks through an opening. Crew acceleration tolerance as a bounded, parameterized model (magnitude, body axis, duration, posture, restraint and accumulated exposure mapped to impairment states) whose parameters carry provenance; it is a simulation model, not medical guidance. Checks: a dropped object's curved path in a drum matching the inertial solution; 0.3 g at 500 m needing about 0.7325 rpm; a braking ship keeping its floor after the flip; rotating-frame and inertial integration agreeing, with double-counting detected; a leak emptying connected volumes on the expected time scale and leaving sealed ones alone. |
+| 199. Sensors that see the past | Truth, emitted signal, received measurement and estimated track as separate data. The light-time solution, round-trip radar and command latency, detection from sensitivity, geometry, background and emission, and a track filter whose uncertainty grows with age and target maneuverability. Agents and policies receive only received measurements (Coax R18 stamps). Checks: about 499.0 s one-way at 1 AU; iterated light-time and aberration corrections against 193's references; a round trip with moving geometry; covariance growth after an unexpected maneuver; a planted policy that reads the authoritative state refused by the observation interface. |
+| 200. Time warp that stops for every event | Time acceleration as scheduling: event functions for burn boundaries, propellant exhaustion, thermal limits, proximity, possible impacts (swept time-of-impact with curvature refinement), signal arrivals and domain transitions; a long step splits at the earliest root (Coax R13, R15). Replay at omniscient and observation levels: what a controller knew when it acted (Coax R16). Checks: a 1,200 km/s projectile cannot pass a target at any warp; identical event order and final state at warp 1 and 10⁶; a mid-run snapshot restoring the same run; a per-participant warp inside a shared encounter refused. |
+| 201. Hits through layers | Hypervelocity impacts as calibrated response models over a component graph, not a hydrocode: penetration through layers (sacrificial bumper, rear wall, structure, components) by relative velocity, projectile mass and shape, incidence and material, from tables fitted to published ballistic-limit equations; a hit removes or degrades graph edges (coolant line, power bus, pressure boundary), so failures propagate into 195, 197 and 198. Fragments with real collision risk become tracked bodies; small debris stays cosmetic. Checks: tables against their source equations at sampled points; a query outside the table refused; a severed coolant line raising drive temperature and cutting thrust; recoil and venting changing a docking solution. |
+| 202. One world at three fidelities | Fidelity profiles (engineering baseline, game, teaching presentation) over the same state; typed rule modules that declare which objects and laws they change; provenance (explicit, inferred or invented, with unit and source) on every tunable (Coax R20). Batched rollouts of 194–200 through 107's `vmap` on CPU and GPU; learned surrogates for propagation and thermal steps (109's method) with error reported against the solver and refusal outside their training envelope; the scenario admitted as a training environment through 273's checker and replayed with 265. Checks: presentation changes leaving trajectories bit for bit identical; a rule module changing only what it declares; engineering profile refusing invented parameters; a regression suite (two-body orbit, constant-acceleration segment, variable-mass rocket, off-centre thruster, rotating-frame release, docking frame change, one- and two-way signals, fast projectile, radiator equilibrium, compartment leak) passing at engineering fidelity. |
 
-Chapter 249 needs only Coax R12 and R13 forms and can start on plain f64
-fields; 250 needs 249 and the R15 integrators. 251 builds on 250; 252 needs
-250–251 and 107. 253, 254 and 255 each need 251 (255 also 249) and can run in
-any order. 256 collects their event functions and needs R16 replay; 257 needs
-251, 253 and 254. 258 needs the rest, plus 107, 109, 232 and 240. The frames,
+Chapter 193 needs only Coax R12 and R13 forms and can start on plain f64
+fields; 194 needs 193 and the R15 integrators. 195 builds on 194; 196 needs
+194–195 and 107. 197, 198 and 199 each need 195 (199 also 193) and can run in
+any order. 200 collects their event functions and needs R16 replay; 201 needs
+195, 197 and 198. 202 needs the rest, plus 107, 109, 265 and 273. The frames,
 time scales, integrators, stamps, replay and environment records are the same
-ones chapters 167–169 use, so a robot and a spacecraft share one foundation.
+ones chapters 189–191 use, so a robot and a spacecraft share one foundation.
 Engineering fidelity means agreement with the named public references within
 stated error; it is a study profile, not flight qualification, and no
 chapter commands real hardware. Hypothetical propulsion, fictional rules and
 crew tolerances stay in declared, inspectable modules and are never part of
 the engineering profile.
+
+## XXI. Host inference in production
+
+This part turns a qualified model into a service that other people and
+agents depend on. It follows the production practice described in
+[Inference Engineering](../docs/serving/inference-engineering.md), but
+builds the infrastructure in Coax: admission, scheduling, routing, scaling,
+rollout and metering decide in Coax, with `#authority` files and
+zero-survivor mutation where they decide work, money or policy. The host
+does network, process and device effects only, as the
+[Coaxial dev server](../../coax/web.md) already does for the website. It
+grows Part III's first deployment: chapter 203 generalizes the timing of
+18, chapter 204 the server of 20, and chapters 206–212 add what one resident
+model serving one decision at a time leaves out.
+
+| Chapter | What we build and check |
+| --- | --- |
+| [203. Benchmark a service, not a kernel](ch203-benchmark-a-service-not-a-kernel.md) — runnable: bench-us-v1, loopback load generator | Time to first token, inter-token latency, per-user and total tokens per second, and end-to-end versus inference-only time at P50, P90, P95 and P99. A load generator with a named RNG reproduces input/output length distributions, request contents, sampling parameters and jittered arrival patterns; recorded traffic can be replayed as a shadow. A fixed baseline is required, and only one variable changes per run. |
+| 204. Serve a model with an honest capability | Shared System One protocol integration, versioned manifests, bounded requests, cancellation and evidence for each model/backend/profile; request and response schemas start in `proto/`. |
+| 205. Clients, streams and background jobs | Streamed tokens and audio over a bidirectional connection, session reuse, cancellation that reaches the scheduler, and asynchronous jobs that are acknowledged at once and complete later under their own deadline; an OpenAI-compatible Responses edge is translated into the System One contract, not the other way round. |
+| 206. Continuous batching and a fair scheduler | Token-level batching that admits and retires requests every step under a state-memory budget, chunked prefill interleaved with decode, preemption and priority classes. Every request's output must be identical to running it alone (batch invariance), which the fixed reduction order makes testable. |
+| 207. Paged state and a tiered prefix cache | Fixed-size pages for KV cache and for hybrid recurrent snapshots; a prefix cache across requests that spills from device to host memory to local disk, with measured hit rate, eviction and time to first token on hits versus misses. Prefixes are found through a content-hashed chain of 128-token pages; pages never depend on a compute machine staying alive, restore overlaps layer by layer with compute, and retention is set per traffic type. Any approximate reconstruction, such as bounded sliding-window replay, is its own profile and never enters an exact cache identity. |
+| 208. Route, queue and scale replicas | A cache-aware and adapter-aware router, a bounded priority queue, and a replica autoscaler (minimum and maximum replicas, window, scale-down delay, concurrency target, scale to zero). The policies are pure Coax, checked against a deterministic discrete-event simulation of recorded and synthetic traffic before any machine runs them. Prefill cost is modelled from uncached tokens and the prefix they attend to, with length buckets and engines that pull work; decode balances both request count and total cache length per replica. |
+| 209. Start fast | Cold start split into machine, process, weights and kernel startup and measured separately; content-addressed weight delivery from chapter 7's identities, mapped loading, and generated-kernel caches keyed by device, compiler and source identity. |
+| 210. Ship without downtime | Canary rollout with gradual traffic ramps and automatic revert, driven by both latency objectives and golden requests whose outputs must match retained evidence; draining in-flight requests before a replica stops. |
+| 211. Observe, meter and price | Volume, input/output lengths, status counts, latency percentiles, replicas, utilization and queue depth; audit logs that record changes and no user content by default; per-request usage records bound to execution evidence and a pricing policy in an `#authority` file. Settlement stays in the Bitcoin wallet, outside Psionic. |
+| 212. Survive failures | Health checks, cordoning a failing device or machine, idempotent retries, active-active and active-passive failover between machines or regions, data-residency routing, isolation of tool execution and protection of weights. |
+| 213. Disaggregate prefill and decode | Conditional disaggregation: separate prefill and decode workers exchange a complete state snapshot (chapter 12's identity-bound claim, extended for transfer) as a versioned message; a prefill queue, a local-prefill threshold and an xPyD ratio that adjusts to traffic. Only after chapters 203 and 206 measure that prefill interference is the bottleneck. DeepSeek's published layout (small prefill groups, large decode groups, a separate vision encoder role, scaling prefill on unserved tokens and decode on requests in flight) is the reference design. |
+| 214. Split a model across devices | Tensor parallelism for latency and expert parallelism for gpt-oss, DeepSeek and other MoE throughput: collectives, sharded weights and state, and results compared with the single-device reference. Expert parallelism stays inside one fast interconnect domain, with data-parallel attention, redundant experts rebalanced from a load window and balance reported as busiest over mean, measured by time rather than token count. |
+| 215. A pipeline of models | A compound voice workload (voice activity, transcription, decision model, speech) with each stage scaled separately in one cluster, an end-to-end latency budget per stage and a measured cost for each network hop. |
+| 216. A decision model steers voice | Elephant as the voice engine's `decisions:<model>` decider: proposals pass the existing never-awaited gate (clamping, confidence floor, epoch and deadline fences, recorded drop reasons); a slow or absent model can only fail to steer, never stall a frame. |
+
+Serving can begin after the first qualified decision model and an actual
+consumer contract. Chapter 216 is the first consumer: it needs 16's published
+semantics and 163's measured latency, and the gate stays the authority over
+what a decision may change. The more traffic a deployment has, the more of
+this part it can justify: disaggregation, multi-device inference and global
+caches each wait for a measurement that shows the need, not for a chapter
+number. Hosted machines need a qualified Linux target and an owner-approved
+budget; buying GPUs, choosing providers and compliance certification are
+owner decisions recorded in `NEEDS_OWNER.md`, not chapters.
+
+## XXII. Inference across a mesh
+
+A mesh pools memory and compute across machines that are loosely connected,
+over ordinary networks rather than device interconnects. Part IV's Pylons
+route whole decisions to whole machines; this part splits a model that no
+single machine holds. Chapter 214 is the tightly coupled case in one machine
+or rack. The design follows the
+[Mesh-LLM lessons](../docs/serving/mesh.md) recorded before the reset, with
+the trust rules from the earlier private-inference work. Coax decides
+placement, admission, routing, verification and price; the host provides
+transport, files and devices.
+
+| Chapter | What we build and check |
+| --- | --- |
+| 217. Split a model into stages | A stage boundary contract derived from the model: a typed list of everything that crosses it (hidden state, residual streams, shared-KV and recurrent sidebands), bound to the artifact, stage range and protocol version. Two stages must match the whole model on identical tokens: logits, greedy output, cached continuation. Dense Ministral 3 first, with raw activations. |
+| 218. Stage packages | Each stage fetches and loads only its own tensors and required shared assets, verified chunk by chunk against chapter 7's identities. Fetched bytes, materialized bytes, peak memory and time to readiness are measured separately. |
+| 219. Peers, transport and discovery | Encrypted peer connections with the direct or relayed path recorded and measured; private meshes joined by invitation, public ones discovered through Part IV's NIP-PYLON beacons, whose model groups advertise a head and its stages; an owner control plane separate from the inference plane. |
+| 220. Place the model | Run whole on one machine if it fits, else route the whole request to a peer, else split. Splitting uses per-layer memory and measured stage and link costs, and states its objective: the sum of stage times for one request's latency, or the slowest stage for throughput. The placement planner is pure Coax, checked in simulation. |
+| 221. Stage lifecycle and fencing | Load downstream stages first and publish the entry route only when every stage is ready. A topology generation fences out stale commands, and partial failures withdraw the route and release memory. Each live sequence declares whether it drains, fails or restores. |
+| 222. Experts across machines and from disk | Expert parallelism over a mesh with routed tokens and gathered outputs, and expert streaming from local disk for MoE models larger than memory; measured against chapter 85's single-machine results. |
+| 223. Route by saved work | Mesh-wide cache-aware routing that compares queue delay plus restore and suffix-prefill cost against cold prefill. Cache advertisements are bounded, short-lived, salted hints that never contain raw tokens; claimed hits that turn out to be missing fall back, and the realized saving is recorded. |
+| 224. Compress activations exactly | Codec negotiation with a mandatory raw fallback and round-trip equality of each frame, with the full encode, decode and copy cost measured. Lossy activation formats are a separate profile with their own quality evaluation. |
+| 225. Who can read the prompt | Trust levels computed from evidence: a peer serving the request reads it; a hardened process on a machine its owner controls is harder to snoop on, not private; only an attested hardware enclave running a logged release is private. Requests are routed by sensitivity and fail closed rather than falling back. |
+| 226. Check a peer's work | Sampled re-execution of a peer's work on a trusted node. Results match exactly only when both sides run the same backend profile, and are otherwise compared within that profile's tolerance. Signed usage receipts per stage, a pricing policy in an `#authority` file, and settlement in Bitcoin through the wallet, outside Psionic. |
+| 227. Work with Mesh-LLM | A Psionic server attached to an existing Mesh-LLM mesh through its plugin endpoint interface, serving the OpenAI-compatible and `/systemone` decision contracts so the mesh can route to it. Payments interoperate with its token-metered Lightning exchange (deposit first, then settle from reported usage) through our own wallet. Its code is read as untrusted source; joining a public mesh is an owner decision. |
+| 228. DeepSeek V4.1 Flash across stages | Contiguous layer stages on several devices or machines. The boundary carries the four residual streams, the previous mix, source KV and indexer state, chosen candidate blocks and Engram history, in BF16 rather than F32. Generation fencing and stage recovery apply, and every split must match chapter 100's one-machine result on identical tokens, with per-hop latency recorded. |
+| 229. Mistral Large 4 across a mesh | Mistral-Large-3-675B (Apache-2.0, 681.5 GB of originals): latent attention and 135-expert routing placed across machines, with parity against the whole-model reference on selected layers and tokens, per-hop latency and per-stage memory. |
+| 230. Le Chonk across a mesh | Mistral Large 4 with all of Part VI: 1,060.6 GB of FP8 originals placed across machines, sparse attention and shared layers crossing stage boundaries, the built-in draft head, and recorded parity, latency and cost. Serving it to others is subject to its licence. |
+
+A mesh multiplies failure modes: placement plans, advertisements and
+handshakes are not evidence of correct execution. Each split earns its own
+parity evidence on the machines that ran it. Joining a public mesh, paying
+peers or offering Large 4 as a service each need owner approval.
+
+## XXIII. A harness for Psionic models
+
+A harness turns a served model into an agent: it assembles each request, runs
+the tools the model asks for, keeps the session's history and decides when a
+turn is done. DeepSeek publishes its models, its serving system and
+[its harness](../docs/harness.md), and the three are designed together; this
+part builds the Psionic versions in Coax, on Part III's API and Part XXI's
+server. The default is the simplest loop that works. Every addition (a guard,
+a condenser, a plugin) earns its place with a measured gain on tasks it was not
+built from, and is removed otherwise.
+
+| Chapter | What we build and check |
+| --- | --- |
+| 231. The simplest loop | One agent loop over Psionic's API: assemble the request, stream the answer, run the tools it calls, repeat until nothing is owed. Turns and steps have exact boundaries, every turn has a deadline, and cancellation stops the model and the tools together. |
+| 232. Model-visible means logged | An append-only session log of durable events (turns, steps, user and assistant messages, tool calls and results); the model's history is derived from the log, so every request can be rebuilt byte for byte and replayed. The log format is versioned and old sessions still open. |
+| 233. Keep the prefix stable | Prompt assembly in a fixed order (system sections, tool schemas, then history) so each turn only appends to the model-visible bytes; request metadata stays outside the model's input. Measured against chapter 207's prefix cache: hit rate, prefill saved and time to first token across a long session. |
+| 234. Tools as typed capabilities | A tool registry whose schemas come from `proto/`, a guarded pipeline (before, run, after) with structured errors, arguments constrained by chapter 53 so a malformed call is never generated, and filesystem and process tools that share one execution world. |
+| 235. A sandbox and approvals | Spawned processes confined to declared roots and resources, an approval policy for anything outside them, per-tool timeouts and a guard against repeating the same failing call. No tool inherits the host's authority by default. |
+| 236. A document tries to become the system prompt | A replayable prompt-injection lab for chapter 57's documentation assistant and the harness: plant hostile instructions in retrieved passages and tool results, including forged role markers, requests to reveal a synthetic sentinel and attempts to expand a tool grant. Local simulated tools, disposable files and a captured outbound sink make every effect inspectable. Deterministic checks send unauthorized calls directly through the capability gate and require zero unauthorized effects; real model runs report attempted calls, admitted effects, answer leakage and legitimate-task completion separately. Compare paired benign and hostile runs, freezing grants, budgets, model/build identities, seeds, acceptance bounds and held-out attack variants before comparison. Retrieved and tool bytes cannot grant authority, and refusing every task cannot pass the utility gate. |
+| 237. Condense the history | Older history replaced by one marked summary when the context fills, bracketed in the log so a crash leaves a visible record; tool results pruned by rule. Each condensation breaks the stable prefix, so it is scheduled to minimize recomputed prefill, and that cost is measured. |
+| 238. Programs as tool calls | A model-written program run once against host-provided functions in a bounded, sandboxed runtime, returning one structured result instead of many round trips; output, time and memory limits refuse rather than truncate. |
+| 239. Forks, subagents and jobs | A session forked at a turn boundary from its own log, reusing the parent's cached prefix state on the server; subagents with their own scope and budget; background jobs that outlive a turn; a goal that a session works toward across turns. |
+| 240. Plugins with owned lifecycles | Composition from ordered profiles; capabilities with a definition, a provider and consumers; every registration owned by the plugin that made it and revoked when it unloads; visible states (installed, enabled, admitted, active, failed, draining). Third-party plugins run in bounded Wasm, distributed as signed Nostr events. |
+| 241. Speak the protocols | An MCP client for external tools and resources, ACP for editors, native function tools over the Open Responses API, and System One decisions available to the loop as a tool. |
+| 242. Measure the harness | Benchmarks for the harness itself (opening a session, folding a long conversation, reconnecting a stream, continuing an agent) and end-to-end task suites with tokens, cost, cache hits and wall-clock per task, each change measured one at a time against the simplest loop. Results report through chapters 270–272. |
+| 243. Generate candidates, then check them | Three strategies on independently testable Coax tasks under one total budget: one candidate; several independent candidates and a selection; and generate, run, read the failures and repair. Executable checks come first, and a learned verifier only once labels are trustworthy. Reported separately: whether any candidate was correct, whether selection chose one, and whether a verifier accepted a wrong one, with compilation recorded apart from correctness, visible tests for repair and held-out checks for scoring, against tokens, wall-clock time and execution cost. |
+| 244. Consent before sharing | No session content leaves the machine unless the person opts in, per session and revocably; attribution metadata is explicit and inspectable. DeepSeek's harness sends session-log suffixes to its API by default; Psionic's never does. |
+| 245. Remember a fact, then revise it | A source-linked memory store for sessions: every remembered fact names where it came from and its project scope, can be corrected or deleted, and is checked by retrieval tests across sessions that a corrected fact never returns in its old form. |
+
+The harness is product logic, so it is Coax, with the host doing processes,
+files and network. Coder's own agent loop can consume these chapters; nothing
+here replaces its simple loop with more machinery.
+Chapter 236 starts after 57 and 231–235; its fixtures and capability gates
+stay local, and its behavioral measurements use a pinned Psionic-served model.
+Any policy change is checked in Coax before the attacks are run. A clean run
+establishes the measured scope, not immunity to every future instruction.
+
+## XXIV. Decisions in production
+
+A decision model is only as useful as the thresholds, evidence and checks
+around it. These chapters come from the pre-reset work on Jev, System One and
+small decision models ([notes](../docs/decisions.md)). Each extends an early
+chapter and can start as soon as that chapter exists: 246 after 16, 247 after 16
+with synthetic probabilities (live traffic after 20 and 22), 248 after 20 and 22, 249 and 250 after 24 and 25, and 251 to 255 after Part III.
+
+| Chapter | What we build and check |
+| --- | --- |
+| [246. Fit our own calibration, and refuse a stale one](ch246-fit-our-own-calibration.md) — runnable: cpu-f64-calibrate-v1, synthetic probabilities | Per-question temperatures and binned or isotonic maps fitted on a calibration split and scored on held-out data (reliability curve, expected calibration error, Brier, log loss, confident errors; no bin reported below 20 rows); a map is served only if it passes its frozen gate, and refused for any other model identity or question set. |
+| [247. Thresholds from written costs](ch247-thresholds-from-written-costs.md) — runnable: cpu-f64-threshold-v1, synthetic probabilities | A versioned threshold record derived from the cost of a wrong action and the cost of falling through, with three bands (act, abstain to a person or a stronger model, refuse), checked by held-out cost per decision with confidence intervals, never tuned on raw numbers by hand. The first project is an Elephant and Mammoth cascade with three actions (use Elephant's answer, escalate to Mammoth, abstain or ask for more), driven by an explicit table of consequences: each kind of mistake, added latency and inference cost, worked by hand first on synthetic probabilities. It is compared with always Elephant, always Mammoth and a fixed escalation rule, reporting error against coverage, escalation rate, latency and cost; the operating point is chosen on validation data before the confirmation set is opened. Two consumers, a voice interruption and a background classification, rationally choose differently from the same probabilities. |
+| [248. Record readings, join outcomes, watch drift](ch248-record-readings-join-outcomes-watch-drift.md) — runnable: cpu-f64-drift-v1, simulated drift | For every decision, the raw and calibrated probabilities, the threshold and the model identity, with no content; each joined to its later outcome or a small judged sample, maps refitted on a schedule, and an alert when calibration error rises past a stated bound. Each record also names the eligible actions, the chosen action, its selection probability and the policy version, its measured cost, and whether the outcome is still pending, so later policies can be evaluated from the log. |
+| [249. A Pylon checks itself before serving](ch249-a-pylon-checks-itself-before-serving.md) — runnable: selfcheck-v1, Elephant on the RTX 4080 | A read-only doctor and a self-check against shipped reference decisions that the Pylon must pass before it advertises a slot; an update that would change the served model identity is refused unless declared. |
+| [250. How far apart may two honest answers be?](ch250-how-far-apart-may-two-honest-answers-be.md) — runnable: cpu-f64-distance-v1, simulated backends | A distance between two machines' answer distributions (centred log probabilities), measured for honest pairs across backends and for cheap substitutes (a quantized copy, another runtime, a sibling model), with round and strike limits set between them; fresh seeded items with no answer key, the checked subset chosen after answers arrive. |
+| [251. Read a bounded ONNX graph](ch251-read-a-bounded-onnx-graph.md) — runnable: onnx-17-v1, bounded CPU | A Coax reader for a fixed opset and a small set of operators, mapping anonymous initializers to named tensors by walking the graph and refusing anything outside the set; first consumers are a static-embedding model and a tiny image classifier. |
+| [252. Write a bounded ONNX graph](ch252-write-a-bounded-onnx-graph.md) — runnable: onnx-17-write-v1, bounded CPU | Export of 8's portable inference subset as ONNX, re-read by 161 and by an independent checker, so a model trained in Psionic leaves as an inert artifact. Framework track. |
+| 253. A decision in milliseconds | A small encoder with fixed decision heads (a ModernBERT-family model with local and global attention, GeGLU and quantized embedding rows, per-head temperatures) answering a typed question in milliseconds, with identical argmaxes and a stated distance from its reference, and the p50 and p99 latency at 512 tokens on CPU and GPU. |
+| 254. Distill Elephant into a small router | An encoder student trained on Elephant's answer distributions over owned synthetic requests, with temperatures fitted on a development split; promoted only above stated agreement with Elephant, calibration error and cheap-answer precision. |
+| [255. Shadow a new model, then promote it](ch255-shadow-a-new-model-then-promote-it.md) — runnable: shadow-sim-v1, simulated traffic | A candidate model answering beside the current one on live traffic, both logged; promoted only within stated disagreement limits and with no regression in joined outcomes. Chapter 210 rolls out new builds of one model; this rolls out a different model. Candidates are immutable, activation is atomic by approved digest, and a deliberately worse candidate must leave the active one unchanged. |
+| [256. Learn which model to call](ch256-learn-which-model-to-call.md) — runnable: cpu-f64-route-v1, simulator only | First with full information: every candidate model runs on the same bounded tasks, results are scored independently, and a small logistic model or MLP learns to choose. Then with partial feedback, where only the chosen model's outcome is seen: a simulated router over three models with different strengths, costs and latency, whose true rewards the simulator knows but the learner does not. Naive, inverse-propensity and doubly robust estimates of a new policy's value are compared with the true value, including an action the old policy never tried, whose value the logs cannot recover. A small model trained in Psionic then improves how OpenAgents uses other models. |
+
+A probability is never permission: the consumer of each answer owns its
+threshold, abstention and interpretation, and these chapters make those
+choices explicit, versioned and measured.
+
+## XXV. Programs compiled into weights
+
+A transformer can execute a program exactly when its weights are compiled
+rather than trained: attention becomes an exact memory, ReLU gates become
+arithmetic and branches, and the model's own output is the program's trace,
+so the answer carries its proof and anyone can check it by replay. This part
+rebuilds that idea, which the pre-reset work reproduced from Percepta's
+published construction ([notes](../docs/exact-computation.md)). It needs only
+chapters 1–4 and 10 for 257 to 265; 266 to 268 also need chapter 115's training
+and chapter 238's programs as tool calls. A CPU runs these programs orders of
+magnitude faster, and every chapter says so beside its own numbers: the point
+is computation inside a model that can be verified, not a faster computer.
+
+| Chapter | What we build and check |
+| --- | --- |
+| [257. A machine whose state is a trace](ch257-a-machine-whose-state-is-a-trace.md) — runnable | A small integer stack machine (constants, locals, add, subtract, multiply, load, store, conditional branch, output, return), a CPU reference interpreter, and a trace format of a few tokens per instruction whose digest identifies the run; anything outside the machine's window is a typed refusal. |
+| [258. Attention as exact memory](ch258-attention-as-exact-memory.md) — runnable | Keys placed on a parabola and a hard-max read that returns exactly the matching entry, latest write winning, with cumulative sums from uniform keys; a near miss is a typed refusal, checked against a map oracle on generated read and write streams. |
+| [259. Arithmetic and branches from ReLU](ch259-arithmetic-and-branches-from-relu.md) — runnable | Products, step-function conditionals and residual wiring that are exact inside a checked integer range (64-bit integers, then binary64 within 2^53) and refused outside it. |
+| [260. Compile a gate graph into a block](ch260-compile-a-gate-graph-into-a-block.md) — runnable | A small gate-graph language and its evaluator, a scheduler that packs gates into layers and reuses residual slots, and weights emitted for an exact block profile: chapter 10's residual stream and gated feed-forward layer without normalization, with ReLU gating, in binary64 (RMSNorm and SiLU cannot be exact, and chapter 264 rules out narrower formats). The block's forward pass must reproduce the evaluator bit for bit. |
+| [261. A harness that catches the compiler](ch261-a-harness-that-catches-the-compiler.md) — runnable | A seeded differential run over generated graphs across the evaluator, a plan interpreter and the compiled weights, which catches planted compiler bugs in the families the pre-reset harness found (same-step writes resolved in schedule order: early reuse and same-layer scheduling; accumulation across layers: a missing or wrong-signed clear) and places each in the schedule or the emitter. |
+| [262. An interpreter in weights, or one program in weights](ch262-an-interpreter-in-weights-or-one-program-in-weights.md) — runnable: iw-v1, a five-instruction register machine | A universal interpreter compiled once, against a single program baked into weights (the first Futamura projection, growing with the program's length); sizes and steps per second for both, always beside the native interpreter's. |
+| [263. Decode in logarithmic time](ch263-decode-in-logarithmic-time.md) — runnable | A convex-hull lookup that replaces the linear scan over the trace, checked equal to it with comparison counts; wall-clock figures come only from running the weights, never from an interpreter standing in for them. |
+| [264. From hard-max to softmax](ch264-from-hard-max-to-softmax.md) — runnable | The analytic bound on how far softmax can stray from hard-max, then real softmax execution under chapter 41's attention profile, measuring the trace length and number format at which exactness breaks. |
+| [265. Exact replay as a verification class](ch265-exact-replay-as-a-verification-class.md) — runnable | Full replay and window spot checks that name the first divergent step, tamper fixtures for each digest, and a verdict (exact replay, failed, unverifiable) used by the mesh's re-execution checks (26, 226) and the GPU kernels' acceptance (43–44). |
+| [266. Can gradient descent learn exact execution?](ch266-can-gradient-descent-learn-exact-execution.md) — runnable: students-v1 | Students trained on verified traces and scored by their first divergent token and by held-out program families at two, four and eight times the training length, never by loss alone; the pre-reset attempts all failed (0 of 2 exact at best), and the chapter reports whatever this one finds. Its training rows are admitted by chapter 278. |
+| [267. A frozen exact core with a learned interface](ch267-a-frozen-exact-core-with-a-learned-interface.md) — runnable: core-v1 | A compiled module behind fixed interface tokens, with a trained controller that prepares its inputs and reads its outputs, judged by replay acceptance on held-out programs: learning does the routing, the compiled core keeps the exactness. |
+| [268. Composable weight modules](ch268-composable-weight-modules.md) — runnable | Two digest-pinned compiled modules linked into one, with composition that must replay exactly, conformance cases, and a label for how a user can check a module: exact replay, deterministic tests, statistical evidence or none. |
+| 269. Pay for verified work | A run that pays its contributors for traces a validator has replayed: the worker's capability declared only after a digest-checked self-test, worker and validator on different devices and both paid, receipts before settlement, per-payout and daily caps under owner approval, settled in Bitcoin through the wallet outside Psionic; counts include only real, verified payments. |
+
+Every claim in this part names the path that produced it, reports partial
+exactness as partial, uses benchmarks that are what their names say, and ships
+the check that would falsify it. Verified traces are also training data whose
+labels are provably correct; chapter 266 tests how far that helps.
+
+## XXVI. Measure, then improve
+
+Systems that improve themselves need a measurement they cannot fool. This part
+rebuilds the pre-reset Gym as library code, then the loops that use it:
+fitting settings on recorded answers, searching policies, reflective prompt
+evolution, model judges, and outcomes turned into training rows
+([notes](../docs/self-improvement.md)). The prior is sobering: ten pre-reset
+prompt-optimization attempts produced no measured win, while fitting settings
+on recorded answers and choosing a configuration per task did. Every loop
+here keeps its held-out data unread until its choice is written down, never
+lets a component grade its own work, and keeps an addition only with a
+measured gain over the simplest baseline. 270 to 272 can start right after 16.
+
+The result the book builds toward joins most of its parts: a small Psionic
+model that chooses a cheaper inference path (254, 256), evaluated on
+independently checked outcomes (248, 273), served through the API (20) and
+promoted only when it improves a quality-and-cost objective written down in
+advance (255, 272).
+
+| Chapter | What we build and check |
+| --- | --- |
+| [270. A suite is three digests](ch270-a-suite-is-three-digests.md) — runnable: sha256-suite-v1, chapter 16's held-out suite | Items with their partitions, the question set and the gate each carry a digest; results go to an append-only store with a receipt chain, and a locked partition can be read once. Rewording a question changes only the question digest; a run over different items is refused as a comparison. |
+| [271. How far a metric moves by itself](ch271-how-far-a-metric-moves-by-itself.md) — runnable: cpu-f64-noise-v1, synthetic suite and chapter 16's Elephant run | The noise floor from seed blocks and a task-clustered paired bootstrap, and a headroom check that refuses a partition already at its ceiling; reproduced on an Elephant suite before any optimization claims a gain. |
+| [272. Gates that can say unverifiable](ch272-gates-that-can-say-unverifiable.md) — runnable: cpu-f64-verdict-v1, chapters 16, 246, 247 and 271 reporting | Comparison gates as `#authority` Coax: a decision gate requiring a gain beyond the noise floor, a probability gate that ranks log loss and confident errors above calibration error and accuracy, and an evaluation gate where cost and time can block a result but never earn one; verdicts are passed, failed or unverifiable. Chapters 16, 246 and 247 report through them. |
+| [273. Environments with checkers](ch273-environments-with-checkers.md) — runnable: cpu-int-env-v1, a simulated agent | A task, a checker, a budget and a replay as one record; the checker must fail on empty work and pass on the reference solution before the environment is admitted; rollouts use Psionic-served models. |
+| [274. Fit settings on recorded answers](ch274-fit-settings-on-recorded-answers.md) — runnable: cpu-f64-settings-v1, a simulated stall detector | Thresholds, cut points and weights fitted from answers already recorded, with zero model calls: midpoint candidates, acceptance only when strictly better on the fit set and on grouped cross-validation; the first optimization to try, before any text changes. |
+| [275. Search a policy, cheapest first](ch275-search-a-policy-cheapest-first.md) — runnable: cpu-f64-search-v1, a simulated world | Policies as digested manifests, operators named for what they do, successive halving across tiers from replay to full measurement, a per-task Pareto frontier, and the held-out read only after the winner is written down. |
+| 276. Reflective prompt evolution | GEPA in Coax: candidates whose fields are fixed by the seed, per-instance Pareto sampling, a reflector served by Psionic that is never the grader, refusal of a malformed reflection, a check that the answer space did not drift, and a canary proving the candidate reached the model. Measured honestly against chapter 274's settings fitting. |
+| 277. Judges are components | Elephant or Mammoth inside a search as a pinned judge or router: agreement with real outcomes measured, a grader whose identity differs from the student's and the reflector's, cost per judgment recorded, and a teacher's opinion never stored as a label. |
+| [278. Outcomes become training rows](ch278-outcomes-become-training-rows.md) — runnable: rows-v1, the example's feed and chapter 265's traces | Decision outcomes and verified traces admitted with their replay verdicts; labels from diffs and checks, never from an agent's own summary; an exposure ledger across artifacts so held-out groups are never trained on; splits by time. These rows feed chapters 139 to 141, 254 and 266. |
+| [279. Is the loop improving?](ch279-is-the-loop-improving.md) — runnable: cpu-f64-loop-v1, a simulated world | Cost per accepted result per cycle on a fixed set, an ablation for every component, a complexity ledger, and shared budgets for proposer, student and grader; a loop that does not improve is reported as such. |
+| [280. An agent optimizes a Psionic kernel](ch280-an-agent-optimizes-a-psionic-kernel.md) — runnable: DEVICE-F32-CHUNKED-v1 norm on an L4 | First a conventional bounded autotuner over tile and workgroup sizes, vector widths and a few fusion choices; then a harness agent proposing new implementations inside chapter 37's compute subset for a normalization kernel or a small gated feed-forward block. The agent receives the reference operation and its input contract, compilation, correctness results, profiler measurements and a fixed budget; the evaluator and its independent tests are outside its writable scope, with held-out shapes, awkward dimensions, extreme values and memory checks. A winner must keep the declared numerical behavior and improve measured performance on the declared workload, with its source, compiler identity, device, memory and timings kept. The whole search cost, failures included, is reported, and a run that finds nothing is still a result. |
+| 281. Can someone use Psionic instead of PyTorch? | An externally consumable package: public APIs, operator documentation, examples, diagnostics and reproducible benchmarks, and a command that audits a proposed model (its operators, dtypes, gradients and backends) before allocating large GPU memory. Three published PyTorch tutorials (a classifier, a convolutional model and a transformer training example) are rebuilt with public APIs only, recording model-specific lines, unsupported operations, runtime modifications, effort, cold-start compile time, throughput, memory and final quality. The gate is zero engine modifications for an ordinary new model; each one needed names a missing public abstraction, which is then added. |
+
+The loops improve the system around the weights first (settings, prompts,
+routers, harness configuration); weight updates follow only when both the
+decision and probability gates pass, since the pre-reset fine-tuning raised
+accuracy while making confidence worse.
 
 ## A framework, not only engines
 
@@ -890,7 +942,7 @@ integrations, and is not claimed.
 **The tensor IR is the center.** One representation, 38's, carries a model
 from Coax source to eager execution (5), differentiation (106, 107), compiled
 forward and backward programs (39, 114, 131), custom operators (40),
-distributed layouts (133) and exported artifacts (8, 219). Because Coax is
+distributed layouts (133) and exported artifacts (8, 252). Because Coax is
 compiled and typed, Psionic derives these from the program instead of tracing
 it at run time, as PyTorch has to. Every special model implementation should
 contribute reusable operators to this path where it can.
@@ -903,7 +955,7 @@ harmless):
 | --- | --- | --- |
 | Train from scratch | A small MLP on MNIST, then ResNet-18 on CIFAR-10 (3–6, 106, 117–118, 121, 125, 129) | Raw dataset to a saved model that reloads independently |
 | A language model without PyTorch | A 10–50M-parameter decoder with tokenization, batched mixed-precision training, checkpoints, compiled backward and inference (114, 116, 122, 129–131) | A full RTX 4080 run with tokens per second, peak memory, a loss curve and an independently implemented PyTorch baseline |
-| Import, fine-tune, serve | A published model read from inert tensors, LoRA adapters trained in Psionic, the adapter saved and served (8, 140, 171) | Original model to useful adaptation to deployed inference, with PyTorch needed for nothing |
+| Import, fine-tune, serve | A published model read from inert tensors, LoRA adapters trained in Psionic, the adapter saved and served (8, 140, 204) | Original model to useful adaptation to deployed inference, with PyTorch needed for nothing |
 | Train across GPUs and recover | Replicated, then sharded training, interrupted and restored (122, 133–135) | Verified synchronization, declared numerical consistency, correct resume and measured scaling |
 
 **Order.**
@@ -918,7 +970,7 @@ harmless):
    reproducible checkpoints and deployment. Graduation: the selected internal
    training and deployment workflows need no PyTorch installation.
 4. **Broader adoption:** distributed tensors, sharded training, public model
-   packages and compatibility tests (248).
+   packages and compatibility tests (281).
 
 After the current gpt-oss delivery milestones, this track is proposed to take
 priority over adding more large pretrained targets. Executing another
@@ -943,13 +995,13 @@ Python to tooling. The stable C ABI and DLPack (8) let others build one.
 | A first model of your own | 1–4 | Deadline prediction 103 → gradients 104 → failure diagnosis 105; a grid-world policy 110 after 109. |
 | Active learning | 103–104 and an owned pool with independently checked labels | Choose examples 108 → compare quality at equal label budgets against random selection, with held-out groups never queried. |
 | Causal activation experiments | 115's trained tiny decoder and appendix D's bounded inspection tools, extended with activation replacement | Remove and restore a known shortcut in 119, with control patches and held-out counterfactuals. |
-| A framework, not only engines | 2–4 and 38; 104 and 115 for training; 44 and 37 for the GPU; 132 for distribution | Tensors and operators 3–6 → modules, autodiff and custom operators 117, 106–107, 40 → trainer, data, optimizers 118, 121, 125 → GPU training and compilation 129–131, 39, 114 → checkpoints and interchange 122, 8, 219 → distribution 133–135 → can someone use it 248. |
+| A framework, not only engines | 2–4 and 38; 104 and 115 for training; 44 and 37 for the GPU; 132 for distribution | Tensors and operators 3–6 → modules, autodiff and custom operators 117, 106–107, 40 → trainer, data, optimizers 118, 121, 125 → GPU training and compilation 129–131, 39, 114 → checkpoints and interchange 122, 8, 252 → distribution 133–135 → can someone use it 281. |
 | Live decision API | 14–15 and 17; an owner-approved host | Timing 18 → resident model 19 → `/v1/systemone` 20 → running live 22 → measured optimizations 23. |
 | First Pylon mesh | Part III's API and `coax/lib/nostr` | A Pylon answering decisions 24 → the API fanning out 25 → receipts and checks 26. |
 | Decision throughput | 14 and 33; Coax jobs for the second half of 35 | Byte-identical parallel CPU 35; batched forks and prefix reuse 36. |
 | Generation | Shared dense inference and 9's tokenizer tables | Sampling and constrained decoding 53 → continuation 58. |
 | Mistral | 7–10, 33, 53 and the router in 61; 75 for drafting | Ministral 3 81 → FP8 82 → Devstral 83 → latent attention 84 → Small 4 85 → Large 4 components 86–87. |
-| DeepSeek | 7–10, 17, 33, 53 and the router in 61; latent attention 84 | R1 distill 88 → recipe 89 → V2-Lite 90 → V4.1 components 91–95 → engine techniques 96–99 → V4.1 Flash on one machine 100 → drafts 102; across stages 195. |
+| DeepSeek | 7–10, 17, 33, 53 and the router in 61; latent attention 84 | R1 distill 88 → recipe 89 → V2-Lite 90 → V4.1 components 91–95 → engine techniques 96–99 → V4.1 Flash on one machine 100 → drafts 102; across stages 228. |
 | gpt-oss | 7–10, 33 and 53; the router in 61 | MXFP4 60 → 20b 64 → 120b 73 → speculative decoding 75; tool calls 77. |
 | Retrieval / dense continuation | Shared storage, artifacts, tokenizer and attention; each exact model profile | 54 → approximate index 55 → reranking 56 → grounded answers 57 / 58; browser search 59 once Coax Wasm/WebGPU compute exists. |
 | Training / nanochat | 103–104, 112–124 and exact nanochat forward/backward | Tiny pretraining 128 → SFT 136 → the specific rollout recipe 139. |
@@ -960,19 +1012,20 @@ Python to tooling. The stable C ABI and DLPack (8) let others build one.
 | Speech | Shared convolution/attention and 151–152 | Parakeet 153 → streaming 154; text-to-speech 155 after its target is selected. |
 | Scientific ML | Shared training/spectral core for FNO; geometry operators for DoMINO | Darcy 157 or DoMINO 160; spherical weather 161 branches independently. |
 | Hybrid / MoE language | Shared dense inference, state-space 162 and exact profiles; router 61 (Part VII) for Lightning | Nano 163 → Lightning 164. |
-| World generation | Shared vision/codec, diffusion/flow 146 and temporal 165 | One Cosmos3-Edge path 166. |
-| Robot policies | Shared vision/language, training, flow 146 and imitation/embodiment 167; the solvers 109 and 111 and transforms 107; Coax R12–R19 units and frames, clocks, bounded control, replay, robot-model import, supervision and fault scenarios | GR00T 168 → simulated closed loop 169, conditional on artifact terms; real hardware only as a separately authorized integration. |
-| Spacecraft and the solar system | 107, 109, 232 and 240; the `verse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 249 → propagation with stated error 250 → burns 251 → rendezvous 252; heat 253, ship interiors 254 and delayed sensors 255 in any order → event-stopped time warp 256 → impacts 257 → three fidelities, batched rollouts, surrogates and an admitted environment 258. |
-| Production hosting | A qualified model, 33's measurements and a consumer contract | Benchmark 170 → server and clients 171–172 → batching and cache 173–174 → routing, scaling, rollout, metering 175–179. |
-| Large-scale serving | Measured need from 170 and 173; two or more devices | Disaggregation 180; tensor/expert parallelism 181. |
-| Voice / training scale | 16, 170 and the voice gate / a resumable trainer plus backend | Voice pipeline 182 and decision steering 183 / distributed training 132. |
-| Mesh inference | 184's two-stage parity, 33's measurements and network transport | Packages and placement 185–188 → experts and routing 189–191 → trust and verification 192–193 → Mesh-LLM interoperation 194 → DeepSeek V4.1 across stages 195 → Mistral Large 3 196 → Le Chonk 197. |
-| Harness | Part III's API; chapter 53's constrained decoding; chapter 174's prefix cache for the stable-prefix measurements | The simplest loop 198 → session log 199 → stable prefix 200 → tools, sandbox and condensation 201–204 → programs, forks and plugins 205–207 → protocols, measurement and consent 208–211. |
-| Adversarial harness | 57 and 198–202; a pinned served model for behavioral measurements | Hostile retrieved passages and tool results 203 → checked capability boundaries plus measured legitimate-task completion on held-out attacks. |
-| Decisions in production | 16 and 20–22 for calibration, thresholds and outcomes; 24–26 for Pylon checks; Part III for the encoder branch | Own calibration 213 → cost thresholds 214 → outcomes and drift 215; Pylon self-check 216 → honest-distance limits 217; ONNX 218 → millisecond encoder 220 → distilled router 221 → shadow promotion 222. |
-| Programs compiled into weights | 1–4 and 10; 115 and 205 for the learned chapters; the wallet and Pylon mesh for 236 | Trace machine 224 → exact memory and arithmetic 225–226 → compiler and harness 227–228 → interpreter or baked program, fast decode, softmax limits 229–231 → replay verification 232 → learned execution and a frozen core 233–234 → composable modules 235 → paid verified work 236. |
-| Measure, then improve | 16, then 198, 215 and 232 | Suites, noise floors and gates 237–239 → environments, settings fitting and policy search 240–242 → prompt evolution and judges 243–244 → outcomes as rows and loop accounting 245–246. |
-| Choosing and improving the system | 16 for synthetic utilities; 20–22 and 215 for logged traffic; 37–44, 205 and 240–242 for the kernel agent | Cascade 214 → learned model choice 223 → promotion 222; candidates and checks 210; an agent-optimized kernel 247. |
+| Physics engine | 4, 37–38 and 107; 109 and 111 for gradients; Coax R12–R20, then R21–R24 | Scene 165 → rigid bodies, joints and contact 166–170 → batches 179, assets 183, replay 184 → control 188; particle and mesh solvers 171–176 → coupling 177–178 → gradients 180; sensors and observations 181–182; measurement 185. |
+| World generation | Shared vision/codec, diffusion/flow 146 and temporal 186 | One Cosmos3-Edge path 187. |
+| Robot policies | Shared vision/language, training, flow 146 and imitation/embodiment 189; the solvers 109 and 111 and transforms 107; Coax R12–R19 units and frames, clocks, bounded control, replay, robot-model import, supervision and fault scenarios | GR00T 190 → simulated closed loop 191, conditional on artifact terms; over the Part XVIII engine, control 188 and batched locomotion 192; real hardware only as a separately authorized integration. |
+| Spacecraft and the solar system | 107, 109, 265 and 273; the `verse/` space modules as the starting game layer; Coax R12–R20 forms as they ship | Ephemerides and frames 193 → propagation with stated error 194 → burns 195 → rendezvous 196; heat 197, ship interiors 198 and delayed sensors 199 in any order → event-stopped time warp 200 → impacts 201 → three fidelities, batched rollouts, surrogates and an admitted environment 202. |
+| Production hosting | A qualified model, 33's measurements and a consumer contract | Benchmark 203 → server and clients 204–205 → batching and cache 206–207 → routing, scaling, rollout, metering 208–212. |
+| Large-scale serving | Measured need from 203 and 206; two or more devices | Disaggregation 213; tensor/expert parallelism 214. |
+| Voice / training scale | 16, 203 and the voice gate / a resumable trainer plus backend | Voice pipeline 215 and decision steering 216 / distributed training 132. |
+| Mesh inference | 217's two-stage parity, 33's measurements and network transport | Packages and placement 218–221 → experts and routing 222–224 → trust and verification 225–226 → Mesh-LLM interoperation 227 → DeepSeek V4.1 across stages 228 → Mistral Large 3 229 → Le Chonk 230. |
+| Harness | Part III's API; chapter 53's constrained decoding; chapter 207's prefix cache for the stable-prefix measurements | The simplest loop 231 → session log 232 → stable prefix 233 → tools, sandbox and condensation 234–237 → programs, forks and plugins 238–240 → protocols, measurement and consent 241–244. |
+| Adversarial harness | 57 and 231–235; a pinned served model for behavioral measurements | Hostile retrieved passages and tool results 236 → checked capability boundaries plus measured legitimate-task completion on held-out attacks. |
+| Decisions in production | 16 and 20–22 for calibration, thresholds and outcomes; 24–26 for Pylon checks; Part III for the encoder branch | Own calibration 246 → cost thresholds 247 → outcomes and drift 248; Pylon self-check 249 → honest-distance limits 250; ONNX 251 → millisecond encoder 253 → distilled router 254 → shadow promotion 255. |
+| Programs compiled into weights | 1–4 and 10; 115 and 238 for the learned chapters; the wallet and Pylon mesh for 269 | Trace machine 257 → exact memory and arithmetic 258–259 → compiler and harness 260–261 → interpreter or baked program, fast decode, softmax limits 262–264 → replay verification 265 → learned execution and a frozen core 266–267 → composable modules 268 → paid verified work 269. |
+| Measure, then improve | 16, then 231, 248 and 265 | Suites, noise floors and gates 270–272 → environments, settings fitting and policy search 273–275 → prompt evolution and judges 276–277 → outcomes as rows and loop accounting 278–279. |
+| Choosing and improving the system | 16 for synthetic utilities; 20–22 and 248 for logged traffic; 37–44, 238 and 273–275 for the kernel agent | Cascade 247 → learned model choice 256 → promotion 255; candidates and checks 243; an agent-optimized kernel 280. |
 
 ## Coax features each branch needs
 
@@ -988,14 +1041,15 @@ their general language form remains planned.
 | --- | --- | --- |
 | Bounded CUDA/Metal buffer, index, loop and dispatch compute is shipped; additional compute forms need their own admission and target evidence | 37–47, 59 | Generated Coax kernels and CPU oracles; no hand-written tensor shaders. |
 | Bounded direct WGSL graphics modules are shipped; a qualified Psionic WebGPU compute path remains work | 59 | Use CPU references until the compute workload has its own admitted lowering, binding and device evidence; graphics emission does not qualify it. |
-| Language jobs, threads and a memory model ([ch14](../../coax/book/ch14-jobs.md)) remain planned | 35, 36, 99, 171–175, 184–193 | Host workers may call Coax on disjoint ranges under their explicit replay and lifetime gates. |
+| Language jobs, threads and a memory model ([ch14](../../coax/book/ch14-jobs.md)) remain planned | 35, 36, 99, 204–208, 217–226 | Host workers may call Coax on disjoint ranges under their explicit replay and lifetime gates. |
 | Native `f16`/`bf16`, FP8 and FP4 scalar types remain planned | 33, 50, 60, 82, 95, every BF16 kernel | Packed storage, casts and format decoders already run in the declared Psionic profiles. |
 | Bounded generic procedures and fixed-storage structs ship with built-in `equatable`, `ordered`, `numeric` and `copyable` constraints ([ch08](../../coax/book/ch08-generics.md)); general user-defined constraints and operators remain planned | Every multi-dtype kernel, 50 | Shared numeric helpers are now a language option, with actual kernel adoption and native/device qualification still required. Generic struct bindings still reject views and view-containing values. |
 | General SIMD/vector/matrix types remain planned; selected lane/group loops and matrix primitives already ship | 33–35, 147–150 | Scalar or qualified cooperative kernels; measure before requesting another form. |
-| Language pointers, owning containers and allocators ([ch06](../../coax/book/ch06-memory.md)) remain planned | 33, 36 caches, 73, 96 and 189 expert paging, 120 | Host-owned bounded views and library-owned CPU/CUDA/Metal handles with explicit leases. |
-| Units and frames, typed clocks, bounded control, replay, robot-model import, stamped sensors and fault scenarios ([roadmap R12–R19](../../coax/ROADMAP.md)) remain planned | 167–169 | Chapter 167 states its units and step in a fixed profile over plain `f64` fields; later chapters wait for the checked forms. |
-| Full-state and rotating frames, astronomical time scales, integrators and event location, light-time stamps, parameter provenance, fidelity profiles and typed rule modules (roadmap R12, R13, R15, R16, R18 and R20) remain planned | 249–258 | The `verse/` space modules keep units and frames in comments over plain `f64` fields; the chapters start there and adopt each checked form as it ships. |
-| A broader qualified target matrix and general asynchronous language effects remain work | 20–26, 44, 132, 171–183, 184–197 | Recorded owned Linux/CUDA and Apple CPU/Metal runs retain their named hardware and numerical scopes; they do not qualify every Linux target or an asynchronous ownership model. |
+| Language pointers, owning containers and allocators ([ch06](../../coax/book/ch06-memory.md)) remain planned | 33, 36 caches, 73, 96 and 222 expert paging, 120 | Host-owned bounded views and library-owned CPU/CUDA/Metal handles with explicit leases. |
+| Units and frames, typed clocks, bounded control, replay, robot-model import, stamped sensors and fault scenarios ([roadmap R12–R19](../../coax/ROADMAP.md)) remain planned | 189–191 | Chapter 189 states its units and step in a fixed profile over plain `f64` fields; later chapters wait for the checked forms. |
+| Logical tensors over chosen layouts, compile and startup budgets, device graphs and zero-copy buffers, and kernel derivatives (roadmap R21–R24) remain planned | 165–185, 192 | Solvers index an explicit environment dimension and use library-level CUDA graph replay and leased DLPack views until the language forms exist; gradients are hand-written reverse kernels checked against finite differences. |
+| Full-state and rotating frames, astronomical time scales, integrators and event location, light-time stamps, parameter provenance, fidelity profiles and typed rule modules (roadmap R12, R13, R15, R16, R18 and R20) remain planned | 193–202 | The `verse/` space modules keep units and frames in comments over plain `f64` fields; the chapters start there and adopt each checked form as it ships. |
+| A broader qualified target matrix and general asynchronous language effects remain work | 20–26, 44, 132, 204–216, 217–230 | Recorded owned Linux/CUDA and Apple CPU/Metal runs retain their named hardware and numerical scopes; they do not qualify every Linux target or an asynchronous ownership model. |
 
 The framework track already has strided views (3), owned device storage (6),
 a typed tensor IR (38), bounded specialization (39), registered operators

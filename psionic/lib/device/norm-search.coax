@@ -1,4 +1,4 @@
-// Chapter 247: the offset RMS norm as a family of coax cuda kernels with
+// Chapter 280: the offset RMS norm as a family of coax cuda kernels with
 // tunable knobs, and chapter 44's two norm kernels behind the same contract.
 //
 // Every implementation the search compares (these two and each agent

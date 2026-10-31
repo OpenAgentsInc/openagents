@@ -6,7 +6,7 @@ at `f3803c96974ad4a94195fb97e5c637e9c2a3afe3` (MIT, developer preview, built on
 the [Cordis](https://github.com/cordiverse/cordis) plugin framework). Its
 source was read through the GitHub API; nothing was installed or run. A
 pre-reset survey of an earlier revision is at
-`git show 0b401561a0^:docs/coder-new/deepseek-harness-lessons.md`. Part XXI of
+`git show 0b401561a0^:docs/coder-new/deepseek-harness-lessons.md`. Part XXIII of
 the [book plan](../book/PLAN.md) takes its scope from here.
 
 ## Why study this harness
@@ -21,7 +21,7 @@ travels outside `messages`, system prompts and tool schemas, so it "does not
 add model-input tokens or alter the model-visible prefix"
 (`docs/deepseek-llm-api-wire-extensions.md`). Psionic owns both sides, so it
 can design the harness's prompt assembly and the server's prefix cache
-(chapter 174) together and measure the result (chapter 200).
+(chapter 207) together and measure the result (chapter 233).
 
 ## What it does, and what Psionic takes
 
@@ -42,21 +42,21 @@ can design the harness's prompt assembly and the server's prefix cache
 ## What Psionic does differently
 
 - **The loop stays simple.** The harness exposes a great many extension
-  points. Psionic starts from one loop (chapter 198) and keeps each addition
+  points. Psionic starts from one loop (chapter 231) and keeps each addition
   only with a measured gain on tasks it was not built from, the rule that
   already governs Coder's agent.
 - **Coax, not Node.** DeepSeek Harness is TypeScript on Node, and ordinary host
   plugins run with the host process's authority; the earlier survey noted that
   Cordis's scoped contexts are lifecycle composition, not containment.
   Psionic's harness logic is Coax; third-party plugins run in bounded Wasm with
-  admitted capabilities, distributed as signed Nostr events (chapter 207).
+  admitted capabilities, distributed as signed Nostr events (chapter 240).
 - **Consent before sharing.** `dsh_session_log` is enabled by default and sends
   a contiguous suffix of the canonical session log with each model request to
   DeepSeek's API. Psionic sends no session content anywhere without the
-  person's explicit, per-session, revocable opt-in (chapter 211).
+  person's explicit, per-session, revocable opt-in (chapter 244).
 - **Typed protocols from `proto/`.** Tool schemas, the session log's event
   types and any wire extensions are versioned contracts in `proto/`, not ad hoc
-  JSON (chapters 199 and 201).
+  JSON (chapters 232 and 234).
 - **Bitcoin-only money.** Anything that meters or prices agent work uses the
   Spark wallet outside Psionic.
 

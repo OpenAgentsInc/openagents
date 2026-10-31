@@ -99,7 +99,7 @@ and the Bernoulli form of a noul answer. It pins the probability floor to
 options per question. It requires the same decisions and checks maximum
 centred-log distance against the configured parts-per-billion limit.
 This is a named synthetic comparison scope, not empirical calibration of
-arbitrary hardware or models. [Chapter 217](ch217-how-far-apart-may-two-honest-answers-be.md)
+arbitrary hardware or models. [Chapter 250](ch250-how-far-apart-may-two-honest-answers-be.md)
 explains the underlying distance and its limits.
 
 The original result's metadata remains committed by the receipt. Comparison

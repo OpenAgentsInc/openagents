@@ -48,7 +48,7 @@ recorded above and in §4.
   beacon.
 - **Default relay:** `wss://relay.openagents.com`, an owner decision of
   2026-10-30 (`run.coax:76`, `PY_DEFAULT_LIST`).
-- **Self-check (chapter 216):** before publishing anything it runs its engine
+- **Self-check (chapter 249):** before publishing anything it runs its engine
   against a shipped reference set and records the identity it serves. Both
   `--references` and `--identity-state` are required:
   `psionic/fixtures/pylon/psionic-toy.selfcheck` or `elephant-1.selfcheck`.

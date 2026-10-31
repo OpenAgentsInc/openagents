@@ -62,7 +62,7 @@ change. No unchanged numerical, mutation or original-model gate was repeated.
 
 ## Tiny owned gantry: independent native checks
 
-This slice qualifies the chapter 167 simulator and imitation learner. It uses
+This slice qualifies the chapter 189 simulator and imitation learner. It uses
 owned synthetic episodes, a declared two-axis Cartesian state in metres,
 velocity commands in metres/second, an exact 0.1-second sample and a separate
 zero/expert baseline. It does not drive hardware or claim compatibility with
@@ -126,5 +126,5 @@ psionic/check.sh --only robotics/singlearm --jobs 4
 ```
 
 These commands select focused authority mutation and native checks. The
-[chapter 167 record](../../../docs/verification/psionic-ch112-2026-10-31.md)
+[chapter 189 record](../../../docs/verification/psionic-ch112-2026-10-31.md)
 describes the frozen experiment, original hashes, results and limits.

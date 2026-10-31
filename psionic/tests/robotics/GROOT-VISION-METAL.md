@@ -89,4 +89,4 @@ REFERENCE_PYTHON=/path/to/existing/numpy/python3 \
 The required-device runner fails without compatible Metal and never
 substitutes CPU inference. Production request admission, language inference,
 action flow, closed-loop simulation and physical robot control remain separate.
-This component alone does not finish chapter 168.
+This component alone does not finish chapter 190.

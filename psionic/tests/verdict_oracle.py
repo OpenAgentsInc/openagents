@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Chapter 239's independent reference, written from the chapter's specification.
+"""Chapter 272's independent reference, written from the chapter's specification.
 
 It shares no code with psionic/lib/verdict.coax. The gates are written again
-here; the runs, bootstraps and floors come from chapter 238's oracle, the maps
-and measures from chapter 213's, and the thresholds and costs from chapter
+here; the runs, bootstraps and floors come from chapter 271's oracle, the maps
+and measures from chapter 246's, and the thresholds and costs from chapter
 214's, each of which is itself independent of the library. Sums use math.fsum.
 `--header` writes the C expectations the native harness compares.
 """

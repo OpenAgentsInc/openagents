@@ -1,4 +1,4 @@
-/* Chapter 223 against route_oracle.py, which simulated, trained, logged and
+/* Chapter 256 against route_oracle.py, which simulated, trained, logged and
    estimated the same experiment from the specification in exactly rounded
    sums. Tolerances were frozen before comparison: every draw, logged action,
    choice, count and refusal exactly; values from true probabilities 1e-12;

@@ -1,10 +1,10 @@
 # Firm reason: 2 (independent oracle: recomputes our answer outside Coax, so it must not share our implementation)
-"""Independent oracle for chapter 247 (an agent optimizes a Psionic kernel).
+"""Independent oracle for chapter 280 (an agent optimizes a Psionic kernel).
 
 Standard library only, sharing no code with the Coax units or with
 kernel_search_fixture.py. It rebuilds psionic/fixtures/kernel-search.out line
 for line:
-- the CPU lines, by regenerating chapter 247's ten cases (its own xorshift),
+- the CPU lines, by regenerating chapter 280's ten cases (its own xorshift),
   rerunning the arithmetic of chapter 44's kernels, the tuner's choice and the
   agent's winner in binary64 with one rounding to binary32, and applying the
   contract (one f32 step of the f64 norm) itself;

@@ -112,10 +112,10 @@ The first long request answered `claude_code` 0.992, difficulty 2
 local work 0.975. The questions run one after another with no batching, so
 five questions cost about five decisions of their length.
 
-## Chapter 170 load generator
+## Chapter 203 load generator
 
 `bench-drive systemone 8797 elephant-1 115 150 600 50 --label
-l4-g2s4-elephant-gpu-cap512` (chapter 170's built-in decision workload,
+l4-g2s4-elephant-gpu-cap512` (chapter 203's built-in decision workload,
 varied input lengths, open-loop arrivals every 600 ms +-50%):
 
 | Metric | L4 |
@@ -127,8 +127,8 @@ varied input lengths, open-loop arrivals every 600 ms +-50%):
 
 The tail above inference is queueing: the server decides one request at a
 time, and at this rate a request often waits behind the previous one. There
-is no 4080 figure for this workload (chapter 170's decision run found the
-server down). 18 answers carried no usable `latency_ms`, as chapter 170 saw
+is no 4080 figure for this workload (chapter 203's decision run found the
+server down). 18 answers carried no usable `latency_ms`, as chapter 203 saw
 once on the toy.
 
 ## Running state
