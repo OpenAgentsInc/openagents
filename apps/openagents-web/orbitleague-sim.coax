@@ -1,0 +1,45 @@
+// Orbit League's bot against scripted novices, natively (a match is too long
+// for a compile-time #test): six drivers who hold W and steer at the ball
+// (or at a spot behind it), deciding every 0, 0.4 or 0.8 s, play five
+// minutes each. The bot should keep a first match close (ol-fp-bot-easy) and
+// still score against a player who sits still.
+//   coax/bin/coax run apps/openagents-web/orbitleague-sim.coax   (its last line: holds or FAILS)
+#import "Basic";
+#load "orbitleague.coax";
+
+novice :: (s: [] OrbitLeague, seconds: f64, lag: f64, behind: bool) {
+  h := HOLD_UP; t := 0.0;
+  for i: 0..<cast(int) (seconds / STEP) {
+    t += STEP;
+    if t >= lag {
+      t = 0.0;
+      b := s[0].bodies[BALL].pos;
+      if behind { aim := d3_unit_or(d3_sub(d3(0.0, 0.0, ARENA_HZ + 2.0), b), D3_Z); b = d3_sub(b, d3_scale(aim, 2.5)); }
+      a := steer_to(s[0].bodies[YOU], b);
+      h = HOLD_UP;
+      if a > 0.3 { h |= HOLD_RIGHT; }
+      if a < -0.3 { h |= HOLD_LEFT; }
+    }
+    s[0].held = h; game_step(s, STEP);
+  }
+}
+
+main :: () {
+  lags := [3] f64.[0.0, 0.4, 0.8];
+  you := 0; bot := 0; worst := 0; first := 0;
+  for beh: 0..<2 { for l: lags {
+    s: [1] OrbitLeague;
+    game_reset(s[..]);
+    novice(s[..], 60.0, l, beh == 1);
+    first = most(first, s[0].score[1]);
+    novice(s[..], 240.0, l, beh == 1);
+    print("novice (behind %, every % s): you % bot %\n", beh, l, s[0].score[0], s[0].score[1]);
+    you += s[0].score[0]; bot += s[0].score[1]; worst = most(worst, s[0].score[1]);
+  } }
+  t: [1] OrbitLeague;
+  game_reset(t[..]);
+  for i: 0..<cast(int) (120.0 / STEP) { game_step(t[..], STEP); }
+  print("six novices: you % bot %, the bot's most in a match %, in a first minute %; against a still player in 2 min: %\n", you, bot, worst, first, t[0].score[1]);
+  ok := worst <= 4 && first <= 1 && bot <= you + 6 && t[0].score[1] >= 3;
+  print("%\n", ifx ok then "holds" else "FAILS");
+}

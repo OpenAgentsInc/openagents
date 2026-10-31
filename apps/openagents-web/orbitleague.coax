@@ -104,6 +104,11 @@ BALL_DRAG :: 0.03;       // 1/s
 BALL_MAX :: 32.0;        // m/s: no hit sends it faster
 BOT_REACT :: 0.4;        // seconds the bot waits at a kickoff
 BOT_KICKOFF_CALM :: 3.0; // and how long after it drives in without boost
+BOT_RECOVER :: 1.1;      // seconds the bot coasts after it hits the ball before it chases again
+BOT_THROTTLE :: 0.65;    // its share of the drive: slower than you without boost
+BOT_BOOST_FAR :: 26.0;   // it boosts only from further than this
+BOT_MISS :: 9.0;         // metres its aim misses by at kickoff, shrinking to BOT_MISS_LATE by full time
+BOT_MISS_LATE :: 3.0;
 CAR_MASS :: 1000.0;
 CAR_WALL_MU :: 0.05;     // the glass is slick: a car pressed into it slides along
 PINNED_SPEED :: 2.0;     // m/s: slower than this against the glass, steering turns the car on the spot
@@ -183,6 +188,8 @@ OrbitLeague :: struct {
   cam_eye: [3] f32; cam_at: [3] f32; cam_ready: bool;
   view: [16] f32; eye: [3] f32; fwd: [3] f32; right: [3] f32; up: [3] f32;
   bot_jump_t: f64;
+  bot_touch_t: f64 = -100.0;   // when the bot last hit the ball (played seconds)
+  bot_aim: f64;               // its aim's miss on this approach, metres across the goal
   no_bot: bool;               // ?bot=0: practice alone
   jumped: [2] bool;
   // the look: trails, sparks, the goal's blast, the camera's shake
@@ -281,6 +288,7 @@ kickoff :: (s: [] OrbitLeague) {
   }
   clear_trails(s);
   s[0].phase = PHASE_KICKOFF; s[0].phase_t = 0.0;
+  s[0].bot_touch_t = -100.0;
   s[0].cam_ready = false;
   s[0].stage = STAGE_NONE;
 }
@@ -356,6 +364,10 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   if s[0].phase != PHASE_PLAY && s[0].phase != PHASE_GOAL { return out; }
   if s[0].no_bot { return out; }
   if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_REACT { return out; }
+  // just after a hit it coasts: you get a chance at the ball
+  if s[0].played - s[0].bot_touch_t < BOT_RECOVER { out.input.throttle = 0.2; return out; }
+  // it aims at a point across your goal mouth that misses by bot_aim
+  goal.x = fclamp(s[0].bot_aim, -GOAL_HW - 6.0, GOAL_HW + 6.0);
   aim := d3_unit_or(d3_sub(goal, bl.pos), d3(0.0, 0.0, -1.0));
   // ahead of where the ball goes: a short lead on its velocity
   lead := d3_add(bl.pos, d3_scale(d3(bl.vel.x, 0.0, bl.vel.z), 0.35));
@@ -367,9 +379,9 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   a := steer_to(me, target);
   dist := d3_len(d3(target.x - me.pos.x, 0.0, target.z - me.pos.z));
   out.input.steer = fclamp(a * 2.2, -1.0, 1.0);
-  out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else 1.0;
+  out.input.throttle = ifx abs(a) > 2.2 && dist < 10.0 then -0.6 else BOT_THROTTLE;
   out.input.handbrake = abs(a) > 1.4 && d3_len(me.vel) > 8.0;
-  out.boost = abs(a) < 0.25 && dist > 14.0 && s[0].tanks[1].fuel > 10.0;
+  out.boost = abs(a) < 0.25 && dist > BOT_BOOST_FAR && s[0].tanks[1].fuel > 30.0;
   // the kickoff is a fair race: the bot drives in without boost, so you get there first if you go
   if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_KICKOFF_CALM { out.boost = false; out.input.throttle = fmin(out.input.throttle, 0.85); }
   near_ball := d3_dist(me.pos, bl.pos);
@@ -378,6 +390,15 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   out.input.jump = near_ball < 6.0 && bl.pos.y > 3.0 && bl.pos.y < 7.0 && s[0].played - s[0].bot_jump_t > 1.5;
   if out.input.jump { s[0].bot_jump_t = s[0].played; }
   return out;
+}
+
+// The bot hit the ball: it coasts a moment, and its next approach misses by
+// a new amount, less as the match goes on.
+bot_hit :: (s: [] OrbitLeague) {
+  s[0].bot_touch_t = s[0].played;
+  late := fclamp(s[0].played / MATCH_TIME, 0.0, 1.0);
+  miss := BOT_MISS + (BOT_MISS_LATE - BOT_MISS) * late;
+  s[0].bot_aim = (rnd(s) * 2.0 - 1.0) * miss;
 }
 
 you_drive :: (s: [] OrbitLeague) -> Drive {
@@ -485,6 +506,7 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
         // a car's hit is a kick: the ball takes a share more of the closing speed
         pair.a.vel = d3_add(pair.a.vel, d3_scale(ct.normal, closing * HIT_KICK));
         if c == 0 { s[0].touches += 1; track_tally(s[0].track[..], "touch", ""); }
+        if c == 1 && s[0].played - s[0].bot_touch_t > BOT_RECOVER { bot_hit(s); }
       }
       if closing > 6.0 {
         k := fmin(closing / 25.0, 1.0);
@@ -1584,4 +1606,19 @@ wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
     q := game_pointer(s[..], cx, cy, POINTER_UP, 1, 9);
     #assert s[0].ball_cam != was;
   }
+}
+
+#test "after it hits the ball the bot coasts a moment, and its aim misses by less as the match goes on" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  run_for(s[..], KICKOFF + 0.5);
+  bot_hit(s[..]);
+  d := bot_drive(s[..]);
+  #assert d.input.throttle < 0.5 && !d.boost;
+  early := 0.0; late := 0.0;
+  for i: 0..<40 { s[0].played = 1.0; bot_hit(s[..]); early = fmax(early, abs(s[0].bot_aim)); }
+  for i: 0..<40 { s[0].played = MATCH_TIME; bot_hit(s[..]); late = fmax(late, abs(s[0].bot_aim)); }
+  #assert early > late && early <= BOT_MISS && late <= BOT_MISS_LATE + 0.001;
+  s[0].played = MATCH_TIME + BOT_RECOVER + 0.1;
+  #assert bot_drive(s[..]).input.throttle > 0.5;
 }
