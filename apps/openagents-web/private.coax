@@ -146,6 +146,7 @@ PrivateState :: struct {
   code_url: [PV_CODE] u8; code_n: int;
   poll: [80] u8; poll_n: int;
   qr: [PV_QR] u8; qr_size: int; qr_want: bool;
+  qr_text: [PV_CODE] u8; qr_text_n: int;   // a tip's code in capitals (QR alphanumeric mode holds a whole invoice); 0 means byte mode on code_url
   linking: bool;                 // page 0: LINK A PHONE is open
   me_status: int; me_at: f32;    // page 2: -1 not asked, 0 waiting, 200 signed in, 401 not, else offline
   // the words account (page 2); secrets stay in this memory and are zeroed when done
@@ -446,6 +447,8 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
       for k: 0..<64 { s[0].tip_hash[k] = hash[k]; }
       n := pv_put(s[0].code_url[..], 0, "lightning:");
       s[0].code_n = pv_put(s[0].code_url[..], n, inv);
+      for k: 0..<s[0].code_n { c := s[0].code_url[k]; s[0].qr_text[k] = ifx c >= 97 && c <= 122 then c - 32 else c; }
+      s[0].qr_text_n = s[0].code_n;   // a Spark invoice (~487 bytes) is past byte mode's 412
       s[0].qr_want = true; s[0].qr_size = 0;
       s[0].tip_state = TIP_SHOWN; s[0].tip_at = s[0].time; s[0].tip_polled = s[0].time;
     } else {
@@ -569,6 +572,7 @@ pv_got_code :: (s: [] PrivateState, code: int, bytes: string, i: int) {
   }
   s[0].code_n = pv_put(s[0].code_url[..], 0, url);
   s[0].poll_n = pv_put(s[0].poll[..], 0, poll);
+  s[0].qr_text_n = 0;   // a URL keeps its lowercase: byte mode
   s[0].qr_want = true; s[0].qr_size = 0;
 }
 // The face encoded code_url into qr: status 0 and the grid's side, else a refusal.
@@ -2407,7 +2411,7 @@ pv_fake_qr :: (s: [] PrivateState) -> int {
   #assert s[0].code_state == CODE_ASKING;
   coaxial_private_posted(s[..], 2);
   pv_answer(s[..], 2, PV_CODE_ANSWER);
-  #assert s[0].qr_want && s[0].code_n == 95 && s[0].poll_n == 64;
+  #assert s[0].qr_want && s[0].code_n == 95 && s[0].poll_n == 64 && s[0].qr_text_n == 0;
   #assert cast(string) s[0].code_url[0..<s[0].code_n] == "https://openagents.com/login#c=00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
   coaxial_private_qr(s[..], 0, pv_fake_qr(s[..]));
   #assert s[0].code_state == CODE_SHOWN && !s[0].qr_want && s[0].qr_size == 37;
@@ -2703,6 +2707,7 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   #assert s[0].post_n == 0 && s[0].tip_sats == 1000;
   pv_answer(s[..], 2, "200\n{\"invoice\": \"lnbc10u1pexampleinvoice0001\", \"payment_hash\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"sats\": 1000}");
   #assert s[0].tip_state == TIP_SHOWN && s[0].qr_want && cast(string) s[0].code_url[0..<s[0].code_n] == "lightning:lnbc10u1pexampleinvoice0001";
+  #assert cast(string) s[0].qr_text[0..<s[0].qr_text_n] == "LIGHTNING:LNBC10U1PEXAMPLEINVOICE0001";
   pv_act(s[..], H_TIP_WALLET);
   #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "lightning:lnbc10u1pexampleinvoice0001";
   coaxial_private_action_done(s[..]);

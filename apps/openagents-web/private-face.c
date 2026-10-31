@@ -67,7 +67,10 @@ static void send_asks(uint32_t state) {
   do_account(state);
   coax_t_PrivateState *s = at(state).data;
   if (s->qr_want) {   // a phone code's URL: its QR module grid (coax/lib/qr)
-    coax_t_QrResult r = qr_encode((coax_v_u8){s->code_url.e, s->code_n}, (coax_v_u8){s->qr.e, (int64_t)sizeof s->qr.e});
+    /* a tip's invoice in capitals, alphanumeric (~487 characters is past byte mode's 412); a URL in byte mode */
+    coax_t_QrResult r = s->qr_text_n > 0
+      ? qr_encode_alnum((coax_v_u8){s->qr_text.e, s->qr_text_n}, (coax_v_u8){s->qr.e, (int64_t)sizeof s->qr.e})
+      : qr_encode((coax_v_u8){s->code_url.e, s->code_n}, (coax_v_u8){s->qr.e, (int64_t)sizeof s->qr.e});
     coaxial_private_qr(at(state), r.status, r.size);
   }
   if (s->ask_n > 0) {
