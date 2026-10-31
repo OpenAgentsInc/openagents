@@ -55,6 +55,14 @@ precision is checked. Point units have physical length dimension. Only vectors
 scale by a matching raw float; a dimensionless Quantity is not a raw float.
 Whole operands are captured once in source order, including aliasing reads.
 
+Mutation-only preparation asks Coax for an alternate with the exact result
+type. Supported binary token changes redirect one source call, retaining its
+arguments and leaving shared helper bodies untouched. Point differences,
+vector-plus-point and scalar-left products have no paired alternate in this
+profile; unary negation is unsupported. Their separate inventory is not a
+check kill or an equivalence waiver. Exhausted preparation capacity refuses
+before a partial mutation score. Normal compilation prepares no alternates.
+
 Raw component access/reconstruction remains an explicit boundary. Frame
 metadata establishes no realization, correction epoch, sensor truth or
 transform. Schema1 spatial reflection and device output are refused in this
@@ -153,8 +161,9 @@ cached geometry/current-qpos pairs are not interchangeable FK targets. Scalar
 libm host flags qualify cross-mode bytes on the named Darwin target; the prior
 default fused-libm byte mismatch is preserved. This is a geometric query, with
 no simulation clock, hardware, model import, fingers or articulated dynamics
-claim. Source mutation counts cover emitted sites, excluding lowered spatial
-operator-token swaps.
+claim. The historical 281-site FK mutation score predates lowered spatial
+operator-token swaps. The later source-token proof is recorded separately;
+it does not retroactively broaden that historical score.
 
 ## The owned grip Jacobian is a derivative of one fresh kinematic query
 

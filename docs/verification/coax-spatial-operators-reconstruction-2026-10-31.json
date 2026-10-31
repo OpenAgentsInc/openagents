@@ -1,0 +1,510 @@
+{
+  "schema": "coax.quantity.bootstrap.execution.v1",
+  "root": "/private/tmp/coax-spatial-operators-source-final",
+  "working_directory": "/private/tmp/coax-spatial-operators-source-final/coax",
+  "output_directory": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs",
+  "source_commit": null,
+  "source_commit_limit": "HEAD is a label, not a clean-tree assertion; source hashes and normal fingerprints bind actual inputs.",
+  "normal_bootstrap_recipe_sha256": "ab2b2c0db30292dc570100ba9ce3a8db4317f127ad4fce12cacd3f982ca09480",
+  "normal_seed_compile_order": [
+    "budget",
+    "check-domains",
+    "profiles",
+    "mutation-schedule",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "normal_seed_link_order": [
+    "check-domains",
+    "mutation-schedule",
+    "budget",
+    "profiles",
+    "lexer",
+    "parser",
+    "checker",
+    "sources"
+  ],
+  "seed_sha256": {
+    "coax/bootstrap/budget.c": "a3dfe6f863a45a54b3510b9c7e767032e13ae5ab48f62b6757f277964331edfb",
+    "coax/bootstrap/budget.h": "bd947667c4acc09f0f03cd96e1b0d53d39434aca087650c34d9dedc60b66075b",
+    "coax/bootstrap/check-domains.c": "6bbc5610ce4de84a8cd28f41bfc2e9fd2e00304c250594e890ced36e73e5b058",
+    "coax/bootstrap/check-domains.h": "b25a2194396dad1962427364f6de8f5510a411a78d83e09336a2ed168fa4fed8",
+    "coax/bootstrap/profiles.c": "37d416b8f263772bfad6cfc0f443ea91961ee9828b4a75a12be2cf2b49566025",
+    "coax/bootstrap/profiles.h": "bab1a760e82f5068579638cae8eaaf5ec5bf1049627c77dbb98d44330b8f4036",
+    "coax/bootstrap/mutation-schedule.c": "3502f8ba8fac972db2a04ef68058a9ef94d1da73c83fa4377fc076676c89edbf",
+    "coax/bootstrap/mutation-schedule.h": "2644a53d195be22802d7ca13af520d993ee0dc0b0e68f3feccd8c856abbac9da",
+    "coax/bootstrap/lexer.c": "6c29d105b4a102f4a70a79d0a35bb930a95efd3dc549f8292561eb4a3a1c3366",
+    "coax/bootstrap/lexer.h": "917d504fce7df5520cd6015b81942014f0e29fc55ab1cabd549dca51277cc11a",
+    "coax/bootstrap/parser.c": "9b09a06bee9a125758744454c629841a6ef77fb050b43352cfbd68dad029fd61",
+    "coax/bootstrap/parser.h": "881e6b66a380fed7c35cd89e20f8f04b9b07906c8c88eb2cad1544b34ae194ef",
+    "coax/bootstrap/checker.c": "72649db1819083bbcf8cb9be87b75ce2979acacc8d9775b60377bdec99dd8e3e",
+    "coax/bootstrap/checker.h": "76c2e599032a37035c718a9ac1afd50ba7828ca6a1340bd890f04c1a23492632",
+    "coax/bootstrap/sources.c": "991e7bac79e9054d5303b043eaebadb8313ca02c474b336938fc432f45b80f08",
+    "coax/bootstrap/sources.h": "037afbd7fa941d502b6c10c7a3ed9996973f63bac71aad24e0878e7a2ee8cff8"
+  },
+  "authored_source_sha256": {
+    "coax/lib/compiler/compiler.coax": "2173af097a8da2c3c21d7a0af73190f5d662e40bee6f43eb3ac0c3b543d8460b",
+    "coax/lib/compiler/parser.coax": "b3ad8dc998257b29d005da4dae6eddfc126f53cde4699954a287167afbde0c11",
+    "coax/lib/compiler/checker.coax": "0eb708c6b55e02928e9c1780963540f4ce1b7a6f421280baea168e6de56a8765",
+    "coax/lib/compiler/quantity.coax": "5c072cfaf6cf9cab834d24f0234f0900cd97ec4a0d7812e98227932589d2f441"
+  },
+  "embedded_protocol_sources_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+  "preparation": {
+    "generated_file": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_runtime.inc",
+    "source": "Four exact lib/proto source literals, with the normal raw-string delimiters."
+  },
+  "command_count": 24,
+  "shared_wall_budget_seconds": 840,
+  "normal_rebuild_command": "coax/build.sh",
+  "normal_rebuild_executed": false,
+  "scope": "Focused checked-in-seed reconstruction and C/header fixed point, not the complete normal release/cache/provenance qualification.",
+  "source_writes": false,
+  "cache_or_installed_release_published": false,
+  "commands": [
+    {
+      "name": "fingerprint-before",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-spatial-operators-source-final"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/fingerprint-before.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/fingerprint-before.stderr",
+      "remaining_wall_budget_seconds": 839.9706359580159,
+      "exit": 0,
+      "elapsed_seconds": 3.3222940409905277
+    },
+    {
+      "name": "seed-budget",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/budget.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-budget.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-budget.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-budget.stderr",
+      "remaining_wall_budget_seconds": 836.6465730830096,
+      "exit": 0,
+      "elapsed_seconds": 0.1238107499666512
+    },
+    {
+      "name": "seed-check-domains",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/check-domains.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-check-domains.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-check-domains.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-check-domains.stderr",
+      "remaining_wall_budget_seconds": 836.5212892079726,
+      "exit": 0,
+      "elapsed_seconds": 0.19602529099211097
+    },
+    {
+      "name": "seed-profiles",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/profiles.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-profiles.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-profiles.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-profiles.stderr",
+      "remaining_wall_budget_seconds": 836.3233588329749,
+      "exit": 0,
+      "elapsed_seconds": 0.17961533297784626
+    },
+    {
+      "name": "seed-mutation-schedule",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/mutation-schedule.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-mutation-schedule.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-mutation-schedule.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-mutation-schedule.stderr",
+      "remaining_wall_budget_seconds": 836.142560917011,
+      "exit": 0,
+      "elapsed_seconds": 0.14931895799236372
+    },
+    {
+      "name": "seed-lexer",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/lexer.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-lexer.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-lexer.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-lexer.stderr",
+      "remaining_wall_budget_seconds": 835.9918737079715,
+      "exit": 0,
+      "elapsed_seconds": 0.5020948750316165
+    },
+    {
+      "name": "seed-parser",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/parser.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-parser.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-parser.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-parser.stderr",
+      "remaining_wall_budget_seconds": 835.4878574999748,
+      "exit": 0,
+      "elapsed_seconds": 1.4157772499602288
+    },
+    {
+      "name": "seed-checker",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/checker.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-checker.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-checker.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-checker.stderr",
+      "remaining_wall_budget_seconds": 834.0706625829916,
+      "exit": 0,
+      "elapsed_seconds": 5.16462945798412
+    },
+    {
+      "name": "seed-sources",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "bootstrap/sources.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-sources.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-sources.stderr",
+      "remaining_wall_budget_seconds": 828.9043654580018,
+      "exit": 0,
+      "elapsed_seconds": 0.30866175005212426
+    },
+    {
+      "name": "stage0-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-DCOAX_BOOTSTRAP_IMPORTER",
+        "-I",
+        "bootstrap",
+        "-I",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/stage0",
+        "src/main.cpp",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-check-domains.o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-mutation-schedule.o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-budget.o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-profiles.o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-lexer.o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-parser.o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-checker.o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/seed-sources.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/stage0-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/stage0-cxx.stderr",
+      "remaining_wall_budget_seconds": 828.5942087500007,
+      "exit": 0,
+      "elapsed_seconds": 19.58102158398833
+    },
+    {
+      "name": "stage0-graph",
+      "arguments": [
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/stage0",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_importer.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_importer.c",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/stage0-graph.stderr",
+      "remaining_wall_budget_seconds": 809.0122422499699,
+      "exit": 0,
+      "elapsed_seconds": 30.12416058400413
+    },
+    {
+      "name": "graph-object",
+      "arguments": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-c",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_importer.c",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/graph-object.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/graph-object.stderr",
+      "remaining_wall_budget_seconds": 778.8865182079608,
+      "exit": 0,
+      "elapsed_seconds": 12.42303979198914
+    },
+    {
+      "name": "final-cxx",
+      "arguments": [
+        "c++",
+        "-std=c++20",
+        "-O1",
+        "-g",
+        "-Wall",
+        "-Wextra",
+        "-Wno-missing-field-initializers",
+        "-I",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs",
+        "-o",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "src/main.cpp",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_importer.o"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/final-cxx.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/final-cxx.stderr",
+      "remaining_wall_budget_seconds": 766.4620092919795,
+      "exit": 0,
+      "elapsed_seconds": 26.05522270797519
+    },
+    {
+      "name": "final-version",
+      "arguments": [
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "version"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/final-version.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/final-version.stderr",
+      "remaining_wall_budget_seconds": 740.405639124976,
+      "exit": 0,
+      "elapsed_seconds": 0.584720249986276
+    },
+    {
+      "name": "final-graph",
+      "arguments": [
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "lib/compiler/compiler.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/rebuilt.c",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/final-graph.stderr",
+      "remaining_wall_budget_seconds": 739.8195836669765,
+      "exit": 0,
+      "elapsed_seconds": 37.281851584033575
+    },
+    {
+      "name": "graph-c-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_importer.c",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/rebuilt.c"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/graph-c-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/graph-c-fixedpoint.stderr",
+      "remaining_wall_budget_seconds": 702.5364542920142,
+      "exit": 0,
+      "elapsed_seconds": 0.04301033302908763
+    },
+    {
+      "name": "graph-header-fixedpoint",
+      "arguments": [
+        "cmp",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/proto_importer.h",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/rebuilt.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/graph-header-fixedpoint.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/graph-header-fixedpoint.stderr",
+      "remaining_wall_budget_seconds": 702.4918933750014,
+      "exit": 0,
+      "elapsed_seconds": 0.02150174998678267
+    },
+    {
+      "name": "final-seed-parser",
+      "arguments": [
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "lib/compiler/parser.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-final.c",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/final-seed-parser.stderr",
+      "remaining_wall_budget_seconds": 702.4691200419911,
+      "exit": 0,
+      "elapsed_seconds": 0.8099749590037391
+    },
+    {
+      "name": "parser-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.c",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-final.c"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-seed-c-match.stderr",
+      "remaining_wall_budget_seconds": 701.6578587080003,
+      "exit": 0,
+      "elapsed_seconds": 0.020803040999453515
+    },
+    {
+      "name": "parser-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/parser.h",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/parser-seed-header-match.stderr",
+      "remaining_wall_budget_seconds": 701.6348117499729,
+      "exit": 0,
+      "elapsed_seconds": 0.010978124977555126
+    },
+    {
+      "name": "final-seed-checker",
+      "arguments": [
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+        "c",
+        "lib/compiler/checker.coax",
+        "--library",
+        "--header",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-final.c",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/final-seed-checker.stderr",
+      "remaining_wall_budget_seconds": 701.6224628330092,
+      "exit": 0,
+      "elapsed_seconds": 13.31704470794648
+    },
+    {
+      "name": "checker-seed-c-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.c",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-final.c"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-seed-c-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-seed-c-match.stderr",
+      "remaining_wall_budget_seconds": 688.3038697919692,
+      "exit": 0,
+      "elapsed_seconds": 0.019267749972641468
+    },
+    {
+      "name": "checker-seed-header-match",
+      "arguments": [
+        "cmp",
+        "bootstrap/checker.h",
+        "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-final.h"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-seed-header-match.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/checker-seed-header-match.stderr",
+      "remaining_wall_budget_seconds": 688.2827854579664,
+      "exit": 0,
+      "elapsed_seconds": 0.01491808396531269
+    },
+    {
+      "name": "fingerprint-after",
+      "arguments": [
+        "./provenance.sh",
+        "fingerprint",
+        "/private/tmp/coax-spatial-operators-source-final"
+      ],
+      "cwd": "/private/tmp/coax-spatial-operators-source-final/coax",
+      "stdout_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/fingerprint-after.stdout",
+      "stderr_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/fingerprint-after.stderr",
+      "remaining_wall_budget_seconds": 688.2663939169724,
+      "exit": 0,
+      "elapsed_seconds": 3.141390207980294
+    }
+  ],
+  "passed": true,
+  "input_fingerprint_before": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+  "input_fingerprint_after": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+  "compiler_version": "coax0 0.45.0",
+  "artifacts": {
+    "stage0": "28ed6e4dd92a572486d8701a3618328f3294f23f5d4a8e395619b5cb97f169cf",
+    "proto_importer.c": "305f96b2b4e51cc529ff479a6f53efe98e212abffba1c6eb60f2fffce445f788",
+    "proto_importer.h": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9",
+    "proto_importer.o": "fb122fdb411c67a92dd3aaa5d3b66f55184a875c2655109084a44dba261f2b8f",
+    "coax": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+    "rebuilt.c": "305f96b2b4e51cc529ff479a6f53efe98e212abffba1c6eb60f2fffce445f788",
+    "rebuilt.h": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9"
+  },
+  "compiler_binary_path": "/private/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+  "fixed_points": {
+    "compiler_graph_c": true,
+    "compiler_graph_header": true,
+    "checked_in_parser_seed_c_and_header": true,
+    "checked_in_checker_seed_c_and_header": true
+  },
+  "duration_seconds": 154.89191504201153
+}

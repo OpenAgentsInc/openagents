@@ -207,7 +207,7 @@
       "id": "psionic.language.current",
       "document": "psionic/book/PLAN.md",
       "scope": "Current shared compiler and bounded Psionic consumers, including nominal/formal scalar units and initial concrete native-C affine point/vector types; full transforms, compiler clocks, other targets and full robot migrations remain separate.",
-      "text_sha256": "aac4d607fca2760f8197096b2aeb93117f40190b0b8357705866b5a84a097317",
+      "text_sha256": "5355a62aeec2932ae6bc961b475b423689af0e5bfdbf8545a1415730624bda68",
       "features": [
         {
           "id": "generics.type-parameters",
@@ -305,7 +305,7 @@
         },
         {
           "path": "coax/SPATIAL.md",
-          "sha256": "ea538dea23321c66245d1c266891ce6f88d4aa470b95fd7204bb411cd7a630a7"
+          "sha256": "0c934934cc1699886844c780a9990c47c627dc760878bed4926a5f8472ec9e19"
         },
         {
           "path": "coax/tests/spatial.py",

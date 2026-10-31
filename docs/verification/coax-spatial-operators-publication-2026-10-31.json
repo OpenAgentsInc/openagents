@@ -1,0 +1,356 @@
+{
+  "schema": "coax.spatial-operators.publication-binding.v1",
+  "passed": true,
+  "source_commit": "7a1b965606",
+  "compiler_path": "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+  "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+  "input_fingerprint": "83d4233e339e98f5339f175872d6d7f6c47c67befa53a86608c4e161b754aa65",
+  "normal_reconstruction": {
+    "record_sha256": "9bf3a2f6f5ca371d4a452042da5e383ea905c9d8398013e78cecfc9507e569c3",
+    "commands": 24,
+    "duration_seconds": 154.89191504201153,
+    "cache_or_installed_release_qualified": false
+  },
+  "native_token_witness": {
+    "record_sha256": "660423c7603787a763837f51a028aee3e4651b09276e2a86fc7aa4d3528fca74",
+    "source_CPP_sha256_exact_to_probe_and_normal_snapshot": {
+      "coax/src/check.cpp": true,
+      "coax/src/coax.h": true,
+      "coax/src/compute.cpp": true,
+      "coax/src/effects.cpp": true,
+      "coax/src/emit_c.cpp": true,
+      "coax/src/errors.cpp": true,
+      "coax/src/eval.cpp": true,
+      "coax/src/lex.cpp": true,
+      "coax/src/main.cpp": true,
+      "coax/src/native_checks.cpp": true,
+      "coax/src/parse.cpp": true,
+      "coax/src/proto.cpp": true,
+      "coax/src/release.h": true,
+      "coax/src/shader.cpp": true,
+      "coax/src/sources.cpp": true,
+      "coax/src/spirv.cpp": true,
+      "coax/src/verify.cpp": true
+    },
+    "normal_graph_source_bindings": {
+      "proto_importer.c": {
+        "private_sha256": "305f96b2b4e51cc529ff479a6f53efe98e212abffba1c6eb60f2fffce445f788",
+        "normal_sha256": "305f96b2b4e51cc529ff479a6f53efe98e212abffba1c6eb60f2fffce445f788",
+        "exact": true
+      },
+      "proto_importer.h": {
+        "private_sha256": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9",
+        "normal_sha256": "2be313bbaa3a625c9255161cf9738b750aad2be3017c2c7015af70b00801e9e9",
+        "exact": true
+      },
+      "proto_runtime.inc": {
+        "private_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+        "normal_sha256": "b4b72f1cdd429cdfb5b7959630c3f777dc64e150a9dd995a3c74db4c0e876096",
+        "exact": true
+      }
+    },
+    "scope": "Read-only source/graph binding, not identical probe objects or binaries. The original 2340-coordinate execution is retained; no rerun."
+  },
+  "default_eight_C_five_headers": {
+    "schema": "coax-spatial-publication-emission-binding-v1",
+    "compiler": "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+    "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+    "passed": true,
+    "commands": [
+      {
+        "name": "typed-debug",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-operators-final-default-emissions/typed-debug/spatial-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "b60ca3d3800369fa1b9032021efb2ec7c83897984fe2e4a551847fd64d6fb00c",
+        "prior_C_sha256": "b60ca3d3800369fa1b9032021efb2ec7c83897984fe2e4a551847fd64d6fb00c",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "prior_header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "raw-debug",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native-raw.coax",
+          "--library"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "prior_C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "passed": true
+      },
+      {
+        "name": "typed-release",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/spatial-operators-final-default-emissions/typed-release/spatial-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "e2256b37326c900a25ce42d1c9d649a185c6e8d134c623be35757dc0a77f5cb9",
+        "prior_C_sha256": "e2256b37326c900a25ce42d1c9d649a185c6e8d134c623be35757dc0a77f5cb9",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "prior_header_sha256": "5b6f56fa321cfbbf6bda92d2e8643e6d391e84eadfdc368fe7eda86fa23cb2f6",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "raw-release",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native-raw.coax",
+          "--library",
+          "--release"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "prior_C_sha256": "f479a4c86d28aff128911af5262d886087b736cb08310a01a47cc4169f7eb3ae",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "passed": true
+      },
+      {
+        "name": "spacecam-debug",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-operators-final-default-emissions/spacecam-debug/spacecam-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "abdb29955f0dfcbce877f919c78a1132b110f90c02b7492562c559653a5e579b",
+        "prior_C_sha256": "abdb29955f0dfcbce877f919c78a1132b110f90c02b7492562c559653a5e579b",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "prior_header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "spacecam-release",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/spacecam-native.coax",
+          "--library",
+          "--release",
+          "--header",
+          "/tmp/spatial-operators-final-default-emissions/spacecam-release/spacecam-native.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+        "prior_C_sha256": "d0a2f5f091f9b7c6e08cc8e4723ecc53a9023ed1d42b014b0ce8af982979a833",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "prior_header_sha256": "ea96509425dba2c4c9b83bb73b571949c1b212a442300917bf8623269e10bac7",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "belt",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "apps/openagents-web/belt.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-operators-final-default-emissions/belt/belt.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "6d2290fc9671c3b51eed17d848c5e5f2dbae3f92d35b7927181c394ca15db834",
+        "prior_C_sha256": "6d2290fc9671c3b51eed17d848c5e5f2dbae3f92d35b7927181c394ca15db834",
+        "C_exact": true,
+        "stderr_bytes": 0,
+        "header_sha256": "140d8725cc991ec8ac0bb9c4f27af094e88b27d775d2f106c286a5e907764c45",
+        "prior_header_sha256": "140d8725cc991ec8ac0bb9c4f27af094e88b27d775d2f106c286a5e907764c45",
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "name": "verification",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "checks-c",
+          "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents/coax/tests/spatial/native-verification-integration.coax",
+          "--arithmetic",
+          "checked",
+          "--profile-report",
+          "/dev/stderr"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit_status": 0,
+        "C_sha256": "55f18cd4345c2bd300ca50f5dd66bbce0db2d9c33ce0b360a77cde86374e66b6",
+        "prior_C_sha256": "55f18cd4345c2bd300ca50f5dd66bbce0db2d9c33ce0b360a77cde86374e66b6",
+        "C_exact": true,
+        "stderr_bytes": 934,
+        "passed": true
+      }
+    ],
+    "duration_seconds": 0.8368985000415705,
+    "scope": "Eight exact C programs and five headers only. Preserve exact prior source filenames/cwds. No numerical, SDK, game, full mutation or old native semantic execution repeated. Verification profile JSON may differ by compiler inventory; checked C must remain byte-exact."
+  },
+  "fixed_model_four_C_four_headers": {
+    "schema": "coax.spatial-operators.final-consumer-binding.v1",
+    "compiler_sha256": "f13f4d09adf17d1539a95341a6076fe5996c067b1521d77aa52d1d1478625992",
+    "passed": true,
+    "commands": [
+      {
+        "model": "panda-fk",
+        "mode": "debug",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "psionic/lib/robotics/panda-fk-chain.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-operators-final-consumer-emissions-original-spelling/panda-fk-debug/panda-fk.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit": 0,
+        "stderr_bytes": 0,
+        "C_sha256": "77475073f7e4c95f2a0ae034ee64e21ed66d8b48bf1e329ac6fbbb790139a172",
+        "header_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+        "prior_qualification_sha256": "16a9f5507f62ae975486dcad8305d77c4a31e4fdadc1fb0073296d1cca120a7d",
+        "C_exact": true,
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "model": "panda-fk",
+        "mode": "release",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "psionic/lib/robotics/panda-fk-chain.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-operators-final-consumer-emissions-original-spelling/panda-fk-release/panda-fk.h",
+          "--release"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit": 0,
+        "stderr_bytes": 0,
+        "C_sha256": "36a57846409201e501213c5d7d296b93d188993813cebb0e9f69dc44de0322f0",
+        "header_sha256": "9566c58bbaa03d6404bc65edcca462efc05c9c3c2cd0b84b81e9e08456793134",
+        "prior_qualification_sha256": "16a9f5507f62ae975486dcad8305d77c4a31e4fdadc1fb0073296d1cca120a7d",
+        "C_exact": true,
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "model": "panda-fingers",
+        "mode": "debug",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "psionic/lib/robotics/panda-fingers-chain.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-operators-final-consumer-emissions-original-spelling/panda-fingers-debug/panda-fingers.h"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit": 0,
+        "stderr_bytes": 0,
+        "C_sha256": "36a3fe1558fbca1f34e9926048f32ea63fc9c26d8bf342c3723e079d68fefdaa",
+        "header_sha256": "ce8f7e459564775768ab18fe89aca3dbb95362a77bea564a4ff89cf96f2cdc5b",
+        "prior_qualification_sha256": "b3bf911fdbac47f297ca207264eb8c28812fb58b9968734fac60e050a2782c00",
+        "C_exact": true,
+        "header_exact": true,
+        "passed": true
+      },
+      {
+        "model": "panda-fingers",
+        "mode": "release",
+        "arguments": [
+          "/tmp/coax-spatial-operators-reconstruction-complete-inputs/coax",
+          "c",
+          "psionic/lib/robotics/panda-fingers-chain.coax",
+          "--library",
+          "--header",
+          "/tmp/spatial-operators-final-consumer-emissions-original-spelling/panda-fingers-release/panda-fingers.h",
+          "--release"
+        ],
+        "cwd": "/Users/christopherdavid/.codex/worktrees/signer-independent-verification/openagents",
+        "exit": 0,
+        "stderr_bytes": 0,
+        "C_sha256": "d6ccce41f9617b0eabd7707cec21b33bb3f0fc9a39a18724fff1f8aadfb93e21",
+        "header_sha256": "ce8f7e459564775768ab18fe89aca3dbb95362a77bea564a4ff89cf96f2cdc5b",
+        "prior_qualification_sha256": "b3bf911fdbac47f297ca207264eb8c28812fb58b9968734fac60e050a2782c00",
+        "C_exact": true,
+        "header_exact": true,
+        "passed": true
+      }
+    ],
+    "duration_seconds": 0.11799041595077142,
+    "scope": "Six new-context C/header emissions only. No numerical, FD, SDK, native executable or old mutation execution repeated. Prior native source paths preserved; no binary/cache/release identity claim."
+  },
+  "jacobian_two_cached_C_two_headers": {
+    "schema": "coax.spatial-operators.jacobian-cached-artifact-binding.v1",
+    "passed": true,
+    "rows": [
+      {
+        "mode": "debug",
+        "C_sha256": "08d95a52f68b338a93e1ea4db7c99abced7ea8a6b42704cbf421d7fcd0b5013e",
+        "header_sha256": "e113354f0df109592dc4a167dc231b724a73f6b8da24a360a1026956abc83306",
+        "stderr_bytes": 0,
+        "process_exit_status_retained": false,
+        "scope": "Read-only artifact binding from the first parallel emission attempt; unrelated missing FK/finger source names aborted the driver before aggregate receipt. No re-emission."
+      },
+      {
+        "mode": "release",
+        "C_sha256": "226949499c6e976d8d2a246d593ac5cf2032f2d8f29016d000ad1a39c9211d92",
+        "header_sha256": "e113354f0df109592dc4a167dc231b724a73f6b8da24a360a1026956abc83306",
+        "stderr_bytes": 0,
+        "process_exit_status_retained": false,
+        "scope": "Read-only artifact binding from the first parallel emission attempt; unrelated missing FK/finger source names aborted the driver before aggregate receipt. No re-emission."
+      }
+    ],
+    "prior_qualification_sha256": "6f3b249ff99a0e93b61d90f67d24f46c739699d6b8518edfc9e1469eeceaa482"
+  },
+  "failed_preparations": [
+    {
+      "path": "/tmp/coax-spatial-operators-reconstruction-final/receipt.json",
+      "reason": "Private snapshot initially omitted scripts/coax-release.sh; fingerprint refused before any compile. Input directory was completed and a new output directory used."
+    },
+    {
+      "path": "/tmp/spatial-operators-final-consumer-emissions",
+      "reason": "Initial extra consumer driver used nonexistent FK/finger wrapper names and aborted before aggregate receipt. Passing Jacobian C/header artifacts retained and read-only bound, not re-emitted."
+    },
+    {
+      "path": "/tmp/spatial-operators-final-consumer-emissions-correct-paths/receipt.json",
+      "reason": "Existing FK/finger entry files compiled, but absolute source-path spelling differed from historical relative spelling in generated diagnostics. The failed exact binding remains retained; only those four failed contexts were emitted with original spelling."
+    }
+  ],
+  "scope": "Focused source, transport, new mutation witnesses and exact default-emission reuse only. No old mutation/numerical/SDK corpora repeated, no full release/cache/install/other-target qualification."
+}

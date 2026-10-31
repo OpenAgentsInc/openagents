@@ -699,6 +699,13 @@ Begin with built-in operators for these types. User-defined operator overloads
 wait until R11 effect checks can enforce that they are pure, nonallocating and
 nonfallible. Units of time are quantities here; clocks and timestamps are R13.
 
+The [initial affine native-C profile](SPATIAL.md) now implements concrete
+Point3/Vector3 admission and the small camera/Panda consumers. Mutation-only
+preparation admits type-preserving binary `+/-` and `*/` helper pairs, with
+site-local apply/undo and native witnesses. No-alternate and unsupported
+operations stay explicit inventory. Full transforms, frame realizations and
+the remaining R12 consumer gates below are still open.
+
 The expansion covers moving and rotating frames. A full state transform maps
 position and velocity together, including the angular-velocity term
 (`v_world = v_frame + R (v_local + ω × r_local)`), and refuses a position-only

@@ -579,8 +579,41 @@ coordinate provenance or migrate Panda's poses, add frame transforms or bind a
 point to a clock/epoch. Components remain explicit raw escapes. Generated
 operator helpers can remain as debug calls; the spatial profile records
 measured release code and its relocation limits. Mutation traversal retains
-authored input expressions, while lowered spatial operator-token swaps remain
-unqualified. Full R12 remains open.
+authored input expressions. The later binary source-token profile below also
+qualifies a bounded set of type-preserving operator changes. Full R12 remains
+open.
+
+## Check the source operator after lowering
+
+The compiler implements point/vector arithmetic by generating ordinary private
+procedures. A source `point + displacement` therefore becomes a call before
+mutation checks run. Retaining the authored token lets Coax choose a valid
+alternative: point-minus-displacement has the same result type. The actual
+mutator redirects that one source call and preserves its operands. Other source
+calls that share the ordinary helper keep their own meaning.
+
+The [token witness](../../coax/tests/spatial/operator-native.md) qualifies
+`+/-` for point/vector and vector/vector pairs, and `*/` for vector/raw pairs,
+in both carriers. All twelve supported fixture mutants are killed; independent
+native execution checks 2,340 coordinates across O0, O2 and fail-fast ASan/UBSan.
+Apply changes one callee; undo restores the emitted C/header exactly. Separate
+worker, shard, selective-owner, weak-check and operand-order checks exercise
+the actual mutation runner.
+
+Point differences, vector-plus-point and scalar-left multiplication have no
+paired alternate with the same result type in this profile. Unary negation
+is unsupported. Those sites have separate inventory, not successful kills or
+equivalence waivers. Alternate preparation runs only for mutation; exhausting
+the shared instance pool refuses before a partial score. This closes a specific
+coverage gap without claiming every spatial operation, frame transformation
+or compiler-bounded control is qualified.
+
+An [actual Panda consumer witness](../../coax/tests/spatial/panda-shift-token.md)
+then changes the unchanged `pfk_shift` source expression from point-plus-vector
+to point-minus-vector. Only the new endpoint check runs, and it kills that one
+new mutant. Native execution separately observes all thirteen poses: translated
+positions negate from the zero root while attitudes stay identical. The old
+281-site FK corpus is retained with its historical scope and is not rerun.
 
 ## Compute the Panda chain in Coax
 
@@ -657,10 +690,11 @@ The [source profile](../fixtures/robotics/panda-fk/source-profile.json) and
 [qualification receipt](../fixtures/robotics/panda-fk/qualification.json) keep
 source constants, reference scope and native compilation distinct. Eleven
 Coax check groups pass, and all 281 candidate-emitted mutation sites in the
-three new FK roots are killed. That count does not include swapping a lowered
-spatial operator token; that compiler capability remains pending. Authored
-operand traversal is a separate compiler check. Independent analytic and
-numerical checks exercise the spatial operations themselves.
+three new FK roots are killed. That historical count predates source spatial
+token mutation and is retained with its original scope. The new token evidence
+below is separate. Authored operand traversal is another compiler check.
+Independent analytic and numerical checks exercise the spatial operations
+themselves.
 
 The native corpus has 158 configurations and 1,307 ABI/admission assertions per
 mode. An independent stdlib homogeneous-matrix formulation checks 24,648 values;

@@ -3,8 +3,8 @@
 The authored compiler accepts nominal three-dimensional points and vectors in
 explicit frames. It checks their affine operations and minimum precision,
 then lowers them to ordinary three-scalar aggregates. This native C profile
-is a foundation for [R12](ROADMAP.md), with full frame/state transforms and
-Panda migration still pending.
+is a foundation for [R12](ROADMAP.md). The source-bound Panda queries now use
+typed world positions; full frame/state transforms remain pending.
 
 ```jai
 #load "lib/quantity.coax" as u;
@@ -65,9 +65,30 @@ call lowering preserves source order, including scalar-left multiplication and
 vector-plus-point. These are compiler implementation procedures, with generated
 expression provenance. The lowered source call retains an authored marker so
 mutation still visits cloned operand expressions, including array indices.
-Spatial operator-token swap mutation remains a separate pending feature; this
-is not a full authored-spatial mutation qualification. This does not introduce
-user-defined operator overloads.
+The initial source-token mutation profile now admits `+ ↔ -` for point/vector
+and vector/vector pairs, and `* ↔ /` for vector/raw-scalar pairs, when Coax proves
+exact result identity. A mutant redirects one source call to a Coax-selected
+alternate helper; arguments and shared helper bodies stay unchanged. A point
+difference, vector + point and raw × vector have no admitted paired alternate;
+unary negation remains unsupported by this binary profile. Separate counts do
+not count those gaps as check kills. This does not introduce user-defined
+operator overloads or complete all authored-spatial mutation coverage.
+
+The [new token witness](tests/spatial/operator-native.md) qualifies twelve exact
+F32/F64 source mutants, one-callee-only apply/undo and independent native outputs.
+The focused [operator record](../docs/verification/coax-spatial-operators-2026-10-31.json)
+separates that evidence from the earlier 1,403-site checker scope. Preparing
+alternates is mutation-only and can exhaust the existing shared instance budget;
+that is a preparation refusal, not successful partial coverage. The earlier
+FK mutation score is retained with its original emitted-site scope.
+
+The [actual Panda witness](tests/spatial/panda-shift-token.md) separately kills
+the one newly admitted source token in unchanged `pfk_shift`, using a new
+endpoint check and native all-pose observations. The old FK mutants are not
+rerun. [Publication bindings](../docs/verification/coax-spatial-operators-publication-2026-10-31.json)
+record the focused normal seed reconstruction, exact default emissions and
+static source/graph carry of the native token witnesses. This is no full
+release, installed-cache or other-target qualification.
 
 The type key includes point/vector kind, nominal frame, resolved nominal/formal
 unit and carrier. Generated nodes and types use a private scope; internal C
