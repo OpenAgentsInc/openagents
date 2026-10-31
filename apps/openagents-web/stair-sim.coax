@@ -2,8 +2,8 @@
 //   coax/bin/coax run apps/openagents-web/stair-sim.coax --release
 // Each map, then each line: a player (stair.coax's play_as), WON or LOST, the wave it ended on, lives left,
 // defenders placed and the lives the waves from 9 on took. 2026-10-31, forty waves, each map's
-// late weight (1.4, 1.35, 1.2) and the subclasses: BEST wins every map on seeds 7919 and 15838, losing 10 to 96 lives
-// to waves 21-40; a run takes a minute or two.
+// late weight on the late beasts' hit points (1.7, 1.6, 1.3), the subclasses and the magic items: BEST wins all
+// fifteen runs, losing 0 to 69 lives to waves 21-40; a little more (1.8, 1.7, 1.4) costs lives first and still wins 11 of 15. Seconds a run.
 #import "Basic";
 #load "stair.coax";
 

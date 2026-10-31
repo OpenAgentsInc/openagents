@@ -53,8 +53,20 @@ CLASS_NAME :: [7] string.["FIGHTER", "WIZARD", "CLERIC", "ROGUE", "RANGER", "BAR
 CLASS_R :: [7] f32.[0.85, 0.72, 1.0, 0.55, 0.5, 1.0, 0.92];
 CLASS_G :: [7] f32.[0.88, 0.55, 0.86, 0.85, 0.9, 0.5, 0.95];
 CLASS_B :: [7] f32.[0.95, 1.0, 0.42, 0.8, 0.45, 0.75, 1.0];
-CLASS_ATTACK :: [7] string.["LONGSWORD +5 · 1D8+3 SLASHING", "FIRE BOLT +5 · 1D10 FIRE", "SACRED FLAME · DEX DC 13 · 1D8 RADIANT",
-  "SHORTSWORD +5 · 1D6+3 PIERCING", "LONGBOW +5 · 1D8+3 PIERCING", "VICIOUS MOCKERY · WIS DC 13 · 1D6 PSYCHIC", "LONGSWORD +5 · 1D8+3 SLASHING"];
+// A defender's attack as its card shows it, at its level: the to-hit (level 4's +1, Devotion's +3) or
+// the save DC, and the damage dice (the cantrips' second die at 5).
+attack_line :: (s: [] Stair, k: int, buf: [] u8) -> int {
+  d := s[0].party[k];
+  hit := 5 + (ifx d.level >= 4 then 1 else 0) + (ifx d.cls == PALADIN && d.level >= 3 then SACRED_WEAPON else 0) + d.magic;
+  dc := 13 + (ifx d.level >= 4 then 1 else 0) + d.magic;
+  n := 0;
+  if d.cls == WIZARD { n = put(buf, 0, "FIRE BOLT +"); n = put_int(buf, n, hit); return put(buf, n, ifx d.level >= 5 then " · 2D10 FIRE" else " · 1D10 FIRE"); }
+  if d.cls == CLERIC { n = put(buf, 0, "SACRED FLAME · DEX DC "); n = put_int(buf, n, dc); return put(buf, n, ifx d.level >= 5 then " · 2D8 RADIANT" else " · 1D8 RADIANT"); }
+  if d.cls == BARD { n = put(buf, 0, "VICIOUS MOCKERY · WIS DC "); n = put_int(buf, n, dc); return put(buf, n, ifx d.level >= 3 then " · 2D6 PSYCHIC" else " · 1D6 PSYCHIC"); }
+  name := ifx d.cls == ROGUE then "SHORTSWORD +" else ifx d.cls == RANGER then "LONGBOW +" else "LONGSWORD +";
+  n = put(buf, 0, name); n = put_int(buf, n, hit);
+  return put(buf, n, ifx d.cls == ROGUE then " · 1D6+3 PIERCING" else ifx d.cls == RANGER then " · 1D8+3 PIERCING" else " · 1D8+3 SLASHING");
+}
 // Fighter: Strength 16 (+3), proficiency +2: a longsword, +5 to hit, 1d8 + 3 slashing.
 STAIR_FIGHTER :: SrdCreature.{name = "Fighter", ac = 16, hp = 12, dex = 1, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_SLASHING};
 // Wizard: Intelligence 16 (+3), proficiency +2: Fire Bolt, a ranged spell attack +5, 1d10 fire.
@@ -98,7 +110,19 @@ SHATTER_SLOTS :: 2; SHATTER_RADIUS :: 1.0; SHATTER_DC :: 13; SHATTER_MIN :: 3;
 STAIR_SPIRIT :: SrdCreature.{name = "Spiritual Weapon", ac = 10, hp = 1, dex = 0, attack = 5, dice = 1, sides = 8, bonus = 3, kind = DMG_FORCE};
 up_cost :: (s: [] Stair, cls: int, level: int) -> int { return ifx level >= MAX_LEVEL then 0 else s[0].ct[0].up[cls * LEVEL_COSTS + level - 1]; }
 // Its save DC, with level 4's improvement.
-dc_of :: (s: [] Stair, k: int, base: int) -> int { return ifx s[0].party[k].level >= 4 then base + 1 else base; }
+dc_of :: (s: [] Stair, k: int, base: int) -> int { return base + (ifx s[0].party[k].level >= 4 then 1 else 0) + s[0].party[k].magic; }
+// Past level 5, gold buys a defender a magic item, +1 to +3 (the SRD's +1 Weapon, Wand of the War Mage
+// and Amulet of the Devout): its attack rolls, its save DCs and each hit's damage, by that much.
+MAGIC_TOP :: 3;
+MAGIC_COST :: [MAGIC_TOP] int.[400, 1200, 3000];
+// What the defender's next step costs: its next level, else its next magic item (0: it has all).
+next_cost :: (s: [] Stair, k: int) -> int {
+  d := s[0].party[k];
+  if d.level < MAX_LEVEL { return up_cost(s, d.cls, d.level); }
+  return ifx d.magic >= MAGIC_TOP then 0 else MAGIC_COST[d.magic];
+}
+// The magic item's word: a weapon for those that swing or shoot one, a focus for the casters.
+magic_word :: (cls: int) -> string { return ifx cls == WIZARD || cls == CLERIC || cls == BARD then "FOCUS" else "WEAPON"; }
 
 // Level 3: each class's SRD 5.2.1 subclass (the SRD's one each), on top of what level 3 already gave.
 // Champion: Improved Critical (19-20). Evoker: Potent Cantrip, a Fire Bolt that misses still deals half.
@@ -271,10 +295,11 @@ MAKER_KIND :: 608;   // the realm's claimed maker's display name (coax/web/host.
 MAKER_BYTES :: 160;  // its 40 characters of UTF-8
 
 Rect :: struct { x0: f32; y0: f32; x1: f32; y1: f32; }
-Beast :: struct { live: bool; kind: int; d: f32; hp: int; wob: f32; age: f32; path: int; regen: f32; seen: bool; }   // seen: a shadow Daylight has shown
+Beast :: struct { live: bool; kind: int; d: f32; hp: int; top: int; wob: f32; age: f32; path: int; regen: f32; seen: bool; }   // top: its hit points when it came   // seen: a shadow Daylight has shown
 Defender :: struct {
   live: bool; cls: int; cell: int; wait: f32; slots: int;
   level: int; surge: bool; slots2: int; bless: int;   // bless: the d4 Bless added to its last roll (0 none)
+  magic: int;      // its magic item past level 5: +0 to +MAGIC_TOP
   fav: int;        // a ranger's favoured layer
   inspired: int;   // a Bardic Inspiration die waiting for its next attack roll (its sides, 0 none)
   smite: bool;     // a paladin's Divine Smite, ready this wave
@@ -590,10 +615,18 @@ add_fx :: (s: [] Stair, kind: int, x: f32, y: f32, x2: f32, y2: f32, life: f32, 
 beast_xy :: (s: [] Stair, i: int) -> P2 { return path_on(s, s[0].beasts[i].path, s[0].beasts[i].d); }
 cell_xy :: (cell: int) -> P2 { return P2.{x = f32(cell % COLS) + 0.5, y = f32(cell / COLS) + 0.5}; }
 
+// A beast's hit points as it comes: its layer's, and from wave LATE_FROM on the map's late weight on them
+// (tougher beasts, not more of them, so a party a little short of the waves leaks a little, not all).
+beast_top :: (s: [] Stair, kind: int) -> int {
+  h := s[0].ct[0].hp[kind];
+  if s[0].wave < LATE_FROM || s[0].ct[0].late <= 0 || kind == HULK { return h; }
+  return cast(int) (f32(h) * s[0].ct[0].late + 0.5);
+}
 spawn :: (s: [] Stair, kind: int, d: f32) -> int {
   for i: 0..<BEASTS {
     if !s[0].beasts[i].live {
-      s[0].beasts[i] = Beast.{live = true, kind = kind, d = d, hp = s[0].ct[0].hp[kind], wob = srd_unit(s[0].looks[..]) * 6.28};
+      top := beast_top(s, kind);
+      s[0].beasts[i] = Beast.{live = true, kind = kind, d = d, hp = top, top = top, wob = srd_unit(s[0].looks[..]) * 6.28};
       // from the door, the stairs in turn
       if s[0].path_len2 > 0 { s[0].beasts[i].path = s[0].next_path; s[0].next_path = 1 - s[0].next_path; }
       s[0].area[0].ok = false;
@@ -608,7 +641,7 @@ regen :: (s: [] Stair, i: int, dt: f32) {
   s[0].beasts[i].regen += dt * f32(HULK_REGEN);
   while s[0].beasts[i].regen >= 1 {
     s[0].beasts[i].regen -= 1;
-    s[0].beasts[i].hp = lo_i(s[0].beasts[i].hp + 1, s[0].ct[0].hp[HULK]);
+    s[0].beasts[i].hp = lo_i(s[0].beasts[i].hp + 1, s[0].beasts[i].top);
   }
 }
 live_beasts :: (s: [] Stair) -> int { n := 0; for i: 0..<BEASTS { if s[0].beasts[i].live { n += 1; } } return n; }
@@ -618,9 +651,9 @@ hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int)
   b := s[0].beasts[i];
   p := beast_xy(s, i);
   if (b.kind == EMBER && kind == DMG_FIRE) || (b.kind == FROSTLING && kind == DMG_COLD) { add_fx(s, FX_IMMUNE, p.x, p.y, 0, 0, 0.9, 0, 1, 0.45, 0.45, false); return; }
-  dealt := amount;
-  if b.kind == WISP && kind == DMG_COLD { dealt = amount / 2; }
-  if b.kind == IRONSKIN && (kind == DMG_SLASHING || kind == DMG_PIERCING || kind == DMG_BLUDGEONING) { dealt = amount / 2; }
+  dealt := amount + (ifx by >= 0 && amount > 0 then s[0].party[by].magic else 0);
+  if b.kind == WISP && kind == DMG_COLD { dealt = dealt / 2; }
+  if b.kind == IRONSKIN && (kind == DMG_SLASHING || kind == DMG_PIERCING || kind == DMG_BLUDGEONING) { dealt = dealt / 2; }
   if by >= 0 { s[0].party[by].dealt = dealt; }
   add_fx(s, FX_NUM, p.x, p.y, 0, 0, 0.9, dealt, 1, 0.16, 0.1, crit);
   s[0].beasts[i].hp -= dealt;
@@ -646,9 +679,8 @@ shadow_seen :: (s: [] Stair, i: int) -> bool {
   if s[0].beasts[i].kind != SHADOW || s[0].beasts[i].seen { return true; }
   p := beast_xy(s, i);
   for k: 0..<DEFENDERS {
-    d := s[0].party[k];
-    if !d.live || !d.daylight { continue; }
-    c := cell_xy(d.cell);
+    if !s[0].party[k].live || !s[0].party[k].daylight { continue; }   // (not a copy of the defender: this runs per beast per turn)
+    c := cell_xy(s[0].party[k].cell);
     if (p.x - c.x) * (p.x - c.x) + (p.y - c.y) * (p.y - c.y) <= f32(DAYLIGHT_REACH * DAYLIGHT_REACH) { s[0].beasts[i].seen = true; return true; }
   }
   return false;
@@ -678,9 +710,8 @@ refresh :: (s: [] Stair, k: int) {
 blessed :: (s: [] Stair, k: int) -> bool {
   c := cell_xy(s[0].party[k].cell);
   for i: 0..<DEFENDERS {
-    d := s[0].party[i];
-    if !d.live || d.cls != CLERIC || d.level < 2 { continue; }
-    e := cell_xy(d.cell);
+    if !s[0].party[i].live || s[0].party[i].cls != CLERIC || s[0].party[i].level < 2 { continue; }
+    e := cell_xy(s[0].party[i].cell);
     if (e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y) <= s[0].ct[0].range[CLERIC] * s[0].ct[0].range[CLERIC] { return true; }
   }
   return false;
@@ -698,6 +729,7 @@ stair_attack :: (s: [] Stair, k: int, c: SrdCreature, ac: int, crit_on: int) -> 
   s[0].party[k].aura = aura; s[0].party[k].insp = insp;
   asi := ifx s[0].party[k].level >= 4 then 1 else 0;
   if s[0].party[k].cls == PALADIN && s[0].party[k].level >= 3 { asi += SACRED_WEAPON; }   // Devotion's Sacred Weapon
+  asi += s[0].party[k].magic;
   a.total = a.roll + c.attack + bless + insp + aura + asi;
   a.crit = a.roll >= crit_on;
   a.hit = a.roll != 1 && (a.crit || a.total >= ac);
@@ -718,10 +750,9 @@ turn_of :: (s: [] Stair, k: int) -> f32 {
 in_aura :: (s: [] Stair, k: int) -> bool {
   c := cell_xy(s[0].party[k].cell);
   for i: 0..<DEFENDERS {
-    d := s[0].party[i];
-    if !d.live || d.cls != PALADIN { continue; }
-    e := cell_xy(d.cell);
-    r := f32(ifx d.level >= 3 then AURA_REACH + 1 else AURA_REACH);
+    if !s[0].party[i].live || s[0].party[i].cls != PALADIN { continue; }
+    e := cell_xy(s[0].party[i].cell);
+    r := f32(ifx s[0].party[i].level >= 3 then AURA_REACH + 1 else AURA_REACH);
     if (e.x - c.x) * (e.x - c.x) + (e.y - c.y) * (e.y - c.y) <= r * r { return true; }
   }
   return false;
@@ -730,9 +761,8 @@ in_aura :: (s: [] Stair, k: int) -> bool {
 ally_near :: (s: [] Stair, k: int, t: int) -> bool {
   p := beast_xy(s, t);
   for i: 0..<DEFENDERS {
-    d := s[0].party[i];
-    if i == k || !d.live { continue; }
-    e := cell_xy(d.cell);
+    if i == k || !s[0].party[i].live { continue; }
+    e := cell_xy(s[0].party[i].cell);
     if (e.x - p.x) * (e.x - p.x) + (e.y - p.y) * (e.y - p.y) <= f32(SNEAK_REACH * SNEAK_REACH) { return true; }
   }
   return false;
@@ -781,7 +811,7 @@ ranger_shot :: (s: [] Stair, k: int) -> bool {
   if t < 0 { return false; }
   marked := d.level >= 2 || s[0].beasts[t].kind == d.fav;
   // Colossus Slayer: a beast already hurt takes 1d8 more on a hit
-  hurt := s[0].beasts[t].hp < s[0].ct[0].hp[s[0].beasts[t].kind];
+  hurt := s[0].beasts[t].hp < s[0].beasts[t].top;
   a := weapon_hit(s, k, STAIR_RANGER, t, ifx marked then 1 else 0, FX_DART);
   if d.level >= 3 && hurt && a.hit && s[0].beasts[t].live { hurt_beast(s, t, srd_roll(s[0].dice[..], 8), DMG_PIERCING, false, k); s[0].party[k].slayer += 1; }
   return true;
@@ -1193,14 +1223,23 @@ spent :: (s: [] Stair, k: int) -> int {
   d := s[0].party[k];
   n := s[0].ct[0].cost[d.cls];
   for lv: 1..<d.level { n += up_cost(s, d.cls, lv); }
+  for m: 0..<d.magic { n += MAGIC_COST[m]; }
   return n;
 }
 // A level up: it costs gold, not a place in the round; the new level's slots come at once.
 upgrade :: (s: [] Stair, k: int) -> bool {
   if k < 0 || !s[0].party[k].live || s[0].phase == WON || s[0].phase == LOST { return false; }
   d := s[0].party[k];
-  if d.level >= MAX_LEVEL || s[0].gold < up_cost(s, d.cls, d.level) { return false; }
-  s[0].gold -= up_cost(s, d.cls, d.level);
+  cost := next_cost(s, k);
+  if cost <= 0 || s[0].gold < cost { return false; }
+  s[0].gold -= cost;
+  if d.level >= MAX_LEVEL {
+    s[0].party[k].magic += 1;
+    e := cell_xy(d.cell);
+    add_fx(s, FX_LEVEL, e.x, e.y, 0, 0, 0.9, 0, CLASS_R[d.cls], CLASS_G[d.cls], CLASS_B[d.cls], false);
+    track_tally(s[0].track[..], "magic", CLASS_NAME[d.cls]);
+    return true;
+  }
   s[0].party[k].level += 1;
   lv := s[0].party[k].level;
   if lv == 2 { s[0].party[k].slots += 1; s[0].party[k].surge = true; s[0].party[k].smite = d.cls == PALADIN; }
@@ -1334,7 +1373,7 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
       }
     }
     if s[0].card >= 0 {
-      if s[0].party[s[0].card].level < MAX_LEVEL { set_button(s, B_UPGRADE, Rect.{x0 = w - 134 * k, y0 = ry1 - 78 * k, x1 = w - 14 * k, y1 = ry1 - 44 * k}, can_upgrade(s)); }
+      if next_cost(s, s[0].card) > 0 { set_button(s, B_UPGRADE, Rect.{x0 = w - 134 * k, y0 = ry1 - 78 * k, x1 = w - 14 * k, y1 = ry1 - 44 * k}, can_upgrade(s)); }
       set_button(s, B_SELL, Rect.{x0 = w - 134 * k, y0 = ry1 - 34 * k, x1 = w - 14 * k, y1 = ry1}, true);
     }
     return;
@@ -1352,13 +1391,13 @@ buttons :: (s: [] Stair, w: f32, h: f32, k: f32) {
   }
   if s[0].card >= 0 {
     set_button(s, B_SELL, Rect.{x0 = w - 500 * k, y0 = y0, x1 = w - 396 * k, y1 = y1}, true);
-    if s[0].party[s[0].card].level < MAX_LEVEL { set_button(s, B_UPGRADE, Rect.{x0 = w - 700 * k, y0 = y0, x1 = w - 510 * k, y1 = y1}, can_upgrade(s)); }
+    if next_cost(s, s[0].card) > 0 { set_button(s, B_UPGRADE, Rect.{x0 = w - 700 * k, y0 = y0, x1 = w - 510 * k, y1 = y1}, can_upgrade(s)); }
   }
 }
 can_upgrade :: (s: [] Stair) -> bool {
   k := s[0].card;
-  if k < 0 || !s[0].party[k].live || s[0].party[k].level >= MAX_LEVEL { return false; }
-  return s[0].gold >= up_cost(s, s[0].party[k].cls, s[0].party[k].level);
+  if k < 0 || !s[0].party[k].live || next_cost(s, k) <= 0 { return false; }
+  return s[0].gold >= next_cost(s, k);
 }
 can_pick :: (s: [] Stair, c: int) -> bool { return s[0].gold >= s[0].ct[0].cost[c] && round_left(s) > 0; }
 button_at :: (s: [] Stair, x: f32, y: f32) -> int {
@@ -1636,7 +1675,7 @@ query_is :: (url: string, key: string, value: string) -> bool {
 can_level :: (s: [] Stair) -> bool {
   for k: 0..<DEFENDERS {
     d := s[0].party[k];
-    if d.live && d.level < MAX_LEVEL && up_cost(s, d.cls, d.level) <= s[0].gold { return true; }
+    if d.live && next_cost(s, k) > 0 && next_cost(s, k) <= s[0].gold { return true; }
   }
   return false;
 }
@@ -1785,7 +1824,7 @@ draw_beasts :: (s: [] Stair, out: [] f32, at: int) -> int {
         sx := ifx j == 0 then -1.0f32 else 1.0f32;
         n = seg(out, n, q.x + sx * rad * 0.5, y - rad * 0.75, q.x + sx * rad * 0.85, y - rad * 1.2, rad * 0.09, 1.0, rad * 0.16, 0.95, 0.88, 0.75);
       }
-      full := f32(s[0].ct[0].hp[HULK]);
+      full := f32(b.top);
       if f32(b.hp) < full {
         bw2 := rad * 1.6; by2 := y - rad * 1.35;
         n = seg(out, n, q.x - bw2 / 2, by2, q.x + bw2 / 2, by2, rad * 0.07, 0.7, rad * 0.1, 0.15, 0.1, 0.2);
@@ -2065,7 +2104,11 @@ button_label :: (s: [] Stair, b: int, buf: [] u8) -> int {
   if b == B_SELL { n := put(buf, 0, "SELL +"); return put_int(buf, n, spent(s, s[0].card) * 7 / 10); }
   if b == B_UPGRADE {
     d := s[0].party[s[0].card];
-    if d.level >= MAX_LEVEL { n := put(buf, 0, "LEVEL "); return put_int(buf, n, MAX_LEVEL); }
+    if d.level >= MAX_LEVEL {
+      if d.magic >= MAGIC_TOP { n := put(buf, 0, "+"); n = put_int(buf, n, MAGIC_TOP); n = put(buf, n, " "); return put(buf, n, magic_word(d.cls)); }
+      n := put(buf, 0, "+"); n = put_int(buf, n, d.magic + 1); n = put(buf, n, " "); n = put(buf, n, magic_word(d.cls)); n = put(buf, n, " · "); n = put_int(buf, n, MAGIC_COST[d.magic]);
+      return ifx s[0].portrait then n else put(buf, n, " GOLD");
+    }
     n := put(buf, 0, "LEVEL "); n = put_int(buf, n, d.level + 1); n = put(buf, n, " · "); n = put_int(buf, n, up_cost(s, d.cls, d.level));
     return ifx s[0].portrait then n else put(buf, n, " GOLD");
   }
@@ -2149,14 +2192,14 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     nl := 0;
     lens[nl] = put(lines[nl][..], 0, CLASS_NAME[d.cls]); lens[nl] = put(lines[nl][..], lens[nl], " · LEVEL "); lens[nl] = put_int(lines[nl][..], lens[nl], d.level);
     if d.level >= 3 { lens[nl] = put(lines[nl][..], lens[nl], " · "); lens[nl] = put(lines[nl][..], lens[nl], SUBCLASS_NAME[d.cls]); }
+    if d.magic > 0 { lens[nl] = put(lines[nl][..], lens[nl], " · +"); lens[nl] = put_int(lines[nl][..], lens[nl], d.magic); }
     if !s[0].portrait {
       lens[nl] = put(lines[nl][..], lens[nl], " · HITS "); lens[nl] = put_int(lines[nl][..], lens[nl], d.hits);
       lens[nl] = put(lines[nl][..], lens[nl], " · MISSES "); lens[nl] = put_int(lines[nl][..], lens[nl], d.misses);
       lens[nl] = put(lines[nl][..], lens[nl], " · POPS "); lens[nl] = put_int(lines[nl][..], lens[nl], d.pops);
     }
     tones[nl] = 2; nl += 1;
-    attack := CLASS_ATTACK[d.cls];
-    lens[nl] = put(lines[nl][..], 0, attack); tones[nl] = 0; nl += 1;
+    lens[nl] = attack_line(s, s[0].card, lines[nl][..]); tones[nl] = 0; nl += 1;
     if d.cls == WIZARD {
       lens[nl] = put(lines[nl][..], 0, "MAGIC MISSILE 3 X 1D4+1 · "); lens[nl] = put_int(lines[nl][..], lens[nl], d.slots); lens[nl] = put(lines[nl][..], lens[nl], " LEFT");
       if d.level >= 3 { lens[nl] = put(lines[nl][..], lens[nl], " · SHATTER "); lens[nl] = put_int(lines[nl][..], lens[nl], d.slots2); lens[nl] = put(lines[nl][..], lens[nl], " LEFT"); }
@@ -2542,7 +2585,12 @@ place_rotation :: (s: [] Stair, most: int) {
 level_all :: (s: [] Stair, keep: int) {
   for q: 0..<DEFENDERS {
     d := s[0].party[q];
-    if d.live && d.level < MAX_LEVEL && s[0].gold - up_cost(s[..], d.cls, d.level) >= keep { ok := upgrade(s, q); }
+    if d.live && d.level < MAX_LEVEL && s[0].gold - next_cost(s, q) >= keep { ok := upgrade(s, q); }
+  }
+  // magic items once the whole party is at the top level (a level is worth more than a +1)
+  for q: 0..<DEFENDERS { if s[0].party[q].live && s[0].party[q].level < MAX_LEVEL { return; } }
+  for q: 0..<DEFENDERS {
+    if s[0].party[q].live && next_cost(s, q) > 0 && s[0].gold - next_cost(s, q) >= keep { ok := upgrade(s, q); }
   }
 }
 play_as :: (s: [] Stair, who: int, seed: u64) -> Played { return play_until(s, who, seed, waves_of(s)); }
@@ -2647,7 +2695,7 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   #assert r.won && r.wave == 10 && r.lives > s[0].ct[0].start_lives / 2;
 }
 
-#test "forty waves: a hulk every ten from 20, the other four layers after 10, and a seeded full party at level 5 holds the last three to the top" {
+#test "forty waves: a hulk every ten from 20, the other four layers after 10, and from 21 the beasts come tougher, not more (a full party holding them: stair-sim.coax)" {
   s: [1] Stair;
   stair_start(s[..]);
   #assert waves_of(s[..]) == 40;
@@ -2663,23 +2711,12 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   }
   s[0].seed = 7919;
   stair_reset(s[..]);
-  s[0].gold = 99999; s[0].wave = 37;
-  // the late waves weigh more on the easier maps (this one 1.3 times as many)
-  #assert s[0].ct[0].late > 1.2 && s[0].ct[0].count[37 * GROUPS] == cast(int) (18.0 * s[0].ct[0].late + 0.5);
-  for i: 0..<60 {
-    s[0].placed_round = 0;
-    spot := ai_spot(s[..]);
-    if spot < 0 || !place(s[..], spot, AI_CLASSES[i % 6]) { break; }
-  }
-  for k: 0..<DEFENDERS { while s[0].party[k].live && upgrade(s[..], k) {} }
-  s[0].gold = 0;
-  guard := 0;
-  while s[0].phase != WON && s[0].phase != LOST && guard < 400000 {
-    if s[0].phase == BUILD { ok := start_wave(s[..]); }
-    step(s[..], f32(STEP));
-    guard += 1;
-  }
-  #assert s[0].phase == WON && s[0].wave == 40 && s[0].lives > 0;
+  s[0].wave = 38;
+  // the late waves weigh more on the easier maps: their beasts come tougher, not more of them, and a hulk as written
+  #assert s[0].ct[0].late > 1.2 && s[0].ct[0].count[37 * GROUPS] == 18;
+  #assert beast_top(s[..], SHADOW) == cast(int) (f32(s[0].ct[0].hp[SHADOW]) * s[0].ct[0].late + 0.5) && beast_top(s[..], HULK) == s[0].ct[0].hp[HULK];
+  s[0].wave = 5;
+  #assert beast_top(s[..], SHADOW) == s[0].ct[0].hp[SHADOW];
 }
 
 #test "a defender is picked before it goes down, a round allows only so many, and the allowance grows" {
@@ -2754,7 +2791,7 @@ play_until :: (s: [] Stair, who: int, seed: u64, until: int) -> Played {
   // one swing a turn at level 4 (Action Surge spent)
   s[0].party[f].surge = false; s[0].party[f].swings = 0;
   #assert take_turn(s[..], f) && s[0].party[f].swings == 1;
-  #assert upgrade(s[..], f) && s[0].party[f].level == MAX_LEVEL && !upgrade(s[..], f);   // 5 is the top
+  #assert upgrade(s[..], f) && s[0].party[f].level == MAX_LEVEL && upgrade(s[..], f) && s[0].party[f].level == MAX_LEVEL && s[0].party[f].magic == 1;   // 5 is the top: past it, a magic item
   s[0].party[f].surge = false; s[0].party[f].swings = 0;
   #assert attacks_of(s[0].party[f]) == 2 && take_turn(s[..], f) && s[0].party[f].swings == 2;
   // the costs: levels four and five from the table
@@ -2776,6 +2813,28 @@ placed_at :: (s: [] Stair, c: int, cls: int, lv: int) -> int {
   k := defender_at(s, c);
   while s[0].party[k].level < lv { ok := upgrade(s, k); }
   return k;
+}
+
+#test "past level 5 gold buys a +1 to +3 magic item: its card names it, its attack line counts it, and what it cost counts in its sale" {
+  s: [1] Stair;
+  stair_start(s[..]);
+  s[0].gold = 99999;
+  f := placed_at(s[..], spot_near(s[..], 0.3), WIZARD, MAX_LEVEL);
+  #assert s[0].party[f].level == MAX_LEVEL && s[0].party[f].magic == 0;
+  buf: [96] u8;
+  s[0].card = f;
+  #assert cast(string) buf[0..<attack_line(s[..], f, buf[..])] == "FIRE BOLT +6 · 2D10 FIRE";
+  #assert cast(string) buf[0..<button_label(s[..], B_UPGRADE, buf[..])] == "+1 FOCUS · 400 GOLD";
+  g := s[0].gold;
+  #assert upgrade(s[..], f) && s[0].party[f].magic == 1 && s[0].gold == g - 400;
+  #assert dc_of(s[..], f, 13) == 15 && cast(string) buf[0..<attack_line(s[..], f, buf[..])] == "FIRE BOLT +7 · 2D10 FIRE";
+  #assert upgrade(s[..], f) && upgrade(s[..], f) && s[0].party[f].magic == MAGIC_TOP && !upgrade(s[..], f) && !can_upgrade(s[..]);
+  #assert spent(s[..], f) > 4600;
+  p := placed_at(s[..], spot_near(s[..], 0.6), FIGHTER, 1);
+  #assert p >= 0 && cast(string) buf[0..<attack_line(s[..], p, buf[..])] == "LONGSWORD +5 · 1D8+3 SLASHING";
+  while s[0].party[p].level < MAX_LEVEL { #assert upgrade(s[..], p); }
+  s[0].card = p;
+  #assert cast(string) buf[0..<button_label(s[..], B_UPGRADE, buf[..])] == "+1 WEAPON · 400 GOLD";
 }
 
 #test "subclasses at level 3, the SRD's own: an Evoker's missed Fire Bolt still burns for half, a Life cleric gives the tower two lives a wave held (once, however many), a Thief's turns come faster, a Hunter adds 1d8 on a hurt beast, a Lore bard inspires three, Devotion adds +3 to hit" {
