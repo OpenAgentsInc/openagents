@@ -1,0 +1,30 @@
+{
+  "schema": "coax.native-checks.selection.v1",
+  "about": "Authored Verse and Psionic #test checks run by coax/tools/native_checks.py through the evaluator and checked -O0/-O2 native code. passed/rejected are the expected check counts; a change to either is a change to this list.",
+  "files": [
+    "verse/look.coax",
+    "verse/haunt-light.coax",
+    "verse/particle-motion.coax",
+    "verse/stars.coax",
+    "verse/paint.coax",
+    "verse/particles.coax",
+    "verse/light.coax",
+    "verse/command.coax",
+    "verse/gpu/shader.coax",
+    "verse/kms/starcatch-light.coax",
+    "psionic/kernels/norm/agent/a1.coax",
+    "psionic/kernels/norm/agent/a2.coax",
+    "psionic/kernels/norm/agent/a4.coax",
+    "psionic/lib/tensor-ir-kernels.coax",
+    "psionic/lib/operator-registry.coax",
+    "psionic/tests/metal-ff.coax",
+    "psionic/tests/guard-guide/token-policy.coax",
+    "psionic/tests/guard-directions/browser-policy.coax"
+  ],
+  "passed": 62,
+  "rejected": 0,
+  "roots": [
+    "verse",
+    "psionic"
+  ]
+}
