@@ -82,6 +82,45 @@ Desk :: struct {
   room_shown: bool;         // the ROOM tab is shown instead of a session
   room_scroll: f32;         // the room's list scrolled up from its newest, px
   room_seen: int;           // the room's messages when it was last shown
+  still: bool;              // every chat's turn clock stands still (--still-clock)
+  keys: [DSK_KEYS][24] u8; keys_n: [DSK_KEYS] int;   // the shortcuts settings.json sets (DSK_KEY_*), "" for the default
+}
+// The shortcuts settings.json keeps ("shortcuts"): menu commands, as "shift+cmd+n" (shift, ctrl, alt, cmd and one key).
+DSK_KEYS :: 5;
+DSK_KEY_NEW :: 0; DSK_KEY_NEW_IN_FOLDER :: 1; DSK_KEY_CLOSE_TAB :: 2; DSK_KEY_SIDEBAR :: 3; DSK_KEY_CLOSE_WINDOW :: 4;
+DSK_KEY_NAMES :: [5] string.["new_session", "new_session_in_folder", "close_tab", "toggle_sidebar", "close_window"];
+DSK_KEY_DEFAULTS :: [5] string.["cmd+n", "shift+cmd+n", "cmd+w", "cmd+s", "shift+cmd+w"];
+DskChord :: struct { ok: bool; mods: int; key: u8; }
+// "shift+cmd+n": its modifiers (MOD_*) and its key, lowercase; not ok without a modifier or with more than one key.
+dsk_chord :: (text: string) -> DskChord {
+  r := DskChord.{};
+  q := 0; keys := 0;
+  while q < text.count {
+    e := q; while e < text.count && text[e] != '+' { e += 1; }
+    part := cast(string) text[q..<e];
+    if zr_same(part, "shift") { r.mods |= MOD_SHIFT; }
+    else if zr_same(part, "ctrl") { r.mods |= MOD_CTRL; }
+    else if zr_same(part, "alt") { r.mods |= MOD_ALT; }
+    else if zr_same(part, "cmd") { r.mods |= MOD_CMD; }
+    else if part.count == 1 && part[0] > ' ' && part[0] < 127 { c := part[0]; if c >= 'A' && c <= 'Z' { c += 32; } r.key = c; keys += 1; }
+    else { return DskChord.{}; }
+    q = e + 1;
+  }
+  r.ok = keys == 1 && r.mods != 0;
+  return r;
+}
+// Shortcut j: the one set, or its default.
+dsk_shortcut :: (k: [] Desk, j: int) -> string {
+  defaults := DSK_KEY_DEFAULTS;
+  if j < 0 || j >= DSK_KEYS { return ""; }
+  if k[0].keys_n[j] > 0 { return cast(string) k[0].keys[j][0..<k[0].keys_n[j]]; }
+  return defaults[j];
+}
+// Sets shortcut j when text is a chord (else it keeps its default). Whether it took.
+dsk_set_shortcut :: (k: [] Desk, j: int, text: string) -> bool {
+  if j < 0 || j >= DSK_KEYS || !dsk_chord(text).ok || text.count > 24 { return false; }
+  k[0].keys_n[j] = e_copy(k[0].keys[j][..], 0, text);
+  return true;
 }
 
 dsk_init :: (k: [] Desk) {
@@ -476,6 +515,7 @@ dsk_frame :: (k: [] Desk, out: [] f32, width: f32, height: f32, dpr: f32, dt: f3
   // the chat's width: the window's less the sidebar, in device px (at least a column's worth)
   cw := width - side * d;
   if cw < 320 * d { cw = 320 * d; }
+  for i: 0..<k[0].n { k[0].chats[i].s[0].still = k[0].still; }
   dsk_mentions(k);
   dsk_room(k);
   for i: 0..<k[0].n {
@@ -810,7 +850,9 @@ dsk_mentions :: (k: [] Desk) {
 dsk_key :: (k: [] Desk, key: int, mods: int) -> bool {
   if k[0].n == 0 { return false; }
   if mods == MOD_CMD && key >= '1' && key <= '9' { return dsk_pick_tab(k, key - '0'); }
-  if mods == MOD_CMD && (key == 's' || key == 'S') { dsk_toggle(k); return true; }
+  side := dsk_chord(dsk_shortcut(k, DSK_KEY_SIDEBAR));
+  lower := ifx key >= 'A' && key <= 'Z' then key + 32 else key;
+  if side.ok && mods == side.mods && lower == cast(int) side.key { dsk_toggle(k); return true; }
   if mods == MOD_SHIFT && (key == KEY_UP || key == KEY_DOWN) {
     s := dsk_chat(k);
     if s[0].composer[0].n > 0 || pk_is_open(s[0].picker[..]) { return false; }
@@ -915,6 +957,8 @@ coaxial_room_mcp_result :: (reply: string, out: [] u8) -> int #export_c {
   cl_put(w[..], "}");
   return w[0].len;
 }
+coaxial_desk_shortcut :: (k: [] Desk, j: int, out: [] u8) -> int #export_c { if k.count < 1 { return 0; } return e_copy(out, 0, dsk_shortcut(k, j)); }
+coaxial_desk_still :: (k: [] Desk) #export_c { if k.count > 0 { k[0].still = true; } }
 coaxial_desk_room_shown :: (k: [] Desk) -> bool #export_c { return k.count > 0 && k[0].room_shown; }
 coaxial_desk_show_room :: (k: [] Desk) #export_c { if k.count > 0 && k[0].room[0].count > 0 { k[0].room_shown = true; k[0].room_scroll = 0; } }
 coaxial_desk_quit :: (k: [] Desk) #export_c {

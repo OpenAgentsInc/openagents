@@ -225,6 +225,7 @@ final class App: NSObject, NSApplicationDelegate {
     window.center()
     let args = CommandLine.arguments
     zeron.configure(args)
+    zeron.applyShortcuts()
     // the frame it had at quit, kept on a screen
     if !args.contains("--shot"), let f = zeron.savedFrame(), f.width >= 900, f.height >= 600 { window.setFrame(window.constrainFrameRect(f, to: NSScreen.main), display: false) }
     // --shot draws offscreen; the window never shows.

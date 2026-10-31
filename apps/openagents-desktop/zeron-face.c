@@ -191,3 +191,5 @@ void dsk_set_store(void *desk, int32_t i, const uint8_t *id, int32_t n) { coaxia
 int32_t dsk_store_id(void *desk, int32_t i, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_store_id(desk_at(desk), i, (coax_v_u8){out, cap}); }
 int32_t dsk_store_take(void *desk, int32_t i, int32_t force, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_store_take(desk_at(desk), i, force != 0, (coax_v_u8){out, cap}); }
 void dsk_store_load(void *desk, int32_t i, const uint8_t *text, int32_t n) { coaxial_desk_store_load(desk_at(desk), i, str(text, n)); }
+void dsk_still(void *desk) { coaxial_desk_still(desk_at(desk)); }
+int32_t dsk_shortcut(void *desk, int32_t j, uint8_t *out, int32_t cap) { return (int32_t)coaxial_desk_shortcut(desk_at(desk), j, (coax_v_u8){out, cap}); }

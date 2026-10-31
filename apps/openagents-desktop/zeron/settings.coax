@@ -40,6 +40,10 @@ ds_save :: (k: [] Desk, x: f32, y: f32, w: f32, h: f32, out: [] u8) -> int {
     cl_put(o[..], ",\"defaults\":{\"mode\":"); cl_put_string(o[..], names[s[0].mode]);
     cl_put(o[..], ",\"access\":"); ds_put_num(o[..], s[0].engine[0].access); cl_put(o[..], "}");
   }
+  keys := DSK_KEY_NAMES;
+  cl_put(o[..], ",\"shortcuts\":{");
+  for j: 0..<DSK_KEYS { if j > 0 { cl_put(o[..], ","); } cl_put_string(o[..], keys[j]); cl_put(o[..], ":"); cl_put_string(o[..], dsk_shortcut(k, j)); }
+  cl_put(o[..], "}");
   cl_put(o[..], ",\"active\":"); ds_put_num(o[..], k[0].active);
   cl_put(o[..], ",\"tabs\":[");
   for t: 0..<k[0].ntabs { if t > 0 { cl_put(o[..], ","); } ds_put_num(o[..], k[0].tabs[t]); }
@@ -75,6 +79,13 @@ ds_load :: (g: [] Settings, k: [] Desk, json: string) -> int {
   g[0].n = e_copy(g[0].json[..], 0, json);
   t := ds_text(g);
   abuf: [DS_ARENA] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  // the shortcuts, each that is a chord (the rest keep their defaults)
+  knames := DSK_KEY_NAMES;
+  path: [64] u8;
+  for j: 0..<DSK_KEYS {
+    pn := e_copy(path[..], 0, "shortcuts."); pn = e_copy(path[..], pn, knames[j]);
+    got := dsk_set_shortcut(k, j, cl_str(ar[..], t, cast(string) path[0..<pn]));
+  }
   if !cl_at(t, "sessions").ok { g[0].sessions = 0; return 0; }
   dsk_init(k);
   wd := cl_int(t, "sidebar.width");
@@ -197,4 +208,20 @@ coaxial_ds_defaults :: (g: [] Settings, s: [] ZeronState) #export_c { if g.count
   #assert g[0].has_defaults && d2[0].mode == MODE_CODEX;
   // a file that isn't settings restores nothing
   #assert ds_load(g[..], k2[..], "not json") == 0;
+}
+
+#test "shortcuts: settings.json sets the menu commands' keys, a bad one keeps its default, and they are written back; the sidebar's key follows" {
+  k: [1] Desk; g: [1] Settings;
+  a: [1] ZeronState; dsk_test_chat(a[..]);
+  #assert dsk_chord("shift+cmd+N").ok && dsk_chord("shift+cmd+N").mods == MOD_SHIFT | MOD_CMD && dsk_chord("shift+cmd+N").key == 'n';
+  #assert !dsk_chord("n").ok && !dsk_chord("cmd+n+m").ok && !dsk_chord("cmd+tab").ok && !dsk_chord("").ok;
+  n := ds_load(g[..], k[..], "{\"shortcuts\":{\"toggle_sidebar\":\"cmd+b\",\"close_tab\":\"w\",\"new_session\":\"alt+cmd+t\"},\"sessions\":[]}");
+  #assert dsk_shortcut(k[..], DSK_KEY_SIDEBAR) == "cmd+b" && dsk_shortcut(k[..], DSK_KEY_CLOSE_TAB) == "cmd+w" && dsk_shortcut(k[..], DSK_KEY_NEW) == "alt+cmd+t";
+  i := dsk_add(k[..], a[..], "/w/one");
+  #assert !k[0].collapsed && !dsk_key(k[..], 's', MOD_CMD) && dsk_key(k[..], 'b', MOD_CMD) && k[0].collapsed;
+  out: [8192] u8;
+  m := ds_save(k[..], 0, 0, 1320, 880, out[..]);
+  t := cast(string) out[0..<m];
+  abuf: [4096] u8; ar: [1] ClArena; ar[0].buf = abuf[..];
+  #assert cl_str(ar[..], t, "shortcuts.toggle_sidebar") == "cmd+b" && cl_str(ar[..], t, "shortcuts.close_window") == "shift+cmd+w" && cl_str(ar[..], t, "shortcuts.new_session") == "alt+cmd+t";
 }

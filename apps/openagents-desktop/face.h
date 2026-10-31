@@ -124,6 +124,8 @@ void dsk_set_store(void *desk, int32_t i, const uint8_t *id, int32_t n);
 int32_t dsk_store_id(void *desk, int32_t i, uint8_t *out, int32_t cap);
 int32_t dsk_store_take(void *desk, int32_t i, int32_t force, uint8_t *out, int32_t cap);
 void dsk_store_load(void *desk, int32_t i, const uint8_t *text, int32_t n);
+void dsk_still(void *desk);
+int32_t dsk_shortcut(void *desk, int32_t j, uint8_t *out, int32_t cap);
 void *ds_new(void);
 int32_t ds_save(void *desk, float x, float y, float w, float h, uint8_t *out, int32_t cap);
 int32_t ds_load(void *g, void *desk, const uint8_t *json, int32_t n);

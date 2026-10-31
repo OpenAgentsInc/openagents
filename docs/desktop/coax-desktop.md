@@ -558,8 +558,15 @@ the open tabs and the shown one, and every session: folder, harness, model,
 effort, access, title, and Claude Code's session id or Codex's thread. At
 launch each session comes back as its own chat in its folder and the next
 message resumes it (`--resume`, `thread/resume`). `--settings PATH` uses
-another file (shots use none unless given one; `--demo` none). Not yet:
-shortcuts in the file.
+another file (shots use none unless given one; `--demo` none). The file
+also keeps the menu commands' keys under `shortcuts` (`new_session`,
+`new_session_in_folder`, `close_tab`, `toggle_sidebar`, `close_window`, each
+like `"shift+cmd+n"`: shift, ctrl, alt and cmd and one key). A key that
+isn't one keeps its default. The menu bar shows the keys set there, and the
+sidebar's key works in the window too. check.sh settings-shortcuts starts
+with `toggle_sidebar` set to cmd+b. `--still-clock` stops the turn clock
+and the working spinner so scripted shots of a running turn (the approval
+goldens) come out the same every run.
 
 Built (2026-10-31, zeron/store.coax): each session's transcript is kept in
 `sessions/<id>.jsonl` beside settings.json (mode 600), the id a UUID the

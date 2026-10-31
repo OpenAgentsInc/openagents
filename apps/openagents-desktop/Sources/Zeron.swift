@@ -248,6 +248,23 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       if let h = FileHandle(forWritingAtPath: path) { h.seekToEndOfFile(); h.write(Data(storeOut[0..<n])); h.closeFile() }
     }
   }
+  // The menu commands' keys from settings.json (zeron/desk.coax DSK_KEY_*, in that order).
+  func applyShortcuts() {
+    let actions: [Selector] = [#selector(newChat(_:)), #selector(newSessionInFolder(_:)), #selector(closeTab(_:)), #selector(toggleSidebar(_:)), #selector(NSWindow.performClose(_:))]
+    var buf = [UInt8](repeating: 0, count: 32)
+    for (j, action) in actions.enumerated() {
+      let n = Int(dsk_shortcut(desk, Int32(j), &buf, Int32(buf.count)))
+      guard n > 0 else { continue }
+      let (_, mods, char) = chord(String(decoding: buf[0..<n], as: UTF8.self))
+      guard let key = char else { continue }
+      var flags: NSEvent.ModifierFlags = []
+      if mods & 1 != 0 { flags.insert(.shift) }; if mods & 2 != 0 { flags.insert(.control) }
+      if mods & 4 != 0 { flags.insert(.option) }; if mods & 8 != 0 { flags.insert(.command) }
+      for top in NSApp.mainMenu?.items ?? [] {
+        for item in top.submenu?.items ?? [] where item.action == action { item.keyEquivalent = key; item.keyEquivalentModifierMask = flags }
+      }
+    }
+  }
   // The saved frame, if any (the host sets the window to it).
   func savedFrame() -> NSRect? {
     var f = [Float](repeating: 0, count: 4)
@@ -388,6 +405,7 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
   func configure(_ args: [String]) {
     func value(_ flag: String) -> String? { args.firstIndex(of: flag).flatMap { $0 + 1 < args.count ? args[$0 + 1] : nil } }
     let cwd = value("--cwd").map { ($0 as NSString).expandingTildeInPath } ?? NSHomeDirectory()
+    if args.contains("--still-clock") { dsk_still(desk) }
     if args.contains("--demo") { zr_demo(first); add(first, cwd: cwd); return }
     let home = ProcessInfo.processInfo.environment["HOME"] ?? NSHomeDirectory()
     settingsPath = value("--settings").map { ($0 as NSString).expandingTildeInPath }
@@ -626,6 +644,13 @@ final class ZeronView: MTKView, MTKViewDelegate, NSTextInputClient, NSMenuItemVa
       var b = [UInt8](repeating: 0, count: 4096)
       let n = Int(verb == "status" ? zr_status_text(state, &b, 4096) : zr_last_text(state, &b, 4096))
       print("\(verb): \(String(decoding: b[0..<n], as: UTF8.self))")
+    case "shortcut":   // a menu command's key as the menu bar has it
+      for top in NSApp.mainMenu?.items ?? [] {
+        guard let item = top.submenu?.items.first(where: { $0.title == arg }) else { continue }
+        let f = item.keyEquivalentModifierMask
+        let mods = [(NSEvent.ModifierFlags.shift, "shift"), (.control, "ctrl"), (.option, "alt"), (.command, "cmd")].filter { f.contains($0.0) }.map { $0.1 }
+        print("shortcut: \(arg) \((mods + [item.keyEquivalent]).joined(separator: "+"))")
+      }
     case "desk":   // the desk as the scripted checks read it
       let tabs = (0..<dsk_tabs(desk)).map { String(dsk_tab(desk, $0)) }.joined(separator: ",")
       print("desk: active=\(dsk_count(desk) > 0 ? Int(coaxActive()) : -1) tabs=\(tabs) sessions=\(dsk_count(desk)) collapsed=\(dsk_collapsed(desk))")

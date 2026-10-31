@@ -57,6 +57,7 @@ ZeronState :: struct {
   since_build: f32;              // seconds since the transcript was rebuilt
   host_action: int;              // HOST_*, until the host takes it
   preface: [4096] u8; preface_n: int;   // notes from other agents (the room's tell_agent), put before the next message sent
+  still: bool;                   // the clock a turn shows stands at 0 (check.sh --still-clock: goldens that do not move)
   stops: int;                    // STOPs pressed (the desk cancels the room's asks on each)
   // @mentions (desk.coax dsk_mentions): the other agents' names, one a line; the notes a message carried for them
   names: [1024] u8; names_n: int;
@@ -439,14 +440,14 @@ zr_tick :: (s: [] ZeronState, width: f32, height: f32, dpr: f32, dt: f32) {
     t[0].action = A_NONE;
   }
   // the transcript follows the session, its redraws coalesced while a turn streams
-  if ss[0].live { ss[0].secs += dt1; }
+  if ss[0].live && !s[0].still { ss[0].secs += dt1; }
   s[0].since_build += dt1;
   if !s[0].demo && ss[0].changed && (s[0].since_build >= ZR_COALESCE || !ss[0].live) {
     s_build(ss, s[0].ui[..], t);
     s[0].since_build = 0;
   }
   t[0].working = ss[0].live && !s[0].demo;
-  t[0].work_secs = ss[0].secs; t[0].spin += dt1;
+  t[0].work_secs = ss[0].secs; if !s[0].still { t[0].spin += dt1; }
   c[0].running = ss[0].live && !s[0].demo;
 }
 // The chat drawn at the size zr_tick last saw.
