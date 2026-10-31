@@ -23,6 +23,7 @@ Station :: struct {
   mass: f64; water: f64; air: f64;   // refined, tonnes
   people: int;                       // who live aboard, crews included
   away: int;                         // of them, crewing ships away from the station
+  refinery: int;                     // expansions built on the refinery, each REFINERY_STEP more a shift
 }
 
 station_new :: () -> Station {
@@ -36,7 +37,22 @@ station_staffed :: (st: Station) -> f64 {
   return f64(w) / f64(STATION_SHIFTS);
 }
 // Tonnes of ice a day it refines now.
-station_rate :: (st: Station) -> f64 { return REFINE_RATE * station_staffed(st); }
+station_rate :: (st: Station) -> f64 { return REFINE_RATE * (1.0 + REFINERY_STEP * f64(st.refinery)) * station_staffed(st); }
+// The metal the next refinery expansion takes: twice the one before.
+REFINERY_STEP :: 0.5;       // more ice a day each expansion refines, of the first refinery's
+REFINERY_METAL :: 500.0;    // t of metal the first expansion takes
+refinery_cost :: (st: Station) -> f64 {
+  c := REFINERY_METAL;
+  for i: 0..<st.refinery { c *= 2.0; }
+  return c;
+}
+// Build the next expansion if the metal is there.
+refinery_build :: (st: [] Station) -> bool {
+  c := refinery_cost(st[0]);
+  if st[0].metal < c { return false; }
+  st[0].metal -= c; st[0].refinery += 1;
+  return true;
+}
 // A load delivered: tonnes of rock, split into ice and metal.
 station_deliver :: (st: Station, tonnes: f64) -> Station {
   r := st;
