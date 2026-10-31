@@ -2312,3 +2312,18 @@ service security annotations are preserved, model/provider pins and private IAM
 match, and the exact ready candidate digest owns the required traffic phase.
 The old revision remains available for rollback. Snapshot files are operator
 observations, not cloud attestations; credentials and raw snapshots stay private.
+
+## AdamW steps are admitted whole over a binary64 master copy
+
+`psionic/lib/optim/adamw.coax` (`cpu-adamw-v1`) keeps parameters and both
+moments in binary64. Groups cover the parameters exactly once, in order, at
+most 16, each with lr in (0,1], betas in [0,1), eps in (0,1] and decay in [0,1]
+with lr*decay < 1. Decay multiplies the incoming value before the moment step;
+the step is bias-corrected with eps outside the root. Compute precision is
+declared: binary32 compute admits only binary32-valued gradients and writes a
+binary32 copy. Every element is computed and checked before any write: a
+non-finite gradient or an unrepresentable result refuses, or under the skip
+policy returns `skipped` and advances only the skip counter; views and the step
+counter are otherwise unchanged. C observes spans only.
+Check: `psionic/check.sh --only adamw`: independent oracle, resume at every
+step, debug/release, zero surviving mutants, native ASan/UBSan.
