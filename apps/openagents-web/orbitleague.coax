@@ -93,6 +93,8 @@ WALL :: 2.0;             // the end walls' and nets' thickness (the ball's boxes
 BALL_R :: 1.4;
 BALL_MASS :: 150.0;
 BALL_DRAG :: 0.03;       // 1/s
+BALL_MAX :: 32.0;        // m/s: no hit sends it faster
+BOT_REACT :: 0.4;        // seconds the bot waits at a kickoff
 CAR_MASS :: 1000.0;
 SPAWN_Z :: 28.0;
 FULL_SPIN_G :: G_EARTH;  // the station at full spin: 1 g toward the floor
@@ -275,6 +277,7 @@ bot_drive :: (s: [] OrbitLeague) -> Drive {
   out: Drive;
   if s[0].phase != PHASE_PLAY && s[0].phase != PHASE_GOAL { return out; }
   if s[0].no_bot { return out; }
+  if s[0].phase == PHASE_PLAY && s[0].phase_t < BOT_REACT { return out; }
   aim := d3_unit_or(d3_sub(goal, bl.pos), d3(0.0, 0.0, -1.0));
   // ahead of where the ball goes: a short lead on its velocity
   lead := d3_add(bl.pos, d3_scale(d3(bl.vel.x, 0.0, bl.vel.z), 0.35));
@@ -368,6 +371,8 @@ physics_step :: (s: [] OrbitLeague, drives: [2] Drive) {
       s[0].bodies[BALL] = pair.a; s[0].bodies[c + 1] = pair.b;
     }
   }
+  sp := d3_len(s[0].bodies[BALL].vel);
+  if sp > BALL_MAX { s[0].bodies[BALL].vel = d3_scale(s[0].bodies[BALL].vel, BALL_MAX / sp); }
   cc := contact_sphere_sphere(s[0].bodies[YOU].pos, 1.6, s[0].bodies[BOT].pos, 1.6);
   if cc.hit {
     pair := contact_resolve(s[0].bodies[YOU], s[0].bodies[BOT], cc, 0.3, 0.2);
@@ -781,6 +786,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   bl := s[0].bodies[BALL];
   u[BALL_AT] = cast(f32) bl.pos.x; u[BALL_AT + 1] = cast(f32) bl.pos.y; u[BALL_AT + 2] = cast(f32) bl.pos.z; u[BALL_AT + 3] = cast(f32) BALL_R;
   q := bl.orientation;
+  u[MISC_AT] = cast(f32) d3_len(bl.vel);
   u[BALLQ_AT] = cast(f32) q.x; u[BALLQ_AT + 1] = cast(f32) q.y; u[BALLQ_AT + 2] = cast(f32) q.z; u[BALLQ_AT + 3] = cast(f32) q.w;
   put_car(u, CAR_AT, s[0].bodies[YOU], s[0].boosting[0], BLUE, s[0].cars[0].steer_now);
   put_car(u, CAR_AT + CAR_FLOATS, s[0].bodies[BOT], s[0].boosting[1], MAGENTA, s[0].cars[1].steer_now);
@@ -861,6 +867,14 @@ run_for :: (s: [] OrbitLeague, seconds: f64) {
   #assert near_d(spin_share(61.5), 0.5, 0.000001);
   #assert spin_share(70.0) == 0.0 && spin_share(88.5) > 0.4 && spin_share(91.0) == 1.0;
   #assert near_d(spin_clock(70.0), 20.0, 0.000001) && near_d(spin_clock(50.0), -10.0, 0.000001);
+}
+
+#test "a kickoff while you sit still doesn't fly the ball into your goal" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]);
+  top := 0.0;
+  for i: 0..<cast(int) ((KICKOFF + 4.0) / STEP) { game_step(s[..], STEP); top = fmax(top, d3_len(s[0].bodies[BALL].vel)); }
+  #assert s[0].score[1] == 0 && top <= BALL_MAX + 0.001;
 }
 
 #test "the bot drives to the ball and gets it moving" {

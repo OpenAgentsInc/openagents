@@ -3,7 +3,12 @@
 Pitched by Topher on the October 30, 2026 recording: "a racing game like
 Rocket League, but with Tesla Roadsters, in space."
 
-Status: design only. Nothing is built.
+Status: playable at https://openagents.com/realms/orbit-league: you against
+one bot in a glass box arena with spin-downs to zero-g (milestone 1, with
+parts of 2 and 3). The roadster is drawn as low-poly hulls (wedge body,
+fender pods, windscreen, speedster humps, the driver's helmet, a rear wing,
+glowing head and tail lights); the floor and glass reflect the ball and the
+cars; a ringed ice giant, a moon and the station's ribs sit outside the glass.
 
 ## The game in one line
 

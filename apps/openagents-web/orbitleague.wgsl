@@ -1,9 +1,15 @@
 // Orbit League's two passes (orbitleague.coax): bg_fs traces the whole
 // world per pixel (the arena's floor and glass, the goal frames and nets,
-// the ball, both roadsters, the boost flames, and the space round the
-// station: stars, a planet and the sun), in the flat style with ink lines
-// (docs/verse/art-styles.md), with the HUD's plates over it; fx draws the
-// HUD's strokes and text. Every place and size comes from orbitleague.coax.
+// the ball, both roadsters, the boost flames, the station's ribs and the
+// space round it: stars, a ringed planet, a moon and the sun), in the flat
+// style with ink lines (docs/verse/art-styles.md), with the HUD's plates
+// over it; fx draws the HUD's strokes and text. Every place and size comes
+// from orbitleague.coax.
+//
+// The roadster is our own design: low-poly convex hulls (a wedge body,
+// four fender pods, a raked windscreen, two speedster humps), a driver's
+// helmet, a rear wing and four wheels, with headlights and a tail bar that
+// glow. The floor and the glass reflect the ball and the cars.
 struct Car { p: vec4f, x: vec4f, y: vec4f, z: vec4f }   // place (w boost), right (w team), up, forward (w steer)
 struct U {
   size: vec2f, time: f32, fade: f32, still: f32, panels: f32, k: f32, zerog: f32,
@@ -15,7 +21,7 @@ struct U {
   cars: array<Car, 2>,
   arena: vec4f,                 // half width, half length, roof, the goal mouth's half width
   goal: vec4f,                  // crossbar, net depth
-  misc: vec4f,
+  misc: vec4f,                  // the ball's speed (m/s)
   panel: array<vec4f, 32>,
 }
 @group(0) @binding(0) var<uniform> u: U;
@@ -50,9 +56,10 @@ fn panels(p: vec2f, under: vec3f) -> vec3f {
 fn hash3(p: vec3f) -> f32 { return fract(sin(dot(p, vec3f(127.1, 311.7, 74.7))) * 43758.5453); }
 const BLUE = vec3f(0.18, 0.48, 1.0);
 const MAGENTA = vec3f(1.0, 0.22, 0.72);
-const SUN = vec3f(0.48, 0.42, 0.77);   // normalised in sun()
+const SUN = vec3f(-0.5, 0.62, -0.45);   // normalised in sun(): high, behind the blue end
 fn sun() -> vec3f { return normalize(SUN); }
 fn team(t: f32) -> vec3f { return select(BLUE, MAGENTA, t > 0.5); }
+fn moving() -> f32 { return select(1.0, 0.0, u.still > 0.5); }
 // Flat light: three bands of the sun, and a sky fill.
 fn flat_light(n: vec3f) -> f32 {
   let l = max(0.0, dot(n, sun()));
@@ -60,53 +67,112 @@ fn flat_light(n: vec3f) -> f32 {
   return 0.35 + 0.65 * band * (0.7 + 0.3 * max(0.0, n.y));
 }
 
-// ---- space
-const PLANET_C = vec3f(-2600.0, -1500.0, 2200.0);
-const PLANET_R = 1100.0;
+// ---- space: a ringed ice giant ahead of the blue end, a moon behind, the sun high over the blue end
+const PLANET_D = vec3f(-0.5, 0.3, 1.0);
+const PLANET_DIST = 3000.0;
+const PLANET_R = 700.0;
+const RING_N = vec3f(0.22, 1.0, -0.3);
+const MOON_D = vec3f(0.5, 0.32, -1.0);
+const MOON_DIST = 2000.0;
+const MOON_R = 70.0;
+fn planet_c() -> vec3f { return normalize(PLANET_D) * PLANET_DIST; }
+fn sphere_t(d: vec3f, c: vec3f, r: f32) -> f32 {
+  let b = dot(c, d);
+  let disc = b * b - dot(c, c) + r * r;
+  if (disc < 0.0) { return -1.0; }
+  return b - sqrt(disc);
+}
+fn planet_col(n: vec3f) -> vec3f {
+  // cool bands along its own pole (the rings'), warped, and one pale storm
+  let pole = normalize(RING_N);
+  let la = dot(n, pole);
+  let b = la + sin(dot(n, vec3f(7.0, 1.0, 5.0))) * 0.035 + sin(la * 31.0 + n.x * 5.0) * 0.012;
+  var col = mix(vec3f(0.16, 0.36, 0.50), vec3f(0.58, 0.74, 0.86), 0.5 + 0.5 * sin(b * 21.0));
+  col = mix(col, vec3f(0.40, 0.34, 0.62), (0.5 + 0.5 * sin(b * 53.0 + 1.3)) * 0.35);
+  let storm = (n - normalize(vec3f(0.3, -0.05, -0.95))) * vec3f(1.0, 2.2, 1.0);
+  col = mix(col, vec3f(0.86, 0.93, 0.98), (1.0 - smoothstep(0.05, 0.085, length(storm))) * 0.85);
+  return col;
+}
 fn space(d: vec3f) -> vec3f {
-  var c = mix(vec3f(0.006, 0.008, 0.02), vec3f(0.03, 0.02, 0.06), clamp(0.5 + 0.5 * d.y, 0.0, 1.0));
+  var c = mix(vec3f(0.006, 0.008, 0.02), vec3f(0.025, 0.02, 0.055), clamp(0.5 + 0.5 * d.y, 0.0, 1.0));
+  // a faint band of the galaxy
+  let band = dot(d, normalize(vec3f(0.3, 0.55, -0.78)));
+  let wave = 0.55 + 0.45 * sin(d.x * 7.0 + sin(d.z * 5.0) * 2.0) * sin(d.y * 9.0 + d.z * 3.0);
+  c += mix(vec3f(0.09, 0.03, 0.15), vec3f(0.02, 0.09, 0.13), 0.5 + 0.5 * sin(d.x * 3.0 - d.z * 2.0)) * exp(-band * band * 14.0) * wave * 0.55;
   // stars: one at most in a cell of the direction's grid
   let g = d * 180.0;
   let cell = floor(g);
   let h = hash3(cell);
-  if (h > 0.965) {
+  if (h > 0.96) {
     let at = cell + vec3f(hash3(cell + 1.3), hash3(cell + 7.1), hash3(cell + 3.7));
     let r = length(g - at);
-    let tw = select(0.8 + 0.2 * sin(u.time * (0.5 + h * 3.0) + h * 50.0), 1.0, u.still > 0.5);
-    c += vec3f(0.9, 0.95, 1.0) * (1.0 - smoothstep(0.05, 0.28, r)) * select(0.5, 1.0, h > 0.993) * tw;
+    let tw = 1.0 - 0.2 * moving() * (0.5 + 0.5 * sin(u.time * (0.5 + h * 3.0) + h * 50.0));
+    let tint = mix(vec3f(0.75, 0.85, 1.0), vec3f(1.0, 0.95, 1.0), fract(h * 37.0));
+    c += tint * (1.0 - smoothstep(0.05, 0.28, r)) * select(0.5, 1.0, h > 0.993) * tw;
   }
-  // the sun
+  // the sun: a white disc and its glare
   let sd = dot(d, sun());
-  c += vec3f(1.0, 0.9, 0.7) * (smoothstep(0.9995, 0.9998, sd) * 3.0 + pow(max(sd, 0.0), 400.0) * 0.6);
-  // the planet: a big blue world below and ahead, its night side dark, a thin air glow
-  let m = -PLANET_C;
-  let b = dot(m, d);
-  let q = dot(m, m) - PLANET_R * PLANET_R;
-  let disc = b * b - q;
-  if (disc > 0.0) {
-    let t = -b - sqrt(disc);
-    if (t > 0.0) {
-      let n = normalize(d * t - PLANET_C);
-      let l = dot(n, sun());
-      let lat = n.y * 6.0 + sin(n.x * 9.0 + n.z * 4.0) * 0.8;
-      var ground = mix(vec3f(0.06, 0.22, 0.55), vec3f(0.12, 0.38, 0.30), step(0.55, fract(lat * 0.37 + sin(n.z * 13.0) * 0.2)));
-      ground = mix(ground, vec3f(0.92, 0.95, 1.0), step(0.78, fract(n.x * 5.0 + n.y * 11.0 + sin(n.z * 20.0) * 0.4)) * 0.8);
-      let band = select(select(0.08, 0.55, l > 0.0), 1.0, l > 0.35);
-      c = ground * band + vec3f(0.3, 0.55, 1.0) * pow(1.0 - max(0.0, dot(n, -d)), 3.0) * 0.6 * max(l + 0.3, 0.0);
+  c += vec3f(1.0, 0.97, 0.93) * (smoothstep(0.9995, 0.9998, sd) * 3.0 + pow(max(sd, 0.0), 400.0) * 0.7 + pow(max(sd, 0.0), 24.0) * 0.06);
+  // the moon: grey, cratered, lit from the sun's side
+  let mc = normalize(MOON_D) * MOON_DIST;
+  let mt = sphere_t(d, mc, MOON_R);
+  if (mt > 0.0) {
+    let n = normalize(d * mt - mc);
+    let cr = hash3(floor(n * 9.0));
+    var mcol = vec3f(0.55, 0.57, 0.62) * (0.85 + 0.15 * cr);
+    mcol *= 1.0 - 0.25 * (1.0 - smoothstep(0.1, 0.3, length(fract(n * 9.0) - 0.5))) * step(0.6, cr);
+    c = mcol * (0.05 + 0.95 * smoothstep(-0.05, 0.2, dot(n, sun())));
+  }
+  // the planet and its rings
+  let pc = planet_c();
+  let pt = sphere_t(d, pc, PLANET_R);
+  if (pt > 0.0) {
+    let n = normalize(d * pt - pc);
+    let l = dot(n, sun());
+    let lit = 0.05 + 0.95 * smoothstep(-0.08, 0.22, l);
+    c = planet_col(n) * lit + vec3f(0.3, 0.6, 1.0) * pow(1.0 - max(0.0, dot(n, -d)), 3.0) * 0.8 * smoothstep(-0.35, 0.3, l);
+  } else {
+    // the air's halo round the limb
+    let b = dot(pc, d);
+    let miss = length(pc - d * b) - PLANET_R;
+    if (b > 0.0 && miss > 0.0) { c += vec3f(0.3, 0.6, 1.0) * exp(-miss / 25.0) * 0.45; }
+  }
+  let rn = normalize(RING_N);
+  let den = dot(d, rn);
+  if (abs(den) > 1e-4) {
+    let rt = dot(pc, rn) / den;
+    let rp = d * rt - pc;
+    let r = length(rp) / PLANET_R;
+    if (rt > 0.0 && r > 1.35 && r < 2.25 && (pt < 0.0 || rt < pt)) {
+      var a = 0.35 + 0.35 * sin(r * 34.0) * sin(r * 11.0 + 0.7);
+      a *= smoothstep(1.35, 1.42, r) * (1.0 - smoothstep(2.15, 2.25, r)) * (1.0 - 0.8 * (1.0 - smoothstep(0.012, 0.03, abs(r - 1.78))));
+      // the planet's shadow on the rings
+      let sb = dot(rp, sun());
+      let shadowed = sb < 0.0 && dot(rp, rp) - sb * sb < PLANET_R * PLANET_R;
+      let rl = select(0.25 + 0.75 * abs(dot(rn, sun())), 0.06, shadowed);
+      c = mix(c, vec3f(0.74, 0.78, 0.90) * rl, clamp(a, 0.0, 0.85));
     }
   }
-  // the air's halo round the limb
-  let miss = length(m - d * b) - PLANET_R;
-  if (b < 0.0 && miss > 0.0) { c += vec3f(0.3, 0.55, 1.0) * exp(-miss / 40.0) * 0.5; }
+  return c;
+}
+// A cheap reflection of the station for gloss: the floor's dark below, space above, the planet and the sun.
+fn env(r: vec3f) -> vec3f {
+  var c = mix(vec3f(0.03, 0.035, 0.05), vec3f(0.05, 0.07, 0.13), smoothstep(-0.15, 0.25, r.y));
+  c += vec3f(0.30, 0.50, 0.65) * pow(max(dot(r, normalize(PLANET_D)), 0.0), 10.0) * 0.7;
+  c += vec3f(1.0, 0.97, 0.93) * pow(max(dot(r, sun()), 0.0), 60.0) * 1.2;
+  // the arena's edge lights, a line at the horizon
+  c += vec3f(0.35, 0.55, 1.0) * exp(-r.y * r.y * 900.0) * 0.5;
   return c;
 }
 
 // ---- shapes
-struct Hit { t: f32, n: vec3f, col: vec3f, ink: f32 }
-fn miss() -> Hit { return Hit(1e9, vec3f(0.0, 1.0, 0.0), vec3f(0.0), 0.0); }
+// mat: 0 matte, 1 paint, 2 glass, 3 light (emits its colour), 4 the ball, 5 the floor
+struct Hit { t: f32, n: vec3f, col: vec3f, ink: f32, mat: i32 }
+fn miss() -> Hit { return Hit(1e9, vec3f(0.0, 1.0, 0.0), vec3f(0.0), 0.0, 0); }
+fn closer(a: Hit, b: Hit) -> Hit { if (b.t < a.t) { return b; } return a; }
 
 // A box (centre c, half h) in a frame; o and d already in it. Its normal in that frame, and ink near its edges.
-fn box_hit(o: vec3f, d: vec3f, c: vec3f, h: vec3f, col: vec3f) -> Hit {
+fn box_hit(o: vec3f, d: vec3f, c: vec3f, h: vec3f, col: vec3f, mat: i32) -> Hit {
   let inv = 1.0 / d;
   let t0 = (c - h - o) * inv;
   let t1 = (c + h - o) * inv;
@@ -123,9 +189,84 @@ fn box_hit(o: vec3f, d: vec3f, c: vec3f, h: vec3f, col: vec3f) -> Hit {
   else { n = vec3f(0.0, 0.0, -sign(d.z)); }
   // the edge: the middle of the three distances to the faces
   let mid = e.x + e.y + e.z - min(min(e.x, e.y), e.z) - max(max(e.x, e.y), e.z);
-  return Hit(tnear, n, col, 1.0 - smoothstep(0.025, 0.05, mid));
+  return Hit(tnear, n, col, 1.0 - smoothstep(0.025, 0.05, mid), mat);
 }
-// A wheel: a cylinder along x (centre c, radius r, half width w).
+
+// The roadster's hulls, planes as (normal, offset); from a small script of points and normals.
+var<private> HULL: array<vec4f, 45> = array<vec4f, 45>(
+  vec4f(0.0000, -1.0000, 0.0000, 0.3200),
+  vec4f(0.0000, 1.0000, 0.0000, 0.1200),
+  vec4f(1.0000, 0.0000, 0.0000, 0.9500),
+  vec4f(-1.0000, 0.0000, 0.0000, 0.9500),
+  vec4f(0.5812, 0.8137, 0.0000, 0.5115),
+  vec4f(-0.5812, 0.8137, 0.0000, 0.5115),
+  vec4f(0.6402, -0.7682, 0.0000, 0.7234),
+  vec4f(-0.6402, -0.7682, 0.0000, 0.7234),
+  vec4f(0.0000, 0.0000, 1.0000, 2.1500),
+  vec4f(0.0000, 0.9821, 0.1886, 0.2875),
+  vec4f(0.0000, -0.6097, 0.7926, 1.7407),
+  vec4f(0.4500, 0.0000, 0.8930, 2.1243),
+  vec4f(-0.4500, 0.0000, 0.8930, 2.1243),
+  vec4f(0.0000, 0.0000, -1.0000, 2.0800),
+  vec4f(0.0000, 0.9439, -0.3304, 0.7244),
+  vec4f(0.3998, 0.0000, -0.9166, 2.1672),
+  vec4f(-0.3998, 0.0000, -0.9166, 2.1672),
+  vec4f(0.0000, -0.5547, -0.8321, 1.8000),
+  vec4f(1.0000, 0.0000, 0.0000, 0.1900),
+  vec4f(-1.0000, 0.0000, 0.0000, 0.3000),
+  vec4f(0.0000, -1.0000, 0.0000, 0.3000),
+  vec4f(0.0000, 1.0000, 0.0000, 0.0500),
+  vec4f(0.6727, 0.7399, 0.0000, 0.0242),
+  vec4f(0.0000, 0.6727, 0.7399, 0.2408),
+  vec4f(0.0000, 0.6727, -0.7399, 0.2408),
+  vec4f(0.0000, 0.0000, 1.0000, 0.6600),
+  vec4f(0.0000, 0.0000, -1.0000, 0.6600),
+  vec4f(0.0000, -0.6402, 0.7682, 0.5762),
+  vec4f(0.0000, -0.6402, -0.7682, 0.5762),
+  vec4f(0.0000, 0.7276, 0.6860, 0.4852),
+  vec4f(0.0000, -0.7276, -0.6860, -0.4452),
+  vec4f(0.0000, 1.0000, 0.0000, 0.4600),
+  vec4f(0.0000, -1.0000, 0.0000, -0.0800),
+  vec4f(0.9929, 0.1191, 0.0000, 0.6672),
+  vec4f(-0.9929, 0.1191, 0.0000, 0.6672),
+  vec4f(0.7071, 0.7071, 0.0000, 0.6788),
+  vec4f(-0.7071, 0.7071, 0.0000, 0.6788),
+  vec4f(1.0000, 0.0000, 0.0000, 0.2500),
+  vec4f(-1.0000, 0.0000, 0.0000, 0.2500),
+  vec4f(0.0000, -1.0000, 0.0000, 0.0000),
+  vec4f(0.0000, 0.9789, -0.2043, 0.4741),
+  vec4f(0.0000, 0.3304, 0.9439, -0.3728),
+  vec4f(0.0000, 0.0000, -1.0000, 1.7500),
+  vec4f(0.6727, 0.7399, 0.0000, 0.3458),
+  vec4f(-0.6727, 0.7399, 0.0000, 0.3458)
+);
+
+// A convex hull: planes n.p <= w from HULL[first..first + count]. The ray's
+// way in, the face's normal, and ink where the face meets another.
+struct HullHit { t: f32, n: vec3f, edge: f32 }
+fn hull_cast(o: vec3f, d: vec3f, first: i32, count: i32) -> HullHit {
+  var tn = -1e9; var tf = 1e9; var nn = vec3f(0.0); var k = -1;
+  for (var i = first; i < first + count; i++) {
+    let pl = HULL[i];
+    let den = dot(pl.xyz, d);
+    let num = pl.w - dot(pl.xyz, o);
+    if (abs(den) < 1e-7) {
+      if (num < 0.0) { return HullHit(1e9, nn, 0.0); }
+      continue;
+    }
+    let t = num / den;
+    if (den < 0.0) { if (t > tn) { tn = t; nn = pl.xyz; k = i; } } else { tf = min(tf, t); }
+  }
+  if (k < 0 || tn > tf || tn < 0.0) { return HullHit(1e9, nn, 0.0); }
+  let p = o + d * tn;
+  var e = 1e9;
+  for (var i = first; i < first + count; i++) {
+    if (i != k) { let pl = HULL[i]; e = min(e, pl.w - dot(pl.xyz, p)); }
+  }
+  return HullHit(tn, nn, 1.0 - smoothstep(0.012, 0.028, e));
+}
+
+// A wheel: a cylinder along x (centre c, radius r, half width w): a dark tyre and a bright rim.
 fn wheel_hit(o: vec3f, d: vec3f, c: vec3f, r: f32, w: f32) -> Hit {
   let q = o - c;
   let a = d.y * d.y + d.z * d.z;
@@ -136,40 +277,80 @@ fn wheel_hit(o: vec3f, d: vec3f, c: vec3f, r: f32, w: f32) -> Hit {
   if (disc >= 0.0 && a > 1e-6) {
     let t = (-b - sqrt(disc)) / a;
     let p = q + d * t;
-    if (t > 0.0 && abs(p.x) <= w) { best = Hit(t, normalize(vec3f(0.0, p.y, p.z)), vec3f(0.07, 0.07, 0.08), 1.0 - smoothstep(0.03, 0.06, w - abs(p.x))); }
+    if (t > 0.0 && abs(p.x) <= w) { best = Hit(t, normalize(vec3f(0.0, p.y, p.z)), vec3f(0.05, 0.05, 0.06), 1.0 - smoothstep(0.03, 0.06, w - abs(p.x)), 0); }
   }
-  // the hubs
+  // the hubs: five spokes in a bright rim
   for (var s = -1.0; s <= 1.0; s += 2.0) {
     if (abs(d.x) > 1e-6) {
       let t = (s * w - q.x) / d.x;
       let p = q + d * t;
       let rr = length(p.yz);
       if (t > 0.0 && t < best.t && rr <= r) {
-        let rim = select(vec3f(0.07, 0.07, 0.08), vec3f(0.75, 0.78, 0.82), rr < r * 0.62);
-        best = Hit(t, vec3f(s, 0.0, 0.0), rim, 1.0 - smoothstep(0.02, 0.04, abs(rr - r * 0.62)) + 1.0 - smoothstep(0.02, 0.04, r - rr));
+        let ang = atan2(p.y, p.z) * 5.0 / 6.2831853;
+        let spoke = 1.0 - smoothstep(0.12, 0.2, abs(fract(ang) - 0.5));
+        let rim = rr < r * 0.66 && (spoke > 0.5 || rr < r * 0.16);
+        let col = select(vec3f(0.05, 0.05, 0.06), vec3f(0.78, 0.82, 0.88), rim);
+        best = Hit(t, vec3f(s, 0.0, 0.0), col, 1.0 - smoothstep(0.02, 0.04, abs(rr - r * 0.66)) + 1.0 - smoothstep(0.02, 0.04, r - rr), select(0, 1, rim));
       }
     }
   }
   return best;
 }
-fn closer(a: Hit, b: Hit) -> Hit { if (b.t < a.t) { return b; } return a; }
 
-// A roadster of our own: a low wedge body in its team's colour, a dark
-// screen and cabin, a white stripe, a rear wing and four wheels.
+// A roadster of our own.
 fn car_hit(ro: vec3f, rd: vec3f, c: Car) -> Hit {
   let q = ro - c.p.xyz;
   let o = vec3f(dot(q, c.x.xyz), dot(q, c.y.xyz), dot(q, c.z.xyz));
   let d = vec3f(dot(rd, c.x.xyz), dot(rd, c.y.xyz), dot(rd, c.z.xyz));
   // the bounding sphere first
   let bq = dot(o, d);
-  if (dot(o, o) - bq * bq > 6.5 && bq > 0.0) { return miss(); }
+  let oo = dot(o, o);
+  if (oo - bq * bq > 6.8 || (bq > 0.0 && oo > 6.8)) { return miss(); }
   let paint = team(c.x.w);
-  var h = box_hit(o, d, vec3f(0.0, -0.12, 0.0), vec3f(0.95, 0.22, 2.1), paint);
-  h = closer(h, box_hit(o, d, vec3f(0.0, 0.14, -0.75), vec3f(0.9, 0.12, 1.15), paint));
-  h = closer(h, box_hit(o, d, vec3f(0.0, 0.33, -0.15), vec3f(0.72, 0.15, 0.5), vec3f(0.04, 0.06, 0.1)));
-  h = closer(h, box_hit(o, d, vec3f(0.0, 0.11, 1.4), vec3f(0.22, 0.015, 0.7), vec3f(0.95, 0.96, 1.0)));
-  h = closer(h, box_hit(o, d, vec3f(0.0, 0.42, -1.95), vec3f(0.92, 0.035, 0.16), vec3f(0.1, 0.1, 0.12)));
-  h = closer(h, box_hit(o, d, vec3f(0.0, 0.0, 2.08), vec3f(0.7, 0.06, 0.04), vec3f(1.0, 0.95, 0.8)));
+  var h = miss();
+  // the body: a wedge with a dark sill, a cockpit, a stripe, headlights and a tail bar
+  let b = hull_cast(o, d, 0, 18);
+  if (b.t < h.t) {
+    let p = o + d * b.t;
+    let n = b.n;
+    var col = paint; var mat = 1;
+    if (p.y < -0.2 && n.y < 0.5) { col = vec3f(0.05, 0.055, 0.07); mat = 0; }
+    if (n.y > 0.9 && abs(p.x) < 0.6 && p.z > -1.0 && p.z < 0.55) { col = vec3f(0.035, 0.04, 0.055); mat = 0; }
+    if (n.y > 0.5 && abs(p.x) < 0.13 && p.z > 0.6) { col = vec3f(0.92, 0.94, 1.0); }
+    if (n.z > 0.3 && p.z > 1.7 && p.y > -0.17 && p.y < -0.05 && abs(p.x) > 0.2) { col = vec3f(0.85, 0.93, 1.0) * 1.8; mat = 3; }
+    if (n.z < -0.8 && abs(p.y) < 0.035 && abs(p.x) < 0.8) { col = mix(paint, vec3f(1.0), 0.45) * 1.8; mat = 3; }
+    h = Hit(b.t, n, col, b.edge, mat);
+  }
+  // the fender pods over the wheels
+  for (var i = 0; i < 4; i++) {
+    let sx = select(-1.0, 1.0, (i & 1) == 1);
+    let wz = select(1.4, -1.4, i >= 2);
+    let f = hull_cast(vec3f(o.x * sx - 0.86, o.y, o.z - wz), vec3f(d.x * sx, d.y, d.z), 18, 11);
+    if (f.t < h.t) { h = Hit(f.t, vec3f(f.n.x * sx, f.n.y, f.n.z), paint, f.edge, 1); }
+  }
+  // the windscreen
+  let w = hull_cast(o, d, 29, 8);
+  if (w.t < h.t) { h = Hit(w.t, w.n, vec3f(0.02, 0.035, 0.07), w.edge, 2); }
+  // the humps behind the seats
+  for (var s = -1.0; s <= 1.0; s += 2.0) {
+    let k = hull_cast(vec3f(o.x * s - 0.32, o.y, o.z), vec3f(d.x * s, d.y, d.z), 37, 8);
+    if (k.t < h.t) { h = Hit(k.t, vec3f(k.n.x * s, k.n.y, k.n.z), paint, k.edge, 1); }
+  }
+  // the driver's helmet: white, a dark visor, a stripe in the team's colour
+  let hc = vec3f(0.32, 0.4, -0.22);
+  let ht = sphere_t(d, hc - o, 0.2);
+  if (ht > 0.0 && ht < h.t) {
+    let n = normalize(o + d * ht - hc);
+    var col = vec3f(0.92, 0.93, 0.95); var mat = 0;
+    if (n.z > 0.3 && n.y < 0.5 && n.y > -0.35) { col = vec3f(0.03, 0.06, 0.12); mat = 2; }
+    else if (abs(n.x) < 0.12 && n.y > 0.0) { col = paint; mat = 1; }
+    h = Hit(ht, n, col, 0.0, mat);
+  }
+  // the rear wing on two struts
+  h = closer(h, box_hit(o, d, vec3f(0.0, 0.43, -1.86), vec3f(0.9, 0.03, 0.17), vec3f(0.07, 0.075, 0.09), 1));
+  h = closer(h, box_hit(o, d, vec3f(0.0, 0.405, -1.86), vec3f(0.92, 0.01, 0.175), paint, 1));
+  h = closer(h, box_hit(o, d, vec3f(-0.5, 0.26, -1.86), vec3f(0.03, 0.15, 0.07), vec3f(0.07, 0.075, 0.09), 0));
+  h = closer(h, box_hit(o, d, vec3f(0.5, 0.26, -1.86), vec3f(0.03, 0.15, 0.07), vec3f(0.07, 0.075, 0.09), 0));
   let steer = c.z.w;
   for (var i = 0; i < 4; i++) {
     let x = select(-0.86, 0.86, (i & 1) == 1);
@@ -182,21 +363,23 @@ fn car_hit(ro: vec3f, rd: vec3f, c: Car) -> Hit {
       wo = vec3f(cs * wo.x - sn * wo.z, wo.y, sn * wo.x + cs * wo.z);
       wd = vec3f(cs * wd.x - sn * wd.z, wd.y, sn * wd.x + cs * wd.z);
     }
-    var w = wheel_hit(wo, wd, vec3f(0.0), 0.4, 0.14);
-    if (w.t < h.t && i < 2) {
+    var wh = wheel_hit(wo, wd, vec3f(0.0), 0.4, 0.15);
+    if (wh.t < h.t && i < 2) {
       let cs = cos(steer); let sn = sin(steer);
-      w.n = vec3f(cs * w.n.x - sn * w.n.z, w.n.y, sn * w.n.x + cs * w.n.z);
+      wh.n = vec3f(cs * wh.n.x - sn * wh.n.z, wh.n.y, sn * wh.n.x + cs * wh.n.z);
     }
-    h = closer(h, w);
+    h = closer(h, wh);
   }
   if (h.t < 1e8) { h.n = h.n.x * c.x.xyz + h.n.y * c.y.xyz + h.n.z * c.z.xyz; }
   return h;
 }
-// The boost: a glow along a short line behind the car.
+
+// The boost: a blue-white cone out of the rear bumper, and its glow.
 fn flame(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
   if (c.p.w < 0.5) { return vec3f(0.0); }
-  let a = c.p.xyz - c.z.xyz * 2.15;
-  let b = c.p.xyz - c.z.xyz * 3.6;
+  let flick = 1.0 + moving() * 0.12 * sin(u.time * 57.0 + c.x.w * 3.0);
+  let a = c.p.xyz - c.z.xyz * 2.12 - c.y.xyz * 0.05;
+  let b = a - c.z.xyz * (2.2 * flick);
   // the closest approach of the ray and the segment
   let ab = b - a;
   let w0 = ro - a;
@@ -205,9 +388,31 @@ fn flame(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
   var s = 0.0; var t = 0.0;
   if (den > 1e-6) { s = clamp((bb * ee - cc * dd) / den, 0.0, tmax); t = clamp((aa * ee - bb * dd) / den, 0.0, 1.0); }
   let dist = length(ro + rd * s - (a + ab * t));
-  let flick = select(0.85 + 0.15 * sin(u.time * 60.0), 1.0, u.still > 0.5);
-  let r = 0.28 * (1.0 - t * 0.7);
-  return mix(vec3f(0.85, 0.95, 1.0), vec3f(0.3, 0.55, 1.0), t) * exp(-dist * dist / (r * r)) * 1.6 * flick;
+  let r = 0.3 * (1.0 - t * 0.8);
+  let core = exp(-dist * dist / (r * r * 0.35));
+  let halo = exp(-dist * dist / (r * r * 4.0)) * 0.35;
+  let diamonds = 1.0 + 0.5 * pow(0.5 + 0.5 * cos(t * 22.0 - u.time * 30.0 * moving()), 6.0) * (1.0 - t);
+  return (vec3f(0.9, 0.97, 1.0) * core * diamonds + vec3f(0.25, 0.5, 1.0) * halo) * (1.6 - t) * flick;
+}
+// A light's glow where the ray passes it, if the light is in front of what the ray hit.
+fn halo(ro: vec3f, rd: vec3f, p: vec3f, tmax: f32, r: f32) -> f32 {
+  let s = dot(p - ro, rd);
+  if (s < 0.0 || s > tmax + 0.3) { return 0.0; }
+  let dd = length(ro + rd * s - p);
+  return exp(-dd * dd / (r * r));
+}
+fn lights(ro: vec3f, rd: vec3f, c: Car, tmax: f32) -> vec3f {
+  let f = c.z.xyz;
+  if (length(c.p.xyz - ro) > 90.0) { return vec3f(0.0); }
+  let front = max(0.0, -dot(rd, f)); let back = max(0.0, dot(rd, f));
+  var o = vec3f(0.0);
+  for (var s = -1.0; s <= 1.0; s += 2.0) {
+    let hp = c.p.xyz + c.x.xyz * (s * 0.5) - c.y.xyz * 0.11 + f * 2.16;
+    o += vec3f(0.75, 0.88, 1.0) * halo(ro, rd, hp, tmax, 0.25) * front * front * 1.2;
+  }
+  let tp = c.p.xyz - f * 2.1;
+  o += mix(team(c.x.w), vec3f(1.0), 0.3) * halo(ro, rd, tp, tmax, 0.35) * back * 0.5;
+  return o;
 }
 
 fn qrot(q: vec4f, v: vec3f) -> vec3f { let t = 2.0 * cross(q.xyz, v); return v + q.w * t + cross(q.xyz, t); }
@@ -221,23 +426,46 @@ fn ball_hit(ro: vec3f, rd: vec3f) -> Hit {
   let t = -b - sqrt(disc);
   if (t < 0.0) { return miss(); }
   let n = normalize(m + rd * t);
-  // its seams in its own frame: three great circles, and a dot at each pole
+  // its seams in its own frame: three great circles that glow, and a cap at each pole
   let l = qrot(vec4f(-u.ballq.xyz, u.ballq.w), n);
   let a = abs(l);
   let seam = min(min(a.x, a.y), a.z);
   let pole = max(max(a.x, a.y), a.z);
-  var col = vec3f(0.93, 0.94, 0.96);
-  if (pole > 0.93) { col = vec3f(0.12, 0.14, 0.2); }
-  return Hit(t, n, col, 1.0 - smoothstep(0.035, 0.06, seam));
+  var col = vec3f(0.90, 0.92, 0.96);
+  if (pole > 0.965) { col = vec3f(0.30, 0.36, 0.48); }
+  return Hit(t, n, col, 1.0 - smoothstep(0.03, 0.055, seam), 4);
+}
+
+// How a hit looks in the light (not the floor).
+fn shade_hit(h: Hit, rd: vec3f) -> vec3f {
+  let n = h.n;
+  if (h.mat == 3) { return h.col; }
+  let l = flat_light(n);
+  let r = reflect(rd, n);
+  let fres = pow(1.0 - abs(dot(n, -rd)), 4.0);
+  var c = h.col * l;
+  if (h.mat == 1) {
+    c = mix(c, env(r), 0.06 + 0.5 * fres);
+    c += vec3f(1.0) * smoothstep(0.93, 0.97, dot(r, sun())) * 0.7;
+  } else if (h.mat == 2) {
+    c = h.col + env(r) * 0.9 + vec3f(1.0) * smoothstep(0.9, 0.95, dot(r, sun())) * 0.6;
+  } else if (h.mat == 4) {
+    c = mix(c, env(r), 0.05 + 0.3 * fres);
+    let glow = clamp(u.misc.x / 25.0, 0.0, 1.0);
+    return mix(c, mix(vec3f(0.05, 0.06, 0.09), vec3f(0.6, 0.9, 1.0) * 1.6, 0.2 + 0.8 * glow), h.ink);
+  }
+  // a rim of light from the planet
+  c += vec3f(0.15, 0.3, 0.6) * pow(1.0 - abs(dot(n, -rd)), 3.0) * 0.5;
+  return mix(c, vec3f(0.01, 0.015, 0.03), clamp(h.ink, 0.0, 1.0) * 0.85);
 }
 
 // ---- the arena
 fn floor_col(p: vec3f) -> vec3f {
   let hx = u.arena.x; let hz = u.arena.y; let gw = u.arena.w;
-  var c = select(vec3f(0.10, 0.12, 0.17), vec3f(0.14, 0.11, 0.10), p.z > 0.0);
+  var c = select(vec3f(0.075, 0.09, 0.135), vec3f(0.11, 0.075, 0.125), p.z > 0.0);
   // the deck's plates, five metres a side
   let g = abs(fract(p.xz / 5.0 + 0.5) - 0.5) * 5.0;
-  c *= 1.0 - 0.18 * (1.0 - smoothstep(0.03, 0.07, min(g.x, g.y)));
+  c *= 1.0 - 0.25 * (1.0 - smoothstep(0.03, 0.07, min(g.x, g.y)));
   // the markings
   var line = 0.0;
   line = max(line, 1.0 - smoothstep(0.1, 0.16, abs(p.z)));
@@ -250,11 +478,11 @@ fn floor_col(p: vec3f) -> vec3f {
   c = mix(c, mix(vec3f(0.85, 0.9, 1.0), side, 0.35), line * 0.85);
   // a strip of light round the edge
   let edge = min(hx - abs(p.x), hz - abs(p.z));
-  c += side * (1.0 - smoothstep(0.0, 0.6, edge)) * 0.5 * step(gw, abs(p.x) + step(abs(p.z), hz) * 99.0);
+  c += side * (1.0 - smoothstep(0.0, 0.6, edge)) * 0.6 * step(gw, abs(p.x) + step(abs(p.z), hz) * 99.0);
   return c;
 }
-// Shadows straight down from the sun's side: soft discs under the ball and the cars.
-fn shade(p: vec3f) -> f32 {
+// Shadows straight down: soft discs under the ball and the cars.
+fn shadow(p: vec3f) -> f32 {
   var k = 1.0;
   let bd = length(p.xz - u.ball.xz);
   let bh = max(u.ball.y - p.y, 0.0);
@@ -269,13 +497,56 @@ fn shade(p: vec3f) -> f32 {
   }
   return k;
 }
+// Each car's glow on the floor under it, in its team's colour.
+fn underglow(p: vec3f) -> vec3f {
+  var o = vec3f(0.0);
+  for (var i = 0; i < 2; i++) {
+    let c = u.cars[i];
+    let q = p - c.p.xyz;
+    let lx = dot(q, c.x.xyz); let lz = dot(q, c.z.xyz);
+    o += team(c.x.w) * exp(-(lx * lx / 1.1 + lz * lz / 5.0)) * clamp(1.8 - c.p.y, 0.0, 1.0) * 0.4;
+  }
+  return o;
+}
+
+// What moves (the ball and the cars), and what moves or stands in the arena (and the goal frames).
+fn movers(ro: vec3f, rd: vec3f) -> Hit {
+  return closer(closer(ball_hit(ro, rd), car_hit(ro, rd, u.cars[0])), car_hit(ro, rd, u.cars[1]));
+}
+
+// The station's ribs: four arches over the glass, outside it, each with a light at its crown.
+fn ribs(ro: vec3f, rd: vec3f) -> Hit {
+  let hx = u.arena.x; let hh = u.arena.z;
+  var h = miss();
+  let steel = vec3f(0.11, 0.12, 0.15);
+  for (var k = 0; k < 4; k++) {
+    let z = -30.0 + f32(k) * 20.0;
+    h = closer(h, box_hit(ro, rd, vec3f(0.0, hh + 1.0, z), vec3f(hx + 1.4, 0.45, 0.6), steel, 0));
+    h = closer(h, box_hit(ro, rd, vec3f(hx + 0.95, hh * 0.5, z), vec3f(0.45, hh * 0.5 + 1.4, 0.6), steel, 0));
+    h = closer(h, box_hit(ro, rd, vec3f(-hx - 0.95, hh * 0.5, z), vec3f(0.45, hh * 0.5 + 1.4, 0.6), steel, 0));
+  }
+  return h;
+}
+fn rib_lights(ro: vec3f, rd: vec3f, tmax: f32) -> vec3f {
+  let hx = u.arena.x; let hh = u.arena.z;
+  var o = vec3f(0.0);
+  for (var k = 0; k < 4; k++) {
+    let z = -30.0 + f32(k) * 20.0;
+    let blink = select(1.0, 0.25 + 0.75 * step(0.5, fract(u.time * 0.5 + f32(k) * 0.25)), u.still < 0.5);
+    for (var s = -1.0; s <= 1.0; s += 2.0) {
+      o += vec3f(0.6, 1.0, 0.95) * halo(ro, rd, vec3f(s * (hx + 0.95), hh + 1.5, z), tmax, 0.35) * blink;
+    }
+  }
+  return o;
+}
 
 // The glass the ray leaves the arena through, and the nets it passes: their
-// colour over what is behind, and where they are.
-struct Glass { t: f32, col: vec3f, a: f32 }
+// colour over what is behind, how much, and the light they add (their edge
+// lights, and the ball and cars reflected in them).
+struct Glass { t: f32, col: vec3f, a: f32, add: vec3f }
 fn glass(ro: vec3f, rd: vec3f, tmax: f32) -> Glass {
   let hx = u.arena.x; let hz = u.arena.y; let hh = u.arena.z; let gw = u.arena.w; let gh = u.goal.x; let gd = u.goal.y;
-  var out = Glass(1e9, vec3f(0.0), 0.0);
+  var out = Glass(1e9, vec3f(0.0), 0.0, vec3f(0.0));
   // the exit: the nearest face ahead
   var t = 1e9; var n = vec3f(0.0);
   if (rd.x > 0.0) { let s = (hx - ro.x) / rd.x; if (s < t) { t = s; n = vec3f(1.0, 0.0, 0.0); } }
@@ -287,23 +558,30 @@ fn glass(ro: vec3f, rd: vec3f, tmax: f32) -> Glass {
   let p = ro + rd * t;
   let mouth = n.z != 0.0 && abs(p.x) < gw && p.y < gh;
   if (!mouth) {
-    // glass in a frame of struts every 5 metres
     var uv = p.xz;
     if (n.x != 0.0) { uv = p.zy; } else if (n.z != 0.0) { uv = p.xy; }
+    // glass in a frame of thin struts every 5 metres
     let g = abs(fract(uv / 5.0 + 0.5) - 0.5) * 5.0;
-    let strut = 1.0 - smoothstep(0.05, 0.12, min(g.x, g.y));
-    // the frame round each pane's edge (not the face's own axis)
+    let strut = 1.0 - smoothstep(0.03, 0.09, min(g.x, g.y));
+    // the distance to the face's edge (not along its own axis)
     var e = min(hx - abs(p.x), hz - abs(p.z));
     if (n.x != 0.0) { e = min(hz - abs(p.z), min(p.y, hh - p.y)); }
     if (n.z != 0.0) { e = min(hx - abs(p.x), min(p.y, hh - p.y)); }
-    let rim = 1.0 - smoothstep(0.0, 0.25, e);
     let side = select(BLUE, MAGENTA, p.z > 0.0);
-    out = Glass(t, mix(vec3f(0.35, 0.5, 0.7), side, 0.4), clamp(0.035 + strut * 0.28 + rim * 0.55, 0.0, 1.0));
-    if (n.z != 0.0) {
-      // the end wall reads as its team's
-      out.col = mix(out.col, side, 0.4); out.a = clamp(out.a + 0.03, 0.0, 1.0);
-    }
-    return out;
+    let fres = pow(1.0 - abs(dot(rd, n)), 4.0);
+    var col = mix(vec3f(0.30, 0.45, 0.65), side, 0.35);
+    var a = 0.035 + 0.3 * fres + strut * 0.2;
+    // broad diagonal streaks, as light lies on glass
+    let sh = fract((uv.x * 0.8 + uv.y) * 0.045 + n.x * 0.3 + n.z * 0.6);
+    a += 0.07 * (smoothstep(0.0, 0.03, sh) * (1.0 - smoothstep(0.03, 0.12, sh)) + 0.5 * smoothstep(0.2, 0.22, sh) * (1.0 - smoothstep(0.22, 0.26, sh)));
+    if (n.z != 0.0) { col = mix(col, side, 0.4); a += 0.03; }
+    // light along the arena's edges
+    var add = mix(side, vec3f(1.0), 0.25) * exp(-e * e / 0.03) * 0.9;
+    // the ball and the cars, reflected
+    let rr = reflect(rd, n);
+    let rh = movers(p - n * 0.02, rr);
+    if (rh.t < 80.0) { add += shade_hit(rh, rr) * (0.16 + 0.4 * fres) * exp(-rh.t * 0.02); }
+    return Glass(t, col, clamp(a, 0.0, 1.0), add);
   }
   // into a goal: its net (back, sides, roof)
   let zs = sign(n.z);
@@ -320,7 +598,7 @@ fn glass(ro: vec3f, rd: vec3f, tmax: f32) -> Glass {
   let g = abs(fract(uv / 0.6 + 0.5) - 0.5) * 0.6;
   let mesh = 1.0 - smoothstep(0.015, 0.04, min(g.x, g.y));
   let col = select(BLUE, MAGENTA, zs > 0.0);
-  return Glass(tn, col * 1.2, clamp(0.12 + mesh * 0.65, 0.0, 1.0));
+  return Glass(tn, col * 1.2, clamp(0.12 + mesh * 0.65, 0.0, 1.0), vec3f(0.0));
 }
 
 // The goal frames: posts and a crossbar at each mouth, lit in the team's colour.
@@ -330,9 +608,9 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   for (var e = -1.0; e <= 1.0; e += 2.0) {
     let col = select(BLUE, MAGENTA, e > 0.0) * 1.3;
     let z = e * (hz + 0.15);
-    h = closer(h, box_hit(ro, rd, vec3f(-gw - 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col));
-    h = closer(h, box_hit(ro, rd, vec3f(gw + 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col));
-    h = closer(h, box_hit(ro, rd, vec3f(0.0, gh + 0.2, z), vec3f(gw + 0.4, 0.2, 0.2), col));
+    h = closer(h, box_hit(ro, rd, vec3f(-gw - 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col, 3));
+    h = closer(h, box_hit(ro, rd, vec3f(gw + 0.2, gh * 0.5, z), vec3f(0.2, gh * 0.5 + 0.2, 0.2), col, 3));
+    h = closer(h, box_hit(ro, rd, vec3f(0.0, gh + 0.2, z), vec3f(gw + 0.4, 0.2, 0.2), col, 3));
   }
   return h;
 }
@@ -353,21 +631,26 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
     let t = -ro.y / rd.y;
     let p = ro + rd * t;
     let on = (abs(p.x) <= hx && abs(p.z) <= hz) || (abs(p.x) <= gw && abs(p.z) <= hz + gd);
-    if (on) { h = Hit(t, vec3f(0.0, 1.0, 0.0), floor_col(p), 0.0); }
+    if (on) { h = Hit(t, vec3f(0.0, 1.0, 0.0), floor_col(p), 0.0, 5); }
   }
-  h = closer(h, ball_hit(ro, rd));
-  h = closer(h, car_hit(ro, rd, u.cars[0]));
-  h = closer(h, car_hit(ro, rd, u.cars[1]));
+  h = closer(h, movers(ro, rd));
   h = closer(h, frames(ro, rd));
+  if (h.t > 1e8) { h = ribs(ro, rd); }
   var c = vec3f(0.0);
   if (h.t < 1e8) {
     let p = ro + rd * h.t;
-    var light = flat_light(h.n);
-    if (h.n.y > 0.99 && p.y < 0.01) { light = 0.85 * shade(p); }
-    c = h.col * light;
-    // a rim of light on the ball and the cars from the planet below
-    c += vec3f(0.15, 0.3, 0.6) * pow(1.0 - abs(dot(h.n, -rd)), 3.0) * 0.5 * step(0.02, p.y);
-    c = mix(c, vec3f(0.01, 0.015, 0.03), clamp(h.ink, 0.0, 1.0) * 0.85);
+    if (h.mat == 5) {
+      c = h.col * 0.85 * shadow(p) + underglow(p);
+      // the floor is polished: the ball, the cars, the frames and the boost in it
+      let rr = vec3f(rd.x, -rd.y, rd.z);
+      let q = p + vec3f(0.0, 0.002, 0.0);
+      let rh = closer(movers(q, rr), frames(q, rr));
+      let k = 0.2 + 0.3 * pow(1.0 - abs(rd.y), 4.0);
+      if (rh.t < 70.0) { c = mix(c, shade_hit(rh, rr), k * exp(-rh.t * 0.45)); }
+      c += (flame(q, rr, u.cars[0], rh.t) + flame(q, rr, u.cars[1], rh.t)) * k;
+    } else {
+      c = shade_hit(h, rd);
+    }
     // far things fade a little into the station's haze
     c = mix(c, vec3f(0.05, 0.07, 0.12), clamp(h.t / 220.0, 0.0, 0.5));
   } else {
@@ -376,11 +659,14 @@ fn frames(ro: vec3f, rd: vec3f) -> Hit {
   // glass and nets in front of it
   let gl = glass(ro, rd, h.t);
   if (gl.a > 0.0) { c = mix(c, gl.col, gl.a); }
-  // the boost flames
+  c += gl.add;
+  // the boost flames, the cars' lights, the ribs' beacons
   c += flame(ro, rd, u.cars[0], h.t) + flame(ro, rd, u.cars[1], h.t);
+  c += lights(ro, rd, u.cars[0], h.t) + lights(ro, rd, u.cars[1], h.t);
+  if (rd.y > 0.0 || h.t > 1e8) { c += rib_lights(ro, rd, h.t); }
   // zero-g: a cold tint; a goal: its team's flash
   c = mix(c, c * vec3f(0.85, 0.95, 1.15), u.zerog * 0.5);
-  c += team(u.fwd.w) * u.eye.w * 0.35;
+  c += team(u.fwd.w) * u.eye.w * 0.12;
   return vec4f(panels(px, c), 1.0);
 }
 
