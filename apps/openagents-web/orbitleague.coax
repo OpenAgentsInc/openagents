@@ -151,7 +151,13 @@ HIT_SPIN :: 0.6;         // the share of the car's spin speed across the contact
 STEP :: 0.008333333333333333;   // physics at 120 Hz
 MAX_STEPS :: 12;
 BLUE :: 0; MAGENTA :: 1;
-PHASE_KICKOFF :: 0; PHASE_PLAY :: 1; PHASE_GOAL :: 2; PHASE_OVER :: 3;
+PHASE_KICKOFF :: 0; PHASE_PLAY :: 1; PHASE_GOAL :: 2; PHASE_OVER :: 3; PHASE_REPLAY :: 4;
+// ol-replay: each step's drives and a whole physics state each second, so a
+// goal's last REPLAY_SECONDS play again through the same physics
+REPLAY_SECONDS :: 5.0;
+KEY_EVERY :: 120;        // steps between saved states (1 s)
+REPLAY_KEYS :: 7;
+REPLAY_STEPS :: 720;     // the drives kept: 6 s
 BALL :: 0; YOU :: 1; BOT :: 2; MATE :: 3; RIVAL :: 4; BODIES :: 5;
 // the cars: 0 you and 2 your mate are blue, 1 and 3 magenta (a car's team is
 // c % 2); a 1v1 plays the first two, a 2v2 all four (ol-bot-modes)
@@ -208,6 +214,11 @@ OrbitLeague :: struct {
   tanks: [CARS] Tank;
   boosting: [CARS] bool;
   stuck_for: [CARS] f64;
+  // ol-replay
+  rp_keys: [REPLAY_KEYS] PhysState; rp_drives: [REPLAY_STEPS][CARS] Drive;
+  rec_n: int;                 // steps recorded since this kickoff's play began
+  replays: bool;              // a browser's game shows them (the tests and the simulator skip them)
+  replaying: bool; rp_step: int; rp_end: int; rp_resume: PhysState; rp_ball: D3; rp_cut: int;
   cars_n: int = 2;            // 2: 1v1; 4: 2v2 (?mode=2v2, and a phone's default)
   mode_set: bool;             // ?mode= chose it
   boxes: [BOXES] SBox;
@@ -427,7 +438,7 @@ take_pads :: (s: [] OrbitLeague, dt: f64) {
       if d3_len(gap) > ifx big then PAD_BIG_R + 0.6 else PAD_SMALL_R + 0.6 { continue; }
       s[0].tanks[c].fuel = fmin(100.0, s[0].tanks[c].fuel + ifx big then PAD_BIG else PAD_SMALL);
       s[0].pad_wait[i] = pad_wait_of(i);
-      if c == 0 { s[0].pads_taken += 1; }
+      if c == 0 && !s[0].replaying { s[0].pads_taken += 1; }
     }
   }
 }
@@ -463,6 +474,7 @@ kickoff :: (s: [] OrbitLeague) {
   }
   clear_trails(s);
   s[0].phase = PHASE_KICKOFF; s[0].phase_t = 0.0;
+  s[0].rec_n = 0;
   for c: 1..<s[0].cars_n { bot_hit(s, c); s[0].bot_touch_t[c] = -100.0; }   // a fresh miss for each first approach
   s[0].cam_ready = false;
   s[0].stage = STAGE_NONE;
@@ -531,6 +543,55 @@ atan2_d :: (y: f64, x: f64) -> f64 {
 // ---- the bot: drive to a spot behind the ball, toward our goal, and hit it
 
 Drive :: struct { input: VehicleInput; boost: bool; }
+
+// Everything a physics step reads and writes (ol-replay).
+PhysState :: struct {
+  bodies: [BODIES] RigidBody; cars: [CARS] VehicleState; tanks: [CARS] Tank; boosting: [CARS] bool;
+  stuck_for: [CARS] f64; wheel_spin: [CARS] f64; pad_wait: [PADS] f64; played: f64; spin_now: f64; field: GravityField;
+}
+phys_save :: (s: [] OrbitLeague) -> PhysState {
+  o: PhysState;
+  for i: 0..<BODIES { o.bodies[i] = s[0].bodies[i]; }
+  for c: 0..<CARS { o.cars[c] = s[0].cars[c]; o.tanks[c] = s[0].tanks[c]; o.boosting[c] = s[0].boosting[c]; o.stuck_for[c] = s[0].stuck_for[c]; o.wheel_spin[c] = s[0].wheel_spin[c]; }
+  for i: 0..<PADS { o.pad_wait[i] = s[0].pad_wait[i]; }
+  o.played = s[0].played; o.spin_now = s[0].spin_now; o.field = s[0].field;
+  return o;
+}
+phys_load :: (s: [] OrbitLeague, o: PhysState) {
+  for i: 0..<BODIES { s[0].bodies[i] = o.bodies[i]; }
+  for c: 0..<CARS { s[0].cars[c] = o.cars[c]; s[0].tanks[c] = o.tanks[c]; s[0].boosting[c] = o.boosting[c]; s[0].stuck_for[c] = o.stuck_for[c]; s[0].wheel_spin[c] = o.wheel_spin[c]; }
+  for i: 0..<PADS { s[0].pad_wait[i] = o.pad_wait[i]; }
+  s[0].played = o.played; s[0].spin_now = o.spin_now; s[0].field = o.field;
+}
+// After a goal (its replay done): the end, or the next kickoff.
+after_goal :: (s: [] OrbitLeague) {
+  if !s[0].overtime && s[0].clock <= 0.0 { s[0].phase = PHASE_OVER; } else if s[0].overtime { s[0].phase = PHASE_OVER; } else { kickoff(s); }
+}
+// The goal's replay: back to the saved state before its last REPLAY_SECONDS,
+// quietly on to where they start, then a step each STEP from there.
+replay_start :: (s: [] OrbitLeague) -> bool {
+  g := s[0].rec_n;
+  start := imax(0, g - cast(int) (REPLAY_SECONDS / STEP));
+  key := (start / KEY_EVERY) * KEY_EVERY;
+  if g < 2 || g - key > REPLAY_STEPS || g / KEY_EVERY - key / KEY_EVERY >= REPLAY_KEYS { return false; }
+  s[0].rp_resume = phys_save(s);
+  s[0].replaying = true;
+  phys_load(s, s[0].rp_keys[(key / KEY_EVERY) % REPLAY_KEYS]);
+  for k: key..<start { physics_step(s, s[0].rp_drives[k % REPLAY_STEPS]); }
+  s[0].rp_step = start; s[0].rp_end = g;
+  s[0].phase = PHASE_REPLAY; s[0].phase_t = 0.0;
+  s[0].rp_cut = -1;
+  clear_trails(s);
+  return true;
+}
+replay_end :: (s: [] OrbitLeague) {
+  s[0].rp_ball = s[0].bodies[BALL].pos;
+  phys_load(s, s[0].rp_resume);
+  s[0].replaying = false;
+  s[0].cam_ready = false;
+  after_goal(s);
+}
+imax :: (a: int, b: int) -> int { return ifx a > b then a else b; }
 
 // The same in the car's own frame (on a curved floor its floor is its own).
 steer_local :: (b: RigidBody, target: D3) -> f64 {
@@ -764,7 +825,7 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
     dp := ifx s[0].sphere then sphere_planes(arena_sphere(), s[0].bodies[i].pos) else drum_planes(dm, s[0].bodies[i].pos);
     st := vehicle_step(s[0].bodies[i], s[0].spec, s[0].cars[c], drives[c].input, ifx curved(s) then dp[..] else cp[..], gravity_at(s[0].field, s[0].bodies[i].pos), dt);
     s[0].bodies[i] = st.body;
-    if st.state.jumps > s[0].cars[c].jumps && c == 0 { s[0].jumped[0] = true; }
+    if st.state.jumps > s[0].cars[c].jumps && c == 0 && !s[0].replaying { s[0].jumped[0] = true; }
     s[0].cars[c] = st.state;
     s[0].boosting[c] = false;
     if drives[c].boost {
@@ -797,7 +858,7 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
       pair: BodyPair;
       pair.a = ball_hit(s[0].bodies[BALL], car, s[0].spec, ct);
       pair.b = contact_resolve(s[0].bodies[BALL], car, ct, 0.55, 0.3).b;
-      if closing > 1.0 {
+      if closing > 1.0 && !s[0].replaying {
         if c == 0 { s[0].touches += 1; track_tally(s[0].track[..], "touch", ""); }
         if c > 0 && s[0].played - s[0].bot_touch_t[c] > bot_recover(s) { bot_hit(s, c); }
       }
@@ -857,7 +918,7 @@ physics_step :: (s: [] OrbitLeague, drives: [CARS] Drive) {
   for i: 0..<BODIES {
     if (s[0].online && i != YOU) || i > s[0].cars_n { continue; }
     p := s[0].bodies[i].pos;
-    if out_of_arena(s, p) { kickoff(s); return; }
+    if out_of_arena(s, p) && !s[0].replaying { kickoff(s); return; }
   }
 }
 
@@ -902,7 +963,13 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
     s[0].phase_t += STEP;
     if s[0].phase == PHASE_KICKOFF && s[0].phase_t >= KICKOFF { s[0].phase = PHASE_PLAY; s[0].phase_t = 0.0; }
     if s[0].phase == PHASE_GOAL && s[0].phase_t >= CELEBRATE && !s[0].online {
-      if !s[0].overtime && s[0].clock <= 0.0 { s[0].phase = PHASE_OVER; } else if s[0].overtime { s[0].phase = PHASE_OVER; } else { kickoff(s); }
+      if !(s[0].replays && replay_start(s)) { after_goal(s); }
+    }
+    if s[0].phase == PHASE_REPLAY {
+      if s[0].rp_step >= s[0].rp_end { replay_end(s); continue; }
+      physics_step(s, s[0].rp_drives[s[0].rp_step % REPLAY_STEPS]);
+      s[0].rp_step += 1;
+      continue;
     }
     if s[0].phase == PHASE_PLAY && !s[0].online {
       s[0].played += STEP;
@@ -917,11 +984,18 @@ game_step :: (s: [] OrbitLeague, dt: f64) {
     drives[0] = you_drive(s);
     for c: 1..<s[0].cars_n { drives[c] = bot_drive(s, c); }
     if s[0].phase == PHASE_OVER { for c: 0..<CARS { drives[c] = Drive.{}; } }
+    // ol-replay: this play's drives, and its state each second
+    recording := s[0].phase == PHASE_PLAY && !s[0].online;
+    if recording {
+      if s[0].rec_n % KEY_EVERY == 0 { s[0].rp_keys[(s[0].rec_n / KEY_EVERY) % REPLAY_KEYS] = phys_save(s); }
+      for c: 0..<CARS { s[0].rp_drives[s[0].rec_n % REPLAY_STEPS][c] = drives[c]; }
+    }
     // the sphere's curve slopes down to its equator everywhere off it: through
     // the countdown the cars and the ball wait where they were set
     held: [BODIES] RigidBody;
     for i: 0..<BODIES { held[i] = s[0].bodies[i]; }
     physics_step(s, drives);
+    if recording { s[0].rec_n += 1; }
     if s[0].sphere && s[0].phase == PHASE_KICKOFF { for i: 0..<BODIES { s[0].bodies[i] = held[i]; } }
     if s[0].online { s[0].you_hist[s[0].hist_n % HIST] = s[0].bodies[YOU]; s[0].hist_n += 1; }
     if s[0].phase == PHASE_PLAY && !s[0].online {
@@ -1486,6 +1560,7 @@ play_again :: (s: [] OrbitLeague) {
 
 game_key :: (s: [] OrbitLeague, key: int, mods: int) -> bool #export_c {
   if !s[0].started { game_reset(s); }
+  if s[0].phase == PHASE_REPLAY { replay_end(s); return true; }
   track_key(s[0].track[..], key, false);
   h := hold_of(key);
   if h != 0 { s[0].held |= h; return true; }
@@ -1515,6 +1590,7 @@ button_at :: (s: [] OrbitLeague, x: f32, y: f32) -> int {
 game_pointer :: (s: [] OrbitLeague, x: f32, y: f32, phase: int, kind: int, id: int) -> bool #export_c {
   if !s[0].started { game_reset(s); }
   if kind == 1 { s[0].touch = true; }
+  if s[0].phase == PHASE_REPLAY && phase == POINTER_DOWN && button_at(s, x, y) != BTN_BACK { replay_end(s); return true; }
   if tip_pointer(s, x, y, phase, kind, id) { s[0].hover = -1; return true; }
   b := button_at(s, x, y);
   s[0].hover = ifx kind == 0 && phase != POINTER_CANCEL then b else -1;
@@ -1682,7 +1758,35 @@ choose_shot :: (car: D3, dir: D3, ball: D3, ball_cam: bool, at: D3, l: Lens, kin
   return near;
 }
 
+// A goal's replay from three cameras, cut as it plays: behind the ball toward
+// the goal, from the side, then from the goal it went into.
+replay_camera :: (s: [] OrbitLeague, dt: f32) {
+  bl := s[0].bodies[BALL].pos;
+  gs := ifx s[0].last_goal == BLUE then 1.0 else -1.0;
+  left := cast(f64) (s[0].rp_end - s[0].rp_step) * STEP;
+  cut := ifx left > 3.0 then 0 else ifx left > 1.5 then 1 else 2;
+  if cut != s[0].rp_cut { s[0].rp_cut = cut; s[0].cam_ready = false; }
+  turn := frame_at(s, bl);
+  on := to_floor(s, bl, turn);
+  eye := D3_ZERO;
+  if cut == 0 { eye = from_floor(s, d3_add(on, d3(0.0, 4.0, -10.0 * gs)), turn); }
+  if cut == 1 { eye = from_floor(s, d3_add(on, d3(ifx on.x > 0.0 then -12.0 else 12.0, 5.0, -2.0 * gs)), turn); }
+  if cut == 2 {
+    eye = ifx s[0].sphere then d3(0.0, SPHERE_R, gs * (SPHERE_R - 4.0)) else d3(0.0, GOAL_H + 3.0, gs * (ARENA_HZ - 2.0));
+  }
+  // kept inside the arena: drawn in toward the ball until it is
+  for i: 0..<12 { if eye_inside(eye, 0.0, arena_kind(s)) { break; } eye = d3_add(eye, d3_scale(d3_sub(bl, eye), 0.2)); }
+  up := dq_rotate(turn, D3_Y);
+  e := f3(eye); a := f3(bl); w := f3(up);
+  k: f32 = ifx s[0].cam_ready then 1 - exp(-dt * 10.0) else 1;
+  for i: 0..<3 {
+    s[0].cam_eye[i] += (e[i] - s[0].cam_eye[i]) * k; s[0].cam_at[i] += (a[i] - s[0].cam_at[i]) * k;
+    s[0].cam_up[i] += (w[i] - s[0].cam_up[i]) * k;
+  }
+  s[0].cam_ready = true;
+}
 camera :: (s: [] OrbitLeague, dt: f32) {
+  if s[0].phase == PHASE_REPLAY { replay_camera(s, dt); return; }
   car := s[0].bodies[YOU]; bl := s[0].bodies[BALL];
   // in the drum the shot is found as if the car were on the floor's lowest
   // line, then turned back round the axis to where it is
@@ -1855,6 +1959,9 @@ draw_hud :: (s: [] OrbitLeague, out: [] f32) -> int {
     two := s[0].cars_n == CARS;
     v = centred(d, out, v, ifx s[0].last_goal == BLUE then (ifx two then "YOUR TEAM SCORED" else "YOU SCORED") else (ifx two then "THE BOTS SCORED" else "THE BOT SCORED"), w * 0.5, h * 0.3 + 34 * k, 11 * k, white(k * 1.4, 1));
   }
+  if s[0].phase == PHASE_REPLAY {
+    v = centred(d, out, v, "REPLAY", w * 0.5, h * 0.18, 14 * k, team_ink(s[0].last_goal, k, 1));
+  }
   if s[0].online && s[0].sock_state != ROOM_IN {
     v = centred(d, out, v, ifx s[0].sock_state == ROOM_LOST then "LOST THE ROOM: PLAYING ON YOUR OWN" else "JOINING THE ROOM", w * 0.5, h * 0.3 + 70 * k, 9 * k, white(k, 0.8));
   }
@@ -1969,6 +2076,7 @@ game_frame :: (s: [] OrbitLeague, out: [] f32, u: [] f32, width: f32, height: f3
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5); s[0].still = still;
   step := clamp(dt, 0, 0.1);
   if !s[0].golden { s[0].time += step; }
+  s[0].replays = !s[0].golden && !s[0].online;
   game_step(s, cast(f64) step);
   room_frame(s, cast(f64) step);
   if !s[0].golden { effects_step(s, cast(f64) step); }
@@ -2834,4 +2942,43 @@ lag_frame :: (room: [] OrbitLeague, c: [] OrbitLeague, cars: [] RigidBody, echo:
   #assert abs(d.input.steer) > 0.5 || d.input.throttle < 0.0;
   set_mode(s[..], 2);
   #assert s[0].cars_n == 2 && s[0].bodies[RIVAL].pos.y < -100.0 && s[0].phase == PHASE_KICKOFF;
+}
+
+// ---- goal replays (ol-replay)
+
+#test "a goal's replay plays its recorded drives through the same physics and ends with the ball where the goal left it (ol-replay)" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]); s[0].replays = true; s[0].no_bot = true; kickoff(s[..]);
+  // in the countdown the ball is set rolling slowly at +z; you drive round
+  // in circles, boosting, and bump into it now and then
+  run_for(s[..], KICKOFF - 0.2);
+  s[0].bodies[BALL].pos = d3(1.0, BALL_R, -20.0); s[0].bodies[BALL].vel = d3(0.0, 0.0, 9.5);
+  s[0].held = HOLD_UP | HOLD_RIGHT | HOLD_BOOST;
+  t := 0.0;
+  while t < 12.0 && s[0].phase != PHASE_GOAL { run_for(s[..], STEP); t += STEP; }
+  #assert s[0].phase == PHASE_GOAL && s[0].score[BLUE] == 1;
+  at := s[0].bodies[BALL].pos; g := s[0].rec_n; touches := s[0].touches;
+  #assert g > KEY_EVERY * 2;
+  run_for(s[..], CELEBRATE + STEP);
+  #assert s[0].phase == PHASE_REPLAY && s[0].rp_end == g && s[0].rp_step == imax(0, g - cast(int) (REPLAY_SECONDS / STEP)) + 1;
+  while s[0].phase == PHASE_REPLAY { run_for(s[..], STEP); }
+  #assert d3_dist(s[0].rp_ball, at) < 0.000001 && s[0].phase == PHASE_KICKOFF && s[0].score[BLUE] == 1 && s[0].touches == touches;
+}
+#test "a key or a tap skips the replay to the kickoff; tests and the room skip replays (ol-replay)" {
+  s: [1] OrbitLeague;
+  game_reset(s[..]); s[0].replays = true;
+  run_for(s[..], KICKOFF + 1.0);
+  s[0].bodies[BALL].pos = d3(0.0, BALL_R, 38.0); s[0].bodies[BALL].vel = d3(0.0, 0.0, 20.0);
+  run_for(s[..], 0.5);
+  #assert s[0].phase == PHASE_GOAL;
+  run_for(s[..], CELEBRATE + 0.2);
+  #assert s[0].phase == PHASE_REPLAY;
+  took := game_key(s[..], 'x', 0);
+  #assert s[0].phase == PHASE_KICKOFF;
+  q: [1] OrbitLeague;
+  game_reset(q[..]);
+  run_for(q[..], KICKOFF + 1.0);
+  q[0].bodies[BALL].pos = d3(0.0, BALL_R, 38.0); q[0].bodies[BALL].vel = d3(0.0, 0.0, 20.0);
+  run_for(q[..], 0.5 + CELEBRATE + 0.2);
+  #assert q[0].phase == PHASE_KICKOFF;
 }
