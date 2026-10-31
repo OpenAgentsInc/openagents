@@ -1,0 +1,50 @@
+// New M2-only fixtures. Run only with the derived-unit compiler qualification.
+#load "../../lib/quantity.coax" as u;
+QD_Speed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+
+#test "derived F32 products quotients nominal conversions and explicit scale preserve values" {
+  a:u.Quantity(u.Metre,f32)=u.Quantity.{value=6};b:u.Quantity(u.Second,f32)=u.Quantity.{value=2};m:u.Quantity(u.Metre,f32)=u.Quantity.{value=2};h:u.Quantity(u.HalfMetre,f32)=u.Quantity.{value=6};
+  #assert QD_product32(a,b).value==12 && QD_quotient32(a,b).value==3 && QD_one32(a,m).value==3;
+  named:=QD_to_named32(a,b);#assert named.value==3 && QD_from_named32(named).value==3;
+  #assert QD_half_form32(h,m).value==3 && QD_half_one32(h,m).value==1.5;
+  #assert QD_cancel32(a,b).value==6;
+  commuted:u.Quantity(UnitProduct(u.Metre,u.Second),f32)=b*a;#assert commuted.value==12;
+}
+#test "derived F64 products quotients nominal conversions and explicit scale preserve values" {
+  a:u.Quantity(u.Metre,f64)=u.Quantity.{value=6};b:u.Quantity(u.Second,f64)=u.Quantity.{value=2};m:u.Quantity(u.Metre,f64)=u.Quantity.{value=2};h:u.Quantity(u.HalfMetre,f64)=u.Quantity.{value=6};
+  #assert QD_product64(a,b).value==12 && QD_quotient64(a,b).value==3 && QD_one64(a,m).value==3;
+  named:=QD_to_named64(a,b);#assert named.value==3 && QD_from_named64(named).value==3;
+  #assert QD_half_form64(h,m).value==3 && QD_half_one64(h,m).value==1.5;
+  #assert QD_cancel64(a,b).value==6;
+  commuted:u.Quantity(UnitProduct(u.Metre,u.Second),f64)=b*a;#assert commuted.value==12;
+}
+
+QD_product32 :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitProduct(u.Metre,u.Second),f32) #export_c {return a*b;}
+QD_quotient32 :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(UnitQuotient(u.Metre,u.Second),f32) #export_c {return a/b;}
+QD_one32 :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Metre,f32))->u.Quantity(UnitOne,f32) #export_c {return a/b;}
+QD_to_named32 :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(QD_Speed,f32) #export_c {return convert_unit(QD_Speed,a/b);}
+QD_from_named32 :: (a:u.Quantity(QD_Speed,f32))->u.Quantity(UnitQuotient(u.Metre,u.Second),f32) #export_c {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}
+QD_half_form32 :: (a:u.Quantity(u.HalfMetre,f32),b:u.Quantity(u.Metre,f32))->u.Quantity(UnitQuotient(u.HalfMetre,u.Metre),f32) #export_c {return a/b;}
+QD_half_one32 :: (a:u.Quantity(u.HalfMetre,f32),b:u.Quantity(u.Metre,f32))->u.Quantity(UnitOne,f32) #export_c {return convert_unit(UnitOne,a/b);}
+QD_cancel32 :: (a:u.Quantity(u.Metre,f32),b:u.Quantity(u.Second,f32))->u.Quantity(u.Metre,f32) #export_c {return (a/b)*b;}
+QD_product64 :: (a:u.Quantity(u.Metre,f64),b:u.Quantity(u.Second,f64))->u.Quantity(UnitProduct(u.Metre,u.Second),f64) #export_c {return a*b;}
+QD_quotient64 :: (a:u.Quantity(u.Metre,f64),b:u.Quantity(u.Second,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c {return a/b;}
+QD_one64 :: (a:u.Quantity(u.Metre,f64),b:u.Quantity(u.Metre,f64))->u.Quantity(UnitOne,f64) #export_c {return a/b;}
+QD_to_named64 :: (a:u.Quantity(u.Metre,f64),b:u.Quantity(u.Second,f64))->u.Quantity(QD_Speed,f64) #export_c {return convert_unit(QD_Speed,a/b);}
+QD_from_named64 :: (a:u.Quantity(QD_Speed,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}
+QD_half_form64 :: (a:u.Quantity(u.HalfMetre,f64),b:u.Quantity(u.Metre,f64))->u.Quantity(UnitQuotient(u.HalfMetre,u.Metre),f64) #export_c {return a/b;}
+QD_half_one64 :: (a:u.Quantity(u.HalfMetre,f64),b:u.Quantity(u.Metre,f64))->u.Quantity(UnitOne,f64) #export_c {return convert_unit(UnitOne,a/b);}
+QD_cancel64 :: (a:u.Quantity(u.Metre,f64),b:u.Quantity(u.Second,f64))->u.Quantity(u.Metre,f64) #export_c {return (a/b)*b;}
+
+QD_Nested :: struct {prefix:u8;product:u.Quantity(UnitProduct(u.Metre,u.Second),f32);speed:u.Quantity(UnitQuotient(u.Metre,u.Second),f64);ratio:u.Quantity(UnitOne,f32);tail:u16;}
+QD_nested :: (v:QD_Nested)->QD_Nested #export_c {return v;}
+QD_metre_tick :: (id:int)->u.Quantity(u.Metre,f32) #foreign;
+QD_second_tick :: (id:int)->u.Quantity(u.Second,f32) #foreign;
+QD_half_tick :: (id:int)->u.Quantity(u.HalfMetre,f32) #foreign;
+QD_named_tick :: (id:int)->u.Quantity(QD_Speed,f32) #foreign;
+QD_ordered_product :: ()->f32 #export_c {return (QD_metre_tick(1)*QD_second_tick(2)).value;}
+QD_ordered_quotient :: ()->f32 #export_c {return (QD_metre_tick(3)/QD_second_tick(4)).value;}
+QD_ordered_cancel :: ()->f32 #export_c {return ((QD_metre_tick(5)/QD_second_tick(6))*QD_second_tick(7)).value;}
+QD_ordered_half :: ()->f32 #export_c {return convert_unit(UnitOne,QD_half_tick(8)/QD_metre_tick(9)).value;}
+QD_ordered_from_named :: ()->f32 #export_c {return convert_unit(UnitQuotient(u.Metre,u.Second),QD_named_tick(10)).value;}
+QD_ordered_reverse_product :: ()->f32 #export_c {return (QD_second_tick(11)*QD_metre_tick(12)).value;}

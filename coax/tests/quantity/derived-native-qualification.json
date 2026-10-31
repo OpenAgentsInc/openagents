@@ -1,0 +1,267 @@
+{
+  "schema": "coax-derived-quantity-native-v1",
+  "seed": 89353794760753,
+  "compiler_sha256": "6e443b5277fb09f21b3c372f4b7e1ed35b52986ab8ad683869a64276784fab84",
+  "compiler_version": "coax0 0.43.0",
+  "platform": "macOS-26.4-arm64-arm-64bit-Mach-O",
+  "machine": "arm64",
+  "cases_f32": 1088,
+  "cases_f64": 1088,
+  "observations_per_mode": 17417,
+  "oracle": "Independent volatile raw-C multiply/divide and staged (a/b)*.5 and (a/b)*b; not another quantity implementation.",
+  "profile": "Round-to-nearest host IEEE binary32/binary64, no fast math/contraction, AArch64 FZ disabled; compare exact non-NaN bits (signed zeros, subnormals, infinities), NaNs by classification with canonicalized transcript. NaN payloads and floating exception flags are outside scope.",
+  "scope": "Only NEW derived products/quotients/formal cancellation/explicit named and generated conversion targets, scalar/nested ABI and ordered one-time operand effects. No old M1 native rerun, device ABI, frames or complete R12 claim.",
+  "input_sha256": "e111f5ef641384cb73534acd1313d5cadd2827530abb51d2a3bf173423cddf8a",
+  "source_sha256": {
+    "coax/tests/quantity/derived-native.coax": "58439917820c7436fa2196249e507ecb972284d9cca65af23c3d5c0d96040023",
+    "coax/tests/quantity/derived-native-raw.coax": "2adcec6799aa57c00ab4b1f6af7a89f6d2b313104295ae8906aefbb230b69a02",
+    "coax/tests/quantity-derived-native.c": "0f1db92b3c3f48eefeaa7c151a37b50c587f0cbb31791e5380421ed1f648a6f7",
+    "coax/tests/quantity_derived_native.py": "aa7c6040533d720c7c8234f2031fdf3fa8e63c613357be0216bf408d8c313c2e"
+  },
+  "modes": [
+    {
+      "mode": "debug",
+      "passed": true,
+      "observations": 17417,
+      "output_bytes": 104488,
+      "output_sha256": "0ff42431c0214056f3b86ceee9fd4879b9dff182844c9b74fca7b238a7fd65e0",
+      "stderr_bytes": 0,
+      "stdout": "derived quantity native: 1088 f32, 1088 f64, 17417 observations, FPCR=0"
+    },
+    {
+      "mode": "release",
+      "passed": true,
+      "observations": 17417,
+      "output_bytes": 104488,
+      "output_sha256": "0ff42431c0214056f3b86ceee9fd4879b9dff182844c9b74fca7b238a7fd65e0",
+      "stderr_bytes": 0,
+      "stdout": "derived quantity native: 1088 f32, 1088 f64, 17417 observations, FPCR=0"
+    },
+    {
+      "mode": "sanitized",
+      "passed": true,
+      "observations": 17417,
+      "output_bytes": 104488,
+      "output_sha256": "0ff42431c0214056f3b86ceee9fd4879b9dff182844c9b74fca7b238a7fd65e0",
+      "stderr_bytes": 0,
+      "stdout": "derived quantity native: 1088 f32, 1088 f64, 17417 observations, FPCR=0"
+    }
+  ],
+  "body_comparison": {
+    "QD_product32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "f2f206a103feb801c4ed592c3144b707d8809df906d6b09bba6f1657fd588d55",
+      "raw_sha256": "f2f206a103feb801c4ed592c3144b707d8809df906d6b09bba6f1657fd588d55"
+    },
+    "QD_quotient32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "bdd4664a7739d9ca3309d676fb0435cf0a7adc1f8ff83b8408609461dcfb7e9e",
+      "raw_sha256": "bdd4664a7739d9ca3309d676fb0435cf0a7adc1f8ff83b8408609461dcfb7e9e"
+    },
+    "QD_one32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "70934444f1fddb72883046af9da0769344a268cc385583527453a4343057752b",
+      "raw_sha256": "70934444f1fddb72883046af9da0769344a268cc385583527453a4343057752b"
+    },
+    "QD_to_named32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "e9782cd65cd9f5aeead9b55ea52244956d8d4b14a58e25391dd6f71607141d48",
+      "raw_sha256": "e9782cd65cd9f5aeead9b55ea52244956d8d4b14a58e25391dd6f71607141d48"
+    },
+    "QD_from_named32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "2d1f2017bc24a168705845ea85002a4c09af5a85e7cbfa52cf71b2db9fff141c",
+      "raw_sha256": "2d1f2017bc24a168705845ea85002a4c09af5a85e7cbfa52cf71b2db9fff141c"
+    },
+    "QD_half_form32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "b6610b5618089a7216509a8d991c156123d91dd48e72e9cc4898522790991231",
+      "raw_sha256": "b6610b5618089a7216509a8d991c156123d91dd48e72e9cc4898522790991231"
+    },
+    "QD_half_one32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "0f396b52dfbdbdc075ba4e43e0ff2337d455b31b1c965cb39cf1fdb604fee376",
+      "raw_sha256": "0f396b52dfbdbdc075ba4e43e0ff2337d455b31b1c965cb39cf1fdb604fee376"
+    },
+    "QD_cancel32": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "7d4659a7f1cce5447a53551995114d5282ad93ec2320442785df224d8a1b68cd",
+      "raw_sha256": "7d4659a7f1cce5447a53551995114d5282ad93ec2320442785df224d8a1b68cd"
+    },
+    "QD_product64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "93d127da5d070898f53abe32b00db3f9cd5aaf674d5b3de86b952de3ffab362e",
+      "raw_sha256": "93d127da5d070898f53abe32b00db3f9cd5aaf674d5b3de86b952de3ffab362e"
+    },
+    "QD_quotient64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "8a7153bd941142f010a48d4beb4faee017bec6798c1c4960378f6293d5e5470c",
+      "raw_sha256": "8a7153bd941142f010a48d4beb4faee017bec6798c1c4960378f6293d5e5470c"
+    },
+    "QD_one64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "0470313f0761d6055a0d19a76e8de60e034ecc17b603cbf1b12b2930d67de57f",
+      "raw_sha256": "0470313f0761d6055a0d19a76e8de60e034ecc17b603cbf1b12b2930d67de57f"
+    },
+    "QD_to_named64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "1c841152d26970e72142dc7d00117c12f9189c9fc53c2bcdaf4781923cc3eb86",
+      "raw_sha256": "1c841152d26970e72142dc7d00117c12f9189c9fc53c2bcdaf4781923cc3eb86"
+    },
+    "QD_from_named64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "7b9c5775f1c2a1b204295f786b1f1ba5f6a6a4667558c4418efdb10e440822f1",
+      "raw_sha256": "7b9c5775f1c2a1b204295f786b1f1ba5f6a6a4667558c4418efdb10e440822f1"
+    },
+    "QD_half_form64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "6dbb1a442cea6ff05c58d602e12fa9ea97ea842aa2cf1a9027135b1b1d73851b",
+      "raw_sha256": "6dbb1a442cea6ff05c58d602e12fa9ea97ea842aa2cf1a9027135b1b1d73851b"
+    },
+    "QD_half_one64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "b74d05d0185f4a3c7fd7c2231de69a11ade106fdbf0075caf8afdbd7445fa553",
+      "raw_sha256": "b74d05d0185f4a3c7fd7c2231de69a11ade106fdbf0075caf8afdbd7445fa553"
+    },
+    "QD_cancel64": {
+      "exact_without_source_line_directives": true,
+      "whitespace_normalized_equal": true,
+      "quantity_sha256": "0993ddff1763469dd124dfd023b86e6e27ab424f8de6a5278dfa4a1fb8135732",
+      "raw_sha256": "0993ddff1763469dd124dfd023b86e6e27ab424f8de6a5278dfa4a1fb8135732"
+    }
+  },
+  "abi": {
+    "scalar_function_pointers": true,
+    "nested_size_alignment_offsets": true,
+    "nested_roundtrip": true,
+    "ordered_product": [
+      1,
+      2
+    ],
+    "ordered_quotient": [
+      3,
+      4
+    ],
+    "ordered_cancel": [
+      5,
+      6,
+      7
+    ],
+    "ordered_explicit_half": [
+      8,
+      9
+    ],
+    "generated_target_conversion_once": [
+      10
+    ],
+    "ordered_reverse_product": [
+      11,
+      12
+    ]
+  },
+  "generated_c_sha256": "d5bd248bd51d9bc8759c78eebda29fc347717bf8a782dee4418c55fd3d2a6377",
+  "generated_header_sha256": "fd8a9a081495beecf77d9a832dbf3c8595cadeb91a23b91867b4d09f333f884c",
+  "raw_generated_c_sha256": "129555ccde7379e6c4a9138c39bb121238bc5481c8d911ec2a14d9d708ac4a93",
+  "passed": true,
+  "qualification_phase": "Initial and pinned final M2 compiler native proofs passed; top-level fields retain the initial executed proof. Normal-source publication reconstruction emission binding remains pending.",
+  "source_checks": {
+    "families": 2,
+    "passed": 2,
+    "stdout_sha256": "b9503a3234f1f0f6f0ef4b0a6ea8ca489e2c0debd0a9cffb2b33cc5729128368"
+  },
+  "sanitizers": {
+    "address": true,
+    "undefined": true,
+    "recover": false,
+    "stderr_bytes": 0
+  },
+  "executed_full_receipt_sha256": "7f1c36f6114515faf1cd58c24219c4e517901473776e85fe5f3c81ddee3d5fb4",
+  "not_qualified": [
+    "old M1 corpus rerun",
+    "NaN payload/exception flags",
+    "device ABI",
+    "points/vectors/frames",
+    "complete R12",
+    "whole compiler correctness",
+    "cross-architecture behavior",
+    "normal-source publication reconstruction emission binding (pending)"
+  ],
+  "subsequent_compiler_qualification": {
+    "compiler_sha256": "cd4508f64faab3741513b7f3402f0b789781aabc235e9c1eafc7d1f094bfccef",
+    "marker_renames": {
+      "coax_q3t_CoaxUnit__f19_p1_21_p1_": "coax_q3t_CoaxUnit__f19_2147483648_21_2147483648_",
+      "coax_q3t_CoaxUnit__f19_p1_21_m1_": "coax_q3t_CoaxUnit__f19_2147483648_21_2147483646_",
+      "coax_q3t_CoaxUnit__f19_m1_20_p1_": "coax_q3t_CoaxUnit__f19_2147483646_20_2147483648_"
+    },
+    "only_marker_identifiers_changed": true,
+    "input_sha256": "e111f5ef641384cb73534acd1313d5cadd2827530abb51d2a3bf173423cddf8a",
+    "source_sha256": {
+      "coax/tests/quantity/derived-native.coax": "58439917820c7436fa2196249e507ecb972284d9cca65af23c3d5c0d96040023",
+      "coax/tests/quantity/derived-native-raw.coax": "2adcec6799aa57c00ab4b1f6af7a89f6d2b313104295ae8906aefbb230b69a02",
+      "coax/tests/quantity-derived-native.c": "0f1db92b3c3f48eefeaa7c151a37b50c587f0cbb31791e5380421ed1f648a6f7",
+      "coax/tests/quantity_derived_native.py": "aa7c6040533d720c7c8234f2031fdf3fa8e63c613357be0216bf408d8c313c2e"
+    },
+    "modes": [
+      {
+        "mode": "debug",
+        "passed": true,
+        "observations": 17417,
+        "output_bytes": 104488,
+        "output_sha256": "0ff42431c0214056f3b86ceee9fd4879b9dff182844c9b74fca7b238a7fd65e0",
+        "stderr_bytes": 0,
+        "stdout": "derived quantity native: 1088 f32, 1088 f64, 17417 observations, FPCR=0"
+      },
+      {
+        "mode": "release",
+        "passed": true,
+        "observations": 17417,
+        "output_bytes": 104488,
+        "output_sha256": "0ff42431c0214056f3b86ceee9fd4879b9dff182844c9b74fca7b238a7fd65e0",
+        "stderr_bytes": 0,
+        "stdout": "derived quantity native: 1088 f32, 1088 f64, 17417 observations, FPCR=0"
+      },
+      {
+        "mode": "sanitized",
+        "passed": true,
+        "observations": 17417,
+        "output_bytes": 104488,
+        "output_sha256": "0ff42431c0214056f3b86ceee9fd4879b9dff182844c9b74fca7b238a7fd65e0",
+        "stderr_bytes": 0,
+        "stdout": "derived quantity native: 1088 f32, 1088 f64, 17417 observations, FPCR=0"
+      }
+    ],
+    "reused": [
+      "frozen owned edge/random case bytes",
+      "independent raw-C oracle source",
+      "initial two source checks",
+      "all16 homologous raw C body comparisons"
+    ],
+    "rerun": [
+      "final C/header emission",
+      "debug native compile/run",
+      "release native compile/run",
+      "fail-fast ASan/UBSan native compile/run"
+    ],
+    "passed": true,
+    "generated_c_sha256": "cd0d265dbfbd003986bedeac4c4f8a55a9a1bfaaa03315ce505584b04cd978e8",
+    "generated_header_sha256": "fd8a9a081495beecf77d9a832dbf3c8595cadeb91a23b91867b4d09f333f884c",
+    "header_identical_to_initial": true,
+    "all16_numeric_function_bodies_identical_to_initial": true,
+    "full_followup_receipt_sha256": "5d752c050220d61c94b7cac9281acf0592540879e1350cda975b36997d1108b1"
+  }
+}

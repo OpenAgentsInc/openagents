@@ -1,0 +1,17 @@
+// Homologous raw carrier operations, for actual generated-C body comparison.
+QD_product32 :: (a:f32,b:f32)->f32 #export_c {return a*b;}
+QD_quotient32 :: (a:f32,b:f32)->f32 #export_c {return a/b;}
+QD_one32 :: (a:f32,b:f32)->f32 #export_c {return a/b;}
+QD_to_named32 :: (a:f32,b:f32)->f32 #export_c {return a/b;}
+QD_from_named32 :: (a:f32)->f32 #export_c {return a;}
+QD_half_form32 :: (a:f32,b:f32)->f32 #export_c {return a/b;}
+QD_half_one32 :: (a:f32,b:f32)->f32 #export_c {return (a/b)*0.5f32;}
+QD_cancel32 :: (a:f32,b:f32)->f32 #export_c {return (a/b)*b;}
+QD_product64 :: (a:f64,b:f64)->f64 #export_c {return a*b;}
+QD_quotient64 :: (a:f64,b:f64)->f64 #export_c {return a/b;}
+QD_one64 :: (a:f64,b:f64)->f64 #export_c {return a/b;}
+QD_to_named64 :: (a:f64,b:f64)->f64 #export_c {return a/b;}
+QD_from_named64 :: (a:f64)->f64 #export_c {return a;}
+QD_half_form64 :: (a:f64,b:f64)->f64 #export_c {return a/b;}
+QD_half_one64 :: (a:f64,b:f64)->f64 #export_c {return (a/b)*0.5f64;}
+QD_cancel64 :: (a:f64,b:f64)->f64 #export_c {return (a/b)*b;}
