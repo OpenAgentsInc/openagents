@@ -1,0 +1,57 @@
+// Render an Aethyr score to a 16-bit stereo WAV file (aethyr/book/ch067). Never plays it.
+//   coax/web/tool.sh aethyr/tools/score.coax promo-epic OUT.wav [--seconds S] [--downbeat S]
+//       [--hold S] [--belt S] [--orbit S] [--home S] [--riser S] [--fade S] [--rate HZ] [--seed N]
+// Prints the frames, the peak before normalising, the voices and the samples' FNV-1a hash;
+// the same score and flags always give the same hash and the same file.
+#import "Basic";
+#load "../audio/epic.coax";
+#load "../audio/wav.coax";
+#load "../../coax/lib/sys/tool.coax";
+#load "../../coax/lib/sys/fs.coax";
+
+SCORE_MAX_FRAMES :: 2880000;      // a minute at 48 kHz
+
+// A seconds flag, or the score's own time when absent; ok false for one that is not a number.
+score_time :: (a: [] Args, flag: string, t: units.Quantity(units.Second, f64), ok: [] bool) -> units.Quantity(units.Second, f64) {
+  if !args_has(a, flag) { return t; }
+  v := args_number(args_value(a, flag, ""));
+  if !v.ok || v.value < 0.0 || v.value > 60.0 { ok[0] = false; return t; }
+  return au_seconds(v.value);
+}
+
+tool_main :: () -> int #export_c {
+  a: [1] Args;
+  if !args_load(a[..]) { tool_errln("score: arguments too long"); return 2; }
+  name := args_at(a[..], 0); path := args_at(a[..], 1);
+  if name != "promo-epic" || path == "" || path[0] == '-' {
+    tool_errln("usage: score promo-epic OUT.wav [--seconds S] [--downbeat S] [--hold S] [--belt S] [--orbit S] [--home S] [--riser S] [--fade S] [--rate HZ] [--seed N]");
+    return 2;
+  }
+  s := au_promo_epic();
+  ok := [1] bool.[true];
+  s.length = score_time(a[..], "--seconds", s.length, ok[..]);
+  s.downbeat = score_time(a[..], "--downbeat", s.downbeat, ok[..]);
+  s.hold = score_time(a[..], "--hold", s.hold, ok[..]);
+  s.belt = score_time(a[..], "--belt", s.belt, ok[..]);
+  s.orbit = score_time(a[..], "--orbit", s.orbit, ok[..]);
+  s.home = score_time(a[..], "--home", s.home, ok[..]);
+  s.riser = score_time(a[..], "--riser", s.riser, ok[..]);
+  s.fade = score_time(a[..], "--fade", s.fade, ok[..]);
+  if args_has(a[..], "--rate") { s.rate = args_whole(args_value(a[..], "--rate", "")); }
+  if args_has(a[..], "--seed") { s.seed = args_whole(args_value(a[..], "--seed", "")); }
+  if !ok[0] || s.rate < 8000 || s.rate > 48000 || s.seed < 0 { tool_errln("score: a time must be 0..60 s, --rate 8000..48000, --seed a whole number"); return 2; }
+  if au_samples(s.length, s.rate) > SCORE_MAX_FRAMES { tool_errln("score: longer than a minute at 48 kHz"); return 2; }
+
+  l: [SCORE_MAX_FRAMES] int; r: [SCORE_MAX_FRAMES] int; sl: [SCORE_MAX_FRAMES] int; sr: [SCORE_MAX_FRAMES] int;
+  wet: [SCORE_MAX_FRAMES] int; voice: [168000] int; pcm: [2 * SCORE_MAX_FRAMES] int;
+  done := au_render_epic(s, l[..], r[..], sl[..], sr[..], wet[..], voice[..], pcm[..]);
+  if !done.ok { tool_errln("score: the score did not render"); return 1; }
+  samples := pcm[0..<2 * done.frames];
+  bytes: [WAV_HEADER + 4 * SCORE_MAX_FRAMES] u8;
+  k := wav_write(samples, 2, s.rate, bytes[..]);
+  if k < 0 || !fs_write(path, cast(string) bytes[0..<k]) { tool_errln("score: could not write the file"); return 1; }
+  print("promo-epic: % frames at % Hz, % voices, peak % (Q16) before normalising\n", done.frames, s.rate, done.voices, done.peak);
+  print("samples fnv1a64 %\n", wav_hash(samples));
+  print("wrote % bytes to %\n", k, path);
+  return 0;
+}

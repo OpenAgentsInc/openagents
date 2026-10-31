@@ -1,0 +1,404 @@
+// Aethyr's sound from numbers: oscillators, seeded noise, envelopes, a one-pole filter,
+// constant-power panning, soft saturation and Schroeder reverb lines, all in integers.
+// A sample is a Q16 fixed-point value (AU_ONE is full scale), a phase is a 32-bit
+// fraction of one cycle, and time is a whole number of samples. Nothing here reads a
+// clock or calls libm: sine is a fitted odd polynomial and exponential decay is a
+// repeated multiply, so the same score and seed give the same samples, bit for bit, on
+// every build and target (aethyr/book/ch065-sound-from-numbers.md).
+//   coax/bin/coax test aethyr/audio/synth.coax --library
+//   coax/bin/coax mutate aethyr/audio/synth.coax --shard I/N
+
+AU_ONE :: 65536;              // Q16 full scale: a sample of AU_ONE is 0 dBFS
+AU_HALF :: 32768;
+AU_CYCLE :: 4294967296;       // one cycle of phase
+AU_MASK :: 4294967295;        // phase wraps at a cycle
+AU_QUARTER :: 1073741824;     // a quarter cycle (90 degrees)
+AU_Q30 :: 1073741824;         // decays are Q30 so long tails keep their precision
+AU_NOISE_SEED :: 2463534242;  // xorshift32's state may not be zero; a zero seed takes this
+
+// Integer helpers (the built-in abs is for floats).
+au_max :: (a: int, b: int) -> int { return ifx a > b then a else b; }   // mutant: equivalent (>= picks the same value when a == b)
+au_min :: (a: int, b: int) -> int { return ifx a < b then a else b; }   // mutant: equivalent (<= picks the same value when a == b)
+au_clamp :: (x: int, lo: int, hi: int) -> int { return au_min(au_max(x, lo), hi); }
+au_abs :: (x: int) -> int { return ifx x < 0 then -x else x; }   // mutant: equivalent (x <= 0 and x < 1 differ only at 0, where -0 == 0)
+
+// ---- phase and pitch
+
+// A phase advanced by inc, wrapped to one cycle.
+au_phase :: (p: int, inc: int) -> int { return (p + inc) & AU_MASK; }
+
+// MIDI notes 120..131 in milli-hertz (A4 = 69 = 440 Hz, equal temperament): the top
+// octave a note's increment is shifted down from, so low notes keep their precision.
+AU_TOP_MHZ :: [12] int.[8372018, 8869844, 9397273, 9956063, 10548082, 11175303, 11839822, 12543854, 13289750, 14080000, 14917240, 15804266];
+
+// Phase per sample for a frequency in milli-hertz at `rate` samples a second (0 at no
+// rate). A negative frequency runs the phase backwards.
+au_inc_mhz :: (mhz: int, rate: int) -> int {
+  if rate <= 0 { return 0; }
+  return mhz * AU_CYCLE / (1000 * rate);
+}
+// A note's frequency in milli-hertz, for MIDI 0..131 (0 outside it).
+au_note_mhz :: (midi: int) -> int {
+  if midi < 0 || midi > 131 { return 0; }
+  return AU_TOP_MHZ[midi % 12] >> (10 - midi / 12);
+}
+au_note_inc :: (midi: int, rate: int) -> int { return au_inc_mhz(au_note_mhz(midi), rate); }
+// An increment detuned by a ratio in thousandths (997 is 0.3% flat).
+au_detune :: (inc: int, permille: int) -> int { return inc * permille / 1000; }
+
+// ---- oscillators: a phase in, a Q16 sample out
+
+// book:begin saw
+au_saw :: (p: int) -> int { return (p >> 15) - AU_ONE; }
+au_square :: (p: int) -> int { return ifx p < AU_CYCLE / 2 then AU_ONE else -AU_ONE; }
+// book:end saw
+
+// sin(pi/2 x) on a quarter wave is x (a + x^2 (b + x^2 c)) with a + b + c = 1, fitted by
+// least squares (largest error 1.04e-4 of full scale); the other quarters mirror it.
+// book:begin sine
+AU_SIN_A :: 102914; AU_SIN_B :: -42081; AU_SIN_C :: 4703;
+au_sine :: (p: int) -> int {
+  q := p / AU_QUARTER;                      // which quarter, 0..3
+  r := (p % AU_QUARTER) >> 14;              // 0..65535 into it
+  x := ifx q == 0 || q == 2 then r else AU_ONE - r;
+  x2 := x * x / AU_ONE;
+  s := x * (AU_SIN_A + x2 * (AU_SIN_B + x2 * AU_SIN_C / AU_ONE) / AU_ONE) / AU_ONE;
+  return ifx q < 2 then s else -s;
+}
+au_cosine :: (p: int) -> int { return au_sine(au_phase(p, AU_QUARTER)); }
+// book:end sine
+
+// ---- seeded noise: xorshift32, no clock
+
+Noise :: struct { state: int = AU_NOISE_SEED; }
+au_noise :: (seed: int) -> Noise {
+  n: Noise;
+  if (seed & AU_MASK) != 0 { n.state = seed & AU_MASK; }
+  return n;
+}
+// book:begin noise
+au_noise_next :: (n: Noise) -> Noise {
+  x := n.state;
+  x = x ^ ((x << 13) & AU_MASK);
+  x = x ^ (x >> 17);
+  x = x ^ ((x << 5) & AU_MASK);
+  return Noise.{state = x};
+}
+// book:end noise
+// The state as a Q16 sample in [-AU_ONE, AU_ONE).
+au_noise_value :: (n: Noise) -> int { return (n.state >> 15) - AU_ONE; }
+// A phase from the noise, for an oscillator's random start.
+au_noise_phase :: (n: Noise) -> int { return n.state; }
+
+// ---- envelopes
+
+// Attack, decay and release in samples (at least one each), sustain as a Q16 level.
+Adsr :: struct { attack: int = 1; decay: int = 1; sustain: int = AU_ONE; release: int = 1; }
+au_adsr :: (attack: int, decay: int, sustain: int, release: int) -> Adsr {
+  return Adsr.{attack = au_max(1, attack), decay = au_max(1, decay), sustain = au_clamp(sustain, 0, AU_ONE), release = au_max(1, release)};
+}
+// A note held for `held` samples lasts held + release.
+au_adsr_length :: (e: Adsr, held: int) -> int { return au_max(0, held) + e.release; }
+// The level before release: up, down to sustain, then flat.
+au_adsr_gate :: (e: Adsr, i: int) -> int {
+  if i < e.attack { return i * AU_ONE / e.attack; }   // mutant: equivalent (<= gives AU_ONE at i == attack either way)
+  if i < e.attack + e.decay { return AU_ONE - (AU_ONE - e.sustain) * (i - e.attack) / e.decay; }   // mutant: equivalent (<= gives the sustain at the boundary either way)
+  return e.sustain;
+}
+// The level `i` samples after the note starts; release falls from wherever the gate was.
+// book:begin adsr
+au_adsr_level :: (e: Adsr, held: int, i: int) -> int {
+  if i < 0 { return 0; }   // mutant: equivalent (i <= 0 and i < 1 add only i == 0, where the gate is 0 too)
+  h := au_max(0, held);
+  if i < h { return au_adsr_gate(e, i); }   // mutant: equivalent (at i == h release starts from the gate's own level)
+  if i >= h + e.release { return 0; }   // mutant: equivalent (> reaches 0 at i == h + release anyway)
+  from := au_adsr_gate(e, h);
+  return from - from * (i - h) / e.release;
+}
+// book:end adsr
+
+// Exponential decay as a repeated multiply: after tau samples the level is about 1/e.
+// The per-sample factor is 1 - 1/tau (exp(-1/tau) to second order), in Q30.
+// book:begin decay
+au_decay_rate :: (tau: int) -> int { return AU_Q30 - AU_Q30 / au_max(1, tau); }
+au_decay_step :: (level: int, rate: int) -> int { return level * rate / AU_Q30; }
+
+// ---- filter and gain
+
+// One-pole lowpass: y moves a fraction c (Q16) of the way to x each sample.
+au_pole :: (y: int, x: int, c: int) -> int { return y + c * (x - y) / AU_ONE; }
+// book:end decay
+// A Q16 gain applied to a Q16 (or wider) sample.
+au_gain :: (x: int, g: int) -> int { return x * g / AU_ONE; }
+
+// Constant-power pan: pan in thousandths, from -1000 (left) to 1000 (right), turns a
+// quarter circle, left = cos and right = sin, so left^2 + right^2 stays at full power.
+AU_PAN_WIDE :: 1000;
+Pan :: struct { left: int; right: int; }
+// book:begin pan
+au_pan :: (pan: int) -> Pan {
+  p := au_clamp(pan, -AU_PAN_WIDE, AU_PAN_WIDE);
+  // The angle runs 0 .. a quarter cycle. One phase unit more is below the sine's 2^14-unit
+  // input step for every pan from -1000 to 1000 (searched), so it cannot be heard.
+  angle := (p + AU_PAN_WIDE) * (AU_QUARTER / 2) / AU_PAN_WIDE;   // mutant: equivalent
+  return Pan.{left = au_cosine(angle), right = au_sine(angle)};
+}
+// book:end pan
+
+// Soft saturation: tanh's Pade approximant u (27 + u^2) / (27 + 9 u^2), exactly 1 from
+// u = 3 on (its slope is 9 (u^2 - 9)^2 / (27 + 9u^2)^2, never negative and zero at 3),
+// scaled by the same curve at the drive so full scale in is full scale out.
+// book:begin saturate
+au_tanh :: (u: int) -> int {
+  if u < 0 { return -au_tanh(-u); }
+  if u >= 3 * AU_ONE { return AU_ONE; }   // mutant: equivalent (the approximant is exactly AU_ONE at u = 3)
+  u2 := u * u / AU_ONE;
+  return u * (27 * AU_ONE + u2) / (27 * AU_ONE + 9 * u2);
+}
+au_saturate :: (x: int, drive: int) -> int {
+  top := au_tanh(drive);
+  if top <= 0 { return 0; }
+  return au_tanh(x * drive / AU_ONE) * AU_ONE / top;
+}
+// book:end saturate
+
+// ---- reverb lines (Schroeder): parallel lowpassed combs, then allpasses in series
+
+// A feedback comb of `delay` samples over input, added into out; line holds at least
+// delay samples and starts silent. The feedback is lowpassed (damp of the old value kept).
+// book:begin comb
+au_comb :: (input: [] int, out: [] int, line: [] int, delay: int, feedback: int, damp: int) {
+  for i: 0..<delay { line[i] = 0; }
+  at := 0; f := 0;   // mutant: equivalent (a cleared ring may start anywhere; f = 1 is below Q16's resolution after one gain)
+  for i: 0..<input.count {
+    y := line[at];
+    f = au_gain(y, AU_ONE - damp) + au_gain(f, damp);
+    line[at] = input[i] + au_gain(f, feedback);
+    at += 1;
+    if at == delay { at = 0; }
+    out[i] += y;
+  }
+}
+// book:end comb
+// An allpass of `delay` samples with gain g, in place: it smears, it does not colour.
+au_allpass :: (io: [] int, line: [] int, delay: int, g: int) {
+  for i: 0..<delay { line[i] = 0; }
+  at := 0;   // mutant: equivalent (a cleared ring may start anywhere)
+  for i: 0..<io.count {
+    b := line[at];
+    y := b - io[i];
+    line[at] = io[i] + au_gain(b, g);
+    at += 1;
+    if at == delay { at = 0; }
+    io[i] = y;
+  }
+}
+AU_COMB_DELAYS :: [6] int.[1557, 1617, 1491, 1422, 1277, 1356];
+AU_COMB_FEEDBACK :: [6] int.[55050, 55050, 55050, 55050, 54395, 54395];   // 0.84, 0.83
+AU_ALLPASS_DELAYS :: [2] int.[556, 441];
+AU_REVERB_LINE :: 2048;     // longest line a reverb may use, spread included
+// The six combs and two allpasses over input, into out (overwritten). `spread` lengthens
+// every line, so the right channel (spread 23) does not echo in step with the left.
+au_reverb :: (input: [] int, out: [] int, spread: int) -> bool {
+  if spread < 0 || 1617 + spread > AU_REVERB_LINE || out.count < input.count { return false; }
+  line: [AU_REVERB_LINE] int;
+  wet := out[0..<input.count];
+  for i: 0..<wet.count { wet[i] = 0; }
+  for k: 0..<6 { au_comb(input, wet, line[..], AU_COMB_DELAYS[k] + spread, AU_COMB_FEEDBACK[k], AU_ONE / 4); }
+  for k: 0..<2 { au_allpass(wet, line[..], AU_ALLPASS_DELAYS[k] + spread, AU_HALF); }
+  return true;
+}
+
+// ---- Checks ----
+
+#test "integer helpers" {
+  #assert au_max(3, 5) == 5 && au_max(5, 3) == 5 && au_min(3, 5) == 3 && au_min(5, 3) == 3;
+  #assert au_clamp(-9, -2, 4) == -2 && au_clamp(9, -2, 4) == 4 && au_clamp(1, -2, 4) == 1;
+  #assert au_abs(-7) == 7 && au_abs(7) == 7 && au_abs(0) == 0;
+}
+
+
+#test "phase wraps at one cycle, and notes are equal-tempered from A4 = 440 Hz" {
+  #assert au_phase(AU_MASK, 1) == 0 && au_phase(5, 7) == 12 && au_phase(AU_CYCLE - 2, 5) == 3;
+  #assert au_note_mhz(69) == 440000 && au_note_mhz(57) == 220000 && au_note_mhz(81) == 880000 && au_note_mhz(129) == 14080000;
+  #assert au_note_mhz(60) == 261625 && au_note_mhz(0) == 8175 && au_note_mhz(131) == 15804266;
+  #assert au_note_mhz(-1) == 0 && au_note_mhz(132) == 0 && au_note_mhz(119) == 7902133;
+  // 440 Hz at 44100: 440 / 44100 of 2^32 a sample, to the integer below.
+  #assert au_note_inc(69, 44100) == 42852281 && au_inc_mhz(1000, 1000) == AU_CYCLE / 1000;
+  #assert au_inc_mhz(0, 44100) == 0 && au_inc_mhz(440000, 0) == 0 && au_inc_mhz(-1000, 1000) == -4294967 && au_inc_mhz(1, 1) == 4294967;
+  #assert au_inc_mhz(1000000, 1) == 1000 * AU_CYCLE && au_phase(10, -4294967) == AU_CYCLE + 10 - 4294967;
+  #assert au_detune(1000000, 997) == 997000 && au_detune(1000, 1003) == 1003;
+}
+
+#test "saw, square and sine at the cardinal phases" {
+  #assert au_saw(0) == -AU_ONE && au_saw(AU_CYCLE / 2) == 0 && au_saw(AU_MASK) == AU_ONE - 1;
+  #assert au_square(0) == AU_ONE && au_square(AU_CYCLE / 2 - 1) == AU_ONE && au_square(AU_CYCLE / 2) == -AU_ONE;
+  #assert au_sine(0) == 0 && au_sine(AU_QUARTER) == AU_ONE && au_sine(2 * AU_QUARTER) == 0 && au_sine(3 * AU_QUARTER) == -AU_ONE;
+  #assert au_cosine(0) == AU_ONE && au_cosine(AU_QUARTER) == 0;
+}
+
+#forall "the sine is within 1e-4 of sin, odd about half a cycle" k: 0..<4096 {
+  p := k * (AU_CYCLE / 4096) + k;
+  s := au_sine(p);
+  exact := sin(cast(f64) p / cast(f64) AU_CYCLE * 6.283185307179586) * 65536.0;
+  #assert abs(cast(f64) s - exact) <= 12.0;
+  #assert au_abs(au_sine(au_phase(p, AU_CYCLE / 2)) + s) <= 2;
+}
+
+#forall "the sine rises through its first quarter" k: 0..<1024 {
+  a := k * (AU_QUARTER / 1024);
+  #assert au_sine(a + AU_QUARTER / 1024) >= au_sine(a);
+}
+
+#test "noise is seeded, never stuck, and covers both signs" {
+  a := au_noise(7); b := au_noise(7); c := au_noise(8);
+  #assert au_noise(0).state == AU_NOISE_SEED && a.state == 7 && au_noise(AU_CYCLE).state == AU_NOISE_SEED;
+  pos := 0; neg := 0; diff := 0;
+  for i: 0..<2000 {
+    a = au_noise_next(a); b = au_noise_next(b); c = au_noise_next(c);
+    #assert a.state == b.state && a.state != 0 && a.state <= AU_MASK;
+    v := au_noise_value(a);
+    #assert v >= -AU_ONE && v < AU_ONE;
+    if v > 0 { pos += 1; } else { neg += 1; }
+    if a.state != c.state { diff += 1; }
+  }
+  #assert pos > 900 && neg > 900 && diff == 2000;
+  // the first steps of xorshift32 from 1, by hand
+  #assert au_noise_next(au_noise(1)).state == 270369 && au_noise_phase(au_noise(5)) == 5;
+}
+
+#test "an envelope rises, falls to sustain, holds and releases from where it was" {
+  e := au_adsr(4, 4, AU_HALF, 8);
+  #assert au_adsr_level(e, 20, -1) == 0 && au_adsr_level(e, 20, 0) == 0 && au_adsr_level(e, 20, 2) == AU_HALF && au_adsr_level(e, 20, 4) == AU_ONE;
+  #assert au_adsr_level(e, 20, 6) == 3 * AU_ONE / 4 && au_adsr_level(e, 20, 8) == AU_HALF && au_adsr_level(e, 20, 19) == AU_HALF;
+  #assert au_adsr_level(e, 20, 20) == AU_HALF && au_adsr_level(e, 20, 24) == AU_HALF / 2 && au_adsr_level(e, 20, 27) == AU_HALF / 8 && au_adsr_level(e, 20, 28) == 0;
+  #assert au_adsr_length(e, 20) == 28 && au_adsr_length(e, -3) == 8;
+  // released during the attack: falls from the attack's level, with no jump
+  #assert au_adsr_level(e, 2, 2) == AU_HALF && au_adsr_level(e, 2, 6) == AU_HALF / 2 && au_adsr_level(e, 2, 10) == 0;
+  #assert au_adsr_level(e, -5, 0) == au_adsr_gate(e, 0);
+  z := au_adsr(0, -2, 2 * AU_ONE, 0);
+  #assert z.attack == 1 && z.decay == 1 && z.release == 1 && z.sustain == AU_ONE && au_adsr(1, 1, -4, 1).sustain == 0;
+  d := Adsr.{};
+  #assert d.attack == 1 && d.decay == 1 && d.sustain == AU_ONE && d.release == 1;
+}
+
+#forall "an envelope never leaves [0, full scale] and never jumps more than one attack step" i: 0..<200 {
+  e := au_adsr(30, 50, 40000, 70);
+  a := au_adsr_level(e, 120, i); b := au_adsr_level(e, 120, i + 1);
+  #assert a >= 0 && a <= AU_ONE && au_abs(b - a) <= AU_ONE / 30 + 1;
+}
+
+#test "decay is a repeated multiply that halves in about 0.69 tau" {
+  r := au_decay_rate(1000);
+  #assert r == AU_Q30 - 1073741 && au_decay_rate(0) == 0 && au_decay_rate(-4) == 0 && au_decay_rate(1) == 0;
+  level := AU_Q30;
+  for i: 0..<693 { level = au_decay_step(level, r); }
+  #assert au_abs(level - AU_Q30 / 2) < AU_Q30 / 500;
+  #assert au_decay_step(AU_Q30, AU_Q30) == AU_Q30 && au_decay_step(1000, AU_Q30 / 2) == 500;
+}
+
+#test "the pole moves a fraction of the way, and gain scales" {
+  #assert au_pole(0, AU_ONE, AU_HALF) == AU_HALF && au_pole(AU_HALF, AU_ONE, AU_HALF) == 3 * AU_ONE / 4 && au_pole(100, 100, 7) == 100;
+  #assert au_pole(0, -AU_ONE, AU_ONE / 4) == -AU_ONE / 4 && au_pole(AU_ONE, 0, AU_ONE) == 0;
+  #assert au_gain(AU_ONE, AU_HALF) == AU_HALF && au_gain(-AU_ONE, AU_ONE / 4) == -AU_ONE / 4 && au_gain(3, AU_ONE) == 3;
+}
+
+#forall "constant-power pan keeps left^2 + right^2 at full power, left to right" k: 0..<41 {
+  g := au_pan(-AU_PAN_WIDE + k * 50);
+  power := g.left * g.left + g.right * g.right;
+  #assert au_abs(power - AU_ONE * AU_ONE) <= 24 * AU_ONE;   // within 0.04%
+  #assert g.left >= 0 && g.right >= 0;
+}
+
+#test "pan: hard left, centre, hard right, and out of range clamps" {
+  l := au_pan(-AU_PAN_WIDE); c := au_pan(0); r := au_pan(AU_PAN_WIDE);
+  #assert l.left == AU_ONE && l.right == 0 && r.left == 0 && r.right == AU_ONE;
+  #assert c.left == c.right && au_abs(c.left - 46341) <= 8;
+  #assert au_pan(-3000).left == AU_ONE && au_pan(-3000).right == 0 && au_pan(5000).right == AU_ONE && au_pan(5000).left == 0;
+  #assert au_pan(-999).right > 0 && au_pan(999).left > 0;
+  #assert au_pan(500).right > au_pan(500).left && au_pan(-500).left > au_pan(-500).right;
+}
+
+#test "saturation: odd, exactly full scale at the drive, flat past three" {
+  #assert au_tanh(0) == 0 && au_tanh(3 * AU_ONE) == AU_ONE && au_tanh(9 * AU_ONE) == AU_ONE && au_tanh(-9 * AU_ONE) == -AU_ONE;
+  #assert au_tanh(AU_ONE) == 50972 && au_tanh(-AU_ONE) == -50972 && au_tanh(3 * AU_ONE - 1) <= AU_ONE;
+  drive := 85197;    // 1.3
+  #assert au_saturate(AU_ONE, drive) == AU_ONE && au_saturate(-AU_ONE, drive) == -AU_ONE && au_saturate(0, drive) == 0;
+  #assert au_saturate(AU_HALF, drive) > AU_HALF && au_saturate(AU_ONE, 0) == 0 && au_saturate(AU_ONE, -drive) == 0;
+}
+
+#forall "saturation never decreases, and full scale in never passes full scale out" k: 0..<512 {
+  x := -AU_ONE + k * 256;
+  a := au_saturate(x, 85197); b := au_saturate(x + 256, 85197);
+  #assert b >= a && a >= -AU_ONE && a <= AU_ONE && b <= AU_ONE;
+  w := 8 * x;      // past full scale it keeps rising to 1 / tanh(1.3) and stops
+  #assert au_saturate(w + 2048, 85197) >= au_saturate(w, 85197) && au_abs(au_saturate(w, 85197)) <= 74170;
+}
+
+#test "a comb echoes every delay, quieter by its feedback" {
+  input: [40] int; out: [40] int; line: [8] int;
+  for i: 0..<8 { line[i] = 99; }
+  input[0] = AU_ONE;
+  au_comb(input[..], out[..], line[..], 8, AU_HALF, 0);
+  #assert out[0] == 0 && out[8] == AU_ONE && out[16] == AU_HALF && out[24] == AU_HALF / 2 && out[7] == 0 && out[9] == 0;
+  d: [40] int;
+  au_comb(input[..], d[..], line[..], 8, AU_HALF, AU_HALF);   // damped: the echo is lowpassed
+  #assert d[8] == AU_ONE && d[16] == AU_HALF / 2 && d[24] == 4160;
+  #assert d[17] == 8192 && d[9] == 0;   // the damped feedback spreads one echo over several samples
+}
+
+#test "an allpass passes energy through and returns" {
+  io: [20] int; line: [5] int;
+  for i: 0..<5 { line[i] = 7; }
+  io[0] = AU_ONE;
+  au_allpass(io[..], line[..], 5, AU_HALF);
+  #assert io[0] == -AU_ONE && io[5] == AU_ONE && io[10] == AU_HALF && io[15] == AU_HALF / 2 && io[1] == 0 && io[6] == 0;
+}
+
+#test "the reverb is a tail that starts after the shortest comb, and refuses what does not fit" {
+  input: [3000] int; out: [3000] int;
+  input[0] = AU_ONE;
+  #assert au_reverb(input[..], out[..], 0);
+  first := -1;
+  for i: 0..<3000 { if first < 0 && out[i] != 0 { first = i; } }
+  #assert first == 1277;
+  r: [3000] int;
+  #assert au_reverb(input[..], r[..], 23);
+  late := -1;
+  for i: 0..<3000 { if late < 0 && r[i] != 0 { late = i; } }
+  #assert late == 1300;
+  #assert !au_reverb(input[..], out[..], -1) && !au_reverb(input[..], out[..], 500) && !au_reverb(input[..], out[0..<10], 0);
+  #assert au_reverb(input[..], out[..], AU_REVERB_LINE - 1617);
+}
+
+#test "recorded values: sine, noise, saturation and envelope steps between the cardinal points" {
+  #assert au_sine(123456789) == 11768 && au_sine(3000000000) == -62132 && au_sine(700000000) == 55986;
+  #assert au_cosine(123456789) == 64464 && au_cosine(3000000000) == -20838;
+  #assert au_sine(218186000) == 20560 && au_cosine(1518518271) == -39695 && au_tanh(24056) == 23136 && au_tanh(20758) == 20160;
+  #assert au_noise_next(au_noise_next(au_noise(1))).state == 67634689 && au_noise_next(au_noise_next(au_noise_next(au_noise(1)))).state == 2647435461;
+  #assert au_noise_value(Noise.{state = 0}) == -AU_ONE && au_noise_value(Noise.{state = AU_MASK}) == AU_ONE - 1;
+  #assert au_tanh(20000) == 19464 && au_tanh(100000) == 61158 && au_tanh(150000) == 65218 && au_tanh(190000) == 65535;
+  #assert au_saturate(AU_ONE, 1) == AU_ONE && au_saturate(AU_HALF, 1) == 0;   // a drive of one step: below it, nothing
+  e := au_adsr(3, 3, 10000, 7);
+  #assert au_adsr_level(e, 20, 1) == 21845 && au_adsr_level(e, 20, 2) == 43690 && au_adsr_level(e, 20, 4) == 47024 && au_adsr_level(e, 20, 5) == 28512 && au_adsr_level(e, 20, 22) == 7143;
+  #assert au_adsr_level(e, 0, 1) == 0 && au_adsr_level(e, 0, 0) == 0;
+}
+
+#test "an undamped comb at unity feedback repeats at full level" {
+  input: [20] int; out: [20] int; line: [4] int;
+  input[0] = AU_ONE;
+  au_comb(input[..], out[..], line[..], 4, AU_ONE, 0);
+  #assert out[4] == AU_ONE && out[8] == AU_ONE && out[16] == AU_ONE && out[5] == 0;
+}
+
+#test "recorded reverb tails, left and right, and a dirty output is overwritten" {
+  input: [3000] int; out: [3000] int; r: [3000] int;
+  for i: 0..<3000 { out[i] = 5; r[i] = -5; }
+  input[0] = AU_ONE; input[5] = -AU_HALF;
+  #assert au_reverb(input[..], out[..], 0) && au_reverb(input[..], r[..], 23);
+  #assert out[0] == 0 && r[0] == 0 && out[1277] == AU_ONE && out[1557] == AU_ONE && out[1833] == -AU_ONE && out[2999] == -159 && r[1879] == -AU_ONE;
+  d := 0; e := 0;
+  for i: 0..<3000 { d += out[i] * (i % 97 + 1); e += r[i] * (i % 89 + 1); }
+  #assert d == 12903124 && e == -4354040;
+  #assert !au_reverb(input[..], out[..], AU_REVERB_LINE - 1616);
+}

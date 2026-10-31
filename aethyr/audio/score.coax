@@ -1,0 +1,387 @@
+// Aethyr's scores: a tempo grid in ticks, keys and chords, patterns stepped on the grid,
+// stereo buses with a reverb send, gain automation and the master (normalise, automate,
+// saturate, 16-bit). Built on synth.coax: integers only, no clock, so a score and its seed
+// render the same samples on every build and target (aethyr/book/ch066 and ch067).
+//   coax/bin/coax test aethyr/audio/score.coax --library
+//   coax/bin/coax mutate aethyr/audio/score.coax --root-only --shard I/N
+#load "synth.coax";
+
+// ---- the beat grid
+
+AU_PPQ :: 960;                 // ticks a beat (a quarter note)
+AU_SIXTEENTH :: 240;
+AU_EIGHTH :: 480;
+AU_BAR :: 3840;                // four beats
+
+// Beats per minute and the sample the first beat falls on; a tick's sample is computed
+// from the tick itself, never by adding step lengths, so a grid never drifts.
+Grid :: struct { rate: int = 44100; bpm: int = 120; origin: int; }
+
+// book:begin grid
+au_grid_sample :: (g: Grid, tick: int) -> int {
+  return g.origin + tick * g.rate * 60 / (g.bpm * AU_PPQ);
+}
+// The first tick on a `step` grid whose sample is at or after `sample` (0 at the origin).
+// au_grid_sample floors tick * rate * 60 / (bpm * PPQ), so the first tick at or after a
+// sample is that ratio inverted and rounded up, then rounded up again to the step.
+au_grid_tick_at :: (g: Grid, sample: int, step: int) -> int {
+  if sample <= g.origin || step <= 0 { return 0; }   // mutant: equivalent (at the origin the formula gives 0 too)
+  per := g.rate * 60;
+  // bpm * PPQ and rate * 60 share a factor of 60, so the product's remainder by per is never 1:
+  // rounding up with per - 2 gives the same tick.
+  t := ((sample - g.origin) * g.bpm * AU_PPQ + per - 1) / per;   // mutant: equivalent
+  return (t + step - 1) / step * step;
+}
+// book:end grid
+
+// ---- keys and chords
+
+AU_MINOR :: [7] int.[0, 2, 3, 5, 7, 8, 10];
+AU_MAJOR :: [7] int.[0, 2, 4, 5, 7, 9, 11];
+Key :: struct { tonic: int; minor: bool = true; }
+
+// The note `degree` steps up the key's scale from its tonic (degree 7 is the octave).
+au_scale_note :: (k: Key, degree: int) -> int {
+  d := au_max(0, degree);
+  step := ifx k.minor then AU_MINOR[d % 7] else AU_MAJOR[d % 7];
+  return k.tonic + 12 * (d / 7) + step;
+}
+// A note moved by octaves into [lo, lo + 11].
+au_fold :: (note: int, lo: int) -> int {
+  n := note;
+  while n < lo { n += 12; }   // mutant: equivalent (n == lo goes up an octave and the next loop brings it back)
+  while n > lo + 11 { n -= 12; }
+  return n;
+}
+
+// A triad on a scale degree: its three tones voiced in the octave from `lo`, lowest
+// first, and its root in the octave from `root_lo`.
+Chord :: struct { root: int; tones: [3] int; }
+// book:begin triad
+au_triad :: (k: Key, degree: int, lo: int, root_lo: int) -> Chord {
+  c: Chord;
+  for i: 0..<3 { c.tones[i] = au_fold(au_scale_note(k, degree + 2 * i), lo); }
+  for i: 0..<2 { for j: 0..<2 - i {   // mutant: equivalent (a third pass over three sorted tones does nothing)
+    if c.tones[j] > c.tones[j + 1] { t := c.tones[j]; c.tones[j] = c.tones[j + 1]; c.tones[j + 1] = t; }   // mutant: equivalent (swapping equal tones changes nothing)
+  } }
+  c.root = au_fold(au_scale_note(k, degree), root_lo);
+  return c;
+}
+// book:end triad
+
+// ---- patterns on the grid
+
+AU_REST :: -1000;              // a pattern value that plays nothing
+AU_PATTERN_MAX :: 16;
+// A repeating row of values (note offsets, accents), one per step of `step` ticks.
+Pattern :: struct { step: int = AU_SIXTEENTH; length: int = 1; values: [AU_PATTERN_MAX] int; }
+// One step that plays: its tick, its sample, its index counted from the first step, its value.
+Step :: struct { tick: int; at: int; index: int; value: int; }
+
+// The pattern's steps from tick `from` until sample `end`, into out; how many fit.
+// book:begin sequence
+au_sequence :: (g: Grid, p: Pattern, from: int, end: int, out: [] Step) -> int {
+  if p.step <= 0 || p.length < 1 || p.length > AU_PATTERN_MAX { return 0; }
+  n := 0; k := 0;
+  tick := from;
+  while n < out.count {
+    at := au_grid_sample(g, tick);
+    if at >= end { break; }
+    v := p.values[k % p.length];
+    if v != AU_REST { out[n] = Step.{tick = tick, at = at, index = k, value = v}; n += 1; }
+    k += 1; tick += p.step;
+  }
+  return n;
+}
+// book:end sequence
+
+// ---- voices into buses
+
+// Saws on each note, one per detune (thousandths), starting at phases from the noise,
+// summed into out[0..<n]. Returns the noise moved on.
+au_saws :: (notes: [] int, detunes: [] int, rate: int, n: int, noise: Noise, out: [] int) -> Noise {
+  m := au_min(n, out.count);
+  for i: 0..<m { out[i] = 0; }
+  z := noise;
+  for note: notes { for d: detunes {
+    z = au_noise_next(z);
+    p := au_noise_phase(z);
+    inc := au_detune(au_note_inc(note, rate), d);
+    for i: 0..<m { p = au_phase(p, inc); out[i] += au_saw(p); }
+  } }
+  return z;
+}
+// out[i] times the envelope, then through a one-pole lowpass of coefficient c.
+au_shape :: (out: [] int, n: int, e: Adsr, held: int, c: int) {
+  y := 0;
+  for i: 0..<au_min(n, out.count) { y = au_pole(y, au_gain(out[i], au_adsr_level(e, held, i)), c); out[i] = y; }
+}
+
+// The four buses a score mixes into: dry left and right, and the reverb send's two.
+// A voice is put at a start sample, with a gain and a send level (Q16) and a pan (thousandths).
+// book:begin put
+au_put :: (voice: [] int, start: int, amp: int, pan: int, send: int, l: [] int, r: [] int, sl: [] int, sr: [] int) {
+  g := au_pan(pan);
+  gl := au_gain(amp, g.left); gr := au_gain(amp, g.right);
+  for k: 0..<voice.count {
+    j := start + k;
+    if j >= l.count { break; }
+    if j >= 0 {
+      a := au_gain(voice[k], gl); b := au_gain(voice[k], gr);
+      l[j] += a; r[j] += b; sl[j] += au_gain(a, send); sr[j] += au_gain(b, send);
+    }
+  }
+}
+// book:end put
+
+// ---- gain automation and the master
+
+// A breakpoint: a level (Q16) at a sample. Between two the level is linear; before the
+// first it is the first's, after the last the last's.
+Point :: struct { at: int; level: int; }
+// book:begin automation
+au_automation :: (points: [] Point, i: int) -> int {
+  if points.count == 0 { return AU_ONE; }
+  if i <= points[0].at { return points[0].level; }   // mutant: equivalent (at the first point the segment below gives its level too)
+  for k: 1..<points.count {
+    a := points[k - 1]; b := points[k];
+    if i < b.at { return a.level + (b.level - a.level) * (i - a.at) / (b.at - a.at); }   // mutant: equivalent (at b.at the segment gives b's level)
+  }
+  return points[points.count - 1].level;
+}
+// book:end automation
+
+AU_HEADROOM :: 62259;          // the loudest sample is normalised to 0.95 of full scale
+AU_PCM_TOP :: 32000;           // full scale after saturation, in 16-bit steps
+au_peak :: (l: [] int, r: [] int) -> int {
+  p := 0;
+  for v: l { p = au_max(p, au_abs(v)); }
+  for v: r { p = au_max(p, au_abs(v)); }
+  return p;
+}
+// The master: every sample is divided by the peak of both channels (to AU_HEADROOM),
+// then scaled by the automation and saturated, then written as 16-bit steps,
+// interleaved left and right into pcm. Returns the peak (0 for silence, written as 0s).
+// book:begin master
+au_master :: (l: [] int, r: [] int, points: [] Point, drive: int, pcm: [] int) -> int {
+  n := au_min(l.count, au_min(r.count, pcm.count / 2));
+  peak := au_peak(l[0..<n], r[0..<n]);
+  for i: 0..<n {
+    g := au_automation(points, i);
+    a := 0; b := 0;   // mutant: equivalent (only silence keeps them, and 1 * AU_PCM_TOP / AU_ONE is 0)
+    if peak > 0 {
+      a = au_saturate(au_gain(l[i] * AU_HEADROOM / peak, g), drive);
+      b = au_saturate(au_gain(r[i] * AU_HEADROOM / peak, g), drive);
+    }
+    pcm[2 * i] = a * AU_PCM_TOP / AU_ONE;
+    pcm[2 * i + 1] = b * AU_PCM_TOP / AU_ONE;
+  }
+  return peak;
+}
+// book:end master
+
+// Wet reverb returns added into the dry buses at `wet` (Q16), using `scratch` (at least
+// as long as the buses) for each channel's tail in turn; the right's lines are `spread`
+// samples longer (23 in the scores), so the two sides do not echo in step.
+au_reverb_return :: (l: [] int, r: [] int, sl: [] int, sr: [] int, wet: int, spread: int, scratch: [] int) -> bool {
+  n := l.count;
+  if r.count != n || sl.count != n || sr.count != n { return false; }
+  if !au_reverb(sl, scratch, 0) { return false; }
+  for i: 0..<n { l[i] += au_gain(scratch[i], wet); }   // mutant: equivalent (a reverb's first sample is always 0)
+  if !au_reverb(sr, scratch, spread) { return false; }
+  for i: 0..<n { r[i] += au_gain(scratch[i], wet); }   // mutant: equivalent (a reverb's first sample is always 0)
+  return true;
+}
+
+// ---- Checks ----
+
+#test "the grid: 120 and 125 BPM at 44100 land on exact samples" {
+  g := Grid.{rate = 44100, bpm = 120, origin = 0};
+  #assert au_grid_sample(g, 0) == 0 && au_grid_sample(g, AU_PPQ) == 22050 && au_grid_sample(g, AU_BAR) == 88200;
+  #assert au_grid_sample(g, AU_SIXTEENTH) == 5512 && au_grid_sample(g, 2 * AU_SIXTEENTH) == 11025 && au_grid_sample(g, 3 * AU_SIXTEENTH) == 16537;
+  h := Grid.{rate = 44100, bpm = 125, origin = 6086};
+  #assert au_grid_sample(h, AU_PPQ) == 6086 + 21168 && au_grid_sample(h, AU_SIXTEENTH) == 6086 + 5292;
+  d: Grid;
+  #assert d.rate == 44100 && d.bpm == 120 && d.origin == 0;
+}
+
+#forall "a grid step's sample is the tick's own, so a thousand bars do not drift" k: 0..<512 {
+  g := Grid.{rate = 44100, bpm = 120, origin = 6086};
+  tick := k * 7 * AU_BAR + k * AU_SIXTEENTH;
+  #assert au_grid_sample(g, tick) == 6086 + (tick * 44100 * 60) / (120 * AU_PPQ);
+  // consecutive sixteenths are 5512 or 5513 samples apart, never anything else
+  gap := au_grid_sample(g, tick + AU_SIXTEENTH) - au_grid_sample(g, tick);
+  #assert gap == 5512 || gap == 5513;
+}
+
+#test "a time snaps to the first grid step at or after it" {
+  g := Grid.{rate = 44100, bpm = 120, origin = 6086};
+  #assert au_grid_tick_at(g, 0, AU_PPQ) == 0 && au_grid_tick_at(g, 6086, AU_PPQ) == 0 && au_grid_tick_at(g, 6087, AU_PPQ) == AU_PPQ;
+  #assert au_grid_tick_at(g, 6086 + 22050, AU_PPQ) == AU_PPQ && au_grid_tick_at(g, 6086 + 22051, AU_PPQ) == 2 * AU_PPQ;
+  #assert au_grid_tick_at(g, 6086 + 5513, AU_SIXTEENTH) == 2 * AU_SIXTEENTH && au_grid_tick_at(g, 6086 + 5512, AU_SIXTEENTH) == AU_SIXTEENTH;
+  #assert au_grid_tick_at(g, 6086 + 5511, AU_SIXTEENTH) == AU_SIXTEENTH && au_grid_tick_at(g, 6086 + 5513 + 1, AU_SIXTEENTH) == 2 * AU_SIXTEENTH;
+  #assert au_grid_tick_at(g, 6086 + 22051, 1) == 961 && au_grid_tick_at(g, 6086 + 22050, 1) == 960 && au_grid_tick_at(g, 6086 + 26460000, AU_PPQ) == 1200 * AU_PPQ;
+  #assert au_grid_tick_at(g, 6086 + 26460001, AU_PPQ) == 1201 * AU_PPQ && au_grid_tick_at(g, 6087, 1) == 1;
+  #assert au_grid_tick_at(g, 182486, AU_PPQ) == 8 * AU_PPQ && au_grid_tick_at(g, 999999, 0) == 0 && au_grid_tick_at(g, 999999, -AU_PPQ) == 0;
+  // 4.138 s, 7.138 s, 10.138 s and 14.138 s after a 0.138 s downbeat are beats 8, 14, 20 and 28
+  #assert au_grid_tick_at(g, 182486, AU_BAR) == 2 * AU_BAR && au_grid_tick_at(g, 623486, AU_BAR) == 7 * AU_BAR;
+}
+
+#forall "the snapped step is at or after the time, and the step before it is not" s: 0..<400 {
+  g := Grid.{rate = 44100, bpm = 125, origin = 300};
+  sample := s * 997;
+  t := au_grid_tick_at(g, sample, AU_SIXTEENTH);
+  #assert t % AU_SIXTEENTH == 0 && t >= 0;
+  #assert au_grid_sample(g, t) >= sample || sample <= g.origin;
+  #assert t == 0 || au_grid_sample(g, t - AU_SIXTEENTH) < sample;
+}
+
+#test "D minor's scale, and its i VI III VII voiced as the epic's chords" {
+  k := Key.{tonic = 50};
+  #assert au_scale_note(k, 0) == 50 && au_scale_note(k, 2) == 53 && au_scale_note(k, 5) == 58 && au_scale_note(k, 6) == 60 && au_scale_note(k, 7) == 62 && au_scale_note(k, 9) == 65;
+  #assert au_scale_note(k, -3) == 50 && au_scale_note(Key.{tonic = 60, minor = false}, 2) == 64 && au_scale_note(Key.{tonic = 60, minor = false}, 6) == 71;
+  #assert au_scale_note(Key.{tonic = 60, minor = false}, 7) == 72 && au_scale_note(Key.{tonic = 60, minor = false}, 8) == 74 && au_scale_note(k, 13) == 72;
+  #assert au_fold(50, 60) == 62 && au_fold(70, 60) == 70 && au_fold(72, 60) == 60 && au_fold(71, 60) == 71 && au_fold(59, 60) == 71;
+  dm := au_triad(k, 0, 60, 46); bb := au_triad(k, 5, 60, 46); f := au_triad(k, 2, 60, 46); c := au_triad(k, 6, 60, 46);
+  #assert dm.root == 50 && dm.tones[0] == 62 && dm.tones[1] == 65 && dm.tones[2] == 69;
+  #assert bb.root == 46 && bb.tones[0] == 62 && bb.tones[1] == 65 && bb.tones[2] == 70;
+  #assert f.root == 53 && f.tones[0] == 60 && f.tones[1] == 65 && f.tones[2] == 69;
+  #assert c.root == 48 && c.tones[0] == 60 && c.tones[1] == 64 && c.tones[2] == 67;
+  // A minor's i VI III VII (the first bed's Am F C G) from the same rule
+  a := Key.{tonic = 57};
+  am := au_triad(a, 0, 57, 41); ff := au_triad(a, 5, 52, 41);
+  #assert am.tones[0] == 57 && am.tones[1] == 60 && am.tones[2] == 64 && am.root == 45;
+  #assert ff.tones[0] == 53 && ff.tones[1] == 57 && ff.tones[2] == 60 && ff.root == 41;
+}
+
+#test "a pattern's steps fall on the grid, skip rests and stop at the end" {
+  g := Grid.{rate = 44100, bpm = 120, origin = 100};
+  p := Pattern.{step = AU_SIXTEENTH, length = 3};
+  p.values[0] = 0; p.values[1] = AU_REST; p.values[2] = 12;
+  out: [16] Step;
+  n := au_sequence(g, p, AU_PPQ, au_grid_sample(g, AU_PPQ + 6 * AU_SIXTEENTH), out[..]);
+  #assert n == 4;
+  #assert out[0].tick == AU_PPQ && out[0].at == 22150 && out[0].index == 0 && out[0].value == 0;
+  #assert out[1].tick == AU_PPQ + 2 * AU_SIXTEENTH && out[1].index == 2 && out[1].value == 12;
+  #assert out[2].index == 3 && out[2].value == 0 && out[3].index == 5 && out[3].value == 12 && out[3].at == au_grid_sample(g, AU_PPQ + 5 * AU_SIXTEENTH);
+  few: [2] Step;
+  #assert au_sequence(g, p, 0, 1000000, few[..]) == 2 && few[1].index == 2;
+  each := Pattern.{step = 1, length = 1};
+  #assert au_sequence(g, each, 0, 170, out[..]) == 4 && out[3].tick == 3 && out[3].at == 100 + 3 * 44100 * 60 / (120 * AU_PPQ);
+  bad := Pattern.{step = 0};
+  #assert au_sequence(g, bad, 0, 1000000, out[..]) == 0;
+  #assert au_sequence(g, Pattern.{length = 0}, 0, 1000000, out[..]) == 0 && au_sequence(g, Pattern.{length = 17}, 0, 1000000, out[..]) == 0;
+  #assert au_sequence(g, Pattern.{length = 16}, 0, 1000000, out[..]) == 16 && au_sequence(g, p, 0, 100, out[..]) == 0;
+}
+
+#forall "every sequenced step is exactly on its grid tick" k: 0..<64 {
+  g := Grid.{rate = 48000, bpm = 97 + k, origin = k * 31};
+  p := Pattern.{step = AU_SIXTEENTH, length = 1};
+  out: [64] Step;
+  n := au_sequence(g, p, 4 * AU_SIXTEENTH, 1000000, out[..]);
+  #assert n == 64;
+  for i: 0..<n {
+    #assert out[i].tick == (4 + i) * AU_SIXTEENTH && out[i].at == g.origin + out[i].tick * 48000 * 60 / (g.bpm * AU_PPQ);
+  }
+}
+
+#test "saws: one per note and detune, from seeded phases; shaping lowpasses the envelope" {
+  notes := [2] int.[69, 57]; det := [1] int.[1000];
+  out: [64] int;
+  z := au_saws(notes[..], det[..], 44100, 64, au_noise(3), out[..]);
+  a := au_noise_next(au_noise(3)); b := au_noise_next(a);
+  #assert z.state == b.state;
+  p := au_phase(a.state, au_note_inc(69, 44100)); q := au_phase(b.state, au_note_inc(57, 44100));
+  #assert out[0] == au_saw(p) + au_saw(q);
+  dirty: [64] int;
+  for i: 0..<64 { dirty[i] = 12345; }
+  w := au_saws(notes[..], det[..], 44100, 64, au_noise(3), dirty[..]);
+  #assert dirty[0] == out[0] && dirty[63] == out[63];
+  short: [4] int;
+  y := au_saws(notes[..], det[..], 44100, 64, au_noise(3), short[..]);
+  #assert y.state == z.state && short[3] == out[3];
+  one: [8] int;
+  for i: 0..<8 { one[i] = AU_ONE; }
+  au_shape(one[..], 8, au_adsr(2, 1, AU_ONE, 1), 6, AU_ONE);
+  #assert one[0] == 0 && one[1] == AU_HALF && one[2] == AU_ONE && one[6] == AU_ONE && one[7] == 0;
+  two: [4] int;
+  for i: 0..<4 { two[i] = AU_ONE; }
+  au_shape(two[..], 4, au_adsr(1, 1, AU_ONE, 1), 4, AU_HALF);
+  #assert two[0] == 0 && two[1] == AU_HALF && two[2] == 3 * AU_ONE / 4;
+  au_shape(two[..], 99, au_adsr(1, 1, AU_ONE, 1), 4, AU_HALF);
+}
+
+#test "put: panned, sent, clipped to the buses" {
+  l: [6] int; r: [6] int; sl: [6] int; sr: [6] int;
+  v := [3] int.[AU_ONE, -AU_ONE, AU_HALF];
+  au_put(v[..], 4, AU_HALF, -AU_PAN_WIDE, AU_HALF, l[..], r[..], sl[..], sr[..]);
+  #assert l[4] == AU_HALF && l[5] == -AU_HALF && r[4] == 0 && sl[4] == AU_HALF / 2 && sr[4] == 0 && l[3] == 0;
+  au_put(v[..], -2, AU_ONE, AU_PAN_WIDE, AU_ONE, l[..], r[..], sl[..], sr[..]);
+  #assert r[0] == AU_HALF && r[1] == 0 && sr[0] == AU_HALF && l[0] == 0;
+  au_put(v[..], 0, AU_ONE, 0, 0, l[..], r[..], sl[..], sr[..]);
+  #assert l[0] == r[0] - AU_HALF && l[0] > 46000 && sl[0] == 0 && sl[1] == 0;
+}
+
+#test "automation: linear between points, held outside them" {
+  pts := [3] Point.[Point.{at = 10, level = 0}, Point.{at = 20, level = AU_ONE}, Point.{at = 40, level = AU_HALF}];
+  #assert au_automation(pts[..], 0) == 0 && au_automation(pts[..], 10) == 0 && au_automation(pts[..], 15) == AU_HALF && au_automation(pts[..], 20) == AU_ONE;
+  #assert au_automation(pts[..], 30) == 3 * AU_ONE / 4 && au_automation(pts[..], 39) == 34407 && au_automation(pts[..], 40) == AU_HALF && au_automation(pts[..], 99) == AU_HALF;
+  #assert au_automation(pts[0..<0], 5) == AU_ONE && au_automation(pts[0..<1], 50) == 0;
+}
+
+#forall "automation never leaves the range of its points" i: 0..<80 {
+  pts := [4] Point.[Point.{at = 5, level = 6554}, Point.{at = 25, level = 49152}, Point.{at = 45, level = AU_ONE}, Point.{at = 60, level = 0}];
+  v := au_automation(pts[..], i);
+  #assert v >= 0 && v <= AU_ONE;
+  #assert i < 25 || i >= 60 || v >= au_automation(pts[..], i + 1) || i < 45;
+}
+
+#test "the master normalises to the peak, follows the automation and never clips" {
+  l := [4] int.[3 * AU_ONE, -6 * AU_ONE, AU_ONE, 0]; r := [4] int.[0, 2 * AU_ONE, -AU_ONE, 6 * AU_ONE];
+  pts := [1] Point.[Point.{at = 0, level = AU_ONE}];
+  pcm: [8] int;
+  #assert au_master(l[..], r[..], pts[..], 85197, pcm[..]) == 6 * AU_ONE;
+  top := au_saturate(AU_HEADROOM, 85197) * AU_PCM_TOP / AU_ONE;
+  #assert pcm[2] == -top && pcm[7] == top && top < AU_PCM_TOP && pcm[6] == 0 && pcm[1] == 0;
+  #assert pcm[0] == au_saturate(AU_HEADROOM / 2, 85197) * AU_PCM_TOP / AU_ONE;
+  half := [2] Point.[Point.{at = 0, level = 0}, Point.{at = 2, level = AU_ONE}];
+  #assert au_master(l[..], r[..], half[..], 85197, pcm[..]) == 6 * AU_ONE && pcm[0] == 0 && pcm[2] == -au_saturate(AU_HEADROOM / 2, 85197) * AU_PCM_TOP / AU_ONE;
+  first := [2] int.[-5 * AU_ONE, AU_ONE]; other := [2] int.[0, AU_ONE];
+  #assert au_master(first[..], other[..], pts[..], 85197, pcm[..]) == 5 * AU_ONE && pcm[0] == -top;
+  #assert au_master(other[..], first[..], pts[..], 85197, pcm[..]) == 5 * AU_ONE && pcm[1] == -top;
+  tiny := [2] int.[1, 0];
+  #assert au_master(tiny[..], tiny[..], pts[..], 85197, pcm[..]) == 1 && pcm[0] == top && pcm[1] == top && pcm[2] == 0;
+  quiet: [4] int;
+  #assert au_master(quiet[..], quiet[..], pts[..], 85197, pcm[..]) == 0 && pcm[3] == 0;
+  small: [4] int;
+  #assert au_master(l[..], r[..], pts[..], 85197, small[..]) == 6 * AU_ONE && small[2] == -top;   // only the frames that fit count
+}
+
+#forall "whatever the mix, the master stays inside 16 bits" k: 0..<64 {
+  l: [32] int; r: [32] int; pcm: [64] int;
+  z := au_noise(k + 1);
+  for i: 0..<32 { z = au_noise_next(z); l[i] = au_noise_value(z) * (k + 1); z = au_noise_next(z); r[i] = au_noise_value(z) * (64 - k); }
+  pts := [1] Point.[Point.{at = 0, level = AU_ONE}];
+  peak := au_master(l[..], r[..], pts[..], 85197, pcm[..]);
+  hit := false;
+  for i: 0..<64 {
+    #assert pcm[i] >= -AU_PCM_TOP && pcm[i] <= AU_PCM_TOP;
+    if au_abs(pcm[i]) == au_saturate(AU_HEADROOM, 85197) * AU_PCM_TOP / AU_ONE { hit = true; }
+  }
+  #assert peak > 0 && hit;
+  // the same signal on both sides comes out the same on both sides
+  same: [64] int;
+  #assert au_master(l[..], l[..], pts[..], 85197, same[..]) > 0;
+  for i: 0..<32 { #assert same[2 * i] == same[2 * i + 1]; }
+}
+
+#test "the reverb return adds each channel's tail, with its own spread" {
+  l: [1400] int; r: [1400] int; sl: [1400] int; sr: [1400] int; scratch: [1400] int;
+  sl[0] = AU_ONE; sr[0] = AU_ONE;
+  for i: 0..<1400 { l[i] = 7; r[i] = 7; }
+  #assert au_reverb_return(l[..], r[..], sl[..], sr[..], AU_HALF, 23, scratch[..]);
+  #assert l[1277] == 7 + AU_HALF && l[1276] == 7 && r[1299] == 7 && r[1300] == 7 + AU_HALF && l[0] == 7;
+  #assert !au_reverb_return(l[..], r[0..<9], sl[..], sr[..], AU_HALF, 23, scratch[..]) && !au_reverb_return(l[..], r[..], sl[0..<9], sr[..], AU_HALF, 23, scratch[..]);
+  #assert !au_reverb_return(l[..], r[..], sl[..], sr[0..<9], AU_HALF, 23, scratch[..]) && !au_reverb_return(l[..], r[..], sl[..], sr[..], AU_HALF, 23, scratch[0..<9]);
+  #assert !au_reverb_return(l[..], r[..], sl[..], sr[..], AU_HALF, 900, scratch[..]);
+}

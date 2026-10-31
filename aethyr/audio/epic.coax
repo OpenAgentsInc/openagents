@@ -1,0 +1,287 @@
+// The example scores (aethyr/book/ch067-scores-mixing-and-a-soundtrack.md): `promo-epic`,
+// the promo video's bed. 120 BPM in D minor over i VI III VII (Dm Bb F C); a detuned-saw
+// pad and drone, a vibrato choir, a 16th string ostinato, taiko, brass swells whose filter
+// opens with their envelope, a riser, a sub boom and a final hit; a Schroeder reverb send,
+// soft saturation and a gain curve that starts faint and peaks at the end. Its section
+// times are parameters; patterned parts enter on the first grid step at or after their
+// section, one-shots land on the exact sample. Ported from a throwaway Python sketch.
+//   coax/bin/coax test aethyr/audio/epic.coax --library
+#load "score.coax";
+#load "wav.coax";
+#load "../../coax/lib/quantity.coax" as units;
+
+// The score's parameters: times are seconds (typed), converted to samples once, here.
+Epic :: struct {
+  rate: int = 44100;
+  seed: int = 11;
+  bpm: int = 120;
+  length: units.Quantity(units.Second, f64);     // the whole bed
+  downbeat: units.Quantity(units.Second, f64);   // where beat 0 falls
+  hold: units.Quantity(units.Second, f64);       // the ostinato enters
+  belt: units.Quantity(units.Second, f64);       // taiko and choir
+  orbit: units.Quantity(units.Second, f64);      // brass, doubled drums
+  home: units.Quantity(units.Second, f64);       // the hit
+  riser: units.Quantity(units.Second, f64);      // how long the riser runs into the hit
+  fade: units.Quantity(units.Second, f64);       // the fade out at the end
+}
+au_seconds :: (s: f64) -> units.Quantity(units.Second, f64) { return units.Quantity.{value = s}; }
+// Seconds to whole samples, to the nearest (0 for none or a negative time).
+au_samples :: (t: units.Quantity(units.Second, f64), rate: int) -> int {
+  if !(t.value > 0.0) { return 0; }
+  return cast(int) floor(t.value * cast(f64) rate + 0.5);
+}
+// The promo video's cut: 17.64 s, beats from 0.138 s, sections at its scene changes.
+au_promo_epic :: () -> Epic {
+  return Epic.{length = au_seconds(17.64), downbeat = au_seconds(0.138), hold = au_seconds(4.138), belt = au_seconds(7.138),
+               orbit = au_seconds(10.138), home = au_seconds(14.138), riser = au_seconds(1.938), fade = au_seconds(1.0)};
+}
+
+// What a render did.
+Render :: struct { ok: bool; frames: int; peak: int; voices: int; }
+
+AU_EPIC_KEY :: 50;                                    // D minor
+AU_EPIC_DEGREES :: [4] int.[0, 5, 2, 6];              // i VI III VII: Dm Bb F C
+AU_OSTINATO :: [8] int.[0, 0, 12, 0, 0, 12, 0, 7];
+AU_DRIVE :: 85197;                                    // saturation drive 1.3
+
+au_ms :: (ms: int, rate: int) -> int { return ms * rate / 1000; }
+au_chord_of_bar :: (bar: int) -> Chord { return au_triad(Key.{tonic = AU_EPIC_KEY}, AU_EPIC_DEGREES[bar % 4], 60, 46); }
+
+// A taiko: a sine swept from 125 Hz down to 55 Hz (times size), decaying, with a noise
+// slap. size is in thousandths.
+au_taiko :: (rate: int, size: int, noise: Noise, out: [] int) -> Noise {
+  n := au_min(au_ms(1200, rate), out.count);
+  sweep := AU_Q30; body := AU_Q30; slap := AU_Q30;
+  ks := au_decay_rate(rate / 18); kb := au_decay_rate(rate * 2 / 9); kn := au_decay_rate(rate / 40);
+  p := 0; z := noise;
+  for i: 0..<n {
+    mhz := (55000 + 70000 * (sweep >> 10) / (AU_Q30 >> 10)) * size / 1000;
+    p = au_phase(p, au_inc_mhz(mhz, rate));
+    z = au_noise_next(z);
+    out[i] = au_sine(p) * (body >> 10) / (AU_Q30 >> 10) + au_noise_value(z) * (slap >> 10) / (AU_Q30 >> 10) / 2;
+    sweep = au_decay_step(sweep, ks); body = au_decay_step(body, kb); slap = au_decay_step(slap, kn);
+  }
+  for i: n..<out.count { out[i] = 0; }
+  return z;
+}
+
+au_render_epic :: (s: Epic, l: [] int, r: [] int, sl: [] int, sr: [] int, wet: [] int, voice: [] int, pcm: [] int) -> Render {
+  rate := s.rate;
+  n := au_samples(s.length, rate);
+  out := Render.{};
+  if rate < 1000 || n < 1 || l.count < n || r.count < n || sl.count < n || sr.count < n || wet.count < n || pcm.count < 2 * n || voice.count < au_ms(3500, rate) { return out; }
+  L := l[0..<n]; R := r[0..<n]; SL := sl[0..<n]; SR := sr[0..<n];
+  for i: 0..<n { L[i] = 0; R[i] = 0; SL[i] = 0; SR[i] = 0; }
+  g := Grid.{rate = rate, bpm = s.bpm, origin = au_samples(s.downbeat, rate)};
+  hold := au_samples(s.hold, rate); belt := au_samples(s.belt, rate); orbit := au_samples(s.orbit, rate); home := au_samples(s.home, rate);
+  z := au_noise(s.seed);
+  bar := au_grid_sample(g, AU_BAR) - g.origin;
+  three := [3] int.[995, 1000, 1005]; two := [2] int.[997, 1003]; one := [1] int.[1000];
+
+  // 1. pad and drone every bar, swelling; a choir an octave up from just before the belt
+  b := 0;
+  while au_grid_sample(g, b * AU_BAR) < n {
+    start := au_grid_sample(g, b * AU_BAR);
+    c := au_chord_of_bar(b);
+    notes := [4] int.[c.tones[0], c.tones[1], c.tones[2], c.root - 12];
+    e := au_adsr(au_ms(800, rate), au_ms(500, rate), 58982, au_ms(1200, rate));
+    m := au_adsr_length(e, bar);
+    z = au_saws(notes[..], three[..], rate, m, z, voice);
+    au_shape(voice, m, e, bar, 2294);
+    au_put(voice[0..<m], start, 7864, -300, 39322, L, R, SL, SR);
+    au_put(voice[0..<m], start + au_ms(13, rate), 7864, 300, 39322, L, R, SL, SR);
+    out.voices += 2;
+    if start >= belt - rate / 2 {
+      lfo_inc := au_inc_mhz(5200, rate);
+      for i: 0..<m { voice[i] = 0; }
+      for t: 0..<3 {
+        p := 0; lfo := 0; base := au_note_inc(c.tones[t] + 12, rate);
+        for i: 0..<m {
+          p = au_phase(p, au_gain(base, AU_ONE + 262 * au_sine(lfo) / AU_ONE));   // 0.4% vibrato at 5.2 Hz
+          lfo = au_phase(lfo, lfo_inc);
+          voice[i] += au_sine(p) + au_gain(au_sine((2 * p) & AU_MASK), 26214);
+        }
+      }
+      for i: 0..<m { voice[i] = au_gain(voice[i], au_adsr_level(e, bar, i)); }
+      au_put(voice[0..<m], start, 3277, 0, 58982, L, R, SL, SR);
+      out.voices += 1;
+    }
+    b += 1;
+  }
+
+// book:begin parts
+  // 2. the string ostinato in 16ths from the hold, accented on the beat, panned in turn
+  os := Pattern.{step = AU_SIXTEENTH, length = 8};
+  for k: 0..<8 { os.values[k] = AU_OSTINATO[k]; }
+  steps: [512] Step;
+  ns := au_sequence(g, os, au_grid_tick_at(g, hold, AU_SIXTEENTH), n, steps[..]);
+  sixteenth := au_grid_sample(g, AU_SIXTEENTH) - g.origin;
+  for k: 0..<ns {
+    st := steps[k];
+    c := au_chord_of_bar(st.tick / AU_BAR);
+    note := [1] int.[c.root - 12 + st.value];
+    held := sixteenth * 85 / 100;
+    e := au_adsr(au_ms(4, rate), au_ms(50, rate), AU_HALF, au_ms(30, rate));
+    m := au_adsr_length(e, held);
+    z = au_saws(note[..], two[..], rate, m, z, voice);
+    au_shape(voice, m, e, held, 5898);
+    acc := ifx st.index % 4 == 0 then AU_ONE else 45875;
+    au_put(voice[0..<m], st.at, au_gain(14418, acc), ifx st.index % 2 == 1 then -400 else 400, 16384, L, R, SL, SR);
+    out.voices += 1;
+  }
+
+  // 3. taiko on beats 1 and 3 from the belt, and 4 too from the orbit, with a high drum
+  //    on the off-beat after 2 and 4
+  beat := Pattern.{step = AU_PPQ, length = 1};
+  hits: [256] Step;
+  nt := au_sequence(g, beat, au_grid_tick_at(g, belt, AU_PPQ), n - rate, hits[..]);
+  for k: 0..<nt {
+    st := hits[k]; q := st.index % 4;
+    if q == 0 || q == 2 || (st.at >= orbit && q == 3) {
+      z = au_taiko(rate, 1000, z, voice);
+      au_put(voice[0..<au_ms(1200, rate)], st.at, 49152, 0, AU_HALF, L, R, SL, SR);
+      out.voices += 1;
+    }
+    if st.at >= orbit && st.index % 2 == 1 {
+      z = au_taiko(rate, 1600, z, voice);
+      au_put(voice[0..<au_ms(1200, rate)], au_grid_sample(g, st.tick + AU_EIGHTH), 22938, 500, AU_HALF, L, R, SL, SR);
+      out.voices += 1;
+    }
+  }
+// book:end parts
+
+  // 4. brass swells each bar from the orbit; the filter opens as the envelope rises
+  b = au_grid_tick_at(g, orbit, AU_BAR) / AU_BAR;
+  while au_grid_sample(g, b * AU_BAR) < n {
+    start := au_grid_sample(g, b * AU_BAR);
+    c := au_chord_of_bar(b);
+    notes := [4] int.[c.tones[0] - 12, c.tones[1] - 12, c.tones[2] - 12, c.root - 12];
+    held := bar * 9 / 10;
+    e := au_adsr(au_ms(80, rate), au_ms(400, rate), 45875, au_ms(500, rate));
+    m := au_adsr_length(e, held);
+    z = au_saws(notes[..], three[..], rate, m, z, voice);
+    y := 0;
+    for i: 0..<m {
+      env := au_adsr_level(e, held, i);
+      y = au_pole(y, au_gain(voice[i], env), 1311 + au_gain(7864, env));
+      voice[i] = y;
+    }
+    au_put(voice[0..<m], start, 14418, -150, 29491, L, R, SL, SR);
+    au_put(voice[0..<m], start + au_ms(9, rate), 14418, 150, 29491, L, R, SL, SR);
+    out.voices += 2;
+    b += 1;
+  }
+
+  // 5. a noise riser into the hit, then a sub boom, a taiko and the chord, all at once
+  rs := au_max(0, home - au_samples(s.riser, rate));
+  m := au_min(home - rs, voice.count);
+  y := 0;
+  for i: 0..<m {
+    p := i * AU_ONE / m; p2 := au_gain(p, p);
+    z = au_noise_next(z);
+    y = au_pole(y, au_noise_value(z), 655 + au_gain(39322, p2));
+    voice[i] = au_gain(y, p2);
+  }
+  au_put(voice[0..<m], rs, 45875, 0, 39322, L, R, SL, SR);
+  sweep := AU_Q30; body := AU_Q30; ks := au_decay_rate(rate / 3); kb := au_decay_rate(rate * 10 / 9);
+  m = au_ms(3500, rate); ph := 0;
+  for i: 0..<m {
+    ph = au_phase(ph, au_inc_mhz(30000 + 40000 * (sweep >> 10) / (AU_Q30 >> 10), rate));
+    voice[i] = au_sine(ph) * (body >> 10) / (AU_Q30 >> 10);
+    sweep = au_decay_step(sweep, ks); body = au_decay_step(body, kb);
+  }
+  au_put(voice[0..<m], home, AU_ONE, 0, 19661, L, R, SL, SR);
+  z = au_taiko(rate, 1000, z, voice);
+  au_put(voice[0..<au_ms(1200, rate)], home, AU_ONE, 0, 52429, L, R, SL, SR);
+  c := au_chord_of_bar(0);
+  hit := [7] int.[c.tones[0], c.tones[1], c.tones[2], c.tones[0] - 12, c.tones[1] - 12, c.tones[2] - 12, c.root - 24];
+  e := au_adsr(au_ms(10, rate), au_ms(600, rate), 39322, au_ms(500, rate));
+  held := au_ms(3000, rate);
+  m = au_adsr_length(e, held);
+  z = au_saws(hit[..], three[..], rate, m, z, voice);
+  au_shape(voice, m, e, held, 9830);
+  au_put(voice[0..<m], home, 13107, 0, 52429, L, R, SL, SR);
+  out.voices += 4;
+
+  // reverb returns, then the master over the gain curve
+  if !au_reverb_return(L, R, SL, SR, 11796, 23, wet[0..<n]) { return out; }
+  fade := au_max(1, au_samples(s.fade, rate));
+  curve := [7] Point.[Point.{at = 0, level = 10486}, Point.{at = hold, level = 22938}, Point.{at = belt, level = 36045},
+                      Point.{at = orbit, level = 49152}, Point.{at = home, level = AU_ONE}, Point.{at = n - fade, level = AU_ONE}, Point.{at = n, level = 0}];
+  out.peak = au_master(L, R, curve[..], AU_DRIVE, pcm[0..<2 * n]);
+  out.frames = n; out.ok = true;
+  return out;
+}
+
+// A short cut with each section `unit` seconds after the last (a whole number of beats):
+// what the checks and the book's example render.
+au_epic_cut :: (rate: int, unit: f64) -> Epic {
+  s := au_promo_epic();
+  s.rate = rate; s.length = au_seconds(6.0 * unit); s.downbeat = au_seconds(0.0);
+  s.hold = au_seconds(unit); s.belt = au_seconds(2.0 * unit); s.orbit = au_seconds(3.0 * unit); s.home = au_seconds(4.0 * unit);
+  s.riser = au_seconds(unit); s.fade = au_seconds(unit);
+  return s;
+}
+
+// ---- Checks ----
+
+#test "seconds become whole samples once, to the nearest" {
+  #assert au_samples(au_seconds(1.0), 44100) == 44100 && au_samples(au_seconds(0.138), 44100) == 6086 && au_samples(au_seconds(17.64), 44100) == 777924;
+  #assert au_samples(au_seconds(0.0), 44100) == 0 && au_samples(au_seconds(-2.0), 44100) == 0 && au_samples(au_seconds(0.5 / 44100.0), 44100) == 1;
+  #assert au_samples(au_seconds(0.4 / 44100.0), 44100) == 0 && au_ms(1200, 44100) == 52920;
+  s := au_promo_epic();
+  #assert s.rate == 44100 && s.seed == 11 && s.bpm == 120 && s.length.value == 17.64 && s.home.value == 14.138 && s.riser.value == 1.938 && s.fade.value == 1.0;
+}
+
+#test "the promo's sections fall on its beat grid: beats 8, 14, 20 and 28" {
+  s := au_promo_epic();
+  g := Grid.{rate = 44100, bpm = 120, origin = au_samples(s.downbeat, 44100)};
+  #assert au_grid_tick_at(g, au_samples(s.hold, 44100), AU_SIXTEENTH) == 8 * AU_PPQ && au_grid_sample(g, 8 * AU_PPQ) == au_samples(s.hold, 44100);
+  #assert au_grid_tick_at(g, au_samples(s.belt, 44100), AU_PPQ) == 14 * AU_PPQ && au_grid_sample(g, 14 * AU_PPQ) == au_samples(s.belt, 44100);
+  #assert au_grid_tick_at(g, au_samples(s.orbit, 44100), AU_BAR) == 5 * AU_BAR && au_grid_sample(g, 5 * AU_BAR) == au_samples(s.orbit, 44100);
+  #assert au_grid_sample(g, 7 * AU_BAR) == au_samples(s.home, 44100);
+  dm := au_chord_of_bar(0); bb := au_chord_of_bar(1); f := au_chord_of_bar(6); c := au_chord_of_bar(3);
+  #assert dm.root == 50 && dm.tones[2] == 69 && bb.root == 46 && bb.tones[2] == 70 && f.root == 53 && f.tones[0] == 60 && c.root == 48 && c.tones[1] == 64;
+}
+
+#test "a taiko starts at its pitch and fades to its tail" {
+  out: [5000] int;
+  for i: 0..<5000 { out[i] = 9; }
+  z := au_taiko(4000, 1000, au_noise(1), out[..]);
+  #assert z.state != 1 && out[4800] == 0 && out[4999] == 0 && out[4799] != 0;
+  big := 0; late := 0;
+  for i: 0..<400 { big = au_max(big, au_abs(out[i])); }
+  for i: 4000..<4400 { late = au_max(late, au_abs(out[i])); }
+  #assert big > AU_HALF && late < big / 20;
+  small: [10] int;
+  z = au_taiko(4000, 1000, au_noise(1), small[..]);
+}
+
+#test "the render refuses buffers it does not fit in" {
+  s := au_epic_cut(4000, 1.0);
+  a: [24000] int; v: [14000] int; pcm: [48000] int; tiny: [10] int;
+  #assert !au_render_epic(s, a[0..<23999], a[..], a[..], a[..], a[..], v[..], pcm[..]).ok;
+  #assert !au_render_epic(s, a[..], a[..], a[..], a[..], a[..], v[..], pcm[0..<47999]).ok;
+  #assert !au_render_epic(s, a[..], a[..], a[..], a[..], a[..], tiny[..], pcm[..]).ok;
+  #assert !au_render_epic(s, a[..], tiny[..], a[..], a[..], a[..], v[..], pcm[..]).ok && !au_render_epic(s, a[..], a[..], tiny[..], a[..], a[..], v[..], pcm[..]).ok;
+  #assert !au_render_epic(s, a[..], a[..], a[..], tiny[..], a[..], v[..], pcm[..]).ok && !au_render_epic(s, a[..], a[..], a[..], a[..], tiny[..], v[..], pcm[..]).ok;
+  s.rate = 999;
+  #assert !au_render_epic(s, a[..], a[..], a[..], a[..], a[..], v[..], pcm[..]).ok;
+  t := au_epic_cut(4000, 1.0); t.length = au_seconds(0.0);
+  #assert !au_render_epic(t, a[..], a[..], a[..], a[..], a[..], v[..], pcm[..]).ok;
+}
+
+#test "the cut renders inside 16 bits, on its recorded hash" {
+  // A three-second cut at 1 kHz keeps the check inside its step budget; examples/promo-epic.coax
+  // renders the same cut natively (debug and release) and prints the same hash.
+  s := au_epic_cut(1000, 0.5);
+  l: [3000] int; r: [3000] int; sl: [3000] int; sr: [3000] int; wet: [3000] int; v: [3500] int; pcm: [6000] int;
+  a := au_render_epic(s, l[..], r[..], sl[..], sr[..], wet[..], v[..], pcm[..]);
+  #assert a.ok && a.frames == 3000 && a.voices == 33 && a.peak == 102646;
+  top := 0;
+  for x: pcm { top = au_max(top, au_abs(x)); }
+  #assert top <= AU_PCM_TOP && top == au_saturate(AU_HEADROOM, AU_DRIVE) * AU_PCM_TOP / AU_ONE;
+  #assert pcm[0] == 0 && pcm[1] == 0;   // nothing has sounded at the first sample
+  #assert au_abs(pcm[5998]) <= AU_PCM_TOP / 400 && au_abs(pcm[5999]) <= AU_PCM_TOP / 400;   // the fade's last step
+  #assert wav_hash(pcm[..]) == 17619107288867054281;
+}

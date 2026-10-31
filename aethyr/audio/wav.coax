@@ -1,0 +1,74 @@
+// 16-bit PCM WAV bytes and a stable hash of rendered samples (aethyr/book/ch067).
+// pcm holds interleaved 16-bit steps as ints; the writer refuses any outside 16 bits.
+//   coax/bin/coax test aethyr/audio/wav.coax --library
+
+WAV_HEADER :: 44;
+
+wav_u16 :: (out: [] u8, at: int, v: int) { out[at] = cast,trunc(u8) (v & 255); out[at + 1] = cast,trunc(u8) ((v >> 8) & 255); }
+wav_u32 :: (out: [] u8, at: int, v: int) { wav_u16(out, at, v & 65535); wav_u16(out, at + 2, (v >> 16) & 65535); }
+
+// The bytes of a WAV file of `pcm` (interleaved, `channels` a frame) at `rate`, into out:
+// how many, or -1 when out is too small, the shape is wrong or a sample is not 16-bit.
+// book:begin wav
+wav_write :: (pcm: [] int, channels: int, rate: int, out: [] u8) -> int {
+  if channels < 1 || rate < 1 || pcm.count % channels != 0 { return -1; }
+  data := pcm.count * 2;
+  if out.count < WAV_HEADER + data { return -1; }
+  for v: pcm { if v < -32768 || v > 32767 { return -1; } }
+  tag := "RIFF....WAVEfmt ....";
+  for i: 0..<20 { out[i] = tag[i]; }
+  wav_u32(out, 4, 36 + data);
+  wav_u32(out, 16, 16); wav_u16(out, 20, 1); wav_u16(out, 22, channels);
+  wav_u32(out, 24, rate); wav_u32(out, 28, rate * channels * 2);
+  wav_u16(out, 32, channels * 2); wav_u16(out, 34, 16);
+  name := "data";
+  for i: 0..<4 { out[36 + i] = name[i]; }
+  wav_u32(out, 40, data);
+  for i: 0..<pcm.count { wav_u16(out, WAV_HEADER + 2 * i, pcm[i] & 65535); }
+  return WAV_HEADER + data;
+}
+// book:end wav
+
+// FNV-1a (64-bit) over the samples' little-endian 16-bit bytes: the same samples, the
+// same hash, on any build or target.
+wav_hash :: (pcm: [] int) -> u64 {
+  h: u64 = 14695981039346656037;
+  for v: pcm {
+    w := v & 65535;
+    h = mul_wrap(h ^ cast(u64) (w & 255), cast(u64) 1099511628211);
+    h = mul_wrap(h ^ cast(u64) (w >> 8), cast(u64) 1099511628211);
+  }
+  return h;
+}
+
+// ---- Checks ----
+
+#test "a WAV header, then the samples little-endian" {
+  pcm := [4] int.[0x1234, -1, 32767, -32768];
+  out: [52] u8;
+  #assert wav_write(pcm[..], 2, 44100, out[..]) == 52;
+  #assert out[0] == 'R' && out[3] == 'F' && out[8] == 'W' && out[12] == 'f' && out[15] == ' ' && out[36] == 'd' && out[39] == 'a';
+  #assert out[4] == 44 && out[5] == 0 && out[16] == 16 && out[20] == 1 && out[22] == 2 && out[24] == 68 && out[25] == 172 && out[26] == 0;
+  #assert out[28] == 16 && out[29] == 177 && out[30] == 2 && out[32] == 4 && out[34] == 16 && out[40] == 8 && out[41] == 0;
+  #assert out[44] == 0x34 && out[45] == 0x12 && out[46] == 255 && out[47] == 255 && out[48] == 255 && out[49] == 127 && out[50] == 0 && out[51] == 128;
+  #assert wav_write(pcm[..], 2, 44100, out[0..<51]) == -1 && wav_write(pcm[..], 3, 44100, out[..]) == -1;
+  #assert wav_write(pcm[..], 0, 44100, out[..]) == -1 && wav_write(pcm[..], 2, 0, out[..]) == -1;
+  loud := [2] int.[32768, 0]; low := [2] int.[0, -32769];
+  #assert wav_write(loud[..], 2, 8000, out[..]) == -1 && wav_write(low[..], 2, 8000, out[..]) == -1;
+  big: [4] u8;
+  wav_u32(big[..], 0, 16909060);
+  #assert big[0] == 4 && big[1] == 3 && big[2] == 2 && big[3] == 1;
+  mono := [3] int.[1, 2, 3];
+  #assert wav_write(mono[..], 1, 8000, out[..]) == 50 && out[22] == 1 && out[28] == 0x80 && out[29] == 0x3e && out[32] == 2;
+  #assert wav_write(mono[..], 1, 1, out[..]) == 50 && out[24] == 1 && out[25] == 0;
+}
+
+#test "the hash is FNV-1a over the bytes, and any changed sample changes it" {
+  one := [1] int.[0x6261];      // the bytes "ab"
+  #assert wav_hash(one[0..<0]) == 14695981039346656037;
+  #assert wav_hash(one[..]) == 0x089c4407b545986a;
+  a := [3] int.[1, -2, 300]; b := [3] int.[1, -2, 301]; c := [3] int.[-2, 1, 300];
+  #assert wav_hash(a[..]) != wav_hash(b[..]) && wav_hash(a[..]) != wav_hash(c[..]) && wav_hash(a[..]) == wav_hash(a[..]);
+  neg := [1] int.[-1]; top := [1] int.[65535];
+  #assert wav_hash(neg[..]) == wav_hash(top[..]);
+}
