@@ -150,7 +150,7 @@
         "golden": { "lit": 0.05, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realms/dead-gears/assets/DeadGears.indices"]
       } },
-    { "id": "belt2200", "name": "BELT 2200", "kind": "open", "orbit": { "r": 0.44, "a": 1.4, "size": 0.032 },
+    { "id": "belt2200", "name": "BELT 2200", "kind": "open", "orbit": { "r": 0.44, "a": 5.2, "size": 0.032 },
       "realm": {
         "slug": "belt-2200",
         "added": "2026-10-30T16:57", "line": "Hard sci-fi strategy on the real orbits of 2200",
@@ -309,7 +309,7 @@
         "golden": { "lit": 0.015, "settle": 3000, "blocks": 6 },
         "assets": ["index:/realms/hecates-cemetery/assets/Villa.indices", "particles:/particles.wgsl"]
       } },
-    { "id": "stair", "name": "HOLD THE STAIR", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 1.2, "size": 0.026 },
+    { "id": "stair", "name": "HOLD THE STAIR", "kind": "open", "listed": true, "orbit": { "r": 0.22, "a": 2.3, "size": 0.026 },
       "realm": {
         "slug": "hold-the-stair",
         "added": "2026-10-30T16:54", "line": "Tower defense on the SRD 5e rules",
