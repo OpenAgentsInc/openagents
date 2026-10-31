@@ -21,10 +21,14 @@ MAX_VERTICES :: 36000;
 PLATES :: 24;
 COLS :: 14; ROWS :: 9; CELLS :: 126;
 // The uniforms: size, time, fade; the map (origin x, y, tile, squash); info (screen cols, rows,
-// portrait, hover cell); info2 (hurt, selected cell, plates, 0); the cells (a kind each, 128); the plates.
-U_MAP :: 4; U_INFO :: 8; U_INFO2 :: 12; U_CELLS :: 16; U_PLATE :: 144;
+// portrait, hover cell); info2 (hurt, selected cell, plates, 0); the cells (a kind each, 128: the
+// stair's progress as its fraction, 10 + class where a defender stands); the units (a defender's
+// facing × 1 + its attack flash; 3 for the ghost of one about to go down); the plates.
+U_MAP :: 4; U_INFO :: 8; U_INFO2 :: 12; U_CELLS :: 16; U_UNIT :: 144; U_PLATE :: 272;
 UNIFORM_FLOATS :: U_PLATE + PLATES * 8;
 SQUASH :: 0.86;          // the slight tilt: a tile is drawn this much shorter than wide
+WALL_ROWS :: 0.55;       // the back wall above the map, and the stone rim round the rest (stair.wgsl's WALL, RIM)
+RIM_TILES :: 0.16;
 
 CELL_FLOOR :: 0; CELL_PATH :: 1; CELL_DEFENDER :: 2; CELL_DOOR :: 3; CELL_TOP :: 4;
 
@@ -40,12 +44,12 @@ LAYER_AC :: [4] int.[10, 11, 13, 12];
 LAYER_HP :: [4] int.[2, 4, 5, 7];
 LAYER_DEX :: [4] int.[0, 1, 3, 1];          // Dexterity save
 LAYER_SPEED :: [4] f32.[1.0, 1.25, 1.9, 1.45]; // tiles a second
-LAYER_SIZE :: [4] f32.[0.17, 0.21, 0.23, 0.27];
+LAYER_SIZE :: [4] f32.[0.19, 0.24, 0.26, 0.3];
 LAYER_GOLD :: [4] int.[2, 2, 3, 3];        // gold for popping it
 LAYER_LIVES :: [4] int.[1, 3, 7, 11];        // what it takes from the tower at the top (itself and all inside)
 LAYER_R :: [4] f32.[0.55, 0.35, 1.0, 1.0];
-LAYER_G :: [4] f32.[0.8, 1.0, 0.82, 0.32];
-LAYER_B :: [4] f32.[1.0, 0.45, 0.25, 0.18];
+LAYER_G :: [4] f32.[0.8, 1.0, 0.86, 0.2];
+LAYER_B :: [4] f32.[1.0, 0.45, 0.25, 0.22];
 // What each pops into: up to two inner layers (-1 none).
 INNER_A :: [4] int.[-1, MOTE, WISP, GLIMMER];
 INNER_B :: [4] int.[-1, MOTE, WISP, WISP];
@@ -97,7 +101,7 @@ STEP :: 0.0166666667;
 BUILD :: 0; FIGHT :: 1; WON :: 2; LOST :: 3;
 
 // Fx kinds
-FX_NUM :: 1; FX_MISS :: 2; FX_IMMUNE :: 3; FX_BOLT :: 4; FX_SLASH :: 5; FX_POP :: 6; FX_FLAME :: 7; FX_DART :: 8; FX_SAVED :: 9;
+FX_NUM :: 1; FX_MISS :: 2; FX_IMMUNE :: 3; FX_BOLT :: 4; FX_SLASH :: 5; FX_POP :: 6; FX_FLAME :: 7; FX_DART :: 8; FX_SAVED :: 9; FX_CRIT :: 10;
 
 // Buttons
 B_START :: 0; B_FAST :: 1; B_GALAXY :: 2; B_FIGHTER :: 3; B_WIZARD :: 4; B_CLERIC :: 5; B_SELL :: 6; B_CLOSE :: 7; B_AGAIN :: 8; B_PAUSE :: 9; BUTTONS :: 10;
@@ -131,6 +135,7 @@ Stair :: struct {
   portrait: bool; ox: f32; oy: f32; tile: f32; scols: int; srows: int;
   path_len: f32;
   cells: [CELLS] int;
+  prog: [CELLS] f32;        // how far up the stair a stair cell is (tiles)
   phase: int; wave: int; lives: int; gold: int; speed: int;
   spawned: [GROUPS] int; spawn_t: [GROUPS] f32; wave_t: f32;
   beasts: [BEASTS] Beast;
@@ -196,6 +201,11 @@ query_number :: (url: string, key: string) -> f32 {
 
 lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
         red: f32, green: f32, blue: f32, mode: f32) -> bool {
+  return lit_bar(out, at, ax, ay, bx, by, core, light, glow, red, green, blue, mode, 0, 0, 0, 0);
+}
+// A stroke with stair.wgsl's mode and its four more numbers (bar).
+lit_bar :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, light: f32, glow: f32,
+        red: f32, green: f32, blue: f32, mode: f32, b0: f32, b1: f32, b2: f32, b3: f32) -> bool {
   if at < 0 || (at + 6) * VERTEX_FLOATS > out.count { return false; }
   dx := bx - ax; dy := by - ay;
   size := sqrt(dx * dx + dy * dy);
@@ -212,7 +222,7 @@ lit :: (out: [] f32, at: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, lig
     out[o + 2] = a[v]; out[o + 3] = c[v];
     out[o + 4] = size; out[o + 5] = core; out[o + 6] = light; out[o + 7] = glow;
     out[o + 8] = red; out[o + 9] = green; out[o + 10] = blue; out[o + 11] = mode;
-    out[o + 12] = 0; out[o + 13] = 0; out[o + 14] = 0; out[o + 15] = 0;
+    out[o + 12] = b0; out[o + 13] = b1; out[o + 14] = b2; out[o + 15] = b3;
   }
   return true;
 }
@@ -223,13 +233,23 @@ seg :: (out: [] f32, n: int, ax: f32, ay: f32, bx: f32, by: f32, core: f32, ligh
 disc :: (out: [] f32, n: int, x: f32, y: f32, rad: f32, light: f32, glow: f32, r: f32, g: f32, b: f32) -> int {
   return seg(out, n, x - 0.01, y, x + 0.01, y, rad, light, glow, r, g, b);
 }
+// A ring on the floor (squashed by the tilt), one quad: stair.wgsl's mode 1.
 ring :: (out: [] f32, n: int, x: f32, y: f32, rad: f32, width: f32, light: f32, r: f32, g: f32, b: f32, sides: int) -> int {
-  m := n;
-  for i: 0..<sides {
-    a0 := f32(i) / f32(sides) * 6.2831853; a1 := f32(i + 1) / f32(sides) * 6.2831853;
-    m = seg(out, m, x + cos(a0) * rad, y + sin(a0) * rad * SQUASH, x + cos(a1) * rad, y + sin(a1) * rad * SQUASH, width, light, width * 2, r, g, b);
-  }
-  return m;
+  return ring_sq(out, n, x, y, rad, width, light, r, g, b, f32(SQUASH));
+}
+ring_sq :: (out: [] f32, n: int, x: f32, y: f32, rad: f32, width: f32, light: f32, r: f32, g: f32, b: f32, squash: f32) -> int {
+  if lit_bar(out, n, x - 0.01, y, x + 0.01, y, rad, light, width * 2 + 1, r, g, b, 1, width * 0.5, squash, 0, 0) { return n + 6; }
+  return n;
+}
+// A glossy bubble (mode 2) with the layer inside showing (inner: its radius as a share, 0 none).
+bubble :: (out: [] f32, n: int, x: f32, y: f32, rad: f32, light: f32, r: f32, g: f32, b: f32, inner: f32, ir: f32, ig: f32, ib: f32) -> int {
+  if lit_bar(out, n, x - 0.01, y, x + 0.01, y, rad, light, rad * 0.7, r, g, b, 2, inner, ir, ig, ib) { return n + 6; }
+  return n;
+}
+// A soft light (mode 3).
+glow_disc :: (out: [] f32, n: int, x: f32, y: f32, rad: f32, light: f32, r: f32, g: f32, b: f32) -> int {
+  if lit_bar(out, n, x - 0.01, y, x + 0.01, y, rad, light, 1, r, g, b, 3, 0, 0, 0, 0) { return n + 6; }
+  return n;
 }
 ink :: (k: f32, light: f32, red: f32, green: f32, blue: f32) -> Ink {
   i: Ink;
@@ -270,13 +290,15 @@ path_at :: (d: f32) -> P2 {
   return P2.{x = 13.5, y = 1.5};
 }
 lay_cells :: (s: [] Stair) {
-  for i: 0..<CELLS { s[0].cells[i] = CELL_FLOOR; }
+  for i: 0..<CELLS { s[0].cells[i] = CELL_FLOOR; s[0].prog[i] = 0; }
+  d := 0.5f32;
   for i: 1..<WAYPOINTS {
     c := WAY_C[i - 1]; r := WAY_R[i - 1];
     while true {
-      s[0].cells[cell_of(c, r)] = CELL_PATH;
+      s[0].cells[cell_of(c, r)] = CELL_PATH; s[0].prog[cell_of(c, r)] = d;
       if c == WAY_C[i] && r == WAY_R[i] { break; }
       if c < WAY_C[i] { c += 1; } else if c > WAY_C[i] { c -= 1; } else if r < WAY_R[i] { r += 1; } else { r -= 1; }
+      d += 1;
     }
   }
   s[0].cells[cell_of(WAY_C[0], WAY_R[0])] = CELL_DOOR;
@@ -339,7 +361,7 @@ live_beasts :: (s: [] Stair) -> int { n := 0; for i: 0..<BEASTS { if s[0].beasts
 hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int) {
   b := s[0].beasts[i];
   p := beast_xy(s, i);
-  if b.kind == EMBER && kind == DMG_FIRE { add_fx(s, FX_IMMUNE, p.x, p.y, 0, 0, 0.9, 0, 1, 0.6, 0.3, false); return; }
+  if b.kind == EMBER && kind == DMG_FIRE { add_fx(s, FX_IMMUNE, p.x, p.y, 0, 0, 0.9, 0, 1, 0.45, 0.45, false); return; }
   dealt := amount;
   if b.kind == WISP && kind == DMG_COLD { dealt = amount / 2; }
   if by >= 0 { s[0].party[by].dealt = dealt; }
@@ -350,7 +372,7 @@ hurt_beast :: (s: [] Stair, i: int, amount: int, kind: int, crit: bool, by: int)
   s[0].beasts[i].live = false;
   s[0].gold += LAYER_GOLD[b.kind]; s[0].pops += 1;
   if by >= 0 { s[0].party[by].pops += 1; }
-  add_fx(s, FX_POP, p.x, p.y, 0, 0, 0.45, 0, LAYER_R[b.kind], LAYER_G[b.kind], LAYER_B[b.kind], b.kind >= GLIMMER);
+  add_fx(s, FX_POP, p.x, p.y, 0, 0, 0.6, 0, LAYER_R[b.kind], LAYER_G[b.kind], LAYER_B[b.kind], b.kind >= GLIMMER);
   if INNER_A[b.kind] >= 0 { j := spawn(s, INNER_A[b.kind], b.d + 0.12); }
   if INNER_B[b.kind] >= 0 { j := spawn(s, INNER_B[b.kind], hi(b.d - 0.12, 0)); }
 }
@@ -379,7 +401,8 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     b := s[0].beasts[t]; p := beast_xy(s, t);
     a := srd_attack(dice, STAIR_FIGHTER, LAYER_AC[b.kind]);
     record(s, k, a.roll, a.total, LAYER_AC[b.kind], a.hit, a.crit, 0, p);
-    add_fx(s, FX_SLASH, c.x, c.y, p.x, p.y, 0.22, 0, 0.9, 0.92, 1.0, a.crit);
+    add_fx(s, FX_SLASH, c.x, c.y, p.x, p.y, 0.26, 0, 0.9, 0.92, 1.0, a.crit);
+    if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, 20, 1, 0.86, 0.4, true); }
     if a.hit { hurt_beast(s, t, a.damage, STAIR_FIGHTER.kind, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
     return true;
   }
@@ -396,7 +419,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
         for dart: 0..<3 {
           if !s[0].beasts[t].live { t = first_in_range(s, d.cell, CLASS_RANGE[WIZARD], -1); if t < 0 { break; } }
           q := beast_xy(s, t);
-          add_fx(s, FX_DART, c.x, c.y, q.x, q.y, 0.3, 0, 0.75, 0.6, 1.0, false);
+          add_fx(s, FX_DART, c.x, c.y, q.x, q.y, 0.45, 0, 0.75, 0.6, 1.0, false);
           dmg := srd_roll(dice, 4) + 1; total += dmg;
           hurt_beast(s, t, dmg, DMG_FORCE, false, k);
         }
@@ -409,7 +432,8 @@ take_turn :: (s: [] Stair, k: int) -> bool {
     b := s[0].beasts[t]; p := beast_xy(s, t);
     a := srd_attack(dice, STAIR_FIRE_BOLT, LAYER_AC[b.kind]);
     record(s, k, a.roll, a.total, LAYER_AC[b.kind], a.hit, a.crit, 0, p);
-    add_fx(s, FX_BOLT, c.x, c.y, p.x, p.y, 0.25, 0, 1.0, 0.5, 0.15, a.crit);
+    add_fx(s, FX_BOLT, c.x, c.y, p.x, p.y, 0.4, 0, 1.0, 0.3, 0.15, a.crit);
+    if a.crit { add_fx(s, FX_CRIT, p.x, p.y, 0, 0, 1.1, 20, 1, 0.86, 0.4, true); }
     if a.hit { hurt_beast(s, t, a.damage, DMG_FIRE, a.crit, k); } else { add_fx(s, FX_MISS, p.x, p.y, 0, 0, 0.7, a.roll, 0.8, 0.8, 0.85, false); }
     return true;
   }
@@ -419,7 +443,7 @@ take_turn :: (s: [] Stair, k: int) -> bool {
   b := s[0].beasts[t]; p := beast_xy(s, t);
   sv := srd_save(dice, LAYER_DEX[b.kind], SACRED_DC);
   record(s, k, sv.roll, sv.total, SACRED_DC, !sv.success, false, 1, p);
-  add_fx(s, FX_FLAME, p.x, p.y, c.x, c.y, 0.45, 0, 1.0, 0.92, 0.55, false);
+  add_fx(s, FX_FLAME, p.x, p.y, c.x, c.y, 0.55, 0, 1.0, 0.92, 0.55, false);
   if !sv.success { hurt_beast(s, t, srd_roll(dice, 8), DMG_RADIANT, false, k); } else { add_fx(s, FX_SAVED, p.x, p.y, 0, 0, 0.7, sv.roll, 0.8, 0.8, 0.85, false); }
   return true;
 }
@@ -549,15 +573,17 @@ sell :: (s: [] Stair, k: int) {
 layout :: (s: [] Stair, w: f32, h: f32, k: f32) {
   s[0].portrait = h > w * 1.1;
   top := 52 * k;
-  bottom := ifx s[0].portrait then 176 * k else 118 * k;
+  bottom := ifx s[0].portrait then 184 * k else 118 * k;
   s[0].scols = ifx s[0].portrait then ROWS else COLS;
   s[0].srows = ifx s[0].portrait then COLS else ROWS;
   aw := w - 24 * k; ah := h - top - bottom - 16 * k;
-  t := lo(aw / f32(s[0].scols), ah / (f32(s[0].srows) * f32(SQUASH)));
+  // the map, the back wall above it and the rim round it
+  rows := f32(s[0].srows) + f32(WALL_ROWS) + f32(RIM_TILES);
+  t := lo(aw / (f32(s[0].scols) + 2 * f32(RIM_TILES)), ah / (rows * f32(SQUASH)));
   t = hi(t, 8);
   s[0].tile = t;
   s[0].ox = (w - t * f32(s[0].scols)) / 2;
-  s[0].oy = top + 8 * k + (ah - t * f32(SQUASH) * f32(s[0].srows)) / 2;
+  s[0].oy = top + 8 * k + (ah - t * f32(SQUASH) * rows) / 2 + f32(WALL_ROWS) * t * f32(SQUASH);
 }
 // Logical (column, row) tile units to the screen.
 to_screen :: (s: [] Stair, x: f32, y: f32) -> P2 {
@@ -772,14 +798,18 @@ coaxial_stair_uniform_floats :: () -> int #export_c { return UNIFORM_FLOATS; }
 
 // ---- drawing
 
-plate :: (s: [] Stair, u: [] f32, r: Rect, alpha: f32, style: f32) {
+plate :: (s: [] Stair, u: [] f32, r: Rect, alpha: f32, style: f32) { plate_icon(s, u, r, alpha, style, -1); }
+// A panel; icon: a class whose portrait stair.wgsl paints at its left (-1 none).
+plate_icon :: (s: [] Stair, u: [] f32, r: Rect, alpha: f32, style: f32, icon: int) {
   if s[0].plate_n >= PLATES { return; }
   o := U_PLATE + s[0].plate_n * 8;
   u[o] = r.x0; u[o + 1] = r.y0; u[o + 2] = r.x1; u[o + 3] = r.y1;
-  u[o + 4] = alpha; u[o + 5] = style; u[o + 6] = hi(s[0].dpr, 0.5); u[o + 7] = 0;
+  u[o + 4] = alpha; u[o + 5] = style; u[o + 6] = hi(s[0].dpr, 0.5); u[o + 7] = f32(icon + 1);
   s[0].plate_n += 1;
 }
 
+// The bubble-beasts: glossy see-through bubbles with the layer inside showing, glowing eyes and a
+// grin, looking the way they climb; embers burn at the crown, glimmers throw sparkles, wisps trail.
 draw_beasts :: (s: [] Stair, out: [] f32, at: int) -> int {
   n := at;
   t := s[0].tile;
@@ -788,63 +818,104 @@ draw_beasts :: (s: [] Stair, out: [] f32, at: int) -> int {
     if !b.live { continue; }
     p := path_at(b.d);
     q := to_screen(s, p.x, p.y);
+    ahead := to_screen(s, path_at(b.d + 0.2).x, path_at(b.d + 0.2).y);
+    lx := ahead.x - q.x; ly := ahead.y - q.y;
+    ll := hi(sqrt(lx * lx + ly * ly), 0.001); lx /= ll; ly /= ll;
     bob := sin(b.wob) * t * 0.04;
     rad := LAYER_SIZE[b.kind] * t;
-    y := q.y - t * 0.22 + bob;
+    y := q.y - t * 0.24 + bob;
     r := LAYER_R[b.kind]; g := LAYER_G[b.kind]; bl := LAYER_B[b.kind];
-    n = disc(out, n, q.x, y, rad, 0.55, rad * 1.4, r, g, bl);
-    n = ring(out, n, q.x, y, rad, hi(1, t * 0.018), 0.95, r, g, bl, 12);
-    n = disc(out, n, q.x - rad * 0.35, y - rad * 0.38, rad * 0.22, 1.0, rad * 0.2, 1, 1, 1);
-    if b.kind == EMBER { n = disc(out, n, q.x, y, rad * 0.45, 0.9, rad * 0.4, 1.0, 0.75, 0.2); }
-    if b.kind == GLIMMER { n = disc(out, n, q.x, y, rad * 0.4, 0.85, rad * 0.3, 0.6, 1.0, 0.4); }
+    // a bubble a little squashed and stretched as it bobs
+    inner := INNER_A[b.kind];
+    share := ifx inner >= 0 then 0.5f32 else 0.0f32;
+    ir := 0.0f32; ig := 0.0f32; ib := 0.0f32;
+    if inner >= 0 { ir = LAYER_R[inner]; ig = LAYER_G[inner]; ib = LAYER_B[inner]; }
+    n = bubble(out, n, q.x, y, rad, 1.0, r, g, bl, share, ir, ig, ib);
+    // the face: two glowing eyes (one on a mote), a grin; a blink now and then
+    ex := q.x + lx * rad * 0.2; ey := y - rad * 0.05 + ly * rad * 0.12;
+    bw := b.wob * 0.11 + f32(i) * 0.37;
+    blink := bw - floor(bw) > 0.94;
+    hh := ifx blink then rad * 0.01 else rad * 0.07;
+    ew := hi(0.9, rad * 0.12);
+    if b.kind == MOTE {
+      n = seg(out, n, ex, ey - hh, ex, ey + hh, ew * 1.2, 1.0, ew * 2, 1, 1, 1);
+    } else {
+      sp := rad * 0.27;
+      n = seg(out, n, ex - sp, ey - hh, ex - sp, ey + hh, ew, 1.0, ew * 2, 1, 1, 1);
+      n = seg(out, n, ex + sp, ey - hh, ex + sp, ey + hh, ew, 1.0, ew * 2, 1, 1, 1);
+      mw := hi(0.6, rad * 0.045);
+      my := ey + rad * 0.3;
+      n = seg(out, n, ex - rad * 0.16, my - rad * 0.05, ex, my + rad * 0.03, mw, 0.85, mw * 2, 1, 1, 1);
+      n = seg(out, n, ex, my + rad * 0.03, ex + rad * 0.16, my - rad * 0.05, mw, 0.85, mw * 2, 1, 1, 1);
+    }
+    if b.kind == EMBER {
+      for j: 0..<3 {
+        fx := q.x + f32(j - 1) * rad * 0.38;
+        fy := y - rad * (0.82 - 0.12 * abs(f32(j - 1)));
+        lick := rad * (0.32 + 0.14 * sin(s[0].clock * 13 + f32(j) * 2.1 + b.wob));
+        sway := rad * 0.12 * sin(s[0].clock * 9 + f32(j) * 1.7);
+        n = seg(out, n, fx, fy, fx + sway, fy - lick, rad * 0.11, 0.9, rad * 0.2, 1.0, 0.18, 0.12);
+        n = seg(out, n, fx, fy, fx + sway * 0.7, fy - lick * 0.6, rad * 0.05, 1.0, rad * 0.08, 1.0, 0.9, 0.45);
+      }
+    }
+    if b.kind == GLIMMER {
+      for j: 0..<2 {
+        a := s[0].clock * 2.4 + f32(j) * 3.14159 + b.wob;
+        sx := q.x + cos(a) * rad * 1.3; sy := y + sin(a) * rad * 1.1;
+        tw := rad * (0.12 + 0.06 * sin(s[0].clock * 10 + f32(j) * 2));
+        n = seg(out, n, sx - tw, sy, sx + tw, sy, hi(0.6, rad * 0.035), 1.0, rad * 0.08, 1.0, 0.95, 0.6);
+        n = seg(out, n, sx, sy - tw, sx, sy + tw, hi(0.6, rad * 0.035), 1.0, rad * 0.08, 1.0, 0.95, 0.6);
+      }
+    }
+    if b.kind == WISP {
+      tx := q.x - lx * rad * 1.0; ty := y - ly * rad * 1.0 + rad * 0.3;
+      curl := sin(b.wob * 1.5) * rad * 0.4;
+      n = seg(out, n, q.x - lx * rad * 0.8, y + rad * 0.25, tx, ty + curl, rad * 0.1, 0.3, rad * 0.3, r, g, bl);
+    }
   }
   return n;
 }
+// The party itself is painted by stair.wgsl (a figure per tile); here: reach rings, and the armed
+// defender's reach where it would go, with the beasts it would reach ringed.
 draw_party :: (s: [] Stair, out: [] f32, at: int) -> int {
   n := at;
   t := s[0].tile;
   k := hi(s[0].dpr, 0.5);
-  letters := [3] string.["F", "W", "C"];
   for i: 0..<DEFENDERS {
     d := s[0].party[i];
     if !d.live { continue; }
-    c := cell_xy(d.cell);
-    q := to_screen(s, c.x, c.y);
-    r := CLASS_R[d.cls]; g := CLASS_G[d.cls]; b := CLASS_B[d.cls];
-    y := q.y - t * 0.12;
     if i == s[0].card || d.cell == s[0].hover {
-      n = ring(out, n, q.x, q.y, CLASS_RANGE[d.cls] * t, hi(1, 1.2 * k), 0.45, r, g, b, 40);
+      c := cell_xy(d.cell);
+      q := to_screen(s, c.x, c.y);
+      n = ring(out, n, q.x, q.y, CLASS_RANGE[d.cls] * t, hi(1, 1.2 * k), 0.5, CLASS_R[d.cls], CLASS_G[d.cls], CLASS_B[d.cls], 0);
     }
-    n = ring(out, n, q.x, y, t * 0.3, hi(1.5, t * 0.035), 0.9 + d.flash * 0.1, r, g, b, 18);
-    n = disc(out, n, q.x, y, t * 0.2, 0.22 + 0.3 * d.flash, t * 0.12, r, g, b);
-    // facing: a short stroke toward the last target
-    n = seg(out, n, q.x + cos(d.aim) * t * 0.3, y + sin(d.aim) * t * 0.3 * f32(SQUASH), q.x + cos(d.aim) * t * 0.44, y + sin(d.aim) * t * 0.44 * f32(SQUASH), hi(1, t * 0.03), 0.9, t * 0.05, r, g, b);
-    cap := t * 0.28;
-    n = say_mid(out, n, letters[d.cls], q.x, y + cap / 2, cap, ink(k, 1.0, 1, 1, 1));
   }
-  // the armed defender's reach where it would go, before it is put down
   a := aim_cell(s);
   if a >= 0 {
     c := s[0].pick;
     q := to_screen(s, cell_xy(a).x, cell_xy(a).y);
     r := CLASS_R[c]; g := CLASS_G[c]; b := CLASS_B[c];
     pulse := 0.75 + 0.25 * sin(s[0].clock * 5);
-    n = disc(out, n, q.x, q.y, CLASS_RANGE[c] * t, 0.07, 0, r, g, b);
-    n = ring(out, n, q.x, q.y, CLASS_RANGE[c] * t, hi(1, 1.6 * k), 0.7 * pulse, r, g, b, 48);
-    y := q.y - t * 0.12;
-    n = ring(out, n, q.x, y, t * 0.3, hi(1.5, t * 0.035), 0.5, r, g, b, 18);
-    cap := t * 0.28;
-    n = say_mid(out, n, letters[c], q.x, y + cap / 2, cap, ink(k, 0.6, 1, 1, 1));
+    rr := CLASS_RANGE[c] * t;
+    n = ring(out, n, q.x, q.y, rr * 0.5, rr, 0.06, r, g, b, 0);
+    n = ring(out, n, q.x, q.y, rr, hi(1, 1.6 * k), 0.7 * pulse, r, g, b, 0);
     for i: 0..<BEASTS {
       if !s[0].beasts[i].live { continue; }
       p := path_at(s[0].beasts[i].d); cc := cell_xy(a);
       if (p.x - cc.x) * (p.x - cc.x) + (p.y - cc.y) * (p.y - cc.y) <= CLASS_RANGE[c] * CLASS_RANGE[c] {
         bq := to_screen(s, p.x, p.y);
-        n = ring(out, n, bq.x, bq.y - t * 0.22, LAYER_SIZE[s[0].beasts[i].kind] * t * 1.5, hi(1, t * 0.02), 0.8, r, g, b, 12);
+        n = ring_sq(out, n, bq.x, bq.y - t * 0.24, LAYER_SIZE[s[0].beasts[i].kind] * t * 1.45, hi(1, t * 0.02), 0.8, r, g, b, 1);
       }
     }
   }
   return n;
+}
+// A point on a curve from a to b bowed sideways by bow (a share of its length).
+Curve :: struct { x: f32; y: f32; }
+bow_at :: (ax: f32, ay: f32, bx: f32, by: f32, bow: f32, h: f32) -> Curve {
+  mx := (ax + bx) / 2 - (by - ay) * bow; my := (ay + by) / 2 + (bx - ax) * bow;
+  u1 := 1 - h;
+  return Curve.{x = u1 * u1 * ax + 2 * u1 * h * mx + h * h * bx, y = u1 * u1 * ay + 2 * u1 * h * my + h * h * by};
 }
 draw_fx :: (s: [] Stair, out: [] f32, at: int) -> int {
   n := at;
@@ -857,33 +928,116 @@ draw_fx :: (s: [] Stair, out: [] f32, at: int) -> int {
     a := clamp01(f.t / f.life);
     fade := clamp01((f.life - f.t) / (f.life * 0.5));
     p := to_screen(s, f.x, f.y);
-    if f.kind == FX_BOLT || f.kind == FX_DART || f.kind == FX_SLASH {
+    if f.kind == FX_SLASH {
+      // a swept arc across the target, white-steel (gold on a crit)
       q := to_screen(s, f.x2, f.y2);
-      ay := p.y - t * 0.12; by := q.y - t * 0.22;
-      if f.kind == FX_SLASH {
-        mx := q.x; my := by;
-        n = seg(out, n, mx - t * 0.22, my - t * 0.18, mx + t * 0.22, my + t * 0.14, hi(1, t * 0.03) * (ifx f.big then 1.8f32 else 1.0f32), fade, t * 0.08, f.r, f.g, f.b);
-      } else {
-        h := clamp01(a * 2.2);
-        hx := p.x + (q.x - p.x) * h; hy := ay + (by - ay) * h;
-        lx := p.x + (q.x - p.x) * hi(0, h - 0.35); ly := ay + (by - ay) * hi(0, h - 0.35);
-        n = seg(out, n, lx, ly, hx, hy, hi(1, t * (ifx f.kind == FX_DART then 0.025f32 else 0.04f32)), fade, t * 0.1, f.r, f.g, f.b);
+      cx := q.x; cy := q.y - t * 0.24;
+      rad := t * (ifx f.big then 0.42f32 else 0.3f32);
+      w := hi(1, t * 0.035) * (ifx f.big then 1.6f32 else 1.0f32);
+      sweep := clamp01(a * 3);
+      cr: f32 = 0.9; cg: f32 = 0.95; cb: f32 = 1.0;
+      if f.big { cr = 1.0; cg = 0.88; cb = 0.45; }
+      for j: 0..<6 {
+        a0 := -2.6 + f32(j) / 6 * 2.4 * sweep; a1 := -2.6 + f32(j + 1) / 6 * 2.4 * sweep;
+        taper := 0.4 + 0.6 * f32(j) / 5;
+        n = seg(out, n, cx + cos(a0) * rad, cy + sin(a0) * rad, cx + cos(a1) * rad, cy + sin(a1) * rad, w * taper, fade, t * 0.08, cr, cg, cb);
       }
       continue;
     }
+    if f.kind == FX_BOLT {
+      // Fire Bolt: a white-hot head, a red trail throwing sparks, a burst where it lands
+      q := to_screen(s, f.x2, f.y2);
+      ay := p.y - t * 0.45; by := q.y - t * 0.24;
+      h := clamp01(a * 2.2);
+      hx := p.x + (q.x - p.x) * h; hy := ay + (by - ay) * h;
+      lx := p.x + (q.x - p.x) * hi(0, h - 0.3); ly := ay + (by - ay) * hi(0, h - 0.3);
+      w := hi(1, t * 0.05) * (ifx f.big then 1.5f32 else 1.0f32);
+      if h < 1 {
+        n = seg(out, n, lx, ly, hx, hy, w * 1.6, 0.8, t * 0.12, 1.0, 0.16, 0.08);
+        n = seg(out, n, (lx + hx) / 2, (ly + hy) / 2, hx, hy, w * 0.7, 1.0, t * 0.06, 1.0, 0.85, 0.35);
+        n = disc(out, n, hx, hy, w * 1.4, 1.0, t * 0.12, 1.0, 0.95, 0.7);
+        for j: 0..<3 {
+          sh := hi(0, h - 0.1 - f32(j) * 0.07);
+          sx := p.x + (q.x - p.x) * sh + sin(f.dx * 9 + f32(j) * 2.3 + a * 20) * t * 0.06;
+          sy := ay + (by - ay) * sh + cos(f.dx * 7 + f32(j) * 1.9 + a * 17) * t * 0.06;
+          n = disc(out, n, sx, sy, hi(0.7, t * 0.012), 0.9, t * 0.03, 1.0, 0.75, 0.3);
+        }
+      } else {
+        burst := clamp01((a - 0.45) / 0.55);
+        n = glow_disc(out, n, q.x, by, t * (0.2 + 0.35 * burst), (1 - burst) * 0.9, 1.0, 0.3, 0.15);
+        n = ring_sq(out, n, q.x, by, t * (0.1 + 0.4 * burst), hi(1, t * 0.03) * (1 - burst), 1 - burst, 1.0, 0.8, 0.35, 1);
+      }
+      continue;
+    }
+    if f.kind == FX_DART {
+      // Magic Missile: a violet dart on a bowed path, its trail behind it
+      q := to_screen(s, f.x2, f.y2);
+      ay := p.y - t * 0.45; by := q.y - t * 0.24;
+      h := clamp01(a * 1.8);
+      bow := f.dx * 0.45;
+      w := hi(0.8, t * 0.028);
+      prev := bow_at(p.x, ay, q.x, by, bow, hi(0, h - 0.3));
+      for j: 1..<5 {
+        c := bow_at(p.x, ay, q.x, by, bow, hi(0, h - 0.3 + 0.3 * f32(j) / 4));
+        n = seg(out, n, prev.x, prev.y, c.x, c.y, w * (0.4 + 0.6 * f32(j) / 4), fade * (0.4 + 0.6 * f32(j) / 4), t * 0.07, 0.7, 0.55, 1.0);
+        prev = c;
+      }
+      if h < 1 { n = disc(out, n, prev.x, prev.y, w * 1.5, 1.0, t * 0.1, 0.9, 0.85, 1.0); }
+      else { n = glow_disc(out, n, q.x, by, t * 0.3, fade * 0.8, 0.65, 0.5, 1.0); }
+      continue;
+    }
     if f.kind == FX_POP {
-      rad := t * (0.15 + a * 0.45);
-      n = ring(out, n, p.x, p.y - t * 0.22, rad, hi(1, t * 0.03 * (1 - a)), fade, f.r, f.g, f.b, 14);
-      for j: 0..<6 {
-        ang := f32(j) * 1.047 + f.dx;
-        n = disc(out, n, p.x + cos(ang) * rad * 1.2, p.y - t * 0.22 + sin(ang) * rad, t * 0.03, fade, t * 0.05, f.r, f.g, f.b);
+      // the skin bursts: a flash, a ring, droplets flung out and falling
+      cy := p.y - t * 0.24;
+      rad := t * (0.15 + a * 0.5);
+      n = glow_disc(out, n, p.x, cy, t * 0.35 * (1 - a), (1 - a) * (1 - a) * 1.2, 1, 1, 1);
+      n = ring_sq(out, n, p.x, cy, rad, hi(1, t * 0.035 * (1 - a)), fade, f.r, f.g, f.b, 1);
+      drops := ifx f.big then 10 else 7;
+      for j: 0..<drops {
+        ang := f32(j) / f32(drops) * 6.2831853 + f.dx;
+        sp := t * (0.55 + 0.25 * sin(f32(j) * 2.7 + f.dx * 5));
+        dx := cos(ang) * sp * a; dy := sin(ang) * sp * a * 0.8 + t * 1.1 * a * a;
+        sz := hi(0.8, t * 0.03 * (1 - a * 0.6));
+        n = seg(out, n, p.x + dx * 0.8, cy + dy * 0.8 - t * 0.02, p.x + dx, cy + dy, sz, fade, t * 0.05, f.r, f.g, f.b);
       }
       continue;
     }
     if f.kind == FX_FLAME {
-      // radiant flame falls on the target
-      top := p.y - t * 0.9 + a * t * 0.5;
-      n = seg(out, n, p.x, top, p.x, p.y - t * 0.22, hi(1, t * 0.05), fade, t * 0.14, f.r, f.g, f.b);
+      // Sacred Flame: a pillar of light comes down on the target, a ring where it strikes
+      cy := p.y - t * 0.2;
+      fall := clamp01(a * 4);
+      top := cy - t * 1.5;
+      bot := top + (cy - top) * fall;
+      w := t * 0.07 * (1 - a * 0.5);
+      n = seg(out, n, p.x, top, p.x, bot, w * 1.8, fade * 0.7, t * 0.2, 1.0, 0.9, 0.55);
+      n = seg(out, n, p.x, top, p.x, bot, w * 0.6, fade, t * 0.06, 1.0, 1.0, 0.9);
+      if fall >= 1 {
+        n = ring_sq(out, n, p.x, p.y, t * (0.15 + 0.35 * a), hi(1, t * 0.03), fade, 1.0, 0.9, 0.5, f32(SQUASH) * 0.6);
+        for j: 0..<4 {
+          rx := p.x + f32(j - 2) * t * 0.1 + t * 0.05; ry := cy - t * 0.6 * a - f32(j % 2) * t * 0.15;
+          n = disc(out, n, rx, ry, hi(0.7, t * 0.015), fade, t * 0.04, 1.0, 0.95, 0.7);
+        }
+      }
+      continue;
+    }
+    if f.kind == FX_CRIT {
+      // a natural 20: the die itself rises over the target, gold
+      rise := t * 0.6 * (1 - (1 - a) * (1 - a));
+      cx := p.x; cy := p.y - t * 1.0 - rise;
+      rad := t * 0.32 * (1 + 0.3 * clamp01(1 - f.t / 0.15));
+      w := hi(1, t * 0.03);
+      for j: 0..<6 {
+        a0 := f32(j) / 6 * 6.2831853 - 1.5708; a1 := f32(j + 1) / 6 * 6.2831853 - 1.5708;
+        n = seg(out, n, cx + cos(a0) * rad, cy + sin(a0) * rad, cx + cos(a1) * rad, cy + sin(a1) * rad, w, fade, t * 0.1, 1.0, 0.86, 0.4);
+      }
+      // the face's triangle
+      for j: 0..<3 {
+        a0 := f32(j) / 3 * 6.2831853 - 1.5708; a1 := f32(j + 1) / 3 * 6.2831853 - 1.5708;
+        n = seg(out, n, cx + cos(a0) * rad * 0.62, cy + sin(a0) * rad * 0.62, cx + cos(a1) * rad * 0.62, cy + sin(a1) * rad * 0.62, w * 0.6, fade * 0.6, t * 0.04, 1.0, 0.86, 0.4);
+      }
+      cap := rad * 0.62;
+      n = say_mid(out, n, "20", cx, cy + cap * 0.5, cap, ink(k, fade, 1.0, 0.95, 0.75));
+      n = say_mid(out, n, "CRIT", cx, cy + rad + t * 0.22, t * 0.17, ink(k, fade, 1.0, 0.86, 0.4));
       continue;
     }
     // words and numbers rise and fade (Everglade's red damage numbers)
@@ -927,11 +1081,22 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   plate(s, u, Rect.{x0 = 0, y0 = 0, x1 = w, y1 = 52 * k}, 0.85, 0);
   cap := ifx s[0].portrait then 10.5 * k else 13 * k;
   sp := ifx s[0].portrait then 12 * k else 24 * k;
-  m := put(buf[..], 0, "LIVES "); m = put_int(buf[..], m, s[0].lives);
+  // a heart for the tower's lives, a coin for the gold
+  m := put_int(buf[..], 0, s[0].lives);
   lx := ifx s[0].portrait then 88 * k else 112 * k;
+  hy := 32 * k - cap * 0.5; hr := cap * 0.36;
+  n = disc(out, n, lx + hr * 0.75, hy - hr * 0.35, hr, 1, hr * 0.6, 1.0, 0.3, 0.32);
+  n = disc(out, n, lx + hr * 2.25, hy - hr * 0.35, hr, 1, hr * 0.6, 1.0, 0.3, 0.32);
+  n = seg(out, n, lx + hr * 0.3, hy, lx + hr * 1.5, hy + hr * 1.35, hr * 0.62, 1, hr * 0.4, 1.0, 0.3, 0.32);
+  n = seg(out, n, lx + hr * 2.7, hy, lx + hr * 1.5, hy + hr * 1.35, hr * 0.62, 1, hr * 0.4, 1.0, 0.3, 0.32);
+  lx += hr * 3 + 6 * k;
   n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, 1.0, 0.42, 0.4));
   lx += text_width(cast(string) buf[0..<m], cap) + sp;
-  m = put(buf[..], 0, "GOLD "); m = put_int(buf[..], m, s[0].gold);
+  m = put_int(buf[..], 0, s[0].gold);
+  coin := cap * 0.55;
+  n = bubble(out, n, lx + coin, hy, coin, 1, GOLD_R, GOLD_G, GOLD_B, 0, 0, 0, 0);
+  n = ring_sq(out, n, lx + coin, hy, coin * 0.6, hi(0.8, coin * 0.12), 0.8, GOLD_R, GOLD_G, GOLD_B, 1);
+  lx += coin * 2 + 6 * k;
   n = say_at(out, n, cast(string) buf[0..<m], lx, 32 * k, cap, ink(k, 1, GOLD_R, GOLD_G, GOLD_B));
   lx += text_width(cast(string) buf[0..<m], cap) + sp;
   m = put(buf[..], 0, "WAVE "); m = put_int(buf[..], m, s[0].wave); m = put(buf[..], m, "/"); m = put_int(buf[..], m, WAVES);
@@ -940,7 +1105,7 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
   title := "HOLD THE STAIR";
   if !s[0].portrait && lx + text_width(title, cap) + 24 * k < w { n = say_at(out, n, title, w - text_width(title, cap) - 24 * k, 32 * k, cap, ink(k, 0.7, GOLD_R, GOLD_G, GOLD_B)); }
   // the bottom panel
-  bottom := ifx s[0].portrait then 176 * k else 118 * k;
+  bottom := ifx s[0].portrait then 184 * k else 118 * k;
   plate(s, u, Rect.{x0 = 0, y0 = h - bottom, x1 = w, y1 = h}, 0.85, 0);
   // the defender card, or a hint
   if s[0].card >= 0 && s[0].party[s[0].card].live {
@@ -1003,7 +1168,22 @@ draw_hud :: (s: [] Stair, out: [] f32, u: [] f32, at: int, w: f32, h: f32) -> in
     r := s[0].boxes[b];
     armed := (b >= B_FIGHTER && b <= B_CLERIC && s[0].pick == b - B_FIGHTER) || (b == B_PAUSE && s[0].paused);
     style := ifx armed then 2.0f32 else ifx !s[0].enabled[b] then 3.0f32 else ifx s[0].press == b || s[0].hover_b == b then 2.0f32 else 1.0f32;
-    plate(s, u, r, 1, style);
+    cls := ifx b >= B_FIGHTER && b <= B_CLERIC then b - B_FIGHTER else -1;
+    plate_icon(s, u, r, 1, style, cls);
+    if cls >= 0 {
+      // the class's portrait (stair.wgsl), its name, its cost
+      light := ifx s[0].enabled[b] then 1.0f32 else 0.4f32;
+      bh := r.y1 - r.y0;
+      tx := r.x0 + bh * 0.95;
+      room := r.x1 - tx - 8 * k;
+      nc := 12 * k;
+      while text_width(CLASS_NAME[cls], nc) > room && nc > 7 * k { nc -= 0.5 * k; }
+      n = say_at(out, n, CLASS_NAME[cls], tx, (r.y0 + r.y1) / 2 - 2 * k, nc, ink(k, light, CLASS_R[cls], CLASS_G[cls], CLASS_B[cls]));
+      m = put_int(buf[..], 0, CLASS_COST[cls]); m = put(buf[..], m, " GOLD");
+      cc := lo(10 * k, nc);
+      n = say_at(out, n, cast(string) buf[0..<m], tx, (r.y0 + r.y1) / 2 + cc + 4 * k, cc, ink(k, light * 0.9, GOLD_R, GOLD_G, GOLD_B));
+      continue;
+    }
     m = button_label(s, b, buf[..]);
     lab := cast(string) buf[0..<m];
     bc := 12 * k;
@@ -1068,7 +1248,17 @@ stair_frame :: (s: [] Stair, out: [] f32, u: [] f32, width: f32, height: f32, dp
   u[U_INFO] = f32(s[0].scols); u[U_INFO + 1] = f32(s[0].srows); u[U_INFO + 2] = ifx s[0].portrait then 1.0f32 else 0.0f32;
   u[U_INFO + 3] = f32(ifx s[0].hover >= 0 && free_cell(s, s[0].hover) then s[0].hover else -1);
   u[U_INFO2] = s[0].hurt; u[U_INFO2 + 1] = f32(aim_cell(s));
-  for i: 0..<CELLS { u[U_CELLS + i] = f32(s[0].cells[i]); }
+  for i: 0..<CELLS { u[U_CELLS + i] = f32(s[0].cells[i]) + s[0].prog[i] / 100; }
+  // the party's figures: a class per tile, which way each faces, its attack's flash
+  for i: 0..<DEFENDERS {
+    d := s[0].party[i];
+    if !d.live { continue; }
+    u[U_CELLS + d.cell] = f32(10 + d.cls);
+    dx := ifx s[0].portrait then sin(d.aim) else cos(d.aim);
+    u[U_UNIT + d.cell] = (ifx dx < -0.05 then -1.0f32 else 1.0f32) * (1 + d.flash);
+  }
+  ghost := aim_cell(s);
+  if ghost >= 0 && s[0].phase != WON && s[0].phase != LOST { u[U_CELLS + ghost] = f32(10 + s[0].pick); u[U_UNIT + ghost] = 3; }
   s[0].plate_n = 0;
   n := 0;
   if s[0].phase != WON && s[0].phase != LOST {

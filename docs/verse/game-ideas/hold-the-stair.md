@@ -3,7 +3,7 @@
 Pitched by Marc on the October 30, 2026 recording: a balloon-popping
 tower defense game, but with D&D.
 
-Status: design only. Nothing is built.
+Status: playable at openagents.com/realms/hold-the-stair (stair.coax, stair.wgsl).
 
 ## The game in one line
 
