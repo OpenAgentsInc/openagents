@@ -37,6 +37,9 @@ edit_on :: (s: [] Everglade) -> bool { return eg_builder(s) && s[0].ev.editing; 
 // A visitor the owner lets build (the layer's SETTINGS): edit mode's things, each sent as a card.
 eg_visitor_builds :: (s: [] Everglade) -> bool { return !s[0].ev.admin && s[0].ev.ed[0].ready && redit_tool(s[0].ev.ed[..], "build"); }
 eg_builder :: (s: [] Everglade) -> bool { return s[0].ev.admin || eg_visitor_builds(s); }
+// The shared layer's pane (the feature list, settings, the cards) is open: what the HUD draws under
+// it (place names, HP, the chat line, EDITING) stands aside, since text draws over every plate.
+eg_pane_open :: (s: [] Everglade) -> bool { return s[0].ev.editing && s[0].ev.ed[0].pane != REDIT_SHUT; }
 
 // ---- the shared edit layer (verse/edit/edit.coax), each frame from everglade_voice_actions
 
@@ -382,7 +385,7 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
     top := v3(t.x, ground_at(s, t.x, t.z) + tall + 0.4, t.z);
     n = tag(s, out, u, n, EG_EDIT_LABEL[eg_edit_kind(t.kind)], top, 9 * k, 1, true);
   }
-  // EDITING, and what happened, over the middle
+  // EDITING, and what happened, over the middle (on a phone the open pane says it, and is there)
   w := s[0].width;
   title := ifx s[0].ev.admin then "EDITING" else "BUILDING · WHAT YOU PLACE GOES TO THE OWNER";
   line := ifx s[0].ev.line_n > 0 then cast(string) s[0].ev.line[0..<s[0].ev.line_n] else "";
@@ -392,9 +395,12 @@ everglade_edit_hud :: (s: [] Everglade, out: [] f32, u: [] f32, at: int, bottom:
   top_y := ifx phone(s) then mb.y1 + 14 * k else 16 * k;
   pw := hi(text_width(title, 11 * k), lw) + 32 * k;
   ph := ifx line.count > 0 then 54 * k else 36 * k;
-  plate(s, u, Box.{x0 = floor((w - pw) / 2), y0 = top_y, x1 = floor((w + pw) / 2), y1 = top_y + ph}, 0.82, 0);
-  n = draw_text(out, n, title, floor((w - text_width(title, 11 * k)) / 2), floor(top_y + 11 * k + 12 * k), 11 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
-  if line.count > 0 {
+  aside := phone(s) && eg_pane_open(s);
+  if !aside {
+    plate(s, u, Box.{x0 = floor((w - pw) / 2), y0 = top_y, x1 = floor((w + pw) / 2), y1 = top_y + ph}, 0.82, 0);
+    n = draw_text(out, n, title, floor((w - text_width(title, 11 * k)) / 2), floor(top_y + 11 * k + 12 * k), 11 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
+  }
+  if line.count > 0 && !aside {
     n = draw_text(out, n, line, floor((w - lw) / 2), floor(top_y + 42 * k), ls, GAP, SPACE, ink(k, 0.9, PARCH_R, PARCH_G, PARCH_B), false, false);
   }
   // the hotbar: one row on a computer; on a phone the items over UNDO, REDO, ORIGINAL and DONE

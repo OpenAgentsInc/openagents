@@ -3589,9 +3589,9 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   w := s[0].width; h := s[0].height;
   st_blind_plate(s, u);   // Blinded: the world dark under the HUD (everglade-storm.coax)
   if rp_clean(s) { return rp_sign(s, out, u, 0); }   // the moment of impact: the view and the sign alone (everglade-reply.coax)
-  n := ifx s[0].paint_only then 0 else labels(s, out, u, 0, you);
+  n := ifx s[0].paint_only || eg_pane_open(s) then 0 else labels(s, out, u, 0, you);   // the feature list's pane open: no place names over it
   n = rp_sign(s, out, u, n);
-  if !s[0].paint_only && s[0].talk < 0 { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)
+  if !s[0].paint_only && s[0].talk < 0 && !(phone(s) && eg_pane_open(s)) { n = room_chat_draw(s, out, u, n); }   // the room's chat (everglade-room.coax)
   gutter := 16 * k;
   cap := 11 * k;
   title := fork_title(s);
@@ -3611,7 +3611,7 @@ hud :: (s: [] Everglade, out: [] f32, u: [] f32, move_on: bool, ox: f32, oy: f32
   n = draw_text(out, n, word, mb.x0 + 16 * k, mb.y1 - 14 * k, 9 * k, GAP, SPACE, ink(k, 0.95, GOLD_R, GOLD_G, GOLD_B), false, false);
   n = fork_hud(s, out, u, n, title_box);   // FORK and its pane (everglade-fork.coax)
   n = rp_hud(s, out, u, n);   // REPLY and its panel (everglade-reply.coax)
-  n = watch_hud(s, out, u, n, mb.y1 + 10 * k);   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
+  if !eg_pane_open(s) { n = watch_hud(s, out, u, n, mb.y1 + 10 * k); }   // your HP, WANTED and the watch's shouts (everglade-watch.coax)
   n = st_hud(s, out, u, n);   // Blinded, Deafened; what the beasts say (everglade-storm.coax Speak with Animals)
   s[0].guide.button=Box.{};s[0].guide.drawn=0;
   s[0].talk_button = Box.{x0 = 0, y0 = 0, x1 = 0, y1 = 0};

@@ -544,9 +544,15 @@ rp_hud :: (s: [] Everglade, out: [] f32, u: [] f32, n0: int) -> int {
     edge := mb.x0 - 2 * k;
     if eg_builder(s) { edge -= text_width(ifx s[0].ev.admin then "EDIT" else "BUILD", 9 * k) + 40 * k; }
     tb := s[0].ev.button;
-    if tb.x1 > tb.x0 && tb.x0 < edge { edge = tb.x0; }
-    // a phone has no room in that row: REPLY goes under MAP, below your HP and the chat line
-    if edge - 8 * k - bw < 0.5 * w { return rp_button(s, out, u, n, RP_B_OPEN, "REPLY", mb.x1 - bw, mb.y1 + 80 * k, cap); }
+    low := tb.x1 > tb.x0 && tb.y0 > mb.y1;   // TALK moved under MAP (everglade-voice.coax)
+    if tb.x1 > tb.x0 && !low && tb.x0 < edge { edge = tb.x0; }
+    fb := s[0].fk[0].boxes[FB_OPEN];
+    room := hi(0.5 * w, fb.x1 + 8 * k);
+    // a phone has no room in that row: REPLY goes under MAP (left of TALK there), below your HP and the chat line
+    if low || edge - 8 * k - bw < room {
+      x := ifx low then tb.x0 - 8 * k - bw else mb.x1 - bw;
+      return rp_button(s, out, u, n, RP_B_OPEN, "REPLY", x, mb.y1 + 80 * k, cap);
+    }
     return rp_button(s, out, u, n, RP_B_OPEN, "REPLY", edge - 8 * k - bw, mb.y0, cap);
   }
   pw := lo(w - 2 * gutter, 640 * k);
