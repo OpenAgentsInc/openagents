@@ -161,6 +161,9 @@ static long spark_call(const char *path, const char *json, long timeout_s, char 
   return status;
 }
 
+// The same wallet for makers.c's tips and payouts.
+long api_spark(const char *path, const char *json, long timeout_s, char **out) { return spark_call(path, json, timeout_s, out); }
+
 // The BTC/USD rate, asked of the wallet when the kept one is ten minutes old
 // (or there is none). A failed ask keeps the old rate; inference.request
 // refuses paid use once it is an hour old.

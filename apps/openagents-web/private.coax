@@ -83,6 +83,15 @@ POST_CLAIM :: 15;          // page 4: /api/playtest/makers/<slug>/claim {code, n
 H_CNAME :: 31; H_CNEXT :: 32; H_CLN :: 33; H_CLAIM :: 34; H_COPEN :: 35; H_CACCOUNT :: 36;   // page 4's claim
 PV_CNAME :: 160; PV_CLN :: 128;   // a maker's name (40 letters) and Lightning address, typed
 CLAIM_FORM :: 0; CLAIM_SENDING :: 1; CLAIM_DONE :: 2;
+// page 5: a tip for a realm's maker (ev-maker-tips): pick the sats, pay our wallet's invoice, see it reach them
+POST_TIP :: 16; POST_TIP_CHECK :: 17; ASK_MAKER :: 4;
+H_TIP0 :: 37; H_TIP_COPY :: 40; H_TIP_WALLET :: 41; H_TIP_AGAIN :: 42;   // H_TIP0 + 0, 1, 2: the amounts
+TIP_PICK :: 0; TIP_ASKING :: 1; TIP_SHOWN :: 2; TIP_PAID :: 3; TIP_EXPIRED :: 4;
+TIP_POLL :: 3.0;           // seconds between asks while an invoice waits, or a payout
+TIP_WATCH :: 180.0;        // how long a paid tip's payout is watched
+PV_CODE :: 1100;           // a QR's text: a phone code's URL, or "lightning:" and a tip's invoice
+PV_TIP_SATS :: [3] int.[100, 1000, 5000];
+PV_TIP_WORDS :: [3] string.["100 SATS", "1,000 SATS", "5,000 SATS"];
 // The words account (docs/web-log-in.md, owner 2026-10-30): 16 bytes of entropy made on
 // this device and kept in this browser (action 4), as 12 BIP-39 words; their NIP-06 key
 // logs in. The face (private-face.c) does the work the page asks for in acct_want:
@@ -134,7 +143,7 @@ PrivateState :: struct {
   line_at: [PV_LINES] int; line_end: [PV_LINES] int; line_n: int;
   // a phone code: /signin's sign-in, or LINK A PHONE's
   code_state: int; code_at: f32; polled_at: f32;
-  code_url: [PV_URL] u8; code_n: int;
+  code_url: [PV_CODE] u8; code_n: int;
   poll: [80] u8; poll_n: int;
   qr: [PV_QR] u8; qr_size: int; qr_want: bool;
   linking: bool;                 // page 0: LINK A PHONE is open
@@ -160,6 +169,9 @@ PrivateState :: struct {
   claim_code: [32] u8; claim_code_n: int; claim_state: int;
   cname: [PV_CNAME] u8; cname_n: int; cln: [PV_CLN] u8; cln_n: int;
   claim_note: [PV_NOTE] u8; claim_note_n: int;
+  // page 5: a tip (the maker's name is cname)
+  maker_status: int; tip_state: int; tip_sats: int; tip_at: f32; tip_polled: f32;
+  tip_hash: [64] u8; tip_inv: [PV_CODE] u8; tip_inv_n: int; tip_payout: [16] u8; tip_payout_n: int;
   inbox: [] u8;                  // PrivateHost's
 }
 
@@ -377,6 +389,13 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
     } else if code == 404 { s[0].tstatus = 404; s[0].tdata_n = 0; s[0].tline_n = 0; }   // no agent here
     return;
   }
+  if id == s[0].ask_id && s[0].ask_kind == ASK_MAKER {
+    s[0].ask_id = -1;
+    nm := pv_value(bytes, i, "name");
+    s[0].maker_status = ifx code == 200 && nm.count > 0 then 200 else ifx code == 404 then 404 else 599;
+    if s[0].maker_status == 200 && nm.count <= PV_CNAME { s[0].cname_n = pv_put(s[0].cname[..], 0, nm); }
+    return;
+  }
   if id == s[0].ask_id && s[0].ask_kind != ASK_ME {
     s[0].ask_id = -1;
     if code == 200 && i < bytes.count {
@@ -418,6 +437,31 @@ pv_answer :: (s: [] PrivateState, id: int, bytes: string) {
   if kind == POST_WORDS {
     if code == 200 { s[0].me_status = -1; s[0].acct_note_n = 0; pv_keep_player(s, bytes, i); }
     else { pv_acct_say(s, ifx code == 429 then "SLOW DOWN: TRY AGAIN IN A MINUTE" else "COULDN'T LOG IN"); }
+    return;
+  }
+  if kind == POST_TIP {
+    inv := pv_value(bytes, i, "invoice"); hash := pv_value(bytes, i, "payment_hash");
+    if code == 200 && inv.count > 20 && inv.count + 10 < PV_CODE && hash.count == 64 {
+      s[0].tip_inv_n = pv_put(s[0].tip_inv[..], 0, inv);
+      for k: 0..<64 { s[0].tip_hash[k] = hash[k]; }
+      n := pv_put(s[0].code_url[..], 0, "lightning:");
+      s[0].code_n = pv_put(s[0].code_url[..], n, inv);
+      s[0].qr_want = true; s[0].qr_size = 0;
+      s[0].tip_state = TIP_SHOWN; s[0].tip_at = s[0].time; s[0].tip_polled = s[0].time;
+    } else {
+      s[0].tip_state = TIP_PICK;
+      word := ifx code == 0 || code >= 500 then "OUR WALLET DIDN'T ANSWER: TRY AGAIN" else pv_error(bytes, i);
+      s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, word);
+    }
+    return;
+  }
+  if kind == POST_TIP_CHECK {
+    s[0].tip_polled = s[0].time;
+    if code != 200 { return; }
+    st := pv_value(bytes, i, "state"); po := pv_value(bytes, i, "payout");
+    if st == "paid" && s[0].tip_state != TIP_PAID { s[0].tip_state = TIP_PAID; s[0].tip_at = s[0].time; }
+    else if st == "expired" && s[0].tip_state == TIP_SHOWN { s[0].tip_state = TIP_EXPIRED; }
+    if po.count <= 16 { s[0].tip_payout_n = pv_put(s[0].tip_payout[..], 0, po); }
     return;
   }
   if kind == POST_CLAIM {
@@ -1025,6 +1069,121 @@ pv_claim :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
   f.y -= 12 * d;
   f = pv_text(s, out, f, "PLAYERS' TIPS FOR THIS REALM GO TO THIS ADDRESS, IN BITCOIN.", x0, colw, 6, dim, 2, true, 0);
   s[0].content = f.y + 40 * d + s[0].scroll;
+  return f.v;
+}
+
+// ---------------------------------------------------------------- a tip for a realm's maker (page 5)
+
+pv_tip_ask :: (s: [] PrivateState, sats: int) {
+  if s[0].post_kind != 0 || s[0].maker_status != 200 || (s[0].tip_state != TIP_PICK && s[0].tip_state != TIP_EXPIRED) { return; }
+  n := pv_put(s[0].post[..], 0, "/api/playtest/makers/");
+  n = pv_put(s[0].post[..], n, pv_slug(s));
+  s[0].post_n = pv_put(s[0].post[..], n, "/tip");
+  b := pv_put(s[0].body[..], 0, "{\"sats\":");
+  b = pv_number(s[0].body[..], b, sats);
+  s[0].body_n = pv_put(s[0].body[..], b, "}");
+  s[0].post_kind = POST_TIP; s[0].post_id = -1;
+  s[0].tip_sats = sats; s[0].tip_state = TIP_ASKING; s[0].claim_note_n = 0; s[0].tip_payout_n = 0;
+}
+// Each frame on page 5: who the maker is, once; then, while an invoice waits or a paid tip's payout
+// is on its way, ask how it stands every TIP_POLL seconds.
+pv_tip_due :: (s: [] PrivateState) {
+  if s[0].maker_status == 0 && s[0].slug_n > 0 && s[0].ask_id < 0 && s[0].ask_n == 0 {
+    n := pv_put(s[0].ask[..], 0, "/api/playtest/makers/");
+    s[0].ask_n = pv_put(s[0].ask[..], n, pv_slug(s));
+    s[0].ask_kind = ASK_MAKER; s[0].maker_status = 1;
+  }
+  waiting := s[0].tip_state == TIP_SHOWN;
+  watching := s[0].tip_state == TIP_PAID && cast(string) s[0].tip_payout[0..<s[0].tip_payout_n] != "sent" && s[0].time - s[0].tip_at < TIP_WATCH;
+  if (!waiting && !watching) || s[0].post_kind != 0 || s[0].time - s[0].tip_polled < TIP_POLL { return; }
+  s[0].tip_polled = s[0].time;
+  n := pv_put(s[0].post[..], 0, "/api/playtest/makers/");
+  n = pv_put(s[0].post[..], n, pv_slug(s));
+  n = pv_put(s[0].post[..], n, "/tip/");
+  s[0].post_n = pv_put(s[0].post[..], n, cast(string) s[0].tip_hash[0..<64]);
+  s[0].body_n = pv_put(s[0].body[..], 0, "{}");
+  s[0].post_kind = POST_TIP_CHECK; s[0].post_id = -1;
+}
+pv_tip :: (s: [] PrivateState, out: [] f32, p: Pen) -> int {
+  d := p.d; w := s[0].width;
+  white := pv_chrome(p, INK_WHITE); dim := pv_chrome(p, INK_DIM); orange := pv_chrome(p, INK_ORANGE);
+  v := pv_crumbs(s, out, 0, "TIP", p);
+  m := ifx w / d < 700 then 16.0f32 else 40.0f32;
+  colw := lo(w - 2 * m * d, 520 * d);
+  x0 := (w - colw) * 0.5;
+  f := PvFlow.{y = 110 * d - s[0].scroll, v = v};
+  realm: [80] u8;
+  rn := pv_realm_name(realm[..], pv_slug(s));
+  big := ifx w / d < 520 then 11 * d else 14 * d;
+  if s[0].maker_status != 200 {
+    word := ifx s[0].maker_status == 404 then "NOBODY HAS CLAIMED THIS REALM YET" else ifx s[0].maker_status == 599 then "OFFLINE: TRY AGAIN SOON" else "LOADING";
+    f.v = put_fit(out, f.v, cast(string) realm[0..<rn], x0, f.y, big, white, colw);
+    f.y += 30 * d;
+    f.v = put(out, f.v, word, x0, f.y, 7 * d, dim);
+    s[0].content = f.y + 40 * d + s[0].scroll;
+    return f.v;
+  }
+  title: [200] u8;
+  tn := pv_put(title[..], 0, "TIP ");
+  tn = pv_upper(title[..], tn, cast(string) s[0].cname[0..<s[0].cname_n]);
+  f.v = put_fit(out, f.v, cast(string) title[0..<tn], x0, f.y, big, white, colw);
+  f.y += 24 * d;
+  sub: [120] u8;
+  sn := pv_put(sub[..], 0, "THE MAKER OF ");
+  sn = pv_put(sub[..], sn, cast(string) realm[0..<rn]);
+  f.v = put_fit(out, f.v, cast(string) sub[0..<sn], x0, f.y, 6.5 * d, dim, colw);
+  f.y += 34 * d;
+  if s[0].tip_state == TIP_PICK || s[0].tip_state == TIP_ASKING {
+    x := x0;
+    for k: 0..<3 {
+      f.v = pv_chip(s, out, f.v, PV_TIP_WORDS[k], x, f.y, H_TIP0 + k, true, p, true, 0);
+      x += chip_width(PV_TIP_WORDS[k], 7 * d, p) + 10 * d;
+    }
+    f.y += 30 * d;
+    if s[0].tip_state == TIP_ASKING { f.v = put(out, f.v, "MAKING AN INVOICE", x0, f.y, 6.5 * d, dim); f.y += 20 * d; }
+    if s[0].claim_note_n > 0 {
+      f.y -= 12 * d;
+      f = pv_text(s, out, f, cast(string) s[0].claim_note[0..<s[0].claim_note_n], x0, colw, BODY, pv_ink(p, INK_WHITE), 2, true, 0);
+      f.y += 12 * d;
+    }
+    f.y -= 12 * d;
+    f = pv_text(s, out, f, "IN BITCOIN, OVER LIGHTNING. THE MAKER GETS ALL OF IT BUT THE ROUTING FEE.", x0, colw, 6, dim, 3, true, 0);
+  } else if s[0].tip_state == TIP_SHOWN || s[0].tip_state == TIP_EXPIRED {
+    amount: [40] u8;
+    an := pv_put(amount[..], 0, "PAY ");
+    an = pv_put(amount[..], an, PV_TIP_WORDS[ifx s[0].tip_sats == 100 then 0 else ifx s[0].tip_sats == 1000 then 1 else 2]);
+    f.v = put(out, f.v, cast(string) amount[0..<an], x0, f.y, 8 * d, orange);
+    f.y += 16 * d;
+    side := lo(colw, lo(300 * d, s[0].height * 0.42));
+    if s[0].tip_state == TIP_SHOWN {
+      f.v = pv_qr(s, out, f.v, x0 + side * 0.5, f.y, side);
+      f.y += side + 30 * d;
+      f.v = pv_chip(s, out, f.v, "OPEN WALLET", x0, f.y, H_TIP_WALLET, true, p, true, 0);
+      f.v = pv_chip(s, out, f.v, "COPY INVOICE", x0 + chip_width("OPEN WALLET", 7 * d, p) + 10 * d, f.y, H_TIP_COPY, false, p, true, 0);
+      f.y += 30 * d;
+      f.v = put(out, f.v, "WAITING FOR THE PAYMENT", x0, f.y, 6.5 * d, dim);
+    } else {
+      f.v = put(out, f.v, "THIS INVOICE EXPIRED", x0, f.y + 10 * d, 7 * d, dim);
+      f.y += 30 * d;
+      f.v = pv_chip(s, out, f.v, "NEW INVOICE", x0, f.y, H_TIP_AGAIN, true, p, true, 0);
+    }
+  } else {
+    f.v = put(out, f.v, "PAID. THANK YOU", x0, f.y, 9 * d, orange);
+    f.y += 26 * d;
+    line: [220] u8;
+    payout := cast(string) s[0].tip_payout[0..<s[0].tip_payout_n];
+    ln := pv_put(line[..], 0, ifx payout == "sent" then "" else "ON ITS WAY TO ");
+    ln = pv_upper(line[..], ln, cast(string) s[0].cname[0..<s[0].cname_n]);
+    if payout == "sent" { ln = pv_put(line[..], ln, " GOT YOUR TIP"); }
+    f.v = put_fit(out, f.v, cast(string) line[0..<ln], x0, f.y, 7 * d, white, colw);
+    f.y += 30 * d;
+    back: [96] u8;
+    bn := pv_put(back[..], 0, "BACK TO ");
+    bn = pv_put(back[..], bn, cast(string) realm[0..<rn]);
+    f.v = pv_chip(s, out, f.v, cast(string) back[0..<bn], x0, f.y, H_COPEN, false, p, true, 0);
+    f.v = pv_chip(s, out, f.v, "TIP AGAIN", x0 + chip_width(cast(string) back[0..<bn], 7 * d, p) + 10 * d, f.y, H_TIP_AGAIN, false, p, true, 0);
+  }
+  s[0].content = f.y + 60 * d + s[0].scroll;
   return f.v;
 }
 
@@ -1649,6 +1808,7 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
     if s[0].me_status == -1 || (s[0].me_status == 599 && s[0].time - s[0].me_at > 10) { pv_ask_me(s); }
     pv_acct_due(s);
   }
+  if s[0].page == 5 { pv_tip_due(s); }
   if s[0].page == 0 && s[0].linking { pv_poll_due(s); }
   if s[0].page == 0 && s[0].post_kind != POST_REDEEM && s[0].status != 404 && s[0].status != 401 && s[0].status != 403 &&
      (s[0].status == -1 || s[0].time - s[0].asked_at >= PV_REFRESH) { pv_ask(s); }
@@ -1669,6 +1829,11 @@ coaxial_private_frame :: (s: [] PrivateState, out: [] f32, uniforms: [] f32, wid
   if s[0].page == 4 {
     s[0].scroll = clamp(s[0].scroll, 0, hi(s[0].content - height + 40 * d, 0));
     return pv_claim(s, out, p);
+  }
+  if s[0].page == 5 {
+    s[0].typing = false;
+    s[0].scroll = clamp(s[0].scroll, 0, hi(s[0].content - height + 40 * d, 0));
+    return pv_tip(s, out, p);
   }
   if !pv_shows_project(s) {
     s[0].typing = false;
@@ -1772,6 +1937,10 @@ pv_act :: (s: [] PrivateState, target: int) {
   else if target == H_CLAIM { s[0].focus = 5; pv_claim_send(s); }
   else if target == H_COPEN { n := pv_put(s[0].outbox[..], 0, "/realms/"); s[0].out_n = pv_put(s[0].outbox[..], n, pv_slug(s)); s[0].action = PV_NAVIGATE; }
   else if target == H_CACCOUNT { pv_go(s, "/login"); }
+  else if target >= H_TIP0 && target < H_TIP0 + 3 { pv_tip_ask(s, PV_TIP_SATS[target - H_TIP0]); }
+  else if target == H_TIP_COPY && s[0].tip_inv_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].tip_inv[0..<s[0].tip_inv_n]); s[0].action = TK_ACT_COPY; s[0].claim_note_n = pv_put(s[0].claim_note[..], 0, "COPIED"); }
+  else if target == H_TIP_WALLET && s[0].code_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].code_url[0..<s[0].code_n]); s[0].action = PV_NAVIGATE; }
+  else if target == H_TIP_AGAIN { s[0].tip_state = TIP_PICK; s[0].qr_size = 0; s[0].tip_inv_n = 0; s[0].claim_note_n = 0; }
   if target == H_WSHOW { s[0].acct_show = !s[0].acct_show; }
   else if target == H_WCOPY && s[0].acct_words_n > 0 { s[0].out_n = pv_put(s[0].outbox[..], 0, cast(string) s[0].acct_words[0..<s[0].acct_words_n]); s[0].action = TK_ACT_COPY; pv_acct_say(s, "COPIED"); }
   else if target == H_SWFIELD { s[0].typing = true; s[0].focus = 3; }
@@ -1969,7 +2138,7 @@ coaxial_private_hash :: (s: [] PrivateState, length: int) #export_c {
   s[0].token_n = pv_put(s[0].token[..], 0, t);
   s[0].out_n = 0; s[0].action = PV_SET_HASH;
 }
-coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 || page == 3 || page == 4 then page else 1; } }
+coaxial_private_page :: (s: [] PrivateState, page: int) #export_c { if s.count > 0 { s[0].page = ifx page == 0 || page == 2 || page == 3 || page == 4 || page == 5 then page else 1; } }
 coaxial_private_wants_text :: (s: [] PrivateState) -> bool #export_c { return s.count > 0 && s[0].typing && (pv_shows_project(s) || s[0].page == 2 || s[0].page == 4); }
 coaxial_private_cursor :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return ifx s[0].hot != -1 then 1 else 0; }
 coaxial_private_action :: (s: [] PrivateState) -> int #export_c { if s.count < 1 { return 0; } return s[0].action; }
@@ -2512,6 +2681,66 @@ pv_fake_derived :: (s: [] PrivateState, npub: string) {
   #assert pv_has_hit(s[..], H_COPEN) && !pv_has_hit(s[..], H_CLAIM);
   pv_act(s[..], H_COPEN);
   #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "/realms/orbit-league";
+}
+#test "a tip page names the maker, asks our wallet for an invoice, shows its QR and follows it to the maker" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 5);
+  t := "orbit-league";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n := pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert cast(string) s[0].ask[0..<s[0].ask_n] == "/api/playtest/makers/orbit-league" && s[0].ask_kind == ASK_MAKER && n > 0;
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "200\n{\"realm\": \"orbit-league\", \"name\": \"Topher\", \"pubkey\": \"ab\"}");
+  #assert s[0].maker_status == 200 && cast(string) s[0].cname[0..<s[0].cname_n] == "Topher";
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert pv_has_hit(s[..], H_TIP0) && pv_has_hit(s[..], H_TIP0 + 2) && s[0].ask_n == 0;   // asked once
+  pv_act(s[..], H_TIP0 + 1);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/playtest/makers/orbit-league/tip" && cast(string) s[0].body[0..<s[0].body_n] == "{\"sats\":1000}";
+  coaxial_private_posted(s[..], 2);
+  pv_act(s[..], H_TIP0);   // a second amount while one is asked: nothing
+  #assert s[0].post_n == 0 && s[0].tip_sats == 1000;
+  pv_answer(s[..], 2, "200\n{\"invoice\": \"lnbc10u1pexampleinvoice0001\", \"payment_hash\": \"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef\", \"sats\": 1000}");
+  #assert s[0].tip_state == TIP_SHOWN && s[0].qr_want && cast(string) s[0].code_url[0..<s[0].code_n] == "lightning:lnbc10u1pexampleinvoice0001";
+  pv_act(s[..], H_TIP_WALLET);
+  #assert s[0].action == PV_NAVIGATE && cast(string) s[0].outbox[0..<s[0].out_n] == "lightning:lnbc10u1pexampleinvoice0001";
+  coaxial_private_action_done(s[..]);
+  pv_act(s[..], H_TIP_COPY);
+  #assert s[0].action == TK_ACT_COPY && cast(string) s[0].outbox[0..<s[0].out_n] == "lnbc10u1pexampleinvoice0001";
+  coaxial_private_action_done(s[..]);
+  // asked how it stands every few seconds, not every frame
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].post_n == 0;
+  s[0].time += TIP_POLL + 0.1;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert cast(string) s[0].post[0..<s[0].post_n] == "/api/playtest/makers/orbit-league/tip/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+  coaxial_private_posted(s[..], 3);
+  pv_answer(s[..], 3, "200\n{\"state\": \"paid\", \"sats\": 1000, \"payout\": \"queued\", \"to\": \"Topher\"}");
+  #assert s[0].tip_state == TIP_PAID;
+  s[0].time += TIP_POLL + 0.1;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].post_kind == POST_TIP_CHECK;   // the payout is followed
+  coaxial_private_posted(s[..], 4);
+  pv_answer(s[..], 4, "200\n{\"state\": \"paid\", \"sats\": 1000, \"payout\": \"sent\", \"to\": \"Topher\"}");
+  s[0].time += TIP_POLL + 0.1;
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].post_n == 0 && pv_has_hit(s[..], H_COPEN);   // sent: no more asking
+}
+#test "a tip page for an unclaimed realm offers nothing to pay" {
+  s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];
+  out: [PV_TEST_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  coaxial_private_page(s[..], 5);
+  t := "belt-2200";
+  for i: 0..<t.count { s[0].inbox[i] = t[i]; }
+  coaxial_private_message(s[..], PV_PAGE_TEXT, t.count);
+  n := pv_fresh(s[..], out[..], u[..], 390, 844);
+  coaxial_private_asked(s[..], 1);
+  pv_answer(s[..], 1, "404\n{\"error\": \"nobody has claimed this realm\"}");
+  n = pv_fresh(s[..], out[..], u[..], 390, 844);
+  #assert s[0].maker_status == 404 && !pv_has_hit(s[..], H_TIP0) && n > 0;
+  pv_tip_ask(s[..], 100);
+  #assert s[0].post_n == 0;
 }
 #test "/login: a browser that logged out stays logged out; LOG IN WITH MY WORDS logs straight in" {
   s: [1] PrivateState; data: [PV_TEST_DATA] u8; inbox: [PV_TEST_INBOX] u8; s[0].data = data[..]; s[0].inbox = inbox[..];

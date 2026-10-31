@@ -139,6 +139,8 @@ class FakeWallet(http.server.BaseHTTPRequestHandler):
                 return self.reply(200, {"state": "none"})
             return self.reply(200, {"state": w["state"], "amount_msat": w.get("amount_msat", w["sats"] * 1000), "payment_hash": w["hash"],
                                     "preimage": w.get("say_pre", w["pre"]) if w["state"] == "completed" else ""})
+        if self.path in wallet.get("extra", {}):   # other files' routes (test_maker_tips.py: /quote, /send, /sent)
+            return self.reply(*wallet["extra"][self.path](q))
         self.reply(404, {})
 
     def log_message(self, *a):

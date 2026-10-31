@@ -53,6 +53,8 @@ bool makers_route(const request *q);      // makers.c: a realm's maker and their
 bool mesh_route(const request *q);         // mesh.c: authenticated native SystemOne mesh
 bool site_identity(const request *q, PGconn *db, char who[65], bool *signed_req, bool *payload, bool *unseen);
 bool inference_route(const request *q);   // inference.c: POST /api/v1/inference, our models for the Mac app
+// Our Spark wallet (inference.c, OA_SPARK_URL): POST path with json (GET with none); its status (0 unreached), its body into *out.
+long api_spark(const char *path, const char *json, long timeout_s, char **out);
 // The model (npc.c): its generateContent answer into *body (malloc'd, or NULL), the HTTP status (0 unreached).
 long npc_ask_model(const char *url_env, const char *model, const char *request, char **body);
 long npc_ask_model_twice(const char *url_env, const char *model, const char *request, long timeout_ms, char **body);
