@@ -4,7 +4,9 @@ The first expansion of Planetary Villa, Kiki's world on the Verse, at https://op
 
 - A memorial garden lit only by the moon, which stands still in the sky and shows the real moon's phase tonight.
 - Garden paths between 64 tombstone plots, hedges, cypresses, benches round a fountain, and a gate east into an open field.
-- You are a visitor from another realm: a shadow with soft edges and a light trail of particles. A dog glowing white walks with you.
+- You are a spirit visiting from another realm: a soft, see-through figure of pale light with wisps rising off it and a trail of light behind you. A dog glowing white walks with you.
+- Hekate, goddess of the moon, floats round the garden's ring path with a torch of cold moonlight, her large black dog, a long-coated Groenendael, at her heels.
+- Drawn in flat-shaded low poly in moonlit pastels: periwinkle sky, sage ground, cream and lavender stone, teal and sage trees, soft lavender shadows and a light line along every outline.
 
 On a computer: WASD moves you at a run, a drag or the arrow keys turn the camera, the wheel zooms, Shift walks. On a phone: the left thumb moves you (a full push runs, a light one walks) and the right thumb looks.
 

@@ -39,6 +39,7 @@
 #load "villaroom.coax";
 #load "villatips.coax";
 #load "villaguide.coax";   // the example stone, and the way to yours
+#load "villahekate.coax";
 #load "place-orbit.coax";
 #load "../../verse/edit/edit.coax";   // EDIT for its owner and admins (docs/verse/realm-edit.md)
 
@@ -57,7 +58,8 @@ U_MOON :: U_PLATE + PLATES * 8;
 U_SKY :: U_MOON + 4;
 U_GROUND :: U_SKY + 4;
 U_SHADOW :: U_GROUND + 4;
-SHADOWS :: 16;
+SHADOWS :: 32;
+SHADOW_CANDIDATES :: 160;   // every shadow a frame could cast; the 32 nearest you are drawn
 U_PATH :: U_SHADOW + SHADOWS * 4;
 PATHS :: 48;
 U_PATH_INFO :: U_PATH + PATHS * 4;
@@ -76,14 +78,16 @@ PATH_HALF :: 0.9;
 // coarser sphere, for the figures' joints).
 SHAPE_BOX :: 1; SHAPE_SPHERE :: 2; SHAPE_CYLINDER :: 3; SHAPE_CONE :: 4; SHAPE_BALL :: 5;
 KINDS :: 6;
-SHAPE_VERTICES :: [6] int.[6, 36, 960, 192, 96, 288];
-SLOTS :: [6] int.[0, 300, 90, 360, 90, 420];
-SLOT_AT :: [6] int.[0, 0, 300, 390, 750, 840];
-OBJECTS :: 1260;
+SHAPE_VERTICES :: [6] int.[6, 36, 240, 96, 48, 240];   // round shapes coarse: 8 round, 5 down (villa.wgsl)
+SLOTS :: [6] int.[0, 640, 700, 520, 700, 560];
+SLOT_AT :: [6] int.[0, 0, 640, 1340, 1860, 2560];
+OBJECTS :: 3120;
 OBJECT_FLOATS :: 16;   // rows r0, r1, r2 (an affine map from the unit shape), colour, and kind + 8 * look
 // Looks (villa.wgsl): how a surface takes the moon.
 LOOK_MATTE :: 0; LOOK_LEAVES :: 1; LOOK_STONE :: 2; LOOK_IRON :: 3; LOOK_WATER :: 4; LOOK_GLOW :: 5;
 LOOK_SHADOW :: 6; LOOK_BLOOM :: 7; LOOK_PLANET :: 8; LOOK_SOIL :: 9; LOOK_EYE :: 10;
+// A shape's own pastel (its colour read as sRGB, lit in facets); CUT is the same with its corners nudged.
+LOOK_PAINT :: 11; LOOK_CUT :: 12;
 DRAWS :: 6;
 
 WALLS :: 160;          // the player's walls (player.coax: min x, y, z, max x, y, z each)
@@ -151,6 +155,7 @@ Villa :: struct {
   spheres: [SPHERES * 4] f32; sphere_n: int;
   boxes: [BOXES * 6] f32; box_n: int;
   shadow_n: int;
+  cand: [SHADOW_CANDIDATES * 4] f32; cand_n: int;   // this frame's shadows before the nearest are chosen
   plate_n: int;
   // Your pet, the garden's tombstones and a memorial open (villapet.coax).
   pet: [1] PetUi;
@@ -297,8 +302,9 @@ villa_moon_phase :: (ms: f64) -> f32 #export_c {
 }
 // How much of the disc is lit at that phase, 0 to 1.
 villa_moon_lit :: (phase: f32) -> f32 #export_c { return (1 - cos(phase * f32(TAU))) * 0.5; }
-// The moon stands still in the sky, north-east and about 34 degrees up.
-moon_dir :: () -> Point { return unit_or(v3(0.42, 0.56, 0.71), v3(0, 1, 0)); }
+// The moon stands still in the sky, east-south-east and about 33 degrees up, so the faces you
+// see from the gate take its light and the shadows fall long across the paths.
+moon_dir :: () -> Point { return unit_or(v3(0.72, 0.55, -0.42), v3(0, 1, 0)); }
 
 // ---- the page's state
 
@@ -360,6 +366,7 @@ build_scenery :: (s: [] Villa) {
     x := BENCH[b * 3]; z := BENCH[b * 3 + 1];
     add_block(s, x - 0.55, z - 0.55, x + 0.55, z + 0.55, 0.5, false);
   }
+  for i: 0..<LANTERNS { x := LANTERN_AT[i * 2]; z := LANTERN_AT[i * 2 + 1]; add_block(s, x - 0.12, z - 0.12, x + 0.12, z + 0.12, 1.9, false); }
   // Every plot's stone, so the camera keeps out of them and you walk round them.
   for p: 0..<PLOTS {
     x := plot_x(p); z := plot_z(p);
@@ -686,72 +693,170 @@ ball :: (s: [] Villa, look: int, at: Point, r: f32, red: f32, green: f32, blue: 
   shape(s, SHAPE_BALL, look, at, 0, 0, r * 2, r * 2, r * 2, red, green, blue);
 }
 
-shadow :: (s: [] Villa, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) {
-  n := s[0].shadow_n;
-  if n >= SHADOWS { return; }
-  k := U_SHADOW + n * 4;
-  u[k] = x; u[k + 1] = z; u[k + 2] = radius; u[k + 3] = strength;
-  s[0].shadow_n = n + 1;
+// A shadow cast by something `tall` metres high standing at x, z, its foot `radius` wide: soft,
+// stretched away from the moon (villa.wgsl shade_shadows). Kept as a candidate; shadows_pick
+// draws the SHADOWS nearest you.
+shadow_cast :: (s: [] Villa, x: f32, z: f32, radius: f32, tall: f32, strength: f32) {
+  n := s[0].cand_n;
+  if n >= SHADOW_CANDIDATES { return; }
+  m := moon_dir();
+  key_y := hi(m.y, 0.45);
+  reach := clamp(tall * flat_length(m) / key_y, 0, 12);
+  k := n * 4;
+  s[0].cand[k] = x; s[0].cand[k + 1] = z; s[0].cand[k + 2] = radius;
+  s[0].cand[k + 3] = floor(reach * 10) + clamp(strength, 0, 0.99);
+  s[0].cand_n = n + 1;
 }
-
-// The art kit: tombstones of four shapes, each with a darker plaque where
-// its name goes; trees; hedges; the wall and its gateways; benches; the
-// fountain; the field's edge stones. Every piece is drawn here from the
-// engine's shapes (box, sphere, cylinder, cone): no outside models.
-STONE_R :: 0.5; STONE_G :: 0.53; STONE_B :: 0.58;
-
-// A tombstone of kind k standing at x, z facing south (toward -z).
-tombstone :: (s: [] Villa, k: int, x: f32, z: f32, worn: f32) {
-  g := ground_at(s, x, z);
-  r := f32(STONE_R) * worn; gr := f32(STONE_G) * worn; b := f32(STONE_B) * worn;
-  face := f32(PI);
-  plaque := v3(0.2 * worn, 0.22 * worn, 0.26 * worn);
-  if k == 0 {   // a slab with a round top
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.36, z), face, 0, 0.7, 0.72, 0.14, r, gr, b);
-    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.72, z), face, f32(PI) / 2, 0.7, 0.14, 0.7, r, gr, b);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.55, z - 0.075), face, 0, 0.46, 0.28, 0.02, plaque.x, plaque.y, plaque.z);
-  } else if k == 1 {   // a cross on a plinth
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.1, z), face, 0, 0.62, 0.2, 0.3, r * 0.9, gr * 0.9, b * 0.9);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.68, z), face, 0, 0.16, 1.0, 0.14, r, gr, b);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.88, z), face, 0, 0.58, 0.15, 0.14, r, gr, b);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.1, z - 0.16), face, 0, 0.4, 0.12, 0.02, plaque.x, plaque.y, plaque.z);
-  } else if k == 2 {   // a small obelisk
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.12, z), face, 0, 0.5, 0.24, 0.5, r * 0.9, gr * 0.9, b * 0.9);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.68, z), face, 0, 0.3, 0.9, 0.3, r, gr, b);
-    shape(s, SHAPE_CONE, LOOK_STONE, v3(x, g + 1.23, z), f32(PI) / 4, 0, 0.42, 0.22, 0.42, r, gr, b);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.7, z - 0.155), face, 0, 0.2, 0.32, 0.02, plaque.x, plaque.y, plaque.z);
-  } else {   // a broad stone with a gabled top
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.3, z), face, 0, 0.86, 0.6, 0.16, r, gr, b);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.6, z), f32(PI) / 4, 0, 0.0, 0.0, 0.0, r, gr, b);
-    shape_axes(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.6, z), v3(0.43, 0.3, 0), v3(-0.43, 0.3, 0), v3(0, 0, 0.16), r, gr, b);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.36, z - 0.085), face, 0, 0.56, 0.26, 0.02, plaque.x, plaque.y, plaque.z);
+shadow :: (s: [] Villa, u: [] f32, x: f32, z: f32, radius: f32, strength: f32) { shadow_cast(s, x, z, radius, 0, strength); }
+// The SHADOWS candidates nearest `near` (you), into the uniforms.
+shadows_pick :: (s: [] Villa, u: [] f32, by: Point) {
+  taken: [SHADOW_CANDIDATES] bool;
+  s[0].shadow_n = 0;
+  for i: 0..<SHADOWS {
+    best := -1; best_d := 1000000.0f32;
+    for c: 0..<s[0].cand_n {
+      if taken[c] { continue; }
+      dx := s[0].cand[c * 4] - by.x; dz := s[0].cand[c * 4 + 1] - by.z;
+      d := dx * dx + dz * dz - s[0].cand[c * 4 + 2] * 4;
+      if d < best_d { best_d = d; best = c; }
+    }
+    if best < 0 { break; }
+    taken[best] = true;
+    k := U_SHADOW + i * 4;
+    for j: 0..<4 { u[k + j] = s[0].cand[best * 4 + j]; }
+    s[0].shadow_n = i + 1;
   }
 }
 
-// A plot: its low stone kerb and the bed before the stone.
-plot_bed :: (s: [] Villa, x: f32, z: f32) {
+// The art kit (art-styles.md, Flat: facets; the owner's reference boards): flat-shaded low
+// poly in moonlit pastels. Every piece is drawn here from the engine's shapes (box, sphere,
+// cylinder, cone), coarse and faceted in villa.wgsl, each in its own soft colour (LOOK_PAINT,
+// or LOOK_CUT where its corners are nudged so it reads as cut): lavender-grey and cream
+// stones, teal and sage crowns, tan wood, indigo iron, mint water, pastel flowers. No outside
+// models, no textures; the light outline and the long soft shadows come from the shader.
+STONE_R :: 0.8; STONE_G :: 0.79; STONE_B :: 0.89;
+// The kit's colours, sRGB.
+C_STONE :: [3] f32.[0.80, 0.79, 0.89];      // lavender-grey stone
+C_CREAM :: [3] f32.[0.93, 0.89, 0.81];      // cream stone
+C_PLAQUE :: [3] f32.[0.58, 0.58, 0.77];     // a stone's name plate
+C_MOSS :: [3] f32.[0.55, 0.71, 0.55];
+C_LEAF_DEEP :: [3] f32.[0.25, 0.45, 0.43];  // deep teal crown
+C_LEAF_MID :: [3] f32.[0.36, 0.57, 0.50];
+C_LEAF_LIGHT :: [3] f32.[0.56, 0.73, 0.57];
+C_TRUNK :: [3] f32.[0.56, 0.44, 0.40];
+C_WOOD :: [3] f32.[0.78, 0.62, 0.46];
+C_IRON :: [3] f32.[0.29, 0.30, 0.47];
+C_WATER :: [3] f32.[0.60, 0.85, 0.84];
+// Pastel blooms for the garden's beds (not the glowing field flowers): pink, lilac, cream, butter, sky.
+C_BLOOMS :: [15] f32.[0.96, 0.72, 0.80,  0.80, 0.70, 0.96,  0.99, 0.97, 0.91,  0.98, 0.89, 0.57,  0.66, 0.77, 0.98];
+
+paint :: (s: [] Villa, kind: int, centre: Point, yaw: f32, tilt: f32, sx: f32, sy: f32, sz: f32, c: [3] f32) {
+  shape(s, kind, LOOK_PAINT, centre, yaw, tilt, sx, sy, sz, c[0], c[1], c[2]);
+}
+hewn :: (s: [] Villa, kind: int, centre: Point, yaw: f32, tilt: f32, sx: f32, sy: f32, sz: f32, c: [3] f32) {
+  shape(s, kind, LOOK_CUT, centre, yaw, tilt, sx, sy, sz, c[0], c[1], c[2]);
+}
+tint3 :: (c: [3] f32, k: f32) -> [3] f32 { return [3] f32.[clamp(c[0] * k, 0, 1), clamp(c[1] * k, 0, 1), clamp(c[2] * k, 0, 1)]; }
+mix3 :: (a: [3] f32, b: [3] f32, t: f32) -> [3] f32 { return [3] f32.[lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
+bloom_of :: (i: int) -> [3] f32 { k := ((i % 5) + 5) % 5; return [3] f32.[C_BLOOMS[k * 3], C_BLOOMS[k * 3 + 1], C_BLOOMS[k * 3 + 2]]; }
+hash01 :: (a: f32, b: f32) -> f32 { h := sin(a * 12.9898 + b * 78.233) * 43758.5453; return h - floor(h); }
+
+// A little flower at x, z: a stem, two leaves, five petals round a heart; `size` 1 is knee-high
+// to the dog. Its petals glow when `glow` (the field's flowers you pick); else they are paint.
+little_flower :: (s: [] Villa, x: f32, z: f32, size: f32, petal: [3] f32, heart: [3] f32, glow: bool, sway: f32, turn: f32) {
   g := ground_at(s, x, z);
-  shape(s, SHAPE_BOX, LOOK_SOIL, v3(x, g + 0.04, z - 0.35), 0, 0, 0.9, 0.1, 1.5, 0.11, 0.1, 0.1);
-  shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + 0.06, z - 0.35), 0, 0, 1.04, 0.07, 1.64, 0.36, 0.38, 0.42);
+  h := 0.42 * size;
+  top := v3(x + sway, g + h, z);
+  limb(s, SHAPE_CYLINDER, LOOK_PAINT, v3(x, g, z), top, 0.012 * size, C_LEAF_MID[0], C_LEAF_MID[1], C_LEAF_MID[2]);
+  for l: 0..<2 {   // two leaves, flat and pointed, off the stem
+    side := ifx l == 0 then 1.0f32 else -1.0f32;
+    a := turn + side * 1.4;
+    at := v3(x + cos(a) * 0.07 * size + sway * 0.3, g + h * (0.25 + 0.18 * f32(l)), z + sin(a) * 0.07 * size);
+    shape(s, SHAPE_CONE, LOOK_PAINT, at, a + f32(PI) / 2, 1.1 * side, 0.07 * size, 0.2 * size, 0.025 * size, C_LEAF_LIGHT[0], C_LEAF_LIGHT[1], C_LEAF_LIGHT[2]);
+  }
+  look := ifx glow then LOOK_BLOOM else LOOK_PAINT;
+  for k: 0..<5 {   // five petals tipped out from the heart
+    a := turn + f32(k) * f32(TAU) / 5;
+    at := add(top, v3(cos(a) * 0.075 * size, 0.012 * size, sin(a) * 0.075 * size));
+    shape(s, SHAPE_SPHERE, look, at, f32(PI) / 2 - a, 0.35, 0.13 * size, 0.04 * size, 0.08 * size, petal[0], petal[1], petal[2]);
+  }
+  ball(s, ifx glow then LOOK_GLOW else LOOK_PAINT, add(top, v3(0, 0.025 * size, 0)), 0.035 * size, heart[0], heart[1], heart[2]);
+}
+
+// A tuft of grass: three blades leaning out.
+tuft :: (s: [] Villa, x: f32, z: f32, size: f32, c: [3] f32) {
+  g := ground_at(s, x, z);
+  for k: 0..<3 {
+    a := f32(k) * 2.1 + x * 0.7;
+    shape(s, SHAPE_CONE, LOOK_PAINT, v3(x + cos(a) * 0.07 * size, g + 0.18 * size, z + sin(a) * 0.07 * size), a, 0.35, 0.07 * size, 0.42 * size, 0.04 * size, c[0], c[1], c[2]);
+  }
+}
+
+// A tombstone of kind k standing at x, z facing south (toward -z); worn < 1 is older and greyer.
+tombstone :: (s: [] Villa, k: int, x: f32, z: f32, worn: f32) {
+  g := ground_at(s, x, z);
+  stone := ifx worn < 0.95 then mix3(C_STONE, C_PLAQUE, 0.25) else ifx k % 2 == 0 then C_STONE else C_CREAM;
+  plq := ifx worn < 0.95 then tint3(C_PLAQUE, 0.85) else C_PLAQUE;
+  face := f32(PI);
+  lean := ifx worn < 0.95 then 0.06 * sin(x * 3.1 + z) else 0.0f32;
+  if k == 0 {   // a slab with a round top
+    paint(s, SHAPE_BOX, v3(x, g + 0.36, z), face, lean, 0.72, 0.72, 0.18, stone);
+    paint(s, SHAPE_CYLINDER, v3(x, g + 0.72, z), face, f32(PI) / 2 + lean, 0.72, 0.18, 0.72, stone);
+    paint(s, SHAPE_BOX, v3(x, g + 0.55, z - 0.095), face, lean, 0.44, 0.26, 0.02, plq);
+  } else if k == 1 {   // a cross on a plinth
+    paint(s, SHAPE_BOX, v3(x, g + 0.1, z), face, 0, 0.66, 0.2, 0.34, tint3(stone, 0.94));
+    paint(s, SHAPE_BOX, v3(x, g + 0.68, z), face, lean, 0.16, 1.0, 0.16, stone);
+    paint(s, SHAPE_BOX, v3(x, g + 0.88, z), face, lean, 0.6, 0.15, 0.16, stone);
+    paint(s, SHAPE_BOX, v3(x, g + 0.1, z - 0.18), face, 0, 0.4, 0.12, 0.02, plq);
+  } else if k == 2 {   // a small obelisk
+    paint(s, SHAPE_BOX, v3(x, g + 0.12, z), face, 0, 0.52, 0.24, 0.52, tint3(stone, 0.94));
+    paint(s, SHAPE_BOX, v3(x, g + 0.68, z), face, lean, 0.3, 0.9, 0.3, stone);
+    paint(s, SHAPE_CONE, v3(x, g + 1.23, z), f32(PI) / 4, 0, 0.42, 0.22, 0.42, stone);
+    paint(s, SHAPE_BOX, v3(x, g + 0.7, z - 0.155), face, lean, 0.2, 0.32, 0.02, plq);
+  } else {   // a broad stone with a gabled top
+    paint(s, SHAPE_BOX, v3(x, g + 0.3, z), face, lean, 0.88, 0.6, 0.18, stone);
+    shape_axes(s, SHAPE_BOX, LOOK_PAINT, v3(x, g + 0.6, z), v3(0.44, 0.31, 0), v3(-0.44, 0.31, 0), v3(0, 0, 0.18), stone[0], stone[1], stone[2]);
+    paint(s, SHAPE_BOX, v3(x, g + 0.36, z - 0.095), face, lean, 0.56, 0.26, 0.02, plq);
+  }
+  // moss at its foot
+  hewn(s, SHAPE_SPHERE, v3(x + 0.28, g + 0.03, z - 0.08), x, 0, 0.32, 0.16, 0.26, C_MOSS);
+  shadow_cast(s, x, z, 0.4, ifx k == 2 then 1.3f32 else 0.9f32, 0.55);
+}
+
+// A plot: a low grassy mound before the stone, a kerb of cream stone, and a few flowers on it.
+plot_bed :: (s: [] Villa, x: f32, z: f32, p: int) {
+  g := ground_at(s, x, z);
+  hewn(s, SHAPE_SPHERE, v3(x, g + 0.02, z - 0.35), f32(p), 0, 0.86, 0.16, 1.4, mix3(C_MOSS, C_LEAF_LIGHT, 0.5 + 0.3 * hash01(f32(p), 1)));
+  paint(s, SHAPE_BOX, v3(x, g + 0.025, z - 0.35), 0, 0, 1.0, 0.05, 1.6, mix3(C_MOSS, C_CREAM, 0.45));
+  if p % 3 == 0 {
+    little_flower(s, x - 0.22, z - 0.7, 1.0, bloom_of(p), bloom_of(3), false, 0, f32(p));
+    little_flower(s, x + 0.2, z - 0.85, 0.85, bloom_of(p + 1), bloom_of(3), false, 0, f32(p) + 2);
+  }
 }
 
 tree_draw :: (s: [] Villa, u: [] f32, t: int) {
   x := TREE[t * 5]; z := TREE[t * 5 + 1]; h := TREE[t * 5 + 2]; r := TREE[t * 5 + 3]; kind := cast(int) TREE[t * 5 + 4];
   g := ground_at(s, x, z);
-  v := 0.92 + 0.08 * sin(f32(t) * 2.3);
-  if kind == 0 {
-    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + 0.4, z), 0, 0, 0.26, 0.9, 0.26, 0.2, 0.15, 0.12);
-    shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, g + h * 0.5 + 0.4, z), f32(t), 0, r * 2, h, r * 2, 0.09 * v, 0.17 * v, 0.14 * v);
-    shape(s, SHAPE_CONE, LOOK_LEAVES, v3(x, g + h * 0.32 + 0.4, z), f32(t) + 0.4, 0, r * 2.3, h * 0.6, r * 2.3, 0.08 * v, 0.15 * v, 0.12 * v);
-  } else {
-    shape(s, SHAPE_CYLINDER, LOOK_MATTE, v3(x, g + h * 0.5 - 0.2, z), 0, 0, 0.36, h + 0.4, 0.36, 0.22, 0.16, 0.12);
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x, g + h + r * 0.55, z), f32(t), 0, r * 2, r * 1.6, r * 2, 0.12 * v, 0.2 * v, 0.16 * v);
-    shape(s, SHAPE_SPHERE, LOOK_LEAVES, v3(x + r * 0.45, g + h + r * 0.15, z - r * 0.3), 0, 0, r * 1.3, r * 1.1, r * 1.3, 0.13, 0.22, 0.17);
+  v := 0.94 + 0.06 * sin(f32(t) * 2.3);
+  if kind == 0 {   // a cypress: three cut tiers of deep teal, a short trunk
+    paint(s, SHAPE_CYLINDER, v3(x, g + 0.35, z), f32(t), 0, 0.24, 0.7, 0.24, C_TRUNK);
+    for k: 0..<3 {
+      f := f32(k);
+      c := mix3(C_LEAF_DEEP, C_LEAF_MID, f * 0.25);
+      paint(s, SHAPE_CONE, v3(x, g + 0.5 + h * (0.22 + 0.24 * f), z), f32(t) + f * 0.4, 0, r * (2.3 - 0.45 * f), h * (0.55 - 0.08 * f), r * (2.3 - 0.45 * f), tint3(c, v));
+    }
+    shadow_cast(s, x, z, r * 0.95, h, 0.5);
+  } else {   // a round tree: a tan trunk and a crown of cut lumps, teal under sage
+    paint(s, SHAPE_CYLINDER, v3(x, g + h * 0.5 - 0.2, z), f32(t), 0.04 * sin(f32(t)), 0.34, h + 0.4, 0.34, C_TRUNK);
+    hewn(s, SHAPE_SPHERE, v3(x, g + h + r * 0.45, z), f32(t), 0, r * 2.1, r * 1.6, r * 2.1, tint3(C_LEAF_MID, v));
+    hewn(s, SHAPE_SPHERE, v3(x + r * 0.55, g + h + r * 0.1, z - r * 0.35), f32(t) + 1, 0, r * 1.3, r * 1.1, r * 1.3, tint3(C_LEAF_DEEP, v));
+    hewn(s, SHAPE_SPHERE, v3(x - r * 0.5, g + h + r * 0.25, z + r * 0.3), f32(t) + 2, 0, r * 1.4, r * 1.15, r * 1.4, tint3(C_LEAF_LIGHT, v));
+    hewn(s, SHAPE_SPHERE, v3(x + r * 0.1, g + h + r * 1.05, z + r * 0.1), f32(t) + 3, 0, r * 1.2, r * 0.95, r * 1.2, tint3(C_LEAF_LIGHT, v * 1.05));
+    shadow_cast(s, x, z, r * 1.25, h + r, 0.5);
   }
-  shadow(s, u, x, z, r * 1.4, 0.5);
 }
 
-// A gateway: two pillars with caps and a lintel across, along the x axis
+// A gateway: two cream pillars with caps and balls, an indigo arch between them, along the x axis
 // (along_x) or the z axis.
 gateway :: (s: [] Villa, x: f32, z: f32, along_x: bool) {
   g := ground_at(s, x, z);
@@ -759,69 +864,124 @@ gateway :: (s: [] Villa, x: f32, z: f32, along_x: bool) {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
     px := ifx along_x then x + sign * (f32(GATE_HALF) + 0.25) else x;
     pz := ifx along_x then z else z + sign * (f32(GATE_HALF) + 0.25);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(px, g + 1.2, pz), 0, 0, 0.55, 2.4, 0.55, 0.42, 0.44, 0.5);
-    shape(s, SHAPE_BOX, LOOK_STONE, v3(px, g + 2.47, pz), 0, 0, 0.68, 0.14, 0.68, 0.46, 0.48, 0.54);
-    shape(s, SHAPE_SPHERE, LOOK_STONE, v3(px, g + 2.72, pz), 0, 0, 0.36, 0.36, 0.36, 0.48, 0.5, 0.56);
+    paint(s, SHAPE_BOX, v3(px, g + 1.2, pz), 0, 0, 0.55, 2.4, 0.55, C_CREAM);
+    paint(s, SHAPE_BOX, v3(px, g + 2.47, pz), 0, 0, 0.7, 0.14, 0.7, tint3(C_CREAM, 1.04));
+    hewn(s, SHAPE_SPHERE, v3(px, g + 2.74, pz), px, 0, 0.38, 0.38, 0.38, C_STONE);
+    shadow_cast(s, px, pz, 0.38, 2.8, 0.5);
   }
   w := 2 * f32(GATE_HALF) + 1.0;
-  shape(s, SHAPE_BOX, LOOK_IRON, v3(x, g + 2.15, z), ifx along_x then 0.0f32 else f32(PI) / 2, 0, w, 0.12, 0.12, 0.08, 0.09, 0.11);
-  // an iron arch over the lintel, in short straight bars
   r := w * 0.42;
   for k: 0..<8 {
     a0 := f32(PI) * f32(k) / 8; a1 := f32(PI) * f32(k + 1) / 8;
     o0 := r * cos(a0); o1 := r * cos(a1);
     p0 := ifx along_x then v3(x + o0, g + 2.15 + r * 0.55 * sin(a0), z) else v3(x, g + 2.15 + r * 0.55 * sin(a0), z + o0);
     p1 := ifx along_x then v3(x + o1, g + 2.15 + r * 0.55 * sin(a1), z) else v3(x, g + 2.15 + r * 0.55 * sin(a1), z + o1);
-    limb(s, SHAPE_CYLINDER, LOOK_IRON, p0, p1, 0.04, 0.08, 0.09, 0.11);
+    limb(s, SHAPE_CYLINDER, LOOK_IRON, p0, p1, 0.045, C_IRON[0], C_IRON[1], C_IRON[2]);
+  }
+  // a crescent at the arch's crown: Hecate's moon
+  top := v3(x, g + 2.15 + r * 0.55 + 0.2, z);
+  for k: 0..<5 {
+    a := 0.55 + f32(k) * 0.42;
+    q := ifx along_x then v3(x + cos(a) * 0.24, top.y + sin(a) * 0.24 - 0.12, z) else v3(x, top.y + sin(a) * 0.24 - 0.12, z + cos(a) * 0.24);
+    ball(s, LOOK_PAINT, q, 0.07 - 0.008 * abs(f32(k) - 2), 0.98, 0.95, 0.84);
   }
 }
 
-// The wall: low stone, coped, in runs between its corners and gateways.
+// The wall: low cream stone, coped, in runs between its corners and gateways.
 wall_run :: (s: [] Villa, x0: f32, z0: f32, x1: f32, z1: f32) {
   cx := (x0 + x1) / 2; cz := (z0 + z1) / 2;
   g := ground_at(s, cx, cz);
-  shape(s, SHAPE_BOX, LOOK_STONE, v3(cx, g + 0.45, cz), 0, 0, x1 - x0, 1.1, z1 - z0, 0.36, 0.37, 0.41);
-  shape(s, SHAPE_BOX, LOOK_STONE, v3(cx, g + 1.04, cz), 0, 0, x1 - x0 + 0.12, 0.1, z1 - z0 + 0.12, 0.42, 0.43, 0.48);
+  paint(s, SHAPE_BOX, v3(cx, g + 0.45, cz), 0, 0, x1 - x0, 1.1, z1 - z0, tint3(C_CREAM, 0.95));
+  paint(s, SHAPE_BOX, v3(cx, g + 1.04, cz), 0, 0, x1 - x0 + 0.14, 0.12, z1 - z0 + 0.14, C_CREAM);
 }
 
 bench :: (s: [] Villa, x: f32, z: f32, yaw: f32) {
   g := ground_at(s, x, z);
   ahead := v3(sin(yaw), 0, cos(yaw));
   right := v3(cos(yaw), 0, -sin(yaw));
-  shape(s, SHAPE_BOX, LOOK_MATTE, v3(x, g + 0.45, z), yaw, 0, 1.6, 0.08, 0.45, 0.24, 0.18, 0.14);
-  shape(s, SHAPE_BOX, LOOK_MATTE, add(v3(x, g + 0.78, z), times(ahead, -0.22)), yaw, -0.15, 1.6, 0.5, 0.06, 0.24, 0.18, 0.14);
+  paint(s, SHAPE_BOX, v3(x, g + 0.45, z), yaw, 0, 1.6, 0.08, 0.45, C_WOOD);
+  paint(s, SHAPE_BOX, add(v3(x, g + 0.78, z), times(ahead, -0.22)), yaw, -0.15, 1.6, 0.5, 0.06, tint3(C_WOOD, 0.95));
   for side: 0..<2 {
     sign := ifx side == 0 then 1.0f32 else -1.0f32;
-    shape(s, SHAPE_BOX, LOOK_IRON, add(v3(x, g + 0.22, z), times(right, 0.68 * sign)), yaw, 0, 0.07, 0.45, 0.42, 0.07, 0.08, 0.1);
+    shape(s, SHAPE_BOX, LOOK_IRON, add(v3(x, g + 0.22, z), times(right, 0.68 * sign)), yaw, 0, 0.07, 0.45, 0.42, C_IRON[0], C_IRON[1], C_IRON[2]);
   }
+  shadow_cast(s, x, z, 0.6, 0.5, 0.45);
 }
 
 fountain :: (s: [] Villa) {
   x := f32(PLAZA_X); z := f32(PLAZA_Z); g := ground_at(s, x, z);
   r := f32(FOUNTAIN_R);
-  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.3, z), 0, 0, r * 2, 0.6, r * 2, 0.44, 0.46, 0.52);
-  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(x, g + 0.55, z), 0, 0, r * 2 - 0.4, 0.04, r * 2 - 0.4, 0.12, 0.2, 0.34);
-  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.95, z), 0, 0, 0.38, 1.3, 0.38, 0.46, 0.48, 0.54);
-  shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 1.62, z), 0, 0, 1.3, 0.16, 1.3, 0.48, 0.5, 0.56);
-  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(x, g + 1.71, z), 0, 0, 1.1, 0.03, 1.1, 0.14, 0.22, 0.36);
-  shape(s, SHAPE_SPHERE, LOOK_STONE, v3(x, g + 1.95, z), 0, 0, 0.34, 0.42, 0.34, 0.5, 0.52, 0.58);
+  paint(s, SHAPE_CYLINDER, v3(x, g + 0.3, z), 0.2, 0, r * 2, 0.6, r * 2, C_CREAM);
+  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(x, g + 0.55, z), 0.2, 0, r * 2 - 0.4, 0.04, r * 2 - 0.4, 0.12, 0.2, 0.34);
+  paint(s, SHAPE_CYLINDER, v3(x, g + 0.95, z), 0, 0, 0.38, 1.3, 0.38, C_STONE);
+  paint(s, SHAPE_CYLINDER, v3(x, g + 1.62, z), 0.2, 0, 1.3, 0.16, 1.3, C_CREAM);
+  shape(s, SHAPE_CYLINDER, LOOK_WATER, v3(x, g + 1.71, z), 0.2, 0, 1.1, 0.03, 1.1, 0.14, 0.22, 0.36);
+  hewn(s, SHAPE_SPHERE, v3(x, g + 1.95, z), 3, 0, 0.36, 0.44, 0.36, C_STONE);
+  shadow_cast(s, x, z, r, 1.2, 0.45);
 }
 
 edge_stone :: (s: [] Villa, i: int) {
   x := EDGE_STONE[i * 3]; z := EDGE_STONE[i * 3 + 1]; k := EDGE_STONE[i * 3 + 2];
   g := ground_at(s, x, z);
-  shape(s, SHAPE_BOX, LOOK_STONE, v3(x, g + k * 0.3, z), f32(i) * 0.9, 0.12 * sin(f32(i)), k * 1.3, k * 0.9, k, 0.32, 0.33, 0.36);
+  hewn(s, SHAPE_SPHERE, v3(x, g + k * 0.25, z), f32(i) * 0.9, 0.12 * sin(f32(i)), k * 1.5, k * 1.0, k * 1.2, mix3(C_STONE, C_PLAQUE, 0.15 * hash01(f32(i), 2)));
+  tuft(s, x + k * 0.8, z - k * 0.3, 1.1, C_LEAF_LIGHT);
+  shadow_cast(s, x, z, k * 0.7, k * 0.6, 0.45);
+}
+
+// A hedge: a row of cut bushes, teal and sage, along its length.
+hedge_row :: (s: [] Villa, i: int) {
+  k := i * 5;
+  x0 := HEDGE[k]; z0 := HEDGE[k + 1]; x1 := HEDGE[k + 2]; z1 := HEDGE[k + 3]; h := HEDGE[k + 4];
+  along_x := x1 - x0 >= z1 - z0;
+  span := ifx along_x then x1 - x0 else z1 - z0;
+  across := ifx along_x then z1 - z0 else x1 - x0;
+  n := clamp_int(cast(int) floor(span / 0.85 + 0.999), 2, 8);
+  for b: 0..<n {
+    t := (f32(b) + 0.5) / f32(n);
+    bx := ifx along_x then lerp(x0, x1, t) else (x0 + x1) / 2;
+    bz := ifx along_x then (z0 + z1) / 2 else lerp(z0, z1, t);
+    g := ground_at(s, bx, bz);
+    size := span / f32(n) * 1.35;
+    c := ifx b % 2 == 0 then C_LEAF_MID else mix3(C_LEAF_DEEP, C_LEAF_MID, 0.4);
+    hewn(s, SHAPE_SPHERE, v3(bx, g + h * 0.5, bz), f32(i * 8 + b), 0, ifx along_x then size else across * 1.5, h * 1.2, ifx along_x then across * 1.5 else size, c);
+  }
+  shadow_cast(s, (x0 + x1) / 2, (z0 + z1) / 2, hi(span, across) * 0.55, h, 0.4);
+}
+
+// Lanterns along the avenue: indigo posts with a soft butter light.
+LANTERNS :: 6;
+LANTERN_AT :: [12] f32.[-18.6, -14, -15.4, -14, -18.6, -7.5, -15.4, -7.5, -18.6, 7.5, -15.4, 7.5];
+lantern :: (s: [] Villa, x: f32, z: f32) {
+  g := ground_at(s, x, z);
+  shape(s, SHAPE_CYLINDER, LOOK_IRON, v3(x, g + 0.75, z), 0, 0, 0.08, 1.5, 0.08, C_IRON[0], C_IRON[1], C_IRON[2]);
+  shape(s, SHAPE_BOX, LOOK_IRON, v3(x, g + 1.52, z), 0.6, 0, 0.26, 0.05, 0.26, C_IRON[0], C_IRON[1], C_IRON[2]);
+  ball(s, LOOK_BLOOM, v3(x, g + 1.66, z), 0.11, 1.0, 0.93, 0.7);
+  shape(s, SHAPE_CONE, LOOK_IRON, v3(x, g + 1.86, z), 0.6, 0, 0.32, 0.16, 0.32, C_IRON[0], C_IRON[1], C_IRON[2]);
+}
+
+// Grass tufts, beds of pastel flowers and a few rocks over the open ground, placed by a hash so
+// they never move, off the paths and the plots.
+DECOR :: 90;
+decor :: (s: [] Villa) {
+  nodes := NODE_XZ; links := LINK_AB;
+  for i: 0..<DECOR {
+    x := -44 + 88 * hash01(f32(i), 3.1); z := -40 + 76 * hash01(f32(i), 7.7);
+    if abs(x) > 44 || abs(z) > 40 { continue; }
+    if verse_path_nearest(nodes[..], links[..], x, z).d < f32(PATH_HALF) + 0.4 { continue; }
+    in_plots := x > f32(GARDEN_X0) + 0.6 && x < f32(GARDEN_X1) - 0.6 && z > f32(GARDEN_Z0) + 0.6 && z < f32(GARDEN_Z1) - 0.6;
+    if in_plots { continue; }
+    if abs(x - f32(GARDEN_X1)) < 0.8 || abs(x - f32(GARDEN_X0)) < 0.8 || abs(z - f32(GARDEN_Z0)) < 0.8 || abs(z - f32(GARDEN_Z1)) < 0.8 { continue; }
+    k := i % 6;
+    if k < 3 { tuft(s, x, z, 1.3 + 0.6 * hash01(f32(i), 9), ifx k == 0 then C_LEAF_MID else C_LEAF_LIGHT); }
+    else if k < 5 { for f: 0..<3 { little_flower(s, x + 0.25 * f32(f), z + 0.18 * f32(f % 2), 1.2 + 0.5 * hash01(f32(i + f), 4), bloom_of(i), bloom_of(3), false, 0, f32(i + f)); } }
+    else { hewn(s, SHAPE_SPHERE, v3(x, ground_at(s, x, z) + 0.06, z), f32(i), 0.2, 0.5, 0.26, 0.4, mix3(C_STONE, C_MOSS, 0.2)); }
+  }
 }
 
 // The whole kit laid out.
 scenery :: (s: [] Villa, u: [] f32) {
   for t: 0..<TREES { tree_draw(s, u, t); }
-  for i: 0..<HEDGES {
-    k := i * 5;
-    x0 := HEDGE[k]; z0 := HEDGE[k + 1]; x1 := HEDGE[k + 2]; z1 := HEDGE[k + 3]; h := HEDGE[k + 4];
-    g := ground_at(s, (x0 + x1) / 2, (z0 + z1) / 2);
-    shape(s, SHAPE_BOX, LOOK_LEAVES, v3((x0 + x1) / 2, g + h / 2 - 0.2, (z0 + z1) / 2), 0, 0, x1 - x0, h + 0.4, z1 - z0, 0.1, 0.19, 0.14);
-  }
+  for i: 0..<HEDGES { hedge_row(s, i); }
   x0 := f32(GARDEN_X0); x1 := f32(GARDEN_X1); z0 := f32(GARDEN_Z0); z1 := f32(GARDEN_Z1);
   gx := f32(GATE_X); gz := f32(FIELD_GATE_Z); gh := f32(GATE_HALF) + 0.55; w := 0.3f32;
   wall_run(s, x0 - w, z0 - w, gx - gh, z0 + w); wall_run(s, gx + gh, z0 - w, x1 + w, z0 + w);
@@ -831,9 +991,11 @@ scenery :: (s: [] Villa, u: [] f32) {
   gateway(s, x1, gz, false);
   for b: 0..<BENCHES { bench(s, BENCH[b * 3], BENCH[b * 3 + 1], BENCH[b * 3 + 2]); }
   fountain(s);
+  for i: 0..<LANTERNS { lantern(s, LANTERN_AT[i * 2], LANTERN_AT[i * 2 + 1]); }
   for i: 0..<EDGE_STONES { edge_stone(s, i); }
   // The plots: every one has its bed; the stones are the pets'.
-  for p: 0..<PLOTS { plot_bed(s, plot_x(p), plot_z(p)); }
+  for p: 0..<PLOTS { plot_bed(s, plot_x(p), plot_z(p), p); }
+  decor(s);
 }
 
 // Old stones without names, from before the pets came: one in each block's
@@ -853,7 +1015,7 @@ planet :: (s: [] Villa) {
   ball(s, LOOK_BLOOM, spot, 0.55, 0.75, 0.82, 1.0);
 }
 
-// The figures the face posed: you a shadow, your dog glowing white. A
+// The figures the face posed: you a spirit (soft, see-through, its edges drifting), your dog glowing white. A
 // bone is a cylinder between its ends with a ball at each.
 REGION_EYE :: 7; REGION_NOSE :: 8;
 figures :: (s: [] Villa, u: [] f32) {
@@ -879,12 +1041,13 @@ figures :: (s: [] Villa, u: [] f32) {
         red = 0.72 + 0.28 * coat[0]; green = 0.75 + 0.25 * coat[1]; blue = 0.8 + 0.2 * coat[2];
       }
       if glowing && (region == REGION_EYE || region == REGION_NOSE) { look = LOOK_EYE; red = 0.05; green = 0.07; blue = 0.12; }
-      if length(sub(b, a)) > 0.002 { limb(s, SHAPE_CYLINDER, look, a, b, (ra + rb) * 0.5, red, green, blue); }
-      ball(s, look, a, ra, red, green, blue);
-      ball(s, look, b, rb, red, green, blue);
+      puff := ifx glowing then 1.0f32 else 1.45f32;   // you: a soft, puffed wisp of a figure
+      if length(sub(b, a)) > 0.002 { limb(s, SHAPE_CYLINDER, look, a, b, (ra + rb) * 0.5 * puff, red, green, blue); }
+      ball(s, look, a, ra * puff, red, green, blue);
+      ball(s, look, b, rb * puff, red, green, blue);
     }
     k := f * 4;
-    shadow(s, u, s[0].bound[k], s[0].bound[k + 2], ifx glowing then 0.5f32 else 0.45f32, ifx glowing then 0.35f32 else 0.6f32);
+    shadow_cast(s, s[0].bound[k], s[0].bound[k + 2], ifx glowing then 0.32f32 else 0.28f32, ifx glowing then 0.8f32 else 1.6f32, ifx glowing then 0.3f32 else 0.45f32);
   }
 }
 
@@ -931,7 +1094,8 @@ paths :: (u: [] f32) {
   u[U_PATH_INFO] = f32(n); u[U_PATH_INFO + 1] = f32(PATH_HALF);
 }
 
-// ---- particles: a light trail round you while you move
+// ---- particles: you are a spirit visiting this realm, wisps rising off you always, a trail
+// of light behind you while you move; Hekate's motes; fireflies over the field
 
 particles :: (s: [] Villa) {
   s[0].emitter_n = 0;
@@ -940,15 +1104,22 @@ particles :: (s: [] Villa) {
   you := s[0].feet;
   moving := clamp((s[0].speed - 0.3) / 3.0, 0, 1);
   trail := redit_row_on(s[0].ed[..], "trail");
-  if moving > 0 && trail {
+  hidden := verse_orbit_inside(s[0].orbit);   // first person: nothing in your eyes
+  if moving > 0 && trail && !hidden {
     behind := v3(-sin(s[0].face) * 0.35, 0, -cos(s[0].face) * 0.35);
     p := add(you, add(behind, v3(0, 0.9, 0)));
-    if verse_emitter_put(out, s[0].emitter_n, p.x, p.y, p.z, 0.55, 0.55, 0.62, 1.0, 0.6, 2, 16 + 40 * moving, 0.05, 1.4, 7.1) { s[0].emitter_n += 1; }
+    if verse_emitter_put(out, s[0].emitter_n, p.x, p.y, p.z, 0.55, 0.78, 0.8, 1.0, 0.6, 2, 24 + 40 * moving, 0.05, 1.4, 7.1) { s[0].emitter_n += 1; }
   }
-  // a faint shimmer that always hangs round you, so the visitor reads as a guest
-  if trail && verse_emitter_put(out, s[0].emitter_n, you.x, you.y + 1.0, you.z, 0.7, 0.45, 0.5, 0.9, 0.8, 2, 10, 0.035, 0.6, 3.3) { s[0].emitter_n += 1; }
+  if trail && !hidden {
+    // wisps that rise off you all the time, from your shoulders and from your feet: the spirit's fuzz
+    if verse_emitter_put(out, s[0].emitter_n, you.x, you.y + 1.25, you.z, 0.32, 0.86, 0.86, 1.0, 0.8, 0, 40, 0.045, 0.7, 3.3) { s[0].emitter_n += 1; }
+    if verse_emitter_put(out, s[0].emitter_n, you.x, you.y + 0.35, you.z, 0.3, 0.8, 0.82, 1.0, 0.8, 0, 32, 0.04, 0.6, 5.9) { s[0].emitter_n += 1; }
+    // and a soft shimmer that hangs round you
+    if verse_emitter_put(out, s[0].emitter_n, you.x, you.y + 1.0, you.z, 0.75, 0.75, 0.78, 1.0, 0.9, 2, 18, 0.035, 0.6, 9.3) { s[0].emitter_n += 1; }
+  }
+  hekate_particles(s, out);
   // fireflies over the field
-  if redit_row_on(s[0].ed[..], "fireflies") && verse_emitter_put(out, s[0].emitter_n, 22, ground_at(s, 22, 0) + 0.9, 0, 16, 0.6, 0.75, 0.95, 0.9, 2, 64, 0.05, 0.5, 11.0) { s[0].emitter_n += 1; }
+  if redit_row_on(s[0].ed[..], "fireflies") && verse_emitter_put(out, s[0].emitter_n, 22, ground_at(s, 22, 0) + 0.9, 0, 16, 0.75, 0.9, 0.8, 0.9, 2, 64, 0.05, 0.5, 11.0) { s[0].emitter_n += 1; }
 }
 villa_emitter_count :: (s: [] Villa) -> int #export_c { return s[0].emitter_n; }
 villa_particles_per :: () -> int #export_c { return VERSE_PARTICLES_PER; }
@@ -1043,7 +1214,7 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
   if u.count < UNIFORM_FLOATS { return 0; }
   s[0].width = width; s[0].height = height; s[0].dpr = hi(dpr, 0.5);
   for k: 0..<KINDS { s[0].counts[k] = 0; }
-  s[0].shadow_n = 0; s[0].plate_n = 0;
+  s[0].shadow_n = 0; s[0].cand_n = 0; s[0].plate_n = 0;
   for i: 0..<UNIFORM_FLOATS { u[i] = 0; }
   space := in_space(s);
   if space {
@@ -1054,10 +1225,12 @@ villa_draw :: (s: [] Villa, out: [] f32, u: [] f32, width: f32, height: f32, dpr
     pet_stones(s);
     play_draw(s);
     guide_draw(s);
+    hekate_scene(s);
     if redit_row_on(s[0].ed[..], "others") { room_draw(s); }
     if redit_row_on(s[0].ed[..], "tips") && !redit_open(s[0].ed[..]) { tips_draw(s); }
   }
   figures(s, u);
+  if !space { shadows_pick(s, u, s[0].feet); }
   particles(s);
   for kind: 0..<KINDS {
     d := kind * 4;
@@ -1150,7 +1323,7 @@ frame :: (s: [] Villa, out: [] f32, u: [] f32, dt: f32, x: f32, z: f32, face: f3
 
 #test "the uniforms fit and line up with villa.wgsl's" {
   #assert UNIFORM_FLOATS % 4 == 0;
-  #assert U_PLATE == 32 && U_MOON == 160 && U_GROUND == 168 && U_SHADOW == 172 && U_PATH == 236 && U_PATH_INFO == 428 && UNIFORM_FLOATS == 432;
+  #assert U_PLATE == 32 && U_MOON == 160 && U_GROUND == 168 && U_SHADOW == 172 && U_PATH == 300 && U_PATH_INFO == 492 && UNIFORM_FLOATS == 496;
   #assert SLOT_AT[KINDS - 1] + SLOTS[KINDS - 1] == OBJECTS;
   for k: 2..<KINDS { #assert SLOT_AT[k] == SLOT_AT[k - 1] + SLOTS[k - 1]; }
   #assert LINKS <= PATHS && NODES * 2 == NODE_XZ.count && NODES <= 48;

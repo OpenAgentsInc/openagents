@@ -1,0 +1,215 @@
+// Hekate and her dog, in Hecate's Cemetery: the moon goddess floats round the garden on its
+// ring path, a crescent over her white hair and a torch of cold moonlight in her hand, and her
+// large black dog, a Groenendael (a long-coated Belgian Shepherd), trots at her heels. Both are
+// drawn from the engine's shapes in the realm's low-poly kit (villa.coax), in its moonlit
+// pastels; nothing here decides anything for the player. Loaded by villa.coax.
+
+// The ring path inside the garden wall (villa.coax NODE_XZ 15, 16, 17, 18): a rectangle with
+// rounded corners, walked east along its south side first.
+HK_X0 :: -35.5; HK_X1 :: 1.5; HK_Z0 :: -18.0; HK_Z1 :: 18.0;
+HK_CORNER :: 3.0;
+HK_SPEED :: 0.75;        // metres a second along the ring
+HK_START :: 18.5;        // where she is at time 0, so the release walk's still shows her south of the plaza
+HK_DOG_BEHIND :: 2.9;    // how far back along the ring her dog keeps
+HK_FLOAT :: 0.95;        // the hem of her robe above the ground
+
+HkPose :: struct { x: f32; z: f32; yaw: f32; }
+
+hk_perimeter :: () -> f32 {
+  r := f32(HK_CORNER);
+  return 2 * (f32(HK_X1) - f32(HK_X0) - 2 * r) + 2 * (f32(HK_Z1) - f32(HK_Z0) - 2 * r) + f32(TAU) * r;
+}
+
+// Where d metres along the ring is, and the way it heads there (yaw: 0 faces +z).
+hk_along :: (d0: f32) -> HkPose {
+  r := f32(HK_CORNER);
+  w := f32(HK_X1) - f32(HK_X0) - 2 * r; h := f32(HK_Z1) - f32(HK_Z0) - 2 * r; arc := f32(PI) / 2 * r;
+  per := hk_perimeter();
+  d := d0 - per * floor(d0 / per);
+  // the four straights and four corners, in order: south going east, the SE corner, east going
+  // north, NE, north going west, NW, west going south, SW
+  lens := [8] f32.[w, arc, h, arc, w, arc, h, arc];
+  for i: 0..<8 {
+    if d > lens[i] && i < 7 { d -= lens[i]; continue; }
+    t := clamp(d, 0, lens[i]);
+    if i == 0 { return HkPose.{x = f32(HK_X0) + r + t, z = f32(HK_Z0), yaw = f32(PI) / 2}; }
+    if i == 2 { return HkPose.{x = f32(HK_X1), z = f32(HK_Z0) + r + t, yaw = 0}; }
+    if i == 4 { return HkPose.{x = f32(HK_X1) - r - t, z = f32(HK_Z1), yaw = -f32(PI) / 2}; }
+    if i == 6 { return HkPose.{x = f32(HK_X0), z = f32(HK_Z1) - r - t, yaw = f32(PI)}; }
+    // a corner: a quarter circle about its centre, turning left
+    a := t / r;
+    cx := ifx i == 1 || i == 3 then f32(HK_X1) - r else f32(HK_X0) + r;
+    cz := ifx i == 1 || i == 7 then f32(HK_Z0) + r else f32(HK_Z1) - r;
+    start := ifx i == 1 then -f32(PI) / 2 else ifx i == 3 then 0.0f32 else ifx i == 5 then f32(PI) / 2 else f32(PI);
+    ang := start + a;
+    return HkPose.{x = cx + cos(ang) * r, z = cz + sin(ang) * r, yaw = -ang};   // moving round a left turn: (-sin, cos), so yaw is -ang
+  }
+  return HkPose.{x = f32(HK_X0) + r, z = f32(HK_Z0), yaw = f32(PI) / 2};
+}
+
+hk_time :: (s: [] Villa) -> f32 { return effect_time(s); }
+hekate_pose :: (s: [] Villa) -> HkPose { return hk_along(f32(HK_START) + hk_time(s) * f32(HK_SPEED)); }
+hekate_dog_pose :: (s: [] Villa) -> HkPose { return hk_along(f32(HK_START) + hk_time(s) * f32(HK_SPEED) - f32(HK_DOG_BEHIND)); }
+
+// A point in a figure's own frame (right, up, ahead) from its place and heading.
+hk_at :: (o: Point, yaw: f32, rx: f32, uy: f32, az: f32) -> Point {
+  return v3(o.x + cos(yaw) * rx + sin(yaw) * az, o.y + uy, o.z - sin(yaw) * rx + cos(yaw) * az);
+}
+
+HK_ROBE :: [3] f32.[0.20, 0.20, 0.33];      // her robe: deep indigo, near black
+HK_ROBE2 :: [3] f32.[0.36, 0.38, 0.62];     // its lining and her sleeves' fall: periwinkle
+HK_WHITE :: [3] f32.[0.96, 0.95, 0.98];     // her bodice and hair
+HK_SKIN :: [3] f32.[0.94, 0.89, 0.88];
+HK_COAT :: [3] f32.[0.15, 0.15, 0.20];      // the Groenendael's long black coat
+HK_COAT2 :: [3] f32.[0.21, 0.21, 0.28];
+
+// Hekate: floating, her robe wide at the hem, great dark sleeves, white hair down her back, a
+// crescent over her head and a torch of cold moonlight in her right hand.
+hekate_draw :: (s: [] Villa) {
+  p := hekate_pose(s);
+  t := hk_time(s);
+  g := ground_at(s, p.x, p.z);
+  bob := 0.12 * sin(t * 1.3);
+  o := v3(p.x, g + f32(HK_FLOAT) + bob, p.z);
+  yaw := p.yaw;
+  sway := 0.05 * sin(t * 0.9);
+  // the robe: a long cone from the waist, open at the hem, with a lighter fall inside it
+  shape(s, SHAPE_CONE, LOOK_PAINT, hk_at(o, yaw, 0, 0.75, 0), yaw, sway, 1.25, 1.7, 1.1, HK_ROBE[0], HK_ROBE[1], HK_ROBE[2]);
+  shape(s, SHAPE_CONE, LOOK_PAINT, hk_at(o, yaw, 0, 0.62, 0.06), yaw + 0.4, sway, 1.05, 1.4, 0.92, HK_ROBE2[0], HK_ROBE2[1], HK_ROBE2[2]);
+  // her waist and white bodice
+  shape(s, SHAPE_BOX, LOOK_PAINT, hk_at(o, yaw, 0, 1.62, 0), yaw, 0, 0.42, 0.14, 0.28, HK_ROBE[0], HK_ROBE[1], HK_ROBE[2]);
+  shape(s, SHAPE_BOX, LOOK_PAINT, hk_at(o, yaw, 0, 1.93, 0), yaw, 0, 0.46, 0.5, 0.3, HK_WHITE[0], HK_WHITE[1], HK_WHITE[2]);
+  // the shoulders, and the great sleeves falling from them
+  for side: 0..<2 {
+    sg := ifx side == 0 then 1.0f32 else -1.0f32;
+    shoulder := hk_at(o, yaw, 0.28 * sg, 2.1, 0);
+    ball(s, LOOK_PAINT, shoulder, 0.13, HK_WHITE[0], HK_WHITE[1], HK_WHITE[2]);
+    lift := ifx side == 0 then 0.55f32 else 0.2f32;   // the right arm raised to hold the torch
+    elbow := hk_at(o, yaw, 0.52 * sg, 1.75 + lift * 0.2, 0.18);
+    limb(s, SHAPE_CYLINDER, LOOK_PAINT, shoulder, elbow, 0.07, HK_SKIN[0], HK_SKIN[1], HK_SKIN[2]);
+    sleeve := mix(shoulder, elbow, 0.7);
+    shape(s, SHAPE_CONE, LOOK_PAINT, add(sleeve, v3(0, -0.32, 0)), yaw, 0.12 * sg, 0.62, 1.05, 0.38, HK_ROBE[0], HK_ROBE[1], HK_ROBE[2]);
+    hand := hk_at(o, yaw, 0.6 * sg, 1.6 + lift, 0.42);
+    limb(s, SHAPE_CYLINDER, LOOK_PAINT, elbow, hand, 0.055, HK_SKIN[0], HK_SKIN[1], HK_SKIN[2]);
+    ball(s, LOOK_PAINT, hand, 0.06, HK_SKIN[0], HK_SKIN[1], HK_SKIN[2]);
+    if side == 0 {   // the torch: a dark staff and a flame of cold moonlight
+      base := hk_at(o, yaw, 0.6, 1.25, 0.42);
+      top := hk_at(o, yaw, 0.62, 2.55, 0.46);
+      limb(s, SHAPE_CYLINDER, LOOK_IRON, base, top, 0.03, 0.29, 0.3, 0.47);
+      flick := 1 + 0.08 * sin(t * 9.0) * (1 - ifx s[0].golden then 1.0f32 else 0.0f32);
+      ball(s, LOOK_BLOOM, add(top, v3(0, 0.12, 0)), 0.11 * flick, 0.82, 0.9, 1.0);
+      shape(s, SHAPE_CONE, LOOK_BLOOM, add(top, v3(0, 0.27, 0)), t, 0, 0.16, 0.3 * flick, 0.16, 0.9, 0.95, 1.0);
+    }
+  }
+  // her neck and head, white hair falling down her back, a fringe across her brow
+  limb(s, SHAPE_CYLINDER, LOOK_PAINT, hk_at(o, yaw, 0, 2.15, 0), hk_at(o, yaw, 0, 2.3, 0), 0.06, HK_SKIN[0], HK_SKIN[1], HK_SKIN[2]);
+  head := hk_at(o, yaw, 0, 2.45, 0.02);
+  ball(s, LOOK_PAINT, head, 0.17, HK_SKIN[0], HK_SKIN[1], HK_SKIN[2]);
+  shape(s, SHAPE_SPHERE, LOOK_CUT, hk_at(o, yaw, 0, 2.5, -0.04), yaw, 0, 0.4, 0.38, 0.38, HK_WHITE[0], HK_WHITE[1], HK_WHITE[2]);
+  shape(s, SHAPE_BOX, LOOK_PAINT, hk_at(o, yaw, 0, 1.98, -0.17), yaw, 0.08, 0.34, 0.95, 0.08, HK_WHITE[0], HK_WHITE[1], HK_WHITE[2]);
+  ball(s, LOOK_EYE, hk_at(o, yaw, 0.06, 2.46, 0.17), 0.02, 0.2, 0.2, 0.34);
+  ball(s, LOOK_EYE, hk_at(o, yaw, -0.06, 2.46, 0.17), 0.02, 0.2, 0.2, 0.34);
+  // the crescent over her head: Hekate's moon, glowing
+  for k: 0..<7 {
+    a := 0.35 + f32(k) * 0.4;
+    q := hk_at(o, yaw, cos(a) * 0.2, 2.78 + sin(a) * 0.2 - 0.08, -0.02);
+    ball(s, LOOK_BLOOM, q, 0.055 - 0.006 * abs(f32(k) - 3), 0.95, 0.95, 1.0);
+  }
+  shadow_cast(s, p.x, p.z, 0.55, 2.0, 0.35);
+}
+
+// Her dog: a Groenendael, large and black, its long coat full at the ruff, the belly and the
+// tail; pricked ears and a pointed muzzle; it trots at her heels.
+hekate_dog_draw :: (s: [] Villa) {
+  p := hekate_dog_pose(s);
+  t := hk_time(s);
+  g := ground_at(s, p.x, p.z);
+  o := v3(p.x, g, p.z);
+  yaw := p.yaw;
+  stride := t * f32(HK_SPEED) / 0.55 * f32(TAU) * 0.5;
+  bounce := 0.025 * abs(sin(stride));
+  c := HK_COAT; c2 := HK_COAT2;
+  // the legs: a trot, diagonal pairs together
+  for leg: 0..<4 {
+    front := leg < 2;
+    sg := ifx leg % 2 == 0 then 1.0f32 else -1.0f32;
+    ph := ifx (leg == 0 || leg == 3) then 0.0f32 else f32(PI);
+    swing := 0.28 * sin(stride + ph);
+    hip := hk_at(o, yaw, 0.13 * sg, 0.62 + bounce, ifx front then 0.36f32 else -0.36f32);
+    paw := hk_at(o, yaw, 0.13 * sg, 0.05, (ifx front then 0.38f32 else -0.4f32) + swing * 0.3);
+    knee := mix(hip, paw, 0.5);
+    knee = hk_at(knee, yaw, 0, 0.02, ifx front then 0.03f32 else -0.07f32);
+    limb(s, SHAPE_CYLINDER, LOOK_PAINT, hip, knee, 0.065, c[0], c[1], c[2]);
+    limb(s, SHAPE_CYLINDER, LOOK_PAINT, knee, paw, 0.045, c[0], c[1], c[2]);
+    ball(s, LOOK_PAINT, paw, 0.05, c2[0], c2[1], c2[2]);
+  }
+  // the body: a long cut barrel, its coat hanging below in a fringe
+  body := hk_at(o, yaw, 0, 0.72 + bounce, 0);
+  shape(s, SHAPE_SPHERE, LOOK_CUT, body, yaw, 0, 0.42, 0.42, 1.05, c[0], c[1], c[2]);
+  shape(s, SHAPE_CONE, LOOK_PAINT, hk_at(o, yaw, 0, 0.5 + bounce, 0), yaw, f32(PI), 0.36, 0.22, 0.85, c2[0], c2[1], c2[2]);
+  // the ruff round its chest and neck
+  shape(s, SHAPE_SPHERE, LOOK_CUT, hk_at(o, yaw, 0, 0.82 + bounce, 0.42), yaw, 0.3, 0.46, 0.52, 0.42, c2[0], c2[1], c2[2]);
+  // the head: a wedge of a skull, a pointed muzzle, pricked ears
+  neck := hk_at(o, yaw, 0, 1.0 + bounce, 0.55);
+  head := hk_at(o, yaw, 0, 1.12 + bounce, 0.68);
+  limb(s, SHAPE_CYLINDER, LOOK_PAINT, hk_at(o, yaw, 0, 0.8 + bounce, 0.4), neck, 0.12, c[0], c[1], c[2]);
+  shape(s, SHAPE_SPHERE, LOOK_CUT, head, yaw, 0, 0.26, 0.24, 0.3, c[0], c[1], c[2]);
+  shape(s, SHAPE_CONE, LOOK_PAINT, hk_at(o, yaw, 0, 1.07 + bounce, 0.88), yaw, f32(PI) / 2, 0.15, 0.26, 0.13, c[0], c[1], c[2]);
+  ball(s, LOOK_PAINT, hk_at(o, yaw, 0, 1.08 + bounce, 1.0), 0.03, 0.08, 0.08, 0.1);
+  for side: 0..<2 {
+    sg := ifx side == 0 then 1.0f32 else -1.0f32;
+    shape(s, SHAPE_CONE, LOOK_PAINT, hk_at(o, yaw, 0.08 * sg, 1.3 + bounce, 0.64), yaw, -0.15, 0.1, 0.2, 0.06, c[0], c[1], c[2]);
+    ball(s, LOOK_GLOW, hk_at(o, yaw, 0.07 * sg, 1.16 + bounce, 0.81), 0.018, 0.85, 0.9, 1.0);
+  }
+  // the tail: long and plumed, carried low with a lift at its end
+  wag := 0.15 * sin(stride * 0.5);
+  root := hk_at(o, yaw, 0, 0.78 + bounce, -0.5);
+  mid := hk_at(o, yaw, wag, 0.5, -0.78);
+  tip := hk_at(o, yaw, wag * 1.6, 0.42, -0.98);
+  limb(s, SHAPE_CYLINDER, LOOK_PAINT, root, mid, 0.07, c[0], c[1], c[2]);
+  shape(s, SHAPE_SPHERE, LOOK_CUT, mix(mid, tip, 0.4), yaw, 0.6, 0.2, 0.42, 0.22, c2[0], c2[1], c2[2]);
+  shadow_cast(s, p.x, p.z, 0.45, 0.9, 0.4);
+}
+
+hekate_scene :: (s: [] Villa) {
+  hekate_draw(s);
+  hekate_dog_draw(s);
+}
+
+// Motes off her torch and her robe's hem, cold and pale.
+hekate_particles :: (s: [] Villa, out: [] f32) {
+  p := hekate_pose(s);
+  g := ground_at(s, p.x, p.z);
+  top := hk_at(v3(p.x, g + f32(HK_FLOAT), p.z), p.yaw, 0.62, 2.85, 0.46);
+  if verse_emitter_put(out, s[0].emitter_n, top.x, top.y, top.z, 0.12, 0.8, 0.88, 1.0, 0.9, 0, 30, 0.04, 0.9, 13.7) { s[0].emitter_n += 1; }
+  if verse_emitter_put(out, s[0].emitter_n, p.x, g + f32(HK_FLOAT) + 0.2, p.z, 0.7, 0.82, 0.84, 1.0, 0.8, 2, 20, 0.035, 0.6, 17.3) { s[0].emitter_n += 1; }
+}
+
+#test "Hekate floats round the garden's ring path, on it, and her dog keeps at her heels" {
+  per := hk_perimeter();
+  #assert per > 120 && per < 150;
+  for i: 0..<200 {
+    d := per * f32(i) / 200;
+    a := hk_along(d);
+    // on the ring: inside its rectangle, and never more than the corner's cut off its edge
+    inside := a.x >= f32(HK_X0) - 0.01 && a.x <= f32(HK_X1) + 0.01 && a.z >= f32(HK_Z0) - 0.01 && a.z <= f32(HK_Z1) + 0.01;
+    edge := lo(lo(abs(a.x - f32(HK_X0)), abs(a.x - f32(HK_X1))), lo(abs(a.z - f32(HK_Z0)), abs(a.z - f32(HK_Z1))));
+    #assert inside && edge < f32(HK_CORNER) * 0.3;
+    // continuous: the next step is near
+    b := hk_along(d + per / 200);
+    #assert flat_length(v3(b.x - a.x, 0, b.z - a.z)) < per / 200 + 0.05;
+    // heading: a short step forward goes the way it faces
+    c := hk_along(d + 0.05);
+    step := v3(c.x - a.x, 0, c.z - a.z);
+    #assert step.x * sin(a.yaw) + step.z * cos(a.yaw) > 0.03;
+  }
+  #assert near(hk_along(per + 3).x, hk_along(3).x, 0.01);
+  s: [1] Villa;
+  villa_start(s[..]);
+  s[0].golden = true;
+  h := hekate_pose(s[..]); dg := hekate_dog_pose(s[..]);
+  gap := flat_length(v3(h.x - dg.x, 0, h.z - dg.z));
+  #assert gap > 2 && gap < f32(HK_DOG_BEHIND) + 0.1;
+  // the release walk's still has her south of the plaza, in sight of the gate
+  #assert h.z < -17 && h.x > -15 && h.x < -5;
+}

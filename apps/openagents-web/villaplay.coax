@@ -169,12 +169,11 @@ play_draw :: (s: [] Villa) {
   t := effect_time(s);
   for i: 0..<FLOWERS {
     if q[0].regrow[i] > 0 { continue; }
-    x := flower_x(i); z := flower_z(i); k := flower_kind(i);
-    g := ground_at(s, x, z);
-    sway := 0.06 * sin(t * 1.3 + f32(i));
-    shape(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(x + sway * 0.5, g + 0.22, z), 0, sway, 0.03, 0.44, 0.03, 0.12, 0.3, 0.18);
+    sway := 0.05 * sin(t * 1.3 + f32(i));
     pulse := 0.85 + 0.15 * sin(t * 2.1 + f32(i) * 1.7);
-    ball(s, LOOK_BLOOM, v3(x + sway, g + 0.48, z), 0.09, FLOWER_RGB[k * 3] * pulse, FLOWER_RGB[k * 3 + 1] * pulse, FLOWER_RGB[k * 3 + 2] * pulse);
+    glow_flower(s, flower_x(i), flower_z(i), flower_kind(i), 1.8, sway, pulse, f32(i) * 1.3);
+    // a little clump of leaves at its foot, so it grows out of something
+    tuft(s, flower_x(i) + 0.15, flower_z(i) - 0.1, 1.2, C_LEAF_LIGHT);
   }
   b := s[0].fetch.ball;
   if b.held != BALL_PUT_AWAY { ball(s, LOOK_GLOW, b.pos, b.radius, 0.95, 0.9, 0.7); }
@@ -188,8 +187,9 @@ play_draw :: (s: [] Villa) {
     x := p[0].v_x[i]; z := p[0].v_z[i];
     g := ground_at(s, x, z);
     fresh := clamp(1 - p[0].v_age[i] / f32(FADE_DAYS * 86400), 0.12, 1);
-    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.17, z), 0, 0, 0.22, 0.34, 0.22, 0.5, 0.52, 0.6);
-    shape(s, SHAPE_CYLINDER, LOOK_STONE, v3(x, g + 0.36, z), 0, 0, 0.16, 0.06, 0.16, 0.55, 0.57, 0.65);
+    shape(s, SHAPE_SPHERE, LOOK_PAINT, v3(x, g + 0.15, z), 0, 0, 0.26, 0.3, 0.26, 0.82, 0.86, 0.96);
+    shape(s, SHAPE_CYLINDER, LOOK_PAINT, v3(x, g + 0.33, z), 0, 0, 0.13, 0.12, 0.13, 0.86, 0.9, 0.98);
+    shape(s, SHAPE_CYLINDER, LOOK_PAINT, v3(x, g + 0.4, z), 0, 0, 0.17, 0.03, 0.17, 0.95, 0.95, 1.0);
     for k: 0..<VASE_SLOTS {
       kind := p[0].v_flowers[i * VASE_SLOTS + k];
       if kind < 0 { continue; }
@@ -197,9 +197,60 @@ play_draw :: (s: [] Villa) {
       droop := (1 - fresh) * 0.25;
       top := v3(x - cos(a) * 0.16, g + 0.72 - droop, z - sin(a) * 0.16);
       limb(s, SHAPE_CYLINDER, LOOK_LEAVES, v3(x, g + 0.38, z), top, 0.012, 0.12 * fresh, 0.3 * fresh, 0.18 * fresh);
-      ball(s, ifx fresh > 0.4 then LOOK_BLOOM else LOOK_MATTE, top, 0.06, FLOWER_RGB[kind * 3] * fresh, FLOWER_RGB[kind * 3 + 1] * fresh, FLOWER_RGB[kind * 3 + 2] * fresh);
+      bloom_head(s, top, kind, 0.55 + 0.45 * fresh, fresh > 0.4, a, fresh);
     }
   }
+}
+
+// A glowing field flower of kind k (villapet.coax FLOWER_NAME) at x, z, `size` 1 knee-high to
+// the dog: MOONPETAL five broad pale-blue petals, LANTERN a butter bell hung from an arching
+// stem, STARBELL a lilac six-pointed star; each on a stem with two leaves.
+glow_flower :: (s: [] Villa, x: f32, z: f32, k: int, size: f32, sway: f32, pulse: f32, turn: f32) {
+  rgb := [3] f32.[FLOWER_RGB[k * 3] * pulse, FLOWER_RGB[k * 3 + 1] * pulse, FLOWER_RGB[k * 3 + 2] * pulse];
+  if k == 0 { little_flower(s, x, z, size, rgb, [3] f32.[1.0, 0.97, 0.85], true, sway, turn); return; }
+  g := ground_at(s, x, z);
+  h := 0.46 * size;
+  if k == 1 {   // the lantern: a stem that arches over and a bell hanging from its end
+    mid := v3(x + sway * 0.5, g + h, z);
+    tip := v3(x + 0.12 * size * cos(turn) + sway, g + h * 0.95, z + 0.12 * size * sin(turn));
+    limb(s, SHAPE_CYLINDER, LOOK_PAINT, v3(x, g, z), mid, 0.012 * size, C_LEAF_MID[0], C_LEAF_MID[1], C_LEAF_MID[2]);
+    limb(s, SHAPE_CYLINDER, LOOK_PAINT, mid, tip, 0.01 * size, C_LEAF_MID[0], C_LEAF_MID[1], C_LEAF_MID[2]);
+    shape(s, SHAPE_CONE, LOOK_BLOOM, add(tip, v3(0, -0.07 * size, 0)), turn, 0, 0.16 * size, 0.16 * size, 0.16 * size, rgb[0], rgb[1], rgb[2]);
+    ball(s, LOOK_GLOW, add(tip, v3(0, -0.13 * size, 0)), 0.02 * size, 1.0, 0.98, 0.9);
+    for l: 0..<2 {
+      sd := ifx l == 0 then 1.0f32 else -1.0f32;
+      a := turn + sd * 1.6;
+      shape(s, SHAPE_CONE, LOOK_PAINT, v3(x + cos(a) * 0.06 * size, g + h * 0.3, z + sin(a) * 0.06 * size), a + f32(PI) / 2, 1.0 * sd, 0.07 * size, 0.22 * size, 0.025 * size, C_LEAF_LIGHT[0], C_LEAF_LIGHT[1], C_LEAF_LIGHT[2]);
+    }
+    return;
+  }
+  // the starbell: six narrow points round a bright heart
+  top := v3(x + sway, g + h, z);
+  limb(s, SHAPE_CYLINDER, LOOK_PAINT, v3(x, g, z), top, 0.012 * size, C_LEAF_MID[0], C_LEAF_MID[1], C_LEAF_MID[2]);
+  for p: 0..<6 {
+    a := turn + f32(p) * f32(TAU) / 6;
+    at := add(top, v3(cos(a) * 0.06 * size, 0, sin(a) * 0.06 * size));
+    shape(s, SHAPE_CONE, LOOK_BLOOM, at, a + f32(PI) / 2, f32(PI) / 2 - 0.3, 0.08 * size, 0.17 * size, 0.035 * size, rgb[0], rgb[1], rgb[2]);
+  }
+  ball(s, LOOK_GLOW, add(top, v3(0, 0.015 * size, 0)), 0.03 * size, 1.0, 0.98, 0.92);
+  for l: 0..<2 {
+    sd := ifx l == 0 then 1.0f32 else -1.0f32;
+    a := turn + sd * 1.3;
+    shape(s, SHAPE_CONE, LOOK_PAINT, v3(x + cos(a) * 0.06 * size, g + h * 0.35, z + sin(a) * 0.06 * size), a + f32(PI) / 2, 1.1 * sd, 0.07 * size, 0.2 * size, 0.025 * size, C_LEAF_LIGHT[0], C_LEAF_LIGHT[1], C_LEAF_LIGHT[2]);
+  }
+}
+
+// A flower's head in a vase: its petals round a heart, faded by `fresh`.
+bloom_head :: (s: [] Villa, top: Point, kind: int, size: f32, glow: bool, turn: f32, fresh: f32) {
+  r := FLOWER_RGB[kind * 3] * fresh; gg := FLOWER_RGB[kind * 3 + 1] * fresh; b := FLOWER_RGB[kind * 3 + 2] * fresh;
+  look := ifx glow then LOOK_BLOOM else LOOK_PAINT;
+  n := ifx kind == 2 then 6 else 5;
+  for p: 0..<n {
+    a := turn + f32(p) * f32(TAU) / f32(n);
+    at := add(top, v3(cos(a) * 0.045 * size, 0, sin(a) * 0.045 * size));
+    shape(s, SHAPE_SPHERE, look, at, -a, 0.35, 0.065 * size, 0.022 * size, 0.04 * size, r, gg, b);
+  }
+  ball(s, ifx glow then LOOK_GLOW else LOOK_PAINT, top, 0.02 * size, 1.0, 0.97, 0.88);
 }
 
 // The play buttons above the hint (a phone's thumbs, or the keys' names), and your flowers.

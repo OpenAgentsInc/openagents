@@ -130,19 +130,20 @@ shade and shadow light, accent, dark, light, two foliage colours, water,
 wood, warm, mint, rock, lavender, sage), written once in sRGB in
 `verse_style_flat_srgb` and read by the preset and by the shaders alike. A
 realm keeps its shapes; its palette decides their colours. How it maps a
-shape to the palette is the realm's: Hecate's Cemetery by material (stone to
-ivory, iron near-black, trees blue-black), Fairy Forest by drawing every
+shape to the palette is the realm's: Hecate's Cemetery gives most shapes their
+own pastel and maps the rest by material (iron to indigo), Fairy Forest by drawing every
 shape's colour most of the way to the palette's nearest in its vertex
 stage (0.8; half for what glows and for her skin and clothes).
 
-- **Hecate's Cemetery** (`FLAT_CEMETERY`), night all day: a dusty blue sky
-  over a paler dusty blue horizon band, a deep dusty blue ground in broad
-  patches of two, pale ivory-grey paths with a thin ivory trim along their
-  edges, ivory tombstones and walls with slate plaques, blue-black cypresses
-  and hedges, near-black iron with a thin gold line along its top, the dog
-  a flat ivory glow, you a near-black shadow, the moon a flat ivory disc in
-  its real phase. The moon's light is held at least 0.45 up, so a low moon
-  never drops the garden into its dark tone.
+- **Hecate's Cemetery** (`FLAT_CEMETERY`, faceted since October 31), moonlit
+  pastels all day: a plain periwinkle sky over a pale lilac horizon band, soft
+  sage ground in broad patches of two, warm cream paths with a thin light
+  trim, lavender shade and long soft lavender shadows stretched away from the
+  moon, and each shape in its own pastel (`LOOK_PAINT`, or `LOOK_CUT` with its
+  corners nudged): lavender-grey and cream stones, teal and sage crowns, tan
+  wood, indigo iron, mint water, pastel flowers. You are a see-through
+  lavender spirit; the dog a flat cream glow; the moon a flat cream disc in its
+  real phase, east-south-east, its light held at least 0.45 up.
 - **Fairy Forest** (`FLAT_FAIRY`, since October 31), muted pastels drawn
   faceted (see [Facets](#facets)): a plain soft dusty-blue sky over a pale
   lilac-grey horizon band, soft sage ground in broad fills, sand trails, sage

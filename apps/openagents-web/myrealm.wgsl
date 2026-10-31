@@ -882,81 +882,81 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
   {
     if ((l_fl_slot < 0.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.36500001, 0.442999989, 0.575999975);
+      return coax_p_st_pick(l_fl_ch, 0.400000006, 0.463, 0.689999998);
     }
     if ((l_fl_slot < 1.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.540000021, 0.603999972, 0.698000014);
+      return coax_p_st_pick(l_fl_ch, 0.745000005, 0.70599997, 0.847000003);
     }
     if ((l_fl_slot < 2.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.254999995, 0.317999989, 0.419999987);
+      return coax_p_st_pick(l_fl_ch, 0.442999989, 0.583999991, 0.537);
     }
     if ((l_fl_slot < 3.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.289999992, 0.356999993, 0.455000013);
+      return coax_p_st_pick(l_fl_ch, 0.493999988, 0.630999982, 0.564999998);
     }
     if ((l_fl_slot < 4.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.699999988, 0.699999988, 0.689999998);
+      return coax_p_st_pick(l_fl_ch, 0.875, 0.819999993, 0.709999979);
     }
     if ((l_fl_slot < 5.5))
     {
-      return coax_p_st_pick(l_fl_ch, 1.0, 1.0, 0.980000019);
+      return coax_p_st_pick(l_fl_ch, 1.0, 0.99000001, 0.970000029);
     }
     if ((l_fl_slot < 6.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.649999976, 0.800000012);
+      return coax_p_st_pick(l_fl_ch, 0.660000026, 0.660000026, 0.860000014);
     }
     if ((l_fl_slot < 7.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.639999986, 0.680000007, 0.819999993);
+      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.600000024, 0.819999993);
     }
     if ((l_fl_slot < 8.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+      return coax_p_st_pick(l_fl_ch, 0.980000019, 0.959999979, 0.899999976);
     }
     if ((l_fl_slot < 9.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.0820000023, 0.0939999968, 0.122000001);
+      return coax_p_st_pick(l_fl_ch, 0.203999996, 0.211999997, 0.340999991);
     }
     if ((l_fl_slot < 10.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.925000012, 0.893999994, 0.811999977);
+      return coax_p_st_pick(l_fl_ch, 0.964999974, 0.936999977, 0.870999992);
     }
     if ((l_fl_slot < 11.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.118000001, 0.157000005, 0.200000003);
+      return coax_p_st_pick(l_fl_ch, 0.270999998, 0.446999997, 0.419999987);
     }
     if ((l_fl_slot < 12.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.216000006, 0.270999998);
+      return coax_p_st_pick(l_fl_ch, 0.455000013, 0.620000005, 0.49000001);
     }
     if ((l_fl_slot < 13.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.497999996, 0.583999991, 0.702000022);
+      return coax_p_st_pick(l_fl_ch, 0.579999983, 0.819999993, 0.800000012);
     }
     if ((l_fl_slot < 14.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.141000003, 0.152999997);
+      return coax_p_st_pick(l_fl_ch, 0.689999998, 0.545000017, 0.419999987);
     }
     if ((l_fl_slot < 15.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+      return coax_p_st_pick(l_fl_ch, 0.980000019, 0.875, 0.579999983);
     }
     if ((l_fl_slot < 16.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.779999971, 0.800000012, 0.779999971);
+      return coax_p_st_pick(l_fl_ch, 0.779999971, 0.899999976, 0.850000024);
     }
     if ((l_fl_slot < 17.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.787999988, 0.768999994, 0.713999987);
+      return coax_p_st_pick(l_fl_ch, 0.776000023, 0.764999986, 0.866999984);
     }
     if ((l_fl_slot < 18.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.419999987, 0.460000008, 0.600000024);
+      return coax_p_st_pick(l_fl_ch, 0.532999992, 0.532999992, 0.722000003);
     }
-    return coax_p_st_pick(l_fl_ch, 0.379999995, 0.430000007, 0.469999999);
+    return coax_p_st_pick(l_fl_ch, 0.600000024, 0.699999988, 0.620000005);
   }
   if ((l_fl_realm > 1.5))
   {

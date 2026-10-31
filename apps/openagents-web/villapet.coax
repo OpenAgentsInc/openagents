@@ -72,7 +72,7 @@ SKILL_LABEL :: [3] string.["FETCH", "SIT, STAY, COME", "DIGGING"];
 // The field's flowers: three kinds, each glowing its own colour.
 FLOWER_KINDS :: 3;
 FLOWER_NAME :: [3] string.["MOONPETAL", "LANTERN", "STARBELL"];
-FLOWER_RGB :: [9] f32.[0.55, 0.75, 1.0,  1.0, 0.72, 0.32,  0.78, 0.55, 1.0];
+FLOWER_RGB :: [9] f32.[0.62, 0.78, 1.0,  1.0, 0.9, 0.55,  0.8, 0.62, 1.0];   // pale blue, butter (never orange: Bitcoin's), lilac
 VASE_SLOTS :: 7;
 VASES_MAX :: 80;
 PV_VASE :: 3;

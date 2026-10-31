@@ -33,13 +33,13 @@ foliage_fns="verse_style_canopy_axis verse_style_canopy_normal verse_style_canop
 for w in fixture everglade; do
   (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $foliage_fns --into "apps/openagents-web/$w.wgsl")
 done
-# The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.
-flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 verse_style_flat_sky verse_style_flat_shadow verse_style_flat_fade verse_style_bayer verse_style_flat_dither verse_style_flat_hem verse_style_flat_srgb verse_style_flat_colour verse_style_flat_time"
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/villa.wgsl)
-# A made realm (myrealm.wgsl) is painterly or flat when its maker picked that (low poly keeps its own look).
-(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
 # The low-poly facets (art-styles.md, Flat: facets): a face's own tone, nudged round corners, the light outline.
 facet_fns="verse_style_facet_tone verse_style_facet_jitter verse_style_facet_edge"
+# The flat style (art-styles.md, Flat) and its palettes go to the flat realms: Hecate's Cemetery and Fairy Forest.
+flat_fns="verse_style_flat_light verse_style_flat_band verse_style_flat_band2 verse_style_flat_sky verse_style_flat_shadow verse_style_flat_fade verse_style_bayer verse_style_flat_dither verse_style_flat_hem verse_style_flat_srgb verse_style_flat_colour verse_style_flat_time"
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns $facet_fns --into apps/openagents-web/villa.wgsl)
+# A made realm (myrealm.wgsl) is painterly or flat when its maker picked that (low poly keeps its own look).
+(cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $style_fns $flat_fns --into apps/openagents-web/myrealm.wgsl)
 # Fairy Forest draws in the flat style only, faceted: no painterly or grass functions.
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns $facet_fns --into apps/openagents-web/fairy.wgsl)
 (cd "$here/../.." && python3 coax/web/wgsl.py verse/style.coax $flat_fns --into apps/openagents-web/orbitleague.wgsl)

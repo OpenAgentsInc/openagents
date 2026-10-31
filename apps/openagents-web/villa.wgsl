@@ -1,10 +1,11 @@
-// Hecate's Cemetery's passes (villa.coax) in the flat style (docs/verse/art-styles.md,
-// Flat): the night sky, one flat dusty blue over a soft horizon band, with
-// the moon a flat ivory disc in its real phase (or space, in the flight's
-// first take), the scene in three flat tones, and a post pass that blooms only
-// what glows, under the HUD's plates; then the HUD's strokes. No outline, no
-// specular, no rim: the palette (verse/style.coax FLAT_CEMETERY, dusty blue,
-// near-black, ivory and a touch of gold) does the work.
+// Hecate's Cemetery's passes (villa.coax) in the flat style, faceted (docs/verse/art-styles.md,
+// Flat and Flat: facets): a plain periwinkle night sky over a soft lilac horizon band, with
+// the moon a flat cream disc in its real phase (or space, in the flight's first take), the
+// scene flat-shaded low poly (each face one tone from its own normal, round shapes coarse and
+// cut), soft lavender cast shadows stretched away from the moon, and a post pass that draws a
+// crisp light line along each shape's outline and blooms only what glows, under the HUD's
+// plates; then the HUD's strokes. No specular, no tone curve: the palette (verse/style.coax
+// FLAT_CEMETERY, moonlit pastels) and each shape's own pastel (LOOK_PAINT) do the work.
 // Every number comes from villa.coax: the view, the eye, the moon, the
 // ground's heights (store 0), each object's place, size, colour and shape
 // (store 1), the shadows, the paths and the plates.
@@ -22,7 +23,7 @@ struct U {
   moon: vec4f,     // toward the moon, and its phase (0 new, 0.5 full)
   sky: vec4f,      // the moonlight's strength, the lit share of the disc
   ground: vec4f,
-  shadow: array<vec4f, 16>,
+  shadow: array<vec4f, 32>,
   path: array<vec4f, 48>,
   path_info: vec4f,
 }
@@ -164,42 +165,52 @@ fn box_vertex(id: u32) -> Vert {
   }
   return Vert(n * 0.5 + a * c.x + b * c.y, n);
 }
-fn globe_vertex(id: u32, lons: u32, lats: u32) -> Vert {
+// Low poly (art-styles.md, Flat: facets): a sphere is coarse, eight faces round and five down, the
+// rest of its lons x lats grid collapsed to nothing; `nudge` moves each corner in or out by up to that
+// share of the radius (verse_style_facet_jitter, seeded per shape), so a crown or a stone reads as cut.
+const ROUND = 8.0; const DOWN = 5.0;
+fn nothing() -> Vert { return Vert(vec3f(0.0), vec3f(0.0, 1.0, 0.0)); }
+fn globe_vertex(id: u32, lons: u32, lats: u32, nudge: f32, seed: f32) -> Vert {
   let q = id / 6u;
   let c = quad(id % 6u);
-  let lon = (f32(q % lons) + c.x) / f32(lons) * TAU;
-  let lat = (f32(q / lons) + c.y) / f32(lats) * 3.14159265;
+  if (q % lons >= 8u || q / lons >= lats) { return nothing(); }
+  let i = f32(q % lons) + c.x;
+  let j = f32(q / lons) + c.y;
+  let lon = i / ROUND * TAU;
+  let lat = j / DOWN * 3.14159265;
   let n = vec3f(sin(lat) * cos(lon), cos(lat), sin(lat) * sin(lon));
-  return Vert(n * 0.5, n);
+  return Vert(n * 0.5 * (1.0 + nudge * verse_style_facet_jitter(i, j, ROUND, DOWN, seed)), n);
 }
+// Eight flat sides and flat caps: 48 side vertices, then 8 triangles a cap, top then bottom.
 fn cylinder_vertex(id: u32) -> Vert {
-  if (id < 96u) {
+  if (id < 48u) {
     let c = quad(id % 6u);
-    let a = (f32(id / 6u) + c.x) / 16.0 * TAU;
+    let a = (f32(id / 6u) + c.x) / ROUND * TAU;
     let n = vec3f(cos(a), 0.0, sin(a));
     return Vert(vec3f(n.x * 0.5, c.y - 0.5, n.z * 0.5), n);
   }
-  let t = (id - 96u) / 3u;
-  let k = (id - 96u) % 3u;
-  let top = t < 16u;
+  let t = (id - 48u) / 3u;
+  let k = (id - 48u) % 3u;
+  let top = t < 8u;
   let y = select(-0.5, 0.5, top);
   let n = vec3f(0.0, select(-1.0, 1.0, top), 0.0);
   if (k == 0u) { return Vert(vec3f(0.0, y, 0.0), n); }
-  let a = (f32(t % 16u) + f32(k - 1u)) / 16.0 * TAU;
+  let a = (f32(t % 8u) + f32(k - 1u)) / ROUND * TAU;
   return Vert(vec3f(cos(a) * 0.5, y, sin(a) * 0.5), n);
 }
+// Eight sides to its point (24 vertices), then its base (24).
 fn cone_vertex(id: u32) -> Vert {
-  let t = (id % 48u) / 3u;
+  let t = (id % 24u) / 3u;
   let k = id % 3u;
-  if (id < 48u) {
-    let mid = (f32(t) + 0.5) / 16.0 * TAU;
+  if (id < 24u) {
+    let mid = (f32(t) + 0.5) / ROUND * TAU;
     if (k == 0u) { return Vert(vec3f(0.0, 0.5, 0.0), normalize(vec3f(cos(mid), 0.5, sin(mid)))); }
-    let a = (f32(t) + f32(k - 1u)) / 16.0 * TAU;
+    let a = (f32(t) + f32(k - 1u)) / ROUND * TAU;
     return Vert(vec3f(cos(a) * 0.5, -0.5, sin(a) * 0.5), normalize(vec3f(cos(a), 0.5, sin(a))));
   }
   let n = vec3f(0.0, -1.0, 0.0);
   if (k == 0u) { return Vert(vec3f(0.0, -0.5, 0.0), n); }
-  let a = (f32(t) + f32(k - 1u)) / 16.0 * TAU;
+  let a = (f32(t) + f32(k - 1u)) / ROUND * TAU;
   return Vert(vec3f(cos(a) * 0.5, -0.5, sin(a) * 0.5), n);
 }
 
@@ -227,12 +238,16 @@ fn clip(w: vec3f) -> vec4f {
   }
   let m = objects[instance - n * n];
   let kind = u32(m.colour.w) % 8u;
+  let shape_look = u32(m.colour.w) / 8u;
+  // leaves, stones, soil and cut shapes are nudged irregular; figures, what glows and the paint keep even faces
+  let nudge = select(0.0, 0.16, shape_look == 1u || shape_look == 2u || shape_look == 9u || shape_look == 12u);
+  let seed = fract(m.r0.w * 0.137 + m.r2.w * 0.071 + m.r1.w * 0.29);
   var v: Vert;
   switch kind {
     case 1u: { v = box_vertex(id); }
-    case 2u: { v = globe_vertex(id, 16u, 10u); }
+    case 2u: { v = globe_vertex(id, 8u, 5u, nudge, seed); }
     case 3u: { v = cylinder_vertex(id); }
-    case 5u: { v = globe_vertex(id, 8u, 6u); }
+    case 5u: { v = globe_vertex(id, 8u, 5u, nudge, seed); }
     default: { v = cone_vertex(id); }
   }
   let p = vec4f(v.p, 1.0);
@@ -264,24 +279,25 @@ fn path_distance(p: vec2f) -> f32 {
   }
   return d;
 }
-// The cast shadows: flat translucent shapes, the deepest one where they overlap (0 none, 1 all).
+// The cast shadows: soft flat shapes stretched away from the moon, the deepest one where they
+// overlap (0 none, 1 all). Each is a foot (x, z, radius) and, packed in w, its length away from
+// the moon in tenths of a metre (the whole part) and its strength (the fraction).
 fn shade_shadows(p: vec2f) -> f32 {
   var s = 0.0;
-  for (var i = 0; i < 16; i++) {
+  let k = key_dir();
+  let away = -normalize(vec2f(k.x, k.z) + vec2f(0.0001, 0.0));
+  for (var i = 0; i < 32; i++) {
     let b = u.shadow[i];
     if (b.z <= 0.0) { break; }
-    s = max(s, verse_style_flat_shadow(length(p - b.xy) / b.z) * min(b.w * 1.4, 1.0));
+    let reach = floor(b.w) * 0.1;
+    let strength = fract(b.w);
+    let t = clamp(dot(p - b.xy, away), 0.0, reach);
+    let q = p - b.xy - away * t;
+    // narrowing a little toward its far end, as a crown's shadow does
+    let r = b.z * (1.0 - 0.35 * t / max(reach, 0.001));
+    s = max(s, verse_style_flat_shadow(length(q) / r) * min(strength * 1.4, 1.0));
   }
   return s;
-}
-
-// Each look's material number (an outline is drawn where it changes) and
-// its outline's strength, 0 to 15.
-fn material(look: u32) -> u32 { return min(look, 14u) + 1u; }
-fn ink_of(look: u32) -> u32 {
-  if (look == 5u || look == 7u || look == 8u || look == 6u) { return 0u; }   // what glows, the shadow, the planet
-  if (look == 99u) { return 6u; }
-  return 12u;
 }
 
 // The light from the moon held at least 0.45 up, so a low or set moon never puts the whole
@@ -303,6 +319,7 @@ fn albedo(look: u32, tint: vec3f) -> vec3f {
   if (look == 4u) { return pal(P_WATER); }
   if (look == 9u) { return pal(P_FOLIAGE2); }                                                    // turned soil
   if (look == 10u) { return pal(P_DARK); }
+  if (look == 11u || look == 12u) { return pow(clamp(tint, vec3f(0.0), vec3f(1.0)), vec3f(2.2)); }   // a shape's own pastel (sRGB)
   return pal(P_WOOD);                                                                            // trunks, benches
 }
 
@@ -313,23 +330,30 @@ fn albedo(look: u32, tint: vec3f) -> vec3f {
   let ground_aa = max(length(fwidth(s.world.xz)), 0.002);   // derivatives first, while control flow is uniform
   let local_aa = fwidth(s.local.y);
   let to_eye = normalize(u.eye.xyz - s.world);
-  var facet = normalize(cross(dy, dx));
+  var facet = cross(dy, dx);
+  facet = normalize(select(facet, vec3f(0.0, 1.0, 0.0), dot(facet, facet) < 1e-14));
   if (dot(facet, to_eye) < 0.0) { facet = -facet; }
   let smooth_n = normalize(s.normal);
   let d = length(u.eye.xyz - s.world);
   let fade = verse_style_flat_fade(d, FADE_FROM, FADE_OVER, FADE_CAP);
 
-  // You: a shadow, near-black all through, fuzzy at the edge.
+  // You: a spirit visiting from another realm, pale lavender light, solid at its heart and
+  // dissolving toward its rim in a fine ordered dither that drifts, so the bloom and the wisps
+  // rising off you (villa.coax particles) make it soft and fuzzy.
   if (s.look == 6u) {
     let facing = abs(dot(smooth_n, to_eye));
-    let grain = hash(floor(s.pos.xy) + vec2f(floor(u.time * 24.0) * (1.0 - u.still) * 0.37, 0.0));
-    if (grain > smoothstep(0.02, 0.5, facing) * 1.25) { discard; }
-    return Lit(vec4f(mix(pal(P_DARK) * 0.6, pal(P_HORIZON), fade * 0.6), 0.0), vec4f(smooth_n, f32(material(6u) * 16u)));
+    let drift = floor(u.time * 12.0) * (1.0 - u.still);
+    let body = smoothstep(0.0, 0.8, facing);
+    let cell = floor(s.pos.xy / max(u.k, 1.0)) + vec2f(drift, drift * 2.0);
+    // a third of its heart and nearly all of its rim let what is behind it show
+    if (verse_style_bayer(cell.x, cell.y) > body * 0.68) { discard; }
+    let core = mix(vec3f(0.5, 0.55, 0.92), vec3f(0.8, 0.82, 1.0), body);
+    return Lit(vec4f(mix(core, pal(P_HORIZON), fade * 0.5), 0.22), vec4f(smooth_n, -d));
   }
-  // What glows: the dog's light, one flat ivory.
+  // What glows: the dog's light, one flat cream.
   if (s.look == 5u || s.look == 7u) {
     let c = mix(pal(P_LIGHT), s.tint, 0.25) * select(1.15, 1.6, s.look == 7u);
-    return Lit(vec4f(mix(c, pal(P_HORIZON), fade * 0.35), select(0.35, 0.9, s.look == 7u)), vec4f(smooth_n, f32(material(s.look) * 16u)));
+    return Lit(vec4f(mix(c, pal(P_HORIZON), fade * 0.35), select(0.35, 0.9, s.look == 7u)), vec4f(smooth_n, -d));
   }
   // The planet, seen in the flight: two flat tones and its land in flat patches.
   if (s.look == 8u) {
@@ -338,16 +362,17 @@ fn albedo(look: u32, tint: vec3f) -> vec3f {
     let land = step(0.52, noise(vec2f(atan2(n.z, n.x) * 3.0, n.y * 4.0)));
     let base = mix(pal(P_SLATE), pal(P_GROUND2), land);
     let c = base * mix(0.25, 1.0, lit);
-    return Lit(vec4f(c, 0.0), vec4f(n, f32(material(8u) * 16u)));
+    return Lit(vec4f(c, 0.0), vec4f(n, -d));
   }
 
   var n = facet;
   let xz = s.world.xz;
   var base = albedo(s.look, s.tint);
   var cover = 0.0;
+  var edge = 1.0;   // a light outline where this surface stands in front of something further (the post pass)
   if (s.look == 99u) {
-    // the ground: one flat dusty blue in broad patches of two, the paths a flat pale band
-    // with a thin ivory trim along their edges
+    // the ground: soft sage in broad patches of two, its own faces showing; the paths a flat
+    // cream band with a thin light trim along their edges
     base = mix(pal(P_GROUND), pal(P_GROUND2), step(0.6, noise(xz * 0.045)));
     let pd = path_distance(xz);
     let half = u.path_info.y;
@@ -355,25 +380,26 @@ fn albedo(look: u32, tint: vec3f) -> vec3f {
     base = mix(base, pal(P_PATH), 1.0 - smoothstep(half - aa, half + aa, pd));
     base = mix(base, pal(P_LIGHT), verse_style_flat_hem(abs(pd - half), 0.035, aa) * 0.7);
     cover = shade_shadows(xz);
-  } else if (s.look == 4u || s.look == 10u) {
+    edge = 0.0;
+  } else if (s.look == 4u) {
+    edge = 0.0;
+  } else if (s.look == 10u) {
     n = smooth_n;
   }
-  // a tall shape steps a little darker toward its foot, dithered where the steps meet
-  if (s.size.y > 0.0 && s.look != 99u) {
-    let t = verse_style_flat_dither(0.5 - s.local.y, s.pos.x, s.pos.y, DITHER_STEPS);
-    base = mix(base, base * pal(P_SHADE) * 0.8, t * DITHER * s.size.y);
-  }
-  // trim: a thin gold line along the top of the iron (the gate's bar, the railings' tips)
+  // trim: a thin cream line along the top of the iron (the gate's bar, the railings' tips)
   if (s.look == 3u) {
     let from_top = (0.5 - s.local.y) * s.size.x;
     base = mix(base, pal(P_ACCENT), verse_style_flat_hem(from_top, 0.03, max(local_aa * s.size.x, 0.001)));
   }
-  // three flat tones, lit, shade and dark; no specular; the cast shadow a flat translucent shape
-  let band = verse_style_flat_band(verse_style_flat_light(dot(n, key_dir()), 1.0));
+  // one tone a face (art-styles.md, Flat: facets), between the palette's shade and lit; no specular;
+  // the cast shadow a soft lavender shape on the ground
+  let band = verse_style_facet_tone(dot(n, key_dir()), 1.0);
   var c = base * mix(pal(P_SHADE), pal(P_LIT), band);
   c *= mix(vec3f(1.0), pal(P_SHADOW), cover);
   c = mix(c, pal(P_HORIZON), fade);
-  return Lit(vec4f(c, 0.0), vec4f(n, f32(material(s.look) * 16u + ink_of(s.look))));
+  // the outline only where the shape reads at its distance: tiny far things (a tuft, a petal) get none
+  let reads = max(s.size.x, 0.0) / max(d, 0.1) > 0.035 || s.look == 99u;
+  return Lit(vec4f(c, 0.0), vec4f(n, select(-d, d, edge > 0.5 && reads)));
 }
 
 // ---- the post pass (host.js postLayouts): the bright share, blurred at a quarter and an
@@ -440,7 +466,18 @@ fn plates(p: vec2f, under: vec3f) -> vec3f {
   let light = textureLoad(post_light, p, 0).rgb;
   let near = textureSampleLevel(post_quarter, post_lin, uv, 0.0).rgb;
   let far = textureSampleLevel(post_eighth, post_lin, uv, 0.0).rgb;
-  let c = light + (near * 0.55 + far * 0.45) * 0.6;
+  var c = light + (near * 0.55 + far * 0.45) * 0.6;
+  // the crisp light line along a shape's outline (art-styles.md, Flat: facets): on the near side of
+  // an edge, where a neighbour lies clearly further off (or is sky), fading out with distance
+  let own = textureLoad(post_aux, p, 0).w;
+  if (own > 0.0 && own < 140.0 && u.eye.w < 0.5) {
+    let hi = vec2i(u.size) - vec2i(1);
+    var e = verse_style_facet_edge(own, textureLoad(post_aux, clamp(p + vec2i(1, 0), vec2i(0), hi), 0).w);
+    e = max(e, verse_style_facet_edge(own, textureLoad(post_aux, clamp(p - vec2i(1, 0), vec2i(0), hi), 0).w));
+    e = max(e, verse_style_facet_edge(own, textureLoad(post_aux, clamp(p + vec2i(0, 1), vec2i(0), hi), 0).w));
+    e = max(e, verse_style_facet_edge(own, textureLoad(post_aux, clamp(p - vec2i(0, 1), vec2i(0), hi), 0).w));
+    c = mix(c, pal(P_ACCENT), e * 0.8 * (1.0 - smoothstep(60.0, 140.0, own)));
+  }
   return vec4f(plates(pos.xy, encode(c)), 1.0);
 }
 
@@ -504,7 +541,7 @@ fn verse_outline_crease(l_facing: f32) -> f32 {
 // ---- end generated
 
 // The art style's shading (verse/style.coax; docs/verse/art-styles.md), fed by the preset's STYLE_FLOATS.
-// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_flat_light, verse_style_flat_band, verse_style_flat_band2, verse_style_flat_sky, verse_style_flat_shadow, verse_style_flat_fade, verse_style_bayer, verse_style_flat_dither, verse_style_flat_hem, verse_style_flat_srgb, verse_style_flat_colour, verse_style_flat_time) by coax/web/wgsl.py; do not edit
+// ---- generated: verse/style.coax (verse_style_wrap, verse_style_bands, verse_style_bands2, verse_style_shade, verse_style_cool, verse_style_keep_value, verse_style_banded, verse_style_ambient, verse_style_dab, verse_style_rim, verse_style_haze, verse_style_haze_glow, verse_style_haze_teal, verse_style_haze_hue, verse_style_fog, verse_style_sky_t, verse_style_sky_band, verse_style_halo, verse_style_hash, verse_style_noise, verse_style_cloud_field, verse_style_cloud_cover, verse_style_cloud_lit, verse_style_cloud_fade, verse_style_tone, verse_style_saturation, verse_style_lift, verse_style_luma, verse_style_bloom_share, verse_style_bloom_mix, verse_style_shadow_reach, verse_style_shadow_snap, verse_style_shadow_across, verse_style_shadow_depth, verse_style_shadow_taps, verse_style_shadow_radius, verse_style_shadow_tap, verse_style_contact, verse_style_shaft_source, verse_style_shaft_fade, verse_style_shaft_tap, verse_style_shaft_total, verse_style_shaft, verse_style_gust, verse_style_wind, verse_style_bend, verse_style_grass_tilt, verse_style_blade_height, verse_style_grass_fade, verse_style_grass_blades, verse_style_grass_clear, verse_style_segment, verse_style_part, verse_style_tip, verse_style_jitter, verse_style_flat_light, verse_style_flat_band, verse_style_flat_band2, verse_style_flat_sky, verse_style_flat_shadow, verse_style_flat_fade, verse_style_bayer, verse_style_flat_dither, verse_style_flat_hem, verse_style_flat_srgb, verse_style_flat_colour, verse_style_flat_time, verse_style_facet_tone, verse_style_facet_jitter, verse_style_facet_edge) by coax/web/wgsl.py; do not edit
 fn coax_p_st_min(l_a: f32, l_b: f32) -> f32 {
   if ((l_a < l_b))
   {
@@ -1024,81 +1061,81 @@ fn verse_style_flat_srgb(l_fl_realm: f32, l_fl_slot: f32, l_fl_ch: f32) -> f32 {
   {
     if ((l_fl_slot < 0.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.36500001, 0.442999989, 0.575999975);
+      return coax_p_st_pick(l_fl_ch, 0.400000006, 0.463, 0.689999998);
     }
     if ((l_fl_slot < 1.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.540000021, 0.603999972, 0.698000014);
+      return coax_p_st_pick(l_fl_ch, 0.745000005, 0.70599997, 0.847000003);
     }
     if ((l_fl_slot < 2.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.254999995, 0.317999989, 0.419999987);
+      return coax_p_st_pick(l_fl_ch, 0.442999989, 0.583999991, 0.537);
     }
     if ((l_fl_slot < 3.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.289999992, 0.356999993, 0.455000013);
+      return coax_p_st_pick(l_fl_ch, 0.493999988, 0.630999982, 0.564999998);
     }
     if ((l_fl_slot < 4.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.699999988, 0.699999988, 0.689999998);
+      return coax_p_st_pick(l_fl_ch, 0.875, 0.819999993, 0.709999979);
     }
     if ((l_fl_slot < 5.5))
     {
-      return coax_p_st_pick(l_fl_ch, 1.0, 1.0, 0.980000019);
+      return coax_p_st_pick(l_fl_ch, 1.0, 0.99000001, 0.970000029);
     }
     if ((l_fl_slot < 6.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.649999976, 0.800000012);
+      return coax_p_st_pick(l_fl_ch, 0.660000026, 0.660000026, 0.860000014);
     }
     if ((l_fl_slot < 7.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.639999986, 0.680000007, 0.819999993);
+      return coax_p_st_pick(l_fl_ch, 0.600000024, 0.600000024, 0.819999993);
     }
     if ((l_fl_slot < 8.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+      return coax_p_st_pick(l_fl_ch, 0.980000019, 0.959999979, 0.899999976);
     }
     if ((l_fl_slot < 9.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.0820000023, 0.0939999968, 0.122000001);
+      return coax_p_st_pick(l_fl_ch, 0.203999996, 0.211999997, 0.340999991);
     }
     if ((l_fl_slot < 10.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.925000012, 0.893999994, 0.811999977);
+      return coax_p_st_pick(l_fl_ch, 0.964999974, 0.936999977, 0.870999992);
     }
     if ((l_fl_slot < 11.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.118000001, 0.157000005, 0.200000003);
+      return coax_p_st_pick(l_fl_ch, 0.270999998, 0.446999997, 0.419999987);
     }
     if ((l_fl_slot < 12.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.216000006, 0.270999998);
+      return coax_p_st_pick(l_fl_ch, 0.455000013, 0.620000005, 0.49000001);
     }
     if ((l_fl_slot < 13.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.497999996, 0.583999991, 0.702000022);
+      return coax_p_st_pick(l_fl_ch, 0.579999983, 0.819999993, 0.800000012);
     }
     if ((l_fl_slot < 14.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.165000007, 0.141000003, 0.152999997);
+      return coax_p_st_pick(l_fl_ch, 0.689999998, 0.545000017, 0.419999987);
     }
     if ((l_fl_slot < 15.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.851000011, 0.70599997, 0.352999985);
+      return coax_p_st_pick(l_fl_ch, 0.980000019, 0.875, 0.579999983);
     }
     if ((l_fl_slot < 16.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.779999971, 0.800000012, 0.779999971);
+      return coax_p_st_pick(l_fl_ch, 0.779999971, 0.899999976, 0.850000024);
     }
     if ((l_fl_slot < 17.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.787999988, 0.768999994, 0.713999987);
+      return coax_p_st_pick(l_fl_ch, 0.776000023, 0.764999986, 0.866999984);
     }
     if ((l_fl_slot < 18.5))
     {
-      return coax_p_st_pick(l_fl_ch, 0.419999987, 0.460000008, 0.600000024);
+      return coax_p_st_pick(l_fl_ch, 0.532999992, 0.532999992, 0.722000003);
     }
-    return coax_p_st_pick(l_fl_ch, 0.379999995, 0.430000007, 0.469999999);
+    return coax_p_st_pick(l_fl_ch, 0.600000024, 0.699999988, 0.620000005);
   }
   if ((l_fl_realm > 1.5))
   {
@@ -1276,5 +1313,34 @@ fn verse_style_flat_time(l_fl_realm: f32, l_fl_ch: f32, l_fl_dusk: f32, l_fl_nig
   coax_t64 = (coax_p_st_pick(l_fl_ch, 0.200000003, 0.25, 0.439999998) - l_fl_warm);
   coax_t65 = coax_p_st_sat(l_fl_night);
   return (l_fl_warm + (coax_t64 * coax_t65));
+}
+fn verse_style_facet_tone(l_fl_ndl: f32, l_fl_lit: f32) -> f32 {
+  var coax_t66: f32;
+  var coax_t67: f32;
+  coax_t66 = ((l_fl_ndl * 0.5) + 0.5);
+  coax_t67 = coax_p_st_sat(l_fl_lit);
+  var l_fl_t: f32 = coax_p_st_sat((((coax_t66 * coax_t67) - 0.180000007) / 0.699999988));
+  return ((l_fl_t * l_fl_t) * (3.0 - (2.0 * l_fl_t)));
+}
+fn verse_style_facet_jitter(l_fl_i: f32, l_fl_j: f32, l_fl_round: f32, l_fl_down: f32, l_fl_seed: f32) -> f32 {
+  var l_fl_a: f32 = (l_fl_i - (l_fl_round * floor((l_fl_i / coax_p_st_max(l_fl_round, 1.0)))));
+  if (((l_fl_j < 0.5) || (l_fl_j > (l_fl_down - 0.5))))
+  {
+    l_fl_a = 0.0;
+  }
+  return ((verse_style_hash((l_fl_a + (l_fl_seed * 13.0)), (l_fl_j + (l_fl_seed * 7.0))) * 2.0) - 1.0);
+}
+fn verse_style_facet_edge(l_fl_own: f32, l_fl_other: f32) -> f32 {
+  if ((l_fl_own <= 0.0))
+  {
+    return 0.0;
+  }
+  if ((l_fl_other <= 0.0))
+  {
+    return 1.0;
+  }
+  var l_fl_gap: f32 = (coax_p_st_max(l_fl_other, (-l_fl_other)) - l_fl_own);
+  var l_fl_at: f32 = ((l_fl_own * 0.0399999991) + 0.25);
+  return verse_style_soft_step((l_fl_at * 1.5), (l_fl_at * 0.5), l_fl_gap);
 }
 // ---- end generated
