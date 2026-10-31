@@ -51,8 +51,9 @@ transport, timeout, malformed response, revoked permission, stale semantics and
 HTTP failure. A frame prioritizes timeout, then revoked permission, then changed
 semantics. An owned HTTP 401/429 is classified as authentication/quota and disables
 later shadow attempts even at/after expiry, as in the existing ambient policy.
-Other expired callbacks are timeouts; none can be admitted. Unknown probe fields return −1; 240–244 remain
-available to the page's separate button diagnostics. The stored local enum is
+Other expired callbacks are timeouts; none can be admitted. Unknown probe fields return −1; 240–252 remain
+available to the page/face diagnostics (button bounds, offered/drawn action,
+goal/eligibility, the boolean viewer hint and player lifecycle). The stored local enum is
 not a visibility signal: `ggs_view(...).visible` and its zero-when-hidden
 `local_action` govern rendering.
 

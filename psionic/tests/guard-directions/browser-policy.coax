@@ -1,0 +1,70 @@
+// Browser qualification policy only. Chrome moves bytes/events; this file
+// bounds the local test origin, synthetic routing and observed assertions.
+#authority;
+DB_ASSET :: 0;DB_DOCUMENT :: 1;DB_DECISION :: 2;DB_VIEWER :: 3;DB_OTHER_API :: 4;DB_WORLD :: 5;DB_EXTERNAL :: -1;
+
+#test "the browser qualifier accepts only an explicit numeric IPv4 loopback origin" {
+    #assert db_origin("http://127.0.0.1:1") && db_origin("http://127.0.0.1:65535") && db_origin("http://127.0.0.1:18881");
+    for bad:[11]string.["","https://openagents.com","https://127.0.0.1:1","http://localhost:1","http://127.0.0.1:0","http://127.0.0.1:65536","http://127.0.0.1:-1","http://127.0.0.1:1/","http://127.0.0.1:1?q","http://127.0.0.1:","http://127.0.0.1:123456"] {#assert !db_origin(bad);}
+    #assert !db_origin("http://127.0.0.1:00000") && !db_origin("http://127.0.0.1:12a");
+    #assert db_origin("http://127.0.0.1:10") && db_origin("http://127.0.0.1:9");
+    #assert !db_origin("http://127.0.0.1:000001") && !db_origin("http://127.0.0.1::");
+    #assert db_prefix("same","same") && db_prefix("","") && !db_prefix("a","aa");
+}
+#test "small documents and API bytes are intercepted; large local assets remain HTTP files" {
+    o:="http://127.0.0.1:18881";
+    #assert db_route(o,"http://127.0.0.1:18881/realms/everglade")==DB_DOCUMENT;
+    #assert db_route(o,"http://127.0.0.1:18881/realms/everglade?guard-ai=directions-shadow")==DB_DOCUMENT;
+    #assert db_route(o,"http://127.0.0.1:18881/api/v1/systemone")==DB_DECISION;
+    #assert db_route(o,"http://127.0.0.1:18881/api/auth/viewer")==DB_VIEWER;
+    #assert db_route(o,"http://127.0.0.1:18881/api/playtest/world/everglade")==DB_WORLD;
+    #assert db_route(o,"http://127.0.0.1:18881/api/room")==DB_OTHER_API;
+    for asset:[4]string.["http://127.0.0.1:18881/build/everglade.wasm","http://127.0.0.1:18881/realms/everglade/assets/everglade.pack","http://127.0.0.1:18881/coaxial/host.js","http://127.0.0.1:18881/realms/everglade-extra"] {#assert db_route(o,asset)==DB_ASSET;}
+    for external:[5]string.["https://openagents.com/api/v1/systemone","http://127.0.0.1:18881.evil/api/v1/systemone","http://127.0.0.1:18882/api/v1/systemone","http://127.0.0.1:18881","ws://127.0.0.1:18881/api/v1/systemone"] {#assert db_route(o,external)==DB_EXTERNAL;}
+    #assert db_route("", "")==DB_EXTERNAL;
+    #assert db_route(o,"http://127.0.0.1:18881/abcdefghijklmnop?")==DB_ASSET;
+}
+#test "intercepted decision requests have the exact public method and no credential/player header" {
+    #assert db_wire("POST",false,false,1024);
+    #assert !db_wire("GET",false,false,1024) && !db_wire("POST",true,false,1024) && !db_wire("POST",false,true,1024);
+    #assert !db_wire("POST",false,false,0) && !db_wire("POST",false,false,4097) && db_wire("POST",false,false,4096);
+    #assert db_wire("POST",false,false,1);
+}
+#test "one captured request binds its exact authored contract" {
+    #assert db_contract("fixture","fixture",1,true);
+    #assert db_contract("f","f",1,true);
+    #assert !db_contract("fixture","other",1,true) && !db_contract("fixture","fixture",0,true) && !db_contract("fixture","fixture",2,true) && !db_contract("fixture","fixture",1,false) && !db_contract("","",1,true);
+}
+#test "only the exact directions policy is a Directions request" {
+    #assert db_guide_policy("everglade-directions-v1");
+    for other:[4]string.["","everglade-directions-v2","everglade-directions-v1 ","everglade-ambient-v1"] {#assert !db_guide_policy(other);}
+}
+#test "one stable artifact identity binds a browser result" {
+    a:[64]u8;b:[64]u8;for i:0..<64 {a[i]='a';b[i]='a';}#assert db_same_hash(cast(string)a[..],cast(string)b[..]);
+    b[0]='b';#assert !db_same_hash(cast(string)a[..],cast(string)b[..]) && !db_same_hash(cast(string)a[0..<63],cast(string)a[0..<63]) && !db_same_hash("","");
+    #assert !db_same_hash(cast(string)a[..],cast(string)a[0..<63]);
+}
+
+db_prefix :: (text:string,prefix:string)->bool {return text.count>=prefix.count && text[0..<prefix.count]==prefix;}
+db_origin :: (origin:string)->bool {
+    prefix:="http://127.0.0.1:";
+    if !db_prefix(origin,prefix) {return false;}n:=origin.count-prefix.count;if n<1 || n>5 {return false;}
+    port:=0;for i:prefix.count..<origin.count {c:=origin[i];if c<'0' || c>'9' {return false;}port=port*10+cast(int)(c-'0');}
+    return port>=1 && port<=65535;
+}
+db_route :: (origin:string,url:string)->int {
+    if !db_origin(origin) || url.count<=origin.count || !db_prefix(url,origin) || url[origin.count]!='/' {return DB_EXTERNAL;}
+    path:=url[origin.count..<url.count];document:="/realms/everglade";
+    if db_prefix(path,document) {tail:=path[document.count..<path.count];if tail.count==0 || tail[0]=='?' {return DB_DOCUMENT;}}
+    if path=="/api/v1/systemone" {return DB_DECISION;}
+    if path=="/api/auth/viewer" {return DB_VIEWER;}
+    if path=="/api/playtest/world/everglade" {return DB_WORLD;}
+    return ifx db_prefix(path,"/api/") then DB_OTHER_API else DB_ASSET;
+}
+db_wire :: (method:string,authorization:bool,player:bool,body_bytes:int)->bool {
+    return method=="POST" && !authorization && !player && body_bytes>=1 && body_bytes<=4096;
+}
+db_contract :: (body:string,expected:string,calls:int,wire:bool)->bool {return expected.count>0 && body==expected && calls==1 && wire;}
+db_same_hash :: (before:string,after:string)->bool {return before.count==64 && before==after;}
+// The Directions request names this exact policy; nothing else is counted as one.
+db_guide_policy :: (policy:string)->bool {return policy=="everglade-directions-v1";}

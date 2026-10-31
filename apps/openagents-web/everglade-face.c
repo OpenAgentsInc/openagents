@@ -711,6 +711,7 @@ static void guide_out(uint32_t state) {
   everglade_guide_view(at(state), ggs_view(guides(), ms), observation, ggp_offer(facts), ms);
 }
 EXPORT("coaxial_guard_probe") int32_t coaxial_guard_probe(uint32_t state, int32_t field) {
+  if (field == 248) return guide_authenticated ? 1 : 0;
   if (field >= 240 && field <= 252) return (int32_t)everglade_guide_probe(at(state), field);
   if (field >= 200) return (int32_t)ggs_probe(guides(), field);
   return (int32_t)ga_probe(gs(), field);

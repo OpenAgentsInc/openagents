@@ -1,0 +1,309 @@
+// Coax CDP driver for the actual shipped Everglade Wasm/host. Only generic
+// browser DOM/events and HTTP interception are JavaScript effects. Synthetic
+// API responses never leave an explicit loopback server; no keys or live calls.
+#import "Basic";
+#load "browser-policy.coax";
+#load "browser-observation.coax";
+#load "../../../coax/lib/net/cdp.coax";
+#load "../../../verse/everglade/guard-guide.coax";
+#load "../../../verse/everglade/guard-guide-fixtures.coax";
+#load "../../../coax/lib/crypto/sha256.coax";
+#load "../../../coax/lib/json/json.coax";
+
+DB_DEADLINE :: 540000;
+DB_CALL_MS :: 5000;
+DB_HELD_MAX :: 8;
+// Generic bounded frame effect: the Coax test decides when to hold/release.
+DB_RAF :: "(()=>{const native=requestAnimationFrame.bind(globalThis),held=[];globalThis.__dbHoldFrames=false;globalThis.__dbHeldFrames=()=>held.length;globalThis.__dbResumeFrames=()=>{globalThis.__dbHoldFrames=false;for(const f of held.splice(0))native(f);return true;};globalThis.requestAnimationFrame=f=>native(t=>{if(globalThis.__dbHoldFrames){if(held.length>=8)throw Error('frame fixture bound');held.push(f);}else f(t);});})()";
+DbHeld :: struct {id:[256]u8;id_n:int;body:[4096]u8;body_n:int;wire:bool;done:bool;}
+DbCase :: struct {name:[96]u8;name_n:int;passed:bool;view:DbView;calls:int;wire:bool;}
+DbRun :: struct {origin:[256]u8;origin_n:int;held:[DB_HELD_MAX]DbHeld;calls:int;bad:bool;deadline:int;last_error:bool;errors:int;stale_errors:int;external:int;other:int;other_total:int;viewer:int=1;cases:[32]DbCase;case_n:int;expected:[4096]u8;expected_n:int;wasm_sha:[64]u8;module_stable:bool;}
+
+db_text :: (d:Jv,node:int,out:[]u8)->string {n:=jv_str(d,node,out);return ifx n<0 then "" else cast(string)out[0..<n];}
+db_send_simple :: (c:[]Cdp,id:string,method:string)->bool {
+    buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"requestId");jo_str(o[..],id);
+    if method=="Fetch.failRequest" {jo_key(o[..],"errorReason");jo_str(o[..],"BlockedByClient");}jo_end(o[..]);
+    return !o[0].bad && cdp_send(c,method,jo_text(o[..]))>=0;
+}
+db_send_body :: (c:[]Cdp,id:string,code:int,body:string,content_type:string)->int {
+    encoded:[65536]u8;n:=b64_encode(body,encoded[..]);if n<0 {return -1;}
+    buf:[131072]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"requestId");jo_str(o[..],id);
+    jo_key(o[..],"responseCode");jo_int(o[..],code);jo_key(o[..],"responseHeaders");jo_arr(o[..]);
+    jo_obj(o[..]);jo_key(o[..],"name");jo_str(o[..],"content-type");jo_key(o[..],"value");jo_str(o[..],content_type);jo_end(o[..]);jo_end(o[..]);
+    jo_key(o[..],"body");jo_str(o[..],cast(string)encoded[0..<n]);jo_end(o[..]);
+    return ifx o[0].bad then -1 else cdp_send(c,"Fetch.fulfillRequest",jo_text(o[..]));
+}
+db_event :: (c:[]Cdp,s:[]DbRun) {
+    d:=cdp_doc(c);method:=cdp_event_method(d);
+    if cdp_reply_id(d)>=0 {if jv_get(d,0,"error")>=0 {s[0].errors+=1;}return;}
+    if method=="Runtime.exceptionThrown" {s[0].bad=true;tool_errln("directions browser: page exception");b:[2048]u8;description:=db_text(d,jv_path(d,0,"params.exceptionDetails.exception.description"),b[..]);tool_errln(description);return;}
+    if method!="Fetch.requestPaused" {return;}
+    p:=jv_get(d,0,"params");request:=jv_get(d,p,"request");ib:[256]u8;ub:[4096]u8;mb:[32]u8;
+    id:=db_text(d,jv_get(d,p,"requestId"),ib[..]);url:=db_text(d,jv_get(d,request,"url"),ub[..]);verb:=db_text(d,jv_get(d,request,"method"),mb[..]);
+    route:=db_route(cast(string)s[0].origin[0..<s[0].origin_n],url);
+    if id.count==0 {s[0].bad=true;return;}
+    if route==DB_EXTERNAL {s[0].external+=1;if !db_send_simple(c,id,"Fetch.failRequest") {s[0].bad=true;}return;}
+    if route==DB_DOCUMENT {if !db_document(c,id) {s[0].bad=true;}return;}
+    if route==DB_VIEWER {body:=ifx s[0].viewer==0 then "" else ifx s[0].viewer==2 then "H|f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\nA|1\n" else "H|f9308a019258c31049344f85f89d5229b531c845836f99b08601f113bce036f9\n";if db_send_body(c,id,200,body,"text/plain")<0 {s[0].bad=true;}return;}
+    if route==DB_WORLD {if db_send_body(c,id,200,"{\"version\":0,\"doc\":null}","application/json")<0 {s[0].bad=true;}return;}
+    if route==DB_OTHER_API {if db_send_body(c,id,404,"{}","application/json")<0 {s[0].bad=true;}return;}
+    if route==DB_ASSET {if !db_send_simple(c,id,"Fetch.continueRequest") {s[0].bad=true;}return;}
+    // The decision route is shared with other Everglade consumers (the guard
+    // captain while wanted). Only a request whose state.policy is exactly the
+    // directions policy is a Directions call; any other is answered 503 (the
+    // consumer's own refusal path) and counted apart.
+    pb:[65536]u8;pn:=jv_str(d,jv_get(d,request,"postData"),pb[..]);
+    if pn<0 || !db_guide_body(cast(string)pb[0..<pn]) {s[0].other+=1;s[0].other_total+=1;if db_send_body(c,id,503,"{}","application/json")<0 {s[0].bad=true;}return;}
+    slot:=s[0].calls;s[0].calls+=1;if slot>=DB_HELD_MAX {s[0].bad=true;ignored:=db_send_simple(c,id,"Fetch.failRequest");return;}
+    h:=s[0].held[slot];for i:0..<id.count {h.id[i]=id[i];}h.id_n=id.count;
+    h.body_n=jv_str(d,jv_get(d,request,"postData"),h.body[..]);headers:=jv_get(d,request,"headers");auth:=false;player:=false;
+    for i:0..<jv_len(d,headers) {key:=jv_key(d,jv_at(d,headers,i));if ws_ieq(key,"Authorization") {auth=true;}if ws_ieq(key,"X-Verse-Player") {player=true;}}
+    h.wire=db_wire(verb,auth,player,h.body_n);s[0].held[slot]=h;if !h.wire {s[0].bad=true;}
+}
+db_guide_body :: (body:string)->bool {
+    nodes:[512]JvNode;d:[1]Jv;if !jv_parse(d[..],body,nodes[..]) {return false;}
+    b:[64]u8;n:=jv_str(d[0],jv_path(d[0],0,"state.policy"),b[..]);return n>0 && db_guide_policy(cast(string)b[0..<n]);
+}
+db_poll :: (c:[]Cdp,s:[]DbRun,ms:int)->int {
+    if proc_now_ms()>=s[0].deadline {s[0].bad=true;return CDP_FAIL;}
+    k:=cdp_poll(c,ms);if k==CDP_GOT {db_event(c,s);}else if k!=CDP_NONE {s[0].bad=true;}return k;
+}
+db_wait_reply :: (c:[]Cdp,s:[]DbRun,id:int)->int {
+    s[0].last_error=false;if id<0 {s[0].bad=true;return -1;}end:=proc_now_ms()+DB_CALL_MS;
+    while proc_now_ms()<end && !s[0].bad {
+        k:=db_poll(c,s,proc_left(end,proc_now_ms()));if k!=CDP_GOT {return -1;}d:=cdp_doc(c);
+        if cdp_reply_id(d)==id {r:=cdp_reply_result(d);if r<0 {s[0].last_error=true;}return r;}
+    }return -1;
+}
+db_call :: (c:[]Cdp,s:[]DbRun,method:string,params:string)->int {return db_wait_reply(c,s,cdp_send(c,method,params));}
+db_eval :: (c:[]Cdp,s:[]DbRun,script:string)->int {
+    buf:[65536]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"expression");jo_str(o[..],script);
+    jo_key(o[..],"awaitPromise");jo_bool(o[..],true);jo_key(o[..],"returnByValue");jo_bool(o[..],true);jo_end(o[..]);
+    if o[0].bad {return -1;}r:=db_call(c,s,"Runtime.evaluate",jo_text(o[..]));if r<0 {return -1;}d:=cdp_doc(c);
+    if jv_get(d,r,"exceptionDetails")>=0 {s[0].bad=true;return -1;}return jv_path(d,r,"result.value");
+}
+db_key :: (c:[]Cdp,s:[]DbRun,key:string,down:bool)->bool {
+    buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"type");jo_str(o[..],ifx down then "keyDown" else "keyUp");jo_key(o[..],"key");jo_str(o[..],key);jo_end(o[..]);
+    return db_call(c,s,"Input.dispatchKeyEvent",jo_text(o[..]))>=0;
+}
+db_press :: (c:[]Cdp,s:[]DbRun,key:string)->bool {return db_key(c,s,key,true) && db_key(c,s,key,false);}
+db_visit :: (c:[]Cdp,s:[]DbRun,query:string)->bool {
+    s[0].calls=0;s[0].other=0;for i:0..<DB_HELD_MAX {s[0].held[i]=DbHeld.{};}
+    url:[1024]u8;n:=ws_put(url[..],0,cast(string)s[0].origin[0..<s[0].origin_n]);n=ws_put(url[..],n,"/realms/everglade");n=ws_put(url[..],n,query);
+    buf:[2048]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"url");jo_str(o[..],cast(string)url[0..<n]);jo_end(o[..]);
+    if db_call(c,s,"Page.navigate",jo_text(o[..]))<0 {return false;}end:=proc_now_ms()+45000;
+    while proc_now_ms()<end && !s[0].bad {v:=db_eval(c,s,"!!globalThis.coaxial?.sceneReady");if v>=0 && jv_bool(cdp_doc(c),v) {return true;}proc_sleep(50);}return false;
+}
+db_hold_wait :: (c:[]Cdp,s:[]DbRun,count:int)->bool {
+    end:=proc_now_ms()+5000;while proc_now_ms()<end && !s[0].bad {if s[0].calls==count {return true;}ignored:=db_poll(c,s,50);}return false;
+}
+db_reply :: (c:[]Cdp,s:[]DbRun,index:int,status:int,body:string,stale:bool)->bool {
+    if index<0 || index>=s[0].calls || index>=DB_HELD_MAX || s[0].held[index].done {return false;}
+    h:=s[0].held[index];s[0].held[index].done=true;id:=db_send_body(c,cast(string)h.id[0..<h.id_n],status,body,"application/json");r:=db_wait_reply(c,s,id);
+    if stale && s[0].last_error && !s[0].bad {s[0].stale_errors+=1;return true;}return r>=0;
+}
+
+tool_main :: ()->int #export_c {
+    a:[1]Args;if !args_load(a[..]) || args_count(a[..])<2 || args_count(a[..])>3 || !db_origin(args_at(a[..],0)) {tool_errln("usage: browser LOOPBACK_ORIGIN NEW_RESULT.json [all|local|responses|cancellations|reuse|combat|queued]");return 2;}
+    group:=ifx args_count(a[..])==3 then args_at(a[..],2) else "all";
+    if group!="all" && group!="local" && group!="responses" && group!="cancellations" && group!="reuse" && group!="combat" && group!="queued" {return 2;}
+    out:=args_at(a[..],1);if fs_kind(out)!=FS_NONE {tool_errln("directions browser: output already exists");return 2;}
+    s:[1]DbRun;origin:=args_at(a[..],0);s[0].origin_n=origin.count;for i:0..<origin.count {s[0].origin[i]=origin[i];}s[0].deadline=proc_now_ms()+DB_DEADLINE;
+    s[0].expected_n=fs_read("psionic/fixtures/guard-guide-requests-v1/case0.json",s[0].expected[..]);if s[0].expected_n<1 {tool_errln("directions browser: frozen request unavailable");return 2;}
+    if !db_hash_module(s[0].wasm_sha[..]) {tool_errln("directions browser: module identity unavailable");return 2;}
+    server:=db_server(origin);if server<0 {tool_errln("directions browser: owned static server unavailable");return 1;}
+    c:[1]Cdp;if !cdp_launch(c[..],960,640,"directions-browser-") {tool_errln(cdp_error(c[..]));cdp_close(c[..]);db_stop_server(server);return 1;}
+    ok:=db_call(c[..],s[..],"Page.enable","{}")>=0 && db_call(c[..],s[..],"Runtime.enable","{}")>=0 && db_call(c[..],s[..],"Emulation.setFocusEmulationEnabled","{\"enabled\":true}")>=0;
+    ok=ok && db_call(c[..],s[..],"Emulation.setDeviceMetricsOverride","{\"width\":960,\"height\":640,\"deviceScaleFactor\":1,\"mobile\":false}")>=0;
+    script:[4096]u8;j:[1]Jo;jo_start(j[..],script[..]);jo_obj(j[..]);jo_key(j[..],"source");jo_str(j[..],DB_RAF);jo_end(j[..]);
+    ok=ok && db_call(c[..],s[..],"Page.addScriptToEvaluateOnNewDocument",jo_text(j[..]))>=0;
+    ok=ok && db_call(c[..],s[..],"Fetch.enable","{\"patterns\":[{\"urlPattern\":\"*\",\"requestStage\":\"Request\"}]}")>=0;
+    if group=="all" || group=="local" {
+        ok=ok && db_local_case(c[..],s[..],"default-local-no-remote","",1,0);
+        ok=ok && db_local_case(c[..],s[..],"unqualified-mode-stays-local","?guard-ai=directions",1,0);
+        ok=ok && db_local_case(c[..],s[..],"guest-shadow-stays-local","?guard-ai=directions-shadow",0,1);
+        ok=ok && db_visual_case(c[..],s[..],out);
+        ok=ok && db_pointer_case(c[..],s[..],false);
+        ok=ok && db_pointer_case(c[..],s[..],true);
+    }
+    if group=="all" || group=="responses" {for i:0..<9 {if !ok {break;}ok=db_response_case(c[..],s[..],i);}}
+    if group=="all" || group=="cancellations" {for i:0..<5 {if !ok {break;}ok=db_cancel_case(c[..],s[..],i);}}
+    if group=="all" || group=="reuse" {ok=ok && db_reuse_case(c[..],s[..]);}
+    if group=="all" || group=="combat" {ok=ok && db_combat_case(c[..],s[..]);}
+    if group=="all" || group=="queued" {ok=ok && db_queued_case(c[..],s[..]);}
+    cdp_close(c[..]);db_stop_server(server);after:[64]u8;s[0].module_stable=db_hash_module(after[..]) && db_same_hash(cast(string)s[0].wasm_sha[..],cast(string)after[..]);ok=ok && s[0].module_stable;
+    written:=db_write_result(s[..],out,ok,group);
+    if !ok || s[0].bad || !written {tool_errln("directions browser: qualification failed; inspect partial record");return 1;}
+    print("directions browser: % cases passed; synthetic loopback only\n",s[0].case_n);return 0;
+}
+
+// Readonly scalar extraction; all behavioral assertions are in the two small
+// authority roots, not in DOM JavaScript.
+db_snapshot :: (c:[]Cdp,s:[]DbRun)->DbView {
+    v:DbView;r:=db_eval(c,s,"Array.from({length:49},(_,i)=>globalThis.coaxial?.guardProbe(200+i)??-999)");d:=cdp_doc(c);
+    if r<0 || jv_len(d,r)!=49 {return v;}a:[49]int;for i:0..<49 {a[i]=jv_int(d,jv_at(d,r,i),-999);}
+    v.version=a[0];v.mode=a[1];v.local=a[2];v.starts=a[3];v.replies=a[4];v.admitted=a[5];v.fallback=a[6];v.raw=a[7];v.accepted=a[8];v.reason=a[9];v.terminals=a[10];v.late=a[11];v.phase=a[12];v.sequence=a[13];v.disabled=a[14];v.local_action=a[15];v.local_intent=a[16];v.last_intent=a[17];v.offer=a[44];v.rendered=a[45];v.goal=a[46];return v;
+}
+db_delay :: (c:[]Cdp,s:[]DbRun,ms:int) {
+    end:=proc_now_ms()+ms;while proc_now_ms()<end && !s[0].bad {left:=proc_left(end,proc_now_ms());ignored:=db_poll(c,s,ifx left<50 then left else 50);}
+}
+db_wait_view :: (c:[]Cdp,s:[]DbRun,kind:int,a:int,b:int,replies:int,ms:int)->DbView {
+    v:DbView;end:=proc_now_ms()+ms;
+    while proc_now_ms()<end && !s[0].bad {
+        v=db_snapshot(c,s);ok:=false;
+        if kind==0 {ok=db_local(v,a);}if kind==1 {ok=db_held(v,a);}if kind==2 {ok=db_success(v,a,b);}
+        if kind==3 {ok=db_failure(v,a,b,replies);}if kind==4 {ok=db_cancelled(v);}if kind==5 {ok=db_reintent(v);}if kind==6 {ok=db_offered(v,a,b);}if kind==8 {ok=db_staged(v,a);}if kind==9 {ok=db_idle(v);}if kind==10 {ok=db_timeout(v);}
+        if ok {return v;}db_delay(c,s,40);
+    }return v;
+}
+db_record :: (s:[]DbRun,name:string,passed:bool,v:DbView)->bool {
+    if s[0].case_n>=s[0].cases.count || name.count>96 {s[0].bad=true;return false;}r:DbCase;r.name_n=name.count;for i:0..<name.count {r.name[i]=name[i];}
+    r.wire=true;for i:0..<s[0].calls {if i>=DB_HELD_MAX {r.wire=false;break;}h:=s[0].held[i];if !db_contract(cast(string)h.body[0..<h.body_n],cast(string)s[0].expected[0..<s[0].expected_n],1,h.wire) {r.wire=false;}}
+    r.passed=passed && !s[0].bad && r.wire;r.view=v;r.calls=s[0].calls;s[0].cases[s[0].case_n]=r;s[0].case_n+=1;
+    print("% % starts=% phase=% reply=% admitted=% fallback=% rendered=% reason=%\n",ifx r.passed then "ok" else "FAIL",name,v.starts,v.phase,v.replies,v.admitted,v.fallback,v.rendered,v.reason);return r.passed;
+}
+db_setup :: (c:[]Cdp,s:[]DbRun,query:string,viewer:int)->bool {
+    s[0].viewer=viewer;if db_call(c,s,"Emulation.setFocusEmulationEnabled","{\"enabled\":true}")<0 || !db_visit(c,s,query) {return false;}
+    v:=db_wait_view(c,s,6,0,2,0,15000);if !db_offered(v,0,2) {return false;}
+    end:=proc_now_ms()+5000;while proc_now_ms()<end && !s[0].bad {if db_scalar(c,s,248)==(ifx viewer==0 then 0 else 1) {return true;}db_delay(c,s,40);}return false;
+}
+db_send :: (c:[]Cdp,s:[]DbRun,kind:int,text:string)->bool {
+    params:[8192]u8;o:[1]Jo;jo_start(o[..],params[..]);jo_arr(o[..]);jo_int(o[..],kind);jo_str(o[..],text);jo_end(o[..]);
+    script:[16384]u8;n:=ws_put(script[..],0,"((v)=>{globalThis.coaxial.send(v[0],v[1]);return true;})(");n=ws_put(script[..],n,jo_text(o[..]));n=ws_put(script[..],n,")");
+    return n>0 && db_eval(c,s,cast(string)script[0..<n])>=0;
+}
+db_contract_current :: (s:[]DbRun)->bool {
+    if s[0].calls<1 {return false;}h:=s[0].held[0];return db_contract(cast(string)h.body[0..<h.body_n],cast(string)s[0].expected[0..<s[0].expected_n],s[0].calls,h.wire);
+}
+db_local_case :: (c:[]Cdp,s:[]DbRun,name:string,query:string,viewer:int,mode:int)->bool {
+    ok:=db_setup(c,s,query,viewer) && db_press(c,s,"g");db_delay(c,s,200);v:=db_wait_view(c,s,0,mode,0,0,4000);
+    return db_record(s,name,ok && db_local(v,mode) && s[0].calls==0 && s[0].other==0,v);
+}
+db_button :: (c:[]Cdp,s:[]DbRun,touch:bool)->bool {
+    r:=db_eval(c,s,"[240,241,242,243].map(i=>globalThis.coaxial.guardProbe(i))");d:=cdp_doc(c);if r<0 || jv_len(d,r)!=4 {return false;}
+    x0:=jv_int(d,jv_at(d,r,0),-1);y0:=jv_int(d,jv_at(d,r,1),-1);x1:=jv_int(d,jv_at(d,r,2),-1);y1:=jv_int(d,jv_at(d,r,3),-1);
+    if x0<0 || y0<0 || x1<=x0 || y1<=y0 {return false;}
+    for phase:0..<2 {buf:[1024]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"type");
+        if touch {jo_str(o[..],ifx phase==0 then "touchStart" else "touchEnd");jo_key(o[..],"touchPoints");jo_arr(o[..]);if phase==0 {jo_obj(o[..]);jo_key(o[..],"x");jo_int(o[..],(x0+x1)/2);jo_key(o[..],"y");jo_int(o[..],(y0+y1)/2);jo_end(o[..]);}jo_end(o[..]);}
+        else {jo_str(o[..],ifx phase==0 then "mousePressed" else "mouseReleased");jo_key(o[..],"x");jo_int(o[..],(x0+x1)/2);jo_key(o[..],"y");jo_int(o[..],(y0+y1)/2);jo_key(o[..],"button");jo_str(o[..],"left");jo_key(o[..],"clickCount");jo_int(o[..],1);}jo_end(o[..]);
+        if db_call(c,s,ifx touch then "Input.dispatchTouchEvent" else "Input.dispatchMouseEvent",jo_text(o[..]))<0 {return false;}
+    }return true;
+}
+db_pointer_case :: (c:[]Cdp,s:[]DbRun,touch:bool)->bool {
+    ok:=db_setup(c,s,"",1) && db_button(c,s,touch);v:=db_wait_view(c,s,0,0,0,0,4000);
+    return db_record(s,ifx touch then "touch-find-work" else "pointer-find-work",ok && db_local(v,0) && s[0].calls==0,v);
+}
+db_response_case :: (c:[]Cdp,s:[]DbRun,index:int)->bool {
+    names:=[9]string.["delayed-shadow-accept","quiet-stays-local","wrong-route-refused","malformed-refused","oversized-refused","auth401-disables","quota429-disables","HTTP503-refused","timeout-closes"];
+    ok:=db_setup(c,s,"?guard-ai=directions-shadow",1) && db_press(c,s,"g") && db_hold_wait(c,s,1);v:=db_wait_view(c,s,1,1,0,0,4000);
+    ok=ok && db_held(v,1) && db_contract_current(s);db_delay(c,s,250);
+    body:[20000]u8;reply:=gge_fixture(ifx index==1 then 0 else ifx index==2 then 2 else 1,body[..]);status:=200;
+    if index==3 {reply="{}";}if index==4 {for i:0..<body.count {body[i]='x';}reply=cast(string)body[..];}
+    if index==5 {status=401;}if index==6 {status=429;}if index==7 {status=503;}
+    if index==0 {ok=ok && db_eval(c,s,"globalThis.__dbHoldFrames=true;true")>=0;db_delay(c,s,100);}
+    if index<8 {ok=ok && db_reply(c,s,0,status,reply,false);}
+    if index==0 {v=db_wait_view(c,s,8,1,0,0,4000);ok=ok && db_staged(v,1);ok=ok && db_record(s,"reply-staged-until-frame-boundary",ok,v);ok=ok && db_eval(c,s,"globalThis.__dbResumeFrames()")>=0;}
+    if index<2 {v=db_wait_view(c,s,2,ifx index==1 then 0 else 1,1,0,5000);ok=ok && db_success(v,ifx index==1 then 0 else 1,1);}
+    else {reason:=ifx index==2 then 8 else ifx index==3 then 6 else ifx index==4 then 9 else ifx index==5 then 2 else ifx index==6 then 3 else ifx index==7 then 9 else 5;
+        disabled:=ifx index==5 || index==6 then 1 else 0;replies:=ifx index==8 then 0 else 1;
+        v=db_wait_view(c,s,ifx index==8 then 10 else 3,reason,disabled,replies,ifx index==8 then 11000 else 5000);ok=ok && (ifx index==8 then db_timeout(v) else db_failure(v,reason,disabled,replies));
+        if index==5 || index==6 {db_delay(c,s,10500);ok=ok && db_press(c,s,"g");db_delay(c,s,250);v=db_snapshot(c,s);ok=ok && db_failure(v,reason,1,1) && s[0].calls==1;}
+        if index==8 {ok=ok && db_reply(c,s,0,200,reply,true);db_delay(c,s,150);v=db_snapshot(c,s);ok=ok && db_timeout(v);}
+    }return db_record(s,names[index],ok && s[0].calls==1,v);
+}
+db_cancel_case :: (c:[]Cdp,s:[]DbRun,index:int)->bool {
+    names:=[5]string.["goal-change-cancels","area-leave-cancels","pagehide-cancels","edit-cancels","blur-cancels"];
+    ok:=db_setup(c,s,"?guard-ai=directions-shadow",ifx index==3 then 2 else 1) && db_press(c,s,"g") && db_hold_wait(c,s,1);v:=db_wait_view(c,s,1,1,0,0,4000);ok=ok && db_held(v,1);
+    if index==0 {ok=ok && db_send(c,s,4,"eg-quests 1\nplayer=p-1\nq=1,0,0\n");}
+    if index==1 {ok=ok && db_key(c,s,"w",true);}
+    if index==2 {ok=ok && db_eval(c,s,"dispatchEvent(new Event('pagehide'));true")>=0;}
+    if index==3 {ok=ok && db_press(c,s,"b");}
+    if index==4 {ok=ok && db_call(c,s,"Emulation.setFocusEmulationEnabled","{\"enabled\":false}")>=0 && db_eval(c,s,"dispatchEvent(new Event('blur'));true")>=0;}
+    v=db_wait_view(c,s,4,0,0,0,6500);ok=ok && db_cancelled(v);if index==1 {ok=ok && db_key(c,s,"w",false);}
+    body:[1024]u8;ok=ok && db_reply(c,s,0,200,gge_fixture(0,body[..]),true);db_delay(c,s,200);v=db_snapshot(c,s);
+    return db_record(s,names[index],ok && db_cancelled(v) && s[0].calls==1,v);
+}
+db_reuse_case :: (c:[]Cdp,s:[]DbRun)->bool {
+    ok:=db_setup(c,s,"?guard-ai=directions-shadow",1) && db_press(c,s,"g") && db_hold_wait(c,s,1);v:=db_wait_view(c,s,1,1,0,0,4000);ok=ok && db_held(v,1);
+    db_delay(c,s,6200);ok=ok && db_press(c,s,"g");v=db_wait_view(c,s,5,0,0,0,2000);ok=ok && db_reintent(v) && s[0].calls==1;
+    db_delay(c,s,6200);ok=ok && db_press(c,s,"g") && db_hold_wait(c,s,2);v=db_wait_view(c,s,1,2,0,0,4000);ok=ok && db_held(v,2);
+    old:[1024]u8;fresh:[1024]u8;ok=ok && db_reply(c,s,0,200,gge_fixture(0,old[..]),true);db_delay(c,s,150);v=db_snapshot(c,s);ok=ok && db_held(v,2);
+    ok=ok && db_reply(c,s,1,200,gge_fixture(1,fresh[..]),false);v=db_wait_view(c,s,2,1,2,0,5000);
+    return db_record(s,"new-intent-and-reused-ticket-late-reply",ok && db_success(v,1,2) && s[0].calls==2,v);
+}
+db_write_result :: (s:[]DbRun,out:string,ok:bool,group:string)->bool {
+    bytes:[65536]u8;j:[1]Jo;jo_start(j[..],bytes[..]);jo_obj(j[..]);jo_key(j[..],"schema");jo_str(j[..],"everglade-directions-browser-v1");jo_key(j[..],"passed");jo_bool(j[..],ok && !s[0].bad);
+    jo_key(j[..],"group");jo_str(j[..],group);jo_key(j[..],"headless_muted");jo_bool(j[..],true);jo_key(j[..],"live_model_calls");jo_int(j[..],0);jo_key(j[..],"external_requests_refused");jo_int(j[..],s[0].external);jo_key(j[..],"cdp_command_errors");jo_int(j[..],s[0].errors);jo_key(j[..],"stale_reply_refusals");jo_int(j[..],s[0].stale_errors);jo_key(j[..],"other_consumer_requests_refused");jo_int(j[..],s[0].other_total);
+    jo_key(j[..],"wasm_sha256");jo_str(j[..],cast(string)s[0].wasm_sha[..]);jo_key(j[..],"module_stable_during_run");jo_bool(j[..],s[0].module_stable);
+    jo_key(j[..],"cases");jo_arr(j[..]);for i:0..<s[0].case_n {r:=s[0].cases[i];v:=r.view;jo_obj(j[..]);jo_key(j[..],"name");jo_str(j[..],cast(string)r.name[0..<r.name_n]);jo_key(j[..],"passed");jo_bool(j[..],r.passed);jo_key(j[..],"fetches");jo_int(j[..],r.calls);jo_key(j[..],"credential_free_request");jo_bool(j[..],r.wire);
+        keys:=[20]string.["version","mode","local_tips","started","replies","admitted","fallback","raw","accepted","reason","terminals","ignored_late","phase","sequence","disabled","local_action","local_intent","rendered_action","goal","offered_kind"];
+        vals:=[20]int.[v.version,v.mode,v.local,v.starts,v.replies,v.admitted,v.fallback,v.raw,v.accepted,v.reason,v.terminals,v.late,v.phase,v.sequence,v.disabled,v.local_action,v.local_intent,v.rendered,v.goal,v.offer];
+        for k:0..<keys.count {jo_key(j[..],keys[k]);jo_int(j[..],vals[k]);}jo_end(j[..]);}
+    jo_end(j[..]);jo_end(j[..]);return !j[0].bad && fs_write(out,jo_text(j[..]));
+}
+
+DB_DOC_START :: "<!doctype html><html><style>html,body{margin:0;background:black}canvas{width:100vw;height:100vh}</style><canvas id=\"coaxial\"></canvas><script>((d)=>{Date.now=()=>d.now;localStorage.clear();for(const [k,v] of d.storage.slice(0,8))localStorage.setItem(k,v);})(";
+DB_DOC_END :: ");</script><script type=\"module\" src=\"/coaxial/host.js\" data-app=\"everglade\" data-slot=\"everglade\" data-ruleset=\"srd5\" data-wasm=\"/build/everglade.wasm\" data-assets=\"pack:/realms/everglade/assets/everglade.pack particles:/everglade-fx.wgsl\"></script></html>";
+DB_PLACE :: "verse-place 1\nrealm=everglade\nat=1000\nx=0\ny=0\nz=-67000\nface=0\nyaw=0\npitch=300\nzoom=6000\nview=0\nroom=-1\n";
+db_document :: (c:[]Cdp,id:string)->bool {
+    buf:[4096]u8;o:[1]Jo;jo_start(o[..],buf[..]);jo_obj(o[..]);jo_key(o[..],"now");jo_int(o[..],1793361600000);jo_key(o[..],"storage");jo_arr(o[..]);
+    jo_arr(o[..]);jo_str(o[..],"coaxial.everglade.place");jo_str(o[..],DB_PLACE);jo_end(o[..]);
+    jo_arr(o[..]);jo_str(o[..],"verse.player");jo_str(o[..],"{\"key\":\"synthetic-local-only\",\"id\":\"p-1\",\"account\":true}");jo_end(o[..]);jo_end(o[..]);jo_end(o[..]);
+    html:[8192]u8;n:=ws_put(html[..],0,DB_DOC_START);n=ws_put(html[..],n,jo_text(o[..]));n=ws_put(html[..],n,DB_DOC_END);
+    return !o[0].bad && n>0 && db_send_body(c,id,200,cast(string)html[0..<n],"text/html")>=0;
+}
+
+db_scalar :: (c:[]Cdp,s:[]DbRun,field:int)->int {
+    params:[64]u8;n:=ws_put(params[..],0,"globalThis.coaxial.guardProbe(");n=ws_digits(params[..],n,field);n=ws_put(params[..],n,")");r:=db_eval(c,s,cast(string)params[0..<n]);return jv_int(cdp_doc(c),r,-999);
+}
+db_capture :: (c:[]Cdp,s:[]DbRun,path:string)->bool {
+    if fs_kind(path)!=FS_NONE {return false;}r:=db_call(c,s,"Page.captureScreenshot","{\"format\":\"png\"}");if r<0 {return false;}d:=cdp_doc(c);
+    encoded:[8388608]u8;n:=jv_str(d,jv_get(d,r,"data"),encoded[..]);png:[6291456]u8;if n<0 {return false;}written:=b64_decode(cast(string)encoded[0..<n],png[..]);return written>0 && fs_write(path,cast(string)png[0..<written]);
+}
+db_visual_case :: (c:[]Cdp,s:[]DbRun,out:string)->bool {
+    ok:=db_setup(c,s,"",1) && db_send(c,s,4,"eg-quests 1\nplayer=p-1\nq=1,0,0\n");
+    v:=db_wait_view(c,s,6,2,1,0,5000);ok=ok && db_offered(v,2,1);
+    path:[4096]u8;n:=ws_put(path[..],0,out);n=ws_put(path[..],n,".button.png");ok=ok && db_capture(c,s,cast(string)path[0..<n]);
+    ok=ok && db_press(c,s,"g");v=db_wait_view(c,s,0,0,0,0,4000);ok=ok && db_goal_local(v,0,2,2);n=ws_put(path[..],0,out);n=ws_put(path[..],n,".tip.png");ok=ok && db_capture(c,s,cast(string)path[0..<n]);
+    return db_record(s,"current-objective-button-and-local-tip",ok,v);
+}
+db_combat_case :: (c:[]Cdp,s:[]DbRun)->bool {
+    ok:=db_setup(c,s,"?guard-ai=directions-shadow",1) && db_press(c,s,"g") && db_hold_wait(c,s,1);v:=db_wait_view(c,s,1,1,0,0,4000);ok=ok && db_held(v,1);
+    ok=ok && db_eval(c,s,"location.hash='gate+wanted5';true")>=0;v=db_wait_view(c,s,4,0,0,0,5000);ok=ok && db_cancelled(v);
+    ok=ok && db_record(s,"authored-wanted-combat-revokes",ok,v);dead_seen:=false;returned:=false;dead_epoch:=-1;end:=proc_now_ms()+60000;
+    while proc_now_ms()<end && !s[0].bad && ok {
+        dead:=db_scalar(c,s,250);epoch:=db_scalar(c,s,251);if dead==1 {dead_seen=true;dead_epoch=epoch;}
+        r:=db_eval(c,s,"globalThis.coaxial.probe()");position:=jv_int(cdp_doc(c),r,-1);
+        if dead_seen && dead==0 && epoch>dead_epoch && position==50004160 {returned=true;break;}db_delay(c,s,60);
+    }
+    body:[1024]u8;ok=ok && returned && db_reply(c,s,0,200,gge_fixture(0,body[..]),true);db_delay(c,s,200);v=db_snapshot(c,s);
+    return db_record(s,"natural-respawn-retains-revocation",ok && db_cancelled(v) && s[0].calls==1,v);
+}
+
+db_hash_module :: (out:[]u8)->bool {
+    if out.count!=64 {return false;}bytes:[8388608]u8;n:=fs_read("apps/openagents-web/build/everglade.wasm",bytes[..]);digest:[32]u8;
+    if n<1 {return false;}state:[112]u8;if sha256_init(state[..])!=SHA_OK {return false;}
+    at:=0;while at<n {end:=ifx n-at>32768 then at+32768 else n;if sha256_update_checked(state[..],bytes[at..<end],false)!=SHA_OK {return false;}at=end;}
+    if sha256_final_checked(state[..],digest[..],false)!=SHA_OK {return false;}
+    for i:0..<32 {b:=cast(int)digest[i];out[2*i]="0123456789abcdef"[b/16];out[2*i+1]="0123456789abcdef"[b%16];}return true;
+}
+db_server :: (origin:string)->int {
+    h:=proc_new();if h<0 {return -1;}ok:=true;
+    for a:[10]string.["coax/web/serve.sh","apps/openagents-web","--host-dir","coax/web","--listen",origin[7..<origin.count],"--static","--build","true",""] {
+        if a.count>0 && !proc_arg(h,a) {ok=false;}
+    }
+    if !ok || proc_start(h)!=0 {ignored:=proc_release(h);return -1;}
+    line:[4096]u8;if proc_line(h,5000,line[..])<1 {ignored:=proc_release(h);return -1;}return h;
+}
+db_stop_server :: (h:int) {if h>=0 {ignored:=proc_kill(h,PROC_SIGTERM);status:=proc_wait(h,1000);released:=proc_release(h);}}
+db_batch_keys :: (c:[]Cdp,s:[]DbRun,keys:[]string)->bool {
+    bytes:[1024]u8;j:[1]Jo;jo_start(j[..],bytes[..]);jo_arr(j[..]);for key:keys {jo_str(j[..],key);}jo_end(j[..]);
+    script:[4096]u8;n:=ws_put(script[..],0,"(v=>{for(const key of v.slice(0,8)){dispatchEvent(new KeyboardEvent('keydown',{key,bubbles:true}));dispatchEvent(new KeyboardEvent('keyup',{key,bubbles:true}));}return true;})(");n=ws_put(script[..],n,jo_text(j[..]));n=ws_put(script[..],n,")");return n>0 && db_eval(c,s,cast(string)script[0..<n])>=0;
+}
+db_queued_case :: (c:[]Cdp,s:[]DbRun)->bool {
+    ok:=db_setup(c,s,"?guard-ai=directions-shadow",1);keys:=[3]string.["g","m","m"];ok=ok && db_batch_keys(c,s,keys[..]);db_delay(c,s,250);
+    v:=db_wait_view(c,s,9,0,0,0,4000);ok=ok && db_idle(v) && s[0].calls==0;ok=ok && db_record(s,"queued-G-map-map-edge-suppressed",ok,v);
+    ok=ok && db_press(c,s,"g") && db_hold_wait(c,s,1);v=db_wait_view(c,s,1,1,0,0,4000);ok=ok && db_held(v,1);
+    body:[1024]u8;ok=ok && db_reply(c,s,0,200,gge_fixture(1,body[..]),false);v=db_wait_view(c,s,2,1,1,0,5000);
+    return db_record(s,"fresh-G-after-superseded-edge-recovers",ok && db_success(v,1,1),v);
+}

@@ -199,12 +199,17 @@ cover the current game-fact mapping and strict world/viewer hints. The frozen
 five-context real API evidence from chapter 21e remains a separate result; it
 does not qualify this page consumer or establish a player benefit.
 
-<!-- root: replace this paragraph with the exact actual-Wasm/browser record. -->
-Actual-Wasm browser qualification is pending in this chapter. Its intended scope
-is the real two-phase page with controlled synthetic client responses: local
-help before a reply, safe stale/late handling and current gameplay invalidation.
-It must identify its artifact and distinguish those checks from real neural
-network calls. No new live model result or default model rollout is claimed here.
+The [actual-Wasm browser qualification](../../docs/verification/guard-directions-page-2026-10-30.md)
+drives the real two-phase page in headless muted Chrome with controlled
+synthetic loopback responses ([driver](../tests/guard-directions/browser.coax)).
+On the shipped module it passed 26/26 cases: default, unqualified and guest
+play make no request; keyboard, mouse and touch show the local tip at once;
+replies are staged to the frame boundary; quiet, wrong, malformed, oversized,
+401, 429, 503 and timed-out answers keep the local line; goal change, leaving
+the area, hiding the page, a world edit, blur and combat cancel the request;
+a late reply on a reused ticket is ignored; and a queued G cannot outlive a
+map invalidation. Those are client checks, not neural-network calls: no new
+live model result or default model rollout is claimed here.
 
 The next promotion question is whether shadow measurement reveals anything
 worth the network cost beyond the perfect local rule. Matching that rule does

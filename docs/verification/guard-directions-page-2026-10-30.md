@@ -48,10 +48,19 @@ epoch gate; the final changed source has the result above. Unchanged Gg, Gd,
 Gm and ambient authority mutation suites were reused from their prior records.
 No full Psionic mutation gate or whole-model CPU inference was run.
 
+Qualified policy SHA-256 values:
+
+- Session: `9db88ebed40e896ae7c8b5ce19dd371bae5a59210a1fa3902b8e1320a74c1ee4`
+- Projection/input: `4d1a4ff977c9fc6f7c392c6ee50fb8ed90e1c469829613691c9972e58787ae97`
+- Page guide adapter: `74acbd591100bc667872e56e0eb6de407c7ea929c6db443a39a9b09a9dd9274e`
+- C effect bridge: `967e55b12335a65dd55a835b57d10368491d93d1aef61ef394973c0b6f640b03`
+  (after merging main's guard-captain request beside it; `f90bc6b3…` before)
+
 ## Compiler and actual Wasm
 
 The local installed compiler predates main's composable public-header emitter.
-A temporary, explicit compiler was built from the current source snapshot and
+A temporary, explicit compiler was built from source snapshot
+`f762c4f7ae66eae27ec5664734e3f37025f050e9` and
 fresh authoritative compiler aggregate, rather than linking an old aggregate
 against a newer header. It re-emitted that aggregate byte-for-byte, passed the
 three actual proto numeric-range checks and a fresh projection/header native
@@ -63,8 +72,10 @@ this is a focused build qualification, not a bootstrap release gate.
 - Public-header emitter source SHA-256: `f91fc098c7f512f4ea697655333b5d707824f12fbdc889561b0b21fe565ea0bf`
 - Temporary qualification receipt: `/tmp/guard-ch21f-full-compiler/QUALIFICATION.txt`
 
-The Wasm wrapper now accepts an explicit `COAX` path and retains the normal
-installed-driver default. The game links a single aggregate policy library so
+The change was rebased onto `38fd4927cc`, retaining main's repository-relative
+compilation and gzip/preload build changes. The public-header emitter is
+unchanged by that rebase. The Wasm wrapper accepts an explicit `COAX` path and
+retains the normal installed-driver default. The game links a single aggregate policy library so
 shared ambient/directions exports and data types have one owner. Release build:
 
 ```shell
@@ -77,15 +88,50 @@ COAX=/tmp/guard-ch21f-full-compiler/coax COAXIAL_MODE=release \
   verse/everglade/guard-guide-policy.coax
 ```
 
+Release module SHA-256 after the final rebase onto `2d3d741173` (which adds
+main's guard-captain request, reply and fork controls):
+`5cec37586ce8ee32a1f61a0e0ebf4da46c6745ce2cb1c591262ae781755a45ee`.
+The pre-rebase module `c0b8a55f…` had passed the same 26 cases.
+
 ## Actual browser scope
 
-Final post-rebase artifact and browser result receipts are being recorded.
-The Coax CDP driver uses headless muted WebGPU Chrome, the real emitted game
-Wasm/host, ordinary game input and controlled loopback API responses. It denies
-external network traffic. No live model, key or production deployment is part
-of this client qualification. The initial local slice passed keyboard, mouse,
-touch, default/guest no-call behavior and a visually reviewed East Gate tip.
-Final cancellation/input cases follow the queued-epoch fix.
+The Coax CDP driver ([psionic/tests/guard-directions](../../psionic/tests/guard-directions/browser.coax))
+uses headless muted WebGPU Chrome, the real emitted game Wasm/host, ordinary
+game input and controlled loopback API responses. It denies external network
+traffic. No live model, key or production deployment is part of this client
+qualification. Build it as a Coax tool and run every group in one browser:
+
+```shell
+coax/web/tool.sh psionic/tests/guard-directions/browser.coax \
+  http://127.0.0.1:18883 NEW_RESULT.json all
+```
+
+Final receipt (2026-10-31, module `5cec3758…`, stable for the whole run):
+**26/26 cases passed** in 64 seconds; 20 intercepted credential-free
+Directions requests, 0 live model calls, 0 external requests, 8 stale replies
+refused (each a fulfilment of an already-cancelled request, which Chrome
+rejects as a CDP error; no other CDP error).
+
+The decision route is shared with main's guard captain, which asks while the
+player is wanted. The driver counts a request as Directions only when its
+`state.policy` is exactly `everglade-directions-v1`; any other is answered 503
+(the captain's own refusal path) and counted apart. The combat case saw one
+such captain request. Before that split, the rebased build failed both combat
+cases on the second request; the Directions behavior itself was unchanged.
+
+| Group | Cases | Result |
+| --- | --- | --- |
+| Local | default URL, unqualified mode, guest shadow, button + East Gate tip (screenshot reviewed), mouse Find Work, touch Find Work | 6/6; 0 starts, local line drawn |
+| Replies | reply staged until the frame boundary, delayed accept, quiet stays local | 3/3; local line unchanged |
+| Service failures | wrong route, malformed, oversized, HTTP 401 (disables), HTTP 429 (disables), HTTP 503 | 6/6; refused with reasons 8, 6, 9, 2, 3, 9; local line kept |
+| Timeout | eight-second lease expires | 1/1; reason 5, no reply admitted |
+| Leaving/edits | goal change, area leave, pagehide, world edit, blur | 5/5; cancelled (reason 7) before any reply |
+| Reuse | new intent, then a late reply on the reused ticket | 1/1; late reply ignored, new one admitted |
+| Combat | authored wanted-combat revokes, natural respawn keeps the revocation | 2/2; cancelled (reason 7) |
+| Queued input | G then map open/close yields no tip or request; a fresh G works | 2/2 |
+
+The same 26 cases had also passed on the pre-rebase module `c0b8a55f…`,
+both per group and in one run.
 
 ## Remaining gates
 

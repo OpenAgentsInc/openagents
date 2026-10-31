@@ -33,8 +33,8 @@ a deliberate five-second discovery wait. These are recorded observations, not
 a new latency or liveness measurement.
 
 At plan creation the fleet retained a relay connection and peer table but
-waited the discovery window on every request. M0 is now implemented on main;
-the measured public fleet still uses the older discovery wait. Warm routing must first process
+waited the discovery window on every request. The initial measurements above
+precede M0 and the later Nix warm-route rollout recorded below. Warm routing must first process
 current-connection catch-up and withdrawals; a cached online beacon alone is
 insufficient after reconnect. Two learned provider keys share one Spot GPU VM,
 so current placement is not independent remote failover.
@@ -97,8 +97,9 @@ separate M5 evidence. A failed or absent answer leaves the original behavior.
 Remote guard behavior is off by default. Explicit development/query modes select
 shadow behavior; ambient remains disabled until the later promotion gate.
 Golden/clip/replay checks suppress remote calls.
-Start with at most one pending call, a 60-second minimum dispatch interval and
-six attempts per realm visit. This local cap supplements the existing public
+The initial ambient-v1 consumer allows at most one pending call, a 60-second
+minimum dispatch interval and six attempts per realm visit. Requested Directions
+uses its separate ten-second cadence below. These local caps supplement the existing public
 quota; it does not replace account admission. Authentication/quota failures
 back off rather than retrying every frame. The initial consumer deadline is
 eight seconds, measured monotonically; it is a bound, not a latency promise.

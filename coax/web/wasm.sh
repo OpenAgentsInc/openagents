@@ -10,6 +10,7 @@ set -euo pipefail
 coax_file="$1"; face="$2"; out="$3"; shift 3
 libraries=("$@")
 repo="$(cd "$(dirname "$0")/../.." && pwd)"
+# Optional absolute path to an explicitly qualified compiler.
 coax_driver="${COAX:-$repo/coax/bin/coax}"
 # Coax sources by their path in the repository (apps/openagents-web/x.coax),
 # never the checkout's absolute path: the C embeds source paths for its

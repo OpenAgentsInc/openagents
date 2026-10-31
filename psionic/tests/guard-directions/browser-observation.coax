@@ -1,0 +1,77 @@
+// Qualification assertions over the page's readonly scalar probes. A remote
+// enum never supplies the displayed local action, including quiet/refusals.
+#authority;
+DbView :: struct {version:int;mode:int;local:int;starts:int;replies:int;admitted:int;fallback:int;raw:int=-1;accepted:int=-1;reason:int;terminals:int;late:int;phase:int;sequence:int;disabled:int;local_action:int;local_intent:int;last_intent:int;rendered:int;goal:int;offer:int;}
+DB_LOCAL_VIEW :: DbView.{version=1,local=1,local_action=1,local_intent=1,last_intent=1,rendered=1,goal=1,offer=2};
+
+#test "an instant local tip needs no model request, even for a guest shadow visit" {
+    v:=DB_LOCAL_VIEW;#assert db_local(v,0);v.mode=1;#assert db_local(v,1) && !db_local(v,0);
+    for k:0..<13 {v=DB_LOCAL_VIEW;if k==0 {v.version=0;}if k==1 {v.local=0;}if k==2 {v.local_action=0;}if k==3 {v.rendered=0;}if k==4 {v.starts=1;}if k==5 {v.replies=1;}if k==6 {v.admitted=1;}if k==7 {v.fallback=1;}if k==8 {v.phase=1;}if k==9 {v.terminals=1;}if k==10 {v.terminals=-1;}if k==11 {v.local_action=5;v.rendered=5;}if k==12 {v.rendered=2;}#assert !db_local(v,0);}
+    v=DB_LOCAL_VIEW;v.local_action=4;v.rendered=4;v.offer=1;#assert db_local(v,0);
+}
+#test "held shadow has one active sequence and the canonical tip already rendered" {
+    v:=DB_LOCAL_VIEW;v.mode=1;v.starts=1;v.phase=1;v.sequence=1;#assert db_held(v,1);
+    for k:0..<9 {w:=v;if k==0 {w.version=0;}if k==1 {w.mode=0;}if k==2 {w.starts=2;}if k==3 {w.phase=0;}if k==4 {w.sequence=0;}if k==5 {w.local=0;}if k==6 {w.local_action=0;}if k==7 {w.rendered=0;}if k==8 {w.rendered=2;}#assert !db_held(w,1);}
+    v.local_action=0;v.rendered=0;#assert !db_held(v,1);
+}
+#test "shadow acceptance only counts; the rendered canonical line remains independent" {
+    v:=DB_LOCAL_VIEW;v.mode=1;v.starts=1;v.replies=1;v.admitted=1;v.terminals=1;v.reason=1;v.raw=1;v.accepted=1;#assert db_success(v,1,1);
+    v.raw=0;v.accepted=0;#assert db_success(v,0,1) && v.rendered==1;
+    for k:0..<12 {w:=v;if k==0 {w.version=0;}if k==1 {w.mode=0;}if k==2 {w.starts=2;}if k==3 {w.replies=0;}if k==4 {w.admitted=0;}if k==5 {w.fallback=1;}if k==6 {w.terminals=0;}if k==7 {w.reason=6;}if k==8 {w.phase=1;}if k==9 {w.accepted=2;}if k==10 {w.rendered=0;}if k==11 {w.local_action=0;}#assert !db_success(w,0,1);}
+    v.starts=2;v.fallback=1;v.terminals=2;#assert db_success(v,0,2);
+    v.local_action=0;v.rendered=0;#assert !db_success(v,0,2);
+}
+#test "refusal and timeout close the ticket and retain no admitted action" {
+    v:=DB_LOCAL_VIEW;v.mode=1;v.starts=1;v.replies=1;v.fallback=1;v.terminals=1;v.reason=6;#assert db_failure(v,6,0,1);
+    for k:0..<12 {w:=v;if k==0 {w.version=0;}if k==1 {w.mode=0;}if k==2 {w.starts=0;}if k==3 {w.replies=0;}if k==4 {w.admitted=1;}if k==5 {w.fallback=0;}if k==6 {w.terminals=0;}if k==7 {w.phase=1;}if k==8 {w.reason=4;}if k==9 {w.disabled=1;}if k==10 {w.accepted=1;}if k==11 {w.local_action=0;}#assert !db_failure(w,6,0,1);}
+    v.reason=5;v.replies=0;v.rendered=0;#assert db_failure(v,5,0,0);v.reason=2;v.replies=1;v.disabled=1;#assert db_failure(v,2,1,1);
+}
+#test "cancellation invalidates the rendered tip and every pending/admitted identity" {
+    v:=DB_LOCAL_VIEW;v.mode=1;v.starts=1;v.fallback=1;v.terminals=1;v.reason=7;v.rendered=0;v.local_action=0;#assert db_cancelled(v);v.reason=8;#assert db_cancelled(v);
+    for k:0..<12 {w:=v;if k==0 {w.version=0;}if k==1 {w.mode=0;}if k==2 {w.starts=0;}if k==3 {w.replies=1;}if k==4 {w.admitted=1;}if k==5 {w.fallback=0;}if k==6 {w.terminals=0;}if k==7 {w.reason=6;}if k==8 {w.phase=1;}if k==9 {w.sequence=1;}if k==10 {w.rendered=1;}if k==11 {w.local_action=1;}#assert !db_cancelled(w);}
+}
+#test "new explicit intent revokes its old shadow while showing fresh local directions" {
+    v:=DB_LOCAL_VIEW;v.mode=1;v.local=2;v.starts=1;v.fallback=1;v.terminals=1;v.reason=8;#assert db_reintent(v);
+    v.local=1;#assert !db_reintent(v);v.local=2;v.rendered=0;#assert !db_reintent(v);v.rendered=2;#assert !db_reintent(v);
+}
+#test "the offered button binds the visible objective before any interaction" {
+    v:=DbView.{version=1,goal=0,offer=2};#assert db_offered(v,0,2);
+    v.goal=2;v.offer=1;#assert db_offered(v,2,1);
+    for k:0..<5 {w:=v;if k==0 {w.version=0;}if k==1 {w.goal=0;}if k==2 {w.offer=0;}if k==3 {w.rendered=1;}if k==4 {w.starts=1;}#assert !db_offered(w,2,1);}
+}
+#test "a reply stages while frames are held and cannot admit itself" {
+    v:=DB_LOCAL_VIEW;v.mode=1;v.starts=1;v.replies=1;v.phase=2;v.sequence=1;v.raw=1;#assert db_staged(v,1);
+    for k:0..<11 {w:=v;if k==0 {w.version=0;}if k==1 {w.mode=0;}if k==2 {w.starts=0;}if k==3 {w.replies=0;}if k==4 {w.admitted=1;}if k==5 {w.phase=1;}if k==6 {w.sequence=0;}if k==7 {w.raw=0;}if k==8 {w.accepted=1;}if k==9 {w.terminals=1;}if k==10 {w.fallback=1;}#assert !db_staged(w,1);}
+}
+#test "a displayed current-objective tip binds its authored local route" {
+    v:=DB_LOCAL_VIEW;#assert db_goal_local(v,0,1,1) && !db_goal_local(v,0,2,1) && !db_goal_local(v,0,1,2);
+    v.goal=2;v.local_action=2;v.rendered=2;#assert db_goal_local(v,0,2,2);v.version=0;#assert !db_goal_local(v,0,2,2);
+}
+#test "a superseded queued edge never starts or draws local help" {
+    v:=DbView.{version=1,mode=1};#assert db_idle(v);
+    for k:0..<12 {w:=v;if k==0 {w.version=0;}if k==1 {w.mode=0;}if k==2 {w.local=1;}if k==3 {w.starts=1;}if k==4 {w.replies=1;}if k==5 {w.admitted=1;}if k==6 {w.fallback=1;}if k==7 {w.terminals=1;}if k==8 {w.phase=1;}if k==9 {w.sequence=1;}if k==10 {w.rendered=1;}if k==11 {w.local_action=1;}#assert !db_idle(w);}
+}
+#test "the frame watchdog and host timeout may race but terminate once" {
+    v:=DB_LOCAL_VIEW;v.mode=1;v.starts=1;v.fallback=1;v.terminals=1;v.reason=5;#assert db_timeout(v);v.replies=1;#assert db_timeout(v);
+    v.replies=-1;#assert !db_timeout(v);v.replies=2;#assert !db_timeout(v);v.replies=0;v.reason=9;#assert !db_timeout(v);
+}
+
+db_local :: (v:DbView,mode:int)->bool {
+    return v.version==1 && v.mode==mode && v.local==1 && v.local_action>=1 && v.local_action<=4 && v.rendered==v.local_action && v.starts==0 && v.replies==0 && v.admitted==0 && v.fallback==0 && v.phase==0 && v.terminals==0;
+}
+db_held :: (v:DbView,starts:int)->bool {return v.version==1 && v.mode==1 && v.starts==starts && v.phase==1 && v.sequence>0 && v.local>0 && v.local_action>0 && v.rendered==v.local_action;}
+db_success :: (v:DbView,action:int,starts:int)->bool {
+    return v.version==1 && v.mode==1 && v.starts==starts && v.replies==1 && v.admitted==1 && v.fallback==starts-1 && v.terminals==starts && v.reason==1 && v.phase==0 && v.accepted==action && v.rendered==v.local_action && v.local_action>0;
+}
+db_failure :: (v:DbView,reason:int,disabled:int,replies:int)->bool {
+    return v.version==1 && v.mode==1 && v.starts==1 && v.replies==replies && v.admitted==0 && v.fallback==1 && v.terminals==1 && v.phase==0 && v.reason==reason && v.disabled==disabled && v.accepted==-1 && v.local_action>0;
+}
+db_cancelled :: (v:DbView)->bool {
+    return v.version==1 && v.mode==1 && v.starts==1 && v.replies==0 && v.admitted==0 && v.fallback==1 && v.terminals==1 && (v.reason==7 || v.reason==8) && v.phase==0 && v.sequence==0 && v.rendered==0 && v.local_action==0;
+}
+db_reintent :: (v:DbView)->bool {return db_failure(v,8,0,0) && v.local==2 && v.rendered==v.local_action;}
+db_offered :: (v:DbView,goal:int,kind:int)->bool {return v.version==1 && v.goal==goal && v.offer==kind && v.rendered==0 && v.starts==0;}
+db_staged :: (v:DbView,action:int)->bool {return v.version==1 && v.mode==1 && v.starts==1 && v.replies==1 && v.admitted==0 && v.phase==2 && v.sequence>0 && v.raw==action && v.accepted==-1 && v.terminals==0 && v.fallback==0;}
+db_goal_local :: (v:DbView,mode:int,goal:int,action:int)->bool {return db_local(v,mode) && v.goal==goal && v.local_action==action;}
+db_idle :: (v:DbView)->bool {return v.version==1 && v.mode==1 && v.local==0 && v.starts==0 && v.replies==0 && v.admitted==0 && v.fallback==0 && v.terminals==0 && v.phase==0 && v.sequence==0 && v.rendered==0 && v.local_action==0;}
+db_timeout :: (v:DbView)->bool {return v.replies>=0 && v.replies<=1 && db_failure(v,5,0,v.replies);}
