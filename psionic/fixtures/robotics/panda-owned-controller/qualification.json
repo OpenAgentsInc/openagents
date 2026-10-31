@@ -1,0 +1,379 @@
+{
+  "schema": "psionic.panda-owned-controller.qualification.v1",
+  "passed": true,
+  "profile_sha256": "1e1b6c6b9a872d3bc096ae3260634305d1056c9318939b27b7258741f28594ea",
+  "source_sha256": {
+    "psionic/tests/robotics/panda_owned_controller_native.c": "3f7c967449d4f79aa7436eeb77aa7853871d103547d3ea24dc5fae1ff9e81202",
+    "psionic/tests/robotics/panda_owned_controller_reference.py": "6653ae19c506e84ec3ec9fc7f62bfb47c99fd7c4ddc034412410447dfd56d5f6"
+  },
+  "controller_sources": {
+    "psionic/lib/robotics/panda-control-check-fixtures.coax": "1d2e336f81cd09575232a197d93586c68dafed83c7cd6a14e7055aaffddc216e",
+    "psionic/lib/robotics/panda-control-types.coax": "168dddd1822bee04fb85e710912f9f844f1c4b4745a13b952c8a9cc9094916d3",
+    "psionic/lib/robotics/panda-control.coax": "6a0ef9ad54cd0ea9d12a1ce77a1e73a48c957bbba173281e5a1de0cf6020bdbc",
+    "psionic/lib/robotics/panda-matrix-types.coax": "772c5f94c6c52a83dd4152542fd338e9dd3ff9f6249844c8cc8de0809acb4483",
+    "psionic/lib/robotics/panda-matrix.coax": "5b6d935ee9e33d98c416b152b7c50857435dd5f8602fced6ce11daa6610e021f"
+  },
+  "qualified_owned_generator_record_sha256": "58fbf55fbfa68b7b9d6efe6e75b051db395c56514ef730ea1b6c6bb9f364d298",
+  "SDK_sha256": "29eff7a1f40f08a4c60ed57558706e744181c396045701d53f968779866f5abc",
+  "owned_sha256": "1443b1519e20474a00463a29b423e335e82312a567b3f7913eab284de0746ba7",
+  "input_sha256": "93a31eb42586c9d54b31bab8e85171dbaadfd0dc8fcbdf9ef29ebeb9fef306b9",
+  "numeric_profile": "Darwin arm64 F64 scalar libm, -fno-builtin-sin -fno-builtin-cos -fno-fast-math -ffp-contract=off",
+  "scope": "Staticstatepairedcontrollerqualificationonly.15pairedcontexts includesrepeatedq/v; not45independentphysicalstates, newepisode, closedloop, physics, safetyorhardwareclaim.",
+  "simulation_steps": 0,
+  "SDK_calls": 0,
+  "NN_calls": 0,
+  "commands": [
+    {
+      "name": "compile-debug",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O0",
+        "-g",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-owned-controller-native-first/debug",
+        "/private/tmp/panda-owned-controller-native-first/debug/panda-owned-sample.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_controller_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-owned-controller-native-first/debug/native"
+      ],
+      "exit": 0,
+      "seconds": 0.2272569159977138,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-debug",
+      "argv": [
+        "/private/tmp/panda-owned-controller-native-first/debug/native",
+        "/private/tmp/panda-owned-controller-native-first/input.bin",
+        "/private/tmp/panda-owned-controller-native-first/debug/paired.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.41331312502734363,
+      "stderr_bytes": 0,
+      "stdout_sha256": "5b006944c35f591b7569211d5a952ea4aad2485be951732c2470c9ea39de62fb",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-release",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O2",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-owned-controller-native-first/release",
+        "/private/tmp/panda-owned-controller-native-first/release/panda-owned-sample.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_controller_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-owned-controller-native-first/release/native"
+      ],
+      "exit": 0,
+      "seconds": 0.660618916968815,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-release",
+      "argv": [
+        "/private/tmp/panda-owned-controller-native-first/release/native",
+        "/private/tmp/panda-owned-controller-native-first/input.bin",
+        "/private/tmp/panda-owned-controller-native-first/release/paired.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.20883783302269876,
+      "stderr_bytes": 0,
+      "stdout_sha256": "5b006944c35f591b7569211d5a952ea4aad2485be951732c2470c9ea39de62fb",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "compile-sanitized",
+      "argv": [
+        "cc",
+        "-std=c11",
+        "-O1",
+        "-g",
+        "-fsanitize=address,undefined",
+        "-fno-sanitize-recover=all",
+        "-fno-omit-frame-pointer",
+        "-fno-fast-math",
+        "-ffp-contract=off",
+        "-fno-builtin-sin",
+        "-fno-builtin-cos",
+        "-I/private/tmp/panda-owned-controller-native-first/sanitized",
+        "/private/tmp/panda-owned-controller-native-first/sanitized/panda-owned-sample.c",
+        "/Users/christopherdavid/.codex/worktrees/spatial-operator-mutations/openagents/psionic/tests/robotics/panda_owned_controller_native.c",
+        "-lm",
+        "-o",
+        "/private/tmp/panda-owned-controller-native-first/sanitized/native"
+      ],
+      "exit": 0,
+      "seconds": 1.0821350830374286,
+      "stderr_bytes": 0,
+      "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "name": "run-sanitized",
+      "argv": [
+        "/private/tmp/panda-owned-controller-native-first/sanitized/native",
+        "/private/tmp/panda-owned-controller-native-first/input.bin",
+        "/private/tmp/panda-owned-controller-native-first/sanitized/paired.bin"
+      ],
+      "exit": 0,
+      "seconds": 0.3202568339766003,
+      "stderr_bytes": 0,
+      "stdout_sha256": "5b006944c35f591b7569211d5a952ea4aad2485be951732c2470c9ea39de62fb",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "modes": [
+    {
+      "mode": "debug",
+      "native": {
+        "schema": "psionic.panda-owned-controller.native.v1",
+        "passed": true,
+        "events": 2490,
+        "refusals": 150,
+        "atomic_failed_calls": 150,
+        "assertions": 86679,
+        "physics_steps": 0
+      },
+      "cached_C_sha256": "96ca523bb82f3d81677d7423f72096a8e65819ae0e6b03d0e8753bcc4497b777",
+      "cached_header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "binary_sha256": "85e206d5629d4fd89534bd412d94169342d5cb80c13ef4de6dc8b4e78a53606d",
+      "transcript_sha256": "553b5dcf54025d703595ebb4b12469318a96b09b8158e52972c4346764437a6d",
+      "metrics": {
+        "passed": true,
+        "paired_events": 1245,
+        "normal_held_pairs": 1125,
+        "normal_reset_pairs": 45,
+        "refusal_sibling_pairs": 75,
+        "torque_values": 8715,
+        "gripper_values": 2490,
+        "state_values": 26145,
+        "torque_max_abs_error": 6.536993168992922e-13,
+        "gripper_max_abs_error": 0.0,
+        "state_max_abs_error": 1.9984014443252818e-15,
+        "per_field_max_abs_error": [
+          6.394884621840902e-13,
+          1.4921397450962104e-13,
+          6.252776074688882e-13,
+          8.526512829121202e-14,
+          6.536993168992922e-13,
+          6.572520305780927e-14,
+          4.718405949673756e-13,
+          0.0,
+          0.0,
+          2.220446049250313e-16,
+          3.3306690738754696e-16,
+          4.440892098500626e-16,
+          1.6375789613221059e-15,
+          4.440892098500626e-16,
+          9.992007221626409e-16,
+          1.27675647831893e-15,
+          1.6653345369377348e-15,
+          6.661338147750939e-16,
+          4.996003610813204e-16,
+          1.1102230246251565e-15,
+          1.9984014443252818e-15,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "status_ready_clipcounts_exact": true,
+        "regular_step_status_counts": {
+          "0": 1125
+        },
+        "reset_status_counts": {
+          "0": 45
+        },
+        "declared_refusal_status_counts": {
+          "5": 30,
+          "2": 15,
+          "1": 15,
+          "7": 15
+        },
+        "all_regular_steps_successful": true
+      }
+    },
+    {
+      "mode": "release",
+      "native": {
+        "schema": "psionic.panda-owned-controller.native.v1",
+        "passed": true,
+        "events": 2490,
+        "refusals": 150,
+        "atomic_failed_calls": 150,
+        "assertions": 86679,
+        "physics_steps": 0
+      },
+      "cached_C_sha256": "5c7fb2a2b7aad7110af7c071d095b7c67048eede4bf501ed9a03999d244ef956",
+      "cached_header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "binary_sha256": "df3b79118a5df407c235c97f455bd7bf920279c842aaba57e074c2c3171afcda",
+      "transcript_sha256": "553b5dcf54025d703595ebb4b12469318a96b09b8158e52972c4346764437a6d",
+      "metrics": {
+        "passed": true,
+        "paired_events": 1245,
+        "normal_held_pairs": 1125,
+        "normal_reset_pairs": 45,
+        "refusal_sibling_pairs": 75,
+        "torque_values": 8715,
+        "gripper_values": 2490,
+        "state_values": 26145,
+        "torque_max_abs_error": 6.536993168992922e-13,
+        "gripper_max_abs_error": 0.0,
+        "state_max_abs_error": 1.9984014443252818e-15,
+        "per_field_max_abs_error": [
+          6.394884621840902e-13,
+          1.4921397450962104e-13,
+          6.252776074688882e-13,
+          8.526512829121202e-14,
+          6.536993168992922e-13,
+          6.572520305780927e-14,
+          4.718405949673756e-13,
+          0.0,
+          0.0,
+          2.220446049250313e-16,
+          3.3306690738754696e-16,
+          4.440892098500626e-16,
+          1.6375789613221059e-15,
+          4.440892098500626e-16,
+          9.992007221626409e-16,
+          1.27675647831893e-15,
+          1.6653345369377348e-15,
+          6.661338147750939e-16,
+          4.996003610813204e-16,
+          1.1102230246251565e-15,
+          1.9984014443252818e-15,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "status_ready_clipcounts_exact": true,
+        "regular_step_status_counts": {
+          "0": 1125
+        },
+        "reset_status_counts": {
+          "0": 45
+        },
+        "declared_refusal_status_counts": {
+          "5": 30,
+          "2": 15,
+          "1": 15,
+          "7": 15
+        },
+        "all_regular_steps_successful": true
+      }
+    },
+    {
+      "mode": "sanitized",
+      "native": {
+        "schema": "psionic.panda-owned-controller.native.v1",
+        "passed": true,
+        "events": 2490,
+        "refusals": 150,
+        "atomic_failed_calls": 150,
+        "assertions": 86679,
+        "physics_steps": 0
+      },
+      "cached_C_sha256": "96ca523bb82f3d81677d7423f72096a8e65819ae0e6b03d0e8753bcc4497b777",
+      "cached_header_sha256": "29b52dce680aba64e4eed54f84237b3e305bc63011e9fdffb9ef619afe191d79",
+      "binary_sha256": "f2d66621df129399cd762efedf1c0b34045ada95ea152f3c3eae733f36c4e297",
+      "transcript_sha256": "553b5dcf54025d703595ebb4b12469318a96b09b8158e52972c4346764437a6d",
+      "metrics": {
+        "passed": true,
+        "paired_events": 1245,
+        "normal_held_pairs": 1125,
+        "normal_reset_pairs": 45,
+        "refusal_sibling_pairs": 75,
+        "torque_values": 8715,
+        "gripper_values": 2490,
+        "state_values": 26145,
+        "torque_max_abs_error": 6.536993168992922e-13,
+        "gripper_max_abs_error": 0.0,
+        "state_max_abs_error": 1.9984014443252818e-15,
+        "per_field_max_abs_error": [
+          6.394884621840902e-13,
+          1.4921397450962104e-13,
+          6.252776074688882e-13,
+          8.526512829121202e-14,
+          6.536993168992922e-13,
+          6.572520305780927e-14,
+          4.718405949673756e-13,
+          0.0,
+          0.0,
+          2.220446049250313e-16,
+          3.3306690738754696e-16,
+          4.440892098500626e-16,
+          1.6375789613221059e-15,
+          4.440892098500626e-16,
+          9.992007221626409e-16,
+          1.27675647831893e-15,
+          1.6653345369377348e-15,
+          6.661338147750939e-16,
+          4.996003610813204e-16,
+          1.1102230246251565e-15,
+          1.9984014443252818e-15,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0,
+          0.0
+        ],
+        "status_ready_clipcounts_exact": true,
+        "regular_step_status_counts": {
+          "0": 1125
+        },
+        "reset_status_counts": {
+          "0": 45
+        },
+        "declared_refusal_status_counts": {
+          "5": 30,
+          "2": 15,
+          "1": 15,
+          "7": 15
+        },
+        "all_regular_steps_successful": true
+      }
+    }
+  ],
+  "decoder_guard_checks": {
+    "passed": true,
+    "finite_control": true,
+    "refused_nonfinite_or_extent_cases": 5,
+    "poison_field": "lastrecord,laststatefield",
+    "both_SDK_expected_and_owned_actual_share_guard": true
+  },
+  "native_modes_byte_identical": true,
+  "seconds": 2.9547992080333643,
+  "executed_native_record_sha256": "f7083c313f4409f0b69af671c43da0f723e771c68373f4a60b8d519a41d8a733",
+  "read_only_peer_review": "Core reviewed frozenplan/C/reader before execution: event inventory, held observations, state byte snapshots, logicalfield serialization, finite/extent checks, exactstatus andcanonicalzero failedoutputs. No source/product changes or extra runs.",
+  "reuse_scope": "Only previously qualified Coax C/header and frozen SDK/owned sample bytes reused. The new harness invokes pc_reset/pc_step only; it does not invoke pcs_forward, an SDK, model, plant integration or oldcontrollergate."
+}

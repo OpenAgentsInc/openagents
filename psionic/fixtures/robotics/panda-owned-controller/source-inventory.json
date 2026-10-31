@@ -1,0 +1,24 @@
+{
+  "schema": "psionic.panda-owned-controller.source-inventory.v1",
+  "passed": true,
+  "sources": {
+    "psionic/tests/robotics/panda_owned_controller_native.c": "3f7c967449d4f79aa7436eeb77aa7853871d103547d3ea24dc5fae1ff9e81202",
+    "psionic/tests/robotics/panda_owned_controller_reference.py": "6653ae19c506e84ec3ec9fc7f62bfb47c99fd7c4ddc034412410447dfd56d5f6"
+  },
+  "frozen_inputs": {
+    "experiment.json": "1e1b6c6b9a872d3bc096ae3260634305d1056c9318939b27b7258741f28594ea",
+    "owned-samples.f64": "1443b1519e20474a00463a29b423e335e82312a567b3f7913eab284de0746ba7"
+  },
+  "qualified_input_context_record_sha256": "58fbf55fbfa68b7b9d6efe6e75b051db395c56514ef730ea1b6c6bb9f364d298",
+  "new_native_record_sha256": "f7083c313f4409f0b69af671c43da0f723e771c68373f4a60b8d519a41d8a733",
+  "owned_files": [
+    "psionic/tests/robotics/panda_owned_controller_native.c",
+    "psionic/tests/robotics/panda_owned_controller_reference.py",
+    "psionic/fixtures/robotics/panda-owned-controller/experiment.json",
+    "psionic/fixtures/robotics/panda-owned-controller/owned-samples.f64",
+    "psionic/fixtures/robotics/panda-owned-controller/qualification.json",
+    "psionic/fixtures/robotics/panda-owned-controller/README.md",
+    "psionic/fixtures/robotics/panda-owned-controller/source-inventory.json"
+  ],
+  "scope": "Only NEW test tooling, inert owned-sample alias and records. No existing Coax, PCS/PID fixture, book or registry edited."
+}
