@@ -93,10 +93,10 @@ refer to the same three values. Reads are well defined. An ordinary elementwise
 write would have multiple logical destinations for the same cell, so this
 chapter refuses that write.
 
-Writable views need a sufficient injectivity proof. Sort non-singleton axes by
-absolute stride, start with a covered span of one, and require each next stride
-to step beyond the span covered by the earlier axes. Then extend the covered
-span. This admits contiguous, transposed, reversed and many gapped layouts.
+Writable views need a sufficient injectivity proof. Every axis longer than one
+must step beyond one plus the span, `(extent-1)*|stride|`, of every other axis
+whose absolute stride is no larger. Two such axes with equal strides can never
+both pass, so ties are refused. This admits contiguous, transposed, reversed and many gapped layouts.
 It can refuse unusual injective layouts; we do not claim to solve every integer
 alias problem. Read-only views may overlap themselves.
 

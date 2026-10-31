@@ -26,7 +26,7 @@ TvAlias :: struct {status:TvStatus;may_alias:bool;}
     #assert a.status==TvStatus.ok && a.elements==6 && a.low==0 && a.high==5 && a.contiguous && a.injective && v.view.strides[0]==3 && v.view.strides[1]==1;
     empty:=tv_contiguous(tv_owner(8,1,0).storage,TvShape.{rank=2,dims=[4]int.[3,0,0,0]},true);
     a=tv_layout(tv_owner(8,1,0).storage,empty.view);#assert a.status==TvStatus.ok && a.elements==0 && a.contiguous && a.injective;
-    #assert tv_elements(TvShape.{rank=4,dims=[4]int.[1048576,1048576,1048576,0]}).elements==0;
+    big:=tv_elements(TvShape.{rank=4,dims=[4]int.[1048576,1048576,1048576,0]});#assert big.status==TvStatus.ok && big.elements==0;
     #assert tv_contiguous(tv_owner(8,1,0).storage,TvShape.{},true).status==TvStatus.bounds;
 }
 #test "rank dimensions products and storage records refuse before address arithmetic" {
@@ -138,6 +138,93 @@ TvAlias :: struct {status:TvStatus;may_alias:bool;}
     b.epoch=2;#assert tv_alias(s,v,b).status==TvStatus.state;
 }
 
+#test "storage records and shapes are inclusive at each bound and refuse one past it" {
+    scalar:=TvView.{identity=1,epoch=1};
+    #assert tv_layout(TvStorage.{identity=1,epoch=1,elements=1048576,live=true},scalar).status==TvStatus.ok;
+    #assert tv_layout(TvStorage.{identity=1,epoch=1,elements=1048577,live=true},scalar).status==TvStatus.state;
+    #assert tv_layout(TvStorage.{epoch=1,elements=1,live=true},TvView.{epoch=1}).status==TvStatus.state;
+    #assert tv_layout(TvStorage.{identity=1,elements=1,live=true},TvView.{identity=1}).status==TvStatus.state;
+    #assert tv_layout(TvStorage.{identity=1,epoch=1,elements=1,version=-1,live=true},scalar).status==TvStatus.state;
+    top:=tv_owner(1,1,1048576);#assert top.status==TvStatus.ok && top.storage.elements==1048576 && top.storage.live;
+    four:=tv_elements(TvShape.{rank=4,dims=[4]int.[1,2,3,4]});#assert four.status==TvStatus.ok && four.elements==24;
+    wide:=tv_elements(TvShape.{rank=1,dims=[4]int.[1048576,0,0,0]});#assert wide.status==TvStatus.ok && wide.elements==1048576;
+    #assert tv_elements(TvShape.{rank=2,dims=[4]int.[1048577,0,0,0]}).status==TvStatus.limit;
+    flat:=tv_elements(TvShape.{rank=2,dims=[4]int.[1048576,0,0,0]});#assert flat.status==TvStatus.ok && flat.elements==0;
+    ones:=tv_elements(TvShape.{rank=3,dims=[4]int.[3,1,2,0]});#assert ones.status==TvStatus.ok && ones.elements==6;
+    #assert tv_elements(TvShape.{rank=2,dims=[4]int.[17,61681,0,0]}).status==TvStatus.limit;
+    exact:=tv_elements(TvShape.{rank=2,dims=[4]int.[16,65536,0,0]});#assert exact.status==TvStatus.ok && exact.elements==1048576;
+}
+#test "layout strides, origins and injectivity are exact at their boundaries" {
+    s:=tv_owner(1,1,6).storage;v:=TvView.{identity=1,epoch=1,shape=TvShape.{rank=1,dims=[4]int.[1,0,0,0]},strides=[4]int.[1048576,0,0,0]};
+    #assert tv_layout(s,v).status==TvStatus.ok;v.strides[0]=-1048576;#assert tv_layout(s,v).status==TvStatus.ok;
+    v.strides[0]=1048577;#assert tv_layout(s,v).status==TvStatus.limit;v.strides[0]=-1048577;#assert tv_layout(s,v).status==TvStatus.limit;
+    v.strides[0]=1;v.strides[1]=1;#assert tv_layout(s,v).status==TvStatus.dimension;
+    empty:=TvView.{identity=1,epoch=1,shape=TvShape.{rank=1},offset=6};a:=tv_layout(s,empty);#assert a.status==TvStatus.ok && a.low==6 && a.high==6 && a.elements==0;
+    empty.offset=7;#assert tv_layout(s,empty).status==TvStatus.bounds;empty.offset=-1;#assert tv_layout(s,empty).status==TvStatus.bounds;
+    column:=TvView.{identity=1,epoch=1,shape=TvShape.{rank=2,dims=[4]int.[3,1,0,0]},strides=[4]int.[1,0,0,0],writable=true};
+    a=tv_layout(s,column);#assert a.status==TvStatus.ok && a.injective && a.contiguous && a.low==0 && a.high==2;
+    column.strides[1]=5;a=tv_layout(s,column);#assert a.status==TvStatus.ok && a.injective && a.contiguous;
+    // [3,2] with strides [1,2] reaches 0,1,2 and 2,3,4: element two twice.
+    fold:=TvView.{identity=1,epoch=1,shape=TvShape.{rank=2,dims=[4]int.[3,2,0,0]},strides=[4]int.[1,2,0,0]};
+    a=tv_layout(s,fold);#assert a.status==TvStatus.ok && !a.injective && a.high==4;fold.writable=true;#assert tv_layout(s,fold).status==TvStatus.alias;
+    fold.strides[1]=3;a=tv_layout(s,fold);#assert a.status==TvStatus.ok && a.injective && a.high==5 && a.contiguous==false;
+    back:=TvView.{identity=1,epoch=1,shape=TvShape.{rank=2,dims=[4]int.[2,3,0,0]},strides=[4]int.[-3,1,0,0],offset=3,writable=true};
+    a=tv_layout(s,back);#assert a.status==TvStatus.ok && a.low==0 && a.high==5 && a.injective && !a.contiguous;
+    back.offset=2;#assert tv_layout(s,back).status==TvStatus.bounds;
+}
+#test "contiguous strides, transposes and alias intervals are exact" {
+    s:=tv_owner(1,1,6).storage;
+    e:=tv_contiguous(s,TvShape.{rank=2,dims=[4]int.[3,0,0,0]},true).view;#assert e.strides[0]==0 && e.strides[1]==0;
+    one:=tv_contiguous(s,TvShape.{rank=1,dims=[4]int.[1,0,0,0]},true).view;#assert one.strides[0]==1;
+    m:=tv_contiguous(s,TvShape.{rank=3,dims=[4]int.[2,1,3,0]},true).view;#assert m.strides[0]==3 && m.strides[1]==3 && m.strides[2]==1;
+    v:=tv_contiguous(s,TvShape.{rank=2,dims=[4]int.[2,3,0,0]},true).view;
+    t:=tv_transpose(s,v,1,0);#assert t.status==TvStatus.ok && t.view.shape.dims[0]==3 && t.view.strides[0]==1 && t.view.strides[1]==3;
+    same:=tv_transpose(s,v,1,1);#assert same.status==TvStatus.ok && same.view.strides[0]==3 && same.view.shape.dims[0]==2;
+    #assert tv_transpose(s,v,-1,0).status==TvStatus.rank && tv_transpose(s,v,2,0).status==TvStatus.rank;
+    #assert tv_transpose(s,v,0,-1).status==TvStatus.rank && tv_transpose(s,v,0,2).status==TvStatus.rank;
+    row:=tv_contiguous(s,TvShape.{rank=1,dims=[4]int.[6,0,0,0]},true).view;
+    hole:=TvView.{identity=1,epoch=1,shape=TvShape.{rank=1},offset=2};r:=tv_alias(s,hole,row);#assert r.status==TvStatus.ok && !r.may_alias;
+    cell:=tv_slice(s,row,0,2,1,1).view;#assert tv_alias(s,cell,row).may_alias && tv_alias(s,row,cell).may_alias;
+    left:=tv_slice(s,row,0,0,3,1).view;right:=tv_slice(s,row,0,2,3,1).view;
+    #assert tv_alias(s,left,right).may_alias && tv_alias(s,right,left).may_alias;
+    right=tv_slice(s,row,0,3,3,1).view;#assert !tv_alias(s,left,right).may_alias && !tv_alias(s,right,left).may_alias;
+}
+#test "slices of a sub-view check their own extent, not the storage" {
+    s:=tv_owner(1,1,6).storage;row:=tv_contiguous(s,TvShape.{rank=1,dims=[4]int.[6,0,0,0]},true).view;
+    head:=tv_slice(s,row,0,0,3,1).view;tail:=tv_slice(s,row,0,3,3,1).view;#assert tail.offset==3 && head.shape.dims[0]==3;
+    #assert tv_slice(s,head,0,1,3,1).status==TvStatus.bounds && tv_slice(s,head,0,1,2,1).status==TvStatus.ok;
+    #assert tv_slice(s,head,0,3,2,-1).status==TvStatus.bounds && tv_slice(s,head,0,3,1,1).status==TvStatus.bounds;
+    #assert tv_slice(s,tail,0,0,2,-1).status==TvStatus.bounds;
+    back:=tv_slice(s,tail,0,2,3,-1);#assert back.status==TvStatus.ok && back.view.offset==5 && back.view.strides[0]==-1;
+    for i:0..<3 {#assert tv_offset(back.view,i)==5-i;}
+    gone:=tv_slice(s,row,0,6,0,1).view;#assert gone.shape.dims[0]==0 && gone.strides[0]==0 && gone.offset==0;
+    #assert tv_slice(s,row,0,0,1048577,1).status==TvStatus.limit && tv_slice(s,row,0,0,1048576,1).status==TvStatus.bounds;
+    far:=tv_slice(s,row,0,0,1,-1048576);#assert far.status==TvStatus.ok && far.view.strides[0]==-1048576;
+    far=tv_slice(s,row,0,0,1,1048576);#assert far.status==TvStatus.ok && far.view.strides[0]==1048576;
+    #assert tv_slice(s,row,0,0,1,-1048577).status==TvStatus.limit && tv_slice(s,row,0,0,1,1048577).status==TvStatus.limit;
+    // A zero-stride broadcast axis would hide an oversized step from layout.
+    spread:=tv_broadcast(s,tv_slice(s,row,0,0,1,1).view,TvShape.{rank=1,dims=[4]int.[3,0,0,0]}).view;#assert spread.strides[0]==0;
+    #assert tv_slice(s,spread,0,0,1,1048577).status==TvStatus.limit && tv_slice(s,spread,0,0,1,-1048577).status==TvStatus.limit;
+    #assert tv_slice(s,spread,0,0,1,1048576).status==TvStatus.ok;
+}
+#test "gather checks only reached elements and scatter versions count each write" {
+    owner:=[1]TvStorage.[tv_owner(1,1,6).storage];row:=tv_contiguous(owner[0],TvShape.{rank=1,dims=[4]int.[6,0,0,0]},true).view;
+    // f32 overflow is the infinity; bit-pattern constants cannot spell one.
+    huge:=f32_from_bits(0x7f7fffff);data:=[6]f32.[huge*2,1,2,3,4,-huge*2];#assert f32_bits(data[0])==0x7f800000 && f32_bits(data[5])==0xff800000;out:=[6]f32.[-7,-7,-7,-7,-7,-7];scratch:[6]f32;
+    #assert tv_gather_checked(owner[..],row,data[..],out[..],scratch[..],false).status==TvStatus.number && out[0]==-7;
+    head:=tv_slice(owner[0],row,0,0,5,1).view;#assert tv_gather_checked(owner[..],head,data[..],out[..],scratch[..],false).status==TvStatus.number && out[0]==-7;
+    middle:=tv_slice(owner[0],row,0,1,4,1).view;r:=tv_gather_checked(owner[..],middle,data[..],out[..],scratch[..],false);
+    #assert r.status==TvStatus.ok && r.written==4 && out[0]==1 && out[3]==4 && out[4]==-7;
+    cell:=tv_slice(owner[0],row,0,2,1,1).view;src:=[1]f32.[9];
+    r=tv_scatter_checked(owner[..],cell,src[..],data[..],scratch[..],false);#assert r.status==TvStatus.ok && r.written==1 && owner[0].version==1 && data[2]==9;
+    owner[0].version=9223372036854775807;src[0]=8;
+    r=tv_scatter_checked(owner[..],cell,src[..],data[..],scratch[..],false);#assert r.status==TvStatus.limit && data[2]==9 && owner[0].version==9223372036854775807;
+    hole:=tv_slice(owner[0],row,0,6,0,1).view;
+    r=tv_scatter_checked(owner[..],hole,src[0..<0],data[..],scratch[..],false);#assert r.status==TvStatus.ok && r.written==0 && owner[0].version==9223372036854775807;
+}
+
+// Exact for every admitted stride and extent product (at most 2^42 < 2^53).
+tv_magnitude :: (x:int)->int {return int(abs(f64(x)));}
 tv_storage_valid :: (s:TvStorage)->bool {return s.live && s.identity>0 && s.epoch>0 && s.elements>=0 && s.elements<=TV_LIMIT && s.version>=0;}
 tv_owner :: (identity:int,epoch:int,elements:int)->TvOwner #export_c {
     if identity<=0 || epoch<=0 {return TvOwner.{status=TvStatus.state};}
@@ -164,18 +251,18 @@ tv_layout :: (s:TvStorage,v:TvView)->TvLayout #export_c {
     low:=v.offset;high:=v.offset;
     // Extent/stride caps bound every product by 2^40 and the four-axis sum
     // by 2^42, before checking the actual storage interval.
-    for i:0..<v.shape.rank {delta:=(v.shape.dims[i]-1)*v.strides[i];if delta<0 {low+=delta;}else {high+=delta;}}
+    // Halving delta -/+ |delta| adds a negative step to low and a positive one to high.
+    for i:0..<v.shape.rank {delta:=(v.shape.dims[i]-1)*v.strides[i];size:=tv_magnitude(delta);low+=(delta-size)/2;high+=(delta+size)/2;}
     if low<0 || high>=s.elements {return TvLayout.{status=TvStatus.bounds};}
     contiguous:=true;expected:=1;i:=v.shape.rank;
     while i>0 {i-=1;if v.shape.dims[i]>1 && v.strides[i]!=expected {contiguous=false;}expected*=v.shape.dims[i];}
-    // Sufficient injectivity proof, not an exhaustive solver: in increasing
-    // absolute-stride order, each axis must step beyond the preceding span.
-    used:[4]bool;covered:=1;injective:=true;
-    for pass:0..<v.shape.rank {chosen:=-1;best:=TV_LIMIT+1;
-        for axis:0..<v.shape.rank {stride:=v.strides[axis];if stride<0 {stride=-stride;}
-            if !used[axis] && v.shape.dims[axis]>1 && stride<best {chosen=axis;best=stride;}}
-        if chosen>=0 {used[chosen]=true;if best<covered {injective=false;}covered+=(v.shape.dims[chosen]-1)*best;}
-    }
+    // Sufficient injectivity proof, not an exhaustive solver: each axis longer
+    // than one must step beyond the span of every other axis whose absolute
+    // stride is no larger. Ties therefore never prove injectivity.
+    injective:=true;
+    for axis:0..<v.shape.rank {if v.shape.dims[axis]>1 {step:=tv_magnitude(v.strides[axis]);reach:=1;
+        for other:0..<v.shape.rank {size:=tv_magnitude(v.strides[other]);if other!=axis && size<=step {reach+=(v.shape.dims[other]-1)*size;}}
+        if step<reach {injective=false;}}}
     if v.writable && !injective {return TvLayout.{status=TvStatus.alias};}
     return TvLayout.{elements=count.elements,low=low,high=high,contiguous=contiguous,injective=injective};
 }
