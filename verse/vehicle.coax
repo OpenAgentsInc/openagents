@@ -324,3 +324,44 @@ test_drive :: (store: [] RigidBody, spec: VehicleSpec, st: VehicleState, input: 
   st = test_drive(store[..], spec, st, VehicleInput.{jump = true}, g[..], gravity, 1);
   #assert st.jumps == 2 && st.dodge_t == 0.0 && store[0].vel.y > vy + spec.jump * 0.7;
 }
+
+// One scripted run: settle, drive, steer with the handbrake, jump, dodge.
+script_run :: (spec: VehicleSpec) -> RigidBody {
+  store: [1] RigidBody;
+  store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
+  g := test_flat();
+  gravity := d3(0.0, -9.81, 0.0);
+  st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 60);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = 1.0}, g[..], gravity, 180);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = 1.0, steer = 0.7, handbrake = true}, g[..], gravity, 60);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = 1.0, jump = true}, g[..], gravity, 10);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = 1.0}, g[..], gravity, 10);
+  st = test_drive(store[..], spec, st, VehicleInput.{throttle = 1.0, jump = true}, g[..], gravity, 60);
+  return store[0];
+}
+
+#test "the same inputs from the same start give the same path, bit for bit" {
+  spec := vehicle_roadster();
+  a := script_run(spec); b := script_run(spec);
+  #assert a.pos.x == b.pos.x && a.pos.y == b.pos.y && a.pos.z == b.pos.z;
+  #assert a.vel.x == b.vel.x && a.vel.y == b.vel.y && a.vel.z == b.vel.z;
+  #assert a.orientation.x == b.orientation.x && a.orientation.y == b.orientation.y && a.orientation.z == b.orientation.z && a.orientation.w == b.orientation.w;
+  #assert d3_len(d3_sub(a.pos, d3(0.0, 1.0, 0.0))) > 10.0;
+}
+
+#test "the handbrake drifts: the same turn at speed swings the tail out further" {
+  spec := vehicle_roadster();
+  g := test_flat();
+  gravity := d3(0.0, -9.81, 0.0);
+  slip: [2] f64;
+  for hb: 0..<2 {
+    store: [1] RigidBody;
+    store[0] = vehicle_body(spec, 1000.0, d3(0.0, 1.0, 0.0), DQ.{});
+    st := test_drive(store[..], spec, VehicleState.{}, VehicleInput.{}, g[..], gravity, 60);
+    st = test_drive(store[..], spec, st, VehicleInput.{throttle = 1.0}, g[..], gravity, 240);
+    st = test_drive(store[..], spec, st, VehicleInput.{throttle = 0.5, steer = 1.0, handbrake = hb == 1}, g[..], gravity, 45);
+    side := rigid_axis(store[0], D3_X);
+    slip[hb] = abs(d3_dot(store[0].vel, side));
+  }
+  #assert slip[1] > slip[0] * 1.5 && slip[1] > 1.0;
+}

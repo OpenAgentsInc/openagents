@@ -1566,3 +1566,22 @@ wall_run :: (s: [] OrbitLeague, yaw: f64, held: int, secs: f64, x: f64) -> f64 {
   #assert s[0].phase == PHASE_KICKOFF && d3_len(d3_sub(s[0].bodies[BALL].pos, d3(0.0, BALL_R + 0.02, 0.0))) < 0.05;
   #assert abs(s[0].bodies[YOU].pos.x) < 0.01 && abs(s[0].bodies[YOU].pos.z + SPAWN_Z) < 0.01;
 }
+
+#test "C and the on-screen button both switch ball cam, on a laptop and a phone" {
+  s: [1] OrbitLeague;
+  out: [MAX_VERTICES * VERTEX_FLOATS] f32; u: [UNIFORM_FLOATS] f32;
+  n := game_frame(s[..], out[..], u[..], 1440, 900, 1, 0.016, true);
+  #assert !s[0].ball_cam && game_key(s[..], 'c', 0) && s[0].ball_cam;
+  #assert game_key(s[..], 'C', 0) && !s[0].ball_cam;
+  for dims: 0..<2 {
+    w: f32 = ifx dims == 0 then 1440 else 390 * 3; h: f32 = ifx dims == 0 then 900 else 844 * 3; dpr: f32 = ifx dims == 0 then 1 else 3;
+    was := s[0].ball_cam;
+    n = game_frame(s[..], out[..], u[..], w, h, dpr, 0.016, true);
+    #assert s[0].shown[BTN_CAM];
+    b := s[0].boxes_ui[BTN_CAM];
+    cx := (b.x0 + b.x1) * 0.5; cy := (b.y0 + b.y1) * 0.5;
+    p := game_pointer(s[..], cx, cy, POINTER_DOWN, 1, 9);
+    q := game_pointer(s[..], cx, cy, POINTER_UP, 1, 9);
+    #assert s[0].ball_cam != was;
+  }
+}
