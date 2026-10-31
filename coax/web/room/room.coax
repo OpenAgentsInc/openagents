@@ -1,6 +1,6 @@
 // The Orbit League room server's decisions (ol-room): which room a
 // WebSocket's path names, who sits where, the 60 Hz tick and what each
-// player hears. Up to ROOMS rooms of ROOM_PLAYERS. The server owns each
+// player hears. Beside them, the relay's rooms for any game (room-relay.coax). Up to ROOMS rooms of ROOM_PLAYERS. The server owns each
 // room's ball: every tick it steps it twice at 120 Hz (orbitleague.coax's
 // room_step, the physics the game runs) against the arena and the cars the
 // players report, then writes each player the room's state
@@ -15,6 +15,7 @@
 //   coax test --library coax/web/room/room.coax --steps 4000000000
 //   coax/web/room/build.sh && coax/web/room/bin/room --port 8830
 #load "../../../apps/openagents-web/orbitleague.coax";
+#load "room-relay.coax";
 
 ROOMS :: 8;
 CONNS :: 32;
@@ -22,7 +23,7 @@ PATH :: "/api/room/orbit-league/";
 
 QUICK_WAIT :: 10.0;      // a quick match waits this long for players, then bots take the empty seats
 
-RmConn :: struct { live: bool; room: int = -1; seat: int = -1; echo: int = -1; }
+RmConn :: struct { live: bool; room: int = -1; seat: int = -1; echo: int = -1; relay: int = -1; }
 RmRoom :: struct {
   name: [ROOM_NAME] u8; name_n: int;
   bot_kicks: int;      // the kickoff its bots were last set out for
@@ -37,12 +38,19 @@ RmServer :: struct {
   conns: [CONNS] RmConn;
   rooms: [ROOMS] RmRoom;
   out: [2048] u8;    // the last frame written for the host to send
+  // the relay's rooms and the frames waiting to go out (room-relay below)
+  relays: [RELAYS] RelayRoom;
+  q: [RELAY_QUEUE] RelayFrame; q_head: int; q_n: int;
+  rout: [RELAY_FRAME] u8;   // the frame rm_relay_next took off the queue
+  rto: [CONNS] bool;        // who it goes to
 }
 
 // Every field's default (seats -1, the game's own defaults): the host calls
 // this once on zeroed memory.
 rm_init :: (v: [] RmServer) #export_c {
   for i: 0..<CONNS { v[0].conns[i] = RmConn.{}; }
+  for r: 0..<RELAYS { v[0].relays[r].live = false; }
+  v[0].q_head = 0; v[0].q_n = 0;
   for r: 0..<ROOMS { v[0].rooms[r].live = false; v[0].rooms[r].s[0] = OrbitLeague.{}; }
 }
 
@@ -119,6 +127,7 @@ rm_seat :: (conns: [] RmConn, r: int) -> int {
 // handshake): its seat, or -1 to refuse (no room's path, or full).
 rm_join :: (v: [] RmServer, conn: int, request: string) -> int #export_c {
   if conn < 0 || conn >= CONNS { return -1; }
+  if rl_is_path(request) { return rl_join(v, conn, request); }
   name: [ROOM_NAME] u8;
   n := rm_path_room(request, name[..]);
   if n == 0 { return -1; }
@@ -142,6 +151,7 @@ rm_join :: (v: [] RmServer, conn: int, request: string) -> int #export_c {
 // A text frame from a player: its car.
 rm_heard :: (v: [] RmServer, conn: int, text: string) #export_c {
   if conn < 0 || conn >= CONNS || !v[0].conns[conn].live { return; }
+  if v[0].conns[conn].relay >= 0 { rl_heard(v, conn, text); return; }
   c := v[0].conns[conn];
   v[0].rooms[c.room].cars[c.seat] = room_report(text, v[0].rooms[c.room].cars[c.seat]);
   e := room_report_clock(text);
@@ -150,6 +160,7 @@ rm_heard :: (v: [] RmServer, conn: int, text: string) #export_c {
 }
 rm_left :: (v: [] RmServer, conn: int) #export_c {
   if conn < 0 || conn >= CONNS { return; }
+  if v[0].conns[conn].live && v[0].conns[conn].relay >= 0 { rl_left(v, conn); }
   v[0].conns[conn] = RmConn.{};
 }
 // One tick: every live room steps twice; a room nobody is in closes.
@@ -157,7 +168,7 @@ rm_tick :: (v: [] RmServer) #export_c {
   for r: 0..<ROOMS {
     if !v[0].rooms[r].live { continue; }
     cars: [ROOM_PLAYERS] RigidBody; n := 0;
-    for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; n += 1; } }
+    for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay < 0 && v[0].conns[i].room == r { cars[n] = v[0].rooms[r].cars[v[0].conns[i].seat]; n += 1; } }
     if n == 0 { v[0].rooms[r].live = false; continue; }
     if v[0].rooms[r].quick > 0 { rm_quick_tick(v, r); v[0].rooms[r].tick += 1; continue; }
     room_step(v[0].rooms[r].s[..], cars[..], n);
@@ -182,7 +193,7 @@ rm_quick_tick :: (v: [] RmServer, r: int) {
 }
 // What conn hears this tick, written to out: its length (0: nothing).
 rm_state :: (v: [] RmServer, conn: int) -> int #export_c {
-  if conn < 0 || conn >= CONNS || !v[0].conns[conn].live { return 0; }
+  if conn < 0 || conn >= CONNS || !v[0].conns[conn].live || v[0].conns[conn].relay >= 0 { return 0; }
   r := v[0].conns[conn].room;
   if !v[0].rooms[r].live { return 0; }
   cars: [ROOM_PLAYERS] RigidBody; seats: [ROOM_PLAYERS] int; n := 0;

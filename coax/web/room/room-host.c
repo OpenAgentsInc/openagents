@@ -49,11 +49,24 @@ static bool send_all(int fd, const void *p, size_t n) {
   }
   return true;
 }
+static void shut(int i);
+// The relay's frames (room-relay.coax), each to the connections it names.
+static void relay_flush(void) {
+  int64_t len;
+  while ((len = rm_relay_next(view())) > 0) {
+    static uint8_t out[4300];
+    size_t k = ws_build(out, sizeof out, WS_TEXT, server->rout.e, (size_t)len, false);
+    if (!k) continue;
+    for (int j = 0; j < CONNS; j++) if (conns[j].fd >= 0 && conns[j].ws && rm_relay_to(view(), j) && !send_all(conns[j].fd, out, k)) shut(j);
+  }
+}
 static void shut(int i) {
   if (conns[i].fd < 0) return;
-  if (conns[i].ws) rm_left(view(), i);
+  bool was = conns[i].ws;
+  if (was) rm_left(view(), i);
   close(conns[i].fd);
   conns[i].fd = -1; conns[i].ws = false; conns[i].n = 0;
+  if (was) relay_flush();
 }
 static void http(int i, const char *status, const char *body) {
   char out[512];
@@ -74,12 +87,13 @@ static void opening(int i) {
   }
   char out[512];
   size_t hn = ws_server_handshake((char *)c->in, len, out, sizeof out);
-  if (!hn) { http(i, "400 Bad Request", "Orbit League rooms: open a WebSocket to /api/room/orbit-league/NAME.\n"); return; }
+  if (!hn) { http(i, "400 Bad Request", "Rooms: open a WebSocket to /api/room/orbit-league/NAME, or to /api/room/relay/GAME/CODE.\n"); return; }
   int64_t seat = rm_join(view(), i, (coax_string){(const char *)c->in, (int64_t)len});
   if (seat < 0) { http(i, "404 Not Found", "No such room, or it is full.\n"); return; }
   if (!send_all(c->fd, out, hn)) { rm_left(view(), i); close(c->fd); c->fd = -1; c->n = 0; return; }
   c->ws = true;
   memmove(c->in, end, c->n - len); c->n -= len;
+  relay_flush();
 }
 static void frames(int i) {
   conn *c = &conns[i];
@@ -88,7 +102,7 @@ static void frames(int i) {
     int r = ws_parse(c->in, c->n, 4096, &f);
     if (r == 0) return;
     if (r < 0) { shut(i); return; }
-    if (f.opcode == WS_TEXT) rm_heard(view(), i, (coax_string){(const char *)f.payload, (int64_t)f.length});
+    if (f.opcode == WS_TEXT) { rm_heard(view(), i, (coax_string){(const char *)f.payload, (int64_t)f.length}); relay_flush(); if (c->fd < 0) return; }
     else if (f.opcode == WS_PING) {
       uint8_t out[160]; size_t k = ws_build(out, sizeof out, WS_PONG, f.payload, f.length, false);
       if (!k || !send_all(c->fd, out, k)) { shut(i); return; }

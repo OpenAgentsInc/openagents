@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# Deploys the Orbit League room server (ol-room) to Cloud Run as oa-room and
+# Deploys the room server (Orbit League's rooms, ol-room, and the relay any game's rooms use,
+# room-relay.coax) to Cloud Run as oa-room and
 # routes /api/room/ on openagents.com and staging.openagents.com to it, ahead
 # of the API's /api/ rule. Then it runs the load test (load.ts: four players,
-# 60 Hz each, the same ball) through the site's address.
+# 60 Hz each, the same ball) and the relay's check through the site's address.
 #   coax/web/room/deploy.sh
 #
 # One instance at most, so a room is one room: its rooms live in memory. None
@@ -70,7 +71,7 @@ g compute url-maps validate --global --source "$tmp" --format 'value(result.load
 g compute url-maps import "$map" --global --source "$tmp" 2>&1 | grep -E "ERROR" && exit 1
 # Through the site's address (the rule takes a minute or two to reach every edge).
 for try in 1 2 3 4 5 6 7 8 9 10; do
-  bun "$here/load.ts" wss://openagents.com 4 10 && { echo "room: deployed $image behind wss://openagents.com/api/room/"; exit 0; }
+  bun "$here/load.ts" wss://openagents.com 4 10 && bun "$here/relay-check.ts" wss://openagents.com && { echo "room: deployed $image behind wss://openagents.com/api/room/"; exit 0; }
   sleep 30
 done
 echo "room: the load test through openagents.com failed" >&2; exit 1

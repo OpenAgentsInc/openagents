@@ -1,0 +1,197 @@
+// The room server's relay (room-relay): rooms for any game, keyed by the game and a room code,
+// that carry each player's text frames to the others unread. Orbit League's rooms
+// (/api/room/orbit-league/NAME) are untouched; a relay room's WebSocket opens at
+//   /api/room/relay/GAME/CODE        GAME and CODE: 1 to RELAY_NAME of [a-z0-9-]
+// and up to RELAY_SEATS players sit in it, the first in seat 0. What each hears:
+//   y SEAT          you are in, at SEAT (the first frame)
+//   j SEAT          a player sat at SEAT (one each for those already in, after y)
+//   l SEAT          the player at SEAT left
+//   m SEAT TEXT     the player at SEAT sent TEXT (any text frame, as it was sent)
+// A room nobody is in closes. The host takes each frame off the queue with rm_relay_next and
+// sends it to every connection rm_relay_to names.
+
+RELAYS :: 16;
+RELAY_SEATS :: 4;
+RELAY_NAME :: 24;
+RELAY_PATH :: "/api/room/relay/";
+RELAY_FRAME :: 4200;      // a frame the host parses is at most 4096 bytes, and "m S " goes before it
+RELAY_QUEUE :: 48;
+
+RelayRoom :: struct {
+  live: bool;
+  game: [RELAY_NAME] u8; game_n: int;
+  code: [RELAY_NAME] u8; code_n: int;
+}
+RelayFrame :: struct { to: [CONNS] bool; n: int; text: [RELAY_FRAME] u8; }
+
+// A name's characters, lower-cased: its count, and where it stopped.
+RelayName :: struct { n: int; at: int; }
+rl_name :: (req: string, at: int, out: [] u8) -> RelayName {
+  i := at; n := 0;
+  while i < req.count && n < out.count {
+    c := req[i];
+    if c >= 'A' && c <= 'Z' { c += 32; }
+    if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '-') { break; }
+    out[n] = c; n += 1; i += 1;
+  }
+  return RelayName.{n = n, at = i};
+}
+rl_is_path :: (req: string) -> bool {
+  pre := "GET ";
+  at := pre.count;
+  return req.count > at + RELAY_PATH.count && req[0..<at] == pre && req[at..<at + RELAY_PATH.count] == RELAY_PATH;
+}
+// The game and the code in "GET /api/room/relay/GAME/CODE HTTP/1.1": false unless both are there.
+rl_path :: (req: string, game: [] u8, code: [] u8, ns: [] int) -> bool {
+  if !rl_is_path(req) { return false; }
+  g := rl_name(req, 4 + RELAY_PATH.count, game);
+  if g.n == 0 || g.at >= req.count || req[g.at] != '/' { return false; }
+  c := rl_name(req, g.at + 1, code);
+  if c.n == 0 || c.at >= req.count || (req[c.at] != ' ' && req[c.at] != '?') { return false; }
+  ns[0] = g.n; ns[1] = c.n;
+  return true;
+}
+rl_find :: (v: [] RmServer, game: string, code: string) -> int {
+  free := -1;
+  for r: 0..<RELAYS {
+    m := v[0].relays[r];
+    if m.live && cast(string) m.game[0..<m.game_n] == game && cast(string) m.code[0..<m.code_n] == code { return r; }
+    if !m.live && free < 0 { free = r; }
+  }
+  if free < 0 { return -1; }
+  v[0].relays[free].live = true;
+  for i: 0..<game.count { v[0].relays[free].game[i] = game[i]; }
+  for i: 0..<code.count { v[0].relays[free].code[i] = code[i]; }
+  v[0].relays[free].game_n = game.count; v[0].relays[free].code_n = code.count;
+  return free;
+}
+rl_seat :: (v: [] RmServer, r: int) -> int {
+  for seat: 0..<RELAY_SEATS {
+    taken := false;
+    for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay == r && v[0].conns[i].seat == seat { taken = true; } }
+    if !taken { return seat; }
+  }
+  return -1;
+}
+// A frame onto the queue for one connection (only >= 0) or for everyone in room r but one (but).
+rl_queue :: (v: [] RmServer, r: int, only: int, but: int, head: string, body: string) {
+  if v[0].q_n >= RELAY_QUEUE || head.count + body.count > RELAY_FRAME { return; }   // full: dropped (the host drains it after every event)
+  k := (v[0].q_head + v[0].q_n) % RELAY_QUEUE;
+  for i: 0..<CONNS {
+    c := v[0].conns[i];
+    v[0].q[k].to[i] = ifx only >= 0 then i == only else c.live && c.relay == r && i != but;
+  }
+  for i: 0..<head.count { v[0].q[k].text[i] = head[i]; }
+  for i: 0..<body.count { v[0].q[k].text[head.count + i] = body[i]; }
+  v[0].q[k].n = head.count + body.count;
+  v[0].q_n += 1;
+}
+rl_head :: (buf: [] u8, kind: u8, seat: int, space: bool) -> string {
+  buf[0] = kind; buf[1] = ' '; buf[2] = cast(u8) ('0' + seat);
+  n := 3;
+  if space { buf[3] = ' '; n = 4; }
+  return cast(string) buf[0..<n];
+}
+rl_join :: (v: [] RmServer, conn: int, request: string) -> int {
+  game: [RELAY_NAME] u8; code: [RELAY_NAME] u8; ns: [2] int;
+  if !rl_path(request, game[..], code[..], ns[..]) { return -1; }
+  r := rl_find(v, cast(string) game[0..<ns[0]], cast(string) code[0..<ns[1]]);
+  if r < 0 { return -1; }
+  seat := rl_seat(v, r);
+  if seat < 0 {
+    // full: a room nobody is in yet stays closed
+    if rl_people(v, r) == 0 { v[0].relays[r].live = false; }
+    return -1;
+  }
+  v[0].conns[conn] = RmConn.{live = true, relay = r, seat = seat};
+  h: [8] u8;
+  rl_queue(v, r, conn, -1, rl_head(h[..], 'y', seat, false), "");
+  for i: 0..<CONNS { if i != conn && v[0].conns[i].live && v[0].conns[i].relay == r { rl_queue(v, r, conn, -1, rl_head(h[..], 'j', v[0].conns[i].seat, false), ""); } }
+  rl_queue(v, r, -1, conn, rl_head(h[..], 'j', seat, false), "");
+  return seat;
+}
+rl_heard :: (v: [] RmServer, conn: int, text: string) {
+  c := v[0].conns[conn];
+  h: [8] u8;
+  rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'm', c.seat, true), text);
+}
+rl_left :: (v: [] RmServer, conn: int) {
+  c := v[0].conns[conn];
+  v[0].conns[conn].live = false;
+  h: [8] u8;
+  rl_queue(v, c.relay, -1, conn, rl_head(h[..], 'l', c.seat, false), "");
+  if rl_people(v, c.relay) == 0 { v[0].relays[c.relay].live = false; }
+}
+rl_people :: (v: [] RmServer, r: int) -> int {
+  n := 0;
+  for i: 0..<CONNS { if v[0].conns[i].live && v[0].conns[i].relay == r { n += 1; } }
+  return n;
+}
+// The next frame for the host to send, into rout (who to: rto): its length, or 0 when none waits.
+rm_relay_next :: (v: [] RmServer) -> int #export_c {
+  if v[0].q_n == 0 { return 0; }
+  k := v[0].q_head;
+  n := v[0].q[k].n;
+  for i: 0..<n { v[0].rout[i] = v[0].q[k].text[i]; }
+  for i: 0..<CONNS { v[0].rto[i] = v[0].q[k].to[i] && v[0].conns[i].live; }
+  v[0].q_head = (k + 1) % RELAY_QUEUE; v[0].q_n -= 1;
+  return n;
+}
+rm_relay_to :: (v: [] RmServer, conn: int) -> bool #export_c { return conn >= 0 && conn < CONNS && v[0].rto[conn]; }
+
+// What the queue holds, for the checks: every waiting frame for conn, joined by '|'.
+rl_heard_by :: (v: [] RmServer, conn: int, buf: [] u8) -> string {
+  n := 0;
+  while true {
+    got := rm_relay_next(v);
+    if got == 0 { break; }
+    if !v[0].rto[conn] { continue; }
+    if n > 0 { buf[n] = '|'; n += 1; }
+    for i: 0..<got { buf[n] = v[0].rout[i]; n += 1; }
+  }
+  return cast(string) buf[0..<n];
+}
+
+#test "relay: rooms keyed by game and code carry each player's frames, unread, to the others; Orbit League's rooms are as they were (room-relay)" {
+  v: [1] RmServer;
+  rm_init(v[..]);
+  ga := "GET /api/room/relay/hold-the-stair/K7Q2 HTTP/1.1\r\n\r\n";
+  #assert rm_join(v[..], 0, ga) == 0;
+  b0: [512] u8; b1: [512] u8; b2: [512] u8;
+  #assert rl_heard_by(v[..], 0, b0[..]) == "y 0";
+  #assert rm_join(v[..], 1, ga) == 1;
+  // the joiner hears its seat and who is in; the first hears it sat down (the queue is read once: two readers)
+  #assert v[0].q_n == 3;
+  #assert rm_relay_next(v[..]) == 3 && v[0].rto[1] && !v[0].rto[0] && cast(string) v[0].rout[0..<3] == "y 1";
+  #assert rm_relay_next(v[..]) == 3 && v[0].rto[1] && cast(string) v[0].rout[0..<3] == "j 0";
+  #assert rm_relay_next(v[..]) == 3 && v[0].rto[0] && !v[0].rto[1] && cast(string) v[0].rout[0..<3] == "j 1";
+  // a frame goes to the other, as it was, with its seat
+  rm_heard(v[..], 0, "o 12 place 40 1");
+  #assert rl_heard_by(v[..], 1, b1[..]) == "m 0 o 12 place 40 1";
+  // the same code in another game is another room; another code is another room
+  #assert rm_join(v[..], 2, "GET /api/room/relay/belt-2200/k7q2 HTTP/1.1\r\n\r\n") == 0;
+  #assert rm_join(v[..], 3, "GET /api/room/relay/hold-the-stair/zz HTTP/1.1\r\n\r\n") == 0;
+  #assert v[0].conns[2].relay != v[0].conns[0].relay && v[0].conns[3].relay != v[0].conns[0].relay;
+  q2 := rl_heard_by(v[..], 2, b2[..]);
+  rm_heard(v[..], 2, "u 9");
+  #assert rl_heard_by(v[..], 0, b0[..]) == "" ;
+  // no path, no game, no code: no room
+  #assert rm_join(v[..], 4, "GET /api/room/relay/x HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_join(v[..], 4, "GET /api/room/relay//c HTTP/1.1\r\n\r\n") == -1;
+  #assert rm_join(v[..], 4, "GET /api/room/relay/g/ HTTP/1.1\r\n\r\n") == -1;
+  // four seats, then full
+  #assert rm_join(v[..], 5, ga) == 2 && rm_join(v[..], 6, ga) == 3 && rm_join(v[..], 7, ga) == -1;
+  // a leaver is heard; its seat is the next joiner's
+  q3 := rl_heard_by(v[..], 0, b0[..]);
+  rm_left(v[..], 1);
+  #assert rl_heard_by(v[..], 0, b0[..]) == "l 1";
+  #assert rm_join(v[..], 8, ga) == 1;
+  // the relay never ticks Orbit League, and an Orbit League room beside it plays as before
+  #assert rm_join(v[..], 9, "GET /api/room/orbit-league/one HTTP/1.1\r\n\r\n") == 0;
+  rm_tick(v[..]);
+  #assert rm_state(v[..], 0) == 0 && rm_state(v[..], 9) > 0 && v[0].rooms[0].live;
+  // everyone leaves: the room closes
+  q4 := rl_heard_by(v[..], 0, b0[..]);
+  for c: 0..<9 { rm_left(v[..], c); }
+  for r: 0..<RELAYS { #assert !v[0].relays[r].live; }
+}
