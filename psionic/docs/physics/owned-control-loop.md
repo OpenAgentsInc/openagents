@@ -22,9 +22,9 @@ The next sequence follows the compiler [physical-world requirements](../../../co
 
 1. Finish R12 quantities, points/vectors and frame-chain transforms. The [scalar quantity compiler milestone](../../../coax/QUANTITIES.md) now
 qualifies native carriers, matching-unit arithmetic and binary scale conversion.
-The separately checked exact metadata producers prepare unit products; source
-product/type-interner integration, frame algebra and Panda migration remain
-pending. Preserve Verse’s left-handed view conversion and
+Compiler-owned formal unit products/quotients and their nominal interner are
+now qualified too. Point/vector/frame source types, frame algebra and Panda
+migration remain pending. Preserve Verse’s left-handed view conversion and
 Panda’s distinct grip-site/EEF frames, arm radians and finger metres. Measure
 physical carriers and native code against the untyped baseline.
 2. Add R13 simulation/steady/civil clock distinctions and declared multirate

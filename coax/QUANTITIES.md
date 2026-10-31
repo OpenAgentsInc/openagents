@@ -300,3 +300,20 @@ A [Psionic compatibility check](../docs/verification/coax-quantity-psionic-compa
 uses the reconstructed 0.42 compiler to emit the owned-plant sensitivity library.
 Its C and header match the qualified 0.39 emission byte for byte. The earlier
 physical/formal/native proofs are therefore reused; no model or SDK trial reran.
+
+
+The [merged publication addendum](../docs/verification/coax-quantity-derived-merged-2026-10-31.json)
+qualifies these features together with main's 0.44 native-verification release.
+All 24 focused normal reconstruction commands pass, including source graph and
+parser/checker seed C/header fixed points. All 16 frozen checker bodies retain
+their 942/942 mutation proof; only the new fixture/transport/native-verification
+integration checks run again. Nine consumers emit C and headers exactly equal
+to prior qualified artifacts, including the Panda clock aggregate. Full normal
+release/cache installation remains a separate gate.
+
+The metadata profile still has mass, length, time and angle dimensions.
+Temperature/Kelvin for the expanded roadmap requires a versioned dimension
+profile; assigning Kelvin dimensionless metadata would not represent it.
+Angle is independent too: a later rotating-state transform must explicitly
+normalize radians when generating its angular-to-linear term. M2 introduces
+no silent angle erasure or additional SI dimensions.

@@ -1,0 +1,14 @@
+#load "../../lib/quantity.coax" as u;
+NativeSpeed :: struct @unit(mass=0,length=1,time=-1,angle=0,numerator=1,denominator=1) {}
+probe_speed :: (d:u.Quantity(u.Metre,$R:numeric),t:u.Quantity(u.Second,$R)) -> u.Quantity(UnitQuotient(u.Metre,u.Second),$R) {return d/t;}
+probe_scale :: (s:$R:numeric,x:u.Quantity(UnitQuotient(u.Metre,u.Second),$R)) -> u.Quantity(UnitQuotient(u.Metre,u.Second),$R) {return s*x;}
+#test "merged0.44 native verification preserves derived units and constructor conversions" {
+ d:u.Quantity(u.Metre,f32)=u.Quantity.{value=6};t:u.Quantity(u.Second,f32)=u.Quantity.{value=2};
+ product:u.Quantity(UnitProduct(u.Metre,u.Second),f32)=d*t;
+ scaled:=probe_scale(2,probe_speed(d,t));named:=convert_unit(NativeSpeed,scaled);
+ back:=convert_unit(UnitQuotient(u.Metre,u.Second),named);
+ ratio:=product/product;
+ h:u.Quantity(u.HalfMetre,f64)=u.Quantity.{value=6};m:u.Quantity(u.Metre,f64)=u.Quantity.{value=3};
+ one:=convert_unit(UnitOne,h/m);
+ #assert product.value==12 && scaled.value==6 && back.value==6 && ratio.value==1 && one.value==1;
+}

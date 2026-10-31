@@ -65,4 +65,8 @@ V :: #run calc();#assert V==4;''');self.assertEqual(r.returncode,0,r.stderr)
  def test_type_constructor_target_has_no_runtime_call_effect(self):
   r=self.invoke('f :: (a:u.Quantity(Speed,f64))->u.Quantity(UnitQuotient(u.Metre,u.Second),f64) #export_c {return convert_unit(UnitQuotient(u.Metre,u.Second),a);}','deps','--effects','--proc','f');self.assertEqual(r.returncode,0,r.stderr)
   v=json.loads(r.stdout);self.assertEqual(v['edge_count'],0);self.assertEqual(len(v['procedures']),1);self.assertEqual(v['procedures'][0]['effects_mask'],0);self.assertEqual(v['procedures'][0]['reachable_procedures'],1)
+ def test_native_verification_runtime_preserves_derived_units(self):
+  fixture=ROOT/'coax/tests/quantity/native-verification-integration.coax';record=self.work/'native-record.json'
+  r=subprocess.run(['python3',str(ROOT/'coax/tools/native_check_execution.py'),str(fixture),'--compiler',str(COMPILER),'--keep',str(self.work/'native-artifacts'),'--out',str(record)],cwd=ROOT,capture_output=True,text=True,timeout=120)
+  self.assertEqual(r.returncode,0,r.stdout+r.stderr);value=json.loads(record.read_text());self.assertEqual(value['outcome'],'passed');self.assertEqual(len(value['files']),1)
 if __name__=='__main__':unittest.main()

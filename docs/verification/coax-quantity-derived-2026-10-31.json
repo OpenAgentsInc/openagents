@@ -228,5 +228,12 @@
     "universal assembly equality",
     "whole compiler correctness",
     "normal release/cache/installed compiler qualification"
-  ]
+  ],
+  "merged_publication_addendum": {
+    "record": "coax-quantity-derived-merged-2026-10-31.json",
+    "status": "qualified on combined0.44 source",
+    "normal_focused_commands": 24,
+    "mutation_body_identity": "All16 frozen procedure digests remain exact;942/942 historical changed-scope proof retained.",
+    "new_checks": "Only new0.44 fixture/native transport/runtime integration was executed, with exact consumer emission binding."
+  }
 }
